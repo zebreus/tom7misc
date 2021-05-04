@@ -136,8 +136,12 @@ int main(int argc, char **argv) {
   std::unique_ptr<SNES> snes;
   snes.reset(new SNES("super-mario-world.smc"));
   #else
+  /*
   Slideshow slideshow("youtube.ctalk",
 		      "youtube.screens");
+  */
+  Slideshow slideshow("retropit.ctalk",
+		      "retropit.screens");
   #endif
   
   printf("START.\n");

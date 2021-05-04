@@ -3,7 +3,7 @@ all : ppuppy.exe
 talk : deconstruct.ctalk
 jstalk : jstalk/slides.js
 
-# CXX=g++
+CXX=g++
 # CXX=x86_64-w64-mingw32-g++
 # consider O2 for releases...
 CXXFLAGS=-Wall -Wno-sign-compare -Wno-deprecated-declarations -O2 --std=c++14 -I ../cc-lib  -DPSS_STYLE=1 -DDISABLE_I2C -I ../cc-lib/pi
@@ -79,6 +79,9 @@ end.ctalk : images/*.png maketalk.exe end.talk
 
 youtube.ctalk : images/*.png images/rr/*.png maketalk.exe youtube.talk
 	./maketalk.exe youtube.talk youtube.ctalk youtube.screens
+
+retropit.ctalk : images/*.png images/rr/*.png maketalk.exe retropit.talk
+	./maketalk.exe retropit.talk retropit.ctalk retropit.screens
 
 deconverted/%.png : images/%.png deconvert.exe
 	./deconvert.exe $< $@
