@@ -23,19 +23,22 @@ let RTCPEER_ARGS = {
   Resolve is called with the string containing the response.
 
   obj argument:
-  headers: string list
+  headers: additional headers as map ("header: value")
   method: string; "GET", "POST", etc.
   url: string
   body: string
 */
-const request = obj => {
+const request = (obj : {headers?: Record<string, string>,
+                        method?: string,
+                        url: string,
+                        body: string}) : Promise<string> => {
   return new Promise((resolve, reject) => {
     let xhr = new XMLHttpRequest();
     xhr.open(obj.method || "GET", obj.url);
     if (obj.headers) {
-      Object.keys(obj.headers).forEach(key => {
+      for (let key in obj.headers) {
         xhr.setRequestHeader(key, obj.headers[key]);
-      });
+      }
     }
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
@@ -51,9 +54,9 @@ const request = obj => {
 
 /* Like above, but wrapped to use a standard protocol:
    - Always uses POST
-   - params given as {key: value} object, url-encoded
+   - params given as {key: value} object. This function url-encodes them.
    Expects response to have fixed XSSI header. Parses the json. */
-const requestJSON = (url, params) => {
+const requestJSON = (url : string, params: Record<string, string>) => {
   // Encode a post body suitable for application/x-www-form-urlencoded.
   let kvs = [];
   for (let o in params) {
@@ -97,13 +100,11 @@ const PeerType = Object.freeze({
 // Wrapper around a timestamp and period for implementing
 // functionality like window.setTimeout.
 class Periodically {
-  private readonly periodMs : number;
   private nextRun : number;
   private paused : boolean;
-  
-  constructor(periodMs) {
+
+  constructor(private readonly periodMs : number) {
     if (periodMs <= 0) throw 'precondition';
-    this.periodMs = periodMs;
     this.nextRun = window.performance.now();
     this.paused = false;
   }
@@ -143,7 +144,7 @@ class Periodically {
 // some function like "is the peer closer going up (modulo radix)
 // or down?" which would keep the call/receive load balanced for
 // any given participant.
-function getPeerType(puid) {
+function getPeerType(puid : string) {
   if (!myUid) throw 'precondition: must join first!';
   return myUid < puid ? PeerType.I_CALL : PeerType.THEY_CALL;
 }
@@ -154,15 +155,15 @@ class Peer {
   puid : string;
   // XXX typescript enum?
   peerType : number;
-  connection : RTCPeerConnection;
-  channel : RTCDataChannel;
+  connection : RTCPeerConnection | null;
+  channel : RTCDataChannel | null;
   lastPing : number;
   private periodicallyPing : Periodically;
-  
+
   // Always have the player's uid when creating a peer, either
   // with the answer or the poll response (which contains all
   // outstanding players).
-  constructor(puid) {
+  constructor(puid : string) {
     this.puid = puid;
     this.peerType = getPeerType(puid);
     // Initialized by factory function.
@@ -197,8 +198,8 @@ class Peer {
 
     return false;
   }
-  
-  deliverAnswer(answer) : void {
+
+  deliverAnswer(answer : string) : void {
     if (this.peerType == PeerType.THEY_CALL) {
       if (this.connection == null)
 	throw 'in wrong state?';
@@ -215,11 +216,16 @@ class Peer {
   // with all ICE candidates.
   //
   // Arguments are the peer and offer uids.
-  sendAnswerRemotely(puid, ouid) : void {
+  sendAnswerRemotely(puid : string, ouid : string) : void {
+    if (!this.connection) {
+      if (VERBOSE)
+        console.log('no connection in sendAnswerRemotely?');
+      return;
+    }
     // Only send a complete answer with all ice candidates.
     if (this.connection.iceGatheringState == 'complete') {
       let desc = this.connection.localDescription;
-      if (desc.type != 'answer')
+      if (!desc || desc.type != 'answer')
 	throw 'Expected an answer-type description?';
 
       let enc = encodeSdp(desc.sdp);
@@ -248,7 +254,7 @@ class Peer {
   sendMessage(msg : object) : void {
     this.sendJson(JSON.stringify(msg));
   }
-  
+
   // Process a message sent BY this peer.
   processMessage(data) : void {
     let json = JSON.parse(data);
@@ -290,7 +296,7 @@ class Peer {
       drawChats();
       break;
     }
-      
+
     case MsgType.CONNECTIVITY: {
       let row = json['row']
       let player = players[this.puid];
@@ -369,11 +375,11 @@ class Player {
   puid : string;
   connectivityTo : Record<string, ConnectivityData>;
   nick : string;
-  
+
   constructor(puid) {
     this.playerType = (puid === myUid) ? PlayerType.ME : PlayerType.OTHER;
     this.puid = puid;
-    
+
     this.connectivityTo = {};
     this.nick = '???';
   }
@@ -453,7 +459,7 @@ function updateBlacklist() {
   if (myUid == '') throw 'precondition';
   let me = players[myUid];
   if (!me) throw 'precondition'
-  
+
   for (let puid in players) {
     let p = players[puid];
     // Never blacklist myself!
@@ -462,7 +468,7 @@ function updateBlacklist() {
     // Already blacklisted...
     if (p.playerType == PlayerType.BLACKLISTED)
       continue;
-    
+
     let awolt = getNetworkAwolTime(puid);
     if (awolt > BLACKLIST_MS) {
       p.playerType = PlayerType.BLACKLISTED;
@@ -489,7 +495,7 @@ function updateMyConnectivity() {
     // Don't do work for blacklisted players.
     if (player.playerType == PlayerType.BLACKLISTED)
       continue;
-    
+
     let peer = peers[puid];
 
     if (puid == myUid) {
@@ -503,7 +509,7 @@ function updateMyConnectivity() {
 	  (peer.connection.connectionState == 'connected') &&
 	  peer.channel &&
 	  (peer.channel.readyState == 'open');
-      
+
       if (good) {
 	me.connectivityTo[puid] = { c: Connectivity.CONNECTED,
 				    p: peer.lastPing || Infinity,
@@ -514,7 +520,7 @@ function updateMyConnectivity() {
 	// Might be useful to add more fine-grained states here
 	// (like trying to connect, waiting for offer, sent answer,
 	// etc.)?
-	
+
 	let ct = me.connectivityTo[puid];
 	if (ct && ct.c == Connectivity.CONNECTED) {
 	  // If the peer was in connected state, then we update to
@@ -577,7 +583,7 @@ function broadcastConnectivity() {
 		  'p': roundp,
 		  'a': awolSec };
   }
-  
+
   let json = JSON.stringify({'t': MsgType.CONNECTIVITY, 'row': msg});
   for (let k in peers) {
     let peer = peers[k];
@@ -654,7 +660,7 @@ function createICallPeer(puid, offer, ouid) {
 	}
       });
   // TODO: catch errors, explicitly fail!
-  
+
   if (VERBOSE)
     console.log('Created I-call peer ' + puid);
   peers[puid] = peer;
@@ -681,7 +687,7 @@ let mySeq = '';
 let offerToSend = null;
 // If non-null, this is the uid for the offer that the server
 // currently knows about (and which we generated in this session).
-// 
+//
 let offerUid = null;
 // Connection corresponding to the outstanding offer.
 let listenConnection = null;
@@ -699,7 +705,7 @@ let waitingForOfferUid = false;
 function makeOffer() {
   if (makingOffer) return;
   if (waitingForOfferUid) return;
-  
+
   makingOffer = true;
   listenConnection = null;
   let lc = new RTCPeerConnection(RTCPEER_ARGS);
@@ -800,7 +806,7 @@ function uPeriodic() {
       }
     }
   }
-  
+
   // On some delay? Or rename this to uPeriodic?
   for (let k in peers)
     peers[k].periodic();
@@ -812,7 +818,7 @@ function uPeriodic() {
       broadcastConnectivity();
     }
   }
-  
+
   if (periodicallyUpdateUi.shouldRun()) {
     // Perhaps only if dirty? 10x a second is ridiculous
     updateUI();
@@ -839,7 +845,7 @@ function doPoll() {
 
   // Don't spam the server: Only retry polling once the promise completes.
   periodicallyPoll.pause();
-  
+
   requestJSON(SERVER_URL + '/poll/' + myUid + '/' + mySeq, params).
       then(json => {
 	// Process response...
@@ -886,7 +892,7 @@ function processPollResponse(json) {
       delete peers[puid];
       continue;
     }
-    
+
     let peer = getPeerByUid(puid);
     if (peer == null) {
       // Answer from unknown peer. This is normal when a peer
@@ -928,7 +934,7 @@ function processPollResponse(json) {
     // recently.
     let relAwol = window.performance.now() - (1000 * other['a']);
     markPlayerSeen(puid, relAwol);
-    
+
     let peer = getPeerByUid(puid);
     if (VERBOSE) {
       console.log('other ' + puid + ' peer: ' + peer);
@@ -979,7 +985,7 @@ function processPollResponse(json) {
 function doJoin() {
   let elt = document.getElementById('intro');
   elt.style.display = 'none';
- 
+
   requestJSON(SERVER_URL + '/join/' + ROOM_NAME, {}).
       then(json => {
 	roomUid = json['room'];
@@ -992,7 +998,7 @@ function doJoin() {
 	}
 
 	addSelfPlayer();
-	
+
 	makeOffer();
       });
 
@@ -1052,7 +1058,7 @@ function updateListenUI() {
     TEXT('(making offer)', DIV('', elt));
   }
   TEXT('Offer uid: ' +
-       (waitingForOfferUid ? '(waiting)' : '') + ' ' + 
+       (waitingForOfferUid ? '(waiting)' : '') + ' ' +
        (offerUid || ''), DIV('', elt));
   TEXT((offerToSend ? '(offer to send)' : '(no offer to send)'),
        DIV('', elt));
@@ -1087,8 +1093,8 @@ function updatePeersUI() {
 	(player.playerType === PlayerType.BLACKLISTED) ?
 	'blacklistuid' :
 	'nopeeruid';
-    TEXT(player.puid, TD(peerclass, tr));    
-    
+    TEXT(player.puid, TD(peerclass, tr));
+
     if (peer) {
       let s =((peer.peerType === PeerType.I_CALL) ? 'I call' : 'They call');
       TEXT(s, TD('', tr));
@@ -1126,7 +1132,7 @@ function updateMatrixUI() {
     let sec = getNetworkAwolTime(dst) / 1000.0;
     TEXT(sec.toFixed(1) + 's', TD('', awoltr));
   }
-  
+
   let now = window.performance.now();
   for (let src in players) {
     let p = players[src];
@@ -1178,7 +1184,7 @@ function updateMatrixUI() {
       }
     }
   }
-  
+
 }
 
 let MAX_CHATS = 32;
@@ -1217,7 +1223,7 @@ function broadcastNick(nick) {
   let me = players[myUid];
   if (!me) return;
   me.nick = nick;
-  
+
   let json = JSON.stringify({'t': MsgType.SET_NICK, 'nick': nick});
   for (let k in peers) {
     let peer = peers[k];
@@ -1235,7 +1241,7 @@ function chatKey(e) {
     // Could also support /nick etc. here, which is maybe better
     // than having separate boxes?
     broadcastChat(msg);
-    
+
     drawChats();
   }
 }
@@ -1276,7 +1282,7 @@ function init() {
 
   } else {
     // wait for user to click to join.
-    
+
     // XXX or maybe here we should insert the button to click
   }
 }
