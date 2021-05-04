@@ -51,10 +51,12 @@ slide
   array 0  9  images/dinosaurc/dinosaurc000%.png
   array 10 68 images/dinosaurc/dinosaurc00%.png
 
+slide
+  images/abc.png
 
 # XXX maybe could flash this up quick?
-# slide
-#  images/onetrickpony.png
+slide
+  images/onetrickpony.png
 
 # Today I want to tell you such a joke, but I think
 # the joke works best if we do it inside-out.
@@ -68,7 +70,7 @@ slide
 # Of course many other pretentious people have desiccated
 # humor into prune dust by studying it. I couldn't find
 # an attribution for this one, but it stuck with me; a
-# definition of humor: 
+# definition of humor:
 # "A movie of a man eating a boot with a look of disgust on
 # his face.  That's not funny."
 
@@ -259,7 +261,7 @@ slide
 # Two serious limitations.
 slide
   images/limitations.png
-slide 
+slide
 # XXX make this slide better, perhaps
 # by forcing palette selection to follow
 # NES rules.
@@ -306,7 +308,7 @@ slide
 # Certain budget for "OMG it hard" without actually
 # conveying lessons.
 #  - bus capacitance (fwd reference persistence of vision?)
-#  - 
+#  -
 
 # So here is a capture of three channels from this actual NES using a
 # digital logic probe; basically an oscilloscope. I think it's very
@@ -351,56 +353,57 @@ slide
   images/scope-analog.png
 # -> leads into deglitching / logic families
 # -> leads into 3v3 vs 5v
-# 
-#   # 3v3 5v. so use transistor
-#   # these are different "logic families"
-#   # actually CMOS vs TTL
-#   slide
-#     images/3v5v1.png
-#   slide
-#     images/3v5v2.png
-#   slide
-#     images/3v5v3.png
-#   slide
-#     images/3v5v4.png
-# 
-#   # but this is wrong. the bus is shared. tri-state
-#   # If I don't cover it elsewhere, can mention that
-#   # the bus is even shared between address and data lines
-#   slide
-#     dur 4
-#     array 1 4 images/tristate10-%.png
-#   slide
-#     dur 4
-#     array 1 4 images/tristate01-%.png
-#   slide
-#     images/tristate00.png
-# 
-#   # but this is wrong. the transistors are too slow.
-#   slide
-#     images/slowsistor.png
-#   slide
-#     images/schottky.png
-# 
-#   # XXX should say something about "logic families"
-#   # before this point
-# 
-#   slide
-#     images/logic-families.png
-#   slide
-#     images/logic-families-invention.png
-# 
-#   # Wait, these letters MEAN SOMETHING?!
-#   slide
-#     images/74ls373n.png
-#   # So this led me to think that maybe the NES designers
-#   # knew what they were doing, and that it made sense to
-#   # just copy off their boards. But this comes with some
-#   # perils. For example, what is this component, electronics
-#   # geniuses?
-#   slide
-#     images/trick-capacitor.png
-# 
+#
+# 3v3 5v. so use transistor
+# these are different "logic families"
+# actually CMOS vs TTL
+slide
+  images/3v5v1.png
+slide
+  images/3v5v2.png
+slide
+  images/3v5v3.png
+slide
+  images/3v5v4.png
+
+# but this is wrong. the bus is shared. tri-state
+# If I don't cover it elsewhere, can mention that
+# the bus is even shared between address and data lines
+slide
+  dur 4
+  array 1 4 images/tristate10-%.png
+slide
+  dur 4
+  array 1 4 images/tristate01-%.png
+slide
+  images/tristate00.png
+
+# but this is wrong. the transistors are too slow.
+slide
+  images/slowsistor.png
+slide
+  images/schottky.png
+
+# XXX should say something about "logic families"
+# before this point
+
+slide
+  images/logic-families.png
+slide
+  images/logic-families-invention.png
+
+# Wait, these letters MEAN SOMETHING?!
+slide
+  images/74ls373n.png
+# So this led me to think that maybe the NES designers
+# knew what they were doing, and that it made sense to
+# just copy off their boards. But this comes with some
+# perils. For example, what is this component, electronics
+# geniuses?
+slide
+  images/trick-capacitor.png
+
+#
 # So anyway, my final design was more complicated
 # than my fantasy, and still doesn't work that great
 slide
@@ -426,11 +429,20 @@ slide
 #   [ ] optimization, swizzling, deglitching
 #   [ ] disable interrupts
 
+slide
+  images/eeprom-programmer.png
+slide
+  images/eeprom-programming.png
+slide
+  images/eeprom-error.png
+
+slide
+  images/cartcode.png
 
 slide
   images/cpusjob.png
-# slide
-#   images/cpusjob2.png
+slide
+  images/cpusjob2.png
 slide
   images/normal-reads.png
 slide
@@ -450,7 +462,7 @@ slide
 #   [ ] security hax 1: hdd controller
 #   [ ] security hax 2: one trace
 #     [ ] nsa principle?
-#   [ ] port knocking? 
+#   [ ] port knocking?
 #    * probably just skip this *
 
 slide
@@ -488,16 +500,15 @@ slide
 # future work here?
 
 #  [ ] nes emulator in NES
-# 
+#
 
 # I used up all the pins on the pi reverse emulating
 # the PPU. The EEPROM is basically using the CPU the
 # normal way. What if we reverse emulated it too?
-# slide
-#   images/reverse-cpu.png
-# slide
-#   images/reverse-cpu-normal.png
-#
+slide
+  images/reverse-cpu.png
+slide
+  images/reverse-cpu-normal.png
 
 # We could feed it instructions directly, which could
 # simplify/eliminate the knocking. But it would also make
@@ -510,10 +521,10 @@ slide
 # With this, we could probably manage high-resolution
 # sound. Or maybe change the palette every scanline.
 # Or mine bitcoins.
-#  slide
-#    dur 24
-#    array 1 4 images/reverse-cpu-streaming%.png
-#  
+slide
+  dur 24
+  array 1 4 images/reverse-cpu-streaming%.png
+
 
 # ##############################
 # Part V. Big Ideas
@@ -555,13 +566,13 @@ slide
 # I interact with such a thing?
 
 # Let's say I wanted to know something, like as a boring
-# example, the prime factors of 
+# example, the prime factors of
 #    455276324879769941?
 
 # 472866029 x 962801929 = 455276324879769941
 
 # So could I maybe interface with such a thing? Like maybe
-# would just feel like recalling a vey familiar fact? 
+# would just feel like recalling a vey familiar fact?
 # For example I could recite to myself the ABCs. What if
 # the alphabet was, to you, instead of a boring static fact,
 # a dynamic fact that reorganized itself to suit the context?
