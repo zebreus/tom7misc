@@ -19,7 +19,7 @@ echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 tvservice -o
 /home/pi/tom7misc/ppuppy/clear.exe 5
 # And, run ppuppy (never coming back).
-/home/pi/tom7misc/ppuppy/prod.exe noint
+nice -n -19 /home/pi/tom7misc/ppuppy/prod.exe noint
 # But if we do come back (binary doesn't exist, etc.), then try to make this evident
 /home/pi/tom7misc/ppuppy/clear.exe 6 7 8 9
 echo "should not get here"

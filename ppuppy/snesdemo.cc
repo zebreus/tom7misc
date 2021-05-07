@@ -196,7 +196,7 @@ SNES::SNES(const string &cart) {
     printf("Failed to load NES?!\n");
   }
 
-  slideshow = new Slideshow("end.talk", "end.screens");
+  slideshow = new Slideshow("end.ctalk", "end.screens");
   if (slideshow == nullptr) {
     printf("Failed to load Slides!\n");
   }
@@ -236,6 +236,7 @@ void SNES::Update(uint8 joy1, uint8 joy2) {
 	demo_state = STATE_SNES;
       else if (demo_state == STATE_SNES)
 	demo_state = STATE_NES;
+      snes_joy = joy1;
       CRITICAL_END;
       break;
     }
@@ -244,6 +245,7 @@ void SNES::Update(uint8 joy1, uint8 joy2) {
     if ((joy1 & talk_combo) == talk_combo &&
 	(snes_joy & talk_combo) != talk_combo) {
       CRITICAL_BEGIN;
+      snes_joy = joy1;
       demo_state = STATE_END;
       CRITICAL_END;
       break;
