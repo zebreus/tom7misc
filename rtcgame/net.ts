@@ -1,16 +1,13 @@
 
+// TODO: SERVER_URL argument to net constructor
 const SERVER_URL = 'http://spacebar.org/f/a/rtcgame';
 const XSSI_HEADER = ")]}'\n";
-// From url, etc?
-const ROOM_NAME = 'test';
 const POLL_MS = 5000;
 
 const VERBOSE = false;
 
-// XXX debugging
-let stop_running = false;
-
 // Approximately 0.
+// XXX in net
 let timeOrigin = window.performance.now();
 
 // ?
@@ -18,66 +15,6 @@ let RTCPEER_ARGS = {
   iceServers: [{urls: ['stun:stun.l.google.com:19302']}]
 };
 
-/*
-  XMLHttpRequest but as a promise.
-  Resolve is called with the string containing the response.
-
-  obj argument:
-  headers: additional headers as map ("header: value")
-  method: string; "GET", "POST", etc.
-  url: string
-  body: string
-*/
-const request = (obj : {headers?: Record<string, string>,
-                        method?: string,
-                        url: string,
-                        body: string}) : Promise<string> => {
-  return new Promise((resolve, reject) => {
-    let xhr = new XMLHttpRequest();
-    xhr.open(obj.method || "GET", obj.url);
-    if (obj.headers) {
-      for (let key in obj.headers) {
-        xhr.setRequestHeader(key, obj.headers[key]);
-      }
-    }
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(xhr.response);
-      } else {
-        reject(xhr.statusText);
-      }
-    };
-    xhr.onerror = () => reject(xhr.statusText);
-    xhr.send(obj.body);
-  });
-};
-
-/* Like above, but wrapped to use a standard protocol:
-   - Always uses POST
-   - params given as {key: value} object. This function url-encodes them.
-   Expects response to have fixed XSSI header. Parses the json. */
-const requestJSON = (url : string, params: Record<string, string>) => {
-  // Encode a post body suitable for application/x-www-form-urlencoded.
-  let kvs = [];
-  for (let o in params) {
-    kvs.push(encodeURIComponent(o) + '=' + encodeURIComponent(params[o]));
-  }
-
-  let obj = {url: url,
-	     body: kvs.join('&'),
-	     method: 'POST',
-	     headers: {'Content-Type': 'application/x-www-form-urlencoded'}};
-
-  return request(obj).
-    then((res : string) => {
-      if (res.indexOf(XSSI_HEADER) == 0) {
-	let r = res.substr(XSSI_HEADER.length);
-	return JSON.parse(r);
-      } else {
-	throw 'no XSSI header in response';
-      }
-    });
-};
 
 // Unfortunately there are two ways we may become connected: We
 // initiated the connection, or someone initiated a connection to us.
@@ -97,56 +34,18 @@ enum PeerType {
   THEY_CALL = "T",
 }
 
-// Wrapper around a timestamp and period for implementing
-// functionality like window.setTimeout.
-class Periodically {
-  private nextRun : number;
-  private paused : boolean;
 
-  constructor(private readonly periodMs : number) {
-    if (periodMs <= 0) throw 'precondition';
-    this.nextRun = window.performance.now();
-    this.paused = false;
-  }
+// TODO: Can reduce space/bandwidth on server by having a custom
+// encoder for SDPs built into the JS code. If we do this we
+// probably want some version info in the encoded SDP?
+function encodeSdp(sdp : string) {
+  const b64 = btoa(sdp);
+  return b64.replace(/[+]/g, '_').replace(/[/]/g, '.');
+}
 
-  // Return true if periodMs has elapsed since the last run.
-  // If this function returns true, we assume the caller does
-  // the associated action now (and so move the next run time
-  // forward).
-  shouldRun() : boolean {
-    if (this.paused) return false;
-    let n = window.performance.now();
-    if (n >= this.nextRun) {
-      this.nextRun = n + this.periodMs;
-      return true;
-    }
-    return false;
-  }
-
-  pause() : void {
-    this.paused = true;
-  }
-
-  reset() : void {
-    this.paused = false;
-    this.nextRun = window.performance.now() + this.periodMs;
-  }
-};
-
-// One thing we have to do is decide who is going to call whom.
-// We can get into a mess if both sides try to initiate a connection
-// at the same time, and then e.g. both abort when it seems the other
-// is making the connection! We establish a global ordering using
-// uids: The player with the lexicographically earlier uid makes
-// the call (reads the other's offer and sends an answer to it).
-//
-// PERF: Rather than have 0xFFFFF receive all calls, we could use
-// some function like "is the peer closer going up (modulo radix)
-// or down?" which would keep the call/receive load balanced for
-// any given participant.
-function getPeerType(puid : string) : PeerType {
-  if (!myUid) throw 'precondition: must join first!';
-  return myUid < puid ? PeerType.I_CALL : PeerType.THEY_CALL;
+function decodeSdp(enc : string) {
+  let b64 = enc.replace(/[.]/g, '/').replace(/_/g, '+');
+  return atob(b64);
 }
 
 // A Peer is a connection (possibly in progress, or failed) with
@@ -162,9 +61,9 @@ class Peer {
   // Always have the player's uid when creating a peer, either
   // with the answer or the poll response (which contains all
   // outstanding players).
-  constructor(puid : string) {
+  constructor(private readonly net : Net, puid : string) {
     this.puid = puid;
-    this.peerType = getPeerType(puid);
+    this.peerType = net.getPeerType(puid);
     // Initialized by factory function.
     this.connection = null;
     this.channel = null;
@@ -230,7 +129,7 @@ class Peer {
       let enc = encodeSdp(desc.sdp);
       let params = {'to': puid, 'o': ouid, 'a': enc};
       /* result is ignored... */
-      requestJSON(SERVER_URL + '/answer/' + myUid + '/' + mySeq,
+      requestJSON(SERVER_URL + '/answer/' + net.myUid + '/' + net.mySeq,
 		  params);
       if (VERBOSE)
 	console.log('Sending answer to ' + puid + ' ' + desc.sdp);
@@ -255,6 +154,8 @@ class Peer {
   }
 
   // Process a message sent BY this peer.
+  // (TODO: Perhaps most of this code should be done in Net, since it
+  // often involves state beyond this peer.)
   processMessage(data : string) : void {
     let json = JSON.parse(data);
     let now = window.performance.now();
@@ -282,29 +183,29 @@ class Peer {
       break;
 
     case MsgType.CHAT:
-      pushChat(this.puid, json['msg']);
-      drawChats();
+      net.pushChat(this.puid, json['msg']);
+      net.chats_dirty = true;
       break;
 
     case MsgType.SET_NICK: {
       if (VERBOSE)
 	console.log('SET_NICK ' + json['nick']);
-      let player = players[this.puid];
+      let player = net.players[this.puid];
       if (!player) throw 'players should be superset of peers';
       player.nick = json['nick'];
-      drawChats();
+      net.chats_dirty = true;
       break;
     }
 
     case MsgType.CONNECTIVITY: {
       let row = json['row']
-      let player = players[this.puid];
+      let player = net.players[this.puid];
       if (!player) throw 'players should be superset of peers';
       player.connectivityTo = {};
       for (let ouid in row) {
 	let ct = row[ouid];
 	// Player learned about this peer before me; add it...
-	maybeAddPlayer(ouid);
+	net.maybeAddPlayer(ouid);
 	// Rebase to my own timeOrigin.
 	let a = now - ct.a;
 	// console.log('atime: ' + a);
@@ -328,14 +229,13 @@ class Peer {
   }
 
 };
-let peers : Record<string, Peer> = {};
 
 // ?
-const PlayerType = Object.freeze({
-  ME: 1,
-  OTHER: 2,
-  BLACKLISTED: 3,
-});
+enum PlayerType {
+  ME = "M",
+  OTHER = "O",
+  BLACKLISTED = "B",
+}
 
 enum Connectivity {
   // Haven't heard anything yet.
@@ -357,7 +257,7 @@ enum Connectivity {
 // We can learn about these by polling the server, or from other peers.
 //
 // No explicit connection to the peer, but they use the same uid key.
-let players : Record<string, Player> = {};
+//
 // Values of the connectivityTo map.
 // Not stored for blacklisted uids.
 // Map from other uid to object.
@@ -369,409 +269,19 @@ let players : Record<string, Player> = {};
 // It is effectively now() for connected peers.
 type ConnectivityData = { c : Connectivity, p : number, a : number };
 class Player {
-  // XXX typescript enums
-  playerType : number;
+  playerType : PlayerType;
   puid : string;
   connectivityTo : Record<string, ConnectivityData>;
   nick : string;
 
-  constructor(puid : string) {
-    this.playerType = (puid === myUid) ? PlayerType.ME : PlayerType.OTHER;
+  constructor(private readonly net : Net, puid : string) {
+    this.playerType = (puid === net.myUid) ? PlayerType.ME : PlayerType.OTHER;
     this.puid = puid;
 
     this.connectivityTo = {};
     this.nick = '???';
   }
 };
-
-function getNick(puid : string) {
-  if (!players[puid]) return '???';
-  return players[puid].nick || '???';
-}
-
-function addSelfPlayer() {
-  if (myUid == '') throw 'precondition';
-  players[myUid] = new Player(myUid);
-  updateMyConnectivity();
-}
-
-function maybeAddPlayer(puid : string) {
-  if (players[puid]) return;
-  players[puid] = new Player(puid);
-}
-
-// Mark (in my connectivity map) that the player was seen at 'when'
-// (given as ms since "time origin", i.e., window.performance.now() is
-// now). Since we may be learning that the server saw this player 8
-// seconds ago, but we saw them 1 second ago, this only updates the
-// awol time if it is more recent.
-function markPlayerSeen(puid : string, when : number) {
-  let me = players[myUid];
-  if (!me) throw 'recondition';
-  let ct = me.connectivityTo[puid];
-  if (!ct) {
-    me.connectivityTo[puid] =
-	{ c: Connectivity.UNKNOWN, p: Infinity, a: when };
-  } else {
-    let preva = me.connectivityTo[puid].a;
-    if (when > preva)
-      me.connectivityTo[puid].a = when;
-  }
-}
-
-// Compute network awol time for p, which is the number of
-// milliseconds since we believe any player saw p. Idea is that if
-// this is long ago, we have consensus to retire the player.
-function getNetworkAwolTime(puid : string) {
-  // Before we're established, return a conservative answer.
-  if (myUid == '') return 0;
-  if (!players[myUid]) return 0;
-
-  let maxAwolTime = -Infinity;
-  for (let k in players) {
-    let p = players[k];
-    if (p.playerType == PlayerType.BLACKLISTED)
-      continue;
-
-    if (p.connectivityTo && p.connectivityTo[puid]) {
-      // Note that this is the last info we received from the player.
-      // It could be the case that they appeared CONNECTED but we
-      // last heard from them 30 minutes ago. So the relevant thing
-      // is always the awol time.
-      let ct = p.connectivityTo[puid];
-      if (ct.a > maxAwolTime) maxAwolTime = ct.a;
-    }
-  }
-
-  let t = window.performance.now() - maxAwolTime;
-  return t < 0 ? 0 : t;
-}
-
-// Moves players to the blacklist. A player goes on the blacklist
-// when the minimum awol time that we know about (including from other
-// connected peers) exceeds a threshold.
-// When on the blacklist, we mostly ignore the player. A player can
-// become unblacklisted with some positive evidence of their aliveness
-// (e.g. they connect to us, update the offer on the server, etc.)
-const BLACKLIST_MS = 5 * 60 * 1000;
-function updateBlacklist() {
-  if (myUid == '') throw 'precondition';
-  let me = players[myUid];
-  if (!me) throw 'precondition'
-
-  for (let puid in players) {
-    let p = players[puid];
-    // Never blacklist myself!
-    if (p.playerType == PlayerType.ME)
-      continue;
-    // Already blacklisted...
-    if (p.playerType == PlayerType.BLACKLISTED)
-      continue;
-
-    let awolt = getNetworkAwolTime(puid);
-    if (awolt > BLACKLIST_MS) {
-      p.playerType = PlayerType.BLACKLISTED;
-      // Perhaps I should announce this?
-    }
-  }
-}
-
-// Updates my own connectivity/ping maps (for the player that corresponds
-// to me.)
-function updateMyConnectivity() {
-  if (myUid == '') throw 'precondition';
-  let me = players[myUid];
-  if (!me) throw 'precondition'
-
-  // We assume that peers is a subset of players..
-  for (let puid in peers) {
-    if (!players[puid]) throw 'peers should be a subset of players';
-  }
-
-  let now = window.performance.now();
-  for (let puid in players) {
-    let player = players[puid];
-    // Don't do work for blacklisted players.
-    if (player.playerType == PlayerType.BLACKLISTED)
-      continue;
-
-    let peer = peers[puid];
-
-    if (puid == myUid) {
-      // Self treated specially (no peer).
-      me.connectivityTo[puid] = { c: Connectivity.SELF, p: 0, a: now };
-    } else {
-      let peer = peers[puid];
-
-      let good = peer &&
-	  peer.connection &&
-	  (peer.connection.connectionState == 'connected') &&
-	  peer.channel &&
-	  (peer.channel.readyState == 'open');
-
-      if (good) {
-	me.connectivityTo[puid] = { c: Connectivity.CONNECTED,
-				    p: peer.lastPing || Infinity,
-				    a: now };
-
-      } else {
-	// No peer, or the connection is pending/broken.
-	// Might be useful to add more fine-grained states here
-	// (like trying to connect, waiting for offer, sent answer,
-	// etc.)?
-
-	let ct = me.connectivityTo[puid];
-	if (ct && ct.c == Connectivity.CONNECTED) {
-	  // If the peer was in connected state, then we update to
-	  // DISCONNECTED and set the awol time.
-	  //
-	  // (Note this requires updateconnectivity to run at least once
-	  // while connected. We could set this explicitly when a connection
-	  // is made. Or consider very short-lived connections to not be
-	  // connections at all, which is probably fine too)
-	  me.connectivityTo[puid] = { c: Connectivity.DISCONNECTED,
-				      p: Infinity,
-				      a: now };
-	} else if (ct && (ct.c == Connectivity.DISCONNECTED ||
-			  ct.c == Connectivity.NEVER_CONNECTED)) {
-
-	  // Leave in DISCONNECTED or NEVER_CONNECTED states, and
-	  // don't update awol time--player is still awol.
-	} else if (ct) {
-	  // e.g. if UNKNOWN
-	  me.connectivityTo[puid].c = Connectivity.NEVER_CONNECTED;
-	  me.connectivityTo[puid].p = Infinity;
-	  // Leave awol time as-is.
-	} else {
-	  // Weird to not have ct at all; when we insert players from
-	  // the server for example we have awol times. 'now' is conservative
-	  // but may keep very stale peers alive longer than we want.
-	  me.connectivityTo[puid] = { c: Connectivity.NEVER_CONNECTED,
-				      p: Infinity,
-				      a: now };
-	}
-      }
-    }
-  }
-}
-
-// Share connectivity with all connected peers. Note this is an n^2
-// operation, since we send information about all peers to all peers
-// (this is even worse if we have old players that we haven't cleaned
-// up). But we use this to keep the set of active players from growing
-// without bound, and the per-cell payload is small.
-function broadcastConnectivity() {
-  if (myUid == '') throw 'precondition';
-  let me = players[myUid];
-  if (!me) throw 'precondition'
-
-  let now = window.performance.now();
-  let msg : Record<string, ConnectivityData> = {};
-  for (let puid in me.connectivityTo) {
-    let ct = me.connectivityTo[puid];
-    // Round ping to integer to make these message smaller... peers
-    // don't care about sub-millisecond timing.
-    let roundp = isFinite(ct.p) ? Math.round(ct.p) : ct.p;
-    // Note that awol time here is stored as absoluve (time since
-    // timeOrigin) but sent as relative (how long ago). Different
-    // peers of course disagree on timeOrigin, and we avoid using unix
-    // epoch so that we don't have to worry about clock skew / NTP /
-    // etc.
-    let awolSec = Math.round(now - ct.a);
-    msg[puid] = { 'c': ct.c,
-		  'p': roundp,
-		  'a': awolSec };
-  }
-
-  let json = JSON.stringify({'t': MsgType.CONNECTIVITY, 'row': msg});
-  for (let k in peers) {
-    let peer = peers[k];
-    peer.sendJson(json);
-  }
-}
-
-// A they-call peer is created from my outstanding listen-connection.
-// (Maybe the listen-connection should be wrapped in an object so that
-// we can just pass it all here and it can retain any handlers?)
-function createTheyCallPeer(puid : string,
-                            conn : RTCPeerConnection,
-                            channel : RTCDataChannel) : Peer {
-  if (puid in peers) throw 'precondition';
-  if (getPeerType(puid) != PeerType.THEY_CALL) throw 'precondition';
-  let peer = new Peer(puid);
-  if (conn == null) throw 'precondition';
-  if (channel == null) throw 'precondition';
-  peer.connection = conn;
-  peer.channel = channel;
-  peer.channel.onmessage = e => {
-    if (VERBOSE) {
-      console.log('message on channel');
-      console.log(e);
-    }
-    peer.processMessage(e.data);
-  };
-  peers[puid] = peer;
-  if (VERBOSE)
-    console.log('Created they-call peer ' + puid);
-  return peer;
-}
-
-// An I-call peer is created from an offer sdp and its uid. We create
-// the connection and send an answer to the server.
-function createICallPeer(puid : string,
-                         offer : string,
-                         ouid : string) : Peer {
-  if (puid in peers) throw 'precondition';
-  if (getPeerType(puid) != PeerType.I_CALL) throw 'precondition';
-  if (offer === '') throw 'precondition';
-  if (ouid === '') throw 'precondition';
-  let peer = new Peer(puid);
-  peer.connection = new RTCPeerConnection(RTCPEER_ARGS);
-  let conn = peer.connection;
-  // Should be member function...
-  conn.ondatachannel = e => {
-    if (VERBOSE) {
-      console.log('icall.datachannel');
-      console.log(e);
-    }
-    if (e.type === 'datachannel') {
-      if (VERBOSE)
-	console.log('got data channel!');
-      peer.channel = e.channel;
-      peer.channel.onmessage = e => {
-	if (VERBOSE)
-	  console.log('message on channel');
-	console.log(e);
-	peer.processMessage(e.data);
-      };
-    }
-  };
-
-  if (VERBOSE)
-    console.log('Try setting remote description to ' + offer);
-  conn.setRemoteDescription({'type': 'offer', 'sdp': offer}).
-      then(() => conn.createAnswer()).
-      then(answer => conn.setLocalDescription(answer)).
-      then(() => {
-	// Is it possible for this to be complete already? If so,
-	// act on it now.
-	if (conn.iceGatheringState == 'complete') {
-	  peer.sendAnswerRemotely(puid, ouid);
-	} else {
-	  conn.onicegatheringstatechange =
-	      e => peer.sendAnswerRemotely(puid, ouid);
-	}
-      });
-  // TODO: catch errors, explicitly fail!
-
-  if (VERBOSE)
-    console.log('Created I-call peer ' + puid);
-  peers[puid] = peer;
-  return peer;
-}
-
-function getPeerByUid(puid : string) : Peer | null {
-  if (puid in peers) {
-    return peers[puid];
-  }
-  return null;
-}
-
-// Initialized upon joining, and then stays the same for the length
-// of the session.
-let roomUid = '';
-let myUid = '';
-let mySeq = '';
-
-// TODO: Make this stuff into a class.
-// TODO: Add visualization of offer-creation state to UI.
-// If non-null, an offer to deliver to the server during the poll
-// call.
-let offerToSend : string | null = null;
-// If non-null, this is the uid for the offer that the server
-// currently knows about (and which we generated in this session).
-let offerUid : string | null = null;
-// Connection corresponding to the outstanding offer.
-let listenConnection : RTCPeerConnection | null = null;
-let sendChannel : RTCDataChannel | null = null;
-// XXX we progress from makingOffer to waitingForOfferUid, so this
-// is better as a state enum. Should encapsulate this. It would also
-// allow us to have more than one outstanding offer, like connections
-// made via peers.
-let makingOffer = false;
-let waitingForOfferUid = false;
-
-// Asynchronously create an offer. Waits for all the ice candidates to
-// be gathered, then initializes offerToSend and listenConnection upon
-// success.
-function makeOffer() {
-  if (makingOffer) return;
-  if (waitingForOfferUid) return;
-
-  makingOffer = true;
-  listenConnection = null;
-  let lc = new RTCPeerConnection(RTCPEER_ARGS);
-  sendChannel = lc.createDataChannel("sendChannel");
-  lc.onicecandidate = e => {
-    if (VERBOSE) {
-      console.log('icecandidate');
-      console.log(e);
-    }
-  };
-  // XXX figure this out -- can we set it up after promoting this
-  // connection to a Peer?
-  sendChannel.onopen = e => {
-    if (VERBOSE) {
-      console.log('channel.onopen');
-      console.log(e);
-    }
-  };
-
-  sendChannel.onclose = e => {
-    if (VERBOSE) {
-      console.log('channel.onclose');
-      console.log(e);
-    }
-  };
-
-  return lc.createOffer().
-      then(offer => lc.setLocalDescription(offer)).
-      then(() => {
-	// Is it possible for this to be complete already? If so,
-	// act on it now.
-	if (lc.iceGatheringState == 'complete') {
-	  markOfferReady(lc);
-	} else {
-	  // Otherwise, wait for the ICE candidates.
-	  lc.onicegatheringstatechange = e => markOfferReady(lc);
-	}
-      }).
-      catch(e => {
-	listenConnection = null;
-	sendChannel = null;
-	makingOffer = false;
-	todoError(e);
-      });
-}
-
-function markOfferReady(conn : RTCPeerConnection) {
-  if (conn.iceGatheringState == 'complete') {
-    let desc = conn.localDescription;
-    if (!desc)
-      throw 'expected desc if gathering state is complete?';
-    if (desc.type != 'offer')
-      throw 'Expected an offer-type description?';
-    if (VERBOSE)
-      console.log('Got offer description: ' + desc.sdp);
-    let enc = encodeSdp(desc.sdp);
-    if (VERBOSE)
-      console.log('Encoded: ' + enc);
-    offerToSend = enc;
-    listenConnection = conn;
-    makingOffer = false;
-    // Consider polling immediately?
-  }
-}
 
 function todoInfo(e : any) {
   console.log('TODO Info');
@@ -783,525 +293,678 @@ function todoError(e : any) {
   console.log(e);
 }
 
-let periodicallyPoll = new Periodically(POLL_MS);
-let periodicallyCleanupPeers = new Periodically(125);
-let periodicallyUpdateUi = new Periodically(100);
-let periodicallyShareConnectivity = new Periodically(1000);
-function uPeriodic() {
-  // PERF: We can perhaps avoid long frames by only doing one
-  // of these periodic actions per frame (but have to be a little
-  // fancy to avoid starvation).
-  if (periodicallyPoll.shouldRun()) {
-    doPoll();
+// Represents the network from the point of view of one of the
+// participants.
+class Net {
+
+  // Initialized upon joining, and then stays the same for the length
+  // of the session.
+  roomUid : string = '';
+  myUid : string = '';
+  mySeq : string = '';
+
+  // TODO: Add visualization of offer-creation state to UI.
+  // If non-null, an offer to deliver to the server during the poll
+  // call.
+  offerToSend : string | null = null;
+  // If non-null, this is the uid for the offer that the server
+  // currently knows about (and which we generated in this session).
+  offerUid : string | null = null;
+  // Connection corresponding to the outstanding offer.
+  listenConnection : RTCPeerConnection | null = null;
+  sendChannel : RTCDataChannel | null = null;
+  // XXX we progress from makingOffer to waitingForOfferUid, so this
+  // is better as a state enum. Should encapsulate this. It would also
+  // allow us to have more than one outstanding offer, like connections
+  // made via peers.
+  makingOffer = false;
+  waitingForOfferUid = false;
+
+  // keyed by uid.
+  peers : Record<string, Peer> = {};
+  players : Record<string, Player> = {};
+
+  // One thing we have to do is decide who is going to call whom.
+  // We can get into a mess if both sides try to initiate a connection
+  // at the same time, and then e.g. both abort when it seems the other
+  // is making the connection! We establish a global ordering using
+  // uids: The player with the lexicographically earlier uid makes
+  // the call (reads the other's offer and sends an answer to it).
+  //
+  // PERF: Rather than have 0xFFFFF receive all calls, we could use
+  // some function like "is the peer closer going up (modulo radix)
+  // or down?" which would keep the call/receive load balanced for
+  // any given participant.
+  getPeerType(puid : string) : PeerType {
+    if (!this.myUid) throw 'precondition: must join first!';
+    return this.myUid < puid ? PeerType.I_CALL : PeerType.THEY_CALL;
   }
 
-  if (periodicallyCleanupPeers.shouldRun()) {
-    // Clean up disconnected peers.
-    for (let k in peers) {
-      if (peers[k].isFailed()) {
-	// TODO: Explicitly note this in connectivity map?
-	// Otherwise updateMyConnectivity should do it?
-
-	// TODO: Any way to actively discard these (to prevent them
-	// from hanging around in callbacks, etc.?)
-	peers[k].connection = null;
-	peers[k].channel = null;
-	delete peers[k];
-      }
-    }
-  }
-
-  // On some delay? Or rename this to uPeriodic?
-  for (let k in peers)
-    peers[k].periodic();
-
-  if (periodicallyShareConnectivity.shouldRun()) {
-    if (myUid !== '') {
-      updateBlacklist();
-      updateMyConnectivity();
-      broadcastConnectivity();
-    }
-  }
-
-  if (periodicallyUpdateUi.shouldRun()) {
-    // Perhaps only if dirty? 10x a second is ridiculous
-    updateUI();
-  }
-
-  if (!stop_running)
-    window.setTimeout(uPeriodic, 15);
-}
-
-function doPoll() {
-  // Must have already joined.
-  if (myUid === '' ||
-      mySeq === '' ||
-      roomUid === '')
-    return;
-
-  let params : Record<string, string> = {};
-  if (offerToSend != null) {
-    params['offer'] = offerToSend;
-    // Consume it.
-    offerToSend = null;
-    waitingForOfferUid = true;
-  }
-
-  // Don't spam the server: Only retry polling once the promise completes.
-  periodicallyPoll.pause();
-
-  requestJSON(SERVER_URL + '/poll/' + myUid + '/' + mySeq, params).
-      then(json => {
-	// Process response...
-	if (VERBOSE) {
-	  console.log('parsed poll response');
-	  console.log(json);
-	}
-	processPollResponse(json);
-	// Allow polling again.
-	periodicallyPoll.reset();
-      }).
-      catch(e => {
-	if (VERBOSE) {
-	  console.log('XXX poll error.');
-	  console.log(e);
-	}
-	waitingForOfferUid = false;
-	// XXX restart polling? regen offer?
-	// Perhaps increase timeout..?
-	periodicallyPoll.reset();
-      });
-}
-
-interface PollResponse {
-  // TODO: flesh out interface
-  answers: any;
-  others: any;
-  ouid: string;
-}
-function processPollResponse(json : PollResponse) {
-  // Process answers first (before creating a new offer).
-  // The first one to answer (with the right offer uid) gets to take
-  // on the listeningConnection as its connection.
-  let answers = json['answers'];
-  for (let answer of answers) {
-    let puid = answer['uid'];
-    let sdp = decodeSdp(answer['s']);
-
-    // First, an answer from anyone resets their awol time.
-    markPlayerSeen(puid, window.performance.now());
-
-    // If the offer uid is wrong (stale or race condition), don't
-    // accept the answer.
-    if (!offerUid || answer['ouid'] != offerUid) {
-      // Reset the peer.
+  // A they-call peer is created from my outstanding listen-connection.
+  // (Maybe the listen-connection should be wrapped in an object so that
+  // we can just pass it all here and it can retain any handlers?)
+  createTheyCallPeer(puid : string,
+                     conn : RTCPeerConnection,
+                     channel : RTCDataChannel) : Peer {
+    if (puid in this.peers) throw 'precondition';
+    if (this.getPeerType(puid) != PeerType.THEY_CALL) throw 'precondition';
+    let peer = new Peer(this, puid);
+    if (conn == null) throw 'precondition';
+    if (channel == null) throw 'precondition';
+    peer.connection = conn;
+    peer.channel = channel;
+    peer.channel.onmessage = e => {
       if (VERBOSE) {
-	console.log(puid + ' sent wrong offeruid: got ' + answer['ouid'] +
-		    ' have ' + offerUid);
+        console.log('message on channel');
+        console.log(e);
       }
-      delete peers[puid];
-      continue;
-    }
-
-    let peer = getPeerByUid(puid);
-    if (peer == null) {
-      // Answer from unknown peer. This is normal when a peer
-      // connects to us using our offer before we find out
-      // about it.
-
-      // (can be forced by a misbehaving peer, but should
-      // not normally happen...)
-      if (getPeerType(puid) != PeerType.THEY_CALL) {
-	if (VERBOSE)
-	  console.log('peer ' + puid + ' should not call me');
-	continue;
-      }
-
-      if (listenConnection == null ||
-	  sendChannel == null) {
-	// Already used up our listening connection, like if
-	// two peers try to connect to the same offer.
-	if (VERBOSE) {
-	  console.log('peer ' + puid + ' tried to connect but ' +
-		      'listening channel is null');
-	}
-	continue;
-      }
-
-      peer = createTheyCallPeer(puid, listenConnection, sendChannel);
-      listenConnection = null;
-      sendChannel = null;
-      offerToSend = null;
-    }
-    peer.deliverAnswer(sdp);
+      peer.processMessage(e.data);
+    };
+    this.peers[puid] = peer;
+    if (VERBOSE)
+      console.log('Created they-call peer ' + puid);
+    return peer;
   }
 
-  let others = json['others'];
-  for (let other of others) {
-    let puid = other['puid'];
-    maybeAddPlayer(puid);
-    // Update awol time if the server has seen this player
-    // recently.
-    let relAwol = window.performance.now() - (1000 * other['a']);
-    markPlayerSeen(puid, relAwol);
+  // An I-call peer is created from an offer sdp and its uid. We create
+  // the connection and send an answer to the server.
+  createICallPeer(puid : string,
+                  offer : string,
+                  ouid : string) : Peer {
+    if (puid in this.peers) throw 'precondition';
+    if (this.getPeerType(puid) != PeerType.I_CALL) throw 'precondition';
+    if (offer === '') throw 'precondition';
+    if (ouid === '') throw 'precondition';
+    let peer = new Peer(this, puid);
+    peer.connection = new RTCPeerConnection(RTCPEER_ARGS);
+    let conn = peer.connection;
+    // Should be member function...
+    conn.ondatachannel = e => {
+      if (VERBOSE) {
+        console.log('icall.datachannel');
+        console.log(e);
+      }
+      if (e.type === 'datachannel') {
+        if (VERBOSE)
+          console.log('got data channel!');
+        peer.channel = e.channel;
+        peer.channel.onmessage = e => {
+          if (VERBOSE)
+            console.log('message on channel');
+          console.log(e);
+          peer.processMessage(e.data);
+        };
+      }
+    };
 
-    let peer = getPeerByUid(puid);
-    if (VERBOSE) {
-      console.log('other ' + puid + ' peer: ' + peer);
+    if (VERBOSE)
+      console.log('Try setting remote description to ' + offer);
+    conn.setRemoteDescription({'type': 'offer', 'sdp': offer}).
+        then(() => conn.createAnswer()).
+        then(answer => conn.setLocalDescription(answer)).
+        then(() => {
+          // Is it possible for this to be complete already? If so,
+          // act on it now.
+          if (conn.iceGatheringState == 'complete') {
+            peer.sendAnswerRemotely(puid, ouid);
+          } else {
+            conn.onicegatheringstatechange =
+                e => peer.sendAnswerRemotely(puid, ouid);
+          }
+        });
+    // TODO: catch errors, explicitly fail!
+
+    if (VERBOSE)
+      console.log('Created I-call peer ' + puid);
+    this.peers[puid] = peer;
+    return peer;
+  }
+
+  getPeerByUid(puid : string) : Peer | null {
+    if (puid in this.peers) {
+      return this.peers[puid];
     }
-    if (peer == null) {
-      // Learned about a new player. This is normal when someone new
-      // joins, or when joining a room that already has players.
-      let peerType = getPeerType(puid);
-      switch (peerType) {
-      case PeerType.THEY_CALL:
-	// If they call, we can actually leave the peer out of our
-	// peer set, and it is covered by the "answer from unknown peer"
-	// case above.
-	// TODO: Is this actually better? Somehow it seems like it
-	// would be useful to know about all the peers.
-	continue;
-	break;
+    return null;
+  }
 
-      case PeerType.I_CALL:
-	// If I call, and there is an offer available, act on it.
-	let encodedOffer = other['s'];
-	let ouid = other['ouid'];
-	if (encodedOffer !== '' && ouid !== '') {
-	  let offer = decodeSdp(encodedOffer);
-	  peer = createICallPeer(puid, offer, ouid);
-	}
-	break;
+
+  // Chat stuff maybe does not belong in Net.
+  chats_dirty : boolean = false;
+  readonly MAX_CHATS : number = 32;
+  chats : Array<{uid: string, msg: string}> = [];
+  pushChat(uid : string, msg : string) : void {
+    if (this.chats.length == this.MAX_CHATS) {
+      this.chats.shift();
+    }
+    this.chats.push({uid: uid, msg: msg});
+    this.chats_dirty = true;
+  }
+
+  broadcastChat(msg : string) {
+    // Send to self.
+    this.pushChat(this.myUid, msg);
+    let json = JSON.stringify({'t': MsgType.CHAT, 'msg': msg});
+    for (let k in this.peers) {
+      let peer = this.peers[k];
+      peer.sendJson(json);
+    }
+    this.chats_dirty = true;
+  }
+
+  broadcastNick(nick : string) {
+    // Can lose keystrokes here, but...
+    let me = this.players[this.myUid];
+    if (!me) return;
+    me.nick = nick;
+
+    let json = JSON.stringify({'t': MsgType.SET_NICK, 'nick': nick});
+    for (let k in this.peers) {
+      let peer = this.peers[k];
+      peer.sendJson(json);
+    }
+    this.chats_dirty = true;
+  }
+
+  // Share connectivity with all connected peers. Note this is an n^2
+  // operation, since we send information about all peers to all peers
+  // (this is even worse if we have old players that we haven't cleaned
+  // up). But we use this to keep the set of active players from growing
+  // without bound, and the per-cell payload is small.
+  broadcastConnectivity() : void {
+    if (this.myUid == '') throw 'precondition';
+    let me = this.players[this.myUid];
+    if (!me) throw 'precondition'
+
+    let now = window.performance.now();
+    let msg : Record<string, ConnectivityData> = {};
+    for (let puid in me.connectivityTo) {
+      let ct = me.connectivityTo[puid];
+      // Round ping to integer to make these message smaller... peers
+      // don't care about sub-millisecond timing.
+      let roundp = isFinite(ct.p) ? Math.round(ct.p) : ct.p;
+      // Note that awol time here is stored as absoluve (time since
+      // timeOrigin) but sent as relative (how long ago). Different
+      // peers of course disagree on timeOrigin, and we avoid using unix
+      // epoch so that we don't have to worry about clock skew / NTP /
+      // etc.
+      let awolSec = Math.round(now - ct.a);
+      msg[puid] = { 'c': ct.c,
+                    'p': roundp,
+                    'a': awolSec };
+    }
+
+    let json = JSON.stringify({'t': MsgType.CONNECTIVITY, 'row': msg});
+    for (let k in this.peers) {
+      let peer = this.peers[k];
+      peer.sendJson(json);
+    }
+  }
+
+  // Mark (in my connectivity map) that the player was seen at 'when'
+  // (given as ms since "time origin", i.e., window.performance.now() is
+  // now). Since we may be learning that the server saw this player 8
+  // seconds ago, but we saw them 1 second ago, this only updates the
+  // awol time if it is more recent.
+  markPlayerSeen(puid : string, when : number) : void {
+    let me = this.players[this.myUid];
+    if (!me) throw 'recondition';
+    let ct = me.connectivityTo[puid];
+    if (!ct) {
+      me.connectivityTo[puid] =
+          { c: Connectivity.UNKNOWN, p: Infinity, a: when };
+    } else {
+      let preva = me.connectivityTo[puid].a;
+      if (when > preva) {
+        me.connectivityTo[puid].a = when;
       }
     }
   }
 
-  // If the server knows of no offer, kick off creation of
-  // a new one.
-  if (json['ouid']) {
-    // Server sends back the offer uid that it has. It could
-    // be a stale one (if rejoining), but if we just sent one on
-    // this request, then we want that.
-    if (waitingForOfferUid) {
-      offerUid = json['ouid'];
-      waitingForOfferUid = false;
+  // Compute network awol time for p, which is the number of
+  // milliseconds since we believe any player saw p. Idea is that if
+  // this is long ago, we have consensus to retire the player.
+  getNetworkAwolTime(puid : string) : number {
+    // Before we're established, return a conservative answer.
+    if (this.myUid == '') return 0;
+    if (!this.players[this.myUid]) return 0;
+
+    let maxAwolTime = -Infinity;
+    for (let k in this.players) {
+      let p = this.players[k];
+      if (p.playerType == PlayerType.BLACKLISTED)
+        continue;
+
+      if (p.connectivityTo && p.connectivityTo[puid]) {
+        // Note that this is the last info we received from the player.
+        // It could be the case that they appeared CONNECTED but we
+        // last heard from them 30 minutes ago. So the relevant thing
+        // is always the awol time.
+        let ct = p.connectivityTo[puid];
+        if (ct.a > maxAwolTime) maxAwolTime = ct.a;
+      }
     }
-  } else {
-    // If the server has no active offer, create a new one.
-    makeOffer();
-  }
-}
 
-function doJoin() {
-  {
-    let elt = document.getElementById('intro');
-    if (elt) elt.style.display = 'none';
+    let t = window.performance.now() - maxAwolTime;
+    return t < 0 ? 0 : t;
   }
 
-  requestJSON(SERVER_URL + '/join/' + ROOM_NAME, {}).
+
+  // Moves players to the blacklist. A player goes on the blacklist
+  // when the minimum awol time that we know about (including from other
+  // connected peers) exceeds a threshold.
+  // When on the blacklist, we mostly ignore the player. A player can
+  // become unblacklisted with some positive evidence of their aliveness
+  // (e.g. they connect to us, update the offer on the server, etc.)
+  readonly BLACKLIST_MS : number = 5 * 60 * 1000;
+  updateBlacklist() : void {
+    if (this.myUid == '') throw 'precondition';
+    let me = this.players[this.myUid];
+    if (!me) throw 'precondition'
+
+    for (let puid in this.players) {
+      let p = this.players[puid];
+      // Never blacklist myself!
+      if (p.playerType == PlayerType.ME)
+        continue;
+      // Already blacklisted...
+      if (p.playerType == PlayerType.BLACKLISTED)
+        continue;
+
+      let awolt = this.getNetworkAwolTime(puid);
+      if (awolt > this.BLACKLIST_MS) {
+        p.playerType = PlayerType.BLACKLISTED;
+        // Perhaps I should announce this?
+      }
+    }
+  }
+
+  // Updates my own connectivity/ping maps (for the player that corresponds
+  // to me.)
+  updateMyConnectivity() : void {
+    if (this.myUid == '') throw 'precondition';
+    let me = this.players[this.myUid];
+    if (!me) throw 'precondition'
+
+    // We assume that peers is a subset of players..
+    for (let puid in this.peers) {
+      if (!this.players[puid]) throw 'peers should be a subset of players';
+    }
+
+    let now = window.performance.now();
+    for (let puid in this.players) {
+      let player = this.players[puid];
+      // Don't do work for blacklisted players.
+      if (player.playerType == PlayerType.BLACKLISTED)
+        continue;
+
+      let peer = this.peers[puid];
+
+      if (puid == this.myUid) {
+        // Self treated specially (no peer).
+        me.connectivityTo[puid] = { c: Connectivity.SELF, p: 0, a: now };
+      } else {
+        let peer = this.peers[puid];
+
+        let good = peer &&
+            peer.connection &&
+            (peer.connection.connectionState == 'connected') &&
+            peer.channel &&
+            (peer.channel.readyState == 'open');
+
+        if (good) {
+          me.connectivityTo[puid] = { c: Connectivity.CONNECTED,
+                                      p: peer.lastPing || Infinity,
+                                      a: now };
+
+        } else {
+          // No peer, or the connection is pending/broken.
+          // Might be useful to add more fine-grained states here
+          // (like trying to connect, waiting for offer, sent answer,
+          // etc.)?
+
+          let ct = me.connectivityTo[puid];
+          if (ct && ct.c == Connectivity.CONNECTED) {
+            // If the peer was in connected state, then we update to
+            // DISCONNECTED and set the awol time.
+            //
+            // (Note this requires updateconnectivity to run at least once
+            // while connected. We could set this explicitly when a connection
+            // is made. Or consider very short-lived connections to not be
+            // connections at all, which is probably fine too)
+            me.connectivityTo[puid] = { c: Connectivity.DISCONNECTED,
+                                        p: Infinity,
+                                        a: now };
+          } else if (ct && (ct.c == Connectivity.DISCONNECTED ||
+                            ct.c == Connectivity.NEVER_CONNECTED)) {
+
+            // Leave in DISCONNECTED or NEVER_CONNECTED states, and
+            // don't update awol time--player is still awol.
+          } else if (ct) {
+            // e.g. if UNKNOWN
+            me.connectivityTo[puid].c = Connectivity.NEVER_CONNECTED;
+            me.connectivityTo[puid].p = Infinity;
+            // Leave awol time as-is.
+          } else {
+            // Weird to not have ct at all; when we insert players from
+            // the server for example we have awol times. 'now' is conservative
+            // but may keep very stale peers alive longer than we want.
+            me.connectivityTo[puid] = { c: Connectivity.NEVER_CONNECTED,
+                                        p: Infinity,
+                                        a: now };
+          }
+        }
+      }
+    }
+  }
+
+
+  // Asynchronously create an offer. Waits for all the ice candidates
+  // to be gathered, then initializes offerToSend and listenConnection
+  // upon success.
+  makeOffer() {
+    if (this.makingOffer) return;
+    if (this.waitingForOfferUid) return;
+
+    this.makingOffer = true;
+    this.listenConnection = null;
+    let lc = new RTCPeerConnection(RTCPEER_ARGS);
+    this.sendChannel = lc.createDataChannel("sendChannel");
+    lc.onicecandidate = e => {
+      if (VERBOSE) {
+        console.log('icecandidate');
+        console.log(e);
+      }
+    };
+    // XXX figure this out -- can we set it up after promoting this
+    // connection to a Peer?
+    this.sendChannel.onopen = e => {
+      if (VERBOSE) {
+        console.log('channel.onopen');
+        console.log(e);
+      }
+    };
+
+    this.sendChannel.onclose = e => {
+      if (VERBOSE) {
+        console.log('channel.onclose');
+        console.log(e);
+      }
+    };
+
+    return lc.createOffer().
+        then(offer => lc.setLocalDescription(offer)).
+        then(() => {
+          // Is it possible for this to be complete already? If so,
+          // act on it now.
+          if (lc.iceGatheringState == 'complete') {
+            this.markOfferReady(lc);
+          } else {
+            // Otherwise, wait for the ICE candidates.
+            lc.onicegatheringstatechange = e => this.markOfferReady(lc);
+          }
+        }).
+        catch(e => {
+          this.listenConnection = null;
+          this.sendChannel = null;
+          this.makingOffer = false;
+          todoError(e);
+        });
+  }
+
+  markOfferReady(conn : RTCPeerConnection) {
+    if (conn.iceGatheringState == 'complete') {
+      let desc = conn.localDescription;
+      if (!desc)
+        throw 'expected desc if gathering state is complete?';
+      if (desc.type != 'offer')
+        throw 'Expected an offer-type description?';
+      if (VERBOSE)
+        console.log('Got offer description: ' + desc.sdp);
+      let enc = encodeSdp(desc.sdp);
+      if (VERBOSE)
+        console.log('Encoded: ' + enc);
+      this.offerToSend = enc;
+      this.listenConnection = conn;
+      this.makingOffer = false;
+      // Consider polling immediately?
+    }
+  }
+
+
+  getNick(puid : string) {
+    if (!this.players[puid]) return '???';
+    return this.players[puid].nick || '???';
+  }
+
+  addSelfPlayer() {
+    if (this.myUid == '') throw 'precondition';
+    this.players[this.myUid] = new Player(this, this.myUid);
+    this.updateMyConnectivity();
+  }
+
+  maybeAddPlayer(puid : string) {
+    if (this.players[puid]) return;
+    this.players[puid] = new Player(this, puid);
+  }
+
+
+  periodicallyPoll : Periodically = new Periodically(POLL_MS);
+  periodicallyCleanupPeers : Periodically = new Periodically(125);
+  periodicallyShareConnectivity : Periodically = new Periodically(1000);
+
+  // Call this function regularly (at least every frame) to do
+  // the periodic network maintenance tasks. It manages its own
+  // timers so it's fine to call it very often.
+  uPeriodic() {
+    // PERF: We can perhaps avoid long frames by only doing one
+    // of these periodic actions per frame (but have to be a little
+    // fancy to avoid starvation).
+    if (this.periodicallyPoll.shouldRun()) {
+      this.doPoll();
+    }
+
+    if (this.periodicallyCleanupPeers.shouldRun()) {
+      // Clean up disconnected peers.
+      for (let k in this.peers) {
+        if (this.peers[k].isFailed()) {
+	  // TODO: Explicitly note this in connectivity map?
+	  // Otherwise updateMyConnectivity should do it?
+
+	  // TODO: Any way to actively discard these (to prevent them
+	  // from hanging around in callbacks, etc.?)
+	  this.peers[k].connection = null;
+	  this.peers[k].channel = null;
+	  delete this.peers[k];
+        }
+      }
+    }
+
+    // On some delay? Or rename this to uPeriodic?
+    for (let k in this.peers)
+      this.peers[k].periodic();
+
+    if (this.periodicallyShareConnectivity.shouldRun()) {
+      if (this.myUid !== '') {
+        this.updateBlacklist();
+        this.updateMyConnectivity();
+        this.broadcastConnectivity();
+      }
+    }
+  }
+
+  doPoll() {
+    // Must have already joined.
+    if (this.myUid === '' ||
+        this.mySeq === '' ||
+        this.roomUid === '')
+      return;
+
+    let params : Record<string, string> = {};
+    if (this.offerToSend !== null) {
+      params['offer'] = this.offerToSend;
+      // Consume it.
+      this.offerToSend = null;
+      this.waitingForOfferUid = true;
+    }
+
+    // Don't spam the server: Only retry polling once the promise completes.
+    this.periodicallyPoll.pause();
+
+    requestJSON(SERVER_URL + '/poll/' + this.myUid + '/' + this.mySeq,
+                params).
+        then(json => {
+          // Process response...
+          if (VERBOSE) {
+            console.log('parsed poll response');
+            console.log(json);
+          }
+          this.processPollResponse(json);
+          // Allow polling again.
+          this.periodicallyPoll.reset();
+        }).
+        catch(e => {
+          if (VERBOSE) {
+            console.log('XXX poll error.');
+            console.log(e);
+          }
+          this.waitingForOfferUid = false;
+          // XXX restart polling? regen offer?
+          // Perhaps increase timeout..?
+          this.periodicallyPoll.reset();
+        });
+  }
+
+  // TODO: flesh out interface
+  processPollResponse(json : {answers: any, others: any, ouid: string}) {
+    // Process answers first (before creating a new offer).
+    // The first one to answer (with the right offer uid) gets to take
+    // on the listeningConnection as its connection.
+    let answers = json['answers'];
+    for (let answer of answers) {
+      let puid = answer['uid'];
+      let sdp = decodeSdp(answer['s']);
+
+      // First, an answer from anyone resets their awol time.
+      this.markPlayerSeen(puid, window.performance.now());
+
+      // If the offer uid is wrong (stale or race condition), don't
+      // accept the answer.
+      if (!this.offerUid || answer['ouid'] != this.offerUid) {
+        // Reset the peer.
+        if (VERBOSE) {
+	  console.log(puid + ' sent wrong offeruid: got ' + answer['ouid'] +
+	    ' have ' + this.offerUid);
+        }
+        delete this.peers[puid];
+        continue;
+      }
+
+      let peer = this.getPeerByUid(puid);
+      if (peer == null) {
+        // Answer from unknown peer. This is normal when a peer
+        // connects to us using our offer before we find out
+        // about it.
+
+        // (can be forced by a misbehaving peer, but should
+        // not normally happen...)
+        if (this.getPeerType(puid) != PeerType.THEY_CALL) {
+	  if (VERBOSE)
+	    console.log('peer ' + puid + ' should not call me');
+	  continue;
+        }
+
+        if (this.listenConnection == null ||
+	    this.sendChannel == null) {
+	  // Already used up our listening connection, like if
+	  // two peers try to connect to the same offer.
+	  if (VERBOSE) {
+	    console.log('peer ' + puid + ' tried to connect but ' +
+	                'listening channel is null');
+	  }
+	  continue;
+        }
+
+        peer = this.createTheyCallPeer(puid,
+                                       this.listenConnection, this.sendChannel);
+        this.listenConnection = null;
+        this.sendChannel = null;
+        this.offerToSend = null;
+      }
+      peer.deliverAnswer(sdp);
+    }
+
+    let others = json['others'];
+    for (let other of others) {
+      let puid = other['puid'];
+      this.maybeAddPlayer(puid);
+      // Update awol time if the server has seen this player
+      // recently.
+      let relAwol = window.performance.now() - (1000 * other['a']);
+      this.markPlayerSeen(puid, relAwol);
+
+      let peer = this.getPeerByUid(puid);
+      if (VERBOSE) {
+        console.log('other ' + puid + ' peer: ' + peer);
+      }
+      if (peer == null) {
+        // Learned about a new player. This is normal when someone new
+        // joins, or when joining a room that already has players.
+        let peerType = this.getPeerType(puid);
+        switch (peerType) {
+        case PeerType.THEY_CALL:
+	  // If they call, we can actually leave the peer out of our
+	  // peer set, and it is covered by the "answer from unknown peer"
+	  // case above.
+	  // TODO: Is this actually better? Somehow it seems like it
+	  // would be useful to know about all the peers.
+	  continue;
+	  break;
+
+        case PeerType.I_CALL:
+	  // If I call, and there is an offer available, act on it.
+	  let encodedOffer = other['s'];
+	  let ouid = other['ouid'];
+	  if (encodedOffer !== '' && ouid !== '') {
+	    let offer = decodeSdp(encodedOffer);
+	    peer = this.createICallPeer(puid, offer, ouid);
+	  }
+	  break;
+        }
+      }
+    }
+
+    // If the server knows of no offer, kick off creation of
+    // a new one.
+    if (json['ouid']) {
+      // Server sends back the offer uid that it has. It could
+      // be a stale one (if rejoining), but if we just sent one on
+      // this request, then we want that.
+      if (this.waitingForOfferUid) {
+        this.offerUid = json['ouid'];
+        this.waitingForOfferUid = false;
+      }
+    } else {
+      // If the server has no active offer, create a new one.
+      this.makeOffer();
+    }
+  }
+
+  doJoin(room_name : string) {
+    requestJSON(SERVER_URL + '/join/' + room_name, {}).
       then(json => {
-	roomUid = json['room'];
-	myUid = json['uid'];
-	mySeq = json['seq'];
-	window.location.hash = roomUid + '|' + myUid + '|' + mySeq;
+	this.roomUid = json['room'];
+	this.myUid = json['uid'];
+	this.mySeq = json['seq'];
+        // XXX probably should be done by driver; expose there instead
+	window.location.hash =
+          this.roomUid + '|' + this.myUid + '|' + this.mySeq;
 	if (VERBOSE) {
 	  console.log('joined!')
 	  console.log(json);
 	}
 
-	addSelfPlayer();
-
-	makeOffer();
+	this.addSelfPlayer();
+	this.makeOffer();
       });
-
-  // Start loop.
-  uPeriodic();
-}
-
-
-// TODO: Can reduce space/bandwidth on server by having a custom
-// encoder for SDPs built into the JS code. If we do this we
-// probably want some version info in the encoded SDP?
-function encodeSdp(sdp : string) {
-  const b64 = btoa(sdp);
-  return b64.replace(/[+]/g, '_').replace(/[/]/g, '.');
-}
-
-function decodeSdp(enc : string) {
-  let b64 = enc.replace(/[.]/g, '/').replace(/_/g, '+');
-  return atob(b64);
-}
-
-
-// UI stuff...
-
-function updateUI() {
-  let uelt = document.getElementById('uid');
-  if (!uelt) return;
-  uelt.innerHTML = myUid == '' ? '(not yet assigned)' : myUid;
-
-  updateListenUI();
-  updatePeersUI();
-  updateMatrixUI();
-}
-
-function updateListenUI() {
-  let elt = document.getElementById('listen');
-  if (!elt) return;
-  elt.innerHTML = '';
-  if (makingOffer) {
-    TEXT('(making offer)', DIV('', elt));
-  }
-  TEXT('Offer uid: ' +
-       (waitingForOfferUid ? '(waiting)' : '') + ' ' +
-       (offerUid || ''), DIV('', elt));
-  TEXT((offerToSend ? '(offer to send)' : '(no offer to send)'),
-       DIV('', elt));
-  if (listenConnection) {
-    TEXT('signalingState = ' + listenConnection.signalingState,
-         DIV('', elt));
-    TEXT('connectionState = ' + listenConnection.connectionState,
-         DIV('', elt));
-    TEXT('iceConnectionState = ' + listenConnection.iceConnectionState,
-         DIV('', elt));
-    TEXT('iceGatheringState = ' + listenConnection.iceGatheringState,
-         DIV('', elt));
   }
 }
-
-function updatePeersUI() {
-  let elt = document.getElementById('peers');
-  if (!elt) return;
-  elt.innerHTML = '';
-
-  let table = TABLE('peers', elt);
-  let hdr = TR('', table);
-  let cols = ['uid', 'type',
-	      'conn state', 'ice state', 'ice g state',
-	      'channel', 'rtt',
-	      'nick'];
-  for (let c of cols)
-    TEXT(c, TD('', hdr));
-
-  for (let k in players) {
-    let player = players[k];
-    let tr = TR('', table);
-
-    let peer = peers[k];
-    let peerclass =
-	peer ? 'peeruid' :
-	(player.playerType === PlayerType.BLACKLISTED) ?
-	'blacklistuid' :
-	'nopeeruid';
-    TEXT(player.puid, TD(peerclass, tr));
-
-    if (peer) {
-      let s =((peer.peerType === PeerType.I_CALL) ? 'I call' : 'They call');
-      TEXT(s, TD('', tr));
-      TEXT((peer.connection ? peer.connection.connectionState : 'null'),
-	   TD('', tr));
-      TEXT((peer.connection ? peer.connection.iceConnectionState : 'null'),
-	   TD('', tr));
-      TEXT((peer.connection ? peer.connection.iceGatheringState : 'null'),
-	   TD('', tr));
-      TEXT((peer.channel ? peer.channel.readyState : 'null'),
-	   TD('', tr));
-      TEXT('' + peer.lastPing.toFixed(1) + ' ms', TD('', tr));
-      TEXT('"' + player.nick + '"', TD('', tr));
-    } else {
-      TD('', tr).colSpan = cols.length - 1;
-    }
-  }
-}
-
-function updateMatrixUI() {
-  let elt = document.getElementById('matrix');
-  if (!elt) return;
-  elt.innerHTML = '';
-  let mtx = TABLE('matrix', elt);
-
-  let hdr = TR('', mtx);
-  // corner
-  TEXT('src \\ dest', TD('', hdr));
-  for (let k in players) {
-    TEXT(k.substr(0, 3), TD('', hdr));
-  }
-
-  let awoltr = TR('', mtx);
-  TEXT('net awol', TD('', awoltr));
-  for (let dst in players) {
-    let sec = getNetworkAwolTime(dst) / 1000.0;
-    TEXT(sec.toFixed(1) + 's', TD('', awoltr));
-  }
-
-  let now = window.performance.now();
-  for (let src in players) {
-    let p = players[src];
-    // No rows for blacklisted players -- we don't store their data.
-    if (p.playerType === PlayerType.BLACKLISTED)
-      continue;
-    let tr = TR('', mtx);
-    TEXT(src, TD('', tr));
-
-    for (let dst in players) {
-      let ct = p.connectivityTo[dst];
-      let cell = TD('cell', tr);
-      if (ct) {
-	// NARROW NO-BREAK SPACE
-	// let txt = '\u202f';
-	let txt =
-	    (isFinite(ct.a) && (now - ct.a) > 0.1) ?
-	    ((now - ct.a) / 1000.0).toFixed(1) :
-	    '\u202f';
-	switch (ct.c) {
-	case Connectivity.UNKNOWN:
-	  cell.style.backgroundColor = '#CCC';
-	  break;
-	case Connectivity.SELF:
-	  cell.style.backgroundColor = '#FFF';
-	  break;
-	case Connectivity.NEVER_CONNECTED:
-	  cell.style.backgroundColor = '#AA5';
-	  break;
-	case Connectivity.CONNECTED:
-	  cell.style.backgroundColor = '#5A5';
-	  // This is awol 0 by definition, so instead
-	  // show the most recent ping time.
-	  // U+221E INFINITY
-	  txt = isFinite(ct.p) ? ''+(ct.p | 0) : '\u221e';
-	  break;
-	case Connectivity.DISCONNECTED:
-	  cell.style.backgroundColor = '#A55';
-	  break;
-	}
-	TEXT(txt, cell);
-	// cell.classList.add();
-      } else if (src == dst) {
-	// U+202F NARROW NO-BREAK SPACE
-	TEXT('\u202F', cell);
-      } else {
-	// U+2014 EM DASH
-	TEXT('\u2014', cell);
-      }
-    }
-  }
-
-}
-
-let MAX_CHATS = 32;
-let chats : Array<{uid: string, msg: string}> = [];
-function pushChat(uid : string, msg : string) {
-  if (chats.length == MAX_CHATS) {
-    chats.shift();
-  }
-  chats.push({uid: uid, msg: msg});
-}
-
-function drawChats() {
-  let elt = document.getElementById('chats');
-  if (!elt) return;
-  elt.innerHTML = '';
-  for (let chat of chats) {
-    let cr = DIV('', elt);
-    let nick = getNick(chat.uid);
-    TEXT(chat.uid, SPAN('chat-uid', elt));
-    TEXT('<' + nick + '>', SPAN('chat-nick', elt));
-    TEXT(chat.msg, SPAN('chat-msg', elt));
-  }
-}
-
-function broadcastChat(msg : string) {
-  // Send to self.
-  pushChat(myUid, msg);
-  let json = JSON.stringify({'t': MsgType.CHAT, 'msg': msg});
-  for (let k in peers) {
-    let peer = peers[k];
-    peer.sendJson(json);
-  }
-}
-
-function broadcastNick(nick : string) {
-  // Can lose keystrokes here, but...
-  let me = players[myUid];
-  if (!me) return;
-  me.nick = nick;
-
-  let json = JSON.stringify({'t': MsgType.SET_NICK, 'nick': nick});
-  for (let k in peers) {
-    let peer = peers[k];
-    peer.sendJson(json);
-  }
-}
-
-// Chat crap
-function chatKey(e : KeyboardEvent) {
-  if (e.keyCode == 13) {
-    let elt = (<HTMLInputElement>document.getElementById('chatbox'));
-    let msg = elt.value;
-    elt.value = '';
-
-    // Could also support /nick etc. here, which is maybe better
-    // than having separate boxes?
-    broadcastChat(msg);
-
-    drawChats();
-  }
-}
-
-// Nickname
-function nicknameKey(e : KeyboardEvent) {
-  let elt = (<HTMLInputElement>document.getElementById('nickname'));
-  let nick = elt.value;
-  broadcastNick(nick);
-  // Update my own chats.
-  drawChats();
-}
-
-
-function init() {
-  let chatbox = document.getElementById('chatbox');
-  if (chatbox) chatbox.onkeyup = chatKey;
-  let nickbox = document.getElementById('nickname');
-  if (nickbox) nickbox.onkeyup = nicknameKey;
-
-  let a = window.location.hash.split('|');
-  if (a.length == 3) {
-    // We have saved state info.
-    let elt = document.getElementById('intro');
-    if (elt)
-      elt.style.display = 'none';
-    roomUid = a[0];
-    myUid = a[1];
-    mySeq = a[2];
-    window.location.hash = roomUid + '|' + myUid + '|' + mySeq;
-    if (VERBOSE)
-      console.log('joined!')
-    addSelfPlayer();
-
-    // I probably need to replace the offer on the server? They
-    // probably don't remain valid across a page reload like this?
-    makeOffer();
-
-    // Start loop.
-    uPeriodic();
-
-  } else {
-    // wait for user to click to join.
-
-    // XXX or maybe here we should insert the button to click
-  }
-}
-
-// Debugging crap.
-
-function Stop() {
-  // XXX debugging thing
-  stop_running = true;
-}
-
-function anyPeer() {
-  for (let k in peers) return peers[k];
-  return null;
-}
-
-

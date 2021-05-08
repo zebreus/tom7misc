@@ -1,7 +1,6 @@
 all: rtcgame.js sim-test.js
 
-# TODO: strict net
-rtcgame.js: domutil.ts net.ts sim.ts
+rtcgame.js: domutil.ts netutil.ts net.ts sim.ts play.ts
 	tsc --strict -t es2020 --out $@ $^
 
 sim-test.js: sim.ts arcfour.ts ops-tester.ts sim-test.ts
