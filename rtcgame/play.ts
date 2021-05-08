@@ -70,9 +70,9 @@ function updatePeersUI() {
   let table = TABLE('peers', elt);
   let hdr = TR('', table);
   let cols = ['uid', 'type',
-	      'conn state', 'ice state', 'ice g state',
-	      'channel', 'rtt',
-	      'nick'];
+              'conn state', 'ice state', 'ice g state',
+              'channel', 'rtt',
+              'nick'];
   for (let c of cols)
     TEXT(c, TD('', hdr));
 
@@ -82,23 +82,23 @@ function updatePeersUI() {
 
     let peer = net.peers[k];
     let peerclass =
-	peer ? 'peeruid' :
-	(player.playerType === PlayerType.BLACKLISTED) ?
-	'blacklistuid' :
-	'nopeeruid';
+        peer ? 'peeruid' :
+        (player.playerType === PlayerType.BLACKLISTED) ?
+        'blacklistuid' :
+        'nopeeruid';
     TEXT(player.puid, TD(peerclass, tr));
 
     if (peer) {
       let s =((peer.peerType === PeerType.I_CALL) ? 'I call' : 'They call');
       TEXT(s, TD('', tr));
       TEXT((peer.connection ? peer.connection.connectionState : 'null'),
-	   TD('', tr));
+           TD('', tr));
       TEXT((peer.connection ? peer.connection.iceConnectionState : 'null'),
-	   TD('', tr));
+           TD('', tr));
       TEXT((peer.connection ? peer.connection.iceGatheringState : 'null'),
-	   TD('', tr));
+           TD('', tr));
       TEXT((peer.channel ? peer.channel.readyState : 'null'),
-	   TD('', tr));
+           TD('', tr));
       TEXT('' + peer.lastPing.toFixed(1) + ' ms', TD('', tr));
       TEXT('"' + player.nick + '"', TD('', tr));
     } else {
@@ -140,41 +140,41 @@ function updateMatrixUI() {
       let ct = p.connectivityTo[dst];
       let cell = TD('cell', tr);
       if (ct) {
-	// NARROW NO-BREAK SPACE
-	// let txt = '\u202f';
-	let txt =
-	    (isFinite(ct.a) && (now - ct.a) > 0.1) ?
-	    ((now - ct.a) / 1000.0).toFixed(1) :
-	    '\u202f';
-	switch (ct.c) {
-	case Connectivity.UNKNOWN:
-	  cell.style.backgroundColor = '#CCC';
-	  break;
-	case Connectivity.SELF:
-	  cell.style.backgroundColor = '#FFF';
-	  break;
-	case Connectivity.NEVER_CONNECTED:
-	  cell.style.backgroundColor = '#AA5';
-	  break;
-	case Connectivity.CONNECTED:
-	  cell.style.backgroundColor = '#5A5';
-	  // This is awol 0 by definition, so instead
-	  // show the most recent ping time.
-	  // U+221E INFINITY
-	  txt = isFinite(ct.p) ? ''+(ct.p | 0) : '\u221e';
-	  break;
-	case Connectivity.DISCONNECTED:
-	  cell.style.backgroundColor = '#A55';
-	  break;
-	}
-	TEXT(txt, cell);
-	// cell.classList.add();
+        // NARROW NO-BREAK SPACE
+        // let txt = '\u202f';
+        let txt =
+            (isFinite(ct.a) && (now - ct.a) > 0.1) ?
+            ((now - ct.a) / 1000.0).toFixed(1) :
+            '\u202f';
+        switch (ct.c) {
+        case Connectivity.UNKNOWN:
+          cell.style.backgroundColor = '#CCC';
+          break;
+        case Connectivity.SELF:
+          cell.style.backgroundColor = '#FFF';
+          break;
+        case Connectivity.NEVER_CONNECTED:
+          cell.style.backgroundColor = '#AA5';
+          break;
+        case Connectivity.CONNECTED:
+          cell.style.backgroundColor = '#5A5';
+          // This is awol 0 by definition, so instead
+          // show the most recent ping time.
+          // U+221E INFINITY
+          txt = isFinite(ct.p) ? ''+(ct.p | 0) : '\u221e';
+          break;
+        case Connectivity.DISCONNECTED:
+          cell.style.backgroundColor = '#A55';
+          break;
+        }
+        TEXT(txt, cell);
+        // cell.classList.add();
       } else if (src == dst) {
-	// U+202F NARROW NO-BREAK SPACE
-	TEXT('\u202F', cell);
+        // U+202F NARROW NO-BREAK SPACE
+        TEXT('\u202F', cell);
       } else {
-	// U+2014 EM DASH
-	TEXT('\u2014', cell);
+        // U+2014 EM DASH
+        TEXT('\u2014', cell);
       }
     }
   }

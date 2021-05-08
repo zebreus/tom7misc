@@ -46,8 +46,8 @@ interface Ops<Input, State> {
   // for example in the simple case that state = stale_src_state and
   // input_row = stale_row are the same!
   zipStep(src_state : State, input_row : InputRow<Input, State>,
-	  stale_src_state : State, stale_row : InputRow<Input, State>,
-	  stale_dst_state : State) : State;
+          stale_src_state : State, stale_row : InputRow<Input, State>,
+          stale_dst_state : State) : State;
   // Step without any previous stale state/inputs, for example when we
   // compute a frame for the first time.
   step(src_state : State, input_row : InputRow<Input, State>) : State;
@@ -59,7 +59,7 @@ class InputRow<Input, State> {
   // readonly N: number;
   // readonly ops: Ops<Input, State>;
   inputs: Array<Input | null>;
-  
+
   constructor(private readonly ops : Ops<Input, State>,
               public N : number) {
     // In a row, null means unknown. It is not a valid input.
@@ -93,11 +93,11 @@ class InputRow<Input, State> {
     }
     return a.join(',');
   }
-  
+
   complete() : boolean {
     for (let i = 0; i < this.N; i++)
       if (!this.known(i))
-	return false;
+        return false;
     return true;
   }
 
@@ -107,14 +107,14 @@ class InputRow<Input, State> {
     for (let i = 0; i < this.inputs.length; i++) {
       let iput = this.inputs[i];
       if (iput === null) {
-	ret.inputs[i] = null;
+        ret.inputs[i] = null;
       } else {
-	ret.inputs[i] = this.ops.cloneInput(iput);
+        ret.inputs[i] = this.ops.cloneInput(iput);
       }
     }
     return ret;
   }
-  
+
   static eq<Input, State>(ops : Ops<Input, State>,
                            a: InputRow<Input, State>,
                            b: InputRow<Input, State>) : boolean {
@@ -123,11 +123,11 @@ class InputRow<Input, State> {
       if (a.known(i) != b.known(i))
         return false;
       if (a.known(i) && !ops.eqInput(a.get(i), b.get(i)))
-	return false;
+        return false;
     }
     return true;
   }
-  
+
   // A complete row of empty inputs.
   static completeEmpty<Input, State>(ops : Ops<Input, State>, N : number) {
     let ret = new InputRow<Input, State>(ops, N);
@@ -158,7 +158,7 @@ type WindowRow<Input, State> =
 // structure if needed.
 class UWindow<Input, State> {
   private data: Array<WindowRow<Input, State>>;
-  
+
   // PERF Use a circular buffer or deque or something like that. This
   // needs access to both ends, but also random access probably?
   constructor(private readonly ops : Ops<Input, State>) {
@@ -168,7 +168,7 @@ class UWindow<Input, State> {
   empty() : boolean {
     return this.data.length === 0;
   }
-  
+
   // Is this even needed? It should always be nframe - cframe.
   length() {
     return this.data.length;
@@ -210,7 +210,7 @@ class Sim<Input, State> {
   window: UWindow<Input, State>;
   nframe: number;
   queued_inputs: Array<QueuedInput<Input>>;
-  
+
   constructor(private ops : Ops<Input, State>,
               // Number of participants.
               public readonly N : number,
@@ -218,7 +218,7 @@ class Sim<Input, State> {
               start_frame : number,
               start_state : State) {
     if (my_id < 0 || my_id >= N) throw 'my_id out of radix';
-    
+
     // The frame idx before which we believe all players have all inputs.
     // Before this we discard history, so it's impossible to rewind.
     this.cframe = start_frame;
@@ -235,7 +235,7 @@ class Sim<Input, State> {
     // (XXX we also use this in getMostRecentState, for advanceframe..
     // is it true that it's only used for guessing?)
     this.cinputs = InputRow.completeEmpty<Input, State>(this.ops, N);
-    
+
     // Frame idx before which we have all inputs (i.e., one for each
     // player in 0..N-1). Must be at least cframe by definition, but
     // we may know more beyond that. We try to get everyone to advance
@@ -243,7 +243,7 @@ class Sim<Input, State> {
     // accurate up to mframe. (XXX: Could be a property of
     // the window?)
     this.mframe = start_frame;
-    
+
     // The next frame that we will speculatively simulate (for its
     // first time). As this local replica makes an input, it's written
     // to this frame.
@@ -251,7 +251,7 @@ class Sim<Input, State> {
     // The state before nframe is available from getMostRecentState().
 
     // Invariant that cframe <= mframe <= nframe.
-    
+
     // The uncertainty window. Entering the window, the state is cstate,
     // and the first frame has index cframe. It ranges until nframe,
     // which is what we're showing to the user and where this user's
@@ -299,7 +299,7 @@ class Sim<Input, State> {
       this.cframe++;
     }
   }
-  
+
   // Used in debugging.
   checkInvariants() {
     if (!(this.cframe <= this.mframe)) throw 'want cframe <= mframe';
@@ -322,7 +322,7 @@ class Sim<Input, State> {
     // I think this is high value since that's the most complex part.
     // - check that objects are not aliased?
   }
-  
+
   // Advance a frame by supplying the local player's input.
   // Updates the window. Updates nframe.
   advanceFrame(input : Input) {
@@ -377,20 +377,20 @@ class Sim<Input, State> {
     } else {
       let inputs = actual.clone();
       for (let i = 0; i < this.N; i++) {
-	if (!inputs.known(i)) {
+        if (!inputs.known(i)) {
           // don't try to 'set' null
           // TODO: probably the "guess" should be informed by ops.
           // Some kinds of inputs may be inherently "impulse" and so
           // copying them is a bad guess!
           if (prev.known(i)) {
-	    inputs.set(i, prev.get(i));
+            inputs.set(i, prev.get(i));
           }
-	}
+        }
       }
       return { inputs: inputs, guessed: true };
     }
   }
-  
+
   // Get the state at nframe - 1, and the input row (possibly
   // inaccurate) used to compute it.
   getMostRecentState() : {state : State, inputs : InputRow<Input, State>} {
@@ -402,7 +402,7 @@ class Sim<Input, State> {
       return {state: state, inputs: stale};
     }
   }
-    
+
   // Update the input at the given frame, like when we receive a
   // network message from a player with their input.
   // Need to call updateWindow after this to maintain invariants, but
@@ -435,7 +435,7 @@ class Sim<Input, State> {
 
     row.actual.set(player_idx, input);
   }
-  
+
   // Update the window. Do this after setting multiple inputs in the
   // window, maybe once per UI frame, right before processing the
   // local player's input. Zips stale inputs/states with actual inputs
@@ -469,7 +469,7 @@ class Sim<Input, State> {
     // FIXME: If we are recomputing from the middle of the window,
     // this needs to come from the window, not before it...
     let prev_inputs = this.cinputs;
-    
+
     // Entering the loop,
     //   frame is the next frame to compute (lies in the window)
     //   stale_src_state is the state used to compute the frame
@@ -484,11 +484,11 @@ class Sim<Input, State> {
       // Index will lie within the window.
       let widx = frame - this.cframe;
       let row = this.window.getRow(widx);
-     
+
       // Guess inputs for this round, combining the inputs that
       // we know (row.actual) with the previous row.
       let guess = this.guessInputRow(prev_inputs, row.actual);
-      
+
       // No longer known to be accurate because we had to guess inputs.
       if (guess.guessed) accurate = false;
 
@@ -503,14 +503,14 @@ class Sim<Input, State> {
       // to recompute.
       let state = this.ops.zipStep(
         src_state,
-	// (possibly guessed) inputs for this execution.
-	guess.inputs,
-	// State from previous row.
-	stale_src_state,
-	// Stale inputs saved in row.
-	row.stale,
-	// State we computed last time.
-	row.state);
+        // (possibly guessed) inputs for this execution.
+        guess.inputs,
+        // State from previous row.
+        stale_src_state,
+        // Stale inputs saved in row.
+        row.stale,
+        // State we computed last time.
+        row.state);
 
       // Get values for next round.
       // State we computed last time is used for the next round,
@@ -518,7 +518,7 @@ class Sim<Input, State> {
       stale_src_state = row.state;
       prev_inputs = guess.inputs;
       src_state = state;
-      
+
       // Write the result into the row.
       row.stale = guess.inputs;
       row.state = state;
@@ -526,8 +526,8 @@ class Sim<Input, State> {
       // Advance mframe if this computation is accurate; this should
       // only be the case if we are also currently at the mframe.
       if (accurate) {
-	if (frame != this.mframe) throw 'bug?';
-	this.mframe++;
+        if (frame != this.mframe) throw 'bug?';
+        this.mframe++;
       }
     }
 
@@ -539,6 +539,6 @@ class Sim<Input, State> {
   // TODO: advancing cframe. We probably do this by publishing our mframe
   // to everyone else, keeping for each other player the maximum such
   // value we've seen, and then updating cframe to be the minimum of these.
-  
-  
+
+
 }

@@ -68,7 +68,7 @@ class TestState {
       }
     }
   }
-  
+
 }
 
 type TestRow = InputRow<TestInput, TestState>;
@@ -102,7 +102,7 @@ class TestOps implements Ops<TestInput, TestState> {
     ts.hash = hash;
     return ts;
   }
-  
+
   cloneState(a : TestState) : TestState {
     return a.clone();
   }
@@ -110,7 +110,7 @@ class TestOps implements Ops<TestInput, TestState> {
   stateString(a : TestState) : string {
     return a.toString();
   }
-  
+
   eqState(a : TestState, b : TestState) : boolean {
     // Might be smart to maintain a checksum and check it here.
     // return false;
@@ -122,15 +122,15 @@ class TestOps implements Ops<TestInput, TestState> {
   // TODO: Some of this should actually be utility code for anyone
   // who has to implement a state, right?
   zipStep(src_state : TestState, input_row : TestRow,
-	  stale_src_state : TestState, stale_row : TestRow,
-	  stale_dst_state : TestState) : TestState {
+          stale_src_state : TestState, stale_row : TestRow,
+          stale_dst_state : TestState) : TestState {
     if (!input_row.complete()) throw 'zipStep input_row not complete';
     if (!stale_row.complete()) throw 'zipStep stale_row not complete';
 
     // TODO: For debugging, we should compute the step fresh and
-    // assert that it is the same as the one recomputed from the 
+    // assert that it is the same as the one recomputed from the
     // stale data.
-    
+
     // This optimization is always valid because step() must be
     // deterministic.
     if (this.eqState(src_state, stale_src_state) &&
@@ -138,11 +138,11 @@ class TestOps implements Ops<TestInput, TestState> {
       return stale_dst_state;
     }
 
-    
+
     // TODO: Further optimizations in the hierarchical case.
     // TODO: Some way to write the state transformation just once, but
     // with optional stale data.
-    
+
     // Always safe (but maybe slower) to just ignore the stale data.
     return this.step(src_state, input_row);
   }
@@ -196,7 +196,7 @@ class TestOps implements Ops<TestInput, TestState> {
 
     // Otherwise, just some arbitrary function.
     ret.hash = new_hash >>> 0;
-    
+
     return ret;
   }
 }
@@ -216,7 +216,7 @@ class TestOps implements Ops<TestInput, TestState> {
   console.log(ire1.toString());
   console.log(InputRow.eq<TestInput, TestState>(new TestOps, ire1, ire2));
 })();
-  
+
 console.log('------');
 
 (() => {
@@ -267,7 +267,7 @@ const testSimpleSim = () => {
                                           ops.initialState(N));
   sim.checkInvariants();
   if (sim.getNFrame() !== 0) throw 'didn\'t start on frame 0???';
-  
+
   // TODO issue some inputs...
   sim.setInput(0, 0, new TestInput(555));
   sim.checkInvariants();
@@ -292,7 +292,7 @@ const testSimpleSim = () => {
   sim.checkInvariants();
   if (sim.getMFrame() !== 1)
     throw 'frame 0 should be accurate now';
-  
+
   {
     let last = sim.getMostRecentState().state;
     last.checkEndsWith([[555, 777, 999],
@@ -341,11 +341,11 @@ const testSimpleSim = () => {
     // wins the vote, no matter what we computed for player 0.
     if (last.hash != 33) throw '33 should win the hash vote';
   }
-  
+
   sim.setInput(2, 0, new TestInput(55));
   sim.updateWindow();
   sim.checkInvariants();
-  
+
   {
     let last = sim.getMostRecentState().state;
     last.checkEndsWith([/* 2 */ [55,   33,  33],
@@ -357,7 +357,7 @@ const testSimpleSim = () => {
   sim.setInput(1, 2, new TestInput(88));
   sim.updateWindow();
   sim.checkInvariants();
-  
+
   {
     let last = sim.getMostRecentState().state;
     last.checkEndsWith([/* 2 */ [55,   33,  33],
@@ -383,10 +383,10 @@ const testSimpleSim = () => {
 
   if (sim.getNFrame() !== 3)
     throw 'next frame is 3';
-  
+
   if (sim.getMFrame() !== 3)
     throw 'with full inputs we should be able to advance mframe';
-  
+
   console.log('testSimpleSim OK');
 };
 testSimpleSim();
@@ -404,7 +404,7 @@ const testWithOpsTester = () => {
        [0, 0, 1],
        [0, 0, 0],
        [1, 2, 3]],
-      
+
       [[11, 22, 33],
        [11, 22, 11],
        [11, 22, 33],

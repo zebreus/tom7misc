@@ -44,17 +44,17 @@ const requestJSON = (url : string, params: Record<string, string>) => {
   }
 
   let obj = {url: url,
-	     body: kvs.join('&'),
-	     method: 'POST',
-	     headers: {'Content-Type': 'application/x-www-form-urlencoded'}};
+             body: kvs.join('&'),
+             method: 'POST',
+             headers: {'Content-Type': 'application/x-www-form-urlencoded'}};
 
   return request(obj).
     then((res : string) => {
       if (res.indexOf(XSSI_HEADER) == 0) {
-	let r = res.substr(XSSI_HEADER.length);
-	return JSON.parse(r);
+        let r = res.substr(XSSI_HEADER.length);
+        return JSON.parse(r);
       } else {
-	throw 'no XSSI header in response';
+        throw 'no XSSI header in response';
       }
     });
 };

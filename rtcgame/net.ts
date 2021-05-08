@@ -100,9 +100,9 @@ class Peer {
   deliverAnswer(answer : string) : void {
     if (this.peerType == PeerType.THEY_CALL) {
       if (this.connection == null)
-	throw 'in wrong state?';
+        throw 'in wrong state?';
       this.connection.setRemoteDescription({'type': 'answer',
-					    'sdp': answer});
+                                            'sdp': answer});
     } else {
       console.log('unimplemented: deliverAnswer when I_CALL');
     }
@@ -124,19 +124,19 @@ class Peer {
     if (this.connection.iceGatheringState == 'complete') {
       let desc = this.connection.localDescription;
       if (!desc || desc.type != 'answer')
-	throw 'Expected an answer-type description?';
+        throw 'Expected an answer-type description?';
 
       let enc = encodeSdp(desc.sdp);
       let params = {'to': puid, 'o': ouid, 'a': enc};
       /* result is ignored... */
       requestJSON(SERVER_URL + '/answer/' + net.myUid + '/' + net.mySeq,
-		  params);
+                  params);
       if (VERBOSE)
-	console.log('Sending answer to ' + puid + ' ' + desc.sdp);
+        console.log('Sending answer to ' + puid + ' ' + desc.sdp);
     } else {
       if (VERBOSE)
-	console.log('Not sending answer yet because ICE state is ' +
-		    this.connection.iceGatheringState);
+        console.log('Not sending answer yet because ICE state is ' +
+                    this.connection.iceGatheringState);
     }
   }
 
@@ -144,7 +144,7 @@ class Peer {
   // channel.
   sendJson(json : string) : void {
     if (this.channel &&
-	this.channel.readyState === 'open') {
+        this.channel.readyState === 'open') {
       this.channel.send(json);
     }
   }
@@ -179,7 +179,7 @@ class Peer {
       let ms = now - (0 + json['p']);
       this.lastPing = ms;
       if (VERBOSE)
-	console.log('ping rtt: ' + ms);
+        console.log('ping rtt: ' + ms);
       break;
 
     case MsgType.CHAT:
@@ -189,7 +189,7 @@ class Peer {
 
     case MsgType.SET_NICK: {
       if (VERBOSE)
-	console.log('SET_NICK ' + json['nick']);
+        console.log('SET_NICK ' + json['nick']);
       let player = net.players[this.puid];
       if (!player) throw 'players should be superset of peers';
       player.nick = json['nick'];
@@ -203,13 +203,13 @@ class Peer {
       if (!player) throw 'players should be superset of peers';
       player.connectivityTo = {};
       for (let ouid in row) {
-	let ct = row[ouid];
-	// Player learned about this peer before me; add it...
-	net.maybeAddPlayer(ouid);
-	// Rebase to my own timeOrigin.
-	let a = now - ct.a;
-	// console.log('atime: ' + a);
-	player.connectivityTo[ouid] = {c: ct.c, p: ct.p, a: a};
+        let ct = row[ouid];
+        // Player learned about this peer before me; add it...
+        net.maybeAddPlayer(ouid);
+        // Rebase to my own timeOrigin.
+        let a = now - ct.a;
+        // console.log('atime: ' + a);
+        player.connectivityTo[ouid] = {c: ct.c, p: ct.p, a: a};
       }
       break;
     }
@@ -221,7 +221,7 @@ class Peer {
   periodic() : void {
     if (this.channel) {
       if (this.periodicallyPing.shouldRun()) {
-	this.sendMessage({'t': MsgType.PING, 'p': window.performance.now()});
+        this.sendMessage({'t': MsgType.PING, 'p': window.performance.now()});
       }
 
       // TODO: Send connectivity info.
@@ -767,14 +767,14 @@ class Net {
       // Clean up disconnected peers.
       for (let k in this.peers) {
         if (this.peers[k].isFailed()) {
-	  // TODO: Explicitly note this in connectivity map?
-	  // Otherwise updateMyConnectivity should do it?
+          // TODO: Explicitly note this in connectivity map?
+          // Otherwise updateMyConnectivity should do it?
 
-	  // TODO: Any way to actively discard these (to prevent them
-	  // from hanging around in callbacks, etc.?)
-	  this.peers[k].connection = null;
-	  this.peers[k].channel = null;
-	  delete this.peers[k];
+          // TODO: Any way to actively discard these (to prevent them
+          // from hanging around in callbacks, etc.?)
+          this.peers[k].connection = null;
+          this.peers[k].channel = null;
+          delete this.peers[k];
         }
       }
     }
@@ -852,8 +852,8 @@ class Net {
       if (!this.offerUid || answer['ouid'] != this.offerUid) {
         // Reset the peer.
         if (VERBOSE) {
-	  console.log(puid + ' sent wrong offeruid: got ' + answer['ouid'] +
-	    ' have ' + this.offerUid);
+          console.log(puid + ' sent wrong offeruid: got ' + answer['ouid'] +
+            ' have ' + this.offerUid);
         }
         delete this.peers[puid];
         continue;
@@ -868,20 +868,20 @@ class Net {
         // (can be forced by a misbehaving peer, but should
         // not normally happen...)
         if (this.getPeerType(puid) != PeerType.THEY_CALL) {
-	  if (VERBOSE)
-	    console.log('peer ' + puid + ' should not call me');
-	  continue;
+          if (VERBOSE)
+            console.log('peer ' + puid + ' should not call me');
+          continue;
         }
 
         if (this.listenConnection == null ||
-	    this.sendChannel == null) {
-	  // Already used up our listening connection, like if
-	  // two peers try to connect to the same offer.
-	  if (VERBOSE) {
-	    console.log('peer ' + puid + ' tried to connect but ' +
-	                'listening channel is null');
-	  }
-	  continue;
+            this.sendChannel == null) {
+          // Already used up our listening connection, like if
+          // two peers try to connect to the same offer.
+          if (VERBOSE) {
+            console.log('peer ' + puid + ' tried to connect but ' +
+                        'listening channel is null');
+          }
+          continue;
         }
 
         peer = this.createTheyCallPeer(puid,
@@ -912,23 +912,23 @@ class Net {
         let peerType = this.getPeerType(puid);
         switch (peerType) {
         case PeerType.THEY_CALL:
-	  // If they call, we can actually leave the peer out of our
-	  // peer set, and it is covered by the "answer from unknown peer"
-	  // case above.
-	  // TODO: Is this actually better? Somehow it seems like it
-	  // would be useful to know about all the peers.
-	  continue;
-	  break;
+          // If they call, we can actually leave the peer out of our
+          // peer set, and it is covered by the "answer from unknown peer"
+          // case above.
+          // TODO: Is this actually better? Somehow it seems like it
+          // would be useful to know about all the peers.
+          continue;
+          break;
 
         case PeerType.I_CALL:
-	  // If I call, and there is an offer available, act on it.
-	  let encodedOffer = other['s'];
-	  let ouid = other['ouid'];
-	  if (encodedOffer !== '' && ouid !== '') {
-	    let offer = decodeSdp(encodedOffer);
-	    peer = this.createICallPeer(puid, offer, ouid);
-	  }
-	  break;
+          // If I call, and there is an offer available, act on it.
+          let encodedOffer = other['s'];
+          let ouid = other['ouid'];
+          if (encodedOffer !== '' && ouid !== '') {
+            let offer = decodeSdp(encodedOffer);
+            peer = this.createICallPeer(puid, offer, ouid);
+          }
+          break;
         }
       }
     }
@@ -952,19 +952,19 @@ class Net {
   doJoin(room_name : string) {
     requestJSON(SERVER_URL + '/join/' + room_name, {}).
       then(json => {
-	this.roomUid = json['room'];
-	this.myUid = json['uid'];
-	this.mySeq = json['seq'];
+        this.roomUid = json['room'];
+        this.myUid = json['uid'];
+        this.mySeq = json['seq'];
         // XXX probably should be done by driver; expose there instead
-	window.location.hash =
+        window.location.hash =
           this.roomUid + '|' + this.myUid + '|' + this.mySeq;
-	if (VERBOSE) {
-	  console.log('joined!')
-	  console.log(json);
-	}
+        if (VERBOSE) {
+          console.log('joined!')
+          console.log(json);
+        }
 
-	this.addSelfPlayer();
-	this.makeOffer();
+        this.addSelfPlayer();
+        this.makeOffer();
       });
   }
 }
