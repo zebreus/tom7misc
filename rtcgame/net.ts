@@ -81,21 +81,21 @@ const requestJSON = (url : string, params: Record<string, string>) => {
 
 // Unfortunately there are two ways we may become connected: We
 // initiated the connection, or someone initiated a connection to us.
-const MsgType = Object.freeze({
-  PING: 1,
-  PING_RESPONSE: 2,
-  CHAT: 3,
-  SET_NICK: 4,
-  CONNECTIVITY: 5,
-});
+enum MsgType {
+  PING = "P",
+  PING_RESPONSE = "R",
+  CHAT = "C",
+  SET_NICK = "N",
+  CONNECTIVITY = "Y",
+}
 
 
 // Unfortunately there are two ways we may become connected: We
 // initiated the connection, or someone initiated a connection to us.
-const PeerType = Object.freeze({
-  I_CALL: 1,
-  THEY_CALL: 2,
-});
+enum PeerType {
+  I_CALL = "I",
+  THEY_CALL = "T",
+}
 
 // Wrapper around a timestamp and period for implementing
 // functionality like window.setTimeout.
@@ -144,7 +144,7 @@ class Periodically {
 // some function like "is the peer closer going up (modulo radix)
 // or down?" which would keep the call/receive load balanced for
 // any given participant.
-function getPeerType(puid : string) {
+function getPeerType(puid : string) : PeerType {
   if (!myUid) throw 'precondition: must join first!';
   return myUid < puid ? PeerType.I_CALL : PeerType.THEY_CALL;
 }
@@ -153,8 +153,7 @@ function getPeerType(puid : string) {
 // a player.
 class Peer {
   puid : string;
-  // XXX typescript enum?
-  peerType : number;
+  peerType : PeerType;
   connection : RTCPeerConnection | null;
   channel : RTCDataChannel | null;
   lastPing : number;
@@ -256,7 +255,7 @@ class Peer {
   }
 
   // Process a message sent BY this peer.
-  processMessage(data) : void {
+  processMessage(data : string) : void {
     let json = JSON.parse(data);
     let now = window.performance.now();
     switch (json['t']) {
@@ -329,7 +328,7 @@ class Peer {
   }
 
 };
-let peers = {};
+let peers : Record<string, Peer> = {};
 
 // ?
 const PlayerType = Object.freeze({
@@ -338,18 +337,18 @@ const PlayerType = Object.freeze({
   BLACKLISTED: 3,
 });
 
-const Connectivity = Object.freeze({
+enum Connectivity {
   // Haven't heard anything yet.
-  UNKNOWN: 1,
-  SELF: 2,
-  NEVER_CONNECTED: 3,
-  CONNECTED: 4,
-  DISCONNECTED: 5,
+  UNKNOWN = "U",
+  SELF = "S",
+  NEVER_CONNECTED = "V",
+  CONNECTED = "C",
+  DISCONNECTED = "D",
   // Decided that this player is gone and we won't try to contact it
   // again (unless perhaps there's some positive evidence of
   // reinstatement?)
-  AWOL: 6,
-});
+  AWOL = "A",
+}
 
 // A player is a possibly-active UID we know about on the network,
 // including ourself. This includes blacklisted (awol) UIDs, but we
@@ -368,7 +367,7 @@ let players : Record<string, Player> = {};
 // AWOL begins when we are waiting to hear from a peer (i.e., not
 // actively connecting or connected).
 // It is effectively now() for connected peers.
-type ConnectivityData = { c : number, p : number, a : number };
+type ConnectivityData = { c : Connectivity, p : number, a : number };
 class Player {
   // XXX typescript enums
   playerType : number;
@@ -376,7 +375,7 @@ class Player {
   connectivityTo : Record<string, ConnectivityData>;
   nick : string;
 
-  constructor(puid) {
+  constructor(puid : string) {
     this.playerType = (puid === myUid) ? PlayerType.ME : PlayerType.OTHER;
     this.puid = puid;
 
@@ -385,7 +384,7 @@ class Player {
   }
 };
 
-function getNick(puid) {
+function getNick(puid : string) {
   if (!players[puid]) return '???';
   return players[puid].nick || '???';
 }
@@ -396,7 +395,7 @@ function addSelfPlayer() {
   updateMyConnectivity();
 }
 
-function maybeAddPlayer(puid) {
+function maybeAddPlayer(puid : string) {
   if (players[puid]) return;
   players[puid] = new Player(puid);
 }
@@ -406,7 +405,7 @@ function maybeAddPlayer(puid) {
 // now). Since we may be learning that the server saw this player 8
 // seconds ago, but we saw them 1 second ago, this only updates the
 // awol time if it is more recent.
-function markPlayerSeen(puid, when) {
+function markPlayerSeen(puid : string, when : number) {
   let me = players[myUid];
   if (!me) throw 'recondition';
   let ct = me.connectivityTo[puid];
@@ -423,7 +422,7 @@ function markPlayerSeen(puid, when) {
 // Compute network awol time for p, which is the number of
 // milliseconds since we believe any player saw p. Idea is that if
 // this is long ago, we have consensus to retire the player.
-function getNetworkAwolTime(puid) {
+function getNetworkAwolTime(puid : string) {
   // Before we're established, return a conservative answer.
   if (myUid == '') return 0;
   if (!players[myUid]) return 0;
@@ -567,7 +566,7 @@ function broadcastConnectivity() {
   if (!me) throw 'precondition'
 
   let now = window.performance.now();
-  let msg = {};
+  let msg : Record<string, ConnectivityData> = {};
   for (let puid in me.connectivityTo) {
     let ct = me.connectivityTo[puid];
     // Round ping to integer to make these message smaller... peers
@@ -594,7 +593,9 @@ function broadcastConnectivity() {
 // A they-call peer is created from my outstanding listen-connection.
 // (Maybe the listen-connection should be wrapped in an object so that
 // we can just pass it all here and it can retain any handlers?)
-function createTheyCallPeer(puid, conn, channel) {
+function createTheyCallPeer(puid : string,
+                            conn : RTCPeerConnection,
+                            channel : RTCDataChannel) : Peer {
   if (puid in peers) throw 'precondition';
   if (getPeerType(puid) != PeerType.THEY_CALL) throw 'precondition';
   let peer = new Peer(puid);
@@ -611,13 +612,15 @@ function createTheyCallPeer(puid, conn, channel) {
   };
   peers[puid] = peer;
   if (VERBOSE)
-  console.log('Created they-call peer ' + puid);
+    console.log('Created they-call peer ' + puid);
   return peer;
 }
 
 // An I-call peer is created from an offer sdp and its uid. We create
 // the connection and send an answer to the server.
-function createICallPeer(puid, offer, ouid) {
+function createICallPeer(puid : string,
+                         offer : string,
+                         ouid : string) : Peer {
   if (puid in peers) throw 'precondition';
   if (getPeerType(puid) != PeerType.I_CALL) throw 'precondition';
   if (offer === '') throw 'precondition';
@@ -667,7 +670,7 @@ function createICallPeer(puid, offer, ouid) {
   return peer;
 }
 
-function getPeerByUid(puid) {
+function getPeerByUid(puid : string) : Peer | null {
   if (puid in peers) {
     return peers[puid];
   }
@@ -684,14 +687,13 @@ let mySeq = '';
 // TODO: Add visualization of offer-creation state to UI.
 // If non-null, an offer to deliver to the server during the poll
 // call.
-let offerToSend = null;
+let offerToSend : string | null = null;
 // If non-null, this is the uid for the offer that the server
 // currently knows about (and which we generated in this session).
-//
-let offerUid = null;
+let offerUid : string | null = null;
 // Connection corresponding to the outstanding offer.
-let listenConnection = null;
-let sendChannel = null;
+let listenConnection : RTCPeerConnection | null = null;
+let sendChannel : RTCDataChannel | null = null;
 // XXX we progress from makingOffer to waitingForOfferUid, so this
 // is better as a state enum. Should encapsulate this. It would also
 // allow us to have more than one outstanding offer, like connections
@@ -752,9 +754,11 @@ function makeOffer() {
       });
 }
 
-function markOfferReady(conn) {
+function markOfferReady(conn : RTCPeerConnection) {
   if (conn.iceGatheringState == 'complete') {
     let desc = conn.localDescription;
+    if (!desc)
+      throw 'expected desc if gathering state is complete?';
     if (desc.type != 'offer')
       throw 'Expected an offer-type description?';
     if (VERBOSE)
@@ -769,12 +773,12 @@ function markOfferReady(conn) {
   }
 }
 
-function todoInfo(e) {
+function todoInfo(e : any) {
   console.log('TODO Info');
   console.log(e);
 }
 
-function todoError(e) {
+function todoError(e : any) {
   console.log('TODO error');
   console.log(e);
 }
@@ -835,7 +839,7 @@ function doPoll() {
       roomUid === '')
     return;
 
-  let params = {};
+  let params : Record<string, string> = {};
   if (offerToSend != null) {
     params['offer'] = offerToSend;
     // Consume it.
@@ -869,7 +873,13 @@ function doPoll() {
       });
 }
 
-function processPollResponse(json) {
+interface PollResponse {
+  // TODO: flesh out interface
+  answers: any;
+  others: any;
+  ouid: string;
+}
+function processPollResponse(json : PollResponse) {
   // Process answers first (before creating a new offer).
   // The first one to answer (with the right offer uid) gets to take
   // on the listeningConnection as its connection.
@@ -983,8 +993,10 @@ function processPollResponse(json) {
 }
 
 function doJoin() {
-  let elt = document.getElementById('intro');
-  elt.style.display = 'none';
+  {
+    let elt = document.getElementById('intro');
+    if (elt) elt.style.display = 'none';
+  }
 
   requestJSON(SERVER_URL + '/join/' + ROOM_NAME, {}).
       then(json => {
@@ -1010,12 +1022,12 @@ function doJoin() {
 // TODO: Can reduce space/bandwidth on server by having a custom
 // encoder for SDPs built into the JS code. If we do this we
 // probably want some version info in the encoded SDP?
-function encodeSdp(sdp) {
+function encodeSdp(sdp : string) {
   const b64 = btoa(sdp);
   return b64.replace(/[+]/g, '_').replace(/[/]/g, '.');
 }
 
-function decodeSdp(enc) {
+function decodeSdp(enc : string) {
   let b64 = enc.replace(/[.]/g, '/').replace(/_/g, '+');
   return atob(b64);
 }
@@ -1023,27 +1035,9 @@ function decodeSdp(enc) {
 
 // UI stuff...
 
-function makeElement(what, cssclass, elt) {
-  var e = document.createElement(what);
-  if (cssclass) e.setAttribute('class', cssclass);
-  if (elt) elt.appendChild(e);
-  return e;
-}
-function IMG(cssclass, elt) { return makeElement('IMG', cssclass, elt); }
-function DIV(cssclass, elt) { return makeElement('DIV', cssclass, elt); }
-function SPAN(cssclass, elt) { return makeElement('SPAN', cssclass, elt); }
-function BR(cssclass, elt) { return makeElement('BR', cssclass, elt); }
-function TABLE(cssclass, elt) { return makeElement('TABLE', cssclass, elt); }
-function TR(cssclass, elt) { return makeElement('TR', cssclass, elt); }
-function TD(cssclass, elt) { return makeElement('TD', cssclass, elt); }
-function TEXT(contents, elt) {
-  var e = document.createTextNode(contents);
-  if (elt) elt.appendChild(e);
-  return e;
-}
-
 function updateUI() {
   let uelt = document.getElementById('uid');
+  if (!uelt) return;
   uelt.innerHTML = myUid == '' ? '(not yet assigned)' : myUid;
 
   updateListenUI();
@@ -1053,6 +1047,7 @@ function updateUI() {
 
 function updateListenUI() {
   let elt = document.getElementById('listen');
+  if (!elt) return;
   elt.innerHTML = '';
   if (makingOffer) {
     TEXT('(making offer)', DIV('', elt));
@@ -1063,15 +1058,20 @@ function updateListenUI() {
   TEXT((offerToSend ? '(offer to send)' : '(no offer to send)'),
        DIV('', elt));
   if (listenConnection) {
-    for (let k of ['signalingState', 'connectionState', 'iceConnectionState',
-		   'iceGatheringState']) {
-      TEXT(k + ' = ' + listenConnection[k], DIV('', elt));
-    }
+    TEXT('signalingState = ' + listenConnection.signalingState,
+         DIV('', elt));
+    TEXT('connectionState = ' + listenConnection.connectionState,
+         DIV('', elt));
+    TEXT('iceConnectionState = ' + listenConnection.iceConnectionState,
+         DIV('', elt));
+    TEXT('iceGatheringState = ' + listenConnection.iceGatheringState,
+         DIV('', elt));
   }
 }
 
 function updatePeersUI() {
   let elt = document.getElementById('peers');
+  if (!elt) return;
   elt.innerHTML = '';
 
   let table = TABLE('peers', elt);
@@ -1116,6 +1116,7 @@ function updatePeersUI() {
 
 function updateMatrixUI() {
   let elt = document.getElementById('matrix');
+  if (!elt) return;
   elt.innerHTML = '';
   let mtx = TABLE('matrix', elt);
 
@@ -1188,8 +1189,8 @@ function updateMatrixUI() {
 }
 
 let MAX_CHATS = 32;
-let chats = [];
-function pushChat(uid, msg) {
+let chats : Array<{uid: string, msg: string}> = [];
+function pushChat(uid : string, msg : string) {
   if (chats.length == MAX_CHATS) {
     chats.shift();
   }
@@ -1198,6 +1199,7 @@ function pushChat(uid, msg) {
 
 function drawChats() {
   let elt = document.getElementById('chats');
+  if (!elt) return;
   elt.innerHTML = '';
   for (let chat of chats) {
     let cr = DIV('', elt);
@@ -1208,7 +1210,7 @@ function drawChats() {
   }
 }
 
-function broadcastChat(msg) {
+function broadcastChat(msg : string) {
   // Send to self.
   pushChat(myUid, msg);
   let json = JSON.stringify({'t': MsgType.CHAT, 'msg': msg});
@@ -1218,7 +1220,7 @@ function broadcastChat(msg) {
   }
 }
 
-function broadcastNick(nick) {
+function broadcastNick(nick : string) {
   // Can lose keystrokes here, but...
   let me = players[myUid];
   if (!me) return;
@@ -1232,7 +1234,7 @@ function broadcastNick(nick) {
 }
 
 // Chat crap
-function chatKey(e) {
+function chatKey(e : KeyboardEvent) {
   if (e.keyCode == 13) {
     let elt = (<HTMLInputElement>document.getElementById('chatbox'));
     let msg = elt.value;
@@ -1247,7 +1249,7 @@ function chatKey(e) {
 }
 
 // Nickname
-function nicknameKey(e) {
+function nicknameKey(e : KeyboardEvent) {
   let elt = (<HTMLInputElement>document.getElementById('nickname'));
   let nick = elt.value;
   broadcastNick(nick);
@@ -1257,14 +1259,17 @@ function nicknameKey(e) {
 
 
 function init() {
-  document.getElementById('chatbox').onkeyup = chatKey;
-  document.getElementById('nickname').onkeyup = nicknameKey;
+  let chatbox = document.getElementById('chatbox');
+  if (chatbox) chatbox.onkeyup = chatKey;
+  let nickbox = document.getElementById('nickname');
+  if (nickbox) nickbox.onkeyup = nicknameKey;
 
   let a = window.location.hash.split('|');
   if (a.length == 3) {
     // We have saved state info.
     let elt = document.getElementById('intro');
-    elt.style.display = 'none';
+    if (elt)
+      elt.style.display = 'none';
     roomUid = a[0];
     myUid = a[1];
     mySeq = a[2];
