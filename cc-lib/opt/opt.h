@@ -55,7 +55,15 @@ struct Opt {
              int depth = 1,
              int attempts = 10);
 
-  // TODO: 3, etc.
+  inline static std::pair<std::tuple<double, double, double>, double>
+  Minimize3D(const std::function<double(double, double, double)> &f,
+             std::tuple<double, double, double> lower_bound,
+             std::tuple<double, double, double> upper_bound,
+             int iters,
+             int depth = 1,
+             int attempts = 10);
+
+  // TODO: 4, etc.
 
   // TODO: Improve the way we specify tuning parameters (they can
   // be exposed but it should be easy to ignore them, especially
@@ -135,6 +143,32 @@ Opt::Minimize2D(const std::function<double(double, double)> &f,
     iters, depth, attempts);
   return std::make_pair(
       std::make_tuple(std::get<0>(aarg), std::get<1>(aarg)), best);
+}
+
+std::pair<std::tuple<double, double, double>, double>
+Opt::Minimize3D(const std::function<double(double, double, double)> &f,
+                std::tuple<double, double, double> lower_bound,
+                std::tuple<double, double, double> upper_bound,
+                int iters,
+                int depth,
+                int attempts) {
+  const auto [aarg, best] =
+    Minimize<3>([&f](const std::array<double, 3> &d) -> double {
+        return f(std::get<0>(d), std::get<1>(d), std::get<2>(d));
+      },
+    std::array<double, 3>{
+        std::get<0>(lower_bound),
+        std::get<1>(lower_bound),
+        std::get<2>(lower_bound)},
+    std::array<double, 3>{
+        std::get<0>(upper_bound),
+        std::get<1>(upper_bound),
+        std::get<2>(upper_bound)},
+    iters, depth, attempts);
+  return std::make_pair(
+      std::make_tuple(std::get<0>(aarg),
+                      std::get<1>(aarg),
+                      std::get<2>(aarg)), best);
 }
 
 

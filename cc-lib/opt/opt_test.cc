@@ -32,6 +32,15 @@ static double Test2(double x, double y) {
    sqrt((1.7 * y) * (1.7 * y));
 }
 
+// zero at (1, -1, 4)
+static double Test3(double x, double y, double z) {
+  double xx = (x - 1.0);
+  double yy = (y + 1.0);
+  double zz = (z / 8.0 - 0.5);
+
+  return xx * xx + yy * yy + zz * zz * zz * zz;
+}
+
 int main(int argc, char **argv) {
 
   {
@@ -73,6 +82,18 @@ int main(int argc, char **argv) {
     auto [x, y] = aarg;
     printf("EZ overload 2D: f(%.5f, %.5f) = %.5f\n",
            x, y, v);
+  }
+
+  {
+    auto [aarg, v] = Opt::Minimize3D(
+        Test3,
+        {-50.0, -50.0, -50.0},
+        {+50.0, +50.0, +50.0},
+        1000,
+        1, 10);
+    auto [x, y, z] = aarg;
+    printf("3D. Minimum at (1, -1, 4); got: (%.5f, %.5f, %.5f)\n",
+           x, y, z);
   }
 
   #if 0
