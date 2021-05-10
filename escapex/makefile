@@ -70,7 +70,7 @@ sound_load.h : sound.pack packsound.cc
 %-console.o : %.cc
 	g++ ${CXXFLAGS} ${CPPFLAGS} -DNOSOUND=1 -DUSE_DISPLAY_FORMAT=0 $^ -c -o $@
 
-screenshot.exe : ${ESCLIBOBJECTS} ${CCLIBOBJECTS} screenshot.o 
+screenshot.exe : ${ESCLIBOBJECTS} ${CCLIBOBJECTS} screenshot.o
 	g++ ${CXXFLAGS} -o $@ $^ -static
 
 
@@ -467,7 +467,7 @@ packpng.o : packpng.cc
 packpng.exe : packpng.o ${CCLIBOBJECTS}
 	${CXX} -o $@ $^ -static
 
-screenshot.exe : ${ESCLIBOBJECTS} ${CCLIBOBJECTS} screenshot.o 
+screenshot.exe : ${ESCLIBOBJECTS} ${CCLIBOBJECTS} screenshot.o
 	$(CXX) $(CXXFLAGS) -o $@ $^ -static
 
 .dummy :
