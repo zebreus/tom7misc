@@ -22,5 +22,11 @@ opt_test.o : opt_test.cc opt.h
 opt_test.exe : opt.o opt_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+optimizer_test.o : optimizer_test.cc opt.h optimizer.h
+	$(CXX) $(CXXFLAGS) $< -o $@ -c
+
+optimizer_test.exe : opt.o optimizer_test.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f *.o *.exe

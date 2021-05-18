@@ -4,6 +4,9 @@
 //
 // This is just a simple wrapper around "BiteOpt"; see here:
 // https://github.com/avaneev/biteopt
+//
+// Consider optimizer.h for a fancier interface that allows integral
+// arguments and termination conditions.
 
 #ifndef _CC_LIB_OPT_H
 #define _CC_LIB_OPT_H
@@ -25,7 +28,10 @@ struct Opt {
            // Approximately, the number of times to call f.
            int iters,
            int depth = 1,
-           int attempts = 10);
+           int attempts = 10,
+           // Optimization is deterministic, but you can change the
+           // pseudorandom seed if calling multiple times.
+           int random_seed = 1);
 
   // As above, but with n as a runtime value.
   static std::pair<std::vector<double>, double>
@@ -35,7 +41,8 @@ struct Opt {
            const std::vector<double> &upper_bound,
            int iters,
            int depth = 1,
-           int attempts = 10);
+           int attempts = 10,
+           int random_seed = 1);
 
   // Convenience versions for small N.
   // Returns {best_arg, f(best_arg)}.
@@ -46,7 +53,7 @@ struct Opt {
              int iters,
              int depth = 1,
              int attempts = 10);
-
+  
   inline static std::pair<std::tuple<double, double>, double>
   Minimize2D(const std::function<double(double, double)> &f,
              std::tuple<double, double> lower_bound,
@@ -67,19 +74,17 @@ struct Opt {
 
   // TODO: Improve the way we specify tuning parameters (they can
   // be exposed but it should be easy to ignore them, especially
-  // their interaction with iters) and termination condition. The
-  // total actual calls to the function is a good one, but it's
-  // also common that we want to set a time bound. Requires changes
-  // internally.
+  // their interaction with iters).
 
 private:
   typedef double (*internal_func)(int N, const double* x,
                                   void* func_data);
 
   static void internal_minimize(
-      const int N, internal_func f, const void* data,
+      int N, internal_func f, const void* data,
       const double* lb, const double* ub, double* x, double* minf,
-      const int iter, const int M = 1, const int attc = 10);
+      int iter, int M = 1, int attc = 10,
+      int random_seed = 1);
 };
 
 
@@ -93,7 +98,8 @@ Opt::Minimize(
     const std::array<double, N> &upper_bound,
     int iters,
     int depth,
-    int attempts) {
+    int attempts,
+    int random_seed) {
   static_assert(N > 0);
 
   auto wrap_f = [](int n_, const double *args, void* data) -> double {
@@ -106,7 +112,8 @@ Opt::Minimize(
   double out_v = 0.0;
   Opt::internal_minimize(N, +wrap_f, &f,
                          lower_bound.data(), upper_bound.data(),
-                         out.data(), &out_v, iters, depth, attempts);
+                         out.data(), &out_v, iters, depth, attempts,
+                         random_seed);
   return {out, out_v};
 }
 
@@ -123,7 +130,7 @@ Opt::Minimize1D(const std::function<double(double)> &f,
       },
     std::array<double, 1>{lower_bound},
     std::array<double, 1>{upper_bound},
-    iters, depth, attempts);
+    iters, depth, attempts, 1);
   return std::make_pair(std::get<0>(aarg), best);
 }
 
@@ -140,7 +147,7 @@ Opt::Minimize2D(const std::function<double(double, double)> &f,
       },
     std::array<double, 2>{std::get<0>(lower_bound), std::get<1>(lower_bound)},
     std::array<double, 2>{std::get<0>(upper_bound), std::get<1>(upper_bound)},
-    iters, depth, attempts);
+    iters, depth, attempts, 1);
   return std::make_pair(
       std::make_tuple(std::get<0>(aarg), std::get<1>(aarg)), best);
 }
@@ -164,7 +171,7 @@ Opt::Minimize3D(const std::function<double(double, double, double)> &f,
         std::get<0>(upper_bound),
         std::get<1>(upper_bound),
         std::get<2>(upper_bound)},
-    iters, depth, attempts);
+    iters, depth, attempts, 1);
   return std::make_pair(
       std::make_tuple(std::get<0>(aarg),
                       std::get<1>(aarg),

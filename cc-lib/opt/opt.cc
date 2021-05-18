@@ -1144,7 +1144,7 @@ public:
         biteopt_func f; ///< Objective function.
         void* data; ///< Objective function's data.
         const double* lb; ///< Parameter's lower bounds.
-        const double* ub; ///< Parameter's lower bounds.
+        const double* ub; ///< Parameter's upper bounds.
 
         virtual void getMinValues( double* const p ) const
         {
@@ -1193,7 +1193,8 @@ public:
 
 inline void biteopt_minimize( const int N, biteopt_func f, void* data,
         const double* lb, const double* ub, double* x, double* minf,
-        const int iter, const int M = 1, const int attc = 10 )
+        const int iter, const int M = 1, const int attc = 10,
+        int random_seed = 1)
 {
         CBiteOptMinimize opt;
         opt.N = N;
@@ -1204,7 +1205,7 @@ inline void biteopt_minimize( const int N, biteopt_func f, void* data,
         opt.updateDims( N, M );
 
         CBiteRnd rnd;
-        rnd.init( 1 );
+        rnd.init( random_seed );
 
         const int useiter = (int) ( iter * sqrt( (double) M )) -
                 opt.getInitEvals();
@@ -1246,9 +1247,11 @@ using namespace std;
 void Opt::internal_minimize(
     const int N, internal_func f, const void* data,
     const double* lb, const double* ub, double* x, double* minf,
-    const int iter, const int M, const int attc) {
+    const int iter, const int M, const int attc,
+    const int random_seed) {
   // XXX can just modify above to remove this const cast...
-  return biteopt_minimize(N, f, (void *)data, lb, ub, x, minf, iter, M, attc);
+  return biteopt_minimize(N, f, (void *)data, lb, ub, x, minf, iter, M, attc,
+                          random_seed);
 }
 
 
@@ -1259,7 +1262,8 @@ Opt::Minimize(int n,
               const std::vector<double> &upper_bound,
               int iters,
               int depth,
-              int attempts) {
+              int attempts,
+              int random_seed) {
   auto wrap_f = [](int n, const double *args, void* data) -> double {
       auto *f = (std::function<double(const std::vector<double> &)> *)data;
       std::vector<double> in(n);
@@ -1270,7 +1274,8 @@ Opt::Minimize(int n,
   double out_v = 0.0;
   Opt::internal_minimize(n, +wrap_f, &f,
                          lower_bound.data(), upper_bound.data(),
-                         out.data(), &out_v, iters, depth, attempts);
+                         out.data(), &out_v, iters, depth, attempts,
+                         random_seed);
   return {out, out_v};
 }
 
