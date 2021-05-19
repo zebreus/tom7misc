@@ -26,19 +26,23 @@ struct Optimizer {
 
   static inline constexpr double LARGE_SCORE =
     std::numeric_limits<double>::max();
-  
+
   // function takes two arrays as arguments: the int
   //   args and the doubles.
   using arg_type =
     std::pair<std::array<int32_t, N_INTS>,
               std::array<double, N_DOUBLES>>;
-  
-  // function to optimize.
+
   // return value is optional; if nullopt, this is an
   //   infeasible input (score = LARGE_SCORE).
   // if present, it is the score and the output value.
-  using function_type =
-    std::function<std::optional<std::pair<double, OutputType>>(arg_type)>;
+  // (TODO: For infeasible inputs, we may want to be able
+  // to return a penalty that gives a gradient towards the
+  // feasible region?)
+  using return_type = std::optional<std::pair<double, OutputType>>;
+  
+  // function to optimize.
+  using function_type = std::function<return_type(arg_type)>;
 
   explicit Optimizer(function_type f);
 
@@ -50,12 +54,18 @@ struct Optimizer {
   void SetBest(arg_type best_arg, double best_score,
                OutputType best_output);
 
-  // Run 
+  // Force sampling this arg, for example if we know an existing
+  // feasible argument from a previous round but not its result.
+  void Sample(arg_type arg);
+  
+  // Run
   void Run(
       // Finite {lower, upper} bounds on each argument. This can be
       // different for each call to run, in case you want to systematically
       // explore different parts of the space, or update bounds from a
       // previous solution.
+      // integer upper bounds exclude high: [low, high).
+      // double upper bounds are inclusive: [low, high].
       std::array<std::pair<int32_t, int32_t>, N_INTS> int_bounds,
       std::array<std::pair<double, double>, N_DOUBLES> double_bounds,
       // Termination conditions. Stops if any is attained; at
@@ -64,7 +74,7 @@ struct Optimizer {
       // cached, if the argument space is exhaustible, you
       // may want to set another termination condition as well.
       std::optional<int> max_calls,
-      // Maximum feasbile calls (f returns an output). Same
+      // Maximum feasible calls (f returns an output). Same
       // caution as above.
       std::optional<int> max_feasible_calls = std::nullopt,
       // Walltime seconds. Typically we run over the budget by
@@ -74,7 +84,7 @@ struct Optimizer {
       std::optional<double> target_score = std::nullopt);
 
   // Get the best argument we found (with its score and output), if
-  // any were feasible. 
+  // any were feasible.
   std::optional<std::tuple<arg_type, double, OutputType>> GetBest() const;
 
  private:
@@ -98,7 +108,7 @@ struct Optimizer {
         // the bytes of a double?
         uint8_t bytes[sizeof (double)] = {};
         memcpy(&bytes, (const uint8_t *)&arg.second[i], sizeof (double));
-        for (int j = 0; j < sizeof (double); j ++) {
+        for (size_t j = 0; j < sizeof (double); j ++) {
           result ^= bytes[j];
           result = (result << 9) | (result >> (64 - 9));
         }
@@ -122,9 +132,28 @@ Optimizer<N_INTS, N_DOUBLES, OutputType>::Optimizer(function_type f) :
   f(std::move(f)) {}
 
 template<int N_INTS, int N_DOUBLES, class OutputType>
+void Optimizer<N_INTS, N_DOUBLES, OutputType>::Sample(arg_type arg) {
+  auto res = f(arg);
+  if (res.has_value()) {
+    double score = res.value().first;
+    cached_score[arg] = score;
+    // First or improved best?
+    if (!best.has_value() || score < std::get<1>(best.value())) {
+      best.emplace(arg, score, std::move(res.value().second));
+    }
+  } else {
+    // Add to cache no matter what.
+    cached_score[arg] = LARGE_SCORE;
+  }
+}
+
+template<int N_INTS, int N_DOUBLES, class OutputType>
 void Optimizer<N_INTS, N_DOUBLES, OutputType>::SetBest(
     arg_type best_arg, double best_score,
     OutputType best_output) {
+  // Add to cache no matter what.
+  cached_score[best_arg] = best_score;
+  
   // Don't take it if we already have a better one.
   if (best.has_value() && std::get<1>(best.value()) < best_score)
     return;
@@ -165,7 +194,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
     lbs[N_INTS + i] = double_bounds[i].first;
     ubs[N_INTS + i] = double_bounds[i].second;
   }
-  
+
   bool stop = false;
   // These are only updated if we use them for termination.
   int num_calls = 0, num_feasible_calls = 0;
@@ -216,10 +245,10 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
           stop = true;
         }
       }
-      
+
       auto res = f(arg);
 
-      
+
       if (res.has_value()) {
         // Feasible call.
         if (max_feasible_calls.has_value()) {
@@ -230,7 +259,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
         }
 
         const double score = res.value().first;
-        
+
         cached_score[arg] = score;
 
         // First or new best? Save it.
@@ -240,17 +269,17 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
 
         if (score <= target_score)
           stop = true;
-        
+
         return score;
       } else {
         cached_score[arg] = LARGE_SCORE;
-            
+
         return LARGE_SCORE;
       }
     };
 
   // Run double-based optimizer on above.
-  
+
 
   for (int seed = 1; !stop; seed++) {
     // PERF: Set biteopt parameters based on termination conditions,

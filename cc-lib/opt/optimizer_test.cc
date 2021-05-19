@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
   CircleOptimizer optimizer(DiscreteDistance);
 
   CHECK(!optimizer.GetBest().has_value());
-  
+
   optimizer.SetBest({{0, 0}, {}}, 0.0, 0);
 
   CHECK(optimizer.GetBest().has_value());
@@ -40,19 +40,19 @@ int main(int argc, char **argv) {
 
   auto best = optimizer.GetBest();
   CHECK(best.has_value());
-  
+
   auto [best_arg, best_score, best_sqdist] = best.value();
   auto [best_x, best_y] = best_arg.first;
   printf("Best (%d,%d) score %.3f sqdist %d\n",
          best_x, best_y,
          best_score, best_sqdist);
-  
+
   // Should be able to find one of the corners.
   CHECK(best_sqdist == 98);
   CHECK(best_x == 7 || best_x == -7);
-  CHECK(best_y == 7 || best_y == -7);  
+  CHECK(best_y == 7 || best_y == -7);
   CHECK(best_score < 9.898);
-  
+
   return 0;
 }
 

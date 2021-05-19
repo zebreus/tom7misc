@@ -45,9 +45,7 @@ struct PackRect {
       // Size of the output rectangle.
       int *width, int *height,
       // The output positions (x,y), parallel to the input rects.
-      std::vector<std::pair<int, int>> *positions,
-      // If non-null, the achieved efficiency in [0, 1].
-      float *efficiency = nullptr);
+      std::vector<std::pair<int, int>> *positions);
 
 };
 

@@ -17,15 +17,12 @@ static void TestSingleton() {
   // Default settings.
   PackRect::Config config;
   int width = 999, height = 999;
-  float eff = 9.0;
-  CHECK(PackRect::Pack(config, one, &width, &height, &pos, &eff));
+  CHECK(PackRect::Pack(config, one, &width, &height, &pos));
   CHECK_EQ(height, 4);
   CHECK_EQ(width, 3);
   CHECK_EQ(pos.size(), 1);
   CHECK_EQ(pos[0].first, 0);
   CHECK_EQ(pos[0].second, 0);
-  CHECK_GT(eff, 0.9999f);
-  CHECK_LT(eff, 1.0001f);
 }
 
 // Should be easy to pack these as well.
@@ -36,15 +33,14 @@ static void TestPixels1Pass() {
   PackRect::Config config;
   config.budget_passes = 1;
   int width = 999, height = 999;
-  float eff = 9.0;
-  CHECK(PackRect::Pack(config, pixels, &width, &height, &pos, &eff));
+  CHECK(PackRect::Pack(config, pixels, &width, &height, &pos));
   CHECK_EQ(pos.size(), 4);
   for (int i = 0; i < 4; i++) {
     printf("%d,%d @ %d,%d\n",
            pixels[i].first, pixels[i].second,
            pos[i].first, pos[i].second);
   }
-  CHECK_GT(height * width, 4) << "height: " << height << " width: " << width;
+  CHECK_GE(height * width, 4) << "height: " << height << " width: " << width;
   std::set<int> seen;
   for (auto [x, y] : pos) {
     CHECK_LT(x, width);
@@ -67,8 +63,7 @@ static void TestPixelsOpt() {
   PackRect::Config config;
   config.budget_passes = 1000;
   int width = 999, height = 999;
-  float eff = 9.0;
-  CHECK(PackRect::Pack(config, pixels, &width, &height, &pos, &eff));
+  CHECK(PackRect::Pack(config, pixels, &width, &height, &pos));
   CHECK_EQ(pos.size(), 4);
   for (int i = 0; i < 4; i++) {
     printf("%d,%d @ %d,%d\n",

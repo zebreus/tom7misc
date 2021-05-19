@@ -4,11 +4,12 @@
 #include <tuple>
 #include <vector>
 #include <utility>
-#include <chrono>
 #include <cmath>
+#include <cstring>
 
 #include "base/logging.h"
 #include "opt/opt.h"
+#include "opt/optimizer.h"
 
 namespace {
 // --------------------------------------------------
@@ -648,7 +649,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 // Try packing into a rectangle of the given size.
 // Returns the number of rectangles that weren't packed, so
 // 0 means success.
-static int TryPack(
+static int TryPackSTB(
     // Rectangles to pack, given a pair width,height.
     const std::vector<std::pair<int, int>> &rects,
     int width, int height,
@@ -676,10 +677,10 @@ static int TryPack(
   stbrp_init_target(&context, width, height, nodes, num_nodes);
 
   // Could also change/disable sorting here easily.
-  stbrp_setup_heuristic (&context,
-                         bottom_left ?
-                         STBRP_HEURISTIC_Skyline_BL_sortHeight :
-                         STBRP_HEURISTIC_Skyline_BF_sortHeight);
+  stbrp_setup_heuristic(&context,
+                        bottom_left ?
+                        STBRP_HEURISTIC_Skyline_BL_sortHeight :
+                        STBRP_HEURISTIC_Skyline_BF_sortHeight);
 
   int num_unpacked = 0;
   if (stbrp_pack_rects(&context, stbrects, rects.size())) {
@@ -702,6 +703,127 @@ static int TryPack(
 
   return num_unpacked;
 }
+
+namespace {
+// Old Escape method. Dense pixel map, first fit.
+struct UsedMap {
+  // PERF could use less memory with a bit mask.
+  char *arr = nullptr;
+  int w = 0, h = 0;
+
+  UsedMap(int ww, int hh) : w(ww), h(hh) {
+    arr = (char*)malloc(ww * hh * sizeof(char));
+    std::memset(arr, 0, ww * hh * sizeof (char));
+  }
+
+  /* new areas are unused */
+  void Resize(int ww, int hh) {
+    char *na = (char*)malloc(ww * hh * sizeof (char));
+
+    /* start unused */
+    std::memset(na, 0, ww * hh * sizeof (char));
+
+    /* copy old used */
+    for (int xx = 0; xx < w; xx++) {
+      for (int yy = 0; yy < h; yy++) {
+        if (Used(xx, yy) && xx < ww && yy < hh) {
+          na[yy * ww + xx] = 1;
+        }
+      }
+    }
+
+    free(arr);
+    arr = na;
+    w = ww;
+    h = hh;
+  }
+
+  bool Used(int x, int y) {
+    return arr[x + y * w];
+  }
+
+  bool UsedRange(int x, int y, int ww, int hh) {
+    for (int yy = 0; yy < hh; yy++) {
+      for (int xx = 0; xx < ww; xx++) {
+        if (Used(x + xx, y + yy)) return true;
+      }
+    }
+    return false;
+  }
+
+  void Use(int x, int y) {
+    arr[x + y * w] = 1;
+  }
+
+  void UseRange(int x, int y, int ww, int hh) {
+    for (int yy = 0; yy < hh; yy++) {
+      for (int xx = 0; xx < ww; xx++) {
+        Use(x + xx, y + yy);
+      }
+    }
+  }
+
+  ~UsedMap() {
+    free(arr);
+  }
+};
+}  // namespace
+
+static std::pair<int, int> FitImage(UsedMap *um, int w, int h) {
+  // Escape used a linear growth rate, but this seems excessively
+  // slow (especially since we crop after the fact).
+  static constexpr float GROWRATE = 0.1f;
+  for (;;) {
+    for (int yy = 0; yy <= um->h - h; yy++) {
+      for (int xx = 0; xx <= um->w - w; xx++) {
+        if (!um->UsedRange(xx, yy, w, h)) {
+          um->UseRange(xx, yy, w, h);
+          return make_pair(xx, yy);
+        }
+      }
+    }
+
+    // Didn't fit. Expand to make the image more square,
+    // but at least accommodate the current target image size.
+    int nw = um->w, nh = um->h;
+    if (um->w < w) {
+      nw = w;
+    } else if (um->h < h) {
+      nh = h;
+    } else if (um->w <= um->h) {
+      int gw = (int)(um->w * GROWRATE);
+      nw = um->w + std::max(1, gw);
+    } else {
+      int gh = (int)(um->h * GROWRATE);
+      nh = um->h + std::max(1, gh);
+    }
+
+    um->Resize(nw, nh);
+    // printf("Resize to %d x %d -> %d x %d\n", um->w, um->h, nw, nh);
+  }
+}
+
+// Always succeeds, but is slow, and usually worse than STB.
+static void TryPackEsc(
+    // e.g. size of largest bitmap
+    int initial_width, int initial_height,
+    // Rectangles to pack, given a pair width,height.
+    const std::vector<std::pair<int, int>> &rects,
+    // The output positions (x,y). Can be null.
+    std::vector<std::pair<int, int>> *positions) {
+  // Can be null for uniformity, but then the function does nothing.
+  if (positions == nullptr) return;
+  
+  UsedMap um{initial_width, initial_height};
+
+  positions->clear();
+  for (const auto [rect_w, rect_h] : rects) {
+    // find a place where it will fit.
+    const auto [x, y] = FitImage(&um, rect_w, rect_h);
+    positions->emplace_back(x, y);
+  }
+}
+
 
 // Assuming the rectangles have been positioned legally,
 // return minimum width/height of the containing rectangle.
@@ -726,16 +848,13 @@ bool PackRect::Pack(
     // Size of the output rectangle.
     int *out_width, int *out_height,
     // The output positions (x,y), parallel to the input rects.
-    std::vector<std::pair<int, int>> *out_positions,
-    // If non-null, the achieved efficiency in [0, 1].
-    float *efficiency) {
-
-  const auto time_start = std::chrono::steady_clock::now();
+    std::vector<std::pair<int, int>> *out_positions) {
 
   // The largest dimensions in the input. We can also do some
   // quick validation.
   int max_input_width = 0;
   int max_input_height = 0;
+  int total_width = 0, total_height = 0;
   int total_area = 0;
   for (const auto [w, h] : rects) {
     if (w <= 0) return false;
@@ -743,6 +862,8 @@ bool PackRect::Pack(
     max_input_width = std::max(max_input_width, w);
     max_input_height = std::max(max_input_height, h);
     total_area += w * h;
+    total_width += w;
+    total_height += h;
   }
   // We can't succeed unless the biggest rectangle fits within
   // constraints.
@@ -754,10 +875,10 @@ bool PackRect::Pack(
 
   // Starting rectangle size. We try to be square, but we know we
   // need at least the dimensions given above.
-  int width =
+  int arg_width =
     std::max(max_input_width, (int)ceilf(sqrtf(total_area)));
-  int height =
-    std::max(max_input_height, (int)ceilf(total_area / (float)width));
+  int arg_height =
+    std::max(max_input_height, (int)ceilf(total_area / (float)arg_width));
 
   // In this first phase, we're trying to find *any* packing; we'll
   // only fail if the width/height have constraints. We won't usually
@@ -765,26 +886,30 @@ bool PackRect::Pack(
   // than the square root of the area anyway. So give ourselves
   // significant slack so that the first pass is likely to succeed.
 
+  // (XXX This first phase could perhaps be replaced by just
+  // calling Sample below with some arg that we "know" will work, like
+  // using width=total_width.)
+  
   std::vector<std::pair<int, int>> pos;
   for (;;) {
-    width = ceilf(width * 1.25f);
-    height = ceilf(height * 1.25f);
+    arg_width = ceilf(arg_width * 1.25f);
+    arg_height = ceilf(arg_height * 1.25f);
 
     if (config.max_width != 0)
-      width = std::max(config.max_width, width);
+      arg_width = std::max(config.max_width, arg_width);
     if (config.max_height != 0)
-      height = std::max(config.max_height, height);
+      arg_height = std::max(config.max_height, arg_height);
 
     pos.clear();
-    if (0 == TryPack(rects, width, height, true, &pos)) {
+    if (0 == TryPackSTB(rects, arg_width, arg_height, true, &pos)) {
       // We have a candidate solution; now start optimizing.
       break;
     } else {
       // did we just try at the maximum size?
       if (config.max_width != 0 &&
           config.max_height != 0 &&
-          width >= config.max_width &&
-          height >= config.max_height) {
+          arg_width >= config.max_width &&
+          arg_height >= config.max_height) {
         return false;
       }
     }
@@ -792,110 +917,144 @@ bool PackRect::Pack(
 
   // We know they fit, but get the portion of the rectangle that's
   // actually used.
-  std::tie(width, height) = Crop(rects, pos);
+  auto [width, height] = Crop(rects, pos);
 
   // We have a solution in width/height. Now optimize.
 
-  auto ElapsedSec = [time_start]() -> double {
-      const auto time_cur =
-        std::chrono::steady_clock::now();
-      const std::chrono::duration<double> time_elapsed =
-        time_cur - time_start;
-      return time_elapsed.count();
-    };
+  enum Method : int32_t {
+    STB_BL = 0,
+    STB_BF,
+    ESCAPE,
+    
+    NUM_METHODS,
+  };
+  
+  // TODO: Improve this search space. Maybe can reframe these
+  // algorithms to only take the width as input? Also experiment
+  // with different orderings, which is the thing that most
+  // affects the output (although it is hard to map to a double?).
+  // 
+  // Arguments are:
+  //    - width,height
+  //    - method
 
-  bool nothing_left_to_try = false;
+  // width, height, positions
+  using OutputType = std::tuple<int, int, std::vector<std::pair<int, int>>>;
+  using RectOptimizer = Optimizer<3, 0, OutputType>;
 
-  for (int passes = 1; /* in loop */; passes++) {
-    if (nothing_left_to_try ||
-        // out of budget in passes?
-        (config.budget_passes != 0 && passes >= config.budget_passes) ||
-        // out of time budget?
-        (config.budget_seconds != 0 && ElapsedSec() > config.budget_seconds) ||
-        // also stop if we happen to find an optimal result, which
-        // is unlikely but could happen for very regular/small inputs.
-        width * height == total_area) {
-      // Done.
-      if (config.max_width != 0) {
-        CHECK(width <= config.max_width);
+  const double large_area = width * height + 1;
+  auto Optimize = [&rects, width, height, large_area](
+      const RectOptimizer::arg_type arg) -> RectOptimizer::return_type {
+      auto [w, h, method] = arg.first;
+      // printf("Optimize(%d,%d,%d)\n", w, h, method);
+
+      #if 0
+      // This "optimization" is disabled because...
+      //   - we crop at the end anyway, so it is not conservative
+      //   - it really should look at the current width and height,
+      //     not the initial feasible solution
+      //   - we need to actually force this when we call Sample
+      //     below, otherwise there won't be a solution.
+      // (If we called the current GetBest, then we could cover the
+      //  second two, at least, but this would mean having a reference
+      //  to the optimizer before creating the Optimize function.)
+      //
+      // But stop early if the result will be worse (at least
+      // pre-cropping) than the current best.
+      if (w * h > width * height) {
+        // TODO: Would be better if we could return a penalty
+        // in this case, here probably dw + dh...
+        // printf("%d * %d > %d * %d", w, h, width, height);
+        return std::nullopt;
       }
-      if (config.max_height != 0) {
-        CHECK(height <= config.max_height);
-      }
-      *out_width = width;
-      *out_height = height;
-      *out_positions = std::move(pos);
-      if (efficiency != nullptr) {
-        *efficiency = total_area / (float)(width * height);
-      }
-      return true;
-    }
-
-    // Bounds for search. Although width*height is an upper bound,
-    // we might get a smaller area by searching a larger width
-    // but smaller height, for example.
-    const int max_width =
-      config.max_height == 0 ? (int)ceilf(width * 1.5) :
-      std::max(config.max_height, (int)ceilf(width * 1.5));
-    const int max_height =
-      config.max_height == 0 ? (int)ceilf(height * 1.5) :
-      std::max(config.max_height, (int)ceilf(height * 1.5));
-
-    // area larger than we will ever see from a successful result
-    const double large_area = max_width * max_height + 1;
-
-    // Otherwise, try again...
-    auto Optimize = [&rects, width, height, large_area](
-        double dw, double dh, double dheur) -> double {
-        int w = round(dw);
-        int h = round(dh);
-        bool heur = dheur > 0.5;
-
-        // But stop early if the result will be worse (at least
-        // pre-cropping) than the current best.
-        if (w * h > width * height)
-          return large_area + dw + dh;
-
-        // TODO: Cache.
-        // TODO: Check budget.
-        std::vector<std::pair<int, int>> tmp_pos;
-        int unpacked = TryPack(rects, w, h, heur, &tmp_pos);
+      #endif
+      
+      std::vector<std::pair<int, int>> tmp_pos;      
+      switch (method) {
+      case STB_BL:
+      case STB_BF: {
+        // printf("STB %d x %d (%d)...\n", w, h, method);
+        int unpacked = TryPackSTB(rects, w, h, method == STB_BL, &tmp_pos);
         if (unpacked > 0) {
+          // TODO: As above, good to be able to indicate the gradient...
+          // printf("Unpacked %d\n", unpacked);
+          return std::nullopt;
           // Worse than our upper bound.
-          return large_area + 10 * unpacked;
+          // return large_area + 10 * unpacked;
         } else {
           CHECK_EQ(rects.size(), tmp_pos.size()) <<
             "rects: " << rects.size() << " tmp pos: " << tmp_pos.size();
           // Otherwise, minimize the area.
           const auto [cw, ch] = Crop(rects, tmp_pos);
-          return cw * ch;
+          // printf("ok stb %d x %d!\n", cw, ch);
+          return std::make_optional(
+              std::make_pair((double)cw * ch,
+                             std::make_tuple(cw, ch, std::move(tmp_pos))));
         }
-      };
+        break;
+      }
+        
+      case ESCAPE: {
+        // Always succeeds.
+        // printf("Esc %d x %d...\n", w, h);
+        TryPackEsc(w, h, rects, &tmp_pos);
+        const auto [cw, ch] = Crop(rects, tmp_pos);
+        // printf("ok %d x %d\n", cw, ch);
+        return std::make_optional(
+            std::make_pair((double)cw * ch,
+                           std::make_tuple(cw, ch, std::move(tmp_pos))));
+      }
+        
+      default:
+        // printf("bad method\n");
+        LOG(FATAL) << "illegal method in Optimize";
+      }
+    };
+  
+  RectOptimizer optimizer(Optimize);
+  // Start with our existing solution. PERF: Note that this currently
+  // recomputes the packing we already had, for uniformity!
+  optimizer.Sample(
+      RectOptimizer::arg_type{{arg_width, arg_height, STB_BL}, {}});
+  CHECK(optimizer.GetBest().has_value());
 
-    const auto [aargs, v] =
-      Opt::Minimize3D(Optimize,
-                      {max_input_width, max_input_height, 0},
-                      {max_width, max_height, 1.0},
-                      // XXX from passes?
-                      1000);
+  const int width_ub =
+    config.max_width == 0 ? total_width :
+    std::min(total_width, config.max_width);
+  const int height_ub =
+    config.max_height == 0 ? total_height :
+    std::min(total_height, config.max_height);
+  
+  const std::array<std::pair<int, int>, 3> int_bounds =
+    // upper bounds are one past the max value to try
+    {std::make_pair(max_input_width, width_ub + 1),
+     std::make_pair(max_input_height, height_ub + 1),
+     std::make_pair(0, NUM_METHODS)};
 
-    if (v < large_area) {
-      const auto [dw, dh, dheur] = aargs;
-      CHECK(0 == TryPack(rects, round(dw), round(dh), dheur > 0.5,
-                         &pos));
-      std::tie(width, height) = Crop(rects, pos);
-      printf("Improved through optimizer to %d,%d!\n", width, height);
-    } else {
-      // since it is deterministic and we didn't improve any bounds,
-      // we won't do anything new even if we run another pass. Once
-      // we have more approaches here, or if we shuffle the rectangles
-      // or something, then it might make sense to continue.
-      nothing_left_to_try = true;
-    }
-  }
+  const std::optional<int> passes =
+    config.budget_passes > 0 ? std::make_optional(config.budget_passes) :
+    std::nullopt;
 
-  // Impossible.
-  return false;
+  const std::optional<double> seconds =
+    config.budget_seconds > 0 ?
+    std::make_optional((double)config.budget_seconds) :
+    std::nullopt;
+
+  optimizer.Run(
+      int_bounds, {},
+      passes,
+      std::nullopt,
+      seconds,
+      // stop if we achieve an optimal result, too
+      {(double)total_area});
+
+  auto best = optimizer.GetBest();
+  CHECK(best.has_value()) << "Bug: We supposedly seeded this with a "
+    "feasible solution!";
+
+  OutputType best_out = std::get<2>(best.value());
+  std::tie(*out_width, *out_height, *out_positions) = best_out;
+  return true;
 }
 
 
