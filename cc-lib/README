@@ -34,6 +34,9 @@ The base64 code originally came from a public domain utility;
 I've only made light changes there, and let's call that public domain
 as well.
 
+The xml parser is based on the MIT-licensed yxml tokenizer. So my
+contributions here are MIT-licensed as well. See xml.cc.
+
 The re2 subdirectory comes from Google and community contributors. See
 re2/LICENSE for its permissive license.
 
@@ -100,6 +103,8 @@ simpledxf     - Simple and incomplete parser for DXF (CAD) files. This
                 file format is insanely complex, but this does some
                 superficial parsing that may work for extracting basic
                 geometry.
+xml           - Simple in-memory XML parser using STL data structures, based
+                on yxml.
 crypt/        - Simple implementations of cryptographic algorithms like AES,
                 SHA256 and (deprecated) MD5. Perhaps arcfour should be in here
                 too.
