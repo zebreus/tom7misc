@@ -202,6 +202,8 @@ struct
       val lambda = Real.rem(lambda + 180.0 - lambda0, 360.0) - 180.0
       (* Convert from degrees to radians. *)
       val lambda = torad lambda
+      (* FIXME Spotted when porting to C++. This should be phi, right?
+         Otherwise we are ignoring that argument. *)
       val phi = torad lambda
 
       val sinphi = LRM.sin phi
@@ -301,6 +303,9 @@ struct
       val normx = LR.checkFloat (x / lambda)
       val normy = LR.checkFloat (y / lambda)
     in
+      (* FIXME -- found when porting to c++. atan2's arguments
+         are y,x to keep you on your toes. should see what code
+         depends on this bug though. *)
       SOME (LR.checkFloat (LRM.atan2 (normx, normy)))
     end handle Overflow => NONE
              | Div => NONE
