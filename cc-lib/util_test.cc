@@ -95,8 +95,30 @@ static void TestJoin() {
 static void TestSplit() {
   CHECK_EQ((vector<string>{"hello", "world"}),
            Util::Split("hello world", ' '));
+
+  /*
+  for (const string s : Util::Split("hello  world", ' '))
+    printf("(%s)\n", s.c_str());
+  */
+
+  CHECK_EQ((vector<string>{"hello", "", "world"}),
+           Util::Split("hello  world", ' '));
   CHECK_EQ((vector<string>{"", ""}), Util::Split(" ", ' '));
   CHECK_EQ(vector<string>{""}, Util::Split("", 'x'));
+}
+
+static void TestTokens() {
+  auto IsSpace = [](char c) { return c == ' ' || c == '\n'; };
+  /*
+  for (const string s : Util::Tokens(" \n hello  world\n\n", IsSpace))
+    printf("[%s]\n", s.c_str());
+  */
+  CHECK_EQ((vector<string>{"hello", "world"}),
+           Util::Tokens(" \n hello  world\n\n", IsSpace));
+  CHECK_EQ((vector<string>{}),
+           Util::Tokens(" \n \n\n", IsSpace));
+  CHECK_EQ((vector<string>{}),
+           Util::Tokens("", IsSpace));
 }
 
 static void TestCdup() {
@@ -215,6 +237,7 @@ int main(int argc, char **argv) {
   TestPad();
   TestJoin();
   TestSplit();
+  TestTokens();
   TestCdup();
   TestPrefixSuffix();
   TestParseDouble();

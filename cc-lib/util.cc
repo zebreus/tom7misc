@@ -246,7 +246,7 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
          fd, (uint64)st.st_size, sizeof (st.st_size),
          std::is_signed<decltype (st.st_size)>::value ? "yes" : "no");
   #endif
-  
+
   T ret;
   int64 next_pos = 0;
   int64 size_guess = st.st_size;
@@ -306,13 +306,13 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
     static constexpr int64 MAX_READ_SIZE = 1LL << 24;
     static_assert(MAX_READ_SIZE < ((1LL << 31) - 1),
                   "Must fit in signed 32-bit gamut.");
-    
+
     const int64 read_size =
       std::min(size_guess - next_pos, MAX_READ_SIZE);
     #if READFILE_DEBUG
     printf("Attempt to read %lld bytes\n", read_size);
     #endif
-    
+
     // Bytes are required to be contiguous from C++11;
     // use .front() instead of [next_pos] since the former,
     // introduced in C++11, will prove we have a compatible
@@ -322,7 +322,7 @@ static T ReadAndCloseFile(FILE *f, const T *magic_opt) {
     #if READFILE_DEBUG
     printf("%lld bytes were read\n", (int64)bytes_read);
     #endif
-    
+
     // We read exactly this many bytes.
     next_pos += bytes_read;
     #if READFILE_DEBUG
@@ -1079,7 +1079,7 @@ bool Util::library_matches(char k, const string &s) {
 
    XXX Remove escape-specific logic in here.
    Can just use remove from stdio.h
-   
+
 */
 bool Util::remove(const string &f) {
   if (!ExistsFile(f.c_str())) return true;
@@ -1221,18 +1221,7 @@ string Util::Join(const vector<string> &parts,
 }
 
 vector<string> Util::Split(const string &s, char sep) {
-  vector<string> out;
-  int64 start = 0;
-  for (int64 i = 0; i < (int64)s.size(); i++) {
-    if (s[i] == sep) {
-      // Substring constructor.
-      out.emplace_back(s, start, i - start);
-      start = i + 1;
-      i++;
-    }
-  }
-  out.emplace_back(s, start, string::npos);
-  return out;
+  return Fields(s, [sep](char c) { return c == sep; });
 }
 
 string Util::Replace(string src,
@@ -1244,7 +1233,7 @@ string Util::Replace(string src,
 
   // PERF: Do this in one pass (copying) instead of repeatedly calling replace,
   // which does n^2 work.
-  
+
   /* idx represents the position in src which, for all chars greater
      than it, there begins no match of findme */
   for (;;) {
@@ -1265,7 +1254,7 @@ string Util::Replace(string src,
 vector<int> Util::Factorize(int n) {
   // Bad input.
   if (n <= 1) return {};
-  
+
   vector<int> out;
 
   // Reduce twos. Because the input is positive, we'll
@@ -1276,15 +1265,15 @@ vector<int> Util::Factorize(int n) {
   }
 
   // Factor to try. Once we eliminate a factor there's no
-  // reason to ever try it again, so 
+  // reason to ever try it again, so
   int f = 3;
-  
+
   while (f * f <= n) {
     while (n % f == 0) {
       out.push_back(f);
       n /= f;
     }
-    
+
     f += 2;
   }
 

@@ -30,7 +30,7 @@ struct Util {
   static int stoi(const std::string &s);
   // Hard-coded to two decimal places. Avoid.
   static std::string dtos(double d);
-  
+
   // No error handling; it just returns "".
   static string ReadFile(const string &filename);
   // Same but returns nullopt if the file can't be read.
@@ -38,7 +38,7 @@ struct Util {
 
   // Returns true upon success.
   static bool WriteFile(const string &filename, const string &contents);
-  
+
   // Reads the lines in the file to the vector. Ignores all
   // carriage returns, including ones not followed by newline.
   static std::vector<string> ReadFileToLines(const string &f);
@@ -47,14 +47,14 @@ struct Util {
   // Returns true upon success.
   static bool WriteLinesToFile(const string &f,
                                const std::vector<string> &lines);
-  
+
   static std::vector<string> SplitToLines(const string &s);
 
   // Calls f on each line (without the newline), streamed from
   // the file. Ignores \r. Suitable for very large files.
   template<class F>
   static void ForEachLine(const string &filename, F f);
-  
+
   // As above, but treat the first token on each line as a map
   // key. Ignores empty lines.
   static std::map<string, string> ReadFileToMap(const string &f);
@@ -67,7 +67,7 @@ struct Util {
   static std::vector<uint64_t> ReadUint64File(const string &filename);
   static bool WriteUint64File(const string &filename,
                               const std::vector<uint64_t> &contents);
-  
+
   static std::vector<string> ListFiles(const string &dir);
 
   // Join the strings in the input vector with the given delimiter.
@@ -77,11 +77,21 @@ struct Util {
   static string Join(const std::vector<std::string> &pieces,
                      const std::string &sep);
 
-  // Split the string on the given character. The output
-  // always contains at least one element; split("", "x")
-  // returns {""}.
+  // Split the string on the given character. Consecutive separators
+  // will yield empty elements. The output always contains at least
+  // one element; split("", "x") returns {""}.
   static std::vector<string> Split(const std::string &s, char sep);
-  
+
+  // Like Split, but with an arbitrary function (char -> bool) determining
+  // the separator.
+  template<class F>
+  static std::vector<std::string> Fields(const std::string &s, F is_sep);
+
+  // Like Fields, but skips empty fields. Result is empty if all characters
+  // are separators.
+  template<class F>
+  static std::vector<std::string> Tokens(const std::string &s, F is_sep);
+
   // XXX terrible names
   static int shout(int, string, unsigned int &);
   static string shint(int b, int i);
@@ -156,7 +166,7 @@ struct Util {
 
   /* mylevels/good_tricky   to
      mylevels               to
-     . 
+     .
      (Currently only handles relative paths.) */
   static string cdup(const string &dir);
 
@@ -173,7 +183,7 @@ struct Util {
   // Same, for prefix.
   static bool TryStripPrefix(string_view prefix, string_view *s);
   static bool TryStripPrefix(string_view suffix, string *s);
-  
+
   /* split the string up to the first
      occurrence of character c. The character
      is deleted from both the returned string and
@@ -192,11 +202,11 @@ struct Util {
   static string Pad(int n, string s);
   // Same, with the given character instead of ' '.
   static string PadEx(int n, string s, char c);
-  
+
   // All whitespace becomes a single space. Leading and trailing
   // whitespace is dropped.
   static string NormalizeWhitespace(const string &s);
-  
+
   /* try to remove the file. If it
      doesn't exist or is successfully
      removed, then return true. */
@@ -232,7 +242,7 @@ struct Util {
   /* replace all occurrences of 'findme' with 'replacewith' in 'src' */
   static string Replace(string src, const string &findme,
                         const string &replacewith);
-  
+
   /* called minimum, maximum because some includes
      define these with macros, ugh */
   static int minimum(int a, int b) {
@@ -295,5 +305,41 @@ void Util::ForEachLine(const std::string &s, F f) {
   if (!line.empty()) f(line);
   fclose(file);
 }
+
+template<class F>
+std::vector<std::string> Util::Tokens(const std::string &s, F f) {
+  std::vector<std::string> out;
+  int64_t start = 0;
+  for (int64_t i = 0; i < (int64_t)s.size(); i++) {
+    if (f(s[i])) {
+      if (i - start != 0) {
+        // Substring constructor.
+        out.emplace_back(s, start, i - start);
+      }
+      start = i + 1;
+      // (i incremented in loop)
+    }
+  }
+  if (start != (int64_t)s.size())
+    out.emplace_back(s, start, string::npos);
+  return out;
+}
+
+template<class F>
+std::vector<std::string> Util::Fields(const std::string &s, F f) {
+  std::vector<std::string> out;
+  int64_t start = 0;
+  for (int64_t i = 0; i < (int64_t)s.size(); i++) {
+    if (f(s[i])) {
+      // Substring constructor.
+      out.emplace_back(s, start, i - start);
+      start = i + 1;
+      // (i incremented in loop)
+    }
+  }
+  out.emplace_back(s, start, string::npos);
+  return out;
+}
+
 
 #endif
