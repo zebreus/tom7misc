@@ -21,6 +21,9 @@
 (In a pinch, "show processlist;" in mysql admin can likely
  show you the active connections.)
 
+Consider PM2.5+ sensing:
+https://www.adafruit.com/product/4505
+
 Humidity sensing:
 
 Beware, many of these are some custom protocol. i2c is probably a much

@@ -312,13 +312,13 @@ Match group 1 is MUMBLE.")
 
 (defconst typescript--font-lock-keywords-2
   (append typescript--font-lock-keywords-1
-          (list (list typescript--keyword-re 1 font-lock-keyword-face)
+          (list (cons typescript--constant-re font-lock-constant-face)
+                (cons typescript--basic-type-re font-lock-type-face)
+                (list typescript--keyword-re 1 font-lock-keyword-face)
                 (list "\\_<for\\_>"
                       "\\s-+\\(each\\)\\_>" nil nil
                       (list 1 'font-lock-keyword-face))
-                (cons "\\_<yield\\(\\*\\|\\_>\\)" 'font-lock-keyword-face)
-                (cons typescript--basic-type-re font-lock-type-face)
-                (cons typescript--constant-re font-lock-constant-face)))
+                (cons "\\_<yield\\(\\*\\|\\_>\\)" 'font-lock-keyword-face)))
   "Level two font lock keywords for `typescript-mode'.")
 
 ;; typescript--pitem is the basic building block of the lexical
@@ -620,12 +620,6 @@ Match group 1 is MUMBLE.")
   "Face used to highlight 'this' keyword."
   :group 'typescript)
 
-;; -tom7
-(defface typescript-any-face
-  '((t (:inherit font-lock-keyword-face)))
-  "Face used to highlight 'any' keyword."
-  :group 'typescript)
-
 (defface typescript-primitive-face
   '((t (:inherit font-lock-keyword-face)))
   "Face used to highlight builtin types."
@@ -656,6 +650,11 @@ The value must be no less than minus `typescript-indent-level'."
   "Enable indenting of switch case and default clauses to
 replicate tsserver behaviour. Indent level is taken to be
 `typescript-indent-level'."
+  :type 'boolean
+  :group 'typescript)
+
+(defcustom typescript-indent-list-items t
+  "Enable indenting of list items, useful for certain code styles."
   :type 'boolean
   :group 'typescript)
 
@@ -1994,10 +1993,6 @@ This performs fontification according to `typescript--class-styles'."
     ("\\(this\\)\\."
      (1 'typescript-this-face))
 
-    ;; special highlight for `any' type --tom7
-    ("\\<\\(any\\)\\>"
-     (1 'typescript-any-face))
-    
     (,typescript--access-modifier-re (1 'typescript-access-modifier-face))
     (,typescript--basic-type-re (1 'typescript-primitive-face))
 
@@ -2545,7 +2540,8 @@ moved on success."
                        (if (and in-switch-p typescript-indent-switch-clauses)
                            (+ indent typescript-indent-level)
                          indent)))
-                 (unless same-indent-p
+                 (when (and (not same-indent-p)
+                            typescript-indent-list-items)
                    (forward-char)
                    (skip-chars-forward " \t"))
                  (if continued-expr-p
@@ -2982,7 +2978,7 @@ Key bindings:
      (folding-add-to-marks-list 'typescript-mode "// {{{" "// }}}" )))
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.ts$" . typescript-mode))
+(add-to-list 'auto-mode-alist '("\\.ts\\'" . typescript-mode))
 
 (provide 'typescript-mode)
 

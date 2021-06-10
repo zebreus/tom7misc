@@ -1,14 +1,9 @@
 
 // TODO: SERVER_URL argument to net constructor
 const SERVER_URL = 'http://spacebar.org/f/a/rtcgame';
-const XSSI_HEADER = ")]}'\n";
 const POLL_MS = 5000;
 
 const VERBOSE = false;
-
-// Approximately 0.
-// XXX in net
-let timeOrigin = window.performance.now();
 
 // ?
 let RTCPEER_ARGS = {
@@ -35,10 +30,11 @@ enum PeerType {
 }
 
 
-// TODO: Can reduce space/bandwidth on server by having a custom
-// encoder for SDPs built into the JS code. If we do this we
-// probably want some version info in the encoded SDP?
+// TODO: Can reduce bandwidth/space on server (each is about 1kb)
+// by having a custom encoder for SDPs built into the JS code. If we
+// do this we probably want some version info in the encoded SDP.
 function encodeSdp(sdp : string) {
+  // console.log(sdp);
   const b64 = btoa(sdp);
   return b64.replace(/[+]/g, '_').replace(/[/]/g, '.');
 }
@@ -297,6 +293,10 @@ function todoError(e : any) {
 // participants.
 class Net {
 
+  // Approximately 0.
+  // (Note this is not actually used! Should it be?)
+  readonly timeOrigin : number = window.performance.now();
+
   // Initialized upon joining, and then stays the same for the length
   // of the session.
   roomUid : string = '';
@@ -355,7 +355,7 @@ class Net {
     peer.channel = channel;
     peer.channel.onmessage = e => {
       if (VERBOSE) {
-        console.log('message on channel');
+        console.log('[tc] message on channel');
         console.log(e);
       }
       peer.processMessage(e.data);
@@ -389,9 +389,10 @@ class Net {
           console.log('got data channel!');
         peer.channel = e.channel;
         peer.channel.onmessage = e => {
-          if (VERBOSE)
-            console.log('message on channel');
-          console.log(e);
+          if (VERBOSE) {
+            console.log('[ic] message on channel');
+            console.log(e);
+          }
           peer.processMessage(e.data);
         };
       }
@@ -482,7 +483,7 @@ class Net {
       // Round ping to integer to make these message smaller... peers
       // don't care about sub-millisecond timing.
       let roundp = isFinite(ct.p) ? Math.round(ct.p) : ct.p;
-      // Note that awol time here is stored as absoluve (time since
+      // Note that awol time here is stored as absolute (time since
       // timeOrigin) but sent as relative (how long ago). Different
       // peers of course disagree on timeOrigin, and we avoid using unix
       // epoch so that we don't have to worry about clock skew / NTP /

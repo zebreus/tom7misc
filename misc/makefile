@@ -44,5 +44,9 @@ cubedex.exe : cubedex.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $
 cubedex2.exe : cubedex2.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/util.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+console.exe : console.o $(CC_LIB)/base/stringprintf.o
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 clean :
 	rm -f *.exe *.o core *.s
+

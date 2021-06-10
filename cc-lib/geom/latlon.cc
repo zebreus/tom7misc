@@ -164,7 +164,7 @@ double LatLon::DistNauticalMiles(LatLon a, LatLon b) {
 
 LatLon::Projection LatLon::Mercator(double lambda0) {
   return [lambda0](LatLon pos) -> pair<double, double> {
-      const auto [phi, lambda1] = pos;
+    const auto [phi, lambda1] = pos.ToDegs();
       // Shift longitude to arrange for new central meridian, and make
       // sure the result has range ~180.0--180.0.
       double lambda_deg = PlusMinusMod(lambda1 - lambda0, 180.0);
@@ -194,20 +194,20 @@ LatLon::Projection LatLon::Equirectangular(double phi1) {
 LatLon::Projection LatLon::PlateCarree() {
   // Same as Equirectangluar(0), but saves the degenerate cos/multiply.
   return [](LatLon pos) {
-      const auto [phi, lambda] = pos;
+      const auto [phi, lambda] = pos.ToDegs();
       return make_pair(DEGS_TO_RAD * lambda, DEGS_TO_RAD * phi);
     };
 }
 
 // http://mathworld.wolfram.com/GnomonicProjection.html
 LatLon::Projection LatLon::Gnomonic(LatLon pos0) {
-  const auto [phi1d, lambda0d] = pos0;
+  const auto [phi1d, lambda0d] = pos0.ToDegs();
   const double phi1 = DEGS_TO_RAD * phi1d;
   const double lambda0 = DEGS_TO_RAD * lambda0d;
   const double sin_phi1 = sin(phi1);
   const double cos_phi1 = cos(phi1);
   return [lambda0, sin_phi1, cos_phi1](LatLon pos) {
-      const auto [phid, lambdad] = pos;
+      const auto [phid, lambdad] = pos.ToDegs();
       double phi = DEGS_TO_RAD * phid;
       double lambda = DEGS_TO_RAD * lambdad;
       double sin_phi = sin(phi);
@@ -222,7 +222,7 @@ LatLon::Projection LatLon::Gnomonic(LatLon pos0) {
 }
 
 LatLon::InverseProjection LatLon::InverseGnomonic(LatLon pos0) {
-  const auto [phi1d, lambda0d] = pos0;
+  const auto [phi1d, lambda0d] = pos0.ToDegs();
   double phi1 = DEGS_TO_RAD * phi1d;
   double lambda0 = DEGS_TO_RAD * lambda0d;
   double sin_phi1 = sin(phi1);

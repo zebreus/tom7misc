@@ -1,6 +1,3 @@
-#include "../cc-lib/image.h"
-#include "../cc-lib/util.h"
-#include "../cc-lib/base/stringprintf.h"
 
 #include <iostream>
 #include <fstream>
@@ -8,114 +5,17 @@
 #include <cstring>
 #include <chrono>
 
+#include "../cc-lib/image.h"
+#include "../cc-lib/util.h"
+#include "../cc-lib/base/stringprintf.h"
+#include "../cc-lib/packrect.h"
+
 using namespace std;
 
 constexpr bool VERBOSE = false;
 
 // #define BACKCOLOR 0x33, 0x88, 0x33, 0xAA
 #define BACKCOLOR 0x338833AA
-
-/* smaller growrate gives slightly better output,
-   with substantially worse performance */
-#define GROWRATE 4
-
-struct UsedMap {
-  /* PERF could use less memory with a bit mask,
-     but this program is run off-line, so that
-     seems pretty pointless */
-  char *arr = nullptr;
-  int w = 0, h = 0;
-
-  UsedMap(int ww, int hh) : w(ww), h(hh) {
-    arr = (char*)malloc(ww * hh * sizeof(char));
-    memset(arr, 0, ww * hh * sizeof (char));
-  }
-
-  /* new areas are unused */
-  void Resize(int ww, int hh) {
-    char *na = (char*)malloc(ww * hh * sizeof (char));
-
-    /* start unused */
-    memset(na, 0, ww * hh * sizeof (char));
-
-    /* copy old used */
-    for (int xx = 0; xx < w; xx++) {
-      for (int yy = 0; yy < h; yy++) {
-        if (Used(xx, yy) && xx < ww && yy < hh) {
-          na[yy * ww + xx] = 1;
-        }
-      }
-    }
-
-    free(arr);
-    arr = na;
-    w = ww;
-    h = hh;
-  }
-
-  bool Used(int x, int y) {
-    return arr[x + y * w];
-  }
-
-  bool UsedRange(int x, int y, int ww, int hh) {
-    for (int yy = 0; yy < hh; yy++) {
-      for (int xx = 0; xx < ww; xx++) {
-        if (Used(x + xx, y + yy)) return true;
-      }
-    }
-    return false;
-  }
-
-  void Use(int x, int y) {
-    arr[x + y * w] = 1;
-  }
-
-  void UseRange(int x, int y, int ww, int hh) {
-    for (int yy = 0; yy < hh; yy++) {
-      for (int xx = 0; xx < ww; xx++) {
-        Use(x + xx, y + yy);
-      }
-    }
-  }
-
-  ~UsedMap() {
-    free(arr);
-  }
-};
-
-static std::pair<int, int> FitImage(UsedMap *um, int w, int h) {
-  for (;;) {
-    for (int yy = 0; yy <= um->h - h; yy++) {
-      for (int xx = 0; xx <= um->w - w; xx++) {
-        if (!um->UsedRange(xx, yy, w, h)) {
-          um->UseRange(xx, yy, w, h);
-          return make_pair(xx, yy);
-        }
-      }
-    }
-
-    /* didn't fit. expand to make the image more square. */
-    /* PERF insane */
-    int nw = um->w, nh = um->h;
-
-    /* minimum sane sizes */
-    if (um->w < w) {
-      nw = w;
-    } else if (um->h < h) {
-      nh = h;
-    } else if (um->w <= um->h) {
-      nw = um->w + GROWRATE;
-    } else {
-      nh = um->h + GROWRATE;
-    }
-
-    um->Resize(nw, nh);
-
-    if (VERBOSE) {
-      printf("Resized to %dx%d\n", nw, nh);
-    }
-  }
-}
 
 struct PackResult {
   // Size of packed image.
@@ -126,28 +26,32 @@ struct PackResult {
 
 static PackResult PackToImage(
     const vector<pair<string, unique_ptr<ImageRGBA>>> &to_pack) {
-  std::unique_ptr<UsedMap> um(new UsedMap{1, 1});
+  PackRect::Config config;
+  config.budget_passes = 10000;
 
-  // x, y, w, h
+  std::vector<std::pair<int, int>> rects;
+  rects.reserve(to_pack.size());
+  for (const auto &[sym_, img] : to_pack)
+    rects.emplace_back(img->Width(), img->Height());
+
   PackResult result;
-  for (const auto &[name, pic] : to_pack) {
-    /* find a place where it will fit. */
-    const auto [x, y] =
-      FitImage(um.get(), pic->Width(), pic->Height());
+  std::vector<std::pair<int, int>> positions;
+  CHECK(PackRect::Pack(config,
+                       rects,
+                       &result.width, &result.height,
+                       &positions)) << "Should succeed on unconstrained "
+    "problem!";
 
-    if (VERBOSE)
-      printf("%s at %d/%d\n", name.c_str(), x, y);
-
-    CHECK(result.all_symbols.find(name) == result.all_symbols.end()) <<
-      name << " appeared more than once";
-
-    result.all_symbols[name] = make_tuple(x, y, pic->Width(), pic->Height());
+  CHECK_EQ(positions.size(), to_pack.size());
+  for (int i = 0; i < to_pack.size(); i++) {
+    const auto &[sym, pic] = to_pack[i];
+    const auto [x, y] = positions[i];
+    result.all_symbols[sym] = make_tuple(x, y,
+                                         pic->Width(), pic->Height());
   }
-
-  result.width = um->w;
-  result.height = um->h;
   return result;
 }
+
 
 int main(int argc, char **argv) {
 
@@ -311,7 +215,9 @@ int main(int argc, char **argv) {
   auto time_end = std::chrono::steady_clock::now();
   std::chrono::duration<double> time_elapsed = time_end - time_start;
 
-  printf("Done in %.3fs!\n", time_elapsed.count());
+  printf("Done in %.3fs! Size %d x %d\n",
+         time_elapsed.count(),
+         packed.Width(), packed.Height());
 
   return 0;
 }

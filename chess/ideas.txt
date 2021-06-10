@@ -97,3 +97,7 @@ Ryan Malloy:
 graph of the engine evaluation of the board over the course of the
 game looks similar to a graph of the performance of the New York Stock
 Exchange over its entire history.
+
+Luke Sciarappa:
+"Single Player" but looking for check, not mate, as mate is defined
+by the opponent's moves, which is not what single player is about!

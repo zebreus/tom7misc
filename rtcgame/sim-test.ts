@@ -254,7 +254,9 @@ console.log('------');
 // it will complain that the second condition is always
 // satisfied because nframe is known to be 1. This is incorrect!
 // See typescript issue #9998. Bleh. The "solution" seems to be
-// to use accessor methods to read the property.
+// to use accessor methods to read the property. Another option
+// is to do "sim = sim" (jcreed's questionable idea) to flush
+// typescript's "knowledge".
 
 // Test really basic simulation scenario.
 const testSimpleSim = () => {

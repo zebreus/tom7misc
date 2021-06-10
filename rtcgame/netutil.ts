@@ -1,3 +1,6 @@
+
+const XSSI_HEADER = ")]}'\n";
+
 /*
   XMLHttpRequest but as a promise.
   Resolve is called with the string containing the response.
@@ -54,6 +57,8 @@ const requestJSON = (url : string, params: Record<string, string>) => {
         let r = res.substr(XSSI_HEADER.length);
         return JSON.parse(r);
       } else {
+        console.log('response w/o xssi: ');
+        console.log(res);
         throw 'no XSSI header in response';
       }
     });

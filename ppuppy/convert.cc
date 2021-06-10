@@ -868,7 +868,7 @@ static std::unique_ptr<ImageRGB> Load(const string &filename) {
   CHECK_EQ(img->width, 256) << filename << ": " << img->width;
   CHECK_EQ(img->height, 240) << filename << ": " << img->height;
   printf("ScreenFromFile %s\n", filename.c_str());
-  return std::move(img);
+  return img;
 }
 
 Screen ScreenFromFileDithered(const string &filename) {

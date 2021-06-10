@@ -7,6 +7,13 @@
 // to run 20 times.
 // If you want to test every last byte, and non-random patterns,
 // you'll need to use some other program.
+//
+// TODO: Additionally testing sequential or page-sized accesses is
+// probably a good idea, though. Random accesses will mean frequent
+// cache misses (good because it means more main-memory accesses), but
+// these accesses have more latency than they could be because we
+// (probably?) can't take advantage of open rows on the DRAM. In any
+// case, sequential access is realistic so we care about validating it!
 
 #include <vector>
 #include <utility>
@@ -52,7 +59,7 @@ int main(int argc, char **argv) {
 
   constexpr size_t ONE_GIG = (1024LL * 1024LL * 1024LL);
   constexpr size_t GIG_IN_64 = ONE_GIG / 8;
-  
+
   const int gb = atoi(argv[1]);
   const size_t bytes = (size_t)gb * ONE_GIG;
   printf("Allocating %d GB = %lld bytes\n", gb, bytes);
@@ -71,7 +78,7 @@ int main(int argc, char **argv) {
   }
   printf("Running %d times.\n", times);
   CHECK(times > 0);
-  
+
   fflush(stdout);
 
   vector<uint64*> chunks;
@@ -116,7 +123,7 @@ int main(int argc, char **argv) {
 
     printf("[%d/%d] OK!\n", i + 1, times);
     fflush(stdout);
-  } 
+  }
 
   for (uint64 *p : chunks) {
     printf("Freeing at %p...\n", p);

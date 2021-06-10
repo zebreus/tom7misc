@@ -359,7 +359,7 @@ CC_LIB=../cc-lib
 SDLUTILOBJECTS= $(CC_LIB)/sdl/sdlutil.o $(CC_LIB)/sdl/font.o
 # cc-lib assumes it can include something like "base/macros.h"
 CCLIBINCLUDES=-I$(CC_LIB)
-CCLIBOBJECTS= $(CC_LIB)/util.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/image.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o
+CCLIBOBJECTS= $(CC_LIB)/util.o $(CC_LIB)/crypt/md5.o $(CC_LIB)/base64.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/image.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/packrect.o $(CC_LIB)/opt/opt.o
 
 
 # XXX reenable sound

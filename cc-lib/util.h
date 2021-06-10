@@ -160,6 +160,7 @@ struct Util {
 
   static double ParseDouble(const string &s,
                             double default_value = 0.0);
+  static std::optional<double> ParseDoubleOpt(const string &s);
 
   /* number of entries (not . or ..) in dir d */
   static int dirsize(string d);

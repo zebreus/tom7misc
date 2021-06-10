@@ -436,15 +436,23 @@ static void OpenWithEditor(const string &pass,
   CHECK(Util::remove(tmpname));
 }
 
-// Generate a strong password which sacrificies a little bit of
-// entropy for readability.
-string RandomEZ(int len) {
+// Generate a password with the given number of chunks (each the
+// given length), consisting of characters from chars and separated
+// by a random character from seps (can be just a single char if you
+// like.)
+static string RandomChunks(int chunks,
+                           int chunk_len,
+                           const std::string &chars,
+                           const std::string &seps) {
   CryptRand cr;
 
   auto CharFrom = [&cr](const string &s) -> char {
     auto RandTo8 = [&cr](int n) -> uint8 {
 	CHECK(n > 0) << "Must be non-empty!";
 	CHECK(n <= 256) << "Only implemented for one-byte stream";
+        // e.g. for seps = ".", avoid possibly expensive
+        // rand generation
+        if (n == 1) return 0;
 	uint8 mask = (uint8)(n - 1);
 	mask |= mask >> 1;
 	mask |= mask >> 2;
@@ -462,26 +470,30 @@ string RandomEZ(int len) {
     return s[idx];
   };
   
-  const string chars =
-    // Avoiding l, I, 1, O, 0
-    "ABCDEFGHJKLMNPQRSTUVWXYZ"
-    "abcdefghijkmnopqrstuvwxyz"
-    "23456789";
-  const string seps = ".-_";
-  const int spansize = 5;
   string out;
-  out.reserve(len);
-  int cur_span = 0;
-  while (out.size() < len) {
-    if (cur_span == spansize) {
-      out += CharFrom(seps);
-      cur_span = 0;
-    } else {
+  out.reserve((chunk_len + 1) * chunks);
+  for (int chunk = 0; chunk < chunks; chunk++) {
+    for (int c = 0; c < chunk_len; c++) {
       out += CharFrom(chars);
-      cur_span++;
     }
+
+    // No separator at the end, though.
+    if (chunk != chunks - 1)
+      out += CharFrom(seps);
   }
   return out;
+}
+
+// Generate a strong password which sacrificies a little bit of
+// entropy for readability.
+static string RandomEZOld() {
+  return RandomChunks(
+      5, 5,
+      // Avoiding l, I, 1, O, 0
+      "ABCDEFGHJKLMNPQRSTUVWXYZ"
+      "abcdefghijkmnopqrstuvwxyz"
+      "23456789",
+      ".-_");
 }
 
 int main(int argc, char **argv) {
@@ -495,7 +507,16 @@ int main(int argc, char **argv) {
     printf("%s\n", pass.c_str());
     return 0;
   } else if (cmd == "ezgen") {
-    const string pass = RandomEZ(29);
+    const string pass = RandomEZOld();
+    printf("%s\n", pass.c_str());
+    return 0;
+  } else if (cmd == "lowgen") {
+    const string pass =
+      RandomChunks(
+          6, 5,
+          "abcdefghijkmnopqrstuvwxyz"
+          "23456789",
+          ".");
     printf("%s\n", pass.c_str());
     return 0;
   }

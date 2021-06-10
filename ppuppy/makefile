@@ -4,7 +4,7 @@ talk : deconstruct.ctalk
 jstalk : jstalk/slides.js
 
 CXX=g++
-# CXX=x86_64-w64-mingw32-g++
+CXX=x86_64-w64-mingw32-g++
 # consider O2 for releases...
 CXXFLAGS=-Wall -Wno-sign-compare -Wno-deprecated-declarations -O2 --std=c++17 -I ../cc-lib  -DPSS_STYLE=1 -DDISABLE_I2C -I ../cc-lib/pi
 # XXX for windows
@@ -65,8 +65,11 @@ detalk.exe : detalk.o deconversion.o talk.o screen.o convert.o $(ALL_CCLIB_OBJEC
 # jstalk/slides.js : detalk.exe deconstruct.ctalk
 # 	./detalk.exe deconstruct.ctalk deconstruct.screens jstalk
 
-jstalk/slides.js : detalk.exe youtube.ctalk
-	./detalk.exe youtube.ctalk youtube.screens jstalk
+# jstalk/slides.js : detalk.exe youtube.ctalk
+# 	./detalk.exe youtube.ctalk youtube.screens jstalk
+
+jstalk/slides.js : detalk.exe retropit.ctalk
+	./detalk.exe retropit.ctalk retropit.screens jstalk
 
 maketalk.exe : maketalk.o talk.o screen.o convert.o $(ALL_CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)

@@ -50,6 +50,11 @@
 #define ANSI_PURPLE "\x1B[1;35;40m"
 #define ANSI_RESET "\x1B[m"
 
+// Synchronous update
+// XXX they don't work?
+#define MINTTY_SYNCHRONOUS_START "\x1BP=1s\x1B\\"
+#define MINTTY_SYNCHRONOUS_END "\x1BP=2s\x1B\\"
+
 using Move = Position::Move;
 using namespace std;
 
@@ -522,6 +527,33 @@ struct Status {
   int64 run_start = 0;
 };
 
+// Same as printf, but using WriteConsole on windows so that we
+// can communicate with pseudoterminal. Without this, ansi escape
+// codes will work (VirtualTerminalProcessing) but not mintty-
+// specific ones.
+// TODO: It would be better if we had a way of stripping the
+// terminal codes if they are not supported?
+static void CPrintf(const char* format, ...) {
+  // Do formatting.
+  va_list ap;
+  va_start(ap, format);
+  string result;
+  StringAppendV(&result, format, ap);
+  va_end(ap);
+
+  #ifdef __MINGW32__
+  DWORD n = 0;
+  WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE),
+               result.c_str(),
+               result.size(),
+               &n,
+               nullptr);
+  #else
+  printf("%s", result.c_str());
+  #endif
+}
+
+
 vector<Status> status;
 // Gross that we send the Totals object, but it's easier than
 // managing our own status thread...
@@ -555,8 +587,10 @@ static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
                             minutes, seconds);
     };
 
+  CPrintf("%s", MINTTY_SYNCHRONOUS_START);
+
   for (int i = 0; i < status.size() + 3; i++) {
-    printf("%s", ANSI_PREVLINE);
+    CPrintf("%s", ANSI_PREVLINE);
   }
   int64 done_all = 0, free_all = 0;
   for (int i = 0; i < status.size(); i++) {
@@ -564,7 +598,7 @@ static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
     free_all += status[i].free_games;
   }
 
-  printf("\n-------- %lld " ANSI_YELLOW " done " ANSI_RESET
+  CPrintf("\n-------- %lld " ANSI_YELLOW " done " ANSI_RESET
          " -- %lld " ANSI_GREEN " free ----- "
          "%s"
          ANSI_WHITE " ---------" ANSI_CLEARTOEOL "\n",
@@ -576,7 +610,7 @@ static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
     if (status[i].run_start > 0)
       minsec = AnsiMinSec(now - status[i].run_start);
 
-    printf(ANSI_GREY "[" ANSI_CYAN "%s. " ANSI_YELLOW "%s"
+    CPrintf(ANSI_GREY "[" ANSI_CYAN "%s. " ANSI_YELLOW "%s"
            ANSI_GREY "] " ANSI_WHITE "%s" ANSI_GREEN " vs " ANSI_BLUE "%s"
            ANSI_RESET ": "
            ANSI_WHITE "%s   %s" ANSI_CLEARTOEOL "\n",
@@ -587,13 +621,14 @@ static void ShowStatus(int64 now, Totals *totals, bool force_show = false) {
            status[i].msg.c_str(),
            minsec.c_str());
   }
-  printf(ANSI_PURPLE "Neediest: " ANSI_WHITE "%s"
+  CPrintf(ANSI_PURPLE "Neediest: " ANSI_WHITE "%s"
          ANSI_GREEN " vs "
          ANSI_BLUE "%s" ANSI_RESET " -- " ANSI_YELLOW "%lld"
          ANSI_RESET " game(s) played" ANSI_CLEARTOEOL "\n",
          std::get<0>(neediest).c_str(),
          std::get<1>(neediest).c_str(),
          std::get<2>(neediest));
+  CPrintf("%s", MINTTY_SYNCHRONOUS_END);
 }
 
 static void TournamentThread(int thread_id,

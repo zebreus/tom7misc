@@ -79,7 +79,7 @@ sudo apt autoclean
 # sudo apt-get install default-libmysqlclient-dev libmysql++-dev
 # sudo apt-get install default-libmariaclient-dev libmaria++-dev
 
-sudo apt install subversion emacs-nox libmariadb-dev-compat mariadb-client dos2unix i2c-tools apt-config-auto-update
+sudo apt install subversion emacs-nox libmariadb-dev-compat mariadb-client dos2unix i2c-tools apt-config-auto-update screen
 
 (auto-update I think just runs "apt update", but you still need to manually up*grade*)
 

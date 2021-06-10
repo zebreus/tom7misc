@@ -13,7 +13,7 @@ struct Bounds {
   // Expand the bounding box to contain the point.
   void Bound(double x, double y);
   void Bound(std::pair<double, double> p);
-  
+
   // Returns true if no points have been added. When the bounding box
   // is empty, several functions below should not be called.
   bool Empty() const;
@@ -46,10 +46,10 @@ struct Bounds {
   // which we then want to represent as a graphic of a different
   // scale and origin, like a 1000x1000 pixel box whose bottom left is
   // 0,0 (call these "screen coordinates").
-  // 
+  //
   // This type is a transformation conveniently derived from the
   // bounds and desired screen coordinates. (It's called a scaler but
-  // it also involves at least a translation. The scaler is immutable,
+  // it also involves at least a translation.) The scaler is immutable,
   // even if the bounds it was derived from is modified.
   struct Scaler {
     // Maps a point from the original coordinates (i.e., what was inserted
@@ -65,6 +65,8 @@ struct Bounds {
     std::pair<double, double> Unscale(std::pair<double, double> p) const;
 
     // Derive new scalers.
+
+    // Flip the contents of the screen along the y axis.
     Scaler FlipY() const;
     // Shifts the display of the data so that a data point that formerly
     // displayed at screen coordinates (0,0) now appears at
@@ -73,7 +75,7 @@ struct Bounds {
     // Scale data in the x/y dimensions by the given factor (i.e. 1.0
     // does nothing).
     Scaler Zoom(double xfactor, double yfactor) const;
-    
+
   private:
     friend class Bounds;
     double xoff = 0.0, yoff = 0.0;

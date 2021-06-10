@@ -782,7 +782,7 @@ string Util::chop(string &line) {
   return "";
 }
 
-double Util::ParseDouble(const string &s, double default_value) {
+optional<double> Util::ParseDoubleOpt(const string &s) {
   // To get rid of leading and trailing whitespace. strtod will skip
   // it anyway, but we want to be able to check that the whole
   // string was consumed in a simple way.
@@ -796,10 +796,16 @@ double Util::ParseDouble(const string &s, double default_value) {
          endptr);
 #endif
   if (endptr == ss.c_str() + ss.size()) {
-    return d;
+    return make_optional(d);
   } else {
-    return default_value;
+    return nullopt;
   }
+}
+
+double Util::ParseDouble(const string &s, double default_value) {
+  optional<double> od = ParseDoubleOpt(s);
+  if (od.has_value()) return od.value();
+  else return default_value;
 }
 
 /* PERF same */

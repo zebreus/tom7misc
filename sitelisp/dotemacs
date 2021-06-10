@@ -37,6 +37,21 @@
     (set-background-color "grey15")
     (set-foreground-color "grey80")
     ;; set the font depending on the platform
+
+    ;; For some reason I don't understand, new windows ("frames") don't
+    ;; get all of the font customization. I thought this was related
+    ;; to themes (?), like some said ((class color) (background dark))
+    ;; instead of just 't', but that didn't fix it. We can force
+    ;; recaculating the problematic ones here, though.
+
+    ;; (face-spec-recalc 'custom-state-face f)
+    (face-spec-recalc 'font-lock-constant-face f)
+    (face-spec-recalc 'fringe f)
+    ;; (face-spec-recalc 'isearch-lazy-highlight-face f)    
+    (face-spec-recalc 'region f)
+    ;; (face-spec-recalc 'show-paren-match-face f)    
+    (face-spec-recalc 'minibuffer-prompt f)
+
     (cond
      ((eq window-system 'w32)
       (progn
@@ -70,6 +85,8 @@
      (t t))
      (modify-frame-parameters f (list '(height . 72)))
     ))
+
+
 
 (add-hook 'after-make-frame-functions 'frame-settings)
 
@@ -858,11 +875,11 @@
  '(blue ((t (:foreground "skyblue"))))
  '(comint-highlight-prompt ((((background dark)) (:foreground "#AAEEEE"))))
  '(cursor ((t (:background "lightskyblue" :foreground "black"))))
- '(custom-state-face ((((class color) (background dark)) (:foreground "#99CC99"))))
+ '(custom-state-face ((t (:foreground "#99CC99"))))
  '(flyspell-duplicate-face ((t (:foreground "#DDDDAA"))))
  '(flyspell-incorrect-face ((t (:foreground "#EE6666"))))
  '(font-lock-comment-face ((t (:foreground "Grey50"))))
- '(font-lock-constant-face ((((class color) (background dark)) (:foreground "#AABBCC"))))
+ '(font-lock-constant-face ((t (:foreground "#AABBCC"))))
  '(font-lock-doc-string-face ((t (:foreground "MediumSeaGreen"))))
  '(font-lock-function-name-face ((t (:foreground "skyblue"))))
  '(font-lock-keyword-face ((t (:foreground "#DDDDAA"))))
@@ -870,12 +887,12 @@
  '(font-lock-string-face ((t (:foreground "#99BB77"))))
  '(font-lock-type-face ((t (:foreground "#BBBBDD"))))
  '(font-lock-variable-name-face ((t (:foreground "skyblue"))))
- '(fringe ((((class color) (background dark)) (:background "grey10" :foreground "grey25"))))
+ '(fringe ((t (:background "grey10" :foreground "grey25"))))
  '(green ((t (:foreground "SeaGreen"))))
  '(highlight ((t (:foreground "White" :background "SlateGrey"))))
  '(info-xref ((t (:foreground "#AAFFFF" :weight bold))))
  '(isearch ((t (:foreground "LightSlateBlue" :background "navyblue"))))
- '(isearch-lazy-highlight-face ((((class color) (background dark)) (:background "grey30"))))
+ '(isearch-lazy-highlight-face ((t (:background "grey30"))))
  '(outline-mode-eight-face ((t (:foreground "#7777CC"))))
  '(outline-mode-five-face ((t (:foreground "#8888DD"))))
  '(outline-mode-four-face ((t (:foreground "#9999EE"))))
@@ -885,10 +902,10 @@
  '(outline-mode-three-face ((t (:foreground "#AAAAEE"))))
  '(outline-mode-two-face ((t (:foreground "#BBBBFF"))))
  '(paren-match ((t (:background "grey35"))))
- '(region ((((class color) (background dark)) (:background "darkslategray" :foreground "white"))))
+ '(region ((t (:background "darkslategray" :foreground "white"))))
  '(secondary-selection ((t (:foreground "white" :background "darkslategray"))))
- '(show-paren-match-face ((((class color)) (:background "#222244"))))
- '(minibuffer-prompt ((((background dark)) (:foreground "#CCCCAA"))))
+ '(show-paren-match-face ((t (:background "#222244"))))
+ '(minibuffer-prompt ((t (:foreground "#CCCCAA"))))
  '(tom7-article ((t (:foreground "grey65"))))
  '(tom7-careful ((t (:foreground "#E7CCCC"))))
  '(tom7-header ((t (:foreground "#EE99EE"))))
@@ -913,8 +930,8 @@
  '(twelf-font-parm-face ((t (:foreground "#99CC99"))))
  '(twelf-font-percent-key-face ((t (:stipple nil :background "grey15" :foreground "#AA88FF" :inverse-video nil :box nil :strike-through nil :overline nil :underline nil :slant normal :weight bold :height 134 :width normal :family "misc-fixed"))))
  '(widget-button-face ((t (:foreground "black" :weight bold))))
- '(widget-documentation-face ((((class color) (background dark)) (:foreground "LightSeaGreen")) (((class color) (background light)) (:foreground "dark green")) (t nil)))
- '(widget-inactive-face ((((class grayscale color) (background dark)) (:foreground "grey40"))))
+ '(widget-documentation-face ((t (:foreground "LightSeaGreen")) (((class color) (background light)) (:foreground "dark green")) (t nil)))
+ '(widget-inactive-face ((t (:foreground "grey40"))))
  '(woman-bold-face ((t (:foreground "#AAEEFF" :weight bold))))
  '(zmacs-region ((t (:foreground "green" :background "darkslategrey")))))
 

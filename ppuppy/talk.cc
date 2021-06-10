@@ -13,6 +13,8 @@
 #include "convert.h"
 #include "base/stringprintf.h"
 
+using namespace std;
+
 Talk Talk::Load(const string &src_filename) {
   vector<string> src = Util::ReadFileToLines(src_filename);
   CHECK(!src.empty()) << src_filename << " empty / not found?";
