@@ -3144,7 +3144,7 @@ int SDL_main(int argc, char **argv) {
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen);
 
-  font = Font::create(screen,
+  font = Font::Create(screen,
                       "font.png",
                       FONTCHARS,
                       FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
