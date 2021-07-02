@@ -1,0 +1,9 @@
+
+Utilities for working with (or creating) fonts, including both
+bitmap and vector fonts.
+
+See ../stb_truetype.h for loading truetype fonts.
+
+See ../../bit7 for some embeddable fonts (in progress); maybe
+should be moved here?
+
