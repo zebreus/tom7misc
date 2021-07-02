@@ -1950,7 +1950,7 @@ FontProblem::VectorizeSDF(
     ImageRGBA *islands,
     bool verbose) {
 
-  const auto [depth, eqclass, parentmap] = [&config, &sdf, islands](){
+  const IslandFinder::Maps maps = [&config, &sdf, islands](){
       // Make thresholded bitmap.
       ImageA bitmap(sdf.Width(), sdf.Height());
       for (int y = 0; y < sdf.Height(); y++) {
@@ -1961,66 +1961,15 @@ FontProblem::VectorizeSDF(
         }
       }
 
-      IslandFinder finder(bitmap);
-      finder.Fill();
-
-      if (islands != nullptr) *islands = finder.DebugBitmap();
-
-      return finder.GetMaps();
+      return IslandFinder::Find(bitmap, islands);
     }();
 
-  // Get the depth of each equivalence class that occurs, and the
-  // maximum depth.
-  std::unordered_map<uint8, uint8> eqclass_depth;
-  int max_depth = 0;
-  for (int y = 0; y < depth.Height(); y++) {
-    for (int x = 0; x < depth.Width(); x++) {
-      uint8 d = depth.GetPixel(x, y);
-      uint8 eqc = eqclass.GetPixel(x, y);
-      auto it = eqclass_depth.find(eqc);
-      if (it == eqclass_depth.end()) {
-        eqclass_depth[eqc] = d;
-      } else {
-        CHECK(it->second == d) << "Inconsistent depth for eqclass "
-                               << eqc << " at " << x << "," << y;
-      }
-      max_depth = std::max((int)d, max_depth);
-    }
-  }
-
-  // Assuming the depth of eqc is at least d, get the ancestor
-  // that is at depth exactly d.
-  auto GetAncestorAtDepth =
-    [&parentmap, &eqclass_depth](uint8 d, uint8 eqc) -> uint8 {
-      for (;;) {
-        if (d == 0) return 0;
-        auto dit = eqclass_depth.find(eqc);
-        CHECK(dit != eqclass_depth.end()) << eqc << " has no depth?";
-        if (dit->second == d) return eqc;
-
-        auto pit = parentmap.find(eqc);
-        CHECK(pit != parentmap.end()) << eqc << " has no parent?";
-        eqc = pit->second;
-      }
-    };
-
-  // XXX seems that an explicit tree structure would have been
-  // nicer, but these tend to be very small, so no big deal to
-  // keep doing map lookups.
-  auto HasAncestor = [&parentmap](uint8 eqc, uint8 parent) -> bool {
-      for (;;) {
-        // First test this, allowing 0 as a parent.
-        if (eqc == parent) return true;
-        // ... but if we are not looking for 0, this means we reached
-        // the root.
-        if (eqc == 0) return false;
-
-        auto pit = parentmap.find(eqc);
-        CHECK(pit != parentmap.end()) << eqc << " has no parent?";
-        eqc = pit->second;
-      }
-    };
-
+  const auto &depth = maps.depth;
+  const auto &eqclass = maps.eqclass;
+  const auto &parentmap = maps.parentmap;    
+  const auto &eqclass_depth = maps.eqclass_depth;
+  const int max_depth = maps.max_depth;
+  
   // Next up, generate a series of nested contours.
   // For each equivalence class, first simplify matters by
   // filling its interior so that it is never less than
@@ -2071,10 +2020,10 @@ FontProblem::VectorizeSDF(
         for (int x = 0; x < eqclass.Height(); x++) {
           if ((int)depth.GetPixel(x, y) >= d) {
             uint8 eqc = eqclass.GetPixel(x, y);
-            if (HasAncestor(eqc, parent)) {
+            if (maps.HasAncestor(eqc, parent)) {
               // This must exist because the depth is at least d, and
               // d > 0.
-              uint8 ancestor = GetAncestorAtDepth(d, eqc);
+              uint8 ancestor = maps.GetAncestorAtDepth(d, eqc);
               eqclasses[ancestor].insert(eqc);
             }
           }

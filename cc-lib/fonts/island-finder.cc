@@ -365,3 +365,68 @@ ImageA IslandFinder::Preprocess(const ImageA &bitmap) {
   return ret;
 }
 
+
+IslandFinder::Maps IslandFinder::Find(const ImageA &bitmap,
+                                      ImageRGBA *islands_debug) {
+  IslandFinder finder(bitmap);
+  finder.Fill();
+  if (islands_debug != nullptr) *islands_debug = finder.DebugBitmap();
+
+  // XXX just do this directly
+  const auto [dm, em, p] = finder.GetMaps();
+  std::tuple<ImageA, ImageA, std::map<uint8, uint8>> m = finder.GetMaps();
+  Maps maps;
+  maps.depth = std::move(dm);
+  maps.eqclass = std::move(em);
+  maps.parentmap = std::move(p);
+
+
+  // Get the depth of each equivalence class that occurs, and the
+  // maximum depth.
+  maps.max_depth = 0;
+  for (int y = 0; y < maps.depth.Height(); y++) {
+    for (int x = 0; x < maps.depth.Width(); x++) {
+      uint8 d = maps.depth.GetPixel(x, y);
+      uint8 eqc = maps.eqclass.GetPixel(x, y);
+      auto it = maps.eqclass_depth.find(eqc);
+      if (it == maps.eqclass_depth.end()) {
+        maps.eqclass_depth[eqc] = d;
+      } else {
+        CHECK(it->second == d) << "Inconsistent depth for eqclass "
+                               << eqc << " at " << x << "," << y;
+      }
+      maps.max_depth = std::max((int)d, maps.max_depth);
+    }
+  }
+
+  return maps;
+}
+
+uint8 IslandFinder::Maps::GetAncestorAtDepth(uint8 d, uint8 eqc) const {
+  for (;;) {
+    if (d == 0) return 0;
+    auto dit = eqclass_depth.find(eqc);
+    CHECK(dit != eqclass_depth.end()) << eqc << " has no depth?";
+    if (dit->second == d) return eqc;
+
+    auto pit = parentmap.find(eqc);
+    CHECK(pit != parentmap.end()) << eqc << " has no parent?";
+    eqc = pit->second;
+  }
+}
+
+// PERF Seems an explicit tree structure would have been better, but these
+// maps tend to be very small, so no big deal to keep doing lookups...
+bool IslandFinder::Maps::HasAncestor(uint8 eqc, uint8 parent) const {
+  for (;;) {
+    // First test this, allowing 0 as a parent.
+    if (eqc == parent) return true;
+    // ... but if we are not looking for 0, this means we reached
+    // the root.
+    if (eqc == 0) return false;
+    
+    auto pit = parentmap.find(eqc);
+    CHECK(pit != parentmap.end()) << eqc << " has no parent?";
+    eqc = pit->second;
+  }
+}
