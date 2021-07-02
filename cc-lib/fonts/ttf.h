@@ -1,6 +1,6 @@
 
-#ifndef _LOWERCASE_TTF_H
-#define _LOWERCASE_TTF_H
+#ifndef _CC_LIB_FONTS_TTF_H
+#define _CC_LIB_FONTS_TTF_H
 
 #include <string>
 #include <vector>
@@ -13,6 +13,14 @@
 #include "base/logging.h"
 #include "image.h"
 
+// "Simplified" interface to TrueType fonts (based on stb_truetype),
+// with utilities, including an extremely basic export to FontForge
+// .SFD files.
+
+// TODO: Maybe better if we decoupled the abstract representation
+// from the loading of TTFs, so that we don't need to depend on
+// stb_truetype just to export a generated SFD.
+//
 // TODO: Move more implementations to .cc
 // TODO: Only expose normalized coordinates...
 struct TTF {

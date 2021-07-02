@@ -1,8 +1,6 @@
 
-// XXX to cc-lib? ttf.h?
-
-#ifndef _LOWERCASE_BEZIER_H
-#define _LOWERCASE_BEZIER_H
+#ifndef _CC_LIB_GEOM_BEZIER_H
+#define _CC_LIB_GEOM_BEZIER_H
 
 #include <tuple>
 

@@ -13,13 +13,13 @@
 #include "network.h"
 
 #include "image.h"
-#include "ttf.h"
+#include "fonts/ttf.h"
 #include "fonts/island-finder.h"
 #include "threadutil.h"
 #include "lines.h"
 #include "arcfour.h"
 #include "randutil.h"
-#include "bezier.h"
+#include "geom/bezier.h"
 #include "timer.h"
 #include "opt/opt.h"
 
@@ -1966,8 +1966,6 @@ FontProblem::VectorizeSDF(
 
   const auto &depth = maps.depth;
   const auto &eqclass = maps.eqclass;
-  const auto &parentmap = maps.parentmap;    
-  const auto &eqclass_depth = maps.eqclass_depth;
   const int max_depth = maps.max_depth;
   
   // Next up, generate a series of nested contours.

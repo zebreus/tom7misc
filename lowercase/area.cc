@@ -19,7 +19,7 @@
 #include "threadutil.h"
 #include "city/city.h"
 
-#include "ttf.h"
+#include "fonts/ttf.h"
 #include "stb_truetype.h"
 // #include "ttfops.h"
 

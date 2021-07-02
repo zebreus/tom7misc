@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <bit>
 
-#include "ttf.h"
+#include "fonts/ttf.h"
 
 class Network;
 class ArcFour;

@@ -1,5 +1,5 @@
 
-default : latlon_test.exe
+default : latlon_test.exe bezier_test.exe
 
 BASE=../base/logging.o ../base/stringprintf.o
 
@@ -21,6 +21,16 @@ latlon_test.o : latlon_test.cc latlon.h
 
 latlon_test.exe : latlon.o latlon_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
+
+bezier.o : bezier.cc bezier.h
+	$(CXX) $(CXXFLAGS) $< -o $@ -c
+
+bezier_test.o : bezier_test.cc bezier.h
+	$(CXX) $(CXXFLAGS) $< -o $@ -c
+
+bezier_test.exe : bezier.o bezier_test.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 
 clean :
 	rm -f *.o *.exe

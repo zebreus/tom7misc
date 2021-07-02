@@ -5,7 +5,7 @@
 #include <optional>
 #include <tuple>
 
-#include "ttf.h"
+#include "fonts/ttf.h"
 
 struct TTFOps {
 

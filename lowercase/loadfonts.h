@@ -10,7 +10,7 @@
 #include <memory>
 
 #include "fontdb.h"
-#include "ttf.h"
+#include "fonts/ttf.h"
 #include "image.h"
 #include "font-problem.h"
 

@@ -30,13 +30,13 @@
 #include "opt/opt.h"
 
 #include "ttfops.h"
-#include "ttf.h"
+#include "fonts/ttf.h"
 #include "fontdb.h"
 #include "font-problem.h"
 #include "loadfonts.h"
 #include "network.h"
 
-#include "bezier.h"
+#include "geom/bezier.h"
 
 #define FONTCHARS " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?" /* removed icons */
 #define FONTSTYLES 7

@@ -1,5 +1,7 @@
 
-default : island-finder_test.exe
+default : island-finder_test.exe $(TESTCOMPILE)
+
+TESTCOMPILE=ttf.o
 
 BASE=../base/logging.o ../base/stringprintf.o ../image.o ../stb_image.o ../stb_image_write.o
 
@@ -21,6 +23,8 @@ island-finder_test.o : island-finder_test.cc island-finder.h
 
 island-finder_test.exe : island-finder.o island-finder_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
+
+# TODO: TTF tests!
 
 clean :
 	rm -f *.o *.exe

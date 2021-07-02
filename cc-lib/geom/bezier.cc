@@ -27,8 +27,6 @@
 
 using namespace std;
 
-#define TESTMODE
-
 struct Point2 {
   float x = 0.0f;
   float y = 0.0f;
