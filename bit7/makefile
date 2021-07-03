@@ -40,5 +40,8 @@ testembed.exe : testembed.o $(CCLIB_OBJECTS)
 makesfd.exe : makesfd.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
+dfx-pasement.sfd : dfx-pasement.png dfx-pasement.cfg makesfd.exe
+	./makesfd.exe dfx-pasement.cfg $@
+
 clean :
 	rm -f *.o *.exe

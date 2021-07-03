@@ -76,6 +76,37 @@ struct Glyph {
   // This is a 1-bit bitmap; 0 means "off" (transparent) and any other value is "on".
   ImageA pic;
 };
+
+struct Config {
+  string pngfile;
+  
+  string name;
+  string copyright;
+
+  int charbox_width = 0;
+  int charbox_height = 0;
+  int descent = 0;
+};
+}
+
+static Config ParseConfig(const std::string &cfgfile) {
+  Config config;
+  std::map<string, string> m = Util::ReadFileToMap(cfgfile);
+  CHECK(!m.empty()) << "Couldn't read config file " << cfgfile;
+  config.pngfile = m["pngfile"];
+  CHECK(!config.pngfile.empty()) << "Required config line: pngfile";
+  config.name = m["name"];
+  CHECK(!config.name.empty()) << "Required config line: name";
+  config.copyright = m["copyright"];
+  config.charbox_width = atoi(m["charbox-width"].c_str());
+  CHECK(config.charbox_width > 0) << "Config line charbox-width must be >0";
+  config.charbox_height = atoi(m["charbox-height"].c_str());
+  CHECK(config.charbox_height > 0) << "Config line charbox-height must be >0";  
+  config.charbox_height = atoi(m["charbox-height"].c_str());
+  config.descent = atoi(m["descent"].c_str());
+  CHECK(config.descent >= 0) << "Config line charbox-height must be >= 0";  
+  
+  return config;
 }
 
 // Scale these coordinates, probably?
@@ -350,26 +381,28 @@ static TTF::Char Vectorize(const Glyph &glyph) {
 }
 
 int main(int argc, char **argv) {
-  CHECK(argc == 5) << "Usage: ./makesfd.exe charbox_w charbox_h descent file.png\n";
-  const int charbox_width = atoi(argv[1]);
-  const int charbox_height = atoi(argv[2]);
-  const int descent = atoi(argv[3]);
-  const string filename = argv[4];
-  CHECK(charbox_width > 0) << "Width must be a number";
-  CHECK(charbox_height > 0) << "Height must be a number";
-  CHECK(descent >= 0) << "Descent must be a number";
-  CHECK(!filename.empty());
+  CHECK(argc == 3 || argc == 4) <<
+    "Usage: ./makesfd.exe config.cfg out.sfd [testpattern.png]\n";
 
+  const Config config = ParseConfig(argv[1]);
+  const string out_sfd = argv[2];
+  const string out_test_png = (argc > 3) ? argv[3] : "";
+  
   // 'spacing' is presentational in makegrid; we derive the width
   // from the black line in each character cell.
   
-  std::unique_ptr<ImageRGBA> input(ImageRGBA::Load(filename));
-  CHECK(input.get() != nullptr) << "Couldn't load: " << filename;
-  CHECK(CHARS_ACROSS * charbox_width == input->Width() &&
-        CHARS_DOWN * charbox_height == input->Height()) <<
-    "Image should be " << (CHARS_ACROSS * charbox_width) << "x"
-                       << (CHARS_DOWN * charbox_height) << " but got "
-                       << input->Width() << "x" << input->Height();
+  std::unique_ptr<ImageRGBA> input(ImageRGBA::Load(config.pngfile));
+  CHECK(input.get() != nullptr) << "Couldn't load: " << config.pngfile;
+  CHECK(CHARS_ACROSS * config.charbox_width == input->Width() &&
+        CHARS_DOWN * config.charbox_height == input->Height()) <<
+    "Image with configured charboxes " << config.charbox_width << "x"
+                                       << config.charbox_height <<
+    " should be " << (CHARS_ACROSS * config.charbox_width) << "x"
+                  << (CHARS_DOWN * config.charbox_height) << " but got "
+                  << input->Width() << "x" << input->Height();
+
+  // XXX make configurable
+  constexpr int extra_linespacing = 1;
   
   std::map<int, Glyph> font;
   
@@ -381,11 +414,11 @@ int main(int argc, char **argv) {
 
       // Get width, by searching for a column of all black.
       auto GetWidth = [&]() {
-          for (int x = 0; x < charbox_width; x++) {
+          for (int x = 0; x < config.charbox_width; x++) {
             auto IsBlackColumn = [&]() {
-                int sx = cx * charbox_width + x;
-                for (int y = 0; y < charbox_height; y++) {
-                  int sy = cy * charbox_height + y;
+                int sx = cx * config.charbox_width + x;
+                for (int y = 0; y < config.charbox_height; y++) {
+                  int sy = cy * config.charbox_height + y;
                   uint32 color = input->GetPixel32(sx, sy);
                   if (color != 0x000000FF) return false;
                 }
@@ -401,10 +434,10 @@ int main(int argc, char **argv) {
       const int width = GetWidth();
 
       auto IsEmpty = [&]() {
-          for (int y = 0; y < charbox_height; y++) {
-            for (int x = 0; x < charbox_width; x++) {
-              int sx = cx * charbox_width + x;
-              int sy = cy * charbox_height + y;
+          for (int y = 0; y < config.charbox_height; y++) {
+            for (int x = 0; x < config.charbox_width; x++) {
+              int sx = cx * config.charbox_width + x;
+              int sy = cy * config.charbox_height + y;
               uint32 color = input->GetPixel32(sx, sy);
               if (color == 0xFFFFFFFF) return false;
             }
@@ -426,13 +459,13 @@ int main(int argc, char **argv) {
         return -1;
       } else {
         // Glyph, but possibly an empty one...
-        ImageA pic{width, charbox_height};
+        ImageA pic{width, config.charbox_height};
         pic.Clear(0x00);
-      
-        for (int y = 0; y < charbox_height; y++) {
+        
+        for (int y = 0; y < config.charbox_height; y++) {
           for (int x = 0; x < width; x++) {
-            int sx = cx * charbox_width + x;
-            int sy = cy * charbox_height + y;
+            int sx = cx * config.charbox_width + x;
+            int sy = cy * config.charbox_height + y;
             bool bit = input->GetPixel32(sx, sy) == 0xFFFFFFFF;
             if (bit) pic.SetPixel(x, y, 0xFF);
           }
@@ -445,8 +478,10 @@ int main(int argc, char **argv) {
       }
     }
   }
-
-  {
+  
+  if (!out_test_png.empty()) {
+    const int output_height = config.charbox_height + extra_linespacing;
+    
     // Output test pattern PNG.
     #define INFTY "\x13"
     #define NOTES "\x12"
@@ -471,8 +506,6 @@ int main(int argc, char **argv) {
      "  TTTTTT QQQQ` " INFTY  " you'd put a pillow!",
      "  http://.com/ " INFTY  " (watch--said I--beloved)",
     };
-
-    const int output_height = charbox_height + 1;
     
     ImageRGBA test(400, output_height * testpattern.size());
     test.Clear32(0x000033FF);
@@ -493,10 +526,10 @@ int main(int argc, char **argv) {
       }
     }
     
-    test.ScaleBy(3).Save("makesdf-testpattern.png");
+    test.ScaleBy(3).Save(out_test_png);
   }
 
-  const double one_pixel = 1.0 / charbox_height;
+  const double one_pixel = 1.0 / config.charbox_height;
   
   TTF::Font ttf_font;
   for (const auto &[index, glyph] : font) {
@@ -517,16 +550,17 @@ int main(int argc, char **argv) {
     }
   }
 
-  ttf_font.baseline = 1.0 - (descent * one_pixel);
-  ttf_font.linegap = one_pixel;
+  ttf_font.baseline = 1.0 - (config.descent * one_pixel);
+  ttf_font.linegap = extra_linespacing * one_pixel;
   // Might only affect FontForge, but it at least looks better in the
   // editor without anti-aliasing.
   ttf_font.antialias = false;
   // Reserved for Tom 7!
   ttf_font.vendor = {'F', 'r', 'o', 'g'};
+  ttf_font.copyright = config.copyright;
   
-  const string sfd = ttf_font.ToSFD("Bitmap");
-  Util::WriteFile("generated.sfd", sfd);
+  const string sfd = ttf_font.ToSFD(config.name);
+  Util::WriteFile(out_sfd, sfd);
   
   return 0;
 }
