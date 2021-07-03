@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
 	  if (x < OLD_CHAR_WIDTH && y < OLD_CHAR_HEIGHT) {
 	    int sx = cx * OLD_CHAR_WIDTH + x;
 	    int sy = cy * OLD_CHAR_HEIGHT + y;
-	    uint32 c = input->GetPixel(sx, sy);
+	    uint32 c = input->GetPixel32(sx, sy);
 	    int dx = cx * NEW_CHAR_WIDTH + x;
 	    int dy = cy * NEW_CHAR_HEIGHT + y;
 	    out.SetPixel32(dx, dy, c);

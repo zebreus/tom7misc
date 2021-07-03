@@ -47,7 +47,7 @@ int main(int argc, char **argv) {
 	  if (x < char_width && y < char_height) {
 	    int sx = cx * char_width + x;
 	    int sy = cy * char_height + y;
-	    bool bit = (input->GetPixel(sx, sy) & 0x000000FF) > 0x0000007F;
+	    bool bit = (input->GetPixel32(sx, sy) & 0x000000FF) > 0x0000007F;
 	    bits[c * (char_width * char_height) + y * char_width + x] = bit;
 	  }
 	}

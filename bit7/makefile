@@ -1,5 +1,5 @@
 
-default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe
+default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe
 
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-gcc
@@ -8,6 +8,8 @@ CXXFLAGS=--std=c++17 -O2 -Wall -I../cc-lib/
 LFLAGS=-static
 
 CCLIB_OBJECTS=../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/image.o ../cc-lib/base/logging.o ../cc-lib/base/stringprintf.o ../cc-lib/util.o
+
+CCLIB_FONT_OBJECTS=../cc-lib/fonts/island-finder.o ../cc-lib/fonts/ttf.o ../cc-lib/stb_truetype.o
 
 %.o : %.cc
 	@$(CXX) $(CXXFLAGS) -c $^ -o $@
@@ -33,6 +35,9 @@ testembed.o : testembed.cc embed9x9.h
 	@echo -n ","
 
 testembed.exe : testembed.o $(CCLIB_OBJECTS)
+	$(CXX) $(LFLAGS) $^ -o $@
+
+makesfd.exe : makesfd.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
 clean :

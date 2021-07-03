@@ -39,7 +39,7 @@ int main(int argc, char **argv) {
 	  if (x < CHAR_WIDTH && y < CHAR_HEIGHT) {
 	    int sx = cx * CHAR_WIDTH + x;
 	    int sy = cy * CHAR_HEIGHT + y;
-	    bool bit = (input->GetPixel(sx, sy) & 0x000000FF) > 0x0000007F;
+	    bool bit = (input->GetPixel32(sx, sy) & 0x000000FF) > 0x0000007F;
 	    bits[c * (CHAR_WIDTH * CHAR_HEIGHT) + y * CHAR_WIDTH + x] = bit;
 	  }
 	}
@@ -109,6 +109,7 @@ int main(int argc, char **argv) {
     (*line)[COLS - 1] = *B7_NS;
   }
 
+  // TODO: Instead of PX, just resize at end
   ImageRGBA out{COLS * CHAR_WIDTH * PX, LINES * CHAR_HEIGHT * PX};
   out.Clear(0, 0, 0, 0);
   auto SetPixel = [&out](int x, int y) {
