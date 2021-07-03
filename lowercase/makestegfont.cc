@@ -167,9 +167,10 @@ static void GenerateOne(const Network &make_lowercase,
   font.baseline = FontProblem::TTFBaseline(SDF_CONFIG);
   font.linegap = cfg.linegap;
   font.extra_scale = cfg.extra_scale;
+  font.copyright = cfg.copyright;
   for (const auto &[c, ch] : chars) font.chars[c] = ch;
 
-  Util::WriteFile(cfg.filename, font.ToSFD(cfg.font_name, cfg.copyright));
+  Util::WriteFile(cfg.filename, font.ToSFD(cfg.font_name));
   printf("Wrote %s\n", cfg.filename.c_str());
 }
 

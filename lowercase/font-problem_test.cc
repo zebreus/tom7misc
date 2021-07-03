@@ -225,7 +225,7 @@ static void Test8x8SDF() {
         }
       }
       ImageA expected = FontProblem::SDFFromBitmap(CONFIG, img);
-      ImageA actual = FontProblem::SDF36From8x8(bimg);
+      ImageA actual = FontProblem::SDF36From8x8Uppercase(bimg);
       CheckSameBitmap(expected.GreyscaleRGBA(),
                       actual.GreyscaleRGBA());
     };

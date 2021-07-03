@@ -305,6 +305,7 @@ void UI::ResultThread() {
   ImageA bitmap(DRAWING_SIZE, DRAWING_SIZE);
   FontProblem::Gen5Result gen5result;
   for (;;) {
+    [[maybe_unused]]
     double copy_ms = 0.0, result_ms = 0.0, images_ms = 0.0;
     bool recompute_sdf = false;
     float gamma_low_value = 1.0f, gamma_up_value = 1.0f;

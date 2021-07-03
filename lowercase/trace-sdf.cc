@@ -281,8 +281,8 @@ int main(int argc, char **argv) {
   TTF::Font font;
   font.baseline = FontProblem::TTFBaseline(SDF_CONFIG);
   font.chars = {{'e', ttf_char}};
-
-  Util::WriteFile("trace.sfd", font.ToSFD("Traced", "Fake"));
+  font.copyright = "Fake";
+  Util::WriteFile("trace.sfd", font.ToSFD("Traced"));
 #else
 
   TTF::Char ttf_char;

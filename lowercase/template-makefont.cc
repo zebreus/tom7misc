@@ -146,6 +146,7 @@ static void GenerateOne(Config cfg) {
   font.baseline = cfg.baseline;
   font.linegap = cfg.linegap;
   font.extra_scale = cfg.extra_scale;
+  font.copyright = cfg.copyright;
   for (const auto &[c, ch] : chars) font.chars[c] = ch;
 
   if (font.chars.find(' ') == font.chars.end()) {
@@ -154,7 +155,7 @@ static void GenerateOne(Config cfg) {
     font.chars[' '] = space;
   }
   
-  Util::WriteFile(cfg.filename, font.ToSFD(cfg.font_name, cfg.copyright));
+  Util::WriteFile(cfg.filename, font.ToSFD(cfg.font_name));
   printf("Wrote %s\n", cfg.filename.c_str());
 }
 
