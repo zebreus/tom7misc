@@ -6,6 +6,7 @@
 #include <initializer_list>
 #include <cstdint>
 #include <map>
+#include <set>
 
 #include "base/logging.h"
 #include "image.h"
@@ -14,6 +15,9 @@ using uint8 = uint8_t;
 using uint16 = uint16_t;
 
 using namespace std;
+
+// If true, do some internal checking to catch bugs
+static constexpr bool VALIDATE = false;
 
 // (Implementation notes here were from this code's use in tracing SDFs
 // in ../../lowercase/font-problem. Perhaps should update these to make
@@ -122,14 +126,14 @@ IslandFinder::Info IslandFinder::GetInfo(int idx) const {
 }
 
 int IslandFinder::GetClass(int idx) {
-  CHECK(idx >= 0 && idx < eqclass.size());
+  CHECK(idx >= 0 && idx < (int)eqclass.size());
   if (eqclass[idx] == -1) return idx;
   else return eqclass[idx] = GetClass(eqclass[idx]);
 }
 
 void IslandFinder::Union(int aidx, int bidx) {
-  CHECK(aidx >= 0 && aidx < eqclass.size());
-  CHECK(bidx >= 0 && bidx < eqclass.size());
+  CHECK(aidx >= 0 && aidx < (int)eqclass.size());
+  CHECK(bidx >= 0 && bidx < (int)eqclass.size());
 
   CHECK(Visited(aidx));
   CHECK(Visited(bidx));
@@ -381,6 +385,35 @@ IslandFinder::Maps IslandFinder::Find(const ImageA &bitmap,
   maps.parentmap = std::move(p);
 
 
+  if (VALIDATE) {
+    std::set<uint8> all;
+    for (int y = 0; y < maps.eqclass.Height(); y++) {
+      for (int x = 0; x < maps.eqclass.Width(); x++) {
+        uint8 eqc = maps.eqclass.GetPixel(x, y);
+        all.insert(eqc);
+      }
+    }
+    for (const auto [child, parent] : maps.parentmap) {
+      all.insert(child);
+      all.insert(parent);
+    }
+
+    for (const uint8 eqc : all) {
+      if (eqc != 0) {
+        CHECK(maps.parentmap.find(eqc) !=
+              maps.parentmap.end()) <<
+          "Bug: Didn't find equivalence class " << (int)eqc <<
+          " in the parent map!";
+      }
+    }
+
+    printf("Validate ok. Classes:\n");
+    for (const uint8 eqc : all) {
+      printf("%d ", eqc);
+    }
+    printf("\n");
+  }
+  
   // Get the depth of each equivalence class that occurs, and the
   // maximum depth.
   maps.max_depth = 0;
@@ -393,7 +426,7 @@ IslandFinder::Maps IslandFinder::Find(const ImageA &bitmap,
         maps.eqclass_depth[eqc] = d;
       } else {
         CHECK(it->second == d) << "Inconsistent depth for eqclass "
-                               << eqc << " at " << x << "," << y;
+                               << (int)eqc << " at " << x << "," << y;
       }
       maps.max_depth = std::max((int)d, maps.max_depth);
     }
@@ -406,11 +439,11 @@ uint8 IslandFinder::Maps::GetAncestorAtDepth(uint8 d, uint8 eqc) const {
   for (;;) {
     if (d == 0) return 0;
     auto dit = eqclass_depth.find(eqc);
-    CHECK(dit != eqclass_depth.end()) << eqc << " has no depth?";
+    CHECK(dit != eqclass_depth.end()) << (int)eqc << " has no depth?";
     if (dit->second == d) return eqc;
 
     auto pit = parentmap.find(eqc);
-    CHECK(pit != parentmap.end()) << eqc << " has no parent?";
+    CHECK(pit != parentmap.end()) << (int)eqc << " has no parent?";
     eqc = pit->second;
   }
 }
@@ -426,7 +459,7 @@ bool IslandFinder::Maps::HasAncestor(uint8 eqc, uint8 parent) const {
     if (eqc == 0) return false;
     
     auto pit = parentmap.find(eqc);
-    CHECK(pit != parentmap.end()) << eqc << " has no parent?";
+    CHECK(pit != parentmap.end()) << (int)eqc << " has no parent?";
     eqc = pit->second;
   }
 }

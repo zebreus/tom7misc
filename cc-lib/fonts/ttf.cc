@@ -184,7 +184,7 @@ std::vector<TTF::Contour> TTF::NormalizeOrder(
     // -1 means the start point was already closest.
     int bestidx = -1;
     float best_sqerr = SqDist(c.StartX(), c.StartY());
-    for (int i = 0; i < c.paths.size(); i++) {
+    for (int i = 0; i < (int)c.paths.size(); i++) {
       // Both LINE and BEZIER have an end point.
       const float sqerr = SqDist(c.paths[i].x, c.paths[i].y);
       if (sqerr < best_sqerr) {
@@ -202,7 +202,7 @@ std::vector<TTF::Contour> TTF::NormalizeOrder(
       float y = c.paths[bestidx].y;
       Contour r;
       // Paths that come after it.
-      for (int i = bestidx + 1; i < c.paths.size(); i++) {
+      for (int i = bestidx + 1; i < (int)c.paths.size(); i++) {
         r.paths.push_back(c.paths[i]);
         x = c.paths[i].x;
         y = c.paths[i].y;
@@ -550,7 +550,7 @@ string TTF::Font::ToSFD(const string &name,
   CHECK(descent >= 0) << "negative linegap removed entire descent?";
 
   string name_no_space;
-  for (int i = 0; i < name.size(); i++) {
+  for (int i = 0; i < (int)name.size(); i++) {
     char c = name[i];
     if (c != ' ') name_no_space += c;
   }
@@ -624,12 +624,22 @@ BeginChars: 256 %d
       return roundf(y * extra_scale);
     };
 
-  auto CharToSFD = [&](char c, const Char &ch, int index) {
-      string char_name = StringPrintf("%c", c);
+  auto CharToSFD = [&](int c, const Char &ch, int index) {
+      string char_name;
       {
         const auto &names = CharNames();
         auto it = names.find(c);
-        if (it != names.end()) char_name = it->second;
+        if (it == names.end()) {
+          // By default, allow ascii characters to be named themselves.
+          if (c < 128) {
+            char_name = StringPrintf("%c", c);
+          } else {
+            LOG(FATAL) << "No name for codepoint " << c << " in ToSFD; add it to CharNames?";
+          }
+        } else {
+          // In map.
+          char_name = it->second;
+        }
       }
       int width = MapX(ch.width);
       string ret = StringPrintf(

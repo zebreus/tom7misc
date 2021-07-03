@@ -1644,7 +1644,7 @@ static vector<pair<float, float>> VectorizeOne(
     // and the one above it, because it is outside the blob.
     // (Perhaps in practice this could be violated, since we can't
     // quite guarantee that the bitmap and SDF are in agreement; they
-    // are modified in the recursive decompositino below. But this
+    // are modified in the recursive decomposition below. But this
     // keeps us close to the blob, which is desirable for other reasons!)
 
     const float r = Opt::Minimize1D(
@@ -2015,7 +2015,7 @@ FontProblem::VectorizeSDF(
       // We'll run the routine below on each one.
       std::map<uint8, std::set<uint8>> eqclasses;
       for (int y = 0; y < eqclass.Height(); y++) {
-        for (int x = 0; x < eqclass.Height(); x++) {
+        for (int x = 0; x < eqclass.Width(); x++) {
           if ((int)depth.GetPixel(x, y) >= d) {
             uint8 eqc = eqclass.GetPixel(x, y);
             if (maps.HasAncestor(eqc, parent)) {

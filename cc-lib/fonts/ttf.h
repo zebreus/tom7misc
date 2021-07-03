@@ -182,7 +182,8 @@ struct TTF {
     float width = 1.0f;
   };
   struct Font {
-    std::map<char, Char> chars;
+    // Key is the unicode codepoint.
+    std::map<int, Char> chars;
     float baseline = 0.75f;
     float linegap = 0.0f;
     // Additional scale factor with baseline origin. Typical use is to
