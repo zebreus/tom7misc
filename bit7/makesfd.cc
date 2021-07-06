@@ -71,6 +71,7 @@ static bool ContainsKey(const C &c, const K &k) {
 namespace {
 struct Glyph {
   // Can be negative, allowing for overhang on a character like j, for example.
+  // XXX not implemented
   int left_edge = 0;
   // Height will be charbox_height; width of the image may vary from glyph to glyph.
   // This is a 1-bit bitmap; 0 means "off" (transparent) and any other value is "on".
@@ -83,9 +84,17 @@ struct Config {
   string name;
   string copyright;
 
+  // If true, copy uppercase letters to lowercase (where missing).
+  bool no_lowercase = false;
+
+  // Size of regular grid in input image (see e.g. makegrid).
   int charbox_width = 0;
   int charbox_height = 0;
+  // Pixels at the bottom of the charbox that are beneath the baseline.
   int descent = 0;
+
+  // Additional space between lines, in pixels.
+  int extra_linespacing = 0;
 };
 }
 
@@ -105,12 +114,76 @@ static Config ParseConfig(const std::string &cfgfile) {
   config.charbox_height = atoi(m["charbox-height"].c_str());
   config.descent = atoi(m["descent"].c_str());
   CHECK(config.descent >= 0) << "Config line charbox-height must be >= 0";  
+
+  if (m.find("extra-linespacing") != m.end())
+    config.extra_linespacing = atoi(m["extra-linespacing"].c_str());
+  
+  if (m.find("no-lowercase") != m.end())
+    config.no_lowercase = true;
   
   return config;
 }
 
+// Given a series of points on the grid that trace a proper outline
+// (e.g., it has nonzero area, consecutive points are in different
+// locations), generate an equivalent but more efficient outline
+// by skipping points that are colinear with their neighbors. (The
+// routine below generates one on every pixel corner, even when
+// unnecessary.) Note that this does not handle a case like
+// 1 ----- 3 ----- 2
+// where a line doubles back on itself.
+static vector<pair<int, int>> RemoveColinearPoints(
+    const vector<pair<int, int>> &points) {
+  CHECK(points.size() >= 3) << "Degenerate contour; too small!";
+  // Start on a corner so that we don't need to think about that
+  // edge case.
+  const int corner_idx = [&points](){
+      for (int idx = 0; idx < (int)points.size(); idx++) {
+        int prev_idx = idx == 0 ? points.size() - 1 : (idx - 1);
+        int next_idx = idx == ((int)points.size() - 1) ? 0 : idx + 1;
+
+        // If these three points are colinear, then they will
+        // share an x coordinate or y coordinate. Otherwise,
+        // the center one is a corner.
+        const auto [px, py] = points[prev_idx];
+        const auto [x, y] = points[idx];
+        const auto [nx, ny] = points[next_idx];
+        if ((px == x && x == nx) ||
+            (py == y && y == ny)) {
+          // colinear
+        } else {
+          return idx;
+        }
+      }
+      LOG(FATAL) << "Degenerate contour; no area!";
+    }();
+
+  // We definitely keep the corner index. Now loop over all the
+  // points starting there, and emit points if they 
+  vector<pair<int, int>> out;
+  out.reserve(points.size());
+  out.push_back(points[corner_idx]);
+  auto Observe = [&points, &out](int idx) {
+      CHECK(idx >= 0 && idx < (int)points.size());
+      int next_idx = idx == ((int)points.size() - 1) ? 0 : idx + 1;
+      auto [px, py] = out.back();
+      auto [x, y] = points[idx];
+      auto [nx, ny] = points[next_idx];
+      if ((px == x && x == nx) ||
+          (py == y && y == ny)) {
+        // colinear. skip it.
+      } else {
+        out.emplace_back(x, y);
+      }
+    };
+  for (int i = corner_idx + 1; i < (int)points.size(); i++)
+    Observe(i);
+  for (int i = 0; i < corner_idx; i++)
+    Observe(i);
+  return out;
+}
+
 // Scale these coordinates, probably?
-// XXX We also want to remove colinear points.
 static TTF::Contour MakeContour(const vector<pair<int, int>> &points) {
   // Just return straight lines between these edge points.
   TTF::Contour ret;
@@ -353,7 +426,8 @@ static TTF::Char Vectorize(const Glyph &glyph) {
           }
         }
 
-        vector<pair<int, int>> points = VectorizeOne(bitmap);
+        vector<pair<int, int>> points =
+          RemoveColinearPoints(VectorizeOne(bitmap));
         contours.push_back(MakeContour(points));
 
         // Now recurse on descendants, if any.
@@ -401,16 +475,11 @@ int main(int argc, char **argv) {
                   << (CHARS_DOWN * config.charbox_height) << " but got "
                   << input->Width() << "x" << input->Height();
 
-  // XXX make configurable
-  constexpr int extra_linespacing = 1;
-  
   std::map<int, Glyph> font;
   
   for (int cy = 0; cy < CHARS_DOWN; cy++) {
     for (int cx = 0; cx < CHARS_ACROSS; cx++) {
       const int cidx = CHARS_ACROSS * cy + cx;
-      // TODO: Allow some mapping of codepoints!
-      const int codepoint = cidx;
 
       // Get width, by searching for a column of all black.
       auto GetWidth = [&]() {
@@ -471,16 +540,26 @@ int main(int argc, char **argv) {
           }
         }
 
-        Glyph *glyph = &font[codepoint];
+        Glyph *glyph = &font[cidx];
         // No way to set this from image yet...
         glyph->left_edge = 0;
         glyph->pic = std::move(pic);
       }
     }
   }
+
+  if (config.no_lowercase) {
+    for (int c = 'A'; c <= 'Z'; c++) {
+      int lc = c | 32;
+      if (font.find(c) != font.end() &&
+          font.find(lc) == font.end()) {
+        font[lc] = font[c];
+      }
+    }
+  }
   
   if (!out_test_png.empty()) {
-    const int output_height = config.charbox_height + extra_linespacing;
+    const int output_height = config.charbox_height + config.extra_linespacing;
     
     // Output test pattern PNG.
     #define INFTY "\x13"
@@ -507,7 +586,7 @@ int main(int argc, char **argv) {
      "  http://.com/ " INFTY  " (watch--said I--beloved)",
     };
     
-    ImageRGBA test(400, output_height * testpattern.size());
+    ImageRGBA test(config.charbox_width * 32, output_height * testpattern.size());
     test.Clear32(0x000033FF);
 
     for (int lidx = 0; lidx < (int)testpattern.size(); lidx++) {
@@ -551,7 +630,7 @@ int main(int argc, char **argv) {
   }
 
   ttf_font.baseline = 1.0 - (config.descent * one_pixel);
-  ttf_font.linegap = extra_linespacing * one_pixel;
+  ttf_font.linegap = config.extra_linespacing * one_pixel;
   // Might only affect FontForge, but it at least looks better in the
   // editor without anti-aliasing.
   ttf_font.antialias = false;

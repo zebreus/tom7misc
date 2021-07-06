@@ -14,17 +14,17 @@ constexpr int CHARS_DOWN = 8;
 
 int main(int argc, char **argv) {
   // XXX from command-line.
-  const int CHAR_WIDTH = 12;
-  const int CHAR_HEIGHT = 9;
+  const int CHAR_WIDTH = 18;
+  const int CHAR_HEIGHT = 16;
 
   ImageRGBA grid{CHAR_WIDTH * CHARS_ACROSS, CHAR_HEIGHT * CHARS_DOWN};
   grid.Clear(0, 0, 0, 0xFF);
 
   // number of pixels on the bottom to shade as "descent"
-  static constexpr int DESCENT = 2;
+  static constexpr int DESCENT = 4;
   static_assert (DESCENT >= 0 && DESCENT <= CHAR_HEIGHT);
 
-  static constexpr int SPACING = 3;
+  static constexpr int SPACING = 5;
   static_assert (SPACING >= 0 && SPACING <= CHAR_WIDTH);
 
   // XXX different colors for descent/edge?
