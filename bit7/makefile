@@ -43,5 +43,8 @@ makesfd.exe : makesfd.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 dfx-pasement.sfd : dfx-pasement.png dfx-pasement.cfg makesfd.exe
 	./makesfd.exe dfx-pasement.cfg $@
 
+dfx-snooty.sfd : dfx-snooty.png dfx-snooty.cfg makesfd.exe
+	./makesfd.exe dfx-snooty.cfg $@
+
 clean :
 	rm -f *.o *.exe

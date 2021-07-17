@@ -475,6 +475,7 @@ int main(int argc, char **argv) {
                   << (CHARS_DOWN * config.charbox_height) << " but got "
                   << input->Width() << "x" << input->Height();
 
+  // Map from character index (position in image) to glyph.
   std::map<int, Glyph> font;
   
   for (int cy = 0; cy < CHARS_DOWN; cy++) {
@@ -562,9 +563,12 @@ int main(int argc, char **argv) {
     const int output_height = config.charbox_height + config.extra_linespacing;
     
     // Output test pattern PNG.
-    #define INFTY "\x13"
-    #define NOTES "\x12"
-    #define HEART "\x11"
+    // Heart can't actually go here because it is \0.
+    #define HEART "<3"
+    #define INFTY "\x02"
+    #define NOTES "\x01"
+    #define PLUSMINUS "\x03"    
+    #define DEG    "\x04"
     vector<string> testpattern = {
       "  Welcome to my font!  it is cozy here " HEART "  (ok) ",
       "  Now is the FALL-TIME of our DISCONTENT !!|1Il ",
@@ -579,7 +583,7 @@ int main(int argc, char **argv) {
      "  (SYMPATHIZING WOULD FIX QUAKER OBJECTIVES.) ",
      "  XW!@#$%^&*()-=_+{}[]\\|:\";'<>?,./ZXCVB~` ",
      "",
-     "  123,456 * 7,890 = 974,067,840 ",
+     "  " PLUSMINUS "123,456 * 7,890 = 974,067,840" DEG,
      "",
      "  jungle quip, " INFTY " If you knew where you'd fall,",
      "  TTTTTT QQQQ` " INFTY  " you'd put a pillow!",

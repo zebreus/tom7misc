@@ -525,6 +525,34 @@ static const std::unordered_map<int, string> &CharNames() {
 // the order of all contours in order to preserve their winding order.
 //
 // SFD format here: https://fontforge.org/docs/techref/sfdformat.html
+//
+// TODO: Add support for kerning. This looks reasonably easy:
+//   In the header, add a kerning table with subtable:
+// Lookup: 258 0 0 "'kern' kerning table" { "kerning subtable" [614,61,6] } ['kern' ('DFLT' <'dflt' > 'latn' <'dflt' > ) ]
+// [614,61,6] appear to be the default separation (614) and min kern (61),
+// and some flags for that menu (6), which I think are just FontForge
+// settings. So for generating fonts we can just put whatever here. These
+// specific flags disable autokerning, in case that happens on export?
+// Lookup: 258 0 0 is lookup type and flags, which should probably
+// just be verbatim.
+// 
+// Then the kerning data is stored in each glyph. For example we have
+//
+//     StartChar: T
+//     Encoding: 84 84 52
+//     Width: 2560
+//     Flags: W
+//     LayerCount: 2
+//     Fore
+//     SplineSet
+//     0 2560 m 0,0,-1
+//       ...
+//      0 2560 l 0,0,-1
+//     EndSplineSet
+//     Kerns2: 79 -782 "kerning subtable"
+//     EndChar
+//
+// 79 is the character o, and -782 is the negative offset.
 string TTF::Font::ToSFD(const string &name) const {
   // TTF uses integral coordinates. This is the size of the box
   // we discretize to. Larger numbers here mean less lost precision,
@@ -533,7 +561,8 @@ string TTF::Font::ToSFD(const string &name) const {
   //
   // (XXX When we generate fonts from bitmap data, it's probably better
   // to use some multiple of the original grid exactly. Make this
-  // configurable?)
+  // configurable? See for example that vertices on the baseline have
+  // y=-1 in DFX snooty 10px)
   constexpr int BOX = 4096;
 
   // At least for SFD, ascent and descent seem to both be defined as

@@ -284,7 +284,7 @@ IslandFinder::GetMaps() {
     };
 
   for (int y = 0; y < h; y++) {
-    for (int x = 0; x < h; x++) {
+    for (int x = 0; x < w; x++) {
       int yy = y + 2;
       int xx = x + 2;
       int idx = Index(xx, yy);
