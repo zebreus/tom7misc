@@ -73,8 +73,9 @@ struct Glyph {
   // Can be negative, allowing for overhang on a character like j, for example.
   // XXX not implemented
   int left_edge = 0;
-  // Height will be charbox_height; width of the image may vary from glyph to glyph.
-  // This is a 1-bit bitmap; 0 means "off" (transparent) and any other value is "on".
+  // Height will be charbox_height; width of the image may vary from
+  // glyph to glyph. This is a 1-bit bitmap; 0 means "off"
+  // (transparent) and any other value is "on".
   ImageA pic;
 };
 
@@ -638,6 +639,7 @@ int main(int argc, char **argv) {
   // Might only affect FontForge, but it at least looks better in the
   // editor without anti-aliasing.
   ttf_font.antialias = false;
+  ttf_font.bitmap_grid_height = config.charbox_height;
   // Reserved for Tom 7!
   ttf_font.vendor = {'F', 'r', 'o', 'g'};
   ttf_font.copyright = config.copyright;

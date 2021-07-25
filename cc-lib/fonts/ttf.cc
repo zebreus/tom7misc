@@ -563,18 +563,23 @@ string TTF::Font::ToSFD(const string &name) const {
   // to use some multiple of the original grid exactly. Make this
   // configurable? See for example that vertices on the baseline have
   // y=-1 in DFX snooty 10px)
-  constexpr int BOX = 4096;
 
+  int box = 4096;
+  if (bitmap_grid_height > 0) {
+    box = bitmap_grid_height;
+    while (box < 400) box *= 10;
+  }
+  
   // At least for SFD, ascent and descent seem to both be defined as
   // both positive. They are determined from the baseline.
-  const int ascent = baseline * BOX;
-  int descent = BOX - ascent;
+  const int ascent = baseline * box;
+  int descent = box - ascent;
   CHECK(baseline > 0.0f && baseline < 1.0f && ascent && descent) <<
     "This code is not set up to handle baselines outside the box, "
     "or zero ascent/descent.";
 
-  // TODO: compute underline position/width from BOX
-  int native_linegap = linegap * BOX;
+  // TODO: compute underline position/width from box
+  int native_linegap = linegap * box;
   if (native_linegap < 0) {
     // Doesn't seem to work in FontForge to have negative linegap,
     // so instead subtract this from the descent.
@@ -649,14 +654,14 @@ BeginChars: 65536 %d
      antialias_flag,
      numchars);
 
-  auto MapX = [this](float x) -> int {
-      return roundf(x * BOX * extra_scale);
+  auto MapX = [this, box](float x) -> int {
+      return roundf(x * box * extra_scale);
     };
-  auto MapY = [this, ascent](float y) -> int {
+  auto MapY = [this, box, ascent](float y) -> int {
       // 0 should map to ascent
       // baseline should map to zero
 
-      y *= BOX;
+      y *= box;
       y -= ascent;
       y = -y;
 
