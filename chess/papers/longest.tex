@@ -419,14 +419,13 @@ these situations when generating the longest game.
 
 It is generally not hard to avoid repeating positions, so the main
 obstacle we'll face is the 75-move rule. Let's call an irreversible
-move that resets the 75-move counter a {\em critical move}; this is
-a pawn move or capturing move (or both). The structure of the game
-will be a series of critical moves (I will call these ``critical''
-moves) with a maximal sequence of pointless reversible moves in
-between them. If we execute the maximum number of critical moves and
-make 149 moves (just shy of triggering the compulsory version of
-the 75-move rule) between them, then this will be fairly easily
-seen as a maximal game.
+move that resets the 75-move counter a {\em critical move}; this is a
+pawn move or capturing move (or both). The structure of the game will
+be a series of critical moves with a maximal sequence of pointless
+reversible moves in between them. If we execute the maximum number of
+critical moves and make 149 moves (just shy of triggering the
+compulsory version of the 75-move rule) between them, then this will
+be fairly easily seen as a maximal game.
 
 In fact, for most positions, it is easy to waste 149 moves and return
 to the exact same position. So, the strategy for generating the
