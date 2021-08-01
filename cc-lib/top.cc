@@ -1,4 +1,6 @@
 
+// XXX! Implement this on other platforms.
+
 #include <windows.h>
 #include <stdio.h>
 #include <tchar.h>
@@ -16,8 +18,8 @@ Top::Enumerate() {
 
   std::vector<DWORD> pids(MAX_PROCESSES, 0);
   DWORD bytes_needed = 0;
-  
-  
+
+
   if (!EnumProcesses(pids.data(), MAX_PROCESSES * sizeof (DWORD),
                      &bytes_needed)) {
     // (Shouldn't fail, even if there are too many to fit...)
@@ -49,7 +51,7 @@ Top::Enumerate() {
         out.emplace_back(name);
       }
     }
-    
+
     CloseHandle(handle);
   }
 
