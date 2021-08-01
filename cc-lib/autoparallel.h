@@ -1,12 +1,16 @@
-#ifndef _LOWERCASE_AUTOPARALLEL_H
-#define _LOWERCASE_AUTOPARALLEL_H
+#ifndef _CC_LIB_AUTOPARALLEL_H
+#define _CC_LIB_AUTOPARALLEL_H
 
+#include <chrono>
+#include <cstdint>
 #include <limits>
 #include <vector>
+#include <string>
+#include <memory>
 
 #include "arcfour.h"
 #include "randutil.h"
-#include "timer.h"
+#include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
@@ -47,7 +51,6 @@ struct AutoParallelComp {
       ReadCache();
       // Number of milliseconds since we started running, so
       // that we can throttle saving.
-      save_timer.Start();
       last_save = save_timer.MS();
     }
     rc = std::make_unique<ArcFour>(
@@ -71,7 +74,7 @@ struct AutoParallelComp {
       };
     ParallelComp(vec.size(), ff);
   }
-  
+
   // with f(idx, value)
   template<class T, class F>
   auto ParallelMapi(const std::vector<T> &vec, const F &f) ->
@@ -94,7 +97,7 @@ struct AutoParallelComp {
     auto ff = [&f](int64_t idx, const T &arg) { return f(arg); };
     return ParallelMapi(vec, ff);
   }
-  
+
   template<class F>
   void ParallelComp(int64_t num, const F &f) {
     // We want to balance between running the actual fastest bucket,
@@ -107,9 +110,9 @@ struct AutoParallelComp {
     // and get an experiment.)
 
     // PERF avoid this loop once all buckets are full.
-    
+
     RandomGaussian gauss(rc.get());
-    
+
     // Remember, i=0 means threads=1
     int best_i = 0;
     double best_ms = std::numeric_limits<double>::infinity();
@@ -128,7 +131,7 @@ struct AutoParallelComp {
         best_ms = ms;
       }
     }
-    
+
     auto Consider = [this, &best_i](int dx) {
         int neighbor = best_i + dx;
         if (neighbor < 0) return false;
@@ -147,7 +150,7 @@ struct AutoParallelComp {
     // consider some jitter to nearby buckets if this one has a lot more samples.
     // (could even loop this?)
     if (!Consider(-1)) Consider(+1);
-    
+
     const int threads = best_i + 1;
     if (verbose) {
       printf("AutoParallelComp: Selected threads=%d (%.5f ms +/- %.5f)\n",
@@ -156,7 +159,7 @@ struct AutoParallelComp {
              experiments[best_i].current_stdev);
     }
 
-    Timer expt_timer;
+    MsTimer expt_timer;
     if (best_i == 0) {
       // Run in serial without any locking etc.
       for (int64_t i = 0; i < num; i++) {
@@ -184,7 +187,7 @@ struct AutoParallelComp {
       MaybeWriteCache();
     }
   }
-  
+
   void WriteCache() {
     if (cachefile.empty()) return;
 
@@ -225,7 +228,7 @@ struct AutoParallelComp {
     }
 
     double width_ms = max_ms - min_ms;
-    
+
     //      123 12345 12345678
     //      12345678901234567890
     printf("th |  # | avg ms |\n");
@@ -262,12 +265,12 @@ struct AutoParallelComp {
       printf("\n");
     }
   }
-  
+
 private:
   // This can certainly be improved!
   struct Experiment {
     // Actual sample values collected, up to max_samples.
-    vector<double> sample_ms;
+    std::vector<double> sample_ms;
     // Invariant: These agree from the sample_ms vector.
     // Note that 0.0 is a good (though wrong) initial estimate
     // since that means experimenting with an empty bucket will
@@ -276,8 +279,9 @@ private:
     double current_stdev = 0.0;
   };
 
+  // (make configurable?)
   static constexpr double SAVE_EVERY_MS = 60.0 * 1000.0;
-  
+
   void MaybeWriteCache() {
     if (cachefile.empty()) return;
     const double elapsed_ms = save_timer.MS() - last_save;
@@ -285,20 +289,20 @@ private:
       WriteCache();
     }
   }
-  
+
   void ReadCache() {
     CHECK(!cachefile.empty());
     std::vector<std::string> lines = Util::ReadFileToLines(cachefile);
     for (int i = 0; i < lines.size(); i++) {
-      string line = Util::NormalizeWhitespace(lines[i]);
+      std::string line = Util::NormalizeWhitespace(lines[i]);
       if (line.empty()) continue;
-      string bucket_s = Util::chop(line);
+      std::string bucket_s = Util::chop(line);
       const int bucket = atoi(bucket_s.c_str());
       CHECK(bucket >= 0);
       if (bucket < experiments.size()) {
         experiments[bucket].sample_ms.clear();
         for (;;) {
-          const string s = Util::chop(line);
+          const std::string s = Util::chop(line);
           if (s.empty()) break;
           double ss = Util::ParseDouble(s);
           experiments[bucket].sample_ms.push_back(ss);
@@ -330,7 +334,7 @@ private:
       expt->current_mean = 0.0;
       expt->current_stdev = 0.0;
     }
-    
+
     double total = 0.0;
     for (double d : expt->sample_ms)
       total += d;
@@ -350,20 +354,33 @@ private:
     const double stdev =
       num_samples <= 1 ? mean :
       sqrt(sqerr / (double)num_samples);
-      
+
     expt->current_mean = mean;
     expt->current_stdev = stdev;
   }
 
-  
+  struct MsTimer {
+    MsTimer() : time_start(std::chrono::steady_clock::now()) {}
+
+    double MS() const {
+      auto time_now = std::chrono::steady_clock::now();
+      const std::chrono::duration<double> time_elapsed =
+        time_now - time_start;
+      return time_elapsed.count() * 1000.0;
+    }
+
+  private:
+    const std::chrono::time_point<std::chrono::steady_clock> time_start;
+  };
+
   const int max_parallelism = 1;
   const int max_samples = 1;
   const bool verbose = false;
-  const string cachefile;
+  const std::string cachefile;
   std::unique_ptr<ArcFour> rc;
   // experiments[i] is i+1 threads
-  vector<Experiment> experiments;
-  Timer save_timer;
+  std::vector<Experiment> experiments;
+  MsTimer save_timer;
   double last_save = 0.0;
 };
 
