@@ -47,7 +47,7 @@ inline float RandFloat(ArcFour *rc) {
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
-  return (float)((uu   & 0x7FFFFFFF) / 
+  return (float)((uu   & 0x7FFFFFFF) /
                  (double)0x7FFFFFFF);
 };
 
@@ -63,7 +63,7 @@ inline double RandDouble(ArcFour *rc) {
   uu = rc->Byte() | (uu << 8);
   // PERF: Maybe could be multipling by the inverse?
   // It's a constant.
-  return ((uu &   0x3FFFFFFFFFFFFFFFULL) / 
+  return ((uu &   0x3FFFFFFFFFFFFFFFULL) /
           (double)0x3FFFFFFFFFFFFFFFULL);
 };
 
@@ -116,7 +116,7 @@ inline uint64 RandTo(ArcFour *rc, uint64 n) {
   // for. The input may not be a power of two, however. Make
   // sure any 1 bit is propagated to every position less
   // significant than it.
-  // 
+  //
   // This ought to reduce to a constant if the argument is
   // a compile-time constant.
   uint64 mask = n - 1;
@@ -215,11 +215,11 @@ inline double OneRandomGaussian(ArcFour *rc) {
 struct RandomGamma {
   explicit RandomGamma(ArcFour *rc) : rc(rc), rg(rc) {}
   static constexpr double one_third = 1.0 / 3.0;
-  
+
   double Exponential() {
     return -log(1.0 - RandDoubleNot1(rc));
   }
-  
+
   double Next(double shape) {
     if (shape == 1.0) {
       return Exponential();
@@ -261,7 +261,7 @@ struct RandomGamma {
       }
     }
   }
-  
+
   ArcFour *rc = nullptr;
   RandomGaussian rg;
 };

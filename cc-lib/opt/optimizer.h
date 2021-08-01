@@ -40,7 +40,7 @@ struct Optimizer {
   // to return a penalty that gives a gradient towards the
   // feasible region?)
   using return_type = std::optional<std::pair<double, OutputType>>;
-  
+
   // function to optimize.
   using function_type = std::function<return_type(arg_type)>;
 
@@ -57,7 +57,7 @@ struct Optimizer {
   // Force sampling this arg, for example if we know an existing
   // feasible argument from a previous round but not its result.
   void Sample(arg_type arg);
-  
+
   // Run
   void Run(
       // Finite {lower, upper} bounds on each argument. This can be
@@ -153,7 +153,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::SetBest(
     OutputType best_output) {
   // Add to cache no matter what.
   cached_score[best_arg] = best_score;
-  
+
   // Don't take it if we already have a better one.
   if (best.has_value() && std::get<1>(best.value()) < best_score)
     return;
@@ -212,8 +212,10 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
         const auto time_now = std::chrono::steady_clock::now();
         const std::chrono::duration<double> time_elapsed =
           time_now - time_start;
-        if (time_elapsed.count() > max_seconds.value())
+        if (time_elapsed.count() > max_seconds.value()) {
+          stop = true;
           return LARGE_SCORE;
+        }
       }
 
       // Populate the native argument type.

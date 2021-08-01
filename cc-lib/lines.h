@@ -365,6 +365,29 @@ inline float PointVertLineDistance(
 }
 
 
+template<class Num = float>
+std::pair<Num, Num> ReflectPointAboutLine(
+    // Line segment
+    Num x0, Num y0,
+    Num x1, Num y1,
+    // Point to reflect
+    Num x, Num y) {
+
+  Num dx = x1 - x0;
+  Num dy = y1 - y0;
+  Num dxs = dx * dx;
+  Num dys = dy * dy;
+  Num denom = dxs + dys;
+  Num a = (dxs - dys) / denom;
+  Num b = Num(2) * dx * dy / denom;
+
+  Num x2  = a * (x - x0) + b * (y - y0) + x0;
+  Num y2  = b * (x - x0) - a * (y - y0) + y0;
+
+  return std::make_pair(x2, y2);
+}
+
+
 // Return a vector of endpoints, not including the start point (but
 // including the end), to draw as individual line segments in order to
 // approximate the given quadratic Bezier curve.
@@ -424,7 +447,6 @@ std::vector<std::pair<Num, Num>> TesselateQuadraticBezier(
   Rec(x0, y0, x1, y1, x2, y2, max_depth);
   return out;
 }
-
 
 
 #endif

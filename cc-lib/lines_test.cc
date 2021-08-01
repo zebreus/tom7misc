@@ -10,6 +10,13 @@
 
 using namespace std;
 
+#define CHECK_ALMOST_EQ(a, b) do { \
+  auto aa = (a); \
+  auto bb = (b); \
+  CHECK(fabs(aa - bb) < EPSILON) << aa << " vs " << bb << " in " \
+                                 << #a << " =~= " << #b ; \
+ } while(0)
+
 static void TestBresenham() {
   printf("Bresenham:\n");
   for (const std::pair<int, int> point : Line<int>{0, 0, 5, 5}) {
@@ -107,12 +114,58 @@ static void TestVertHoriz() {
   }
 }
 
+static void TestReflect() {
+  static constexpr float EPSILON = 0.00001f;
+  {
+    auto [x, y] = ReflectPointAboutLine<float>(
+        // horizontal line y=1
+        -3.2f, 1,
+        777.1f, 1,
+        4.0, 3.0);
+    CHECK_ALMOST_EQ(x, 4.0f);
+    CHECK_ALMOST_EQ(y, -1.0f);
+  }
+
+  {
+    auto [x, y] = ReflectPointAboutLine<float>(
+        // vertical line x = 3
+        3.0f, 1.0f,
+        3.0f, 9.0f,
+        7.0f, 33.3);
+    CHECK_ALMOST_EQ(x, -1.0f);
+    CHECK_ALMOST_EQ(y, 33.3f);
+  }
+
+  {
+    auto [x, y] = ReflectPointAboutLine<float>(
+        // nontrivial diagonal
+        -1.0f, -2.0f,
+        2.0f, 4.0f,
+        1.0f, -2.0f);
+    CHECK_ALMOST_EQ(x, -11.0f / 5.0f);
+    CHECK_ALMOST_EQ(y, -2.0f / 5.0f);
+  }
+
+  {
+    auto [x, y] = ReflectPointAboutLine<float>(
+        // nontrivial diagonal
+        -1.0f, -2.0f,
+        2.0f, 4.0f,
+        // origin lands on it
+        0.0f, 0.0f);
+    CHECK_ALMOST_EQ(x, 0.0f);
+    CHECK_ALMOST_EQ(y, 0.0f);
+  }
+
+}
+
 int main() {
 
   TestBresenham();
   TestWu();
   TestIntersection();
   TestVertHoriz();
+  TestReflect();
 
   // TODO: Test point-line distance stuff.
 

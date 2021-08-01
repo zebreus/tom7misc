@@ -55,8 +55,8 @@ struct Util {
   template<class F>
   static void ForEachLine(const string &filename, F f);
 
-  // As above, but treat the first token on each line as a map
-  // key. Ignores empty lines.
+  // As above, but treat the first token on each line as a map key,
+  // and strips leading whitespace from the rest. Ignores empty lines.
   static std::map<string, string> ReadFileToMap(const string &f);
 
   static std::vector<uint8_t> ReadFileBytes(const string &f);
