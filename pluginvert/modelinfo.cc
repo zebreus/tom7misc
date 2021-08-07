@@ -265,6 +265,9 @@ ImageRGBA ModelInfo::LayerWeights(const Network &net, int layer_idx,
                                   bool diagnostic_mode) {
   CHECK(layer_idx >= 0 && layer_idx < net.layers.size());
   const Network::Layer &layer = net.layers[layer_idx];
+  CHECK(layer.type != LAYER_CONVOLUTION_ARRAY) << "Looks like this "
+    "code assumes a certain number of weights, so it won't work "
+    "for convolution array layers -- FIXME!";
   const int prev_nodes = net.num_nodes[layer_idx];
   const int num_nodes = net.num_nodes[layer_idx + 1];
   const int ipn = layer.indices_per_node;

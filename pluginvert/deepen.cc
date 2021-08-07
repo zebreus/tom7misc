@@ -16,12 +16,12 @@
 #include "network.h"
 #include "network-util.h"
 
-// XXX
-#include "font-problem.h"
-
 using namespace std;
 
 using int64 = int64_t;
+
+// XXX this is font-problem specific logic
+static constexpr int SDF_SIZE = 36;
 
 // Take some layer and create another layer right after it,
 // with the same dimensions (this means that any layers that
@@ -101,7 +101,7 @@ static Network *DeepenNetwork(ArcFour *rc, const Network &old_net, int layer_idx
 
   net->rounds = old_net.rounds;
   net->examples = old_net.examples;
-  
+
   CHECK(layer_idx + 1 < net->layers.size());
 
   // Layers before; same index.
@@ -111,7 +111,7 @@ static Network *DeepenNetwork(ArcFour *rc, const Network &old_net, int layer_idx
   for (int i = layer_idx + 1; i < old_net.layers.size(); i++)
     net->layers[i + 1] = old_net.layers[i];
 
-  
+
   // And initialize the one new layer.
   Network::Layer *new_layer = &net->layers[layer_idx + 1];
   CHECK(new_layer->indices_per_node == 1);
@@ -145,7 +145,7 @@ static void DensifyLayer(ArcFour *rc, Network *net, int layer_idx) {
   CHECK(ez.ipn == 1);
   CHECK(width == net->width[layer_idx + 1]);
   CHECK(height == net->height[layer_idx + 1]);
-  CHECK(previous_layer_size == net->num_nodes[layer_idx + 1]);    
+  CHECK(previous_layer_size == net->num_nodes[layer_idx + 1]);
 
   for (int src_idx = 0; src_idx < ez.nodes.size(); src_idx++) {
     EZLayer::Node &node = ez.nodes[src_idx];
@@ -153,7 +153,7 @@ static void DensifyLayer(ArcFour *rc, Network *net, int layer_idx) {
     CHECK(node.inputs.size() == 1);
     std::unordered_set<uint32_t> used;
     used.insert(node.inputs[0].index);
-    
+
     auto MaybeAdd = [&node, &used](int idx) {
         if (used.find(idx) == used.end()) {
           EZLayer::OneIndex oi;
@@ -166,7 +166,7 @@ static void DensifyLayer(ArcFour *rc, Network *net, int layer_idx) {
           return false;
         }
       };
-    
+
     // This is a custom policy for the lowercase problem.
 
     // Always depend on the final 26 nodes (these are letter predictions)
@@ -178,7 +178,6 @@ static void DensifyLayer(ArcFour *rc, Network *net, int layer_idx) {
       MaybeAdd(previous_layer_size - 1 - i);
     }
 
-    static constexpr int SDF_SIZE = FontProblem::SDFConfig().sdf_size;
     static constexpr int NEIGHBORHOOD = 4;
     // In the SDF region, add nodes from the immediate neighborhood.
     if (src_idx < SDF_SIZE * SDF_SIZE) {
@@ -198,7 +197,7 @@ static void DensifyLayer(ArcFour *rc, Network *net, int layer_idx) {
     }
 
     CHECK(node.inputs.size() <= NEW_IPN);
-    
+
     // The rest, randomly assign.
     while (node.inputs.size() < NEW_IPN) {
       (void)MaybeAdd(RandTo(rc, previous_layer_size));
@@ -227,14 +226,14 @@ static void DoDeepen(const string &input_file, const string &output_file) {
   CHECK(output_net.get() != nullptr);
 
   DensifyLayer(&rc, output_net.get(), LAYER_TO_COPY + 1);
-  
+
   printf("Structural check...\n");
   output_net->StructuralCheck();
   Network::SaveNetworkBinary(*output_net, output_file);
 }
 
 int main(int argc, char **argv) {
-  CHECK(argc >= 2) << "\n\nUsage:\nwiden.exe net.val [output.val]";
+  CHECK(argc >= 2) << "\n\nUsage:\ndeepen.exe net.val [output.val]";
 
   const string infile = argv[1];
   const string outfile = argc > 2 ? argv[2] : "net-deepened.val";

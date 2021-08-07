@@ -32,19 +32,18 @@ enum LayerType {
   // Explicitly specify the input nodes. Every node has the same
   // number of inputs. Some overhead to store these indices.
   LAYER_SPARSE = 1,
-  // Each node has the same number of inputs with their indices
-  // specified explicitly just as in SPARSE. (They usually follow a
-  // regular pattern, like some area around the related "pixel" in the
-  // source layer, but this is not enforced.) Unlike SPARSE, there are
-  // only a total of indices_per_nodes weights, which are shared by
-  // all nodes. This is a good option when the input layer represents
-  // some array of pixels or samples of like kind.
-  // (TODO: Should this actually be an array of convolutions with
-  // the same ipn? This can always be represented as just a bunch of
-  // chunks in parallel, but could probably be implemented more
-  // efficiently if native, and is probably common? We can always do
-  // it later...)
-  LAYER_CONVOLUTIONAL = 2,
+  // An array of convolutions. Each of the num_convolution
+  // convolutions is a node pattern that is repeated over and over,
+  // with the same node weights. The indices of each occurrence of the
+  // pattern are given explicitly just as in SPARSE. (They usually
+  // follow a regular pattern, like some area around the related
+  // "pixel" in the source layer, but this is not enforced.) This is a
+  // good option when the input layer represents some array of pixels
+  // or samples of like kind. A single convolution makes sense, but we
+  // allow for an array so that the common case of several different
+  // features (with the same indices_per_node) can be treated more
+  // efficiently.
+  LAYER_CONVOLUTION_ARRAY = 2,
 
   NUM_LAYER_TYPES,
 };
@@ -72,12 +71,11 @@ struct Network {
   template<class T> using vector = std::vector<T>;
   using string = std::string;
 
-  // Creates arrays of the appropriate size, but all zeroes. Note that
-  // this uninitialized network is invalid, since the inverted indices
-  // are not correct.
-  Network(vector<int> num_nodes,
-          vector<int> indices_per_node,
-          vector<TransferFunction> transfer_functions);
+  struct Layer;
+  // Create network from the given num_nodes and layers fields (see
+  // documentation below). The created network is invalid, since the
+  // inverted indices are not correct. (XXX just compute them??)
+  Network(vector<int> num_nodes, vector<Layer> layers);
 
   // Size of network in RAM. Note that this includes the indices
   // and inverted indices for dense layers (which are indeed still stored)
@@ -101,7 +99,7 @@ struct Network {
   }
 
   // Check for NaN weights and abort if any are found.
-  void NaNCheck(const std::string &message) const;
+  void NaNCheck(const string &message) const;
 
   // Check for structural well-formedness (layers are the right size;
   // indices are in bounds; dense layers have the expected regular
@@ -137,7 +135,7 @@ struct Network {
 
   // Just used for serialization. Whenever changing the interpretation
   // of the data in an incomplete way, please change.
-  static constexpr uint32_t FORMAT_ID = 0x27000731U;
+  static constexpr uint32_t FORMAT_ID = 0x27000732U;
 
   // The number of "real" layers, that is, not counting the input.
   const int num_layers;
@@ -161,6 +159,12 @@ struct Network {
     // Same number of input indices for each node.
     // For dense layers, this must be the size of the previous layer.
     int indices_per_node = 0;
+    // Only for CONVOLUTION_ARRAY layers. Gives the number of
+    // convolutions in the array. Each has the same indices_per_node
+    // but a different set of weights/biases. Must divide the number
+    // of nodes on the layer, giving the number of repetitions per
+    // convolution.
+    int num_convolutions = 1;
     // The transfer function used to compute the output from the
     // weighted inputs.
     TransferFunction transfer_function = LEAKY_RELU;
@@ -176,11 +180,12 @@ struct Network {
     vector<uint32_t> indices;
     // For sparse and dense layers, this is parallel to indices:
     // indices_per_node * num_nodes[l + 1]
-    // For convolutional layers, this has size indices_per_node.
+    // For convolutional layers, this has size
+    // num_convolutions * indices_per_node.
     vector<float> weights;
     // For sparse and dense layers, there is one per node:
     // num_nodes[l + 1].
-    // For convolutional layers, size 1.
+    // For convolutional layers, size num_convolutions.
     vector<float> biases;
   };
 

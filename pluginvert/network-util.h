@@ -1,6 +1,9 @@
 
 // Utilties for working with the Network objects, but that are not
 // "core" enough to be part of Network itself.
+//
+// XXX This needs to be rewritten to work with convolutional_array
+// layers and "chunks" when that comes.
 
 #ifndef _PLUGINVERT_NETWORK_UTIL_H
 #define _PLUGINVERT_NETWORK_UTIL_H
@@ -42,6 +45,9 @@ struct EZLayer {
     CHECK(layer_idx < net.num_layers);
     const int num_nodes = net.num_nodes[layer_idx + 1];
     const Network::Layer *layer = &net.layers[layer_idx];
+    CHECK(layer->type != LAYER_CONVOLUTION_ARRAY) << "Convolution array "
+      "layers are not implemented in EzLayer (they'd need a different "
+      "representation probably?)";
     ipn = layer->indices_per_node;
 
     width = net.width[layer_idx + 1];

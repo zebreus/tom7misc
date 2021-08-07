@@ -1,0 +1,46 @@
+
+1 Aug 2021
+
+Probably the simplest route to convolutional layers is to give each
+node a start_weight_index, which is where we start reading the
+indices_per_node weights for the node. For sparse and dense layers,
+this is like node_idx * indices_per_node since all weights are
+independent. Then we assign the indices using whatever regular
+structure we want (e.g. m*n box around the pixel), and since this
+now generalizes sparse, dense and convolutional layers, we can
+use the same kernel to predict and train.
+
+Two bummers here: The indices are not stored efficiently; they could
+(probably--edge conditions?) just be computed from the index of the
+node. Worse, for both indices and weights, we have an extra indirection
+which creates a data-dependent load (like
+weights[start_weight_index[node] + i]). So it would probably be better
+to have convolution-specific kernels. Weights seems to be the easier
+problem here because the weights are just like
+weights[feature_number * indices_per_node + i]
+whereas the input of the convolution might not be so easy to describe,
+especially if we do something fancy on the boundary.
+
+
+
+Other idea: We probably don't want to just have pure convolutional
+layers with the same indices_per_node throughout. As a simple example,
+in this problem we expect to have a short vector of "plugin
+parameters" alongside the wave data, and although we do want to
+convolve the plugin data, it would be weird to convolve the
+parameters, especially to treat them as though they are just samples.
+With the approach described above, we could make the parameters be
+arguments to each convolution (just by setting the indices), which
+works cleanly and seems to make sense. We might also want to have a
+portion of the layer be some dense combination of parameters, or a
+verbatim copy of the input. So idea two is: Make each "layer" actually
+a collection of Chunks (which are probably what are now called
+Layers). Each chunk can have different settings (i.e. type, ipn,
+transfer function...) so that we can mix convolutional and sparse, or
+sparse with different IPN. Chunks should have independent parameters
+(weights, biases) but could overlap in what input nodes they read.
+This could cause some complication when propagating errors back, but
+it seems manageable (errors are just summed, right?).
+
+(Indeed: Looks like we can just run BackwardsLayer for each chunk,
+then sum, and probably apply clipping at the end.)

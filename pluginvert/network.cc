@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -33,29 +34,32 @@ const char *LayerTypeName(LayerType lt) {
   switch (lt) {
   case LAYER_DENSE: return "LAYER_DENSE";
   case LAYER_SPARSE: return "LAYER_SPARSE";
+  case LAYER_CONVOLUTION_ARRAY: return "LAYER_CONVOLUTION_ARRAY";
   default: return "??INVALID??";
   }
 }
 
 Network::Network(vector<int> num_nodes,
-                 vector<int> indices_per_node,
-                 vector<TransferFunction> transfer_functions) :
-  num_layers(num_nodes.size() - 1),
-  num_nodes(num_nodes) {
-  CHECK(num_nodes.size() >= 1) << "Must include input layer.";
-  CHECK_EQ(num_layers, indices_per_node.size());
-  CHECK_EQ(num_layers, transfer_functions.size());
-  layers.resize(num_layers);
-  for (int i = 0; i < num_layers; i++) {
-    Layer &layer = layers[i];
-    layer.indices_per_node = indices_per_node[i];
-    layer.transfer_function = transfer_functions[i];
-    layer.indices.resize(indices_per_node[i] * num_nodes[i + 1], 0);
-    layer.weights.resize(indices_per_node[i] * num_nodes[i + 1], 0.0);
-    layer.biases.resize(num_nodes[i + 1], 0.0);
+                 vector<Layer> layers) :
+  num_layers(layers.size()),
+  num_nodes(num_nodes),
+  layers(std::move(layers)) {
+
+  CHECK(num_nodes.size() + 1 == layers.size());
+  CHECK(num_layers >= 1) << "Must include input layer.";
+
+  // Make these valid (N x 1 x 1).
+  for (int n : num_nodes) {
+    width.push_back(n);
+    height.push_back(1);
+    channels.push_back(1);
+    renderstyle.push_back(RENDERSTYLE_FLAT);
   }
 
   ReallocateInvertedIndices();
+
+  // XXX could just recompute inverted indices here, then structural
+  // check??
 }
 
 void Network::ReallocateInvertedIndices() {
@@ -279,6 +283,14 @@ void Network::StructuralCheck() const {
         }
       }
     }
+
+    if (layer.type == LAYER_CONVOLUTION_ARRAY) {
+      CHECK(layer.num_convolutions > 0);
+      CHECK(layer.biases.size() == layer.num_convolutions);
+      CHECK(layer.weights.size() == layer.num_convolutions *
+            layer.indices_per_node);
+      CHECK(num_this_nodes % layer.num_convolutions == 0);
+    }
   }
 
   CheckInvertedIndices();
@@ -464,79 +476,99 @@ Network *Network::ReadNetworkBinary(const string &filename) {
   }
 
   printf("\n%s: indices per node/fns/type: ", filename.c_str());
-  vector<int> indices_per_node(file_num_layers, 0);
-  vector<TransferFunction> transfer_functions(file_num_layers, SIGMOID);
-  vector<LayerType> layer_types(file_num_layers, LAYER_DENSE);
+
+  vector<Layer> layers(file_num_layers);
+
+  // vector<int> indices_per_node(file_num_layers, 0);
+  // vector<TransferFunction> transfer_functions(file_num_layers, SIGMOID);
+  // vector<LayerType> layer_types(file_num_layers, LAYER_DENSE);
   for (int i = 0; i < file_num_layers; i++) {
-    indices_per_node[i] = Read32();
+    Layer &layer = layers[i];
+    const int nodes_this_layer = num_nodes[i + 1];
+    const int ipn_this_layer = Read32();
+    layer.indices_per_node = ipn_this_layer;
+    const int num_convolutions = Read32();
+    layer.num_convolutions = num_convolutions;
     TransferFunction tf = (TransferFunction)Read32();
     CHECK(tf >= 0 && tf < NUM_TRANSFER_FUNCTIONS) << tf;
-    transfer_functions[i] = tf;
+    layer.transfer_function = tf;
     LayerType lt = (LayerType)Read32();
     CHECK(lt >= 0 && lt < NUM_LAYER_TYPES) << lt;
-    layer_types[i] = lt;
+    layer.type = lt;
     printf("%d %s %s ",
-           indices_per_node[i],
+           ipn_this_layer,
            TransferFunctionName(tf),
            LayerTypeName(lt));
+
+    // Correctly size the data chunks to be read below.
+    layer.indices.resize(ipn_this_layer * nodes_this_layer, 0);
+
+    switch (lt) {
+    case LAYER_CONVOLUTION_ARRAY:
+      // Shared weights.
+      layer.weights.resize(ipn_this_layer * num_convolutions, 0.0f);
+      layer.biases.resize(num_convolutions, 0.0f);
+      break;
+    case LAYER_SPARSE:
+    case LAYER_DENSE:
+      // Normal case: Individual weights/biases per input index.
+      layer.weights.resize(ipn_this_layer * nodes_this_layer, 0.0f);
+      layer.biases.resize(nodes_this_layer, 0.0f);
+      break;
+    default:
+      CHECK(false) << "Unimplemented layer type " << lt;
+    }
   }
   printf("\n");
-
-  std::unique_ptr<Network> net{
-    new Network{num_nodes, indices_per_node, transfer_functions}};
-  net->width = width;
-  net->height = height;
-  net->channels = channels;
-  net->renderstyle = renderstyle;
-
-  net->rounds = round;
-  net->examples = examples;
 
   int64 large_weights = 0, large_biases = 0;
 
   // Read Layer structs.
+  CHECK(layers.size() == file_num_layers);
   for (int i = 0; i < file_num_layers; i++) {
-    LayerType type = layer_types[i];
-    net->layers[i].type = type;
-    switch(type) {
+    Layer &layer = layers[i];
+    switch (layer.type) {
+    case LAYER_CONVOLUTION_ARRAY:
     case LAYER_SPARSE:
-      for (int j = 0; j < net->layers[i].indices.size(); j++) {
-        net->layers[i].indices[j] = Read32();
+      for (int j = 0; j < layer.indices.size(); j++) {
+        layer.indices[j] = Read32();
       }
       break;
     case LAYER_DENSE: {
+      // Indices are not actually stored for dense layers, since they
+      // can be computed.
       // (layer 0 is the input layer)
-      const int prev_num_nodes = net->num_nodes[i];
-      const int num_nodes = net->num_nodes[i + 1];
-      CHECK_EQ(net->layers[i].indices.size(), prev_num_nodes * num_nodes) <<
+      const int prev_num_nodes = num_nodes[i];
+      const int this_num_nodes = num_nodes[i + 1];
+      CHECK_EQ(layer.indices.size(), prev_num_nodes * this_num_nodes) <<
         "For a dense layer, indices per node should be the size of "
         "the previous layer! prev * cur: " << prev_num_nodes <<
-        " * " << num_nodes << " = " << prev_num_nodes * num_nodes <<
-        " but got " << net->layers[i].indices.size();
+        " * " << this_num_nodes << " = " << prev_num_nodes * this_num_nodes <<
+        " but got " << layer.indices.size();
       int64 offset = 0;
-      for (int n = 0; n < num_nodes; n++) {
+      for (int n = 0; n < this_num_nodes; n++) {
         for (int p = 0; p < prev_num_nodes; p++) {
-          net->layers[i].indices[offset] = p;
+          layer.indices[offset] = p;
           offset++;
         }
       }
       break;
     }
     default:
-      CHECK(false) << "Unsupported layer type " << type;
+      CHECK(false) << "Unsupported layer type " << layer.type;
       break;
     }
-    ReadFloats(&net->layers[i].weights);
-    ReadFloats(&net->layers[i].biases);
+    ReadFloats(&layer.weights);
+    ReadFloats(&layer.biases);
 
     static constexpr float LARGE_WEIGHT = 8.0f;
     static constexpr float LARGE_BIAS = 128.0f;
-    for (float f : net->layers[i].weights) {
+    for (float f : layer.weights) {
       if (f > LARGE_WEIGHT || f < -LARGE_WEIGHT) {
         large_weights++;
       }
     }
-    for (float f : net->layers[i].biases) {
+    for (float f : layer.biases) {
       if (f > LARGE_BIAS || f < -LARGE_BIAS) {
         large_biases++;
       }
@@ -550,6 +582,17 @@ Network *Network::ReadNetworkBinary(const string &filename) {
 
   fclose(file);
   printf("Read from %s.\n", filename.c_str());
+
+  // Construct network.
+
+  auto net = std::make_unique<Network>(num_nodes, layers);
+  net->width = width;
+  net->height = height;
+  net->channels = channels;
+  net->renderstyle = renderstyle;
+
+  net->rounds = round;
+  net->examples = examples;
 
   // Now, fill in the inverted indices. These are not stored in the file.
 
@@ -598,12 +641,14 @@ void Network::SaveNetworkBinary(const Network &net,
 
   for (const Network::Layer &layer : net.layers) {
     Write32(layer.indices_per_node);
+    Write32(layer.num_convolutions);
     Write32(layer.transfer_function);
     Write32(layer.type);
   }
 
   for (const Network::Layer &layer : net.layers) {
     switch (layer.type) {
+    case LAYER_CONVOLUTION_ARRAY:
     case LAYER_SPARSE:
       for (const uint32 idx : layer.indices) Write32(idx);
       break;

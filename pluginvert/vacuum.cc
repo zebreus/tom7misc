@@ -69,6 +69,10 @@ static void VacuumLayer(Network *net, int layer_idx) {
   Network::Layer *layer = &net->layers[layer_idx];
   const int ipn = layer->indices_per_node;
 
+  CHECK(layer->type == LAYER_SPARSE) << "Vacuum is probably only "
+    "useful for sparse layers, and isn't correct on convolutional "
+    "layers (but could be implemented?).";
+
   // The indices are hard to work with in their flat representation;
   // make a vector of weighted indices per node.
   struct OneIndex {
@@ -97,7 +101,7 @@ static void VacuumLayer(Network *net, int layer_idx) {
         oi.weight = layer->weights[node_idx * ipn + idx];
         node_indices[node_idx].push_back(oi);
       }
-      
+
       // Sort descending by weight.
       std::sort(node_indices[node_idx].begin(),
                 node_indices[node_idx].end(),
@@ -113,7 +117,7 @@ static void VacuumLayer(Network *net, int layer_idx) {
       "layer (" << layer_idx << ") are below the threshold (" <<
       THRESHOLD << ")!?";
 
-    // Can we reduce it?    
+    // Can we reduce it?
     // PERF this could actually be done with binary search.
     bool ok = true;
     for (int node_idx = 0; node_idx < num_nodes; node_idx++) {
@@ -156,7 +160,7 @@ static void VacuumLayer(Network *net, int layer_idx) {
     printf("Layer %d is no longer DENSE.\n", layer_idx);
     layer->type = LAYER_SPARSE;
   }
-    
+
   layer->indices_per_node = trunc_to;
 
   // Now re-pack!
@@ -177,7 +181,7 @@ static void VacuumNetwork(Network *net) {
   // layer; these are called "indices" in this code. (We store them
   // sparsely, so they are actually the indices of the nodes on the
   // previous layer.)
-  
+
   // The network format requires the same number of indices for each
   // node on a layer. So we're going to shrink that number across
   // all nodes, such that we drop (only) indices whose weights are
@@ -195,13 +199,13 @@ static void VacuumNetwork(Network *net) {
       num_nodes * 4 +
       // Weights
       (num_nodes * ipn) * 4;
-    
+
     printf("Layer %d has %d nodes, %d indices per node = %d, %.1fMB\n",
            i, num_nodes, ipn, num_nodes * ipn,
            bytes / (1024.0 * 1024.0));
     fflush(stdout);
   }
-  
+
   UnParallelComp(net->layers.size(),
                  [net](int i) {
                    if (VACUUM_LAYERS.find(i) != VACUUM_LAYERS.end())
@@ -212,7 +216,7 @@ static void VacuumNetwork(Network *net) {
   // We changed the number of indices per node, so we need to resize
   // the inverted indices (and recompute them).
   net->ReallocateInvertedIndices();
-  
+
   printf("Recompute inverted indices...\n");
   fflush(stdout);
   Network::ComputeInvertedIndices(net, 24);
@@ -226,7 +230,7 @@ static void VacuumNetwork(Network *net) {
 int main(int argc, char **argv) {
 
   CHECK(argc >= 2) << "\n\nUsage:\nvacuum.exe net.val [output.val]";
-  
+
   Timer model_timer;
   std::unique_ptr<Network> net{Network::ReadNetworkBinary(argv[1])};
   fprintf(stderr, "Loaded model in %.2fs\n",
@@ -241,7 +245,7 @@ int main(int argc, char **argv) {
 
   string outfile = argc > 2 ? argv[2] : "net-vacuumed.val";
   Network::SaveNetworkBinary(*net, outfile);
-  
+
   return 0;
 }
 
