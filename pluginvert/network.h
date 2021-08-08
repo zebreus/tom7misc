@@ -63,6 +63,7 @@ enum RenderStyle : uint32_t {
 };
 
 const char *TransferFunctionName(TransferFunction tf);
+const char *LayerTypeName(LayerType lt);
 
 struct Stimulation;
 struct Errors;
@@ -73,9 +74,25 @@ struct Network {
 
   struct Layer;
   // Create network from the given num_nodes and layers fields (see
-  // documentation below). The created network is invalid, since the
-  // inverted indices are not correct. (XXX just compute them??)
+  // documentation below). Computes inverted indices and does
+  // structural checks, aborting if something is amiss. So this should
+  // be created with valid layers.
   Network(vector<int> num_nodes, vector<Layer> layers);
+
+  // Constants containing implementations of the different transfer
+  // functions. These are provided for the sake of layer-specific
+  // generated code, like the OpenCL. Each #defines FORWARD(p) and
+  // DERIVATIVE(fx) as C/C++/OpenCL. FORWARD is as you'd expect.
+  // DERIVATIVE is given in terms of the *output* of the transfer
+  // function, because this is the most natural/efficient for the
+  // sigmoid, and can be done (a bit less naturally) for ReLU.
+  static const char *const SIGMOID_FN;
+  static const char *const RELU_FN;
+  static const char *const LEAKY_RELU_FN;
+
+  // Return one of the above constants (or abort for an unknown
+  // transfer function).
+  static string TransferFunctionDefines(TransferFunction tf);
 
   // Size of network in RAM. Note that this includes the indices
   // and inverted indices for dense layers (which are indeed still stored)
@@ -106,22 +123,20 @@ struct Network {
   // structure; inverted indices are correct). Aborts if something is
   // wrong. Doesn't check weight values (see NaNCheck).
   void StructuralCheck() const;
-  // Check the inverted indices specifically. Maybe can just
-  // be private.
-  void CheckInvertedIndices() const;
 
   static Network *Clone(const Network &other);
 
   // Note: These use local byte order, so the serialized format is not
   // portable.
   static Network *ReadNetworkBinary(const string &filename);
-  static void SaveNetworkBinary(const Network &net, const string &filename);
+  void SaveNetworkBinary(const string &filename);
 
   // If the number of nodes or indices per node change, this can be
   // used to reallocate the inverted index buffers; then you must call
   // ComputeInvertedIndices to put the network in a valid state.
   void ReallocateInvertedIndices();
-  static void ComputeInvertedIndices(Network *net, int max_parallelism = 8);
+  // Compute the inverted indices after any change to the indices.
+  void ComputeInvertedIndices(int max_parallelism = 8);
 
   // Run the network to fill out the stimulation. The Stimulation
   // must be the right size (i.e. created from this Network) and
@@ -189,6 +204,13 @@ struct Network {
     vector<float> biases;
   };
 
+  // Create a dense layer with the expected regular structure of indices
+  // and zero weights (you gotta initialize these).
+  static Layer MakeDenseLayer(int num_nodes,
+                              // ipn is = size of the previous layer
+                              int indices_per_node,
+                              TransferFunction transfer_function);
+
   // XXX Probably needs to be rethought for 'chunks'? Perhaps this is
   // a concept of the full layer, after assigning each parallel
   // chunk distinct node ids.
@@ -238,6 +260,9 @@ struct Network {
 private:
   // Value type, but require calling Clone explicitly.
   Network(const Network &other) = default;
+  // Check the inverted indices specifically. Use StructuralCheck
+  // instead.
+  void CheckInvertedIndices() const;
 };
 
 // A stimulation is an evaluation (perhaps an in-progress one) of a

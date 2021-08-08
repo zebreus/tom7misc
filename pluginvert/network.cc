@@ -39,13 +39,50 @@ const char *LayerTypeName(LayerType lt) {
   }
 }
 
-Network::Network(vector<int> num_nodes,
-                 vector<Layer> layers) :
-  num_layers(layers.size()),
-  num_nodes(num_nodes),
-  layers(std::move(layers)) {
+// PERF: native_recip? native_exp? It's likely that we can tolerate
+// inaccuracy of certain sorts.
+const char *const Network::SIGMOID_FN =
+  "#define FORWARD(potential) (1.0f / (1.0f + exp(-potential)))\n"
+  // This wants to be given the actual output value f(potential).
+  "#define DERIVATIVE(fx) (fx * (1.0f - fx))\n";
 
-  CHECK(num_nodes.size() + 1 == layers.size());
+// PERF: I think LEAKY_ is generally better, but this could be
+// implemented with fmax.
+const char *const Network::RELU_FN =
+  "#define FORWARD(potential) ((potential < 0.0f) ? 0.0f : potential)\n"
+  // This is normally given as x < 0 ? 0 : 1, but note that f(x)
+  // tells us which side of 0 the input is on (retaining the
+  // not-very-important ambiguity at exactly 0), anyway. So we define
+  // it in terms of f(x) to maintain the same interface we use for
+  // sigmoid.
+  "#define DERIVATIVE(fx) ((fx < 0.0f) ? 0.0f : 1.0f)\n";
+
+// Like RELU but slight slope in the "zero" region.
+const char *const Network::LEAKY_RELU_FN =
+  "#define FORWARD(potential) ((potential < 0.0f) ? potential * 0.01f : potential)\n"
+  // See note above.
+  "#define DERIVATIVE(fx) ((fx < 0.0f) ? 0.01f : 1.0f)\n";
+
+string Network::TransferFunctionDefines(TransferFunction tf) {
+  switch (tf) {
+  case SIGMOID: return Network::SIGMOID_FN;
+  case RELU: return Network::RELU_FN;
+  case LEAKY_RELU: return Network::LEAKY_RELU_FN;
+  default:
+    CHECK(false) << "No define for transfer function "
+                 << tf << ": " << TransferFunctionName(tf);
+  }
+}
+
+Network::Network(vector<int> num_nodes,
+                 vector<Layer> layers_in) :
+  num_layers(layers_in.size()),
+  num_nodes(num_nodes),
+  layers(std::move(layers_in)) {
+
+  CHECK(num_nodes.size() - 1 == layers.size()) <<
+    "num_nodes vec: " << num_nodes.size() << " layers vec: "
+                      << layers.size();
   CHECK(num_layers >= 1) << "Must include input layer.";
 
   // Make these valid (N x 1 x 1).
@@ -57,9 +94,8 @@ Network::Network(vector<int> num_nodes,
   }
 
   ReallocateInvertedIndices();
-
-  // XXX could just recompute inverted indices here, then structural
-  // check??
+  ComputeInvertedIndices();
+  StructuralCheck();
 }
 
 void Network::ReallocateInvertedIndices() {
@@ -141,18 +177,35 @@ void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
   const vector<float> &weights = layers[src_layer].weights;
   const vector<uint32> &indices = layers[src_layer].indices;
   const int indices_per_node = layers[src_layer].indices_per_node;
+  const int num_convolutions = layers[src_layer].num_convolutions;
   const int number_of_nodes = num_nodes[src_layer + 1];
+  const LayerType layer_type = layers[src_layer].type;
 
   // PERF in parallel
   for (int node_idx = 0; node_idx < number_of_nodes; node_idx++) {
+    const int conv_number = node_idx / num_convolutions;
     // Start with bias.
-    float potential = biases[node_idx];
+    float potential = [&](){
+        if (layer_type == LAYER_CONVOLUTION_ARRAY) {
+          return biases[conv_number];
+        } else {
+          return biases[node_idx];
+        }
+      }();
     const int my_weights = node_idx * indices_per_node;
     const int my_indices = node_idx * indices_per_node;
 
     // PERF could support dense layers more efficiently
+    // PERF generally, use a differenet loop for each layer
+    // type...
     for (int i = 0; i < indices_per_node; i++) {
-      const float w = weights[my_weights + i];
+      const float w = [&](){
+          if (layer_type == LAYER_CONVOLUTION_ARRAY) {
+            return weights[conv_number * indices_per_node + i];
+          } else {
+            return weights[my_weights + i];
+          }
+        }();
       int srci = indices[my_indices + i];
       const float v = src_values[srci];
       potential += w * v;
@@ -192,10 +245,21 @@ void Network::RunForwardVerbose(Stimulation *stim) const {
     const vector<uint32> &indices = layers[src].indices;
     const int indices_per_node = layers[src].indices_per_node;
     const int number_of_nodes = num_nodes[src + 1];
+    const int num_convolutions = layers[src].num_convolutions;
+    const LayerType layer_type = layers[src].type;
+
     for (int node_idx = 0; node_idx < number_of_nodes; node_idx++) {
+      const int conv_number = node_idx / num_convolutions;
 
       // Start with bias.
-      double potential = biases[node_idx];
+      float potential = [&](){
+          if (layer_type == LAYER_CONVOLUTION_ARRAY) {
+            return biases[conv_number];
+          } else {
+            return biases[node_idx];
+          }
+        }();
+
       printf("%d|L %d n %d. bias: %f\n",
              rounds, src, node_idx, potential);
       CHECK(!std::isnan(potential)) << node_idx;
@@ -203,8 +267,14 @@ void Network::RunForwardVerbose(Stimulation *stim) const {
       const int my_indices = node_idx * indices_per_node;
 
       for (int i = 0; i < indices_per_node; i++) {
-        const float w = weights[my_weights + i];
-        int srci = indices[my_indices + i];
+        const float w = [&](){
+            if (layer_type == LAYER_CONVOLUTION_ARRAY) {
+              return weights[conv_number * indices_per_node + i];
+            } else {
+              return weights[my_weights + i];
+            }
+          }();
+        const int srci = indices[my_indices + i];
         // XXX check dupes
         CHECK(srci >= 0 && srci < src_values.size()) << srci;
         const float v = src_values[srci];
@@ -296,6 +366,26 @@ void Network::StructuralCheck() const {
   CheckInvertedIndices();
 }
 
+Network::Layer Network::MakeDenseLayer(int num_nodes,
+                                       int indices_per_node,
+                                       TransferFunction transfer_function) {
+  Layer layer;
+  layer.indices_per_node = indices_per_node;
+  layer.type = LAYER_DENSE;
+  layer.num_convolutions = 1;
+  layer.transfer_function = transfer_function;
+  layer.indices.resize(num_nodes * indices_per_node, 0);
+  for (int n = 0; n < num_nodes; n++) {
+    for (int p = 0; p < indices_per_node; p++) {
+      layer.indices[n * indices_per_node + p] = p;
+    }
+  }
+
+  layer.weights.resize(num_nodes * indices_per_node, 0.0f);
+  layer.biases.resize(num_nodes, 0.0f);
+  return layer;
+}
+
 void Network::CheckInvertedIndices() const {
   for (int layer = 0; layer < num_layers; layer++) {
     const vector<uint32> &indices = layers[layer].indices;
@@ -325,42 +415,39 @@ void Network::CheckInvertedIndices() const {
   }
 }
 
-void Network::ComputeInvertedIndices(Network *net, int max_parallelism) {
+void Network::ComputeInvertedIndices(int max_parallelism) {
   // Computes the values for inverted_indices[layer]. Note that
   // although we use the [layer] offset throughout, this is really
   // talking about the gap between layers, with the 0th element's
   // index being the way the first hidden layer uses the inputs, and
   // the 0th element's inverted index being about the way the inputs map
   // to the first hidden layer.
-  auto OneLayer = [net](int layer) {
+  auto OneLayer = [this](int layer) {
     CHECK_GE(layer, 0);
-    CHECK_LT(layer, net->layers.size());
-    const int src_num_nodes = net->num_nodes[layer];
-    const int dst_num_nodes = net->num_nodes[layer + 1];
-    CHECK_LT(layer, net->num_layers);
-    CHECK_LT(layer, net->inverted_indices.size());
-    vector<uint32> *start = &net->inverted_indices[layer].start;
-    vector<uint32> *length = &net->inverted_indices[layer].length;
+    CHECK_LT(layer, layers.size());
+    const int src_num_nodes = num_nodes[layer];
+    const int dst_num_nodes = num_nodes[layer + 1];
+    CHECK_LT(layer, num_layers);
+    CHECK_LT(layer, inverted_indices.size());
+    vector<uint32> *start = &inverted_indices[layer].start;
+    vector<uint32> *length = &inverted_indices[layer].length;
     // Number of nodes depends on size of source layer.
     CHECK_EQ(src_num_nodes, start->size());
     CHECK_EQ(src_num_nodes, length->size());
-    vector<uint32> *inverted = &net->inverted_indices[layer].output_indices;
+    vector<uint32> *inverted = &inverted_indices[layer].output_indices;
     // But this has to account for all the nodes on the destination layer.
-    CHECK_EQ(net->layers[layer].indices_per_node * dst_num_nodes,
+    CHECK_EQ(layers[layer].indices_per_node * dst_num_nodes,
              inverted->size());
-
-    // printf("ComputeInvertedIndices layer %d...\n", layer);
-    // fflush(stdout);
 
     // Indexed by node id in the source layer.
     vector<vector<uint32>> occurrences;
-    occurrences.resize(net->num_nodes[layer]);
+    occurrences.resize(num_nodes[layer]);
     for (int dst_indices_idx = 0;
-         dst_indices_idx < net->layers[layer].indices_per_node * dst_num_nodes;
+         dst_indices_idx < layers[layer].indices_per_node * dst_num_nodes;
          dst_indices_idx++) {
       // This index gets put into exactly one place in occurrences.
-      CHECK(dst_indices_idx < net->layers[layer].indices.size());
-      const int src_nodes_idx = net->layers[layer].indices[dst_indices_idx];
+      CHECK(dst_indices_idx < layers[layer].indices.size());
+      const int src_nodes_idx = layers[layer].indices[dst_indices_idx];
       CHECK(src_nodes_idx >= 0) << src_nodes_idx;
       CHECK(src_nodes_idx < occurrences.size()) << src_nodes_idx << " vs "
                                                 << occurrences.size();
@@ -392,10 +479,10 @@ void Network::ComputeInvertedIndices(Network *net, int max_parallelism) {
         flat_size++;
       }
     }
-    CHECK_EQ(dst_num_nodes * net->layers[layer].indices_per_node, flat_size);
+    CHECK_EQ(dst_num_nodes * layers[layer].indices_per_node, flat_size);
   };
 
-  UnParallelComp(net->num_layers, OneLayer, max_parallelism);
+  UnParallelComp(num_layers, OneLayer, max_parallelism);
 }
 
 // Caller owns new-ly allocated Network object.
@@ -409,6 +496,8 @@ Network *Network::ReadNetworkBinary(const string &filename) {
     return nullptr;
   }
 
+  // TODO: Instead of CHECK, these could set some failed flag
+  // and return zeroes, which allows more graceful failure.
   auto Read64 = [file]() {
     int64_t i;
     CHECK(!feof(file));
@@ -478,10 +567,6 @@ Network *Network::ReadNetworkBinary(const string &filename) {
   printf("\n%s: indices per node/fns/type: ", filename.c_str());
 
   vector<Layer> layers(file_num_layers);
-
-  // vector<int> indices_per_node(file_num_layers, 0);
-  // vector<TransferFunction> transfer_functions(file_num_layers, SIGMOID);
-  // vector<LayerType> layer_types(file_num_layers, LAYER_DENSE);
   for (int i = 0; i < file_num_layers; i++) {
     Layer &layer = layers[i];
     const int nodes_this_layer = num_nodes[i + 1];
@@ -586,6 +671,7 @@ Network *Network::ReadNetworkBinary(const string &filename) {
   // Construct network.
 
   auto net = std::make_unique<Network>(num_nodes, layers);
+  CHECK(net.get() != nullptr);
   net->width = width;
   net->height = height;
   net->channels = channels;
@@ -597,16 +683,14 @@ Network *Network::ReadNetworkBinary(const string &filename) {
   // Now, fill in the inverted indices. These are not stored in the file.
 
   printf("Invert index:\n");
-  ComputeInvertedIndices(net.get());
+  net->ComputeInvertedIndices();
   printf("Check it:\n");
   net->StructuralCheck();
-  // CheckInvertedIndices(*net);
 
   return net.release();
 }
 
-void Network::SaveNetworkBinary(const Network &net,
-                                const string &filename) {
+void Network::SaveNetworkBinary(const string &filename) {
   // Not portable, obviously.
   FILE *file = fopen(filename.c_str(), "wb");
   auto Write64 = [file](int64_t i) {
@@ -624,29 +708,29 @@ void Network::SaveNetworkBinary(const Network &net,
   };
 
   Write32(Network::FORMAT_ID);
-  Write64(net.rounds);
-  Write64(net.examples);
-  Write32(net.num_layers);
-  CHECK(net.num_nodes.size() == net.num_layers + 1);
-  CHECK(net.width.size() == net.num_layers + 1) << net.width.size();
-  CHECK(net.height.size() == net.num_layers + 1);
-  CHECK(net.channels.size() == net.num_layers + 1);
-  CHECK(net.renderstyle.size() == net.num_layers + 1);
+  Write64(rounds);
+  Write64(examples);
+  Write32(num_layers);
+  CHECK(num_nodes.size() == num_layers + 1);
+  CHECK(width.size() == num_layers + 1) << width.size();
+  CHECK(height.size() == num_layers + 1);
+  CHECK(channels.size() == num_layers + 1);
+  CHECK(renderstyle.size() == num_layers + 1);
 
-  for (const int i : net.num_nodes) Write32(i);
-  for (const int w : net.width) Write32(w);
-  for (const int h : net.height) Write32(h);
-  for (const int c : net.channels) Write32(c);
-  for (const uint32 s : net.renderstyle) Write32(s);
+  for (const int i : num_nodes) Write32(i);
+  for (const int w : width) Write32(w);
+  for (const int h : height) Write32(h);
+  for (const int c : channels) Write32(c);
+  for (const uint32 s : renderstyle) Write32(s);
 
-  for (const Network::Layer &layer : net.layers) {
+  for (const Network::Layer &layer : layers) {
     Write32(layer.indices_per_node);
     Write32(layer.num_convolutions);
     Write32(layer.transfer_function);
     Write32(layer.type);
   }
 
-  for (const Network::Layer &layer : net.layers) {
+  for (const Network::Layer &layer : layers) {
     switch (layer.type) {
     case LAYER_CONVOLUTION_ARRAY:
     case LAYER_SPARSE:

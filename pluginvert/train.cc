@@ -6,10 +6,6 @@
 // In this version, I hope to add support for convolutional
 // layers!
 
-// TODO: Fix error display.
-
-// TODO: 2x/3x for RGB/FLAT.
-
 // TODO: Show timer breakdown in GUI.
 
 // TODO: Now we pass stuff to the video thread at multiple different moments,
@@ -62,23 +58,24 @@
 #include "lines.h"
 #include "rolling-average.h"
 
-#include "loadfonts.h"
 #include "network.h"
 
 #include "clutil.h"
 #include "timer.h"
 #include "top.h"
-#include "font-problem.h"
 #include "autoparallel.h"
 #include "error-history.h"
 #include "modelinfo.h"
+
+#include "problem.h"
+#include "frame-queue.h"
 
 #include "../bit7/embed9x9.h"
 
 #define FONTCHARS " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?" /* removed icons */
 #define FONTSTYLES 7
 
-static constexpr int VERBOSE = 2;
+static constexpr int VERBOSE = 3;
 // Perform somewhat expensive sanity checking for NaNs.
 // (Beware: Also enables some other really expensive diagnostics.)
 // XXX PERF turn off once it's working!
@@ -92,44 +89,6 @@ using uchar = uint8_t;
 
 using uint32 = uint32_t;
 using uint64 = uint64_t;
-
-using Contour = TTF::Contour;
-
-// TODO: These should be owned by network.h and exposed as
-// constants; we want the CPU implementation to agree with
-// the GPU #defines!
-
-// We use a different compiled kernel depending on the layer's
-// transfer function (these are in the inner loops, so we want
-// to avoid overhead). The implementation of the transfer
-// function is straightforward. The derivative is given in
-// terms of the *output* of the transfer function, because
-// this is the most natural/efficient for the sigmoid, and
-// can be done (a bit less naturally) for ReLU.
-//
-// PERF: native_recip? native_exp? It's likely that we can tolerate
-// inaccuracy of certain sorts.
-static const char *SIGMOID_FN =
-  "#define FORWARD(potential) (1.0f / (1.0f + exp(-potential)))\n"
-  // This wants to be given the actual output value f(potential).
-  "#define DERIVATIVE(fx) (fx * (1.0f - fx))\n";
-
-// PERF: I think LEAKY_ is generally better, but this could be
-// implemented with fmax.
-static const char *RELU_FN =
-  "#define FORWARD(potential) ((potential < 0.0f) ? 0.0f : potential)\n"
-  // This is normally given as x < 0 ? 0 : 1, but note that f(x)
-  // tells us which side of 0 the input is on (retaining the
-  // not-very-important ambiguity at exactly 0), anyway. So we define
-  // it in terms of f(x) to maintain the same interface we use for
-  // sigmoid.
-  "#define DERIVATIVE(fx) ((fx < 0.0f) ? 0.0f : 1.0f)\n";
-
-// Like RELU but slight slope in the "zero" region.
-static const char *LEAKY_RELU_FN =
-  "#define FORWARD(potential) ((potential < 0.0f) ? potential * 0.01f : potential)\n"
-  // See note above.
-  "#define DERIVATIVE(fx) ((fx < 0.0f) ? 0.01f : 1.0f)\n";
 
 // Defined at the bottom.
 static std::optional<string> GetExclusiveApp();
@@ -160,8 +119,7 @@ static Font *font = nullptr;
 #define SCREENH 1280
 static SDL_Surface *screen = nullptr;
 
-static constexpr int64 MAX_FONTS = 100'000;
-static constexpr int64 ENOUGH_FONTS = 1000;
+static constexpr int64 ENOUGH_FRAMES = 1000;
 
 // Thread-safe, so shared between train and ui threads.
 static CL *global_cl = nullptr;
@@ -172,14 +130,6 @@ std::shared_mutex print_mutex;
     printf(fmt, ##__VA_ARGS__);                         \
     fflush(stdout);                                     \
   } while (0);
-
-template<class C>
-static void DeleteElements(C *cont) {
-  for (auto &elt : *cont) {
-    delete elt;
-  }
-  cont->clear();
-}
 
 static void BlitImage(const ImageRGBA &img, int xpos, int ypos) {
   // PERF should invest in fast blit of ImageRGBA to SDL screen
@@ -231,19 +181,22 @@ static constexpr float ByteFloat(uint8 b) {
   return b * (1.0 / 255.0f);
 }
 
-static constexpr FontProblem::SDFConfig SDF_CONFIG;
-static constexpr int SDF_SIZE = SDF_CONFIG.sdf_size;
-
-// SDF is square with an edge this length.
-static constexpr int INPUT_LAYER_SIZE = SDF_SIZE * SDF_SIZE;
-// The output is the same shape.
-// Additionally, consider adding a one-hot prediction of the letter
-// being lowercased, to coax the network to distinguish between
-// letters.
-static constexpr int OUTPUT_LAYER_SIZE =
-  INPUT_LAYER_SIZE +
-  // one-hot hint for what letter this is
-  26;
+// Fill RGB floats from NES image.
+static void FillFromRGBA(const ImageRGBA &rgba,
+                         vector<float> *f) {
+  CHECK(rgba.Width() == 256);
+  CHECK(rgba.Height() == 240);
+  f->resize(256 * 240 * 3, 0.0f);
+  int idx = 0;
+  for (int y = 0; y < 240; y++) {
+    for (int x = 0; x < 256; x++) {
+      const auto [r, g, b, a] = rgba.GetPixel(x, y);
+      (*f)[idx++] = ByteFloat(r);
+      (*f)[idx++] = ByteFloat(g);
+      (*f)[idx++] = ByteFloat(b);
+    }
+  }
+}
 
 // Weight decay; should be a number less than, but close to, 1.
 // This is like L2 regularization (I think just modulo a constant
@@ -266,124 +219,12 @@ static constexpr float DECAY_FACTOR = 0.999995;
 // at least, or else the derivative we implicitly compute on the results
 // will just be wrong!
 
-static constexpr bool REMAP_OUTPUT = true;
+static constexpr bool REMAP_OUTPUT = false;
 static string GetRemap() {
-  static constexpr float fonedge = FontProblem::SDFConfig().onedge_value / 255.0f;
-  // Remap a value x (nominally) in [0,1] space to a new value, also nominally
-  // in [0,1]. Here, a piecewise linear mapping
-  //                    s2
-  // 1 |               b-`/
-  //   |               |/
-  // o |              /|
-  // u |            / |
-  // t |          /  |  interesting
-  // p |        /   |   slope
-  // u |      /   .-a
-  // t |    /  .-`
-  //   |  / .-` s1
-  //   |/.-`
-  // 0 +------------|--|---
-  //   0   input    a  b  1
-  //     input
-  //
-  // Here the / line would be the identity function. Instead we have a
-  // more shallow slope in the less-interesting regions [0,a] and
-  // [b,1]. The interesting region [a,b] thus has a steeper slope,
-  // which means that smaller differences in the inputs yield bigger
-  // differences in the outputs in this region.
-  //
-  static constexpr float ffalloff = FontProblem::SDFConfig().falloff_per_pixel / 255.0f;
-  // +/- 1.5 pixels from the edge value is the critical region
-  // This gets pretty close to 1.0 on the high end, btw.
-  static constexpr float ax = fonedge - ffalloff * 1.5f;
-  static constexpr float bx = fonedge + ffalloff * 1.5f;
-  // HERE then need to also specify the slope of the interesting region.
-  static constexpr float interesting_slope = 3.0f;
-
-  static_assert(ax > 0.0f);
-  static_assert(bx < 1.0f);
-  static_assert(bx > ax);
-  static_assert(interesting_slope > 0.0f);
-
-  static constexpr float w = bx - ax;
-  static constexpr float h = interesting_slope * w;
-
-  // Now we need to figure out the y coordinate of a. There's
-  // one degree of freedom in the drawing which can be resolved
-  // by setting the slopes s1 and s2 equal. Just rearrange so
-  // that the interesting box (w by h) is in the bottom left
-  // corner. The slope of the remaining line will be the same
-  // as the two uninteresting line segments.
-  static constexpr float uw = 1 - w;
-  static constexpr float uh = 1 - h;
-  static_assert(uw > 0.0f);
-  static_assert(uh > 0.0f);
-  static constexpr float s = uh / uw;
-
-  // Now we can compute the location of the interesting box.
-  static constexpr float ay = ax * s;
-  static constexpr float by = ay + h;
-  static_assert(ay > 0.0f && ay < 1.0f);
-  static_assert(by > 0.0f && by < 1.0f);
-
-  // Finally, the remapping function is just a piecewise linear
-  // function. For the lowercase problem, we only apply it for
-  // the SDF pixels.
-
-  [[maybe_unused]]
-  auto Remap = [](int i, float x) {
-      if (i < SDF_SIZE * SDF_SIZE) {
-        // PERF could probably simplify this!
-        if (x < ax) return x * s;
-        if (x < bx) return ay + (x - ax) * interesting_slope;
-        return by + (x - bx) * s;
-      } else {
-        return x;
-      }
-    };
-
-  Printf("ax: %.9f\n"
-         "bx: %.9f\n"
-         "ay: %.9f\n"
-         "by: %.9f\n"
-         "s: %.9f\n",
-         ax, bx, ay, by, s);
-
-  return StringPrintf(
-      "#define REMAP(i, x) "
-      "((i < %d) ? "
-      // if (x < ax) return x * s;
-      "((x < %.9ff) ? x * %.9ff : "
-      // if (x < bx) return ay + (x - ax) * interesting_slope;
-      "(x < %.9ff) ? %.9ff + (x - %.9ff) * %.9ff : "
-      // return by + (x - bx) * s;
-      "%.9ff + (x - %.9ff) * %.9ff) : "
-      // else return x
-      "x)",
-      SDF_SIZE * SDF_SIZE,
-      ax, s,
-      bx, ay, ax, interesting_slope,
-      by, bx, s);
+  return "#define REMAP(i, x) (x)";
 }
 
-
-// When generating the initial network, the number of nodes that
-// are guaranteed to be sampled from the corresponding spatial
-// location in the input layer. The square is actually sized
-// NEIGHBORHOOD + 1 + NEIGHBORHOOD along both dimensions.
-static constexpr int NEIGHBORHOOD = 3;
-
-
-
-// custom renderstyles for font problem
-enum UserRenderStyle : uint32_t {
-  RENDERSTYLE_INPUTXY = RENDERSTYLE_USER + 1000,
-  RENDERSTYLE_OUTPUTXY = RENDERSTYLE_USER + 1001,
-
-  RENDERSTYLE_SDF = RENDERSTYLE_USER + 2000,
-  RENDERSTYLE_SDF26 = RENDERSTYLE_USER + 2001,
-};
-
+// TODO: Move GPU stuff to standalone network-gpu.h?
 
 // Network that lives entirely on the GPU, but can be copied back to
 // the Network object.
@@ -541,32 +382,6 @@ struct TrainingRoundGPU {
   DISALLOW_COPY_AND_ASSIGN(TrainingRoundGPU);
 };
 
-// XXX this is probably obsolete -- now we do more specializations
-// of constants in each wrapper's constructor.
-static std::pair<std::vector<cl_program>, std::vector<cl_kernel>>
-MakeTransferKernels(CL *cl, const char *base_file, const char *function_name) {
-  std::vector<cl_program> programs;
-  std::vector<cl_kernel> kernels;
-  string base_src = Util::ReadFile(base_file);
-  for (int tf = 0; tf < NUM_TRANSFER_FUNCTIONS; tf++) {
-    cl_program program;
-    cl_kernel kernel;
-    string kernel_src;
-    switch (tf) {
-    case SIGMOID: kernel_src += SIGMOID_FN; break;
-    case RELU: kernel_src += RELU_FN; break;
-    case LEAKY_RELU: kernel_src += LEAKY_RELU_FN; break;
-    default:
-      CHECK(false) << "Invalid transfer function " << tf;
-    }
-    kernel_src += base_src;
-    std::tie(program, kernel) = cl->BuildOneKernel(kernel_src, function_name);
-    programs.push_back(program);
-    kernels.push_back(kernel);
-  }
-  return make_pair(programs, kernels);
-}
-
 struct ForwardLayerCL {
   ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
     string base_src = Util::ReadFile("forwardlayer.cl");
@@ -574,32 +389,43 @@ struct ForwardLayerCL {
       const TransferFunction transfer_function =
         net.layers[layer].transfer_function;
       const int indices_per_node = net.layers[layer].indices_per_node;
+      const int nodes_in_layer = net.num_nodes[layer + 1];
+      const int num_convolutions = net.layers[layer].num_convolutions;
 
-      const bool dense = net.layers[layer].type == LAYER_DENSE;
-
-      string kernel_src;
-      switch (transfer_function) {
-      case SIGMOID: kernel_src += SIGMOID_FN; break;
-      case RELU: kernel_src += RELU_FN; break;
-      case LEAKY_RELU: kernel_src += LEAKY_RELU_FN; break;
+      string kernel_name;
+      switch (net.layers[layer].type) {
+      case LAYER_DENSE:
+        kernel_name = "ForwardLayerDense";
+        break;
+      case LAYER_SPARSE:
+        kernel_name = "ForwardLayerSparse";
+        break;
+      case LAYER_CONVOLUTION_ARRAY:
+        kernel_name = "ForwardLayerConvolutional";
+        break;
       default:
-        CHECK(false) << "Invalid transfer function " << transfer_function;
+        CHECK(false) << "Unsupported layer type "
+                     << LayerTypeName(net.layers[layer].type);
       }
 
-      StringAppendF(&kernel_src, "\n#define INDICES_PER_NODE %d\n",
-                    indices_per_node);
+      string kernel_src =
+        Network::TransferFunctionDefines(transfer_function);
+
+      StringAppendF(&kernel_src,
+                    "\n"
+                    "#define INDICES_PER_NODE %d\n"
+                    "#define NODES_IN_LAYER %d\n"
+                    "#define NUM_CONVOLUTIONS %d\n",
+                    indices_per_node,
+                    nodes_in_layer,
+                    num_convolutions);
 
       kernel_src += base_src;
-      auto [program, kernel] =
-        cl->BuildOneKernel(kernel_src,
-                           dense ?
-                           "ForwardLayerDense" :
-                           "ForwardLayerSparse");
-      // XXX don't save debugging stuff
+      auto [program, kernel] = cl->BuildOneKernel(kernel_src, kernel_name);
       layer_kernels.emplace_back(program, kernel,
-                                 dense, indices_per_node, transfer_function);
+                                 // XXX don't save debugging stuff
+                                 indices_per_node, transfer_function);
     }
-
   }
 
   struct ForwardContext {
@@ -624,11 +450,10 @@ struct ForwardLayerCL {
 
       Network *net = net_gpu->net;
 
-      auto [program, kernel, dense, kernel_ipn, kernel_tf] =
+      auto [program, kernel, kernel_ipn, kernel_tf] =
         parent->layer_kernels[layer];
 
       // Sanity check we have the right kernel
-      CHECK(dense == (net->layers[layer].type == LAYER_DENSE));
       CHECK(kernel_ipn == net->layers[layer].indices_per_node);
       CHECK(kernel_tf == net->layers[layer].transfer_function);
 
@@ -636,28 +461,17 @@ struct ForwardLayerCL {
       {
         WriteMutexLock ml(&parent->m);
 
-        if (dense) {
-          // No indices parameter for dense layers.
-          CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
-                                       (void *)&src_values));
-          CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
-                                       (void *)&weights));
-          CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
-                                       (void *)&biases));
-          CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
-                                       (void *)&dst_values));
-        } else {
-          CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
-                                       (void *)&src_values));
-          CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
-                                       (void *)&indices));
-          CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
-                                       (void *)&weights));
-          CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
-                                       (void *)&biases));
-          CHECK_SUCCESS(clSetKernelArg(kernel, 4, sizeof (cl_mem),
-                                       (void *)&dst_values));
-        }
+        // All the kernels take the same args.
+        CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
+                                     (void *)&src_values));
+        CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
+                                     (void *)&indices));
+        CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
+                                     (void *)&weights));
+        CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
+                                     (void *)&biases));
+        CHECK_SUCCESS(clSetKernelArg(kernel, 4, sizeof (cl_mem),
+                                     (void *)&dst_values));
 
         size_t global_work_offset[] = { 0 };
         size_t global_work_size[] = { (size_t)(net->num_nodes[layer + 1]) };
@@ -684,6 +498,7 @@ struct ForwardLayerCL {
     ~ForwardContext() {
     }
 
+    // Not owned.
     cl_mem indices;
     cl_mem weights;
     cl_mem biases;
@@ -694,7 +509,7 @@ struct ForwardLayerCL {
   };
 
   ~ForwardLayerCL() {
-    for (auto &[p, k, dense_unused, ipn_unused, tf_unused] : layer_kernels) {
+    for (auto &[p, k, ipn_unused, tf_unused] : layer_kernels) {
       CHECK_SUCCESS(clReleaseKernel(k));
       CHECK_SUCCESS(clReleaseProgram(p));
     }
@@ -702,8 +517,8 @@ struct ForwardLayerCL {
 
   CL *cl = nullptr;
   // Owned. Indexed by layer id.
-  std::vector<std::tuple<cl_program, cl_kernel, bool, int, TransferFunction>>
-  layer_kernels;
+  std::vector<std::tuple<cl_program, cl_kernel, int, TransferFunction>>
+    layer_kernels;
 
   std::shared_mutex m;
 };
@@ -719,14 +534,8 @@ struct SetOutputErrorCL {
     const TransferFunction transfer_function =
       net.layers.back().transfer_function;
 
-    string kernel_src;
-    switch (transfer_function) {
-    case SIGMOID: kernel_src += SIGMOID_FN; break;
-    case RELU: kernel_src += RELU_FN; break;
-    case LEAKY_RELU: kernel_src += LEAKY_RELU_FN; break;
-    default:
-      CHECK(false) << "Invalid transfer function " << transfer_function;
-    }
+    string kernel_src =
+      Network::TransferFunctionDefines(transfer_function);
 
     // Add remapping function or fill in identity if disabled.
     kernel_src += "\n";
@@ -827,14 +636,8 @@ struct BackwardLayerCL {
       const int dst_num_nodes = net.num_nodes[dst_layer + 1];
       const bool dst_dense = net.layers[dst_layer].type == LAYER_DENSE;
 
-      string kernel_src;
-      switch (transfer_function) {
-      case SIGMOID: kernel_src += SIGMOID_FN; break;
-      case RELU: kernel_src += RELU_FN; break;
-      case LEAKY_RELU: kernel_src += LEAKY_RELU_FN; break;
-      default:
-        CHECK(false) << "Invalid transfer function " << transfer_function;
-      }
+      string kernel_src =
+        Network::TransferFunctionDefines(transfer_function);
 
       StringAppendF(&kernel_src,
                     "\n"
@@ -1155,283 +958,6 @@ struct UpdateWeightsCL {
   std::shared_mutex m;
 };
 
-// Make indices. This assumes that nodes are 2D "pixel" data, where on
-// each layer we have width[l] * height[l] pixels, with channels[l]
-// nodes per pixel. Row-major order.
-//
-// We mostly sample from a Gaussian near each pixel, but:
-//  - we reject duplicates (inefficient),
-//  - we reject pixels off the image (doesn't make sense; wrapping around
-//      would work but an image is not a torus)
-//  - we require that a small neighborhood around the pixel is mapped
-//      directly (especially the pixel itself; this preserves spatial
-//      locality and makes sure we don't have any statically dead nodes).
-//
-// TODO: In addition to the spatial channels, it might be useful to
-// have some region that is densely connected. For example, say we
-// specify DENSE_PREFIX_ROWS, which are then subtracted from the
-// implied "image", and each pixel is assigned indices from the
-// neighborhood, then from dense_prefix_rows, then from a gaussian.
-//
-// TODO: Allow specifying a strategy for index assignment. For chess,
-// taking full rows, columns, and diagonals is probably better than
-// random gaussians!
-//
-// TODO: If the number of indices requested is close to the number
-// available (or equal to it), then this approach is super inefficient.
-// Could instead randomly delete indices. But at least we only do it
-// once.
-static void MakeIndices(ArcFour *rc, Network *net) {
-  static_assert(NEIGHBORHOOD >= 0, "must include the pixel itself.");
-  auto OneNode = [](ArcFour *rc, RandomGaussian *gauss,
-                    int64 *rejected, int64 *duplicate,
-                    int indices_per_node,
-                    int src_width, int src_height, int src_channels,
-                    int dst_width, int dst_height, int dst_channels,
-                    int idx) -> vector<uint32> {
-
-    CHECK(indices_per_node <= src_width * src_height * src_channels) <<
-    "Can't get " << indices_per_node
-    << " distinct indices from a layer with " <<
-    src_width << " x " << src_height << " x " << src_channels <<
-    " = " << (src_width * src_height * src_channels) << " sources";
-
-    // Whenever we read the neighborhood, we include all source channels.
-    CHECK((NEIGHBORHOOD * 2 + 1) * (NEIGHBORHOOD * 2 + 1) *
-          src_channels <= indices_per_node) <<
-    "neighborhood doesn't fit in indices!";
-    // Which pixel is this?
-    const int dst_nodes_per_row = dst_width * dst_channels;
-    [[maybe_unused]]
-    const int c = idx % dst_channels;
-    const int x = (idx % dst_nodes_per_row) / dst_channels;
-    const int y = idx / dst_nodes_per_row;
-
-    const double xf = x / (double)dst_width;
-    const double yf = y / (double)dst_height;
-
-    // Use hash set for deduplication; we re-sort for locality of access later.
-    unordered_set<int> indices;
-    // clips xx,yy if they are out of the image.
-    // cc must be a valid channel index.
-    auto AddNodeByCoordinates = [src_width, src_height, src_channels, &indices,
-                                 rejected, duplicate](int xx, int yy, int cc) {
-      ECHECK_GE(cc, 0);
-      ECHECK_LT(cc, src_channels);
-      if (xx < 0 || yy < 0 || xx >= src_width || yy >= src_height) {
-        ++*rejected;
-        return;
-      }
-      int idx = (yy * src_width * src_channels) + xx * src_channels + cc;
-      ECHECK_GE(idx, 0);
-      ECHECK_LT(idx, src_width * src_height * src_channels);
-      auto p = indices.insert(idx);
-      if (!p.second) ++*duplicate;
-    };
-
-    // Find the closest corresponding pixel in the src layer; add all
-    // its channels.
-    const int cx = round(xf * src_width);
-    const int cy = round(yf * src_height);
-    for (int ny = -NEIGHBORHOOD; ny <= NEIGHBORHOOD; ny++) {
-      for (int nx = -NEIGHBORHOOD; nx <= NEIGHBORHOOD; nx++) {
-        // Note that the pixel may be clipped.
-        for (int nc = 0; nc < src_channels; nc++) {
-          AddNodeByCoordinates(cx + nx, cy + ny, nc);
-        }
-      }
-    }
-
-    CHECK_LE(indices.size(), indices_per_node);
-
-    // XXX Select this dynamically based on how many unused nodes
-    // are even left?
-    #if 0
-    static constexpr double stddev = 1 / 16.0;
-
-    // Sample gaussian pixels.
-    while (indices.size() < indices_per_node) {
-      double dx = gauss->Next() * stddev;
-      double dy = gauss->Next() * stddev;
-
-      AddNodeByCoordinates((int)round((xf + dx) * src_width),
-                           (int)round((yf + dy) * src_height));
-    }
-    #else
-
-    // XXXXX
-    int hood = NEIGHBORHOOD;
-    while (indices.size() < indices_per_node) {
-      hood++;
-      const int cx = round(xf * src_width);
-      const int cy = round(yf * src_height);
-      for (int ny = -hood; ny <= hood; ny++) {
-        for (int nx = -hood; nx <= hood; nx++) {
-          // In the interests of getting more spatial
-          // dispersion, only add one channel at random. As
-          // we expand we can try these multiple times, so
-          // pixels closer to the center are more likely to
-          // have all channels used.
-          int nc = RandTo(rc, src_channels);
-          AddNodeByCoordinates(cx + nx, cy + ny, nc);
-          if (indices.size() == indices_per_node) goto done;
-        }
-      }
-    }
-  done:;
-    #endif
-
-    CHECK_EQ(indices_per_node, indices.size());
-    vector<uint32> ret;
-    ret.reserve(indices_per_node);
-    for (int idx : indices) {
-      CHECK_GE(idx, 0);
-      CHECK_LT(idx, src_width * src_height * src_channels);
-      ret.push_back(idx);
-    }
-    return ret;
-  };
-
-  // This must access rc serially.
-  vector<ArcFour *> rcs;
-  for (int i = 0; i < net->num_layers; i++) rcs.push_back(Substream(rc, i));
-
-  auto OneLayer =
-    [&rcs, &OneNode, &net](int layer) {
-      if (net->layers[layer].type == LAYER_DENSE) {
-        // Dense layers have a predetermined structure.
-        const int prev_num_nodes = net->num_nodes[layer];
-        const int this_num_nodes = net->num_nodes[layer + 1];
-        CHECK(net->layers[layer].indices_per_node == prev_num_nodes);
-        vector<uint32> *layer_indices = &net->layers[layer].indices;
-        CHECK(layer_indices->size() == this_num_nodes * prev_num_nodes);
-        for (int n = 0; n < this_num_nodes; n++) {
-          for (int p = 0; p < prev_num_nodes; p++) {
-            (*layer_indices)[n * prev_num_nodes + p] = p;
-          }
-        }
-
-      } else {
-        // Assign sparse layers randomly.
-        CHECK(net->layers[layer].type == LAYER_SPARSE);
-
-        const int indices_per_node = net->layers[layer].indices_per_node;
-        Printf("Intializing %d indices for layer %d...\n",
-               indices_per_node, layer);
-        vector<uint32> *layer_indices = &net->layers[layer].indices;
-        CHECK_LT(layer + 1, net->width.size());
-        CHECK_LT(layer + 1, net->channels.size());
-        CHECK_LT(layer + 1, net->num_nodes.size());
-        const int src_width = net->width[layer];
-        const int src_channels = net->channels[layer];
-        CHECK_EQ(0, net->num_nodes[layer] % (src_width * src_channels));
-        const int src_height =
-          net->num_nodes[layer] / (src_width * src_channels);
-        const int dst_width = net->width[layer + 1];
-        const int dst_channels = net->channels[layer + 1];
-        CHECK_EQ(0, net->num_nodes[layer + 1] % (dst_width * dst_channels));
-        const int dst_height = net->num_nodes[layer + 1] /
-          (dst_width * dst_channels);
-        RandomGaussian gauss{rcs[layer]};
-        int64 rejected = 0LL, duplicate = 0LL;
-        for (int node_idx = 0;
-             node_idx < dst_height * dst_width * dst_channels;
-             node_idx++) {
-          vector<uint32> indices =
-            OneNode(rcs[layer], &gauss, &rejected, &duplicate,
-                    indices_per_node,
-                    src_width, src_height, src_channels,
-                    dst_width, dst_height, dst_channels,
-                    node_idx);
-          // Sort them, for better locality of access later.
-          std::sort(indices.begin(), indices.end());
-          CHECK_EQ(indices_per_node, indices.size());
-          const int start_idx = node_idx * indices_per_node;
-          for (int i = 0; i < indices_per_node; i++) {
-            ECHECK_LT(i, indices.size());
-            ECHECK_LT(start_idx + i, layer_indices->size())
-              << "start " << start_idx
-              << " i " << i
-              << " indices size " << layer_indices->size()
-              << " indices per node "
-              << indices_per_node;
-            (*layer_indices)[start_idx + i] = indices[i];
-          }
-          if (node_idx % 1000 == 0) {
-            Printf("  %d. [%d/%d] %.1f%% (%lld rejected %lld dupe)\n",
-                   layer,
-                   node_idx, dst_height * dst_width * dst_channels,
-                   (100.0 * node_idx) / (dst_height * dst_width * dst_channels),
-                   rejected, duplicate);
-          }
-        }
-      }
-      Printf("... done with layer %d.\n", layer);
-    };
-
-
-  ParallelComp(net->num_layers, OneLayer, 12);
-
-  Printf("DeleteElements:\n");
-  DeleteElements(&rcs);
-  Printf("Exiting MakeIndices.\n");
-}
-
-// Randomize the weights in a network. Doesn't do anything to indices.
-static void RandomizeNetwork(ArcFour *rc, Network *net) {
-  [[maybe_unused]]
-  auto RandomizeFloatsGaussian = [](float mag, ArcFour *rc, vector<float> *vec) {
-    RandomGaussian gauss{rc};
-    for (int i = 0; i < vec->size(); i++) {
-      (*vec)[i] = mag * gauss.Next();
-    }
-  };
-
-  [[maybe_unused]]
-  auto RandomizeFloatsUniform = [](float mag, ArcFour *rc, vector<float> *vec) {
-      // Uniform from -mag to mag.
-      const float width = 2.0f * mag;
-      for (int i = 0; i < vec->size(); i++) {
-        // Uniform in [0,1]
-        double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
-        float f = (width * d) - mag;
-        (*vec)[i] = f;
-      }
-    };
-
-  // This must access rc serially.
-  vector<ArcFour *> rcs;
-  for (int i = 0; i < net->num_layers; i++) rcs.push_back(Substream(rc, i));
-
-  // But now we can do all layers in parallel.
-  CHECK_EQ(net->num_layers, net->layers.size());
-  ParallelComp(net->num_layers, [rcs, &RandomizeFloatsUniform, &net](int layer) {
-    // XXX such hacks. How to best initialize?
-
-    /*
-    RandomizeFloats(powf(0.025f, (layer / 3.0f) + 1.0), rcs[layer], &net->layers[layer].biases);
-    RandomizeFloats(1.0f / (net->layers[layer].indices_per_node * ((layer / 3.0f) + 5)),
-                    rcs[layer], &net->layers[layer].weights);
-    */
-
-    for (float &f : net->layers[layer].biases) f = 0.0f;
-    // RandomizeFloats(0.000025f, rcs[layer], &net->layers[layer].biases);
-    // RandomizeFloats(0.025f, rcs[layer], &net->layers[layer].weights);
-
-    // The more indices we have, the smaller initial weights we should
-    // use.
-    // "Xavier initialization"
-    const float mag = 1.0f / sqrtf(net->layers[layer].indices_per_node);
-    // "He initialization"
-    // const float mag = sqrtf(2.0 / net->layers[layer].indices_per_node);
-    // Tom initialization
-    // const float mag = (0.0125f / net->layers[layer].indices_per_node);
-    RandomizeFloatsUniform(mag, rcs[layer], &net->layers[layer].weights);
-  }, 12);
-
-  DeleteElements(&rcs);
-}
-
 
 // These must be initialized before starting the UI thread!
 static constexpr int NUM_VIDEO_STIMULATIONS = 6;
@@ -1452,31 +978,6 @@ static ImageRGBA RenderLayer(
     const vector<float> &values,
     // Can be null; will always be null for input layer.
     const vector<float> *opt_error) {
-
-  // Render the SDF (at 2x size) and anti-aliased letter image. Each have the
-  // same dimensions.
-  auto MakeSDF = [](const vector<float> &values) -> pair<ImageRGBA, ImageRGBA> {
-      ImageF img = FontProblem::SDFGetImageF(SDF_CONFIG, values);
-      ImageA letter = FontProblem::SDFThresholdAAFloat(
-          SDF_CONFIG.onedge_value / 255.0f,
-          img,
-          SDF_SIZE * 2, SDF_SIZE * 2,
-          3);
-      return {img.Make8Bit().GreyscaleRGBA().ScaleBy(2), letter.GreyscaleRGBA()};
-    };
-
-  // Errors, just from the SDF region (beginning of the array), at 2x size.
-  auto MakeSDFError = [](const vector<float> &values) {
-      ImageRGBA img(SDF_SIZE, SDF_SIZE);
-      for (int y = 0; y < SDF_SIZE; y++) {
-        for (int x = 0; x < SDF_SIZE; x++) {
-          const float f = values[y * SDF_SIZE + x];
-          const auto [r, g, b] = ErrorFloatColor(f);
-          img.SetPixel(x, y, r, g, b, 0xFF);
-        }
-      }
-      return img.ScaleBy(2);
-    };
 
   #if 0
   // TODO: generic error output. could probably be shared with
@@ -1532,46 +1033,6 @@ static ImageRGBA RenderLayer(
 
   const auto render_style = net.renderstyle[layer];
   switch (render_style) {
-
-  case RENDERSTYLE_SDF: {
-    ImageRGBA out(SDF_SIZE * 2 * 2, SDF_SIZE * 2);
-    auto [sdf, letter] = MakeSDF(values);
-    out.BlendImage(0, 0, sdf);
-    out.BlendImage(SDF_SIZE * 2, 0, letter);
-    return out;
-  }
-
-  case RENDERSTYLE_SDF26: {
-    int alphabet_width = 26 * EmbeddedFont::CHAR_WIDTH;
-    // 2xSDF, aa letter, 2x error for sdf part
-    int images_width = 3 * SDF_SIZE * 2;
-    int width = std::max(alphabet_width, images_width);
-    int height = SDF_SIZE * 2 + 1 + EmbeddedFont::CHAR_HEIGHT;
-    ImageRGBA out(width, height);
-    auto [sdf, letter] = MakeSDF(values);
-    out.BlendImage(0, 0, sdf);
-    out.BlendImage(SDF_SIZE * 2, 0, letter);
-
-    if (opt_error != nullptr) {
-      ImageRGBA sdf_error = MakeSDFError(*opt_error);
-      out.BlendImage(SDF_SIZE * 4, 0, sdf_error);
-
-      // XXX Letter error?
-    }
-
-    // Letter classifiers.
-    for (int i = 0; i < 26; i++) {
-      const uint8 v = FloatByte(values[SDF_SIZE * SDF_SIZE + i]);
-      string s = "A";
-      s[0] += i;
-      out.BlendText(EmbeddedFont::CHAR_HEIGHT * i, SDF_SIZE * 2 + 1,
-                    v, v, 0xFF, 0xFF,
-                    s);
-    }
-
-    // TODO: Show other crap that follows?
-    return out;
-  }
 
   case RENDERSTYLE_RGB: {
     int width = net.width[layer];
@@ -1716,7 +1177,8 @@ struct UI {
     }
   }
 
-  void ExportStimulusToVideo(int model_idx, int example_id, const Stimulation &stim) {
+  void ExportStimulusToVideo(int model_idx, int example_id,
+                             const Stimulation &stim) {
     if (model_idx != 0) return;
 
     WriteMutexLock ml(&video_export_m);
@@ -1829,7 +1291,7 @@ struct UI {
             CHECK(err.error.size() == current_network->num_layers);
             CHECK(expected.size() == current_network->num_nodes.back());
 
-            static constexpr int MIN_WIDTH = SDF_SIZE * 4;
+            static constexpr int MIN_WIDTH = 256;
 
             int ystart = 24;
             for (int layer_idx = 0;
@@ -1876,8 +1338,8 @@ struct UI {
             if (histo_mode) {
               if (current_network != nullptr) {
                 const ImageRGBA histo =
-                  ModelInfo::Histogram(*current_network, 1920, 600);
-                BlitImage(histo, 0, SCREENH - 600);
+                  ModelInfo::Histogram(*current_network, 1920, 400);
+                BlitImage(histo, 0, SCREENH - 400);
               }
 
             } else {
@@ -2070,159 +1532,9 @@ private:
   double current_total_error = 0.0;
 };
 
-
-static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
-  [[maybe_unused]]
-  constexpr int SDF_THREE_QUARTERS = SDF_SIZE * 0.75;
-  [[maybe_unused]]
-  constexpr int SDF_THREE_HALVES = SDF_SIZE + (SDF_SIZE >> 1);
-
-  const vector<int> width_config =
-    { SDF_SIZE,
-      SDF_SIZE,
-      SDF_SIZE,
-      SDF_THREE_HALVES,
-      OUTPUT_LAYER_SIZE, };
-
-  // If zero, automatically factor to make square-ish.
-  const vector<int> height_config =
-    { SDF_SIZE,
-      SDF_SIZE,
-      SDF_SIZE,
-      SDF_THREE_HALVES,
-      // output layer
-      0, };
-
-  // When zero, create a dense layer.
-  const vector<int> indices_per_node_config = {
-    (int)(SDF_SIZE * SDF_SIZE * 0.20),
-    (int)(SDF_SIZE * SDF_SIZE * 0.20),
-    (int)(SDF_SIZE * SDF_SIZE * 0.20),
-    (int)(SDF_SIZE * SDF_SIZE * 0.20),
-  };
-
-  const int num_layers = indices_per_node_config.size();
-
-  // Everything is single-channel here.
-  const vector<int> channels(num_layers + 1, 1);
-
-  // All use leaky relu
-  const vector<TransferFunction> transfer_functions = {
-    LEAKY_RELU,
-    LEAKY_RELU,
-    LEAKY_RELU,
-    LEAKY_RELU,
-  };
-
-  const vector<uint32_t> renderstyle = {
-    RENDERSTYLE_SDF,
-    RENDERSTYLE_FLAT,
-    RENDERSTYLE_FLAT,
-    RENDERSTYLE_FLAT,
-    RENDERSTYLE_SDF26,
-  };
-
-
-  vector<int> height, width;
-  CHECK(height_config.size() == width_config.size());
-  for (int i = 0; i < height_config.size(); i++) {
-    int w = width_config[i];
-    int h = height_config[i];
-    CHECK(w > 0);
-    CHECK(h >= 0);
-    if (h == 0) {
-      if (w == 1) {
-        width.push_back(1);
-        height.push_back(1);
-      } else {
-        // Try to make a rectangle that's squareish.
-        vector<int> factors = Util::Factorize(w);
-
-        CHECK(!factors.empty()) << w << " has no factors??";
-
-        // XXX Does this greedy approach produce good results?
-        int ww = factors.back(), hh = 1;
-        factors.pop_back();
-
-        for (int f : factors) {
-          if (ww < hh)
-            ww *= f;
-          else
-            hh *= f;
-        }
-
-        CHECK(ww * hh == w);
-        width.push_back(ww);
-        height.push_back(hh);
-      }
-    } else {
-      width.push_back(w);
-      height.push_back(h);
-    }
-  }
-
-  // num_nodes = width * height * channels
-  // //  indices_per_node = indices_per_channel * channels
-  // //  vector<int> indices_per_node;
-  vector<int> num_nodes;
-  CHECK_EQ(width.size(), height.size());
-  CHECK_EQ(width.size(), channels.size());
-  CHECK_EQ(width.size(), renderstyle.size());
-  CHECK_EQ(num_layers + 1, height.size());
-  CHECK_EQ(num_layers, indices_per_node_config.size());
-  CHECK_EQ(num_layers, transfer_functions.size());
-  for (int i = 0; i < num_layers + 1; i++) {
-    CHECK(width[i] >= 1);
-    CHECK(height[i] >= 1);
-    CHECK(channels[i] >= 1);
-    num_nodes.push_back(width[i] * height[i] * channels[i]);
-  }
-
-  vector<int> indices_per_node;
-  vector<LayerType> layer_type;
-  for (int i = 0; i < indices_per_node_config.size(); i++) {
-    int ipc = indices_per_node_config[i];
-    if (ipc == 0) {
-      layer_type.push_back(LAYER_DENSE);
-      indices_per_node.push_back(width[i] * height[i] * channels[i]);
-    } else {
-      CHECK(ipc > 0);
-      CHECK(ipc <= width[i] * height[i] * channels[i]);
-      layer_type.push_back(LAYER_SPARSE);
-      indices_per_node.push_back(ipc);
-    }
-  }
-
-  std::unique_ptr<Network> net =
-    std::make_unique<Network>(
-        num_nodes, indices_per_node, transfer_functions);
-  net->width = width;
-  net->height = height;
-  net->channels = channels;
-  net->renderstyle = renderstyle;
-
-  // XXX should probably be ctor arg?
-  CHECK(net->layers.size() == layer_type.size());
-  for (int i = 0; i < net->layers.size(); i++) {
-    net->layers[i].type = layer_type[i];
-  }
-
-  Printf("Randomize weights:\n");
-  RandomizeNetwork(rc, net.get());
-  Printf("Gen indices:\n");
-  MakeIndices(rc, net.get());
-  Printf("Invert indices:\n");
-  Network::ComputeInvertedIndices(net.get());
-
-  // Should be well-formed now.
-  net->StructuralCheck();
-  net->NaNCheck("initial network");
-
-  return net;
-}
-
 static UI *ui = nullptr;
-static SDFLoadFonts *load_fonts = nullptr;
+static FrameQueue *frame_queue = nullptr;
+
 
 struct TrainingExample {
   vector<float> input;
@@ -2233,18 +1545,8 @@ struct TrainingExample {
 // simultaneous instances, allowing networks to be cotrained.
 struct Training {
 
-  // Number of examples per round of training. Includes eval
-  // examples.
+  // Number of examples per round of training.
   static constexpr int EXAMPLES_PER_ROUND = 512;
-  // Number of examples that are eval inputs (not trained); the
-  // remainder are training examples.
-  static constexpr int EVAL_INPUTS_PER_ROUND = EXAMPLES_PER_ROUND / 4;
-  static constexpr int TRAINING_PER_ROUND =
-    EXAMPLES_PER_ROUND - EVAL_INPUTS_PER_ROUND;
-  static_assert(TRAINING_PER_ROUND > 0);
-  static_assert(TRAINING_PER_ROUND <= EXAMPLES_PER_ROUND);
-  static_assert(EVAL_INPUTS_PER_ROUND < EXAMPLES_PER_ROUND);
-  static_assert(EVAL_INPUTS_PER_ROUND >= 0);
   static_assert(EXAMPLES_PER_ROUND > 0);
 
   // Write a screenshot of the UI (to show training progress for
@@ -2264,14 +1566,14 @@ struct Training {
     Timer setup_timer;
 
     CHECK(ui != nullptr) << "Must be created first.";
-    CHECK(load_fonts != nullptr) << "Must be created first.";
 
     rc.Discard(2000);
 
     // Random state that can be accessed in parallel for each example.
     // Note, 256 * 4096 is kinda big (one megabyte). We could get away
     // with capping this at the number of threads, if threadutil (really
-    // autoparallel) had a way of passing thread local data.
+    // autoparallel) had a way of passing thread local data. Or just
+    // use a leaner PRNG.
     printf("Initialize example-local random streams...\n");
     vector<ArcFour> example_rc;
     for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
@@ -2285,14 +1587,11 @@ struct Training {
     Timer initialize_network_timer;
     // Try loading from disk; null on failure.
     net.reset(Network::ReadNetworkBinary(model_filename));
-
     if (net.get() == nullptr) {
-      Printf("Initializing new network...\n");
-      net = CreateInitialNetwork(&rc);
-      CHECK(net.get() != nullptr);
-
-      Printf("Writing network so we don't have to do that again...\n");
-      Network::SaveNetworkBinary(*net, model_filename);
+      printf("Couldn't load model from %s.\n"
+             "Maybe you want to create one with new-network.exe?\n",
+             model_filename.c_str());
+      CHECK(false);
     }
 
     Printf("Initialized network in %.1fms.\n", initialize_network_timer.MS());
@@ -2317,7 +1616,7 @@ struct Training {
     }
 
     for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
-      training.push_back(new TrainingRoundGPU{global_cl, *net});
+      training_gpu.push_back(new TrainingRoundGPU{global_cl, *net});
     }
 
     // Automatically tune parallelism for some loops, caching the results
@@ -2363,8 +1662,7 @@ struct Training {
     // XXX members?
     double setup_ms = 0.0, stimulation_init_ms = 0.0, forward_ms = 0.0,
       fc_init_ms = 0.0, bc_init_ms = 0.0, kernel_ms = 0.0, backward_ms = 0.0,
-      output_error_ms = 0.0, decay_ms = 0.0, update_ms = 0.0,
-      eval_ms = 0.0;
+      output_error_ms = 0.0, decay_ms = 0.0, update_ms = 0.0;
 
     Timer round_timer;
 
@@ -2399,19 +1697,19 @@ struct Training {
     Printf("%.2f%% of target rounds\n", (100.0 * net->rounds) / TARGET_ROUNDS);
 
     CHECK(!std::isnan(round_learning_rate));
-    if (true || VERBOSE > 2) Printf("Learning rate: %.4f\n", round_learning_rate);
+    if (true || VERBOSE > 2)
+      Printf("Learning rate: %.4f\n", round_learning_rate);
 
     const float example_learning_rate =
-      round_learning_rate / (double)TRAINING_PER_ROUND;
+      round_learning_rate / (double)EXAMPLES_PER_ROUND;
 
     const bool is_verbose_round =
       0 == ((rounds_executed /* + 1 */) % VERBOSE_ROUND_EVERY);
     if (is_verbose_round) {
       Printf("Writing network:\n");
       net_gpu->ReadFromGPU();
-      Network::SaveNetworkBinary(*net,
-                                 StringPrintf("network-%d-checkpoint.bin",
-                                              model_index));
+      net->SaveNetworkBinary(StringPrintf("network-%d-checkpoint.bin",
+                                          model_index));
     }
 
     if (ShouldDie()) return;
@@ -2443,7 +1741,6 @@ struct Training {
     Timer setup_timer;
     if (VERBOSE > 2) Printf("Setting up batch:\n");
 
-    // examples include training examples and "eval" examples
     vector<TrainingExample> examples;
     examples.reserve(EXAMPLES_PER_ROUND);
 
@@ -2473,11 +1770,10 @@ struct Training {
         }
       };
 
+    // XXX unwind; this was from when we have multiple sources of
+    // examples
     GetExamples(&example_queue_m, &example_queue,
-                TRAINING_PER_ROUND, "training");
-    if (ShouldDie()) return;
-    GetExamples(&eval_queue_m, &eval_queue,
-                EXAMPLES_PER_ROUND, "eval");
+                EXAMPLES_PER_ROUND, "training");
     if (ShouldDie()) return;
 
     CHECK(examples.size() == EXAMPLES_PER_ROUND);
@@ -2506,17 +1802,16 @@ struct Training {
 
     if (VERBOSE > 2) Printf("Setting input layer of Stimulations...\n");
     // These are just memory copies; easy to do in parallel.
-    CHECK_EQ(examples.size(), training.size());
+    CHECK_EQ(examples.size(), training_gpu.size());
     stim_init_comp->ParallelComp(
         examples.size(),
         [this, &examples](int i) {
-          training[i]->LoadInput(examples[i].input);
+          training_gpu[i]->LoadInput(examples[i].input);
         });
     stimulation_init_ms += stimulation_init_timer.MS();
 
     if (ShouldDie()) return;
 
-    // We run the forward pass for both training and eval examples.
     // The loop over layers must be in serial.
     for (int src = 0; src < net->num_layers; src++) {
       if (VERBOSE > 2) Printf("FWD Layer %d: ", src);
@@ -2531,13 +1826,13 @@ struct Training {
       forward_comp->ParallelComp(
           examples.size(),
           [this, num_examples = examples.size(), &fc](int example_idx) {
-            fc.Forward(training[example_idx]);
+            fc.Forward(training_gpu[example_idx]);
 
             if (rounds_executed % EXPORT_EVERY == 0 &&
                 example_idx < NUM_VIDEO_STIMULATIONS) {
               // XXX this uses unintialized/stale memory btw
               Stimulation stim{*net};
-              training[example_idx]->ExportStimulation(&stim);
+              training_gpu[example_idx]->ExportStimulation(&stim);
               // Copy to screen.
               ui->ExportStimulusToVideo(model_index, example_idx, stim);
             }
@@ -2548,78 +1843,52 @@ struct Training {
     }
 
     if (CHECK_NANS) {
-      for (int example_idx = 0; example_idx < training.size(); example_idx++) {
+      for (int example_idx = 0; example_idx < training_gpu.size();
+           example_idx++) {
         Stimulation stim{*net};
-        training[example_idx]->ExportStimulation(&stim);
+        training_gpu[example_idx]->ExportStimulation(&stim);
         stim.NaNCheck(StringPrintf("%d/%d forward pass model %d",
-                                   example_idx, (int)training.size(),
+                                   example_idx, (int)training_gpu.size(),
                                    model_index));
       }
     }
 
-    // Publish the eval results. Note this could be in parallel with work below.
-    // PERF autoparallel
-    ParallelComp(EVAL_INPUTS_PER_ROUND,
-                 [this, &examples](int offset) {
-                   int idx = TRAINING_PER_ROUND + offset;
-                   CHECK(idx >= 0 && idx < training.size());
-                   examples[idx].output.resize(OUTPUT_LAYER_SIZE);
-                   training[idx]->ExportOutput(&examples[idx].output);
-
-                   // Now put in eval output queue.
-                   {
-                     WriteMutexLock ml(&eval_output_queue_m);
-                     // Fresher is considered better for the eval data.
-                     // If we have too much, remove the oldest entries.
-                     while (eval_output_queue.size() > EVAL_OUTPUT_TARGET) {
-                       eval_output_queue.pop_front();
-                       eval_outputs_wasted++;
-                     }
-                     eval_output_queue.emplace_back(std::move(examples[idx]));
-                   }
-                   // These should not be used, but leave them in a known
-                   // state (not std::moved).
-                   examples[idx].input.clear();
-                   examples[idx].output.clear();
-                 }, 2);
-
     // Compute total error (average per training example).
     if (rounds_executed % EXPORT_EVERY == 0) {
-      CHECK_EQ(examples.size(), training.size());
+      CHECK_EQ(examples.size(), training_gpu.size());
       // We don't use the stimulus, because we want the total over all
       // examples (but we only export enough for the video above), and
       // only need the final output values, not internal layers.
       double total_error = 0.0;
       vector<float> values;
       values.resize(net->num_nodes[net->num_layers]);
-      CHECK(TRAINING_PER_ROUND <= examples.size());
-      for (int i = 0; i < TRAINING_PER_ROUND; i++) {
-        training[i]->ExportOutput(&values);
+      CHECK(EXAMPLES_PER_ROUND <= examples.size());
+      for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
+        training_gpu[i]->ExportOutput(&values);
         CHECK(examples[i].output.size() == values.size());
         for (int j = 0; j < values.size(); j++) {
           float d = values[j] - examples[i].output[j];
           total_error += fabs(d);
         }
       }
-      const double error_per_example = total_error / (double)TRAINING_PER_ROUND;
+      const double error_per_example = total_error / (double)EXAMPLES_PER_ROUND;
       ui->ExportTotalErrorToVideo(model_index, error_per_example);
       recent_error = make_pair(net->rounds, error_per_example);
     }
 
     if (ShouldDie()) return;
 
-    // For error computation (etc.) we only use the training examples.
     // Compute expected.
     if (VERBOSE > 2) Printf("Error calc.\n");
-    CHECK(TRAINING_PER_ROUND <= examples.size());
+    CHECK(EXAMPLES_PER_ROUND == examples.size());
     Timer output_error_timer;
     error_comp->ParallelComp(
-        TRAINING_PER_ROUND,
+        EXAMPLES_PER_ROUND,
         [this, &examples](int example_idx) {
           // (Do this after finalizing the expected vector above.)
           if (rounds_executed % EXPORT_EVERY == 0 &&
               example_idx < NUM_VIDEO_STIMULATIONS &&
-              example_idx < TRAINING_PER_ROUND) {
+              example_idx < EXAMPLES_PER_ROUND) {
             // Copy to screen.
             ui->ExportExpectedToVideo(model_index,
                                       example_idx,
@@ -2627,9 +1896,9 @@ struct Training {
           }
 
           // PERF we could have loaded this a lot earlier
-          training[example_idx]->LoadExpected(examples[example_idx].output);
+          training_gpu[example_idx]->LoadExpected(examples[example_idx].output);
           SetOutputErrorCL::Context sc{setoutputerror.get(), net_gpu.get()};
-          sc.SetOutputError(training[example_idx]);
+          sc.SetOutputError(training_gpu[example_idx]);
         });
     output_error_ms += output_error_timer.MS();
     if (VERBOSE > 2) Printf("\n");
@@ -2648,9 +1917,9 @@ struct Training {
       bc_init_ms += bc_init_timer.MS();
 
       backward_comp->ParallelComp(
-          TRAINING_PER_ROUND,
+          EXAMPLES_PER_ROUND,
           [this, &bc](int example) {
-            bc.Backward(training[example]);
+            bc.Backward(training_gpu[example]);
           });
       if (VERBOSE > 2) Printf("\n");
     }
@@ -2659,10 +1928,10 @@ struct Training {
     if (rounds_executed % EXPORT_EVERY == 0) {
       for (int example_idx = 0;
            example_idx < NUM_VIDEO_STIMULATIONS &&
-             example_idx < TRAINING_PER_ROUND;
+             example_idx < EXAMPLES_PER_ROUND;
            example_idx++) {
         Errors err{*net};
-        training[example_idx]->ExportErrors(&err);
+        training_gpu[example_idx]->ExportErrors(&err);
         ui->ExportErrorsToVideo(model_index, example_idx, err);
       }
     }
@@ -2678,7 +1947,8 @@ struct Training {
       decay_comp->ParallelComp(
           net->num_layers,
           [this](int layer) {
-            DecayWeightsCL::Context dc{decayweights.get(), net_gpu.get(), layer};
+            DecayWeightsCL::Context dc{decayweights.get(),
+                                       net_gpu.get(), layer};
             dc.Decay(layer);
           });
       decay_ms += decay_timer.MS();
@@ -2695,8 +1965,8 @@ struct Training {
       // PERF Faster to try to run these in parallel (maybe
       // parallelizing memory traffic with kernel execution -- but we
       // can't run the kernels at the same time).
-      for (int example = 0; example < TRAINING_PER_ROUND; example++) {
-        uc.Update(example_learning_rate, training[example], layer);
+      for (int example = 0; example < EXAMPLES_PER_ROUND; example++) {
+        uc.Update(example_learning_rate, training_gpu[example], layer);
       }
 
       // Now we leave the network on the GPU, and the version in the
@@ -2705,10 +1975,6 @@ struct Training {
       // writing since other parts of the code assume concurrent reads
       // are ok?)
       uc.Finish();
-      /*
-        Printf("[%d/%d] = (%.2f%%) ", layer, net->num_layers,
-        layer * 100.0 / net->num_layers);
-      */
     }
     update_ms += update_timer.MS();
     if (VERBOSE > 2) Printf("\n");
@@ -2721,7 +1987,7 @@ struct Training {
     if (ShouldDie()) return;
 
     net->rounds++;
-    net->examples += TRAINING_PER_ROUND;
+    net->examples += EXAMPLES_PER_ROUND;
 
     double round_ms = round_timer.MS();
     auto Pct = [round_ms](double d) { return (100.0 * d) / round_ms; };
@@ -2733,7 +1999,7 @@ struct Training {
 
     ui->ExportExamplesPerSec(model_index, eps_average.Average());
     double measured_ms =
-      setup_ms + stimulation_init_ms + eval_ms +
+      setup_ms + stimulation_init_ms +
       forward_ms + /* fc init and kernel should be part of that */
       output_error_ms +
       backward_ms + /* bc init should be part of that */
@@ -2745,7 +2011,6 @@ struct Training {
              "%.1fms total measured (%.1f%%),\n"
              "We spent %.1fms in setup (%.1f%%),\n"
              "%.1fms in stimulation init (%.1f%%),\n"
-             "%.1fms in eval (main thread; amortized) (%.1f%%),\n"
              "%.1fms in forward layer (%.1f%%),\n"
              "%.1fms in fc init (%.1f%%),\n"
              "%.1fms in forward layer kernel (at most; %.1f%%).\n"
@@ -2758,7 +2023,6 @@ struct Training {
              measured_ms / denom, Pct(measured_ms),
              setup_ms / denom, Pct(setup_ms),
              stimulation_init_ms / denom, Pct(stimulation_init_ms),
-             eval_ms / denom, Pct(eval_ms),
              forward_ms / denom, Pct(forward_ms),
              fc_init_ms / denom, Pct(fc_init_ms),
              kernel_ms / denom, Pct(kernel_ms),
@@ -2767,7 +2031,6 @@ struct Training {
              backward_ms / denom, Pct(backward_ms),
              decay_ms / denom, Pct(decay_ms),
              update_ms / denom, Pct(update_ms));
-
 
     rounds_executed++;
   }
@@ -2785,29 +2048,6 @@ struct Training {
     // PERF start moving it to GPU?
   }
 
-  // Like the above, but for "eval" inputs, which do not have expected
-  // outputs and are not used for training. This is particular to the
-  // SDF font problem where we generate inverse examples for cotraining.
-  bool WantsEvalInputs() {
-    ReadMutexLock ml(&eval_queue_m);
-    return eval_queue.size() < EVAL_QUEUE_TARGET;
-  }
-  // XXX use trainingexample or just vector<float>?
-  void AddEvalInputToQueue(TrainingExample example) {
-    WriteMutexLock ml(&eval_queue_m);
-    eval_queue.emplace_back(std::move(example));
-  }
-
-  // Get a recent eval result, if we have one.
-  std::optional<TrainingExample> GetEvalResult() {
-    WriteMutexLock ml(&eval_output_queue_m);
-    if (eval_output_queue.empty()) return {};
-
-    std::optional<TrainingExample> ret{std::move(eval_output_queue.front())};
-    eval_output_queue.pop_front();
-    return ret;
-  }
-
   // Not thread safe -- only call this when RunRound is not
   // running.
   int64 NumberOfRounds() {
@@ -2815,9 +2055,9 @@ struct Training {
   }
 
   ~Training() {
-    for (TrainingRoundGPU *trg : training)
+    for (TrainingRoundGPU *trg : training_gpu)
       delete trg;
-    training.clear();
+    training_gpu.clear();
   }
 
   // Not thread safe.
@@ -2826,7 +2066,7 @@ struct Training {
       "Never initialized!";
     net_gpu->ReadFromGPU();
     Printf("Saving to %s...\n", model_filename.c_str());
-    Network::SaveNetworkBinary(*net, model_filename);
+    net->SaveNetworkBinary(model_filename);
   }
 
   // Not thread safe.
@@ -2843,14 +2083,7 @@ struct Training {
 private:
   // Try to keep twice that in the queue all the time.
   static constexpr int EXAMPLE_QUEUE_TARGET =
-    std::max(TRAINING_PER_ROUND * 3, 256);
-  static constexpr int EVAL_QUEUE_TARGET =
-    EVAL_INPUTS_PER_ROUND * 3;
-
-  // Here, freshness is useful, so we don't want to get
-  // too ahead of ourselves.
-  static constexpr int EVAL_OUTPUT_TARGET =
-    EVAL_INPUTS_PER_ROUND + (EVAL_INPUTS_PER_ROUND >> 1);
+    std::max(EXAMPLES_PER_ROUND * 3, 256);
 
   static string GetRandomSeed(int idx) {
     const string start_seed = StringPrintf("%d  %lld  %d",
@@ -2886,7 +2119,7 @@ private:
 
   // We use the same structures to hold all the stimulations and errors
   // on the GPU. Size EXAMPLES_PER_ROUND.
-  vector<TrainingRoundGPU *> training;
+  vector<TrainingRoundGPU *> training_gpu;
 
   // Protects example_queue.
   std::shared_mutex example_queue_m;
@@ -2897,193 +2130,49 @@ private:
   // vector now.)
   deque<TrainingExample> example_queue;
 
-  // Same idea but eval examples, for which we don't have an "expected output".
-  // Used for co-training.
-  std::shared_mutex eval_queue_m;
-  deque<TrainingExample> eval_queue;
-
-  // Results of the eval process (as a "TrainingExample", pairing the input
-  // with the computed output), capped at EVAL_OUTPUT_TARGET.
-  std::shared_mutex eval_output_queue_m;
-  deque<TrainingExample> eval_output_queue;
-  // Also protected by the mutex: The number of eval outputs that were
-  // computed but discarded because the queue got too big.
-  int64 eval_outputs_wasted = 0LL;
-
   // (if non-zero) round at which we last computed the total training error,
   // and that error (expressed as error-per-example).
   std::pair<int64, double> recent_error = {0, 0.0};
 };
 
-// Inserts examples into the Training objects, and reads their eval outputs
-// to generate examples for the co-trained pair.
-static void MakeTrainingExamplesThread(
-    Training *make_lowercase,
-    Training *make_uppercase) {
+// Insert training examples in the model's queue.
+// This approach came from a multi-model network (Lowercase), which
+// may account for some overkill.
+static void MakeTrainingExamplesThread(Training *training) {
 
   Printf("Training example thread startup.\n");
   string seed = StringPrintf("make ex %lld", (int64)time(nullptr));
   ArcFour rc(seed);
   rc.Discard(2000);
 
-  CHECK(load_fonts != nullptr) << "LoadFonts must be created first.";
-  // First, pause until we have enough fonts.
+  CHECK(frame_queue != nullptr) << "FrameQueue must be created first.";
+  // First, pause until we have enough frames.
   for (;;) {
-    int64 have_fonts = 0;
-    {
-      ReadMutexLock ml(&load_fonts->fonts_m);
-      have_fonts = load_fonts->fonts.size();
-    }
+    int64 have_frames = frame_queue->NumFramesAvailable();
 
-    if (have_fonts >= ENOUGH_FONTS)
+    if (have_frames >= ENOUGH_FRAMES)
       break;
 
     Printf("Not enough training data loaded yet (%lld/%lld)!\n",
-           have_fonts, ENOUGH_FONTS);
+           have_frames, ENOUGH_FRAMES);
     std::this_thread::sleep_for(1s);
     if (ReadWithLock(&train_should_die_m, &train_should_die))
       return;
   }
-  Printf("Training thread has enough fonts to start creating examples.\n");
-
-  auto PopulateExampleFromFont = [&rc](bool lowercase_input,
-                                       bool include_output,
-                                       const SDFLoadFonts::Font &f,
-                                       TrainingExample *example) -> bool {
-      auto FillSDF = [](float *buffer, const ImageA &img) {
-          CHECK(img.Width() == SDF_SIZE);
-          CHECK(img.Height() == SDF_SIZE);
-          for (int y = 0; y < SDF_SIZE; y++) {
-            for (int x = 0; x < SDF_SIZE; x++) {
-              int idx = y * SDF_SIZE + x;
-              buffer[idx] = ByteFloat(img.GetPixel(x, y));
-            }
-          }
-        };
-
-      const int letter = RandTo(&rc, 26);
-      // indices into Font::sdfs, which is a-z then A-Z.
-      const int input_idx = lowercase_input ? letter : 26 + letter;
-      const int output_idx = lowercase_input ? 26 + letter : letter;
-
-      example->input.resize(SDF_SIZE * SDF_SIZE);
-      FillSDF(example->input.data(), f.sdfs[input_idx]);
-
-      if (include_output) {
-        example->output.resize(SDF_SIZE * SDF_SIZE + 26);
-        FillSDF(example->output.data(), f.sdfs[output_idx]);
-        for (int i = 0; i < 26; i++) {
-          example->output[SDF_SIZE * SDF_SIZE + i] =
-            (i == letter) ? 1.0f : 0.0f;
-        }
-      }
-
-      if (CHECK_NANS) {
-        for (float f : example->input) { CHECK(!std::isnan(f)); }
-        for (float f : example->output) { CHECK(!std::isnan(f)); }
-      }
-
-      return true;
-    };
-
-  // These are symmetric, so call this function twice.
-  auto GenExample = [&rc, make_lowercase, make_uppercase,
-                     &PopulateExampleFromFont](
-      bool lowercasing) -> bool {
-      Training *me = lowercasing ? make_lowercase : make_uppercase;
-      Training *other = lowercasing ? make_uppercase : make_lowercase;
-
-      bool did_something = false;
-
-      if (me->WantsExamples()) {
-
-        // Generate regular example from training data.
-        {
-          TrainingExample example;
-          bool ok;
-          {
-            ReadMutexLock ml(&load_fonts->fonts_m);
-            const int idx = RandTo(&rc, load_fonts->fonts.size());
-            // Here if we are lowercasing, the input should be uppercase.
-            ok = PopulateExampleFromFont(
-                !lowercasing, true, load_fonts->fonts[idx], &example);
-          }
-          if (ok) me->AddExampleToQueue(std::move(example));
-        }
-
-        // About half the time, also add an inversion example.
-        if (rc.Byte() & 1) {
-          auto fwd = other->GetEvalResult();
-          if (fwd.has_value()) {
-            TrainingExample example = std::move(fwd.value());
-            // To create an inversion example, we basically just want
-            // to swap the input and output. But we also want to keep
-            // the "hints" that are in the output. (Probably it would
-            // be better if we kept the actual letter this represents,
-            // but that would mean keeping some metadata along with
-            // the eval example.)
-            vector<float> new_input(
-                example.output.begin(),
-                example.output.begin() + SDF_SIZE * SDF_SIZE);
-            CHECK(new_input.size() == SDF_SIZE * SDF_SIZE);
-            // The prediction could have all sorts of wild values,
-            // which can lead to feedback loops and divergent
-            // training. Put it in the range [0,1]. (Alternatively, we
-            // could consider normalizing it, but this may not
-            // actually be faithful?)
-            for (int i = 0; i < SDF_SIZE * SDF_SIZE; i++) {
-              if (new_input[i] < 0.0f) new_input[i] = 0.0f;
-              if (new_input[i] > 1.0f) new_input[i] = 1.0f;
-              if (std::isnan(new_input[i])) new_input[i] = 0.0f;
-            }
-
-            // Copy old input over SDF portion of output now.
-            for (int i = 0; i < SDF_SIZE * SDF_SIZE; i++) {
-              example.output[i] = example.input[i];
-            }
-
-            // And replace the input with the new input.
-            example.input = std::move(new_input);
-
-            CHECK(example.input.size() == SDF_SIZE * SDF_SIZE);
-            CHECK(example.output.size() == SDF_SIZE * SDF_SIZE + 26);
-            me->AddExampleToQueue(std::move(example));
-          }
-        }
-
-        did_something = true;
-      }
-
-      if (me->WantsEvalInputs()) {
-        // Generate eval inputs.
-        TrainingExample example;
-        bool ok;
-        {
-          ReadMutexLock ml(&load_fonts->fonts_m);
-          const int idx = RandTo(&rc, load_fonts->fonts.size());
-          // Here if we are lowercasing, the input should be lowercase
-          // (we want letter-like shapes that don't have known
-          // lowercase shapes). XXX it would be okay/good to include
-          // uppercase examples as well? numbers and punctuation even?
-          ok = PopulateExampleFromFont(lowercasing, false,
-                                       load_fonts->fonts[idx], &example);
-        }
-        CHECK(example.output.empty());
-        if (ok) me->AddEvalInputToQueue(std::move(example));
-
-        did_something = true;
-      }
-
-      return did_something;
-    };
+  Printf("Training thread has enough frames to start creating examples.\n");
 
   while (!ReadWithLock(&train_should_die_m, &train_should_die)) {
-    // These two are symmetric.
-    bool did_something = false;
-    did_something = GenExample(false) || did_something;
-    did_something = GenExample(true) || did_something;
 
-    if (!did_something) {
+    if (training->WantsExamples()) {
+      ImageRGBA rgba = frame_queue->NextFrame();
+      TrainingExample example;
+      FillFromRGBA(rgba, &example.input);
+      // PERF for autoencoders, perhaps we should just alias?
+      example.output = example.input;
+
+      training->AddExampleToQueue(std::move(example));
+
+    } else {
       // If we're not doing anything useful (because we are training bound
       // or waiting for an exclusive app, both of which are normal), sleep so
       // we don't hog CPU/locks.
@@ -3147,39 +2236,29 @@ int SDL_main(int argc, char **argv) {
 
   global_cl = new CL;
 
-  // Start loading fonts in background.
-  load_fonts = new SDFLoadFonts(
-      []() { return ReadWithLock(&train_should_die_m, &train_should_die); },
-      SDF_CONFIG,
-      12,
-      MAX_FONTS);
+  // Start loading training frames in background.
+  frame_queue = new FrameQueue(4096);
 
   ui = new UI;
 
-  vector<Training *> training = {nullptr, nullptr};
-  ParallelComp(2, [&training](int idx) {
-      training[idx] = new Training(idx); },
-  2);
-  // Aliases for convenience.
-  Training *make_lowercase = training[0];
-  Training *make_uppercase = training[1];
+  // Just one model here.
+  Training training{0};
 
   // Start generating examples in another thread and feeding them to
   // the two training instances.
   std::thread examples_thread{
-    [make_lowercase, make_uppercase]() {
-      MakeTrainingExamplesThread(make_lowercase, make_uppercase);
-    }};
+    [&training]() { MakeTrainingExamplesThread(&training); }
+  };
 
-  ErrorHistory error_history("sdf-error.tsv", 2);
+  ErrorHistory error_history("error.tsv", 2);
 
   // XXX
   constexpr int MAX_ROUNDS = 999'999'999;
 
   std::thread train_thread{
-    [&training, make_lowercase, make_uppercase, &error_history]() {
+    [&training, &error_history]() {
 
-      int64 last_error_round[2] = {0, 0};
+      int64 last_error_round = 0;
 
       while (!ReadWithLock(&train_should_die_m, &train_should_die)) {
 
@@ -3190,64 +2269,40 @@ int SDL_main(int argc, char **argv) {
           std::this_thread::sleep_for(5000ms);
         }
 
-        int lrounds = make_lowercase->NumberOfRounds();
-        int urounds = make_uppercase->NumberOfRounds();
+        int rounds = training.NumberOfRounds();
 
-        if (lrounds >= MAX_ROUNDS && urounds >= MAX_ROUNDS) {
-          Printf("Ending because both models have reached MAX_ROUNDS\n");
+        if (rounds >= MAX_ROUNDS) {
+          Printf("Ending because the model has reached MAX_ROUNDS\n");
           WriteWithLock(&train_should_die_m, &train_should_die, true);
           break;
         }
 
-        static constexpr int ALLOWED_GAP = 2;
+        training.RunRound();
 
-        Printf("lowercase rounds %lld, uppercase %lld\n",
-               lrounds, urounds);
-        if (lrounds + ALLOWED_GAP < urounds || urounds >= MAX_ROUNDS) {
-          Printf("Only running lowercase because it is behind.\n");
-          make_lowercase->RunRound();
-        } else if (urounds + ALLOWED_GAP < lrounds || lrounds >= MAX_ROUNDS) {
-          Printf("Only running uppercase because it is behind.\n");
-          make_uppercase->RunRound();
-        } else {
-          Printf("Running both in parallel.\n");
-
-          std::thread lthread{
-            [make_lowercase]() {
-              make_lowercase->RunRound();
-            }};
-          // Can just use this existing thread though.
-          make_uppercase->RunRound();
-          lthread.join();
-
-          int total_rounds = lrounds + urounds + 2;
-          if ((total_rounds / 2) % EVAL_SCREENSHOT_EVERY == 0) {
-            Printf("Eval...\n");
-            FontProblem::RenderSDF(
-                "helvetica.ttf",
-                make_lowercase->Net(),
-                make_uppercase->Net(),
-                SDF_CONFIG,
-                StringPrintf("eval/eval%d", total_rounds / 2));
-          }
+        if (rounds % EVAL_SCREENSHOT_EVERY == 0) {
+          Printf("Eval...\n");
+          /* TODO!
+          FontProblem::RenderSDF(
+              "helvetica.ttf",
+              make_lowercase->Net(),
+              make_uppercase->Net(),
+              SDF_CONFIG,
+              StringPrintf("eval/eval%d", total_rounds / 2));
+          */
         }
 
-        auto RecordError =
-          [&training, &error_history, &last_error_round](int idx) {
-            const auto [round, err] = training[idx]->GetRecentError();
-            if (round > 0) {
-              // We don't compute error on every round. Make sure it's
-              // a new reading.
-              if (round > last_error_round[idx]) {
-                last_error_round[idx] = round;
-                // is_eval = false because this is always training error.
-                error_history.Add(round, err, false, idx);
-              }
+        {
+          const auto [round, err] = training.GetRecentError();
+          if (round > 0) {
+            // We don't compute error on every round. Make sure it's
+            // a new reading.
+            if (round > last_error_round) {
+              last_error_round = round;
+              // is_eval = false because this is always training error.
+              error_history.Add(round, err, false, 0);
             }
-          };
-
-        RecordError(0);
-        RecordError(1);
+          }
+        }
 
         // XXXXXXX slow-mo for debugging
         // std::this_thread::sleep_for(5000ms);
@@ -3260,12 +2315,17 @@ int SDL_main(int argc, char **argv) {
   WriteWithLock(&train_should_die_m, &train_should_die, true);
   // Finish training round before deleting the objects.
   train_thread.join();
-  for (Training *t : training) t->Save();
 
-  for (Training *t : training) delete t;
+  training.Save();
+
+  // (XXX We used to run the destructors of Training here; seems ok to wait?)
+
   examples_thread.join();
 
   error_history.Save();
+
+  delete frame_queue;
+  frame_queue = 0;
 
   Printf("Train is dead; now UI exiting.\n");
 
