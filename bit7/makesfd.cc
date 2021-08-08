@@ -30,10 +30,10 @@ using uint64 = uint64_t;
 // that were useful for DestroyFX. If -1, the spot
 // is unclaimed. Should be fine to extend past 128
 // characters by increasing CHARS_DOWN too.
-constexpr int CHARS_ACROSS = 16;
-constexpr int CHARS_DOWN = 8;
+constexpr int MAPPED_CHARS_ACROSS = 16;
+constexpr int MAPPED_CHARS_DOWN = 16;
 
-static constexpr array<int, CHARS_ACROSS * CHARS_DOWN>
+static constexpr array<int, MAPPED_CHARS_ACROSS * MAPPED_CHARS_DOWN>
 CODEPOINTS = {
   // First line
   // BLACK HEART SUIT
@@ -42,12 +42,21 @@ CODEPOINTS = {
   0x266B,
   // INFINITY
   0x221E,
-  // PLUS-MINUS SIGN
-  0x00B1,
-  // DEGREE SIGN
-  0x00B0,
+  // SQUARE ROOT
+  0x221A,
+  // LESS THAN OR EQUAL TO
+  0x2264,
+  // GREATER THAN OR EQUAL TO
+  0x2265,
+  // APPROXIMATELY EQUAL
+  0x2248,
+  // EURO SIGN
+  0x20AC,
+  // ARROWS: LEFT, UP, RIGHT, DOWN
+  0x2190, 0x2191, 0x2192, 0x2193,
+
   // Remainder of line unclaimed
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1,
   // Second line, unclaimed
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   // ASCII, mapped to itself
@@ -57,6 +66,17 @@ CODEPOINTS = {
   0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
   0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
   0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, -1,
+  // These are control characters. Can claim 'em.
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  // Unicode Latin-1 Supplement, mapped to itself.
+  // See https://en.wikibooks.org/wiki/Unicode/Character_reference/0000-0FFF
+  0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
+  0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF,
+  0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
+  0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,
+  0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF,
+  0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
 };
 
 
@@ -81,7 +101,7 @@ struct Glyph {
 
 struct Config {
   string pngfile;
-  
+
   string name;
   string copyright;
 
@@ -93,6 +113,10 @@ struct Config {
   int charbox_height = 0;
   // Pixels at the bottom of the charbox that are beneath the baseline.
   int descent = 0;
+
+  // Arrangement of characters in PNG file.
+  int chars_across = 16;
+  int chars_down = 8;
 
   // Additional space between lines, in pixels.
   int extra_linespacing = 0;
@@ -111,17 +135,25 @@ static Config ParseConfig(const std::string &cfgfile) {
   config.charbox_width = atoi(m["charbox-width"].c_str());
   CHECK(config.charbox_width > 0) << "Config line charbox-width must be >0";
   config.charbox_height = atoi(m["charbox-height"].c_str());
-  CHECK(config.charbox_height > 0) << "Config line charbox-height must be >0";  
+  CHECK(config.charbox_height > 0) << "Config line charbox-height must be >0";
   config.charbox_height = atoi(m["charbox-height"].c_str());
   config.descent = atoi(m["descent"].c_str());
-  CHECK(config.descent >= 0) << "Config line charbox-height must be >= 0";  
+  CHECK(config.descent >= 0) << "Config line charbox-height must be >= 0";
+
+  if (m.find("chars-across") != m.end())
+    config.chars_across = atoi(m["chars-across"].c_str());
+  CHECK(config.chars_across > 0);
+
+  if (m.find("chars-down") != m.end())
+    config.chars_down = atoi(m["chars-down"].c_str());
+  CHECK(config.chars_down > 0);
 
   if (m.find("extra-linespacing") != m.end())
     config.extra_linespacing = atoi(m["extra-linespacing"].c_str());
-  
+
   if (m.find("no-lowercase") != m.end())
     config.no_lowercase = true;
-  
+
   return config;
 }
 
@@ -160,7 +192,7 @@ static vector<pair<int, int>> RemoveColinearPoints(
     }();
 
   // We definitely keep the corner index. Now loop over all the
-  // points starting there, and emit points if they 
+  // points starting there, and emit points if they
   vector<pair<int, int>> out;
   out.reserve(points.size());
   out.push_back(points[corner_idx]);
@@ -290,7 +322,7 @@ static vector<pair<int, int>> VectorizeOne(const ImageA &bitmap) {
       }
       CHECK(false) << "Bad dir";
     };
-  
+
   // Pixel we're currently looking at.
   int px = startpx;
   int py = startpy;
@@ -301,7 +333,7 @@ static vector<pair<int, int>> VectorizeOne(const ImageA &bitmap) {
   // shape.)
   Dir right = RIGHT;
 
- 
+
   vector<std::pair<int, int>> edge_points;
   for (;;) {
     Dir up = Normal(right);
@@ -312,7 +344,7 @@ static vector<pair<int, int>> VectorizeOne(const ImageA &bitmap) {
     CHECK(!InBlob(upx, upy));
 
     edge_points.push_back(SourceCorner(px, py, right));
-    
+
     // We're in a situation like this (perhaps under some rotation),
     // traveling along the top edge of the filled pixel at px,py.
     // We'll proceed by case analysis on the two pixels ahead of us.
@@ -323,7 +355,7 @@ static vector<pair<int, int>> VectorizeOne(const ImageA &bitmap) {
     //    +->+--+
     //    |##|b?|
     //    +--+--+
-     
+
     const auto [ax, ay] = Move(upx, upy, right);
     const auto [bx, by] = Move(px, py, right);
     const bool a = InBlob(ax, ay);
@@ -462,26 +494,29 @@ int main(int argc, char **argv) {
   const Config config = ParseConfig(argv[1]);
   const string out_sfd = argv[2];
   const string out_test_png = (argc > 3) ? argv[3] : "";
-  
+
+  const int chars_across = config.chars_across;
+  const int chars_down = config.chars_down;
+
   // 'spacing' is presentational in makegrid; we derive the width
   // from the black line in each character cell.
-  
+
   std::unique_ptr<ImageRGBA> input(ImageRGBA::Load(config.pngfile));
   CHECK(input.get() != nullptr) << "Couldn't load: " << config.pngfile;
-  CHECK(CHARS_ACROSS * config.charbox_width == input->Width() &&
-        CHARS_DOWN * config.charbox_height == input->Height()) <<
+  CHECK(chars_across * config.charbox_width == input->Width() &&
+        chars_down * config.charbox_height == input->Height()) <<
     "Image with configured charboxes " << config.charbox_width << "x"
                                        << config.charbox_height <<
-    " should be " << (CHARS_ACROSS * config.charbox_width) << "x"
-                  << (CHARS_DOWN * config.charbox_height) << " but got "
+    " should be " << (chars_across * config.charbox_width) << "x"
+                  << (chars_down * config.charbox_height) << " but got "
                   << input->Width() << "x" << input->Height();
 
   // Map from character index (position in image) to glyph.
   std::map<int, Glyph> font;
-  
-  for (int cy = 0; cy < CHARS_DOWN; cy++) {
-    for (int cx = 0; cx < CHARS_ACROSS; cx++) {
-      const int cidx = CHARS_ACROSS * cy + cx;
+
+  for (int cy = 0; cy < chars_down; cy++) {
+    for (int cx = 0; cx < chars_across; cx++) {
+      const int cidx = chars_across * cy + cx;
 
       // Get width, by searching for a column of all black.
       auto GetWidth = [&]() {
@@ -532,7 +567,7 @@ int main(int argc, char **argv) {
         // Glyph, but possibly an empty one...
         ImageA pic{width, config.charbox_height};
         pic.Clear(0x00);
-        
+
         for (int y = 0; y < config.charbox_height; y++) {
           for (int x = 0; x < width; x++) {
             int sx = cx * config.charbox_width + x;
@@ -559,16 +594,16 @@ int main(int argc, char **argv) {
       }
     }
   }
-  
+
   if (!out_test_png.empty()) {
     const int output_height = config.charbox_height + config.extra_linespacing;
-    
+
     // Output test pattern PNG.
     // Heart can't actually go here because it is \0.
     #define HEART "<3"
     #define INFTY "\x02"
     #define NOTES "\x01"
-    #define PLUSMINUS "\x03"    
+    #define PLUSMINUS "\x03"
     #define DEG    "\x04"
     vector<string> testpattern = {
       "  Welcome to my font!  it is cozy here " HEART "  (ok) ",
@@ -590,7 +625,7 @@ int main(int argc, char **argv) {
      "  TTTTTT QQQQ` " INFTY  " you'd put a pillow!",
      "  http://.com/ " INFTY  " (watch--said I--beloved)",
     };
-    
+
     ImageRGBA test(config.charbox_width * 32, output_height * testpattern.size());
     test.Clear32(0x000033FF);
 
@@ -609,19 +644,24 @@ int main(int argc, char **argv) {
         }
       }
     }
-    
+
     test.ScaleBy(3).Save(out_test_png);
   }
 
   const double one_pixel = 1.0 / config.charbox_height;
-  
+
   TTF::Font ttf_font;
   for (const auto &[index, glyph] : font) {
+    if (index >= (int)CODEPOINTS.size()) {
+      printf("Skipping glyph at %d,%d because it is outside the codepoint "
+             "array!\n", index % chars_across, index / chars_across);
+      continue;
+    }
     CHECK(index >= 0 && index < (int)CODEPOINTS.size());
     const int codepoint = CODEPOINTS[index];
     if (codepoint < 0) {
       printf("Skipping glyph at %d,%d because the codepoint is not "
-             "configured!\n", index % CHARS_ACROSS, index / CHARS_ACROSS);
+             "configured!\n", index % chars_across, index / chars_across);
     } else {
       TTF::Char ch = Vectorize(glyph);
 
@@ -629,7 +669,7 @@ int main(int argc, char **argv) {
       TTF::MapCoords([one_pixel](float x, float y) {
           return make_pair(x * one_pixel, y * one_pixel);
         }, &ch);
-    
+
       ttf_font.chars[codepoint] = std::move(ch);
     }
   }
@@ -643,9 +683,9 @@ int main(int argc, char **argv) {
   // Reserved for Tom 7!
   ttf_font.vendor = {'F', 'r', 'o', 'g'};
   ttf_font.copyright = config.copyright;
-  
+
   const string sfd = ttf_font.ToSFD(config.name);
   Util::WriteFile(out_sfd, sfd);
-  
+
   return 0;
 }

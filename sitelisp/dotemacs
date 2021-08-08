@@ -47,30 +47,40 @@
     ;; (face-spec-recalc 'custom-state-face f)
     (face-spec-recalc 'font-lock-constant-face f)
     (face-spec-recalc 'fringe f)
-    ;; (face-spec-recalc 'isearch-lazy-highlight-face f)    
+    ;; (face-spec-recalc 'isearch-lazy-highlight-face f)
     (face-spec-recalc 'region f)
-    ;; (face-spec-recalc 'show-paren-match-face f)    
+    ;; (face-spec-recalc 'show-paren-match-face f)
     (face-spec-recalc 'minibuffer-prompt f)
 
     (cond
      ((eq window-system 'w32)
       (progn
         (set-default-font
+         ;; use M-x menu-set-font followed by M-x describe-font to
+         ;; create these mysterious strings.
+
          ;; windows vista?
          ;; -*-FixedSys-*-r-*-*-13-*-*-*-c-*-fontset-standard"
          ;; windows 7
          ;; works great but retired because it's too small and no unicode
-         "-raster-Fixedsys-normal-normal-normal-mono-15-*-*-*-c-*-iso8859-1"
-         ;; (concat "-outline-DejaVu Sans Mono-bold-normal-normal-mono-"
-         ;;        "17"
-         ;;        "-*-*-*-c-*-iso8859-1")
+
+         ;; this works great on win 10 ca 2021, but seemingly can't get
+         ;; big enough for 4k displays
+         ;; "-raster-Fixedsys-normal-normal-normal-mono-15-*-*-*-c-*-iso8859-1"
+
+         ;; or Mono-bold
+         ;; good on 4k. 2021
+         ; (concat "-outline-DejaVu Sans Mono-normal-normal-normal-mono-"
+         ; "22"
+         ; "-*-*-*-c-*-iso8859-1")
+         ; )
+
+         "-outline-FixederSys 1x-thin-normal-normal-mono-32-*-*-*-c-*-iso8859-1"
+
          )
-         ; (set-face-attribute 'default nil :font "DejaVu Sans Mono Bold")
-         ; (set-face-attribute 'default nil :font "DejaVu Sans Mono")
-         ;; trying this on windows 7 to get unicode support.
-         ; (set-face-attribute 'default nil :font "Fixedsys Excelsior 3.01")
+
          (modify-frame-parameters nil
-           (list '(top . 50) '(width . 80) '(height . 50))) ;; XX to 99
+           (list '(top . 42) '(width . 80) '(height . 46))) ;; XX to 99
          ;; to see frame parameters:
          ;; (insert (concat "\n;; " (prin1-to-string (frame-parameters))))
          ))
@@ -437,6 +447,9 @@
 (autoload 'htmlize "htmlize" "Turn a buffer into html" t)
 ; provides timestamp and datestamp
 (require 'id)
+
+;; absent any other overrides, display tab characters as width 4
+(setq-default tab-width 4)
 
 (defun tab-preferences ()
   "Sets my tab prefs."

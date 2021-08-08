@@ -54,9 +54,9 @@ static Font *font = nullptr;
 static SDL_Surface *screen = nullptr;
 
 std::mutex print_mutex;
-#define Printf(fmt, ...) do {		\
-  MutexLock Printf_ml(&print_mutex);		\
-  printf(fmt, ##__VA_ARGS__);			\
+#define Printf(fmt, ...) do {               \
+    MutexLock Printf_ml(&print_mutex);      \
+    printf(fmt, ##__VA_ARGS__);             \
   } while (0);
 
 static uint8 FloatByte(float f) {
@@ -73,7 +73,7 @@ static constexpr inline float ByteFloat(uint8 ch) {
 struct Pixel {
   Pixel(uint8 r, uint8 g, uint8 b) : r(r), g(g), b(b) {
     ColorUtil::RGBToLAB(ByteFloat(r), ByteFloat(g), ByteFloat(b),
-			&ll, &aa, &bb);
+            &ll, &aa, &bb);
   }
   // Actual color value.
   uint8 r, g, b;
@@ -92,9 +92,9 @@ inline void DrawChunk(int x, int y, uint8 r, uint8 g, uint8 b) {
   }
   #else
   sdlutil::FillRectRGB(screen,
-		       x << SCALE, y << SCALE,
-		       1 << SCALE, 1 << SCALE,
-		       r, g, b);
+               x << SCALE, y << SCALE,
+               1 << SCALE, 1 << SCALE,
+               r, g, b);
   #endif
 }
 
@@ -141,13 +141,13 @@ inline void UpdatePixel(int x, int y) {
 // Do two rectangles of the same size overlap?
 // XXX might be off-by-one problems here
 inline bool Overlap(int w, int h,
-		    int ax, int ay,
-		    int bx, int by) {
+            int ax, int ay,
+            int bx, int by) {
   const int axx = ax + w, ayy = ay + h;
   const int bxx = bx + w, byy = by + h;
 
   return !(ax > bxx || bx > axx ||
-	   ay < byy || by < ayy);
+       ay < byy || by < ayy);
 }
 
 static void Redraw() {
@@ -166,12 +166,12 @@ static void UIThread() {
 
   static constexpr int SWAPS_PER_FRAME = 1000;
   Asynchronously write_frames{16};
-  
+
   Printf("Init with random:\n");
   for (int i = 0; i < pixels.size(); i++) {
     pixels[i] = Pixel{rc.Byte(), rc.Byte(), rc.Byte()};
   }
-  
+
   Printf("Blit image:\n");
 
   CHECK(img->width <= WIDTH) << img->width;
@@ -190,8 +190,8 @@ static void UIThread() {
       pixels[idx] = Pixel{r, g, b};
     }
   }
-  
-  
+
+
   Printf("Initial draw:\n");
   Redraw();
 
@@ -207,15 +207,15 @@ static void UIThread() {
     NUM_STRATEGIES,
   };
   vector<double> error_by_strategy(NUM_STRATEGIES, 0.0);
-  
+
   auto SwapPixels = [&swaps](int ax, int ay, int bx, int by) {
-    swaps++;
-    const Pixel tmp = pixels[ay * WIDTH + ax];
-    pixels[ay * WIDTH + ax] = pixels[by * WIDTH + bx];
-    pixels[by * WIDTH + bx] = tmp;
-    UpdatePixel(ax, ay);
-    UpdatePixel(bx, by);
-  };
+      swaps++;
+      const Pixel tmp = pixels[ay * WIDTH + ax];
+      pixels[ay * WIDTH + ax] = pixels[by * WIDTH + bx];
+      pixels[by * WIDTH + bx] = tmp;
+      UpdatePixel(ax, ay);
+      UpdatePixel(bx, by);
+    };
 
   int frame_num = 0;
 
@@ -228,42 +228,42 @@ static void UIThread() {
       // Generate two non-overlapping rectangles.
       int w, h, ax, ay, bx, by;
       do {
-	w = 1 + RandTo(&rc, WIDTH / 16);
-	h = 1 + RandTo(&rc, HEIGHT / 16);
-	ax = RandTo(&rc, WIDTH - w);
-	ay = RandTo(&rc, HEIGHT - h);
-	bx = RandTo(&rc, WIDTH - w);
-	by = RandTo(&rc, HEIGHT - h);
+        w = 1 + RandTo(&rc, WIDTH / 16);
+        h = 1 + RandTo(&rc, HEIGHT / 16);
+        ax = RandTo(&rc, WIDTH - w);
+        ay = RandTo(&rc, HEIGHT - h);
+        bx = RandTo(&rc, WIDTH - w);
+        by = RandTo(&rc, HEIGHT - h);
       } while (Overlap(w, h, ax, ay, bx, by));
 
       float now = 0.0f, then = 0.0f;
 
       auto EdgeError = [](
-	  // Edge, as a start position, unit vector, pixel length.
-	  int px, int py, int dpx, int dpy, int len,
-	  // Start position for error (not offset) for error source.
-	  // If testing actual current error, same as px, py.
-	  int ex, int ey,
-	  // Unit vector giving error offset.
-	  int edx, int edy) -> float {
-	float err = 0.0f;
-	for (int z = 0; z < len; z++) {
-	  const Pixel &p = pixels[py * WIDTH + px];
+          // Edge, as a start position, unit vector, pixel length.
+          int px, int py, int dpx, int dpy, int len,
+          // Start position for error (not offset) for error source.
+          // If testing actual current error, same as px, py.
+          int ex, int ey,
+          // Unit vector giving error offset.
+          int edx, int edy) -> float {
+          float err = 0.0f;
+          for (int z = 0; z < len; z++) {
+            const Pixel &p = pixels[py * WIDTH + px];
 
-	  for (int e = 1; e < /* len + */ 1; e++) {
-	    err += PenaltyWrt(p, ex + edx * e, ey + edy * e);
-	    // But also perpendicular.
-	    err += PenaltyWrt(p, ex + edx * e - edy, ey + edy * e - edx);
-	    err += PenaltyWrt(p, ex + edx * e + edy, ey + edy * e + edx);
-	  }
-	    
-	  px += dpx;
-	  py += dpy;
-	  ex += dpx;
-	  ey += dpy;
-	}
-	return err;
-      };
+            for (int e = 1; e < /* len + */ 1; e++) {
+              err += PenaltyWrt(p, ex + edx * e, ey + edy * e);
+              // But also perpendicular.
+              err += PenaltyWrt(p, ex + edx * e - edy, ey + edy * e - edx);
+              err += PenaltyWrt(p, ex + edx * e + edy, ey + edy * e + edx);
+            }
+
+            px += dpx;
+            py += dpy;
+            ex += dpx;
+            ey += dpy;
+          }
+          return err;
+        };
 
       // Top, right, bottom, left
       now += EdgeError(ax, ay, 1, 0, w, ax, ay, 0, -1);
@@ -275,7 +275,7 @@ static void UIThread() {
       now += EdgeError(bx + w - 1, by, 0, 1, h, bx + w - 1, by, 1, 0);
       now += EdgeError(bx, by + h - 1, 1, 0, w, bx, by + h - 1, 0, 1);
       now += EdgeError(bx, by, 0, 1, h, bx, by, -1, 0);
-      
+
       // Same, but error positions are swapped.
       then += EdgeError(ax, ay, 1, 0, w, bx, by, 0, -1);
       then += EdgeError(ax + w - 1, ay, 0, 1, h, bx + w - 1, by, 1, 0);
@@ -289,115 +289,121 @@ static void UIThread() {
 
 
       sdlutil::drawbox(screen, ax << SCALE, ay << SCALE, w << SCALE, h << SCALE,
-		       0xFF, 0, 0);
+                       0xFF, 0, 0);
       sdlutil::drawbox(screen, bx << SCALE, by << SCALE, w << SCALE, h << SCALE,
-		       0, 0xFF, 0);
+                       0, 0xFF, 0);
       int amx = ax + (w >> 1), amy = ay + (h >> 1);
       int bmx = bx + (w >> 1), bmy = by + (h >> 1);
       sdlutil::drawclipline(screen, amx << SCALE, amy << SCALE,
-			    bmx << SCALE, bmy << SCALE, 0xFF, 0xFF, 0);
-      
+                            bmx << SCALE, bmy << SCALE, 0xFF, 0xFF, 0);
+
       Printf("Rect before %f, after %f\n", now, then);
-      
+
       if (then < now) {
-	// Improvement! Swap the rectangles, which can just be done pixel-by-pixel because
-	// they don't overlap.
-	error_by_strategy[STRATEGY_RECT] += (now - then);
-	for (int y = 0; y < h; y++) {
-	  for (int x = 0; x < w; x++) {
-	    SwapPixels(ax + x, ay + y, bx + x, by + y);
-	  }
-	}
+        // Improvement! Swap the rectangles, which can just be done
+        // pixel-by-pixel because they don't overlap.
+        error_by_strategy[STRATEGY_RECT] += (now - then);
+        for (int y = 0; y < h; y++) {
+          for (int x = 0; x < w; x++) {
+            SwapPixels(ax + x, ay + y, bx + x, by + y);
+          }
+        }
       }
-      
+
       break;
     }
     case 0:
       // Try every pixel, but only swap with pixels
       // strictly above it.
       for (int ay = 1; ay < WIDTH; ay++) {
-	for (int ax = 0; ax < HEIGHT; ax++) {
-	  int by = RandTo(&rc, ay);
-	  int bx = RandTo(&rc, WIDTH);
-	  const Pixel &a = pixels[ay * WIDTH + ax];
-	  const Pixel &b = pixels[by * WIDTH + bx];
-	  const float now = PenaltyInPosition(a, ax, ay) + PenaltyInPosition(b, bx, by);
-	  const float then = PenaltyInPosition(b, ax, ay) + PenaltyInPosition(a, bx, by);
-	  if (then < now) {
-	    error_by_strategy[STRATEGY_ALL_PIXELS] += (now - then);
-	    SwapPixels(ax, ay, bx, by);
-	  }
-	}
-	break;
+        for (int ax = 0; ax < HEIGHT; ax++) {
+          int by = RandTo(&rc, ay);
+          int bx = RandTo(&rc, WIDTH);
+          const Pixel &a = pixels[ay * WIDTH + ax];
+          const Pixel &b = pixels[by * WIDTH + bx];
+          const float now =
+            PenaltyInPosition(a, ax, ay) + PenaltyInPosition(b, bx, by);
+          const float then =
+            PenaltyInPosition(b, ax, ay) + PenaltyInPosition(a, bx, by);
+          if (then < now) {
+            error_by_strategy[STRATEGY_ALL_PIXELS] += (now - then);
+            SwapPixels(ax, ay, bx, by);
+          }
+        }
+        break;
       }
     case 1:
       // Take random pairs of pixels.
       for (int i = 0; i < 1000; i++) {
-	int ax = RandTo(&rc, WIDTH);
-	int ay = RandTo(&rc, HEIGHT);
-	int bx = RandTo(&rc, WIDTH);
-	int by = RandTo(&rc, HEIGHT);
-	const Pixel &a = pixels[ay * WIDTH + ax];
-	const Pixel &b = pixels[by * WIDTH + bx];
-	const float now = PenaltyInPosition(a, ax, ay) + PenaltyInPosition(b, bx, by);
-	const float then = PenaltyInPosition(b, ax, ay) + PenaltyInPosition(a, bx, by);
-	if (then < now) {
-	  error_by_strategy[STRATEGY_RANDOM_PAIR] += (now - then);
-	  SwapPixels(ax, ay, bx, by);
-	}
+        int ax = RandTo(&rc, WIDTH);
+        int ay = RandTo(&rc, HEIGHT);
+        int bx = RandTo(&rc, WIDTH);
+        int by = RandTo(&rc, HEIGHT);
+        const Pixel &a = pixels[ay * WIDTH + ax];
+        const Pixel &b = pixels[by * WIDTH + bx];
+        const float now =
+          PenaltyInPosition(a, ax, ay) + PenaltyInPosition(b, bx, by);
+        const float then =
+          PenaltyInPosition(b, ax, ay) + PenaltyInPosition(a, bx, by);
+        if (then < now) {
+          error_by_strategy[STRATEGY_RANDOM_PAIR] += (now - then);
+          SwapPixels(ax, ay, bx, by);
+        }
       }
       break;
     case 7:
       // Swap only with nearby pixels.
       for (int ay = 1; ay < HEIGHT - 1; ay++) {
-	for (int ax = 1; ax < WIDTH - 1; ax++) {
-	  for (const int by : { ay - 1, ay, ay + 1 }) {
-	    for (const int bx : { ax - 1, ax, ax + 1}) {
-	      // printf("%d %d %d %d\n", ax, ay, bx, by);
-	      if (ax != bx || ay != by) {
-		CHECK(bx >= 0 && bx < WIDTH);
-		CHECK(by >= 0 && by < WIDTH);
-		const Pixel &a = pixels[ay * WIDTH + ax];
-		const Pixel &b = pixels[by * WIDTH + bx];
+        for (int ax = 1; ax < WIDTH - 1; ax++) {
+          for (const int by : { ay - 1, ay, ay + 1 }) {
+            for (const int bx : { ax - 1, ax, ax + 1}) {
+              // printf("%d %d %d %d\n", ax, ay, bx, by);
+              if (ax != bx || ay != by) {
+                CHECK(bx >= 0 && bx < WIDTH);
+                CHECK(by >= 0 && by < WIDTH);
+                const Pixel &a = pixels[ay * WIDTH + ax];
+                const Pixel &b = pixels[by * WIDTH + bx];
 
-		// We don't want to use PenaltyInPosition because when computing the
-		// replaced position, it always sees itself as one of the new neighbors,
-		// which makes a swap very likely even when it will not reduce overall
-		// error. Explicitly include points A and B in error calculation (they
-		// remain adjacent to each other).
-		float now = 0.0, then = 0.0;
-		// Neighborhood of A.
-		for (int aey : { ay - 1, ay, ay + 1 }) {
-		  for (int aex : { ax - 1, ax, ax + 1 }) {
-		    if ((aex == ax && aey == ay) ||
-			(aex == bx && aey == by)) continue;
-		    now += PenaltyWrt(a, aex, aey);
-		    then += PenaltyWrt(b, aex, aey);
-		  }
-		}
+                // We don't want to use PenaltyInPosition because when
+                // computing the replaced position, it always sees
+                // itself as one of the new neighbors, which makes a
+                // swap very likely even when it will not reduce
+                // overall error. Explicitly include points A and B in
+                // error calculation (they remain adjacent to each
+                // other).
+                float now = 0.0, then = 0.0;
+                // Neighborhood of A.
+                for (int aey : { ay - 1, ay, ay + 1 }) {
+                  for (int aex : { ax - 1, ax, ax + 1 }) {
+                    if ((aex == ax && aey == ay) ||
+                        (aex == bx && aey == by)) continue;
+                    now += PenaltyWrt(a, aex, aey);
+                    then += PenaltyWrt(b, aex, aey);
+                  }
+                }
 
-		// Neighborhood of B.
-		for (int bey : { by - 1, by, by + 1 }) {
-		  for (int bex : { bx - 1, bx, bx + 1 }) {
-		    if ((bex == ax && bey == ay) ||
-			(bex == bx && bey == by)) continue;
-		    now += PenaltyWrt(b, bex, bey);
-		    then += PenaltyWrt(a, bex, bey);
-		  }
-		}
+                // Neighborhood of B.
+                for (int bey : { by - 1, by, by + 1 }) {
+                  for (int bex : { bx - 1, bx, bx + 1 }) {
+                    if ((bex == ax && bey == ay) ||
+                        (bex == bx && bey == by)) continue;
+                    now += PenaltyWrt(b, bex, bey);
+                    then += PenaltyWrt(a, bex, bey);
+                  }
+                }
 
-		if (then < now) {
-		  error_by_strategy[STRATEGY_LOCAL] += (now - then);
-		  SwapPixels(ax, ay, bx, by);
-		}
-	      }
-	    }
-	  }
-	}
+                if (then < now) {
+                  error_by_strategy[STRATEGY_LOCAL] += (now - then);
+                  SwapPixels(ax, ay, bx, by);
+                }
+              }
+            }
+          }
+        }
       }
       break;
     }
-      
+
     // printf("%d swaps.\n", swaps);
 
     SDL_Flip(screen);
@@ -416,36 +422,36 @@ static void UIThread() {
 
       vector<uint8> *rgba = new vector<uint8>(WIDTH * HEIGHT * 4, 0);
       for (int i = 0; i < pixels.size(); i++) {
-	(*rgba)[i * 4 + 0] = pixels[i].r;
-	(*rgba)[i * 4 + 1] = pixels[i].g;
-	(*rgba)[i * 4 + 2] = pixels[i].b;
-	(*rgba)[i * 4 + 3] = 0xFF;
+        (*rgba)[i * 4 + 0] = pixels[i].r;
+        (*rgba)[i * 4 + 1] = pixels[i].g;
+        (*rgba)[i * 4 + 2] = pixels[i].b;
+        (*rgba)[i * 4 + 3] = 0xFF;
       }
       write_frames.Run([rgba, frame_num, swaps]() {
-	string filename = StringPrintf("cluster/frame-%d.png", frame_num);
-	stbi_write_png(filename.c_str(), WIDTH, HEIGHT, 4, rgba->data(), 4 * WIDTH);
-	delete rgba;
-	Printf("Wrote %s (%d swaps)\n", filename.c_str(), swaps);
-      });
+          string filename = StringPrintf("cluster/frame-%d.png", frame_num);
+          stbi_write_png(filename.c_str(), WIDTH, HEIGHT, 4, rgba->data(), 4 * WIDTH);
+          delete rgba;
+          Printf("Wrote %s (%d swaps)\n", filename.c_str(), swaps);
+        });
       swaps = 0;
       frame_num++;
     }
-      
+
     SDL_Event event;
     if (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
-	Printf("QUIT.\n");
-	return;
+        Printf("QUIT.\n");
+        return;
 
       } else if (event.type == SDL_KEYDOWN) {
-	switch (event.key.keysym.sym) {
-	case SDLK_ESCAPE:
-	  Printf("ESCAPE.\n");
-	  return;
-	default:;
-	}
+        switch (event.key.keysym.sym) {
+        case SDLK_ESCAPE:
+          Printf("ESCAPE.\n");
+          return;
+        default:;
+        }
       }
-    } 
+    }
   }
 }
 
@@ -455,11 +461,11 @@ int SDL_main(int argc, char **argv) {
     LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
   }
   */
-  
+
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |
-		 SDL_INIT_TIMER | 
-		 SDL_INIT_AUDIO) >= 0);
+         SDL_INIT_TIMER |
+         SDL_INIT_AUDIO) >= 0);
   fprintf(stderr, "SDL initialized OK.\n");
 
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
@@ -471,13 +477,13 @@ int SDL_main(int argc, char **argv) {
   CHECK(screen);
 
   font = Font::create(screen,
-		      "font.png",
-		      FONTCHARS,
-		      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+              "font.png",
+              FONTCHARS,
+              FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font != nullptr) << "Couldn't load font.";
-  
+
   UIThread();
-  
+
   SDL_Quit();
   return 0;
 }

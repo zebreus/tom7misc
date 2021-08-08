@@ -107,8 +107,8 @@ struct NTSC {
   static std::tuple<uint8, uint8, uint8> Get(int idx) {
     ECHECK(idx >= 0 && idx < 64) << idx;
     return make_tuple(ntsc_palette[idx * 3 + 0],
-		      ntsc_palette[idx * 3 + 1],
-		      ntsc_palette[idx * 3 + 2]);
+              ntsc_palette[idx * 3 + 1],
+              ntsc_palette[idx * 3 + 2]);
   }
 };
 
@@ -130,7 +130,7 @@ struct PaletteMap {
       std::tie(r, g, b) = NTSC::Get(i);
       LAB lab;
       ColorUtil::RGBToLAB(r / 255.0f, g / 255.0f, g / 255.0f,
-			  &lab.l, &lab.a, &lab.b);
+              &lab.l, &lab.a, &lab.b);
       neslab.push_back(lab);
     }
 
@@ -138,26 +138,26 @@ struct PaletteMap {
     for (int r = 0; r < RADIX; r++) {
       const float fr = r / (RADIX - 1.0f);
       for (int g = 0; g < RADIX; g++) {
-	const float fg = g / (RADIX - 1.0f);
-	for (int b = 0; b < RADIX; b++) {
-	  const float fb = b / (RADIX - 1.0f);
-	  float ll, aa, bb;
-	  ColorUtil::RGBToLAB(fr, fg, fb, &ll, &aa, &bb);
-	  float best_de = std::numeric_limits<float>::infinity();
-	  int best = -1;
-	  for (int i = 0; i < 64; i++) {
-	    const float de = ColorUtil::DeltaE(ll, aa, bb,
-					       neslab[i].l,
-					       neslab[i].a,
-					       neslab[i].b);
-	    if (de < best_de) {
-	      best_de = de;
-	      best = i;
-	    }
-	  }
-	  CHECK(best >= 0);
-	  nearest.push_back(best);
-	}
+        const float fg = g / (RADIX - 1.0f);
+        for (int b = 0; b < RADIX; b++) {
+          const float fb = b / (RADIX - 1.0f);
+          float ll, aa, bb;
+          ColorUtil::RGBToLAB(fr, fg, fb, &ll, &aa, &bb);
+          float best_de = std::numeric_limits<float>::infinity();
+          int best = -1;
+          for (int i = 0; i < 64; i++) {
+            const float de = ColorUtil::DeltaE(ll, aa, bb,
+                               neslab[i].l,
+                               neslab[i].a,
+                               neslab[i].b);
+            if (de < best_de) {
+              best_de = de;
+              best = i;
+            }
+          }
+          CHECK(best >= 0);
+          nearest.push_back(best);
+        }
       }
     }
   }
@@ -172,9 +172,9 @@ PaletteMap *palette_map = nullptr;
 static CL *global_cl = nullptr;
 
 std::mutex print_mutex;
-#define Printf(fmt, ...) do {		\
-  MutexLock Printf_ml(&print_mutex);		\
-  printf(fmt, ##__VA_ARGS__);			\
+#define Printf(fmt, ...) do {       \
+  MutexLock Printf_ml(&print_mutex);        \
+  printf(fmt, ##__VA_ARGS__);           \
   } while (0);
 
 template<class C>
@@ -316,7 +316,7 @@ struct System {
   virtual GPUStimulation *NewStimulation() = 0;
   // Maybe should be member of the stimulation?
   virtual GPUErrors *NewErrors(GPUStimulation *stim) = 0;
-  
+
   // Initialize the stimulation from the results of the previous
   // phase; typically this is a single previous system. In the case of
   // something like an input layer, it may do nothing (because it has
@@ -328,12 +328,12 @@ struct System {
   virtual void Forward(GPUStimulation *stim) = 0;
 
   virtual void PropagateErrors(
-      
-  
+
+
 };
 
 
-#define NEIGHBORHOOD 1  
+#define NEIGHBORHOOD 1
 struct NetworkConfiguration {
   const int num_layers = 5;
   // Note that these must have num_layers + 1 entries.
@@ -402,16 +402,16 @@ struct Network {
     // Layer structs.
     for (int i = 0; i < num_layers; i++) {
       ret += sizeof layers[i] + sizeof layers[i].indices[0] * layers[i].indices.size() +
-	sizeof layers[i].weights[0] * layers[i].weights.size() +
-	sizeof layers[i].biases[0] * layers[i].biases.size();
+    sizeof layers[i].weights[0] * layers[i].weights.size() +
+    sizeof layers[i].biases[0] * layers[i].biases.size();
     }
     // Inverted index structs.
     for (int i = 0; i < num_layers; i++) {
       ret += sizeof inverted_indices[i] +
-	sizeof inverted_indices[i].start[0] * inverted_indices[i].start.size() +
-	sizeof inverted_indices[i].length[0] * inverted_indices[i].length.size() +
-	sizeof inverted_indices[i].output_indices[0] *
-	    inverted_indices[i].output_indices.size();
+    sizeof inverted_indices[i].start[0] * inverted_indices[i].start.size() +
+    sizeof inverted_indices[i].length[0] * inverted_indices[i].length.size() +
+    sizeof inverted_indices[i].output_indices[0] *
+        inverted_indices[i].output_indices.size();
     }
 
     return ret;
@@ -491,25 +491,25 @@ static void CheckInvertedIndices(const Network &net) {
     const vector<uint32> &indices = net.layers[layer].indices;
     const Network::InvertedIndices &inv = net.inverted_indices[layer];
     CHECK_EQ(net.num_nodes[layer + 1] * net.layers[layer].indices_per_node,
-	     indices.size());
+         indices.size());
     // Need one start/length pair for every node in the source layer.
     CHECK_EQ(net.num_nodes[layer], inv.start.size());
     CHECK_EQ(net.num_nodes[layer], inv.length.size());
     // But the output size is determined by the next layer.
     CHECK_EQ(net.num_nodes[layer + 1] * net.layers[layer].indices_per_node,
-	     inv.output_indices.size());
+         inv.output_indices.size());
     // z is a node id from the src layer.
     for (int z = 0; z < inv.start.size(); z++) {
       // i is the index within the compacted inverted index.
       for (int i = inv.start[z]; i < inv.start[z] + inv.length[z]; i++) {
-	// Global index into 'indices'.
-	CHECK(i >= 0);
-	CHECK(i < inv.output_indices.size());
-	const int gidx = inv.output_indices[i];
-	CHECK(gidx >= 0);
-	CHECK(gidx < indices.size());
-	// This should map back to our current node id.
-	CHECK_EQ(indices[gidx], z);
+    // Global index into 'indices'.
+    CHECK(i >= 0);
+    CHECK(i < inv.output_indices.size());
+    const int gidx = inv.output_indices[i];
+    CHECK(gidx >= 0);
+    CHECK(gidx < indices.size());
+    // This should map back to our current node id.
+    CHECK_EQ(indices[gidx], z);
       }
     }
   }
@@ -540,8 +540,8 @@ static void ComputeInvertedIndices(Network *net) {
     vector<vector<uint32>> occurrences;
     occurrences.resize(net->num_nodes[layer]);
     for (int dst_indices_idx = 0;
-	 dst_indices_idx < net->layers[layer].indices_per_node * dst_num_nodes;
-	 dst_indices_idx++) {
+     dst_indices_idx < net->layers[layer].indices_per_node * dst_num_nodes;
+     dst_indices_idx++) {
       // This index gets put into exactly one place in occurrences.
       const int src_nodes_idx = net->layers[layer].indices[dst_indices_idx];
       occurrences[src_nodes_idx].push_back(dst_indices_idx);
@@ -556,14 +556,14 @@ static void ComputeInvertedIndices(Network *net) {
     // Now flatten.
     int flat_size = 0;
     for (int src_nodes_idx = 0;
-	 src_nodes_idx < src_num_nodes;
-	 src_nodes_idx++) {
+     src_nodes_idx < src_num_nodes;
+     src_nodes_idx++) {
       (*start)[src_nodes_idx] = flat_size;
       (*length)[src_nodes_idx] = occurrences[src_nodes_idx].size();
 
       for (const int val : occurrences[src_nodes_idx]) {
-	(*inverted)[flat_size] = val;
-	flat_size++;
+    (*inverted)[flat_size] = val;
+    flat_size++;
       }
     }
     CHECK_EQ(dst_num_nodes * net->layers[layer].indices_per_node, flat_size);
@@ -578,7 +578,7 @@ static Network *ReadNetworkBinary(const string &filename) {
   FILE *file = fopen(filename.c_str(), "rb");
   if (file == nullptr) {
     printf("  ... failed. If it's present, there may be a "
-	   "permissions problem?\n");
+       "permissions problem?\n");
     return nullptr;
   }
 
@@ -691,7 +691,7 @@ static void SaveNetworkBinary(const Network &net, const string &filename) {
 // activation value of each node on each layer, plus the input itself.
 struct Stimulation {
   explicit Stimulation(const Network &net) : num_layers(net.num_layers),
-					     num_nodes(net.num_nodes) {
+                         num_nodes(net.num_nodes) {
     values.resize(num_layers + 1);
     for (int i = 0; i < values.size(); i++)
       values[i].resize(num_nodes[i], 0.0f);
@@ -727,7 +727,7 @@ struct Stimulation {
 
 struct Errors {
   explicit Errors(const Network &net) : num_layers(net.num_layers),
-					num_nodes(net.num_nodes) {
+                    num_nodes(net.num_nodes) {
     error.resize(num_layers);
     for (int i = 0; i < error.size(); i++) {
       error[i].resize(num_nodes[i + 1], 0.0f);
@@ -761,22 +761,22 @@ struct NetworkGPU {
     layers.resize(net->layers.size());
     for (int layer = 0; layer < net->layers.size(); layer++) {
       layers[layer].indices =
-	MoveMemoryToGPU(cl->context, cl->queue, true, &net->layers[layer].indices);
+    MoveMemoryToGPU(cl->context, cl->queue, true, &net->layers[layer].indices);
       layers[layer].weights =
-	MoveMemoryToGPU(cl->context, cl->queue, false, &net->layers[layer].weights);
+    MoveMemoryToGPU(cl->context, cl->queue, false, &net->layers[layer].weights);
       layers[layer].biases =
-	MoveMemoryToGPU(cl->context, cl->queue, false, &net->layers[layer].biases);
+    MoveMemoryToGPU(cl->context, cl->queue, false, &net->layers[layer].biases);
     }
 
     inverted_indices.resize(net->inverted_indices.size());
     for (int layer = 0; layer < net->layers.size(); layer++) {
       inverted_indices[layer].start =
-	MoveMemoryToGPUConst(cl->context, cl->queue, net->inverted_indices[layer].start);
+    MoveMemoryToGPUConst(cl->context, cl->queue, net->inverted_indices[layer].start);
       inverted_indices[layer].length =
-	MoveMemoryToGPUConst(cl->context, cl->queue, net->inverted_indices[layer].length);
+    MoveMemoryToGPUConst(cl->context, cl->queue, net->inverted_indices[layer].length);
       inverted_indices[layer].output_indices =
-	MoveMemoryToGPUConst(cl->context, cl->queue,
-			     net->inverted_indices[layer].output_indices);
+    MoveMemoryToGPUConst(cl->context, cl->queue,
+                 net->inverted_indices[layer].output_indices);
     }
 
     clFinish(cl->queue);
@@ -796,10 +796,10 @@ struct NetworkGPU {
   template<class T>
   void ReadTo(cl_mem buf, vector<T> *vec) {
     CHECK_SUCCESS(clEnqueueReadBuffer(cl->queue, buf, CL_TRUE, 0, sizeof (T) * vec->size(),
-				      vec->data(),
-				      // No wait-list or event.
-				      0, nullptr,
-				      nullptr));
+                      vec->data(),
+                      // No wait-list or event.
+                      0, nullptr,
+                      nullptr));
   }
 
   struct Layer {
@@ -833,16 +833,16 @@ struct TrainingRoundGPU {
   TrainingRoundGPU(CL *cl, const Network &net) : cl(cl), net(&net) {
     for (int i = 0; i < net.num_layers + 1; i++) {
       stimulations.push_back(
-	  CreateUninitializedGPUMemory<float>(cl->context, net.num_nodes[i]));
+      CreateUninitializedGPUMemory<float>(cl->context, net.num_nodes[i]));
     }
 
     for (int i = 0; i < net.num_layers; i++) {
       errors.push_back(
-	  CreateUninitializedGPUMemory<float>(cl->context, net.num_nodes[i + 1]));
+      CreateUninitializedGPUMemory<float>(cl->context, net.num_nodes[i + 1]));
     }
 
     expected = CreateUninitializedGPUMemory<float>(cl->context,
-						   net.num_nodes[net.num_layers]);
+                           net.num_nodes[net.num_layers]);
   }
 
   void LoadInput(const vector<float> &inputs) {
@@ -918,41 +918,41 @@ struct ForwardLayerCL {
 
       // Can't have multiple threads setting a kernel's argument at one time.
       {
-	MutexLock ml(&parent->m);
+        MutexLock ml(&parent->m);
 
-	cl_int indices_per_node = net_gpu->net->layers[layer].indices_per_node;
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 0, sizeof (cl_int), (void *)&indices_per_node));
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 1, sizeof (cl_mem), (void *)&src_values));
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 2, sizeof (cl_mem), (void *)&indices));
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 3, sizeof (cl_mem), (void *)&weights));
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 4, sizeof (cl_mem), (void *)&biases));
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 5, sizeof (cl_mem), (void *)&dst_values));
+        cl_int indices_per_node = net_gpu->net->layers[layer].indices_per_node;
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 0, sizeof (cl_int), (void *)&indices_per_node));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 1, sizeof (cl_mem), (void *)&src_values));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 2, sizeof (cl_mem), (void *)&indices));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 3, sizeof (cl_mem), (void *)&weights));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 4, sizeof (cl_mem), (void *)&biases));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 5, sizeof (cl_mem), (void *)&dst_values));
 
-	size_t global_work_offset[] = { 0 };
+        size_t global_work_offset[] = { 0 };
         size_t global_work_size[] = { (size_t)(net_gpu->net->num_nodes[layer + 1]) };
-	// Printf("Run FL Kernel.\n");
-	Timer kernel_timer;
-	CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, parent->kernel,
-					     // work dimensions
-					     1,
-					     // global work offset
-					     global_work_offset,
-					     // global work size
-					     global_work_size,
-					     // local work size
-					     nullptr,
-					     // no wait list
-					     0, nullptr,
-					     // no event
-					     nullptr));
-	clFinish(cl->queue);
-	kernel_ms += kernel_timer.MS();
+        // Printf("Run FL Kernel.\n");
+        Timer kernel_timer;
+        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, parent->kernel,
+                                             // work dimensions
+                                             1,
+                                             // global work offset
+                                             global_work_offset,
+                                             // global work size
+                                             global_work_size,
+                                             // local work size
+                                             nullptr,
+                                             // no wait list
+                                             0, nullptr,
+                                             // no event
+                                             nullptr));
+        clFinish(cl->queue);
+        kernel_ms += kernel_timer.MS();
       }
     }
 
@@ -1006,32 +1006,32 @@ struct SetOutputErrorCL {
 
       // Can't have multiple threads setting a kernel's argument at one time.
       {
-	MutexLock ml(&parent->m);
+        MutexLock ml(&parent->m);
 
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 0, sizeof (cl_mem), (void *)&actual_outputs));
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 1, sizeof (cl_mem), (void *)&expected));
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 2, sizeof (cl_mem), (void *)&output_error));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 0, sizeof (cl_mem), (void *)&actual_outputs));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 1, sizeof (cl_mem), (void *)&expected));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 2, sizeof (cl_mem), (void *)&output_error));
 
-	size_t global_work_offset[] = { 0 };
+        size_t global_work_offset[] = { 0 };
         size_t global_work_size[] = { (size_t)(num_nodes) };
 
-	CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, parent->kernel,
-					     // work dimensions
-					     1,
-					     // global work offset
-					     global_work_offset,
-					     // global work size
-					     global_work_size,
-					     // local work size
-					     nullptr,
-					     // no wait list
-					     0, nullptr,
-					     // no event
-					     nullptr));
-	clFinish(cl->queue);
+        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, parent->kernel,
+                                             // work dimensions
+                                             1,
+                                             // global work offset
+                                             global_work_offset,
+                                             // global work size
+                                             global_work_size,
+                                             // local work size
+                                             nullptr,
+                                             // no wait list
+                                             0, nullptr,
+                                             // no event
+                                             nullptr));
+        clFinish(cl->queue);
       }
     }
 
@@ -1094,40 +1094,40 @@ struct BackwardLayerCL {
 
       // Can't have multiple threads setting a kernel's argument at one time.
       {
-	MutexLock ml(&parent->m);
+        MutexLock ml(&parent->m);
 
-	cl_int dst_indices_per_node = net_gpu->net->layers[dst_layer].indices_per_node;
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 0, sizeof (cl_int),
-				     (void *)&dst_indices_per_node));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 1, sizeof (cl_mem), (void *)&starts));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 2, sizeof (cl_mem), (void *)&lengths));
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 3, sizeof (cl_mem), (void *)&inverted_index));
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 4, sizeof (cl_mem), (void *)&dst_weights));
-	CHECK_SUCCESS(
-	    clSetKernelArg(parent->kernel, 5, sizeof (cl_mem), (void *)&src_output));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 6, sizeof (cl_mem), (void *)&dst_error));
-	CHECK_SUCCESS(clSetKernelArg(parent->kernel, 7, sizeof (cl_mem), (void *)&src_error));
+        cl_int dst_indices_per_node = net_gpu->net->layers[dst_layer].indices_per_node;
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 0, sizeof (cl_int),
+                                     (void *)&dst_indices_per_node));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 1, sizeof (cl_mem), (void *)&starts));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 2, sizeof (cl_mem), (void *)&lengths));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 3, sizeof (cl_mem), (void *)&inverted_index));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 4, sizeof (cl_mem), (void *)&dst_weights));
+        CHECK_SUCCESS(
+            clSetKernelArg(parent->kernel, 5, sizeof (cl_mem), (void *)&src_output));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 6, sizeof (cl_mem), (void *)&dst_error));
+        CHECK_SUCCESS(clSetKernelArg(parent->kernel, 7, sizeof (cl_mem), (void *)&src_error));
 
-	size_t global_work_offset[] = { 0 };
-	size_t global_work_size[] = { (size_t)src_num_nodes };
-	Timer kernel_timer;
-	CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, parent->kernel,
-					     // work dimensions
-					     1,
-					     // global work offset
-					     global_work_offset,
-					     // global work size
-					     global_work_size,
-					     // local work size
-					     nullptr,
-					     // no wait list
-					     0, nullptr,
-					     // no event
-					     nullptr));
-	clFinish(cl->queue);
-	kernel_ms += kernel_timer.MS();
+        size_t global_work_offset[] = { 0 };
+        size_t global_work_size[] = { (size_t)src_num_nodes };
+        Timer kernel_timer;
+        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, parent->kernel,
+                                             // work dimensions
+                                             1,
+                                             // global work offset
+                                             global_work_offset,
+                                             // global work size
+                                             global_work_size,
+                                             // local work size
+                                             nullptr,
+                                             // no wait list
+                                             0, nullptr,
+                                             // no event
+                                             nullptr));
+        clFinish(cl->queue);
+        kernel_ms += kernel_timer.MS();
       }
     }
 
@@ -1183,35 +1183,35 @@ struct UpdateWeightsCL {
       const int num_nodes = net_gpu->net->num_nodes[layer + 1];
       cl_int indices_per_node = net_gpu->net->layers[layer].indices_per_node;
       CHECK_SUCCESS(
-	  clSetKernelArg(parent->kernel, 0, sizeof (cl_float), (void *)&learning_rate));
+      clSetKernelArg(parent->kernel, 0, sizeof (cl_float), (void *)&learning_rate));
       CHECK_SUCCESS(
-	  clSetKernelArg(parent->kernel, 1, sizeof (cl_int), (void *)&indices_per_node));
+      clSetKernelArg(parent->kernel, 1, sizeof (cl_int), (void *)&indices_per_node));
       CHECK_SUCCESS(
-	  clSetKernelArg(parent->kernel, 2, sizeof (cl_mem), (void *)&layer_error));
+      clSetKernelArg(parent->kernel, 2, sizeof (cl_mem), (void *)&layer_error));
       CHECK_SUCCESS(
-	  clSetKernelArg(parent->kernel, 3, sizeof (cl_mem), (void *)&layer_indices));
+      clSetKernelArg(parent->kernel, 3, sizeof (cl_mem), (void *)&layer_indices));
       CHECK_SUCCESS(
-	  clSetKernelArg(parent->kernel, 4, sizeof (cl_mem), (void *)&layer_values));
+      clSetKernelArg(parent->kernel, 4, sizeof (cl_mem), (void *)&layer_values));
       CHECK_SUCCESS(
-	  clSetKernelArg(parent->kernel, 5, sizeof (cl_mem), (void *)&layer_weights));
+      clSetKernelArg(parent->kernel, 5, sizeof (cl_mem), (void *)&layer_weights));
       CHECK_SUCCESS(
-	  clSetKernelArg(parent->kernel, 6, sizeof (cl_mem), (void *)&layer_biases));
+      clSetKernelArg(parent->kernel, 6, sizeof (cl_mem), (void *)&layer_biases));
 
       size_t global_work_offset[] = { 0 };
       size_t global_work_size[] = { (size_t)num_nodes };
       CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, parent->kernel,
-					   // work dimensions
-					   1,
-					   // global work offset
-					   global_work_offset,
-					   // global work size
-					   global_work_size,
-					   // local work size
-					   nullptr,
-					   // no wait list
-					   0, nullptr,
-					   // no event
-					   nullptr));
+                                           // work dimensions
+                                           1,
+                                           // global work offset
+                                           global_work_offset,
+                                           // global work size
+                                           global_work_size,
+                                           // local work size
+                                           nullptr,
+                                           // no wait list
+                                           0, nullptr,
+                                           // no event
+                                           nullptr));
       clFinish(cl->queue);
     }
 
@@ -1252,23 +1252,23 @@ struct UpdateWeightsCL {
 //      directly (especially the pixel itself; this preserves spatial
 //      locality and makes sure we don't have any statically dead nodes).
 static void MakeIndices(const vector<int> &width,
-			const vector<int> &channels,
-			ArcFour *rc, Network *net) {
+            const vector<int> &channels,
+            ArcFour *rc, Network *net) {
   CHECK_EQ(width.size(), net->num_layers + 1);
-  CHECK_EQ(channels.size(), net->num_layers + 1);  
+  CHECK_EQ(channels.size(), net->num_layers + 1);
   // static constexpr int NEIGHBORHOOD = 5;
 
   static_assert(NEIGHBORHOOD >= 0, "must include the pixel itself.");
   auto OneNode = [](ArcFour *rc, RandomGaussian *gauss,
-		    int64 *rejected, int64 *duplicate,
-		    int indices_per_node,
-		    int src_width, int src_height, int src_channels,
-		    int dst_width, int dst_height, int dst_channels,
-		    int idx) -> vector<uint32> {
+                    int64 *rejected, int64 *duplicate,
+                    int indices_per_node,
+                    int src_width, int src_height, int src_channels,
+                    int dst_width, int dst_height, int dst_channels,
+                    int idx) -> vector<uint32> {
 
     // Whenever we read the neighborhood, we include all source channels.
     CHECK((NEIGHBORHOOD * 2 + 1) * (NEIGHBORHOOD * 2 + 1) *
-	  src_channels <= indices_per_node) << "neighborhood doesn't fit in indices!";
+      src_channels <= indices_per_node) << "neighborhood doesn't fit in indices!";
     // Which pixel is this?
     const int dst_nodes_per_row = dst_width * dst_channels;
     const int c = idx % dst_channels;
@@ -1283,12 +1283,12 @@ static void MakeIndices(const vector<int> &width,
     unordered_set<int> indices;
     // clips xx,yy if they are out of the image. cc must be a valid channel index.
     auto AddNodeByCoordinates = [src_width, src_height, src_channels, &indices,
-				 rejected, duplicate](int xx, int yy, int cc) {
+                                 rejected, duplicate](int xx, int yy, int cc) {
       ECHECK_GE(cc, 0);
       ECHECK_LT(cc, src_channels);
       if (xx < 0 || yy < 0 || xx >= src_width || yy >= src_height) {
-	++*rejected;
-	return;
+    ++*rejected;
+    return;
       }
       int idx = (yy * src_width * src_channels) + xx * src_channels + cc;
       ECHECK_GE(idx, 0);
@@ -1303,9 +1303,9 @@ static void MakeIndices(const vector<int> &width,
     for (int ny = -NEIGHBORHOOD; ny <= NEIGHBORHOOD; ny++) {
       for (int nx = -NEIGHBORHOOD; nx <= NEIGHBORHOOD; nx++) {
         // Note that the pixel may be clipped.
-	for (int nc = 0; nc < src_channels; nc++) {
-	  AddNodeByCoordinates(cx + nx, cy + ny, nc);
-	}
+    for (int nc = 0; nc < src_channels; nc++) {
+      AddNodeByCoordinates(cx + nx, cy + ny, nc);
+    }
       }
     }
 
@@ -1322,7 +1322,7 @@ static void MakeIndices(const vector<int> &width,
       double dy = gauss->Next() * stddev;
 
       AddNodeByCoordinates((int)round((xf + dx) * src_width),
-			   (int)round((yf + dy) * src_height));
+               (int)round((yf + dy) * src_height));
     }
     #else
 
@@ -1333,16 +1333,16 @@ static void MakeIndices(const vector<int> &width,
       const int cx = round(xf * src_width);
       const int cy = round(yf * src_height);
       for (int ny = -hood; ny <= hood; ny++) {
-	for (int nx = -hood; nx <= hood; nx++) {
-	  // In the interests of getting more spatial
-	  // dispersion, only add one channel at random. As
-	  // we expand we can try these multiple times, so
-	  // pixels closer to the center are more likely to
-	  // have all channels used.
-	  int nc = RandTo(rc, src_channels);
-	  AddNodeByCoordinates(cx + nx, cy + ny, nc);
-	  if (indices.size() == indices_per_node) goto done;
-	}
+    for (int nx = -hood; nx <= hood; nx++) {
+      // In the interests of getting more spatial
+      // dispersion, only add one channel at random. As
+      // we expand we can try these multiple times, so
+      // pixels closer to the center are more likely to
+      // have all channels used.
+      int nc = RandTo(rc, src_channels);
+      AddNodeByCoordinates(cx + nx, cy + ny, nc);
+      if (indices.size() == indices_per_node) goto done;
+    }
       }
     }
   done:;
@@ -1382,30 +1382,30 @@ static void MakeIndices(const vector<int> &width,
     int64 rejected = 0LL, duplicate = 0LL;
     for (int node_idx = 0; node_idx < dst_height * dst_width * dst_channels; node_idx++) {
       vector<uint32> indices = OneNode(rcs[layer], &gauss, &rejected, &duplicate,
-				       indices_per_node,
-				       src_width, src_height, src_channels,
-				       dst_width, dst_height, dst_channels,
-				       node_idx);
+                                       indices_per_node,
+                                       src_width, src_height, src_channels,
+                                       dst_width, dst_height, dst_channels,
+                                       node_idx);
       // Sort them, for better locality of access later.
       std::sort(indices.begin(), indices.end());
       CHECK_EQ(indices_per_node, indices.size());
       const int start_idx = node_idx * indices_per_node;
       for (int i = 0; i < indices_per_node; i++) {
-	ECHECK_LT(i, indices.size());
-	ECHECK_LT(start_idx + i, layer_indices->size())
-	  << "start " << start_idx
-	  << " i " << i
-	  << " indices size " << layer_indices->size()
-	  << " indices per node "
-	  << indices_per_node;
-	(*layer_indices)[start_idx + i] = indices[i];
+        ECHECK_LT(i, indices.size());
+        ECHECK_LT(start_idx + i, layer_indices->size())
+          << "start " << start_idx
+          << " i " << i
+          << " indices size " << layer_indices->size()
+          << " indices per node "
+          << indices_per_node;
+        (*layer_indices)[start_idx + i] = indices[i];
       }
       if (node_idx % 1000 == 0) {
-	Printf("  %d. [%d/%d] %.1f%% (%lld rejected %lld dupe)\n",
-	       layer,
-	       node_idx, dst_height * dst_width * dst_channels,
-	       (100.0 * node_idx) / (dst_height * dst_width * dst_channels),
-	       rejected, duplicate);
+        Printf("  %d. [%d/%d] %.1f%% (%lld rejected %lld dupe)\n",
+               layer,
+               node_idx, dst_height * dst_width * dst_channels,
+               (100.0 * node_idx) / (dst_height * dst_width * dst_channels),
+               rejected, duplicate);
       }
     }
     Printf("... done with layer %d.\n", layer);
@@ -1433,7 +1433,7 @@ static void RandomizeNetwork(ArcFour *rc, Network *net) {
     // XXX such hacks. How to best initialize?
     RandomizeFloats(powf(0.025f, layer + 1.0), rcs[layer], &net->layers[layer].biases);
     RandomizeFloats(1.0f / (net->layers[layer].indices_per_node * (layer + 5)),
-		    rcs[layer], &net->layers[layer].weights);
+                    rcs[layer], &net->layers[layer].weights);
   }, 12);
 
   DeleteElements(&rcs);
@@ -1486,677 +1486,685 @@ static void ExportStimulusToVideo(int example_id, const Stimulation &stim) {
   }
 }
 
-static void UIThread() {
-  const NetworkConfiguration config;
-  int mousex = 0, mousey = 0;
-  (void)mousex; (void)mousey;
-  for (;;) {
-    // int round = ReadWithLock(&video_export_m, &current_round);
-    {
-      MutexLock ml(&video_export_m);
-      if (dirty) {
-	sdlutil::clearsurface(screen, 0x0);
-	string menu = StringPrintf("  round ^3%d ^1|  ^3%0.4f^0 rps",
-				   current_round,
-				   rounds_per_second);
-
-	for (int s = 0; s < NUM_VIDEO_STIMULATIONS; s++) {
-	  const Stimulation &stim = current_stimulations[s];
-	  CHECK(stim.values.size() == config.num_layers + 1);
-	  int ystart = 4;
-	  for (int l = 0; l < stim.values.size(); l++) {
-	    for (int y = 0; y < config.height[l]; y++) {
-	      for (int x = 0; x < config.width[l]; x++) {
-		int yy = ystart + y;
-		if (yy >= SCREENH) break;
-		
-		// XXX allow other sizes -- find the max width!
-		int xx = 4 + s * 260 + x;
-		int cidx = y * config.width[l] * config.channels[l] + x * config.channels[l];
-		switch (config.channels[l]) {
-		case 0: break;
-		case 1: {
-		  const uint8 v = FloatByte(stim.values[l][cidx]);
-		  sdlutil::drawpixel(screen, xx, yy, v, v, v);
-		  break;
-		}
-		case 2: {
-		  const uint8 r = FloatByte(stim.values[l][cidx + 0]);
-		  const uint8 g = FloatByte(stim.values[l][cidx + 1]);
-		  sdlutil::drawpixel(screen, xx, yy, r, g, 0);
-		  break;
-		}
-		default:
-		  // If more than 3, later ones are just ignored.
-		case 3: {
-		  const uint8 r = FloatByte(stim.values[l][cidx + 0]);
-		  const uint8 g = FloatByte(stim.values[l][cidx + 1]);
-		  const uint8 b = FloatByte(stim.values[l][cidx + 2]);
-		  sdlutil::drawpixel(screen, xx, yy, r, g, b);
-		  break;
-		}
-		}
-	      }
-	    }
-	    ystart += config.height[l];
-	    ystart += 4;
-	  }
-	}
-
-	font->draw(2, 2, menu);
-	SDL_Flip(screen);
-	dirty = false;
-      }
-    }
-
-    if (ReadWithLock(&train_done_m, &train_done)) {
-      Printf("UI thread saw that training finished.\n");
-      return;
-    }
-
-    SDL_Event event;
-    if (SDL_PollEvent(&event)) {
-      if (event.type == SDL_QUIT) {
-	Printf("QUIT.\n");
-	return;
-
-      } else if (event.type == SDL_MOUSEMOTION) {
-	SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent*)&event;
-
-	mousex = e->x;
-	mousey = e->y;
-	// (and immediately redraw)
-
-      } else if (event.type == SDL_KEYDOWN) {
-	switch (event.key.keysym.sym) {
-	case SDLK_ESCAPE:
-	  Printf("ESCAPE.\n");
-	  return;
-	default:;
-	}
-      }
-    } else {
-      SDL_Delay(1000);
-    }
-  }
-}
-
-
-static void TrainThread() {
-  Timer setup_timer;
-
-  // "Eval" here means generating frames of a movie to make a video.
-  // If EVAL_ONLY is true, we skip training, and write a frame on every round
-  // (since that's all that the round does).
-  static constexpr bool EVAL_ONLY = true;
-  // Should be the index of the next eval-%d.png to write, for
-  // multi-session training (XXX get this from a checkpoint file or something).
-  const int FRAMES_ALREADY_DONE = []() {
-    string nextframe = Util::ReadFile("eval/nextframe.txt");
-    return atoi(nextframe.c_str());
-  }();
-  printf("Next eval frame: %d\n", FRAMES_ALREADY_DONE);
-  
-  // Should be the movie index (can be anything within bounds) that this segment
-  // of the movie starts at, for example to show two different models consecutively
-  // without having to show the same eval gameplay over and over. FRAMES_ALREADY_DONE
-  // will be taken into account.
-  static constexpr int EVAL_MOVIE_START = 0; // = 3533;  // For mario, End of world 1-1.
-  // const string eval_romfile = "mario.nes";
-  // const string eval_moviefile = "mario-long-again.fm2";
-  // static constexpr int EVAL_MOVIE_START = 0;
-  const string eval_romfile = "metroid.nes";
-  const string eval_moviefile = "metroid2.fm2";
-
-  // Source game for training.
-  const string train_romfile = "mario.nes";
-  const string train_moviefile = "mario-long-three.fm2";
-
-  // To generate training examples, we sample randomly from the input movie and
-  // then perturb the state a little. Snapshots every few frames allow us to
-  // quickly seek within the movie, but use more RAM and make startup slower.
-  static constexpr int SNAPSHOT_EVERY = 20;
-
-  // Number of training examples per round of training.
-  static constexpr int EXAMPLES_PER_ROUND = 48;
-  // On a verbose round, we write a network checkpoint and maybe some
-  // other stuff to disk.
-  static constexpr int VERBOSE_ROUND_EVERY = 250;
-
-  int eval_frame_num = FRAMES_ALREADY_DONE;
-  int eval_movie_idx = eval_frame_num + EVAL_MOVIE_START;
-
-
-  string start_seed = StringPrintf("%d  %lld", getpid(), (int64)time(NULL));
-  Printf("Start seed: [%s]\n", start_seed.c_str());
-  ArcFour rc(start_seed);
-  rc.Discard(2000);
-
-  // Create kernels right away so that we get any compilation errors early.
-  ForwardLayerCL forwardlayer{global_cl};
-  SetOutputErrorCL setoutputerror{global_cl};
-  BackwardLayerCL backwardlayer{global_cl};
-  UpdateWeightsCL updateweights{global_cl};
-
-  // Load the existing network from disk or create the initial one.
-  Timer initialize_network_timer;
-  std::unique_ptr<Network> net{ReadNetworkBinary("net.val")};
-
-  if (net.get() == nullptr) {
-    Printf("Initializing new network...\n");
-    NetworkConfiguration nc;
-    net.reset(new Network(nc.num_nodes, nc.indices_per_node));
-    Printf("Randomize weights:\n");
-    RandomizeNetwork(&rc, net.get());
-    Printf("Gen indices:\n");
-    MakeIndices(nc.width, nc.channels, &rc, net.get());
-    Printf("Invert indices:\n");
-    ComputeInvertedIndices(net.get());
-    CheckInvertedIndices(*net);
-
-    Printf("Writing network so we don't have to do that again...\n");
-    if (!EVAL_ONLY) SaveNetworkBinary(*net, "net.val");
-  }
-
-  Printf("Initialized network in %.1fms.\n", initialize_network_timer.MS());
-
-  NetworkGPU net_gpu{global_cl, net.get()};
-
-  if (ReadWithLock(&train_should_die_m, &train_should_die))
-    return;
-
-  Printf("Network uses %.2fMB of storage (without overhead).\n",
-	 net->Bytes() / (1024.0 * 1024.0));
-
-  // We use the same structures to hold all the stimulations and errors
-  // now, on the GPU.
-  vector<TrainingRoundGPU *> training;
-  for (int i = 0; i < EXAMPLES_PER_ROUND; i++)
-    training.push_back(new TrainingRoundGPU{global_cl, *net});
-
-  auto ShouldDie = [&net, &eval_frame_num]() {
-    bool should_die = ReadWithLock(&train_should_die_m, &train_should_die);
-    if (should_die) {
-      Printf("Train thread signaled death.\n");
-      Printf("Saving to net.val...\n");
-      if (!EVAL_ONLY) SaveNetworkBinary(*net, "net.val");
-      Util::WriteFile("eval/nextframe.txt", StringPrintf("%d\n", eval_frame_num));
-    }
-    return should_die;
-  };
-
-  // Prepare corpus.
-  printf("Generating corpus from ROM and movie...\n");
-  vector<uint8> train_movie = SimpleFM7::ReadInputs(train_moviefile);
-  // If unused, truncate training data to make startup faster.
-  if (EVAL_ONLY) train_movie.resize(std::min((size_t)100, train_movie.size()));
-  struct Snapshot {
-    int movie_idx;
-    vector<uint8> save;
-  };
-
-  vector<Snapshot> snapshots;
-  snapshots.reserve(1 + train_movie.size() / SNAPSHOT_EVERY);
-
-  Printf("Populating snapshots every %d frames...\n", SNAPSHOT_EVERY);
-  {
-    std::unique_ptr<Emulator> emu{Emulator::Create(train_romfile)};
-    CHECK(emu.get() != nullptr);
-    uint64 snapshot_bytes = 0ULL;
-    for (int i = 0; i < train_movie.size(); i++) {
-      if (i % SNAPSHOT_EVERY == 0) {
-	snapshots.resize(snapshots.size() + 1);
-	Snapshot *snapshot = &snapshots.back();
-	snapshot->movie_idx = i;
-	snapshot->save = emu->SaveUncompressed();
-	snapshot_bytes += snapshot->save.size();
-      }
-      emu->StepFull(train_movie[i], 0);
-    }
-    Printf("Using %.2fMB for snapshots (save states).\n",
-	   snapshot_bytes / (1024.0 * 1024.0));
-  }
-
-  std::unique_ptr<Emulator> eval_emu{Emulator::Create(eval_romfile)};
-  CHECK(eval_emu.get() != nullptr) << eval_romfile;
-  const vector<uint8> eval_movie = SimpleFM7::ReadInputs(eval_moviefile);
-  CHECK(!eval_movie.empty()) << eval_moviefile;
-  const vector<uint8> eval_start_state = eval_emu->SaveUncompressed();
-  auto ShouldEmitEvalFrame = [](int round_num) {
-    if (EVAL_ONLY) return true;
-    if (round_num < 2000) return true;
-    else if (round_num < 4000) return (round_num % 10) == 0;
-    else if (round_num < 8000) return (round_num % 100) == 0;
-    else return (round_num % 200) == 0;
-  };
-
-  // Number of threads to allow for simultaneous writing of frames.
-  Asynchronously write_frames{EVAL_ONLY ? 2 : 8};
-
-  if (eval_movie_idx > 0) Printf("Fast forwarding eval movie...\n");
-  for (int i = 0; i < eval_movie_idx; i++) eval_emu->StepFull(eval_movie[i], 0);
-
-  if (ShouldDie()) return;
-
-  struct TrainingExample {
-    // XXX memory, etc.
-    vector<float> indices;
-    vector<float> vals;
-  };
-  // Training examples don't depend on the learning process, so are produced
-  // in a separate thread. This mutex protects the deque (only).
-  std::mutex training_examples_m;
-  // XXX could just be vector, actually?
-  deque<TrainingExample> training_examples;
-
-  auto PopulateExampleFromEmu = [](const Emulator &emu,
-				   TrainingExample *example) {
-    // XXX memory, etc.
-    const uint8 *indices = emu.RawIndexedImage();
-    example->vals.reserve(256 * 240 * 3);
-    for (int i = 0; i < 256 * 240; i++) {
-      const int idx = indices[i] & Emulator::INDEX_MASK;
-      static constexpr float idx_denom = 1.0f / 63.0f;
-      static constexpr float rgb_denom = 1.0f / 255.0f;
-      // XXX reorder based on clustering, luminance, anything?
-      example->indices.push_back((float)idx * idx_denom);
-      uint8 r, g, b;
-      std::tie(r, g, b) = NTSC::Get(idx);
-      example->vals.push_back((float)r * rgb_denom);
-      example->vals.push_back((float)g * rgb_denom);
-      example->vals.push_back((float)b * rgb_denom);
-    }
-  };
-
-  auto MakeTrainingExamplesThread = [train_romfile, &train_movie, &snapshots,
-				     &training_examples_m, &training_examples,
-				     &PopulateExampleFromEmu](int idx) {
-    Printf("Training thread %d startup.\n", idx);
-    ArcFour rc{StringPrintf("make_examples %d", idx)};
-    std::unique_ptr<Emulator> emu{Emulator::Create(train_romfile)};
-
+  static void UIThread() {
+    const NetworkConfiguration config;
+    int mousex = 0, mousey = 0;
+    (void)mousex; (void)mousey;
     for (;;) {
-      if (ReadWithLock(&train_should_die_m, &train_should_die)) {
-	return;
+      // int round = ReadWithLock(&video_export_m, &current_round);
+      {
+        MutexLock ml(&video_export_m);
+        if (dirty) {
+          sdlutil::clearsurface(screen, 0x0);
+          string menu = StringPrintf("  round ^3%d ^1|  ^3%0.4f^0 rps",
+                                     current_round,
+                                     rounds_per_second);
+
+          for (int s = 0; s < NUM_VIDEO_STIMULATIONS; s++) {
+            const Stimulation &stim = current_stimulations[s];
+            CHECK(stim.values.size() == config.num_layers + 1);
+            int ystart = 4;
+            for (int l = 0; l < stim.values.size(); l++) {
+              for (int y = 0; y < config.height[l]; y++) {
+                for (int x = 0; x < config.width[l]; x++) {
+                  int yy = ystart + y;
+                  if (yy >= SCREENH) break;
+
+                  // XXX allow other sizes -- find the max width!
+                  int xx = 4 + s * 260 + x;
+                  int cidx = y * config.width[l] * config.channels[l] + x * config.channels[l];
+                  switch (config.channels[l]) {
+                  case 0: break;
+                  case 1: {
+                    const uint8 v = FloatByte(stim.values[l][cidx]);
+                    sdlutil::drawpixel(screen, xx, yy, v, v, v);
+                    break;
+                  }
+                  case 2: {
+                    const uint8 r = FloatByte(stim.values[l][cidx + 0]);
+                    const uint8 g = FloatByte(stim.values[l][cidx + 1]);
+                    sdlutil::drawpixel(screen, xx, yy, r, g, 0);
+                    break;
+                  }
+                  default:
+                    // If more than 3, later ones are just ignored.
+                  case 3: {
+                    const uint8 r = FloatByte(stim.values[l][cidx + 0]);
+                    const uint8 g = FloatByte(stim.values[l][cidx + 1]);
+                    const uint8 b = FloatByte(stim.values[l][cidx + 2]);
+                    sdlutil::drawpixel(screen, xx, yy, r, g, b);
+                    break;
+                  }
+                  }
+                }
+              }
+              ystart += config.height[l];
+              ystart += 4;
+            }
+          }
+
+          font->draw(2, 2, menu);
+          SDL_Flip(screen);
+          dirty = false;
+        }
       }
 
-      training_examples_m.lock();
-      // Make sure we have plenty of examples so that learning doesn't stall.
-      if (training_examples.size() < EXAMPLES_PER_ROUND * 2) {
-	training_examples_m.unlock();
+      if (ReadWithLock(&train_done_m, &train_done)) {
+        Printf("UI thread saw that training finished.\n");
+        return;
+      }
 
-	// Choose a movie frame to seek to. We have to emulate one frame in order
-	// to see an image, so here we're actually picking the frame before the
-	// one that will be the training example. Therefore it can't be the last one.
-	const int frame_num = RandTo(&rc, train_movie.size() - 1);
-	const int snapshot_num = frame_num / SNAPSHOT_EVERY;
-	const Snapshot &snapshot = snapshots[snapshot_num];
-	emu->LoadUncompressed(snapshot.save);
-	// Run until we reach the chosen frame, and then one more.
-	CHECK_EQ(snapshot.movie_idx, snapshot_num * SNAPSHOT_EVERY);
-	const int runframes = 1 + (frame_num % SNAPSHOT_EVERY);
-	CHECK_LT(snapshot.movie_idx + runframes, train_movie.size());
-	for (int j = snapshot.movie_idx; j < snapshot.movie_idx + runframes; j++) {
-	  emu->StepFull(train_movie[j], 0);
-	}
+      SDL_Event event;
+      if (SDL_PollEvent(&event)) {
+        if (event.type == SDL_QUIT) {
+          Printf("QUIT.\n");
+          return;
 
-	// To get a bit more entropy in the training set, maybe run a
-	// few random buttons from the movie, which may perturb the
-	// state a little without producing unrealistic inputs.
-	for (int randomactions = RandTo(&rc, 3) * 2; randomactions--;) {
-	  const uint8 input = train_movie[RandTo(&rc, train_movie.size())];
-	  for (int steps = 1 + RandTo(&rc, 12); steps--;) {
-	    emu->StepFull(input, 0);
-	  }
-	}
+        } else if (event.type == SDL_MOUSEMOTION) {
+          SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent*)&event;
 
-	TrainingExample example;
-	PopulateExampleFromEmu(*emu, &example);
+          mousex = e->x;
+          mousey = e->y;
+          // (and immediately redraw)
 
-	{
-	  MutexLock ml(&training_examples_m);
-	  training_examples.push_back(std::move(example));
-	}
+        } else if (event.type == SDL_KEYDOWN) {
+          switch (event.key.keysym.sym) {
+          case SDLK_ESCAPE:
+            Printf("ESCAPE.\n");
+            return;
+          default:;
+          }
+        }
       } else {
-	training_examples_m.unlock();
-	std::this_thread::sleep_for(10ms);
+        SDL_Delay(1000);
       }
     }
-    Printf("Training example generator exiting.\n");
-  };
-
-  // PERF could skip in eval_only mode, but it's harmless
-  std::thread emu_thread_1{MakeTrainingExamplesThread, 1};
-  std::thread emu_thread_2{MakeTrainingExamplesThread, 2};
-  ThreadJoiner join_emu_thread_1{&emu_thread_1};
-  ThreadJoiner join_emu_thread_2{&emu_thread_2};
-
-  if (ShouldDie()) return;
-
-  // Training round: Loop over all images in random order.
-  double setup_ms = 0.0, stimulation_init_ms = 0.0, forward_ms = 0.0,
-    fc_init_ms = 0.0, bc_init_ms = 0.0, kernel_ms = 0.0, backward_ms = 0.0,
-    output_error_ms = 0.0, update_ms = 0.0, writing_ms = 0.0, error_history_ms = 0.0,
-    eval_ms = 0.0;
-  Timer total_timer;
-  for (int rounds_executed = 0; ; rounds_executed++) {
-    if (ShouldDie()) return;
-    Printf("\n\n ** NET ROUND %d (%d in this process) **\n", net->rounds, rounds_executed);
-
-    // When starting from a fresh network, consider this:
-    //   // std::min(0.95, std::max(0.10, 4 * exp(-0.2275 * (round_number + 1)/3.0)));
-
-    const float round_learning_rate =
-      std::min(0.125, std::max(0.002, 2 * exp(-0.2275 * (net->rounds + 1)/3.0)));
-    // const float round_learning_rate = 0.0025;
-
-    Printf("Learning rate: %.4f\n", round_learning_rate);
-
-    // This is pretty slow, but starts running less and less
-    // frequently as the round increases.
-    if (ShouldEmitEvalFrame(net->rounds)) {
-      Timer eval_timer;
-      Printf("Generating eval frame.\n");
-      // Loop if we need to.
-      if (eval_movie_idx == eval_movie.size()) {
-	if (EVAL_ONLY) {
-	  Printf("Exhausted movie in eval-only mode.\n");
-	  return;
-	}
-	eval_movie_idx = 0;
-	eval_emu->LoadUncompressed(eval_start_state);
-      }
-
-      eval_emu->StepFull(eval_movie[eval_movie_idx++], 0);
-      TrainingExample example;
-      PopulateExampleFromEmu(*eval_emu, &example);
-      // Allocate on heap so it can be deleted asynchronously.
-      TrainingRoundGPU *train = new TrainingRoundGPU{global_cl, *net};
-      // Initialize input layer of stimulation.
-      train->LoadInput(example.indices);
-      for (int src = 0; src < net->num_layers; src++) {
-	ForwardLayerCL::ForwardContext fc(&forwardlayer, &net_gpu, src);
-	fc.Forward(train);
-      }
-      // Now write to image:
-      write_frames.Run([&net, train, round_number = net->rounds,
-                        eval_frame_num, round_learning_rate]() {
-	Stimulation stim{*net};
-	train->ExportStimulation(&stim);
-	delete train;
-	// Figure out how big the graphic needs to be.
-	NetworkConfiguration config;
-	CHECK_EQ(config.width.size(), stim.values.size());
-	int width = 64;
-	int height = font->height + 2;
-	for (int i = 0; i < stim.values.size(); i++) {
-	  height += config.height[i] + 4;
-	  width = max(width, config.width[i] + 8);
-	}
-
-	// Hmm, can I safely do this outside the UI thread?
-	SDL_Surface *surf = sdlutil::makesurface(width, height, true);
-	sdlutil::clearsurface(surf, 0xFF000000);
-	// Draw each stimulation into it...
-	// XXX: Shared code with UIThread; make it a function...
-	int ystart = font->height + 2;
-	for (int l = 0; l < stim.values.size(); l++) {
-	  for (int y = 0; y < config.height[l]; y++) {
-	    for (int x = 0; x < config.width[l]; x++) {
-	      int yy = ystart + y;
-	      int xx = 4 + x;
-
-	      int cidx = y * config.width[l] * config.channels[l] + x * config.channels[l];
-	      switch (config.channels[l]) {
-	      case 0: break;
-	      case 1: {
-		const uint8 v = FloatByte(stim.values[l][cidx]);
-		sdlutil::drawpixel(surf, xx, yy, v, v, v);
-		break;
-	      }
-	      case 2: {
-		const uint8 r = FloatByte(stim.values[l][cidx + 0]);
-		const uint8 g = FloatByte(stim.values[l][cidx + 1]);
-		sdlutil::drawpixel(surf, xx, yy, r, g, 0);
-		break;
-	      }
-	      default:
-		// If more than 3, later ones are just ignored.
-	      case 3: {
-		const uint8 r = FloatByte(stim.values[l][cidx + 0]);
-		const uint8 g = FloatByte(stim.values[l][cidx + 1]);
-		const uint8 b = FloatByte(stim.values[l][cidx + 2]);
-		sdlutil::drawpixel(surf, xx, yy, r, g, b);
-		break;
-	      }
-	      }
-	    }
-	  }
-	  ystart += config.height[l];
-	  ystart += 4;
-	}
-	font->drawto(surf, 4, 0,
-		     // XXX training time, etc.
-		     StringPrintf("Round ^3%d^<, rate ^3%.3f^<",
-				  round_number, round_learning_rate));
-	CHECK(sdlutil::SavePNG(StringPrintf("eval/eval-%d.png", eval_frame_num), surf));
-	SDL_FreeSurface(surf);
-      });
-      eval_frame_num++;
-      eval_ms += eval_timer.MS();
-    }
-
-    if (ShouldDie()) return;
-    // Everything after this is training, so skip.
-    if (EVAL_ONLY) continue;
-
-
-    bool is_verbose_round = 0 == ((rounds_executed /* + 1 */) % VERBOSE_ROUND_EVERY);
-    if (is_verbose_round) {
-      Printf("Writing network:\n");
-      net_gpu.ReadFromGPU();
-      SaveNetworkBinary(*net, "network-checkpoint.bin");
-    }
-
-    Printf("Export network:\n");
-    ExportRound(net->rounds);
-    if (rounds_executed % EXPORT_EVERY == 0) {
-      net_gpu.ReadFromGPU();
-      ExportNetworkToVideo(*net);
-    }
-
-    Timer setup_timer;
-    Printf("Setting up batch:\n");
-
-    vector<TrainingExample> examples;
-    examples.reserve(EXAMPLES_PER_ROUND);
-    do {
-      if (!examples.empty()) {
-	Printf("Blocked grabbing examples (still need %d)...\n",
-	       EXAMPLES_PER_ROUND - examples.size());
-      }
-      MutexLock ml{&training_examples_m};
-      while (examples.size() < EXAMPLES_PER_ROUND &&
-	     !training_examples.empty()) {
-	examples.push_back(std::move(training_examples.front()));
-	training_examples.pop_front();
-      }
-    } while (examples.size() < EXAMPLES_PER_ROUND);
-
-    Printf("Setting up expected:\n");
-    vector<vector<float>> expected = Map(examples, [](const TrainingExample &te) {
-      return te.vals;
-    });
-
-    setup_ms += setup_timer.MS();
-
-    CHECK_EQ(examples.size(), expected.size());
-
-    // TODO: may make sense to parallelize this loop somehow, so that we can parallelize
-    // CPU/GPU duties?
-
-    // Run a batch of images all the way through. (Each layer requires significant setup.)
-    Printf("Creating stimulations...\n");
-    Timer stimulation_init_timer;
-
-    Printf("Setting input layer of Stimulations...\n");
-    // These are just memory copies; easy to do in parallel.
-    CHECK_EQ(examples.size(), training.size());
-    UnParallelComp(examples.size(),
-		   [&examples, &training](int i) {
-		     training[i]->LoadInput(examples[i].indices);
-		   }, 16);
-    stimulation_init_ms += stimulation_init_timer.MS();
-
-    if (ShouldDie()) return;
-    // The loop over layers must be in serial.
-    for (int src = 0; src < net->num_layers; src++) {
-      Printf("FWD Layer %d: ", src);
-      Timer fc_init_timer;
-      ForwardLayerCL::ForwardContext fc(&forwardlayer, &net_gpu, src);
-      fc_init_ms += fc_init_timer.MS();
-
-      // PERF could be parallel, but watch out about loading the GPU with
-      // too many simultaneous value src/dst buffers.
-      Timer forward_timer;
-      Printf("Parallelcomp...\n");
-      UnParallelComp(examples.size(),
-		     [&net, rounds_executed, num_examples = examples.size(),
-		      &fc, &training](int example_idx) {
-		     fc.Forward(training[example_idx]);
-		     if (example_idx % 10 == 0) {
-		       Printf("[%d/%d] (%.2f%%) ", example_idx, num_examples,
-			      100.0 * example_idx / num_examples);
-		     }
-
-		     if (rounds_executed % EXPORT_EVERY == 0 &&
-			 example_idx < NUM_VIDEO_STIMULATIONS) {
-		       // XXX this uses unintialized/stale memory btw
-		       Stimulation stim{*net};
-		       training[example_idx]->ExportStimulation(&stim);
-		       // Copy to screen.
-		       ExportStimulusToVideo(example_idx, stim);
-		     }
-		   }, 12);
-      forward_ms += forward_timer.MS();
-      kernel_ms += fc.kernel_ms;
-      Printf("\n");
-    }
-
-    const int num_examples = examples.size();
-    // But, don't need to keep this allocated.
-    examples.clear();
-
-    if (ShouldDie()) return;
-    Printf("Error calc.\n");
-    Timer output_error_timer;
-    UnParallelComp(num_examples,
-		   [&setoutputerror, &net_gpu, &training, &expected](int example) {
-		     training[example]->LoadExpected(expected[example]);
-		     SetOutputErrorCL::Context sc{&setoutputerror, &net_gpu};
-		     sc.SetOutputError(training[example]);
-		     Printf(".");
-		   }, 12);
-    output_error_ms += output_error_timer.MS();
-    Printf("\n");
-
-    if (ShouldDie()) return;
-    Printf("Backwards:\n");
-    // Also serial, but in reverse.
-    Timer backward_timer;
-    // We do NOT propagate errors to the input layer, so dst is strictly greater than 0.
-    for (int dst = net->num_layers - 1; dst > 0; dst--) {
-      Printf("BWD Layer %d: ", dst);
-
-      Timer bc_init_timer;
-      BackwardLayerCL::Context bc{&backwardlayer, &net_gpu, dst};
-      bc_init_ms += bc_init_timer.MS();
-
-      UnParallelComp(num_examples,
-		     [num_examples, &training, &bc](int example) {
-		       bc.Backward(training[example]);
-		       if (example % 10 == 0) {
-			 Printf("[%d/%d] (%.2f%%) ", example, (int)num_examples,
-				100.0 * example / num_examples);
-		       }
-		     }, 12);
-      Printf("\n");
-    }
-    backward_ms += backward_timer.MS();
-
-
-    if (ShouldDie()) return;
-    Printf("Update weights:\n");
-    Timer update_timer;
-
-    // Don't parallelize! These are all writing to the same network weights. Each
-    // call is parallelized, though.
-    for (int layer = 0; layer < net->num_layers; layer++) {
-      UpdateWeightsCL::Context uc{&updateweights, &net_gpu, layer};
-
-      // XXX trying making this dynamic -- more nodes means slower learning?
-      // (never actually ran this)
-      // Maybe an off by one error here on the indices_per_node to use?
-      // float layer_learning_rate = (round_learning_rate * 20f) /
-      // net->layer[layer].indices_per_node;
-
-      // PERF Faster to try to run these in parallel (maybe parallelizing memory traffic
-      // with kernel execution -- but we can't run the kernels at the same time).
-      for (int example = 0; example < num_examples; example++) {
-	uc.Update(round_learning_rate, training[example], layer);
-      }
-
-      // Now we leave the network on the GPU, and the version in the Network object will
-      // be out of date. But flush the command queue. (why? I guess make sure that we're
-      // totally done writing since other parts of the code assume concurrent reads are ok?)
-      uc.Finish();
-      Printf("[%d/%d] = (%.2f%%) ", layer, net->num_layers, layer * 100.0 / net->num_layers);
-    }
-    update_ms += update_timer.MS();
-    Printf("\n");
-
-    if (ShouldDie()) return;
-
-    net->rounds++;
-
-    double total_ms = total_timer.MS();
-    auto Pct = [total_ms](double d) { return (100.0 * d) / total_ms; };
-    double denom = rounds_executed + 1;
-    ExportRoundsPerSec(denom / (total_ms / 1000.0));
-    Printf("Total so far %.1fs.\n"
-	   "Time per round: %.1fs.\n"
-	   "We spent %.1fms in setup (%.1f%%),\n"
-	   "%.1fms in stimulation init (%.1f%%),\n"
-	   "%.1fms in eval (main thread; amortized) (%.1f%%),\n"
-	   "%.1fms in forward layer (%.1f%%),\n"
-	   "%.1fms in fc init (%.1f%%),\n"
-	   "%.1fms in forward layer kernel (at most; %.1f%%).\n"
-	   "%.1fms in bc init (%.1f%%),\n"
-	   "%.1fms in backwards pass (%.1f%%),\n"
-	   "%.1fms in error for output layer (%.1f%%),\n"
-	   "%.1fms in error history diagnostics (%.1f%%),\n"
-	   "%.1fms in updating weights (%.1f%%),\n"
-	   "%.1fms in writing images (%.1f%%),\n",
-	   total_ms / 1000.0,
-	   (total_ms / 1000.0) / denom,
-	   setup_ms / denom, Pct(setup_ms),
-	   stimulation_init_ms / denom, Pct(stimulation_init_ms),
-	   eval_ms / denom, Pct(eval_ms),
-	   forward_ms / denom, Pct(forward_ms),
-	   fc_init_ms / denom, Pct(fc_init_ms),
-	   kernel_ms / denom, Pct(kernel_ms),
-	   bc_init_ms / denom, Pct(bc_init_ms),
-	   backward_ms / denom, Pct(backward_ms),
-	   output_error_ms / denom, Pct(output_error_ms),
-	   error_history_ms / denom, Pct(error_history_ms),
-	   update_ms / denom, Pct(update_ms),
-	   writing_ms / denom, Pct(writing_ms));
   }
 
-  Printf(" ** Done. **");
 
-  WriteWithLock(&train_done_m, &train_done, true);
-}
+  static void TrainThread() {
+    Timer setup_timer;
+
+    // "Eval" here means generating frames of a movie to make a video.
+    // If EVAL_ONLY is true, we skip training, and write a frame on every round
+    // (since that's all that the round does).
+    static constexpr bool EVAL_ONLY = true;
+    // Should be the index of the next eval-%d.png to write, for
+    // multi-session training (XXX get this from a checkpoint file or something).
+    const int FRAMES_ALREADY_DONE = []() {
+        string nextframe = Util::ReadFile("eval/nextframe.txt");
+        return atoi(nextframe.c_str());
+      }();
+    printf("Next eval frame: %d\n", FRAMES_ALREADY_DONE);
+
+    // Should be the movie index (can be anything within bounds) that
+    // this segment of the movie starts at, for example to show two
+    // different models consecutively without having to show the same
+    // eval gameplay over and over. FRAMES_ALREADY_DONE will be taken
+    // into account.
+    static constexpr int EVAL_MOVIE_START = 0; // = 3533;  // For mario, End of world 1-1.
+    // const string eval_romfile = "mario.nes";
+    // const string eval_moviefile = "mario-long-again.fm2";
+    // static constexpr int EVAL_MOVIE_START = 0;
+    const string eval_romfile = "metroid.nes";
+    const string eval_moviefile = "metroid2.fm2";
+
+    // Source game for training.
+    const string train_romfile = "mario.nes";
+    const string train_moviefile = "mario-long-three.fm2";
+
+    // To generate training examples, we sample randomly from the input movie and
+    // then perturb the state a little. Snapshots every few frames allow us to
+    // quickly seek within the movie, but use more RAM and make startup slower.
+    static constexpr int SNAPSHOT_EVERY = 20;
+
+    // Number of training examples per round of training.
+    static constexpr int EXAMPLES_PER_ROUND = 48;
+    // On a verbose round, we write a network checkpoint and maybe some
+    // other stuff to disk.
+    static constexpr int VERBOSE_ROUND_EVERY = 250;
+
+    int eval_frame_num = FRAMES_ALREADY_DONE;
+    int eval_movie_idx = eval_frame_num + EVAL_MOVIE_START;
+
+
+    string start_seed = StringPrintf("%d  %lld", getpid(), (int64)time(NULL));
+    Printf("Start seed: [%s]\n", start_seed.c_str());
+    ArcFour rc(start_seed);
+    rc.Discard(2000);
+
+    // Create kernels right away so that we get any compilation errors early.
+    ForwardLayerCL forwardlayer{global_cl};
+    SetOutputErrorCL setoutputerror{global_cl};
+    BackwardLayerCL backwardlayer{global_cl};
+    UpdateWeightsCL updateweights{global_cl};
+
+    // Load the existing network from disk or create the initial one.
+    Timer initialize_network_timer;
+    std::unique_ptr<Network> net{ReadNetworkBinary("net.val")};
+
+    if (net.get() == nullptr) {
+      Printf("Initializing new network...\n");
+      NetworkConfiguration nc;
+      net.reset(new Network(nc.num_nodes, nc.indices_per_node));
+      Printf("Randomize weights:\n");
+      RandomizeNetwork(&rc, net.get());
+      Printf("Gen indices:\n");
+      MakeIndices(nc.width, nc.channels, &rc, net.get());
+      Printf("Invert indices:\n");
+      ComputeInvertedIndices(net.get());
+      CheckInvertedIndices(*net);
+
+      Printf("Writing network so we don't have to do that again...\n");
+      if (!EVAL_ONLY) SaveNetworkBinary(*net, "net.val");
+    }
+
+    Printf("Initialized network in %.1fms.\n", initialize_network_timer.MS());
+
+    NetworkGPU net_gpu{global_cl, net.get()};
+
+    if (ReadWithLock(&train_should_die_m, &train_should_die))
+      return;
+
+    Printf("Network uses %.2fMB of storage (without overhead).\n",
+           net->Bytes() / (1024.0 * 1024.0));
+
+    // We use the same structures to hold all the stimulations and errors
+    // now, on the GPU.
+    vector<TrainingRoundGPU *> training;
+    for (int i = 0; i < EXAMPLES_PER_ROUND; i++)
+      training.push_back(new TrainingRoundGPU{global_cl, *net});
+
+    auto ShouldDie = [&net, &eval_frame_num]() {
+        bool should_die = ReadWithLock(&train_should_die_m, &train_should_die);
+        if (should_die) {
+          Printf("Train thread signaled death.\n");
+          Printf("Saving to net.val...\n");
+          if (!EVAL_ONLY) SaveNetworkBinary(*net, "net.val");
+          Util::WriteFile("eval/nextframe.txt", StringPrintf("%d\n", eval_frame_num));
+        }
+        return should_die;
+      };
+
+    // Prepare corpus.
+    printf("Generating corpus from ROM and movie...\n");
+    vector<uint8> train_movie = SimpleFM7::ReadInputs(train_moviefile);
+    // If unused, truncate training data to make startup faster.
+    if (EVAL_ONLY) train_movie.resize(std::min((size_t)100, train_movie.size()));
+    struct Snapshot {
+      int movie_idx;
+      vector<uint8> save;
+    };
+
+    vector<Snapshot> snapshots;
+    snapshots.reserve(1 + train_movie.size() / SNAPSHOT_EVERY);
+
+    Printf("Populating snapshots every %d frames...\n", SNAPSHOT_EVERY);
+    {
+      std::unique_ptr<Emulator> emu{Emulator::Create(train_romfile)};
+      CHECK(emu.get() != nullptr);
+      uint64 snapshot_bytes = 0ULL;
+      for (int i = 0; i < train_movie.size(); i++) {
+        if (i % SNAPSHOT_EVERY == 0) {
+          snapshots.resize(snapshots.size() + 1);
+          Snapshot *snapshot = &snapshots.back();
+          snapshot->movie_idx = i;
+          snapshot->save = emu->SaveUncompressed();
+          snapshot_bytes += snapshot->save.size();
+        }
+        emu->StepFull(train_movie[i], 0);
+      }
+      Printf("Using %.2fMB for snapshots (save states).\n",
+             snapshot_bytes / (1024.0 * 1024.0));
+    }
+
+    std::unique_ptr<Emulator> eval_emu{Emulator::Create(eval_romfile)};
+    CHECK(eval_emu.get() != nullptr) << eval_romfile;
+    const vector<uint8> eval_movie = SimpleFM7::ReadInputs(eval_moviefile);
+    CHECK(!eval_movie.empty()) << eval_moviefile;
+    const vector<uint8> eval_start_state = eval_emu->SaveUncompressed();
+    auto ShouldEmitEvalFrame = [](int round_num) {
+        if (EVAL_ONLY) return true;
+        if (round_num < 2000) return true;
+        else if (round_num < 4000) return (round_num % 10) == 0;
+        else if (round_num < 8000) return (round_num % 100) == 0;
+        else return (round_num % 200) == 0;
+      };
+
+    // Number of threads to allow for simultaneous writing of frames.
+    Asynchronously write_frames{EVAL_ONLY ? 2 : 8};
+
+    if (eval_movie_idx > 0) Printf("Fast forwarding eval movie...\n");
+    for (int i = 0; i < eval_movie_idx; i++)
+      eval_emu->StepFull(eval_movie[i], 0);
+
+    if (ShouldDie()) return;
+
+    struct TrainingExample {
+      // XXX memory, etc.
+      vector<float> indices;
+      vector<float> vals;
+    };
+    // Training examples don't depend on the learning process, so are produced
+    // in a separate thread. This mutex protects the deque (only).
+    std::mutex training_examples_m;
+    // XXX could just be vector, actually?
+    deque<TrainingExample> training_examples;
+
+    auto PopulateExampleFromEmu = [](const Emulator &emu,
+                                     TrainingExample *example) {
+        // XXX memory, etc.
+        const uint8 *indices = emu.RawIndexedImage();
+        example->vals.reserve(256 * 240 * 3);
+        for (int i = 0; i < 256 * 240; i++) {
+          const int idx = indices[i] & Emulator::INDEX_MASK;
+          static constexpr float idx_denom = 1.0f / 63.0f;
+          static constexpr float rgb_denom = 1.0f / 255.0f;
+          // XXX reorder based on clustering, luminance, anything?
+          example->indices.push_back((float)idx * idx_denom);
+          uint8 r, g, b;
+          std::tie(r, g, b) = NTSC::Get(idx);
+          example->vals.push_back((float)r * rgb_denom);
+          example->vals.push_back((float)g * rgb_denom);
+          example->vals.push_back((float)b * rgb_denom);
+        }
+      };
+
+    auto MakeTrainingExamplesThread = [train_romfile, &train_movie, &snapshots,
+                                       &training_examples_m, &training_examples,
+                                       &PopulateExampleFromEmu](int idx) {
+        Printf("Training thread %d startup.\n", idx);
+        ArcFour rc{StringPrintf("make_examples %d", idx)};
+        std::unique_ptr<Emulator> emu{Emulator::Create(train_romfile)};
+
+        for (;;) {
+          if (ReadWithLock(&train_should_die_m, &train_should_die)) {
+            return;
+          }
+
+          training_examples_m.lock();
+          // Make sure we have plenty of examples so that learning
+          // doesn't stall.
+          if (training_examples.size() < EXAMPLES_PER_ROUND * 2) {
+            training_examples_m.unlock();
+
+            // Choose a movie frame to seek to. We have to emulate one
+            // frame in order to see an image, so here we're actually
+            // picking the frame before the one that will be the
+            // training example. Therefore it can't be the last one.
+            const int frame_num = RandTo(&rc, train_movie.size() - 1);
+            const int snapshot_num = frame_num / SNAPSHOT_EVERY;
+            const Snapshot &snapshot = snapshots[snapshot_num];
+            emu->LoadUncompressed(snapshot.save);
+            // Run until we reach the chosen frame, and then one more.
+            CHECK_EQ(snapshot.movie_idx, snapshot_num * SNAPSHOT_EVERY);
+            const int runframes = 1 + (frame_num % SNAPSHOT_EVERY);
+            CHECK_LT(snapshot.movie_idx + runframes, train_movie.size());
+            for (int j = snapshot.movie_idx;
+                 j < snapshot.movie_idx + runframes; j++) {
+              emu->StepFull(train_movie[j], 0);
+            }
+
+            // To get a bit more entropy in the training set, maybe run a
+            // few random buttons from the movie, which may perturb the
+            // state a little without producing unrealistic inputs.
+            for (int randomactions = RandTo(&rc, 3) * 2; randomactions--;) {
+              const uint8 input = train_movie[RandTo(&rc, train_movie.size())];
+              for (int steps = 1 + RandTo(&rc, 12); steps--;) {
+                emu->StepFull(input, 0);
+              }
+            }
+
+            TrainingExample example;
+            PopulateExampleFromEmu(*emu, &example);
+
+            {
+              MutexLock ml(&training_examples_m);
+              training_examples.push_back(std::move(example));
+            }
+          } else {
+            training_examples_m.unlock();
+            std::this_thread::sleep_for(10ms);
+          }
+        }
+        Printf("Training example generator exiting.\n");
+      };
+
+    // PERF could skip in eval_only mode, but it's harmless
+    std::thread emu_thread_1{MakeTrainingExamplesThread, 1};
+    std::thread emu_thread_2{MakeTrainingExamplesThread, 2};
+    ThreadJoiner join_emu_thread_1{&emu_thread_1};
+    ThreadJoiner join_emu_thread_2{&emu_thread_2};
+
+    if (ShouldDie()) return;
+
+    // Training round: Loop over all images in random order.
+    double setup_ms = 0.0, stimulation_init_ms = 0.0, forward_ms = 0.0,
+      fc_init_ms = 0.0, bc_init_ms = 0.0, kernel_ms = 0.0, backward_ms = 0.0,
+      output_error_ms = 0.0, update_ms = 0.0, writing_ms = 0.0, error_history_ms = 0.0,
+      eval_ms = 0.0;
+    Timer total_timer;
+    for (int rounds_executed = 0; ; rounds_executed++) {
+      if (ShouldDie()) return;
+      Printf("\n\n ** NET ROUND %d (%d in this process) **\n", net->rounds, rounds_executed);
+
+      // When starting from a fresh network, consider this:
+      //   // std::min(0.95, std::max(0.10, 4 * exp(-0.2275 * (round_number + 1)/3.0)));
+
+      const float round_learning_rate =
+        std::min(0.125, std::max(0.002, 2 * exp(-0.2275 * (net->rounds + 1)/3.0)));
+      // const float round_learning_rate = 0.0025;
+
+      Printf("Learning rate: %.4f\n", round_learning_rate);
+
+      // This is pretty slow, but starts running less and less
+      // frequently as the round increases.
+      if (ShouldEmitEvalFrame(net->rounds)) {
+        Timer eval_timer;
+        Printf("Generating eval frame.\n");
+        // Loop if we need to.
+        if (eval_movie_idx == eval_movie.size()) {
+          if (EVAL_ONLY) {
+            Printf("Exhausted movie in eval-only mode.\n");
+            return;
+          }
+          eval_movie_idx = 0;
+          eval_emu->LoadUncompressed(eval_start_state);
+        }
+
+        eval_emu->StepFull(eval_movie[eval_movie_idx++], 0);
+        TrainingExample example;
+        PopulateExampleFromEmu(*eval_emu, &example);
+        // Allocate on heap so it can be deleted asynchronously.
+        TrainingRoundGPU *train = new TrainingRoundGPU{global_cl, *net};
+        // Initialize input layer of stimulation.
+        train->LoadInput(example.indices);
+        for (int src = 0; src < net->num_layers; src++) {
+          ForwardLayerCL::ForwardContext fc(&forwardlayer, &net_gpu, src);
+          fc.Forward(train);
+        }
+        // Now write to image:
+        write_frames.Run([&net, train, round_number = net->rounds,
+        eval_frame_num, round_learning_rate]() {
+            Stimulation stim{*net};
+            train->ExportStimulation(&stim);
+            delete train;
+            // Figure out how big the graphic needs to be.
+            NetworkConfiguration config;
+            CHECK_EQ(config.width.size(), stim.values.size());
+            int width = 64;
+            int height = font->height + 2;
+            for (int i = 0; i < stim.values.size(); i++) {
+              height += config.height[i] + 4;
+              width = max(width, config.width[i] + 8);
+            }
+
+            // Hmm, can I safely do this outside the UI thread?
+            SDL_Surface *surf = sdlutil::makesurface(width, height, true);
+            sdlutil::clearsurface(surf, 0xFF000000);
+            // Draw each stimulation into it...
+            // XXX: Shared code with UIThread; make it a function...
+            int ystart = font->height + 2;
+            for (int l = 0; l < stim.values.size(); l++) {
+              for (int y = 0; y < config.height[l]; y++) {
+                for (int x = 0; x < config.width[l]; x++) {
+                  int yy = ystart + y;
+                  int xx = 4 + x;
+
+                  int cidx = y * config.width[l] * config.channels[l] + x * config.channels[l];
+                  switch (config.channels[l]) {
+                  case 0: break;
+                  case 1: {
+                    const uint8 v = FloatByte(stim.values[l][cidx]);
+                    sdlutil::drawpixel(surf, xx, yy, v, v, v);
+                    break;
+                  }
+                  case 2: {
+                    const uint8 r = FloatByte(stim.values[l][cidx + 0]);
+                    const uint8 g = FloatByte(stim.values[l][cidx + 1]);
+                    sdlutil::drawpixel(surf, xx, yy, r, g, 0);
+                    break;
+                  }
+                  default:
+                    // If more than 3, later ones are just ignored.
+                  case 3: {
+                    const uint8 r = FloatByte(stim.values[l][cidx + 0]);
+                    const uint8 g = FloatByte(stim.values[l][cidx + 1]);
+                    const uint8 b = FloatByte(stim.values[l][cidx + 2]);
+                    sdlutil::drawpixel(surf, xx, yy, r, g, b);
+                    break;
+                  }
+                  }
+                }
+              }
+              ystart += config.height[l];
+              ystart += 4;
+            }
+            font->drawto(surf, 4, 0,
+                         // XXX training time, etc.
+                         StringPrintf("Round ^3%d^<, rate ^3%.3f^<",
+                                      round_number, round_learning_rate));
+            CHECK(sdlutil::SavePNG(StringPrintf("eval/eval-%d.png", eval_frame_num), surf));
+            SDL_FreeSurface(surf);
+          });
+        eval_frame_num++;
+        eval_ms += eval_timer.MS();
+      }
+
+      if (ShouldDie()) return;
+      // Everything after this is training, so skip.
+      if (EVAL_ONLY) continue;
+
+
+      bool is_verbose_round = 0 == ((rounds_executed /* + 1 */) % VERBOSE_ROUND_EVERY);
+      if (is_verbose_round) {
+        Printf("Writing network:\n");
+        net_gpu.ReadFromGPU();
+        SaveNetworkBinary(*net, "network-checkpoint.bin");
+      }
+
+      Printf("Export network:\n");
+      ExportRound(net->rounds);
+      if (rounds_executed % EXPORT_EVERY == 0) {
+        net_gpu.ReadFromGPU();
+        ExportNetworkToVideo(*net);
+      }
+
+      Timer setup_timer;
+      Printf("Setting up batch:\n");
+
+      vector<TrainingExample> examples;
+      examples.reserve(EXAMPLES_PER_ROUND);
+      do {
+        if (!examples.empty()) {
+          Printf("Blocked grabbing examples (still need %d)...\n",
+                 EXAMPLES_PER_ROUND - examples.size());
+        }
+        MutexLock ml{&training_examples_m};
+        while (examples.size() < EXAMPLES_PER_ROUND &&
+               !training_examples.empty()) {
+          examples.push_back(std::move(training_examples.front()));
+          training_examples.pop_front();
+        }
+      } while (examples.size() < EXAMPLES_PER_ROUND);
+
+      Printf("Setting up expected:\n");
+      vector<vector<float>> expected = Map(examples, [](const TrainingExample &te) {
+          return te.vals;
+        });
+
+      setup_ms += setup_timer.MS();
+
+      CHECK_EQ(examples.size(), expected.size());
+
+      // TODO: may make sense to parallelize this loop somehow, so that we can parallelize
+      // CPU/GPU duties?
+
+      // Run a batch of images all the way through. (Each layer requires significant setup.)
+      Printf("Creating stimulations...\n");
+      Timer stimulation_init_timer;
+
+      Printf("Setting input layer of Stimulations...\n");
+      // These are just memory copies; easy to do in parallel.
+      CHECK_EQ(examples.size(), training.size());
+      UnParallelComp(examples.size(),
+                     [&examples, &training](int i) {
+                       training[i]->LoadInput(examples[i].indices);
+                     }, 16);
+      stimulation_init_ms += stimulation_init_timer.MS();
+
+      if (ShouldDie()) return;
+      // The loop over layers must be in serial.
+      for (int src = 0; src < net->num_layers; src++) {
+        Printf("FWD Layer %d: ", src);
+        Timer fc_init_timer;
+        ForwardLayerCL::ForwardContext fc(&forwardlayer, &net_gpu, src);
+        fc_init_ms += fc_init_timer.MS();
+
+        // PERF could be parallel, but watch out about loading the GPU with
+        // too many simultaneous value src/dst buffers.
+        Timer forward_timer;
+        Printf("Parallelcomp...\n");
+        UnParallelComp(examples.size(),
+                       [&net, rounds_executed, num_examples = examples.size(),
+                        &fc, &training](int example_idx) {
+                         fc.Forward(training[example_idx]);
+                         if (example_idx % 10 == 0) {
+                           Printf("[%d/%d] (%.2f%%) ", example_idx, num_examples,
+                                  100.0 * example_idx / num_examples);
+                         }
+
+                         if (rounds_executed % EXPORT_EVERY == 0 &&
+                             example_idx < NUM_VIDEO_STIMULATIONS) {
+                           // XXX this uses unintialized/stale memory btw
+                           Stimulation stim{*net};
+                           training[example_idx]->ExportStimulation(&stim);
+                           // Copy to screen.
+                           ExportStimulusToVideo(example_idx, stim);
+                         }
+                       }, 12);
+        forward_ms += forward_timer.MS();
+        kernel_ms += fc.kernel_ms;
+        Printf("\n");
+      }
+
+      const int num_examples = examples.size();
+      // But, don't need to keep this allocated.
+      examples.clear();
+
+      if (ShouldDie()) return;
+      Printf("Error calc.\n");
+      Timer output_error_timer;
+      UnParallelComp(num_examples,
+                     [&setoutputerror, &net_gpu, &training, &expected](int example) {
+                       training[example]->LoadExpected(expected[example]);
+                       SetOutputErrorCL::Context sc{&setoutputerror, &net_gpu};
+                       sc.SetOutputError(training[example]);
+                       Printf(".");
+                     }, 12);
+      output_error_ms += output_error_timer.MS();
+      Printf("\n");
+
+      if (ShouldDie()) return;
+      Printf("Backwards:\n");
+      // Also serial, but in reverse.
+      Timer backward_timer;
+      // We do NOT propagate errors to the input layer, so dst is strictly greater than 0.
+      for (int dst = net->num_layers - 1; dst > 0; dst--) {
+        Printf("BWD Layer %d: ", dst);
+
+        Timer bc_init_timer;
+        BackwardLayerCL::Context bc{&backwardlayer, &net_gpu, dst};
+        bc_init_ms += bc_init_timer.MS();
+
+        UnParallelComp(num_examples,
+                       [num_examples, &training, &bc](int example) {
+                         bc.Backward(training[example]);
+                         if (example % 10 == 0) {
+                           Printf("[%d/%d] (%.2f%%) ", example, (int)num_examples,
+                                  100.0 * example / num_examples);
+                         }
+                       }, 12);
+        Printf("\n");
+      }
+      backward_ms += backward_timer.MS();
+
+
+      if (ShouldDie()) return;
+      Printf("Update weights:\n");
+      Timer update_timer;
+
+      // Don't parallelize! These are all writing to the same network
+      // weights. Each call is parallelized, though.
+      for (int layer = 0; layer < net->num_layers; layer++) {
+        UpdateWeightsCL::Context uc{&updateweights, &net_gpu, layer};
+
+        // XXX trying making this dynamic -- more nodes means slower learning?
+        // (never actually ran this)
+        // Maybe an off by one error here on the indices_per_node to use?
+        // float layer_learning_rate = (round_learning_rate * 20f) /
+        // net->layer[layer].indices_per_node;
+
+        // PERF Faster to try to run these in parallel (maybe
+        // parallelizing memory traffic with kernel execution -- but
+        // we can't run the kernels at the same time).
+        for (int example = 0; example < num_examples; example++) {
+          uc.Update(round_learning_rate, training[example], layer);
+        }
+
+        // Now we leave the network on the GPU, and the version in the
+        // Network object will be out of date. But flush the command
+        // queue. (why? I guess make sure that we're totally done
+        // writing since other parts of the code assume concurrent
+        // reads are ok?)
+        uc.Finish();
+        Printf("[%d/%d] = (%.2f%%) ", layer, net->num_layers, layer * 100.0 / net->num_layers);
+      }
+      update_ms += update_timer.MS();
+      Printf("\n");
+
+      if (ShouldDie()) return;
+
+      net->rounds++;
+
+      double total_ms = total_timer.MS();
+      auto Pct = [total_ms](double d) { return (100.0 * d) / total_ms; };
+      double denom = rounds_executed + 1;
+      ExportRoundsPerSec(denom / (total_ms / 1000.0));
+      Printf("Total so far %.1fs.\n"
+             "Time per round: %.1fs.\n"
+             "We spent %.1fms in setup (%.1f%%),\n"
+             "%.1fms in stimulation init (%.1f%%),\n"
+             "%.1fms in eval (main thread; amortized) (%.1f%%),\n"
+             "%.1fms in forward layer (%.1f%%),\n"
+             "%.1fms in fc init (%.1f%%),\n"
+             "%.1fms in forward layer kernel (at most; %.1f%%).\n"
+             "%.1fms in bc init (%.1f%%),\n"
+             "%.1fms in backwards pass (%.1f%%),\n"
+             "%.1fms in error for output layer (%.1f%%),\n"
+             "%.1fms in error history diagnostics (%.1f%%),\n"
+             "%.1fms in updating weights (%.1f%%),\n"
+             "%.1fms in writing images (%.1f%%),\n",
+             total_ms / 1000.0,
+             (total_ms / 1000.0) / denom,
+             setup_ms / denom, Pct(setup_ms),
+             stimulation_init_ms / denom, Pct(stimulation_init_ms),
+             eval_ms / denom, Pct(eval_ms),
+             forward_ms / denom, Pct(forward_ms),
+             fc_init_ms / denom, Pct(fc_init_ms),
+             kernel_ms / denom, Pct(kernel_ms),
+             bc_init_ms / denom, Pct(bc_init_ms),
+             backward_ms / denom, Pct(backward_ms),
+             output_error_ms / denom, Pct(output_error_ms),
+             error_history_ms / denom, Pct(error_history_ms),
+             update_ms / denom, Pct(update_ms),
+             writing_ms / denom, Pct(writing_ms));
+    }
+
+    Printf(" ** Done. **");
+
+    WriteWithLock(&train_done_m, &train_done, true);
+  }
 
 
 int SDL_main(int argc, char **argv) {
@@ -2166,8 +2174,8 @@ int SDL_main(int argc, char **argv) {
 
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |
-		 SDL_INIT_TIMER |
-		 SDL_INIT_AUDIO) >= 0);
+         SDL_INIT_TIMER |
+         SDL_INIT_AUDIO) >= 0);
   fprintf(stderr, "SDL initialized OK.\n");
 
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
@@ -2179,9 +2187,9 @@ int SDL_main(int argc, char **argv) {
   CHECK(screen);
 
   font = Font::create(screen,
-		      "font.png",
-		      FONTCHARS,
-		      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+              "font.png",
+              FONTCHARS,
+              FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font != nullptr) << "Couldn't load font.";
 
   global_cl = new CL;

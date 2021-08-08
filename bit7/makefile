@@ -46,5 +46,8 @@ dfx-pasement.sfd : dfx-pasement.png dfx-pasement.cfg makesfd.exe
 dfx-snooty.sfd : dfx-snooty.png dfx-snooty.cfg makesfd.exe
 	./makesfd.exe dfx-snooty.cfg $@
 
+fixedersys1x.sfd : fixedersys.png fixedersys1x.cfg makesfd.exe
+	./makesfd.exe fixedersys1x.cfg $@
+
 clean :
 	rm -f *.o *.exe
