@@ -2,6 +2,8 @@
 #include "color-util.h"
 
 #include <cmath>
+#include <tuple>
+#include <utility>
 
 // static
 void ColorUtil::HSVToRGB(float h, float s, float v,
@@ -34,9 +36,50 @@ void ColorUtil::HSVToRGB(float h, float s, float v,
   }
 }
 
+static std::tuple<float, float, float>
+sRGBToLAB(float srgb_r, float srgb_g, float srgb_b) {
+  // Now to XYZ color space, whose components are nominally in [0, 1].
+  // This is just a matrix multiply using a mysterious matrix. Here
+  // using sRGB with D65 reference white.
+  // http://www.brucelindbloom.com/Eqn_RGB_XYZ_Matrix.html
+  const float x =
+    srgb_r * 0.4124564f + srgb_g * 0.3575761f + srgb_b * 0.1804375f;
+  const float y =
+    srgb_r * 0.2126729f + srgb_g * 0.7151522f + srgb_b * 0.0721750f;
+  const float z =
+    srgb_r * 0.0193339f + srgb_g * 0.1191920f + srgb_b * 0.9503041f;
+
+  // Reference white D65. This is what ColorMine uses and it produces
+  // results more like I'd expect (e.g. RGB #FFFFFF gives LAB 100,0,0).
+  // http://www.brucelindbloom.com/index.html?Eqn_RGB_to_XYZ.html
+  [[maybe_unused]] constexpr float inv_white_x = 1.0f / 0.95047f;
+  [[maybe_unused]] constexpr float inv_white_y = 1.0f;
+  [[maybe_unused]] constexpr float inv_white_z = 1.0f / 1.08883f;
+
+  auto F = [](float ch) {
+    // Worth it just for the gif:
+    // http://www.brucelindbloom.com/LContinuity.html
+    static constexpr float epsilon = 216.0f / 24389.0f;
+    static constexpr float kappa_div_116 = (24389.0f / 27.0f) / 116.0f;
+    static constexpr float one_third = 1.0f / 3.0f;
+    static constexpr float sixteen_116ths = 16.0f / 116.0f;
+    return ch > epsilon ? powf(ch, one_third) :
+      (kappa_div_116 * ch + sixteen_116ths);
+  };
+
+  const float fx = F(x * inv_white_x);
+  const float fy = F(y /* * inv_white_y */);
+  const float fz = F(z * inv_white_z);
+
+  const float ll = (116.0f * fy) - 16.0f;
+  const float aa = 500.0f * (fx - fy);
+  const float bb = 200.0f * (fy - fz);
+  return {ll, aa, bb};
+}
+
 // static
-void ColorUtil::RGBToLAB(float r, float g, float b,
-                         float *ll, float *aa, float *bb) {
+std::tuple<float, float, float>
+ColorUtil::RGBToLAB(float r, float g, float b) {
   // First we need to un-compand the RGB triplet.
   // Technically there are different choices here, but sRGB is what we
   // really mean by RGB in this library.
@@ -50,31 +93,13 @@ void ColorUtil::RGBToLAB(float r, float g, float b,
   const float srgb_g = SRGBInvCompand(g);
   const float srgb_b = SRGBInvCompand(b);
 
-  // Now to XYZ color space, whose components are nominally in [0, 1].
-  // This is just a matrix multiply using a mysterious matrix. Here using sRGB with
-  // D65 reference white.
-  // http://www.brucelindbloom.com/Eqn_RGB_XYZ_Matrix.html
-  const float x = srgb_r * 0.4124564f + srgb_g * 0.3575761f + srgb_b * 0.1804375f;
-  const float y = srgb_r * 0.2126729f + srgb_g * 0.7151522f + srgb_b * 0.0721750f;
-  const float z = srgb_r * 0.0193339f + srgb_g * 0.1191920f + srgb_b * 0.9503041f;
+  return sRGBToLAB(srgb_r, srgb_g, srgb_b);
+}
 
-  auto F = [](float ch) {
-    // Worth it just for the gif:
-    // http://www.brucelindbloom.com/LContinuity.html
-    static constexpr float epsilon = 216.0f / 24389.0f;
-    static constexpr float kappa_div_116 = (24389.0f / 27.0f) / 116.0f;
-    static constexpr float one_third = 1.0f / 3.0f;
-    static constexpr float sixteen_116ths = 16.0f / 116.0f;
-    return ch > epsilon ? powf(ch, one_third) : kappa_div_116 * ch + sixteen_116ths;
-  };
-
-  const float fx = F(x);
-  const float fy = F(y);
-  const float fz = F(z);
-
-  *ll = (116.0f * fy) - 16.0f;
-  *aa = 500.0f * (fx - fy);
-  *bb = 200.0f * (fy - fz);
+// static
+void ColorUtil::RGBToLAB(float r, float g, float b,
+                         float *ll, float *aa, float *bb) {
+  std::tie(*ll, *aa, *bb) = RGBToLAB(r, g, b);
 }
 
 // static
