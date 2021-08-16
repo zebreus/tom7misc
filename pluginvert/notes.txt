@@ -44,3 +44,160 @@ it seems manageable (errors are just summed, right?).
 
 (Indeed: Looks like we can just run BackwardsLayer for each chunk,
 then sum, and probably apply clipping at the end.)
+
+
+
+Experimenting with the above a little, I think it's actually bad;
+you still have a lot of indices (e.g. one NES frame is 256x240x3,
+with 8x8 convs, 11.8M indices), and you still need to invert them
+somehow (unclear how to do this efficiently)? So now I'm thinking
+that since the indices follow a regular pattern, it's just better
+to generate them in code. We are generating the CL code anyway,
+so this ought to be pretty efficient!
+
+Goal is to generate a set of source/input node ids from a dest node id
+on the next layer (we'll also need to be able to convert the inverse
+of this function). (Thinking forward to "Chunks", the dest id will be
+local to the chunk, but the source should be an index in the layer.)
+
+Some terms:
+  The convolution array layer is an array of features (e.g., image
+  features). The features all share a node pattern (e.g. an 8x8
+  square) that is repeated at different offsets. Each repetition is
+  an occurrence, and each feature's occurrence is 1:1 with an output
+  node. The output nodes are interlaved, so that all the features
+  for an occurrence are adjacent.
+
+  The indices for each feature are the same, but each feature has its
+  own independent weight vector. A feature's weights are the same for
+  each of its occurrences. So there are num_features * indices_per_node
+  total weights for the layer.
+
+So we have something like this:
+
+   occurrence_x_stride
+   -------->
+  [o1][  ][o2][  ][  ][  ] ...   <- src layer
+  [  ][  ][  ][  ][  ][  ] ...
+  [  ][  ][  ][  ][  ][  ] ...
+  [  ][  ][  ][  ][  ][  ] ...
+
+   d0  d1  d2  d3  d4  d5 ...
+  [f1][f2][f3][f1][f2][f3]   <- dst layer
+  |occ1------||occ2------|
+
+
+where occ1 is the first occurrence of the pattern, with three features
+in it, f1, f2, f3. o1 is the offset of occurrence 1. o2 is the offset
+of occurrence 2; it is not immediately after o1 because an
+occurrence_x_stride=2 (for example, if the src layer is two-channel).
+
+Layer constants:
+ num_features
+ pattern_width
+ pattern_height
+ (indices_per_node = pattern_width * pattern_height)
+ src_width
+ src_height
+ (src_num_nodes = src_width * src_height)
+ occurrence_x_stride
+ num_occurrences_across (see below)
+// XXX want occurrence_y_stride too
+
+src_width, src_height are how this convolution interprets the previous
+layer, which need not be the same as the presentational
+width/height/channels. (In fact, a normal choice for src_width would
+be width * channels).
+
+// The destination index from the flat array of output nodes.
+// (Input to the kernel etc.)
+int dst_idx;
+// The occurrence number and feature number come directly
+// from the interleaving.
+int occ = dst_idx / num_features;
+int feature = dst_idx % num_features;
+
+The indices are all a property of the occurrence, since they are shared
+by all the features.
+
+Now, the starting offset for the occurrence. We need to know how many
+patterns fit "across" the src_width. Two complexities:
+  - Since the pattern is typically wider than one pixel, we won't
+    fit src_width of them (we don't try to read outside).
+  - We space the pattern occurrences according to occurrence_x_stride.
+
+It would be nice if there were a closed form for num_occurrences_across
+(with x_stride = 1 it is (src_width - pattern_width + 1) but it gets
+complicated with the stride when it doesn't end up evenly dividing).
+but this is just a constant so we can compute it once, iteratively
+(see cont_test.cc). We want it to be a constant anyway because then
+we do integer division/modulus:
+
+int occ_row = occ / num_occurrences_across;
+int occ_col = occ % num_occurrences_across;
+
+... the position of the occurrence in the (conceptual) packed output
+layer. But these are just used to derive the input coordinates:
+
+int src_row = occ_row * occurrence_y_stride;
+int src_col = occ_col * occurrence_x_stride;
+
+int src_start_offset = src_row * src_width + src_col;
+
+
+// Finally, the loop over the pattern. There is no "stride" here;
+// we always densely look at adjacent nodes.
+// We should definitely benchmark unrolling loops here, since
+// these patterns are usually like 8x8 (or trust the compiler..)
+
+for (int py = 0; py < pattern_height; py++) {
+  // Always the adjacent row.
+  int src_offset = src_start_offset + (py * src_width);
+  for (int px = 0; px < pattern_width; px++) {
+    emit(src_offset)
+    // Always the adjacent node.
+    src_offset++;
+  }
+}
+
+
+NOW, how do we reverse this (for the backwardlayer pass)? It is not
+trivial, for one thing because nodes in the source layer can have
+a different number of destinations, due to edge conditions (e.g. the
+top-left node is only in ONE occurrence).
+
+Some options:
+ - Treat it as an edgeless problem, but skip nodes that are out-of-bounds
+   when enumerating them. Could work? Not great to have branches in the
+   inner loop, though.
+ - The backwards pass is currently implemented as a loop over the nodes
+   of the source layer, where we sum up all the errors from nodes that
+   we output to, modulated by the weights. There are other ways to
+   compute this, for example, looping over the dest layer and accumulating
+   the weighted error into source nodes. The reason we don't do this
+   normally is so that the pass can be done in parallel; we don't want two
+   writes (in the +=) to conflict.
+   We could maybe partition into non-overlapping zones and run them in
+   parallel? And then sum? This seems plausible because of the regular
+   structure. Like you might be able to decompose into
+   |pattern| layers that are known to be disjoint, and even sum those
+   in parallel after. Could compute this partioning up front.
+   (But note that if we're willing to have a memory overhead of
+    |pattern| * num_nodes PER TRAINING EXAMPLE, why not just store the
+    inverted indices once, which are |pattern| * num_nodes per network?
+    So, you could keep summing into an existing array, but following
+    a schedule where you know that each pass can be done in parallel conflict.
+    Here you'd have |pattern| passes, but each one would be 1/|pattern| as
+    big as normal.)
+   (Still, there are cases (e.g. stride = pattern_width) where overlap
+    is minimal or non-existent, and then this would be an efficient
+    way to go. Of course, these cases are also faster in the inverted
+    index approach.)
+
+ - Just generate a flattened inverted-indices array like we currently
+   do for sparse layers, using the formulae above. Downside here is that
+   it may be costly to store these explicitly, and we have to do all
+   these data-dependent indirect reads. But it is a good way to get there
+   incrementally...
+
+

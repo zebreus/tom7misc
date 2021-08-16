@@ -34,7 +34,7 @@ struct Player {
     start_state = emu->SaveUncompressed();
   }
 
-  ImageRGBA NextFrame() {
+  ImageA NextFrame() {
     if (idx == movie.size()) {
       // Reset
       idx = 0;
@@ -43,12 +43,9 @@ struct Player {
 
     emu->StepFull(movie[idx], 0);
     idx++;
-    vector<uint8> img = emu->GetImage();
-    // Truncate useless bottom lines.
-    img.resize(256 * 240 * 4);
-    // PERF: ImageRGBA does not have constructor that moves
+    // PERF: ImageA does not have constructor that moves
     // the vector, but it could...
-    return ImageRGBA(std::move(img), 256, 240);
+    return ImageA(emu->IndexedImage(), 256, 240);
   }
 
   std::unique_ptr<Emulator> emu;
@@ -83,12 +80,12 @@ FrameQueue::~FrameQueue() {
   work_thread->join();
 }
 
-ImageRGBA FrameQueue::NextFrame() {
+ImageA FrameQueue::NextFrame() {
   for (;;) {
     {
       WriteMutexLock ml(&m);
       if (!frames.empty()) {
-        ImageRGBA ret = std::move(frames.back());
+        ImageA ret = std::move(frames.back());
         frames.resize(frames.size() - 1);
         return ret;
       }
@@ -120,7 +117,7 @@ void FrameQueue::WorkThread(int idx) {
 
     if (need_frames) {
       int p = RandTo32(&rc, (int)players.size());
-      ImageRGBA frame = players[p].NextFrame();
+      ImageA frame = players[p].NextFrame();
 
       {
         WriteMutexLock ml(&m);

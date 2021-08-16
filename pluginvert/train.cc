@@ -67,6 +67,7 @@
 #include "error-history.h"
 #include "modelinfo.h"
 
+#include "ntsc2d.h"
 #include "problem.h"
 #include "frame-queue.h"
 
@@ -123,6 +124,9 @@ static constexpr int64 ENOUGH_FRAMES = 1000;
 
 // Thread-safe, so shared between train and ui threads.
 static CL *global_cl = nullptr;
+
+// singleton...
+static NTSC2D *ntsc2d = nullptr;
 
 std::shared_mutex print_mutex;
 #define Printf(fmt, ...) do {                           \
@@ -181,7 +185,9 @@ static constexpr float ByteFloat(uint8 b) {
   return b * (1.0 / 255.0f);
 }
 
+
 // Fill RGB floats from NES image.
+[[maybe_unused]]
 static void FillFromRGBA(const ImageRGBA &rgba,
                          vector<float> *f) {
   CHECK(rgba.Width() == 256);
@@ -194,6 +200,25 @@ static void FillFromRGBA(const ImageRGBA &rgba,
       (*f)[idx++] = ByteFloat(r);
       (*f)[idx++] = ByteFloat(g);
       (*f)[idx++] = ByteFloat(b);
+    }
+  }
+}
+
+// Fill UV floats straight from the indices
+static void FillFromIndices(const ImageA &img,
+                            vector<float> *f) {
+  CHECK(ntsc2d != nullptr);
+  CHECK(img.Width() == 256);
+  CHECK(img.Height() == 240);
+  f->resize(256 * 240 * 2, 0.0f);
+  int idx = 0;
+  for (int y = 0; y < 240; y++) {
+    for (int x = 0; x < 256; x++) {
+      const int nes_idx = img.GetPixel(x, y);
+      CHECK(nes_idx >= 0 && nes_idx < 64);
+      const auto [u, v] = ntsc2d->IndexToUV(nes_idx);
+      (*f)[idx++] = u;
+      (*f)[idx++] = v;
     }
   }
 }
@@ -389,8 +414,7 @@ struct ForwardLayerCL {
       const TransferFunction transfer_function =
         net.layers[layer].transfer_function;
       const int indices_per_node = net.layers[layer].indices_per_node;
-      const int nodes_in_layer = net.num_nodes[layer + 1];
-      const int num_convolutions = net.layers[layer].num_convolutions;
+      const int num_features = net.layers[layer].num_features;
 
       string kernel_name;
       switch (net.layers[layer].type) {
@@ -414,11 +438,9 @@ struct ForwardLayerCL {
       StringAppendF(&kernel_src,
                     "\n"
                     "#define INDICES_PER_NODE %d\n"
-                    "#define NODES_IN_LAYER %d\n"
-                    "#define NUM_CONVOLUTIONS %d\n",
+                    "#define NUM_FEATURES %d\n",
                     indices_per_node,
-                    nodes_in_layer,
-                    num_convolutions);
+                    num_features);
 
       kernel_src += base_src;
       auto [program, kernel] = cl->BuildOneKernel(kernel_src, kernel_name);
@@ -634,7 +656,8 @@ struct BackwardLayerCL {
       const int dst_indices_per_node = net.layers[dst_layer].indices_per_node;
       // The dest layer, but num_nodes offset by 1.
       const int dst_num_nodes = net.num_nodes[dst_layer + 1];
-      const bool dst_dense = net.layers[dst_layer].type == LAYER_DENSE;
+      const int dst_num_features = net.layers[dst_layer].num_features;
+      const LayerType dst_layer_type = net.layers[dst_layer].type;
 
       string kernel_src =
         Network::TransferFunctionDefines(transfer_function);
@@ -642,19 +665,35 @@ struct BackwardLayerCL {
       StringAppendF(&kernel_src,
                     "\n"
                     "#define DST_INDICES_PER_NODE %d\n"
-                    "#define DST_NUM_NODES %d\n",
+                    "#define DST_NUM_NODES %d\n"
+                    "#define DST_NUM_FEATURES %d\n",
                     dst_indices_per_node,
-                    dst_num_nodes);
+                    dst_num_nodes,
+                    dst_num_features);
 
       kernel_src += base_src;
+
+      string kernel_name;
+      switch (dst_layer_type) {
+      case LAYER_DENSE:
+        kernel_name = "BackwardLayerDense";
+        break;
+      case LAYER_SPARSE:
+        kernel_name = "BackwardLayerSparse";
+        break;
+      case LAYER_CONVOLUTION_ARRAY:
+        kernel_name = "BackwardLayerConvolutional";
+        break;
+      default:
+        CHECK(false) << "Unsupported layer type "
+                     << LayerTypeName(dst_layer_type);
+      }
+
       auto [program, kernel] =
-        cl->BuildOneKernel(kernel_src,
-                           dst_dense ?
-                           "BackwardLayerDense" :
-                           "BackwardLayerSparse");
-      // XXX don't save debugging stuff
+        cl->BuildOneKernel(kernel_src, kernel_name);
+
       layer_kernels.emplace_back(program, kernel,
-                                 dst_dense,
+                                 // XXX don't save debugging stuff
                                  dst_indices_per_node, transfer_function);
     }
   }
@@ -678,12 +717,11 @@ struct BackwardLayerCL {
       const int gap = dst_layer;
       const int src_layer = dst_layer - 1;
 
-      auto [program_, kernel, dst_dense, dst_ipn, tf] =
+      auto [program_, kernel, dst_ipn, tf] =
         parent->layer_kernels[src_layer];
       // Sanity check that this was compiled with the right ipn / tf.
       CHECK(dst_ipn == net->layers[dst_layer].indices_per_node);
       CHECK(tf == net->layers[src_layer].transfer_function);
-      CHECK(dst_dense == (net->layers[dst_layer].type == LAYER_DENSE));
 
       cl_mem src_output = train->stimulations[src_layer + 1];
       cl_mem dst_error = train->errors[dst_layer];
@@ -699,7 +737,6 @@ struct BackwardLayerCL {
       {
         WriteMutexLock ml(&parent->m);
 
-        // XXX don't set unused arguments in dense mode
         CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
                                      (void *)&starts));
         CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
@@ -746,7 +783,7 @@ struct BackwardLayerCL {
   };
 
   ~BackwardLayerCL() {
-    for (auto &[p, k, deleteme0, deleteme1, deleteme2] : layer_kernels) {
+    for (auto &[p, k, deleteme1, deleteme2] : layer_kernels) {
       CHECK_SUCCESS(clReleaseKernel(k));
       CHECK_SUCCESS(clReleaseProgram(p));
     }
@@ -756,7 +793,7 @@ struct BackwardLayerCL {
   // Indexed by source layer index.
   // Note: Unlike others, these have the layer's parameters
   // baked in.
-  std::vector<std::tuple<cl_program, cl_kernel, bool, int, TransferFunction>>
+  std::vector<std::tuple<cl_program, cl_kernel, int, TransferFunction>>
     layer_kernels;
 
   std::shared_mutex m;
@@ -961,7 +998,9 @@ struct UpdateWeightsCL {
 
 // These must be initialized before starting the UI thread!
 static constexpr int NUM_VIDEO_STIMULATIONS = 6;
-static constexpr int EXPORT_EVERY = 10;
+// rounds are pretty slow.
+// maybe this should be timer based?
+static constexpr int EXPORT_EVERY = 3;
 
 static constexpr int EVAL_SCREENSHOT_EVERY = 1000;
 
@@ -1034,6 +1073,30 @@ static ImageRGBA RenderLayer(
   const auto render_style = net.renderstyle[layer];
   switch (render_style) {
 
+  case RENDERSTYLE_NESUV: {
+    int width = net.width[layer];
+    int height = net.height[layer];
+    CHECK(width == 256);
+    CHECK(height == 240);
+    CHECK(net.channels[layer] == 2);
+    ImageRGBA out(width, height);
+    // Should already be loaded...
+    if (ntsc2d == nullptr) return out;
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        const int cidx = (y * width + x) * 2;
+        const float u = values[cidx + 0];
+        const float v = values[cidx + 1];
+        const auto [r, g, b] = ntsc2d->UVColorSmooth(u, v);
+        out.SetPixel(x, y, r, g, b, 0xFF);
+      }
+    }
+    return out;
+  }
+
+  case RENDERSTYLE_MULTIRGB:
+    // XXX implement something!
+    [[fallthrough]];
   case RENDERSTYLE_RGB: {
     int width = net.width[layer];
     int height = net.height[layer];
@@ -1546,7 +1609,7 @@ struct TrainingExample {
 struct Training {
 
   // Number of examples per round of training.
-  static constexpr int EXAMPLES_PER_ROUND = 512;
+  static constexpr int EXAMPLES_PER_ROUND = 8;
   static_assert(EXAMPLES_PER_ROUND > 0);
 
   // Write a screenshot of the UI (to show training progress for
@@ -2164,9 +2227,9 @@ static void MakeTrainingExamplesThread(Training *training) {
   while (!ReadWithLock(&train_should_die_m, &train_should_die)) {
 
     if (training->WantsExamples()) {
-      ImageRGBA rgba = frame_queue->NextFrame();
+      ImageA img = frame_queue->NextFrame();
       TrainingExample example;
-      FillFromRGBA(rgba, &example.input);
+      FillFromIndices(img, &example.input);
       // PERF for autoencoders, perhaps we should just alias?
       example.output = example.input;
 
@@ -2190,10 +2253,8 @@ static std::optional<string> GetExclusiveApp() {
 
   for (const string &proc : procs) {
     string match = Util::lcase(proc);
-    // Now you can see what games I'm playing in December 2020!
-    if (match == "spel2.exe") return {proc};
-    if (match == "disc room.exe") return {proc};
-    if (match == "superliminalsteam.exe") return {proc};
+    // Now you can see what games I'm playing in August 2021!
+    if (match == "sgwcontracts2.exe") return {proc};
     // Can add more here, including regexes etc...
   }
 
@@ -2235,6 +2296,8 @@ int SDL_main(int argc, char **argv) {
   CHECK(font != nullptr) << "Couldn't load font.";
 
   global_cl = new CL;
+
+  ntsc2d = new NTSC2D;
 
   // Start loading training frames in background.
   frame_queue = new FrameQueue(4096);

@@ -207,7 +207,7 @@ static void DensifyLayer(ArcFour *rc, Network *net, int layer_idx) {
   ez.ipn = NEW_IPN;
   ez.Repack(net, layer_idx);
   net->ReallocateInvertedIndices();
-  Network::ComputeInvertedIndices(net, 6);
+  net->ComputeInvertedIndices(6);
 }
 
 static void DoDeepen(const string &input_file, const string &output_file) {
@@ -229,7 +229,7 @@ static void DoDeepen(const string &input_file, const string &output_file) {
 
   printf("Structural check...\n");
   output_net->StructuralCheck();
-  Network::SaveNetworkBinary(*output_net, output_file);
+  output_net->SaveNetworkBinary(output_file);
 }
 
 int main(int argc, char **argv) {

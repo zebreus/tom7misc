@@ -11,7 +11,7 @@ CL::CL() {
   cl_platform_id platform = nullptr;
   CHECK(CL_SUCCESS == clGetPlatformIDs(0, nullptr, &num_platforms));
   fprintf(stderr, "CL:: Number of platforms: %d.\n", num_platforms);
-  
+
   // Choose the first platform that has a GPU.
   int chosen_platform_id = -1;
   if (num_platforms > 0) {
@@ -41,7 +41,7 @@ CL::CL() {
 
       fprintf(stderr,
               "% 4d. %s (%s):\n"
-              "      %s; %s\n", 
+              "      %s; %s\n",
               i, props[2].value, props[0].value,
               props[1].value, props[3].value, props[4].value);
 
@@ -82,7 +82,7 @@ CL::CL() {
 
   context = clCreateContext(nullptr, 1, devices, nullptr, nullptr, nullptr);
 
-  
+
   const bool out_of_order = false;
   // TODO: Try device queue?
   const cl_queue_properties props =
@@ -94,6 +94,9 @@ CL::CL() {
 }
 
 
+// TODO: PERF: Enable fast-math style optimizations:
+// khronos.org/registry/OpenCL/sdk/2.0/docs/man/xhtml/clBuildProgram.html
+// which should be suitable for learning applications.
 pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
                                                const string &function_name) {
   Timer gpu_compile;
@@ -103,10 +106,10 @@ pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
   if (CL_SUCCESS != clBuildProgram(program, 1, devices, nullptr, nullptr, nullptr)) {
     size_t blsize;
 
-    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0], 
+    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0],
                                               CL_PROGRAM_BUILD_LOG, 0, nullptr, &blsize));
     char *build_log = (char *)malloc(blsize + 1);
-    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0], 
+    CHECK(CL_SUCCESS == clGetProgramBuildInfo(program, devices[0],
                                               CL_PROGRAM_BUILD_LOG, blsize, build_log, nullptr));
     build_log[blsize] = 0;
     printf("Failed to compile:\n %s", build_log);

@@ -26,12 +26,6 @@ using namespace std;
 using int64 = int64_t;
 using uint32 = uint32_t;
 
-// When generating the initial network, the number of nodes that
-// are guaranteed to be sampled from the corresponding spatial
-// location in the input layer. The square is actually sized
-// NEIGHBORHOOD + 1 + NEIGHBORHOOD along both dimensions.
-static constexpr int NEIGHBORHOOD = 2;
-
 // .. utils
 template<class C>
 static void DeleteElements(C *cont) {
@@ -63,16 +57,24 @@ static void DeleteElements(C *cont) {
 // once.
 
 // Fill the indices on the sparse layer randomly.
+//
+// neighborhood: The number of adjacent nodes that are guaranteed to
+// be sampled from the corresponding spatial location in the input
+// layer. The square is actually sized neighborhood + 1 + neighborhood
+// along both dimensions.
 static void FillSparseIndices(ArcFour *rc,
+                              int neighborhood,
+                              bool use_gaussian,
                               int src_width, int src_height, int src_channels,
                               int dst_width, int dst_height, int dst_channels,
                               Network::Layer *layer) {
 
-  static_assert(NEIGHBORHOOD >= 0, "must include the pixel itself.");
+  CHECK(neighborhood >= 0) << "must include the pixel itself.";
   int64 rejected = 0LL, duplicate = 0LL;
   // Generate the indices for a single node at position idx.
   // Indices are sorted for locality of access.
   auto OneNode = [rc,
+                  neighborhood, use_gaussian,
                   src_width, src_height, src_channels,
                   dst_width, dst_height, dst_channels,
                   &rejected, &duplicate](
@@ -87,9 +89,12 @@ static void FillSparseIndices(ArcFour *rc,
     " = " << (src_width * src_height * src_channels) << " sources";
 
     // Whenever we read the neighborhood, we include all source channels.
-    CHECK((NEIGHBORHOOD * 2 + 1) * (NEIGHBORHOOD * 2 + 1) *
+    CHECK((neighborhood * 2 + 1) * (neighborhood * 2 + 1) *
           src_channels <= indices_per_node) <<
-    "neighborhood doesn't fit in indices!";
+    "neighborhood doesn't fit in indices (hood: " <<
+    ((neighborhood * 2 + 1) * (neighborhood * 2 + 1) * src_channels) <<
+    ", ipc: " << indices_per_node << ")";
+
     // Which pixel is this?
     const int dst_nodes_per_row = dst_width * dst_channels;
     [[maybe_unused]]
@@ -124,8 +129,8 @@ static void FillSparseIndices(ArcFour *rc,
     // its channels.
     const int cx = round(xf * src_width);
     const int cy = round(yf * src_height);
-    for (int ny = -NEIGHBORHOOD; ny <= NEIGHBORHOOD; ny++) {
-      for (int nx = -NEIGHBORHOOD; nx <= NEIGHBORHOOD; nx++) {
+    for (int ny = -neighborhood; ny <= neighborhood; ny++) {
+      for (int nx = -neighborhood; nx <= neighborhood; nx++) {
         // Note that the pixel may be clipped.
         for (int nc = 0; nc < src_channels; nc++) {
           AddNodeByCoordinates(cx + nx, cy + ny, nc);
@@ -137,40 +142,43 @@ static void FillSparseIndices(ArcFour *rc,
 
     // XXX Select this dynamically based on how many unused nodes
     // are even left?
-    #if 0
-    static constexpr double stddev = 1 / 16.0;
+    if (use_gaussian) {
+      static constexpr double stddev = 1 / 16.0;
 
-    // Sample gaussian pixels.
-    while (indices.size() < indices_per_node) {
-      double dx = gauss->Next() * stddev;
-      double dy = gauss->Next() * stddev;
+      // Sample gaussian pixels.
+      while (indices.size() < indices_per_node) {
+        double dx = gauss->Next() * stddev;
+        double dy = gauss->Next() * stddev;
 
-      AddNodeByCoordinates((int)round((xf + dx) * src_width),
-                           (int)round((yf + dy) * src_height));
-    }
-    #else
+        int nc = RandTo(rc, src_channels);
+        AddNodeByCoordinates((int)round((xf + dx) * src_width),
+                             (int)round((yf + dy) * src_height),
+                             nc);
+      }
+    } else {
 
-    // XXXXX
-    int hood = NEIGHBORHOOD;
-    while (indices.size() < indices_per_node) {
-      hood++;
-      const int cx = round(xf * src_width);
-      const int cy = round(yf * src_height);
-      for (int ny = -hood; ny <= hood; ny++) {
-        for (int nx = -hood; nx <= hood; nx++) {
-          // In the interests of getting more spatial
-          // dispersion, only add one channel at random. As
-          // we expand we can try these multiple times, so
-          // pixels closer to the center are more likely to
-          // have all channels used.
-          int nc = RandTo(rc, src_channels);
-          AddNodeByCoordinates(cx + nx, cy + ny, nc);
-          if (indices.size() == indices_per_node) goto done;
+      // XXXXX
+      int hood = neighborhood;
+      while (indices.size() < indices_per_node) {
+        hood++;
+        const int cx = round(xf * src_width);
+        const int cy = round(yf * src_height);
+        for (int ny = -hood; ny <= hood; ny++) {
+          for (int nx = -hood; nx <= hood; nx++) {
+            // In the interests of getting more spatial
+            // dispersion, only add one channel at random. As
+            // we expand we can try these multiple times, so
+            // pixels closer to the center are more likely to
+            // have all channels used.
+            int nc = RandTo(rc, src_channels);
+            AddNodeByCoordinates(cx + nx, cy + ny, nc);
+            if (indices.size() == indices_per_node) goto done;
+          }
         }
       }
+
+      done:;
     }
-  done:;
-    #endif
 
     CHECK_EQ(indices_per_node, indices.size());
     vector<uint32> ret;
@@ -265,142 +273,146 @@ static void RandomizeNetwork(ArcFour *rc, Network *net) {
 
 static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
 
-  const vector<int> width_config =
-    { NES_WIDTH,
-      NES_WIDTH / 4,
-      NES_WIDTH / 12,
-      NES_WIDTH / 4,
-      NES_WIDTH, };
+  vector<int> num_nodes, widths, heights, channelses;
+  vector<uint32_t> renderstyles;
+  vector<Network::Layer> layers;
 
-  // If zero, automatically factor to make square-ish.
-  const vector<int> height_config =
-    { NES_HEIGHT,
-      NES_HEIGHT / 4,
-      NES_HEIGHT / 12,
-      NES_HEIGHT / 4,
-      // output layer
-      NES_HEIGHT, };
+  auto AddConvolutional = [&](int num_features,
+                              int pat_width, int pat_height,
+                              int x_stride, int y_stride) {
+      int prev_width = widths.back();
+      int prev_height = heights.back();
+      int prev_channels = channelses.back();
+      int prev_num_nodes = prev_width * prev_height * prev_channels;
 
-  // When zero, create a dense layer.
-  const vector<int> indices_per_node_config = {
-    (int)(NES_WIDTH * NES_HEIGHT * 0.01),
-    (int)((NES_WIDTH * NES_HEIGHT / 4) * 0.01),
-    (int)((NES_WIDTH * NES_HEIGHT / 12) * 0.02),
-    (int)((NES_WIDTH * NES_HEIGHT / 4) * 0.01),
-  };
+      int src_width = prev_width * prev_channels;
+      int src_height = prev_height;
 
-  const int num_layers = indices_per_node_config.size();
+      int indices_per_node = pat_width * pat_height;
 
-  // Everything is RGB.
-  const vector<int> channels(num_layers + 1, 3);
+      Network::Layer layer;
+      layer.indices_per_node = indices_per_node;
+      layer.type = LAYER_CONVOLUTION_ARRAY;
+      // configurable?
+      layer.transfer_function = LEAKY_RELU;
+      layer.num_features = num_features;
+      layer.pattern_width = pat_width;
+      layer.pattern_height = pat_height;
+      layer.src_width = src_width;
+      layer.src_height = src_height;
+      layer.occurrence_x_stride = x_stride;
+      layer.occurrence_y_stride = y_stride;
 
-  // All use leaky relu
-  const vector<TransferFunction> transfer_functions = {
-    LEAKY_RELU,
-    LEAKY_RELU,
-    LEAKY_RELU,
-    LEAKY_RELU,
-  };
+      auto [indices, this_num_nodes, occ_across, occ_down] =
+        Network::MakeConvolutionArrayIndices(
+            prev_num_nodes,
+            num_features,
+            pat_width,
+            pat_height,
+            src_width,
+            src_height,
+            x_stride,
+            y_stride);
 
-  const vector<uint32_t> renderstyle = {
-    RENDERSTYLE_RGB,
-    RENDERSTYLE_RGB,
-    RENDERSTYLE_RGB,
-    RENDERSTYLE_RGB,
-    RENDERSTYLE_RGB,
-  };
+      layer.num_occurrences_across = occ_across;
+      layer.num_occurrences_down = occ_down;
+      layer.indices = std::move(indices);
+      layer.weights.resize(num_features * indices_per_node, 0.0f);
+      layer.biases.resize(num_features, 0.0f);
 
+      layers.push_back(std::move(layer));
 
-  vector<int> height, width;
-  CHECK(height_config.size() == width_config.size());
-  for (int i = 0; i < height_config.size(); i++) {
-    int w = width_config[i];
-    int h = height_config[i];
-    CHECK(w > 0);
-    CHECK(h >= 0);
-    if (h == 0) {
-      if (w == 1) {
-        width.push_back(1);
-        height.push_back(1);
-      } else {
-        // Try to make a rectangle that's squareish.
-        vector<int> factors = Util::Factorize(w);
+      num_nodes.push_back(occ_across * occ_down * num_features);
+      widths.push_back(occ_across);
+      heights.push_back(occ_down);
+      channelses.push_back(num_features);
+      renderstyles.push_back(RENDERSTYLE_MULTIRGB);
 
-        CHECK(!factors.empty()) << w << " has no factors??";
+      printf("Now %d x %d x %d\n",
+             widths.back(), heights.back(), channelses.back());
+    };
 
-        // XXX Does this greedy approach produce good results?
-        int ww = factors.back(), hh = 1;
-        factors.pop_back();
+  auto AddSparse = [&](int width, int height, int channels,
+                       int indices_per_node,
+                       int neighborhood) {
 
-        for (int f : factors) {
-          if (ww < hh)
-            ww *= f;
-          else
-            hh *= f;
-        }
+      const int prev_width = widths.back();
+      const int prev_height = heights.back();
+      const int prev_channels = channelses.back();
+      // const int prev_num_nodes = prev_width * prev_height * prev_channels;
 
-        CHECK(ww * hh == w);
-        width.push_back(ww);
-        height.push_back(hh);
-      }
-    } else {
-      width.push_back(w);
-      height.push_back(h);
-    }
-  }
+      const int this_num_nodes = width * height * channels;
 
-  // num_nodes = width * height * channels
-  // //  indices_per_node = indices_per_channel * channels
-  // //  vector<int> indices_per_node;
-  vector<int> num_nodes;
-  CHECK_EQ(width.size(), height.size());
-  CHECK_EQ(width.size(), channels.size());
-  CHECK_EQ(width.size(), renderstyle.size());
-  CHECK_EQ(num_layers + 1, height.size());
-  CHECK_EQ(num_layers, indices_per_node_config.size());
-  CHECK_EQ(num_layers, transfer_functions.size());
-  for (int i = 0; i < num_layers + 1; i++) {
-    CHECK(width[i] >= 1);
-    CHECK(height[i] >= 1);
-    CHECK(channels[i] >= 1);
-    num_nodes.push_back(width[i] * height[i] * channels[i]);
-  }
-
-  vector<Network::Layer> layers(num_layers);
-
-  // In parallel?
-  for (int i = 0; i < indices_per_node_config.size(); i++) {
-    Network::Layer &layer = layers[i];
-    int ipc = indices_per_node_config[i];
-    // TODO: Support convolution
-    if (ipc == 0) {
-      const int indices_per_node = width[i] * height[i] * channels[i];
-      layer = Network::MakeDenseLayer(num_nodes[i + 1],
-                                      indices_per_node,
-                                      transfer_functions[i]);
-    } else {
+      Network::Layer layer;
       layer.type = LAYER_SPARSE;
-      CHECK(ipc > 0);
-      CHECK(ipc <= width[i] * height[i] * channels[i]);
-      int num_nodes = width[i + 1] * height[i + 1] * channels[i + 1];
-      layer.indices_per_node = ipc;
-      layer.indices.resize(num_nodes * layer.indices_per_node, 0);
-      layer.weights.resize(num_nodes * layer.indices_per_node, 0.0f);
-      layer.biases.resize(num_nodes, 0.0f);
+      layer.transfer_function = LEAKY_RELU;
+      layer.indices_per_node = indices_per_node;
+
+      layer.indices.resize(this_num_nodes * indices_per_node, 0);
+      layer.weights.resize(this_num_nodes * indices_per_node, 0.0f);
+      layer.biases.resize(this_num_nodes, 0.0f);
       FillSparseIndices(rc,
-                        width[i], height[i], channels[i],
-                        width[i + 1], height[i + 1], channels[i + 1],
+                        neighborhood,
+                        /* use_gaussian */ false,
+                        prev_width, prev_height, prev_channels,
+                        width, height, channels,
                         &layer);
-    }
-  }
+
+      layers.push_back(std::move(layer));
+
+      num_nodes.push_back(this_num_nodes);
+      widths.push_back(width);
+      heights.push_back(height);
+      channelses.push_back(channels);
+      renderstyles.push_back(RENDERSTYLE_RGB);
+      printf("Now %d x %d x %d\n",
+             widths.back(), heights.back(), channelses.back());
+    };
+
+
+
+  // input layer
+  widths.push_back(NES_WIDTH);
+  heights.push_back(NES_HEIGHT);
+  // uv
+  channelses.push_back(2);
+  renderstyles.push_back(RENDERSTYLE_NESUV);
+  num_nodes.push_back(NES_WIDTH * NES_HEIGHT * 2);
+
+  // Expand to 128 8x8 pixel (=16x8 uv coordinates) features.
+  AddConvolutional(128, 16, 8, 1, 1);
+  // Contract each 256-feature cell to 8.
+  AddConvolutional(8, 128, 1, 128, 1);
+  AddConvolutional(16, 8, 8, 16, 8);
+  // Only 7k nodes.. maybe a bit extreme. Consider
+  // expanding the number of channels here!
+  const int BOTTLENECK_CHANNELS = 8;
+  AddSparse(32, 30, BOTTLENECK_CHANNELS, 144, 1);
+  // Now expand to render with another convolution.
+  // This one expands each "pixel" in the input into an 8x8x2 block.
+  // (But the 8 * 8 * 2 is arranged as a 64 * 2 row.)
+  AddConvolutional(8 * 8 * 2,
+                   BOTTLENECK_CHANNELS, 1,
+                   BOTTLENECK_CHANNELS, 1);
+  CHECK(widths.back() * heights.back() * channelses.back() ==
+        256 * 240 * 2);
+  // This is pretty bogus, although the network internally might
+  // be able to live with it? I think maybe the easiest thing would
+  // be to have a sparse layer with ipn=1 that just reorders the
+  // pixels.
+  widths.back() = 256;
+  heights.back() = 240;
+  channelses.back() = 2;
+  renderstyles.back() = RENDERSTYLE_NESUV;
 
   std::unique_ptr<Network> net =
     std::make_unique<Network>(num_nodes, layers);
 
-  net->width = width;
-  net->height = height;
-  net->channels = channels;
-  net->renderstyle = renderstyle;
+  printf("Set net presentational attributes:\n");
+  net->width = widths;
+  net->height = heights;
+  net->channels = channelses;
+  net->renderstyle = renderstyles;
 
   printf("Randomize weights:\n");
   RandomizeNetwork(rc, net.get());

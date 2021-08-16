@@ -147,3 +147,19 @@ __kernel void UpdateWeightsDense(
     layer_biases[node_idx] += bupdate;
   #endif
 }
+
+
+__kernel void UpdateWeightsSparse(
+                 float learning_rate,
+                 // int indices_per_node,
+                 __global const float *restrict layer_error,
+                 // num_nodes * INDICES_PER_NODE
+                 __global const int *restrict layer_indices,
+                 __global const float *restrict layer_values,
+                 // num_nodes * INDICES_PER_NODE,
+                 __global float *restrict layer_weights,
+                 // num_nodes
+                 __global float *restrict layer_biases) {
+
+  TODO!
+}

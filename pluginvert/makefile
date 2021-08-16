@@ -1,7 +1,8 @@
 
-default: train.exe collate-errors.exe vacuum.exe cull.exe widen.exe deepen.exe
+default: train.exe collate-errors.exe vacuum.exe cull.exe  deepen.exe
 
-all: train.exe collate-errors.exe vacuum.exe cull.exe widen.exe get-modelinfo.exe get-layerweights.exe
+# widen.exe
+all: train.exe collate-errors.exe vacuum.exe cull.exe get-modelinfo.exe get-layerweights.exe
 
 CC_LIB=../cc-lib
 
@@ -63,10 +64,6 @@ cull.exe : $(OBJECTS) cull.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-widen.exe : $(OBJECTS) widen.o
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
 deepen.exe : $(OBJECTS) deepen.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
@@ -84,6 +81,10 @@ collate-errors.exe : collate-errors.o $(OBJECTS)
 	@echo -n "!"
 
 new-network.exe : new-network.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+conv_test.exe : conv_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

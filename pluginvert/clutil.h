@@ -39,7 +39,7 @@ struct CL {
         nullptr);
   }
   */
-  
+
   std::pair<cl_program, cl_kernel>
   BuildOneKernel(const std::string &kernel_src,
                  const std::string &function_name);
@@ -144,6 +144,8 @@ static void CopyBufferFromGPUTo(cl_command_queue cmd,
 template<class T>
 static void CopyBufferToGPU(cl_command_queue cmd,
                             const std::vector<T> &vec, cl_mem buf) {
+  // XXX!
+  printf("%lld bytes\n", (int64_t)(sizeof (T) * vec.size()));
   CHECK_SUCCESS(clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0,
                                      sizeof (T) * vec.size(), vec.data(), 0,
                                      nullptr, nullptr));

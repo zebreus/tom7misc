@@ -219,7 +219,7 @@ static void VacuumNetwork(Network *net) {
 
   printf("Recompute inverted indices...\n");
   fflush(stdout);
-  Network::ComputeInvertedIndices(net, 24);
+  net->ComputeInvertedIndices(24);
   printf("Structural check...\n");
   fflush(stdout);
   net->StructuralCheck();
@@ -244,7 +244,7 @@ int main(int argc, char **argv) {
   fflush(stderr);
 
   string outfile = argc > 2 ? argv[2] : "net-vacuumed.val";
-  Network::SaveNetworkBinary(*net, outfile);
+  net->SaveNetworkBinary(outfile);
 
   return 0;
 }

@@ -442,7 +442,7 @@ static void CullNetworkAt(ArcFour *rc, Network *net,
 
   printf("[Cull layer %d] Recompute inverted indices...\n", cull_layer);
   fflush(stdout);
-  Network::ComputeInvertedIndices(net, 24);
+  net->ComputeInvertedIndices(24);
   printf("[Cull layer %d] Structural check...\n", cull_layer);
   fflush(stdout);
   net->StructuralCheck();
@@ -479,7 +479,7 @@ int main(int argc, char **argv) {
   }
 
   string outfile = argc > 2 ? argv[2] : "net-culled.val";
-  Network::SaveNetworkBinary(*net, outfile);
+  net->SaveNetworkBinary(outfile);
 
   return 0;
 }

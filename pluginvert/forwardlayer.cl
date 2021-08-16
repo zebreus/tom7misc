@@ -12,12 +12,10 @@
 // FORWARD, the transfer function.
 // INDICES_PER_NODE, an integer giving the number of output indices per
 //   node.
-// NODES_IN_LAYER, an integer giving the total number of nodes in the
-///  layer we're computing.
-// NUM_CONVOLUTIONS, an integer giving the number of convolutions in
+// NUM_FEATURES, an integer giving the number of features in
 //   a LAYER_CONVOLUTION_ARRAY layer. For sparse and dense layers,
 //   this is ignored (but should be defined to 1 or whatever). Must
-//   divide NODES_IN_LAYER.
+//   divide the number of nodes in the layer.
 
 // We don't actually need to know the number of nodes within the kernel;
 // the global id just tells us which node we work on. But the number
@@ -83,6 +81,13 @@ __kernel void ForwardLayerDense(
 }
 
 
+
+// PERF: Consider having this loop over all the features (i.e., pass
+// an index into indices) rather than deriving where we are for each
+// node.
+//
+// PERF: Could also derive the indices programmatically, instead of
+// reading them from memory.
 __kernel void ForwardLayerConvolutional(
                 // size num_nodes[layer]
                 __global const float *restrict previous_layer_outputs,
@@ -94,23 +99,26 @@ __kernel void ForwardLayerConvolutional(
                 __global const float *restrict bias,
                 // size num_nodes[layer + 1].
                 __global float *restrict output_values) {
-  const int NODES_PER_CONV = NODES_IN_LAYER / NUM_CONVOLUTIONS;
+
   const int node_idx = get_global_id(0);
   // (Hopefully avoiding integer division since the denominator is a
   // compile-time constant.)
-  const int conv_number = node_idx / NODES_PER_CONV;
+  // PERF quotrem?
+  const int feature_number = node_idx % NUM_FEATURES;
+  const int occurrence_number = node_idx % NUM_FEATURES;
 
   // Start with bias; shared by all the nodes in this convolution.
-  float potential = bias[conv_number];
+  float potential = bias[feature_number];
   // Weights are also shared.
-  const __global float *conv_weights =
-    weights + (conv_number * INDICES_PER_NODE);
-  // But indices can be anything, just like in a sparse layer.
-  const __global int *my_indices = indices + (node_idx * INDICES_PER_NODE);
+  const __global float *feature_weights =
+    weights + (feature_number * INDICES_PER_NODE);
+
+  const __global int *my_indices =
+    indices + (occurrence_number * INDICES_PER_NODE);
 
   for (int i = 0; i < INDICES_PER_NODE; i++) {
     const int in_idx = my_indices[i];
-    const float w = conv_weights[i];
+    const float w = feature_weights[i];
     const float v = previous_layer_outputs[in_idx];
     // potential += w * v;
     potential = fma(w, v, potential);

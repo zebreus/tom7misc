@@ -41,8 +41,9 @@ enum LayerType {
   // good option when the input layer represents some array of pixels
   // or samples of like kind. A single convolution makes sense, but we
   // allow for an array so that the common case of several different
-  // features (with the same indices_per_node) can be treated more
-  // efficiently.
+  // features (with the same indices but different weights) can be
+  // treated more efficiently. The features are interleaved in the
+  // output.
   LAYER_CONVOLUTION_ARRAY = 2,
 
   NUM_LAYER_TYPES,
@@ -54,9 +55,12 @@ enum LayerType {
 enum RenderStyle : uint32_t {
   // One pixel per channel.
   RENDERSTYLE_FLAT = 0,
-  // Assign channels as RGB. Makes most sense when there
-  // are three channels.
+  // Assign channels as RGB. Makes most sense when there are three
+  // channels, but works fine for one (same as flat) or two
+  // (red/green) as well.
   RENDERSTYLE_RGB = 1,
+  // Use channels/3 RGB pixels.
+  RENDERSTYLE_MULTIRGB = 2,
 
   // Rest of the range is reserved for users.
   RENDERSTYLE_USER = 0xF0000000,
@@ -150,7 +154,7 @@ struct Network {
 
   // Just used for serialization. Whenever changing the interpretation
   // of the data in an incomplete way, please change.
-  static constexpr uint32_t FORMAT_ID = 0x27000732U;
+  static constexpr uint32_t FORMAT_ID = 0x27000733U;
 
   // The number of "real" layers, that is, not counting the input.
   const int num_layers;
@@ -174,33 +178,70 @@ struct Network {
     // Same number of input indices for each node.
     // For dense layers, this must be the size of the previous layer.
     int indices_per_node = 0;
-    // Only for CONVOLUTION_ARRAY layers. Gives the number of
-    // convolutions in the array. Each has the same indices_per_node
-    // but a different set of weights/biases. Must divide the number
-    // of nodes on the layer, giving the number of repetitions per
-    // convolution.
-    int num_convolutions = 1;
+
+    // Sparse, dense, or convolutional layer?
+    LayerType type = LAYER_SPARSE;
+
     // The transfer function used to compute the output from the
     // weighted inputs.
     TransferFunction transfer_function = LEAKY_RELU;
-    // Sparse, dense, or convolutional layer?
-    LayerType type = LAYER_SPARSE;
+
+    // For CONVOLUTION_ARRAY layers:
+    //
+    // Gives the number of features in the array. Each has the same
+    // indices but a different set of weights/biases. Must divide the
+    // number of nodes on the layer.
+    int num_features = 1;
+    // pattern_width * pattern_height = indices_per_node
+    int pattern_width = 1;
+    int pattern_height = 1;
+    // How we perceive the previous layer as a rectangle; not necessarily
+    // the same as the width array (typically, width * channels).
+    // src_width * src_height <= prev_num_nodes (usually equal)
+    int src_width = 1;
+    int src_height = 1;
+    // When advancing the pattern, how far to move in the x and y
+    // directions? Must be positive.
+    int occurrence_x_stride = 1;
+    int occurrence_y_stride = 1;
+    // Number of occurrences of the pattern that fit in each direction,
+    // taking into account everything above.
+    // num_occurrences_across * num_occurrences_down * num_features =
+    // num_nodes
+    int num_occurrences_across = 1;
+    int num_occurrences_down = 1;
+
     // indices_per_node * num_nodes[l + 1], flat, node-major
     // If type = LAYER_DENSE, then for n < num_nodes[l + 1],
     // indices[n * indices_per_node + i] = i. (TODO: We should
     // perhaps save the ram by not storing indices for dense
     // layers.)
+    // If type = LAYER_CONVOLUTION_ARRY, the instances are shared
+    // for all features, so this has size
+    // indices_per_node * num_nodes[l + 1] / num_features.
+    // the nesting is
+    //   occurrence_row
+    //     occurrence_col
+    //       pattern_row
+    //         pattern_col
+    // (with the loop over feature indices implicit at the innermost
+    // level)
+    //
     // (XXX For chunks, this would I guess be an index into the
     // whole layer, not any specific chunk.)
     vector<uint32_t> indices;
-    // For sparse and dense layers, this is parallel to indices:
+
+    // For SPARSE and DENSE layers, this is parallel to indices:
     // indices_per_node * num_nodes[l + 1]
-    // For convolutional layers, this has size
-    // num_convolutions * indices_per_node.
+    // For CONVOLUTIONAL layers, we have a set of weights for each
+    // feature (shared for each occurrence of the feature). So
+    // this is size num_features * indices_per_node. The weights
+    // are "feature major": The weights for all the indices of a
+    // given feature are adjacent in the array.
     vector<float> weights;
-    // For sparse and dense layers, there is one per node:
+    // For SPARSE and DENSE layers, there is one per node:
     // num_nodes[l + 1].
-    // For convolutional layers, size num_convolutions.
+    // For CONVOLUTIONAL layers, size num_features.
     vector<float> biases;
   };
 
@@ -210,6 +251,19 @@ struct Network {
                               // ipn is = size of the previous layer
                               int indices_per_node,
                               TransferFunction transfer_function);
+
+  // Maybe this should return a Layer?
+  // returns indices, this_num_nodes,
+  // num_occurrences_across, num_occurrences_down
+  static std::tuple<std::vector<uint32_t>, int, int, int>
+  MakeConvolutionArrayIndices(int prev_num_nodes,
+                              int num_features,
+                              int pattern_width,
+                              int pattern_height,
+                              int src_width,
+                              int src_height,
+                              int occurrence_x_stride,
+                              int occurrence_y_stride);
 
   // XXX Probably needs to be rethought for 'chunks'? Perhaps this is
   // a concept of the full layer, after assigning each parallel
@@ -225,8 +279,12 @@ struct Network {
     vector<uint32_t> start;
     vector<uint32_t> length;
 
-    // Packed array of indices. Since every node on the next layer has
-    // exactly layers[l].indices_per_node inputs, this will be of size
+    // Packed array of indices.
+    // For all layer types, this is just the inverse of the corresponding
+    // indices array. For sparse and dense layers:
+    //
+    // Since every node on the next layer has exactly
+    // layers[l].indices_per_node inputs, this will be of size
     // layers[l].indices_per_node * num_nodes[l + 1]. However, any
     // given node on this layer may be used more or fewer times.
     //
@@ -238,6 +296,21 @@ struct Network {
     // vector gives us the weight, which is the point, and dividing
     // by INDICES_PER_NODE gives us the output node.) As such, this is
     // a permutation of 0..(num_nodes[ii] * layers[ii].indices_per_node - 1).
+    //
+    // If the destination layer is a convolution array, we still have
+    // layers[layer].indices[gidx] == z. But the indices array only
+    // stores indices for "one feature", since they are the same for
+    // each. Thus this has size
+    //    layers[l].indices_per_node * num_nodes[l + 1] /
+    //    layers[l].num_features
+    // The gidx in this vector is an index into indices[] as above; some
+    // cell within the pattern in a specific occurrence. It stands for
+    // num_features edges, each with its own weight.
+    // int gidx = inverted_indices[layer].output_indices[i];
+    //  .. TODO tips here on how to compute weights, output nodes ..
+    // for (int f = 0; f < num_features; f++) {
+    //    weight =  ...
+    // }
     vector<uint32_t> output_indices;
   };
 
