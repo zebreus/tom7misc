@@ -12,6 +12,7 @@ using uchar = uint8_t;
 
 using uint64 = uint64_t;
 
+// TODO: make CHECK_SUCCESS(exp) << stuff; work!
 #define CHECK_SUCCESS(e) do {                                           \
     const int ret = (e);                                                \
     if (ret != CL_SUCCESS) {                                            \
@@ -145,7 +146,7 @@ template<class T>
 static void CopyBufferToGPU(cl_command_queue cmd,
                             const std::vector<T> &vec, cl_mem buf) {
   // XXX!
-  printf("%lld bytes\n", (int64_t)(sizeof (T) * vec.size()));
+  // printf("%lld bytes\n", (int64_t)(sizeof (T) * vec.size()));
   CHECK_SUCCESS(clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0,
                                      sizeof (T) * vec.size(), vec.data(), 0,
                                      nullptr, nullptr));

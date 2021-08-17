@@ -277,6 +277,7 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
   vector<uint32_t> renderstyles;
   vector<Network::Layer> layers;
 
+  [[maybe_unused]]
   auto AddConvolutional = [&](int num_features,
                               int pat_width, int pat_height,
                               int x_stride, int y_stride) {
@@ -332,6 +333,7 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
              widths.back(), heights.back(), channelses.back());
     };
 
+  [[maybe_unused]]
   auto AddSparse = [&](int width, int height, int channels,
                        int indices_per_node,
                        int neighborhood) {
@@ -379,6 +381,7 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
   renderstyles.push_back(RENDERSTYLE_NESUV);
   num_nodes.push_back(NES_WIDTH * NES_HEIGHT * 2);
 
+  #if 0
   // Expand to 128 8x8 pixel (=16x8 uv coordinates) features.
   AddConvolutional(128, 16, 8, 1, 1);
   // Contract each 256-feature cell to 8.
@@ -402,6 +405,14 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
   // pixels.
   widths.back() = 256;
   heights.back() = 240;
+  channelses.back() = 2;
+  renderstyles.back() = RENDERSTYLE_NESUV;
+  #endif
+
+  // should be able to learn 8x1x2 identity !
+  AddConvolutional(16, 16, 1, 16, 1);
+  CHECK(widths.back() * channelses.back() == 256 * 2);
+  widths.back() = 256;
   channelses.back() = 2;
   renderstyles.back() = RENDERSTYLE_NESUV;
 

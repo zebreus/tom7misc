@@ -117,7 +117,7 @@ static std::optional<string> GetExclusiveApp();
 #define FONTHEIGHT 16
 static Font *font = nullptr;
 #define SCREENW 1920
-#define SCREENH 1280
+#define SCREENH 1480
 static SDL_Surface *screen = nullptr;
 
 static constexpr int64 ENOUGH_FRAMES = 1000;
@@ -874,26 +874,52 @@ struct DecayWeightsCL {
 struct UpdateWeightsCL {
   UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
     // Note that this one doesn't depend on the transfer function/derivative.
+    // Also unlike others, the argument values actually change
+    // in the convolution case.
 
     string base_src = Util::ReadFile("updateweights.cl");
     for (int layer = 0; layer < net.layers.size(); layer++) {
       const int indices_per_node = net.layers[layer].indices_per_node;
 
-      const bool dense = net.layers[layer].type == LAYER_DENSE;
+      const LayerType layer_type = net.layers[layer].type;
+
+      const int num_occurrences =
+        net.layers[layer].num_occurrences_across *
+        net.layers[layer].num_occurrences_down;
 
       string kernel_src;
-      StringAppendF(&kernel_src, "\n#define INDICES_PER_NODE %d\n",
-                    indices_per_node);
+      StringAppendF(&kernel_src,
+                    "\n"
+                    "#define INDICES_PER_NODE %d\n"
+                    "#define NUM_OCCURRENCES %d\n"
+                    "#define NUM_FEATURES %d\n",
+                    indices_per_node,
+                    num_occurrences,
+                    net.layers[layer].num_features);
+
+      string kernel_name;
+      switch (layer_type) {
+      case LAYER_DENSE:
+        kernel_name = "UpdateWeightsDense";
+        break;
+      case LAYER_SPARSE:
+        kernel_name = "UpdateWeightsSparse";
+        break;
+      case LAYER_CONVOLUTION_ARRAY:
+        kernel_name = "UpdateWeightsConvolutional";
+        break;
+      default:
+        CHECK(false) << "Unsupported layer type "
+                     << LayerTypeName(layer_type);
+      }
 
       kernel_src += base_src;
       auto [program, kernel] =
-        cl->BuildOneKernel(kernel_src,
-                           dense ?
-                           "UpdateWeightsDense" :
-                           "UpdateWeightsSparse");
+        cl->BuildOneKernel(kernel_src, kernel_name);
+
       // XXX don't save debugging stuff
-      layer_kernels.emplace_back(program, kernel,
-                                 dense, indices_per_node);
+      layer_kernels.emplace_back(program, kernel, layer_type,
+                                 indices_per_node);
     }
   }
 
@@ -915,56 +941,65 @@ struct UpdateWeightsCL {
       cl_mem layer_error = train->errors[layer];
       cl_mem layer_values = train->stimulations[layer];
 
-      auto [program_, kernel, dense, ipn] =
+      auto [program_, kernel, layer_type, ipn] =
         parent->layer_kernels[layer];
       // Sanity check that this was compiled with the right constants.
       CHECK(ipn == net_gpu->net->layers[layer].indices_per_node);
-      CHECK(dense == (net_gpu->net->layers[layer].type == LAYER_DENSE));
+      CHECK(layer_type == net_gpu->net->layers[layer].type);
 
       const int num_nodes = net_gpu->net->num_nodes[layer + 1];
 
-      if (dense) {
-        // Dense version does not need indices arg.
-        CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_float),
-                                     (void *)&learning_rate));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
-                                     (void *)&layer_error));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
-                                     (void *)&layer_values));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
-                                     (void *)&layer_weights));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 4, sizeof (cl_mem),
-                                     (void *)&layer_biases));
-      } else {
-        CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_float),
-                                     (void *)&learning_rate));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
-                                     (void *)&layer_error));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
-                                     (void *)&layer_indices));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
-                                     (void *)&layer_values));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 4, sizeof (cl_mem),
-                                     (void *)&layer_weights));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 5, sizeof (cl_mem),
-                                     (void *)&layer_biases));
-      }
+      CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_float),
+                                   (void *)&learning_rate));
+      CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
+                                   (void *)&layer_error));
+      CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
+                                   (void *)&layer_indices));
+      CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
+                                   (void *)&layer_values));
+      CHECK_SUCCESS(clSetKernelArg(kernel, 4, sizeof (cl_mem),
+                                   (void *)&layer_weights));
+      CHECK_SUCCESS(clSetKernelArg(kernel, 5, sizeof (cl_mem),
+                                   (void *)&layer_biases));
 
-      size_t global_work_offset[] = { 0 };
-      size_t global_work_size[] = { (size_t)num_nodes };
-      CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
-                                           // work dimensions
-                                           1,
-                                           // global work offset
-                                           global_work_offset,
-                                           // global work size
-                                           global_work_size,
-                                           // local work size
-                                           nullptr,
-                                           // no wait list
-                                           0, nullptr,
-                                           // no event
-                                           nullptr));
+      // Arguments are the same for the different layer types,
+      // but for convolution array layers the main dimension
+      // is over features, not nodes.
+
+      if (layer_type == LAYER_CONVOLUTION_ARRAY) {
+        const int num_features = net_gpu->net->layers[layer].num_features;
+        size_t global_work_offset[] = { 0 };
+        size_t global_work_size[] = { (size_t)num_features };
+        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
+                                             // work dimensions
+                                             1,
+                                             // global work offset
+                                             global_work_offset,
+                                             // global work size
+                                             global_work_size,
+                                             // local work size
+                                             nullptr,
+                                             // no wait list
+                                             0, nullptr,
+                                             // no event
+                                             nullptr));
+      } else {
+        size_t global_work_offset[] = { 0 };
+        size_t global_work_size[] = { (size_t)num_nodes };
+        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
+                                             // work dimensions
+                                             1,
+                                             // global work offset
+                                             global_work_offset,
+                                             // global work size
+                                             global_work_size,
+                                             // local work size
+                                             nullptr,
+                                             // no wait list
+                                             0, nullptr,
+                                             // no event
+                                             nullptr));
+      }
       clFinish(cl->queue);
     }
 
@@ -981,15 +1016,15 @@ struct UpdateWeightsCL {
 
 
   ~UpdateWeightsCL() {
-    for (auto &[p, k, dense_unused, ipn_unused] : layer_kernels) {
+    for (auto &[p, k, type_unused, ipn_unused] : layer_kernels) {
       CHECK_SUCCESS(clReleaseKernel(k));
       CHECK_SUCCESS(clReleaseProgram(p));
     }
   }
 
   CL *cl = nullptr;
-  // Owned. Indexed by layer id. (is_dense, indices_per_node)
-  std::vector<std::tuple<cl_program, cl_kernel, bool, int>>
+  // Owned. Indexed by layer id. (layer type, indices_per_node)
+  std::vector<std::tuple<cl_program, cl_kernel, LayerType, int>>
   layer_kernels;
 
   std::shared_mutex m;
@@ -1094,9 +1129,40 @@ static ImageRGBA RenderLayer(
     return out;
   }
 
-  case RENDERSTYLE_MULTIRGB:
-    // XXX implement something!
-    [[fallthrough]];
+  case RENDERSTYLE_MULTIRGB: {
+    int width = net.width[layer];
+    int height = net.height[layer];
+    int channels = net.channels[layer];
+    ImageRGBA out(width, height);
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        const int cidx = (y * width + x) * channels;
+
+        float max_value = -10.0f;
+        int max_idx = 0;
+
+        for (int c = 0; c < channels; c++) {
+          float v = values[cidx + c];
+          if (v > max_value) {
+            max_value = v;
+            max_idx = c;
+          }
+        }
+
+        // Now, use the max value to select the
+        // hue.
+        float hue = max_idx / (float)(channels - 1);
+        float sat = 1.0f;
+        float val = std::max(1.0f, max_value);
+
+        float r, g, b;
+        ColorUtil::HSVToRGB(hue, sat, val, &r, &g, &b);
+        out.SetPixel(x, y, FloatByte(r), FloatByte(g), FloatByte(b), 0xFF);
+      }
+    }
+    return out;
+  }
+
   case RENDERSTYLE_RGB: {
     int width = net.width[layer];
     int height = net.height[layer];
@@ -2020,8 +2086,8 @@ struct Training {
     if (VERBOSE > 2) Printf("Update weights:\n");
     Timer update_timer;
 
-    // Don't parallelize! These are all writing to the same network
-    // weights. Each call is parallelized, though.
+    // Don't parallelize by example! These are all writing to the same
+    // network weights. Each call is parallelized, though.
     for (int layer = 0; layer < net->num_layers; layer++) {
       UpdateWeightsCL::Context uc{updateweights.get(), net_gpu.get(), layer};
 
