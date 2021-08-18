@@ -32,11 +32,12 @@ struct Histo {
     bound_low(bound_low), bound_high(bound_high) {}
 
   // Assumes width is the number of buckets you want.
-  // If tallest_bucket is, say, 0.9, the bars are stretched to go 90% of the way to
-  // the top of the image (1.0 is a sensible default but can be confusing in the
-  // presence of tick marks, say).
-  std::tuple<float, float, ImageA> MakeImage(int width, int height,
-                                             double tallest_bucket = 1.0) const {
+  // If tallest_bucket is, say, 0.9, the bars are stretched to go 90%
+  // of the way to the top of the image (1.0 is a sensible default but
+  // can be confusing in the presence of tick marks, say).
+  std::tuple<float, float, ImageA> MakeImage(
+      int width, int height,
+      double tallest_bucket = 1.0) const {
     ImageA img(width, height);
 
     float lo = std::numeric_limits<float>::infinity();
@@ -261,15 +262,90 @@ static inline uint32 GetWeightColor(float f, bool diagnostic_mode) {
   }
 }
 
-ImageRGBA ModelInfo::LayerWeights(const Network &net, int layer_idx,
-                                  bool diagnostic_mode) {
-  CHECK(layer_idx >= 0 && layer_idx < net.layers.size());
-  const Network::Layer &layer = net.layers[layer_idx];
-  CHECK(layer.type != LAYER_CONVOLUTION_ARRAY) << "Looks like this "
-    "code assumes a certain number of weights, so it won't work "
-    "for convolution array layers -- FIXME!";
-  const int prev_nodes = net.num_nodes[layer_idx];
-  const int num_nodes = net.num_nodes[layer_idx + 1];
+// Find a good rectangle (width x height) to fit 'count' elements.
+std::pair<int, int> MakeRectangle(int count) {
+  CHECK(count >= 1);
+  int w = ceilf(sqrtf(count));
+  CHECK(w >= 1);
+  int h = count / w;
+  while (w * h < count) w++;
+  return std::make_pair(w, h);
+
+#if 0
+  std::vector<int> factors = Util::Factorize(num_nodes);
+  CHECK(!factors.empty()) << num_nodes << " has no factors??";
+
+  // XXX Does this greedy approach produce good results?
+  int ww = factors.back(), hh = 1;
+  factors.pop_back();
+
+  for (int f : factors) {
+    if (ww < hh)
+      ww *= f;
+    else
+      hh *= f;
+  }
+#endif
+}
+
+static ImageRGBA LayerWeightsConvolution(
+    const Network::Layer &layer,
+    int layer_idx,
+    int prev_nodes,
+    int num_nodes,
+    bool diagnostic_mode) {
+  CHECK(layer.type == LAYER_CONVOLUTION_ARRAY);
+
+  // For convolution layers, we show each feature in its 2D
+  // orientation.
+  const auto [features_across, features_down] =
+    MakeRectangle(layer.num_features);
+  int pat_width = layer.pattern_width;
+  int pat_height = layer.pattern_height;
+
+  const int ipn = pat_width * pat_height;
+  CHECK(layer.indices_per_node == ipn);
+
+  const int padding = 2;
+  int width = (pat_width + padding) * features_across;
+  int height = (pat_height + padding) * features_down;
+
+  ImageRGBA img(width, height);
+  img.Clear32(0x000000FF);
+
+  for (int fy = 0; fy < features_down; fy++) {
+    for (int fx = 0; fx < features_across; fx++) {
+      const int feature_num = fy * features_across + fx;
+      const int weights_start = feature_num * ipn;
+
+      int xpos = (pat_width + padding) * fx;
+      int ypos = (pat_height + padding) * fy;
+
+      for (int py = 0; py < pat_height; py++) {
+        for (int px = 0; px < pat_width; px++) {
+          const int pidx = py * pat_width + px;
+
+          const float w =
+            layer.weights[weights_start + pidx];
+
+          img.SetPixel32(xpos + px, ypos + py,
+                         GetWeightColor(w, diagnostic_mode));
+        }
+      }
+
+    }
+  }
+
+  return img;
+}
+
+static ImageRGBA LayerWeightsSparseDense(
+    const Network::Layer &layer,
+    int layer_idx,
+    int prev_nodes,
+    int num_nodes,
+    bool diagnostic_mode) {
+
   const int ipn = layer.indices_per_node;
 
   //     <--- this layer's nodes --->
@@ -327,4 +403,21 @@ ImageRGBA ModelInfo::LayerWeights(const Network &net, int layer_idx,
                                layer_idx, num_nodes, ipn));
 
   return img;
+}
+
+
+ImageRGBA ModelInfo::LayerWeights(const Network &net, int layer_idx,
+                                  bool diagnostic_mode) {
+  CHECK(layer_idx >= 0 && layer_idx < net.layers.size());
+  const Network::Layer &layer = net.layers[layer_idx];
+  const int prev_nodes = net.num_nodes[layer_idx];
+  const int num_nodes = net.num_nodes[layer_idx + 1];
+
+  if (layer.type == LAYER_CONVOLUTION_ARRAY) {
+    return LayerWeightsConvolution(
+        layer, layer_idx, prev_nodes, num_nodes, diagnostic_mode);
+  } else {
+    return LayerWeightsSparseDense(
+        layer, layer_idx, prev_nodes, num_nodes, diagnostic_mode);
+  }
 }

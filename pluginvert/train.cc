@@ -1675,7 +1675,7 @@ struct TrainingExample {
 struct Training {
 
   // Number of examples per round of training.
-  static constexpr int EXAMPLES_PER_ROUND = 8;
+  static constexpr int EXAMPLES_PER_ROUND = 256;
   static_assert(EXAMPLES_PER_ROUND > 0);
 
   // Write a screenshot of the UI (to show training progress for
@@ -1799,6 +1799,24 @@ struct Training {
     Printf("[%d] ** NET ROUND %d (%d in this process) **\n",
            model_index, net->rounds, rounds_executed);
 
+    // XXXXXX temporary debugging info
+    if (false) {
+      {
+        net_gpu->ReadFromGPU();
+        CHECK(net->layers.size() == 1);
+        const Network::Layer &layer = net->layers[0];
+        printf("Biases now:\n");
+        for (float f : layer.biases)
+          printf("%.6f ", f);
+        printf("\nWeights now:\n");
+        for (float f : layer.weights)
+          printf("%.6f ", f);
+        printf("\n");
+      }
+
+      // CHECK(net->rounds < 3);
+    }
+
     // The learning rate should maybe depend on the number of examples
     // per round, since we integrate over lots of them. We could end
     // up having a total error for a single node of like
@@ -1818,7 +1836,10 @@ struct Training {
       };
     // constexpr float LEARNING_RATE_HIGH = 0.10f;
     // constexpr float LEARNING_RATE_HIGH = 0.0075f;
+
     constexpr float LEARNING_RATE_HIGH = 0.00075f;
+    // constexpr float LEARNING_RATE_HIGH = 0.00000075f;
+
     // constexpr float LEARNING_RATE_LOW = 0.000125f;
     constexpr float LEARNING_RATE_LOW = 0.0000000001f;
     const float round_learning_rate =

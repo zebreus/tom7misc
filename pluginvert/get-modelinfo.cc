@@ -65,7 +65,9 @@ int main(int argc, char **argv) {
     const int num_nodes = net->num_nodes[layer_idx + 1];
     const int ipn = layer.indices_per_node;
     const char *types = layer.type == LAYER_DENSE ? "DENSE" :
-      layer.type == LAYER_SPARSE ? "SPARSE" : "???";
+      layer.type == LAYER_SPARSE ? "SPARSE" :
+      layer.type == LAYER_CONVOLUTION_ARRAY ? "CONV" :
+      "???";
     lines.push_back(
         StringPrintf("Layer %d: %dx%dx%d = %d (%s). ipn %d",
                      layer_idx, width, height, channels, num_nodes,

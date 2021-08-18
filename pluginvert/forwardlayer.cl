@@ -105,7 +105,7 @@ __kernel void ForwardLayerConvolutional(
   // compile-time constant.)
   // PERF quotrem?
   const int feature_number = node_idx % NUM_FEATURES;
-  const int occurrence_number = node_idx % NUM_FEATURES;
+  const int occurrence_number = node_idx / NUM_FEATURES;
 
   // Start with bias; shared by all the nodes in this convolution.
   float potential = bias[feature_number];

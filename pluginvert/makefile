@@ -52,6 +52,14 @@ OBJECTS=$(UTIL_OBJECTS) network.o error-history.o modelinfo.o
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -lpsapi -static
 
+modelinfo.png : get-modelinfo.exe net0.val
+	./get-modelinfo.exe
+
+layerweights-layer0.png : get-layerweights.exe net0.val
+	./get-layerweights.exe net0.val layerweights
+
+layerweights : layerweights-layer0.png
+
 train.exe : $(OBJECTS) $(SDLOBJECTS) $(FCEULIBOBJECTS) clutil.o train.o frame-queue.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"

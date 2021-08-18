@@ -412,6 +412,15 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
   // should be able to learn 8x1x2 identity !
   AddConvolutional(16, 16, 1, 16, 1);
   CHECK(widths.back() * channelses.back() == 256 * 2);
+  CHECK(heights.back() == 240);
+  widths.back() = 256;
+  channelses.back() = 2;
+  renderstyles.back() = RENDERSTYLE_NESUV;
+
+  // And a second one!
+  AddConvolutional(4, 4, 1, 4, 1);
+  CHECK(widths.back() * channelses.back() == 256 * 2);
+  CHECK(heights.back() == 240);
   widths.back() = 256;
   channelses.back() = 2;
   renderstyles.back() = RENDERSTYLE_NESUV;

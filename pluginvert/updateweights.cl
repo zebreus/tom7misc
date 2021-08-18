@@ -172,6 +172,12 @@ __kernel void UpdateWeightsConvolutional(
                  __global float *restrict layer_biases) {
   const int feature_num = get_global_id(0);
 
+  // Scale down the learning rate to be an average over all the
+  // occurrences; otherwise we may apply updates that are way
+  // too large.
+  const float effective_learning_rate =
+    learning_rate * (1.0f / NUM_OCCURRENCES);
+
   float bias_update = 0.0f;
 
   // PERF a way to allocate as zeroes?
@@ -185,7 +191,8 @@ __kernel void UpdateWeightsConvolutional(
     const int node_idx = occ * NUM_FEATURES + feature_num;
     const float delta_j = layer_error[node_idx];
     // PERF factor out and multiply at the end?
-    const float learning_rate_times_delta_j = learning_rate * delta_j;
+    const float learning_rate_times_delta_j =
+      effective_learning_rate * delta_j;
 
     bias_update += learning_rate_times_delta_j;
 
