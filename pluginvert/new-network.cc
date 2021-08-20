@@ -381,11 +381,12 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
   renderstyles.push_back(RENDERSTYLE_NESUV);
   num_nodes.push_back(NES_WIDTH * NES_HEIGHT * 2);
 
-  #if 0
-  // Expand to 128 8x8 pixel (=16x8 uv coordinates) features.
-  AddConvolutional(128, 16, 8, 1, 1);
-  // Contract each 256-feature cell to 8.
-  AddConvolutional(8, 128, 1, 128, 1);
+  const int EXPAND_FEATURES = 64;
+  // Expand to 64 8x8 pixel (=16x8 uv coordinates) features.
+  // Stride of one pixel = uv 2 coordinates.
+  AddConvolutional(EXPAND_FEATURES, 16, 8, 2, 1);
+  // Contract each expanded cell to 8.
+  AddConvolutional(8, EXPAND_FEATURES, 1, EXPAND_FEATURES, 1);
   AddConvolutional(16, 8, 8, 16, 8);
   // Only 7k nodes.. maybe a bit extreme. Consider
   // expanding the number of channels here!
@@ -407,8 +408,9 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
   heights.back() = 240;
   channelses.back() = 2;
   renderstyles.back() = RENDERSTYLE_NESUV;
-  #endif
 
+
+  #if 0
   // should be able to learn 8x1x2 identity !
   AddConvolutional(16, 16, 1, 16, 1);
   CHECK(widths.back() * channelses.back() == 256 * 2);
@@ -417,13 +419,14 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
   channelses.back() = 2;
   renderstyles.back() = RENDERSTYLE_NESUV;
 
-  // And a second one!
+  // And a second one! Here just 2x1x2, so minimal!
   AddConvolutional(4, 4, 1, 4, 1);
   CHECK(widths.back() * channelses.back() == 256 * 2);
   CHECK(heights.back() == 240);
   widths.back() = 256;
   channelses.back() = 2;
   renderstyles.back() = RENDERSTYLE_NESUV;
+#endif
 
   std::unique_ptr<Network> net =
     std::make_unique<Network>(num_nodes, layers);

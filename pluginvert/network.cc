@@ -102,6 +102,7 @@ Network::Network(vector<int> num_nodes_in,
   ComputeInvertedIndices();
   printf("Structural check\n");
   StructuralCheck();
+  printf("OK\n");
 }
 
 void Network::ReallocateInvertedIndices() {

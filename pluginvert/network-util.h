@@ -24,6 +24,7 @@
 struct EZLayer {
   int width = 0;
   int height = 0;
+  int channels = 0;
   int ipn = 0;
 
   // The indices are hard to work with in their flat representation;
@@ -40,7 +41,7 @@ struct EZLayer {
 
   std::vector<Node> nodes;
 
-  EZLayer(const Network &net, int layer_idx) {
+  EZLayer(const Network &net, int layer_idx, bool allow_channels = false) {
     CHECK(layer_idx >= 0);
     CHECK(layer_idx < net.num_layers);
     const int num_nodes = net.num_nodes[layer_idx + 1];
@@ -52,8 +53,11 @@ struct EZLayer {
 
     width = net.width[layer_idx + 1];
     height = net.height[layer_idx + 1];
-    CHECK(net.channels[layer_idx + 1]) << "Flatten channels first";
-    CHECK(width * height == num_nodes);
+    channels = net.channels[layer_idx + 1];
+    CHECK(channels == 1 || allow_channels) << "Flatten channels first, "
+      "or enable this flag to acknowledge that you support 'em";
+
+    CHECK(width * height * channels == num_nodes);
 
     CHECK(layer->indices.size() == layer->weights.size());
     CHECK(layer->indices.size() == ipn * num_nodes);
@@ -77,6 +81,7 @@ struct EZLayer {
   // the width/height. Tries to make a rectangular with a non-degenerate
   // aspect ratio.
   void MakeWidthHeight() {
+    CHECK(channels == 1);
     int num_nodes = nodes.size();
     std::vector<int> factors = Util::Factorize(num_nodes);
     CHECK(!factors.empty()) << num_nodes << " has no factors??";
@@ -102,11 +107,12 @@ struct EZLayer {
   // MakeWidthHeight). Does not update the inverted indices!
   void Repack(Network *net, int layer_idx) {
     const int num_nodes = nodes.size();
-    CHECK(num_nodes == width * height);
+    CHECK(num_nodes == width * height * channels);
 
     Network::Layer *layer = &net->layers[layer_idx];
     net->width[layer_idx + 1] = width;
     net->height[layer_idx + 1] = height;
+    net->channels[layer_idx + 1] = channels;
     net->num_nodes[layer_idx + 1] = num_nodes;
     layer->indices_per_node = ipn;
 

@@ -963,16 +963,17 @@ struct UpdateWeightsCL {
                                    (void *)&layer_biases));
 
       // Arguments are the same for the different layer types,
-      // but for convolution array layers the main dimension
-      // is over features, not nodes.
+      // but for convolution array it's actually a 2D kernel
+      // over features and weights.
 
       if (layer_type == LAYER_CONVOLUTION_ARRAY) {
         const int num_features = net_gpu->net->layers[layer].num_features;
-        size_t global_work_offset[] = { 0 };
-        size_t global_work_size[] = { (size_t)num_features };
+        size_t global_work_offset[] = { 0, 0 };
+        size_t global_work_size[] = { (size_t)num_features,
+                                      (size_t)ipn };
         CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
                                              // work dimensions
-                                             1,
+                                             2,
                                              // global work offset
                                              global_work_offset,
                                              // global work size
@@ -1035,7 +1036,7 @@ struct UpdateWeightsCL {
 static constexpr int NUM_VIDEO_STIMULATIONS = 6;
 // rounds are pretty slow.
 // maybe this should be timer based?
-static constexpr int EXPORT_EVERY = 3;
+static constexpr int EXPORT_EVERY = 10;
 
 static constexpr int EVAL_SCREENSHOT_EVERY = 1000;
 
@@ -1360,12 +1361,21 @@ struct UI {
   // maybe make the rendering code more portable (e.g. could have
   // web-based UI rather than SDL)?
 
+  enum class Mode {
+    // Weight/bias histograms, suitable for large networks
+    HISTO,
+    // Layer weights as images, only for small networks
+    LAYERWEIGHTS,
+    // Very old 'columns of numbers' display of stimulation values
+    STIM_NUMBERS,
+  };
+
   // Supposedly SDL prefers this to be called from the main thread.
   void Loop() {
     [[maybe_unused]]
     int mousex = 0, mousey = 0;
     int vlayer = 0, voffset = 0;
-    bool histo_mode = true;
+    Mode mode = Mode::HISTO;
 
     while (!ReadWithLock(&train_should_die_m, &train_should_die)) {
       {
@@ -1461,17 +1471,73 @@ struct UI {
 
             }
 
-            xstart += max_width + 4;
-
             // TODO: Could have layerweights view mode too?
-            if (histo_mode) {
-              if (current_network != nullptr) {
-                const ImageRGBA histo =
-                  ModelInfo::Histogram(*current_network, 1920, 400);
-                BlitImage(histo, 0, SCREENH - 400);
+            switch (mode) {
+            case Mode::HISTO:
+              if (s == 0) {
+                if (current_network != nullptr) {
+                  const ImageRGBA histo =
+                    ModelInfo::Histogram(*current_network, 1920, 400);
+                  BlitImage(histo, 0, SCREENH - 400);
+                }
               }
+              break;
 
-            } else {
+            case Mode::LAYERWEIGHTS:
+              if (s == 0) {
+                if (current_network != nullptr) {
+                  // Weights are the same for all layers
+                  int col2 = 0;
+                  if (s == 0) {
+                    int yz = ystart + 4;
+                    for (int layer = 0;
+                         layer < current_network->layers.size();
+                         layer++) {
+                      ImageRGBA lw = ModelInfo::LayerWeights(*current_network,
+                                                             layer,
+                                                             false);
+                      int scale = 1;
+                      // HACK! we can use more than one column, but we also
+                      // want to make sure we don't exceed the vertical
+                      // bounds.
+                      while (lw.Width() * (scale + 1) < (MIN_WIDTH * 4))
+                        scale++;
+                      if (scale > 1)
+                        lw = lw.ScaleBy(scale);
+                      BlitImage(lw, xstart, yz);
+                      col2 = std::max(col2, xstart + lw.Width());
+                      yz += lw.Height() + 8;
+                    }
+                  }
+                  col2 += 4;
+
+                  if (vlayer >= 0 && vlayer < current_network->layers.size()) {
+                    int yz = ystart + 4;
+                    auto Write = [col2, &yz](const string &s) {
+                        font->draw(col2, yz, s);
+                        yz += FONTHEIGHT;
+                      };
+
+                    const Network::Layer &layer =
+                      current_network->layers[vlayer];
+                    Write(StringPrintf("[Layer ^4%d^<] ^2Biases^<:", vlayer));
+                    for (float f : layer.biases) {
+                      if (yz > SCREENH) break;
+                      Write(StringPrintf("%.6f ", f));
+                    }
+                    Write("^3Weights^<:");
+                    for (float f : layer.weights) {
+                      if (yz > SCREENH) break;
+                      Write(StringPrintf("%.6f ", f));
+                    }
+                  }
+
+
+                }
+              }
+              break;
+
+            case Mode::STIM_NUMBERS:
               if (vlayer >= 0) {
                 double tot = 0.0;
                 int yz = ystart + 4;
@@ -1525,7 +1591,10 @@ struct UI {
                            StringPrintf("min/max: %.6f %.6f", minv, maxv));
                 yz += FONTHEIGHT;
               }
+              break;
             }
+
+            xstart += max_width + 4;
           }
 
           SDL_Flip(screen);
@@ -1615,7 +1684,12 @@ struct UI {
           }
 
           case SDLK_h: {
-            histo_mode = !histo_mode;
+            switch (mode) {
+            default: [[fallthrough]];
+            case Mode::HISTO: mode = Mode::LAYERWEIGHTS; break;
+            case Mode::LAYERWEIGHTS: mode = Mode::STIM_NUMBERS; break;
+            case Mode::STIM_NUMBERS: mode = Mode::HISTO; break;
+            }
             dirty = true;
             break;
           }
@@ -1675,7 +1749,7 @@ struct TrainingExample {
 struct Training {
 
   // Number of examples per round of training.
-  static constexpr int EXAMPLES_PER_ROUND = 256;
+  static constexpr int EXAMPLES_PER_ROUND = 64;
   static_assert(EXAMPLES_PER_ROUND > 0);
 
   // Write a screenshot of the UI (to show training progress for
