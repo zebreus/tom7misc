@@ -26,6 +26,7 @@ const char *TransferFunctionName(TransferFunction tf) {
   case SIGMOID: return "SIGMOID";
   case RELU: return "RELU";
   case LEAKY_RELU: return "LEAKY_RELU";
+  case IDENTITY: return "IDENTITY";
   default: return "??INVALID??";
   }
 }
@@ -65,11 +66,21 @@ const char *const Network::LEAKY_RELU_FN =
   // See note above.
   "#define DERIVATIVE(fx) ((fx < 0.0f) ? 0.01f : 1.0f)\n";
 
+// A bad general purpose transfer function (it needs to be non-linear
+// or else we don't get any additional expressive power from hidden
+// layers, but even more, it's just the identity!), but can be useful
+// for special purposes (e.g. a layer that applies a permutation as
+// some convenience.)
+const char *const Network::IDENTITY_FN =
+  "#define FORWARD(potential) (potential)\n"
+  "#define DERIVATIVE(fx) (1.0f)\n";
+
 string Network::TransferFunctionDefines(TransferFunction tf) {
   switch (tf) {
   case SIGMOID: return Network::SIGMOID_FN;
   case RELU: return Network::RELU_FN;
   case LEAKY_RELU: return Network::LEAKY_RELU_FN;
+  case IDENTITY: return Network::IDENTITY_FN;
   default:
     CHECK(false) << "No define for transfer function "
                  << tf << ": " << TransferFunctionName(tf);
@@ -194,6 +205,8 @@ void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
         return (potential < 0.0f) ? 0.0f : potential;
       case LEAKY_RELU:
         return (potential < 0.0f) ? potential * 0.01f : potential;
+      case IDENTITY:
+        return potential;
       default:
         CHECK(false) << "Unimplemented transfer function " <<
           TransferFunctionName(transfer_function);
@@ -271,6 +284,8 @@ void Network::RunForwardVerbose(Stimulation *stim) const {
           return (potential < 0.0f) ? 0.0f : potential;
         case LEAKY_RELU:
           return (potential < 0.0f) ? potential * 0.01f : potential;
+        case IDENTITY:
+          return potential;
         default:
           CHECK(false) << "Unimplemented transfer function " <<
             TransferFunctionName(transfer_function);

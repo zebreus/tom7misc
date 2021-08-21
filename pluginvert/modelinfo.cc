@@ -318,21 +318,22 @@ static ImageRGBA LayerWeightsConvolution(
       const int feature_num = fy * features_across + fx;
       const int weights_start = feature_num * ipn;
 
-      int xpos = (pat_width + padding) * fx;
-      int ypos = (pat_height + padding) * fy;
+      if (feature_num < layer.num_features) {
+        int xpos = (pat_width + padding) * fx;
+        int ypos = (pat_height + padding) * fy;
 
-      for (int py = 0; py < pat_height; py++) {
-        for (int px = 0; px < pat_width; px++) {
-          const int pidx = py * pat_width + px;
+        for (int py = 0; py < pat_height; py++) {
+          for (int px = 0; px < pat_width; px++) {
+            const int pidx = py * pat_width + px;
 
-          const float w =
-            layer.weights[weights_start + pidx];
+            const float w =
+              layer.weights[weights_start + pidx];
 
-          img.SetPixel32(xpos + px, ypos + py,
-                         GetWeightColor(w, diagnostic_mode));
+            img.SetPixel32(xpos + px, ypos + py,
+                           GetWeightColor(w, diagnostic_mode));
+          }
         }
       }
-
     }
   }
 
@@ -345,6 +346,15 @@ static ImageRGBA LayerWeightsSparseDense(
     int prev_nodes,
     int num_nodes,
     bool diagnostic_mode) {
+
+  if ((int64)num_nodes * (int64)prev_nodes > (int64)1000000) {
+    ImageRGBA error(440, 24);
+    error.Clear32(0x000000FF);
+    error.BlendText2x32(1, 1, 0xA00000FF,
+                        StringPrintf("Too big! %d x %d",
+                                     num_nodes, prev_nodes));
+    return error;
+  }
 
   const int ipn = layer.indices_per_node;
 

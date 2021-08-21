@@ -64,14 +64,22 @@ int main(int argc, char **argv) {
     const int channels = net->channels[layer_idx + 1];
     const int num_nodes = net->num_nodes[layer_idx + 1];
     const int ipn = layer.indices_per_node;
-    const char *types = layer.type == LAYER_DENSE ? "DENSE" :
-      layer.type == LAYER_SPARSE ? "SPARSE" :
-      layer.type == LAYER_CONVOLUTION_ARRAY ? "CONV" :
+
+    string types =
+      layer.type == LAYER_DENSE ? (string)"DENSE" :
+      layer.type == LAYER_SPARSE ? (string)"SPARSE" :
+      layer.type == LAYER_CONVOLUTION_ARRAY ?
+      StringPrintf("CONVx%d from %dx%d pat %dx%d +%dx%d",
+                   layer.num_features,
+                   layer.src_width, layer.src_height,
+                   layer.pattern_width, layer.pattern_height,
+                   layer.occurrence_x_stride, layer.occurrence_y_stride) :
       "???";
+
     lines.push_back(
         StringPrintf("Layer %d: %dx%dx%d = %d (%s). ipn %d",
                      layer_idx, width, height, channels, num_nodes,
-                     types, ipn));
+                     types.c_str(), ipn));
   }
 
   const int TOP = 20 * lines.size();

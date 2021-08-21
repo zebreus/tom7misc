@@ -251,6 +251,10 @@ static void RandomizeNetwork(ArcFour *rc, Network *net) {
   ParallelComp(
       net->num_layers,
       [rcs, &RandomizeFloatsUniform, &net](int layer) {
+        // XXX this should be indicated somehow else.
+        if (net->layers[layer].transfer_function == IDENTITY)
+          return;
+
         // XXX such hacks. How to best initialize?
 
         for (float &f : net->layers[layer].biases) f = 0.0f;
@@ -371,6 +375,66 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
              widths.back(), heights.back(), channelses.back());
     };
 
+  [[maybe_unused]]
+    auto AddNES8x8Permutation = [&]() {
+        const int prev_width = widths.back();
+        const int prev_height = heights.back();
+        const int prev_channels = channelses.back();
+
+        // Each an 8x8 block of UV coords.
+        CHECK(prev_channels == 64 * 2);
+        CHECK(prev_width == 32);
+        CHECK(prev_height == 30);
+
+        const int this_num_nodes = 256 * 240 * 2;
+
+        Network::Layer layer;
+        // TODO: LAYER_PERMUTATION or LAYER_FIXED or whatever.
+        // A layer with IPN=1 is cheap to include, but can
+        // be nearly free if implemented directly, and we
+        // might prefer to leave the weight and bias fixed?
+        layer.type = LAYER_SPARSE;
+        layer.transfer_function = IDENTITY;
+        layer.indices_per_node = 1;
+
+        // 0 bias, 1x weight.
+        layer.biases.resize(this_num_nodes, 0.0f);
+        layer.weights.resize(this_num_nodes * 1, 1.0f);
+
+        layer.indices.reserve(this_num_nodes);
+
+        // Generate as pixels, 2 channels at a time.
+        const int UVCH = 2;
+        for (int y = 0; y < 240; y++) {
+          for (int x = 0; x < 256; x++) {
+            // Which 8x8 block am I in?
+            int bx = x / 8;
+            int by = y / 8;
+            int bidx = by * 32 + bx;
+            // And what's my flat index in that block?
+            int ox = x % 8;
+            int oy = y % 8;
+            int oidx = oy * 8 + ox;
+
+            // ... giving my flat pixel index
+            int pidx = bidx * (8 * 8) + oidx;
+            // and expanded to each channel
+            for (int c = 0; c < UVCH; c++) {
+              layer.indices.push_back(pidx * UVCH + c);
+            }
+          }
+        }
+
+        layers.push_back(std::move(layer));
+
+        num_nodes.push_back(this_num_nodes);
+        widths.push_back(256);
+        heights.push_back(240);
+        channelses.push_back(2);
+        renderstyles.push_back(RENDERSTYLE_NESUV);
+        printf("Now %d x %d x %d\n",
+               widths.back(), heights.back(), channelses.back());
+      };
 
 
   // input layer
@@ -381,52 +445,45 @@ static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
   renderstyles.push_back(RENDERSTYLE_NESUV);
   num_nodes.push_back(NES_WIDTH * NES_HEIGHT * 2);
 
-  const int EXPAND_FEATURES = 64;
-  // Expand to 64 8x8 pixel (=16x8 uv coordinates) features.
-  // Stride of one pixel = uv 2 coordinates.
-  AddConvolutional(EXPAND_FEATURES, 16, 8, 2, 1);
-  // Contract each expanded cell to 8.
-  AddConvolutional(8, EXPAND_FEATURES, 1, EXPAND_FEATURES, 1);
-  AddConvolutional(16, 8, 8, 16, 8);
+  const int EXPAND_FEATURES = 128;
+  // Without overlap, expand 8x8(x2) blocks into some features.
+  const int UVCH = 2;
+  AddConvolutional(EXPAND_FEATURES, 8 * UVCH, 8, 8 * UVCH, 8);
+
+  // Now work on strips of EXPAND_FEATURES size, since the
+  // features are linearized.
+  AddConvolutional(EXPAND_FEATURES,
+                   EXPAND_FEATURES, 1,
+                   EXPAND_FEATURES, 1);
+
+  // Contract the cells to 1/4 size.
+  AddConvolutional(EXPAND_FEATURES / 4,
+                   EXPAND_FEATURES, 1,
+                   EXPAND_FEATURES, 1);
+
   // Only 7k nodes.. maybe a bit extreme. Consider
   // expanding the number of channels here!
   const int BOTTLENECK_CHANNELS = 8;
-  AddSparse(32, 30, BOTTLENECK_CHANNELS, 144, 1);
+  AddSparse(32, 30, BOTTLENECK_CHANNELS, 144, 0);
+
   // Now expand to render with another convolution.
   // This one expands each "pixel" in the input into an 8x8x2 block.
   // (But the 8 * 8 * 2 is arranged as a 64 * 2 row.)
   AddConvolutional(8 * 8 * 2,
                    BOTTLENECK_CHANNELS, 1,
                    BOTTLENECK_CHANNELS, 1);
-  CHECK(widths.back() * heights.back() * channelses.back() ==
-        256 * 240 * 2);
-  // This is pretty bogus, although the network internally might
-  // be able to live with it? I think maybe the easiest thing would
-  // be to have a sparse layer with ipn=1 that just reorders the
-  // pixels.
-  widths.back() = 256;
-  heights.back() = 240;
-  channelses.back() = 2;
-  renderstyles.back() = RENDERSTYLE_NESUV;
 
+  // Arbitrary in-place transformation of the 64 cells.
+  AddConvolutional(8 * 8 * 2,
+                   8 * 8 * 2, 1,
+                   8 * 8 * 2, 1);
 
-  #if 0
-  // should be able to learn 8x1x2 identity !
-  AddConvolutional(16, 16, 1, 16, 1);
-  CHECK(widths.back() * channelses.back() == 256 * 2);
+  // And then permute it into the screen we actually want.
+  AddNES8x8Permutation();
+
+  CHECK(widths.back() == 256);
   CHECK(heights.back() == 240);
-  widths.back() = 256;
-  channelses.back() = 2;
-  renderstyles.back() = RENDERSTYLE_NESUV;
-
-  // And a second one! Here just 2x1x2, so minimal!
-  AddConvolutional(4, 4, 1, 4, 1);
-  CHECK(widths.back() * channelses.back() == 256 * 2);
-  CHECK(heights.back() == 240);
-  widths.back() = 256;
-  channelses.back() = 2;
-  renderstyles.back() = RENDERSTYLE_NESUV;
-#endif
+  CHECK(channelses.back() == 2);
 
   std::unique_ptr<Network> net =
     std::make_unique<Network>(num_nodes, layers);

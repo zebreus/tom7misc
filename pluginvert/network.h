@@ -17,6 +17,7 @@ enum TransferFunction {
   SIGMOID = 0,
   RELU = 1,
   LEAKY_RELU = 2,
+  IDENTITY = 3,
 
   NUM_TRANSFER_FUNCTIONS,
 };
@@ -93,6 +94,7 @@ struct Network {
   static const char *const SIGMOID_FN;
   static const char *const RELU_FN;
   static const char *const LEAKY_RELU_FN;
+  static const char *const IDENTITY_FN;
 
   // Return one of the above constants (or abort for an unknown
   // transfer function).

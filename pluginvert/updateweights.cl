@@ -162,6 +162,7 @@ __kernel void UpdateWeightsDense(
 
 // This version computes both weights and biases, parallelized only
 // over the feature id.
+// XXXX This was much slower! Delete!
 __kernel void UpdateWeightsConvolutional1D(
                  float learning_rate,
                  __global const float *restrict layer_error,
@@ -242,8 +243,11 @@ __kernel void UpdateWeightsConvolutional1D(
 }
 
 
+// PERF: rather than trying to tack on the bias, do it
+// in its own kernel.
 __kernel void UpdateWeightsConvolutional(
-                 float learning_rate,
+                 // Should be pre-scaled by caller.
+                 float effective_learning_rate,
                  __global const float *restrict layer_error,
                  // num_nodes * INDICES_PER_NODE
                  __global const int *restrict layer_indices,
@@ -260,8 +264,8 @@ __kernel void UpdateWeightsConvolutional(
   // Scale down the learning rate to be more like an average over all
   // the occurrences; otherwise we may apply updates that are way too
   // large.
-  const float effective_learning_rate =
-    learning_rate * (1.0f / sqrt((float)NUM_OCCURRENCES));
+  // const float effective_learning_rate =
+  // learning_rate * (1.0f / sqrt((float)NUM_OCCURRENCES));
 
   // Compute the bias no matter what, but only write it for
   // pidx 0.
@@ -285,8 +289,8 @@ __kernel void UpdateWeightsConvolutional(
     // Offset of the node, which we use to get its output.
     const int src_idx = layer_indices[occ * INDICES_PER_NODE + pidx];
     const float x_ji = layer_values[src_idx];
-    // PERF fma
-    weight_update += delta_j * x_ji;
+    // weight_update += delta_j * x_ji;
+    weight_update = fma(delta_j, x_ji, weight_update);
   }
 
   weight_update *= effective_learning_rate;

@@ -29,15 +29,14 @@ using int64 = int64_t;
 // TODO: It would work fine to add a layer at the front, so perhaps
 // this index should be based on the num_nodes array, not the layer
 // array?
-static constexpr int LAYER_TO_COPY = 3;
+static constexpr int LAYER_TO_COPY = 4;
 
 // Indices per node for the newly added layer. One of them will
 // be used to copy the corresponding existing node. Others can
 // be claimed by custom code below; the rest will be random.
 static constexpr int NEW_IPN = 256;
 
-
-// Create a new network with a copy of the indicated layer. The new
+// Create a new network with a copy of the indicated layer.
 // layer is just the sparse identity (ipn = 1).
 static Network *DeepenNetwork(ArcFour *rc,
                               const Network &old_net, int layer_idx) {
@@ -74,21 +73,79 @@ static Network *DeepenNetwork(ArcFour *rc,
   MakeCopy(channels);
   MakeCopy(renderstyle);
 
-  // Create a new layer with defaults.
   std::vector<Network::Layer> layers = old_net.layers;
+  const Network::Layer &prev_layer = layers[layer_idx];
   layers.insert(layers.begin() + layer_idx + 1, Network::Layer());
   Network::Layer *layer = &layers[layer_idx + 1];
   CHECK(layer->indices.empty()) << "expecting default";
 
-  layer->type = LAYER_SPARSE;
-  layer->transfer_function = LEAKY_RELU;
-  layer->indices_per_node = 1;
+  if (prev_layer.type == LAYER_CONVOLUTION_ARRAY) {
 
-  // Initialize to the identity.
-  for (int i = 0; i < prev_num_nodes; i++) {
-    layer->indices.push_back(i);
-    layer->weights.push_back(1.0f);
-    layer->biases.push_back(0.0f);
+    // XXX it makes sense to add a sparse identity matrix after
+    // a convolution, so perhaps that could be an option as well.
+
+    // Create a new layer with the same output as the previous.
+
+    const int prev_features = prev_layer.num_features;
+
+    CHECK(prev_num_nodes % prev_features == 0);
+
+    layer->type = LAYER_CONVOLUTION_ARRAY;
+    layer->transfer_function = LEAKY_RELU;
+    layer->indices_per_node = prev_features;
+    layer->num_features = prev_features;
+    // Many options here, but this is the simplest.
+    layer->src_width = prev_num_nodes;
+    layer->src_height = 1;
+    layer->pattern_width = prev_features;
+    layer->pattern_height = 1;
+    layer->occurrence_x_stride = prev_features;
+    layer->occurrence_y_stride = 1;
+    layer->num_occurrences_across = prev_num_nodes / prev_features;
+    layer->num_occurrences_down = 1;
+
+    auto [indices, this_num_nodes, occ_across, occ_down] =
+      Network::MakeConvolutionArrayIndices(
+          prev_num_nodes,
+          layer->num_features,
+          layer->pattern_width,
+          layer->pattern_height,
+          layer->src_width,
+          layer->src_height,
+          layer->occurrence_x_stride,
+          layer->occurrence_y_stride);
+    layer->indices = std::move(indices);
+    CHECK(this_num_nodes == prev_num_nodes);
+    CHECK(occ_across == layer->num_occurrences_across);
+    CHECK(occ_down == layer->num_occurrences_down);
+
+    // Initialize to the identity.
+    layer->weights.clear();
+    layer->biases.clear();
+    for (int f = 0; f < layer->num_features; f++) {
+      for (int i = 0; i < layer->indices_per_node; i++) {
+        layer->weights.push_back(i == f ? 1.0f : 0.0f);
+      }
+      layer->biases.push_back(0.0f);
+    }
+    CHECK(layer->weights.size() ==
+          layer->num_features * layer->indices_per_node);
+    CHECK(layer->biases.size() == layer->num_features);
+
+
+  } else {
+
+    // Sparse identity.
+    layer->type = LAYER_SPARSE;
+    layer->transfer_function = LEAKY_RELU;
+    layer->indices_per_node = 1;
+
+    // Initialize to the identity.
+    for (int i = 0; i < prev_num_nodes; i++) {
+      layer->indices.push_back(i);
+      layer->weights.push_back(1.0f);
+      layer->biases.push_back(0.0f);
+    }
   }
 
   // Create new network; this computes the inverted indices and
@@ -111,6 +168,11 @@ static Network *DeepenNetwork(ArcFour *rc,
 
 // Just modifies the indices on the given layer, so this is pretty easy.
 static void DensifyLayer(ArcFour *rc, Network *net, int layer_idx) {
+  // XXX This is handled above when creating the layer.
+  // Clean this up, though :/
+  if (net->layers[layer_idx + 1].type == LAYER_CONVOLUTION_ARRAY)
+    return;
+
   EZLayer ez(*net, layer_idx, /* allow_channels = */ true);
 
   // This code is written expecting the layer to be the same dimensions,

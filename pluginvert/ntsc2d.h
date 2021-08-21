@@ -81,7 +81,7 @@ struct NTSC2D {
     return std::make_tuple((u + 0.5f) * inv_width, (v + 0.5f) * inv_height);
   }
 
-  std::tuple<uint8_t, uint8_t, uint8_t> UVColorSmooth(float u, float v) {
+  std::tuple<uint8_t, uint8_t, uint8_t> UVColorSmooth(float u, float v) const {
     // SampleBilinear treats the pixel as being located at its
     // top-left corner. We shift the UV coordinates from the center of
     // the pixel to the top left to compensate.
@@ -95,7 +95,7 @@ struct NTSC2D {
     return std::make_tuple(Round8(r), Round8(g), Round8(b));
   }
 
-  std::tuple<uint8_t, uint8_t, uint8_t> UVColorClosest(float u, float v) {
+  std::tuple<uint8_t, uint8_t, uint8_t> UVColorClosest(float u, float v) const {
     // Truncate to round down.
     int uu = u * (WIDTH - 1.0f);
     int vv = v * (HEIGHT - 1.0f);

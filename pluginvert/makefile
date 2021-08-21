@@ -64,6 +64,10 @@ train.exe : $(OBJECTS) $(SDLOBJECTS) $(FCEULIBOBJECTS) clutil.o train.o frame-qu
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+play.exe : $(OBJECTS) $(SDLOBJECTS) $(FCEULIBOBJECTS) clutil.o play.o
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 vacuum.exe : $(OBJECTS) vacuum.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"

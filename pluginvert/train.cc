@@ -76,7 +76,7 @@
 #define FONTCHARS " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789`-=[]\\;',./~!@#$%^&*()_+{}|:\"<>?" /* removed icons */
 #define FONTSTYLES 7
 
-static constexpr int VERBOSE = 3;
+static constexpr int VERBOSE = 2;
 // Perform somewhat expensive sanity checking for NaNs.
 // (Beware: Also enables some other really expensive diagnostics.)
 // XXX PERF turn off once it's working!
@@ -184,7 +184,6 @@ static std::tuple<uint8, uint8, uint8> inline ErrorFloatColor(float f) {
 static constexpr float ByteFloat(uint8 b) {
   return b * (1.0 / 255.0f);
 }
-
 
 // Fill RGB floats from NES image.
 [[maybe_unused]]
@@ -494,6 +493,7 @@ struct ForwardLayerCL {
                                      (void *)&biases));
         CHECK_SUCCESS(clSetKernelArg(kernel, 4, sizeof (cl_mem),
                                      (void *)&dst_values));
+
 
         size_t global_work_offset[] = { 0 };
         size_t global_work_size[] = { (size_t)(net->num_nodes[layer + 1]) };
@@ -919,6 +919,7 @@ struct UpdateWeightsCL {
 
       // XXX don't save debugging stuff
       layer_kernels.emplace_back(program, kernel, layer_type,
+                                 num_occurrences,
                                  indices_per_node);
     }
   }
@@ -941,16 +942,26 @@ struct UpdateWeightsCL {
       cl_mem layer_error = train->errors[layer];
       cl_mem layer_values = train->stimulations[layer];
 
-      auto [program_, kernel, layer_type, ipn] =
+      auto [program_, kernel, layer_type, num_occurrences, ipn] =
         parent->layer_kernels[layer];
       // Sanity check that this was compiled with the right constants.
       CHECK(ipn == net_gpu->net->layers[layer].indices_per_node);
       CHECK(layer_type == net_gpu->net->layers[layer].type);
 
+      // For convolution layers, scale the learning rate down,
+      // as there will be lots of occurrences. Scaling linearly
+      // is probably the most principled (each occurrence yields an
+      // error and thus an update), but sqrt seems to work better
+      // (the errors often cancel each other out).
+      const float effective_learning_rate =
+        (layer_type == LAYER_CONVOLUTION_ARRAY) ?
+        learning_rate * (1.0f / sqrtf((float)num_occurrences)) :
+        learning_rate;
+
       const int num_nodes = net_gpu->net->num_nodes[layer + 1];
 
       CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_float),
-                                   (void *)&learning_rate));
+                                   (void *)&effective_learning_rate));
       CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
                                    (void *)&layer_error));
       CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
@@ -1017,18 +1028,54 @@ struct UpdateWeightsCL {
 
 
   ~UpdateWeightsCL() {
-    for (auto &[p, k, type_unused, ipn_unused] : layer_kernels) {
+    for (auto &[p, k, type_unused, occ_unused, ipn_unused] : layer_kernels) {
       CHECK_SUCCESS(clReleaseKernel(k));
       CHECK_SUCCESS(clReleaseProgram(p));
     }
   }
 
   CL *cl = nullptr;
-  // Owned. Indexed by layer id. (layer type, indices_per_node)
-  std::vector<std::tuple<cl_program, cl_kernel, LayerType, int>>
+  // Owned. Indexed by layer id.
+  // (layer type, num_occurrences, indices_per_node)
+  std::vector<std::tuple<cl_program, cl_kernel, LayerType, int, int>>
   layer_kernels;
 
   std::shared_mutex m;
+};
+
+
+struct Timing {
+  enum Phase {
+    PHASE_STIMULATION,
+    PHASE_FORWARD,
+    PHASE_ERROR,
+    PHASE_BACKWARD,
+    PHASE_UPDATE,
+
+    NUM_PHASES,
+  };
+
+  static constexpr const char *const PHASE_NAMES[NUM_PHASES] = {
+    "stim",
+    "fwd ",
+    "err ",
+    "back",
+    "upd ",
+  };
+
+  Timing() {
+    msec.fill(0.0);
+  }
+
+  void Record(Phase phase, double ms) {
+    msec[phase] += ms;
+  }
+
+  void FinishRound() { rounds++; }
+
+  // TODO: keep other statistics, draw histogram
+  std::array<double, NUM_PHASES> msec;
+  int64 rounds = 0;
 };
 
 
@@ -1261,6 +1308,13 @@ struct UI {
     WriteMutexLock ml(&video_export_m);
     take_screenshot = true;
     dirty = true;
+  }
+
+  void ExportTiming(const Timing &t) {
+    WriteMutexLock ml(&video_export_m);
+    if (allow_updates) {
+      timing = t;
+    }
   }
 
   void ExportRound(int model_idx, int r) {
@@ -1597,6 +1651,25 @@ struct UI {
             xstart += max_width + 4;
           }
 
+          // draw timing
+          {
+            constexpr int BORDER = 2;
+            constexpr int TIMING_W = 120;
+            constexpr int TIMING_H = Timing::NUM_PHASES * FONTHEIGHT;
+            constexpr int TIMING_Y = FONTHEIGHT + BORDER + BORDER;
+            constexpr int TIMING_X = SCREENW - TIMING_W;
+            sdlutil::FillRectRGB(screen, TIMING_X, TIMING_Y, TIMING_W, TIMING_H,
+                                 0, 0, 0);
+            int ypos = TIMING_Y + BORDER;
+            for (int p = 0; p < Timing::NUM_PHASES; p++) {
+              double avg = timing.msec[p] / (double)timing.rounds;
+              font->draw(TIMING_X + BORDER,
+                         ypos,
+                         StringPrintf("%s ^2%.1f", Timing::PHASE_NAMES[p], avg));
+              ypos += FONTHEIGHT;
+            }
+          }
+
           SDL_Flip(screen);
 
           if (take_screenshot) {
@@ -1733,11 +1806,12 @@ private:
   bool take_screenshot = false;
   double current_learning_rate = 0.0;
   double current_total_error = 0.0;
+
+  Timing timing;
 };
 
 static UI *ui = nullptr;
 static FrameQueue *frame_queue = nullptr;
-
 
 struct TrainingExample {
   vector<float> input;
@@ -1761,6 +1835,7 @@ struct Training {
   // speed can vary a lot based on other parameters!
   static constexpr int VERBOSE_ROUND_EVERY = 500;
 
+  Timing timing;
 
   explicit Training(int model_index) :
     model_index(model_index),
@@ -1862,6 +1937,7 @@ struct Training {
   // Will exit early if global train_should_die becomes true.
   void RunRound() {
 
+    // XXX replace with Timing?
     // XXX members?
     double setup_ms = 0.0, stimulation_init_ms = 0.0, forward_ms = 0.0,
       fc_init_ms = 0.0, bc_init_ms = 0.0, kernel_ms = 0.0, backward_ms = 0.0,
@@ -1941,6 +2017,7 @@ struct Training {
     if (VERBOSE > 2) Printf("Export network:\n");
     ui->ExportRound(model_index, net->rounds);
     ui->ExportLearningRate(model_index, round_learning_rate);
+    ui->ExportTiming(timing);
 
     // XXX do this in video?
     const bool take_screenshot =
@@ -2033,6 +2110,7 @@ struct Training {
           training_gpu[i]->LoadInput(examples[i].input);
         });
     stimulation_init_ms += stimulation_init_timer.MS();
+    timing.Record(Timing::PHASE_STIMULATION, stimulation_init_ms);
 
     if (ShouldDie()) return;
 
@@ -2065,6 +2143,8 @@ struct Training {
       kernel_ms += fc.kernel_ms;
       if (VERBOSE > 2) Printf("\n");
     }
+    timing.Record(Timing::PHASE_FORWARD, forward_ms);
+
 
     if (CHECK_NANS) {
       for (int example_idx = 0; example_idx < training_gpu.size();
@@ -2125,6 +2205,7 @@ struct Training {
           sc.SetOutputError(training_gpu[example_idx]);
         });
     output_error_ms += output_error_timer.MS();
+    timing.Record(Timing::PHASE_ERROR, output_error_ms);
     if (VERBOSE > 2) Printf("\n");
 
     if (ShouldDie()) return;
@@ -2148,6 +2229,7 @@ struct Training {
       if (VERBOSE > 2) Printf("\n");
     }
     backward_ms += backward_timer.MS();
+    timing.Record(Timing::PHASE_BACKWARD, backward_ms);
 
     if (rounds_executed % EXPORT_EVERY == 0) {
       for (int example_idx = 0;
@@ -2201,6 +2283,7 @@ struct Training {
       uc.Finish();
     }
     update_ms += update_timer.MS();
+    timing.Record(Timing::PHASE_UPDATE, update_ms);
     if (VERBOSE > 2) Printf("\n");
 
     if (CHECK_NANS) {
@@ -2210,6 +2293,7 @@ struct Training {
 
     if (ShouldDie()) return;
 
+    timing.FinishRound();
     net->rounds++;
     net->examples += EXAMPLES_PER_ROUND;
 

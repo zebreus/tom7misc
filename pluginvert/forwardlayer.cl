@@ -100,6 +100,7 @@ __kernel void ForwardLayerConvolutional(
                 // size num_nodes[layer + 1].
                 __global float *restrict output_values) {
 
+  // Note: I tried making this a 2D kernel but it was measurably worse.
   const int node_idx = get_global_id(0);
   // (Hopefully avoiding integer division since the denominator is a
   // compile-time constant.)
