@@ -66,7 +66,7 @@ struct Game {
   uint64 image_after_random;
   uint64 cpu_after_inputs;
   uint64 cpu_after_random;
-  
+
   string random_seed = "randoms";
   Game(const string &c, const vector<uint8> &i,
        uint64 al, uint64 ai, uint64 ar,
@@ -244,10 +244,10 @@ struct SerialResult {
 
 // TODO: Add running checksums of ram, cpu.
 static SerialResult RunGameSerially(
-    std::function<void(const string &)> Update_,
+    std::function<void(const string &)> Update,
     const Game &game) {
   // XXX
-  auto Update = [](const string &s) {};
+  // auto Update = [](const string &s) {};
 
   Update(StringPrintf("Running %s...", game.cart.c_str()));
          // printf("Testing %s...\n" , game.cart.c_str());
@@ -325,9 +325,9 @@ static SerialResult RunGameSerially(
   Update("Prep inputs/vectors.");
   // Make inputs.
   vector<uint8> inputs;
-  inputs.reserve(inputs.size() + 10000);
+  // We replay game.inputs and then 10k random ones.
   const size_t num_inputs = game.inputs.size() + 10000;
-
+  inputs.reserve(num_inputs + 10000);
   // save[i] and checksum[i] represent the state right before
   // input[i] is issued. Note we don't have save/checksum for
   // the final state.
@@ -341,10 +341,12 @@ static SerialResult RunGameSerially(
   vector<vector<uint8>> actual_rams;
   actual_rams.reserve(num_inputs);
   // Only populated in FULL mode.
+  // XXX I stopped populating this because it wasn't being used
+  // and it's very expensive
   vector<vector<uint8>> images;
   images.reserve(num_inputs);
   // XXX should internally do cpu state checksums too.
-  
+
   Update("Create emulator.");
   std::unique_ptr<Emulator> emu{Emulator::Create(game.cart)};
 
@@ -400,7 +402,8 @@ static SerialResult RunGameSerially(
     checksums.push_back(csum);
     if (FULL) {
       actual_rams.push_back(emu->GetMemory());
-      images.push_back(emu->GetImage());
+      // XXX skipping this
+      // images.push_back(emu->GetImage());
     }
     StepMaybeTraced(b);
   };
@@ -516,7 +519,7 @@ static SerialResult RunGameSerially(
   sr.image_after_random = iret2;
   sr.cpu_after_inputs = cret1;
   sr.cpu_after_random = cret2;
-  
+
   if (false)
   if (FULL && images.size() > 0) {
     sr.final_image = std::move(images[images.size() - 1]);
@@ -548,17 +551,17 @@ static SerialResult RunGameSerially(
                         what));
   };
 
-  Progress("saves:");
+  Progress("(saves)");
   VVClear(saves);
-  Progress("csaves:");
+  Progress("(csaves)");
   VVClear(compressed_saves);
-  Progress("cxsums:");
+  Progress("(cxsums)");
   checksums.clear();
-  Progress("rams:");
+  Progress("(rams)");
   VVClear(actual_rams);
-  Progress("images:");
+  Progress("(images)");
   VVClear(images);
-  Progress("inputs:");
+  Progress("(inputs)");
   inputs.clear();
 
   Update("Return from RunGameSerially.");
@@ -575,7 +578,7 @@ int main(int argc, char **argv) {
   string romdir = "roms/";
   bool write_collage = true;
 
-  
+
   for (int i = 1; i < argc; i++) {
     string arg = argv[i];
     if (arg == "--full" || arg == "-full") {
@@ -906,7 +909,7 @@ int main(int argc, char **argv) {
       if (!filename.empty()) {
         uint64 after_inputs, after_random,
           image_after_inputs, image_after_random,
-	  cpu_after_inputs, cpu_after_random;
+          cpu_after_inputs, cpu_after_random;
         stringstream(a) >> after_inputs;
         stringstream(b) >> after_random;
         stringstream(c) >> image_after_inputs;
@@ -915,15 +918,15 @@ int main(int argc, char **argv) {
         stringstream(f) >> cpu_after_random;
         Game game{
           romdir + filename,
-            RLE::Decompress({ 101, 0, 4, 2, 3, 3, 2, 1, 50, 0, }),
-            kEveryGameUponLoad,
-            after_inputs,
-            after_random,
-            image_after_inputs,
-            image_after_random,
-	    cpu_after_inputs,
-	    cpu_after_random,
-            };
+          RLE::Decompress({ 101, 0, 4, 2, 3, 3, 2, 1, 50, 0, }),
+          kEveryGameUponLoad,
+          after_inputs,
+          after_random,
+          image_after_inputs,
+          image_after_random,
+          cpu_after_inputs,
+          cpu_after_random,
+        };
         const SerialResult sr = RunGameSerially(Update, game);
         Update("About to grab done lock.");
         {
@@ -936,7 +939,7 @@ int main(int argc, char **argv) {
             StringPrintf("%llu %llu %llu %llu %llu %llu %s",
                          sr.after_inputs, sr.after_random,
                          sr.image_after_inputs, sr.image_after_random,
-			 sr.cpu_after_inputs, sr.cpu_after_random,
+                         sr.cpu_after_inputs, sr.cpu_after_random,
                          filename.c_str());
 
           num_done++;
@@ -949,8 +952,8 @@ int main(int argc, char **argv) {
               sr.after_random != after_random ||
               sr.image_after_inputs != image_after_inputs ||
               sr.image_after_random != image_after_random ||
-	      sr.cpu_after_inputs != cpu_after_inputs ||
-	      sr.cpu_after_random != cpu_after_random) {
+              sr.cpu_after_inputs != cpu_after_inputs ||
+              sr.cpu_after_random != cpu_after_random) {
             fprintf(stderr, "(Note, didn't match last time: %s)\n",
                     filename.c_str());
           }
@@ -960,7 +963,14 @@ int main(int argc, char **argv) {
 
 
     {
-      int max_concurrency = 12;
+      // Warning: This uses several gigs of ram to save intermediate
+      // savestates and images, which creates a lot of memory pressure
+      // (and it seems like a bad case for the allocator; lots of time
+      // spent freeing the vectors at the end, even). You may get a
+      // lot less parallelism than you'd expect. (TODO: Is there some
+      // problem here? For rams and images where the size is predictable,
+      // would we better with a big flat buffer?)
+      int max_concurrency = 8;
       max_concurrency = std::min((int)romlines.size(), max_concurrency);
       std::mutex index_m;
       int next_index = 0;
