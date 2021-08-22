@@ -1,5 +1,5 @@
 
-default: train.exe collate-errors.exe vacuum.exe cull.exe  deepen.exe
+default: train.exe collate-errors.exe vacuum.exe cull.exe deepen.exe play.exe
 
 # widen.exe
 all: train.exe collate-errors.exe vacuum.exe cull.exe get-modelinfo.exe get-layerweights.exe
@@ -23,7 +23,7 @@ SDLOPATH=$(SDLSDK)/build
 # SDLINCLUDES=-ISDL/include
 SDLINCLUDES=-I$(SDLSDK)/include
 
-CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
+CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 -ffast-math
 OPT=-O2
 
 SDLARCH=x64

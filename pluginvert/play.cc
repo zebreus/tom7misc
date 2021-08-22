@@ -170,8 +170,9 @@ struct UI {
   std::unique_ptr<Emulator> emu;
   NTSC2D ntsc2d;
   uint8 player1 = 0;
+  const Network &net;
 
-  UI(const std::string &romfile) {
+  UI(const Network &net, const std::string &romfile) : net(net) {
     emu.reset(Emulator::Create(romfile));
     CHECK(emu.get()) << romfile;
   }
@@ -180,6 +181,9 @@ struct UI {
   void Loop() {
     [[maybe_unused]]
     int mousex = 0, mousey = 0;
+
+    double fwd_ms = 0.0f;
+    int frames = 0;
 
     uint32 last_draw = SDL_GetTicks();
     for (;;) {
@@ -236,9 +240,16 @@ struct UI {
       emu->StepFull(player1, 0);
 
       ImageA imga(emu->IndexedImage(), 256, 240);
-      vector<float> frame;
-      FillFromIndices(ntsc2d, imga, &frame);
 
+      Stimulation stim(net);
+      // vector<float> frame;
+      FillFromIndices(ntsc2d, imga, &stim.values[0]);
+      Timer fwd;
+      net.RunForward(&stim);
+      fwd_ms += fwd.MS();
+      frames++;
+
+      const vector<float> &frame = stim.values.back();
       ImageRGBA imgo = Render(ntsc2d, frame).ScaleBy(2);
       BlitImage(imgo, 0, 0);
 
@@ -250,12 +261,22 @@ struct UI {
       if (delay_ms > 1.0f) SDL_Delay(floorf(delay_ms));
       SDL_Flip(screen);
       last_draw = SDL_GetTicks();
+
+      if (frames % 500 == 0) {
+        printf("%d frames, %.1fms in fwd each\n",
+               frames,
+               fwd_ms / (double)frames);
+      }
     }
   }
 
 };
 
 int SDL_main(int argc, char **argv) {
+  string romfile = "mario.nes";
+  if (argc > 1)
+    romfile = argv[1];
+
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |
                  SDL_INIT_TIMER |
@@ -283,7 +304,10 @@ int SDL_main(int argc, char **argv) {
 
   // global_cl = new CL;
 
-  UI ui("mario.nes");
+  std::unique_ptr<Network> net;
+  net.reset(Network::ReadNetworkBinary("net0.val"));
+
+  UI ui(*net, romfile);
   ui.Loop();
 
   Printf("Done.\n");

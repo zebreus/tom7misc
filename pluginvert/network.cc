@@ -84,6 +84,7 @@ string Network::TransferFunctionDefines(TransferFunction tf) {
   default:
     CHECK(false) << "No define for transfer function "
                  << tf << ": " << TransferFunctionName(tf);
+    return "#error no define\n";
   }
 }
 
@@ -192,82 +193,157 @@ void Network::RunForward(Stimulation *stim) const {
   }
 }
 
-void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
-  // PERF avoid dispatching on every node
-  const TransferFunction transfer_function =
-    layers[src_layer].transfer_function;
-  auto Forward =
-    [transfer_function](float potential) -> float {
-      switch (transfer_function) {
-      case SIGMOID:
-        return 1.0f / (1.0f + expf(-potential));
-      case RELU:
-        return (potential < 0.0f) ? 0.0f : potential;
-      case LEAKY_RELU:
-        return (potential < 0.0f) ? potential * 0.01f : potential;
-      case IDENTITY:
-        return potential;
-      default:
-        CHECK(false) << "Unimplemented transfer function " <<
-          TransferFunctionName(transfer_function);
-        return 0.0f;
-      }
-    };
-
+template<float (*fwd)(float)>
+static void RunForwardLayerWithFn(Stimulation *stim,
+                                  int src_layer,
+                                  const Network::Layer &layer,
+                                  int number_of_nodes /* ,
+                                                         F fwd */) {
   const vector<float> &src_values = stim->values[src_layer];
   vector<float> *dst_values = &stim->values[src_layer + 1];
-  const vector<float> &biases = layers[src_layer].biases;
-  const vector<float> &weights = layers[src_layer].weights;
-  const vector<uint32> &indices = layers[src_layer].indices;
-  const int indices_per_node = layers[src_layer].indices_per_node;
-  const int num_features = layers[src_layer].num_features;
-  const int number_of_nodes = num_nodes[src_layer + 1];
-  const LayerType layer_type = layers[src_layer].type;
+  const vector<float> &biases = layer.biases;
+  const vector<float> &weights = layer.weights;
+  const vector<uint32> &indices = layer.indices;
+  const int indices_per_node = layer.indices_per_node;
+  const LayerType layer_type = layer.type;
 
-  // PERF in parallel
-  for (int node_idx = 0; node_idx < number_of_nodes; node_idx++) {
-    // Output features are interleaved.
-    const int feature_number = node_idx % num_features;
-    // Start with bias.
-    float potential = [&](){
-        if (layer_type == LAYER_CONVOLUTION_ARRAY) {
-          return biases[feature_number];
-        } else {
-          return biases[node_idx];
+  switch (layer_type) {
+  case LAYER_DENSE:
+    // PERF could support dense layers more efficiently
+    [[fallthrough]];
+  case LAYER_SPARSE:
+    UnParallelComp(number_of_nodes,
+                   [&](int node_idx) {
+        // Start with bias.
+        float potential = biases[node_idx];
+        const int my_weights = node_idx * indices_per_node;
+        const int my_indices = node_idx * indices_per_node;
+
+        for (int i = 0; i < indices_per_node; i++) {
+          const float w = weights[my_weights + i];
+          const int srci = indices[my_indices + i];
+          const float v = src_values[srci];
+          potential += w * v;
         }
-      }();
-    const int my_weights = [&]() {
-        if (layer_type == LAYER_CONVOLUTION_ARRAY) {
+
+        float out = fwd(potential);
+        (*dst_values)[node_idx] = out;
+      }, 2);
+
+    break;
+
+  case LAYER_CONVOLUTION_ARRAY: {
+    const int num_features = layer.num_features;
+    const int num_occurrences = layer.num_occurrences_across *
+      layer.num_occurrences_down;
+    // PERF in parallel
+    ParallelComp(num_occurrences,
+                 [&](int occurrence_number) {
+        // Output features are interleaved.
+        for (int feature_number = 0;
+             feature_number < num_features;
+             feature_number++) {
+          const int node_idx =
+            occurrence_number * num_features + feature_number;
+          // Start with bias.
+          float potential = biases[feature_number];
           // weights are feature-major
-          return feature_number * indices_per_node;
-        } else {
-          return node_idx * indices_per_node;
-        }
-      }();
-    const int my_indices = [&]() {
-        if (layer_type == LAYER_CONVOLUTION_ARRAY) {
+          const int my_weights = feature_number * indices_per_node;
           // same array of indices for each feature in the
           // occurrence
-          const int occurrence_number = node_idx / num_features;
-          return occurrence_number * indices_per_node;
-        } else {
-          return node_idx * indices_per_node;
+          const int my_indices = occurrence_number * indices_per_node;
+
+          for (int i = 0; i < indices_per_node; i++) {
+            const float w = weights[my_weights + i];
+            const int srci = indices[my_indices + i];
+            const float v = src_values[srci];
+            potential += w * v;
+          }
+
+          float out = fwd(potential);
+          (*dst_values)[node_idx] = out;
         }
-      }();
-
-    // PERF could support dense layers more efficiently
-    // PERF generally, use a different loop for each layer
-    // type...
-    for (int i = 0; i < indices_per_node; i++) {
-      const float w = weights[my_weights + i];
-      const int srci = indices[my_indices + i];
-      const float v = src_values[srci];
-      potential += w * v;
-    }
-
-    float out = Forward(potential);
-    (*dst_values)[node_idx] = out;
+    }, 4);
+    break;
   }
+  default:
+    CHECK(false) << "Unsupported layer type";
+    break;
+  }
+}
+
+static float SigmoidFn(float potential) {
+  return 1.0f / (1.0f + expf(-potential));
+}
+
+static float ReluFn(float potential) {
+  return (potential < 0.0f) ? 0.0f : potential;
+}
+
+static float LeakyReluFn(float potential) {
+  return (potential < 0.0f) ? potential * 0.01f : potential;
+}
+
+static float IdentityFn(float potential) {
+  return potential;
+}
+
+void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
+  const int number_of_nodes = num_nodes[src_layer + 1];
+  const Layer &layer = layers[src_layer];
+  const TransferFunction transfer_function =
+    layers[src_layer].transfer_function;
+  switch (transfer_function) {
+  case SIGMOID:
+    return RunForwardLayerWithFn<SigmoidFn>(
+        stim, src_layer, layer, number_of_nodes);
+  case RELU:
+    return RunForwardLayerWithFn<ReluFn>(
+        stim, src_layer, layer, number_of_nodes);
+  case LEAKY_RELU:
+    return RunForwardLayerWithFn<LeakyReluFn>(
+        stim, src_layer, layer, number_of_nodes);
+  case IDENTITY:
+    return RunForwardLayerWithFn<IdentityFn>(
+        stim, src_layer, layer, number_of_nodes);
+  default:
+    CHECK(false) << "Unimplemented transfer function " <<
+      TransferFunctionName(transfer_function);
+    break;
+  };
+
+#if 0
+  switch (transfer_function) {
+  case SIGMOID:
+    return RunForwardLayerWithFn(
+        stim, src_layer, layer, number_of_nodes,
+        [](float potential) {
+          return 1.0f / (1.0f + expf(-potential));
+        });
+  case RELU:
+    return RunForwardLayerWithFn(
+        stim, src_layer, layer, number_of_nodes,
+        [](float potential) {
+          return (potential < 0.0f) ? 0.0f : potential;
+        });
+  case LEAKY_RELU:
+    return RunForwardLayerWithFn(
+        stim, src_layer, layer, number_of_nodes,
+        [](float potential) {
+          return (potential < 0.0f) ? potential * 0.01f : potential;
+        });
+  case IDENTITY:
+    return RunForwardLayerWithFn(
+        stim, src_layer, layer, number_of_nodes,
+        [](float potential) {
+          return potential;
+        });
+  default:
+    CHECK(false) << "Unimplemented transfer function " <<
+      TransferFunctionName(transfer_function);
+    break;
+  };
+#endif
 }
 
 
