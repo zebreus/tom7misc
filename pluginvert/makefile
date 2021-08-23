@@ -23,8 +23,9 @@ SDLOPATH=$(SDLSDK)/build
 # SDLINCLUDES=-ISDL/include
 SDLINCLUDES=-I$(SDLSDK)/include
 
+# XXX maybe only enable -ffast-math for network.o? or call intrinsics there?
 CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 -ffast-math
-OPT=-O2
+OPT=-O3
 
 SDLARCH=x64
 SDLUTILOBJECTS=$(CC_LIB)/sdl/sdlutil.o $(CC_LIB)/sdl/cursor.o $(CC_LIB)/sdl/font.o

@@ -39,6 +39,7 @@
 #include "../fceulib/emulator.h"
 
 #include "network.h"
+#include "network-gpu.h"
 
 #include "clutil.h"
 #include "timer.h"
@@ -54,23 +55,24 @@
 
 static constexpr int VERBOSE = 2;
 
+static constexpr int SCALE = 3;
+
 using namespace std;
 
 using uint8 = uint8_t;
 // Better compatibility with CL.
 using uchar = uint8_t;
 
+using int16 = int16_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
-
-
 
 // Graphics.
 #define FONTWIDTH 9
 #define FONTHEIGHT 16
 static Font *font = nullptr;
-#define SCREENW (NES_WIDTH * 2)
-#define SCREENH (NES_HEIGHT * 2)
+#define SCREENW (NES_WIDTH * SCALE)
+#define SCREENH (NES_HEIGHT * SCALE)
 static SDL_Surface *screen = nullptr;
 
 // Thread-safe, so shared between train and ui threads.
@@ -166,15 +168,100 @@ static ImageRGBA Render(const NTSC2D &ntsc2d,
   return out;
 }
 
+struct Audio {
+
+  static constexpr int AUDIO_BUFFER_SIZE = 1024;
+  std::mutex audio_mutex;
+  std::deque<std::vector<int16>> audio_queue;
+  int audio_pos = 0;
+
+  void AddBuffer(vector<int16> buffer) {
+    MutexLock ml(&audio_mutex);
+    audio_queue.push_back(std::move(buffer));
+    // XXX if we aren't playing fast enough, then this grows
+    // without bounds. we should just drop samples if we're
+    // ahead. but at what threshold? perhaps in the callback
+    // we should just play the end of the buffer?
+  }
+
+  void AudioCallback(uint8 *stream_bytes, int num_bytes) {
+    int16 *stream = (int16*) stream_bytes;
+    const int nsamples = num_bytes >> 1;
+
+    // While holding lock
+    auto GetSample = [this]() -> int16 {
+        for (;;) {
+          if (audio_queue.empty())
+            return 0;
+
+          const std::vector<int16> &buf =
+            audio_queue.front();
+          if (audio_pos >= buf.size()) {
+            audio_queue.pop_front();
+            audio_pos = 0;
+            continue;
+          }
+
+          return buf[audio_pos++];
+        }
+      };
+
+    {
+      MutexLock ml(&audio_mutex);
+      for (int i = 0; i < nsamples; i++) {
+        stream[i] = GetSample();
+      }
+    }
+  }
+
+  Audio() {
+    SDL_AudioSpec spec, obtained;
+    spec.freq = Emulator::AUDIO_SAMPLE_RATE;
+    spec.samples = AUDIO_BUFFER_SIZE;
+    spec.channels = 1;
+    spec.callback = +[](void *userdata, uint8 *stream_bytes, int num_bytes) {
+        ((Audio*)userdata)->AudioCallback(stream_bytes, num_bytes);
+      };
+    spec.userdata = this;
+    spec.format = AUDIO_S16SYS;
+    SDL_OpenAudio(&spec, &obtained);
+    // Check that we got what we wanted?
+
+    fprintf(stderr, "Audio started: %d Hz %d buffer\n",
+            obtained.freq, obtained.samples);
+
+    SDL_PauseAudio(false);
+  }
+
+  ~Audio() {
+    SDL_PauseAudio(true);
+    SDL_CloseAudio();
+    // All we can do is believe that CloseAudio will stop calling the
+    // callback by the time this returns.
+  }
+};
+
 struct UI {
   std::unique_ptr<Emulator> emu;
   NTSC2D ntsc2d;
   uint8 player1 = 0;
-  const Network &net;
+  Network *net = nullptr;
+  std::unique_ptr<NetworkGPU> net_gpu;
+  std::unique_ptr<CL> cl;
+  std::unique_ptr<ForwardLayerCL> forwardlayer;
+  Audio *audio = nullptr;
 
-  UI(const Network &net, const std::string &romfile) : net(net) {
+  UI(Network *net, Audio *audio, const std::string &romfile) :
+    net(net), audio(audio) {
     emu.reset(Emulator::Create(romfile));
     CHECK(emu.get()) << romfile;
+
+    cl.reset(new CL);
+    CHECK(cl.get() != nullptr);
+    net_gpu.reset(new NetworkGPU(cl.get(), net));
+    CHECK(net_gpu.get() != nullptr);
+    forwardlayer.reset(new ForwardLayerCL(cl.get(), *net));
+    CHECK(forwardlayer.get() != nullptr);
   }
 
   // Supposedly SDL prefers this to be called from the main thread.
@@ -186,6 +273,10 @@ struct UI {
     int frames = 0;
 
     uint32 last_draw = SDL_GetTicks();
+
+    Stimulation stim(*net);
+    TrainingRoundGPU training_gpu(cl.get(), *net);
+
     for (;;) {
 
       // Update controls, maybe end.
@@ -239,18 +330,43 @@ struct UI {
 
       emu->StepFull(player1, 0);
 
-      ImageA imga(emu->IndexedImage(), 256, 240);
+      {
+        vector<int16> sound;
+        emu->GetSound(&sound);
+        /*
+        printf("Samples: %d\n", sound.size());
+        for (int i = 0; i < sound.size(); i++)
+          printf("%d ", (int)sound[i]);
+        */
+        audio->AddBuffer(std::move(sound));
+      }
 
-      Stimulation stim(net);
-      // vector<float> frame;
+
+      ImageA imga(emu->IndexedImage(), 256, 240);
       FillFromIndices(ntsc2d, imga, &stim.values[0]);
+
+      #if 0
       Timer fwd;
-      net.RunForward(&stim);
+      net->RunForward(&stim);
       fwd_ms += fwd.MS();
       frames++;
+      #else
+
+      Timer fwd;
+      training_gpu.LoadInput(stim.values[0]);
+      for (int src = 0; src < net->num_layers; src++) {
+        ForwardLayerCL::ForwardContext fc(forwardlayer.get(), net_gpu.get(), src);
+        fc.Forward(&training_gpu);
+      }
+
+      // PERF only need the output layer.
+      training_gpu.ExportStimulation(&stim);
+      fwd_ms += fwd.MS();
+      frames++;
+      #endif
 
       const vector<float> &frame = stim.values.back();
-      ImageRGBA imgo = Render(ntsc2d, frame).ScaleBy(2);
+      ImageRGBA imgo = Render(ntsc2d, frame).ScaleBy(SCALE);
       BlitImage(imgo, 0, 0);
 
       // But don't draw too fast!
@@ -307,7 +423,9 @@ int SDL_main(int argc, char **argv) {
   std::unique_ptr<Network> net;
   net.reset(Network::ReadNetworkBinary("net0.val"));
 
-  UI ui(*net, romfile);
+  Audio audio;
+
+  UI ui(net.get(), &audio, romfile);
   ui.Loop();
 
   Printf("Done.\n");
