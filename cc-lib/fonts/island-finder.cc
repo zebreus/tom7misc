@@ -198,7 +198,7 @@ void IslandFinder::Fill() {
     const int src_parent = GetInfo(src_idx).parent_class;
 
     const auto [src_x, src_y] = GetXY(src_idx);
-    for (const auto [dx, dy] : initializer_list<pair<int, int>>{
+    for (const auto &[dx, dy] : initializer_list<pair<int, int>>{
         {-1, 0}, {1, 0}, {0, -1}, {0, 1}}) {
       const int x = src_x + dx;
       const int y = src_y + dy;

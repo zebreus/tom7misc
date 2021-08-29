@@ -18,6 +18,7 @@
 #include <utility>
 #include <limits>
 #include <chrono>
+#include <unordered_map>
 
 #include "opt/opt.h"
 

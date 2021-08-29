@@ -18,11 +18,14 @@ int main(int argc, char **argv) {
   unique_ptr<ImageRGBA> image{ImageRGBA::Load("monika.chr.png")};
   CHECK(image.get() != nullptr);
 
-  auto Bit = [&image](int x) -> int {
-    return (image->rgba[x * 4] > 128) ? 1 : 0;
+  auto Bit = [&image](int i) -> int {
+	  const int x = i % image->Width();
+	  const int y = i / image->Width();
+	  const auto [r, g, b, a] = image->GetPixel(x, y);
+	  return (r > 128) ? 1 : 0;
   };
   
-  for (int i = 0; i < image->width * image->height; i += 8) {
+  for (int i = 0; i < image->Width() * image->Height(); i += 8) {
     /*
     if (i < 10)
     printf("%c%c%c%c%c\n",

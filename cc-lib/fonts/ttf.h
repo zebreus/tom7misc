@@ -2,6 +2,7 @@
 #ifndef _CC_LIB_FONTS_TTF_H
 #define _CC_LIB_FONTS_TTF_H
 
+#include <array>
 #include <string>
 #include <vector>
 #include <cstdint>

@@ -1,4 +1,6 @@
 
+all: default
+
 default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe
 
 CXX=x86_64-w64-mingw32-g++
@@ -50,4 +52,5 @@ fixedersys1x.sfd : fixedersys.png fixedersys1x.cfg makesfd.exe
 	./makesfd.exe fixedersys1x.cfg $@
 
 clean :
-	rm -f *.o *.exe
+	rm -f *.o *.exe $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
+

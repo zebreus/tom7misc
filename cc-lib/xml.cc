@@ -156,6 +156,7 @@ yxml_ret_t yxml_eof(yxml_t *);
  * been returned by yxml_parse(), calling this at any other time may not give
  * the correct results. This function should also NOT be used on strings other
  * than x->elem, x->attr or x->pi. */
+[[maybe_unused]]
 static inline size_t yxml_symlen(yxml_t *x, const char *s) {
   return (x->stack + x->stacklen) - (const unsigned char*)s;
 }

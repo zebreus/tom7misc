@@ -817,7 +817,7 @@ static void TryPackEsc(
   UsedMap um{initial_width, initial_height};
 
   positions->clear();
-  for (const auto [rect_w, rect_h] : rects) {
+  for (const auto &[rect_w, rect_h] : rects) {
     // find a place where it will fit.
     const auto [x, y] = FitImage(&um, rect_w, rect_h);
     positions->emplace_back(x, y);
@@ -856,7 +856,7 @@ bool PackRect::Pack(
   int max_input_height = 0;
   int total_width = 0, total_height = 0;
   int total_area = 0;
-  for (const auto [w, h] : rects) {
+  for (const auto &[w, h] : rects) {
     if (w <= 0) return false;
     if (h <= 0) return false;
     max_input_width = std::max(max_input_width, w);
@@ -917,6 +917,7 @@ bool PackRect::Pack(
 
   // We know they fit, but get the portion of the rectangle that's
   // actually used.
+  [[maybe_unused]]
   auto [width, height] = Crop(rects, pos);
 
   // We have a solution in width/height. Now optimize.
@@ -942,8 +943,8 @@ bool PackRect::Pack(
   using OutputType = std::tuple<int, int, std::vector<std::pair<int, int>>>;
   using RectOptimizer = Optimizer<3, 0, OutputType>;
 
-  const double large_area = width * height + 1;
-  auto Optimize = [&rects, width, height, large_area](
+  // const double large_area = width * height + 1;
+  auto Optimize = [&rects](
       const RectOptimizer::arg_type arg) -> RectOptimizer::return_type {
       auto [w, h, method] = arg.first;
       // printf("Optimize(%d,%d,%d)\n", w, h, method);

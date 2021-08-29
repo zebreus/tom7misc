@@ -4,6 +4,7 @@
 #include <vector>
 #include <optional>
 #include <tuple>
+#include <unordered_map>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"

@@ -55,7 +55,7 @@
     (cond
      ((eq window-system 'w32)
       (progn
-        (set-default-font
+        (set-frame-font
          ;; use M-x menu-set-font followed by M-x describe-font to
          ;; create these mysterious strings.
 
@@ -85,15 +85,27 @@
          ;; (insert (concat "\n;; " (prin1-to-string (frame-parameters))))
          ))
      ((eq window-system 'x)
-      (set-default-font
+      (set-frame-font
        "-misc-fixed-bold-r-normal--13-100-100-100-c-70-iso8859-1"))
      ((eq window-system 'ns)
-      (set-default-font
-       ;; Working OS X font: http://spacebar.org/stuff/FixedSys.dfont.zip
-       ;; Don't use FixedSys Excelsior 2 or 3; they are "anti"-aliased!
-       "FixedSys-15"))
-     (t t))
-     (modify-frame-parameters f (list '(height . 72)))
+      (progn
+		(set-frame-font
+		 ;; Working OS X font: http://spacebar.org/stuff/FixedSys.dfont.zip
+		 ;; Don't use FixedSys Excelsior 2 or 3; they are "anti"-aliased!
+
+		 "-*-Menlo-bold-normal-normal-*-17-*-*-*-m-0-iso10646-1"
+		 
+		 ;; "FixedSys-15"
+
+		 )
+
+		(modify-frame-parameters nil
+			(list '(top . 42) '(width . 80) '(height . 40)))
+		))
+     (t
+      (modify-frame-parameters f (list '(height . 72)))
+	  ))
+
     ))
 
 
@@ -109,7 +121,7 @@
 ;;
 ;; You can use this to read the current cryptic font string on any platform:
 ;; (insert (cdr (assq 'font (frame-parameters))))
-;; But note that it doesn't always fork for set-default-font (eg on the mac.)
+;; But note that it doesn't always work for set-frame-font (eg on the mac.)
 
 (if (not (eq window-system 'w32))
     (setq explicit-shell-file-name "bash"))

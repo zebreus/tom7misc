@@ -264,7 +264,7 @@ struct ServerImpl final : public WebServer {
       };
   }
 
-  Handler GetStatsHandler() const {
+  Handler GetStatsHandler() const override {
     return [](const Request &ignored) {
         Response resp;
         resp.code = 200;

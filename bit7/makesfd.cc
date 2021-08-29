@@ -220,7 +220,7 @@ static vector<pair<int, int>> RemoveColinearPoints(
 static TTF::Contour MakeContour(const vector<pair<int, int>> &points) {
   // Just return straight lines between these edge points.
   TTF::Contour ret;
-  for (const auto [ex, ey] : points) {
+  for (const auto &[ex, ey] : points) {
     ret.paths.emplace_back((float)ex, (float)ey);
   }
   return ret;

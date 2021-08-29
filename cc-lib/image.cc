@@ -484,7 +484,8 @@ void ImageRGBA::BlendLine(int x1, int y1, int x2, int y2,
 
 void ImageRGBA::BlendLineAA32(float x1, float y1, float x2, float y2,
                               uint32 color) {
-  const auto [r, g, b, a] = Unpack32(color);
+  uint8 r, g, b, a;
+  std::tie(r, g, b, a) = Unpack32(color);
   auto Plot = [this, r, g, b, a](int x, int y, float f) {
       uint8 aa = f * a;
       this->BlendPixel(x, y, r, g, b, aa);

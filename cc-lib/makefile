@@ -8,7 +8,7 @@ BASE=base/logging.o base/stringprintf.o
 # for 64 bits on windows
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-g++
-CXXFLAGS=-march=native -pipe -Wall -I. -DWIN32 --std=c++17 -O3 -static -flto
+CXXFLAGS=-march=native -pipe -Wall -I. --std=c++17 -O3 -static -flto
 SOCK_LFLAGS= -lws2_32
 
 # Linux
