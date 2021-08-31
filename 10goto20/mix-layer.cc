@@ -14,25 +14,25 @@ struct MLReal : public MixLayer {
     for (SampleLayer *layer : layers) {
       int64 t;
       if (layer->FirstSample(&t)) {
-	if (!hasl || t < lb) {
-	  hasl = true;
-	  lb = t;
-	}
+        if (!hasl || t < lb) {
+          hasl = true;
+          lb = t;
+        }
       } else {
-	left_infinite = true;
+        left_infinite = true;
       }
-      
+
       if (layer->AfterLastSample(&t)) {
-	if (!hasu || t > ub) {
-	  hasu = true;
-	  ub = t;
-	}
+        if (!hasu || t > ub) {
+          hasu = true;
+          ub = t;
+        }
       } else {
-	right_infinite = true;
+        right_infinite = true;
       }
     }
   }
-  
+
   bool FirstSample(int64 *t) {
     if (left_infinite) return false;
     *t = lb;

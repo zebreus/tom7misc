@@ -3,6 +3,8 @@
 // (#fff) pixels give the character shapes, with a solid vertical
 // black (#000) line gives (one past) the width.
 
+// TODO: I changed this encoding and I need to update the DFX fonts!
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -55,10 +57,22 @@ CODEPOINTS = {
   // ARROWS: LEFT, UP, RIGHT, DOWN
   0x2190, 0x2191, 0x2192, 0x2193,
 
-  // Remainder of line unclaimed
-  -1, -1, -1, -1,
-  // Second line, unclaimed
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  // EN DASH, EM DASH
+  0x2013, 0x2014,
+
+  // LEFT SINGLE QUOTE, RIGHT SINGLE QUOTE
+  0x2018, 0x2019,
+  // Second line
+
+  // LEFT DOUBLE QUOTE, RIGHT DOUBLE QUOTE
+  0x201C, 0x201D,
+
+  // BULLET
+  0x2022,
+  // HORIZONTAL ELLIPSIS
+  0x2026,
+  // rest of second line, unclaimed
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   // ASCII, mapped to itself
   0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
   0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,

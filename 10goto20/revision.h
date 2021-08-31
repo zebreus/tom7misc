@@ -11,14 +11,14 @@
 #include "base.h"
 
 #if 0
-// Small POD type 
+// Small POD type
 struct Revision {
-  // If 
+  // If
   int64 current_revision = NEVER;
   int64 last_changed = NEVER;
 
-  Revision(int64 cur, int64 last) : current_revision(cur), 
-				    last_changed(last) {}
+  Revision(int64 cur, int64 last) : current_revision(cur),
+                                    last_changed(last) {}
 };
 #endif
 

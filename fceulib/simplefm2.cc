@@ -22,11 +22,11 @@ vector<pair<uint8, uint8>> SimpleFM2::ReadInputsEx(
   for (int i = 0; i < contents.size(); i++) {
     string line = contents[i];
     if (subtitles != nullptr &&
-	Util::StartsWith(line, "subtitle ")) {
+        Util::StartsWith(line, "subtitle ")) {
       string rest = line.substr(9, string::npos);
       string framenum = Util::chop(rest);
       subtitles->emplace_back(atoi(framenum.c_str()),
-			      Util::losewhitel(rest));
+                              Util::losewhitel(rest));
       continue;
     }
 
@@ -54,14 +54,14 @@ vector<pair<uint8, uint8>> SimpleFM2::ReadInputsEx(
     // For one-player FM2 files, sometimes the second player inputs
     // are just blank. If so, expand.
     if (line.size() > 3 &&
-	line[line.size() - 1] == '|' &&
-	line[line.size() - 2] == '|' &&
-	line[line.size() - 3] == '|') {
+        line[line.size() - 1] == '|' &&
+        line[line.size() - 2] == '|' &&
+        line[line.size() - 3] == '|') {
       line.resize(line.size() - 2);
       line.reserve(line.size() + 10);
       line += "........||";
     }
-    
+
     const string player1 = line.substr(3, 8);
     const string player2 = line.substr(12, 8);
     auto Command = [](const string &s) -> uint8 {

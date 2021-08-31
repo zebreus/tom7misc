@@ -42,15 +42,15 @@ void WhoHasMutex(int caller) {
   string s;
   for (int i = 0; i < i_have_mutex.size(); i++) {
     s += StringPrintf("%d. %s%s\n",
-		      i, 
-		      (i_have_mutex[i] ? "YES" : "NO"),
-		      (i == caller) ? " (me)" : "");
-		      
+                      i,
+                      (i_have_mutex[i] ? "YES" : "NO"),
+                      (i == caller) ? " (me)" : "");
+
   }
   lprintf(" === Who has mutex? By %d === \n"
-	  "%s"
-	  " ===================== %d === \n",
-	  caller, s.c_str(), caller);
+          "%s"
+          " ===================== %d === \n",
+          caller, s.c_str(), caller);
 }
 
 // This is our cache of samples, which is in tandem
@@ -75,7 +75,7 @@ static SampleLockIC sample_lock(UNLOCKED);
 // intention is for it to be safe to run many of these. The object
 // wraps all the thread-local data, where RunExt can be run as a
 // thread with the thread object itself being the argument. No other
-// thread should touch the thread data 
+// thread should touch the thread data
 struct RenderThread {
   explicit RenderThread(int id) : id(id) {
     // Correctness of locks require ids to be non-negative.
@@ -107,12 +107,12 @@ struct RenderThread {
   // in the SampleLockIC. Returns false if there are no such
   // intervals.
   bool ReserveWork(Revision target_revision,
-		   int64 *start, int64 *end) {
+                   int64 *start, int64 *end) {
     MutexLock ml(&mutex);
     CHECK(!i_have_mutex[id]);
     i_have_mutex[id] = true;
     WhoHasMutex(id);
-    
+
     lprintf("\nThread %d get work for rev %lld\n", id, target_revision);
     // sample_lock.DebugPrint();
     // fflush(stdout);
@@ -120,84 +120,84 @@ struct RenderThread {
     // TODO PERF: Save some kind of hint about where to start
     // the search. All the threads end up searching the prefix
     // over and over.
-    for (int64 pos = 0LL; !sample_lock.IsAfterLast(pos); 
-	 pos = sample_lock.Next(pos)) {
+    for (int64 pos = 0LL; !sample_lock.IsAfterLast(pos);
+         pos = sample_lock.Next(pos)) {
       SampleLockIC::Span span = sample_lock.GetPoint(pos);
       lprintf("[%d] Consider %lld to %lld which has %d.\n",
-	      id, span.start, span.end, span.data);
+              id, span.start, span.end, span.data);
       CHECK(span.start != span.end);
 
       // PERF if we see GLOBAL_LOCK, should we also exit early?
       if (span.data == UNLOCKED) {
-	// We found a region that's unlocked. Is there any work
-	// to do in it?
+        // We found a region that's unlocked. Is there any work
+        // to do in it?
 
-	// The test that pp < span.end also implies that
-	// !sample_rev.IsAfterLast(pp) is true.
-	for (int64 pp = span.start; pp < span.end;
-	     pp = sample_rev.Next(pp)) {
-	  SampleRevIC::Span ss = sample_rev.GetPoint(pp);
+        // The test that pp < span.end also implies that
+        // !sample_rev.IsAfterLast(pp) is true.
+        for (int64 pp = span.start; pp < span.end;
+             pp = sample_rev.Next(pp)) {
+          SampleRevIC::Span ss = sample_rev.GetPoint(pp);
 
-	  lprintf("[%d] Check rev %lld to %lld which has %lld.\n",
-		  id, ss.start, ss.end, ss.data);
-	  CHECK(ss.start != ss.end);
+          lprintf("[%d] Check rev %lld to %lld which has %lld.\n",
+                  id, ss.start, ss.end, ss.data);
+          CHECK(ss.start != ss.end);
 
-	  if (ss.data < target_revision) {
-	    // Found something! Note that ss could easily
-	    // expand outside the locked region. So first
-	    // compute the intersection of the two spans:
+          if (ss.data < target_revision) {
+            // Found something! Note that ss could easily
+            // expand outside the locked region. So first
+            // compute the intersection of the two spans:
 
-	    // span.start must be within both intervals!
-	    lprintf("[%d] Intersect.\n", id);
-	    int64 ival_start, ival_end;
-	    CHECK(SampleLockIC::IntersectWith<SampleRevIC::Data>(span, ss, 
-								 &ival_start,
-								 &ival_end));
-	    DCHECK(ival_start < ival_end);
-	    lprintf("[%d] Got %lld to %lld back.\n", id, ival_start, ival_end);
-	    
+            // span.start must be within both intervals!
+            lprintf("[%d] Intersect.\n", id);
+            int64 ival_start, ival_end;
+            CHECK(SampleLockIC::IntersectWith<SampleRevIC::Data>(span, ss,
+                                                                 &ival_start,
+                                                                 &ival_end));
+            DCHECK(ival_start < ival_end);
+            lprintf("[%d] Got %lld to %lld back.\n", id, ival_start, ival_end);
 
-	    // Don't render before 0, or after the song's end.
-	    ival_start = max(0LL, ival_start);
-	    ival_end = min(song_end, ival_end);
 
-	    // We can claim anything in [ival_start, ival_end),
-	    // but let's not take chunks that are too big.
-	    ival_end = min(ival_end, ival_start + MAX_RENDER_CHUNK);
+            // Don't render before 0, or after the song's end.
+            ival_start = max(0LL, ival_start);
+            ival_end = min(song_end, ival_end);
 
-	    // Intervals shouldn't be empty, but since we did some
-	    // min/max stuff, they can be now. (For example, if the
-	    // song is 0 samples long, this will always happen.)
-	    if (ival_start == ival_end) {
-	      lprintf("[%d] Degenerate span @%lld\n", id, ival_start);
-	      continue;
-	    }
+            // We can claim anything in [ival_start, ival_end),
+            // but let's not take chunks that are too big.
+            ival_end = min(ival_end, ival_start + MAX_RENDER_CHUNK);
 
-	    lprintf("[%d] After trim: %lld to %lld\n",
-		    id, ival_start, ival_end);
+            // Intervals shouldn't be empty, but since we did some
+            // min/max stuff, they can be now. (For example, if the
+            // song is 0 samples long, this will always happen.)
+            if (ival_start == ival_end) {
+              lprintf("[%d] Degenerate span @%lld\n", id, ival_start);
+              continue;
+            }
 
-	    // sample_lock.DebugPrint();
-	    sample_lock.CheckInvariants();
-	    lprintf("[%d] Invariants look OK?\n", id);
+            lprintf("[%d] After trim: %lld to %lld\n",
+                    id, ival_start, ival_end);
 
-	    // Reserve it while we have the mutex.
-	    sample_lock.SetSpan(ival_start, ival_end, id);
-	    lprintf("[%d] Successfully set span...\n", id);
+            // sample_lock.DebugPrint();
+            sample_lock.CheckInvariants();
+            lprintf("[%d] Invariants look OK?\n", id);
 
-	    *start = ival_start;
-	    *end = ival_end;
-	    
-	    lprintf("[%d] Reserved span %lld to %lld.\n", id,
-		    ival_start, ival_end);
-	    i_have_mutex[id] = false;
-	    return true;
-	  } else {
-	    lprintf("[%d] .. it's up to date.\n", id);
-	  }
-	  // TODO PERF: Else check if the revision is in
-	  // the future. This tells us that we're behind
-	  // and should probably just exit early.
-	}
+            // Reserve it while we have the mutex.
+            sample_lock.SetSpan(ival_start, ival_end, id);
+            lprintf("[%d] Successfully set span...\n", id);
+
+            *start = ival_start;
+            *end = ival_end;
+
+            lprintf("[%d] Reserved span %lld to %lld.\n", id,
+                    ival_start, ival_end);
+            i_have_mutex[id] = false;
+            return true;
+          } else {
+            lprintf("[%d] .. it's up to date.\n", id);
+          }
+          // TODO PERF: Else check if the revision is in
+          // the future. This tells us that we're behind
+          // and should probably just exit early.
+        }
       }
     }
 
@@ -216,48 +216,48 @@ struct RenderThread {
 
       // Try to find some work.
       Revision r = Revisions::GetRevision();
-     
+
       // We can only do work on unlocked regions, so start
       // with that.
       int64 start, end;
       if (ReserveWork(r, &start, &end)) {
-	// Now compute the samples into a separate buffer.
-	// We need to make sure the song doesn't change from
-	// under us! How?
-	CHECK(end > start);
-	int64 size = end - start;
-	// PERF this could just be thread-local.
-	vector<Sample> buffer(end - start, Sample(0.0));
-	if (song != nullptr) {
-	  for (int64 i = 0; i < size; i++) {
-	    buffer[i] = song->SampleAt(start + i);
-	  }
-	}
+        // Now compute the samples into a separate buffer.
+        // We need to make sure the song doesn't change from
+        // under us! How?
+        CHECK(end > start);
+        int64 size = end - start;
+        // PERF this could just be thread-local.
+        vector<Sample> buffer(end - start, Sample(0.0));
+        if (song != nullptr) {
+          for (int64 i = 0; i < size; i++) {
+            buffer[i] = song->SampleAt(start + i);
+          }
+        }
 
-	// Take the mutex to write the samples back, but note that the
-	// vector might have been resized while we were gone, so only
-	// write within the valid region.
-	{
-	  MutexLock ml(&mutex);
-	  if (end <= samples->size()) {
-	    for (int64 i = 0; i < size; i++) {
-	      (*samples)[start + i] = buffer[i];
-	    }
-	    sample_rev.SetSpan(start, end, r);
-	  } else {
-	    lprintf("[%d] Buffer was resized unfavorably; "
-		    "discarding my chunk.", id);
-	  }
+        // Take the mutex to write the samples back, but note that the
+        // vector might have been resized while we were gone, so only
+        // write within the valid region.
+        {
+          MutexLock ml(&mutex);
+          if (end <= samples->size()) {
+            for (int64 i = 0; i < size; i++) {
+              (*samples)[start + i] = buffer[i];
+            }
+            sample_rev.SetSpan(start, end, r);
+          } else {
+            lprintf("[%d] Buffer was resized unfavorably; "
+                    "discarding my chunk.", id);
+          }
 
-	  sample_lock.SetSpan(start, end, UNLOCKED);
-	}
-	// Slow motion...
-	// SDL_Delay(1000);
+          sample_lock.SetSpan(start, end, UNLOCKED);
+        }
+        // Slow motion...
+        // SDL_Delay(1000);
 
 
       } else {
-	// If starved, don't spin-lock.
-	SDL_Delay(5);
+        // If starved, don't spin-lock.
+        SDL_Delay(5);
       }
     }
   }
@@ -265,7 +265,7 @@ struct RenderThread {
 
 // Callback for audio processing.
 static void AudioCallback(void *userdata,
-			  uint8 *stream_bytes, int num_bytes) {
+                          uint8 *stream_bytes, int num_bytes) {
   static_assert(sizeof (Sint16) == 2, "Expected Sint16 to be 16 bits.");
   Sint16 *stream = (Sint16*) stream_bytes;
   // A "sample" here means a single sample on a single channel. There are
@@ -302,14 +302,14 @@ static void AudioCallback(void *userdata,
     } else {
       // Is the sample up-to-date?
       if (span.data == expected_revision) {
-	Sample s = (*samples)[cursor];
-	stream[i] = DoubleTo16(s.left);
-	stream[i + 1] = DoubleTo16(s.right);
-	cursor++;
+        Sample s = (*samples)[cursor];
+        stream[i] = DoubleTo16(s.left);
+        stream[i + 1] = DoubleTo16(s.right);
+        cursor++;
       } else {
-	stream[i] = 0.0;
-	stream[i + 1] = 0.0;
-	playing = false;
+        stream[i] = 0.0;
+        stream[i + 1] = 0.0;
+        playing = false;
       }
     }
   }
@@ -354,7 +354,7 @@ void AudioEngine::Init() {
   SDL_OpenAudio(&spec, &obtained);
 
   fprintf(stderr, "Audio started: %d Hz %d buffer\n",
-	  obtained.freq, obtained.samples);
+          obtained.freq, obtained.samples);
 
   MutexLock ml(&mutex);
   // Start rendering threads.
@@ -362,13 +362,13 @@ void AudioEngine::Init() {
     render_threads.push_back(new RenderThread(i));
   for (RenderThread *rt : render_threads) {
     SDL_Thread *th = SDL_CreateThread(RenderThread::RunExt,
-				      (void *)rt);
+                                      (void *)rt);
     // XXX don't discard the thread pointer; keep it in some
     // structure (or write it into the thread object?)
     (void)th;
     i_have_mutex.push_back(false);
   }
-  
+
   CHECK(render_threads.size() == RENDER_THREADS);
   CHECK(i_have_mutex.size() == render_threads.size());
 }
@@ -432,17 +432,17 @@ SampleLayer *AudioEngine::SwapLayer(SampleLayer *new_layer) {
   auto LockEverything = []() -> bool{
     MutexLock ml(&mutex);
     bool again = false;
-    for (int64 pos = sample_lock.First(); 
-	 !sample_lock.IsAfterLast(pos);
-	 pos = sample_lock.Next(pos)) {
+    for (int64 pos = sample_lock.First();
+         !sample_lock.IsAfterLast(pos);
+         pos = sample_lock.Next(pos)) {
       SampleLockIC::Span s = sample_lock.GetPoint(pos);
       if (s.data >= 0) {
-	again = true;
-	lprintf("Still blocked on %lld--%lld (thread %d).\n", 
-		s.start, s.end, s.data);
+        again = true;
+        lprintf("Still blocked on %lld--%lld (thread %d).\n",
+                s.start, s.end, s.data);
       } else {
-	// TODO use constants for this...
-	sample_lock.SetSpan(s.start, s.end, -2);
+        // TODO use constants for this...
+        sample_lock.SetSpan(s.start, s.end, -2);
       }
     }
     return again;
@@ -469,7 +469,7 @@ SampleLayer *AudioEngine::SwapLayer(SampleLayer *new_layer) {
   return ret;
 }
 
-// static 
+// static
 pair<IntervalCover<int>, IntervalCover<Revision>> AudioEngine::GetSpans() {
   MutexLock ml(&mutex);
   return make_pair(sample_lock, sample_rev);

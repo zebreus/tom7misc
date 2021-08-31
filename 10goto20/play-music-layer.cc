@@ -55,24 +55,24 @@ struct SquareML : public PlayMusicLayer {
       // Get 4 consecutive samples starting at t, but at 4x the
       // sampling rate. Then average them.
       Sample oversampled_sample(0.0);
-      // TODO: Maybe it would be better to go from -OVERSAMPLE/2 to 
+      // TODO: Maybe it would be better to go from -OVERSAMPLE/2 to
       // +OVERSAMPLE/2? This introduces a slight phase artifact.
       for (int os = 0; os < OVERSAMPLE; os++) {
-	double seconds = (OVERSAMPLE * t + os) / 
-	  (double)(OVERSAMPLE * SAMPLINGRATE);
-	
-	// If we're at time 0.1s, but playing a 10Hz wave, that's the
-	// very end of the waveform. Multiply and truncate to get a
-	// position within the waveform of in [0, 1).
-	double untrunc = seconds * freq;
-	double pos = untrunc - trunc(untrunc);
+        double seconds = (OVERSAMPLE * t + os) /
+          (double)(OVERSAMPLE * SAMPLINGRATE);
 
-	// TODO: Easy to implement duty cycle here, by adjusting the
-	// value 0.5.
+        // If we're at time 0.1s, but playing a 10Hz wave, that's the
+        // very end of the waveform. Multiply and truncate to get a
+        // position within the waveform of in [0, 1).
+        double untrunc = seconds * freq;
+        double pos = untrunc - trunc(untrunc);
 
-	double value = (pos < 0.5) ? 1.0 : -1.0;
+        // TODO: Easy to implement duty cycle here, by adjusting the
+        // value 0.5.
 
-	oversampled_sample += Sample(value);
+        double value = (pos < 0.5) ? 1.0 : -1.0;
+
+        oversampled_sample += Sample(value);
       }
 
       // Now take the average of these.
@@ -100,12 +100,12 @@ struct SawML : public PlayMusicLayer {
 
       Sample oversampled_sample(0.0);
       for (int os = 0; os < OVERSAMPLE; os++) {
-	double seconds = (OVERSAMPLE * t + os) / 
-	  (double)(OVERSAMPLE * SAMPLINGRATE);
-	double untrunc = seconds * freq;
-	double pos = untrunc - trunc(untrunc);
-	double value = pos * 2.0 - 1.0;
-	oversampled_sample += Sample(value);
+        double seconds = (OVERSAMPLE * t + os) /
+          (double)(OVERSAMPLE * SAMPLINGRATE);
+        double untrunc = seconds * freq;
+        double pos = untrunc - trunc(untrunc);
+        double value = pos * 2.0 - 1.0;
+        oversampled_sample += Sample(value);
       }
 
       oversampled_sample /= (double)OVERSAMPLE;
@@ -120,7 +120,7 @@ struct SawML : public PlayMusicLayer {
 }  // namespace
 
 PlayMusicLayer *PlayMusicLayer::Create(MusicLayer *music,
-				       Instrument inst) {
+                                       Instrument inst) {
   switch (inst) {
   case SINE:
     return new SineML(music);

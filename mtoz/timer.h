@@ -1,4 +1,10 @@
-#include <windows.h>
+#ifndef _MTOZ_TIMER_H
+#define _MTOZ_TIMER_H
+
+// avoid conflict
+#define byte win_byte_override
+#  include <windows.h>
+#undef byte
 
 // Computes time elapsed in ms. Windows only.
 struct Timer {
@@ -28,3 +34,5 @@ struct Timer {
   LARGE_INTEGER freq;
   LARGE_INTEGER starttime, stoptime;
 };
+
+#endif

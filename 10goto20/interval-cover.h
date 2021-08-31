@@ -98,8 +98,8 @@ struct IntervalCover {
 
   template<class Other>
   static bool IntersectWith(const Span &mine,
-			    const typename IntervalCover<Other>::Span &theirs,
-			    int64 *start, int64 *end);
+                            const typename IntervalCover<Other>::Span &theirs,
+                            int64 *start, int64 *end);
 
   // Verifies internal invariants and aborts if they are violated.
   // Typically only useful for debugging.
@@ -229,7 +229,7 @@ void IntervalCover<D>::SetSpan(int64 start, int64 end, D new_data) {
   // than some int64.
   CHECK(!this->IsAfterLast(start));
 
-  // Save the data at the end point. 
+  // Save the data at the end point.
   D end_data = GetInterval(end)->second;
 
   // printf("\nSetSpan %lld to %lld\n", start, end);
@@ -255,7 +255,7 @@ void IntervalCover<D>::SetSpan(int64 start, int64 end, D new_data) {
     // Sets the data and merges if necessary.
     SplitRight(span.start, new_data);
   }
-  
+
   // printf("Set data for covered intervals.\n");
   // DebugPrint();
 
@@ -286,19 +286,19 @@ void IntervalCover<D>::SplitRight(int64 pt, D rhs) {
 
       auto prev = std::prev(it);
       if (prev->second == rhs) {
-	// If merging left, then just delete this interval.
-	auto nextnext = spans.erase(it);
-	// But now maybe prev and nextnext need to be merged?
-	if (nextnext != spans.end() &&
-	    prev->second == nextnext->second) {
-	  // But this is as far as we'd need to merge, because
-	  // if next(nextnext) ALSO had the same data, then
-	  // it would have the same data as the adjacent nextnext,
-	  // which is illegal.
-	  (void)spans.erase(nextnext);
-	}
-	// Anyway, we're done.
-	return;
+        // If merging left, then just delete this interval.
+        auto nextnext = spans.erase(it);
+        // But now maybe prev and nextnext need to be merged?
+        if (nextnext != spans.end() &&
+            prev->second == nextnext->second) {
+          // But this is as far as we'd need to merge, because
+          // if next(nextnext) ALSO had the same data, then
+          // it would have the same data as the adjacent nextnext,
+          // which is illegal.
+          (void)spans.erase(nextnext);
+        }
+        // Anyway, we're done.
+        return;
       }
     }
 

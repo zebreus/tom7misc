@@ -81,13 +81,16 @@ See web_test.cc for example.
 #include <unordered_map>
 #include <optional>
 
-#ifdef WIN32
+#if defined(WIN32) || defined(__MINGW32__)
   #include <WinSock2.h>
   #include <Ws2tcpip.h>
   #include <Windows.h>
 
   using ssize_t = int64_t;
   using sockettype = SOCKET;
+  /* windows function aliases */
+  #define close(x) closesocket(x)
+
 #else
   #include <unistd.h>
   #include <sys/socket.h>
@@ -125,6 +128,7 @@ using uint64 = uint64_t;
 #define ews_printf_debug printf
 // #define ews_printf_debug(...)
 
+namespace {
 struct MutexLock {
   explicit MutexLock(std::mutex *m) : m(m) { m->lock(); }
   ~MutexLock() { m->unlock(); }
@@ -138,6 +142,7 @@ T ReadWithLock(std::mutex *m, const T *t) {
   MutexLock ml(m);
   return *t;
 }
+
 
 struct CounterImpl final : public WebServer::Counter {
   explicit CounterImpl(string s) : name(std::move(s)) {}
@@ -178,6 +183,8 @@ struct Counters {
   }
 };
 
+}  // namespace
+
 WebServer::Counter::Counter() {}
 
 // Get counters, allocating them if needed.
@@ -208,8 +215,14 @@ static string Itoa(int64 i) {
   return buf;
 }
 
+static void ignoreSIGPIPE();
+static void printIPv4Addresses(uint16_t portInHostOrder);
+static void callWSAStartupIfNecessary(void);
+static void connectionHandlerThread(void *connection_pointer);
+
 /* This contains a full HTTP connection. For every connection, a
    thread is spawned and passed this struct */
+namespace {
 struct ServerImpl;
 struct Connection {
   explicit Connection(ServerImpl *server) : server(server) {
@@ -232,9 +245,6 @@ struct Connection {
   /* points back to the server, usually used for the server's global_mutex */
   struct ServerImpl *server = nullptr;
 };
-
-
-static void ignoreSIGPIPE();
 
 
 struct ServerImpl final : public WebServer {
@@ -317,6 +327,7 @@ struct ServerImpl final : public WebServer {
   Counter *bytes_sent = nullptr;
   Counter *bytes_received = nullptr;
 };
+}
 
 Handler ServerImpl::GetHandler(const Request &request) {
   MutexLock ml(&global_mutex);
@@ -337,19 +348,6 @@ Handler ServerImpl::GetHandler(const Request &request) {
   }
   return GetDefaultHandler();
 }
-
-static void printIPv4Addresses(uint16_t portInHostOrder);
-static void callWSAStartupIfNecessary(void);
-
-#ifdef WIN32 /* Windows implementations of functions available on Linux/Mac OS X */
-
-/* windows function aliases */
-#define close(x) closesocket(x)
-
-#endif
-
-
-static void connectionHandlerThread(void *connection_pointer);
 
 static string URLDecode(const char *encoded) {
   string decoded;
@@ -1101,7 +1099,7 @@ WebServer::~WebServer() {}
 
 /* Platform specific stubs/handlers */
 
-#ifdef WIN32
+#if defined(WIN32) || defined(__MINGW32__)
 
 static void printIPv4Addresses(uint16_t portInHostOrder){
   /* I forgot how to do this */

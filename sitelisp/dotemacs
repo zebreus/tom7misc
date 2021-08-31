@@ -19,7 +19,7 @@
 (setq font-lock-global-modes '(not fundamental-mode))
 (global-font-lock-mode 1)
 ;(if ('toggle-transient-mark-mode)
-    (transient-mark-mode 't)
+(transient-mark-mode 't)
 ;    (toggle-transient-mark-mode))
 
 ;; XXX
@@ -75,12 +75,16 @@
          ; "-*-*-*-c-*-iso8859-1")
          ; )
 
-         "-outline-FixederSys 1x-thin-normal-normal-mono-32-*-*-*-c-*-iso8859-1"
+         ;; looks ok but has some subtle "anti"-aliasing color artifacts
+         ;; "-outline-FixederSys 1x-thin-normal-normal-mono-"
+         ;; "32-*-*-*-c-*-iso8859-1"
+         ;; on win32, this is a good way to specify fonts, it seems
+         "FixederSys 1x-24:antialias=none"
 
          )
 
          (modify-frame-parameters nil
-           (list '(top . 42) '(width . 80) '(height . 46))) ;; XX to 99
+           (list '(top . 40) '(width . 80) '(height . 64))) ;; XX to 99
          ;; to see frame parameters:
          ;; (insert (concat "\n;; " (prin1-to-string (frame-parameters))))
          ))

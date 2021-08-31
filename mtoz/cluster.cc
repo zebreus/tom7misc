@@ -141,13 +141,13 @@ inline void UpdatePixel(int x, int y) {
 // Do two rectangles of the same size overlap?
 // XXX might be off-by-one problems here
 inline bool Overlap(int w, int h,
-            int ax, int ay,
-            int bx, int by) {
+                    int ax, int ay,
+                    int bx, int by) {
   const int axx = ax + w, ayy = ay + h;
   const int bxx = bx + w, byy = by + h;
 
   return !(ax > bxx || bx > axx ||
-       ay < byy || by < ayy);
+           ay < byy || by < ayy);
 }
 
 static void Redraw() {
@@ -174,15 +174,13 @@ static void UIThread() {
 
   Printf("Blit image:\n");
 
-  CHECK(img->width <= WIDTH) << img->width;
-  CHECK(img->height <= HEIGHT) << img->height;
-  int startx = (WIDTH - img->width) >> 1;
-  int starty = (HEIGHT - img->height) >> 1;
-  for (int y = 0; y < img->height; y++) {
-    for (int x = 0; x < img->width; x++) {
-      uint8 r = img->rgba[(y * img->width + x) * 4 + 0];
-      uint8 g = img->rgba[(y * img->width + x) * 4 + 1];
-      uint8 b = img->rgba[(y * img->width + x) * 4 + 2];
+  CHECK(img->Width() <= WIDTH) << img->Width();
+  CHECK(img->Height() <= HEIGHT) << img->Height();
+  int startx = (WIDTH - img->Width()) >> 1;
+  int starty = (HEIGHT - img->Height()) >> 1;
+  for (int y = 0; y < img->Height(); y++) {
+    for (int x = 0; x < img->Width(); x++) {
+      const auto [r, g, b, a_] = img->GetPixel(x, y);
       int dy = y + starty;
       int dx = x + startx;
       int idx = dy * WIDTH + dx;
@@ -464,8 +462,8 @@ int SDL_main(int argc, char **argv) {
 
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |
-         SDL_INIT_TIMER |
-         SDL_INIT_AUDIO) >= 0);
+                 SDL_INIT_TIMER |
+                 SDL_INIT_AUDIO) >= 0);
   fprintf(stderr, "SDL initialized OK.\n");
 
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
@@ -476,10 +474,10 @@ int SDL_main(int argc, char **argv) {
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen);
 
-  font = Font::create(screen,
-              "font.png",
-              FONTCHARS,
-              FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+  font = Font::Create(screen,
+                      "font.png",
+                      FONTCHARS,
+                      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font != nullptr) << "Couldn't load font.";
 
   UIThread();

@@ -118,6 +118,15 @@ struct ImageRGBA {
   void CopyImage(int x, int y, const ImageRGBA &other);
   void CopyImageRect(int destx, int desty, const ImageRGBA &other,
                      int srcx, int srcy, int srcw, int srch);
+
+  // Output value is RGBA floats in [0, 255].
+  // Alpha values are just treated as a fourth channel and averaged,
+  // which is not really correct.
+  // Treats the input pixels as being "located" at their top-left
+  // corners (not their centers).
+  // x/y out of bounds will repeat edge pixels.
+  std::tuple<float, float, float, float>
+  SampleBilinear(float x, float y) const;
   
   // Extract single channel.
   ImageA Red() const;

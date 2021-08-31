@@ -1,6 +1,6 @@
-#include "../cc-lib/sdl/sdlutil.h"
 #include "SDL.h"
 #include "SDL_main.h"
+#include "../cc-lib/sdl/sdlutil.h"
 #include "../cc-lib/sdl/chars.h"
 #include "../cc-lib/sdl/font.h"
 
@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include <array>
 #include <algorithm>
 #include <tuple>
 #include <utility>
@@ -64,25 +65,49 @@ static constexpr uint8 ntsc_palette[64 * 3] = {
 };
 
 static constexpr uint8 best_permutation[] = {
-  0x2a, 0x29, 0x38, 0x28, 0x27, 0x26, 0x16, 0x18,
-  0x3a, 0x39, 0x37, 0x36, 0x35, 0x15, 0x17, 0x06,
-  0x30, 0x20, 0x3d, 0x34, 0x24, 0x25, 0x05, 0x07,
-  0x3c, 0x31, 0x32, 0x33, 0x23, 0x14, 0x04, 0x08,
-  0x3b, 0x2c, 0x21, 0x22, 0x12, 0x13, 0x02, 0x03,
-  0x2b, 0x10, 0x1c, 0x11, 0x01, 0x0c, 0x2e, 0x1e,
-  0x1a, 0x1b, 0x00, 0x2d, 0x1d, 0x3f, 0x1f, 0x0e,
-  0x19, 0x0a, 0x09, 0x0b, 0x3e, 0x2f, 0x0f, 0x0d,
+  0x0d, 0x0f, 0x2f, 0x2e, 0x0c, 0x03, 0x02, 0x13,
+  0x0e, 0x1f, 0x3f, 0x1d, 0x04, 0x01, 0x11, 0x12,
+  0x1e, 0x3e, 0x0b, 0x2d, 0x1c, 0x25, 0x14, 0x24,
+  0x0a, 0x09, 0x08, 0x1b, 0x00, 0x10, 0x22, 0x23,
+  0x06, 0x07, 0x05, 0x19, 0x35, 0x3d, 0x33, 0x34,
+  0x17, 0x15, 0x18, 0x36, 0x3a, 0x3b, 0x32, 0x21,
+  0x16, 0x26, 0x1a, 0x39, 0x37, 0x3c, 0x31, 0x2c,
+  0x27, 0x28, 0x29, 0x2a, 0x38, 0x2b, 0x20, 0x30,
 };
 
 static constexpr uint8 smoothest_permutation[] = {
-0x2c, 0x3c, 0x20, 0x21, 0x22, 0x23, 0x24, 0x13,
-0x2b, 0x31, 0x30, 0x32, 0x1c, 0x34, 0x14, 0x12,
-0x3a, 0x3b, 0x3d, 0x10, 0x33, 0x25, 0x11, 0x02,
-0x2a, 0x39, 0x36, 0x1b, 0x35, 0x04, 0x01, 0x03,
-0x38, 0x37, 0x19, 0x00, 0x2d, 0x0c, 0x1d, 0x2e,
-0x29, 0x1a, 0x18, 0x05, 0x08, 0x0b, 0x3f, 0x2f,
-0x28, 0x26, 0x15, 0x07, 0x09, 0x3e, 0x1e, 0x1f,
-0x27, 0x16, 0x17, 0x06, 0x0a, 0x0f, 0x0e, 0x0d,
+  0x2c, 0x3c, 0x20, 0x21, 0x22, 0x23, 0x24, 0x13,
+  0x2b, 0x31, 0x30, 0x32, 0x1c, 0x34, 0x14, 0x12,
+  0x3a, 0x3b, 0x3d, 0x10, 0x33, 0x25, 0x11, 0x02,
+  0x2a, 0x39, 0x36, 0x1b, 0x35, 0x04, 0x01, 0x03,
+  0x38, 0x37, 0x19, 0x00, 0x2d, 0x0c, 0x1d, 0x2e,
+  0x29, 0x1a, 0x18, 0x05, 0x08, 0x0b, 0x3f, 0x2f,
+  0x28, 0x26, 0x15, 0x07, 0x09, 0x3e, 0x1e, 0x1f,
+  0x27, 0x16, 0x17, 0x06, 0x0a, 0x0f, 0x0e, 0x0d,
+};
+
+static constexpr uint8 most_linear_permutation[] = {
+  0x0d, 0x2e, 0x2f, 0x0a, 0x19, 0x2b, 0x1a, 0x29,
+  0x0f, 0x1f, 0x0b, 0x09, 0x3a, 0x1b, 0x39, 0x2a,
+  0x0e, 0x3e, 0x1d, 0x21, 0x08, 0x37, 0x3b, 0x38,
+  0x1e, 0x3f, 0x1c, 0x2d, 0x07, 0x31, 0x2c, 0x3c,
+  0x03, 0x22, 0x0c, 0x00, 0x18, 0x06, 0x26, 0x28,
+  0x11, 0x01, 0x04, 0x35, 0x36, 0x10, 0x17, 0x27,
+  0x02, 0x23, 0x14, 0x25, 0x05, 0x32, 0x3d, 0x16,
+  0x13, 0x12, 0x24, 0x34, 0x15, 0x33, 0x20, 0x30,
+};  
+
+// LAB colors for each palette entry.
+static array<std::tuple<float, float, float>, 64>
+palette_lab = {};
+
+static constexpr std::array<std::pair<uint8, int>, 3>
+PINNED = {
+  // black pinned to 0,0
+  std::make_pair(0x0d, 0),
+  // pure white pinned to last two
+  std::make_pair(0x20, 62),
+  std::make_pair(0x30, 63),  
 };
 
 // Graphics.
@@ -97,9 +122,9 @@ static Font *font = nullptr;
 static SDL_Surface *screen = nullptr;
 
 std::mutex print_mutex;
-#define Printf(fmt, ...) do {		\
-  MutexLock Printf_ml(&print_mutex);		\
-  printf(fmt, ##__VA_ARGS__);			\
+#define Printf(fmt, ...) do {               \
+    MutexLock Printf_ml(&print_mutex);      \
+    printf(fmt, ##__VA_ARGS__);             \
   } while (0);
 
 static uint8 FloatByte(float f) {
@@ -121,7 +146,8 @@ struct Pixel {
   uint8 r, g, b;
 };
 vector<Pixel> pixels{WIDTH * HEIGHT, Pixel{0, 0, 0, 0}};
-// delta_e[i * 64 + j] gives the distance between the nes palette entries in LAB space.
+// delta_e[i * 64 + j] gives the distance between the nes palette
+// entries in LAB space.
 float delta_e[64 * 64];
 float max_delta_e = 0.0f;
 
@@ -135,9 +161,9 @@ inline void DrawChunk(int x, int y, const Pixel &p) {
   }
 #else
   sdlutil::FillRectRGB(screen,
-		       x << SCALE, y << SCALE,
-		       1 << SCALE, 1 << SCALE,
-		       p.r, p.g, p.b);
+                       x << SCALE, y << SCALE,
+                       1 << SCALE, 1 << SCALE,
+                       p.r, p.g, p.b);
   #if SCALE >= 4
   font->drawto_plain(screen, (x << SCALE) + 1, (y << SCALE) + 1, StringPrintf("%02x", p.idx));
   #endif
@@ -152,13 +178,13 @@ inline void UpdatePixel(int x, int y) {
 // Do two rectangles of the same size overlap?
 // XXX might be off-by-one problems here
 inline bool Overlap(int w, int h,
-		    int ax, int ay,
-		    int bx, int by) {
+                    int ax, int ay,
+                    int bx, int by) {
   const int axx = ax + w, ayy = ay + h;
   const int bxx = bx + w, byy = by + h;
 
   return !(ax > bxx || bx > axx ||
-	   ay < byy || by < ayy);
+           ay < byy || by < ayy);
 }
 
 static void Redraw() {
@@ -187,19 +213,87 @@ static float Unsmoothness() {
       const float start_de = delta_e[irow + pixels[j].idx];
 
       for (const std::pair<int, int> point : Line<int>{jx, jy, ix, iy}) {
-	// Includes first point, but that's fine (deltadelta = 0).
-	const int x = point.first;
-	const int y = point.second;
-	const float cell_de = delta_e[irow + pixels[y * WIDTH + x].idx];
-	if (cell_de > start_de) {
-	  err += (cell_de - start_de);
-	}
+        // Includes first point, but that's fine (deltadelta = 0).
+        const int x = point.first;
+        const int y = point.second;
+        const float cell_de = delta_e[irow + pixels[y * WIDTH + x].idx];
+        if (cell_de > start_de) {
+          err += (cell_de - start_de);
+        }
       }
     }
   }
 
   return err;
 }
+
+// For horizontal, vertical, and perfect diagonals, ask that
+// the internal pixels are linear interpolants of the extremal
+// ones in LAB space.
+static float Linearity() {
+  float err = 0.0f;
+  auto AddLine = [&err](int ix, int iy, int jx, int jy) {
+      const int i = iy * WIDTH + ix;
+      const int j = jy * WIDTH + jx;
+
+      // This gives us a vector in LAB space.
+      const auto [l1, a1, b1] = palette_lab[pixels[i].idx];
+      const auto [l2, a2, b2] = palette_lab[pixels[j].idx];
+
+      int dx = ix - jx;
+      int dy = iy - jy;
+      float dfull = sqrtf(dx * dx + dy * dy);
+      for (const auto [x, y] : Line<int>{ix, iy, jx, jy}) {
+        int dxx = x - ix;
+        int dyy = y - iy;
+        float d = sqrtf(dxx * dxx + dyy * dyy);
+        float f = d / dfull;
+
+        float lt = l1 + f * (l2 - l1);
+        float at = a1 + f * (a2 - a1);
+        float bt = b1 + f * (b2 - b1);
+
+        const auto [l, a, b] = palette_lab[pixels[y * WIDTH + x].idx];
+
+        float dl = lt - l;
+        float da = at - a;
+        float db = bt - b;
+
+        err += sqrtf(dl * dl + da * da + db * db);
+      }
+    };
+
+  for (int y = 0; y < HEIGHT; y++) {
+    AddLine(0, y, WIDTH - 1, y);
+  }
+  for (int x = 0; x < WIDTH; x++) {
+    AddLine(x, 0, x, HEIGHT - 1);
+  }
+
+  // Down-right, top side
+  for (int x = 0; x < WIDTH - 1; x++) {
+    AddLine(x, 0, WIDTH - 1, HEIGHT - 1 - x);
+  }
+  // Down-left, top side
+  for (int x = 1; x < WIDTH - 1; x++) {
+    AddLine(x, 0, 0, x);
+  }
+
+  // Down-right, left side
+  // (but starting from 1 so we don't do major diagonal twice)
+  for (int y = 1; y < HEIGHT - 1; y++) {
+    AddLine(0, y, HEIGHT - 1 - y, HEIGHT - 1);
+  }
+  // Up-right, left side
+  for (int y = 1; y < HEIGHT; y++) {
+    AddLine(0, y, y, 0);
+  }
+  
+  // XXX diagonals too
+  
+  return err;
+}
+
 
 static float Dissimilarity() {
   float err = 0.0f;
@@ -220,46 +314,169 @@ static float Dissimilarity() {
   return err;
 }
 
+// Sum up distances between "friends", which are cells with
+// delta-e in the 25th percentile (< 38.296).
+static float DistantFriends() {
+  float err = 0.0f;
+  for (int i = 0; i < WIDTH * HEIGHT; i++) {
+    const int ix = i % WIDTH;
+    const int iy = i / WIDTH;
+    const int irow = pixels[i].idx * WIDTH * HEIGHT;
+    for (int j = i + 1; j < WIDTH * HEIGHT; j++) {
+      float de = delta_e[irow + pixels[j].idx];
+      if (de < 38.296) {
+        const int jx = j % WIDTH;
+        const int jy = j / WIDTH;
+        const int dx = ix - jx;
+        const int dy = iy - jy;
+        const float sqdist = dx * dx + dy * dy;
+        err += sqdist;
+      }
+    }
+  }
+  return err;
+}
+
 static float Error() {
-  return Unsmoothness();
+  // Linearity() / 5640.9609;
+  // Unsmoothness() / 8416.5977;
+  // DistantFriends() / 2359.0;
+  return
+    Linearity() / 5640.9609f +
+    DistantFriends() / 2359.0f +
+    Unsmoothness() / 8416.5977f;
+  // return Unsmoothness();
+  // return Dissimilarity();
+  // return Linearity();
   // return Dissimilarity(); // Unsmoothness();
+}
+
+static Pixel MakePixel(int idx) {
+  return Pixel{(uint8)idx,
+      ntsc_palette[idx * 3 + 0],
+      ntsc_palette[idx * 3 + 1],
+      ntsc_palette[idx * 3 + 2]};
 }
 
 static void UIThread() {
   ArcFour rc("ui");
 
-  Printf("Init delta_e table.\n");
-  auto GetLab = [](int i, float *l, float *a, float *b) {
-    ColorUtil::RGBToLAB(ntsc_palette[i * 3 + 0] / 255.0f,
-			ntsc_palette[i * 3 + 1] / 255.0f,
-			ntsc_palette[i * 3 + 2] / 255.0f,
-			l, a, b);
-  };
+  std::map<string, vector<int>> rev;
   for (int i = 0; i < 64; i++) {
-    float il, ia, ib;
-    GetLab(i, &il, &ia, &ib);
+    uint8 r = ntsc_palette[i * 3 + 0];
+    uint8 g = ntsc_palette[i * 3 + 1];
+    uint8 b = ntsc_palette[i * 3 + 2];
+    string code = StringPrintf("#%02x%02x%02x", r, g, b);
+    rev[code].push_back(i);
+  }
+  
+  for (const auto [code, idxs] : rev) {
+    printf("%s:", code.c_str());
+    for (int i : idxs) printf (" %02x", i);
+    printf("\n");
+  }
+  printf("%d distinct colors\n", (int)rev.size());
+  
+  Printf("Init delta_e table.\n");
+  auto GetLab = [](int i) {
+      return ColorUtil::RGBToLAB(ntsc_palette[i * 3 + 0] / 255.0f,
+                                 ntsc_palette[i * 3 + 1] / 255.0f,
+                                 ntsc_palette[i * 3 + 2] / 255.0f);
+    };
+  std::vector<float> all_delta_e;
+  all_delta_e.reserve(64 * 64);
+  for (int i = 0; i < 64; i++) {
+    const auto [il, ia, ib] = GetLab(i);
+    palette_lab[i] = std::make_tuple(il, ia, ib);
+    // printf("%d: %.3f,%.3f,%.3f\n", i, il, ia, ib);
     for (int j = 0; j < 64; j++) {
-      float jl, ja, jb;
-      GetLab(j, &jl, &ja, &jb);
+      const auto [jl, ja, jb] = GetLab(j);
       float de = ColorUtil::DeltaE(il, ia, ib, jl, ja, jb);
       delta_e[i * 64 + j] = de;
+      all_delta_e.push_back(de);
       max_delta_e = std::max(de, max_delta_e);
     }
   }
+
+  std::sort(all_delta_e.begin(), all_delta_e.end());
+  printf("delta_e quartiles: %.3f %.3f %.3f %.3f %.3f\n",
+         all_delta_e[0],
+         all_delta_e[std::round(0.25f * all_delta_e.size())],
+         all_delta_e[std::round(0.50f * all_delta_e.size())],
+         all_delta_e[std::round(0.75f * all_delta_e.size())],
+         all_delta_e.back());
   
   Printf("Init pixels.\n");
   for (int i = 0; i < 64; i++) {
     // int idx = i;
     int idx = best_permutation[i];
-    pixels[i] = Pixel{(uint8)idx,
-		      ntsc_palette[idx * 3 + 0],
-		      ntsc_palette[idx * 3 + 1],
-		      ntsc_palette[idx * 3 + 2]};
+    pixels[i] = MakePixel(idx);
   }
- 
+
+  // Matrix, row major. Each cell is -1 if free, otherwise
+  // the color index that is pinned there.
+  std::array<std::array<int, WIDTH>, HEIGHT> pin_pos;
+  for (int y = 0; y < HEIGHT; y++) {
+    for (int x = 0; x < WIDTH; x++) {
+      pin_pos[y][x] = -1;
+    }
+  }
+
+  for (auto [color, pos] : PINNED) {
+    int y = pos / WIDTH;
+    int x = pos % WIDTH;
+    pin_pos[y][x] = color;
+  }
+
+  for (int y = 0; y < HEIGHT; y++) {
+    for (int x = 0; x < WIDTH; x++) {
+      printf("%d ", pin_pos[y][x]);
+    }
+    printf("\n");
+  }
+  
+  // For each color, its pinned position or -1 if free.
+  std::array<int, 64> pin_color;
+  for (int i = 0; i < 64; i++) {
+    pin_color[i] = -1;
+  }
+  for (auto [color, pos] : PINNED) {
+    pin_color[color] = pos;
+  }
+
+  // Randomize the whole thing, except put pinned pixels
+  // in their required spots.
+  auto RandomizePixels = [&]() {
+      vector<int> colors;
+      colors.reserve(64);
+      for (int i = 0; i < 64; i++) {
+        if (pin_color[i] < 0) {
+          colors.push_back(i);
+        }
+      }
+      Shuffle(&rc, &colors);
+
+      for (int y = 0; y < HEIGHT; y++) {
+        for (int x = 0; x < WIDTH; x++) {
+          const int i = y * WIDTH + x;
+
+          int idx = 0;
+          if (pin_pos[y][x] < 0) {
+            CHECK(!colors.empty());
+            idx = colors.back();
+            colors.pop_back();
+          } else {
+            idx = pin_pos[y][x];
+          }
+          pixels[i] = MakePixel(idx);
+        }
+      }
+    };
+  
   Printf("Initial draw:\n");
   Redraw();
 
+  
   bool paused = false;
   int mousex = 0, mousey = 0;
   bool mousemoved = true;
@@ -270,78 +487,90 @@ static void UIThread() {
   float best_error = current_error;
 
   auto Save = [&best_error, &best]() {
-    printf("Best error: %.4f\n", best_error);
-    for (int i = 0; i < best.size(); i++) {
-      printf("0x%02x, ", best[i].idx);
-      if ((i + 1) % 8 == 0) printf("\n");
-    }
-    printf("\n");
-  };
-
-  auto Swap2 = [&swaps, &current_error](int i, int j) {
-    if (i != j) {
-      // Try swapping.
-      const float before = current_error;
-      const Pixel tmp = pixels[i];
-      pixels[i] = pixels[j];
-      pixels[j] = tmp;
-      const float after = Error();
-      if (after < before) {
-	current_error = after;
-	swaps++;
-      } else {
-	// swap back.
-	const Pixel tmp = pixels[i];
-	pixels[i] = pixels[j];
-	pixels[j] = tmp;
+      printf("Best error: %.4f\n  ", best_error);
+      for (int i = 0; i < best.size(); i++) {
+        printf("0x%02x, ", best[i].idx);
+        if ((i + 1) % 8 == 0) printf("\n  ");
       }
-    }
-  };
+      printf("\n");
+    };
 
-  auto SwapSeg = [&swaps, &current_error, &segments](int a, int b, int c) {
-    // Try moving a single segment. wlog the swap can be
-    // defined by three points 0 <= A <= B <= C <= pixels.size
-    //
-    //     A          B         C  
-    //  +-------------------------------------------+
-    //  |  |##########|         |                   |
-    //  +-------------------------------------------+
-    //
-    //     AB         C           
-    //  +-------------------------------------------+
-    //  |  ||         |##########                   |
-    //  +-------------------------------------------+
-
-    const int w = b - a;
-    if (w > 0) {
-      vector<Pixel> newpixels;
-      newpixels.reserve(pixels.size());
-      for (int i = 0; i < a; i++) newpixels.push_back(pixels[i]);
-      for (int i = b; i < c; i++) newpixels.push_back(pixels[i]);
-      for (int i = a; i < b; i++) newpixels.push_back(pixels[i]);
-      for (int i = c; i < pixels.size(); i++) newpixels.push_back(pixels[i]);
-
-      pixels.swap(newpixels);
-      const float after = Error();
-      if (after < current_error) {
-	swaps += w;
-	segments++;
-	current_error = after;
-      } else {
-	// undo
-	newpixels.swap(pixels);
+  auto PinnedIndex = [&pin_pos](int i) {
+      int y = i / WIDTH;
+      int x = i % WIDTH;
+      return pin_pos[y][x] >= 0;
+    };
+  
+  auto Swap2 = [&PinnedIndex, &swaps, &current_error](int i, int j) {
+      if (i != j) {
+        if (PinnedIndex(i) || PinnedIndex(j)) return;
+        // Try swapping.
+        const float before = current_error;
+        const Pixel tmp = pixels[i];
+        pixels[i] = pixels[j];
+        pixels[j] = tmp;
+        const float after = Error();
+        if (after < before) {
+          current_error = after;
+          swaps++;
+        } else {
+          // swap back.
+          const Pixel tmp = pixels[i];
+          pixels[i] = pixels[j];
+          pixels[j] = tmp;
+        }
       }
-    }
-  };
+    };
+
+  auto SwapSeg = [&PinnedIndex,
+                  &swaps, &current_error, &segments](int a, int b, int c) {
+      // Try moving a single segment. wlog the swap can be
+      // defined by three points 0 <= A <= B <= C <= pixels.size
+      //
+      //     A          B         C
+      //  +-------------------------------------------+
+      //  |  |##########|         |                   |
+      //  +-------------------------------------------+
+      //
+      //     AB         C
+      //  +-------------------------------------------+
+      //  |  ||         |##########                   |
+      //  +-------------------------------------------+
+
+      for (int i = a; i < c; i++)
+        if (PinnedIndex(i))
+          return;
+      
+      const int w = b - a;
+      if (w > 0) {
+        vector<Pixel> newpixels;
+        newpixels.reserve(pixels.size());
+        for (int i = 0; i < a; i++) newpixels.push_back(pixels[i]);
+        for (int i = b; i < c; i++) newpixels.push_back(pixels[i]);
+        for (int i = a; i < b; i++) newpixels.push_back(pixels[i]);
+        for (int i = c; i < pixels.size(); i++) newpixels.push_back(pixels[i]);
+
+        pixels.swap(newpixels);
+        const float after = Error();
+        if (after < current_error) {
+          swaps += w;
+          segments++;
+          current_error = after;
+        } else {
+          // undo
+          newpixels.swap(pixels);
+        }
+      }
+    };
 
   enum Mode : int {
     MODE_SEARCH,
     MODE_SURFACE,
-      
+
     NUM_MODES
   };
   Mode mode = MODE_SEARCH;
-  
+
   int swap_src = 0, seg_a = 0;
   int successive_failures = 0;
   for (int round = 0; ; round++) {
@@ -349,144 +578,154 @@ static void UIThread() {
     if (mode == MODE_SEARCH) {
       int old_swaps = swaps;
       if (!paused) {
-	if (round & 1) {
-	  Swap2(RandTo(&rc, WIDTH * HEIGHT), RandTo(&rc, WIDTH * HEIGHT));
-	} else {
-	  // Note that any of these can actually be past the end of the array.
-	  int a = RandTo(&rc, WIDTH * HEIGHT + 1);
-	  int b = RandTo(&rc, WIDTH * HEIGHT + 1);
-	  int c = RandTo(&rc, WIDTH * HEIGHT + 1);
+        if (round & 1) {
+          Swap2(RandTo(&rc, WIDTH * HEIGHT), RandTo(&rc, WIDTH * HEIGHT));
+        } else {
+          // Note that any of these can actually be past the end of the array.
+          int a = RandTo(&rc, WIDTH * HEIGHT + 1);
+          int b = RandTo(&rc, WIDTH * HEIGHT + 1);
+          int c = RandTo(&rc, WIDTH * HEIGHT + 1);
 
-	  // TODO: Would be nice to have a library for sorting fixed-size
-	  // "arrays" like this, though obviously this is not the bottleneck
-	  // here.
-	  if (c < b) std::swap(b, c);
-	  if (b < a) std::swap(a, b);
-	  // now a <= b and a <= c
-	  if (c < b) std::swap(b, c);
-	  // Now a <= b <= c
-	  SwapSeg(a, b, c);
-	}
+          // TODO: Would be nice to have a library for sorting fixed-size
+          // "arrays" like this, though obviously this is not the bottleneck
+          // here.
+          if (c < b) std::swap(b, c);
+          if (b < a) std::swap(a, b);
+          // now a <= b and a <= c
+          if (c < b) std::swap(b, c);
+          // Now a <= b <= c
+          SwapSeg(a, b, c);
+        }
 
-	if (swaps == old_swaps) {
-	  if (round & 1) {
-	    for (int swap_dst = swap_src + 1; swap_dst < (WIDTH * HEIGHT); swap_dst++) {
-	      Swap2(swap_src, swap_dst);
-	    }
-	    swap_src = (swap_src + 1) % (WIDTH * HEIGHT);
-	  } else {
-	    // printf("All segs.\n");
-	    for (int seg_b = seg_a + 1; seg_b < WIDTH * HEIGHT; seg_b++) {
-	      for (int seg_c = seg_b + 1; seg_c < WIDTH * HEIGHT + 1; seg_c++) {
-		SwapSeg(seg_a, seg_b, seg_c);
-	      }
-	    }
-	    seg_a = (seg_a + 1) % (WIDTH * HEIGHT);
-	  }
-	}
+        if (swaps == old_swaps) {
+          if (round & 1) {
+            for (int swap_dst = swap_src + 1;
+                 swap_dst < (WIDTH * HEIGHT);
+                 swap_dst++) {
+              Swap2(swap_src, swap_dst);
+            }
+            swap_src = (swap_src + 1) % (WIDTH * HEIGHT);
+          } else {
+            // printf("All segs.\n");
+            for (int seg_b = seg_a + 1; seg_b < WIDTH * HEIGHT; seg_b++) {
+              for (int seg_c = seg_b + 1; seg_c < WIDTH * HEIGHT + 1; seg_c++) {
+                SwapSeg(seg_a, seg_b, seg_c);
+              }
+            }
+            seg_a = (seg_a + 1) % (WIDTH * HEIGHT);
+          }
+        }
 
-	if (swaps == old_swaps) {
-	  // Still no successes...
-	  successive_failures++;
-	  if (successive_failures > 128) {
-	    printf("%.4f error (best %.4f). %d swaps. %d segs.\n", current_error,
-		   best_error, swaps, segments);
-	    if (current_error < best_error) {
-	      best = pixels;
-	      best_error = current_error;
-	    }
-	    for (int i = 0; i < WIDTH * HEIGHT; i++) {
-	      int j = RandTo(&rc, WIDTH * HEIGHT);
-	      if (j != i) {
-		Pixel tmp = pixels[i];
-		pixels[i] = pixels[j];
-		pixels[j] = tmp;
-	      }
-	    }
-	    current_error = Error();
-	    swaps = 0;
-	    segments = 0;
-	    successive_failures = 0;
-	    // seg_a = 0;
-	    // swap_src = 0;
-	  }
-	} else {
-	  successive_failures = 0;
-	  Redraw();
-	  SDL_Flip(screen);
-	}
+        if (swaps == old_swaps) {
+          // Still no successes...
+          successive_failures++;
+          if (successive_failures > 128) {
+            printf("%.4f error (best %.4f). %d swaps. %d segs.\n",
+                   current_error,
+                   best_error, swaps, segments);
+            if (current_error < best_error) {
+              best = pixels;
+              best_error = current_error;
+            }
+            RandomizePixels();
+            current_error = Error();
+            swaps = 0;
+            segments = 0;
+            successive_failures = 0;
+            // seg_a = 0;
+            // swap_src = 0;
+            /*
+            paused = true;
+            Redraw();
+            SDL_Flip(screen);
+            */
+          }
+        } else {
+          successive_failures = 0;
+          Redraw();
+          SDL_Flip(screen);
+        }
       }
     } else if (mode == MODE_SURFACE) {
       if (mousemoved) {
-	int mx = mousex >> SCALE;
-	int my = mousey >> SCALE;
-	if (mx >= 0 && my >= 0 && mx < WIDTH && my < HEIGHT) {
-	  const Pixel &ref = pixels[my * WIDTH + mx];
-	  const int refrow = ref.idx * WIDTH * HEIGHT;
-	  for (int y = 0; y < HEIGHT; y++) {
-	    for (int x = 0; x < WIDTH; x++) {
-	      const Pixel &other = pixels[y * WIDTH + x];
-	      float def = delta_e[refrow + other.idx] / max_delta_e;
-	      float v = def * 255.0f;
-	      sdlutil::FillRectRGB(screen,
-				   x << SCALE, y << SCALE,
-				   1 << SCALE, 1 << SCALE,
-				   // p.r, p.g, p.b
-				   v, v, v);
-	      sdlutil::FillRectRGB(screen,
-				   x << SCALE, y << SCALE,
-				   1 << SCALE, 4,
-				   other.r, other.g, other.b);
-				   
-	      font->drawto_plain(screen, (x << SCALE) + 1, (y << SCALE) + 1,
-				 StringPrintf("%02x", other.idx));
-	      font->drawto_plain(screen, (x << SCALE) + 1, (y << SCALE) + 1 + FONTHEIGHT,
-				 StringPrintf("%.4f", def));
-	    }
-	  }
-	  SDL_Flip(screen);
-	}
+        int mx = mousex >> SCALE;
+        int my = mousey >> SCALE;
+        if (mx >= 0 && my >= 0 && mx < WIDTH && my < HEIGHT) {
+          const Pixel &ref = pixels[my * WIDTH + mx];
+          const int refrow = ref.idx * WIDTH * HEIGHT;
+          for (int y = 0; y < HEIGHT; y++) {
+            for (int x = 0; x < WIDTH; x++) {
+              const Pixel &other = pixels[y * WIDTH + x];
+              float def = delta_e[refrow + other.idx] / max_delta_e;
+              float v = def * 255.0f;
+              sdlutil::FillRectRGB(screen,
+                                   x << SCALE, y << SCALE,
+                                   1 << SCALE, 1 << SCALE,
+                                   // p.r, p.g, p.b
+                                   v, v, v);
+              sdlutil::FillRectRGB(screen,
+                                   x << SCALE, y << SCALE,
+                                   1 << SCALE, 4,
+                                   other.r, other.g, other.b);
+
+              font->drawto_plain(
+                  screen, (x << SCALE) + 1, (y << SCALE) + 1,
+                  StringPrintf("%02x", other.idx));
+              font->drawto_plain(
+                  screen, (x << SCALE) + 1, (y << SCALE) + 1 + FONTHEIGHT,
+                  StringPrintf("%.4f", def));
+            }
+          }
+          SDL_Flip(screen);
+        }
       }
       mousemoved = false;
     }
-      
+
     SDL_Event event;
     if (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
-	Save();
-	Printf("QUIT.\n");
-	return;
+        Save();
+        Printf("QUIT.\n");
+        return;
 
       } else if (event.type == SDL_MOUSEMOTION) {
-	SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent*)&event;
+        SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent*)&event;
 
-	mousex = e->x;
-	mousey = e->y;
-	mousemoved = true;
-	// (and immediately redraw)
+        mousex = e->x;
+        mousey = e->y;
+        mousemoved = true;
+        // (and immediately redraw)
 
       } else if (event.type == SDL_KEYDOWN) {
-	switch (event.key.keysym.sym) {
-	case SDLK_b:
-	  printf("Take best.\n");
-	  pixels = best;
-	  current_error = Error();
-	  successive_failures = 0;
-	  segments = 0;
-	  swaps = 0;
-	  Redraw();
-	  break;
-	case SDLK_SPACE:
-	  mode = (Mode)(((int)mode + 1) % NUM_MODES);
-	  break;
-	case SDLK_ESCAPE:
-	  Save();
-	  Printf("ESCAPE.\n");
-	  return;
-	default:;
-	}
+        switch (event.key.keysym.sym) {
+        case SDLK_b:
+          printf("Take best.\n");
+          pixels = best;
+          current_error = Error();
+          successive_failures = 0;
+          segments = 0;
+          swaps = 0;
+          Redraw();
+          SDL_Flip(screen);
+          break;
+        case SDLK_p:
+          paused = !paused;
+          if (paused) Printf("paused!\n");
+          break;
+        case SDLK_SPACE:
+          mode = (Mode)(((int)mode + 1) % NUM_MODES);
+          Redraw();
+          SDL_Flip(screen);          
+          break;
+        case SDLK_ESCAPE:
+          Save();
+          Printf("ESCAPE.\n");
+          return;
+        default:;
+        }
       }
-    } 
+    }
   }
 }
 
@@ -496,29 +735,29 @@ int SDL_main(int argc, char **argv) {
     LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
     }
   */
-  
+
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |
-		 SDL_INIT_TIMER | 
-		 SDL_INIT_AUDIO) >= 0);
+                 SDL_INIT_TIMER |
+                 SDL_INIT_AUDIO) >= 0);
   fprintf(stderr, "SDL initialized OK.\n");
 
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
-		      SDL_DEFAULT_REPEAT_INTERVAL);
+              SDL_DEFAULT_REPEAT_INTERVAL);
 
   SDL_EnableUNICODE(1);
 
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen);
 
-  font = Font::create(screen,
-		      "font.png",
-		      FONTCHARS,
-		      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+  font = Font::Create(screen,
+                      "font.png",
+                      FONTCHARS,
+                      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font != nullptr) << "Couldn't load font.";
-  
+
   UIThread();
-  
+
   SDL_Quit();
   return 0;
 }

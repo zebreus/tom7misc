@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
 
   SDL_EnableUNICODE(1);
   screen = sdlutil::makescreen(STARTW, STARTH);
-  sdlutil::clearsurface(screen, BACKGROUND); 
+  sdlutil::clearsurface(screen, BACKGROUND);
   SDL_Flip(screen);
 
   // AudioEngine::BlockingRender();
@@ -113,23 +113,23 @@ int main(int argc, char **argv) {
     for (int64 pos = 0LL; pos < song_end; pos = sample_lock.Next(pos)) {
       auto span = sample_lock.GetPoint(pos);
       static const Uint32 thread_colors[] = {
-	0xFFCCCCFF,
-	0xCCFFCCFF,
-	0xCCCCFFFF,
-	0xFFFFCCFF,
-	0xFFCCFFFF,
-	0xCCFFFFFF,
+        0xFFCCCCFF,
+        0xCCFFCCFF,
+        0xCCCCFFFF,
+        0xFFFFCCFF,
+        0xFFCCFFFF,
+        0xCCFFFFFF,
       };
       static const int num_thread_colors = sizeof (thread_colors) /
-	sizeof (Uint32);
+        sizeof (Uint32);
 
       Uint32 color = RED;
       switch (span.data) {
       case -1: color = BLACK; break;
       case -2: color = RED; break;
-      default: 
-	CHECK(span.data >= 0);
-	color = thread_colors[span.data % num_thread_colors];
+      default:
+        CHECK(span.data >= 0);
+        color = thread_colors[span.data % num_thread_colors];
       }
 
       int start = max(span.start, 0LL);
@@ -138,7 +138,7 @@ int main(int argc, char **argv) {
       int startx = start * px_per_sample;
       int width = (int)(end * px_per_sample) - startx;
       sdlutil::fillrect(screen, color, startx, STARTH - 16,
-			width, 8);
+                        width, 8);
     }
 
     // Draw revisions.
@@ -153,15 +153,15 @@ int main(int argc, char **argv) {
       int startx = start * px_per_sample;
       int width = (int)(end * px_per_sample) - startx;
       sdlutil::fillrect(screen, color, startx, STARTH - 8,
-			width, 8);
+                        width, 8);
     }
 
     // Draw cursor.
     int64 cursor = AudioEngine::GetCursor();
     int curx = cursor * px_per_sample;
-    sdlutil::fillrect(screen, WHITE, 
-		      curx, STARTH - 20,
-		      1, 4);
+    sdlutil::fillrect(screen, WHITE,
+                      curx, STARTH - 20,
+                      1, 4);
   };
 
   while(1) {
@@ -170,27 +170,27 @@ int main(int argc, char **argv) {
     while (SDL_PollEvent(&e)) {
       switch(e.type) {
       case SDL_QUIT:
-	return 0;
+        return 0;
 
       case SDL_KEYDOWN: {
-	int key = e.key.keysym.sym;
-	switch(key) {
-	case SDLK_SPACE: {
-	  // XXX toggle
-	  AudioEngine::Play(true);
-	  break;
-	}
-	case SDLK_r: {
-	  Revision r = Revisions::NextRevision();
-	  lprintf("Incremented revision to %lld\n", r);
-	  break;
-	}
-	case SDLK_ESCAPE:
-	  return 0;
-	default:;
-	}
+        int key = e.key.keysym.sym;
+        switch(key) {
+        case SDLK_SPACE: {
+          // XXX toggle
+          AudioEngine::Play(true);
+          break;
+        }
+        case SDLK_r: {
+          Revision r = Revisions::NextRevision();
+          lprintf("Incremented revision to %lld\n", r);
+          break;
+        }
+        case SDLK_ESCAPE:
+          return 0;
+        default:;
+        }
       }
-	
+
       default:;
       }
     }

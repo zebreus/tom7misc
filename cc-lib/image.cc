@@ -636,6 +636,68 @@ ImageRGBA ImageRGBA::FromChannels(const ImageA &red,
   return out;
 }
 
+std::tuple<float, float, float, float>
+ImageRGBA::SampleBilinear(float x, float y) const {
+  // Truncate to integer pixels.
+  int ix = x;
+  int iy = y;
+
+  // subpixel values give us the interpolants
+  float fx = x - ix;
+  float fy = y - iy;
+
+  // Get these four values.
+  //
+  //  v00 ----- v10
+  //   |   :fy   |
+  //   |...*     | 1.0
+  //   | fx      |
+  //  v01 ----- v11
+  //       1.0
+
+  auto BClipPixel = [this](int x, int y) {
+      if (x < 0) x = 0;
+      if (y < 0) y = 0;
+      if (x >= width) x = width - 1;
+      if (y >= height) y = height - 1;
+      return GetPixel(x, y);
+    };
+
+  using rgba8 = std::tuple<uint8, uint8, uint8, uint8>;
+  
+  rgba8 v00 = BClipPixel(ix, iy);
+  rgba8 v10 = BClipPixel(ix + 1, iy);
+  rgba8 v01 = BClipPixel(ix, iy + 1);
+  rgba8 v11 = BClipPixel(ix + 1, iy + 1);
+
+  auto Component = [fx, fy](
+      uint8 c00, uint8 c10, uint8 c01, uint8 c11) -> float {
+      // c0 interpolates between c00 and c10 at fx.
+      float c0 = (float)c00 + (float)(c10 - c00) * fx;
+      float c1 = (float)c01 + (float)(c11 - c01) * fx;
+
+      float c = c0 + (c1 - c0) * fy;
+      return std::clamp(c, 0.0f, 255.0f);
+    };
+
+  // TODO: Don't just average alpha; the average of #FF0000FF and
+  // #00000000 should not be dark red.
+  return std::make_tuple(
+      // R
+      Component(std::get<0>(v00), std::get<0>(v10),
+                std::get<0>(v01), std::get<0>(v11)),
+      // G
+      Component(std::get<1>(v00), std::get<1>(v10),
+                std::get<1>(v01), std::get<1>(v11)),
+      // B
+      Component(std::get<2>(v00), std::get<2>(v10),
+                std::get<2>(v01), std::get<2>(v11)),
+      // A
+      Component(std::get<3>(v00), std::get<3>(v10),
+                std::get<3>(v01), std::get<3>(v11)));
+}
+
+
 ImageA::ImageA(const vector<uint8> &alpha, int width, int height)
     : width(width), height(height), alpha(alpha) {
   CHECK((int)alpha.size() == width * height);
