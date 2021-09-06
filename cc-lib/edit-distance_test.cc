@@ -30,7 +30,7 @@ static void TestDistance(F Distance) {
 static void TestThreshold() {
   CHECK_EQ(3, EditDistance::Ukkonen("zzzz", "yyyy", 3));
   CHECK_EQ(2, EditDistance::Ukkonen("zzzz", "yyyy", 2));
-  CHECK_EQ(1, EditDistance::Ukkonen("zzzz", "yyyy", 1));  
+  CHECK_EQ(1, EditDistance::Ukkonen("zzzz", "yyyy", 1));
 
   CHECK_EQ(2,
            EditDistance::Ukkonen("iff on a winter's night a ta traveler",
@@ -58,5 +58,6 @@ int main(int argc, char **argv) {
       return EditDistance::Ukkonen(a, b, std::max(a.size(), b.size()) + 1);
     });
   TestThreshold();
+  printf("OK\n");
   return 0;
 }

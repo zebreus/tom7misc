@@ -91,21 +91,10 @@ Bounds::Scaler Bounds::Stretch(double neww, double newh) const {
   return ret;
 }
 
-// XXX is this wrong? It doesn't work for a really simple case. :(
 Bounds::Scaler Bounds::Scaler::FlipY() const {
   Scaler ret = *this;
-  // screen_y = (yoff + y) * ys
-  // but we want
-  // flip_y = (yoff + (height - y)) * ys
-  //        = ys * yoff + ys * height - ys * y
-  //        = ys (yoff + height) - ys * y
-  // so if we negate ys, then
-  //        = - nys (yoff + height) + nys * y
-  // and make yoff be -(yoff + height), then
-  //        = nys * nyoff + nys * y
-  //        = (nyoff + y) * nys
   ret.ys = -ys;
-  ret.yoff = -(yoff + height);
+  ret.yoff = yoff - height;
   return ret;
 }
 

@@ -4,6 +4,8 @@
 #include <tuple>
 
 struct ColorUtil {
+  // hue, saturation, value nominally in [0, 1].
+  // RGB output also in [0, 1].
   static void HSVToRGB(float hue, float saturation, float value,
                        float *r, float *g, float *b);
 

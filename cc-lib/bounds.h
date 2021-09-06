@@ -76,7 +76,7 @@ struct Bounds {
     // does nothing).
     Scaler Zoom(double xfactor, double yfactor) const;
 
-  private:
+   private:
     friend class Bounds;
     double xoff = 0.0, yoff = 0.0;
     double xs = 1.0, ys = 1.0;
@@ -90,7 +90,7 @@ struct Bounds {
   // Make the bounding box fit the screen, stretching as necessary.
   Scaler Stretch(double w, double h) const;
 
-private:
+ private:
   bool is_empty = true;
   double minx = std::numeric_limits<double>::infinity();
   double miny = std::numeric_limits<double>::infinity();
