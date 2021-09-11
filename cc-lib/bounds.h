@@ -85,8 +85,9 @@ struct Bounds {
   };
 
   // Make the bounding box as large as possible without modifying its
-  // aspect ratio.
-  // TODO: Scaler ScaleToFit(double w, double h) const;
+  // aspect ratio. If centered is set, center the data along the dimension
+  // that is not filled.
+  Scaler ScaleToFit(double w, double h, bool centered = true) const;
   // Make the bounding box fit the screen, stretching as necessary.
   Scaler Stretch(double w, double h) const;
 

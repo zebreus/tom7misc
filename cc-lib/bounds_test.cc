@@ -67,7 +67,12 @@ static void TestSimple() {
   CHECK_FEQ(bounds.MinY(), -5.5);
 }
 
-static void TestScaler() {
+static void TestStretch() {
+  {
+    // Don't crash.
+    (void)Bounds().Stretch(10.0, 10.0);
+  }
+
   {
     // Data occupy the same bounds as the screen.
     Bounds bounds;
@@ -206,12 +211,54 @@ static void TestScaler() {
     CHECK_PEQ(flipped.Scale({6.0, 2.0}), 400.0, 500.0);
     CHECK_PEQ(flipped.Scale({10.0, 5.0}), 800.0, 200.0);
   }
+}
 
+static void TestScaleToFit() {
+  {
+    // Don't crash.
+    (void)Bounds().ScaleToFit(10.0, 10.0, false);
+    (void)Bounds().ScaleToFit(10.0, 10.0, true);
+  }
+
+  {
+    Bounds bounds;
+    bounds.Bound(1.0, -1.0);
+    bounds.Bound(2.0, 3.0);
+
+    // Fully fits.
+    {
+      Bounds::Scaler fits = bounds.ScaleToFit(1.0, 4.0, false);
+      CHECK_PEQ(fits.Scale({1.0, -1.0}), 0.0, 0.0);
+      CHECK_PEQ(fits.Scale({2.0, 3.0}), 1.0, 4.0);
+    }
+
+    // "portrait" aspect ratio.
+    {
+      Bounds::Scaler fits_c = bounds.ScaleToFit(1.0, 4.0, true);
+      CHECK_PEQ(fits_c.Scale({1.0, -1.0}), 0.0, 0.0);
+      CHECK_PEQ(fits_c.Scale({2.0, 3.0}), 1.0, 4.0);
+    }
+
+    {
+      Bounds::Scaler unit = bounds.ScaleToFit(1.0, 1.0, false);
+      CHECK_PEQ(unit.Scale({1.0, -1.0}), 0.0, 0.0);
+      CHECK_PEQ(unit.Scale({2.0, 3.0}), 0.25, 1.0);
+    }
+
+    {
+      Bounds::Scaler unit_c = bounds.ScaleToFit(1.0, 1.0, true);
+      CHECK_PEQ(unit_c.Scale({1.0, -1.0}), 0.5 - 0.125, 0.0);
+      CHECK_PEQ(unit_c.Scale({2.0, 3.0}), 0.5 + 0.125, 1.0);
+    }
+
+    // TODO: Test landscape input too
+  }
 }
 
 int main(int argc, char **argv) {
   TestSimple();
-  TestScaler();
+  TestStretch();
+  TestScaleToFit();
 
   printf("OK\n");
   return 0;

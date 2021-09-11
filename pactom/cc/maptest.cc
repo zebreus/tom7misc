@@ -66,8 +66,8 @@ int main(int argc, char **argv) {
   bounds.AddMarginFrac(0.05);
 
   // XXX ScaleToFit!
-  Bounds::Scaler scaler = bounds.Stretch(WIDTH * SCALE,
-                                         HEIGHT * SCALE).FlipY();
+  Bounds::Scaler scaler = bounds.ScaleToFit(WIDTH * SCALE,
+                                            HEIGHT * SCALE).FlipY();
 
   ImageRGBA image(WIDTH * SCALE, HEIGHT * SCALE);
   image.Clear32(0x000000FF);

@@ -78,14 +78,41 @@ Bounds::Scaler::Unscale(std::pair<double, double> p) const {
   return {UnscaleX(p.first), UnscaleY(p.second)};
 }
 
+Bounds::Scaler Bounds::ScaleToFit(double neww, double newh,
+                                  bool centered) const {
+  const double oldw = maxx - minx;
+  const double oldh = maxy - miny;
+
+  const double desired_xs = oldw == 0.0 ? 1.0 : (neww / oldw);
+  const double desired_ys = oldh == 0.0 ? 1.0 : (newh / oldh);
+  const double scale = std::min(desired_xs, desired_ys);
+
+  // offset for centering, which is applied in the original coordinate
+  // system.
+  // XXX: This is mathematically correct, but at least one of these
+  // should always be exactly zero; might be better to do this
+  // by case analysis?
+  const double center_x = centered ? (neww / scale - oldw) * 0.5 : 0.0;
+  const double center_y = centered ? (newh / scale - oldh) * 0.5 : 0.0;
+  
+  Scaler ret;
+  ret.xoff = center_x - minx;
+  ret.yoff = center_y - miny;
+  ret.xs = scale;
+  ret.ys = scale;
+  ret.width = oldw;
+  ret.height = oldh;
+  return ret;
+}
+
 Bounds::Scaler Bounds::Stretch(double neww, double newh) const {
   const double oldw = maxx - minx;
   const double oldh = maxy - miny;
   Scaler ret;
   ret.xoff = 0.0 - minx;
   ret.yoff = 0.0 - miny;
-  ret.xs = neww / oldw;
-  ret.ys = newh / oldh;
+  ret.xs = oldw == 0.0 ? 1.0 : (neww / oldw);
+  ret.ys = oldh == 0.0 ? 1.0 : (newh / oldh);
   ret.width = oldw;
   ret.height = oldh;
   return ret;
