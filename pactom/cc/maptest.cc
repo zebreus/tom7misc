@@ -42,7 +42,9 @@ static uint32 RandomBrightColor(ArcFour *rc) {
 int main(int argc, char **argv) {
   ArcFour rc("pactom");
   unique_ptr<PacTom> pactom = PacTom::FromFiles({"../pac.kml",
-                                                 "../pac2.kml"});
+                                                 "../pac2.kml"},
+    "../neighborhoods.kml"
+    );
   CHECK(pactom.get() != nullptr);
 
   int64 pts = 0;
@@ -50,6 +52,7 @@ int main(int argc, char **argv) {
 
   printf("Loaded %lld paths with %lld waypoints.\n",
          pactom->paths.size(), pts);
+  printf("There are %d hoods\n", pactom->hoods.size());
 
   const LatLon home = LatLon::FromDegs(40.452911, -79.936313);
   LatLon::Projection Project = LatLon::Gnomonic(home);
@@ -65,16 +68,37 @@ int main(int argc, char **argv) {
   }
   bounds.AddMarginFrac(0.05);
 
-  // XXX ScaleToFit!
   Bounds::Scaler scaler = bounds.ScaleToFit(WIDTH * SCALE,
                                             HEIGHT * SCALE).FlipY();
 
   ImageRGBA image(WIDTH * SCALE, HEIGHT * SCALE);
   image.Clear32(0x000000FF);
 
+  for (const auto &[name, path] : pactom->hoods) {
+    constexpr uint32 color = 0x909090FF;
+    for (int i = 0; i < path.size() - 1; i++) {
+      const LatLon latlon0 = path[i];
+      const LatLon latlon1 = path[i + 1];
+      auto [x0, y0] = scaler.Scale(Project(latlon0));
+      auto [x1, y1] = scaler.Scale(Project(latlon1));
+
+      for (const auto [x, y] : Line<int>{(int)x0, (int)y0, (int)x1, (int)y1}) {
+        for (int dy = -RADIUS; dy <= RADIUS; dy++) {
+          const int ddy = dy * dy;
+          for (int dx = -RADIUS; dx <= RADIUS; dx++) {
+            const int ddx = dx * dx;
+            if (ddy + ddx <= RADIUS * RADIUS) {
+              image.BlendPixel32(x + dx, y + dy, color);
+            }
+          }
+        }
+      }
+
+    }
+  }
 
   for (const auto &p : pactom->paths) {
-    const uint32 color = RandomBrightColor(&rc);
+    const uint32 color = RandomBrightColor(&rc) & 0xFFFFFF33; // XXX
     for (int i = 0; i < p.size() - 1; i++) {
       const auto &[latlon0, elev0] = p[i];
       const auto &[latlon1, elev1] = p[i + 1];
