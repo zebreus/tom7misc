@@ -1,7 +1,7 @@
 
 all: default
 
-default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe
+default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe fixedersys1x.sfd fixedersys2x.sfd
 
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-gcc
@@ -50,6 +50,9 @@ dfx-snooty.sfd : dfx-snooty.png dfx-snooty.cfg makesfd.exe
 
 fixedersys1x.sfd : fixedersys.png fixedersys1x.cfg makesfd.exe
 	./makesfd.exe fixedersys1x.cfg $@
+
+fixedersys2x.sfd : fixedersys2x.png fixedersys2x.cfg makesfd.exe
+	./makesfd.exe fixedersys2x.cfg $@
 
 clean :
 	rm -f *.o *.exe $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
