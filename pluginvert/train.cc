@@ -1028,7 +1028,7 @@ struct TrainingExample {
 struct Training {
 
   // Number of examples per round of training.
-  static constexpr int EXAMPLES_PER_ROUND = 64;
+  static constexpr int EXAMPLES_PER_ROUND = 256;
   static_assert(EXAMPLES_PER_ROUND > 0);
 
   // Write a screenshot of the UI (to show training progress for

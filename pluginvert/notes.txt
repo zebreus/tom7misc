@@ -201,3 +201,88 @@ Some options:
    incrementally...
 
 
+
+--------------------------------------------------
+19 Sep 2021
+
+Chunks!
+
+Currently a layer can only be one type (dense, convolution array, etc.).
+Goal is to permit multiple different types per layer. Call
+these chunks.
+
+[.....stimulation.......]
+
+[chunk 1][chunk       2][chunk3]   = layer
+|       ||             ||      |
+[...... output stimulation ....]
+
+each chunk is an array of nodes with a type and some other
+configuration, like a layer is today. The size of the output
+of that layer is the sum of the sizes of its constituent
+chunks. Each of these chunks can read from the entire input
+layer. We expect a small number of chunks per layer, so we're
+not too concerned with overhead of them, but we don't want
+to pay a penalty for the inner loops.
+
+For now, we'll think about the "compiled-down" representation of the
+network that's suitable for training and inference. We probably
+want to rethink how the networks are described at a higher level,
+in like new-network and widen, etc.
+
+In the forward direction, we compile a kernel for each chunk of
+each layer, baking in some constants as usual. Probably we
+generalize DENSE to include a source offset and size, to allow
+for something like a dense column parallel to some convolution.
+Since a convolution also treats the input as a 2D matrix, it
+also needs to designate a region of the input. A linear region
+should suffice.
+We should pass an input pointer or use global_work_offset to
+avoid adding the offset inside the kernel itself, even as a
+compile-time constant.
+Sparse layers may not need offset/size, but it is not harmful there,
+so probably this is a property of all chunks.
+
+
+Since each chunk's outputs are independent, the forward pass is all
+pretty easy; for the chunk's output pointer we just pass the
+corresponding part of the output stimulation. We can even run the
+kernels in parallel, as their reads may overlap but their writes
+will not.
+
+
+setoutputerror needs no changes, as it is just working with the
+last stimulation and the expected part of the training example.
+
+decayweights does not need changes if we pack the weights for
+each layer into an array. But I'm thinking that we actually want
+each layer to be represented as an array of chunks with the
+weights/indices separated? This will be mostly an issue for
+backwardlayer/updatweights.
+
+Backwardlayer is a little interesting, at least, since multiple chunks
+may read from the same input node, and thus their total error cannot
+be computed chunk-by-chunk in a single pass.
+
+For backwardlayer, the simplest thing is for each chunk to have
+its own inverted indices. Perhaps the very easiest thing is
+to start with error of 0, then iteratively compute error for
+each of the N chunks, += into the error array (and then
+clipping as a separate pass at the end, if enabled).
+
+Alternatively, we could (in parallel) compute the error to N arrays of
+the size of the source layer (or be a little smarter and only
+represent the part covered by the offset/size) and then sum them.
+This significantly intermediate memory use though.
+
+In any case, backwardlayer requires some work but is straightforward.
+
+
+For updateweights, we can do this independently for each chunk, even
+in parallel. We just need to use the right offsets to read the error
+and outputs. So this one (which is hairy for convolutional layers)
+is mercifully easy.
+
+
+Overall this does not seem too bad, just a little fiddly?
+
