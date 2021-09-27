@@ -268,7 +268,29 @@ For backwardlayer, the simplest thing is for each chunk to have
 its own inverted indices. Perhaps the very easiest thing is
 to start with error of 0, then iteratively compute error for
 each of the N chunks, += into the error array (and then
-clipping as a separate pass at the end, if enabled).
+clipping as a separate pass at the end, if enabled). We can use
+define tricks so that we don't need the 0 += v on the first chunk of
+the layer. (Or as an additional optimization, we can order the chunks
+such that the first K >= 1 of them have disjoint sources, and enable
+this for all of them.)
+
+So backwardlayer isn't a loop over all the nodes of the source layer.
+Rather:
+  * initialize error for entire source layer to 0
+  * loop over each chunk in the dest layer
+     = loop over its input span, computing an error increment for that
+       span (but the first chunk is just =, not 0) and writing it to
+       the full layer's error
+     = here, the inverted indices are specific to the chunk (in the
+       dest layer, because we don't even want to store them for dense
+       chunks)...
+         - indexed by chunk offset (e.g. elt 0 is source node span_start).
+         - contents are just the uses that fall into this chunk; it's
+           no longer globally comprehensive
+         - need to decide whether the nodes are given as chunk-local indices
+           or global; should just do what's most efficient.
+  * post-pass clipping if enabled
+
 
 Alternatively, we could (in parallel) compute the error to N arrays of
 the size of the source layer (or be a little smarter and only

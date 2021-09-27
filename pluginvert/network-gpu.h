@@ -36,6 +36,7 @@ struct NetworkGPU {
                         &net->layers[layer].biases);
     }
 
+    // TODO: Invert here by calling some members of Network.
     inverted_indices.resize(net->inverted_indices.size());
     for (int layer = 0; layer < net->layers.size(); layer++) {
       inverted_indices[layer].start =

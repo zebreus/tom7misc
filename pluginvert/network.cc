@@ -5,11 +5,12 @@
 #include <cmath>
 
 #include <algorithm>
-#include <utility>
 #include <cstdint>
-#include <string>
-#include <vector>
 #include <memory>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -31,11 +32,12 @@ const char *TransferFunctionName(TransferFunction tf) {
   }
 }
 
-const char *LayerTypeName(LayerType lt) {
+const char *ChunkTypeName(ChunkType lt) {
   switch (lt) {
-  case LAYER_DENSE: return "LAYER_DENSE";
-  case LAYER_SPARSE: return "LAYER_SPARSE";
-  case LAYER_CONVOLUTION_ARRAY: return "LAYER_CONVOLUTION_ARRAY";
+  case CHUNK_INPUT: return "CHUNK_INPUT";
+  case CHUNK_DENSE: return "CHUNK_DENSE";
+  case CHUNK_SPARSE: return "CHUNK_SPARSE";
+  case CHUNK_CONVOLUTION_ARRAY: return "CHUNK_CONVOLUTION_ARRAY";
   default: return "??INVALID??";
   }
 }
@@ -88,34 +90,73 @@ string Network::TransferFunctionDefines(TransferFunction tf) {
   }
 }
 
-Network::Network(vector<int> num_nodes_in,
-                 vector<Layer> layers_in) :
-  num_layers(layers_in.size()),
-  num_nodes(num_nodes_in),
+Network::Network(vector<Layer> layers_in) :
   layers(std::move(layers_in)) {
 
-  CHECK(num_nodes.size() - 1 == layers.size()) <<
-    "num_nodes vec: " << num_nodes.size() << " layers vec: "
-                      << layers.size();
-  CHECK(num_layers >= 1) << "Must include input layer.";
-
-  // Make these valid (N x 1 x 1).
-  for (int n : num_nodes) {
-    width.push_back(n);
-    height.push_back(1);
-    channels.push_back(1);
-    renderstyle.push_back(RENDERSTYLE_FLAT);
-  }
-
-  printf("Reallocate inverted\n");
-  ReallocateInvertedIndices();
-  printf("Compute inverted\n");
-  fflush(stdout);
-  ComputeInvertedIndices();
   printf("Structural check\n");
   StructuralCheck();
   printf("OK\n");
 }
+
+#if 0
+// TODO: ComputeInvertedIndices
+  // XXX needs to be rethought for chunks
+  // I think what we want to do is have a vector of InvertedIndices
+  // structs, with the same size as the number of chunks on the
+  // NEXT layer (or just put these in the Layer structs..).
+  struct InvertedIndices {
+    // For a given node, where do I output to in the next layer?
+    // Note that nodes don't all have the same number of outputs.
+    // This is a packed structure to facilitate GPU operations.
+    //
+    // For a given node, where do my output indices start in
+    // the indices array, and how many are there?
+    // num_nodes[i]
+    vector<uint32_t> start;
+    vector<uint32_t> length;
+
+    // Packed array of indices.
+    // For all layer types, this is just the inverse of the corresponding
+    // indices array. For sparse and dense layers:
+    //
+    // Since every node on the next layer has exactly
+    // layers[l].indices_per_node inputs, this will be of size
+    // layers[l].indices_per_node * num_nodes[l + 1]. However, any
+    // given node on this layer may be used more or fewer times.
+    //
+    // The value here gives the index into the indices/weights vectors
+    // for the next layer. If for each index i within the span (defined
+    // by inverted_indices[layer].start[z]) for node id z
+    // let gidx = inverted_indices[layer].output_indices[i]
+    // and then layers[layer].indices[gidx] == z. (The same for the weight
+    // vector gives us the weight, which is the point, and dividing
+    // by INDICES_PER_NODE gives us the output node.) As such, this is
+    // a permutation of 0..(num_nodes[ii] * layers[ii].indices_per_node - 1).
+    //
+    // If the destination layer is a convolution array, we still have
+    // layers[layer].indices[gidx] == z. But the indices array only
+    // stores indices for "one feature", since they are the same for
+    // each. Thus this has size
+    //    layers[l].indices_per_node * num_nodes[l + 1] /
+    //    layers[l].num_features
+    // The gidx in this vector is an index into indices[] as above; some
+    // cell within the pattern in a specific occurrence. It stands for
+    // num_features edges, each with its own weight.
+    // int gidx = inverted_indices[layer].output_indices[i];
+    //  .. TODO tips here on how to compute weights, output nodes ..
+    // for (int f = 0; f < num_features; f++) {
+    //    weight =  ...
+    // }
+    vector<uint32_t> output_indices;
+  };
+
+  // There are also num_layers of these, but be careful about the
+  // offset. The 0th inverted index is about the gap between the input
+  // layer (otherwise not represented in the network, except for its
+  // size in num_nodes[0]) and the first hidden layer. The last one is
+  // about the last gap, not the output layer, since the output layer
+  // is not indexed by anything.
+  vector<InvertedIndices> inverted_indices;
 
 void Network::ReallocateInvertedIndices() {
   CHECK(num_layers > 0);
@@ -137,7 +178,7 @@ void Network::ReallocateInvertedIndices() {
     const int dst_layer_nodes = num_nodes[i + 1];
     CHECK(dst_layer_nodes > 0);
     const LayerType dst_layer_type = layers[i].type;
-    if (dst_layer_type == LAYER_CONVOLUTION_ARRAY) {
+    if (dst_layer_type == CHUNK_CONVOLUTION_ARRAY) {
       const int dst_num_features = layers[i].num_features;
       CHECK(dst_layer_nodes % dst_num_features == 0);
       ii.output_indices.resize(
@@ -146,453 +187,6 @@ void Network::ReallocateInvertedIndices() {
     } else {
       ii.output_indices.resize(
           layers[i].indices_per_node * dst_layer_nodes, 0);
-    }
-  }
-}
-
-Network *Network::Clone(const Network &other) {
-  return new Network(other);
-}
-
-int64 Network::Bytes() const {
-  int64 ret = sizeof *this;
-  ret += sizeof num_nodes[0] * num_nodes.size();
-  ret += sizeof width[0] * width.size();
-  ret += sizeof height[0] * height.size();
-  ret += sizeof channels[0] * channels.size();
-  // Layer structs.
-  for (int i = 0; i < num_layers; i++) {
-    ret += sizeof layers[i] +
-      sizeof layers[i].indices[0] * layers[i].indices.size() +
-      sizeof layers[i].weights[0] * layers[i].weights.size() +
-      sizeof layers[i].biases[0] * layers[i].biases.size();
-  }
-  // Inverted index structs.
-  for (int i = 0; i < num_layers; i++) {
-    ret += sizeof inverted_indices[i] +
-      sizeof inverted_indices[i].start[0] * inverted_indices[i].start.size() +
-      sizeof inverted_indices[i].length[0] * inverted_indices[i].length.size() +
-      sizeof inverted_indices[i].output_indices[0] *
-          inverted_indices[i].output_indices.size();
-  }
-
-  return ret;
-}
-
-int64 Network::TotalParameters() const {
-  int64 params = 0LL;
-  for (int i = 0; i < num_layers; i++) {
-    params += layers[i].weights.size() + layers[i].biases.size();
-  }
-  return params;
-}
-
-void Network::RunForward(Stimulation *stim) const {
-  for (int src = 0; src < num_layers; src++) {
-    RunForwardLayer(stim, src);
-  }
-}
-
-template<float (*fwd)(float)>
-static void RunForwardLayerWithFn(Stimulation *stim,
-                                  int src_layer,
-                                  const Network::Layer &layer,
-                                  int number_of_nodes /* ,
-                                                         F fwd */) {
-  const vector<float> &src_values = stim->values[src_layer];
-  vector<float> *dst_values = &stim->values[src_layer + 1];
-  const vector<float> &biases = layer.biases;
-  const vector<float> &weights = layer.weights;
-  const vector<uint32> &indices = layer.indices;
-  const int indices_per_node = layer.indices_per_node;
-  const LayerType layer_type = layer.type;
-
-  switch (layer_type) {
-  case LAYER_DENSE:
-    // PERF could support dense layers more efficiently
-    [[fallthrough]];
-  case LAYER_SPARSE:
-    UnParallelComp(number_of_nodes,
-                   [&](int node_idx) {
-        // Start with bias.
-        float potential = biases[node_idx];
-        const int my_weights = node_idx * indices_per_node;
-        const int my_indices = node_idx * indices_per_node;
-
-        for (int i = 0; i < indices_per_node; i++) {
-          const float w = weights[my_weights + i];
-          const int srci = indices[my_indices + i];
-          const float v = src_values[srci];
-          potential += w * v;
-        }
-
-        float out = fwd(potential);
-        (*dst_values)[node_idx] = out;
-      }, 2);
-
-    break;
-
-  case LAYER_CONVOLUTION_ARRAY: {
-    const int num_features = layer.num_features;
-    const int num_occurrences = layer.num_occurrences_across *
-      layer.num_occurrences_down;
-    // PERF in parallel
-    ParallelComp(num_occurrences,
-                 [&](int occurrence_number) {
-        // Output features are interleaved.
-        for (int feature_number = 0;
-             feature_number < num_features;
-             feature_number++) {
-          const int node_idx =
-            occurrence_number * num_features + feature_number;
-          // Start with bias.
-          float potential = biases[feature_number];
-          // weights are feature-major
-          const int my_weights = feature_number * indices_per_node;
-          // same array of indices for each feature in the
-          // occurrence
-          const int my_indices = occurrence_number * indices_per_node;
-
-          for (int i = 0; i < indices_per_node; i++) {
-            const float w = weights[my_weights + i];
-            const int srci = indices[my_indices + i];
-            const float v = src_values[srci];
-            potential += w * v;
-          }
-
-          float out = fwd(potential);
-          (*dst_values)[node_idx] = out;
-        }
-    }, 4);
-    break;
-  }
-  default:
-    CHECK(false) << "Unsupported layer type";
-    break;
-  }
-}
-
-static float SigmoidFn(float potential) {
-  return 1.0f / (1.0f + expf(-potential));
-}
-
-static float ReluFn(float potential) {
-  return (potential < 0.0f) ? 0.0f : potential;
-}
-
-static float LeakyReluFn(float potential) {
-  return (potential < 0.0f) ? potential * 0.01f : potential;
-}
-
-static float IdentityFn(float potential) {
-  return potential;
-}
-
-void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
-  const int number_of_nodes = num_nodes[src_layer + 1];
-  const Layer &layer = layers[src_layer];
-  const TransferFunction transfer_function =
-    layers[src_layer].transfer_function;
-  switch (transfer_function) {
-  case SIGMOID:
-    return RunForwardLayerWithFn<SigmoidFn>(
-        stim, src_layer, layer, number_of_nodes);
-  case RELU:
-    return RunForwardLayerWithFn<ReluFn>(
-        stim, src_layer, layer, number_of_nodes);
-  case LEAKY_RELU:
-    return RunForwardLayerWithFn<LeakyReluFn>(
-        stim, src_layer, layer, number_of_nodes);
-  case IDENTITY:
-    return RunForwardLayerWithFn<IdentityFn>(
-        stim, src_layer, layer, number_of_nodes);
-  default:
-    CHECK(false) << "Unimplemented transfer function " <<
-      TransferFunctionName(transfer_function);
-    break;
-  };
-
-#if 0
-  switch (transfer_function) {
-  case SIGMOID:
-    return RunForwardLayerWithFn(
-        stim, src_layer, layer, number_of_nodes,
-        [](float potential) {
-          return 1.0f / (1.0f + expf(-potential));
-        });
-  case RELU:
-    return RunForwardLayerWithFn(
-        stim, src_layer, layer, number_of_nodes,
-        [](float potential) {
-          return (potential < 0.0f) ? 0.0f : potential;
-        });
-  case LEAKY_RELU:
-    return RunForwardLayerWithFn(
-        stim, src_layer, layer, number_of_nodes,
-        [](float potential) {
-          return (potential < 0.0f) ? potential * 0.01f : potential;
-        });
-  case IDENTITY:
-    return RunForwardLayerWithFn(
-        stim, src_layer, layer, number_of_nodes,
-        [](float potential) {
-          return potential;
-        });
-  default:
-    CHECK(false) << "Unimplemented transfer function " <<
-      TransferFunctionName(transfer_function);
-    break;
-  };
-#endif
-}
-
-
-void Network::RunForwardVerbose(Stimulation *stim) const {
-  for (int src = 0; src < num_layers; src++) {
-    const TransferFunction transfer_function =
-      layers[src].transfer_function;
-    auto Forward =
-      [transfer_function](float potential) -> float {
-        switch (transfer_function) {
-        case SIGMOID:
-          return 1.0f / (1.0f + expf(-potential));
-        case RELU:
-          return (potential < 0.0f) ? 0.0f : potential;
-        case LEAKY_RELU:
-          return (potential < 0.0f) ? potential * 0.01f : potential;
-        case IDENTITY:
-          return potential;
-        default:
-          CHECK(false) << "Unimplemented transfer function " <<
-            TransferFunctionName(transfer_function);
-          return 0.0f;
-        }
-      };
-
-
-    const vector<float> &src_values = stim->values[src];
-    vector<float> *dst_values = &stim->values[src + 1];
-    const vector<float> &biases = layers[src].biases;
-    const vector<float> &weights = layers[src].weights;
-    const vector<uint32> &indices = layers[src].indices;
-    const int indices_per_node = layers[src].indices_per_node;
-    const int number_of_nodes = num_nodes[src + 1];
-    const int num_features = layers[src].num_features;
-    const LayerType layer_type = layers[src].type;
-
-    for (int node_idx = 0; node_idx < number_of_nodes; node_idx++) {
-      // Output features are interleaved.
-      const int feature_number = node_idx % num_features;
-
-      // Start with bias.
-      float potential = [&](){
-          if (layer_type == LAYER_CONVOLUTION_ARRAY) {
-            return biases[feature_number];
-          } else {
-            return biases[node_idx];
-          }
-        }();
-
-      printf("%d|L %d n %d. bias: %f\n",
-             rounds, src, node_idx, potential);
-      CHECK(!std::isnan(potential)) << node_idx;
-
-      const int my_weights = [&]() {
-          if (layer_type == LAYER_CONVOLUTION_ARRAY) {
-            // weights are feature-major
-            return feature_number * indices_per_node;
-          } else {
-            return node_idx * indices_per_node;
-          }
-        }();
-      const int my_indices = [&]() {
-          if (layer_type == LAYER_CONVOLUTION_ARRAY) {
-            // same array of indices for each feature in the
-            // occurrence
-            const int occurrence_number = node_idx / num_features;
-            return occurrence_number * indices_per_node;
-          } else {
-            return node_idx * indices_per_node;
-          }
-        }();
-
-      for (int i = 0; i < indices_per_node; i++) {
-        const float w = weights[my_weights + i];
-        const int srci = indices[my_indices + i];
-        // XXX check dupes
-        CHECK(srci >= 0 && srci < src_values.size()) << srci;
-        const float v = src_values[srci];
-        CHECK(!std::isnan(w) &&
-              !std::isnan(v) &&
-              !std::isnan(potential)) <<
-          StringPrintf("L %d, n %d. [%d=%d] %f * %f + %f\n",
-                       src,
-                       node_idx,
-                       i, srci, w, v, potential);
-        potential += w * v;
-      }
-      CHECK(!std::isnan(potential));
-
-      CHECK(node_idx >= 0 && node_idx < dst_values->size());
-      float out = Forward(potential);
-      printf("    %f -> %f\n", potential, out);
-      CHECK(!std::isnan(out)) << potential;
-      (*dst_values)[node_idx] = out;
-    }
-  }
-}
-
-
-void Network::NaNCheck(const std::string &message) const {
-  bool has_nans = false;
-  vector<std::pair<int, int>> layer_nans;
-  for (const Layer &layer : layers) {
-    int w = 0, b = 0;
-    for (float f : layer.weights) if (std::isnan(f)) w++;
-    for (float f : layer.biases) if (std::isnan(f)) b++;
-    layer_nans.emplace_back(w, b);
-    if (w > 0 || b > 0) has_nans = true;
-  }
-  if (has_nans) {
-    string err;
-    for (int i = 0; i < layer_nans.size(); i++) {
-      err += StringPrintf("(real) layer %d. %d/%d weights, %d/%d biases\n",
-                          i,
-                          layer_nans[i].first, layers[i].weights.size(),
-                          layer_nans[i].second, layers[i].biases.size());
-    }
-    CHECK(false) << "[" << message << "] The network has NaNs :-(\n" << err;
-  }
-}
-
-
-void Network::StructuralCheck() const {
-  // TODO: Other checks!
-  CHECK(layers.size() == num_layers);
-  CHECK(width.size() == num_layers + 1);
-  CHECK(height.size() == num_layers + 1);
-  CHECK(channels.size() == num_layers + 1);
-  CHECK(renderstyle.size() == num_layers + 1);
-
-  CHECK(inverted_indices.size() == num_layers);
-
-  for (int i = 0; i < num_layers; i++) {
-    const Layer &layer = layers[i];
-    const int num_prev_nodes = num_nodes[i];
-    const int num_this_nodes = num_nodes[i + 1];
-
-    if (layer.type == LAYER_SPARSE || layer.type == LAYER_DENSE) {
-      CHECK(layer.indices.size() == num_this_nodes * layer.indices_per_node);
-    }
-
-    // Check indices are in bounds. Unsigned ints so this is just
-    // the upper-bound check.
-    for (const uint32 idx : layer.indices) {
-      CHECK(idx < num_prev_nodes);
-    }
-
-    // If dense, check that they are the expected regular structure.
-    if (layer.type == LAYER_DENSE) {
-      CHECK(layer.indices_per_node == num_prev_nodes);
-      for (int n = 0; n < num_this_nodes; n++) {
-        for (int p = 0; p < num_prev_nodes; p++) {
-          CHECK(layer.indices[n * layer.indices_per_node + p] == p);
-        }
-      }
-    }
-
-    if (layer.type == LAYER_CONVOLUTION_ARRAY) {
-      CHECK(layer.num_features > 0);
-      CHECK(layer.pattern_width > 0);
-      CHECK(layer.pattern_height > 0);
-      CHECK(layer.src_width > 0);
-      CHECK(layer.src_height > 0);
-      CHECK(layer.occurrence_x_stride > 0);
-      CHECK(layer.occurrence_y_stride > 0);
-
-      CHECK(layer.num_occurrences_across > 0);
-      CHECK(layer.num_occurrences_down > 0);
-
-      CHECK(layer.biases.size() == layer.num_features);
-      CHECK(layer.weights.size() == layer.num_features *
-            layer.indices_per_node);
-      CHECK(num_this_nodes % layer.num_features == 0);
-      CHECK(layer.indices.size() ==
-            (layer.indices_per_node * num_this_nodes) /
-            layer.num_features);
-
-      CHECK(layer.indices_per_node ==
-            layer.pattern_width * layer.pattern_height);
-
-      CHECK(layer.num_occurrences_across *
-            layer.num_occurrences_down *
-            layer.num_features == num_this_nodes);
-
-      CHECK(layer.src_width * layer.src_height <= num_prev_nodes);
-
-      // TODO: Check the indices are what we expect, perhaps by
-      // just calling MakeConvolutionArrayIndices?
-    }
-  }
-
-  CheckInvertedIndices();
-}
-
-Network::Layer Network::MakeDenseLayer(int num_nodes,
-                                       int indices_per_node,
-                                       TransferFunction transfer_function) {
-  Layer layer;
-  layer.indices_per_node = indices_per_node;
-  layer.type = LAYER_DENSE;
-  layer.transfer_function = transfer_function;
-  layer.indices.resize(num_nodes * indices_per_node, 0);
-  for (int n = 0; n < num_nodes; n++) {
-    for (int p = 0; p < indices_per_node; p++) {
-      layer.indices[n * indices_per_node + p] = p;
-    }
-  }
-
-  layer.weights.resize(num_nodes * indices_per_node, 0.0f);
-  layer.biases.resize(num_nodes, 0.0f);
-  return layer;
-}
-
-void Network::CheckInvertedIndices() const {
-  for (int layer = 0; layer < num_layers; layer++) {
-    const vector<uint32> &indices = layers[layer].indices;
-    const LayerType dst_layer_type = layers[layer].type;
-    const Network::InvertedIndices &inv = inverted_indices[layer];
-
-    CHECK_EQ(inv.output_indices.size(), indices.size());
-    // Need one start/length pair for every node in the source layer.
-    CHECK_EQ(num_nodes[layer], inv.start.size());
-    CHECK_EQ(num_nodes[layer], inv.length.size());
-    // But the output size is determined by the next layer.
-    if (dst_layer_type == LAYER_CONVOLUTION_ARRAY) {
-      const int dst_layer_nodes = num_nodes[layer + 1];
-      CHECK(dst_layer_nodes % layers[layer].num_features == 0);
-      CHECK_EQ((dst_layer_nodes / layers[layer].num_features) *
-               layers[layer].indices_per_node,
-               inv.output_indices.size());
-    } else {
-      CHECK_EQ(num_nodes[layer + 1] * layers[layer].indices_per_node,
-               inv.output_indices.size());
-    }
-    // z is a node id from the src layer.
-    for (int z = 0; z < inv.start.size(); z++) {
-      // i is the index within the compacted inverted index.
-      for (int i = inv.start[z]; i < inv.start[z] + inv.length[z]; i++) {
-        // Global index into 'indices'.
-        CHECK(i >= 0);
-        CHECK(i < inv.output_indices.size());
-
-        const int gidx = inv.output_indices[i];
-        CHECK(gidx >= 0);
-        CHECK(gidx < indices.size());
-        // This should map back to our current node id.
-        // (Should be true for sparse, dense, and convolution layers.)
-        CHECK_EQ(indices[gidx], z);
-      }
     }
   }
 }
@@ -619,7 +213,7 @@ void Network::ComputeInvertedIndices(int max_parallelism) {
     CHECK_EQ(src_num_nodes, length->size());
     vector<uint32> *inverted = &inverted_indices[layer].output_indices;
     // But this has to account for all the nodes on the destination layer.
-    if (dst_layer_type == LAYER_CONVOLUTION_ARRAY) {
+    if (dst_layer_type == CHUNK_CONVOLUTION_ARRAY) {
       const int dst_layer_nodes = num_nodes[layer + 1];
       CHECK(dst_layer_nodes % layers[layer].num_features == 0);
       CHECK_EQ((dst_layer_nodes / layers[layer].num_features) *
@@ -687,10 +281,369 @@ void Network::ComputeInvertedIndices(int max_parallelism) {
   UnParallelComp(num_layers, OneLayer, max_parallelism);
 }
 
+void Network::CheckInvertedIndices() const {
+  for (int layer = 0; layer < num_layers; layer++) {
+    const vector<uint32> &indices = layers[layer].indices;
+    const LayerType dst_layer_type = layers[layer].type;
+    const Network::InvertedIndices &inv = inverted_indices[layer];
+
+    CHECK_EQ(inv.output_indices.size(), indices.size());
+    // Need one start/length pair for every node in the source layer.
+    CHECK_EQ(num_nodes[layer], inv.start.size());
+    CHECK_EQ(num_nodes[layer], inv.length.size());
+    // But the output size is determined by the next layer.
+    if (dst_layer_type == CHUNK_CONVOLUTION_ARRAY) {
+      const int dst_layer_nodes = num_nodes[layer + 1];
+      CHECK(dst_layer_nodes % layers[layer].num_features == 0);
+      CHECK_EQ((dst_layer_nodes / layers[layer].num_features) *
+               layers[layer].indices_per_node,
+               inv.output_indices.size());
+    } else {
+      CHECK_EQ(num_nodes[layer + 1] * layers[layer].indices_per_node,
+               inv.output_indices.size());
+    }
+    // z is a node id from the src layer.
+    for (int z = 0; z < inv.start.size(); z++) {
+      // i is the index within the compacted inverted index.
+      for (int i = inv.start[z]; i < inv.start[z] + inv.length[z]; i++) {
+        // Global index into 'indices'.
+        CHECK(i >= 0);
+        CHECK(i < inv.output_indices.size());
+
+        const int gidx = inv.output_indices[i];
+        CHECK(gidx >= 0);
+        CHECK(gidx < indices.size());
+        // This should map back to our current node id.
+        // (Should be true for sparse, dense, and convolution layers.)
+        CHECK_EQ(indices[gidx], z);
+      }
+    }
+  }
+}
+
+#endif
+
+Network *Network::Clone(const Network &other) {
+  return new Network(other);
+}
+
+int64 Network::Bytes() const {
+  int64 ret = sizeof *this;
+  // Layer structs.
+  for (const Layer &layer : layers) {
+    ret += sizeof layer;
+    for (const Chunk &chunk : layer.chunks) {
+      ret += sizeof chunk +
+        sizeof chunk.indices[0] * chunk.indices.size() +
+        sizeof chunk.weights[0] * chunk.weights.size() +
+        sizeof chunk.biases[0] * chunk.biases.size();
+    }
+  }
+
+  return ret;
+}
+
+int64 Network::TotalParameters() const {
+  int64 params = 0LL;
+  for (const Layer &layer : layers) {
+    for (const Chunk &chunk : layer.chunks) {
+      params += chunk.weights.size() + chunk.biases.size();
+    }
+  }
+  return params;
+}
+
+void Network::RunForward(Stimulation *stim) const {
+  // Not including final layer.
+  for (int src = 0; src < layers.size() - 1; src++) {
+    RunForwardLayer(stim, src);
+  }
+}
+
+template<float (*fwd)(float)>
+static void RunForwardChunkWithFn(
+    const std::vector<float> &src_values,
+    const Chunk &chunk,
+    std::vector<float> *dst_values,
+    int out_start) {
+
+  switch (chunk.type) {
+  case CHUNK_DENSE:
+    UnParallelComp(chunk.num_nodes,
+                   [&](int node_idx) {
+        // Start with bias.
+        float potential = chunk.biases[node_idx];
+        const int my_weights = node_idx * chunk.indices_per_node;
+
+        for (int i = 0; i < chunk.indices_per_node; i++) {
+          const float w = chunk.weights[my_weights + i];
+          const int srci = chunk.span_start + i;
+          const float v = src_values[srci];
+          potential += w * v;
+        }
+
+        const float out = fwd(potential);
+        (*dst_values)[out_start + node_idx] = out;
+      }, 2);
+    break;
+
+  case CHUNK_SPARSE:
+    UnParallelComp(chunk.num_nodes,
+                   [&](int node_idx) {
+        // Start with bias.
+        float potential = chunk.biases[node_idx];
+        const int my_weights = node_idx * chunk.indices_per_node;
+        const int my_indices = node_idx * chunk.indices_per_node;
+
+        for (int i = 0; i < chunk.indices_per_node; i++) {
+          const float w = chunk.weights[my_weights + i];
+          const int srci = chunk.indices[my_indices + i];
+          const float v = src_values[srci];
+          potential += w * v;
+        }
+
+        const float out = fwd(potential);
+        (*dst_values)[out_start + node_idx] = out;
+      }, 2);
+    break;
+
+  case CHUNK_CONVOLUTION_ARRAY: {
+    const int num_features = chunk.num_features;
+    const int num_occurrences = chunk.num_occurrences_across *
+      chunk.num_occurrences_down;
+
+    ParallelComp(num_occurrences,
+                 [&](int occurrence_number) {
+        // Output features are interleaved.
+        for (int feature_number = 0;
+             feature_number < num_features;
+             feature_number++) {
+          const int node_idx =
+            occurrence_number * num_features + feature_number;
+          // Start with bias.
+          float potential = chunk.biases[feature_number];
+          // weights are feature-major
+          const int my_weights = feature_number * chunk.indices_per_node;
+          // same array of indices for each feature in the
+          // occurrence
+          const int my_indices = occurrence_number * chunk.indices_per_node;
+
+          for (int i = 0; i < chunk.indices_per_node; i++) {
+            const float w = chunk.weights[my_weights + i];
+            const int srci = chunk.indices[my_indices + i];
+            const float v = src_values[srci];
+            potential += w * v;
+          }
+
+          const float out = fwd(potential);
+          (*dst_values)[out_start + node_idx] = out;
+        }
+      }, 4);
+    break;
+  }
+
+  case CHUNK_INPUT:
+    CHECK(false) << "Should not run forward to the input layer?";
+    break;
+
+  default:
+    CHECK(false) << "Unsupported layer type";
+    break;
+  }
+}
+
+static float SigmoidFn(float potential) {
+  return 1.0f / (1.0f + expf(-potential));
+}
+
+static float ReluFn(float potential) {
+  return (potential < 0.0f) ? 0.0f : potential;
+}
+
+static float LeakyReluFn(float potential) {
+  return (potential < 0.0f) ? potential * 0.01f : potential;
+}
+
+static float IdentityFn(float potential) {
+  return potential;
+}
+
+// TODO could make verbose version with template param?
+void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
+  const Layer &dst_layer = layers[src_layer + 1];
+  int out_idx = 0;
+  // Both using global indices.
+  const std::vector<float> &src_values = stim->values[src_layer];
+  std::vector<float> *dst_values = &stim->values[src_layer + 1];
+  for (const Chunk &chunk : dst_layer.chunks) {
+    const TransferFunction transfer_function =
+      chunk.transfer_function;
+    switch (transfer_function) {
+    case SIGMOID:
+      return RunForwardChunkWithFn<SigmoidFn>(
+          src_values, chunk, dst_values, out_idx);
+    case RELU:
+      return RunForwardChunkWithFn<ReluFn>(
+          src_values, chunk, dst_values, out_idx);
+    case LEAKY_RELU:
+      return RunForwardChunkWithFn<LeakyReluFn>(
+          src_values, chunk, dst_values, out_idx);
+    case IDENTITY:
+      return RunForwardChunkWithFn<IdentityFn>(
+          src_values, chunk, dst_values, out_idx);
+    default:
+      CHECK(false) << "Unimplemented transfer function " <<
+        TransferFunctionName(transfer_function);
+      break;
+    };
+  }
+}
+
+void Network::NaNCheck(const std::string &message) const {
+  bool has_nans = false;
+  // this could be chunk-by-chunk if we want
+  vector<std::pair<int, int>> layer_nans;
+  vector<std::pair<int, int>> layer_denom;
+  for (const Layer &layer : layers) {
+    int w = 0, wn = 0, b = 0, bn = 0;
+    for (const Chunk &chunk : layer.chunks) {
+      for (float f : chunk.weights) if (std::isnan(f)) wn++;
+      for (float f : chunk.biases) if (std::isnan(f)) bn++;
+      w += chunk.weights.size();
+      b += chunk.biases.size();
+    }
+    layer_nans.emplace_back(wn, bn);
+    layer_denom.emplace_back(w, b);
+    if (w > 0 || b > 0) has_nans = true;
+  }
+  if (has_nans) {
+    string err;
+    for (int i = 0; i < layer_nans.size(); i++) {
+      const auto [wn, bn] = layer_nans[i];
+      const auto [wd, bd] = layer_denom[i];
+      err += StringPrintf("(real) layer %d. %d/%d weights, %d/%d biases\n",
+                          i,
+                          wn, wd, bn, bd);
+    }
+    CHECK(false) << "[" << message << "] The network has NaNs :-(\n" << err;
+  }
+}
+
+
+void Network::StructuralCheck() const {
+  // TODO: Other checks!
+  CHECK(!layers.empty());
+  CHECK(layers[0].chunks.size() == 1);
+  CHECK(layers[0].chunks[0].type == CHUNK_INPUT);
+  // TODO: Other checks for input layer?
+
+  // All layers
+  for (const Layer &layer : layers) {
+    CHECK(layer.num_nodes > 0);
+    CHECK(!layer.chunks.empty());
+
+    int nodes_from_chunks = 0;
+    for (const Chunk &chunk : layer.chunks) {
+      nodes_from_chunks += chunk.num_nodes;
+    }
+    CHECK(nodes_from_chunks == layer.num_nodes);
+
+    for (const Chunk &chunk : layer.chunks) {
+      CHECK(chunk.num_nodes ==
+            chunk.width * chunk.height * chunk.channels);
+    }
+  }
+
+  // Real layers:
+  for (int i = 1; i < layers.size(); i++) {
+    const Layer &layer = layers[i];
+
+    const int previous_layer_size = layers[i - 1].num_nodes;
+
+    for (const Chunk &chunk : layer.chunks) {
+      CHECK(chunk.span_start >= 0);
+      CHECK(chunk.span_size > 0);
+      CHECK(chunk.span_start < previous_layer_size);
+      CHECK(chunk.span_start + chunk.span_size <= previous_layer_size);
+
+      if (chunk.type == CHUNK_SPARSE) {
+        CHECK(chunk.indices.size() == chunk.num_nodes * chunk.indices_per_node);
+        // Pigeonhole
+        CHECK(chunk.indices_per_node <= chunk.span_size);
+      } else if (chunk.type == CHUNK_DENSE) {
+        // Not stored for dense layers.
+        CHECK(chunk.indices.empty());
+        CHECK(chunk.indices_per_node == chunk.span_size);
+      }
+
+      // Check indices are in bounds. Indices are into the layer (not the span),
+      // but must be in the range of the span.
+      std::unordered_set<uint32> seen;
+      for (const uint32 idx : chunk.indices) {
+        CHECK(idx >= chunk.span_start);
+        CHECK(idx < chunk.span_start + chunk.span_size);
+        CHECK(!seen.contains(idx)) << "Duplicate index: " << idx;
+        seen.insert(idx);
+      }
+
+      if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
+        CHECK(chunk.num_features > 0);
+        CHECK(chunk.pattern_width > 0);
+        CHECK(chunk.pattern_height > 0);
+        CHECK(chunk.src_width > 0);
+        CHECK(chunk.src_height > 0);
+        CHECK(chunk.occurrence_x_stride > 0);
+        CHECK(chunk.occurrence_y_stride > 0);
+
+        CHECK(chunk.num_occurrences_across > 0);
+        CHECK(chunk.num_occurrences_down > 0);
+
+        CHECK(chunk.biases.size() == chunk.num_features);
+        CHECK(chunk.weights.size() == chunk.num_features *
+              chunk.indices_per_node);
+        CHECK(chunk.num_nodes % chunk.num_features == 0);
+        CHECK(chunk.indices.size() ==
+              (chunk.indices_per_node * chunk.num_nodes) /
+              chunk.num_features);
+
+        CHECK(chunk.indices_per_node ==
+              chunk.pattern_width * chunk.pattern_height);
+
+        CHECK(chunk.num_occurrences_across *
+              chunk.num_occurrences_down *
+              chunk.num_features == chunk.num_nodes);
+
+        CHECK(chunk.src_width * chunk.src_height <= chunk.span_size);
+
+        // TODO: Check the indices are what we expect, perhaps by
+        // just calling MakeConvolutionArrayIndices?
+      }
+    }
+  }
+}
+
+Chunk Network::MakeDenseChunk(int num_nodes,
+                              int span_start, int span_size,
+                              TransferFunction transfer_function) {
+  Chunk chunk;
+  chunk.num_nodes = num_nodes;
+  chunk.span_start = span_start;
+  chunk.span_size = span_size;
+  chunk.indices_per_node = span_size;
+  chunk.type = CHUNK_DENSE;
+  chunk.transfer_function = transfer_function;
+  chunk.weights.resize(num_nodes * span_size, 0.0f);
+  chunk.biases.resize(num_nodes, 0.0f);
+  chunk.width = num_nodes;
+  chunk.height = 1;
+  chunk.channels = 1;
+  return chunk;
+}
+
 // static
 std::tuple<std::vector<uint32_t>, int, int, int>
 Network::MakeConvolutionArrayIndices(
-    int prev_num_nodes,
+    int span_start, int span_size,
     int num_features,
     int pattern_width,
     int pattern_height,
@@ -699,7 +652,8 @@ Network::MakeConvolutionArrayIndices(
     int occurrence_x_stride,
     int occurrence_y_stride) {
   // Check for nonsensical inputs.
-  CHECK(prev_num_nodes >= 1);
+  CHECK(span_start >= 0);
+  CHECK(span_size >= 1);
   CHECK(num_features >= 1);
   CHECK(pattern_width >= 1);
   CHECK(pattern_height >= 1);
@@ -709,7 +663,8 @@ Network::MakeConvolutionArrayIndices(
   CHECK(occurrence_y_stride >= 1);
 
   // Normally, equal.
-  CHECK(src_width * src_height <= prev_num_nodes);
+  // (XXX perhaps we could even require this?)
+  CHECK(src_width * src_height <= span_size);
 
   const int indices_per_node = pattern_width * pattern_height;
 
@@ -760,7 +715,7 @@ Network::MakeConvolutionArrayIndices(
         // Always the adjacent row.
         int src_offset = src_start_offset + (y * src_width);
         for (int x = 0; x < pattern_width; x++) {
-          indices.push_back(src_offset);
+          indices.push_back(span_start + src_offset);
           src_offset++;
         }
       }
@@ -775,14 +730,16 @@ Network::MakeConvolutionArrayIndices(
 };
 
 
-// Caller owns new-ly allocated Network object.
-Network *Network::ReadNetworkBinary(const string &filename) {
-  printf("Reading [%s]\n", filename.c_str());
+Network *Network::ReadNetworkBinary(const string &filename,
+                                    bool verbose) {
+  if (verbose) printf("Reading [%s]\n", filename.c_str());
   FILE *file = fopen(filename.c_str(), "rb");
   if (file == nullptr) {
-    printf("  ... failed. If it's present, there may be a "
-           "permissions problem?\n");
-    fflush(stdout);
+    if (verbose) {
+      printf("  ... failed. If it's present, there may be a "
+             "permissions problem?\n");
+      fflush(stdout);
+    }
     return nullptr;
   }
 
@@ -812,225 +769,193 @@ Network *Network::ReadNetworkBinary(const string &filename) {
     }
   };
 
-  CHECK(Read32() == Network::FORMAT_ID) << "Wrong magic number!";
+  if (Read32() != Network::MAGIC) {
+    if (verbose) printf("Not a serialized network!\n");
+    return nullptr;
+  }
+  if (Read32() != Network::FORMAT_ID) {
+    if (verbose) printf("Wrong format id!\n");
+    return nullptr;
+  }
 
-  int64 round = Read64();
-  int64 examples = Read64();
+  const int64 round = Read64();
+  const int64 examples = Read64();
   // These values determine the size of the network vectors.
-  int file_num_layers = Read32();
+  const int file_num_layers = Read32();
   CHECK_GE(file_num_layers, 0);
-  printf("%s: %lld rounds, %lld examples, %d layers.\n",
-         filename.c_str(), round, examples, file_num_layers);
-  vector<int> num_nodes(file_num_layers + 1, 0);
-  printf("%s: num nodes: ", filename.c_str());
-  for (int i = 0; i < file_num_layers + 1; i++) {
-    num_nodes[i] = Read32();
-    printf("%d ", num_nodes[i]);
+  if (verbose) {
+    printf("%s: %lld rounds, %lld examples, %d layers.\n",
+           filename.c_str(), round, examples, file_num_layers);
   }
-  printf("\n");
-
-  vector<int> width, height, channels;
-  vector<uint32_t> renderstyle;
-  for (int i = 0; i < file_num_layers + 1; i++)
-    width.push_back(Read32());
-  for (int i = 0; i < file_num_layers + 1; i++)
-    height.push_back(Read32());
-  for (int i = 0; i < file_num_layers + 1; i++)
-    channels.push_back(Read32());
-  for (int i = 0; i < file_num_layers + 1; i++)
-    renderstyle.push_back(Read32());
-
-  CHECK(num_nodes.size() == width.size());
-  CHECK(num_nodes.size() == height.size());
-  CHECK(num_nodes.size() == channels.size());
-  CHECK(num_nodes.size() == renderstyle.size());
-
-  for (int w : width) CHECK(w > 0);
-  for (int h : height) CHECK(h > 0);
-  for (int c : channels) CHECK(c > 0);
-
-  for (int i = 0; i < file_num_layers + 1; i++) {
-    printf("Layer %d: %d x %d x %d (as %08x)\n",
-           i - 1, width[i], height[i], channels[i], renderstyle[i]);
-  }
-
-  printf("\n%s: indices per node/fns/type: ", filename.c_str());
 
   vector<Layer> layers(file_num_layers);
   for (int i = 0; i < file_num_layers; i++) {
+    if (verbose) printf("%s: Layer %d: ", filename.c_str(), i);
     Layer &layer = layers[i];
-    const int nodes_this_layer = num_nodes[i + 1];
-    const int ipn_this_layer = Read32();
-    layer.indices_per_node = ipn_this_layer;
+    layer.num_nodes = 0;
+    const int num_chunks = Read32();
 
-    LayerType lt = (LayerType)Read32();
-    CHECK(lt >= 0 && lt < NUM_LAYER_TYPES) << lt;
-    layer.type = lt;
+    layer.chunks.resize(num_chunks);
+    for (Chunk &chunk : layer.chunks) {
+      const int ct = Read32();
+      CHECK(ct >= 0 && ct < NUM_CHUNK_TYPES) << ct;
+      chunk.type = (ChunkType)ct;
 
-    TransferFunction tf = (TransferFunction)Read32();
-    CHECK(tf >= 0 && tf < NUM_TRANSFER_FUNCTIONS) << tf;
-    layer.transfer_function = tf;
+      chunk.span_start = Read32();
+      chunk.span_size = Read32();
+      chunk.num_nodes = Read32();
+      chunk.indices_per_node = Read32();
+      const int tf = Read32();
+      CHECK(tf >= 0 && tf <= NUM_TRANSFER_FUNCTIONS) << tf;
+      chunk.transfer_function = (TransferFunction)tf;
+      chunk.num_features = Read32();
+      chunk.pattern_width = Read32();
+      chunk.pattern_height = Read32();
+      chunk.src_width = Read32();
+      chunk.src_height = Read32();
+      chunk.occurrence_x_stride = Read32();
+      chunk.occurrence_y_stride = Read32();
+      chunk.num_occurrences_across = Read32();
+      chunk.num_occurrences_down = Read32();
 
-    const int num_features = Read32();
-    layer.num_features = num_features;
+      // Read (or derive) indices, and set the correct sizes for
+      // weights and biases.
+      CHECK(chunk.indices.empty());
+      switch (chunk.type) {
+      case CHUNK_CONVOLUTION_ARRAY: {
+        // They are not stored on disk, but we have to derive them
+        // here because they are stored in memory.
+        // Indices are explicit but shared across all features.
+        CHECK((chunk.num_nodes * chunk.indices_per_node) %
+              chunk.num_features == 0);
+        chunk.indices.resize((chunk.num_nodes * chunk.indices_per_node) /
+                             chunk.num_features, 0);
 
-    layer.pattern_width = Read32();
-    layer.pattern_height = Read32();
-    layer.src_width = Read32();
-    layer.src_height = Read32();
-    layer.occurrence_x_stride = Read32();
-    layer.occurrence_y_stride = Read32();
-    layer.num_occurrences_across = Read32();
-    layer.num_occurrences_down = Read32();
+        const auto [indices, this_num_nodes_computed,
+                    num_occurrences_across, num_occurrences_down] =
+          MakeConvolutionArrayIndices(
+              chunk.span_start, chunk.span_size,
+              chunk.num_features,
+              chunk.pattern_width,
+              chunk.pattern_height,
+              chunk.src_width,
+              chunk.src_height,
+              chunk.occurrence_x_stride,
+              chunk.occurrence_y_stride);
 
-    printf("%d %s %s ",
-           ipn_this_layer,
-           TransferFunctionName(tf),
-           LayerTypeName(lt));
-    if (lt == LAYER_CONVOLUTION_ARRAY) {
-      printf("(%d feat%s, %dx%d pat from %dx%d rect, +%d +%d) ",
-             num_features,
-             (num_features == 1) ? "" : "s",
-             layer.pattern_width, layer.pattern_height,
-             layer.src_width, layer.src_height,
-             layer.occurrence_x_stride, layer.occurrence_y_stride);
-    }
+        CHECK(this_num_nodes_computed == chunk.num_nodes);
 
-    // Correctly size the data chunks to be read below.
+        CHECK(num_occurrences_across == chunk.num_occurrences_across &&
+              num_occurrences_down == chunk.num_occurrences_down) <<
+          "Wrong occurrences down/across; stored in file: " <<
+          chunk.num_occurrences_across << " x " <<
+          chunk.num_occurrences_down << "; computed: " <<
+          num_occurrences_across << " x " << num_occurrences_down;
+        CHECK(chunk.indices.size() == indices.size());
+        chunk.indices = indices;
 
-    switch (lt) {
-    case LAYER_CONVOLUTION_ARRAY:
-      // Indices are explicit but shared across all features:
-      CHECK((nodes_this_layer * ipn_this_layer) % num_features == 0);
-      layer.indices.resize((nodes_this_layer * ipn_this_layer) /
-                           num_features, 0);
-      // Shared weights.
-      layer.weights.resize(ipn_this_layer * num_features, 0.0f);
-      layer.biases.resize(num_features, 0.0f);
-      break;
-    case LAYER_SPARSE:
-    case LAYER_DENSE:
-      // Normal case: All layers with explicit indices.
-      layer.indices.resize(ipn_this_layer * nodes_this_layer, 0);
-      // Normal case: Individual weights/biases per input index.
-      layer.weights.resize(ipn_this_layer * nodes_this_layer, 0.0f);
-      layer.biases.resize(nodes_this_layer, 0.0f);
-      break;
-    default:
-      CHECK(false) << "Unimplemented layer type " << lt;
-    }
-  }
-  printf("\n");
-
-  int64 large_weights = 0, large_biases = 0;
-
-  // Read Layer structs.
-  CHECK(layers.size() == file_num_layers);
-  for (int i = 0; i < file_num_layers; i++) {
-    Layer &layer = layers[i];
-    switch (layer.type) {
-    case LAYER_SPARSE:
-      for (int j = 0; j < layer.indices.size(); j++) {
-        layer.indices[j] = Read32();
+        // Shared weights.
+        chunk.weights.resize(chunk.indices_per_node * chunk.num_features,
+                             0.0f);
+        chunk.biases.resize(chunk.num_features, 0.0f);
+        break;
       }
-      break;
-    case LAYER_CONVOLUTION_ARRAY: {
-      // Indices are not stored for convolution layers, since they
-      // can be computed.
-      const int prev_num_nodes = num_nodes[i];
-      const int this_num_nodes = num_nodes[i + 1];
 
-      const auto [indices, this_num_nodes_computed,
-                  num_occurrences_across, num_occurrences_down] =
-        MakeConvolutionArrayIndices(
-            prev_num_nodes,
-            layer.num_features,
-            layer.pattern_width,
-            layer.pattern_height,
-            layer.src_width,
-            layer.src_height,
-            layer.occurrence_x_stride,
-            layer.occurrence_y_stride);
+      case CHUNK_SPARSE:
+        chunk.indices.reserve(chunk.num_nodes * chunk.indices_per_node);
+        for (int ii = 0; ii < chunk.num_nodes * chunk.indices_per_node;
+             ii++) chunk.indices.push_back(Read32());
+        chunk.weights.resize(chunk.num_nodes * chunk.indices_per_node);
+        chunk.biases.resize(chunk.num_nodes);
+        break;
 
-      CHECK(this_num_nodes_computed == this_num_nodes);
+      case CHUNK_DENSE:
+        // No indices stored.
+        chunk.weights.resize(chunk.num_nodes * chunk.indices_per_node);
+        chunk.biases.resize(chunk.num_nodes);
+        break;
 
-      CHECK(num_occurrences_across == layer.num_occurrences_across &&
-            num_occurrences_down == layer.num_occurrences_down) <<
-        "Wrong occurrences down/across; stored in file: " <<
-        layer.num_occurrences_across << " x " <<
-        layer.num_occurrences_down << "; computed: " <<
-        num_occurrences_across << " x " << num_occurrences_down;
-      CHECK(layer.indices.size() == indices.size());
-      layer.indices = indices;
-      break;
+      case CHUNK_INPUT:
+        // (nothing)
+        break;
+
+      default:
+        CHECK(false) << "Unknown layer type!";
+      }
+
+      // Read the appropriate number of weights and biases.
+      ReadFloats(&chunk.weights);
+      ReadFloats(&chunk.biases);
+
+      chunk.width = Read32();
+      chunk.height = Read32();
+      chunk.channels = Read32();
+      chunk.style = (RenderStyle)Read32();
+
+      printf("%d %s %s ",
+             chunk.indices_per_node,
+             TransferFunctionName(chunk.transfer_function),
+             ChunkTypeName(chunk.type));
+      if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
+        printf("(%d feat%s, %dx%d pat from %dx%d rect, +%d +%d) ",
+               chunk.num_features,
+               (chunk.num_features == 1) ? "" : "s",
+               chunk.pattern_width, chunk.pattern_height,
+               chunk.src_width, chunk.src_height,
+               chunk.occurrence_x_stride, chunk.occurrence_y_stride);
+      }
+
+
+      layer.num_nodes += chunk.num_nodes;
     }
-    case LAYER_DENSE: {
-      // Indices are not actually stored for dense layers, since they
-      // can be computed.
-      // (layer 0 is the input layer)
-      const int prev_num_nodes = num_nodes[i];
-      const int this_num_nodes = num_nodes[i + 1];
-      CHECK_EQ(layer.indices.size(), prev_num_nodes * this_num_nodes) <<
-        "For a dense layer, indices per node should be the size of "
-        "the previous layer! prev * cur: " << prev_num_nodes <<
-        " * " << this_num_nodes << " = " << prev_num_nodes * this_num_nodes <<
-        " but got " << layer.indices.size();
-      int64 offset = 0;
-      for (int n = 0; n < this_num_nodes; n++) {
-        for (int p = 0; p < prev_num_nodes; p++) {
-          layer.indices[offset] = p;
-          offset++;
+
+
+    // (XXX PERF only if verbose?)
+    for (const Chunk &chunk : layer.chunks) {
+      int64 large_weights = 0, large_biases = 0;
+
+      static constexpr float LARGE_WEIGHT = 8.0f;
+      static constexpr float LARGE_BIAS = 128.0f;
+
+      for (float f : chunk.weights) {
+        if (f > LARGE_WEIGHT || f < -LARGE_WEIGHT) {
+          large_weights++;
         }
       }
-      break;
-    }
-    default:
-      CHECK(false) << "Unsupported layer type " << layer.type;
-      break;
-    }
-    ReadFloats(&layer.weights);
-    ReadFloats(&layer.biases);
-
-    static constexpr float LARGE_WEIGHT = 8.0f;
-    static constexpr float LARGE_BIAS = 128.0f;
-    for (float f : layer.weights) {
-      if (f > LARGE_WEIGHT || f < -LARGE_WEIGHT) {
-        large_weights++;
+      for (float f : chunk.biases) {
+        if (f > LARGE_BIAS || f < -LARGE_BIAS) {
+          large_biases++;
+        }
       }
-    }
-    for (float f : layer.biases) {
-      if (f > LARGE_BIAS || f < -LARGE_BIAS) {
-        large_biases++;
+
+      if (large_weights > 0 || large_biases > 0) {
+        printf("Warning: %lld large weights and %lld large biases\n",
+               large_weights, large_biases);
       }
     }
   }
-
-  if (large_weights > 0 || large_biases > 0) {
-    printf("Warning: %lld large weights and %lld large biases\n",
-           large_weights, large_biases);
-  }
+  if (verbose)
+    printf("\n");
 
   fclose(file);
-  printf("Read from %s.\n", filename.c_str());
+
+  if (verbose)
+    printf("Read from %s.\n", filename.c_str());
 
   // Construct network.
 
-  auto net = std::make_unique<Network>(num_nodes, layers);
+  auto net = std::make_unique<Network>(layers);
   CHECK(net.get() != nullptr);
-  net->width = width;
-  net->height = height;
-  net->channels = channels;
-  net->renderstyle = renderstyle;
 
   net->rounds = round;
   net->examples = examples;
 
-  // Now, fill in the inverted indices. These are not stored in the file.
-
-  printf("Invert index:\n");
-  net->ComputeInvertedIndices();
-  printf("Check it:\n");
+  if (verbose)
+    printf("Check it:\n");
   net->StructuralCheck();
+
+  if (verbose)
+    printf("OK!\n");
 
   return net.release();
 }
@@ -1052,62 +977,63 @@ void Network::SaveNetworkBinary(const string &filename) {
       WriteFloat(f);
   };
 
+  Write32(Network::MAGIC);
   Write32(Network::FORMAT_ID);
   Write64(rounds);
   Write64(examples);
-  Write32(num_layers);
-  CHECK(num_nodes.size() == num_layers + 1);
-  CHECK(width.size() == num_layers + 1) << width.size();
-  CHECK(height.size() == num_layers + 1);
-  CHECK(channels.size() == num_layers + 1);
-  CHECK(renderstyle.size() == num_layers + 1);
+  Write32(layers.size());
 
-  for (const int i : num_nodes) Write32(i);
-  for (const int w : width) Write32(w);
-  for (const int h : height) Write32(h);
-  for (const int c : channels) Write32(c);
-  for (const uint32 s : renderstyle) Write32(s);
+  for (const Layer &layer : layers) {
+    // don't write layer's num_nodes; it's computable
+    Write32(layer.chunks.size());
+    for (const Chunk &chunk : layer.chunks) {
+      Write32(chunk.type);
+      Write32(chunk.span_start);
+      Write32(chunk.span_size);
+      Write32(chunk.num_nodes);
+      Write32(chunk.indices_per_node);
+      Write32(chunk.transfer_function);
+      // Always write convolution stuff, even if not a
+      // convolution type chunk.
+      Write32(chunk.num_features);
+      Write32(chunk.pattern_width);
+      Write32(chunk.pattern_height);
+      Write32(chunk.src_width);
+      Write32(chunk.src_height);
+      Write32(chunk.occurrence_x_stride);
+      Write32(chunk.occurrence_y_stride);
+      Write32(chunk.num_occurrences_across);
+      Write32(chunk.num_occurrences_down);
 
-  for (const Network::Layer &layer : layers) {
-    Write32(layer.indices_per_node);
-    Write32(layer.type);
-    Write32(layer.transfer_function);
-    // Always write convolution stuff, even if not a
-    // convolution type layer.
-    Write32(layer.num_features);
-    Write32(layer.pattern_width);
-    Write32(layer.pattern_height);
-    Write32(layer.src_width);
-    Write32(layer.src_height);
-    Write32(layer.occurrence_x_stride);
-    Write32(layer.occurrence_y_stride);
-    Write32(layer.num_occurrences_across);
-    Write32(layer.num_occurrences_down);
-  }
+      switch (chunk.type) {
+      case CHUNK_CONVOLUTION_ARRAY:
+        // Don't write convolution layers; the structure is computable.
+        break;
+      case CHUNK_SPARSE:
+        for (const uint32 idx : chunk.indices) Write32(idx);
+        break;
+      case CHUNK_DENSE:
+        // Nothing stored for dense layers.
+        break;
+      case CHUNK_INPUT:
+        // (nothing)
+        break;
+      default:
+        CHECK(false) << "Unknown layer type!";
+      }
+      WriteFloats(chunk.weights);
+      WriteFloats(chunk.biases);
 
-  for (const Network::Layer &layer : layers) {
-    switch (layer.type) {
-    case LAYER_CONVOLUTION_ARRAY:
-      // Don't write convolution layers; the structure is computable.
-      break;
-    case LAYER_SPARSE:
-      for (const uint32 idx : layer.indices) Write32(idx);
-      break;
-    case LAYER_DENSE:
-      // Don't write dense layers; the structure is computable.
-      break;
-    default:
-      CHECK(false) << "Unknown layer type!";
+      Write32(chunk.width);
+      Write32(chunk.height);
+      Write32(chunk.channels);
+      Write32(chunk.style);
     }
-    WriteFloats(layer.weights);
-    WriteFloats(layer.biases);
   }
 
-  // Inverted indices are not written.
   printf("Wrote %s.\n", filename.c_str());
   fclose(file);
 }
-
 
 int64 Stimulation::Bytes() const {
   int64 ret = sizeof *this;
