@@ -102,6 +102,13 @@ struct NetworkGPU {
 
 // Data on the GPU for a single example in a single training round. Can
 // be reused across rounds.
+// TODO: Since each training round is actually over a batch of examples,
+// it may be much better to support an array of examples here, which could
+// allow us to run kernels across multiple examples at once. This could
+// be especially fruitful for layers aren't even using the full bandwidth
+// of the GPU.
+// (Might want to do this after the chunk rewrite though, so that I can
+// at least benchmark it.)
 struct TrainingRoundGPU {
   TrainingRoundGPU(CL *cl, const Network &net) : cl(cl), net(&net) {
     for (int i = 0; i < net.num_layers + 1; i++) {

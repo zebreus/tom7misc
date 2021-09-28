@@ -394,7 +394,7 @@ static void RunForwardChunkWithFn(
         float potential = chunk.biases[node_idx];
         const int my_weights = node_idx * chunk.indices_per_node;
         const int my_indices = node_idx * chunk.indices_per_node;
-
+        
         for (int i = 0; i < chunk.indices_per_node; i++) {
           const float w = chunk.weights[my_weights + i];
           const int srci = chunk.indices[my_indices + i];
@@ -480,22 +480,27 @@ void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
       chunk.transfer_function;
     switch (transfer_function) {
     case SIGMOID:
-      return RunForwardChunkWithFn<SigmoidFn>(
+      RunForwardChunkWithFn<SigmoidFn>(
           src_values, chunk, dst_values, out_idx);
+      break;
     case RELU:
-      return RunForwardChunkWithFn<ReluFn>(
+      RunForwardChunkWithFn<ReluFn>(
           src_values, chunk, dst_values, out_idx);
+      break;
     case LEAKY_RELU:
-      return RunForwardChunkWithFn<LeakyReluFn>(
+      RunForwardChunkWithFn<LeakyReluFn>(
           src_values, chunk, dst_values, out_idx);
+      break;
     case IDENTITY:
-      return RunForwardChunkWithFn<IdentityFn>(
+      RunForwardChunkWithFn<IdentityFn>(
           src_values, chunk, dst_values, out_idx);
+      break;
     default:
       CHECK(false) << "Unimplemented transfer function " <<
         TransferFunctionName(transfer_function);
       break;
     };
+    out_idx += chunk.num_nodes;
   }
 }
 
@@ -514,7 +519,7 @@ void Network::NaNCheck(const std::string &message) const {
     }
     layer_nans.emplace_back(wn, bn);
     layer_denom.emplace_back(w, b);
-    if (w > 0 || b > 0) has_nans = true;
+    if (wn > 0 || bn > 0) has_nans = true;
   }
   if (has_nans) {
     string err;
@@ -730,8 +735,8 @@ Network::MakeConvolutionArrayIndices(
 };
 
 
-Network *Network::ReadNetworkBinary(const string &filename,
-                                    bool verbose) {
+Network *Network::ReadFromFile(const string &filename,
+                               bool verbose) {
   if (verbose) printf("Reading [%s]\n", filename.c_str());
   FILE *file = fopen(filename.c_str(), "rb");
   if (file == nullptr) {
@@ -960,7 +965,7 @@ Network *Network::ReadNetworkBinary(const string &filename,
   return net.release();
 }
 
-void Network::SaveNetworkBinary(const string &filename) {
+void Network::SaveToFile(const string &filename) {
   // Not portable, obviously.
   FILE *file = fopen(filename.c_str(), "wb");
   auto Write64 = [file](int64_t i) {

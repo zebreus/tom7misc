@@ -251,9 +251,9 @@ struct Network {
   // Note: These use local byte order, so the serialized format is not
   // portable.
   // Caller owns new-ly allocated Network object.
-  static Network *ReadNetworkBinary(const string &filename,
-                                    bool verbose = true);
-  void SaveNetworkBinary(const string &filename);
+  static Network *ReadFromFile(const string &filename,
+                               bool verbose = true);
+  void SaveToFile(const string &filename);
 
   // TODO: ComputeInvertedIndices(int layer_idx, int chunk_idx)
   // In this new version we don't store the inverted indices, since

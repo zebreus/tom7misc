@@ -2,7 +2,7 @@
 default: train.exe collate-errors.exe vacuum.exe cull.exe deepen.exe play.exe
 
 # widen.exe
-all: train.exe collate-errors.exe vacuum.exe cull.exe get-modelinfo.exe get-layerweights.exe
+all: train.exe collate-errors.exe vacuum.exe cull.exe get-modelinfo.exe get-layerweights.exe network_test.exe
 
 CC_LIB=../cc-lib
 
@@ -98,6 +98,10 @@ new-network.exe : new-network.o $(OBJECTS)
 	@echo -n "!"
 
 conv_test.exe : conv_test.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+network_test.exe : network.o network_test.o $(UTIL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
