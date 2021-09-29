@@ -253,7 +253,10 @@ struct Network {
   // Caller owns new-ly allocated Network object.
   static Network *ReadFromFile(const string &filename,
                                bool verbose = true);
+  static Network *ParseSerialized(const std::vector<uint8_t> &bytes,
+                                  bool verbose = true);
   void SaveToFile(const string &filename);
+  std::vector<uint8_t> Serialize();
 
   // TODO: ComputeInvertedIndices(int layer_idx, int chunk_idx)
   // In this new version we don't store the inverted indices, since

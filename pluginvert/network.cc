@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <cmath>
+#include <cstring>
 
 #include <algorithm>
 #include <cstdint>
@@ -93,9 +94,9 @@ string Network::TransferFunctionDefines(TransferFunction tf) {
 Network::Network(vector<Layer> layers_in) :
   layers(std::move(layers_in)) {
 
-  printf("Structural check\n");
+  printf("Structural check...");
   StructuralCheck();
-  printf("OK\n");
+  printf("... OK!\n");
 }
 
 #if 0
@@ -394,7 +395,7 @@ static void RunForwardChunkWithFn(
         float potential = chunk.biases[node_idx];
         const int my_weights = node_idx * chunk.indices_per_node;
         const int my_indices = node_idx * chunk.indices_per_node;
-        
+
         for (int i = 0; i < chunk.indices_per_node; i++) {
           const float w = chunk.weights[my_weights + i];
           const int srci = chunk.indices[my_indices + i];
@@ -735,93 +736,246 @@ Network::MakeConvolutionArrayIndices(
 };
 
 
-Network *Network::ReadFromFile(const string &filename,
-                               bool verbose) {
-  if (verbose) printf("Reading [%s]\n", filename.c_str());
-  FILE *file = fopen(filename.c_str(), "rb");
-  if (file == nullptr) {
-    if (verbose) {
-      printf("  ... failed. If it's present, there may be a "
-             "permissions problem?\n");
-      fflush(stdout);
-    }
-    return nullptr;
+// TODO: This is not that portable (assumes endianness for float
+// is the same as int32?)
+static inline uint32_t PackFloat(float f) {
+  static_assert(sizeof (float) == 4);
+  uint32_t ret = 0;
+  std::memcpy(&ret, &f, sizeof (float));
+  return ret;
+}
+
+static inline float UnpackFloat(uint32_t u) {
+  static_assert(sizeof (float) == 4);
+  float ret = 0;
+  std::memcpy(&ret, &u, sizeof (float));
+  return ret;
+}
+
+namespace {
+struct Reader {
+  explicit Reader(const std::string &name, bool verbose) :
+    name(name), verbose(verbose) {}
+
+  virtual ~Reader() {}
+
+  virtual uint8_t ReadByte() = 0;
+
+  inline int64_t Read64() {
+    int64_t a = Read32();
+    int64_t b = Read32();
+    return (a << 32) | b;
   }
 
-  // TODO: Instead of CHECK, these could set some failed flag
-  // and return zeroes, which allows more graceful failure.
-  auto Read64 = [file]() {
-    int64_t i;
-    CHECK(!feof(file));
-    CHECK(1 == fread(&i, 8, 1, file));
-    return i;
-  };
-  auto Read32 = [file]() {
-    int32_t i;
-    CHECK(!feof(file));
-    CHECK(1 == fread(&i, 4, 1, file));
-    return i;
-  };
-  auto ReadFloat = [file]() {
-    float value;
-    CHECK(!feof(file));
-    CHECK(1 == fread(&value, 4, 1, file));
-    return value;
-  };
-  auto ReadFloats = [&ReadFloat](vector<float> *vec) {
+  inline float ReadFloat() {
+    uint32_t u = Read32();
+    return UnpackFloat(u);
+  }
+
+  inline int32_t Read32() {
+    uint8_t a = ReadByte();
+    uint8_t b = ReadByte();
+    uint8_t c = ReadByte();
+    uint8_t d = ReadByte();
+
+    return (a << 24) | (b << 16) | (c << 8) | d;
+  }
+
+  inline void ReadFloats(std::vector<float> *vec) {
     for (int i = 0; i < vec->size(); i++) {
       (*vec)[i] = ReadFloat();
     }
-  };
-
-  if (Read32() != Network::MAGIC) {
-    if (verbose) printf("Not a serialized network!\n");
-    return nullptr;
-  }
-  if (Read32() != Network::FORMAT_ID) {
-    if (verbose) printf("Wrong format id!\n");
-    return nullptr;
   }
 
-  const int64 round = Read64();
-  const int64 examples = Read64();
+  inline const std::string &Name() const { return name; }
+
+  const std::string name;
+  const bool verbose = false;
+};
+
+struct FileReader : public Reader {
+  static Reader *Create(const std::string &filename,
+                        bool verbose = false) {
+    FILE *file = fopen(filename.c_str(), "rb");
+    if (file == nullptr) {
+      if (verbose) {
+        printf("Failed to open %s. If it's present, there may be a "
+               "permissions problem?\n", filename.c_str());
+        fflush(stdout);
+      }
+      return nullptr;
+    } else {
+      if (verbose) {
+        printf("Reading [%s]\n", filename.c_str());
+      }
+    }
+    return new FileReader(file, filename, verbose);
+  }
+
+  FileReader(FILE *file, const std::string filename, bool verbose) :
+    Reader(filename, verbose), file(file) {}
+
+  ~FileReader() override {
+    fclose(file);
+  }
+
+
+  // TODO: Instead of CHECK, this could set some failed flag
+  // and return zeroes, which allows more graceful failure.
+  uint8_t ReadByte() override {
+    uint8_t i;
+    CHECK(!feof(file));
+    CHECK(1 == fread(&i, 1, 1, file));
+    return i;
+  }
+
+  FILE *file = nullptr;
+};
+
+struct VecReader : public Reader {
+  static Reader *Create(const std::vector<uint8_t> &bytes,
+                        bool verbose = false) {
+    return new VecReader(bytes, verbose);
+  }
+
+  uint8_t ReadByte() override {
+    CHECK(pos < bytes.size());
+    return bytes[pos++];
+  }
+
+  VecReader(const std::vector<uint8_t> &bytes, bool verbose = false) :
+    Reader("memory", verbose), bytes(bytes) {}
+  const std::vector<uint8_t> &bytes;
+  int64_t pos = 0;
+};
+
+struct Writer {
+  explicit Writer(const std::string &name, bool verbose) :
+    name(name), verbose(verbose) {}
+  virtual ~Writer() {}
+
+  virtual void WriteByte(uint8_t b) = 0;
+
+  inline void Write64(int64_t i) {
+    Write32((i >> 32) & 0xFFFFFFFF);
+    Write32(i & 0xFFFFFFFF);
+  }
+  inline void Write32(int32_t i) {
+    WriteByte((i >> 24) & 0xFF);
+    WriteByte((i >> 16) & 0xFF);
+    WriteByte((i >> 8)  & 0xFF);
+    WriteByte( i        & 0xFF);
+  }
+  inline void WriteFloat(float value) {
+    Write32(PackFloat(value));
+  }
+  inline void WriteFloats(const vector<float> &vec) {
+    for (float f : vec)
+      WriteFloat(f);
+  }
+
+  const std::string &Name() const { return name; }
+
+  const std::string name;
+  const bool verbose = false;
+};
+
+struct FileWriter : public Writer {
+  static Writer *Create(const std::string &filename,
+                        bool verbose = false) {
+    FILE *file = fopen(filename.c_str(), "wb");
+    if (file == nullptr) {
+      if (verbose) {
+        printf("Failed to open %s for writing?", filename.c_str());
+        fflush(stdout);
+      }
+      return nullptr;
+    }
+    return new FileWriter(file, filename, verbose);
+  }
+
+  FileWriter(FILE *file, const std::string filename, bool verbose) :
+    Writer(filename, verbose), file(file) {}
+
+  ~FileWriter() override {
+    fclose(file);
+  }
+
+  // TODO: Instead of CHECK, this could set some failed flag
+  // and return zeroes, which allows more graceful failure.
+  void WriteByte(uint8_t b) override {
+    CHECK(1 == fwrite(&b, 1, 1, file)) << Name();
+  }
+
+  FILE *file = nullptr;
+};
+
+struct VecWriter : public Writer {
+  static Writer *Create(std::vector<uint8_t> *vec, bool verbose = false) {
+    return new VecWriter(vec, verbose);
+  }
+
+  inline void WriteByte(uint8_t b) override {
+    vec->push_back(b);
+  }
+
+  VecWriter(std::vector<uint8_t> *vec, bool verbose = false) :
+    Writer("memory", verbose), vec(vec) {}
+
+  std::vector<uint8_t> *vec = nullptr;
+};
+
+}  // namespace
+
+static Network *ReadFromReader(Reader *r) {
+  if (r->Read32() != Network::MAGIC) {
+    if (r->verbose) printf("Not a serialized network!\n");
+    return nullptr;
+  }
+  if (r->Read32() != Network::FORMAT_ID) {
+    if (r->verbose) printf("Wrong format id!\n");
+    return nullptr;
+  }
+
+  const int64 round = r->Read64();
+  const int64 examples = r->Read64();
   // These values determine the size of the network vectors.
-  const int file_num_layers = Read32();
+  const int file_num_layers = r->Read32();
   CHECK_GE(file_num_layers, 0);
-  if (verbose) {
+  if (r->verbose) {
     printf("%s: %lld rounds, %lld examples, %d layers.\n",
-           filename.c_str(), round, examples, file_num_layers);
+           r->Name().c_str(), round, examples, file_num_layers);
   }
 
   vector<Layer> layers(file_num_layers);
   for (int i = 0; i < file_num_layers; i++) {
-    if (verbose) printf("%s: Layer %d: ", filename.c_str(), i);
+    if (r->verbose) printf("%s: Layer %d: ", r->Name().c_str(), i);
     Layer &layer = layers[i];
     layer.num_nodes = 0;
-    const int num_chunks = Read32();
+    const int num_chunks = r->Read32();
 
     layer.chunks.resize(num_chunks);
     for (Chunk &chunk : layer.chunks) {
-      const int ct = Read32();
+      const int ct = r->Read32();
       CHECK(ct >= 0 && ct < NUM_CHUNK_TYPES) << ct;
       chunk.type = (ChunkType)ct;
 
-      chunk.span_start = Read32();
-      chunk.span_size = Read32();
-      chunk.num_nodes = Read32();
-      chunk.indices_per_node = Read32();
-      const int tf = Read32();
+      chunk.span_start = r->Read32();
+      chunk.span_size = r->Read32();
+      chunk.num_nodes = r->Read32();
+      chunk.indices_per_node = r->Read32();
+      const int tf = r->Read32();
       CHECK(tf >= 0 && tf <= NUM_TRANSFER_FUNCTIONS) << tf;
       chunk.transfer_function = (TransferFunction)tf;
-      chunk.num_features = Read32();
-      chunk.pattern_width = Read32();
-      chunk.pattern_height = Read32();
-      chunk.src_width = Read32();
-      chunk.src_height = Read32();
-      chunk.occurrence_x_stride = Read32();
-      chunk.occurrence_y_stride = Read32();
-      chunk.num_occurrences_across = Read32();
-      chunk.num_occurrences_down = Read32();
+      chunk.num_features = r->Read32();
+      chunk.pattern_width = r->Read32();
+      chunk.pattern_height = r->Read32();
+      chunk.src_width = r->Read32();
+      chunk.src_height = r->Read32();
+      chunk.occurrence_x_stride = r->Read32();
+      chunk.occurrence_y_stride = r->Read32();
+      chunk.num_occurrences_across = r->Read32();
+      chunk.num_occurrences_down = r->Read32();
 
       // Read (or derive) indices, and set the correct sizes for
       // weights and biases.
@@ -838,7 +992,7 @@ Network *Network::ReadFromFile(const string &filename,
 
         const auto [indices, this_num_nodes_computed,
                     num_occurrences_across, num_occurrences_down] =
-          MakeConvolutionArrayIndices(
+          Network::MakeConvolutionArrayIndices(
               chunk.span_start, chunk.span_size,
               chunk.num_features,
               chunk.pattern_width,
@@ -869,7 +1023,7 @@ Network *Network::ReadFromFile(const string &filename,
       case CHUNK_SPARSE:
         chunk.indices.reserve(chunk.num_nodes * chunk.indices_per_node);
         for (int ii = 0; ii < chunk.num_nodes * chunk.indices_per_node;
-             ii++) chunk.indices.push_back(Read32());
+             ii++) chunk.indices.push_back(r->Read32());
         chunk.weights.resize(chunk.num_nodes * chunk.indices_per_node);
         chunk.biases.resize(chunk.num_nodes);
         break;
@@ -889,13 +1043,13 @@ Network *Network::ReadFromFile(const string &filename,
       }
 
       // Read the appropriate number of weights and biases.
-      ReadFloats(&chunk.weights);
-      ReadFloats(&chunk.biases);
+      r->ReadFloats(&chunk.weights);
+      r->ReadFloats(&chunk.biases);
 
-      chunk.width = Read32();
-      chunk.height = Read32();
-      chunk.channels = Read32();
-      chunk.style = (RenderStyle)Read32();
+      chunk.width = r->Read32();
+      chunk.height = r->Read32();
+      chunk.channels = r->Read32();
+      chunk.style = (RenderStyle)r->Read32();
 
       printf("%d %s %s ",
              chunk.indices_per_node,
@@ -939,13 +1093,11 @@ Network *Network::ReadFromFile(const string &filename,
       }
     }
   }
-  if (verbose)
+  if (r->verbose)
     printf("\n");
 
-  fclose(file);
-
-  if (verbose)
-    printf("Read from %s.\n", filename.c_str());
+  if (r->verbose)
+    printf("Read from %s.\n", r->Name().c_str());
 
   // Construct network.
 
@@ -955,67 +1107,66 @@ Network *Network::ReadFromFile(const string &filename,
   net->rounds = round;
   net->examples = examples;
 
-  if (verbose)
+  if (r->verbose)
     printf("Check it:\n");
   net->StructuralCheck();
 
-  if (verbose)
+  if (r->verbose)
     printf("OK!\n");
 
   return net.release();
 }
 
-void Network::SaveToFile(const string &filename) {
-  // Not portable, obviously.
-  FILE *file = fopen(filename.c_str(), "wb");
-  auto Write64 = [file](int64_t i) {
-    CHECK(1 == fwrite(&i, 8, 1, file));
-  };
-  auto Write32 = [file](int32_t i) {
-    CHECK(1 == fwrite(&i, 4, 1, file));
-  };
-  auto WriteFloat = [file](float value) {
-    CHECK(1 == fwrite(&value, 4, 1, file));
-  };
-  auto WriteFloats = [&WriteFloat](const vector<float> &vec) {
-    for (float f : vec)
-      WriteFloat(f);
-  };
 
-  Write32(Network::MAGIC);
-  Write32(Network::FORMAT_ID);
-  Write64(rounds);
-  Write64(examples);
-  Write32(layers.size());
+Network *Network::ReadFromFile(const string &filename,
+                               bool verbose) {
+  std::unique_ptr<Reader> r(FileReader::Create(filename, verbose));
+  CHECK(r.get() != nullptr) << filename;
+  return ReadFromReader(r.get());
+}
 
-  for (const Layer &layer : layers) {
+Network *Network::ParseSerialized(const std::vector<uint8_t> &bytes,
+                                  bool verbose) {
+  std::unique_ptr<Reader> r(VecReader::Create(bytes, verbose));
+  CHECK(r.get() != nullptr);
+  return ReadFromReader(r.get());
+}
+
+static void WriteToWriter(const Network &net, Writer *w) {
+  w->Write32(Network::MAGIC);
+  w->Write32(Network::FORMAT_ID);
+  w->Write64(net.rounds);
+  w->Write64(net.examples);
+  w->Write32(net.layers.size());
+
+  for (const Layer &layer : net.layers) {
     // don't write layer's num_nodes; it's computable
-    Write32(layer.chunks.size());
+    w->Write32(layer.chunks.size());
     for (const Chunk &chunk : layer.chunks) {
-      Write32(chunk.type);
-      Write32(chunk.span_start);
-      Write32(chunk.span_size);
-      Write32(chunk.num_nodes);
-      Write32(chunk.indices_per_node);
-      Write32(chunk.transfer_function);
+      w->Write32(chunk.type);
+      w->Write32(chunk.span_start);
+      w->Write32(chunk.span_size);
+      w->Write32(chunk.num_nodes);
+      w->Write32(chunk.indices_per_node);
+      w->Write32(chunk.transfer_function);
       // Always write convolution stuff, even if not a
       // convolution type chunk.
-      Write32(chunk.num_features);
-      Write32(chunk.pattern_width);
-      Write32(chunk.pattern_height);
-      Write32(chunk.src_width);
-      Write32(chunk.src_height);
-      Write32(chunk.occurrence_x_stride);
-      Write32(chunk.occurrence_y_stride);
-      Write32(chunk.num_occurrences_across);
-      Write32(chunk.num_occurrences_down);
+      w->Write32(chunk.num_features);
+      w->Write32(chunk.pattern_width);
+      w->Write32(chunk.pattern_height);
+      w->Write32(chunk.src_width);
+      w->Write32(chunk.src_height);
+      w->Write32(chunk.occurrence_x_stride);
+      w->Write32(chunk.occurrence_y_stride);
+      w->Write32(chunk.num_occurrences_across);
+      w->Write32(chunk.num_occurrences_down);
 
       switch (chunk.type) {
       case CHUNK_CONVOLUTION_ARRAY:
         // Don't write convolution layers; the structure is computable.
         break;
       case CHUNK_SPARSE:
-        for (const uint32 idx : chunk.indices) Write32(idx);
+        for (const uint32 idx : chunk.indices) w->Write32(idx);
         break;
       case CHUNK_DENSE:
         // Nothing stored for dense layers.
@@ -1026,18 +1177,33 @@ void Network::SaveToFile(const string &filename) {
       default:
         CHECK(false) << "Unknown layer type!";
       }
-      WriteFloats(chunk.weights);
-      WriteFloats(chunk.biases);
+      w->WriteFloats(chunk.weights);
+      w->WriteFloats(chunk.biases);
 
-      Write32(chunk.width);
-      Write32(chunk.height);
-      Write32(chunk.channels);
-      Write32(chunk.style);
+      w->Write32(chunk.width);
+      w->Write32(chunk.height);
+      w->Write32(chunk.channels);
+      w->Write32(chunk.style);
     }
   }
 
-  printf("Wrote %s.\n", filename.c_str());
-  fclose(file);
+  if (w->verbose) printf("Wrote %s.\n", w->Name().c_str());
+}
+
+void Network::SaveToFile(const string &filename) {
+  // XXX make verbosity optional?
+  std::unique_ptr<Writer> w(FileWriter::Create(filename, true));
+  CHECK(w.get() != nullptr) << filename;
+  WriteToWriter(*this, w.get());
+}
+
+std::vector<uint8_t> Network::Serialize() {
+  std::vector<uint8_t> vec;
+  vec.reserve(Bytes() + 128);
+  std::unique_ptr<Writer> w(VecWriter::Create(&vec, false));
+  CHECK(w.get() != nullptr);
+  WriteToWriter(*this, w.get());
+  return vec;
 }
 
 int64 Stimulation::Bytes() const {
