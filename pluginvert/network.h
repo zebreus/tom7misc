@@ -4,8 +4,8 @@
 // cc-lib, but for now I've been cloning and making improvements
 // with each ML project.
 
-#ifndef _PLUGINVERT_NETWORK_H
-#define _PLUGINVERT_NETWORK_H
+#ifndef _NETWORK_H
+#define _NETWORK_H
 
 #include <vector>
 #include <string>
@@ -193,7 +193,7 @@ struct Layer {
 };
 
 static constexpr inline
-uint32_t FOURCC(uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
+uint32_t MakeFOURCC(uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
   return (a << 24) | (b << 16) | (c << 8) | d;
 }
 
@@ -246,8 +246,6 @@ struct Network {
   // wrong. Doesn't check weight values (see NaNCheck).
   void StructuralCheck() const;
 
-  static Network *Clone(const Network &other);
-
   // Note: These use local byte order, so the serialized format is not
   // portable.
   // Caller owns new-ly allocated Network object.
@@ -256,7 +254,7 @@ struct Network {
   static Network *ParseSerialized(const std::vector<uint8_t> &bytes,
                                   bool verbose = true);
   void SaveToFile(const string &filename);
-  std::vector<uint8_t> Serialize();
+  std::vector<uint8_t> Serialize() const;
 
   // TODO: ComputeInvertedIndices(int layer_idx, int chunk_idx)
   // In this new version we don't store the inverted indices, since
@@ -273,7 +271,7 @@ struct Network {
 
 
   // Serialization header. Always starts with MAGIC.
-  static constexpr uint32_t MAGIC = FOURCC('T', '7', 'n', 'w');
+  static constexpr uint32_t MAGIC = MakeFOURCC('T', '7', 'n', 'w');
   // ... and followed by this version identifier. When changing the
   // format in an incompatible way, always increment this.
   static constexpr uint32_t FORMAT_ID = 0x27000770U;
@@ -314,8 +312,6 @@ struct Network {
   int64_t examples = 0;
 
 private:
-  // Value type, but require calling Clone explicitly.
-  Network(const Network &other) = default;
   // Check the inverted indices specifically. Use StructuralCheck
   // instead.
   void CheckInvertedIndices() const;

@@ -48,7 +48,7 @@ CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=$(UTIL_OBJECTS) network.o error-history.o modelinfo.o
+OBJECTS=$(UTIL_OBJECTS) network.o network-gpu.o error-history.o modelinfo.o
 
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -lpsapi -static
@@ -101,7 +101,11 @@ conv_test.exe : conv_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-network_test.exe : network.o network_test.o $(UTIL_OBJECTS)
+network_test.exe : network.o network-test-util.o network_test.o $(UTIL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+network-gpu_test.exe : network.o network-gpu.o network-test-util.o network-gpu_test.o clutil.o $(UTIL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

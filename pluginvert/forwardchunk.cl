@@ -1,11 +1,11 @@
 
-// A layer is simply defined by the values of the previous layer, and
-// weights of the incoming edges. Because our layers are so big (as a
-// consequence of representing image data), we don't store this as
-// a dense vector (it would be like (3*2^16)^2 floats; ~150GB); instead
-// each node has a sparse set of its inputs from the previous layer.
-//
-// We have to know how many indices each node uses, as a constant.
+// Runs a network forward to produce the next layer of the stimulation,
+// either as part of training or just inference. In the general case a
+// layer is made up of multiple chunks with different parameters, so
+// the kernels in here actually run an individual chunk. This code
+// is compiled for each chunk in the network, baking in some constants
+// (supplied as #defines) for performance and selecting the chunk type
+// by name.
 
 // Expects the following defines:
 
@@ -16,30 +16,35 @@
 //   a LAYER_CONVOLUTION_ARRAY layer. For sparse and dense layers,
 //   this is ignored (but should be defined to 1 or whatever). Must
 //   divide the number of nodes in the layer.
+// SPAN_START and SPAN_SIZE, integers giving the input span.
 
 // We don't actually need to know the number of nodes within the kernel;
 // the global id just tells us which node we work on. But the number
 // of indices per node is needed to compute offsets.
-__kernel void ForwardLayerSparse(
-                // size num_nodes[layer]
+__kernel void ForwardChunkSparse(
+                // size layers[src_layer].num_nodes
                 __global const float *restrict previous_layer_outputs,
-                // size num_nodes[layer + 1] * INDICES_PER_NODE.
+                // size chunk.num_nodes * INDICES_PER_NODE.
                 __global const int *restrict indices,
-                // size num_nodes[layer + 1] * INDICES_PER_NODE; parallel
+                // size chunk.num_nodes * INDICES_PER_NODE; parallel
                 // to the previous.
                 __global const float *restrict weights,
-                // size num_nodes[layer + 1] (this layer).
+                // size chunk.num_nodes.
                 __global const float *restrict bias,
-                // size num_nodes[layer + 1].
+                // size chunk.num_nodes. This is a sub-buffer pointing
+                // to the interior of the destination layer's output
+                // stimulation, so that output_values[0] is the first
+                // output of the chunk.
                 __global float *restrict output_values) {
   const int node_idx = get_global_id(0);
 
   // Start with bias.
   float potential = bias[node_idx];
   const __global float *my_weights = weights + (node_idx * INDICES_PER_NODE);
+  // Note that for sparse chunks, these are already global indices into
+  // the previous layer, so we can ignore SPAN_START.
   const __global int *my_indices = indices + (node_idx * INDICES_PER_NODE);
 
-  // Could itself be a kernel? Not sure what the right granularity of these is.
   for (int i = 0; i < INDICES_PER_NODE; i++) {
     // Fetch this first since we'll do a data-dependent load from this index.
     const int in_idx = my_indices[i];
@@ -53,51 +58,59 @@ __kernel void ForwardLayerSparse(
 
 // Dense version. Here we can read the indices in order without any
 // indirection, which is a lot faster.
-__kernel void ForwardLayerDense(
-                // size num_nodes[layer]
+__kernel void ForwardChunkDense(
+                // size layers[src_layer].num_nodes
                 __global const float *restrict previous_layer_outputs,
                 // unused indices array
                 __global const int *restrict indices_unused,
-                // size num_nodes[layer + 1] * INDICES_PER_NODE.
+                // size chunk.num_nodes * INDICES_PER_NODE
                 __global const float *restrict weights,
-                // size num_nodes[layer + 1] (this layer).
+                // size chunk.num_nodes
                 __global const float *restrict bias,
-                // size num_nodes[layer + 1].
+                // size chunk.num_nodes. This is a sub-buffer pointing
+                // to the interior of the destination layer's output
+                // stimulation, so that output_values[0] is the first
+                // output of the chunk.
                 __global float *restrict output_values) {
   const int node_idx = get_global_id(0);
+
 
   // Start with bias.
   float potential = bias[node_idx];
   const __global float *my_weights = weights + (node_idx * INDICES_PER_NODE);
 
-  // Could itself be a kernel? Not sure what the right granularity of these is.
+
+  // For dense layers, SPAN_SIZE == INDICES_PER_NODE.
   for (int i = 0; i < INDICES_PER_NODE; i++) {
     const float w = my_weights[i];
-    const float v = previous_layer_outputs[i];
+    const float v = previous_layer_outputs[SPAN_START + i];
     // potential += w * v;
     potential = fma(w, v, potential);
   }
+
   output_values[node_idx] = FORWARD(potential);
 }
-
-
 
 // PERF: Consider having this loop over all the features (i.e., pass
 // an index into indices) rather than deriving where we are for each
 // node.
 //
 // PERF: Could also derive the indices programmatically, instead of
-// reading them from memory.
-__kernel void ForwardLayerConvolutional(
-                // size num_nodes[layer]
+// reading them from memory. If we do this, we should probably generate
+// the OpenCL code?
+__kernel void ForwardChunkConvolutional(
+                // size layers[src_layer].num_nodes
                 __global const float *restrict previous_layer_outputs,
-                // size num_nodes[layer + 1] * INDICES_PER_NODE.
+                // size chunk.num_nodes * INDICES_PER_NODE.
                 __global const int *restrict indices,
                 // size INDICES_PER_NODE * NUM_CONVOLUTIONS.
                 __global const float *restrict weights,
                 // size NUM_CONVOLUTIONS.
                 __global const float *restrict bias,
-                // size num_nodes[layer + 1].
+                // size chunk.num_nodes. This is a sub-buffer pointing
+                // to the interior of the destination layer's output
+                // stimulation, so that output_values[0] is the first
+                // output of the chunk.
                 __global float *restrict output_values) {
 
   // Note: I tried making this a 2D kernel but it was measurably worse.
@@ -114,6 +127,8 @@ __kernel void ForwardLayerConvolutional(
   const __global float *feature_weights =
     weights + (feature_number * INDICES_PER_NODE);
 
+  // These are already global indices into the previous layer, so
+  // we can ignore SPAN_START.
   const __global int *my_indices =
     indices + (occurrence_number * INDICES_PER_NODE);
 

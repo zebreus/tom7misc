@@ -6,6 +6,10 @@
 #include <string>
 #include <vector>
 
+// Maybe make this not depend on base/logging?
+// We only need some basic asserts.
+#include "base/logging.h"
+
 using uint8 = uint8_t;
 // Better compatibility with CL.
 using uchar = uint8_t;
@@ -59,8 +63,8 @@ struct CL {
   cl_command_queue queue;
 };
 
-// Shares with the host memory and we don't control when it gets copied. This is
-// quite inefficient.
+// Shares with the host memory and we don't control when it gets
+// copied. This is quite inefficient. XXX maybe retire this.
 template<class T>
 static cl_mem BufferFromVector(cl_context context, bool readonly,
                                std::vector<T> *v) {
@@ -79,22 +83,28 @@ static cl_mem BufferFromVector(cl_context context, bool readonly,
 // do not alias. Note that the command queue is not flushed, so you
 // should not touch the source memory until it is.
 template<class T>
-static cl_mem MoveMemoryToGPU(cl_context context, cl_command_queue cmd,
-                              bool readonly, std::vector<T> *v) {
+static cl_mem CopyMemoryToGPU(cl_context context, cl_command_queue cmd,
+                              const std::vector<T> &v, bool readonly = false) {
+  // TODO: Seems reasonable to allow empty memories, but clCreateBuffer
+  // doesn't agree!
+  CHECK(!v.empty()) << "CopyMemoryToGPU doesn't work for empty vectors";
+  cl_int create_error = 0;
   cl_mem buf = clCreateBuffer(context,
                               (readonly ? CL_MEM_READ_ONLY : 0),
-                              sizeof (T) * v->size(),
+                              sizeof (T) * v.size(),
                               nullptr,
-                              nullptr);
+                              &create_error);
+  CHECK_SUCCESS(create_error);
   CHECK_SUCCESS(clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0,
-                                     sizeof (T) * v->size(), v->data(), 0,
+                                     sizeof (T) * v.size(), v.data(), 0,
                                      nullptr, nullptr));
   return buf;
 }
 
+#if 0 // XXX deleteee, I think this made no sense?
 // Same, but with a constant vector. Implies read-only.
 template<class T>
-static cl_mem MoveMemoryToGPUConst(cl_context context, cl_command_queue cmd,
+static cl_mem CopyMemoryToGPUConst(cl_context context, cl_command_queue cmd,
                                    const std::vector<T> &v) {
   cl_mem buf = clCreateBuffer(context,
                               CL_MEM_READ_ONLY,
@@ -106,15 +116,23 @@ static cl_mem MoveMemoryToGPUConst(cl_context context, cl_command_queue cmd,
                                      nullptr, nullptr));
   return buf;
 }
+#endif
 
+// PERF: Consider CL_MEM_WRITE_ONLY. Are there performance advantages?
 template<class T>
 static cl_mem CreateUninitializedGPUMemory(cl_context context, int n_items) {
-  return clCreateBuffer(context, 0, sizeof (T) * n_items, nullptr, nullptr);
+  CHECK(n_items > 0) << "Empty buffers not supported :(";
+  cl_int create_error = 0;
+  cl_mem buf =
+    clCreateBuffer(context, 0, sizeof (T) * n_items, nullptr, &create_error);
+  CHECK_SUCCESS(create_error);
+  return buf;
 }
 
 template<class T>
 static std::vector<T> CopyBufferFromGPU(cl_command_queue cmd,
                                         cl_mem buf, int n) {
+  CHECK(n > 0) << "Empty buffers not supported :(";
   std::vector<T> vec;
   vec.resize(n);
   CHECK_SUCCESS(clEnqueueReadBuffer(cmd, buf, CL_TRUE, 0, sizeof (T) * n,
@@ -145,7 +163,6 @@ static void CopyBufferFromGPUTo(cl_command_queue cmd,
 template<class T>
 static void CopyBufferToGPU(cl_command_queue cmd,
                             const std::vector<T> &vec, cl_mem buf) {
-  // XXX!
   // printf("%lld bytes\n", (int64_t)(sizeof (T) * vec.size()));
   CHECK_SUCCESS(clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0,
                                      sizeof (T) * vec.size(), vec.data(), 0,

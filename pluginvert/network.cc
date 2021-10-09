@@ -324,10 +324,6 @@ void Network::CheckInvertedIndices() const {
 
 #endif
 
-Network *Network::Clone(const Network &other) {
-  return new Network(other);
-}
-
 int64 Network::Bytes() const {
   int64 ret = sizeof *this;
   // Layer structs.
@@ -1197,7 +1193,7 @@ void Network::SaveToFile(const string &filename) {
   WriteToWriter(*this, w.get());
 }
 
-std::vector<uint8_t> Network::Serialize() {
+std::vector<uint8_t> Network::Serialize() const {
   std::vector<uint8_t> vec;
   vec.reserve(Bytes() + 128);
   std::unique_ptr<Writer> w(VecWriter::Create(&vec, false));

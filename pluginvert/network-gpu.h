@@ -8,57 +8,48 @@
 #include <string>
 #include <optional>
 #include <vector>
+#include <mutex>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 
 #include "network.h"
 #include "timer.h"
 #include "clutil.h"
 
 
-// Network that lives entirely on the GPU, but can be copied back to
-// the Network object.
+// Network that has its bulky data (indices and inverted indices,
+// weights, biases) stored on GPU for fast inference and training.
+// During training the parameters (weights, biases) are updated in the
+// GPU copies, which can then be copied back to the associated CPU
+// copies and serialized, etc.
+//
+// Other network data (e.g. choice of transfer function, convolution
+// pattern dimensions) is supplied as arguments to kernels below, or
+// even baked into the compiled kernels as constants.
 struct NetworkGPU {
-  // XXX DESTRUCTOR.
-  NetworkGPU(CL *cl, Network *net) : cl(cl), net(net) {
 
-    layers.resize(net->layers.size());
-    for (int layer = 0; layer < net->layers.size(); layer++) {
-      layers[layer].indices =
-        MoveMemoryToGPU(cl->context, cl->queue, true,
-                        &net->layers[layer].indices);
-      layers[layer].weights =
-        MoveMemoryToGPU(cl->context, cl->queue, false,
-                        &net->layers[layer].weights);
-      layers[layer].biases =
-        MoveMemoryToGPU(cl->context, cl->queue, false,
-                        &net->layers[layer].biases);
-    }
+  // Allocates memory on GPU to parallel the network. Keeps a mutable
+  // alias to the network so that it can be updated after training
+  // (ReadFromGPU), but does not take ownership.
+  NetworkGPU(CL *cl, Network *net);
+  ~NetworkGPU();
 
-    // TODO: Invert here by calling some members of Network.
-    inverted_indices.resize(net->inverted_indices.size());
-    for (int layer = 0; layer < net->layers.size(); layer++) {
-      inverted_indices[layer].start =
-        MoveMemoryToGPUConst(cl->context, cl->queue,
-                             net->inverted_indices[layer].start);
-      inverted_indices[layer].length =
-        MoveMemoryToGPUConst(cl->context, cl->queue,
-                             net->inverted_indices[layer].length);
-      inverted_indices[layer].output_indices =
-        MoveMemoryToGPUConst(cl->context, cl->queue,
-                             net->inverted_indices[layer].output_indices);
-    }
-
-    clFinish(cl->queue);
-  }
-
-  // Read the weights and biases (which is the only thing that can change) from
-  // GPU back to the Network object. Not thread safe!
+  // Read the weights and biases (which is the only thing that can
+  // change) from GPU back to the Network object. Not thread safe!
   void ReadFromGPU() {
+    CHECK(net->layers.size() == layers.size());
     for (int layer = 0; layer < net->layers.size(); layer++) {
-      ReadTo(layers[layer].weights, &net->layers[layer].weights);
-      ReadTo(layers[layer].biases, &net->layers[layer].biases);
+      Layer *cpu_layer = &net->layers[layer];
+      GPULayer *gpu_layer = &layers[layer];
+      CHECK(cpu_layer->chunks.size() == gpu_layer->chunks.size());
+      for (int chunk = 0; chunk < cpu_layer->chunks.size(); chunk++) {
+        Chunk *cpu_chunk = &cpu_layer->chunks[chunk];
+        GPUChunk *gpu_chunk = &gpu_layer->chunks[chunk];
+        if (gpu_chunk->weights != 0)
+          ReadTo(gpu_chunk->weights, &cpu_chunk->weights);
+        if (gpu_chunk->biases != 0)
+          ReadTo(gpu_chunk->biases, &cpu_chunk->biases);
+      }
     }
     clFinish(cl->queue);
   }
@@ -75,13 +66,23 @@ struct NetworkGPU {
                             nullptr));
   }
 
-  struct Layer {
-    // Const
+  struct GPUChunk {
+    // Empty memories are represented as 0 (invalid cl_mem), since opencl
+    // doesn't support empty memories. Everything is empty for the token
+    // input chunk (which goes unused), but indices can also be empty in
+    // normal cases (dense layers).
+    // readonly.
     cl_mem indices;
+    // read/write.
     cl_mem weights;
     cl_mem biases;
   };
 
+  struct GPULayer {
+    std::vector<GPUChunk> chunks;
+  };
+
+  #if 0
   struct InvertedIndices {
     // Const
     cl_mem start;
@@ -90,12 +91,17 @@ struct NetworkGPU {
     // Const
     cl_mem output_indices;
   };
+#endif
 
-  std::vector<Layer> layers;
+  // Owned.
+  std::vector<GPULayer> layers;
+#if 0
   std::vector<InvertedIndices> inverted_indices;
+#endif
 
-  CL *cl;
-  Network *net;
+  // Not owned!
+  CL *cl = nullptr;
+  Network *net = nullptr;
  private:
   DISALLOW_COPY_AND_ASSIGN(NetworkGPU);
 };
@@ -111,35 +117,33 @@ struct NetworkGPU {
 // at least benchmark it.)
 struct TrainingRoundGPU {
   TrainingRoundGPU(CL *cl, const Network &net) : cl(cl), net(&net) {
-    for (int i = 0; i < net.num_layers + 1; i++) {
+    for (const Layer &layer : net.layers) {
       stimulations.push_back(
-          CreateUninitializedGPUMemory<float>(cl->context, net.num_nodes[i]));
-    }
-
-    for (int i = 0; i < net.num_layers; i++) {
+          CreateUninitializedGPUMemory<float>(cl->context, layer.num_nodes));
       errors.push_back(
-          CreateUninitializedGPUMemory<float>(cl->context,
-                                              net.num_nodes[i + 1]));
+          CreateUninitializedGPUMemory<float>(cl->context, layer.num_nodes));
     }
 
     expected =
       CreateUninitializedGPUMemory<float>(cl->context,
-                                          net.num_nodes[net.num_layers]);
+                                          net.layers.back().num_nodes);
   }
 
   void LoadInput(const std::vector<float> &inputs) {
-    CHECK_EQ(inputs.size(), net->num_nodes[0]);
+    CHECK_EQ(inputs.size(), net->layers[0].num_nodes);
     CopyBufferToGPU(cl->queue, inputs, stimulations[0]);
   }
 
   void LoadExpected(const std::vector<float> &values) {
-    CHECK_EQ(values.size(), net->num_nodes[net->num_layers]);
+    CHECK_EQ(values.size(), net->layers.back().num_nodes);
     CopyBufferToGPU(cl->queue, values, expected);
   }
 
   void ExportStimulation(Stimulation *stim) {
     CHECK_EQ(stim->values.size(), stimulations.size());
     for (int i = 0; i < stim->values.size(); i++) {
+      printf("Export stimulation layer %d, size %d\n",
+             i, stim->values[i].size());
       CopyBufferFromGPUTo(cl->queue, stimulations[i], &stim->values[i]);
     }
   }
@@ -152,13 +156,20 @@ struct TrainingRoundGPU {
   }
 
   // Copy (only) the final layer of the stimulation back to main memory.
+  // The output vector must already have the correct size.
   void ExportOutput(std::vector<float> *out) {
+    printf("Export output from last of %d stims, buf %p size %d\n",
+           (int)stimulations.size(),
+           stimulations.back(),
+           (int)out->size());
     CopyBufferFromGPUTo(cl->queue, stimulations.back(), out);
+    printf("(ExportOutput done)\n");
   }
 
-  // num_nodes + 1 layers. 0th is input, final is the output.
+  // Same size as net->layers. 0th is input, final is the output.
   std::vector<cl_mem> stimulations;
-  // num_nodes layers.
+  // Same size as net->layers. 0th is input (unused), final is the output.
+  // XXX (this used to not include the (unused) input error)
   std::vector<cl_mem> errors;
   // Size of final stimulation.
   cl_mem expected;
@@ -179,147 +190,37 @@ struct TrainingRoundGPU {
   DISALLOW_COPY_AND_ASSIGN(TrainingRoundGPU);
 };
 
+
+// XXX test
 struct ForwardLayerCL {
   using string = std::string;
 
-  ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
-    string base_src = Util::ReadFile("forwardlayer.cl");
-    for (int layer = 0; layer < net.layers.size(); layer++) {
-      const TransferFunction transfer_function =
-        net.layers[layer].transfer_function;
-      const int indices_per_node = net.layers[layer].indices_per_node;
-      const int num_features = net.layers[layer].num_features;
+  ForwardLayerCL(CL *cl, const Network &net);
+  ~ForwardLayerCL();
 
-      string kernel_name;
-      switch (net.layers[layer].type) {
-      case LAYER_DENSE:
-        kernel_name = "ForwardLayerDense";
-        break;
-      case LAYER_SPARSE:
-        kernel_name = "ForwardLayerSparse";
-        break;
-      case LAYER_CONVOLUTION_ARRAY:
-        kernel_name = "ForwardLayerConvolutional";
-        break;
-      default:
-        CHECK(false) << "Unsupported layer type "
-                     << LayerTypeName(net.layers[layer].type);
-      }
-
-      string kernel_src =
-        Network::TransferFunctionDefines(transfer_function);
-
-      StringAppendF(&kernel_src,
-                    "\n"
-                    "#define INDICES_PER_NODE %d\n"
-                    "#define NUM_FEATURES %d\n",
-                    indices_per_node,
-                    num_features);
-
-      kernel_src += base_src;
-      auto [program, kernel] = cl->BuildOneKernel(kernel_src, kernel_name);
-      layer_kernels.emplace_back(program, kernel,
-                                 // XXX don't save debugging stuff
-                                 indices_per_node, transfer_function);
-    }
-  }
-
-  struct ForwardContext {
-    ForwardContext(ForwardLayerCL *parent, NetworkGPU *net_gpu, int layer) :
-      parent(parent), net_gpu(net_gpu), layer(layer) {
-      indices = net_gpu->layers[layer].indices;
-      weights = net_gpu->layers[layer].weights;
-      biases = net_gpu->layers[layer].biases;
-    }
-
-    // TODO: Do we really want to share the same command queue across
-    // threads? Presumably clFinish can't tell "this thread's
-    // commands" apart from others, so we may be prematurely
-    // waiting/running other thread's work.
-    void Forward(TrainingRoundGPU *train) {
-      CHECK_LT(layer + 1, train->stimulations.size());
-
-      CL *cl = parent->cl;
-
-      cl_mem src_values = train->stimulations[layer];
-      cl_mem dst_values = train->stimulations[layer + 1];
-
-      Network *net = net_gpu->net;
-
-      auto [program, kernel, kernel_ipn, kernel_tf] =
-        parent->layer_kernels[layer];
-
-      // Sanity check we have the right kernel
-      CHECK(kernel_ipn == net->layers[layer].indices_per_node);
-      CHECK(kernel_tf == net->layers[layer].transfer_function);
-
-      // Can't have multiple threads setting a kernel's argument at one time.
-      {
-        WriteMutexLock ml(&parent->m);
-
-        // All the kernels take the same args.
-        CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
-                                     (void *)&src_values));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
-                                     (void *)&indices));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
-                                     (void *)&weights));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
-                                     (void *)&biases));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 4, sizeof (cl_mem),
-                                     (void *)&dst_values));
+  // Run the given layer of the network forward on the given training
+  // instance (TODO: expand to multiple instances in parallel).
+  void RunForward(
+      NetworkGPU *net_gpu, TrainingRoundGPU *train, int src_layer);
 
 
-        size_t global_work_offset[] = { 0 };
-        size_t global_work_size[] = { (size_t)(net->num_nodes[layer + 1]) };
-        // Printf("Run FL Kernel.\n");
-        Timer kernel_timer;
-        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
-                                             // work dimensions
-                                             1,
-                                             // global work offset
-                                             global_work_offset,
-                                             // global work size
-                                             global_work_size,
-                                             // local work size
-                                             nullptr,
-                                             // no wait list
-                                             0, nullptr,
-                                             // no event
-                                             nullptr));
-        clFinish(cl->queue);
-        kernel_ms += kernel_timer.MS();
-      }
-    }
-
-    ~ForwardContext() {
-    }
-
-    // Not owned.
-    cl_mem indices;
-    cl_mem weights;
-    cl_mem biases;
-    ForwardLayerCL *parent = nullptr;
-    NetworkGPU *net_gpu = nullptr;
-    const int layer;
-    double kernel_ms = 0.0;
+  // The kernel (and associated program) objects for a specific chunk.
+  // Note that we do not compile a chunk for the input layer, so these
+  // can be 0 in the general case.
+  struct ChunkKernel {
+    cl_program program = 0;
+    cl_kernel kernel = 0;
   };
 
-  ~ForwardLayerCL() {
-    for (auto &[p, k, ipn_unused, tf_unused] : layer_kernels) {
-      CHECK_SUCCESS(clReleaseKernel(k));
-      CHECK_SUCCESS(clReleaseProgram(p));
-    }
-  }
-
   CL *cl = nullptr;
-  // Owned. Indexed by layer id.
-  std::vector<std::tuple<cl_program, cl_kernel, int, TransferFunction>>
-    layer_kernels;
+  // Owned. Indexed by layer index and then chunk index. Parallel to
+  // Net::layers.
+  std::vector<std::vector<ChunkKernel>> layer_kernels;
 
-  std::shared_mutex m;
+  std::mutex m;
 };
 
+#if 0
 
 // Set the error values; this is almost just a memcpy.
 struct SetOutputErrorCL {
@@ -826,5 +727,7 @@ struct UpdateWeightsCL {
 
   std::shared_mutex m;
 };
+
+#endif
 
 #endif
