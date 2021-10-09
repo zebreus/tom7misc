@@ -170,4 +170,30 @@ static void CopyBufferToGPU(cl_command_queue cmd,
   clFinish(cmd);
 }
 
+// Create a sub-buffer of the given buffer that represents the
+// supplied span. The argument is treated as an array of elements of
+// type T (e.g. float, to help you avoid bugs where you forget that
+// cl_mem is just bytes); T needs to be explicitly supplied.
+// The input buffer allegedly cannot be itself a sub-buffer. Caller
+// owns the sub-buffer and must release it.
+template<class T>
+static cl_mem SliceGPUMemory(cl_mem values, int start_idx, int count) {
+  // The output region, sized in bytes.
+  cl_buffer_region create_info = {
+    .origin = (size_t)start_idx * sizeof (T),
+    .size = (size_t)count * sizeof (T),
+  };
+
+  cl_int create_sub_buffer_error = 0;
+  cl_mem sub_values = clCreateSubBuffer(values,
+                                        // flags. 0 should inherit.
+                                        0,
+                                        CL_BUFFER_CREATE_TYPE_REGION,
+                                        (const void *)&create_info,
+                                        &create_sub_buffer_error);
+  CHECK_SUCCESS(create_sub_buffer_error);
+  CHECK(sub_values != 0);
+  return sub_values;
+}
+
 #endif

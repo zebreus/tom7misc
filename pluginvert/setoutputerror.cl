@@ -1,11 +1,18 @@
 
-// Sets the error on the output layer, which we can then propagate back up.
+// Sets the error on the output layer for a single chunk, which we can then
+// propagate back up.
 // Error distance is always linear, but this allows for remapping the values
-// before computing that error. Define REMAP(i, x), which takes the node index
-// and float value (either actual or expected), and returns a float. For no
-// remapping, just #define REMAP(i, x) x
+// before computing that error. Define REMAP(c, i, x), which takes the chunk
+// index c, the node index within that chunk i, and the float value
+// (either actual or expected), and returns a float. For no
+// remapping, just: #define REMAP(c, i, x) x
 
-// All memories are the size of the output layer.
+// Expects the following defines:
+//  DERIVATIVE(v) - derivative of the transfer function (given in terms of
+//     its output, as usual)
+//  CHUNK_IDX - integer giving the chunk index on the layer
+
+// Each of the memories is a sub-buffer of the size of the chunk's span.
 __kernel void SetOutputError(__global const float *restrict actual_outputs,
                              __global const float *restrict expected,
                              __global float *restrict output_error) {
@@ -15,8 +22,8 @@ __kernel void SetOutputError(__global const float *restrict actual_outputs,
   const float expected_k = expected[k];
 
   // Remapped values.
-  const float rout_k = REMAP(k, out_k);
-  const float rexpected_k = REMAP(k, expected_k);
+  const float rout_k = REMAP(CHUNK_IDX, k, out_k);
+  const float rexpected_k = REMAP(CHUNK_IDX, k, expected_k);
 
   // Here we are multiplying by the derivative.
   // Derivative is defined in terms of f(x) (the actual output),

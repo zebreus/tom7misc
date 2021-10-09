@@ -137,8 +137,6 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
                     chunk.span_start,
                     chunk.span_size);
 
-      printf("\n%s\n", kernel_src.c_str());
-
       const string kernel_name = ForwardKernelName(chunk.type);
       kernel_src += base_src;
       auto [program, kernel] = cl->BuildOneKernel(kernel_src, kernel_name);
@@ -169,19 +167,21 @@ void ForwardLayerCL::RunForward(
   CHECK(src_values != 0);
   CHECK(dst_values != 0);
 
-  // XXX could keep net_gpu and net as members?
+  // TODO: could keep net_gpu and net as members?
   const Network &net = *net_gpu->net;
 
   // XXXXX
   auto TestReadOK = [&](int line) {
-      clFinish(cl->queue);
-      printf("[src_layer %d] TestReadOK %d...\n", src_layer, line);
-      // Debugging.... Check we can still read the input layer??
-      CHECK(!train->stimulations.empty());
-      std::vector<float> read(net.layers[0].num_nodes, -1.0f);
-      CopyBufferFromGPUTo(cl->queue, train->stimulations[0], &read);
-      clFinish(cl->queue);
-      printf("...OK.\n");
+      if (false) {
+        clFinish(cl->queue);
+        printf("[src_layer %d] TestReadOK %d...\n", src_layer, line);
+        // Debugging.... Check we can still read the input layer??
+        CHECK(!train->stimulations.empty());
+        std::vector<float> read(net.layers[0].num_nodes, -1.0f);
+        CopyBufferFromGPUTo(cl->queue, train->stimulations[0], &read);
+        clFinish(cl->queue);
+        printf("...OK.\n");
+      }
     };
 
   TestReadOK(__LINE__);
@@ -192,7 +192,6 @@ void ForwardLayerCL::RunForward(
   const Layer &layer = net.layers[dst_layer];
   int out_idx = 0;
   for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
-    printf("Chunk %d...\n", chunk_idx);
     TestReadOK(__LINE__);
     const Chunk &chunk = layer.chunks[chunk_idx];
     CHECK(dst_layer < layer_kernels.size());
@@ -210,23 +209,9 @@ void ForwardLayerCL::RunForward(
     cl_mem biases = gpu_chunk.biases;
     CHECK(biases != 0);
 
-    // The output region we write into (sized in bytes).
-    cl_buffer_region create_info = {
-      .origin = (size_t)out_idx * sizeof (float),
-      .size = (size_t)chunk.num_nodes * sizeof (float),
-    };
-
-    // Sub-buffer pointing at the chunk's portion of the destination
-    // values.
-    cl_int create_sub_buffer_error = 0;
-    cl_mem dst_sub_values = clCreateSubBuffer(dst_values,
-                                              // flags. 0 should inherit.
-                                              0,
-                                              CL_BUFFER_CREATE_TYPE_REGION,
-                                              (const void *)&create_info,
-                                              &create_sub_buffer_error);
-    CHECK_SUCCESS(create_sub_buffer_error);
-    CHECK(dst_sub_values != 0);
+    cl_mem dst_sub_values = SliceGPUMemory<float>(dst_values,
+                                                  out_idx,
+                                                  chunk.num_nodes);
 
     TestReadOK(__LINE__);
 
@@ -250,11 +235,9 @@ void ForwardLayerCL::RunForward(
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 4, sizeof (cl_mem),
                                    (void *)&dst_sub_values));
 
-      printf("Kernel w/ work size %d\n", chunk.num_nodes);
       size_t global_work_offset[] = { 0 };
       size_t global_work_size[] = { (size_t)(chunk.num_nodes) };
 
-      clFinish(cl->queue); // XXX
       CHECK(ck.kernel != 0);
       CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel,
                                            // work dimensions
@@ -293,4 +276,103 @@ ForwardLayerCL::~ForwardLayerCL() {
     }
   }
   layer_kernels.clear();
+}
+
+
+
+SetOutputErrorCL::SetOutputErrorCL(
+    CL *cl, const Network &net,
+    const std::optional<std::string> remap_define) : cl(cl) {
+  // This only runs on one layer, the output. But we do need to have the
+  // transfer function's derivative.
+  string base_src = Util::ReadFile("setoutputerror.cl");
+
+  const Layer &layer = net.layers.back();
+  for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
+    const Chunk &chunk = layer.chunks[chunk_idx];
+    const TransferFunction transfer_function =
+      chunk.transfer_function;
+
+    string kernel_src =
+      Network::TransferFunctionDefines(transfer_function);
+
+    // Add remapping function or fill in identity if disabled.
+    kernel_src += "\n";
+    if (remap_define.has_value()) {
+      kernel_src += remap_define.value();
+    } else {
+      kernel_src += "#define REMAP(c, i, x) x";
+    }
+    kernel_src += "\n";
+
+    StringAppendF(&kernel_src, "\n#define CHUNK_IDX %d\n", chunk_idx);
+
+    kernel_src += base_src;
+
+    auto pk = cl->BuildOneKernel(kernel_src, "SetOutputError");
+    kernels.push_back(ChunkKernel{.program = pk.first,
+                                  .kernel = pk.second});
+  }
+}
+
+void SetOutputErrorCL::SetOutputError(
+    NetworkGPU *net_gpu, TrainingRoundGPU *train) {
+  // TODO: Could keep alias to this?
+  const Network *net = net_gpu->net;
+
+  // Full buffers from which we create sub-buffers below.
+  cl_mem actual_outputs = train->stimulations.back();
+  cl_mem expected = train->expected;
+  cl_mem output_error = train->errors.back();
+
+  int out_idx = 0;
+  const Layer &layer = net->layers.back();
+  for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
+    CHECK(chunk_idx < kernels.size());
+    const Chunk &chunk = layer.chunks[chunk_idx];
+    const ChunkKernel &ck = kernels[chunk_idx];
+
+    cl_mem sub_actual_outputs =
+      SliceGPUMemory<float>(actual_outputs, out_idx, chunk.num_nodes);
+    cl_mem sub_expected =
+      SliceGPUMemory<float>(expected, out_idx, chunk.num_nodes);
+    cl_mem sub_output_error =
+      SliceGPUMemory<float>(output_error, out_idx, chunk.num_nodes);
+
+    {
+      MutexLock ml(&m);
+
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 0, sizeof (cl_mem),
+                                   (void *)&sub_actual_outputs));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 1, sizeof (cl_mem),
+                                   (void *)&sub_expected));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
+                                   (void *)&sub_output_error));
+
+      size_t global_work_offset[] = { 0 };
+      size_t global_work_size[] = { (size_t)chunk.num_nodes };
+
+      CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel,
+                                           // work dimensions
+                                           1,
+                                           // global work offset
+                                           global_work_offset,
+                                           // global work size
+                                           global_work_size,
+                                           // local work size
+                                           nullptr,
+                                           // no wait list
+                                           0, nullptr,
+                                           // no event
+                                           nullptr));
+      clFinish(cl->queue);
+    }
+
+    CHECK_SUCCESS(clReleaseMemObject(sub_actual_outputs));
+    CHECK_SUCCESS(clReleaseMemObject(sub_expected));
+    CHECK_SUCCESS(clReleaseMemObject(sub_output_error));
+
+    out_idx += chunk.num_nodes;
+  }
+  CHECK(out_idx == layer.num_nodes);
 }

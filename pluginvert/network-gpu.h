@@ -142,8 +142,6 @@ struct TrainingRoundGPU {
   void ExportStimulation(Stimulation *stim) {
     CHECK_EQ(stim->values.size(), stimulations.size());
     for (int i = 0; i < stim->values.size(); i++) {
-      printf("Export stimulation layer %d, size %d\n",
-             i, stim->values[i].size());
       CopyBufferFromGPUTo(cl->queue, stimulations[i], &stim->values[i]);
     }
   }
@@ -158,12 +156,7 @@ struct TrainingRoundGPU {
   // Copy (only) the final layer of the stimulation back to main memory.
   // The output vector must already have the correct size.
   void ExportOutput(std::vector<float> *out) {
-    printf("Export output from last of %d stims, buf %p size %d\n",
-           (int)stimulations.size(),
-           stimulations.back(),
-           (int)out->size());
     CopyBufferFromGPUTo(cl->queue, stimulations.back(), out);
-    printf("(ExportOutput done)\n");
   }
 
   // Same size as net->layers. 0th is input, final is the output.
@@ -191,7 +184,7 @@ struct TrainingRoundGPU {
 };
 
 
-// XXX test
+// Forward pass.
 struct ForwardLayerCL {
   using string = std::string;
 
@@ -220,109 +213,44 @@ struct ForwardLayerCL {
   std::mutex m;
 };
 
-#if 0
-
-// Set the error values; this is almost just a memcpy.
+// Set the error values from the actual and expected outputs, possibly
+// applying some remapping of them.
 struct SetOutputErrorCL {
   using string = std::string;
 
+  // Optional remap function takes chunk id, node index within chunk, and
+  // value; see setoutputerror.cl.
   SetOutputErrorCL(
       CL *cl, const Network &net,
-      const std::optional<std::string> remap_define = std::nullopt) : cl(cl) {
-    // This only runs on one layer, the output. But we do need to have the
-    // transfer function's derivative.
-    string base_src = Util::ReadFile("setoutputerror.cl");
+      const std::optional<std::string> remap_define = std::nullopt);
 
-    const TransferFunction transfer_function =
-      net.layers.back().transfer_function;
-
-    string kernel_src =
-      Network::TransferFunctionDefines(transfer_function);
-
-    // Add remapping function or fill in identity if disabled.
-    kernel_src += "\n";
-    if (remap_define.has_value()) {
-      kernel_src += remap_define.value();
-    } else {
-      kernel_src += "#define REMAP(i, x) x";
-    }
-    kernel_src += "\n";
-
-    kernel_src += base_src;
-
-    auto pk = cl->BuildOneKernel(kernel_src, "SetOutputError");
-    program = pk.first;
-    kernel = pk.second;
-  }
-
-  struct Context {
-    Context(SetOutputErrorCL *parent, NetworkGPU *net_gpu) :
-      parent(parent), net_gpu(net_gpu) {}
-
-    void SetOutputError(TrainingRoundGPU *train) {
-      CL *cl = parent->cl;
-
-      const Network *net = net_gpu->net;
-
-      cl_kernel kernel = parent->kernel;
-
-      // All three memories here have num_nodes floats.
-      int num_nodes = net->num_nodes[net->num_layers];
-      cl_mem actual_outputs = train->stimulations.back();
-      cl_mem expected = train->expected;
-      cl_mem output_error = train->errors.back();
-
-      // Can't have multiple threads setting a kernel's argument at one time.
-      {
-        WriteMutexLock ml(&parent->m);
-
-        CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
-                                     (void *)&actual_outputs));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
-                                     (void *)&expected));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
-                                     (void *)&output_error));
-
-        size_t global_work_offset[] = { 0 };
-        size_t global_work_size[] = { (size_t)(num_nodes) };
-
-        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
-                                             // work dimensions
-                                             1,
-                                             // global work offset
-                                             global_work_offset,
-                                             // global work size
-                                             global_work_size,
-                                             // local work size
-                                             nullptr,
-                                             // no wait list
-                                             0, nullptr,
-                                             // no event
-                                             nullptr));
-        clFinish(cl->queue);
-      }
-    }
-
-   private:
-    SetOutputErrorCL *parent = nullptr;
-    NetworkGPU *net_gpu = nullptr;
-  };
+  void SetOutputError(NetworkGPU *net_gpu, TrainingRoundGPU *train);
 
   ~SetOutputErrorCL() {
-    clReleaseKernel(kernel);
-    clReleaseProgram(program);
+    for (ChunkKernel &ck : kernels) {
+      clReleaseKernel(ck.kernel);
+      clReleaseProgram(ck.program);
+    }
   }
+
+  struct ChunkKernel {
+    cl_program program = 0;
+    cl_kernel kernel = 0;
+  };
 
  private:
   CL *cl = nullptr;
-  // Owned:
-  cl_program program;
-  cl_kernel kernel;
 
-  std::shared_mutex m;
+  // One for each chunk in the final layer.
+  // Owned.
+  std::vector<ChunkKernel> kernels;
+
+  std::mutex m;
 
   DISALLOW_COPY_AND_ASSIGN(SetOutputErrorCL);
 };
+
+#if 0
 
 // Propagate errors backwards. Note that errors flow from "dst" to "src".
 struct BackwardLayerCL {

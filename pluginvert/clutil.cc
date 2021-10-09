@@ -131,7 +131,7 @@ pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
 
 // static
 const char *CL::ErrorString(cl_int err) {
-  switch(err) {
+  switch (err) {
 #define MAKE_ERROR(e) case e: return #e ;
   MAKE_ERROR(CL_SUCCESS);
   MAKE_ERROR(CL_DEVICE_NOT_FOUND);

@@ -55,6 +55,7 @@ static void SimpleTests(TestNet test_net) {
 int main(int argc, char **argv) {
   SimpleTests(NetworkTestUtil::SingleSparse());
   SimpleTests(NetworkTestUtil::SingleDense());
+  SimpleTests(NetworkTestUtil::SingleConvolution());
   SimpleTests(NetworkTestUtil::TwoInputSparse());
   SimpleTests(NetworkTestUtil::TwoDenseChunks());
   SimpleTests(NetworkTestUtil::Net1());

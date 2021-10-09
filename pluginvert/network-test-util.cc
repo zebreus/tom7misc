@@ -105,6 +105,68 @@ NetworkTestUtil::TestNet NetworkTestUtil::SingleDense() {
   };
 }
 
+NetworkTestUtil::TestNet NetworkTestUtil::SingleConvolution() {
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = 1;
+  input_chunk.width = 1;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  Chunk conv_chunk;
+  conv_chunk.type = CHUNK_CONVOLUTION_ARRAY;
+  conv_chunk.num_features = 1;
+  conv_chunk.num_nodes = 1;
+  conv_chunk.transfer_function = IDENTITY;
+  conv_chunk.width = 1;
+  conv_chunk.height = 1;
+  conv_chunk.channels = 1;
+  conv_chunk.span_start = 0;
+  conv_chunk.span_size = 1;
+  conv_chunk.indices_per_node = 1;
+  // A trivial 1x1 convolution over a 1x1 rectangle.
+  conv_chunk.pattern_width = 1;
+  conv_chunk.pattern_height = 1;
+  conv_chunk.src_width = 1;
+  conv_chunk.src_height = 1;
+  conv_chunk.occurrence_x_stride = 1;
+  conv_chunk.occurrence_y_stride = 1;
+  conv_chunk.num_occurrences_across = 1;
+  conv_chunk.num_occurrences_down = 1;
+
+  conv_chunk.indices = {0};
+  conv_chunk.weights = {1.0};
+  conv_chunk.biases = {0.0};
+
+  Layer input_layer;
+  input_layer.num_nodes = 1;
+  input_layer.chunks = {input_chunk};
+
+  Layer real_layer;
+  real_layer.num_nodes = 1;
+  real_layer.chunks = {conv_chunk};
+
+  Network net({input_layer, real_layer});
+  net.NaNCheck(__func__);
+
+  CHECK(net.layers.size() == 2);
+  CHECK(net.layers[0].chunks.size() == 1);
+  CHECK(net.layers[1].chunks.size() == 1);
+
+  TestExample example1{
+    .name = "nine",
+    .input = {9.0},
+    .output = {9.0},
+  };
+
+  return TestNet{
+    .name = "one real layer with trivial 1x1 convolution, computes identity",
+    .net = net,
+    .examples = {example1},
+  };
+}
+
+
 NetworkTestUtil::TestNet NetworkTestUtil::TwoInputSparse() {
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;

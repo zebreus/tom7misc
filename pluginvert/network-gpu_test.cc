@@ -13,49 +13,31 @@ using namespace std;
 using TestNet = NetworkTestUtil::TestNet;
 using TestExample = NetworkTestUtil::TestExample;
 
+static CL *cl = nullptr;
+
 static void ForwardTests(TestNet test_net) {
   printf("\n--------------------------\n"
-         "Test net: %s\n", test_net.name.c_str());
-  // Or global??
-  std::unique_ptr<CL> cl = std::make_unique<CL>();
+         "[Forward] Test net: %s\n", test_net.name.c_str());
 
   Network &net = test_net.net;
   printf("Create NetworkGPU...\n");
-  auto net_gpu = make_unique<NetworkGPU>(cl.get(), &net);
+  auto net_gpu = make_unique<NetworkGPU>(cl, &net);
   printf("... done creating NetworkGPU.\n");
 
   for (const TestExample &example : test_net.examples) {
     std::unique_ptr<TrainingRoundGPU> training_round =
-      std::make_unique<TrainingRoundGPU>(cl.get(), net);
+      std::make_unique<TrainingRoundGPU>(cl, net);
 
     training_round->LoadInput(example.input);
 
     std::unique_ptr<ForwardLayerCL> forward_cl =
-      std::make_unique<ForwardLayerCL>(cl.get(), net);
-
-    {
-      // XXX don't keep this, because it reads uninitialized mem
-      Stimulation stim(net);
-      training_round->ExportStimulation(&stim);
-      // No change to input layer.
-      CHECK_FEQV(stim.values[0], example.input);
-    }
+      std::make_unique<ForwardLayerCL>(cl, net);
 
     for (int src_layer = 0;
          src_layer < net.layers.size() - 1;
          src_layer++) {
-      printf("Forward src_layer %d ...\n", src_layer);
       forward_cl->RunForward(
           net_gpu.get(), training_round.get(), src_layer);
-
-      {
-        // XXX don't keep this, because it reads uninitialized mem
-        Stimulation stim(net);
-        training_round->ExportStimulation(&stim);
-        // No change to input layer.
-        CHECK_FEQV(stim.values[0], example.input);
-      }
-
     }
 
     // Must be initialized to the correct size.
@@ -75,12 +57,68 @@ static void ForwardTests(TestNet test_net) {
 }
 
 
+// TODO: Figure out a testing strategy for training stuff;
+// right now this just basically tests that it doesn't crash.
+static void TrainTests(TestNet test_net) {
+  printf("\n--------------------------\n"
+         "[Train] Test net: %s\n", test_net.name.c_str());
+
+  Network &net = test_net.net;
+  auto net_gpu = make_unique<NetworkGPU>(cl, &net);
+
+  for (const TestExample &example : test_net.examples) {
+    std::unique_ptr<TrainingRoundGPU> training_round =
+      std::make_unique<TrainingRoundGPU>(cl, net);
+
+    training_round->LoadInput(example.input);
+
+    // TODO: Should probably try to learn a different function
+    // here, since otherwise the errors will be trivial (0)?
+    training_round->LoadExpected(example.output);
+
+    std::unique_ptr<ForwardLayerCL> forward_cl =
+      std::make_unique<ForwardLayerCL>(cl, net);
+
+    for (int src_layer = 0;
+         src_layer < net.layers.size() - 1;
+         src_layer++) {
+      forward_cl->RunForward(
+          net_gpu.get(), training_round.get(), src_layer);
+    }
+
+    std::unique_ptr<SetOutputErrorCL> error_cl =
+      std::make_unique<SetOutputErrorCL>(cl, net);
+
+    error_cl->SetOutputError(net_gpu.get(), training_round.get());
+
+    // XXX backward pass,
+    // XXX updateweights
+    // XXX decayweights
+  }
+
+  // Copy back to CPU instance.
+  net_gpu->ReadFromGPU();
+}
+
+
 int main(int argc, char **argv) {
+  cl = new CL;
+
   ForwardTests(NetworkTestUtil::SingleSparse());
   ForwardTests(NetworkTestUtil::SingleDense());
+  ForwardTests(NetworkTestUtil::SingleConvolution());
   ForwardTests(NetworkTestUtil::TwoInputSparse());
   ForwardTests(NetworkTestUtil::TwoDenseChunks());
   ForwardTests(NetworkTestUtil::Net1());
+
+  TrainTests(NetworkTestUtil::SingleSparse());
+  TrainTests(NetworkTestUtil::SingleDense());
+  TrainTests(NetworkTestUtil::SingleConvolution());
+  TrainTests(NetworkTestUtil::TwoInputSparse());
+  TrainTests(NetworkTestUtil::TwoDenseChunks());
+  TrainTests(NetworkTestUtil::Net1());
+
+  delete cl;
 
   printf("OK\n");
   return 0;

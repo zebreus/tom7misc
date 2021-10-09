@@ -35,6 +35,8 @@ struct NetworkTestUtil {
   static TestNet SingleSparse();
   // Trivial network with just one node, dense chunk.
   static TestNet SingleDense();
+  // Trivial network with one 1x1 "convolutional" chunk.
+  static TestNet SingleConvolution();
 
   // Input size 2; output is a single node 2a + 3b + 1.
   static TestNet TwoInputSparse();
