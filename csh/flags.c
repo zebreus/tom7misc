@@ -48,6 +48,7 @@ MODULE_VERSION("NaN");
              /* output */ :                                             \
              "r"(flags) /* input */  :                                  \
              "%rax" /* clobbered */);                                   \
+    /* print resulting flags to kernel info */                          \
     __asm__ ("pushf\n"                                                  \
              "xorq %%rax, %%rax\n"                                      \
              "popq %%rax\n"                                             \
