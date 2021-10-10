@@ -186,7 +186,6 @@ struct TrainingRoundGPU {
 
 // Forward pass.
 struct ForwardLayerCL {
-  using string = std::string;
 
   ForwardLayerCL(CL *cl, const Network &net);
   ~ForwardLayerCL();
@@ -196,7 +195,7 @@ struct ForwardLayerCL {
   void RunForward(
       NetworkGPU *net_gpu, TrainingRoundGPU *train, int src_layer);
 
-
+ private:
   // The kernel (and associated program) objects for a specific chunk.
   // Note that we do not compile a chunk for the input layer, so these
   // can be 0 in the general case.
@@ -216,7 +215,6 @@ struct ForwardLayerCL {
 // Set the error values from the actual and expected outputs, possibly
 // applying some remapping of them.
 struct SetOutputErrorCL {
-  using string = std::string;
 
   // Optional remap function takes chunk id, node index within chunk, and
   // value; see setoutputerror.cl.
@@ -250,168 +248,40 @@ struct SetOutputErrorCL {
   DISALLOW_COPY_AND_ASSIGN(SetOutputErrorCL);
 };
 
-#if 0
-
 // Propagate errors backwards. Note that errors flow from "dst" to "src".
-struct BackwardLayerCL {
-  using string = std::string;
+// This is the first of two passes; this one is organized by chunk in
+// the destination layer.
+struct BackwardLayer1CL {
 
-  BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
-    string base_src = Util::ReadFile("backwardlayer.cl");
-    for (int src_layer = 0; src_layer < net.layers.size() - 1; src_layer++) {
-      int dst_layer = src_layer + 1;
-      const TransferFunction transfer_function =
-        net.layers[src_layer].transfer_function;
-      const int dst_indices_per_node = net.layers[dst_layer].indices_per_node;
-      // The dest layer, but num_nodes offset by 1.
-      const int dst_num_nodes = net.num_nodes[dst_layer + 1];
-      const int dst_num_features = net.layers[dst_layer].num_features;
-      const LayerType dst_layer_type = net.layers[dst_layer].type;
+  BackwardLayer1CL(CL *cl, const Network &net);
+  ~BackwardLayer1CL();
 
-      string kernel_src =
-        Network::TransferFunctionDefines(transfer_function);
+  // Propagate errors from dst_layer to dst_layer-1. Must run the
+  // second pass after propagating further.
+  void BackwardLayer1(NetworkGPU *net_gpu,
+                      TrainingRoundGPU *training_round,
+                      int dst_layer);
 
-      StringAppendF(&kernel_src,
-                    "\n"
-                    "#define DST_INDICES_PER_NODE %d\n"
-                    "#define DST_NUM_NODES %d\n"
-                    "#define DST_NUM_FEATURES %d\n",
-                    dst_indices_per_node,
-                    dst_num_nodes,
-                    dst_num_features);
-
-      kernel_src += base_src;
-
-      string kernel_name;
-      switch (dst_layer_type) {
-      case LAYER_DENSE:
-        kernel_name = "BackwardLayerDense";
-        break;
-      case LAYER_SPARSE:
-        kernel_name = "BackwardLayerSparse";
-        break;
-      case LAYER_CONVOLUTION_ARRAY:
-        kernel_name = "BackwardLayerConvolutional";
-        break;
-      default:
-        CHECK(false) << "Unsupported layer type "
-                     << LayerTypeName(dst_layer_type);
-      }
-
-      auto [program, kernel] =
-        cl->BuildOneKernel(kernel_src, kernel_name);
-
-      layer_kernels.emplace_back(program, kernel,
-                                 // XXX don't save debugging stuff
-                                 dst_indices_per_node, transfer_function);
-    }
-  }
-
-  struct Context {
-    Context(BackwardLayerCL *parent, NetworkGPU *net_gpu, int dst_layer) :
-      parent(parent), net_gpu(net_gpu), dst_layer(dst_layer) {
-
-      const int gap = dst_layer;
-      // const int src_layer = dst_layer - 1;
-
-      starts = net_gpu->inverted_indices[gap].start;
-      lengths = net_gpu->inverted_indices[gap].length;
-      inverted_index = net_gpu->inverted_indices[gap].output_indices;
-      dst_weights = net_gpu->layers[dst_layer].weights;
-    }
-
-    void Backward(TrainingRoundGPU *train) {
-      CL *cl = parent->cl;
-      const Network *net = net_gpu->net;
-      const int gap = dst_layer;
-      const int src_layer = dst_layer - 1;
-
-      auto [program_, kernel, dst_ipn, tf] =
-        parent->layer_kernels[src_layer];
-      // Sanity check that this was compiled with the right ipn / tf.
-      CHECK(dst_ipn == net->layers[dst_layer].indices_per_node);
-      CHECK(tf == net->layers[src_layer].transfer_function);
-
-      cl_mem src_output = train->stimulations[src_layer + 1];
-      cl_mem dst_error = train->errors[dst_layer];
-
-      // This is the source layer, but num_nodes is offset by one
-      // since it includes the size of the input layer as element 0.
-      int src_num_nodes = net->num_nodes[src_layer + 1];
-      cl_mem src_error = train->errors[src_layer];
-
-      CHECK_EQ(src_num_nodes, net->inverted_indices[gap].start.size());
-
-      // Can't have multiple threads setting a kernel's argument at one time.
-      {
-        WriteMutexLock ml(&parent->m);
-
-        CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
-                                     (void *)&starts));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
-                                     (void *)&lengths));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
-                                     (void *)&inverted_index));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
-                                     (void *)&dst_weights));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 4, sizeof (cl_mem),
-                                     (void *)&src_output));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 5, sizeof (cl_mem),
-                                     (void *)&dst_error));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 6, sizeof (cl_mem),
-                                     (void *)&src_error));
-
-        size_t global_work_offset[] = { 0 };
-        size_t global_work_size[] = { (size_t)src_num_nodes };
-        Timer kernel_timer;
-        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
-                                             // work dimensions
-                                             1,
-                                             // global work offset
-                                             global_work_offset,
-                                             // global work size
-                                             global_work_size,
-                                             // local work size
-                                             nullptr,
-                                             // no wait list
-                                             0, nullptr,
-                                             // no event
-                                             nullptr));
-        clFinish(cl->queue);
-        kernel_ms += kernel_timer.MS();
-      }
-    }
-
-    ~Context() {}
-
-    cl_mem starts, lengths, inverted_index, dst_weights;
-    BackwardLayerCL *parent = nullptr;
-    NetworkGPU *net_gpu = nullptr;
-    const int dst_layer;
-    double kernel_ms = 0.0;
+ private:
+  struct ChunkKernel {
+    cl_program program = 0;
+    cl_kernel kernel = 0;
   };
 
-  ~BackwardLayerCL() {
-    for (auto &[p, k, deleteme1, deleteme2] : layer_kernels) {
-      CHECK_SUCCESS(clReleaseKernel(k));
-      CHECK_SUCCESS(clReleaseProgram(p));
-    }
-  }
-
   CL *cl = nullptr;
-  // Indexed by source layer index.
-  // Note: Unlike others, these have the layer's parameters
-  // baked in.
-  std::vector<std::tuple<cl_program, cl_kernel, int, TransferFunction>>
-    layer_kernels;
 
-  std::shared_mutex m;
+  // Input layer has unused placeholder kernels (0) to keep this
+  // parallel to network structure.
+  std::vector<std::vector<ChunkKernel>> layer_kernels;
+
+  std::mutex m;
 };
+
+#if 0
 
 // Optional and unprincipled L2-like regularization.
 // Decays every weight by a constant multiplicative factor.
 struct DecayWeightsCL {
-  using string = std::string;
 
   DecayWeightsCL(CL *cl, const Network &net, float decay_factor) : cl(cl) {
     string base_src = Util::ReadFile("decayweights.cl");

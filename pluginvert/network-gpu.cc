@@ -209,6 +209,10 @@ void ForwardLayerCL::RunForward(
     cl_mem biases = gpu_chunk.biases;
     CHECK(biases != 0);
 
+    // PERF: This is a good approach (saves constant addition in kernel)
+    // with one training example, but I probably want to pass the full
+    // layer and offset in the kernel (can be compile-time constant)
+    // in order to enable parallelism over training examples.
     cl_mem dst_sub_values = SliceGPUMemory<float>(dst_values,
                                                   out_idx,
                                                   chunk.num_nodes);
@@ -376,3 +380,176 @@ void SetOutputErrorCL::SetOutputError(
   }
   CHECK(out_idx == layer.num_nodes);
 }
+
+
+static std::string Backward1KernelName(ChunkType ct) {
+  switch (ct) {
+  case CHUNK_DENSE: return "BackwardChunkDense";
+  case CHUNK_SPARSE: return "BackwardChunkSparse";
+  case CHUNK_CONVOLUTION_ARRAY: return "BackwardChunkConvolutional";
+  default:
+    CHECK(false) << "Unsupported chunk type for BackwardLayer1 "
+                 << ChunkTypeName(ct);
+  }
+  return "ERROR";
+}
+
+BackwardLayer1CL::BackwardLayer1CL(CL *cl, const Network &net) : cl(cl) {
+  string base_src = Util::ReadFile("backwardchunk.cl");
+
+  // Dummy kernels for input layer, which can't be a destination layer.
+  CHECK(net.layers[0].chunks.size() == 1);
+  layer_kernels.push_back(std::vector<ChunkKernel>{ChunkKernel()});
+
+  for (int dst_layer_idx = 1;
+       dst_layer_idx < net.layers.size();
+       dst_layer_idx++) {
+    const Layer &dst_layer = net.layers[dst_layer_idx];
+
+    // First pass is chunk-by-chunk in the destination layer.
+    std::vector<ChunkKernel> chunk_kernels;
+    int out_idx = 0;
+    for (int chunk_idx = 0; chunk_idx < dst_layer.chunks.size(); chunk_idx++) {
+      const Chunk &chunk = dst_layer.chunks[chunk_idx];
+      string kernel_src =
+        StringPrintf("#define CHUNK_START %d\n"
+                     "#define SPAN_START %d\n"
+                     "#define SPAN_SIZE %d\n"
+                     "#define DST_INDICES_PER_NODE %d\n"
+                     "#define DST_NUM_NODES %d\n"
+                     "#define DST_NUM_FEATURES %d\n"
+                     "#define SRC_SPAN_IS_ZERO %d\n",
+                     out_idx,
+                     chunk.span_start,
+                     chunk.span_size,
+                     chunk.indices_per_node,
+                     chunk.num_nodes,
+                     chunk.num_features,
+                     // PERF: set this to true for first chunk,
+                     // or (better) for all chunks writing into
+                     // a span that hasn't yet been written by
+                     // a previous chunk
+                     false);
+
+      kernel_src += base_src;
+
+      auto [program, kernel] =
+        cl->BuildOneKernel(kernel_src, Backward1KernelName(chunk.type));
+
+      ChunkKernel ck{.program = program,
+                     .kernel = kernel};
+      chunk_kernels.push_back(ck);
+
+      out_idx += chunk.num_nodes;
+    }
+    CHECK(out_idx == dst_layer.num_nodes);
+    layer_kernels.push_back(std::move(chunk_kernels));
+  }
+}
+
+BackwardLayer1CL::~BackwardLayer1CL() {
+  for (auto &v : layer_kernels) {
+    for (auto &ck : v) {
+      if (ck.kernel != 0) CHECK_SUCCESS(clReleaseKernel(ck.kernel));
+      if (ck.program != 0) CHECK_SUCCESS(clReleaseProgram(ck.program));
+    }
+  }
+}
+
+void BackwardLayer1CL::BackwardLayer1(NetworkGPU *net_gpu,
+                                      TrainingRoundGPU *train,
+                                      int dst_layer) {
+  const Network &net = *net_gpu->net;
+  CHECK(dst_layer > 0);
+  CHECK(dst_layer < net.layers.size());
+
+    // XXX delete
+  // const int gap = dst_layer;
+  const int src_layer = dst_layer - 1;
+
+  // Full destination error.
+  cl_mem dst_error = train->errors[dst_layer];
+  // Full source error.
+  cl_mem src_error = train->errors[dst_layer - 1];
+
+  // In the general case we are accumulating the weighted error sum
+  // (+=) rather than writing it once (=), so unlike the other
+  // kernels we need to start by clearing the src_error.
+  cl_float zero = 0.0f;
+  CHECK_SUCCESS(
+      clEnqueueFillBuffer(cl->queue,
+                          src_error,
+                          // pattern and its size
+                          &zero, sizeof (cl_float),
+                          // offset and size to fill
+                          0, (size_t)net.layers[src_layer].num_nodes,
+                          // no wait list or event
+                          0, nullptr, nullptr));
+  // This needs to be done before the kernel runs below. PERF that
+  // if we are running many examples in parallel, we'll be synchronizing
+  // on each other's writes, and possibly starving the kernel below.
+  // This would be a good place to use wait lists!
+  clFinish(cl->queue);
+
+  const Layer &layer = net.layers[dst_layer];
+  for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
+    const Chunk &chunk = layer.chunks[chunk_idx];
+    NetworkGPU::GPUChunk &gpu_chunk =
+      net_gpu->layers[dst_layer].chunks[chunk_idx];
+
+    // FIXME need to implement inverted indices for chunks!
+    cl_mem ii_starts = 0; // gpu_chunk.ii_starts;
+    cl_mem ii_lengths = 0; // gpu_chunk.ii_lengths;
+    cl_mem ii_indices = 0; // gpu_chunk.ii_indices;
+    cl_mem dst_weights = gpu_chunk.weights;
+
+    CHECK(dst_layer < layer_kernels.size() &&
+          chunk_idx < layer_kernels[dst_layer].size());
+    const ChunkKernel &ck = layer_kernels[dst_layer][chunk_idx];
+
+    // XXX delete
+    // This is the source layer, but num_nodes is offset by one
+    // since it includes the size of the input layer as element 0.
+    // int src_num_nodes = net->num_nodes[src_layer + 1];
+    // cl_mem src_error = train->errors[src_layer];
+
+
+    {
+      MutexLock ml(&m);
+
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 0, sizeof (cl_mem),
+                                   (void *)&ii_starts));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 1, sizeof (cl_mem),
+                                   (void *)&ii_lengths));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
+                                   (void *)&ii_indices));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 3, sizeof (cl_mem),
+                                   (void *)&dst_weights));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 4, sizeof (cl_mem),
+                                   (void *)&dst_error));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 5, sizeof (cl_mem),
+                                   (void *)&src_error));
+
+      size_t global_work_offset[] = { 0 };
+      size_t global_work_size[] = { (size_t)chunk.span_size };
+      Timer kernel_timer;
+      CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel,
+                                           // work dimensions
+                                           1,
+                                           // global work offset
+                                           global_work_offset,
+                                           // global work size
+                                           global_work_size,
+                                           // local work size
+                                           nullptr,
+                                           // no wait list
+                                           0, nullptr,
+                                           // no event
+                                           nullptr));
+      clFinish(cl->queue);
+    }
+  }
+}
+
+
+
