@@ -140,11 +140,9 @@ struct Chunk {
   //   [span_start, span_start + span_size)
   // (that is, they already have the span's offset added).
   //
+  // For SPARSE chunks,
   // indices_per_node * num_nodes, flat, node-major
-  // For DENSE chunks, with n < num_nodes
-  // indices[n * indices_per_node + i] = span_start + i.
-  // (TODO: We should perhaps save the ram by not even storing
-  // indices for dense chunks.)
+  //
   // For CONVOLUTION_ARRY chunks, the instances are shared
   // for all features, so this has size
   // indices_per_node * num_nodes / num_features.
@@ -155,6 +153,7 @@ struct Chunk {
   //         pattern_col
   // (with the loop over feature indices implicit at the innermost
   // level)
+  // For DENSE chunks, empty.
   // For INPUT chunks, ignored.
   std::vector<uint32_t> indices;
 
@@ -197,13 +196,15 @@ uint32_t MakeFOURCC(uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
   return (a << 24) | (b << 16) | (c << 8) | d;
 }
 
+struct InvertedIndices;
+
 struct Network {
   template<class T> using vector = std::vector<T>;
   using string = std::string;
 
   // Create network from the given layers (see documentation below).
-  // Computes inverted indices and does structural checks, aborting if
-  // something is amiss. So this should be created with valid layers.
+  // Does structural checks, aborting if something is amiss. So this
+  // should be created with valid layers.
   explicit Network(vector<Layer> layers);
 
   // Constants containing implementations of the different transfer
@@ -222,9 +223,7 @@ struct Network {
   // transfer function).
   static string TransferFunctionDefines(TransferFunction tf);
 
-  // Size of network in RAM. Note that this includes the indices
-  // and inverted indices for dense chunks (which are indeed still stored)
-  // even though they are not used or represented on disk.
+  // Size of network in RAM.
   int64_t Bytes() const;
   // Return the total number of parameters in the model (weights and biases
   // across all layers; the indices are not "parameters" in this sense).
@@ -255,11 +254,6 @@ struct Network {
                                   bool verbose = true);
   void SaveToFile(const string &filename);
   std::vector<uint8_t> Serialize() const;
-
-  // TODO: ComputeInvertedIndices(int layer_idx, int chunk_idx)
-  // In this new version we don't store the inverted indices, since
-  // they are only used in training. Instead we generate them on
-  // the fly when we construct the NetworkGPU object.
 
   // Run the network to fill out the stimulation. The Stimulation
   // must be the right size (i.e. created from this Network) and
@@ -305,16 +299,61 @@ struct Network {
                               int occurrence_x_stride,
                               int occurrence_y_stride);
 
+  // Computes the inverted indices for the given layer (the index
+  // refers to the destination layer of the relevant gap) and chunk
+  // within it. This maps the input span (from source layer) to the
+  // nodes within the chunk where that node is used. These are only
+  // used in training, in the backward pass. Returns empty indices
+  // for the input layer. This is somewhat expensive so it should
+  // be done once and saved.
+  InvertedIndices ComputeInvertedIndices(int layer_idx,
+                                         int chunk_idx) const;
+
   // Rounds trained. This matters when restarting from disk, because
   // for example the learning rate depends on the round.
   int64_t rounds = 0;
   // Total number of training examples processed.
   int64_t examples = 0;
+};
 
-private:
-  // Check the inverted indices specifically. Use StructuralCheck
-  // instead.
-  void CheckInvertedIndices() const;
+// Inverted index for a chunk.
+struct InvertedIndices {
+  // For a given node, where do I output to in the next layer?
+  // Note that nodes don't all have the same number of outputs.
+  // This is a packed structure to facilitate GPU operations.
+  //
+  // Two parallel arrays, which are the size of the chunk's
+  // input span (so length[0] is the number of uses of the
+  // first node in the span). But, empty for dense chunks.
+  // For a given node, where do my output indices start in
+  // the indices array, and how many are there?
+  std::vector<uint32_t> start;
+  std::vector<uint32_t> length;
+
+  // Packed array of indices.
+  // For all chunk types, this is just the inverse of the corresponding
+  // indices array.
+  //
+  // For dense chunks, we store nothing.
+  //
+  // For sparse chunks, this will be of size chunk.indices_per_node *
+  // num_nodes, but any given node on this layer may be used more or
+  // fewer times, including zero.
+  //
+  // The value in the output_indices array is an index into that
+  // chunk's nodes (so 0 is the first node in the chunk), and all
+  // the values will be less than chunk.num_nodes.
+  //
+  // If the chunk is a convolution array, we still have
+  // chunk.indices[cidx] == z. But the indices array only
+  // stores indices for "one feature", since they are the same for
+  // each. Thus this has size
+  //    chunk.indices_per_node * chunk.num_nodes /
+  //    chunk.num_features
+  // The cidx in this vector is an index into indices[] as above; some
+  // cell within the pattern in a specific occurrence. It stands for
+  // num_features edges, each with its own weight.
+  std::vector<uint32_t> output_indices;
 };
 
 // A stimulation is an evaluation (perhaps an in-progress one) of a

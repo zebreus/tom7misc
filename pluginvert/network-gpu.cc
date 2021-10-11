@@ -17,12 +17,16 @@
 
 using namespace std;
 
-
 NetworkGPU::NetworkGPU(CL *cl, Network *net) : cl(cl), net(net) {
   layers.resize(net->layers.size());
   for (int layer = 0; layer < net->layers.size(); layer++) {
     const Layer &cpu_layer = net->layers[layer];
     GPULayer *gpu_layer = &layers[layer];
+
+    auto CopyMemoryAllowEmpty = [&](auto vec, bool readonly) -> cl_mem {
+        if (vec.empty()) return 0;
+        else return CopyMemoryToGPU(cl->context, cl->queue, vec, readonly);
+      };
 
     gpu_layer->chunks.resize(cpu_layer.chunks.size());
     for (int chunk = 0; chunk < cpu_layer.chunks.size(); chunk++) {
@@ -30,52 +34,21 @@ NetworkGPU::NetworkGPU(CL *cl, Network *net) : cl(cl), net(net) {
       CHECK(chunk < gpu_layer->chunks.size());
       const Chunk &cpu_chunk = cpu_layer.chunks[chunk];
       GPUChunk *gpu_chunk = &gpu_layer->chunks[chunk];
-      if (cpu_chunk.indices.empty()) {
-        // This is normal for dense chunks; maybe some day for
-        // convolutional ones.
-        gpu_chunk->indices = 0;
-      } else {
-        gpu_chunk->indices =
-          CopyMemoryToGPU(cl->context, cl->queue,
-                          cpu_chunk.indices, true);
-      }
-
+      // Normal for this to be empty for dense chunks.
+      gpu_chunk->indices = CopyMemoryAllowEmpty(cpu_chunk.indices, true);
       // These two should only be empty for the (token) input layer,
       // which we will never use, but we still build the gpu copies
       // for uniformity.
-      if (cpu_chunk.weights.empty()) {
-        gpu_chunk->weights = 0;
-      } else {
-        gpu_chunk->weights =
-          CopyMemoryToGPU(cl->context, cl->queue,
-                          cpu_chunk.weights, false);
-      }
+      gpu_chunk->weights = CopyMemoryAllowEmpty(cpu_chunk.weights, false);
+      gpu_chunk->biases = CopyMemoryAllowEmpty(cpu_chunk.biases, false);
 
-      if (cpu_chunk.biases.empty()) {
-        gpu_chunk->biases = 0;
-      } else {
-        gpu_chunk->biases =
-          CopyMemoryToGPU(cl->context, cl->queue,
-                          cpu_chunk.biases, false);
-      }
+      InvertedIndices inverted = net->ComputeInvertedIndices(layer, chunk);
+      gpu_chunk->ii_start = CopyMemoryAllowEmpty(inverted.start, true);
+      gpu_chunk->ii_length = CopyMemoryAllowEmpty(inverted.length, true);
+      gpu_chunk->ii_indices =
+        CopyMemoryAllowEmpty(inverted.output_indices, true);
     }
   }
-
-  #if 0
-  // TODO: Invert here by calling some members of Network.
-  inverted_indices.resize(net->inverted_indices.size());
-  for (int layer = 0; layer < net->layers.size(); layer++) {
-    inverted_indices[layer].start =
-      CopyMemoryToGPUConst(cl->context, cl->queue,
-                           net->inverted_indices[layer].start);
-    inverted_indices[layer].length =
-      CopyMemoryToGPUConst(cl->context, cl->queue,
-                           net->inverted_indices[layer].length);
-    inverted_indices[layer].output_indices =
-      CopyMemoryToGPUConst(cl->context, cl->queue,
-                           net->inverted_indices[layer].output_indices);
-  }
-  #endif
 
   clFinish(cl->queue);
 }
@@ -89,6 +62,12 @@ NetworkGPU::~NetworkGPU() {
         CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.weights));
       if (gpu_chunk.biases != 0)
         CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.biases));
+      if (gpu_chunk.ii_start != 0)
+        CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.ii_start));
+      if (gpu_chunk.ii_length != 0)
+        CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.ii_length));
+      if (gpu_chunk.ii_indices != 0)
+        CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.ii_indices));
     }
   }
 }
@@ -394,7 +373,7 @@ static std::string Backward1KernelName(ChunkType ct) {
   return "ERROR";
 }
 
-BackwardLayer1CL::BackwardLayer1CL(CL *cl, const Network &net) : cl(cl) {
+BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
   string base_src = Util::ReadFile("backwardchunk.cl");
 
   // Dummy kernels for input layer, which can't be a destination layer.
@@ -436,8 +415,8 @@ BackwardLayer1CL::BackwardLayer1CL(CL *cl, const Network &net) : cl(cl) {
       auto [program, kernel] =
         cl->BuildOneKernel(kernel_src, Backward1KernelName(chunk.type));
 
-      ChunkKernel ck{.program = program,
-                     .kernel = kernel};
+      ChunkKernel ck{.program1 = program,
+                     .kernel1 = kernel};
       chunk_kernels.push_back(ck);
 
       out_idx += chunk.num_nodes;
@@ -445,26 +424,27 @@ BackwardLayer1CL::BackwardLayer1CL(CL *cl, const Network &net) : cl(cl) {
     CHECK(out_idx == dst_layer.num_nodes);
     layer_kernels.push_back(std::move(chunk_kernels));
   }
+
+  // XXX same for second pass.
+
 }
 
-BackwardLayer1CL::~BackwardLayer1CL() {
+BackwardLayerCL::~BackwardLayerCL() {
   for (auto &v : layer_kernels) {
     for (auto &ck : v) {
-      if (ck.kernel != 0) CHECK_SUCCESS(clReleaseKernel(ck.kernel));
-      if (ck.program != 0) CHECK_SUCCESS(clReleaseProgram(ck.program));
+      if (ck.kernel1 != 0) CHECK_SUCCESS(clReleaseKernel(ck.kernel1));
+      if (ck.program1 != 0) CHECK_SUCCESS(clReleaseProgram(ck.program1));
     }
   }
 }
 
-void BackwardLayer1CL::BackwardLayer1(NetworkGPU *net_gpu,
-                                      TrainingRoundGPU *train,
-                                      int dst_layer) {
+void BackwardLayerCL::BackwardLayer(NetworkGPU *net_gpu,
+                                    TrainingRoundGPU *train,
+                                    int dst_layer) {
   const Network &net = *net_gpu->net;
   CHECK(dst_layer > 0);
   CHECK(dst_layer < net.layers.size());
 
-    // XXX delete
-  // const int gap = dst_layer;
   const int src_layer = dst_layer - 1;
 
   // Full destination error.
@@ -475,6 +455,11 @@ void BackwardLayer1CL::BackwardLayer1(NetworkGPU *net_gpu,
   // In the general case we are accumulating the weighted error sum
   // (+=) rather than writing it once (=), so unlike the other
   // kernels we need to start by clearing the src_error.
+  // PERF we could consider doing this only for chunks where we
+  // have SRC_SPAN_IS_ZERO false. This would probably interfere
+  // with running on multiple training rounds at once. It probably
+  // works to skip when ALL the chunks are SRC_SPAN_IS_ZERO, which
+  // would happen in the common case that there is just one chunk.
   cl_float zero = 0.0f;
   CHECK_SUCCESS(
       clEnqueueFillBuffer(cl->queue,
@@ -498,42 +483,35 @@ void BackwardLayer1CL::BackwardLayer1(NetworkGPU *net_gpu,
       net_gpu->layers[dst_layer].chunks[chunk_idx];
 
     // FIXME need to implement inverted indices for chunks!
-    cl_mem ii_starts = 0; // gpu_chunk.ii_starts;
-    cl_mem ii_lengths = 0; // gpu_chunk.ii_lengths;
-    cl_mem ii_indices = 0; // gpu_chunk.ii_indices;
+    cl_mem ii_start = gpu_chunk.ii_start;
+    cl_mem ii_length = gpu_chunk.ii_length;
+    cl_mem ii_indices = gpu_chunk.ii_indices;
     cl_mem dst_weights = gpu_chunk.weights;
 
     CHECK(dst_layer < layer_kernels.size() &&
           chunk_idx < layer_kernels[dst_layer].size());
     const ChunkKernel &ck = layer_kernels[dst_layer][chunk_idx];
 
-    // XXX delete
-    // This is the source layer, but num_nodes is offset by one
-    // since it includes the size of the input layer as element 0.
-    // int src_num_nodes = net->num_nodes[src_layer + 1];
-    // cl_mem src_error = train->errors[src_layer];
-
-
     {
       MutexLock ml(&m);
 
-      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 0, sizeof (cl_mem),
-                                   (void *)&ii_starts));
-      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 1, sizeof (cl_mem),
-                                   (void *)&ii_lengths));
-      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 0, sizeof (cl_mem),
+                                   (void *)&ii_start));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 1, sizeof (cl_mem),
+                                   (void *)&ii_length));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 2, sizeof (cl_mem),
                                    (void *)&ii_indices));
-      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 3, sizeof (cl_mem),
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 3, sizeof (cl_mem),
                                    (void *)&dst_weights));
-      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 4, sizeof (cl_mem),
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 4, sizeof (cl_mem),
                                    (void *)&dst_error));
-      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 5, sizeof (cl_mem),
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 5, sizeof (cl_mem),
                                    (void *)&src_error));
 
       size_t global_work_offset[] = { 0 };
       size_t global_work_size[] = { (size_t)chunk.span_size };
       Timer kernel_timer;
-      CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel,
+      CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel1,
                                            // work dimensions
                                            1,
                                            // global work offset

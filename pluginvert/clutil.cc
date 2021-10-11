@@ -122,7 +122,10 @@ pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
     LOG(FATAL);
   }
 
-  cl_kernel kernel = clCreateKernel(program, function_name.c_str(), nullptr);
+  cl_int kernel_error = 0;
+  cl_kernel kernel = clCreateKernel(program, function_name.c_str(),
+                                    &kernel_error);
+  CHECK_SUCCESS(kernel_error);
   fprintf(stderr, "Compiled %s in %.1fms.\n",
           function_name.c_str(), gpu_compile.MS());
   return make_pair(program, kernel);

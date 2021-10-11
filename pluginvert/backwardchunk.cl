@@ -127,7 +127,7 @@ __kernel void BackwardChunkDense(
 // indices out of the inverted index, but each element actually stands
 // for DST_NUM_FEATURES edges; we have to derive the actual destinations
 // and weights from the value and some parameters.
-__kernel void BackwardLayerConvolutional(
+__kernel void BackwardChunkConvolutional(
                   // Size SPAN_SIZE.
                   __global const uint *restrict inverted_indices_start,
                   __global const uint *restrict inverted_indices_length,

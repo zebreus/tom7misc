@@ -76,28 +76,20 @@ struct NetworkGPU {
     // read/write.
     cl_mem weights;
     cl_mem biases;
+
+    // Inverted index. These are empty (0) for dense and input chunks.
+    // See Network::ComputeInvertedIndices.
+    cl_mem ii_start;
+    cl_mem ii_length;
+    cl_mem ii_indices;
   };
 
   struct GPULayer {
     std::vector<GPUChunk> chunks;
   };
 
-  #if 0
-  struct InvertedIndices {
-    // Const
-    cl_mem start;
-    // Const
-    cl_mem length;
-    // Const
-    cl_mem output_indices;
-  };
-#endif
-
   // Owned.
   std::vector<GPULayer> layers;
-#if 0
-  std::vector<InvertedIndices> inverted_indices;
-#endif
 
   // Not owned!
   CL *cl = nullptr;
@@ -249,23 +241,23 @@ struct SetOutputErrorCL {
 };
 
 // Propagate errors backwards. Note that errors flow from "dst" to "src".
-// This is the first of two passes; this one is organized by chunk in
-// the destination layer.
-struct BackwardLayer1CL {
+// There are two passes in here but this is hidden from the caller.
+struct BackwardLayerCL {
 
-  BackwardLayer1CL(CL *cl, const Network &net);
-  ~BackwardLayer1CL();
+  BackwardLayerCL(CL *cl, const Network &net);
+  ~BackwardLayerCL();
 
-  // Propagate errors from dst_layer to dst_layer-1. Must run the
-  // second pass after propagating further.
-  void BackwardLayer1(NetworkGPU *net_gpu,
-                      TrainingRoundGPU *training_round,
-                      int dst_layer);
+  // Propagate errors from dst_layer to dst_layer-1. Runs both passes.
+  void BackwardLayer(NetworkGPU *net_gpu,
+                     TrainingRoundGPU *training_round,
+                     int dst_layer);
 
  private:
+  // For this phase there are two passes, so two kernels.
   struct ChunkKernel {
-    cl_program program = 0;
-    cl_kernel kernel = 0;
+    cl_program program1 = 0;
+    cl_kernel kernel1 = 0;
+    // ...
   };
 
   CL *cl = nullptr;

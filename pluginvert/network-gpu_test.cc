@@ -91,7 +91,20 @@ static void TrainTests(TestNet test_net) {
 
     error_cl->SetOutputError(net_gpu.get(), training_round.get());
 
-    // XXX backward pass,
+    std::unique_ptr<BackwardLayerCL> backward_cl =
+      std::make_unique<BackwardLayerCL>(cl, net);
+
+    for (int dst_layer = net.layers.size() - 1;
+         // Note we propagate error to the input layer here,
+         // which we expect to work, but is pointless during
+         // training because there are no weights to update.
+         dst_layer > 0;
+         dst_layer--) {
+      backward_cl->BackwardLayer(net_gpu.get(),
+                                 training_round.get(),
+                                 dst_layer);
+    }
+
     // XXX updateweights
     // XXX decayweights
   }
@@ -104,12 +117,14 @@ static void TrainTests(TestNet test_net) {
 int main(int argc, char **argv) {
   cl = new CL;
 
+  #if 0
   ForwardTests(NetworkTestUtil::SingleSparse());
   ForwardTests(NetworkTestUtil::SingleDense());
   ForwardTests(NetworkTestUtil::SingleConvolution());
   ForwardTests(NetworkTestUtil::TwoInputSparse());
   ForwardTests(NetworkTestUtil::TwoDenseChunks());
   ForwardTests(NetworkTestUtil::Net1());
+  #endif
 
   TrainTests(NetworkTestUtil::SingleSparse());
   TrainTests(NetworkTestUtil::SingleDense());

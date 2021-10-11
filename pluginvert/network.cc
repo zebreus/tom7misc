@@ -99,230 +99,79 @@ Network::Network(vector<Layer> layers_in) :
   printf("... OK!\n");
 }
 
-#if 0
-// TODO: ComputeInvertedIndices
-  // XXX needs to be rethought for chunks
-  // I think what we want to do is have a vector of InvertedIndices
-  // structs, with the same size as the number of chunks on the
-  // NEXT layer (or just put these in the Layer structs..).
-  struct InvertedIndices {
-    // For a given node, where do I output to in the next layer?
-    // Note that nodes don't all have the same number of outputs.
-    // This is a packed structure to facilitate GPU operations.
-    //
-    // For a given node, where do my output indices start in
-    // the indices array, and how many are there?
-    // num_nodes[i]
-    vector<uint32_t> start;
-    vector<uint32_t> length;
+InvertedIndices Network::ComputeInvertedIndices(int dst_layer_idx,
+                                                int chunk_idx) const {
+  printf("ComputeInvertedIndices(layer %d, chunk %d)\n",
+         dst_layer_idx, chunk_idx);
+  if (dst_layer_idx == 0) {
+    CHECK(chunk_idx == 0);
+    return InvertedIndices();
+  }
 
-    // Packed array of indices.
-    // For all layer types, this is just the inverse of the corresponding
-    // indices array. For sparse and dense layers:
-    //
-    // Since every node on the next layer has exactly
-    // layers[l].indices_per_node inputs, this will be of size
-    // layers[l].indices_per_node * num_nodes[l + 1]. However, any
-    // given node on this layer may be used more or fewer times.
-    //
-    // The value here gives the index into the indices/weights vectors
-    // for the next layer. If for each index i within the span (defined
-    // by inverted_indices[layer].start[z]) for node id z
-    // let gidx = inverted_indices[layer].output_indices[i]
-    // and then layers[layer].indices[gidx] == z. (The same for the weight
-    // vector gives us the weight, which is the point, and dividing
-    // by INDICES_PER_NODE gives us the output node.) As such, this is
-    // a permutation of 0..(num_nodes[ii] * layers[ii].indices_per_node - 1).
-    //
-    // If the destination layer is a convolution array, we still have
-    // layers[layer].indices[gidx] == z. But the indices array only
-    // stores indices for "one feature", since they are the same for
-    // each. Thus this has size
-    //    layers[l].indices_per_node * num_nodes[l + 1] /
-    //    layers[l].num_features
-    // The gidx in this vector is an index into indices[] as above; some
-    // cell within the pattern in a specific occurrence. It stands for
-    // num_features edges, each with its own weight.
-    // int gidx = inverted_indices[layer].output_indices[i];
-    //  .. TODO tips here on how to compute weights, output nodes ..
-    // for (int f = 0; f < num_features; f++) {
-    //    weight =  ...
-    // }
-    vector<uint32_t> output_indices;
-  };
+  CHECK_GE(dst_layer_idx, 0);
+  CHECK_LT(dst_layer_idx, layers.size());
 
-  // There are also num_layers of these, but be careful about the
-  // offset. The 0th inverted index is about the gap between the input
-  // layer (otherwise not represented in the network, except for its
-  // size in num_nodes[0]) and the first hidden layer. The last one is
-  // about the last gap, not the output layer, since the output layer
-  // is not indexed by anything.
-  vector<InvertedIndices> inverted_indices;
+  const Layer &dst_layer = layers[dst_layer_idx];
+  CHECK(chunk_idx >= 0 && chunk_idx < dst_layer.chunks.size());
+  const Chunk &chunk = dst_layer.chunks[chunk_idx];
 
-void Network::ReallocateInvertedIndices() {
-  CHECK(num_layers > 0);
-  inverted_indices.resize(num_layers);
-  for (int i = 0; i < num_layers; i++) {
-    printf("Layer %d/%d. num nodes %d, next ipn %d nn %d\n",
-           i, num_layers,
-           num_nodes[i],
-           layers[i].indices_per_node,
-           num_nodes[i + 1]);
-    InvertedIndices &ii = inverted_indices[i];
-    CHECK(num_nodes[i] > 0);
-    ii.start.resize(num_nodes[i], 0);
-    ii.length.resize(num_nodes[i], 0);
-    CHECK(layers[i].indices_per_node > 0);
+  CHECK(chunk.type != CHUNK_INPUT) <<
+    "INPUT chunk should only be on layer 0.";
 
-    // This depends on the next layer, and has a different size for
-    // convolutional ones.
-    const int dst_layer_nodes = num_nodes[i + 1];
-    CHECK(dst_layer_nodes > 0);
-    const LayerType dst_layer_type = layers[i].type;
-    if (dst_layer_type == CHUNK_CONVOLUTION_ARRAY) {
-      const int dst_num_features = layers[i].num_features;
-      CHECK(dst_layer_nodes % dst_num_features == 0);
-      ii.output_indices.resize(
-          (dst_layer_nodes / dst_num_features) *
-          layers[i].indices_per_node);
-    } else {
-      ii.output_indices.resize(
-          layers[i].indices_per_node * dst_layer_nodes, 0);
+  if (chunk.type == CHUNK_DENSE) {
+    // No indices are stored, so an empty InvertedIndices as well. It
+    // would make sense to fall through to the code below, which would
+    // result in filling the start and length fields with SPAN_SIZE
+    // zeroes. But we don't have any use for those, so we save the
+    // memory and this is just the documented behavior.
+    return InvertedIndices();
+  }
+
+  // Otherwise, regardless of the layer type, we just invert the
+  // indices array.
+
+  // Indexed by node id in the source span.
+  vector<vector<uint32>> occurrences;
+  occurrences.resize(chunk.span_size);
+
+  for (int dst_indices_idx = 0;
+       dst_indices_idx < chunk.indices.size();
+       dst_indices_idx++) {
+    // The indices are global to the input layer, but we want them
+    // within the span.
+    const int src_global_idx = chunk.indices[dst_indices_idx];
+    const int src_span_idx = src_global_idx - chunk.span_start;
+    CHECK(src_span_idx >= 0 && src_span_idx < chunk.span_size) <<
+      src_global_idx << " was outside the span (start " <<
+      chunk.span_start << " size " << chunk.span_size << ")";
+    occurrences[src_span_idx].push_back(dst_indices_idx);
+  }
+
+  // These can be in arbitrary order, but sort each subvector, for
+  // locality of access and better compression.
+  for (vector<uint32> &v : occurrences) {
+    std::sort(v.begin(), v.end());
+  }
+
+  // Now flatten into the InvertedIndices structure.
+  InvertedIndices ret;
+  for (int src_span_idx = 0;
+       src_span_idx < chunk.span_size;
+       src_span_idx++) {
+    // Next position.
+    ret.start.push_back(ret.output_indices.size());
+    ret.length.push_back(occurrences[src_span_idx].size());
+
+    for (const int val : occurrences[src_span_idx]) {
+      ret.output_indices.push_back(val);
     }
   }
+  CHECK_EQ(ret.output_indices.size(), chunk.indices.size());
+  CHECK_EQ(ret.start.size(), chunk.span_size);
+  CHECK_EQ(ret.length.size(), chunk.span_size);
+
+  return ret;
 }
-
-void Network::ComputeInvertedIndices(int max_parallelism) {
-  // Computes the values for inverted_indices[layer]. Note that
-  // although we use the [layer] offset throughout, this is really
-  // talking about the gap between layers, with the 0th element's
-  // index being the way the first hidden layer uses the inputs, and
-  // the 0th element's inverted index being about the way the inputs map
-  // to the first hidden layer.
-  auto OneLayer = [this](int layer) {
-    CHECK_GE(layer, 0);
-    CHECK_LT(layer, layers.size());
-    const int src_num_nodes = num_nodes[layer];
-    const int dst_num_nodes = num_nodes[layer + 1];
-    const LayerType dst_layer_type = layers[layer].type;
-    CHECK_LT(layer, num_layers);
-    CHECK_LT(layer, inverted_indices.size());
-    vector<uint32> *start = &inverted_indices[layer].start;
-    vector<uint32> *length = &inverted_indices[layer].length;
-    // Number of nodes depends on size of source layer.
-    CHECK_EQ(src_num_nodes, start->size());
-    CHECK_EQ(src_num_nodes, length->size());
-    vector<uint32> *inverted = &inverted_indices[layer].output_indices;
-    // But this has to account for all the nodes on the destination layer.
-    if (dst_layer_type == CHUNK_CONVOLUTION_ARRAY) {
-      const int dst_layer_nodes = num_nodes[layer + 1];
-      CHECK(dst_layer_nodes % layers[layer].num_features == 0);
-      CHECK_EQ((dst_layer_nodes / layers[layer].num_features) *
-               layers[layer].indices_per_node,
-               inverted->size())
-        << "Conv layer #" << layer
-        << "\ndst layer nodes: " << dst_layer_nodes
-        << "\nnum features: " << layers[layer].num_features
-        << "\n = " << ((dst_layer_nodes / layers[layer].num_features) *
-                       layers[layer].indices_per_node)
-        << " vs " << inverted->size();
-    } else {
-      CHECK_EQ(layers[layer].indices_per_node * dst_num_nodes,
-               inverted->size());
-    }
-
-    // Indexed by node id in the source layer.
-    vector<vector<uint32>> occurrences;
-    occurrences.resize(num_nodes[layer]);
-
-    // Regardless of the layer type, just invert the indices array.
-    for (int dst_indices_idx = 0;
-         dst_indices_idx < layers[layer].indices.size();
-         dst_indices_idx++) {
-      // This index gets put into exactly one place in occurrences.
-      CHECK(dst_indices_idx < layers[layer].indices.size());
-      const int src_nodes_idx = layers[layer].indices[dst_indices_idx];
-      CHECK(src_nodes_idx >= 0) << src_nodes_idx;
-      CHECK(src_nodes_idx < occurrences.size()) << src_nodes_idx << " vs "
-                                                << occurrences.size();
-      occurrences[src_nodes_idx].push_back(dst_indices_idx);
-    }
-
-    // printf("Sort layer %d...\n", layer);
-    // fflush(stdout);
-
-    // These can be in arbitrary order, but sort each subvector, for
-    // locality of access and better compression.
-    for (vector<uint32> &v : occurrences) {
-      std::sort(v.begin(), v.end());
-    }
-
-    // printf("Flatten layer %d...\n", layer);
-    // fflush(stdout);
-
-    // Now flatten.
-    int flat_size = 0;
-    for (int src_nodes_idx = 0;
-         src_nodes_idx < src_num_nodes;
-         src_nodes_idx++) {
-      CHECK(src_nodes_idx < start->size());
-      CHECK(src_nodes_idx < length->size());
-      (*start)[src_nodes_idx] = flat_size;
-      (*length)[src_nodes_idx] = occurrences[src_nodes_idx].size();
-
-      for (const int val : occurrences[src_nodes_idx]) {
-        CHECK(flat_size < inverted->size());
-        (*inverted)[flat_size] = val;
-        flat_size++;
-      }
-    }
-    CHECK_EQ(inverted->size(), flat_size);
-  };
-
-  UnParallelComp(num_layers, OneLayer, max_parallelism);
-}
-
-void Network::CheckInvertedIndices() const {
-  for (int layer = 0; layer < num_layers; layer++) {
-    const vector<uint32> &indices = layers[layer].indices;
-    const LayerType dst_layer_type = layers[layer].type;
-    const Network::InvertedIndices &inv = inverted_indices[layer];
-
-    CHECK_EQ(inv.output_indices.size(), indices.size());
-    // Need one start/length pair for every node in the source layer.
-    CHECK_EQ(num_nodes[layer], inv.start.size());
-    CHECK_EQ(num_nodes[layer], inv.length.size());
-    // But the output size is determined by the next layer.
-    if (dst_layer_type == CHUNK_CONVOLUTION_ARRAY) {
-      const int dst_layer_nodes = num_nodes[layer + 1];
-      CHECK(dst_layer_nodes % layers[layer].num_features == 0);
-      CHECK_EQ((dst_layer_nodes / layers[layer].num_features) *
-               layers[layer].indices_per_node,
-               inv.output_indices.size());
-    } else {
-      CHECK_EQ(num_nodes[layer + 1] * layers[layer].indices_per_node,
-               inv.output_indices.size());
-    }
-    // z is a node id from the src layer.
-    for (int z = 0; z < inv.start.size(); z++) {
-      // i is the index within the compacted inverted index.
-      for (int i = inv.start[z]; i < inv.start[z] + inv.length[z]; i++) {
-        // Global index into 'indices'.
-        CHECK(i >= 0);
-        CHECK(i < inv.output_indices.size());
-
-        const int gidx = inv.output_indices[i];
-        CHECK(gidx >= 0);
-        CHECK(gidx < indices.size());
-        // This should map back to our current node id.
-        // (Should be true for sparse, dense, and convolution layers.)
-        CHECK_EQ(indices[gidx], z);
-      }
-    }
-  }
-}
-
-#endif
 
 int64 Network::Bytes() const {
   int64 ret = sizeof *this;
