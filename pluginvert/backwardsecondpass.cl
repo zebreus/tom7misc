@@ -11,7 +11,7 @@
 // DERIVATIVE, the derivative of the transfer function for the chunk
 //   given in terms of the function's output as usual.
 // CHUNK_START, an integer giving the start of the chunk in the
-//   SOURCE layer (this is SPAN_START from the first pass).
+//   SOURCE layer.
 // CLIP_ERROR, a boolean. If true, error values are clamped.
 // LARGE_ERROR, a positive float giving the maximum permissible post-
 //   derivative error per node per round. This is not quite the same
@@ -24,15 +24,16 @@ __kernel void BackwardSecondPass(
                   __global const float *restrict src_output,
                   // Full src errors, parallel to src_output.
                   __global float *restrict src_error) {
-  // index into
+  // index into chunk
+  // PERF: We could avoid the constant offset by doing this
+  // with global_work_offset?
   const int h_chunk = get_global_id(0);
   // index into src_output etc.
-  const int h_global = CHUNK_START + h_span;
-  const float out_h = src_output[h_chunk];
-  const float weighted_error_sum = src_error[h_chunk];
+  const int h_global = CHUNK_START + h_chunk;
+  const float out_h = src_output[h_global];
+  const float weighted_error_sum = src_error[h_global];
 
   const float err = DERIVATIVE(out_h) * weighted_error_sum;
-
 
   src_error[h_global] =
   #if CLIP_ERROR

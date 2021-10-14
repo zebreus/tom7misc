@@ -243,6 +243,11 @@ struct SetOutputErrorCL {
 // Propagate errors backwards. Note that errors flow from "dst" to "src".
 // There are two passes in here but this is hidden from the caller.
 struct BackwardLayerCL {
+  // See backwardsecondpass.cl. TODO: Make these configurable when
+  // creating this. They could have different values on a per-chunk
+  // basis, though it's not clear why we'd ever do that.
+  static constexpr bool CLIP_ERROR = true;
+  static constexpr float LARGE_ERROR = 1000000.0f;
 
   BackwardLayerCL(CL *cl, const Network &net);
   ~BackwardLayerCL();
@@ -257,7 +262,9 @@ struct BackwardLayerCL {
   struct ChunkKernel {
     cl_program program1 = 0;
     cl_kernel kernel1 = 0;
-    // ...
+
+    cl_program program2 = 0;
+    cl_kernel kernel2 = 0;
   };
 
   CL *cl = nullptr;
@@ -269,255 +276,43 @@ struct BackwardLayerCL {
   std::mutex m;
 };
 
-#if 0
-
 // Optional and unprincipled L2-like regularization.
 // Decays every weight by a constant multiplicative factor.
 struct DecayWeightsCL {
 
-  DecayWeightsCL(CL *cl, const Network &net, float decay_factor) : cl(cl) {
-    string base_src = Util::ReadFile("decayweights.cl");
+  // Decay factor should be a number slightly less than 1, like 0.99999f.
+  DecayWeightsCL(CL *cl, const Network &net, float decay_factor);
+  ~DecayWeightsCL();
 
-    string kernel_src;
-    StringAppendF(&kernel_src, "\n#define DECAY_FACTOR %.9ff\n", decay_factor);
-    kernel_src += base_src;
-    auto p = cl->BuildOneKernel(kernel_src, "DecayWeights");
-    program = p.first;
-    kernel = p.second;
-  }
+  void Decay(NetworkGPU *net_gpu, int layer_idx);
 
-  ~DecayWeightsCL() {
-    CHECK_SUCCESS(clReleaseKernel(kernel));
-    CHECK_SUCCESS(clReleaseProgram(program));
-  }
-
-  struct Context {
-    Context(DecayWeightsCL *parent, NetworkGPU *net_gpu, int layer) :
-      parent(parent), net_gpu(net_gpu), layer(layer) {
-      layer_weights = net_gpu->layers[layer].weights;
-    }
-
-    void Decay(int layer) {
-      CL *cl = parent->cl;
-
-      // PERF: Should actually be able to run in parallel across the entire
-      // network if we weren't sharing a single kernel. Every weight
-      // just scaled independently.
-      WriteMutexLock ml(&parent->m);
-
-      const int num_nodes = net_gpu->net->num_nodes[layer + 1];
-      const int ipn = net_gpu->net->layers[layer].indices_per_node;
-
-      auto kernel = parent->kernel;
-      CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
-                                   (void *)&layer_weights));
-
-      size_t global_work_offset[] = { 0 };
-      // Total number of weights (could use 2D but why bother?)
-      size_t global_work_size[] = { (size_t)(num_nodes * ipn) };
-      CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
-                                           // work dimensions
-                                           1,
-                                           // global work offset
-                                           global_work_offset,
-                                           // global work size
-                                           global_work_size,
-                                           // local work size
-                                           nullptr,
-                                           // no wait list
-                                           0, nullptr,
-                                           // no event
-                                           nullptr));
-      clFinish(cl->queue);
-    }
-
-    cl_mem layer_weights;
-    DecayWeightsCL *parent = nullptr;
-    NetworkGPU *net_gpu;
-    const int layer;
-  };
-
-
+ private:
   CL *cl = nullptr;
   cl_program program;
   cl_kernel kernel;
-  std::shared_mutex m;
+  std::mutex m;
 };
 
 struct UpdateWeightsCL {
-  using string = std::string;
+  UpdateWeightsCL(CL *cl, const Network &net);
+  ~UpdateWeightsCL();
 
-  UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
-    // Note that this one doesn't depend on the transfer function/derivative.
-    // Also unlike others, the argument values actually change
-    // in the convolution case.
+  void Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
+              float learning_rate, int layer);
 
-    string base_src = Util::ReadFile("updateweights.cl");
-    for (int layer = 0; layer < net.layers.size(); layer++) {
-      const int indices_per_node = net.layers[layer].indices_per_node;
-
-      const LayerType layer_type = net.layers[layer].type;
-
-      const int num_occurrences =
-        net.layers[layer].num_occurrences_across *
-        net.layers[layer].num_occurrences_down;
-
-      string kernel_src;
-      StringAppendF(&kernel_src,
-                    "\n"
-                    "#define INDICES_PER_NODE %d\n"
-                    "#define NUM_OCCURRENCES %d\n"
-                    "#define NUM_FEATURES %d\n",
-                    indices_per_node,
-                    num_occurrences,
-                    net.layers[layer].num_features);
-
-      string kernel_name;
-      switch (layer_type) {
-      case LAYER_DENSE:
-        kernel_name = "UpdateWeightsDense";
-        break;
-      case LAYER_SPARSE:
-        kernel_name = "UpdateWeightsSparse";
-        break;
-      case LAYER_CONVOLUTION_ARRAY:
-        kernel_name = "UpdateWeightsConvolutional";
-        break;
-      default:
-        CHECK(false) << "Unsupported layer type "
-                     << LayerTypeName(layer_type);
-      }
-
-      kernel_src += base_src;
-      auto [program, kernel] =
-        cl->BuildOneKernel(kernel_src, kernel_name);
-
-      // XXX don't save debugging stuff
-      layer_kernels.emplace_back(program, kernel, layer_type,
-                                 num_occurrences,
-                                 indices_per_node);
-    }
-  }
-
-  struct Context {
-    Context(UpdateWeightsCL *parent, NetworkGPU *net_gpu, int layer) :
-      parent(parent), net_gpu(net_gpu), layer(layer) {
-
-      layer_indices = net_gpu->layers[layer].indices;
-      layer_weights = net_gpu->layers[layer].weights;
-      layer_biases = net_gpu->layers[layer].biases;
-    }
-
-    void Update(float learning_rate, TrainingRoundGPU *train, int layer) {
-      CL *cl = parent->cl;
-
-      // Really can't run these in parallel because of concurrent writes to net.
-      WriteMutexLock ml(&parent->m);
-
-      cl_mem layer_error = train->errors[layer];
-      cl_mem layer_values = train->stimulations[layer];
-
-      auto [program_, kernel, layer_type, num_occurrences, ipn] =
-        parent->layer_kernels[layer];
-      // Sanity check that this was compiled with the right constants.
-      CHECK(ipn == net_gpu->net->layers[layer].indices_per_node);
-      CHECK(layer_type == net_gpu->net->layers[layer].type);
-
-      // For convolution layers, scale the learning rate down,
-      // as there will be lots of occurrences. Scaling linearly
-      // is probably the most principled (each occurrence yields an
-      // error and thus an update), but sqrt seems to work better
-      // (the errors often cancel each other out).
-      const float effective_learning_rate =
-        (layer_type == LAYER_CONVOLUTION_ARRAY) ?
-        learning_rate * (1.0f / sqrtf((float)num_occurrences)) :
-        learning_rate;
-
-      const int num_nodes = net_gpu->net->num_nodes[layer + 1];
-
-      CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_float),
-                                   (void *)&effective_learning_rate));
-      CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
-                                   (void *)&layer_error));
-      CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
-                                   (void *)&layer_indices));
-      CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
-                                   (void *)&layer_values));
-      CHECK_SUCCESS(clSetKernelArg(kernel, 4, sizeof (cl_mem),
-                                   (void *)&layer_weights));
-      CHECK_SUCCESS(clSetKernelArg(kernel, 5, sizeof (cl_mem),
-                                   (void *)&layer_biases));
-
-      // Arguments are the same for the different layer types,
-      // but for convolution array it's actually a 2D kernel
-      // over features and weights.
-
-      if (layer_type == LAYER_CONVOLUTION_ARRAY) {
-        const int num_features = net_gpu->net->layers[layer].num_features;
-        size_t global_work_offset[] = { 0, 0 };
-        size_t global_work_size[] = { (size_t)num_features,
-                                      (size_t)ipn };
-        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
-                                             // work dimensions
-                                             2,
-                                             // global work offset
-                                             global_work_offset,
-                                             // global work size
-                                             global_work_size,
-                                             // local work size
-                                             nullptr,
-                                             // no wait list
-                                             0, nullptr,
-                                             // no event
-                                             nullptr));
-      } else {
-        size_t global_work_offset[] = { 0 };
-        size_t global_work_size[] = { (size_t)num_nodes };
-        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
-                                             // work dimensions
-                                             1,
-                                             // global work offset
-                                             global_work_offset,
-                                             // global work size
-                                             global_work_size,
-                                             // local work size
-                                             nullptr,
-                                             // no wait list
-                                             0, nullptr,
-                                             // no event
-                                             nullptr));
-      }
-      clFinish(cl->queue);
-    }
-
-    void Finish() {
-      CL *cl = parent->cl;
-      clFinish(cl->queue);
-    }
-
-    cl_mem layer_indices, layer_weights, layer_biases;
-    UpdateWeightsCL *parent = nullptr;
-    NetworkGPU *net_gpu;
-    const int layer;
+ private:
+  struct ChunkKernel {
+    cl_program program = 0;
+    cl_kernel kernel = 0;
   };
 
-
-  ~UpdateWeightsCL() {
-    for (auto &[p, k, type_unused, occ_unused, ipn_unused] : layer_kernels) {
-      CHECK_SUCCESS(clReleaseKernel(k));
-      CHECK_SUCCESS(clReleaseProgram(p));
-    }
-  }
+  // Input layer has unused placeholder kernels (0) to keep this
+  // parallel to network structure.
+  std::vector<std::vector<ChunkKernel>> layer_kernels;
 
   CL *cl = nullptr;
-  // Owned. Indexed by layer id.
-  // (layer type, num_occurrences, indices_per_node)
-  std::vector<std::tuple<cl_program, cl_kernel, LayerType, int, int>>
-  layer_kernels;
 
-  std::shared_mutex m;
+  std::mutex m;
 };
-
-#endif
 
 #endif

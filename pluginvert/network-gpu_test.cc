@@ -7,6 +7,8 @@
 #include "network-test-util.h"
 #include "clutil.h"
 #include "base/logging.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 using namespace std;
 
@@ -62,6 +64,8 @@ static void ForwardTests(TestNet test_net) {
 static void TrainTests(TestNet test_net) {
   printf("\n--------------------------\n"
          "[Train] Test net: %s\n", test_net.name.c_str());
+  ArcFour rc(test_net.name);
+  RandomGaussian gauss(&rc);
 
   Network &net = test_net.net;
   auto net_gpu = make_unique<NetworkGPU>(cl, &net);
@@ -72,9 +76,15 @@ static void TrainTests(TestNet test_net) {
 
     training_round->LoadInput(example.input);
 
-    // TODO: Should probably try to learn a different function
-    // here, since otherwise the errors will be trivial (0)?
-    training_round->LoadExpected(example.output);
+    // Perturb the training example so that it is not exactly what the
+    // network already predicts, just so that the errors are not
+    // trivial zeroes.
+    vector<float> out = example.output;
+    for (float &f : out) {
+      f += gauss.Next();
+    }
+
+    training_round->LoadExpected(out);
 
     std::unique_ptr<ForwardLayerCL> forward_cl =
       std::make_unique<ForwardLayerCL>(cl, net);
@@ -105,8 +115,23 @@ static void TrainTests(TestNet test_net) {
                                  dst_layer);
     }
 
-    // XXX updateweights
-    // XXX decayweights
+    std::unique_ptr<DecayWeightsCL> decay_cl =
+      std::make_unique<DecayWeightsCL>(cl, net, 0.999999f);
+
+    // Note that normally we would not decay weights on the input
+    // layer (there are none), but we do it here to test that it does
+    // not crash.
+    for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
+      decay_cl->Decay(net_gpu.get(), layer_idx);
+    }
+
+    std::unique_ptr<UpdateWeightsCL> update_cl =
+      std::make_unique<UpdateWeightsCL>(cl, net);
+
+    for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
+      update_cl->Update(net_gpu.get(), training_round.get(),
+                        0.001f, layer_idx);
+    }
   }
 
   // Copy back to CPU instance.
