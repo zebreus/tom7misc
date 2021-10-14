@@ -4,6 +4,12 @@
 #include "network.h"
 #include "base/logging.h"
 
+static inline constexpr float Leaky(float f) {
+  if (f < 0.0f) return 0.01f * f;
+  return f;
+}
+
+
 NetworkTestUtil::TestNet NetworkTestUtil::SingleSparse() {
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
@@ -337,5 +343,94 @@ NetworkTestUtil::TestNet NetworkTestUtil::Net1() {
     .name = "one real layer, dense id and sparse leaky relu chunks",
     .net = net,
     .examples = {example1},
+  };
+}
+
+NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseLayers() {
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = 2;
+  input_chunk.width = 2;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  // hidden a1 = leaky_relu(.5 + 2a0 - 3b0) b1 = leaky_relu(-1 - 1a0 + .25b0)
+  Chunk dense_chunk1;
+  dense_chunk1.type = CHUNK_DENSE;
+  dense_chunk1.num_nodes = 2;
+  dense_chunk1.transfer_function = LEAKY_RELU;
+  dense_chunk1.width = 2;
+  dense_chunk1.height = 1;
+  dense_chunk1.channels = 1;
+  dense_chunk1.span_start = 0;
+  dense_chunk1.span_size = 2;
+  dense_chunk1.indices_per_node = 2;
+  // indices not stored for dense chunks
+  dense_chunk1.indices = {};
+  dense_chunk1.weights = {2.0f, 3.0f, 1.0f, 0.25f};
+  dense_chunk1.biases = {0.5f, -1.0f};
+
+  // hidden a2 = leaky(0 + 1.5a1 + 1b0)  b2 = leaky(1 - 0.25a1 + 3b1)
+  Chunk dense_chunk2;
+  dense_chunk1.type = CHUNK_DENSE;
+  dense_chunk1.num_nodes = 2;
+  dense_chunk1.transfer_function = LEAKY_RELU;
+  dense_chunk1.width = 2;
+  dense_chunk1.height = 1;
+  dense_chunk1.channels = 1;
+  dense_chunk1.span_start = 0;
+  dense_chunk1.span_size = 2;
+  dense_chunk1.indices_per_node = 2;
+  // indices not stored for dense chunks
+  dense_chunk1.indices = {};
+  dense_chunk1.weights = {1.5f, 1.0f, 0.25f, 3.0f};
+  dense_chunk1.biases = {0.0f, 1.0f};
+
+  Layer input_layer;
+  input_layer.num_nodes = 2;
+  input_layer.chunks = {input_chunk};
+
+  Layer real_layer1;
+  real_layer1.num_nodes = 2;
+  real_layer1.chunks = {dense_chunk1};
+
+  Layer real_layer2;
+  real_layer1.num_nodes = 2;
+  real_layer1.chunks = {dense_chunk2};
+
+  Network net({input_layer, real_layer1, real_layer2});
+  net.NaNCheck(__func__);
+
+  CHECK(net.layers.size() == 3);
+  CHECK(net.layers[0].chunks.size() == 1);
+  CHECK(net.layers[1].chunks.size() == 1);
+  CHECK(net.layers[2].chunks.size() == 1);
+
+  constexpr auto F = [](float a0, float b0) {
+      const float a1 = Leaky(0.5f + 2.0f * a0 - 3.0f * b0);
+      const float b1 = Leaky(-1.0f - a0 + 0.25f * b0);
+
+      const float a2 = Leaky(1.5f * a1 + b0);
+      const float a3 = Leaky(1.0f - 0.25f * a1 + 3.0f * b1);
+
+      return std::vector<float>(a2, b2);
+    };
+
+  TestExample example1{
+    .name = "zeroes",
+    .input = {0.0f, 0.0f},
+    .output = F(0.0f, 0.0f);
+  };
+
+  TestExample example2{
+    .name = "negpos",
+    .input = {-1.0f, 1.0f},
+    .output = F(0.0f, 0.0f);
+  };
+
+  return TestNet{
+    .name = "two dense layers, each one chunk of width two",
+    .net = net,
+    .examples = {example1, example2},
   };
 }

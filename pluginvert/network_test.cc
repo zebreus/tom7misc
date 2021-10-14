@@ -115,6 +115,7 @@ int main(int argc, char **argv) {
   SimpleTests(NetworkTestUtil::TwoInputSparse());
   SimpleTests(NetworkTestUtil::TwoDenseChunks());
   SimpleTests(NetworkTestUtil::Net1());
+  SimpleTests(NetworkTestUtil::TwoDenseLayers());
 
   printf("OK\n");
   return 0;

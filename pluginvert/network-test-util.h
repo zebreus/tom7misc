@@ -47,6 +47,12 @@ struct NetworkTestUtil {
 
   static TestNet Net1();
 
+  // Nontrivial network with two dense layers (one chunk each).
+  // input  a0, b0
+  // hidden a1 = leaky(.5 + 2a0 - 3b0)   b1 = leaky(-1 - 1a0 + .25b0)
+  // out    a2 = leaky(0 + 1.5a1 + 1b0)  b2 = leaky(1 - 0.25a1 + 3b1)
+  static TestNet TwoDenseLayers();
+
   // TODO: Need some tests with convolutions!
 };
 
