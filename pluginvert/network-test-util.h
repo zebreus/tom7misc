@@ -11,7 +11,8 @@
 // Same, but for vectors of floats.
 #define CHECK_FEQV(aav, bbv) do {                           \
     auto av = (aav), bv = (bbv);                            \
-    CHECK_EQ(av.size(), bv.size());                         \
+    CHECK_EQ(av.size(), bv.size()) <<                       \
+      av.size() << " vs " << bv.size();                     \
     for (size_t i = 0; i < av.size(); i++)                  \
       CHECK_FEQ(av[i], bv[i]) <<                            \
         "\n" #aav "[" << i << "] vs " #bbv "[" << i << "]"; \

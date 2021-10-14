@@ -365,26 +365,24 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseLayers() {
   dense_chunk1.span_start = 0;
   dense_chunk1.span_size = 2;
   dense_chunk1.indices_per_node = 2;
-  // indices not stored for dense chunks
   dense_chunk1.indices = {};
-  dense_chunk1.weights = {2.0f, 3.0f, 1.0f, 0.25f};
+  dense_chunk1.weights = {2.0f, -3.0f, -1.0f, 0.25f};
   dense_chunk1.biases = {0.5f, -1.0f};
 
-  // hidden a2 = leaky(0 + 1.5a1 + 1b0)  b2 = leaky(1 - 0.25a1 + 3b1)
+  // hidden a2 = leaky(0 + 1.5a1 + b1)  b2 = leaky(1 - 0.25a1 + 3b1)
   Chunk dense_chunk2;
-  dense_chunk1.type = CHUNK_DENSE;
-  dense_chunk1.num_nodes = 2;
-  dense_chunk1.transfer_function = LEAKY_RELU;
-  dense_chunk1.width = 2;
-  dense_chunk1.height = 1;
-  dense_chunk1.channels = 1;
-  dense_chunk1.span_start = 0;
-  dense_chunk1.span_size = 2;
-  dense_chunk1.indices_per_node = 2;
-  // indices not stored for dense chunks
-  dense_chunk1.indices = {};
-  dense_chunk1.weights = {1.5f, 1.0f, 0.25f, 3.0f};
-  dense_chunk1.biases = {0.0f, 1.0f};
+  dense_chunk2.type = CHUNK_DENSE;
+  dense_chunk2.num_nodes = 2;
+  dense_chunk2.transfer_function = LEAKY_RELU;
+  dense_chunk2.width = 2;
+  dense_chunk2.height = 1;
+  dense_chunk2.channels = 1;
+  dense_chunk2.span_start = 0;
+  dense_chunk2.span_size = 2;
+  dense_chunk2.indices_per_node = 2;
+  dense_chunk2.indices = {};
+  dense_chunk2.weights = {1.5f, 1.0f, -0.25f, 3.0f};
+  dense_chunk2.biases = {0.0f, 1.0f};
 
   Layer input_layer;
   input_layer.num_nodes = 2;
@@ -395,8 +393,8 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseLayers() {
   real_layer1.chunks = {dense_chunk1};
 
   Layer real_layer2;
-  real_layer1.num_nodes = 2;
-  real_layer1.chunks = {dense_chunk2};
+  real_layer2.num_nodes = 2;
+  real_layer2.chunks = {dense_chunk2};
 
   Network net({input_layer, real_layer1, real_layer2});
   net.NaNCheck(__func__);
@@ -410,22 +408,22 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseLayers() {
       const float a1 = Leaky(0.5f + 2.0f * a0 - 3.0f * b0);
       const float b1 = Leaky(-1.0f - a0 + 0.25f * b0);
 
-      const float a2 = Leaky(1.5f * a1 + b0);
-      const float a3 = Leaky(1.0f - 0.25f * a1 + 3.0f * b1);
+      const float a2 = Leaky(1.5f * a1 + b1);
+      const float b2 = Leaky(1.0f - 0.25f * a1 + 3.0f * b1);
 
-      return std::vector<float>(a2, b2);
+      return std::vector<float>{{a2, b2}};
     };
 
   TestExample example1{
     .name = "zeroes",
     .input = {0.0f, 0.0f},
-    .output = F(0.0f, 0.0f);
+    .output = F(0.0f, 0.0f),
   };
 
   TestExample example2{
     .name = "negpos",
     .input = {-1.0f, 1.0f},
-    .output = F(0.0f, 0.0f);
+    .output = F(-1.0f, 1.0f),
   };
 
   return TestNet{

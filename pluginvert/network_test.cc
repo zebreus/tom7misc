@@ -18,6 +18,9 @@ static void SimpleTests(TestNet test_net) {
       Stimulation stim(n);
 
       for (const TestExample &example : test_net.examples) {
+        if (test_net.examples.size() != 1) {
+          printf("Example: %s\n", example.name.c_str());
+        }
 
         CHECK(stim.values[0].size() == n.layers[0].num_nodes);
         stim.values[0] = example.input;
