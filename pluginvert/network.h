@@ -452,5 +452,11 @@ struct Errors {
 
 };
 
+// Randomize the weights in a network, like to initialize it for
+// training. TODO: Maybe should be in network-util or whatever.
+// TODO: Should parameterize this, probably! It also has a
+// special case for IDENTITY transfer function, yuck.
+struct ArcFour;
+void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism = 2);
 
 #endif

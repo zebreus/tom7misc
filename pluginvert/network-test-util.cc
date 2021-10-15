@@ -1,6 +1,10 @@
 
 #include "network-test-util.h"
 
+#include <functional>
+#include <vector>
+#include <string>
+
 #include "network.h"
 #include "base/logging.h"
 
@@ -9,6 +13,15 @@ static inline constexpr float Leaky(float f) {
   return f;
 }
 
+int NetworkTestUtil::TrainNet::NumInputs() const {
+  CHECK(!net.layers.empty());
+  return net.layers[0].num_nodes;
+}
+
+int NetworkTestUtil::TrainNet::NumOutputs() const {
+  CHECK(!net.layers.empty());
+  return net.layers.back().num_nodes;
+}
 
 NetworkTestUtil::TestNet NetworkTestUtil::SingleSparse() {
   Chunk input_chunk;
@@ -430,5 +443,55 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseLayers() {
     .name = "two dense layers, each one chunk of width two",
     .net = net,
     .examples = {example1, example2},
+  };
+}
+
+NetworkTestUtil::TrainNet NetworkTestUtil::LearnTrivialIdentitySparse() {
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = 1;
+  input_chunk.width = 1;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  Chunk sparse_chunk;
+  sparse_chunk.type = CHUNK_SPARSE;
+  sparse_chunk.num_nodes = 1;
+  sparse_chunk.transfer_function = IDENTITY;
+  sparse_chunk.width = 1;
+  sparse_chunk.height = 1;
+  sparse_chunk.channels = 1;
+  sparse_chunk.span_start = 0;
+  sparse_chunk.span_size = 1;
+  sparse_chunk.indices_per_node = 1;
+  sparse_chunk.indices = {0};
+  sparse_chunk.weights = {0.0};
+  sparse_chunk.biases = {0.0};
+
+  Layer input_layer;
+  input_layer.num_nodes = 1;
+  input_layer.chunks = {input_chunk};
+
+  Layer real_layer;
+  real_layer.num_nodes = 1;
+  real_layer.chunks = {sparse_chunk};
+
+  Network net({input_layer, real_layer});
+  net.NaNCheck(__func__);
+
+  CHECK(net.layers.size() == 2);
+  CHECK(net.layers[0].chunks.size() == 1);
+  CHECK(net.layers[1].chunks.size() == 1);
+
+  auto f = [](const std::vector<float> &input) {
+      CHECK(input.size() == 1);
+      return input;
+    };
+
+  return TrainNet{
+    .name = "F(x) = x, one sparse node",
+    .net = net,
+    .f = f,
+    .boolean_problem = false,
   };
 }

@@ -16,6 +16,9 @@
 #include "timer.h"
 #include "clutil.h"
 
+// PERF: For many of these, we use mutexes to avoid setting a
+// kernels arguments from multiple threads. But we could have
+// a mutex per layer or per ChunkKernel instead?
 
 // Network that has its bulky data (indices and inverted indices,
 // weights, biases) stored on GPU for fast inference and training.

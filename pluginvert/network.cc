@@ -17,6 +17,8 @@
 #include "base/stringprintf.h"
 
 #include "threadutil.h"
+#include "randutil.h"
+#include "arcfour.h"
 
 using namespace std;
 
@@ -1086,4 +1088,74 @@ int64 Errors::Bytes() const {
   for (int i = 0; i < error.size(); i++)
     ret += sizeof error[i] + sizeof error[i][0] * error[i].size();
   return ret;
+}
+
+// .. utils
+template<class C>
+static void DeleteElements(C *cont) {
+  for (auto &elt : *cont) {
+    delete elt;
+  }
+  cont->clear();
+}
+
+// Randomize the weights in a network. Doesn't do anything to indices.
+void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
+  [[maybe_unused]]
+  auto RandomizeFloatsGaussian =
+    [](float mag, ArcFour *rc, vector<float> *vec) {
+      RandomGaussian gauss{rc};
+      for (int i = 0; i < vec->size(); i++) {
+        (*vec)[i] = mag * gauss.Next();
+      }
+    };
+
+  [[maybe_unused]]
+  auto RandomizeFloatsUniform =
+    [](float mag, ArcFour *rc, vector<float> *vec) {
+      // Uniform from -mag to mag.
+      const float width = 2.0f * mag;
+      for (int i = 0; i < vec->size(); i++) {
+        // Uniform in [0,1]
+        double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
+        float f = (width * d) - mag;
+        (*vec)[i] = f;
+      }
+    };
+
+  // This must access rc serially.
+  vector<ArcFour *> rcs;
+  rcs.reserve(net->layers.size());
+  for (int i = 0; i < net->layers.size(); i++)
+    rcs.push_back(Substream(rc, i));
+
+  // But now we can do all layers in parallel.
+  ParallelComp(
+      net->layers.size(),
+      [rcs, &RandomizeFloatsUniform, &net](int layer) {
+        for (int chunk_idx = 0;
+             chunk_idx < net->layers[layer].chunks.size();
+             chunk_idx++) {
+          Chunk *chunk = &net->layers[layer].chunks[chunk_idx];
+          // XXX this should be indicated somehow else.
+          if (chunk->transfer_function == IDENTITY)
+            return;
+
+          // XXX such hacks. How to best initialize?
+
+          // Standard advice is to leave biases at 0 to start.
+          for (float &f : chunk->biases) f = 0.0f;
+
+          // The more indices we have, the smaller initial weights we
+          // should use. "Xavier initialization"
+          const float mag = 1.0f / sqrtf(chunk->indices_per_node);
+          // "He initialization"
+          // const float mag = sqrtf(2.0 / net->layers[layer].indices_per_node);
+          // Tom initialization
+          // const float mag = (0.0125f / net->layers[layer].indices_per_node);
+          RandomizeFloatsUniform(mag, rcs[layer], &chunk->weights);
+        }
+      }, max_parallelism);
+
+  DeleteElements(&rcs);
 }

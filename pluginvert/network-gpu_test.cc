@@ -2,6 +2,9 @@
 
 #include <cmath>
 #include <memory>
+#include <vector>
+#include <functional>
+#include <string>
 
 #include "network.h"
 #include "network-test-util.h"
@@ -9,10 +12,12 @@
 #include "base/logging.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "threadutil.h"
 
 using namespace std;
 
 using TestNet = NetworkTestUtil::TestNet;
+using TrainNet = NetworkTestUtil::TrainNet;
 using TestExample = NetworkTestUtil::TestExample;
 
 static CL *cl = nullptr;
@@ -61,9 +66,9 @@ static void ForwardTests(TestNet test_net) {
 
 // TODO: Figure out a testing strategy for training stuff;
 // right now this just basically tests that it doesn't crash.
-static void TrainTests(TestNet test_net) {
+static void TrainOnTestTests(TestNet test_net) {
   printf("\n--------------------------\n"
-         "[Train] Test net: %s\n", test_net.name.c_str());
+         "[TrainOnTest] Test net: %s\n", test_net.name.c_str());
   ArcFour rc(test_net.name);
   RandomGaussian gauss(&rc);
 
@@ -138,6 +143,166 @@ static void TrainTests(TestNet test_net) {
   net_gpu->ReadFromGPU();
 }
 
+static void TrainTest(TrainNet train_net,
+                      int max_iterations,
+                      int examples_per_round,
+                      int max_parallelism) {
+  static constexpr float LEARNING_RATE = 0.001f;
+
+  printf("\n--------------------------\n"
+         "[Train] Train net: %s\n", train_net.name.c_str());
+  ArcFour rc(train_net.name);
+  RandomGaussian gauss(&rc);
+
+  Network &net = train_net.net;
+  // Initialize with random weights.
+  RandomizeNetwork(&rc, &net, 2);
+
+  auto net_gpu = make_unique<NetworkGPU>(cl, &net);
+
+  std::unique_ptr<ForwardLayerCL> forward_cl =
+    std::make_unique<ForwardLayerCL>(cl, net);
+  std::unique_ptr<SetOutputErrorCL> error_cl =
+    std::make_unique<SetOutputErrorCL>(cl, net);
+  std::unique_ptr<BackwardLayerCL> backward_cl =
+    std::make_unique<BackwardLayerCL>(cl, net);
+  [[maybe_unused]]
+  std::unique_ptr<DecayWeightsCL> decay_cl =
+    std::make_unique<DecayWeightsCL>(cl, net, 0.999999f);
+  std::unique_ptr<UpdateWeightsCL> update_cl =
+    std::make_unique<UpdateWeightsCL>(cl, net);
+
+  // Uninitialized training examples on GPU.
+  std::vector<std::unique_ptr<TrainingRoundGPU>> training;
+  for (int i = 0; i < examples_per_round; i++)
+    training.emplace_back(new TrainingRoundGPU(cl, net));
+
+  // Used to compute loss.
+  std::vector<std::vector<float>> expected;
+  expected.resize(training.size());
+
+  for (int iter = 0; iter < max_iterations; iter++) {
+
+    // Initialize training examples.
+    // (PERF: parallelize?)
+    for (int i = 0; i < training.size(); i++) {
+      std::vector<float> inputs;
+      inputs.reserve(train_net.NumInputs());
+      for (int j = 0; j < train_net.NumInputs(); j++) {
+        if (train_net.boolean_problem) {
+          inputs.push_back(rc.Byte() < 128 ? 1.0f : 0.0f);
+        } else {
+          inputs.push_back(gauss.Next());
+        }
+      }
+      training[i]->LoadInput(inputs);
+      std::vector<float> outputs = train_net.f(inputs);
+      training[i]->LoadExpected(outputs);
+      expected[i] = std::move(outputs);
+    }
+
+    printf("Prepped examples.\n");
+
+    for (int src_layer = 0;
+         src_layer < net.layers.size() - 1;
+         src_layer++) {
+      ParallelComp(
+          training.size(),
+          [&](int idx) {
+            forward_cl->RunForward(
+                net_gpu.get(), training[idx].get(), src_layer);
+          },
+          max_parallelism);
+    }
+
+    printf("Forward done.\n");
+
+    ParallelComp(
+        training.size(),
+        [&](int idx) {
+          error_cl->SetOutputError(net_gpu.get(), training[idx].get());
+        },
+        max_parallelism);
+
+    printf("Set error.\n");
+
+    for (int dst_layer = net.layers.size() - 1;
+         // Don't propagate to input.
+         dst_layer > 1;
+         dst_layer--) {
+      ParallelComp(
+          training.size(),
+          [&](int idx) {
+            backward_cl->BackwardLayer(net_gpu.get(),
+                                       training[idx].get(),
+                                       dst_layer);
+          },
+          max_parallelism);
+    }
+
+    printf("Backward pass.\n");
+
+    #if 0
+    for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
+      decay_cl->Decay(net_gpu.get(), layer_idx);
+    }
+    #endif
+
+    // Can't run training examples in parallel because these all write
+    // to the same network. But each later is independent.
+    ParallelComp(net.layers.size() - 1,
+                 [&](int layer_minus_1) {
+                   const int layer_idx = layer_minus_1 + 1;
+                   for (int i = 0; i < training.size(); i++) {
+                     update_cl->Update(net_gpu.get(), training[i].get(),
+                                       LEARNING_RATE, layer_idx);
+                   }
+                 },
+                 max_parallelism);
+
+    printf("Updated errors.\n");
+
+    // Get loss for examples.
+    // Size of examples = Number of training instances.
+    std::vector<float> losses =
+      ParallelMapi(expected,
+                   [&](int idx, const std::vector<float> exp) {
+                     std::vector<float> got;
+                     got.resize(exp.size());
+                     training[idx]->ExportOutput(&got);
+
+                     float loss = 0.0f;
+                     for (int i = 0; i < exp.size(); i++)
+                       loss += fabsf(exp[i] - got[i]);
+                     return loss;
+                   }, max_parallelism);
+
+    printf("Got losses.\n");
+
+    float min_loss = 1.0f / 0.0f, average_loss = 0.0f, max_loss = 0.0f;
+    for (float f : losses) {
+      min_loss = std::min(f, min_loss);
+      max_loss = std::max(f, max_loss);
+      average_loss += f;
+    }
+    average_loss /= losses.size();
+
+    if (average_loss < 0.0001f) {
+      printf("Successfully trained!\n");
+      return;
+    } else {
+      printf("%d: %.3f < %.3f < %.3f\n", iter,
+             min_loss, average_loss, max_loss);
+    }
+  }
+
+  printf("Didn't train after %d iterations :(\n", max_iterations);
+
+  // Copy back to CPU instance.
+  // net_gpu->ReadFromGPU();
+}
+
+
 
 int main(int argc, char **argv) {
   cl = new CL;
@@ -149,14 +314,17 @@ int main(int argc, char **argv) {
   ForwardTests(NetworkTestUtil::TwoInputSparse());
   ForwardTests(NetworkTestUtil::TwoDenseChunks());
   ForwardTests(NetworkTestUtil::Net1());
+
+  TrainOnTestTests(NetworkTestUtil::SingleSparse());
+  TrainOnTestTests(NetworkTestUtil::SingleDense());
+  TrainOnTestTests(NetworkTestUtil::SingleConvolution());
+  TrainOnTestTests(NetworkTestUtil::TwoInputSparse());
+  TrainOnTestTests(NetworkTestUtil::TwoDenseChunks());
+  TrainOnTestTests(NetworkTestUtil::Net1());
   #endif
 
-  TrainTests(NetworkTestUtil::SingleSparse());
-  TrainTests(NetworkTestUtil::SingleDense());
-  TrainTests(NetworkTestUtil::SingleConvolution());
-  TrainTests(NetworkTestUtil::TwoInputSparse());
-  TrainTests(NetworkTestUtil::TwoDenseChunks());
-  TrainTests(NetworkTestUtil::Net1());
+  TrainTest(NetworkTestUtil::LearnTrivialIdentitySparse(),
+            1000, 1000, 4);
 
   delete cl;
 

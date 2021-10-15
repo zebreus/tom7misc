@@ -26,15 +26,6 @@ using namespace std;
 using int64 = int64_t;
 using uint32 = uint32_t;
 
-// .. utils
-template<class C>
-static void DeleteElements(C *cont) {
-  for (auto &elt : *cont) {
-    delete elt;
-  }
-  cont->clear();
-}
-
 // Make indices. This assumes that nodes are 2D "pixel" data, where on
 // each layer we have width[l] * height[l] pixels, with channels[l]
 // nodes per pixel. Row-major order.
@@ -218,62 +209,6 @@ static void FillSparseIndices(ArcFour *rc,
   }
 }
 
-// Randomize the weights in a network. Doesn't do anything to indices.
-static void RandomizeNetwork(ArcFour *rc, Network *net) {
-  [[maybe_unused]]
-  auto RandomizeFloatsGaussian =
-    [](float mag, ArcFour *rc, vector<float> *vec) {
-      RandomGaussian gauss{rc};
-      for (int i = 0; i < vec->size(); i++) {
-        (*vec)[i] = mag * gauss.Next();
-      }
-    };
-
-  [[maybe_unused]]
-  auto RandomizeFloatsUniform =
-    [](float mag, ArcFour *rc, vector<float> *vec) {
-      // Uniform from -mag to mag.
-      const float width = 2.0f * mag;
-      for (int i = 0; i < vec->size(); i++) {
-        // Uniform in [0,1]
-        double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
-        float f = (width * d) - mag;
-        (*vec)[i] = f;
-      }
-    };
-
-  // This must access rc serially.
-  vector<ArcFour *> rcs;
-  for (int i = 0; i < net->num_layers; i++) rcs.push_back(Substream(rc, i));
-
-  // But now we can do all layers in parallel.
-  CHECK_EQ(net->num_layers, net->layers.size());
-  ParallelComp(
-      net->num_layers,
-      [rcs, &RandomizeFloatsUniform, &net](int layer) {
-        // XXX this should be indicated somehow else.
-        if (net->layers[layer].transfer_function == IDENTITY)
-          return;
-
-        // XXX such hacks. How to best initialize?
-
-        for (float &f : net->layers[layer].biases) f = 0.0f;
-        // RandomizeFloats(0.000025f, rcs[layer], &net->layers[layer].biases);
-        // RandomizeFloats(0.025f, rcs[layer], &net->layers[layer].weights);
-
-        // The more indices we have, the smaller initial weights we should
-        // use.
-        // "Xavier initialization"
-        const float mag = 1.0f / sqrtf(net->layers[layer].indices_per_node);
-        // "He initialization"
-        // const float mag = sqrtf(2.0 / net->layers[layer].indices_per_node);
-        // Tom initialization
-        // const float mag = (0.0125f / net->layers[layer].indices_per_node);
-        RandomizeFloatsUniform(mag, rcs[layer], &net->layers[layer].weights);
-      }, 12);
-
-  DeleteElements(&rcs);
-}
 
 static std::unique_ptr<Network> CreateInitialNetwork(ArcFour *rc) {
 

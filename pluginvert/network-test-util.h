@@ -2,6 +2,10 @@
 #ifndef _NETWORK_TEST_UTIL_H
 #define _NETWORK_TEST_UTIL_H
 
+#include <vector>
+#include <functional>
+#include <string>
+
 #include "network.h"
 
 // Note: Evaluates a and b a second time if check fails!
@@ -32,6 +36,20 @@ struct NetworkTestUtil {
     std::vector<TestExample> examples;
   };
 
+  // A network structure that should be able to learn the given
+  // function. (And its input/output shape should match the function.)
+  struct TrainNet {
+    std::string name;
+    // Weights and biases initialized to zero.
+    Network net;
+    std::function<std::vector<float>(const std::vector<float>&)> f;
+    // If true, inputs should be only 0.0f or 1.0f.
+    bool boolean_problem = false;
+
+    int NumInputs() const;
+    int NumOutputs() const;
+  };
+
   // Trivial network with just one node, sparse chunk.
   static TestNet SingleSparse();
   // Trivial network with just one node, dense chunk.
@@ -55,6 +73,9 @@ struct NetworkTestUtil {
   static TestNet TwoDenseLayers();
 
   // TODO: Need some tests with convolutions!
+
+  // F(x) = x. One sparse node.
+  static TrainNet LearnTrivialIdentitySparse();
 };
 
 
