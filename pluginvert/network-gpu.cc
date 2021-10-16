@@ -512,10 +512,11 @@ void BackwardLayerCL::BackwardLayer(NetworkGPU *net_gpu,
   CHECK_SUCCESS(
       clEnqueueFillBuffer(cl->queue,
                           src_error,
-                          // pattern and its size
+                          // pattern and its size in bytes
                           &zero, sizeof (cl_float),
-                          // offset and size to fill
-                          0, (size_t)net.layers[src_layer].num_nodes,
+                          // offset and size to fill (in BYTES)
+                          0, (size_t)(net.layers[src_layer].num_nodes *
+                                      sizeof (cl_float)),
                           // no wait list or event
                           0, nullptr, nullptr));
   // This needs to be done before the kernel runs below. PERF that
@@ -683,7 +684,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
                      "#define NOCLIP false\n"
                      "#define CONSTRAIN true\n"
                      "#define CONSTRAIN_WEIGHT_MAX 16.0f\n"
-                     "#define CONSTRAIN_BIAS_MAX 16834.0f\n"
+                     "#define CONSTRAIN_BIAS_MAX 16384.0f\n"
 
                      "#define CHUNK_START %d\n"
                      "#define SPAN_START %d\n"

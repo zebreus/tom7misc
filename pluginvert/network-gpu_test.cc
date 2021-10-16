@@ -156,7 +156,7 @@ static void TrainTest(TrainNet train_net,
 
   printf("\n--------------------------\n"
          "[Train] Train net: %s\n", train_net.name.c_str());
-  ArcFour rc(train_net.name);
+  ArcFour rc(train_net.name + "XXX");
   RandomGaussian gauss(&rc);
 
   Network &net = train_net.net;
@@ -173,7 +173,7 @@ static void TrainTest(TrainNet train_net,
     std::make_unique<BackwardLayerCL>(cl, net);
   [[maybe_unused]]
   std::unique_ptr<DecayWeightsCL> decay_cl =
-    std::make_unique<DecayWeightsCL>(cl, net, 0.9999f);
+    std::make_unique<DecayWeightsCL>(cl, net, 0.99999f);
   std::unique_ptr<UpdateWeightsCL> update_cl =
     std::make_unique<UpdateWeightsCL>(cl, net);
 
@@ -186,6 +186,8 @@ static void TrainTest(TrainNet train_net,
   std::vector<std::vector<float>> expected;
   expected.resize(training.size());
 
+  Timer train_timer;
+  int64 total_examples = 0LL;
   for (int iter = 0; iter < max_iterations; iter++) {
 
     // Initialize training examples.
@@ -202,6 +204,7 @@ static void TrainTest(TrainNet train_net,
       }
       training[i]->LoadInput(inputs);
       std::vector<float> outputs = train_net.f(inputs);
+      CHECK(outputs.size() == train_net.NumOutputs());
       training[i]->LoadExpected(outputs);
       expected[i] = std::move(outputs);
     }
@@ -256,7 +259,7 @@ static void TrainTest(TrainNet train_net,
     }
 
     // Can't run training examples in parallel because these all write
-    // to the same network. But each later is independent.
+    // to the same network. But each layer is independent.
     ParallelComp(net.layers.size() - 1,
                  [&](int layer_minus_1) {
                    const int layer_idx = layer_minus_1 + 1;
@@ -270,43 +273,67 @@ static void TrainTest(TrainNet train_net,
     if (VERBOSE > 1)
       printf("Updated errors.\n");
 
-    // Get loss for examples.
+    // Get loss as abs distance, plus number of incorrect (as booleans).
     // Size of examples = Number of training instances.
-    std::vector<float> losses =
+    std::vector<std::pair<float, int>> losses =
       ParallelMapi(expected,
                    [&](int idx, const std::vector<float> exp) {
                      std::vector<float> got;
                      got.resize(exp.size());
                      training[idx]->ExportOutput(&got);
 
+                     int incorrect = 0;
                      float loss = 0.0f;
-                     for (int i = 0; i < exp.size(); i++)
+                     for (int i = 0; i < exp.size(); i++) {
                        loss += fabsf(exp[i] - got[i]);
-                     return loss;
+                       // for boolean problems only, but we compute
+                       // it either way
+                       bool want = exp[i] > 0.5f;
+                       bool made = got[i] > 0.5f;
+                       if (want != made) incorrect++;
+                     }
+                     return std::make_pair(loss, incorrect);
                    }, max_parallelism);
 
     if (VERBOSE > 1)
       printf("Got losses.\n");
 
     float min_loss = 1.0f / 0.0f, average_loss = 0.0f, max_loss = 0.0f;
-    for (float f : losses) {
-      min_loss = std::min(f, min_loss);
-      max_loss = std::max(f, max_loss);
-      average_loss += f;
+    int min_inc = net.layers.back().num_nodes + 1, max_inc = 0;
+    float average_inc = 0.0f;
+    for (auto [loss_dist, loss_incorrect] : losses) {
+      min_loss = std::min(loss_dist, min_loss);
+      max_loss = std::max(loss_dist, max_loss);
+      average_loss += loss_dist;
+
+      min_inc = std::min(loss_incorrect, min_inc);
+      max_inc = std::max(loss_incorrect, max_inc);
+      average_inc += loss_incorrect;
     }
     average_loss /= losses.size();
+    average_inc /= losses.size();
+
+    total_examples += examples_per_round;
+    double total_sec = train_timer.MS() / 1000.0;
+    double eps = total_examples / total_sec;
 
     // Parameter for termination?
     if (average_loss < 0.0001f) {
       printf("Successfully trained!\n");
       return;
     } else {
-      if (VERBOSE || (iter % 100 == 0))
-        printf("%d: %.3f < %.3f < %.3f\n", iter,
+      if (VERBOSE || (iter % 100 == 0)) {
+        printf("%d: %.3f < %.3f < %.3f", iter,
                min_loss, average_loss, max_loss);
+        if (train_net.boolean_problem) {
+          printf("  |  %d < %.3f < %d",
+                 min_inc, average_inc, max_inc);
+        }
+        printf(" (%.2f eps)\n", eps);
+      }
     }
 
-    if (iter % 5000 == 0) {
+    if (iter == 1000 || iter % 5000 == 0) {
       net_gpu->ReadFromGPU();
       const string file = StringPrintf("gpu-test-net-%d.val", iter);
       net.SaveToFile(file);
@@ -351,7 +378,7 @@ int main(int argc, char **argv) {
   #endif
   // Smaller batch size since there are only 2^8 possible inputs.
   TrainTest(NetworkTestUtil::LearnBoolean(),
-            100000, 64, 0.1f, 4);
+            100000, 54, 0.01f, 4);
   // 16 dense, 256 dense
   // After 13400 rounds: 13400: 4.809 < 19.069 < 33.299
   // 16 dense + 3 id, 256 dense

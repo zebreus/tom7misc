@@ -7,6 +7,8 @@
 
 #include "network.h"
 #include "base/logging.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 static inline constexpr float Leaky(float f) {
   if (f < 0.0f) return 0.01f * f;
@@ -607,6 +609,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnTrivialIdentityConvolution() {
 
 
 NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
+  ArcFour rc("learn-boolean");
+
   static constexpr int INPUT_SIZE = 3;
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
@@ -618,7 +622,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
   // How small can this layer be?
   static constexpr int LAYER1_SPARSE_SIZE = 64;
   static constexpr int LAYER1_ID_SIZE = 6;
-  static constexpr int LAYER1_SIZE = LAYER1_ID_SIZE + LAYER1_SPARSE_SIZE ;
+  static constexpr int LAYER1_SIZE = LAYER1_ID_SIZE + LAYER1_SPARSE_SIZE;
   // Copy of first layer (sparse identity), and then its negation.
   Chunk id_chunk;
   id_chunk.type = CHUNK_SPARSE;
@@ -667,20 +671,54 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
       0.0f);
   sparse_chunk1.biases = std::vector<float>(LAYER1_SPARSE_SIZE, 0.0f);
 
-  static constexpr int LAYER2_SIZE = 256;
-  Chunk dense_chunk2;
-  dense_chunk2.type = CHUNK_DENSE;
-  dense_chunk2.num_nodes = LAYER2_SIZE;
-  dense_chunk2.transfer_function = SIGMOID;
-  dense_chunk2.width = LAYER2_SIZE;
-  dense_chunk2.height = 1;
-  dense_chunk2.channels = 1;
-  dense_chunk2.span_start = 0;
-  dense_chunk2.span_size = LAYER1_SIZE;
-  dense_chunk2.indices_per_node = LAYER1_SIZE;
-  dense_chunk2.indices = {};
-  dense_chunk2.weights = std::vector<float>(LAYER2_SIZE * LAYER1_SIZE, 0.0f);
-  dense_chunk2.biases = std::vector<float>(LAYER2_SIZE, 0.0f);
+  static constexpr int LAYER2_SIZE = 200; // 256
+  static constexpr int IPN2 = 12;
+  Chunk sparse_chunk2;
+  sparse_chunk2.type = CHUNK_SPARSE;
+  sparse_chunk2.num_nodes = LAYER2_SIZE;
+  sparse_chunk2.transfer_function = LEAKY_RELU;
+  sparse_chunk2.width = LAYER2_SIZE;
+  sparse_chunk2.height = 1;
+  sparse_chunk2.channels = 1;
+  sparse_chunk2.span_start = 0;
+  sparse_chunk2.span_size = LAYER1_SIZE;
+  sparse_chunk2.indices_per_node = IPN2;
+
+  {
+    // Keep permuting sparse part and taking prefix so that we don't
+    // generate duplicate indices.
+    std::vector<int> sparse_part;
+    for (int i = 0; i < LAYER1_SPARSE_SIZE; i++)
+      sparse_part.push_back(i);
+
+    for (int n = 0; n < LAYER2_SIZE; n++) {
+      // All get a copy of the input.
+      for (int i = 0; i < LAYER1_ID_SIZE; i++)
+        sparse_chunk2.indices.push_back(i);
+
+      Shuffle(&rc, &sparse_part);
+      for (int i = 0; i < IPN2 - LAYER1_ID_SIZE; i++) {
+        sparse_chunk2.indices.push_back(LAYER1_ID_SIZE + sparse_part[i]);
+      }
+    }
+  }
+  sparse_chunk2.weights = std::vector<float>(LAYER2_SIZE * IPN2, 0.0f);
+  sparse_chunk2.biases = std::vector<float>(LAYER2_SIZE, 0.0f);
+
+  static constexpr int LAYER3_SIZE = 256;
+  Chunk dense_chunk3;
+  dense_chunk3.type = CHUNK_DENSE;
+  dense_chunk3.num_nodes = LAYER3_SIZE;
+  dense_chunk3.transfer_function = SIGMOID;
+  dense_chunk3.width = LAYER3_SIZE;
+  dense_chunk3.height = 1;
+  dense_chunk3.channels = 1;
+  dense_chunk3.span_start = 0;
+  dense_chunk3.span_size = LAYER2_SIZE;
+  dense_chunk3.indices_per_node = LAYER2_SIZE;
+  dense_chunk3.indices = {};
+  dense_chunk3.weights = std::vector<float>(LAYER3_SIZE * LAYER2_SIZE, 0.0f);
+  dense_chunk3.biases = std::vector<float>(LAYER3_SIZE, 0.0f);
 
   Layer input_layer;
   input_layer.num_nodes = INPUT_SIZE;
@@ -692,15 +730,45 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
 
   Layer real_layer2;
   real_layer2.num_nodes = LAYER2_SIZE;
-  real_layer2.chunks = {dense_chunk2};
+  real_layer2.chunks = {sparse_chunk2};
 
-  Network net({input_layer, real_layer1, real_layer2});
+  Layer real_layer3;
+  real_layer3.num_nodes = LAYER3_SIZE;
+  real_layer3.chunks = {dense_chunk3};
+
+  Network net({input_layer, real_layer1, real_layer2, real_layer3});
   net.NaNCheck(__func__);
 
-  CHECK(net.layers.size() == 3);
+  CHECK(net.layers.size() == 4);
   CHECK(net.layers[0].chunks.size() == 1);
   CHECK(net.layers[1].chunks.size() == 2);
   CHECK(net.layers[2].chunks.size() == 1);
+  CHECK(net.layers[3].chunks.size() == 1);
+
+  // Random permutation of [0, 256).
+  [[maybe_unused]]
+  static constexpr std::array<int, 256> PERM = {
+    161, 211, 255, 42, 34, 6, 38, 49, 234, 81, 244, 72, 98, 223,
+    219, 91, 195, 61, 95, 88, 175, 14, 17, 87, 116, 178, 143, 233,
+    157, 97, 29, 60, 250, 251, 140, 93, 108, 212, 207, 64, 162,
+    134, 0, 237, 99, 177, 57, 124, 151, 48, 94, 22, 67, 191, 188,
+    129, 25, 101, 21, 229, 221, 131, 169, 173, 96, 112, 46, 117,
+    153, 31, 132, 196, 18, 113, 232, 5, 142, 114, 136, 13, 79,
+    192, 58, 200, 227, 235, 37, 193, 230, 183, 245, 120, 186, 10,
+    115, 74, 82, 20, 40, 119, 242, 19, 238, 71, 2, 59, 149, 76,
+    187, 109, 181, 45, 247, 240, 228, 80, 23, 107, 69, 152, 32, 3,
+    125, 214, 210, 150, 167, 199, 249, 184, 83, 102, 182, 126,
+    141, 220, 138, 68, 194, 209, 15, 47, 11, 146, 44, 51, 56, 122,
+    165, 41, 12, 180, 156, 103, 85, 236, 65, 213, 77, 62, 8, 163,
+    203, 63, 139, 24, 254, 243, 33, 174, 201, 128, 179, 9, 92, 4,
+    84, 208, 147, 43, 205, 154, 226, 137, 176, 189, 127, 104, 198,
+    224, 241, 160, 78, 216, 168, 170, 197, 121, 248, 164, 133, 70,
+    100, 90, 246, 171, 53, 106, 75, 30, 123, 52, 159, 225, 215,
+    239, 148, 185, 145, 206, 110, 155, 105, 166, 7, 26, 54, 218,
+    39, 55, 252, 217, 231, 66, 204, 16, 73, 1, 135, 158, 253, 172,
+    27, 222, 35, 202, 28, 89, 118, 50, 86, 36, 144, 130, 190, 111,
+  };
+  static constexpr bool PERMUTE = false;
 
   auto f = [](const std::vector<float> &input) {
       CHECK(input.size() == 3);
@@ -709,22 +777,23 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
       const bool b = input[1] > 0.5f;
       const bool c = input[2] > 0.5f;
       std::vector<float> out;
-      static_assert(LAYER2_SIZE == 256);
+      static_assert(LAYER3_SIZE == 256);
       out.reserve(256);
       for (int i = 0; i < 256; i++) {
         // The truth table is a 2 * 2 * 2 cube with 8 cells.
         // There are 2^8 ways to assign truth values to this.
         // The 8 bits of i give us the values in each cell,
         // so just figure out which bit to look at.
-        int bit = (a ? 4 : 0) | (b ? 2 : 0) | (c ? 1 : 0);
-        bool value = 0 != (i & (1 << bit));
+        const int bit = (a ? 4 : 0) | (b ? 2 : 0) | (c ? 1 : 0);
+        const int permi = PERMUTE ? PERM[i] : i;
+        const bool value = 0 != (permi & (1 << bit));
         out.push_back(value ? 1.0f : 0.0f);
       }
       return out;
     };
 
   return TrainNet{
-    .name = "All 256 boolean functions of 3 variables. Two dense layers.",
+    .name = "All 256 boolean functions of 3 variables. Three dense layers.",
     .net = net,
     .f = f,
     .boolean_problem = true,

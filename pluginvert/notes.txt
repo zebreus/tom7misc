@@ -308,3 +308,44 @@ is mercifully easy.
 
 Overall this does not seem too bad, just a little fiddly?
 
+
+
+--------------------------------------------------
+
+OK, so that's implemented, but now testing. Really basic stuff works ok.
+
+I'm unable to learn the 2^(2^3) functions on three variables, which
+seems surprising and might be indicative of a problem. (Problem might be
+that the learning rate or other hyperparameters are off, though, sigh.)
+
+One sign of an actual bug:
+ - the second to last layer has a strange pattern of weights:
+   it's 256 nodes wide, with input span of size 64+6, sparse
+   there's a very distinct difference between the weights on
+   the first 64 nodes (reasonable range) and the remaining 192 (saturated)
+
+ so it could be that we have a bug here where one of the backprop steps
+ is not working correctly (like, it's using the wrong work size, perhaps
+ reading the size from the wrong layer.) 64 is of course suspiciously
+ round. It's the size of the second chunk in the previous layer, and
+ also the size of the examples_per_round!
+
+
+ - this happens by round 5000. (actually 1000 seems to be enough)
+ - this persists at 64 nodes even when:
+     - I reverse the sense of the boolean functions (~)
+     - I permute the boolean function randomly
+     - I change the examples_per_round to 54
+     - I change the size of the chunk on the previous layer from 64 to 84??
+
+ Uhhh so this could be a byte size thing? 256/4 = 64?
+ Aha yes! If I switch this to 200 nodes, then the region is size 50.
+ Yes, that was it! The call to clEnqueueFillBuffer was only filling
+ buffer/4 with zeroes, so I guess we would just keep accumulating
+ error for the remaining 3/4.
+
+ And now it converges to 0 incorrect in like 900 rounds! :)
+
+
+
+

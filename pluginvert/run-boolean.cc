@@ -7,6 +7,8 @@
 #include <memory>
 
 #include "network-test-util.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 using namespace std;
 
@@ -14,6 +16,14 @@ using namespace std;
 // as 1.0f, others as 0.0f) on the command line.
 
 int main(int argc, char **argv) {
+  ArcFour rc("asdf");
+  std::vector<int> perm;
+  for (int i = 0; i < 256; i++) perm.push_back(i);
+  Shuffle(&rc, &perm);
+  for (int i : perm) printf("%d, ", i);
+  return 0;
+
+
   CHECK(argc >= 2) << "./run-boolean.exe model.val b1 b2 b3 ...\n";
   string model = argv[1];
 
