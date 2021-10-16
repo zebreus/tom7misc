@@ -160,7 +160,7 @@ ImageRGBA ModelInfo::Histogram(
   static constexpr int MARGIN = 8;
   // Get histogram of weights per layer.
   // Only layers with inputs (i.e. not the input layer) have weights.
-  const int num_histos = net.num_layers;
+  const int num_histos = net.layers.size() - 1;
 
   const int HISTOW = width / 2 - MARGIN;
   const int HISTOH = height / num_histos;
@@ -168,12 +168,18 @@ ImageRGBA ModelInfo::Histogram(
   ImageRGBA img{width, height};
   img.Clear32(0x000000FF);
 
-  for (int layer = 0; layer < net.num_layers; layer++) {
+  for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
+    // Could draw each chunk as a different RGB channel, or could
+    // partition the horizontal space?
     Histo bias_histo{bias_bound_low, bias_bound_high};
-    for (float f : net.layers[layer].biases) bias_histo.Add(f);
-
     Histo weight_histo{weight_bound_low, weight_bound_high};
-    for (float f : net.layers[layer].weights) weight_histo.Add(f);
+    for (int chunk_idx = 0;
+         chunk_idx < net.layers[layer_idx].chunks.size();
+         chunk_idx++) {
+      const Chunk &chunk = net.layers[layer_idx].chunks[chunk_idx];
+      for (float f : chunk.biases) bias_histo.Add(f);
+      for (float f : chunk.weights) weight_histo.Add(f);
+    }
 
     auto DrawHisto = [&img](const Histo &histo, int x, int y, int w, int h,
                             const string &label) {
@@ -217,11 +223,13 @@ ImageRGBA ModelInfo::Histogram(
 
       };
 
-    DrawHisto(bias_histo, 0, HISTOH * layer, HISTOW, HISTOH,
-              StringPrintf("^ Bias layer %d ^", layer));
+    DrawHisto(bias_histo,
+              0, HISTOH * (layer_idx - 1), HISTOW, HISTOH,
+              StringPrintf("^ Bias layer %d ^", layer_idx));
 
-    DrawHisto(weight_histo, HISTOW + MARGIN, HISTOH * layer, HISTOW, HISTOH,
-              StringPrintf("^ Weights layer %d ^", layer));
+    DrawHisto(weight_histo,
+              HISTOW + MARGIN, HISTOH * (layer_idx - 1), HISTOW, HISTOH,
+              StringPrintf("^ Weights layer %d ^", layer_idx));
   }
 
   return img;
@@ -288,6 +296,7 @@ std::pair<int, int> MakeRectangle(int count) {
 #endif
 }
 
+#if 0
 static ImageRGBA LayerWeightsConvolution(
     const Network::Layer &layer,
     int layer_idx,
@@ -339,24 +348,28 @@ static ImageRGBA LayerWeightsConvolution(
 
   return img;
 }
+#endif
 
-static ImageRGBA LayerWeightsSparseDense(
-    const Network::Layer &layer,
+static ImageRGBA ChunkWeightsSparseDense(
+    const Chunk &chunk,
     int layer_idx,
+    int chunk_idx,
     int prev_nodes,
-    int num_nodes,
     bool diagnostic_mode) {
 
-  if ((int64)num_nodes * (int64)prev_nodes > (int64)1000000) {
+  if ((int64)chunk.num_nodes * (int64)prev_nodes > (int64)1000000) {
     ImageRGBA error(440, 24);
     error.Clear32(0x000000FF);
     error.BlendText2x32(1, 1, 0xA00000FF,
                         StringPrintf("Too big! %d x %d",
-                                     num_nodes, prev_nodes));
+                                     chunk.num_nodes, prev_nodes));
     return error;
   }
 
-  const int ipn = layer.indices_per_node;
+  const int ipn = chunk.indices_per_node;
+
+  // TODO: If we're using the full width, we could at least highlight
+  // the span (or nodes outside the span).
 
   //     <--- this layer's nodes --->
   // ^
@@ -369,7 +382,7 @@ static ImageRGBA LayerWeightsSparseDense(
   constexpr int LEFT = 12;
   constexpr int RIGHT = 4;
   constexpr int BOTTOM = 4;
-  ImageRGBA img(LEFT + RIGHT + num_nodes,
+  ImageRGBA img(LEFT + RIGHT + chunk.num_nodes,
                 TOP + BOTTOM + prev_nodes);
 
   const uint32 missing_weight_color =
@@ -378,16 +391,20 @@ static ImageRGBA LayerWeightsSparseDense(
   constexpr int WEIGHTSX = LEFT;
   constexpr int WEIGHTSY = TOP;
   img.Clear32(0x000000FF);
-  img.BlendRect32(WEIGHTSX, WEIGHTSY, num_nodes, prev_nodes,
+  img.BlendRect32(WEIGHTSX, WEIGHTSY, chunk.num_nodes, prev_nodes,
                   missing_weight_color);
 
   vector<bool> has_reference(prev_nodes, false);
 
-  for (int x = 0; x < num_nodes; x++) {
+  for (int x = 0; x < chunk.num_nodes; x++) {
     const int start = x * ipn;
     for (int i = 0; i < ipn; i++) {
-      uint32 idx = layer.indices[start + i];
-      float w = layer.weights[start + i];
+      uint32 idx =
+        chunk.type == CHUNK_SPARSE ?
+        chunk.indices[start + i] :
+        chunk.span_start + i;
+
+      float w = chunk.weights[start + i];
 
       CHECK(idx < prev_nodes);
       has_reference[idx] = true;
@@ -399,7 +416,7 @@ static ImageRGBA LayerWeightsSparseDense(
   if (diagnostic_mode) {
     for (int y = 0; y < prev_nodes; y++) {
       if (!has_reference[y]) {
-        for (int x = 0; x < num_nodes; x++) {
+        for (int x = 0; x < chunk.num_nodes; x++) {
           // XXX: Configurable?
           // Would be missing_weight_color if not detected.
           img.SetPixel32(WEIGHTSX + x, WEIGHTSY + y, 0xFFFF00FF);
@@ -409,25 +426,32 @@ static ImageRGBA LayerWeightsSparseDense(
   }
 
   img.BlendText32(LEFT, 2, 0xCCCCCCFF,
-                  StringPrintf("<--   Layer %d's nodes (%d)  ipn=%d  -->",
-                               layer_idx, num_nodes, ipn));
+                  StringPrintf("<--   Chunk %d.%d's nodes (%d)  ipn=%d  -->",
+                               layer_idx, chunk_idx, chunk.num_nodes, ipn));
 
   return img;
 }
 
 
-ImageRGBA ModelInfo::LayerWeights(const Network &net, int layer_idx,
+ImageRGBA ModelInfo::ChunkWeights(const Network &net,
+                                  int layer_idx,
+                                  int chunk_idx,
                                   bool diagnostic_mode) {
-  CHECK(layer_idx >= 0 && layer_idx < net.layers.size());
-  const Network::Layer &layer = net.layers[layer_idx];
-  const int prev_nodes = net.num_nodes[layer_idx];
-  const int num_nodes = net.num_nodes[layer_idx + 1];
+  CHECK(layer_idx > 0 && layer_idx < net.layers.size());
+  const Layer &layer = net.layers[layer_idx];
+  CHECK(chunk_idx >= 0 && chunk_idx < layer.chunks.size());
+  const Chunk &chunk = layer.chunks[chunk_idx];
 
-  if (layer.type == LAYER_CONVOLUTION_ARRAY) {
-    return LayerWeightsConvolution(
-        layer, layer_idx, prev_nodes, num_nodes, diagnostic_mode);
+  const int prev_nodes = net.layers[layer_idx - 1].num_nodes;
+
+  if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
+    CHECK(false) << "Unimplemented for chunks!";
+    /*
+    return ChunkWeightsConvolution(
+        chunk, chunk_idx, prev_nodes, diagnostic_mode);
+    */
   } else {
-    return LayerWeightsSparseDense(
-        layer, layer_idx, prev_nodes, num_nodes, diagnostic_mode);
+    return ChunkWeightsSparseDense(
+        chunk, layer_idx, chunk_idx, prev_nodes, diagnostic_mode);
   }
 }

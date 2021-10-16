@@ -10,6 +10,7 @@
 #include "network-test-util.h"
 #include "clutil.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "arcfour.h"
 #include "randutil.h"
 #include "threadutil.h"
@@ -146,8 +147,12 @@ static void TrainOnTestTests(TestNet test_net) {
 static void TrainTest(TrainNet train_net,
                       int max_iterations,
                       int examples_per_round,
+                      // per round, not example
+                      float learning_rate,
                       int max_parallelism) {
-  static constexpr float LEARNING_RATE = 0.001f;
+  // 0, 1, 2
+  static constexpr int VERBOSE = 0;
+  const float example_learning_rate = learning_rate / (float)examples_per_round;
 
   printf("\n--------------------------\n"
          "[Train] Train net: %s\n", train_net.name.c_str());
@@ -168,7 +173,7 @@ static void TrainTest(TrainNet train_net,
     std::make_unique<BackwardLayerCL>(cl, net);
   [[maybe_unused]]
   std::unique_ptr<DecayWeightsCL> decay_cl =
-    std::make_unique<DecayWeightsCL>(cl, net, 0.999999f);
+    std::make_unique<DecayWeightsCL>(cl, net, 0.9999f);
   std::unique_ptr<UpdateWeightsCL> update_cl =
     std::make_unique<UpdateWeightsCL>(cl, net);
 
@@ -201,7 +206,8 @@ static void TrainTest(TrainNet train_net,
       expected[i] = std::move(outputs);
     }
 
-    printf("Prepped examples.\n");
+    if (VERBOSE > 1)
+      printf("Prepped examples.\n");
 
     for (int src_layer = 0;
          src_layer < net.layers.size() - 1;
@@ -215,7 +221,8 @@ static void TrainTest(TrainNet train_net,
           max_parallelism);
     }
 
-    printf("Forward done.\n");
+    if (VERBOSE > 1)
+      printf("Forward done.\n");
 
     ParallelComp(
         training.size(),
@@ -224,7 +231,8 @@ static void TrainTest(TrainNet train_net,
         },
         max_parallelism);
 
-    printf("Set error.\n");
+    if (VERBOSE > 1)
+      printf("Set error.\n");
 
     for (int dst_layer = net.layers.size() - 1;
          // Don't propagate to input.
@@ -240,13 +248,12 @@ static void TrainTest(TrainNet train_net,
           max_parallelism);
     }
 
-    printf("Backward pass.\n");
+    if (VERBOSE > 1)
+      printf("Backward pass.\n");
 
-    #if 0
     for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
       decay_cl->Decay(net_gpu.get(), layer_idx);
     }
-    #endif
 
     // Can't run training examples in parallel because these all write
     // to the same network. But each later is independent.
@@ -255,12 +262,13 @@ static void TrainTest(TrainNet train_net,
                    const int layer_idx = layer_minus_1 + 1;
                    for (int i = 0; i < training.size(); i++) {
                      update_cl->Update(net_gpu.get(), training[i].get(),
-                                       LEARNING_RATE, layer_idx);
+                                       example_learning_rate, layer_idx);
                    }
                  },
                  max_parallelism);
 
-    printf("Updated errors.\n");
+    if (VERBOSE > 1)
+      printf("Updated errors.\n");
 
     // Get loss for examples.
     // Size of examples = Number of training instances.
@@ -277,7 +285,8 @@ static void TrainTest(TrainNet train_net,
                      return loss;
                    }, max_parallelism);
 
-    printf("Got losses.\n");
+    if (VERBOSE > 1)
+      printf("Got losses.\n");
 
     float min_loss = 1.0f / 0.0f, average_loss = 0.0f, max_loss = 0.0f;
     for (float f : losses) {
@@ -287,12 +296,21 @@ static void TrainTest(TrainNet train_net,
     }
     average_loss /= losses.size();
 
+    // Parameter for termination?
     if (average_loss < 0.0001f) {
       printf("Successfully trained!\n");
       return;
     } else {
-      printf("%d: %.3f < %.3f < %.3f\n", iter,
-             min_loss, average_loss, max_loss);
+      if (VERBOSE || (iter % 100 == 0))
+        printf("%d: %.3f < %.3f < %.3f\n", iter,
+               min_loss, average_loss, max_loss);
+    }
+
+    if (iter % 5000 == 0) {
+      net_gpu->ReadFromGPU();
+      const string file = StringPrintf("gpu-test-net-%d.val", iter);
+      net.SaveToFile(file);
+      printf("Wrote %s\n", file.c_str());
     }
   }
 
@@ -323,8 +341,21 @@ int main(int argc, char **argv) {
   TrainOnTestTests(NetworkTestUtil::Net1());
   #endif
 
+  #if 0
   TrainTest(NetworkTestUtil::LearnTrivialIdentitySparse(),
-            1000, 1000, 4);
+            1000, 1000, 1.0f, 4);
+  TrainTest(NetworkTestUtil::LearnTrivialIdentityDense(),
+            1000, 1000, 1.0f, 4);
+  TrainTest(NetworkTestUtil::LearnTrivialIdentityConvolution(),
+            1000, 1000, 1.0f, 4);
+  #endif
+  // Smaller batch size since there are only 2^8 possible inputs.
+  TrainTest(NetworkTestUtil::LearnBoolean(),
+            100000, 64, 0.1f, 4);
+  // 16 dense, 256 dense
+  // After 13400 rounds: 13400: 4.809 < 19.069 < 33.299
+  // 16 dense + 3 id, 256 dense
+  // After 10000 rounds: 10000: 8.101 < 12.146 < 14.820
 
   delete cl;
 

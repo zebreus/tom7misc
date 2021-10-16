@@ -48,7 +48,7 @@ CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=$(UTIL_OBJECTS) network.o network-gpu.o error-history.o modelinfo.o
+OBJECTS=$(UTIL_OBJECTS) network.o error-history.o modelinfo.o
 
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -lpsapi -static
@@ -61,7 +61,7 @@ layerweights-layer0.png : get-layerweights.exe net0.val
 
 layerweights : layerweights-layer0.png
 
-train.exe : $(OBJECTS) $(SDLOBJECTS) $(FCEULIBOBJECTS) clutil.o train.o frame-queue.o
+train.exe : $(OBJECTS) $(SDLOBJECTS) $(FCEULIBOBJECTS) clutil.o train.o frame-queue.o network-gpu.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
@@ -108,6 +108,11 @@ network_test.exe : network.o network-test-util.o network_test.o $(UTIL_OBJECTS)
 network-gpu_test.exe : network.o network-gpu.o network-test-util.o network-gpu_test.o clutil.o $(UTIL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
+
+run-boolean.exe : run-boolean.o network.o network-test-util.o $(UTIL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 
 clean :
 	rm -f *.o $(UTIL_OBJECTS) $(SDLUTILOBJECTS) $(FCEULIBOBJECTS) $(OBJECTS) *.exe

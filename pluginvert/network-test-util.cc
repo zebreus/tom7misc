@@ -495,3 +495,238 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnTrivialIdentitySparse() {
     .boolean_problem = false,
   };
 }
+
+NetworkTestUtil::TrainNet NetworkTestUtil::LearnTrivialIdentityDense() {
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = 1;
+  input_chunk.width = 1;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  Chunk dense_chunk;
+  dense_chunk.type = CHUNK_DENSE;
+  dense_chunk.num_nodes = 1;
+  dense_chunk.transfer_function = IDENTITY;
+  dense_chunk.width = 1;
+  dense_chunk.height = 1;
+  dense_chunk.channels = 1;
+  dense_chunk.span_start = 0;
+  dense_chunk.span_size = 1;
+  dense_chunk.indices_per_node = 1;
+  dense_chunk.indices = {};
+  dense_chunk.weights = {0.0};
+  dense_chunk.biases = {0.0};
+
+  Layer input_layer;
+  input_layer.num_nodes = 1;
+  input_layer.chunks = {input_chunk};
+
+  Layer real_layer;
+  real_layer.num_nodes = 1;
+  real_layer.chunks = {dense_chunk};
+
+  Network net({input_layer, real_layer});
+  net.NaNCheck(__func__);
+
+  CHECK(net.layers.size() == 2);
+  CHECK(net.layers[0].chunks.size() == 1);
+  CHECK(net.layers[1].chunks.size() == 1);
+
+  auto f = [](const std::vector<float> &input) {
+      CHECK(input.size() == 1);
+      return input;
+    };
+
+  return TrainNet{
+    .name = "F(x) = x, one dense node",
+    .net = net,
+    .f = f,
+    .boolean_problem = false,
+  };
+}
+
+NetworkTestUtil::TrainNet NetworkTestUtil::LearnTrivialIdentityConvolution() {
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = 1;
+  input_chunk.width = 1;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  Chunk conv_chunk;
+  conv_chunk.type = CHUNK_CONVOLUTION_ARRAY;
+  conv_chunk.num_nodes = 1;
+  conv_chunk.num_features = 1;
+  conv_chunk.num_occurrences_across = 1;
+  conv_chunk.num_occurrences_down = 1;
+  conv_chunk.occurrence_x_stride = 1;
+  conv_chunk.occurrence_y_stride = 1;
+  conv_chunk.pattern_width = 1;
+  conv_chunk.pattern_height = 1;
+  conv_chunk.src_width = 1;
+  conv_chunk.src_height = 1;
+  conv_chunk.transfer_function = IDENTITY;
+  conv_chunk.width = 1;
+  conv_chunk.height = 1;
+  conv_chunk.channels = 1;
+  conv_chunk.span_start = 0;
+  conv_chunk.span_size = 1;
+  conv_chunk.indices_per_node = 1;
+  conv_chunk.indices = {0};
+  conv_chunk.weights = {0.0};
+  conv_chunk.biases = {0.0};
+
+  Layer input_layer;
+  input_layer.num_nodes = 1;
+  input_layer.chunks = {input_chunk};
+
+  Layer real_layer;
+  real_layer.num_nodes = 1;
+  real_layer.chunks = {conv_chunk};
+
+  Network net({input_layer, real_layer});
+  net.NaNCheck(__func__);
+
+  CHECK(net.layers.size() == 2);
+  CHECK(net.layers[0].chunks.size() == 1);
+  CHECK(net.layers[1].chunks.size() == 1);
+
+  auto f = [](const std::vector<float> &input) {
+      CHECK(input.size() == 1);
+      return input;
+    };
+
+  return TrainNet{
+    .name = "F(x) = x, one 1x1 convolution node",
+    .net = net,
+    .f = f,
+    .boolean_problem = false,
+  };
+}
+
+
+NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
+  static constexpr int INPUT_SIZE = 3;
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = INPUT_SIZE;
+  input_chunk.width = INPUT_SIZE;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  // How small can this layer be?
+  static constexpr int LAYER1_SPARSE_SIZE = 64;
+  static constexpr int LAYER1_ID_SIZE = 6;
+  static constexpr int LAYER1_SIZE = LAYER1_ID_SIZE + LAYER1_SPARSE_SIZE ;
+  // Copy of first layer (sparse identity), and then its negation.
+  Chunk id_chunk;
+  id_chunk.type = CHUNK_SPARSE;
+  id_chunk.num_nodes = LAYER1_ID_SIZE;
+  id_chunk.transfer_function = IDENTITY;
+  id_chunk.width = LAYER1_ID_SIZE;
+  id_chunk.height = 1;
+  id_chunk.channels = 1;
+  id_chunk.span_start = 0;
+  id_chunk.span_size = INPUT_SIZE;
+  id_chunk.indices_per_node = 1;
+  id_chunk.indices = {0, 1, 2, 0, 1, 2};
+  id_chunk.weights = {1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f};
+  id_chunk.biases = {0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
+
+  Chunk sparse_chunk1;
+  sparse_chunk1.type = CHUNK_SPARSE;
+  sparse_chunk1.num_nodes = LAYER1_SPARSE_SIZE;
+  sparse_chunk1.transfer_function = LEAKY_RELU;
+  sparse_chunk1.width = LAYER1_SPARSE_SIZE;
+  sparse_chunk1.height = 1;
+  sparse_chunk1.channels = 1;
+  sparse_chunk1.span_start = 0;
+  sparse_chunk1.span_size = INPUT_SIZE;
+  sparse_chunk1.indices_per_node = 2;
+  for (int i = 0; i < LAYER1_SPARSE_SIZE; i++) {
+    // Leave out one node.
+    switch (i % 3) {
+    default:
+    case 0:
+      sparse_chunk1.indices.push_back(0);
+      sparse_chunk1.indices.push_back(1);
+      break;
+    case 1:
+      sparse_chunk1.indices.push_back(0);
+      sparse_chunk1.indices.push_back(2);
+      break;
+    case 2:
+      sparse_chunk1.indices.push_back(1);
+      sparse_chunk1.indices.push_back(2);
+      break;
+    }
+  }
+  sparse_chunk1.weights = std::vector<float>(
+      LAYER1_SPARSE_SIZE * sparse_chunk1.indices_per_node,
+      0.0f);
+  sparse_chunk1.biases = std::vector<float>(LAYER1_SPARSE_SIZE, 0.0f);
+
+  static constexpr int LAYER2_SIZE = 256;
+  Chunk dense_chunk2;
+  dense_chunk2.type = CHUNK_DENSE;
+  dense_chunk2.num_nodes = LAYER2_SIZE;
+  dense_chunk2.transfer_function = SIGMOID;
+  dense_chunk2.width = LAYER2_SIZE;
+  dense_chunk2.height = 1;
+  dense_chunk2.channels = 1;
+  dense_chunk2.span_start = 0;
+  dense_chunk2.span_size = LAYER1_SIZE;
+  dense_chunk2.indices_per_node = LAYER1_SIZE;
+  dense_chunk2.indices = {};
+  dense_chunk2.weights = std::vector<float>(LAYER2_SIZE * LAYER1_SIZE, 0.0f);
+  dense_chunk2.biases = std::vector<float>(LAYER2_SIZE, 0.0f);
+
+  Layer input_layer;
+  input_layer.num_nodes = INPUT_SIZE;
+  input_layer.chunks = {input_chunk};
+
+  Layer real_layer1;
+  real_layer1.num_nodes = LAYER1_SIZE;
+  real_layer1.chunks = {id_chunk, sparse_chunk1};
+
+  Layer real_layer2;
+  real_layer2.num_nodes = LAYER2_SIZE;
+  real_layer2.chunks = {dense_chunk2};
+
+  Network net({input_layer, real_layer1, real_layer2});
+  net.NaNCheck(__func__);
+
+  CHECK(net.layers.size() == 3);
+  CHECK(net.layers[0].chunks.size() == 1);
+  CHECK(net.layers[1].chunks.size() == 2);
+  CHECK(net.layers[2].chunks.size() == 1);
+
+  auto f = [](const std::vector<float> &input) {
+      CHECK(input.size() == 3);
+      static_assert(INPUT_SIZE == 3);
+      const bool a = input[0] > 0.5f;
+      const bool b = input[1] > 0.5f;
+      const bool c = input[2] > 0.5f;
+      std::vector<float> out;
+      static_assert(LAYER2_SIZE == 256);
+      out.reserve(256);
+      for (int i = 0; i < 256; i++) {
+        // The truth table is a 2 * 2 * 2 cube with 8 cells.
+        // There are 2^8 ways to assign truth values to this.
+        // The 8 bits of i give us the values in each cell,
+        // so just figure out which bit to look at.
+        int bit = (a ? 4 : 0) | (b ? 2 : 0) | (c ? 1 : 0);
+        bool value = 0 != (i & (1 << bit));
+        out.push_back(value ? 1.0f : 0.0f);
+      }
+      return out;
+    };
+
+  return TrainNet{
+    .name = "All 256 boolean functions of 3 variables. Two dense layers.",
+    .net = net,
+    .f = f,
+    .boolean_problem = true,
+  };
+}

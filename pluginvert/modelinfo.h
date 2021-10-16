@@ -22,12 +22,13 @@ struct ModelInfo {
       std::optional<float> bias_bound_low = std::nullopt,
       std::optional<float> bias_bound_high = std::nullopt);
 
-  // Generate an image of the individual weights on a single layer. The weights
+  // Generate an image of the individual weights on a single chunk. The weights
   // are plotted in 2D, as though dense. The number of indices on
-  // the layer and its previous layer determine the dimensions.
-  // layer_idx is an index into net's Layers (0 is the first hidden layer).
-  static ImageRGBA LayerWeights(
-      const Network &net, int layer_idx,
+  // the chunk and the previous layer determine the dimensions.
+  // layer_idx is an index into net's Layers, and
+  // chunk_idx is an index into that layer's chunks.
+  static ImageRGBA ChunkWeights(
+      const Network &net, int layer_idx, int chunk_idx,
       // In diagnostic mode, draw unreferenced cells, small nonzero
       // weights, and missing (sparse) inputs distinctly; it's easier
       // to see structural issues this way. Otherwise, draw the matrix

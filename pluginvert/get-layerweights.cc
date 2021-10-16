@@ -20,17 +20,20 @@ int main(int argc, char **argv) {
 
   // Try loading from disk; null on failure.
   printf("Load network from %s...\n", modelfile.c_str());
-  std::unique_ptr<Network> net(Network::ReadNetworkBinary(modelfile));
+  std::unique_ptr<Network> net(Network::ReadFromFile(modelfile));
 
   CHECK(net.get() != nullptr) << modelfile;
 
-  for (int i = 0; i < net->layers.size(); i++) {
-    const ImageRGBA img = ModelInfo::LayerWeights(*net, i, false);
+  for (int i = 1; i < net->layers.size(); i++) {
+    const Layer &layer = net->layers[i];
+    for (int c = 0; c < layer.chunks.size(); c++) {
+      const ImageRGBA img = ModelInfo::ChunkWeights(*net, i, c, false);
 
-    const string outfile = StringPrintf("%s-layer%d.png",
-                                        outputbase.c_str(), i);
-    img.Save(outfile);
-    printf("Wrote %s.\n", outfile.c_str());
+      const string outfile = StringPrintf("%s-layer%d.%d.png",
+                                          outputbase.c_str(), i, c);
+      img.Save(outfile);
+      printf("Wrote %s.\n", outfile.c_str());
+    }
   }
 
   return 0;

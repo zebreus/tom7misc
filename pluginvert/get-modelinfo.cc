@@ -18,13 +18,13 @@ int main(int argc, char **argv) {
 
   // Try loading from disk; null on failure.
   printf("Load network from %s...\n", modelfile.c_str());
-  std::unique_ptr<Network> net(Network::ReadNetworkBinary(modelfile));
+  std::unique_ptr<Network> net(Network::ReadFromFile(modelfile));
 
   CHECK(net.get() != nullptr) << modelfile;
 
   // Get histogram of weights per layer.
   // Only layers with inputs (i.e. not the input layer) have weights.
-  const int num_histos = net->num_layers;
+  const int num_histos = net->layers.size() - 1;
 
   static constexpr int HISTOW = 800;
   static constexpr int HISTOH = 220;
@@ -49,37 +49,35 @@ int main(int argc, char **argv) {
 
   strftime(dates, 127, "%d %b %Y  %H:%M", localtime(&tt));
   vector<string> lines = {
-    StringPrintf("%s  round %lld   examples %lld   bytes %lld   real layers %d",
+    StringPrintf("%s  round %lld   examples %lld   bytes %lld   layers %d",
                  dates,
-                 net->rounds, net->examples, net->Bytes(), net->num_layers),
-    StringPrintf("  Input: %dx%dx%d = %d                %lld total params",
-                 net->width[0], net->height[0], net->channels[0], net->num_nodes[0],
+                 net->rounds, net->examples, net->Bytes(), net->layers.size()),
+    StringPrintf("                                      %lld total params",
                  net->TotalParameters()),
   };
 
-  for (int layer_idx = 0; layer_idx < net->num_layers; layer_idx++) {
-    const Network::Layer &layer = net->layers[layer_idx];
-    const int width = net->width[layer_idx + 1];
-    const int height = net->height[layer_idx + 1];
-    const int channels = net->channels[layer_idx + 1];
-    const int num_nodes = net->num_nodes[layer_idx + 1];
-    const int ipn = layer.indices_per_node;
+  for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {
+    const Layer &layer = net->layers[layer_idx];
+    string line = StringPrintf("%d: %d nodes; ", layer_idx, layer.num_nodes);
+    for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
+      const Chunk &chunk = layer.chunks[chunk_idx];
+      StringAppendF(&line, "%sx%d ",
+                    ChunkTypeName(chunk.type), chunk.num_nodes);
 
-    string types =
-      layer.type == LAYER_DENSE ? (string)"DENSE" :
-      layer.type == LAYER_SPARSE ? (string)"SPARSE" :
-      layer.type == LAYER_CONVOLUTION_ARRAY ?
-      StringPrintf("CONVx%d from %dx%d pat %dx%d +%dx%d",
-                   layer.num_features,
-                   layer.src_width, layer.src_height,
-                   layer.pattern_width, layer.pattern_height,
-                   layer.occurrence_x_stride, layer.occurrence_y_stride) :
-      "???";
-
-    lines.push_back(
-        StringPrintf("Layer %d: %dx%dx%d = %d (%s). ipn %d",
-                     layer_idx, width, height, channels, num_nodes,
-                     types.c_str(), ipn));
+      /*
+      string types =
+        layer.type == LAYER_DENSE ? (string)"DENSE" :
+        layer.type == LAYER_SPARSE ? (string)"SPARSE" :
+        layer.type == LAYER_CONVOLUTION_ARRAY ?
+        StringPrintf("CONVx%d from %dx%d pat %dx%d +%dx%d",
+                     layer.num_features,
+                     layer.src_width, layer.src_height,
+                     layer.pattern_width, layer.pattern_height,
+                     layer.occurrence_x_stride, layer.occurrence_y_stride) :
+        "???";
+      */
+    }
+    lines.push_back(std::move(line));
   }
 
   const int TOP = 20 * lines.size();

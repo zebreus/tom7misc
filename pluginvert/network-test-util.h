@@ -76,6 +76,13 @@ struct NetworkTestUtil {
 
   // F(x) = x. One sparse node.
   static TrainNet LearnTrivialIdentitySparse();
+  static TrainNet LearnTrivialIdentityDense();
+  static TrainNet LearnTrivialIdentityConvolution();
+
+  // All Boolean functions of three variables (2^(2^3) many), with two
+  // dense layers.
+  static TrainNet LearnBoolean();
+
 };
 
 

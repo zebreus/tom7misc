@@ -423,20 +423,32 @@ void Network::StructuralCheck() const {
         CHECK(chunk.indices.size() == chunk.num_nodes * chunk.indices_per_node);
         // Pigeonhole
         CHECK(chunk.indices_per_node <= chunk.span_size);
+
+        // TODO: Similar test for CHUNK_CONVOLUTION_ARRAY
+        for (int node = 0; node < chunk.num_nodes; node++) {
+          std::unordered_set<uint32> seen;
+          seen.reserve(chunk.indices_per_node);
+          for (int i = 0; i < chunk.indices_per_node; i++) {
+            int idx = chunk.indices[node * chunk.indices_per_node + i];
+            CHECK(!seen.contains(idx)) << "Duplicate index: " << idx;
+            seen.insert(idx);
+          }
+        }
+        CHECK(chunk.weights.size() == chunk.indices.size());
+        CHECK(chunk.biases.size() == chunk.num_nodes);
       } else if (chunk.type == CHUNK_DENSE) {
         // Not stored for dense layers.
         CHECK(chunk.indices.empty());
         CHECK(chunk.indices_per_node == chunk.span_size);
+        CHECK(chunk.weights.size() == chunk.indices_per_node * chunk.num_nodes);
+        CHECK(chunk.biases.size() == chunk.num_nodes);
       }
 
       // Check indices are in bounds. Indices are into the layer (not the span),
       // but must be in the range of the span.
-      std::unordered_set<uint32> seen;
       for (const uint32 idx : chunk.indices) {
         CHECK(idx >= chunk.span_start);
         CHECK(idx < chunk.span_start + chunk.span_size);
-        CHECK(!seen.contains(idx)) << "Duplicate index: " << idx;
-        seen.insert(idx);
       }
 
       if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
