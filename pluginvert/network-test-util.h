@@ -43,8 +43,10 @@ struct NetworkTestUtil {
     // Weights and biases initialized to zero.
     Network net;
     std::function<std::vector<float>(const std::vector<float>&)> f;
-    // If true, inputs should be only 0.0f or 1.0f.
-    bool boolean_problem = false;
+    // If true, inputs should just be 0.0 or 1.0.
+    bool boolean_input = false;
+    // If true, outputs should be treated as false/true with a cutoff of 0.5.
+    bool boolean_output = false;
 
     int NumInputs() const;
     int NumOutputs() const;
@@ -83,6 +85,12 @@ struct NetworkTestUtil {
   // dense layers.
   static TrainNet LearnBoolean();
 
+  // Count ones with a single dense layer.
+  static TrainNet LearnCountOnesDense();
+
+  // 2x1 convolution that should be able to learn to count 0-1 and 1-0
+  // edges in a bit string.
+  static TrainNet LearnCountEdges();
 };
 
 

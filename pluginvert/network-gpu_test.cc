@@ -14,6 +14,7 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "threadutil.h"
+#include "image.h"
 
 using namespace std;
 
@@ -149,10 +150,21 @@ static void TrainTest(TrainNet train_net,
                       int examples_per_round,
                       // per round, not example
                       float learning_rate,
+                      float avg_loss_threshold,
                       int max_parallelism) {
   // 0, 1, 2
-  static constexpr int VERBOSE = 0;
+  static constexpr int VERBOSE = 1;
+  static constexpr bool SAVE_INTERMEDIATE = true;
   const float example_learning_rate = learning_rate / (float)examples_per_round;
+
+  // XXX!
+  std::unique_ptr<ImageRGBA> image;
+  constexpr int IMAGE_WIDTH = 2000;
+  constexpr int IMAGE_HEIGHT = 1000;
+  constexpr int IMAGE_EVERY = 1;
+  int image_x = 0;
+  image.reset(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
+  image->Clear32(0x000000FF);
 
   printf("\n--------------------------\n"
          "[Train] Train net: %s\n", train_net.name.c_str());
@@ -195,10 +207,31 @@ static void TrainTest(TrainNet train_net,
     for (int i = 0; i < training.size(); i++) {
       std::vector<float> inputs;
       inputs.reserve(train_net.NumInputs());
-      for (int j = 0; j < train_net.NumInputs(); j++) {
-        if (train_net.boolean_problem) {
-          inputs.push_back(rc.Byte() < 128 ? 1.0f : 0.0f);
-        } else {
+
+      if (train_net.boolean_input) {
+        // For boolean problems, a combination of random
+        // bit-strings and sparse ones.
+        switch (rc.Byte() & 1) {
+        default:
+        case 0:
+          for (int j = 0; j < train_net.NumInputs(); j++) {
+            inputs.push_back(rc.Byte() < 128 ? 1.0f : 0.0f);
+          }
+          break;
+        case 1: {
+          // Choose a threshold, which yields strings biased
+          // towards 0 or 1.
+          const uint8 threshold = rc.Byte();
+          for (int j = 0; j < train_net.NumInputs(); j++) {
+            inputs.push_back(rc.Byte() < threshold ? 1.0f : 0.0f);
+          }
+          break;
+        }
+        }
+      } else {
+        // Could perhaps consider other distributions? Or the
+        // problem could specify it?
+        for (int j = 0; j < train_net.NumInputs(); j++) {
           inputs.push_back(gauss.Next());
         }
       }
@@ -314,30 +347,63 @@ static void TrainTest(TrainNet train_net,
     average_inc /= losses.size();
 
     total_examples += examples_per_round;
-    double total_sec = train_timer.MS() / 1000.0;
-    double eps = total_examples / total_sec;
+    const double total_sec = train_timer.MS() / 1000.0;
+    const double eps = total_examples / total_sec;
 
-    // Parameter for termination?
-    if (average_loss < 0.0001f) {
+    // XXX
+    if (image.get() != nullptr && (iter % IMAGE_EVERY == 0) &&
+        image_x < image->Width()) {
+      net_gpu->ReadFromGPU();
+      CHECK(net.layers.size() > 0);
+      CHECK(net.layers[1].chunks.size() == 1);
+      // x axis
+      auto ToScreenY = [](float w) {
+          int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
+          int y = IMAGE_HEIGHT - yrev;
+          return y;
+        };
+      image->BlendPixel32(image_x, ToScreenY(0), 0xCCCCFFFF);
+      for (float w : net.layers[1].chunks[0].weights) {
+        // maybe better to AA this?
+        image->BlendPixel32(image_x, ToScreenY(w), 0xFFFFFF20);
+      }
+
+      CHECK(net.layers[1].chunks[0].biases.size() == 1);
+      float b = net.layers[1].chunks[0].biases[0];
+      image->BlendPixel32(image_x, ToScreenY(b), 0xFF7777A0);
+
+      image_x++;
+      if ((image_x % 100 == 0) || image_x == image->Width()) {
+        image->Save("train-image.png");
+        printf("Wrote train-image.png\n");
+      }
+    }
+
+    const bool finished =
+      train_net.boolean_output ? max_inc == 0 : average_loss < avg_loss_threshold;
+
+    if (SAVE_INTERMEDIATE && (finished || iter == 1000 || iter % 5000 == 0)) {
+      net_gpu->ReadFromGPU();
+      const string file = StringPrintf("gpu-test-net-%d.val", iter);
+      net.SaveToFile(file);
+      if (VERBOSE)
+        printf("Wrote %s\n", file.c_str());
+    }
+
+    // Parameter for average_loss termination?
+    if (finished) {
       printf("Successfully trained!\n");
       return;
     } else {
       if (VERBOSE || (iter % 100 == 0)) {
         printf("%d: %.3f < %.3f < %.3f", iter,
                min_loss, average_loss, max_loss);
-        if (train_net.boolean_problem) {
+        if (train_net.boolean_output) {
           printf("  |  %d < %.3f < %d",
                  min_inc, average_inc, max_inc);
         }
         printf(" (%.2f eps)\n", eps);
       }
-    }
-
-    if (iter == 1000 || iter % 5000 == 0) {
-      net_gpu->ReadFromGPU();
-      const string file = StringPrintf("gpu-test-net-%d.val", iter);
-      net.SaveToFile(file);
-      printf("Wrote %s\n", file.c_str());
     }
   }
 
@@ -370,19 +436,40 @@ int main(int argc, char **argv) {
 
   #if 0
   TrainTest(NetworkTestUtil::LearnTrivialIdentitySparse(),
-            1000, 1000, 1.0f, 4);
+            1000, 1000, 1.0f, 0.0001f, 4);
   TrainTest(NetworkTestUtil::LearnTrivialIdentityDense(),
-            1000, 1000, 1.0f, 4);
+            1000, 1000, 1.0f, 0.0001f, 4);
   TrainTest(NetworkTestUtil::LearnTrivialIdentityConvolution(),
-            1000, 1000, 1.0f, 4);
-  #endif
+            1000, 1000, 1.0f, 0.0001f, 4);
   // Smaller batch size since there are only 2^8 possible inputs.
+  // This should converge to zero (boolean) errors after about
+  // 1000 rounds; the absolute error drops to like ~4 after many
+  // thousand rounds.
   TrainTest(NetworkTestUtil::LearnBoolean(),
-            100000, 54, 0.01f, 4);
-  // 16 dense, 256 dense
-  // After 13400 rounds: 13400: 4.809 < 19.069 < 33.299
-  // 16 dense + 3 id, 256 dense
-  // After 10000 rounds: 10000: 8.101 < 12.146 < 14.820
+            2000, 54, 0.01f, 0.0001f, 4);
+  #endif
+
+  // Interesting example.
+  // This has a very simple solution (bias=0, all weights=1), but
+  // the average case (bias = input size / 2) is quite far from it;
+  // we spend most of the time trying to unlearn that initial
+  // bias. I wonder if this is a case where "pre-training" might
+  // be useful.
+  TrainTest(NetworkTestUtil::LearnCountOnesDense(),
+            10000, 1000, 0.02f,
+            // Looks like it will eventually drop arbitrarily
+            // low if you wait for it. Gets to this threshold
+            // before about 600 rounds.
+            0.100f,
+            4);
+
+  #if 0
+  // Doesn't quite work yet
+  TrainTest(NetworkTestUtil::LearnCountEdges(),
+            10000, 1000, 0.01f,
+            0.100f,
+            4);
+  #endif
 
   delete cl;
 

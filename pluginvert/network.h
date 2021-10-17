@@ -155,6 +155,9 @@ struct Chunk {
   // level)
   // For DENSE chunks, empty.
   // For INPUT chunks, ignored.
+  //
+  // These can be in any order, but it is significantly faster if
+  // they are sorted from low to high.
   std::vector<uint32_t> indices;
 
   // For SPARSE and DENSE chunks, this is parallel to indices:

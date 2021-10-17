@@ -465,7 +465,10 @@ void Network::StructuralCheck() const {
 
         CHECK(chunk.biases.size() == chunk.num_features);
         CHECK(chunk.weights.size() == chunk.num_features *
-              chunk.indices_per_node);
+              chunk.indices_per_node) << chunk.weights.size() <<
+          " weights but " << chunk.num_features << " features * " <<
+          chunk.indices_per_node << " ipn = " <<
+          (chunk.num_features * chunk.indices_per_node);
         CHECK(chunk.num_nodes % chunk.num_features == 0);
         CHECK(chunk.indices.size() ==
               (chunk.indices_per_node * chunk.num_nodes) /

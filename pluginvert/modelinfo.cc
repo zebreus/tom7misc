@@ -151,6 +151,13 @@ struct Histo {
 };
 }  // namespace
 
+static ImageRGBA ErrorImage(const string &message) {
+  ImageRGBA error((message.size() + 2) * 18, 24);
+  error.Clear32(0x000000FF);
+  error.BlendText2x32(9, 3, 0xA00000FF, message);
+  return error;
+}
+
 ImageRGBA ModelInfo::Histogram(
     const Network &net, int width, int height,
     std::optional<float> weight_bound_low,
@@ -358,12 +365,8 @@ static ImageRGBA ChunkWeightsSparseDense(
     bool diagnostic_mode) {
 
   if ((int64)chunk.num_nodes * (int64)prev_nodes > (int64)1000000) {
-    ImageRGBA error(440, 24);
-    error.Clear32(0x000000FF);
-    error.BlendText2x32(1, 1, 0xA00000FF,
-                        StringPrintf("Too big! %d x %d",
-                                     chunk.num_nodes, prev_nodes));
-    return error;
+    return ErrorImage(StringPrintf("Too big! %d x %d",
+                                   chunk.num_nodes, prev_nodes));
   }
 
   const int ipn = chunk.indices_per_node;
@@ -445,7 +448,8 @@ ImageRGBA ModelInfo::ChunkWeights(const Network &net,
   const int prev_nodes = net.layers[layer_idx - 1].num_nodes;
 
   if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
-    CHECK(false) << "Unimplemented for chunks!";
+    return ErrorImage(StringPrintf("Convolution %dx%d, unimplemented",
+                                   chunk.pattern_width, chunk.pattern_height));
     /*
     return ChunkWeightsConvolution(
         chunk, chunk_idx, prev_nodes, diagnostic_mode);
