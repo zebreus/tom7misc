@@ -28,5 +28,6 @@ void TestSimple() {
 
 int main(int argc, char **argv) {
   TestSimple();
+  printf("OK\n");
   return 0;
 }

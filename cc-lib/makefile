@@ -1,5 +1,5 @@
 
-default : heap_test.exe minmax-heap_test.exe rle_test.exe interval-tree_test.exe threadutil_test.exe color-util_test.exe textsvg_test.exe lines_test.exe image_test.exe util_test.exe randutil_test.exe json_test.exe arcfour_test.exe lastn-buffer_test.exe list-util_test.exe edit-distance_test.exe re2_test.exe webserver_test.exe stb_image_bench.exe process-util_test.exe stb_truetype_test.exe packrect_test.exe xml_test.exe mp3_test.exe top_test.exe bounds_test.exe $(TESTCOMPILE)
+default : heap_test.exe minmax-heap_test.exe rle_test.exe interval-tree_test.exe threadutil_test.exe color-util_test.exe textsvg_test.exe lines_test.exe image_test.exe util_test.exe randutil_test.exe json_test.exe arcfour_test.exe lastn-buffer_test.exe list-util_test.exe edit-distance_test.exe re2_test.exe webserver_test.exe stb_image_bench.exe process-util_test.exe stb_truetype_test.exe packrect_test.exe xml_test.exe mp3_test.exe top_test.exe bounds_test.exe optional-iterator_test.exe $(TESTCOMPILE)
 
 TESTCOMPILE=stb_image_write.o stb_image.o dr_wav.o bounds.o simpledxf.o bitbuffer.o
 
@@ -8,7 +8,7 @@ BASE=base/logging.o base/stringprintf.o
 # for 64 bits on windows
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-g++
-CXXFLAGS=-march=native -pipe -Wall -I. --std=c++17 -O3 -static -flto
+CXXFLAGS=-march=native -pipe -Wall -I. --std=c++20 -O3 -static -flto
 SOCK_LFLAGS= -lws2_32
 
 # Linux
@@ -120,5 +120,8 @@ top_test.exe : top.o top_test.o $(BASE)
 bounds_test.exe : bounds.o bounds_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+optional-iterator_test.exe : optional-iterator_test.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
-	rm -f *.o *.exe *.deleteme test-*.png
+	rm -f *.o *.exe *.deleteme test-*.png $(BASE) $(RE2_OBJECTS)

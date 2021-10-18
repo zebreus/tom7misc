@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-#ifndef UTIL_LOGGING_H_
-#define UTIL_LOGGING_H_
+#ifndef RE2_UTIL_LOGGING_H_
+#define RE2_UTIL_LOGGING_H_
 
 // Simplified version of Google's logging.
 
@@ -25,7 +25,7 @@
 #define DCHECK_GT(val1, val2) assert((val1) > (val2))
 
 // Always-on checking
-#define CHECK(x)        if(x){}else LogMessageFatal(__FILE__, __LINE__).stream() << "Check failed: " #x
+#define CHECK(x)        if(x){}else LogMessageRe2Fatal(__FILE__, __LINE__).stream() << "Check failed: " #x
 #define CHECK_LT(x, y)  CHECK((x) < (y))
 #define CHECK_GT(x, y)  CHECK((x) > (y))
 #define CHECK_LE(x, y)  CHECK((x) <= (y))
@@ -33,10 +33,10 @@
 #define CHECK_EQ(x, y)  CHECK((x) == (y))
 #define CHECK_NE(x, y)  CHECK((x) != (y))
 
-#define LOG_INFO LogMessage(__FILE__, __LINE__)
-#define LOG_WARNING LogMessage(__FILE__, __LINE__)
-#define LOG_ERROR LogMessage(__FILE__, __LINE__)
-#define LOG_FATAL LogMessageFatal(__FILE__, __LINE__)
+#define LOG_INFO LogMessageRe2(__FILE__, __LINE__)
+#define LOG_WARNING LogMessageRe2(__FILE__, __LINE__)
+#define LOG_ERROR LogMessageRe2(__FILE__, __LINE__)
+#define LOG_FATAL LogMessageRe2Fatal(__FILE__, __LINE__)
 #define LOG_QFATAL LOG_FATAL
 
 // It seems that one of the Windows header files defines ERROR as 0.
@@ -54,9 +54,9 @@
 
 #define VLOG(x) if((x)>0){}else LOG_INFO.stream()
 
-class LogMessage {
+class LogMessageRe2 {
  public:
-  LogMessage(const char* file, int line)
+  LogMessageRe2(const char* file, int line)
       : flushed_(false) {
     stream() << file << ":" << line << ": ";
   }
@@ -67,7 +67,7 @@ class LogMessage {
     if (fwrite(s.data(), 1, n, stderr) < n) {}  // shut up gcc
     flushed_ = true;
   }
-  ~LogMessage() {
+  ~LogMessageRe2() {
     if (!flushed_) {
       Flush();
     }
@@ -78,32 +78,32 @@ class LogMessage {
   bool flushed_;
   std::ostringstream str_;
 
-  LogMessage(const LogMessage&) = delete;
-  LogMessage& operator=(const LogMessage&) = delete;
+  LogMessageRe2(const LogMessageRe2&) = delete;
+  LogMessageRe2& operator=(const LogMessageRe2&) = delete;
 };
 
-// Silence "destructor never returns" warning for ~LogMessageFatal().
+// Silence "destructor never returns" warning for ~LogMessageRe2Fatal().
 // Since this is a header file, push and then pop to limit the scope.
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable: 4722)
 #endif
 
-class LogMessageFatal : public LogMessage {
+class LogMessageRe2Fatal : public LogMessageRe2 {
  public:
-  LogMessageFatal(const char* file, int line)
-      : LogMessage(file, line) {}
-  ATTRIBUTE_NORETURN ~LogMessageFatal() {
+  LogMessageRe2Fatal(const char* file, int line)
+      : LogMessageRe2(file, line) {}
+  ATTRIBUTE_NORETURN ~LogMessageRe2Fatal() {
     Flush();
     abort();
   }
  private:
-  LogMessageFatal(const LogMessageFatal&) = delete;
-  LogMessageFatal& operator=(const LogMessageFatal&) = delete;
+  LogMessageRe2Fatal(const LogMessageRe2Fatal&) = delete;
+  LogMessageRe2Fatal& operator=(const LogMessageRe2Fatal&) = delete;
 };
 
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 
-#endif  // UTIL_LOGGING_H_
+#endif  // RE2_UTIL_LOGGING_H_
