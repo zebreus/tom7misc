@@ -159,9 +159,9 @@ static void TrainTest(TrainNet train_net,
 
   // XXX!
   std::unique_ptr<ImageRGBA> image;
-  constexpr int IMAGE_WIDTH = 2000;
+  constexpr int IMAGE_WIDTH = 3000;
   constexpr int IMAGE_HEIGHT = 1000;
-  constexpr int IMAGE_EVERY = 1;
+  constexpr int IMAGE_EVERY = 2;
   int image_x = 0;
   image.reset(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
   image->Clear32(0x000000FF);
@@ -350,27 +350,39 @@ static void TrainTest(TrainNet train_net,
     const double total_sec = train_timer.MS() / 1000.0;
     const double eps = total_examples / total_sec;
 
-    // XXX
+    net.examples += examples_per_round;
+    net.rounds++;
+
+    // XXX make it possible to select what layer/chunk is graphed?
     if (image.get() != nullptr && (iter % IMAGE_EVERY == 0) &&
         image_x < image->Width()) {
       net_gpu->ReadFromGPU();
       CHECK(net.layers.size() > 0);
-      CHECK(net.layers[1].chunks.size() == 1);
+      const Layer &layer = net.layers.back();
+      CHECK(layer.chunks.size() > 0);
+      const Chunk &chunk = layer.chunks[0];
       // x axis
       auto ToScreenY = [](float w) {
           int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
           int y = IMAGE_HEIGHT - yrev;
           return y;
         };
-      image->BlendPixel32(image_x, ToScreenY(0), 0xCCCCFFFF);
-      for (float w : net.layers[1].chunks[0].weights) {
+      if (image_x & 1) {
+        image->BlendPixel32(image_x, ToScreenY(1), 0xCCFFCC40);
+        image->BlendPixel32(image_x, ToScreenY(0), 0xCCCCFFFF);
+        image->BlendPixel32(image_x, ToScreenY(-1), 0xFFCCCC40);
+      }
+      for (float w : chunk.weights) {
         // maybe better to AA this?
         image->BlendPixel32(image_x, ToScreenY(w), 0xFFFFFF20);
       }
 
-      CHECK(net.layers[1].chunks[0].biases.size() == 1);
-      float b = net.layers[1].chunks[0].biases[0];
-      image->BlendPixel32(image_x, ToScreenY(b), 0xFF7777A0);
+      uint8 bias_alpha =
+        std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
+
+      for (float b : chunk.biases) {
+        image->BlendPixel32(image_x, ToScreenY(b), 0xFF777700 | bias_alpha);
+      }
 
       image_x++;
       if ((image_x % 100 == 0) || image_x == image->Width()) {
@@ -449,6 +461,7 @@ int main(int argc, char **argv) {
             2000, 54, 0.01f, 0.0001f, 4);
   #endif
 
+  #if 0
   // Interesting example.
   // This has a very simple solution (bias=0, all weights=1), but
   // the average case (bias = input size / 2) is quite far from it;
@@ -462,6 +475,20 @@ int main(int argc, char **argv) {
             // before about 600 rounds.
             0.100f,
             4);
+  #endif
+
+  TrainTest(NetworkTestUtil::LearnCountOnesConvConvDense(),
+            10000, 1000, 0.001f,
+            0.100f,
+            4);
+
+  #if 0
+  // Doesn't work yet
+  TrainTest(NetworkTestUtil::LearnCountOnesConvDense(),
+            10000, 1000, 0.005f,
+            0.100f,
+            4);
+  #endif
 
   #if 0
   // Doesn't quite work yet

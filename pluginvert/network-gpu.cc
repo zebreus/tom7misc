@@ -604,6 +604,9 @@ void DecayWeightsCL::Decay(NetworkGPU *net_gpu, int layer_idx) {
   for (int chunk_idx = 0;
        chunk_idx < net.layers[layer_idx].chunks.size();
        chunk_idx++) {
+    const Chunk &cpu_chunk = net.layers[layer_idx].chunks[chunk_idx];
+    if (cpu_chunk.fixed) continue;
+
     NetworkGPU::GPUChunk &gpu_chunk =
       net_gpu->layers[layer_idx].chunks[chunk_idx];
     const int num_weights =
@@ -677,9 +680,11 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
         chunk.num_occurrences_across *
         chunk.num_occurrences_down;
 
+      // PERF: Don't even compile a kernel if the chunk is fixed.
+
       string kernel_src =
         StringPrintf(// TODO: make configurable, but
-                     // find a betetr way to specify this tri-state
+                     // find a better way to specify this tri-state
                      // (noclip, clip, constrain)
                      "#define NOCLIP false\n"
                      "#define CONSTRAIN true\n"
@@ -742,6 +747,9 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
 
   for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
     const Chunk &chunk = layer.chunks[chunk_idx];
+    // For fixed chunks, just skip the update step.
+    if (chunk.fixed) continue;
+
     NetworkGPU::GPUChunk &gpu_chunk = gpu_layer.chunks[chunk_idx];
     ChunkKernel &ck = layer_kernels[layer_idx][chunk_idx];
 

@@ -51,6 +51,9 @@ enum ChunkType {
   // the output.
   CHUNK_CONVOLUTION_ARRAY = 3,
 
+  // PERF: Perhaps should support native 1:1 COPY and/or PERMUTATION
+  // chunks, which imply fixed?
+
   NUM_CHUNK_TYPES,
 };
 
@@ -181,6 +184,13 @@ struct Chunk {
   int channels = 1;
 
   RenderStyle style = RENDERSTYLE_FLAT;
+
+  // TODO:
+  // If true, the chunk's weights and biases should not be updated
+  // during training. This can be useful for custom architectures
+  // where we want to preserve some internal structure, especially
+  // for copies and permutations.
+  bool fixed = false;
 };
 
 struct Layer {

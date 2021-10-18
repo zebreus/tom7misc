@@ -88,6 +88,12 @@ struct NetworkTestUtil {
   // Count ones with a single dense layer.
   static TrainNet LearnCountOnesDense();
 
+  // First a 4x1 convolution to sum, then dense over the 20 remaining.
+  static TrainNet LearnCountOnesConvDense();
+
+  // 80 through 4x1 -> 20 through 5x1 -> 4 through dense -> 1
+  static TrainNet LearnCountOnesConvConvDense();
+
   // 2x1 convolution that should be able to learn to count 0-1 and 1-0
   // edges in a bit string.
   static TrainNet LearnCountEdges();

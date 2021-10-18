@@ -1152,7 +1152,10 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
              chunk_idx < net->layers[layer].chunks.size();
              chunk_idx++) {
           Chunk *chunk = &net->layers[layer].chunks[chunk_idx];
-          // XXX this should be indicated somehow else.
+          if (chunk->fixed)
+            return;
+
+          // XXX instead rely on 'fixed' field.
           if (chunk->transfer_function == IDENTITY)
             return;
 
