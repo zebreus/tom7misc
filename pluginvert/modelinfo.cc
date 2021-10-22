@@ -303,24 +303,23 @@ std::pair<int, int> MakeRectangle(int count) {
 #endif
 }
 
-#if 0
-static ImageRGBA LayerWeightsConvolution(
-    const Network::Layer &layer,
+static ImageRGBA ChunkWeightsConvolution(
+    const Chunk &chunk,
     int layer_idx,
+    int chunk_idx,
     int prev_nodes,
-    int num_nodes,
     bool diagnostic_mode) {
-  CHECK(layer.type == LAYER_CONVOLUTION_ARRAY);
+  CHECK(chunk.type == CHUNK_CONVOLUTION_ARRAY);
 
   // For convolution layers, we show each feature in its 2D
   // orientation.
   const auto [features_across, features_down] =
-    MakeRectangle(layer.num_features);
-  int pat_width = layer.pattern_width;
-  int pat_height = layer.pattern_height;
+    MakeRectangle(chunk.num_features);
+  int pat_width = chunk.pattern_width;
+  int pat_height = chunk.pattern_height;
 
   const int ipn = pat_width * pat_height;
-  CHECK(layer.indices_per_node == ipn);
+  CHECK(chunk.indices_per_node == ipn);
 
   const int padding = 2;
   int width = (pat_width + padding) * features_across;
@@ -334,7 +333,7 @@ static ImageRGBA LayerWeightsConvolution(
       const int feature_num = fy * features_across + fx;
       const int weights_start = feature_num * ipn;
 
-      if (feature_num < layer.num_features) {
+      if (feature_num < chunk.num_features) {
         int xpos = (pat_width + padding) * fx;
         int ypos = (pat_height + padding) * fy;
 
@@ -343,7 +342,7 @@ static ImageRGBA LayerWeightsConvolution(
             const int pidx = py * pat_width + px;
 
             const float w =
-              layer.weights[weights_start + pidx];
+              chunk.weights[weights_start + pidx];
 
             img.SetPixel32(xpos + px, ypos + py,
                            GetWeightColor(w, diagnostic_mode));
@@ -355,7 +354,6 @@ static ImageRGBA LayerWeightsConvolution(
 
   return img;
 }
-#endif
 
 static ImageRGBA ChunkWeightsSparseDense(
     const Chunk &chunk,
@@ -448,12 +446,12 @@ ImageRGBA ModelInfo::ChunkWeights(const Network &net,
   const int prev_nodes = net.layers[layer_idx - 1].num_nodes;
 
   if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
+    /*
     return ErrorImage(StringPrintf("Convolution %dx%d, unimplemented",
                                    chunk.pattern_width, chunk.pattern_height));
-    /*
-    return ChunkWeightsConvolution(
-        chunk, chunk_idx, prev_nodes, diagnostic_mode);
     */
+    return ChunkWeightsConvolution(
+        chunk, layer_idx, chunk_idx, prev_nodes, diagnostic_mode);
   } else {
     return ChunkWeightsSparseDense(
         chunk, layer_idx, chunk_idx, prev_nodes, diagnostic_mode);

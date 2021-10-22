@@ -983,7 +983,11 @@ static Network *ReadFromReader(Reader *r) {
 Network *Network::ReadFromFile(const string &filename,
                                bool verbose) {
   std::unique_ptr<Reader> r(FileReader::Create(filename, verbose));
-  CHECK(r.get() != nullptr) << filename;
+  if (r.get() == nullptr) {
+    if (verbose)
+      printf("Couldn't read %s\n", filename.c_str());
+    return nullptr;
+  }
   return ReadFromReader(r.get());
 }
 

@@ -123,5 +123,9 @@ wikipedia_test.exe : wikipedia_test.o wikipedia.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+learn-words.exe : learn-words.o network-gpu.o clutil.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 clean :
 	rm -f *.o $(UTIL_OBJECTS) $(SDLUTILOBJECTS) $(FCEULIBOBJECTS) $(OBJECTS) *.exe

@@ -256,6 +256,10 @@ struct BackwardLayerCL {
   ~BackwardLayerCL();
 
   // Propagate errors from dst_layer to dst_layer-1. Runs both passes.
+  // PERF: If some prefix of the layers consist only of fixed chunks,
+  // then we don't need to propagate errors because we won't use them.
+  // This could be a big performance improvement if iteratively growing
+  // a model by adding layers at the end.
   void BackwardLayer(NetworkGPU *net_gpu,
                      TrainingRoundGPU *training_round,
                      int dst_layer);

@@ -92,6 +92,7 @@ struct NetworkTestUtil {
   static TrainNet LearnCountOnesConvDense();
 
   // 80 through 4x1 -> 20 through 5x1 -> 4 through dense -> 1
+  // (Note the dense layer is fixed, so this is kinda "cheating")
   static TrainNet LearnCountOnesConvConvDense();
 
   // 2x1 convolution that should be able to learn to count 0-1 and 1-0

@@ -762,7 +762,7 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
       chunk.num_occurrences_down;
     const float effective_learning_rate =
       (chunk.type == CHUNK_CONVOLUTION_ARRAY) ?
-      learning_rate * (1.0f / sqrtf((float)num_occurrences)) :
+      learning_rate * (1.0 / pow((float)num_occurrences, 0.25f)) :
       learning_rate;
 
     {
