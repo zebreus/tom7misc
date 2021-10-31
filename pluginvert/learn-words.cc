@@ -143,21 +143,95 @@ struct Wikibits {
     }
 
     printf("Done. All distinct words: %lld\n", counts.size());
-    distinct.reserve(counts.size());
+    cdf.reserve(counts.size());
     for (const auto &[s, c] : counts) {
-      distinct.emplace_back(s, c);
+      cdf.emplace_back(s, c);
     }
+
+    // Sort by descending frequency.
+    // Alphabetical to break ties is arbitrary, but better to
+    // have this be deterministic.
+    std::sort(cdf.begin(), cdf.end(),
+              [](const std::pair<string, int64> &a,
+                 const std::pair<string, int64> &b) {
+                if (a.second == b.second) {
+                  return a.first < b.first;
+                } else {
+                  return a.second > b.second;
+                }
+              });
+
+    // Count total mass, and replace count with count so far.
+    total_mass = 0;
+    for (auto &[s, c] : cdf) {
+      int64 old_count = c;
+      c = total_mass;
+      total_mass += old_count;
+    }
+
+    // Sanity check.
+    for (int64 i = 0; i < cdf.size(); i++) {
+      if (i > 0) {
+        CHECK(cdf[i].second > cdf[i - 1].second);
+      }
+      CHECK(cdf[i].second >= 0);
+      CHECK(cdf[i].second < total_mass);
+    }
+
+    for (int64 i = 0; i < 5 && i < cdf.size(); i++) {
+      const auto &[s, c] = cdf[i];
+      printf("%lld: %s\n", c, s.c_str());
+    }
+    printf("...\n");
+    for (int64 i = std::max((int64)0, (int64)cdf.size() - 5);
+         i < cdf.size(); i++) {
+      const auto &[s, c] = cdf[i];
+      printf("%lld: %s\n", c, s.c_str());
+    }
+
+    {
+      printf("0: %s\n", SampleAt(0).c_str());
+      if (cdf.size() > 5) {
+        int64 p = cdf[cdf.size() - 5].second;
+        printf("%lld: %s\n", p, SampleAt(p).c_str());
+      }
+    }
+
+    printf("CDF ready. Total mass: %lld\n", total_mass);
   }
 
   // XXX not thread-safe
-  string RandomWord() {
-    // XXX This should be weighted by frequency!
-    int64 pos = RandTo(&rc, distinct.size());
-    return distinct[pos].first;
+  // Samples among all distinct words with the same probability.
+  const string &RandomDistinctWord() {
+    int64 pos = RandTo(&rc, cdf.size());
+    return cdf[pos].first;
+  }
+
+  // XXX not thread safe
+  // Samples according to observed frequency.
+  const string &RandomWord() {
+    int64 pos = RandTo(&rc, total_mass);
+    return SampleAt(pos);
+  }
+
+private:
+  // For above. Must be in range.
+  const string &SampleAt(int64 pos) const {
+    auto it = std::lower_bound(cdf.begin(), cdf.end(),
+                               pos,
+                               [](const std::pair<string, int64> &elt,
+                                  int64 v) {
+                                 return elt.second < v;
+                               });
+    CHECK(it != cdf.end()) << "Bug! pos " << pos << " total " << total_mass;
+    return it->first;
   }
 
   std::unordered_map<string, int64> counts;
-  std::vector<std::pair<string, int64>> distinct;
+  // Words in arbitrary order, but with the cumulative frequency
+  // so far (of all words before this one).
+  std::vector<std::pair<string, int64>> cdf;
+  int64 total_mass = 0LL;
   ArcFour rc;
 };
 
