@@ -234,8 +234,8 @@ static void Train(Network *net) {
       std::vector<float> inputs(MAX_WORD_LEN * RADIX, 0.0f);
 
       string word = wikibits.RandomWord();
-      for (int j = 0; j < word.size() && j < MAX_WORD_LEN; j++) {
-        int c = j < word.size() ? word[j] - 'a' + 1 : 0;
+      for (int j = 0; j < MAX_WORD_LEN; j++) {
+        const int c = j < word.size() ? word[j] - 'a' + 1 : 0;
         inputs[j * RADIX + c] = 1.0f;
       }
       training[i]->LoadInput(inputs);

@@ -39,38 +39,7 @@ struct NetworkGPU {
 
   // Read the weights and biases (which is the only thing that can
   // change) from GPU back to the Network object. Not thread safe!
-  void ReadFromGPU() {
-    CHECK(net->layers.size() == layers.size());
-    for (int layer = 0; layer < net->layers.size(); layer++) {
-      Layer *cpu_layer = &net->layers[layer];
-      GPULayer *gpu_layer = &layers[layer];
-      CHECK(cpu_layer->chunks.size() == gpu_layer->chunks.size());
-      for (int chunk = 0; chunk < cpu_layer->chunks.size(); chunk++) {
-        Chunk *cpu_chunk = &cpu_layer->chunks[chunk];
-        GPUChunk *gpu_chunk = &gpu_layer->chunks[chunk];
-        ReadToZeroOk(gpu_chunk->weights, &cpu_chunk->weights);
-        ReadToZeroOk(gpu_chunk->biases, &cpu_chunk->biases);
-        ReadToZeroOk(gpu_chunk->weights_aux, &cpu_chunk->weights_aux);
-        ReadToZeroOk(gpu_chunk->biases_aux, &cpu_chunk->biases_aux);
-      }
-    }
-    clFinish(cl->queue);
-  }
-
-  // Like CopyBufferFromGPUTo, but don't wait for the command to finish.
-  // Also allows cl_mem to be 0, standing for an empty memory.
-  template<class T>
-  void ReadToZeroOk(cl_mem buf, std::vector<T> *vec) {
-    if (buf == 0)
-      return;
-    CHECK_SUCCESS(
-        clEnqueueReadBuffer(cl->queue, buf, CL_TRUE, 0,
-                            sizeof (T) * vec->size(),
-                            vec->data(),
-                            // No wait-list or event.
-                            0, nullptr,
-                            nullptr));
-  }
+  void ReadFromGPU();
 
   struct GPUChunk {
     // Empty memories are represented as 0 (invalid cl_mem), since opencl
@@ -104,6 +73,21 @@ struct NetworkGPU {
   CL *cl = nullptr;
   Network *net = nullptr;
  private:
+  // Like CopyBufferFromGPUTo, but don't wait for the command to finish.
+  // Also allows cl_mem to be 0, standing for an empty memory.
+  template<class T>
+  void ReadToZeroOk(cl_mem buf, std::vector<T> *vec) {
+    if (buf == 0)
+      return;
+    CHECK_SUCCESS(
+        clEnqueueReadBuffer(cl->queue, buf, CL_TRUE, 0,
+                            sizeof (T) * vec->size(),
+                            vec->data(),
+                            // No wait-list or event.
+                            0, nullptr,
+                            nullptr));
+  }
+
   DISALLOW_COPY_AND_ASSIGN(NetworkGPU);
 };
 
@@ -114,6 +98,8 @@ struct NetworkGPU {
 // allow us to run kernels across multiple examples at once. This could
 // be especially fruitful for layers aren't even using the full bandwidth
 // of the GPU.
+
+// PERF HERE!
 // (Should do this after we have good tests, and benchmark it!)
 struct TrainingRoundGPU {
   TrainingRoundGPU(CL *cl, const Network &net) : cl(cl), net(&net) {

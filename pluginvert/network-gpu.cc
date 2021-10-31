@@ -18,6 +18,7 @@
 
 using namespace std;
 
+
 NetworkGPU::NetworkGPU(CL *cl, Network *net) : cl(cl), net(net) {
   layers.resize(net->layers.size());
   for (int layer = 0; layer < net->layers.size(); layer++) {
@@ -82,6 +83,25 @@ NetworkGPU::~NetworkGPU() {
         CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.ii_indices));
     }
   }
+}
+
+
+void NetworkGPU::ReadFromGPU() {
+  CHECK(net->layers.size() == layers.size());
+  for (int layer = 0; layer < net->layers.size(); layer++) {
+    Layer *cpu_layer = &net->layers[layer];
+    GPULayer *gpu_layer = &layers[layer];
+    CHECK(cpu_layer->chunks.size() == gpu_layer->chunks.size());
+    for (int chunk = 0; chunk < cpu_layer->chunks.size(); chunk++) {
+      Chunk *cpu_chunk = &cpu_layer->chunks[chunk];
+      GPUChunk *gpu_chunk = &gpu_layer->chunks[chunk];
+      ReadToZeroOk(gpu_chunk->weights, &cpu_chunk->weights);
+      ReadToZeroOk(gpu_chunk->biases, &cpu_chunk->biases);
+      ReadToZeroOk(gpu_chunk->weights_aux, &cpu_chunk->weights_aux);
+      ReadToZeroOk(gpu_chunk->biases_aux, &cpu_chunk->biases_aux);
+    }
+  }
+  clFinish(cl->queue);
 }
 
 

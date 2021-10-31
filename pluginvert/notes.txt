@@ -408,3 +408,10 @@ hyperparameter...)
 
 Anyway, this is all pretty easy to implement; let's do...
 
+
+
+--------------------------------------------------
+
+learn-words
+
+fixed bug at round 17530, oops
