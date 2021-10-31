@@ -45,6 +45,14 @@ const char *ChunkTypeName(ChunkType lt) {
   }
 }
 
+const char *WeightUpdateName(WeightUpdate wu) {
+  switch (wu) {
+  case SGD: return "SGD";
+  case ADAM: return "ADAM";
+  default: return "??INVALID??";
+  }
+}
+
 // PERF: native_recip? native_exp? It's likely that we can tolerate
 // inaccuracy of certain sorts.
 const char *const Network::SIGMOID_FN =
@@ -404,6 +412,13 @@ void Network::StructuralCheck() const {
     for (const Chunk &chunk : layer.chunks) {
       CHECK(chunk.num_nodes ==
             chunk.width * chunk.height * chunk.channels);
+
+      if (chunk.weight_update == ADAM) {
+        CHECK(chunk.weights.size() * 2 ==
+              chunk.weights_aux.size());
+        CHECK(chunk.biases.size() * 2 ==
+              chunk.biases_aux.size());
+      }
     }
   }
 
@@ -492,7 +507,8 @@ void Network::StructuralCheck() const {
 
 Chunk Network::MakeDenseChunk(int num_nodes,
                               int span_start, int span_size,
-                              TransferFunction transfer_function) {
+                              TransferFunction transfer_function,
+                              WeightUpdate weight_update) {
   Chunk chunk;
   chunk.num_nodes = num_nodes;
   chunk.span_start = span_start;
@@ -502,6 +518,11 @@ Chunk Network::MakeDenseChunk(int num_nodes,
   chunk.transfer_function = transfer_function;
   chunk.weights.resize(num_nodes * span_size, 0.0f);
   chunk.biases.resize(num_nodes, 0.0f);
+  chunk.weight_update = weight_update;
+  if (weight_update == ADAM) {
+    chunk.weights.resize(num_nodes * span_size * 2, 0.0f);
+    chunk.biases_aux.resize(num_nodes * 2, 0.0f);
+  }
   chunk.width = num_nodes;
   chunk.height = 1;
   chunk.channels = 1;
@@ -705,7 +726,8 @@ struct VecReader : public Reader {
     return bytes[pos++];
   }
 
-  VecReader(const std::vector<uint8_t> &bytes, bool verbose = false) :
+  explicit VecReader(const std::vector<uint8_t> &bytes,
+                     bool verbose = false) :
     Reader("memory", verbose), bytes(bytes) {}
   const std::vector<uint8_t> &bytes;
   int64_t pos = 0;
@@ -781,7 +803,8 @@ struct VecWriter : public Writer {
     vec->push_back(b);
   }
 
-  VecWriter(std::vector<uint8_t> *vec, bool verbose = false) :
+  explicit VecWriter(std::vector<uint8_t> *vec,
+                     bool verbose = false) :
     Writer("memory", verbose), vec(vec) {}
 
   std::vector<uint8_t> *vec = nullptr;
@@ -829,6 +852,10 @@ static Network *ReadFromReader(Reader *r) {
       const int tf = r->Read32();
       CHECK(tf >= 0 && tf <= NUM_TRANSFER_FUNCTIONS) << tf;
       chunk.transfer_function = (TransferFunction)tf;
+      const int wu = r->Read32();
+      CHECK(wu >= 0 && wu <= NUM_WEIGHT_UPDATES) << wu;
+      chunk.weight_update = (WeightUpdate)wu;
+
       chunk.num_features = r->Read32();
       chunk.pattern_width = r->Read32();
       chunk.pattern_height = r->Read32();
@@ -879,6 +906,7 @@ static Network *ReadFromReader(Reader *r) {
         chunk.weights.resize(chunk.indices_per_node * chunk.num_features,
                              0.0f);
         chunk.biases.resize(chunk.num_features, 0.0f);
+
         break;
       }
 
@@ -908,15 +936,25 @@ static Network *ReadFromReader(Reader *r) {
       r->ReadFloats(&chunk.weights);
       r->ReadFloats(&chunk.biases);
 
+      // For ADAM, the aux parameters. We always have 2 per weight.
+      if (chunk.weight_update == ADAM) {
+        chunk.weights_aux.resize(chunk.weights.size() * 2);
+        chunk.biases_aux.resize(chunk.biases.size() * 2);
+
+        r->ReadFloats(&chunk.weights_aux);
+        r->ReadFloats(&chunk.biases_aux);
+      }
+
       chunk.width = r->Read32();
       chunk.height = r->Read32();
       chunk.channels = r->Read32();
       chunk.style = (RenderStyle)r->Read32();
 
-      printf("%d %s %s ",
+      printf("%d %s %s %s ",
              chunk.indices_per_node,
              TransferFunctionName(chunk.transfer_function),
-             ChunkTypeName(chunk.type));
+             ChunkTypeName(chunk.type),
+             WeightUpdateName(chunk.weight_update));
       if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
         printf("(%d feat%s, %dx%d pat from %dx%d rect, +%d +%d) ",
                chunk.num_features,
@@ -1015,6 +1053,8 @@ static void WriteToWriter(const Network &net, Writer *w) {
       w->Write32(chunk.num_nodes);
       w->Write32(chunk.indices_per_node);
       w->Write32(chunk.transfer_function);
+      w->Write32(chunk.weight_update);
+
       // Always write convolution stuff, even if not a
       // convolution type chunk.
       w->Write32(chunk.num_features);
@@ -1045,6 +1085,9 @@ static void WriteToWriter(const Network &net, Writer *w) {
       }
       w->WriteFloats(chunk.weights);
       w->WriteFloats(chunk.biases);
+
+      w->WriteFloats(chunk.weights_aux);
+      w->WriteFloats(chunk.biases_aux);
 
       w->Write32(chunk.width);
       w->Write32(chunk.height);

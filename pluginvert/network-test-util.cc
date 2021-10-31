@@ -25,6 +25,28 @@ int NetworkTestUtil::TrainNet::NumOutputs() const {
   return net.layers.back().num_nodes;
 }
 
+NetworkTestUtil::TrainNet NetworkTestUtil::ForceAdam(TrainNet net) {
+  for (Layer &layer : net.net.layers) {
+    for (Chunk &chunk : layer.chunks) {
+      // Only do this for real layers.
+      if (chunk.type != CHUNK_INPUT) {
+        // And only if the weight update method is currently SGD.
+        if (chunk.weight_update == SGD) {
+          CHECK(chunk.weights_aux.empty());
+          CHECK(chunk.biases_aux.empty());
+
+          chunk.weight_update = ADAM;
+          chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
+          chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
+        }
+      }
+    }
+  }
+  net.name += " (Force Adam)";
+  return net;
+}
+
+
 NetworkTestUtil::TestNet NetworkTestUtil::SingleSparse() {
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
@@ -46,6 +68,7 @@ NetworkTestUtil::TestNet NetworkTestUtil::SingleSparse() {
   sparse_chunk.indices = {0};
   sparse_chunk.weights = {1.0};
   sparse_chunk.biases = {0.0};
+  sparse_chunk.weight_update = SGD;
 
   Layer input_layer;
   input_layer.num_nodes = 1;
@@ -97,6 +120,7 @@ NetworkTestUtil::TestNet NetworkTestUtil::SingleDense() {
   dense_chunk.indices = {};
   dense_chunk.weights = {1.0};
   dense_chunk.biases = {0.0};
+  dense_chunk.weight_update = SGD;
 
   Layer input_layer;
   input_layer.num_nodes = 1;
@@ -154,6 +178,7 @@ NetworkTestUtil::TestNet NetworkTestUtil::SingleConvolution() {
   conv_chunk.occurrence_y_stride = 1;
   conv_chunk.num_occurrences_across = 1;
   conv_chunk.num_occurrences_down = 1;
+  conv_chunk.weight_update = SGD;
 
   conv_chunk.indices = {0};
   conv_chunk.weights = {1.0};
@@ -209,6 +234,7 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoInputSparse() {
   sparse_chunk.indices = {0, 1};
   sparse_chunk.weights = {2.0, 3.0};
   sparse_chunk.biases = {1.0};
+  sparse_chunk.weight_update = SGD;
 
   Layer input_layer;
   input_layer.num_nodes = 2;
@@ -261,6 +287,7 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseChunks() {
   dense_chunk1.indices = {};
   dense_chunk1.weights = {5.0f};
   dense_chunk1.biases = {1.0f};
+  dense_chunk1.weight_update = SGD;
 
   Chunk dense_chunk2 = dense_chunk1;
   dense_chunk2.weights = {-7.0f};
@@ -307,8 +334,8 @@ NetworkTestUtil::TestNet NetworkTestUtil::Net1() {
     Network::MakeDenseChunk(2,
                             // Span
                             0, 2,
-                            //
-                            IDENTITY);
+                            IDENTITY,
+                            SGD);
   dense_chunk.weights = {2.0, 3.0, 4.0, 5.0};
   dense_chunk.biases = {-100.0, -200.0};
 
@@ -325,6 +352,7 @@ NetworkTestUtil::TestNet NetworkTestUtil::Net1() {
   sparse_chunk.indices = {2, 1};
   sparse_chunk.weights = {10.0, 70.0};
   sparse_chunk.biases = {-1000.0, -2000.0};
+  sparse_chunk.weight_update = SGD;
 
   Layer input_layer;
   input_layer.num_nodes = 3;
@@ -383,6 +411,7 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseLayers() {
   dense_chunk1.indices = {};
   dense_chunk1.weights = {2.0f, -3.0f, -1.0f, 0.25f};
   dense_chunk1.biases = {0.5f, -1.0f};
+  dense_chunk1.weight_update = SGD;
 
   // hidden a2 = leaky(0 + 1.5a1 + b1)  b2 = leaky(1 - 0.25a1 + 3b1)
   Chunk dense_chunk2;
@@ -398,6 +427,7 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseLayers() {
   dense_chunk2.indices = {};
   dense_chunk2.weights = {1.5f, 1.0f, -0.25f, 3.0f};
   dense_chunk2.biases = {0.0f, 1.0f};
+  dense_chunk2.weight_update = SGD;
 
   Layer input_layer;
   input_layer.num_nodes = 2;
@@ -469,6 +499,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnTrivialIdentitySparse() {
   sparse_chunk.indices = {0};
   sparse_chunk.weights = {0.0};
   sparse_chunk.biases = {0.0};
+  sparse_chunk.weight_update = SGD;
 
   Layer input_layer;
   input_layer.num_nodes = 1;
@@ -520,6 +551,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnTrivialIdentityDense() {
   dense_chunk.indices = {};
   dense_chunk.weights = {0.0};
   dense_chunk.biases = {0.0};
+  dense_chunk.weight_update = SGD;
 
   Layer input_layer;
   input_layer.num_nodes = 1;
@@ -580,6 +612,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnTrivialIdentityConvolution() {
   conv_chunk.indices = {0};
   conv_chunk.weights = {0.0};
   conv_chunk.biases = {0.0};
+  conv_chunk.weight_update = SGD;
 
   Layer input_layer;
   input_layer.num_nodes = 1;
@@ -640,6 +673,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
   id_chunk.indices = {0, 1, 2, 0, 1, 2};
   id_chunk.weights = {1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f};
   id_chunk.biases = {0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
+  id_chunk.weight_update = SGD;
 
   Chunk sparse_chunk1;
   sparse_chunk1.type = CHUNK_SPARSE;
@@ -673,6 +707,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
       LAYER1_SPARSE_SIZE * sparse_chunk1.indices_per_node,
       0.0f);
   sparse_chunk1.biases = std::vector<float>(LAYER1_SPARSE_SIZE, 0.0f);
+  sparse_chunk1.weight_update = SGD;
 
   static constexpr int LAYER2_SIZE = 200; // 256
   static constexpr int IPN2 = 12;
@@ -713,6 +748,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
   }
   sparse_chunk2.weights = std::vector<float>(LAYER2_SIZE * IPN2, 0.0f);
   sparse_chunk2.biases = std::vector<float>(LAYER2_SIZE, 0.0f);
+  sparse_chunk2.weight_update = SGD;
 
   static constexpr int LAYER3_SIZE = 256;
   Chunk dense_chunk3;
@@ -728,6 +764,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
   dense_chunk3.indices = {};
   dense_chunk3.weights = std::vector<float>(LAYER3_SIZE * LAYER2_SIZE, 0.0f);
   dense_chunk3.biases = std::vector<float>(LAYER3_SIZE, 0.0f);
+  dense_chunk3.weight_update = SGD;
 
   Layer input_layer;
   input_layer.num_nodes = INPUT_SIZE;

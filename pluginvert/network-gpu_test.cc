@@ -161,10 +161,14 @@ static void TrainTest(TrainNet train_net,
   std::unique_ptr<ImageRGBA> image;
   constexpr int IMAGE_WIDTH = 3000;
   constexpr int IMAGE_HEIGHT = 1000;
-  constexpr int IMAGE_EVERY = 2;
+  constexpr int IMAGE_EVERY = 1;
   int image_x = 0;
   image.reset(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
   image->Clear32(0x000000FF);
+  image->BlendText32(2, 2, 0x9999AAFF,
+                     StringPrintf("Train test: %s | 1px = %d rounds",
+                                  train_net.name.c_str(),
+                                  IMAGE_EVERY));
 
   printf("\n--------------------------\n"
          "[Train] Train net: %s\n", train_net.name.c_str());
@@ -353,8 +357,12 @@ static void TrainTest(TrainNet train_net,
     net.examples += examples_per_round;
     net.rounds++;
 
+    const bool finished =
+      train_net.boolean_output ?
+      max_inc == 0 : average_loss < avg_loss_threshold;
+
     // XXX make it possible to select what layer/chunk is graphed?
-    if (image.get() != nullptr && (iter % IMAGE_EVERY == 0) &&
+    if (image.get() != nullptr && (iter % IMAGE_EVERY == 0 || finished) &&
         image_x < image->Width()) {
       net_gpu->ReadFromGPU();
       CHECK(net.layers.size() > 0);
@@ -365,16 +373,21 @@ static void TrainTest(TrainNet train_net,
       auto ToScreenY = [](float w) {
           int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
           int y = IMAGE_HEIGHT - yrev;
-          return y;
+          // Always draw on-screen.
+          return std::clamp(y, 0, IMAGE_HEIGHT - 1);
         };
       if (image_x & 1) {
-        image->BlendPixel32(image_x, ToScreenY(1), 0xCCFFCC40);
-        image->BlendPixel32(image_x, ToScreenY(0), 0xCCCCFFFF);
+        image->BlendPixel32(image_x, ToScreenY(+1), 0xCCFFCC40);
+        image->BlendPixel32(image_x, ToScreenY( 0), 0xCCCCFFFF);
         image->BlendPixel32(image_x, ToScreenY(-1), 0xFFCCCC40);
       }
+
+      uint8 weight_alpha =
+        std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
+
       for (float w : chunk.weights) {
         // maybe better to AA this?
-        image->BlendPixel32(image_x, ToScreenY(w), 0xFFFFFF20);
+        image->BlendPixel32(image_x, ToScreenY(w), 0xFFFFFF00 | weight_alpha);
       }
 
       uint8 bias_alpha =
@@ -384,15 +397,25 @@ static void TrainTest(TrainNet train_net,
         image->BlendPixel32(image_x, ToScreenY(b), 0xFF777700 | bias_alpha);
       }
 
+      if (chunk.weight_update == ADAM) {
+        CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
+        CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
+        for (int idx = 0; idx < chunk.weights.size(); idx++) {
+          const float m = chunk.weights_aux[idx * 2 + 0];
+          const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
+
+          image->BlendPixel32(image_x, ToScreenY(m), 0xFFFF0000 | weight_alpha);
+          image->BlendPixel32(image_x, ToScreenY(v), 0xFF00FF00 | weight_alpha);
+        }
+        // Also bias aux?
+      }
+
       image_x++;
       if ((image_x % 100 == 0) || image_x == image->Width()) {
         image->Save("train-image.png");
         printf("Wrote train-image.png\n");
       }
     }
-
-    const bool finished =
-      train_net.boolean_output ? max_inc == 0 : average_loss < avg_loss_threshold;
 
     if (SAVE_INTERMEDIATE && (finished || iter == 1000 || iter % 5000 == 0)) {
       net_gpu->ReadFromGPU();
@@ -419,13 +442,16 @@ static void TrainTest(TrainNet train_net,
     }
   }
 
-  printf("Didn't train after %d iterations :(\n", max_iterations);
+  printf("Failed on %s:\n"
+         "Didn't converge after %d iterations :(\n",
+         train_net.name.c_str(),
+         max_iterations);
+
+  LOG(FATAL) << "Failed";
 
   // Copy back to CPU instance.
   // net_gpu->ReadFromGPU();
 }
-
-
 
 int main(int argc, char **argv) {
   cl = new CL;
@@ -453,13 +479,38 @@ int main(int argc, char **argv) {
             1000, 1000, 1.0f, 0.0001f, 4);
   TrainTest(NetworkTestUtil::LearnTrivialIdentityConvolution(),
             1000, 1000, 1.0f, 0.0001f, 4);
-  // Smaller batch size since there are only 2^8 possible inputs.
-  // This should converge to zero (boolean) errors after about
-  // 1000 rounds; the absolute error drops to like ~4 after many
-  // thousand rounds.
+
+  // Smaller batch size since there are only 2^3 possible inputs.
+  // Should achieve zero boolean errors after about 700 rounds;
+  // absolute error continues falling.
+  // With a less aggressive learning rate, this can take many
+  // thousands of rounds to converge (or never converge).
   TrainTest(NetworkTestUtil::LearnBoolean(),
-            2000, 54, 0.01f, 0.0001f, 4);
+            6000, 54, 0.1f, 0.0001f, 4);
   #endif
+
+  #if 0
+  // ADAM tests. These each take about 400 rounds to converge,
+  // because we are using a sensible learning rate of 0.01f.
+  TrainTest(NetworkTestUtil::ForceAdam(
+                NetworkTestUtil::LearnTrivialIdentitySparse()),
+            1000, 1000, 0.01f, 0.0001f, 4);
+  TrainTest(NetworkTestUtil::ForceAdam(
+                NetworkTestUtil::LearnTrivialIdentityDense()),
+            1000, 1000, 0.01f, 0.0001f, 4);
+  TrainTest(NetworkTestUtil::ForceAdam(
+                NetworkTestUtil::LearnTrivialIdentityConvolution()),
+            1000, 1000, 0.01f, 0.0001f, 4);
+  #endif
+
+
+  #if 0
+  // Even with a lower learning rate, this converges much faster than
+  // the SGD version :) ~250 rounds.
+  TrainTest(NetworkTestUtil::ForceAdam(NetworkTestUtil::LearnBoolean()),
+            6000, 54, 0.01f, 0.0001f, 4);
+  #endif
+
 
   #if 0
   // Interesting example.
@@ -477,10 +528,37 @@ int main(int argc, char **argv) {
             4);
   #endif
 
+  #if 0
+  // Adam works well on this, even with a conservative learning
+  // rate of 0.01f; once the weights get near 1, the bias rapidly
+  // gets unlearned.
+  //
+  // Once we hit an absolute error of about 0.1, the network starts
+  // oscillating. Probably we would need to be decreasing the
+  // learning rate in order to fine tune, or perhaps there is some
+  // other problem (decay weights); Adam also allegedly finds worse
+  // minima, and switching to SGD at some point may help.
+  TrainTest(NetworkTestUtil::ForceAdam(
+                NetworkTestUtil::LearnCountOnesDense()),
+            10000, 1000, 0.01f,
+            0.100f,
+            4);
+  #endif
+
+
+  #if 0
   TrainTest(NetworkTestUtil::LearnCountOnesConvConvDense(),
             10000, 1000, 0.001f,
             0.100f,
             4);
+  #endif
+
+  TrainTest(NetworkTestUtil::ForceAdam(
+                NetworkTestUtil::LearnCountOnesConvConvDense()),
+            10000, 1000, 0.01f,
+            0.100f,
+            4);
+
 
   #if 0
   // Doesn't work yet

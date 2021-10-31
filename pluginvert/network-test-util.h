@@ -52,6 +52,9 @@ struct NetworkTestUtil {
     int NumOutputs() const;
   };
 
+  // Convert all chunks to ADAM weight_update.
+  static TrainNet ForceAdam(TrainNet net);
+
   // Trivial network with just one node, sparse chunk.
   static TestNet SingleSparse();
   // Trivial network with just one node, dense chunk.

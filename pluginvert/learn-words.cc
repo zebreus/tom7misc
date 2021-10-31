@@ -176,7 +176,7 @@ static void Train(Network *net) {
   static constexpr int EXAMPLES_PER_ROUND = 1000;
   // XXX need to reduce this over time
   static constexpr float EXAMPLE_LEARNING_RATE =
-    0.01f / (float)EXAMPLES_PER_ROUND;
+    0.001f / (float)EXAMPLES_PER_ROUND;
 
   // XXX!
   std::vector<std::unique_ptr<ImageRGBA>> images;
@@ -414,16 +414,22 @@ static void Train(Network *net) {
           auto ToScreenY = [](float w) {
               int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
               int y = IMAGE_HEIGHT - yrev;
-              return y;
+              // Always draw on-screen.
+              return std::clamp(y, 0, IMAGE_HEIGHT - 1);
             };
           if (image_x & 1) {
             image->BlendPixel32(image_x, ToScreenY(1), 0xCCFFCC40);
             image->BlendPixel32(image_x, ToScreenY(0), 0xCCCCFFFF);
             image->BlendPixel32(image_x, ToScreenY(-1), 0xFFCCCC40);
           }
+
+          uint8 weight_alpha =
+            std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
+
           for (float w : chunk.weights) {
             // maybe better to AA this?
-            image->BlendPixel32(image_x, ToScreenY(w), 0xFFFFFF20);
+            image->BlendPixel32(image_x, ToScreenY(w),
+                                0xFFFFFF00 | weight_alpha);
           }
 
           uint8 bias_alpha =
@@ -433,6 +439,22 @@ static void Train(Network *net) {
             image->BlendPixel32(image_x, ToScreenY(b),
                                 0xFF777700 | bias_alpha);
           }
+
+          if (chunk.weight_update == ADAM) {
+            CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
+            CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
+            for (int idx = 0; idx < chunk.weights.size(); idx++) {
+              const float m = chunk.weights_aux[idx * 2 + 0];
+              const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
+
+              image->BlendPixel32(image_x, ToScreenY(m),
+                                  0xFFFF0000 | weight_alpha);
+              image->BlendPixel32(image_x, ToScreenY(v),
+                                  0xFF00FF00 | weight_alpha);
+            }
+            // Also bias aux?
+          }
+
 
           if ((image_x % 100 == 0) || image_x == image->Width()) {
             string filename = StringPrintf("train-image-%d.png",
@@ -532,6 +554,10 @@ static Chunk ConvolutionalChunk1D(int prev_size,
     chunk.biases = std::vector<float>(chunk.num_features, 0.0f);
   }
 
+  chunk.weight_update = ADAM;
+  chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
+  chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
+
   return chunk;
 }
 
@@ -551,10 +577,19 @@ static Chunk DenseChunk(int prev_size,
   chunk.weights = std::vector<float>(
       chunk.num_nodes * chunk.indices_per_node, 0.0f);
   chunk.biases = std::vector<float>(chunk.num_nodes, 0.0f);
+
+  chunk.weight_update = ADAM;
+  chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
+  chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
+
   return chunk;
 }
 
 static Network *NewNetwork() {
+  auto L = [&](const Chunk &chunk) {
+      return Layer{.num_nodes = chunk.num_nodes, .chunks = {chunk}};
+    };
+
   constexpr int INPUT_SIZE = MAX_WORD_LEN * RADIX;
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
@@ -603,9 +638,6 @@ static Network *NewNetwork() {
                                              BITS_PER_CHAR,
                                              BITS_PER_CHAR);
 
-  auto L = [&](const Chunk &chunk) {
-      return Layer{.num_nodes = chunk.num_nodes, .chunks = {chunk}};
-    };
 
   return new Network(vector<Layer>{
                          L(input_chunk),
@@ -615,6 +647,20 @@ static Network *NewNetwork() {
                          L(dense_decode),
                          L(unconv_chunk2),
                          L(unconv_chunk1)});
+
+#if 0
+  Chunk unconv_chunk1 = ConvolutionalChunk1D(BITS_PER_CHAR * MAX_WORD_LEN,
+                                             RADIX,
+                                             BITS_PER_CHAR,
+                                             BITS_PER_CHAR);
+
+  return new Network(vector<Layer>{
+      L(input_chunk),
+      L(conv_chunk1),
+      // ... TODO: grow here ...
+      L(unconv_chunk1)
+        });
+#endif
 }
 
 

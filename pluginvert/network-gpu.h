@@ -48,18 +48,21 @@ struct NetworkGPU {
       for (int chunk = 0; chunk < cpu_layer->chunks.size(); chunk++) {
         Chunk *cpu_chunk = &cpu_layer->chunks[chunk];
         GPUChunk *gpu_chunk = &gpu_layer->chunks[chunk];
-        if (gpu_chunk->weights != 0)
-          ReadTo(gpu_chunk->weights, &cpu_chunk->weights);
-        if (gpu_chunk->biases != 0)
-          ReadTo(gpu_chunk->biases, &cpu_chunk->biases);
+        ReadToZeroOk(gpu_chunk->weights, &cpu_chunk->weights);
+        ReadToZeroOk(gpu_chunk->biases, &cpu_chunk->biases);
+        ReadToZeroOk(gpu_chunk->weights_aux, &cpu_chunk->weights_aux);
+        ReadToZeroOk(gpu_chunk->biases_aux, &cpu_chunk->biases_aux);
       }
     }
     clFinish(cl->queue);
   }
 
   // Like CopyBufferFromGPUTo, but don't wait for the command to finish.
+  // Also allows cl_mem to be 0, standing for an empty memory.
   template<class T>
-  void ReadTo(cl_mem buf, std::vector<T> *vec) {
+  void ReadToZeroOk(cl_mem buf, std::vector<T> *vec) {
+    if (buf == 0)
+      return;
     CHECK_SUCCESS(
         clEnqueueReadBuffer(cl->queue, buf, CL_TRUE, 0,
                             sizeof (T) * vec->size(),
@@ -73,12 +76,15 @@ struct NetworkGPU {
     // Empty memories are represented as 0 (invalid cl_mem), since opencl
     // doesn't support empty memories. Everything is empty for the token
     // input chunk (which goes unused), but indices can also be empty in
-    // normal cases (dense layers).
+    // normal cases (dense layers; unused _aux).
     // readonly.
     cl_mem indices;
     // read/write.
     cl_mem weights;
     cl_mem biases;
+    // read/write
+    cl_mem weights_aux;
+    cl_mem biases_aux;
 
     // Inverted index. These are empty (0) for dense and input chunks.
     // See Network::ComputeInvertedIndices.
@@ -108,8 +114,7 @@ struct NetworkGPU {
 // allow us to run kernels across multiple examples at once. This could
 // be especially fruitful for layers aren't even using the full bandwidth
 // of the GPU.
-// (Might want to do this after the chunk rewrite though, so that I can
-// at least benchmark it.)
+// (Should do this after we have good tests, and benchmark it!)
 struct TrainingRoundGPU {
   TrainingRoundGPU(CL *cl, const Network &net) : cl(cl), net(&net) {
     for (const Layer &layer : net.layers) {
@@ -157,7 +162,7 @@ struct TrainingRoundGPU {
   // Same size as net->layers. 0th is input, final is the output.
   std::vector<cl_mem> stimulations;
   // Same size as net->layers. 0th is input (unused), final is the output.
-  // XXX (this used to not include the (unused) input error)
+  // (Note: Prior to chunks, this used to exclude the (unused) input error)
   std::vector<cl_mem> errors;
   // Size of final stimulation.
   cl_mem expected;

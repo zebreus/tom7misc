@@ -35,6 +35,7 @@ NetworkGPU::NetworkGPU(CL *cl, Network *net) : cl(cl), net(net) {
       CHECK(chunk < gpu_layer->chunks.size());
       const Chunk &cpu_chunk = cpu_layer.chunks[chunk];
       GPUChunk *gpu_chunk = &gpu_layer->chunks[chunk];
+
       // Normal for this to be empty for dense chunks.
       gpu_chunk->indices = CopyMemoryAllowEmpty(cpu_chunk.indices, true);
       // These two should only be empty for the (token) input layer,
@@ -42,6 +43,12 @@ NetworkGPU::NetworkGPU(CL *cl, Network *net) : cl(cl), net(net) {
       // for uniformity.
       gpu_chunk->weights = CopyMemoryAllowEmpty(cpu_chunk.weights, false);
       gpu_chunk->biases = CopyMemoryAllowEmpty(cpu_chunk.biases, false);
+
+      // Empty when weight_update is SGD.
+      gpu_chunk->weights_aux =
+        CopyMemoryAllowEmpty(cpu_chunk.weights_aux, false);
+      gpu_chunk->biases_aux =
+        CopyMemoryAllowEmpty(cpu_chunk.biases_aux, false);
 
       InvertedIndices inverted = net->ComputeInvertedIndices(layer, chunk);
       gpu_chunk->ii_start = CopyMemoryAllowEmpty(inverted.start, true);
@@ -63,6 +70,10 @@ NetworkGPU::~NetworkGPU() {
         CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.weights));
       if (gpu_chunk.biases != 0)
         CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.biases));
+      if (gpu_chunk.weights_aux != 0)
+        CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.weights_aux));
+      if (gpu_chunk.biases_aux != 0)
+        CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.biases_aux));
       if (gpu_chunk.ii_start != 0)
         CHECK_SUCCESS(clReleaseMemObject(gpu_chunk.ii_start));
       if (gpu_chunk.ii_length != 0)
@@ -150,29 +161,12 @@ void ForwardLayerCL::RunForward(
   // TODO: could keep net_gpu and net as members?
   const Network &net = *net_gpu->net;
 
-  // XXXXX
-  auto TestReadOK = [&](int line) {
-      if (false) {
-        clFinish(cl->queue);
-        printf("[src_layer %d] TestReadOK %d...\n", src_layer, line);
-        // Debugging.... Check we can still read the input layer??
-        CHECK(!train->stimulations.empty());
-        std::vector<float> read(net.layers[0].num_nodes, -1.0f);
-        CopyBufferFromGPUTo(cl->queue, train->stimulations[0], &read);
-        clFinish(cl->queue);
-        printf("...OK.\n");
-      }
-    };
-
-  TestReadOK(__LINE__);
-
   // We do the chunks in serial.
   // (This is where it would be nice to be running many training
   // examples at once.)
   const Layer &layer = net.layers[dst_layer];
   int out_idx = 0;
   for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
-    TestReadOK(__LINE__);
     const Chunk &chunk = layer.chunks[chunk_idx];
     CHECK(dst_layer < layer_kernels.size());
     CHECK(chunk_idx < layer_kernels[dst_layer].size());
@@ -196,8 +190,6 @@ void ForwardLayerCL::RunForward(
     cl_mem dst_sub_values = SliceGPUMemory<float>(dst_values,
                                                   out_idx,
                                                   chunk.num_nodes);
-
-    TestReadOK(__LINE__);
 
     // Can't have multiple threads setting a kernel's argument at one time.
     {
@@ -239,12 +231,8 @@ void ForwardLayerCL::RunForward(
       clFinish(cl->queue);
     }
 
-    TestReadOK(__LINE__);
-
     // Release refcount to sub-buffer.
     CHECK_SUCCESS(clReleaseMemObject(dst_sub_values));
-
-    TestReadOK(__LINE__);
 
     out_idx += chunk.num_nodes;
   }
@@ -682,27 +670,41 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
 
       // PERF: Don't even compile a kernel if the chunk is fixed.
 
-      string kernel_src =
-        StringPrintf(// TODO: make configurable, but
-                     // find a better way to specify this tri-state
-                     // (noclip, clip, constrain)
-                     "#define NOCLIP false\n"
-                     "#define CONSTRAIN true\n"
-                     "#define CONSTRAIN_WEIGHT_MAX 16.0f\n"
-                     "#define CONSTRAIN_BIAS_MAX 16384.0f\n"
+      string kernel_src;
+      switch (chunk.weight_update) {
+      case SGD:
+        kernel_src += "#define WEIGHT_UPDATE_SGD 1\n";
+        break;
+      case ADAM:
+        kernel_src += "#define WEIGHT_UPDATE_ADAM 1\n";
+        break;
+      default:
+        LOG(FATAL) << "Unsupported weight update type " <<
+          WeightUpdateName(chunk.weight_update);
+        break;
+      }
 
-                     "#define CHUNK_START %d\n"
-                     "#define SPAN_START %d\n"
-                     "#define SPAN_SIZE %d\n"
-                     "#define INDICES_PER_NODE %d\n"
-                     "#define NUM_OCCURRENCES %d\n"
-                     "#define NUM_FEATURES %d\n",
-                     out_idx,
-                     chunk.span_start,
-                     chunk.span_size,
-                     chunk.indices_per_node,
-                     num_occurrences,
-                     chunk.num_features);
+      StringAppendF(&kernel_src,
+                    // TODO: make configurable, but
+                    // find a better way to specify this tri-state
+                    // (noclip, clip, constrain)
+                    "#define NOCLIP false\n"
+                    "#define CONSTRAIN true\n"
+                    "#define CONSTRAIN_WEIGHT_MAX 16.0f\n"
+                    "#define CONSTRAIN_BIAS_MAX 16384.0f\n"
+
+                    "#define CHUNK_START %d\n"
+                    "#define SPAN_START %d\n"
+                    "#define SPAN_SIZE %d\n"
+                    "#define INDICES_PER_NODE %d\n"
+                    "#define NUM_OCCURRENCES %d\n"
+                    "#define NUM_FEATURES %d\n",
+                    out_idx,
+                    chunk.span_start,
+                    chunk.span_size,
+                    chunk.indices_per_node,
+                    num_occurrences,
+                    chunk.num_features);
 
       const string kernel_name = UpdateWeightsKernelName(chunk.type);
 
@@ -745,6 +747,10 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
   const Layer &layer = net.layers[layer_idx];
   NetworkGPU::GPULayer &gpu_layer = net_gpu->layers[layer_idx];
 
+  // XXX overflow is possible here.
+  // PERF: After the round is suitably high, we should be ignoring this.
+  const cl_int round_number = net.rounds;
+
   for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
     const Chunk &chunk = layer.chunks[chunk_idx];
     // For fixed chunks, just skip the update step.
@@ -758,12 +764,16 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
     // is probably the most principled (each occurrence yields an
     // error and thus an update), but sqrt seems to work better
     // (the errors often cancel each other out).
+    // (Should perhaps reconsider this in ADAM mode?)
     const int num_occurrences = chunk.num_occurrences_across *
       chunk.num_occurrences_down;
     const float effective_learning_rate =
       (chunk.type == CHUNK_CONVOLUTION_ARRAY) ?
-      learning_rate * (1.0 / pow((float)num_occurrences, 0.25f)) :
+      learning_rate * (1.0 / sqrt(num_occurrences)) :
       learning_rate;
+
+    // also tried...
+    // pow((float)num_occurrences, 0.25f))
 
     {
       // PERF: Could run the chunks in parallel. But we can't run training
@@ -772,18 +782,24 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
       MutexLock ml(&m);
 
 
-      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 0, sizeof (cl_float),
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 0, sizeof (cl_int),
+                                   (void *)&round_number));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 1, sizeof (cl_float),
                                    (void *)&effective_learning_rate));
-      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 1, sizeof (cl_mem),
-                                   (void *)&prev_layer_output));
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
-                                   (void *)&layer_error));
+                                   (void *)&prev_layer_output));
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 3, sizeof (cl_mem),
-                                   (void *)&gpu_chunk.indices));
+                                   (void *)&layer_error));
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 4, sizeof (cl_mem),
-                                   (void *)&gpu_chunk.weights));
+                                   (void *)&gpu_chunk.indices));
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 5, sizeof (cl_mem),
+                                   (void *)&gpu_chunk.weights));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 6, sizeof (cl_mem),
                                    (void *)&gpu_chunk.biases));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 7, sizeof (cl_mem),
+                                   (void *)&gpu_chunk.weights_aux));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 8, sizeof (cl_mem),
+                                   (void *)&gpu_chunk.biases_aux));
 
       // Arguments are the same for the different chunk types,
       // but for convolution array it's actually a 2D kernel

@@ -67,6 +67,20 @@ enum TransferFunction {
   NUM_TRANSFER_FUNCTIONS,
 };
 
+// How to perform weight updates; these only affect training.
+enum WeightUpdate {
+  // Step along the gradient according to the learning rate.
+  // No auxiliary data.
+  SGD = 0,
+  // Update is based on per-weight estimates of the first and second
+  // moments of the gradient. Requires storing these two float
+  // parameters along side weights, tripling the storage requirements
+  // during training.
+  ADAM = 1,
+
+  NUM_WEIGHT_UPDATES,
+};
+
 // How to draw a chunk's stimulations in UIs. Has no effect in network
 // code itself. (If we standardize the rendering code, this enum should
 // go with that.)
@@ -86,6 +100,7 @@ enum RenderStyle : uint32_t {
 
 const char *TransferFunctionName(TransferFunction tf);
 const char *ChunkTypeName(ChunkType ct);
+const char *WeightUpdateName(WeightUpdate wu);
 
 struct Stimulation;
 struct Errors;
@@ -113,6 +128,11 @@ struct Chunk {
   // weighted inputs.
   // For INPUT chunks, ignored.
   TransferFunction transfer_function = LEAKY_RELU;
+
+  // Approach used for weight updates during training; affects
+  // what is stored in the _aux fields.
+  WeightUpdate weight_update = SGD;
+  // TODO: B1 and B2 params (and epsilon?) for Adam?
 
   // For CONVOLUTION_ARRAY chunks:
   //
@@ -176,6 +196,12 @@ struct Chunk {
   // For CONVOLUTIONAL chunks, size num_features.
   // For INPUT chunks, ignored.
   std::vector<float> biases;
+
+  // For weight_update = SGD, empty.
+  // For ADAM, twice the size of weights or biases vectors.
+  // Interleaved m and v parameters for memory locality.
+  std::vector<float> weights_aux;
+  std::vector<float> biases_aux;
 
   // These are presentational (e.g. used when rendering in the
   // training view), but width * height * channels must equal num_nodes.
@@ -281,7 +307,7 @@ struct Network {
   static constexpr uint32_t MAGIC = MakeFOURCC('T', '7', 'n', 'w');
   // ... and followed by this version identifier. When changing the
   // format in an incompatible way, always increment this.
-  static constexpr uint32_t FORMAT_ID = 0x27000770U;
+  static constexpr uint32_t FORMAT_ID = 0x27000771U;
 
   // layer[0] is the input layer.
   vector<Layer> layers;
@@ -297,9 +323,10 @@ struct Network {
   static Chunk MakeDenseChunk(int num_nodes,
                               // region of previous layer to depend on
                               int span_start, int span_size,
-                              TransferFunction transfer_function);
+                              TransferFunction transfer_function,
+                              WeightUpdate WeightUpdate);
 
-  // Maybe this should return a Chunk?
+  // XXX: This should return a Chunk?
   // returns indices, this_num_nodes,
   // num_occurrences_across, num_occurrences_down
   static std::tuple<std::vector<uint32_t>, int, int, int>

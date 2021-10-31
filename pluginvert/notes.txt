@@ -349,3 +349,62 @@ One sign of an actual bug:
 
 
 
+--------------------------------------------------
+
+learning rates
+
+"Adam" is a popular approach. It seems pretty simple, although one
+downside is that it adds two float parameters per weight that we need
+to retain and access during training, so this triples our memory
+overhead for the model itself. It also adds two hyper-parameters
+like the learning rate, but they are reasonably easy to understand.
+
+
+These parameters are the first and second moments of the gradient X (a
+random variable). Moment k just means the expected value of X^k, so
+the first moment is the mean, and the second moment is the uncentered
+variance (uncentered = don't subtract the mean first). These are
+typically 'm' and 'v' in the presentation. Each one is updated by an
+exponential moving average
+
+m = B1 * m + (1 - B1) * g
+v = B2 * v + (1 - B2) * g^2
+
+... where B1 and B2 are the hyperparameters, and g is the gradient.
+
+m and v for each parameter is 0 at the beginning, and
+B1 = 0.9 and B2 = 0.999 seem to be solid choices.
+
+Since we start with zeroes, these estimates are biased towards zero
+(although that error decays away exponentially). Still the Algorithm
+corrects for this:
+
+m' = m / (1 - B1^t)
+v' = v / (1 - B2^t)
+
+where t is the time step. I wonder if this can actually be skipped, as
+it will be basically dividing by 1 after a few hundred rounds. Maybe
+we can efficiently turn it off by recompiling kernels when it is
+negligible.
+
+Finally, we use these to update the weights.
+w = w - r * (m' / (sqrt(v') + e))
+
+With SGD the update would just be 'r * g', but here we are first
+basically averaging over recent updates (for m') and then dividing
+by the (normalized) square... what's the intuition here? When the update
+is small AND the variance is small, we take larger steps (that makes
+sense I guess?) ... but when updates are large with low variance,
+because it's uncentered variance, we still end up dividing by something
+ > 1, so we take smaller steps than SGD?
+
+(I think we actually use positive weight updates, not - errors, so
+this sign may be flipped. v' is computed from squares, so it's always
+non-negative.)
+
+r is the round learning rate, as usual
+e is epsilon to prevent dividing by zero (e.g. 1e-8. Or treat as a
+hyperparameter...)
+
+Anyway, this is all pretty easy to implement; let's do...
+
