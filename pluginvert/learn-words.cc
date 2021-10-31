@@ -295,88 +295,121 @@ static void Train(Network *net) {
   std::vector<std::vector<float>> expected;
   expected.resize(training.size());
 
+  double round_ms = 0.0;
+  double example_ms = 0.0;
+  double forward_ms = 0.0;
+  double error_ms = 0.0;
+  double decay_ms = 0.0;
+  double backward_ms = 0.0;
+  double update_ms = 0.0;
+
   Timer train_timer;
   int64 total_examples = 0LL;
   // seconds since timer started
   double last_save = 0.0;
   for (int iter = 0; true; iter++) {
+    Timer round_timer;
 
-    // Initialize training examples.
-    // (PERF: parallelize?)
-    for (int i = 0; i < training.size(); i++) {
-      // One-hot
-      std::vector<float> inputs(MAX_WORD_LEN * RADIX, 0.0f);
+    {
+      Timer example_timer;
+      // Initialize training examples.
+      // (PERF: parallelize?)
+      for (int i = 0; i < training.size(); i++) {
+        // One-hot
+        std::vector<float> inputs(MAX_WORD_LEN * RADIX, 0.0f);
 
-      string word = wikibits.RandomWord();
-      for (int j = 0; j < MAX_WORD_LEN; j++) {
-        const int c = j < word.size() ? word[j] - 'a' + 1 : 0;
-        inputs[j * RADIX + c] = 1.0f;
+        string word = wikibits.RandomWord();
+        for (int j = 0; j < MAX_WORD_LEN; j++) {
+          const int c = j < word.size() ? word[j] - 'a' + 1 : 0;
+          inputs[j * RADIX + c] = 1.0f;
+        }
+        training[i]->LoadInput(inputs);
+        training[i]->LoadExpected(inputs);
+        expected[i] = std::move(inputs);
       }
-      training[i]->LoadInput(inputs);
-      training[i]->LoadExpected(inputs);
-      expected[i] = std::move(inputs);
+      example_ms += example_timer.MS();
     }
 
     if (VERBOSE > 1)
       printf("Prepped examples.\n");
 
-    for (int src_layer = 0;
-         src_layer < net->layers.size() - 1;
-         src_layer++) {
-      ParallelComp(
-          training.size(),
-          [&](int idx) {
-            forward_cl->RunForward(
-                net_gpu.get(), training[idx].get(), src_layer);
-          },
-          max_parallelism);
+    {
+      Timer forward_timer;
+      for (int src_layer = 0;
+           src_layer < net->layers.size() - 1;
+           src_layer++) {
+        ParallelComp(
+            training.size(),
+            [&](int idx) {
+              forward_cl->RunForward(
+                  net_gpu.get(), training[idx].get(), src_layer);
+            },
+            max_parallelism);
+      }
+      forward_ms += forward_timer.MS();
     }
 
     if (VERBOSE > 1)
       printf("Forward done.\n");
 
-    ParallelComp(
-        training.size(),
-        [&](int idx) {
-          error_cl->SetOutputError(net_gpu.get(), training[idx].get());
-        },
-        max_parallelism);
+    {
+      Timer error_timer;
+      ParallelComp(
+          training.size(),
+          [&](int idx) {
+            error_cl->SetOutputError(net_gpu.get(), training[idx].get());
+          },
+          max_parallelism);
+      error_ms += error_timer.MS();
+    }
 
     if (VERBOSE > 1)
       printf("Set error.\n");
 
-    for (int dst_layer = net->layers.size() - 1;
-         // Don't propagate to input.
-         dst_layer > 1;
-         dst_layer--) {
-      ParallelComp(
-          training.size(),
-          [&](int idx) {
-            backward_cl->BackwardLayer(net_gpu.get(),
-                                       training[idx].get(),
-                                       dst_layer);
-          },
-          max_parallelism);
+    {
+      Timer backward_timer;
+      for (int dst_layer = net->layers.size() - 1;
+           // Don't propagate to input.
+           dst_layer > 1;
+           dst_layer--) {
+        ParallelComp(
+            training.size(),
+            [&](int idx) {
+              backward_cl->BackwardLayer(net_gpu.get(),
+                                         training[idx].get(),
+                                         dst_layer);
+            },
+            max_parallelism);
+      }
+      backward_ms += backward_timer.MS();
     }
 
     if (VERBOSE > 1)
       printf("Backward pass.\n");
 
-    for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {
-      decay_cl->Decay(net_gpu.get(), layer_idx);
+    {
+      Timer decay_timer;
+      for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {
+        decay_cl->Decay(net_gpu.get(), layer_idx);
+      }
+      decay_ms += decay_timer.MS();
     }
 
-    // Can't run training examples in parallel because these all write
-    // to the same network. But each layer is independent.
-    ParallelComp(net->layers.size() - 1,
-                 [&](int layer_minus_1) {
-                   const int layer_idx = layer_minus_1 + 1;
-                   for (int i = 0; i < training.size(); i++) {
-                     update_cl->Update(net_gpu.get(), training[i].get(),
-                                       EXAMPLE_LEARNING_RATE, layer_idx);
-                   }
-                 },
-                 max_parallelism);
+    {
+      Timer update_timer;
+      // Can't run training examples in parallel because these all write
+      // to the same network. But each layer is independent.
+      ParallelComp(net->layers.size() - 1,
+                   [&](int layer_minus_1) {
+                     const int layer_idx = layer_minus_1 + 1;
+                     for (int i = 0; i < training.size(); i++) {
+                       update_cl->Update(net_gpu.get(), training[i].get(),
+                                         EXAMPLE_LEARNING_RATE, layer_idx);
+                     }
+                   },
+                   max_parallelism);
+      update_ms += update_timer.MS();
+    }
 
     if (VERBOSE > 1)
       printf("Updated errors.\n");
@@ -574,6 +607,29 @@ static void Train(Network *net) {
         printf("   [%s] got [%s]\n",
                example_correct.c_str(), example_predicted.c_str());
       }
+    }
+
+    round_ms += round_timer.MS();
+
+    if (iter % 25 == 0) {
+      double accounted_ms = example_ms + forward_ms + error_ms +
+        decay_ms + backward_ms + update_ms;
+      double other_ms = round_ms - accounted_ms;
+      double pct = 100.0 / round_ms;
+      printf("%.1f%% ex  "
+             "%.1f%% fwd  "
+             "%.1f%% err  "
+             "%.1f%% dec  "
+             "%.1f%% bwd  "
+             "%.1f%% up  "
+             "%.1f%% other\n",
+             example_ms * pct,
+             forward_ms * pct,
+             error_ms * pct,
+             decay_ms * pct,
+             backward_ms * pct,
+             update_ms * pct,
+             other_ms * pct);
     }
   }
 
