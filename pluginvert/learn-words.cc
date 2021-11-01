@@ -500,7 +500,7 @@ static void Train(Network *net) {
       // XXX would be better if this was more accurate,
       // but we only want to read from GPU if we're going to
       // actually do anything below
-      if (images.size() > 2 &&
+      if (images.size() >= 2 &&
           images[1].get() != nullptr &&
           image_x < images[1]->Width()) {
 
@@ -517,13 +517,13 @@ static void Train(Network *net) {
           const Layer &layer = net->layers[target_layer];
           CHECK(layer.chunks.size() > 0);
           const Chunk &chunk = layer.chunks[0];
-          // x axis
           auto ToScreenY = [](float w) {
               int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
               int y = IMAGE_HEIGHT - yrev;
               // Always draw on-screen.
               return std::clamp(y, 0, IMAGE_HEIGHT - 1);
             };
+          // 1, -1, x axis
           if (image_x & 1) {
             image->BlendPixel32(image_x, ToScreenY(1), 0xCCFFCC40);
             image->BlendPixel32(image_x, ToScreenY(0), 0xCCCCFFFF);

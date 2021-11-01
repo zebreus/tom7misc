@@ -157,18 +157,20 @@ static void TrainTest(TrainNet train_net,
   static constexpr bool SAVE_INTERMEDIATE = true;
   const float example_learning_rate = learning_rate / (float)examples_per_round;
 
-  // XXX!
-  std::unique_ptr<ImageRGBA> image;
+  std::vector<std::unique_ptr<ImageRGBA>> images;
   constexpr int IMAGE_WIDTH = 3000;
   constexpr int IMAGE_HEIGHT = 1000;
   constexpr int IMAGE_EVERY = 1;
   int image_x = 0;
-  image.reset(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
-  image->Clear32(0x000000FF);
-  image->BlendText32(2, 2, 0x9999AAFF,
-                     StringPrintf("Train test: %s | 1px = %d rounds",
-                                  train_net.name.c_str(),
-                                  IMAGE_EVERY));
+  for (int i = 0; i < train_net.net.layers.size(); i++) {
+    images.emplace_back(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
+    images.back()->Clear32(0x000000FF);
+    images.back()->BlendText2x32(
+        2, 2, 0x9999AAFF,
+        StringPrintf("Train test: %s | Layer %d | 1px = %d rounds ",
+                     train_net.name.c_str(), i,
+                     train_net.net.rounds, IMAGE_EVERY));
+  }
 
   printf("\n--------------------------\n"
          "[Train] Train net: %s\n", train_net.name.c_str());
@@ -361,59 +363,76 @@ static void TrainTest(TrainNet train_net,
       train_net.boolean_output ?
       max_inc == 0 : average_loss < avg_loss_threshold;
 
-    // XXX make it possible to select what layer/chunk is graphed?
-    if (image.get() != nullptr && (iter % IMAGE_EVERY == 0 || finished) &&
-        image_x < image->Width()) {
-      net_gpu->ReadFromGPU();
-      CHECK(net.layers.size() > 0);
-      const Layer &layer = net.layers.back();
-      CHECK(layer.chunks.size() > 0);
-      const Chunk &chunk = layer.chunks[0];
-      // x axis
-      auto ToScreenY = [](float w) {
-          int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
-          int y = IMAGE_HEIGHT - yrev;
-          // Always draw on-screen.
-          return std::clamp(y, 0, IMAGE_HEIGHT - 1);
-        };
-      if (image_x & 1) {
-        image->BlendPixel32(image_x, ToScreenY(+1), 0xCCFFCC40);
-        image->BlendPixel32(image_x, ToScreenY( 0), 0xCCCCFFFF);
-        image->BlendPixel32(image_x, ToScreenY(-1), 0xFFCCCC40);
-      }
+    if (finished || (iter % IMAGE_EVERY) == 0) {
 
-      uint8 weight_alpha =
-        std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
+      // XXX would be better if this was more accurate,
+      // but we only want to read from GPU if we're going to
+      // actually do anything below
+      if (images.size() >= 2 &&
+          images[1].get() != nullptr &&
+          image_x < images[1]->Width()) {
+        net_gpu->ReadFromGPU();
 
-      for (float w : chunk.weights) {
-        // maybe better to AA this?
-        image->BlendPixel32(image_x, ToScreenY(w), 0xFFFFFF00 | weight_alpha);
-      }
+        for (int target_layer = 1; target_layer < net.layers.size();
+             target_layer++) {
+          const Layer &layer = net.layers[target_layer];
+          ImageRGBA *image = images[target_layer].get();
+          // Note we only graph the first chunk of each layer...
+          CHECK(layer.chunks.size() > 0);
+          const Chunk &chunk = layer.chunks[0];
+          auto ToScreenY = [](float w) {
+              int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
+              int y = IMAGE_HEIGHT - yrev;
+              // Always draw on-screen.
+              return std::clamp(y, 0, IMAGE_HEIGHT - 1);
+            };
+          // 1, -1, x axis
+          if (image_x & 1) {
+            image->BlendPixel32(image_x, ToScreenY(+1), 0xCCFFCC40);
+            image->BlendPixel32(image_x, ToScreenY( 0), 0xCCCCFFFF);
+            image->BlendPixel32(image_x, ToScreenY(-1), 0xFFCCCC40);
+          }
 
-      uint8 bias_alpha =
-        std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
+          const uint8 weight_alpha =
+            std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
 
-      for (float b : chunk.biases) {
-        image->BlendPixel32(image_x, ToScreenY(b), 0xFF777700 | bias_alpha);
-      }
+          for (float w : chunk.weights) {
+            // maybe better to AA this?
+            image->BlendPixel32(image_x, ToScreenY(w),
+                                0xFFFFFF00 | weight_alpha);
+          }
 
-      if (chunk.weight_update == ADAM) {
-        CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
-        CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
-        for (int idx = 0; idx < chunk.weights.size(); idx++) {
-          const float m = chunk.weights_aux[idx * 2 + 0];
-          const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
+          const uint8 bias_alpha =
+            std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
 
-          image->BlendPixel32(image_x, ToScreenY(m), 0xFFFF0000 | weight_alpha);
-          image->BlendPixel32(image_x, ToScreenY(v), 0xFF00FF00 | weight_alpha);
+          for (float b : chunk.biases) {
+            image->BlendPixel32(image_x, ToScreenY(b),
+                                0xFF777700 | bias_alpha);
+          }
+
+          if (chunk.weight_update == ADAM) {
+            CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
+            CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
+            for (int idx = 0; idx < chunk.weights.size(); idx++) {
+              const float m = chunk.weights_aux[idx * 2 + 0];
+              const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
+
+              image->BlendPixel32(image_x, ToScreenY(m),
+                                  0xFFFF0000 | weight_alpha);
+              image->BlendPixel32(image_x, ToScreenY(v),
+                                  0xFF00FF00 | weight_alpha);
+            }
+            // Also bias aux?
+          }
+
+          if ((image_x % 100 == 0) || image_x == image->Width()) {
+            string filename = StringPrintf("train-test-image-%d.png",
+                                           target_layer);
+            image->Save(filename);
+            printf("Wrote %s\n", filename.c_str());
+          }
         }
-        // Also bias aux?
-      }
-
-      image_x++;
-      if ((image_x % 100 == 0) || image_x == image->Width()) {
-        image->Save("train-image.png");
-        printf("Wrote train-image.png\n");
+        image_x++;
       }
     }
 
@@ -481,7 +500,7 @@ int main(int argc, char **argv) {
             1000, 1000, 1.0f, 0.0001f, 4);
 
   // Smaller batch size since there are only 2^3 possible inputs.
-  // Should achieve zero boolean errors after about 700 rounds;
+  // Should achieve zero boolean errors after about 1000 rounds;
   // absolute error continues falling.
   // With a less aggressive learning rate, this can take many
   // thousands of rounds to converge (or never converge).
@@ -491,7 +510,7 @@ int main(int argc, char **argv) {
 
   #if 0
   // ADAM tests. These each take about 400 rounds to converge,
-  // because we are using a sensible learning rate of 0.01f.
+  // because here we are using a sensible learning rate of 0.01f.
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnTrivialIdentitySparse()),
             1000, 1000, 0.01f, 0.0001f, 4);
@@ -506,7 +525,7 @@ int main(int argc, char **argv) {
 
   #if 0
   // Even with a lower learning rate, this converges much faster than
-  // the SGD version :) ~250 rounds.
+  // the SGD version :) ~200 rounds.
   TrainTest(NetworkTestUtil::ForceAdam(NetworkTestUtil::LearnBoolean()),
             6000, 54, 0.01f, 0.0001f, 4);
   #endif
@@ -531,13 +550,13 @@ int main(int argc, char **argv) {
   #if 0
   // Adam works well on this, even with a conservative learning
   // rate of 0.01f; once the weights get near 1, the bias rapidly
-  // gets unlearned.
+  // gets unlearned. Converges in ~800 rounds.
   //
   // Once we hit an absolute error of about 0.1, the network starts
   // oscillating. Probably we would need to be decreasing the
   // learning rate in order to fine tune, or perhaps there is some
-  // other problem (decay weights); Adam also allegedly finds worse
-  // minima, and switching to SGD at some point may help.
+  // other problem (decay weights?); Adam also allegedly finds worse
+  // minima, and switching to SGD at some point (when?) may help.
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountOnesDense()),
             10000, 1000, 0.01f,
@@ -547,17 +566,24 @@ int main(int argc, char **argv) {
 
 
   #if 0
+  // Counting can be done with a convolution; this stacks a 4->1
+  // convolution and a 5->1 convolution, followed by a dense layer
+  // for the rest. (The dense layer is currently fixed!)
   TrainTest(NetworkTestUtil::LearnCountOnesConvConvDense(),
             10000, 1000, 0.001f,
             0.100f,
             4);
   #endif
 
+  #if 0
+  // Gets to about 0.13 error in 3600 rounds, but unclear if it will
+  // ever converge further?
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountOnesConvConvDense()),
             10000, 1000, 0.01f,
             0.100f,
             4);
+  #endif
 
 
   #if 0

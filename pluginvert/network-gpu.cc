@@ -506,7 +506,7 @@ void BackwardLayerCL::BackwardLayer(NetworkGPU *net_gpu,
   // Full destination error.
   cl_mem dst_error = train->errors[dst_layer];
   // Full source error.
-  cl_mem src_error = train->errors[dst_layer - 1];
+  cl_mem src_error = train->errors[src_layer];
 
   // In the general case we are accumulating the weighted error sum
   // (+=) rather than writing it once (=), so unlike the other
@@ -533,6 +533,7 @@ void BackwardLayerCL::BackwardLayer(NetworkGPU *net_gpu,
   // This would be a good place to use wait lists!
   clFinish(cl->queue);
 
+  // First pass over chunks in the DEST layer.
   const Layer &layer = net.layers[dst_layer];
   for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
     const Chunk &chunk = layer.chunks[chunk_idx];
@@ -568,6 +569,46 @@ void BackwardLayerCL::BackwardLayer(NetworkGPU *net_gpu,
       size_t global_work_size[] = { (size_t)chunk.span_size };
       Timer kernel_timer;
       CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel1,
+                                           // work dimensions
+                                           1,
+                                           // global work offset
+                                           global_work_offset,
+                                           // global work size
+                                           global_work_size,
+                                           // local work size
+                                           nullptr,
+                                           // no wait list
+                                           0, nullptr,
+                                           // no event
+                                           nullptr));
+      clFinish(cl->queue);
+    }
+  }
+
+  // Full source error.
+  cl_mem src_output = train->stimulations[src_layer];
+
+  // Second pass over chunks in the SOURCE layer.
+  const Layer &source_layer = net.layers[src_layer];
+  for (int chunk_idx = 0; chunk_idx < source_layer.chunks.size(); chunk_idx++) {
+    const Chunk &chunk = source_layer.chunks[chunk_idx];
+
+    CHECK(src_layer < layer_kernels.size() &&
+          chunk_idx < layer_kernels[src_layer].size());
+    const ChunkKernel &ck = layer_kernels[src_layer][chunk_idx];
+
+    {
+      MutexLock ml(&m);
+
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 0, sizeof (cl_mem),
+                                   (void *)&src_output));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 1, sizeof (cl_mem),
+                                   (void *)&src_error));
+
+      size_t global_work_offset[] = { 0 };
+      size_t global_work_size[] = { (size_t)chunk.num_nodes };
+      Timer kernel_timer;
+      CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel2,
                                            // work dimensions
                                            1,
                                            // global work offset
