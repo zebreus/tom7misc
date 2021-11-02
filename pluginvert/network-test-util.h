@@ -88,6 +88,9 @@ struct NetworkTestUtil {
   // dense layers.
   static TrainNet LearnBoolean();
 
+  // TODO: More simple, fast-converging tests that have multiple chunks
+  // or layers.
+
   // Count ones with a single dense layer.
   static TrainNet LearnCountOnesDense();
 

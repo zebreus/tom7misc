@@ -132,6 +132,9 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
       continue;
     }
 
+    const int src_layer_size = net.layers[layer - 1].num_nodes;
+    const int dst_layer_size = net.layers[layer].num_nodes;
+
     std::vector<ChunkKernel> chunk_kernels;
     int chunk_start = 0;
     for (const Chunk &chunk : net.layers[layer].chunks) {
@@ -144,12 +147,16 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
                     "#define NUM_FEATURES %d\n"
                     "#define SPAN_START %d\n"
                     "#define SPAN_SIZE %d\n"
-                    "#define CHUNK_START %d\n",
+                    "#define CHUNK_START %d\n"
+                    "#define SRC_LAYER_SIZE %d\n"
+                    "#define DST_LAYER_SIZE %d\n",
                     chunk.indices_per_node,
                     chunk.num_features,
                     chunk.span_start,
                     chunk.span_size,
-                    chunk_start);
+                    chunk_start,
+                    src_layer_size,
+                    dst_layer_size);
 
       const string kernel_name = ForwardKernelName(chunk.type);
       kernel_src += base_src;
@@ -201,70 +208,60 @@ void ForwardLayerCL::RunForward(
     cl_mem biases = gpu_chunk.biases;
     CHECK(biases != 0);
 
-    // PERF: Temporary! We should build this indexing into the kernel.
-    for (int example_num = 0;
-         example_num < train->num_examples;
-         example_num++) {
-
-      // entire layer for the example
-      const int src_num_nodes = net.layers[src_layer].num_nodes;
-      cl_mem src_sub_values =
-        SliceGPUMemory<float>(train->stimulations[src_layer],
-                              example_num * src_num_nodes,
-                              src_num_nodes);
+    // const int src_num_nodes = net.layers[src_layer].num_nodes;
+    // size src_num_nodes * num_examples
+    cl_mem all_src_values = train->stimulations[src_layer];
 
 
-      // Full output layer for the example.
-      const int dst_layer_start =
-        example_num * net.layers[dst_layer].num_nodes;
-      cl_mem dst_sub_values = SliceGPUMemory<float>(
-          train->stimulations[dst_layer],
-          dst_layer_start,
-          net.layers[dst_layer].num_nodes);
+    // const int dst_num_nodes = net.layers[dst_layer].num_nodes;
+    // size dst_num_nodes * num_examples
+    cl_mem all_dst_values = train->stimulations[dst_layer];
 
-      // Can't have multiple threads setting a kernel's argument at one time.
-      {
-        MutexLock ml(&m);
+    // Can't have multiple threads setting a kernel's argument at one time.
+    {
+      MutexLock ml(&m);
 
-        // All the kernels take the same args.
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 0, sizeof (cl_mem),
-                                     (void *)&src_sub_values));
-        // (Note that indices can be 0, an invalid cl_mem, which
-        // we use to represent an empty memory. The memory will not
-        // be accessed in this case (dense kernel). Not totally sure
-        // that it is defined behavior to pass 0.)
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 1, sizeof (cl_mem),
-                                     (void *)&indices));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
-                                     (void *)&weights));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 3, sizeof (cl_mem),
-                                     (void *)&biases));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 4, sizeof (cl_mem),
-                                     (void *)&dst_sub_values));
+      // All the kernels take the same args.
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 0, sizeof (cl_mem),
+                                   (void *)&all_src_values));
+      // (Note that indices can be 0, an invalid cl_mem, which
+      // we use to represent an empty memory. The memory will not
+      // be accessed in this case (dense kernel). Not totally sure
+      // that it is defined behavior to pass 0.)
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 1, sizeof (cl_mem),
+                                   (void *)&indices));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
+                                   (void *)&weights));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 3, sizeof (cl_mem),
+                                   (void *)&biases));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 4, sizeof (cl_mem),
+                                   (void *)&all_dst_values));
 
-        size_t global_work_offset[] = { 0 };
-        size_t global_work_size[] = { (size_t)(chunk.num_nodes) };
+      // TODO: Break into smaller chunks if nodes * examples is
+      // too large?
 
-        CHECK(ck.kernel != 0);
-        CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel,
-                                             // work dimensions
-                                             1,
-                                             // global work offset
-                                             global_work_offset,
-                                             // global work size
-                                             global_work_size,
-                                             // local work size
-                                             nullptr,
-                                             // no wait list
-                                             0, nullptr,
-                                             // no event
-                                             nullptr));
-        clFinish(cl->queue);
-      }
+      // Arg 0 is node, Arg 1 is example
+      size_t global_work_offset[] = { 0, 0, };
+      size_t global_work_size[] = {
+        (size_t)(chunk.num_nodes),
+        (size_t)(train->num_examples),
+      };
 
-      // Release refcount to sub-buffers.
-      CHECK_SUCCESS(clReleaseMemObject(dst_sub_values));
-      CHECK_SUCCESS(clReleaseMemObject(src_sub_values));
+      CHECK(ck.kernel != 0);
+      CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel,
+                                           // work dimensions
+                                           2,
+                                           // global work offset
+                                           global_work_offset,
+                                           // global work size
+                                           global_work_size,
+                                           // local work size
+                                           nullptr,
+                                           // no wait list
+                                           0, nullptr,
+                                           // no event
+                                           nullptr));
+      clFinish(cl->queue);
     }
   }
 }
