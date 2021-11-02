@@ -19,6 +19,11 @@
 // PERF: For many of these, we use mutexes to avoid setting a
 // kernels arguments from multiple threads. But we could have
 // a mutex per layer or per ChunkKernel instead?
+// PERF: In fact, it may work to initialize kernel arguments once
+// during initialization, and just assume that there is one
+// TrainingRound per NetworkGPU. Unclear if there's any overhead
+// of setting the args over and over (perhaps it does some dynamic
+// recompilation or invalidates caches?)
 
 // Network that has its bulky data (indices and inverted indices,
 // weights, biases) stored on GPU for fast inference and training.

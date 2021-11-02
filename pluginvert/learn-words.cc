@@ -610,6 +610,21 @@ static void Train(Network *net) {
              backward_ms * pct,
              update_ms * pct,
              other_ms * pct);
+      double msr = 1.0 / (iter + 1);
+      printf("%.1fms ex  "
+             "%.1fms fwd  "
+             "%.1fms err  "
+             "%.1fms dec  "
+             "%.1fms bwd  "
+             "%.1fms up  "
+             "%.1fms other\n",
+             example_ms * msr,
+             forward_ms * msr,
+             error_ms * msr,
+             decay_ms * msr,
+             backward_ms * msr,
+             update_ms * msr,
+             other_ms * msr);
     }
   }
 
