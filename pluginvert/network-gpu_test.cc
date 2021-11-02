@@ -556,13 +556,13 @@ int main(int argc, char **argv) {
 
   // OK up to here with training batch (as a loop)
 
-  #if 0
+  #if 1
   // Gets to about 0.13 error in 3600 rounds, but unclear if it will
   // ever converge further?
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountOnesConvConvDense()),
             10000, 1000, 0.01f,
-            0.100f,
+            0.150f,
             4);
   #endif
 

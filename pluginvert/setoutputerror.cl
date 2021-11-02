@@ -10,16 +10,25 @@
 // Expects the following defines:
 //  DERIVATIVE(v) - derivative of the transfer function (given in terms of
 //     its output, as usual)
-//  CHUNK_IDX - integer giving the chunk index on the layer
+//  CHUNK_IDX - integer giving the chunk index on the layer (just for
+//     passing this to the REMAP macro)
+//  LAYER_SIZE - integer giving the full actual, expected, and error layer
+//     sizes per example.
+//  CHUNK_START - the position within the layer where the chunk's nodes
+//     reside
 
 // Each of the memories is a sub-buffer of the size of the chunk's span.
 __kernel void SetOutputError(__global const float *restrict actual_outputs,
                              __global const float *restrict expected,
                              __global float *restrict output_error) {
+  // k is the index within the chunk
   const int k = get_global_id(0);
+  const int example_num = get_global_id(1);
 
-  const float out_k = actual_outputs[k];
-  const float expected_k = expected[k];
+  const int idx = LAYER_SIZE * example_num + CHUNK_START + k;
+
+  const float out_k = actual_outputs[idx];
+  const float expected_k = expected[idx];
 
   // Remapped values.
   const float rout_k = REMAP(CHUNK_IDX, k, out_k);
@@ -30,5 +39,5 @@ __kernel void SetOutputError(__global const float *restrict actual_outputs,
   // since this is most efficient for sigmoid and works for relu.
 
   // Note in some presentations this is out_k - expected_k.
-  output_error[k] = DERIVATIVE(rout_k) * (rexpected_k - rout_k);
+  output_error[idx] = DERIVATIVE(rout_k) * (rexpected_k - rout_k);
 }
