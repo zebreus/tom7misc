@@ -133,6 +133,7 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
     }
 
     std::vector<ChunkKernel> chunk_kernels;
+    int chunk_start = 0;
     for (const Chunk &chunk : net.layers[layer].chunks) {
       string kernel_src =
         Network::TransferFunctionDefines(chunk.transfer_function);
@@ -142,11 +143,13 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
                     "#define INDICES_PER_NODE %d\n"
                     "#define NUM_FEATURES %d\n"
                     "#define SPAN_START %d\n"
-                    "#define SPAN_SIZE %d\n",
+                    "#define SPAN_SIZE %d\n"
+                    "#define CHUNK_START %d\n",
                     chunk.indices_per_node,
                     chunk.num_features,
                     chunk.span_start,
-                    chunk.span_size);
+                    chunk.span_size,
+                    chunk_start);
 
       const string kernel_name = ForwardKernelName(chunk.type);
       kernel_src += base_src;
@@ -157,6 +160,8 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
       ck.program = program;
       ck.kernel = kernel;
       chunk_kernels.push_back(ck);
+
+      chunk_start += chunk.num_nodes;
     }
     layer_kernels.push_back(std::move(chunk_kernels));
   }
@@ -178,7 +183,6 @@ void ForwardLayerCL::RunForward(
 
   // We do the chunks in serial.
   const Layer &layer = net.layers[dst_layer];
-  int out_idx = 0;
   for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
 
     const Chunk &chunk = layer.chunks[chunk_idx];
@@ -210,16 +214,13 @@ void ForwardLayerCL::RunForward(
                               src_num_nodes);
 
 
-      // PERF: This is a good approach (saves constant addition in kernel)
-      // with one training example, but I probably want to pass the full
-      // layer and offset in the kernel (can be compile-time constant)
-      // in order to enable parallelism over training examples.
+      // Full output layer for the example.
       const int dst_layer_start =
         example_num * net.layers[dst_layer].num_nodes;
       cl_mem dst_sub_values = SliceGPUMemory<float>(
           train->stimulations[dst_layer],
-          dst_layer_start + out_idx,
-          chunk.num_nodes);
+          dst_layer_start,
+          net.layers[dst_layer].num_nodes);
 
       // Can't have multiple threads setting a kernel's argument at one time.
       {
@@ -265,10 +266,7 @@ void ForwardLayerCL::RunForward(
       CHECK_SUCCESS(clReleaseMemObject(dst_sub_values));
       CHECK_SUCCESS(clReleaseMemObject(src_sub_values));
     }
-
-    out_idx += chunk.num_nodes;
   }
-  CHECK(out_idx == layer.num_nodes);
 }
 
 ForwardLayerCL::~ForwardLayerCL() {

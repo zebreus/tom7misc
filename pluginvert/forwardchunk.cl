@@ -17,6 +17,8 @@
 //   this is ignored (but should be defined to 1 or whatever). Must
 //   divide the number of nodes in the layer.
 // SPAN_START and SPAN_SIZE, integers giving the input span.
+// CHUNK_START, an integer giving the start position of the output
+//   in the output array (after selecting the example's output array).
 
 // We don't actually need to know the number of nodes within the kernel;
 // the global id just tells us which node we work on. But the number
@@ -53,7 +55,7 @@ __kernel void ForwardChunkSparse(
     // potential += w * v;
     potential = fma(w, v, potential);
   }
-  output_values[node_idx] = FORWARD(potential);
+  output_values[CHUNK_START + node_idx] = FORWARD(potential);
 }
 
 // Dense version. Here we can read the indices in order without any
@@ -88,7 +90,7 @@ __kernel void ForwardChunkDense(
     potential = fma(w, v, potential);
   }
 
-  output_values[node_idx] = FORWARD(potential);
+  output_values[CHUNK_START + node_idx] = FORWARD(potential);
 }
 
 // PERF: Consider having this loop over all the features (i.e., pass
@@ -139,5 +141,5 @@ __kernel void ForwardChunkConvolutional(
     // potential += w * v;
     potential = fma(w, v, potential);
   }
-  output_values[node_idx] = FORWARD(potential);
+  output_values[CHUNK_START + node_idx] = FORWARD(potential);
 }

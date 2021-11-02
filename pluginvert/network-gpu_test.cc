@@ -454,7 +454,7 @@ static void TrainTest(TrainNet train_net,
 int main(int argc, char **argv) {
   cl = new CL;
 
-  #if 0
+  #if 1
   ForwardTests(NetworkTestUtil::SingleSparse());
   ForwardTests(NetworkTestUtil::SingleDense());
   ForwardTests(NetworkTestUtil::SingleConvolution());
@@ -502,7 +502,7 @@ int main(int argc, char **argv) {
   #endif
 
 
-  #if 0
+  #if 1
   // Even with a lower learning rate, this converges much faster than
   // the SGD version :) ~200 rounds.
   TrainTest(NetworkTestUtil::ForceAdam(NetworkTestUtil::LearnBoolean()),
@@ -526,7 +526,7 @@ int main(int argc, char **argv) {
             4);
   #endif
 
-  #if 0
+  #if 1
   // Adam works well on this, even with a conservative learning
   // rate of 0.01f; once the weights get near 1, the bias rapidly
   // gets unlearned. Converges in ~800 rounds.
@@ -556,7 +556,7 @@ int main(int argc, char **argv) {
 
   // OK up to here with training batch (as a loop)
 
-  #if 1
+  #if 0
   // Gets to about 0.13 error in 3600 rounds, but unclear if it will
   // ever converge further?
   TrainTest(NetworkTestUtil::ForceAdam(
