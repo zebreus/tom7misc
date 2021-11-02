@@ -287,13 +287,12 @@ static void Train(Network *net) {
     std::make_unique<UpdateWeightsCL>(cl, *net);
 
   // Uninitialized training examples on GPU.
-  std::vector<std::unique_ptr<TrainingRoundGPU>> training;
-  for (int i = 0; i < EXAMPLES_PER_ROUND; i++)
-    training.emplace_back(new TrainingRoundGPU(cl, *net));
+  std::unique_ptr<TrainingRoundGPU> training(
+      new TrainingRoundGPU(EXAMPLES_PER_ROUND, cl, *net));
 
   // Used to compute loss.
   std::vector<std::vector<float>> expected;
-  expected.resize(training.size());
+  expected.resize(EXAMPLES_PER_ROUND);
 
   double round_ms = 0.0;
   double example_ms = 0.0;
@@ -310,11 +309,11 @@ static void Train(Network *net) {
   for (int iter = 0; true; iter++) {
     Timer round_timer;
 
+    // Initialize training examples.
+    // (PERF: parallelize?)
     {
       Timer example_timer;
-      // Initialize training examples.
-      // (PERF: parallelize?)
-      for (int i = 0; i < training.size(); i++) {
+      for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
         // One-hot
         std::vector<float> inputs(MAX_WORD_LEN * RADIX, 0.0f);
 
@@ -323,12 +322,13 @@ static void Train(Network *net) {
           const int c = j < word.size() ? word[j] - 'a' + 1 : 0;
           inputs[j * RADIX + c] = 1.0f;
         }
-        training[i]->LoadInput(inputs);
-        training[i]->LoadExpected(inputs);
+        training->LoadInput(i, inputs);
+        training->LoadExpected(i, inputs);
         expected[i] = std::move(inputs);
       }
       example_ms += example_timer.MS();
     }
+
 
     if (VERBOSE > 1)
       printf("Prepped examples.\n");
@@ -338,13 +338,7 @@ static void Train(Network *net) {
       for (int src_layer = 0;
            src_layer < net->layers.size() - 1;
            src_layer++) {
-        ParallelComp(
-            training.size(),
-            [&](int idx) {
-              forward_cl->RunForward(
-                  net_gpu.get(), training[idx].get(), src_layer);
-            },
-            max_parallelism);
+        forward_cl->RunForward(net_gpu.get(), training.get(), src_layer);
       }
       forward_ms += forward_timer.MS();
     }
@@ -354,12 +348,7 @@ static void Train(Network *net) {
 
     {
       Timer error_timer;
-      ParallelComp(
-          training.size(),
-          [&](int idx) {
-            error_cl->SetOutputError(net_gpu.get(), training[idx].get());
-          },
-          max_parallelism);
+      error_cl->SetOutputError(net_gpu.get(), training.get());
       error_ms += error_timer.MS();
     }
 
@@ -372,14 +361,7 @@ static void Train(Network *net) {
            // Don't propagate to input.
            dst_layer > 1;
            dst_layer--) {
-        ParallelComp(
-            training.size(),
-            [&](int idx) {
-              backward_cl->BackwardLayer(net_gpu.get(),
-                                         training[idx].get(),
-                                         dst_layer);
-            },
-            max_parallelism);
+        backward_cl->BackwardLayer(net_gpu.get(), training.get(), dst_layer);
       }
       backward_ms += backward_timer.MS();
     }
@@ -402,10 +384,8 @@ static void Train(Network *net) {
       ParallelComp(net->layers.size() - 1,
                    [&](int layer_minus_1) {
                      const int layer_idx = layer_minus_1 + 1;
-                     for (int i = 0; i < training.size(); i++) {
-                       update_cl->Update(net_gpu.get(), training[i].get(),
-                                         EXAMPLE_LEARNING_RATE, layer_idx);
-                     }
+                     update_cl->Update(net_gpu.get(), training.get(),
+                                       EXAMPLE_LEARNING_RATE, layer_idx);
                    },
                    max_parallelism);
       update_ms += update_timer.MS();
@@ -422,7 +402,7 @@ static void Train(Network *net) {
                    [&](int idx, const std::vector<float> &exp) {
                      std::vector<float> got;
                      got.resize(exp.size());
-                     training[idx]->ExportOutput(&got);
+                     training->ExportOutput(idx, &got);
 
                      float loss = 0.0f;
                      for (int i = 0; i < exp.size(); i++) {

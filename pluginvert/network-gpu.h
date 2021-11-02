@@ -91,66 +91,83 @@ struct NetworkGPU {
   DISALLOW_COPY_AND_ASSIGN(NetworkGPU);
 };
 
-// Data on the GPU for a single example in a single training round. Can
-// be reused across rounds.
-// TODO: Since each training round is actually over a batch of examples,
-// it may be much better to support an array of examples here, which could
-// allow us to run kernels across multiple examples at once. This could
-// be especially fruitful for layers aren't even using the full bandwidth
-// of the GPU.
+// Data on the GPU for a single training round: A fixed-size array of
+// training examples (and their errors, etc.). Can be reused across
+// rounds.
+//
+// The goal of storing these in an array is to enable kernels to run
+// over many examples at once. This is especially helpful for small
+// chunks, which can't use the full bandwidth of the GPU when run
+// individually.
 
-// PERF HERE!
+// FIXME PERF HERE!
 // (Should do this after we have good tests, and benchmark it!)
 struct TrainingRoundGPU {
-  TrainingRoundGPU(CL *cl, const Network &net) : cl(cl), net(&net) {
+  TrainingRoundGPU(int num_examples, CL *cl, const Network &net) :
+    num_examples(num_examples), cl(cl), net(&net) {
     for (const Layer &layer : net.layers) {
       stimulations.push_back(
-          CreateUninitializedGPUMemory<float>(cl->context, layer.num_nodes));
+          CreateUninitializedGPUMemory<float>(cl->context,
+                                              layer.num_nodes * num_examples));
       errors.push_back(
-          CreateUninitializedGPUMemory<float>(cl->context, layer.num_nodes));
+          CreateUninitializedGPUMemory<float>(cl->context,
+                                              layer.num_nodes * num_examples));
     }
 
     expected =
       CreateUninitializedGPUMemory<float>(cl->context,
-                                          net.layers.back().num_nodes);
+                                          net.layers.back().num_nodes *
+                                          num_examples);
   }
 
-  void LoadInput(const std::vector<float> &inputs) {
+  void LoadInput(int idx, const std::vector<float> &inputs) {
+    CHECK(idx >= 0 && idx < num_examples);
     CHECK_EQ(inputs.size(), net->layers[0].num_nodes);
-    CopyBufferToGPU(cl->queue, inputs, stimulations[0]);
+    CopyOffsetBufferToGPU(idx, inputs, stimulations[0]);
+    clFinish(cl->queue);
   }
 
-  void LoadExpected(const std::vector<float> &values) {
+  void LoadExpected(int idx, const std::vector<float> &values) {
+    CHECK(idx >= 0 && idx < num_examples);
     CHECK_EQ(values.size(), net->layers.back().num_nodes);
-    CopyBufferToGPU(cl->queue, values, expected);
+    CopyOffsetBufferToGPU(idx, values, expected);
+    clFinish(cl->queue);
   }
 
-  void ExportStimulation(Stimulation *stim) {
+  void ExportStimulation(int idx, Stimulation *stim) {
+    CHECK(idx >= 0 && idx < num_examples);
     CHECK_EQ(stim->values.size(), stimulations.size());
     for (int i = 0; i < stim->values.size(); i++) {
-      CopyBufferFromGPUTo(cl->queue, stimulations[i], &stim->values[i]);
+      CopyOffsetBufferFromGPUTo(idx, stimulations[i], &stim->values[i]);
     }
+    clFinish(cl->queue);
   }
 
-  void ExportErrors(Errors *err) {
+  void ExportErrors(int idx, Errors *err) {
+    CHECK(idx >= 0 && idx < num_examples);
     CHECK_EQ(err->error.size(), errors.size());
     for (int i = 0; i < err->error.size(); i++) {
-      CopyBufferFromGPUTo(cl->queue, errors[i], &err->error[i]);
+      CopyOffsetBufferFromGPUTo(idx, errors[i], &err->error[i]);
     }
+    clFinish(cl->queue);
   }
 
   // Copy (only) the final layer of the stimulation back to main memory.
   // The output vector must already have the correct size.
-  void ExportOutput(std::vector<float> *out) {
-    CopyBufferFromGPUTo(cl->queue, stimulations.back(), out);
+  void ExportOutput(int idx, std::vector<float> *out) {
+    CHECK(idx >= 0 && idx < num_examples);
+    CopyOffsetBufferFromGPUTo(idx, stimulations.back(), out);
+    clFinish(cl->queue);
   }
 
   // Same size as net->layers. 0th is input, final is the output.
+  // Each memory is the layer's size * num_examples.
   std::vector<cl_mem> stimulations;
   // Same size as net->layers. 0th is input (unused), final is the output.
+  // Each memory is the layer's size * num_examples.
   // (Note: Prior to chunks, this used to exclude the (unused) input error)
   std::vector<cl_mem> errors;
-  // Size of final stimulation.
+  // Size of final stimulation * num_examples.
   cl_mem expected;
 
   ~TrainingRoundGPU() {
@@ -163,21 +180,54 @@ struct TrainingRoundGPU {
     CHECK_SUCCESS(clReleaseMemObject(expected));
   }
 
-  CL *cl;
-  const Network *net;
+  const int num_examples = 0;
+  CL *cl = nullptr;
+  const Network *net = nullptr;
  private:
+
+  // Assuming buf is num_examples * vec.size() floats, copy the
+  // vector's data to the indexed example in the buffer. Doesn't
+  // wait for command to finish.
+  void CopyOffsetBufferToGPU(int idx,
+                             const std::vector<float> &vec, cl_mem buf) {
+    CHECK(!vec.empty());
+    const int offset = sizeof (float) * vec.size() * idx;
+    CHECK_SUCCESS(clEnqueueWriteBuffer(
+                      cl->queue, buf, CL_TRUE,
+                      offset, sizeof (float) * vec.size(), vec.data(),
+                      // No wait-list or event.
+                      0, nullptr, nullptr));
+  }
+
+  // Assuming src is num_examples * dst->size() floats, copy the
+  // data for the indexed example to the destination.
+  // Does not wait for command to finish.
+  void CopyOffsetBufferFromGPUTo(int idx,
+                                 cl_mem src,
+                                 std::vector<float> *dst) {
+    // Empty not supported by cl copy nor TrainingRound.
+    CHECK(!dst->empty());
+    const int offset = sizeof (float) * dst->size() * idx;
+    CHECK_SUCCESS(
+        clEnqueueReadBuffer(cl->queue, src, CL_TRUE,
+                            offset, sizeof (float) * dst->size(),
+                            dst->data(),
+                            // No wait-list or event.
+                            0, nullptr,
+                            nullptr));
+  }
+
   DISALLOW_COPY_AND_ASSIGN(TrainingRoundGPU);
 };
 
 
 // Forward pass.
 struct ForwardLayerCL {
-
   ForwardLayerCL(CL *cl, const Network &net);
   ~ForwardLayerCL();
 
-  // Run the given layer of the network forward on the given training
-  // instance (TODO: expand to multiple instances in parallel).
+  // Run the given layer of the network forward on each of the given
+  // training instances, managing the parallelism internally.
   void RunForward(
       NetworkGPU *net_gpu, TrainingRoundGPU *train, int src_layer);
 
@@ -196,6 +246,8 @@ struct ForwardLayerCL {
   std::vector<std::vector<ChunkKernel>> layer_kernels;
 
   std::mutex m;
+
+  DISALLOW_COPY_AND_ASSIGN(ForwardLayerCL);
 };
 
 // Set the error values from the actual and expected outputs, possibly
@@ -208,6 +260,7 @@ struct SetOutputErrorCL {
       CL *cl, const Network &net,
       const std::optional<std::string> remap_define = std::nullopt);
 
+  // Runs on all the examples in the round.
   void SetOutputError(NetworkGPU *net_gpu, TrainingRoundGPU *train);
 
   ~SetOutputErrorCL() {
@@ -247,6 +300,7 @@ struct BackwardLayerCL {
   ~BackwardLayerCL();
 
   // Propagate errors from dst_layer to dst_layer-1. Runs both passes.
+  // Runs on all examples in the round.
   // PERF: If some prefix of the layers consist only of fixed chunks,
   // then we don't need to propagate errors because we won't use them.
   // This could be a big performance improvement if iteratively growing
@@ -272,6 +326,8 @@ struct BackwardLayerCL {
   std::vector<std::vector<ChunkKernel>> layer_kernels;
 
   std::mutex m;
+
+  DISALLOW_COPY_AND_ASSIGN(BackwardLayerCL);
 };
 
 // Optional and unprincipled L2-like regularization.
@@ -289,12 +345,15 @@ struct DecayWeightsCL {
   cl_program program;
   cl_kernel kernel;
   std::mutex m;
+
+  DISALLOW_COPY_AND_ASSIGN(DecayWeightsCL);
 };
 
 struct UpdateWeightsCL {
   UpdateWeightsCL(CL *cl, const Network &net);
   ~UpdateWeightsCL();
 
+  // Run on all examples in the round.
   void Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
               float learning_rate, int layer);
 
@@ -311,6 +370,8 @@ struct UpdateWeightsCL {
   CL *cl = nullptr;
 
   std::mutex m;
+
+  DISALLOW_COPY_AND_ASSIGN(UpdateWeightsCL);
 };
 
 #endif

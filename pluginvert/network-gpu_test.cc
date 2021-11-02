@@ -35,9 +35,9 @@ static void ForwardTests(TestNet test_net) {
 
   for (const TestExample &example : test_net.examples) {
     std::unique_ptr<TrainingRoundGPU> training_round =
-      std::make_unique<TrainingRoundGPU>(cl, net);
+      std::make_unique<TrainingRoundGPU>(1, cl, net);
 
-    training_round->LoadInput(example.input);
+    training_round->LoadInput(0, example.input);
 
     std::unique_ptr<ForwardLayerCL> forward_cl =
       std::make_unique<ForwardLayerCL>(cl, net);
@@ -51,13 +51,13 @@ static void ForwardTests(TestNet test_net) {
 
     // Must be initialized to the correct size.
     std::vector<float> gpu_out(net.layers.back().num_nodes, -1.0f);
-    training_round->ExportOutput(&gpu_out);
+    training_round->ExportOutput(0, &gpu_out);
 
     CHECK_FEQV(gpu_out, example.output);
 
     // And via the stimulation, which should be the same...
     Stimulation stim(net);
-    training_round->ExportStimulation(&stim);
+    training_round->ExportStimulation(0, &stim);
     // No change to input layer.
     CHECK_FEQV(stim.values[0], example.input);
     // Should have expected output after inference.
@@ -79,9 +79,9 @@ static void TrainOnTestTests(TestNet test_net) {
 
   for (const TestExample &example : test_net.examples) {
     std::unique_ptr<TrainingRoundGPU> training_round =
-      std::make_unique<TrainingRoundGPU>(cl, net);
+      std::make_unique<TrainingRoundGPU>(1, cl, net);
 
-    training_round->LoadInput(example.input);
+    training_round->LoadInput(0, example.input);
 
     // Perturb the training example so that it is not exactly what the
     // network already predicts, just so that the errors are not
@@ -91,7 +91,7 @@ static void TrainOnTestTests(TestNet test_net) {
       f += gauss.Next();
     }
 
-    training_round->LoadExpected(out);
+    training_round->LoadExpected(0, out);
 
     std::unique_ptr<ForwardLayerCL> forward_cl =
       std::make_unique<ForwardLayerCL>(cl, net);
@@ -196,13 +196,12 @@ static void TrainTest(TrainNet train_net,
     std::make_unique<UpdateWeightsCL>(cl, net);
 
   // Uninitialized training examples on GPU.
-  std::vector<std::unique_ptr<TrainingRoundGPU>> training;
-  for (int i = 0; i < examples_per_round; i++)
-    training.emplace_back(new TrainingRoundGPU(cl, net));
+  std::unique_ptr<TrainingRoundGPU> training(
+      new TrainingRoundGPU(examples_per_round, cl, net));
 
   // Used to compute loss.
   std::vector<std::vector<float>> expected;
-  expected.resize(training.size());
+  expected.resize(training->num_examples);
 
   Timer train_timer;
   int64 total_examples = 0LL;
@@ -210,7 +209,7 @@ static void TrainTest(TrainNet train_net,
 
     // Initialize training examples.
     // (PERF: parallelize?)
-    for (int i = 0; i < training.size(); i++) {
+    for (int i = 0; i < training->num_examples; i++) {
       std::vector<float> inputs;
       inputs.reserve(train_net.NumInputs());
 
@@ -241,10 +240,10 @@ static void TrainTest(TrainNet train_net,
           inputs.push_back(gauss.Next());
         }
       }
-      training[i]->LoadInput(inputs);
+      training->LoadInput(i, inputs);
       std::vector<float> outputs = train_net.f(inputs);
       CHECK(outputs.size() == train_net.NumOutputs());
-      training[i]->LoadExpected(outputs);
+      training->LoadExpected(i, outputs);
       expected[i] = std::move(outputs);
     }
 
@@ -254,24 +253,13 @@ static void TrainTest(TrainNet train_net,
     for (int src_layer = 0;
          src_layer < net.layers.size() - 1;
          src_layer++) {
-      ParallelComp(
-          training.size(),
-          [&](int idx) {
-            forward_cl->RunForward(
-                net_gpu.get(), training[idx].get(), src_layer);
-          },
-          max_parallelism);
+      forward_cl->RunForward(net_gpu.get(), training.get(), src_layer);
     }
 
     if (VERBOSE > 1)
       printf("Forward done.\n");
 
-    ParallelComp(
-        training.size(),
-        [&](int idx) {
-          error_cl->SetOutputError(net_gpu.get(), training[idx].get());
-        },
-        max_parallelism);
+    error_cl->SetOutputError(net_gpu.get(), training.get());
 
     if (VERBOSE > 1)
       printf("Set error.\n");
@@ -280,14 +268,7 @@ static void TrainTest(TrainNet train_net,
          // Don't propagate to input.
          dst_layer > 1;
          dst_layer--) {
-      ParallelComp(
-          training.size(),
-          [&](int idx) {
-            backward_cl->BackwardLayer(net_gpu.get(),
-                                       training[idx].get(),
-                                       dst_layer);
-          },
-          max_parallelism);
+      backward_cl->BackwardLayer(net_gpu.get(), training.get(), dst_layer);
     }
 
     if (VERBOSE > 1)
@@ -302,10 +283,8 @@ static void TrainTest(TrainNet train_net,
     ParallelComp(net.layers.size() - 1,
                  [&](int layer_minus_1) {
                    const int layer_idx = layer_minus_1 + 1;
-                   for (int i = 0; i < training.size(); i++) {
-                     update_cl->Update(net_gpu.get(), training[i].get(),
-                                       example_learning_rate, layer_idx);
-                   }
+                   update_cl->Update(net_gpu.get(), training.get(),
+                                     example_learning_rate, layer_idx);
                  },
                  max_parallelism);
 
@@ -319,7 +298,7 @@ static void TrainTest(TrainNet train_net,
                    [&](int idx, const std::vector<float> exp) {
                      std::vector<float> got;
                      got.resize(exp.size());
-                     training[idx]->ExportOutput(&got);
+                     training->ExportOutput(idx, &got);
 
                      int incorrect = 0;
                      float loss = 0.0f;
@@ -575,7 +554,9 @@ int main(int argc, char **argv) {
             4);
   #endif
 
-  #if 0
+  // OK up to here with training batch (as a loop)
+
+  #if 1
   // Gets to about 0.13 error in 3600 rounds, but unclear if it will
   // ever converge further?
   TrainTest(NetworkTestUtil::ForceAdam(
