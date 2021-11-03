@@ -263,7 +263,7 @@ static void Train(Network *net) {
   std::vector<std::unique_ptr<ImageRGBA>> images;
   constexpr int IMAGE_WIDTH = 3000;
   constexpr int IMAGE_HEIGHT = 1000;
-  constexpr int IMAGE_EVERY = 5;
+  constexpr int IMAGE_EVERY = 15;
   int image_x = 0;
   for (int i = 0; i < net->layers.size(); i++) {
     // XXX skip input layer?
@@ -297,9 +297,10 @@ static void Train(Network *net) {
   std::unique_ptr<TrainingRoundGPU> training(
       new TrainingRoundGPU(EXAMPLES_PER_ROUND, cl, *net));
 
-  // Used to compute loss.
-  std::vector<std::vector<float>> expected;
-  expected.resize(EXAMPLES_PER_ROUND);
+  // Used to fill the input and output for the training example,
+  // and preserved on the CPU to compute loss in verbose rounds.
+  constexpr int INPUT_SIZE = MAX_WORD_LEN * RADIX;
+  std::vector<float> inputs(INPUT_SIZE * EXAMPLES_PER_ROUND, 0.0f);
 
   double round_ms = 0.0;
   double example_ms = 0.0;
@@ -322,20 +323,19 @@ static void Train(Network *net) {
     // (PERF: parallelize?)
     {
       Timer example_timer;
+      for (float &f : inputs) f = 0.0f;
+
       for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
         // One-hot
-        std::vector<float> inputs(MAX_WORD_LEN * RADIX, 0.0f);
-
         string word = wikibits.RandomWord();
         for (int j = 0; j < MAX_WORD_LEN; j++) {
           const int c = j < word.size() ? word[j] - 'a' + 1 : 0;
-          inputs[j * RADIX + c] = 1.0f;
+          inputs[INPUT_SIZE * i + j * RADIX + c] = 1.0f;
         }
-        training->LoadInput(i, inputs);
-        training->LoadExpected(i, inputs);
-        if (verbose_round)
-          expected[i] = std::move(inputs);
       }
+      training->LoadInputs(inputs);
+      training->LoadExpecteds(inputs);
+
       example_ms += example_timer.MS();
     }
 
@@ -415,7 +415,20 @@ static void Train(Network *net) {
 
     if (verbose_round) {
       // Get loss as abs distance, plus number of incorrect (as booleans).
-      // Size of examples = Number of training instances.
+
+      // PERF could do this on the flat vector, but we only need to
+      // run it for verbose rounds
+      std::vector<std::vector<float>> expected;
+      expected.reserve(EXAMPLES_PER_ROUND);
+      for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
+        std::vector<float> one;
+        one.resize(INPUT_SIZE, 0.0f);
+        for (int j = 0; j < INPUT_SIZE; j++) {
+          one[j] = inputs[i * INPUT_SIZE + j];
+        }
+        expected.emplace_back(std::move(one));
+      }
+
       string example_correct, example_predicted;
       std::vector<std::pair<float, int>> losses =
         ParallelMapi(expected,

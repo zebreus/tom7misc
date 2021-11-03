@@ -125,6 +125,7 @@ struct TrainingRoundGPU {
                                           num_examples);
   }
 
+  // Load one example's input at the given index.
   void LoadInput(int idx, const std::vector<float> &inputs) {
     CHECK(idx >= 0 && idx < num_examples);
     CHECK_EQ(inputs.size(), net->layers[0].num_nodes);
@@ -132,10 +133,24 @@ struct TrainingRoundGPU {
     clFinish(cl->queue);
   }
 
+  // Load all the examples.
+  void LoadInputs(const std::vector<float> &inputs) {
+    CHECK_EQ(inputs.size(), net->layers[0].num_nodes * num_examples);
+    CopyBufferToGPU(cl->queue, inputs, stimulations[0]);
+    clFinish(cl->queue);
+  }
+
   void LoadExpected(int idx, const std::vector<float> &values) {
     CHECK(idx >= 0 && idx < num_examples);
     CHECK_EQ(values.size(), net->layers.back().num_nodes);
     CopyOffsetBufferToGPU(idx, values, expected);
+    clFinish(cl->queue);
+  }
+
+  // Load all the examples.
+  void LoadExpecteds(const std::vector<float> &values) {
+    CHECK_EQ(values.size(), net->layers.back().num_nodes * num_examples);
+    CopyBufferToGPU(cl->queue, values, expected);
     clFinish(cl->queue);
   }
 

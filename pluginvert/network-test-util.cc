@@ -32,6 +32,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::ForceAdam(TrainNet net) {
       if (chunk.type != CHUNK_INPUT) {
         // And only if the weight update method is currently SGD.
         if (chunk.weight_update == SGD) {
+          // Wrong for these to have data for SGD, and
+          // resize only sets new elements to zero.
           CHECK(chunk.weights_aux.empty());
           CHECK(chunk.biases_aux.empty());
 
