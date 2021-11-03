@@ -3,11 +3,14 @@
 // a chunk in the destination layer, but it propagates errors to any
 // nodes used within its input span; therefore its writes can overlap
 // with other chunks from the same layer. So we run the chunks
-// sequentually, accumulating error with += (although see
+// sequentially, accumulating error with += (although see
 // SRC_SPAN_IS_ZERO below). A separate pass (backwardsecondpass.cl)
 // multiplies by the derivative and optionally clips.
 
 // Expects the following defines:
+//
+// SRC_LAYER_SIZE and DST_LAYER_SIZE, the number of nodes in the
+//   two layers.
 //
 // CHUNK_START, an integer giving the start of the chunk within
 //   the destination layer.
@@ -45,15 +48,21 @@ __kernel void BackwardChunkSparse(
                   // Weights for this chunk. Size chunk.num_nodes *
                   // chunk.indices_per_node.
                   __global const float *restrict dst_weights,
-                  // Full destination errors, size layers[dst].num_nodes.
+                  // Full destination errors, size layers[dst].num_nodes per
+                  // example.
                   __global const float *restrict dst_error,
-                  // Full src errors, size layers[src].num_nodes. Where
-                  // we write.
+                  // Full src errors, size layers[src].num_nodes per example.
+                  // Where we write.
                   __global float *restrict src_error) {
 
   // node index within the input span. in [0, SPAN_SIZE).
   const int h_span = get_global_id(0);
-  // index into src_error etc.
+  const int example_num = get_global_id(1);
+
+  const int src_start_index = example_num * SRC_LAYER_SIZE;
+  const int dst_start_index = example_num * DST_LAYER_SIZE;
+
+  // index into this example's src_error etc.
   const int h_global = SPAN_START + h_span;
 
   // Unpack inverted index for this node, so that we can loop over all of
@@ -72,13 +81,15 @@ __kernel void BackwardChunkSparse(
 
     // weighted_error_sum += weight * error
     weighted_error_sum =
-      fma(dst_weights[cidx], dst_error[dst_node_idx], weighted_error_sum);
+      fma(dst_weights[cidx],
+          dst_error[dst_start_index + dst_node_idx],
+          weighted_error_sum);
   }
 
   #if SRC_SPAN_IS_ZERO
-  src_error[h_global] = weighted_error_sum;
+  src_error[src_start_index + h_global] = weighted_error_sum;
   #else
-  src_error[h_global] += weighted_error_sum;
+  src_error[src_start_index + h_global] += weighted_error_sum;
   #endif
 }
 
@@ -91,13 +102,19 @@ __kernel void BackwardChunkDense(
               // Weights for this chunk. Size chunk.num_nodes *
               // chunk.indices_per_node.
               __global const float *restrict dst_weights,
-              // Full destination errors, size layers[dst].num_nodes.
+              // Full destination errors, size layers[dst].num_nodes per
+              // example.
               __global const float *restrict dst_error,
-              // Full src errors, size layers[src].num_nodes. Where
-              // we write.
+              // Full src errors, size layers[src].num_nodes per example.
+              // Where we write.
               __global float *restrict src_error) {
   // h_span in [0, SPAN_SIZE]
   const int h_span = get_global_id(0);
+  const int example_num = get_global_id(1);
+
+  const int src_start_index = example_num * SRC_LAYER_SIZE;
+  const int dst_start_index = example_num * DST_LAYER_SIZE;
+
   const int h_global = CHUNK_START + h_span;
 
   // The destination chunk is dense, so this node is sent to each
@@ -112,14 +129,15 @@ __kernel void BackwardChunkDense(
     const int dst_node_idx = CHUNK_START + i;
 
     // weighted_error_sum += weight * error
-    weighted_error_sum = fma(dst_weights[cidx], dst_error[dst_node_idx],
+    weighted_error_sum = fma(dst_weights[cidx],
+                             dst_error[dst_start_index + dst_node_idx],
                              weighted_error_sum);
   }
 
   #if SRC_SPAN_IS_ZERO
-  src_error[h_global] = weighted_error_sum;
+  src_error[src_start_index + h_global] = weighted_error_sum;
   #else
-  src_error[h_global] += weighted_error_sum;
+  src_error[src_start_index + h_global] += weighted_error_sum;
   #endif
 }
 
@@ -135,14 +153,20 @@ __kernel void BackwardChunkConvolutional(
                   __global const int *restrict inverted_indices,
                   // Size chunk.num_nodes * dst_indices_per_node.
                   __global const float *restrict dst_weights,
-                  // Full destination errors, size layers[dst].num_nodes.
+                  // Full destination errors, size layers[dst].num_nodes
+                  // per example.
                   __global const float *restrict dst_error,
-                  // Full src errors, size layers[src].num_nodes. Where
-                  // we write.
+                  // Full src errors, size layers[src].num_nodes per
+                  // example. Where we write.
                   __global float *restrict src_error) {
 
   // node index within the input span. in [0, SPAN_SIZE).
   const int h_span = get_global_id(0);
+  const int example_num = get_global_id(1);
+
+  const int src_start_index = example_num * SRC_LAYER_SIZE;
+  const int dst_start_index = example_num * DST_LAYER_SIZE;
+
   // index into src_error etc.
   const int h_global = SPAN_START + h_span;
 
@@ -168,14 +192,14 @@ __kernel void BackwardChunkConvolutional(
       const int weight_idx = DST_INDICES_PER_NODE * f + pattern_offset;
       // weighted_error_sum += weight * error
       weighted_error_sum = fma(dst_weights[weight_idx],
-                               dst_error[dst_node_idx],
+                               dst_error[dst_start_index + dst_node_idx],
                                weighted_error_sum);
     }
   }
 
   #if SRC_SPAN_IS_ZERO
-  src_error[h_global] = weighted_error_sum;
+  src_error[src_start_index + h_global] = weighted_error_sum;
   #else
-  src_error[h_global] += weighted_error_sum;
+  src_error[src_start_index + h_global] += weighted_error_sum;
   #endif
 }

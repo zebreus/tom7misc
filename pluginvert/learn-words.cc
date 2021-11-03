@@ -242,8 +242,8 @@ static void Train(Network *net) {
 
   ErrorHistory error_history("learn-words-error-history.tsv");
 
-  // 0, 1, 2
   static constexpr int max_parallelism = 4;
+  // 0, 1, 2
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = true;
   // Very small examples; could easily do 100x this...
@@ -252,7 +252,14 @@ static void Train(Network *net) {
   static constexpr float EXAMPLE_LEARNING_RATE =
     0.001f / (float)EXAMPLES_PER_ROUND;
 
-  // XXX!
+  // On a verbose round we compute training error and print out
+  // examples.
+  constexpr int VERBOSE_EVERY = 10;
+  // We save this to the error history file every this many
+  // verbose rounds.
+  constexpr int HISTORY_EVERY_VERBOSE = 1;
+  int64 total_verbose = 0;
+
   std::vector<std::unique_ptr<ImageRGBA>> images;
   constexpr int IMAGE_WIDTH = 3000;
   constexpr int IMAGE_HEIGHT = 1000;
@@ -309,6 +316,8 @@ static void Train(Network *net) {
   for (int iter = 0; true; iter++) {
     Timer round_timer;
 
+    const bool verbose_round = (iter % VERBOSE_EVERY) == 0;
+
     // Initialize training examples.
     // (PERF: parallelize?)
     {
@@ -324,7 +333,8 @@ static void Train(Network *net) {
         }
         training->LoadInput(i, inputs);
         training->LoadExpected(i, inputs);
-        expected[i] = std::move(inputs);
+        if (verbose_round)
+          expected[i] = std::move(inputs);
       }
       example_ms += example_timer.MS();
     }
@@ -394,86 +404,101 @@ static void Train(Network *net) {
     if (VERBOSE > 1)
       printf("Updated errors.\n");
 
-    // Get loss as abs distance, plus number of incorrect (as booleans).
-    // Size of examples = Number of training instances.
-    string example_correct, example_predicted;
-    std::vector<std::pair<float, int>> losses =
-      ParallelMapi(expected,
-                   [&](int idx, const std::vector<float> &exp) {
-                     std::vector<float> got;
-                     got.resize(exp.size());
-                     training->ExportOutput(idx, &got);
-
-                     float loss = 0.0f;
-                     for (int i = 0; i < exp.size(); i++) {
-                       loss += fabsf(exp[i] - got[i]);
-                     }
-
-                     auto MaxChar = [](const std::vector<float> &v) {
-                         CHECK(v.size() == MAX_WORD_LEN * RADIX);
-                         string s;
-                         s.reserve(MAX_WORD_LEN);
-                         for (int c = 0; c < MAX_WORD_LEN; c++) {
-                           int maxi = 0;
-                           float maxv = -999999.0f;
-                           for (int a = 0; a < RADIX; a++) {
-                             int idx = c * RADIX + a;
-                             if (v[idx] > maxv) {
-                               maxi = a;
-                               maxv = v[idx];
-                             }
-                           }
-                           if (maxi == 0) s.push_back('_');
-                           else s.push_back('a' + (maxi - 1));
-                         }
-                         return s;
-                       };
-                     string sexp = MaxChar(exp);
-                     string sgot = MaxChar(got);
-
-                     if (idx == 0) {
-                       // careful about thread safety
-                       example_correct = sexp;
-                       example_predicted = sgot;
-                     }
-
-                     CHECK(sexp.size() == sgot.size());
-                     int incorrect = 0;
-                     for (int i = 0; i < sexp.size(); i++)
-                       if (sexp[i] != sgot[i]) incorrect++;
-
-                     return std::make_pair(loss, incorrect);
-                   }, max_parallelism);
-
-    if (VERBOSE > 1)
-      printf("Got losses.\n");
-
-    float min_loss = 1.0f / 0.0f, average_loss = 0.0f, max_loss = 0.0f;
-    int min_inc = net->layers.back().num_nodes + 1, max_inc = 0;
-    float average_inc = 0.0f;
-    for (auto [loss_dist, loss_incorrect] : losses) {
-      min_loss = std::min(loss_dist, min_loss);
-      max_loss = std::max(loss_dist, max_loss);
-      average_loss += loss_dist;
-
-      min_inc = std::min(loss_incorrect, min_inc);
-      max_inc = std::max(loss_incorrect, max_inc);
-      average_inc += loss_incorrect;
-    }
-    average_loss /= losses.size();
-    average_inc /= losses.size();
-
     total_examples += EXAMPLES_PER_ROUND;
-    const double total_sec = train_timer.MS() / 1000.0;
-    const double eps = total_examples / total_sec;
-
-    constexpr int HISTORY_EVERY = 5;
-    if ((iter % HISTORY_EVERY) == 0) {
-      error_history.Add(net->rounds, average_loss, false);
-    }
 
     net->examples += EXAMPLES_PER_ROUND;
     net->rounds++;
+
+    // (currently no way to actually finish, but we could set a
+    // training error threshold below.)
+    const bool finished = false;
+
+    if (verbose_round) {
+      // Get loss as abs distance, plus number of incorrect (as booleans).
+      // Size of examples = Number of training instances.
+      string example_correct, example_predicted;
+      std::vector<std::pair<float, int>> losses =
+        ParallelMapi(expected,
+                     [&](int idx, const std::vector<float> &exp) {
+                       std::vector<float> got;
+                       got.resize(exp.size());
+                       training->ExportOutput(idx, &got);
+
+                       float loss = 0.0f;
+                       for (int i = 0; i < exp.size(); i++) {
+                         loss += fabsf(exp[i] - got[i]);
+                       }
+
+                       auto MaxChar = [](const std::vector<float> &v) {
+                           CHECK(v.size() == MAX_WORD_LEN * RADIX);
+                           string s;
+                           s.reserve(MAX_WORD_LEN);
+                           for (int c = 0; c < MAX_WORD_LEN; c++) {
+                             int maxi = 0;
+                             float maxv = -999999.0f;
+                             for (int a = 0; a < RADIX; a++) {
+                               int idx = c * RADIX + a;
+                               if (v[idx] > maxv) {
+                                 maxi = a;
+                                 maxv = v[idx];
+                               }
+                             }
+                             if (maxi == 0) s.push_back('_');
+                             else s.push_back('a' + (maxi - 1));
+                           }
+                           return s;
+                         };
+                       string sexp = MaxChar(exp);
+                       string sgot = MaxChar(got);
+
+                       if (idx == 0) {
+                         // careful about thread safety
+                         example_correct = sexp;
+                         example_predicted = sgot;
+                       }
+
+                       CHECK(sexp.size() == sgot.size());
+                       int incorrect = 0;
+                       for (int i = 0; i < sexp.size(); i++)
+                         if (sexp[i] != sgot[i]) incorrect++;
+
+                       return std::make_pair(loss, incorrect);
+                     }, max_parallelism);
+
+      if (VERBOSE > 1)
+        printf("Got losses.\n");
+
+      float min_loss = 1.0f / 0.0f, average_loss = 0.0f, max_loss = 0.0f;
+      int min_inc = net->layers.back().num_nodes + 1, max_inc = 0;
+      float average_inc = 0.0f;
+      for (auto [loss_dist, loss_incorrect] : losses) {
+        min_loss = std::min(loss_dist, min_loss);
+        max_loss = std::max(loss_dist, max_loss);
+        average_loss += loss_dist;
+
+        min_inc = std::min(loss_incorrect, min_inc);
+        max_inc = std::max(loss_incorrect, max_inc);
+        average_inc += loss_incorrect;
+      }
+      average_loss /= losses.size();
+      average_inc /= losses.size();
+
+      const double total_sec = train_timer.MS() / 1000.0;
+      const double eps = total_examples / total_sec;
+
+      printf("%d: %.3f<%.3f<%.3f", iter,
+             min_loss, average_loss, max_loss);
+      printf(" | %d<%.3f<%d",
+             min_inc, average_inc, max_inc);
+      printf(" (%.2f eps)\n", eps);
+      printf("   [%s] got [%s]\n",
+             example_correct.c_str(), example_predicted.c_str());
+
+      if ((total_verbose % HISTORY_EVERY_VERBOSE) == 0) {
+        error_history.Add(net->rounds, average_loss, false);
+      }
+      total_verbose++;
+    }
 
     if ((iter % IMAGE_EVERY) == 0) {
 
@@ -554,8 +579,6 @@ static void Train(Network *net) {
       }
     }
 
-    const bool finished = max_inc == 0;
-
     static constexpr double SAVE_EVERY_SEC = 120.0;
     bool save_timeout = false;
     if ((train_timer.MS() / 1000.0) > last_save + SAVE_EVERY_SEC) {
@@ -577,16 +600,6 @@ static void Train(Network *net) {
     if (finished) {
       printf("Successfully trained!\n");
       return;
-    } else {
-      if (VERBOSE || (iter % 100 == 0)) {
-        printf("%d: %.3f<%.3f<%.3f", iter,
-               min_loss, average_loss, max_loss);
-        printf(" | %d<%.3f<%d",
-               min_inc, average_inc, max_inc);
-        printf(" (%.2f eps)\n", eps);
-        printf("   [%s] got [%s]\n",
-               example_correct.c_str(), example_predicted.c_str());
-      }
     }
 
     round_ms += round_timer.MS();
@@ -627,8 +640,6 @@ static void Train(Network *net) {
              other_ms * msr);
     }
   }
-
-
 }
 
 
