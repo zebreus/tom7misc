@@ -792,12 +792,16 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
                     "#define CONSTRAIN_WEIGHT_MAX 16.0f\n"
                     "#define CONSTRAIN_BIAS_MAX 16384.0f\n"
 
+                    "#define SRC_LAYER_SIZE %d\n"
+                    "#define DST_LAYER_SIZE %d\n"
                     "#define CHUNK_START %d\n"
                     "#define SPAN_START %d\n"
                     "#define SPAN_SIZE %d\n"
                     "#define INDICES_PER_NODE %d\n"
                     "#define NUM_OCCURRENCES %d\n"
                     "#define NUM_FEATURES %d\n",
+                    net.layers[layer_idx - 1].num_nodes,
+                    net.layers[layer_idx].num_nodes,
                     out_idx,
                     chunk.span_start,
                     chunk.span_size,
@@ -869,34 +873,48 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
     // also tried...
     // pow((float)num_occurrences, 0.25f))
 
+    cl_mem all_prev_layer_output = train->stimulations[layer_idx - 1];
+    cl_mem all_layer_error = train->errors[layer_idx];
+
+    // TODO PERF: These all write to the same weights, so it is much
+    // trickier to parallelize over examples than other passes. We
+    // could run each example to a temporary weight vector (and
+    // weight_aux, ugh) and then sum them at the end. Probably we do
+    // not want to use num_examples * num_weights in temporary memory
+    // for this. But we could pick some width W and do W examples in
+    // parallel, each writing to their own shards, and then sum those,
+    // perhaps into an accumulator of the same size. Here we would
+    // only need W * num_weights memory, and this is fine because as
+    // num_weights gets high, we no longer benefit from internal
+    // parallelism.
+    // If we have W buffers, it could work like this:
+    //   clear buffer[0].
+    //   while there are examples left:
+    //     clear buffer[1]...buffer[W-1]  (but not the 0th)
+    //     run the next W examples, writing with += to buffer[0]...buffer[W-1]
+    //     sum buffer[0]...buffer[W-1] into buffer[0]
+    //   // now buffer[0] holds the sum of weight updates
+    //   apply clipping, adam etc., write to weights_aux and weights.
+    // We do need W>0, so this requires at least that extra memory
+    // overhead. It could be shared between chunks/layers if we're willing
+    // to give up on parallelism over those.
+
+    // (XXX BTW, it now occurs to me that I'm currently just doing
+    // Adam wrong, because I run it 1000 times per round (and update
+    // the moving averages) -- but I should only be taking one
+    // timestep. Right? So this would recommend a two-pass approach,
+    // computing the sums and adding at the end. We would not need to
+    // keep copies of weight_aux, since we only do this in the second
+    // pass.)
+
     for (int example_num = 0;
          example_num < train->num_examples;
          example_num++) {
 
-      // the output values for the previous layer, for this example
-      const int src_size = net.layers[layer_idx - 1].num_nodes;
-      const int src_start = example_num * src_size;
-      cl_mem sub_prev_layer_output =
-        SliceGPUMemory<float>(train->stimulations[layer_idx - 1],
-                              src_start, src_size);
-
-      // the errors for the layer we're updating, for this example
-      const int layer_size = net.layers[layer_idx].num_nodes;
-      const int layer_start = example_num * layer_size;
-      cl_mem sub_layer_error =
-        SliceGPUMemory<float>(train->errors[layer_idx],
-                              layer_start, layer_size);
-
-      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
-                                   (void *)&sub_prev_layer_output));
-      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 3, sizeof (cl_mem),
-                                   (void *)&sub_layer_error));
-
+      cl_int example_num_cl = example_num;
 
       {
-        // PERF: Could run the chunks in parallel. But we can't run training
-        // examples in parallel because of concurrent writes to the network's
-        // weights.
+        // PERF: Could run the chunks and/or layers in parallel.
         MutexLock ml(&m);
 
         CHECK_SUCCESS(clSetKernelArg(ck.kernel, 0, sizeof (cl_int),
@@ -904,9 +922,9 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         CHECK_SUCCESS(clSetKernelArg(ck.kernel, 1, sizeof (cl_float),
                                      (void *)&effective_learning_rate));
         CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
-                                     (void *)&sub_prev_layer_output));
+                                     (void *)&all_prev_layer_output));
         CHECK_SUCCESS(clSetKernelArg(ck.kernel, 3, sizeof (cl_mem),
-                                     (void *)&sub_layer_error));
+                                     (void *)&all_layer_error));
         CHECK_SUCCESS(clSetKernelArg(ck.kernel, 4, sizeof (cl_mem),
                                      (void *)&gpu_chunk.indices));
         CHECK_SUCCESS(clSetKernelArg(ck.kernel, 5, sizeof (cl_mem),
@@ -917,6 +935,8 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
                                      (void *)&gpu_chunk.weights_aux));
         CHECK_SUCCESS(clSetKernelArg(ck.kernel, 8, sizeof (cl_mem),
                                      (void *)&gpu_chunk.biases_aux));
+        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 9, sizeof (cl_int),
+                                     (void *)&example_num_cl));
 
         // Arguments are the same for the different chunk types,
         // but for convolution array it's actually a 2D kernel
@@ -958,9 +978,6 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         }
         clFinish(cl->queue);
       }
-
-      CHECK_SUCCESS(clReleaseMemObject(sub_prev_layer_output));
-      CHECK_SUCCESS(clReleaseMemObject(sub_layer_error));
     }
   }
 }

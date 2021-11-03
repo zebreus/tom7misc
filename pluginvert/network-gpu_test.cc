@@ -470,14 +470,16 @@ int main(int argc, char **argv) {
   TrainOnTestTests(NetworkTestUtil::Net1());
   #endif
 
-  #if 0
+  #if 1
   TrainTest(NetworkTestUtil::LearnTrivialIdentitySparse(),
             1000, 1000, 1.0f, 0.0001f, 4);
   TrainTest(NetworkTestUtil::LearnTrivialIdentityDense(),
             1000, 1000, 1.0f, 0.0001f, 4);
   TrainTest(NetworkTestUtil::LearnTrivialIdentityConvolution(),
             1000, 1000, 1.0f, 0.0001f, 4);
+  #endif
 
+  #if 0
   // Smaller batch size since there are only 2^3 possible inputs.
   // Should achieve zero boolean errors after about 1000 rounds;
   // absolute error continues falling.

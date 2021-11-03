@@ -13,9 +13,12 @@
 // NUM_FEATURES, an int giving the number of features in a
 // convolutional layer; should be 1 for sparse and dense.
 //
-// CHUNK_START, the index of this chunk within layer_error.
+// CHUNK_START, the index of this chunk within layer_error
+//   (for each example).
 // SPAN_START, SPAN_SIZE, the span of the input layer that we
 //   read from.
+// SRC_LAYER_SIZE and DST_LAYER_SIZE, the number of nodes in
+//   the source and destination layers.
 
 // NOCLIP, CONSTRAIN - if noclip, allow any update. otherwise,
 //   if constrain, then constrain weights to be within
@@ -103,9 +106,11 @@
 __kernel void UpdateWeightsSparse(
                  int round_number,
                  float learning_rate,
-                 // full previous layer's output values
+                 // full previous layer's output values;
+                 // size src_layer.num_nodes per example
                  __global const float *restrict prev_layer_output,
-                 // full layer's error, size num_nodes
+                 // full layer's error,
+                 // size dst_layer.num_nodes per example
                  __global const float *restrict layer_error,
                  // chunk.num_nodes * INDICES_PER_NODE
                  __global const int *restrict chunk_indices,
@@ -116,10 +121,15 @@ __kernel void UpdateWeightsSparse(
                  // For SGD, empty. For ADAM, num_weights * 2
                  __global float *restrict chunk_weights_aux,
                  // For SGD, empty. For ADAM, num_biases * 2
-                 __global float *restrict chunk_biases_aux) {
+                 __global float *restrict chunk_biases_aux,
+                 int example_num) {
   const int chunk_node_idx = get_global_id(0);
+  // start offset of this training example's data within the arrays
+  const int src_layer_start = example_num * SRC_LAYER_SIZE;
+  const int dst_layer_start = example_num * DST_LAYER_SIZE;
+
   const int global_node_idx = CHUNK_START + chunk_node_idx;
-  const float delta_j = layer_error[global_node_idx];
+  const float delta_j = layer_error[dst_layer_start + global_node_idx];
   // const float learning_rate_times_delta_j = learning_rate * delta_j;
 
   for (int input_idx = 0; input_idx < INDICES_PER_NODE; input_idx++) {
@@ -128,7 +138,7 @@ __kernel void UpdateWeightsSparse(
     // (These are already global to the previous layer, but should
     // be inside the span.)
     const int src_idx = chunk_indices[edge_idx];
-    const float x_ji = prev_layer_output[src_idx];
+    const float x_ji = prev_layer_output[src_layer_start + src_idx];
 
     const float grad = delta_j * x_ji;
 
@@ -160,11 +170,16 @@ __kernel void UpdateWeightsDense(
                  // For SGD, empty. For ADAM, num_weights * 2
                  __global float *restrict chunk_weights_aux,
                  // For SGD, empty. For ADAM, num_biases * 2
-                 __global float *restrict chunk_biases_aux) {
+                 __global float *restrict chunk_biases_aux,
+                 int example_num) {
   const int chunk_node_idx = get_global_id(0);
   const int global_node_idx = CHUNK_START + chunk_node_idx;
 
-  const float delta_j = layer_error[global_node_idx];
+  // start offset of this training example's data within the arrays
+  const int src_layer_start = example_num * SRC_LAYER_SIZE;
+  const int dst_layer_start = example_num * DST_LAYER_SIZE;
+
+  const float delta_j = layer_error[dst_layer_start + global_node_idx];
   // const float learning_rate_times_delta_j = learning_rate * delta_j;
 
   for (int input_idx = 0; input_idx < INDICES_PER_NODE; input_idx++) {
@@ -173,7 +188,7 @@ __kernel void UpdateWeightsDense(
     // at the beginning of the span.
     const int src_idx = SPAN_START + input_idx;
 
-    const float x_ji = prev_layer_output[src_idx];
+    const float x_ji = prev_layer_output[src_layer_start + src_idx];
 
     const float grad = delta_j * x_ji;
     SCALE_UPDATE(update, chunk_weights_aux, edge_idx, round_number,
@@ -211,11 +226,16 @@ __kernel void UpdateWeightsConvolutional(
                  // For SGD, empty. For ADAM, num_weights * 2
                  __global float *restrict chunk_weights_aux,
                  // For SGD, empty. For ADAM, num_biases * 2
-                 __global float *restrict chunk_biases_aux) {
+                 __global float *restrict chunk_biases_aux,
+                 int example_num) {
   // in 0..NUM_FEATURES-1
   const int feature_num = get_global_id(0);
   // in 0..INDICES_PER_NODE-1
   const int pidx = get_global_id(1);
+
+  // start offset of this training example's data within the arrays
+  const int src_layer_start = example_num * SRC_LAYER_SIZE;
+  const int dst_layer_start = example_num * DST_LAYER_SIZE;
 
   // This is the sum of the gradient over all occurrences.
   float weight_grad = 0.0f;
@@ -228,7 +248,7 @@ __kernel void UpdateWeightsConvolutional(
   for (int occ = 0; occ < NUM_OCCURRENCES; occ++) {
     const int chunk_node_idx = occ * NUM_FEATURES + feature_num;
     const int global_node_idx = CHUNK_START + chunk_node_idx;
-    const float delta_j = layer_error[global_node_idx];
+    const float delta_j = layer_error[dst_layer_start + global_node_idx];
 
     // Always compute bias term; all but one is thrown out.
     bias_grad += delta_j;
@@ -238,7 +258,7 @@ __kernel void UpdateWeightsConvolutional(
     // (These are already global to the input layer, but should
     // be within the span.)
     const int src_idx = chunk_indices[occ * INDICES_PER_NODE + pidx];
-    const float x_ji = prev_layer_output[src_idx];
+    const float x_ji = prev_layer_output[src_layer_start + src_idx];
     // weight_grad += delta_j * x_ji;
     weight_grad = fma(delta_j, x_ji, weight_grad);
   }
