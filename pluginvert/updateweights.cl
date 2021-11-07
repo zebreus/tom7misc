@@ -20,10 +20,11 @@
 // SRC_LAYER_SIZE and DST_LAYER_SIZE, the number of nodes in
 //   the source and destination layers.
 
-// Note this one does not depend on the transfer function.
+// NUM_WEIGHTS and NUM_BIASES, the number of weights in this
+//   chunk. This is used to accumulate the output gradients
+//   into the correct stripe.
 
-// XXX moving this stuff to second pass...
-
+// Note this kernel does not depend on the transfer function.
 
 __kernel void UpdateWeightsSparse(
                  // full previous layer's output values;
@@ -38,8 +39,12 @@ __kernel void UpdateWeightsSparse(
                  __global float *restrict weight_grads,
                  // chunk.num_nodes
                  __global float *restrict bias_grads,
-                 int example_num) {
+                 // In [0, num_examples).
+                 int example_batch_start) {
   const int chunk_node_idx = get_global_id(0);
+  // In [0, W).
+  const int example_num_in_batch = get_global_id(1);
+  const int example_num = example_batch_start + example_num_in_batch;
   // start offset of this training example's data within the arrays
   const int src_layer_start = example_num * SRC_LAYER_SIZE;
   const int dst_layer_start = example_num * DST_LAYER_SIZE;
@@ -57,11 +62,11 @@ __kernel void UpdateWeightsSparse(
 
     const float grad = delta_j * x_ji;
     // PERF fma();
-    weight_grads[edge_idx] += grad;
+    weight_grads[NUM_WEIGHTS * example_num_in_batch + edge_idx] += grad;
   }
 
   const float bgrad = delta_j;
-  bias_grads[chunk_node_idx] += bgrad;
+  bias_grads[NUM_BIASES * example_num_in_batch + chunk_node_idx] += bgrad;
 }
 
 // When the layer is dense.
@@ -76,10 +81,14 @@ __kernel void UpdateWeightsDense(
                  __global float *restrict weight_grads,
                  // chunk.num_nodes
                  __global float *restrict bias_grads,
-                 int example_num) {
+                 // In [0, num_examples).
+                 int example_batch_start) {
   const int chunk_node_idx = get_global_id(0);
   const int global_node_idx = CHUNK_START + chunk_node_idx;
 
+  // In [0, W).
+  const int example_num_in_batch = get_global_id(1);
+  const int example_num = example_batch_start + example_num_in_batch;
   // start offset of this training example's data within the arrays
   const int src_layer_start = example_num * SRC_LAYER_SIZE;
   const int dst_layer_start = example_num * DST_LAYER_SIZE;
@@ -97,11 +106,11 @@ __kernel void UpdateWeightsDense(
 
     const float grad = delta_j * x_ji;
     // PERF fma();
-    weight_grads[edge_idx] += grad;
+    weight_grads[NUM_WEIGHTS * example_num_in_batch + edge_idx] += grad;
   }
 
   const float bgrad = delta_j;
-  bias_grads[chunk_node_idx] += bgrad;
+  bias_grads[NUM_BIASES * example_num_in_batch + chunk_node_idx] += bgrad;
 }
 
 // PERF: Try doing the bias update in its own kernel, since the
@@ -119,12 +128,16 @@ __kernel void UpdateWeightsConvolutional(
                  __global float *restrict weight_grads,
                  // NUM_FEATURES
                  __global float *restrict bias_grads,
-                 int example_num) {
+                 // In [0, num_examples).
+                 int example_batch_start) {
   // in 0..NUM_FEATURES-1
   const int feature_num = get_global_id(0);
   // in 0..INDICES_PER_NODE-1
   const int pidx = get_global_id(1);
 
+  // In [0, W).
+  const int example_num_in_batch = get_global_id(2);
+  const int example_num = example_batch_start + example_num_in_batch;
   // start offset of this training example's data within the arrays
   const int src_layer_start = example_num * SRC_LAYER_SIZE;
   const int dst_layer_start = example_num * DST_LAYER_SIZE;
@@ -163,13 +176,13 @@ __kernel void UpdateWeightsConvolutional(
     // benefit I (thought I) was getting.
     weight_grad *= (1.0f / NUM_OCCURRENCES);
     // PERF fma()
-    weight_grads[widx] += weight_grad;
+    weight_grads[NUM_WEIGHTS * example_num_in_batch + widx] += weight_grad;
   }
 
   if (pidx == 0) {
     bias_grad *= (1.0f / NUM_OCCURRENCES);
     // PERF fma()
-    bias_grads[feature_num] += bias_grad;
+    bias_grads[NUM_BIASES * example_num_in_batch + feature_num] += bias_grad;
   }
 }
 

@@ -406,6 +406,10 @@ struct UpdateWeightsCL {
     cl_program program1 = 0;
     cl_kernel kernel1 = 0;
 
+    // summing pass
+    cl_program program_sum = 0;
+    cl_kernel kernel_sum = 0;
+
     // second pass
     cl_program program2 = 0;
     cl_kernel kernel2 = 0;

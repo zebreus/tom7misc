@@ -203,12 +203,16 @@ static void TrainTest(TrainNet train_net,
   std::vector<std::vector<float>> expected;
   expected.resize(training->num_examples);
 
+
   Timer train_timer;
   int64 total_examples = 0LL;
   for (int iter = 0; iter < max_iterations; iter++) {
+    std::vector<float> flat_inputs, flat_outputs;
+    flat_inputs.reserve(train_net.NumInputs() * examples_per_round);
+    flat_outputs.reserve(train_net.NumOutputs() * examples_per_round);
 
     // Initialize training examples.
-    // (PERF: parallelize?)
+    // (PERF: insert these all in a batch; it's much faster)
     for (int i = 0; i < training->num_examples; i++) {
       std::vector<float> inputs;
       inputs.reserve(train_net.NumInputs());
@@ -240,12 +244,18 @@ static void TrainTest(TrainNet train_net,
           inputs.push_back(gauss.Next());
         }
       }
-      training->LoadInput(i, inputs);
+
+      // Much faster to load these in a batch.
+      for (float f : inputs) flat_inputs.push_back(f);
       std::vector<float> outputs = train_net.f(inputs);
       CHECK(outputs.size() == train_net.NumOutputs());
-      training->LoadExpected(i, outputs);
+      for (float f : outputs) flat_outputs.push_back(f);
+      // PERF could save the flat outputs and base on that
       expected[i] = std::move(outputs);
     }
+
+    training->LoadInputs(flat_inputs);
+    training->LoadExpecteds(flat_outputs);
 
     if (VERBOSE > 1)
       printf("Prepped examples.\n");
@@ -278,8 +288,8 @@ static void TrainTest(TrainNet train_net,
       decay_cl->Decay(net_gpu.get(), layer_idx);
     }
 
-    // Can't run training examples in parallel because these all write
-    // to the same network. But each layer is independent.
+    // PERF: No benefit to parallelism here currently, as each takes
+    // the global mutex. A future version might, though.
     ParallelComp(net.layers.size() - 1,
                  [&](int layer_minus_1) {
                    const int layer_idx = layer_minus_1 + 1;
@@ -290,6 +300,9 @@ static void TrainTest(TrainNet train_net,
 
     if (VERBOSE > 1)
       printf("Updated errors.\n");
+
+    // PERF: Consider only doing this every few rounds, as it is probably
+    // the bottleneck in these tests now.
 
     // Get loss as abs distance, plus number of incorrect (as booleans).
     // Size of examples = Number of training instances.
@@ -501,7 +514,7 @@ int main(int argc, char **argv) {
 
   #if 0
   // XXX these get to like 0.000 but not the same convergence
-  // we had before .... probably ok??
+  // we had before "fixing" adam .... probably ok??
 
   // ADAM tests. These each take about 400 rounds to converge,
   // because here we are using a sensible learning rate of 0.01f.

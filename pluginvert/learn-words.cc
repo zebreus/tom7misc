@@ -249,20 +249,23 @@ static void Train(Network *net) {
   // Very small examples; could easily do 100x this...
   static constexpr int EXAMPLES_PER_ROUND = 1000;
   // XXX need to reduce this over time
-  static constexpr float LEARNING_RATE = 0.001f;
+  // static constexpr float LEARNING_RATE = 0.001f;
+  static constexpr float LEARNING_RATE = 0.000125f;
+
 
   // On a verbose round we compute training error and print out
   // examples.
-  constexpr int VERBOSE_EVERY = 10;
+  constexpr int VERBOSE_EVERY = 100;
   // We save this to the error history file every this many
   // verbose rounds.
-  constexpr int HISTORY_EVERY_VERBOSE = 1;
+  constexpr int HISTORY_EVERY_VERBOSE = 10;
   int64 total_verbose = 0;
+  constexpr int TIMING_EVERY = 1000;
 
   std::vector<std::unique_ptr<ImageRGBA>> images;
   constexpr int IMAGE_WIDTH = 3000;
   constexpr int IMAGE_HEIGHT = 1000;
-  constexpr int IMAGE_EVERY = 15;
+  constexpr int IMAGE_EVERY = 1000;
   int image_x = 0;
   for (int i = 0; i < net->layers.size(); i++) {
     // XXX skip input layer?
@@ -616,7 +619,7 @@ static void Train(Network *net) {
 
     round_ms += round_timer.MS();
 
-    if (iter % 25 == 0) {
+    if (iter % TIMING_EVERY == 0) {
       double accounted_ms = example_ms + forward_ms + error_ms +
         decay_ms + backward_ms + update_ms;
       double other_ms = round_ms - accounted_ms;
