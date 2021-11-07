@@ -747,6 +747,70 @@ UpdateWeightsCL::UpdateWeightsCL(int examples_per_round,
   CHECK(net.layers[0].chunks.size() == 1);
   layer_kernels.push_back(std::vector<ChunkKernel>{ChunkKernel()});
 
+  // number of elements to allocate between both weights and biases.
+  // 4 GB needs a very big card! PERF
+  // constexpr int64 MAX_NUM_SCRATCH = 1 << 30;
+  constexpr int64 MAX_NUM_SCRATCH = 1 << 20;
+
+  // Allocate temporary buffers for weights and biases. Compute a
+  // value w ("width") which is the number of examples we simultaneously
+  // can fit for the largest layer.
+  // No point in this ever being bigger than examples_per_round.
+  int max_w = examples_per_round;
+  // The largest sum of weights+biases in any chunk, and the sizes in
+  // that bottleneck chunk (these may not be the global maxima on their
+  // own).
+  int64 max_all = 0LL;
+  int64 bottleneck_weights = 0LL, bottleneck_biases = 0LL;
+  for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
+    for (int chunk_idx = 0;
+         chunk_idx < net.layers[layer_idx].chunks.size();
+         chunk_idx++) {
+      const Chunk &chunk = net.layers[layer_idx].chunks[chunk_idx];
+
+      // PERF can at least skip this for fixed chunks!
+
+      const int64 num_weights = chunk.weights.size();
+      const int64 num_biases = chunk.biases.size();
+
+      const int64 num_all = num_weights + num_biases;
+      if (num_all >= max_all) {
+        max_all = num_all;
+        bottleneck_weights = num_weights;
+        bottleneck_biases = num_biases;
+      }
+
+      // Could compute this at the end.
+      // rounding down
+      const int num_fit = MAX_NUM_SCRATCH / num_all;
+      if (num_fit < max_w) {
+        printf("Scratch space bottleneck: chunk %d.%d\n"
+               "wants %lld+%lld=%lld elts per example\n"
+               "but max is %lld. width %d -> %d\n",
+               layer_idx, chunk_idx,
+               num_weights, num_biases, num_all,
+               MAX_NUM_SCRATCH, max_w, num_fit);
+        max_w = num_fit;
+      }
+    }
+  }
+
+  CHECK(max_w * bottleneck_weights + max_w * bottleneck_biases <=
+        MAX_NUM_SCRATCH) << "Bug: by construction above";
+  CHECK(bottleneck_weights + bottleneck_biases == max_all) << "Bug";
+  // We could allow in-place SGD in this case, with significant
+  // complexity...
+  CHECK(max_w > 0) << "Not enough scratch space for even one "
+    "example at a time. Can't train this way!";
+
+  num_weight_grad = max_w * bottleneck_weights;
+  weight_grad_tmp =
+    CreateUninitializedGPUMemory<float>(cl->context, num_weight_grad);
+  num_bias_grad = max_w * bottleneck_biases;
+  bias_grad_tmp =
+    CreateUninitializedGPUMemory<float>(cl->context, num_bias_grad);
+
+
   for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
 
     std::vector<ChunkKernel> chunk_kernels;
@@ -820,18 +884,16 @@ UpdateWeightsCL::UpdateWeightsCL(int examples_per_round,
       ck.program2 = pk2.first;
       ck.kernel2 = pk2.second;
 
+      const int64 num_weights = chunk.weights.size();
+      const int64 num_biases = chunk.biases.size();
 
-      // Allocate temporary buffer.
-      // TODO: This is the minimum size. Allow for multiples up
-      // to some configured budget, then run in parallel.
-      const int num_weights =
-        net.layers[layer_idx].chunks[chunk_idx].weights.size();
-      const int num_biases =
-        net.layers[layer_idx].chunks[chunk_idx].biases.size();
-      ck.weight_grad_tmp =
-        CreateUninitializedGPUMemory<float>(cl->context, num_weights);
-      ck.bias_grad_tmp =
-        CreateUninitializedGPUMemory<float>(cl->context, num_biases);
+      const int weights_w = num_weight_grad / num_weights;
+      const int bias_w = num_bias_grad / num_biases;
+      const int w = std::min(weights_w, bias_w);
+      CHECK(w * num_weights <= num_weight_grad);
+      CHECK(w * num_biases <= num_bias_grad);
+      CHECK(w > 0);
+      ck.w = w;
 
       chunk_kernels.push_back(ck);
       out_idx += chunk.num_nodes;
@@ -849,13 +911,12 @@ UpdateWeightsCL::~UpdateWeightsCL() {
       if (ck.program1 != 0) CHECK_SUCCESS(clReleaseProgram(ck.program1));
       if (ck.kernel2 != 0) CHECK_SUCCESS(clReleaseKernel(ck.kernel2));
       if (ck.program2 != 0) CHECK_SUCCESS(clReleaseProgram(ck.program2));
-
-      if (ck.weight_grad_tmp != 0)
-        CHECK_SUCCESS(clReleaseMemObject(ck.weight_grad_tmp));
-      if (ck.bias_grad_tmp != 0)
-        CHECK_SUCCESS(clReleaseMemObject(ck.bias_grad_tmp));
     }
   }
+  if (weight_grad_tmp != 0)
+    CHECK_SUCCESS(clReleaseMemObject(weight_grad_tmp));
+  if (bias_grad_tmp != 0)
+    CHECK_SUCCESS(clReleaseMemObject(bias_grad_tmp));
 }
 
 void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
@@ -909,55 +970,59 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
     // overhead. It could be shared between chunks/layers if we're willing
     // to give up on parallelism over those.
 
-    // (XXX BTW, it now occurs to me that I'm currently just doing
-    // Adam wrong, because I run it 1000 times per round (and update
-    // the moving averages) -- but I should only be taking one
-    // timestep. Right? So this would recommend a two-pass approach,
-    // computing the sums and adding at the end. We would not need to
-    // keep copies of weight_aux, since we only do this in the second
-    // pass.)
+    // PERF: With the current approach, every chunk must be run
+    // serially (but with significant internal parallelism) because
+    // they share scratch space. With some additional complexity
+    // (might be as simple as associating a mutex with each scratch
+    // buffer and then allocating them "somehow" "smart"), we could
+    // have separate scratch space for them and then multiple chunks
+    // can run in parallel, but this also increases the size of the
+    // maximum working set. Since the amount of scratch space
+    // available limits an important dimension of parallelism, this
+    // probably is only helpful when we're already at the maximum
+    // useful width.
 
-    // TODO: We want to use more than one temp buffer for parallelism!
-    const int num_weights =
-      net.layers[layer_idx].chunks[chunk_idx].weights.size();
-    const int num_biases =
-      net.layers[layer_idx].chunks[chunk_idx].biases.size();
-
-    // Accumulate all weight grads into these temp buffers, then
-    // apply them below.
     {
-      // Clear temp memory.
-      cl_float zero = 0.0f;
-      CHECK_SUCCESS(
-          clEnqueueFillBuffer(cl->queue,
-                              ck.weight_grad_tmp,
-                              // pattern and its size in bytes
-                              &zero, sizeof (cl_float),
-                              // offset and size to fill (in BYTES)
-                              0, (size_t)(num_weights * sizeof (cl_float)),
-                              // no wait list or event
-                              0, nullptr, nullptr));
-      CHECK_SUCCESS(
-          clEnqueueFillBuffer(cl->queue,
-                              ck.bias_grad_tmp,
-                              // pattern and its size in bytes
-                              &zero, sizeof (cl_float),
-                              // offset and size to fill (in BYTES)
-                              0, (size_t)(num_biases * sizeof (cl_float)),
-                              // no wait list or event
-                              0, nullptr, nullptr));
-      clFinish(cl->queue);
-    }
+      MutexLock ml(&m);
 
-    for (int example_num = 0;
-         example_num < train->num_examples;
-         example_num++) {
+      // TODO: We want to use more than one temp buffer for parallelism!
+      const int num_weights =
+        net.layers[layer_idx].chunks[chunk_idx].weights.size();
+      const int num_biases =
+        net.layers[layer_idx].chunks[chunk_idx].biases.size();
 
-      cl_int example_num_cl = example_num;
-
+      // Accumulate all weight grads into these temp buffers, then
+      // apply them below.
       {
-        // PERF: Could run the chunks and/or layers in parallel.
-        MutexLock ml(&m);
+        // Clear shared scratch space.
+        cl_float zero = 0.0f;
+        CHECK_SUCCESS(
+            clEnqueueFillBuffer(cl->queue,
+                                weight_grad_tmp,
+                                // pattern and its size in bytes
+                                &zero, sizeof (cl_float),
+                                // offset and size to fill (in BYTES)
+                                0, (size_t)(num_weights * sizeof (cl_float)),
+                                // no wait list or event
+                                0, nullptr, nullptr));
+        CHECK_SUCCESS(
+            clEnqueueFillBuffer(cl->queue,
+                                bias_grad_tmp,
+                                // pattern and its size in bytes
+                                &zero, sizeof (cl_float),
+                                // offset and size to fill (in BYTES)
+                                0, (size_t)(num_biases * sizeof (cl_float)),
+                                // no wait list or event
+                              0, nullptr, nullptr));
+        clFinish(cl->queue);
+      }
+
+      // PERF here use the scratch space!
+      for (int example_num = 0;
+           example_num < train->num_examples;
+           example_num++) {
+
+        cl_int example_num_cl = example_num;
 
         CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 0, sizeof (cl_mem),
                                      (void *)&all_prev_layer_output));
@@ -966,9 +1031,9 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 2, sizeof (cl_mem),
                                      (void *)&gpu_chunk.indices));
         CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 3, sizeof (cl_mem),
-                                     (void *)&ck.weight_grad_tmp));
+                                     (void *)&weight_grad_tmp));
         CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 4, sizeof (cl_mem),
-                                     (void *)&ck.bias_grad_tmp));
+                                     (void *)&bias_grad_tmp));
         CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 5, sizeof (cl_int),
                                      (void *)&example_num_cl));
 
@@ -1012,12 +1077,14 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         }
         clFinish(cl->queue);
       }
-    }
 
-    // Second pass for the chunk here.
-    {
-      MutexLock ml(&m);
+      //  HERE fold the results down
 
+      // Second pass for the chunk actually applies the weight updates.
+
+      // For the second pass, the accumulated gradients we need are at
+      // the beginnings of the weight scratch buffer and bias scratch
+      // buffer.
       auto SecondPass = [&](int num_weights,
                             cl_mem grad_sums,
                             cl_mem chunk_weights,
@@ -1055,16 +1122,17 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         };
 
       SecondPass(num_weights,
-                 ck.weight_grad_tmp,
+                 weight_grad_tmp,
                  gpu_chunk.weights,
                  gpu_chunk.weights_aux,
                  WEIGHT_CONSTRAIN_MAX);
 
       SecondPass(num_biases,
-                 ck.bias_grad_tmp,
+                 bias_grad_tmp,
                  gpu_chunk.biases,
                  gpu_chunk.biases_aux,
                  BIAS_CONSTRAIN_MAX);
-    }
-  }
+
+    }  // mutex
+  }  // loop over chunks
 }

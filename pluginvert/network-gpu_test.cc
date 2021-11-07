@@ -480,7 +480,7 @@ int main(int argc, char **argv) {
   TrainOnTestTests(NetworkTestUtil::Net1());
   #endif
 
-  #if 0
+  #if 1
   TrainTest(NetworkTestUtil::LearnTrivialIdentitySparse(),
             1000, 1000, 1.0f, 0.0001f, 4);
   TrainTest(NetworkTestUtil::LearnTrivialIdentityDense(),
@@ -517,7 +517,7 @@ int main(int argc, char **argv) {
   #endif
 
 
-  #if 0
+  #if 1
   // Even with a lower learning rate, this converges much faster than
   // the SGD version :) ~200 rounds.
   TrainTest(NetworkTestUtil::ForceAdam(NetworkTestUtil::LearnBoolean()),
@@ -564,7 +564,7 @@ int main(int argc, char **argv) {
             4);
   #endif
 
-  #if 0
+  #if 1
   // With fixed adam this converges in <4000 rounds.
   // TODO: Try removing the fixed constraint on the dense layer.
   TrainTest(NetworkTestUtil::ForceAdam(
@@ -584,10 +584,10 @@ int main(int argc, char **argv) {
             4);
   #endif
 
-  #if 1
-  // Does converge in ~17000 rounds. Seems to be dependent on
-  // initial conditions, and perhaps with more dice rolls for the
-  // features it would be pretty fast.
+  #if 0
+  // Does converge in ~17000 rounds. Seems to be dependent on initial
+  // conditions (as there is a late "breakthrough"), and perhaps with
+  // more dice rolls for the features it would be pretty fast.
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountEdges()),
             20000, 1000, 0.01f,

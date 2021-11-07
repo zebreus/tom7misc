@@ -410,9 +410,21 @@ struct UpdateWeightsCL {
     cl_program program2 = 0;
     cl_kernel kernel2 = 0;
 
-    cl_mem weight_grad_tmp = 0;
-    cl_mem bias_grad_tmp = 0;
+    // The W ('width') is the number of examples that we can
+    // fit in the scratch space at once for this chunk.
+    int w = 0;
+
+    // cl_mem weight_grad_tmp = 0;
+    // cl_mem bias_grad_tmp = 0;
   };
+
+  // Shared scratch space. This is at least the size of the weights
+  // (resp. biases) array for every chunk in the corresponding network.
+  cl_mem weight_grad_tmp = 0;
+  cl_mem bias_grad_tmp = 0;
+  // Number of elements (not bytes) in the memories above.
+  int64_t num_weight_grad = 0;
+  int64_t num_bias_grad = 0;
 
   // Input layer has unused placeholder kernels (0) to keep this
   // parallel to network structure.
