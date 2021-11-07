@@ -249,8 +249,7 @@ static void Train(Network *net) {
   // Very small examples; could easily do 100x this...
   static constexpr int EXAMPLES_PER_ROUND = 1000;
   // XXX need to reduce this over time
-  static constexpr float EXAMPLE_LEARNING_RATE =
-    0.001f / (float)EXAMPLES_PER_ROUND;
+  static constexpr float LEARNING_RATE = 0.001f;
 
   // On a verbose round we compute training error and print out
   // examples.
@@ -291,7 +290,7 @@ static void Train(Network *net) {
   std::unique_ptr<DecayWeightsCL> decay_cl =
     std::make_unique<DecayWeightsCL>(cl, *net, 0.99999f);
   std::unique_ptr<UpdateWeightsCL> update_cl =
-    std::make_unique<UpdateWeightsCL>(cl, *net);
+    std::make_unique<UpdateWeightsCL>(EXAMPLES_PER_ROUND, cl, *net);
 
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(
@@ -395,7 +394,7 @@ static void Train(Network *net) {
                    [&](int layer_minus_1) {
                      const int layer_idx = layer_minus_1 + 1;
                      update_cl->Update(net_gpu.get(), training.get(),
-                                       EXAMPLE_LEARNING_RATE, layer_idx);
+                                       LEARNING_RATE, layer_idx);
                    },
                    max_parallelism);
       update_ms += update_timer.MS();

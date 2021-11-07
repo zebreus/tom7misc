@@ -715,7 +715,7 @@ void DecayWeightsCL::Decay(NetworkGPU *net_gpu, int layer_idx) {
   }
 }
 
-static string UpdateWeightsKernelName(ChunkType ct) {
+static string UpdateWeights1KernelName(ChunkType ct) {
   switch (ct) {
     case CHUNK_DENSE: return "UpdateWeightsDense";
     case CHUNK_SPARSE: return "UpdateWeightsSparse";
@@ -731,16 +731,19 @@ static string UpdateWeightsKernelName(ChunkType ct) {
 }
 
 
-UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
+UpdateWeightsCL::UpdateWeightsCL(int examples_per_round,
+                                 CL *cl, const Network &net) :
+  examples_per_round(examples_per_round), cl(cl) {
   // Note that this one doesn't depend on the transfer function/derivative.
 
   // Also unlike others, we actually invoke the kernel differently in
   // the convolution case.
 
-  const string base_src = Util::ReadFile("updateweights.cl");
+  const string base_src1 = Util::ReadFile("updateweights.cl");
+  const string base_src2 = Util::ReadFile("updatesecondpass.cl");
 
   // Not possible on the input layer, but we have placeholder
-  // ChunkKernels for parallelism with other layer arrays.
+  // ChunkKernels for uniformity with other layer arrays.
   CHECK(net.layers[0].chunks.size() == 1);
   layer_kernels.push_back(std::vector<ChunkKernel>{ChunkKernel()});
 
@@ -752,6 +755,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
          chunk_idx < net.layers[layer_idx].chunks.size();
          chunk_idx++) {
       const Chunk &chunk = net.layers[layer_idx].chunks[chunk_idx];
+      ChunkKernel ck;
 
       const int num_occurrences =
         chunk.num_occurrences_across *
@@ -759,29 +763,9 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
 
       // PERF: Don't even compile a kernel if the chunk is fixed.
 
-      string kernel_src;
-      switch (chunk.weight_update) {
-      case SGD:
-        kernel_src += "#define WEIGHT_UPDATE_SGD 1\n";
-        break;
-      case ADAM:
-        kernel_src += "#define WEIGHT_UPDATE_ADAM 1\n";
-        break;
-      default:
-        LOG(FATAL) << "Unsupported weight update type " <<
-          WeightUpdateName(chunk.weight_update);
-        break;
-      }
+      string kernel1_src;
 
-      StringAppendF(&kernel_src,
-                    // TODO: make configurable, but
-                    // find a better way to specify this tri-state
-                    // (noclip, clip, constrain)
-                    "#define NOCLIP false\n"
-                    "#define CONSTRAIN true\n"
-                    "#define CONSTRAIN_WEIGHT_MAX 16.0f\n"
-                    "#define CONSTRAIN_BIAS_MAX 16384.0f\n"
-
+      StringAppendF(&kernel1_src,
                     "#define SRC_LAYER_SIZE %d\n"
                     "#define DST_LAYER_SIZE %d\n"
                     "#define CHUNK_START %d\n"
@@ -799,14 +783,57 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
                     num_occurrences,
                     chunk.num_features);
 
-      const string kernel_name = UpdateWeightsKernelName(chunk.type);
+      const string kernel1_name = UpdateWeights1KernelName(chunk.type);
 
-      kernel_src += base_src;
-      auto pk = cl->BuildOneKernel(kernel_src, kernel_name);
+      kernel1_src += base_src1;
+      auto pk1 = cl->BuildOneKernel(kernel1_src, kernel1_name);
+      ck.program1 = pk1.first;
+      ck.kernel1 = pk1.second;
 
-      chunk_kernels.push_back(ChunkKernel{.program = pk.first,
-                                          .kernel = pk.second});
+      // Second pass.
+      string kernel2_src;
+      switch (chunk.weight_update) {
+      case SGD:
+        kernel2_src += "#define WEIGHT_UPDATE_SGD 1\n";
+        break;
+      case ADAM:
+        kernel2_src += "#define WEIGHT_UPDATE_ADAM 1\n";
+        break;
+      default:
+        LOG(FATAL) << "Unsupported weight update type " <<
+          WeightUpdateName(chunk.weight_update);
+        break;
+      }
 
+      StringAppendF(&kernel2_src,
+                    "#define EXAMPLES_PER_ROUND %d\n"
+                    "#define CLIPPING %s\n"
+                    "#define CONSTRAIN %s\n",
+                    examples_per_round,
+                    CLIPPING ? "true" : "false",
+                    CONSTRAIN ? "true" : "false");
+
+
+      kernel2_src += base_src2;
+      auto pk2 = cl->BuildOneKernel(kernel2_src,
+                                   "UpdateWeightsSecondPass");
+      ck.program2 = pk2.first;
+      ck.kernel2 = pk2.second;
+
+
+      // Allocate temporary buffer.
+      // TODO: This is the minimum size. Allow for multiples up
+      // to some configured budget, then run in parallel.
+      const int num_weights =
+        net.layers[layer_idx].chunks[chunk_idx].weights.size();
+      const int num_biases =
+        net.layers[layer_idx].chunks[chunk_idx].biases.size();
+      ck.weight_grad_tmp =
+        CreateUninitializedGPUMemory<float>(cl->context, num_weights);
+      ck.bias_grad_tmp =
+        CreateUninitializedGPUMemory<float>(cl->context, num_biases);
+
+      chunk_kernels.push_back(ck);
       out_idx += chunk.num_nodes;
     }
     CHECK(out_idx == net.layers[layer_idx].num_nodes);
@@ -818,8 +845,15 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net) : cl(cl) {
 UpdateWeightsCL::~UpdateWeightsCL() {
   for (auto &vec : layer_kernels) {
     for (auto &ck : vec) {
-      if (ck.kernel != 0) CHECK_SUCCESS(clReleaseKernel(ck.kernel));
-      if (ck.program != 0) CHECK_SUCCESS(clReleaseProgram(ck.program));
+      if (ck.kernel1 != 0) CHECK_SUCCESS(clReleaseKernel(ck.kernel1));
+      if (ck.program1 != 0) CHECK_SUCCESS(clReleaseProgram(ck.program1));
+      if (ck.kernel2 != 0) CHECK_SUCCESS(clReleaseKernel(ck.kernel2));
+      if (ck.program2 != 0) CHECK_SUCCESS(clReleaseProgram(ck.program2));
+
+      if (ck.weight_grad_tmp != 0)
+        CHECK_SUCCESS(clReleaseMemObject(ck.weight_grad_tmp));
+      if (ck.bias_grad_tmp != 0)
+        CHECK_SUCCESS(clReleaseMemObject(ck.bias_grad_tmp));
     }
   }
 }
@@ -829,6 +863,8 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
   // new chunks
   CHECK(layer_idx > 0) << "Can't update the weights for the input layer, "
     "which would not be useful anyway since there aren't any.";
+  CHECK(train->num_examples == examples_per_round) << "Must match the "
+    "configured constant.";
 
   const Network &net = *net_gpu->net;
 
@@ -847,29 +883,13 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
     NetworkGPU::GPUChunk &gpu_chunk = gpu_layer.chunks[chunk_idx];
     ChunkKernel &ck = layer_kernels[layer_idx][chunk_idx];
 
-    // For convolution layers, scale the learning rate down,
-    // as there will be lots of occurrences. Scaling linearly
-    // is probably the most principled (each occurrence yields an
-    // error and thus an update), but sqrt seems to work better
-    // (the errors often cancel each other out).
-    // (Should perhaps reconsider this in ADAM mode?)
-    const int num_occurrences = chunk.num_occurrences_across *
-      chunk.num_occurrences_down;
-    const float effective_learning_rate =
-      (chunk.type == CHUNK_CONVOLUTION_ARRAY) ?
-      learning_rate * (1.0 / sqrt(num_occurrences)) :
-      learning_rate;
-
-    // also tried...
-    // pow((float)num_occurrences, 0.25f))
-
     cl_mem all_prev_layer_output = train->stimulations[layer_idx - 1];
     cl_mem all_layer_error = train->errors[layer_idx];
 
     // TODO PERF: These all write to the same weights, so it is much
     // trickier to parallelize over examples than other passes. We
-    // could run each example to a temporary weight vector (and
-    // weight_aux, ugh) and then sum them at the end. Probably we do
+    // could run each example to a temporary weight vector
+    // and then sum them at the end. Probably we do
     // not want to use num_examples * num_weights in temporary memory
     // for this. But we could pick some width W and do W examples in
     // parallel, each writing to their own shards, and then sum those,
@@ -897,6 +917,38 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
     // keep copies of weight_aux, since we only do this in the second
     // pass.)
 
+    // TODO: We want to use more than one temp buffer for parallelism!
+    const int num_weights =
+      net.layers[layer_idx].chunks[chunk_idx].weights.size();
+    const int num_biases =
+      net.layers[layer_idx].chunks[chunk_idx].biases.size();
+
+    // Accumulate all weight grads into these temp buffers, then
+    // apply them below.
+    {
+      // Clear temp memory.
+      cl_float zero = 0.0f;
+      CHECK_SUCCESS(
+          clEnqueueFillBuffer(cl->queue,
+                              ck.weight_grad_tmp,
+                              // pattern and its size in bytes
+                              &zero, sizeof (cl_float),
+                              // offset and size to fill (in BYTES)
+                              0, (size_t)(num_weights * sizeof (cl_float)),
+                              // no wait list or event
+                              0, nullptr, nullptr));
+      CHECK_SUCCESS(
+          clEnqueueFillBuffer(cl->queue,
+                              ck.bias_grad_tmp,
+                              // pattern and its size in bytes
+                              &zero, sizeof (cl_float),
+                              // offset and size to fill (in BYTES)
+                              0, (size_t)(num_biases * sizeof (cl_float)),
+                              // no wait list or event
+                              0, nullptr, nullptr));
+      clFinish(cl->queue);
+    }
+
     for (int example_num = 0;
          example_num < train->num_examples;
          example_num++) {
@@ -907,25 +959,17 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         // PERF: Could run the chunks and/or layers in parallel.
         MutexLock ml(&m);
 
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 0, sizeof (cl_int),
-                                     (void *)&round_number));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 1, sizeof (cl_float),
-                                     (void *)&effective_learning_rate));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
+        CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 0, sizeof (cl_mem),
                                      (void *)&all_prev_layer_output));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 3, sizeof (cl_mem),
+        CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 1, sizeof (cl_mem),
                                      (void *)&all_layer_error));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 4, sizeof (cl_mem),
+        CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 2, sizeof (cl_mem),
                                      (void *)&gpu_chunk.indices));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 5, sizeof (cl_mem),
-                                     (void *)&gpu_chunk.weights));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 6, sizeof (cl_mem),
-                                     (void *)&gpu_chunk.biases));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 7, sizeof (cl_mem),
-                                     (void *)&gpu_chunk.weights_aux));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 8, sizeof (cl_mem),
-                                     (void *)&gpu_chunk.biases_aux));
-        CHECK_SUCCESS(clSetKernelArg(ck.kernel, 9, sizeof (cl_int),
+        CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 3, sizeof (cl_mem),
+                                     (void *)&ck.weight_grad_tmp));
+        CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 4, sizeof (cl_mem),
+                                     (void *)&ck.bias_grad_tmp));
+        CHECK_SUCCESS(clSetKernelArg(ck.kernel1, 5, sizeof (cl_int),
                                      (void *)&example_num_cl));
 
         // Arguments are the same for the different chunk types,
@@ -936,7 +980,7 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
           size_t global_work_offset[] = { 0, 0 };
           size_t global_work_size[] = { (size_t)chunk.num_features,
                                         (size_t)chunk.indices_per_node };
-          CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel,
+          CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel1,
                                                // work dimensions
                                                2,
                                                // global work offset
@@ -952,7 +996,7 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         } else {
           size_t global_work_offset[] = { 0 };
           size_t global_work_size[] = { (size_t)chunk.num_nodes };
-          CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel,
+          CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel1,
                                                // work dimensions
                                                1,
                                                // global work offset
@@ -968,6 +1012,59 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         }
         clFinish(cl->queue);
       }
+    }
+
+    // Second pass for the chunk here.
+    {
+      MutexLock ml(&m);
+
+      auto SecondPass = [&](int num_weights,
+                            cl_mem grad_sums,
+                            cl_mem chunk_weights,
+                            cl_mem chunk_weights_aux,
+                            cl_float constrain_max) {
+          CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 0, sizeof (cl_int),
+                                       (void *)&round_number));
+          CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 1, sizeof (cl_float),
+                                       (void *)&learning_rate));
+          CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 2, sizeof (cl_float),
+                                       (void *)&constrain_max));
+          CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 3, sizeof (cl_mem),
+                                       (void *)&grad_sums));
+          CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 4, sizeof (cl_mem),
+                                       (void *)&chunk_weights));
+          CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 5, sizeof (cl_mem),
+                                       (void *)&chunk_weights_aux));
+
+          size_t global_work_offset[] = { 0 };
+          size_t global_work_size[] = { (size_t)num_weights };
+          CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel2,
+                                               // work dimensions
+                                               1,
+                                               // global work offset
+                                               global_work_offset,
+                                               // global work size
+                                               global_work_size,
+                                               // local work size
+                                               nullptr,
+                                               // no wait list
+                                               0, nullptr,
+                                               // no event
+                                               nullptr));
+          clFinish(cl->queue);
+        };
+
+      SecondPass(num_weights,
+                 ck.weight_grad_tmp,
+                 gpu_chunk.weights,
+                 gpu_chunk.weights_aux,
+                 WEIGHT_CONSTRAIN_MAX);
+
+      SecondPass(num_biases,
+                 ck.bias_grad_tmp,
+                 gpu_chunk.biases,
+                 gpu_chunk.biases_aux,
+                 BIAS_CONSTRAIN_MAX);
     }
   }
 }

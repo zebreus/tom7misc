@@ -133,7 +133,8 @@ static void TrainOnTestTests(TestNet test_net) {
     }
 
     std::unique_ptr<UpdateWeightsCL> update_cl =
-      std::make_unique<UpdateWeightsCL>(cl, net);
+      std::make_unique<UpdateWeightsCL>(training_round->num_examples,
+                                        cl, net);
 
     for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
       update_cl->Update(net_gpu.get(), training_round.get(),
@@ -148,19 +149,18 @@ static void TrainOnTestTests(TestNet test_net) {
 static void TrainTest(TrainNet train_net,
                       int max_iterations,
                       int examples_per_round,
-                      // per round, not example
+                      // per round (e.g. 0.01f), not example
                       float learning_rate,
                       float avg_loss_threshold,
                       int max_parallelism) {
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = true;
-  const float example_learning_rate = learning_rate / (float)examples_per_round;
 
   std::vector<std::unique_ptr<ImageRGBA>> images;
   constexpr int IMAGE_WIDTH = 3000;
   constexpr int IMAGE_HEIGHT = 1000;
-  constexpr int IMAGE_EVERY = 1;
+  constexpr int IMAGE_EVERY = 5;
   int image_x = 0;
   for (int i = 0; i < train_net.net.layers.size(); i++) {
     images.emplace_back(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
@@ -193,7 +193,7 @@ static void TrainTest(TrainNet train_net,
   std::unique_ptr<DecayWeightsCL> decay_cl =
     std::make_unique<DecayWeightsCL>(cl, net, 0.99999f);
   std::unique_ptr<UpdateWeightsCL> update_cl =
-    std::make_unique<UpdateWeightsCL>(cl, net);
+    std::make_unique<UpdateWeightsCL>(examples_per_round, cl, net);
 
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(
@@ -284,7 +284,7 @@ static void TrainTest(TrainNet train_net,
                  [&](int layer_minus_1) {
                    const int layer_idx = layer_minus_1 + 1;
                    update_cl->Update(net_gpu.get(), training.get(),
-                                     example_learning_rate, layer_idx);
+                                     learning_rate, layer_idx);
                  },
                  max_parallelism);
 
@@ -401,7 +401,17 @@ static void TrainTest(TrainNet train_net,
               image->BlendPixel32(image_x, ToScreenY(v),
                                   0xFF00FF00 | weight_alpha);
             }
-            // Also bias aux?
+
+            // Too many dots??
+            for (int idx = 0; idx < chunk.biases.size(); idx++) {
+              const float m = chunk.biases_aux[idx * 2 + 0];
+              const float v = sqrtf(chunk.biases_aux[idx * 2 + 1]);
+
+              image->BlendPixel32(image_x, ToScreenY(m),
+                                  0xFF770000 | bias_alpha);
+              image->BlendPixel32(image_x, ToScreenY(v),
+                                  0xFF007700 | bias_alpha);
+            }
           }
 
           if ((image_x % 100 == 0) || image_x == image->Width()) {
@@ -470,7 +480,7 @@ int main(int argc, char **argv) {
   TrainOnTestTests(NetworkTestUtil::Net1());
   #endif
 
-  #if 1
+  #if 0
   TrainTest(NetworkTestUtil::LearnTrivialIdentitySparse(),
             1000, 1000, 1.0f, 0.0001f, 4);
   TrainTest(NetworkTestUtil::LearnTrivialIdentityDense(),
@@ -490,6 +500,9 @@ int main(int argc, char **argv) {
   #endif
 
   #if 0
+  // XXX these get to like 0.000 but not the same convergence
+  // we had before .... probably ok??
+
   // ADAM tests. These each take about 400 rounds to converge,
   // because here we are using a sensible learning rate of 0.01f.
   TrainTest(NetworkTestUtil::ForceAdam(
@@ -504,7 +517,7 @@ int main(int argc, char **argv) {
   #endif
 
 
-  #if 1
+  #if 0
   // Even with a lower learning rate, this converges much faster than
   // the SGD version :) ~200 rounds.
   TrainTest(NetworkTestUtil::ForceAdam(NetworkTestUtil::LearnBoolean()),
@@ -528,16 +541,11 @@ int main(int argc, char **argv) {
             4);
   #endif
 
-  #if 1
+  #if 0
   // Adam works well on this, even with a conservative learning
   // rate of 0.01f; once the weights get near 1, the bias rapidly
-  // gets unlearned. Converges in ~800 rounds.
-  //
-  // Once we hit an absolute error of about 0.1, the network starts
-  // oscillating. Probably we would need to be decreasing the
-  // learning rate in order to fine tune, or perhaps there is some
-  // other problem (decay weights?); Adam also allegedly finds worse
-  // minima, and switching to SGD at some point (when?) may help.
+  // gets unlearned. Converges in <4000 4ounds.
+  // (XXX this is now like 3000 rounds with fixed adam)
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountOnesDense()),
             10000, 1000, 0.01f,
@@ -556,32 +564,34 @@ int main(int argc, char **argv) {
             4);
   #endif
 
-  // OK up to here with training batch (as a loop)
-
-  #if 1
-  // Gets to about 0.13 error in 3600 rounds, but unclear if it will
-  // ever converge further?
+  #if 0
+  // With fixed adam this converges in <4000 rounds.
+  // TODO: Try removing the fixed constraint on the dense layer.
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountOnesConvConvDense()),
             10000, 1000, 0.01f,
-            0.150f,
+            0.01f,
             4);
   #endif
 
 
   #if 0
-  // Doesn't work yet
-  TrainTest(NetworkTestUtil::LearnCountOnesConvDense(),
-            10000, 1000, 0.005f,
-            0.100f,
-            4);
-  #endif
-
-  #if 0
-  // Doesn't quite work yet
-  TrainTest(NetworkTestUtil::LearnCountEdges(),
+  // With fixed, adam, converges in about 5100 rounds.
+  TrainTest(NetworkTestUtil::ForceAdam(
+                NetworkTestUtil::LearnCountOnesConvDense()),
             10000, 1000, 0.01f,
-            0.100f,
+            0.010f,
+            4);
+  #endif
+
+  #if 1
+  // Does converge in ~17000 rounds. Seems to be dependent on
+  // initial conditions, and perhaps with more dice rolls for the
+  // features it would be pretty fast.
+  TrainTest(NetworkTestUtil::ForceAdam(
+                NetworkTestUtil::LearnCountEdges()),
+            20000, 1000, 0.01f,
+            0.010f,
             4);
   #endif
 

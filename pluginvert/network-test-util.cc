@@ -1202,29 +1202,73 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountEdges() {
   conv_chunk.span_size = INPUT_SIZE;
   conv_chunk.indices_per_node = 2;
 
-  const auto [indices, this_num_nodes,
-              num_occurrences_across, num_occurrences_down] =
-    Network::MakeConvolutionArrayIndices(0, INPUT_SIZE,
-                                         conv_chunk.num_features,
-                                         conv_chunk.pattern_width,
-                                         conv_chunk.pattern_height,
-                                         conv_chunk.src_width,
-                                         conv_chunk.src_height,
-                                         conv_chunk.occurrence_x_stride,
-                                         conv_chunk.occurrence_y_stride);
-  conv_chunk.num_nodes = this_num_nodes;
-  conv_chunk.width = conv_chunk.num_nodes;
-  conv_chunk.height = 1;
-  conv_chunk.channels = 1;
+  {
+    const auto [indices, this_num_nodes,
+                num_occurrences_across, num_occurrences_down] =
+      Network::MakeConvolutionArrayIndices(0, INPUT_SIZE,
+                                           conv_chunk.num_features,
+                                           conv_chunk.pattern_width,
+                                           conv_chunk.pattern_height,
+                                           conv_chunk.src_width,
+                                           conv_chunk.src_height,
+                                           conv_chunk.occurrence_x_stride,
+                                           conv_chunk.occurrence_y_stride);
+    conv_chunk.num_nodes = this_num_nodes;
+    conv_chunk.width = conv_chunk.num_nodes;
+    conv_chunk.height = 1;
+    conv_chunk.channels = 1;
 
-  conv_chunk.num_occurrences_across = num_occurrences_across;
-  conv_chunk.num_occurrences_down = num_occurrences_down;
-  conv_chunk.indices = indices;
+    conv_chunk.num_occurrences_across = num_occurrences_across;
+    conv_chunk.num_occurrences_down = num_occurrences_down;
+    conv_chunk.indices = indices;
 
-  conv_chunk.weights = std::vector<float>(
-      conv_chunk.indices_per_node * conv_chunk.num_features,
-      0.0f);
-  conv_chunk.biases = std::vector<float>(conv_chunk.num_features, 0.0f);
+    conv_chunk.weights = std::vector<float>(
+        conv_chunk.indices_per_node * conv_chunk.num_features,
+        0.0f);
+    conv_chunk.biases = std::vector<float>(conv_chunk.num_features, 0.0f);
+  }
+
+  // To actually implement a & ~b and ~a & b I think we need two layers.
+  // So convolve again, but as a simple 1x1 window.
+  Chunk conv2_chunk;
+  conv2_chunk.type = CHUNK_CONVOLUTION_ARRAY;
+  conv2_chunk.num_features = 1;
+  conv2_chunk.occurrence_x_stride = 1;
+  conv2_chunk.occurrence_y_stride = 1;
+  conv2_chunk.pattern_width = 1;
+  conv2_chunk.pattern_height = 1;
+  conv2_chunk.src_width = conv_chunk.num_nodes;
+  conv2_chunk.src_height = 1;
+  conv2_chunk.transfer_function = LEAKY_RELU;
+  conv2_chunk.span_start = 0;
+  conv2_chunk.span_size = conv_chunk.num_nodes;
+  conv2_chunk.indices_per_node = 1;
+
+  {
+    const auto [indices, this_num_nodes,
+                num_occurrences_across, num_occurrences_down] =
+      Network::MakeConvolutionArrayIndices(0, conv_chunk.num_nodes,
+                                           conv2_chunk.num_features,
+                                           conv2_chunk.pattern_width,
+                                           conv2_chunk.pattern_height,
+                                           conv2_chunk.src_width,
+                                           conv2_chunk.src_height,
+                                           conv2_chunk.occurrence_x_stride,
+                                           conv2_chunk.occurrence_y_stride);
+    conv2_chunk.num_nodes = this_num_nodes;
+    conv2_chunk.width = conv2_chunk.num_nodes;
+    conv2_chunk.height = 1;
+    conv2_chunk.channels = 1;
+
+    conv2_chunk.num_occurrences_across = num_occurrences_across;
+    conv2_chunk.num_occurrences_down = num_occurrences_down;
+    conv2_chunk.indices = indices;
+
+    conv2_chunk.weights = std::vector<float>(
+        conv2_chunk.indices_per_node * conv2_chunk.num_features,
+        0.0f);
+    conv2_chunk.biases = std::vector<float>(conv2_chunk.num_features, 0.0f);
+  }
 
   // Single dense node to compute sum
   Chunk dense_chunk;
@@ -1235,8 +1279,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountEdges() {
   dense_chunk.height = 1;
   dense_chunk.channels = 1;
   dense_chunk.span_start = 0;
-  dense_chunk.span_size = conv_chunk.num_nodes;
-  dense_chunk.indices_per_node = conv_chunk.num_nodes;
+  dense_chunk.span_size = conv2_chunk.num_nodes;
+  dense_chunk.indices_per_node = conv2_chunk.num_nodes;
   dense_chunk.indices = {};
   dense_chunk.weights = std::vector<float>(
       dense_chunk.num_nodes * dense_chunk.indices_per_node, 0.0f);
@@ -1250,17 +1294,22 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountEdges() {
   conv_layer.num_nodes = conv_chunk.num_nodes;
   conv_layer.chunks = {conv_chunk};
 
+  Layer conv2_layer;
+  conv2_layer.num_nodes = conv2_chunk.num_nodes;
+  conv2_layer.chunks = {conv2_chunk};
+
   Layer dense_layer;
   dense_layer.num_nodes = dense_chunk.num_nodes;
   dense_layer.chunks = {dense_chunk};
 
-  Network net({input_layer, conv_layer, dense_layer});
+  Network net({input_layer, conv_layer, conv2_layer, dense_layer});
   net.NaNCheck(__func__);
 
-  CHECK(net.layers.size() == 3);
+  CHECK(net.layers.size() == 4);
   CHECK(net.layers[0].chunks.size() == 1);
   CHECK(net.layers[1].chunks.size() == 1);
   CHECK(net.layers[2].chunks.size() == 1);
+  CHECK(net.layers[3].chunks.size() == 1);
 
   auto f = [](const std::vector<float> &input) {
       int edges = 0;
@@ -1276,7 +1325,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountEdges() {
     };
 
   return TrainNet{
-    .name = "2x1 convolution counts (interior) 0-1 and 1-0 edges",
+    .name = "2x1 convolution + 1x1 conv counts (interior) 0-1 and 1-0 edges",
     .net = net,
     .f = f,
     .boolean_input = true,

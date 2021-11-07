@@ -104,9 +104,6 @@ struct NetworkGPU {
 // over many examples at once. This is especially helpful for small
 // chunks, which can't use the full bandwidth of the GPU when run
 // individually.
-
-// FIXME PERF HERE!
-// (Should do this after we have good tests, and benchmark it!)
 struct TrainingRoundGPU {
   TrainingRoundGPU(int num_examples, CL *cl, const Network &net) :
     num_examples(num_examples), cl(cl), net(&net) {
@@ -369,18 +366,52 @@ struct DecayWeightsCL {
   DISALLOW_COPY_AND_ASSIGN(DecayWeightsCL);
 };
 
+
+// TODO: First fix the adam bug.
+// Do this by always allocating an extra memory (scratch space)
+// for the weight increments (in constructor), and += all the
+// increments into there. This is actually pretty easy because
+// the current chunk_weights buffer is write-only anyway.
+// Do adam update as a second pass. Make
+// sure this still passes learning tests (hopefully it is better?).
+//
+// Next, follow the plan noted in the cc code to produce the weight
+// increments with some amount of parallelism. The constructor can
+// have some memory budget and choose the multiplier W per chunk to
+// use that budget (also, W should probably divide the number of
+// examples?)
 struct UpdateWeightsCL {
-  UpdateWeightsCL(CL *cl, const Network &net);
+  // The number of examples per round is needed as a compile-time
+  // constant.
+  UpdateWeightsCL(int examples_per_round,
+                  CL *cl, const Network &net);
   ~UpdateWeightsCL();
 
+  // TODO: Make configurable.
+  static constexpr bool CLIPPING = false;
+  static constexpr bool CONSTRAIN = true;
+  static constexpr float WEIGHT_CONSTRAIN_MAX = 16.0f;
+  static constexpr float BIAS_CONSTRAIN_MAX = 16384.0f;
+
   // Run on all examples in the round.
+  // learning_rate here is something like 0.01f (internally scaled
+  // by number of examples etc.)
+  // The number of training examples must match the configured amount.
   void Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
               float learning_rate, int layer);
 
  private:
+  const int examples_per_round = 0;
   struct ChunkKernel {
-    cl_program program = 0;
-    cl_kernel kernel = 0;
+    cl_program program1 = 0;
+    cl_kernel kernel1 = 0;
+
+    // second pass
+    cl_program program2 = 0;
+    cl_kernel kernel2 = 0;
+
+    cl_mem weight_grad_tmp = 0;
+    cl_mem bias_grad_tmp = 0;
   };
 
   // Input layer has unused placeholder kernels (0) to keep this
