@@ -177,6 +177,11 @@ struct TrainingRoundGPU {
     clFinish(cl->queue);
   }
 
+  // Same but for all examples.
+  void ExportOutputs(std::vector<float> *out) {
+    CopyBufferFromGPUTo(cl->queue, stimulations.back(), out);
+  }
+
   // Same size as net->layers. 0th is input, final is the output.
   // Each memory is the layer's size * num_examples.
   std::vector<cl_mem> stimulations;

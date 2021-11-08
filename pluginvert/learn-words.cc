@@ -55,11 +55,70 @@ struct LexEncode {
     fwdnet->layers.resize(4);
 
     fwdnet_gpu.reset(new NetworkGPU(cl, fwdnet.get()));
+    forward_cl.reset(new ForwardLayerCL(cl, *fwdnet));
+  }
+
+  // Flat vector, vs.size() * ENCODED_SIZE
+  std::vector<float> EncodeMany(const std::vector<std::string> &vs) {
+    TrainingRoundGPU train(vs.size(), cl, *fwdnet);
+    std::vector<float> input(MAX_WORD_LEN * RADIX * vs.size(), 0.0f);
+    for (int i = 0; i < vs.size(); i++) {
+      const string &s = vs[i];
+      CHECK(s.size() <= MAX_WORD_LEN);
+      for (int j = 0; j < MAX_WORD_LEN; j++) {
+        int c = 0;
+        if (j < s.size()) {
+          // Letters must be in range.
+          CHECK(s[j] >= 'a' && s[c] <= 'z');
+          c = s[j] - 'a' + 1;
+        } else {
+          c = 0;
+        }
+        input[i * MAX_WORD_LEN * RADIX + j * RADIX + c] = 1.0f;
+      }
+    }
+    train.LoadInputs(input);
+
+    for (int i = 0; i < fwdnet->layers.size() - 1; i++)
+      forward_cl->RunForward(fwdnet_gpu.get(), &train, i);
+
+    std::vector<float> output(vs.size() * ENCODED_SIZE);
+    train.ExportOutputs(&output);
+    return output;
   }
 
   std::optional<std::array<float, ENCODED_SIZE>>
   Encode(const std::string &s) const {
     if (s.size() > MAX_WORD_LEN) return {};
+
+    TrainingRoundGPU train(1, cl, *fwdnet);
+    std::vector<float> input(MAX_WORD_LEN * RADIX, 0.0f);
+    for (int j = 0; j < MAX_WORD_LEN; j++) {
+      int c = 0;
+      if (j < s.size()) {
+        // Letters must be in range.
+        if (s[j] < 'a' || s[c] > 'z') return {};
+        c = s[j] - 'a' + 1;
+      } else {
+        c = 0;
+      }
+      input[j * RADIX + c] = 1.0f;
+    }
+    train.LoadInput(0, input);
+
+    for (int i = 0; i < fwdnet->layers.size() - 1; i++)
+      forward_cl->RunForward(fwdnet_gpu.get(), &train, i);
+
+    // PERF could copy directly to an array with a new utility
+    std::vector<float> output(ENCODED_SIZE);
+    train.ExportOutput(0, &output);
+
+    std::array<float, ENCODED_SIZE> ret;
+    for (int i = 0; i < ENCODED_SIZE; i++)
+      ret[i] = output[i];
+    return {std::move(ret)};
+
+#if 0
     Stimulation stim(*fwdnet);
 
     std::vector<float> *input = &stim.values[0];
@@ -86,6 +145,7 @@ struct LexEncode {
     for (int i = 0; i < ENCODED_SIZE; i++)
       ret[i] = stim.values[3][i];
     return {std::move(ret)};
+#endif
   }
 
   string Decode(const std::array<float, ENCODED_SIZE> &a) const {
@@ -125,6 +185,8 @@ private:
   std::unique_ptr<Network> net;
   // truncated to just the encoding portion
   std::unique_ptr<Network> fwdnet;
+  std::unique_ptr<NetworkGPU> fwdnet_gpu;
+  std::unique_ptr<ForwardLayerCL> forward_cl;
 };
 
 struct Wikibits {
@@ -514,10 +576,10 @@ static void Train(Network *net) {
       Timer frag_timer;
       for (float &f : inputs) f = 0.0f;
 
+      #if 0
       std::vector<std::vector<uint32>> example_fragments;
       example_fragments.reserve(EXAMPLES_PER_ROUND);
       for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
-        // One-hot
         const auto &[start_pos, fragment] = wikibits.RandomFragment();
         std::vector<uint32> frag;
         frag.reserve(NUM_WORDS);
@@ -526,8 +588,54 @@ static void Train(Network *net) {
         }
         example_fragments.push_back(std::move(frag));
       }
+      #endif
+      // examples_per_round * num_words
+      std::vector<string> example_words;
+      example_words.reserve(EXAMPLES_PER_ROUND * NUM_WORDS);
+      for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
+        const auto &[start_pos, fragment] = wikibits.RandomFragment();
+
+        // For simplicity we put the target word at the end.
+        for (int w = 0; w < WORDS_BEFORE; w++) {
+          example_words.push_back(
+              wikibits.GetWord((*fragment)[start_pos + w]));
+        }
+        for (int w = 0; w < WORDS_AFTER; w++) {
+          example_words.push_back(
+              wikibits.GetWord((*fragment)[start_pos + WORDS_BEFORE + 1 + w]));
+        }
+        example_words.push_back(
+            wikibits.GetWord((*fragment)[start_pos + WORDS_BEFORE]));
+      }
+
+      std::vector<float> encoded = lex_encode.EncodeMany(example_words);
       frag_ms += frag_timer.MS();
 
+      Timer example_timer;
+      ParallelComp(
+          EXAMPLES_PER_ROUND,
+          [&](int i) {
+            // start position in the encoded array.
+            int ex_start = NUM_WORDS * LexEncode::ENCODED_SIZE * i;
+
+            // encoded_words already put the target word at the end.
+            // Input is WORDS_BEFORE WORDS_AFTER
+            // Output is WORDS_BEFORE WORDS_AFTER target_word
+            for (int w = 0;
+                 w < (WORDS_BEFORE + WORDS_AFTER) * LexEncode::ENCODED_SIZE;
+                 w++) {
+              inputs[INPUT_SIZE * i + w] = encoded[ex_start + w];
+            }
+
+            for (int w = 0;
+                 w < (WORDS_BEFORE + WORDS_AFTER + 1) * LexEncode::ENCODED_SIZE;
+                 w++) {
+              expecteds[OUTPUT_SIZE * i + w] = encoded[ex_start + w];
+            }
+          },
+          max_parallelism);
+
+      #if 0
       auto Encode = [&](uint32 word_id) {
           const std::string &word = wikibits.GetWord(word_id);
           auto enc = lex_encode.Encode(word);
@@ -573,6 +681,7 @@ static void Train(Network *net) {
                   (WORDS_BEFORE + WORDS_AFTER) * LexEncode::ENCODED_SIZE);
           },
           max_parallelism);
+      #endif
       training->LoadInputs(inputs);
       training->LoadExpecteds(expecteds);
 
