@@ -1,5 +1,6 @@
 // Update the weights and biases for each node, using
 // the errors and the outputs from the previous layer.
+// First pass.
 
 // Defines:
 // INDICES_PER_NODE, an int, the number of input indices

@@ -30,8 +30,11 @@ static CL *cl = nullptr;
 
 using int64 = int64_t;
 
-constexpr int MAX_WORD_LEN = 18;
-constexpr int RADIX = 27;
+static constexpr const char *MODEL_NAME = "semantic-words.val";
+
+// This network predicts a middle word given some words before
+// and some words after.
+static constexpr int WORDS_BEFORE = 3, WORDS_AFTER = 2;
 
 static bool AllLetters(const string &s) {
   for (int i = 0; i < s.size(); i++) {
@@ -40,19 +43,107 @@ static bool AllLetters(const string &s) {
   return true;
 }
 
+struct LexEncode {
+  static constexpr int MAX_WORD_LEN = 18;
+  static constexpr int RADIX = 27;
+  static constexpr int ENCODED_SIZE = 64;
+
+  // Have to use the same version of the lex network!
+  LexEncode() : net(Network::ReadFromFile("save/lex.val")) {
+    CHECK(cl != nullptr);
+    fwdnet.reset(new Network(*net));
+    fwdnet->layers.resize(4);
+
+    fwdnet_gpu.reset(new NetworkGPU(cl, fwdnet.get()));
+  }
+
+  std::optional<std::array<float, ENCODED_SIZE>>
+  Encode(const std::string &s) const {
+    if (s.size() > MAX_WORD_LEN) return {};
+    Stimulation stim(*fwdnet);
+
+    std::vector<float> *input = &stim.values[0];
+    for (float &f : *input) f = 0.0f;
+    CHECK(input->size() == MAX_WORD_LEN * RADIX);
+    for (int j = 0; j < MAX_WORD_LEN; j++) {
+      int c = 0;
+      if (j < s.size()) {
+        // Letters must be in range.
+        if (s[j] < 'a' || s[c] > 'z') return {};
+        c = s[j] - 'a' + 1;
+      } else {
+        c = 0;
+      }
+      (*input)[j * RADIX + c] = 1.0f;
+    }
+
+    // Run forward to the "dense encoded layer"
+    fwdnet->RunForwardLayer(&stim, 0);
+    fwdnet->RunForwardLayer(&stim, 1);
+    fwdnet->RunForwardLayer(&stim, 2);
+    CHECK(stim.values[3].size() == ENCODED_SIZE);
+    std::array<float, ENCODED_SIZE> ret;
+    for (int i = 0; i < ENCODED_SIZE; i++)
+      ret[i] = stim.values[3][i];
+    return {std::move(ret)};
+  }
+
+  string Decode(const std::array<float, ENCODED_SIZE> &a) const {
+    Stimulation stim(*net);
+    std::vector<float> *encoded = &stim.values[3];
+    CHECK(encoded->size() == ENCODED_SIZE);
+    for (int i = 0; i < ENCODED_SIZE; i++)
+      (*encoded)[i] = a[i];
+
+    net->RunForwardLayer(&stim, 3);
+    net->RunForwardLayer(&stim, 4);
+    net->RunForwardLayer(&stim, 5);
+    CHECK(stim.values[6].size() == MAX_WORD_LEN * RADIX);
+    const std::vector<float> &v = stim.values[6];
+
+    string s;
+    s.reserve(MAX_WORD_LEN);
+    for (int c = 0; c < MAX_WORD_LEN; c++) {
+      int maxi = 0;
+      float maxv = -999999.0f;
+      for (int a = 0; a < RADIX; a++) {
+        int idx = c * RADIX + a;
+        if (v[idx] > maxv) {
+          maxi = a;
+          maxv = v[idx];
+        }
+      }
+      if (maxi == 0) s.push_back('_');
+      else s.push_back('a' + (maxi - 1));
+    }
+
+    while (!s.empty() && s.back() == '_') s.pop_back();
+    return s;
+  }
+
+private:
+  std::unique_ptr<Network> net;
+  // truncated to just the encoding portion
+  std::unique_ptr<Network> fwdnet;
+};
+
 struct Wikibits {
   static constexpr int NUM_SHARDS = 128;
+  // static constexpr int NUM_SHARDS = 1;
 
   Wikibits() : rc("wikibits" + StringPrintf("%lld", time(nullptr))) {
     std::vector<string> filenames;
     for (int i = 0; i < NUM_SHARDS; i++)
       filenames.push_back(StringPrintf("wikibits/wiki-%d.txt", i));
-    std::vector<std::unordered_map<string, int64>> countvec =
+    std::vector<
+      std::pair<std::unordered_map<string, int64>,
+                std::vector<std::vector<string>>>> processed =
       ParallelMap(filenames,
                   [](const std::string &filename) {
                     printf("Reading %s...\n", filename.c_str());
+                    std::vector<std::vector<string>> frags;
                     std::unordered_map<string, int64> counts;
-                    int64 not_letters = 0;
+                    int64 not_valid = 0;
                     auto co = Util::ReadFileOpt(filename);
                     CHECK(co.has_value());
                     string contents = std::move(co.value());
@@ -119,33 +210,97 @@ struct Wikibits {
                       std::vector<string> tokens =
                         Util::Tokens(art.body,
                                      [](char c) { return isspace(c); });
-                      for (const string &token : tokens) {
-                        const string ltoken = Util::lcase(token);
-                        if (AllLetters(token)) {
-                          counts[ltoken]++;
+                      // TODO: Other normalization here (remove outside
+                      // double-quotes, maybe rewrite internal apostrophes?
+                      for (string &s : tokens) {
+                        s = Util::lcase(s);
+                        // XXX TODO: This should actually end the fragment
+                        if (s.back() == '.') s.pop_back();
+                        else if (s.back() == ',') s.pop_back();
+                        else if (s.back() == ';') s.pop_back();
+                      }
+
+                      constexpr int MIN_FRAG = WORDS_BEFORE + WORDS_AFTER + 1;
+                      int frag_start = 0;
+                      // p is one past the end of the sequence that was
+                      // all lowercase words
+                      auto MaybeFlushFragment = [&](int p) {
+                          CHECK(p <= tokens.size());
+                          if (p - frag_start >= MIN_FRAG) {
+                            std::vector<string> f;
+                            f.reserve(p - frag_start);
+                            for (int w = frag_start; w < p; w++)
+                              f.push_back(tokens[w]);
+                            frags.push_back(std::move(f));
+                          }
+                        };
+
+                      for (int i = 0; i < tokens.size(); i++) {
+                        const string &token = tokens[i];
+                        if (token.size() <= LexEncode::MAX_WORD_LEN &&
+                            AllLetters(token)) {
+                          counts[token]++;
                         } else {
-                          not_letters++;
+                          not_valid++;
+                          MaybeFlushFragment(i);
+                          frag_start = i + 1;
                         }
                       }
+                      MaybeFlushFragment(tokens.size());
                       num_articles++;
                     }
 
-                    printf("Distinct words: %lld, Not letters: %lld\n",
-                           counts.size(), not_letters);
-                    return counts;
+                    printf("Distinct words: %lld, "
+                           "Not valid: %lld, Fragments: %lld\n",
+                           counts.size(), not_valid, frags.size());
+                    return make_pair(counts, frags);
                   }, 8);
 
     printf("Now build all map:\n");
-    for (const auto &m : countvec) {
+    for (const auto &[m, frags_] : processed) {
       for (const auto &[s, c] : m) {
         counts[s] += c;
+
+        auto it = word_to_id.find(s);
+        if (it == word_to_id.end()) {
+          word_to_id[s] = (uint32_t)id_to_word.size();
+          id_to_word.push_back(s);
+        }
       }
     }
 
-    printf("Done. All distinct words: %lld\n", counts.size());
+    printf("Gave %d distinct words ids\n", id_to_word.size());
+
+    for (const auto &[m_, frags] : processed) {
+      for (const auto &f : frags) {
+        std::vector<uint32_t> idf;
+        idf.reserve(f.size());
+        for (const string &s : f) {
+          auto it = word_to_id.find(s);
+          CHECK(it != word_to_id.end()) << s;
+          idf.push_back(it->second);
+        }
+        fragments.push_back(idf);
+      }
+    }
+
+    processed.clear();
+
+    printf("Done. Total fragments: %lld\n",
+           fragments.size());
+
     cdf.reserve(counts.size());
     for (const auto &[s, c] : counts) {
       cdf.emplace_back(s, c);
+    }
+
+    for (int i = 0; i < 10; i++) {
+      int64 f = RandTo(&rc, fragments.size());
+      printf("Fragment %lld:", f);
+      for (const uint32_t w : fragments[f]) {
+        printf(" %s", id_to_word[w].c_str());
+      }
+      printf("\n");
     }
 
     // Sort by descending frequency.
@@ -214,6 +369,21 @@ struct Wikibits {
     return SampleAt(pos);
   }
 
+  // XXX not thread safe
+  // A random fragment of length WORDS_BEFORE + WORDS_AFTER + 1,
+  // as the vector and the start position within it.
+  const std::pair<int, const std::vector<uint32_t>*> RandomFragment() {
+    const std::vector<uint32_t> &v = fragments[
+        RandTo(&rc, fragments.size())];
+    const int max_start = v.size() - (WORDS_BEFORE + WORDS_AFTER + 1);
+    const int start = RandTo32(&rc, max_start + 1);
+    return make_pair(start, &v);
+  }
+
+  inline const std::string &GetWord(uint32_t id) const {
+    return id_to_word[id];
+  }
+
 private:
   // For above. Must be in range.
   const string &SampleAt(int64 pos) const {
@@ -227,6 +397,15 @@ private:
     return it->first;
   }
 
+  std::unordered_map<string, uint32_t> word_to_id;
+  std::vector<string> id_to_word;
+
+  // Sequences of word ids where:
+  //  - the id is in id_to_word and is valid (a-z, length <= MAX_WORD_LEN)
+  //  - the sequence is at least WORDS_BEFORE + WORDS_AFTER + 1 in length
+  std::vector<std::vector<uint32_t>> fragments;
+
+  // Don't actually need this stuff for the current problem...
   std::unordered_map<string, int64> counts;
   // Words in arbitrary order, but with the cumulative frequency
   // so far (of all words before this one).
@@ -237,6 +416,7 @@ private:
 
 
 static void Train(Network *net) {
+  LexEncode lex_encode;
 
   Wikibits wikibits;
 
@@ -246,26 +426,29 @@ static void Train(Network *net) {
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = true;
-  // Very small examples; could easily do 100x this...
+  // Small examples; could easily do 10x this...
   static constexpr int EXAMPLES_PER_ROUND = 1000;
   // XXX need to reduce this over time
-  // static constexpr float LEARNING_RATE = 0.001f;
-  static constexpr float LEARNING_RATE = 0.000125f;
+  static constexpr float LEARNING_RATE = 0.01f;
 
+  // XXX this should probably depend on the learning rate; if the
+  // learning rate is too small, it won't even be able to overcome
+  // the decay
+  static constexpr float DECAY_RATE = 0.999999f;
 
   // On a verbose round we compute training error and print out
   // examples.
-  constexpr int VERBOSE_EVERY = 100;
+  constexpr int VERBOSE_EVERY = 20;
   // We save this to the error history file every this many
   // verbose rounds.
-  constexpr int HISTORY_EVERY_VERBOSE = 10;
+  constexpr int HISTORY_EVERY_VERBOSE = 1;
   int64 total_verbose = 0;
-  constexpr int TIMING_EVERY = 1000;
+  constexpr int TIMING_EVERY = 20;
 
   std::vector<std::unique_ptr<ImageRGBA>> images;
   constexpr int IMAGE_WIDTH = 3000;
   constexpr int IMAGE_HEIGHT = 1000;
-  constexpr int IMAGE_EVERY = 1000;
+  constexpr int IMAGE_EVERY = 20;
   int image_x = 0;
   for (int i = 0; i < net->layers.size(); i++) {
     // XXX skip input layer?
@@ -278,8 +461,6 @@ static void Train(Network *net) {
   }
 
   printf("Training!\n");
-  ArcFour rc("training");
-  RandomGaussian gauss(&rc);
 
   auto net_gpu = make_unique<NetworkGPU>(cl, net);
 
@@ -291,7 +472,7 @@ static void Train(Network *net) {
     std::make_unique<BackwardLayerCL>(cl, *net);
   [[maybe_unused]]
   std::unique_ptr<DecayWeightsCL> decay_cl =
-    std::make_unique<DecayWeightsCL>(cl, *net, 0.99999f);
+    std::make_unique<DecayWeightsCL>(cl, *net, DECAY_RATE);
   std::unique_ptr<UpdateWeightsCL> update_cl =
     std::make_unique<UpdateWeightsCL>(EXAMPLES_PER_ROUND, cl, *net);
 
@@ -301,10 +482,15 @@ static void Train(Network *net) {
 
   // Used to fill the input and output for the training example,
   // and preserved on the CPU to compute loss in verbose rounds.
-  constexpr int INPUT_SIZE = MAX_WORD_LEN * RADIX;
+  constexpr int INPUT_SIZE = (WORDS_BEFORE + WORDS_AFTER) *
+    LexEncode::ENCODED_SIZE;
+  constexpr int OUTPUT_SIZE = (WORDS_BEFORE + WORDS_AFTER + 1) *
+    LexEncode::ENCODED_SIZE;
   std::vector<float> inputs(INPUT_SIZE * EXAMPLES_PER_ROUND, 0.0f);
+  std::vector<float> expecteds(OUTPUT_SIZE * EXAMPLES_PER_ROUND, 0.0f);
 
   double round_ms = 0.0;
+  double frag_ms = 0.0;
   double example_ms = 0.0;
   double forward_ms = 0.0;
   double error_ms = 0.0;
@@ -321,26 +507,77 @@ static void Train(Network *net) {
 
     const bool verbose_round = (iter % VERBOSE_EVERY) == 0;
 
+    constexpr int NUM_WORDS = WORDS_BEFORE + WORDS_AFTER + 1;
     // Initialize training examples.
     // (PERF: parallelize?)
     {
-      Timer example_timer;
+      Timer frag_timer;
       for (float &f : inputs) f = 0.0f;
 
+      std::vector<std::vector<uint32>> example_fragments;
+      example_fragments.reserve(EXAMPLES_PER_ROUND);
       for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
         // One-hot
-        string word = wikibits.RandomWord();
-        for (int j = 0; j < MAX_WORD_LEN; j++) {
-          const int c = j < word.size() ? word[j] - 'a' + 1 : 0;
-          inputs[INPUT_SIZE * i + j * RADIX + c] = 1.0f;
+        const auto &[start_pos, fragment] = wikibits.RandomFragment();
+        std::vector<uint32> frag;
+        frag.reserve(NUM_WORDS);
+        for (int w = 0; w < NUM_WORDS; w++) {
+          frag.push_back((*fragment)[start_pos + w]);
         }
+        example_fragments.push_back(std::move(frag));
       }
+      frag_ms += frag_timer.MS();
+
+      auto Encode = [&](uint32 word_id) {
+          const std::string &word = wikibits.GetWord(word_id);
+          auto enc = lex_encode.Encode(word);
+          CHECK(enc.has_value()) << word;
+          return enc.value();
+        };
+      auto Write = [](std::vector<float> *vec,
+                      const std::array<float, LexEncode::ENCODED_SIZE> &a,
+                      int pos) {
+          for (int r = 0; r < LexEncode::ENCODED_SIZE; r++) {
+            (*vec)[pos + r] = a[r];
+          }
+        };
+
+      Timer example_timer;
+      ParallelAppi(
+          example_fragments,
+          [&](int i, const std::vector<uint32> &words) {
+
+            for (int w = 0; w < WORDS_BEFORE; w++) {
+              const auto enc = Encode(words[w]);
+              Write(&inputs, enc,
+                    INPUT_SIZE * i + w * LexEncode::ENCODED_SIZE);
+              Write(&expecteds, enc,
+                    OUTPUT_SIZE * i + w * LexEncode::ENCODED_SIZE);
+            }
+
+            for (int w = 0; w < WORDS_AFTER; w++) {
+              // Skipping the target word, of course
+              const auto enc = Encode(words[WORDS_BEFORE + 1 + w]);
+              Write(&inputs, enc,
+                    INPUT_SIZE * i +
+                    (WORDS_BEFORE + w) * LexEncode::ENCODED_SIZE);
+              Write(&expecteds, enc,
+                    OUTPUT_SIZE * i +
+                    (WORDS_BEFORE + w) * LexEncode::ENCODED_SIZE);
+            }
+
+            // Finally, the target word in the output only
+            const auto enc = Encode(words[WORDS_BEFORE]);
+            Write(&expecteds, enc,
+                  OUTPUT_SIZE * i +
+                  (WORDS_BEFORE + WORDS_AFTER) * LexEncode::ENCODED_SIZE);
+          },
+          max_parallelism);
       training->LoadInputs(inputs);
-      training->LoadExpecteds(inputs);
+      training->LoadExpecteds(expecteds);
 
       example_ms += example_timer.MS();
     }
-
 
     if (VERBOSE > 1)
       printf("Prepped examples.\n");
@@ -404,7 +641,7 @@ static void Train(Network *net) {
     }
 
     if (VERBOSE > 1)
-      printf("Updated errors.\n");
+      printf("Updated weights.\n");
 
     total_examples += EXAMPLES_PER_ROUND;
 
@@ -416,6 +653,9 @@ static void Train(Network *net) {
     const bool finished = false;
 
     if (verbose_round) {
+      if (VERBOSE > 1)
+        printf("Verbose round...\n");
+
       // Get loss as abs distance, plus number of incorrect (as booleans).
 
       // PERF could do this on the flat vector, but we only need to
@@ -424,12 +664,15 @@ static void Train(Network *net) {
       expected.reserve(EXAMPLES_PER_ROUND);
       for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
         std::vector<float> one;
-        one.resize(INPUT_SIZE, 0.0f);
-        for (int j = 0; j < INPUT_SIZE; j++) {
-          one[j] = inputs[i * INPUT_SIZE + j];
+        one.resize(OUTPUT_SIZE, 0.0f);
+        for (int j = 0; j < OUTPUT_SIZE; j++) {
+          one[j] = expecteds[i * OUTPUT_SIZE + j];
         }
         expected.emplace_back(std::move(one));
       }
+
+      if (VERBOSE > 1)
+        printf("Got expected\n");
 
       string example_correct, example_predicted;
       std::vector<std::pair<float, int>> losses =
@@ -439,43 +682,64 @@ static void Train(Network *net) {
                        got.resize(exp.size());
                        training->ExportOutput(idx, &got);
 
+                       // TODO: Compute loss for the auto-encoded
+                       // words, and for the predicted word
                        float loss = 0.0f;
                        for (int i = 0; i < exp.size(); i++) {
                          loss += fabsf(exp[i] - got[i]);
                        }
 
-                       auto MaxChar = [](const std::vector<float> &v) {
-                           CHECK(v.size() == MAX_WORD_LEN * RADIX);
-                           string s;
-                           s.reserve(MAX_WORD_LEN);
-                           for (int c = 0; c < MAX_WORD_LEN; c++) {
-                             int maxi = 0;
-                             float maxv = -999999.0f;
-                             for (int a = 0; a < RADIX; a++) {
-                               int idx = c * RADIX + a;
-                               if (v[idx] > maxv) {
-                                 maxi = a;
-                                 maxv = v[idx];
-                               }
+                       auto MakeWords = [&](const std::vector<float> &v) {
+                           constexpr int NUM = WORDS_BEFORE + WORDS_AFTER + 1;
+                           CHECK(v.size() == NUM * LexEncode::ENCODED_SIZE);
+                           std::vector<string> ret;
+                           ret.reserve(NUM);
+                           for (int w = 0; w < NUM; w++) {
+                             std::array<float, LexEncode::ENCODED_SIZE> a;
+                             for (int i = 0; i < LexEncode::ENCODED_SIZE; i++) {
+                               a[i] = v[w * LexEncode::ENCODED_SIZE + i];
                              }
-                             if (maxi == 0) s.push_back('_');
-                             else s.push_back('a' + (maxi - 1));
+                             ret.push_back(lex_encode.Decode(a));
                            }
-                           return s;
+                           return ret;
                          };
-                       string sexp = MaxChar(exp);
-                       string sgot = MaxChar(got);
+
+                       std::vector<string> words_exp = MakeWords(exp);
+                       std::vector<string> words_got = MakeWords(got);
+
+                       CHECK(words_exp.size() == words_got.size());
+                       int incorrect = 0;
+                       for (int i = 0; i < words_exp.size(); i++) {
+                         if (words_exp[i] != words_got[i]) {
+                           incorrect++;
+                         }
+                       }
 
                        if (idx == 0) {
                          // careful about thread safety
-                         example_correct = sexp;
-                         example_predicted = sgot;
+                         for (int i = 0; i < WORDS_BEFORE; i++) {
+                           if (i) {
+                             example_correct += " ";
+                             example_predicted += " ";
+                           }
+                           example_correct += words_exp[i];
+                           example_predicted += words_got[i];
+                         }
+                         StringAppendF(
+                             &example_correct,
+                             " (%s)",
+                             words_exp[WORDS_BEFORE + WORDS_AFTER].c_str());
+                         StringAppendF(
+                             &example_predicted,
+                             " (%s)",
+                             words_got[WORDS_BEFORE + WORDS_AFTER].c_str());
+                         for (int i = 0; i < WORDS_AFTER; i++) {
+                           example_correct += " ";
+                           example_predicted += " ";
+                           example_correct += words_exp[WORDS_BEFORE + i];
+                           example_predicted += words_got[WORDS_BEFORE + i];
+                         }
                        }
-
-                       CHECK(sexp.size() == sgot.size());
-                       int incorrect = 0;
-                       for (int i = 0; i < sexp.size(); i++)
-                         if (sexp[i] != sgot[i]) incorrect++;
 
                        return std::make_pair(loss, incorrect);
                      }, max_parallelism);
@@ -604,7 +868,7 @@ static void Train(Network *net) {
     if (SAVE_INTERMEDIATE && (save_timeout || finished ||
                               iter == 1000 || iter % 5000 == 0)) {
       net_gpu->ReadFromGPU();
-      const string file = StringPrintf("words.val", iter);
+      const string file = MODEL_NAME;
       net->SaveToFile(file);
       if (VERBOSE)
         printf("Wrote %s\n", file.c_str());
@@ -624,13 +888,15 @@ static void Train(Network *net) {
         decay_ms + backward_ms + update_ms;
       double other_ms = round_ms - accounted_ms;
       double pct = 100.0 / round_ms;
-      printf("%.1f%% ex  "
+      printf("%.1f%% f  "
+             "%.1f%% ex  "
              "%.1f%% fwd  "
              "%.1f%% err  "
              "%.1f%% dec  "
              "%.1f%% bwd  "
              "%.1f%% up  "
              "%.1f%% other\n",
+             frag_ms * pct,
              example_ms * pct,
              forward_ms * pct,
              error_ms * pct,
@@ -639,13 +905,15 @@ static void Train(Network *net) {
              update_ms * pct,
              other_ms * pct);
       double msr = 1.0 / (iter + 1);
-      printf("%.1fms ex  "
+      printf("%.1fms f  "
+             "%.1fms ex  "
              "%.1fms fwd  "
              "%.1fms err  "
              "%.1fms dec  "
              "%.1fms bwd  "
              "%.1fms up  "
              "%.1fms other\n",
+             frag_ms * msr,
              example_ms * msr,
              forward_ms * msr,
              error_ms * msr,
@@ -657,91 +925,13 @@ static void Train(Network *net) {
   }
 }
 
-
-// Create an Nx1 convolutional chunk. It reads the entire previous
-// layer of size prev_size.
-static Chunk ConvolutionalChunk1D(int prev_size,
-                                  int num_features,
-                                  int x_stride,
-                                  int pattern_width) {
-  Chunk chunk;
-  chunk.type = CHUNK_CONVOLUTION_ARRAY;
-  chunk.num_features = num_features;
-  chunk.occurrence_x_stride = x_stride;
-  chunk.occurrence_y_stride = 1;
-  chunk.pattern_width = pattern_width;
-  chunk.pattern_height = 1;
-  chunk.src_width = prev_size;
-  chunk.src_height = 1;
-  chunk.transfer_function = LEAKY_RELU;
-  chunk.span_start = 0;
-  chunk.span_size = prev_size;
-  chunk.indices_per_node = pattern_width;
-
-  {
-    const auto [indices, this_num_nodes,
-                num_occurrences_across, num_occurrences_down] =
-      Network::MakeConvolutionArrayIndices(0, prev_size,
-                                           chunk.num_features,
-                                           chunk.pattern_width,
-                                           chunk.pattern_height,
-                                           chunk.src_width,
-                                           chunk.src_height,
-                                           chunk.occurrence_x_stride,
-                                           chunk.occurrence_y_stride);
-    chunk.num_nodes = this_num_nodes;
-    chunk.width = chunk.num_nodes;
-    chunk.height = 1;
-    chunk.channels = 1;
-
-    chunk.num_occurrences_across = num_occurrences_across;
-    CHECK(num_occurrences_down == 1);
-    chunk.num_occurrences_down = num_occurrences_down;
-    chunk.indices = indices;
-
-    chunk.weights = std::vector<float>(
-        chunk.indices_per_node * chunk.num_features,
-        0.0f);
-    chunk.biases = std::vector<float>(chunk.num_features, 0.0f);
-  }
-
-  chunk.weight_update = ADAM;
-  chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
-  chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
-
-  return chunk;
-}
-
-static Chunk DenseChunk(int prev_size,
-                        int this_size) {
-  Chunk chunk;
-  chunk.type = CHUNK_DENSE;
-  chunk.num_nodes = this_size;
-  chunk.transfer_function = LEAKY_RELU;
-  chunk.width = this_size;
-  chunk.height = 1;
-  chunk.channels = 1;
-  chunk.span_start = 0;
-  chunk.span_size = prev_size;
-  chunk.indices_per_node = prev_size;
-  chunk.indices = {};
-  chunk.weights = std::vector<float>(
-      chunk.num_nodes * chunk.indices_per_node, 0.0f);
-  chunk.biases = std::vector<float>(chunk.num_nodes, 0.0f);
-
-  chunk.weight_update = ADAM;
-  chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
-  chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
-
-  return chunk;
-}
-
 static Network *NewNetwork() {
-  auto L = [&](const Chunk &chunk) {
-      return Layer{.num_nodes = chunk.num_nodes, .chunks = {chunk}};
-    };
+  ArcFour rc("learn-words-network");
+  // Input is lex encoded words. We don't get the word to predict
+  // as an input!
+  constexpr int INPUT_WORDS = WORDS_BEFORE + WORDS_AFTER;
+  constexpr int INPUT_SIZE = INPUT_WORDS * LexEncode::ENCODED_SIZE;
 
-  constexpr int INPUT_SIZE = MAX_WORD_LEN * RADIX;
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
   input_chunk.num_nodes = INPUT_SIZE;
@@ -749,77 +939,267 @@ static Network *NewNetwork() {
   input_chunk.height = 1;
   input_chunk.channels = 1;
 
-  // Convolve to 10 bits/char. We should only need 5...
-  constexpr int BITS_PER_CHAR = 10;
-  Chunk conv_chunk1 = ConvolutionalChunk1D(INPUT_SIZE,
-                                           BITS_PER_CHAR,
-                                           // non-overlapping
-                                           RADIX, RADIX);
+  // We want to process all the words the same way to build the
+  // semantic encodings.
 
-  // Then bigrams.
-  // It would be useful to support overlap here. But I don't know
-  // how to expand the thing afterwards, since we'd end up with
-  // MAX_WORD_LEN - 1 bigrams in that case?
+  // [   wb1  ][   wb2  ]?[   wa1  ][   wa2  ]
+  //  |......|  |......|   |......|  |......|   conv1
+  //  |......|  |......|   |......|  |......|   conv2
+  //  |......|  |......|   |......|  |......|   conv3
 
-  // probably also more than we should need
-  constexpr int BITS_PER_BIGRAM = 15;
-  Chunk conv_chunk2 = ConvolutionalChunk1D(BITS_PER_CHAR * MAX_WORD_LEN,
-                                           BITS_PER_BIGRAM,
-                                           BITS_PER_CHAR * 2,
-                                           BITS_PER_CHAR * 2);
+  // ? is where the missing word would go. But to simplify our lives,
+  // we will actually put the missing word at the end.
 
-  // Number of nodes in output of previous
-  static_assert((MAX_WORD_LEN & 1) == 0);
-  constexpr int PRE_ENCODED_WIDTH = (MAX_WORD_LEN / 2) * BITS_PER_BIGRAM;
-  CHECK(conv_chunk2.num_nodes == PRE_ENCODED_WIDTH);
+  // We're just using a "convolution" here so that we have the same
+  // weights across the words. Note that these have to be effectively
+  // dense, as that is the only kind of convolution we support.
 
-  constexpr int ENCODED = 64;
-  Chunk dense_encode = DenseChunk(PRE_ENCODED_WIDTH, ENCODED);
+  auto ConvChunk = [&rc](int input_word_size,
+                         int num_words,
+                         int output_word_size) {
+      Chunk chunk;
+      chunk.type = CHUNK_CONVOLUTION_ARRAY;
+      chunk.num_features = output_word_size;
+      chunk.occurrence_x_stride = input_word_size;
+      chunk.occurrence_y_stride = 1;
+      chunk.pattern_width = input_word_size;
+      chunk.pattern_height = 1;
+      chunk.src_width = input_word_size * num_words;
+      chunk.src_height = 1;
+      chunk.transfer_function = LEAKY_RELU;
+      chunk.span_start = 0;
+      chunk.span_size = input_word_size * num_words;
+      chunk.indices_per_node = input_word_size;
 
-  // And now the reverse.
-  Chunk dense_decode = DenseChunk(ENCODED, PRE_ENCODED_WIDTH);
+      {
+        const auto [indices, this_num_nodes,
+                    num_occurrences_across, num_occurrences_down] =
+          Network::MakeConvolutionArrayIndices(chunk.span_start,
+                                               chunk.span_size,
+                                               chunk.num_features,
+                                               chunk.pattern_width,
+                                               chunk.pattern_height,
+                                               chunk.src_width,
+                                               chunk.src_height,
+                                               chunk.occurrence_x_stride,
+                                               chunk.occurrence_y_stride);
+        CHECK(this_num_nodes == num_words * output_word_size);
+        chunk.num_nodes = this_num_nodes;
+        chunk.width = chunk.num_nodes;
+        chunk.height = 1;
+        chunk.channels = 1;
 
-  Chunk unconv_chunk2 = ConvolutionalChunk1D(PRE_ENCODED_WIDTH,
-                                             BITS_PER_CHAR * 2,
-                                             // non-overlapping
-                                             BITS_PER_BIGRAM,
-                                             BITS_PER_BIGRAM);
-  Chunk unconv_chunk1 = ConvolutionalChunk1D(BITS_PER_CHAR * MAX_WORD_LEN,
-                                             RADIX,
-                                             BITS_PER_CHAR,
-                                             BITS_PER_CHAR);
+        CHECK(num_occurrences_across == num_words);
+        chunk.num_occurrences_across = num_occurrences_across;
+        CHECK(num_occurrences_down == 1);
+        chunk.num_occurrences_down = num_occurrences_down;
+        chunk.indices = indices;
+
+        chunk.weights = std::vector<float>(
+            chunk.indices_per_node * chunk.num_features,
+            0.0f);
+        chunk.biases = std::vector<float>(chunk.num_features, 0.0f);
+      }
+
+      chunk.weight_update = ADAM;
+      chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
+      chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
+
+      return chunk;
+    };
+
+  constexpr int ENC1_SIZE = 128;
+  constexpr int ENC2_SIZE = 128;
+  constexpr int ENC_SIZE  = 128;
+  Chunk conv_chunk1 =
+    ConvChunk(LexEncode::ENCODED_SIZE, INPUT_WORDS, ENC1_SIZE);
+  Chunk conv_chunk2 =
+    ConvChunk(ENC1_SIZE, INPUT_WORDS, ENC2_SIZE);
+  Chunk conv_chunk3 =
+    ConvChunk(ENC2_SIZE, INPUT_WORDS, ENC_SIZE);
 
 
-  return new Network(vector<Layer>{
-                         L(input_chunk),
-                         L(conv_chunk1),
-                         L(conv_chunk2),
-                         L(dense_encode),
-                         L(dense_decode),
-                         L(unconv_chunk2),
-                         L(unconv_chunk1)});
+  // [   wb1  ][   wb2  ]?[   wa1  ][   wa2  ] [ target ]
+  //  |......|  |......|   |......|  |......|
+  //  |......|  |......|   |......|  |......|
+  //  |......|  |......|   |......|  |......|
+  //  [ copy      copy       copy      copy ]  [  guess1  ]
+  //  [ copy      copy       copy      copy ]  [  guess2  ]
+  //  [ copy      copy       copy      copy ]  [  guess3  ]
+  //  [ copy      copy       copy      copy ]  [   sem    ]
+  // Now we want to start predicting the middle word. We actually
+  // do this at the end to make the structure simpler. The first
+  // chunk is a copy of all the semantic embeddings for the words,
+  // and these chunks are fixed. The new column uses those words
+  // as inputs, as well as the previous guess layer.
+  // Although it may still be fun, the real goal here is to
+  // learn an embedding of words that makes this guess possible
+  // (or at least, to reduce its error). So we don't just want
+  // this part to memorize triples; a more constrained network
+  // may be preferable.
 
-#if 0
-  Chunk unconv_chunk1 = ConvolutionalChunk1D(BITS_PER_CHAR * MAX_WORD_LEN,
-                                             RADIX,
-                                             BITS_PER_CHAR,
-                                             BITS_PER_CHAR);
+  // We can actually use this same chunk over and over.
+  Chunk copy_chunk;
+  copy_chunk.type = CHUNK_SPARSE;
+  copy_chunk.fixed = true;
+  copy_chunk.span_start = 0;
+  copy_chunk.span_size = ENC_SIZE * INPUT_WORDS;
+  copy_chunk.num_nodes = ENC_SIZE * INPUT_WORDS;
+  copy_chunk.indices_per_node = 1;
+  copy_chunk.transfer_function = IDENTITY;
+  copy_chunk.weight_update = SGD;
+  copy_chunk.width = ENC_SIZE * INPUT_WORDS;
+  copy_chunk.height = 1;
+  copy_chunk.channels = 1;
+  for (int i = 0; i < ENC_SIZE * INPUT_WORDS; i++) {
+    copy_chunk.indices.push_back(i);
+    copy_chunk.weights.push_back(1.0f);
+    copy_chunk.biases.push_back(0);
+  }
 
-  return new Network(vector<Layer>{
-      L(input_chunk),
-      L(conv_chunk1),
-      // ... TODO: grow here ...
-      L(unconv_chunk1)
-        });
-#endif
+  constexpr int GUESS1_SIZE = 128;
+  constexpr int GUESS2_SIZE = 128;
+  constexpr int GUESS3_SIZE = 128;
+  static_assert(GUESS3_SIZE == ENC_SIZE);
+  Chunk guess_chunk1;
+  guess_chunk1.type = CHUNK_DENSE;
+  guess_chunk1.fixed = false;
+  guess_chunk1.span_start = 0;
+  guess_chunk1.span_size = ENC_SIZE * INPUT_WORDS;
+  guess_chunk1.num_nodes = GUESS1_SIZE;
+  guess_chunk1.indices_per_node = guess_chunk1.span_size;
+  guess_chunk1.transfer_function = LEAKY_RELU;
+  guess_chunk1.weight_update = ADAM;
+  guess_chunk1.width = GUESS1_SIZE;
+  guess_chunk1.height = 1;
+  guess_chunk1.channels = 1;
+  guess_chunk1.weights.resize(GUESS1_SIZE * ENC_SIZE * INPUT_WORDS, 0.0f);
+  guess_chunk1.biases.resize(GUESS1_SIZE, 0.0f);
+  guess_chunk1.weights_aux.resize(guess_chunk1.weights.size() * 2, 0.0f);
+  guess_chunk1.biases_aux.resize(guess_chunk1.biases.size() * 2, 0.0f);
+
+  auto SparseGuess = [&](int guess_size,
+                         int prev_layer_size,
+                         float density) {
+      int ipn = density * prev_layer_size;
+      CHECK(ipn > 0);
+      CHECK(ipn <= prev_layer_size);
+      Chunk chunk;
+      chunk.type = CHUNK_SPARSE;
+      chunk.fixed = false;
+      chunk.span_start = 0;
+      chunk.span_size = prev_layer_size;
+      chunk.num_nodes = guess_size;
+      chunk.indices_per_node = ipn;
+      chunk.transfer_function = LEAKY_RELU;
+      chunk.weight_update = ADAM;
+      chunk.width = guess_size;
+      chunk.height = 1;
+      chunk.channels = 1;
+      chunk.weights.resize(guess_size * ipn, 0.0f);
+      chunk.biases.resize(guess_size, 0.0f);
+      chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
+      chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
+      for (int n = 0; n < chunk.num_nodes; n++) {
+        // Add random indices.
+        vector<uint32_t> all_indices;
+        for (int i = 0; i < prev_layer_size; i++) all_indices.push_back(i);
+        Shuffle(&rc, &all_indices);
+        all_indices.resize(ipn);
+        std::sort(all_indices.begin(), all_indices.end());
+        for (uint32_t idx : all_indices)
+          chunk.indices.push_back(idx);
+      }
+      return chunk;
+    };
+
+  Chunk guess_chunk2 = SparseGuess(GUESS2_SIZE,
+                                   ENC_SIZE * INPUT_WORDS + GUESS1_SIZE,
+                                   0.25f);
+  Chunk guess_chunk3 = SparseGuess(GUESS3_SIZE,
+                                   ENC_SIZE * INPUT_WORDS + GUESS2_SIZE,
+                                   0.25f);
+
+  // Now we have INPUT_WORDS + 1 words. Invert from semantic -> lexical.
+  constexpr int OUTPUT_WORDS = INPUT_WORDS + 1;
+  constexpr int DEC3_SIZE = 128;
+  constexpr int DEC2_SIZE = 96;
+  constexpr int DEC1_SIZE  = 64;
+  static_assert(DEC1_SIZE == LexEncode::ENCODED_SIZE);
+  Chunk unconv_chunk3 =
+    ConvChunk(ENC_SIZE, OUTPUT_WORDS, DEC3_SIZE);
+  Chunk unconv_chunk2 =
+    ConvChunk(DEC3_SIZE, OUTPUT_WORDS, DEC2_SIZE);
+  Chunk unconv_chunk1 =
+    ConvChunk(DEC2_SIZE, OUTPUT_WORDS, DEC1_SIZE);
+
+  auto L = [&](const std::vector<Chunk> &chunks) {
+      int num_nodes = 0;
+      for (const Chunk &chunk : chunks) num_nodes += chunk.num_nodes;
+      return Layer{.num_nodes = num_nodes, .chunks = chunks};
+    };
+
+  std::vector<Layer> layers = {
+    L({input_chunk}),
+    L({conv_chunk1}),
+    L({conv_chunk2}),
+    L({conv_chunk3}),
+    L({copy_chunk, guess_chunk1}),
+    L({copy_chunk, guess_chunk2}),
+    L({copy_chunk, guess_chunk3}),
+    L({unconv_chunk3}),
+    L({unconv_chunk2}),
+    L({unconv_chunk1}),
+  };
+
+  return new Network(layers);
 }
 
+
+[[maybe_unused]]
+static void TestLexEncode() {
+  LexEncode lex;
+  for (string w : std::vector<string>{
+          "this",
+          "is",
+          "how",
+          "i",
+          "immanentize",
+          "the",
+          "eschaton",
+          "madeupwords",
+          "xyzzy",
+          "impqssible",
+          }) {
+    auto ao = lex.Encode(w);
+    CHECK(ao.has_value());
+
+    auto s = lex.Decode(ao.value());
+    printf("%s -> %s\n", w.c_str(), s.c_str());
+    for (int i = 0; i < ao.value().size(); i++) {
+      // Seems most of the values are actually outside of [-1,1].
+      // (Maybe we should impose some regularity...)
+      constexpr float SCALE_DOWN = 10.0f;
+      float f = std::clamp(ao.value()[i] / SCALE_DOWN, -1.0f, 1.0f);
+      char c = '?';
+      if (f >= 0.0) {
+        c = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[(int)(f * 25.0)];
+      } else {
+        c = "zyxwvutsrqponmlkjihgfedcba"[(int)(-f * 25.0)];
+      }
+      printf("%c", c);
+    }
+    printf("\n");
+  }
+}
 
 int main(int argc, char **argv) {
   cl = new CL;
 
+  TestLexEncode();
+
   std::unique_ptr<Network> net(
-      Network::ReadFromFile("words.val"));
+      Network::ReadFromFile(MODEL_NAME));
 
   if (net.get() == nullptr) {
     net.reset(NewNetwork());

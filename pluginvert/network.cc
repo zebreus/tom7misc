@@ -435,7 +435,10 @@ void Network::StructuralCheck() const {
       CHECK(chunk.span_start + chunk.span_size <= previous_layer_size);
 
       if (chunk.type == CHUNK_SPARSE) {
-        CHECK(chunk.indices.size() == chunk.num_nodes * chunk.indices_per_node);
+        CHECK(chunk.indices.size() ==
+              chunk.num_nodes * chunk.indices_per_node) <<
+          "Layer " << i << ": " << chunk.indices.size() << " indices but "
+          "expected " << chunk.num_nodes << " * " << chunk.indices_per_node;
         // Pigeonhole
         CHECK(chunk.indices_per_node <= chunk.span_size);
 
