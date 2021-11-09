@@ -820,6 +820,7 @@ static Network *ReadFromReader(Reader *r) {
     if (r->verbose) printf("Not a serialized network!\n");
     return nullptr;
   }
+
   if (r->Read32() != Network::FORMAT_ID) {
     if (r->verbose) printf("Wrong format id!\n");
     return nullptr;
@@ -953,11 +954,14 @@ static Network *ReadFromReader(Reader *r) {
       chunk.channels = r->Read32();
       chunk.style = (RenderStyle)r->Read32();
 
-      printf("%d %s %s %s ",
+      chunk.fixed = r->Read32() != 0;
+
+      printf("%d %s %s %s%s",
              chunk.indices_per_node,
              TransferFunctionName(chunk.transfer_function),
              ChunkTypeName(chunk.type),
-             WeightUpdateName(chunk.weight_update));
+             WeightUpdateName(chunk.weight_update),
+             chunk.fixed ? " [F]" : "");
       if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
         printf("(%d feat%s, %dx%d pat from %dx%d rect, +%d +%d) ",
                chunk.num_features,
@@ -1096,6 +1100,8 @@ static void WriteToWriter(const Network &net, Writer *w) {
       w->Write32(chunk.height);
       w->Write32(chunk.channels);
       w->Write32(chunk.style);
+
+      w->Write32(chunk.fixed ? 1 : 0);
     }
   }
 
@@ -1203,11 +1209,11 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
              chunk_idx++) {
           Chunk *chunk = &net->layers[layer].chunks[chunk_idx];
           if (chunk->fixed)
-            return;
+            continue;
 
           // XXX instead rely on 'fixed' field.
           if (chunk->transfer_function == IDENTITY)
-            return;
+            continue;
 
           // XXX such hacks. How to best initialize?
 

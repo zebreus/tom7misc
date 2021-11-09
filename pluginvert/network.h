@@ -211,7 +211,6 @@ struct Chunk {
 
   RenderStyle style = RENDERSTYLE_FLAT;
 
-  // TODO:
   // If true, the chunk's weights and biases should not be updated
   // during training. This can be useful for custom architectures
   // where we want to preserve some internal structure, especially
@@ -307,7 +306,7 @@ struct Network {
   static constexpr uint32_t MAGIC = MakeFOURCC('T', '7', 'n', 'w');
   // ... and followed by this version identifier. When changing the
   // format in an incompatible way, always increment this.
-  static constexpr uint32_t FORMAT_ID = 0x27000771U;
+  static constexpr uint32_t FORMAT_ID = 0x27000772U;
 
   // layer[0] is the input layer.
   vector<Layer> layers;

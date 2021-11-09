@@ -33,7 +33,9 @@
 #define ADAM_B2 0.999f
 // This one apparently can use some tuning; I don't have any
 // good intuitions though.
-#define ADAM_EPSILON 0.0000001f
+// XXXX
+// #define ADAM_EPSILON 0.0000001f
+#define ADAM_EPSILON 0.001f
 
 __kernel void UpdateWeightsSecondPass(
                  // zero-based round number. PERF: if one-based, saves

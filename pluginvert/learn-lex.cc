@@ -47,7 +47,8 @@ static bool AllLetters(const string &s) {
 }
 
 struct Wikibits {
-  static constexpr int NUM_SHARDS = 128;
+  // static constexpr int NUM_SHARDS = 128;
+  static constexpr int NUM_SHARDS = 1;
 
   Wikibits() : rc("wikibits" + StringPrintf("%lld", time(nullptr))) {
     std::vector<string> filenames;

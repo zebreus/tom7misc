@@ -100,6 +100,13 @@ NetworkTestUtil::TestNet NetworkTestUtil::SingleSparse() {
   };
 }
 
+NetworkTestUtil::TestNet NetworkTestUtil::FixedSingle() {
+  TestNet net = SingleSparse();
+  net.name = "one sparse identity node, fixed";
+  net.net.layers[1].chunks[0].fixed = true;
+  return net;
+}
+
 NetworkTestUtil::TestNet NetworkTestUtil::SingleDense() {
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;

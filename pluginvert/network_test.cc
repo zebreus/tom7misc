@@ -49,6 +49,19 @@ static void SimpleTests(TestNet test_net) {
   std::vector<uint8_t> bytes2 = net2->Serialize();
   CHECK(bytes1 == bytes2) << "Serialization should be deterministic, "
     "and Serialize and ParseSerialize should be inverses.";
+  CHECK(net.rounds == net2->rounds);
+  CHECK(net.layers.size() == net2->layers.size());
+  for (int i = 0; i < net.layers.size(); i++) {
+    CHECK(net.layers[i].num_nodes == net2->layers[i].num_nodes);
+    CHECK(net.layers[i].chunks.size() ==
+          net2->layers[i].chunks.size());
+    for (int c = 0; c < net.layers[i].chunks.size(); c++) {
+      const Chunk &chunk1 = net.layers[i].chunks[c];
+      const Chunk &chunk2 = net2->layers[i].chunks[c];
+      // XXX test more stuff here...
+      CHECK(chunk1.fixed == chunk2.fixed);
+    }
+  }
 
   // Check that the deserialized network also works!
   StimTests(*net2);
@@ -119,6 +132,7 @@ int main(int argc, char **argv) {
   SimpleTests(NetworkTestUtil::TwoDenseChunks());
   SimpleTests(NetworkTestUtil::Net1());
   SimpleTests(NetworkTestUtil::TwoDenseLayers());
+  SimpleTests(NetworkTestUtil::FixedSingle());
 
   printf("OK\n");
   return 0;

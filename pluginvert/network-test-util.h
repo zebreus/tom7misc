@@ -71,6 +71,9 @@ struct NetworkTestUtil {
 
   static TestNet Net1();
 
+  // With a fixed chunk.
+  static TestNet FixedSingle();
+
   // Nontrivial network with two dense layers (one chunk each).
   // input  a0, b0
   // hidden a1 = leaky(.5 + 2a0 - 3b0)   b1 = leaky(-1 - 1a0 + .25b0)

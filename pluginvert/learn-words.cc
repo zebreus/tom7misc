@@ -6,6 +6,9 @@
 #include <functional>
 #include <string>
 #include <ctype.h>
+#include <chrono>
+#include <thread>
+#include <deque>
 
 #include "network.h"
 #include "network-test-util.h"
@@ -35,6 +38,7 @@ static constexpr const char *MODEL_NAME = "semantic-words.val";
 // This network predicts a middle word given some words before
 // and some words after.
 static constexpr int WORDS_BEFORE = 3, WORDS_AFTER = 2;
+static constexpr int NUM_WORDS = WORDS_BEFORE + WORDS_AFTER + 1;
 
 static bool AllLetters(const string &s) {
   for (int i = 0; i < s.size(); i++) {
@@ -117,35 +121,6 @@ struct LexEncode {
     for (int i = 0; i < ENCODED_SIZE; i++)
       ret[i] = output[i];
     return {std::move(ret)};
-
-#if 0
-    Stimulation stim(*fwdnet);
-
-    std::vector<float> *input = &stim.values[0];
-    for (float &f : *input) f = 0.0f;
-    CHECK(input->size() == MAX_WORD_LEN * RADIX);
-    for (int j = 0; j < MAX_WORD_LEN; j++) {
-      int c = 0;
-      if (j < s.size()) {
-        // Letters must be in range.
-        if (s[j] < 'a' || s[c] > 'z') return {};
-        c = s[j] - 'a' + 1;
-      } else {
-        c = 0;
-      }
-      (*input)[j * RADIX + c] = 1.0f;
-    }
-
-    // Run forward to the "dense encoded layer"
-    fwdnet->RunForwardLayer(&stim, 0);
-    fwdnet->RunForwardLayer(&stim, 1);
-    fwdnet->RunForwardLayer(&stim, 2);
-    CHECK(stim.values[3].size() == ENCODED_SIZE);
-    std::array<float, ENCODED_SIZE> ret;
-    for (int i = 0; i < ENCODED_SIZE; i++)
-      ret[i] = stim.values[3][i];
-    return {std::move(ret)};
-#endif
   }
 
   string Decode(const std::array<float, ENCODED_SIZE> &a) const {
@@ -476,11 +451,93 @@ private:
   ArcFour rc;
 };
 
+// Small examples; could easily do 10x this...
+static constexpr int EXAMPLES_PER_ROUND = 1000;
+
+struct ExampleThread {
+
+  static constexpr int TARGET_SIZE = 5;
+
+  std::vector<float> GetExamples() {
+    for (;;) {
+      {
+        MutexLock ml(&m);
+        if (!q.empty()) {
+          std::vector<float> ret = std::move(q.back());
+          q.pop_back();
+          return ret;
+        }
+      }
+
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+  }
+
+  ExampleThread(LexEncode *lex_encode,
+                Wikibits *wikibits) : lex_encode(lex_encode),
+                                      wikibits(wikibits) {
+    work_thread.reset(new std::thread(&Generate, this));
+  }
+
+  ~ExampleThread() {
+    LOG(FATAL) << "unimplemented";
+  }
+
+private:
+  void Generate() {
+    printf("Started example thread.\n");
+    for (;;) {
+      const bool need_example = [&](){
+          MutexLock ml(&m);
+          return q.size() < TARGET_SIZE;
+        }();
+
+      if (need_example) {
+        // examples_per_round * num_words
+        std::vector<string> example_words;
+        example_words.reserve(EXAMPLES_PER_ROUND * NUM_WORDS);
+        for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
+          const auto &[start_pos, fragment] = wikibits->RandomFragment();
+
+          // For simplicity we put the target word at the end.
+          for (int w = 0; w < WORDS_BEFORE; w++) {
+            example_words.push_back(
+                wikibits->GetWord((*fragment)[start_pos + w]));
+          }
+          for (int w = 0; w < WORDS_AFTER; w++) {
+            example_words.push_back(
+                wikibits->GetWord(
+                    (*fragment)[start_pos + WORDS_BEFORE + 1 + w]));
+          }
+          example_words.push_back(
+              wikibits->GetWord((*fragment)[start_pos + WORDS_BEFORE]));
+        }
+
+        std::vector<float> encoded = lex_encode->EncodeMany(example_words);
+        {
+          MutexLock ml(&m);
+          q.push_front(std::move(encoded));
+        }
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+      }
+    }
+  }
+
+  std::mutex m;
+  std::deque<std::vector<float>> q;
+
+  std::unique_ptr<std::thread> work_thread;
+
+  LexEncode *lex_encode = nullptr;
+  Wikibits *wikibits = nullptr;
+};
+
 
 static void Train(Network *net) {
   LexEncode lex_encode;
-
   Wikibits wikibits;
+  ExampleThread example_thread(&lex_encode, &wikibits);
 
   ErrorHistory error_history("learn-words-error-history.tsv");
 
@@ -488,10 +545,8 @@ static void Train(Network *net) {
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = true;
-  // Small examples; could easily do 10x this...
-  static constexpr int EXAMPLES_PER_ROUND = 1000;
   // XXX need to reduce this over time
-  static constexpr float LEARNING_RATE = 0.01f;
+  static constexpr float LEARNING_RATE = 0.00125f;
 
   // XXX this should probably depend on the learning rate; if the
   // learning rate is too small, it won't even be able to overcome
@@ -500,20 +555,21 @@ static void Train(Network *net) {
 
   // On a verbose round we compute training error and print out
   // examples.
-  constexpr int VERBOSE_EVERY = 20;
+  constexpr int VERBOSE_EVERY = 2000;
   // We save this to the error history file every this many
   // verbose rounds.
   constexpr int HISTORY_EVERY_VERBOSE = 1;
   int64 total_verbose = 0;
-  constexpr int TIMING_EVERY = 20;
+  constexpr int TIMING_EVERY = 1000;
 
   std::vector<std::unique_ptr<ImageRGBA>> images;
+  std::vector<int> image_x;
   constexpr int IMAGE_WIDTH = 3000;
   constexpr int IMAGE_HEIGHT = 1000;
-  constexpr int IMAGE_EVERY = 20;
-  int image_x = 0;
+  constexpr int IMAGE_EVERY = 50;
   for (int i = 0; i < net->layers.size(); i++) {
     // XXX skip input layer?
+    image_x.push_back(0);
     images.emplace_back(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
     images.back()->Clear32(0x000000FF);
     images.back()->BlendText2x32(
@@ -559,6 +615,8 @@ static void Train(Network *net) {
   double decay_ms = 0.0;
   double backward_ms = 0.0;
   double update_ms = 0.0;
+  double loss_ms = 0.0;
+  double image_ms = 0.0;
 
   Timer train_timer;
   int64 total_examples = 0LL;
@@ -569,49 +627,17 @@ static void Train(Network *net) {
 
     const bool verbose_round = (iter % VERBOSE_EVERY) == 0;
 
-    constexpr int NUM_WORDS = WORDS_BEFORE + WORDS_AFTER + 1;
     // Initialize training examples.
     // (PERF: parallelize?)
     {
       Timer frag_timer;
-      for (float &f : inputs) f = 0.0f;
 
-      #if 0
-      std::vector<std::vector<uint32>> example_fragments;
-      example_fragments.reserve(EXAMPLES_PER_ROUND);
-      for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
-        const auto &[start_pos, fragment] = wikibits.RandomFragment();
-        std::vector<uint32> frag;
-        frag.reserve(NUM_WORDS);
-        for (int w = 0; w < NUM_WORDS; w++) {
-          frag.push_back((*fragment)[start_pos + w]);
-        }
-        example_fragments.push_back(std::move(frag));
-      }
-      #endif
-      // examples_per_round * num_words
-      std::vector<string> example_words;
-      example_words.reserve(EXAMPLES_PER_ROUND * NUM_WORDS);
-      for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
-        const auto &[start_pos, fragment] = wikibits.RandomFragment();
-
-        // For simplicity we put the target word at the end.
-        for (int w = 0; w < WORDS_BEFORE; w++) {
-          example_words.push_back(
-              wikibits.GetWord((*fragment)[start_pos + w]));
-        }
-        for (int w = 0; w < WORDS_AFTER; w++) {
-          example_words.push_back(
-              wikibits.GetWord((*fragment)[start_pos + WORDS_BEFORE + 1 + w]));
-        }
-        example_words.push_back(
-            wikibits.GetWord((*fragment)[start_pos + WORDS_BEFORE]));
-      }
-
-      std::vector<float> encoded = lex_encode.EncodeMany(example_words);
+      // GET EM
+      std::vector<float> encoded = example_thread.GetExamples();
       frag_ms += frag_timer.MS();
 
       Timer example_timer;
+      for (float &f : inputs) f = 0.0f;
       ParallelComp(
           EXAMPLES_PER_ROUND,
           [&](int i) {
@@ -635,53 +661,6 @@ static void Train(Network *net) {
           },
           max_parallelism);
 
-      #if 0
-      auto Encode = [&](uint32 word_id) {
-          const std::string &word = wikibits.GetWord(word_id);
-          auto enc = lex_encode.Encode(word);
-          CHECK(enc.has_value()) << word;
-          return enc.value();
-        };
-      auto Write = [](std::vector<float> *vec,
-                      const std::array<float, LexEncode::ENCODED_SIZE> &a,
-                      int pos) {
-          for (int r = 0; r < LexEncode::ENCODED_SIZE; r++) {
-            (*vec)[pos + r] = a[r];
-          }
-        };
-
-      Timer example_timer;
-      ParallelAppi(
-          example_fragments,
-          [&](int i, const std::vector<uint32> &words) {
-
-            for (int w = 0; w < WORDS_BEFORE; w++) {
-              const auto enc = Encode(words[w]);
-              Write(&inputs, enc,
-                    INPUT_SIZE * i + w * LexEncode::ENCODED_SIZE);
-              Write(&expecteds, enc,
-                    OUTPUT_SIZE * i + w * LexEncode::ENCODED_SIZE);
-            }
-
-            for (int w = 0; w < WORDS_AFTER; w++) {
-              // Skipping the target word, of course
-              const auto enc = Encode(words[WORDS_BEFORE + 1 + w]);
-              Write(&inputs, enc,
-                    INPUT_SIZE * i +
-                    (WORDS_BEFORE + w) * LexEncode::ENCODED_SIZE);
-              Write(&expecteds, enc,
-                    OUTPUT_SIZE * i +
-                    (WORDS_BEFORE + w) * LexEncode::ENCODED_SIZE);
-            }
-
-            // Finally, the target word in the output only
-            const auto enc = Encode(words[WORDS_BEFORE]);
-            Write(&expecteds, enc,
-                  OUTPUT_SIZE * i +
-                  (WORDS_BEFORE + WORDS_AFTER) * LexEncode::ENCODED_SIZE);
-          },
-          max_parallelism);
-      #endif
       training->LoadInputs(inputs);
       training->LoadExpecteds(expecteds);
 
@@ -762,6 +741,7 @@ static void Train(Network *net) {
     const bool finished = false;
 
     if (verbose_round) {
+      Timer loss_timer;
       if (VERBOSE > 1)
         printf("Verbose round...\n");
 
@@ -886,16 +866,17 @@ static void Train(Network *net) {
         error_history.Add(net->rounds, average_loss, false);
       }
       total_verbose++;
+      loss_ms += loss_timer.MS();
     }
 
     if ((iter % IMAGE_EVERY) == 0) {
+      Timer image_timer;
 
       // XXX would be better if this was more accurate,
       // but we only want to read from GPU if we're going to
       // actually do anything below
       if (images.size() >= 2 &&
-          images[1].get() != nullptr &&
-          image_x < images[1]->Width()) {
+          images[1].get() != nullptr) {
 
         net_gpu->ReadFromGPU();
 
@@ -903,13 +884,43 @@ static void Train(Network *net) {
              target_layer++) {
           ImageRGBA *image = images[target_layer].get();
           if (image == nullptr) continue;
-          if (image_x >= image->Width()) continue;
+
+          // If we exceeded the bounds, shrink in place.
+          if (image_x[target_layer] >= image->Width()) {
+            printf("Shrink image for layer %d\n", target_layer);
+            // Skips over the text at the top (but not any pixels that
+            // were drawn over it...)
+            for (int y = 18; y < IMAGE_HEIGHT; y++) {
+              static_assert(IMAGE_WIDTH % 2 == 0,
+                            "Assumes even width of image");
+              // First half gets the entire image shrunk 2:1.
+              for (int x = 0; x < IMAGE_WIDTH / 2; x++) {
+                const auto [r1, g1, b1, a1] = image->GetPixel(x * 2 + 0, y);
+                const auto [r2, g2, b2, a2] = image->GetPixel(x * 2 + 1, y);
+                // We know we have full alpha here.
+                uint8 r = ((uint32)r1 + (uint32)r2) >> 1;
+                uint8 g = ((uint32)g1 + (uint32)g2) >> 1;
+                uint8 b = ((uint32)b1 + (uint32)b2) >> 1;
+                image->SetPixel(x, y, r, g, b, 0xFF);
+              }
+              // And clear the second half.
+              for (int x = IMAGE_WIDTH / 2; x < image->Width(); x++) {
+                image->SetPixel(x, y, 0, 0, 0, 0xFF);
+              }
+            }
+            image_x[target_layer] = IMAGE_WIDTH / 2;
+          }
+
+          const int ix = image_x[target_layer];
+          if (ix >= image->Width()) continue;
 
           CHECK(net->layers.size() > 0);
           CHECK(target_layer < net->layers.size());
           const Layer &layer = net->layers[target_layer];
           CHECK(layer.chunks.size() > 0);
-          const Chunk &chunk = layer.chunks[0];
+          // For this network the last chunk is most interesting,
+          // so we can skip the copy chunks
+          const Chunk &chunk = layer.chunks.back();
           auto ToScreenY = [](float w) {
               int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
               int y = IMAGE_HEIGHT - yrev;
@@ -917,10 +928,10 @@ static void Train(Network *net) {
               return std::clamp(y, 0, IMAGE_HEIGHT - 1);
             };
           // 1, -1, x axis
-          if (image_x & 1) {
-            image->BlendPixel32(image_x, ToScreenY(1), 0xCCFFCC40);
-            image->BlendPixel32(image_x, ToScreenY(0), 0xCCCCFFFF);
-            image->BlendPixel32(image_x, ToScreenY(-1), 0xFFCCCC40);
+          if (ix & 1) {
+            image->BlendPixel32(ix, ToScreenY(1), 0xCCFFCC40);
+            image->BlendPixel32(ix, ToScreenY(0), 0xCCCCFFFF);
+            image->BlendPixel32(ix, ToScreenY(-1), 0xFFCCCC40);
           }
 
           uint8 weight_alpha =
@@ -928,7 +939,7 @@ static void Train(Network *net) {
 
           for (float w : chunk.weights) {
             // maybe better to AA this?
-            image->BlendPixel32(image_x, ToScreenY(w),
+            image->BlendPixel32(ix, ToScreenY(w),
                                 0xFFFFFF00 | weight_alpha);
           }
 
@@ -936,7 +947,7 @@ static void Train(Network *net) {
             std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
 
           for (float b : chunk.biases) {
-            image->BlendPixel32(image_x, ToScreenY(b),
+            image->BlendPixel32(ix, ToScreenY(b),
                                 0xFF777700 | bias_alpha);
           }
 
@@ -947,24 +958,25 @@ static void Train(Network *net) {
               const float m = chunk.weights_aux[idx * 2 + 0];
               const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
 
-              image->BlendPixel32(image_x, ToScreenY(m),
+              image->BlendPixel32(ix, ToScreenY(m),
                                   0xFFFF0000 | weight_alpha);
-              image->BlendPixel32(image_x, ToScreenY(v),
+              image->BlendPixel32(ix, ToScreenY(v),
                                   0xFF00FF00 | weight_alpha);
             }
             // Also bias aux?
           }
 
 
-          if ((image_x % 100 == 0) || image_x == image->Width()) {
+          if (ix % 100 == 0) {
             string filename = StringPrintf("train-image-%d.png",
                                            target_layer);
             image->Save(filename);
             printf("Wrote %s\n", filename.c_str());
           }
+          image_x[target_layer]++;
         }
-        image_x++;
       }
+      image_ms += image_timer.MS();
     }
 
     static constexpr double SAVE_EVERY_SEC = 120.0;
@@ -993,8 +1005,9 @@ static void Train(Network *net) {
     round_ms += round_timer.MS();
 
     if (iter % TIMING_EVERY == 0) {
-      double accounted_ms = example_ms + forward_ms + error_ms +
-        decay_ms + backward_ms + update_ms;
+      double accounted_ms = frag_ms + example_ms + forward_ms +
+        error_ms + decay_ms + backward_ms + update_ms + loss_ms +
+        image_ms;
       double other_ms = round_ms - accounted_ms;
       double pct = 100.0 / round_ms;
       printf("%.1f%% f  "
@@ -1004,6 +1017,8 @@ static void Train(Network *net) {
              "%.1f%% dec  "
              "%.1f%% bwd  "
              "%.1f%% up  "
+             "%.1f%% loss "
+             "%.1f%% img "
              "%.1f%% other\n",
              frag_ms * pct,
              example_ms * pct,
@@ -1012,6 +1027,8 @@ static void Train(Network *net) {
              decay_ms * pct,
              backward_ms * pct,
              update_ms * pct,
+             loss_ms * pct,
+             image_ms * pct,
              other_ms * pct);
       double msr = 1.0 / (iter + 1);
       printf("%.1fms f  "
@@ -1021,6 +1038,8 @@ static void Train(Network *net) {
              "%.1fms dec  "
              "%.1fms bwd  "
              "%.1fms up  "
+             "%.2fms loss  "
+             "%.2fms img  "
              "%.1fms other\n",
              frag_ms * msr,
              example_ms * msr,
@@ -1029,6 +1048,8 @@ static void Train(Network *net) {
              decay_ms * msr,
              backward_ms * msr,
              update_ms * msr,
+             loss_ms * msr,
+             image_ms * msr,
              other_ms * msr);
     }
   }
@@ -1317,6 +1338,9 @@ int main(int argc, char **argv) {
     RandomizeNetwork(&rc, net.get(), 2);
     printf("New network with %lld parameters\n", net->TotalParameters());
   }
+
+  net->StructuralCheck();
+  net->NaNCheck(MODEL_NAME);
 
   Train(net.get());
 

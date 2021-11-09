@@ -61,8 +61,9 @@ int main(int argc, char **argv) {
     string line = StringPrintf("%d: %d nodes; ", layer_idx, layer.num_nodes);
     for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
       const Chunk &chunk = layer.chunks[chunk_idx];
-      StringAppendF(&line, "%sx%d ",
-                    ChunkTypeName(chunk.type), chunk.num_nodes);
+      const char *finfo = chunk.fixed ? " [F]" : "";
+      StringAppendF(&line, "%sx%d%s ",
+                    ChunkTypeName(chunk.type), chunk.num_nodes, finfo);
 
       /*
       string types =

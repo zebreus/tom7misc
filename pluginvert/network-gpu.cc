@@ -1041,6 +1041,7 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         // Do W examples, unless we don't have that many left.
         const int examples_in_batch =
           std::min(ck.w, train->num_examples - example_batch_start);
+        CHECK(examples_in_batch > 0);
         CHECK(examples_in_batch <= ck.w);
 
         cl_int example_batch_start_cl = example_batch_start;
@@ -1182,6 +1183,8 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
                                                nullptr));
           clFinish(cl->queue);
         };
+
+      CHECK(!chunk.fixed);
 
       SecondPass(num_weights,
                  weight_grad_tmp,

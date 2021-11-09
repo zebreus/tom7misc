@@ -415,3 +415,27 @@ Anyway, this is all pretty easy to implement; let's do...
 learn-words
 
 fixed bug at round 17530, oops
+
+--------------------------------------------------
+
+bug with weight updates?
+copy chunks are fixed so they should never get updates.
+
+(it happened again! the network just detonated near round 515000:
+514234	0	f	162.908935547
+516234	0	f	903020.75
+... and the copy layers have red and green pixels in 'em.
+they should never be updated!)
+
+dumping the weights from e.g. chunk 4.0 shows that lots of the
+weights are -16 or 16, so these are very likely the result of
+weight updates. Perhaps notable that both weights and biases
+on this layer have larger absolute values towards the beginning?
+5.0 exhibits that for biases but not so much for weights.
+6.0 is like 5.0.
+
+so simple -- I just wasn't serializing this field, so if I ever
+restarted the program, it would get lost.
+
+I don't think this can really explain the "detonation" behavior,
+but it's at least wrong, so let's try again?

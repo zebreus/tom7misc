@@ -131,6 +131,9 @@ learn-words.exe : learn-words.o network-gpu.o clutil.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+print-weights.exe : print-weights.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 clean :
 	rm -f *.o $(UTIL_OBJECTS) $(SDLUTILOBJECTS) $(FCEULIBOBJECTS) $(OBJECTS) *.exe
