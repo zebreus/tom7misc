@@ -403,7 +403,14 @@ struct UpdateWeightsCL {
   // in the denominator, larger values might help control
   // runaway gradients, but at the cost of slower convergence.
   static constexpr float DEFAULT_ADAM_EPSILON = 1.0e-6;
-  
+
+  // Weights for the exponential moving average of the first and
+  // second moments.
+  static constexpr float ADAM_B1 = 0.9f;
+  static constexpr float ADAM_B2 = 0.999f;
+
+
+
   // Run on all examples in the round.
   // learning_rate here is something like 0.01f (internally scaled
   // by number of examples etc.)

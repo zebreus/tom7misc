@@ -498,6 +498,8 @@ private:
         example_words.reserve(EXAMPLES_PER_ROUND * NUM_WORDS);
         for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
           const auto &[start_pos, fragment] = wikibits->RandomFragment();
+          CHECK(start_pos + WORDS_BEFORE + 1 + (WORDS_AFTER - 1) <
+                fragment->size());
 
           // For simplicity we put the target word at the end.
           for (int w = 0; w < WORDS_BEFORE; w++) {

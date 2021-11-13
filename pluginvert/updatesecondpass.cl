@@ -27,16 +27,19 @@
 //   A larger value will result in smaller updates, so it may help
 //   with divergence, whereas smaller values produce faster convergence
 //   for stable problems.
+// ADAM_B1 and ADAM_B2, floats slightly less than 1, giving the weights
+//   on the exponential moving averages for the first and second moments.
+//   0.9 and 0.999 are traditional and others recommend leaving these
+//   as-is.
+// NOHAT, if true, skips the "hat" step to correct the exponential
+//   moving averages during early rounds. Should be set only if
+//   1.0 - pow(max(ADAM_B1, ADAM_B2), round) is 1 (or close enough
+//   for your tastes).
 
 // CLIPPING, if true, clips each grad to [-1,1] before applying any
 //   update.
 // CONSTRAIN, if true, ensures that the resulting weights are always
 //   in [-constrain_max, constrain_max] (kernel parameter).
-
-// TODO: Make configurable, although it seems that these are
-// rarely tuned.
-#define ADAM_B1 0.9f
-#define ADAM_B2 0.999f
 
 __kernel void UpdateWeightsSecondPass(
                  // zero-based round number. PERF: if one-based, saves
@@ -78,8 +81,13 @@ __kernel void UpdateWeightsSecondPass(
     // TODO: Avoid nan poisoning here
     chunk_weights_aux[midx] = m_new;
     chunk_weights_aux[vidx] = v_new;
-    const float m_hat = m_new / (1.0f - pow(ADAM_B1, round_number + 1));
-    const float v_hat = v_new / (1.0f - pow(ADAM_B2, round_number + 1));
+    #if NOHAT
+      const float m_hat = m_new;
+      const float v_hat = v_new;
+    #else
+      const float m_hat = m_new / (1.0f - pow(ADAM_B1, round_number + 1));
+      const float v_hat = v_new / (1.0f - pow(ADAM_B2, round_number + 1));
+    #endif
     const float u = learning_rate * (m_hat / (sqrt(v_hat) + ADAM_EPSILON));
   #else
     #error Weight update must be SGD or ADAM

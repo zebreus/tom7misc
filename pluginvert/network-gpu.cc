@@ -730,12 +730,59 @@ static string UpdateWeights1KernelName(ChunkType ct) {
   }
 }
 
+// The adam weight update code contains steps
+//    const float m_hat = m_new / (1.0f - pow(ADAM_B1, round_number + 1));
+//    const float v_hat = v_new / (1.0f - pow(ADAM_B2, round_number + 1));
+// whose purpose is to make the estimate more accurate
+// at the beginning of training before the running average
+// has accumulated enough samples. The term pow(B, round_number)
+// rapidly approaches zero. Find the round number where we
+// can just compile these lines as m_hat = m_new.
+static int64 FindNoHat(float b) {
+  CHECK(b > 0.0f && b < 1.0f) << b;
+  int64 lb = 0, ub = 0x00FFFFFFFFFFFFFF;
+  // This calculation should be exact. We get the distance between 1.0f
+  // and the float that immediately precedes it. If we aren't more than
+  // that, then the result of 1.0 - p will be exactly 1.
+  const float EPS = 1.0f - std::nextafterf(1.0f, 0.0f);
+  auto F = [EPS, b](int64 r) {
+      return powf(b, (float)r) <= EPS;
+    };
+  // Loop invariants
+  CHECK(lb < ub);
+  CHECK(!F(lb));
+  // We're only guaranteed to actually hit exactly zero for a float
+  // value of inf, so this could fail (largest int64 still fits in
+  // a float). But b would have to be reeeeeallly close to 1.
+  CHECK(F(ub));
+  for (;;) {
+    const int64 m = (lb + ub) >> 1;
+    if (m == lb) {
+      CHECK(F(ub));
+      return ub;
+    } else {
+      if (F(m)) {
+        ub = m;
+      } else {
+        lb = m;
+      }
+    }
+  }
+}
 
 UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
                                  int examples_per_round,
                                  float adam_epsilon) :
   examples_per_round(examples_per_round), adam_epsilon(adam_epsilon), cl(cl) {
   // Note that this one doesn't depend on the transfer function/derivative.
+
+  // constexpr float EPS = 1.0f - std::nextafterf(1.0f, 0.0f);
+  // printf("epsilon: %.9g\n", EPS);
+  // const float zz = powf(0.9f, 1000000.0f);
+  // printf("0.9^1000000: %.9g %s\n", zz, zz < EPS ? "lt" : "no");
+  const int64 round_nohat = FindNoHat(std::max(ADAM_B1, ADAM_B2));
+  // printf("Skip hats at round %lld.\n", round_nohat);
+
 
   // Also unlike others, we actually invoke the kernel differently in
   // the convolution case.
@@ -855,7 +902,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
                     "#define NUM_OCCURRENCES %d\n"
                     "#define NUM_FEATURES %d\n"
                     "#define NUM_WEIGHTS %lld\n"
-                    "#define NUM_BIASES %lld\n",
+                    "#define NUM_BIASES %lld\n"
+                    "#define OVERWRITE_GRAD %s\n",
                     net.layers[layer_idx - 1].num_nodes,
                     net.layers[layer_idx].num_nodes,
                     out_idx,
@@ -865,7 +913,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
                     num_occurrences,
                     chunk.num_features,
                     (int64)chunk.weights.size(),
-                    (int64)chunk.biases.size());
+                    (int64)chunk.biases.size(),
+                    w == examples_per_round ? "true" : "false");
 
       const string kernel1_name = UpdateWeights1KernelName(chunk.type);
 
@@ -898,15 +947,25 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
         break;
       }
 
+      // PERF: The NOHAT constant changes after 17k rounds with the
+      // standard ADAM_B2. We should recompile this kernel after
+      // reaching that point. (Currently, this optimization only
+      // takes place if you restart.)
       StringAppendF(&kernel2_src,
                     "#define EXAMPLES_PER_ROUND %d\n"
                     "#define CLIPPING %s\n"
                     "#define CONSTRAIN %s\n"
-                    "#define ADAM_EPSILON %.9g\n",
+                    "#define ADAM_EPSILON %.9g\n"
+                    "#define ADAM_B1 %.9g\n"
+                    "#define ADAM_B2 %.9g\n"
+                    "#define NOHAT %s\n",
                     examples_per_round,
                     CLIPPING ? "true" : "false",
                     CONSTRAIN ? "true" : "false",
-                    adam_epsilon);
+                    adam_epsilon,
+                    ADAM_B1,
+                    ADAM_B2,
+                    net.rounds > round_nohat ? "true" : "false");
 
       kernel2_src += base_src2;
       auto pk2 = cl->BuildOneKernel(kernel2_src,
@@ -954,7 +1013,8 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
   NetworkGPU::GPULayer &gpu_layer = net_gpu->layers[layer_idx];
 
   // XXX overflow is possible here.
-  // PERF: After the round is suitably high, we should be ignoring this.
+  // PERF: If we have just passed round_nohat, we can recompile the
+  // second pass kernel and skip some instructions in there.
   const cl_int round_number = net.rounds;
 
   for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
@@ -968,28 +1028,13 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
     cl_mem all_prev_layer_output = train->stimulations[layer_idx - 1];
     cl_mem all_layer_error = train->errors[layer_idx];
 
-    // TODO PERF: These all write to the same weights, so it is much
-    // trickier to parallelize over examples than other passes. We
-    // could run each example to a temporary weight vector
-    // and then sum them at the end. Probably we do
-    // not want to use num_examples * num_weights in temporary memory
-    // for this. But we could pick some width W and do W examples in
-    // parallel, each writing to their own shards, and then sum those,
-    // perhaps into an accumulator of the same size. Here we would
-    // only need W * num_weights memory, and this is fine because as
-    // num_weights gets high, we no longer benefit from internal
-    // parallelism.
-    // If we have W buffers, it could work like this:
-    //   clear buffer[0].
-    //   while there are examples left:
-    //     clear buffer[1]...buffer[W-1]  (but not the 0th)
-    //     run the next W examples, writing with += to buffer[0]...buffer[W-1]
-    //     sum buffer[0]...buffer[W-1] into buffer[0]
-    //   // now buffer[0] holds the sum of weight updates
-    //   apply clipping, adam etc., write to weights_aux and weights.
-    // We do need W>0, so this requires at least that extra memory
-    // overhead. It could be shared between chunks/layers if we're willing
-    // to give up on parallelism over those.
+    // All examples write to the same weights, so it's trickier
+    // to parallelize over them than other passes. We use the
+    // weight_grad_tmp (and bias_grad_tmp) scratch space to compute
+    // the gradients from each example into parallel stripes,
+    // using the precomputed ck.w param to know how many we can do
+    // at the same time (this is memory-limited). Then we sum these
+    // up, and do the second pass.
 
     // PERF: With the current approach, every chunk must be run
     // serially (but with significant internal parallelism) because
@@ -1027,11 +1072,17 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
                                   0, nullptr, nullptr));
         };
 
-      // Zero the whole scratch space.
-      // PERF: We only need to zero the region we're going to use!
-      ZeroFloats(weight_grad_tmp, 0, num_weight_grad);
-      ZeroFloats(bias_grad_tmp, 0, num_bias_grad);
-      clFinish(cl->queue);
+      // Zero the whole scratch space if necessary.
+      if (ck.w == examples_per_round) {
+        // Since we run all examples in parallel with no need for
+        // accumulation, the kernel will write with =. So there is
+        // no need to zero first.
+      } else {
+        // PERF: We only need to zero the region we're going to use!
+        ZeroFloats(weight_grad_tmp, 0, num_weight_grad);
+        ZeroFloats(bias_grad_tmp, 0, num_bias_grad);
+        clFinish(cl->queue);
+      }
 
       // Now, repeatedly, run w examples in parallel, writing to
       // different stripes of the two scratch buffers.

@@ -25,6 +25,17 @@
 //   chunk. This is used to accumulate the output gradients
 //   into the correct stripe.
 
+// OVERWRITE_GRAD, a bool. If true, then we write the
+//   gradients with = rather than accumulating with +=. This
+//   saves a memory read and allows to skip clearing the
+//   buffer as well.
+
+#if OVERWRITE_GRAD
+  #define ACCUMULATE(l, r) (l) = (r)
+#else
+  #define ACCUMULATE(l, r) (l) += (r)
+#endif
+
 // Note this kernel does not depend on the transfer function.
 
 __kernel void UpdateWeightsSparse(
@@ -63,11 +74,13 @@ __kernel void UpdateWeightsSparse(
 
     const float grad = delta_j * x_ji;
     // PERF fma();
-    weight_grads[NUM_WEIGHTS * example_num_in_batch + edge_idx] += grad;
+    ACCUMULATE(weight_grads[NUM_WEIGHTS * example_num_in_batch + edge_idx],
+               grad);
   }
 
   const float bgrad = delta_j;
-  bias_grads[NUM_BIASES * example_num_in_batch + chunk_node_idx] += bgrad;
+  ACCUMULATE(bias_grads[NUM_BIASES * example_num_in_batch + chunk_node_idx],
+             bgrad);
 }
 
 // When the layer is dense.
@@ -107,11 +120,13 @@ __kernel void UpdateWeightsDense(
 
     const float grad = delta_j * x_ji;
     // PERF fma();
-    weight_grads[NUM_WEIGHTS * example_num_in_batch + edge_idx] += grad;
+    ACCUMULATE(weight_grads[NUM_WEIGHTS * example_num_in_batch + edge_idx],
+               grad);
   }
 
   const float bgrad = delta_j;
-  bias_grads[NUM_BIASES * example_num_in_batch + chunk_node_idx] += bgrad;
+  ACCUMULATE(bias_grads[NUM_BIASES * example_num_in_batch + chunk_node_idx],
+             bgrad);
 }
 
 // PERF: Try doing the bias update in its own kernel, since the
@@ -177,13 +192,15 @@ __kernel void UpdateWeightsConvolutional(
     // benefit I (thought I) was getting.
     weight_grad *= (1.0f / NUM_OCCURRENCES);
     // PERF fma()
-    weight_grads[NUM_WEIGHTS * example_num_in_batch + widx] += weight_grad;
+    ACCUMULATE(weight_grads[NUM_WEIGHTS * example_num_in_batch + widx],
+               weight_grad);
   }
 
   if (pidx == 0) {
     bias_grad *= (1.0f / NUM_OCCURRENCES);
     // PERF fma()
-    bias_grads[NUM_BIASES * example_num_in_batch + feature_num] += bias_grad;
+    ACCUMULATE(bias_grads[NUM_BIASES * example_num_in_batch + feature_num],
+               bias_grad);
   }
 }
 
