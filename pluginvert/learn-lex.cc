@@ -47,8 +47,7 @@ static bool AllLetters(const string &s) {
 }
 
 struct Wikibits {
-  // static constexpr int NUM_SHARDS = 128;
-  static constexpr int NUM_SHARDS = 1;
+  static constexpr int NUM_SHARDS = 128;
 
   Wikibits() : rc("wikibits" + StringPrintf("%lld", time(nullptr))) {
     std::vector<string> filenames;
@@ -302,7 +301,7 @@ static void Train(Network *net) {
   std::unique_ptr<DecayWeightsCL> decay_cl =
     std::make_unique<DecayWeightsCL>(cl, *net, DECAY_RATE);
   std::unique_ptr<UpdateWeightsCL> update_cl =
-    std::make_unique<UpdateWeightsCL>(EXAMPLES_PER_ROUND, cl, *net);
+    std::make_unique<UpdateWeightsCL>(cl, *net, EXAMPLES_PER_ROUND);
 
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(

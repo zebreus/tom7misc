@@ -362,7 +362,7 @@ static ImageRGBA ChunkWeightsSparseDense(
     int prev_nodes,
     bool diagnostic_mode) {
 
-  if ((int64)chunk.num_nodes * (int64)prev_nodes > (int64)1000000) {
+  if ((int64)chunk.num_nodes * (int64)prev_nodes > (int64)5000000) {
     return ErrorImage(StringPrintf("Too big! %d x %d",
                                    chunk.num_nodes, prev_nodes));
   }

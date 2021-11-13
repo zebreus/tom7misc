@@ -547,6 +547,9 @@ static void Train(Network *net) {
   static constexpr bool SAVE_INTERMEDIATE = true;
   // XXX need to reduce this over time
   static constexpr float LEARNING_RATE = 0.00125f;
+  // This is very conservative, but with larger values I would
+  // get divergence after hundreds of thousands of rounds.
+  static constexpr float ADAM_EPSILON = 0.1f;
 
   // XXX this should probably depend on the learning rate; if the
   // learning rate is too small, it won't even be able to overcome
@@ -592,7 +595,8 @@ static void Train(Network *net) {
   std::unique_ptr<DecayWeightsCL> decay_cl =
     std::make_unique<DecayWeightsCL>(cl, *net, DECAY_RATE);
   std::unique_ptr<UpdateWeightsCL> update_cl =
-    std::make_unique<UpdateWeightsCL>(EXAMPLES_PER_ROUND, cl, *net);
+    std::make_unique<UpdateWeightsCL>(cl, *net, EXAMPLES_PER_ROUND,
+                                      ADAM_EPSILON);
 
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(
@@ -706,7 +710,8 @@ static void Train(Network *net) {
     if (VERBOSE > 1)
       printf("Backward pass.\n");
 
-    {
+    // XXX decay disabled.
+    if (false) {
       Timer decay_timer;
       for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {
         decay_cl->Decay(net_gpu.get(), layer_idx);
@@ -1139,8 +1144,8 @@ static Network *NewNetwork() {
     };
 
   constexpr int ENC1_SIZE = 128;
-  constexpr int ENC2_SIZE = 128;
-  constexpr int ENC_SIZE  = 128;
+  constexpr int ENC2_SIZE = 192;
+  constexpr int ENC_SIZE  = 256;
   Chunk conv_chunk1 =
     ConvChunk(LexEncode::ENCODED_SIZE, INPUT_WORDS, ENC1_SIZE);
   Chunk conv_chunk2 =
@@ -1187,9 +1192,9 @@ static Network *NewNetwork() {
     copy_chunk.biases.push_back(0);
   }
 
-  constexpr int GUESS1_SIZE = 128;
-  constexpr int GUESS2_SIZE = 128;
-  constexpr int GUESS3_SIZE = 128;
+  constexpr int GUESS1_SIZE = 256;
+  constexpr int GUESS2_SIZE = 512;
+  constexpr int GUESS3_SIZE = 256;
   static_assert(GUESS3_SIZE == ENC_SIZE);
   Chunk guess_chunk1;
   guess_chunk1.type = CHUNK_DENSE;
@@ -1252,8 +1257,8 @@ static Network *NewNetwork() {
 
   // Now we have INPUT_WORDS + 1 words. Invert from semantic -> lexical.
   constexpr int OUTPUT_WORDS = INPUT_WORDS + 1;
-  constexpr int DEC3_SIZE = 128;
-  constexpr int DEC2_SIZE = 96;
+  constexpr int DEC3_SIZE = 192;
+  constexpr int DEC2_SIZE = 128;
   constexpr int DEC1_SIZE  = 64;
   static_assert(DEC1_SIZE == LexEncode::ENCODED_SIZE);
   Chunk unconv_chunk3 =

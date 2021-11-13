@@ -133,8 +133,8 @@ static void TrainOnTestTests(TestNet test_net) {
     }
 
     std::unique_ptr<UpdateWeightsCL> update_cl =
-      std::make_unique<UpdateWeightsCL>(training_round->num_examples,
-                                        cl, net);
+      std::make_unique<UpdateWeightsCL>(cl, net,
+                                        training_round->num_examples);
 
     for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
       update_cl->Update(net_gpu.get(), training_round.get(),
@@ -193,7 +193,7 @@ static void TrainTest(TrainNet train_net,
   std::unique_ptr<DecayWeightsCL> decay_cl =
     std::make_unique<DecayWeightsCL>(cl, net, 0.99999f);
   std::unique_ptr<UpdateWeightsCL> update_cl =
-    std::make_unique<UpdateWeightsCL>(examples_per_round, cl, net);
+    std::make_unique<UpdateWeightsCL>(cl, net, examples_per_round);
 
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(

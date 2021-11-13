@@ -731,9 +731,10 @@ static string UpdateWeights1KernelName(ChunkType ct) {
 }
 
 
-UpdateWeightsCL::UpdateWeightsCL(int examples_per_round,
-                                 CL *cl, const Network &net) :
-  examples_per_round(examples_per_round), cl(cl) {
+UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
+                                 int examples_per_round,
+                                 float adam_epsilon) :
+  examples_per_round(examples_per_round), adam_epsilon(adam_epsilon), cl(cl) {
   // Note that this one doesn't depend on the transfer function/derivative.
 
   // Also unlike others, we actually invoke the kernel differently in
@@ -900,11 +901,12 @@ UpdateWeightsCL::UpdateWeightsCL(int examples_per_round,
       StringAppendF(&kernel2_src,
                     "#define EXAMPLES_PER_ROUND %d\n"
                     "#define CLIPPING %s\n"
-                    "#define CONSTRAIN %s\n",
+                    "#define CONSTRAIN %s\n"
+                    "#define ADAM_EPSILON %.9g\n",
                     examples_per_round,
                     CLIPPING ? "true" : "false",
-                    CONSTRAIN ? "true" : "false");
-
+                    CONSTRAIN ? "true" : "false",
+                    adam_epsilon);
 
       kernel2_src += base_src2;
       auto pk2 = cl->BuildOneKernel(kernel2_src,

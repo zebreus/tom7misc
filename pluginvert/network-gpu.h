@@ -388,8 +388,9 @@ struct DecayWeightsCL {
 struct UpdateWeightsCL {
   // The number of examples per round is needed as a compile-time
   // constant.
-  UpdateWeightsCL(int examples_per_round,
-                  CL *cl, const Network &net);
+  UpdateWeightsCL(CL *cl, const Network &net,
+                  int examples_per_round,
+                  float adam_epsilon = DEFAULT_ADAM_EPSILON);
   ~UpdateWeightsCL();
 
   // TODO: Make configurable.
@@ -397,7 +398,12 @@ struct UpdateWeightsCL {
   static constexpr bool CONSTRAIN = true;
   static constexpr float WEIGHT_CONSTRAIN_MAX = 16.0f;
   static constexpr float BIAS_CONSTRAIN_MAX = 16384.0f;
-
+  // 1e-6 is traditional here, but some recommend much larger
+  // values for sparse problems (even 1.0!). Since this is used
+  // in the denominator, larger values might help control
+  // runaway gradients, but at the cost of slower convergence.
+  static constexpr float DEFAULT_ADAM_EPSILON = 1.0e-6;
+  
   // Run on all examples in the round.
   // learning_rate here is something like 0.01f (internally scaled
   // by number of examples etc.)
@@ -407,6 +413,7 @@ struct UpdateWeightsCL {
 
  private:
   const int examples_per_round = 0;
+  const float adam_epsilon = DEFAULT_ADAM_EPSILON;
   struct ChunkKernel {
     cl_program program1 = 0;
     cl_kernel kernel1 = 0;

@@ -21,6 +21,12 @@
 // Either WEIGHT_UPDATE_SGD or WEIGHT_UPDATE_ADAM, which tells us what
 //   method to use to compute the update (and how to interpret the aux
 //   array).
+// ADAM_EPSILON, a float used in the denominator of the weight multiplier
+//   "to avoid dividing by zero." 1.0e-6 is traditional, but some
+//   recommend a much larger number (even 1.0!) for "sparse problems."
+//   A larger value will result in smaller updates, so it may help
+//   with divergence, whereas smaller values produce faster convergence
+//   for stable problems.
 
 // CLIPPING, if true, clips each grad to [-1,1] before applying any
 //   update.
@@ -31,11 +37,6 @@
 // rarely tuned.
 #define ADAM_B1 0.9f
 #define ADAM_B2 0.999f
-// This one apparently can use some tuning; I don't have any
-// good intuitions though.
-// XXXX
-// #define ADAM_EPSILON 0.0000001f
-#define ADAM_EPSILON 0.001f
 
 __kernel void UpdateWeightsSecondPass(
                  // zero-based round number. PERF: if one-based, saves
