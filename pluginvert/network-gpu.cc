@@ -27,7 +27,11 @@ NetworkGPU::NetworkGPU(CL *cl, Network *net) : cl(cl), net(net) {
 
     auto CopyMemoryAllowEmpty = [&](auto vec, bool readonly) -> cl_mem {
         if (vec.empty()) return 0;
-        else return CopyMemoryToGPU(cl->context, cl->queue, vec, readonly);
+        else {
+          cl_mem ret = CopyMemoryToGPU(cl->context, cl->queue, vec, readonly);
+          CHECK(ret != 0);
+          return ret;
+        }
       };
 
     gpu_layer->chunks.resize(cpu_layer.chunks.size());
@@ -800,7 +804,6 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
   // very low to exercise those code paths!
   // number of elements to allocate between both weights and biases.
   // 4 GB needs a very big card! PERF
-  // constexpr int64 MAX_NUM_SCRATCH = 1 << 30;
   constexpr int64 MAX_NUM_SCRATCH = 1 << 30;
 
   // Allocate temporary buffers for weights and biases. Compute a
@@ -884,7 +887,9 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
 
       const int weights_w = num_weight_grad / num_weights;
       const int bias_w = num_bias_grad / num_biases;
-      const int w = std::min(weights_w, bias_w);
+      const int bottleneck_w = std::min(weights_w, bias_w);
+      // Never more than the number of examples.
+      const int w = std::min(bottleneck_w, examples_per_round);
       CHECK(w * num_weights <= num_weight_grad);
       CHECK(w * num_biases <= num_bias_grad);
       CHECK(w > 0);
@@ -1017,6 +1022,16 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
   // second pass kernel and skip some instructions in there.
   const cl_int round_number = net.rounds;
 
+  // XXX
+  auto CheckReadable = [&](int line) {
+      /*
+      printf("update try reading at %d\n", line);
+      net_gpu->ReadFromGPU();
+      printf("update Readable at %d\n", line);
+      */
+      return;
+    };
+
   for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
     const Chunk &chunk = layer.chunks[chunk_idx];
     // For fixed chunks, just skip the update step.
@@ -1051,6 +1066,9 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
     {
       MutexLock ml(&m);
 
+      // printf("chunk %d.%d\n", layer_idx, chunk_idx);
+      CheckReadable(__LINE__);
+
       const int num_weights = chunk.weights.size();
       const int num_biases = chunk.biases.size();
 
@@ -1073,6 +1091,8 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         };
 
       // Zero the whole scratch space if necessary.
+      CHECK(ck.w > 0 && ck.w <= examples_per_round) << ck.w << " " <<
+        examples_per_round;
       if (ck.w == examples_per_round) {
         // Since we run all examples in parallel with no need for
         // accumulation, the kernel will write with =. So there is
@@ -1161,20 +1181,27 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         clFinish(cl->queue);
       }
 
+      CheckReadable(__LINE__);
+
       // Now we have the sums, but they are in ck.w different stripes,
       // which need to be summed for the "second" pass.
 
       // We can skip if there was just one stripe, as there is nothing
       // to do.
       if (ck.w > 1) {
+
         auto SumGrads = [&](int num_grads, cl_mem grad_sums) {
             CHECK_SUCCESS(clSetKernelArg(ck.kernel_sum, 0, sizeof (cl_int),
                                          (void *)&num_grads));
             CHECK_SUCCESS(clSetKernelArg(ck.kernel_sum, 1, sizeof (cl_mem),
                                          (void *)&grad_sums));
 
+            // printf("num grads %d, ck.w %d\n", num_grads, ck.w);
             size_t global_work_offset[] = { 0 };
-            size_t global_work_size[] = { (size_t)ck.w };
+            // WRONG... there are num_grads elements, and each kernel
+            // loops over the width.
+            // size_t global_work_size[] = { (size_t)ck.w };
+            size_t global_work_size[] = { (size_t)num_grads };
             CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, ck.kernel_sum,
                                                  // work dimensions
                                                  1,
@@ -1193,8 +1220,12 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
           };
 
         SumGrads(num_weights, weight_grad_tmp);
+        CheckReadable(__LINE__);
         SumGrads(num_biases, bias_grad_tmp);
+        CheckReadable(__LINE__);
       }
+
+      CheckReadable(__LINE__);
 
       // Second pass for the chunk actually applies the weight updates.
 
@@ -1245,12 +1276,18 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
                  gpu_chunk.weights_aux,
                  WEIGHT_CONSTRAIN_MAX);
 
+      CheckReadable(__LINE__);
+
       SecondPass(num_biases,
                  bias_grad_tmp,
                  gpu_chunk.biases,
                  gpu_chunk.biases_aux,
                  BIAS_CONSTRAIN_MAX);
 
+      CheckReadable(__LINE__);
+
     }  // mutex
   }  // loop over chunks
+
+  CheckReadable(__LINE__);
 }

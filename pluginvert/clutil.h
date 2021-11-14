@@ -98,6 +98,7 @@ static cl_mem CopyMemoryToGPU(cl_context context, cl_command_queue cmd,
   CHECK_SUCCESS(clEnqueueWriteBuffer(cmd, buf, CL_TRUE, 0,
                                      sizeof (T) * v.size(), v.data(), 0,
                                      nullptr, nullptr));
+  CHECK(buf != 0);
   return buf;
 }
 
@@ -126,6 +127,7 @@ static cl_mem CreateUninitializedGPUMemory(cl_context context, int n_items) {
   cl_mem buf =
     clCreateBuffer(context, 0, sizeof (T) * n_items, nullptr, &create_error);
   CHECK_SUCCESS(create_error);
+  CHECK(buf != 0);
   return buf;
 }
 

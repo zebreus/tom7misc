@@ -10,6 +10,7 @@
 #include "network.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "opt/opt.h"
 
 using namespace std;
 using uint32 = uint32_t;
@@ -277,29 +278,44 @@ static inline uint32 GetWeightColor(float f, bool diagnostic_mode) {
   }
 }
 
-// Find a good rectangle (width x height) to fit 'count' elements.
-std::pair<int, int> MakeRectangle(int count) {
+// Find a good rectangle (returns width, height) to fit 'count'
+// elements, each of which is w x h.
+std::pair<int, int> MakeRectangle(int count, int w, int h) {
+
+  const auto [bestw, bestv_] =
+  Opt::Minimize1D([count, w, h](double rwidth) {
+      int width = std::round(rwidth);
+      CHECK(width >= 1);
+      int height = count / width;
+      while (width * height < count) height++;
+
+      // Penalize empty cells.
+      int empty = count - (width * height);
+
+      // Penalize not square.
+      int ww = width * w;
+      int hh = height * h;
+      double d = ww - hh;
+
+      return empty * 10.0 + (d * d);
+    },
+  1.0,
+  (double)count,
+  10000);
+
+  int resw = std::round(bestw);
+  // Derive height the same way.
+  int resh = count / resw;
+  while (resw * resh < count) resh++;
+  return make_pair(resw, resh);
+
+#if 0
   CHECK(count >= 1);
   int w = ceilf(sqrtf(count));
   CHECK(w >= 1);
   int h = count / w;
   while (w * h < count) w++;
   return std::make_pair(w, h);
-
-#if 0
-  std::vector<int> factors = Util::Factorize(num_nodes);
-  CHECK(!factors.empty()) << num_nodes << " has no factors??";
-
-  // XXX Does this greedy approach produce good results?
-  int ww = factors.back(), hh = 1;
-  factors.pop_back();
-
-  for (int f : factors) {
-    if (ww < hh)
-      ww *= f;
-    else
-      hh *= f;
-  }
 #endif
 }
 
@@ -314,9 +330,14 @@ static ImageRGBA ChunkWeightsConvolution(
   // For convolution layers, we show each feature in its 2D
   // orientation.
   const auto [features_across, features_down] =
-    MakeRectangle(chunk.num_features);
+    MakeRectangle(chunk.num_features,
+                  chunk.pattern_width,
+                  chunk.pattern_height);
   int pat_width = chunk.pattern_width;
   int pat_height = chunk.pattern_height;
+  printf("For %d features of %d x %d, use %d across and %d down\n",
+         chunk.num_features, pat_width, pat_height,
+         features_across, features_down);
 
   const int ipn = pat_width * pat_height;
   CHECK(chunk.indices_per_node == ipn);

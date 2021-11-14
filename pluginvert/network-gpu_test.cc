@@ -502,7 +502,7 @@ int main(int argc, char **argv) {
             1000, 1000, 1.0f, 0.0001f, 4);
   #endif
 
-  #if 0
+  #if 1
   // Smaller batch size since there are only 2^3 possible inputs.
   // Should achieve zero boolean errors after about 1000 rounds;
   // absolute error continues falling.
@@ -512,7 +512,7 @@ int main(int argc, char **argv) {
             6000, 54, 0.1f, 0.0001f, 4);
   #endif
 
-  #if 0
+  #if 1
   // XXX these get to like 0.000 but not the same convergence
   // we had before "fixing" adam .... probably ok??
 
@@ -520,13 +520,13 @@ int main(int argc, char **argv) {
   // because here we are using a sensible learning rate of 0.01f.
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnTrivialIdentitySparse()),
-            1000, 1000, 0.01f, 0.0001f, 4);
+            1000, 1000, 0.01f, 0.001f, 4);
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnTrivialIdentityDense()),
-            1000, 1000, 0.01f, 0.0001f, 4);
+            1000, 1000, 0.01f, 0.001f, 4);
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnTrivialIdentityConvolution()),
-            1000, 1000, 0.01f, 0.0001f, 4);
+            1000, 1000, 0.01f, 0.001f, 4);
   #endif
 
 
@@ -588,7 +588,7 @@ int main(int argc, char **argv) {
   #endif
 
 
-  #if 0
+  #if 1
   // With fixed, adam, converges in about 5100 rounds.
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountOnesConvDense()),
@@ -597,7 +597,7 @@ int main(int argc, char **argv) {
             4);
   #endif
 
-  #if 0
+  #if 1
   // Does converge in ~17000 rounds. Seems to be dependent on initial
   // conditions (as there is a late "breakthrough"), and perhaps with
   // more dice rolls for the features it would be pretty fast.

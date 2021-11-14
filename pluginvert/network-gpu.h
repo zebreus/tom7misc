@@ -9,6 +9,7 @@
 #include <optional>
 #include <vector>
 #include <mutex>
+#include <cstdint>
 
 #include "base/logging.h"
 
@@ -106,7 +107,10 @@ struct NetworkGPU {
 // individually.
 struct TrainingRoundGPU {
   TrainingRoundGPU(int num_examples, CL *cl, const Network &net) :
-    num_examples(num_examples), cl(cl), net(&net) {
+    num_examples(num_examples),
+    input_size(net.layers[0].num_nodes),
+    output_size(net.layers.back().num_nodes),
+    cl(cl), net(&net) {
     for (const Layer &layer : net.layers) {
       stimulations.push_back(
           CreateUninitializedGPUMemory<float>(cl->context,
@@ -118,35 +122,34 @@ struct TrainingRoundGPU {
 
     expected =
       CreateUninitializedGPUMemory<float>(cl->context,
-                                          net.layers.back().num_nodes *
-                                          num_examples);
+                                          output_size * num_examples);
   }
 
   // Load one example's input at the given index.
   void LoadInput(int idx, const std::vector<float> &inputs) {
     CHECK(idx >= 0 && idx < num_examples);
-    CHECK_EQ(inputs.size(), net->layers[0].num_nodes);
+    CHECK_EQ(inputs.size(), input_size);
     CopyOffsetBufferToGPU(idx, inputs, stimulations[0]);
     clFinish(cl->queue);
   }
 
   // Load all the examples.
   void LoadInputs(const std::vector<float> &inputs) {
-    CHECK_EQ(inputs.size(), net->layers[0].num_nodes * num_examples);
+    CHECK_EQ(inputs.size(), input_size * num_examples);
     CopyBufferToGPU(cl->queue, inputs, stimulations[0]);
     clFinish(cl->queue);
   }
 
   void LoadExpected(int idx, const std::vector<float> &values) {
     CHECK(idx >= 0 && idx < num_examples);
-    CHECK_EQ(values.size(), net->layers.back().num_nodes);
+    CHECK_EQ(values.size(), output_size);
     CopyOffsetBufferToGPU(idx, values, expected);
     clFinish(cl->queue);
   }
 
   // Load all the examples.
   void LoadExpecteds(const std::vector<float> &values) {
-    CHECK_EQ(values.size(), net->layers.back().num_nodes * num_examples);
+    CHECK_EQ(values.size(), output_size * num_examples);
     CopyBufferToGPU(cl->queue, values, expected);
     clFinish(cl->queue);
   }
@@ -173,18 +176,21 @@ struct TrainingRoundGPU {
   // The output vector must already have the correct size.
   void ExportOutput(int idx, std::vector<float> *out) {
     CHECK(idx >= 0 && idx < num_examples);
+    CHECK(out->size() == output_size);
     CopyOffsetBufferFromGPUTo(idx, stimulations.back(), out);
     clFinish(cl->queue);
   }
 
   // Same but for all examples.
   void ExportOutputs(std::vector<float> *out) {
+    CHECK(out->size() == num_examples * output_size);
     CopyBufferFromGPUTo(cl->queue, stimulations.back(), out);
   }
 
   // Same size as net->layers. 0th is input, final is the output.
   // Each memory is the layer's size * num_examples.
   std::vector<cl_mem> stimulations;
+
   // Same size as net->layers. 0th is input (unused), final is the output.
   // Each memory is the layer's size * num_examples.
   // (Note: Prior to chunks, this used to exclude the (unused) input error)
@@ -203,6 +209,7 @@ struct TrainingRoundGPU {
   }
 
   const int num_examples = 0;
+  const int64_t input_size = 0, output_size = 0;
   CL *cl = nullptr;
   const Network *net = nullptr;
  private:
@@ -434,11 +441,9 @@ struct UpdateWeightsCL {
     cl_kernel kernel2 = 0;
 
     // The W ('width') is the number of examples that we can
-    // fit in the scratch space at once for this chunk.
+    // fit in the scratch space at once for this chunk. At
+    // most examples_per_round.
     int w = 0;
-
-    // cl_mem weight_grad_tmp = 0;
-    // cl_mem bias_grad_tmp = 0;
   };
 
   // Shared scratch space. This is at least the size of the weights
