@@ -3,9 +3,9 @@
 // a chunk in the destination layer, but it propagates errors to any
 // nodes used within its input span; therefore its writes can overlap
 // with other chunks from the same layer. So we run the chunks
-// sequentially, accumulating error with += (although see
-// SRC_SPAN_IS_ZERO below). A separate pass (backwardsecondpass.cl)
-// multiplies by the derivative and optionally clips.
+// sequentially, accumulating error (although see OVERWRITE below). A
+// separate pass (backwardsecondpass.cl) multiplies by the derivative
+// and optionally clips.
 
 // Expects the following defines:
 //
@@ -30,11 +30,11 @@
 //   destination layers, this is ignored (but should be defined to 1
 //   or whatever). Must divide the number of nodes in the dest chunk.
 //
-// SRC_SPAN_IS_ZERO, a boolean. If true, then the values of src_error
-//   in [SPAN_START, SPAN_START + SPAN_SIZE) are treated as though they
-//   are zero (we use = instead of +=). This is a small optimization for
-//   the first chunk of each layer (or also even possible if the
-//   spans are disjoint).
+// OVERWRITE, a boolean. If true, then the values of src_error in
+//   [SPAN_START, SPAN_START + SPAN_SIZE) are overwritten instead of
+//   accumulating (= instead of +=). This is a small optimization for
+//   the first chunk of each layer (or also even possible if the spans
+//   are disjoint).
 
 
 // For when the destination chunk is sparse.
@@ -86,7 +86,7 @@ __kernel void BackwardChunkSparse(
           weighted_error_sum);
   }
 
-  #if SRC_SPAN_IS_ZERO
+  #if OVERWRITE
   src_error[src_start_index + h_global] = weighted_error_sum;
   #else
   src_error[src_start_index + h_global] += weighted_error_sum;
@@ -134,7 +134,7 @@ __kernel void BackwardChunkDense(
                              weighted_error_sum);
   }
 
-  #if SRC_SPAN_IS_ZERO
+  #if OVERWRITE
   src_error[src_start_index + h_global] = weighted_error_sum;
   #else
   src_error[src_start_index + h_global] += weighted_error_sum;
@@ -197,7 +197,7 @@ __kernel void BackwardChunkConvolutional(
     }
   }
 
-  #if SRC_SPAN_IS_ZERO
+  #if OVERWRITE
   src_error[src_start_index + h_global] = weighted_error_sum;
   #else
   src_error[src_start_index + h_global] += weighted_error_sum;

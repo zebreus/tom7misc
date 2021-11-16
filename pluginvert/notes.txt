@@ -439,3 +439,10 @@ restarted the program, it would get lost.
 
 I don't think this can really explain the "detonation" behavior,
 but it's at least wrong, so let's try again?
+
+
+1284800: 0.014<2.867<6.105 | 0<2.563<6 (15490.48 eps)
+   [it has been (proposed) that a] got [it has been (said) that a]
+
+very good :)
+

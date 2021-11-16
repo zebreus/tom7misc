@@ -406,8 +406,40 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
     // First pass is chunk-by-chunk in the destination layer.
     std::vector<ChunkKernel> chunk_kernels;
     int out_idx = 0;
+    // PERF: We can run the chunks out of order to get more out of the
+    // overwrite optimization (including that we can put the larger of
+    // two overlapping chunks first, so that it can be the one that
+    // overwrites).
     for (int chunk_idx = 0; chunk_idx < dst_layer.chunks.size(); chunk_idx++) {
       const Chunk &chunk = dst_layer.chunks[chunk_idx];
+
+      // Has any chunk written into the span yet?
+      bool overwrite = true;
+      {
+        const int chunk_end = chunk.span_start + chunk.span_size;
+        for (int c = 0; c < chunk_idx; c++) {
+          const Chunk &oc = dst_layer.chunks[c];
+          const int oc_end = oc.span_start + oc.span_size;
+          if (oc_end <= chunk.span_start ||
+              oc.span_start >= chunk_end) {
+            // disjoint, ok
+          } else {
+            overwrite = false;
+            printf("Chunk %d.%d (%d->%d) overlaps %d.%d (%d->%d); "
+                   "can't overwrite\n",
+                   dst_layer_idx, chunk_idx, chunk.span_start, chunk_end,
+                   dst_layer_idx, c, oc.span_start, oc_end);
+            break;
+          }
+        }
+      }
+      if (overwrite) {
+        printf("Chunk %d.%d (%d->%d) does not overlap any previous; "
+               "overwriting\n",
+               dst_layer_idx, chunk_idx, chunk.span_start,
+               chunk.span_start + chunk.span_size);
+      }
+
       string kernel_src =
         StringPrintf("#define SRC_LAYER_SIZE %d\n"
                      "#define DST_LAYER_SIZE %d\n"
@@ -417,7 +449,7 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
                      "#define DST_INDICES_PER_NODE %d\n"
                      "#define DST_NUM_NODES %d\n"
                      "#define DST_NUM_FEATURES %d\n"
-                     "#define SRC_SPAN_IS_ZERO %d\n",
+                     "#define OVERWRITE %s\n",
                      net.layers[dst_layer_idx - 1].num_nodes,
                      net.layers[dst_layer_idx].num_nodes,
                      out_idx,
@@ -426,11 +458,7 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
                      chunk.indices_per_node,
                      chunk.num_nodes,
                      chunk.num_features,
-                     // PERF: set this to true for first chunk,
-                     // or (better) for all chunks writing into
-                     // a span that hasn't yet been written by
-                     // a previous chunk
-                     false);
+                     overwrite ? "true" : "false");
 
       kernel_src += base1_src;
 

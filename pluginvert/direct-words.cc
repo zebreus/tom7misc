@@ -369,10 +369,10 @@ static void Train(Network *net) {
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = true;
   // XXX need to reduce this over time
-  static constexpr float LEARNING_RATE = 0.00250f;
+  static constexpr float LEARNING_RATE = 0.00500f;
   // This is very conservative, but with larger values I would
   // get divergence after hundreds of thousands of rounds.
-  static constexpr float ADAM_EPSILON = 0.01f;
+  static constexpr float ADAM_EPSILON = 0.001f;
 
   // XXX this should probably depend on the learning rate; if the
   // learning rate is too small, it won't even be able to overcome
