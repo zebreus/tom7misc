@@ -27,6 +27,8 @@
 #include "wikipedia.h"
 #include "error-history.h"
 
+#include "direct-word-problem.h"
+
 using namespace std;
 
 using TestNet = NetworkTestUtil::TestNet;
@@ -36,20 +38,6 @@ using TestExample = NetworkTestUtil::TestExample;
 static CL *cl = nullptr;
 
 using int64 = int64_t;
-
-// make-wordlist.exe
-static constexpr const char *WORDLIST = "wordlist.txt";
-// Can get this from the wordlist, but it is useful as a compile-time
-// constant.
-// static constexpr int WORDLIST_SIZE = 65536;
-static constexpr int WORDLIST_SIZE = 1024;
-
-static constexpr const char *MODEL_NAME = "direct-words.val";
-
-// This network predicts a middle word given some words before
-// and some words after.
-static constexpr int WORDS_BEFORE = 3, WORDS_AFTER = 2;
-static constexpr int NUM_WORDS = WORDS_BEFORE + WORDS_AFTER + 1;
 
 static bool OkChars(const string &s) {
   if (s.empty()) return false;
@@ -64,39 +52,6 @@ static bool OkChars(const string &s) {
   }
   return true;
 }
-
-struct Wordlist {
-  Wordlist() : words(Util::ReadFileToLines(WORDLIST)) {
-    CHECK(!words.empty()) << WORDLIST;
-    CHECK(words.size() >= WORDLIST_SIZE);
-    words.resize(WORDLIST_SIZE);
-    for (int i = 0; i < words.size(); i++) {
-      const string &w = words[i];
-      CHECK(word_to_id.find(w) == word_to_id.end()) << w;
-      word_to_id[w] = i;
-    }
-    CHECK(word_to_id.size() == WORDLIST_SIZE);
-  }
-
-  static constexpr int NumWords() { return WORDLIST_SIZE; }
-
-  const std::string &GetWord(int i) const {
-    CHECK(i >= 0 && i < words.size());
-    return words[i];
-  }
-
-  // Returns -1 for words not in list.
-  // Otherwise id is in [0, NumWords()).
-  int GetId(const std::string &s) const {
-    auto it = word_to_id.find(s);
-    if (it == word_to_id.end()) return -1;
-    return it->second;
-  }
-
-private:
-  std::vector<std::string> words;
-  std::unordered_map<std::string, int> word_to_id;
-};
 
 struct Wikibits {
   static constexpr int NUM_SHARDS = 128;
@@ -438,15 +393,6 @@ static void Train(Network *net) {
   CHECK(net->layers[0].num_nodes == INPUT_SIZE);
   CHECK(net->layers.back().num_nodes == OUTPUT_SIZE);
 
-  // XXX PERF
-  auto CheckReadable = [&](int line) {
-      /*
-      net_gpu->ReadFromGPU();
-      printf("Readable at %d\n", line);
-      */
-      return;
-    };
-
   double round_ms = 0.0;
   double frag_ms = 0.0;
   double example_ms = 0.0;
@@ -466,8 +412,6 @@ static void Train(Network *net) {
     Timer round_timer;
 
     const bool verbose_round = (iter % VERBOSE_EVERY) == 0;
-
-    CheckReadable(__LINE__);
 
     // Initialize training examples.
     // (PERF: parallelize?)
@@ -521,8 +465,6 @@ static void Train(Network *net) {
     if (VERBOSE > 1)
       printf("Prepped examples.\n");
 
-    CheckReadable(__LINE__);
-
     {
       Timer forward_timer;
       for (int src_layer = 0;
@@ -536,8 +478,6 @@ static void Train(Network *net) {
     if (VERBOSE > 1)
       printf("Forward done.\n");
 
-    CheckReadable(__LINE__);
-
     {
       Timer error_timer;
       error_cl->SetOutputError(net_gpu.get(), training.get());
@@ -546,8 +486,6 @@ static void Train(Network *net) {
 
     if (VERBOSE > 1)
       printf("Set error.\n");
-
-    CheckReadable(__LINE__);
 
     {
       Timer backward_timer;
@@ -562,8 +500,6 @@ static void Train(Network *net) {
 
     if (VERBOSE > 1)
       printf("Backward pass.\n");
-
-    CheckReadable(__LINE__);
 
     // XXX decay disabled.
     if (false) {
@@ -590,8 +526,6 @@ static void Train(Network *net) {
 
     if (VERBOSE > 1)
       printf("Updated weights.\n");
-
-    CheckReadable(__LINE__);
 
     total_examples += EXAMPLES_PER_ROUND;
 
@@ -642,34 +576,10 @@ static void Train(Network *net) {
                          loss += fabsf(exp[i] - got[i]);
                        }
 
-                       auto MakeWords = [&](const std::vector<float> &v) {
-                           constexpr int NUM = WORDS_BEFORE + WORDS_AFTER + 1;
-                           CHECK(v.size() == NUM * WORDLIST_SIZE);
-                           std::vector<string> ret;
-                           ret.reserve(NUM);
-                           for (int w = 0; w < NUM; w++) {
-
-                             int bestid = -1;
-                             float bestscore = 0.0f;
-                             for (int i = 0; i < WORDLIST_SIZE; i++) {
-                               float s = v[w * WORDLIST_SIZE + i];
-                               if (s > bestscore) {
-                                 bestscore = s;
-                                 bestid = i;
-                               }
-                             }
-
-                             if (bestid == -1) {
-                               ret.push_back("-");
-                             } else {
-                               ret.push_back(wikibits.GetWord(bestid));
-                             }
-                           }
-                           return ret;
-                         };
-
-                       std::vector<string> words_exp = MakeWords(exp);
-                       std::vector<string> words_got = MakeWords(got);
+                       std::vector<int> words_exp =
+                         DirectWordProblem::DecodeOutput(exp);
+                       std::vector<int> words_got =
+                         DirectWordProblem::DecodeOutput(got);
 
                        CHECK(words_exp.size() == words_got.size());
                        int incorrect = 0;
@@ -680,28 +590,40 @@ static void Train(Network *net) {
                        }
 
                        if (idx == 0) {
+                         auto Word = [&](int id) -> string {
+                             if (id == -1) {
+                               return "-";
+                             } else {
+                               return wikibits.GetWord(id);
+                             }
+                           };
+
                          // careful about thread safety
                          for (int i = 0; i < WORDS_BEFORE; i++) {
                            if (i) {
                              example_correct += " ";
                              example_predicted += " ";
                            }
-                           example_correct += words_exp[i];
-                           example_predicted += words_got[i];
+                           example_correct += Word(words_exp[i]);
+                           example_predicted += Word(words_got[i]);
                          }
                          StringAppendF(
                              &example_correct,
                              " (%s)",
-                             words_exp[WORDS_BEFORE + WORDS_AFTER].c_str());
+                             Word(words_exp[WORDS_BEFORE +
+                                            WORDS_AFTER]).c_str());
                          StringAppendF(
                              &example_predicted,
                              " (%s)",
-                             words_got[WORDS_BEFORE + WORDS_AFTER].c_str());
+                             Word(words_got[WORDS_BEFORE +
+                                            WORDS_AFTER]).c_str());
                          for (int i = 0; i < WORDS_AFTER; i++) {
                            example_correct += " ";
                            example_predicted += " ";
-                           example_correct += words_exp[WORDS_BEFORE + i];
-                           example_predicted += words_got[WORDS_BEFORE + i];
+                           example_correct +=
+                             Word(words_exp[WORDS_BEFORE + i]);
+                           example_predicted +=
+                             Word(words_got[WORDS_BEFORE + i]);
                          }
                        }
 

@@ -143,6 +143,10 @@ print-weights.exe : print-weights.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+direct-guess.exe : direct-guess.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 
 
 clean :
