@@ -23,6 +23,7 @@
 #include "../cc-lib/image.h"
 #include "../cc-lib/pi/bcm2835.h"
 #include "../cc-lib/pi/netutil.h"
+#include "../cc-lib/pi/pi-util.h"
 
 #include "onewire.h"
 #include "database.h"
@@ -689,6 +690,31 @@ static void WaitForNetwork() {
   }
 }
 
+// Upon successful initialization of AM2315 (or 2320), generate a
+// globally unique temperature and humidity code for the database.
+// If the probe has a valid internal unique id, use that. Otherwise,
+// assume that there is just one AM2315 attached (we only support
+// one anyway) and name it based on the pi's serial.
+static pair<string, string> NameAM2315(const AM2315::Info &info) {
+  if (info.id == 0) {
+    optional<uint64_t> serial = PiUtil::GetSerial();
+    CHECK(serial.has_value()) << "No valid identifier in AM2315, "
+      "and couldn't find the pi's serial number.";
+
+    return make_pair(
+        StringPrintf("pi_%016llx_t", serial.value()),
+        StringPrintf("pi_%016llx_h", serial.value()));
+
+  } else {
+    // Normal AM2315s, like the wired ourdoor ones:
+    return make_pair(
+        StringPrintf("%04x.%02x.%08x_t",
+                     info.model, info.version, info.id),
+        StringPrintf("%04x.%02x.%08x_h",
+                     info.model, info.version, info.id));
+  }
+}
+
 int main(int argc, char **argv) {
   CHECK(bcm2835_init()) << "BCM Init failed!";
 
@@ -717,15 +743,13 @@ int main(int argc, char **argv) {
   {
     AM2315::Info info;
     const char *err = "(not set)";
+    // TODO: The AM2320s are flakey and sometimes just don't respond
+    // briefly. Should probably give this a few attempts at startup.
     if (AM2315::ReadInfo(&info, &err)) {
       have_am2315 = true;
 
-      am2315_temp_code =
-        StringPrintf("%04x.%02x.%08x_t",
-                     info.model, info.version, info.id);
-      am2315_humidity_code =
-        StringPrintf("%04x.%02x.%08x_h",
-                     info.model, info.version, info.id);
+      std::tie(am2315_temp_code, am2315_humidity_code) =
+        NameAM2315(info);
 
       printf("Found AM2315:\n"
              " temperature: %s\n"

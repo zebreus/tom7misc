@@ -99,7 +99,7 @@ location (fill in a unique location where this device is going)
 
 Wifi troubleshooting:
   Looks like if the pi boots before the wireless router, it may come
-  up without internet and stay that way. 
+  up without internet and stay that way.
   (There is "wait for internet" boot option in raspi-config which may
    address this.)
   The crontab command below also keeps trying to reconnect if pings
@@ -143,7 +143,7 @@ To create the SVG diagram in Illustrator:
  - If you get <tspan> elements in text this will interfere with substitution.
    I switched to SansSerif font (from Myriad Pro) and set kerning to 0 instead
    of Auto in Character panel, which seemed to help.
-   
+
 LED off:
 
 echo none | sudo tee /sys/class/leds/led0/trigger
@@ -156,10 +156,9 @@ apparently turns off HDMI and saves 30mA
 
 Wiring AM2315 humidity/temperature sensor:
 
-  - i2c needs pullups for clock and data. 2k is a common choice.
-  - note both SDA and SCL on pi apparently have built-in 1.8k pullups to
-    3v3, so maybe the resistors were not necessary. But I did it with
-    2k resistors for my first one, which worked.
+  - i2c needs pullups for clock and data.
+  - "2k is a common choice." I think I used this for the outdoor wired ones.
+  - For the little chips I had better luck with 10k.
   - pins are in the top-left corner,
       1=red=power
       3=yellow=sda (pull-up to red)

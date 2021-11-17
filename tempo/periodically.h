@@ -9,6 +9,8 @@
 #include <time.h>
 
 // TODO: To cc-lib?
+// TODO: Use std::chrono
+// TODO: Allow non-integral seconds!
 
 struct Periodically {
   Periodically(int seconds) : seconds(seconds) {

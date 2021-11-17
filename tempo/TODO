@@ -18,6 +18,12 @@
 - Fix wifi restart commands (ifup is deprecated/not working)
 - AM2315 code seems to use 50% CPU? why?
 
+AM2320 chips kind of work, but then flake out.
+10k pullups worked better for me, although it's still not completely
+solid. I think I also reduced the i2c data rate.
+I tried powering from GPIO (supposedly the chip uses <1ma) and resetting
+when it flaked, but didn't have much luck with this.
+
 (In a pinch, "show processlist;" in mysql admin can likely
  show you the active connections.)
 
