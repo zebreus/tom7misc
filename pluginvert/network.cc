@@ -399,7 +399,8 @@ void Network::StructuralCheck() const {
   // TODO: Other checks for input layer?
 
   // All layers
-  for (const Layer &layer : layers) {
+  for (int layer_idx = 0; layer_idx < layers.size(); layer_idx++) {
+    const Layer &layer = layers[layer_idx];
     CHECK(layer.num_nodes > 0);
     CHECK(!layer.chunks.empty());
 
@@ -407,15 +408,23 @@ void Network::StructuralCheck() const {
     for (const Chunk &chunk : layer.chunks) {
       nodes_from_chunks += chunk.num_nodes;
     }
-    CHECK(nodes_from_chunks == layer.num_nodes);
+    CHECK(nodes_from_chunks == layer.num_nodes) <<
+      "On layer " << layer_idx << ": " <<
+      nodes_from_chunks << " vs " << layer.num_nodes;
 
-    for (const Chunk &chunk : layer.chunks) {
+    for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
+      const Chunk &chunk = layer.chunks[chunk_idx];
       CHECK(chunk.num_nodes ==
-            chunk.width * chunk.height * chunk.channels);
+            chunk.width * chunk.height * chunk.channels) <<
+        "On chunk " << layer_idx << "." << chunk_idx << ": " <<
+        chunk.num_nodes << " vs " << chunk.width << " * " <<
+        chunk.height << " * " << chunk.channels;
 
       if (chunk.weight_update == ADAM) {
-        CHECK(chunk.weights.size() * 2 ==
-              chunk.weights_aux.size());
+        CHECK(chunk.weights.size() * 2 == chunk.weights_aux.size()) <<
+          "On adam chunk " << layer_idx << "." << chunk_idx << ": " <<
+          chunk.weights.size() << " * 2 " << " vs " <<
+          chunk.weights_aux.size();
         CHECK(chunk.biases.size() * 2 ==
               chunk.biases_aux.size());
       }
@@ -556,7 +565,8 @@ Network::MakeConvolutionArrayIndices(
 
   // Normally, equal.
   // (XXX perhaps we could even require this?)
-  CHECK(src_width * src_height <= span_size);
+  CHECK(src_width * src_height <= span_size) <<
+    src_width << " * " << src_height << " <= "  << span_size;
 
   const int indices_per_node = pattern_width * pattern_height;
 

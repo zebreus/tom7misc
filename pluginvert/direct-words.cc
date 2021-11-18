@@ -386,6 +386,7 @@ static void Train(Network *net) {
     WORDLIST_SIZE;
   constexpr int OUTPUT_SIZE = (WORDS_BEFORE + WORDS_AFTER + 1) *
     WORDLIST_SIZE;
+
   std::vector<float> inputs(INPUT_SIZE * EXAMPLES_PER_ROUND, 0.0f);
   std::vector<float> expecteds(OUTPUT_SIZE * EXAMPLES_PER_ROUND, 0.0f);
 

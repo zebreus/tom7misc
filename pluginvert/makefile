@@ -147,6 +147,10 @@ direct-guess.exe : direct-guess.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+direct-widen.exe : direct-widen.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 
 
 clean :
