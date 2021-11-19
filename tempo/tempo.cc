@@ -62,6 +62,10 @@ static constexpr uint32 COLORS[] = {
 
 static constexpr int NUM_COLORS = sizeof (COLORS) / sizeof (uint32);
 
+// Positions in icons.png.
+#define ICON_SIZE 9
+#define ICON_DRIP 0
+
 // Return some basic system info as a plain ascii string formatted
 // with newlines.
 static string SysInfoString() {
@@ -157,8 +161,9 @@ struct Server {
     server_start_time = std::chrono::steady_clock::now();
     server = WebServer::Create();
     CHECK(server);
-    favicon = Util::ReadFile("favicon.png");
+    favicon_png = Util::ReadFile("favicon.png");
     diagram_svg = Util::ReadFile("diagram.svg");
+    icons.reset(ImageRGBA::Load("icons.png"));
 
     server->AddHandler("/stats", server->GetStatsHandler());
     server->AddHandler("/info",
@@ -171,7 +176,7 @@ struct Server {
                          response.code = 200;
                          response.status = "OK";
                          response.content_type = "image/png";
-                         response.body = this->favicon;
+                         response.body = this->favicon_png;
                          return response;
                        });
     server->AddHandler("/diagram",
@@ -446,6 +451,10 @@ struct Server {
         graph.BlendText32(KEY_X, y, color, label);
         label_end.emplace_back(KEY_X + 4 + (label.size() * 9), y + 4,
                                color);
+        if (probe.type == Database::ProbeType::HUMIDITY) {
+          graph.BlendImageRect(KEY_X - 9 - 2, y, *icons,
+                               ICON_DRIP, 0, ICON_SIZE, ICON_SIZE);
+        }
         y += 12;
       }
     }
@@ -669,8 +678,9 @@ struct Server {
   Database *db = nullptr;
   std::mutex should_die_m;
   bool should_die = false;
-  string favicon;
+  string favicon_png;
   string diagram_svg;
+  std::unique_ptr<ImageRGBA> icons;
   std::thread listen_thread;
 };
 
