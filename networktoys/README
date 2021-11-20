@@ -1,0 +1,22 @@
+This was my collection of toy problems when doing some major revs
+(convolutions, chunks, performance, adam dynamic weights, refactoring)
+to "tom7flow" (my own gpu neural network package). In here:
+ - NES image autoencoder
+ - Live playing through autoencoder using GPU
+ - Offline NES palette embedding (as 2d vector)
+ - Wikipedia text extractor
+ - Lexical embedding for words
+ - Attempt to make 'semantic' embedding from lexical embedding
+   (didn't really work)
+ - Directly embed words from a list such that a middle word can
+   be predicted (did work ok for 1000 words, fails for 2000)
+     - direct-guess.exe lets you run such a model on your own input
+     - direct-widen.exe lets you expand the gamut to more words
+ - Cleaner command-line training app (instead of SDL UI)
+
+There are also some stray programs from previous rounds of hacking
+on this that probably don't even compile now, like cull, deepen, vacuum.
+
+Various stuff says "PLUGINVERT" because this was originally intended
+to be that project, but I got distracted by the above work and toy
+problems. I continued on (after cleaning out the toys) in ../pluginvert.
