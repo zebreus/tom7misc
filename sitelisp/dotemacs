@@ -79,7 +79,13 @@
          ;; "-outline-FixederSys 1x-thin-normal-normal-mono-"
          ;; "32-*-*-*-c-*-iso8859-1"
          ;; on win32, this is a good way to specify fonts, it seems
-         "FixederSys 1x-24:antialias=none"
+
+         ;; looks amazing, chunky
+         ;; "FixederSys 1x-24:antialias=none"
+
+         ;; hand tweaked to use full resolution; not sure about this
+         ;; yet.
+         "FixederSys 2x-24:antialias=none"
 
          )
 
@@ -98,7 +104,7 @@
 		 ;; Don't use FixedSys Excelsior 2 or 3; they are "anti"-aliased!
 
 		 "-*-Menlo-bold-normal-normal-*-17-*-*-*-m-0-iso10646-1"
-		 
+
 		 ;; "FixedSys-15"
 
 		 )

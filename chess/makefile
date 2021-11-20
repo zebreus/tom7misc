@@ -106,8 +106,22 @@ WEIRDFATE2018= weirdfate-2018-01.txt weirdfate-2018-02.txt weirdfate-2018-03.txt
 
 allweirdfate : $(WEIRDFATE2015) $(WEIRDFATE2014) $(WEIRDFATE2013)  $(WEIRDFATE2015) $(WEIRDFATE2016) $(WEIRDFATE2017) $(WEIRDFATE2018)
 
+MATEB42013= mateb4-2013-01.txt mateb4-2013-02.txt mateb4-2013-03.txt mateb4-2013-04.txt mateb4-2013-05.txt mateb4-2013-06.txt mateb4-2013-07.txt mateb4-2013-08.txt mateb4-2013-09.txt mateb4-2013-10.txt mateb4-2013-11.txt mateb4-2013-12.txt
 
-CXXFLAGS=--std=c++17 -Wall -Wno-deprecated -Wno-sign-compare
+MATEB42014= mateb4-2014-01.txt mateb4-2014-02.txt mateb4-2014-03.txt mateb4-2014-04.txt mateb4-2014-05.txt mateb4-2014-06.txt mateb4-2014-07.txt mateb4-2014-08.txt mateb4-2014-09.txt mateb4-2014-10.txt mateb4-2014-11.txt mateb4-2014-12.txt
+
+MATEB42015= mateb4-2015-01.txt mateb4-2015-02.txt mateb4-2015-03.txt mateb4-2015-04.txt mateb4-2015-05.txt mateb4-2015-06.txt mateb4-2015-07.txt mateb4-2015-08.txt mateb4-2015-09.txt mateb4-2015-10.txt mateb4-2015-11.txt mateb4-2015-12.txt
+
+MATEB42016= mateb4-2016-01.txt mateb4-2016-02.txt mateb4-2016-03.txt mateb4-2016-04.txt mateb4-2016-05.txt mateb4-2016-06.txt mateb4-2016-07.txt mateb4-2016-08.txt mateb4-2016-09.txt mateb4-2016-10.txt mateb4-2016-11.txt mateb4-2016-12.txt
+
+MATEB42017= mateb4-2017-01.txt mateb4-2017-02.txt mateb4-2017-03.txt mateb4-2017-04.txt mateb4-2017-05.txt mateb4-2017-06.txt mateb4-2017-07.txt mateb4-2017-08.txt mateb4-2017-09.txt mateb4-2017-10.txt mateb4-2017-11.txt mateb4-2017-12.txt
+
+MATEB42018= mateb4-2018-01.txt mateb4-2018-02.txt mateb4-2018-03.txt mateb4-2018-04.txt mateb4-2018-05.txt mateb4-2018-06.txt mateb4-2018-07.txt mateb4-2018-08.txt mateb4-2018-09.txt mateb4-2018-10.txt mateb4-2018-11.txt mateb4-2018-12.txt
+
+allmateb4 : $(MATEB42013) $(MATEB42014) $(MATEB42015) $(MATEB42018) $(MATEB42016) $(MATEB42017)
+
+
+CXXFLAGS=--std=c++20 -Wall -Wno-deprecated -Wno-sign-compare
 OPT=-O2
 SYMBOLS=-g
 
@@ -235,3 +249,6 @@ numa.exe : numa.o
 #
 #  weirdfate-%.txt : d:\\chess\\lichess_db_standard_rated_%.pgn
 #  	nice -n 19 ./chessreduce.exe $< > $@
+
+mateb4-%.txt : d:\\chess\\lichess_db_standard_rated_%.pgn
+	nice -n 19 ./chessreduce.exe $< > $@

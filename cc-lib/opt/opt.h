@@ -7,6 +7,12 @@
 //
 // Consider optimizer.h for a fancier interface that allows integral
 // arguments and termination conditions.
+//
+// TODO: For fancier uses, it would probably be better to just expose
+// this as an "open loop", where it keeps some internal state (including
+// the best, and maybe some stats about convergence) and proposes a
+// next vector to try, and takes evidence of the form (vec, score) to
+// update its state.
 
 #ifndef _CC_LIB_OPT_H
 #define _CC_LIB_OPT_H
@@ -53,7 +59,7 @@ struct Opt {
              int iters,
              int depth = 1,
              int attempts = 10);
-  
+
   inline static std::pair<std::tuple<double, double>, double>
   Minimize2D(const std::function<double(double, double)> &f,
              std::tuple<double, double> lower_bound,

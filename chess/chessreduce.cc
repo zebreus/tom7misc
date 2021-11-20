@@ -8,6 +8,7 @@
 #include <vector>
 #include <utility>
 #include <unistd.h>
+#include <unordered_set>
 
 #include "base/stringprintf.h"
 #include "gtl/top_n.h"
@@ -70,13 +71,16 @@ struct Processor {
       return false;
     }
 
+    // Some games end with no moves but have normal termination...
+    // resignation?
+    if (pgn.moves.empty())
+      return false;
+
     // We're looking for mate here, so require one side to win.
-    /*
     if (pgn.result != PGN::Result::WHITE_WINS &&
         pgn.result != PGN::Result::BLACK_WINS) {
       return false;
     }
-    */
 
     if (pgn.GetTermination() != PGN::Termination::NORMAL) {
       return false;
@@ -132,11 +136,15 @@ struct Processor {
     PGN pgn;
     CHECK(parser.Parse(pgn_text, &pgn));
 
-    if (!Eligible(pgn)) return;
+    if (!Eligible(pgn)) {
+      // printf("Not eligible.\n");
+      return;
+    }
 
+    #if 0
     int max_position_score = 0;
-
     int black_consec_forced = 0, white_consec_forced = 0;
+    #endif
 
     Position pos;
     Fates game_fates;
@@ -182,7 +190,23 @@ struct Processor {
 
       // const bool castling_move = pos.IsCastling(move);
       // const bool enpassant_move = pos.IsEnPassant(move);
-      pos.ApplyMove(move);
+
+      if (i == pgn.moves.size() - 1) {
+        // Last move
+        string sms = pos.ShortMoveString(move);
+        // printf("Last move: %s\n", sms.c_str());
+        if (sms != "b4")
+          return;
+
+        pos.ApplyMove(move);
+        if (!pos.IsMated()) {
+          // printf("Not mate..\n");
+          return;
+        }
+
+      } else {
+        pos.ApplyMove(move);
+      }
 
       game_fates.Update(pos, move);
 
@@ -226,7 +250,27 @@ struct Processor {
     // but go down to almost .800 in bottom.
     double weirdness = 1.0 - FateScore(game_fates);
     int64 game_score = weirdness * 1000000LL;
-    if (game_score > 950000LL) {
+
+    game_score +=
+      100 *
+      std::min(pgn.MetaInt("WhiteElo", 0),
+               pgn.MetaInt("BlackElo", 0));
+
+    if (ContainsKey(pgn.meta, "WhiteTitle"))
+      game_score += 2000000;
+    if (ContainsKey(pgn.meta, "BlackTitle"))
+      game_score += 2000000;
+
+    {
+      auto wit = pgn.meta.find("White");
+      auto bit = pgn.meta.find("Black");
+      if (wit != pgn.meta.end() && FamousPlayer(wit->second))
+        game_score += 8000000;
+      if (bit != pgn.meta.end() && FamousPlayer(bit->second))
+        game_score += 8000000;
+    }
+
+    if (true || game_score > 950000LL) {
 
       /*
       game_score +=
@@ -269,6 +313,49 @@ struct Processor {
     size_t s = topn.size();
     return s > 0 ? StringPrintf(" (found %d)", (int)s) : "";
   }
+
+  bool FamousPlayer(const string &lichess_id) const {
+    return famous.find(Util::lcase(lichess_id)) != famous.end();
+  }
+
+  const std::unordered_set<std::string> famous = {
+    // Carlsen
+    "stl_carlsen",
+    "drnykterstein",
+    "drdrunkenstein",
+    "magnuscarlsen",
+    "dannythedonkey",
+    "manwithavan",
+    "damnsaltythatsport",
+    "drgrekenstein",
+
+    // Caruana
+    "stl_caruana",
+    "bombegranate"
+
+    "stl_firouzja",
+    "stl_svidler"
+    "stl_nakamura",
+    "stl_liren",
+    "stl_nepomniachtchi",
+
+    // MVL
+    "stl_vachier-lagrave",
+    "avalongamemaster",
+    "unvieuxmonsieur",
+
+    "stl_aronian",
+    "stl_grischuk",
+    // Mamedyarov
+    "azerichessss",
+
+    // Wesley So
+    "wesleyso"
+    "stl_so",
+
+    "anishgiri",
+    "stl_dominguez",
+  };
 
   std::shared_mutex topn_m;
   gtl::TopN<ScoredGame, ScoredGameCmp> topn;

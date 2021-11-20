@@ -25,9 +25,18 @@ void TestSimple() {
         artist == "Voices") << title << " / " << artist;
 }
 
+void TestReplace() {
+  string artist = "They might be giants";
+  CHECK(RE2::GlobalReplace(&artist, "[aeiou]", "_"));
+  CHECK_EQ(artist, "Th_y m_ght b_ g__nts") << artist;
+  string title = "Aphex Twin";
+  CHECK(RE2::GlobalReplace(&title, "([aeiou])", "<\\1>"));
+  CHECK_EQ(title, "Aph<e>x Tw<i>n") << title;
+}
 
 int main(int argc, char **argv) {
   TestSimple();
+  TestReplace();
   printf("OK\n");
   return 0;
 }
