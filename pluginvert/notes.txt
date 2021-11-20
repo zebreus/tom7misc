@@ -446,3 +446,6 @@ but it's at least wrong, so let's try again?
 
 very good :)
 
+With 2048 words, it never makes progress (probably always predicting
+zero everywhere because loss is exactly 6), even after >24h. Could
+be numerical underflow? I think all I changed here was constants.

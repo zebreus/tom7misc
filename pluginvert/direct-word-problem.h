@@ -14,7 +14,7 @@ static constexpr const char *WORDLIST = "wordlist.txt";
 // Can get this from the wordlist, but it is useful as a compile-time
 // constant.
 // static constexpr int WORDLIST_SIZE = 65536;
-static constexpr int WORDLIST_SIZE = 1025;
+static constexpr int WORDLIST_SIZE = 2048;
 
 static constexpr const char *MODEL_NAME = "direct-words.val";
 

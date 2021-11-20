@@ -657,9 +657,9 @@ struct Reader {
 
   virtual uint8_t ReadByte() = 0;
 
-  inline int64_t Read64() {
-    int64_t a = Read32();
-    int64_t b = Read32();
+  inline uint64_t Read64() {
+    uint64_t a = Read32();
+    uint64_t b = Read32();
     return (a << 32) | b;
   }
 
@@ -668,7 +668,7 @@ struct Reader {
     return UnpackFloat(u);
   }
 
-  inline int32_t Read32() {
+  inline uint32_t Read32() {
     uint8_t a = ReadByte();
     uint8_t b = ReadByte();
     uint8_t c = ReadByte();
@@ -753,11 +753,11 @@ struct Writer {
 
   virtual void WriteByte(uint8_t b) = 0;
 
-  inline void Write64(int64_t i) {
+  inline void Write64(uint64_t i) {
     Write32((i >> 32) & 0xFFFFFFFF);
     Write32(i & 0xFFFFFFFF);
   }
-  inline void Write32(int32_t i) {
+  inline void Write32(uint32_t i) {
     WriteByte((i >> 24) & 0xFF);
     WriteByte((i >> 16) & 0xFF);
     WriteByte((i >> 8)  & 0xFF);

@@ -17,8 +17,8 @@ using namespace std;
 
 using int64 = int64_t;
 
-constexpr int64 WORDLIST_SIZE_BEFORE = 1024;
-constexpr int64 WORDLIST_SIZE_AFTER = 1025; // 2048;
+constexpr int64 WORDLIST_SIZE_BEFORE = 1024 + 128;
+constexpr int64 WORDLIST_SIZE_AFTER = 2048;
 
 static_assert(WORDLIST_SIZE == WORDLIST_SIZE_BEFORE);
 

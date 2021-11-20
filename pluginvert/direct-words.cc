@@ -324,10 +324,10 @@ static void Train(Network *net) {
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = true;
   // XXX need to reduce this over time
-  static constexpr float LEARNING_RATE = 0.00500f;
-  // This is very conservative, but with larger values I would
+  static constexpr float LEARNING_RATE = 0.01f;
+  // This is conservative, but with larger values I would
   // get divergence after hundreds of thousands of rounds.
-  static constexpr float ADAM_EPSILON = 0.001f;
+  static constexpr float ADAM_EPSILON = 0.0000001f;
 
   // XXX this should probably depend on the learning rate; if the
   // learning rate is too small, it won't even be able to overcome
@@ -1094,6 +1094,7 @@ int main(int argc, char **argv) {
   if (net.get() == nullptr) {
     net.reset(NewNetwork());
     net->StructuralCheck();
+    // Note: Deterministic!
     ArcFour rc("new");
     RandomizeNetwork(&rc, net.get(), 2);
     printf("New network with %lld parameters\n", net->TotalParameters());
