@@ -255,7 +255,7 @@ struct RandomGamma {
         const double x_squared = x * x;
         const double u = RandDoubleNot1(rc);
         if (u < 1.0 - 0.0331 * x_squared * x_squared ||
-            log(u) < 0.5 * x_squared + b * (1.0 - v_cubed - log(v_cubed))) {
+            log(u) < 0.5 * x_squared + b * (1.0 - v_cubed + log(v_cubed))) {
           return b * v_cubed;
         }
       }
