@@ -20,7 +20,7 @@ static std::vector<float> ReadMp3Mono(const string &filename) {
   if (mp3->channels == 1) return std::move(mp3->samples);
   CHECK(mp3->channels > 1);
 
-  // Otherwise, de-interleave samples, taking the firs channel.
+  // Otherwise, de-interleave samples, taking the first channel.
   const int OUT_SIZE = mp3->samples.size() / mp3->channels;
   std::vector<float> out;
   out.reserve(OUT_SIZE);

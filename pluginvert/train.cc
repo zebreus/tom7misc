@@ -48,8 +48,7 @@ constexpr int NUM_PARAMS = Plugin::NUM_PARAMETERS;
 #define NUM_WORDS (WORDS_BEFORE + WORDS_AFTER + 1)
 #define WORDLIST_SIZE 1024
 
-// Examples are 64k * num_words ~1.5MB each, although they are
-// extremely sparse.
+// Examples are about 2k.
 static constexpr int EXAMPLES_PER_ROUND = 1000;
 
 #if 0
@@ -626,6 +625,7 @@ static unique_ptr<Network> NewParamsNetwork() {
   // For the initial convolution.
   // 44.1 would be one millisecond.
   static constexpr int CONV_WIDTH = 48;
+  static_assert((WINDOW_SIZE % CONV_WIDTH) == 0);
   // 1D convolution with stride 1.
   // static constexpr int NUM_OCC = WINDOW_SIZE - CONV_WIDTH + 1;
   // Keep the same size, although this is not necessary.
@@ -635,6 +635,7 @@ static unique_ptr<Network> NewParamsNetwork() {
   
   // Each one actually yields two layers in the steady state.
   vector<Structure> structures = {
+    // Describing the input layer.
     Structure{.G = 0, .NGLOB = 0,
               .NUM_FEATURES = 1, .OCC_DIVISOR = 1,
               .FFT_WINDOW = WINDOW_SIZE, .FFT_DENSITY = 1.0},
@@ -656,10 +657,9 @@ static unique_ptr<Network> NewParamsNetwork() {
   }
   
   std::vector<Layer> layers;  
-  auto L = [&](const std::vector<Chunk> &chunks) {
-      int num_nodes = 0;
-      for (const Chunk &chunk : chunks) num_nodes += chunk.num_nodes;
-      return Layer{.num_nodes = num_nodes, .chunks = chunks};
+  // XXX just call directly
+  auto L = [](const std::vector<Chunk> &chunks) {
+      return Network::LayerFromChunks(chunks);
     };
 
   

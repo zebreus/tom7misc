@@ -9,6 +9,8 @@
 using TestNet = NetworkTestUtil::TestNet;
 using TestExample = NetworkTestUtil::TestExample;
 
+static constexpr bool VERBOSE = false;
+
 static void SimpleTests(TestNet test_net) {
   printf("======\n"
          "Testing %s:\n", test_net.name.c_str());
@@ -26,6 +28,16 @@ static void SimpleTests(TestNet test_net) {
         stim.values[0] = example.input;
         n.RunForward(&stim);
 
+        if (VERBOSE) {
+          for (int i = 0; i < stim.values.size(); i++) {
+            printf("Stim Layer %d:\n  ", i);
+            for (float f : stim.values[i]) {
+              printf("%.3f ", f);
+            }
+            printf("\n");
+          }
+        }
+        
         stim.NaNCheck(example.name);
 
         // No change to input
@@ -134,6 +146,7 @@ int main(int argc, char **argv) {
   SimpleTests(NetworkTestUtil::Net1());
   SimpleTests(NetworkTestUtil::TwoDenseLayers());
   SimpleTests(NetworkTestUtil::FixedSingle());
+  SimpleTests(NetworkTestUtil::CountInternalEdges());  
 
   printf("OK\n");
   return 0;

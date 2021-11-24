@@ -490,6 +490,113 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseLayers() {
   };
 }
 
+NetworkTestUtil::TestNet NetworkTestUtil::CountInternalEdges() {
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = 8;
+  input_chunk.width = 8;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  #if 0
+  // Maps 0 to -1 and 1 to 1.
+  Chunk pre =
+    Network::Make1DConvolutionChunk(0, 8,
+                                    // 1x1
+                                    1, 1, 1,
+                                    IDENTITY, SGD);
+  CHECK(pre.indices.size() == 8);
+  CHECK(pre.weights.size() == 1);
+  pre.weights[0] = 20.0f;
+  CHECK(pre.biases.size() == 1);
+  pre.biases[0] = -10.0f;
+  #endif
+  
+  Chunk one = Network::Make1DConvolutionChunk(
+      0, 8,
+      // two 2x1 features: 0-1 and 1-0 transition
+      2, 2,
+      // overlapping
+      1,
+      SIGMOID, ADAM);
+  CHECK(one.indices.size() > 3);
+  CHECK(one.indices[0] == 0);
+  CHECK(one.indices[1] == 1);
+  CHECK(one.indices[2] == 1) << one.indices[2];
+  // Two features, two indices per node.
+  CHECK(one.weights.size() == 4);
+  // First feature counts 0-1  (~A & B)
+  // Sigmoids output ~1.0 if the pattern matches, otherwise ~0.0.
+  one.weights[0] = -1000000.0f;
+  one.weights[1] =   100000.0f;
+  // And 1-0 (A & ~B)
+  one.weights[2] =   100000.0f;
+  one.weights[3] = -1000000.0f;
+
+  CHECK(one.biases.size() == 2);
+  one.biases[0] = -100.0f;
+  one.biases[1] = -100.0f;
+  
+  CHECK(one.num_nodes == 7 * 2);
+  
+  Chunk two = Network::MakeDenseChunk(1, 0, 7 * 2, IDENTITY, SGD);
+  // Sum 'em up.
+  for (float &f : two.weights) f = 1.0f;
+  
+  Network net({Network::LayerFromChunks({input_chunk}),
+               //               Network::LayerFromChunks({pre}),
+               Network::LayerFromChunks({one}),
+               Network::LayerFromChunks({two})});
+  net.NaNCheck(__func__);
+
+  return TestNet{
+    .name = "Counts internal 0-1 and 1-0 transitions, with conv and dense",
+    .net = net,
+    .examples = std::vector<TestExample>{
+      TestExample{
+        .name = "zeroes",
+        .input = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,},
+        .output = {0.0f},
+      },
+      TestExample{
+        .name = "ones",
+        .input = {1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,},
+        .output = {0.0f},
+      },
+      TestExample{
+        .name = "oneoff",
+        .input = {1.f, 1.f, 1.f, 1.f, 0.f, 1.f, 1.f, 1.f,},
+        .output = {2.0f},
+      },
+      TestExample{
+        .name = "onespanoff",
+        .input = {1.f, 1.f, 1.f, 0.f, 0.f, 0.f, 1.f, 1.f,},
+        .output = {2.0f},
+      },
+      TestExample{
+        .name = "leftside",
+        .input = {0.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,},
+        .output = {1.0f},
+      },
+      TestExample{
+        .name = "rightside",
+        .input = {0.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f,},
+        .output = {1.0f},
+      },
+      TestExample{
+        .name = "pattern",
+        .input = {0.f, 1.f, 1.f, 0.f, 1.f, 1.f, 1.f, 0.f,},
+        .output = {4.0f},
+      },
+      TestExample{
+        .name = "pattern2",
+        .input = {1.f, 0.f, 1.f, 0.f, 1.f, 0.f, 1.f, 0.f,},
+        .output = {7.0f},
+      },
+    },
+  };
+}
+
 NetworkTestUtil::TrainNet NetworkTestUtil::LearnTrivialIdentitySparse() {
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;

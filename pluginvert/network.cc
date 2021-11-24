@@ -641,6 +641,66 @@ Network::MakeConvolutionArrayIndices(
                          num_occurrences_down);
 };
 
+Chunk Network::Make1DConvolutionChunk(int span_start, int span_size,
+                                      int num_features, int pattern_width,
+                                      int x_stride,
+                                      TransferFunction transfer_function,
+                                      WeightUpdate weight_update) {
+  Chunk conv;
+  conv.type = CHUNK_CONVOLUTION_ARRAY;
+  conv.transfer_function = transfer_function;
+  conv.num_features = num_features;
+  conv.occurrence_x_stride = x_stride;
+  conv.occurrence_y_stride = 1;
+  conv.pattern_width = pattern_width;
+  conv.pattern_height = 1;
+  conv.src_width = span_size;
+  conv.src_height = 1;
+  conv.span_start = span_start;
+  conv.span_size = span_size;
+  conv.indices_per_node = pattern_width;
+
+  {
+    auto [indices, this_num_nodes,
+          num_occurrences_across, num_occurrences_down] =
+      MakeConvolutionArrayIndices(conv.span_start,
+                                  conv.span_size,
+                                  conv.num_features,
+                                  conv.pattern_width,
+                                  conv.pattern_height,
+                                  conv.src_width,
+                                  conv.src_height,
+                                  conv.occurrence_x_stride,
+                                  conv.occurrence_y_stride);
+    CHECK(this_num_nodes == 
+          num_features * num_occurrences_across * num_occurrences_down);
+    conv.num_nodes = this_num_nodes;
+    conv.width = conv.num_nodes;
+    conv.height = 1;
+    conv.channels = 1;
+
+    conv.num_occurrences_across = num_occurrences_across;
+    CHECK(num_occurrences_down == 1);
+    conv.num_occurrences_down = num_occurrences_down;
+    conv.indices = std::move(indices);
+
+    conv.weights = std::vector<float>(
+        conv.indices_per_node * conv.num_features,
+        0.0f);
+    conv.biases = std::vector<float>(conv.num_features, 0.0f);
+  }
+
+  conv.weight_update = weight_update;
+  if (conv.weight_update == ADAM) {
+    conv.weights_aux.resize(conv.weights.size() * 2, 0.0f);
+    conv.biases_aux.resize(conv.biases.size() * 2, 0.0f);
+  }
+
+  conv.fixed = false;
+  return conv;
+}
+
+
 
 // TODO: This is not that portable (assumes endianness for float
 // is the same as int32?)

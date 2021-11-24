@@ -82,8 +82,12 @@ struct NetworkTestUtil {
   // out    a2 = leaky(0 + 1.5a1 + 1b0)  b2 = leaky(1 - 0.25a1 + 3b1)
   static TestNet TwoDenseLayers();
 
+  // From an input of size 8, counts internal 0-1 and 1-0 transitions,
+  // with a convolution and a dense node. (Output is not exact.)
+  static TestNet CountInternalEdges();
+  
   // TODO: Need some tests with convolutions!
-
+  
   // F(x) = x. One sparse node.
   static TrainNet LearnTrivialIdentitySparse();
   static TrainNet LearnTrivialIdentityDense();

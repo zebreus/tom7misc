@@ -828,68 +828,114 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
   CHECK(net.layers[0].chunks.size() == 1);
   layer_kernels.push_back(std::vector<ChunkKernel>{ChunkKernel()});
 
-  // TODO: Make this configurable, and make sure some tests set it
-  // very low to exercise those code paths!
-  // number of elements to allocate between both weights and biases.
-  // 4 GB needs a very big card! PERF
-  constexpr int64 MAX_NUM_SCRATCH = 1 << 30;
+  auto ApportionScratch = [&]() -> std::pair<int64, int64> {
+    // TODO: Make this configurable, and make sure some tests set it
+    // very low to exercise those code paths!
+    // number of elements to allocate between both weights and biases.
+    // 4 GB needs a very big card! PERF
+    constexpr int64 MAX_NUM_SCRATCH = 1 << 30;
+    
+    // The largest sum of weights+biases in any chunk.
+    int64 max_all = 0LL;
+    // The number of weights and biases on that largest overall layer.
+    int64 weights_largest = 0LL, biases_largest = 0LL;
+    // Global maxima for weights and biases, which might not be the
+    // same as their values on the layer with the largest sum.
+    int64 max_weights = 0LL, max_biases = 0LL;
+    for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
+      for (int chunk_idx = 0;
+           chunk_idx < net.layers[layer_idx].chunks.size();
+           chunk_idx++) {
+        const Chunk &chunk = net.layers[layer_idx].chunks[chunk_idx];
 
-  // Allocate temporary buffers for weights and biases. Compute a
-  // value w ("width") which is the number of examples we simultaneously
-  // can fit for the largest layer.
-  // No point in this ever being bigger than examples_per_round.
-  int max_w = examples_per_round;
+        // PERF can at least skip this for fixed chunks!
 
-  // The largest sum of weights+biases in any chunk, and the sizes in
-  // that bottleneck chunk (these may not be the global maxima on their
-  // own).
-  int64 max_all = 0LL;
-  int64 bottleneck_weights = 0LL, bottleneck_biases = 0LL;
-  for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
-    for (int chunk_idx = 0;
-         chunk_idx < net.layers[layer_idx].chunks.size();
-         chunk_idx++) {
-      const Chunk &chunk = net.layers[layer_idx].chunks[chunk_idx];
+        const int64 num_weights = chunk.weights.size();
+        const int64 num_biases = chunk.biases.size();
 
-      // PERF can at least skip this for fixed chunks!
+        max_weights = std::max(max_weights, num_weights);
+        max_biases = std::max(max_biases, num_biases);      
 
-      const int64 num_weights = chunk.weights.size();
-      const int64 num_biases = chunk.biases.size();
-
-      const int64 num_all = num_weights + num_biases;
-      if (num_all >= max_all) {
-        max_all = num_all;
-        bottleneck_weights = num_weights;
-        bottleneck_biases = num_biases;
-      }
-
-      // Could compute this at the end.
-      // rounding down
-      const int num_fit = MAX_NUM_SCRATCH / num_all;
-      if (num_fit < max_w) {
-        printf("Scratch space bottleneck: chunk %d.%d\n"
-               "wants %lld+%lld=%lld elts per example\n"
-               "but max is %lld. width %d -> %d\n",
-               layer_idx, chunk_idx,
-               num_weights, num_biases, num_all,
-               MAX_NUM_SCRATCH, max_w, num_fit);
-        max_w = num_fit;
+        const int64 num_all = num_weights + num_biases;
+        if (num_all >= max_all) {
+          max_all = num_all;
+          weights_largest = num_weights;
+          biases_largest = num_biases;
+        }
       }
     }
-  }
 
-  CHECK(max_w * bottleneck_weights + max_w * bottleneck_biases <=
-        MAX_NUM_SCRATCH) << "Bug: by construction above";
-  CHECK(bottleneck_weights + bottleneck_biases == max_all) << "Bug";
-  // We could allow in-place SGD in this case, with significant
-  // complexity...
-  CHECK(max_w > 0) << "Not enough scratch space for even one "
-    "example at a time. Can't train this way!";
+    // Now we have a little optimization problem to choose
+    // num_weight_grad and num_bias_grad. Each must be at
+    // least its corresponding max_ or else we can't even fit one
+    // example at a time.
+  
+    // We could allow in-place SGD in this case, with significant
+    // complexity...
+    CHECK(max_weights + max_biases <= MAX_NUM_SCRATCH) <<
+    "Can't even fit one example at a time. :( Try increasing "
+    "MAX_MUM_SCRATCH or a smaller network!";
 
-  num_weight_grad = max_w * bottleneck_weights;
+    // Since the logic below is inexact, make sure we don't
+    // miss an easy solution where we can fit the full width
+    // on every layer.
+    if (max_weights * examples_per_round +
+        max_biases * examples_per_round < MAX_NUM_SCRATCH) {
+      printf("Full width of each layer fits in scratch space! :)\n");
+      return make_pair(max_weights * examples_per_round,
+                       max_biases * examples_per_round);
+    }
+    
+    // Now we want to apportion the scratch space between the
+    // weights and biases. Maybe we should do some explicit
+    // optimization here; what we really want to do is
+    // minimize the number of rounds (num / w) for expensive
+    // layers.
+
+    int64 wsize = max_weights;
+    int64 bsize = max_biases;
+    // This is O(examples_per_round), which is clearly fine at setup
+    // time.
+    for (;;) {
+      const int64 spare_scratch = MAX_NUM_SCRATCH - wsize - bsize;  
+      CHECK(spare_scratch >= 0) << "Precondition.";
+
+      // rounding down
+      const int weights_w = wsize / weights_largest;
+      const int biases_w = bsize / biases_largest;
+      CHECK(weights_w >= 1);
+      CHECK(biases_w >= 1);
+
+      // Increase one or the other, balancing by the width on the
+      // largest layer.
+      if (weights_w < examples_per_round &&
+          weights_w < biases_w &&
+          weights_largest < spare_scratch) {
+        wsize += weights_largest;
+      } else if (biases_w < examples_per_round &&
+                 biases_largest < spare_scratch) {
+        bsize += biases_largest;
+      } else {
+        break;
+      }
+    }
+    // We shouldn't have allocated more than we need in the global
+    // maximum case (since it also bounds the values on the
+    // largest layer).
+    CHECK(wsize <= max_weights * examples_per_round);
+    CHECK(bsize <= max_biases * examples_per_round);
+    
+    CHECK(wsize * weights_largest + bsize * biases_largest <=
+          MAX_NUM_SCRATCH) << "Bug: by construction above";
+
+    return make_pair(wsize, bsize);
+  };
+      
+  std::tie(num_weight_grad, num_bias_grad) =
+      ApportionScratch();
+
   weight_grad_tmp =
     CreateUninitializedGPUMemory<float>(cl->context, num_weight_grad);
-  num_bias_grad = max_w * bottleneck_biases;
   bias_grad_tmp =
     CreateUninitializedGPUMemory<float>(cl->context, num_bias_grad);
 
@@ -914,13 +960,21 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
       const int64 num_biases = chunk.biases.size();
 
       const int weights_w = num_weight_grad / num_weights;
+      CHECK(weights_w > 0) << "Chunk " << layer_idx << "." << chunk_idx
+                           << ": " << weights_w << " = "
+                           << num_weight_grad << " / " << num_weights;
       const int bias_w = num_bias_grad / num_biases;
+      CHECK(bias_w > 0) << "Chunk " << layer_idx << "." << chunk_idx
+                        << ": " << bias_w << " = "
+                        << num_bias_grad << " / " << num_biases;
       const int bottleneck_w = std::min(weights_w, bias_w);
       // Never more than the number of examples.
       const int w = std::min(bottleneck_w, examples_per_round);
       CHECK(w * num_weights <= num_weight_grad);
       CHECK(w * num_biases <= num_bias_grad);
-      CHECK(w > 0);
+      CHECK(w > 0) << w << " min of " << bottleneck_w
+                   << " (min of " << weights_w << " " << bias_w
+                   << ") " << examples_per_round;
       ck.w = w;
 
       string kernel1_src;

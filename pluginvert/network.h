@@ -59,6 +59,7 @@ enum ChunkType {
 
 // Transfer function for a chunk.
 enum TransferFunction {
+  // Classic. Output range is (0,1).
   SIGMOID = 0,
   RELU = 1,
   LEAKY_RELU = 2,
@@ -222,7 +223,7 @@ struct Layer {
   // Number of nodes in this layer's output.
   // Must be the sum of the num_nodes for each chunk, since it is
   // their concatenation that forms the layer.
-  int num_nodes;
+  int num_nodes = 0;
 
   // For the 0th layer, this must be exactly one chunk of type
   // CHUNK_INPUT.
@@ -260,7 +261,7 @@ struct Network {
   // Return one of the above constants (or abort for an unknown
   // transfer function).
   static string TransferFunctionDefines(TransferFunction tf);
-
+  
   // Size of network in RAM.
   int64_t Bytes() const;
   // Return the total number of parameters in the model (weights and biases
@@ -318,12 +319,20 @@ struct Network {
     return layers.size();
   }
 
+  // TODO: Usually called with explicit args, so we could template
+  // this to avoid the {}?
+  static Layer LayerFromChunks(std::vector<Chunk> chunks) {
+    int num_nodes = 0;
+    for (const Chunk &chunk : chunks) num_nodes += chunk.num_nodes;
+    return Layer{.num_nodes = num_nodes, .chunks = std::move(chunks)};
+  }
+  
   // Create a dense layer with zero weights (you gotta initialize these).
   static Chunk MakeDenseChunk(int num_nodes,
                               // region of previous layer to depend on
                               int span_start, int span_size,
                               TransferFunction transfer_function,
-                              WeightUpdate WeightUpdate);
+                              WeightUpdate weight_update);
 
   // XXX: This should return a Chunk?
   // returns indices, this_num_nodes,
@@ -338,6 +347,13 @@ struct Network {
                               int occurrence_x_stride,
                               int occurrence_y_stride);
 
+  // For the common case of a 1D convolution.
+  static Chunk Make1DConvolutionChunk(int span_start, int span_size,
+                                      int num_features, int pattern_width,
+                                      int x_stride,
+                                      TransferFunction transfer_function,
+                                      WeightUpdate weight_update);
+  
   // Computes the inverted indices for the given layer (the index
   // refers to the destination layer of the relevant gap) and chunk
   // within it. This maps the input span (from source layer) to the

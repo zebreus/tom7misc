@@ -484,13 +484,15 @@ int main(int argc, char **argv) {
   ForwardTests(NetworkTestUtil::TwoInputSparse());
   ForwardTests(NetworkTestUtil::TwoDenseChunks());
   ForwardTests(NetworkTestUtil::Net1());
-
+  ForwardTests(NetworkTestUtil::CountInternalEdges());
+  
   TrainOnTestTests(NetworkTestUtil::SingleSparse());
   TrainOnTestTests(NetworkTestUtil::SingleDense());
   TrainOnTestTests(NetworkTestUtil::SingleConvolution());
   TrainOnTestTests(NetworkTestUtil::TwoInputSparse());
   TrainOnTestTests(NetworkTestUtil::TwoDenseChunks());
   TrainOnTestTests(NetworkTestUtil::Net1());
+  TrainOnTestTests(NetworkTestUtil::CountInternalEdges());  
   #endif
 
   #if 1

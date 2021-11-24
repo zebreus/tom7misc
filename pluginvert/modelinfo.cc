@@ -390,8 +390,9 @@ static ImageRGBA ChunkWeightsSparseDense(
 
   const int ipn = chunk.indices_per_node;
 
-  // TODO: If we're using the full width, we could at least highlight
-  // the span (or nodes outside the span).
+  // TODO: Consider only rendering the span. If we're using the full
+  // width, we could at least highlight the span (or nodes outside the
+  // span).
 
   //     <--- this layer's nodes --->
   // ^
