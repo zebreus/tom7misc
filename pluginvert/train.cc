@@ -24,6 +24,8 @@
 #include "util.h"
 #include "error-history.h"
 
+#include "plugins.h"
+
 using namespace std;
 
 using TestNet = NetworkTestUtil::TestNet;
@@ -34,7 +36,13 @@ static CL *cl = nullptr;
 
 using int64 = int64_t;
 
-#define MODEL_NAME "words.val"
+#define MODEL_NAME "params.val"
+
+// Size of time domain window in samples.
+constexpr int WINDOW_SIZE = 256; // 1024;
+using Plugin = Decimate<WINDOW_SIZE>;
+constexpr int NUM_PARAMS = Plugin::NUM_PARAMETERS;
+
 #define WORDS_BEFORE 3
 #define WORDS_AFTER 2
 #define NUM_WORDS (WORDS_BEFORE + WORDS_AFTER + 1)
@@ -44,6 +52,7 @@ using int64 = int64_t;
 // extremely sparse.
 static constexpr int EXAMPLES_PER_ROUND = 1000;
 
+#if 0
 struct ExampleThread {
 
   static constexpr int TARGET_SIZE = 3;
@@ -581,14 +590,81 @@ static void Train(Network *net) {
     }
   }
 }
+#endif
 
-static Network *NewNetwork() {
-  ArcFour rc("learn-words-network");
-  // Input is a vector of one-hot words. We don't get the word to predict
-  // as an input!
-  constexpr int INPUT_WORDS = WORDS_BEFORE + WORDS_AFTER;
-  constexpr int INPUT_SIZE = INPUT_WORDS * WORDLIST_SIZE;
+static unique_ptr<Network> NewParamsNetwork() {
+  // Deterministic!
+  ArcFour rc("learn-params-network");
 
+  // After the input layer we have a repeated structure here.
+  // Every layer looks like this:
+  //  [G][lobals][ ][ ]  conv occs     [ ][ ][ --  fft  -- ]
+  //  |-NGLOB---||--NUM_FEATURES * NUM_OCC--||-FFT_WINDOW--|
+  //
+  // Where for the first layer, NUM_FEATURES is just 1 (samples,
+  // although we could easily support stereo pairs!) and NUM_OCC is
+  // WINDOW_SIZE, as though a 1x1 convolution with stride 1 was applied.
+  // FFT_WINDOW is WINDOW_SIZE (DHT) and G=NGLOB=0, as there are
+  // no globals yet.
+  // 
+  // (Aside: for regularity and because it might be useful, we could
+  // consider having globals in the inputs. For predicting the
+  // waveform, these would include the parameter values. Other
+  // stuff might include sample rate (although this will be
+  // a constant during training?), min, max, average samples,
+  // or "mipmaps" of the waveform itself.)
+
+  struct Structure {
+    int G = 0;
+    int NGLOB = 0;
+    int NUM_FEATURES = 0;
+    int OCC_DIVISOR = 1;
+    int FFT_WINDOW = 0;
+    float FFT_DENSITY = 0.25f;
+  };
+
+  // For the initial convolution.
+  // 44.1 would be one millisecond.
+  static constexpr int CONV_WIDTH = 48;
+  // 1D convolution with stride 1.
+  // static constexpr int NUM_OCC = WINDOW_SIZE - CONV_WIDTH + 1;
+  // Keep the same size, although this is not necessary.
+  static constexpr int NUM_FEATURES = CONV_WIDTH;
+
+  static constexpr int NGLOB_0 = 0;
+  
+  // Each one actually yields two layers in the steady state.
+  vector<Structure> structures = {
+    Structure{.G = 0, .NGLOB = 0,
+              .NUM_FEATURES = 1, .OCC_DIVISOR = 1,
+              .FFT_WINDOW = WINDOW_SIZE, .FFT_DENSITY = 1.0},
+    Structure{.G = 8, .NGLOB = 56,
+              .NUM_FEATURES = NUM_FEATURES, .OCC_DIVISOR = 2,
+              .FFT_WINDOW = (int)(WINDOW_SIZE * 0.75), .FFT_DENSITY = 0.25},
+    Structure{.G = 8, .NGLOB = 120,
+              .NUM_FEATURES = (int)(NUM_FEATURES * 0.75), .OCC_DIVISOR = 2,
+              .FFT_WINDOW = (int)(WINDOW_SIZE * 0.50), .FFT_DENSITY = 0.25},
+    Structure{.G = 8, .NGLOB = 56,
+              .NUM_FEATURES = (int)(NUM_FEATURES * 0.625), .OCC_DIVISOR = 2,
+              .FFT_WINDOW = (int)(WINDOW_SIZE * 0.25), .FFT_DENSITY = 0.25},
+  };
+
+  for (const Structure &s : structures) {
+    CHECK(s.G <= s.NGLOB);
+    CHECK(s.G >= 0);
+    CHECK(s.NGLOB >= 0);
+  }
+  
+  std::vector<Layer> layers;  
+  auto L = [&](const std::vector<Chunk> &chunks) {
+      int num_nodes = 0;
+      for (const Chunk &chunk : chunks) num_nodes += chunk.num_nodes;
+      return Layer{.num_nodes = num_nodes, .chunks = chunks};
+    };
+
+  
+  static constexpr int INPUT_SIZE = NGLOB_0 + WINDOW_SIZE * 2;
+  static_assert(INPUT_SIZE > 0);
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
   input_chunk.num_nodes = INPUT_SIZE;
@@ -596,221 +672,243 @@ static Network *NewNetwork() {
   input_chunk.height = 1;
   input_chunk.channels = 1;
 
-  // We want to process all the words the same way to build the
-  // semantic encodings.
+  layers.push_back(L({input_chunk}));
 
-  // [   wb1  ][   wb2  ]?[   wa1  ][   wa2  ]
-  //  |......|  |......|   |......|  |......|   conv1
-  //  |......|  |......|   |......|  |......|   conv2
-  //  |......|  |......|   |......|  |......|   conv3
+  CHECK(layers.back().num_nodes > 0);
+  
+  int prev_occurrences = WINDOW_SIZE;  
+  for (int s = 1; s < structures.size(); s++) {
+    const Structure &prev = structures[s - 1];
+    const Structure &next = structures[s];
+    
+    CHECK(next.G <= next.NGLOB);
+    CHECK(prev_occurrences % next.OCC_DIVISOR == 0) <<
+      next.OCC_DIVISOR << " must divide " << prev_occurrences;
 
-  // ? is where the missing word would go. But to simplify our lives,
-  // we will actually put the missing word at the end.
+    // mostly we are mapping from 'prev' to 'next', but we actually
+    // create 'next' globals with the first of the two layers. 
+    // XXX need to be clearer about prev vs next use of NGLOB, G, etc.
+    
+    // Add the two layers. The first one updates globals densely
+    // and distributes the first G globals to the convolution occurrences.
 
-  // We're just using a "convolution" here so that we have the same
-  // weights across the words. Note that these have to be effectively
-  // dense, as that is the only kind of convolution we support.
+    {
+      CHECK(next.NGLOB > 0) << "Could maybe handle this but the chunk "
+        "would be degenerate";
+      Chunk glob;
+      glob.type = CHUNK_DENSE;
+      glob.transfer_function = LEAKY_RELU;
+      glob.num_nodes = next.NGLOB;
+      glob.span_start = 0;
+      glob.span_size = layers.back().num_nodes;
+      glob.indices_per_node = glob.span_size;
+      glob.weights.resize(glob.indices_per_node * glob.num_nodes);
+      glob.biases.resize(glob.num_nodes);
+      glob.weight_update = ADAM;
+      glob.weights_aux.resize(glob.weights.size() * 2, 0.0f);
+      glob.biases_aux.resize(glob.biases.size() * 2, 0.0f);
+      glob.fixed = false;
+      glob.width = glob.num_nodes;
+      glob.height = 1;
+      glob.channels = 1;
 
-  auto ConvChunk = [&rc](int input_word_size,
-                         int num_words,
-                         int output_word_size) {
-      Chunk chunk;
-      chunk.type = CHUNK_CONVOLUTION_ARRAY;
-      chunk.num_features = output_word_size;
-      chunk.occurrence_x_stride = input_word_size;
-      chunk.occurrence_y_stride = 1;
-      chunk.pattern_width = input_word_size;
-      chunk.pattern_height = 1;
-      chunk.src_width = input_word_size * num_words;
-      chunk.src_height = 1;
-      chunk.transfer_function = LEAKY_RELU;
-      chunk.span_start = 0;
-      chunk.span_size = input_word_size * num_words;
-      chunk.indices_per_node = input_word_size;
+      // Then, distribute G (from the previous layer; might be none)
+      // into each occurrence (after dividing), as well as copying the FFT.
+      Chunk dist;
+      dist.type = CHUNK_SPARSE;
+      dist.transfer_function = IDENTITY;
+      dist.span_start = 0;
+      // entire window, since we use the globals and the fft too
+      dist.span_size = layers.back().num_nodes;
+      // We only need one copy of G when we combine multiple occurrences
+      // because OCC_DIVISOR > 1.
+      dist.num_nodes = (prev.G + prev.NUM_FEATURES * next.OCC_DIVISOR) *
+        (prev_occurrences / next.OCC_DIVISOR) +
+        prev.FFT_WINDOW;
+      dist.indices_per_node = 1;
+      for (int occ = 0; occ < prev_occurrences / next.OCC_DIVISOR; occ++) {
+        const int feature_start =
+          prev.NGLOB + occ * prev.NUM_FEATURES * next.OCC_DIVISOR;
+        // First G globals.
+        for (int i = 0; i < prev.G; i++)
+          dist.indices.push_back(i);
+        // Then the features.
+        for (int f = 0; f < prev.NUM_FEATURES * next.OCC_DIVISOR; f++)
+          dist.indices.push_back(feature_start + f);
+      }
+      const int fft_start = prev.NGLOB + prev_occurrences * prev.NUM_FEATURES;
+      for (int i = 0; i < prev.FFT_WINDOW; i++)
+        dist.indices.push_back(fft_start + i);
+      CHECK(dist.indices.size() == dist.num_nodes);
+      // Pure copy.
+      dist.weights = std::vector<float>(dist.indices.size(), 1.0f);
+      dist.biases = std::vector<float>(dist.num_nodes, 0.0f);
+      dist.fixed = true;
+      dist.weight_update = SGD;
+      dist.width = dist.num_nodes;
+      dist.height = 1;
+      dist.channels = 1;
+      
+      layers.push_back(L({std::move(glob), std::move(dist)}));
+    }
+    
+    // Now, the actual work.
+    {
+      // Dense globals to globals.
+      // We already created next.NGLOB globals above, so we use next
+      // here, not prev.
+      Chunk glob;
+      glob.type = CHUNK_DENSE;
+      glob.transfer_function = LEAKY_RELU;
+      glob.num_nodes = next.NGLOB;
+      glob.span_start = 0;
+      glob.span_size = next.NGLOB;
+      glob.indices_per_node = glob.span_size;
+      glob.weights.resize(glob.indices_per_node * glob.num_nodes);
+      glob.biases.resize(glob.num_nodes);
+      glob.weight_update = ADAM;
+      glob.weights_aux.resize(glob.weights.size() * 2, 0.0f);
+      glob.biases_aux.resize(glob.biases.size() * 2, 0.0f);
+      glob.fixed = false;
+      glob.width = glob.num_nodes;
+      glob.height = 1;
+      glob.channels = 1;
+
+      // Convolution, including the G globals we distributed above.
+      const int pattern_width =
+        prev.G + prev.NUM_FEATURES * next.OCC_DIVISOR;
+      Chunk conv;
+      conv.type = CHUNK_CONVOLUTION_ARRAY;
+      conv.transfer_function = LEAKY_RELU;
+      conv.num_features = next.NUM_FEATURES;
+      conv.occurrence_x_stride = pattern_width;
+      conv.occurrence_y_stride = 1;
+      conv.pattern_width = pattern_width;
+      conv.pattern_height = 1;
+      conv.src_width = pattern_width * prev_occurrences / next.OCC_DIVISOR;
+      conv.src_height = 1;
+      // but we already introduced the next NGLOB above.
+      conv.span_start = next.NGLOB;
+      conv.span_size = conv.src_width;
+      conv.indices_per_node = pattern_width;
 
       {
         const auto [indices, this_num_nodes,
                     num_occurrences_across, num_occurrences_down] =
-          Network::MakeConvolutionArrayIndices(chunk.span_start,
-                                               chunk.span_size,
-                                               chunk.num_features,
-                                               chunk.pattern_width,
-                                               chunk.pattern_height,
-                                               chunk.src_width,
-                                               chunk.src_height,
-                                               chunk.occurrence_x_stride,
-                                               chunk.occurrence_y_stride);
-        CHECK(this_num_nodes == num_words * output_word_size);
-        chunk.num_nodes = this_num_nodes;
-        chunk.width = chunk.num_nodes;
-        chunk.height = 1;
-        chunk.channels = 1;
+          Network::MakeConvolutionArrayIndices(conv.span_start,
+                                               conv.span_size,
+                                               conv.num_features,
+                                               conv.pattern_width,
+                                               conv.pattern_height,
+                                               conv.src_width,
+                                               conv.src_height,
+                                               conv.occurrence_x_stride,
+                                               conv.occurrence_y_stride);
+        CHECK(this_num_nodes ==
+              next.NUM_FEATURES *
+              prev_occurrences / next.OCC_DIVISOR);
+        conv.num_nodes = this_num_nodes;
+        conv.width = conv.num_nodes;
+        conv.height = 1;
+        conv.channels = 1;
 
-        CHECK(num_occurrences_across == num_words);
-        chunk.num_occurrences_across = num_occurrences_across;
+        CHECK(num_occurrences_across == prev_occurrences / next.OCC_DIVISOR);
+        conv.num_occurrences_across = num_occurrences_across;
         CHECK(num_occurrences_down == 1);
-        chunk.num_occurrences_down = num_occurrences_down;
-        chunk.indices = indices;
+        conv.num_occurrences_down = num_occurrences_down;
+        conv.indices = indices;
 
-        chunk.weights = std::vector<float>(
-            chunk.indices_per_node * chunk.num_features,
+        conv.weights = std::vector<float>(
+            conv.indices_per_node * conv.num_features,
             0.0f);
-        chunk.biases = std::vector<float>(chunk.num_features, 0.0f);
+        conv.biases = std::vector<float>(conv.num_features, 0.0f);
       }
 
-      chunk.weight_update = ADAM;
-      chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
-      chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
+      conv.weight_update = ADAM;
+      conv.weights_aux.resize(conv.weights.size() * 2, 0.0f);
+      conv.biases_aux.resize(conv.biases.size() * 2, 0.0f);
 
-      return chunk;
-    };
+      
+      
+      const int prev_fft_start =
+        next.NGLOB + pattern_width * prev_occurrences / next.OCC_DIVISOR;
 
-  // The input is very sparse (64k wide, one-hot). So we want to
-  // collapse to a narrow embedding quickly. This first layer
-  // basically just stores the embedding as a table.
+      const int index_pool_size = next.NGLOB + prev.FFT_WINDOW;
+      const int sparse_ipn = std::max(
+          (int)(next.FFT_DENSITY * index_pool_size), 1);
+      // Finally, sparse FFT.
+      Chunk fft;
+      fft.type = CHUNK_SPARSE;
+      fft.fixed = false;
 
-  constexpr int ENC_SIZE = 64;
-  Chunk conv_chunk1 =
-    ConvChunk(WORDLIST_SIZE, INPUT_WORDS, ENC_SIZE);
+      fft.transfer_function = LEAKY_RELU;
+      fft.num_nodes = next.FFT_WINDOW;
+      fft.span_start = 0;
+      // Doesn't depend on conv part.
+      fft.span_size = layers.back().num_nodes;
+      fft.indices_per_node = sparse_ipn;
+      fft.weight_update = ADAM;
+      fft.width = fft.num_nodes;
+      fft.height = 1;
+      fft.channels = 1;
+      
+      fft.weights.resize(fft.num_nodes * sparse_ipn, 0.0f);
+      fft.biases.resize(fft.num_nodes, 0.0f);
+      fft.weights_aux.resize(fft.weights.size() * 2, 0.0f);
+      fft.biases_aux.resize(fft.biases.size() * 2, 0.0f);
+
+      // TODO: Always include the corresponding node. Prefer
+      // nearby nodes.
+      for (int n = 0; n < fft.num_nodes; n++) {
+        // Add random indices.
+        vector<uint32_t> index_pool;
+        for (int i = 0; i < next.NGLOB; i++)
+          index_pool.push_back(i);
+        for (int i = 0; i < prev.FFT_WINDOW; i++)
+          index_pool.push_back(prev_fft_start + i);
+        CHECK(index_pool.size() == index_pool_size);
+        Shuffle(&rc, &index_pool);
+        index_pool.resize(sparse_ipn);
+        std::sort(index_pool.begin(), index_pool.end());
+        for (uint32_t idx : index_pool)
+          fft.indices.push_back(idx);
+      }
 
 
-  // [   wb1  ][   wb2  ]?[   wa1  ][   wa2  ] [ target ]
-  //  |......|  |......|   |......|  |......|
-  //  |......|  |......|   |......|  |......|
-  //  |......|  |......|   |......|  |......|
-  //  [ copy      copy       copy      copy ]  [  guess1  ]
-  //  [ copy      copy       copy      copy ]  [  guess2  ]
-  //  [ copy      copy       copy      copy ]  [  guess3  ]
-  //  [ copy      copy       copy      copy ]  [   sem    ]
-  // Now we want to start predicting the middle word. We actually
-  // put the middle word at the end to make the structure simpler. The first
-  // chunk is a copy of all the semantic embeddings for the words,
-  // and these chunks are fixed. The new column uses those words
-  // as inputs, as well as the previous guess layer.
-  // Although it may still be fun, the real goal here is to
-  // learn an embedding of words that makes this guess possible
-  // (or at least, to reduce its error). So we don't just want
-  // this part to memorize triples; a more constrained network
-  // may be preferable.
-
-  // We can actually use this same chunk over and over.
-  Chunk copy_chunk;
-  copy_chunk.type = CHUNK_SPARSE;
-  copy_chunk.fixed = true;
-  copy_chunk.span_start = 0;
-  copy_chunk.span_size = ENC_SIZE * INPUT_WORDS;
-  copy_chunk.num_nodes = ENC_SIZE * INPUT_WORDS;
-  copy_chunk.indices_per_node = 1;
-  copy_chunk.transfer_function = IDENTITY;
-  copy_chunk.weight_update = SGD;
-  copy_chunk.width = ENC_SIZE * INPUT_WORDS;
-  copy_chunk.height = 1;
-  copy_chunk.channels = 1;
-  for (int i = 0; i < ENC_SIZE * INPUT_WORDS; i++) {
-    copy_chunk.indices.push_back(i);
-    copy_chunk.weights.push_back(1.0f);
-    copy_chunk.biases.push_back(0);
+      prev_occurrences = conv.num_occurrences_across;
+      layers.push_back(L({std::move(glob),
+                          std::move(conv),
+                          std::move(fft)}));
+    }
   }
 
-  constexpr int GUESS1_SIZE = 128;
-  constexpr int GUESS2_SIZE = 256;
-  constexpr int GUESS3_SIZE = 64;
-  static_assert(GUESS3_SIZE == ENC_SIZE);
-  Chunk guess_chunk1;
-  guess_chunk1.type = CHUNK_DENSE;
-  guess_chunk1.fixed = false;
-  guess_chunk1.span_start = 0;
-  guess_chunk1.span_size = ENC_SIZE * INPUT_WORDS;
-  guess_chunk1.num_nodes = GUESS1_SIZE;
-  guess_chunk1.indices_per_node = guess_chunk1.span_size;
-  guess_chunk1.transfer_function = LEAKY_RELU;
-  guess_chunk1.weight_update = ADAM;
-  guess_chunk1.width = GUESS1_SIZE;
-  guess_chunk1.height = 1;
-  guess_chunk1.channels = 1;
-  guess_chunk1.weights.resize(GUESS1_SIZE * ENC_SIZE * INPUT_WORDS, 0.0f);
-  guess_chunk1.biases.resize(GUESS1_SIZE, 0.0f);
-  guess_chunk1.weights_aux.resize(guess_chunk1.weights.size() * 2, 0.0f);
-  guess_chunk1.biases_aux.resize(guess_chunk1.biases.size() * 2, 0.0f);
+  // Finally, a dense layer to produce the required number of predicted
+  // parameters.
+  Chunk sink;
+  sink.type = CHUNK_DENSE;
+  sink.transfer_function = LEAKY_RELU;
+  sink.num_nodes = NUM_PARAMS;
+  sink.span_start = 0;
+  sink.span_size = layers.back().num_nodes;
+  sink.indices_per_node = sink.span_size;
+  sink.weights.resize(sink.indices_per_node * sink.num_nodes);
+  sink.biases.resize(sink.num_nodes);
+  sink.weight_update = ADAM;
+  sink.weights_aux.resize(sink.weights.size() * 2, 0.0f);
+  sink.biases_aux.resize(sink.biases.size() * 2, 0.0f);
+  sink.fixed = false;
+  sink.width = sink.num_nodes;
+  sink.height = 1;
+  sink.channels = 1;
 
-  auto SparseGuess = [&](int guess_size,
-                         int prev_layer_size,
-                         float density) {
-      int ipn = density * prev_layer_size;
-      CHECK(ipn > 0);
-      CHECK(ipn <= prev_layer_size);
-      Chunk chunk;
-      chunk.type = CHUNK_SPARSE;
-      chunk.fixed = false;
-      chunk.span_start = 0;
-      chunk.span_size = prev_layer_size;
-      chunk.num_nodes = guess_size;
-      chunk.indices_per_node = ipn;
-      chunk.transfer_function = LEAKY_RELU;
-      chunk.weight_update = ADAM;
-      chunk.width = guess_size;
-      chunk.height = 1;
-      chunk.channels = 1;
-      chunk.weights.resize(guess_size * ipn, 0.0f);
-      chunk.biases.resize(guess_size, 0.0f);
-      chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
-      chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
-      for (int n = 0; n < chunk.num_nodes; n++) {
-        // Add random indices.
-        vector<uint32_t> all_indices;
-        for (int i = 0; i < prev_layer_size; i++) all_indices.push_back(i);
-        Shuffle(&rc, &all_indices);
-        all_indices.resize(ipn);
-        std::sort(all_indices.begin(), all_indices.end());
-        for (uint32_t idx : all_indices)
-          chunk.indices.push_back(idx);
-      }
-      return chunk;
-    };
+  layers.push_back(L({std::move(sink)}));
+  
+  auto net = std::make_unique<Network>(layers);
 
-  Chunk guess_chunk2 = SparseGuess(GUESS2_SIZE,
-                                   ENC_SIZE * INPUT_WORDS + GUESS1_SIZE,
-                                   0.25f);
-  Chunk guess_chunk3 = SparseGuess(GUESS3_SIZE,
-                                   ENC_SIZE * INPUT_WORDS + GUESS2_SIZE,
-                                   0.25f);
-
-  // Now we have INPUT_WORDS + 1 words. Decode the embedding.
-  constexpr int OUTPUT_WORDS = INPUT_WORDS + 1;
-
-  // Here we can't just tabluate in a single layer to get the
-  // one-hot representation; use a few layers for some computation.
-  constexpr int DEC3_SIZE = 128;
-  constexpr int DEC2_SIZE = 256;
-  constexpr int DEC1_SIZE = WORDLIST_SIZE;
-  static_assert(DEC1_SIZE == WORDLIST_SIZE);
-  Chunk unconv_chunk3 =
-    ConvChunk(ENC_SIZE, OUTPUT_WORDS, DEC3_SIZE);
-  Chunk unconv_chunk2 =
-    ConvChunk(DEC3_SIZE, OUTPUT_WORDS, DEC2_SIZE);
-  Chunk unconv_chunk1 =
-    ConvChunk(DEC2_SIZE, OUTPUT_WORDS, DEC1_SIZE);
-
-  unconv_chunk1.transfer_function = SIGMOID;
-
-  auto L = [&](const std::vector<Chunk> &chunks) {
-      int num_nodes = 0;
-      for (const Chunk &chunk : chunks) num_nodes += chunk.num_nodes;
-      return Layer{.num_nodes = num_nodes, .chunks = chunks};
-    };
-
-  std::vector<Layer> layers = {
-    L({input_chunk}),
-    L({conv_chunk1}),
-    L({copy_chunk, guess_chunk1}),
-    L({copy_chunk, guess_chunk2}),
-    L({copy_chunk, guess_chunk3}),
-    L({unconv_chunk3}),
-    L({unconv_chunk2}),
-    L({unconv_chunk1}),
-  };
-
-  return new Network(layers);
+  printf("Randomize..\n");
+  RandomizeNetwork(&rc, net.get(), 2);
+  printf("New network with %lld parameters\n", net->TotalParameters());
+  return net;
 }
 
 
@@ -821,18 +919,16 @@ int main(int argc, char **argv) {
       Network::ReadFromFile(MODEL_NAME));
 
   if (net.get() == nullptr) {
-    net.reset(NewNetwork());
-    net->StructuralCheck();
-    // Note: Deterministic!
-    ArcFour rc("new");
-    RandomizeNetwork(&rc, net.get(), 2);
-    printf("New network with %lld parameters\n", net->TotalParameters());
+    net = NewParamsNetwork();
+    CHECK(net.get() != nullptr);
+    net->SaveToFile(MODEL_NAME);
+    printf("Wrote to %s\n", MODEL_NAME);
   }
 
   net->StructuralCheck();
   net->NaNCheck(MODEL_NAME);
 
-  Train(net.get());
+  // Train(net.get());
 
   printf("OK\n");
   return 0;

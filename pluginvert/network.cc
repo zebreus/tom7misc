@@ -439,22 +439,25 @@ void Network::StructuralCheck() const {
   }
 
   // Real layers:
-  for (int i = 1; i < layers.size(); i++) {
-    const Layer &layer = layers[i];
+  for (int layer_idx = 1; layer_idx < layers.size(); layer_idx++) {
+    const Layer &layer = layers[layer_idx];
 
-    const int previous_layer_size = layers[i - 1].num_nodes;
+    const int previous_layer_size = layers[layer_idx - 1].num_nodes;
 
-    for (const Chunk &chunk : layer.chunks) {
+    for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
+      const Chunk &chunk = layer.chunks[chunk_idx];
       CHECK(chunk.span_start >= 0);
-      CHECK(chunk.span_size > 0);
+      CHECK(chunk.span_size > 0) << "Layer " << layer_idx
+                                 << " chunk " << chunk_idx;
       CHECK(chunk.span_start < previous_layer_size);
       CHECK(chunk.span_start + chunk.span_size <= previous_layer_size);
 
       if (chunk.type == CHUNK_SPARSE) {
         CHECK(chunk.indices.size() ==
               chunk.num_nodes * chunk.indices_per_node) <<
-          "Layer " << i << ": " << chunk.indices.size() << " indices but "
-          "expected " << chunk.num_nodes << " * " << chunk.indices_per_node;
+          "Layer " << layer_idx << ": " << chunk.indices.size() <<
+          " indices but expected " << chunk.num_nodes <<
+          " * " << chunk.indices_per_node;
         // Pigeonhole
         CHECK(chunk.indices_per_node <= chunk.span_size);
 

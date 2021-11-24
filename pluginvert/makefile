@@ -25,7 +25,7 @@ OPT=-O3
 CLINCLUDES="-I$(AMDSDK)/include"
 CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/mp3.o $(CC_LIB)/top.o
+UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/mp3.o $(CC_LIB)/top.o $(CC_LIB)/wavesave.o
 
 #  -Wno-write-strings
 CPPFLAGS=-m64 $(OPT) -D__MINGW32__ $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20
@@ -72,6 +72,14 @@ train.exe : train.o network-gpu.o clutil.o $(OBJECTS)
 	@echo -n "!"
 
 print-weights.exe : print-weights.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+plot-beta.exe : plot-beta.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+process.exe : process.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
