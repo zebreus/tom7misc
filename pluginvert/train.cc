@@ -39,7 +39,7 @@ using int64 = int64_t;
 #define MODEL_NAME "params.val"
 
 // Size of time domain window in samples.
-constexpr int WINDOW_SIZE = 256; // 1024;
+constexpr int WINDOW_SIZE = 1024;
 using Plugin = Decimate<WINDOW_SIZE>;
 constexpr int NUM_PARAMS = Plugin::NUM_PARAMETERS;
 
@@ -624,30 +624,34 @@ static unique_ptr<Network> NewParamsNetwork() {
 
   // For the initial convolution.
   // 44.1 would be one millisecond.
-  static constexpr int CONV_WIDTH = 48;
-  static_assert((WINDOW_SIZE % CONV_WIDTH) == 0);
-  // 1D convolution with stride 1.
-  // static constexpr int NUM_OCC = WINDOW_SIZE - CONV_WIDTH + 1;
-  // Keep the same size, although this is not necessary.
-  static constexpr int NUM_FEATURES = CONV_WIDTH;
 
-  static constexpr int NGLOB_0 = 0;
-  
+  static constexpr int INITIAL_CONV_WIDTH = 45;
+  static constexpr int DIV1 = 2, DIV2 = 2, DIV3 = 5;
+
+  {
+    static constexpr int INITIAL_OCC = WINDOW_SIZE - INITIAL_CONV_WIDTH + 1;
+    static_assert((INITIAL_OCC % (DIV1 * DIV2 * DIV3)) == 0);
+  }
+    
   // Each one actually yields two layers in the steady state.
   vector<Structure> structures = {
-    // Describing the input layer.
-    Structure{.G = 0, .NGLOB = 0,
-              .NUM_FEATURES = 1, .OCC_DIVISOR = 1,
-              .FFT_WINDOW = WINDOW_SIZE, .FFT_DENSITY = 1.0},
-    Structure{.G = 8, .NGLOB = 56,
-              .NUM_FEATURES = NUM_FEATURES, .OCC_DIVISOR = 2,
-              .FFT_WINDOW = (int)(WINDOW_SIZE * 0.75), .FFT_DENSITY = 0.25},
-    Structure{.G = 8, .NGLOB = 120,
-              .NUM_FEATURES = (int)(NUM_FEATURES * 0.75), .OCC_DIVISOR = 2,
-              .FFT_WINDOW = (int)(WINDOW_SIZE * 0.50), .FFT_DENSITY = 0.25},
-    Structure{.G = 8, .NGLOB = 56,
-              .NUM_FEATURES = (int)(NUM_FEATURES * 0.625), .OCC_DIVISOR = 2,
-              .FFT_WINDOW = (int)(WINDOW_SIZE * 0.25), .FFT_DENSITY = 0.25},
+    // Describing the output of the first convolution.
+    Structure{
+      .G = 0, .NGLOB = 0,
+      .NUM_FEATURES = INITIAL_CONV_WIDTH, .OCC_DIVISOR = 1,
+      .FFT_WINDOW = WINDOW_SIZE, .FFT_DENSITY = 1.0},
+    Structure{
+      .G = 8, .NGLOB = 56,
+      .NUM_FEATURES = (int)(INITIAL_CONV_WIDTH * 0.75), .OCC_DIVISOR = DIV1,
+      .FFT_WINDOW = (int)(WINDOW_SIZE * 0.75), .FFT_DENSITY = 0.25},
+    Structure{
+      .G = 8, .NGLOB = 120,
+      .NUM_FEATURES = (int)(INITIAL_CONV_WIDTH * 0.625), .OCC_DIVISOR = DIV2,
+      .FFT_WINDOW = (int)(WINDOW_SIZE * 0.50), .FFT_DENSITY = 0.25},
+    Structure{
+      .G = 8, .NGLOB = 56,
+      .NUM_FEATURES = (int)(INITIAL_CONV_WIDTH * 0.5), .OCC_DIVISOR = DIV3,
+      .FFT_WINDOW = (int)(WINDOW_SIZE * 0.25), .FFT_DENSITY = 0.25},
   };
 
   for (const Structure &s : structures) {
@@ -663,7 +667,7 @@ static unique_ptr<Network> NewParamsNetwork() {
     };
 
   
-  static constexpr int INPUT_SIZE = NGLOB_0 + WINDOW_SIZE * 2;
+  static constexpr int INPUT_SIZE = WINDOW_SIZE * 2;
   static_assert(INPUT_SIZE > 0);
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
@@ -674,15 +678,33 @@ static unique_ptr<Network> NewParamsNetwork() {
 
   layers.push_back(L({input_chunk}));
 
-  CHECK(layers.back().num_nodes > 0);
+  // First, convolution on the samples with stride=1.
+  Chunk first_conv_chunk =
+    Network::Make1DConvolutionChunk(
+        // Entire window
+        0, WINDOW_SIZE,
+        // num features = conv width, but this is not necessary
+        INITIAL_CONV_WIDTH, INITIAL_CONV_WIDTH,
+        // full overlap so that we are not baking in any particular
+        // phase.
+        1,
+        LEAKY_RELU, ADAM);
+  Chunk copy_fft_chunk = Network::MakeCopyChunk(WINDOW_SIZE, WINDOW_SIZE);
+
+  layers.push_back(L({first_conv_chunk, copy_fft_chunk}));
   
-  int prev_occurrences = WINDOW_SIZE;  
+  CHECK(layers.back().num_nodes > 0);
+
+  int prev_occurrences = first_conv_chunk.num_occurrences_across;
+  CHECK(prev_occurrences > 0);
   for (int s = 1; s < structures.size(); s++) {
+    printf("s=%d, prev_occurrences=%d\n", s, prev_occurrences);
     const Structure &prev = structures[s - 1];
     const Structure &next = structures[s];
     
     CHECK(next.G <= next.NGLOB);
     CHECK(prev_occurrences % next.OCC_DIVISOR == 0) <<
+      "On s=" << s << ", " <<
       next.OCC_DIVISOR << " must divide " << prev_occurrences;
 
     // mostly we are mapping from 'prev' to 'next', but we actually
@@ -777,58 +799,18 @@ static unique_ptr<Network> NewParamsNetwork() {
       // Convolution, including the G globals we distributed above.
       const int pattern_width =
         prev.G + prev.NUM_FEATURES * next.OCC_DIVISOR;
-      Chunk conv;
-      conv.type = CHUNK_CONVOLUTION_ARRAY;
-      conv.transfer_function = LEAKY_RELU;
-      conv.num_features = next.NUM_FEATURES;
-      conv.occurrence_x_stride = pattern_width;
-      conv.occurrence_y_stride = 1;
-      conv.pattern_width = pattern_width;
-      conv.pattern_height = 1;
-      conv.src_width = pattern_width * prev_occurrences / next.OCC_DIVISOR;
-      conv.src_height = 1;
-      // but we already introduced the next NGLOB above.
-      conv.span_start = next.NGLOB;
-      conv.span_size = conv.src_width;
-      conv.indices_per_node = pattern_width;
-
-      {
-        const auto [indices, this_num_nodes,
-                    num_occurrences_across, num_occurrences_down] =
-          Network::MakeConvolutionArrayIndices(conv.span_start,
-                                               conv.span_size,
-                                               conv.num_features,
-                                               conv.pattern_width,
-                                               conv.pattern_height,
-                                               conv.src_width,
-                                               conv.src_height,
-                                               conv.occurrence_x_stride,
-                                               conv.occurrence_y_stride);
-        CHECK(this_num_nodes ==
-              next.NUM_FEATURES *
-              prev_occurrences / next.OCC_DIVISOR);
-        conv.num_nodes = this_num_nodes;
-        conv.width = conv.num_nodes;
-        conv.height = 1;
-        conv.channels = 1;
-
-        CHECK(num_occurrences_across == prev_occurrences / next.OCC_DIVISOR);
-        conv.num_occurrences_across = num_occurrences_across;
-        CHECK(num_occurrences_down == 1);
-        conv.num_occurrences_down = num_occurrences_down;
-        conv.indices = indices;
-
-        conv.weights = std::vector<float>(
-            conv.indices_per_node * conv.num_features,
-            0.0f);
-        conv.biases = std::vector<float>(conv.num_features, 0.0f);
-      }
-
-      conv.weight_update = ADAM;
-      conv.weights_aux.resize(conv.weights.size() * 2, 0.0f);
-      conv.biases_aux.resize(conv.biases.size() * 2, 0.0f);
-
-      
+      Chunk conv =
+        Network::Make1DConvolutionChunk(
+            // Span is just the previous convolution part.
+            next.NGLOB, pattern_width * prev_occurrences / next.OCC_DIVISOR,
+            next.NUM_FEATURES, pattern_width,
+            // No overlap
+            pattern_width,
+            LEAKY_RELU, ADAM);
+      CHECK(conv.num_nodes == 
+            next.NUM_FEATURES *
+            prev_occurrences / next.OCC_DIVISOR);
+      CHECK(conv.num_occurrences_across == prev_occurrences / next.OCC_DIVISOR);
       
       const int prev_fft_start =
         next.NGLOB + pattern_width * prev_occurrences / next.OCC_DIVISOR;

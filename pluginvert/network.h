@@ -353,6 +353,11 @@ struct Network {
                                       int x_stride,
                                       TransferFunction transfer_function,
                                       WeightUpdate weight_update);
+
+  // Copies the given span, so num_nodes = span_size. The chunk is
+  // fixed. This is currently a sparse chunk with IDENTITY transfer,
+  // but it may become more efficient in the future.
+  static Chunk MakeCopyChunk(int span_start, int span_size);
   
   // Computes the inverted indices for the given layer (the index
   // refers to the destination layer of the relevant gap) and chunk

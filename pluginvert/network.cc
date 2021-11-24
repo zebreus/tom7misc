@@ -700,7 +700,27 @@ Chunk Network::Make1DConvolutionChunk(int span_start, int span_size,
   return conv;
 }
 
-
+Chunk Network::MakeCopyChunk(int span_start, int span_size) {
+  Chunk copy;
+  copy.type = CHUNK_SPARSE;
+  copy.num_nodes = span_size;
+  copy.indices_per_node = 1;
+  copy.span_start = span_start;
+  copy.span_size = span_size;
+  copy.width = span_size;
+  copy.height = 1;
+  copy.channels = 1;
+  copy.weight_update = SGD;
+  copy.transfer_function = IDENTITY;
+  copy.indices.reserve(span_size);
+  for (int i = 0; i < span_size; i++)
+    copy.indices.push_back(span_start + i);
+  copy.weights.resize(span_size, 1.0f);
+  copy.biases.resize(span_size, 0.0f);
+  
+  copy.fixed = true;
+  return copy;
+}
 
 // TODO: This is not that portable (assumes endianness for float
 // is the same as int32?)

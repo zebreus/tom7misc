@@ -144,6 +144,7 @@ int main(int argc, char **argv) {
   SimpleTests(NetworkTestUtil::TwoInputSparse());
   SimpleTests(NetworkTestUtil::TwoDenseChunks());
   SimpleTests(NetworkTestUtil::Net1());
+  SimpleTests(NetworkTestUtil::Copy());  
   SimpleTests(NetworkTestUtil::TwoDenseLayers());
   SimpleTests(NetworkTestUtil::FixedSingle());
   SimpleTests(NetworkTestUtil::CountInternalEdges());  

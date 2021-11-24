@@ -73,6 +73,9 @@ struct NetworkTestUtil {
   // This one also has rounds and examples set > 2^31.
   static TestNet Net1();
 
+  // Copies input to output, using MakeCopyChunk.
+  static TestNet Copy();
+  
   // With a fixed chunk.
   static TestNet FixedSingle();
 

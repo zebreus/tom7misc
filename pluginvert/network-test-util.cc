@@ -490,7 +490,7 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseLayers() {
   };
 }
 
-NetworkTestUtil::TestNet NetworkTestUtil::CountInternalEdges() {
+NetworkTestUtil::TestNet NetworkTestUtil::Copy() {
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
   input_chunk.num_nodes = 8;
@@ -498,19 +498,38 @@ NetworkTestUtil::TestNet NetworkTestUtil::CountInternalEdges() {
   input_chunk.height = 1;
   input_chunk.channels = 1;
 
-  #if 0
-  // Maps 0 to -1 and 1 to 1.
-  Chunk pre =
-    Network::Make1DConvolutionChunk(0, 8,
-                                    // 1x1
-                                    1, 1, 1,
-                                    IDENTITY, SGD);
-  CHECK(pre.indices.size() == 8);
-  CHECK(pre.weights.size() == 1);
-  pre.weights[0] = 20.0f;
-  CHECK(pre.biases.size() == 1);
-  pre.biases[0] = -10.0f;
-  #endif
+  Chunk copy1 = Network::MakeCopyChunk(0, 3);
+  Chunk copy2 = Network::MakeCopyChunk(3, 5);
+
+  Network net({Network::LayerFromChunks({input_chunk}),
+               Network::LayerFromChunks({copy1, copy2})});
+  net.NaNCheck(__func__);
+
+  return TestNet{
+    .name = "Copies 8 inputs, using two chunks via MakeCopyChunk",
+    .net = net,
+    .examples = std::vector<TestExample>{
+      TestExample{
+        .name = "zeroes",
+        .input = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,},
+        .output = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,},
+      },
+      TestExample{
+        .name = "values",
+        .input = {-3.0f, 1.1f, 1.3f, -8.1f, 0.1f, 0.3f, 0.1f, -1.0f,},
+        .output = {-3.0f, 1.1f, 1.3f, -8.1f, 0.1f, 0.3f, 0.1f, -1.0f,},
+      },
+    },
+  };
+}
+
+NetworkTestUtil::TestNet NetworkTestUtil::CountInternalEdges() {
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = 8;
+  input_chunk.width = 8;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
   
   Chunk one = Network::Make1DConvolutionChunk(
       0, 8,
@@ -544,7 +563,6 @@ NetworkTestUtil::TestNet NetworkTestUtil::CountInternalEdges() {
   for (float &f : two.weights) f = 1.0f;
   
   Network net({Network::LayerFromChunks({input_chunk}),
-               //               Network::LayerFromChunks({pre}),
                Network::LayerFromChunks({one}),
                Network::LayerFromChunks({two})});
   net.NaNCheck(__func__);
