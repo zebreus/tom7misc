@@ -13,6 +13,9 @@
 
 #include "base/logging.h"
 
+// Maybe stuff that uses this should be in network-util or something.
+struct ArcFour;
+
 // A layer consists of one or more chunks. Each takes as input some
 // given span of output nodes from the previous layer (perhaps the
 // whole layer), and processes them according to one of these types.
@@ -358,6 +361,25 @@ struct Network {
   // fixed. This is currently a sparse chunk with IDENTITY transfer,
   // but it may become more efficient in the future.
   static Chunk MakeCopyChunk(int span_start, int span_size);
+
+  // Generate a sparse chunk that samples from one or more spans.
+  // For each span, ipn indices will be uniformly sampled, and all
+  // the indices are sorted at the end.
+  // The spans must not overlap.
+  // The chunk's indices_per_node will be the sum of all the ipns,
+  // and the span will be the smallest span that includes all the
+  // spans.
+  struct SparseSpan {
+    int span_start = 0;
+    int span_size = 0;
+    int ipn = 0;
+  };
+  static Chunk MakeRandomSparseChunk(
+      ArcFour *rc,
+      int num_nodes,
+      const std::vector<SparseSpan> &spans,
+      TransferFunction transfer_function,
+      WeightUpdate weight_update);
   
   // Computes the inverted indices for the given layer (the index
   // refers to the destination layer of the relevant gap) and chunk
@@ -516,7 +538,6 @@ struct Errors {
 // training. TODO: Maybe should be in network-util or whatever.
 // TODO: Should parameterize this, probably! It also has a
 // special case for IDENTITY transfer function, yuck.
-struct ArcFour;
 void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism = 2);
 
 #endif

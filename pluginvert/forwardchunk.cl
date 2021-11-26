@@ -102,14 +102,8 @@ __kernel void ForwardChunkDense(
   output_values[dst_start + node_idx] = FORWARD(potential);
 }
 
-// PERF: Consider having this loop over all the features (i.e., pass
-// an index into indices) rather than deriving where we are for each
-// node.
-//
-// PERF: Could also derive the indices programmatically, instead of
-// reading them from memory. If we do this, we should probably generate
-// the OpenCL code?
-__kernel void ForwardChunkConvolutional(
+// This old version uses the pre-built indices array.
+__kernel void ForwardChunkConvolutionalReadIndices(
                 // size layers[src_layer].num_nodes
                 __global const float *restrict previous_layer_outputs,
                 // size chunk.num_nodes * INDICES_PER_NODE.
@@ -156,5 +150,92 @@ __kernel void ForwardChunkConvolutional(
     // potential += w * v;
     potential = fma(w, v, potential);
   }
+  output_values[dst_start + node_idx] = FORWARD(potential);
+}
+
+// This version derives the indices programmatically, which reduces memory
+// traffic and data-dependent reads.
+__kernel void ForwardChunkConvolutional(
+                // size layers[src_layer].num_nodes
+                __global const float *restrict previous_layer_outputs,
+                // size chunk.num_nodes * INDICES_PER_NODE.
+                // (unused)
+                __global const int *restrict indices,
+                // size INDICES_PER_NODE * NUM_CONVOLUTIONS.
+                __global const float *restrict weights,
+                // size NUM_CONVOLUTIONS.
+                __global const float *restrict bias,
+                // size chunk.num_nodes. This is a sub-buffer pointing
+                // to the interior of the destination layer's output
+                // stimulation, so that output_values[0] is the first
+                // output of the chunk.
+                __global float *restrict output_values) {
+
+  // Note: I tried making this a 2D kernel but it was measurably worse.
+  const int node_idx = get_global_id(0);
+  // (Hopefully avoiding integer division since the denominator is a
+  // compile-time constant.)
+  // PERF quotrem?
+  const int feature_number = node_idx % NUM_FEATURES;
+  const int occurrence_number = node_idx / NUM_FEATURES;
+
+  const int example_idx = get_global_id(1);
+
+  const int src_start = example_idx * SRC_LAYER_SIZE;
+  const int dst_start = example_idx * DST_LAYER_SIZE + CHUNK_START;
+
+
+  // Start with bias; shared by all the nodes in this convolution.
+  float potential = bias[feature_number];
+  // Weights are also shared.
+  const __global float *feature_weights =
+    weights + (feature_number * INDICES_PER_NODE);
+
+  // These are already global indices into the previous layer, so
+  // we can ignore SPAN_START.
+  const __global int *my_indices =
+       indices + (occurrence_number * INDICES_PER_NODE);
+
+  // PERF: Common for these to be 1D. Dividing or modding by
+  // ACROSS=1 is easy for the compiler to do, but help it know
+  // that these expressions are trivial if DOWN=1.
+  const int occ_row =
+    NUM_OCCURRENCES_DOWN == 1 ?
+    0 :
+    (occurrence_number / NUM_OCCURRENCES_ACROSS);
+  const int occ_col =
+    NUM_OCCURRENCES_DOWN == 1 ?
+    occurrence_number :
+    (occurrence_number % NUM_OCCURRENCES_ACROSS);
+
+  const int src_row = occ_row * OCCURRENCE_Y_STRIDE;
+  const int src_col = occ_col * OCCURRENCE_X_STRIDE;
+
+  // Generate indices for the occurrence the same way we do in
+  // MakeConvolutionArrayIndices.
+  const int src_start_offset = src_row * SRC_WIDTH + src_col;
+
+  // index into weights. PERF: could also be derived from x,y
+  int i = 0;
+  for (int y = 0; y < PATTERN_HEIGHT; y++) {
+    // PERF: Some manual strength reduction is possible here,
+    // but OpenCL can probably do it? (Typically it is unrolling
+    // this entire loop!)
+    // Always the adjacent row.
+    int src_offset = src_start_offset + (y * SRC_WIDTH);
+    for (int x = 0; x < PATTERN_WIDTH; x++) {
+      // Absolute index into the layer, but ignoring example num.
+      const int in_idx = SPAN_START + src_offset;
+      const float w = feature_weights[i];
+      const float v = previous_layer_outputs[src_start + in_idx];
+
+      // potential += w * v;
+      potential = fma(w, v, potential);
+
+      src_offset++;
+      i++;
+    }
+  }
+
   output_values[dst_start + node_idx] = FORWARD(potential);
 }

@@ -1,10 +1,14 @@
 #include "network.h"
 
+#include <set>
+#include <string>
 #include <cmath>
 #include <memory>
 
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "network-test-util.h"
+#include "arcfour.h"
 
 using TestNet = NetworkTestUtil::TestNet;
 using TestExample = NetworkTestUtil::TestExample;
@@ -25,6 +29,7 @@ static void SimpleTests(TestNet test_net) {
         }
 
         CHECK(stim.values[0].size() == n.layers[0].num_nodes);
+        CHECK(example.input.size() == n.layers[0].num_nodes);
         stim.values[0] = example.input;
         n.RunForward(&stim);
 
@@ -37,7 +42,7 @@ static void SimpleTests(TestNet test_net) {
             printf("\n");
           }
         }
-        
+
         stim.NaNCheck(example.name);
 
         // No change to input
@@ -136,6 +141,57 @@ void Network::CheckInvertedIndices() const {
 
 #endif
 
+static void TestSparseChunk() {
+  const string seed = StringPrintf("x.%lld", time(nullptr));
+  ArcFour rc(seed);
+
+  {
+    Chunk sparse = Network::MakeRandomSparseChunk(
+        &rc,
+        3,
+        {
+          Network::SparseSpan{.span_start = 1,
+                              .span_size = 3,
+                              .ipn = 2},
+          Network::SparseSpan{.span_start = 4,
+                              .span_size = 2,
+                              .ipn = 2},
+        },
+        IDENTITY, SGD);
+    CHECK(sparse.num_nodes == 3);
+    CHECK(sparse.transfer_function == IDENTITY);
+    CHECK(sparse.weight_update == SGD);
+    CHECK(sparse.type == CHUNK_SPARSE);
+    CHECK(sparse.indices_per_node == 4);
+    CHECK(sparse.biases.size() == 3);
+    CHECK(sparse.weights.size() == 3 * 4);
+    CHECK(sparse.span_start == 1);
+    CHECK(sparse.span_size == 5);
+    CHECK(sparse.width == 3);
+
+    for (int i = 0; i < 3; i++) {
+      std::set<int> ids;
+      auto Has = [&ids](int d) {
+          return ids.find(d) != ids.end();
+        };
+      for (int j = 0; j < 4; j++) {
+        int id = sparse.indices[i * 4 + j];
+        CHECK(!Has(id)) << id;
+        ids.insert(id);
+      }
+
+      // Exactly two of the three in this span.
+      CHECK((Has(1) && Has(2) && !Has(3)) ||
+            (Has(1) && !Has(2) && Has(3)) ||
+            (!Has(1) && Has(2) && Has(3)));
+
+      // Sampled two from a span of size two, so
+      // we must have both.
+      CHECK(Has(4));
+      CHECK(Has(5));
+    }
+  }
+}
 
 int main(int argc, char **argv) {
   SimpleTests(NetworkTestUtil::SingleSparse());
@@ -143,11 +199,14 @@ int main(int argc, char **argv) {
   SimpleTests(NetworkTestUtil::SingleConvolution());
   SimpleTests(NetworkTestUtil::TwoInputSparse());
   SimpleTests(NetworkTestUtil::TwoDenseChunks());
+  SimpleTests(NetworkTestUtil::SimpleConv());
   SimpleTests(NetworkTestUtil::Net1());
-  SimpleTests(NetworkTestUtil::Copy());  
+  SimpleTests(NetworkTestUtil::Copy());
   SimpleTests(NetworkTestUtil::TwoDenseLayers());
   SimpleTests(NetworkTestUtil::FixedSingle());
-  SimpleTests(NetworkTestUtil::CountInternalEdges());  
+  SimpleTests(NetworkTestUtil::CountInternalEdges());
+
+  TestSparseChunk();
 
   printf("OK\n");
   return 0;

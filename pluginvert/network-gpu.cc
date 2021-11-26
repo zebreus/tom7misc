@@ -148,16 +148,30 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
       StringAppendF(&kernel_src,
                     "\n"
                     "#define INDICES_PER_NODE %d\n"
-                    "#define NUM_FEATURES %d\n"
                     "#define SPAN_START %d\n"
                     "#define SPAN_SIZE %d\n"
+                    "#define NUM_FEATURES %d\n"
+                    "#define PATTERN_WIDTH %d\n"
+                    "#define PATTERN_HEIGHT %d\n"
+                    "#define SRC_WIDTH %d\n"
+                    "#define OCCURRENCE_X_STRIDE %d\n"
+                    "#define OCCURRENCE_Y_STRIDE %d\n"
+                    "#define NUM_OCCURRENCES_ACROSS %d\n"
+                    "#define NUM_OCCURRENCES_DOWN %d\n"
                     "#define CHUNK_START %d\n"
                     "#define SRC_LAYER_SIZE %d\n"
                     "#define DST_LAYER_SIZE %d\n",
                     chunk.indices_per_node,
-                    chunk.num_features,
                     chunk.span_start,
                     chunk.span_size,
+                    chunk.num_features,
+                    chunk.pattern_width,
+                    chunk.pattern_height,
+                    chunk.src_width,
+                    chunk.occurrence_x_stride,
+                    chunk.occurrence_y_stride,
+                    chunk.num_occurrences_across,
+                    chunk.num_occurrences_down,
                     chunk_start,
                     src_layer_size,
                     dst_layer_size);
@@ -166,6 +180,37 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
       kernel_src += base_src;
       auto [program, kernel] = cl->BuildOneKernel(kernel_src, kernel_name);
       CHECK(program != 0 && kernel != 0);
+
+      // TODO: Make this part of clutil maybe, and remove the memory leaks!
+      if (false) {
+        printf("Source:\n%s\n", kernel_src.c_str());
+        // XXX leaks, spams
+        size_t number_of_binaries = 0;
+        CHECK_SUCCESS(clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES,
+                                       0, nullptr, &number_of_binaries));
+        cl_int *binary_sizes = new int[number_of_binaries];
+        char **binary = new char*[number_of_binaries];
+        CHECK_SUCCESS(clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES,
+                                       number_of_binaries * sizeof(cl_int),
+                                       binary_sizes,
+                                       &number_of_binaries));
+        for (int i = 0; i < number_of_binaries; i++)
+          binary[i] = new char[binary_sizes[i]];
+        size_t nob = 0;
+        CHECK_SUCCESS(clGetProgramInfo(program, CL_PROGRAM_BINARIES,
+                                       number_of_binaries * sizeof(char*),
+                                       binary,
+                                       &nob));
+        CHECK(nob == number_of_binaries) << nob;
+        CHECK(nob > 0);
+        // Assume binary 0 is nvidia.
+        // The binary is actually PTX assembler which is basically readable.
+        printf("Binary %d:\n", 0);
+        for (int c = 0; c < binary_sizes[0]; c++)
+          printf("%c", binary[0][c]);
+        printf("\n");
+      }
+
 
       ChunkKernel ck;
       ck.program = program;
@@ -833,8 +878,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
     // very low to exercise those code paths!
     // number of elements to allocate between both weights and biases.
     // 4 GB needs a very big card! PERF
-    constexpr int64 MAX_NUM_SCRATCH = 1 << 30;
-    
+    constexpr int64 MAX_NUM_SCRATCH = 1LL << 31;
+
     // The largest sum of weights+biases in any chunk.
     int64 max_all = 0LL;
     // The number of weights and biases on that largest overall layer.
@@ -854,7 +899,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
         const int64 num_biases = chunk.biases.size();
 
         max_weights = std::max(max_weights, num_weights);
-        max_biases = std::max(max_biases, num_biases);      
+        max_biases = std::max(max_biases, num_biases);
 
         const int64 num_all = num_weights + num_biases;
         if (num_all >= max_all) {
@@ -869,7 +914,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
     // num_weight_grad and num_bias_grad. Each must be at
     // least its corresponding max_ or else we can't even fit one
     // example at a time.
-  
+
     // We could allow in-place SGD in this case, with significant
     // complexity...
     CHECK(max_weights + max_biases <= MAX_NUM_SCRATCH) <<
@@ -885,7 +930,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
       return make_pair(max_weights * examples_per_round,
                        max_biases * examples_per_round);
     }
-    
+
     // Now we want to apportion the scratch space between the
     // weights and biases. Maybe we should do some explicit
     // optimization here; what we really want to do is
@@ -897,7 +942,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
     // This is O(examples_per_round), which is clearly fine at setup
     // time.
     for (;;) {
-      const int64 spare_scratch = MAX_NUM_SCRATCH - wsize - bsize;  
+      const int64 spare_scratch = MAX_NUM_SCRATCH - wsize - bsize;
       CHECK(spare_scratch >= 0) << "Precondition.";
 
       // rounding down
@@ -906,14 +951,19 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
       CHECK(weights_w >= 1);
       CHECK(biases_w >= 1);
 
+      /*
+      printf("spare %lld  wsize %lld bsize %lld  ww %d bw %d\n",
+             spare_scratch, wsize, bsize, weights_w, biases_w);
+      */
+
       // Increase one or the other, balancing by the width on the
       // largest layer.
       if (weights_w < examples_per_round &&
           weights_w < biases_w &&
-          weights_largest < spare_scratch) {
+          weights_largest <= spare_scratch) {
         wsize += weights_largest;
       } else if (biases_w < examples_per_round &&
-                 biases_largest < spare_scratch) {
+                 biases_largest <= spare_scratch) {
         bsize += biases_largest;
       } else {
         break;
@@ -924,13 +974,13 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
     // largest layer).
     CHECK(wsize <= max_weights * examples_per_round);
     CHECK(bsize <= max_biases * examples_per_round);
-    
-    CHECK(wsize * weights_largest + bsize * biases_largest <=
-          MAX_NUM_SCRATCH) << "Bug: by construction above";
+
+    CHECK(wsize + bsize <= MAX_NUM_SCRATCH) << "Bug: by construction above. "
+        << wsize << " + " << bsize << " <= " << MAX_NUM_SCRATCH;
 
     return make_pair(wsize, bsize);
   };
-      
+
   std::tie(num_weight_grad, num_bias_grad) =
       ApportionScratch();
 

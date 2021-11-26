@@ -330,6 +330,148 @@ NetworkTestUtil::TestNet NetworkTestUtil::TwoDenseChunks() {
   };
 }
 
+NetworkTestUtil::TestNet NetworkTestUtil::SimpleConv() {
+  // 3x2 convolution on 4x3 input.
+  Chunk input;
+  input.type = CHUNK_INPUT;
+  input.num_nodes = 12;
+  // Conv chunks use the pattern width/height, and ignore these.
+  input.width = 1;
+  input.height = 12;
+  input.channels = 1;
+
+  // One feature:
+  // 3  2 1
+  // 4 -5 6
+  //  -100
+  Chunk conv;
+  conv.type = CHUNK_CONVOLUTION_ARRAY;
+  conv.num_features = 1;
+  conv.occurrence_x_stride = 1;
+  conv.occurrence_y_stride = 1;
+  conv.pattern_width = 3;
+  conv.pattern_height = 2;
+  conv.src_width = 4;
+  conv.src_height = 3;
+  conv.transfer_function = IDENTITY;
+  conv.span_start = 0;
+  conv.span_size = 12;
+  conv.indices_per_node = 6;
+
+  const auto [indices, this_num_nodes,
+              num_occurrences_across, num_occurrences_down] =
+    Network::MakeConvolutionArrayIndices(0, 12,
+                                         conv.num_features,
+                                         conv.pattern_width,
+                                         conv.pattern_height,
+                                         conv.src_width,
+                                         conv.src_height,
+                                         conv.occurrence_x_stride,
+                                         conv.occurrence_y_stride);
+  conv.num_nodes = this_num_nodes;
+  conv.width = conv.num_nodes;
+  conv.height = 1;
+  conv.channels = 1;
+  CHECK(num_occurrences_across == 2);
+  CHECK(num_occurrences_down == 2);
+  conv.num_occurrences_across = num_occurrences_across;
+  conv.num_occurrences_down = num_occurrences_down;
+  conv.indices = indices;
+  CHECK(conv.indices.size() ==
+        3 * 2 *
+        num_occurrences_across * num_occurrences_down);
+  // One feature:
+  // 3  2 1
+  // 4 -5 6
+  //  -100
+  conv.weights = {3.0f, 2.0f, 1.0f,
+                  4.0f, -5.0f, 6.0f};
+  conv.biases = {-100.0f};
+
+  Network net({Network::LayerFromChunks({input}),
+               Network::LayerFromChunks({conv})});
+  net.NaNCheck(__func__);
+
+  TestExample example1{
+    .name = "zero",
+    .input = {0.0, 0.0, 0.0, 0.0,
+              0.0, 0.0, 0.0, 0.0,
+              0.0, 0.0, 0.0, 0.0},
+    .output = {
+      -100, -100,
+      -100, -100,
+    },
+  };
+
+  TestExample example2{
+    .name = "one-hot",
+    .input = {0.0, 1.0, 0.0, 0.0,
+              0.0, 0.0, 0.0, 0.0,
+              0.0, 0.0, 0.0, 0.0},
+    .output = {
+      -98, -97,
+      -100, -100,
+    },
+  };
+
+  TestExample example3{
+    .name = "nwse-corners",
+    .input = {1.0, 0.0, 0.0, 0.0,
+              0.0, 0.0, 0.0, 0.0,
+              0.0, 0.0, 0.0, 1.0},
+    .output = {
+      -97, -100,
+      -100, -94,
+    },
+  };
+
+  TestExample example4{
+    .name = "nesw-corners",
+    .input = {0.0, 0.0, 0.0, 2.0,
+              0.0, 0.0, 0.0, 0.0,
+              3.0, 0.0, 0.0, 0.0},
+    .output = {
+      -100, -98,
+      -88, -100,
+    },
+  };
+
+  // One feature:
+  // 3  2 1
+  // 4 -5 6
+  //  -100
+  TestExample example5{
+    .name = "uniform",
+    .input = {1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0,
+              1.0, 1.0, 1.0, 1.0},
+    .output = {
+      -89, -89,
+      -89, -89,
+    },
+  };
+
+  // Note: I used straightforward net cc code
+  // as reference; didn't compute expected output
+  // manually.
+  TestExample example6{
+    .name = "values",
+    .input = {-0.6,  0.3, 0.9,  0.7,
+               1.0, -2.0, 2.5,  0.6,
+               1.1,  0.2, 0.4, -1.0},
+    .output = {
+      -71.3, -113.5,
+      -92.7, -107.6,
+    },
+  };
+
+  return TestNet{
+    .name = "simple 3x2 convolution, overlapping",
+    .net = net,
+    .examples = {example1, example2, example3, example4,
+                 example5, example6},
+  };
+}
 
 NetworkTestUtil::TestNet NetworkTestUtil::Net1() {
   Chunk input_chunk;
@@ -530,7 +672,7 @@ NetworkTestUtil::TestNet NetworkTestUtil::CountInternalEdges() {
   input_chunk.width = 8;
   input_chunk.height = 1;
   input_chunk.channels = 1;
-  
+
   Chunk one = Network::Make1DConvolutionChunk(
       0, 8,
       // two 2x1 features: 0-1 and 1-0 transition
@@ -555,13 +697,13 @@ NetworkTestUtil::TestNet NetworkTestUtil::CountInternalEdges() {
   CHECK(one.biases.size() == 2);
   one.biases[0] = -100.0f;
   one.biases[1] = -100.0f;
-  
+
   CHECK(one.num_nodes == 7 * 2);
-  
+
   Chunk two = Network::MakeDenseChunk(1, 0, 7 * 2, IDENTITY, SGD);
   // Sum 'em up.
   for (float &f : two.weights) f = 1.0f;
-  
+
   Network net({Network::LayerFromChunks({input_chunk}),
                Network::LayerFromChunks({one}),
                Network::LayerFromChunks({two})});

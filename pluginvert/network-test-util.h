@@ -69,13 +69,20 @@ struct NetworkTestUtil {
   // computes 5a - 7a.
   static TestNet TwoDenseChunks();
 
+  // 3x2 convolution on 4x3 input.
+  // One feature:
+  // 3  2 1
+  // 4 -5 6
+  //  -100
+  static TestNet SimpleConv();
+
   // Small network that computes a nontrivial function.
   // This one also has rounds and examples set > 2^31.
   static TestNet Net1();
 
   // Copies input to output, using MakeCopyChunk.
   static TestNet Copy();
-  
+
   // With a fixed chunk.
   static TestNet FixedSingle();
 
@@ -88,9 +95,9 @@ struct NetworkTestUtil {
   // From an input of size 8, counts internal 0-1 and 1-0 transitions,
   // with a convolution and a dense node. (Output is not exact.)
   static TestNet CountInternalEdges();
-  
+
   // TODO: Need some tests with convolutions!
-  
+
   // F(x) = x. One sparse node.
   static TrainNet LearnTrivialIdentitySparse();
   static TrainNet LearnTrivialIdentityDense();

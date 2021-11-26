@@ -11,6 +11,9 @@
 #include <chrono>
 #include <thread>
 #include <deque>
+#include <numbers>
+
+#include <api/fftw3.h>
 
 #include "network.h"
 #include "network-test-util.h"
@@ -36,6 +39,8 @@ static CL *cl = nullptr;
 
 using int64 = int64_t;
 
+static constexpr float TWO_PI = 2.0f * std::numbers::pi_v<float>;
+
 #define MODEL_NAME "params.val"
 
 // Size of time domain window in samples.
@@ -43,25 +48,29 @@ constexpr int WINDOW_SIZE = 1024;
 using Plugin = Decimate<WINDOW_SIZE>;
 constexpr int NUM_PARAMS = Plugin::NUM_PARAMETERS;
 
-#define WORDS_BEFORE 3
-#define WORDS_AFTER 2
-#define NUM_WORDS (WORDS_BEFORE + WORDS_AFTER + 1)
-#define WORDLIST_SIZE 1024
+constexpr int INPUT_SIZE = WINDOW_SIZE + WINDOW_SIZE;
+constexpr int OUTPUT_SIZE = NUM_PARAMS;
+constexpr int SAMPLE_RATE = 44100;
 
 // Examples are about 2k.
 static constexpr int EXAMPLES_PER_ROUND = 1000;
 
-#if 0
 struct ExampleThread {
+  using example_type = std::pair<std::vector<float>, std::vector<float>>;
+  
+  static constexpr int P_SIN = 12;
 
+  // Rest is white noise.
+  static_assert(P_SIN <= 256);
+    
   static constexpr int TARGET_SIZE = 3;
 
-  std::vector<int> GetExamples() {
+  example_type GetExamples() {
     for (;;) {
       {
         MutexLock ml(&m);
         if (!q.empty()) {
-          std::vector<int> ret = std::move(q.back());
+          example_type ret = std::move(q.back());
           q.pop_back();
           return ret;
         }
@@ -72,7 +81,7 @@ struct ExampleThread {
   }
 
   ExampleThread() {
-    work_thread.reset(new std::thread(&Generate, this));
+    work_thread.reset(new std::thread(&Generate, this, 1));
   }
 
   ~ExampleThread() {
@@ -80,8 +89,64 @@ struct ExampleThread {
   }
 
 private:
-  void Generate() {
-    printf("Started example thread.\n");
+  static vector<float> RandomSamples(ArcFour *rc) {
+    vector<float> ret;
+    ret.reserve(WINDOW_SIZE);
+    
+    uint8 method = rc->Byte();
+    if (method < P_SIN) {
+      float amp = RandFloat(rc);
+      // PERF can bake in SAMPLE_RATE divisor too
+      float freq_twopi =
+        TWO_PI * (10.0f + RandFloat(rc) * 20000.0f);
+      // TODO: sample phases uniformly
+      const int phase = RandTo(rc, SAMPLE_RATE);
+      for (int i = 0; i < WINDOW_SIZE; i++) {
+        float sec = (i + phase) / (float)SAMPLE_RATE;
+        ret.push_back(amp * sin(freq_twopi * sec));
+      }
+      return ret;
+    } 
+    method -= P_SIN;
+
+    // Otherwise, white noise.
+    for (int i = 0; i < WINDOW_SIZE; i++) {
+      float f = RandFloat(rc);
+      ret.push_back(f * 2.0f - 1.0f);
+    }
+    return ret;
+  }
+  
+  // Perhaps should have more than one generation thread...
+  void Generate(int id) {
+    printf("Started example thread %d.\n", id);
+    ArcFour rc(StringPrintf("examples.%lld.%d\n", time(nullptr), id));
+    
+    // TODO: float ffts
+    using element_type = double;
+    
+    fftw_plan plan;
+    [[maybe_unused]] fftw_plan rplan;
+    element_type *in = (element_type*)
+      fftw_malloc(sizeof (element_type) * WINDOW_SIZE);
+    element_type *out = (element_type*)
+      fftw_malloc(sizeof (element_type) * WINDOW_SIZE);      
+
+    // Discrete Hartley Transform is its own inverse.
+    static constexpr fftw_r2r_kind fwd = FFTW_DHT;
+    static constexpr fftw_r2r_kind inv = FFTW_DHT;
+    
+    plan = fftw_plan_r2r_1d(WINDOW_SIZE, in, out,
+                            fwd, FFTW_MEASURE);
+    // printf("Forward plan:\n");
+    // fftw_print_plan(plan);
+
+    rplan = fftw_plan_r2r_1d(WINDOW_SIZE, in, out,
+                             inv, FFTW_MEASURE);
+
+    // printf("Inverse plan:\n");
+    // fftw_print_plan(rplan);
+   
     for (;;) {
       const bool need_example = [&](){
           MutexLock ml(&m);
@@ -89,25 +154,198 @@ private:
         }();
 
       if (need_example) {
-        // examples_per_round * num_words
-        std::vector<int> example_words;
-
+        // examples_per_round * INPUT_SIZE;
+        std::vector<float> examples;
+        // examples_per_round * NUM_PARAMS
+        std::vector<float> outputs;
+        
         // Fill 'em
+        for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
+          // Random parameters
+          std::array<float, Plugin::NUM_PARAMETERS> params;
+          for (int p = 0; p < Plugin::NUM_PARAMETERS; p++) {
+            const Param &param = Plugin::PARAMS[p];
+            float f = RandomBeta(&rc, param.beta_a, param.beta_b);
+            // Note!
+            // We train to predict the position between [lb, ub]
+            // (as a number in [0, 1]) because the network has some
+            // built in priors against large values (e.g. absolute
+            // limits on weights/biases when clipping is turned on)
+            // and to avoid accuracy problems with large floats.
+            outputs.push_back(f);
+          
+            params[p] = param.lb + (param.ub - param.lb) * f;
+          }
+          
+          vector<float> samples =
+            Plugin::Process(RandomSamples(&rc), params);
+          CHECK(samples.size() == WINDOW_SIZE);
+          for (int s = 0; s < WINDOW_SIZE; s++)
+            in[s] = samples[s];
+          fftw_execute(plan);
 
+          // Regular samples
+          for (float f : samples) examples.push_back(f);
+          // 'FFT' values
+          for (int i = 0; i < WINDOW_SIZE; i++) {
+            // FFTW output needs to be normalized
+            examples.push_back((float)out[i] * (1.0f / WINDOW_SIZE));
+          }
+        }
+
+        CHECK(examples.size() == EXAMPLES_PER_ROUND * INPUT_SIZE);
+        CHECK(outputs.size() == EXAMPLES_PER_ROUND * OUTPUT_SIZE);        
+        
         {
           MutexLock ml(&m);
-          q.push_front(std::move(example_words));
+          q.push_front(
+              make_pair(std::move(examples), std::move(outputs)));
         }
       } else {
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
       }
     }
+
+    /*
+    fftw_free(in);
+    fftw_free(out);
+    fftw_destroy_plan(plan);
+    fftw_destroy_plan(rplan);
+    */
   }
 
   std::mutex m;
-  std::deque<std::vector<int>> q;
+  std::deque<example_type> q;
 
   std::unique_ptr<std::thread> work_thread;
+};
+
+// TODO: To utilities
+struct TrainingImages {
+  TrainingImages(const Network &net,
+                 int image_every,
+                 int image_width = 3000,
+                 int image_height = 1000) :
+    IMAGE_WIDTH(image_width), IMAGE_HEIGHT(image_height) {
+    CHECK((IMAGE_WIDTH % 2) == 0) << "Assumes even width of image for "
+      "shrinking step";
+
+    for (int i = 0; i < net.layers.size(); i++) {
+      // XXX skip input layer?
+      image_x.push_back(0);
+      images.emplace_back(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
+      images.back()->Clear32(0x000000FF);
+      images.back()->BlendText2x32(
+          2, 2, 0x9999AAFF,
+          StringPrintf("Layer %d | Start Round %lld | 1 px = %d rounds ",
+                       i, net.rounds, image_every));
+    }
+  }
+
+  // Make sure you do net_gpu->ReadFromGPU() first!
+  void Sample(const Network &net) {
+    CHECK(images.size() >= 2);
+    CHECK(images[1].get() != nullptr);
+    
+    for (int target_layer = 1;
+         target_layer < net.layers.size();
+         target_layer++) {
+      ImageRGBA *image = images[target_layer].get();
+      if (image == nullptr) continue;
+
+      // If we exceeded the bounds, shrink in place.
+      if (image_x[target_layer] >= image->Width()) {
+        printf("Shrink image for layer %d\n", target_layer);
+        // Skips over the text at the top (but not any pixels that
+        // were drawn over it...)
+        for (int y = 18; y < IMAGE_HEIGHT; y++) {
+          // First half gets the entire image shrunk 2:1.
+          for (int x = 0; x < IMAGE_WIDTH / 2; x++) {
+            const auto [r1, g1, b1, a1] = image->GetPixel(x * 2 + 0, y);
+            const auto [r2, g2, b2, a2] = image->GetPixel(x * 2 + 1, y);
+            // We know we have full alpha here.
+            const uint8 r = ((uint32)r1 + (uint32)r2) >> 1;
+            const uint8 g = ((uint32)g1 + (uint32)g2) >> 1;
+            const uint8 b = ((uint32)b1 + (uint32)b2) >> 1;
+            image->SetPixel(x, y, r, g, b, 0xFF);
+          }
+          // And clear the second half.
+          for (int x = IMAGE_WIDTH / 2; x < image->Width(); x++) {
+            image->SetPixel(x, y, 0, 0, 0, 0xFF);
+          }
+        }
+        image_x[target_layer] = IMAGE_WIDTH / 2;
+      }
+
+      const int ix = image_x[target_layer];
+      if (ix >= image->Width()) continue;
+
+      CHECK(net.layers.size() > 0);
+      CHECK(target_layer < net.layers.size());
+      const Layer &layer = net.layers[target_layer];
+      CHECK(layer.chunks.size() > 0);
+
+      // TODO: Output all chunks!
+      const Chunk &chunk = layer.chunks.front();
+      auto ToScreenY = [this](float w) {
+          int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
+          int y = IMAGE_HEIGHT - yrev;
+          // Always draw on-screen.
+          return std::clamp(y, 0, IMAGE_HEIGHT - 1);
+        };
+      // 1, -1, x axis
+      if (ix & 1) {
+        image->BlendPixel32(ix, ToScreenY(1), 0xCCFFCC40);
+        image->BlendPixel32(ix, ToScreenY(0), 0xCCCCFFFF);
+        image->BlendPixel32(ix, ToScreenY(-1), 0xFFCCCC40);
+      }
+
+      uint8 weight_alpha =
+        std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
+
+      for (float w : chunk.weights) {
+        // maybe better to AA this?
+        image->BlendPixel32(ix, ToScreenY(w),
+                            0xFFFFFF00 | weight_alpha);
+      }
+
+      uint8 bias_alpha =
+        std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
+
+      for (float b : chunk.biases) {
+        image->BlendPixel32(ix, ToScreenY(b),
+                            0xFF777700 | bias_alpha);
+      }
+
+      if (chunk.weight_update == ADAM) {
+        CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
+        CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
+        for (int idx = 0; idx < chunk.weights.size(); idx++) {
+          const float m = chunk.weights_aux[idx * 2 + 0];
+          const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
+
+          image->BlendPixel32(ix, ToScreenY(m),
+                              0xFFFF0000 | weight_alpha);
+          image->BlendPixel32(ix, ToScreenY(v),
+                              0xFF00FF00 | weight_alpha);
+        }
+        // Also bias aux?
+      }
+
+      if (ix % 100 == 0) {
+        string filename = StringPrintf("train-image-%d.png",
+                                       target_layer);
+        image->Save(filename);
+        printf("Wrote %s\n", filename.c_str());
+      }
+      image_x[target_layer]++;
+    }
+  }
+  
+private:
+  const int IMAGE_WIDTH = 0, IMAGE_HEIGHT = 0;
+  std::vector<std::unique_ptr<ImageRGBA>> images;
+  std::vector<int> image_x;
 };
 
 static void Train(Network *net) {
@@ -121,9 +359,11 @@ static void Train(Network *net) {
   static constexpr bool SAVE_INTERMEDIATE = true;
   // XXX need to reduce this over time
   static constexpr float LEARNING_RATE = 0.01f;
-  // This is conservative, but with larger values I would
+  // This is conservative, but with larger exponents I would
   // get divergence after hundreds of thousands of rounds.
-  static constexpr float ADAM_EPSILON = 1e-6;
+  // This happened again with the plugin parameter predictor
+  // with a value of 1e-6!
+  static constexpr float ADAM_EPSILON = 1e-3;
 
   // XXX this should probably depend on the learning rate; if the
   // learning rate is too small, it won't even be able to overcome
@@ -136,26 +376,12 @@ static void Train(Network *net) {
   constexpr int VERBOSE_EVERY = 100;
   // We save this to the error history file every this many
   // verbose rounds.
-  constexpr int HISTORY_EVERY_VERBOSE = 10;
+  constexpr int HISTORY_EVERY_VERBOSE = 5;
   int64 total_verbose = 0;
-  constexpr int TIMING_EVERY = 1000;
+  constexpr int TIMING_EVERY = 500;
 
-  // TODO: To utilities
-  std::vector<std::unique_ptr<ImageRGBA>> images;
-  std::vector<int> image_x;
-  constexpr int IMAGE_WIDTH = 3000;
-  constexpr int IMAGE_HEIGHT = 1000;
-  constexpr int IMAGE_EVERY = 10;
-  for (int i = 0; i < net->layers.size(); i++) {
-    // XXX skip input layer?
-    image_x.push_back(0);
-    images.emplace_back(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
-    images.back()->Clear32(0x000000FF);
-    images.back()->BlendText2x32(
-        2, 2, 0x9999AAFF,
-        StringPrintf("Layer %d | Start Round %lld | 1 px = %d rounds ",
-                     i, net->rounds, IMAGE_EVERY));
-  }
+  constexpr int IMAGE_EVERY = 100;
+  TrainingImages images(*net, IMAGE_EVERY);
 
   printf("Training!\n");
 
@@ -177,16 +403,6 @@ static void Train(Network *net) {
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(
       new TrainingRoundGPU(EXAMPLES_PER_ROUND, cl, *net));
-
-  // Used to fill the input and output for the training example,
-  // and preserved on the CPU to compute loss in verbose rounds.
-  constexpr int INPUT_SIZE = (WORDS_BEFORE + WORDS_AFTER) *
-    WORDLIST_SIZE;
-  constexpr int OUTPUT_SIZE = (WORDS_BEFORE + WORDS_AFTER + 1) *
-    WORDLIST_SIZE;
-
-  std::vector<float> inputs(INPUT_SIZE * EXAMPLES_PER_ROUND, 0.0f);
-  std::vector<float> expecteds(OUTPUT_SIZE * EXAMPLES_PER_ROUND, 0.0f);
 
   CHECK(!net->layers.empty());
   CHECK(net->layers[0].num_nodes == INPUT_SIZE);
@@ -214,53 +430,22 @@ static void Train(Network *net) {
 
     // Initialize training examples.
     // (PERF: parallelize?)
+
+    // TODO: Rename this timer. It's like, stalling on getexamples.
+    Timer frag_timer;
+    // All examples for the round, flat, as word ids.
+    auto [inputs, expecteds] = example_thread.GetExamples();
+    frag_ms += frag_timer.MS();
+
     {
-      Timer frag_timer;
-
-      // All examples for the round, flat, as word ids.
-      std::vector<int> examples = example_thread.GetExamples();
-      frag_ms += frag_timer.MS();
-
       Timer example_timer;
-      for (float &f : inputs) f = 0.0f;
-      for (float &f : expecteds) f = 0.0f;
-
-      // PERF probably skip parallelism here?
-      ParallelComp(
-          EXAMPLES_PER_ROUND,
-          [&](int i) {
-            // start position in the word id array.
-            int ex_start = NUM_WORDS * i;
-
-            // encoded_words already put the target word at the end.
-            // Input is WORDS_BEFORE WORDS_AFTER
-            // Output is WORDS_BEFORE WORDS_AFTER target_word
-            for (int w = 0;
-                 w < (WORDS_BEFORE + WORDS_AFTER);
-                 w++) {
-              int hot = examples[ex_start + w];
-              inputs[INPUT_SIZE * i + w * WORDLIST_SIZE + hot] = 1.0f;
-            }
-
-            for (int w = 0;
-                 w < (WORDS_BEFORE + WORDS_AFTER + 1);
-                 w++) {
-              int hot = examples[ex_start + w];
-              expecteds[OUTPUT_SIZE * i + w * WORDLIST_SIZE + hot] = 1.0f;
-            }
-          },
-          max_parallelism);
-
-      // PERF we could perhaps clear and set ones directly on GPU
-      // faster than we can copy?
       CHECK(inputs.size() == INPUT_SIZE * EXAMPLES_PER_ROUND);
       CHECK(expecteds.size() == OUTPUT_SIZE * EXAMPLES_PER_ROUND);
       training->LoadInputs(inputs);
       training->LoadExpecteds(expecteds);
-
       example_ms += example_timer.MS();
     }
-
+    
     if (VERBOSE > 1)
       printf("Prepped examples.\n");
 
@@ -359,25 +544,25 @@ static void Train(Network *net) {
 
       string example_correct, example_predicted;
       std::vector<float> losses =
-        ParallelMapi(expected,
-                     [&](int idx, const std::vector<float> &exp) {
-                       std::vector<float> got;
-                       got.resize(exp.size());
-                       CHECK(got.size() == OUTPUT_SIZE);
-                       CHECK(idx >= 0 && idx < EXAMPLES_PER_ROUND);
-                       training->ExportOutput(idx, &got);
+        UnParallelMapi(expected,
+                       [&](int idx, const std::vector<float> &exp) {
+                         std::vector<float> got;
+                         got.resize(exp.size());
+                         CHECK(got.size() == OUTPUT_SIZE);
+                         CHECK(idx >= 0 && idx < EXAMPLES_PER_ROUND);
+                         training->ExportOutput(idx, &got);
 
-                       // XXX if this is all we're doing, we should
-                       // instead use the already-computed
-                       // values from GetOutputError, perhaps
-                       // summing on GPU
-                       float loss = 0.0f;
-                       for (int i = 0; i < exp.size(); i++) {
-                         loss += fabsf(exp[i] - got[i]);
-                       }
+                         // XXX if this is all we're doing, we should
+                         // instead use the already-computed
+                         // values from GetOutputError, perhaps
+                         // summing on GPU
+                         float loss = 0.0f;
+                         for (int i = 0; i < exp.size(); i++) {
+                           loss += fabsf(exp[i] - got[i]);
+                         }
 
-                       return loss;
-                     }, max_parallelism);
+                         return loss;
+                       }, max_parallelism);
 
       if (VERBOSE > 1)
         printf("Got losses.\n");
@@ -406,115 +591,12 @@ static void Train(Network *net) {
 
     if ((iter % IMAGE_EVERY) == 0) {
       Timer image_timer;
-
-      // XXX would be better if this was more accurate,
-      // but we only want to read from GPU if we're going to
-      // actually do anything below
-      if (images.size() >= 2 &&
-          images[1].get() != nullptr) {
-
-        net_gpu->ReadFromGPU();
-
-        for (int target_layer = 1; target_layer < net->layers.size();
-             target_layer++) {
-          ImageRGBA *image = images[target_layer].get();
-          if (image == nullptr) continue;
-
-          // If we exceeded the bounds, shrink in place.
-          if (image_x[target_layer] >= image->Width()) {
-            printf("Shrink image for layer %d\n", target_layer);
-            // Skips over the text at the top (but not any pixels that
-            // were drawn over it...)
-            for (int y = 18; y < IMAGE_HEIGHT; y++) {
-              static_assert(IMAGE_WIDTH % 2 == 0,
-                            "Assumes even width of image");
-              // First half gets the entire image shrunk 2:1.
-              for (int x = 0; x < IMAGE_WIDTH / 2; x++) {
-                const auto [r1, g1, b1, a1] = image->GetPixel(x * 2 + 0, y);
-                const auto [r2, g2, b2, a2] = image->GetPixel(x * 2 + 1, y);
-                // We know we have full alpha here.
-                uint8 r = ((uint32)r1 + (uint32)r2) >> 1;
-                uint8 g = ((uint32)g1 + (uint32)g2) >> 1;
-                uint8 b = ((uint32)b1 + (uint32)b2) >> 1;
-                image->SetPixel(x, y, r, g, b, 0xFF);
-              }
-              // And clear the second half.
-              for (int x = IMAGE_WIDTH / 2; x < image->Width(); x++) {
-                image->SetPixel(x, y, 0, 0, 0, 0xFF);
-              }
-            }
-            image_x[target_layer] = IMAGE_WIDTH / 2;
-          }
-
-          const int ix = image_x[target_layer];
-          if (ix >= image->Width()) continue;
-
-          CHECK(net->layers.size() > 0);
-          CHECK(target_layer < net->layers.size());
-          const Layer &layer = net->layers[target_layer];
-          CHECK(layer.chunks.size() > 0);
-          // For this network the last chunk is most interesting,
-          // so we can skip the copy chunks
-          const Chunk &chunk = layer.chunks.back();
-          auto ToScreenY = [](float w) {
-              int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
-              int y = IMAGE_HEIGHT - yrev;
-              // Always draw on-screen.
-              return std::clamp(y, 0, IMAGE_HEIGHT - 1);
-            };
-          // 1, -1, x axis
-          if (ix & 1) {
-            image->BlendPixel32(ix, ToScreenY(1), 0xCCFFCC40);
-            image->BlendPixel32(ix, ToScreenY(0), 0xCCCCFFFF);
-            image->BlendPixel32(ix, ToScreenY(-1), 0xFFCCCC40);
-          }
-
-          uint8 weight_alpha =
-            std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
-
-          for (float w : chunk.weights) {
-            // maybe better to AA this?
-            image->BlendPixel32(ix, ToScreenY(w),
-                                0xFFFFFF00 | weight_alpha);
-          }
-
-          uint8 bias_alpha =
-            std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
-
-          for (float b : chunk.biases) {
-            image->BlendPixel32(ix, ToScreenY(b),
-                                0xFF777700 | bias_alpha);
-          }
-
-          if (chunk.weight_update == ADAM) {
-            CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
-            CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
-            for (int idx = 0; idx < chunk.weights.size(); idx++) {
-              const float m = chunk.weights_aux[idx * 2 + 0];
-              const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
-
-              image->BlendPixel32(ix, ToScreenY(m),
-                                  0xFFFF0000 | weight_alpha);
-              image->BlendPixel32(ix, ToScreenY(v),
-                                  0xFF00FF00 | weight_alpha);
-            }
-            // Also bias aux?
-          }
-
-
-          if (ix % 100 == 0) {
-            string filename = StringPrintf("train-image-%d.png",
-                                           target_layer);
-            image->Save(filename);
-            printf("Wrote %s\n", filename.c_str());
-          }
-          image_x[target_layer]++;
-        }
-      }
+      net_gpu->ReadFromGPU();
+      images.Sample(*net);
       image_ms += image_timer.MS();
     }
 
-    static constexpr double SAVE_EVERY_SEC = 120.0;
+    static constexpr double SAVE_EVERY_SEC = 180.0;
     bool save_timeout = false;
     if ((train_timer.MS() / 1000.0) > last_save + SAVE_EVERY_SEC) {
       save_timeout = true;
@@ -522,7 +604,7 @@ static void Train(Network *net) {
     }
 
     if (SAVE_INTERMEDIATE && (save_timeout || finished ||
-                              iter == 1000 || iter % 5000 == 0)) {
+                              iter % 5000 == 0)) {
       net_gpu->ReadFromGPU();
       const string file = MODEL_NAME;
       net->SaveToFile(file);
@@ -589,7 +671,6 @@ static void Train(Network *net) {
     }
   }
 }
-#endif
 
 static unique_ptr<Network> NewParamsNetwork() {
   // Deterministic!
@@ -616,6 +697,7 @@ static unique_ptr<Network> NewParamsNetwork() {
   struct Structure {
     int G = 0;
     int NGLOB = 0;
+    float GLOB_DENSITY = 0.25f;
     int NUM_FEATURES = 0;
     int OCC_DIVISOR = 1;
     int FFT_WINDOW = 0;
@@ -635,21 +717,22 @@ static unique_ptr<Network> NewParamsNetwork() {
     
   // Each one actually yields two layers in the steady state.
   vector<Structure> structures = {
-    // Describing the output of the first convolution.
+    // Describing the output of the first convolution; not all of
+    // these parameters are used.
     Structure{
-      .G = 0, .NGLOB = 0,
+      .G = 0, .NGLOB = 0, .GLOB_DENSITY = 1.0,
       .NUM_FEATURES = INITIAL_CONV_WIDTH, .OCC_DIVISOR = 1,
       .FFT_WINDOW = WINDOW_SIZE, .FFT_DENSITY = 1.0},
     Structure{
-      .G = 8, .NGLOB = 56,
+      .G = 8, .NGLOB = 56, .GLOB_DENSITY = 0.125f,
       .NUM_FEATURES = (int)(INITIAL_CONV_WIDTH * 0.75), .OCC_DIVISOR = DIV1,
       .FFT_WINDOW = (int)(WINDOW_SIZE * 0.75), .FFT_DENSITY = 0.25},
     Structure{
-      .G = 8, .NGLOB = 120,
+      .G = 8, .NGLOB = 120, .GLOB_DENSITY = 0.125f,
       .NUM_FEATURES = (int)(INITIAL_CONV_WIDTH * 0.625), .OCC_DIVISOR = DIV2,
       .FFT_WINDOW = (int)(WINDOW_SIZE * 0.50), .FFT_DENSITY = 0.25},
     Structure{
-      .G = 8, .NGLOB = 56,
+      .G = 8, .NGLOB = 56, .GLOB_DENSITY = 0.125f,
       .NUM_FEATURES = (int)(INITIAL_CONV_WIDTH * 0.5), .OCC_DIVISOR = DIV3,
       .FFT_WINDOW = (int)(WINDOW_SIZE * 0.25), .FFT_DENSITY = 0.25},
   };
@@ -692,6 +775,8 @@ static unique_ptr<Network> NewParamsNetwork() {
   Chunk copy_fft_chunk = Network::MakeCopyChunk(WINDOW_SIZE, WINDOW_SIZE);
 
   layers.push_back(L({first_conv_chunk, copy_fft_chunk}));
+
+  // TODO: Maybe more initial convolution layers here?
   
   CHECK(layers.back().num_nodes > 0);
 
@@ -711,28 +796,37 @@ static unique_ptr<Network> NewParamsNetwork() {
     // create 'next' globals with the first of the two layers. 
     // XXX need to be clearer about prev vs next use of NGLOB, G, etc.
     
-    // Add the two layers. The first one updates globals densely
-    // and distributes the first G globals to the convolution occurrences.
+    // Add the two layers. The first one updates globals using the
+    // whole previous layer, and distributes the first G globals to
+    // the convolution occurrences.
 
     {
       CHECK(next.NGLOB > 0) << "Could maybe handle this but the chunk "
         "would be degenerate";
-      Chunk glob;
-      glob.type = CHUNK_DENSE;
-      glob.transfer_function = LEAKY_RELU;
-      glob.num_nodes = next.NGLOB;
-      glob.span_start = 0;
-      glob.span_size = layers.back().num_nodes;
-      glob.indices_per_node = glob.span_size;
-      glob.weights.resize(glob.indices_per_node * glob.num_nodes);
-      glob.biases.resize(glob.num_nodes);
-      glob.weight_update = ADAM;
-      glob.weights_aux.resize(glob.weights.size() * 2, 0.0f);
-      glob.biases_aux.resize(glob.biases.size() * 2, 0.0f);
-      glob.fixed = false;
-      glob.width = glob.num_nodes;
-      glob.height = 1;
-      glob.channels = 1;
+
+      vector<Network::SparseSpan> spans;
+      // Depend on entire global block, if there is any.
+      if (prev.NGLOB > 0) {
+        spans.push_back(
+            Network::SparseSpan{
+              .span_start = 0,
+              .span_size = prev.NGLOB,
+              .ipn = prev.NGLOB,
+            });
+      }
+
+      // And depend sparsely on random subset of the rest.
+      const int num_rest = layers.back().num_nodes - prev.NGLOB;
+      CHECK(num_rest > 0);
+      const int rest_ipn = std::max((int)(num_rest * next.GLOB_DENSITY), 1);
+      spans.push_back(
+          Network::SparseSpan{
+            .span_start = prev.NGLOB,
+            .span_size = num_rest,
+            .ipn = rest_ipn});
+      
+      Chunk glob = Network::MakeRandomSparseChunk(
+          &rc, next.NGLOB, spans, LEAKY_RELU, ADAM);
 
       // Then, distribute G (from the previous layer; might be none)
       // into each occurrence (after dividing), as well as copying the FFT.
@@ -777,6 +871,7 @@ static unique_ptr<Network> NewParamsNetwork() {
     // Now, the actual work.
     {
       // Dense globals to globals.
+      // PERF: Maybe sparse would be better here too.
       // We already created next.NGLOB globals above, so we use next
       // here, not prev.
       Chunk glob;
@@ -910,7 +1005,7 @@ int main(int argc, char **argv) {
   net->StructuralCheck();
   net->NaNCheck(MODEL_NAME);
 
-  // Train(net.get());
+  Train(net.get());
 
   printf("OK\n");
   return 0;

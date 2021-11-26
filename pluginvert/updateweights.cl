@@ -178,6 +178,9 @@ __kernel void UpdateWeightsConvolutional(
     // Offset of the node, which we use to get its output.
     // (These are already global to the input layer, but should
     // be within the span.)
+    // PERF: Consider computing this index rather than reading it
+    // from memory. It should be a constant offset from the start
+    // position of the occurrence, which has a simple formula.
     const int src_idx = chunk_indices[occ * INDICES_PER_NODE + pidx];
     const float x_ji = prev_layer_output[src_layer_start + src_idx];
     // weight_grad += delta_j * x_ji;

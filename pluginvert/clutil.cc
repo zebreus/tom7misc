@@ -105,7 +105,10 @@ pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
   cl_program program =
     clCreateProgramWithSource(context, 1, sources, source_size, nullptr);
   if (CL_SUCCESS !=
-      clBuildProgram(program, 1, devices, nullptr, nullptr, nullptr)) {
+      clBuildProgram(program, 1, devices,
+                     // command-line options.
+                     nullptr,
+                     nullptr, nullptr)) {
     size_t blsize;
 
     CHECK(CL_SUCCESS ==

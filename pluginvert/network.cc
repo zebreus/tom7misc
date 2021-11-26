@@ -551,6 +551,107 @@ Chunk Network::MakeDenseChunk(int num_nodes,
   return chunk;
 }
 
+/*
+  struct SparseSpan {
+    int span_start = 0;
+    int span_end = 0;
+    int ipn = 0;
+  };
+*/
+Chunk Network::MakeRandomSparseChunk(
+    ArcFour *rc,
+    int num_nodes,
+    const std::vector<SparseSpan> &spans,
+    TransferFunction transfer_function,
+    WeightUpdate weight_update) {
+
+  CHECK(!spans.empty());
+  
+  // Check overlap, O(n^2).
+  for (int s = 0; s < spans.size(); s++) {
+    const SparseSpan &ss = spans[s];
+    const int ss_end = ss.span_start + ss.span_size;
+    for (int c = 0; c < s; c++) {
+      const SparseSpan &os = spans[c];
+      const int os_end = os.span_start + os.span_size;
+      if (os_end <= ss.span_start ||
+          os.span_start >= ss_end) {
+        // disjoint, ok
+      } else {
+        LOG(FATAL) << 
+          StringPrintf("SparseSpan %d (%d->%d) overlaps %d (%d->%d)",
+                       s, ss.span_start, ss_end,
+                       c, os.span_start, os_end);
+      }
+    }
+  }
+
+  int span_start = spans[0].span_start;
+  int span_end = span_start + spans[0].span_size;
+  int indices_per_node = 0;
+  for (const SparseSpan &s : spans) {
+    CHECK(s.ipn > 0);
+    CHECK(s.ipn <= s.span_size);
+    indices_per_node += s.ipn;
+    int end = s.span_start + s.span_size;
+    span_start = std::min(span_start, s.span_start);
+    span_end = std::max(span_end, end);
+  }
+
+  CHECK(span_end > span_start);
+  CHECK(num_nodes > 0);
+  
+  Chunk chunk;
+  chunk.type = CHUNK_SPARSE;
+  chunk.num_nodes = num_nodes;
+  chunk.span_start = span_start;
+  chunk.span_size = span_end - span_start;
+  chunk.indices_per_node = indices_per_node;
+  chunk.transfer_function = transfer_function;
+  chunk.weight_update = weight_update;
+  chunk.width = num_nodes;
+  chunk.height = 1;
+  chunk.channels = 1;
+  chunk.fixed = false;
+
+  chunk.indices.reserve(num_nodes * indices_per_node);
+  for (int n = 0; n < num_nodes; n++) {
+    // Same procedure for every node.
+    vector<uint32_t> node_indices;
+    node_indices.reserve(indices_per_node);
+    for (const SparseSpan &s : spans) {
+      // Depending on the span size and ipn, different
+      // approaches could be much faster here (e.g. if
+      // ipn is very small relative to the span size, or
+      // equal to it), but this has fine worst-case
+      // performance (always O(n)).
+      // PERF: Could set up index_pool for each SparseSpan
+      // once and keep reusing (reshuffling) it.
+      vector<uint32_t> index_pool;
+      index_pool.reserve(s.span_size);
+      for (int i = 0; i < s.span_size; i++)
+        index_pool.push_back(s.span_start + i);
+      CHECK(index_pool.size() == s.span_size);
+      Shuffle(rc, &index_pool);
+      for (int i = 0; i < s.ipn; i++)
+        node_indices.push_back(index_pool[i]);
+    }
+    std::sort(node_indices.begin(), node_indices.end());
+    for (uint32_t idx : node_indices)
+      chunk.indices.push_back(idx);
+  }
+
+  chunk.weights.resize(num_nodes * indices_per_node, 0.0f);
+  chunk.biases.resize(num_nodes, 0.0f);
+  if (weight_update == ADAM) {
+    chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
+    chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
+  }
+      
+  return chunk;
+}
+
+
 // static
 std::tuple<std::vector<uint32_t>, int, int, int>
 Network::MakeConvolutionArrayIndices(
@@ -1056,21 +1157,22 @@ static Network *ReadFromReader(Reader *r) {
 
       chunk.fixed = r->Read32() != 0;
 
-      printf("%d %s %s %s%s",
-             chunk.indices_per_node,
-             TransferFunctionName(chunk.transfer_function),
-             ChunkTypeName(chunk.type),
-             WeightUpdateName(chunk.weight_update),
-             chunk.fixed ? " [F]" : "");
-      if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
-        printf("(%d feat%s, %dx%d pat from %dx%d rect, +%d +%d) ",
-               chunk.num_features,
-               (chunk.num_features == 1) ? "" : "s",
-               chunk.pattern_width, chunk.pattern_height,
-               chunk.src_width, chunk.src_height,
-               chunk.occurrence_x_stride, chunk.occurrence_y_stride);
+      if (r->verbose) {
+        printf("%d %s %s %s%s",
+               chunk.indices_per_node,
+               TransferFunctionName(chunk.transfer_function),
+               ChunkTypeName(chunk.type),
+               WeightUpdateName(chunk.weight_update),
+               chunk.fixed ? " [F]" : "");
+        if (chunk.type == CHUNK_CONVOLUTION_ARRAY) {
+          printf("(%d feat%s, %dx%d pat from %dx%d rect, +%d +%d) ",
+                 chunk.num_features,
+                 (chunk.num_features == 1) ? "" : "s",
+                 chunk.pattern_width, chunk.pattern_height,
+                 chunk.src_width, chunk.src_height,
+                 chunk.occurrence_x_stride, chunk.occurrence_y_stride);
+        }
       }
-
 
       layer.num_nodes += chunk.num_nodes;
     }
@@ -1094,14 +1196,15 @@ static Network *ReadFromReader(Reader *r) {
         }
       }
 
-      if (large_weights > 0 || large_biases > 0) {
+      if (r->verbose && (large_weights > 0 || large_biases > 0)) {
         printf("Warning: %lld large weights and %lld large biases\n",
                large_weights, large_biases);
       }
     }
+    if (r->verbose) {
+      printf("\n");
+    }
   }
-  if (r->verbose)
-    printf("\n");
 
   if (r->verbose)
     printf("Read from %s.\n", r->Name().c_str());
