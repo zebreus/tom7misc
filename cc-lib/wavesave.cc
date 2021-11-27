@@ -46,6 +46,11 @@ Format GetFormat(const vector<pair<float, float>> &samples) {
 }
 
 template<>
+Format GetFormat(const vector<float> &samples) {
+  return Format(BITS_PER_SAMPLE, 1, samples.size());
+}
+
+template<>
 Format GetFormat(const vector<uint16> &samples) {
   return Format(16, 1, samples.size());
 }
@@ -67,7 +72,7 @@ static Info GetInfo(const Format &f, int samplespersec) {
 
 static int BytesNeeded(const Format &f, int samplerate) {
   Info info = GetInfo(f, samplerate);
-  return 
+  return
     /* RIFF + size + WAVE */
     4 + 4 + 4 +
     /* actual bytes plus riff header */
@@ -111,7 +116,7 @@ static void WriteHeader(const Format &format, int rate,
     wb(i & 255);
     wb((i >> 8) & 255);
   };
-  
+
   Info info = GetInfo(format, rate);
   int bytesneeded = BytesNeeded(format, rate);
 
@@ -146,13 +151,27 @@ void WriteData(const vector<pair<float, float>> &samples,
     bytes->push_back((uint8)(i & 255));
     bytes->push_back((uint8)((i >> 8) & 255));
   };
-  
+
   for (int i = 0; i < samples.size(); i++) {
     const pair<float, float> &p = samples[i];
     int left = p.first * 32767.0;
     int right = p.second * 32767.0;
     w16(left);
     w16(right);
+  }
+}
+
+template<>
+void WriteData(const vector<float> &samples,
+               vector<uint8> *bytes) {
+  auto w16 = [&bytes](int i) {
+    bytes->push_back((uint8)(i & 255));
+    bytes->push_back((uint8)((i >> 8) & 255));
+  };
+
+  for (int i = 0; i < samples.size(); i++) {
+    int s = samples[i] * 32767.0;
+    w16(s);
   }
 }
 
@@ -189,8 +208,29 @@ bool WaveSave::SaveStereo(const string &filename,
   return SaveGeneric(filename, samples, samplerate);
 }
 
+bool WaveSave::SaveMono(const string &filename,
+                        const vector<float> &samples,
+                        int samplerate) {
+  return SaveGeneric(filename, samples, samplerate);
+}
+
 bool WaveSave::SaveMono16(const string &filename,
                           const vector<uint16> &samples,
                           int samplerate) {
   return SaveGeneric(filename, samples, samplerate);
 }
+
+void WaveSave::HardClipMono(std::vector<float> *samples, float max_mag) {
+  for (float &f : *samples) {
+    f = std::clamp(f, -max_mag, max_mag);
+  }
+}
+
+void WaveSave::HardClipStereo(std::vector<std::pair<float, float>> *samples,
+                              float max_mag) {
+  for (auto &[l, r] : *samples) {
+    l = std::clamp(l, -max_mag, max_mag);
+    r = std::clamp(r, -max_mag, max_mag);
+  }
+}
+

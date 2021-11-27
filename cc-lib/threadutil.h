@@ -279,6 +279,22 @@ auto UnParallelMap(const std::vector<T> &vec,
   return result;
 }
 
+template<class T, class F>
+auto UnParallelMapi(const std::vector<T> &vec,
+                    const F &f, int max_concurrency_ignored) ->
+  std::vector<decltype(f((int64_t)0, vec.front()))> {
+  using R = decltype(f((int64_t)0, vec.front()));
+  std::vector<R> result;
+  result.resize(vec.size());
+
+  for (int64_t i = 0; i < (int64_t)vec.size(); i++) {
+    result[i] = f(i, vec[i]);
+  }
+
+  return result;
+}
+
+
 // When going out of scope, wait for the given thread.
 struct ThreadJoiner {
   explicit ThreadJoiner(std::thread *t) : t(t) {}
