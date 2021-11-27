@@ -1,4 +1,5 @@
 
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,20 +31,28 @@ static std::vector<float> ReadMp3Mono(const string &filename) {
   return out;
 }
 
-static constexpr int WINDOW_SIZE = 1024;
-using Plugin = SimpleHighpass<WINDOW_SIZE>;
+// static constexpr int WINDOW_SIZE = 1024;
+static constexpr int WINDOW_SIZE = 44100;
+using Plugin = Convolve4<WINDOW_SIZE>;
 
 int main(int argc, char **argv) {
-  CHECK(argc == 2) << "./process.exe input.mp3";
+  CHECK(argc == 2 + Plugin::NUM_PARAMETERS) <<
+    "./process.exe input.mp3 param1 param2 ...\n" <<
+    Plugin::NUM_PARAMETERS << " params for current plugin.";
 
   std::vector<float> raw = ReadMp3Mono(argv[1]);
   CHECK(!raw.empty());
   printf("%s: %d samples\n", argv[1], (int)raw.size());
 
-  const std::array<float, Plugin::NUM_PARAMETERS> params = {
-    100.0f,
-    1.5f,
-  };
+  std::array<float, Plugin::NUM_PARAMETERS> params;
+  for (int i = 0; i < Plugin::NUM_PARAMETERS; i++) {
+    params[i] = Util::ParseDouble(argv[2 + i], 0.0);
+    if (params[i] < Plugin::PARAMS[i].lb ||
+        params[i] > Plugin::PARAMS[i].ub) {
+      printf("Warning: Param %d out of bounds [%.2f, %.2f]: %.2f\n",
+             i, Plugin::PARAMS[i].lb, Plugin::PARAMS[i].ub, params[i]);
+    }
+  }
 
   // TODO: Windowed. This also drops the last frame if not complete.
   vector<float> processed;
@@ -58,6 +67,7 @@ int main(int argc, char **argv) {
   }
 
   WaveSave::SaveMono("raw.wav", raw, 44100);
+  WaveSave::HardClipMono(&processed);
   WaveSave::SaveMono("processed.wav", processed, 44100);
 
   printf("OK wrote raw.wav and processed.wav\n");

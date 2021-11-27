@@ -113,4 +113,52 @@ struct Decimate {
 
 };
 
+template<int WINDOW_SIZE>
+struct Convolve4 {
+  static constexpr int NUM_PARAMETERS = 3;
+
+  static constexpr std::array<Param, NUM_PARAMETERS>
+  PARAMS = {
+    Param{.name = "x",
+          .lb = -1.0f,
+          .ub = 1.0f,
+          .beta_a = 1.5f,
+          .beta_b = 1.5f,
+    },
+    Param{.name = "y",
+          .lb = -1.0f,
+          .ub = 1.0f,
+          .beta_a = 1.5f,
+          .beta_b = 1.5f,
+    },
+    Param{.name = "z",
+          .lb = -1.0f,
+          .ub = 1.0f,
+          .beta_a = 1.5f,
+          .beta_b = 1.5f,
+    },
+    // w is 1 - (x + y + z)
+  };
+
+  static
+  std::vector<float> Process(const std::vector<float> &in,
+                             const std::array<float, NUM_PARAMETERS> &params) {
+    const auto [x, y, z] = params;
+    const float w = 1.0f - (x + y + z);
+    std::vector<float> out(WINDOW_SIZE, 0.0f);
+    float a = 0.0f, b = 0.0f, c = 0.0f, d = 0.0f;
+    for (int i = 0; i < WINDOW_SIZE; i++) {
+      a = b;
+      b = c;
+      c = d;
+      d = in[i];
+      float o = a * x + b * y + c * z + d * w;
+      out[i] = o;
+    }
+    return out;
+  }
+
+};
+
+
 #endif
