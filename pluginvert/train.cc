@@ -26,7 +26,7 @@
 #include "image.h"
 #include "util.h"
 #include "error-history.h"
-
+#include "audio-database.h"
 #include "plugins.h"
 
 using namespace std;
@@ -45,7 +45,7 @@ static constexpr float TWO_PI = 2.0f * std::numbers::pi_v<float>;
 
 // Size of time domain window in samples.
 constexpr int WINDOW_SIZE = 1024;
-using Plugin = Decimate<WINDOW_SIZE>;
+using Plugin = Convolve4<WINDOW_SIZE>;
 constexpr int NUM_PARAMS = Plugin::NUM_PARAMETERS;
 
 constexpr int INPUT_SIZE = WINDOW_SIZE + WINDOW_SIZE;
@@ -57,12 +57,13 @@ static constexpr int EXAMPLES_PER_ROUND = 1000;
 
 struct ExampleThread {
   using example_type = std::pair<std::vector<float>, std::vector<float>>;
-  
+
+  static constexpr int P_MP3 = 100;
   static constexpr int P_SIN = 12;
 
   // Rest is white noise.
-  static_assert(P_SIN <= 256);
-    
+  static_assert(P_MP3 + P_SIN <= 256);
+
   static constexpr int TARGET_SIZE = 3;
 
   example_type GetExamples() {
@@ -81,6 +82,7 @@ struct ExampleThread {
   }
 
   ExampleThread() {
+    audio_database.reset(new AudioDatabase(WINDOW_SIZE, "corpus"));
     work_thread.reset(new std::thread(&Generate, this, 1));
   }
 
@@ -89,12 +91,17 @@ struct ExampleThread {
   }
 
 private:
-  static vector<float> RandomSamples(ArcFour *rc) {
-    vector<float> ret;
-    ret.reserve(WINDOW_SIZE);
-    
+  static vector<float> RandomSamples(AudioDatabase *db, ArcFour *rc) {
     uint8 method = rc->Byte();
+    if (method < P_MP3) {
+      return db->GetBuffer();
+    }
+    method -= P_MP3;
+
     if (method < P_SIN) {
+      vector<float> ret;
+      ret.reserve(WINDOW_SIZE);
+
       float amp = RandFloat(rc);
       // PERF can bake in SAMPLE_RATE divisor too
       float freq_twopi =
@@ -106,36 +113,41 @@ private:
         ret.push_back(amp * sin(freq_twopi * sec));
       }
       return ret;
-    } 
+    }
     method -= P_SIN;
 
     // Otherwise, white noise.
-    for (int i = 0; i < WINDOW_SIZE; i++) {
-      float f = RandFloat(rc);
-      ret.push_back(f * 2.0f - 1.0f);
+    {
+      vector<float> ret;
+      ret.reserve(WINDOW_SIZE);
+
+      for (int i = 0; i < WINDOW_SIZE; i++) {
+        float f = RandFloat(rc);
+        ret.push_back(f * 2.0f - 1.0f);
+      }
+      return ret;
     }
-    return ret;
   }
-  
+
   // Perhaps should have more than one generation thread...
   void Generate(int id) {
     printf("Started example thread %d.\n", id);
     ArcFour rc(StringPrintf("examples.%lld.%d\n", time(nullptr), id));
-    
+
     // TODO: float ffts
     using element_type = double;
-    
+
     fftw_plan plan;
     [[maybe_unused]] fftw_plan rplan;
     element_type *in = (element_type*)
       fftw_malloc(sizeof (element_type) * WINDOW_SIZE);
     element_type *out = (element_type*)
-      fftw_malloc(sizeof (element_type) * WINDOW_SIZE);      
+      fftw_malloc(sizeof (element_type) * WINDOW_SIZE);
 
     // Discrete Hartley Transform is its own inverse.
     static constexpr fftw_r2r_kind fwd = FFTW_DHT;
     static constexpr fftw_r2r_kind inv = FFTW_DHT;
-    
+
     plan = fftw_plan_r2r_1d(WINDOW_SIZE, in, out,
                             fwd, FFTW_MEASURE);
     // printf("Forward plan:\n");
@@ -146,7 +158,7 @@ private:
 
     // printf("Inverse plan:\n");
     // fftw_print_plan(rplan);
-   
+
     for (;;) {
       const bool need_example = [&](){
           MutexLock ml(&m);
@@ -158,7 +170,7 @@ private:
         std::vector<float> examples;
         // examples_per_round * NUM_PARAMS
         std::vector<float> outputs;
-        
+
         // Fill 'em
         for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
           // Random parameters
@@ -173,12 +185,13 @@ private:
             // limits on weights/biases when clipping is turned on)
             // and to avoid accuracy problems with large floats.
             outputs.push_back(f);
-          
+
             params[p] = param.lb + (param.ub - param.lb) * f;
           }
-          
+
           vector<float> samples =
-            Plugin::Process(RandomSamples(&rc), params);
+            Plugin::Process(RandomSamples(audio_database.get(), &rc),
+                            params);
           CHECK(samples.size() == WINDOW_SIZE);
           for (int s = 0; s < WINDOW_SIZE; s++)
             in[s] = samples[s];
@@ -194,8 +207,8 @@ private:
         }
 
         CHECK(examples.size() == EXAMPLES_PER_ROUND * INPUT_SIZE);
-        CHECK(outputs.size() == EXAMPLES_PER_ROUND * OUTPUT_SIZE);        
-        
+        CHECK(outputs.size() == EXAMPLES_PER_ROUND * OUTPUT_SIZE);
+
         {
           MutexLock ml(&m);
           q.push_front(
@@ -214,6 +227,8 @@ private:
     */
   }
 
+  std::unique_ptr<AudioDatabase> audio_database;
+
   std::mutex m;
   std::deque<example_type> q;
 
@@ -229,123 +244,135 @@ struct TrainingImages {
     IMAGE_WIDTH(image_width), IMAGE_HEIGHT(image_height) {
     CHECK((IMAGE_WIDTH % 2) == 0) << "Assumes even width of image for "
       "shrinking step";
+    // TODO: Load existing images if any?
 
-    for (int i = 0; i < net.layers.size(); i++) {
-      // XXX skip input layer?
-      image_x.push_back(0);
-      images.emplace_back(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
-      images.back()->Clear32(0x000000FF);
-      images.back()->BlendText2x32(
+    // PERF skip input layer?
+    for (int layer_idx = 0;
+         layer_idx < net.layers.size();
+         layer_idx++) {
+      images.emplace_back();
+      image_x.emplace_back();
+      for (int chunk_idx = 0;
+           chunk_idx < net.layers[layer_idx].chunks.size();
+           chunk_idx++) {
+      image_x.back().push_back(0);
+      images.back().emplace_back(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
+      images.back().back()->Clear32(0x000000FF);
+      images.back().back()->BlendText2x32(
           2, 2, 0x9999AAFF,
-          StringPrintf("Layer %d | Start Round %lld | 1 px = %d rounds ",
-                       i, net.rounds, image_every));
+          StringPrintf("Layer %d.%d | Start Round %lld | 1 px = %d rounds ",
+                       layer_idx, chunk_idx, net.rounds, image_every));
+      }
     }
   }
 
   // Make sure you do net_gpu->ReadFromGPU() first!
   void Sample(const Network &net) {
-    CHECK(images.size() >= 2);
-    CHECK(images[1].get() != nullptr);
-    
     for (int target_layer = 1;
          target_layer < net.layers.size();
          target_layer++) {
-      ImageRGBA *image = images[target_layer].get();
-      if (image == nullptr) continue;
+      CHECK(target_layer < images.size());
+      for (int target_chunk = 0;
+           target_chunk < net.layers[target_layer].chunks.size();
+           target_chunk++) {
+        CHECK(target_chunk < images[target_layer].size());
+        ImageRGBA *image = images[target_layer][target_chunk].get();
+        if (image == nullptr) continue;
 
-      // If we exceeded the bounds, shrink in place.
-      if (image_x[target_layer] >= image->Width()) {
-        printf("Shrink image for layer %d\n", target_layer);
-        // Skips over the text at the top (but not any pixels that
-        // were drawn over it...)
-        for (int y = 18; y < IMAGE_HEIGHT; y++) {
-          // First half gets the entire image shrunk 2:1.
-          for (int x = 0; x < IMAGE_WIDTH / 2; x++) {
-            const auto [r1, g1, b1, a1] = image->GetPixel(x * 2 + 0, y);
-            const auto [r2, g2, b2, a2] = image->GetPixel(x * 2 + 1, y);
-            // We know we have full alpha here.
-            const uint8 r = ((uint32)r1 + (uint32)r2) >> 1;
-            const uint8 g = ((uint32)g1 + (uint32)g2) >> 1;
-            const uint8 b = ((uint32)b1 + (uint32)b2) >> 1;
-            image->SetPixel(x, y, r, g, b, 0xFF);
+        // If we exceeded the bounds, shrink in place.
+        if (image_x[target_layer][target_chunk] >= image->Width()) {
+          printf("Shrink image for layer %d\n", target_layer);
+          // Skips over the text at the top (but not any pixels that
+          // were drawn over it...)
+          for (int y = 18; y < IMAGE_HEIGHT; y++) {
+            // First half gets the entire image shrunk 2:1.
+            for (int x = 0; x < IMAGE_WIDTH / 2; x++) {
+              const auto [r1, g1, b1, a1] = image->GetPixel(x * 2 + 0, y);
+              const auto [r2, g2, b2, a2] = image->GetPixel(x * 2 + 1, y);
+              // We know we have full alpha here.
+              const uint8 r = ((uint32)r1 + (uint32)r2) >> 1;
+              const uint8 g = ((uint32)g1 + (uint32)g2) >> 1;
+              const uint8 b = ((uint32)b1 + (uint32)b2) >> 1;
+              image->SetPixel(x, y, r, g, b, 0xFF);
+            }
+            // And clear the second half.
+            for (int x = IMAGE_WIDTH / 2; x < image->Width(); x++) {
+              image->SetPixel(x, y, 0, 0, 0, 0xFF);
+            }
           }
-          // And clear the second half.
-          for (int x = IMAGE_WIDTH / 2; x < image->Width(); x++) {
-            image->SetPixel(x, y, 0, 0, 0, 0xFF);
+          image_x[target_layer][target_chunk] = IMAGE_WIDTH / 2;
+        }
+
+        const int ix = image_x[target_layer][target_chunk];
+        if (ix >= image->Width()) continue;
+
+        CHECK(net.layers.size() > 0);
+        CHECK(target_layer < net.layers.size());
+        const Layer &layer = net.layers[target_layer];
+        const Chunk &chunk = layer.chunks[target_chunk];
+
+        auto ToScreenY = [this](float w) {
+            int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
+            int y = IMAGE_HEIGHT - yrev;
+            // Always draw on-screen.
+            return std::clamp(y, 0, IMAGE_HEIGHT - 1);
+          };
+        // 1, -1, x axis
+        if (ix & 1) {
+          image->BlendPixel32(ix, ToScreenY(1), 0xCCFFCC40);
+          image->BlendPixel32(ix, ToScreenY(0), 0xCCCCFFFF);
+          image->BlendPixel32(ix, ToScreenY(-1), 0xFFCCCC40);
+        }
+
+        const uint8 weight_alpha =
+          std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
+
+        for (float w : chunk.weights) {
+          // maybe better to AA this?
+          image->BlendPixel32(ix, ToScreenY(w),
+                              0xFFFFFF00 | weight_alpha);
+        }
+
+        const uint8 bias_alpha =
+          std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
+
+        for (float b : chunk.biases) {
+          image->BlendPixel32(ix, ToScreenY(b),
+                              0xFF777700 | bias_alpha);
+        }
+
+        if (chunk.weight_update == ADAM) {
+          CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
+          CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
+          for (int idx = 0; idx < chunk.weights.size(); idx++) {
+            const float m = chunk.weights_aux[idx * 2 + 0];
+            const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
+
+            image->BlendPixel32(ix, ToScreenY(m),
+                                0xFFFF0000 | weight_alpha);
+            image->BlendPixel32(ix, ToScreenY(v),
+                                0xFF00FF00 | weight_alpha);
           }
+          // Also bias aux?
         }
-        image_x[target_layer] = IMAGE_WIDTH / 2;
-      }
 
-      const int ix = image_x[target_layer];
-      if (ix >= image->Width()) continue;
-
-      CHECK(net.layers.size() > 0);
-      CHECK(target_layer < net.layers.size());
-      const Layer &layer = net.layers[target_layer];
-      CHECK(layer.chunks.size() > 0);
-
-      // TODO: Output all chunks!
-      const Chunk &chunk = layer.chunks.front();
-      auto ToScreenY = [this](float w) {
-          int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
-          int y = IMAGE_HEIGHT - yrev;
-          // Always draw on-screen.
-          return std::clamp(y, 0, IMAGE_HEIGHT - 1);
-        };
-      // 1, -1, x axis
-      if (ix & 1) {
-        image->BlendPixel32(ix, ToScreenY(1), 0xCCFFCC40);
-        image->BlendPixel32(ix, ToScreenY(0), 0xCCCCFFFF);
-        image->BlendPixel32(ix, ToScreenY(-1), 0xFFCCCC40);
-      }
-
-      uint8 weight_alpha =
-        std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
-
-      for (float w : chunk.weights) {
-        // maybe better to AA this?
-        image->BlendPixel32(ix, ToScreenY(w),
-                            0xFFFFFF00 | weight_alpha);
-      }
-
-      uint8 bias_alpha =
-        std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
-
-      for (float b : chunk.biases) {
-        image->BlendPixel32(ix, ToScreenY(b),
-                            0xFF777700 | bias_alpha);
-      }
-
-      if (chunk.weight_update == ADAM) {
-        CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
-        CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
-        for (int idx = 0; idx < chunk.weights.size(); idx++) {
-          const float m = chunk.weights_aux[idx * 2 + 0];
-          const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
-
-          image->BlendPixel32(ix, ToScreenY(m),
-                              0xFFFF0000 | weight_alpha);
-          image->BlendPixel32(ix, ToScreenY(v),
-                              0xFF00FF00 | weight_alpha);
+        if (ix % 100 == 0) {
+          string filename = StringPrintf("train-image-%d.%d.png",
+                                         target_layer, target_chunk);
+          image->Save(filename);
+          printf("Wrote %s\n", filename.c_str());
         }
-        // Also bias aux?
+        image_x[target_layer][target_chunk]++;
       }
-
-      if (ix % 100 == 0) {
-        string filename = StringPrintf("train-image-%d.png",
-                                       target_layer);
-        image->Save(filename);
-        printf("Wrote %s\n", filename.c_str());
-      }
-      image_x[target_layer]++;
     }
   }
-  
+
 private:
   const int IMAGE_WIDTH = 0, IMAGE_HEIGHT = 0;
-  std::vector<std::unique_ptr<ImageRGBA>> images;
-  std::vector<int> image_x;
+  // Parallel to layers/chunks
+  std::vector<std::vector<std::unique_ptr<ImageRGBA>>> images;
+  // we can just have one of these right?
+  std::vector<std::vector<int>> image_x;
 };
 
 static void Train(Network *net) {
@@ -363,7 +390,7 @@ static void Train(Network *net) {
   // get divergence after hundreds of thousands of rounds.
   // This happened again with the plugin parameter predictor
   // with a value of 1e-6!
-  static constexpr float ADAM_EPSILON = 1e-3;
+  static constexpr float ADAM_EPSILON = 1e-4;
 
   // XXX this should probably depend on the learning rate; if the
   // learning rate is too small, it won't even be able to overcome
@@ -445,7 +472,7 @@ static void Train(Network *net) {
       training->LoadExpecteds(expecteds);
       example_ms += example_timer.MS();
     }
-    
+
     if (VERBOSE > 1)
       printf("Prepped examples.\n");
 
@@ -497,13 +524,13 @@ static void Train(Network *net) {
       Timer update_timer;
       // Can't run training examples in parallel because these all write
       // to the same network. But each layer is independent.
-      ParallelComp(net->layers.size() - 1,
-                   [&](int layer_minus_1) {
-                     const int layer_idx = layer_minus_1 + 1;
-                     update_cl->Update(net_gpu.get(), training.get(),
-                                       LEARNING_RATE, layer_idx);
-                   },
-                   max_parallelism);
+      UnParallelComp(net->layers.size() - 1,
+                     [&](int layer_minus_1) {
+                       const int layer_idx = layer_minus_1 + 1;
+                       update_cl->Update(net_gpu.get(), training.get(),
+                                         LEARNING_RATE, layer_idx);
+                     },
+                     max_parallelism);
       update_ms += update_timer.MS();
     }
 
@@ -686,7 +713,7 @@ static unique_ptr<Network> NewParamsNetwork() {
   // WINDOW_SIZE, as though a 1x1 convolution with stride 1 was applied.
   // FFT_WINDOW is WINDOW_SIZE (DHT) and G=NGLOB=0, as there are
   // no globals yet.
-  // 
+  //
   // (Aside: for regularity and because it might be useful, we could
   // consider having globals in the inputs. For predicting the
   // waveform, these would include the parameter values. Other
@@ -714,7 +741,7 @@ static unique_ptr<Network> NewParamsNetwork() {
     static constexpr int INITIAL_OCC = WINDOW_SIZE - INITIAL_CONV_WIDTH + 1;
     static_assert((INITIAL_OCC % (DIV1 * DIV2 * DIV3)) == 0);
   }
-    
+
   // Each one actually yields two layers in the steady state.
   vector<Structure> structures = {
     // Describing the output of the first convolution; not all of
@@ -742,14 +769,14 @@ static unique_ptr<Network> NewParamsNetwork() {
     CHECK(s.G >= 0);
     CHECK(s.NGLOB >= 0);
   }
-  
-  std::vector<Layer> layers;  
+
+  std::vector<Layer> layers;
   // XXX just call directly
   auto L = [](const std::vector<Chunk> &chunks) {
       return Network::LayerFromChunks(chunks);
     };
 
-  
+
   static constexpr int INPUT_SIZE = WINDOW_SIZE * 2;
   static_assert(INPUT_SIZE > 0);
   Chunk input_chunk;
@@ -777,7 +804,7 @@ static unique_ptr<Network> NewParamsNetwork() {
   layers.push_back(L({first_conv_chunk, copy_fft_chunk}));
 
   // TODO: Maybe more initial convolution layers here?
-  
+
   CHECK(layers.back().num_nodes > 0);
 
   int prev_occurrences = first_conv_chunk.num_occurrences_across;
@@ -786,16 +813,16 @@ static unique_ptr<Network> NewParamsNetwork() {
     printf("s=%d, prev_occurrences=%d\n", s, prev_occurrences);
     const Structure &prev = structures[s - 1];
     const Structure &next = structures[s];
-    
+
     CHECK(next.G <= next.NGLOB);
     CHECK(prev_occurrences % next.OCC_DIVISOR == 0) <<
       "On s=" << s << ", " <<
       next.OCC_DIVISOR << " must divide " << prev_occurrences;
 
     // mostly we are mapping from 'prev' to 'next', but we actually
-    // create 'next' globals with the first of the two layers. 
+    // create 'next' globals with the first of the two layers.
     // XXX need to be clearer about prev vs next use of NGLOB, G, etc.
-    
+
     // Add the two layers. The first one updates globals using the
     // whole previous layer, and distributes the first G globals to
     // the convolution occurrences.
@@ -824,7 +851,7 @@ static unique_ptr<Network> NewParamsNetwork() {
             .span_start = prev.NGLOB,
             .span_size = num_rest,
             .ipn = rest_ipn});
-      
+
       Chunk glob = Network::MakeRandomSparseChunk(
           &rc, next.NGLOB, spans, LEAKY_RELU, ADAM);
 
@@ -864,10 +891,10 @@ static unique_ptr<Network> NewParamsNetwork() {
       dist.width = dist.num_nodes;
       dist.height = 1;
       dist.channels = 1;
-      
+
       layers.push_back(L({std::move(glob), std::move(dist)}));
     }
-    
+
     // Now, the actual work.
     {
       // Dense globals to globals.
@@ -902,11 +929,11 @@ static unique_ptr<Network> NewParamsNetwork() {
             // No overlap
             pattern_width,
             LEAKY_RELU, ADAM);
-      CHECK(conv.num_nodes == 
+      CHECK(conv.num_nodes ==
             next.NUM_FEATURES *
             prev_occurrences / next.OCC_DIVISOR);
       CHECK(conv.num_occurrences_across == prev_occurrences / next.OCC_DIVISOR);
-      
+
       const int prev_fft_start =
         next.NGLOB + pattern_width * prev_occurrences / next.OCC_DIVISOR;
 
@@ -928,7 +955,7 @@ static unique_ptr<Network> NewParamsNetwork() {
       fft.width = fft.num_nodes;
       fft.height = 1;
       fft.channels = 1;
-      
+
       fft.weights.resize(fft.num_nodes * sparse_ipn, 0.0f);
       fft.biases.resize(fft.num_nodes, 0.0f);
       fft.weights_aux.resize(fft.weights.size() * 2, 0.0f);
@@ -979,7 +1006,7 @@ static unique_ptr<Network> NewParamsNetwork() {
   sink.channels = 1;
 
   layers.push_back(L({std::move(sink)}));
-  
+
   auto net = std::make_unique<Network>(layers);
 
   printf("Randomize..\n");

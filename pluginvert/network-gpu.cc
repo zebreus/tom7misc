@@ -128,20 +128,23 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
   // Compile the appropriate kernel with baked in constants for
   // each chunk in the network.
   string base_src = Util::ReadFile("forwardchunk.cl");
-  for (int layer = 0; layer < net.layers.size(); layer++) {
-    if (layer == 0) {
+  for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
+    if (layer_idx == 0) {
       // No forward kernels for input layer.
-      CHECK(net.layers[layer].chunks.size() == 1);
+      CHECK(net.layers[layer_idx].chunks.size() == 1);
       layer_kernels.push_back({ChunkKernel()});
       continue;
     }
 
-    const int src_layer_size = net.layers[layer - 1].num_nodes;
-    const int dst_layer_size = net.layers[layer].num_nodes;
+    const int src_layer_size = net.layers[layer_idx - 1].num_nodes;
+    const int dst_layer_size = net.layers[layer_idx].num_nodes;
 
     std::vector<ChunkKernel> chunk_kernels;
     int chunk_start = 0;
-    for (const Chunk &chunk : net.layers[layer].chunks) {
+    for (int chunk_idx = 0;
+         chunk_idx < net.layers[layer_idx].chunks.size();
+         chunk_idx++) {
+      const Chunk &chunk = net.layers[layer_idx].chunks[chunk_idx];
       string kernel_src =
         Network::TransferFunctionDefines(chunk.transfer_function);
 
@@ -181,34 +184,15 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
       auto [program, kernel] = cl->BuildOneKernel(kernel_src, kernel_name);
       CHECK(program != 0 && kernel != 0);
 
-      // TODO: Make this part of clutil maybe, and remove the memory leaks!
-      if (false) {
-        printf("Source:\n%s\n", kernel_src.c_str());
-        // XXX leaks, spams
-        size_t number_of_binaries = 0;
-        CHECK_SUCCESS(clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES,
-                                       0, nullptr, &number_of_binaries));
-        cl_int *binary_sizes = new int[number_of_binaries];
-        char **binary = new char*[number_of_binaries];
-        CHECK_SUCCESS(clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES,
-                                       number_of_binaries * sizeof(cl_int),
-                                       binary_sizes,
-                                       &number_of_binaries));
-        for (int i = 0; i < number_of_binaries; i++)
-          binary[i] = new char[binary_sizes[i]];
-        size_t nob = 0;
-        CHECK_SUCCESS(clGetProgramInfo(program, CL_PROGRAM_BINARIES,
-                                       number_of_binaries * sizeof(char*),
-                                       binary,
-                                       &nob));
-        CHECK(nob == number_of_binaries) << nob;
-        CHECK(nob > 0);
-        // Assume binary 0 is nvidia.
-        // The binary is actually PTX assembler which is basically readable.
-        printf("Binary %d:\n", 0);
-        for (int c = 0; c < binary_sizes[0]; c++)
-          printf("%c", binary[0][c]);
-        printf("\n");
+      if (true) {
+        optional<string> ptx = CL::DecodeProgram(program);
+        if (ptx.has_value()) {
+          int lines = Util::SplitToLines(ptx.value()).size();
+          printf("PTX for %d.%d is %d bytes %d lines\n", layer_idx, chunk_idx,
+                 (int)ptx.value().size(), (int)lines);
+          Util::WriteFile(StringPrintf("fwd%d.%d.ptx", layer_idx, chunk_idx),
+                          ptx.value().c_str());
+        }
       }
 
 
@@ -436,12 +420,128 @@ static std::string Backward1KernelName(ChunkType ct) {
   return "ERROR";
 }
 
+// Return some permutation of rest such that we maximize
+// the sum of span sizes in the prefix that are non-overlapping
+// (including in the used vector). Returns this sum as well.
+static std::pair<vector<int>, int> OptimizeChunkScheduleRec(
+    const std::vector<Chunk> &chunks,
+    // Spans (as start, end) that are already used.
+    const std::vector<std::pair<int, int>> &used,
+    const vector<int> &rest) {
+
+  // Any order is valid; this score assumes every order produces
+  // an overlap (or covers the empty case).
+  int best_score = 0;
+  vector<int> best_order = rest;
+
+  for (int i = 0; i < rest.size(); i++) {
+    const Chunk &chunk = chunks[rest[i]];
+    const int chunk_end = chunk.span_start + chunk.span_size;
+    const bool has_overlap = [&]() {
+        for (const auto &[oc_start, oc_end] : used) {
+          if (oc_end <= chunk.span_start ||
+              oc_start >= chunk_end) {
+            // disjoint, ok
+          } else {
+            return true;
+          }
+        }
+        return false;
+      }();
+    if (!has_overlap) {
+      // candidate! prep recursive call.
+      std::vector<std::pair<int, int>> used_rec = used;
+      used_rec.emplace_back(chunk.span_start, chunk_end);
+      std::vector<int> rest_rec;
+      rest_rec.reserve(rest.size() - 1);
+      // Everything but the chunk we chose.
+      for (int j = 0; j < rest.size(); j++)
+        if (j != i)
+          rest_rec.push_back(rest[j]);
+      auto [order, score] =
+        OptimizeChunkScheduleRec(chunks, used_rec, rest_rec);
+      if (score + chunk.span_size > best_score) {
+        best_order.clear();
+        best_order.push_back(rest[i]);
+        for (int c : order) best_order.push_back(c);
+        best_score = score + chunk.span_size;
+      }
+    }
+  }
+
+  return make_pair(std::move(best_order), best_score);
+}
+
+// First array is a permutation of the chunk indices.
+// Second array is in the native order (parallel to chunks arg).
+pair<vector<int>, vector<bool>> BackwardLayerCL::OptimizeChunkSchedule(
+    const std::vector<Chunk> &chunks,
+    bool verbose) {
+  // PERF: If there are many (>10 or so) chunks, this O(n!) algorithm
+  // will be intractable! Use a heuristic (sort by chunk size?) or
+  // bail or something.
+  CHECK(chunks.size() < 8) << "With this many chunks you had better "
+    "consider more efficient algorithms for OptimizeChunkSchedule!";
+
+  vector<int> ids;
+  ids.reserve(chunks.size());
+  for (int i = 0; i < chunks.size(); i++) {
+    ids.push_back(i);
+  }
+
+  auto [schedule, score] = OptimizeChunkScheduleRec(chunks, {}, ids);
+
+  if (verbose) {
+    printf("Best chunk schedule:");
+    for (int c : schedule) printf(" %d", c);
+    printf(" (score: %d)\n", score);
+  }
+
+  // Given the schedule, but in the native chunk order (i.e., parallel
+  // to chunks above), should this chunk have OVERWRITE=true?
+  vector<bool> overwrite(chunks.size(), false);
+  for (int i = 0; i < schedule.size(); i++) {
+    int chunk_idx = schedule[i];
+    bool can_overwrite = true;
+    const Chunk &chunk = chunks[chunk_idx];
+    const int chunk_end = chunk.span_start + chunk.span_size;
+    for (int c = 0; c < i; c++) {
+      const int oc_idx = schedule[c];
+      const Chunk &oc = chunks[oc_idx];
+      const int oc_end = oc.span_start + oc.span_size;
+      if (oc_end <= chunk.span_start ||
+          oc.span_start >= chunk_end) {
+        // disjoint, ok
+      } else {
+        can_overwrite = false;
+        if (verbose) {
+          printf("Chunk %d (%d->%d) overlaps %d (%d->%d); "
+                 "can't overwrite\n",
+                 chunk_idx, chunk.span_start, chunk_end,
+                 oc_idx, oc.span_start, oc_end);
+        }
+        break;
+      }
+    }
+    if (verbose && can_overwrite) {
+      printf("Chunk %d (%d->%d) does not overlap any previous; "
+             "overwriting\n",
+             chunk_idx, chunk.span_start,
+             chunk.span_start + chunk.span_size);
+    }
+    overwrite[i] = can_overwrite;
+  }
+
+  return make_pair(schedule, overwrite);
+}
+
 BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
   string base1_src = Util::ReadFile("backwardchunk.cl");
 
   // Dummy kernels for input layer, which can't be a destination layer.
   CHECK(net.layers[0].chunks.size() == 1);
   layer_kernels.push_back(std::vector<ChunkKernel>{ChunkKernel()});
+  chunk_schedule.push_back({0});
 
   for (int dst_layer_idx = 1;
        dst_layer_idx < net.layers.size();
@@ -449,41 +549,20 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
     const Layer &dst_layer = net.layers[dst_layer_idx];
 
     // First pass is chunk-by-chunk in the destination layer.
+    // As an optimization, we can specify some chunks as OVERWRITE=true,
+    // as long as no other chunk has written into that span yet.
+    // (With OVERWRITE, they write into the span of the error with =
+    // instead of +=.)
+    // The cost saved is proportional to the size of the span. So here
+    // we order the chunks to minimize the cost (sum of span sizes
+    // that overlap with some previous).
+    const auto [schedule, overwrite] = OptimizeChunkSchedule(dst_layer.chunks);
+    chunk_schedule.push_back(schedule);
+
     std::vector<ChunkKernel> chunk_kernels;
     int out_idx = 0;
-    // PERF: We can run the chunks out of order to get more out of the
-    // overwrite optimization (including that we can put the larger of
-    // two overlapping chunks first, so that it can be the one that
-    // overwrites).
     for (int chunk_idx = 0; chunk_idx < dst_layer.chunks.size(); chunk_idx++) {
       const Chunk &chunk = dst_layer.chunks[chunk_idx];
-
-      // Has any chunk written into the span yet?
-      bool overwrite = true;
-      {
-        const int chunk_end = chunk.span_start + chunk.span_size;
-        for (int c = 0; c < chunk_idx; c++) {
-          const Chunk &oc = dst_layer.chunks[c];
-          const int oc_end = oc.span_start + oc.span_size;
-          if (oc_end <= chunk.span_start ||
-              oc.span_start >= chunk_end) {
-            // disjoint, ok
-          } else {
-            overwrite = false;
-            printf("Chunk %d.%d (%d->%d) overlaps %d.%d (%d->%d); "
-                   "can't overwrite\n",
-                   dst_layer_idx, chunk_idx, chunk.span_start, chunk_end,
-                   dst_layer_idx, c, oc.span_start, oc_end);
-            break;
-          }
-        }
-      }
-      if (overwrite) {
-        printf("Chunk %d.%d (%d->%d) does not overlap any previous; "
-               "overwriting\n",
-               dst_layer_idx, chunk_idx, chunk.span_start,
-               chunk.span_start + chunk.span_size);
-      }
 
       string kernel_src =
         StringPrintf("#define SRC_LAYER_SIZE %d\n"
@@ -503,7 +582,7 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
                      chunk.indices_per_node,
                      chunk.num_nodes,
                      chunk.num_features,
-                     overwrite ? "true" : "false");
+                     overwrite[chunk_idx] ? "true" : "false");
 
       kernel_src += base1_src;
 
@@ -572,6 +651,7 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
     }
     CHECK(out_idx == layer.num_nodes);
   }
+  CHECK(chunk_schedule.size() == layer_kernels.size());
 }
 
 BackwardLayerCL::~BackwardLayerCL() {
@@ -603,10 +683,11 @@ void BackwardLayerCL::BackwardLayer(NetworkGPU *net_gpu,
     // kernels we need to start by clearing the src_error.
     //
     // PERF we could consider doing this only for chunks where we have
-    // SRC_SPAN_IS_ZERO false, although it gets pretty complicated with
-    // multiple training examples. Better perhaps to just skip when ALL
-    // the chunks are SRC_SPAN_IS_ZERO, which would happen in the common
-    // case that there is just one chunk.
+    // OVERWRITE false, although it gets pretty complicated
+    // with multiple training examples. Better perhaps to just skip
+    // when ALL the chunks are OVERWRITE (and they cover the entire
+    // input span?), which would happen in the common case that there
+    // is just one chunk.
     cl_float zero = 0.0f;
     CHECK_SUCCESS(
         clEnqueueFillBuffer(cl->queue,
@@ -630,7 +711,8 @@ void BackwardLayerCL::BackwardLayer(NetworkGPU *net_gpu,
 
   // First pass over chunks in the DEST layer.
   const Layer &layer = net.layers[dst_layer];
-  for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
+  // for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
+  for (int chunk_idx : chunk_schedule[dst_layer]) {
     const Chunk &chunk = layer.chunks[chunk_idx];
     NetworkGPU::GPUChunk &gpu_chunk =
       net_gpu->layers[dst_layer].chunks[chunk_idx];
@@ -918,8 +1000,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
     // We could allow in-place SGD in this case, with significant
     // complexity...
     CHECK(max_weights + max_biases <= MAX_NUM_SCRATCH) <<
-    "Can't even fit one example at a time. :( Try increasing "
-    "MAX_MUM_SCRATCH or a smaller network!";
+        "Can't even fit one example at a time. :( Try increasing "
+        "MAX_MUM_SCRATCH or a smaller network!";
 
     // Since the logic below is inexact, make sure we don't
     // miss an easy solution where we can fit the full width
@@ -1002,10 +1084,6 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
 
       // PERF: Don't even compile a kernel if the chunk is fixed.
 
-      const int num_occurrences =
-        chunk.num_occurrences_across *
-        chunk.num_occurrences_down;
-
       const int64 num_weights = chunk.weights.size();
       const int64 num_biases = chunk.biases.size();
 
@@ -1036,7 +1114,13 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
                     "#define SPAN_START %d\n"
                     "#define SPAN_SIZE %d\n"
                     "#define INDICES_PER_NODE %d\n"
-                    "#define NUM_OCCURRENCES %d\n"
+                    "#define PATTERN_WIDTH %d\n"
+                    "#define PATTERN_HEIGHT %d\n"
+                    "#define NUM_OCCURRENCES_ACROSS %d\n"
+                    "#define NUM_OCCURRENCES_DOWN %d\n"
+                    "#define OCCURRENCE_X_STRIDE %d\n"
+                    "#define OCCURRENCE_Y_STRIDE %d\n"
+                    "#define SRC_WIDTH %d\n"
                     "#define NUM_FEATURES %d\n"
                     "#define NUM_WEIGHTS %lld\n"
                     "#define NUM_BIASES %lld\n"
@@ -1047,7 +1131,13 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
                     chunk.span_start,
                     chunk.span_size,
                     chunk.indices_per_node,
-                    num_occurrences,
+                    chunk.pattern_width,
+                    chunk.pattern_height,
+                    chunk.num_occurrences_across,
+                    chunk.num_occurrences_down,
+                    chunk.occurrence_x_stride,
+                    chunk.occurrence_y_stride,
+                    chunk.src_width,
                     chunk.num_features,
                     (int64)chunk.weights.size(),
                     (int64)chunk.biases.size(),
@@ -1059,6 +1149,18 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
       auto pk1 = cl->BuildOneKernel(kernel1_src, kernel1_name);
       ck.program1 = pk1.first;
       ck.kernel1 = pk1.second;
+
+      if (false) {
+        optional<string> ptx = CL::DecodeProgram(ck.program1);
+        if (ptx.has_value()) {
+          int lines = Util::SplitToLines(ptx.value()).size();
+          printf("PTX for %d.%d is %d bytes %d lines\n", layer_idx, chunk_idx,
+                 (int)ptx.value().size(), (int)lines);
+          Util::WriteFile(StringPrintf("uw%d.%d.ptx", layer_idx, chunk_idx),
+                          ptx.value().c_str());
+        }
+      }
+
 
       // Summing pass.
       string kernel_sum_src = StringPrintf("#define W %d\n", w);

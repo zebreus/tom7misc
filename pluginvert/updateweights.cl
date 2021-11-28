@@ -6,10 +6,12 @@
 // INDICES_PER_NODE, an int, the number of input indices
 // per node on this layer.
 //
-// NUM_OCCURRENCES, an int giving the number of occurences
-// of the pattern (occurrences_across * occurrences_down)
+// NUM_OCCURRENCES_ACROSS and NUM_OCCURRENCES_DOWN, ints
+// giving the number of occurences of the pattern
 // for a convolutional layer. For sparse and dense layers,
 // ignored but should be defined to something like 1.
+// OCCURRENCE_X_STRIDE and OCCURRENCE_Y_STRIDE, the stride
+// in each axis for convolutional layers.
 //
 // NUM_FEATURES, an int giving the number of features in a
 // convolutional layer; should be 1 for sparse and dense.
@@ -139,7 +141,7 @@ __kernel void UpdateWeightsConvolutional(
                  // full layer's error, size num_nodes
                  __global const float *restrict layer_error,
                  // chunk.num_nodes * INDICES_PER_NODE
-                 __global const int *restrict chunk_indices,
+                 __global const int *restrict chunk_indices_unused,
                  // NUM_FEATURES * INDICES_PER_NODE,
                  __global float *restrict weight_grads,
                  // NUM_FEATURES
@@ -164,43 +166,67 @@ __kernel void UpdateWeightsConvolutional(
   // pidx 0.
   float bias_grad = 0.0f;
 
+
+  // position of pidx within the pattern.
+  // For the common case that the pattern is 1D, make sure that
+  // the compiler is able to avoid even mod and div by a constant.
+  const int px = PATTERN_HEIGHT == 1 ?
+    pidx :
+    (pidx % PATTERN_WIDTH);
+  const int py = PATTERN_HEIGHT == 1 ?
+    0 :
+    (pidx / PATTERN_WIDTH);
+
+  // index offset from the top-left corner of an occurrence
+  const int poff = SRC_WIDTH * py + px;
+
   // Loop over every occurrence of the feature, each of which gives
   // us a different error term.
-  for (int occ = 0; occ < NUM_OCCURRENCES; occ++) {
-    const int chunk_node_idx = occ * NUM_FEATURES + feature_num;
-    const int global_node_idx = CHUNK_START + chunk_node_idx;
-    const float delta_j = layer_error[dst_layer_start + global_node_idx];
+  for (int y = 0; y < NUM_OCCURRENCES_DOWN; y++) {
+    for (int x = 0; x < NUM_OCCURRENCES_ACROSS; x++) {
+      const int occ = y * NUM_OCCURRENCES_ACROSS + x;
 
-    // Always compute bias term; all but one is thrown out.
-    bias_grad += delta_j;
+      const int chunk_node_idx = occ * NUM_FEATURES + feature_num;
+      const int global_node_idx = CHUNK_START + chunk_node_idx;
+      const float delta_j = layer_error[dst_layer_start + global_node_idx];
 
-    // Multiple error terms, but we are only updating a single weight.
-    // Offset of the node, which we use to get its output.
-    // (These are already global to the input layer, but should
-    // be within the span.)
-    // PERF: Consider computing this index rather than reading it
-    // from memory. It should be a constant offset from the start
-    // position of the occurrence, which has a simple formula.
-    const int src_idx = chunk_indices[occ * INDICES_PER_NODE + pidx];
-    const float x_ji = prev_layer_output[src_layer_start + src_idx];
-    // weight_grad += delta_j * x_ji;
-    weight_grad = fma(delta_j, x_ji, weight_grad);
+      // Always compute bias term; all but one is thrown out.
+      bias_grad += delta_j;
+
+      // Multiple error terms, but we are only updating a single weight.
+      // Offset of the node, which we use to get its output.
+      // (These are already global to the input layer, but should
+      // be within the span.)
+
+      // index (from SPAN_START) of the top-left corner of the occurrence
+      const int top_left = SRC_WIDTH * y * OCCURRENCE_Y_STRIDE +
+        x * OCCURRENCE_X_STRIDE;
+
+      // const int src_idx = chunk_indices[occ * INDICES_PER_NODE + pidx];
+      const int src_idx = SPAN_START + top_left + poff;
+
+      const float x_ji = prev_layer_output[src_layer_start + src_idx];
+      // weight_grad += delta_j * x_ji;
+      weight_grad = fma(delta_j, x_ji, weight_grad);
+    }
   }
+
+  // In the past I used the square root here, although it is not
+  // very principled. Adam may be able to fully account for the
+  // benefit I (thought I) was getting.
+  const float multiplier = 1.0f / (NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN);
 
   {
     // Update the one weight.
     const int widx = feature_num * INDICES_PER_NODE + pidx;
-    // In the past I used the square root here, although it is not
-    // very principled. Adam may be able to fully account for the
-    // benefit I (thought I) was getting.
-    weight_grad *= (1.0f / NUM_OCCURRENCES);
+    weight_grad *= multiplier;
     // PERF fma()
     ACCUMULATE(weight_grads[NUM_WEIGHTS * example_num_in_batch + widx],
                weight_grad);
   }
 
   if (pidx == 0) {
-    bias_grad *= (1.0f / NUM_OCCURRENCES);
+    bias_grad *= multiplier;
     // PERF fma()
     ACCUMULATE(bias_grads[NUM_BIASES * example_num_in_batch + feature_num],
                bias_grad);

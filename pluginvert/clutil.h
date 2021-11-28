@@ -5,6 +5,7 @@
 #include <CL/cl.h>
 #include <string>
 #include <vector>
+#include <optional>
 
 // Maybe make this not depend on base/logging?
 // We only need some basic asserts.
@@ -48,6 +49,10 @@ struct CL {
   std::pair<cl_program, cl_kernel>
   BuildOneKernel(const std::string &kernel_src,
                  const std::string &function_name);
+
+  // Read the program binary for the first device and return it if it
+  // is text.
+  static std::optional<std::string> DecodeProgram(cl_program p);
 
   ~CL() {
     printf("Destroying CL.\n");

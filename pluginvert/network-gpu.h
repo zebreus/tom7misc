@@ -338,7 +338,16 @@ struct BackwardLayerCL {
                      TrainingRoundGPU *training_round,
                      int dst_layer);
 
+  // Used internally to schedule chunks. This is only exposed for testing.
+  static std::pair<std::vector<int>, std::vector<bool>> OptimizeChunkSchedule(
+      const std::vector<Chunk> &chunks, bool verbose = false);
+
  private:
+  // Order in which to process the chunks for each layer. The compiled
+  // kernels are only correct if they are scheduled in this order,
+  // which we optimize to avoid += if possible.
+  std::vector<std::vector<int>> chunk_schedule;
+
   // For this phase there are two passes, so two kernels.
   struct ChunkKernel {
     cl_program program1 = 0;
@@ -416,14 +425,17 @@ struct UpdateWeightsCL {
   static constexpr float ADAM_B1 = 0.9f;
   static constexpr float ADAM_B2 = 0.999f;
 
-
-
   // Run on all examples in the round.
   // learning_rate here is something like 0.01f (internally scaled
   // by number of examples etc.)
   // The number of training examples must match the configured amount.
   void Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
               float learning_rate, int layer);
+
+  // For debugging: Get the compiled program (as PTX assembly) for the
+  // given layer and chunk, which must be in range. Probably only
+  // works for NVIDIA cards.
+  std::string GetProgram(int layer_idx, int chunk_idx) const;
 
  private:
   const int examples_per_round = 0;

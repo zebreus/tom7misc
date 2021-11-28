@@ -483,8 +483,99 @@ static void TrainTest(TrainNet train_net,
   // net_gpu->ReadFromGPU();
 }
 
+static void TestChunkSchedule() {
+  // This test relies on the fact that only the spans are used from
+  // the chunks...
+  static constexpr int AA = 1, BB = 2, CC = 3;
+  Chunk a;
+  a.span_start = 0;
+  a.span_size = 5;
+  a.num_nodes = AA;
+
+  Chunk b;
+  b.span_start = 5;
+  b.span_size = 10;
+  b.num_nodes = BB;
+
+  Chunk c;
+  c.span_start = 4;
+  c.span_size = 2;
+  c.num_nodes = CC;
+
+  {
+    const auto [schedule, overwrite] =
+      BackwardLayerCL::OptimizeChunkSchedule({a}, false);
+    CHECK(schedule.size() == 1);
+    CHECK(schedule[0] == 0);
+    CHECK(overwrite.size() == 1);
+    CHECK(overwrite[0]);
+  }
+
+  {
+    const auto [schedule, overwrite] =
+      BackwardLayerCL::OptimizeChunkSchedule({a, b}, false);
+    CHECK(schedule.size() == 2);
+    // Either order is okay.
+    CHECK((schedule[0] == 1 && schedule[1] == 0) ||
+          (schedule[0] == 0 && schedule[1] == 1));
+    CHECK(overwrite.size() == 2);
+    CHECK(overwrite[0] == true);
+    CHECK(overwrite[1] == true);
+  }
+
+  {
+    // a, b are disjoint
+    const auto [schedule, overwrite] =
+      BackwardLayerCL::OptimizeChunkSchedule({a, b}, false);
+    CHECK(schedule.size() == 2);
+    // Either order is okay.
+    CHECK((schedule[0] == 1 && schedule[1] == 0) ||
+          (schedule[0] == 0 && schedule[1] == 1));
+    CHECK(overwrite.size() == 2);
+    CHECK(overwrite[0] == true);
+    CHECK(overwrite[1] == true);
+  }
+
+  {
+    // b and c overlap, so take the larger first
+    std::vector<Chunk> v = {c, b};
+    const auto [schedule, overwrite] =
+      BackwardLayerCL::OptimizeChunkSchedule(v, false);
+    CHECK(schedule.size() == 2);
+    CHECK(v[schedule[0]].num_nodes == BB);
+    CHECK(v[schedule[1]].num_nodes == CC);
+    CHECK(overwrite.size() == 2);
+    CHECK(overwrite[0] == true);
+    CHECK(overwrite[1] == false);
+  }
+
+  for (const auto &v : std::vector<std::vector<Chunk>>{{c, a, b}, {c, b, a},
+                                                       {a, c, b}, {b, c, a},
+                                                       {a, b, c}, {b, a, c}}) {
+    const auto [schedule, overwrite] =
+      BackwardLayerCL::OptimizeChunkSchedule(v, false);
+    CHECK(schedule.size() == 3);
+    // Either order of a,b is okay, but c overlaps both of them and is small
+    // so it must go last.
+    CHECK((v[schedule[0]].num_nodes == AA && v[schedule[1]].num_nodes == BB) ||
+          (v[schedule[0]].num_nodes == BB && v[schedule[1]].num_nodes == AA));
+    CHECK(v[schedule[2]].num_nodes == CC);
+    CHECK(overwrite.size() == 3);
+    CHECK(overwrite[0] == true);
+    CHECK(overwrite[1] == true);
+    CHECK(overwrite[2] == false);
+  }
+
+}
+
 int main(int argc, char **argv) {
   cl = new CL;
+
+  TestChunkSchedule();
+  printf("Chunk schedule OK\n");
+  return 0;
+  // TrainOnTestTests(NetworkTestUtil::SimpleConv());
+  // return 0;
 
   #if 1
   ForwardTests(NetworkTestUtil::SingleSparse());

@@ -93,6 +93,46 @@ CL::CL() {
       nullptr);
 }
 
+std::optional<std::string> CL::DecodeProgram(cl_program p) {
+  cl_uint number_of_devices;
+  CHECK_SUCCESS(clGetProgramInfo(p, CL_PROGRAM_NUM_DEVICES,
+                                 sizeof (cl_uint),
+                                 &number_of_devices,
+                                 nullptr));
+
+  std::vector<size_t> sizes(number_of_devices, 0);
+  CHECK_SUCCESS(clGetProgramInfo(p, CL_PROGRAM_BINARY_SIZES,
+                                 number_of_devices * sizeof(size_t),
+                                 sizes.data(),
+                                 nullptr));
+
+  std::vector<char *> binaries(number_of_devices, nullptr);
+  for (int i = 0; i < binaries.size(); i++) {
+    binaries[i] = (char *)malloc(sizes[i] + 1);
+  }
+
+  CHECK_SUCCESS(clGetProgramInfo(p, CL_PROGRAM_BINARIES,
+                                 number_of_devices * sizeof(char*),
+                                 binaries.data(),
+                                 nullptr));
+
+  std::vector<string> sbinaries;
+  sbinaries.reserve(binaries.size());
+  for (int i = 0; i < binaries.size(); i++) {
+    sbinaries.push_back(std::string(binaries[i], sizes[i]));
+    free(binaries[i]);
+  }
+  binaries.clear();
+
+  printf("There were %d binaries, sizes ", (int)number_of_devices);
+  for (size_t i : sizes) printf("%d, ", (int)i);
+
+  // Assume binary 0 is nvidia.
+  // XXX We should try to detect this case more robustly!
+  if (!sbinaries.empty()) return {sbinaries[0]};
+  return {};
+}
+
 
 // TODO: PERF: Enable fast-math style optimizations:
 // khronos.org/registry/OpenCL/sdk/2.0/docs/man/xhtml/clBuildProgram.html
