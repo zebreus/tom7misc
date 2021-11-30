@@ -184,7 +184,7 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
       auto [program, kernel] = cl->BuildOneKernel(kernel_src, kernel_name);
       CHECK(program != 0 && kernel != 0);
 
-      if (true) {
+      if (false) {
         optional<string> ptx = CL::DecodeProgram(program);
         if (ptx.has_value()) {
           int lines = Util::SplitToLines(ptx.value()).size();

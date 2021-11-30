@@ -15,6 +15,7 @@
 #include "randutil.h"
 #include "threadutil.h"
 #include "image.h"
+#include "train-util.h"
 
 using namespace std;
 
@@ -155,24 +156,17 @@ static void TrainTest(TrainNet train_net,
                       // per round (e.g. 0.01f), not example
                       float learning_rate,
                       float avg_loss_threshold,
-                      int max_parallelism) {
+                      bool write_images = false) {
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = false;
+  static constexpr int MAX_PARALLELISM = 4;
 
-  std::vector<std::unique_ptr<ImageRGBA>> images;
-  constexpr int IMAGE_WIDTH = 3000;
-  constexpr int IMAGE_HEIGHT = 1000;
   constexpr int IMAGE_EVERY = 5;
-  int image_x = 0;
-  for (int i = 0; i < train_net.net.layers.size(); i++) {
-    images.emplace_back(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
-    images.back()->Clear32(0x000000FF);
-    images.back()->BlendText2x32(
-        2, 2, 0x9999AAFF,
-        StringPrintf("Train test: %s | Layer %d | 1px = %d rounds ",
-                     train_net.name.c_str(), i,
-                     train_net.net.rounds, IMAGE_EVERY));
+  std::unique_ptr<TrainingImages> images;
+  if (write_images) {
+    images.reset(new TrainingImages(train_net.net, "test", train_net.name,
+                                    IMAGE_EVERY, 3000, 1000));
   }
 
   printf("\n--------------------------\n"
@@ -299,7 +293,7 @@ static void TrainTest(TrainNet train_net,
                    update_cl->Update(net_gpu.get(), training.get(),
                                      learning_rate, layer_idx);
                  },
-                 max_parallelism);
+                 MAX_PARALLELISM);
 
     if (VERBOSE > 1)
       printf("Updated errors.\n");
@@ -314,7 +308,7 @@ static void TrainTest(TrainNet train_net,
     // Possibly updated in loss calculation below.
     bool finished = false;
 
-    // PERF: Consider only doing this every few rounds, as it is probably
+    // Only do this every few rounds, as it is probably
     // the bottleneck in these tests now.
     if (iter < 100 ? (iter % 10 == 0) :
         iter < 1000 ? (iter % 100 == 0) :
@@ -339,7 +333,7 @@ static void TrainTest(TrainNet train_net,
                          if (want != made) incorrect++;
                        }
                        return std::make_pair(loss, incorrect);
-                     }, max_parallelism);
+                     }, MAX_PARALLELISM);
 
       if (VERBOSE > 1)
         printf("Got losses.\n");
@@ -374,87 +368,9 @@ static void TrainTest(TrainNet train_net,
         max_inc == 0 : average_loss < avg_loss_threshold;
     }
 
-    if (finished || (iter % IMAGE_EVERY) == 0) {
-
-      // XXX would be better if this was more accurate,
-      // but we only want to read from GPU if we're going to
-      // actually do anything below
-      if (images.size() >= 2 &&
-          images[1].get() != nullptr &&
-          image_x < images[1]->Width()) {
-        net_gpu->ReadFromGPU();
-
-        for (int target_layer = 1; target_layer < net.layers.size();
-             target_layer++) {
-          const Layer &layer = net.layers[target_layer];
-          ImageRGBA *image = images[target_layer].get();
-          // Note we only graph the first chunk of each layer...
-          CHECK(layer.chunks.size() > 0);
-          const Chunk &chunk = layer.chunks[0];
-          auto ToScreenY = [](float w) {
-              int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
-              int y = IMAGE_HEIGHT - yrev;
-              // Always draw on-screen.
-              return std::clamp(y, 0, IMAGE_HEIGHT - 1);
-            };
-          // 1, -1, x axis
-          if (image_x & 1) {
-            image->BlendPixel32(image_x, ToScreenY(+1), 0xCCFFCC40);
-            image->BlendPixel32(image_x, ToScreenY( 0), 0xCCCCFFFF);
-            image->BlendPixel32(image_x, ToScreenY(-1), 0xFFCCCC40);
-          }
-
-          const uint8 weight_alpha =
-            std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
-
-          for (float w : chunk.weights) {
-            // maybe better to AA this?
-            image->BlendPixel32(image_x, ToScreenY(w),
-                                0xFFFFFF00 | weight_alpha);
-          }
-
-          const uint8 bias_alpha =
-            std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
-
-          for (float b : chunk.biases) {
-            image->BlendPixel32(image_x, ToScreenY(b),
-                                0xFF777700 | bias_alpha);
-          }
-
-          if (chunk.weight_update == ADAM) {
-            CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
-            CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
-            for (int idx = 0; idx < chunk.weights.size(); idx++) {
-              const float m = chunk.weights_aux[idx * 2 + 0];
-              const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
-
-              image->BlendPixel32(image_x, ToScreenY(m),
-                                  0xFFFF0000 | weight_alpha);
-              image->BlendPixel32(image_x, ToScreenY(v),
-                                  0xFF00FF00 | weight_alpha);
-            }
-
-            // Too many dots??
-            for (int idx = 0; idx < chunk.biases.size(); idx++) {
-              const float m = chunk.biases_aux[idx * 2 + 0];
-              const float v = sqrtf(chunk.biases_aux[idx * 2 + 1]);
-
-              image->BlendPixel32(image_x, ToScreenY(m),
-                                  0xFF770000 | bias_alpha);
-              image->BlendPixel32(image_x, ToScreenY(v),
-                                  0xFF007700 | bias_alpha);
-            }
-          }
-
-          if (finished || (image_x % 1000 == 0) || image_x == image->Width()) {
-            string filename = StringPrintf("train-test-image-%d.png",
-                                           target_layer);
-            image->Save(filename);
-            printf("Wrote %s\n", filename.c_str());
-          }
-        }
-        image_x++;
-      }
+    if (images.get() != nullptr && (finished || (iter % IMAGE_EVERY) == 0)) {
+      net_gpu->ReadFromGPU();
+      images->Sample(net);
     }
 
     if (SAVE_INTERMEDIATE && (finished || iter == 1000 || iter % 5000 == 0)) {
@@ -573,9 +489,6 @@ int main(int argc, char **argv) {
 
   TestChunkSchedule();
   printf("Chunk schedule OK\n");
-  return 0;
-  // TrainOnTestTests(NetworkTestUtil::SimpleConv());
-  // return 0;
 
   #if 1
   ForwardTests(NetworkTestUtil::SingleSparse());
@@ -599,11 +512,11 @@ int main(int argc, char **argv) {
 
   #if 1
   TrainTest(NetworkTestUtil::LearnTrivialIdentitySparse(),
-            1000, 1000, 1.0f, 0.0001f, 4);
+            1000, 1000, 1.0f, 0.0001f);
   TrainTest(NetworkTestUtil::LearnTrivialIdentityDense(),
-            1000, 1000, 1.0f, 0.0001f, 4);
+            1000, 1000, 1.0f, 0.0001f);
   TrainTest(NetworkTestUtil::LearnTrivialIdentityConvolution(),
-            1000, 1000, 1.0f, 0.0001f, 4);
+            1000, 1000, 1.0f, 0.0001f);
   #endif
 
   #if 0
@@ -616,7 +529,7 @@ int main(int argc, char **argv) {
   // With a less aggressive learning rate, this can take many
   // thousands of rounds to converge (or never converge).
   TrainTest(NetworkTestUtil::LearnBoolean(),
-            50000, 54, 0.1f, 0.0001f, 4);
+            50000, 54, 0.1f, 0.0001f);
   #endif
 
   #if 1
@@ -627,13 +540,13 @@ int main(int argc, char **argv) {
   // because here we are using a sensible learning rate of 0.01f.
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnTrivialIdentitySparse()),
-            1000, 1000, 0.01f, 0.001f, 4);
+            1000, 1000, 0.01f, 0.001f);
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnTrivialIdentityDense()),
-            1000, 1000, 0.01f, 0.001f, 4);
+            1000, 1000, 0.01f, 0.001f);
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnTrivialIdentityConvolution()),
-            1000, 1000, 0.01f, 0.001f, 4);
+            1000, 1000, 0.01f, 0.001f);
   #endif
 
 
@@ -641,7 +554,7 @@ int main(int argc, char **argv) {
   // Even with a lower learning rate, this converges much faster than
   // the SGD version :) ~200 rounds.
   TrainTest(NetworkTestUtil::ForceAdam(NetworkTestUtil::LearnBoolean()),
-            6000, 54, 0.01f, 0.0001f, 4);
+            6000, 54, 0.01f, 0.0001f);
   #endif
 
 
@@ -657,8 +570,7 @@ int main(int argc, char **argv) {
             // Looks like it will eventually drop arbitrarily
             // low if you wait for it. Gets to this threshold
             // before about 600 rounds.
-            0.100f,
-            4);
+            0.100f);
   #endif
 
   #if 0
@@ -669,8 +581,7 @@ int main(int argc, char **argv) {
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountOnesDense()),
             10000, 1000, 0.01f,
-            0.100f,
-            4);
+            0.100f);
   #endif
 
 
@@ -680,8 +591,7 @@ int main(int argc, char **argv) {
   // for the rest. (The dense layer is currently fixed!)
   TrainTest(NetworkTestUtil::LearnCountOnesConvConvDense(),
             10000, 1000, 0.001f,
-            0.100f,
-            4);
+            0.100f);
   #endif
 
   #if 1
@@ -690,8 +600,7 @@ int main(int argc, char **argv) {
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountOnesConvConvDense()),
             10000, 1000, 0.01f,
-            0.01f,
-            4);
+            0.01f);
   #endif
 
 
@@ -700,8 +609,7 @@ int main(int argc, char **argv) {
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountOnesConvDense()),
             10000, 1000, 0.01f,
-            0.010f,
-            4);
+            0.010f);
   #endif
 
   #if 1
@@ -711,8 +619,7 @@ int main(int argc, char **argv) {
   TrainTest(NetworkTestUtil::ForceAdam(
                 NetworkTestUtil::LearnCountEdges()),
             20000, 1000, 0.01f,
-            0.010f,
-            4);
+            0.010f);
   #endif
 
   delete cl;
