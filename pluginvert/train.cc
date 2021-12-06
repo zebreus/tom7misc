@@ -29,6 +29,7 @@
 #include "error-history.h"
 #include "audio-database.h"
 #include "plugins.h"
+#include "crypt/sha256.h"
 
 using namespace std;
 
@@ -42,7 +43,8 @@ using int64 = int64_t;
 
 static constexpr float TWO_PI = 2.0f * std::numbers::pi_v<float>;
 
-#define MODEL_NAME "params.val"
+#define MODEL_BASE "params"
+#define MODEL_NAME MODEL_BASE ".val"
 
 // Size of time domain window in samples.
 constexpr int WINDOW_SIZE = 1024;
@@ -68,13 +70,16 @@ struct ExampleThread {
 
   static constexpr int TARGET_SIZE = 3;
 
-  example_type GetExamples() {
+  // TODO: Perhaps some more checking to make sure the round number
+  // is not desynchronized with the client?
+  example_type GetExamples(int64 round_num) {
     for (;;) {
       {
         MutexLock ml(&m);
-        if (!q.empty()) {
-          example_type ret = std::move(q.back());
-          q.pop_back();
+        auto it = q.find(round_num);
+        if (it != q.end()) {
+          example_type ret = std::move(it->second);
+          q.erase(it);
           return ret;
         }
       }
@@ -83,8 +88,10 @@ struct ExampleThread {
     }
   }
 
-  ExampleThread() {
+  ExampleThread(int64 next_round) : next_example(next_round) {
     audio_database.reset(new AudioDatabase(WINDOW_SIZE, "corpus"));
+    // PERF only if we are trying to be deterministic
+    audio_database->WaitDone();
     work_thread.reset(new std::thread(&Generate, this, 1));
   }
 
@@ -96,7 +103,7 @@ private:
   static vector<float> RandomSamples(AudioDatabase *db, ArcFour *rc) {
     uint8 method = rc->Byte();
     if (method < P_MP3) {
-      return db->GetBuffer();
+      return db->GetBuffer(rc);
     }
     method -= P_MP3;
 
@@ -155,7 +162,6 @@ private:
   // Perhaps should have more than one generation thread...
   void Generate(int id) {
     printf("Started example thread %d.\n", id);
-    ArcFour rc(StringPrintf("examples.%lld.%d\n", time(nullptr), id));
 
     // TODO: float ffts
     using element_type = double;
@@ -171,24 +177,40 @@ private:
     static constexpr fftw_r2r_kind fwd = FFTW_DHT;
     static constexpr fftw_r2r_kind inv = FFTW_DHT;
 
+    // PERF: Use measure. But this can result in nondeterminism.
+    constexpr auto fftw_approach = FFTW_ESTIMATE;
+
     plan = fftw_plan_r2r_1d(WINDOW_SIZE, in, out,
-                            fwd, FFTW_MEASURE);
+                            fwd, fftw_approach);
     // printf("Forward plan:\n");
     // fftw_print_plan(plan);
 
     rplan = fftw_plan_r2r_1d(WINDOW_SIZE, in, out,
-                             inv, FFTW_MEASURE);
+                             inv, fftw_approach);
 
     // printf("Inverse plan:\n");
     // fftw_print_plan(rplan);
 
     for (;;) {
-      const bool need_example = [&](){
+      // If we need to generate an example, claim its number.
+      // Otherwise, return -1.
+      const int64 next = [&]() -> int64 {
           MutexLock ml(&m);
-          return q.size() < TARGET_SIZE;
+          if (q.size() < TARGET_SIZE) {
+            int64 ex = next_example;
+            next_example++;
+            return ex;
+          } else {
+            return -1;
+          }
         }();
 
-      if (need_example) {
+      if (next >= 0) {
+        // PERF: In order to get deterministic examples, we re-seed
+        // the PRNG for each one, based on the round number. So
+        // something that initializes faster (PCG) would perhaps
+        // be better.
+        ArcFour rc(StringPrintf("%lld.ex", next_example));
         // examples_per_round * INPUT_SIZE;
         std::vector<float> examples;
         // examples_per_round * NUM_PARAMS
@@ -234,8 +256,8 @@ private:
 
         {
           MutexLock ml(&m);
-          q.push_front(
-              make_pair(std::move(examples), std::move(outputs)));
+          CHECK(q.find(next) == q.end()) << next;
+          q[next] = make_pair(std::move(examples), std::move(outputs));
         }
       } else {
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
@@ -253,13 +275,15 @@ private:
   std::unique_ptr<AudioDatabase> audio_database;
 
   std::mutex m;
-  std::deque<example_type> q;
+  // Round number for the next example to generate.
+  int64 next_example = 0;
+  std::map<int64, example_type> q;
 
   std::unique_ptr<std::thread> work_thread;
 };
 
 static void Train(Network *net) {
-  ExampleThread example_thread;
+  ExampleThread example_thread(net->rounds);
 
   ErrorHistory error_history("error-history.tsv");
 
@@ -283,14 +307,16 @@ static void Train(Network *net) {
 
   // On a verbose round we compute training error and print out
   // examples.
-  constexpr int VERBOSE_EVERY = 100;
+  constexpr int VERBOSE_EVERY = 10;
   // We save this to the error history file every this many
   // verbose rounds.
   constexpr int HISTORY_EVERY_VERBOSE = 5;
   int64 total_verbose = 0;
   constexpr int TIMING_EVERY = 500;
 
-  constexpr int IMAGE_EVERY = 100;
+  constexpr bool CHECKSUM_EXAMPLES = false;
+
+  constexpr int IMAGE_EVERY = 1;
   TrainingImages images(*net, "train", MODEL_NAME, IMAGE_EVERY);
 
   printf("Training!\n");
@@ -319,7 +345,7 @@ static void Train(Network *net) {
   CHECK(net->layers.back().num_nodes == OUTPUT_SIZE);
 
   double round_ms = 0.0;
-  double frag_ms = 0.0;
+  double getexample_ms = 0.0;
   double example_ms = 0.0;
   double forward_ms = 0.0;
   double error_ms = 0.0;
@@ -341,11 +367,25 @@ static void Train(Network *net) {
     // Initialize training examples.
     // (PERF: parallelize?)
 
-    // TODO: Rename this timer. It's like, stalling on getexamples.
-    Timer frag_timer;
+    Timer getexample_timer;
     // All examples for the round, flat, as word ids.
-    auto [inputs, expecteds] = example_thread.GetExamples();
-    frag_ms += frag_timer.MS();
+    auto [inputs, expecteds] = example_thread.GetExamples(net->rounds);
+
+    const string example_checksum = [&]() -> string {
+        if (CHECKSUM_EXAMPLES) {
+          // PERF
+          SHA256::Ctx c;
+          SHA256::Init(&c);
+          SHA256::Update(&c, (const uint8_t*)inputs.data(),
+                         inputs.size() * sizeof (float));
+          SHA256::Update(&c, (const uint8_t*)expecteds.data(),
+                         expecteds.size() * sizeof (float));
+          return SHA256::Ascii(SHA256::FinalVector(&c));
+        } else {
+          return "";
+        }
+      }();
+    getexample_ms += getexample_timer.MS();
 
     {
       Timer example_timer;
@@ -488,9 +528,21 @@ static void Train(Network *net) {
       const double total_sec = train_timer.MS() / 1000.0;
       const double eps = total_examples / total_sec;
 
-      printf("%d: %.3f<%.3f<%.3f", iter,
+      printf("%lld|%d: %.3f<%.3f<%.3f",
+             net->rounds, iter,
              min_loss, average_loss, max_loss);
       printf(" (%.2f eps)\n", eps);
+      if (!example_checksum.empty())
+        printf("%s\n", example_checksum.c_str());
+#if 0
+      printf("Inputs:\n");
+      for (int i = 0; i + 1033 < inputs.size() && i < 10; i++)
+        printf("%.9f %.9f ", inputs[i], inputs[1033 + i]);
+      printf("\nExpected:\n");
+      for (int i = 0; i < expecteds.size() && i < 10; i++)
+        printf("%.9f ", expecteds[i]);
+      printf("\n");
+#endif
 
       if ((total_verbose % HISTORY_EVERY_VERBOSE) == 0) {
         error_history.Add(net->rounds, average_loss, false);
@@ -513,13 +565,21 @@ static void Train(Network *net) {
       last_save = train_timer.MS() / 1000.0;
     }
 
-    if (SAVE_INTERMEDIATE && (save_timeout || finished ||
+    // Checkpoint (no overwrite) every X rounds.
+    static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100;
+    bool checkpoint_timeout = (net->rounds % CHECKPOINT_EVERY_ROUNDS) == 0;
+
+    if (SAVE_INTERMEDIATE && (save_timeout || checkpoint_timeout || finished ||
                               iter % 5000 == 0)) {
       net_gpu->ReadFromGPU();
-      const string file = MODEL_NAME;
-      net->SaveToFile(file);
+      // Note that if we write a checkpoint, we don't also overwrite
+      // the main model, which is less redundant but might be surprising?
+      const string filename = checkpoint_timeout ?
+        StringPrintf(MODEL_BASE ".%lld.val", net->rounds) :
+        (string)MODEL_NAME;
+      net->SaveToFile(filename);
       if (VERBOSE)
-        printf("Wrote %s\n", file.c_str());
+        printf("Wrote %s\n", filename.c_str());
       error_history.Save();
     }
 
@@ -532,12 +592,12 @@ static void Train(Network *net) {
     round_ms += round_timer.MS();
 
     if (iter % TIMING_EVERY == 0) {
-      double accounted_ms = frag_ms + example_ms + forward_ms +
+      double accounted_ms = getexample_ms + example_ms + forward_ms +
         error_ms + decay_ms + backward_ms + update_ms + loss_ms +
         image_ms;
       double other_ms = round_ms - accounted_ms;
       double pct = 100.0 / round_ms;
-      printf("%.1f%% f  "
+      printf("%.1f%% ge  "
              "%.1f%% ex  "
              "%.1f%% fwd  "
              "%.1f%% err  "
@@ -547,7 +607,7 @@ static void Train(Network *net) {
              "%.1f%% loss "
              "%.1f%% img "
              "%.1f%% other\n",
-             frag_ms * pct,
+             getexample_ms * pct,
              example_ms * pct,
              forward_ms * pct,
              error_ms * pct,
@@ -558,7 +618,7 @@ static void Train(Network *net) {
              image_ms * pct,
              other_ms * pct);
       double msr = 1.0 / (iter + 1);
-      printf("%.1fms f  "
+      printf("%.1fms ge  "
              "%.1fms ex  "
              "%.1fms fwd  "
              "%.1fms err  "
@@ -568,7 +628,7 @@ static void Train(Network *net) {
              "%.2fms loss  "
              "%.2fms img  "
              "%.1fms other\n",
-             frag_ms * msr,
+             getexample_ms * msr,
              example_ms * msr,
              forward_ms * msr,
              error_ms * msr,

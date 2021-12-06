@@ -54,10 +54,11 @@ static void AddAllFilesRec(const string &dir, vector<string> *all_files) {
 
 
 AudioDatabase::AudioDatabase(int buffer_size, const std::string &dir) :
-  buffer_size(buffer_size),
-  rc(StringPrintf("ad.%lld", time(nullptr))) {
+  buffer_size(buffer_size)
+  /* rc(StringPrintf("ad.%lld", time(nullptr))) */ {
   std::vector<string> all_files;
   AddAllFilesRec(dir, &all_files);
+  std::sort(all_files.begin(), all_files.end());
   printf("Found %d MP3s in %s.\n", (int)all_files.size(), dir.c_str());
   CHECK(!all_files.empty()) << "Need at least one file or we'll "
     "be unable to return from GetBuffer.";
@@ -74,23 +75,37 @@ void AudioDatabase::LoadMP3sThread(std::vector<string> all_files) {
       MutexLock ml(&m);
       waves.emplace_back(std::move(wav));
     }
+    printf("Read %s\n", s.c_str());
   }
 
   {
     MutexLock ml(&m);
     CHECK(!waves.empty()) <<
       "Every file was smaller than the minimum :(";
+    done_loading = true;
+  }
 
-    int64_t total_samples = 0;
-    for (const auto &v : waves)
-      total_samples += v.size();
+  int64_t total_samples = 0;
+  for (const auto &v : waves)
+    total_samples += v.size();
 
-    printf("Loaded %lld samples in %lld files\n",
-           total_samples, (int64)waves.size());
+  printf("Loaded %lld samples in %lld files\n",
+         total_samples, (int64)waves.size());
+}
+
+void AudioDatabase::WaitDone() {
+  for (;;) {
+    {
+      MutexLock ml(&m);
+      if (done_loading)
+        return;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
 
-vector<float> AudioDatabase::GetBuffer() {
+vector<float> AudioDatabase::GetBuffer(ArcFour *rc) {
   vector<float> ret;
   ret.reserve(buffer_size);
 
@@ -98,8 +113,8 @@ vector<float> AudioDatabase::GetBuffer() {
     {
       MutexLock ml(&m);
       if (!waves.empty()) {
-        const std::vector<float> &wav = waves[RandTo(&rc, waves.size())];
-        int start = RandTo(&rc, wav.size() - buffer_size);
+        const std::vector<float> &wav = waves[RandTo(rc, waves.size())];
+        int start = RandTo(rc, wav.size() - buffer_size);
         for (int i = 0; i < buffer_size; i++)
           ret.push_back(wav[start + i]);
         return ret;
@@ -110,4 +125,3 @@ vector<float> AudioDatabase::GetBuffer() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
-

@@ -48,7 +48,7 @@ struct TrainingImages {
           case CHUNK_SPARSE: ct = "SPARSE"; break;
           case CHUNK_DENSE: ct = "DENSE"; break;
           case CHUNK_INPUT: ct = "INPUT"; break;
-          case CHUNK_CONVOLUTION_ARRAY: ct = "COVN"; break;
+          case CHUNK_CONVOLUTION_ARRAY: ct = "CONV"; break;
           default: ct = ChunkTypeName(chunk.type); break;
           }
 

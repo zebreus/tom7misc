@@ -16,16 +16,18 @@ struct AudioDatabase {
 
   static std::vector<float> ReadMp3Mono(const std::string &filename);
 
-  std::vector<float> GetBuffer();
+  std::vector<float> GetBuffer(ArcFour *rc);
+
+  void WaitDone();
 
 private:
   void LoadMP3sThread(std::vector<std::string> all_files);
   const int buffer_size = 0;
 
   std::mutex m;
-  ArcFour rc;
   std::unique_ptr<std::thread> init_thread;
   std::vector<std::vector<float>> waves;
+  bool done_loading = false;
 };
 
 #endif
