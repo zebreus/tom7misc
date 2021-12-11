@@ -49,6 +49,7 @@ const char *WeightUpdateName(WeightUpdate wu) {
   switch (wu) {
   case SGD: return "SGD";
   case ADAM: return "ADAM";
+  case YOGI: return "YOGI";
   default: return "??INVALID??";
   }
 }
@@ -427,9 +428,11 @@ void Network::StructuralCheck() const {
         chunk.num_nodes << " vs " << chunk.width << " * " <<
         chunk.height << " * " << chunk.channels;
 
-      if (chunk.weight_update == ADAM) {
+      if (chunk.weight_update == ADAM ||
+          chunk.weight_update == YOGI) {
         CHECK(chunk.weights.size() * 2 == chunk.weights_aux.size()) <<
-          "On adam chunk " << layer_idx << "." << chunk_idx << ": " <<
+          "On " << WeightUpdateName(chunk.weight_update) << " chunk "
+                << layer_idx << "." << chunk_idx << ": " <<
           chunk.weights.size() << " * 2 " << " vs " <<
           chunk.weights_aux.size();
         CHECK(chunk.biases.size() * 2 ==
@@ -541,7 +544,7 @@ Chunk Network::MakeDenseChunk(int num_nodes,
   chunk.weights.resize(num_nodes * span_size, 0.0f);
   chunk.biases.resize(num_nodes, 0.0f);
   chunk.weight_update = weight_update;
-  if (weight_update == ADAM) {
+  if (weight_update == ADAM || weight_update == YOGI) {
     chunk.weights.resize(num_nodes * span_size * 2, 0.0f);
     chunk.biases_aux.resize(num_nodes * 2, 0.0f);
   }
@@ -566,7 +569,7 @@ Chunk Network::MakeRandomSparseChunk(
     WeightUpdate weight_update) {
 
   CHECK(!spans.empty());
-  
+
   // Check overlap, O(n^2).
   for (int s = 0; s < spans.size(); s++) {
     const SparseSpan &ss = spans[s];
@@ -578,7 +581,7 @@ Chunk Network::MakeRandomSparseChunk(
           os.span_start >= ss_end) {
         // disjoint, ok
       } else {
-        LOG(FATAL) << 
+        LOG(FATAL) <<
           StringPrintf("SparseSpan %d (%d->%d) overlaps %d (%d->%d)",
                        s, ss.span_start, ss_end,
                        c, os.span_start, os_end);
@@ -600,7 +603,7 @@ Chunk Network::MakeRandomSparseChunk(
 
   CHECK(span_end > span_start);
   CHECK(num_nodes > 0);
-  
+
   Chunk chunk;
   chunk.type = CHUNK_SPARSE;
   chunk.num_nodes = num_nodes;
@@ -643,11 +646,11 @@ Chunk Network::MakeRandomSparseChunk(
 
   chunk.weights.resize(num_nodes * indices_per_node, 0.0f);
   chunk.biases.resize(num_nodes, 0.0f);
-  if (weight_update == ADAM) {
+  if (weight_update == ADAM || weight_update == YOGI) {
     chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
     chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
   }
-      
+
   return chunk;
 }
 
@@ -773,7 +776,7 @@ Chunk Network::Make1DConvolutionChunk(int span_start, int span_size,
                                   conv.src_height,
                                   conv.occurrence_x_stride,
                                   conv.occurrence_y_stride);
-    CHECK(this_num_nodes == 
+    CHECK(this_num_nodes ==
           num_features * num_occurrences_across * num_occurrences_down);
     conv.num_nodes = this_num_nodes;
     conv.width = conv.num_nodes;
@@ -792,7 +795,7 @@ Chunk Network::Make1DConvolutionChunk(int span_start, int span_size,
   }
 
   conv.weight_update = weight_update;
-  if (conv.weight_update == ADAM) {
+  if (conv.weight_update == ADAM || weight_update == YOGI) {
     conv.weights_aux.resize(conv.weights.size() * 2, 0.0f);
     conv.biases_aux.resize(conv.biases.size() * 2, 0.0f);
   }
@@ -818,7 +821,7 @@ Chunk Network::MakeCopyChunk(int span_start, int span_size) {
     copy.indices.push_back(span_start + i);
   copy.weights.resize(span_size, 1.0f);
   copy.biases.resize(span_size, 0.0f);
-  
+
   copy.fixed = true;
   return copy;
 }
@@ -1141,8 +1144,9 @@ static Network *ReadFromReader(Reader *r) {
       r->ReadFloats(&chunk.weights);
       r->ReadFloats(&chunk.biases);
 
-      // For ADAM, the aux parameters. We always have 2 per weight.
-      if (chunk.weight_update == ADAM) {
+      // For ADAM or YOGI, the aux parameters. We always have 2 per weight.
+      if (chunk.weight_update == ADAM ||
+          chunk.weight_update == YOGI) {
         chunk.weights_aux.resize(chunk.weights.size() * 2);
         chunk.biases_aux.resize(chunk.biases.size() * 2);
 

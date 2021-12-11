@@ -67,16 +67,17 @@ __kernel void UpdateWeightsSecondPass(
     const float grad = raw_grad;
   #endif
 
+    // TODO: Also implement YOGI.
     // compute the update u according to the method
   #if WEIGHT_UPDATE_SGD
     const float u = learning_rate * grad;
   #elif WEIGHT_UPDATE_ADAM
-    // PERF: Skip _hat step when round is sufficiently large
     const int midx = idx * 2;
     const int vidx = idx * 2 + 1;
     const float m_prev = chunk_weights_aux[midx];
     const float v_prev = chunk_weights_aux[vidx];
     const float m_new = ADAM_B1 * m_prev + (1.0f - ADAM_B1) * grad;
+    // PERF see below: Is the factored expression faster?
     const float v_new = ADAM_B2 * v_prev + (1.0f - ADAM_B2) * (grad * grad);
     // TODO: Avoid nan poisoning here
     chunk_weights_aux[midx] = m_new;
@@ -89,8 +90,42 @@ __kernel void UpdateWeightsSecondPass(
       const float v_hat = v_new / (1.0f - pow(ADAM_B2, round_number + 1));
     #endif
     const float u = learning_rate * (m_hat / (sqrt(v_hat) + ADAM_EPSILON));
+  #elif WEIGHT_UPDATE_YOGI
+    // Mostly the same as the Adam code.
+    const int midx = idx * 2;
+    const int vidx = idx * 2 + 1;
+    const float m_prev = chunk_weights_aux[midx];
+    const float v_prev = chunk_weights_aux[vidx];
+    const float m_new = ADAM_B1 * m_prev + (1.0f - ADAM_B1) * grad;
+    // In Adam, ADAM_B2 * v_prev + (1.0f - ADAM_B2) * (grad * grad), ie.
+    //   B2 * v + (1 - B2) * g^2
+    // but the Yogi paper writes this as
+    //   v - (1 - B2) * (v - g^2)
+    // which distributes as
+    //   v - (1*v - 1*g^2 - B2 * v + B2 * g^2)
+    // = v - (v - g^2 - B2*v + B2*g^2)
+    // = v + -v + g^2 + B2*v - B2*g^2
+    // =          B2*v + g^2 - B2*g^2
+    // =          B2*v + (1 - B2)*g^2
+    // which is the same as above.
+    const float gsquared = grad * grad;
+    // Some implementations allow tanh() instead of sign() for a softer
+    // transition.
+    const float s = sign(v_prev - gsquared);
+    const float v_new = v_prev - (1.0f - ADAM_B2) * s * gsquared;
+    // TODO: Avoid nan poisoning here
+    chunk_weights_aux[midx] = m_new;
+    chunk_weights_aux[vidx] = v_new;
+    #if NOHAT
+      const float m_hat = m_new;
+      const float v_hat = v_new;
+    #else
+      const float m_hat = m_new / (1.0f - pow(ADAM_B1, round_number + 1));
+      const float v_hat = v_new / (1.0f - pow(ADAM_B2, round_number + 1));
+    #endif
+    const float u = learning_rate * (m_hat / (sqrt(v_hat) + ADAM_EPSILON));
   #else
-    #error Weight update must be SGD or ADAM
+    #error Weight update must be SGD, ADAM, or YOGI
   #endif
 
     // PERF -- generate a separate multiplier and value and use fma()

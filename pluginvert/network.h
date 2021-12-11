@@ -81,6 +81,12 @@ enum WeightUpdate {
   // parameters along side weights, tripling the storage requirements
   // during training.
   ADAM = 1,
+  // Variant of Adam that uses an additive moving average instead of
+  // an exponential one. This changes the learning rate less abruptly,
+  // which can help with divergence. Same auxiliary data as ADAM
+  // with the same meaning, so it is possible to switch between these
+  // during training.
+  YOGI = 2,
 
   NUM_WEIGHT_UPDATES,
 };
@@ -202,7 +208,7 @@ struct Chunk {
   std::vector<float> biases;
 
   // For weight_update = SGD, empty.
-  // For ADAM, twice the size of weights or biases vectors.
+  // For ADAM or YOGI twice the size of weights or biases vectors.
   // Interleaved m and v parameters for memory locality.
   std::vector<float> weights_aux;
   std::vector<float> biases_aux;
@@ -264,7 +270,7 @@ struct Network {
   // Return one of the above constants (or abort for an unknown
   // transfer function).
   static string TransferFunctionDefines(TransferFunction tf);
-  
+
   // Size of network in RAM.
   int64_t Bytes() const;
   // Return the total number of parameters in the model (weights and biases
@@ -329,7 +335,7 @@ struct Network {
     for (const Chunk &chunk : chunks) num_nodes += chunk.num_nodes;
     return Layer{.num_nodes = num_nodes, .chunks = std::move(chunks)};
   }
-  
+
   // Create a dense layer with zero weights (you gotta initialize these).
   static Chunk MakeDenseChunk(int num_nodes,
                               // region of previous layer to depend on
@@ -380,7 +386,7 @@ struct Network {
       const std::vector<SparseSpan> &spans,
       TransferFunction transfer_function,
       WeightUpdate weight_update);
-  
+
   // Computes the inverted indices for the given layer (the index
   // refers to the destination layer of the relevant gap) and chunk
   // within it. This maps the input span (from source layer) to the

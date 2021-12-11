@@ -814,13 +814,9 @@ void BackwardLayerCL::BackwardLayer(NetworkGPU *net_gpu,
 }
 
 DecayWeightsCL::DecayWeightsCL(CL *cl, const Network &net,
-                               float decay_factor) : cl(cl) {
-  string base_src = Util::ReadFile("decayweights.cl");
-
-  string kernel_src;
-  StringAppendF(&kernel_src, "\n#define DECAY_FACTOR %.9ff\n",
-                decay_factor);
-  kernel_src += base_src;
+                               float decay_factor) :
+  decay_factor(decay_factor), cl(cl) {
+  string kernel_src = Util::ReadFile("decayweights.cl");
   auto p = cl->BuildOneKernel(kernel_src, "DecayWeights");
   program = p.first;
   kernel = p.second;
@@ -833,6 +829,7 @@ DecayWeightsCL::~DecayWeightsCL() {
 
 void DecayWeightsCL::Decay(NetworkGPU *net_gpu, int layer_idx) {
   const Network &net = *net_gpu->net;
+
   // PERF: Should actually be able to run in parallel across the entire
   // network if we weren't sharing a single kernel. Every weight
   // just scaled independently.
@@ -852,6 +849,8 @@ void DecayWeightsCL::Decay(NetworkGPU *net_gpu, int layer_idx) {
       MutexLock ml(&m);
       CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
                                    (void *)&gpu_chunk.weights));
+      CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_float),
+                                   (void *)&decay_factor));
 
       size_t global_work_offset[] = { 0 };
       // Total number of weights in this chunk.
@@ -929,22 +928,21 @@ static int64 FindNoHat(float b) {
   }
 }
 
+// Note that this one doesn't depend on the transfer function/derivative.
 UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
                                  int examples_per_round,
-                                 float adam_epsilon) :
-  examples_per_round(examples_per_round), adam_epsilon(adam_epsilon), cl(cl) {
-  // Note that this one doesn't depend on the transfer function/derivative.
+                                 UpdateConfig config) :
+  examples_per_round(examples_per_round), config(config), cl(cl) {
 
-  // constexpr float EPS = 1.0f - std::nextafterf(1.0f, 0.0f);
-  // printf("epsilon: %.9g\n", EPS);
-  // const float zz = powf(0.9f, 1000000.0f);
-  // printf("0.9^1000000: %.9g %s\n", zz, zz < EPS ? "lt" : "no");
-  const int64 round_nohat = FindNoHat(std::max(ADAM_B1, ADAM_B2));
+  CHECK(examples_per_round > 0);
+  CHECK(config.base_learning_rate > 0.0 &&
+        config.base_learning_rate <= 1) << config.base_learning_rate;
+  CHECK(config.learning_rate_dampening > 0.0);
+  CHECK(config.max_num_scratch >= 0);
+
+  const int64 round_nohat = FindNoHat(std::max(config.adam_b1,
+                                               config.adam_b2));
   // printf("Skip hats at round %lld.\n", round_nohat);
-
-
-  // Also unlike others, we actually invoke the kernel differently in
-  // the convolution case.
 
   const string base_src1 = Util::ReadFile("updateweights.cl");
   const string base_src_sum = Util::ReadFile("updatesumstripes.cl");
@@ -956,11 +954,6 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
   layer_kernels.push_back(std::vector<ChunkKernel>{ChunkKernel()});
 
   auto ApportionScratch = [&]() -> std::pair<int64, int64> {
-    // TODO: Make this configurable, and make sure some tests set it
-    // very low to exercise those code paths!
-    // number of elements to allocate between both weights and biases.
-    // 4 GB needs a very big card! PERF
-    constexpr int64 MAX_NUM_SCRATCH = 1LL << 31;
 
     // The largest sum of weights+biases in any chunk.
     int64 max_all = 0LL;
@@ -999,7 +992,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
 
     // We could allow in-place SGD in this case, with significant
     // complexity...
-    CHECK(max_weights + max_biases <= MAX_NUM_SCRATCH) <<
+    CHECK(max_weights + max_biases <= config.max_num_scratch) <<
         "Can't even fit one example at a time. :( Try increasing "
         "MAX_MUM_SCRATCH or a smaller network!";
 
@@ -1007,7 +1000,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
     // miss an easy solution where we can fit the full width
     // on every layer.
     if (max_weights * examples_per_round +
-        max_biases * examples_per_round < MAX_NUM_SCRATCH) {
+        max_biases * examples_per_round < config.max_num_scratch) {
       printf("Full width of each layer fits in scratch space! :)\n");
       return make_pair(max_weights * examples_per_round,
                        max_biases * examples_per_round);
@@ -1024,7 +1017,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
     // This is O(examples_per_round), which is clearly fine at setup
     // time.
     for (;;) {
-      const int64 spare_scratch = MAX_NUM_SCRATCH - wsize - bsize;
+      const int64 spare_scratch = config.max_num_scratch - wsize - bsize;
       CHECK(spare_scratch >= 0) << "Precondition.";
 
       // rounding down
@@ -1057,14 +1050,14 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
     CHECK(wsize <= max_weights * examples_per_round);
     CHECK(bsize <= max_biases * examples_per_round);
 
-    CHECK(wsize + bsize <= MAX_NUM_SCRATCH) << "Bug: by construction above. "
-        << wsize << " + " << bsize << " <= " << MAX_NUM_SCRATCH;
+    CHECK(wsize + bsize <= config.max_num_scratch) <<
+        "Bug: by construction above. " <<
+        wsize << " + " << bsize << " <= " << config.max_num_scratch;
 
     return make_pair(wsize, bsize);
   };
 
-  std::tie(num_weight_grad, num_bias_grad) =
-      ApportionScratch();
+  std::tie(num_weight_grad, num_bias_grad) = ApportionScratch();
 
   weight_grad_tmp =
     CreateUninitializedGPUMemory<float>(cl->context, num_weight_grad);
@@ -1180,6 +1173,9 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
       case ADAM:
         kernel2_src += "#define WEIGHT_UPDATE_ADAM 1\n";
         break;
+      case YOGI:
+        kernel2_src += "#define WEIGHT_UPDATE_YOGI 1\n";
+        break;
       default:
         LOG(FATAL) << "Unsupported weight update type " <<
           WeightUpdateName(chunk.weight_update);
@@ -1199,11 +1195,11 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
                     "#define ADAM_B2 %.9g\n"
                     "#define NOHAT %s\n",
                     examples_per_round,
-                    CLIPPING ? "true" : "false",
-                    CONSTRAIN ? "true" : "false",
-                    adam_epsilon,
-                    ADAM_B1,
-                    ADAM_B2,
+                    config.clipping ? "true" : "false",
+                    config.constrain ? "true" : "false",
+                    config.adam_epsilon,
+                    config.adam_b1,
+                    config.adam_b2,
                     net.rounds > round_nohat ? "true" : "false");
 
       kernel2_src += base_src2;
@@ -1239,7 +1235,7 @@ UpdateWeightsCL::~UpdateWeightsCL() {
 }
 
 void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
-                             float learning_rate, int layer_idx) {
+                             int layer_idx) {
   // new chunks
   CHECK(layer_idx > 0) << "Can't update the weights for the input layer, "
     "which would not be useful anyway since there aren't any.";
@@ -1256,15 +1252,9 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
   // second pass kernel and skip some instructions in there.
   const cl_int round_number = net.rounds;
 
-  // XXX
-  auto CheckReadable = [&](int line) {
-      /*
-      printf("update try reading at %d\n", line);
-      net_gpu->ReadFromGPU();
-      printf("update Readable at %d\n", line);
-      */
-      return;
-    };
+  const float round_learning_rate =
+    config.base_learning_rate /
+    sqrt(1.0 + (net.rounds * config.learning_rate_dampening));
 
   for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
     const Chunk &chunk = layer.chunks[chunk_idx];
@@ -1301,7 +1291,6 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
       MutexLock ml(&m);
 
       // printf("chunk %d.%d\n", layer_idx, chunk_idx);
-      CheckReadable(__LINE__);
 
       const int num_weights = chunk.weights.size();
       const int num_biases = chunk.biases.size();
@@ -1415,8 +1404,6 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
         clFinish(cl->queue);
       }
 
-      CheckReadable(__LINE__);
-
       // Now we have the sums, but they are in ck.w different stripes,
       // which need to be summed for the "second" pass.
 
@@ -1454,12 +1441,8 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
           };
 
         SumGrads(num_weights, weight_grad_tmp);
-        CheckReadable(__LINE__);
         SumGrads(num_biases, bias_grad_tmp);
-        CheckReadable(__LINE__);
       }
-
-      CheckReadable(__LINE__);
 
       // Second pass for the chunk actually applies the weight updates.
 
@@ -1474,7 +1457,7 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
           CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 0, sizeof (cl_int),
                                        (void *)&round_number));
           CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 1, sizeof (cl_float),
-                                       (void *)&learning_rate));
+                                       (void *)&round_learning_rate));
           CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 2, sizeof (cl_float),
                                        (void *)&constrain_max));
           CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 3, sizeof (cl_mem),
@@ -1508,20 +1491,15 @@ void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
                  weight_grad_tmp,
                  gpu_chunk.weights,
                  gpu_chunk.weights_aux,
-                 WEIGHT_CONSTRAIN_MAX);
-
-      CheckReadable(__LINE__);
+                 config.weight_constrain_max);
 
       SecondPass(num_biases,
                  bias_grad_tmp,
                  gpu_chunk.biases,
                  gpu_chunk.biases_aux,
-                 BIAS_CONSTRAIN_MAX);
-
-      CheckReadable(__LINE__);
+                 config.bias_constrain_max);
 
     }  // mutex
   }  // loop over chunks
 
-  CheckReadable(__LINE__);
 }

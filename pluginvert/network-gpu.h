@@ -379,6 +379,9 @@ struct DecayWeightsCL {
   void Decay(NetworkGPU *net_gpu, int layer_idx);
 
  private:
+  // TODO: follow the learning rate schedule instead of a constant
+  // decay. Perhaps this can just be merged into updateweights.
+  const float decay_factor;
   CL *cl = nullptr;
   cl_program program;
   cl_kernel kernel;
@@ -387,50 +390,61 @@ struct DecayWeightsCL {
   DISALLOW_COPY_AND_ASSIGN(DecayWeightsCL);
 };
 
-
-// TODO: First fix the adam bug.
-// Do this by always allocating an extra memory (scratch space)
-// for the weight increments (in constructor), and += all the
-// increments into there. This is actually pretty easy because
-// the current chunk_weights buffer is write-only anyway.
-// Do adam update as a second pass. Make
-// sure this still passes learning tests (hopefully it is better?).
-//
-// Next, follow the plan noted in the cc code to produce the weight
-// increments with some amount of parallelism. The constructor can
-// have some memory budget and choose the multiplier W per chunk to
-// use that budget (also, W should probably divide the number of
-// examples?)
 struct UpdateWeightsCL {
+  // Network-wide configuration. The defaults are reasonable.
+  struct UpdateConfig {
+    UpdateConfig() {}
+
+    // The learning rate for a round is
+    //    base_learning_rate / sqrt(1.0 + round_num * dampening)
+    // Base learning rate should be in (0, 1].
+    // The larger dampening is, the more quickly we reduce the
+    // learning rate.
+    double base_learning_rate = 0.1f;
+    double learning_rate_dampening = 1.0f;
+
+    // Update uses scratch space to improve paralellism (a lot).
+    // This is the maximum number of floats to allocate between both
+    // weights and biases; internally we figure out how to best
+    // apportion this budget. Unless you need the GPU for other stuff,
+    // increase this until it says "everything fits :)" or fails to
+    // allocate the memory.
+    //
+    // TODO: Make sure some tests set it very low to exercise those
+    // code paths!
+    int64_t max_num_scratch = 1LL << 31;
+
+    // Parameters for ADAM and YOGI.
+    // 1e-6 is traditional here, but some recommend much larger
+    // values for sparse problems (even 1.0!). Since this is used
+    // in the denominator, larger values might help control
+    // runaway gradients, but at the cost of slower convergence.
+    float adam_epsilon = 1.0e-4;
+    // Weights for the exponential moving average of the first and
+    // second moments. These are not usually configured.
+    float adam_b1 = 0.9f;
+    float adam_b2 = 0.999f;
+
+    // If true, clips each gradient component to [-1,1] before
+    // applying any update.
+    bool clipping = false;
+    // If true, ensures that the resulting weights after update
+    // are always within [-constrain_max, constrain_max] (which
+    // also prevents them from being infinite or nan).
+    bool constrain = true;
+    float weight_constrain_max = 16.0f;
+    float bias_constrain_max = 16384.0f;
+  };
   // The number of examples per round is needed as a compile-time
   // constant.
   UpdateWeightsCL(CL *cl, const Network &net,
                   int examples_per_round,
-                  float adam_epsilon = DEFAULT_ADAM_EPSILON);
+                  UpdateConfig config = UpdateConfig());
   ~UpdateWeightsCL();
 
-  // TODO: Make configurable.
-  static constexpr bool CLIPPING = false;
-  static constexpr bool CONSTRAIN = true;
-  static constexpr float WEIGHT_CONSTRAIN_MAX = 16.0f;
-  static constexpr float BIAS_CONSTRAIN_MAX = 16384.0f;
-  // 1e-6 is traditional here, but some recommend much larger
-  // values for sparse problems (even 1.0!). Since this is used
-  // in the denominator, larger values might help control
-  // runaway gradients, but at the cost of slower convergence.
-  static constexpr float DEFAULT_ADAM_EPSILON = 1.0e-6;
-
-  // Weights for the exponential moving average of the first and
-  // second moments.
-  static constexpr float ADAM_B1 = 0.9f;
-  static constexpr float ADAM_B2 = 0.999f;
-
   // Run on all examples in the round.
-  // learning_rate here is something like 0.01f (internally scaled
-  // by number of examples etc.)
   // The number of training examples must match the configured amount.
-  void Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
-              float learning_rate, int layer);
+  void Update(NetworkGPU *net_gpu, TrainingRoundGPU *train, int layer);
 
   // For debugging: Get the compiled program (as PTX assembly) for the
   // given layer and chunk, which must be in range. Probably only
@@ -439,7 +453,8 @@ struct UpdateWeightsCL {
 
  private:
   const int examples_per_round = 0;
-  const float adam_epsilon = DEFAULT_ADAM_EPSILON;
+  const UpdateConfig config;
+
   struct ChunkKernel {
     cl_program program1 = 0;
     cl_kernel kernel1 = 0;

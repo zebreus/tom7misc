@@ -41,6 +41,8 @@ static CL *cl = nullptr;
 
 using int64 = int64_t;
 
+static constexpr WeightUpdate WEIGHT_UPDATE = YOGI;
+
 static constexpr float TWO_PI = 2.0f * std::numbers::pi_v<float>;
 
 #define MODEL_BASE "params"
@@ -291,13 +293,13 @@ static void Train(Network *net) {
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = true;
-  // XXX need to reduce this over time
-  static constexpr float LEARNING_RATE = 0.01f;
+
+  UpdateWeightsCL::UpdateConfig update_config;
   // This is conservative, but with larger exponents I would
   // get divergence after hundreds of thousands of rounds.
   // This happened again with the plugin parameter predictor
   // with a value of 1e-6!
-  static constexpr float ADAM_EPSILON = 1e-4;
+  update_config.adam_epsilon = 1.0e-4;
 
   // XXX this should probably depend on the learning rate; if the
   // learning rate is too small, it won't even be able to overcome
@@ -307,16 +309,18 @@ static void Train(Network *net) {
 
   // On a verbose round we compute training error and print out
   // examples.
-  constexpr int VERBOSE_EVERY = 10;
+  constexpr int VERBOSE_EVERY = 1000;
   // We save this to the error history file every this many
   // verbose rounds.
   constexpr int HISTORY_EVERY_VERBOSE = 5;
   int64 total_verbose = 0;
   constexpr int TIMING_EVERY = 500;
 
+  static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100000;
+
   constexpr bool CHECKSUM_EXAMPLES = false;
 
-  constexpr int IMAGE_EVERY = 1;
+  constexpr int IMAGE_EVERY = 10;
   TrainingImages images(*net, "train", MODEL_NAME, IMAGE_EVERY);
 
   printf("Training!\n");
@@ -334,7 +338,7 @@ static void Train(Network *net) {
     std::make_unique<DecayWeightsCL>(cl, *net, DECAY_RATE);
   std::unique_ptr<UpdateWeightsCL> update_cl =
     std::make_unique<UpdateWeightsCL>(cl, *net, EXAMPLES_PER_ROUND,
-                                      ADAM_EPSILON);
+                                      update_config);
 
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(
@@ -451,7 +455,7 @@ static void Train(Network *net) {
                      [&](int layer_minus_1) {
                        const int layer_idx = layer_minus_1 + 1;
                        update_cl->Update(net_gpu.get(), training.get(),
-                                         LEARNING_RATE, layer_idx);
+                                         layer_idx);
                      },
                      max_parallelism);
       update_ms += update_timer.MS();
@@ -566,7 +570,6 @@ static void Train(Network *net) {
     }
 
     // Checkpoint (no overwrite) every X rounds.
-    static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100;
     bool checkpoint_timeout = (net->rounds % CHECKPOINT_EVERY_ROUNDS) == 0;
 
     if (SAVE_INTERMEDIATE && (save_timeout || checkpoint_timeout || finished ||
@@ -741,7 +744,7 @@ static unique_ptr<Network> NewParamsNetwork() {
         // full overlap so that we are not baking in any particular
         // phase.
         1,
-        LEAKY_RELU, ADAM);
+        LEAKY_RELU, WEIGHT_UPDATE);
   Chunk copy_fft_chunk = Network::MakeCopyChunk(WINDOW_SIZE, WINDOW_SIZE);
 
   layers.push_back(L({first_conv_chunk, copy_fft_chunk}));
@@ -796,7 +799,7 @@ static unique_ptr<Network> NewParamsNetwork() {
             .ipn = rest_ipn});
 
       Chunk glob = Network::MakeRandomSparseChunk(
-          &rc, next.NGLOB, spans, LEAKY_RELU, ADAM);
+          &rc, next.NGLOB, spans, LEAKY_RELU, WEIGHT_UPDATE);
 
       // Then, distribute G (from the previous layer; might be none)
       // into each occurrence (after dividing), as well as copying the FFT.
@@ -853,7 +856,7 @@ static unique_ptr<Network> NewParamsNetwork() {
       glob.indices_per_node = glob.span_size;
       glob.weights.resize(glob.indices_per_node * glob.num_nodes);
       glob.biases.resize(glob.num_nodes);
-      glob.weight_update = ADAM;
+      glob.weight_update = WEIGHT_UPDATE;
       glob.weights_aux.resize(glob.weights.size() * 2, 0.0f);
       glob.biases_aux.resize(glob.biases.size() * 2, 0.0f);
       glob.fixed = false;
@@ -871,7 +874,7 @@ static unique_ptr<Network> NewParamsNetwork() {
             next.NUM_FEATURES, pattern_width,
             // No overlap
             pattern_width,
-            LEAKY_RELU, ADAM);
+            LEAKY_RELU, WEIGHT_UPDATE);
       CHECK(conv.num_nodes ==
             next.NUM_FEATURES *
             prev_occurrences / next.OCC_DIVISOR);
@@ -894,7 +897,7 @@ static unique_ptr<Network> NewParamsNetwork() {
       // Doesn't depend on conv part.
       fft.span_size = layers.back().num_nodes;
       fft.indices_per_node = sparse_ipn;
-      fft.weight_update = ADAM;
+      fft.weight_update = WEIGHT_UPDATE;
       fft.width = fft.num_nodes;
       fft.height = 1;
       fft.channels = 1;
@@ -940,7 +943,7 @@ static unique_ptr<Network> NewParamsNetwork() {
   sink.indices_per_node = sink.span_size;
   sink.weights.resize(sink.indices_per_node * sink.num_nodes);
   sink.biases.resize(sink.num_nodes);
-  sink.weight_update = ADAM;
+  sink.weight_update = WEIGHT_UPDATE;
   sink.weights_aux.resize(sink.weights.size() * 2, 0.0f);
   sink.biases_aux.resize(sink.biases.size() * 2, 0.0f);
   sink.fixed = false;

@@ -1,5 +1,6 @@
 #include "network-gpu.h"
 
+#include <optional>
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -141,8 +142,7 @@ static void TrainOnTestTests(TestNet test_net) {
                                         training_round->num_examples);
 
     for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
-      update_cl->Update(net_gpu.get(), training_round.get(),
-                        0.001f, layer_idx);
+      update_cl->Update(net_gpu.get(), training_round.get(), layer_idx);
     }
   }
 
@@ -150,23 +150,24 @@ static void TrainOnTestTests(TestNet test_net) {
   net_gpu->ReadFromGPU();
 }
 
-static void TrainTest(TrainNet train_net,
-                      int max_iterations,
-                      int examples_per_round,
-                      // per round (e.g. 0.01f), not example
-                      float learning_rate,
-                      float avg_loss_threshold,
-                      bool write_images = false) {
+// Returns nullopt on success, otherwise an error message.
+static std::optional<string>
+TrainTest(TrainNet train_net,
+          int max_iterations,
+          int examples_per_round,
+          float avg_loss_threshold,
+          UpdateWeightsCL::UpdateConfig update_config =
+          UpdateWeightsCL::UpdateConfig(),
+          optional<int> write_images_every = nullopt) {
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = false;
   static constexpr int MAX_PARALLELISM = 4;
 
-  constexpr int IMAGE_EVERY = 5;
   std::unique_ptr<TrainingImages> images;
-  if (write_images) {
+  if (write_images_every.has_value()) {
     images.reset(new TrainingImages(train_net.net, "test", train_net.name,
-                                    IMAGE_EVERY, 3000, 1000));
+                                    write_images_every.value(), 3000, 1000));
   }
 
   printf("\n--------------------------\n"
@@ -188,9 +189,10 @@ static void TrainTest(TrainNet train_net,
     std::make_unique<BackwardLayerCL>(cl, net);
   [[maybe_unused]]
   std::unique_ptr<DecayWeightsCL> decay_cl =
-    std::make_unique<DecayWeightsCL>(cl, net, 0.99999f);
+    std::make_unique<DecayWeightsCL>(cl, net, 0.999999999f);
   std::unique_ptr<UpdateWeightsCL> update_cl =
-    std::make_unique<UpdateWeightsCL>(cl, net, examples_per_round);
+    std::make_unique<UpdateWeightsCL>(
+        cl, net, examples_per_round, update_config);
 
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(
@@ -204,12 +206,11 @@ static void TrainTest(TrainNet train_net,
   Timer train_timer;
   int64 total_examples = 0LL;
   for (int iter = 0; iter < max_iterations; iter++) {
+
+    // Initialize training examples as a batch.
     std::vector<float> flat_inputs, flat_outputs;
     flat_inputs.reserve(train_net.NumInputs() * examples_per_round);
     flat_outputs.reserve(train_net.NumOutputs() * examples_per_round);
-
-    // Initialize training examples.
-    // (PERF: insert these all in a batch; it's much faster)
     for (int i = 0; i < training->num_examples; i++) {
       std::vector<float> inputs;
       inputs.reserve(train_net.NumInputs());
@@ -291,7 +292,7 @@ static void TrainTest(TrainNet train_net,
                  [&](int layer_minus_1) {
                    const int layer_idx = layer_minus_1 + 1;
                    update_cl->Update(net_gpu.get(), training.get(),
-                                     learning_rate, layer_idx);
+                                     layer_idx);
                  },
                  MAX_PARALLELISM);
 
@@ -368,7 +369,9 @@ static void TrainTest(TrainNet train_net,
         max_inc == 0 : average_loss < avg_loss_threshold;
     }
 
-    if (images.get() != nullptr && (finished || (iter % IMAGE_EVERY) == 0)) {
+    if (images.get() != nullptr &&
+        write_images_every.has_value() &&
+        (finished || (iter % write_images_every.value()) == 0)) {
       net_gpu->ReadFromGPU();
       images->Sample(net);
     }
@@ -384,19 +387,14 @@ static void TrainTest(TrainNet train_net,
     // Parameter for average_loss termination?
     if (finished) {
       printf("Successfully trained!\n");
-      return;
+      return {};
     }
   }
 
-  printf("Failed on %s:\n"
-         "Didn't converge after %d iterations :(\n",
-         train_net.name.c_str(),
-         max_iterations);
-
-  LOG(FATAL) << "Failed";
-
-  // Copy back to CPU instance.
-  // net_gpu->ReadFromGPU();
+  return {StringPrintf("Failed on %s:\n"
+                       "Didn't converge after %d iterations :(\n",
+                       train_net.name.c_str(),
+                       max_iterations)};
 }
 
 static void TestChunkSchedule() {
@@ -484,13 +482,9 @@ static void TestChunkSchedule() {
 
 }
 
-int main(int argc, char **argv) {
-  cl = new CL;
-
-  TestChunkSchedule();
-  printf("Chunk schedule OK\n");
-
-  #if 1
+// These should finish almost immediately and always succeed.
+// No ML magic here: If they fail, it's definitely a bug.
+static void QuickTests() {
   ForwardTests(NetworkTestUtil::SingleSparse());
   ForwardTests(NetworkTestUtil::SingleDense());
   ForwardTests(NetworkTestUtil::SingleConvolution());
@@ -508,18 +502,34 @@ int main(int argc, char **argv) {
   TrainOnTestTests(NetworkTestUtil::Net1());
   TrainOnTestTests(NetworkTestUtil::CountInternalEdges());
   TrainOnTestTests(NetworkTestUtil::SimpleConv());
-  #endif
+}
 
-  #if 1
-  TrainTest(NetworkTestUtil::LearnTrivialIdentitySparse(),
-            1000, 1000, 1.0f, 0.0001f);
-  TrainTest(NetworkTestUtil::LearnTrivialIdentityDense(),
-            1000, 1000, 1.0f, 0.0001f);
-  TrainTest(NetworkTestUtil::LearnTrivialIdentityConvolution(),
-            1000, 1000, 1.0f, 0.0001f);
-  #endif
+// TODO: Record results of tests in some table that we print out
+// at the end, or even log permanently.
+// TODO: Facilitate some kind of grid search to set good default
+// values for the hyperparameters? Perhaps this should be separate
+// from this "test" though.
+#define TRAIN_TEST(args...) do {                    \
+    auto eo = TrainTest(args);                      \
+    CHECK(!eo.has_value()) << "Train test failed: " \
+                           << #args                 \
+                           << "\nWith message:\n"   \
+                           << eo.value();           \
+  } while(0)
 
-  #if 0
+
+// Test SGD learning algorithm, which is generally worse than ADAM but
+// is easier to understand. It has less train-time overhead.
+static void SGDTests() {
+  // The identity function is super easy to learn, so we should always
+  // be able to learn this with the default update config.
+  TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentitySparse(),
+             100000, 1000, 0.0001f, {}, {100});
+  TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentityDense(),
+             100000, 1000, 0.0001f);
+  TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentityConvolution(),
+             100000, 1000, 0.0001f);
+
   // Smaller batch size since there are only 2^3 possible inputs.
   // This will sporadically achieve zero boolean errors after a
   // few thousand rounds, although that needs to coincide with
@@ -528,99 +538,91 @@ int main(int argc, char **argv) {
   //
   // With a less aggressive learning rate, this can take many
   // thousands of rounds to converge (or never converge).
-  TrainTest(NetworkTestUtil::LearnBoolean(),
-            50000, 54, 0.1f, 0.0001f);
-  #endif
+  if (false) {
+    // Doesn't converge in time, 11 Dec 2021
+    TRAIN_TEST(NetworkTestUtil::LearnBoolean(),
+               500000, 54, 0.001f);
+  }
 
-  #if 1
-  // XXX these get to like 0.000 but not the same convergence
-  // we had before "fixing" adam .... probably ok??
-
-  // ADAM tests. These each take about 400 rounds to converge,
-  // because here we are using a sensible learning rate of 0.01f.
-  TrainTest(NetworkTestUtil::ForceAdam(
-                NetworkTestUtil::LearnTrivialIdentitySparse()),
-            1000, 1000, 0.01f, 0.001f);
-  TrainTest(NetworkTestUtil::ForceAdam(
-                NetworkTestUtil::LearnTrivialIdentityDense()),
-            1000, 1000, 0.01f, 0.001f);
-  TrainTest(NetworkTestUtil::ForceAdam(
-                NetworkTestUtil::LearnTrivialIdentityConvolution()),
-            1000, 1000, 0.01f, 0.001f);
-  #endif
-
-
-  #if 1
-  // Even with a lower learning rate, this converges much faster than
-  // the SGD version :) ~200 rounds.
-  TrainTest(NetworkTestUtil::ForceAdam(NetworkTestUtil::LearnBoolean()),
-            6000, 54, 0.01f, 0.0001f);
-  #endif
-
-
-  #if 0
   // Interesting example.
   // This has a very simple solution (bias=0, all weights=1), but
   // the average case (bias = input size / 2) is quite far from it;
   // we spend most of the time trying to unlearn that initial
   // bias. I wonder if this is a case where "pre-training" might
   // be useful.
-  TrainTest(NetworkTestUtil::LearnCountOnesDense(),
-            10000, 1000, 0.02f,
-            // Looks like it will eventually drop arbitrarily
-            // low if you wait for it. Gets to this threshold
-            // before about 600 rounds.
-            0.100f);
-  #endif
+  TRAIN_TEST(NetworkTestUtil::LearnCountOnesDense(),
+             10000, 1000,
+             // Looks like it will eventually drop arbitrarily
+             // low if you wait for it. Gets to this threshold
+             // before about 600 rounds.
+             0.100f);
 
-  #if 0
-  // Adam works well on this, even with a conservative learning
-  // rate of 0.01f; once the weights get near 1, the bias rapidly
-  // gets unlearned. Converges in <4000 4ounds.
-  // (XXX this is now like 3000 rounds with fixed adam)
-  TrainTest(NetworkTestUtil::ForceAdam(
-                NetworkTestUtil::LearnCountOnesDense()),
-            10000, 1000, 0.01f,
-            0.100f);
-  #endif
-
-
-  #if 0
   // Counting can be done with a convolution; this stacks a 4->1
   // convolution and a 5->1 convolution, followed by a dense layer
   // for the rest. (The dense layer is currently fixed!)
-  TrainTest(NetworkTestUtil::LearnCountOnesConvConvDense(),
-            10000, 1000, 0.001f,
-            0.100f);
-  #endif
+  // Slow! Takes 891k rounds with default settings!
+  // (And sensitive to initial conditions. When I changed the
+  // name (only), which changes the PRNG, it got much slower)
+  TRAIN_TEST(NetworkTestUtil::LearnCountOnesConvConvDense(
+                 /* last layer fixed */ true),
+             1000000, 1000, 0.100f, UpdateWeightsCL::UpdateConfig());
+}
 
-  #if 1
+static void AdamTests() {
+  TRAIN_TEST(NetworkTestUtil::ForceAdam(
+                 NetworkTestUtil::LearnTrivialIdentitySparse()),
+             1000, 1000, 0.001f);
+  TRAIN_TEST(NetworkTestUtil::ForceAdam(
+                 NetworkTestUtil::LearnTrivialIdentityDense()),
+             1000, 1000, 0.001f);
+  TRAIN_TEST(NetworkTestUtil::ForceAdam(
+                 NetworkTestUtil::LearnTrivialIdentityConvolution()),
+             1000, 1000, 0.001f);
+
+  // This converges much faster than the SGD version! ~200 rounds.
+  TRAIN_TEST(NetworkTestUtil::ForceAdam(NetworkTestUtil::LearnBoolean()),
+             6000, 54, 0.0001f);
+
+  // Adam works well on this, even with a conservative learning
+  // rate of 0.01f; once the weights get near 1, the bias rapidly
+  // gets unlearned. Converges in <4000 rounds.
+  // (XXX this is now like 3000 rounds with fixed adam)
+  TRAIN_TEST(NetworkTestUtil::ForceAdam(
+                 NetworkTestUtil::LearnCountOnesDense()),
+             10000, 1000, 0.100f);
+
   // With fixed adam this converges in <4000 rounds.
-  // TODO: Try removing the fixed constraint on the dense layer.
-  TrainTest(NetworkTestUtil::ForceAdam(
-                NetworkTestUtil::LearnCountOnesConvConvDense()),
-            10000, 1000, 0.01f,
-            0.01f);
-  #endif
+  TRAIN_TEST(NetworkTestUtil::ForceAdam(
+                 NetworkTestUtil::LearnCountOnesConvConvDense(false)),
+             100000, 1000, 0.010f);
 
-
-  #if 1
   // With fixed, adam, converges in about 5100 rounds.
-  TrainTest(NetworkTestUtil::ForceAdam(
-                NetworkTestUtil::LearnCountOnesConvDense()),
-            10000, 1000, 0.01f,
-            0.010f);
-  #endif
+  TRAIN_TEST(NetworkTestUtil::ForceAdam(
+                 NetworkTestUtil::LearnCountOnesConvDense()),
+             10000, 1000, 0.010f);
 
-  #if 1
-  // Does converge in ~17000 rounds. Seems to be dependent on initial
+  // Does converge in ~24000 rounds. Seems to be dependent on initial
   // conditions (as there is a late "breakthrough"), and perhaps with
   // more dice rolls for the features it would be pretty fast.
-  TrainTest(NetworkTestUtil::ForceAdam(
-                NetworkTestUtil::LearnCountEdges()),
-            20000, 1000, 0.01f,
-            0.010f);
-  #endif
+  TRAIN_TEST(NetworkTestUtil::ForceAdam(
+                 NetworkTestUtil::LearnCountEdges()),
+             50000, 1000, 0.010f);
+}
+
+int main(int argc, char **argv) {
+  cl = new CL;
+
+  TestChunkSchedule();
+  printf("Chunk schedule OK\n");
+
+  QuickTests();
+  printf("Quick tests OK\n");
+
+  // SGDTests();
+  printf("SGD tests OK\n");
+
+  AdamTests();
+  printf("ADAM tests OK\n");
 
   delete cl;
 

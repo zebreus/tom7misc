@@ -54,6 +54,8 @@ struct NetworkTestUtil {
 
   // Convert all chunks to ADAM weight_update.
   static TrainNet ForceAdam(TrainNet net);
+  // Convert all chunks to YOGI weight_update.
+  static TrainNet ForceYogi(TrainNet net);
 
   // Trivial network with just one node, sparse chunk.
   static TestNet SingleSparse();
@@ -117,8 +119,9 @@ struct NetworkTestUtil {
   static TrainNet LearnCountOnesConvDense();
 
   // 80 through 4x1 -> 20 through 5x1 -> 4 through dense -> 1
-  // (Note the dense layer is fixed, so this is kinda "cheating")
-  static TrainNet LearnCountOnesConvConvDense();
+  // (With the arg set to true, the dense layer is fixed (to the correct
+  // answer), which is kinda "cheating".)
+  static TrainNet LearnCountOnesConvConvDense(bool fix_dense_layer);
 
   // 2x1 convolution that should be able to learn to count 0-1 and 1-0
   // edges in a bit string.

@@ -7,6 +7,7 @@
 
 #include "network.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "arcfour.h"
 #include "randutil.h"
 
@@ -25,8 +26,10 @@ int NetworkTestUtil::TrainNet::NumOutputs() const {
   return net.layers.back().num_nodes;
 }
 
-NetworkTestUtil::TrainNet NetworkTestUtil::ForceAdam(TrainNet net) {
-  for (Layer &layer : net.net.layers) {
+static void ForceWeightUpdateAdamOrYogi(NetworkTestUtil::TrainNet *net,
+                                        WeightUpdate wu) {
+  CHECK(wu == ADAM || wu == YOGI);
+  for (Layer &layer : net->net.layers) {
     for (Chunk &chunk : layer.chunks) {
       // Only do this for real layers.
       if (chunk.type != CHUNK_INPUT) {
@@ -37,14 +40,29 @@ NetworkTestUtil::TrainNet NetworkTestUtil::ForceAdam(TrainNet net) {
           CHECK(chunk.weights_aux.empty());
           CHECK(chunk.biases_aux.empty());
 
-          chunk.weight_update = ADAM;
           chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
           chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
+        } else if (chunk.weight_update == ADAM ||
+                   chunk.weight_update == YOGI) {
+          CHECK(chunk.weights_aux.size() == chunk.weights.size() * 2);
+          CHECK(chunk.biases_aux.size() == chunk.biases.size() * 2);
+          // Same aux size for these two.
         }
+        chunk.weight_update = wu;
       }
     }
   }
+}
+
+NetworkTestUtil::TrainNet NetworkTestUtil::ForceAdam(TrainNet net) {
+  ForceWeightUpdateAdamOrYogi(&net, ADAM);
   net.name += " (Force Adam)";
+  return net;
+}
+
+NetworkTestUtil::TrainNet NetworkTestUtil::ForceYogi(TrainNet net) {
+  ForceWeightUpdateAdamOrYogi(&net, YOGI);
+  net.name += " (Force Yogi)";
   return net;
 }
 
@@ -1297,7 +1315,8 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountOnesConvDense() {
   };
 }
 
-NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountOnesConvConvDense() {
+NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountOnesConvConvDense(
+    bool fix_dense_layer) {
   constexpr int INPUT_SIZE = 80;
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
@@ -1402,11 +1421,13 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountOnesConvConvDense() {
   dense_chunk.span_size = conv_chunk2.num_nodes;
   dense_chunk.indices_per_node = conv_chunk2.num_nodes;
   dense_chunk.indices = {};
+
+  // Initialize to the correct solution, but if this is not marked fixed
+  // because of the arg, it gets randomized.
   dense_chunk.weights = std::vector<float>(
       dense_chunk.num_nodes * conv_chunk2.num_nodes, 1.0f);
   dense_chunk.biases = std::vector<float>(dense_chunk.num_nodes, 0.0f);
-  // TODO: Should be able to learn this, but it takes a long time?
-  dense_chunk.fixed = true;
+  dense_chunk.fixed = fix_dense_layer;
 
   Layer input_layer;
   input_layer.num_nodes = input_chunk.num_nodes;
@@ -1445,7 +1466,9 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountOnesConvConvDense() {
     };
 
   return TrainNet{
-    .name = "4x1, then 5x1 conv, then small dense counts 1-bits",
+    .name =
+      StringPrintf("4x1, then 5x1 conv, then small dense%s counts 1-bits",
+                   fix_dense_layer ? " (fixed)" : ""),
     .net = net,
     .f = f,
     .boolean_input = true,
