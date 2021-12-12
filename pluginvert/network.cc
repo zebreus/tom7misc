@@ -545,7 +545,7 @@ Chunk Network::MakeDenseChunk(int num_nodes,
   chunk.biases.resize(num_nodes, 0.0f);
   chunk.weight_update = weight_update;
   if (weight_update == ADAM || weight_update == YOGI) {
-    chunk.weights.resize(num_nodes * span_size * 2, 0.0f);
+    chunk.weights_aux.resize(num_nodes * span_size * 2, 0.0f);
     chunk.biases_aux.resize(num_nodes * 2, 0.0f);
   }
   chunk.width = num_nodes;
@@ -554,13 +554,6 @@ Chunk Network::MakeDenseChunk(int num_nodes,
   return chunk;
 }
 
-/*
-  struct SparseSpan {
-    int span_start = 0;
-    int span_end = 0;
-    int ipn = 0;
-  };
-*/
 Chunk Network::MakeRandomSparseChunk(
     ArcFour *rc,
     int num_nodes,
@@ -1416,10 +1409,6 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
              chunk_idx++) {
           Chunk *chunk = &net->layers[layer].chunks[chunk_idx];
           if (chunk->fixed)
-            continue;
-
-          // XXX instead rely on 'fixed' field.
-          if (chunk->transfer_function == IDENTITY)
             continue;
 
           // XXX such hacks. How to best initialize?

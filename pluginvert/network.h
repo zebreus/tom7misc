@@ -142,7 +142,6 @@ struct Chunk {
   // Approach used for weight updates during training; affects
   // what is stored in the _aux fields.
   WeightUpdate weight_update = SGD;
-  // TODO: B1 and B2 params (and epsilon?) for Adam?
 
   // For CONVOLUTION_ARRAY chunks:
   //
@@ -322,8 +321,6 @@ struct Network {
   vector<Layer> layers;
 
   // The number of layers, including the input layer.
-  // XXX in the old version, num_layers was the number of "real" layers;
-  // one less than this.
   int NumLayers() const {
     return layers.size();
   }
