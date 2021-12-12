@@ -390,56 +390,60 @@ struct DecayWeightsCL {
   DISALLOW_COPY_AND_ASSIGN(DecayWeightsCL);
 };
 
+// Network-wide configuration. The defaults are reasonable.
+// (Due to a gcc bug, this cannot be nested within UpdateWeightsCL
+// and used as a default argument.)
+struct UpdateConfig {
+  // The learning rate for a round is
+  //    base_learning_rate / sqrt(1.0 + round_num * dampening)
+  // Base learning rate should be in (0, 1].
+  // The larger dampening is, the more quickly we reduce the
+  // learning rate.
+  double base_learning_rate = 0.01f;
+  double learning_rate_dampening = 1.0f;
+
+  // Update uses scratch space to improve paralellism (a lot).
+  // This is the maximum number of floats to allocate between both
+  // weights and biases; internally we figure out how to best
+  // apportion this budget. Unless you need the GPU for other stuff,
+  // increase this until it says "everything fits :)" or fails to
+  // allocate the memory.
+  //
+  // TODO: Make sure some tests set it very low to exercise those
+  // code paths!
+  int64_t max_num_scratch = 1LL << 31;
+
+  // Parameters for ADAM and YOGI.
+  // 1e-6 is traditional here, but some recommend much larger
+  // values for sparse problems (even 1.0!). Since this is used
+  // in the denominator, larger values might help control
+  // runaway gradients, but at the cost of slower convergence.
+  float adam_epsilon = 1.0e-3;
+  // Weights for the exponential moving average of the first and
+  // second moments. These are not usually configured.
+  float adam_b1 = 0.9f;
+  float adam_b2 = 0.999f;
+
+  // If true, clips each gradient component to [-1,1] before
+  // applying any update.
+  bool clipping = false;
+  // If true, ensures that the resulting weights after update
+  // are always within [-constrain_max, constrain_max] (which
+  // also prevents them from being infinite or nan).
+  bool constrain = true;
+  float weight_constrain_max = 16.0f;
+  float bias_constrain_max = 16384.0f;
+};
+
+
 struct UpdateWeightsCL {
-  // Network-wide configuration. The defaults are reasonable.
-  struct UpdateConfig {
-    UpdateConfig() {}
+  using UpdateConfig = ::UpdateConfig;
 
-    // The learning rate for a round is
-    //    base_learning_rate / sqrt(1.0 + round_num * dampening)
-    // Base learning rate should be in (0, 1].
-    // The larger dampening is, the more quickly we reduce the
-    // learning rate.
-    double base_learning_rate = 0.1f;
-    double learning_rate_dampening = 1.0f;
-
-    // Update uses scratch space to improve paralellism (a lot).
-    // This is the maximum number of floats to allocate between both
-    // weights and biases; internally we figure out how to best
-    // apportion this budget. Unless you need the GPU for other stuff,
-    // increase this until it says "everything fits :)" or fails to
-    // allocate the memory.
-    //
-    // TODO: Make sure some tests set it very low to exercise those
-    // code paths!
-    int64_t max_num_scratch = 1LL << 31;
-
-    // Parameters for ADAM and YOGI.
-    // 1e-6 is traditional here, but some recommend much larger
-    // values for sparse problems (even 1.0!). Since this is used
-    // in the denominator, larger values might help control
-    // runaway gradients, but at the cost of slower convergence.
-    float adam_epsilon = 1.0e-4;
-    // Weights for the exponential moving average of the first and
-    // second moments. These are not usually configured.
-    float adam_b1 = 0.9f;
-    float adam_b2 = 0.999f;
-
-    // If true, clips each gradient component to [-1,1] before
-    // applying any update.
-    bool clipping = false;
-    // If true, ensures that the resulting weights after update
-    // are always within [-constrain_max, constrain_max] (which
-    // also prevents them from being infinite or nan).
-    bool constrain = true;
-    float weight_constrain_max = 16.0f;
-    float bias_constrain_max = 16384.0f;
-  };
   // The number of examples per round is needed as a compile-time
   // constant.
   UpdateWeightsCL(CL *cl, const Network &net,
                   int examples_per_round,
-                  UpdateConfig config = UpdateConfig());
+                  UpdateConfig config = {});
   ~UpdateWeightsCL();
 
   // Run on all examples in the round.

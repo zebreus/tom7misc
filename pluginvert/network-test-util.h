@@ -126,6 +126,20 @@ struct NetworkTestUtil {
   // 2x1 convolution that should be able to learn to count 0-1 and 1-0
   // edges in a bit string.
   static TrainNet LearnCountEdges();
+
+  // Uses Adam weight update.
+  // --dim--
+  // c a a a |
+  // b c a a dim
+  // b b c a |
+  // b b b c |
+  //
+  // 1.0 if the sum of a is greater than b,
+  // or sum(c) > sum(b) && sum(c) < sum(a). 0 otherwise.
+  //
+  // Last layer is 1 dense node (sigmoid). depth gives the number of
+  // dim*dim dense hidden layers preceding that.
+  static TrainNet TriangleSumsAdam(int depth, int dim = 4);
 };
 
 

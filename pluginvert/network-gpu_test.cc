@@ -167,7 +167,11 @@ TrainTest(TrainNet train_net,
   std::unique_ptr<TrainingImages> images;
   if (write_images_every.has_value()) {
     images.reset(new TrainingImages(train_net.net, "test", train_net.name,
-                                    write_images_every.value(), 3000, 1000));
+                                    write_images_every.value(), 3000, 1000,
+                                    // don't continue from disk, since
+                                    // these may not even be the same
+                                    // problem!
+                                    false));
   }
 
   printf("\n--------------------------\n"
@@ -569,19 +573,25 @@ static void SGDTests() {
 }
 
 static void AdamTests() {
+  UpdateWeightsCL::UpdateConfig fast_config = UpdateWeightsCL::UpdateConfig{
+    .base_learning_rate = 0.1f,
+    .learning_rate_dampening = 0.25f,
+    .adam_epsilon = 1.0e-6,
+  };
+
   TRAIN_TEST(NetworkTestUtil::ForceAdam(
                  NetworkTestUtil::LearnTrivialIdentitySparse()),
-             1000, 1000, 0.001f);
+             10000, 1000, 0.001f, fast_config);
   TRAIN_TEST(NetworkTestUtil::ForceAdam(
                  NetworkTestUtil::LearnTrivialIdentityDense()),
-             1000, 1000, 0.001f);
+             10000, 1000, 0.001f, fast_config);
   TRAIN_TEST(NetworkTestUtil::ForceAdam(
                  NetworkTestUtil::LearnTrivialIdentityConvolution()),
-             1000, 1000, 0.001f);
+             10000, 1000, 0.001f, fast_config);
 
   // This converges much faster than the SGD version! ~200 rounds.
   TRAIN_TEST(NetworkTestUtil::ForceAdam(NetworkTestUtil::LearnBoolean()),
-             6000, 54, 0.0001f);
+             6000, 54, 0.0001f, fast_config);
 
   // Adam works well on this, even with a conservative learning
   // rate of 0.01f; once the weights get near 1, the bias rapidly
@@ -589,24 +599,31 @@ static void AdamTests() {
   // (XXX this is now like 3000 rounds with fixed adam)
   TRAIN_TEST(NetworkTestUtil::ForceAdam(
                  NetworkTestUtil::LearnCountOnesDense()),
-             10000, 1000, 0.100f);
+             10000, 1000, 0.100f, fast_config);
 
   // With fixed adam this converges in <4000 rounds.
   TRAIN_TEST(NetworkTestUtil::ForceAdam(
                  NetworkTestUtil::LearnCountOnesConvConvDense(false)),
-             100000, 1000, 0.010f);
+             100000, 1000, 0.010f, fast_config);
 
   // With fixed, adam, converges in about 5100 rounds.
   TRAIN_TEST(NetworkTestUtil::ForceAdam(
                  NetworkTestUtil::LearnCountOnesConvDense()),
-             10000, 1000, 0.010f);
+             10000, 1000, 0.010f, fast_config);
 
   // Does converge in ~24000 rounds. Seems to be dependent on initial
   // conditions (as there is a late "breakthrough"), and perhaps with
   // more dice rolls for the features it would be pretty fast.
   TRAIN_TEST(NetworkTestUtil::ForceAdam(
                  NetworkTestUtil::LearnCountEdges()),
-             50000, 1000, 0.010f);
+             50000, 1000, 0.010f, fast_config);
+
+  TRAIN_TEST(NetworkTestUtil::TriangleSumsAdam(3, 4),
+             5000, 1000, 0.010f, fast_config);
+
+  // Deep!
+  TRAIN_TEST(NetworkTestUtil::TriangleSumsAdam(9, 5),
+             20000, 1000, 0.010f, fast_config);
 }
 
 int main(int argc, char **argv) {

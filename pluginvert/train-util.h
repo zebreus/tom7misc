@@ -12,21 +12,24 @@
 #include "base/stringprintf.h"
 #include "image.h"
 
-// TODO: To utilities
+// TODO: to .cc
 struct TrainingImages {
   TrainingImages(const Network &net,
                  const std::string &basename,
                  const std::string &title,
                  int image_every,
                  int image_width = 3000,
-                 int image_height = 1000) :
+                 int image_height = 1000,
+                 bool continue_from_disk = true) :
     IMAGE_WIDTH(image_width), IMAGE_HEIGHT(image_height), basename(basename) {
     CHECK((IMAGE_WIDTH % 2) == 0) << "Assumes even width of image for "
       "shrinking step";
-    // TODO: Load existing images if any?
 
-    // PERF skip input layer?
-    for (int layer_idx = 0;
+    // No images for input layer; it is not used.
+    images.emplace_back();
+    image_x.emplace_back();
+
+    for (int layer_idx = 1;
          layer_idx < net.layers.size();
          layer_idx++) {
       images.emplace_back();
@@ -35,29 +38,59 @@ struct TrainingImages {
            chunk_idx < net.layers[layer_idx].chunks.size();
            chunk_idx++) {
         const Chunk &chunk = net.layers[layer_idx].chunks[chunk_idx];
+
         image_x.back().push_back(0);
+        images.back().emplace_back(nullptr);
+
+        std::unique_ptr<ImageRGBA> *image = &images.back().back();
+
         if (chunk.type == CHUNK_INPUT || chunk.fixed) {
           // Skip input chunks and fixed chunks, since nothing interesting ever
           // happens for them.
-          images.back().emplace_back(nullptr);
+          CHECK(image->get() == nullptr);
         } else {
-          images.back().emplace_back(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
-          images.back().back()->Clear32(0x000000FF);
-          std::string ct;
-          switch (chunk.type) {
-          case CHUNK_SPARSE: ct = "SPARSE"; break;
-          case CHUNK_DENSE: ct = "DENSE"; break;
-          case CHUNK_INPUT: ct = "INPUT"; break;
-          case CHUNK_CONVOLUTION_ARRAY: ct = "CONV"; break;
-          default: ct = ChunkTypeName(chunk.type); break;
-          }
 
-          images.back().back()->BlendText2x32(
-              2, 2, 0x9999AAFF,
-              StringPrintf("Layer %d.%d (%s) | %s | Start Round %lld | 1 px = %d rounds",
-                           layer_idx, chunk_idx, ct.c_str(),
-                           title.c_str(),
-                           net.rounds, image_every));
+          // Load existing image from disk if we have one.
+          string filename = FilenameFor(layer_idx, chunk_idx);
+          ImageRGBA *file_img = continue_from_disk ?
+            ImageRGBA::Load(filename) : nullptr;
+          if (file_img != nullptr) {
+            CHECK(file_img->Width() == IMAGE_WIDTH &&
+                  file_img->Height() == IMAGE_HEIGHT) << filename <<
+              "has the wrong dimensions (got " << file_img->Width() <<
+              " x " << file_img->Height() << "); delete it to continue";
+            image->reset(file_img);
+            // The next x position is stored at pixel 0,0.
+            const uint32_t px = (*image)->GetPixel32(0, 0);
+            const uint32_t nx = px >> 8;
+            CHECK((px & 0xFF) == 0xFF &&
+                  nx <= IMAGE_WIDTH) << filename << " does not have "
+              "correct secret pixel or constants changed; delete it "
+              "to continue";
+            image_x.back().back() = nx;
+            printf("Continuing from %s at %d.\n", filename.c_str(), nx);
+
+          } else {
+            image->reset(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
+            (*image)->Clear32(0x000000FF);
+            std::string ct;
+            switch (chunk.type) {
+            case CHUNK_SPARSE: ct = "SPARSE"; break;
+            case CHUNK_DENSE: ct = "DENSE"; break;
+            case CHUNK_INPUT: ct = "INPUT"; break;
+            case CHUNK_CONVOLUTION_ARRAY: ct = "CONV"; break;
+            default: ct = ChunkTypeName(chunk.type); break;
+            }
+
+            (*image)->BlendText2x32(
+                2, 2, 0x9999AAFF,
+                StringPrintf(
+                    "Layer %d.%d (%s) | %s | "
+                    "Start Round %lld | 1 px = %d rounds",
+                    layer_idx, chunk_idx, ct.c_str(),
+                    title.c_str(),
+                    net.rounds, image_every));
+          }
         }
       }
     }
@@ -162,9 +195,12 @@ struct TrainingImages {
         }
 
         if (ix % 100 == 0) {
-          string filename = StringPrintf("%s-%d.%d.png",
-                                         basename.c_str(),
-                                         target_layer, target_chunk);
+          const int next_x = ix + 1;
+          // Width must fit in 24 bits.
+          CHECK(next_x == (next_x & 0xFFFFFF)) << "out of range!";
+          image->SetPixel32(0, 0, ((uint32_t)next_x << 8) | 0xFF);
+
+          string filename = FilenameFor(target_layer, target_chunk);
           image->Save(filename);
           printf("Wrote %s\n", filename.c_str());
         }
@@ -174,6 +210,11 @@ struct TrainingImages {
   }
 
 private:
+  string FilenameFor(int layer, int chunk) const {
+    return StringPrintf("%s-%d.%d.png",
+                        basename.c_str(), layer, chunk);
+  }
+
   const int IMAGE_WIDTH = 0, IMAGE_HEIGHT = 0;
   const std::string basename;
   // Parallel to layers/chunks

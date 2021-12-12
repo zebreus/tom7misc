@@ -41,7 +41,7 @@ static CL *cl = nullptr;
 
 using int64 = int64_t;
 
-static constexpr WeightUpdate WEIGHT_UPDATE = YOGI;
+static constexpr WeightUpdate WEIGHT_UPDATE = ADAM;
 
 static constexpr float TWO_PI = 2.0f * std::numbers::pi_v<float>;
 
@@ -320,7 +320,7 @@ static void Train(Network *net) {
 
   constexpr bool CHECKSUM_EXAMPLES = false;
 
-  constexpr int IMAGE_EVERY = 10;
+  constexpr int IMAGE_EVERY = 100;
   TrainingImages images(*net, "train", MODEL_NAME, IMAGE_EVERY);
 
   printf("Training!\n");
@@ -555,6 +555,9 @@ static void Train(Network *net) {
       loss_ms += loss_timer.MS();
     }
 
+    // TODO: Should probably synchronize saving images with saving
+    // the model. Otherwise when we continue, we lose pixels that
+    // were written to the image but not saved to disk.
     if ((iter % IMAGE_EVERY) == 0) {
       Timer image_timer;
       net_gpu->ReadFromGPU();

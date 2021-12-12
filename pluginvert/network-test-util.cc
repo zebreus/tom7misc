@@ -971,6 +971,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnBoolean() {
   id_chunk.weights = {1.0f, 1.0f, 1.0f, -1.0f, -1.0f, -1.0f};
   id_chunk.biases = {0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
   id_chunk.weight_update = SGD;
+  id_chunk.fixed = true;
 
   Chunk sparse_chunk1;
   sparse_chunk1.type = CHUNK_SPARSE;
@@ -1631,4 +1632,56 @@ NetworkTestUtil::TrainNet NetworkTestUtil::LearnCountEdges() {
     .boolean_input = true,
     .boolean_output = false,
   };
+}
+
+NetworkTestUtil::TrainNet NetworkTestUtil::TriangleSumsAdam(int depth,
+                                                            int dim) {
+  std::vector<Layer> layers;
+  const int INPUT_SIZE = dim * dim;
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = INPUT_SIZE;
+  input_chunk.width = dim;
+  input_chunk.height = dim;
+  input_chunk.channels = 1;
+
+  layers.push_back(Network::LayerFromChunks({input_chunk}));
+
+  auto f = [dim](const std::vector<float> &input) -> std::vector<float> {
+      float asum = 0.0f, bsum = 0.0f, csum = 0.0f;
+      for (int y = 0; y < dim; y++) {
+        for (int x = 0; x < dim; x++) {
+          const float v = input[y * dim + x];
+          if (x == y) csum += v;
+          else if (x > y) asum += v;
+          else bsum += v;
+        }
+      }
+
+      return {(asum > bsum || (csum > bsum && csum < asum)) ? 1.0f : 0.0f};
+    };
+
+  for (int d = 0; d < depth; d++) {
+    Chunk hidden_chunk =
+      Network::MakeDenseChunk(dim * dim, 0, dim * dim, LEAKY_RELU, ADAM);
+    layers.push_back(Network::LayerFromChunks({hidden_chunk}));
+  }
+
+  Chunk output_chunk =
+    Network::MakeDenseChunk(1, 0, dim * dim, SIGMOID, ADAM);
+
+  layers.push_back(Network::LayerFromChunks({output_chunk}));
+
+  Network net(layers);
+  net.NaNCheck(__func__);
+
+  return TrainNet{
+    .name = StringPrintf("diagonal sum inequalities %dx%d, %d hidden",
+                         dim, dim, depth),
+    .net = net,
+    .f = f,
+    .boolean_input = false,
+    .boolean_output = true,
+  };
+
 }
