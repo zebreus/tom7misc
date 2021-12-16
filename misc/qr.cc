@@ -20,6 +20,9 @@ struct Piece {
     }
     return make_pair(w, h);
   }
+  int Bits() const {
+    return offsets.size();
+  }
 };
 
 // A set of interchangeable pieces (e.g., rotations) with
@@ -32,21 +35,30 @@ struct PiecePool {
 // Generates z3 script on stdout.
 int main(int argc, char **argv) {
 
-  constexpr int QWIDTH = 12, QHEIGHT = 12;
+  constexpr int QWIDTH = 21, QHEIGHT = 21;
 
   string qrtext =
-    "#####--#####"
-    "#---#--#---#"
-    "#-#-#--#-#-#"
-    "#---#--#---#"
-    "#####--#####"
-    "------------"
-    "------------"
-    "#####--#--#-"
-    "#---#---##--"
-    "#-#-#----#--"
-    "#---#--#-#-#"
-    "#####---#---";
+    "#######   # # #######"
+    "#     #     # #     #"
+    "# ### # # #   # ### #"
+    "# ### #     # # ### #"
+    "# ### #  # ## # ### #"
+    "#     #  ###  #     #"
+    "####### # # # #######"
+    "        # #          "
+    "### ##### # ###   #  "
+    " ####   ## # # # #  #"
+    "###   ### ## ### #  #"
+    "## ##    # ### ### ##"
+    "  ###### ### ###  #  "
+    "        # #   #   # #"
+    "####### #   #   #  ##"
+    "#     # #     #   ###"
+    "# ### # ##  # # # # #"
+    "# ### #  ### # # # # "
+    "# ### # #  # ### ## #"
+    "#     # # #### ### # "
+    "####### #  # ### ####";
 
   vector<Piece> pieces;
   auto AddPiece = [&pieces](Piece p) {
@@ -62,24 +74,39 @@ int main(int argc, char **argv) {
   const int bar2v = AddPiece(Piece({{0,0}, {0,1}}));
   const int bar2h = AddPiece(Piece({{0,0}, {1,0}}));
 
+  // 3x1 bar, vert and horiz
+  const int bar3v = AddPiece(Piece({{0,0}, {0,1}, {0,2}}));
+  const int bar3h = AddPiece(Piece({{0,0}, {1,0}, {2,0}}));
+
   const vector<PiecePool> pools = {
-    {.count = 8, .piece_ids = {dot}},
-    {.count = 100, .piece_ids = {bar2v, bar2h}},
+    {.count = 30, .piece_ids = {dot}},
+    {.count = 20, .piece_ids = {bar2v, bar2h}},
+    {.count = 60, .piece_ids = {bar3v, bar3h}},
   };
 
   const int num_pieces = pieces.size();
 
   CHECK(qrtext.size() == QWIDTH * QHEIGHT);
 
-  // boolean qX_Y gives the target QR code cell's value
-  // (these are truly constant so maybe we could be more direct...)
+  // Check trivially unsatisfiable, since this seems hard for the
+  // solver.
+  int qrbits = 0;
+  for (char c : qrtext) if (c == '#') qrbits++;
+  int covers = 0;
+  for (const PiecePool &pool : pools) {
+    int maxsize = 0;
+    for (int n : pool.piece_ids)
+      maxsize = std::max(pieces[n].Bits(), maxsize);
+    covers += pool.count * maxsize;
+  }
+  CHECK(qrbits <= covers) << "Can't cover " << qrbits << " bits in "
+    "QR code with pieces that only have " << covers << " bits total";
+
+
+  // boolean qX_Y gives the target QR code cell's value.
+  // These are constant in the theory.
   for (int y = 0; y < QHEIGHT; y++) {
     for (int x = 0; x < QWIDTH; x++) {
-      /*
-      printf("(declare-const q%d_%d Bool)\n"
-             "(assert (= q%d_%d %s))\n",
-             x, y, x, y, qrtext[y * QWIDTH + x] == '#' ? "true" : "false");
-      */
       printf("(define-const q%d_%d Bool %s)\n",
              x, y, qrtext[y * QWIDTH + x] == '#' ? "true" : "false");
     }
