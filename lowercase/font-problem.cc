@@ -80,7 +80,7 @@ static void DrawFloats(const vector<int> &row_max_points,
         float dx = values[idx + 2 + i * 4 + 2];
         float dy = values[idx + 2 + i * 4 + 3];
 
-        for (const auto [xx, yy] :
+        for (const auto &[xx, yy] :
                TesselateQuadraticBezier<double>(
                    x, y, cx, cy, dx, dy, sqerr)) {
           Line(x, y, xx, yy);
@@ -146,7 +146,7 @@ void FontProblem::VectorRemoveDegenerateContours(TTF::Char *ch,
       }
       return true;
     };
-  
+
   for (TTF::Contour &c : ch->contours) {
     if (!IsDegenerate(c)) out.emplace_back(std::move(c));
   }
@@ -1743,7 +1743,7 @@ static TTF::Contour UnoptimizedContour(
     const vector<pair<float, float>> &points) {
   // Just return straight lines between these edge points.
   TTF::Contour ret;
-  for (const auto [ex, ey] : points) {
+  for (const auto &[ex, ey] : points) {
     ret.paths.emplace_back(ex, ey);
   }
   return ret;
@@ -1759,7 +1759,7 @@ TTF::Contour FontProblem::OptimizedContour(
 
   if (verbose) {
     printf("OptimizedContour on %d points:\n", (int)points.size());
-    for (const auto [x, y] : points)
+    for (const auto &[x, y] : points)
       printf("  %.2f,%.2f\n", x, y);
   }
 
@@ -1831,7 +1831,7 @@ TTF::Contour FontProblem::OptimizedContour(
     {
       CHECK(sx >= minx && sx <= maxx);
       CHECK(sy >= miny && sy <= maxy);
-      for (const auto [ix, iy] : intermediate) {
+      for (const auto &[ix, iy] : intermediate) {
         CHECK(ix >= minx && ix <= maxx);
         CHECK(iy >= miny && iy <= maxy);
       }
@@ -1859,7 +1859,7 @@ TTF::Contour FontProblem::OptimizedContour(
             // (The endpoints would always contribute 0 error
             // since they are by definition on the curve.)
             double err = 0.0;
-            for (const auto [px, py] : intermediate) {
+            for (const auto &[px, py] : intermediate) {
               const auto [x_, y_, dist] =
                 DistanceFromPointToQuadBezier(
                     px, py,
@@ -1967,7 +1967,7 @@ FontProblem::VectorizeSDF(
   const auto &depth = maps.depth;
   const auto &eqclass = maps.eqclass;
   const int max_depth = maps.max_depth;
-  
+
   // Next up, generate a series of nested contours.
   // For each equivalence class, first simplify matters by
   // filling its interior so that it is never less than
@@ -2090,7 +2090,7 @@ void FontProblem::GuessWidth(TTF::Char *ch) {
   // with GuessRightEdge.
 
   float xmin = 1.0f, xmax = 0.0f;
-  for (const TTF::Contour contour : TTF::MakeOnlyBezier(ch->contours)) {
+  for (const TTF::Contour &contour : TTF::MakeOnlyBezier(ch->contours)) {
     float x = contour.StartX();
     float y = contour.StartY();
     for (const TTF::Path &path : contour.paths) {

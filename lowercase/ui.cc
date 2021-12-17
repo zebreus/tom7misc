@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <utility>
 #include <optional>
+#include <condition_variable>
 
 #include "../cc-lib/threadutil.h"
 #include "../cc-lib/randutil.h"
@@ -1424,7 +1425,7 @@ int UI::DrawChar(TTF *ttf, int sx, int sy, float scale, char c, char nc) {
         break;
       }
       case TTF::PathType::BEZIER: {
-        for (const auto [xx, yy] :
+        for (const auto &[xx, yy] :
                TesselateQuadraticBezier<double>(x, y, p.cx, p.cy, p.x, p.y,
                                                 sqerr)) {
           Line(x, y, xx, yy, 0xFF0000FF);
@@ -1933,7 +1934,7 @@ void UI::DrawBez() {
   constexpr float sqerr = 1.0f;
   int x = bez_startx;
   int y = bez_starty;
-  for (const auto [xx, yy] :
+  for (const auto &[xx, yy] :
          TesselateQuadraticBezier<double>(
              bez_startx, bez_starty, bez_cx, bez_cy, bez_endx, bez_endy,
              sqerr)) {
@@ -2140,7 +2141,7 @@ void UI::Draw() {
                  p.x, p.y);
           // Line(x, y, p.cx, p.cy, 0x00FF00FF);
           // Line(p.cx, p.cy, p.px, p.py, 0x0000FFFF);
-          for (const auto [xx, yy] :
+          for (const auto &[xx, yy] :
                  TesselateQuadraticBezier<double>(
                      x, y, p.cx, p.cy, p.x, p.y, sqerr)) {
             // times.Norm(1, 1.0f / 1000.0f).second)) {
