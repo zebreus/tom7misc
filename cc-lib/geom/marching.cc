@@ -28,12 +28,12 @@ static constexpr bool VERBOSE = false;
 
 //--- Licence -------------------------------------------------------------
 // This is free and unencumbered software released into the public domain.
-// 
+//
 // Anyone is free to copy, modify, publish, use, compile, sell, or
 // distribute this software, either in source code form or as a compiled
 // binary, for any purpose, commercial or non-commercial, and by any
 // means.
-// 
+//
 // In jurisdictions that recognize copyright laws, the author or authors
 // of this software dedicate any and all copyright interest in the
 // software to the public domain. We make this dedication for the benefit
@@ -41,7 +41,7 @@ static constexpr bool VERBOSE = false;
 // successors. We intend this dedication to be an overt act of
 // relinquishment in perpetuity of all present and future rights to this
 // software under copyright law.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 // EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 // MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
@@ -49,7 +49,7 @@ static constexpr bool VERBOSE = false;
 // OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 // ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 // OTHER DEALINGS IN THE SOFTWARE.
-// 
+//
 // For more information, please refer to <http://unlicense.org/>
 
 //--- A complete usage example --------------------------------------------
@@ -63,15 +63,15 @@ static constexpr bool VERBOSE = false;
 //         float x = pos[0], y = pos[1], z = pos[2];
 //         return (x*x + y*y + z*z) - 1;
 //     }
-//     
+//
 //     int main()
 //     {
 //         float bmin[3] = { -2, -2, -2 }; // bounding-box to scan over
 //         float bmax[3] = { +2, +2, +2 };
 //         float res = 0.1f;               // step size
-//         
+//
 //         McMesh mesh = mcGenerate(bmin, bmax, res, testIsoFn, NULL);
-//         
+//
 //         // Save out as a .OBJ 3D model.
 //         printf("o isosurface\n");
 //         for (int n=0;n<mesh.nverts;n++)
@@ -84,7 +84,7 @@ static constexpr bool VERBOSE = false;
 //             int c = mesh.indices[n*3+2] + 1;
 //             printf("f %i//%i %i//%i %i//%i\n", a,a, b,b, c,c);
 //         }
-//         
+//
 //         mcFree(&mesh); // Free it when done.
 //         return 0;
 //     }
@@ -117,7 +117,10 @@ static inline void *MC_REALLOC(void *ptr, size_t size) {
 // This is not necessary! But it helped me debug a crash (which was
 // my fault in the first place, ahh)
 static inline void *MC_REALLOC(void *ptr, size_t size) {
-  if (size == 0) {
+  if (ptr == nullptr && size == 0) {
+    if (VERBOSE) printf("Freeing null, allocating 0\n");
+    return nullptr;
+  } else if (size == 0) {
     size_t *actual = (size_t*)ptr - 1;
     size_t old_size = *actual;
     if (VERBOSE) printf("Freeing %d bytes from actual %p\n", (int)old_size, actual);
@@ -541,7 +544,7 @@ static int mcGenerateCell(McHelper *help, int corners, int edges)
         int verts[12];
         // XXX
         for (int i = 0; i < 12; i++) verts[i] = 99999999;
-        
+
         if (edges &    1) verts[0]  = mcInterp(help, help->c[0], help->c[1], 0);
         if (edges &    2) verts[1]  = mcInterp(help, help->c[1], help->c[2], 1);
         if (edges &    4) verts[2]  = mcInterp(help, help->c[3], help->c[2], 0);
@@ -603,7 +606,7 @@ McMesh mcGenerate(const float *bmin, const float *bmax, float cellsize, McIsoFn 
 {
         McHelper help;
         float extra[MC_EXTRA_DATA+1] = {};
-        
+
         help.maxverts = 0;
         help.maxtris = 0;
         help.mesh.nverts = 0;
@@ -631,8 +634,8 @@ McMesh mcGenerate(const float *bmin, const float *bmax, float cellsize, McIsoFn 
         if (!grid0 || !grid1)
                 goto end;
 
-        
-        
+
+
         // Prime the first slice.
         {
           McCorner *prime = grid0;
@@ -646,7 +649,7 @@ McMesh mcGenerate(const float *bmin, const float *bmax, float cellsize, McIsoFn 
                 }
             }
         }
-          
+
         for (int z=0;z<zd;z++)
         {
                 // Read the next slice.
@@ -727,7 +730,7 @@ McMesh mcGenerate(const float *bmin, const float *bmax, float cellsize, McIsoFn 
         // Calculate all normals and extra data.
         for (int n=0;n<help.mesh.nverts;n++)
         {
-                const float epsilon = cellsize * 0.1f;          
+                const float epsilon = cellsize * 0.1f;
                 McVertex *v = &help.mesh.verts[n];
                 float v1[3] = { v->x - epsilon, v->y, v->z };
                 float v2[3] = { v->x, v->y - epsilon, v->z };
@@ -793,7 +796,7 @@ MarchingCubes::Generate(Pos bound_min, Pos bound_max,
       Pos p(pos[0], pos[1], pos[2]);
       return (*shape)(p);
     };
-  
+
   McMesh mesh =
     mcGenerate(bmin.data(), bmax.data(), cellsize,
                fn, (void*)&shape);
@@ -823,10 +826,10 @@ MarchingCubes::Generate(Pos bound_min, Pos bound_max,
     res.triangles.emplace_back(
         mesh.indices[t * 3 + 0],
         mesh.indices[t * 3 + 1],
-        mesh.indices[t * 3 + 2]);        
+        mesh.indices[t * 3 + 2]);
   }
-  
+
   mcFree(&mesh);
-  
+
   return res;
 }
