@@ -28,19 +28,26 @@ struct Optimizer {
   static inline constexpr double LARGE_SCORE =
     std::numeric_limits<double>::max();
 
+  // Convenience constant for inputs where the function cannot even be
+  // evaluated. However, optimization will be more efficient if you
+  // instead return a penalty that exceeds any feasible score, and has
+  // a gradient towards the feasible region.
+  static inline constexpr
+  std::pair<double, std::optional<OutputType>> INFEASIBLE =
+    std::make_pair(LARGE_SCORE, std::nullopt);
+
   // function takes two arrays as arguments: the int
   //   args and the doubles.
   using arg_type =
     std::pair<std::array<int32_t, N_INTS>,
               std::array<double, N_DOUBLES>>;
 
-  // return value is optional; if nullopt, this is an
-  //   infeasible input (score = LARGE_SCORE).
-  // if present, it is the score and the output value.
-  // (TODO: For infeasible inputs, we may want to be able
-  // to return a penalty that gives a gradient towards the
-  // feasible region?)
-  using return_type = std::optional<std::pair<double, OutputType>>;
+  // Return value from the function being optimized, consisting
+  // of a score and an output. If the output is nullopt, then
+  // this is an infeasible input, and score should ideally give
+  // some gradient towards the feasible region (and be bigger
+  // than any score in the feasible region).
+  using return_type = std::pair<double, std::optional<OutputType>>;
 
   // function to optimize.
   using function_type = std::function<return_type(arg_type)>;
@@ -134,17 +141,14 @@ Optimizer<N_INTS, N_DOUBLES, OutputType>::Optimizer(function_type f) :
 
 template<int N_INTS, int N_DOUBLES, class OutputType>
 void Optimizer<N_INTS, N_DOUBLES, OutputType>::Sample(arg_type arg) {
-  auto res = f(arg);
+  auto [score, res] = f(arg);
+  cached_score[arg] = score;
+
   if (res.has_value()) {
-    double score = res.value().first;
-    cached_score[arg] = score;
     // First or improved best?
     if (!best.has_value() || score < std::get<1>(best.value())) {
-      best.emplace(arg, score, std::move(res.value().second));
+      best.emplace(arg, score, std::move(res.value()));
     }
-  } else {
-    // Add to cache no matter what.
-    cached_score[arg] = LARGE_SCORE;
   }
 }
 
@@ -249,8 +253,8 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
         }
       }
 
-      auto res = f(arg);
-
+      auto [score, res] = f(arg);
+      cached_score[arg] = score;
 
       if (res.has_value()) {
         // Feasible call.
@@ -261,24 +265,15 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
           }
         }
 
-        const double score = res.value().first;
-
-        cached_score[arg] = score;
-
         // First or new best? Save it.
         if (!best.has_value() || score < std::get<1>(best.value())) {
-          best.emplace(arg, score, std::move(res.value().second));
+          best.emplace(arg, score, std::move(res.value()));
         }
 
         if (score <= target_score)
           stop = true;
-
-        return score;
-      } else {
-        cached_score[arg] = LARGE_SCORE;
-
-        return LARGE_SCORE;
       }
+      return score;
     };
 
   // Run double-based optimizer on above.
@@ -289,6 +284,8 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
     // or at least scale with number of parameters? Probably the
     // 'attempts' should actually be 1 here, since we have our own
     // attempts loop?
+    // PERF: Biteopt now has stopping conditions, so we should be able
+    // of calls to the optimizer. We should pass that, at least!
     Opt::Minimize<N>(df, lbs, ubs, 1000, 1, 10, seed);
   }
 }

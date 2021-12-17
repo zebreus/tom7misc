@@ -813,7 +813,7 @@ static void TryPackEsc(
     std::vector<std::pair<int, int>> *positions) {
   // Can be null for uniformity, but then the function does nothing.
   if (positions == nullptr) return;
-  
+
   UsedMap um{initial_width, initial_height};
 
   positions->clear();
@@ -889,7 +889,7 @@ bool PackRect::Pack(
   // (XXX This first phase could perhaps be replaced by just
   // calling Sample below with some arg that we "know" will work, like
   // using width=total_width.)
-  
+
   std::vector<std::pair<int, int>> pos;
   for (;;) {
     arg_width = ceilf(arg_width * 1.25f);
@@ -926,15 +926,15 @@ bool PackRect::Pack(
     STB_BL = 0,
     STB_BF,
     ESCAPE,
-    
+
     NUM_METHODS,
   };
-  
+
   // TODO: Improve this search space. Maybe can reframe these
   // algorithms to only take the width as input? Also experiment
   // with different orderings, which is the thing that most
   // affects the output (although it is hard to map to a double?).
-  // 
+  //
   // Arguments are:
   //    - width,height
   //    - method
@@ -966,11 +966,11 @@ bool PackRect::Pack(
         // TODO: Would be better if we could return a penalty
         // in this case, here probably dw + dh...
         // printf("%d * %d > %d * %d", w, h, width, height);
-        return std::nullopt;
+        return std::make_pair(RectOptimizer::LARGE_SCORE, std::nullopt);
       }
       #endif
-      
-      std::vector<std::pair<int, int>> tmp_pos;      
+
+      std::vector<std::pair<int, int>> tmp_pos;
       switch (method) {
       case STB_BL:
       case STB_BF: {
@@ -979,7 +979,7 @@ bool PackRect::Pack(
         if (unpacked > 0) {
           // TODO: As above, good to be able to indicate the gradient...
           // printf("Unpacked %d\n", unpacked);
-          return std::nullopt;
+          return std::make_pair(RectOptimizer::LARGE_SCORE, std::nullopt);
           // Worse than our upper bound.
           // return large_area + 10 * unpacked;
         } else {
@@ -988,30 +988,30 @@ bool PackRect::Pack(
           // Otherwise, minimize the area.
           const auto [cw, ch] = Crop(rects, tmp_pos);
           // printf("ok stb %d x %d!\n", cw, ch);
-          return std::make_optional(
-              std::make_pair((double)cw * ch,
-                             std::make_tuple(cw, ch, std::move(tmp_pos))));
+          return std::make_pair(
+              (double)cw * ch,
+              std::make_optional(std::make_tuple(cw, ch, std::move(tmp_pos))));
         }
         break;
       }
-        
+
       case ESCAPE: {
         // Always succeeds.
         // printf("Esc %d x %d...\n", w, h);
         TryPackEsc(w, h, rects, &tmp_pos);
         const auto [cw, ch] = Crop(rects, tmp_pos);
         // printf("ok %d x %d\n", cw, ch);
-        return std::make_optional(
-            std::make_pair((double)cw * ch,
-                           std::make_tuple(cw, ch, std::move(tmp_pos))));
+        return std::make_pair(
+            (double)cw * ch,
+            std::make_optional(std::make_tuple(cw, ch, std::move(tmp_pos))));
       }
-        
+
       default:
         // printf("bad method\n");
         LOG(FATAL) << "illegal method in Optimize";
       }
     };
-  
+
   RectOptimizer optimizer(Optimize);
   // Start with our existing solution. PERF: Note that this currently
   // recomputes the packing we already had, for uniformity!
@@ -1025,7 +1025,7 @@ bool PackRect::Pack(
   const int height_ub =
     config.max_height == 0 ? total_height :
     std::min(total_height, config.max_height);
-  
+
   const std::array<std::pair<int, int>, 3> int_bounds =
     // upper bounds are one past the max value to try
     {std::make_pair(max_input_width, width_ub + 1),

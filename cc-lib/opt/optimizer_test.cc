@@ -12,19 +12,17 @@ using namespace std;
 // Two integral arguments, 0 doubles, "output type" is int.
 using CircleOptimizer = Optimizer<2, 0, int>;
 
-static
-optional<pair<double, int>>
+static pair<double, optional<int>>
 DiscreteDistance(CircleOptimizer::arg_type arg) {
   auto [x, y] = arg.first;
 
   int sqdist = (x * x) + (y * y);
-  if (sqdist >= 10 * 10) return nullopt;
-  return {{-sqrt(sqdist), sqdist}};
+  if (sqdist >= 10 * 10)
+    return CircleOptimizer::INFEASIBLE;
+  return make_pair(-sqrt(sqdist), make_optional(sqdist));
 }
 
-
-int main(int argc, char **argv) {
-
+static void CircleTest() {
   CircleOptimizer optimizer(DiscreteDistance);
 
   CHECK(!optimizer.GetBest().has_value());
@@ -51,8 +49,13 @@ int main(int argc, char **argv) {
   CHECK(best_sqdist == 98);
   CHECK(best_x == 7 || best_x == -7);
   CHECK(best_y == 7 || best_y == -7);
-  CHECK(best_score < 9.898);
+  CHECK(best_score < -9.898);
+}
 
+int main(int argc, char **argv) {
+  CircleTest();
+
+  printf("OK\n");
   return 0;
 }
 

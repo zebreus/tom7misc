@@ -328,7 +328,7 @@ inline float PointHorizLineDistance(
   if (x0 > x1) std::swap(x0, x1);
   const float dy = y0 - y;
   if (x <= x0) {
-    // Distance is to left left.
+    // Distance is to left vertex.
     const float dx = x0 - x;
     return sqrtf(dx * dx + dy * dy);
   } else if (x >= x1) {
