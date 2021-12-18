@@ -16,6 +16,7 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "threadutil.h"
+#include "util.h"
 
 using int64 = int64_t;
 using TrainNet = NetworkTestUtil::TrainNet;
@@ -89,14 +90,14 @@ static bool WorseResult(const Result &l, const Result &r) {
 
 
 static Result
-TrainTest(TrainNet train_net,
-          int64 seed,
-          int max_iterations,
-          int examples_per_round,
-          float converged_threshold,
-          float diverged_threshold,
-          UpdateWeightsCL::UpdateConfig update_config =
-          UpdateWeightsCL::UpdateConfig()) {
+Train(TrainNet train_net,
+      int64 seed,
+      int max_iterations,
+      int examples_per_round,
+      float converged_threshold,
+      float diverged_threshold,
+      UpdateWeightsCL::UpdateConfig update_config =
+      UpdateWeightsCL::UpdateConfig()) {
   static constexpr bool VERBOSE = true;
 
   ArcFour rc(StringPrintf("%s.%lld", train_net.name.c_str(), seed));
@@ -107,7 +108,8 @@ TrainTest(TrainNet train_net,
   RandomizeNetwork(&rc, &net, 2);
 
   auto net_gpu = make_unique<NetworkGPU>(cl, &net);
-
+  net_gpu->SetVerbose(false);
+  
   std::unique_ptr<ForwardLayerCL> forward_cl =
     std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
   std::unique_ptr<SetOutputErrorCL> error_cl =
@@ -302,10 +304,10 @@ TrainTest(TrainNet train_net,
 }
 
 using OutputType = Result;
-using NetOptimizer = Optimizer<3, 0, OutputType>;
+using NetOptimizer = Optimizer<0, 3, OutputType>;
 
 static constexpr int SAMPLES = 5;
-static constexpr int MAX_ITERATIONS = 200000;
+static constexpr int MAX_ITERATIONS = 100000;
 static constexpr int EXAMPLES_PER_ROUND = 1000;
 static constexpr int CONVERGED_THRESHOLD = 0.01f;
 static constexpr int DIVERGED_THRESHOLD = 4000.0f;
@@ -313,27 +315,75 @@ static constexpr int DIVERGED_THRESHOLD = 4000.0f;
 static constexpr double DIVERGED_PENALTY = 10'000'000'000.0;
 static constexpr double CONVERGED_PENALTY = -10'000'000'000.0;
 
+  /*
+    best from large search with 20k iters
+Best arg: 180, 38, 6
+Score: 0.257561
+Result:
+type: TIMEOUT
+iters: 20000
+seconds: 89.588
+average loss: 0.257561
+
+    narrower search, 200k iters, 5x:
+Best arg: 183, 42, 6
+Score: 0.111853
+Result:
+type: TIMEOUT
+iters: 200000
+seconds: 901.982
+average loss: 0.111853
+
+then learning rate search:
+Best arg: 1.301269, 4.689531, 4.716369
+Score: 0.076092
+Result:
+type: TIMEOUT
+iters: 100000
+seconds: 501.957
+average loss: 0.076092
+
+that's a base_learning_rate of 0.049972
+dampening of 4.6895
+epsilon of 0.0000192145
+
+  */
+
+static constexpr int WIDTH = 183;
+static constexpr int IPN = 42;
+static constexpr int DEPTH = 6;
+
 static NetOptimizer::return_type
 OptimizeMe(const NetOptimizer::arg_type arg) {
   // only int args
-  auto [width, ipn, depth] = arg.first;
-  printf("Trying with %d %d %d\n", width, ipn, depth);
+  // auto [width, ipn, depth] = arg.first;
+  // printf("Trying with %d %d %d\n", width, ipn, depth);
+  auto [lr, damp, ep] = arg.second;
+  printf("Trying with 0.1^%.3f %.6f 0.1^%.3f\n", lr, damp, ep);
+ 
+  UpdateConfig update_config;  
+  update_config.base_learning_rate = pow(0.1, lr);
+  update_config.learning_rate_dampening = damp;
+  update_config.adam_epsilon = pow(0.1, ep);
 
   std::optional<Result> worst;
   int sample = 0;
   int64 num_params = 0;
   for (; sample < SAMPLES; sample++) {
-    TrainNet tn = NetworkTestUtil::SparseLineIntersectionAdam(width,
-                                                              ipn,
-                                                              depth);
+    TrainNet tn = NetworkTestUtil::SparseLineIntersectionAdam(WIDTH,
+                                                              IPN,
+                                                              DEPTH);
     num_params = tn.net.TotalParameters();
-    Result r = TrainTest(tn, sample,
-                         MAX_ITERATIONS,
-                         EXAMPLES_PER_ROUND,
-                         CONVERGED_THRESHOLD,
-                         DIVERGED_THRESHOLD);
+    Result r = Train(tn, sample,
+                     MAX_ITERATIONS,
+                     EXAMPLES_PER_ROUND,
+                     CONVERGED_THRESHOLD,
+                     DIVERGED_THRESHOLD,
+                     update_config);
 
 
+    // TODO: Better if this merged them, so that we had for
+    // example the min/median/max average_loss.
     if (!worst.has_value() || WorseResult(worst.value(), r)) {
       worst = make_optional(r);
     }
@@ -357,8 +407,10 @@ OptimizeMe(const NetOptimizer::arg_type arg) {
                      (num_params / 10.0),
                      nullopt);
   case ResultType::CONVERGED:
-    printf("Always converged: %d %d %d\n",
-           width, ipn, depth);
+    //     printf("Always converged: %d %d %d\n",
+    // width, ipn, depth);
+    printf("Always converged: %.6f %.6f %.6f\n",
+           lr, damp, ep);
     // Always converged! Great!
     return make_pair(CONVERGED_PENALTY -
                      worst.value().iters +
@@ -377,41 +429,34 @@ int main(int argc, char **argv) {
   cl = new CL;
 
   NetOptimizer optimizer(OptimizeMe);
-
+  optimizer.SetSaveAll(true);
+  
   // TODO: optimizer callback
-
-  /*
-    best from large search with 20k iters
-Best arg: 180, 38, 6
-Score: 0.257561
-Result:
-type: TIMEOUT
-iters: 20000
-seconds: 89.588
-average loss: 0.257561
-  */
-
+  
   // Now searching close to the above with 10x depth
   // Params are width, ipn, depth
   optimizer.Run(
       // int args are width, ipn, depth
-      {make_pair(128, 220), make_pair(32, 46), make_pair(5, 7)},
-      // no double args
+      // {make_pair(128, 220), make_pair(32, 46), make_pair(5, 7)},
       {},
+      // double args are learning rate exponent, damping, epsilon exponent
+      {make_pair(0.0, 3.0), make_pair(0.1, 10.0), make_pair(0.0, 6.0)},
       // no max calls
       nullopt,
       // no max feasible calls
       nullopt,
-      // three hours
-      {3600 * 3},
+      // seven hours
+      {3600 * 7},
       // no target score
       nullopt);
 
   auto bo = optimizer.GetBest();
   CHECK(bo.has_value()) << "Always diverged?";
   auto [arg, score, out] = bo.value();
-  auto [width, ipn, depth] = arg.first;
-  printf("Best arg: %d, %d, %d\n", width, ipn, depth);
+  // auto [width, ipn, depth] = arg.first;
+  // printf("Best arg: %d, %d, %d\n", width, ipn, depth);
+  auto [lr, damp, ep] = arg.second;
+  printf("Best arg: %.6f, %.6f, %.6f\n", lr, damp, ep);
   printf("Score: %.6f\n", score);
   printf("Result:\n"
          "type: %s\n"
@@ -423,6 +468,29 @@ average loss: 0.257561
          out.seconds,
          out.average_loss);
 
+  string all_results;
+  for (const auto &[arg, score, out] : optimizer.GetAll()) {
+    const auto &[lr, damp, ep] = arg.second;
+    StringAppendF(&all_results,
+                  "%.6f,%.6f,%.6f,"
+                  "%.6f,",
+                  lr, damp, ep,
+                  score);
+    if (out.has_value()) {
+      StringAppendF(&all_results,
+                    "%s,%lld,%.3f,%.6f",
+                    ResultTypeString(out.value().type),
+                    out.value().iters,
+                    out.value().seconds,
+                    out.value().average_loss);
+    } else {
+      StringAppendF(&all_results, "NONE");
+    }
+    StringAppendF(&all_results, "\n");
+  }
+  Util::WriteFile("hyper.csv", all_results);
+  printf("Wrote hyper.csv\n");
+  
   delete cl;
   return 0;
 }

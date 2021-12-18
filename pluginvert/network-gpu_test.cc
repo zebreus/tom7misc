@@ -157,7 +157,7 @@ TrainTest(TrainNet train_net,
           optional<int> write_images_every = nullopt) {
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
-  static constexpr bool SAVE_INTERMEDIATE = false;
+  static constexpr bool SAVE_INTERMEDIATE = true; // FIXME
   static constexpr int MAX_PARALLELISM = 4;
 
   std::unique_ptr<TrainingImages> images;
@@ -376,7 +376,7 @@ TrainTest(TrainNet train_net,
       images->Sample(net);
     }
 
-    if (SAVE_INTERMEDIATE && (finished || iter == 1000 || iter % 5000 == 0)) {
+    if (SAVE_INTERMEDIATE && (finished || iter == 1000 || iter % 10000 == 0)) {
       net_gpu->ReadFromGPU();
       const string file = StringPrintf("gpu-test-net-%d.val", iter);
       net.SaveToFile(file);
@@ -566,13 +566,14 @@ static void SGDTests() {
 }
 
 static void AdamTests() {
+  [[maybe_unused]]
   UpdateWeightsCL::UpdateConfig fast_config = UpdateWeightsCL::UpdateConfig{
     .base_learning_rate = 0.1f,
     .learning_rate_dampening = 0.25f,
     .adam_epsilon = 1.0e-6,
   };
 
-  #if 1
+  #if 0
   TRAIN_TEST(NetworkTestUtil::ForceAdam(
                  NetworkTestUtil::LearnTrivialIdentitySparse()),
              10000, 1000, 0.001f, fast_config);
@@ -689,15 +690,29 @@ static void AdamTests() {
              2000000, 1000, 0.010f, fast_config);
   #endif
 
+  {
+    UpdateWeightsCL::UpdateConfig hyper_config =
+      UpdateWeightsCL::UpdateConfig{
+      .base_learning_rate = 0.049972f,
+      .learning_rate_dampening = 4.689531f,
+      .adam_epsilon = 0.00001921458f,
+    };
+
+    // The resulting model is still pretty noisy (it does not get
+    // exact answers), but is qualitatively pretty decent.
+    TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(183, 42, 6),
+               200000, 1000, 0.060f, hyper_config);
+  }
+  
 }
 
 int main(int argc, char **argv) {
   cl = new CL;
 
-  TestChunkSchedule();
+  //  TestChunkSchedule();
   printf("Chunk schedule OK\n");
 
-  QuickTests();
+  //   QuickTests();
   printf("Quick tests OK\n");
 
   // SGDTests();

@@ -162,6 +162,7 @@ struct NetworkTestUtil {
   // output is the point reflected about that line.
   static TrainNet ReflectAdam(int width, int ipn, int depth);
 
+  // The atan2 function of two variables.
   static TrainNet Atan2Adam(int width, int ipn, int depth);
 };
 

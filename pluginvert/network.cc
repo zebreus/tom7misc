@@ -1153,7 +1153,7 @@ static Network *ReadFromReader(Reader *r) {
       chunk.fixed = r->Read32() != 0;
 
       if (r->verbose) {
-        printf("%d %s %s %s%s",
+        printf("%d %s %s %s%s ",
                chunk.indices_per_node,
                TransferFunctionName(chunk.transfer_function),
                ChunkTypeName(chunk.type),

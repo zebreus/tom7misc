@@ -2,7 +2,7 @@
 default: train.exe
 
 # widen.exe
-all: train.exe get-modelinfo.exe get-layerweights.exe new-network.exe collate-errors.exe network_test.exe network-gpu_test.exe run-boolean.exe print-weights.exe process.exe plot-beta.exe hyper.exe
+all: train.exe get-modelinfo.exe get-layerweights.exe new-network.exe collate-errors.exe network_test.exe network-gpu_test.exe run-boolean.exe run-network.exe print-weights.exe process.exe plot-beta.exe hyper.exe test-intersection.exe
 
 CC_LIB=../cc-lib
 FFTW=../../fftw-3.3.8
@@ -20,7 +20,7 @@ AMD_ARCH=x86_64
 AMDSDK=c:/code/AMD_SDK/
 
 # XXX maybe only enable -ffast-math for network.o? or call intrinsics there?
-CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare $(SDLINCLUDES) -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 -ffast-math
+CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 -ffast-math
 OPT=-O3
 
 CLINCLUDES="-I$(AMDSDK)/include"
@@ -38,7 +38,7 @@ CPPFLAGS=-m64 $(OPT) -D__MINGW32__ $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_L
 OBJECTS=$(UTIL_OBJECTS) $(RE2_OBJECTS) network.o error-history.o modelinfo.o audio-database.o
 
 # without static, can't find lz or lstdcxx maybe?
-LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static $(FFTW)/.libs/libfftw3.a
+LFLAGS= -L. -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static $(FFTW)/.libs/libfftw3.a
 
 get-modelinfo.exe : $(OBJECTS) get-modelinfo.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -68,6 +68,10 @@ run-boolean.exe : run-boolean.o network.o network-test-util.o $(UTIL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+run-network.exe : run-network.o network.o network-test-util.o $(UTIL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 train.exe : train.o network-gpu.o clutil.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
@@ -85,6 +89,10 @@ process.exe : process.o $(OBJECTS)
 	@echo -n "!"
 
 hyper.exe : hyper.o clutil.o network-gpu.o network-test-util.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+test-intersection.exe : test-intersection.o clutil.o network-gpu.o network-test-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
