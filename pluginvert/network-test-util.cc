@@ -10,6 +10,7 @@
 #include "base/stringprintf.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "lines.h"
 
 static inline constexpr float Leaky(float f) {
   if (f < 0.0f) return 0.01f * f;
@@ -406,8 +407,8 @@ NetworkTestUtil::TestNet NetworkTestUtil::SimpleConv() {
                   4.0f, -5.0f, 6.0f};
   conv.biases = {-100.0f};
 
-  Network net({Network::LayerFromChunks({input}),
-               Network::LayerFromChunks({conv})});
+  Network net({Network::LayerFromChunks(input),
+               Network::LayerFromChunks(conv)});
   net.NaNCheck(__func__);
 
   TestExample example1{
@@ -661,8 +662,8 @@ NetworkTestUtil::TestNet NetworkTestUtil::Copy() {
   Chunk copy1 = Network::MakeCopyChunk(0, 3);
   Chunk copy2 = Network::MakeCopyChunk(3, 5);
 
-  Network net({Network::LayerFromChunks({input_chunk}),
-               Network::LayerFromChunks({copy1, copy2})});
+  Network net({Network::LayerFromChunks(input_chunk),
+               Network::LayerFromChunks(copy1, copy2)});
   net.NaNCheck(__func__);
 
   return TestNet{
@@ -722,9 +723,9 @@ NetworkTestUtil::TestNet NetworkTestUtil::CountInternalEdges() {
   // Sum 'em up.
   for (float &f : two.weights) f = 1.0f;
 
-  Network net({Network::LayerFromChunks({input_chunk}),
-               Network::LayerFromChunks({one}),
-               Network::LayerFromChunks({two})});
+  Network net({Network::LayerFromChunks(input_chunk),
+               Network::LayerFromChunks(one),
+               Network::LayerFromChunks(two)});
   net.NaNCheck(__func__);
 
   return TestNet{
@@ -1645,7 +1646,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::TriangleSumsAdam(int depth,
   input_chunk.height = dim;
   input_chunk.channels = 1;
 
-  layers.push_back(Network::LayerFromChunks({input_chunk}));
+  layers.push_back(Network::LayerFromChunks(input_chunk));
 
   auto f = [dim](const std::vector<float> &input) -> std::vector<float> {
       float asum = 0.0f, bsum = 0.0f, csum = 0.0f;
@@ -1664,13 +1665,13 @@ NetworkTestUtil::TrainNet NetworkTestUtil::TriangleSumsAdam(int depth,
   for (int d = 0; d < depth; d++) {
     Chunk hidden_chunk =
       Network::MakeDenseChunk(dim * dim, 0, dim * dim, LEAKY_RELU, ADAM);
-    layers.push_back(Network::LayerFromChunks({hidden_chunk}));
+    layers.push_back(Network::LayerFromChunks(hidden_chunk));
   }
 
   Chunk output_chunk =
     Network::MakeDenseChunk(1, 0, dim * dim, SIGMOID, ADAM);
 
-  layers.push_back(Network::LayerFromChunks({output_chunk}));
+  layers.push_back(Network::LayerFromChunks(output_chunk));
 
   Network net(layers);
   net.NaNCheck(__func__);
@@ -1684,4 +1685,307 @@ NetworkTestUtil::TrainNet NetworkTestUtil::TriangleSumsAdam(int depth,
     .boolean_output = true,
   };
 
+}
+
+NetworkTestUtil::TrainNet NetworkTestUtil::InCircleAdam(int width,
+                                                        int depth) {
+  std::vector<Layer> layers;
+  constexpr int INPUT_SIZE = 5;
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = INPUT_SIZE;
+  input_chunk.width = INPUT_SIZE;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  layers.push_back(Network::LayerFromChunks(input_chunk));
+
+  auto f = [](const std::vector<float> &input) -> std::vector<float> {
+    CHECK(input.size() == INPUT_SIZE);
+    const float px = input[0];
+    const float py = input[1];
+    const float cx = input[2];
+    const float cy = input[3];
+    const float r  = input[4];
+
+    const float dx = cx - px;
+    const float dy = cy - py;
+
+    return {((r * r) > (dx * dx) + (dy * dy)) ? 1.0f : 0.0f};
+  };
+
+  for (int d = 0; d < depth; d++) {
+    Chunk hidden_chunk =
+      Network::MakeDenseChunk(width, 0, layers.back().num_nodes,
+                              LEAKY_RELU, ADAM);
+    layers.push_back(Network::LayerFromChunks(hidden_chunk));
+  }
+
+  Chunk output_chunk =
+    Network::MakeDenseChunk(1, 0, layers.back().num_nodes,
+                            SIGMOID, ADAM);
+
+  layers.push_back(Network::LayerFromChunks(output_chunk));
+
+  Network net(layers);
+  net.NaNCheck(__func__);
+
+  return TrainNet{
+    .name = StringPrintf("point in circle, %d hidden, each width %d",
+                         depth, width),
+    .net = net,
+    .f = f,
+    .boolean_input = false,
+    .boolean_output = true,
+  };
+
+}
+
+NetworkTestUtil::TrainNet NetworkTestUtil::SparseInCircleAdam(
+    int width, int ipn, int depth) {
+  ArcFour rc("sparse-in-circle");
+  std::vector<Layer> layers;
+  constexpr int INPUT_SIZE = 5;
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = INPUT_SIZE;
+  input_chunk.width = INPUT_SIZE;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  layers.push_back(Network::LayerFromChunks(input_chunk));
+
+  auto f = [](const std::vector<float> &input) -> std::vector<float> {
+    CHECK(input.size() == INPUT_SIZE);
+    const float px = input[0];
+    const float py = input[1];
+    const float cx = input[2];
+    const float cy = input[3];
+    const float r  = input[4];
+
+    const float dx = cx - px;
+    const float dy = cy - py;
+
+    return {((r * r) > (dx * dx) + (dy * dy)) ? 1.0f : 0.0f};
+  };
+
+  for (int d = 0; d < depth; d++) {
+    int prev_nodes = layers.back().num_nodes;
+    Network::SparseSpan span{.span_start = 0,
+                             .span_size = prev_nodes,
+                             .ipn = std::min(prev_nodes, std::max(2, ipn))};
+
+    Chunk hidden_chunk = Network::MakeRandomSparseChunk(
+        &rc, width, {span}, LEAKY_RELU, ADAM);
+    layers.push_back(Network::LayerFromChunks(hidden_chunk));
+  }
+
+  Chunk output_chunk =
+    Network::MakeDenseChunk(1, 0, layers.back().num_nodes,
+                            SIGMOID, ADAM);
+
+  layers.push_back(Network::LayerFromChunks(output_chunk));
+
+  Network net(layers);
+  net.NaNCheck(__func__);
+
+  return TrainNet{
+    .name = StringPrintf(
+        "point in circle, %d sparse hidden, each width %d",
+        depth, width),
+    .net = net,
+    .f = f,
+    .boolean_input = false,
+    .boolean_output = true,
+  };
+
+}
+
+NetworkTestUtil::TrainNet NetworkTestUtil::SparseLineIntersectionAdam(
+    int width, int ipn, int depth, int64 seed) {
+  ArcFour rc(StringPrintf("sparse-line-intersection.%lld", seed));
+  std::vector<Layer> layers;
+  constexpr int INPUT_SIZE = 8;
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = INPUT_SIZE;
+  input_chunk.width = 2;
+  input_chunk.height = 2;
+  input_chunk.channels = 2;
+
+  layers.push_back(Network::LayerFromChunks(input_chunk));
+
+  auto f = [](const std::vector<float> &input) -> std::vector<float> {
+    CHECK(input.size() == INPUT_SIZE);
+    const float p0x = input[0];
+    const float p0y = input[1];
+    const float p1x = input[2];
+    const float p1y = input[3];
+    const float p2x = input[4];
+    const float p2y = input[5];
+    const float p3x = input[6];
+    const float p3y = input[7];
+
+    auto io = LineIntersection<float>(p0x, p0y, p1x, p1y,
+                                      p2x, p2y, p3x, p3y);
+
+    if (io.has_value()) {
+      return {1.0f, io.value().first, io.value().second};
+    } else {
+      return {0.0f, 0.0f, 0.0f};
+    }
+  };
+
+  for (int d = 0; d < depth; d++) {
+    int prev_nodes = layers.back().num_nodes;
+    Network::SparseSpan span{.span_start = 0,
+                             .span_size = prev_nodes,
+                             .ipn = std::min(prev_nodes, std::max(2, ipn))};
+
+    Chunk hidden_chunk = Network::MakeRandomSparseChunk(
+        &rc, width, {span}, LEAKY_RELU, ADAM);
+    layers.push_back(Network::LayerFromChunks(hidden_chunk));
+  }
+
+  Chunk does_intersect_chunk =
+    Network::MakeDenseChunk(1, 0, layers.back().num_nodes,
+                            SIGMOID, ADAM);
+  Chunk intersection_position_chunk =
+    Network::MakeDenseChunk(2, 0, layers.back().num_nodes,
+                            IDENTITY, ADAM);
+
+  layers.push_back(Network::LayerFromChunks(
+                       does_intersect_chunk,
+                       intersection_position_chunk));
+
+  Network net(layers);
+  net.NaNCheck(__func__);
+
+  return TrainNet{
+    .name = StringPrintf(
+        "line intersections, %d sparse hidden, each width %d",
+        depth, width),
+    .net = net,
+    .f = f,
+    .boolean_input = false,
+    .boolean_output = false,
+  };
+
+}
+
+
+NetworkTestUtil::TrainNet NetworkTestUtil::ReflectAdam(
+    int width, int ipn, int depth) {
+  ArcFour rc("reflect-line-intersection");
+  std::vector<Layer> layers;
+  constexpr int INPUT_SIZE = 6;
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = INPUT_SIZE;
+  input_chunk.width = 3;
+  input_chunk.height = 1;
+  input_chunk.channels = 2;
+
+  layers.push_back(Network::LayerFromChunks(input_chunk));
+
+  auto f = [](const std::vector<float> &input) -> std::vector<float> {
+    CHECK(input.size() == INPUT_SIZE);
+    const float l0x = input[0];
+    const float l0y = input[1];
+    const float l1x = input[2];
+    const float l1y = input[3];
+    const float px = input[4];
+    const float py = input[5];
+
+    auto [rx, ry] = ReflectPointAboutLine<float>(l0x, l0y, l1x, l1y,
+                                                 px, py);
+
+    return {rx, ry};
+  };
+
+  for (int d = 0; d < depth; d++) {
+    int prev_nodes = layers.back().num_nodes;
+    Network::SparseSpan span{.span_start = 0,
+                             .span_size = prev_nodes,
+                             .ipn = std::min(prev_nodes, std::max(2, ipn))};
+
+    Chunk hidden_chunk = Network::MakeRandomSparseChunk(
+        &rc, width, {span}, LEAKY_RELU, ADAM);
+    layers.push_back(Network::LayerFromChunks(hidden_chunk));
+  }
+
+  Chunk output_chunk =
+    Network::MakeDenseChunk(2, 0, layers.back().num_nodes,
+                            IDENTITY, ADAM);
+
+  layers.push_back(Network::LayerFromChunks(output_chunk));
+
+  Network net(layers);
+  net.NaNCheck(__func__);
+
+  return TrainNet{
+    .name = StringPrintf(
+        "reflect point about line, %d sparse hidden, each ipn %d width %d",
+        depth, ipn, width),
+    .net = net,
+    .f = f,
+    .boolean_input = false,
+    .boolean_output = false,
+  };
+
+}
+
+NetworkTestUtil::TrainNet NetworkTestUtil::Atan2Adam(
+    int width, int ipn, int depth) {
+  ArcFour rc("atan2");
+  std::vector<Layer> layers;
+  constexpr int INPUT_SIZE = 2;
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = INPUT_SIZE;
+  input_chunk.width = 2;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  layers.push_back(Network::LayerFromChunks(input_chunk));
+
+  auto f = [](const std::vector<float> &input) -> std::vector<float> {
+    CHECK(input.size() == INPUT_SIZE);
+    const float x = input[0];
+    const float y = input[1];
+
+    const float r = x == 0.0 && y == 0.0 ? 0.0 : atan2(y, x);
+
+    return {r};
+  };
+
+  for (int d = 0; d < depth; d++) {
+    int prev_nodes = layers.back().num_nodes;
+    Network::SparseSpan span{.span_start = 0,
+                             .span_size = prev_nodes,
+                             .ipn = std::min(prev_nodes, std::max(2, ipn))};
+
+    Chunk hidden_chunk = Network::MakeRandomSparseChunk(
+        &rc, width, {span}, LEAKY_RELU, ADAM);
+    layers.push_back(Network::LayerFromChunks(hidden_chunk));
+  }
+
+  Chunk output_chunk =
+    Network::MakeDenseChunk(1, 0, layers.back().num_nodes,
+                            IDENTITY, ADAM);
+
+  layers.push_back(Network::LayerFromChunks(output_chunk));
+
+  Network net(layers);
+  net.NaNCheck(__func__);
+
+  return TrainNet{
+    .name = StringPrintf(
+        "atan2, %d sparse hidden, each ipn %d width %d",
+        depth, ipn, width),
+    .net = net,
+    .f = f,
+    .boolean_input = false,
+    .boolean_output = false,
+  };
 }

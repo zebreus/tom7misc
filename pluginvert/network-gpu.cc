@@ -124,7 +124,11 @@ static string ForwardKernelName(ChunkType ct) {
 }
 
 
-ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
+ForwardLayerCL::ForwardLayerCL(CL *cl, NetworkGPU *net_gpu) :
+  cl(cl), net_gpu(net_gpu) {
+
+  const Network &net = *net_gpu->net;
+  
   // Compile the appropriate kernel with baked in constants for
   // each chunk in the network.
   string base_src = Util::ReadFile("forwardchunk.cl");
@@ -181,7 +185,8 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
 
       const string kernel_name = ForwardKernelName(chunk.type);
       kernel_src += base_src;
-      auto [program, kernel] = cl->BuildOneKernel(kernel_src, kernel_name);
+      auto [program, kernel] =
+        cl->BuildOneKernel(kernel_src, kernel_name, net_gpu->Verbose());
       CHECK(program != 0 && kernel != 0);
 
       if (false) {
@@ -207,8 +212,7 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, const Network &net) : cl(cl) {
   }
 }
 
-void ForwardLayerCL::RunForward(
-    NetworkGPU *net_gpu, TrainingRoundGPU *train, int src_layer) {
+void ForwardLayerCL::RunForward(TrainingRoundGPU *train, int src_layer) {
   const int dst_layer = src_layer + 1;
 
   // TODO: Do we really want to share the same command queue across
@@ -313,8 +317,9 @@ ForwardLayerCL::~ForwardLayerCL() {
 
 
 SetOutputErrorCL::SetOutputErrorCL(
-    CL *cl, const Network &net,
-    const std::optional<std::string> remap_define) : cl(cl) {
+    CL *cl, NetworkGPU *net_gpu,
+    const std::optional<std::string> remap_define) : cl(cl), net_gpu(net_gpu) {
+  const Network &net = *net_gpu->net;
   // This only runs on one layer, the output. But we do need to have the
   // transfer function's derivative.
   string base_src = Util::ReadFile("setoutputerror.cl");
@@ -349,7 +354,8 @@ SetOutputErrorCL::SetOutputErrorCL(
 
     kernel_src += base_src;
 
-    auto pk = cl->BuildOneKernel(kernel_src, "SetOutputError");
+    auto pk = cl->BuildOneKernel(kernel_src, "SetOutputError",
+                                 net_gpu->Verbose());
     kernels.push_back(ChunkKernel{.program = pk.first,
                                   .kernel = pk.second});
     chunk_start += chunk.num_nodes;
@@ -357,8 +363,7 @@ SetOutputErrorCL::SetOutputErrorCL(
   CHECK(chunk_start == layer.num_nodes);
 }
 
-void SetOutputErrorCL::SetOutputError(
-    NetworkGPU *net_gpu, TrainingRoundGPU *train) {
+void SetOutputErrorCL::SetOutputError(TrainingRoundGPU *train) {
   // TODO: Could keep alias to this?
   const Network *net = net_gpu->net;
 
@@ -535,9 +540,11 @@ pair<vector<int>, vector<bool>> BackwardLayerCL::OptimizeChunkSchedule(
   return make_pair(schedule, overwrite);
 }
 
-BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
+BackwardLayerCL::BackwardLayerCL(CL *cl, NetworkGPU *net_gpu) : cl(cl), net_gpu(net_gpu) {
   string base1_src = Util::ReadFile("backwardchunk.cl");
 
+  const Network &net = *net_gpu->net;
+  
   // Dummy kernels for input layer, which can't be a destination layer.
   CHECK(net.layers[0].chunks.size() == 1);
   layer_kernels.push_back(std::vector<ChunkKernel>{ChunkKernel()});
@@ -556,7 +563,8 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
     // The cost saved is proportional to the size of the span. So here
     // we order the chunks to minimize the cost (sum of span sizes
     // that overlap with some previous).
-    const auto [schedule, overwrite] = OptimizeChunkSchedule(dst_layer.chunks);
+    const auto [schedule, overwrite] = OptimizeChunkSchedule(
+        dst_layer.chunks);
     chunk_schedule.push_back(schedule);
 
     std::vector<ChunkKernel> chunk_kernels;
@@ -587,7 +595,9 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
       kernel_src += base1_src;
 
       auto [program, kernel] =
-        cl->BuildOneKernel(kernel_src, Backward1KernelName(chunk.type));
+        cl->BuildOneKernel(kernel_src,
+                           Backward1KernelName(chunk.type),
+                           net_gpu->Verbose());
 
       ChunkKernel ck{
         .program1 = program,
@@ -643,7 +653,8 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, const Network &net) : cl(cl) {
       // One kernel for all chunk types (but it does depend on
       // the chunk's transfer function).
       auto [program, kernel] =
-        cl->BuildOneKernel(kernel_src, "BackwardSecondPass");
+        cl->BuildOneKernel(kernel_src, "BackwardSecondPass",
+                           net_gpu->Verbose());
       layer_kernels[layer_idx][chunk_idx].program2 = program;
       layer_kernels[layer_idx][chunk_idx].kernel2 = kernel;
 
@@ -665,8 +676,7 @@ BackwardLayerCL::~BackwardLayerCL() {
   }
 }
 
-void BackwardLayerCL::BackwardLayer(NetworkGPU *net_gpu,
-                                    TrainingRoundGPU *train,
+void BackwardLayerCL::BackwardLayer(TrainingRoundGPU *train,
                                     int dst_layer) {
   const Network &net = *net_gpu->net;
   CHECK(dst_layer > 0);
@@ -813,11 +823,11 @@ void BackwardLayerCL::BackwardLayer(NetworkGPU *net_gpu,
   }
 }
 
-DecayWeightsCL::DecayWeightsCL(CL *cl, const Network &net,
+DecayWeightsCL::DecayWeightsCL(CL *cl, NetworkGPU *net_gpu,
                                float decay_factor) :
-  decay_factor(decay_factor), cl(cl) {
+  decay_factor(decay_factor), cl(cl), net_gpu(net_gpu) {
   string kernel_src = Util::ReadFile("decayweights.cl");
-  auto p = cl->BuildOneKernel(kernel_src, "DecayWeights");
+  auto p = cl->BuildOneKernel(kernel_src, "DecayWeights", net_gpu->Verbose());
   program = p.first;
   kernel = p.second;
 }
@@ -827,7 +837,7 @@ DecayWeightsCL::~DecayWeightsCL() {
   CHECK_SUCCESS(clReleaseProgram(program));
 }
 
-void DecayWeightsCL::Decay(NetworkGPU *net_gpu, int layer_idx) {
+void DecayWeightsCL::Decay(int layer_idx) {
   const Network &net = *net_gpu->net;
 
   // PERF: Should actually be able to run in parallel across the entire
@@ -929,11 +939,14 @@ static int64 FindNoHat(float b) {
 }
 
 // Note that this one doesn't depend on the transfer function/derivative.
-UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
+UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
                                  int examples_per_round,
                                  UpdateConfig config) :
-  examples_per_round(examples_per_round), config(config), cl(cl) {
+  examples_per_round(examples_per_round), config(config),
+  cl(cl), net_gpu(net_gpu) {
 
+  const Network &net = *net_gpu->net;
+  
   CHECK(examples_per_round > 0);
   CHECK(config.base_learning_rate > 0.0 &&
         config.base_learning_rate <= 1) << config.base_learning_rate;
@@ -1001,7 +1014,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
     // on every layer.
     if (max_weights * examples_per_round +
         max_biases * examples_per_round < config.max_num_scratch) {
-      printf("Full width of each layer fits in scratch space! :)\n");
+      if (net_gpu->Verbose())
+        printf("Full width of each layer fits in scratch space! :)\n");
       return make_pair(max_weights * examples_per_round,
                        max_biases * examples_per_round);
     }
@@ -1139,7 +1153,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
       const string kernel1_name = UpdateWeights1KernelName(chunk.type);
 
       kernel1_src += base_src1;
-      auto pk1 = cl->BuildOneKernel(kernel1_src, kernel1_name);
+      auto pk1 = cl->BuildOneKernel(kernel1_src, kernel1_name,
+                                    net_gpu->Verbose());
       ck.program1 = pk1.first;
       ck.kernel1 = pk1.second;
 
@@ -1159,7 +1174,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
       string kernel_sum_src = StringPrintf("#define W %d\n", w);
       kernel_sum_src += base_src_sum;
       auto pk_sum = cl->BuildOneKernel(kernel_sum_src,
-                                       "UpdateSumStripes");
+                                       "UpdateSumStripes",
+                                       net_gpu->Verbose());
       ck.program_sum = pk_sum.first;
       ck.kernel_sum = pk_sum.second;
 
@@ -1204,7 +1220,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, const Network &net,
 
       kernel2_src += base_src2;
       auto pk2 = cl->BuildOneKernel(kernel2_src,
-                                   "UpdateWeightsSecondPass");
+                                    "UpdateWeightsSecondPass",
+                                    net_gpu->Verbose());
       ck.program2 = pk2.first;
       ck.kernel2 = pk2.second;
 
@@ -1234,8 +1251,7 @@ UpdateWeightsCL::~UpdateWeightsCL() {
     CHECK_SUCCESS(clReleaseMemObject(bias_grad_tmp));
 }
 
-void UpdateWeightsCL::Update(NetworkGPU *net_gpu, TrainingRoundGPU *train,
-                             int layer_idx) {
+void UpdateWeightsCL::Update(TrainingRoundGPU *train, int layer_idx) {
   // new chunks
   CHECK(layer_idx > 0) << "Can't update the weights for the input layer, "
     "which would not be useful anyway since there aren't any.";

@@ -325,9 +325,9 @@ struct Network {
     return layers.size();
   }
 
-  // TODO: Usually called with explicit args, so we could template
-  // this to avoid the {}?
-  static Layer LayerFromChunks(std::vector<Chunk> chunks) {
+  template<typename ...Chunks>
+  static Layer LayerFromChunks(Chunks... arg_chunks) {
+    std::vector<Chunk> chunks = {{arg_chunks...}};
     int num_nodes = 0;
     for (const Chunk &chunk : chunks) num_nodes += chunk.num_nodes;
     return Layer{.num_nodes = num_nodes, .chunks = std::move(chunks)};

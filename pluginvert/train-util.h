@@ -11,6 +11,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "image.h"
+#include "threadutil.h"
 
 // TODO: to .cc
 struct TrainingImages {
@@ -98,6 +99,9 @@ struct TrainingImages {
 
   // Make sure you do net_gpu->ReadFromGPU() first!
   void Sample(const Network &net) {
+    // Batch these so we can save in parallel at the end.
+    vector<pair<ImageRGBA *, string>> to_save;
+
     for (int target_layer = 1;
          target_layer < net.layers.size();
          target_layer++) {
@@ -200,12 +204,20 @@ struct TrainingImages {
           CHECK(next_x == (next_x & 0xFFFFFF)) << "out of range!";
           image->SetPixel32(0, 0, ((uint32_t)next_x << 8) | 0xFF);
 
-          string filename = FilenameFor(target_layer, target_chunk);
-          image->Save(filename);
-          printf("Wrote %s\n", filename.c_str());
+          to_save.emplace_back(
+              image,
+              FilenameFor(target_layer, target_chunk));
         }
         image_x[target_layer][target_chunk]++;
       }
+    }
+
+    if (!to_save.empty()) {
+      ParallelApp(to_save, [](const pair<ImageRGBA *, string> &p) {
+          auto &[image, filename] = p;
+          image->Save(filename);
+        }, 4);
+      printf("Wrote %d images\n", (int)to_save.size());
     }
   }
 

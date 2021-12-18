@@ -48,7 +48,8 @@ struct CL {
 
   std::pair<cl_program, cl_kernel>
   BuildOneKernel(const std::string &kernel_src,
-                 const std::string &function_name);
+                 const std::string &function_name,
+                 bool verbose = true);
 
   // Read the program binary for the first device and return it if it
   // is text.

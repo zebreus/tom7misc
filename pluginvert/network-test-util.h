@@ -140,6 +140,29 @@ struct NetworkTestUtil {
   // Last layer is 1 dense node (sigmoid). depth gives the number of
   // dim*dim dense hidden layers preceding that.
   static TrainNet TriangleSumsAdam(int depth, int dim = 4);
+
+  // The input defines a random point (x, y) and a circle (cx, cy, radius),
+  // and the output is 1.0 if inside the circle, otherwise 0.0. This
+  // requires approximating the square (or square root).
+  //
+  // All hidden layers (depth) are dense, and of size width.
+  static TrainNet InCircleAdam(int width, int depth);
+  // Same but with sparse layers using the given indices per node.
+  static TrainNet SparseInCircleAdam(int width, int ipn, int depth);
+
+  // The input defines two random line segments (p0x, p0y, p1x, p1y)
+  // and (p2x, p2y, p3x, p3y).
+  // If the segments do not intersect, the output is (0.0, 0.0, 0.0).
+  // Otherwise, the output is (1.0, x, y) where (x,y) is the point of
+  // intersection.
+  static TrainNet SparseLineIntersectionAdam(int width, int ipn, int depth,
+                                             int64_t seed = 1);
+
+  // The input defines a random line segment and a random point. The
+  // output is the point reflected about that line.
+  static TrainNet ReflectAdam(int width, int ipn, int depth);
+
+  static TrainNet Atan2Adam(int width, int ipn, int depth);
 };
 
 

@@ -138,7 +138,8 @@ std::optional<std::string> CL::DecodeProgram(cl_program p) {
 // khronos.org/registry/OpenCL/sdk/2.0/docs/man/xhtml/clBuildProgram.html
 // which should be suitable for learning applications.
 pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
-                                               const string &function_name) {
+                                               const string &function_name,
+                                               bool verbose) {
   Timer gpu_compile;
   const char *sources[] = { kernel_src.c_str() };
   size_t source_size[] = { kernel_src.size() };
@@ -169,8 +170,10 @@ pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
   cl_kernel kernel = clCreateKernel(program, function_name.c_str(),
                                     &kernel_error);
   CHECK_SUCCESS(kernel_error);
-  fprintf(stderr, "Compiled %s in %.1fms.\n",
-          function_name.c_str(), gpu_compile.MS());
+  if (verbose) {
+    fprintf(stderr, "Compiled %s in %.1fms.\n",
+            function_name.c_str(), gpu_compile.MS());
+  }
   return make_pair(program, kernel);
 }
 

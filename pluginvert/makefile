@@ -2,7 +2,7 @@
 default: train.exe
 
 # widen.exe
-all: train.exe get-modelinfo.exe get-layerweights.exe network_test.exe network-gpu_test.exe
+all: train.exe get-modelinfo.exe get-layerweights.exe new-network.exe collate-errors.exe network_test.exe network-gpu_test.exe run-boolean.exe print-weights.exe process.exe plot-beta.exe hyper.exe
 
 CC_LIB=../cc-lib
 FFTW=../../fftw-3.3.8
@@ -81,6 +81,10 @@ plot-beta.exe : plot-beta.o $(OBJECTS)
 	@echo -n "!"
 
 process.exe : process.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+hyper.exe : hyper.o clutil.o network-gpu.o network-test-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

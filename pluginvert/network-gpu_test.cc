@@ -31,10 +31,9 @@ static void ForwardTests(TestNet test_net) {
          "[Forward] Test net: %s\n", test_net.name.c_str());
 
   Network &net = test_net.net;
-  printf("Create NetworkGPU...\n");
   auto net_gpu = make_unique<NetworkGPU>(cl, &net);
-  printf("... done creating NetworkGPU.\n");
-
+  net_gpu->SetVerbose(false);
+  
   for (const TestExample &example : test_net.examples) {
     if (test_net.examples.size() > 1) printf("%s\n", example.name.c_str());
     std::unique_ptr<TrainingRoundGPU> training_round =
@@ -43,13 +42,12 @@ static void ForwardTests(TestNet test_net) {
     training_round->LoadInput(0, example.input);
 
     std::unique_ptr<ForwardLayerCL> forward_cl =
-      std::make_unique<ForwardLayerCL>(cl, net);
+      std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
 
     for (int src_layer = 0;
          src_layer < net.layers.size() - 1;
          src_layer++) {
-      forward_cl->RunForward(
-          net_gpu.get(), training_round.get(), src_layer);
+      forward_cl->RunForward(training_round.get(), src_layer);
     }
 
     // Must be initialized to the correct size.
@@ -81,7 +79,8 @@ static void TrainOnTestTests(TestNet test_net) {
 
   Network &net = test_net.net;
   auto net_gpu = make_unique<NetworkGPU>(cl, &net);
-
+  net_gpu->SetVerbose(false);
+  
   for (const TestExample &example : test_net.examples) {
     std::unique_ptr<TrainingRoundGPU> training_round =
       std::make_unique<TrainingRoundGPU>(1, cl, net);
@@ -99,22 +98,21 @@ static void TrainOnTestTests(TestNet test_net) {
     training_round->LoadExpected(0, out);
 
     std::unique_ptr<ForwardLayerCL> forward_cl =
-      std::make_unique<ForwardLayerCL>(cl, net);
+      std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
 
     for (int src_layer = 0;
          src_layer < net.layers.size() - 1;
          src_layer++) {
-      forward_cl->RunForward(
-          net_gpu.get(), training_round.get(), src_layer);
+      forward_cl->RunForward(training_round.get(), src_layer);
     }
 
     std::unique_ptr<SetOutputErrorCL> error_cl =
-      std::make_unique<SetOutputErrorCL>(cl, net);
+      std::make_unique<SetOutputErrorCL>(cl, net_gpu.get());
 
-    error_cl->SetOutputError(net_gpu.get(), training_round.get());
+    error_cl->SetOutputError(training_round.get());
 
     std::unique_ptr<BackwardLayerCL> backward_cl =
-      std::make_unique<BackwardLayerCL>(cl, net);
+      std::make_unique<BackwardLayerCL>(cl, net_gpu.get());
 
     for (int dst_layer = net.layers.size() - 1;
          // Note we propagate error to the input layer here,
@@ -122,27 +120,25 @@ static void TrainOnTestTests(TestNet test_net) {
          // training because there are no weights to update.
          dst_layer > 0;
          dst_layer--) {
-      backward_cl->BackwardLayer(net_gpu.get(),
-                                 training_round.get(),
-                                 dst_layer);
+      backward_cl->BackwardLayer(training_round.get(), dst_layer);
     }
 
     std::unique_ptr<DecayWeightsCL> decay_cl =
-      std::make_unique<DecayWeightsCL>(cl, net, 0.999999f);
+      std::make_unique<DecayWeightsCL>(cl, net_gpu.get(), 0.999999f);
 
     // Note that normally we would not decay weights on the input
     // layer (there are none), but we do it here to test that it does
     // not crash.
     for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
-      decay_cl->Decay(net_gpu.get(), layer_idx);
+      decay_cl->Decay(layer_idx);
     }
 
     std::unique_ptr<UpdateWeightsCL> update_cl =
-      std::make_unique<UpdateWeightsCL>(cl, net,
+      std::make_unique<UpdateWeightsCL>(cl, net_gpu.get(),
                                         training_round->num_examples);
 
     for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
-      update_cl->Update(net_gpu.get(), training_round.get(), layer_idx);
+      update_cl->Update(training_round.get(), layer_idx);
     }
   }
 
@@ -182,21 +178,22 @@ TrainTest(TrainNet train_net,
   Network &net = train_net.net;
   // Initialize with random weights.
   RandomizeNetwork(&rc, &net, 2);
-
+  
   auto net_gpu = make_unique<NetworkGPU>(cl, &net);
-
+  net_gpu->SetVerbose(false);
+  
   std::unique_ptr<ForwardLayerCL> forward_cl =
-    std::make_unique<ForwardLayerCL>(cl, net);
+    std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
   std::unique_ptr<SetOutputErrorCL> error_cl =
-    std::make_unique<SetOutputErrorCL>(cl, net);
+    std::make_unique<SetOutputErrorCL>(cl, net_gpu.get());
   std::unique_ptr<BackwardLayerCL> backward_cl =
-    std::make_unique<BackwardLayerCL>(cl, net);
+    std::make_unique<BackwardLayerCL>(cl, net_gpu.get());
   [[maybe_unused]]
   std::unique_ptr<DecayWeightsCL> decay_cl =
-    std::make_unique<DecayWeightsCL>(cl, net, 0.999999999f);
+    std::make_unique<DecayWeightsCL>(cl, net_gpu.get(), 0.999999999f);
   std::unique_ptr<UpdateWeightsCL> update_cl =
     std::make_unique<UpdateWeightsCL>(
-        cl, net, examples_per_round, update_config);
+        cl, net_gpu.get(), examples_per_round, update_config);
 
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(
@@ -265,13 +262,13 @@ TrainTest(TrainNet train_net,
     for (int src_layer = 0;
          src_layer < net.layers.size() - 1;
          src_layer++) {
-      forward_cl->RunForward(net_gpu.get(), training.get(), src_layer);
+      forward_cl->RunForward(training.get(), src_layer);
     }
 
     if (VERBOSE > 1)
       printf("Forward done.\n");
 
-    error_cl->SetOutputError(net_gpu.get(), training.get());
+    error_cl->SetOutputError(training.get());
 
     if (VERBOSE > 1)
       printf("Set error.\n");
@@ -280,14 +277,14 @@ TrainTest(TrainNet train_net,
          // Don't propagate to input.
          dst_layer > 1;
          dst_layer--) {
-      backward_cl->BackwardLayer(net_gpu.get(), training.get(), dst_layer);
+      backward_cl->BackwardLayer(training.get(), dst_layer);
     }
 
     if (VERBOSE > 1)
       printf("Backward pass.\n");
 
     for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
-      decay_cl->Decay(net_gpu.get(), layer_idx);
+      decay_cl->Decay(layer_idx);
     }
 
     // PERF: No benefit to parallelism here currently, as each takes
@@ -295,8 +292,7 @@ TrainTest(TrainNet train_net,
     ParallelComp(net.layers.size() - 1,
                  [&](int layer_minus_1) {
                    const int layer_idx = layer_minus_1 + 1;
-                   update_cl->Update(net_gpu.get(), training.get(),
-                                     layer_idx);
+                   update_cl->Update(training.get(), layer_idx);
                  },
                  MAX_PARALLELISM);
 
@@ -510,9 +506,6 @@ static void QuickTests() {
 
 // TODO: Record results of tests in some table that we print out
 // at the end, or even log permanently.
-// TODO: Facilitate some kind of grid search to set good default
-// values for the hyperparameters? Perhaps this should be separate
-// from this "test" though.
 #define TRAIN_TEST(args...) do {                    \
     auto eo = TrainTest(args);                      \
     CHECK(!eo.has_value()) << "Train test failed: " \
@@ -528,7 +521,7 @@ static void SGDTests() {
   // The identity function is super easy to learn, so we should always
   // be able to learn this with the default update config.
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentitySparse(),
-             100000, 1000, 0.0001f, {}, {100});
+             100000, 1000, 0.0001f, {});
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentityDense(),
              100000, 1000, 0.0001f);
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentityConvolution(),
@@ -579,6 +572,7 @@ static void AdamTests() {
     .adam_epsilon = 1.0e-6,
   };
 
+  #if 1
   TRAIN_TEST(NetworkTestUtil::ForceAdam(
                  NetworkTestUtil::LearnTrivialIdentitySparse()),
              10000, 1000, 0.001f, fast_config);
@@ -624,6 +618,77 @@ static void AdamTests() {
   // Deep!
   TRAIN_TEST(NetworkTestUtil::TriangleSumsAdam(9, 5),
              20000, 1000, 0.010f, fast_config);
+
+  // 4000 rounds...! Is it just lucky?
+  TRAIN_TEST(NetworkTestUtil::SparseInCircleAdam(128, 16, 12),
+             20000, 1000, 0.010f, fast_config);
+  
+  // About 16k rounds
+  TRAIN_TEST(NetworkTestUtil::Atan2Adam(64, 6, 6),
+             50000, 1000, 0.010f, fast_config);
+
+#endif
+
+
+  // Open question: Why do weights move so slowly when the
+  // network is wide? The magnitudes start smaller at
+  // initialization time? Errors tend to average out, so
+  // the gradient is very flat? Maybe TrainingImages just
+  // is bad at drawing it (doesn't seem so?)
+
+  if (false) {
+    // This does converge in about 650k rounds. Slow!
+    TRAIN_TEST(NetworkTestUtil::InCircleAdam(4, 4),
+               2000000, 1000, 0.010f, fast_config, {100});
+  }
+
+  // 116k rounds
+#if 0
+  TRAIN_TEST(NetworkTestUtil::SparseInCircleAdam(128, 2, 3),
+             2000000, 1000, 0.010f, fast_config, {100});
+#endif
+
+  // 15k rounds
+  #if 0
+  TRAIN_TEST(NetworkTestUtil::SparseInCircleAdam(128, 2, 6),
+             2000000, 1000, 0.010f, fast_config, {100});
+#endif
+
+
+  // keep
+#if 0
+  // 4000 rounds...! Is it just lucky?
+  TRAIN_TEST(NetworkTestUtil::SparseInCircleAdam(128, 16, 12),
+             20000, 1000, 0.010f, fast_config);
+#endif
+
+  // shows divergence after convergence
+  // TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(128, 16, 12),
+  // 2000000, 1000, 0.010f, fast_config);
+
+  // also diverges quickly
+  // TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(256, 16, 6),
+  // 2000000, 1000, 0.010f, fast_config, {100});
+
+  [[maybe_unused]]
+  UpdateWeightsCL::UpdateConfig slower_config = UpdateWeightsCL::UpdateConfig{
+    .base_learning_rate = 0.01f,
+    .learning_rate_dampening = 0.25f,
+    .adam_epsilon = 1.0e-5,
+  };
+
+  
+  #if 0
+
+  TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(128, 6, 6),
+             2000000, 1000, 0.010f, slower_config);
+  #endif
+
+  #if 0
+  TRAIN_TEST(NetworkTestUtil::ReflectAdam(128, 6, 6),
+             2000000, 1000, 0.010f, fast_config);
+  #endif
+
 }
 
 int main(int argc, char **argv) {

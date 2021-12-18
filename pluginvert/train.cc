@@ -295,6 +295,7 @@ static void Train(Network *net) {
   static constexpr bool SAVE_INTERMEDIATE = true;
 
   UpdateWeightsCL::UpdateConfig update_config;
+  update_config.base_learning_rate = 0.1f;
   // This is conservative, but with larger exponents I would
   // get divergence after hundreds of thousands of rounds.
   // This happened again with the plugin parameter predictor
@@ -328,16 +329,17 @@ static void Train(Network *net) {
   auto net_gpu = make_unique<NetworkGPU>(cl, net);
 
   std::unique_ptr<ForwardLayerCL> forward_cl =
-    std::make_unique<ForwardLayerCL>(cl, *net);
+    std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
   std::unique_ptr<SetOutputErrorCL> error_cl =
-    std::make_unique<SetOutputErrorCL>(cl, *net);
+    std::make_unique<SetOutputErrorCL>(cl, net_gpu.get());
   std::unique_ptr<BackwardLayerCL> backward_cl =
-    std::make_unique<BackwardLayerCL>(cl, *net);
+    std::make_unique<BackwardLayerCL>(cl, net_gpu.get());
   [[maybe_unused]]
   std::unique_ptr<DecayWeightsCL> decay_cl =
-    std::make_unique<DecayWeightsCL>(cl, *net, DECAY_RATE);
+    std::make_unique<DecayWeightsCL>(cl, net_gpu.get(), DECAY_RATE);
   std::unique_ptr<UpdateWeightsCL> update_cl =
-    std::make_unique<UpdateWeightsCL>(cl, *net, EXAMPLES_PER_ROUND,
+    std::make_unique<UpdateWeightsCL>(cl, net_gpu.get(),
+                                      EXAMPLES_PER_ROUND,
                                       update_config);
 
   // Uninitialized training examples on GPU.
@@ -408,7 +410,7 @@ static void Train(Network *net) {
       for (int src_layer = 0;
            src_layer < net->layers.size() - 1;
            src_layer++) {
-        forward_cl->RunForward(net_gpu.get(), training.get(), src_layer);
+        forward_cl->RunForward(training.get(), src_layer);
       }
       forward_ms += forward_timer.MS();
     }
@@ -418,7 +420,7 @@ static void Train(Network *net) {
 
     {
       Timer error_timer;
-      error_cl->SetOutputError(net_gpu.get(), training.get());
+      error_cl->SetOutputError(training.get());
       error_ms += error_timer.MS();
     }
 
@@ -431,7 +433,7 @@ static void Train(Network *net) {
            // Don't propagate to input.
            dst_layer > 1;
            dst_layer--) {
-        backward_cl->BackwardLayer(net_gpu.get(), training.get(), dst_layer);
+        backward_cl->BackwardLayer(training.get(), dst_layer);
       }
       backward_ms += backward_timer.MS();
     }
@@ -442,7 +444,7 @@ static void Train(Network *net) {
     if (DO_DECAY) {
       Timer decay_timer;
       for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {
-        decay_cl->Decay(net_gpu.get(), layer_idx);
+        decay_cl->Decay(layer_idx);
       }
       decay_ms += decay_timer.MS();
     }
@@ -454,7 +456,7 @@ static void Train(Network *net) {
       UnParallelComp(net->layers.size() - 1,
                      [&](int layer_minus_1) {
                        const int layer_idx = layer_minus_1 + 1;
-                       update_cl->Update(net_gpu.get(), training.get(),
+                       update_cl->Update(training.get(),
                                          layer_idx);
                      },
                      max_parallelism);
@@ -720,11 +722,6 @@ static unique_ptr<Network> NewParamsNetwork() {
   }
 
   std::vector<Layer> layers;
-  // XXX just call directly
-  auto L = [](const std::vector<Chunk> &chunks) {
-      return Network::LayerFromChunks(chunks);
-    };
-
 
   static constexpr int INPUT_SIZE = WINDOW_SIZE * 2;
   static_assert(INPUT_SIZE > 0);
@@ -735,7 +732,7 @@ static unique_ptr<Network> NewParamsNetwork() {
   input_chunk.height = 1;
   input_chunk.channels = 1;
 
-  layers.push_back(L({input_chunk}));
+  layers.push_back(Network::LayerFromChunks(input_chunk));
 
   // First, convolution on the samples with stride=1.
   Chunk first_conv_chunk =
@@ -750,7 +747,7 @@ static unique_ptr<Network> NewParamsNetwork() {
         LEAKY_RELU, WEIGHT_UPDATE);
   Chunk copy_fft_chunk = Network::MakeCopyChunk(WINDOW_SIZE, WINDOW_SIZE);
 
-  layers.push_back(L({first_conv_chunk, copy_fft_chunk}));
+  layers.push_back(Network::LayerFromChunks(first_conv_chunk, copy_fft_chunk));
 
   // TODO: Maybe more initial convolution layers here?
 
@@ -841,7 +838,8 @@ static unique_ptr<Network> NewParamsNetwork() {
       dist.height = 1;
       dist.channels = 1;
 
-      layers.push_back(L({std::move(glob), std::move(dist)}));
+      layers.push_back(
+          Network::LayerFromChunks(std::move(glob), std::move(dist)));
     }
 
     // Now, the actual work.
@@ -929,9 +927,9 @@ static unique_ptr<Network> NewParamsNetwork() {
 
 
       prev_occurrences = conv.num_occurrences_across;
-      layers.push_back(L({std::move(glob),
-                          std::move(conv),
-                          std::move(fft)}));
+      layers.push_back(Network::LayerFromChunks(std::move(glob),
+                                                std::move(conv),
+                                                std::move(fft)));
     }
   }
 
@@ -954,7 +952,7 @@ static unique_ptr<Network> NewParamsNetwork() {
   sink.height = 1;
   sink.channels = 1;
 
-  layers.push_back(L({std::move(sink)}));
+  layers.push_back(Network::LayerFromChunks(std::move(sink)));
 
   auto net = std::make_unique<Network>(layers);
 

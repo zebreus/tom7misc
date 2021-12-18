@@ -43,6 +43,9 @@ struct NetworkGPU {
   NetworkGPU(CL *cl, Network *net);
   ~NetworkGPU();
 
+  void SetVerbose(bool v) { verbose = v; };
+  bool Verbose() const { return verbose; }
+  
   // Read the weights and biases (which is the only thing that can
   // change) from GPU back to the Network object. Not thread safe!
   void ReadFromGPU();
@@ -79,6 +82,8 @@ struct NetworkGPU {
   CL *cl = nullptr;
   Network *net = nullptr;
  private:
+  bool verbose = true;
+
   // Like CopyBufferFromGPUTo, but don't wait for the command to finish.
   // Also allows cl_mem to be 0, standing for an empty memory.
   template<class T>
@@ -252,13 +257,12 @@ struct TrainingRoundGPU {
 
 // Forward pass.
 struct ForwardLayerCL {
-  ForwardLayerCL(CL *cl, const Network &net);
+  ForwardLayerCL(CL *cl, NetworkGPU *net_gpu);
   ~ForwardLayerCL();
 
   // Run the given layer of the network forward on each of the given
   // training instances, managing the parallelism internally.
-  void RunForward(
-      NetworkGPU *net_gpu, TrainingRoundGPU *train, int src_layer);
+  void RunForward(TrainingRoundGPU *train, int src_layer);
 
  private:
   // The kernel (and associated program) objects for a specific chunk.
@@ -270,6 +274,7 @@ struct ForwardLayerCL {
   };
 
   CL *cl = nullptr;
+  NetworkGPU *net_gpu = nullptr;
   // Owned. Indexed by layer index and then chunk index. Parallel to
   // Net::layers.
   std::vector<std::vector<ChunkKernel>> layer_kernels;
@@ -286,11 +291,11 @@ struct SetOutputErrorCL {
   // Optional remap function takes chunk id, node index within chunk, and
   // value; see setoutputerror.cl.
   SetOutputErrorCL(
-      CL *cl, const Network &net,
+      CL *cl, NetworkGPU *net_gpu,
       const std::optional<std::string> remap_define = std::nullopt);
 
   // Runs on all the examples in the round.
-  void SetOutputError(NetworkGPU *net_gpu, TrainingRoundGPU *train);
+  void SetOutputError(TrainingRoundGPU *train);
 
   ~SetOutputErrorCL() {
     for (ChunkKernel &ck : kernels) {
@@ -306,7 +311,8 @@ struct SetOutputErrorCL {
 
  private:
   CL *cl = nullptr;
-
+  NetworkGPU *net_gpu = nullptr;
+  
   // One for each chunk in the final layer.
   // Owned.
   std::vector<ChunkKernel> kernels;
@@ -325,7 +331,7 @@ struct BackwardLayerCL {
   static constexpr bool CLIP_ERROR = true;
   static constexpr float LARGE_ERROR = 1000000.0f;
 
-  BackwardLayerCL(CL *cl, const Network &net);
+  BackwardLayerCL(CL *cl, NetworkGPU *net);
   ~BackwardLayerCL();
 
   // Propagate errors from dst_layer to dst_layer-1. Runs both passes.
@@ -334,8 +340,7 @@ struct BackwardLayerCL {
   // then we don't need to propagate errors because we won't use them.
   // This could be a big performance improvement if iteratively growing
   // a model by adding layers at the end.
-  void BackwardLayer(NetworkGPU *net_gpu,
-                     TrainingRoundGPU *training_round,
+  void BackwardLayer(TrainingRoundGPU *training_round,
                      int dst_layer);
 
   // Used internally to schedule chunks. This is only exposed for testing.
@@ -358,7 +363,8 @@ struct BackwardLayerCL {
   };
 
   CL *cl = nullptr;
-
+  NetworkGPU *net_gpu = nullptr;
+  
   // Input layer has unused placeholder kernels (0) to keep this
   // parallel to network structure.
   std::vector<std::vector<ChunkKernel>> layer_kernels;
@@ -373,16 +379,18 @@ struct BackwardLayerCL {
 struct DecayWeightsCL {
 
   // Decay factor should be a number slightly less than 1, like 0.99999f.
-  DecayWeightsCL(CL *cl, const Network &net, float decay_factor);
+  DecayWeightsCL(CL *cl, NetworkGPU *net_gpu, float decay_factor);
   ~DecayWeightsCL();
 
-  void Decay(NetworkGPU *net_gpu, int layer_idx);
+  void Decay(int layer_idx);
 
  private:
   // TODO: follow the learning rate schedule instead of a constant
   // decay. Perhaps this can just be merged into updateweights.
   const float decay_factor;
   CL *cl = nullptr;
+  NetworkGPU *net_gpu = nullptr;
+  
   cl_program program;
   cl_kernel kernel;
   std::mutex m;
@@ -441,14 +449,14 @@ struct UpdateWeightsCL {
 
   // The number of examples per round is needed as a compile-time
   // constant.
-  UpdateWeightsCL(CL *cl, const Network &net,
+  UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
                   int examples_per_round,
                   UpdateConfig config = {});
   ~UpdateWeightsCL();
 
   // Run on all examples in the round.
   // The number of training examples must match the configured amount.
-  void Update(NetworkGPU *net_gpu, TrainingRoundGPU *train, int layer);
+  void Update(TrainingRoundGPU *train, int layer);
 
   // For debugging: Get the compiled program (as PTX assembly) for the
   // given layer and chunk, which must be in range. Probably only
@@ -490,7 +498,8 @@ struct UpdateWeightsCL {
   std::vector<std::vector<ChunkKernel>> layer_kernels;
 
   CL *cl = nullptr;
-
+  NetworkGPU *net_gpu = nullptr;
+  
   std::mutex m;
 
   DISALLOW_COPY_AND_ASSIGN(UpdateWeightsCL);

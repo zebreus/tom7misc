@@ -112,8 +112,6 @@ Network::Network(vector<Layer> layers_in) :
 
 InvertedIndices Network::ComputeInvertedIndices(int dst_layer_idx,
                                                 int chunk_idx) const {
-  printf("ComputeInvertedIndices(layer %d, chunk %d)\n",
-         dst_layer_idx, chunk_idx);
   if (dst_layer_idx == 0) {
     CHECK(chunk_idx == 0);
     return InvertedIndices();
