@@ -95,13 +95,22 @@ struct Optimizer {
   // any were feasible.
   std::optional<std::tuple<arg_type, double, OutputType>> GetBest() const;
 
+  // If set to true, the result of every function evaluation is saved and
+  // can be queried later.
+  void SetSaveAll(bool save);
+
+  // Get all the evaluated results. The output types are only populated
+  // if SaveAll was true when they were added (and the result was feasible).
+  std::vector<std::tuple<arg_type, double, std::optional<OutputType>>>
+  GetAll() const;
+  
  private:
   static constexpr int N = N_INTS + N_DOUBLES;
   const function_type f;
 
   // best value so far, if we have one
   std::optional<std::tuple<arg_type, double, OutputType>> best;
-
+  
   struct HashArg {
     size_t operator ()(const arg_type &arg) const {
       uint64_t result = 0xCAFEBABE;
@@ -130,6 +139,11 @@ struct Optimizer {
   // we are likely to test the same rounded integral arg multiple
   // times. Cache is not cleaned.
   std::unordered_map<arg_type, double, HashArg> cached_score;
+
+  // Same for the output. Not stored unless save_all is set.
+  std::unordered_map<arg_type, std::optional<OutputType>,
+                     HashArg> cached_output;
+  bool save_all = false;
 };
 
 
@@ -140,9 +154,15 @@ Optimizer<N_INTS, N_DOUBLES, OutputType>::Optimizer(function_type f) :
   f(std::move(f)) {}
 
 template<int N_INTS, int N_DOUBLES, class OutputType>
+void Optimizer<N_INTS, N_DOUBLES, OutputType>::SetSaveAll(bool save) {
+  save_all = save;
+}
+
+template<int N_INTS, int N_DOUBLES, class OutputType>
 void Optimizer<N_INTS, N_DOUBLES, OutputType>::Sample(arg_type arg) {
   auto [score, res] = f(arg);
   cached_score[arg] = score;
+  if (save_all) cached_output[arg] = res;
 
   if (res.has_value()) {
     // First or improved best?
@@ -158,7 +178,8 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::SetBest(
     OutputType best_output) {
   // Add to cache no matter what.
   cached_score[best_arg] = best_score;
-
+  if (save_all) cached_output[best_arg] = best_output;
+  
   // Don't take it if we already have a better one.
   if (best.has_value() && std::get<1>(best.value()) < best_score)
     return;
@@ -172,6 +193,24 @@ std::optional<std::tuple<
 Optimizer<N_INTS, N_DOUBLES, OutputType>::GetBest() const {
   return best;
 }
+
+template<int N_INTS, int N_DOUBLES, class OutputType>
+auto Optimizer<N_INTS, N_DOUBLES, OutputType>::GetAll() const ->
+std::vector<std::tuple<arg_type, double, std::optional<OutputType>>> {
+  std::vector<std::tuple<arg_type, double, std::optional<OutputType>>> ret;
+  ret.reserve(cached_score.size());
+  for (const auto &[arg, score] : cached_score) {
+    auto it = cached_output.find(arg);
+    if (it != cached_output.end()) {
+      ret.emplace_back(arg, score, it->second);
+    } else {
+      ret.emplace_back(arg, score, std::nullopt);
+    }
+  }
+  
+  return ret;
+}
+
 
 template<int N_INTS, int N_DOUBLES, class OutputType>
 void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
@@ -200,6 +239,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
     ubs[N_INTS + i] = double_bounds[i].second;
   }
 
+  
   bool stop = false;
   // These are only updated if we use them for termination.
   int num_calls = 0, num_feasible_calls = 0;
@@ -222,7 +262,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
           return LARGE_SCORE;
         }
       }
-
+      
       // Populate the native argument type.
       arg_type arg;
       for (int i = 0; i < N_INTS; i++) {
@@ -233,7 +273,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
         arg.first[i] = a;
       }
       for (int i = 0; i < N_DOUBLES; i++) {
-        const double d = doubles[i - N_INTS];
+        const double d = doubles[i + N_INTS];
         arg.second[i] = d;
       }
 
@@ -255,7 +295,8 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
 
       auto [score, res] = f(arg);
       cached_score[arg] = score;
-
+      if (save_all) cached_output[arg] = res;
+      
       if (res.has_value()) {
         // Feasible call.
         if (max_feasible_calls.has_value()) {

@@ -41,6 +41,14 @@ static double Test3(double x, double y, double z) {
   return xx * xx + yy * yy + zz * zz * zz * zz;
 }
 
+static double Bounds(double x, double y, double z) {
+  CHECK(x >= 0.0 && x <= 3.0);
+  CHECK(y >= 0.1 && y <= 10.0);
+  CHECK(z >= 0.0 && z <= 6.0);
+
+  return x + y + z;
+}
+
 int main(int argc, char **argv) {
 
   {
@@ -96,6 +104,19 @@ int main(int argc, char **argv) {
            x, y, z);
   }
 
+  {
+    auto [aarg, v] = Opt::Minimize3D(
+        Bounds,
+        {0.0, 0.1, 0.0},
+        {3.0, 10.0, 6.0},
+        1000,
+        1, 100);
+    auto [x, y, z] = aarg;
+    printf("3D. Minimum at (0, 0.1, 0.0); got: (%.5f, %.5f, %.5f)\n",
+           x, y, z);
+  }
+
+  
   #if 0
   {
     // 2D, bare function interface
