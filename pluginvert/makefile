@@ -2,7 +2,7 @@
 default: train.exe
 
 # widen.exe
-all: train.exe get-modelinfo.exe get-layerweights.exe new-network.exe collate-errors.exe network_test.exe network-gpu_test.exe run-boolean.exe run-network.exe print-weights.exe process.exe plot-beta.exe hyper.exe test-intersection.exe
+all: train.exe get-modelinfo.exe get-layerweights.exe collate-errors.exe network_test.exe network-gpu_test.exe run-boolean.exe run-network.exe print-weights.exe process.exe plot-beta.exe hyper-one.exe hyper-suite.exe test-intersection.exe
 
 CC_LIB=../cc-lib
 FFTW=../../fftw-3.3.8
@@ -52,10 +52,6 @@ collate-errors.exe : collate-errors.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-new-network.exe : new-network.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
 network_test.exe : network.o network-test-util.o network_test.o $(UTIL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
@@ -88,11 +84,23 @@ process.exe : process.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-hyper.exe : hyper.o clutil.o network-gpu.o network-test-util.o $(OBJECTS)
+hyper-one.exe : hyper-one.o clutil.o network-gpu.o network-test-util.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+hyper-suite.exe : hyper-suite.o clutil.o network-gpu.o network-test-util.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+hyper-init.exe : hyper-init.o clutil.o network-gpu.o network-test-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 test-intersection.exe : test-intersection.o clutil.o network-gpu.o network-test-util.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+dodgeball.exe : dodgeball.o network-test-util.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

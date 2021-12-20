@@ -157,7 +157,7 @@ TrainTest(TrainNet train_net,
           optional<int> write_images_every = nullopt) {
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
-  static constexpr bool SAVE_INTERMEDIATE = true; // FIXME
+  static constexpr bool SAVE_INTERMEDIATE = false;
   static constexpr int MAX_PARALLELISM = 4;
 
   std::unique_ptr<TrainingImages> images;
@@ -655,41 +655,7 @@ static void AdamTests() {
              2000000, 1000, 0.010f, fast_config, {100});
 #endif
 
-
-  // keep
-#if 0
-  // 4000 rounds...! Is it just lucky?
-  TRAIN_TEST(NetworkTestUtil::SparseInCircleAdam(128, 16, 12),
-             20000, 1000, 0.010f, fast_config);
-#endif
-
-  // shows divergence after convergence
-  // TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(128, 16, 12),
-  // 2000000, 1000, 0.010f, fast_config);
-
-  // also diverges quickly
-  // TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(256, 16, 6),
-  // 2000000, 1000, 0.010f, fast_config, {100});
-
-  [[maybe_unused]]
-  UpdateWeightsCL::UpdateConfig slower_config = UpdateWeightsCL::UpdateConfig{
-    .base_learning_rate = 0.01f,
-    .learning_rate_dampening = 0.25f,
-    .adam_epsilon = 1.0e-5,
-  };
-
   
-  #if 0
-
-  TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(128, 6, 6),
-             2000000, 1000, 0.010f, slower_config);
-  #endif
-
-  #if 0
-  TRAIN_TEST(NetworkTestUtil::ReflectAdam(128, 6, 6),
-             2000000, 1000, 0.010f, fast_config);
-  #endif
-
   {
     UpdateWeightsCL::UpdateConfig hyper_config =
       UpdateWeightsCL::UpdateConfig{
@@ -703,9 +669,53 @@ static void AdamTests() {
     TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(183, 42, 6),
                200000, 1000, 0.060f, hyper_config);
   }
-  
 }
 
+static void AuditionTests() {
+  [[maybe_unused]]
+  UpdateWeightsCL::UpdateConfig fast_config = UpdateWeightsCL::UpdateConfig{
+    .base_learning_rate = 0.1f,
+    .learning_rate_dampening = 0.25f,
+    .adam_epsilon = 1.0e-6,
+  };
+
+  
+  [[maybe_unused]]
+  UpdateWeightsCL::UpdateConfig slower_config = UpdateWeightsCL::UpdateConfig{
+    .base_learning_rate = 0.01f,
+    .learning_rate_dampening = 0.25f,
+    .adam_epsilon = 1.0e-5,
+  };
+
+  
+  // shows divergence after convergence
+  // TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(128, 16, 12),
+  // 2000000, 1000, 0.010f, fast_config);
+
+  // also diverges quickly
+  // TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(256, 16, 6),
+  // 2000000, 1000, 0.010f, fast_config, {100});
+
+  
+  #if 0
+  TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(128, 6, 6),
+             2000000, 1000, 0.010f, slower_config);
+  #endif
+
+  #if 0
+  TRAIN_TEST(NetworkTestUtil::ReflectAdam(128, 6, 6),
+             2000000, 1000, 0.010f, fast_config);
+  #endif
+
+  // diverges, although not wildly
+  // TRAIN_TEST(NetworkTestUtil::DodgeballAdam(113, 21, 4),
+  //    2000000, 1000, 0.010f, fast_config, {100});
+
+  // gets under 0.04 in 700k rounds, perhaps keeps going
+  TRAIN_TEST(NetworkTestUtil::DodgeballAdam(113, 21, 4),
+             2000000, 1000, 0.040f, slower_config, {100});
+}
+  
 int main(int argc, char **argv) {
   cl = new CL;
 
@@ -718,9 +728,12 @@ int main(int argc, char **argv) {
   // SGDTests();
   printf("SGD tests OK\n");
 
-  AdamTests();
+  // AdamTests();
   printf("ADAM tests OK\n");
 
+  // not permanent...
+  AuditionTests();
+  
   delete cl;
 
   printf("OK\n");

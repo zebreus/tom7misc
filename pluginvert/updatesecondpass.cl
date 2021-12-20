@@ -67,8 +67,7 @@ __kernel void UpdateWeightsSecondPass(
     const float grad = raw_grad;
   #endif
 
-    // TODO: Also implement YOGI.
-    // compute the update u according to the method
+  // compute the update u according to the method
   #if WEIGHT_UPDATE_SGD
     const float u = learning_rate * grad;
   #elif WEIGHT_UPDATE_ADAM

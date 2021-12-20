@@ -164,6 +164,16 @@ struct NetworkTestUtil {
 
   // The atan2 function of two variables.
   static TrainNet Atan2Adam(int width, int ipn, int depth);
+
+  // Takes two circular objects. An object is (x, y, dx, dy, radius).
+  // The arguments are scaled internally so that gaussian inputs produce
+  // reasonably interesting results (with about 12% colliding, 5pp of
+  // which because they are already overlapping in the initial state).
+  // Model starts with convolutions, since the objects are symmetric.
+  // Predict whether the two objects will collide within 100 timesteps,
+  // and if so return the first colliding timestep/100. 
+  static TrainNet DodgeballAdam(int width, int ipn, int depth,
+                                int64_t seed = 1);
 };
 
 

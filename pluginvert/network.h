@@ -498,23 +498,21 @@ struct Errors {
     for (int i = 0; i < num_layers; i++) {
       const Layer &layer = net.layers[i];
       num_nodes.push_back(layer.num_nodes);
-      // Note that we don't reserve space in the first layer's
-      // error, as this is the input layer and it doesn't receive
-      // inputs.
-      if (i > 0) {
-        error[i].resize(layer.num_nodes, 0.0f);
-      }
+      // Note that we reserve space in the first layer's error, even
+      // though this is the input and we don't normally backpropagate
+      // to the input layer.
+      error[i].resize(layer.num_nodes, 0.0f);
     }
   }
   // Empty, useless errors, but can be used to initialize vectors etc.
   Errors() {}
   Errors(const Errors &other) = default;
 
-  // The first entry here is unused (it's the size of the input layer,
-  // which doesn't get errors), but we keep it like this to be
-  // consistent with Network and Stimulation.
-  // Note that num_nodes[0] is NOT error[0].size(), because we
-  // don't even bother allocating error for the input layer.
+  // XXX just use the size of the corresponding vector!
+  // The first entry here is not typically used, as it corresponds to
+  // the input layer, but we keep it like this to be consistent with
+  // Network and Stimulation. There are also cases where we abuse this
+  // structure (e.g. SummaryStatisticsCL).
   std::vector<int> num_nodes;
 
   // These are the delta terms in Mitchell. We have num_layers of
@@ -539,8 +537,7 @@ struct Errors {
 
 // Randomize the weights in a network, like to initialize it for
 // training. TODO: Maybe should be in network-util or whatever.
-// TODO: Should parameterize this, probably! It also has a
-// special case for IDENTITY transfer function, yuck.
+// TODO: Should parameterize this, probably!
 void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism = 2);
 
 #endif

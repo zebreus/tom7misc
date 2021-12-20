@@ -128,7 +128,7 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, NetworkGPU *net_gpu) :
   cl(cl), net_gpu(net_gpu) {
 
   const Network &net = *net_gpu->net;
-  
+
   // Compile the appropriate kernel with baked in constants for
   // each chunk in the network.
   string base_src = Util::ReadFile("forwardchunk.cl");
@@ -544,7 +544,7 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, NetworkGPU *net_gpu) : cl(cl), net_gpu(
   string base1_src = Util::ReadFile("backwardchunk.cl");
 
   const Network &net = *net_gpu->net;
-  
+
   // Dummy kernels for input layer, which can't be a destination layer.
   CHECK(net.layers[0].chunks.size() == 1);
   layer_kernels.push_back(std::vector<ChunkKernel>{ChunkKernel()});
@@ -946,7 +946,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
   cl(cl), net_gpu(net_gpu) {
 
   const Network &net = *net_gpu->net;
-  
+
   CHECK(examples_per_round > 0);
   CHECK(config.base_learning_rate > 0.0 &&
         config.base_learning_rate <= 1) << config.base_learning_rate;
@@ -1519,3 +1519,62 @@ void UpdateWeightsCL::Update(TrainingRoundGPU *train, int layer_idx) {
   }  // loop over chunks
 
 }
+
+
+SummaryStatisticsCL::SummaryStatisticsCL(CL *cl, NetworkGPU *net_gpu) :
+  cl(cl), net_gpu(net_gpu) {
+  string kernel_src = Util::ReadFile("summarystatistics.cl");
+  auto p = cl->BuildOneKernel(kernel_src, "SummaryStatistics",
+                              net_gpu->Verbose());
+  program = p.first;
+  kernel = p.second;
+}
+
+SummaryStatisticsCL::~SummaryStatisticsCL() {
+  CHECK_SUCCESS(clReleaseKernel(kernel));
+  CHECK_SUCCESS(clReleaseProgram(program));
+}
+
+void SummaryStatisticsCL::Compute(TrainingRoundGPU *training) {
+  const Network &net = *net_gpu->net;
+
+  for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
+    const cl_int layer_num_nodes =
+      net.layers[layer_idx].num_nodes;
+    const cl_int num_examples = training->num_examples;
+
+    {
+      MutexLock ml(&m);
+      CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_int),
+                                   (void *)&layer_num_nodes));
+      CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_int),
+                                   (void *)&num_examples));
+
+      CHECK_SUCCESS(clSetKernelArg(
+                        kernel, 2, sizeof (cl_mem),
+                        (void *)&training->stimulations[layer_idx]));
+      CHECK_SUCCESS(clSetKernelArg(
+                        kernel, 3, sizeof (cl_mem),
+                        (void *)&training->errors[layer_idx]));
+
+      size_t global_work_offset[] = { 0 };
+      size_t global_work_size[] = { (size_t)layer_num_nodes };
+      CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
+                                           // work dimensions
+                                           1,
+                                           // global work offset
+                                           global_work_offset,
+                                           // global work size
+                                           global_work_size,
+                                           // local work size
+                                           nullptr,
+                                           // no wait list
+                                           0, nullptr,
+                                           // no event
+                                           nullptr));
+      clFinish(cl->queue);
+    }
+  }
+
+}
+

@@ -22,7 +22,7 @@
 // a mutex per layer or per ChunkKernel instead?
 // PERF: In fact, it may work to initialize kernel arguments once
 // during initialization, and just assume that there is one
-// TrainingRound per NetworkGPU. Unclear if there's any overhead
+// TrainingRoundGPU per NetworkGPU. Unclear if there's any overhead
 // of setting the args over and over (perhaps it does some dynamic
 // recompilation or invalidates caches?)
 
@@ -45,7 +45,7 @@ struct NetworkGPU {
 
   void SetVerbose(bool v) { verbose = v; };
   bool Verbose() const { return verbose; }
-  
+
   // Read the weights and biases (which is the only thing that can
   // change) from GPU back to the Network object. Not thread safe!
   void ReadFromGPU();
@@ -170,7 +170,9 @@ struct TrainingRoundGPU {
 
   void ExportErrors(int idx, Errors *err) {
     CHECK(idx >= 0 && idx < num_examples);
-    CHECK_EQ(err->error.size(), errors.size());
+    CHECK_EQ(err->error.size(), errors.size())
+      << "arg " << err->error.size()
+      << " training " << errors.size();
     for (int i = 0; i < err->error.size(); i++) {
       CopyOffsetBufferFromGPUTo(idx, errors[i], &err->error[i]);
     }
@@ -196,9 +198,9 @@ struct TrainingRoundGPU {
   // Each memory is the layer's size * num_examples.
   std::vector<cl_mem> stimulations;
 
-  // Same size as net->layers. 0th is input (unused), final is the output.
+  // Same size as net->layers. 0th is input (typically unused),
+  // final is the output.
   // Each memory is the layer's size * num_examples.
-  // (Note: Prior to chunks, this used to exclude the (unused) input error)
   std::vector<cl_mem> errors;
   // Size of final stimulation * num_examples.
   cl_mem expected;
@@ -312,7 +314,7 @@ struct SetOutputErrorCL {
  private:
   CL *cl = nullptr;
   NetworkGPU *net_gpu = nullptr;
-  
+
   // One for each chunk in the final layer.
   // Owned.
   std::vector<ChunkKernel> kernels;
@@ -364,7 +366,7 @@ struct BackwardLayerCL {
 
   CL *cl = nullptr;
   NetworkGPU *net_gpu = nullptr;
-  
+
   // Input layer has unused placeholder kernels (0) to keep this
   // parallel to network structure.
   std::vector<std::vector<ChunkKernel>> layer_kernels;
@@ -390,7 +392,7 @@ struct DecayWeightsCL {
   const float decay_factor;
   CL *cl = nullptr;
   NetworkGPU *net_gpu = nullptr;
-  
+
   cl_program program;
   cl_kernel kernel;
   std::mutex m;
@@ -499,10 +501,34 @@ struct UpdateWeightsCL {
 
   CL *cl = nullptr;
   NetworkGPU *net_gpu = nullptr;
-  
+
   std::mutex m;
 
   DISALLOW_COPY_AND_ASSIGN(UpdateWeightsCL);
 };
+
+// Replaces example 0's errors with the mean value over all
+// examples for that node, and example 1's errors with the variance.
+// This messes up the errors, so this training round shouldn't be used
+// for e.g. UpdateWeights after this point!
+// (Requires training->num_examples >= 2.)
+struct SummaryStatisticsCL {
+
+  SummaryStatisticsCL(CL *cl, NetworkGPU *net_gpu);
+  ~SummaryStatisticsCL();
+
+  void Compute(TrainingRoundGPU *training);
+
+ private:
+  CL *cl = nullptr;
+  NetworkGPU *net_gpu = nullptr;
+
+  cl_program program;
+  cl_kernel kernel;
+  std::mutex m;
+
+  DISALLOW_COPY_AND_ASSIGN(SummaryStatisticsCL);
+};
+
 
 #endif

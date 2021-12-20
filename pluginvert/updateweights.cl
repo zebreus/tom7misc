@@ -214,7 +214,9 @@ __kernel void UpdateWeightsConvolutional(
   // In the past I used the square root here, although it is not
   // very principled. Adam may be able to fully account for the
   // benefit I (thought I) was getting.
-  const float multiplier = 1.0f / (NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN);
+  // TODO: Tune this hyperparameter.
+  const float multiplier =
+    1.0f / (NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN);
 
   {
     // Update the one weight.

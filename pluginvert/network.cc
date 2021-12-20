@@ -104,10 +104,7 @@ string Network::TransferFunctionDefines(TransferFunction tf) {
 
 Network::Network(vector<Layer> layers_in) :
   layers(std::move(layers_in)) {
-
-  printf("Structural check...");
   StructuralCheck();
-  printf("... OK!\n");
 }
 
 InvertedIndices Network::ComputeInvertedIndices(int dst_layer_idx,
@@ -1392,6 +1389,26 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
       }
     };
 
+  // Weights of exactly zero are just wasting indices, as they do
+  // not affect the prediction nor propagated error.
+  // Here the values are always within [hole_frac * mag, mag] or
+  // [-mag, -hole_frag * mag].
+  [[maybe_unused]]
+  auto RandomizeFloatsDonut =
+    [](float hole_frac, float mag, ArcFour *rc, vector<float> *vec) {
+      CHECK(hole_frac >= 0.0 && hole_frac < 1.0) << hole_frac;
+      // One side.
+      const double w = (1.0 - hole_frac) * mag;
+      for (int i = 0; i < vec->size(); i++) {
+        // Uniform in [0,1]
+        double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
+        bool s = (rc->Byte() & 1) != 0;
+        float f = s ? d * -w : d * w;
+        (*vec)[i] = f;
+      }
+    };
+
+
   // This must access rc serially.
   vector<ArcFour *> rcs;
   rcs.reserve(net->layers.size());
@@ -1401,7 +1418,7 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
   // But now we can do all layers in parallel.
   ParallelComp(
       net->layers.size(),
-      [rcs, &RandomizeFloatsUniform, &net](int layer) {
+      [rcs, &RandomizeFloatsUniform, &RandomizeFloatsDonut, &net](int layer) {
         for (int chunk_idx = 0;
              chunk_idx < net->layers[layer].chunks.size();
              chunk_idx++) {
@@ -1409,19 +1426,49 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
           if (chunk->fixed)
             continue;
 
-          // XXX such hacks. How to best initialize?
-
           // Standard advice is to leave biases at 0 to start.
           for (float &f : chunk->biases) f = 0.0f;
 
-          // The more indices we have, the smaller initial weights we
-          // should use. "Xavier initialization"
-          const float mag = 1.0f / sqrtf(chunk->indices_per_node);
-          // "He initialization"
-          // const float mag = sqrtf(2.0 / net->layers[layer].indices_per_node);
-          // Tom initialization
-          // const float mag = (0.0125f / net->layers[layer].indices_per_node);
-          RandomizeFloatsUniform(mag, rcs[layer], &chunk->weights);
+          // Good weight initialization is important for training deep
+          // models; if the initialized weights are too small, the
+          // gradient vanishes and training stalls. If it is too
+          // large, it explodes. One standard goal is to maintain that
+          // the output variance is the same as the input variance
+          // for each node.
+
+          // XXX this is bogus!
+
+          // The variance of a node depends on the number of indices
+          // and the activation function. TANH and LINEAR activations
+          // have zero mean; for these "Xavier initialization" is
+          // appropriate. ("Understanding the difficulty of
+          // training deep feedforward neural networks."
+          // X. Glorot, Y.Bengio 2010) For RELU and LEAKY_RELU activations,
+          // the mean is not zero; "He initialization" corrects for this
+          // ("Delving Deep into Rectifiers: Surpassing Human-Level
+          // Performance on ImageNet Classification." K. He et. al.,
+          // https://arxiv.org/pdf/1502.01852v1.pdf ).
+          // For SIGMOID...
+
+          const float mag = [chunk]() {
+              switch (chunk->transfer_function) {
+              default:
+              case IDENTITY:
+                return 1.0f / sqrtf(chunk->indices_per_node);
+              case SIGMOID:
+
+              case RELU:
+              case LEAKY_RELU:
+                return sqrtf(2.0 / chunk->indices_per_node);
+              }
+            }();
+
+          if (chunk->type == CHUNK_SPARSE) {
+            // If sparse, don't output zero (or other tiny) weights.
+            RandomizeFloatsDonut(0.01f, mag, rcs[layer], &chunk->weights);
+          } else {
+            RandomizeFloatsUniform(mag, rcs[layer], &chunk->weights);
+          }
         }
       }, max_parallelism);
 

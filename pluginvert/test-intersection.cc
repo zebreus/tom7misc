@@ -167,7 +167,7 @@ struct IntersectionModel {
               for (auto [ix, iy] : Line<int>{x, y, x + dx, y + dy}) {
                 image.BlendPixel(ix, iy, r, g, 0x00, 0x07);
               }
-
+              #endif
             } else {
               image.BlendPixel(x, y, r, g, 0x7F, 0x70);
             }            

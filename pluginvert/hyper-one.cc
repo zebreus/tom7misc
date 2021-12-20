@@ -1,4 +1,9 @@
 
+// As a starter problem, tune the network structure for a test
+// problem. This can help us find network parameters and/or learning
+// rate configuration that works for a given problem.
+
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -21,21 +26,6 @@
 using int64 = int64_t;
 using TrainNet = NetworkTestUtil::TrainNet;
 using namespace std;
-
-// Explore training hyper-parameters for some suite of problems.
-// Training is quite expensive, especially for "real" problems
-// (days or weeks). So this is more like a ballpark thing; for
-// example if we diverge quickly on easy problems, we should
-// avoid that area.
-
-
-// The problems here all have the property that we can generate
-// as many training examples as we want, so we don't bother
-// with a train/test split.
-
-
-// As a starter problem, tune the network structure for a test
-// problem.
 
 static CL *cl = nullptr;
 
@@ -219,11 +209,7 @@ Train(TrainNet train_net,
     net.examples += examples_per_round;
     net.rounds++;
 
-    // Only do this every few rounds, as it is probably
-    // the bottleneck in these tests now.
-    if (iter < 100 ? (iter % 10 == 0) :
-        iter < 1000 ? (iter % 100 == 0) :
-        (iter % 1000 == 0)) {
+    if (iter % 1000 == 0) {
       // Get loss as abs distance, plus number of incorrect (as booleans).
       // Size of examples = Number of training instances.
       std::vector<std::pair<float, int>> losses =
@@ -273,13 +259,14 @@ Train(TrainNet train_net,
       }
 
       // Did it diverge?
-      if ((std::isnan(average_loss) ||
-           average_loss > diverged_threshold) && iter >= 500) {
+      if (std::isnan(average_loss) ||
+          (average_loss > diverged_threshold && iter >= 500)) {
         Result diverged;
         diverged.type = ResultType::DIVERGED;
         diverged.iters = max_iterations;
         diverged.seconds = train_timer.MS() / 1000.0;
         diverged.average_loss = average_loss;
+        return diverged;
       }
 
       // Met convergence threshold?
@@ -304,10 +291,10 @@ Train(TrainNet train_net,
 }
 
 using OutputType = Result;
-using NetOptimizer = Optimizer<0, 3, OutputType>;
+using NetOptimizer = Optimizer<3, 3, OutputType>;
 
-static constexpr int SAMPLES = 5;
-static constexpr int MAX_ITERATIONS = 100000;
+static constexpr int SAMPLES = 2;
+static constexpr int MAX_ITERATIONS = 50000;
 static constexpr int EXAMPLES_PER_ROUND = 1000;
 static constexpr int CONVERGED_THRESHOLD = 0.01f;
 static constexpr int DIVERGED_THRESHOLD = 4000.0f;
@@ -315,52 +302,14 @@ static constexpr int DIVERGED_THRESHOLD = 4000.0f;
 static constexpr double DIVERGED_PENALTY = 10'000'000'000.0;
 static constexpr double CONVERGED_PENALTY = -10'000'000'000.0;
 
-  /*
-    best from large search with 20k iters
-Best arg: 180, 38, 6
-Score: 0.257561
-Result:
-type: TIMEOUT
-iters: 20000
-seconds: 89.588
-average loss: 0.257561
-
-    narrower search, 200k iters, 5x:
-Best arg: 183, 42, 6
-Score: 0.111853
-Result:
-type: TIMEOUT
-iters: 200000
-seconds: 901.982
-average loss: 0.111853
-
-then learning rate search:
-Best arg: 1.301269, 4.689531, 4.716369
-Score: 0.076092
-Result:
-type: TIMEOUT
-iters: 100000
-seconds: 501.957
-average loss: 0.076092
-
-that's a base_learning_rate of 0.049972
-dampening of 4.6895
-epsilon of 0.0000192145
-
-  */
-
-static constexpr int WIDTH = 183;
-static constexpr int IPN = 42;
-static constexpr int DEPTH = 6;
-
 static NetOptimizer::return_type
 OptimizeMe(const NetOptimizer::arg_type arg) {
-  // only int args
-  // auto [width, ipn, depth] = arg.first;
-  // printf("Trying with %d %d %d\n", width, ipn, depth);
-  auto [lr, damp, ep] = arg.second;
-  printf("Trying with 0.1^%.3f %.6f 0.1^%.3f\n", lr, damp, ep);
- 
+  const auto &[width, ipn, depth] = arg.first;
+  const auto &[lr, damp, ep] = arg.second;
+  printf("Trying with model %d %d %d\n"
+         "Rates 0.1^%.3f %.6f 0.1^%.3f\n",
+         width, ipn, depth, lr, damp, ep);
+  
   UpdateConfig update_config;  
   update_config.base_learning_rate = pow(0.1, lr);
   update_config.learning_rate_dampening = damp;
@@ -370,9 +319,10 @@ OptimizeMe(const NetOptimizer::arg_type arg) {
   int sample = 0;
   int64 num_params = 0;
   for (; sample < SAMPLES; sample++) {
-    TrainNet tn = NetworkTestUtil::SparseLineIntersectionAdam(WIDTH,
-                                                              IPN,
-                                                              DEPTH);
+    TrainNet tn = NetworkTestUtil::DodgeballAdam(
+        width,
+        ipn,
+        depth);
     num_params = tn.net.TotalParameters();
     Result r = Train(tn, sample,
                      MAX_ITERATIONS,
@@ -407,9 +357,8 @@ OptimizeMe(const NetOptimizer::arg_type arg) {
                      (num_params / 10.0),
                      nullopt);
   case ResultType::CONVERGED:
-    //     printf("Always converged: %d %d %d\n",
-    // width, ipn, depth);
-    printf("Always converged: %.6f %.6f %.6f\n",
+    printf("Always converged: %d %d %d, %.6f %.6f %.6f\n",
+           width, ipn, depth,
            lr, damp, ep);
     // Always converged! Great!
     return make_pair(CONVERGED_PENALTY -
@@ -437,26 +386,25 @@ int main(int argc, char **argv) {
   // Params are width, ipn, depth
   optimizer.Run(
       // int args are width, ipn, depth
-      // {make_pair(128, 220), make_pair(32, 46), make_pair(5, 7)},
-      {},
+      {make_pair(24, 256), make_pair(4, 64), make_pair(2, 8)},
       // double args are learning rate exponent, damping, epsilon exponent
       {make_pair(0.0, 3.0), make_pair(0.1, 10.0), make_pair(0.0, 6.0)},
       // no max calls
       nullopt,
       // no max feasible calls
       nullopt,
-      // seven hours
-      {3600 * 7},
+      // eight hours
+      {3600 * 8},
       // no target score
       nullopt);
 
   auto bo = optimizer.GetBest();
   CHECK(bo.has_value()) << "Always diverged?";
   auto [arg, score, out] = bo.value();
-  // auto [width, ipn, depth] = arg.first;
-  // printf("Best arg: %d, %d, %d\n", width, ipn, depth);
+  auto [width, ipn, depth] = arg.first;
   auto [lr, damp, ep] = arg.second;
-  printf("Best arg: %.6f, %.6f, %.6f\n", lr, damp, ep);
+  printf("Best arg: %d %d %d | %.6f, %.6f, %.6f\n",
+         width, ipn, depth, lr, damp, ep);
   printf("Score: %.6f\n", score);
   printf("Result:\n"
          "type: %s\n"
@@ -472,8 +420,10 @@ int main(int argc, char **argv) {
   for (const auto &[arg, score, out] : optimizer.GetAll()) {
     const auto &[lr, damp, ep] = arg.second;
     StringAppendF(&all_results,
+                  "%d,%d,%d,"
                   "%.6f,%.6f,%.6f,"
                   "%.6f,",
+                  width, ipn, depth,
                   lr, damp, ep,
                   score);
     if (out.has_value()) {
@@ -488,8 +438,8 @@ int main(int argc, char **argv) {
     }
     StringAppendF(&all_results, "\n");
   }
-  Util::WriteFile("hyper.csv", all_results);
-  printf("Wrote hyper.csv\n");
+  Util::WriteFile("hyper-one.csv", all_results);
+  printf("Wrote hyper-one.csv\n");
   
   delete cl;
   return 0;

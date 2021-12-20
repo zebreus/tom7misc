@@ -1989,3 +1989,109 @@ NetworkTestUtil::TrainNet NetworkTestUtil::Atan2Adam(
     .boolean_output = false,
   };
 }
+
+NetworkTestUtil::TrainNet NetworkTestUtil::DodgeballAdam(
+    int width, int ipn, int depth, int64 seed) {
+  ArcFour rc(StringPrintf("dodgeball.%lld", seed));
+  std::vector<Layer> layers;
+  constexpr int INPUT_SIZE = 10;
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = INPUT_SIZE;
+  input_chunk.width = 5;
+  input_chunk.height = 1;
+  input_chunk.channels = 2;
+
+  layers.push_back(Network::LayerFromChunks(input_chunk));
+
+  constexpr float GRAVITY = 0.098f;
+  constexpr float TIMESTEPS = 100;
+  
+  auto f = [](const std::vector<float> &input) -> std::vector<float> {
+    CHECK(input.size() == INPUT_SIZE);
+    float x1  = input[0] * 3.0f;
+    float y1  = input[1] * 3.0f;
+    float dx1 = input[2] / 10.0f;
+    float dy1 = input[3] / 10.0f;
+    float r1  = input[4];
+    float x2  = input[5] * 3.0f;
+    float y2  = input[6] * 3.0f;
+    float dx2 = input[7] / 10.0f;
+    float dy2 = input[8] / 10.0f;
+    float r2  = input[9];
+
+    float rdistsq = (r2 + r1) * (r2 + r1);
+    for (int t = 0; t < TIMESTEPS; t++) {
+      // distance between centers
+      float ddx = (x1 - x2);
+      float ddy = (y1 - y2);
+      float dsq = ddx * ddx + ddy * ddy;
+      if (dsq < rdistsq) {
+        // intersection at timestep t.
+        return {1.0f, t / (float)TIMESTEPS};
+      }
+
+      x1 += dx1;
+      y1 += dy1;
+      x2 += dx2;
+      y2 += dy2;
+
+      dy1 += GRAVITY;
+      dy2 += GRAVITY;
+    }
+    // No collision.
+    return {0.0f, 0.0f};
+  };
+
+  constexpr int CONVOLVE_DEPTH = 4;
+  constexpr int CONV_NUM_FEATURES = 16;
+  for (int c = 0; c < CONVOLVE_DEPTH; c++) {
+    const int prev_nodes = layers.back().num_nodes;
+    CHECK(prev_nodes % 2 == 0);
+    const int object_size = prev_nodes >> 1;
+    Chunk conv = Network::Make1DConvolutionChunk(0, prev_nodes,
+                                                 CONV_NUM_FEATURES,
+                                                 // no overlap
+                                                 object_size,
+                                                 object_size,
+                                                 LEAKY_RELU,
+                                                 ADAM);
+    layers.push_back(Network::LayerFromChunks(conv));
+  }
+  
+  for (int d = 0; d < depth; d++) {
+    int prev_nodes = layers.back().num_nodes;
+    Network::SparseSpan span{.span_start = 0,
+                             .span_size = prev_nodes,
+                             .ipn = std::min(prev_nodes, std::max(2, ipn))};
+
+    Chunk hidden_chunk = Network::MakeRandomSparseChunk(
+        &rc, width, {span}, LEAKY_RELU, ADAM);
+    layers.push_back(Network::LayerFromChunks(hidden_chunk));
+  }
+
+  Chunk does_intersect_chunk =
+    Network::MakeDenseChunk(1, 0, layers.back().num_nodes,
+                            SIGMOID, ADAM);
+  Chunk intersection_time_chunk =
+    Network::MakeDenseChunk(1, 0, layers.back().num_nodes,
+                            IDENTITY, ADAM);
+
+  layers.push_back(Network::LayerFromChunks(
+                       does_intersect_chunk,
+                       intersection_time_chunk));
+
+  Network net(layers);
+  net.NaNCheck(__func__);
+
+  return TrainNet{
+    .name = StringPrintf(
+        "dodgeball, %d sparse hidden, each width %d",
+        depth, width),
+    .net = net,
+    .f = f,
+    .boolean_input = false,
+    .boolean_output = false,
+  };
+
+}
