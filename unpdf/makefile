@@ -26,3 +26,6 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 unpdf.exe : unpdf.o $(UTIL_OBJECTS) $(RE2_OBJECTS)
 	g++ -o $@ $^  $(LFLAGS) 
 
+pagesize.exe : pagesize.o $(UTIL_OBJECTS) $(RE2_OBJECTS)
+	g++ -o $@ $^  $(LFLAGS) 
+
