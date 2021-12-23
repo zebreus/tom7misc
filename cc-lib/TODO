@@ -9,8 +9,8 @@
 - Good standalone flate/zlib compressor: https://github.com/google/zopfli
 - Fast standalone compressor/decompressor: https://github.com/google/snappy
 - CHACHA2020 as a replacement for arcfour
+- Make randutil templated over prng, and provide
 - Make black-box optimizer open-loop
 - Autotune parameters, like autoparallel but with user-specified metrics
   (e.g. you define a target "error" and some variables, it gives you
    variables to try for a round, then you tell it what the "error" was)
-

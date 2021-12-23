@@ -33,7 +33,7 @@ static void ForwardTests(TestNet test_net) {
   Network &net = test_net.net;
   auto net_gpu = make_unique<NetworkGPU>(cl, &net);
   net_gpu->SetVerbose(false);
-  
+
   for (const TestExample &example : test_net.examples) {
     if (test_net.examples.size() > 1) printf("%s\n", example.name.c_str());
     std::unique_ptr<TrainingRoundGPU> training_round =
@@ -67,6 +67,51 @@ static void ForwardTests(TestNet test_net) {
 }
 
 
+static void StructuralTests(TestNet test_net) {
+  // TODO: More here.
+
+  Network &net = test_net.net;
+  auto net_gpu = make_unique<NetworkGPU>(cl, &net);
+  net_gpu->SetVerbose(false);
+
+  Network orig = net;
+  vector<uint8> orig_vec = orig.Serialize();
+
+  // Perturb.
+  for (auto &layer : net.layers) {
+    for (auto &chunk : layer.chunks) {
+      for (float &f : chunk.weights) f++;
+      for (float &f : chunk.biases) f--;
+    }
+  }
+
+  Network perturbed = net;
+  vector<uint8> perturbed_vec = perturbed.Serialize();
+
+  CHECK(orig_vec != perturbed_vec);
+
+  net_gpu->WriteToGPU();
+
+  // Clear
+  for (auto &layer : net.layers) {
+    for (auto &chunk : layer.chunks) {
+      for (float &f : chunk.weights) f = 0.0;
+      for (float &f : chunk.biases) f = 0.0;
+    }
+  }
+
+  Network cleared = net;
+  vector<uint8> cleared_vec = cleared.Serialize();
+  CHECK(cleared_vec != perturbed_vec);
+  CHECK(cleared_vec != orig_vec);
+
+  // Read back the perturbed version.
+  net_gpu->ReadFromGPU();
+  Network perturbed2 = net;
+  vector<uint8> perturbed2_vec = perturbed2.Serialize();
+  CHECK(perturbed2_vec == perturbed_vec);
+}
+
 // This is just a test that it doesn't crash, although we could do
 // weight updates as we know it is near a known solution, and see if
 // it finds it. Note that many of these only have a single example, so
@@ -80,7 +125,7 @@ static void TrainOnTestTests(TestNet test_net) {
   Network &net = test_net.net;
   auto net_gpu = make_unique<NetworkGPU>(cl, &net);
   net_gpu->SetVerbose(false);
-  
+
   for (const TestExample &example : test_net.examples) {
     std::unique_ptr<TrainingRoundGPU> training_round =
       std::make_unique<TrainingRoundGPU>(1, cl, net);
@@ -178,10 +223,10 @@ TrainTest(TrainNet train_net,
   Network &net = train_net.net;
   // Initialize with random weights.
   RandomizeNetwork(&rc, &net, 2);
-  
+
   auto net_gpu = make_unique<NetworkGPU>(cl, &net);
   net_gpu->SetVerbose(false);
-  
+
   std::unique_ptr<ForwardLayerCL> forward_cl =
     std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
   std::unique_ptr<SetOutputErrorCL> error_cl =
@@ -494,6 +539,15 @@ static void QuickTests() {
   ForwardTests(NetworkTestUtil::SimpleConv());
   ForwardTests(NetworkTestUtil::CountInternalEdges());
 
+  StructuralTests(NetworkTestUtil::SingleSparse());
+  StructuralTests(NetworkTestUtil::SingleDense());
+  StructuralTests(NetworkTestUtil::SingleConvolution());
+  StructuralTests(NetworkTestUtil::TwoInputSparse());
+  StructuralTests(NetworkTestUtil::TwoDenseChunks());
+  StructuralTests(NetworkTestUtil::Net1());
+  StructuralTests(NetworkTestUtil::SimpleConv());
+  StructuralTests(NetworkTestUtil::CountInternalEdges());
+
   TrainOnTestTests(NetworkTestUtil::SingleSparse());
   TrainOnTestTests(NetworkTestUtil::SingleDense());
   TrainOnTestTests(NetworkTestUtil::SingleConvolution());
@@ -623,7 +677,7 @@ static void AdamTests() {
   // 4000 rounds...! Is it just lucky?
   TRAIN_TEST(NetworkTestUtil::SparseInCircleAdam(128, 16, 12),
              20000, 1000, 0.010f, fast_config);
-  
+
   // About 16k rounds
   TRAIN_TEST(NetworkTestUtil::Atan2Adam(64, 6, 6),
              50000, 1000, 0.010f, fast_config);
@@ -655,7 +709,7 @@ static void AdamTests() {
              2000000, 1000, 0.010f, fast_config, {100});
 #endif
 
-  
+
   {
     UpdateWeightsCL::UpdateConfig hyper_config =
       UpdateWeightsCL::UpdateConfig{
@@ -679,7 +733,7 @@ static void AuditionTests() {
     .adam_epsilon = 1.0e-6,
   };
 
-  
+
   [[maybe_unused]]
   UpdateWeightsCL::UpdateConfig slower_config = UpdateWeightsCL::UpdateConfig{
     .base_learning_rate = 0.01f,
@@ -687,7 +741,7 @@ static void AuditionTests() {
     .adam_epsilon = 1.0e-5,
   };
 
-  
+
   // shows divergence after convergence
   // TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(128, 16, 12),
   // 2000000, 1000, 0.010f, fast_config);
@@ -696,7 +750,7 @@ static void AuditionTests() {
   // TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(256, 16, 6),
   // 2000000, 1000, 0.010f, fast_config, {100});
 
-  
+
   #if 0
   TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(128, 6, 6),
              2000000, 1000, 0.010f, slower_config);
@@ -715,14 +769,14 @@ static void AuditionTests() {
   TRAIN_TEST(NetworkTestUtil::DodgeballAdam(113, 21, 4),
              2000000, 1000, 0.040f, slower_config, {100});
 }
-  
+
 int main(int argc, char **argv) {
   cl = new CL;
 
   //  TestChunkSchedule();
   printf("Chunk schedule OK\n");
 
-  //   QuickTests();
+  QuickTests();
   printf("Quick tests OK\n");
 
   // SGDTests();
@@ -732,8 +786,8 @@ int main(int argc, char **argv) {
   printf("ADAM tests OK\n");
 
   // not permanent...
-  AuditionTests();
-  
+  // AuditionTests();
+
   delete cl;
 
   printf("OK\n");

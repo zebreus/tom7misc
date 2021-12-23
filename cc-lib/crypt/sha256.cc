@@ -60,14 +60,21 @@ std::vector<uint8> SHA256::HashString(const string &s) {
   SHA256::Ctx c;
   SHA256::Init(&c);
   SHA256::UpdateString(&c, s);
-  return FinalVector(&c);
+  return SHA256::FinalVector(&c);
 }
 
 std::vector<uint8> SHA256::HashVector(const vector<uint8> &v) {
   SHA256::Ctx c;
   SHA256::Init(&c);
   SHA256::Update(&c, (const uint8 *)v.data(), v.size());
-  return FinalVector(&c);
+  return SHA256::FinalVector(&c);
+}
+
+std::vector<uint8> SHA256::HashPtr(const void *ptr, size_t len) {
+  SHA256::Ctx c;
+  SHA256::Init(&c);
+  SHA256::Update(&c, (const uint8 *)ptr, len);
+  return SHA256::FinalVector(&c);
 }
 
 void SHA256::UpdateString(Ctx *c, const string &s) {

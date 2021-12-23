@@ -40,6 +40,7 @@ struct Bounds {
 
   // Add a margin that's a fraction of the longest dimension. If
   // empty, does nothing. f must be non-negative.
+  // TODO: This should probably pad each dimension independently.
   void AddMarginFrac(double f);
 
   // A common thing to do is collect some points into a bounding box,
@@ -90,6 +91,8 @@ struct Bounds {
   Scaler ScaleToFit(double w, double h, bool centered = true) const;
   // Make the bounding box fit the screen, stretching as necessary.
   Scaler Stretch(double w, double h) const;
+
+  // TODO: log scale?
 
  private:
   bool is_empty = true;

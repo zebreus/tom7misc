@@ -25,6 +25,9 @@
 template<int N_INTS, int N_DOUBLES, class OutputType>
 struct Optimizer {
 
+  static inline constexpr int num_ints = N_INTS;
+  static inline constexpr int num_doubles = N_DOUBLES;
+
   static inline constexpr double LARGE_SCORE =
     std::numeric_limits<double>::max();
 
@@ -103,14 +106,14 @@ struct Optimizer {
   // if SaveAll was true when they were added (and the result was feasible).
   std::vector<std::tuple<arg_type, double, std::optional<OutputType>>>
   GetAll() const;
-  
+
  private:
   static constexpr int N = N_INTS + N_DOUBLES;
   const function_type f;
 
   // best value so far, if we have one
   std::optional<std::tuple<arg_type, double, OutputType>> best;
-  
+
   struct HashArg {
     size_t operator ()(const arg_type &arg) const {
       uint64_t result = 0xCAFEBABE;
@@ -179,7 +182,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::SetBest(
   // Add to cache no matter what.
   cached_score[best_arg] = best_score;
   if (save_all) cached_output[best_arg] = best_output;
-  
+
   // Don't take it if we already have a better one.
   if (best.has_value() && std::get<1>(best.value()) < best_score)
     return;
@@ -207,7 +210,7 @@ std::vector<std::tuple<arg_type, double, std::optional<OutputType>>> {
       ret.emplace_back(arg, score, std::nullopt);
     }
   }
-  
+
   return ret;
 }
 
@@ -239,7 +242,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
     ubs[N_INTS + i] = double_bounds[i].second;
   }
 
-  
+
   bool stop = false;
   // These are only updated if we use them for termination.
   int num_calls = 0, num_feasible_calls = 0;
@@ -262,7 +265,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
           return LARGE_SCORE;
         }
       }
-      
+
       // Populate the native argument type.
       arg_type arg;
       for (int i = 0; i < N_INTS; i++) {
@@ -296,7 +299,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
       auto [score, res] = f(arg);
       cached_score[arg] = score;
       if (save_all) cached_output[arg] = res;
-      
+
       if (res.has_value()) {
         // Feasible call.
         if (max_feasible_calls.has_value()) {

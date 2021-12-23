@@ -46,9 +46,11 @@ struct NetworkGPU {
   void SetVerbose(bool v) { verbose = v; };
   bool Verbose() const { return verbose; }
 
-  // Read the weights and biases (which is the only thing that can
-  // change) from GPU back to the Network object. Not thread safe!
+  // Read the weights and biases (and _aux) buffers from GPU back to the
+  // Network object. Not thread safe!
   void ReadFromGPU();
+  // Write only the weights and biases (and _aux) from CPU to GPU.
+  void WriteToGPU();
 
   struct GPUChunk {
     // Empty memories are represented as 0 (invalid cl_mem), since opencl
@@ -98,6 +100,21 @@ struct NetworkGPU {
                             0, nullptr,
                             nullptr));
   }
+
+  // Same, but from the CPU-side vector to the GPU buffer.
+  template<class T>
+  void CopyFromZeroOk(const std::vector<T> &vec, cl_mem buf) {
+    if (buf == 0)
+      return;
+    CHECK(!vec.empty()) << "Only when buf == 0";
+    CHECK_SUCCESS(clEnqueueWriteBuffer(cl->queue, buf, CL_TRUE, 0,
+                                       sizeof (T) * vec.size(),
+                                       vec.data(),
+                                       // No wait-list or event.
+                                       0, nullptr,
+                                       nullptr));
+  }
+
 
   DISALLOW_COPY_AND_ASSIGN(NetworkGPU);
 };
@@ -517,7 +534,7 @@ struct SummaryStatisticsCL {
   SummaryStatisticsCL(CL *cl, NetworkGPU *net_gpu);
   ~SummaryStatisticsCL();
 
-  void Compute(TrainingRoundGPU *training);
+  void Compute(TrainingRoundGPU *training, int layer_idx);
 
  private:
   CL *cl = nullptr;

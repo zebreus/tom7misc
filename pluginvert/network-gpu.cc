@@ -108,6 +108,24 @@ void NetworkGPU::ReadFromGPU() {
   clFinish(cl->queue);
 }
 
+void NetworkGPU::WriteToGPU() {
+  CHECK(net->layers.size() == layers.size());
+  for (int layer = 0; layer < net->layers.size(); layer++) {
+    const Layer &cpu_layer = net->layers[layer];
+    GPULayer *gpu_layer = &layers[layer];
+    CHECK(cpu_layer.chunks.size() == gpu_layer->chunks.size());
+    for (int chunk = 0; chunk < cpu_layer.chunks.size(); chunk++) {
+      const Chunk &cpu_chunk = cpu_layer.chunks[chunk];
+      GPUChunk *gpu_chunk = &gpu_layer->chunks[chunk];
+      CopyFromZeroOk(cpu_chunk.weights, gpu_chunk->weights);
+      CopyFromZeroOk(cpu_chunk.biases, gpu_chunk->biases);
+      CopyFromZeroOk(cpu_chunk.weights_aux, gpu_chunk->weights_aux);
+      CopyFromZeroOk(cpu_chunk.biases_aux, gpu_chunk->biases_aux);
+    }
+  }
+  clFinish(cl->queue);
+}
+
 
 static string ForwardKernelName(ChunkType ct) {
   switch (ct) {
@@ -1535,45 +1553,45 @@ SummaryStatisticsCL::~SummaryStatisticsCL() {
   CHECK_SUCCESS(clReleaseProgram(program));
 }
 
-void SummaryStatisticsCL::Compute(TrainingRoundGPU *training) {
+void SummaryStatisticsCL::Compute(TrainingRoundGPU *training, int layer_idx) {
   const Network &net = *net_gpu->net;
 
-  for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
-    const cl_int layer_num_nodes =
-      net.layers[layer_idx].num_nodes;
-    const cl_int num_examples = training->num_examples;
+  CHECK(layer_idx >= 0 && layer_idx < net.layers.size());
 
-    {
-      MutexLock ml(&m);
-      CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_int),
-                                   (void *)&layer_num_nodes));
-      CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_int),
-                                   (void *)&num_examples));
+  const cl_int layer_num_nodes =
+    net.layers[layer_idx].num_nodes;
+  const cl_int num_examples = training->num_examples;
 
-      CHECK_SUCCESS(clSetKernelArg(
-                        kernel, 2, sizeof (cl_mem),
-                        (void *)&training->stimulations[layer_idx]));
-      CHECK_SUCCESS(clSetKernelArg(
-                        kernel, 3, sizeof (cl_mem),
-                        (void *)&training->errors[layer_idx]));
+  {
+    MutexLock ml(&m);
+    CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_int),
+                                 (void *)&layer_num_nodes));
+    CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_int),
+                                 (void *)&num_examples));
 
-      size_t global_work_offset[] = { 0 };
-      size_t global_work_size[] = { (size_t)layer_num_nodes };
-      CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
-                                           // work dimensions
-                                           1,
-                                           // global work offset
-                                           global_work_offset,
-                                           // global work size
-                                           global_work_size,
-                                           // local work size
-                                           nullptr,
-                                           // no wait list
-                                           0, nullptr,
-                                           // no event
-                                           nullptr));
-      clFinish(cl->queue);
-    }
+    CHECK_SUCCESS(clSetKernelArg(
+                      kernel, 2, sizeof (cl_mem),
+                      (void *)&training->stimulations[layer_idx]));
+    CHECK_SUCCESS(clSetKernelArg(
+                      kernel, 3, sizeof (cl_mem),
+                      (void *)&training->errors[layer_idx]));
+
+    size_t global_work_offset[] = { 0 };
+    size_t global_work_size[] = { (size_t)layer_num_nodes };
+    CHECK_SUCCESS(clEnqueueNDRangeKernel(cl->queue, kernel,
+                                         // work dimensions
+                                         1,
+                                         // global work offset
+                                         global_work_offset,
+                                         // global work size
+                                         global_work_size,
+                                         // local work size
+                                         nullptr,
+                                         // no wait list
+                                         0, nullptr,
+                                         // no event
+                                         nullptr));
+    clFinish(cl->queue);
   }
 
 }

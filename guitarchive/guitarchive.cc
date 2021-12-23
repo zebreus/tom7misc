@@ -37,10 +37,10 @@ void Guitarchive::AddAllFilesRec(const string &dir, vector<string> *all_files) {
       AddAllFilesRec(filename, all_files);
     } else {
       if (!filename.empty() &&
-	  // Should probably delete emacs backups..?
-	  filename[filename.size() - 1] != '#' &&
-	  filename[filename.size() - 1] != '~') {
-	all_files->push_back(filename);
+      // Should probably delete emacs backups..?
+      filename[filename.size() - 1] != '#' &&
+      filename[filename.size() - 1] != '~') {
+        all_files->push_back(filename);
       }
     }
   }
@@ -85,37 +85,37 @@ vector<Entry> Guitarchive::Load(int threads) {
   // For a well-formed file, this will stop on the blank line after the
   // headers.
   RE2 normalized_header{"([A-Za-z0-9][^:]+): (.+)\n"};
-  
+
   auto MakeEntry = [&normalized_header](const string &filename,
-					const string &contents) {
+                    const string &contents) {
       Entry entry;
       entry.filename = filename;
 
       re2::StringPiece cont(contents);
       string key, val;
       while (RE2::Consume(&cont, normalized_header, &key, &val)) {
-	if (key == "Title") {
-	  entry.title = std::move(val);
-	} else if (key == "Artist") {
-	  entry.artist = std::move(val);
-	} else if (key == "Album") {
-	  entry.album = std::move(val);
-	} else {
-	  entry.headers.emplace_back(std::move(key), std::move(val));
-	}
+        if (key == "Title") {
+          entry.title = std::move(val);
+        } else if (key == "Artist") {
+          entry.artist = std::move(val);
+        } else if (key == "Album") {
+          entry.album = std::move(val);
+        } else {
+          entry.headers.emplace_back(std::move(key), std::move(val));
+        }
       }
 
       entry.body = cont.as_string();
       return entry;
     };
-  
+
   vector<Entry> entries =
     ParallelMap(all_filenames,
-		[&MakeEntry](const string &filename) {
-		  string f = Backslash(filename);
-		  return MakeEntry(f, Util::ReadFile(f));
-		},
-		threads);
+        [&MakeEntry](const string &filename) {
+          string f = Backslash(filename);
+          return MakeEntry(f, Util::ReadFile(f));
+        },
+        threads);
 
   return entries;
 }

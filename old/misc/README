@@ -1,20 +1,20 @@
 
 These are very small project (typically a single file) that don't even
-deserve their own repositories in the tom7misc project.
+deserve their own directories in the tom7misc project.
 
 
 
-latex-slides-makefile            Makefile for creating PDF slides with LaTeX 
-			         that don't come out upside-down. Very 
-				 tricky, despite what you might expect.
+latex-slides-makefile            Makefile for creating PDF slides with LaTeX
+                                 that don't come out upside-down. Very
+                                 tricky, despite what you might expect.
 
 neural.sml                       A fairly unsophisticated neural net evaluator
                                  and learner written in SML.
 
-shopping.ses                     Shopping list spreadsheet for use with 
-	                         SES mode for emacs. It just adds up columns 
-			         of quantity times price and displays 
-	                         everything nicely.
+shopping.ses                     Shopping list spreadsheet for use with
+                                 SES mode for emacs. It just adds up columns
+                                 of quantity times price and displays
+                                 everything nicely.
 
 mixtape.ses                      SES spreadsheet for making mix tapes or other
                                  compilations.
@@ -50,3 +50,8 @@ shortest-nonterm.sml             Shows how exceptions alone can lead to looping
 awesome.sml                      Encodes the simply-typed lambda calculus in phantom
                                  types, using combinatory logic and explicit reductions.
                                  Not recommended to actually do this when programming.
+
+small.c                          I think when I learned about number theoretic
+                                 generators I had this idea for obfuscating strings,
+                                 which is pretty obvious. It prints, "Yes, I said
+                                 shiny bug."

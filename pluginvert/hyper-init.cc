@@ -1,6 +1,7 @@
 
-// Optimize initialization of a network.
-
+// Optimize the parameters for random network initialization, such
+// that the expected variance (over examples) for each node is close
+// to 1.
 
 #include <cstdint>
 #include <optional>
@@ -13,6 +14,7 @@
 #include "network-gpu.h"
 #include "network-test-util.h"
 
+#include "bounds.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "opt/optimizer.h"
@@ -21,6 +23,7 @@
 #include "threadutil.h"
 #include "util.h"
 #include "image.h"
+#include "timer.h"
 
 using int64 = int64_t;
 using TrainNet = NetworkTestUtil::TrainNet;
@@ -28,373 +31,542 @@ using namespace std;
 
 static CL *cl = nullptr;
 
-constexpr int EXAMPLES_PER_ROUND = 10000;
+constexpr int EXAMPLES_PER_ROUND = 4000;
+
+static_assert(EXAMPLES_PER_ROUND >= 2, "Variance would be degenerate "
+              "without at least two examples, plus we use two error examples "
+              "as scratch space!");
 
 // Here we're talking about variance across examples.
 struct VarianceExperiment {
-  VarianceExperiment(int examples_per_round, NetworkGPU *net_gpu) :
-    rc("variance-experiment"),
-    examples_per_round(examples_per_round),
-    net_gpu(net_gpu) {
-    CHECK(examples_per_round >= 2) << "Variance would be degenerate "
-      "without at least two examples, plus we use two error examples "
-      "as scratch space!";
-    forward_cl = std::make_unique<ForwardLayerCL>(cl, net_gpu);
-    summary_cl = std::make_unique<SummaryStatisticsCL>(cl, net_gpu);
+  VarianceExperiment(ArcFour *rc, vector<NetworkGPU *> net_gpus) :
+    rc(rc), net_gpus(net_gpus) {
 
-    training = std::make_unique<TrainingRoundGPU>(examples_per_round,
-                                                  cl, *net_gpu->net);
+    RandomGaussian gauss(rc);
+
+    for (NetworkGPU *net_gpu : net_gpus) {
+      forward_cls.emplace_back(
+          std::make_unique<ForwardLayerCL>(cl, net_gpu));
+      summary_cls.emplace_back(
+          std::make_unique<SummaryStatisticsCL>(cl, net_gpu));
+      // printf("Make training...\n");
+
+      TrainingRoundGPU *training = new TrainingRoundGPU(
+          EXAMPLES_PER_ROUND,
+          cl, *net_gpu->net);
+
+      // Generating a batch of random training examples, once at
+      // start (we keep reusing it to save time).
+      std::vector<float> flat_inputs;
+      flat_inputs.reserve(training->input_size *
+                          training->num_examples);
+      for (int i = 0; i < training->num_examples; i++) {
+        // TODO: The problem should supply input examples,
+        // although this is a reasonable default.
+        for (int j = 0; j < training->input_size; j++) {
+          flat_inputs.push_back(gauss.Next());
+        }
+      }
+
+      training->LoadInputs(flat_inputs);
+      trainings.emplace_back(training);
+    }
   }
 
-  // Get the average mean/variance for the nodes in each chunk.
-  void GetStatistics(Errors *mean, Errors *variance);
-  vector<vector<double>> GetVarianceLayers(const Errors &variance);
+  double ScoreVariance(double scale, double exponent, bool gaussian_init);
 
-  ArcFour rc;
-  const int examples_per_round = 0;
-  NetworkGPU *net_gpu = nullptr;
-  std::unique_ptr<ForwardLayerCL> forward_cl;
-  std::unique_ptr<SummaryStatisticsCL> summary_cl;
-  std::unique_ptr<TrainingRoundGPU> training;
+private:
+  // not owned
+  ArcFour *rc = nullptr;
+  // not owned
+  vector<NetworkGPU *> net_gpus;
+  std::vector<std::unique_ptr<ForwardLayerCL>> forward_cls;
+  std::vector<std::unique_ptr<SummaryStatisticsCL>> summary_cls;
+  std::vector<std::unique_ptr<TrainingRoundGPU>> trainings;
 };
 
-// If non-null, fill the errors structures with mean, variance for each node.
-void VarianceExperiment::GetStatistics(Errors *mean, Errors *variance) {
-  const Network &net = *net_gpu->net;
-  RandomGaussian gauss(&rc);
-
-  // Generating a batch of random training examples.
-  std::vector<float> flat_inputs;
-  flat_inputs.reserve(training->input_size * training->num_examples);
-  for (int i = 0; i < training->num_examples; i++) {
-
-    // TODO: The problem should supply input examples, although
-    // this is a reasonable default.
-    for (int j = 0; j < training->input_size; j++) {
-      flat_inputs.push_back(gauss.Next());
-    }
-  }
-
-  training->LoadInputs(flat_inputs);
-
-  for (int src_layer = 0;
-       src_layer < net.layers.size() - 1;
-       src_layer++) {
-    forward_cl->RunForward(training.get(), src_layer);
-  }
-
-  #if 0
-  // XXX test on CPU, slow
-  std::vector<Stimulation> stims;
-  for (int e = 0; e < training->num_examples; e++) {
-    Stimulation stim(net);
-    training->ExportStimulation(e, &stim);
-    stims.emplace_back(std::move(stim));
-  }
-
-  double m = 0.0;
-  for (const Stimulation &stim : stims) {
-    const vector<float> &out = stim.values.back();
-    printf("%.3f %.3f %.3f\n", out[0], out[1], out[2]);
-    m += out[0];
-  }
-  m /= stims.size();
-  double v = 0.0;
-  for (const Stimulation &stim : stims) {
-    const vector<float> &out = stim.values.back();
-    double d = out[0] - m;
-    v += (d * d);
-  }
-  v /= stims.size();
-  printf("Variance C++: %.3f\n", v);
-  #endif
-
-  summary_cl->Compute(training.get());
-
-  // now the first and second example's errors contain the output
-
-  if (mean != nullptr)
-    training->ExportErrors(0, mean);
-  if (variance != nullptr)
-    training->ExportErrors(1, variance);
-}
-
-vector<vector<double>>
-VarianceExperiment::GetVarianceLayers(const Errors &variance) {
-  const Network &net = *net_gpu->net;
-  vector<vector<double>> layer_variance;
-  for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
-    const Layer &layer = net.layers[layer_idx];
-    vector<double> chunk_variance;
-    int node_idx = 0;
-    for (int chunk_idx = 0; chunk_idx < layer.chunks.size(); chunk_idx++) {
-      const Chunk &chunk = layer.chunks[chunk_idx];
-      double var = 0.0;
-      for (int i = 0; i < chunk.num_nodes; i++) {
-        var += variance.error[layer_idx][node_idx];
-        node_idx++;
+// Randomize the weights, using the scale/exponent/gaussian_init
+void HyperRandomizeChunk(
+    double scale,
+    double exponent,
+    bool gaussian_init,
+    ArcFour *rc,
+    Chunk *chunk) {
+  [[maybe_unused]]
+  auto RandomizeFloatsGaussian =
+    [&rc](float mag, vector<float> *vec) {
+      RandomGaussian gauss{rc};
+      for (int i = 0; i < vec->size(); i++) {
+        (*vec)[i] = mag * gauss.Next();
       }
-      chunk_variance.push_back(var / chunk.num_nodes);
-    }
-    layer_variance.push_back(std::move(chunk_variance));
-  }
-  return layer_variance;
-}
-
-static inline uint32 GetMeanColor(float f) {
-  auto MapV = [](float f) -> uint8 {
-      float ff = sqrt(f);
-      int v = roundf(255.0f * ff);
-      return std::clamp(v, 0, 255);
     };
 
-  if (f > 0.0f) {
-    uint32 v = MapV(f);
-    return (v << 16) | 0xFF;
+  [[maybe_unused]]
+  auto RandomizeFloatsUniform =
+    [&rc](float mag, vector<float> *vec) {
+      // Uniform from -mag to mag.
+      const float width = 2.0f * mag;
+      for (int i = 0; i < vec->size(); i++) {
+        // Uniform in [0,1]
+        double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
+        float f = (width * d) - mag;
+        (*vec)[i] = f;
+      }
+    };
+
+  // Weights of exactly zero are just wasting indices, as they do
+  // not affect the prediction nor propagated error.
+  // Here the values are always within [hole_frac * mag, mag] or
+  // [-mag, -hole_frag * mag].
+  [[maybe_unused]]
+  auto RandomizeFloatsDonut =
+    [&rc](float hole_frac, float mag, vector<float> *vec) {
+      CHECK(hole_frac >= 0.0 && hole_frac < 1.0) << hole_frac;
+      // One side.
+      const double w = (1.0 - hole_frac) * mag;
+      const double off = hole_frac * mag;
+      for (int i = 0; i < vec->size(); i++) {
+        // Uniform in [0,1]
+        double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
+        bool s = (rc->Byte() & 1) != 0;
+        float f = s ? d * -w - off : d * w + off;
+        (*vec)[i] = f;
+      }
+    };
+
+  if (chunk->fixed)
+    return;
+
+  // Standard advice is to leave biases at 0 to start.
+  for (float &f : chunk->biases) f = 0.0f;
+
+  const float mag = scale / pow(chunk->indices_per_node, exponent);
+
+  if (gaussian_init) {
+    RandomizeFloatsGaussian(mag, &chunk->weights);
   } else {
-    uint32 v = MapV(-f);
-    return (v << 24) | 0xFF;
+    RandomizeFloatsUniform(mag, &chunk->weights);
   }
 }
 
-// Variance is always positive. Targeting 1.
-static inline uint32 GetVarianceColor(float f) {
-  auto MapV = [](float f) -> uint8 {
-      float ff = sqrt(f);
-      int v = roundf(255.0f * ff);
-      return std::clamp(v, 0, 255);
+static void HyperRandomizeNetwork(
+    bool gaussian_init,
+    ArcFour *rc,
+    Network *net) {
+  for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {
+    Layer &layer = net->layers[layer_idx];
+
+    for (Chunk &chunk : layer.chunks) {
+      const double magnitude = [&]() {
+          if (gaussian_init) {
+            // Gaussian variates
+            switch (chunk.transfer_function) {
+              // close to sqrt(3)
+            case LEAKY_RELU: return 1.70103025;
+            case RELU: return 1.71783215;
+            case SIGMOID: return 2.0;
+            default:
+            case IDENTITY: return 1.0;
+            }
+          } else {
+            // Uniform variates
+            switch (chunk.transfer_function) {
+            case LEAKY_RELU: return 2.95;
+            case RELU: return 2.97;
+            case SIGMOID: return 2.0;
+            default:
+              // close to sqrt(3)
+            case IDENTITY: return 1.73;
+            }
+          }
+        }();
+      HyperRandomizeChunk(magnitude, 0.5, gaussian_init, rc, &chunk);
+    }
+  }
+}
+
+double VarianceExperiment::ScoreVariance(double scale, double exponent,
+                                         bool gaussian_init) {
+  // PERF autoparallel
+  constexpr int MAX_PARALLELISM = 4;
+  int64_t seed = Rand64(rc);
+  vector<double> vars =
+    ParallelMapi(
+        net_gpus,
+        [this, seed, scale, exponent, gaussian_init](
+            int64_t idx, NetworkGPU *net_gpu) {
+          Network *net = net_gpu->net;
+          ArcFour rc(StringPrintf("%d.%lld", idx, seed));
+
+          // Reinitialize network randomly; copy to GPU.
+          Layer &layer = net->layers.back();
+          CHECK(layer.chunks.size() == 1);
+          Chunk &chunk = layer.chunks.back();
+          HyperRandomizeChunk(scale, exponent, gaussian_init, &rc, &chunk);
+          net_gpu->WriteToGPU();
+
+          for (int src_layer = 0;
+               src_layer < net->layers.size() - 1;
+               src_layer++) {
+            forward_cls[idx]->RunForward(trainings[idx].get(), src_layer);
+          }
+
+          // Only the last layer, to save time
+          summary_cls[idx]->Compute(trainings[idx].get(),
+                                    net->layers.size() - 1);
+
+          // Now the first and second example's errors contain the output;
+          // we just use the second here.
+          // XXX we only need to export the last layer (the rest aren't
+          // even initialized)
+          Errors variance(*net);
+          trainings[idx]->ExportErrors(1, &variance);
+
+          // Just trying to target variance=1 for the last layer.
+          const vector<float> &elast = variance.error.back();
+          double var = 0.0;
+          for (float f : elast) {
+            float d = f - 1.0;
+            var += d * d;
+          }
+          return var / elast.size();
+        }, MAX_PARALLELISM);
+  double total = 0.0;
+  for (double v : vars) total += v;
+  // total penalty across all networks
+  return total;
+}
+
+
+static const char *ChunkTypeNameShort(ChunkType lt) {
+  switch (lt) {
+  case CHUNK_INPUT: return "INPUT";
+  case CHUNK_DENSE: return "DENSE";
+  case CHUNK_SPARSE: return "SPARSE";
+  case CHUNK_CONVOLUTION_ARRAY: return "CONV";
+  default: return "INVALID";
+  }
+}
+
+
+using OutputType = double;
+using InitOptimizer = Optimizer<0, 1, OutputType>;
+
+// returns best scale, best penalty achieved
+static std::pair<double, double>
+Optimize(ArcFour *rc,
+         TransferFunction tf1,
+         TransferFunction tf2,
+         bool gaussian_init1,
+         bool gaussian_init2,
+         int minutes) {
+
+  // uniform weight scale:
+  // Leaky relu dense: 2.94
+  // Leaky relu sparse: 2.96 (same, as expected)
+  // leaky relu conv: 2.955
+  // RELU sparse: 2.99
+  // SIGMOID sparse: 3.999
+  //  (this is the maximum of the range... run again
+  //   with a larger one. surprising this would be
+  //   big though. variance is always very high, 25--30)
+  // IDENTITY sparse: 1.75.
+  //  (here there's definitely a minimum in this region,
+  //   but it's surprising that it's not 1.0?. same result
+  //   with another seed.)
+
+  // OK so I think one issue here is that a uniform distribution
+  // has variance like 1/12 * width^2, so if from [-1,1] then
+  // (2^2)/12 = 1/3.
+
+  Timer init_timer;
+
+  constexpr ChunkType chunk_type = CHUNK_SPARSE;
+
+  constexpr int NUM_NETWORKS = 32;
+  // Generate a variety of networks. Pointers owned.
+  vector<Network *> nets;
+  vector<NetworkGPU *> net_gpus;
+
+  auto R = [rc](int n) -> int {
+      CHECK(n > 0);
+      if (n == 1) return 0;
+      return RandTo(rc, n);
     };
 
-  if (f > 1.0f) {
-    uint32 v = MapV(f - 1.0f);
-    return (v << 16) | 0xFF;
-  } else {
-    uint32 v = MapV(f - 1.0f);
-    return (v << 24) | 0xFF;
-  }
-}
+  for (int i = 0; i < NUM_NETWORKS; i++) {
+    std::vector<Layer> layers;
+    const int INPUT_SIZE = 4 + R(100);
+    Chunk input_chunk;
+    input_chunk.type = CHUNK_INPUT;
+    input_chunk.num_nodes = INPUT_SIZE;
+    input_chunk.width = INPUT_SIZE;
+    input_chunk.height = 1;
+    input_chunk.channels = 1;
+    layers.push_back(Network::LayerFromChunks(input_chunk));
 
+    CHECK(INPUT_SIZE > 2);
 
-static void VarianceImage(Network *net) {
-  auto net_gpu = std::make_unique<NetworkGPU>(cl, net);
-  VarianceExperiment experiment(EXAMPLES_PER_ROUND, net_gpu.get());
+    // optional...
+    const int HIDDEN_SIZE = 4 + R(100);
+    const int HIDDEN_IPN =
+      std::clamp(R(INPUT_SIZE * 0.75), 2, INPUT_SIZE);
+    const Chunk hidden_chunk =
+      Network::MakeRandomSparseChunk(rc, HIDDEN_SIZE,
+                                     {Network::SparseSpan{
+                                         .span_start = 0,
+                                         .span_size = INPUT_SIZE,
+                                         .ipn = HIDDEN_IPN,
+                                       }},
+                                     tf1, SGD);
 
-  // XXX debugging
-  auto Fill = [](Errors *err) {
-      bool bit = false;
-      for (auto &e : err->error) {
-        for (float &f : e) {
-          f = bit ? -27.272727 : 42.424242;
-          bit = !bit;
+    const int prev_size = layers.back().num_nodes;
+
+    [[maybe_unused]]
+    const int OUTPUT_SIZE = 1 + R(24);
+
+    const Chunk output_chunk = [&]() -> Chunk {
+        switch (chunk_type) {
+        case CHUNK_DENSE:
+          return Network::MakeDenseChunk(OUTPUT_SIZE,
+                                         0, prev_size,
+                                         tf2,
+                                         // Not learning, but specify
+                                         // SGD so that we don't need
+                                         // to allocate the _aux
+                                         // arrays.
+                                         SGD);
+        case CHUNK_SPARSE: {
+          const int IPN =
+            std::clamp(R(prev_size * 0.75), 2, prev_size);
+          return
+            Network::MakeRandomSparseChunk(rc,
+                                           OUTPUT_SIZE,
+                                           {Network::SparseSpan{
+                                               .span_start = 0,
+                                               .span_size = prev_size,
+                                               .ipn = IPN,
+                                             }},
+                                           tf2, SGD);
         }
+        case CHUNK_CONVOLUTION_ARRAY: {
+          const int FEATURES = 1 + R(32);
+          const int WIDTH = 1 + R(prev_size - 2);
+          const int STRIDE = 1 + R(WIDTH - 1);
+          return
+            Network::Make1DConvolutionChunk(0, prev_size,
+                                            FEATURES, WIDTH, STRIDE,
+                                            tf2, SGD);
+        }
+        default:
+          CHECK(false) << "unknown chunk type??";
+          Chunk empty;
+          return empty;
+        }
+      }();
+
+    layers.push_back(Network::LayerFromChunks(output_chunk));
+    // printf("With %d,%d\n", INPUT_SIZE, OUTPUT_SIZE);
+    Network *net = new Network(layers);
+    nets.push_back(net);
+
+    // Initial randomization of the whole thing using learned
+    // scales. This accomplishes the initialization of the first
+    // layer using gaussian_init1.
+    // const bool first_gaussian_init = !!(rc->Byte() & 1);
+    HyperRandomizeNetwork(gaussian_init1, rc, net);
+
+    NetworkGPU *net_gpu = new NetworkGPU(cl, net);
+    net_gpu->SetVerbose(false);
+    net_gpus.push_back(net_gpu);
+  }
+
+
+  // Avoid repeatedly constructing this stuff, as they
+  // are expensive (compiling kernels, etc.)
+  VarianceExperiment experiment(rc, net_gpus);
+
+  int64 calls = 0;
+  auto OptimizeMe = [&experiment, &calls, gaussian_init2](
+      const InitOptimizer::arg_type arg) ->
+    InitOptimizer::return_type {
+      const auto [scale] = arg.second;
+
+      calls++;
+      if (calls % 1000 == 0) {
+        printf("%lld calls\n", calls);
+      }
+
+      const double penalty = experiment.ScoreVariance(
+          scale, 0.5, gaussian_init2);
+
+      if (std::isnan(penalty)) {
+        return InitOptimizer::INFEASIBLE;
+      } else {
+        // anything else is feasible; just reuse the penalty as the output
+        return make_pair(penalty, make_optional(penalty));
       }
     };
 
-  Errors mean(*net_gpu->net), variance(*net_gpu->net);
-  Fill(&mean);
-  Fill(&variance);
-
-  experiment.GetStatistics(&mean, &variance);
-
-  auto MakeImages = [net](const string basename, const Errors &errors,
-                          std::function<uint32(float)> MapColor) {
-      for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {
-        printf("%s %d:\n", basename.c_str(), layer_idx);
-        const Layer &layer = net->layers[layer_idx];
-        int num_nodes = layer.num_nodes;
-        int height = std::clamp((int)round(sqrt(layer.num_nodes)),
-                                1, layer.num_nodes);
-        int width = (num_nodes / height) + ((num_nodes % height) ? 1 : 0);
-        ImageRGBA img(width, height);
-        img.Clear32(0x000000FF);
-        for (int i = 0; i < num_nodes; i++) {
-          const int y = i / width;
-          const int x = i % width;
-          const float f = errors.error[layer_idx][i];
-          const uint32 c = MapColor(f);
-          img.SetPixel32(x, y, c);
-          printf("  %.3f", f);
-        }
-        printf("\n");
-
-        int long_edge = std::max(img.Width(), img.Height());
-        int scale = 1;
-        while ((scale + 1) * long_edge <= 512) scale++;
-        if (scale > 1) img = img.ScaleBy(scale);
-        img.Save(StringPrintf("%s.%d.png", basename.c_str(), layer_idx));
-      }
-    };
-
-  MakeImages("mean", mean, GetMeanColor);
-  MakeImages("variance", variance, GetVarianceColor);
-}
-
-
-#if 0
-using OutputType = Result;
-using NetOptimizer = Optimizer<3, 3, OutputType>;
-
-
-static NetOptimizer::return_type
-OptimizeMe(const NetOptimizer::arg_type arg) {
-  const auto &[width, ipn, depth] = arg.first;
-  const auto &[lr, damp, ep] = arg.second;
-  printf("Trying with model %d %d %d\n"
-         "Rates 0.1^%.3f %.6f 0.1^%.3f\n",
-         width, ipn, depth, lr, damp, ep);
-
-  UpdateConfig update_config;
-  update_config.base_learning_rate = pow(0.1, lr);
-  update_config.learning_rate_dampening = damp;
-  update_config.adam_epsilon = pow(0.1, ep);
-
-  std::optional<Result> worst;
-  int sample = 0;
-  int64 num_params = 0;
-  for (; sample < SAMPLES; sample++) {
-    TrainNet tn = NetworkTestUtil::DodgeballAdam(
-        width,
-        ipn,
-        depth);
-    num_params = tn.net.TotalParameters();
-    Result r = Train(tn, sample,
-                     MAX_ITERATIONS,
-                     EXAMPLES_PER_ROUND,
-                     CONVERGED_THRESHOLD,
-                     DIVERGED_THRESHOLD,
-                     update_config);
-
-
-    // TODO: Better if this merged them, so that we had for
-    // example the min/median/max average_loss.
-    if (!worst.has_value() || WorseResult(worst.value(), r)) {
-      worst = make_optional(r);
-    }
-
-    CHECK(worst.has_value());
-    if (worst.value().type == ResultType::DIVERGED) {
-      // If we ever diverge, don't even try again, and don't consider
-      // this a solution.
-      break;
-    }
-
-  }
-
-  CHECK(worst.has_value());
-  switch (worst.value().type) {
-  default:
-  case ResultType::DIVERGED:
-    return make_pair(DIVERGED_PENALTY -
-                     worst.value().iters -
-                     MAX_ITERATIONS * sample +
-                     (num_params / 10.0),
-                     nullopt);
-  case ResultType::CONVERGED:
-    printf("Always converged: %d %d %d, %.6f %.6f %.6f\n",
-           width, ipn, depth,
-           lr, damp, ep);
-    // Always converged! Great!
-    return make_pair(CONVERGED_PENALTY -
-                     worst.value().iters +
-                     (num_params / 10.0),
-                     worst);
-  case ResultType::TIMEOUT:
-    // Prioritize average loss. Assume iters are the same.
-    // How, if at all, to include the training time and
-    // number of parameters?
-    return make_pair(worst.value().average_loss,
-                     worst);
-  }
-}
-
-int main(int argc, char **argv) {
-  cl = new CL;
-
-  NetOptimizer optimizer(OptimizeMe);
+  InitOptimizer optimizer(OptimizeMe);
   optimizer.SetSaveAll(true);
 
-  // TODO: optimizer callback
+  string expt = StringPrintf("%s-%s-%s-%s",
+                             TransferFunctionName(tf1),
+                             gaussian_init1 ? "gauss" : "unif",
+                             TransferFunctionName(tf2),
+                             gaussian_init2 ? "gauss" : "unif");
 
-  // Now searching close to the above with 10x depth
-  // Params are width, ipn, depth
+  const double max_scale = tf2 == SIGMOID ? 32.0 : 4.0;
+
+  const double init_ms = init_timer.MS();
+  printf("[init %.3fs] Run %s...\n",
+         init_ms / 1000.0, expt.c_str());
+
+  Timer optimize_timer;
   optimizer.Run(
-      // int args are width, ipn, depth
-      {make_pair(24, 256), make_pair(4, 64), make_pair(2, 8)},
-      // double args are learning rate exponent, damping, epsilon exponent
-      {make_pair(0.0, 3.0), make_pair(0.1, 10.0), make_pair(0.0, 6.0)},
+      // no int args
+      {},
+      {
+        // scale
+        make_pair(0.01, max_scale),
+      },
       // no max calls
       nullopt,
       // no max feasible calls
       nullopt,
-      // eight hours
-      {3600 * 8},
+      { minutes * 60 },
       // no target score
       nullopt);
 
+  double optimize_ms = optimize_timer.MS();
+  printf("Made %lld calls in %.3fs\n", calls, optimize_ms / 1000.0);
+
   auto bo = optimizer.GetBest();
-  CHECK(bo.has_value()) << "Always diverged?";
+  CHECK(bo.has_value()) << "Always NaN?";
   auto [arg, score, out] = bo.value();
-  auto [width, ipn, depth] = arg.first;
-  auto [lr, damp, ep] = arg.second;
-  printf("Best arg: %d %d %d | %.6f, %.6f, %.6f\n",
-         width, ipn, depth, lr, damp, ep);
+  // auto [width, ipn, depth] = arg.first;
+  auto [scale] = arg.second;
+  printf("Best arg:\n");
+  printf("  %.9f\n", scale);
   printf("Score: %.6f\n", score);
-  printf("Result:\n"
-         "type: %s\n"
-         "iters: %lld\n"
-         "seconds: %.3f\n"
-         "average loss: %.6f\n",
-         ResultTypeString(out.type),
-         out.iters,
-         out.seconds,
-         out.average_loss);
 
-  string all_results;
-  for (const auto &[arg, score, out] : optimizer.GetAll()) {
-    const auto &[lr, damp, ep] = arg.second;
-    StringAppendF(&all_results,
-                  "%d,%d,%d,"
-                  "%.6f,%.6f,%.6f,"
-                  "%.6f,",
-                  width, ipn, depth,
-                  lr, damp, ep,
-                  score);
-    if (out.has_value()) {
-      StringAppendF(&all_results,
-                    "%s,%lld,%.3f,%.6f",
-                    ResultTypeString(out.value().type),
-                    out.value().iters,
-                    out.value().seconds,
-                    out.value().average_loss);
-    } else {
-      StringAppendF(&all_results, "NONE");
+  {
+    string csv = expt + "\n";
+    for (const auto &[arg, score, out_] : optimizer.GetAll()) {
+      auto [scale] = arg.second;
+      StringAppendF(&csv, "%.6f,%.6f\n", scale, score);
     }
-    StringAppendF(&all_results, "\n");
+    string filename = StringPrintf("hyper-%s.csv", expt.c_str());
+    Util::WriteFile(filename, csv);
   }
-  Util::WriteFile("hyper.csv", all_results);
-  printf("Wrote hyper.csv\n");
 
-  delete cl;
-  return 0;
+  constexpr int WIDTH = 1024, HEIGHT = 1024;
+  Bounds bounds;
+  // make sure x-axis is visible
+  bounds.Bound(0.0, 0.0);
+  bounds.Bound(max_scale, 0.0);
+  for (const auto &[arg, score, out_] : optimizer.GetAll()) {
+    auto [scale] = arg.second;
+    bounds.Bound(scale, score);
+  }
+  // bounds.AddMarginFrac(0.10);
+  printf("Bounds %.3f %.3f to %.3f %.3f\n",
+         bounds.MinX(), bounds.MinY(),
+         bounds.MaxX(), bounds.MaxY());
+  Bounds::Scaler scaler = bounds.Stretch(WIDTH, HEIGHT).FlipY();
+
+  {
+    ImageRGBA img(WIDTH, HEIGHT);
+    img.Clear32(0x000000FF);
+
+    const int yaxis = scaler.ScaleY(0);
+    img.BlendLine32(0, yaxis, WIDTH - 1, yaxis, 0xFFFFFF3F);
+
+    for (int x = 0; x <= max_scale; x++) {
+      int xx = scaler.ScaleX(x);
+      img.BlendLine32(xx, 0, xx, HEIGHT - 1, 0xFFFFFF3F);
+      img.BlendText32(xx + 3, yaxis - 12, 0xFFFFFF7F,
+                      StringPrintf("%d", x));
+    }
+
+    for (const auto &[arg, score, out_] : optimizer.GetAll()) {
+      auto [scale] = arg.second;
+      int x = round(scaler.ScaleX(scale));
+      int y = round(scaler.ScaleY(score));
+
+      img.BlendBox32(x - 1, y - 1, 3, 3, 0x7FFF7F7F, {0x7FFF7F3F});
+      img.BlendPixel32(x, y, 0x7FFF7F9F);
+    }
+    string filename = StringPrintf("hyper-%s.png", expt.c_str());
+    img.Save(filename);
+  }
+
+  // Clean up
+  for (NetworkGPU *n : net_gpus) delete n;
+  net_gpus.clear();
+  for (Network *n : nets) delete n;
+  nets.clear();
+
+  return make_pair(scale, score);
 }
-#endif
 
 int main(int argc, char **argv) {
-  CHECK(argc == 2) << "./hyper-init.exe model.val";
-  const string modelfile = argv[1];
   cl = new CL;
 
-  std::unique_ptr<Network> net(
-      Network::ReadFromFile(modelfile));
-  CHECK(net.get() != nullptr);
+  ArcFour rc(StringPrintf("XXXhyper-init.%lld", time(nullptr)));
 
-  ArcFour rc(StringPrintf("variance-image.%lld", time(nullptr)));
-  // Initialize with random weights.
-  RandomizeNetwork(&rc, net.get(), 2);
+  auto RunAndLog = [&](TransferFunction tf1,
+                       TransferFunction tf2,
+                       bool gaussian_init1,
+                       bool gaussian_init2,
+                       int minutes) {
+      printf("Start %s-%s-%s-%s:\n",
+             TransferFunctionName(tf1),
+             gaussian_init1 ? "gauss" : "unif",
+             TransferFunctionName(tf2),
+             gaussian_init2 ? "gauss" : "unif");
+      const auto [best_scale, best_score] =
+        Optimize(&rc, tf1, tf2, gaussian_init1, gaussian_init2, 15);
+      FILE *log = fopen("hyper-init-all.csv", "ab");
+      CHECK(log) << best_scale;
+      fprintf(log, "%s,%s,%s,%s,%.8f,%.8f\n",
+              TransferFunctionName(tf1),
+              gaussian_init1 ? "gauss" : "unif",
+              TransferFunctionName(tf2),
+              gaussian_init2 ? "gauss" : "unif",
+              best_scale, best_score);
+      fclose(log);
+    };
 
-  VarianceImage(net.get());
+  #if 1
+
+  // tf1 = LEAKY_RELU done
+
+  for (TransferFunction tf1 : {IDENTITY}) {
+    for (TransferFunction tf2 : {IDENTITY}) {
+      for (bool g1 : {false, true}) {
+        for (bool g2 : {false, true}) {
+          RunAndLog(tf1, tf2, g1, g2, 2);
+        }
+      }
+    }
+  }
+
+  #else
+  string all;
+  // run 'em all
+  for (TransferFunction tf : {LEAKY_RELU, RELU, SIGMOID, IDENTITY}) {
+    for (ChunkType ct : {CHUNK_SPARSE, CHUNK_DENSE, CHUNK_CONVOLUTION_ARRAY}) {
+      for (bool gaussian_init : {false, true}) {
+        RunAndLog(tf, ct, gaussian_init, 15);
+      }
+    }
+  }
+  #endif
+
 
   delete cl;
-  printf("OK\n");
   return 0;
 }
+

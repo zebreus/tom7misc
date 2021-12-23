@@ -147,8 +147,8 @@ struct AutoParallelComp {
         return true;
       };
 
-    // consider some jitter to nearby buckets if this one has a lot more samples.
-    // (could even loop this?)
+    // consider some jitter to nearby buckets if this one has a lot
+    // more samples. (could even loop this?)
     if (!Consider(-1)) Consider(+1);
 
     const int threads = best_i + 1;

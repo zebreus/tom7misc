@@ -13,7 +13,7 @@
 struct SHA256 {
   // Size of output digest in bytes.
   static constexpr int DIGEST_LENGTH = 32;
-  
+
   // SHA-256 treats input data as a contiguous array of 32 bit wide
   // big-endian values.
   static constexpr int SHA_LBLOCK = 16;
@@ -33,7 +33,7 @@ struct SHA256 {
   static void Finalize(Ctx *c, unsigned char *out);
   // Finalize but return a new vector of 32 bytes.
   static std::vector<uint8_t> FinalVector(Ctx *c);
-  
+
   // Convert from 32-byte digest to lowercase hex string.
   static std::string Ascii(const std::vector<uint8_t> &v);
   // Convert from mixed-case ascii to SHA256 digest. true on success.
@@ -42,6 +42,7 @@ struct SHA256 {
   // Convenience methods.
   static std::vector<uint8_t> HashString(const std::string &s);
   static std::vector<uint8_t> HashVector(const std::vector<uint8_t> &v);
+  static std::vector<uint8_t> HashPtr(const void *ptr, size_t len);
 };
-  
+
 #endif
