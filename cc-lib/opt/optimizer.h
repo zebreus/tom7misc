@@ -322,14 +322,16 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
 
   // Run double-based optimizer on above.
 
-
+  // PERF: Better set biteopt parameters based on termination conditions.
+  // Linear scaling is probably not right.
+  // Perhaps this could itself be optimized? 
+  const int ITERS = 1000 * powf(N, 1.5f);
+  
   for (int seed = 1; !stop; seed++) {
-    // PERF: Set biteopt parameters based on termination conditions,
-    // or at least scale with number of parameters? Probably the
-    // 'attempts' should actually be 1 here, since we have our own
-    // attempts loop?
+	// stop is set by the callback below, but g++ sometimes gets mad
+	(void)(stop = !!stop);
     // PERF: Biteopt now has stopping conditions, so we should be able
-    // of calls to the optimizer. We should pass that, at least!
-    Opt::Minimize<N>(df, lbs, ubs, 1000, 1, 10, seed);
+	// to be more accurate here.
+    Opt::Minimize<N>(df, lbs, ubs, ITERS, 1, 1, seed);
   }
 }
