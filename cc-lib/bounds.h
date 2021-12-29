@@ -38,10 +38,10 @@ struct Bounds {
   // Must be non-empty. d must be non-negative.
   void AddMargin(double d);
 
-  // Add a margin that's a fraction of the longest dimension. If
-  // empty, does nothing. f must be non-negative.
-  // TODO: This should probably pad each dimension independently.
-  void AddMarginFrac(double f);
+  // Add a margin on both sides of each dimension that's a fraction
+  // (e.g. 0.01 for 1% on each side) of its current width. If empty,
+  // does nothing. f must be non-negative.
+  void AddMarginsFrac(double f);
 
   // A common thing to do is collect some points into a bounding box,
   // which we then want to represent as a graphic of a different

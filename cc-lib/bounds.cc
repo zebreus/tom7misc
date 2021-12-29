@@ -49,9 +49,14 @@ void Bounds::AddMargin(double d) {
   miny -= d;
 }
 
-void Bounds::AddMarginFrac(double f) {
-  const double r = f * std::max(Width(), Height());
-  AddMargin(r);
+void Bounds::AddMarginsFrac(double f) {
+  if (Empty()) return;
+  const double wr = f * Width();
+  const double hr = f * Height();
+  minx -= wr;
+  maxx += wr;
+  miny -= hr;
+  maxy += hr;
 }
 
 double Bounds::Scaler::ScaleX(double x) const {
