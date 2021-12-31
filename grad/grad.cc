@@ -12,6 +12,8 @@
 
 using namespace std;
 
+using half = _Float16;
+
 static constexpr int SAMPLES = 1000;
 
 static float Function(float scale, float f) {
@@ -32,16 +34,30 @@ static float Function3(float off, float scale, float f) {
   return h;
 }
 
+static half Function4(half off, half scale, half f) {
+  half g = (f * off) * scale;
+  half h = (g / scale) / off;
+  return h;
+}
+
+static half Function5(half off, half scale, half f) {
+  half g = (f + off) * scale;
+  half h = (g / scale) - off;
+  return h;
+}
+
+
 using GradOptimizer = Optimizer<0, 2, double>;
 
+template<class fptype>
 static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   auto [scale, off] = arg.second;
-  vector<double> samples;
+  vector<fptype> samples;
   for (int i = 0; i < SAMPLES; i++) {
 	// in [-1, 1]
-	float in = (i / (float)(SAMPLES - 1)) * 2.0f - 1.0f;
-	float out = Function3(off, scale, in);
-	if (!std::isfinite(out)) return GradOptimizer::INFEASIBLE;
+	fptype in = (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
+	fptype out = Function5((fptype)off, (fptype)scale, in);
+	if (!std::isfinite((float)out)) return GradOptimizer::INFEASIBLE;
 	samples.push_back(out);
   }
 
@@ -53,7 +69,7 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   for (int i = 0; i < SAMPLES; i++) {
 	double frac = i / (double)(SAMPLES - 1);
 	double linear = frac * rise;
-	double diff = samples[i] - linear;
+	double diff = (double)samples[i] - linear;
 	error += diff * diff;
   }
 
@@ -66,12 +82,14 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
 
 [[maybe_unused]]
 static void Optimize() {
-  constexpr float LOW = 9.90e37;
-  constexpr float HIGH = 1e38;
-
+  // constexpr float LOW = 9.90e37;
+  // constexpr float HIGH = 1e38;
+  constexpr float LOW = 0;
+  constexpr float HIGH = 65504;
+  
   printf("Search %.11g to %.11g\n", LOW, HIGH);
   
-  GradOptimizer optimizer(OptimizeMe);
+  GradOptimizer optimizer(OptimizeMe<half>);
   optimizer.Run(
 	  // int bounds
 	  {},
@@ -95,13 +113,14 @@ static void Optimize() {
 template<class F>
 [[maybe_unused]]
 static void Graph(F fn, float scale, float off) {
+  using fptype = decltype(fn(0.0, 0.0, 0.0));
   Bounds bounds, error_bounds, nonlinear_bounds;
   double total_diff = 0.0;
   vector<double> samples, error_samples, nonlinear_samples;
   for (int i = 0; i < SAMPLES; i++) {
 	// in [-1, 1]
-	float in = (i / (float)(SAMPLES - 1)) * 2.0f - 1.0f;
-	float out = fn(off, scale, in);
+	fptype in = (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
+	fptype out = fn(off, scale, in);
 	double diff = (out - in);
 	samples.push_back(out);
 	bounds.Bound(i, out);
@@ -115,12 +134,15 @@ static void Graph(F fn, float scale, float off) {
   // endpoints.
   {
 	double f0 = samples[0];
+	printf("Linear: %.9g to %.9g\n",
+		   (double)f0, (double)samples[SAMPLES - 1]);
 	double rise = (double)samples[SAMPLES - 1] - f0;
 	double error = 0.0;
 	for (int i = 0; i < SAMPLES; i++) {
 	  double frac = i / (double)(SAMPLES - 1);
 	  double linear = frac * rise;
 	  double diff = samples[i] - linear;
+	  // printf("%.9g want %.9g\n", samples[i], linear);
 	  error += diff * diff;
 	  nonlinear_samples.push_back(diff);
 	  nonlinear_bounds.Bound(i, diff);
@@ -212,7 +234,7 @@ int main(int argc, char **argv) {
 	Graph(Function3, SCALE, OFF);
   }
 
-  if (true) {
+  if (false) {
 	// static constexpr float SCALE = 9.9260844311214201e+37;
 	// static constexpr float OFF = 9.9630854128974192e+37;
 	static constexpr float SCALE = 9.9684294429838515e+37;
@@ -220,5 +242,17 @@ int main(int argc, char **argv) {
 	Graph(Function3, SCALE, OFF);
   }
 
+  if (true) {
+	// static constexpr float SCALE = 7.5600048108248608e-05f;
+	// static constexpr float OFF = 0.00039428695153609361f;
+
+	static constexpr float SCALE = 0.4388188340760063f;
+	static constexpr float OFF = 38235.825656460482f;
+	
+	// static constexpr half SCALE = 20765.713900227656f;
+	// static constexpr half OFF = 30555.616399484014f;
+	Graph(Function4, SCALE, OFF);
+  }
+  
   return 0;
 }
