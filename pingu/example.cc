@@ -103,6 +103,7 @@ static int example_pread(void *handle, void *buf,
                          uint32_t flags) {
   assert(!flags);
   memcpy(buf, a + offset, count);
+  return 0;
 }
 
 /* Write data. */
@@ -112,6 +113,7 @@ static int example_pwrite(void *handle, const void *buf,
   /* Flushing, and thus FUA flag, is a no-op */
   assert((flags & ~NBDKIT_FLAG_FUA) == 0);
   memcpy(a + offset, buf, count);
+  return 0;
 }
 
 /* Zero. */
@@ -123,6 +125,7 @@ static int example_zero(void *handle,
   assert((flags & ~(NBDKIT_FLAG_FUA | NBDKIT_FLAG_MAY_TRIM |
                     NBDKIT_FLAG_FAST_ZERO)) == 0);
   bzero(a + offset, count);
+  return 0;
 }
 
 /* Trim (same as zero). */
@@ -153,6 +156,8 @@ static int example_extents(void *handle, uint32_t count, uint64_t offset,
   */
 }
 
+// Note: In C++, these fields have to be in the same order in which
+// they are declared in nbdkit-plugin.h.
 static struct nbdkit_plugin plugin = {
   .name              = "example",
   .version           = PACKAGE_VERSION,
@@ -160,25 +165,48 @@ static struct nbdkit_plugin plugin = {
   .config            = example_config,
   .config_complete   = example_config_complete,
   .config_help       = example_config_help,
-  .magic_config_key  = "size",
-  .dump_plugin       = example_dump_plugin,
-  .get_ready         = example_get_ready,
+
   .open              = example_open,
   .get_size          = example_get_size,
-  .can_fua           = example_can_fua,
-  .can_multi_conn    = example_can_multi_conn,
-  .can_cache         = example_can_cache,
-  .can_fast_zero     = example_can_fast_zero,
-  .pread             = example_pread,
-  .pwrite            = example_pwrite,
-  .zero              = example_zero,
-  .trim              = example_trim,
-  .flush             = example_flush,
-  .extents           = example_extents,
+
+  .can_write = nullptr,
+  .can_flush = nullptr,
+  .is_rotational = nullptr,
+  .can_trim = nullptr,
+
   /* In this plugin, errno is preserved properly along error return
    * paths from failed system calls.
    */
   .errno_is_preserved = 1,
+  .dump_plugin       = example_dump_plugin,
+
+  .can_zero = nullptr,
+  .can_fua           = example_can_fua,
+
+  .pread             = example_pread,
+  .pwrite            = example_pwrite,
+  .flush             = example_flush,
+  .trim              = example_trim,
+  .zero              = example_zero,
+
+  .magic_config_key  = "size",
+  .can_multi_conn    = example_can_multi_conn,
+
+  .can_extents       = nullptr,
+  .extents           = example_extents,
+
+  .can_cache         = example_can_cache,
+  .cache             = nullptr,
+
+  .thread_model      = nullptr,
+
+  .can_fast_zero     = example_can_fast_zero,
+
+  .preconnect        = nullptr,
+
+  .get_ready         = example_get_ready,
+  .after_fork = nullptr,
+
 };
 
 NBDKIT_REGISTER_PLUGIN(plugin)
