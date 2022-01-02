@@ -6,3 +6,6 @@ Don't run it on a system you care about!
 
  - unix domain socket has the wrong permissions
 
+
+# drop disk caches
+sync && echo 3 | sudo tee /proc/sys/vm/drop_caches

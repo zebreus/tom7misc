@@ -24,12 +24,9 @@ if [ "$1" = "stop" ]; then
 	exit 0
 fi
 
-# TODO: We should probably use a unix domain socket
-# instead of public TCP! -U /tmp/socket
-# 65536 is too small for FAT
+# Note: 65536 bytes (128 blocks) is too small for FAT
 
-# Can also use --no-fork
-../../nbdkit/server/nbdkit --verbose -U "$SOCKET" ./example.so 131072 || exit -1
+../../nbdkit/server/nbdkit --verbose -U "$SOCKET" ./example.so 256 || exit -1
 
 # nbd-client localhost for TCP
 nbd-client -unix "$SOCKET" /dev/nbd0 || exit -1

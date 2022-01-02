@@ -7,6 +7,10 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
+#include <unistd.h>
+
+#include <mutex>
+#include <vector>
 
 #define NBDKIT_API_VERSION 2
 #include <nbdkit-plugin.h>
@@ -14,23 +18,79 @@
 #include "cleanup.h"
 #include "allocator.h"
 
+#include "threadutil.h"
+
 // This is from config.h but I want to avoid autoconf.
 #define PACKAGE_VERSION "1.29.11"
 
-// Size of disk.
-static int64_t size = -1;
+static constexpr int BLOCK_SIZE = 512;
+struct Block {
+  Block() {
+	bzero(contents.data(), BLOCK_SIZE);
+  }
 
+  // Read the indicated portion of the block into the buffer.
+  void Read(uint8_t *buf, int start, int count) {
+	MutexLock ml(&mutex);
+	for (int i = 0; i < count; i++) {
+	  *buf = contents[start + i];
+	  buf++;
+	}
+  }
+
+  // Write the buffer to the indicated portion of the block.
+  void Write(const uint8_t *buf, int start, int count) {
+	MutexLock ml(&mutex);
+	for (int i = 0; i < count; i++) {
+	  contents[start + i] = *buf;
+	  buf++;
+	}
+  }
+
+  std::mutex mutex;
+  std::array<uint8_t, BLOCK_SIZE> contents;
+};
+
+// Test version of buffer where we actually keep the backing
+// store, but only provide access to it slowly.
+struct Blocks {
+  explicit Blocks(int64_t num_blocks) : num_blocks(num_blocks) {
+	for (int i = 0; i < num_blocks; i++)
+	  mem.push_back(new Block);
+  }
+
+  inline void Read(int block_idx, uint8_t *buf, int start, int count) {
+	nbdkit_debug("Read %d[%d,%d] -> %p\n", block_idx, start, count, buf);
+	mem[block_idx]->Read(buf, start, count);
+  }
+
+  inline void Write(int block_idx, const uint8_t *buf, int start, int count) {
+	nbdkit_debug("Write %d[%d,%d] <- %p\n", block_idx, start, count, buf);
+	mem[block_idx]->Write(buf, start, count);
+  }
+
+  ~Blocks() {
+	for (Block *b : mem) delete b;
+	mem.clear();
+  }
+
+  const int64_t num_blocks = 0;
+  std::vector<Block *> mem;
+};
+
+static int64_t num_blocks = -1;
 // Allocated buffer.
-static uint8_t *a;
+static Blocks *blocks = nullptr;
 
 static void example_unload(void) {
-  free(a);
+  delete blocks;
+  blocks = nullptr;
 }
 
 static int example_config(const char *key, const char *value) {
-  if (strcmp(key, "size") == 0) {
-    size = nbdkit_parse_size(value);
-    if (size == -1)
+  if (strcmp(key, "num_blocks") == 0) {
+    num_blocks = nbdkit_parse_size(value);
+    if (num_blocks == -1)
       return -1;
   } else {
     nbdkit_error("unknown parameter '%s'", key);
@@ -41,24 +101,22 @@ static int example_config(const char *key, const char *value) {
 }
 
 static int example_config_complete(void) {
-  if (size == -1) {
-    nbdkit_error("you must specify size=<SIZE> on the command line");
+  if (num_blocks == -1) {
+    nbdkit_error("you must specify num_blocks=<NUM> on the command line");
     return -1;
   }
   return 0;
 }
 
 #define example_config_help \
-  "size=<SIZE>  (required) Size of the backing buffer"
+  "num_blocks=<NUM>  (required) Number of blocks in the backing buffer"
 
 static void example_dump_plugin(void) {
 }
 
 static int example_get_ready(void) {
-  nbdkit_debug("Get Ready! Size %lu\n", size);
-  a = (uint8_t*) malloc(size);
-  if (a == NULL)
-    return -1;
+  nbdkit_debug("Get Ready! Num_Blocks %lu\n", num_blocks);
+  blocks = new Blocks(num_blocks);
   return 0;
 }
 
@@ -71,7 +129,7 @@ static void *example_open(int readonly) {
 
 /* Get the disk size. */
 static int64_t example_get_size(void *handle) {
-  return size;
+  return num_blocks * BLOCK_SIZE;
 }
 
 /* Flush is a no-op, so advertise native FUA support */
@@ -92,33 +150,75 @@ static int example_can_cache(void *handle) {
   return NBDKIT_CACHE_NATIVE;
 }
 
+#if 0
 /* Fast zero. */
 static int example_can_fast_zero(void *handle) {
   return 1;
 }
+#endif
 
 /* Read data. */
 // read count bytes starting at offset into buf
-static int example_pread(void *handle, void *buf,
+static int example_pread(void *handle, void *buf_void,
                          uint32_t count, uint64_t offset,
                          uint32_t flags) {
+  uint8_t *buf = (uint8_t*)buf_void;
   nbdkit_debug("pread(%u, %lu)\n", count, offset);
   assert(!flags);
-  memcpy(buf, a + offset, count);
-  return 0;
+
+  // one block at a time
+  for (;;) {
+	if (count == 0)
+	  return 0;
+
+	// Read from the first block in the range
+	//
+	// [---------------][--------------...
+	//         ^
+	// [-skip--|-rest--]
+	int block_idx = offset / BLOCK_SIZE;
+	int skip = offset % BLOCK_SIZE;
+	int rest = BLOCK_SIZE - skip;
+	// But don't read beyond requested count
+	int bytes_to_read = std::min(rest, (int)count);
+
+	blocks->Read(block_idx, buf, skip, bytes_to_read);
+	// Prepare for next iteration
+	count -= bytes_to_read;
+	buf += bytes_to_read;
+	offset += bytes_to_read;
+  }
+
 }
 
 /* Write data. */
-static int example_pwrite(void *handle, const void *buf,
+static int example_pwrite(void *handle, const void *buf_void,
                           uint32_t count, uint64_t offset,
                           uint32_t flags) {
+  const uint8_t *buf = (const uint8_t*)buf_void;
   nbdkit_debug("pwrite(%u, %lu)\n", count, offset);
   /* Flushing, and thus FUA flag, is a no-op */
   assert((flags & ~NBDKIT_FLAG_FUA) == 0);
-  memcpy(a + offset, buf, count);
-  return 0;
+
+  // Just as in the read case.
+  for (;;) {
+	if (count == 0)
+	  return 0;
+
+	int block_idx = offset / BLOCK_SIZE;
+	int skip = offset % BLOCK_SIZE;
+	int rest = BLOCK_SIZE - skip;
+	int bytes_to_read = std::min(rest, (int)count);
+
+	blocks->Write(block_idx, buf, skip, bytes_to_read);
+	// Prepare for next iteration
+	count -= bytes_to_read;
+	buf += bytes_to_read;
+	offset += bytes_to_read;
+  }
 }
 
+#if 0
 /* Zero. */
 static int example_zero(void *handle,
                         uint32_t count, uint64_t offset,
@@ -140,12 +240,14 @@ static int example_trim(void *handle,
   bzero(a + offset, count);
   return 0;
 }
+#endif
 
 /* Nothing is persistent, so flush is trivially supported */
 static int example_flush(void *handle, uint32_t flags) {
   return 0;
 }
 
+#if 0
 /* Extents. */
 static int example_extents(void *handle, uint32_t count, uint64_t offset,
                            uint32_t flags, struct nbdkit_extents *extents) {
@@ -158,6 +260,7 @@ static int example_extents(void *handle, uint32_t count, uint64_t offset,
     return -1;
   */
 }
+#endif
 
 // Note: In C++, these fields have to be in the same order in which
 // they are declared in nbdkit-plugin.h.
@@ -189,21 +292,21 @@ static struct nbdkit_plugin plugin = {
   .pread             = example_pread,
   .pwrite            = example_pwrite,
   .flush             = example_flush,
-  .trim              = example_trim,
-  .zero              = example_zero,
+  .trim              = nullptr,
+  .zero              = nullptr,
 
-  .magic_config_key  = "size",
+  .magic_config_key  = "num_blocks",
   .can_multi_conn    = example_can_multi_conn,
 
   .can_extents       = nullptr,
-  .extents           = example_extents,
+  .extents           = nullptr,
 
   .can_cache         = example_can_cache,
   .cache             = nullptr,
 
   .thread_model      = nullptr,
 
-  .can_fast_zero     = example_can_fast_zero,
+  .can_fast_zero     = nullptr, // example_can_fast_zero,
 
   .preconnect        = nullptr,
 
