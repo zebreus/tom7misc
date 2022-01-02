@@ -1,0 +1,8 @@
+TODO: describe this
+
+
+Note this whole thing is super insecure, for many reasons!
+Don't run it on a system you care about!
+
+ - unix domain socket has the wrong permissions
+

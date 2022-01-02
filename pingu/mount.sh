@@ -7,17 +7,32 @@ fi
 
 set +x
 
+SOCKET=/tmp/nbdsocket.example
+
+# make sure this is loaded (e.g. after reboot)
+modprobe nbd
+
 # clean up any existing
 umount /mnt/example
 nbd-client -d /dev/nbd0
 killall -9 nbdkit
+rm -f "$SOCKET"
+
+if [ "$1" = "stop" ]; then
+	echo "Stopped."
+	df -k /mnt/example
+	exit 0
+fi
 
 # TODO: We should probably use a unix domain socket
 # instead of public TCP! -U /tmp/socket
 # 65536 is too small for FAT
-../../nbdkit/server/nbdkit ./example.so 131072 || exit -1
 
-nbd-client localhost /dev/nbd0 || exit -1
+# Can also use --no-fork
+../../nbdkit/server/nbdkit --verbose -U "$SOCKET" ./example.so 131072 || exit -1
+
+# nbd-client localhost for TCP
+nbd-client -unix "$SOCKET" /dev/nbd0 || exit -1
 
 gdisk /dev/nbd0 <<EOF
 n
@@ -34,4 +49,6 @@ EOF
 
 mkfs.fat -v -a -n "EXAMPLE" /dev/nbd0p1 || exit -1
 mount /dev/nbd0p1 /mnt/example || exit -1
+
+df -k /mnt/example
 echo "OK"

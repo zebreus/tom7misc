@@ -55,6 +55,7 @@ static void example_dump_plugin(void) {
 }
 
 static int example_get_ready(void) {
+  nbdkit_debug("Get Ready! Size %lu\n", size);
   a = (uint8_t*) malloc(size);
   if (a == NULL)
     return -1;
@@ -101,6 +102,7 @@ static int example_can_fast_zero(void *handle) {
 static int example_pread(void *handle, void *buf,
                          uint32_t count, uint64_t offset,
                          uint32_t flags) {
+  nbdkit_debug("pread(%u, %lu)\n", count, offset);
   assert(!flags);
   memcpy(buf, a + offset, count);
   return 0;
@@ -110,6 +112,7 @@ static int example_pread(void *handle, void *buf,
 static int example_pwrite(void *handle, const void *buf,
                           uint32_t count, uint64_t offset,
                           uint32_t flags) {
+  nbdkit_debug("pwrite(%u, %lu)\n", count, offset);
   /* Flushing, and thus FUA flag, is a no-op */
   assert((flags & ~NBDKIT_FLAG_FUA) == 0);
   memcpy(a + offset, buf, count);
