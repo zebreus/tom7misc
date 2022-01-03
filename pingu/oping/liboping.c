@@ -94,7 +94,7 @@ struct pingobj
 	struct sockaddr         *srcaddr;
 	socklen_t                srcaddrlen;
 
-	char                    *device;
+	char                   *device;
 
 	char                    set_mark;
 	int                     mark;
@@ -1124,7 +1124,7 @@ void ping_destroy (pingobj_t *obj)
 	return;
 }
 
-int ping_setopt (pingobj_t *obj, int option, void *value)
+int ping_setopt (pingobj_t *obj, int option, const void *value)
 {
 	int ret = 0;
 
@@ -1135,13 +1135,13 @@ int ping_setopt (pingobj_t *obj, int option, void *value)
 	{
 		case PING_OPT_QOS:
 		{
-			obj->qos = *((uint8_t *) value);
+			obj->qos = *((const uint8_t *) value);
 			ret = ping_set_qos (obj, obj->qos);
 			break;
 		}
 
 		case PING_OPT_TIMEOUT:
-			obj->timeout = *((double *) value);
+			obj->timeout = *((const double *) value);
 			if (obj->timeout < 0.0)
 			{
 				obj->timeout = PING_DEF_TIMEOUT;
@@ -1150,7 +1150,7 @@ int ping_setopt (pingobj_t *obj, int option, void *value)
 			break;
 
 		case PING_OPT_TTL:
-			ret = *((int *) value);
+			ret = *((const int *) value);
 			if ((ret < 1) || (ret > 255))
 			{
 				obj->ttl = PING_DEF_TTL;
@@ -1164,7 +1164,7 @@ int ping_setopt (pingobj_t *obj, int option, void *value)
 			break;
 
 		case PING_OPT_AF:
-			obj->addrfamily = *((int *) value);
+			obj->addrfamily = *((const int *) value);
 			if ((obj->addrfamily != AF_UNSPEC)
 					&& (obj->addrfamily != AF_INET)
 					&& (obj->addrfamily != AF_INET6))
@@ -1190,7 +1190,7 @@ int ping_setopt (pingobj_t *obj, int option, void *value)
 
 		case PING_OPT_SOURCE:
 		{
-			char            *hostname = (char *) value;
+			const char      *hostname = (const char *) value;
 			struct addrinfo  ai_hints;
 			struct addrinfo *ai_list;
 			int              status;
@@ -1252,7 +1252,7 @@ int ping_setopt (pingobj_t *obj, int option, void *value)
 		case PING_OPT_DEVICE:
 		{
 #ifdef SO_BINDTODEVICE
-			char *device = strdup ((char *) value);
+			char *device = strdup ((const char *) value);
 
 			if (device == NULL)
 			{
@@ -1274,7 +1274,7 @@ int ping_setopt (pingobj_t *obj, int option, void *value)
 		case PING_OPT_MARK:
 		{
 #ifdef SO_MARK
-			obj->mark     = *(int*)(value);
+			obj->mark     = *(const int*)(value);
 			obj->set_mark = 1;
 #else /* SO_MARK */
 			ping_set_errno (obj, ENOTSUP);

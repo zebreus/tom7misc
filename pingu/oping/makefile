@@ -1,13 +1,14 @@
 
 all : oping.exe
 
-CPPFLAGS=-Wall -Werror -O2
+CC_LIB=../../cc-lib
+CCLIB_OBJECTS=$(CC_LIB)/base/logging.o
+
+CPPFLAGS=-Wall -Werror -O2 -I $(CC_LIB)
 CXXFLAGS=--std=c++17
 LFLAGS=
 
-CC_LIB=../cc-lib
-
-oping.exe : oping.o liboping.o
+oping.exe : oping.o liboping.o $(CCLIB_OBJECTS)
 	g++ $(CXXFLAGS) $(LFLAGS) $^ -o $@
 
 clean:

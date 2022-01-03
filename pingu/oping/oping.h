@@ -6,12 +6,12 @@
  * under the terms of the GNU Lesser General Public License as published by the
  * Free Software Foundation; either version 2.1 of the License, or (at your
  * option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful, but WITHOUT
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
  * for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public License
  * along with this library; if not, write to the Free Software Foundation,
  * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
@@ -66,7 +66,7 @@ typedef struct pingobj pingobj_t;
 pingobj_t *ping_construct (void);
 void ping_destroy (pingobj_t *obj);
 
-int ping_setopt (pingobj_t *obj, int option, void *value);
+int ping_setopt (pingobj_t *obj, int option, const void *value);
 
 int ping_send (pingobj_t *obj);
 
@@ -89,7 +89,7 @@ int ping_iterator_count (pingobj_t *obj);
 #define PING_INFO_RECV_TTL 10
 #define PING_INFO_RECV_QOS 11
 int ping_iterator_get_info (pingobj_iter_t *iter, int info,
-		void *buffer, size_t *buffer_len);
+							void *buffer, size_t *buffer_len);
 
 const char *ping_get_error (pingobj_t *obj);
 
