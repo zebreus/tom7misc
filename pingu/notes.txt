@@ -1,0 +1,12 @@
+
+ - TIL that fork() and threads interact badly: Threads are not
+   copied to the child process! Because nbdkit forks, this causes
+   us beaucoup trouble. The after_fork callback is a good place
+   to launch threads, then.
+ - nbd-client can time out
+
+Shutdown problems:
+ - With --run it seems like the server never actually exits. Not sure
+   what the deal is. (Because the client is backgrounded?)
+
+
