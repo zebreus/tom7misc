@@ -29,10 +29,6 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define OPING_VERSION 1009000
 
 /*
@@ -95,9 +91,5 @@ const char *ping_get_error (pingobj_t *obj);
 
 void *ping_iterator_get_context (pingobj_iter_t *iter);
 void  ping_iterator_set_context (pingobj_iter_t *iter, void *context);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* OCTO_PING_H */

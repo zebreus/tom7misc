@@ -259,7 +259,7 @@ static pinghost_t *ping_receive_ipv4 (pingobj_t *obj, char *buffer,
 	icmp_hdr = (struct icmp *) buffer;
 	if (icmp_hdr->icmp_type != ICMP_ECHOREPLY)
 	{
-		dprintf ("Unexpected ICMP type: %"PRIu8"\n", icmp_hdr->icmp_type);
+		dprintf ("Unexpected ICMP type: %" PRIu8 "\n", icmp_hdr->icmp_type);
 		return (NULL);
 	}
 
@@ -270,8 +270,8 @@ static pinghost_t *ping_receive_ipv4 (pingobj_t *obj, char *buffer,
 
 	if (recv_checksum != calc_checksum)
 	{
-		dprintf ("Checksum missmatch: Got 0x%04"PRIx16", "
-				"calculated 0x%04"PRIx16"\n",
+		dprintf ("Checksum missmatch: Got 0x%04" PRIx16 ", "
+				"calculated 0x%04" PRIx16 "\n",
 				recv_checksum, calc_checksum);
 		return (NULL);
 	}
@@ -297,8 +297,8 @@ static pinghost_t *ping_receive_ipv4 (pingobj_t *obj, char *buffer,
 		if (((ptr->sequence - 1) & 0xFFFF) != seq)
 			continue;
 
-		dprintf ("Match found: hostname = %s, ident = 0x%04"PRIx16", "
-				"seq = %"PRIu16"\n",
+		dprintf ("Match found: hostname = %s, ident = 0x%04" PRIx16 ", "
+				"seq = %" PRIu16 "\n",
 				ptr->hostname, ident, seq);
 
 		break;
@@ -306,7 +306,8 @@ static pinghost_t *ping_receive_ipv4 (pingobj_t *obj, char *buffer,
 
 	if (ptr == NULL)
 	{
-		dprintf ("No match found for ident = 0x%04"PRIx16", seq = %"PRIu16"\n",
+		dprintf ("No match found for ident = 0x%04" PRIx16
+				 ", seq = %" PRIu16 "\n",
 				ident, seq);
 	}
 
@@ -384,8 +385,8 @@ static pinghost_t *ping_receive_ipv6 (pingobj_t *obj, char *buffer,
 		if (((ptr->sequence - 1) & 0xFFFF) != seq)
 			continue;
 
-		dprintf ("Match found: hostname = %s, ident = 0x%04"PRIx16", "
-				"seq = %"PRIu16"\n",
+		dprintf ("Match found: hostname = %s, ident = 0x%04" PRIx16 ", "
+				"seq = %" PRIu16 "\n",
 				ptr->hostname, ident, seq);
 
 		break;
@@ -393,8 +394,8 @@ static pinghost_t *ping_receive_ipv6 (pingobj_t *obj, char *buffer,
 
 	if (ptr == NULL)
 	{
-		dprintf ("No match found for ident = 0x%04"PRIx16", "
-				"seq = %"PRIu16"\n",
+		dprintf ("No match found for ident = 0x%04" PRIx16 ", "
+				"seq = %" PRIu16 "\n",
 				ident, seq);
 	}
 
@@ -474,7 +475,7 @@ static int ping_receive_one (pingobj_t *obj, struct timeval *now, int addrfam)
 			{
 				memcpy (&recv_qos, CMSG_DATA (cmsg),
 						sizeof (recv_qos));
-				dprintf ("TOSv4 = 0x%02"PRIx8";\n", recv_qos);
+				dprintf ("TOSv4 = 0x%02" PRIx8 ";\n", recv_qos);
 			} else
 			if (cmsg->cmsg_type == IP_TTL)
 			{
@@ -497,7 +498,7 @@ static int ping_receive_one (pingobj_t *obj, struct timeval *now, int addrfam)
 			{
 				memcpy (&recv_qos, CMSG_DATA (cmsg),
 						sizeof (recv_qos));
-				dprintf ("TOSv6 = 0x%02"PRIx8";\n", recv_qos);
+				dprintf ("TOSv6 = 0x%02" PRIx8 ";\n", recv_qos);
 			} else
 #ifdef IPV6_HOPLIMIT
 			if (cmsg->cmsg_type == IPV6_HOPLIMIT)
@@ -643,11 +644,9 @@ static int ping_send_one_ipv4 (pingobj_t *obj, pinghost_t *ph, int fd)
 	dprintf ("ph->hostname = %s\n", ph->hostname);
 
 	icmp4 = (struct icmp *) buf;
-	*icmp4 = (struct icmp) {
-		.icmp_type = ICMP_ECHO,
-		.icmp_id   = htons (ph->ident),
-		.icmp_seq  = htons (ph->sequence),
-	};
+	icmp4->icmp_type = ICMP_ECHO;
+	icmp4->icmp_id   = htons (ph->ident);
+	icmp4->icmp_seq  = htons (ph->sequence);
 
 	datalen = strlen (ph->data);
 	buflen = ICMP_MINLEN + datalen;
@@ -679,7 +678,6 @@ static int ping_send_one_ipv6 (pingobj_t *obj, pinghost_t *ph, int fd)
 	int status;
 
 	char buf[4096] = {0};
-	int  buflen;
 
 	char *data;
 	int   datalen;
@@ -687,14 +685,12 @@ static int ping_send_one_ipv6 (pingobj_t *obj, pinghost_t *ph, int fd)
 	dprintf ("ph->hostname = %s\n", ph->hostname);
 
 	icmp6 = (struct icmp6_hdr *) buf;
-	*icmp6 = (struct icmp6_hdr) {
-		.icmp6_type  = ICMP6_ECHO_REQUEST,
-		.icmp6_id    = htons (ph->ident),
-		.icmp6_seq   = htons (ph->sequence),
-	};
+	icmp6->icmp6_type  = ICMP6_ECHO_REQUEST;
+	icmp6->icmp6_id    = htons (ph->ident);
+	icmp6->icmp6_seq   = htons (ph->sequence);
 
 	datalen = strlen (ph->data);
-	buflen = sizeof (*icmp6) + datalen;
+	size_t buflen = sizeof (*icmp6) + datalen;
 	if (sizeof (buf) < buflen)
 		return (EINVAL);
 
@@ -815,7 +811,7 @@ static int ping_set_qos (pingobj_t *obj, uint8_t qos)
 
 	if (obj->fd4 != -1)
 	{
-		dprintf ("Setting TP_TOS to %#04"PRIx8"\n", qos);
+		dprintf ("Setting TP_TOS to %#04" PRIx8 "\n", qos);
 		if (setsockopt (obj->fd4, IPPROTO_IP, IP_TOS,
 				&qos, sizeof (qos)))
 		{
@@ -831,7 +827,7 @@ static int ping_set_qos (pingobj_t *obj, uint8_t qos)
 		/* IPV6_TCLASS requires an "int". */
 		int tmp = (int) qos;
 
-		dprintf ("Setting IPV6_TCLASS to %#04"PRIx8" (%i)\n", qos, tmp);
+		dprintf ("Setting IPV6_TCLASS to %#04" PRIx8 " (%i)\n", qos, tmp);
 		if (setsockopt (obj->fd6, IPPROTO_IPV6, IPV6_TCLASS,
 			&tmp, sizeof (tmp)))
 		{
@@ -1018,8 +1014,9 @@ static int ping_open_socket(pingobj_t *obj, int addrfam)
 #ifdef SO_TIMESTAMP
 	if (1) /* {{{ */
 	{
+	  int optval = 1;
 		int status = setsockopt (fd, SOL_SOCKET, SO_TIMESTAMP,
-		                         &(int){1}, sizeof(int));
+		                         &optval, sizeof(int));
 		if (status != 0)
 		{
 			ping_set_errno (obj, errno);
@@ -1038,25 +1035,32 @@ static int ping_open_socket(pingobj_t *obj, int addrfam)
 	{
 #ifdef IP_RECVTOS
 		/* Enable receiving the TOS field */
-		setsockopt (fd, IPPROTO_IP, IP_RECVTOS, &(int){1}, sizeof(int));
+	  int optval = 1;
+		setsockopt (fd, IPPROTO_IP, IP_RECVTOS, &optval, sizeof(int));
 #endif /* IP_RECVTOS */
 
 		/* Enable receiving the TTL field */
-		setsockopt (fd, IPPROTO_IP, IP_RECVTTL, &(int){1}, sizeof(int));
+		setsockopt (fd, IPPROTO_IP, IP_RECVTTL, &optval, sizeof(int));
 	}
 #if defined(IPV6_RECVHOPLIMIT) || defined(IPV6_RECVTCLASS)
 	else if (addrfam == AF_INET6)
 	{
 # if defined(IPV6_RECVHOPLIMIT)
 		/* For details see RFC 3542, section 6.3. */
+	  {
+		int optval = 1;
 		setsockopt (fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT,
-		            &(int){1}, sizeof(int));
+		            &optval, sizeof(int));
+	  }
 # endif /* IPV6_RECVHOPLIMIT */
 
 # if defined(IPV6_RECVTCLASS)
+	  {
+		int optval = 1;
 		/* For details see RFC 3542, section 6.5. */
 		setsockopt (fd, IPPROTO_IPV6, IPV6_RECVTCLASS,
-		            &(int){1}, sizeof(int));
+		            &optval, sizeof(int));
+	  }
 # endif /* IPV6_RECVTCLASS */
 	}
 #endif /* IPV6_RECVHOPLIMIT || IPV6_RECVTCLASS */
@@ -1076,10 +1080,10 @@ const char *ping_get_error (pingobj_t *obj)
 
 pingobj_t *ping_construct (void)
 {
-	pingobj_t *obj;
+    pingobj_t *obj = (pingobj_t *)malloc(sizeof (pingobj_t));
 
-	if ((obj = malloc (sizeof (*obj))) == NULL)
-		return (NULL);
+	if (obj == NULL)
+		return NULL;
 	memset (obj, 0, sizeof (*obj));
 
 	obj->timeout    = PING_DEF_TIMEOUT;
@@ -1229,7 +1233,8 @@ int ping_setopt (pingobj_t *obj, int option, const void *value)
 			if (obj->srcaddr == NULL)
 			{
 				obj->srcaddrlen = 0;
-				obj->srcaddr = malloc (sizeof (struct sockaddr_storage));
+				obj->srcaddr = (struct sockaddr*)
+				  malloc (sizeof (struct sockaddr_storage));
 				if (obj->srcaddr == NULL)
 				{
 					ping_set_errno (obj, errno);
@@ -1299,8 +1304,8 @@ int ping_send (pingobj_t *obj)
 	struct timeval nowtime;
 	struct timeval timeout;
 
-	_Bool need_ipv4_socket = 0;
-	_Bool need_ipv6_socket = 0;
+	bool need_ipv4_socket = false;
+	bool need_ipv6_socket = false;
 
 	for (ptr = obj->head; ptr != NULL; ptr = ptr->next)
 	{
@@ -1771,7 +1776,7 @@ int ping_iterator_get_info (pingobj_iter_t *iter, int info,
 			/* Since (orig_buffer_len > *buffer_len) `strncpy'
 			 * will copy `*buffer_len' and pad the rest of
 			 * `buffer' with null-bytes */
-			strncpy (buffer, iter->username, orig_buffer_len);
+			strncpy ((char*)buffer, iter->username, orig_buffer_len);
 			ret = 0;
 			break;
 
@@ -1783,7 +1788,7 @@ int ping_iterator_get_info (pingobj_iter_t *iter, int info,
 			/* Since (orig_buffer_len > *buffer_len) `strncpy'
 			 * will copy `*buffer_len' and pad the rest of
 			 * `buffer' with null-bytes */
-			strncpy (buffer, iter->hostname, orig_buffer_len);
+			strncpy ((char*)buffer, iter->hostname, orig_buffer_len);
 			ret = 0;
 			break;
 

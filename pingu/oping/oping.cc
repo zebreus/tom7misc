@@ -87,7 +87,7 @@ static int host_num  = 0;
 
 static ping_context_t *context_create () /* {{{ */
 {
-	ping_context_t *ctx = calloc (1, sizeof (*ctx));
+  ping_context_t *ctx = (ping_context_t *)calloc (1, sizeof (*ctx));
 	if (ctx == NULL)
 		return (NULL);
 
@@ -130,7 +130,7 @@ static int ping_initialize_contexts (pingobj_t *ping) /* {{{ */
 		ping_context_t *context;
 		size_t buffer_size;
 
-		context = ping_iterator_get_context(iter);
+		context = (ping_context_t *)ping_iterator_get_context(iter);
 
 		/* if this is a previously existing host, do not recreate it */
 		if (context != NULL)
@@ -172,7 +172,7 @@ static void usage_exit (const char *name, int status) /* {{{ */
 			"  -Z percent   Exit with non-zero exit status if more than this percentage of\n"
 			"               probes timed out. (default: never)\n"
 
-			"\noping "PACKAGE_VERSION", http://noping.cc/\n"
+			"\noping " PACKAGE_VERSION ", http://noping.cc/\n"
 			"by Florian octo Forster <ff@octo.it>\n"
 			"for contributions see `AUTHORS'\n",
 			name);
@@ -274,7 +274,7 @@ static int pre_loop_hook (pingobj_t *ping) /* {{{ */
 		ping_context_t *ctx;
 		size_t buffer_size;
 
-		ctx = ping_iterator_get_context (iter);
+		ctx = (ping_context_t *)ping_iterator_get_context (iter);
 		if (ctx == NULL)
 			continue;
 
@@ -373,9 +373,8 @@ static int post_loop_hook (pingobj_t *ping) /* {{{ */
 			iter != NULL;
 			iter = ping_iterator_next (iter))
 	{
-		ping_context_t *context;
-
-		context = ping_iterator_get_context (iter);
+		ping_context_t *context =
+		  (ping_context_t *)ping_iterator_get_context (iter);
 
 		printf ("\n--- %s ping statistics ---\n"
 				"%i packets transmitted, %i received, %.2f%% packet loss, time %.1fms\n",
