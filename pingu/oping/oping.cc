@@ -74,8 +74,6 @@ typedef struct ping_context
 } ping_context_t;
 
 static double  opt_timeout    = PING_DEF_TIMEOUT;
-static const int     opt_addrfamily = AF_INET;
-static char   *opt_srcaddr    = NULL;
 static char   *opt_device     = NULL;
 static char   *opt_mark       = NULL;
 static int     opt_count      = -1;
@@ -216,14 +214,6 @@ static int read_options (int argc, char **argv) /* {{{ */
 					else
 						fprintf (stderr, "Ignoring invalid timeout: %s\n",
 								optarg);
-				}
-				break;
-
-			case 'I':
-				{
-					if (opt_srcaddr != NULL)
-						free (opt_srcaddr);
-					opt_srcaddr = strdup (optarg);
 				}
 				break;
 
@@ -429,18 +419,6 @@ int main (int argc, char **argv) /* {{{ */
 				ping_get_error (ping));
 	}
 
-	if (opt_addrfamily != PING_DEF_AF)
-		ping_setopt (ping, PING_OPT_AF, (void *) &opt_addrfamily);
-
-	if (opt_srcaddr != NULL)
-	{
-		if (ping_setopt (ping, PING_OPT_SOURCE, (void *) opt_srcaddr) != 0)
-		{
-			fprintf (stderr, "Setting source address failed: %s\n",
-					ping_get_error (ping));
-		}
-	}
-
 	if (opt_device != NULL)
 	{
 		if (ping_setopt (ping, PING_OPT_DEVICE, (void *) opt_device) != 0)
@@ -468,25 +446,20 @@ int main (int argc, char **argv) /* {{{ */
 		}
 	}
 
-	for (i = optind; i < argc; i++)
-	{
-		if (ping_host_add (ping, argv[i]) < 0)
-		{
+	for (i = optind; i < argc; i++) {
+		if (ping_host_add (ping, argv[i]) < 0) {
 			const char *errmsg = ping_get_error (ping);
 
 			fprintf (stderr, "Adding host `%s' failed: %s\n", argv[i], errmsg);
 			continue;
-		}
-		else
-		{
+		} else {
 			host_num++;
 		}
 	}
 
 	/* Permanently drop root privileges if we're setuid-root. */
 	status = setuid (getuid ());
-	if (status != 0)
-	{
+	if (status != 0) {
 		fprintf (stderr, "Dropping privileges failed: %s\n",
 				strerror (errno));
 		exit (EXIT_FAILURE);

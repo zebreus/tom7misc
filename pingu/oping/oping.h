@@ -44,7 +44,7 @@ typedef struct pingobj pingobj_t;
 
 #define PING_OPT_TIMEOUT 0x01
 #define PING_OPT_TTL     0x02
-#define PING_OPT_AF      0x04
+// #define PING_OPT_AF      0x04
 #define PING_OPT_DATA    0x08
 #define PING_OPT_SOURCE  0x10
 #define PING_OPT_DEVICE  0x20
@@ -67,7 +67,6 @@ int ping_setopt (pingobj_t *obj, int option, const void *value);
 int ping_send (pingobj_t *obj);
 
 int ping_host_add (pingobj_t *obj, const char *host);
-int ping_host_remove (pingobj_t *obj, const char *host);
 
 pingobj_iter_t *ping_iterator_get (pingobj_t *obj);
 pingobj_iter_t *ping_iterator_next (pingobj_iter_t *iter);
@@ -75,7 +74,7 @@ int ping_iterator_count (pingobj_t *obj);
 
 #define PING_INFO_HOSTNAME  1
 #define PING_INFO_ADDRESS   2
-#define PING_INFO_FAMILY    3
+// #define PING_INFO_FAMILY    3
 #define PING_INFO_LATENCY   4
 #define PING_INFO_SEQUENCE  5
 #define PING_INFO_IDENT     6
