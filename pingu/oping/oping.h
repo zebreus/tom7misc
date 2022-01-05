@@ -35,12 +35,10 @@
  * Type definitions
  */
 struct pinghost;
-typedef struct pinghost pinghost_t;
 
-typedef pinghost_t pingobj_iter_t;
+typedef pinghost pingobj_iter_t;
 
 struct pingobj;
-typedef struct pingobj pingobj_t;
 
 #define PING_OPT_TIMEOUT 0x01
 #define PING_OPT_TTL     0x02
@@ -59,18 +57,18 @@ typedef struct pingobj pingobj_t;
 /*
  * Method definitions
  */
-pingobj_t *ping_construct (void);
-void ping_destroy (pingobj_t *obj);
+pingobj *ping_construct ();
+void ping_destroy (pingobj *obj);
 
-int ping_setopt (pingobj_t *obj, int option, const void *value);
+int ping_setopt (pingobj *obj, int option, const void *value);
 
-int ping_send (pingobj_t *obj);
+int ping_send (pingobj *obj);
 
-int ping_host_add (pingobj_t *obj, const char *host);
+int ping_host_add (pingobj *obj, const char *host);
 
-pingobj_iter_t *ping_iterator_get (pingobj_t *obj);
+pingobj_iter_t *ping_iterator_get (pingobj *obj);
 pingobj_iter_t *ping_iterator_next (pingobj_iter_t *iter);
-int ping_iterator_count (pingobj_t *obj);
+int ping_iterator_count (pingobj *obj);
 
 #define PING_INFO_HOSTNAME  1
 #define PING_INFO_ADDRESS   2
@@ -86,7 +84,7 @@ int ping_iterator_count (pingobj_t *obj);
 int ping_iterator_get_info (pingobj_iter_t *iter, int info,
 							void *buffer, size_t *buffer_len);
 
-const char *ping_get_error (pingobj_t *obj);
+const char *ping_get_error (pingobj *obj);
 
 void *ping_iterator_get_context (pingobj_iter_t *iter);
 void  ping_iterator_set_context (pingobj_iter_t *iter, void *context);

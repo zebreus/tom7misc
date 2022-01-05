@@ -112,7 +112,7 @@ static double context_get_packet_loss (const ping_context_t *ctx) /* {{{ */
 			/ ((double) ctx->req_sent));
 } /* }}} double context_get_packet_loss */
 
-static int ping_initialize_contexts (pingobj_t *ping) /* {{{ */
+static int ping_initialize_contexts (pingobj *ping) /* {{{ */
 {
 	pingobj_iter_t *iter;
 	int index;
@@ -253,7 +253,7 @@ static int read_options (int argc, char **argv) /* {{{ */
 	return (optind);
 } /* }}} read_options */
 
-static int pre_loop_hook (pingobj_t *ping) /* {{{ */
+static int pre_loop_hook (pingobj *ping) /* {{{ */
 {
 	pingobj_iter_t *iter;
 
@@ -354,161 +354,143 @@ static void update_host_hook (pingobj_iter_t *iter, /* {{{ */
 } /* }}} void update_host_hook */
 
 /* Prints statistics for each host, cleans up the contexts */
-static int post_loop_hook (pingobj_t *ping) /* {{{ */
-{
-	pingobj_iter_t *iter;
-	int failure_count = 0;
+static int post_loop_hook (pingobj *ping) {
+  pingobj_iter_t *iter;
+  int failure_count = 0;
 
+  for (iter = ping_iterator_get (ping);
+	   iter != NULL;
+	   iter = ping_iterator_next (iter)) {
+	ping_context_t *context =
+	  (ping_context_t *)ping_iterator_get_context (iter);
+
+	printf ("\n--- %s ping statistics ---\n"
+			"%i packets transmitted, %i received, %.2f%% packet loss, "
+			"time %.1fms\n",
+			context->host, context->req_sent, context->req_rcvd,
+			context_get_packet_loss (context),
+			context->latency_total);
+
+	ping_iterator_set_context (iter, NULL);
+	context_destroy (context);
+  }
+
+  return failure_count;
+}
+
+int main (int argc, char **argv) {
+  pingobj      *ping;
+  pingobj_iter_t *iter;
+
+  int optind;
+  int i;
+  int status;
+
+  setlocale(LC_ALL, "");
+  optind = read_options (argc, argv);
+
+  if (optind >= argc) {
+	usage_exit (argv[0], 1);
+  }
+
+  if ((ping = ping_construct ()) == NULL) {
+	fprintf (stderr, "ping_construct failed\n");
+	return (1);
+  }
+
+  if (ping_setopt (ping, PING_OPT_TTL, &opt_send_ttl) != 0) {
+	fprintf (stderr, "Setting TTL to %i failed: %s\n",
+			 opt_send_ttl, ping_get_error (ping));
+  }
+
+  if (ping_setopt (ping, PING_OPT_QOS, &opt_send_qos) != 0) {
+	fprintf (stderr, "Setting TOS to %i failed: %s\n",
+			 opt_send_qos, ping_get_error (ping));
+  }
+
+  if (ping_setopt (ping, PING_OPT_TIMEOUT, (void*)(&opt_timeout)) != 0) {
+	fprintf (stderr, "Setting timeout failed: %s\n",
+			 ping_get_error (ping));
+  }
+
+  if (opt_device != NULL) {
+	if (ping_setopt (ping, PING_OPT_DEVICE, (void *) opt_device) != 0) {
+	  fprintf (stderr, "Setting device failed: %s\n",
+			   ping_get_error (ping));
+	}
+  }
+
+  if (opt_mark != NULL) {
+	char *endp = NULL;
+	int mark = (int) strtol (opt_mark, &endp, /* base = */ 0);
+	if ((opt_mark[0] != 0) && (endp != NULL) && (*endp == 0)) {
+	  if (ping_setopt(ping, PING_OPT_MARK, (void*)(&mark)) != 0) {
+		fprintf (stderr, "Setting mark failed: %s\n",
+				 ping_get_error (ping));
+	  }
+	} else {
+	  fprintf(stderr, "Ignoring invalid mark: %s\n", optarg);
+	}
+  }
+
+  for (i = optind; i < argc; i++) {
+	if (ping_host_add (ping, argv[i]) < 0) {
+	  const char *errmsg = ping_get_error (ping);
+
+	  fprintf (stderr, "Adding host `%s' failed: %s\n", argv[i], errmsg);
+	  continue;
+	} else {
+	  host_num++;
+	}
+  }
+
+  /* Permanently drop root privileges if we're setuid-root. */
+  status = setuid (getuid ());
+  if (status != 0) {
+	fprintf (stderr, "Dropping privileges failed: %s\n",
+			 strerror (errno));
+	exit (EXIT_FAILURE);
+  }
+
+  if (host_num == 0)
+	exit (EXIT_FAILURE);
+
+  ping_initialize_contexts (ping);
+
+  if (i == 0)
+	return (1);
+
+  pre_loop_hook (ping);
+
+  while (opt_count != 0) {
+	if (ping_send (ping) < 0) {
+	  fprintf (stderr, "ping_send failed: %s\n",
+			   ping_get_error (ping));
+	  continue;
+	}
+
+	int index = 0;
 	for (iter = ping_iterator_get (ping);
-			iter != NULL;
-			iter = ping_iterator_next (iter))
-	{
-		ping_context_t *context =
-		  (ping_context_t *)ping_iterator_get_context (iter);
-
-		printf ("\n--- %s ping statistics ---\n"
-				"%i packets transmitted, %i received, %.2f%% packet loss, time %.1fms\n",
-				context->host, context->req_sent, context->req_rcvd,
-				context_get_packet_loss (context),
-				context->latency_total);
-
-		ping_iterator_set_context (iter, NULL);
-		context_destroy (context);
+		 iter != NULL;
+		 iter = ping_iterator_next (iter)) {
+	  update_host_hook (iter, index);
+	  index++;
 	}
 
-	return failure_count;
-} /* }}} int post_loop_hook */
+	/* Don't sleep in the last iteration */
+	if (opt_count == 1)
+	  break;
 
-int main (int argc, char **argv) /* {{{ */
-{
-	pingobj_t      *ping;
-	pingobj_iter_t *iter;
+	sleep(1);
 
-	int optind;
-	int i;
-	int status;
+	if (opt_count > 0)
+	  opt_count--;
+  }
 
-	setlocale(LC_ALL, "");
-	optind = read_options (argc, argv);
+  /* Returns the number of failed hosts according to -Z. */
+  status = post_loop_hook (ping);
 
-	if (optind >= argc) {
-		usage_exit (argv[0], 1);
-	}
-
-	if ((ping = ping_construct ()) == NULL)
-	{
-		fprintf (stderr, "ping_construct failed\n");
-		return (1);
-	}
-
-	if (ping_setopt (ping, PING_OPT_TTL, &opt_send_ttl) != 0)
-	{
-		fprintf (stderr, "Setting TTL to %i failed: %s\n",
-				opt_send_ttl, ping_get_error (ping));
-	}
-
-	if (ping_setopt (ping, PING_OPT_QOS, &opt_send_qos) != 0)
-	{
-		fprintf (stderr, "Setting TOS to %i failed: %s\n",
-				opt_send_qos, ping_get_error (ping));
-	}
-
-	if (ping_setopt (ping, PING_OPT_TIMEOUT, (void*)(&opt_timeout)) != 0)
-	{
-		fprintf (stderr, "Setting timeout failed: %s\n",
-				ping_get_error (ping));
-	}
-
-	if (opt_device != NULL)
-	{
-		if (ping_setopt (ping, PING_OPT_DEVICE, (void *) opt_device) != 0)
-		{
-			fprintf (stderr, "Setting device failed: %s\n",
-					ping_get_error (ping));
-		}
-	}
-
-	if (opt_mark != NULL)
-	{
-		char *endp = NULL;
-		int mark = (int) strtol (opt_mark, &endp, /* base = */ 0);
-		if ((opt_mark[0] != 0) && (endp != NULL) && (*endp == 0))
-		{
-			if (ping_setopt(ping, PING_OPT_MARK, (void*)(&mark)) != 0)
-			{
-				fprintf (stderr, "Setting mark failed: %s\n",
-					ping_get_error (ping));
-			}
-		}
-		else
-		{
-			fprintf(stderr, "Ignoring invalid mark: %s\n", optarg);
-		}
-	}
-
-	for (i = optind; i < argc; i++) {
-		if (ping_host_add (ping, argv[i]) < 0) {
-			const char *errmsg = ping_get_error (ping);
-
-			fprintf (stderr, "Adding host `%s' failed: %s\n", argv[i], errmsg);
-			continue;
-		} else {
-			host_num++;
-		}
-	}
-
-	/* Permanently drop root privileges if we're setuid-root. */
-	status = setuid (getuid ());
-	if (status != 0) {
-		fprintf (stderr, "Dropping privileges failed: %s\n",
-				strerror (errno));
-		exit (EXIT_FAILURE);
-	}
-
-	if (host_num == 0)
-		exit (EXIT_FAILURE);
-
-	ping_initialize_contexts (ping);
-
-	if (i == 0)
-		return (1);
-
-	pre_loop_hook (ping);
-
-	while (opt_count != 0)
-	{
-		int index;
-
-		if (ping_send (ping) < 0)
-		{
-			fprintf (stderr, "ping_send failed: %s\n",
-					ping_get_error (ping));
-			continue;
-		}
-
-		index = 0;
-		for (iter = ping_iterator_get (ping);
-				iter != NULL;
-				iter = ping_iterator_next (iter))
-		{
-			update_host_hook (iter, index);
-			index++;
-		}
-
-		/* Don't sleep in the last iteration */
-		if (opt_count == 1)
-			break;
-
-    sleep(1);
-
-		if (opt_count > 0)
-			opt_count--;
-	} /* while (opt_count != 0) */
-
-	/* Returns the number of failed hosts according to -Z. */
-	status = post_loop_hook (ping);
-
-	ping_destroy (ping);
+  ping_destroy (ping);
 
   return 0;
 }
