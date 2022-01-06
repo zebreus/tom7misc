@@ -38,7 +38,7 @@ struct pingobj;
 #define PING_OPT_TIMEOUT 0x01
 #define PING_OPT_TTL     0x02
 // #define PING_OPT_AF      0x04
-#define PING_OPT_DATA    0x08
+// #define PING_OPT_DATA    0x08
 #define PING_OPT_SOURCE  0x10
 #define PING_OPT_DEVICE  0x20
 #define PING_OPT_QOS     0x40
@@ -72,7 +72,7 @@ const std::vector<pinghost *> &ping_gethosts(pingobj *obj);
 #define PING_INFO_LATENCY   4
 #define PING_INFO_SEQUENCE  5
 #define PING_INFO_IDENT     6
-#define PING_INFO_DATA      7
+// #define PING_INFO_DATA      7
 #define PING_INFO_USERNAME  8
 #define PING_INFO_DROPPED   9
 #define PING_INFO_RECV_TTL 10
@@ -84,5 +84,7 @@ const char *ping_get_error (pingobj *obj);
 
 void *pinghost_get_context (pinghost *host);
 void  pinghost_set_context (pinghost *host, void *context);
+
+size_t pinghost_data_size(pinghost *host);
 
 #endif /* OCTO_PING_H */

@@ -45,36 +45,20 @@
 #include <locale.h>
 #include <langinfo.h>
 
-#define PACKAGE_VERSION "1.0"
-
-#undef USE_NCURSES
-
 #include "oping.h"
 
-#ifndef IPTOS_MINCOST
-# define IPTOS_MINCOST 0x02
-#endif
+struct ping_context {
+  char host[NI_MAXHOST];
+  char addr[NI_MAXHOST];
 
-/* Remove GNU specific __attribute__ settings when using another compiler */
-#if !__GNUC__
-# define __attribute__(x) /**/
-#endif
+  int index;
+  int req_sent;
+  int req_rcvd;
 
-typedef struct ping_context
-{
-	char host[NI_MAXHOST];
-	char addr[NI_MAXHOST];
-
-	int index;
-	int req_sent;
-	int req_rcvd;
-
-	double latency_total;
-
-} ping_context_t;
+  double latency_total;
+};
 
 static double  opt_timeout    = PING_DEF_TIMEOUT;
-static char   *opt_device     = nullptr;
 static char   *opt_mark       = nullptr;
 static int     opt_count      = -1;
 static int     opt_send_ttl   = 64;
@@ -83,182 +67,159 @@ static int     opt_bell       = 0;
 
 static int host_num  = 0;
 
-static ping_context_t *context_create() {
-  ping_context_t *ctx = (ping_context_t *)calloc (1, sizeof (*ctx));
-	if (ctx == nullptr)
-		return nullptr;
+static ping_context *context_create() {
+  ping_context *ctx = (ping_context *)calloc (1, sizeof (*ctx));
+  if (ctx == nullptr)
+	return nullptr;
 
-	return ctx;
+  return ctx;
 }
 
-static void context_destroy (ping_context_t *context) {
-	if (context == nullptr)
-		return;
+static void context_destroy (ping_context *context) {
+  if (context == nullptr)
+	return;
 
-	free (context);
+  free (context);
 }
 
-static double context_get_packet_loss (const ping_context_t *ctx) /* {{{ */
-{
-	if (ctx == nullptr)
-		return -1.0;
+static double context_get_packet_loss (const ping_context *ctx) {
+  if (ctx == nullptr)
+	return -1.0;
 
-	if (ctx->req_sent < 1)
-		return 0.0;
+  if (ctx->req_sent < 1)
+	return 0.0;
 
-	return (100.0 * (ctx->req_sent - ctx->req_rcvd)
-			/ ((double) ctx->req_sent));
-} /* }}} double context_get_packet_loss */
+  return (100.0 * (ctx->req_sent - ctx->req_rcvd)
+		  / ((double) ctx->req_sent));
+}
 
 static int ping_initialize_contexts (pingobj *ping) {
-	int index;
+  int index;
 
-	if (ping == nullptr)
-		return EINVAL;
+  if (ping == nullptr)
+	return EINVAL;
 
-	index = 0;
-	for (pinghost *host : ping_gethosts(ping)) {
-		ping_context_t *context;
-		size_t buffer_size;
+  index = 0;
+  for (pinghost *host : ping_gethosts(ping)) {
+	ping_context *context;
+	size_t buffer_size;
 
-		context = (ping_context_t *)pinghost_get_context(host);
+	context = (ping_context *)pinghost_get_context(host);
 
-		/* if this is a previously existing host, do not recreate it */
-		if (context != nullptr)
-		{
-			context->index = index++;
-			continue;
-		}
-
-		context = context_create ();
-		context->index = index;
-
-		buffer_size = sizeof (context->host);
-		pinghost_get_info (host, PING_INFO_HOSTNAME, context->host, &buffer_size);
-
-		buffer_size = sizeof (context->addr);
-		pinghost_get_info (host, PING_INFO_ADDRESS, context->addr, &buffer_size);
-
-		pinghost_set_context (host, (void *) context);
-
-		index++;
+	/* if this is a previously existing host, do not recreate it */
+	if (context != nullptr) {
+	  context->index = index++;
+	  continue;
 	}
 
-	return 0;
-} /* }}} int ping_initialize_contexts */
+	context = context_create ();
+	context->index = index;
 
-static void usage_exit (const char *name, int status) /* {{{ */
-{
-	fprintf (stderr, "Usage: %s [OPTIONS] "
-				"-f filename | host [host [host ...]]\n"
+	buffer_size = sizeof (context->host);
+	pinghost_get_info (host, PING_INFO_HOSTNAME, context->host, &buffer_size);
 
-			"\nAvailable options:\n"
-			"  -c count     number of ICMP packets to send\n"
-			"  -w timeout   time to wait for replies, in seconds\n"
-			"  -t ttl       time to live for each ICMP packet\n"
-			"  -I srcaddr   source address\n"
-			"  -D device    outgoing interface name\n"
-			"  -m mark      mark to set on outgoing packets\n"
-			"  -P percent   Report the n'th percentile of latency\n"
-			"  -Z percent   Exit with non-zero exit status if more than this percentage of\n"
-			"               probes timed out. (default: never)\n"
+	buffer_size = sizeof (context->addr);
+	pinghost_get_info (host, PING_INFO_ADDRESS, context->addr, &buffer_size);
 
-			"\noping " PACKAGE_VERSION ", http://noping.cc/\n"
-			"by Florian octo Forster <ff@octo.it>\n"
-			"for contributions see `AUTHORS'\n",
-			name);
-	exit (status);
-} /* }}} void usage_exit */
+	pinghost_set_context (host, (void *) context);
 
-static int read_options (int argc, char **argv) /* {{{ */
-{
-	int optchar;
+	index++;
+  }
 
-	while (1)
-	{
-		optchar = getopt (argc, argv, "c:hi:I:t:Q:f:D:Z:O:P:m:w:b"
-				);
+  return 0;
+}
 
-		if (optchar == -1)
-			break;
+static void usage_exit (const char *name, int status) {
+  fprintf (stderr, "Usage: %s [OPTIONS] "
+		   "-f filename | host [host [host ...]]\n"
 
-		switch (optchar)
-		{
-			case 'c':
-				{
-					int new_count;
-					new_count = atoi (optarg);
-					if (new_count > 0)
-					{
-						opt_count = new_count;
-					}
-					else
-						fprintf(stderr, "Ignoring invalid count: %s\n",
-								optarg);
-				}
-				break;
+		   "\nAvailable options:\n"
+		   "  -c count     number of ICMP packets to send\n"
+		   "  -w timeout   time to wait for replies, in seconds\n"
+		   "  -t ttl       time to live for each ICMP packet\n"
+		   "  -I srcaddr   source address\n"
+		   "  -m mark      mark to set on outgoing packets\n"
+		   "  -P percent   Report the n'th percentile of latency\n"
+		   "  -Z percent   Exit with non-zero exit status if more than this percentage of\n"
+		   "               probes timed out. (default: never)\n"
 
-			case 'w':
-				{
-					char *endp = nullptr;
-					double t = strtod (optarg, &endp);
-					if ((optarg[0] != 0) && (endp != nullptr) && (*endp == 0))
-						opt_timeout = t;
-					else
-						fprintf (stderr, "Ignoring invalid timeout: %s\n",
-								optarg);
-				}
-				break;
+		   "by Florian octo Forster <ff@octo.it>\n"
+		   "for contributions see `AUTHORS'\n",
+		   name);
+  exit (status);
+}
 
-			case 'D':
-				opt_device = optarg;
-				break;
+static int read_options (int argc, char **argv) {
 
-			case 'm':
-				opt_mark = optarg;
-				break;
+  while (1) {
+	int optchar = getopt (argc, argv, "c:hi:I:t:Q:f:D:Z:O:P:m:w:b");
 
-			case 't':
-			{
-				int new_send_ttl;
-				new_send_ttl = atoi (optarg);
-				if ((new_send_ttl > 0) && (new_send_ttl < 256))
-					opt_send_ttl = new_send_ttl;
-				else
-					fprintf (stderr, "Ignoring invalid TTL argument: %s\n",
-							optarg);
-				break;
-			}
+	if (optchar == -1)
+	  break;
 
-			case 'b':
-				opt_bell = 1;
-				break;
-
-			case 'h':
-				usage_exit (argv[0], 0);
-				break;
-
-			default:
-				usage_exit (argv[0], 1);
-		}
+	switch (optchar) {
+	case 'c': {
+	  int new_count;
+	  new_count = atoi (optarg);
+	  if (new_count > 0) {
+		opt_count = new_count;
+	  } else {
+		fprintf(stderr, "Ignoring invalid count: %s\n",
+				optarg);
+	  }
+	  break;
 	}
 
-	return optind;
-} /* }}} read_options */
+	case 'w': {
+	  char *endp = nullptr;
+	  double t = strtod (optarg, &endp);
+	  if ((optarg[0] != 0) && (endp != nullptr) && (*endp == 0))
+		opt_timeout = t;
+	  else
+		fprintf (stderr, "Ignoring invalid timeout: %s\n",
+				 optarg);
+	  break;
+	}
+
+	case 'm':
+	  opt_mark = optarg;
+	  break;
+
+	case 't': {
+	  int new_send_ttl;
+	  new_send_ttl = atoi (optarg);
+	  if ((new_send_ttl > 0) && (new_send_ttl < 256))
+		opt_send_ttl = new_send_ttl;
+	  else
+		fprintf (stderr, "Ignoring invalid TTL argument: %s\n",
+				 optarg);
+	  break;
+	}
+
+	case 'b':
+	  opt_bell = 1;
+	  break;
+
+	case 'h':
+	  usage_exit (argv[0], 0);
+	  break;
+
+	default:
+	  usage_exit (argv[0], 1);
+	}
+  }
+
+  return optind;
+}
 
 static int pre_loop_hook (pingobj *ping) {
 
   for (pinghost *host : ping_gethosts(ping)) {
-	ping_context_t *ctx;
-	size_t buffer_size;
-
-	ctx = (ping_context_t *)pinghost_get_context(host);
+	ping_context *ctx = (ping_context *)pinghost_get_context(host);
 	if (ctx == nullptr)
 	  continue;
 
-	buffer_size = 0;
-	pinghost_get_info (host, PING_INFO_DATA, nullptr, &buffer_size);
-
+	size_t buffer_size = pinghost_data_size(host);
 	printf ("PING %s (%s) %zu bytes of data.\n",
 			ctx->host, ctx->addr, buffer_size);
   }
@@ -266,20 +227,16 @@ static int pre_loop_hook (pingobj *ping) {
   return 0;
 }
 
-static void update_context (ping_context_t *ctx, double latency) /* {{{ */
-{
-	ctx->req_sent++;
+static void update_context (ping_context *ctx, double latency) {
+  ctx->req_sent++;
 
-	if (latency > 0.0)
-	{
-		ctx->req_rcvd++;
-		ctx->latency_total += latency;
-	}
-	else
-	{
-		latency = NAN;
-	}
-} /* }}} void update_context */
+  if (latency > 0.0) {
+	ctx->req_rcvd++;
+	ctx->latency_total += latency;
+  } else {
+	latency = NAN;
+  }
+}
 
 static void update_host_hook (pinghost *host) {
   double          latency;
@@ -287,8 +244,7 @@ static void update_host_hook (pinghost *host) {
   int             recv_ttl;
   uint8_t         recv_qos;
   size_t          buffer_len;
-  size_t          data_len;
-  ping_context_t *context;
+  ping_context *context;
 
   latency = -1.0;
   buffer_len = sizeof (latency);
@@ -310,19 +266,14 @@ static void update_host_hook (pinghost *host) {
   pinghost_get_info(host, PING_INFO_RECV_QOS,
 					&recv_qos, &buffer_len);
 
-  data_len = 0;
-  pinghost_get_info(host, PING_INFO_DATA,
-					nullptr, &data_len);
-
-  context = (ping_context_t *) pinghost_get_context (host);
+  context = (ping_context *) pinghost_get_context (host);
 
 # define HOST_PRINTF(...) printf(__VA_ARGS__)
 
   update_context (context, latency);
 
   if (latency > 0.0) {
-	HOST_PRINTF ("%zu bytes from %s (%s): icmp_seq=%u ttl=%i ",
-				 data_len,
+	HOST_PRINTF ("response from %s (%s): icmp_seq=%u ttl=%i ",
 				 context->host, context->addr,
 				 sequence, recv_ttl);
 	HOST_PRINTF ("time=%.2f ms\n", latency);
@@ -341,8 +292,8 @@ static int post_loop_hook (pingobj *ping) {
 
   int failure_count = 0;
   for (pinghost *host : ping_gethosts(ping)) {
-	ping_context_t *context =
-	  (ping_context_t *)pinghost_get_context(host);
+	ping_context *context =
+	  (ping_context *)pinghost_get_context(host);
 
 	printf ("\n--- %s ping statistics ---\n"
 			"%i packets transmitted, %i received, %.2f%% packet loss, "
@@ -388,13 +339,6 @@ int main (int argc, char **argv) {
   if (ping_setopt (ping, PING_OPT_TIMEOUT, (void*)(&opt_timeout)) != 0) {
 	fprintf (stderr, "Setting timeout failed: %s\n",
 			 ping_get_error (ping));
-  }
-
-  if (opt_device != nullptr) {
-	if (ping_setopt (ping, PING_OPT_DEVICE, (void *) opt_device) != 0) {
-	  fprintf (stderr, "Setting device failed: %s\n",
-			   ping_get_error (ping));
-	}
   }
 
   if (opt_mark != nullptr) {
