@@ -20,14 +20,12 @@
 #ifndef OCTO_PING_H
 #define OCTO_PING_H 1
 
-#if HAVE_CONFIG_H
-# include <config.h>
-#endif
-
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+
+#include <vector>
 
 #define OPING_VERSION 1009000
 
@@ -35,9 +33,6 @@
  * Type definitions
  */
 struct pinghost;
-
-typedef pinghost pingobj_iter_t;
-
 struct pingobj;
 
 #define PING_OPT_TIMEOUT 0x01
@@ -66,9 +61,10 @@ int ping_send (pingobj *obj);
 
 int ping_host_add (pingobj *obj, const char *host);
 
-pingobj_iter_t *ping_iterator_get (pingobj *obj);
-pingobj_iter_t *ping_iterator_next (pingobj_iter_t *iter);
-int ping_iterator_count (pingobj *obj);
+const std::vector<pinghost *> &ping_gethosts(pingobj *obj);
+// pingobj_iter_t *ping_iterator_get (pingobj *obj);
+// pingobj_iter_t *ping_iterator_next (pingobj_iter_t *iter);
+// int ping_iterator_count (pingobj *obj);
 
 #define PING_INFO_HOSTNAME  1
 #define PING_INFO_ADDRESS   2
@@ -81,12 +77,12 @@ int ping_iterator_count (pingobj *obj);
 #define PING_INFO_DROPPED   9
 #define PING_INFO_RECV_TTL 10
 #define PING_INFO_RECV_QOS 11
-int ping_iterator_get_info (pingobj_iter_t *iter, int info,
-							void *buffer, size_t *buffer_len);
+int pinghost_get_info (pinghost *iter, int info,
+					   void *buffer, size_t *buffer_len);
 
 const char *ping_get_error (pingobj *obj);
 
-void *ping_iterator_get_context (pingobj_iter_t *iter);
-void  ping_iterator_set_context (pingobj_iter_t *iter, void *context);
+void *pinghost_get_context (pinghost *host);
+void  pinghost_set_context (pinghost *host, void *context);
 
 #endif /* OCTO_PING_H */

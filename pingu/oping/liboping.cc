@@ -67,11 +67,8 @@ struct pinghost {
   char                    *username = nullptr;
   /* hostname: name returned by the reverse lookup */
   char                    *hostname = nullptr;
-  // struct sockaddr_storage *addr;
-  socklen_t                addrlen = 0;
   int                      ident = 0;
   int                      sequence = 0;
-  // struct timeval          *timer;
   double                   latency = 0.0;
   uint32_t                 dropped = 0;
   int                      recv_ttl = 0;
@@ -80,33 +77,33 @@ struct pinghost {
 
   void                    *context = nullptr;
 
-  struct pinghost         *next = nullptr;
-  struct pinghost         *table_next = nullptr;
-
+  socklen_t addrlen = 0;
   sockaddr_storage sockaddr;
   timeval tv;
 };
 
 struct pingobj {
-	double                   timeout;
-	int                      ttl;
-	uint8_t                  qos;
-	char                    *data;
+  double                   timeout = 0.0;
+  int                      ttl = 0;
+  uint8_t                  qos = 0;
+  char                    *data = nullptr;
 
-	int                      fd4;
+  int                      fd4 = 0;
 
-	struct sockaddr         *srcaddr;
-	socklen_t                srcaddrlen;
+  // XXX is srcaddr always null?
+  struct sockaddr         *srcaddr = nullptr;
+  socklen_t                srcaddrlen = 0;
 
-	char                   *device;
+  char                   *device = nullptr;
 
-	char                    set_mark;
-	int                     mark;
+  char                    set_mark = 0;
+  int                     mark = 0;
 
-	char                     errmsg[PING_OUTERRMSG_LEN];
+  char                     errmsg[PING_OUTERRMSG_LEN] = {};
 
-	pinghost              *head;
-	pinghost              *table[PING_TABLE_LEN];
+  // flat vector of all of the stored hosts; no longer
+  // bothering with hashing
+  std::vector<pinghost *> table;
 };
 
 /*
@@ -130,7 +127,7 @@ static char *sstrerror (int errnum, char *buf, size_t buflen) {
 		temp = strerror_r (errnum, buf, buflen);
 		if (buf[0] == 0)
 		{
-			if ((temp != NULL) && (temp != buf) && (temp[0] != 0))
+			if ((temp != nullptr) && (temp != buf) && (temp[0] != 0))
 				strncpy (buf, temp, buflen);
 			else
 				strncpy (buf, "strerror_r did not return "
@@ -204,10 +201,11 @@ static uint16_t ping_icmp4_checksum (char *buf, size_t len) {
 	uint16_t ret = 0;
 
 	uint16_t *ptr;
-
 	for (ptr = (uint16_t *) buf; len > 1; ptr++, len -= 2)
 		sum += *ptr;
 
+	// according to RFC 792, odd lengths should be padded with zero;
+	// this assumes the buffer has a zero after it? why would it?
 	if (len == 1)
 	{
 		*(char *) &ret = *(char *) ptr;
@@ -225,39 +223,28 @@ static uint16_t ping_icmp4_checksum (char *buf, size_t len) {
 
 static pinghost *ping_receive_ipv4 (pingobj *obj, char *buffer,
 									  size_t buffer_len) {
-	struct ip *ip_hdr;
-	struct icmp *icmp_hdr;
-
-	size_t ip_hdr_len;
-
 	uint16_t recv_checksum;
 	uint16_t calc_checksum;
 
-	uint16_t ident;
-	uint16_t seq;
-
-	pinghost *ptr;
-
 	if (buffer_len < sizeof (struct ip))
-		return NULL;
+		return nullptr;
 
-	ip_hdr     = (struct ip *) buffer;
-	ip_hdr_len = ip_hdr->ip_hl << 2;
+	struct ip *ip_hdr     = (struct ip *) buffer;
+	size_t ip_hdr_len = ip_hdr->ip_hl << 2;
 
 	if (buffer_len < ip_hdr_len)
-		return NULL;
+		return nullptr;
 
 	buffer     += ip_hdr_len;
 	buffer_len -= ip_hdr_len;
 
 	if (buffer_len < ICMP_MINLEN)
-		return NULL;
+		return nullptr;
 
-	icmp_hdr = (struct icmp *) buffer;
-	if (icmp_hdr->icmp_type != ICMP_ECHOREPLY)
-	{
+	struct icmp *icmp_hdr = (struct icmp *) buffer;
+	if (icmp_hdr->icmp_type != ICMP_ECHOREPLY) {
 		dprintf ("Unexpected ICMP type: %" PRIu8 "\n", icmp_hdr->icmp_type);
-		return NULL;
+		return nullptr;
 	}
 
 	recv_checksum = icmp_hdr->icmp_cksum;
@@ -270,54 +257,47 @@ static pinghost *ping_receive_ipv4 (pingobj *obj, char *buffer,
 		dprintf ("Checksum missmatch: Got 0x%04" PRIx16 ", "
 				"calculated 0x%04" PRIx16 "\n",
 				recv_checksum, calc_checksum);
-		return NULL;
+		return nullptr;
 	}
 
-	ident = ntohs (icmp_hdr->icmp_id);
-	seq   = ntohs (icmp_hdr->icmp_seq);
+	uint16_t ident = ntohs (icmp_hdr->icmp_id);
+	uint16_t seq   = ntohs (icmp_hdr->icmp_seq);
 
-	// loop through the hash table (hash = ident) to find
-	// the matching ping
-	for (ptr = obj->table[ident % PING_TABLE_LEN];
-		 ptr != NULL;
-		 ptr = ptr->table_next) {
-		dprintf ("hostname = %s, ident = 0x%04x, seq = %i\n",
-				ptr->hostname, ptr->ident, ((ptr->sequence - 1) & 0xFFFF));
+	// try to find matching ping
+	for (pinghost *host : obj->table) {
+	  dprintf ("hostname = %s, ident = 0x%04x, seq = %i\n",
+			   host->hostname, host->ident, ((host->sequence - 1) & 0xFFFF));
 
-		if (!timerisset (&ptr->tv))
-			continue;
+	  if (!timerisset (&host->tv))
+		continue;
 
-		if (ptr->ident != ident)
-			continue;
+	  if (host->ident != ident)
+		continue;
 
-		if (((ptr->sequence - 1) & 0xFFFF) != seq)
-			continue;
+	  // sequence has been incremented
+	  if (((host->sequence - 1) & 0xFFFF) != seq)
+		continue;
 
-		dprintf ("Match found: hostname = %s, ident = 0x%04" PRIx16 ", "
-				"seq = %" PRIu16 "\n",
-				ptr->hostname, ident, seq);
+	  dprintf ("Match found: hostname = %s, ident = 0x%04" PRIx16 ", "
+			   "seq = %" PRIu16 "\n",
+			   host->hostname, ident, seq);
 
-		break;
+	  host->recv_ttl = (int)     ip_hdr->ip_ttl;
+	  host->recv_qos = (uint8_t) ip_hdr->ip_tos;
+	  return host;
 	}
 
-	if (ptr == NULL) {
-		dprintf ("No match found for ident = 0x%04" PRIx16
-				 ", seq = %" PRIu16 "\n",
-				ident, seq);
-	}
-
-	if (ptr != NULL) {
-		ptr->recv_ttl = (int)     ip_hdr->ip_ttl;
-		ptr->recv_qos = (uint8_t) ip_hdr->ip_tos;
-	}
-	return ptr;
+	dprintf ("No match found for ident = 0x%04" PRIx16
+			 ", seq = %" PRIu16 "\n",
+			 ident, seq);
+	return nullptr;
 }
 
 
 static int ping_receive_one (pingobj *obj, struct timeval *now) {
 	const int fd = obj->fd4;
 	struct timeval diff, pkt_now = *now;
-	pinghost *host = NULL;
+	pinghost *host = nullptr;
 	int recv_ttl;
 	uint8_t recv_qos;
 
@@ -337,7 +317,7 @@ static int ping_receive_one (pingobj *obj, struct timeval *now) {
 
 	memset (&msghdr, 0, sizeof (msghdr));
 	/* unspecified source address */
-	msghdr.msg_name = NULL;
+	msghdr.msg_name = nullptr;
 	msghdr.msg_namelen = 0;
 	/* output buffer vector, see readv(2) */
 	msghdr.msg_iov = &payload_iovec;
@@ -363,7 +343,7 @@ static int ping_receive_one (pingobj *obj, struct timeval *now) {
 	recv_ttl = -1;
 	recv_qos = 0;
 	for (cmsg = CMSG_FIRSTHDR (&msghdr);
-		 cmsg != NULL;
+		 cmsg != nullptr;
 		 cmsg = CMSG_NXTHDR (&msghdr, cmsg)) {
 		if (cmsg->cmsg_level == SOL_SOCKET) {
 			if (cmsg->cmsg_type == SO_TIMESTAMP)
@@ -393,7 +373,7 @@ static int ping_receive_one (pingobj *obj, struct timeval *now) {
 	}
 
 	host = ping_receive_ipv4 (obj, payload_buffer, payload_buffer_len);
-	if (host == NULL)
+	if (host == nullptr)
 	  return -1;
 
 	dprintf ("rcvd: %12i.%06i\n",
@@ -618,8 +598,8 @@ static int ping_get_ident () {
 static pinghost *pinghost_alloc() {
 
 	pinghost *ph = new pinghost;
-	if (ph == NULL)
-		return NULL;
+	if (ph == nullptr)
+		return nullptr;
 
 	// these used to be stored "right after" the pinghost,
 	// making some generous assumptions about alignment. now
@@ -636,7 +616,7 @@ static pinghost *pinghost_alloc() {
 }
 
 static void pinghost_free(pinghost *ph) {
-	if (ph == NULL)
+	if (ph == nullptr)
 		return;
 
 	free (ph->username);
@@ -670,7 +650,7 @@ static int ping_open_socket(pingobj *obj) {
 		return -1;
 	}
 
-	if (obj->srcaddr != NULL)
+	if (obj->srcaddr != nullptr)
 	{
 		assert (obj->srcaddrlen > 0);
 		assert (obj->srcaddrlen <= sizeof (struct sockaddr_storage));
@@ -688,7 +668,7 @@ static int ping_open_socket(pingobj *obj) {
 		}
 	}
 
-	if (obj->device != NULL)
+	if (obj->device != nullptr)
 	{
 		if (setsockopt (fd, SOL_SOCKET, SO_BINDTODEVICE,
 				obj->device, strlen (obj->device) + 1) != 0)
@@ -756,40 +736,34 @@ static int ping_open_socket(pingobj *obj) {
  * public methods
  */
 const char *ping_get_error (pingobj *obj) {
-	if (obj == NULL)
-		return NULL;
+	if (obj == nullptr)
+		return nullptr;
 	return obj->errmsg;
 }
 
 pingobj *ping_construct () {
   pingobj *obj = new pingobj;
 
-	if (obj == NULL)
-		return NULL;
-	memset (obj, 0, sizeof (*obj));
+  if (obj == nullptr)
+	return nullptr;
 
-	obj->timeout    = PING_DEF_TIMEOUT;
-	obj->ttl        = PING_DEF_TTL;
-	obj->data       = strdup (PING_DEF_DATA);
-	obj->qos        = 0;
-	obj->fd4        = -1;
+  obj->timeout    = PING_DEF_TIMEOUT;
+  obj->ttl        = PING_DEF_TTL;
+  obj->data       = strdup (PING_DEF_DATA);
+  obj->qos        = 0;
+  obj->fd4        = -1;
 
-	return obj;
+  return obj;
 }
 
 void ping_destroy (pingobj *obj) {
-  pinghost *current;
-
   if (obj == nullptr)
 	return;
 
-  current = obj->head;
-
-  while (current != nullptr) {
-	pinghost *next = current->next;
-	pinghost_free (current);
-	current = next;
+  for (pinghost *host : obj->table) {
+	pinghost_free (host);
   }
+  obj->table.clear();
 
   free (obj->data);
   free (obj->srcaddr);
@@ -802,11 +776,10 @@ void ping_destroy (pingobj *obj) {
   return;
 }
 
-int ping_setopt (pingobj *obj, int option, const void *value)
-{
+int ping_setopt (pingobj *obj, int option, const void *value) {
 	int ret = 0;
 
-	if ((obj == NULL) || (value == NULL))
+	if ((obj == nullptr) || (value == nullptr))
 		return -1;
 
 	switch (option)
@@ -842,10 +815,10 @@ int ping_setopt (pingobj *obj, int option, const void *value)
 			break;
 
 		case PING_OPT_DATA:
-			if (obj->data != NULL)
+			if (obj->data != nullptr)
 			{
 				free (obj->data);
-				obj->data = NULL;
+				obj->data = nullptr;
 			}
 			obj->data = strdup ((const char *) value);
 			break;
@@ -853,14 +826,14 @@ int ping_setopt (pingobj *obj, int option, const void *value)
 		case PING_OPT_DEVICE: {
 			char *device = strdup ((const char *) value);
 
-			if (device == NULL)
+			if (device == nullptr)
 			{
 				ping_set_errno (obj, errno);
 				ret = -1;
 				break;
 			}
 
-			if (obj->device != NULL)
+			if (obj->device != nullptr)
 				free (obj->device);
 			obj->device = device;
 		}
@@ -881,365 +854,314 @@ int ping_setopt (pingobj *obj, int option, const void *value)
 }
 
 int ping_send (pingobj *obj) {
-	struct timeval endtime;
-	struct timeval nowtime;
-	struct timeval timeout;
+  struct timeval endtime;
+  struct timeval nowtime;
+  struct timeval timeout;
 
-	for (pinghost *ptr = obj->head; ptr != NULL; ptr = ptr->next) {
-		ptr->latency  = -1.0;
-		ptr->recv_ttl = -1;
+  for (pinghost *host : obj->table) {
+	host->latency = -1.0;
+	host->recv_ttl = -1;
+  }
+
+  if (obj->table.empty()) {
+	ping_set_error (obj, "ping_send", "No hosts to ping");
+	return -1;
+  }
+
+  if (obj->fd4 == -1) {
+	obj->fd4 = ping_open_socket(obj);
+	if (obj->fd4 == -1)
+	  return -1;
+	ping_set_ttl (obj, obj->ttl);
+	ping_set_qos (obj, obj->qos);
+  }
+
+  if (gettimeofday (&nowtime, nullptr) == -1) {
+	ping_set_errno (obj, errno);
+	return -1;
+  }
+
+  /* Set up timeout */
+  timeout.tv_sec = (time_t) obj->timeout;
+  timeout.tv_usec = (suseconds_t) (1000000 * (obj->timeout - ((double) timeout.tv_sec)));
+
+  dprintf ("Set timeout to %i.%06i seconds\n",
+		   (int) timeout.tv_sec,
+		   (int) timeout.tv_usec);
+
+  ping_timeval_add (&nowtime, &timeout, &endtime);
+
+  /* pings_in_flight is the number of hosts we sent a "ping" to but didn't
+   * receive a "pong" yet. */
+  int pings_in_flight = 0;
+
+  /* pongs_received is the number of echo replies received. Unless there
+   * is an error, this is used as the return value of ping_send(). */
+  int pongs_received = 0;
+
+  int error_count = 0;
+
+  // Index (in table) of next host to ping, or .size() if we are done.
+  size_t next_host_idx = 0;
+  while (pings_in_flight > 0 || next_host_idx < obj->table.size()) {
+	fd_set read_fds;
+	fd_set write_fds;
+
+	int write_fd = -1;
+	int max_fd = -1;
+
+	// n.b. this can probably be simplified, as we only support
+	// ipv4 now (and so this is always just the one fd4 I think) -tom7
+	FD_ZERO (&read_fds);
+	FD_ZERO (&write_fds);
+
+	if (obj->fd4 != -1) {
+	  FD_SET(obj->fd4, &read_fds);
+	  if (next_host_idx < obj->table.size())
+		write_fd = obj->fd4;
+
+	  if (max_fd < obj->fd4)
+		max_fd = obj->fd4;
 	}
 
-	if (obj->head == NULL) {
-		ping_set_error (obj, "ping_send", "No hosts to ping");
-		return -1;
+	if (write_fd != -1)
+	  FD_SET(write_fd, &write_fds);
+
+	assert (max_fd != -1);
+	assert (max_fd < FD_SETSIZE);
+
+	if (gettimeofday (&nowtime, nullptr) == -1) {
+	  ping_set_errno (obj, errno);
+	  return -1;
 	}
 
-	if (obj->fd4 == -1) {
-		obj->fd4 = ping_open_socket(obj);
-		if (obj->fd4 == -1)
-			return -1;
-		ping_set_ttl (obj, obj->ttl);
-		ping_set_qos (obj, obj->qos);
+	if (ping_timeval_sub (&endtime, &nowtime, &timeout) == -1)
+	  break;
+
+	dprintf ("Waiting on %i sockets for %u.%06u seconds\n",
+			 ((obj->fd4 != -1) ? 1 : 0),
+			 (unsigned) timeout.tv_sec,
+			 (unsigned) timeout.tv_usec);
+
+	int status = select (max_fd + 1, &read_fds, &write_fds, nullptr, &timeout);
+	int select_errno = errno;
+
+	if (gettimeofday (&nowtime, nullptr) == -1) {
+	  ping_set_errno (obj, errno);
+	  return -1;
 	}
 
-	if (gettimeofday (&nowtime, NULL) == -1) {
-		ping_set_errno (obj, errno);
-		return -1;
+	if (status == -1) {
+	  ping_set_errno (obj, select_errno);
+	  dprintf ("select: %s\n", obj->errmsg);
+	  return -1;
+	} else if (status == 0) {
+	  dprintf ("select timed out\n");
+
+	  for (pinghost *ph : obj->table)
+		if (ph->latency < 0.0)
+		  ph->dropped++;
+	  break;
 	}
 
-	/* Set up timeout */
-	timeout.tv_sec = (time_t) obj->timeout;
-	timeout.tv_usec = (suseconds_t) (1000000 * (obj->timeout - ((double) timeout.tv_sec)));
-
-	dprintf ("Set timeout to %i.%06i seconds\n",
-			(int) timeout.tv_sec,
-			(int) timeout.tv_usec);
-
-	ping_timeval_add (&nowtime, &timeout, &endtime);
-
-	/* host_to_ping points to the host to which to send the next ping. The
-	 * pointer is advanced to the next host in the linked list after the
-	 * ping has been sent. If host_to_ping is NULL, no more pings need to be
-	 * send out. */
-	pinghost *host_to_ping = obj->head;
-
-	/* pings_in_flight is the number of hosts we sent a "ping" to but didn't
-	 * receive a "pong" yet. */
-	int pings_in_flight = 0;
-
-	/* pongs_received is the number of echo replies received. Unless there
-	 * is an error, this is used as the return value of ping_send(). */
-	int pongs_received = 0;
-
-	int error_count = 0;
-
-	while (pings_in_flight > 0 || host_to_ping != NULL) {
-		fd_set read_fds;
-		fd_set write_fds;
-
-		int write_fd = -1;
-		int max_fd = -1;
-
-		// n.b. this can probably be simplified, as we only support
-		// ipv4 now (and so this is always just the one fd4 I think) -tom7
-		FD_ZERO (&read_fds);
-		FD_ZERO (&write_fds);
-
-		if (obj->fd4 != -1) {
-			FD_SET(obj->fd4, &read_fds);
-			if (host_to_ping != NULL)
-				write_fd = obj->fd4;
-
-			if (max_fd < obj->fd4)
-				max_fd = obj->fd4;
-		}
-
-		if (write_fd != -1)
-			FD_SET(write_fd, &write_fds);
-
-		assert (max_fd != -1);
-		assert (max_fd < FD_SETSIZE);
-
-		if (gettimeofday (&nowtime, NULL) == -1) {
-			ping_set_errno (obj, errno);
-			return -1;
-		}
-
-		if (ping_timeval_sub (&endtime, &nowtime, &timeout) == -1)
-			break;
-
-		dprintf ("Waiting on %i sockets for %u.%06u seconds\n",
-				((obj->fd4 != -1) ? 1 : 0),
-				(unsigned) timeout.tv_sec,
-				(unsigned) timeout.tv_usec);
-
-		int status = select (max_fd + 1, &read_fds, &write_fds, NULL, &timeout);
-		int select_errno = errno;
-
-		if (gettimeofday (&nowtime, NULL) == -1) {
-			ping_set_errno (obj, errno);
-			return -1;
-		}
-
-		if (status == -1) {
-			ping_set_errno (obj, select_errno);
-			dprintf ("select: %s\n", obj->errmsg);
-			return -1;
-		} else if (status == 0) {
-			dprintf ("select timed out\n");
-
-			pinghost *ph;
-			for (ph = obj->head; ph != NULL; ph = ph->next)
-				if (ph->latency < 0.0)
-					ph->dropped++;
-			break;
-		}
-
-		if (obj->fd4 != -1 && FD_ISSET (obj->fd4, &read_fds)) {
-			if (ping_receive_one (obj, &nowtime) == 0) {
-				pings_in_flight--;
-				pongs_received++;
-			}
-			continue;
-		}
-
-		/* ... and if no reply is available to read, continue sending
-		 * out pings. */
-
-		/* this condition should always be true. We keep it for
-		 * consistency with the read blocks above and just to be on the
-		 * safe side. */
-		if (write_fd != -1 && FD_ISSET (write_fd, &write_fds)) {
-			if (ping_send_one (obj, host_to_ping, write_fd) == 0)
-				pings_in_flight++;
-			else
-				error_count++;
-			host_to_ping = host_to_ping->next;
-			continue;
-		}
+	if (obj->fd4 != -1 && FD_ISSET (obj->fd4, &read_fds)) {
+	  if (ping_receive_one (obj, &nowtime) == 0) {
+		pings_in_flight--;
+		pongs_received++;
+	  }
+	  continue;
 	}
 
-	if (error_count)
-	  return -error_count;
-	return pongs_received;
+	// ... and if no reply is available to read, continue sending
+	// out pings. (Why not both? -tom7)
+
+
+	/* this condition should always be true. We keep it for
+	 * consistency with the read blocks above and just to be on the
+	 * safe side. */
+	if (write_fd != -1 && FD_ISSET (write_fd, &write_fds)) {
+	  CHECK(next_host_idx < obj->table.size());
+	  pinghost *host = obj->table[next_host_idx];
+	  if (ping_send_one (obj, host, write_fd) == 0)
+		pings_in_flight++;
+	  else
+		error_count++;
+	  next_host_idx++;
+	  continue;
+	}
+  }
+
+  if (error_count)
+	return -error_count;
+  return pongs_received;
 }
 
-static pinghost *ping_host_search (pinghost *ph, const char *host) {
-	while (ph != NULL) {
-		if (strcasecmp (ph->username, host) == 0)
-			break;
+static pinghost *ping_host_search (pingobj *obj, const char *host) {
+  for (pinghost *ph : obj->table)
+	if (strcasecmp (ph->username, host) == 0)
+	  return ph;
 
-		ph = ph->next;
-	}
-
-	return ph;
+  return nullptr;
 }
 
 int ping_host_add (pingobj *obj, const char *host) {
-	pinghost *ph;
+  struct addrinfo  ai_hints;
+  struct addrinfo *ai_list, *ai_ptr;
+  int              ai_return;
 
-	struct addrinfo  ai_hints;
-	struct addrinfo *ai_list, *ai_ptr;
-	int              ai_return;
+  if ((obj == nullptr) || (host == nullptr))
+	return -1;
 
-	if ((obj == NULL) || (host == NULL))
-		return -1;
+  dprintf ("host = %s\n", host);
 
-	dprintf ("host = %s\n", host);
-
-	if (ping_host_search (obj->head, host) != NULL)
-		return 0;
-
-	memset (&ai_hints, '\0', sizeof (ai_hints));
-	ai_hints.ai_flags     = 0;
-	ai_hints.ai_flags    |= AI_ADDRCONFIG;
-	ai_hints.ai_flags    |= AI_CANONNAME;
-	ai_hints.ai_family    = AF_INET;
-	ai_hints.ai_socktype  = SOCK_RAW;
-
-	if ((ph = pinghost_alloc ()) == NULL)
-	{
-		dprintf ("Out of memory!\n");
-		return -1;
-	}
-
-	if ((ph->username = strdup (host)) == NULL)
-	{
-		dprintf ("Out of memory!\n");
-		ping_set_errno (obj, errno);
-		pinghost_free (ph);
-		return -1;
-	}
-
-	if ((ph->hostname = strdup (host)) == NULL)
-	{
-		dprintf ("Out of memory!\n");
-		ping_set_errno (obj, errno);
-		pinghost_free (ph);
-		return -1;
-	}
-
-	/* obj->data is not guaranteed to be != NULL */
-	if ((ph->data = strdup (obj->data == NULL ? PING_DEF_DATA : obj->data)) == NULL)
-	{
-		dprintf ("Out of memory!\n");
-		ping_set_errno (obj, errno);
-		pinghost_free (ph);
-		return -1;
-	}
-
-	if ((ai_return = getaddrinfo (host, NULL, &ai_hints, &ai_list)) != 0) {
-		char errbuf[PING_ERRMSG_LEN];
-		dprintf ("getaddrinfo failed\n");
-		ping_set_error (obj, "getaddrinfo",
-						(ai_return == EAI_SYSTEM)
-						? sstrerror (errno, errbuf, sizeof (errbuf)) :
-				gai_strerror (ai_return));
-		pinghost_free (ph);
-		return -1;
-	}
-
-	if (ai_list == NULL)
-		ping_set_error (obj, "getaddrinfo", "No hosts returned");
-
-	for (ai_ptr = ai_list; ai_ptr != NULL; ai_ptr = ai_ptr->ai_next) {
-		if (ai_ptr->ai_family == AF_INET) {
-			ai_ptr->ai_socktype = SOCK_RAW;
-			ai_ptr->ai_protocol = IPPROTO_ICMP;
-		} else if (ai_ptr->ai_family == AF_INET6) {
-			ai_ptr->ai_socktype = SOCK_RAW;
-			ai_ptr->ai_protocol = IPPROTO_ICMPV6;
-		} else {
-			char errmsg[PING_ERRMSG_LEN];
-
-			snprintf (errmsg, PING_ERRMSG_LEN, "Unknown `ai_family': %i", ai_ptr->ai_family);
-			errmsg[PING_ERRMSG_LEN - 1] = '\0';
-
-			dprintf ("%s", errmsg);
-			ping_set_error (obj, "getaddrinfo", errmsg);
-			continue;
-		}
-
-		assert (sizeof (struct sockaddr_storage) >= ai_ptr->ai_addrlen);
-		for (size_t i = 0; i < sizeof (sockaddr_storage); i++) {
-		  // constructor zeroes it now
-		  CHECK(((uint8_t *)&ph->sockaddr)[i] == 0);
-		}
-		memcpy (&ph->sockaddr, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
-		ph->addrlen = ai_ptr->ai_addrlen;
-
-		if ((ai_ptr->ai_canonname != NULL)
-				&& (strcmp (ph->hostname, ai_ptr->ai_canonname) != 0)) {
-			char *old_hostname;
-
-			dprintf ("ph->hostname = %s; ai_ptr->ai_canonname = %s;\n",
-					ph->hostname, ai_ptr->ai_canonname);
-
-			old_hostname = ph->hostname;
-			if ((ph->hostname = strdup (ai_ptr->ai_canonname)) == NULL) {
-				/* strdup failed, falling back to old hostname */
-				ph->hostname = old_hostname;
-			} else if (old_hostname != NULL) {
-				free (old_hostname);
-			}
-		}
-	}
-
-	freeaddrinfo (ai_list);
-
-	/*
-	 * Adding in the front is much easier, but then the iterator will
-	 * return the host that was added last as first host. That's just not
-	 * nice. -octo
-	 */
-	if (obj->head == NULL) {
-		obj->head = ph;
-	} else {
-		pinghost *hptr;
-
-		hptr = obj->head;
-		while (hptr->next != NULL)
-			hptr = hptr->next;
-
-		assert ((hptr != NULL) && (hptr->next == NULL));
-		hptr->next = ph;
-	}
-
-	ph->table_next = obj->table[ph->ident % PING_TABLE_LEN];
-	obj->table[ph->ident % PING_TABLE_LEN] = ph;
-
-	return 0;
-}
-
-pingobj_iter_t *ping_iterator_get (pingobj *obj) {
-  if (obj == NULL)
-	return NULL;
-  return (pingobj_iter_t *) obj->head;
-}
-
-pingobj_iter_t *ping_iterator_next (pingobj_iter_t *iter) {
-  if (iter == NULL)
-	return NULL;
-  return (pingobj_iter_t *) iter->next;
-}
-
-int ping_iterator_count (pingobj *obj) {
-  if (obj == NULL)
+  if (ping_host_search (obj, host) != nullptr)
 	return 0;
 
-  int count = 0;
-  pingobj_iter_t *iter = obj->head;
-  while (iter) {
-	count++;
-	iter = iter->next;
+  memset (&ai_hints, '\0', sizeof (ai_hints));
+  ai_hints.ai_flags     = 0;
+  ai_hints.ai_flags    |= AI_ADDRCONFIG;
+  ai_hints.ai_flags    |= AI_CANONNAME;
+  ai_hints.ai_family    = AF_INET;
+  ai_hints.ai_socktype  = SOCK_RAW;
+
+  pinghost *ph = pinghost_alloc();
+
+  if (ph == nullptr) {
+	dprintf ("Out of memory!\n");
+	return -1;
   }
-  return count;
+
+  if ((ph->username = strdup (host)) == nullptr) {
+	dprintf ("Out of memory!\n");
+	ping_set_errno (obj, errno);
+	pinghost_free (ph);
+	return -1;
+  }
+
+  if ((ph->hostname = strdup (host)) == nullptr) {
+	dprintf ("Out of memory!\n");
+	ping_set_errno (obj, errno);
+	pinghost_free (ph);
+	return -1;
+  }
+
+  /* obj->data is not guaranteed to be != nullptr */
+  ph->data = strdup(obj->data == nullptr ? PING_DEF_DATA : obj->data);
+  if (ph->data == nullptr) {
+	dprintf ("Out of memory!\n");
+	ping_set_errno (obj, errno);
+	pinghost_free (ph);
+	return -1;
+  }
+
+  if ((ai_return = getaddrinfo (host, nullptr, &ai_hints, &ai_list)) != 0) {
+	char errbuf[PING_ERRMSG_LEN];
+	dprintf ("getaddrinfo failed\n");
+	ping_set_error (obj, "getaddrinfo",
+					(ai_return == EAI_SYSTEM)
+					? sstrerror (errno, errbuf, sizeof (errbuf)) :
+					gai_strerror (ai_return));
+	pinghost_free (ph);
+	return -1;
+  }
+
+  if (ai_list == nullptr)
+	ping_set_error (obj, "getaddrinfo", "No hosts returned");
+
+  for (ai_ptr = ai_list; ai_ptr != nullptr; ai_ptr = ai_ptr->ai_next) {
+	if (ai_ptr->ai_family == AF_INET) {
+	  ai_ptr->ai_socktype = SOCK_RAW;
+	  ai_ptr->ai_protocol = IPPROTO_ICMP;
+	} else if (ai_ptr->ai_family == AF_INET6) {
+	  ai_ptr->ai_socktype = SOCK_RAW;
+	  ai_ptr->ai_protocol = IPPROTO_ICMPV6;
+	} else {
+	  char errmsg[PING_ERRMSG_LEN];
+
+	  snprintf (errmsg, PING_ERRMSG_LEN, "Unknown `ai_family': %i",
+				ai_ptr->ai_family);
+	  errmsg[PING_ERRMSG_LEN - 1] = '\0';
+
+	  dprintf ("%s", errmsg);
+	  ping_set_error (obj, "getaddrinfo", errmsg);
+	  continue;
+	}
+
+	assert (sizeof (struct sockaddr_storage) >= ai_ptr->ai_addrlen);
+	memcpy (&ph->sockaddr, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
+	ph->addrlen = ai_ptr->ai_addrlen;
+
+	if ((ai_ptr->ai_canonname != nullptr)
+		&& (strcmp (ph->hostname, ai_ptr->ai_canonname) != 0)) {
+	  char *old_hostname;
+
+	  dprintf ("ph->hostname = %s; ai_ptr->ai_canonname = %s;\n",
+			   ph->hostname, ai_ptr->ai_canonname);
+
+	  old_hostname = ph->hostname;
+	  if ((ph->hostname = strdup (ai_ptr->ai_canonname)) == nullptr) {
+		/* strdup failed, falling back to old hostname */
+		ph->hostname = old_hostname;
+	  } else if (old_hostname != nullptr) {
+		free (old_hostname);
+	  }
+	}
+  }
+
+  freeaddrinfo(ai_list);
+
+  obj->table.push_back(ph);
+
+  return 0;
 }
 
-int ping_iterator_get_info (pingobj_iter_t *iter, int info,
-							void *buffer, size_t *buffer_len) {
+const std::vector<pinghost *> &ping_gethosts(pingobj *obj) {
+  return obj->table;
+}
+
+int pinghost_get_info(pinghost *host, int info,
+					  void *buffer, size_t *buffer_len) {
 	int ret = EINVAL;
 
 	size_t orig_buffer_len = *buffer_len;
 
-	if ((iter == NULL) || (buffer_len == NULL))
+	if ((host == nullptr) || (buffer_len == nullptr))
 		return -1;
 
-	if ((buffer == NULL) && (*buffer_len != 0 ))
+	if ((buffer == nullptr) && (*buffer_len != 0 ))
 		return -1;
 
 	switch (info) {
 		case PING_INFO_USERNAME:
 			ret = ENOMEM;
-			*buffer_len = strlen (iter->username) + 1;
+			*buffer_len = strlen (host->username) + 1;
 			if (orig_buffer_len <= *buffer_len)
 				break;
 			/* Since (orig_buffer_len > *buffer_len) `strncpy'
 			 * will copy `*buffer_len' and pad the rest of
 			 * `buffer' with null-bytes */
-			strncpy ((char*)buffer, iter->username, orig_buffer_len);
+			strncpy ((char*)buffer, host->username, orig_buffer_len);
 			ret = 0;
 			break;
 
 		case PING_INFO_HOSTNAME:
 			ret = ENOMEM;
-			*buffer_len = strlen (iter->hostname) + 1;
+			*buffer_len = strlen (host->hostname) + 1;
 			if (orig_buffer_len < *buffer_len)
 				break;
 			/* Since (orig_buffer_len > *buffer_len) `strncpy'
 			 * will copy `*buffer_len' and pad the rest of
 			 * `buffer' with null-bytes */
-			strncpy ((char*)buffer, iter->hostname, orig_buffer_len);
+			strncpy ((char*)buffer, host->hostname, orig_buffer_len);
 			ret = 0;
 			break;
 
 		case PING_INFO_ADDRESS:
-			ret = getnameinfo ((struct sockaddr *) &iter->sockaddr,
-					iter->addrlen,
+			ret = getnameinfo ((struct sockaddr *) &host->sockaddr,
+					host->addrlen,
 					(char *) buffer,
 					*buffer_len,
-					NULL, 0,
+					nullptr, 0,
 					NI_NUMERICHOST);
 			if (ret != 0) {
 				if ((ret == EAI_MEMORY) || (ret == EAI_OVERFLOW))
@@ -1256,7 +1178,7 @@ int ping_iterator_get_info (pingobj_iter_t *iter, int info,
 			*buffer_len = sizeof (double);
 			if (orig_buffer_len < sizeof (double))
 				break;
-			*((double *) buffer) = iter->latency;
+			*((double *) buffer) = host->latency;
 			ret = 0;
 			break;
 
@@ -1265,7 +1187,7 @@ int ping_iterator_get_info (pingobj_iter_t *iter, int info,
 			*buffer_len = sizeof (uint32_t);
 			if (orig_buffer_len < sizeof (uint32_t))
 				break;
-			*((uint32_t *) buffer) = iter->dropped;
+			*((uint32_t *) buffer) = host->dropped;
 			ret = 0;
 			break;
 
@@ -1274,7 +1196,7 @@ int ping_iterator_get_info (pingobj_iter_t *iter, int info,
 			*buffer_len = sizeof (unsigned int);
 			if (orig_buffer_len < sizeof (unsigned int))
 				break;
-			*((unsigned int *) buffer) = (unsigned int) iter->sequence;
+			*((unsigned int *) buffer) = (unsigned int) host->sequence;
 			ret = 0;
 			break;
 
@@ -1283,16 +1205,16 @@ int ping_iterator_get_info (pingobj_iter_t *iter, int info,
 			*buffer_len = sizeof (uint16_t);
 			if (orig_buffer_len < sizeof (uint16_t))
 				break;
-			*((uint16_t *) buffer) = (uint16_t) iter->ident;
+			*((uint16_t *) buffer) = (uint16_t) host->ident;
 			ret = 0;
 			break;
 
 		case PING_INFO_DATA:
 			ret = ENOMEM;
-			*buffer_len = strlen (iter->data);
+			*buffer_len = strlen (host->data);
 			if (orig_buffer_len < *buffer_len)
 				break;
-			strncpy ((char *) buffer, iter->data, orig_buffer_len);
+			strncpy ((char *) buffer, host->data, orig_buffer_len);
 			ret = 0;
 			break;
 
@@ -1301,7 +1223,7 @@ int ping_iterator_get_info (pingobj_iter_t *iter, int info,
 			*buffer_len = sizeof (int);
 			if (orig_buffer_len < sizeof (int))
 				break;
-			*((int *) buffer) = iter->recv_ttl;
+			*((int *) buffer) = host->recv_ttl;
 			ret = 0;
 			break;
 
@@ -1311,7 +1233,7 @@ int ping_iterator_get_info (pingobj_iter_t *iter, int info,
 			if (!*buffer_len) *buffer_len=1;
 			if (orig_buffer_len < *buffer_len)
 				break;
-			memcpy(buffer,&iter->recv_qos,*buffer_len);
+			memcpy(buffer,&host->recv_qos,*buffer_len);
 			ret = 0;
 			break;
 	}
@@ -1319,14 +1241,14 @@ int ping_iterator_get_info (pingobj_iter_t *iter, int info,
 	return ret;
 }
 
-void *ping_iterator_get_context (pingobj_iter_t *iter) {
-	if (iter == NULL)
-		return NULL;
-	return iter->context;
+void *pinghost_get_context(pinghost *host) {
+  if (host == nullptr)
+	return nullptr;
+  return host->context;
 }
 
-void ping_iterator_set_context (pingobj_iter_t *iter, void *context) {
-	if (iter == NULL)
-		return;
-	iter->context = context;
+void pinghost_set_context(pinghost *host, void *context) {
+  if (host == nullptr)
+	return;
+  host->context = context;
 }

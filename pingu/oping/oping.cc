@@ -74,8 +74,8 @@ typedef struct ping_context
 } ping_context_t;
 
 static double  opt_timeout    = PING_DEF_TIMEOUT;
-static char   *opt_device     = NULL;
-static char   *opt_mark       = NULL;
+static char   *opt_device     = nullptr;
+static char   *opt_mark       = nullptr;
 static int     opt_count      = -1;
 static int     opt_send_ttl   = 64;
 static const uint8_t opt_send_qos   = 0;
@@ -83,55 +83,48 @@ static int     opt_bell       = 0;
 
 static int host_num  = 0;
 
-static ping_context_t *context_create () /* {{{ */
-{
+static ping_context_t *context_create() {
   ping_context_t *ctx = (ping_context_t *)calloc (1, sizeof (*ctx));
-	if (ctx == NULL)
-		return (NULL);
+	if (ctx == nullptr)
+		return nullptr;
 
-	return (ctx);
-} /* }}} ping_context_t *context_create */
+	return ctx;
+}
 
-static void context_destroy (ping_context_t *context) /* {{{ */
-{
-	if (context == NULL)
+static void context_destroy (ping_context_t *context) {
+	if (context == nullptr)
 		return;
 
 	free (context);
-} /* }}} void context_destroy */
+}
 
 static double context_get_packet_loss (const ping_context_t *ctx) /* {{{ */
 {
-	if (ctx == NULL)
-		return (-1.0);
+	if (ctx == nullptr)
+		return -1.0;
 
 	if (ctx->req_sent < 1)
-		return (0.0);
+		return 0.0;
 
 	return (100.0 * (ctx->req_sent - ctx->req_rcvd)
 			/ ((double) ctx->req_sent));
 } /* }}} double context_get_packet_loss */
 
-static int ping_initialize_contexts (pingobj *ping) /* {{{ */
-{
-	pingobj_iter_t *iter;
+static int ping_initialize_contexts (pingobj *ping) {
 	int index;
 
-	if (ping == NULL)
-		return (EINVAL);
+	if (ping == nullptr)
+		return EINVAL;
 
 	index = 0;
-	for (iter = ping_iterator_get (ping);
-			iter != NULL;
-			iter = ping_iterator_next (iter))
-	{
+	for (pinghost *host : ping_gethosts(ping)) {
 		ping_context_t *context;
 		size_t buffer_size;
 
-		context = (ping_context_t *)ping_iterator_get_context(iter);
+		context = (ping_context_t *)pinghost_get_context(host);
 
 		/* if this is a previously existing host, do not recreate it */
-		if (context != NULL)
+		if (context != nullptr)
 		{
 			context->index = index++;
 			continue;
@@ -141,17 +134,17 @@ static int ping_initialize_contexts (pingobj *ping) /* {{{ */
 		context->index = index;
 
 		buffer_size = sizeof (context->host);
-		ping_iterator_get_info (iter, PING_INFO_HOSTNAME, context->host, &buffer_size);
+		pinghost_get_info (host, PING_INFO_HOSTNAME, context->host, &buffer_size);
 
 		buffer_size = sizeof (context->addr);
-		ping_iterator_get_info (iter, PING_INFO_ADDRESS, context->addr, &buffer_size);
+		pinghost_get_info (host, PING_INFO_ADDRESS, context->addr, &buffer_size);
 
-		ping_iterator_set_context (iter, (void *) context);
+		pinghost_set_context (host, (void *) context);
 
 		index++;
 	}
 
-	return (0);
+	return 0;
 } /* }}} int ping_initialize_contexts */
 
 static void usage_exit (const char *name, int status) /* {{{ */
@@ -207,9 +200,9 @@ static int read_options (int argc, char **argv) /* {{{ */
 
 			case 'w':
 				{
-					char *endp = NULL;
+					char *endp = nullptr;
 					double t = strtod (optarg, &endp);
-					if ((optarg[0] != 0) && (endp != NULL) && (*endp == 0))
+					if ((optarg[0] != 0) && (endp != nullptr) && (*endp == 0))
 						opt_timeout = t;
 					else
 						fprintf (stderr, "Ignoring invalid timeout: %s\n",
@@ -250,33 +243,28 @@ static int read_options (int argc, char **argv) /* {{{ */
 		}
 	}
 
-	return (optind);
+	return optind;
 } /* }}} read_options */
 
-static int pre_loop_hook (pingobj *ping) /* {{{ */
-{
-	pingobj_iter_t *iter;
+static int pre_loop_hook (pingobj *ping) {
 
-	for (iter = ping_iterator_get (ping);
-			iter != NULL;
-			iter = ping_iterator_next (iter))
-	{
-		ping_context_t *ctx;
-		size_t buffer_size;
+  for (pinghost *host : ping_gethosts(ping)) {
+	ping_context_t *ctx;
+	size_t buffer_size;
 
-		ctx = (ping_context_t *)ping_iterator_get_context (iter);
-		if (ctx == NULL)
-			continue;
+	ctx = (ping_context_t *)pinghost_get_context(host);
+	if (ctx == nullptr)
+	  continue;
 
-		buffer_size = 0;
-		ping_iterator_get_info (iter, PING_INFO_DATA, NULL, &buffer_size);
+	buffer_size = 0;
+	pinghost_get_info (host, PING_INFO_DATA, nullptr, &buffer_size);
 
-		printf ("PING %s (%s) %zu bytes of data.\n",
-				ctx->host, ctx->addr, buffer_size);
-	}
+	printf ("PING %s (%s) %zu bytes of data.\n",
+			ctx->host, ctx->addr, buffer_size);
+  }
 
-	return (0);
-} /* }}} int pre_loop_hook */
+  return 0;
+}
 
 static void update_context (ping_context_t *ctx, double latency) /* {{{ */
 {
@@ -293,109 +281,98 @@ static void update_context (ping_context_t *ctx, double latency) /* {{{ */
 	}
 } /* }}} void update_context */
 
-static void update_host_hook (pingobj_iter_t *iter, /* {{{ */
-                              __attribute__((unused)) int index) {
-	double          latency;
-	unsigned int    sequence;
-	int             recv_ttl;
-	uint8_t         recv_qos;
-	size_t          buffer_len;
-	size_t          data_len;
-	ping_context_t *context;
+static void update_host_hook (pinghost *host) {
+  double          latency;
+  unsigned int    sequence;
+  int             recv_ttl;
+  uint8_t         recv_qos;
+  size_t          buffer_len;
+  size_t          data_len;
+  ping_context_t *context;
 
-	latency = -1.0;
-	buffer_len = sizeof (latency);
-	ping_iterator_get_info (iter, PING_INFO_LATENCY,
-			&latency, &buffer_len);
+  latency = -1.0;
+  buffer_len = sizeof (latency);
+  pinghost_get_info(host, PING_INFO_LATENCY,
+					&latency, &buffer_len);
 
-	sequence = 0;
-	buffer_len = sizeof (sequence);
-	ping_iterator_get_info (iter, PING_INFO_SEQUENCE,
-			&sequence, &buffer_len);
+  sequence = 0;
+  buffer_len = sizeof (sequence);
+  pinghost_get_info(host, PING_INFO_SEQUENCE,
+					&sequence, &buffer_len);
 
-	recv_ttl = -1;
-	buffer_len = sizeof (recv_ttl);
-	ping_iterator_get_info (iter, PING_INFO_RECV_TTL,
-			&recv_ttl, &buffer_len);
+  recv_ttl = -1;
+  buffer_len = sizeof (recv_ttl);
+  pinghost_get_info(host, PING_INFO_RECV_TTL,
+					&recv_ttl, &buffer_len);
 
-	recv_qos = 0;
-	buffer_len = sizeof (recv_qos);
-	ping_iterator_get_info (iter, PING_INFO_RECV_QOS,
-			&recv_qos, &buffer_len);
+  recv_qos = 0;
+  buffer_len = sizeof (recv_qos);
+  pinghost_get_info(host, PING_INFO_RECV_QOS,
+					&recv_qos, &buffer_len);
 
-	data_len = 0;
-	ping_iterator_get_info (iter, PING_INFO_DATA,
-			NULL, &data_len);
+  data_len = 0;
+  pinghost_get_info(host, PING_INFO_DATA,
+					nullptr, &data_len);
 
-	context = (ping_context_t *) ping_iterator_get_context (iter);
+  context = (ping_context_t *) pinghost_get_context (host);
 
 # define HOST_PRINTF(...) printf(__VA_ARGS__)
 
-	update_context (context, latency);
+  update_context (context, latency);
 
-	if (latency > 0.0)
-	{
-		HOST_PRINTF ("%zu bytes from %s (%s): icmp_seq=%u ttl=%i ",
-				data_len,
-				context->host, context->addr,
-				sequence, recv_ttl);
-		HOST_PRINTF ("time=%.2f ms\n", latency);
-    if (opt_bell) {
-			HOST_PRINTF ("\a");
-    }
+  if (latency > 0.0) {
+	HOST_PRINTF ("%zu bytes from %s (%s): icmp_seq=%u ttl=%i ",
+				 data_len,
+				 context->host, context->addr,
+				 sequence, recv_ttl);
+	HOST_PRINTF ("time=%.2f ms\n", latency);
+	if (opt_bell) {
+	  HOST_PRINTF ("\a");
 	}
-	else /* if (!(latency > 0.0)) */
-	{
-		HOST_PRINTF ("echo reply from %s (%s): icmp_seq=%u timeout\n",
-				context->host, context->addr,
-				sequence);
-	}
-
-} /* }}} void update_host_hook */
+  } else {
+	HOST_PRINTF ("echo reply from %s (%s): icmp_seq=%u timeout\n",
+				 context->host, context->addr,
+				 sequence);
+  }
+}
 
 /* Prints statistics for each host, cleans up the contexts */
 static int post_loop_hook (pingobj *ping) {
-  pingobj_iter_t *iter;
-  int failure_count = 0;
 
-  for (iter = ping_iterator_get (ping);
-	   iter != NULL;
-	   iter = ping_iterator_next (iter)) {
+  int failure_count = 0;
+  for (pinghost *host : ping_gethosts(ping)) {
 	ping_context_t *context =
-	  (ping_context_t *)ping_iterator_get_context (iter);
+	  (ping_context_t *)pinghost_get_context(host);
 
 	printf ("\n--- %s ping statistics ---\n"
 			"%i packets transmitted, %i received, %.2f%% packet loss, "
 			"time %.1fms\n",
 			context->host, context->req_sent, context->req_rcvd,
-			context_get_packet_loss (context),
+			context_get_packet_loss(context),
 			context->latency_total);
 
-	ping_iterator_set_context (iter, NULL);
-	context_destroy (context);
+	pinghost_set_context(host, nullptr);
+	context_destroy(context);
   }
 
   return failure_count;
 }
 
 int main (int argc, char **argv) {
-  pingobj      *ping;
-  pingobj_iter_t *iter;
-
-  int optind;
   int i;
   int status;
 
   setlocale(LC_ALL, "");
-  optind = read_options (argc, argv);
+  int optind = read_options (argc, argv);
 
   if (optind >= argc) {
 	usage_exit (argv[0], 1);
   }
 
-  if ((ping = ping_construct ()) == NULL) {
+  pingobj *ping = ping_construct ();
+  if (ping == nullptr) {
 	fprintf (stderr, "ping_construct failed\n");
-	return (1);
+	return 1;
   }
 
   if (ping_setopt (ping, PING_OPT_TTL, &opt_send_ttl) != 0) {
@@ -413,17 +390,17 @@ int main (int argc, char **argv) {
 			 ping_get_error (ping));
   }
 
-  if (opt_device != NULL) {
+  if (opt_device != nullptr) {
 	if (ping_setopt (ping, PING_OPT_DEVICE, (void *) opt_device) != 0) {
 	  fprintf (stderr, "Setting device failed: %s\n",
 			   ping_get_error (ping));
 	}
   }
 
-  if (opt_mark != NULL) {
-	char *endp = NULL;
+  if (opt_mark != nullptr) {
+	char *endp = nullptr;
 	int mark = (int) strtol (opt_mark, &endp, /* base = */ 0);
-	if ((opt_mark[0] != 0) && (endp != NULL) && (*endp == 0)) {
+	if ((opt_mark[0] != 0) && (endp != nullptr) && (*endp == 0)) {
 	  if (ping_setopt(ping, PING_OPT_MARK, (void*)(&mark)) != 0) {
 		fprintf (stderr, "Setting mark failed: %s\n",
 				 ping_get_error (ping));
@@ -458,7 +435,7 @@ int main (int argc, char **argv) {
   ping_initialize_contexts (ping);
 
   if (i == 0)
-	return (1);
+	return 1;
 
   pre_loop_hook (ping);
 
@@ -469,12 +446,8 @@ int main (int argc, char **argv) {
 	  continue;
 	}
 
-	int index = 0;
-	for (iter = ping_iterator_get (ping);
-		 iter != NULL;
-		 iter = ping_iterator_next (iter)) {
-	  update_host_hook (iter, index);
-	  index++;
+	for (pinghost *host : ping_gethosts(ping)) {
+	  update_host_hook(host);
 	}
 
 	/* Don't sleep in the last iteration */
