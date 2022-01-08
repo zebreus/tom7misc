@@ -647,6 +647,7 @@ int ping_setopt (pingobj *obj, int option, const void *value) {
   }
 }
 
+// pings all the hosts in sequence and reads their responses
 int ping_send (pingobj *obj) {
   struct timeval endtime;
   struct timeval nowtime;
@@ -703,27 +704,24 @@ int ping_send (pingobj *obj) {
 	fd_set write_fds;
 
 	int write_fd = -1;
-	int max_fd = -1;
 
 	// n.b. this can probably be simplified, as we only support
 	// ipv4 now (and so this is always just the one fd4 I think) -tom7
 	FD_ZERO (&read_fds);
 	FD_ZERO (&write_fds);
 
-	if (obj->fd4 != -1) {
-	  FD_SET(obj->fd4, &read_fds);
-	  if (next_host_idx < obj->table.size())
-		write_fd = obj->fd4;
+	CHECK(obj->fd4 != -1);
 
-	  if (max_fd < obj->fd4)
-		max_fd = obj->fd4;
-	}
+	FD_SET(obj->fd4, &read_fds);
+	if (next_host_idx < obj->table.size())
+	  write_fd = obj->fd4;
+
+	const int max_fd = obj->fd4;
 
 	if (write_fd != -1)
 	  FD_SET(write_fd, &write_fds);
 
-	assert (max_fd != -1);
-	assert (max_fd < FD_SETSIZE);
+	CHECK (max_fd < FD_SETSIZE);
 
 	if (gettimeofday (&nowtime, nullptr) == -1) {
 	  ping_set_errno (obj, errno);
@@ -759,21 +757,15 @@ int ping_send (pingobj *obj) {
 	  break;
 	}
 
-	if (obj->fd4 != -1 && FD_ISSET (obj->fd4, &read_fds)) {
+	// If posible to read, do so.
+	if (FD_ISSET (obj->fd4, &read_fds)) {
 	  if (ping_receive_one (obj, &nowtime) == 0) {
 		pings_in_flight--;
 		pongs_received++;
 	  }
-	  continue;
 	}
 
-	// ... and if no reply is available to read, continue sending
-	// out pings. (Why not both? -tom7)
-
-
-	/* this condition should always be true. We keep it for
-	 * consistency with the read blocks above and just to be on the
-	 * safe side. */
+	// If possible to write, do so.
 	if (write_fd != -1 && FD_ISSET (write_fd, &write_fds)) {
 	  CHECK(next_host_idx < obj->table.size());
 	  pinghost *host = obj->table[next_host_idx];
@@ -782,7 +774,6 @@ int ping_send (pingobj *obj) {
 	  else
 		error_count++;
 	  next_host_idx++;
-	  continue;
 	}
   }
 

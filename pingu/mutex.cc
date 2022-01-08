@@ -11,7 +11,6 @@
 
 #include <mutex>
 #include <vector>
-#include <condition_variable>
 
 #define NBDKIT_API_VERSION 2
 #include <nbdkit-plugin.h>
@@ -20,6 +19,9 @@
 #include "allocator.h"
 
 #include "threadutil.h"
+
+// This is from config.h but I want to avoid autoconf.
+#define PACKAGE_VERSION "1.29.11"
 
 #define THREAD_MODEL NBDKIT_THREAD_MODEL_PARALLEL
 
@@ -32,64 +34,26 @@ struct Block {
   // Read the indicated portion of the block into the buffer.
   void Read(uint8_t *buf, int start, int count) {
 	nbdkit_debug("try read from block %d", id);
-	bool read_done = false;
-	std::unique_lock<std::mutex> ul(mutex);
-	reads.emplace_back(PendingRead{
-		  .buf = buf,
-		  .start = start,
-		  .count = count,
-		  .done = &read_done,
-	  });
-	cond.wait(ul, [&read_done]{ return read_done; });
-	nbdkit_debug("read done from %d", id);
+	MutexLock ml(&mutex);
+	nbdkit_debug("ready to read from block %d", id);
+	for (int i = 0; i < count; i++) {
+	  *buf = contents[start + i];
+	  buf++;
+	}
   }
 
   // Write the buffer to the indicated portion of the block.
   void Write(const uint8_t *buf, int start, int count) {
-	bool write_done = false;
-	std::unique_lock<std::mutex> ul(mutex);
-	// PERF: Queueing multiple writes is not necessary as
-	// we will only write one piece of data (the last one).
-	// But we should be careful about returning until we
-	// have "completed" the earlier writes.
-	writes.emplace_back(PendingWrite{
-		  .buf = buf,
-		  .start = start,
-		  .count = count,
-		  .done = &write_done,
-	  });
-	cond.wait(ul, [&write_done]{ return write_done; });
+	MutexLock ml(&mutex);
+	for (int i = 0; i < count; i++) {
+	  contents[start + i] = *buf;
+	  buf++;
+	}
   }
-
-  // Pending request to read this block into the buffer.
-  struct PendingRead {
-	uint8_t *buf;
-	int start;
-	int count;
-	bool *done;
-  };
-
-  struct PendingWrite {
-	const uint8_t *buf;
-	int start;
-	int count;
-	bool *done;
-  };
 
   const int id = 0;
   std::mutex mutex;
-  std::condition_variable cond;
-
-  // Protected by the mutex.
-  std::vector<PendingRead> reads;
-  std::vector<PendingWrite> writes;
-
-  // Private!
   std::array<uint8_t, BLOCK_SIZE> contents;
-};
-
-struct Pings {
-
 };
 
 // Test version of buffer where we actually keep the backing
@@ -119,50 +83,28 @@ struct Blocks {
   std::vector<Block *> mem;
 };
 
-// Processes pending reads/writes.
-struct Processor {
-  Processor(Blocks *blocks) : blocks(blocks) {
-    process_thread.reset(new std::thread(&Processor::ProcessThread, this));
-	nbdkit_debug("thread spawned %p\n", process_thread.get());
+// keeps all the locks locked except for one
+struct SlowDowner {
+  SlowDowner(Blocks *blocks) : blocks(blocks) {
+	for (int i = 0; i < blocks->num_blocks; i++) {
+	  blocks->mem[i]->mutex.lock();
+	}
+
+    unlock_thread.reset(new std::thread(&SlowDowner::UnlockThread, this));
+	nbdkit_debug("thread spawned %p\n", unlock_thread.get());
   }
 
-  void ProcessThread() {
+  void UnlockThread() {
 	printf("in the thread");
-	nbdkit_debug("process thread started\n");
+	nbdkit_debug("unlock thread started\n");
 	for (;;) {
 	  for (int i = 0; i < blocks->num_blocks; i++) {
-		Block *block = blocks->mem[i];
-
-		{
-		  std::unique_lock<std::mutex> ul(block->mutex);
-		  // nbdkit_debug("%d is unlocked", i);
-
-		  // Process all reads
-		  for (const Block::PendingRead &pr : block->reads) {
-			// using the private data..
-			for (int i = 0; i < pr.count; i++)
-			  pr.buf[i] = block->contents[pr.start + i];
-			*pr.done = true;
-		  }
-		  block->reads.clear();
-
-		  // And all writes
-		  // (PERF: We only need to write the last one but
-		  // need to mark all as done)
-		  for (const Block::PendingWrite &pw : block->writes) {
-			// using the private data..
-			for (int i = 0; i < pw.count; i++)
-			  block->contents[pw.start + i] = pw.buf[i];
-			*pw.done = true;
-		  }
-		  block->writes.clear();
-		}
-
-		// Lock is released. Notify anyone waiting.
-		block->cond.notify_all();
-
+		blocks->mem[i]->mutex.unlock();
+		nbdkit_debug("%d is unlocked", i);
 		std::this_thread::sleep_for(
 			std::chrono::milliseconds(50));
+		blocks->mem[i]->mutex.lock();
+
 		{
 		  MutexLock ml(&mutex);
 		  if (should_die)
@@ -171,21 +113,25 @@ struct Processor {
 	  }
 	}
 
-  die:;
+  die:
+	// unlock everything
+	for (int j = 0; j < blocks->num_blocks; j++) {
+	  blocks->mem[j]->mutex.unlock();
+	}
   }
 
-  ~Processor() {
+  ~SlowDowner() {
 	{
 	  MutexLock ml(&mutex);
 	  should_die = true;
 	}
-	process_thread->join();
-	process_thread.reset(nullptr);
+	unlock_thread->join();
+	unlock_thread.reset(nullptr);
   }
 
   std::mutex mutex;
   bool should_die = false;
-  std::unique_ptr<std::thread> process_thread;
+  std::unique_ptr<std::thread> unlock_thread;
   Blocks *blocks = nullptr;
 };
 
@@ -193,18 +139,18 @@ static int64_t num_blocks = -1;
 // Allocated buffer.
 static Blocks *blocks = nullptr;
 
-static Processor *processor = nullptr;
+static SlowDowner *slowdowner = nullptr;
 
 static int pingu_after_fork(void) {
   nbdkit_debug("After fork! num_blocks %lu\n", num_blocks);
   blocks = new Blocks(num_blocks);
-  processor = new Processor(blocks);
+  slowdowner = new SlowDowner(blocks);
   return 0;
 }
 
 static void pingu_unload(void) {
-  delete processor;
-  processor = nullptr;
+  delete slowdowner;
+  slowdowner = nullptr;
 
   delete blocks;
   blocks = nullptr;
@@ -341,7 +287,7 @@ static int pingu_flush(void *handle, uint32_t flags) {
 // they are declared in nbdkit-plugin.h.
 static struct nbdkit_plugin plugin = {
   .name              = "pingu",
-  .version           = "1.0.0",
+  .version           = PACKAGE_VERSION,
   .load              = nullptr,
   .unload            = pingu_unload,
   .config            = pingu_config,
