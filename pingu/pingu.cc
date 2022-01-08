@@ -19,7 +19,9 @@
 #include "cleanup.h"
 #include "allocator.h"
 
+#include "arcfour.h"
 #include "threadutil.h"
+#include "randutil.h"
 
 #define THREAD_MODEL NBDKIT_THREAD_MODEL_PARALLEL
 
@@ -29,9 +31,17 @@ struct Block {
 	bzero(contents.data(), BLOCK_SIZE);
   }
 
+  // Most hold mutex
+  void Viz() {
+	nbdkit_debug("VIZ[b %d %d %d %d]ZIV",
+				 id,
+				 AllZero() ? 1 : 0,
+				 (int)reads.size(),
+				 (int)writes.size());
+  }
+
   // Read the indicated portion of the block into the buffer.
   void Read(uint8_t *buf, int start, int count) {
-	nbdkit_debug("try read from block %d", id);
 	bool read_done = false;
 	std::unique_lock<std::mutex> ul(mutex);
 	reads.emplace_back(PendingRead{
@@ -40,8 +50,9 @@ struct Block {
 		  .count = count,
 		  .done = &read_done,
 	  });
+	Viz();
 	cond.wait(ul, [&read_done]{ return read_done; });
-	nbdkit_debug("read done from %d", id);
+	Viz();
   }
 
   // Write the buffer to the indicated portion of the block.
@@ -58,7 +69,9 @@ struct Block {
 		  .count = count,
 		  .done = &write_done,
 	  });
+	Viz();
 	cond.wait(ul, [&write_done]{ return write_done; });
+	Viz();
   }
 
   // Pending request to read this block into the buffer.
@@ -83,6 +96,13 @@ struct Block {
   // Protected by the mutex.
   std::vector<PendingRead> reads;
   std::vector<PendingWrite> writes;
+
+  bool AllZero() const {
+	for (int i = 0; i < BLOCK_SIZE; i++) {
+	  if (contents[i] != 0) return false;
+	}
+	return true;
+  }
 
   // Private!
   std::array<uint8_t, BLOCK_SIZE> contents;
@@ -129,45 +149,49 @@ struct Processor {
   void ProcessThread() {
 	printf("in the thread");
 	nbdkit_debug("process thread started\n");
+	ArcFour rc("process");
+	int64_t cursor = 0;
 	for (;;) {
-	  for (int i = 0; i < blocks->num_blocks; i++) {
-		Block *block = blocks->mem[i];
+	  // int idx = RandTo(&rc, blocks->num_blocks);
+	  int idx = (cursor++) % blocks->num_blocks;
+	  Block *block = blocks->mem[idx];
 
-		{
-		  std::unique_lock<std::mutex> ul(block->mutex);
-		  // nbdkit_debug("%d is unlocked", i);
+	  nbdkit_debug("VIZ[u %d]ZIV", idx);
 
-		  // Process all reads
-		  for (const Block::PendingRead &pr : block->reads) {
-			// using the private data..
-			for (int i = 0; i < pr.count; i++)
-			  pr.buf[i] = block->contents[pr.start + i];
-			*pr.done = true;
-		  }
-		  block->reads.clear();
+	  {
+		std::unique_lock<std::mutex> ul(block->mutex);
+		// nbdkit_debug("%d is unlocked", idx);
 
-		  // And all writes
-		  // (PERF: We only need to write the last one but
-		  // need to mark all as done)
-		  for (const Block::PendingWrite &pw : block->writes) {
-			// using the private data..
-			for (int i = 0; i < pw.count; i++)
-			  block->contents[pw.start + i] = pw.buf[i];
-			*pw.done = true;
-		  }
-		  block->writes.clear();
+		// Process all reads
+		for (const Block::PendingRead &pr : block->reads) {
+		  // using the private data..
+		  for (int i = 0; i < pr.count; i++)
+			pr.buf[i] = block->contents[pr.start + i];
+		  *pr.done = true;
 		}
+		block->reads.clear();
 
-		// Lock is released. Notify anyone waiting.
-		block->cond.notify_all();
-
-		std::this_thread::sleep_for(
-			std::chrono::milliseconds(50));
-		{
-		  MutexLock ml(&mutex);
-		  if (should_die)
-			goto die;
+		// And all writes
+		// (PERF: We only need to write the last one but
+		// need to mark all as done)
+		for (const Block::PendingWrite &pw : block->writes) {
+		  // using the private data..
+		  for (int i = 0; i < pw.count; i++)
+			block->contents[pw.start + i] = pw.buf[i];
+		  *pw.done = true;
 		}
+		block->writes.clear();
+	  }
+
+	  // Lock is released. Notify anyone waiting.
+	  block->cond.notify_all();
+
+	  std::this_thread::sleep_for(
+		  std::chrono::milliseconds(10));
+	  {
+		MutexLock ml(&mutex);
+		if (should_die)
+		  goto die;
 	  }
 	}
 
@@ -277,7 +301,7 @@ static int pingu_pread(void *handle, void *buf_void,
                          uint32_t count, uint64_t offset,
                          uint32_t flags) {
   uint8_t *buf = (uint8_t*)buf_void;
-  nbdkit_debug("pread(%u, %lu)\n", count, offset);
+  // nbdkit_debug("pread(%u, %lu)\n", count, offset);
   assert(!flags);
 
   // one block at a time
@@ -310,7 +334,7 @@ static int pingu_pwrite(void *handle, const void *buf_void,
                           uint32_t count, uint64_t offset,
                           uint32_t flags) {
   const uint8_t *buf = (const uint8_t*)buf_void;
-  nbdkit_debug("pwrite(%u, %lu)\n", count, offset);
+  // nbdkit_debug("pwrite(%u, %lu)\n", count, offset);
   /* Flushing, and thus FUA flag, is a no-op */
   assert((flags & ~NBDKIT_FLAG_FUA) == 0);
 

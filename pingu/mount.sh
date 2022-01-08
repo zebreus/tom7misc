@@ -15,7 +15,7 @@ fi
 echo "STARTED SERVER on $1"
 
 # nbd-client localhost for TCP
-nbd-client -unix "$1" /dev/nbd0 || exit -1
+nbd-client -timeout 3600 -unix "$1" /dev/nbd0 || exit -1
 
 gdisk /dev/nbd0 <<EOF
 n

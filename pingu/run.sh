@@ -14,9 +14,8 @@ modprobe nbd
 
 # clean up any existing
 umount /mnt/pingu
-# XXX force same block size as server
-# hour-long timeout
-nbd-client -timeout 3600 -d /dev/nbd0
+nbd-client -d /dev/nbd0
+killall -9 viz.exe
 killall -9 nbdkit
 rm -f "$SOCKET"
 
@@ -33,7 +32,7 @@ fi
 # nbdkit concept
 
 
-../../nbdkit/server/nbdkit --verbose -U "$SOCKET" ./pingu.so 256 --run './mount.sh $unixsocket'
+../../nbdkit/server/nbdkit --verbose -U "$SOCKET" ./pingu.so 256 --run './mount.sh $unixsocket' 2>&1 | viz/viz.exe
 # drop-in replacement with memory plugin:
 # ../../nbdkit/server/nbdkit --verbose -U "$SOCKET" ../../nbdkit/plugins/memory/.libs/nbdkit-memory-plugin.so 131072 --run './mount.sh $unixsocket'
 
