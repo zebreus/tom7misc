@@ -48,6 +48,7 @@
 #include "base/logging.h"
 
 #include "oping.h"
+#include "../netutil.h"
 
 #if WITH_DEBUG
 # define dprintf(...) printf ("%s[%4i]: %-20s: ", __FILE__, __LINE__, __FUNCTION__); printf (__VA_ARGS__)
@@ -64,10 +65,10 @@ struct pinghost {
 	memset (&tv, 0, sizeof (timeval));
   }
 
-  /* username: name passed in by the user */
-  char *username = nullptr;
+  /* username: name (of the host) passed in by the user */
+  std::string username;
   /* hostname: name returned by the reverse lookup */
-  char *hostname = nullptr;
+  std::string hostname;
   int ident = 0;
   int sequence = 0;
   double latency = 0.0;
@@ -489,10 +490,6 @@ static pinghost *pinghost_alloc() {
 }
 
 static void pinghost_free(pinghost *ph) {
-  if (ph == nullptr)
-	return;
-  free (ph->username);
-  free (ph->hostname);
   delete ph;
 }
 
@@ -784,17 +781,13 @@ int ping_send (pingobj *obj) {
 
 static pinghost *ping_host_search (pingobj *obj, const char *host) {
   for (pinghost *ph : obj->table)
-	if (strcasecmp (ph->username, host) == 0)
+	if (strcasecmp (ph->username.c_str(), host) == 0)
 	  return ph;
 
   return nullptr;
 }
 
 int ping_host_add (pingobj *obj, const char *host) {
-  struct addrinfo ai_hints;
-  struct addrinfo *ai_list, *ai_ptr;
-  int ai_return;
-
   if ((obj == nullptr) || (host == nullptr))
 	return -1;
 
@@ -803,91 +796,37 @@ int ping_host_add (pingobj *obj, const char *host) {
   if (ping_host_search (obj, host) != nullptr)
 	return 0;
 
-  memset (&ai_hints, '\0', sizeof (ai_hints));
-  ai_hints.ai_flags = 0;
-  ai_hints.ai_flags |= AI_ADDRCONFIG;
-  ai_hints.ai_flags |= AI_CANONNAME;
-  ai_hints.ai_family = AF_INET;
-  ai_hints.ai_socktype = SOCK_RAW;
+  std::string canon, error;
+  std::optional<uint32_t> ipo =
+	NetUtil::GetIPV4(host, &canon, &error);
+  if (!ipo.has_value()) {
+	dprintf("GetIPV4 failed for %s: %s\n", host, error.c_str());
+	return -1;
+  }
+
+  const uint32_t ip = ipo.value();
 
   pinghost *ph = pinghost_alloc();
+  CHECK(ph);
 
-  if (ph == nullptr) {
-	dprintf ("Out of memory!\n");
-	return -1;
-  }
-
-  if ((ph->username = strdup (host)) == nullptr) {
-	dprintf ("Out of memory!\n");
-	ping_set_errno (obj, errno);
-	pinghost_free (ph);
-	return -1;
-  }
-
-  if ((ph->hostname = strdup (host)) == nullptr) {
-	dprintf ("Out of memory!\n");
-	ping_set_errno (obj, errno);
-	pinghost_free (ph);
-	return -1;
-  }
-
+  ph->username = host;
+  ph->hostname = canon;
   ph->data = obj->data;
 
-  if ((ai_return = getaddrinfo (host, nullptr, &ai_hints, &ai_list)) != 0) {
-	char errbuf[PING_ERRMSG_LEN];
-	dprintf ("getaddrinfo failed\n");
-	ping_set_error (obj, "getaddrinfo",
-					(ai_return == EAI_SYSTEM)
-					? sstrerror (errno, errbuf, sizeof (errbuf)) :
-					gai_strerror (ai_return));
-	pinghost_free (ph);
-	return -1;
-  }
+  sockaddr_in *s = (sockaddr_in*)&ph->sockaddr;
+  ph->addrlen = sizeof (sockaddr_in);
+  s->sin_family = AF_INET;
+  s->sin_port = 0;
+  uint8_t *a = (uint8_t*)&s->sin_addr;
+  a[0] = (ip >> 24) & 255;
+  a[1] = (ip >> 16) & 255;
+  a[2] = (ip >> 8) & 255;
+  a[3] = ip & 255;
 
-  if (ai_list == nullptr)
-	ping_set_error (obj, "getaddrinfo", "No hosts returned");
-
-  for (ai_ptr = ai_list; ai_ptr != nullptr; ai_ptr = ai_ptr->ai_next) {
-	if (ai_ptr->ai_family == AF_INET) {
+  /*
 	  ai_ptr->ai_socktype = SOCK_RAW;
 	  ai_ptr->ai_protocol = IPPROTO_ICMP;
-	} else if (ai_ptr->ai_family == AF_INET6) {
-	  ai_ptr->ai_socktype = SOCK_RAW;
-	  ai_ptr->ai_protocol = IPPROTO_ICMPV6;
-	} else {
-	  char errmsg[PING_ERRMSG_LEN];
-
-	  snprintf (errmsg, PING_ERRMSG_LEN, "Unknown `ai_family': %i",
-				ai_ptr->ai_family);
-	  errmsg[PING_ERRMSG_LEN - 1] = '\0';
-
-	  dprintf ("%s", errmsg);
-	  ping_set_error (obj, "getaddrinfo", errmsg);
-	  continue;
-	}
-
-	assert (sizeof (struct sockaddr_storage) >= ai_ptr->ai_addrlen);
-	memcpy (&ph->sockaddr, ai_ptr->ai_addr, ai_ptr->ai_addrlen);
-	ph->addrlen = ai_ptr->ai_addrlen;
-
-	if ((ai_ptr->ai_canonname != nullptr)
-		&& (strcmp (ph->hostname, ai_ptr->ai_canonname) != 0)) {
-	  char *old_hostname;
-
-	  dprintf ("ph->hostname = %s; ai_ptr->ai_canonname = %s;\n",
-			   ph->hostname, ai_ptr->ai_canonname);
-
-	  old_hostname = ph->hostname;
-	  if ((ph->hostname = strdup (ai_ptr->ai_canonname)) == nullptr) {
-		/* strdup failed, falling back to old hostname */
-		ph->hostname = old_hostname;
-	  } else if (old_hostname != nullptr) {
-		free (old_hostname);
-	  }
-	}
-  }
-
-  freeaddrinfo(ai_list);
+  */
 
   obj->table.push_back(ph);
 
@@ -913,25 +852,25 @@ int pinghost_get_info(pinghost *host, int info,
   switch (info) {
   case PING_INFO_USERNAME:
 	ret = ENOMEM;
-	*buffer_len = strlen (host->username) + 1;
+	*buffer_len = host->username.size() + 1;
 	if (orig_buffer_len <= *buffer_len)
 	  break;
 	/* Since (orig_buffer_len > *buffer_len) `strncpy'
 	 * will copy `*buffer_len' and pad the rest of
 	 * `buffer' with null-bytes */
-	strncpy ((char*)buffer, host->username, orig_buffer_len);
+	strncpy ((char*)buffer, host->username.c_str(), orig_buffer_len);
 	ret = 0;
 	break;
 
   case PING_INFO_HOSTNAME:
 	ret = ENOMEM;
-	*buffer_len = strlen (host->hostname) + 1;
+	*buffer_len = host->hostname.size() + 1;
 	if (orig_buffer_len < *buffer_len)
 	  break;
 	/* Since (orig_buffer_len > *buffer_len) `strncpy'
 	 * will copy `*buffer_len' and pad the rest of
 	 * `buffer' with null-bytes */
-	strncpy ((char*)buffer, host->hostname, orig_buffer_len);
+	strncpy ((char*)buffer, host->hostname.c_str(), orig_buffer_len);
 	ret = 0;
 	break;
 

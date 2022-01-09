@@ -13,6 +13,9 @@ CC_LIB_OBJECTS=$(CC_LIB)/arcfour.o
 pingu.so : pingu.o $(CC_LIB_OBJECTS)
 	g++ $(CXXFLAGS) -shared -lpthread $^ -o $@
 
+netutil_test.exe : netutil.o netutil_test.o $(CC_LIB)/base/logging.o
+	g++ -lpthread $^ -o $@
+
 clean:
 	rm -f *.so *.o
 

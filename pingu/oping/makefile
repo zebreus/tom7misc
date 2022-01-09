@@ -8,7 +8,7 @@ CPPFLAGS=-Wall -Werror -O2 -I $(CC_LIB)
 CXXFLAGS=--std=c++17
 LFLAGS=
 
-oping.exe : oping.o liboping.o $(CCLIB_OBJECTS)
+oping.exe : oping.o liboping.o $(CCLIB_OBJECTS) ../netutil.o
 	g++ $(CXXFLAGS) $(LFLAGS) $^ -o $@
 
 clean:
