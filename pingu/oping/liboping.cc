@@ -86,14 +86,9 @@ struct pinghost {
 
 struct pingobj {
   double timeout = 0.0;
-  int ttl = 0;
-  uint8_t qos = 0;
   std::vector<uint8_t> data;
 
-  int fd4 = 0;
-
-  char set_mark = 0;
-  int mark = 0;
+  int fd4 = -1;
 
   char errmsg[PING_OUTERRMSG_LEN] = {};
 
@@ -495,71 +490,15 @@ static void pinghost_free(pinghost *ph) {
 
 /* ping_open_socket opens, initializes and returns a new raw socket to use for
  * ICMPv4. On error, -1 is returned and obj->errmsg is set appropriately. */
-static int ping_open_socket(pingobj *obj) {
-  int fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
-
-  if (fd == -1) {
-	ping_set_errno (obj, errno);
-#if WITH_DEBUG
-	char errbuf[PING_ERRMSG_LEN];
-	dprintf ("socket: %s\n",
-			 sstrerror (errno, errbuf, sizeof (errbuf)));
-#endif
-	return -1;
-  } else if (fd >= FD_SETSIZE) {
-	ping_set_errno (obj, EMFILE);
-	dprintf ("socket(2) returned file descriptor %d, which is above "
-			 "the file descriptor limit for select(2) "
-			 "(FD_SETSIZE = %d)\n",
-			 fd, FD_SETSIZE);
-	close (fd);
+static int ping_open_socket() {
+  std::string error;
+  std::optional<int> fdo = NetUtil::MakeICMPSocket(&error);
+  if (!fdo.has_value()) {
+	dprintf ("couldn't open socket: %s\n", error.c_str());
 	return -1;
   }
 
-  if (obj->set_mark) {
-	if (setsockopt(fd, SOL_SOCKET, SO_MARK,
-				   &obj->mark, sizeof(obj->mark)) != 0) {
-	  ping_set_errno (obj, errno);
-#if WITH_DEBUG
-	  char errbuf[PING_ERRMSG_LEN];
-	  dprintf ("setsockopt (SO_MARK): %s\n",
-			   sstrerror (errno, errbuf, sizeof (errbuf)));
-#endif
-	  close (fd);
-	  return -1;
-	}
-  }
-
-  // always timestamp
-  {
-	int optval = 1;
-	int status = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMP,
-							&optval, sizeof (int));
-	if (status != 0) {
-	  ping_set_errno (obj, errno);
-#if WITH_DEBUG
-	  char errbuf[PING_ERRMSG_LEN];
-	  dprintf ("setsockopt (SO_TIMESTAMP): %s\n",
-			   sstrerror (errno, errbuf, sizeof (errbuf)));
-#endif
-	  close (fd);
-	  return -1;
-	}
-  }
-
-  {
-	/* Enable receiving the TOS field */
-	int optval = 1;
-	setsockopt (fd, IPPROTO_IP, IP_RECVTOS, &optval, sizeof(int));
-  }
-
-  {
-	int optval = 1;
-	/* Enable receiving the TTL field */
-	setsockopt (fd, IPPROTO_IP, IP_RECVTTL, &optval, sizeof(int));
-  }
-
-  return fd;
+  return fdo.value();
 }
 
 /*
@@ -571,18 +510,19 @@ const char *ping_get_error (pingobj *obj) {
   return obj->errmsg;
 }
 
-pingobj *ping_construct () {
+pingobj *ping_construct (int ttl, uint8_t qos) {
   pingobj *obj = new pingobj;
 
   if (obj == nullptr)
 	return nullptr;
 
   obj->timeout = PING_DEF_TIMEOUT;
-  obj->ttl = PING_DEF_TTL;
   for (char c : PING_DEF_DATA)
 	obj->data.push_back(c);
-  obj->qos = 0;
-  obj->fd4 = -1;
+  obj->fd4 = ping_open_socket();
+
+  ping_set_ttl (obj, ttl);
+  ping_set_qos (obj, qos);
 
   return obj;
 }
@@ -608,10 +548,6 @@ int ping_setopt (pingobj *obj, int option, const void *value) {
 	return -1;
 
   switch (option) {
-  case PING_OPT_QOS: {
-	obj->qos = *((const uint8_t *) value);
-	return ping_set_qos (obj, obj->qos);
-  }
 
   case PING_OPT_TIMEOUT:
 	obj->timeout = *((const double *) value);
@@ -620,24 +556,6 @@ int ping_setopt (pingobj *obj, int option, const void *value) {
 	  return -1;
 	}
 	return 0;
-
-  case PING_OPT_TTL: {
-	int arg = *((const int *) value);
-	if ((arg < 1) || (arg > 255)) {
-	  obj->ttl = PING_DEF_TTL;
-	  return -1;
-	} else {
-	  obj->ttl = arg;
-	  return ping_set_ttl (obj, obj->ttl);
-	}
-	return 0;
-  }
-
-  case PING_OPT_MARK: {
-	obj->mark = *(const int*)(value);
-	obj->set_mark = 1;
-	return 0;
-  }
 
   default:
 	return -2;
@@ -660,13 +578,7 @@ int ping_send (pingobj *obj) {
 	return -1;
   }
 
-  if (obj->fd4 == -1) {
-	obj->fd4 = ping_open_socket(obj);
-	if (obj->fd4 == -1)
-	  return -1;
-	ping_set_ttl (obj, obj->ttl);
-	ping_set_qos (obj, obj->qos);
-  }
+  CHECK(obj->fd4 != -1);
 
   if (gettimeofday (&nowtime, nullptr) == -1) {
 	ping_set_errno (obj, errno);
@@ -938,11 +850,11 @@ int pinghost_get_info(pinghost *host, int info,
 
   case PING_INFO_RECV_QOS:
 	ret = ENOMEM;
-	if (*buffer_len>sizeof(unsigned)) *buffer_len=sizeof(unsigned);
+	if (*buffer_len > sizeof(unsigned)) *buffer_len=sizeof(unsigned);
 	if (!*buffer_len) *buffer_len=1;
 	if (orig_buffer_len < *buffer_len)
 	  break;
-	memcpy(buffer,&host->recv_qos,*buffer_len);
+	memcpy(buffer, &host->recv_qos, *buffer_len);
 	ret = 0;
 	break;
   }

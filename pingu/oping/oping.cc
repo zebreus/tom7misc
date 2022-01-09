@@ -59,7 +59,6 @@ struct ping_context {
 };
 
 static double  opt_timeout    = PING_DEF_TIMEOUT;
-static char   *opt_mark       = nullptr;
 static int     opt_count      = -1;
 static int     opt_send_ttl   = 64;
 static const uint8_t opt_send_qos   = 0;
@@ -138,7 +137,6 @@ static void usage_exit (const char *name, int status) {
 		   "  -w timeout   time to wait for replies, in seconds\n"
 		   "  -t ttl       time to live for each ICMP packet\n"
 		   "  -I srcaddr   source address\n"
-		   "  -m mark      mark to set on outgoing packets\n"
 		   "  -P percent   Report the n'th percentile of latency\n"
 		   "  -Z percent   Exit with non-zero exit status if more than this percentage of\n"
 		   "               probes timed out. (default: never)\n"
@@ -180,10 +178,6 @@ static int read_options (int argc, char **argv) {
 				 optarg);
 	  break;
 	}
-
-	case 'm':
-	  opt_mark = optarg;
-	  break;
 
 	case 't': {
 	  int new_send_ttl;
@@ -320,38 +314,15 @@ int main (int argc, char **argv) {
 	usage_exit (argv[0], 1);
   }
 
-  pingobj *ping = ping_construct ();
+  pingobj *ping = ping_construct (opt_send_ttl, opt_send_qos);
   if (ping == nullptr) {
 	fprintf (stderr, "ping_construct failed\n");
 	return 1;
   }
 
-  if (ping_setopt (ping, PING_OPT_TTL, &opt_send_ttl) != 0) {
-	fprintf (stderr, "Setting TTL to %i failed: %s\n",
-			 opt_send_ttl, ping_get_error (ping));
-  }
-
-  if (ping_setopt (ping, PING_OPT_QOS, &opt_send_qos) != 0) {
-	fprintf (stderr, "Setting TOS to %i failed: %s\n",
-			 opt_send_qos, ping_get_error (ping));
-  }
-
   if (ping_setopt (ping, PING_OPT_TIMEOUT, (void*)(&opt_timeout)) != 0) {
 	fprintf (stderr, "Setting timeout failed: %s\n",
 			 ping_get_error (ping));
-  }
-
-  if (opt_mark != nullptr) {
-	char *endp = nullptr;
-	int mark = (int) strtol (opt_mark, &endp, /* base = */ 0);
-	if ((opt_mark[0] != 0) && (endp != nullptr) && (*endp == 0)) {
-	  if (ping_setopt(ping, PING_OPT_MARK, (void*)(&mark)) != 0) {
-		fprintf (stderr, "Setting mark failed: %s\n",
-				 ping_get_error (ping));
-	  }
-	} else {
-	  fprintf(stderr, "Ignoring invalid mark: %s\n", optarg);
-	}
   }
 
   for (i = optind; i < argc; i++) {

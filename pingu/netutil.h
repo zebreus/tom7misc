@@ -19,6 +19,10 @@ struct NetUtil {
 
   static std::string IPToString(uint32_t ip);
 
+  // Make a raw IPV4 socket for sending ICMP messages. Socket options are
+  // set for receiving the timestamp, tos, and ttl.
+  static std::optional<int> MakeICMPSocket(std::string *error = nullptr);
+
 };
 
 #endif

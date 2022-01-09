@@ -4,6 +4,7 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #include <optional>
 #include <string>
@@ -108,4 +109,49 @@ std::optional<uint32_t> NetUtil::GetIPV4(const string &host,
   if (error != nullptr) *error = "no AF_INET in list";
   freeaddrinfo(ai_list);
   return {};
+}
+
+std::optional<int> NetUtil::MakeICMPSocket(string *error) {
+  const int fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+
+  if (fd == -1) {
+	if (error != nullptr) {
+	  *error = "call to socket failed";
+	}
+	return {};
+  } else if (fd >= FD_SETSIZE) {
+	if (error != nullptr) {
+	  *error = "file descriptor too big for select(2)";
+	}
+	close (fd);
+	return {};
+  }
+
+  // always timestamp
+  {
+	int optval = 1;
+	int status = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMP,
+							&optval, sizeof (int));
+	if (status != 0) {
+	  if (error != nullptr) {
+		*error = "couldn't enable timestamp";
+	  }
+	  close (fd);
+	  return {};
+	}
+  }
+
+  {
+	/* Enable receiving the TOS field */
+	int optval = 1;
+	(void)setsockopt (fd, IPPROTO_IP, IP_RECVTOS, &optval, sizeof(int));
+  }
+
+  {
+	int optval = 1;
+	/* Enable receiving the TTL field */
+	(void)setsockopt (fd, IPPROTO_IP, IP_RECVTTL, &optval, sizeof(int));
+  }
+
+  return {fd};
 }

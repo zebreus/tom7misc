@@ -36,13 +36,13 @@ struct pinghost;
 struct pingobj;
 
 #define PING_OPT_TIMEOUT 0x01
-#define PING_OPT_TTL     0x02
+// #define PING_OPT_TTL     0x02
 // #define PING_OPT_AF      0x04
 // #define PING_OPT_DATA    0x08
 #define PING_OPT_SOURCE  0x10
 #define PING_OPT_DEVICE  0x20
-#define PING_OPT_QOS     0x40
-#define PING_OPT_MARK    0x80
+// #define PING_OPT_QOS     0x40
+// #define PING_OPT_MARK    0x80
 
 #define PING_DEF_TIMEOUT 1.0
 #define PING_DEF_TTL     255
@@ -52,7 +52,7 @@ struct pingobj;
 /*
  * Method definitions
  */
-pingobj *ping_construct ();
+pingobj *ping_construct (int ttl = PING_DEF_TTL, uint8_t qos = 0);
 void ping_destroy (pingobj *obj);
 
 int ping_setopt (pingobj *obj, int option, const void *value);
@@ -62,9 +62,6 @@ int ping_send (pingobj *obj);
 int ping_host_add (pingobj *obj, const char *host);
 
 const std::vector<pinghost *> &ping_gethosts(pingobj *obj);
-// pingobj_iter_t *ping_iterator_get (pingobj *obj);
-// pingobj_iter_t *ping_iterator_next (pingobj_iter_t *iter);
-// int ping_iterator_count (pingobj *obj);
 
 #define PING_INFO_HOSTNAME  1
 #define PING_INFO_ADDRESS   2
