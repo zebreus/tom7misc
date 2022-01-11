@@ -23,6 +23,10 @@ struct NetUtil {
   // set for receiving the timestamp, tos, and ttl.
   static std::optional<int> MakeICMPSocket(std::string *error = nullptr);
 
+  // Compute the ICMP checksum (RFC 792) for the buffer. Note the
+  // checksum field should be set to zero before doing this.
+  static uint16_t ICMPChecksum(uint8_t *buf, size_t len);
+
 };
 
 #endif

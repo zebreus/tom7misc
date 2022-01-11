@@ -155,3 +155,28 @@ std::optional<int> NetUtil::MakeICMPSocket(string *error) {
 
   return {fd};
 }
+
+// from liboping
+uint16_t NetUtil::ICMPChecksum(uint8_t *buf, size_t len) {
+  uint32_t sum = 0;
+  uint16_t ret = 0;
+
+  uint16_t *ptr;
+  for (ptr = (uint16_t *) buf; len > 1; ptr++, len -= 2)
+	sum += *ptr;
+
+  // according to RFC 792, odd lengths should be padded with zero;
+  // this assumes the buffer has a zero after it? why would it?
+  if (len == 1) {
+	*(char *) &ret = *(char *) ptr;
+	sum += ret;
+  }
+
+  /* Do this twice to get all possible carries.. */
+  sum = (sum >> 16) + (sum & 0xFFFF);
+  sum = (sum >> 16) + (sum & 0xFFFF);
+
+  ret = ~sum;
+
+  return ret;
+}

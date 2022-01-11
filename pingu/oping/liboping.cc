@@ -147,30 +147,6 @@ static int ping_timeval_sub (struct timeval *tv1, struct timeval *tv2,
   return 0;
 }
 
-static uint16_t ping_icmp4_checksum (uint8_t *buf, size_t len) {
-  uint32_t sum = 0;
-  uint16_t ret = 0;
-
-  uint16_t *ptr;
-  for (ptr = (uint16_t *) buf; len > 1; ptr++, len -= 2)
-	sum += *ptr;
-
-  // according to RFC 792, odd lengths should be padded with zero;
-  // this assumes the buffer has a zero after it? why would it?
-  if (len == 1) {
-	*(char *) &ret = *(char *) ptr;
-	sum += ret;
-  }
-
-  /* Do this twice to get all possible carries.. */
-  sum = (sum >> 16) + (sum & 0xFFFF);
-  sum = (sum >> 16) + (sum & 0xFFFF);
-
-  ret = ~sum;
-
-  return ret;
-}
-
 static pinghost *ping_receive_ipv4 (pingobj *obj, uint8_t *buffer,
 									size_t buffer_len) {
   if (buffer_len < sizeof (struct ip))
@@ -197,7 +173,7 @@ static pinghost *ping_receive_ipv4 (pingobj *obj, uint8_t *buffer,
   uint16_t recv_checksum = icmp_hdr->icmp_cksum;
   /* This writes to buffer. */
   icmp_hdr->icmp_cksum = 0;
-  uint16_t calc_checksum = ping_icmp4_checksum (buffer, buffer_len);
+  uint16_t calc_checksum = NetUtil::ICMPChecksum(buffer, buffer_len);
 
   if (recv_checksum != calc_checksum) {
 	dprintf ("Checksum missmatch: Got 0x%04" PRIx16 ", "
@@ -380,7 +356,7 @@ static int ping_send_one_ipv4 (pingobj *obj, pinghost *ph, int fd) {
   uint8_t *data = buf + ICMP_MINLEN;
   memcpy (data, ph->data.data(), datalen);
 
-  icmp4->icmp_cksum = ping_icmp4_checksum (buf, buflen);
+  icmp4->icmp_cksum = NetUtil::ICMPChecksum(buf, buflen);
 
   dprintf ("Sending ICMPv4 package with ID 0x%04x\n", ph->ident);
 
@@ -611,19 +587,15 @@ int ping_send (pingobj *obj) {
   while (pings_in_flight > 0 || next_host_idx < obj->table.size()) {
 	fd_set read_fds;
 	fd_set write_fds;
-
-	int write_fd = -1;
-
-	// n.b. this can probably be simplified, as we only support
-	// ipv4 now (and so this is always just the one fd4 I think) -tom7
 	FD_ZERO (&read_fds);
 	FD_ZERO (&write_fds);
 
 	CHECK(obj->fd4 != -1);
 
 	FD_SET(obj->fd4, &read_fds);
-	if (next_host_idx < obj->table.size())
-	  write_fd = obj->fd4;
+
+	const int write_fd =
+	  next_host_idx < obj->table.size() ? obj->fd4 : -1;
 
 	const int max_fd = obj->fd4;
 
@@ -666,7 +638,7 @@ int ping_send (pingobj *obj) {
 	  break;
 	}
 
-	// If posible to read, do so.
+	// If possible to read, do so.
 	if (FD_ISSET (obj->fd4, &read_fds)) {
 	  if (ping_receive_one (obj, &nowtime) == 0) {
 		pings_in_flight--;
