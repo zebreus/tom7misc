@@ -147,8 +147,8 @@ static int ping_timeval_sub (struct timeval *tv1, struct timeval *tv2,
   return 0;
 }
 
-static pinghost *ping_receive_ipv4 (pingobj *obj, uint8_t *buffer,
-									size_t buffer_len) {
+static pinghost *ping_receive_ipv4(pingobj *obj, uint8_t *buffer,
+								   size_t buffer_len) {
   if (buffer_len < sizeof (struct ip))
 	return nullptr;
 

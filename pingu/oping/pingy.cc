@@ -19,6 +19,7 @@ using namespace std;
 
 static constexpr int PAYLOAD_SIZE = 512;
 static constexpr time_t TIMEOUT_SEC = 4;
+static constexpr int MAX_OUTSTANDING = 100; // XX
 
 struct Host {
   uint8_t b = 0, c = 0, d = 0;
@@ -27,7 +28,7 @@ struct Host {
 };
 
 struct OutstandingPing {
-  Host host;
+  uint32_t ip = 0;
   int host_idx = 0;
   timeval sent;
   // Keep this, or just a hash?
@@ -102,7 +103,7 @@ static std::optional<Ping> Receive(int fd) {
 
   if (!got_timestamp) {
 	// If no accurate timestamp, use the current time.
-	CHECK(gettimeofday (&ping.recvtime, nullptr) != -1);
+	CHECK(gettimeofday(&ping.recvtime, nullptr) != -1);
   }
 
   {
@@ -126,7 +127,7 @@ static std::optional<Ping> Receive(int fd) {
 
 	struct icmp *icmp_hdr = (struct icmp *) buffer;
 	if (icmp_hdr->icmp_type != ICMP_ECHOREPLY) {
-	  printf("ICMP not ECHOREPLY: %d\n", (int)icmp_hdr->icmp_type);
+	  // printf("ICMP not ECHOREPLY: %d\n", (int)icmp_hdr->icmp_type);
 	  return {};
 	}
 
@@ -137,8 +138,8 @@ static std::optional<Ping> Receive(int fd) {
 
 	if (recv_checksum != calc_checksum) {
 	  printf("Wrong checksum: Got 0x%04" PRIx16 ", "
-			   "calculated 0x%04" PRIx16 "\n",
-			   recv_checksum, calc_checksum);
+			 "calculated 0x%04" PRIx16 "\n",
+			 recv_checksum, calc_checksum);
 	  return {};
 	}
 
@@ -160,6 +161,45 @@ static std::optional<Ping> Receive(int fd) {
   return ping;
 }
 
+static void Send(int fd, const OutstandingPing &ping,
+				 uint16_t id, uint16_t seq) {
+  const size_t datalen = ping.data.size();
+  const size_t buflen = ICMP_MINLEN + datalen;
+  uint8_t buf[buflen] = {};
+  struct icmp *icmp4 = (struct icmp *) buf;
+  icmp4->icmp_type = ICMP_ECHO;
+  icmp4->icmp_id = htons(id);
+  icmp4->icmp_seq = htons(seq);
+
+  uint8_t *data_dest = buf + ICMP_MINLEN;
+  memcpy(data_dest, ping.data.data(), datalen);
+
+  icmp4->icmp_cksum = NetUtil::ICMPChecksum(buf, buflen);
+
+  sockaddr_in saddr = NetUtil::IPToSockaddr(ping.ip, 0);
+
+
+  const ssize_t ret = sendto (fd, buf, buflen, 0,
+							  (struct sockaddr *) &saddr,
+							  sizeof (sockaddr_in));
+
+  if (ret < 0) {
+	switch (errno) {
+	case EHOSTUNREACH:
+	case ENETUNREACH:
+	  // BSDs return EHOSTDOWN on ARP/ND failure
+	case EHOSTDOWN:
+	  // liboping treats these as "ok" (I guess we just time out)
+	  return;
+	default:
+	  // We could just ignore all errors here?
+	  LOG(FATAL) << "sendto failed: " << NetUtil::IPToString(ping.ip);
+	  return;
+	}
+  }
+
+  return;
+}
 
 static void Pingy(uint8_t a) {
   ArcFour rc(StringPrintf("pingy.%d", (int)a));
@@ -203,9 +243,12 @@ static void Pingy(uint8_t a) {
 
 	// We'll try to write unless we already finished the table.
 	// (Or cap to some max outstanding?)
-	const int write_fd = next_idx < outstanding.size() ? fd4 : -1;
-	if (write_fd != -1)
-	  FD_SET(write_fd, &write_fds);
+
+	const bool ok_to_write = (next_idx < hosts.size()) &&
+	  (outstanding.size() < MAX_OUTSTANDING);
+
+	if (ok_to_write)
+	  FD_SET(fd4, &write_fds);
 
 	const int max_fd = fd4;
 	CHECK (max_fd < FD_SETSIZE);
@@ -222,6 +265,7 @@ static void Pingy(uint8_t a) {
 	// CHECK(gettimeofday (&nowtime, nullptr) != -1);
 
 	if (status == 0) {
+	  printf("select timeout with %d outstanding.\n", (int)outstanding.size());
 	  // We read nothing within the timeout. This means all the
 	  // outstanding pings have timed out.
 	  for (const auto &[identseq_, op] : outstanding) {
@@ -235,28 +279,80 @@ static void Pingy(uint8_t a) {
 
 
 	// If possible to read, do so.
-	if (FD_ISSET (fd4, &read_fds)) {
-	  std::optional<Ping> ping = Receive(fd4);
-	  if (ping.has_value()) {
-		// XXX Find match, etc.
+	if (FD_ISSET(fd4, &read_fds)) {
+	  std::optional<Ping> pingo = Receive(fd4);
+	  if (pingo.has_value()) {
+		const Ping &ping = pingo.value();
+		uint32_t key = (ping.ident << 16) | ping.seq;
+		auto it = outstanding.find(key);
+		if (it == outstanding.end()) {
+		  // Corrupt packet, duplicate, etc.
+		  printf("Dropping ping %04x|%04x with no match?\n",
+				 ping.ident, ping.seq);
+		} else {
+		  const OutstandingPing &oping = it->second;
+		  double sec = TimevalDiff(oping.sent, ping.recvtime);
+		  printf("%s took %.7f sec\n",
+				 NetUtil::IPToString(oping.ip).c_str(), sec);
+		  // XXX also write to hosts array
+		  // remove it from pending pings
+		  outstanding.erase(it);
+		}
 	  }
 	}
 
-	#if 0
-	// If possible to write, do so.
-	if (write_fd != -1 && FD_ISSET (write_fd, &write_fds)) {
-	  CHECK(next_host_idx < obj->table.size());
-	  pinghost *host = obj->table[next_host_idx];
-	  if (ping_send_one (obj, host, write_fd) == 0)
-		pings_in_flight++;
-	  else
-		error_count++;
-	  next_host_idx++;
+	// Remove pings via timeout.
+	// PERF: Can keep these sorted by sent time; punt early
+	if (next_idx % 1000 == 0) {
+	  printf("%d outstanding\n", (int)outstanding.size());
+	  timeval now;
+	  CHECK(gettimeofday(&now, 0) != -1);
+	  for (auto it = outstanding.begin();
+		   it != outstanding.end();
+		   /* in loop */) {
+		const OutstandingPing &oping = it->second;
+		double sec = TimevalDiff(oping.sent, now);
+		if (sec > TIMEOUT_SEC) {
+		  printf("%s timed out (%.4f sec)\n",
+				 NetUtil::IPToString(oping.ip).c_str(), sec);
+		  it = outstanding.erase(it);
+		} else {
+		  ++it;
+		}
+	  }
+	  printf("after timeouts -> %d\n", (int)outstanding.size());
 	}
-	#endif
+
+	// If possible to write, do so.
+	if (ok_to_write && FD_ISSET(fd4, &write_fds)) {
+	  CHECK(next_idx < hosts.size());
+	  const int host_idx = next_idx;
+	  next_idx++;
+
+	  OutstandingPing ping;
+	  Host host = hosts[host_idx];
+
+	  ping.ip = NetUtil::OctetsToIP(a, host.b, host.c,  host.d);
+	  ping.host_idx = host_idx;
+	  CHECK(gettimeofday(&ping.sent, nullptr) != -1);
+	  for (int i = 0; i < PAYLOAD_SIZE; i++) {
+		ping.data[i] = rc.Byte();
+	  }
+
+	  // want these to be globally unique
+	  uint16_t id = host.b;
+	  uint16_t seq = (host.c << 8) | host.d;
+	  uint32_t key = (id << 16) | seq;
+	  CHECK(outstanding.find(key) == outstanding.end()) << key;
+	  outstanding[key] = ping;
+
+	  Send(fd4, ping, id, seq);
+	}
   }
 
   close(fd4);
+
+  // XXX do something with the data set!
 }
 
 int main(int argc, char **argv) {

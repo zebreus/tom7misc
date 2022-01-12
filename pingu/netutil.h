@@ -5,7 +5,8 @@
 #include <optional>
 #include <string>
 #include <cstdint>
-
+#include <netinet/in.h>
+#include <tuple>
 
 struct NetUtil {
 
@@ -16,6 +17,13 @@ struct NetUtil {
   static std::optional<uint32_t> GetIPV4(const std::string &hostname,
 										 std::string *canonical_name = nullptr,
 										 std::string *error = nullptr);
+
+  // a.b.c.d to network-order uint32
+  static uint32_t OctetsToIP(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
+  static std::tuple<uint8_t, uint8_t, uint8_t, uint8_t> IPToOctets(uint32_t ip);
+
+  // IP is 32 bits as above.
+  static sockaddr_in IPToSockaddr(uint32_t ip, uint16_t port);
 
   static std::string IPToString(uint32_t ip);
 

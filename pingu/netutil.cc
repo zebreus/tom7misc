@@ -18,11 +18,8 @@ using namespace std;
 
 std::string NetUtil::IPToString(uint32_t ip) {
   char buf[18] = {};
-  sprintf(buf, "%d.%d.%d.%d",
-		  (ip >> 24) & 255,
-		  (ip >> 16) & 255,
-		  (ip >> 8) & 255,
-		  ip & 255);
+  auto [a, b, c, d] = IPToOctets(ip);
+  sprintf(buf, "%d.%d.%d.%d", a, b, c, d);
   return buf;
 }
 
@@ -89,7 +86,7 @@ std::optional<uint32_t> NetUtil::GetIPV4(const string &host,
 
 	  sockaddr_in *s = (sockaddr_in*)ai_ptr->ai_addr;
 	  const uint8_t *bytes = (const uint8_t*)&s->sin_addr.s_addr;
-	  uint32_t ip = bytes[0] << 24 | bytes[1] << 16 | bytes[2] << 8 | bytes[3];
+	  uint32_t ip = OctetsToIP(bytes[0], bytes[1], bytes[2], bytes[3]);
 	  #if 0
 	  printf("sin_family %d\n"
 			 "sin_port %d\n"
@@ -154,6 +151,35 @@ std::optional<int> NetUtil::MakeICMPSocket(string *error) {
   }
 
   return {fd};
+}
+
+uint32_t NetUtil::OctetsToIP(uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
+  return ((uint32_t)a << 24) |
+	((uint32_t)b << 16) |
+	((uint32_t)c << 8) |
+	(uint32_t)d;
+}
+
+std::tuple<uint8_t, uint8_t, uint8_t, uint8_t>
+NetUtil::IPToOctets(uint32_t ip) {
+  return make_tuple((uint8_t) ((ip >> 24) & 0xFF),
+					(uint8_t) ((ip >> 16) & 0xFF),
+					(uint8_t) ((ip >> 8) & 0xFF),
+					(uint8_t) (ip & 0xFF));
+}
+
+sockaddr_in NetUtil::IPToSockaddr(uint32_t ip, uint16_t port) {
+  struct sockaddr_in saddr;
+  memset(&saddr, 0, sizeof (sockaddr_in));
+  saddr.sin_family = AF_INET;
+  saddr.sin_port = port;
+  auto [a, b, c, d] = IPToOctets(ip);
+  uint8_t *bytes = (uint8_t*)&saddr.sin_addr.s_addr;
+  bytes[0] = a;
+  bytes[1] = b;
+  bytes[2] = c;
+  bytes[3] = d;
+  return saddr;
 }
 
 // from liboping
