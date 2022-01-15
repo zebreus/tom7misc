@@ -1,7 +1,7 @@
 
-default : latlon_test.exe bezier_test.exe
+default : latlon_test.exe bezier_test.exe hilbert-curve_test.exe
 
-BASE=../base/logging.o ../base/stringprintf.o
+CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../image.o ../stb_image_write.o ../stb_image.o ../arcfour.o
 
 # for 64 bits on windows
 CXX=x86_64-w64-mingw32-g++
@@ -19,7 +19,7 @@ latlon.o : latlon.cc latlon.h
 latlon_test.o : latlon_test.cc latlon.h
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
-latlon_test.exe : latlon.o latlon_test.o $(BASE)
+latlon_test.exe : latlon.o latlon_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 bezier.o : bezier.cc bezier.h
@@ -28,9 +28,11 @@ bezier.o : bezier.cc bezier.h
 bezier_test.o : bezier_test.cc bezier.h
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
-bezier_test.exe : bezier.o bezier_test.o $(BASE)
+bezier_test.exe : bezier.o bezier_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+hilbert-curve_test.exe : hilbert-curve_test.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :
 	rm -f *.o *.exe
