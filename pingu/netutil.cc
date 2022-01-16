@@ -127,9 +127,8 @@ std::optional<int> NetUtil::MakeICMPSocket(string *error) {
   // always timestamp
   {
 	int optval = 1;
-	int status = setsockopt(fd, SOL_SOCKET, SO_TIMESTAMP,
-							&optval, sizeof (int));
-	if (status != 0) {
+	if (setsockopt(fd, SOL_SOCKET, SO_TIMESTAMP,
+				   &optval, sizeof (int)) != 0) {
 	  if (error != nullptr) {
 		*error = "couldn't enable timestamp";
 	  }

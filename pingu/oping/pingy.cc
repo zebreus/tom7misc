@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <deque>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
 #include <sys/time.h>
@@ -14,17 +15,26 @@
 
 #include "arcfour.h"
 #include "randutil.h"
+#include "image.h"
+#include "geom/hilbert-curve.h"
+#include "util.h"
 
 using namespace std;
 
-static constexpr int PAYLOAD_SIZE = 512;
+static constexpr int PAYLOAD_SIZE = 256;
 static constexpr time_t TIMEOUT_SEC = 4;
-static constexpr int MAX_OUTSTANDING = 100; // XX
+static constexpr int MAX_OUTSTANDING = 20000;
 
+constexpr uint8_t TIMEOUT = 0;
+constexpr uint8_t WRONG_DATA = 255;
+
+// We use a fixed first octet, so this struct is 32 bits.
 struct Host {
-  uint8_t b = 0, c = 0, d = 0;
-  // 0 = no response. saturates at 255.
-  uint8_t msec = 0;
+  uint8_t a = 0, b = 0, d = 0;
+  // 0 = no response.
+  // 255 = response with wrong data
+  // Otherwise, the millisecond timeout / 8, saturating at 254.
+  uint8_t msec_div_8 = 0;
 };
 
 struct OutstandingPing {
@@ -88,9 +98,11 @@ static std::optional<Ping> Receive(int fd) {
 	   cmsg = CMSG_NXTHDR (&msghdr, cmsg)) {
 	switch (cmsg->cmsg_level) {
 	case SOL_SOCKET:
-	  if (cmsg->cmsg_type == SO_TIMESTAMP)
+	  if (cmsg->cmsg_type == SO_TIMESTAMP) {
+		// printf("Got timestamp\n");
 		memcpy(&ping.recvtime, CMSG_DATA (cmsg), sizeof (timeval));
-	  got_timestamp = true;
+		got_timestamp = true;
+	  }
 	  break;
 	case IPPROTO_IP:
 	  // don't actually care about cmsg_type = IP_TOS or IP_TTL
@@ -110,23 +122,30 @@ static std::optional<Ping> Receive(int fd) {
 	size_t buffer_len = payload_buffer_len;
 	uint8_t *buffer = payload_buffer;
 
-	if (buffer_len < sizeof (struct ip))
+	if (buffer_len < sizeof (struct ip)) {
+	  // printf("Not long enough\n");
 	  return {};
+	}
 
 	struct ip *ip_hdr = (struct ip *) buffer;
 	size_t ip_hdr_len = ip_hdr->ip_hl << 2;
 
-	if (buffer_len < ip_hdr_len)
+	if (buffer_len < ip_hdr_len) {
 	  return {};
+	}
 
 	buffer += ip_hdr_len;
 	buffer_len -= ip_hdr_len;
 
-	if (buffer_len < ICMP_MINLEN)
+	if (buffer_len < ICMP_MINLEN) {
+	  // printf("Not long enough for ICMP\n");
 	  return {};
+	}
 
 	struct icmp *icmp_hdr = (struct icmp *) buffer;
 	if (icmp_hdr->icmp_type != ICMP_ECHOREPLY) {
+	  // 3 is dest unreachable
+	  // 11 is time exceeded
 	  // printf("ICMP not ECHOREPLY: %d\n", (int)icmp_hdr->icmp_type);
 	  return {};
 	}
@@ -201,8 +220,8 @@ static void Send(int fd, const OutstandingPing &ping,
   return;
 }
 
-static void Pingy(uint8_t a) {
-  ArcFour rc(StringPrintf("pingy.%d", (int)a));
+static void Pingy(uint8_t c) {
+  ArcFour rc(StringPrintf("pingy.%lld.%d", (int64_t)time(nullptr), (int)c));
   string error;
   std::optional<int> fd4o = NetUtil::MakeICMPSocket(&error);
   CHECK(fd4o.has_value()) << "Must run as root! " << error;
@@ -211,14 +230,14 @@ static void Pingy(uint8_t a) {
   // Ping all hosts in a random order.
   vector<Host> hosts;
   hosts.reserve(256 * 256 * 256);
-  for (int b = 0; b < 256; b++) {
-	for (int c = 0; c < 256; c++) {
+  for (int a = 0; a < 256; a++) {
+	for (int b = 0; b < 256; b++) {
 	  for (int d = 0; d < 256; d++) {
 		Host h;
+		h.a = a;
 		h.b = b;
-		h.c = c;
 		h.d = d;
-		h.msec = 0;
+		h.msec_div_8 = TIMEOUT;
 		hosts.push_back(h);
 	  }
 	}
@@ -231,6 +250,10 @@ static void Pingy(uint8_t a) {
   size_t next_idx = 0;
   // key is ident << 16 | seq.
   std::unordered_map<uint32_t, OutstandingPing> outstanding;
+  // keys from outstanding; ordered by sent time. Might contain
+  // keys that have been removed.
+  std::deque<uint32_t> timeout_queue;
+
   while (!outstanding.empty() || next_idx < hosts.size()) {
 	fd_set read_fds;
 	fd_set write_fds;
@@ -255,8 +278,7 @@ static void Pingy(uint8_t a) {
 
 	/* Set up timeout for select */
 	timeval timeout;
-	CHECK(gettimeofday (&timeout, nullptr) != -1);
-	timeout.tv_sec += TIMEOUT_SEC;
+	timeout.tv_sec = TIMEOUT_SEC;
 	timeout.tv_usec = 0;
 
 	int status = select (max_fd + 1, &read_fds, &write_fds, nullptr, &timeout);
@@ -268,9 +290,9 @@ static void Pingy(uint8_t a) {
 	  printf("select timeout with %d outstanding.\n", (int)outstanding.size());
 	  // We read nothing within the timeout. This means all the
 	  // outstanding pings have timed out.
-	  for (const auto &[identseq_, op] : outstanding) {
+	  for (const auto &[identseq_, oping] : outstanding) {
 		// (could check though...)
-		hosts[op.host_idx].msec = 0;
+		hosts[oping.host_idx].msec_div_8 = TIMEOUT;
 	  }
 	  outstanding.clear();
 	  continue;
@@ -292,35 +314,57 @@ static void Pingy(uint8_t a) {
 		} else {
 		  const OutstandingPing &oping = it->second;
 		  double sec = TimevalDiff(oping.sent, ping.recvtime);
-		  printf("%s took %.7f sec\n",
-				 NetUtil::IPToString(oping.ip).c_str(), sec);
-		  // XXX also write to hosts array
-		  // remove it from pending pings
+		  if (oping.data == ping.data) {
+			printf("%s took %.7f sec\n",
+				   NetUtil::IPToString(oping.ip).c_str(), sec);
+
+			// 8 bits for msec/8.
+			// 0 is used for no response.
+			const int msec = std::clamp(1, (int)round(sec * 1000.0 / 8.0), 254);
+			hosts[oping.host_idx].msec_div_8 = msec;
+		  } else {
+			printf("%s had wrong data! %.7f sec\n",
+				   NetUtil::IPToString(oping.ip).c_str(), sec);
+			hosts[oping.host_idx].msec_div_8 = WRONG_DATA;
+		  }
+		  // either way, remove it from pending pings
 		  outstanding.erase(it);
 		}
+	  } else {
+		// printf("Receive failed\n");
 	  }
 	}
 
 	// Remove pings via timeout.
-	// PERF: Can keep these sorted by sent time; punt early
-	if (next_idx % 1000 == 0) {
-	  printf("%d outstanding\n", (int)outstanding.size());
+
+	{
 	  timeval now;
 	  CHECK(gettimeofday(&now, 0) != -1);
-	  for (auto it = outstanding.begin();
-		   it != outstanding.end();
-		   /* in loop */) {
+	  while (!timeout_queue.empty()) {
+		const uint32_t key = timeout_queue.front();
+		timeout_queue.pop_front();
+
+		auto it = outstanding.find(key);
+		// This happens if we received a response and deleted it from
+		// the outstanding table before the timeout; normal.
+		if (it == outstanding.end())
+		  continue;
+
 		const OutstandingPing &oping = it->second;
-		double sec = TimevalDiff(oping.sent, now);
+		const double sec = TimevalDiff(oping.sent, now);
 		if (sec > TIMEOUT_SEC) {
 		  printf("%s timed out (%.4f sec)\n",
 				 NetUtil::IPToString(oping.ip).c_str(), sec);
+		  hosts[oping.host_idx].msec_div_8 = TIMEOUT;
 		  it = outstanding.erase(it);
+		  // Might be more.
+		  continue;
 		} else {
-		  ++it;
+		  // Since they are sorted by sent time, there will
+		  // be no more timeouts.
+		  break;
 		}
 	  }
-	  printf("after timeouts -> %d\n", (int)outstanding.size());
 	}
 
 	// If possible to write, do so.
@@ -332,7 +376,7 @@ static void Pingy(uint8_t a) {
 	  OutstandingPing ping;
 	  Host host = hosts[host_idx];
 
-	  ping.ip = NetUtil::OctetsToIP(a, host.b, host.c,  host.d);
+	  ping.ip = NetUtil::OctetsToIP(host.a, host.b, c, host.d);
 	  ping.host_idx = host_idx;
 	  CHECK(gettimeofday(&ping.sent, nullptr) != -1);
 	  for (int i = 0; i < PAYLOAD_SIZE; i++) {
@@ -340,24 +384,65 @@ static void Pingy(uint8_t a) {
 	  }
 
 	  // want these to be globally unique
-	  uint16_t id = host.b;
-	  uint16_t seq = (host.c << 8) | host.d;
+	  uint16_t id = host.a;
+	  uint16_t seq = (host.b << 8) | host.d;
 	  uint32_t key = (id << 16) | seq;
 	  CHECK(outstanding.find(key) == outstanding.end()) << key;
 	  outstanding[key] = ping;
-
+	  timeout_queue.push_back(key);
 	  Send(fd4, ping, id, seq);
 	}
   }
 
   close(fd4);
 
-  // XXX do something with the data set!
+  {
+	printf("Write raw:\n");
+	std::vector<uint8_t> output;
+	output.resize(256 * 256 * 256);
+	for (const Host &host : hosts) {
+	  uint32_t pos = ((uint32)host.a << 16) | ((uint32)host.b << 8) | host.d;
+	  output[pos] = host.msec_div_8;
+	}
+
+	string filename = StringPrintf("ping%d.dat", (int)c);
+	Util::WriteFileBytes(filename, output);
+  }
+
+  // fairly silly with *.*.c.*
+  {
+	printf("Write image:\n");
+	ImageRGBA img(4096, 4096);
+	img.Clear32(0x7F0000FF);
+	for (const Host &host : hosts) {
+	  uint32_t pos = ((uint32)host.a << 16) | ((uint32)host.b << 8) | host.d;
+	  const auto [x, y] = HilbertCurve::To2D(12, pos);
+	  CHECK(x < 4096);
+	  CHECK(y < 4096);
+	  if (host.msec_div_8 == TIMEOUT) {
+		img.SetPixel32(x, y, 0x000033FF);
+	  } else if (host.msec_div_8 == WRONG_DATA) {
+		img.SetPixel32(x, y, 0xAA0000FF);
+	  } else {
+		uint8_t v = host.msec_div_8;
+		img.SetPixel(x, y, v, v, v, 0xFF);
+	  }
+	}
+	string filename = StringPrintf("subnet.a.b.%d.d.png", (int)c);
+	img.Save(filename);
+  }
 }
 
 int main(int argc, char **argv) {
-
-  Pingy(162);
+  for (int c = 0; c < 8; c++) {
+	std::string filename = StringPrintf("ping%d.dat", c);
+	printf(" === *.*.%d.* ===\n", c);
+	if (Util::ExistsFile(filename)) {
+	  printf("Already done!\n");
+	} else {
+	  Pingy(c);
+	}
+  }
 
   return 0;
 }
