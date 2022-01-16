@@ -3,6 +3,7 @@
 #include <utility>
 #include <algorithm>
 #include <unordered_set>
+#include <cinttypes>
 
 #include "base/logging.h"
 #include "cryptrand.h"
@@ -15,7 +16,7 @@ using uint16 = uint16_t;
 int main(int argc, char **argv) {
   CryptRand cr;
   uint64 w = cr.Word64();
-  printf("This should be a different value each time: %llx\n", w);
+  printf("This should be a different value each time: %" PRIx64 "\n", w);
 
   uint64 w2 = cr.Word64();
   CHECK(w != w2) << "Got same 64-bit value twice in a row, "
@@ -57,8 +58,8 @@ int main(int argc, char **argv) {
       IncBits(byte);
   }
 
-  printf("0 bits: %lld (%.4f%%)\n"
-         "1 bits: %lld (%.4f%%)\n",
+  printf("0 bits: %" PRId64 " (%.4f%%)\n"
+         "1 bits: %" PRId64 " (%.4f%%)\n",
          bits[false], (bits[false] * 100.0) / (TRIALS * 64.0),
          bits[true], (bits[true] * 100.0) / (TRIALS * 64.0));
 
@@ -76,7 +77,7 @@ int main(int argc, char **argv) {
             });
 
   auto PrintOne = [&all](int idx) {
-    printf("%02x x %lld (%.2f%%)\n",
+    printf("%02x x %" PRId64 " (%.2f%%)\n",
            all[idx].first,
            all[idx].second, (100.0 * all[idx].second) / (TRIALS * 8.0));
     };
