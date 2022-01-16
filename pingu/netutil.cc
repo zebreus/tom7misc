@@ -1,9 +1,10 @@
 
-#include <sys/types.h>
-#include <sys/socket.h>
+#include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <arpa/inet.h>
+#include <netinet/ip_icmp.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <optional>
@@ -11,6 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #include "netutil.h"
 
@@ -204,4 +206,42 @@ uint16_t NetUtil::ICMPChecksum(uint8_t *buf, size_t len) {
   ret = ~sum;
 
   return ret;
+}
+
+bool NetUtil::SendPing(int fd, const PingToSend &ping) {
+  const size_t datalen = ping.data.size();
+  const size_t buflen = ICMP_MINLEN + datalen;
+  uint8_t buf[buflen] = {};
+  struct icmp *icmp4 = (struct icmp *) buf;
+  icmp4->icmp_type = ICMP_ECHO;
+  icmp4->icmp_id = htons(ping.id);
+  icmp4->icmp_seq = htons(ping.seq);
+
+  uint8_t *data_dest = buf + ICMP_MINLEN;
+  memcpy(data_dest, ping.data.data(), datalen);
+
+  icmp4->icmp_cksum = NetUtil::ICMPChecksum(buf, buflen);
+
+  sockaddr_in saddr = NetUtil::IPToSockaddr(ping.ip, 0);
+  
+  const ssize_t status = sendto(fd, buf, buflen, 0,
+								(struct sockaddr *) &saddr,
+								sizeof (sockaddr_in));
+
+  if (status < 0) {
+	switch (errno) {
+	case EHOSTUNREACH:
+	case ENETUNREACH:
+	  // BSDs return EHOSTDOWN on ARP/ND failure
+	case EHOSTDOWN:
+	  // liboping treats these as "ok" (I guess we just time out)
+	  return true;
+	default:
+	  // e.g. this will fail for a send to 127.0.0.0.
+	  // printf("sendto failed: %s\n", NetUtil::IPToString(ping.ip).c_str());
+	  return false;
+	}
+  }
+
+  return true;
 }

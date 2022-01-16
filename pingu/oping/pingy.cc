@@ -1,13 +1,15 @@
 
-#include <string>
-#include <vector>
-#include <array>
-#include <deque>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
 #include <sys/time.h>
 #include <inttypes.h>
 #include <unistd.h>
+
+#include <span>
+#include <string>
+#include <vector>
+#include <array>
+#include <deque>
 
 #include "../netutil.h"
 #include "base/stringprintf.h"
@@ -18,15 +20,18 @@
 #include "image.h"
 #include "geom/hilbert-curve.h"
 #include "util.h"
+#include "crypt/sha256.h"
 
 using namespace std;
 
 static constexpr int PAYLOAD_SIZE = 256;
-static constexpr time_t TIMEOUT_SEC = 4;
-static constexpr int MAX_OUTSTANDING = 20000;
+static constexpr time_t TIMEOUT_SEC = 6;
+static constexpr int MAX_OUTSTANDING = 65536;
+static constexpr int HASH_BYTES = 16;
+static_assert(HASH_BYTES > 0 && HASH_BYTES <= SHA256::DIGEST_LENGTH);
 
-constexpr uint8_t TIMEOUT = 0;
-constexpr uint8_t WRONG_DATA = 255;
+static constexpr uint8_t TIMEOUT = 0;
+static constexpr uint8_t WRONG_DATA = 255;
 
 // We use a fixed first octet, so this struct is 32 bits.
 struct Host {
@@ -42,8 +47,18 @@ struct OutstandingPing {
   int host_idx = 0;
   timeval sent;
   // Keep this, or just a hash?
-  std::array<uint8, PAYLOAD_SIZE> data;
+  std::array<uint8, HASH_BYTES> data_hash;
 };
+
+// for vector or array argument
+template<class C>
+static std::array<uint8, HASH_BYTES> GetHash(const C &data) {
+  CHECK(data.size() == PAYLOAD_SIZE);
+  std::vector<uint8> h = SHA256::HashPtr(data.data(), PAYLOAD_SIZE);
+  std::array<uint8, HASH_BYTES> ret;
+  for (int i = 0; i < HASH_BYTES; i++) ret[i] = h[i];
+  return ret;
+}
 
 [[maybe_unused]]
 static double TimevalDiff(const struct timeval &a,
@@ -180,46 +195,6 @@ static std::optional<Ping> Receive(int fd) {
   return ping;
 }
 
-static void Send(int fd, const OutstandingPing &ping,
-				 uint16_t id, uint16_t seq) {
-  const size_t datalen = ping.data.size();
-  const size_t buflen = ICMP_MINLEN + datalen;
-  uint8_t buf[buflen] = {};
-  struct icmp *icmp4 = (struct icmp *) buf;
-  icmp4->icmp_type = ICMP_ECHO;
-  icmp4->icmp_id = htons(id);
-  icmp4->icmp_seq = htons(seq);
-
-  uint8_t *data_dest = buf + ICMP_MINLEN;
-  memcpy(data_dest, ping.data.data(), datalen);
-
-  icmp4->icmp_cksum = NetUtil::ICMPChecksum(buf, buflen);
-
-  sockaddr_in saddr = NetUtil::IPToSockaddr(ping.ip, 0);
-
-
-  const ssize_t ret = sendto (fd, buf, buflen, 0,
-							  (struct sockaddr *) &saddr,
-							  sizeof (sockaddr_in));
-
-  if (ret < 0) {
-	switch (errno) {
-	case EHOSTUNREACH:
-	case ENETUNREACH:
-	  // BSDs return EHOSTDOWN on ARP/ND failure
-	case EHOSTDOWN:
-	  // liboping treats these as "ok" (I guess we just time out)
-	  return;
-	default:
-	  // We could just ignore all errors here?
-	  LOG(FATAL) << "sendto failed: " << NetUtil::IPToString(ping.ip);
-	  return;
-	}
-  }
-
-  return;
-}
-
 static void Pingy(uint8_t c) {
   ArcFour rc(StringPrintf("pingy.%lld.%d", (int64_t)time(nullptr), (int)c));
   string error;
@@ -254,6 +229,14 @@ static void Pingy(uint8_t c) {
   // keys that have been removed.
   std::deque<uint32_t> timeout_queue;
 
+  auto Status = [&next_idx, &hosts, &outstanding, &timeout_queue]() {
+	  double pct = (100.0 * next_idx) / (double)hosts.size();
+	  return StringPrintf("%d/%d %.1f%% %d o %d q",
+						  (int)next_idx, (int)hosts.size(),
+						  pct, outstanding.size(),
+						  timeout_queue.size());
+	};
+  
   while (!outstanding.empty() || next_idx < hosts.size()) {
 	fd_set read_fds;
 	fd_set write_fds;
@@ -287,7 +270,7 @@ static void Pingy(uint8_t c) {
 	// CHECK(gettimeofday (&nowtime, nullptr) != -1);
 
 	if (status == 0) {
-	  printf("select timeout with %d outstanding.\n", (int)outstanding.size());
+	  printf("[%s] select timeout\n", Status().c_str());
 	  // We read nothing within the timeout. This means all the
 	  // outstanding pings have timed out.
 	  for (const auto &[identseq_, oping] : outstanding) {
@@ -295,6 +278,7 @@ static void Pingy(uint8_t c) {
 		hosts[oping.host_idx].msec_div_8 = TIMEOUT;
 	  }
 	  outstanding.clear();
+	  timeout_queue.clear();
 	  continue;
 	}
 
@@ -314,9 +298,10 @@ static void Pingy(uint8_t c) {
 		} else {
 		  const OutstandingPing &oping = it->second;
 		  double sec = TimevalDiff(oping.sent, ping.recvtime);
-		  if (oping.data == ping.data) {
-			printf("%s took %.7f sec\n",
-				   NetUtil::IPToString(oping.ip).c_str(), sec);
+		  if (oping.data_hash == GetHash(ping.data)) {
+			printf("[%s] %s took %.1f msec\n",
+				   Status().c_str(),
+				   NetUtil::IPToString(oping.ip).c_str(), sec * 1000.0);
 
 			// 8 bits for msec/8.
 			// 0 is used for no response.
@@ -341,14 +326,16 @@ static void Pingy(uint8_t c) {
 	  timeval now;
 	  CHECK(gettimeofday(&now, 0) != -1);
 	  while (!timeout_queue.empty()) {
+		// but leave it in queue for now...
 		const uint32_t key = timeout_queue.front();
-		timeout_queue.pop_front();
 
 		auto it = outstanding.find(key);
 		// This happens if we received a response and deleted it from
 		// the outstanding table before the timeout; normal.
-		if (it == outstanding.end())
+		if (it == outstanding.end()) {
+		  timeout_queue.pop_front();
 		  continue;
+		}
 
 		const OutstandingPing &oping = it->second;
 		const double sec = TimevalDiff(oping.sent, now);
@@ -357,11 +344,12 @@ static void Pingy(uint8_t c) {
 				 NetUtil::IPToString(oping.ip).c_str(), sec);
 		  hosts[oping.host_idx].msec_div_8 = TIMEOUT;
 		  it = outstanding.erase(it);
+		  timeout_queue.pop_front();
 		  // Might be more.
 		  continue;
 		} else {
 		  // Since they are sorted by sent time, there will
-		  // be no more timeouts.
+		  // be no more timeouts. Leave in queue.
 		  break;
 		}
 	  }
@@ -373,24 +361,34 @@ static void Pingy(uint8_t c) {
 	  const int host_idx = next_idx;
 	  next_idx++;
 
-	  OutstandingPing ping;
 	  Host host = hosts[host_idx];
-
-	  ping.ip = NetUtil::OctetsToIP(host.a, host.b, c, host.d);
-	  ping.host_idx = host_idx;
-	  CHECK(gettimeofday(&ping.sent, nullptr) != -1);
+	  const uint32_t ip = NetUtil::OctetsToIP(host.a, host.b, c, host.d);
+	  // want these to be globally unique; fortunately
+	  // each host has a distinct IP
+	  const uint16_t id = (ip >> 16) & 0xFFFF;
+	  const uint16_t seq = ip & 0xFFFF;
+	  const uint32_t key = (id << 16) | seq;
+	  	  
+	  NetUtil::PingToSend ping_to_send;
+	  ping_to_send.ip = ip;
+	  ping_to_send.id = id;
+	  ping_to_send.seq = seq;
 	  for (int i = 0; i < PAYLOAD_SIZE; i++) {
-		ping.data[i] = rc.Byte();
+		ping_to_send.data.push_back(rc.Byte());
 	  }
 
-	  // want these to be globally unique
-	  uint16_t id = host.a;
-	  uint16_t seq = (host.b << 8) | host.d;
-	  uint32_t key = (id << 16) | seq;
-	  CHECK(outstanding.find(key) == outstanding.end()) << key;
-	  outstanding[key] = ping;
+	  OutstandingPing outstanding_ping;
+	  outstanding_ping.ip = ip;
+	  outstanding_ping.host_idx = host_idx;
+	  outstanding_ping.data_hash = GetHash(ping_to_send.data);
+	  
+	  // compute timestamp right before sending
+	  CHECK(gettimeofday(&outstanding_ping.sent, nullptr) != -1);
+	  (void)NetUtil::SendPing(fd4, ping_to_send);
+
+	  CHECK(outstanding.find(key) == outstanding.end()) << key;	  
+	  outstanding[key] = outstanding_ping;
 	  timeout_queue.push_back(key);
-	  Send(fd4, ping, id, seq);
 	}
   }
 
@@ -434,7 +432,7 @@ static void Pingy(uint8_t c) {
 }
 
 int main(int argc, char **argv) {
-  for (int c = 0; c < 8; c++) {
+  for (int c = 0; c < 2; c++) {
 	std::string filename = StringPrintf("ping%d.dat", c);
 	printf(" === *.*.%d.* ===\n", c);
 	if (Util::ExistsFile(filename)) {

@@ -2,10 +2,10 @@
 all : oping.exe pingy.exe
 
 CC_LIB=../../cc-lib
-CCLIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/arcfour.o $(CC_LIB)/image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/util.o
+CCLIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/arcfour.o $(CC_LIB)/image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/util.o $(CC_LIB)/crypt/sha256.o
 
 CPPFLAGS=-Wall -Werror -O2 -I $(CC_LIB)
-CXXFLAGS=--std=c++17
+CXXFLAGS=--std=c++20
 LFLAGS=
 
 oping.exe : oping.o liboping.o $(CCLIB_OBJECTS) ../netutil.o

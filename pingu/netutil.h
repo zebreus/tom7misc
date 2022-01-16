@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <netinet/in.h>
 #include <tuple>
+#include <vector>
 
 struct NetUtil {
 
@@ -34,6 +35,17 @@ struct NetUtil {
   // Compute the ICMP checksum (RFC 792) for the buffer. Note the
   // checksum field should be set to zero before doing this.
   static uint16_t ICMPChecksum(uint8_t *buf, size_t len);
+
+  struct PingToSend {
+	uint16_t id = 0;
+	uint16_t seq = 0;
+	uint32_t ip = 0;
+	std::vector<uint8_t> data;
+  };
+  // Send a ping on the socket (configured above). Returns false for
+  // some immediate failures, but such cases will also just look
+  // eventually look like timeouts (no response).
+  static bool SendPing(int fd, const PingToSend &ping);
 
 };
 
