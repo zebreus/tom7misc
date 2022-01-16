@@ -5,9 +5,11 @@
 #include <optional>
 #include <string>
 #include <cstdint>
-#include <netinet/in.h>
 #include <tuple>
 #include <vector>
+#include <optional>
+#include <netinet/in.h>
+#include <sys/time.h>
 
 struct NetUtil {
 
@@ -47,6 +49,19 @@ struct NetUtil {
   // eventually look like timeouts (no response).
   static bool SendPing(int fd, const PingToSend &ping);
 
+  struct Ping {
+	uint16_t ident = 0;
+	uint16_t seq = 0;
+	struct timeval recvtime;
+	std::vector<uint8_t> data;
+  };
+  // Receive a ping (if there is one) on the socket (configured above).
+  // Returns nullopt if there is no ping or if it is invalid. In these
+  // cases, populates the error string if it is non-null.
+  static std::optional<Ping> ReceivePing(int fd, int payload_size,
+										 std::string *error = nullptr);
+
+  
 };
 
 #endif

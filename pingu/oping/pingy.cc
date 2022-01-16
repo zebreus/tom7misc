@@ -50,9 +50,7 @@ struct OutstandingPing {
   std::array<uint8, HASH_BYTES> data_hash;
 };
 
-// for vector or array argument
-template<class C>
-static std::array<uint8, HASH_BYTES> GetHash(const C &data) {
+static std::array<uint8, HASH_BYTES> GetHash(const std::vector<uint8_t> &data) {
   CHECK(data.size() == PAYLOAD_SIZE);
   std::vector<uint8> h = SHA256::HashPtr(data.data(), PAYLOAD_SIZE);
   std::array<uint8, HASH_BYTES> ret;
@@ -65,134 +63,6 @@ static double TimevalDiff(const struct timeval &a,
 						  const struct timeval &b) {
   return (double)(b.tv_sec - a.tv_sec) +
 	((double)(b.tv_usec - a.tv_usec) / 1e6);
-}
-
-struct Ping {
-  uint16_t ident = 0;
-  uint16_t seq = 0;
-  struct timeval recvtime;
-  std::array<uint8, PAYLOAD_SIZE> data;
-};
-
-static std::optional<Ping> Receive(int fd) {
-  uint8_t payload_buffer[4096];
-  uint8_t control_buffer[4096];
-  struct iovec payload_iovec;
-
-  memset(&payload_iovec, 0, sizeof (payload_iovec));
-  payload_iovec.iov_base = payload_buffer;
-  payload_iovec.iov_len = sizeof (payload_buffer);
-
-  struct msghdr msghdr;
-  memset (&msghdr, 0, sizeof (msghdr));
-  /* unspecified source address */
-  msghdr.msg_name = nullptr;
-  msghdr.msg_namelen = 0;
-  /* output buffer vector, see readv(2) */
-  msghdr.msg_iov = &payload_iovec;
-  msghdr.msg_iovlen = 1;
-  /* output buffer for control messages */
-  msghdr.msg_control = control_buffer;
-  msghdr.msg_controllen = sizeof (control_buffer);
-  /* flags; this is an output-only field.. */
-  msghdr.msg_flags = 0;
-
-  ssize_t payload_buffer_len = recvmsg (fd, &msghdr, /* flags = */ 0);
-  if (payload_buffer_len < 0) {
-	printf("recvfrom failed\n");
-	return {};
-  }
-
-  Ping ping;
-
-  /* Iterate over all auxiliary data in msghdr */
-
-  bool got_timestamp = false;
-  for (struct cmsghdr *cmsg = CMSG_FIRSTHDR (&msghdr);
-	   cmsg != nullptr;
-	   cmsg = CMSG_NXTHDR (&msghdr, cmsg)) {
-	switch (cmsg->cmsg_level) {
-	case SOL_SOCKET:
-	  if (cmsg->cmsg_type == SO_TIMESTAMP) {
-		// printf("Got timestamp\n");
-		memcpy(&ping.recvtime, CMSG_DATA (cmsg), sizeof (timeval));
-		got_timestamp = true;
-	  }
-	  break;
-	case IPPROTO_IP:
-	  // don't actually care about cmsg_type = IP_TOS or IP_TTL
-	  // for this application
-	  break;
-	default:
-	  break;
-	}
-  }
-
-  if (!got_timestamp) {
-	// If no accurate timestamp, use the current time.
-	CHECK(gettimeofday(&ping.recvtime, nullptr) != -1);
-  }
-
-  {
-	size_t buffer_len = payload_buffer_len;
-	uint8_t *buffer = payload_buffer;
-
-	if (buffer_len < sizeof (struct ip)) {
-	  // printf("Not long enough\n");
-	  return {};
-	}
-
-	struct ip *ip_hdr = (struct ip *) buffer;
-	size_t ip_hdr_len = ip_hdr->ip_hl << 2;
-
-	if (buffer_len < ip_hdr_len) {
-	  return {};
-	}
-
-	buffer += ip_hdr_len;
-	buffer_len -= ip_hdr_len;
-
-	if (buffer_len < ICMP_MINLEN) {
-	  // printf("Not long enough for ICMP\n");
-	  return {};
-	}
-
-	struct icmp *icmp_hdr = (struct icmp *) buffer;
-	if (icmp_hdr->icmp_type != ICMP_ECHOREPLY) {
-	  // 3 is dest unreachable
-	  // 11 is time exceeded
-	  // printf("ICMP not ECHOREPLY: %d\n", (int)icmp_hdr->icmp_type);
-	  return {};
-	}
-
-	uint16_t recv_checksum = icmp_hdr->icmp_cksum;
-	/* This writes to buffer. */
-	icmp_hdr->icmp_cksum = 0;
-	uint16_t calc_checksum = NetUtil::ICMPChecksum(buffer, buffer_len);
-
-	if (recv_checksum != calc_checksum) {
-	  printf("Wrong checksum: Got 0x%04" PRIx16 ", "
-			 "calculated 0x%04" PRIx16 "\n",
-			 recv_checksum, calc_checksum);
-	  return {};
-	}
-
-	ping.ident = ntohs(icmp_hdr->icmp_id);
-	ping.seq = ntohs(icmp_hdr->icmp_seq);
-
-	// Skip to data.
-	buffer_len -= ICMP_MINLEN;
-	buffer += ICMP_MINLEN;
-	if (buffer_len != PAYLOAD_SIZE) {
-	  printf("Wrong data size: Got %d want %d\n",
-			 (int)buffer_len, (int)PAYLOAD_SIZE);
-	  return {};
-	}
-
-	memcpy(ping.data.data(), buffer, PAYLOAD_SIZE);
-  }
-
-  return ping;
 }
 
 static void Pingy(uint8_t c) {
@@ -286,9 +156,12 @@ static void Pingy(uint8_t c) {
 
 	// If possible to read, do so.
 	if (FD_ISSET(fd4, &read_fds)) {
-	  std::optional<Ping> pingo = Receive(fd4);
+	  // TODO: Could get error message here and filter to interesting
+	  // ones.
+	  std::optional<NetUtil::Ping> pingo =
+		NetUtil::ReceivePing(fd4, PAYLOAD_SIZE);
 	  if (pingo.has_value()) {
-		const Ping &ping = pingo.value();
+		const NetUtil::Ping &ping = pingo.value();
 		uint32_t key = (ping.ident << 16) | ping.seq;
 		auto it = outstanding.find(key);
 		if (it == outstanding.end()) {
