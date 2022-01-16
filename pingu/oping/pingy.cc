@@ -24,7 +24,7 @@
 
 using namespace std;
 
-static constexpr int PAYLOAD_SIZE = 256;
+static constexpr int PAYLOAD_SIZE = 56;  // XXX
 static constexpr time_t TIMEOUT_SEC = 6;
 static constexpr int MAX_OUTSTANDING = 65536;
 static constexpr int HASH_BYTES = 16;
@@ -99,12 +99,41 @@ static void Pingy(uint8_t c) {
   // keys that have been removed.
   std::deque<uint32_t> timeout_queue;
 
-  auto Status = [&next_idx, &hosts, &outstanding, &timeout_queue]() {
+  const int64_t start_time = time(nullptr);
+  
+  int64 successes = 0, select_timeouts = 0, queue_timeouts = 0,
+	other_errors = 0;
+  auto Status = [start_time, &next_idx, &hosts, &outstanding, &timeout_queue,
+				 &successes, &select_timeouts, &queue_timeouts,
+				 &other_errors]() {
+	  const int64_t elapsed = (int64_t)time(nullptr) - start_time;
+	  const double done_per_sec = next_idx / (double)elapsed;
+	  double sec_remaining = (hosts.size() - next_idx) / done_per_sec;
 	  double pct = (100.0 * next_idx) / (double)hosts.size();
-	  return StringPrintf("%d/%d %.1f%% %d o %d q",
-						  (int)next_idx, (int)hosts.size(),
-						  pct, outstanding.size(),
-						  timeout_queue.size());
+	  double total_done = successes + select_timeouts + queue_timeouts +
+		other_errors;
+	  double spct = (100.0 * successes) / total_done;
+	  double stpct = (100.0 * select_timeouts) / total_done;
+	  double qtpct = (100.0 * queue_timeouts) / total_done;
+	  [[maybe_unused]]
+	  double opct = (100.0 * other_errors) / total_done;
+	  return StringPrintf(
+		  "%.1fm %dk/%dk %.1f%% %d o %d q | %.1f%% ok %.1f%% st %.1f%% qt",
+		  sec_remaining / 60.0,
+		  (int)next_idx / 1024, (int)hosts.size() / 1024,
+		  pct, outstanding.size(),
+		  timeout_queue.size(),
+		  spct, stpct, qtpct);
+	};
+
+  int64_t last_report = 0;
+  auto Report = [&Status, &last_report](const std::function<std::string()> &f,
+										bool force = false) {
+	  const int64_t now = time(nullptr);
+	  if (force || now > last_report) {
+		printf("[%s] %s\n", Status().c_str(), f().c_str());
+		last_report = now;
+	  }
 	};
   
   while (!outstanding.empty() || next_idx < hosts.size()) {
@@ -134,24 +163,25 @@ static void Pingy(uint8_t c) {
 	timeout.tv_sec = TIMEOUT_SEC;
 	timeout.tv_usec = 0;
 
-	int status = select (max_fd + 1, &read_fds, &write_fds, nullptr, &timeout);
+	int status = select(max_fd + 1, &read_fds, &write_fds, nullptr, &timeout);
 	CHECK(status != -1);
 
-	// CHECK(gettimeofday (&nowtime, nullptr) != -1);
-
 	if (status == 0) {
-	  printf("[%s] select timeout\n", Status().c_str());
+	  Report([&outstanding]{
+		  return StringPrintf("%d select timeout", outstanding.size());
+		});
+		
 	  // We read nothing within the timeout. This means all the
 	  // outstanding pings have timed out.
 	  for (const auto &[identseq_, oping] : outstanding) {
 		// (could check though...)
 		hosts[oping.host_idx].msec_div_8 = TIMEOUT;
+		select_timeouts++;
 	  }
 	  outstanding.clear();
 	  timeout_queue.clear();
 	  continue;
 	}
-
 
 
 	// If possible to read, do so.
@@ -166,23 +196,33 @@ static void Pingy(uint8_t c) {
 		auto it = outstanding.find(key);
 		if (it == outstanding.end()) {
 		  // Corrupt packet, duplicate, etc.
-		  printf("Dropping ping %04x|%04x with no match?\n",
-				 ping.ident, ping.seq);
+		  // These don't count towards "total".
+		  Report([&ping]{
+			  return StringPrintf("Dropping ping %04x|%04x with no match?\n",
+								  ping.ident, ping.seq);
+			}, true);
 		} else {
 		  const OutstandingPing &oping = it->second;
 		  double sec = TimevalDiff(oping.sent, ping.recvtime);
 		  if (oping.data_hash == GetHash(ping.data)) {
-			printf("[%s] %s took %.1f msec\n",
-				   Status().c_str(),
-				   NetUtil::IPToString(oping.ip).c_str(), sec * 1000.0);
+			successes++;
+			Report([&oping, sec]{
+				return StringPrintf(
+					"%s took %.1f ms",
+					NetUtil::IPToString(oping.ip).c_str(), sec * 1000.0);
+			  });
 
 			// 8 bits for msec/8.
 			// 0 is used for no response.
 			const int msec = std::clamp(1, (int)round(sec * 1000.0 / 8.0), 254);
 			hosts[oping.host_idx].msec_div_8 = msec;
 		  } else {
-			printf("%s had wrong data! %.7f sec\n",
-				   NetUtil::IPToString(oping.ip).c_str(), sec);
+			Report([&oping, sec]{
+				return StringPrintf("%s had wrong data! %.7f sec\n",
+									NetUtil::IPToString(oping.ip).c_str(),
+									sec);
+			  }, true);
+			other_errors++;
 			hosts[oping.host_idx].msec_div_8 = WRONG_DATA;
 		  }
 		  // either way, remove it from pending pings
@@ -213,8 +253,11 @@ static void Pingy(uint8_t c) {
 		const OutstandingPing &oping = it->second;
 		const double sec = TimevalDiff(oping.sent, now);
 		if (sec > TIMEOUT_SEC) {
-		  printf("%s timed out (%.4f sec)\n",
-				 NetUtil::IPToString(oping.ip).c_str(), sec);
+		  queue_timeouts++;
+		  Report([&oping, sec](){
+			  return StringPrintf("%s timed out (%.4f s)\n",
+								  NetUtil::IPToString(oping.ip).c_str(), sec);
+			});
 		  hosts[oping.host_idx].msec_div_8 = TIMEOUT;
 		  it = outstanding.erase(it);
 		  timeout_queue.pop_front();
@@ -305,7 +348,7 @@ static void Pingy(uint8_t c) {
 }
 
 int main(int argc, char **argv) {
-  for (int c = 0; c < 2; c++) {
+  for (int c = 2; c < 12; c++) {
 	std::string filename = StringPrintf("ping%d.dat", c);
 	printf(" === *.*.%d.* ===\n", c);
 	if (Util::ExistsFile(filename)) {
