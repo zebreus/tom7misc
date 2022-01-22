@@ -10,3 +10,25 @@ Shutdown problems:
    what the deal is. (Because the client is backgrounded?)
 
 
+Seems that pings are throttled somewhere. When we set different
+max_outstanding values in pingy.exe, we get vastly different success
+rates. Linux has some ICMP throttling but it seems to be only
+enabled for some types of packets.
+
+See /proc/sys/net/ipv4:
+-rw-r--r-- 1 root root 0 Jan 18 18:35 icmp_msgs_burst
+-rw-r--r-- 1 root root 0 Jan 18 18:33 icmp_msgs_per_sec
+-rw-r--r-- 1 root root 0 Jan 18 18:33 icmp_ratelimit
+-rw-r--r-- 1 root root 0 Jan 18 18:16 icmp_ratemask
+
+See source code implementing the throttling:
+https://elixir.bootlin.com/linux/latest/source/net/ipv4/icmp.c
+
+
+Probably it is upstream routers doing this?
+It affects video calls sharing the same connection but from a different
+computer, so it's unlikely to be something linux is doing locally.
+This probably also explains why it's so lossy on VPN, too.
+
+Traffic is pretty bursty on the host OS's network graph. Throttling
+may help a lot here?
