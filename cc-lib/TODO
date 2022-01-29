@@ -14,3 +14,4 @@
 - Autotune parameters, like autoparallel but with user-specified metrics
   (e.g. you define a target "error" and some variables, it gives you
    variables to try for a round, then you tell it what the "error" was)
+- Update bigz in bignum (there is now 2.0.0, with bugfixes)

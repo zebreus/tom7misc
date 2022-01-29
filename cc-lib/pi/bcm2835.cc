@@ -964,8 +964,6 @@ void bcm2835_aux_spi_transfern(char *buf, uint32_t len) {
 #ifndef DISABLE_I2C
 
 int bcm2835_i2c_begin(void) {
-    uint16_t cdiv;
-
     if (   bcm2835_bsc0 == MAP_FAILED
 	|| bcm2835_bsc1 == MAP_FAILED)
       return 0; /* bcm2835_init() failed, or not root */
@@ -983,7 +981,7 @@ int bcm2835_i2c_begin(void) {
 #endif
 
     /* Read the clock divider register */
-    cdiv = bcm2835_peri_read(paddr);
+    uint16_t cdiv = bcm2835_peri_read(paddr);
     /* Calculate time for transmitting one byte
     // 1000000 = micros seconds in a second
     // 9 = Clocks per byte : 8 bits + ACK
@@ -1125,7 +1123,7 @@ uint8_t bcm2835_i2c_read(char* buf, uint32_t len) {
     uint8_t reason = BCM2835_I2C_REASON_OK;
 
     /* Clear FIFO */
-    bcm2835_peri_set_bits(control, BCM2835_BSC_C_CLEAR_1 , BCM2835_BSC_C_CLEAR_1 );
+    bcm2835_peri_set_bits(control, BCM2835_BSC_C_CLEAR_1, BCM2835_BSC_C_CLEAR_1 );
     /* Clear Status */
     bcm2835_peri_write_nb(status, BCM2835_BSC_S_CLKT | BCM2835_BSC_S_ERR | BCM2835_BSC_S_DONE);
     /* Set Data Length */
@@ -1173,7 +1171,7 @@ uint8_t bcm2835_i2c_read(char* buf, uint32_t len) {
 	reason = BCM2835_I2C_REASON_ERROR_DATA;
     }
 
-    bcm2835_peri_set_bits(control, BCM2835_BSC_S_DONE , BCM2835_BSC_S_DONE);
+    bcm2835_peri_set_bits(control, BCM2835_BSC_S_DONE, BCM2835_BSC_S_DONE);
 
     return reason;
 }
@@ -1197,7 +1195,7 @@ uint8_t bcm2835_i2c_read_register_rs(char* regaddr, char* buf, uint32_t len) {
     uint8_t reason = BCM2835_I2C_REASON_OK;
 
     /* Clear FIFO */
-    bcm2835_peri_set_bits(control, BCM2835_BSC_C_CLEAR_1 , BCM2835_BSC_C_CLEAR_1 );
+    bcm2835_peri_set_bits(control, BCM2835_BSC_C_CLEAR_1, BCM2835_BSC_C_CLEAR_1 );
     /* Clear Status */
     bcm2835_peri_write(status, BCM2835_BSC_S_CLKT | BCM2835_BSC_S_ERR | BCM2835_BSC_S_DONE);
     /* Set Data Length */
@@ -1262,7 +1260,7 @@ uint8_t bcm2835_i2c_read_register_rs(char* regaddr, char* buf, uint32_t len) {
 	reason = BCM2835_I2C_REASON_ERROR_DATA;
     }
 
-    bcm2835_peri_set_bits(control, BCM2835_BSC_S_DONE , BCM2835_BSC_S_DONE);
+    bcm2835_peri_set_bits(control, BCM2835_BSC_S_DONE, BCM2835_BSC_S_DONE);
 
     return reason;
 }
@@ -1288,7 +1286,7 @@ uint8_t bcm2835_i2c_write_read_rs(char* cmds, uint32_t cmds_len, char* buf, uint
     uint8_t reason = BCM2835_I2C_REASON_OK;
 
     /* Clear FIFO */
-    bcm2835_peri_set_bits(control, BCM2835_BSC_C_CLEAR_1 , BCM2835_BSC_C_CLEAR_1 );
+    bcm2835_peri_set_bits(control, BCM2835_BSC_C_CLEAR_1, BCM2835_BSC_C_CLEAR_1 );
 
     /* Clear Status */
     bcm2835_peri_write(status, BCM2835_BSC_S_CLKT | BCM2835_BSC_S_ERR | BCM2835_BSC_S_DONE);
@@ -1365,7 +1363,7 @@ uint8_t bcm2835_i2c_write_read_rs(char* cmds, uint32_t cmds_len, char* buf, uint
 	reason = BCM2835_I2C_REASON_ERROR_DATA;
     }
 
-    bcm2835_peri_set_bits(control, BCM2835_BSC_S_DONE , BCM2835_BSC_S_DONE);
+    bcm2835_peri_set_bits(control, BCM2835_BSC_S_DONE, BCM2835_BSC_S_DONE);
 
     return reason;
 }
@@ -1548,7 +1546,7 @@ int bcm2835_init(void)
     /* Figure out the base and size of the peripheral address block
     // using the device-tree. Required for RPi2, optional for RPi 1
     */
-    if ((fp = fopen(BMC2835_RPI2_DT_FILENAME , "rb")))
+    if ((fp = fopen(BMC2835_RPI2_DT_FILENAME, "rb")))
     {
         unsigned char buf[4];
 	fseek(fp, BMC2835_RPI2_DT_PERI_BASE_ADDRESS_OFFSET, SEEK_SET);

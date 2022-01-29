@@ -1,26 +1,27 @@
 
-#include <time.h>
+#ifndef _CC_LIB_TIMER_H
+#define _CC_LIB_TIMER_H
 
-// Extremely simple timer. Only records one start-stop span,
-// and only in seconds.
+#include <chrono>
+
+// Simple wrapper around std::chrono::steady_clock.
+// Starts timing when constructed. TODO: Pause() etc.
 struct Timer {
-  Timer() : starttime(0), stoptime(0) {
-    Start();
+  Timer() : starttime(std::chrono::steady_clock::now()) {}
+
+  double Seconds() const {
+    const std::chrono::time_point<std::chrono::steady_clock> stoptime =
+      std::chrono::steady_clock::now();
+	const std::chrono::duration<double> elapsed = stoptime - starttime;
+    return elapsed.count();
   }
 
-  void Start() {
-    starttime = time(NULL);
-  }
-
-  void Stop() {
-    stoptime = time(NULL);
-  }
-
-  time_t Seconds() {
-    Stop();
-    return stoptime - starttime;
+  double MS() const {
+    return Seconds() * 1000.0;
   }
 
  private:
-  time_t starttime, stoptime;
+  const std::chrono::time_point<std::chrono::steady_clock> starttime;
 };
+
+#endif

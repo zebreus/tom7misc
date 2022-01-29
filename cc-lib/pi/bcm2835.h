@@ -1,11 +1,11 @@
 /* bcm2835.h
-  
+
    C and C++ support for Broadcom BCM 2835 as used in Raspberry Pi
-  
+
    Author: Mike McCauley
    Copyright (C) 2011-2013 Mike McCauley
    Modified by Tom 7 in 2018+.
-   See README.bcm2835 for docs that I moved out of this header.   
+   See README.bcm2835 for docs that I moved out of this header.
 
    Note: I removed some functionality I didn't need (e.g. SPI)
    since it was pretty big.
@@ -200,8 +200,8 @@ typedef enum
    The BCM2835 has 54 GPIO pins.
    BCM2835 data sheet, Page 90 onwards.
 */
-/* GPIO register offsets from BCM2835_GPIO_BASE. 
-  Offsets into the GPIO Peripheral block in bytes per 6.1 Register View 
+/* GPIO register offsets from BCM2835_GPIO_BASE.
+  Offsets into the GPIO Peripheral block in bytes per 6.1 Register View
 */
 #define BCM2835_GPFSEL0    0x0000 /* GPIO Function Select 0 */
 #define BCM2835_GPFSEL1    0x0004 /* GPIO Function Select 1 */
@@ -288,7 +288,7 @@ typedef enum
 } bcm2835PadGroup;
 
 /* GPIO Pin Numbers
-  
+
   Here we define Raspberry Pin GPIO pins on P1 in terms of the underlying BCM GPIO pin numbers.
   These can be passed as a pin number to any function requiring a pin.
   Not all pins on the RPi 26 bin IDE plug are connected to GPIO pins
@@ -441,7 +441,7 @@ typedef enum
 #define BCM2835_AUX_SPI_STAT_BITCOUNT	0x0000003F  /* */
 
 /* Defines for SPI
-   GPIO register offsets from BCM2835_SPI0_BASE. 
+   GPIO register offsets from BCM2835_SPI0_BASE.
    Offsets into the SPI Peripheral block in bytes per 10.5 SPI Register Map
 */
 #define BCM2835_SPI0_CS                 0x0000 /* SPI Master Control and Status */
@@ -518,7 +518,7 @@ typedef enum
   The frequencies shown for each divider have been confirmed by measurement on RPi1 and RPi2.
   The system clock frequency on RPi3 is different, so the frequency you get from a given divider will be different.
   See comments in 'SPI Pins' for information about reliable SPI speeds.
-  Note: it is possible to change the core clock rate of the RPi 3 back to 250MHz, by putting 
+  Note: it is possible to change the core clock rate of the RPi 3 back to 250MHz, by putting
   \code
   core_freq=250
   \endcode
@@ -678,13 +678,13 @@ typedef enum {
     These functions allow you to intialise and control the bcm2835 library
   */
 
-  /* Initialise the library by opening /dev/mem (if you are root) 
+  /* Initialise the library by opening /dev/mem (if you are root)
     or /dev/gpiomem (if you are not)
-    and getting pointers to the 
+    and getting pointers to the
     internal memory for BCM 2835 device registers. You must call this (successfully)
-    before calling any other 
-    functions in this library (except bcm2835_set_debug). 
-    If bcm2835_init() fails by returning 0, 
+    before calling any other
+    functions in this library (except bcm2835_set_debug).
+    If bcm2835_init() fails by returning 0,
     calling any other function may result in crashes or other failures.
     If bcm2835_init() succeeds but you are not running as root, then only gpio operations
     are permitted, and calling any other functions may result in crashes or other failures. .
@@ -714,7 +714,7 @@ typedef enum {
 
   /* \defgroup lowlevel Low level register access
     These functions provide low level register access, and should not generally
-    need to be used 
+    need to be used
   */
 
   /* Gets the base of a register
@@ -790,8 +790,8 @@ typedef enum {
   }
 
   /* Alters a number of bits in a 32 peripheral regsiter.
-    It reads the current valu and then alters the bits defines as 1 in mask, 
-    according to the bit value in value. 
+    It reads the current valu and then alters the bits defines as 1 in mask,
+    according to the bit value in value.
     All other bits that are 0 in the mask are unaffected.
     Use this to alter a subset of the bits in a register.
     Memory barriers are used.  Note that this is not atomic; an interrupt
@@ -806,9 +806,9 @@ typedef enum {
   // Hacky/experimental: disable all interrupts. At best, the OS will never
   // come back!
   extern void bcm2835_int_disable_all();
-  
+
   /* \defgroup gpio GPIO register access
-    These functions allow you to control the GPIO interface. You can set the 
+    These functions allow you to control the GPIO interface. You can set the
     function of each GPIO pin, read the input state and set the output state.
   */
 
@@ -819,21 +819,21 @@ typedef enum {
   */
   extern void bcm2835_gpio_fsel(uint8_t pin, uint8_t mode);
 
-  /* Sets the specified pin output to 
+  /* Sets the specified pin output to
     HIGH.
     \param[in] pin GPIO number, or one of RPI_GPIO_P1_* from \ref RPiGPIOPin.
     \sa bcm2835_gpio_write()
   */
   extern void bcm2835_gpio_set(uint8_t pin);
 
-  /* Sets the specified pin output to 
+  /* Sets the specified pin output to
     LOW.
     \param[in] pin GPIO number, or one of RPI_GPIO_P1_* from \ref RPiGPIOPin.
     \sa bcm2835_gpio_write()
   */
   extern void bcm2835_gpio_clr(uint8_t pin);
 
-  /* Sets any of the first 32 GPIO output pins specified in the mask to 
+  /* Sets any of the first 32 GPIO output pins specified in the mask to
      HIGH.
      \param[in] mask Mask of pins to affect. Use eg: (1 << RPI_GPIO_P1_03) | (1 << RPI_GPIO_P1_05)
      \sa bcm2835_gpio_write_multi()
@@ -848,7 +848,7 @@ typedef enum {
     *paddr = mask;
   }
 
-  /* Sets any of the first 32 GPIO output pins specified in the mask to 
+  /* Sets any of the first 32 GPIO output pins specified in the mask to
      LOW.
      \param[in] mask Mask of pins to affect. Use eg: (1 << RPI_GPIO_P1_03) | (1 << RPI_GPIO_P1_05)
      \sa bcm2835_gpio_write_multi()
@@ -858,7 +858,7 @@ typedef enum {
     bcm2835_peri_write(paddr, mask);
   }
 
-  /* Reads the current level on the specified 
+  /* Reads the current level on the specified
     pin and returns either HIGH or LOW. Works whether or not the pin
     is an input or an output.
     \param[in] pin GPIO number, or one of RPI_GPIO_P1_* from \ref RPiGPIOPin.
@@ -887,7 +887,7 @@ typedef enum {
 
   /* Event Detect Status.
     Tests whether the specified pin has detected a level or edge
-    as requested by bcm2835_gpio_ren(), bcm2835_gpio_fen(), bcm2835_gpio_hen(), 
+    as requested by bcm2835_gpio_ren(), bcm2835_gpio_fen(), bcm2835_gpio_hen(),
     bcm2835_gpio_len(), bcm2835_gpio_aren(), bcm2835_gpio_afen().
     Clear the flag for a given pin by calling bcm2835_gpio_set_eds(pin);
     \param[in] pin GPIO number, or one of RPI_GPIO_P1_* from \ref RPiGPIOPin.
@@ -902,7 +902,7 @@ typedef enum {
   */
   extern uint32_t bcm2835_gpio_eds_multi(uint32_t mask);
 
-  /* Sets the Event Detect Status register for a given pin to 1, 
+  /* Sets the Event Detect Status register for a given pin to 1,
     which has the effect of clearing the flag. Use this afer seeing
     an Event Detect Status on the pin.
     \param[in] pin GPIO number, or one of RPI_GPIO_P1_* from \ref RPiGPIOPin.
@@ -1003,8 +1003,8 @@ typedef enum {
 
   /* Clocks the Pull-up/down value set earlier by bcm2835_gpio_pud() into the pin.
     \param[in] pin GPIO number, or one of RPI_GPIO_P1_* from \ref RPiGPIOPin.
-    \param[in] on HIGH to clock the value from bcm2835_gpio_pud() into the pin. 
-    LOW to remove the clock. 
+    \param[in] on HIGH to clock the value from bcm2835_gpio_pud() into the pin.
+    LOW to remove the clock.
     \sa bcm2835_gpio_set_pud()
   */
   extern void bcm2835_gpio_pudclk(uint8_t pin, uint8_t on);
@@ -1019,7 +1019,7 @@ typedef enum {
   /* Sets the Pad Control for the given GPIO group.
     Caution: requires root access.
     \param[in] group The GPIO pad group number, one of BCM2835_PAD_GROUP_GPIO_*
-    \param[in] control Mask of bits from BCM2835_PAD_* from \ref bcm2835PadGroup. Note 
+    \param[in] control Mask of bits from BCM2835_PAD_* from \ref bcm2835PadGroup. Note
     that it is not necessary to include BCM2835_PAD_PASSWRD in the mask as this
     is automatically included.
   */
@@ -1028,9 +1028,9 @@ typedef enum {
   /* Delays for the specified number of milliseconds.
     Uses nanosleep(), and therefore does not use CPU until the time is up.
     However, you are at the mercy of nanosleep(). From the manual for nanosleep():
-    If the interval specified in req is not an exact multiple of the granularity  
+    If the interval specified in req is not an exact multiple of the granularity
     underlying clock (see time(7)), then the interval will be
-    rounded up to the next multiple. Furthermore, after the sleep completes, 
+    rounded up to the next multiple. Furthermore, after the sleep completes,
     there may still be a delay before the CPU becomes free to once
     again execute the calling thread.
     \param[in] millis Delay in milliseconds
@@ -1040,9 +1040,9 @@ typedef enum {
   /* Delays for the specified number of microseconds.
     Uses a combination of nanosleep() and a busy wait loop on the BCM2835 system timers,
     However, you are at the mercy of nanosleep(). From the manual for nanosleep():
-    If the interval specified in req is not an exact multiple of the granularity  
+    If the interval specified in req is not an exact multiple of the granularity
     underlying clock (see time(7)), then the interval will be
-    rounded up to the next multiple. Furthermore, after the sleep completes, 
+    rounded up to the next multiple. Furthermore, after the sleep completes,
     there may still be a delay before the CPU becomes free to once
     again execute the calling thread.
     For times less than about 450 microseconds, uses a busy wait on the System Timer.
@@ -1110,12 +1110,12 @@ typedef enum {
     const uint32_t offs = mask;
     *paddr_c = offs;
   }
-  
-  /* Sets the Pull-up/down mode for the specified pin. This is more 
-     convenient than clocking the mode in with bcm2835_gpio_pud() and 
+
+  /* Sets the Pull-up/down mode for the specified pin. This is more
+     convenient than clocking the mode in with bcm2835_gpio_pud() and
      bcm2835_gpio_pudclk().
      \param[in] pin GPIO number, or one of RPI_GPIO_P1_* from \ref RPiGPIOPin.
-     \param[in] pud The desired Pull-up/down mode. One of 
+     \param[in] pud The desired Pull-up/down mode. One of
      BCM2835_GPIO_PUD_* from bcm2835PUDControl
   */
   extern void bcm2835_gpio_set_pud(uint8_t pin, uint8_t pud);
@@ -1123,7 +1123,7 @@ typedef enum {
 #ifndef DISABLE_I2C
 
   // I2C support.
-  
+
   /* Start I2C operations.
 
     Forces RPi I2C pins P1-03 (SDA) and P1-05 (SCL) to alternate
@@ -1164,7 +1164,7 @@ typedef enum {
   /* Transfers any number of bytes to the currently selected I2C slave.
     (as previously set by \sa bcm2835_i2c_setSlaveAddress)
     \param[in] buf Buffer of bytes to send.
-    \param[in] len Number of bytes in the buf buffer, and the number of 
+    \param[in] len Number of bytes in the buf buffer, and the number of
     bytes to send.
     \return reason see \ref bcm2835I2CReasonCodes
   */
@@ -1173,26 +1173,26 @@ typedef enum {
   /* Transfers any number of bytes from the currently selected I2C slave.
     (as previously set by \sa bcm2835_i2c_setSlaveAddress)
     \param[in] buf Buffer of bytes to receive.
-    \param[in] len Number of bytes in the buf buffer, and the number of 
-    bytes to received.
+    \param[in] len Number of bytes in the buf buffer, and the number of
+    bytes to receive.
     \return reason see \ref bcm2835I2CReasonCodes
   */
   extern uint8_t bcm2835_i2c_read(char *buf, uint32_t len);
 
-  /* Allows reading from I2C slaves that require a repeated start (without 
-    any prior stop) to read after the required slave register has been set. 
-    For example, the popular MPL3115A2 pressure and temperature sensor. 
-    Note that your device must support or require this mode. If your 
+  /* Allows reading from I2C slaves that require a repeated start (without
+    any prior stop) to read after the required slave register has been set.
+    For example, the popular MPL3115A2 pressure and temperature sensor.
+    Note that your device must support or require this mode. If your
     device does not require this mode then the standard combined:
     \sa bcm2835_i2c_write
     \sa bcm2835_i2c_read
     are a better choice.
     Will read from the slave previously set by bcm2835_i2c_setSlaveAddress.
-    \param[in] regaddr Buffer containing the slave register you wish 
+    \param[in] regaddr Buffer containing the slave register you wish
     to read from.
     \param[in] buf Buffer of bytes to receive.
     \param[in] len Number of bytes in the buf buffer, and the number of
-    bytes to received.
+    bytes to receive.
     \return reason see \ref bcm2835I2CReasonCodes
   */
   extern uint8_t bcm2835_i2c_read_register_rs(char* regaddr, char* buf,
@@ -1204,7 +1204,7 @@ typedef enum {
     such as the MLX90620. Will write to and read from the slave
     previously set by bcm2835_i2c_setSlaveAddress.
 
-    \param[in] cmds Buffer containing the bytes to send before the 
+    \param[in] cmds Buffer containing the bytes to send before the
     repeated start condition.
     \param[in] cmds_len Number of bytes to send from cmds buffer
     \param[in] buf Buffer of bytes to receive.
@@ -1221,36 +1221,36 @@ typedef enum {
 #ifndef DISABLE_SPI
 
   /* Start SPI operations.
-    Forces RPi SPI0 pins P1-19 (MOSI), P1-21 (MISO), P1-23 (CLK), 
-    P1-24 (CE0) and P1-26 (CE1) to alternate function ALT0, which 
-    enables those pins for SPI interface. You should call 
-    bcm2835_spi_end() when all SPI funcitons are complete to 
+    Forces RPi SPI0 pins P1-19 (MOSI), P1-21 (MISO), P1-23 (CLK),
+    P1-24 (CE0) and P1-26 (CE1) to alternate function ALT0, which
+    enables those pins for SPI interface. You should call
+    bcm2835_spi_end() when all SPI funcitons are complete to
     return the pins to their default functions.
     \sa  bcm2835_spi_end()
-    \return 1 if successful, 0 otherwise (perhaps because you are not 
+    \return 1 if successful, 0 otherwise (perhaps because you are not
     running as root)
   */
   extern int bcm2835_spi_begin(void);
 
   /* End SPI operations.
-    SPI0 pins P1-19 (MOSI), P1-21 (MISO), P1-23 (CLK), P1-24 (CE0) 
+    SPI0 pins P1-19 (MOSI), P1-21 (MISO), P1-23 (CLK), P1-24 (CE0)
     and P1-26 (CE1) are returned to their default INPUT behavior.
   */
   extern void bcm2835_spi_end(void);
 
   /* Sets the SPI bit order
-    Set the bit order to be used for transmit and receive. The 
+    Set the bit order to be used for transmit and receive. The
     bcm2835 SPI0 only supports BCM2835_SPI_BIT_ORDER_MSBFIRST,
-    so if you select BCM2835_SPI_BIT_ORDER_LSBFIRST, the bytes will 
+    so if you select BCM2835_SPI_BIT_ORDER_LSBFIRST, the bytes will
     be reversed in software.
     The library defaults to BCM2835_SPI_BIT_ORDER_MSBFIRST.
-    \param[in] order The desired bit order, one of 
+    \param[in] order The desired bit order, one of
     BCM2835_SPI_BIT_ORDER_*, see \ref bcm2835SPIBitOrder
   */
   extern void bcm2835_spi_setBitOrder(uint8_t order);
 
-  /* Sets the SPI clock divider and therefore the SPI clock speed. 
-    \param[in] divider The desired SPI clock divider, one of 
+  /* Sets the SPI clock divider and therefore the SPI clock speed.
+    \param[in] divider The desired SPI clock divider, one of
     BCM2835_SPI_CLOCK_DIVIDER_*, see \ref bcm2835SPIClockDivider
   */
   extern void bcm2835_spi_setClockDivider(uint16_t divider);
@@ -1263,24 +1263,24 @@ typedef enum {
 
   /* Sets the SPI data mode.
      Sets the clock polarity and phase.
-     \param[in] mode The desired data mode, one of BCM2835_SPI_MODE*, 
+     \param[in] mode The desired data mode, one of BCM2835_SPI_MODE*,
      see \ref bcm2835SPIMode
   */
   extern void bcm2835_spi_setDataMode(uint8_t mode);
 
   /* Sets the chip select pin(s).
-     When an bcm2835_spi_transfer() is made, the selected pin(s) will be 
+     When an bcm2835_spi_transfer() is made, the selected pin(s) will be
      asserted during the transfer.
-     \param[in] cs Specifies the CS pins(s) that are used to activate 
-     the desired slave. 
+     \param[in] cs Specifies the CS pins(s) that are used to activate
+     the desired slave.
      One of BCM2835_SPI_CS*, see \ref bcm2835SPIChipSelect
   */
   extern void bcm2835_spi_chipSelect(uint8_t cs);
 
   /* Sets the chip select pin polarity for a given pin
-    When an bcm2835_spi_transfer() occurs, the currently selected chip 
-    select pin(s) will be asserted to the value given by active. 
-    When transfers are not happening, the chip select pin(s) return to 
+    When an bcm2835_spi_transfer() occurs, the currently selected chip
+    select pin(s) will be asserted to the value given by active.
+    When transfers are not happening, the chip select pin(s) return to
     the complement (inactive) value.
     \param[in] cs The chip select pin to affect (e.g. BCM2835_SPI_CS0 -tom7)
     \param[in] active Whether the chip select pin is to be active HIGH.
@@ -1289,12 +1289,12 @@ typedef enum {
   extern void bcm2835_spi_setChipSelectPolarity(uint8_t cs, uint8_t active);
 
   /* Transfers one byte to and from the currently selected SPI slave.
-    Asserts the currently selected CS pins (as previously set by 
+    Asserts the currently selected CS pins (as previously set by
     bcm2835_spi_chipSelect) during the transfer.
-    Clocks the 8 bit value out on MOSI, and simultaneously clocks in 
-    data from MISO. 
+    Clocks the 8 bit value out on MOSI, and simultaneously clocks in
+    data from MISO.
     Returns the read data byte from the slave.
-    Uses polled transfer as per section 10.6.1 of the BCM 2835 ARM 
+    Uses polled transfer as per section 10.6.1 of the BCM 2835 ARM
     Peripherals manual.
     \param[in] value The 8 bit data byte to write to MOSI
     \return The 8 bit byte simultaneously read from MISO
@@ -1302,18 +1302,18 @@ typedef enum {
   */
   extern uint8_t bcm2835_spi_transfer(uint8_t value);
 
-  /* Transfers any number of bytes to and from the currently selected 
+  /* Transfers any number of bytes to and from the currently selected
      SPI slave.
-     Asserts the currently selected CS pins (as previously set by 
+     Asserts the currently selected CS pins (as previously set by
      bcm2835_spi_chipSelect) during the transfer.
     Clocks the len 8 bit bytes out on MOSI, and simultaneously clocks in
-    data from MISO. 
-    The data read from the slave is placed into rbuf. rbuf must be 
+    data from MISO.
+    The data read from the slave is placed into rbuf. rbuf must be
     at least len bytes long. Uses polled transfer as per section 10.6.1
     of the BCM 2835 ARM Peripherals manual.
-    \param[in] tbuf Buffer of bytes to send. 
+    \param[in] tbuf Buffer of bytes to send.
     \param[out] rbuf Received bytes will by put in this buffer
-    \param[in] len Number of bytes in the tbuf buffer, and the number 
+    \param[in] len Number of bytes in the tbuf buffer, and the number
     of bytes to send/received
     \sa bcm2835_spi_transfer()
   */
@@ -1321,32 +1321,32 @@ typedef enum {
 
   /* Transfers any number of bytes to and from the currently selected SPI
      slave using bcm2835_spi_transfernb.
-    The returned data from the slave replaces the transmitted data in 
+    The returned data from the slave replaces the transmitted data in
     the buffer.
-    \param[in,out] buf Buffer of bytes to send. Received bytes will 
+    \param[in,out] buf Buffer of bytes to send. Received bytes will
     replace the contents
-    \param[in] len Number of bytes in teh buffer, and the number of 
+    \param[in] len Number of bytes in teh buffer, and the number of
     bytes to send/received
     \sa bcm2835_spi_transfer()
   */
   extern void bcm2835_spi_transfern(char* buf, uint32_t len);
 
   /* Transfers any number of bytes to the currently selected SPI slave.
-    Asserts the currently selected CS pins (as previously set by 
+    Asserts the currently selected CS pins (as previously set by
     bcm2835_spi_chipSelect) during the transfer.
     \param[in] buf Buffer of bytes to send.
-    \param[in] len Number of bytes in the buf buffer, and the number 
+    \param[in] len Number of bytes in the buf buffer, and the number
     of bytes to send.
   */
   extern void bcm2835_spi_writenb(const char* buf, uint32_t len);
 
   /* Transfers half-word to and from the currently selected SPI slave.
-    Asserts the currently selected CS pins (as previously set by 
+    Asserts the currently selected CS pins (as previously set by
     bcm2835_spi_chipSelect) during the transfer.
-    Clocks the 8 bit value out on MOSI, and simultaneously clocks in 
+    Clocks the 8 bit value out on MOSI, and simultaneously clocks in
     data from MISO.
     Returns the read data byte from the slave.
-    Uses polled transfer as per section 10.6.1 of the BCM 2835 ARM 
+    Uses polled transfer as per section 10.6.1 of the BCM 2835 ARM
     Peripherals manual
     \param[in] data The 8 bit data byte to write to MOSI
     \sa bcm2835_spi_writenb()
@@ -1354,10 +1354,10 @@ typedef enum {
   extern void bcm2835_spi_write(uint16_t data);
 
   /* Start AUX SPI operations.
-    Forces RPi AUX SPI pins P1-36 (MOSI), P1-38 (MISO), P1-40 (CLK) 
+    Forces RPi AUX SPI pins P1-36 (MOSI), P1-38 (MISO), P1-40 (CLK)
     and P1-36 (CE2) to alternate function ALT4, which enables those
     pins for SPI interface.
-    \return 1 if successful, 0 otherwise (perhaps because you are 
+    \return 1 if successful, 0 otherwise (perhaps because you are
     not running as root)
   */
   extern int bcm2835_aux_spi_begin(void);
@@ -1375,7 +1375,7 @@ typedef enum {
 
   /*
    * Calculates the input for bcm2835_aux_spi_setClockDivider
-   * @param speed_hz A value between BCM2835_AUX_SPI_CLOCK_MIN 
+   * @param speed_hz A value between BCM2835_AUX_SPI_CLOCK_MIN
    and BCM2835_AUX_SPI_CLOCK_MAX
    * @return Input for bcm2835_aux_spi_setClockDivider
    */
@@ -1401,9 +1401,9 @@ typedef enum {
     using bcm2835_aux_spi_transfernb.
     The returned data from the slave replaces the transmitted data
     in the buffer.
-    \param[in,out] buf Buffer of bytes to send. Received bytes will 
+    \param[in,out] buf Buffer of bytes to send. Received bytes will
     replace the contents.
-    \param[in] len Number of bytes in teh buffer, and the number of 
+    \param[in] len Number of bytes in teh buffer, and the number of
     bytes to send/received.
     \sa bcm2835_aux_spi_transfer()
   */
@@ -1411,7 +1411,7 @@ typedef enum {
 
   /* Transfers any number of bytes to and from the AUX SPI slave.
     Asserts the CE2 pin during the transfer.
-    Clocks the len 8 bit bytes out on MOSI, and simultaneously clocks 
+    Clocks the len 8 bit bytes out on MOSI, and simultaneously clocks
     in data from MISO.
     The data read read from the slave is placed into rbuf. rbuf must
     be at least len bytes long
@@ -1423,10 +1423,10 @@ typedef enum {
   extern void bcm2835_aux_spi_transfernb(const char *tbuf,
 					 char *rbuf, uint32_t len);
 
-  
+
 #endif  // DISABLE_SPI
 
-  
+
   /* \defgroup st System Timer access
     Allows access to and delays using the System Timer Counter.
   */
@@ -1450,7 +1450,7 @@ typedef enum {
     documentation on the Main Page.
   */
 
-  /* Sets the PWM clock divisor, 
+  /* Sets the PWM clock divisor,
     to control the basic PWM pulse widths.
     \param[in] divisor Divides the basic 19.2MHz PWM clock. You can use one of the common
     values BCM2835_PWM_CLOCK_DIVIDER_* in \ref bcm2835PWMClockDivider
@@ -1473,10 +1473,10 @@ typedef enum {
   */
   extern void bcm2835_pwm_set_range(uint8_t channel, uint32_t range);
 
-  /* Sets the PWM pulse ratio to emit to DATA/RANGE, 
+  /* Sets the PWM pulse ratio to emit to DATA/RANGE,
     where RANGE is set by bcm2835_pwm_set_range().
     \param[in] channel The PWM channel. 0 or 1.
-    \param[in] data Controls the PWM output ratio as a fraction of the range. 
+    \param[in] data Controls the PWM output ratio as a fraction of the range.
     Can vary from 0 to RANGE.
   */
   extern void bcm2835_pwm_set_data(uint8_t channel, uint32_t data);
