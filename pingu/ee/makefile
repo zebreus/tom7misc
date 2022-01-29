@@ -1,4 +1,4 @@
-all : ee_test.exe
+all : ee_test.exe dump.exe
 
 CC_LIB=../../cc-lib
 
@@ -13,6 +13,9 @@ LFLAGS=-lpthread
 CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/pi/netutil.o $(CC_LIB)/pi/bcm2835.o $(CC_LIB)/pi/pi-util.o $(CC_LIB)/arcfour.o
 
 ee_test.exe : ee_test.o $(CCLIB_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
+dump.exe : dump.o $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 clean :

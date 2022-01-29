@@ -8,6 +8,7 @@
 #include "base/stringprintf.h"
 #include "pi/bcm2835.h"
 #include "arcfour.h"
+#include "timer.h"
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
@@ -27,6 +28,8 @@ static constexpr uint8_t ADDR0 = 0b01010000;
 [[maybe_unused]]
 static constexpr uint8_t ADDR1 = 0b01010001;
 
+// 100k or 400k supposedly work
+static constexpr int BAUD_RATE = 10000; // XXX
 
 static string CodeString(int code) {
   switch (code) {
@@ -43,7 +46,8 @@ static string CodeString(int code) {
 static bool WriteVec(const std::vector<uint8> &msg) {
   uint8_t code =
     bcm2835_i2c_write((const char *)msg.data(), msg.size());
-  printf("i2c %s\n", CodeString(code).c_str());
+  printf("i2c write vec len=%d %s\n",
+         (int)msg.size(), CodeString(code).c_str());
   return code == BCM2835_I2C_REASON_OK;
 }
 
@@ -71,6 +75,9 @@ static void PrintData(const string &what,
 static vector<uint8_t> ReadAll() {
   constexpr int SIZE = 512;
   char buf[SIZE];
+  // Start from first "device". It doesn't mind reading
+  // across the boundary, though.
+  bcm2835_i2c_setSlaveAddress(ADDR0);
   // load address to read from by doing a dummy write
   WriteVec({0});
   // then read as many bytes as you want
@@ -92,15 +99,7 @@ static vector<uint8_t> ReadAll() {
 static void Dump() {
   CHECK(bcm2835_i2c_begin()) << "root? called bcm2835_init?";
 
-  // Can tune this for speed, but for this sensor there's likely
-  // very little we gain from a fast connection.
-  // Conservative:
-  // bcm2835_i2c_setClockDivider(BCM2835_I2C_CLOCK_DIVIDER_2500);
-  // bcm2835_i2c_setClockDivider(
-  // BCM2835_I2C_CLOCK_DIVIDER_2500);
-
-  // supposedly this supports 100khz and 400khz.
-  bcm2835_i2c_set_baudrate(100000);
+  bcm2835_i2c_set_baudrate(BAUD_RATE);
 
   bcm2835_i2c_setSlaveAddress(ADDR0);
 
@@ -110,6 +109,88 @@ static void Dump() {
 
   bcm2835_i2c_end();
   return;
+}
+
+// Write a page of 16 bytes. Since a write temporarily disables
+// the device, this blocks until we are able to successfully
+// read the line back. Returns true if the data we read back
+// matches (which should be the case!).
+[[maybe_unused]]
+static bool WritePage(int addr, const std::vector<uint8_t> &page) {
+  constexpr int PAGESIZE = 16;
+  CHECK(page.size() == PAGESIZE);
+  CHECK(addr % PAGESIZE == 0);
+  if (addr >= 256) {
+    bcm2835_i2c_setSlaveAddress(ADDR1);
+  } else {
+    bcm2835_i2c_setSlaveAddress(ADDR0);
+  }
+
+
+  std::vector<uint8> payload;
+  payload.reserve(PAGESIZE + 1);
+  payload.push_back((uint8)addr);
+  for (uint8 b : page) payload.push_back(b);
+  if (!WriteVec(payload))
+    return false;
+
+  /*
+  if (!WriteVec({(uint8)addr}))
+    return false;
+
+  if (!WriteVec(page))
+    return false;
+  */
+
+  // Now the device is in a write condition and will not
+  // respond on the bus. Wait until we're able to read the
+  // same line back.
+  // sleep(1);
+
+  char buf[PAGESIZE];
+
+  Timer write_timer;
+  int tries = 0;
+  do {
+    // read back the same address
+    WriteVec({(uint8)addr});
+    const int code = bcm2835_i2c_read(buf, PAGESIZE);
+    tries++;
+    if (code == BCM2835_I2C_REASON_OK) {
+      printf("Read ok after %d tries\n", tries);
+
+      for (int i = 0; i < PAGESIZE; i++) {
+        if (page[i] != buf[i]) {
+          printf(" .. but byte %d/%d is wrong (wrote %02x got %02x)\n",
+                 i, PAGESIZE, page[i], buf[i]);
+
+          // allow one more chance (e.g. device came online during our
+          // address write)
+          WriteVec({(uint8)addr});
+          const int code = bcm2835_i2c_read(buf, PAGESIZE);
+
+          if (code != BCM2835_I2C_REASON_OK) {
+            printf("Second try read not OK\n");
+            return false;
+          }
+
+          for (int j = 0; j < PAGESIZE; j++) {
+            if (page[j] != buf[j]) {
+              printf(" .. second-try byte %d/%d is wrong "
+                     "(wrote %02x got %02x)\n",
+                     j, PAGESIZE, page[j], buf[j]);
+              return false;
+            }
+          }
+          printf("Second try correct!\n");
+          return true;
+        }
+      }
+      // Correct!
+      return true;
+    }
+  } while (write_timer.Seconds() < 1.0);
+  return false;
 }
 
 [[maybe_unused]]
@@ -122,16 +203,13 @@ static void WriteAll(const std::vector<uint8_t> &v) {
 
   for (int p = 0; p < NUM_PAGES; p++) {
     std::vector<uint8_t> payload;
-    payload.reserve(PAGESIZE + 1);
-    // starting address of page
-    int addr = p * PAGESIZE;
-    payload.push_back(addr);
-
+    payload.reserve(PAGESIZE);
     for (int b = 0; b < PAGESIZE; b++) {
-      payload.push_back(v[addr + b]);
+      payload.push_back(v[p * PAGESIZE + b]);
     }
-    WriteVec(payload); // << " page " << p;
-    // printf("i2c write: %s\n", CodeString(code).c_str());
+
+    CHECK(payload.size() == PAGESIZE);
+    CHECK(WritePage(p * PAGESIZE, payload)) << p;
   }
 }
 
@@ -141,9 +219,18 @@ static void WriteTest() {
 
   CHECK(bcm2835_i2c_begin()) << "root? called bcm2835_init?";
 
-  bcm2835_i2c_set_baudrate(100000);
+  bcm2835_i2c_set_baudrate(BAUD_RATE);
 
   bcm2835_i2c_setSlaveAddress(ADDR0);
+
+  #if 0
+  std::vector<uint8> testpage;
+  for (int i = 0; i < 16; i++)
+    testpage.push_back((uint8)("[= here i am ~=]"[i]));
+  CHECK(testpage.size() == 16);
+  WritePage(512 + 16, testpage);
+  return; // XXX
+  #endif
 
   std::vector<uint8> original = ReadAll();
   PrintData("Before", original);
@@ -158,12 +245,16 @@ static void WriteTest() {
   updated[x++] = 'l';
   updated[x++] = 'o';
 
+  for (int i = 0; i < 16; i++) updated[16 + i] = i;
+
   x = 280;
   updated[x++] = 'w';
   updated[x++] = 'o';
   updated[x++] = 'r';
   updated[x++] = 'l';
   updated[x++] = 'd';
+  for (int i = 0; i < 16; i++) updated[511 - i] = 'A' + i;
+
   WriteAll(updated);
 
   std::vector<uint8> finally = ReadAll();
@@ -178,7 +269,7 @@ int main(int argc, char **argv) {
 
   CHECK(bcm2835_init()) << "BCM Init failed!";
 
-  (void)Dump();
-  // WriteTest();
+  // (void)Dump();
+  WriteTest();
   return 0;
 }
