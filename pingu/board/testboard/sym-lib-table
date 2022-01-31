@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name "mybrary")(type "KiCad")(uri "C:/code/sf_svn/pingu/board/mybrary.kicad_sym")(options "")(descr ""))
+)

@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name "myfeets")(type "KiCad")(uri "C:/code/sf_svn/pingu/board/myfeets.pretty")(options "")(descr ""))
+)
