@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include <cmath>
 
 #include "../fceulib/emulator.h"
 #include "../fceulib/simplefm2.h"
@@ -16,6 +17,10 @@
 
 using namespace std;
 using uint8 = uint8_t;
+using uint16 = uint16_t;
+
+constexpr int MEM_RNG1 = 0x17;
+constexpr int MEM_RNG2 = 0x18;
 
 constexpr int MEM_BOARD_START = 0x400;
 constexpr int MEM_CURRENT_PIECE = 0x62;
@@ -23,6 +28,8 @@ constexpr int MEM_NEXT_PIECE = 0xBF;
 constexpr int MEM_CURRENT_X = 0x40;
 // (mod 256)
 constexpr int MEM_DROP_COUNT = 0x1A;
+// "current" piece in its standard orientation
+constexpr int MEM_LAST_DROP = 0x19;
 
 // unrotated piece identity
 enum Piece {
@@ -50,6 +57,187 @@ static char PieceChar(Piece p) {
   case PIECE_T: return 'T';
   default: return '?';
   }
+}
+
+// 0x17-0x1A
+struct State {
+  // Initialized to constants at addr 0x80BC.
+  uint8 rng1 = 0x89; // MEM_RNG1
+  uint8 rng2 = 0x88; // MEM_RNG2
+
+  // Cleared when zeroing out memory, then again.
+  uint8 last_drop = 0x00;  // MEM_LAST_DROP
+  // Cleared when zeroing out the memory on boot.
+  uint8 drop_count = 0x00;  // MEM_DROP_COUNT
+};
+
+
+
+// This is the code at 0xAB47. Every JSR to this sets
+// X = 17 (M_RNG1) and Y = 2 (its size), so we just
+// take those as constants.
+[[maybe_unused]]
+static State NextRNG(State s) {
+  uint8 x = 17;
+  uint8 y = 2;
+  // this is zeropage[x], i.e. rng1
+  //      lda     $00,x
+  uint8 a = s.rng1;
+  // # means the immediate value 02
+  //      and     #$02
+  a &= 0x02;
+  // (flags?)
+
+  //      sta     $00
+  uint8 zp0 = a;
+
+  // this is zeropage[x + 1], i.e. rng2
+  //      lda     $01,x
+  a = s.rng2;
+
+  //      and     #$02
+  a &= 0x02;
+
+  //      eor     $00
+  a ^= zp0;
+  bool zero_flag = (a == 0x00);
+
+  //      clc
+  bool carry_flag = false;
+
+  //      beq     $AB57
+  if (zero_flag)
+    goto _AB57;
+
+  //      sec
+  carry_flag = true;
+
+  // Looks like this just boils down to a 16-bit
+  // rotate, once we have the carry flag set.
+ _AB57:
+  //      ror     $00,x
+  bool ctmp1 = (s.rng1 & 0x1) == 0x1;
+  s.rng1 = (s.rng1 >> 1) | (carry_flag ? 128 : 0);
+  carry_flag = ctmp1;
+
+  // these do not affect carry flag.
+  //      inx
+  x++;
+  //      dey
+  y--;
+  zero_flag = (y == 0x00);
+
+  //      bne     $AB57
+  // assuming y is always 2, runs one more time.
+  CHECK(!zero_flag);
+  bool ctmp2 = (s.rng2 & 0x1) == 0x1;
+  s.rng2 = (s.rng2 >> 1) | (carry_flag ? 128 : 0);
+  carry_flag = ctmp2;
+
+  x++;
+  y--;
+  zero_flag = (y == 0x00);
+  //      bne     $AB57
+  CHECK(zero_flag);
+
+  //      rts
+  return s;
+}
+
+// Generate next piece.
+// This is the code at $9907.
+[[maybe_unused]]
+static State NextPiece(State s) {
+  constexpr std::array<uint8, 8> PIECES = {
+    0x02, 0x07, 0x08, 0x0A, 0x0B, 0x0E, 0x12,
+    // not used ?
+    0x02,
+  };
+
+  uint8 x = 0;
+
+  //  inc $001a  (MEM_DROP_COUNT)
+  s.drop_count++;
+  //  lda $0017  (MEM_RNG_1);
+  uint8 a = s.rng1;
+  //  clc
+  bool carry_flag = false;
+  //  adc $001a = #$0a
+  // (recall NES does not even implement decimal flag)
+  a += s.drop_count;
+
+  //  and #$07
+  a &= 0x7;
+  //  cmp #$07
+  //  beq $991c
+  if (a == 0x7)
+    goto _991C;
+
+  //  tax
+  x = a;
+
+  // 994e is a (constant?) table of pieces in their
+  // original orientations
+  //  lda $994e,x
+  a = PIECES[x];
+
+  // If this is a new piece, succeed.
+  //  cmp $0019  (MEM_LAST_DROP)
+  //  bne $9938
+  if (a != s.last_drop)
+    goto _9938;
+
+ _991C:
+  // We get here if the first random number was out
+  // of bounds, or the drop was the same as the
+  // previous.
+
+  //  ldx #$17
+  //  ldy #$02
+  //  jsr $ab47  (NextRNG)
+  s = NextRNG(s);
+
+  //  lda $0017
+  a = s.rng1;
+  //  and #$07
+  a &= 0x7;
+  //  clc
+  carry_flag = false;
+  //  adc $0019 = #$0e
+  a += s.drop_count;
+
+ _992A:
+  // XXX check that this is unsigned, but
+  // it would be weird if not, since then we would
+  // read outside the table below
+  //  cmp #$07
+  carry_flag = (a >= 0x07);
+  //  bcc $9934
+  if (!carry_flag)
+    goto _9934;
+
+  //  sec
+  carry_flag = true;
+  //  sbc #$07
+  a -= 7;
+
+  goto _992A;
+
+ _9934:
+  //  tax
+  x = a;
+  //  lda $994e,x
+  a = PIECES[x];
+  // In this situation we fall through to allowing
+  // the drop to be equal.
+
+ _9938:
+  // Success!
+  //  sta $0019  (MEM_LAST_DROP)
+  s.last_drop = a;
+
+  //  rts
+  return s;
 }
 
 // Square types:
@@ -139,7 +327,7 @@ void SaveScreenshot(const string &filename, Emulator *emu) {
 }
 
 [[maybe_unused]]
-static void HistoMenu() {
+static void HistoMenu(int iters) {
   ArcFour rc("tetris");
 
   std::unique_ptr<Emulator> emu;
@@ -171,7 +359,7 @@ static void HistoMenu() {
 
   std::vector<int> histo(NUM_PIECES * NUM_PIECES, 0);
   std::vector<int> example(NUM_PIECES * NUM_PIECES, -1);
-  for (int wait = 0; wait < 65536; wait++) {
+  for (int wait = 0; wait < iters; wait++) {
     // for (int f = 0; f < wait; f++) emu->Step(0, 0);
 
     // (could do this incrementally instead of starting from
@@ -179,6 +367,15 @@ static void HistoMenu() {
 
     // save on menu
     const std::vector<uint8> menustill = emu->SaveUncompressed();
+
+    // XXX
+    // blank out what I think is the RNG state
+    // (unexplained why this produces both O|T and T|L
+    // multiple times? Demo mode does not increment the drop
+    // counter nor modify the current drop piece, so I would
+    // expect this to be totally deterministic.
+    emu->SetRAM(MEM_RNG1, 0x00);
+    emu->SetRAM(MEM_RNG2, 0x00);
 
     // And see what pieces we get if we start.
     for (uint8 c : entergame) emu->Step(c, 0);
@@ -189,7 +386,7 @@ static void HistoMenu() {
     if (example[next * NUM_PIECES + cur] == -1)
       example[next * NUM_PIECES + cur] = wait;
 
-    if (wait % 100 == 0) printf("%d/%d\n", wait, 65536);
+    if (wait % 100 == 0) printf("%d/%d\n", wait, iters);
 
     emu->LoadUncompressed(menustill);
 
@@ -273,8 +470,9 @@ static void PieceDrop() {
   }
 }
 
-
-int main(int argc, char **argv) {
+// It doesn't work... we get stuck!
+[[maybe_unused]]
+static void MakeStreak() {
 
   ArcFour rc("tetris");
 
@@ -404,12 +602,183 @@ int main(int argc, char **argv) {
 
     if (input == 0) {
       input = rc.Byte() & INPUT_D;
+      // If we're having trouble, even try pausing
       if (retry_count > 64) input |= rc.Byte() & INPUT_T;
     }
 
     emu->Step(input, 0);
     outmovie.push_back(input);
   }
+}
+
+[[maybe_unused]]
+static void HistoSimulate(int iters) {
+  std::vector<int> histo(NUM_PIECES * NUM_PIECES, 0);
+  std::vector<int> example(NUM_PIECES * NUM_PIECES, -1);
+
+  State state;
+  for (int wait = 0; wait < iters; wait++) {
+
+
+    State p1 = NextPiece(state);
+    State p2 = NextPiece(p1);
+
+    uint8 cur = DecodePiece(p1.last_drop);
+    uint8 next = DecodePiece(p2.last_drop);
+
+    histo[next * NUM_PIECES + cur]++;
+    if (example[next * NUM_PIECES + cur] == -1)
+      example[next * NUM_PIECES + cur] = wait;
+
+    state = NextRNG(state);
+  }
+
+  for (int next = 0; next < NUM_PIECES; next++) {
+    for (int cur = 0; cur < NUM_PIECES; cur++) {
+      const int idx = next * NUM_PIECES + cur;
+      printf("%c|%c|%d times|ex %d\n",
+             PieceChar((Piece)next), PieceChar((Piece)cur),
+             histo[idx], example[idx]);
+    }
+  }
+}
+
+struct RngHisto {
+  RngHisto() : count8(256, 0), counts(65536, 0) {}
+  std::vector<int> count8;
+  std::vector<int> counts;
+
+  void Increment(uint8 rng1, uint8 rng2) {
+    uint16 rng_state = ((uint16)rng1 << 8) | rng2;
+    counts[rng_state]++;
+    count8[rng1]++;
+  }
+
+  void Save(const string &filename) {
+    int mosti = 0, most = 0;
+    for (int i = 0; i < 65536; i++) {
+      if (counts[i]) {
+        if (counts[i] > most) {
+          most = counts[i];
+          mosti = i;
+        }
+        printf("%02x: %d\n", i, counts[i]);
+      }
+    }
+    printf("Most at idx %02x: %d\n", mosti, most);
+
+    ImageRGBA img(256, 257);
+    for (int y = 0; y < 256; y++) {
+      for (int x = 0; x < 256; x++) {
+        int idx = y * 256 + x;
+        if (counts[idx]) {
+          uint8 c = std::clamp(counts[idx] * 16, 0x60, 0xFF);
+          img.SetPixel(x, y, c, c, c, 0xFF);
+        } else {
+          img.SetPixel32(x, y, 0x000000FF);
+        }
+      }
+    }
+
+    int max8 = 0;
+    for (int c : count8) max8 = std::max(c, max8);
+    for (int x = 0; x < 256; x++) {
+      if (count8[x]) {
+        double f = count8[x] / (double)max8;
+        uint8 r = std::clamp((int)round(f * (255 - 60)), 60, 255);
+        img.SetPixel(x, 256, 0, r, 0, 0xFF);
+      } else {
+        img.SetPixel32(x, 256, 0x000000FF);
+      }
+    }
+    img.ScaleBy(6).Save(filename);
+  }
+};
+
+[[maybe_unused]]
+static void HistoRNG() {
+
+  ArcFour rc("tetris");
+
+  std::unique_ptr<Emulator> emu;
+  emu.reset(Emulator::Create("tetris.nes"));
+  CHECK(emu.get() != nullptr);
+
+  vector<uint8> startmovie =
+    SimpleFM7::ParseString(
+        "!" // 1 player
+        "554_7t" // press start on main menu
+        "142_"
+        "7c" // signals a place where we can wait to affect RNG (maybe)
+        "45_5t" // press start on game type menu
+        "82_"
+        "7t82_"); // and enter game...
+
+  for (uint8 c : startmovie) emu->Step(c, 0);
+
+  RngHisto histo;
+  for (int iters = 0; iters < 131072; iters++) {
+    histo.Increment(emu->ReadRAM(MEM_RNG1),
+                    emu->ReadRAM(MEM_RNG2));
+    emu->Step(0, 0);
+    if (iters % 1000 == 0) printf("%d/65536\n", iters);
+  }
+  SaveScreenshot("actualnes-screen.png", emu.get());
+
+  histo.Save("actualnes.png");
+}
+
+[[maybe_unused]]
+static void HistoSimulatedRNG() {
+
+  std::vector<int> counts(65536, 0);
+  State state;
+  for (int warmup = 0; warmup < 1024; warmup++) {
+    state = NextRNG(state);
+  }
+
+  RngHisto histo;
+  for (int iters = 0; iters < 131072; iters++) {
+    histo.Increment(state.rng1, state.rng2);
+    state = NextRNG(state);
+    if (iters % 1000 == 0) printf("%d/65536\n", iters);
+  }
+
+  histo.Save("simulated.png");
+}
+
+// Why do I get a checkerboard pattern for the NES
+// version if I don't play any inputs at start, and
+// the same for my transcribed code -- but get a
+// more degenerate looking pattern (more like what I
+// expected for this routine) if I first play
+// the movie to go to the game type menu??
+// - could be that the flags entering the routine
+//   make a difference? On the title screen I see
+//   UV set, CZ clear.
+// - same on game type menu
+// - ok but on A-type menu, the carry flag is
+//   definitely set sometimes!
+// - buuuut, this routine always does a CLC so it
+//   should not matter.
+// - another possibility is that it's calling
+//   the RNG many times on the frame, dependent
+//   on the rng state. so this only leaves certain
+//   RNG states.
+// - hmm yes that seems to be true, as this phenomenon
+//   goes away during gameplay.
+
+// The only place that writes these bytes outside of
+// initialization really appears to be the RNG
+// routine. (Use "Forbid" breakpoint range on the
+// RNG code, in addition to a "write" breakpoint
+// on the rng state.)
+
+int main(int argc, char **argv) {
+  // HistoMenu(1024);
+  // HistoSimulate(65536);
+  HistoRNG();
+  HistoSimulatedRNG();
 
   return 0;
 }
