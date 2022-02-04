@@ -1,4 +1,4 @@
-all : lucky.exe
+all : lucky.exe encode.exe
 
 CC_LIB=../../cc-lib
 FCEULIB=../../fceulib
@@ -18,6 +18,10 @@ FCEULIB_OBJECTS=$(FCEULIB)/mappers/6.o $(FCEULIB)/mappers/61.o $(FCEULIB)/mapper
 	@echo -n "."
 
 lucky.exe : lucky.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	strip $@
+
+encode.exe : encode.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
