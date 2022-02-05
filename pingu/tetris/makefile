@@ -29,7 +29,7 @@ lucky.exe : lucky.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
-encode.exe : encode.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+encode.exe : encode.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 

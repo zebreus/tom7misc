@@ -298,6 +298,8 @@ struct Tetris {
   // Low 10 bits of each word are used to denote the contents of the
   // cells; upper 6 are zero.
   std::array<uint16_t, MAX_DEPTH> rows;
+  // PERF: maintaining a count of how many starting rows are 0
+  // would allow us to make several loops faster.
 
   static constexpr bool VERBOSE = false;
 
@@ -320,9 +322,10 @@ struct Tetris {
 
     const std::array<uint16_t, 4> mask = ShapeMaskInCol(shape, x);
 
-    auto Place = [this, piece, &mask](int r) {
+    auto Emplace = [this, shape, x, piece, &mask](int r) {
         // This is where it would be placed. Make sure we wouldn't
-        // need to set any cells off the board.
+        // need to set any cells off the board. r might even be
+        // negative, in which case we will also fail this test.
         for (int ro = 0; ro < 4; ro++) {
           int board_row_idx = r - ro;
           uint16_t shape_row = mask[3 - ro];
@@ -339,12 +342,14 @@ struct Tetris {
 
           if (board_row_idx >= 0) {
             CHECK((rows[board_row_idx] & shape_row) == 0) <<
-              StringPrintf("r %d, ro %d, bri %d, shape_row %d\n"
-                           "shape row: %s\n"
-                           "board row: %s\nin:\n",
-                           r, ro, board_row_idx, shape_row,
-                           RowString(shape_row).c_str(),
-                           RowString(rows[board_row_idx]).c_str()) <<
+              StringPrintf(
+                  "Shape 0x%02x, x %d, r %d, ro %d, bri %d, shape_row %d\n"
+                  "shape row: %s\n"
+                  "board row: %s\nin:\n",
+                  shape, x,
+                  r, ro, board_row_idx, shape_row,
+                  RowString(shape_row).c_str(),
+                  RowString(rows[board_row_idx]).c_str()) <<
               BoardString();
             rows[board_row_idx] |= shape_row;
           } else {
@@ -366,7 +371,10 @@ struct Tetris {
       };
 
     // r is the bottom row where the piece might land.
-    for (int r = 0; r < MAX_DEPTH; r++) {
+    // We start at -1 because we don't want to think that
+    // we successfully landed at row 0 if there would be
+    // a collision there!
+    for (int r = -1; r < MAX_DEPTH; r++) {
       // See if there would be an intersection if we were
       // on the next row. Note that we may reach below the
       // ground when doing this.
@@ -387,7 +395,7 @@ struct Tetris {
                    RowString(shape_row).c_str(),
                    RowString(next_board_row).c_str());
           }
-          return Place(r);
+          return Emplace(r);
         }
       }
       // No intersection, so fall one more row.
