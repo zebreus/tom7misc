@@ -515,12 +515,12 @@ static void HistoSimulate(int iters) {
   std::vector<int> histo(NUM_PIECES * NUM_PIECES, 0);
   std::vector<int> example(NUM_PIECES * NUM_PIECES, -1);
 
-  State state;
+  RNGState state;
   for (int wait = 0; wait < iters; wait++) {
 
 
-    State p1 = NextPiece(state);
-    State p2 = NextPiece(p1);
+    RNGState p1 = NextPiece(state);
+    RNGState p2 = NextPiece(p1);
 
     uint8 cur = DecodePiece(p1.last_drop);
     uint8 next = DecodePiece(p2.last_drop);
@@ -631,7 +631,7 @@ static void HistoRNG() {
 static void HistoSimulatedRNG() {
 
   std::vector<int> counts(65536, 0);
-  State state;
+  RNGState state;
   for (int warmup = 0; warmup < 1024; warmup++) {
     state = NextRNG(state);
   }
@@ -696,7 +696,7 @@ static void PlotSimulatedRNG() {
   constexpr int SCALE = 7;
   ImageRGBA img(SCALE * 256, SCALE * 256);
   img.Clear32(0x000000FF);
-  State state;
+  RNGState state;
 
   auto C = [](float f) -> uint8 {
       return std::clamp(std::roundf(f * 255.0f), 0.0f, 255.0f);
@@ -718,7 +718,7 @@ static void PlotSimulatedRNG() {
     prev_y = y;
   }
 
-  const State start_state;
+  const RNGState start_state;
   CHECK(state.rng1 == start_state.rng1 &&
         state.rng2 == start_state.rng2);
 
@@ -731,7 +731,7 @@ static void HeatSimulatedRNG() {
   constexpr int SCALE = 7;
   ImageRGBA img(256, 256);
   img.Clear32(0x000000FF);
-  State state;
+  RNGState state;
 
   auto C = [](float f) -> uint8 {
       return std::clamp(std::roundf(f * 255.0f), 0.0f, 255.0f);
@@ -747,7 +747,7 @@ static void HeatSimulatedRNG() {
     img.SetPixel(x, y, C(rf), C(gf), C(bf), 0xFF);
   }
 
-  const State start_state;
+  const RNGState start_state;
   CHECK(state.rng1 == start_state.rng1 &&
         state.rng2 == start_state.rng2);
 
@@ -757,14 +757,14 @@ static void HeatSimulatedRNG() {
 [[maybe_unused]]
 static void PrintSequence() {
   constexpr int PERIOD = 32767;
-  State state;
+  RNGState state;
 
   for (int iters = 0; iters < PERIOD; iters++) {
     printf("%d. %d %d\n", iters, state.rng1, state.rng2);
     state = NextRNG(state);
   }
 
-  const State start_state;
+  const RNGState start_state;
   CHECK(state.rng1 == start_state.rng1 &&
         state.rng2 == start_state.rng2);
 }
@@ -775,7 +775,7 @@ static void HeatPair() {
   constexpr int SCALE = 7;
   ImageRGBA img(256 * SCALE, 256 * SCALE);
   img.Clear32(0x000000FF);
-  State state;
+  RNGState state;
 
   int prev = state.rng1;
   for (int iters = 0; iters < PERIOD; iters++) {
@@ -790,7 +790,7 @@ static void HeatPair() {
     prev = cur;
   }
 
-  const State start_state;
+  const RNGState start_state;
   CHECK(state.rng1 == start_state.rng1 &&
         state.rng2 == start_state.rng2);
 
@@ -908,12 +908,12 @@ static void AllRerolls() {
           for (int y = 0; y < 256; y++) {
             if (x == 0 && y == 0) continue;
 
-            State state;
+            RNGState state;
             state.rng1 = x;
             state.rng2 = y;
             state.drop_count = z;
             state.last_drop = last_drop;
-            State after = NextPiece(state);
+            RNGState after = NextPiece(state);
 
             tes.Add(after.last_drop);
           }

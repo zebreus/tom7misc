@@ -1,32 +1,20 @@
 
+#ifndef _PINGU_TETRIS_H
+#define _PINGU_TETRIS_H
+
 #include <string>
 #include <vector>
 #include <memory>
 #include <cstdint>
 #include <cmath>
 #include <unordered_set>
-
-#include "../fceulib/emulator.h"
-#include "../fceulib/simplefm2.h"
-#include "../fceulib/simplefm7.h"
-#include "../fceulib/x6502.h"
+#include <tuple>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
-#include "arcfour.h"
 #include "image.h"
 
-constexpr int MEM_RNG1 = 0x17;
-constexpr int MEM_RNG2 = 0x18;
-
-constexpr int MEM_BOARD_START = 0x400;
-constexpr int MEM_CURRENT_PIECE = 0x62;
-constexpr int MEM_NEXT_PIECE = 0xBF;
-constexpr int MEM_CURRENT_X = 0x40;
-// (mod 256)
-constexpr int MEM_DROP_COUNT = 0x1A;
-// "current" piece in its standard orientation
-constexpr int MEM_LAST_DROP = 0x19;
+#include "tetris.h"
 
 // unrotated piece identity
 enum Piece {
@@ -41,7 +29,6 @@ enum Piece {
 
   NUM_PIECES,
 };
-
 
 // A piece in a specific orientation, using the same byte as
 // the NES uses.
@@ -74,247 +61,8 @@ enum Shape : uint8 {
   L_RIGHT = 0x0E,
 };
 
-// printable char
-static char PieceChar(Piece p) {
-  switch (p) {
-  case PIECE_O: return 'O';
-  case PIECE_L: return 'L';
-  case PIECE_J: return 'J';
-  case PIECE_S: return 'S';
-  case PIECE_Z: return 'Z';
-  case PIECE_I: return 'I';
-  case PIECE_T: return 'T';
-  default: return '?';
-  }
-}
-
-// 0x17-0x1A
-struct State {
-  // Initialized to constants at addr 0x80BC.
-  uint8_t rng1 = 0x89; // MEM_RNG1
-  uint8_t rng2 = 0x88; // MEM_RNG2
-
-  // Cleared when zeroing out memory, then again.
-  uint8_t last_drop = 0x00;  // MEM_LAST_DROP
-  // Cleared when zeroing out the memory on boot.
-  uint8_t drop_count = 0x00;  // MEM_DROP_COUNT
-};
-
-
-
-// This is the code at 0xAB47. Every JSR to this sets
-// X = 17 (M_RNG1) and Y = 2 (its size), so we just
-// take those as constants.
-//
-// I think this is a two-tap LFSR. Its period is 32767.
-[[maybe_unused]]
-inline State NextRNG(State s) {
-  uint8_t x = 17;
-  uint8_t y = 2;
-  // this is zeropage[x], i.e. rng1
-  //      lda     $00,x
-  uint8_t a = s.rng1;
-  // # means the immediate value 02
-  //      and     #$02
-  a &= 0x02;
-  // (flags?)
-
-  //      sta     $00
-  uint8_t zp0 = a;
-
-  // this is zeropage[x + 1], i.e. rng2
-  //      lda     $01,x
-  a = s.rng2;
-
-  //      and     #$02
-  a &= 0x02;
-
-  //      eor     $00
-  a ^= zp0;
-  bool zero_flag = (a == 0x00);
-
-  //      clc
-  bool carry_flag = false;
-
-  //      beq     $AB57
-  if (zero_flag)
-    goto _AB57;
-
-  //      sec
-  carry_flag = true;
-
-  // Looks like this just boils down to a 16-bit
-  // rotate, once we have the carry flag set.
- _AB57:
-  //      ror     $00,x
-  bool ctmp1 = (s.rng1 & 0x1) == 0x1;
-  s.rng1 = (s.rng1 >> 1) | (carry_flag ? 128 : 0);
-  carry_flag = ctmp1;
-
-  // these do not affect carry flag.
-  //      inx
-  x++;
-  //      dey
-  y--;
-  zero_flag = (y == 0x00);
-
-  //      bne     $AB57
-  // assuming y is always 2, runs one more time.
-  CHECK(!zero_flag);
-  bool ctmp2 = (s.rng2 & 0x1) == 0x1;
-  s.rng2 = (s.rng2 >> 1) | (carry_flag ? 128 : 0);
-  carry_flag = ctmp2;
-
-  x++;
-  y--;
-  zero_flag = (y == 0x00);
-  //      bne     $AB57
-  CHECK(zero_flag);
-
-  //      rts
-  return s;
-}
-
-// Generate next piece.
-// This is the code at $9907.
-[[maybe_unused]]
-inline State NextPiece(State s) {
-  constexpr std::array<uint8_t, 8> PIECES = {
-    0x02, 0x07, 0x08, 0x0A, 0x0B, 0x0E, 0x12,
-    // not used ?
-    0x02,
-  };
-
-  uint8_t x = 0;
-
-  //  inc $001a  (MEM_DROP_COUNT)
-  s.drop_count++;
-  //  lda $0017  (MEM_RNG_1);
-  uint8_t a = s.rng1;
-  //  clc
-  bool carry_flag = false;
-  //  adc $001a = #$0a
-  // (recall NES does not even implement decimal flag)
-  a += s.drop_count;
-
-  //  and #$07
-  a &= 0x7;
-  //  cmp #$07
-  //  beq $991c
-  if (a == 0x7)
-    goto _991C;
-
-  //  tax
-  x = a;
-
-  // 994e is a (constant?) table of pieces in their
-  // original orientations
-  //  lda $994e,x
-  a = PIECES[x];
-
-  // If this is a new piece, succeed.
-  //  cmp $0019  (MEM_LAST_DROP)
-  //  bne $9938
-  if (a != s.last_drop)
-    goto _9938;
-
- _991C:
-  // We get here if the first random number was out
-  // of bounds, or the drop was the same as the
-  // previous.
-
-  //  ldx #$17
-  //  ldy #$02
-  //  jsr $ab47  (NextRNG)
-  s = NextRNG(s);
-
-  //  lda $0017
-  a = s.rng1;
-  //  and #$07
-  a &= 0x7;
-  //  clc
-  carry_flag = false;
-  //  adc $0019 = #$0e
-  a += s.drop_count;
-
- _992A:
-  // This code is (a %= 7) implemented as a loop,
-  // which is not really necessary since a is
-  // known to be in [0,7] due to the AND above.
-  // We could simply check for == 7 and replace
-  // with zero in that case, or just use the fact
-  // that the table at position 7 contains the
-  // same entry as at zero!
-
-  //  cmp #$07
-  carry_flag = (a >= 0x07);
-  //  bcc $9934
-  if (!carry_flag)
-    goto _9934;
-
-  //  sec
-  carry_flag = true;
-  //  sbc #$07
-  a -= 7;
-
-  goto _992A;
-
- _9934:
-  //  tax
-  x = a;
-  //  lda $994e,x
-  a = PIECES[x];
-  // In this situation we fall through to allowing
-  // the drop to be equal.
-
- _9938:
-  // Success!
-  //  sta $0019  (MEM_LAST_DROP)
-  s.last_drop = a;
-
-  //  rts
-  return s;
-}
-
-// Square types:
-// EF = empty
-// 7B = white square w/shine, like in T, square, line
-// 7D = blue, like in J
-// 7C = cyan, like Z
-
-// mems
-// 1a: counts up with each block
-// 0x40, 0x60: dropping block's x pos.
-//   this depends on rotation somehow; you can't put it
-//   in x=0 in some rotations.
-// 0xb1: frame counter, goes when paused
-// 0x17, 0x18: probably RNG? goes when paused
-
-// next piece: 0x19, 0xBF (seem equal). BF can be modified
-//   and overwrites 19.
-//
-// 0x0A - square
-// 0x0E - L shape
-// 0x0B - S
-// 0x02 - T ?
-// 0x07 - J
-// 0x08 - Z
-// 0x12 - bar
-
-// These all hold the current piece: 0x42, 0x62, 0xAC.
-// overwriting 0x62 immediately changes the current piece, cool.
-//
-// Note that these have rotations:
-// 0x11 - rotated bar (vertical)
-// 0x7, 0x6, 0x5, 0x4 - rotated J
-// 0x8, 0x9 - z
-// 0x0a - square
-// 0x0, 0x1, 0x2, 0x3 - T
-// 0x0D, 0x0E, 0x0F, 0x10 - L
-// 0xB, 0xC - S
-// this all makes sense!
-
-inline Piece DecodePiece(uint8_t p) {
+// TODO: Can be Shape -> Piece
+static inline Piece DecodePiece(uint8_t p) {
   switch (p) {
   case 0x11:
   case 0x12: return PIECE_I;
@@ -341,23 +89,374 @@ inline Piece DecodePiece(uint8_t p) {
   }
 }
 
-
-// 10x20, row major.
-inline std::vector<uint8_t> GetBoard(const Emulator &emu) {
-  std::vector<uint8_t> ret(10 * 20);
-  for (int i = 0; i < 10 * 20; i++) {
-    ret[i] = emu.ReadRAM(MEM_BOARD_START + i);
+// printable char
+static inline char PieceChar(Piece p) {
+  switch (p) {
+  case PIECE_O: return 'O';
+  case PIECE_L: return 'L';
+  case PIECE_J: return 'J';
+  case PIECE_S: return 'S';
+  case PIECE_Z: return 'Z';
+  case PIECE_I: return 'I';
+  case PIECE_T: return 'T';
+  default: return '?';
   }
-  return ret;
 }
 
-inline void SaveScreenshot(const string &filename, Emulator *emu) {
-  std::vector<uint8_t> save = emu->SaveUncompressed();
-  emu->StepFull(0, 0);
-
-  ImageRGBA img(emu->GetImage(), 256, 256);
-  img.Save(filename);
-  printf("Wrote %s\n", filename.c_str());
-
-  emu->LoadUncompressed(save);
+// In this implementation, you can place any piece in any orientation
+// in a given column (measured from leftmost cell in block). Drops are
+// always straight down with no rotation/sliding. Aside from the
+// original position, it is considered illegal for a piece to "land"
+// on the bottom of the board; it must always land on an existing
+// filled cell.
+static inline bool RowBit(uint16_t row, int x) {
+  return !!(row & (1 << (9 - x)));
 }
+
+static inline string RowString(uint16_t row) {
+  std::string ret;
+  ret.resize(10);
+  for (int x = 0; x < 10; x++) {
+    ret[x] = RowBit(row, x) ? '#' : '.';
+  }
+  if (row & ~0b1111111111) return StringPrintf("Garbage-%02x-%s",
+                                               row, ret.c_str());
+  else return ret;
+}
+
+// char '#' is set; anything else clear.
+static inline uint16_t StringRow(const std::string s) {
+  uint16 row = 0;
+  for (int x = 0; x < 10; x++) {
+    row <<= 1;
+    row |= (s[x] == '#') ? 0b1 : 0b0;
+  }
+  return row;
+}
+
+static constexpr inline int ShapeWidth(Shape s) {
+  switch (s) {
+  case I_VERT: return 1;
+  case I_HORIZ: return 4;
+  case SQUARE: return 2;
+  case T_UP: return 3;
+  case T_DOWN: return 3;
+  case T_LEFT: return 2;
+  case T_RIGHT: return 2;
+  case J_UP: return 2;
+  case J_LEFT: return 3;
+  case J_DOWN: return 2;
+  case J_RIGHT: return 3;
+  case Z_HORIZ: return 3;
+  case Z_VERT: return 2;
+  case S_HORIZ: return 3;
+  case S_VERT: return 2;
+  case L_UP: return 2;
+  case L_LEFT: return 3;
+  case L_DOWN: return 2;
+  case L_RIGHT: return 3;
+    // ?
+  default: return 100;
+  }
+}
+
+// Return the piece in the bottom left corner, packed into
+// 4x4 bits.
+static constexpr inline uint16_t ShapeBits(Shape s) {
+  switch (s) {
+  case I_VERT: return
+      (0b1000 << 12) |
+      (0b1000 << 8) |
+      (0b1000 << 4) |
+      (0b1000 << 0);
+  case I_HORIZ: return
+      (0b0000 << 12) |
+      (0b0000 << 8) |
+      (0b0000 << 4) |
+      (0b1111 << 0);
+  case SQUARE: return
+      (0b0000 << 12) |
+      (0b0000 << 8) |
+      (0b1100 << 4) |
+      (0b1100 << 0);
+  case T_UP:  return
+      (0b0000 << 12) |
+      (0b0000 << 8) |
+      (0b0100 << 4) |
+      (0b1110 << 0);
+  case T_DOWN:  return
+      (0b0000 << 12) |
+      (0b0000 << 8) |
+      (0b1110 << 4) |
+      (0b0100 << 0);
+  case T_LEFT:  return
+      (0b0000 << 12) |
+      (0b0100 << 8) |
+      (0b1100 << 4) |
+      (0b0100 << 0);
+  case T_RIGHT:  return
+      (0b0000 << 12) |
+      (0b1000 << 8) |
+      (0b1100 << 4) |
+      (0b1000 << 0);
+  case J_UP:  return
+      (0b0000 << 12) |
+      (0b0100 << 8) |
+      (0b0100 << 4) |
+      (0b1100 << 0);
+  case J_LEFT:  return
+      (0b0000 << 12) |
+      (0b0000 << 8) |
+      (0b1110 << 4) |
+      (0b0010 << 0);
+  case J_DOWN:  return
+      (0b0000 << 12) |
+      (0b1100 << 8) |
+      (0b1000 << 4) |
+      (0b1000 << 0);
+  case J_RIGHT:  return
+      (0b0000 << 12) |
+      (0b0000 << 8) |
+      (0b1000 << 4) |
+      (0b1110 << 0);
+  case Z_HORIZ:  return
+      (0b0000 << 12) |
+      (0b0000 << 8) |
+      (0b1100 << 4) |
+      (0b0110 << 0);
+  case Z_VERT:  return
+      (0b0000 << 12) |
+      (0b0100 << 8) |
+      (0b1100 << 4) |
+      (0b1000 << 0);
+  case S_HORIZ:  return
+      (0b0000 << 12) |
+      (0b0000 << 8) |
+      (0b0110 << 4) |
+      (0b1100 << 0);
+  case S_VERT:  return
+      (0b0000 << 12) |
+      (0b1000 << 8) |
+      (0b1100 << 4) |
+      (0b0100 << 0);
+  case L_UP:  return
+      (0b0000 << 12) |
+      (0b1000 << 8) |
+      (0b1000 << 4) |
+      (0b1100 << 0);
+  case L_LEFT:  return
+      (0b0000 << 12) |
+      (0b0000 << 8) |
+      (0b0010 << 4) |
+      (0b1110 << 0);
+  case L_DOWN:  return
+      (0b0000 << 12) |
+      (0b1100 << 8) |
+      (0b0100 << 4) |
+      (0b0100 << 0);
+  case L_RIGHT:  return
+      (0b0000 << 12) |
+      (0b0000 << 8) |
+      (0b1110 << 4) |
+      (0b1000 << 0);
+    // ?
+  default:  return
+      (0b0001 << 12) |
+      (0b0010 << 8) |
+      (0b0100 << 4) |
+      (0b1000 << 0);
+  }
+}
+
+// Returns 4 rows (same representation as Game::rows) with a mask for
+// the shape in the given column. x must be a valid location for the shape.
+static inline constexpr std::array<uint16_t, 4>
+ShapeMaskInCol(Shape s, int x) {
+  std::array<uint16_t, 4> rows;
+
+  uint16_t bits = ShapeBits(s);
+  for (int r = 0; r < 4; r++) {
+    // extract this row from the shape
+    int shift = 4 * (3 - r);
+    uint16_t shape_row = (bits >> shift) & 0b1111;
+    // and put it in the output row
+    // PERF if we set things up right, we could avoid
+    // this conditional. But left shift by a negative
+    // amount is not a right shift!
+    if (x <= 6) {
+      rows[r] = shape_row << (10 - 4 - x);
+    } else {
+      rows[r] = shape_row >> (x - 6);
+    }
+  }
+  return rows;
+}
+
+struct Tetris {
+  // template arg?
+  static constexpr int MAX_DEPTH = 8;
+  // Low 10 bits of each word are used to denote the contents of the
+  // cells; upper 6 are zero.
+  std::array<uint16_t, MAX_DEPTH> rows;
+
+  static constexpr bool VERBOSE = false;
+
+  // Returns false if the placement is illegal.
+  // XXX need to implement line clearing!
+  bool Place(Shape shape, int x) {
+    Piece piece = DecodePiece(shape);
+    // Don't allow streaks since we may not be able to
+    // realize them in practice.
+    if (last_piece == piece) {
+      if (VERBOSE) printf("repeat piece\n");
+      return false;
+    }
+
+    // Off playfield. x is always the left edge of the piece.
+    if (x < 0 || x + ShapeWidth(shape) > 10) {
+      if (VERBOSE) printf("off playfield\n");
+      return false;
+    }
+
+    const std::array<uint16_t, 4> mask = ShapeMaskInCol(shape, x);
+
+    auto Place = [this, piece, &mask](int r) {
+        // This is where it would be placed. Make sure we wouldn't
+        // need to set any cells off the board.
+        for (int ro = 0; ro < 4; ro++) {
+          int board_row_idx = r - ro;
+          uint16_t shape_row = mask[3 - ro];
+          if (board_row_idx < 0 && shape_row != 0) {
+            if (VERBOSE) printf("r=%d but Off top %d\n", r, board_row_idx);
+            return false;
+          }
+        }
+
+        // Okay, now blit and succeed.
+        for (int ro = 0; ro < 4; ro++) {
+          int board_row_idx = r - ro;
+          uint16_t shape_row = mask[3 - ro];
+
+          if (board_row_idx >= 0) {
+            CHECK((rows[board_row_idx] & shape_row) == 0) <<
+              StringPrintf("r %d, ro %d, bri %d, shape_row %d\n"
+                           "shape row: %s\n"
+                           "board row: %s\nin:\n",
+                           r, ro, board_row_idx, shape_row,
+                           RowString(shape_row).c_str(),
+                           RowString(rows[board_row_idx]).c_str()) <<
+              BoardString();
+            rows[board_row_idx] |= shape_row;
+          } else {
+            CHECK(shape_row == 0) <<
+              StringPrintf("r %d, ro %d, bri %d, shape_row %d\n"
+                           "shape row: %s\n"
+                           "in:\n",
+                           r, ro, board_row_idx, shape_row,
+                           RowString(shape_row).c_str()) <<
+              BoardString();
+          }
+        }
+
+        // Nothing below row r has changed.
+        ClearLines(r);
+        last_piece = piece;
+        if (VERBOSE) printf("OK:\n%s\n", BoardString().c_str());
+        return true;
+      };
+
+    // r is the bottom row where the piece might land.
+    for (int r = 0; r < MAX_DEPTH; r++) {
+      // See if there would be an intersection if we were
+      // on the next row. Note that we may reach below the
+      // ground when doing this.
+      for (int ro = 0; ro < 4; ro++) {
+        const int next_board_row_idx = r + 1 - ro;
+        const uint16_t shape_row = mask[3 - ro];
+        // PERF: could avoid the branch by storing blank rows
+        // before and after?
+        const uint16_t next_board_row =
+          (next_board_row_idx >= 0 && next_board_row_idx < MAX_DEPTH) ?
+          rows[next_board_row_idx] :
+          0;
+        if ((shape_row & next_board_row) != 0) {
+          if (VERBOSE) {
+            printf("Collide at r=%d ro=%d nbr=%d\n"
+                   "shape_row: %s\n"
+                   "next brow: %s\n", r, ro, next_board_row_idx,
+                   RowString(shape_row).c_str(),
+                   RowString(next_board_row).c_str());
+          }
+          return Place(r);
+        }
+      }
+      // No intersection, so fall one more row.
+    }
+
+    // We don't allow landing on the "ground".
+    if (VERBOSE) printf("no land on ground\n");
+    return false;
+  }
+
+  Tetris() {
+    rows.fill(0);
+    // starting position:
+    //
+    // #
+    // ##
+    //  #
+    // -----------
+    // XXX Note one rub: only I is known to be possible as the
+    // next piece if the first is S, at the very beginning of the
+    // game. But we can almost certainly find an opening sequence
+    // that will get us to this state.
+    rows[MAX_DEPTH - 1] = 256;
+    rows[MAX_DEPTH - 2] = 256 + 512;
+    rows[MAX_DEPTH - 3] = 512;
+  }
+
+  void SetLastPiece(Piece p) { last_piece = p; }
+  Piece GetLastPiece() const { return last_piece; }
+
+  string BoardString() const {
+    string ret;
+    for (int row = 0; row < MAX_DEPTH; row++) {
+      StringAppendF(&ret, "|%s|\n", RowString(rows[row]).c_str());
+    }
+    return ret;
+  }
+
+  // Note you will not be able to place any pieces unless you then
+  // SetRow etc.
+  void ClearBoard() {
+    rows.fill(0);
+  }
+
+  // Doesn't check that the state is legal (impossible empty or full
+  // rows).
+  void SetRowString(const std::string rowstring, int r) {
+    CHECK(r >= 0 && r < MAX_DEPTH);
+    rows[r] = StringRow(rowstring);
+  }
+
+private:
+  // Clear any full lines at row <= bottom.
+  // PERF: This approach makes one pass per line cleared.
+  void ClearLines(int bottom) {
+    for (int r = bottom; r >= 0; /* in loop */) {
+      if (rows[r] == 0b1111111111) {
+        // Shift
+        for (int u = r; u > 0; u--) {
+          rows[u] = rows[u - 1];
+        }
+        rows[0] = 0;
+      } else {
+        r--;
+      }
+    }
+  }
+
+  Piece last_piece = PIECE_S;
+};
+
+#endif
