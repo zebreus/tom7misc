@@ -1,4 +1,9 @@
 
+#ifdef __MINGW32__
+#include <windows.h>
+#undef ARRAYSIZE
+#endif
+
 #include <string>
 #include <vector>
 #include <memory>
@@ -8,14 +13,67 @@
 #include <bit>
 #include <utility>
 #include <functional>
+#include <mutex>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "arcfour.h"
 #include "image.h"
 #include "timer.h"
+#include "threadutil.h"
 
 #include "tetris.h"
+
+// TODO: Console stuff to cc-lib
+// Cursor to beginning of previous line
+#define ANSI_PREVLINE "\x1B[F"
+#define ANSI_CLEARLINE "\x1B[2K"
+#define ANSI_CLEARTOEOL "\x1B[0K"
+
+#define ANSI_RED "\x1B[1;31;40m"
+#define ANSI_GREY "\x1B[1;30;40m"
+#define ANSI_BLUE "\x1B[1;34;40m"
+#define ANSI_CYAN "\x1B[1;36;40m"
+#define ANSI_YELLOW "\x1B[1;33;40m"
+#define ANSI_GREEN "\x1B[1;32;40m"
+#define ANSI_WHITE "\x1B[1;37;40m"
+#define ANSI_PURPLE "\x1B[1;35;40m"
+#define ANSI_RESET "\x1B[m"
+
+#define ANSI_HIDE_CURSOR "\x1B[?25h"
+#define ANSI_SHOW_CURSOR "\x1B[?25l"
+
+// Synchronous update
+// XXX they don't work?
+#define MINTTY_SYNCHRONOUS_START "\x1BP=1s\x1B\\"
+#define MINTTY_SYNCHRONOUS_END "\x1BP=2s\x1B\\"
+
+// Same as printf, but using WriteConsole on windows so that we
+// can communicate with pseudoterminal. Without this, ansi escape
+// codes will work (VirtualTerminalProcessing) but not mintty-
+// specific ones.
+// TODO: It would be better if we had a way of stripping the
+// terminal codes if they are not supported?
+static void CPrintf(const char* format, ...) {
+  // Do formatting.
+  va_list ap;
+  va_start(ap, format);
+  string result;
+  StringAppendV(&result, format, ap);
+  va_end(ap);
+
+  #ifdef __MINGW32__
+  DWORD n = 0;
+  WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE),
+               result.c_str(),
+               result.size(),
+               &n,
+               nullptr);
+  #else
+  printf("%s", result.c_str());
+  #endif
+}
+
 
 using namespace std;
 using uint8 = uint8_t;
@@ -53,14 +111,21 @@ struct Move {
   uint8_t col = 0;
 };
 
-[[maybe_unused]]
-static void Encode(uint8 target) {
+constexpr int REPORT_EVERY = 10;
+
+static uint16 FullTarget(uint8 target) {
   const uint16 full_target = (uint16)target |
     (target == 0xFF ?
      /* special case for FF so we don't complete line */
      0b00 :
      ((std::popcount(target) & 1) ? 0b11 : 0b01)) << 8;
   CHECK((full_target & ~0b1111111111) == 0) << full_target;
+  return full_target;
+}
+
+[[maybe_unused]]
+static vector<Move> Encode(uint8 target) {
+  const uint16 full_target = FullTarget(target);
 
   // Intial setup is
   //
@@ -266,29 +331,12 @@ static void Encode(uint8 target) {
   std::vector<Move> movie;
   Timer searchtime;
 
-  int next_report = 5;
+  int next_report = REPORT_EVERY;
 
   for (;;) {
     const uint16 last_line = tetris.rows[Tetris::MAX_DEPTH - 1];
     if (last_line == full_target) {
-      printf("Done in %lld moves!\n", movie.size());
-
-      #if 0
-      // Replay.
-      Tetris replay;
-      for (Move m : movie) {
-        printf("Place %c at %d:\n%s", PieceChar(DecodePiece(m.shape)), m.col,
-               replay.BoardString().c_str());
-        CHECK(replay.Place(m.shape, m.col));
-      }
-      CHECK(tetris.BoardString() == replay.BoardString());
-      #endif
-
-      printf("Enc %02x. Final board:\n%s %s <- target\n",
-             target,
-             tetris.BoardString().c_str(),
-             RowString(full_target).c_str());
-      return;
+      return movie;
     }
 
     const auto &[moves, score_] = GetBestRec(tetris, 3);
@@ -302,6 +350,7 @@ static void Encode(uint8 target) {
 
     int sec = searchtime.Seconds();
     if (sec > next_report) {
+#if 0
       double score = Evaluate(tetris);
       double mps = movie.size() / searchtime.Seconds();
       printf("Enc %02x. Made %lld moves. %.2f moves/sec. Score %.2f:\n"
@@ -311,20 +360,94 @@ static void Encode(uint8 target) {
              movie.size(), mps, score,
              tetris.BoardString().c_str(),
              RowString(full_target).c_str());
+#endif
       next_report = sec + 5;
     }
   }
 }
 
+[[maybe_unused]]
+static void PrintSolution(uint8 target,
+                          const std::vector<Move> &movie, bool loud) {
+  const uint16 full_target = FullTarget(target);
+  printf("Done in %lld moves!\n", movie.size());
+
+  // Replay.
+  Tetris replay;
+  for (Move m : movie) {
+    if (loud) {
+      printf("Place %c at %d:\n%s", PieceChar(DecodePiece(m.shape)), m.col,
+             replay.BoardString().c_str());
+    }
+    CHECK(replay.Place(m.shape, m.col));
+  }
+
+  printf("Enc %02x. Final board:\n%s %s <- target\n",
+         target,
+         replay.BoardString().c_str(),
+         RowString(full_target).c_str());
+  return;
+}
 
 int main(int argc, char **argv) {
+  // Enable ANSI output on win32.
+  #ifdef __MINGW32__
+  HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+  // mingw headers may not know about this new flag
+  static constexpr int kVirtualTerminalProcessing = 0x0004;
+  DWORD old_mode = 0;
+  GetConsoleMode(hStdOut, &old_mode);
+  SetConsoleMode(hStdOut, old_mode | kVirtualTerminalProcessing);
+  #endif
 
-  // Encode(0b00110001);
+  for (int i = 0; i < 38; i++) CPrintf("\n");
+
+  std::mutex m;
+  std::vector<int> status(256, -2);
+  auto PrintTable = [&m, &status]() {
+      MutexLock ml(&m);
+
+      constexpr int STATUS_LINES = 32;
+      CPrintf("%s", MINTTY_SYNCHRONOUS_START ANSI_HIDE_CURSOR);
+      for (int i = 0; i < STATUS_LINES; i++) {
+        CPrintf("%s", ANSI_PREVLINE);
+      }
+
+      static_assert(256 % STATUS_LINES == 0);
+      constexpr int STATUS_COLS = 256 / STATUS_LINES;
+      for (int y = 0; y < STATUS_LINES; y++) {
+        for (int x = 0; x < STATUS_COLS; x++) {
+          int idx = y * STATUS_COLS + x;
+          int s = status[idx];
+          const char *color = s > 0 ? ANSI_GREEN :
+            s == -1 ? ANSI_BLUE : ANSI_YELLOW;
+          CPrintf(ANSI_WHITE "%02x" ANSI_GREY ":%s% 4d" ANSI_RESET "  ",
+                  idx, color, status[idx]);
+        }
+        CPrintf(ANSI_CLEARTOEOL "\n");
+      }
+      CPrintf("%s", MINTTY_SYNCHRONOUS_END ANSI_SHOW_CURSOR);
+    };
+
+
+  ParallelComp(256,
+               [&m, &status, &PrintTable](int idx) {
+                 WriteWithLock(&m, &status[idx], -1);
+                 PrintTable();
+                 std::vector<Move> movie = Encode(idx);
+                 WriteWithLock(&m, &status[idx], (int)movie.size());
+                 PrintTable();
+               },
+               24);
+
+  #if 0
   for (int x = 0; x < 256; x++) {
     uint8 b = x;
     if ((std::popcount(b) & 1) == 1) {
       Encode(x);
     }
   }
+  #endif
+
   return 0;
 }
