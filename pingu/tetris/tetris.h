@@ -292,9 +292,10 @@ ShapeMaskInCol(Shape s, int x) {
   return rows;
 }
 
-struct Tetris {
+template<int MAX_DEPTH_ARG>
+struct TetrisDepth {
   // template arg?
-  static constexpr int MAX_DEPTH = 8;
+  static constexpr int MAX_DEPTH = MAX_DEPTH_ARG;
   // Low 10 bits of each word are used to denote the contents of the
   // cells; upper 6 are zero.
   std::array<uint16_t, MAX_DEPTH> rows;
@@ -406,7 +407,7 @@ struct Tetris {
     return false;
   }
 
-  Tetris() {
+  TetrisDepth() {
     rows.fill(0);
     // starting position:
     //

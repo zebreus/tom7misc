@@ -21,6 +21,8 @@ using namespace std;
 using uint8 = uint8_t;
 using uint16 = uint16_t;
 
+using Tetris = TetrisDepth<8>;
+
 // All right, trying again!
 
 // Current approach: For each bit pattern, find a
@@ -39,9 +41,12 @@ using uint16 = uint16_t;
 // simplest diff on the idea would be to use a prefix of
 // 00 in (just) this case, so let's try that.
 
-// Awesome... first try solves all even patterns in seconds
-// each (typically ~25 pieces), including 0xFF. No clearing
-// yet, though.
+// Awesome... first try solves all patterns in seconds
+// each (typically ~25 pieces), including 0xFF.
+// MAX_HEIGHT=8, and we might even be able to shrink
+// this, which would probably yield better solutions?
+//
+// No clearing yet, though.
 
 struct Move {
   Shape shape = I_VERT;
@@ -317,7 +322,7 @@ int main(int argc, char **argv) {
   // Encode(0b00110001);
   for (int x = 0; x < 256; x++) {
     uint8 b = x;
-    if ((std::popcount(b) & 1) == 0) {
+    if ((std::popcount(b) & 1) == 1) {
       Encode(x);
     }
   }

@@ -10,6 +10,8 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
+using Tetris = TetrisDepth<8>;
+
 static void TestDrops() {
   {
     Tetris tetris;
