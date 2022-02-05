@@ -14,6 +14,8 @@
 #include <utility>
 #include <functional>
 #include <mutex>
+#include <cstdio>
+#include <map>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -21,6 +23,7 @@
 #include "image.h"
 #include "timer.h"
 #include "threadutil.h"
+#include "util.h"
 
 #include "tetris.h"
 
@@ -79,7 +82,52 @@ using namespace std;
 using uint8 = uint8_t;
 using uint16 = uint16_t;
 
-using Tetris = TetrisDepth<8>;
+using Tetris = TetrisDepth<6>;
+
+struct Move {
+  Shape shape = I_VERT;
+  uint8_t col = 0;
+};
+
+std::map<uint8, std::vector<Move>>
+ParseSolutions(const string &filename) {
+  std::map<uint8, std::vector<Move>> ret;
+  std::vector<string> lines = Util::ReadFileToLines(filename);
+  for (string line : lines) {
+    line = Util::NormalizeWhitespace(line);
+    if (line.empty()) continue;
+
+    string target = Util::chopto(' ', line);
+    CHECK(target.size() == 2);
+    CHECK(Util::IsHexDigit(target[0]) &&
+          Util::IsHexDigit(target[1])) << target;
+    uint8 t = Util::HexDigitValue(target[0]) * 16 +
+      Util::HexDigitValue(target[1]);
+
+    string encoded = Util::chopto(' ', line);
+    CHECK(!encoded.empty());
+    CHECK(encoded.size() % 3 == 0);
+
+    const int movie_size = (int)encoded.size() / 3;
+
+    vector<Move> movie;
+    movie.reserve(movie_size);
+    for (int i = 0; i < movie_size / 3; i++) {
+      char d1 = encoded[i * 3 + 0];
+      char d2 = encoded[i * 3 + 1];
+      char c = encoded[i * 3 + 2];
+      CHECK(d1 >= '0' && d1 <= '9');
+      CHECK(d2 >= '0' && d2 <= '9');
+      CHECK(c >= 'a' && c <= 'j');
+      Move m;
+      m.shape = (Shape)((d1 - '0') * 10 + (d2 - '0'));
+      m.col = c - 'a';
+      movie.push_back(m);
+    }
+    ret[t] = std::move(movie);
+  }
+  return ret;
+}
 
 // All right, trying again!
 
@@ -106,10 +154,15 @@ using Tetris = TetrisDepth<8>;
 //
 // No clearing yet, though.
 
-struct Move {
-  Shape shape = I_VERT;
-  uint8_t col = 0;
-};
+static string MovieString(const std::vector<Move> &moves) {
+  string s;
+  for (Move m : moves) {
+    CHECK(m.shape >= 0 && m.shape < 100) << m.shape;
+    CHECK(m.col >= 0 && m.col < 10) << m.col;
+    StringAppendF(&s, "%02d%c", m.shape, "abcdefghij"[m.col]);
+  }
+  return s;
+}
 
 constexpr int REPORT_EVERY = 10;
 
@@ -124,7 +177,9 @@ static uint16 FullTarget(uint8 target) {
 }
 
 [[maybe_unused]]
-static vector<Move> Encode(uint8 target) {
+static vector<Move> Encode(uint8 target,
+                           std::function<void(int)> &Phase1Callback,
+                           bool loud = false) {
   const uint16 full_target = FullTarget(target);
 
   // Intial setup is
@@ -226,7 +281,11 @@ static vector<Move> Encode(uint8 target) {
   //    the line, because we don't want to drop something
   //    incorrect into the line.)
 
-  auto Evaluate = [full_target](const Tetris &tetris) {
+  // TODO(perf): Can pretty straightforwardly hyper-optimize
+  // the weights here.
+
+  std::function<double(const Tetris &)> EvaluateSetup =
+    [full_target](const Tetris &tetris) {
       const uint16 last_line = tetris.rows[Tetris::MAX_DEPTH - 1];
       // TODO: clean up in this case. But probably we should
       // switch to a different strategy!
@@ -280,6 +339,79 @@ static vector<Move> Encode(uint8 target) {
       return score;
     };
 
+  static constexpr uint16 STDPOS1 = 0b1000000000;
+  static constexpr uint16 STDPOS2 = 0b1100000000;
+  static constexpr uint16 STDPOS3 = 0b0100000000;
+
+  // To clear, it's the same idea, but with three target rows
+  // instead of one.
+  std::function<double(const Tetris &)> EvaluateClear =
+    [full_target](const Tetris &tetris) {
+      // Don't ever touch the completed line!
+      // (We should probably just cut this off during the search
+      // procedure?)
+      {
+        const uint16 notouch_line = tetris.rows[Tetris::MAX_DEPTH - 1];
+        if (notouch_line != full_target)
+          return -1'000'000'000.0;
+      }
+
+      const uint16 last_line1 = tetris.rows[Tetris::MAX_DEPTH - 4];
+      const uint16 last_line2 = tetris.rows[Tetris::MAX_DEPTH - 3];
+      const uint16 last_line3 = tetris.rows[Tetris::MAX_DEPTH - 2];
+
+      if (last_line1 == STDPOS1 &&
+          last_line2 == STDPOS2 &&
+          last_line3 == STDPOS3)
+        return 1'000'000'000.0;
+
+      // Otherwise, points for as many lines as we currently have
+      // correct, working from the bottom.
+      #if 0
+      if (last_line1 == STDPOS1) {
+        score += 10'000'000.0;
+        if (last_line2 == STDPOS2) {
+          score += 10'000'000.0;
+          // (we know we don't have all three...)
+        }
+      }
+      #endif
+
+      // Since we know the standard position can be made with a
+      // single piece, we actually just favor an empty board here,
+      // since if we get that we will be done.
+      // TODO: Could penalize anti-patterns like covered holes?
+
+      double score = 0.0;
+      // TODO: this tries to create a three-high wall and clear it.
+      int dist = 0;
+      uint16_t prev_row = 0b1111111111;
+      for (int r = Tetris::MAX_DEPTH - 2; r >= 0; r--) {
+        const uint16_t row = tetris.rows[r];
+        const float mult =
+          // good to have bits
+          (dist == 0) ? 1'000.0 :
+          (dist == 1) ? 20.0 :
+          // ??
+          (dist == 2) ? -10 :
+          // bad
+          dist * -100;
+        score += std::popcount(row) * mult;
+
+        // covered hole is a bit in this row that was not
+        // set in the previous.
+        uint16_t covered_hole = row & ~prev_row;
+
+        score += -500.0 * std::popcount(covered_hole);
+
+        prev_row = row;
+        dist++;
+      }
+
+      return score;
+    };
+
+
   static constexpr std::array<Shape, 19> ALL_SHAPES = {
     I_VERT, I_HORIZ,
     SQUARE,
@@ -291,9 +423,15 @@ static vector<Move> Encode(uint8 target) {
   };
 
   // Get the best scoring sequence of moves, with the score.
-  std::function<pair<vector<Move>, double>(const Tetris &, int)> GetBestRec =
-    [&Evaluate, &GetBestRec](const Tetris &start_tetris,
-                             int num_moves) -> pair<vector<Move>, double> {
+  std::function<pair<vector<Move>, double>(
+      const std::function<double(const Tetris&)> &,
+      const Tetris &,
+      int, bool)> GetBestRec =
+    [full_target, &GetBestRec](
+        const std::function<double(const Tetris&)> &Evaluate,
+        const Tetris &start_tetris,
+        int num_moves, bool no_unsolve) ->
+    pair<vector<Move>, double> {
     if (num_moves == 0) {
       return make_pair(std::vector<Move>{}, Evaluate(start_tetris));
     } else {
@@ -305,14 +443,20 @@ static vector<Move> Encode(uint8 target) {
       std::vector<Move> best_rest;
       double best_rest_score = -1.0/0.0;
       for (Shape shape : ALL_SHAPES) {
-        // Avoid inner loop if this is a repeat.
+        // Avoid inner loop if this would repeat.
         if (start_tetris.GetLastPiece() != DecodePiece(shape)) {
           for (int col = 0; col < 10; col++) {
             Tetris tetris = start_tetris;
             if (tetris.Place(shape, col)) {
+              if (no_unsolve &&
+                  tetris.rows[Tetris::MAX_DEPTH - 1] != full_target) {
+                // Don't allow perturbing the already solved part at
+                // any step.
+                continue;
+              }
               // Recurse.
               const auto &[rest, rest_score] =
-                GetBestRec(tetris, num_moves - 1);
+                GetBestRec(Evaluate, tetris, num_moves - 1, no_unsolve);
               if (rest_score > best_rest_score) {
                 best_rest.clear();
                 best_rest.emplace_back(shape, col);
@@ -329,17 +473,15 @@ static vector<Move> Encode(uint8 target) {
 
   Tetris tetris;
   std::vector<Move> movie;
-  Timer searchtime;
 
-  int next_report = REPORT_EVERY;
-
+  // Phase 1: Set the target line.
   for (;;) {
     const uint16 last_line = tetris.rows[Tetris::MAX_DEPTH - 1];
     if (last_line == full_target) {
-      return movie;
+      break;
     }
 
-    const auto &[moves, score_] = GetBestRec(tetris, 3);
+    const auto &[moves, score_] = GetBestRec(EvaluateSetup, tetris, 3, false);
     CHECK(!moves.empty()) << "No valid moves here (after "
                           << movie.size() << " played):\n"
                           << tetris.BoardString();
@@ -347,23 +489,42 @@ static vector<Move> Encode(uint8 target) {
       CHECK(tetris.Place(m.shape, m.col));
       movie.push_back(m);
     }
+  }
 
-    int sec = searchtime.Seconds();
-    if (sec > next_report) {
-#if 0
-      double score = Evaluate(tetris);
-      double mps = movie.size() / searchtime.Seconds();
-      printf("Enc %02x. Made %lld moves. %.2f moves/sec. Score %.2f:\n"
-             "%s"
-             " %s  <- target\n",
-             target,
-             movie.size(), mps, score,
-             tetris.BoardString().c_str(),
-             RowString(full_target).c_str());
-#endif
-      next_report = sec + 5;
+  Phase1Callback(movie.size());
+  if (loud) {
+    printf("Phase 1 done in %d:\n%s\n", (int)movie.size(),
+           tetris.BoardString().c_str());
+  }
+
+  // Phase 2: Put in standard position.
+  for (;;) {
+    const uint16 last_line1 = tetris.rows[Tetris::MAX_DEPTH - 4];
+    const uint16 last_line2 = tetris.rows[Tetris::MAX_DEPTH - 3];
+    const uint16 last_line3 = tetris.rows[Tetris::MAX_DEPTH - 2];
+    if (last_line1 == STDPOS1 &&
+        last_line2 == STDPOS2 &&
+        last_line3 == STDPOS3) {
+      CHECK(tetris.rows[Tetris::MAX_DEPTH - 1] == full_target) << "oops";
+      return movie;
+    }
+
+    const auto &[moves, score_] = GetBestRec(EvaluateClear, tetris, 4, true);
+    if (moves.empty()) {
+      /*
+        CHECK(!moves.empty()) << "No valid moves here (after "
+        << movie.size() << " played):\n"
+        << tetris.BoardString();
+      */
+      // Stuck :(
+      return {};
+    }
+    for (const Move &m : moves) {
+      CHECK(tetris.Place(m.shape, m.col));
+      movie.push_back(m);
     }
   }
+
 }
 
 [[maybe_unused]]
@@ -402,9 +563,22 @@ int main(int argc, char **argv) {
 
   for (int i = 0; i < 38; i++) CPrintf("\n");
 
+  static constexpr const char *solsfile = "solutions.txt";
+  // TODO: load existing solutions, and then skip those
+
+  const std::map<uint8, std::vector<Move>> startsols =
+    ParseSolutions(solsfile);
+
   std::mutex m;
+  std::vector<bool> failed(256, false);
+  std::vector<bool> done(256, false);
   std::vector<int> status(256, -2);
-  auto PrintTable = [&m, &status]() {
+  for (const auto &[idx, movie] : startsols) {
+    done[idx] = true;
+    status[idx] = movie.size();
+  }
+
+  auto PrintTable = [&m, &failed, &done, &status]() {
       MutexLock ml(&m);
 
       constexpr int STATUS_LINES = 32;
@@ -419,8 +593,13 @@ int main(int argc, char **argv) {
         for (int x = 0; x < STATUS_COLS; x++) {
           int idx = y * STATUS_COLS + x;
           int s = status[idx];
-          const char *color = s > 0 ? ANSI_GREEN :
-            s == -1 ? ANSI_BLUE : ANSI_YELLOW;
+          bool f = failed[idx];
+          bool d = done[idx];
+          const char *color = f ? ANSI_RED :
+            d ? ANSI_GREEN :
+            s == -1 ? ANSI_BLUE :
+            s == -2 ? ANSI_YELLOW :
+            ANSI_PURPLE;
           CPrintf(ANSI_WHITE "%02x" ANSI_GREY ":%s% 4d" ANSI_RESET "  ",
                   idx, color, status[idx]);
         }
@@ -431,14 +610,51 @@ int main(int argc, char **argv) {
 
 
   ParallelComp(256,
-               [&m, &status, &PrintTable](int idx) {
-                 WriteWithLock(&m, &status[idx], -1);
+               [&m, &failed, &done, &status, &PrintTable](int idx) {
+                 idx ^= 0xFF;
+
+                 {
+                   MutexLock ml(&m);
+                   // From solutions file.
+                   if (done[idx]) return;
+                   status[idx] = -1;
+                 }
                  PrintTable();
-                 std::vector<Move> movie = Encode(idx);
-                 WriteWithLock(&m, &status[idx], (int)movie.size());
+
+                 Timer timer;
+                 std::function<void(int)> Phase1Callback =
+                          [&m, &status, &PrintTable, idx](int phase1) {
+                            WriteWithLock(&m, &status[idx], phase1);
+                            PrintTable();
+                          };
+                 std::vector<Move> movie = Encode(idx, Phase1Callback);
+                 if (movie.empty()) {
+                   MutexLock ml(&m);
+                   status[idx] = 0;
+                   failed[idx] = true;
+                 } else {
+                   MutexLock ml(&m);
+                   status[idx] = (int)movie.size();
+                   done[idx] = true;
+                   FILE *f = fopen(solsfile, "ab");
+                   CHECK(f != nullptr);
+                   fprintf(f, "%02x %s %.2fsec\n", idx,
+                           MovieString(movie).c_str(),
+                           timer.Seconds());
+                   fclose(f);
+                 }
                  PrintTable();
                },
                24);
+
+  int worst = 0;
+  int total = 0;
+  for (int count : status) {
+    worst = std::max(worst, count);
+    total += count;
+  }
+
+  printf("Done. Worst case %d, average %.2f\n", worst, total / 256.0);
 
   #if 0
   for (int x = 0; x < 256; x++) {
