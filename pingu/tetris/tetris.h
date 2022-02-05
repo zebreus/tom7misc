@@ -42,6 +42,38 @@ enum Piece {
   NUM_PIECES,
 };
 
+
+// A piece in a specific orientation, using the same byte as
+// the NES uses.
+enum Shape : uint8 {
+  I_VERT = 0x11,
+  I_HORIZ = 0x12,
+  SQUARE = 0x0a,
+  // given as the way the pointy side faces
+  T_UP = 0x00,
+  T_DOWN = 0x02,
+  T_LEFT = 0x03,
+  T_RIGHT = 0x01,
+
+  // given as the way the long edge points
+  J_UP = 0x04,  // J
+  J_LEFT = 0x07, // logical not
+  J_DOWN = 0x06, // r
+  J_RIGHT = 0x05,
+
+  Z_HORIZ = 0x08,
+  Z_VERT = 0x09,
+
+  S_HORIZ = 0x0b,
+  S_VERT = 0x0C,
+
+  // as the way the long edge points
+  L_UP = 0x0D, // L
+  L_LEFT = 0x10, // toboggan
+  L_DOWN = 0x0F, // 7
+  L_RIGHT = 0x0E,
+};
+
 // printable char
 static char PieceChar(Piece p) {
   switch (p) {
