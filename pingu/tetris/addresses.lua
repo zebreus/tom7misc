@@ -57,7 +57,7 @@ while (true) do
     end;
 
   wb(0x0062);
-  --  wb(0x006d);
+  wb(0x0040);
 
   FCEU.frameadvance();
 end;

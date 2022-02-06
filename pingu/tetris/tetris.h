@@ -61,30 +61,57 @@ enum Shape : uint8 {
   L_RIGHT = 0x0E,
 };
 
-// TODO: Can be Shape -> Piece
-static inline Piece DecodePiece(uint8_t p) {
-  switch (p) {
-  case 0x11:
-  case 0x12: return PIECE_I;
-  case 0x7:
-  case 0x6:
-  case 0x5:
-  case 0x4: return PIECE_J;
-  case 0x8:
-  case 0x9: return PIECE_Z;
-  case 0x0A: return PIECE_O;
-  case 0x0:
-  case 0x1:
-  case 0x2:
-  case 0x3: return PIECE_T;
-  case 0x0D:
-  case 0x0E:
-  case 0x0F:
-  case 0x10: return PIECE_L;
-  case 0x0B:
-  case 0x0C: return PIECE_S;
+// Return the position that the NES considers the shape
+// to be in (MEM_CURRENT_X) when it is against the left
+// wall.
+static inline int ShapeOffset(Shape s) {
+  switch (s) {
+  case I_VERT: return 0;
+  case I_HORIZ: return 2;
+  case J_UP: return 1;
+  case J_DOWN: return 0;
+  case J_LEFT: return 1;
+  case J_RIGHT: return 1;
+  case Z_VERT: return 0;
+  case Z_HORIZ: return 1;
+  case SQUARE: return 1;
+  case T_UP: return 1;
+  case T_DOWN: return 1;
+  case T_LEFT: return 1;
+  case T_RIGHT: return 0;
+  case L_UP: return 0;
+  case L_DOWN: return 1;
+  case L_LEFT: return 1;
+  case L_RIGHT: return 1;
+  case S_VERT: return 0;
+  case S_HORIZ: return 1;
+  }
+  return 0;
+}
+
+static inline Piece DecodePiece(Shape s) {
+  switch (s) {
+  case I_VERT:
+  case I_HORIZ: return PIECE_I;
+  case J_UP:
+  case J_DOWN:
+  case J_LEFT:
+  case J_RIGHT: return PIECE_J;
+  case Z_VERT:
+  case Z_HORIZ: return PIECE_Z;
+  case SQUARE: return PIECE_O;
+  case T_UP:
+  case T_DOWN:
+  case T_LEFT:
+  case T_RIGHT: return PIECE_T;
+  case L_UP:
+  case L_DOWN:
+  case L_LEFT:
+  case L_RIGHT: return PIECE_L;
+  case S_VERT:
+  case S_HORIZ: return PIECE_S;
   default:
-    LOG(FATAL) << "Can't decode byte: " << (int)p;
+    LOG(FATAL) << "Can't decode byte: " << (int)s;
     return PIECE_I;
   }
 }
@@ -292,9 +319,10 @@ ShapeMaskInCol(Shape s, int x) {
   return rows;
 }
 
+// Tetris board with the given height.
+// We use shorter fixed heights during search to make things faster.
 template<int MAX_DEPTH_ARG>
 struct TetrisDepth {
-  // template arg?
   static constexpr int MAX_DEPTH = MAX_DEPTH_ARG;
   // Low 10 bits of each word are used to denote the contents of the
   // cells; upper 6 are zero.
@@ -305,7 +333,6 @@ struct TetrisDepth {
   static constexpr bool VERBOSE = false;
 
   // Returns false if the placement is illegal.
-  // XXX need to implement line clearing!
   bool Place(Shape shape, int x) {
     Piece piece = DecodePiece(shape);
     // Don't allow streaks since we may not be able to

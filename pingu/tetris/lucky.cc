@@ -17,6 +17,8 @@
 #include "image.h"
 
 #include "tetris.h"
+#include "nes-tetris.h"
+#include "encoding.h"
 
 using namespace std;
 using uint8 = uint8_t;
@@ -75,8 +77,8 @@ static void HistoMenu(int iters) {
 
     // And see what pieces we get if we start.
     for (uint8 c : entergame) emu->Step(c, 0);
-    Piece cur = DecodePiece(emu->ReadRAM(MEM_CURRENT_PIECE));
-    Piece next = DecodePiece(emu->ReadRAM(MEM_NEXT_PIECE));
+    Piece cur = DecodePiece((Shape)emu->ReadRAM(MEM_CURRENT_PIECE));
+    Piece next = DecodePiece((Shape)emu->ReadRAM(MEM_NEXT_PIECE));
 
     histo[next * NUM_PIECES + cur]++;
     if (example[next * NUM_PIECES + cur] == -1)
@@ -139,8 +141,8 @@ static void PieceDrop() {
 
     // And see what pieces we get if we start.
     for (uint8 c : drop_piece) emu->Step(c, 0);
-    Piece cur = DecodePiece(emu->ReadRAM(MEM_CURRENT_PIECE));
-    Piece next = DecodePiece(emu->ReadRAM(MEM_NEXT_PIECE));
+    Piece cur = DecodePiece((Shape)emu->ReadRAM(MEM_CURRENT_PIECE));
+    Piece next = DecodePiece((Shape)emu->ReadRAM(MEM_NEXT_PIECE));
 
     histo[next * NUM_PIECES + cur]++;
     if (example[next * NUM_PIECES + cur] == -1)
@@ -216,8 +218,8 @@ static void MakeStreak1() {
   // just one of these.
   bool square_ok = true;
   for (;;) {
-    uint8 cur = emu->ReadRAM(MEM_CURRENT_PIECE);
-    uint8 next_byte = emu->ReadRAM(MEM_NEXT_PIECE);
+    Shape cur = (Shape)emu->ReadRAM(MEM_CURRENT_PIECE);
+    Shape next_byte = (Shape)emu->ReadRAM(MEM_NEXT_PIECE);
     Piece next = DecodePiece(next_byte);
     uint8 current_counter = emu->ReadRAM(MEM_DROP_COUNT);
 
@@ -310,39 +312,19 @@ static void MakeStreak1() {
 [[maybe_unused]]
 static void MakeStreak2() {
 
-  // 0-based column.
-  uint8 oriented_l = 0x0D;
-  int offset_l = 0;
-  // 1-based
-  uint8 oriented_7 = 0x0F;
-  int offset_7 = 1;
-  // 1-based
-  uint8 oriented_j = 0x04;
-  int offset_j = 1;
-  // 0-based
-  uint8 oriented_f = 0x06;
-  int offset_f = 0;
-
-  uint8 oriented_o = 0x0A;
-  int offset_o = 1;
-
-  std::vector<std::tuple<Piece, uint8, int>> schedule = {
+  std::vector<Move> schedule = {
     // piece type, desired orientation, column
-    make_tuple(PIECE_O, oriented_o, 0 + offset_o),
-    make_tuple(PIECE_L, oriented_l, 2 + offset_l),
-    make_tuple(PIECE_O, oriented_o, 0 + offset_o),
-    make_tuple(PIECE_J, oriented_j, 4 + offset_j),
-    make_tuple(PIECE_L, oriented_7, 2 + offset_7),
-    make_tuple(PIECE_J, oriented_f, 4 + offset_f),
-    make_tuple(PIECE_L, oriented_l, 6 + offset_l),
-    make_tuple(PIECE_J, oriented_j, 8 + offset_j),
-    make_tuple(PIECE_L, oriented_7, 6 + offset_7),
-    make_tuple(PIECE_J, oriented_f, 8 + offset_f),
+    Move(SQUARE, 0),
+    Move(L_UP, 2),
+    Move(SQUARE, 0),
+    Move(J_UP, 4),
+    Move(L_DOWN, 2),
+    Move(J_DOWN, 4),
+    Move(L_UP, 6),
+    Move(J_UP, 8),
+    Move(L_DOWN, 6),
+    Move(J_DOWN, 8),
   };
-
-  for (const auto &[piece, orientation, offset_] : schedule) {
-    CHECK(piece == DecodePiece(orientation));
-  }
 
   ArcFour rc("tetris");
 
@@ -396,8 +378,8 @@ static void MakeStreak2() {
     // does not get saved/restored)
     frame++;
 
-    uint8 cur = emu->ReadRAM(MEM_CURRENT_PIECE);
-    uint8 next_byte = emu->ReadRAM(MEM_NEXT_PIECE);
+    Shape cur = (Shape)emu->ReadRAM(MEM_CURRENT_PIECE);
+    Shape next_byte = (Shape)emu->ReadRAM(MEM_NEXT_PIECE);
     Piece next = DecodePiece(next_byte);
     uint8 current_counter = emu->ReadRAM(MEM_DROP_COUNT);
 
@@ -420,12 +402,13 @@ static void MakeStreak2() {
       // A piece just landed.
       // This means that 'cur' should just now have the next piece that
       // we previously established as correct.
-      CHECK(DecodePiece(cur) == std::get<0>(schedule[(schedule_idx + 1) %
-                                                     schedule.size()]));
+      CHECK(DecodePiece(cur) ==
+            DecodePiece(schedule[(schedule_idx + 1) %
+                                 schedule.size()].shape));;
 
       // Now check that the NEW next piece is what we expect.
       const Piece expected =
-        std::get<0>(schedule[(schedule_idx + 2) % schedule.size()]);
+        DecodePiece(schedule[(schedule_idx + 2) % schedule.size()].shape);
       if (next != expected) {
         // We didn't get the expected piece.
         // Go back to previous piece. Also keep track of how many
@@ -471,38 +454,35 @@ static void MakeStreak2() {
     }
 
     uint8 cur_x = emu->ReadRAM(MEM_CURRENT_X);
-    uint8 cur_orientation = emu->ReadRAM(MEM_CURRENT_PIECE);
+    Shape cur_shape = (Shape)emu->ReadRAM(MEM_CURRENT_PIECE);
     uint8 input = 0;
 
-    const auto [piece_, orientation, column] = schedule[schedule_idx];
-    CHECK(DecodePiece(cur) == piece_) <<
+    const Move move = schedule[schedule_idx];
+    // The shape should only mismatch due to orientation.
+    CHECK(DecodePiece(cur_shape) == DecodePiece(move.shape)) <<
       StringPrintf("Expect %c but have %c=%02x?",
-                   PieceChar(piece_),
-                   PieceChar(DecodePiece(cur)), cur);
+                   PieceChar(DecodePiece(move.shape)),
+                   PieceChar(DecodePiece(cur_shape)), cur_shape);
+
+    const uint8 target_nes_x =
+      move.col + ShapeOffset(move.shape);
 
     if ((frame % 2) == 0) {
       // PERF: Can rotate in the most efficient direction.
-      if (orientation != cur_orientation)
+      if (move.shape != cur_shape)
         input |= INPUT_A;
 
-      if (column < cur_x) input |= INPUT_L;
-      else if (column > cur_x) input |= INPUT_R;
+      if (target_nes_x < cur_x) input |= INPUT_L;
+      else if (target_nes_x > cur_x) input |= INPUT_R;
     }
 
-    if (orientation == cur_orientation &&
-        column == cur_x) {
+    if (move.shape == cur_shape &&
+        target_nes_x == cur_x) {
       // printf("OK %d %d\n", orientation, column);
       input = rc.Byte() & INPUT_D;
       // If we're having trouble, even try pausing
       if (retry_count > 64) input |= rc.Byte() & INPUT_T;
     }
-
-    /*
-    printf("Put %c in orientation %02x (now %02x) in column %d (now %d) "
-           "input %s\n",
-           PieceChar(piece_), orientation, cur_orientation,
-           column, cur_x, SimpleFM2::InputToString(input).c_str());
-    */
 
     emu->Step(input, 0);
     outmovie.push_back(input);
@@ -522,8 +502,8 @@ static void HistoSimulate(int iters) {
     RNGState p1 = NextPiece(state);
     RNGState p2 = NextPiece(p1);
 
-    uint8 cur = DecodePiece(p1.last_drop);
-    uint8 next = DecodePiece(p2.last_drop);
+    uint8 cur = DecodePiece((Shape)p1.last_drop);
+    uint8 next = DecodePiece((Shape)p2.last_drop);
 
     histo[next * NUM_PIECES + cur]++;
     if (example[next * NUM_PIECES + cur] == -1)
@@ -874,7 +854,7 @@ struct TinySet {
   const int z, last_piece;
 };
 
-// TODO: Worst case "doughts" for getting a certain piece in a state?
+// TODO: Worst case "droughts" for getting a certain piece in a state?
 // It could be that rng1 stays even for half the period, as one simple
 // example. This would be 8 minutes of real time at 60hz!
 [[maybe_unused]]
@@ -935,7 +915,7 @@ static void AllRerolls() {
          histo_states[0], histo_states[1], histo_states[2], histo_states[3]);
 
   for (int p = 0; p < 7; p++) {
-    char pc = PieceChar(DecodePiece(PIECES[p]));
+    char pc = PieceChar(DecodePiece((Shape)PIECES[p]));
     printf("Best case for piece %d=%c: %d, worst: %d, can't dup: %d/%d = %.02f%%\n",
            p, pc, max_piece[p], min_piece[p], cant_dup[p],
            256 * 7, (100.0 * cant_dup[p]) / (256 * 7));

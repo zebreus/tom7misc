@@ -1,4 +1,4 @@
-all : lucky.exe encode.exe tetris_test.exe
+all : lucky.exe encode.exe tetris_test.exe play.exe makemovie.exe
 
 CC_LIB=../../cc-lib
 FCEULIB=../../fceulib
@@ -25,7 +25,7 @@ $(FCEULIB)/%.o : $(FCEULIB)/%.cc
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n ","
 
-lucky.exe : lucky.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+lucky.exe : lucky.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
@@ -36,6 +36,8 @@ encode.exe : encode.o encoding.o $(CCLIB_OBJECTS)
 play.exe : play.o encoding.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
+
+makemovie.exe : makemovie.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
 
 tetris_test.exe : tetris_test.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)

@@ -109,8 +109,9 @@ using Tetris = TetrisDepth<6>;
 // MAX_HEIGHT=8, and we might even be able to shrink
 // this, which would probably yield better solutions?
 //
-// No clearing yet, though.
-
+// Clearing is harder (perhaps the heuristic just stinks,
+// or maybe the effectively smaller playfield) but still
+// very tractable.
 
 constexpr int REPORT_EVERY = 10;
 
