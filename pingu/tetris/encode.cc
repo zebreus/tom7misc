@@ -23,9 +23,11 @@
 #include "image.h"
 #include "timer.h"
 #include "threadutil.h"
+#include "randutil.h"
 #include "util.h"
 
 #include "tetris.h"
+#include "encoding.h"
 
 // TODO: Console stuff to cc-lib
 // Cursor to beginning of previous line
@@ -84,51 +86,6 @@ using uint16 = uint16_t;
 
 using Tetris = TetrisDepth<6>;
 
-struct Move {
-  Shape shape = I_VERT;
-  uint8_t col = 0;
-};
-
-std::map<uint8, std::vector<Move>>
-ParseSolutions(const string &filename) {
-  std::map<uint8, std::vector<Move>> ret;
-  std::vector<string> lines = Util::ReadFileToLines(filename);
-  for (string line : lines) {
-    line = Util::NormalizeWhitespace(line);
-    if (line.empty()) continue;
-
-    string target = Util::chopto(' ', line);
-    CHECK(target.size() == 2);
-    CHECK(Util::IsHexDigit(target[0]) &&
-          Util::IsHexDigit(target[1])) << target;
-    uint8 t = Util::HexDigitValue(target[0]) * 16 +
-      Util::HexDigitValue(target[1]);
-
-    string encoded = Util::chopto(' ', line);
-    CHECK(!encoded.empty());
-    CHECK(encoded.size() % 3 == 0);
-
-    const int movie_size = (int)encoded.size() / 3;
-
-    vector<Move> movie;
-    movie.reserve(movie_size);
-    for (int i = 0; i < movie_size / 3; i++) {
-      char d1 = encoded[i * 3 + 0];
-      char d2 = encoded[i * 3 + 1];
-      char c = encoded[i * 3 + 2];
-      CHECK(d1 >= '0' && d1 <= '9');
-      CHECK(d2 >= '0' && d2 <= '9');
-      CHECK(c >= 'a' && c <= 'j');
-      Move m;
-      m.shape = (Shape)((d1 - '0') * 10 + (d2 - '0'));
-      m.col = c - 'a';
-      movie.push_back(m);
-    }
-    ret[t] = std::move(movie);
-  }
-  return ret;
-}
-
 // All right, trying again!
 
 // Current approach: For each bit pattern, find a
@@ -154,33 +111,17 @@ ParseSolutions(const string &filename) {
 //
 // No clearing yet, though.
 
-static string MovieString(const std::vector<Move> &moves) {
-  string s;
-  for (Move m : moves) {
-    CHECK(m.shape >= 0 && m.shape < 100) << m.shape;
-    CHECK(m.col >= 0 && m.col < 10) << m.col;
-    StringAppendF(&s, "%02d%c", m.shape, "abcdefghij"[m.col]);
-  }
-  return s;
-}
 
 constexpr int REPORT_EVERY = 10;
-
-static uint16 FullTarget(uint8 target) {
-  const uint16 full_target = (uint16)target |
-    (target == 0xFF ?
-     /* special case for FF so we don't complete line */
-     0b00 :
-     ((std::popcount(target) & 1) ? 0b11 : 0b01)) << 8;
-  CHECK((full_target & ~0b1111111111) == 0) << full_target;
-  return full_target;
-}
 
 [[maybe_unused]]
 static vector<Move> Encode(uint8 target,
                            std::function<void(int)> &Phase1Callback,
                            bool loud = false) {
-  const uint16 full_target = FullTarget(target);
+  const uint16 full_target = Encoding::FullTarget(target);
+
+  // currently deterministic, but does not need to be
+  ArcFour rc(StringPrintf("%02x", target));
 
   // Intial setup is
   //
@@ -339,10 +280,6 @@ static vector<Move> Encode(uint8 target,
       return score;
     };
 
-  static constexpr uint16 STDPOS1 = 0b1000000000;
-  static constexpr uint16 STDPOS2 = 0b1100000000;
-  static constexpr uint16 STDPOS3 = 0b0100000000;
-
   // To clear, it's the same idea, but with three target rows
   // instead of one.
   std::function<double(const Tetris &)> EvaluateClear =
@@ -360,17 +297,17 @@ static vector<Move> Encode(uint8 target,
       const uint16 last_line2 = tetris.rows[Tetris::MAX_DEPTH - 3];
       const uint16 last_line3 = tetris.rows[Tetris::MAX_DEPTH - 2];
 
-      if (last_line1 == STDPOS1 &&
-          last_line2 == STDPOS2 &&
-          last_line3 == STDPOS3)
+      if (last_line1 == Encoding::STDPOS1 &&
+          last_line2 == Encoding::STDPOS2 &&
+          last_line3 == Encoding::STDPOS3)
         return 1'000'000'000.0;
 
       // Otherwise, points for as many lines as we currently have
       // correct, working from the bottom.
       #if 0
-      if (last_line1 == STDPOS1) {
+      if (last_line1 == Encoding::STDPOS1) {
         score += 10'000'000.0;
-        if (last_line2 == STDPOS2) {
+        if (last_line2 == Encoding::STDPOS2) {
           score += 10'000'000.0;
           // (we know we don't have all three...)
         }
@@ -412,6 +349,7 @@ static vector<Move> Encode(uint8 target,
     };
 
 
+  /*
   static constexpr std::array<Shape, 19> ALL_SHAPES = {
     I_VERT, I_HORIZ,
     SQUARE,
@@ -421,13 +359,33 @@ static vector<Move> Encode(uint8 target,
     S_HORIZ, S_VERT,
     L_UP, L_LEFT, L_DOWN, L_RIGHT,
   };
+  */
+
+  std::vector<Shape> ALL_SHAPES = {
+    I_VERT, I_HORIZ,
+    SQUARE,
+    T_UP, T_DOWN, T_LEFT, T_RIGHT,
+    J_UP, J_LEFT, J_DOWN, J_RIGHT,
+    Z_HORIZ, Z_VERT,
+    S_HORIZ, S_VERT,
+    L_UP, L_LEFT, L_DOWN, L_RIGHT,
+  };
+
+  std::vector<int> ALL_COLS;
+  for (int i = 0; i < 10; i++) ALL_COLS.push_back(i);
+
+  // XXX
+  /*
+  Shuffle(&rc, &ALL_SHAPES);
+  Shuffle(&rc, &ALL_COLS);
+  */
 
   // Get the best scoring sequence of moves, with the score.
   std::function<pair<vector<Move>, double>(
       const std::function<double(const Tetris&)> &,
       const Tetris &,
       int, bool)> GetBestRec =
-    [full_target, &GetBestRec](
+    [full_target, &ALL_SHAPES, &ALL_COLS, &GetBestRec](
         const std::function<double(const Tetris&)> &Evaluate,
         const Tetris &start_tetris,
         int num_moves, bool no_unsolve) ->
@@ -445,7 +403,7 @@ static vector<Move> Encode(uint8 target,
       for (Shape shape : ALL_SHAPES) {
         // Avoid inner loop if this would repeat.
         if (start_tetris.GetLastPiece() != DecodePiece(shape)) {
-          for (int col = 0; col < 10; col++) {
+          for (int col : ALL_COLS) { // = 0; col < 10; col++
             Tetris tetris = start_tetris;
             if (tetris.Place(shape, col)) {
               if (no_unsolve &&
@@ -497,16 +455,52 @@ static vector<Move> Encode(uint8 target,
            tetris.BoardString().c_str());
   }
 
+  const Tetris backup_tetris = tetris;
+  const std::vector<Move> backup_movie = movie;
+
+  auto Restart = [&]() {
+      Shuffle(&rc, &ALL_SHAPES);
+      Shuffle(&rc, &ALL_COLS);
+      tetris = backup_tetris;
+      movie = backup_movie;
+      if (loud) {
+        printf("Restarted!\n");
+      }
+    };
+
   // Phase 2: Put in standard position.
   for (;;) {
     const uint16 last_line1 = tetris.rows[Tetris::MAX_DEPTH - 4];
     const uint16 last_line2 = tetris.rows[Tetris::MAX_DEPTH - 3];
     const uint16 last_line3 = tetris.rows[Tetris::MAX_DEPTH - 2];
-    if (last_line1 == STDPOS1 &&
-        last_line2 == STDPOS2 &&
-        last_line3 == STDPOS3) {
+    if (last_line1 == Encoding::STDPOS1 &&
+        last_line2 == Encoding::STDPOS2 &&
+        last_line3 == Encoding::STDPOS3) {
       CHECK(tetris.rows[Tetris::MAX_DEPTH - 1] == full_target) << "oops";
+
+      Tetris replay;
+      for (Move m : movie) {
+        CHECK(replay.Place(m.shape, m.col));
+      }
+
+      const uint16 last_line1 = replay.rows[Tetris::MAX_DEPTH - 4];
+      const uint16 last_line2 = replay.rows[Tetris::MAX_DEPTH - 3];
+      const uint16 last_line3 = replay.rows[Tetris::MAX_DEPTH - 2];
+
+      CHECK(replay.rows[Tetris::MAX_DEPTH - 1] == full_target &&
+            last_line1 == Encoding::STDPOS1 &&
+            last_line2 == Encoding::STDPOS2 &&
+            last_line3 == Encoding::STDPOS3) << "Supposed solution "
+        "for " << (int)target << " actually made board:\n" <<
+        replay.BoardString() <<
+        " " << RowString(full_target) << " <- target";
+
       return movie;
+    }
+
+    if (movie.size() > 100) {
+      Restart();
+      continue;
     }
 
     const auto &[moves, score_] = GetBestRec(EvaluateClear, tetris, 4, true);
@@ -517,11 +511,12 @@ static vector<Move> Encode(uint8 target,
         << tetris.BoardString();
       */
       // Stuck :(
-      return {};
-    }
-    for (const Move &m : moves) {
-      CHECK(tetris.Place(m.shape, m.col));
-      movie.push_back(m);
+      Restart();
+    } else {
+      for (const Move &m : moves) {
+        CHECK(tetris.Place(m.shape, m.col));
+        movie.push_back(m);
+      }
     }
   }
 
@@ -530,7 +525,7 @@ static vector<Move> Encode(uint8 target,
 [[maybe_unused]]
 static void PrintSolution(uint8 target,
                           const std::vector<Move> &movie, bool loud) {
-  const uint16 full_target = FullTarget(target);
+  const uint16 full_target = Encoding::FullTarget(target);
   printf("Done in %lld moves!\n", movie.size());
 
   // Replay.
@@ -567,7 +562,7 @@ int main(int argc, char **argv) {
   // TODO: load existing solutions, and then skip those
 
   const std::map<uint8, std::vector<Move>> startsols =
-    ParseSolutions(solsfile);
+    Encoding::ParseSolutions(solsfile);
 
   std::mutex m;
   std::vector<bool> failed(256, false);
@@ -611,8 +606,6 @@ int main(int argc, char **argv) {
 
   ParallelComp(256,
                [&m, &failed, &done, &status, &PrintTable](int idx) {
-                 idx ^= 0xFF;
-
                  {
                    MutexLock ml(&m);
                    // From solutions file.
@@ -639,7 +632,7 @@ int main(int argc, char **argv) {
                    FILE *f = fopen(solsfile, "ab");
                    CHECK(f != nullptr);
                    fprintf(f, "%02x %s %.2fsec\n", idx,
-                           MovieString(movie).c_str(),
+                           Encoding::MovieString(movie).c_str(),
                            timer.Seconds());
                    fclose(f);
                  }
