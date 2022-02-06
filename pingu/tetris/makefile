@@ -38,6 +38,8 @@ play.exe : play.o encoding.o $(CCLIB_OBJECTS)
 	strip $@
 
 makemovie.exe : makemovie.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	strip $@
 
 tetris_test.exe : tetris_test.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)

@@ -23,15 +23,15 @@
 
 constexpr int MEM_RNG1 = 0x17;
 constexpr int MEM_RNG2 = 0x18;
+// "current" piece in its standard orientation
+constexpr int MEM_LAST_DROP = 0x19;
+// (mod 256)
+constexpr int MEM_DROP_COUNT = 0x1A;
 
 constexpr int MEM_BOARD_START = 0x400;
 constexpr int MEM_CURRENT_PIECE = 0x62;
 constexpr int MEM_NEXT_PIECE = 0xBF;
 constexpr int MEM_CURRENT_X = 0x40;
-// (mod 256)
-constexpr int MEM_DROP_COUNT = 0x1A;
-// "current" piece in its standard orientation
-constexpr int MEM_LAST_DROP = 0x19;
 
 // XXX maybe this should go in tetris.h and this
 // file should only be Emulator stuff?
@@ -279,6 +279,15 @@ inline void SaveScreenshot(const string &filename, Emulator *emu) {
   printf("Wrote %s\n", filename.c_str());
 
   emu->LoadUncompressed(save);
+}
+
+// Heuristic; not sure if this is correct.
+// (Probably program counter would be definitive when
+// outside of NMI.)
+inline bool IsPaused(const Emulator &emu) {
+  return emu.ReadRAM(0x00a0) == 0x70 &&
+    emu.ReadRAM(0x00a1) == 0x77 &&
+    emu.ReadRAM(0x00a2) == 0x05;
 }
 
 #endif
