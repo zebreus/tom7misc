@@ -33,8 +33,9 @@ struct Encoding {
       (target == 0xFF ?
        /* special case for FF so we don't complete line */
        0b00 :
-       ((std::popcount(target) & 1) ? 0b11 : 0b01)) << 8;
+       ((std::popcount(target) & 1) ? 0b01 : 0b11)) << 8;
     CHECK((full_target & ~0b1111111111) == 0) << full_target;
+    CHECK((std::popcount(full_target) & 1) == 0) << full_target;
     return full_target;
   }
 

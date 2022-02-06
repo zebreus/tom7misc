@@ -121,7 +121,7 @@ static vector<Move> Encode(uint8 target,
   const uint16 full_target = Encoding::FullTarget(target);
 
   // currently deterministic, but does not need to be
-  ArcFour rc(StringPrintf("%02x", target));
+  ArcFour rc(StringPrintf("z%02x", target));
 
   // Intial setup is
   //
@@ -348,19 +348,6 @@ static vector<Move> Encode(uint8 target,
       return score;
     };
 
-
-  /*
-  static constexpr std::array<Shape, 19> ALL_SHAPES = {
-    I_VERT, I_HORIZ,
-    SQUARE,
-    T_UP, T_DOWN, T_LEFT, T_RIGHT,
-    J_UP, J_LEFT, J_DOWN, J_RIGHT,
-    Z_HORIZ, Z_VERT,
-    S_HORIZ, S_VERT,
-    L_UP, L_LEFT, L_DOWN, L_RIGHT,
-  };
-  */
-
   std::vector<Shape> ALL_SHAPES = {
     I_VERT, I_HORIZ,
     SQUARE,
@@ -375,10 +362,10 @@ static vector<Move> Encode(uint8 target,
   for (int i = 0; i < 10; i++) ALL_COLS.push_back(i);
 
   // XXX
-  /*
+
   Shuffle(&rc, &ALL_SHAPES);
   Shuffle(&rc, &ALL_COLS);
-  */
+
 
   // Get the best scoring sequence of moves, with the score.
   std::function<pair<vector<Move>, double>(
@@ -432,6 +419,16 @@ static vector<Move> Encode(uint8 target,
   Tetris tetris;
   std::vector<Move> movie;
 
+  auto Restart1 = [&]() {
+      Shuffle(&rc, &ALL_SHAPES);
+      Shuffle(&rc, &ALL_COLS);
+      tetris = Tetris();
+      movie.clear();
+      if (loud) {
+        printf("Restarted!\n");
+      }
+    };
+
   // Phase 1: Set the target line.
   for (;;) {
     const uint16 last_line = tetris.rows[Tetris::MAX_DEPTH - 1];
@@ -439,10 +436,16 @@ static vector<Move> Encode(uint8 target,
       break;
     }
 
+    if (movie.size() > 50) {
+      Restart1();
+      continue;
+    }
+
     const auto &[moves, score_] = GetBestRec(EvaluateSetup, tetris, 3, false);
-    CHECK(!moves.empty()) << "No valid moves here (after "
-                          << movie.size() << " played):\n"
-                          << tetris.BoardString();
+    if (moves.empty()) {
+      Restart1();
+      continue;
+    }
     for (const Move &m : moves) {
       CHECK(tetris.Place(m.shape, m.col));
       movie.push_back(m);
@@ -458,7 +461,7 @@ static vector<Move> Encode(uint8 target,
   const Tetris backup_tetris = tetris;
   const std::vector<Move> backup_movie = movie;
 
-  auto Restart = [&]() {
+  auto Restart2 = [&]() {
       Shuffle(&rc, &ALL_SHAPES);
       Shuffle(&rc, &ALL_COLS);
       tetris = backup_tetris;
@@ -470,36 +473,47 @@ static vector<Move> Encode(uint8 target,
 
   // Phase 2: Put in standard position.
   for (;;) {
-    const uint16 last_line1 = tetris.rows[Tetris::MAX_DEPTH - 4];
-    const uint16 last_line2 = tetris.rows[Tetris::MAX_DEPTH - 3];
-    const uint16 last_line3 = tetris.rows[Tetris::MAX_DEPTH - 2];
-    if (last_line1 == Encoding::STDPOS1 &&
-        last_line2 == Encoding::STDPOS2 &&
-        last_line3 == Encoding::STDPOS3) {
-      CHECK(tetris.rows[Tetris::MAX_DEPTH - 1] == full_target) << "oops";
-
-      Tetris replay;
-      for (Move m : movie) {
-        CHECK(replay.Place(m.shape, m.col));
+    int blank_prefix = 0;
+    for (int r = 0; r < Tetris::MAX_DEPTH; r++) {
+      if (tetris.rows[r] != 0) {
+        break;
       }
+      blank_prefix++;
+    }
 
-      const uint16 last_line1 = replay.rows[Tetris::MAX_DEPTH - 4];
-      const uint16 last_line2 = replay.rows[Tetris::MAX_DEPTH - 3];
-      const uint16 last_line3 = replay.rows[Tetris::MAX_DEPTH - 2];
+    // Must not have anything above the STDPOS.
+    if (blank_prefix == Tetris::MAX_DEPTH - 4) {
+      const uint16 last_line1 = tetris.rows[Tetris::MAX_DEPTH - 4];
+      const uint16 last_line2 = tetris.rows[Tetris::MAX_DEPTH - 3];
+      const uint16 last_line3 = tetris.rows[Tetris::MAX_DEPTH - 2];
+      if (last_line1 == Encoding::STDPOS1 &&
+          last_line2 == Encoding::STDPOS2 &&
+          last_line3 == Encoding::STDPOS3) {
+        CHECK(tetris.rows[Tetris::MAX_DEPTH - 1] == full_target) << "oops";
 
-      CHECK(replay.rows[Tetris::MAX_DEPTH - 1] == full_target &&
-            last_line1 == Encoding::STDPOS1 &&
-            last_line2 == Encoding::STDPOS2 &&
-            last_line3 == Encoding::STDPOS3) << "Supposed solution "
-        "for " << (int)target << " actually made board:\n" <<
-        replay.BoardString() <<
-        " " << RowString(full_target) << " <- target";
+        Tetris replay;
+        for (Move m : movie) {
+          CHECK(replay.Place(m.shape, m.col));
+        }
 
-      return movie;
+        const uint16 last_line1 = replay.rows[Tetris::MAX_DEPTH - 4];
+        const uint16 last_line2 = replay.rows[Tetris::MAX_DEPTH - 3];
+        const uint16 last_line3 = replay.rows[Tetris::MAX_DEPTH - 2];
+
+        CHECK(replay.rows[Tetris::MAX_DEPTH - 1] == full_target &&
+              last_line1 == Encoding::STDPOS1 &&
+              last_line2 == Encoding::STDPOS2 &&
+              last_line3 == Encoding::STDPOS3) << "Supposed solution "
+          "for " << (int)target << " actually made board:\n" <<
+          replay.BoardString() <<
+          " " << RowString(full_target) << " <- target";
+
+        return movie;
+      }
     }
 
     if (movie.size() > 100) {
-      Restart();
+      Restart2();
       continue;
     }
 
@@ -511,7 +525,7 @@ static vector<Move> Encode(uint8 target,
         << tetris.BoardString();
       */
       // Stuck :(
-      Restart();
+      Restart2();
     } else {
       for (const Move &m : moves) {
         CHECK(tetris.Place(m.shape, m.col));

@@ -51,13 +51,22 @@ int main(int argc, char **argv) {
         CHECK(tetris.Place(m.shape, m.col));
       }
 
+      int blank_prefix = 0;
+      for (int r = 0; r < Tetris::MAX_DEPTH; r++) {
+        if (tetris.rows[r] != 0) {
+          break;
+        }
+        blank_prefix++;
+      }
+
       const uint16 full_target = Encoding::FullTarget(b);
 
       const uint16 last_line1 = tetris.rows[Tetris::MAX_DEPTH - 4];
       const uint16 last_line2 = tetris.rows[Tetris::MAX_DEPTH - 3];
       const uint16 last_line3 = tetris.rows[Tetris::MAX_DEPTH - 2];
 
-      CHECK(tetris.rows[Tetris::MAX_DEPTH - 1] == full_target &&
+      CHECK(blank_prefix == Tetris::MAX_DEPTH - 4 &&
+            tetris.rows[Tetris::MAX_DEPTH - 1] == full_target &&
             last_line1 == Encoding::STDPOS1 &&
             last_line2 == Encoding::STDPOS2 &&
             last_line3 == Encoding::STDPOS3) << "Supposed solution "
