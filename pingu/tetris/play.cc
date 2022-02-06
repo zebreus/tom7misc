@@ -48,6 +48,7 @@ int main(int argc, char **argv) {
            RowString(full_target).c_str());
 
   } else {
+    int total_moves = 0;
     for (const auto &[b, movie] : sols) {
       CHECK(b >= 0 && b < 256);
 
@@ -89,8 +90,11 @@ int main(int argc, char **argv) {
         printf("Sol for %02x doesn't end with an allowed ending piece: %c.\n",
                b, PieceChar(tetris.GetLastPiece()));
       }
+
+      total_moves += movie.size();
     }
 
+    printf("Total moves: %d\n", total_moves);
     CHECK(sols.size() == 256) << sols.size();
   }
 

@@ -265,13 +265,6 @@ static void MakeMovie(const std::vector<uint8> &bytes) {
     const uint8 target_nes_x =
       move.col + ShapeOffset(move.shape);
 
-    #if 0
-    if (outmovie.size() == 51041) {
-      SaveScreenshot("mystery.png", emu.get());
-      printf("Wrote mystery.png\n");
-    }
-    #endif
-
     if ((frame % 2) == 0) {
       // PERF: Can rotate in the most efficient direction.
       if (move.shape != cur_shape)

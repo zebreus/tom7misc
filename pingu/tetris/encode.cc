@@ -29,6 +29,8 @@
 #include "tetris.h"
 #include "encoding.h"
 
+static constexpr bool ENDLESS = true;
+
 // TODO: Console stuff to cc-lib
 // Cursor to beginning of previous line
 #define ANSI_PREVLINE "\x1B[F"
@@ -118,11 +120,23 @@ constexpr int REPORT_EVERY = 10;
 [[maybe_unused]]
 static vector<Move> Encode(uint8 target,
                            const std::function<void(int)> &Phase1Callback,
+                           int current_solution,
                            bool loud = false) {
   const uint16 full_target = Encoding::FullTarget(target);
 
-  // currently deterministic, but does not need to be
-  ArcFour rc(StringPrintf("%02x", target));
+  // Be actually random if ENDLESS mode is on, otherwise we'll just keep
+  // producing the same solution.
+  ArcFour rc(StringPrintf("%02x.%lld", target,
+                          ENDLESS ? time(nullptr) : 0));
+
+  // If set, only play the first move of the best sequence, then replan.
+  // This is probably better, but slower -- otherwise we require the
+  // first phase to be completed in a multiple of 3 pieces, for example.
+  constexpr bool REPLAN_AFTER_ONE = true;
+
+  // Just in endless mode.
+  constexpr int MAX_TOTAL_MOVES = 250;
+  int total_moves = 0;
 
   // Intial setup is
   //
@@ -470,6 +484,8 @@ static vector<Move> Encode(uint8 target,
       Shuffle(&rc, &ALL_COLS);
       tetris = Tetris();
       movie.clear();
+      // Prevent Byzantine nontermination.
+      total_moves++;
       if (loud) {
         printf("Restarted!\n");
       }
@@ -482,7 +498,12 @@ static vector<Move> Encode(uint8 target,
       break;
     }
 
-    if (movie.size() > 50) {
+    if (ENDLESS && total_moves > MAX_TOTAL_MOVES) {
+      return {};
+    }
+
+    // TODO: tune cutoff?
+    if (movie.size() > 50 || (ENDLESS && movie.size() > (current_solution * 0.75))) {
       Restart1();
       continue;
     }
@@ -503,6 +524,9 @@ static vector<Move> Encode(uint8 target,
     for (const Move &m : moves) {
       CHECK(tetris.Place(m.shape, m.col));
       movie.push_back(m);
+      total_moves++;
+      if (REPLAN_AFTER_ONE)
+        break;
     }
   }
 
@@ -520,6 +544,8 @@ static vector<Move> Encode(uint8 target,
       Shuffle(&rc, &ALL_COLS);
       tetris = backup_tetris;
       movie = backup_movie;
+      // Prevent Byzantine nontermination.
+      total_moves++;
       if (loud) {
         printf("Restarted!\n");
       }
@@ -570,7 +596,12 @@ static vector<Move> Encode(uint8 target,
       }
     }
 
-    if (movie.size() > 100) {
+    if (ENDLESS && total_moves > MAX_TOTAL_MOVES) {
+      return {};
+    }
+
+    if (movie.size() > 100 ||
+        (ENDLESS && (int)movie.size() >= current_solution)) {
       Restart2();
       continue;
     }
@@ -595,6 +626,9 @@ static vector<Move> Encode(uint8 target,
       for (const Move &m : moves) {
         CHECK(tetris.Place(m.shape, m.col));
         movie.push_back(m);
+        total_moves++;
+        if (REPLAN_AFTER_ONE)
+          break;
       }
     }
   }
@@ -624,27 +658,19 @@ static void PrintSolution(uint8 target,
   return;
 }
 
-int main(int argc, char **argv) {
-  // Enable ANSI output on win32.
-  #ifdef __MINGW32__
-  HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
-  // mingw headers may not know about this new flag
-  static constexpr int kVirtualTerminalProcessing = 0x0004;
-  DWORD old_mode = 0;
-  GetConsoleMode(hStdOut, &old_mode);
-  SetConsoleMode(hStdOut, old_mode | kVirtualTerminalProcessing);
-  #endif
+static constexpr const char *solsfile = "solutions.txt";
+static void AppendSolution(int idx, const std::vector<Move> &movie,
+                           double seconds) {
+  FILE *f = fopen(solsfile, "ab");
+  CHECK(f != nullptr);
+  fprintf(f, "%02x %s %.2fsec\n", idx,
+          Encoding::MovieString(movie).c_str(),
+          seconds);
+  fclose(f);
+}
 
+static void SolveAll() {
   for (int i = 0; i < 38; i++) CPrintf("\n");
-
-  /*
-  auto NoCallback = [](int){};
-  Encode(0x6c, NoCallback, true);
-  return 0;
-  */
-
-  static constexpr const char *solsfile = "solutions.txt";
-  // TODO: load existing solutions, and then skip those
 
   const std::map<uint8, std::vector<Move>> startsols =
     Encoding::ParseSolutions(solsfile);
@@ -652,6 +678,7 @@ int main(int argc, char **argv) {
   std::mutex m;
   std::vector<bool> failed(256, false);
   std::vector<bool> done(256, false);
+  std::vector<bool> working(256, false);
   std::vector<int> status(256, -2);
   for (const auto &[idx, movie] : startsols) {
     done[idx] = true;
@@ -675,7 +702,9 @@ int main(int argc, char **argv) {
           int s = status[idx];
           bool f = failed[idx];
           bool d = done[idx];
-          const char *color = f ? ANSI_RED :
+
+          const char *color =
+            f ? ANSI_RED :
             d ? ANSI_GREEN :
             s == -1 ? ANSI_BLUE :
             s == -2 ? ANSI_YELLOW :
@@ -687,7 +716,6 @@ int main(int argc, char **argv) {
       }
       CPrintf("%s", MINTTY_SYNCHRONOUS_END ANSI_SHOW_CURSOR);
     };
-
 
   ParallelComp(256,
                [&m, &failed, &done, &status, &PrintTable](int idx) {
@@ -705,8 +733,9 @@ int main(int argc, char **argv) {
                             WriteWithLock(&m, &status[idx], phase1);
                             PrintTable();
                           };
-                 std::vector<Move> movie = Encode(idx, Phase1Callback);
-                 if (movie.empty()) {
+                 std::vector<Move> movie = Encode(idx, Phase1Callback,
+                                                  9999, false);
+                 if (!ENDLESS && movie.empty()) {
                    MutexLock ml(&m);
                    status[idx] = 0;
                    failed[idx] = true;
@@ -714,12 +743,7 @@ int main(int argc, char **argv) {
                    MutexLock ml(&m);
                    status[idx] = (int)movie.size();
                    done[idx] = true;
-                   FILE *f = fopen(solsfile, "ab");
-                   CHECK(f != nullptr);
-                   fprintf(f, "%02x %s %.2fsec\n", idx,
-                           Encoding::MovieString(movie).c_str(),
-                           timer.Seconds());
-                   fclose(f);
+                   AppendSolution(idx, movie, timer.Seconds());
                  }
                  PrintTable();
                },
@@ -733,15 +757,142 @@ int main(int argc, char **argv) {
   }
 
   printf("Done. Worst case %d, average %.2f\n", worst, total / 256.0);
+}
 
-  #if 0
-  for (int x = 0; x < 256; x++) {
-    uint8 b = x;
-    if ((std::popcount(b) & 1) == 1) {
-      Encode(x);
-    }
+static void EndlessImprove() {
+  for (int i = 0; i < 38; i++) CPrintf("\n");
+
+  const std::map<uint8, std::vector<Move>> startsols =
+    Encoding::ParseSolutions(solsfile);
+  CHECK(startsols.size() == 256) << "First SolveAll!";
+
+  std::mutex m;
+  // 0 = not working, 1 = phase 1, 2 = phase 2
+  std::vector<int> working(256, 0);
+  std::vector<bool> improved(256, false);
+  std::vector<int> best(256, -2);
+  int moves_saved = 0;
+  Timer run_timer;
+  for (const auto &[idx, movie] : startsols) {
+    CHECK(idx >= 0 && idx < 256) << idx;
+    best[idx] = movie.size();
   }
+
+  auto PrintTable = [&m, &working, &improved, &best, &moves_saved,
+                     &run_timer]() {
+      MutexLock ml(&m);
+
+      constexpr int STATUS_LINES = 32;
+      constexpr int SUMMARY_LINES = 2;
+      CPrintf("%s", MINTTY_SYNCHRONOUS_START ANSI_HIDE_CURSOR);
+      for (int i = 0; i < STATUS_LINES + SUMMARY_LINES; i++) {
+        CPrintf("%s", ANSI_PREVLINE);
+      }
+
+      double seconds = run_timer.Seconds();
+      double ipm = moves_saved / (seconds / 60.0);
+      CPrintf(ANSI_BLUE "%0.1f" ANSI_RESET " sec, "
+              ANSI_PURPLE "%0.3f" ANSI_RESET " imp/minute. "
+              ANSI_GREEN "%d" ANSI_RESET " moves saved.\n"
+              ANSI_GREY "-------------------------------------------\n",
+              seconds, ipm, moves_saved);
+
+      static_assert(256 % STATUS_LINES == 0);
+      constexpr int STATUS_COLS = 256 / STATUS_LINES;
+      for (int y = 0; y < STATUS_LINES; y++) {
+        for (int x = 0; x < STATUS_COLS; x++) {
+          int idx = y * STATUS_COLS + x;
+          const char *color =
+            improved[idx] ? ANSI_GREEN : ANSI_RED;
+
+          const char *colon =
+            working[idx] == 0 ? ANSI_GREY ":" :
+            working[idx] == 1 ? ANSI_BLUE "=" :
+            ANSI_PURPLE "@";
+          CPrintf(ANSI_WHITE "%02x%s%s% 3d" ANSI_RESET "   ",
+                  idx, colon, color, best[idx]);
+        }
+        CPrintf(ANSI_CLEARTOEOL "\n");
+      }
+      CPrintf("%s", MINTTY_SYNCHRONOUS_END ANSI_SHOW_CURSOR);
+    };
+
+  ArcFour rc(StringPrintf("ro-%lld", time(nullptr)));
+
+  for (;;) {
+    const uint8 random_offset = rc.Byte();
+    // Hack: Always keep threads working by doing a huge parallel
+    // comprehension but only looking at the lowest byte.
+    ParallelComp(256 * 256 * 256,
+                 [&m, &working, &improved, &best,
+                  &moves_saved, random_offset,
+                  &PrintTable](int raw_idx) {
+                   int idx = (raw_idx + random_offset) & 0xFF;
+                   int cur_best = 9999;
+                   {
+                     MutexLock ml(&m);
+                     // Skip if someone is already working on it.
+                     if (working[idx] != 0)
+                       return;
+
+                     cur_best = best[idx];
+                     working[idx] = 1;
+                   }
+                   PrintTable();
+
+                   Timer timer;
+                   std::function<void(int)> Phase1Callback =
+                            [&m, &working, &PrintTable, idx](int phase1) {
+                              // WriteWithLock(&m, &best[idx], phase1);
+                              WriteWithLock(&m, &working[idx], 2);
+                              PrintTable();
+                            };
+                   std::vector<Move> movie = Encode(idx, Phase1Callback,
+                                                    cur_best, false);
+                   {
+                     MutexLock ml(&m);
+                     working[idx] = 0;
+                     int new_size = (int)movie.size();
+                     if (!movie.empty() && new_size < best[idx]) {
+                       improved[idx] = true;
+                       moves_saved += (best[idx] - new_size);
+                       best[idx] = new_size;
+                       AppendSolution(idx, movie, timer.Seconds());
+                     }
+                   }
+                   PrintTable();
+                 },
+                 24);
+  }
+
+  // XXX put in status
+  /*
+  int worst = 0;
+  int total = 0;
+  for (int count : status) {
+    worst = std::max(worst, count);
+    total += count;
+  }
+  */
+
+}
+
+int main(int argc, char **argv) {
+  // Enable ANSI output on win32.
+  #ifdef __MINGW32__
+  HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
+  // mingw headers may not know about this new flag
+  static constexpr int kVirtualTerminalProcessing = 0x0004;
+  DWORD old_mode = 0;
+  GetConsoleMode(hStdOut, &old_mode);
+  SetConsoleMode(hStdOut, old_mode | kVirtualTerminalProcessing);
   #endif
+
+  if (ENDLESS) {
+    EndlessImprove();
+  } else {
+    SolveAll();
+  }
 
   return 0;
 }

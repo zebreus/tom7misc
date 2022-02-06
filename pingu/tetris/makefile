@@ -31,7 +31,7 @@ lucky.exe : lucky.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
 
 encode.exe : encode.o encoding.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
-	strip $@
+
 
 play.exe : play.o encoding.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
