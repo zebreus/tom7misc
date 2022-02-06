@@ -1,4 +1,9 @@
 
+#include <set>
+#include <map>
+#include <string>
+#include <cstdint>
+
 #include "tetris.h"
 #include "encoding.h"
 
@@ -73,6 +78,17 @@ int main(int argc, char **argv) {
         "for " << (int)b << " actually made board:\n" <<
         tetris.BoardString() <<
         " " << RowString(full_target) << " <- target";
+
+
+      if (!movie.empty() && Encoding::IsOkToEnd(DecodePiece(movie[0].shape))) {
+        printf("Sol for %02x starts with an ending piece: %c.\n",
+               b, PieceChar(DecodePiece(movie[0].shape)));
+      }
+
+      if (!Encoding::IsOkToEnd(tetris.GetLastPiece())) {
+        printf("Sol for %02x doesn't end with an allowed ending piece: %c.\n",
+               b, PieceChar(tetris.GetLastPiece()));
+      }
     }
 
     CHECK(sols.size() == 256) << sols.size();

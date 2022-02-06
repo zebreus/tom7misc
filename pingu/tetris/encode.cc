@@ -117,12 +117,12 @@ constexpr int REPORT_EVERY = 10;
 
 [[maybe_unused]]
 static vector<Move> Encode(uint8 target,
-                           std::function<void(int)> &Phase1Callback,
+                           const std::function<void(int)> &Phase1Callback,
                            bool loud = false) {
   const uint16 full_target = Encoding::FullTarget(target);
 
   // currently deterministic, but does not need to be
-  ArcFour rc(StringPrintf("z%02x", target));
+  ArcFour rc(StringPrintf("%02x", target));
 
   // Intial setup is
   //
@@ -298,10 +298,32 @@ static vector<Move> Encode(uint8 target,
       const uint16 last_line2 = tetris.rows[Tetris::MAX_DEPTH - 3];
       const uint16 last_line3 = tetris.rows[Tetris::MAX_DEPTH - 2];
 
+      double score = 0.0;
       if (last_line1 == Encoding::STDPOS1 &&
           last_line2 == Encoding::STDPOS2 &&
-          last_line3 == Encoding::STDPOS3)
-        return 1'000'000'000.0;
+          last_line3 == Encoding::STDPOS3) {
+        // Has the standard position but we also don't want
+        // anything above it. We also have to end with one of
+        // the allowed pieces.
+        int blank_prefix = 0;
+        for (int r = 0; r < Tetris::MAX_DEPTH; r++) {
+          if (tetris.rows[r] != 0) {
+            break;
+          }
+          blank_prefix++;
+        }
+
+        if (blank_prefix == Tetris::MAX_DEPTH - 4 &&
+            Encoding::IsOkToEnd(tetris.GetLastPiece())) {
+          // Done!
+          return 1'000'000'000.0;
+        } else {
+          // Still considered good, but we need to clear
+          // the junk above or waste moves to end with
+          // an allowed piece.
+          score += 1'000'000.0;
+        }
+      }
 
       // Otherwise, points for as many lines as we currently have
       // correct, working from the bottom.
@@ -318,9 +340,7 @@ static vector<Move> Encode(uint8 target,
       // Since we know the standard position can be made with a
       // single piece, we actually just favor an empty board here,
       // since if we get that we will be done.
-      // TODO: Could penalize anti-patterns like covered holes?
 
-      double score = 0.0;
       // TODO: this tries to create a three-high wall and clear it.
       int dist = 0;
       uint16_t prev_row = 0b1111111111;
@@ -359,6 +379,18 @@ static vector<Move> Encode(uint8 target,
     L_UP, L_LEFT, L_DOWN, L_RIGHT,
   };
 
+  // Shapes we can use on the very first move. This is
+  // anything that is not allowed as an ending shape.
+  // (Note the check for repeating S is also covered
+  // with GetLastPiece below, but we may not have
+  // actually played an S to create that shape.)
+  std::vector<Shape> ALL_STARTING_SHAPES;
+  for (Shape s : ALL_SHAPES) {
+    if (!Encoding::IsOkToEnd(DecodePiece(s))) {
+      ALL_STARTING_SHAPES.push_back(s);
+    }
+  }
+
   std::vector<int> ALL_COLS;
   for (int i = 0; i < 10; i++) ALL_COLS.push_back(i);
 
@@ -370,10 +402,13 @@ static vector<Move> Encode(uint8 target,
 
   // Get the best scoring sequence of moves, with the score.
   std::function<pair<vector<Move>, double>(
+      const std::vector<Shape> &,
       const std::function<double(const Tetris&)> &,
       const Tetris &,
       int, bool)> GetBestRec =
     [full_target, &ALL_SHAPES, &ALL_COLS, &GetBestRec](
+        // Allowed shapes for the FIRST ply. Later plies use all shapes.
+        const std::vector<Shape> &allowed_shapes,
         const std::function<double(const Tetris&)> &Evaluate,
         const Tetris &start_tetris,
         int num_moves, bool no_unsolve) ->
@@ -388,7 +423,7 @@ static vector<Move> Encode(uint8 target,
 
       std::vector<Move> best_rest;
       double best_rest_score = -1.0/0.0;
-      for (Shape shape : ALL_SHAPES) {
+      for (Shape shape : allowed_shapes) {
         // Avoid inner loop if this would repeat.
         if (start_tetris.GetLastPiece() != DecodePiece(shape)) {
           for (int col : ALL_COLS) { // = 0; col < 10; col++
@@ -402,7 +437,12 @@ static vector<Move> Encode(uint8 target,
               }
               // Recurse.
               const auto &[rest, rest_score] =
-                GetBestRec(Evaluate, tetris, num_moves - 1, no_unsolve);
+                GetBestRec(
+                    // Always allow all shapes in recursive calls,
+                    // since we only use this arg to ban ending
+                    // shapes on the very first move.
+                    ALL_SHAPES,
+                    Evaluate, tetris, num_moves - 1, no_unsolve);
               if (rest_score > best_rest_score) {
                 best_rest.clear();
                 best_rest.emplace_back(shape, col);
@@ -418,6 +458,11 @@ static vector<Move> Encode(uint8 target,
   };
 
   Tetris tetris;
+  CHECK(Encoding::IsOkToEnd(tetris.GetLastPiece())) << "The starting "
+    "state must be one of the allowed ending pieces, and this "
+    "additionally needs to be enforced elsewhere! Got: " <<
+    PieceChar(tetris.GetLastPiece());
+
   std::vector<Move> movie;
 
   auto Restart1 = [&]() {
@@ -442,7 +487,15 @@ static vector<Move> Encode(uint8 target,
       continue;
     }
 
-    const auto &[moves, score_] = GetBestRec(EvaluateSetup, tetris, 3, false);
+    // On the very first move, we must not use a shape that may
+    // have ended the previous encoding. Otherwise, whatever you want
+    // (direct repeats are enforced by the Tetris object).
+    const std::vector<Shape> *allowed_shapes =
+      movie.empty() ? &ALL_STARTING_SHAPES : &ALL_SHAPES;
+    // PERF: We require using exactly three moves, even if one or two
+    // would win immediately.
+    const auto &[moves, score_] = GetBestRec(
+        *allowed_shapes, EvaluateSetup, tetris, 3, false);
     if (moves.empty()) {
       Restart1();
       continue;
@@ -474,6 +527,8 @@ static vector<Move> Encode(uint8 target,
 
   // Phase 2: Put in standard position.
   for (;;) {
+
+    // Are we done?
     int blank_prefix = 0;
     for (int r = 0; r < Tetris::MAX_DEPTH; r++) {
       if (tetris.rows[r] != 0) {
@@ -483,7 +538,9 @@ static vector<Move> Encode(uint8 target,
     }
 
     // Must not have anything above the STDPOS.
-    if (blank_prefix == Tetris::MAX_DEPTH - 4) {
+    if (blank_prefix == Tetris::MAX_DEPTH - 4 &&
+        // and must use an allowed ending piece
+        Encoding::IsOkToEnd(tetris.GetLastPiece())) {
       const uint16 last_line1 = tetris.rows[Tetris::MAX_DEPTH - 4];
       const uint16 last_line2 = tetris.rows[Tetris::MAX_DEPTH - 3];
       const uint16 last_line3 = tetris.rows[Tetris::MAX_DEPTH - 2];
@@ -518,7 +575,14 @@ static vector<Move> Encode(uint8 target,
       continue;
     }
 
-    const auto &[moves, score_] = GetBestRec(EvaluateClear, tetris, 4, true);
+    // Technically the first phase could produce an empty movie, so
+    // we need the same caveat about the starting piece here, too.
+    const std::vector<Shape> *allowed_shapes =
+      movie.empty() ? &ALL_STARTING_SHAPES : &ALL_SHAPES;
+    // PERF: We require using exactly four moves, even
+    // fewer would win immediately.
+    const auto &[moves, score_] = GetBestRec(
+        *allowed_shapes, EvaluateClear, tetris, 4, true);
     if (moves.empty()) {
       /*
         CHECK(!moves.empty()) << "No valid moves here (after "
@@ -572,6 +636,12 @@ int main(int argc, char **argv) {
   #endif
 
   for (int i = 0; i < 38; i++) CPrintf("\n");
+
+  /*
+  auto NoCallback = [](int){};
+  Encode(0x6c, NoCallback, true);
+  return 0;
+  */
 
   static constexpr const char *solsfile = "solutions.txt";
   // TODO: load existing solutions, and then skip those

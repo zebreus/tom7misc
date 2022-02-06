@@ -7,6 +7,7 @@
 #include <vector>
 #include <map>
 #include <bit>
+#include <initializer_list>
 
 #include "tetris.h"
 
@@ -39,6 +40,21 @@ struct Encoding {
     return full_target;
   }
 
+  // The standard position is an S, but we don't need to get there by
+  // placing an S, which means that it could cause a mismatch (some
+  // impossible repeated piece) with the beginning of the next byte.
+  // We could require that they all end in S, but this is quite
+  // hard for some bytes (e.g. in 0xFF it is completely unsupported),
+  // and the clearing phase is already the harder part. So as a
+  // balance, we allow any of these pieces to end a phase, and don't
+  // allow any of them to start.
+  static constexpr std::initializer_list<Piece> OK_TO_END = {
+    PIECE_S, PIECE_I,
+  };
+  static constexpr bool IsOkToEnd(Piece p) {
+    for (Piece pp : OK_TO_END) if (p == pp) return true;
+    return false;
+  }
 };
 
 #endif
