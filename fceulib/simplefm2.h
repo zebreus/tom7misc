@@ -24,13 +24,13 @@ struct SimpleFM2 {
   using string = std::string;
   template<class T> using vector = std::vector<T>;
   template<class L, class R> using pair = std::pair<L, R>;
-  
+
   static vector<uint8> ReadInputs(const string &filename);
   static vector<pair<uint8, uint8>> ReadInputs2P(const string &filename);
   static vector<pair<uint8, uint8>> ReadInputsEx(
       const string &filename,
       vector<pair<int, string>> *subtitles);
-  
+
   static void WriteInputs(const string &outputfile,
                           const string &romfilename,
                           const string &romchecksum,
@@ -63,8 +63,9 @@ struct SimpleFM2 {
       const vector<string> &dense_subtitles);
 
   static vector<pair<uint8, uint8>> ExpandTo2P(const vector<uint8> &inputs);
-  
+
   static string InputToString(uint8 input);
+  // As HTML.
   static string InputToColorString(uint8 input);
 };
 

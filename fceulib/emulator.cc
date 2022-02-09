@@ -114,7 +114,7 @@ uint64 Emulator::CPUStateChecksum() {
   // putting 8+ sprites on a scanline), but also can be read using
   // OAMDATA (wait, can it? I thought it was write-only -tom7 2018).
   md5_update(&ctx, fc->ppu->SPRAM, 0x100);
-  
+
   uint8 digest[16];
   md5_finish(&ctx, digest);
   return MD5ToChecksum(digest);
@@ -346,7 +346,7 @@ void Emulator::GetSound(vector<int16> *wav) {
     abort();
   }
 
-  if (wav->size() != samples) {
+  if ((int)wav->size() != samples) {
     wav->clear();
     wav->resize(samples);
   }
@@ -400,7 +400,7 @@ uint32 Emulator::GetYScroll() const {
   const uint8 ppu_ctrl = ppu->PPU_values[0];
   const uint8 ytable_select = (ppu_ctrl & 2) ? 240 : 0;
   const uint8 ypos = ppu->GetYScroll8();
-  
+
   return ytable_select + (uint32)ypos;
 }
 

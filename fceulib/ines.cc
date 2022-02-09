@@ -422,7 +422,7 @@ void INes::CheckHInfo() {
   CheckBad(partialmd5);
 
   MasterRomInfo = nullptr;
-  for (int i = 0; i < ARRAY_SIZE(sMasterRomInfo); i++) {
+  for (int i = 0; i < (int)ARRAY_SIZE(sMasterRomInfo); i++) {
     const INesTMasterRomInfo &info = sMasterRomInfo[i];
     if (info.md5lower != partialmd5)
       continue;
@@ -431,7 +431,7 @@ void INes::CheckHInfo() {
     if (!info.params) break;
 
     std::vector<std::string> toks = TokenizeStr(info.params, ",");
-    for (int j=0;j<(int)toks.size();j++) {
+    for (int j = 0; j < (int)toks.size(); j++) {
       std::vector<std::string> parts = TokenizeStr(toks[j], "=");
       MasterRomInfoParams[parts[0]] = parts[1];
     }
@@ -503,7 +503,7 @@ void INes::CheckHInfo() {
     iNESMirroring = 2;
 
   if (tofix) {
-    std::string err = 
+    std::string err =
       "The iNES header contains incorrect information.  "
       "For now, the information will be corrected in RAM.  ";
     if (tofix & 1) {
@@ -804,9 +804,9 @@ static constexpr BoardMapping const board_map[] = {
 // moved from utils/general -tom7
 static uint32 uppow2(uint32 n) {
   for (int x = 31; x >= 0; x--) {
-    if (n&(1<<x)) {
-      if ((1<<x)!=n) {
-        return 1<<(x+1);
+    if (n & (1 << x)) {
+      if ((1u << x) != n) {
+        return 1 << (x + 1);
       }
       break;
     }

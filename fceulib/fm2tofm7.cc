@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
 
   CHECK(inputs.size() == readback.size()) << inputs.size() << " vs "
 					  << readback.size();
-  for (int i = 0; i < inputs.size(); i++) {
+  for (int i = 0; i < (int)inputs.size(); i++) {
     if (inputs[i] != readback[i]) {
       printf("%d. %s|%s  vs  %s|%s\n",
 	     i,
@@ -37,6 +37,6 @@ int main(int argc, char **argv) {
 	     SimpleFM2::InputToString(readback[i].second).c_str());
     }
   }
-  
+
   return 0;
 }

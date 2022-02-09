@@ -19,8 +19,7 @@ vector<pair<uint8, uint8>> SimpleFM2::ReadInputsEx(
     vector<pair<int, string>> *subtitles) {
   vector<string> contents = Util::ReadFileToLines(filename);
   vector<pair<uint8, uint8>> out;
-  for (int i = 0; i < contents.size(); i++) {
-    string line = contents[i];
+  for (string line : contents) {
     if (subtitles != nullptr &&
         Util::StartsWith(line, "subtitle ")) {
       string rest = line.substr(9, string::npos);
@@ -153,7 +152,7 @@ void SimpleFM2::WriteInputsWithSubtitles2P(
   for (const pair<int, string> &sub : subtitles)
     fprintf(f, "subtitle %d %s\n", sub.first, sub.second.c_str());
 
-  for (int i = 0; i < inputs.size(); i++) {
+  for (size_t i = 0; i < inputs.size(); i++) {
     fprintf(f, "|%c|", (i == 0) ? '2' : '0');
     auto Controller = [f](uint8 input) {
       static constexpr char gamepad[] = "RLDUTSBA";
@@ -177,7 +176,7 @@ vector<pair<int, string>> SimpleFM2::MakeSparseSubtitles(
     const vector<string> &dense_subtitles) {
   vector<pair<int, string>> out;
   const string *last = nullptr;
-  for (int i = 0; i < dense_subtitles.size(); i++) {
+  for (size_t i = 0; i < dense_subtitles.size(); i++) {
     if (last == nullptr || *last != dense_subtitles[i]) {
       out.emplace_back(i, dense_subtitles[i]);
     }

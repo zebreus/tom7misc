@@ -89,9 +89,9 @@ int State::SubWrite(EmuFile *os, const vector<SFORMAT> &sf) {
   TRACE_SCOPED_STAY_ENABLED_IF(false);
 
   for (const SFORMAT &f : sf) {
-    CHECK(f.s != ~0);
+    CHECK(f.s != ~(uint32)0);
     #if 0
-    if (sf->s == ~0) {
+    if (sf->s == ~(uint23)0) {
       // Link to another struct
       const uint32 tmp = SubWrite(os, (const SFORMAT *)sf->v);
 
@@ -153,7 +153,7 @@ int State::WriteStateChunk(EmuFile *os, int type,
 const SFORMAT *State::CheckS(const vector<SFORMAT> &sf,
                              uint32 tsize, SKEY desc) {
   for (const SFORMAT &f : sf) {
-    CHECK(f.s != ~0);
+    CHECK(f.s != ~(uint32)0);
     if (f.desc == desc) {
       if (tsize != (f.s & (~FCEUSTATE_FLAGS))) return nullptr;
       return &f;
@@ -283,7 +283,7 @@ bool State::FCEUSS_SaveRAW(std::vector<uint8> *out) {
   if (SPreSave && SPostSave) SPostSave(fc);
 
   // save the length of the file
-  const int len = os.size();
+  const uint32 len = os.size();
 
   // PERF shrink to fit?
 
@@ -358,7 +358,7 @@ void State::AddExStateReal(void *v, uint32 s, int type, SKEY desc,
     }
   }
 
-  CHECK(s != ~0);
+  CHECK(s != ~(uint32)0);
 
   SFORMAT sf{v, s, desc};
   if (type) sf.s |= FCEUSTATE_RLSB;

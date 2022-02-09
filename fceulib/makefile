@@ -7,7 +7,8 @@ all: emulator_test.exe bench.exe fm2tofm7.exe difftrace.exe dumptrace.exe make-c
 # -Wstrict-overflow=3
 # -std=c++11
 # -DDISABLE_SOUND=1 -DDISABLE_VIDEO=1
-CXXFLAGS=-std=c++17 -Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include 
+CXXFLAGS=-std=c++20 -Wall -Wno-deprecated -I/usr/local/include
+
 # XXX -O2
 OPT=-g -O2  # -O3 -fno-strict-aliasing
 # try -flto!
@@ -70,7 +71,7 @@ MAPPEROBJECTS=mappers/6.o mappers/61.o mappers/24and26.o mappers/51.o mappers/69
 # XXX: Probably a bunch of this can go?
 UTILSOBJECTS= utils/memory.o utils/crc32.o utils/endian.o utils/md5.o utils/xstring.o
 
-# unused - 
+# unused -
 # boards/a9711.o
 # boards/n-c22m.o
 # boards/179.o

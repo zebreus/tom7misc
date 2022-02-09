@@ -134,10 +134,10 @@ static string Compress(vector<uint8> &inputs) {
   int linelength = 1;
   auto GetRun =
     [&inputs](int p) -> std::tuple<uint8, int, int> {
-      CHECK(p < inputs.size());
+      CHECK(p < (int)inputs.size());
       uint8 v = inputs[p];
       int len = 0;
-      while (p < inputs.size() && inputs[p] == v) {
+      while (p < (int)inputs.size() && inputs[p] == v) {
         p++;
         len++;
       }
@@ -145,7 +145,7 @@ static string Compress(vector<uint8> &inputs) {
       return {v, p, len};
   };
 
-  while (pos < inputs.size()) {
+  while (pos < (int)inputs.size()) {
     uint8 input;
     int len;
     std::tie(input, pos, len) = GetRun(pos);
@@ -227,13 +227,13 @@ static vector<pair<uint8, uint8>> InternalParseString2P(
   auto ReadToken =
     [&error_context, &contents, &pos](uint8 prev, uint8 *inputs, int *n) {
       // 0 byte should not be in files, or anyway is treated as EOF.
-      while (pos < contents.size()) {
+      while (pos < (int)contents.size()) {
 
         // With pos at the beginning of a string like +rua, return
         // the 8-bit input that it indicates.
         auto GetInputs =
           [&contents, &pos, prev]() -> uint8 {
-            if (pos < contents.size()) {
+            if (pos < (int)contents.size()) {
               const char c = contents[pos];
               if (c == '_') {
                 pos++;
@@ -243,7 +243,7 @@ static vector<pair<uint8, uint8>> InternalParseString2P(
               if (c == '+' || c == '-') pos++;
 
               uint8 mask = 0;
-              while (pos < contents.size()) {
+              while (pos < (int)contents.size()) {
                 const char d = contents[pos];
                 switch (d) {
                 case 'r': mask |= (1 << 7); pos++; continue;
@@ -292,7 +292,7 @@ static vector<pair<uint8, uint8>> InternalParseString2P(
         case '8':
         case '9':
           *n = 0;
-          while (pos < contents.size() &&
+          while (pos < (int)contents.size() &&
                  isdigit(contents[pos])) {
             *n = (*n * 10) + (contents[pos] - '0');
             pos++;
@@ -347,10 +347,10 @@ static vector<pair<uint8, uint8>> InternalParseString2P(
   }
  done:;
 
-  const int length = (int)max(p1.size(), p2.size());
+  const size_t length = max(p1.size(), p2.size());
   vector<pair<uint8, uint8>> together;
   together.reserve(length);
-  for (int i = 0; i < length; i++) {
+  for (size_t i = 0; i < length; i++) {
     together.emplace_back((i < p1.size()) ? p1[i] : 0,
                           (i < p2.size()) ? p2[i] : 0);
   }
