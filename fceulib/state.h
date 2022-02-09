@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef __STATE_H
-#define __STATE_H
+#ifndef _FCEULIB_STATE_H
+#define _FCEULIB_STATE_H
 
 #include <vector>
 #include <unordered_set>
@@ -98,7 +98,7 @@ struct State {
   explicit State(FC *fc);
 
   // Tom 7's simplified versions. These should only be used for in-memory saves!
-  bool FCEUSS_SaveRAW(std::vector<uint8> *out);
+  bool FCEUSS_SaveRAW(std::vector<uint8> *out) const;
   bool FCEUSS_LoadRAW(const std::vector<uint8> &in);
 
   // I think these add additional locations to the set of saved memories.
@@ -116,9 +116,10 @@ struct State {
     AddExStateReal(v, s, t, MakeSKEY(d), __FILE__ ":" STRINGIFY_LINE(__LINE__) )
  private:
 
-  int SubWrite(EmuFile *os, const std::vector<SFORMAT> &sf);
+  static int SubWrite(EmuFile *os, const std::vector<SFORMAT> &sf);
 
-  int WriteStateChunk(EmuFile *os, int type, const std::vector<SFORMAT> &sf);
+  static int WriteStateChunk(EmuFile *os, int type,
+                             const std::vector<SFORMAT> &sf);
 
   const SFORMAT *CheckS(const std::vector<SFORMAT> &sf,
                         uint32 tsize, SKEY desc);
@@ -140,12 +141,8 @@ struct State {
   // avoid the linear time CheckS.
   std::unordered_set<SKEY, HashDesc, EqDesc> used_keys;
 
-  // XXX Can probably init in constructor?
-  bool state_initialized = false;
-  std::vector<SFORMAT> sfcpu, sfcpuc;
-  void InitState();
-
-  FC *fc = nullptr;
+  FC *fc = nullptr;  
+  const std::vector<SFORMAT> sfcpu, sfcpuc;
 };
 
 // indicates that the value is a multibyte integer that needs to be

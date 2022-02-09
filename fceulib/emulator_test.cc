@@ -1,4 +1,8 @@
 
+// FIXME: This test seems broken. Maybe it was too ambitious!
+// Should have some easy-to-run standalone tests here for
+// the basics. :(
+
 #include "emulator.h"
 
 #ifdef __MINGW32__
@@ -188,8 +192,8 @@ struct Collage {
     auto Write4 = [this, &screen](int sx, int sy, int dx, int dy) {
       int sp = sx * 4 + sy * 256 * 4;
       int dp = dx * 4 + dy * WIDTH * 4;
-      CHECK(dp >= 0 && dp + 3 < cur.size()) << dp << " " << cur.size();
-      CHECK(sp >= 0 && sp + 3 < screen.size());
+      CHECK(dp >= 0 && dp + 3 < (int)cur.size()) << dp << " " << cur.size();
+      CHECK(sp >= 0 && sp + 3 < (int)screen.size());
       cur[dp + 0] = screen[sp + 0];
       cur[dp + 1] = screen[sp + 1];
       cur[dp + 2] = screen[sp + 2];
@@ -255,7 +259,7 @@ static SerialResult RunGameSerially(
     const uint64 cx = emu->RamChecksum();            \
     CHECK_EQ(cx, (field))                            \
       << "\nExpected ram to be " << #field << " = "  \
-      << (field) << "\nbut got " << cx;               \
+      << (field) << "\nbut got " << cx;              \
   } while(0)
 
   TRACEF("Serially %s", game.cart.c_str());
@@ -268,7 +272,7 @@ static SerialResult RunGameSerially(
 # define CHECK_RAM_STEP(i) do {                                 \
     const int idx = (i);                                        \
     CHECK(idx >= 0);                                            \
-    CHECK(idx < checksums.size());                              \
+    CHECK(idx < (int)checksums.size());                         \
     CHECK(!FULL || idx < actual_rams.size());                   \
     const uint64 cx = emu->RamChecksum();                       \
     if (cx != checksums[idx]) {                                 \
@@ -290,7 +294,7 @@ static SerialResult RunGameSerially(
         }                                                       \
         fprintf(stderr, "Total of %d byte mismatch(es):\n",     \
                 (int)mismatches.size());                        \
-        for (int j = 0; j < mismatches.size(); j++) {           \
+        for (int j = 0; j < (int)mismatches.size(); j++) {      \
           fprintf(stderr, "%s%s", mismatches[j].c_str(),        \
                   j < mismatches.size() - 1 ? ", " : "!");      \
           if (j > 20) {                                         \

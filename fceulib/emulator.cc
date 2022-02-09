@@ -364,11 +364,11 @@ void Emulator::GetBasis(vector<uint8> *out) {
   fc->state->FCEUSS_SaveRAW(out);
 }
 
-void Emulator::SaveUncompressed(vector<uint8> *out) {
+void Emulator::SaveUncompressed(vector<uint8> *out) const {
   fc->state->FCEUSS_SaveRAW(out);
 }
 
-vector<uint8> Emulator::SaveUncompressed() {
+vector<uint8> Emulator::SaveUncompressed() const {
   vector<uint8> ret;
   SaveUncompressed(&ret);
   return ret;

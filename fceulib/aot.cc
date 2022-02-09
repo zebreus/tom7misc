@@ -598,7 +598,7 @@ struct AheadOfTime {
     #if USE_LOCALS
     for (int i = 0; i < NUM_REGS; i++) {
       fprintf(f, I "%s %s = %s;\n",
-	      regs[i].ctype, regs[i].local_name, regs[i].xfield);
+              regs[i].ctype, regs[i].local_name, regs[i].xfield);
     }
     #endif
   }
@@ -612,7 +612,7 @@ struct AheadOfTime {
     fprintf(f, I);
     for (int i = 0; i < NUM_REGS; i++) {
       if (mask & regs[i].id) {
-	fprintf(f, " %s=%s;", regs[i].xfield, regs[i].local_name);
+        fprintf(f, " %s=%s;", regs[i].xfield, regs[i].local_name);
       }
     }
     fprintf(f, "\n");
@@ -627,7 +627,7 @@ struct AheadOfTime {
     fprintf(f, I);
     for (int i = 0; i < NUM_REGS; i++) {
       if (mask & regs[i].id) {
-	fprintf(f, " %s=%s;", regs[i].local_name, regs[i].xfield);
+        fprintf(f, " %s=%s;", regs[i].local_name, regs[i].xfield);
       }
     }
     fprintf(f, "\n");
@@ -679,56 +679,56 @@ struct AheadOfTime {
   #endif
   
   uint32 GenInstruction(const Code &code,
-			uint8 b1, uint32 pc_addr, FILE *f) {
+                        uint8 b1, uint32 pc_addr, FILE *f) {
 
     auto ReadMem = [this, &code, f](Exp<uint16> addr) -> Exp<uint8> {
       Exp<uint8> res{0};
 
       if (addr.Known() && code.known[addr.Value()]) {
-	res = Exp<uint8>(code.code[addr.Value()]);
+        res = Exp<uint8>(code.code[addr.Value()]);
       } else if (addr.Known()) {
-	// Could fall through to the next case, but it's nice to avoid
-	// generating variables we don't need.
-	const string val_sym = GenSym("v");
-	if (addr.Value() < 0x800) {
-	  // Addresses 0-2047 are always mapped to RAM. (Jeesh, I hope!)
-	  fprintf(f,
-		  I "const uint8 %s = fceu->RAM[0x%04x];\n",
-		  val_sym.c_str(), addr.Value());
-	} else {
-	  // PERF: Also, here we know the address, so we can also avoid
-	  // dynamically dispatching to the read handler. Add some metadata
-	  // to mappers that lets us call the appropriate handler directly.
-	  //
-	  // This also helps the C compiler optimize this block since
-	  // external read handlers could do anything (and some do). It
-	  // would also be useful if handler metadata told us that some
-	  // registers are untouched.
+        // Could fall through to the next case, but it's nice to avoid
+        // generating variables we don't need.
+        const string val_sym = GenSym("v");
+        if (addr.Value() < 0x800) {
+          // Addresses 0-2047 are always mapped to RAM. (Jeesh, I hope!)
+          fprintf(f,
+                  I "const uint8 %s = fceu->RAM[0x%04x];\n",
+                  val_sym.c_str(), addr.Value());
+        } else {
+          // PERF: Also, here we know the address, so we can also avoid
+          // dynamically dispatching to the read handler. Add some metadata
+          // to mappers that lets us call the appropriate handler directly.
+          //
+          // This also helps the C compiler optimize this block since
+          // external read handlers could do anything (and some do). It
+          // would also be useful if handler metadata told us that some
+          // registers are untouched.
 
-	  // But the PC (and jammed bit) can't be modified in mappers.
-	  FlushLocals(f, ~PRIVATE_TO_X6502);
-	  fprintf(f, 
-		  I "const uint8 %s = fceu->ARead[0x%04x](fc, 0x%04x);\n",
-		  val_sym.c_str(), addr.Value(), addr.Value());
-	  LoadLocals(f, ~PRIVATE_TO_X6502);
-	}
-	res = Exp<uint8>(val_sym);
+          // But the PC (and jammed bit) can't be modified in mappers.
+          FlushLocals(f, ~PRIVATE_TO_X6502);
+          fprintf(f, 
+                  I "const uint8 %s = fceu->ARead[0x%04x](fc, 0x%04x);\n",
+                  val_sym.c_str(), addr.Value(), addr.Value());
+          LoadLocals(f, ~PRIVATE_TO_X6502);
+        }
+        res = Exp<uint8>(val_sym);
       } else {
-	// Need to serialize addr and val.
-	const string addr_sym = GenSym("a");
-	const string val_sym = GenSym("v");
-	fprintf(f,
-		I "const uint16 %s = %s;\n", addr_sym.c_str(),
-		addr.String().c_str());
+        // Need to serialize addr and val.
+        const string addr_sym = GenSym("a");
+        const string val_sym = GenSym("v");
+        fprintf(f,
+                I "const uint16 %s = %s;\n", addr_sym.c_str(),
+                addr.String().c_str());
 
-	// Unknown address so very little hope that we can save locals.
-	// But the PC (and jammed bit) can't be modified in mappers.
-	FlushLocals(f, ~PRIVATE_TO_X6502);
-	fprintf(f, 
-		I "const uint8 %s = fceu->ARead[%s](fc, %s);\n",
-		val_sym.c_str(), addr_sym.c_str(), addr_sym.c_str());
-	LoadLocals(f, ~PRIVATE_TO_X6502);
-	res = Exp<uint8>(val_sym);
+        // Unknown address so very little hope that we can save locals.
+        // But the PC (and jammed bit) can't be modified in mappers.
+        FlushLocals(f, ~PRIVATE_TO_X6502);
+        fprintf(f, 
+                I "const uint8 %s = fceu->ARead[%s](fc, %s);\n",
+                val_sym.c_str(), addr_sym.c_str(), addr_sym.c_str());
+        LoadLocals(f, ~PRIVATE_TO_X6502);
+        res = Exp<uint8>(val_sym);
       }
 
       // res is a value now. Write to data bus.
@@ -739,26 +739,26 @@ struct AheadOfTime {
     // PERF: Look for places where I call this with an 8 bit argument
     // (there are some); those can just access RAM directly.
     auto WriteMem = [this, f](const Exp<uint16> &addr_exp,
-			      const Exp<uint8> &val_exp) {
+                              const Exp<uint8> &val_exp) {
       if (addr_exp.Known()) {
-	if (addr_exp.Value() < 0x800) {
-	  fprintf(f,
-		  I "fceu->RAM[0x%04x] = %s;\n",
-		  addr_exp.Value(), val_exp.String().c_str());
-	} else {
-	  // PERF! Same deal; when the address is known, avoid indirection.
-	  FlushLocals(f, ~PRIVATE_TO_X6502);
-	  fprintf(f, I "fceu->BWrite[0x%04x](fc, 0x%04x, %s);\n",
-		  addr_exp.Value(), addr_exp.Value(),
-		  val_exp.String().c_str());
-	  LoadLocals(f, ~PRIVATE_TO_X6502);
-	}
+        if (addr_exp.Value() < 0x800) {
+          fprintf(f,
+                  I "fceu->RAM[0x%04x] = %s;\n",
+                  addr_exp.Value(), val_exp.String().c_str());
+        } else {
+          // PERF! Same deal; when the address is known, avoid indirection.
+          FlushLocals(f, ~PRIVATE_TO_X6502);
+          fprintf(f, I "fceu->BWrite[0x%04x](fc, 0x%04x, %s);\n",
+                  addr_exp.Value(), addr_exp.Value(),
+                  val_exp.String().c_str());
+          LoadLocals(f, ~PRIVATE_TO_X6502);
+        }
       } else {
-	FlushLocals(f, ~PRIVATE_TO_X6502);
-	fprintf(f, I "fceu->BWrite[%s](fc, %s, %s);\n",
-		addr_exp.String().c_str(), addr_exp.String().c_str(),
-		val_exp.String().c_str());
-	LoadLocals(f, ~PRIVATE_TO_X6502);
+        FlushLocals(f, ~PRIVATE_TO_X6502);
+        fprintf(f, I "fceu->BWrite[%s](fc, %s, %s);\n",
+                addr_exp.String().c_str(), addr_exp.String().c_str(),
+                val_exp.String().c_str());
+        LoadLocals(f, ~PRIVATE_TO_X6502);
       }
     };
 
@@ -767,7 +767,7 @@ struct AheadOfTime {
       // (that were previously set to the register) here, getting a
       // constant value from ZNTable and avoiding setting/clearing bits.
       fprintf(f, I LOCAL_P " = (" LOCAL_P " & ~(Z_FLAG | N_FLAG)) | "
-	      "ZNTable[%s];\n", reg.c_str());
+              "ZNTable[%s];\n", reg.c_str());
     };
 
     auto X_ZNT = [f](const string &reg) {
@@ -775,7 +775,7 @@ struct AheadOfTime {
     };
     
     auto LD_IM = [&code, &pc_addr, f, &ReadMem](
-	std::function<void(Exp<uint8>)> op) {
+        std::function<void(Exp<uint8>)> op) {
       Exp<uint8> x = ReadMem(Exp<uint16>(pc_addr));
       pc_addr++; pc_addr &= 0xFFFF;
       fprintf(f, I LOCAL_PC " = 0x%04x;\n", pc_addr);
@@ -792,19 +792,19 @@ struct AheadOfTime {
       fprintf(f, I LOCAL_PC " = 0x%04x;\n", pc_addr);
 
       if (value_low.Known() && value_high.Known()) {
-	uint16 value = ((uint16)value_low.Value()) |
-	  ((uint16)value_high.Value() << 8);
-	fprintf(f,
-		I "// Known GetAB from $%04x = $%04x\n",
-		src_addr, value);
-	return Exp<uint16>(value);
+        uint16 value = ((uint16)value_low.Value()) |
+          ((uint16)value_high.Value() << 8);
+        fprintf(f,
+                I "// Known GetAB from $%04x = $%04x\n",
+                src_addr, value);
+        return Exp<uint16>(value);
       } else {
-	string sym = GenSym("ab");
-	fprintf(f, I "const uint16 %s = ((uint16)%s) | "
-		"((uint16)%s << 8);  // GetAB\n",
-		sym.c_str(), value_low.String().c_str(),
-		value_high.String().c_str());
-	return Exp<uint16>(sym);
+        string sym = GenSym("ab");
+        fprintf(f, I "const uint16 %s = ((uint16)%s) | "
+                "((uint16)%s << 8);  // GetAB\n",
+                sym.c_str(), value_low.String().c_str(),
+                value_high.String().c_str());
+        return Exp<uint16>(sym);
       }
     };
 
@@ -812,7 +812,7 @@ struct AheadOfTime {
     // hits (or doesn't hit?) another page, it triggers a read
     // handler (and ignores the result) in addition to the cycle penalty.
     auto GetABIRD = [this, &code, &pc_addr, f, &GetAB, &ReadMem](
-	Exp<uint8> idx) {
+        Exp<uint8> idx) {
       Exp<uint16> ab = GetAB();
       const string sym = GenSym("t");
       // idx is always a register, so not known. PERF: This is a place
@@ -823,16 +823,16 @@ struct AheadOfTime {
       // around 0x801b in mario.nes; reg_X is set to a constant 5
       // and then used to index into another known address.
       fprintf(f, I "uint16 %s = %s + %s;\n",
-	      sym.c_str(), ab.String().c_str(), idx.String().c_str());
+              sym.c_str(), ab.String().c_str(), idx.String().c_str());
       fprintf(f, I "if ((%s ^ %s) & 0x100) {\n",
-	      sym.c_str(), ab.String().c_str());
+              sym.c_str(), ab.String().c_str());
       // There was an & 0xFFFF in x6502's code, but I don't see how
       // that can do anything.
       
       Exp<uint8> unused = ReadMem(
-	  Exp<uint16>(StringPrintf("(%s ^ 0x100)", sym.c_str())));
+          Exp<uint16>(StringPrintf("(%s ^ 0x100)", sym.c_str())));
       fprintf(f, I "  (void) %s;  // Unused GetABIRD\n",
-	      unused.String().c_str());
+              unused.String().c_str());
       ADDCYC(f, 1);
       fprintf(f, I "}\n");
       return Exp<uint16>(sym);
@@ -848,13 +848,13 @@ struct AheadOfTime {
       // reads.
       const string sym = GenSym("x");
       fprintf(
-	  f,
-	  I "const uint16 %s = \n"
-	  I "  (uint16)fceu->RAM[0xFF & (%s + " LOCAL_X ")] |\n"
-	  I "  ((uint16)(fceu->RAM[0xFF & (%s + 1 + " LOCAL_X ")]) << 8);\n",
-	  sym.c_str(),
-	  tmp.String().c_str(),
-	  tmp.String().c_str());
+          f,
+          I "const uint16 %s = \n"
+          I "  (uint16)fceu->RAM[0xFF & (%s + " LOCAL_X ")] |\n"
+          I "  ((uint16)(fceu->RAM[0xFF & (%s + 1 + " LOCAL_X ")]) << 8);\n",
+          sym.c_str(),
+          tmp.String().c_str(),
+          tmp.String().c_str());
       return Exp<uint16>(sym);
     };
 
@@ -866,19 +866,19 @@ struct AheadOfTime {
       pc_addr++; pc_addr &= 0xFFFF;
       fprintf(f, I LOCAL_PC " = 0x%04x;\n", pc_addr);
       fprintf(f,
-	      I "const uint16 %s = (uint16)fceu->RAM[%s] |\n"
-	      I "  ((uint16)fceu->RAM[0xFF & (%s + 1)] << 8);\n",
-	      rt.c_str(), loc.String().c_str(), loc.String().c_str());
+              I "const uint16 %s = (uint16)fceu->RAM[%s] |\n"
+              I "  ((uint16)fceu->RAM[0xFF & (%s + 1)] << 8);\n",
+              rt.c_str(), loc.String().c_str(), loc.String().c_str());
       fprintf(f,
-	      I "const uint16 %s = %s + (uint16)" LOCAL_Y ";\n",
-	      sym.c_str(), rt.c_str());
+              I "const uint16 %s = %s + (uint16)" LOCAL_Y ";\n",
+              sym.c_str(), rt.c_str());
       fprintf(f,
-	      I "if ((%s ^ %s) & 0x100) {\n",
-	      sym.c_str(), rt.c_str());
+              I "if ((%s ^ %s) & 0x100) {\n",
+              sym.c_str(), rt.c_str());
       // Also anded with 0xFFFF, but I left it out because I think
       // sym can just be 16 bits.
       Exp<uint8> unused = ReadMem(
-	  Exp<uint16>(StringPrintf("(%s ^ 0x100)", sym.c_str())));
+          Exp<uint16>(StringPrintf("(%s ^ 0x100)", sym.c_str())));
       fprintf(f, I "(void) %s;  // Unused GetIYRD\n", unused.String().c_str());
       ADDCYC(f, 1);
       fprintf(f, "}\n");
@@ -894,15 +894,15 @@ struct AheadOfTime {
       pc_addr++; pc_addr &= 0xFFFF;
       fprintf(f, I LOCAL_PC " = 0x%04x;\n", pc_addr);
       fprintf(f,
-	      I "const uint16 %s = (uint16)fceu->RAM[%s] |\n"
-	      I "  ((uint16)fceu->RAM[0xFF & (%s + 1)] << 8);\n",
-	      rt.c_str(), loc.String().c_str(), loc.String().c_str());
+              I "const uint16 %s = (uint16)fceu->RAM[%s] |\n"
+              I "  ((uint16)fceu->RAM[0xFF & (%s + 1)] << 8);\n",
+              rt.c_str(), loc.String().c_str(), loc.String().c_str());
       fprintf(f,
-	      I "const uint16 %s = %s + (uint16)" LOCAL_Y ";\n",
-	      sym.c_str(), rt.c_str());
+              I "const uint16 %s = %s + (uint16)" LOCAL_Y ";\n",
+              sym.c_str(), rt.c_str());
       Exp<uint8> unused = ReadMem(
-	  Exp<uint16>(StringPrintf("((%s & 0x00FF) | (%s & 0xFF00))",
-				   sym.c_str(), rt.c_str())));
+          Exp<uint16>(StringPrintf("((%s & 0x00FF) | (%s & 0xFF00))",
+                                   sym.c_str(), rt.c_str())));
       fprintf(f, I "(void) %s;  // Unused GetIYWR\n", unused.String().c_str());
       return Exp<uint16>(sym);
     };
@@ -912,12 +912,12 @@ struct AheadOfTime {
       const string sym = GenSym("abiwr");
       Exp<uint16> rt = GetAB();
       fprintf(f, I "const uint16 %s = %s + (uint16)(%s);\n",
-	      sym.c_str(), rt.String().c_str(), idx.String().c_str());
+              sym.c_str(), rt.String().c_str(), idx.String().c_str());
       Exp<uint8> unused = ReadMem(
-	  Exp<uint16>(StringPrintf("((%s & 0x00FF) | ((%s) & 0xFF00))",
-				   sym.c_str(), rt.String().c_str())));
+          Exp<uint16>(StringPrintf("((%s & 0x00FF) | ((%s) & 0xFF00))",
+                                   sym.c_str(), rt.String().c_str())));
       fprintf(f, I "(void) %s;  // Unused GetABIWR\n",
-	      unused.String().c_str());
+              unused.String().c_str());
       return Exp<uint16>(sym);
     };
     
@@ -937,9 +937,9 @@ struct AheadOfTime {
       fprintf(f, I LOCAL_PC " = 0x%04x; // GetZPI\n", pc_addr);
       string sym = GenSym("zpi");
       fprintf(f, I "const uint8 %s = (%s) + (%s);\n",
-	      sym.c_str(),
-	      idx.String().c_str(),
-	      x.String().c_str());
+              sym.c_str(),
+              idx.String().c_str(),
+              x.String().c_str());
       return Exp<uint8>(sym);
     };
 
@@ -952,7 +952,7 @@ struct AheadOfTime {
     };
 
     auto RMW_AB = [f, &ReadMem, &WriteMem, &GetAB](
-	std::function<Exp<uint8>(Exp<uint8>)> op) {
+        std::function<Exp<uint8>(Exp<uint8>)> op) {
       Exp<uint16> aa = GetAB();
       Exp<uint8> x = ReadMem(aa);
       // x6502 does this write of the value right back, presumably
@@ -963,8 +963,8 @@ struct AheadOfTime {
     };
 
     auto RMW_ABI = [f, &ReadMem, &WriteMem, &GetABIWR](
-	Exp<uint8> reg,
-	std::function<Exp<uint8>(Exp<uint8>)> op) {
+        Exp<uint8> reg,
+        std::function<Exp<uint8>(Exp<uint8>)> op) {
       Exp<uint16> aa = GetABIWR(reg);
       Exp<uint8> x = ReadMem(aa);
       // x6502 does this write of the value right back, presumably
@@ -975,20 +975,20 @@ struct AheadOfTime {
     };
 
     auto RMW_ABX = [this, f, &RMW_ABI](
-	std::function<Exp<uint8>(Exp<uint8>)> op) {
+        std::function<Exp<uint8>(Exp<uint8>)> op) {
       string sym = GenSym("rmwabx");
       fprintf(f, I "const uint8 %s = " LOCAL_X ";\n", sym.c_str());
       return RMW_ABI(Exp<uint8>(sym), op);
     };
     auto RMW_ABY = [this, f, &RMW_ABI](
-	std::function<Exp<uint8>(Exp<uint8>)> op) {
+        std::function<Exp<uint8>(Exp<uint8>)> op) {
       string sym = GenSym("rmwaby");
       fprintf(f, I "const uint8 %s = " LOCAL_Y ";\n", sym.c_str());
       return RMW_ABI(Exp<uint8>(sym), op);
     };
 
     auto RMW_IX = [&GetIX, &ReadMem, &WriteMem](
-	std::function<Exp<uint8>(Exp<uint8>)> op) {
+        std::function<Exp<uint8>(Exp<uint8>)> op) {
       Exp<uint16> aa = GetIX();
       Exp<uint8> x = ReadMem(aa);
       WriteMem(aa, x);
@@ -997,7 +997,7 @@ struct AheadOfTime {
     };
 
     auto RMW_IY = [&GetIYWR, &ReadMem, &WriteMem](
-	std::function<Exp<uint8>(Exp<uint8>)> op) {
+        std::function<Exp<uint8>(Exp<uint8>)> op) {
       Exp<uint16> aa = GetIYWR();
       Exp<uint8> x = ReadMem(aa);
       WriteMem(aa, x);
@@ -1009,23 +1009,23 @@ struct AheadOfTime {
       Exp<uint8> aa = GetZP();
       string sym = GenSym("x");
       fprintf(f, I "const uint8 %s = fceu->RAM[%s];\n",
-	      sym.c_str(), aa.String().c_str());
+              sym.c_str(), aa.String().c_str());
       Exp<uint8> y = op(Exp<uint8>(sym));
       fprintf(f, I "fceu->RAM[%s] = %s;\n",
-	      aa.String().c_str(), y.String().c_str());
+              aa.String().c_str(), y.String().c_str());
     };
 
     auto RMW_ZPX = [this, f, &GetZPI](
-	std::function<Exp<uint8>(Exp<uint8>)> op) {
+        std::function<Exp<uint8>(Exp<uint8>)> op) {
       string regx = GenSym("rmwzpx");
       fprintf(f, I "const uint8 %s = " LOCAL_X ";\n", regx.c_str());
       Exp<uint8> aa = GetZPI(Exp<uint8>(regx));
       string sym = GenSym("x");
       fprintf(f, I "const uint8 %s = fceu->RAM[%s];\n",
-	      sym.c_str(), aa.String().c_str());
+              sym.c_str(), aa.String().c_str());
       Exp<uint8> y = op(Exp<uint8>(sym));
       fprintf(f, I "fceu->RAM[%s] = %s;\n",
-	      aa.String().c_str(), y.String().c_str());
+              aa.String().c_str(), y.String().c_str());
     };
     
     auto LD_IX = [&GetIX, &ReadMem](std::function<void(Exp<uint8>)> op) {
@@ -1041,15 +1041,15 @@ struct AheadOfTime {
     };
     
     auto LD_AB = [&code, &pc_addr, f, &ReadMem, &GetAB](
-	std::function<void(Exp<uint8>)> op) {
+        std::function<void(Exp<uint8>)> op) {
       Exp<uint16> aa = GetAB();
       Exp<uint8> x = ReadMem(aa);
       op(x);
     };
 
     auto LD_ABI = [&code, f, &GetABIRD, &ReadMem](
-	Exp<uint8> idx,
-	std::function<void(Exp<uint8>)> op) {
+        Exp<uint8> idx,
+        std::function<void(Exp<uint8>)> op) {
       Exp<uint16> aa = GetABIRD(idx);
       Exp<uint8> x = ReadMem(aa);
       op(x);
@@ -1070,29 +1070,29 @@ struct AheadOfTime {
       Exp<uint8> aa = GetZP();
       const string sym = GenSym("x");
       fprintf(f, I "const uint8 %s = fceu->RAM[%s];\n",
-	      sym.c_str(), aa.String().c_str());
+              sym.c_str(), aa.String().c_str());
       op(Exp<uint8>(sym));
     };
 
     auto LD_ZPX = [this, &code, f, &GetZPI](
-	std::function<void(Exp<uint8>)> op) {
+        std::function<void(Exp<uint8>)> op) {
       const string regx = GenSym("ldzpx");
       fprintf(f, I "const uint8 %s = " LOCAL_X ";\n", regx.c_str());
       Exp<uint8> aa = GetZPI(Exp<uint8>(regx));
       const string sym = GenSym("x");
       fprintf(f, I "const uint8 %s = fceu->RAM[%s];\n",
-	      sym.c_str(), aa.String().c_str());
+              sym.c_str(), aa.String().c_str());
       op(Exp<uint8>(sym));
     };
 
     auto LD_ZPY = [this, &code, f, &GetZPI](
-	std::function<void(Exp<uint8>)> op) {
+        std::function<void(Exp<uint8>)> op) {
       const string regy = GenSym("ldzpy");
       fprintf(f, I "const uint8 %s = " LOCAL_Y ";\n", regy.c_str());
       Exp<uint8> aa = GetZPI(Exp<uint8>(regy));
       const string sym = GenSym("x");
       fprintf(f, I "const uint8 %s = fceu->RAM[%s];\n",
-	      sym.c_str(), aa.String().c_str());
+              sym.c_str(), aa.String().c_str());
       op(Exp<uint8>(sym));
     };
 
@@ -1125,10 +1125,10 @@ struct AheadOfTime {
 
     auto BIT = [f](Exp<uint8> val) {
       fprintf(f,
-	      I LOCAL_P " = (" LOCAL_P " & ~(Z_FLAG | V_FLAG | N_FLAG)) |\n"
-	      I "  (ZNTable[%s & " LOCAL_A "] & Z_FLAG) |\n"
-	      I "  (%s & (V_FLAG | N_FLAG));\n",
-	      val.String().c_str(), val.String().c_str());
+              I LOCAL_P " = (" LOCAL_P " & ~(Z_FLAG | V_FLAG | N_FLAG)) |\n"
+              I "  (ZNTable[%s & " LOCAL_A "] & Z_FLAG) |\n"
+              I "  (%s & (V_FLAG | N_FLAG));\n",
+              val.String().c_str(), val.String().c_str());
     };
 
     auto EOR = [f, &X_ZN](Exp<uint8> val) {
@@ -1139,17 +1139,17 @@ struct AheadOfTime {
     auto ADC = [this, &code, f, &X_ZNT](Exp<uint8> val) {
       const string sym = GenSym("adc");
       fprintf(f, I "const uint32 %s = "
-	      "(uint32)(%s) + " LOCAL_A " + (" LOCAL_P " & 1);\n",
-	      sym.c_str(), val.String().c_str());
+              "(uint32)(%s) + " LOCAL_A " + (" LOCAL_P " & 1);\n",
+              sym.c_str(), val.String().c_str());
       fprintf(f,
-	      I LOCAL_P " =\n"
-	      I "  (" LOCAL_P " & ~(Z_FLAG | C_FLAG | N_FLAG | V_FLAG)) |\n"
-	      I "  (((((" LOCAL_A " ^ %s) & 0x80) ^ 0x80) &\n"
+              I LOCAL_P " =\n"
+              I "  (" LOCAL_P " & ~(Z_FLAG | C_FLAG | N_FLAG | V_FLAG)) |\n"
+              I "  (((((" LOCAL_A " ^ %s) & 0x80) ^ 0x80) &\n"
               I "    ((" LOCAL_A " ^ %s) & 0x80)) >> 1) |\n"
-	      I "  ((%s >> 8) & C_FLAG);\n",
-	      val.String().c_str(),
-	      sym.c_str(),
-	      sym.c_str());
+              I "  ((%s >> 8) & C_FLAG);\n",
+              val.String().c_str(),
+              sym.c_str(),
+              sym.c_str());
       fprintf(f, I LOCAL_A " = %s;\n", sym.c_str());
       X_ZNT(LOCAL_A);
     };
@@ -1157,15 +1157,15 @@ struct AheadOfTime {
     auto SBC = [this, &code, f, &X_ZNT](Exp<uint8> val) {
       const string sym = GenSym("sbc");
       fprintf(f, I "const uint32 %s = "
-	      "(uint32)" LOCAL_A " - %s - ((" LOCAL_P " & 1) ^ 1);\n",
-	      sym.c_str(), val.String().c_str());
+              "(uint32)" LOCAL_A " - %s - ((" LOCAL_P " & 1) ^ 1);\n",
+              sym.c_str(), val.String().c_str());
       fprintf(f,
-	      I LOCAL_P " =\n"
-	      I "  (" LOCAL_P " & ~(Z_FLAG | C_FLAG | N_FLAG | V_FLAG)) |\n"
-	      I "  (((" LOCAL_A " ^ %s) & (" LOCAL_A " ^ %s) & 0x80) >> 1) |\n"
-	      I "  (((%s >> 8) & C_FLAG) ^ C_FLAG);\n",
-	      sym.c_str(), val.String().c_str(), 
-	      sym.c_str());
+              I LOCAL_P " =\n"
+              I "  (" LOCAL_P " & ~(Z_FLAG | C_FLAG | N_FLAG | V_FLAG)) |\n"
+              I "  (((" LOCAL_A " ^ %s) & (" LOCAL_A " ^ %s) & 0x80) >> 1) |\n"
+              I "  (((%s >> 8) & C_FLAG) ^ C_FLAG);\n",
+              sym.c_str(), val.String().c_str(), 
+              sym.c_str());
       fprintf(f, I LOCAL_A " = %s;\n", sym.c_str());
       X_ZNT(LOCAL_A);
     };
@@ -1178,20 +1178,20 @@ struct AheadOfTime {
     // In the x6502 code, some of the "r" parameters actually depend
     // on the computed address (AA), so that is explicit here.
     auto ST_ABI = [&GetABIWR, &WriteMem](
-	Exp<uint8> reg,
-	std::function<Exp<uint8>(Exp<uint16>)> op) {
+        Exp<uint8> reg,
+        std::function<Exp<uint8>(Exp<uint16>)> op) {
       Exp<uint16> aa = GetABIWR(reg);
       WriteMem(aa, op(aa));
     };
 
     auto ST_ABX = [this, f, &ST_ABI](
-	std::function<Exp<uint8>(Exp<uint16>)> op) {
+        std::function<Exp<uint8>(Exp<uint16>)> op) {
       const string sym = GenSym("stabx");
       fprintf(f, I "const uint8 %s = " LOCAL_X ";\n", sym.c_str());
       ST_ABI(Exp<uint8>(sym), op);
     };
     auto ST_ABY = [this, f, &ST_ABI](
-	std::function<Exp<uint8>(Exp<uint16>)> op) {
+        std::function<Exp<uint8>(Exp<uint16>)> op) {
       const string sym = GenSym("staby");
       fprintf(f, I "const uint8 %s = " LOCAL_Y ";\n", sym.c_str());
       ST_ABI(Exp<uint8>(sym), op);
@@ -1203,7 +1203,7 @@ struct AheadOfTime {
     };
 
     auto ST_IY = [&GetIYWR, &WriteMem](
-	std::function<Exp<uint8>(Exp<uint16>)> r) {
+        std::function<Exp<uint8>(Exp<uint16>)> r) {
       Exp<uint16> aa = GetIYWR();
       WriteMem(aa, r(aa));
     };
@@ -1218,7 +1218,7 @@ struct AheadOfTime {
       fprintf(f, "const uint8 %s = " LOCAL_X ";\n", sym.c_str());
       Exp<uint8> aa = GetZPI(Exp<uint8>(sym));
       fprintf(f, I "fceu->RAM[%s] = %s;\n",
-	      aa.String().c_str(), exp.String().c_str());
+              aa.String().c_str(), exp.String().c_str());
     };
 
     auto ST_ZPY = [this, f, &GetZPI](Exp<uint8> exp) {
@@ -1226,12 +1226,12 @@ struct AheadOfTime {
       fprintf(f, "const uint8 %s = " LOCAL_Y ";\n", sym.c_str());
       Exp<uint8> aa = GetZPI(Exp<uint8>(sym));
       fprintf(f, I "fceu->RAM[%s] = %s;\n",
-	      aa.String().c_str(), exp.String().c_str());
+              aa.String().c_str(), exp.String().c_str());
     };
     
     auto PUSH = [&code, f](Exp<uint8> v) {
       fprintf(f, I "fceu->RAM[0x100 + " LOCAL_S "] = %s;\n",
-	      v.String().c_str());
+              v.String().c_str());
       fprintf(f, I LOCAL_S "--;\n");
     };
 
@@ -1239,9 +1239,9 @@ struct AheadOfTime {
       fprintf(f, I LOCAL_S "++;\n");
       const string sym = GenSym("v");
       fprintf(f,
-	      I "const uint8 %s = "
-	      "(" LOCAL_DB " = fceu->RAM[0x100 + " LOCAL_S "]);\n",
-	      sym.c_str());
+              I "const uint8 %s = "
+              "(" LOCAL_DB " = fceu->RAM[0x100 + " LOCAL_S "]);\n",
+              sym.c_str());
       op(Exp<uint8>(sym));
     };
     
@@ -1250,42 +1250,42 @@ struct AheadOfTime {
       fprintf(f, I "if (%s) {\n", cond.String().c_str());
       uint32 pc_save = pc_addr;
       LD_IM([&](Exp<uint8> disp) {
-	// True branch.
-	// Ugh, be careful here. The displacement byte is treated as a
-	// signed integer. NESDEV's 6502.txt implies it uses a sign-bit
-	// encoding (unlikely? this would be pretty dumb, since
-	// zero is a useless displacement and you get it twice, among
-	// other problems). It's possible that there were some tricks
-	// going on with x6502.cc since the PC is also being simultaneously
-	// incremented. Going with a signed two's complement byte, since
-	// other docs imply that and it makes more sense.
-	if (false && disp.Known()) {
-	  // PERF implement this case. It would allow us to call the
-	  // entry point for the branch directly, compute the page
-	  // boundary cycle penalty, etc. Should almost always be
-	  // known since it comes from immediate byte.
-	} else {
-	  string disp_sym = GenSym("disp");
-	  fprintf(f, I "const int32 %s = (int8)(%s);\n",
-		  disp_sym.c_str(),
-		  disp.String().c_str());
-	  // PERF any reason this can't be combined with the second
-	  // ADDCYC below?
-	  ADDCYC(f, 1);
-	  const uint32 tmp = pc_addr;
-	  // Note: Starting at this point we don't know the PC!
-	  // (in the true branch..)
-	  pc_addr = 0xFFFFFFFF;
-	  fprintf(f, I LOCAL_PC " += %s;\n", disp_sym.c_str());
-	  fprintf(f, I "if ((0x%04x ^ " LOCAL_PC ") & 0x100) {\n", tmp);
-	  // Penalty for crossing page boundary.
-	  ADDCYC(f, 1);
-	  fprintf(f, I "}\n");
-	  // Since the program counter is unknown, we have to
-	  // return to the driver.
-	  FlushLocals(f, ~0);
-	  fprintf(f, I "return; // Unknown JR\n");
-	}
+        // True branch.
+        // Ugh, be careful here. The displacement byte is treated as a
+        // signed integer. NESDEV's 6502.txt implies it uses a sign-bit
+        // encoding (unlikely? this would be pretty dumb, since
+        // zero is a useless displacement and you get it twice, among
+        // other problems). It's possible that there were some tricks
+        // going on with x6502.cc since the PC is also being simultaneously
+        // incremented. Going with a signed two's complement byte, since
+        // other docs imply that and it makes more sense.
+        if (false && disp.Known()) {
+          // PERF implement this case. It would allow us to call the
+          // entry point for the branch directly, compute the page
+          // boundary cycle penalty, etc. Should almost always be
+          // known since it comes from immediate byte.
+        } else {
+          string disp_sym = GenSym("disp");
+          fprintf(f, I "const int32 %s = (int8)(%s);\n",
+                  disp_sym.c_str(),
+                  disp.String().c_str());
+          // PERF any reason this can't be combined with the second
+          // ADDCYC below?
+          ADDCYC(f, 1);
+          const uint32 tmp = pc_addr;
+          // Note: Starting at this point we don't know the PC!
+          // (in the true branch..)
+          pc_addr = 0xFFFFFFFF;
+          fprintf(f, I LOCAL_PC " += %s;\n", disp_sym.c_str());
+          fprintf(f, I "if ((0x%04x ^ " LOCAL_PC ") & 0x100) {\n", tmp);
+          // Penalty for crossing page boundary.
+          ADDCYC(f, 1);
+          fprintf(f, I "}\n");
+          // Since the program counter is unknown, we have to
+          // return to the driver.
+          FlushLocals(f, ~0);
+          fprintf(f, I "return; // Unknown JR\n");
+        }
       });
       // Execution in the meta language does not follow the same
       // conditional structure as the object language; we need to
@@ -1302,12 +1302,12 @@ struct AheadOfTime {
     auto CMPL = [this, &code, f, &X_ZN](string reg, Exp<uint8> a2) {
       const string sym = GenSym("c");
       fprintf(f, I "const uint32 %s = (uint32)(%s) - (uint32)(%s);\n",
-	      sym.c_str(),
-	      reg.c_str(), a2.String().c_str());
+              sym.c_str(),
+              reg.c_str(), a2.String().c_str());
       X_ZN(StringPrintf("%s & 0xFF", sym.c_str()));
       fprintf(f, I LOCAL_P " = (" LOCAL_P " & ~C_FLAG) |\n");
       fprintf(f, I "  (((%s >> 8) & C_FLAG) ^ C_FLAG);\n",
-	      sym.c_str());
+              sym.c_str());
     };
 
     auto CMP = [CMPL](Exp<uint8> a2) { CMPL(LOCAL_A, a2); };
@@ -1318,12 +1318,12 @@ struct AheadOfTime {
     auto AXS = [this, f, X_ZN](Exp<uint8> x) {
       string sym = GenSym("t");
       fprintf(f, I "const uint16 %s =\n"
-	      I "  (uint16)(" LOCAL_A " & " LOCAL_X ") - (uint16)(%s);\n",
-	      sym.c_str(), x.String().c_str());
+              I "  (uint16)(" LOCAL_A " & " LOCAL_X ") - (uint16)(%s);\n",
+              sym.c_str(), x.String().c_str());
       X_ZN(StringPrintf("(%s & 0xFF)", sym.c_str()));
       fprintf(f,
-	      I LOCAL_P " = (" LOCAL_P " & ~C_FLAG) |\n"
-	      I "  (((%s >> 8) & C_FLAG) ^ C_FLAG);\n", sym.c_str());
+              I LOCAL_P " = (" LOCAL_P " & ~C_FLAG) |\n"
+              I "  (((%s >> 8) & C_FLAG) ^ C_FLAG);\n", sym.c_str());
       fprintf(f, LOCAL_X " = %s;\n", sym.c_str());
     };
     
@@ -1333,7 +1333,7 @@ struct AheadOfTime {
     auto DEC = [this, f, &X_ZN](Exp<uint8> x) {
       const string sym = GenSym("dec");
       fprintf(f, I "const uint8 %s = %s - 1;\n",
-	      sym.c_str(), x.String().c_str());
+              sym.c_str(), x.String().c_str());
       X_ZN(sym);
       return Exp<uint8>(sym);
     };
@@ -1341,7 +1341,7 @@ struct AheadOfTime {
     auto INC = [this, f, &X_ZN](Exp<uint8> x) {
       const string sym = GenSym("inc");
       fprintf(f, I "const uint8 %s = %s + 1;\n",
-	      sym.c_str(), x.String().c_str());
+              sym.c_str(), x.String().c_str());
       X_ZN(sym);
       return Exp<uint8>(sym);
     };
@@ -1350,9 +1350,9 @@ struct AheadOfTime {
     auto ASL = [this, f, &X_ZN](Exp<uint8> x) {
       const string sym = GenSym("asl");
       fprintf(f, I LOCAL_P " = (" LOCAL_P " & ~C_FLAG) | ((%s) >> 7);\n",
-	      x.String().c_str());
+              x.String().c_str());
       fprintf(f, I "const uint8 %s = (uint8)(%s << 1);\n",
-	      sym.c_str(), x.String().c_str());
+              sym.c_str(), x.String().c_str());
       X_ZN(sym);
       return Exp<uint8>(sym);
     };
@@ -1361,11 +1361,11 @@ struct AheadOfTime {
     auto LSR = [this, f, &X_ZNT](Exp<uint8> x) {
       const string sym = GenSym("asl");
       fprintf(f,
-	      I LOCAL_P " = (" LOCAL_P " & ~(C_FLAG | N_FLAG | Z_FLAG)) |\n"
-	      I "  ((%s) & 1);\n",
-	      x.String().c_str());
+              I LOCAL_P " = (" LOCAL_P " & ~(C_FLAG | N_FLAG | Z_FLAG)) |\n"
+              I "  ((%s) & 1);\n",
+              x.String().c_str());
       fprintf(f, I "const uint8 %s = ((uint8)%s) >> 1;\n",
-	      sym.c_str(), x.String().c_str());
+              sym.c_str(), x.String().c_str());
       X_ZNT(sym);
       return Exp<uint8>(sym);
     };
@@ -1373,9 +1373,9 @@ struct AheadOfTime {
     // Maybe "Arithmetic shift right?" Undocumented inst 0x4b.
     auto LSRA = [this, f, X_ZNT]() {
       fprintf(f,
-	      I LOCAL_P " = (" LOCAL_P " & ~(C_FLAG | N_FLAG | Z_FLAG)) |\n"
-	      I "  (" LOCAL_A " & 1);\n"
-	      I LOCAL_A " >>= 1;\n");
+              I LOCAL_P " = (" LOCAL_P " & ~(C_FLAG | N_FLAG | Z_FLAG)) |\n"
+              I "  (" LOCAL_A " & 1);\n"
+              I LOCAL_A " >>= 1;\n");
       X_ZNT(LOCAL_A);
     };
     
@@ -1383,14 +1383,14 @@ struct AheadOfTime {
       const string sym = GenSym("rol");
       const string xx = GenSym("xx");
       fprintf(f,
-	      I "const uint8 %s = (%s) >> 7;\n"
-	      I "const uint8 %s = ((%s) << 1) | (" LOCAL_P " & C_FLAG);\n",
-	      sym.c_str(), x.String().c_str(),
-	      xx.c_str(), x.String().c_str());
+              I "const uint8 %s = (%s) >> 7;\n"
+              I "const uint8 %s = ((%s) << 1) | (" LOCAL_P " & C_FLAG);\n",
+              sym.c_str(), x.String().c_str(),
+              xx.c_str(), x.String().c_str());
       fprintf(
-	  f,
-	  I LOCAL_P " = (" LOCAL_P " & ~(Z_FLAG | N_FLAG | C_FLAG)) | %s;\n",
-	  sym.c_str());
+          f,
+          I LOCAL_P " = (" LOCAL_P " & ~(Z_FLAG | N_FLAG | C_FLAG)) | %s;\n",
+          sym.c_str());
       X_ZNT(xx);
       return Exp<uint8>(xx);
     };
@@ -1399,15 +1399,15 @@ struct AheadOfTime {
       const string sym = GenSym("ror");
       const string xx = GenSym("xx");
       fprintf(f,
-	      I "const uint8 %s = (%s) & 1;\n"
-	      I "const uint8 %s = ((uint8)(%s) >> 1) |\n"
-	      I "  ((" LOCAL_P " & C_FLAG) << 7);\n",
-	      sym.c_str(), x.String().c_str(),
-	      xx.c_str(), x.String().c_str());
+              I "const uint8 %s = (%s) & 1;\n"
+              I "const uint8 %s = ((uint8)(%s) >> 1) |\n"
+              I "  ((" LOCAL_P " & C_FLAG) << 7);\n",
+              sym.c_str(), x.String().c_str(),
+              xx.c_str(), x.String().c_str());
       fprintf(
-	  f,
-	  I LOCAL_P " = (" LOCAL_P " & ~(Z_FLAG | N_FLAG | C_FLAG)) | %s;\n",
-	  sym.c_str());
+          f,
+          I LOCAL_P " = (" LOCAL_P " & ~(Z_FLAG | N_FLAG | C_FLAG)) | %s;\n",
+          sym.c_str());
       X_ZNT(xx);
       return Exp<uint8>(xx);
     };
@@ -1420,53 +1420,53 @@ struct AheadOfTime {
       PUSH(Exp<uint8>(pc_addr & 0xFF));
       const string psym = GenSym("brk");
       fprintf(f, "const uint8 %s = " LOCAL_P " | U_FLAG | B_FLAG;\n",
-	      psym.c_str());
+              psym.c_str());
       PUSH(Exp<uint8>(psym));
       fprintf(f,
-	      I LOCAL_P " |= I_FLAG;\n"
-	      I LOCAL_PI " |= I_FLAG;\n");
+              I LOCAL_P " |= I_FLAG;\n"
+              I LOCAL_PI " |= I_FLAG;\n");
       Exp<uint8> pc_low = ReadMem(Exp<uint16>(0xFFFE));
       Exp<uint8> pc_high = ReadMem(Exp<uint16>(0xFFFF));
       // PERF sometimes can know this address statically. But we don't
       // do anything with such information yet.
       pc_addr = 0xFFFFFFFF;
       fprintf(f,
-	      I LOCAL_PC " = ((uint16)%s) | ((uint16)(%s) << 8);\n",
-	      pc_low.String().c_str(),
-	      pc_high.String().c_str());
+              I LOCAL_PC " = ((uint16)%s) | ((uint16)(%s) << 8);\n",
+              pc_low.String().c_str(),
+              pc_high.String().c_str());
 
       return 0xFFFFFFFF;
     }
       
     case 0x40: /* RTI */
       POP([&](Exp<uint8> flags) {
-	fprintf(f, LOCAL_P " = %s;\n", flags.String().c_str());
-	// In x6502, "This is probably incorrect, so it's commented out."
-	// (then of course followed by the statement not commented out...)
-	fprintf(f, LOCAL_PI " = " LOCAL_P ";\n");
-	POP([&](Exp<uint8> pc_low) {
-	  POP([&](Exp<uint8> pc_high) {
-	    fprintf(f, LOCAL_PC " = ((uint16)%s) | ((uint16)(%s) << 8);\n",
-		    pc_low.String().c_str(),
-		    pc_high.String().c_str());
-	    pc_addr = 0xFFFFFFFF;
-	  });
-	});
+        fprintf(f, LOCAL_P " = %s;\n", flags.String().c_str());
+        // In x6502, "This is probably incorrect, so it's commented out."
+        // (then of course followed by the statement not commented out...)
+        fprintf(f, LOCAL_PI " = " LOCAL_P ";\n");
+        POP([&](Exp<uint8> pc_low) {
+          POP([&](Exp<uint8> pc_high) {
+            fprintf(f, LOCAL_PC " = ((uint16)%s) | ((uint16)(%s) << 8);\n",
+                    pc_low.String().c_str(),
+                    pc_high.String().c_str());
+            pc_addr = 0xFFFFFFFF;
+          });
+        });
       });
       // Address from RAM.
       return pc_addr;
       
     case 0x60: /* RTS */
       POP([&](Exp<uint8> pc_low) {
-	// n.b. this used to set an intermediate value for the PC
-	// before doing the second pop, and the pop could conceivably
-	// have triggered some read handler that inspected the PC.
-	// But not really, since pops are supposed to be directly
-	// from RAM.
-	POP([&](Exp<uint8> pc_high) {
-	  fprintf(f, I LOCAL_PC " = 1 + (((uint16)(%s) << 8) | %s);\n",
-		  pc_high.String().c_str(), pc_low.String().c_str());
-	});
+        // n.b. this used to set an intermediate value for the PC
+        // before doing the second pop, and the pop could conceivably
+        // have triggered some read handler that inspected the PC.
+        // But not really, since pops are supposed to be directly
+        // from RAM.
+        POP([&](Exp<uint8> pc_high) {
+          fprintf(f, I LOCAL_PC " = 1 + (((uint16)(%s) << 8) | %s);\n",
+                  pc_high.String().c_str(), pc_low.String().c_str());
+        });
       });
       // Address from RAM.
       return 0xFFFFFFFF;
@@ -1480,21 +1480,21 @@ struct AheadOfTime {
     case 0x08: { /* PHP */
       const string sym = GenSym("php");
       fprintf(f, "const uint8 %s = " LOCAL_P " | U_FLAG | B_FLAG;\n",
-	      sym.c_str());
+              sym.c_str());
       PUSH(Exp<uint8>(sym));
       return pc_addr;
     }
       
     case 0x68: /* PLA */
       POP([&](Exp<uint8> v) {
-	fprintf(f, I LOCAL_A " = %s;\n", v.String().c_str());
-	X_ZN(LOCAL_A);
+        fprintf(f, I LOCAL_A " = %s;\n", v.String().c_str());
+        X_ZN(LOCAL_A);
       });
       return pc_addr;
 
     case 0x28: /* PLP */
       POP([&](Exp<uint8> v) {
-	fprintf(f, I LOCAL_P " = %s;\n", v.String().c_str());
+        fprintf(f, I LOCAL_P " = %s;\n", v.String().c_str());
       });
       return pc_addr;
       
@@ -1510,8 +1510,8 @@ struct AheadOfTime {
       Exp<uint8> pc_low = ReadMem(Exp<uint16>(start_pc));
       Exp<uint8> pc_high = ReadMem(Exp<uint16>(start_pc + 1));
       fprintf(f, I LOCAL_PC " = ((uint16)(%s) << 8) | %s;\n",
-	      pc_high.String().c_str(),
-	      pc_low.String().c_str());
+              pc_high.String().c_str(),
+              pc_low.String().c_str());
       pc_addr = 0xFFFFFFFF;
 
       // PERF We often know the actual destination address, and
@@ -1523,25 +1523,25 @@ struct AheadOfTime {
       Exp<uint16> tmp = GetAB();
       Exp<uint8> pc_low = ReadMem(tmp);
       Exp<uint16> tmp_plus_1 =
-	tmp.Known() ?
-	Exp<uint16>(((tmp.Value() + 1) & 0x00FF) | (tmp.Value() & 0xFF00)) :
-	Exp<uint16>(StringPrintf("((((%s) + 1) & 0x00FF) | ((%s) & 0xFF00))",
-				 tmp.String().c_str(), tmp.String().c_str()));
+        tmp.Known() ?
+        Exp<uint16>(((tmp.Value() + 1) & 0x00FF) | (tmp.Value() & 0xFF00)) :
+        Exp<uint16>(StringPrintf("((((%s) + 1) & 0x00FF) | ((%s) & 0xFF00))",
+                                 tmp.String().c_str(), tmp.String().c_str()));
       Exp<uint8> pc_high = ReadMem(tmp_plus_1);
       
       if (pc_low.Known() && pc_high.Known()) {
-	const uint16 new_pc = (uint16)pc_low.Value() |
-	  ((uint16)pc_high.Value() << 8);
-	pc_addr = new_pc;
-	fprintf(f, I LOCAL_PC " = 0x%04x;  // Known jmp 6c\n", pc_addr);
-	
+        const uint16 new_pc = (uint16)pc_low.Value() |
+          ((uint16)pc_high.Value() << 8);
+        pc_addr = new_pc;
+        fprintf(f, I LOCAL_PC " = 0x%04x;  // Known jmp 6c\n", pc_addr);
+        
       } else {
-	// n.b. this does reorder the write to reg_PC with the RdMem calls.
-	// Note that nothing accesses the PC except x6502.
-	fprintf(f, I LOCAL_PC " = (uint16)(%s) | ((uint16)(%s) << 8); "
-		" // Unknown jmp 6c\n",
-		pc_low.String().c_str(), pc_high.String().c_str());
-	pc_addr = 0xFFFFFFFF;
+        // n.b. this does reorder the write to reg_PC with the RdMem calls.
+        // Note that nothing accesses the PC except x6502.
+        fprintf(f, I LOCAL_PC " = (uint16)(%s) | ((uint16)(%s) << 8); "
+                " // Unknown jmp 6c\n",
+                pc_low.String().c_str(), pc_high.String().c_str());
+        pc_addr = 0xFFFFFFFF;
       }
 
       // We would know the destination in the true branch above.
@@ -1551,15 +1551,15 @@ struct AheadOfTime {
     case 0x20: /* JSR */
       // n.b. original code was akin to LD_IM.
       LD_IM([&](Exp<uint8> pc_low) {
-	PUSH(Exp<uint8>(255 & (pc_addr >> 8)));
-	PUSH(Exp<uint8>(255 & pc_addr));
+        PUSH(Exp<uint8>(255 & (pc_addr >> 8)));
+        PUSH(Exp<uint8>(255 & pc_addr));
 
-	// This load increments PC, but it gets immediately overwritten
-	// unconditionally here, so should be easy to optimize out.
-	LD_IM([&](Exp<uint8> pc_high) {
-	  fprintf(f, I LOCAL_PC " = ((uint16)(%s) << 8) | %s;\n",
-		  pc_high.String().c_str(), pc_low.String().c_str());
-	});
+        // This load increments PC, but it gets immediately overwritten
+        // unconditionally here, so should be easy to optimize out.
+        LD_IM([&](Exp<uint8> pc_high) {
+          fprintf(f, I LOCAL_PC " = ((uint16)(%s) << 8) | %s;\n",
+                  pc_high.String().c_str(), pc_low.String().c_str());
+        });
       });
       // We actually know the subroutine being called, but
       // inlining here can easily lead to madness.
@@ -2142,7 +2142,7 @@ struct AheadOfTime {
     }
 
       /* Here comes the undocumented instructions block.  Note that this
-	 implementation may be "wrong".  If so, please tell me.
+         implementation may be "wrong".  If so, please tell me.
       */
 
       /* AAC */
@@ -2150,7 +2150,7 @@ struct AheadOfTime {
     case 0x0B:
       LD_IM(AND);
       fprintf(f, I LOCAL_P " = (" LOCAL_P " & ~C_FLAG) | "
-	      "(" LOCAL_A " >> 7);\n");
+              "(" LOCAL_A " >> 7);\n");
       return pc_addr;
       
       /* AAX */
@@ -2158,7 +2158,7 @@ struct AheadOfTime {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
       ST_ZP(Exp<uint8>(StringPrintf("(%s & %s)",
-				    a.String().c_str(), x.String().c_str())));
+                                    a.String().c_str(), x.String().c_str())));
       return pc_addr;
     }
       
@@ -2166,7 +2166,7 @@ struct AheadOfTime {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
       ST_ZPY(Exp<uint8>(StringPrintf("(%s & %s)",
-				    a.String().c_str(), x.String().c_str())));
+                                    a.String().c_str(), x.String().c_str())));
       return pc_addr;
     }
       
@@ -2174,7 +2174,7 @@ struct AheadOfTime {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
       ST_AB(Exp<uint8>(StringPrintf("(%s & %s)",
-				    a.String().c_str(), x.String().c_str())));
+                                    a.String().c_str(), x.String().c_str())));
       return pc_addr;
     }
       
@@ -2182,23 +2182,23 @@ struct AheadOfTime {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
       ST_IX(Exp<uint8>(StringPrintf("(%s & %s)",
-				    a.String().c_str(), x.String().c_str())));
+                                    a.String().c_str(), x.String().c_str())));
       return pc_addr;
     }
       /* ARR - ARGH, MATEY! */
     case 0x6B:
       LD_IM([&](Exp<uint8> x) {
-	AND(x);
-	string sym = GenSym("arr");
-	fprintf(f,
-		I LOCAL_P " = (" LOCAL_P " & ~V_FLAG) |\n"
-		I "  ((" LOCAL_A " ^ (" LOCAL_A " >> 1)) & 0x40);\n");
-	fprintf(f, I "const uint8 %s = " LOCAL_A " >> 7;\n", sym.c_str());
-	fprintf(f,
-		I LOCAL_A " >>= 1;\n"
-		I LOCAL_A " |= (" LOCAL_P " & C_FLAG) << 7;\n"
-		I LOCAL_P " = (" LOCAL_P " & ~C_FLAG) | %s;\n", sym.c_str());
-	X_ZN(LOCAL_A);
+        AND(x);
+        string sym = GenSym("arr");
+        fprintf(f,
+                I LOCAL_P " = (" LOCAL_P " & ~V_FLAG) |\n"
+                I "  ((" LOCAL_A " ^ (" LOCAL_A " >> 1)) & 0x40);\n");
+        fprintf(f, I "const uint8 %s = " LOCAL_A " >> 7;\n", sym.c_str());
+        fprintf(f,
+                I LOCAL_A " >>= 1;\n"
+                I LOCAL_A " |= (" LOCAL_P " & C_FLAG) << 7;\n"
+                I LOCAL_P " = (" LOCAL_P " & ~C_FLAG) | %s;\n", sym.c_str());
+        X_ZN(LOCAL_A);
       });
       return pc_addr;
       
@@ -2216,8 +2216,8 @@ struct AheadOfTime {
       // is of course just 0xFF, and then 0xFF & x is just x.
       // I simplified it. -tom7
       LD_IM([&](Exp<uint8> x) {
-	LDA(x);
-	LDX(x);
+        LDA(x);
+        LDX(x);
       });
       return pc_addr;
 
@@ -2229,112 +2229,112 @@ struct AheadOfTime {
       /* DCP */
     case 0xC7:
       RMW_ZP([&](Exp<uint8> x) {
-	Exp<uint8> y = DEC(x);
-	CMP(y);
-	return y;
+        Exp<uint8> y = DEC(x);
+        CMP(y);
+        return y;
       });
       return pc_addr;
 
     case 0xD7:
       RMW_ZPX([&](Exp<uint8> x) {
-	Exp<uint8> y = DEC(x);
-	CMP(y);
-	return y;
+        Exp<uint8> y = DEC(x);
+        CMP(y);
+        return y;
       });
       return pc_addr;
 
     case 0xCF:
       RMW_AB([&](Exp<uint8> x) {
-	Exp<uint8> y = DEC(x);
-	CMP(y);
-	return y;
+        Exp<uint8> y = DEC(x);
+        CMP(y);
+        return y;
       });
       return pc_addr;
 
     case 0xDF:
       RMW_ABX([&](Exp<uint8> x) {
-	Exp<uint8> y = DEC(x);
-	CMP(y);
-	return y;
+        Exp<uint8> y = DEC(x);
+        CMP(y);
+        return y;
       });
       return pc_addr;
     case 0xDB:
       RMW_ABY([&](Exp<uint8> x) {
-	Exp<uint8> y = DEC(x);
-	CMP(y);
-	return y;
+        Exp<uint8> y = DEC(x);
+        CMP(y);
+        return y;
       });
       return pc_addr;
 
     case 0xC3:
       RMW_IX([&](Exp<uint8> x) {
-	Exp<uint8> y = DEC(x);
-	CMP(y);
-	return y;
+        Exp<uint8> y = DEC(x);
+        CMP(y);
+        return y;
       });
       return pc_addr;
 
     case 0xD3:
       RMW_IY([&](Exp<uint8> x) {
-	Exp<uint8> y = DEC(x);
-	CMP(y);
-	return y;
+        Exp<uint8> y = DEC(x);
+        CMP(y);
+        return y;
       });
       return pc_addr;
 
       /* ISB */
     case 0xE7:
       RMW_ZP([&](Exp<uint8> x) {
-	Exp<uint8> y = INC(x);
-	SBC(y);
-	return y;
+        Exp<uint8> y = INC(x);
+        SBC(y);
+        return y;
       });
       return pc_addr;
 
     case 0xF7:
       RMW_ZPX([&](Exp<uint8> x) {
-	Exp<uint8> y = INC(x);
-	SBC(y);
-	return y;
+        Exp<uint8> y = INC(x);
+        SBC(y);
+        return y;
       });
       return pc_addr;
 
     case 0xEF:
       RMW_AB([&](Exp<uint8> x) {
-	Exp<uint8> y = INC(x);
-	SBC(y);
-	return y;
+        Exp<uint8> y = INC(x);
+        SBC(y);
+        return y;
       });
       return pc_addr;
 
     case 0xFF:
       RMW_ABX([&](Exp<uint8> x) {
-	Exp<uint8> y = INC(x);
-	SBC(y);
-	return y;
+        Exp<uint8> y = INC(x);
+        SBC(y);
+        return y;
       });
       return pc_addr;
     case 0xFB:
       RMW_ABY([&](Exp<uint8> x) {
-	Exp<uint8> y = INC(x);
-	SBC(y);
-	return y;
+        Exp<uint8> y = INC(x);
+        SBC(y);
+        return y;
       });
       return pc_addr;
 
     case 0xE3:
       RMW_IX([&](Exp<uint8> x) {
-	Exp<uint8> y = INC(x);
-	SBC(y);
-	return y;
+        Exp<uint8> y = INC(x);
+        SBC(y);
+        return y;
       });
       return pc_addr;
 
     case 0xF3:
       RMW_IY([&](Exp<uint8> x) {
-	Exp<uint8> y = INC(x);
-	SBC(y);
-	return y;
+        Exp<uint8> y = INC(x);
+        SBC(y);
+        return y;
       });
       return pc_addr;
 
@@ -2385,53 +2385,53 @@ struct AheadOfTime {
       /* LAR */
     case 0xBB:
       RMW_ABY([&](Exp<uint8> x) {
-	fprintf(f, I LOCAL_S " &= %s;\n", x.String().c_str());
-	fprintf(f, I LOCAL_A " = " LOCAL_X " = " LOCAL_S ";\n");
-	X_ZN(LOCAL_X);
-	return x;
+        fprintf(f, I LOCAL_S " &= %s;\n", x.String().c_str());
+        fprintf(f, I LOCAL_A " = " LOCAL_X " = " LOCAL_S ";\n");
+        X_ZN(LOCAL_X);
+        return x;
       });
       return pc_addr;
 
       /* LAX */
     case 0xA7:
       LD_ZP([&](Exp<uint8> x) {
-	LDA(x);
-	LDX(x);
+        LDA(x);
+        LDX(x);
       });
       return pc_addr;
 
     case 0xB7:
       LD_ZPY([&](Exp<uint8> x) {
-	LDA(x);
-	LDX(x);
+        LDA(x);
+        LDX(x);
       });
       return pc_addr;
 
     case 0xAF:
       LD_AB([&](Exp<uint8> x) {
-	LDA(x);
-	LDX(x);
+        LDA(x);
+        LDX(x);
       });
       return pc_addr;
 
     case 0xBF:
       LD_ABY([&](Exp<uint8> x) {
-	LDA(x);
-	LDX(x);
+        LDA(x);
+        LDX(x);
       });
       return pc_addr;
 
     case 0xA3:
       LD_IX([&](Exp<uint8> x) {
-	LDA(x);
-	LDX(x);
+        LDA(x);
+        LDX(x);
       });
     return pc_addr;
 
     case 0xB3:
       LD_IY([&](Exp<uint8> x) {
-	LDA(x);
-	LDX(x);
+        LDA(x);
+        LDX(x);
       });
     return pc_addr;
 
@@ -2448,284 +2448,284 @@ struct AheadOfTime {
       /* RLA */
     case 0x27:
       RMW_ZP([&](Exp<uint8> x) {
-	Exp<uint8> y = ROL(x);
-	AND(y);
-	return y;
+        Exp<uint8> y = ROL(x);
+        AND(y);
+        return y;
       });
       return pc_addr;
 
     case 0x37:
       RMW_ZPX([&](Exp<uint8> x) {
-	Exp<uint8> y = ROL(x);
-	AND(y);
-	return y;
+        Exp<uint8> y = ROL(x);
+        AND(y);
+        return y;
       });
       return pc_addr;
 
     case 0x2F:
       RMW_AB([&](Exp<uint8> x) {
-	Exp<uint8> y = ROL(x);
-	AND(y);
-	return y;
+        Exp<uint8> y = ROL(x);
+        AND(y);
+        return y;
       });
       return pc_addr;
 
     case 0x3F:
       RMW_ABX([&](Exp<uint8> x) {
-	Exp<uint8> y = ROL(x);
-	AND(y);
-	return y;
+        Exp<uint8> y = ROL(x);
+        AND(y);
+        return y;
       });
       return pc_addr;
     case 0x3B:
       RMW_ABY([&](Exp<uint8> x) {
-	Exp<uint8> y = ROL(x);
-	AND(y);
-	return y;
+        Exp<uint8> y = ROL(x);
+        AND(y);
+        return y;
       });
       return pc_addr;
 
     case 0x23:
       RMW_IX([&](Exp<uint8> x) {
-	Exp<uint8> y = ROL(x);
-	AND(y);
-	return y;
+        Exp<uint8> y = ROL(x);
+        AND(y);
+        return y;
       });
       return pc_addr;
 
     case 0x33:
       RMW_IY([&](Exp<uint8> x) {
-	Exp<uint8> y = ROL(x);
-	AND(y);
-	return y;
+        Exp<uint8> y = ROL(x);
+        AND(y);
+        return y;
       });
       return pc_addr;
 
       /* RRA */
     case 0x67:
       RMW_ZP([&](Exp<uint8> x) {
-	Exp<uint8> y = ROR(x);
-	ADC(y);
-	return y;
+        Exp<uint8> y = ROR(x);
+        ADC(y);
+        return y;
       });
       return pc_addr;
 
     case 0x77:
       RMW_ZPX([&](Exp<uint8> x) {
-	Exp<uint8> y = ROR(x);
-	ADC(y);
-	return y;
+        Exp<uint8> y = ROR(x);
+        ADC(y);
+        return y;
       });
       return pc_addr;
 
     case 0x6F:
       RMW_AB([&](Exp<uint8> x) {
-	Exp<uint8> y = ROR(x);
-	ADC(y);
-	return y;
+        Exp<uint8> y = ROR(x);
+        ADC(y);
+        return y;
       });
       return pc_addr;
 
     case 0x7F:
       RMW_ABX([&](Exp<uint8> x) {
-	Exp<uint8> y = ROR(x);
-	ADC(y);
-	return y;
+        Exp<uint8> y = ROR(x);
+        ADC(y);
+        return y;
       });
       return pc_addr;
 
     case 0x7B: 
       RMW_ABY([&](Exp<uint8> x) {
-	Exp<uint8> y = ROR(x);
-	ADC(y);
-	return y;
+        Exp<uint8> y = ROR(x);
+        ADC(y);
+        return y;
       });
       return pc_addr;
 
     case 0x63: 
       RMW_IX([&](Exp<uint8> x) {
-	Exp<uint8> y = ROR(x);
-	ADC(y);
-	return y;
+        Exp<uint8> y = ROR(x);
+        ADC(y);
+        return y;
       });
       return pc_addr;
 
     case 0x73:
       RMW_IY([&](Exp<uint8> x) {
-	Exp<uint8> y = ROR(x);
-	ADC(y);
-	return y;
+        Exp<uint8> y = ROR(x);
+        ADC(y);
+        return y;
       });
       return pc_addr;
 
       /* SLO */
     case 0x07:
       RMW_ZP([&](Exp<uint8> x) {
-	Exp<uint8> y = ASL(x);
-	ORA(y);
-	return y;
+        Exp<uint8> y = ASL(x);
+        ORA(y);
+        return y;
       });
       return pc_addr;
 
     case 0x17:
       RMW_ZPX([&](Exp<uint8> x) {
-	Exp<uint8> y = ASL(x);
-	ORA(y);
-	return y;
+        Exp<uint8> y = ASL(x);
+        ORA(y);
+        return y;
       });
       return pc_addr;
 
     case 0x0F:
       RMW_AB([&](Exp<uint8> x) {
-	Exp<uint8> y = ASL(x);
-	ORA(y);
-	return y;
+        Exp<uint8> y = ASL(x);
+        ORA(y);
+        return y;
       });
       return pc_addr;
 
     case 0x1F:
       RMW_ABX([&](Exp<uint8> x) {
-	Exp<uint8> y = ASL(x);
-	ORA(y);
-	return y;
+        Exp<uint8> y = ASL(x);
+        ORA(y);
+        return y;
       });
       return pc_addr;
 
     case 0x1B:
       RMW_ABY([&](Exp<uint8> x) {
-	Exp<uint8> y = ASL(x);
-	ORA(y);
-	return y;
+        Exp<uint8> y = ASL(x);
+        ORA(y);
+        return y;
       });
       return pc_addr;
 
     case 0x03:
       RMW_IX([&](Exp<uint8> x) {
-	Exp<uint8> y = ASL(x);
-	ORA(y);
-	return y;
+        Exp<uint8> y = ASL(x);
+        ORA(y);
+        return y;
       });
       return pc_addr;
 
     case 0x13:
       RMW_IY([&](Exp<uint8> x) {
-	Exp<uint8> y = ASL(x);
-	ORA(y);
-	return y;
+        Exp<uint8> y = ASL(x);
+        ORA(y);
+        return y;
       });
       return pc_addr;
 
       /* SRE */
     case 0x47:
       RMW_ZP([&](Exp<uint8> x) {
-	Exp<uint8> y = LSR(x);
-	EOR(y);
-	return y;
+        Exp<uint8> y = LSR(x);
+        EOR(y);
+        return y;
       });
 
     case 0x57:
       RMW_ZPX([&](Exp<uint8> x) {
-	Exp<uint8> y = LSR(x);
-	EOR(y);
-	return y;
+        Exp<uint8> y = LSR(x);
+        EOR(y);
+        return y;
       });
       return pc_addr;
 
     case 0x4F:
       RMW_AB([&](Exp<uint8> x) {
-	Exp<uint8> y = LSR(x);
-	EOR(y);
-	return y;
+        Exp<uint8> y = LSR(x);
+        EOR(y);
+        return y;
       });
       return pc_addr;
 
     case 0x5F:
       RMW_ABX([&](Exp<uint8> x) {
-	Exp<uint8> y = LSR(x);
-	EOR(y);
-	return y;
+        Exp<uint8> y = LSR(x);
+        EOR(y);
+        return y;
       });
       return pc_addr;
 
     case 0x5B:
       RMW_ABY([&](Exp<uint8> x) {
-	Exp<uint8> y = LSR(x);
-	EOR(y);
-	return y;
+        Exp<uint8> y = LSR(x);
+        EOR(y);
+        return y;
       });
       return pc_addr;
 
     case 0x43:
       RMW_IX([&](Exp<uint8> x) {
-	Exp<uint8> y = LSR(x);
-	EOR(y);
-	return y;
+        Exp<uint8> y = LSR(x);
+        EOR(y);
+        return y;
       });
       return pc_addr;
 
     case 0x53:
       RMW_IY([&](Exp<uint8> x) {
-	Exp<uint8> y = LSR(x);
-	EOR(y);
-	return y;
+        Exp<uint8> y = LSR(x);
+        EOR(y);
+        return y;
       });
       return pc_addr;
 
       /* AXA - SHA */
     case 0x93:
       ST_IY([this, f](Exp<uint16> aa) {
-	Exp<uint8> a = Read(f, REG_A);
-	Exp<uint8> x = Read(f, REG_X);
-	Exp<uint8> y = Read(f, REG_Y);
-	return Exp<uint8>(
-	    StringPrintf("(%s & %s & "
-			 "((((uint16)(%s) - %s) >> 8) + 1))",
-			 a.String().c_str(), x.String().c_str(),
-			 aa.String().c_str(),
-			 y.String().c_str()));
+        Exp<uint8> a = Read(f, REG_A);
+        Exp<uint8> x = Read(f, REG_X);
+        Exp<uint8> y = Read(f, REG_Y);
+        return Exp<uint8>(
+            StringPrintf("(%s & %s & "
+                         "((((uint16)(%s) - %s) >> 8) + 1))",
+                         a.String().c_str(), x.String().c_str(),
+                         aa.String().c_str(),
+                         y.String().c_str()));
       });
       return pc_addr;
       
     case 0x9F:
       ST_ABY([this, f](Exp<uint16> aa) {
-	Exp<uint8> a = Read(f, REG_A);
-	Exp<uint8> x = Read(f, REG_X);
-	Exp<uint8> y = Read(f, REG_Y);
-	return Exp<uint8>(
-	    StringPrintf(
-		"(%s & %s & "
-		"((((uint16)(%s) - %s) >> 8) + 1))",
-		a.String().c_str(), x.String().c_str(),
-		aa.String().c_str(),
-		y.String().c_str()));
+        Exp<uint8> a = Read(f, REG_A);
+        Exp<uint8> x = Read(f, REG_X);
+        Exp<uint8> y = Read(f, REG_Y);
+        return Exp<uint8>(
+            StringPrintf(
+                "(%s & %s & "
+                "((((uint16)(%s) - %s) >> 8) + 1))",
+                a.String().c_str(), x.String().c_str(),
+                aa.String().c_str(),
+                y.String().c_str()));
       });
       return pc_addr;
 
     /* SYA */
     case 0x9C:
       ST_ABX([this, f](Exp<uint16> aa) {
-	Exp<uint8> x = Read(f, REG_X);
-	Exp<uint8> y = Read(f, REG_Y);
-	return Exp<uint8>(
-	    StringPrintf(
-		"(%s & ((((uint16)(%s) - %s) >> 8) + 1))",
-		y.String().c_str(),
-		aa.String().c_str(),
-		x.String().c_str()));
+        Exp<uint8> x = Read(f, REG_X);
+        Exp<uint8> y = Read(f, REG_Y);
+        return Exp<uint8>(
+            StringPrintf(
+                "(%s & ((((uint16)(%s) - %s) >> 8) + 1))",
+                y.String().c_str(),
+                aa.String().c_str(),
+                x.String().c_str()));
       });
       return pc_addr;
 
       /* SXA */
     case 0x9E:
       ST_ABY([this, f](Exp<uint16> aa) {
-	Exp<uint8> x = Read(f, REG_X);
-	Exp<uint8> y = Read(f, REG_Y);
-	return Exp<uint8>(
-	    StringPrintf(
-		"(%s & ((((uint16)(%s) - %s) >> 8) + 1))",
-		x.String().c_str(), 
-		aa.String().c_str(),
-		y.String().c_str()));
+        Exp<uint8> x = Read(f, REG_X);
+        Exp<uint8> y = Read(f, REG_Y);
+        return Exp<uint8>(
+            StringPrintf(
+                "(%s & ((((uint16)(%s) - %s) >> 8) + 1))",
+                x.String().c_str(), 
+                aa.String().c_str(),
+                y.String().c_str()));
       });
       return pc_addr;
 
@@ -2733,21 +2733,21 @@ struct AheadOfTime {
     case 0x9B:
       fprintf(f, I LOCAL_S " = " LOCAL_A " & " LOCAL_X ";\n");
       ST_ABY([this, f](Exp<uint16> aa) {
-	Exp<uint8> s = Read(f, REG_S);
-	Exp<uint8> y = Read(f, REG_Y);
-	return Exp<uint8>(
-	    StringPrintf(
-		"(%s & ((((uint16)(%s) - %s) >> 8) + 1))",
-		s.String().c_str(),
-		aa.String().c_str(),
-		y.String().c_str()));
+        Exp<uint8> s = Read(f, REG_S);
+        Exp<uint8> y = Read(f, REG_Y);
+        return Exp<uint8>(
+            StringPrintf(
+                "(%s & ((((uint16)(%s) - %s) >> 8) + 1))",
+                s.String().c_str(),
+                aa.String().c_str(),
+                y.String().c_str()));
       });
       return pc_addr;
 
       /* TOP */
     case 0x0C:
       LD_AB([f](Exp<uint8> x) {
-	fprintf(f, I "(void) %s;  // TOP\n", x.String().c_str());
+        fprintf(f, I "(void) %s;  // TOP\n", x.String().c_str());
       });
       return pc_addr;
 
@@ -2758,7 +2758,7 @@ struct AheadOfTime {
     case 0xDC:
     case 0xFC:
       LD_ABX([f, b1](Exp<uint8> x) {
-	fprintf(f, I "(void) %s;  // %02x\n", x.String().c_str(), b1);
+        fprintf(f, I "(void) %s;  // %02x\n", x.String().c_str(), b1);
       });
       return pc_addr;
 
@@ -2779,9 +2779,9 @@ struct AheadOfTime {
   void ADDCYC(FILE *f, int cycles) {
     // XXX local timestamp...?
     fprintf(f, I LOCAL_TCOUNT " += %d; "
-	    LOCAL_COUNT " -= %d; "
-	    "X->timestamp += %d;\n",
-	    cycles, cycles * 48, cycles);
+            LOCAL_COUNT " -= %d; "
+            "X->timestamp += %d;\n",
+            cycles, cycles * 48, cycles);
   }
 
   // XXX need to be checking count and returning when
@@ -2790,22 +2790,22 @@ struct AheadOfTime {
   // need to be able to jump to relative addresses, I guess
   // by updating PC and returning?
   void GenerateEntry(const CodeConfig &config,
-		     const Code &code,
-		     uint32 entry_addr,
-		     uint32 addr_past_end,
-		     const string &symbol,
-		     FILE *f) {
+                     const Code &code,
+                     uint32 entry_addr,
+                     uint32 addr_past_end,
+                     const string &symbol,
+                     FILE *f) {
     fprintf(f,
-	    "void %s_%04x(FC *fc) {\n",
-	    symbol.c_str(), entry_addr);
+            "void %s_%04x(FC *fc) {\n",
+            symbol.c_str(), entry_addr);
 
     // Copies of FC objects, used locally.
     fprintf(f,
-	    "  X6502 *X = fc->X; (void)X;\n"
-	    // "  const FCEU *fceu = fc->fceu;\n"  // const?
-	    "  Sound *sound = fc->sound; (void)sound;\n"
-	    "  FCEU *fceu = fc->fceu; (void)fceu;\n"  // const?
-	    );
+            "  X6502 *X = fc->X; (void)X;\n"
+            // "  const FCEU *fceu = fc->fceu;\n"  // const?
+            "  Sound *sound = fc->sound; (void)sound;\n"
+            "  FCEU *fceu = fc->fceu; (void)fceu;\n"  // const?
+            );
 
     DeclLocals(f);
     
@@ -2819,121 +2819,121 @@ struct AheadOfTime {
       // architectually RAM.
       // XXX isn't this just like code.Known()?
       if (pc_addr < entry_addr || pc_addr >= addr_past_end) {
-	fprintf(f, I "// PC $%04x exits code region.\n", pc_addr);
-	FlushLocals(f, ~0);
-	fprintf(f,
-		I "%s_any(fc);\n"
-		I "return;\n", symbol.c_str());
-	break;
+        fprintf(f, I "// PC $%04x exits code region.\n", pc_addr);
+        FlushLocals(f, ~0);
+        fprintf(f,
+                I "%s_any(fc);\n"
+                I "return;\n", symbol.c_str());
+        break;
       }
 
       const uint8 b1 = code.Get(pc_addr);
       if (!CanGenInstruction(b1)) {
-	fprintf(f, I "// Unimplemented instruction $%02x\n", b1);
-	FlushLocals(f, ~0);
-	fprintf(f,
-		I "%s_any(fc);\n"
-		I "return;\n", symbol.c_str());
-	break;
+        fprintf(f, I "// Unimplemented instruction $%02x\n", b1);
+        FlushLocals(f, ~0);
+        fprintf(f,
+                I "%s_any(fc);\n"
+                I "return;\n", symbol.c_str());
+        break;
       } else {
-	// PERF: Would be nice to avoid testing this over and over,
-	// like by testing the number of cycles we need for the
-	// straight-line code at the top of the entry point, and just
-	// running the slow interpreter if we don't have enough cycles
-	// left.
-	fprintf(f, I "if (" LOCAL_COUNT " <= 0) {\n");
-	FlushLocals(f, ~0);
-	fprintf(f, I "  return;\n"
-		I "}");
+        // PERF: Would be nice to avoid testing this over and over,
+        // like by testing the number of cycles we need for the
+        // straight-line code at the top of the entry point, and just
+        // running the slow interpreter if we don't have enough cycles
+        // left.
+        fprintf(f, I "if (" LOCAL_COUNT " <= 0) {\n");
+        FlushLocals(f, ~0);
+        fprintf(f, I "  return;\n"
+                I "}");
 
-	fprintf(f, I "// %04x = %02x\n", pc_addr, b1);
+        fprintf(f, I "// %04x = %02x\n", pc_addr, b1);
 
-	// PERF: Similarly, good to avoid testing this over and over.
-	// Mappers can trigger interrupt, as can sound.
-	fprintf(f, I "if (" LOCAL_IRQLOW ") {\n");
-	FlushLocals(f, ~0);
-	fprintf (f, I "%s_any(fc); return; }\n",
-		 symbol.c_str());
+        // PERF: Similarly, good to avoid testing this over and over.
+        // Mappers can trigger interrupt, as can sound.
+        fprintf(f, I "if (" LOCAL_IRQLOW ") {\n");
+        FlushLocals(f, ~0);
+        fprintf (f, I "%s_any(fc); return; }\n",
+                 symbol.c_str());
 
-	fprintf(f, I LOCAL_PI " = " LOCAL_P ";\n");
+        fprintf(f, I LOCAL_PI " = " LOCAL_P ";\n");
 
-	const int cycles = CycTable[b1];
-	// ADDCYC() macro.
-	ADDCYC(f, cycles);
+        const int cycles = CycTable[b1];
+        // ADDCYC() macro.
+        ADDCYC(f, cycles);
 
-	// XXX sort out whether we need to be modifying tcount now
-	// that we have locals.
-	// "temp" only used for the calls to irq and sound hooks, I guess
-	// in case they try to read tcount? (Actually, these calls can
-	// trigger DMA calls that call ADDCYC, so we need to make sure
-	// that we don't set to 0 after the call.)
-	fprintf(f, I "{\n"
-		I "  const int32 temp = " LOCAL_TCOUNT ";\n"
-		I "  " LOCAL_TCOUNT " = 0;\n");
+        // XXX sort out whether we need to be modifying tcount now
+        // that we have locals.
+        // "temp" only used for the calls to irq and sound hooks, I guess
+        // in case they try to read tcount? (Actually, these calls can
+        // trigger DMA calls that call ADDCYC, so we need to make sure
+        // that we don't set to 0 after the call.)
+        fprintf(f, I "{\n"
+                I "  const int32 temp = " LOCAL_TCOUNT ";\n"
+                I "  " LOCAL_TCOUNT " = 0;\n");
 
-	// Known effects of sound:
-	//  - Sound can trigger an interrupt (so read/write irqlow)
-	//  - Sound calls DMR, which does ADDCYC, overwrites DB,
-	//    and calls read handlers.
-	//    (maybe never reads from db though?)
-	//    HOWEVER, the address it does DMR from are guaranteed
-	//    to be >= 0x8000. So if we know something about the
-	//    mapper for this region, we can limit the collateral
-	//    to just DB/ADDCYC?
-	//
-	// FlushEmulateSound uses timestamp, but that is only called
-	// externally, not from SoundCPUHook.
-	//
-	// Other than this, the sound code is pretty self contained.
-	// So basically, if we know that DMC is not active, then
-	// we just have to worry about the interrupt. If we know that
-	// reads from 0x8000-0xFFFF don't have an effect, then we
-	// only need to flush:
-	//   - ADDCYC stuff
-	//   - interrupt flag
-	// and only need to read
-	//   - ADDCYC stuff,
-	//   - interrupt flag
-	//   - DB
-	// Since this is true for mario (and probably many games),
-	// let's do that latter case first. 
+        // Known effects of sound:
+        //  - Sound can trigger an interrupt (so read/write irqlow)
+        //  - Sound calls DMR, which does ADDCYC, overwrites DB,
+        //    and calls read handlers.
+        //    (maybe never reads from db though?)
+        //    HOWEVER, the address it does DMR from are guaranteed
+        //    to be >= 0x8000. So if we know something about the
+        //    mapper for this region, we can limit the collateral
+        //    to just DB/ADDCYC?
+        //
+        // FlushEmulateSound uses timestamp, but that is only called
+        // externally, not from SoundCPUHook.
+        //
+        // Other than this, the sound code is pretty self contained.
+        // So basically, if we know that DMC is not active, then
+        // we just have to worry about the interrupt. If we know that
+        // reads from 0x8000-0xFFFF don't have an effect, then we
+        // only need to flush:
+        //   - ADDCYC stuff
+        //   - interrupt flag
+        // and only need to read
+        //   - ADDCYC stuff,
+        //   - interrupt flag
+        //   - DB
+        // Since this is true for mario (and probably many games),
+        // let's do that latter case first. 
 
-	if (config.effectless_read_8000_ffff) {
-	  FlushLocals(f, ID_TCOUNT | ID_COUNT | ID_IRQLOW);
-	} else {
-	  // Slow case. In this case, could build a mask of all the
-	  // possibly-read regs for all the read mappers in 8000-ffff.
-	  FlushLocals(f, ~PRIVATE_TO_X6502);
-	}
+        if (config.effectless_read_8000_ffff) {
+          FlushLocals(f, ID_TCOUNT | ID_COUNT | ID_IRQLOW);
+        } else {
+          // Slow case. In this case, could build a mask of all the
+          // possibly-read regs for all the read mappers in 8000-ffff.
+          FlushLocals(f, ~PRIVATE_TO_X6502);
+        }
 
-	CHECK(!config.has_map_irq_hook) << "Not supported (yet)?";
-	// PERF Can remove/simplify calls to sound hook?
-	fprintf(f, I "  sound->SoundCPUHook(temp);\n");
+        CHECK(!config.has_map_irq_hook) << "Not supported (yet)?";
+        // PERF Can remove/simplify calls to sound hook?
+        fprintf(f, I "  sound->SoundCPUHook(temp);\n");
 
-	if (config.effectless_read_8000_ffff) {
-	  // See above, except DB may be written, so restore that.
-	  LoadLocals(f, ID_TCOUNT | ID_COUNT | ID_IRQLOW | ID_DB);
-	} else {
-	  LoadLocals(f, ~PRIVATE_TO_X6502);
-	}
+        if (config.effectless_read_8000_ffff) {
+          // See above, except DB may be written, so restore that.
+          LoadLocals(f, ID_TCOUNT | ID_COUNT | ID_IRQLOW | ID_DB);
+        } else {
+          LoadLocals(f, ~PRIVATE_TO_X6502);
+        }
 
-	fprintf(f, I "}\n");
-	
-	pc_addr++;
-	fprintf(f, I LOCAL_PC " = 0x%04x;\n", pc_addr & 0xFFFF);
+        fprintf(f, I "}\n");
+        
+        pc_addr++;
+        fprintf(f, I LOCAL_PC " = 0x%04x;\n", pc_addr & 0xFFFF);
 
-	// Instructions may introduce local variables (e.g. a temporary
-	// containing the result of calling a read handler), but they
-	// only need to be in scope for the instruction body.
-	fprintf(f, I "{\n");
-	pc_addr = GenInstruction(code, b1, pc_addr, f);
-	fprintf(f, I "}\n");
-	if (pc_addr == 0xFFFFFFFF) {
-	  fprintf(f, I "// Branch was unconditional.\n");
-	  FlushLocals(f, ~0);
-	  fprintf(f, I "return;\n");
-	  break;
-	}
+        // Instructions may introduce local variables (e.g. a temporary
+        // containing the result of calling a read handler), but they
+        // only need to be in scope for the instruction body.
+        fprintf(f, I "{\n");
+        pc_addr = GenInstruction(code, b1, pc_addr, f);
+        fprintf(f, I "}\n");
+        if (pc_addr == 0xFFFFFFFF) {
+          fprintf(f, I "// Branch was unconditional.\n");
+          FlushLocals(f, ~0);
+          fprintf(f, I "return;\n");
+          break;
+        }
       }
     }
 
@@ -2952,11 +2952,11 @@ struct AheadOfTime {
 
 // Returns the files written (without .cc extension).
 static vector<string> GenerateCode(const CodeConfig &config,
-				   const Code &code,
-				   uint32 addr_start,
-				   uint32 addr_past_end,
-				   const string &symbol,
-				   const string &cart_name) {
+                                   const Code &code,
+                                   uint32 addr_start,
+                                   uint32 addr_past_end,
+                                   const string &symbol,
+                                   const string &cart_name) {
   CHECK(addr_start <= 0xFFFF);
   CHECK(addr_past_end <= 0x10000);
 
@@ -2983,7 +2983,7 @@ static vector<string> GenerateCode(const CodeConfig &config,
   vector<string> ret;
   
   auto F = [&config, &code, addr_start, addr_past_end, &symbol, &cart_name,
-	    &ret_m, &ret](int i) {
+            &ret_m, &ret](int i) {
     AheadOfTime aot;
     string filebase = StringPrintf("%s_%d", symbol.c_str(), i);
     string filename = filebase + ".cc";
@@ -2991,31 +2991,31 @@ static vector<string> GenerateCode(const CodeConfig &config,
     
     // Prelude.
     fprintf(f,
-	    "// Generated code! Do not edit.\n"
-	    "// Generated from %s on [DATE].\n"
-	    "\n"
-	    "#include <cstdint>\n"
-	    "\n"
-	    "#include \"fc.h\"\n"
-	    "#include \"x6502.h\"\n"
-	    "#include \"sound.h\"\n"
-	    "#include \"fceu.h\"\n",
-	    cart_name.c_str());
+            "// Generated code! Do not edit.\n"
+            "// Generated from %s on [DATE].\n"
+            "\n"
+            "#include <cstdint>\n"
+            "\n"
+            "#include \"fc.h\"\n"
+            "#include \"x6502.h\"\n"
+            "#include \"sound.h\"\n"
+            "#include \"fceu.h\"\n",
+            cart_name.c_str());
 
     fprintf(f, "\n/* aot-prelude.inc */\n%s\n/* aot-prelude.inc */\n",
-	    ReadFile("aot-prelude.inc").c_str());
+            ReadFile("aot-prelude.inc").c_str());
 
     fprintf(f, "\n\n");
 
     // First, a function to call when we don't have a compiled
     // version.
     fprintf(f, "static void %s_any(FC *fc) { fc->X->RunLoop(); }\n\n",
-	    symbol.c_str());
+            symbol.c_str());
 
     // Then, a function for each address entry point.
     for (uint32 j = i;
-	 j < addr_past_end && j < i + config.entrypoints_per_file;
-	 j++) {
+         j < addr_past_end && j < i + config.entrypoints_per_file;
+         j++) {
       aot.GenerateEntry(config, code, j, addr_past_end, symbol, f);      
     }
 
@@ -3034,18 +3034,18 @@ static vector<string> GenerateCode(const CodeConfig &config,
 // One of these per compiled file. It does the per-Run setup and
 // coordinates control transfer between the chunks.
 static void GenerateDispatcher(const CodeConfig &config,
-			       uint32 addr_start,
-			       uint32 addr_past_end,
-			       const string &symbol,
-			       const string &filename) {
+                               uint32 addr_start,
+                               uint32 addr_past_end,
+                               const string &symbol,
+                               const string &filename) {
   FILE *f = fopen(filename.c_str(), "w");
   CHECK(f) << filename;
 
   fprintf(f,
-	  "#include <cstdint>\n"
-	  "#include \"x6502.h\"\n"
-	  "#include \"fc.h\"\n"
-	  "#include \"fceu.h\"\n\n");
+          "#include <cstdint>\n"
+          "#include \"x6502.h\"\n"
+          "#include \"fc.h\"\n"
+          "#include \"fceu.h\"\n\n");
   
   // Avoid needing a header file; just generate the externs here.
   for (int i = addr_start; i < addr_past_end; i++) {
@@ -3055,7 +3055,7 @@ static void GenerateDispatcher(const CodeConfig &config,
   // We put this in every file, but also need it here for gaps in the
   // entry table.
   fprintf(f, "\n\nstatic void %s_any(FC *fc) { fc->X->RunLoop(); }\n\n",
-	  symbol.c_str());
+          symbol.c_str());
   
   fprintf(f, "static void (*entries[0x10000])(FC *fc) = {\n");
   for (int i = 0; i < 0x10000; i++) {
@@ -3067,8 +3067,8 @@ static void GenerateDispatcher(const CodeConfig &config,
   fprintf(f, "};  // entries array\n\n");
 
   fprintf(f, "// Dispatcher.\n"
-	  "void %s_Run(FC *fc, int32 cycles) {\n",
-	  symbol.c_str());
+          "void %s_Run(FC *fc, int32 cycles) {\n",
+          symbol.c_str());
 
   fprintf(f, "  X6502 *X = fc->X;\n");
 
@@ -3131,7 +3131,7 @@ int main(int argc, char **argv) {
 
   if (argc != 2) {
     printf("Give the name of a game (no extension) on the command-line; "
-	   "it must have already been documented inside aot.cc.\n");
+           "it must have already been documented inside aot.cc.\n");
     return -1;
   }
 
@@ -3143,7 +3143,7 @@ int main(int argc, char **argv) {
     rom = ContraROM();
   } else {
     printf("Unknown game %s. You have to put some constants in aot.cc.\n",
-	   game.c_str());
+           game.c_str());
     return -1;
   }
   
@@ -3177,16 +3177,16 @@ int main(int argc, char **argv) {
 
   vector<string> files =
     GenerateCode(config, code, rom.code_addr_start, rom.code_addr_after_end,
-		 game, rom.file);
+                 game, rom.file);
   GenerateDispatcher(config, rom.code_addr_start, rom.code_addr_after_end,
-		     game, game + ".cc");
+                     game, game + ".cc");
   files.push_back(game);
 
   {
     // This just makes it easier to manually build makefiles during
     // development. XXX do this a better way.
     FILE *mf = fopen(StringPrintf("%s.makefile", game.c_str()).c_str(),
-		     "w");
+                     "w");
     CHECK(mf != nullptr);
     fprintf(mf, "FCEULIB_GAME_OBJECTS= ");
     for (const string &f : files) {

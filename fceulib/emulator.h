@@ -105,8 +105,8 @@ struct Emulator {
   // Save and load uncompressed. The memory will always be the same
   // size (Save and SaveEx may compress, which makes their output
   // significantly smaller), but this is the fastest in terms of CPU.
-  void SaveUncompressed(vector<uint8> *out);
-  vector<uint8> SaveUncompressed();
+  void SaveUncompressed(vector<uint8> *out) const;
+  vector<uint8> SaveUncompressed() const;
   void LoadUncompressed(const vector<uint8> &in);
 
   // Save and load with a basis vector. The vector can contain anything, and

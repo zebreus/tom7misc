@@ -49,38 +49,6 @@
 
 using namespace std;
 
-void State::InitState() {
-  if (state_initialized) return;
-  sfcpu = {
-      {&fc->X->reg_PC, 2 | FCEUSTATE_RLSB, "rgPC"},
-      {&fc->X->reg_A, 1, "regA"},
-      {&fc->X->reg_P, 1, "regP"},
-      {&fc->X->reg_X, 1, "regX"},
-      {&fc->X->reg_Y, 1, "regY"},
-      {&fc->X->reg_S, 1, "regS"},
-      {fc->fceu->RAM, 0x800, "RAMM"},
-  };
-
-  sfcpuc = {
-      {&fc->X->jammed, 1, "JAMM"},
-      {&fc->X->IRQlow, 4 | FCEUSTATE_RLSB, "IQLB"},
-      {&fc->X->tcount, 4 | FCEUSTATE_RLSB, "ICoa"},
-      {&fc->X->count, 4 | FCEUSTATE_RLSB, "ICou"},
-      {&fc->fceu->timestampbase,
-       sizeof(fc->fceu->timestampbase) | FCEUSTATE_RLSB, "TSBS"},
-      // alternative to the "quick and dirty hack"
-      {&fc->X->reg_PI, 1, "MooP"},
-      // This was not included in FCEUltra, but I can't see any
-      // reason why it shouldn't be (it's updated with each memory
-      // read and used by some boards), and execution diverges if
-      // it's not saved/restored. (See "Skull & Crossbones" around
-      // FCEUlib revision 2379.)
-      {&fc->X->DB, 1, "DBDB"},
-  };
-
-  state_initialized = true;
-}
-
 // Write the vector to the output file. If the file pointer is
 // null, just return the size.
 int State::SubWrite(EmuFile *os, const vector<SFORMAT> &sf) {
@@ -139,7 +107,7 @@ int State::SubWrite(EmuFile *os, const vector<SFORMAT> &sf) {
 int State::WriteStateChunk(EmuFile *os, int type,
                            const vector<SFORMAT> &sf) {
   os->fputc(type);
-  int bsize = SubWrite(nullptr, sf);
+  const int bsize = SubWrite(nullptr, sf);
   write32le(bsize, os);
   // TRACEF("Write %s etc. sized %d", sf->desc, bsize);
 
@@ -188,7 +156,6 @@ bool State::ReadStateChunk(EmuFile *is,
 }
 
 bool State::ReadStateChunks(EmuFile *is, int32 totalsize) {
-  InitState();
   uint32 size;
   bool ret = true;
   bool warned = false;
@@ -255,8 +222,7 @@ bool State::ReadStateChunks(EmuFile *is, int32 totalsize) {
 }
 
 // Simplified save that does not compress.
-bool State::FCEUSS_SaveRAW(std::vector<uint8> *out) {
-  InitState();
+bool State::FCEUSS_SaveRAW(std::vector<uint8> *out) const {
   EmuFile_MEMORY os(out);
 
   uint32 totalsize = 0;
@@ -365,4 +331,33 @@ void State::AddExStateReal(void *v, uint32 s, int type, SKEY desc,
   sfmdata.push_back(sf);
 }
 
-State::State(FC *fc) : fc(fc) {}
+State::State(FC *fc) :
+  fc(fc),
+  sfcpu({
+      {&fc->X->reg_PC, 2 | FCEUSTATE_RLSB, "rgPC"},
+      {&fc->X->reg_A, 1, "regA"},
+      {&fc->X->reg_P, 1, "regP"},
+      {&fc->X->reg_X, 1, "regX"},
+      {&fc->X->reg_Y, 1, "regY"},
+      {&fc->X->reg_S, 1, "regS"},
+      {fc->fceu->RAM, 0x800, "RAMM"},
+    }),
+  sfcpuc({
+      {&fc->X->jammed, 1, "JAMM"},
+      {&fc->X->IRQlow, 4 | FCEUSTATE_RLSB, "IQLB"},
+      {&fc->X->tcount, 4 | FCEUSTATE_RLSB, "ICoa"},
+      {&fc->X->count, 4 | FCEUSTATE_RLSB, "ICou"},
+      {&fc->fceu->timestampbase,
+       sizeof(fc->fceu->timestampbase) | FCEUSTATE_RLSB, "TSBS"},
+      // alternative to the "quick and dirty hack"
+      {&fc->X->reg_PI, 1, "MooP"},
+      // This was not included in FCEUltra, but I can't see any
+      // reason why it shouldn't be (it's updated with each memory
+      // read and used by some boards), and execution diverges if
+      // it's not saved/restored. (See "Skull & Crossbones" around
+      // FCEUlib revision 2379.)
+      {&fc->X->DB, 1, "DBDB"},
+    })
+{
+  /* empty */
+}

@@ -25,8 +25,8 @@ THE SOFTWARE.
 // don't use emufile for files bigger than 2GB! you have been warned!
 // some day this will be fixed.
 
-#ifndef __EMUFILE_H
-#define __EMUFILE_H
+#ifndef _FCEULIB_EMUFILE_H
+#define _FCEULIB_EMUFILE_H
 
 #include <assert.h>
 #include <stdio.h>
