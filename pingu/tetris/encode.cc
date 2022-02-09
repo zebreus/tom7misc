@@ -4,6 +4,7 @@
 #undef ARRAYSIZE
 #endif
 
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <memory>
@@ -29,6 +30,7 @@
 #include "tetris.h"
 #include "encoding.h"
 
+static constexpr int MAX_PARALLELISM = 24;
 static constexpr bool ENDLESS = true;
 
 // TODO: Console stuff to cc-lib
@@ -261,9 +263,17 @@ static vector<Move> Encode(uint8 target,
         // regardless.
         score += 50'000.0 * std::popcount(last_line);
 
-        // TODO: penalize the row (all rows?) above for
-        // having incorrect bits. It will become the
-        // target row when we finish the line.
+        // TODO: penalize the row above this one for having incorrect
+        // bits. It will become the target row when we finish the
+        // line, so if it has bad bits, we'll just have to do it
+        // again.
+        const uint16 second_last_line =
+          tetris.rows[Tetris::MAX_DEPTH - 2];
+        const uint16 second_last_incorrect =
+          second_last_line & ~full_target;
+
+        score -= 25'000.0 * std::popcount(second_last_incorrect);
+        
       } else {
         // Penalize for missing bits.
         score += -50'000.0 * std::popcount(todo);
@@ -610,10 +620,17 @@ static vector<Move> Encode(uint8 target,
     // we need the same caveat about the starting piece here, too.
     const std::vector<Shape> *allowed_shapes =
       movie.empty() ? &ALL_STARTING_SHAPES : &ALL_SHAPES;
-    // PERF: We require using exactly four moves, even
-    // fewer would win immediately.
+
+    // In endless mode, don't bother planning beyond our current
+    // record. This gives us a speedup in the case where we fail,
+    // which is the most common in the steady state.
+    const int max_useful_depth = ENDLESS ?
+      current_solution - movie.size() :
+      // doesn't matter; gets clamped
+      100;
+    const int use_depth = std::clamp(max_useful_depth, 1, 4);
     const auto &[moves, score_] = GetBestRec(
-        *allowed_shapes, EvaluateClear, tetris, 4, true);
+        *allowed_shapes, EvaluateClear, tetris, use_depth, true);
     if (moves.empty()) {
       /*
         CHECK(!moves.empty()) << "No valid moves here (after "
@@ -747,7 +764,7 @@ static void SolveAll() {
                  }
                  PrintTable();
                },
-               24);
+               MAX_PARALLELISM);
 
   int worst = 0;
   int total = 0;
@@ -862,7 +879,7 @@ static void EndlessImprove() {
                    }
                    PrintTable();
                  },
-                 24);
+                 MAX_PARALLELISM);
   }
 
   // XXX put in status
@@ -880,6 +897,10 @@ static void EndlessImprove() {
 int main(int argc, char **argv) {
   // Enable ANSI output on win32.
   #ifdef __MINGW32__
+  if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
+    LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
+  }
+  
   HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
   // mingw headers may not know about this new flag
   static constexpr int kVirtualTerminalProcessing = 0x0004;

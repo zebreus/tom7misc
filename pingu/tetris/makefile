@@ -37,7 +37,7 @@ play.exe : play.o encoding.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
-makemovie.exe : makemovie.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+makemovie.exe : makemovie.o movie-maker.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
