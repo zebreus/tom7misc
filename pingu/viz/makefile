@@ -1,5 +1,5 @@
 
-all : viz.exe
+all : viz.exe tviz.exe
 
 CC_LIB=../../cc-lib
 CXXFLAGS=-Wall -Werror --std=c++17 -O2 `sdl-config --cflags` -I $(CC_LIB)
@@ -12,6 +12,10 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 	g++ $(CXXFLAGS) -c $^ -o $@
 
 viz.exe : viz.o $(CC_LIB_OBJECTS) $(RE2_OBJECTS)
+	g++ -O2 $^ `sdl-config --libs` -o $@ -lpthread
+
+# For tetris
+tviz.exe : tviz.o $(CC_LIB_OBJECTS) $(RE2_OBJECTS)
 	g++ -O2 $^ `sdl-config --libs` -o $@ -lpthread
 
 clean:

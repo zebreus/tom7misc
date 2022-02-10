@@ -44,6 +44,7 @@ static constexpr time_t TIMEOUT_SEC = 6;
 // 8192 999max/8burst 281m27s, 3.4% ok
 // (computed) 2047max/8burst 139m24s, 2.1% ok
 // (computed) 999max/4burst 
+// 512max/4burst slow, 6.9% ok
 
 static constexpr int HASH_BYTES = 16;
 static_assert(HASH_BYTES > 0 && HASH_BYTES <= SHA256::DIGEST_LENGTH);
@@ -457,7 +458,7 @@ static void Pingy(uint8_t c) {
 }
 
 int main(int argc, char **argv) {
-  for (int c = 33; c < 36 + 6; c++) {
+  for (int c = 64; c < 256; c++) {
 	std::string filename = StringPrintf("ping%d.dat", c);
 	printf(" === *.*.%d.* ===\n", c);
 	if (Util::ExistsFile(filename)) {

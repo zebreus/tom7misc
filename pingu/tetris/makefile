@@ -3,11 +3,13 @@ all : lucky.exe encode.exe tetris_test.exe play.exe makemovie.exe
 CC_LIB=../../cc-lib
 FCEULIB=../../fceulib
 
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
+# PLATFORM_LFLAGS=-static -L . libz.a
+PLATFORM_LFLAGS=-lz -lpthread
 
 CXXFLAGS=-Wall -Werror --std=c++20 -O -DPSS_STYLE=2 -I $(CC_LIB) -I $(FCEULIB)
-LFLAGS=-static -L . libz.a
+LFLAGS=$(PLATFORM_LFLAGS)
 
 CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/city/city.o $(CC_LIB)/textsvg.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/image.o
 

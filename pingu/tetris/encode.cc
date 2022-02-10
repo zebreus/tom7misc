@@ -656,7 +656,7 @@ static vector<Move> Encode(uint8 target,
 static void PrintSolution(uint8 target,
                           const std::vector<Move> &movie, bool loud) {
   const uint16 full_target = Encoding::FullTarget(target);
-  printf("Done in %lld moves!\n", movie.size());
+  printf("Done in %d moves!\n", (int)movie.size());
 
   // Replay.
   Tetris replay;

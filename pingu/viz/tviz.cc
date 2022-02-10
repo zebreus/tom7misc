@@ -12,11 +12,11 @@
 
 using namespace std;
 
-static constexpr int BLOCKSW = 16;
-static constexpr int BLOCKSH = 16;
+static constexpr int BLOCKSW = 128;
+static constexpr int BLOCKSH = 128;
 static constexpr int NUM_BLOCKS = BLOCKSW * BLOCKSH;
 
-static constexpr int BLOCKSIZE = 16;
+static constexpr int BLOCKSIZE = 5;
 
 static constexpr int SCREENW = BLOCKSIZE * BLOCKSW;
 // plus status bar etc.
@@ -30,10 +30,8 @@ static int64_t frame = 0;
 struct Block {
   Block() {}
 
-  int pending_reads = 0;
-  int pending_writes = 0;
-
-  bool all_zero = false;
+  bool uinitialized = true;
+  bool busy = false;
 };
 
 static std::array<Block, NUM_BLOCKS> blocks;
@@ -70,25 +68,32 @@ static void Redraw(ImageRGBA *img) {
 	  const int py = yblock * BLOCKSIZE;
 
 	  // has data?
-	  if (!block.all_zero) {
+	  if (block.uninitialized) {
 		img->BlendRect32(px + 2, py + 2, BLOCKSIZE - 4, BLOCKSIZE - 4,
 						 0x222244FF);
 	  }
 
+	  #if 0
 	  if (block.pending_reads > 0) {
 		img->BlendBox32(px + 1, py + 1, BLOCKSIZE - 2, BLOCKSIZE - 2,
 						0xCCFFCCFF, {0x77AA77FF});
 	  }
-
-	  if (block.pending_writes > 0) {
+	  #endif
+	  
+	  if (block.busy) {
 		img->BlendRect32(px + 4, py + 4, 2, 2, 0xFF3333FF);
 		img->BlendBox32(px + 3, py + 3, 4, 4,
 						0xFF3333FF, 0xFF333377);
 	  }
-
-	  if (idx == last_processed) {
+	  
+	  if (idx == last_read) {
 		img->BlendRect32(px + 1, py + BLOCKSIZE / 2 - 1,
 						 BLOCKSIZE - 2, 2, 0x00FF0077);
+	  }
+
+	  if (idx == last_write) {
+		img->BlendRect32(px + BLOCKSIZE / 2 - 1, py + 1, 
+						 2, BLOCKSIZE - 2, 0xFF000077);
 	  }
 	}
   }
@@ -97,9 +102,9 @@ static void Redraw(ImageRGBA *img) {
 static void Loop() {
   ImageRGBA img(SCREENW, SCREENH);
 
-  RE2 viz_command{".*VIZ\\[(.+)\\]ZIV.*"};
-  RE2 blockinfo_command("b ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)");
-  RE2 update_command("u ([0-9]+)");
+  RE2 viz_command{".*TVIZ\\[(.+)\\]ZIVT.*"};
+  RE2 blockinfo_command("b ([0-9]+) ([0-9]+) ([0-9]+)");
+  RE2 update_command("([rw]) ([0-9]+)");
 
   for (;;) {
 
@@ -108,16 +113,20 @@ static void Loop() {
 
 	if (RE2::FullMatch(line, viz_command, &cmd)) {
 
-	  int idx, zero, reads, writes;
+	  int idx, uninitialized, busy;
+	  char rw;
 	  if (RE2::FullMatch(cmd, blockinfo_command,
-						 &idx, &zero, &reads, &writes)) {
+						 &idx, &uninitialized, &busy)) {
 		CHECK(idx >= 0 && idx < NUM_BLOCKS);
 		Block *block = &blocks[idx];
-		block->all_zero = !!zero;
-		block->pending_reads = reads;
-		block->pending_writes = writes;
-	  } else if (RE2::FullMatch(cmd, update_command, &idx)) {
-		last_processed = idx;
+		block->uninitialized = !!zero;
+		block->busy = !!busy;
+	  } else if (RE2::FullMatch(cmd, update_command, &rw, &idx)) {
+		if (rw == 'r') {
+		  last_read = idx;
+		} else if (rw == 'w') {
+		  last_write = idx;
+		}
 	  }
 
 	  Redraw(&img);

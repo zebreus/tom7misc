@@ -299,7 +299,7 @@ static constexpr inline uint16_t ShapeBits(Shape s) {
 // the shape in the given column. x must be a valid location for the shape.
 static inline constexpr std::array<uint16_t, 4>
 ShapeMaskInCol(Shape s, int x) {
-  std::array<uint16_t, 4> rows;
+  std::array<uint16_t, 4> rows = {};
 
   uint16_t bits = ShapeBits(s);
   for (int r = 0; r < 4; r++) {
