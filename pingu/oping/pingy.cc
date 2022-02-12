@@ -26,7 +26,7 @@
 using namespace std;
 
 static constexpr int PAYLOAD_SIZE = 56;  // XXX
-static constexpr time_t TIMEOUT_SEC = 6;
+static constexpr time_t TIMEOUT_SEC = 18;
 // with 131072, 46m17s. 0.6% ok 58.0% st 41.4% qt
 // with 65536, 54m4s. 0.7% ok 91.9% st 7.4% qt
 // with 32768, 88m5s. 0.9% ok 98.1% st 1.1% qt
@@ -458,7 +458,7 @@ static void Pingy(uint8_t c) {
 }
 
 int main(int argc, char **argv) {
-  for (int c = 64; c < 256; c++) {
+  for (int c = 200; c < 256; c++) {
 	std::string filename = StringPrintf("ping%d.dat", c);
 	printf(" === *.*.%d.* ===\n", c);
 	if (Util::ExistsFile(filename)) {
