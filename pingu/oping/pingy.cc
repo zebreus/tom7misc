@@ -26,7 +26,8 @@
 using namespace std;
 
 static constexpr int PAYLOAD_SIZE = 56;  // XXX
-static constexpr time_t TIMEOUT_SEC = 18;
+static constexpr time_t TIMEOUT_SEC = 32;
+
 // with 131072, 46m17s. 0.6% ok 58.0% st 41.4% qt
 // with 65536, 54m4s. 0.7% ok 91.9% st 7.4% qt
 // with 32768, 88m5s. 0.9% ok 98.1% st 1.1% qt
@@ -132,9 +133,10 @@ static void Pingy(uint8_t c) {
   CHECK(fd4o.has_value()) << "Must run as root! " << error;
   const int fd4 = fd4o.value();
 
-  // Ping all hosts in a random order.
   vector<Host> hosts;
   hosts.reserve(256 * 256 * 256);
+  #if 0
+  // Ping all hosts in a random order.
   for (int a = 0; a < 256; a++) {
 	for (int b = 0; b < 256; b++) {
 	  for (int d = 0; d < 256; d++) {
@@ -149,7 +151,36 @@ static void Pingy(uint8_t c) {
   }
 
   Shuffle(&rc, &hosts);
+  #else
+  // Randomize a.b, fixed c, all d shuffled.
+  std::vector<std::pair<uint8_t, uint8_t>> abs;
+  abs.reserve(256 * 256);
+  for (int a = 0; a < 256; a++) {
+	for (int b = 0; b < 256; b++) {
+	  abs.emplace_back(a, b);
+	}
+  }
+  Shuffle(&rc, &abs);
+  for (const auto &[a, b] : abs) {
+	std::vector<uint8> ds;
+	ds.reserve(256);
+	for (int d = 0; d < 256; d++)
+	  ds.push_back(d);
+	Shuffle(&rc, &ds);
 
+	for (int d : ds) {
+	  Host h;
+	  h.a = a;
+	  h.b = b;
+	  h.d = d;
+	  h.msec_div_8 = TIMEOUT;
+	  hosts.push_back(h);
+	}
+  }
+  #endif
+
+  CHECK(hosts.size() == 256 * 256 * 256);
+  
   printf("Start pinging...\n");
 
   // If true, weight the full TIMEOUT_SEC for each call to select,
@@ -168,11 +199,11 @@ static void Pingy(uint8_t c) {
   
   int64 successes = 0, select_timeouts = 0, queue_timeouts = 0,
 	other_errors = 0;
-  int64 prev_successes = 0, prev_done = 0;
+  int64 prev_wrote = 0, prev_successes = 0, prev_done = 0;
   int64 write_ok = 0, write_throttled = 0;
   auto Status = [start_time, &next_idx, &hosts, &outstanding, &timeout_queue,
 				 &successes, &select_timeouts, &queue_timeouts,
-				 &other_errors, &prev_successes, &prev_done,
+				 &other_errors, &prev_wrote, &prev_successes, &prev_done,
 				 &write_ok, &write_throttled]() {
 	  const int64_t elapsed = (int64_t)time(nullptr) - start_time;
 	  const double done_per_sec = next_idx / (double)elapsed;
@@ -186,6 +217,8 @@ static void Pingy(uint8_t c) {
 	  [[maybe_unused]]
       double opct = (100.0 * other_errors) / (double)total_done;
 
+	  int64 just_wrote = write_ok - prev_wrote;
+	  prev_wrote = write_ok;
 	  int64 just_done = total_done - prev_done;
 	  prev_done = total_done;
 	  int64 just_successes = successes - prev_successes;
@@ -193,7 +226,8 @@ static void Pingy(uint8_t c) {
 	  
 	  return StringPrintf(
 		  "%dm%ds %dk+%lld %.1f%% %d o %d q | "
-		  "%lld go %lld th | "
+		  // "%lld go %lld th | "
+		  "w +%d | "
 		  "%.1f%%+%lld ok %.1f%% st %.1f%% qt",
 		  sec_remaining / 60,
 		  sec_remaining % 60,
@@ -201,7 +235,8 @@ static void Pingy(uint8_t c) {
 		  just_done,
 		  pct, outstanding.size(),
 		  timeout_queue.size(),
-		  write_ok, write_throttled,
+		  just_wrote,
+		  // write_ok, write_throttled,
 		  spct, just_successes,
 		  stpct, qtpct);
 	};
@@ -239,7 +274,7 @@ static void Pingy(uint8_t c) {
 		if (sec > TIMEOUT_SEC) {
 		  queue_timeouts++;
 		  Report([&oping, sec](){
-			  return StringPrintf("%s timed out (%.4f s)\n",
+			  return StringPrintf("%s timed out (%.4f s)",
 								  NetUtil::IPToString(oping.ip).c_str(), sec);
 			});
 		  hosts[oping.host_idx].msec_div_8 = TIMEOUT;
@@ -458,7 +493,7 @@ static void Pingy(uint8_t c) {
 }
 
 int main(int argc, char **argv) {
-  for (int c = 200; c < 256; c++) {
+  for (int c = 85; c < 256; c++) {
 	std::string filename = StringPrintf("ping%d.dat", c);
 	printf(" === *.*.%d.* ===\n", c);
 	if (Util::ExistsFile(filename)) {
@@ -467,6 +502,7 @@ int main(int argc, char **argv) {
 	  Pingy(c);
 	  printf("Pause..\n");
 	  sleep(120);
+	  return 0;
 	}
   }
 
