@@ -126,7 +126,7 @@ difftrace.exe : stringprintf.o trace.o difftrace.o
 dumptrace.exe : stringprintf.o trace.o dumptrace.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-emulator_test.exe : $(OBJECTS) test-util.o emulator_test.o simplefm2.o
+emulator_test.exe : $(OBJECTS) test-util.o emulator_test.o simplefm2.o simplefm7.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 fm2wav.exe : $(OBJECTS) $(CCLIBOBJECTS) fm2wav.o simplefm2.o

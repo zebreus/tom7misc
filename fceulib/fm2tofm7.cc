@@ -8,34 +8,49 @@
 #include "simplefm7.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"
+#include "util.h"
+
+static void Usage() {
+  fprintf(stderr,
+          "Convert an fm2 file to fm7 format."
+          "Usage: fm2tofm7 [-cc] karate.fm2 [karate.fm7]\n\n"
+          "If -cc is given (must be first) then output as C++ string\n"
+          "literal. If no output file is given, writes to stdout.\n");
+}  
 
 int main(int argc, char **argv) {
-  if (argc != 3) {
-    fprintf(stderr,
-            "Convert an fm2 file to fm7 format."
-            "Usage: fm2tocc karate.fm2 karate.fm7\n\n");
+  if (argc < 2) {
+    Usage();
     return -1;
   }
 
-  vector<pair<uint8, uint8>> inputs = SimpleFM2::ReadInputs2P(argv[1]);
-  fprintf(stderr, "Loaded %s with %lld inputs.\n", argv[1], inputs.size());
+  int idx = 1;
+  bool cc = false;
+  if (0 == strcmp(argv[1], "-cc")) {
+    cc = true;
+    idx++;
+  }
 
-  SimpleFM7::WriteInputs2P(argv[2], inputs);
+  string infile = argv[idx++];
+  string outfile;
+  if (idx < argc) {
+    outfile = argv[idx++];
+  }
 
-  // PERF: Don't need to do this once we're confident FM7 is robust.
-  vector<pair<uint8, uint8>> readback = SimpleFM7::ReadInputs2P(argv[2]);
+  CHECK(infile != "-cc");
+  CHECK(outfile != "-cc");
+  
+  vector<pair<uint8, uint8>> inputs = SimpleFM2::ReadInputs2P(infile);
+  fprintf(stderr, "Loaded %s with %lld inputs.\n",
+          infile.c_str(), inputs.size());
 
-  CHECK(inputs.size() == readback.size()) << inputs.size() << " vs "
-					  << readback.size();
-  for (int i = 0; i < (int)inputs.size(); i++) {
-    if (inputs[i] != readback[i]) {
-      printf("%d. %s|%s  vs  %s|%s\n",
-	     i,
-	     SimpleFM2::InputToString(inputs[i].first).c_str(),
-	     SimpleFM2::InputToString(inputs[i].second).c_str(),
-	     SimpleFM2::InputToString(readback[i].first).c_str(),
-	     SimpleFM2::InputToString(readback[i].second).c_str());
-    }
+  const string fm7 = cc ? SimpleFM7::EncodeInputsLiteral2P(inputs, 6, 68) :
+    SimpleFM7::EncodeInputs2P(inputs);
+
+  if (outfile.empty()) {
+    printf("%s\n", fm7.c_str());
+  } else {
+    Util::WriteFile(outfile, fm7);
   }
 
   return 0;

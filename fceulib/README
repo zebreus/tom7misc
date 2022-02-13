@@ -1,6 +1,6 @@
 
 This is Tom 7's attempt to make FCE Ultra into a thread-safe library.
-As of 7 Sep 2015, we have here:
+As of 13 Feb 2022, we have here:
 
  - The modernization I did for the Learnfun & Playfun project
    (../tasbot/) and major culling of unnecessary parts of FCEU.
@@ -22,11 +22,14 @@ that some piece of code accesses uninitialized memory and thus doesn't
 have repeatable behavior. This may not matter for your application, so
 go to town!
 
-Note that this port requires C++11 (maybe even C++14 now) and I have
+Note that this port requires C++11 (maybe even C++20 now) and I have
 only tested 64-bit builds.
-I am using the TDM version of GCC, at version 5.1.0.
-I previously used x86_64-w64-mingw32-g++ (GCC 4.9.2) but it lacked
-various C++11 support and I could not make it work with threads.
+On Windows I am using x86_64-w64-mingw32-g++ (GCC 11.2).
+
+The intention is that the library itself (emulator.h) has no external
+dependencies, other than zlib (courtesy of original FCEUX code), which
+I would like to get rid of. However, many of the tests and utilities
+require cc-lib, which can probably be found in ../cc-lib.
 
 All of the code in this directory is licensed under the terms of the
 GNU General Public License, which is contained in the file COPYING.

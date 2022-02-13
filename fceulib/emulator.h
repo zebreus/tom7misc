@@ -13,10 +13,14 @@
   the PPU state; I have written this several times. (It would not
   support e.g. intraframe scrolling, but in something like pftwo we
   only care about it for diagnostic output.)
+
+  TODO: Concept of a "loaded ROM" which can be used to initialize
+  an Emulator, so that the constructor doesn't bake in file I/O
+  (and other initialization that can be done once).
 */
 
-#ifndef __EMULATOR_H
-#define __EMULATOR_H
+#ifndef _FCEULIB_EMULATOR_H
+#define _FCEULIB_EMULATOR_H
 
 #include <vector>
 #include <string>
@@ -81,26 +85,17 @@ struct Emulator {
   // The result is a vector of signed 16-bit samples, mono.
   void GetSound(vector<int16> *wav);
 
-  // Returns 64-bit checksum (based on MD5, endianness-dependent)
-  // of RAM (only). Note there are other important bits of state.
-  uint64 RamChecksum();
+  // Returns a 64-bit checksum (based on MD5, endianness-dependent) of
+  // the RAM, CPU, and PPU state. This includes real state that would
+  // be observable on a real NES, but not internal emulation state
+  // like timing counters (to facilitate testing changes to the way
+  // emulation works) or video state that cannot be inspected (to
+  // facilitate excising code paths that don't affect CPU execution).
+  uint64 MachineChecksum() const;
   // Same, of the RGBA image. We only look at 240 scanlines here.
   // Note that the image checksum can only be computed if compiling
   // without DISABLE_VIDEO and after calling StepFull.
-  uint64 ImageChecksum();
-  // Checksum for CPU (and PPU) state. This includes real state like
-  // the registers, but not internal emulation state like timing
-  // counters (to facilitate testing changes to the way emulation
-  // works) or video state that cannot be inspected (to facilitate
-  // excising code paths that don't affect CPU execution). Should
-  // usually be paired with RamChecksum.
-  uint64 CPUStateChecksum();
-
-  // States often only differ by a small amount, so a way to reduce
-  // their entropy is to diff them against a representative savestate.
-  // This gets an uncompressed basis for the current state, which can
-  // be used in the SaveEx and LoadEx routines.
-  void GetBasis(vector<uint8> *out);
+  uint64 ImageChecksum() const;
 
   // Save and load uncompressed. The memory will always be the same
   // size (Save and SaveEx may compress, which makes their output
@@ -109,6 +104,12 @@ struct Emulator {
   vector<uint8> SaveUncompressed() const;
   void LoadUncompressed(const vector<uint8> &in);
 
+  // States often only differ by a small amount, so a way to reduce
+  // their entropy is to diff them against a representative savestate.
+  // This gets an uncompressed basis for the current state, which can
+  // be used in the SaveEx and LoadEx routines.
+  void GetBasis(vector<uint8> *out);
+  
   // Save and load with a basis vector. The vector can contain anything, and
   // doesn't even have to be the same length as an uncompressed save state,
   // but a state needs to be loaded with the same basis as it was saved.

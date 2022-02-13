@@ -49,16 +49,7 @@ static inline uint64 MD5ToChecksum(const uint8 digest[16]) {
   return res;
 }
 
-uint64 Emulator::RamChecksum() {
-  md5_context ctx;
-  md5_starts(&ctx);
-  md5_update(&ctx, fc->fceu->RAM, RAM_BYTE_SIZE);
-  uint8 digest[16];
-  md5_finish(&ctx, digest);
-  return MD5ToChecksum(digest);
-}
-
-uint64 Emulator::ImageChecksum() {
+uint64 Emulator::ImageChecksum() const {
 #if DISABLE_VIDEO
   return 0ULL;
 #else
@@ -85,10 +76,14 @@ uint64 Emulator::Registers() const {
   return ret;
 }
 
-uint64 Emulator::CPUStateChecksum() {
+uint64 Emulator::MachineChecksum() const {
   md5_context ctx;
   md5_starts(&ctx);
-  // Be insensitive to endianness here.
+
+  // All of RAM.
+  md5_update(&ctx, fc->fceu->RAM, RAM_BYTE_SIZE);  
+
+  // CPU registers. Be insensitive to endianness here.
   uint8 pc_high = fc->X->reg_PC >> 8;
   uint8 pc_low = fc->X->reg_PC & 0xFF;
   md5_update(&ctx, &pc_high, 1);
@@ -102,14 +97,14 @@ uint64 Emulator::CPUStateChecksum() {
   // counts are also excluded.
   md5_update(&ctx, &fc->X->DB, 1);
 
-  // Status registers
+  // Status registers.
   md5_update(&ctx, fc->ppu->PPU_values, 4);
   // Nametable and palette. I think that these can just be read
   // directly, but for sure the nametable can be tested using
   // sprite 0 hit.
   md5_update(&ctx, fc->ppu->NTARAM, 0x800);
   md5_update(&ctx, fc->ppu->PALRAM, 0x20);
-  //
+
   // This is observable through roundabout means (sprite 0 hit,
   // putting 8+ sprites on a scanline), but also can be read using
   // OAMDATA (wait, can it? I thought it was write-only -tom7 2018).

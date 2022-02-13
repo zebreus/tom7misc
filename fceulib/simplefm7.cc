@@ -41,13 +41,18 @@
 
 #include <cstdint>
 #include <vector>
+#include <string>
 #include <ctype.h>
 
 #include "base/logging.h"
-#include "../cc-lib/util.h"
+#include "base/stringprintf.h"
+#include "util.h"
 #include "simplefm2.h"
 
-typedef uint8_t uint8;
+using namespace std;
+using uint8 = uint8_t;
+
+static constexpr int DEFAULT_WRAP = 75;
 
 /*
   // Count of 1-bits for each 8-bit byte. Generated with this code:
@@ -65,7 +70,8 @@ typedef uint8_t uint8;
   }
   printf("\n");
 */
-static uint8 popcount_table[256] = {
+// TODO: When it's a little less fresh, std::popcount from <bit>.
+static constexpr uint8 popcount_table[256] = {
   0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4,1,2,2,3,2,3,3,4,2,3,3,4,3,4,4,5,1,2,2,3,2,3,
   3,4,2,3,3,4,3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,1,2,2,3,2,3,3,4,2,3,3,4,
   3,4,4,5,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,2,3,3,4,3,4,4,5,3,4,4,5,4,5,5,6,3,4,
@@ -80,6 +86,11 @@ static int AppendInt(int n, string *out) {
   sprintf(s, "%d", n);
   *out += &s[0];
   return strlen(s);
+}
+
+static bool AllEmpty(const std::vector<uint8> &inputs) {
+  for (uint8 b : inputs) if (b) return false;
+  return true;
 }
 
 static int EncodeTo(uint8 prev, uint8 input, string *out) {
@@ -126,12 +137,14 @@ static int EncodeTo(uint8 prev, uint8 input, string *out) {
   }
 }
 
-static string Compress(vector<uint8> &inputs) {
+// wrap_at 0 means no wrapping
+static vector<string> Compress(const vector<uint8> &inputs, int wrap_at) {
   uint8 prev = 0;
-  string out;
   int pos = 0;
 
-  int linelength = 1;
+  std::vector<string> out;
+  string current_line;
+
   auto GetRun =
     [&inputs](int p) -> std::tuple<uint8, int, int> {
       CHECK(p < (int)inputs.size());
@@ -151,20 +164,20 @@ static string Compress(vector<uint8> &inputs) {
     std::tie(input, pos, len) = GetRun(pos);
     CHECK(len > 0) << "Impossible";
     if (len == 1) {
-      out.push_back(',');
-      linelength++;
+      current_line.push_back(',');
     } else {
-      linelength += AppendInt(len, &out);
+      AppendInt(len, &current_line);
     }
-    linelength += EncodeTo(prev, input, &out);
+    EncodeTo(prev, input, &current_line);
     prev = input;
 
-    if (linelength > 75) {
-      out.push_back('\n');
-      linelength = 0;
+    if (wrap_at > 0 && (int)current_line.size() > wrap_at) {
+      out.push_back(std::move(current_line));
+      current_line.clear();
     }
-
   }
+  if (!current_line.empty())
+    out.push_back(std::move(current_line));
   return out;
 }
 
@@ -185,15 +198,68 @@ static void SplitInputs(const vector<pair<uint8, uint8>> &inputs,
 
 void SimpleFM7::WriteInputs2P(const string &outputfile,
                               const vector<pair<uint8, uint8>> &inputs) {
-  vector<uint8> p1, p2;
-  SplitInputs(inputs, &p1, &p2);
-  string res = (string)"!" + Compress(p1) + "\n@" + Compress(p2) + "\n";
+  string res = EncodeInputs2P(inputs) + "\n";
   CHECK(Util::WriteFile(outputfile, res)) << outputfile;
 }
 
 void SimpleFM7::WriteInputs(const string &outputfile,
                             const vector<uint8> &inputs) {
   WriteInputs2P(outputfile, SimpleFM2::ExpandTo2P(inputs));
+}
+
+// TODO: Don't wrap for EncodeInputs? Note it is used for output in
+// fm2tofm7.
+string SimpleFM7::EncodeInputs(const std::vector<uint8> &inputs) {
+  return (string)"!" + Util::Join(Compress(inputs, DEFAULT_WRAP), "\n");
+}
+
+string SimpleFM7::EncodeInputs2P(
+    const vector<pair<uint8, uint8>> &inputs) {
+  vector<uint8> p1, p2;
+  SplitInputs(inputs, &p1, &p2);
+  // XXX skip second player if all empty
+  return (string)"!" + Util::Join(Compress(p1, DEFAULT_WRAP), "\n") +
+    "\n@" +
+    Util::Join(Compress(p2, DEFAULT_WRAP), "\n");
+}
+
+string SimpleFM7::EncodeInputsLiteral(const std::vector<uint8> &inputs,
+                                      int indent, int line_length) {
+  return EncodeInputsLiteral2P(SimpleFM2::ExpandTo2P(inputs),
+                               indent, line_length);
+}
+
+string SimpleFM7::EncodeInputsLiteral2P(
+    const vector<pair<uint8, uint8>> &inputs,
+    int indent, int line_length) {
+  vector<uint8> p1, p2;
+  SplitInputs(inputs, &p1, &p2);
+
+  const int width = line_length - indent;
+  string pad(indent, ' ');
+  string out;
+  {
+    bool is_first = true;
+    for (const string &line : Compress(p1, width)) {
+      StringAppendF(&out, "%s\"%s%s\"\n",
+                    pad.c_str(),
+                    is_first ? "!" : "",
+                    line.c_str());
+      is_first = false;
+    }
+  }
+  if (!AllEmpty(p2)) {
+    bool is_first = true;
+    for (const string &line : Compress(p2, width)) {
+      StringAppendF(&out, "%s\"%s%s\"\n",
+                    pad.c_str(),
+                    is_first ? "@" : "",
+                    line.c_str());
+      is_first = false;
+    }
+  }
+
+  return out;
 }
 
 vector<uint8> SimpleFM7::ReadInputs(const string &filename) {

@@ -54,10 +54,10 @@ vector<string> SplitToLines(const string &s) {
 }
 
 string Chop(string &line) {
-  for (int i = 0; i < line.length(); i ++) {
+  for (int i = 0; i < (int)line.length(); i ++) {
     if (line[i] != ' ') {
       string acc;
-      for(int j = i; j < line.length(); j ++) {
+      for (int j = i; j < (int)line.length(); j ++) {
         if (line[j] == ' ') {
           line = line.substr(j, line.length() - j);
           return acc;
@@ -74,7 +74,7 @@ string Chop(string &line) {
 
 string LoseWhiteL(const string &s) {
   for (unsigned int i = 0; i < s.length(); i ++) {
-    switch(s[i]) {
+    switch (s[i]) {
     case ' ':
     case '\n':
     case '\r':
