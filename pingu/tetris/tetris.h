@@ -64,7 +64,7 @@ enum Shape : uint8 {
 // Return the position that the NES considers the shape
 // to be in (MEM_CURRENT_X) when it is against the left
 // wall.
-static inline int ShapeOffset(Shape s) {
+static inline int ShapeXOffset(Shape s) {
   switch (s) {
   case I_VERT: return 0;
   case I_HORIZ: return 2;
@@ -88,6 +88,8 @@ static inline int ShapeOffset(Shape s) {
   }
   return 0;
 }
+
+// TODO: ShapeYOffset
 
 static inline Piece DecodePiece(Shape s) {
   switch (s) {

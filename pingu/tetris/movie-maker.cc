@@ -145,7 +145,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
       const uint8 cur_x = emu->ReadRAM(MEM_CURRENT_X);
       const Move move = schedule[schedule_idx];
       const uint8 target_nes_x =
-        move.col + ShapeOffset(move.shape);
+        move.col + ShapeXOffset(move.shape);
 
       double dps = schedule_idx / run_timer.Seconds();
       printf("%d frames sched %d/%d cnt %d -> %d. cur %02x next %02x\n"
@@ -240,7 +240,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
                    PieceChar(DecodePiece(cur_shape)), cur_shape);
 
     const uint8 target_nes_x =
-      move.col + ShapeOffset(move.shape);
+      move.col + ShapeXOffset(move.shape);
 
     if ((frame % 2) == 0) {
       // PERF: Can rotate in the most efficient direction.

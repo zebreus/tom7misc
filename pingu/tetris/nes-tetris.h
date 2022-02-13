@@ -32,6 +32,7 @@ constexpr int MEM_BOARD_START = 0x400;
 constexpr int MEM_CURRENT_PIECE = 0x62;
 constexpr int MEM_NEXT_PIECE = 0xBF;
 constexpr int MEM_CURRENT_X = 0x40;
+constexpr int MEM_CURRENT_Y = 0x41;
 
 // XXX maybe this should go in tetris.h and this
 // file should only be Emulator stuff?
@@ -269,6 +270,26 @@ inline std::vector<uint8_t> GetBoard(const Emulator &emu) {
   }
   return ret;
 }
+
+// Draw the shape on on the board (20x10, NES format) using the given
+// byte. The x,y coordinate is the BOTTOM left of the shape.
+inline void DrawShapeOnBoard(uint8_t b, Shape shape, int x, int y,
+							 std::vector<uint8_t> *board) {
+
+  std::array<uint16_t, 4> mask = ShapeMaskInCol(shape, x);
+  for (int my = 0; my < 4; my++) {
+	int yy = y - 3 + my;
+	if (yy < 0 || yy >= 20) continue;
+	
+	uint16_t m = mask[my];
+	for (int x = 0; x < 10; x++) {
+	  if (m & (1 << (9 - x))) {
+		(*board)[yy * 10 + x] = b;
+	  }
+	}
+  }
+}
+
 
 inline void SaveScreenshot(const string &filename, Emulator *emu) {
   std::vector<uint8_t> save = emu->SaveUncompressed();
