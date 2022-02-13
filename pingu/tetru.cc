@@ -28,6 +28,7 @@
 #include "nes-tetris.h"
 #include "movie-maker.h"
 #include "encoding.h"
+#include "viz/tetru-viz.h"
 
 #define THREAD_MODEL NBDKIT_THREAD_MODEL_PARALLEL
 
@@ -66,9 +67,7 @@ struct Block {
 	  return;
 	}
 
-	while (!busy) {
-	  cond.wait(ul, [this]{ return !busy; });
-	}
+	cond.wait(ul, [this]{ return !busy; });
 
 	CHECK(game.get() != nullptr);
 	
@@ -97,6 +96,7 @@ struct Block {
 	std::vector<uint8_t> pattern(BLOCK_SIZE, 0);
 	CHECK(start >= 0 && start + count <= BLOCK_SIZE);
 	if (start + count < BLOCK_SIZE) {
+	  nbdkit_debug("need prev read for %d", id);	  
 	  // Might as well read the whole thing!
 	  Read(pattern.data(), 0, BLOCK_SIZE);
 	}
@@ -108,22 +108,36 @@ struct Block {
 	  std::unique_lock<std::mutex> ul(mutex);
 	  // PERF we could terminate an in-progress write.
 	
-	  while (!busy) {
-		cond.wait(ul, [this]{ return !busy; });
-	  }
+	  cond.wait(ul, [this]{ return !busy; });
 
 	  // Claim exclusive access.
 	  busy = true;
 
+	  nbdkit_debug("create game for %d", id);
+	  
 	  game.reset(new MovieMaker(SOLFILE, ROMFILE, id));
 	}
 
 	// TODO: Visualize in callbacks.
 	MovieMaker::Callbacks callbacks;
+	callbacks.placed_piece = [this](const Emulator &emu,
+									int pieces_done,
+									int total_pieces) {
+		const std::string encoded_board = BoardPic::ToString(GetBoard(emu));
+		std::unique_lock<std::mutex> ul(mutex);
+		/*
+		  printf("block %d: %d/%d pieces done\n",
+		  id, pieces_done, total_pieces);
+		*/
+		nbdkit_debug("TVIZ[o %d %s]ZIVT",
+					 id, encoded_board.c_str());
+	  };
 	
 	// write from bottom to top.
 	// We don't need the returned movie.
 	(void)game->Play(pattern, callbacks);
+
+	nbdkit_debug("finished playing %d", id);
 	
 	{
 	  std::unique_lock<std::mutex> ul(mutex);
@@ -163,7 +177,7 @@ struct Blocks {
   // Read, into the beginning of buf, 'count' bytes from the block,
   // starting at 'start'.
   inline void Read(int block_idx, uint8_t *buf, int start, int count) {
-	nbdkit_debug("Read %d[%d,%d] -> %p\n", block_idx, start, count, buf);
+	// nbdkit_debug("Read %d[%d,%d] -> %p\n", block_idx, start, count, buf);
 	nbdkit_debug("TVIZ[r %d]ZIVT", block_idx);
 	mem[block_idx]->Read(buf, start, count);
   }

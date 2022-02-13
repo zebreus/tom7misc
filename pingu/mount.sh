@@ -5,17 +5,23 @@ then echo "Please run as root" ;
 	 exit -1 ;
 fi
 
-echo "$1"
+echo "$1" "$2"
 
 if [[ "$1" = "" ]] ;
 then echo "Needs the unix socket; call from run.sh" ;
 	 exit -1 ;
 fi
 
+if [[ "$2" = "" ]] ;
+then echo "Needs the directory to mount, like /mnt/pingu; call from run.sh" ;
+	 exit -1 ;
+fi
+
 echo "STARTED SERVER on $1"
 
 # nbd-client localhost for TCP
-nbd-client -timeout 3600 -unix "$1" /dev/nbd0 || exit -1
+# 100 hour timeout
+nbd-client -timeout 360000 -unix "$1" /dev/nbd0 || exit -1
 
 gdisk /dev/nbd0 <<EOF
 n
@@ -31,9 +37,9 @@ EOF
 # -a disables alignment, saving space
 
 mkfs.fat -v -a -n "PINGU" /dev/nbd0p1 || exit -1
-mount /dev/nbd0p1 /mnt/pingu || exit -1
+mount /dev/nbd0p1 "$2" || exit -1
 
-df -k /mnt/pingu
+df -k "$2"
 echo "OK"
 
 # enter a prompt
