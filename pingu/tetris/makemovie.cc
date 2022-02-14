@@ -73,12 +73,6 @@ static void PlacedPiece(const Emulator &emu,
   if (pieces_done % 25 == 0) {
     Screenshot(emu, StringPrintf("encoded%d.png", pieces_done));
 
-    /*
-    SimpleFM2::WriteInputs("encoded.fm2",
-                           "tetris.nes",
-                           "base64:Ww5XFVjIx5aTe5avRpVhxg==",
-                           outmovie);
-    */
     printf("Saved after dropping %d/%d pieces.\n",
            pieces_done, pieces_total);
   }
@@ -102,7 +96,6 @@ int main(int argc, char **argv) {
   
   std::vector<uint8_t> pattern = {129, 0, 36, 44, 0, 68, 56, 0};
 
-
   std::vector<uint8_t> movie = movie_maker.Play(pattern, callbacks);
   const Emulator *emu = movie_maker.GetEmu();
   Screenshot(*emu, "encoded-done.png");
@@ -111,9 +104,11 @@ int main(int argc, char **argv) {
                          "tetris.nes",
                          "base64:Ww5XFVjIx5aTe5avRpVhxg==",
                          movie);
-  printf("Done! Dropped %d pieces in %d frames, %.2f sec\n",
+  printf("Done! Dropped %d pieces in %d frames, %lld steps, %.2f sec\n",
          pieces,
-         (int)movie.size(), run_timer.Seconds());
+         (int)movie.size(),
+         movie_maker.StepsExecuted(),
+         run_timer.Seconds());
   
   return 0;
 }

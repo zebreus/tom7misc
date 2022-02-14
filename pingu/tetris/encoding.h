@@ -29,6 +29,9 @@ struct Encoding {
   static std::string MovieString(const std::vector<Move> &moves);
 
   // The full row expected to encode the byte.
+  // PERF: Except in the extreme cases of 0x00 and 0xFF, we really
+  // have two choices here for the left column; we should allow
+  // for whichever one leads to a shorter plan.
   static uint16_t FullTarget(uint8_t target) {
     const uint16_t full_target = (uint16_t)target |
       (target == 0xFF ?

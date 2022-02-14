@@ -134,10 +134,13 @@ static vector<Move> Encode(uint8 target,
   // If set, only play the first move of the best sequence, then replan.
   // This is probably better, but slower -- otherwise we require the
   // first phase to be completed in a multiple of 3 pieces, for example.
-  constexpr bool REPLAN_AFTER_ONE = true;
+  static constexpr bool REPLAN_AFTER_ONE = true;
 
+  static constexpr int PHASE1_SEARCH_DEPTH = ENDLESS ? 4 : 3;
+  static constexpr int PHASE2_SEARCH_DEPTH = ENDLESS ? 4 : 3;  
+  
   // Just in endless mode.
-  constexpr int MAX_TOTAL_MOVES = 250;
+  static constexpr int MAX_TOTAL_MOVES = 250;
   int total_moves = 0;
 
   // Intial setup is
@@ -513,7 +516,8 @@ static vector<Move> Encode(uint8 target,
     }
 
     // TODO: tune cutoff?
-    if (movie.size() > 50 || (ENDLESS && movie.size() > (current_solution * 0.75))) {
+    if (movie.size() > 50 ||
+        (ENDLESS && movie.size() > (current_solution * 0.75))) {
       Restart1();
       continue;
     }
@@ -523,10 +527,9 @@ static vector<Move> Encode(uint8 target,
     // (direct repeats are enforced by the Tetris object).
     const std::vector<Shape> *allowed_shapes =
       movie.empty() ? &ALL_STARTING_SHAPES : &ALL_SHAPES;
-    // PERF: We require using exactly three moves, even if one or two
-    // would win immediately.
+    const int search_depth = 1 + RandTo(&rc, PHASE1_SEARCH_DEPTH);
     const auto &[moves, score_] = GetBestRec(
-        *allowed_shapes, EvaluateSetup, tetris, 3, false);
+        *allowed_shapes, EvaluateSetup, tetris, search_depth, false);
     if (moves.empty()) {
       Restart1();
       continue;
@@ -628,7 +631,9 @@ static vector<Move> Encode(uint8 target,
       current_solution - movie.size() :
       // doesn't matter; gets clamped
       100;
-    const int use_depth = std::clamp(max_useful_depth, 1, 4);
+    const int use_depth = std::clamp(
+        max_useful_depth, 1,
+        1 + (int)RandTo(&rc, PHASE2_SEARCH_DEPTH));
     const auto &[moves, score_] = GetBestRec(
         *allowed_shapes, EvaluateClear, tetris, use_depth, true);
     if (moves.empty()) {
@@ -787,6 +792,7 @@ static void EndlessImprove() {
   // 0 = not working, 1 = phase 1, 2 = phase 2
   std::vector<int> working(256, 0);
   std::vector<bool> improved(256, false);
+  std::vector<bool> skipping(256, false);
   std::vector<int> best(256, -2);
   int moves_saved = 0;
   Timer run_timer;
@@ -795,8 +801,8 @@ static void EndlessImprove() {
     best[idx] = movie.size();
   }
 
-  auto PrintTable = [&m, &working, &improved, &best, &moves_saved,
-                     &run_timer]() {
+  auto PrintTable = [&m, &working, &improved, &skipping, &best,
+                     &moves_saved, &run_timer]() {
       MutexLock ml(&m);
 
       constexpr int STATUS_LINES = 32;
@@ -819,6 +825,9 @@ static void EndlessImprove() {
       for (int y = 0; y < STATUS_LINES; y++) {
         for (int x = 0; x < STATUS_COLS; x++) {
           int idx = y * STATUS_COLS + x;
+          const char *idx_color =
+            skipping[idx] ? ANSI_GREY : ANSI_WHITE;
+
           const char *color =
             improved[idx] ? ANSI_GREEN : ANSI_RED;
 
@@ -826,7 +835,8 @@ static void EndlessImprove() {
             working[idx] == 0 ? ANSI_GREY ":" :
             working[idx] == 1 ? ANSI_BLUE "=" :
             ANSI_PURPLE "@";
-          CPrintf(ANSI_WHITE "%02x%s%s% 3d" ANSI_RESET "   ",
+          CPrintf("%s%02x%s%s% 3d" ANSI_RESET "   ",
+                  idx_color,
                   idx, colon, color, best[idx]);
         }
         CPrintf(ANSI_CLEARTOEOL "\n");
@@ -838,21 +848,44 @@ static void EndlessImprove() {
 
   for (;;) {
     const uint8 random_offset = rc.Byte();
+
+    // Skip if strictly better than the nth best result.
+    static constexpr int BEST_TO_SKIP = 256 / 2;
+    static_assert(BEST_TO_SKIP >= 0 && BEST_TO_SKIP < 256);
     // Hack: Always keep threads working by doing a huge parallel
     // comprehension but only looking at the lowest byte.
     ParallelComp(256 * 256 * 256,
-                 [&m, &working, &improved, &best,
+                 [&m, &working, &improved, &skipping, &best,
                   &moves_saved, random_offset,
                   &PrintTable](int raw_idx) {
                    int idx = (raw_idx + random_offset) & 0xFF;
                    int cur_best = 9999;
                    {
                      MutexLock ml(&m);
+
+                     cur_best = best[idx];
+
+                     // always do 0 because it is so important
+                     if (idx != 0 && BEST_TO_SKIP > 0) {
+                       // XXX this does not work when we have no
+                       // solutions for some; better set BEST_TO_SKIP
+                       // to zero in that case.
+                       std::vector<int> sorted = best;
+                       std::sort(sorted.begin(), sorted.end());
+
+                       int cutoff_score = sorted[BEST_TO_SKIP];
+                       if (cur_best < cutoff_score) {
+                         skipping[idx] = true;
+                         return;
+                       }
+                     }
+
+                     skipping[idx] = false;
+                     
                      // Skip if someone is already working on it.
                      if (working[idx] != 0)
                        return;
 
-                     cur_best = best[idx];
                      working[idx] = 1;
                    }
                    PrintTable();

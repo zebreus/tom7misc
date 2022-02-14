@@ -49,6 +49,7 @@ int main(int argc, char **argv) {
 
   } else {
     int total_moves = 0;
+    int best_moves = 99999, worst_moves = 0;
     for (const auto &[b, movie] : sols) {
       CHECK(b >= 0 && b < 256);
 
@@ -92,9 +93,16 @@ int main(int argc, char **argv) {
       }
 
       total_moves += movie.size();
+      best_moves = std::min(best_moves, (int)movie.size());
+      worst_moves = std::max(worst_moves, (int)movie.size());      
     }
 
-    printf("Total moves: %d\n", total_moves);
+    printf("Total moves: %d\n"
+           "Best: %d\n"
+           "Worst: %d\n"
+           "Average : %.2f\n",
+           total_moves, best_moves, worst_moves,
+           total_moves / 256.0);
     CHECK(sols.size() == 256) << sols.size();
   }
 

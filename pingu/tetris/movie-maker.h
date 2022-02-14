@@ -52,10 +52,15 @@ struct MovieMaker {
   // while or before Play runs, who knows what will happen?
   Emulator *GetEmu() { return emu.get(); };
 
+  // Just for benchmarking, etc.; the number of total emulator
+  // steps we executed while finding the solution.
+  int64 StepsExecuted() const { return steps_executed; }
+  
 private:
   ArcFour rc;
   std::unique_ptr<Emulator> emu;
   std::map<uint8_t, std::vector<Move>> all_sols;
+  int64 steps_executed = 0;
 };
 
 #endif

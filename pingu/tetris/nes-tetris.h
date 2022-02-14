@@ -224,7 +224,7 @@ inline RNGState NextPiece(RNGState s) {
   return s;
 }
 
-// Square types:
+// Square types in board array (0x400+):
 // EF = empty
 // 7B = white square w/shine, like in T, square, line
 // 7D = blue, like in J

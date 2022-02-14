@@ -91,7 +91,10 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
                            );
 
 
-  for (uint8 c : startmovie) emu->Step(c, 0);
+  for (uint8 c : startmovie) {
+    emu->Step(c, 0);
+    steps_executed++;
+  }
   if (callbacks.game_start)
     callbacks.game_start(*emu, (int)schedule.size());
 
@@ -168,6 +171,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
       // Seems we can get into this state paused; so un-pause!
       uint8 input = IsPaused(*emu) ? INPUT_T : 0;
       emu->Step(input, 0);
+      steps_executed++;
       outmovie.push_back(input);
       continue;
     }
@@ -268,6 +272,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
     }
 
     emu->Step(input, 0);
+    steps_executed++;
     outmovie.push_back(input);
   }
 }

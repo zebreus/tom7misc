@@ -3,10 +3,10 @@ all : lucky.exe encode.exe tetris_test.exe play.exe makemovie.exe nes-tetris_tes
 CC_LIB=../../cc-lib
 FCEULIB=../../fceulib
 
-# CXX=x86_64-w64-mingw32-g++
-# CC=x86_64-w64-mingw32-gcc
-# PLATFORM_LFLAGS=-static -L . libz.a
-PLATFORM_LFLAGS=-lz -lpthread
+CXX=x86_64-w64-mingw32-g++
+CC=x86_64-w64-mingw32-gcc
+PLATFORM_LFLAGS=-static -L . libz.a
+# PLATFORM_LFLAGS=-lz -lpthread
 
 CXXFLAGS=-Wall -Werror --std=c++20 -O -DPSS_STYLE=2 -I $(CC_LIB) -I $(FCEULIB)
 LFLAGS=$(PLATFORM_LFLAGS)
