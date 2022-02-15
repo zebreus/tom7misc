@@ -171,29 +171,32 @@ inline RNGState NextPiece(RNGState s) {
   // of bounds, or the drop was the same as the
   // previous.
 
+  // printf("Re-roll! a=%02x  rng = %02x%02x ", a, s.rng1, s.rng2);
+  
   //  ldx #$17
   //  ldy #$02
   //  jsr $ab47  (NextRNG)
   s = NextRNG(s);
 
+  // printf("-> %02x%02x\n", s.rng1, s.rng2);
+  
   //  lda $0017
   a = s.rng1;
   //  and #$07
   a &= 0x7;
   //  clc
   carry_flag = false;
-  //  adc $0019 = #$0e
-  a += s.drop_count;
+  //  adc $0019
+  // printf("a %02x + %02x -> %02x\n", a, s.last_drop, a + s.last_drop);
+  a += s.last_drop;
 
  _992A:
   // This code is (a %= 7) implemented as a loop,
-  // which is not really necessary since a is
-  // known to be in [0,7] due to the AND above.
-  // We could simply check for == 7 and replace
-  // with zero in that case, or just use the fact
-  // that the table at position 7 contains the
-  // same entry as at zero!
+  // which maybe could be done faster since a and
+  // last_drop both have known ranges.
 
+  // printf("At 992a, a=%02x\n", a);
+  
   //  cmp #$07
   carry_flag = (a >= 0x07);
   //  bcc $9934
@@ -261,6 +264,17 @@ inline RNGState NextPiece(RNGState s) {
 // 0x0D, 0x0E, 0x0F, 0x10 - L
 // 0xB, 0xC - S
 // this all makes sense!
+
+inline RNGState GetRNG(const Emulator &emu) {
+  RNGState state;
+
+  state.rng1 = emu.ReadRAM(MEM_RNG1);
+  state.rng2 = emu.ReadRAM(MEM_RNG2);  
+  state.last_drop = emu.ReadRAM(MEM_LAST_DROP);
+  state.drop_count = emu.ReadRAM(MEM_DROP_COUNT);
+
+  return state;
+}
 
 // 10x20, row major.
 inline std::vector<uint8_t> GetBoard(const Emulator &emu) {

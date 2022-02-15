@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
       printf("Starting with schedule of size %d\n",
              num_pieces);
       pieces = num_pieces;
-      Screenshot(emu, "start.png");
+      // Screenshot(emu, "start.png");
     };
   callbacks.retried = Retried;
   callbacks.placed_piece = PlacedPiece;

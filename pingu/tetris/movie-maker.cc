@@ -32,6 +32,18 @@ MovieMaker::MovieMaker(const std::string &solution_file,
   CHECK(emu.get() != nullptr) << rom_file;
 }
 
+static bool EqualRNG(RNGState a, RNGState b) {
+  return a.rng1 == b.rng1 &&
+    a.rng2 == b.rng2 &&
+    a.last_drop == b.last_drop &&
+    a.drop_count == b.drop_count;
+}
+
+static std::string RNGString(RNGState s) {
+  return StringPrintf("%02x%02x.%02x.%02x",
+                      s.rng1, s.rng2,
+                      s.last_drop, s.drop_count);
+}
 
 std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
                                       Callbacks callbacks) {
@@ -98,6 +110,14 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
   if (callbacks.game_start)
     callbacks.game_start(*emu, (int)schedule.size());
 
+  // Keep track of the RNG state. We can just read it from RAM
+  // whenever, but it is useful to quickly predict future values so we
+  // can tell when we will get the piece we want. Every emulator frame
+  // advances this (NextRNG). Additionally, spawning a piece
+  // (NextPiece) can advance one more time if a re-roll happens.
+  RNGState tracked_state = GetRNG(*emu);
+  uint8 tracked_next_piece = NextPiece(tracked_state).last_drop;
+  
   vector<uint8> outmovie = startmovie;
 
   vector<uint8> savestate;
@@ -107,9 +127,12 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
       savestate = emu->SaveUncompressed();
     };
 
-  auto Restore = [this, &savestate, &savelen, &outmovie]() {
+  auto Restore = [this, &savestate, &savelen, &outmovie,
+                  &tracked_state, &tracked_next_piece]() {
       outmovie.resize(savelen);
       emu->LoadUncompressed(savestate);
+      tracked_state = GetRNG(*emu);
+      tracked_next_piece = NextPiece(tracked_state).last_drop;      
     };
 
   Save();
@@ -125,6 +148,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
   Timer run_timer;
   static constexpr int REPORT_EVERY = 10;
   int next_report = REPORT_EVERY;
+
   for (;;) {
     // (note this is not really a frame counter currently, as it
     // does not get saved/restored)
@@ -170,13 +194,27 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
 
       // Seems we can get into this state paused; so un-pause!
       uint8 input = IsPaused(*emu) ? INPUT_T : 0;
+      
+      CHECK(EqualRNG(tracked_state, GetRNG(*emu))) << 
+        StringPrintf("tracked %s -> %02x actual %s\n",
+                     RNGString(tracked_state).c_str(),
+                     tracked_next_piece,
+                     RNGString(GetRNG(*emu)).c_str());
+      
       emu->Step(input, 0);
       steps_executed++;
+      tracked_state = NextRNG(tracked_state);
+      tracked_next_piece = NextPiece(tracked_state).last_drop;
+
+      // (tracked state might not match, because this may have
+      // been a piece drop)
+      
       outmovie.push_back(input);
       continue;
     }
 
     if (prev_counter != current_counter) {
+      
       // A piece just landed.
       // This means that 'cur' should just now have the next piece that
       // we previously established as correct.
@@ -197,6 +235,33 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
         return outmovie;
       }
 
+      CHECK(next_byte == tracked_next_piece);
+
+      /*
+      [[maybe_unused]]
+      RNGState next_piece_state = NextPiece(tracked_state);
+      [[maybe_unused]]
+      RNGState actual_state = GetRNG(*emu);
+      */
+#if 0
+      CHECK(next_byte == tracked_next_piece) <<
+        StringPrintf("At frame %lld, pieces %d, retry_count %d:\n"
+                     "Next is %02x, but tnp is %02x.\n"
+                     "tracked RNG state %02x%02x.%02x.%02x\n"
+                     "next piece state  %02x%02x.%02x.%02x\n"
+                     "actual RNG state  %02x%02x.%02x.%02x\n",
+                     frame, pieces, retry_count,
+                     next_byte, tracked_next_piece,
+                     tracked_state.rng1, tracked_state.rng2,
+                     tracked_state.last_drop, tracked_state.drop_count,
+                     next_piece_state.rng1, next_piece_state.rng2,
+                     next_piece_state.last_drop, next_piece_state.drop_count,
+                     actual_state.rng1, actual_state.rng2,
+                     actual_state.last_drop, actual_state.drop_count);
+#endif
+      tracked_state = GetRNG(*emu);
+      tracked_next_piece = NextPiece(tracked_state).last_drop;
+      
       // Now check that the NEW next piece is what we expect.
       // At the end of the schedule, we don't care what the next
       // piece is because we won't use it. Be permissive so that
@@ -211,7 +276,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
         // Go back to previous piece. Also keep track of how many
         // times this has recently happened.
 
-        retry_count++;        
+        retry_count++;
         if (callbacks.retried) {
           callbacks.retried(*emu, retry_count, expected);
         }
@@ -271,7 +336,41 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
       input |= INPUT_T;
     }
 
+    
+    CHECK(EqualRNG(tracked_state, GetRNG(*emu))) << 
+      StringPrintf("tracked %s -> %02x actual %s\n",
+                   RNGString(tracked_state).c_str(),
+                   tracked_next_piece,
+                   RNGString(GetRNG(*emu)).c_str());
+
+    /*
+    if (outmovie.size() == 1323) {
+      RNGState np = NextPiece(tracked_state);
+      printf("before step tracked %s -> %s (%02x) actual %s\n",
+             RNGString(tracked_state).c_str(),
+             RNGString(np).c_str(), np.last_drop,
+             RNGString(GetRNG(*emu)).c_str());
+    }
+    */
+    
     emu->Step(input, 0);
+    tracked_state = NextRNG(tracked_state);
+    // RNGState np = NextPiece(tracked_state);
+    tracked_next_piece = NextPiece(tracked_state).last_drop;
+
+    // tracked state might not match up, since this frame
+    // may have been a piece drop.
+
+    /*
+    printf("[%05d] tracked %s -> %s (%02x) actual %s%s\n",
+           (int)outmovie.size(),
+           RNGString(tracked_state).c_str(),
+           RNGString(np).c_str(),
+           tracked_next_piece,
+           RNGString(GetRNG(*emu)).c_str(),
+           EqualRNG(tracked_state, GetRNG(*emu)) ? "" : "  <----");
+    */
+    
     steps_executed++;
     outmovie.push_back(input);
   }

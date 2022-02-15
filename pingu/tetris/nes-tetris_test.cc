@@ -108,8 +108,35 @@ static void TestDraw() {
 
 }
 
+
+static void TestRNG() {
+  {
+    RNGState s1{.rng1 = 0x67, .rng2 = 0x05,
+                .last_drop = 0x07, .drop_count = 0x03};
+    RNGState s2 = NextPiece(s1);
+    // I think this is correct?
+    CHECK(s1.rng1 == s2.rng1 &&
+          s1.rng2 == s2.rng2 &&
+          s1.drop_count + 1 == s2.drop_count &&
+          s2.last_drop == 0x0a);
+  }
+
+  {
+    RNGState s1{.rng1 = 0xb3, .rng2 = 0x82,
+                .last_drop = 0x07, .drop_count = 0x03};
+    // my code gives 59c1.0e.04
+    // game gives 59c1.07.04
+    RNGState s2 = NextPiece(s1);
+    CHECK(s2.rng1 == 0x59 && s2.rng2 == 0xc1);
+    CHECK(s2.last_drop == 0x07);
+    CHECK(s2.drop_count == s1.drop_count + 1);
+  }
+  
+}
+
 int main(int argc, char **argv) {
   TestDraw();
+  TestRNG();
   printf("OK\n");
   return 0;
 }
