@@ -25,7 +25,7 @@
 
 using namespace std;
 
-static constexpr int PAYLOAD_SIZE = 56;  // XXX
+static constexpr int PAYLOAD_SIZE = 24;  // XXX
 static constexpr time_t TIMEOUT_SEC = 32;
 
 // with 131072, 46m17s. 0.6% ok 58.0% st 41.4% qt
@@ -53,7 +53,7 @@ static_assert(HASH_BYTES > 0 && HASH_BYTES <= SHA256::DIGEST_LENGTH);
 static constexpr uint8_t TIMEOUT = 0;
 static constexpr uint8_t WRONG_DATA = 255;
 
-static constexpr double MAX_PINGS_PER_SECOND = 512.0;
+static constexpr double MAX_PINGS_PER_SECOND = 1024.0;
 // Note that we could specify the burstiness parameter separately.
 static constexpr double MAX_BURST = 4.0;
 
@@ -201,7 +201,7 @@ static void Pingy(uint8_t c) {
 	other_errors = 0;
   int64 prev_wrote = 0, prev_successes = 0, prev_done = 0;
   int64 write_ok = 0, write_throttled = 0;
-  auto Status = [start_time, &next_idx, &hosts, &outstanding, &timeout_queue,
+  auto Status = [c, start_time, &next_idx, &hosts, &outstanding, &timeout_queue,
 				 &successes, &select_timeouts, &queue_timeouts,
 				 &other_errors, &prev_wrote, &prev_successes, &prev_done,
 				 &write_ok, &write_throttled]() {
@@ -242,11 +242,11 @@ static void Pingy(uint8_t c) {
 	};
 
   int64_t last_report = 0;
-  auto Report = [&Status, &last_report](const std::function<std::string()> &f,
+  auto Report = [c, &Status, &last_report](const std::function<std::string()> &f,
 										bool force = false) {
 	  const int64_t now = time(nullptr);
 	  if (force || now > last_report) {
-		printf("[%s] %s\n", Status().c_str(), f().c_str());
+	    printf("%d [%s] %s\n", c, Status().c_str(), f().c_str());
 		last_report = now;
 	  }
 	};
@@ -493,7 +493,7 @@ static void Pingy(uint8_t c) {
 }
 
 int main(int argc, char **argv) {
-  for (int c = 85; c < 256; c++) {
+  for (int c = 150; c < 200; c++) {
 	std::string filename = StringPrintf("ping%d.dat", c);
 	printf(" === *.*.%d.* ===\n", c);
 	if (Util::ExistsFile(filename)) {
