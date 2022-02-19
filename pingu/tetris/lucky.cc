@@ -838,11 +838,13 @@ static void HeatPair() {
 
 
 struct TinySet {
+  static constexpr int MAX_SIZE = 4;
+
   // Perhaps a faster data structure since max 3 items!
   std::unordered_set<int> items;
   void Add(int item) {
     items.insert(item);
-    if (items.size() > 3) {
+    if (items.size() > MAX_SIZE) {
       printf("Too many items for %d,%d:\n", z, last_piece);
       for (int item : items)
         printf("%d, ", item);
@@ -859,17 +861,21 @@ struct TinySet {
 // example. This would be 8 minutes of real time at 60hz!
 [[maybe_unused]]
 static void AllRerolls() {
-  constexpr std::array<uint8, 8> PIECES = {
+  static constexpr std::array<uint8, 8> PIECES = {
     0x02, 0x07, 0x08, 0x0A, 0x0B, 0x0E, 0x12,
     // not used ?
     0x02,
   };
 
   // for any counter / drop
-  int histo_states[4] = {};
+  int histo_states[1 + TinySet::MAX_SIZE] = {};
   int max_piece[7] = {};
   int min_piece[7] = {9, 9, 9, 9, 9, 9, 9};
   int cant_dup[7] = {};
+
+  // In this loop we represent last_drop as an index in [0,7],
+  // but the RNG state actually stores the shape from the PIECES
+  // array above.
   for (uint8 last_drop = 0; last_drop < 7; last_drop++) {
     for (int z = 0; z < 256; z++) {
       const uint8 tmp_drop_count = z;
@@ -880,6 +886,7 @@ static void AllRerolls() {
 
       for (int x = 0; x < 256; x++) {
         const uint8 tmp_rng1 = x;
+        // (as an index into PIECES)
         const uint8 first_roll = (tmp_rng1 + (tmp_drop_count + 1)) & 0x7;
 
         if (first_roll == last_drop || first_roll == 0x7) {
@@ -891,15 +898,23 @@ static void AllRerolls() {
             RNGState state;
             state.rng1 = x;
             state.rng2 = y;
+            state.last_drop = PIECES[last_drop];
             state.drop_count = z;
-            state.last_drop = last_drop;
             RNGState after = NextPiece(state);
 
+            CHECK([after](){
+                for (uint8 s : PIECES)
+                  if (s == after.last_drop)
+                    return true;
+                return false;
+              }());
+            
             tes.Add(after.last_drop);
           }
         }
       }
 
+      CHECK(tes.items.size() < sizeof histo_states / sizeof(int));
       histo_states[tes.items.size()]++;
       max_piece[last_drop] = std::max(max_piece[last_drop],
                                       (int)tes.items.size());
@@ -911,8 +926,9 @@ static void AllRerolls() {
     }
   }
   printf("OK\n");
-  printf("Count with 0: %d, 1: %d, 2: %d, 3: %d\n",
-         histo_states[0], histo_states[1], histo_states[2], histo_states[3]);
+  printf("Count with 0: %d, 1: %d, 2: %d, 3: %d 4: %d\n",
+         histo_states[0], histo_states[1], histo_states[2], histo_states[3],
+         histo_states[4]);
 
   for (int p = 0; p < 7; p++) {
     char pc = PieceChar(DecodePiece((Shape)PIECES[p]));
@@ -923,7 +939,8 @@ static void AllRerolls() {
 }
 
 int main(int argc, char **argv) {
-  MakeStreak2();
-
+  // MakeStreak2();
+  AllRerolls();
+  
   return 0;
 }

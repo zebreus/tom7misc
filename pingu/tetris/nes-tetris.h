@@ -50,6 +50,19 @@ struct RNGState {
 };
 
 
+inline bool EqualRNG(RNGState a, RNGState b) {
+  return a.rng1 == b.rng1 &&
+    a.rng2 == b.rng2 &&
+    a.last_drop == b.last_drop &&
+    a.drop_count == b.drop_count;
+}
+
+inline std::string RNGString(RNGState s) {
+  return StringPrintf("%02x%02x.%02x.%02x",
+                      s.rng1, s.rng2,
+                      s.last_drop, s.drop_count);
+}
+
 // This is the code at 0xAB47. Every JSR to this sets
 // X = 17 (M_RNG1) and Y = 2 (its size), so we just
 // take those as constants.

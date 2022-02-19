@@ -8,6 +8,7 @@
 #include "encoding.h"
 
 #include "util.h"
+#include "image.h"
 
 using namespace std;
 using uint8 = uint8_t;
@@ -17,7 +18,7 @@ using Tetris = TetrisDepth<6>;
 
 int main(int argc, char **argv) {
   static constexpr const char *solfile = "solutions.txt";
-
+ 
   std::map<uint8_t, std::vector<Move>> sols =
     Encoding::ParseSolutions(solfile);
 
@@ -94,15 +95,33 @@ int main(int argc, char **argv) {
 
       total_moves += movie.size();
       best_moves = std::min(best_moves, (int)movie.size());
-      worst_moves = std::max(worst_moves, (int)movie.size());      
+      worst_moves = std::max(worst_moves, (int)movie.size());
     }
-
+    
     printf("Total moves: %d\n"
            "Best: %d\n"
            "Worst: %d\n"
            "Average : %.2f\n",
            total_moves, best_moves, worst_moves,
            total_moves / 256.0);
+
+    const int width = worst_moves - best_moves;
+    if (width == 0) {
+      printf("Can't generate image because all solutions are same length!\n");
+    } else {
+      ImageRGBA image(16, 16);
+      for (const auto &[b, movie] : sols) {
+        int size = (int)movie.size();
+        float f = (size - best_moves) / (float)width;
+        int x = b & 0xF;
+        int y = (b >> 4) & 0xF;
+        uint8 v = std::clamp((int)roundf(f * 255.0f), 0, 255);
+        image.SetPixel(x, y, v, v, v, 0xFF);
+      }
+      image.ScaleBy(4).Save("play.png");
+      printf("Wrote play.png\n");
+    }
+
     CHECK(sols.size() == 256) << sols.size();
   }
 

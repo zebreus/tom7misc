@@ -28,27 +28,27 @@ $(FCEULIB)/%.o : $(FCEULIB)/%.cc
 	@echo -n ","
 
 lucky.exe : lucky.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
 encode.exe : encode.o encoding.o $(CCLIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
-
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	strip $@
 
 play.exe : play.o encoding.o $(CCLIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
 makemovie.exe : makemovie.o movie-maker.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
 tetris_test.exe : tetris_test.o $(CCLIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
 nes-tetris_test.exe : nes-tetris_test.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
 clean :
