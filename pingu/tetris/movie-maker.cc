@@ -23,6 +23,8 @@
 #include "nes-tetris.h"
 #include "encoding.h"
 
+static constexpr bool VERBOSE = false;
+
 MovieMaker::MovieMaker(const std::string &solution_file,
                        const std::string &rom_file,
                        int64_t seed) : rc(StringPrintf("%lld", seed)) {
@@ -33,6 +35,7 @@ MovieMaker::MovieMaker(const std::string &solution_file,
 }
 
 // XXX
+[[maybe_unused]]
 static void Screenshot(const Emulator &emu, const std::string &filename) {
   std::vector<uint8> save = emu.SaveUncompressed();
   std::unique_ptr<Emulator> clone(Emulator::Create("tetris.nes"));
@@ -82,20 +85,22 @@ struct RetryState {
   // Save the state, once we have gotten to a new good point.
   void Save() {
 
-    if (min_frames > 0) {
-      printf("Success on %d (min_frames %d)\n", save_frame, min_frames);
-      for (int i = 0; i < (int)delays_reached.size(); i++) {
-        const auto &[count, rng, drop] = delays_reached[i];
-        if (count > 0) {
-          printf("% 5d x% 5d  %s%s\n", i, count, RNGString(rng).c_str(),
-                 i == (save_frame - min_frames) ? " <---" : "");
+    if (VERBOSE) {
+      if (min_frames > 0) {
+        printf("Success on %d (min_frames %d)\n", save_frame, min_frames);
+        for (int i = 0; i < (int)delays_reached.size(); i++) {
+          const auto &[count, rng, drop] = delays_reached[i];
+          if (count > 0) {
+            printf("% 5d x% 5d  %s%s\n", i, count, RNGString(rng).c_str(),
+                   i == (save_frame - min_frames) ? " <---" : "");
+          }
         }
+      } else {
+        printf("Initial save or success on first try!\n");
       }
-    } else {
-      printf("Initial save or success on first try!\n");
+      printf("-----\n");
     }
-    printf("-----\n");
-    
+      
     save_frame = movie->size();
     savestate = emu->SaveUncompressed();
     retry_count = 0;
@@ -258,7 +263,7 @@ struct RetryState {
   static constexpr int HORIZON = 10000;
   // count, rng state, predicted drop on that frame
   std::vector<std::tuple<int, RNGState, uint8_t>> delays_reached;
-  // XXX
+  // XXX: only for debugging
   vector<uint8> min_delay_movie;
   
 private:
@@ -373,6 +378,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
 
     const bool is_paused = IsPaused(*emu);
 
+    // XXX do this with callback
     int seconds = run_timer.Seconds();
     if (seconds >= next_report) {
       const uint8 rng1 = emu->ReadRAM(MEM_RNG1);
@@ -533,8 +539,11 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
         // XXX!
         input = 0;
 
-        if (retry_state.FramesSinceSave() > 0)
-          input |= (rc.Byte() & INPUT_D);
+        // Hold down D, but wait a little longer on each retry.
+        if (retry_state.FramesSinceSave() > retry_state.retry_count)
+          input |= INPUT_D;
+
+        // If we seem to be getting stuck, spam start to pause as well.
         if (retry_state.retry_count > 64) input |= (rc.Byte() & INPUT_T);
       }
         
