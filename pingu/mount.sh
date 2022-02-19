@@ -23,21 +23,14 @@ echo "STARTED SERVER on $1"
 # 100 hour timeout
 nbd-client -timeout 360000 -unix "$1" /dev/nbd0 || exit -1
 
-gdisk /dev/nbd0 <<EOF
-n
-1
+# It appears to be possible to make a FAT12 filesystem and
+# mount it without a partition table (just /dev/nbd0 instead of
+# /dev/nbd0p1), which makes it possible to have smaller disks.
 
-
-8300
-w
-y
-
-EOF
 
 # -a disables alignment, saving space
-
-mkfs.fat -v -a -n "PINGU" /dev/nbd0p1 || exit -1
-mount /dev/nbd0p1 "$2" || exit -1
+mkfs.vfat -F 12 -v -a -n "PINGU" /dev/nbd0 || exit -1
+mount /dev/nbd0 "$2" || exit -1
 
 df -k "$2"
 echo "OK"

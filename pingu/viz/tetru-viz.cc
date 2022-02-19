@@ -115,7 +115,7 @@ static void Redraw(ImageRGBA *img) {
 		// Draw board
 		for (int y = 0; y < 20; y++) {
 		  for (int x = 0; x < 10; x++) {
-			const uint8_t p = block.board[y * 20 + x];
+			const uint8_t p = block.board[y * 10 + x];
 			static std::array<uint32_t, 6> colors = {
 			  0x000000FF,
 			  0x44FF44FF,

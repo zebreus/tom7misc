@@ -123,6 +123,15 @@ struct Block {
 	callbacks.placed_piece = [this](const Emulator &emu,
 									int pieces_done,
 									int total_pieces) {
+		std::vector<uint8_t> board = GetBoard(emu);
+		if (!IsLineClearing(emu)) {
+		  Shape shape = (Shape)emu.ReadRAM(MEM_CURRENT_PIECE);
+		  int x = emu.ReadRAM(MEM_CURRENT_X) - ShapeXOffset(shape);
+		  // XXX adjust for NES offsets!
+		  int y = emu.ReadRAM(MEM_CURRENT_Y);
+		  DrawShapeOnBoard(0xFF, shape, x, y, &board);
+		}
+		
 		const std::string encoded_board = BoardPic::ToString(GetBoard(emu));
 		std::unique_lock<std::mutex> ul(mutex);
 		/*
@@ -213,10 +222,16 @@ static void tetru_unload(void) {
 }
 
 static int tetru_config(const char *key, const char *value) {
-  if (strcmp(key, "num_blocks") == 0) {
-    num_blocks = BLOCK_MULTIPLIER * nbdkit_parse_size(value);
-    if (num_blocks == -1)
+  if (strcmp(key, "num_bytes") == 0) {
+    int64_t num_bytes = nbdkit_parse_size(value);
+    if (num_bytes == -1)
       return -1;
+	if (num_bytes % BLOCK_SIZE != 0) {
+	  nbdkit_error("bytes must be divisible by block size, %d", BLOCK_SIZE);
+	  return -1;
+	}
+
+	num_blocks = num_bytes / BLOCK_SIZE;
   } else {
     nbdkit_error("unknown parameter '%s'", key);
     return -1;
@@ -227,14 +242,14 @@ static int tetru_config(const char *key, const char *value) {
 
 static int tetru_config_complete(void) {
   if (num_blocks == -1) {
-    nbdkit_error("you must specify num_blocks=<NUM> on the command line");
+    nbdkit_error("you must specify num_bytes=<NUM> on the command line");
     return -1;
   }
   return 0;
 }
 
 #define tetru_config_help \
-  "num_blocks=<NUM>  (required) Number of blocks in the backing buffer"
+  "num_bytes=<NUM>  (required) Number of bytes in the backing buffer"
 
 static void tetru_dump_plugin(void) {
 }
@@ -373,7 +388,7 @@ static struct nbdkit_plugin plugin = {
   .trim              = nullptr,
   .zero              = nullptr,
 
-  .magic_config_key  = "num_blocks",
+  .magic_config_key  = "num_bytes",
   .can_multi_conn    = tetru_can_multi_conn,
 
   .can_extents       = nullptr,

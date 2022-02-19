@@ -343,6 +343,11 @@ inline void SaveScreenshot(const string &filename, Emulator *emu) {
   emu->LoadUncompressed(save);
 }
 
+// True if we're in the middle of clearing a line.
+inline bool IsLineClearing(const Emulator &emu) {
+  return emu.ReadRAM(MEM_CURRENT_PIECE) == 0x13;
+}
+
 // Heuristic; not sure if this is correct.
 // (Probably program counter would be definitive when
 // outside of NMI.)

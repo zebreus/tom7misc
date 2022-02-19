@@ -12,11 +12,11 @@
 
 using namespace std;
 
-static constexpr int BLOCKSW = 16;
-static constexpr int BLOCKSH = 16;
+static constexpr int BLOCKSW = 10;
+static constexpr int BLOCKSH = 10;
 static constexpr int NUM_BLOCKS = BLOCKSW * BLOCKSH;
 
-static constexpr int BLOCKSIZE = 16;
+static constexpr int BLOCKSIZE = 18;
 
 static constexpr int SCREENW = BLOCKSIZE * BLOCKSW;
 // plus status bar etc.
