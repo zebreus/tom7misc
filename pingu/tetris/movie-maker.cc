@@ -32,22 +32,60 @@ MovieMaker::MovieMaker(const std::string &solution_file,
   CHECK(emu.get() != nullptr) << rom_file;
 }
 
+// XXX
+static void Screenshot(const Emulator &emu, const std::string &filename) {
+  std::vector<uint8> save = emu.SaveUncompressed();
+  std::unique_ptr<Emulator> clone(Emulator::Create("tetris.nes"));
+  CHECK(clone.get() != nullptr);
+  clone->LoadUncompressed(save);
+  clone->StepFull(0, 0);
+
+  ImageRGBA img(clone->GetImage(), 256, 256);
+  img.Save(filename);
+  printf("Wrote %s\n", filename.c_str());
+}
+
+
+[[maybe_unused]]
+static std::string StateWithNext(RNGState s) {
+  // XXX Careful. Every frame calls NextRNG, and then on drop frames
+  // we may call it a second time.
+  return StringPrintf("%s -> %02x",
+                      RNGString(s).c_str(),
+                      NextPiece(s).last_drop);
+}
+
 // We generally need to make many attempts to get the desired
 // next piece, because it is RNG-dependent. The first time
 // through, this  XXX docs
 struct RetryState {
 
-  RetryState(Emulator *emu, vector<uint8> *movie) : emu(emu), movie(movie) {
+  RetryState(Emulator *emu, vector<uint8> *movie,
+             int64 *steps_executed) : emu(emu), movie(movie),
+                                      steps_executed(steps_executed) {
     Save();
   }
 
+  int Frame() const {
+    return movie->size();
+  }
+
+  int FramesSinceSave() const {
+    return movie->size() - save_frame;
+  }
+  
+  uint8 LastInput() const {
+    if (movie->empty()) return 0;
+    else return movie->back();
+  }
+  
   // Save the state, once we have gotten to a new good point.
   void Save() {
 
     if (min_frames > 0) {
       printf("Success on %d (min_frames %d)\n", save_frame, min_frames);
       for (int i = 0; i < (int)delays_reached.size(); i++) {
-        const auto &[count, rng] = delays_reached[i];
+        const auto &[count, rng, drop] = delays_reached[i];
         if (count > 0) {
           printf("% 5d x% 5d  %s%s\n", i, count, RNGString(rng).c_str(),
                  i == (save_frame - min_frames) ? " <---" : "");
@@ -60,16 +98,16 @@ struct RetryState {
     
     save_frame = movie->size();
     savestate = emu->SaveUncompressed();
-    rng_state = GetRNG(*emu);
     retry_count = 0;
     min_frames = -1;
     delays_reached.clear();
+    rng_states.clear();
   }
 
   void Restore() {
     movie->resize(save_frame);
     emu->LoadUncompressed(savestate);
-    rng_state = GetRNG(*emu);
+    rng_states.clear();
     retry_count++;
   }
 
@@ -77,53 +115,136 @@ struct RetryState {
   // don't even yet know how many frames it takes, minimally.
   int retry_count = 0;
 
-  void UpdateFrameTable(uint8 desired) {
+  void UpdateFrameTable(Shape desired, Shape got) {
+    // Don't call this if we already succeeded!
+    CHECK(desired != got);
+
+    // Currently the emulator is in a state right after a drop.
+    // So this means that we ran NextRNG (because we do that
+    // every frame) and then ran NextPiece (to compute the
+    // drop), which itself may run NextRNG again.
+    // The current state is not useful for predicting what
+    // would drop if we took longer to get here, since in that
+    // case we would not run NextPiece.
+    // But the end of the rng_states vector is the state right before
+    // executing that drop frame.
+    CHECK(!rng_states.empty()) << "Drop on save frame??";
+    // ... and then run NextRNG once (since we always do) to get the
+    // state for the current frame if we did not drop.
+    const RNGState rng_state =
+      NextRNG(rng_states.back());
+    
+#if 0
+    const RNGState drop_rng_state = NextPiece(rng_state);
+    const RNGState next_rng_state = NextRNG(rng_state);
+    const RNGState emu_rng_state = GetRNG(*emu);
+
+    printf("UpdateFrameTable desired=%02x got=%02x\n"
+           "History size: %d\n"
+           "RNG from history is   %s\n"
+           "if dropping, then     %s\n"
+           "if not dropping, then %s\n"
+           "and in emu after drop %s\n",
+           desired, got,
+           (int)rng_states.size(),
+           StateWithNext(rng_state).c_str(),
+           StateWithNext(drop_rng_state).c_str(),           
+           StateWithNext(next_rng_state).c_str(),
+           StateWithNext(emu_rng_state).c_str());
+#endif
+    
+    // Sanity check that we are able to predict the piece we actually
+    // got. (Because on this frame the emulator actually called
+    // NextRNG and then NextPiece.)
+    const uint8 computed_drop = NextPiece(rng_state).last_drop;
+    CHECK(computed_drop == got) <<
+      StringPrintf("Computed %02x but actually dropped %02x",
+                   computed_drop, got);
+
+    // Initialize the frame table the first time we retry.
     if (retry_count == 0) {
+      // Prep table of RNG states up to the horizon, if instead
+      // of dropping we were to delay some number of frames.
+      
       min_frames = movie->size() - save_frame;
       delays_reached.clear();
+
       RNGState s = rng_state;
       for (int i = 0; i < HORIZON; i++) {
-        delays_reached.emplace_back(0, s);
+        uint8 drop = NextPiece(s).last_drop;
+        delays_reached.emplace_back(0, s, drop);
         s = NextRNG(s);
       }
-      delays_reached[0].first++;
-      CHECK(EqualRNG(delays_reached[0].second, rng_state));
+      std::get<0>(delays_reached[0])++;
+      CHECK(EqualRNG(std::get<1>(delays_reached[0]), rng_state));
+      CHECK(std::get<2>(delays_reached[0]) == got);
+
+      min_delay_movie = *movie;
     }
 
     // XXX
     const int offset = (movie->size() - save_frame) - min_frames;
-    printf("Retry #%d, offset %d, rng %s\n", retry_count, offset,
-           RNGString(rng_state).c_str());
+#if 0
+    printf("Retry #%d, offset %d, %s, want %02x got %02x\n",
+           retry_count, offset, RNGString(rng_state).c_str(),
+           desired, got);
     for (int i = 0; i < (int)delays_reached.size(); i++) {
-      const auto &[count, rng] = delays_reached[i];
-      if (count > 0) {
-        printf("% 5d x% 5d  %s%s\n", i, count, RNGString(rng).c_str(),
-               i == (save_frame - min_frames) ? " <---" : "");
+      const auto &[count, rng, drop] = delays_reached[i];
+      const bool this_one = i == (save_frame - min_frames);
+      if (count > 0 || this_one) {
+        printf("% 5d x% 5d  %s -> %02x %s\n",
+               i, count, RNGString(rng).c_str(), drop,
+               this_one ? " <---" : "");
       }
     }
+#endif
     
-    CHECK(offset >= 0);
+    // Diagnostics if the next assertion fails
+    if (offset < 0) {
+      Screenshot(*emu, "weird.png");
+      SimpleFM2::WriteInputs("weird.fm2",
+                             "tetris.nes",
+                             "base64:Ww5XFVjIx5aTe5avRpVhxg==",
+                             *movie);
+      SimpleFM2::WriteInputs("weird-min-delay.fm2",
+                             "tetris.nes",
+                             "base64:Ww5XFVjIx5aTe5avRpVhxg==",
+                             min_delay_movie);
+      printf("save_frame %d + min_frames %d = %d, but now movie->size() = %d\n",
+             save_frame, min_frames, save_frame + min_frames,
+             (int)movie->size());
+    }
+    
+    CHECK(offset >= 0) << offset << " with " << min_frames;
     CHECK(offset < HORIZON) << "this is possible but it should never "
       "get this bad??";
     CHECK(offset < (int)delays_reached.size());
-    delays_reached[offset].first++;
-    CHECK(EqualRNG(delays_reached[offset].second, rng_state)) <<
-      "On retry " << retry_count << " at offset " << offset << " expected "
-                  << RNGString(delays_reached[offset].second) << " but got "
-                  << RNGString(rng_state);
+    std::get<0>(delays_reached[offset])++;
+    const auto &[count_, rng, drop] = delays_reached[offset];
+    
+    CHECK(EqualRNG(rng, rng_state) && got == drop) <<
+      StringPrintf("On retry %d at offset %d:\n"
+                   "Expected %s -> %02x\n"
+                   "But got  %s -> %02x\n",
+                   retry_count, offset,
+                   RNGString(rng).c_str(), drop,
+                   RNGString(rng_state).c_str(), got);
   }
 
   // Make a step in the emulator, and save it to the movie.
   void MakeStep(uint8 input) {
-
-    rng_state = NextRNG(rng_state);
+    const RNGState before = GetRNG(*emu);
+    rng_states.push_back(before);
     
-    CHECK(EqualRNG(rng_state, GetRNG(*emu))) << "This should only "
-      "happen if a piece is dropped. On that frame, you must Save "
-      "or Restore.";
-
     emu->Step(input, 0);
-    steps_executed++;
+    (*steps_executed)++;
+
+    #if 0
+    printf("Stepped %s %s  =>  %s\n",
+           SimpleFM2::InputToString(input).c_str(),
+           StateWithNext(before).c_str(),
+           StateWithNext(GetRNG(*emu)).c_str());
+    #endif
     
     movie->push_back(input);
   }
@@ -135,9 +256,10 @@ struct RetryState {
   int min_frames = 0;
   // starting at min_frames
   static constexpr int HORIZON = 10000;
-  std::vector<std::pair<int, RNGState>> delays_reached;
-
-  int StepsExecuted() const { return steps_executed; }
+  // count, rng state, predicted drop on that frame
+  std::vector<std::tuple<int, RNGState, uint8_t>> delays_reached;
+  // XXX
+  vector<uint8> min_delay_movie;
   
 private:
   // The point we return to, in order to retry.
@@ -145,16 +267,14 @@ private:
   // And the length of the movie at that point.
   int save_frame = 0;
 
-  int steps_executed = 0;
-
-  // This state is tracked internally in each step, but is
-  // only correct if the step does not spawn a piece.
-  RNGState rng_state;
-  
   // Not owned.
   Emulator *emu = nullptr;
   vector<uint8> *movie = nullptr;
-  vector<RNGstate> rng_before;
+  int64 *steps_executed = nullptr;
+  
+  // contains the rng state before executing each frame since
+  // save_frame (so it is empty right after saving or restoring).
+  vector<RNGState> rng_states;
 };
 
 std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
@@ -223,7 +343,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
     callbacks.game_start(*emu, (int)schedule.size());
 
   vector<uint8> outmovie = startmovie;  
-  RetryState retry_state(emu.get(), &outmovie);
+  RetryState retry_state(emu.get(), &outmovie, &steps_executed);
   
   // Keep track of the RNG state. We can just read it from RAM
   // whenever, but it is useful to quickly predict future values so we
@@ -238,16 +358,12 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
   // This starts at 2 because the current and next count as drops.
   uint8 prev_counter = 0x02;
   int schedule_idx = 0;
-  int64 frame = 0;
   int pieces = 0;
   Timer run_timer;
   static constexpr int REPORT_EVERY = 10;
   int next_report = REPORT_EVERY;
 
   for (;;) {
-    // (note this is not really a frame counter currently, as it
-    // does not get saved/restored)
-    frame++;
 
     uint8 cur_byte = emu->ReadRAM(MEM_CURRENT_PIECE);
     Shape cur = (Shape)cur_byte;
@@ -288,17 +404,12 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
       // TODO: tetrises?
 
       // Seems we can get into this state paused; so un-pause!
-      uint8 input = IsPaused(*emu) ? INPUT_T : 0;
+      const uint8 input =
+        (IsPaused(*emu) &&
+         0 == (retry_state.LastInput() & INPUT_T)) ?
+        INPUT_T : 0;
 
-      /*
-      CHECK(EqualRNG(tracked_state, GetRNG(*emu))) << 
-        StringPrintf("tracked %s -> %02x actual %s\n",
-                     RNGString(tracked_state).c_str(),
-                     tracked_next_piece,
-                     RNGString(GetRNG(*emu)).c_str());
-      */
-
-      retry_state->MakeStep(input);
+      retry_state.MakeStep(input);
       continue;
     }
 
@@ -320,50 +431,24 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
           if (callbacks.finished_byte)
           callbacks.finished_byte(*emu, XXX);
         */
-        
+
         return outmovie;
       }
-
-      #if 0
-      CHECK(next_byte == tracked_next_piece) <<
-        [&]() {
-          const RNGState actual_state = GetRNG(*emu);
-          return
-            StringPrintf("At frame %lld, pieces %d, retry_count %d:\n"
-                         "Next is %02x, but tnp is %02x.\n"
-                         "tracked RNG state %02x%02x.%02x.%02x\n"
-                         "next piece state  %02x%02x.%02x.%02x\n"
-                         "actual RNG state  %02x%02x.%02x.%02x\n",
-                         frame, pieces, retry_state.retry_count,
-                         next_byte, tracked_next_piece,
-                         tracked_state.rng1, tracked_state.rng2,
-                         tracked_state.last_drop, tracked_state.drop_count,
-                         actual_state.rng1, actual_state.rng2,
-                         actual_state.last_drop, actual_state.drop_count);
-        }();
-      #endif
-      /*
-        tracked_state = GetRNG(*emu);
-        tracked_next_piece = NextPiece(tracked_state).last_drop;
-      */
       
       // Now check that the NEW next piece is what we expect.
       // At the end of the schedule, we don't care what the next
       // piece is because we won't use it. Be permissive so that
       // we don't need to retry, and so that we don't accidentally
       // ask for an impossible repeat!
+      // (XXX this is kind of a bad approach because we would fail
+      // rng tracking assertions if we actually checked.)
       const Piece expected =
         (schedule_idx + 2 < (int)schedule.size()) ?
         DecodePiece(schedule[schedule_idx + 2].shape) :
         next;
       if (next != expected) {
         // We didn't get the expected piece.
-        // Go back to previous piece. Also keep track of how many
-        // times this has recently happened.
-
-        // No, not GetRNG because we want the state BEFORE the call to
-        // nextpiece, right?
-        retry_state.UpdateFrameTable(expected);
+        retry_state.UpdateFrameTable(DropShape(expected), next_byte);
 
         retry_state.Restore();
         if (callbacks.retried) {
@@ -386,7 +471,6 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
 
     uint8 cur_x = emu->ReadRAM(MEM_CURRENT_X);
     Shape cur_shape = (Shape)emu->ReadRAM(MEM_CURRENT_PIECE);
-    uint8 input = 0;
 
     const Move move = schedule[schedule_idx];
     // The shape should only mismatch due to orientation.
@@ -398,12 +482,14 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
     const uint8 target_nes_x =
       move.col + ShapeXOffset(move.shape);
 
+    const int frame = retry_state.Frame();
     // Do we have to move into position?
+    uint8 input = 0;
     if (move.shape != cur_shape ||
         target_nes_x != cur_x) {
 
       // Always unpause if we aren't in the correct spot.
-      if (is_paused && (frame % 3 == 0))
+      if (is_paused && 0 == (retry_state.LastInput() & INPUT_T))
         input |= INPUT_T;
       
       if ((frame % 2) == 0) {
@@ -416,6 +502,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
       }
 
     } else {
+
       // We're in the correct position. Now we need to spend the
       // right number of frames to get the RNG into the right state
       // so that the next spawned piece is what we want.
@@ -424,23 +511,35 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
         // If this is our first attempt, drop the piece as fast
         // as we can. We do this to establish the minimum frame,
         // from which we can try a target frame.
-        input |= INPUT_D;
+
+        // Fastest is to unpause, if we are paused.
+        if (is_paused && 0 == (retry_state.LastInput() & INPUT_T))
+          input |= INPUT_T;
+
+        // And fastest is to hold D, with the exception that if we
+        // were already holding D, we need to release for at least
+        // one frame, as the game will not interpret this as fast
+        // drop if we keep it held between drops. This only happens
+        // if the piece was already in the correct orientation and
+        // column (so we skip the above) AND we were coincidentally
+        // holding D at the end of the previous drop, but the simplest
+        // thing is to not consider D for the very first frame after
+        // saving.
+
+        if (retry_state.FramesSinceSave() > 0)        
+          input |= INPUT_D;
+        
       } else {
         // XXX!
-        input = (rc.Byte() & INPUT_D);
+        input = 0;
+
+        if (retry_state.FramesSinceSave() > 0)
+          input |= (rc.Byte() & INPUT_D);
         if (retry_state.retry_count > 64) input |= (rc.Byte() & INPUT_T);
       }
         
     }
 
-    /*
-    CHECK(EqualRNG(tracked_state, GetRNG(*emu))) << 
-      StringPrintf("tracked %s -> %02x actual %s\n",
-                   RNGString(tracked_state).c_str(),
-                   tracked_next_piece,
-                   RNGString(GetRNG(*emu)).c_str());
-    */
-
-    retry_state->MakeStep(input);
+    retry_state.MakeStep(input);
   }
 }

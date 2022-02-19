@@ -265,6 +265,20 @@ inline RNGState NextPiece(RNGState s) {
 // 0x08 - Z
 // 0x12 - bar
 
+// Give the initial orientation that the NES always drops a piece in.
+inline Shape DropShape(Piece p) {
+  switch (p) {
+  default:
+  case PIECE_O: return SQUARE;
+  case PIECE_L: return L_RIGHT;
+  case PIECE_J: return J_LEFT;
+  case PIECE_S: return S_HORIZ;
+  case PIECE_Z: return Z_HORIZ;
+  case PIECE_I: return I_HORIZ;
+  case PIECE_T: return T_DOWN;
+  }
+}
+
 // These all hold the current piece: 0x42, 0x62, 0xAC.
 // overwriting 0x62 immediately changes the current piece, cool.
 //
