@@ -9,6 +9,8 @@
 #include <assert.h>
 #include <unistd.h>
 
+#include <string>
+#include <optional>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -30,9 +32,15 @@
 #include "movie-maker.h"
 #include "encoding.h"
 #include "viz/tetru-viz.h"
+#include "hashing.h"
 
 #define THREAD_MODEL NBDKIT_THREAD_MODEL_PARALLEL
 
+using namespace std;
+using uint8 = uint8_t;
+using uint64 = uint64_t;
+using int64 = int64_t;
+  
 static constexpr int MAX_CONCURRENT_EMUS = 16;
 
 static constexpr const char *SOLFILE = "tetris/solutions.txt";
@@ -46,10 +54,84 @@ static constexpr const char *ROMFILE = "tetris/tetris.nes";
 // depth 6 (and it might be possible to reduce that).
 static constexpr int BLOCK_SIZE = 8;
 
-// Block size to present externally.
-// XXX now that we measure in bytes, this can probably be
-// removed?
-static constexpr int BLOCK_MULTIPLIER = 512 / 8;
+struct CachingMovieMaker {
+
+  std::optional<vector<uint8_t>> GetCached(
+	  const vector<uint8_t> &pattern) {
+	std::unique_lock<std::mutex> ul(m);
+	auto it = cache.find(pattern);
+	if (it == cache.end()) {
+	  return {};
+	} else {
+	  return {it->second};
+	}
+  }
+
+  void AddCached(const vector<uint8_t> &pattern,
+				 const vector<uint8_t> &movie) {
+	std::unique_lock<std::mutex> ul(m);
+	cache[pattern] = movie;
+  }
+  
+  std::mutex m;
+  std::unordered_map<vector<uint8_t>, vector<uint8_t>,
+					 Hashing<vector<uint8_t>>> cache;
+};
+
+
+static CachingMovieMaker *caching_movie_maker = nullptr;
+
+
+struct Game {
+
+  explicit Game(int seed) : seed(seed) {
+	emu.reset(Emulator::Create(ROMFILE));
+	CHECK(emu.get() != nullptr) << ROMFILE;
+  }
+
+  Emulator *GetEmu() {
+	// Before Play(), or if from cache.
+	if (emu.get() != nullptr)
+	  return emu.get();
+	
+	CHECK(movie_maker.get() != nullptr);
+	return movie_maker->GetEmu();
+  }
+  
+  void Play(const vector<uint8> &bytes,
+			MovieMaker::Callbacks callbacks) {
+	// Do we have it in cache?
+	std::optional<vector<uint8_t>> omovie =
+	  caching_movie_maker->GetCached(bytes);
+	if (omovie.has_value()) {
+	  static constexpr int CACHED_PIECES = 25;
+	  if (callbacks.game_start)
+		callbacks.game_start(*emu, CACHED_PIECES);
+	  for (int i = 0; i < omovie.value().size(); i++)
+		uint8 b = omovie.value()[i];
+		emu->StepFull(b, 0);
+		// Call callback periodically too
+		if (i % 60 == 0) {
+		  if (callbacks.placed_piece) {
+			callbacks.placed_piece(*emu, 1, CACHED_PIECES);
+		  }
+		}
+	  }
+	  if (callbacks.placed_piece)
+		callbacks.placed_piece(*emu, CACHED_PIECES, CACHED_PIECES);
+	} else {
+	  movie_maker.reset(new MovieMaker(SOLFILE, std::move(emu), seed));
+	  vector<uint8> movie = movie_maker->Play(bytes, callbacks);
+	  caching_movie_maker->AddCached(bytes, movie);
+	}
+  }
+
+  const int seed = 0;
+  
+  std::unique_ptr<Emulator> emu;
+  std::unique_ptr<MovieMaker> movie_maker;
+};
+
 
 struct ThreadLimiter {
   
@@ -129,7 +211,7 @@ private:
   int64 epoch = 0;
 
   // contains epoch numbers.
-  std::vector<int64> outstanding_writes;
+  vector<int64> outstanding_writes;
   
 };
 
@@ -138,30 +220,41 @@ static ThreadLimiter *thread_limiter = nullptr;
 struct Block {
   Block(int id) : id(id) {}
 
-  // Must hold mutex
-  void Viz() {
-	// TODO: return game board
-	nbdkit_debug("TVIZ[b %d %d %d]ZIVT",
-				 id,
-				 Uninitialized() ? 1 : 0,
-				 busy ? 1 : 0);
-  }
-
   // Read the indicated portion of the block into the buffer.
   void Read(uint8_t *buf, int start, int count) {
 	std::unique_lock<std::mutex> ul(mutex);
+	outstanding_reads++;
+	nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
+				 id,
+				 outstanding_reads, outstanding_writes);
+	
 	if (game.get() == nullptr) {
 	  for (int i = 0; i < count; i++)
 		buf[i] = "FORMATZ!"[i % 8];
+	  outstanding_reads--;
+	  nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
+				   id,
+				   outstanding_reads, outstanding_writes);
 	  return;
 	}
 
 	cond.wait(ul, [this]{ return !busy; });
 
+	ReadRaw(buf, start, count);
+	
+	outstanding_reads--;
+	nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
+				 id,
+				 outstanding_reads, outstanding_writes);
+  }
+
+  // Game must exist.
+  // Must hold lock.
+  void ReadRaw(uint8_t *buf, int start, int count) {
 	CHECK(game.get() != nullptr);
 	
 	Emulator *emu = game->GetEmu();
-	std::vector<uint8_t> board = GetBoard(*emu);
+	vector<uint8_t> board = GetBoard(*emu);
 	for (int i = 0; i < count; i++) {
 	  int byte_idx = start + i;
 	  CHECK(byte_idx >= 0 && byte_idx < BLOCK_SIZE) <<
@@ -177,7 +270,7 @@ struct Block {
 	  buf[i] = byte;
 	}
   }
-
+  
   // Write the buffer to the indicated portion of the block.
   void Write(const uint8_t *buf, int start, int count) {
 	// Make sure we don't spawn the write until it has exclusive
@@ -185,28 +278,33 @@ struct Block {
 	// scheduled one forever.
 	{
 	  std::unique_lock<std::mutex> ul(mutex);
+	  outstanding_writes++;
+	  nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
+				   id,
+				   outstanding_reads, outstanding_writes);
+
 	  // PERF we could terminate an in-progress write.
 			
 	  cond.wait(ul, [this]{ return !busy; });
 			
 	  // Claim exclusive access.
 	  busy = true;
-			
+
 	  nbdkit_debug("create game for %d", id);
 	  
-	  game.reset(new MovieMaker(SOLFILE, ROMFILE, id));
+	  game.reset(new Game(id));
 	}
 
 	auto uf = std::make_unique<std::function<void()>>(
 		[this, buf, start, count]() {
 		  // Pattern to write. We need to start by reading if
 		  // this is not the complete block.
-		  std::vector<uint8_t> pattern(BLOCK_SIZE, 0);
+		  vector<uint8_t> pattern(BLOCK_SIZE, 0);
 		  CHECK(start >= 0 && start + count <= BLOCK_SIZE);
-		  if (start + count < BLOCK_SIZE) {
+		  if (start != 0 || count != BLOCK_SIZE) {
 			nbdkit_debug("need prev read for %d", id);	  
 			// Might as well read the whole thing!
-			Read(pattern.data(), 0, BLOCK_SIZE);
+			ReadRaw(pattern.data(), 0, BLOCK_SIZE);
 		  }
 		  for (int i = 0; i < count; i++) {
 			pattern[start + i] = buf[i];
@@ -217,7 +315,7 @@ struct Block {
 		  callbacks.placed_piece = [this](const Emulator &emu,
 										  int pieces_done,
 										  int total_pieces) {
-			  std::vector<uint8_t> board = GetBoard(emu);
+			  vector<uint8_t> board = GetBoard(emu);
 			  if (!IsLineClearing(emu)) {
 				Shape shape = (Shape)emu.ReadRAM(MEM_CURRENT_PIECE);
 				int x = emu.ReadRAM(MEM_CURRENT_X) - ShapeXOffset(shape);
@@ -233,13 +331,14 @@ struct Block {
 				printf("block %d: %d/%d pieces done\n",
 				id, pieces_done, total_pieces);
 			  */
-			  nbdkit_debug("TVIZ[o %d %s]ZIVT",
-						   id, encoded_board.c_str());
+			  nbdkit_debug("TVIZ[o %d %d %d %s]ZIVT",
+						   id,
+						   outstanding_reads, outstanding_writes,
+						   encoded_board.c_str());
 			};
 
 		  // write from bottom to top.
-		  // We don't need the returned movie.
-		  (void)game->Play(pattern, callbacks);
+		  game->Play(pattern, callbacks);
 
 		  nbdkit_debug("finished playing %d", id);
 
@@ -248,6 +347,10 @@ struct Block {
 			// We should have the exclusive lock. Release it.
 			CHECK(busy);
 			busy = false;
+			outstanding_writes--;
+			nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
+						 id,
+						 outstanding_reads, outstanding_writes);
 		  }
 
 		  cond.notify_all();
@@ -259,18 +362,15 @@ struct Block {
   const int id = 0;
 
 private:
-  // Must hold mutex.
-  bool Uninitialized() const {
-	return game.get() == nullptr;
-  }
 
   std::mutex mutex;
   std::condition_variable cond;
 
   // Can be null, which means no data have been written yet.
-  std::unique_ptr<MovieMaker> game;
+  std::unique_ptr<Game> game;
   // If true, a write is in progress.
   bool busy = false;
+  int outstanding_reads = 0, outstanding_writes = 0;
 };
 
 // Test version of buffer where we actually keep the backing
@@ -301,7 +401,7 @@ struct Blocks {
   }
 
   const int64_t num_blocks = 0;
-  std::vector<Block *> mem;
+  vector<Block *> mem;
 };
 
 static int64_t num_blocks = -1;
@@ -310,6 +410,7 @@ static Blocks *blocks = nullptr;
 
 static int tetru_after_fork(void) {
   nbdkit_debug("After fork! num_blocks %lu\n", num_blocks);
+  caching_movie_maker = new CachingMovieMaker();
   thread_limiter = new ThreadLimiter();
   blocks = new Blocks(num_blocks);
   return 0;
@@ -320,6 +421,8 @@ static void tetru_unload(void) {
   blocks = nullptr;
   delete thread_limiter;
   thread_limiter = nullptr;
+  delete caching_movie_maker;
+  caching_movie_maker = nullptr;
 }
 
 static int tetru_config(const char *key, const char *value) {

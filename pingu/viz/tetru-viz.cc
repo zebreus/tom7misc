@@ -48,6 +48,9 @@ struct Block {
   Block() {}
 
   std::vector<uint8_t> board;
+
+  int outstanding_reads = 0;
+  int outstanding_writes = 0;
   
   bool uninitialized = true;
   bool busy = false;
@@ -130,17 +133,20 @@ static void Redraw(ImageRGBA *img) {
 			  0xFF44FFFF,
 			};
 
-			img->SetPixel32(px + x, py + y, colors[p]);
+			img->SetPixel32(px + x + 1, py + y +1, colors[p]);
 		  }
 		}
 	  }
 
-	  #if 0
-	  if (block.pending_reads > 0) {
-		img->BlendBox32(px + 1, py + 1, BLOCKWIDTH - 2, BLOCKHEIGHT - 2,
-						0xCCFFCC77, {0xCCFFCC33});
+	  if (block.outstanding_reads > 0) {
+		img->BlendText32(px, py + 10, 0x00FF0044,
+						 StringPrintf("%d", block.outstanding_reads));
 	  }
-      #endif
+
+	  if (block.outstanding_writes > 0) {
+		img->BlendText32(px, py, 0xFF000044,
+						 StringPrintf("%d", block.outstanding_writes));
+	  }
 	  
 	  if (block.busy) {
 		/*
@@ -152,13 +158,21 @@ static void Redraw(ImageRGBA *img) {
 	  }
 	  
 	  if (idx == last_read) {
+		img->BlendBox32(px, py, BLOCKWIDTH, BLOCKHEIGHT,
+						0x00FF0077, 0x00FF0033);
+		/*
 		img->BlendRect32(px + 1, py + BLOCKHEIGHT / 2 - 1,
 						 BLOCKWIDTH - 2, 2, 0x00FF0033);
+		*/
 	  }
 
 	  if (idx == last_write) {
+		img->BlendBox32(px, py, BLOCKWIDTH, BLOCKHEIGHT,
+						0xFF000077, 0xFF000033);
+		/*
 		img->BlendRect32(px + BLOCKWIDTH / 2 - 1, py + 1, 
 						 2, BLOCKHEIGHT - 2, 0xFF000033);
+		*/
 	  }
 
 	  /*
@@ -174,9 +188,10 @@ static void Loop() {
   ImageRGBA img(SCREENW, SCREENH);
 
   RE2 viz_command{".*TVIZ\\[(.+)\\]ZIVT.*"};
+  // XXX unused
   RE2 blockinfo_command("b ([0-9]+) ([0-9]+) ([0-9]+)");
   RE2 update_command("([rw]) ([0-9]+)");
-  RE2 board_command("o ([0-9]+) ([a-z]+)");
+  RE2 board_command("o ([0-9]+) ([0-9]+) ([0-9]+) ([a-z]*)");
   
   // initial display...
   Redraw(&img);
@@ -194,6 +209,7 @@ static void Loop() {
 
 	  int idx, uninitialized, busy;
 	  char rw;
+	  int oreads, owrites;
 	  string encoded_board;
 	  if (RE2::FullMatch(cmd, blockinfo_command,
 						 &idx, &uninitialized, &busy)) {
@@ -207,16 +223,21 @@ static void Loop() {
 		} else if (rw == 'w') {
 		  last_write = idx;
 		}
-	  } else if (RE2::FullMatch(cmd, board_command, &idx, &encoded_board)) {
+	  } else if (RE2::FullMatch(cmd, board_command,
+								&idx, &oreads, &owrites, &encoded_board)) {
 		/*
 		printf("%d Board %d: %s\n", (int)run_timer.Seconds(), idx,
 			   encoded_board.c_str());
 		*/
-		if (encoded_board.size() != (20 * 10) >> 1) {
+		Block *block = &blocks[idx];
+		block->uninitialized = false;
+		block->outstanding_reads = oreads;
+		block->outstanding_writes = owrites;
+		if (encoded_board.empty()) {
+		  // OK to leave out board.
+		} else if (encoded_board.size() != (20 * 10) >> 1) {
 		  printf("Bad board\n");
 		} else {
-		  Block *block = &blocks[idx];
-		  block->uninitialized = false;
 		  block->board = BoardPic::ToPixels(encoded_board);
 		  CHECK(block->board.size() == 20 * 10);
 		}

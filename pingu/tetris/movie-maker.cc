@@ -27,11 +27,19 @@ static constexpr bool VERBOSE = false;
 
 MovieMaker::MovieMaker(const std::string &solution_file,
                        const std::string &rom_file,
-                       int64_t seed) : rc(StringPrintf("%lld", seed)) {
+                       int64_t seed) :
+  MovieMaker(solution_file,
+			 std::unique_ptr<Emulator>(Emulator::Create(rom_file)),
+			 seed) {}
+
+MovieMaker::MovieMaker(const std::string &solution_file,
+                       std::unique_ptr<Emulator> emulator,
+                       int64_t seed) :
+  rc(StringPrintf("%lld", seed)),
+  emu(std::move(emulator)) {
   all_sols = Encoding::ParseSolutions(solution_file);
   CHECK(!all_sols.empty()) << solution_file;
-  emu.reset(Emulator::Create(rom_file));
-  CHECK(emu.get() != nullptr) << rom_file;
+  CHECK(emu.get() != nullptr);
 }
 
 // XXX

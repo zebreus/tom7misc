@@ -40,6 +40,11 @@ struct MovieMaker {
              const std::string &rom_file,
              int64_t seed);
 
+  // Taking ownership of an existing emulator.
+  MovieMaker(const std::string &solution_file,
+             std::unique_ptr<Emulator> emu,
+             int64_t seed);
+  
   // Find moves in the emulator (and execute them)
   // that encode the bytes on the playfield. Calls callbacks
   // in the object periodically. Returns the accumulated
