@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <unistd.h>
 
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -32,6 +33,8 @@
 
 #define THREAD_MODEL NBDKIT_THREAD_MODEL_PARALLEL
 
+static constexpr int MAX_CONCURRENT_EMUS = 16;
+
 static constexpr const char *SOLFILE = "tetris/solutions.txt";
 static constexpr const char *ROMFILE = "tetris/tetris.nes";
 
@@ -44,12 +47,98 @@ static constexpr const char *ROMFILE = "tetris/tetris.nes";
 static constexpr int BLOCK_SIZE = 8;
 
 // Block size to present externally.
+// XXX now that we measure in bytes, this can probably be
+// removed?
 static constexpr int BLOCK_MULTIPLIER = 512 / 8;
+
+struct ThreadLimiter {
+  
+  void Flush() {
+	{
+	  std::unique_lock<std::mutex> ul(m);
+	  const int old_epoch = epoch;
+	  epoch++;
+	  
+	  cond.wait(ul, [this, old_epoch]{
+		  for (int64 e : outstanding_writes)
+			if (e <= old_epoch)
+			  return false;
+		  return true;
+		});
+	}
+  }
+  
+  void Write(std::unique_ptr<std::function<void()>> f) {
+	// Block (not returning) until we have recorded the
+	// epoch and started the thread.
+	int64 my_epoch = 0;
+	{
+	  std::unique_lock<std::mutex> ul(m);
+	  cond.wait(ul, [this]{
+		  return thread_budget > 0;
+		});
+
+	  thread_budget--;
+	  my_epoch = epoch;
+	  outstanding_writes.push_back(my_epoch);
+	}
+
+	// Now spawn the thread
+	std::thread th([this, my_epoch](
+		std::unique_ptr<std::function<void()>> f) {
+		// run the passed-in code.
+		(*f)();
+
+		// Delete any resources from it.
+		f.reset(nullptr);
+		
+		{
+		  std::unique_lock<std::mutex> ul(m);
+		  thread_budget++;
+		  // Delete
+		  for (int i = 0; i < (int)outstanding_writes.size(); i++) {
+			if (outstanding_writes[i] == my_epoch) {
+			  // swap 'n pop
+			  if (i != (int)outstanding_writes.size() - 1) {
+				outstanding_writes[i] =
+				  outstanding_writes[outstanding_writes.size() - 1];
+			  }
+			  outstanding_writes.pop_back();
+			  goto found;
+			}
+		  }
+		  CHECK(false) << my_epoch << " was not in outstanding_writes?";
+		found:;
+		}
+		cond.notify_all();
+	  }, std::move(f));
+
+	th.detach();
+  }
+
+private:
+  std::mutex m;
+  std::condition_variable cond;
+  
+  int thread_budget = MAX_CONCURRENT_EMUS;
+
+  // Sequencing of writes and flushes. When a write begins,
+  // it saves the current epoch to the outstanding writes.
+  // A flush increments this value and then waits for all
+  // outstanding writes to be >=.
+  int64 epoch = 0;
+
+  // contains epoch numbers.
+  std::vector<int64> outstanding_writes;
+  
+};
+
+static ThreadLimiter *thread_limiter = nullptr;
 
 struct Block {
   Block(int id) : id(id) {}
 
-  // Most hold mutex
+  // Must hold mutex
   void Viz() {
 	// TODO: return game board
 	nbdkit_debug("TVIZ[b %d %d %d]ZIVT",
@@ -91,71 +180,80 @@ struct Block {
 
   // Write the buffer to the indicated portion of the block.
   void Write(const uint8_t *buf, int start, int count) {
-	// Pattern to write. We need to start by reading if
-	// this is not the complete block.
-	std::vector<uint8_t> pattern(BLOCK_SIZE, 0);
-	CHECK(start >= 0 && start + count <= BLOCK_SIZE);
-	if (start + count < BLOCK_SIZE) {
-	  nbdkit_debug("need prev read for %d", id);	  
-	  // Might as well read the whole thing!
-	  Read(pattern.data(), 0, BLOCK_SIZE);
-	}
-	for (int i = 0; i < count; i++) {
-	  pattern[start + i] = buf[i];
-	}
-	
+	// Make sure we don't spawn the write until it has exclusive
+	// access, as we don't want an unscheduled thread blocking a
+	// scheduled one forever.
 	{
 	  std::unique_lock<std::mutex> ul(mutex);
 	  // PERF we could terminate an in-progress write.
-	
+			
 	  cond.wait(ul, [this]{ return !busy; });
-
+			
 	  // Claim exclusive access.
 	  busy = true;
-
+			
 	  nbdkit_debug("create game for %d", id);
 	  
 	  game.reset(new MovieMaker(SOLFILE, ROMFILE, id));
 	}
 
-	// TODO: Visualize in callbacks.
-	MovieMaker::Callbacks callbacks;
-	callbacks.placed_piece = [this](const Emulator &emu,
-									int pieces_done,
-									int total_pieces) {
-		std::vector<uint8_t> board = GetBoard(emu);
-		if (!IsLineClearing(emu)) {
-		  Shape shape = (Shape)emu.ReadRAM(MEM_CURRENT_PIECE);
-		  int x = emu.ReadRAM(MEM_CURRENT_X) - ShapeXOffset(shape);
-		  // XXX adjust for NES offsets!
-		  int y = emu.ReadRAM(MEM_CURRENT_Y);
-		  DrawShapeOnBoard(0xFF, shape, x, y, &board);
-		}
-		
-		const std::string encoded_board = BoardPic::ToString(GetBoard(emu));
-		std::unique_lock<std::mutex> ul(mutex);
-		/*
-		  printf("block %d: %d/%d pieces done\n",
-		  id, pieces_done, total_pieces);
-		*/
-		nbdkit_debug("TVIZ[o %d %s]ZIVT",
-					 id, encoded_board.c_str());
-	  };
-	
-	// write from bottom to top.
-	// We don't need the returned movie.
-	(void)game->Play(pattern, callbacks);
+	auto uf = std::make_unique<std::function<void()>>(
+		[this, buf, start, count]() {
+		  // Pattern to write. We need to start by reading if
+		  // this is not the complete block.
+		  std::vector<uint8_t> pattern(BLOCK_SIZE, 0);
+		  CHECK(start >= 0 && start + count <= BLOCK_SIZE);
+		  if (start + count < BLOCK_SIZE) {
+			nbdkit_debug("need prev read for %d", id);	  
+			// Might as well read the whole thing!
+			Read(pattern.data(), 0, BLOCK_SIZE);
+		  }
+		  for (int i = 0; i < count; i++) {
+			pattern[start + i] = buf[i];
+		  }
 
-	nbdkit_debug("finished playing %d", id);
-	
-	{
-	  std::unique_lock<std::mutex> ul(mutex);
-	  // We should have the exclusive lock. Release it.
-	  CHECK(busy);
-	  busy = false;
-	}
-	
-	cond.notify_all();
+		  // TODO: Visualize in callbacks.
+		  MovieMaker::Callbacks callbacks;
+		  callbacks.placed_piece = [this](const Emulator &emu,
+										  int pieces_done,
+										  int total_pieces) {
+			  std::vector<uint8_t> board = GetBoard(emu);
+			  if (!IsLineClearing(emu)) {
+				Shape shape = (Shape)emu.ReadRAM(MEM_CURRENT_PIECE);
+				int x = emu.ReadRAM(MEM_CURRENT_X) - ShapeXOffset(shape);
+				// XXX adjust for NES offsets!
+				int y = emu.ReadRAM(MEM_CURRENT_Y);
+				DrawShapeOnBoard(0xFF, shape, x, y, &board);
+			  }
+
+			  const std::string encoded_board =
+				BoardPic::ToString(GetBoard(emu));
+			  std::unique_lock<std::mutex> ul(mutex);
+			  /*
+				printf("block %d: %d/%d pieces done\n",
+				id, pieces_done, total_pieces);
+			  */
+			  nbdkit_debug("TVIZ[o %d %s]ZIVT",
+						   id, encoded_board.c_str());
+			};
+
+		  // write from bottom to top.
+		  // We don't need the returned movie.
+		  (void)game->Play(pattern, callbacks);
+
+		  nbdkit_debug("finished playing %d", id);
+
+		  {
+			std::unique_lock<std::mutex> ul(mutex);
+			// We should have the exclusive lock. Release it.
+			CHECK(busy);
+			busy = false;
+		  }
+
+		  cond.notify_all();
+		});
+
+	thread_limiter->Write(std::move(uf));
   }
 
   const int id = 0;
@@ -212,6 +310,7 @@ static Blocks *blocks = nullptr;
 
 static int tetru_after_fork(void) {
   nbdkit_debug("After fork! num_blocks %lu\n", num_blocks);
+  thread_limiter = new ThreadLimiter();
   blocks = new Blocks(num_blocks);
   return 0;
 }
@@ -219,6 +318,8 @@ static int tetru_after_fork(void) {
 static void tetru_unload(void) {
   delete blocks;
   blocks = nullptr;
+  delete thread_limiter;
+  thread_limiter = nullptr;
 }
 
 static int tetru_config(const char *key, const char *value) {
@@ -348,8 +449,8 @@ static int tetru_pwrite(void *handle, const void *buf_void,
   }
 }
 
-/* Nothing is persistent, so flush is trivially supported */
 static int tetru_flush(void *handle, uint32_t flags) {
+  thread_limiter->Flush();
   return 0;
 }
 

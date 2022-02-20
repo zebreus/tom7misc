@@ -8,8 +8,8 @@ fi
 set +x
 
 # TODO make this a command-line option
-# PLUGIN=tetru
-PLUGIN=pingu
+PLUGIN=tetru
+# PLUGIN=pingu
 MOUNTPOINT="/mnt/$PLUGIN"
 SOCKET="/tmp/nbdsocket.$PLUGIN"
 

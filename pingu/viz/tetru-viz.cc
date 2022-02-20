@@ -16,12 +16,18 @@
 
 using namespace std;
 
-static constexpr int BLOCKSW = 256;
-static constexpr int BLOCKSH = 64;
+// static constexpr int BLOCKSW = 256;
+// static constexpr int BLOCKSH = 64;
+// static constexpr int BLOCKWIDTH = 11;
+// static constexpr int BLOCKHEIGHT = 20;
+
+
+static constexpr int BLOCKSW = 200;
+static constexpr int BLOCKSH = 32;
 static constexpr int NUM_BLOCKS = BLOCKSW * BLOCKSH;
 
-static constexpr int BLOCKWIDTH = 11;
-static constexpr int BLOCKHEIGHT = 20;
+static constexpr int BLOCKWIDTH = 12;
+static constexpr int BLOCKHEIGHT = 22;
 
 static constexpr int IMAGEW = BLOCKWIDTH * BLOCKSW;
 static constexpr int IMAGEH = BLOCKHEIGHT * BLOCKSH;
@@ -202,8 +208,10 @@ static void Loop() {
 		  last_write = idx;
 		}
 	  } else if (RE2::FullMatch(cmd, board_command, &idx, &encoded_board)) {
+		/*
 		printf("%d Board %d: %s\n", (int)run_timer.Seconds(), idx,
 			   encoded_board.c_str());
+		*/
 		if (encoded_board.size() != (20 * 10) >> 1) {
 		  printf("Bad board\n");
 		} else {
