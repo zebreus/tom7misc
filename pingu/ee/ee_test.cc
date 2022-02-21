@@ -59,7 +59,7 @@ static void PrintData(const string &what,
     if (i % 16 == 0) printf("\n");
     char c = v[i];
     if (ascii) {
-      if (c >= 32 && c < 128) {
+      if (c >= 32 && c < 127) {
         printf(" %c", c);
       } else {
         printf(" _");
@@ -255,6 +255,14 @@ static void WriteTest() {
   updated[x++] = 'd';
   for (int i = 0; i < 16; i++) updated[511 - i] = 'A' + i;
 
+  x = 410;
+  updated[x++] = 0;
+  updated[x++] = 255;
+  updated[x++] = 0;
+  updated[x++] = 255;
+  updated[x++] = 128;
+  updated[x++] = 127;
+  
   WriteAll(updated);
 
   std::vector<uint8> finally = ReadAll();

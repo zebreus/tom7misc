@@ -29,7 +29,7 @@ static constexpr uint8_t ADDR1 = 0b01010001;
 
 // super slow for debugging!
 // 100k or 400k supposedly work
-static constexpr int BAUD_RATE = 100; // XXX
+static constexpr int BAUD_RATE = 1000; // XXX
 
 static string CodeString(int code) {
   switch (code) {
@@ -64,7 +64,7 @@ static void PrintData2Col(const vector<uint8> &v) {
 
     for (int i = 0; i < 16; i++) {
       char c = v[p * 16 + i];
-      if (c >= 32 && c < 128) {
+      if (c >= 32 && c < 127) {
         printf("%c", c);
       } else {
         printf(".");
@@ -78,8 +78,11 @@ static void PrintData2Col(const vector<uint8> &v) {
 static vector<uint8_t> ReadAll(int start_addr = 0) {
   constexpr int SIZE = 512;
   char buf[SIZE];
+  // Start from first "device". It doesn't mind reading
+  // across the boundary, though.
+  bcm2835_i2c_setSlaveAddress(ADDR0);
   // load address to read from by doing a dummy write
-  WriteVec({(uint8)start_addr});
+  WriteVec({0});
   // then read as many bytes as you want
   int code = bcm2835_i2c_read(buf, SIZE);
   printf("i2c read: %s\n", CodeString(code).c_str());
