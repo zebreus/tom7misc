@@ -262,6 +262,19 @@ static void Loop() {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 	  switch (event.type) {
+#if 0
+      case SDL_MOUSEMOTION: {
+        SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent*)&event;
+
+        const int oldx = mousex, oldy = mousey;
+
+        mousex = e->x;
+        mousey = e->y;
+
+        break;
+      }
+#endif
+		
 	  case SDL_QUIT:
 		return;
 	  case SDL_KEYDOWN:

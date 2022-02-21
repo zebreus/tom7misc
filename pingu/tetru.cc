@@ -56,7 +56,12 @@ static constexpr int BLOCK_SIZE = 8;
 
 struct CachingMovieMaker {
 
-  std::optional<vector<uint8_t>> GetCached(
+  struct CacheRow {
+	std::vector<uint8> movie;
+	std::vector<uint8> savestate;
+  };
+  
+  std::optional<CacheRow> GetCached(
 	  const vector<uint8_t> &pattern) {
 	std::unique_lock<std::mutex> ul(m);
 	auto it = cache.find(pattern);
@@ -68,13 +73,14 @@ struct CachingMovieMaker {
   }
 
   void AddCached(const vector<uint8_t> &pattern,
-				 const vector<uint8_t> &movie) {
+				 const CacheRow &row) {
 	std::unique_lock<std::mutex> ul(m);
-	cache[pattern] = movie;
+	cache[pattern] = row;
   }
   
   std::mutex m;
-  std::unordered_map<vector<uint8_t>, vector<uint8_t>,
+  std::unordered_map<vector<uint8_t>,
+					 CacheRow,
 					 Hashing<vector<uint8_t>>> cache;
 };
 
@@ -95,34 +101,52 @@ struct Game {
 	  return emu.get();
 	
 	CHECK(movie_maker.get() != nullptr);
-	return movie_maker->GetEmu();
+	Emulator *e = movie_maker->GetEmu();
+	CHECK(e != nullptr);
+	return e;
   }
   
   void Play(const vector<uint8> &bytes,
 			MovieMaker::Callbacks callbacks) {
 	// Do we have it in cache?
-	std::optional<vector<uint8_t>> omovie =
+	std::optional<CachingMovieMaker::CacheRow> orow =
 	  caching_movie_maker->GetCached(bytes);
-	if (omovie.has_value()) {
+	if (orow.has_value()) {
 	  static constexpr int CACHED_PIECES = 25;
-	  if (callbacks.game_start)
-		callbacks.game_start(*emu, CACHED_PIECES);
-	  for (int i = 0; i < omovie.value().size(); i++)
-		uint8 b = omovie.value()[i];
-		emu->StepFull(b, 0);
-		// Call callback periodically too
-		if (i % 60 == 0) {
-		  if (callbacks.placed_piece) {
+
+	  // XXX cheating?
+	  if (true) {
+		emu->LoadUncompressed(orow.value().savestate);
+	  } else {
+		if (callbacks.game_start)
+		  callbacks.game_start(*emu, CACHED_PIECES);
+		const std::vector<uint8> movie = orow.value().movie;
+		for (int i = 0; i < (int)movie.size(); i++) {
+		  uint8 b = movie[i];
+		  emu->StepFull(b, 0);
+		  // Call callback periodically too
+		  if (i % 60 == 0 && callbacks.placed_piece) {
 			callbacks.placed_piece(*emu, 1, CACHED_PIECES);
 		  }
 		}
 	  }
-	  if (callbacks.placed_piece)
+	  if (callbacks.placed_piece) {
 		callbacks.placed_piece(*emu, CACHED_PIECES, CACHED_PIECES);
+	  }
 	} else {
 	  movie_maker.reset(new MovieMaker(SOLFILE, std::move(emu), seed));
-	  vector<uint8> movie = movie_maker->Play(bytes, callbacks);
-	  caching_movie_maker->AddCached(bytes, movie);
+	  CachingMovieMaker::CacheRow cache_row;
+
+	  // MovieMaker::Play wants the bytes from top to bottom, but
+	  // we read them bottom to top (and this makes sense for their
+	  // "write order").
+	  std::vector<uint8> rev_bytes;
+	  for (int i = bytes.size() - 1; i >= 0; i--)
+		rev_bytes.push_back(bytes[i]);
+	  
+	  cache_row.movie = movie_maker->Play(rev_bytes, callbacks);
+	  cache_row.savestate = movie_maker->GetEmu()->SaveUncompressed();
+	  caching_movie_maker->AddCached(bytes, cache_row);
 	}
   }
 
@@ -220,21 +244,27 @@ static ThreadLimiter *thread_limiter = nullptr;
 struct Block {
   Block(int id) : id(id) {}
 
+  // XXX
+  std::vector<uint8> debug_contents;
+
+  // must hold lock
+  void Viz() {
+	nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
+				 id,
+				 outstanding_reads, outstanding_writes);
+  }
+  
   // Read the indicated portion of the block into the buffer.
   void Read(uint8_t *buf, int start, int count) {
 	std::unique_lock<std::mutex> ul(mutex);
 	outstanding_reads++;
-	nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
-				 id,
-				 outstanding_reads, outstanding_writes);
+	Viz();
 	
 	if (game.get() == nullptr) {
 	  for (int i = 0; i < count; i++)
 		buf[i] = "FORMATZ!"[i % 8];
 	  outstanding_reads--;
-	  nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
-				   id,
-				   outstanding_reads, outstanding_writes);
+	  Viz();
 	  return;
 	}
 
@@ -243,11 +273,32 @@ struct Block {
 	ReadRaw(buf, start, count);
 	
 	outstanding_reads--;
-	nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
-				 id,
-				 outstanding_reads, outstanding_writes);
+	Viz();
   }
 
+  static string VecBytes(const std::vector<uint8> &v) {
+	string out;
+	for (uint8 b : v) {
+	  StringAppendF(&out, "%02x", b);
+	}
+	return out;
+  }
+
+  static string BoardBytes(const std::vector<uint8> &v) {
+	string out;
+	for (int i = 0; i < (int)v.size(); i++) {
+	  if (i > 0 && (i % 10) == 0) StringAppendF(&out, "\n");
+	  uint8 b = v[i];
+	  if (b == 0xEF) {
+		StringAppendF(&out, "__");
+	  } else {
+		StringAppendF(&out, "%02x", b);
+	  }
+	}
+	return out;
+  }
+
+  
   // Game must exist.
   // Must hold lock.
   void ReadRaw(uint8_t *buf, int start, int count) {
@@ -255,18 +306,32 @@ struct Block {
 	
 	Emulator *emu = game->GetEmu();
 	vector<uint8_t> board = GetBoard(*emu);
+	CHECK(board.size() == 20 * 10);
 	for (int i = 0; i < count; i++) {
-	  int byte_idx = start + i;
+	  const int byte_idx = start + i;
 	  CHECK(byte_idx >= 0 && byte_idx < BLOCK_SIZE) <<
 		start << " " << count;
 	  // counting from the bottom
-	  int pos = 10 * (19 - byte_idx) + 2;
+	  const int pos = 10 * (19 - byte_idx) + 2;
 	  uint8 byte = 0;
 	  for (int b = 0; b < BLOCK_SIZE; b++) {
 		byte <<= 1;
 		// 0xEF = empty
-		byte |= ((board[pos] != 0xEF) ? 0b1 : 0b0);
+		byte |= ((board[pos + b] != 0xEF) ? 0b1 : 0b0);
 	  }
+
+	  CHECK(byte == debug_contents[byte_idx]) <<
+		StringPrintf("id: %d, start: %d, count: %d @%d\n"
+					 "byte: %02x, debug byte %02x\n"
+					 "byte_idx %d, pos: %d\n"
+					 "board:\n%s\n"
+					 "debug_contents: %s\n",
+					 id, start, count, i,
+					 byte, debug_contents[byte_idx],
+					 byte_idx, pos,
+					 BoardBytes(board).c_str(),
+					 VecBytes(debug_contents).c_str());
+		
 	  buf[i] = byte;
 	}
   }
@@ -297,24 +362,27 @@ struct Block {
 
 	auto uf = std::make_unique<std::function<void()>>(
 		[this, buf, start, count]() {
+
 		  // Pattern to write. We need to start by reading if
 		  // this is not the complete block.
 		  vector<uint8_t> pattern(BLOCK_SIZE, 0);
-		  CHECK(start >= 0 && start + count <= BLOCK_SIZE);
-		  if (start != 0 || count != BLOCK_SIZE) {
-			nbdkit_debug("need prev read for %d", id);	  
-			// Might as well read the whole thing!
-			ReadRaw(pattern.data(), 0, BLOCK_SIZE);
-		  }
-		  for (int i = 0; i < count; i++) {
-			pattern[start + i] = buf[i];
+		  {
+			std::unique_lock<std::mutex> ul(mutex);
+			CHECK(busy);
+			
+			CHECK(start >= 0 && start + count <= BLOCK_SIZE);
+			if (start != 0 || count != BLOCK_SIZE) {
+			  nbdkit_debug("need prev read for %d", id);	  
+			  // Might as well read the whole thing!
+			  ReadRaw(pattern.data(), 0, BLOCK_SIZE);
+			}
+			for (int i = 0; i < count; i++) {
+			  pattern[start + i] = buf[i];
+			}
+			debug_contents = pattern;
 		  }
 
-		  // TODO: Visualize in callbacks.
-		  MovieMaker::Callbacks callbacks;
-		  callbacks.placed_piece = [this](const Emulator &emu,
-										  int pieces_done,
-										  int total_pieces) {
+		  auto BoardString = [](const Emulator &emu) {
 			  vector<uint8_t> board = GetBoard(emu);
 			  if (!IsLineClearing(emu)) {
 				Shape shape = (Shape)emu.ReadRAM(MEM_CURRENT_PIECE);
@@ -324,17 +392,42 @@ struct Block {
 				DrawShapeOnBoard(0xFF, shape, x, y, &board);
 			  }
 
-			  const std::string encoded_board =
-				BoardPic::ToString(GetBoard(emu));
-			  std::unique_lock<std::mutex> ul(mutex);
-			  /*
-				printf("block %d: %d/%d pieces done\n",
-				id, pieces_done, total_pieces);
-			  */
-			  nbdkit_debug("TVIZ[o %d %d %d %s]ZIVT",
-						   id,
-						   outstanding_reads, outstanding_writes,
-						   encoded_board.c_str());
+			  return BoardPic::ToString(GetBoard(emu));
+			};
+		  
+		  // TODO: Visualize in callbacks.
+		  MovieMaker::Callbacks callbacks;
+		  callbacks.retried = [this, &BoardString, &pattern](
+			  const Emulator &emu,
+			  int retry_count,
+			  Piece p) {
+			  const string encoded_board = BoardString(emu);
+			  {
+				std::unique_lock<std::mutex> ul(mutex);
+				nbdkit_debug("TVIZ[o %d %d %d %s]ZIVT",
+							 id,
+							 outstanding_reads, outstanding_writes,
+							 encoded_board.c_str());
+				if (retry_count > 64) {
+				  nbdkit_debug("Retry count now %d for #%d. Want %c\n"
+							   "Encoding: %s\n",
+							   retry_count, id, PieceChar(p),
+							   VecBytes(pattern).c_str());
+				}
+			  }
+			};
+			
+		  callbacks.placed_piece = [this, &BoardString](const Emulator &emu,
+														int pieces_done,
+														int total_pieces) {
+			  const string encoded_board = BoardString(emu);
+			  {
+				std::unique_lock<std::mutex> ul(mutex);
+				nbdkit_debug("TVIZ[o %d %d %d %s]ZIVT",
+							 id,
+							 outstanding_reads, outstanding_writes,
+							 encoded_board.c_str());
+			  }
 			};
 
 		  // write from bottom to top.
@@ -348,9 +441,7 @@ struct Block {
 			CHECK(busy);
 			busy = false;
 			outstanding_writes--;
-			nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
-						 id,
-						 outstanding_reads, outstanding_writes);
+			Viz();
 		  }
 
 		  cond.notify_all();
