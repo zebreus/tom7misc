@@ -9,7 +9,6 @@
 
 #include "stb_image_write.h"
 #include "randutil.h"
-#include "arcfour.h"
 
 using namespace std;
 
@@ -56,11 +55,27 @@ static void TestLab() {
 
 }
 
+static void TestGradient() {
+  // Endpoints
+  CHECK_EQ(0xFFFFFFFF,
+           ColorUtil::LinearGradient32(ColorUtil::HEATED_METAL, 1.1f));
+  CHECK_EQ(0x000000FF,
+           ColorUtil::LinearGradient32(ColorUtil::HEATED_METAL, -0.1f));
+
+  {
+    // On ramp point.
+    auto [r, g, b] =
+      ColorUtil::LinearGradient(ColorUtil::HEATED_METAL, 0.2f);
+    CHECK_NEAR(0x77 / 255.0f, r);
+    CHECK_NEAR(0.0f, g);
+    CHECK_NEAR(0xBB / 255.0f, b);    
+  }
+}
+
 int main () {
-  ArcFour rc("color-util");
-
   TestLab();
-
+  TestGradient();
+  
   printf("OK\n");
   return 0;
 }

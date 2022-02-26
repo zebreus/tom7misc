@@ -66,19 +66,17 @@ void WriteWithLock(std::shared_mutex *m, T *t, const T &val) {
 }
 #endif
 
-// TODO: A thing that comes up often is where we want to accumulate a
-// sum (maybe on many variables) over an array in parallel. The
-// typical way to do this involves sharing a mutex to protect some
-// variable and doing +=. A nice utility in here would fold over a
-// std::tuple of integral types or something like that, by keeping a
-// tuple per thread and only adding them at the end. Would save a
-// lot of synchronization.
-
 // TODO: Could have an optimism parameter for most of these that
 // causes each thread to grab up to N work items (using num_threads as
 // a stride) before starting to synchronize for indices. If each item
 // takes the same amount of time, this just has less overhead.
 
+// A thing that comes up often is where we want to accumulate a
+// sum (maybe on many variables) over an array in parallel. The
+// typical way to do this involves sharing a mutex to protect some
+// variable and doing +=. This utility folds over some abstract result
+// type Res; each thread has its own accumulator.
+//
 // Res should be a small copyable type, like a pair of ints.
 // add should be commutative and associative, with zero as its zero value.
 // f is applied to every int in [0, num - 1] and Res*, returning void.
@@ -148,7 +146,7 @@ Res ParallelAccumulate(int64_t num,
 
 // Parallel comprehension. Runs f on 0...(num-1).
 // (Comprehension might not be the right name for this given that it
-// doesn't return anything?)
+// doesn't return anything? We can switch to ParallelDo ?)
 template<class F>
 void ParallelComp(int64_t num,
                   const F &f,
@@ -227,6 +225,23 @@ void UnParallelApp(const std::vector<T> &vec,
 }
 
 
+// Generate the vector containing {f(0), f(1), ..., f(num - 1)}.
+template<class F>
+auto ParallelTabulate(int64_t num,
+                      const F &f,
+                      int max_concurrency) ->
+  std::vector<decltype(f((int64_t)0))> {
+  using R = decltype(f((int64_t)0));
+  std::vector<R> result;
+  result.resize(num);
+  R *data = result.data();
+  auto run_write = [data, &f](int64_t idx) {
+                     data[idx] = f(idx);
+                   };
+  ParallelComp(num, run_write, max_concurrency);
+  return result;
+}
+
 // With f(index, value).
 // F needs to be callable (std::function or lambda) and thread safe.
 // It returns R, which must have a default constructor, and this will
@@ -293,7 +308,6 @@ auto UnParallelMapi(const std::vector<T> &vec,
 
   return result;
 }
-
 
 // When going out of scope, wait for the given thread.
 struct ThreadJoiner {

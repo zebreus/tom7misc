@@ -19,6 +19,7 @@
 #include "../cc-lib/base/logging.h"
 #include "../cc-lib/util.h"
 #include "../cc-lib/webserver.h"
+#include "../cc-lib/color-util.h"
 #include "../cc-lib/threadutil.h"
 #include "../cc-lib/image.h"
 #include "../cc-lib/pi/bcm2835.h"
@@ -216,7 +217,7 @@ struct Server {
 
   std::chrono::time_point<std::chrono::steady_clock> server_start_time;
 
-  const vector<std::tuple<float, float, float, float>> f_ramp = {
+  static constexpr ColorUtil::Gradient F_RAMP = {
     { -30.0f, 0.85f, 0.85f, 1.0f},
     {  32.0f, 0.15f, 0.15f, 1.0f},
     {  72.0f, 0.25f, 0.25f, 0.25f},
@@ -226,51 +227,16 @@ struct Server {
   };
 
   // RH value, then r, g, b in [0,1]
-  const vector<std::tuple<float, float, float, float>> rh_ramp = {
+  static constexpr ColorUtil::Gradient RH_RAMP = {
     {0.0f,   1.0f,  1.0f,  0.15f},
     {40.0f,  0.15f, 0.15f, 0.15f},
     {100.0f, 0.15f, 0.15f, 1.0f},
   };
 
-  static std::tuple<float, float, float>
-  LinearRamp(float t,
-             const vector<std::tuple<float, float, float, float>> &ramp) {
-    CHECK(!ramp.empty());
-    auto prev = ramp[0];
-
-    {
-      const auto [x, r, g, b] = prev;
-      if (t < x) {
-        return make_tuple(r, g, b);
-      }
-    }
-
-    for (int i = 1; i < ramp.size(); i++) {
-      const auto now = ramp[i];
-      const auto [px, pr, pg, pb] = prev;
-      const auto [x, r, g, b] = now;
-      if (t < x) {
-       // linear interpolation
-        const float w = x - px;
-        const float f = (t - px) / w;
-        const float omf = 1.0f - f;
-        return make_tuple(f * r + omf * pr,
-                          f * g + omf * pg,
-                          f * b + omf * pb);
-      }
-      prev = now;
-    }
-
-    {
-      const auto [x, r, g, b] = prev;
-      return make_tuple(r, g, b);
-    }
-  }
-
   // Could consider different scales for ambient vs pipe temp,
   // or even by season?
   string GetFahrenheitRGB(float f) {
-    const auto [r, g, b] = LinearRamp(f, f_ramp);
+    const auto [r, g, b] = ColorUtil::LinearGradient(F_RAMP, f);
     return StringPrintf("#%02x%02x%02x",
                         (uint8)(r * 255.0f),
                         (uint8)(g * 255.0f),
@@ -278,7 +244,7 @@ struct Server {
   }
 
   string GetHumidityRGB(float f) {
-    const auto [r, g, b] = LinearRamp(f, rh_ramp);
+    const auto [r, g, b] = ColorUtil::LinearGradient(RH_RAMP, f);
     return StringPrintf("#%02x%02x%02x",
                         (uint8)(r * 255.0f),
                         (uint8)(g * 255.0f),

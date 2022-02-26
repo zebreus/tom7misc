@@ -124,3 +124,54 @@ float ColorUtil::DeltaE(float l1, float a1, float b1,
   const float de = v1 * v1 + v2 * v2 + v3sq;
   return de <= 0.0f ? 0.0f : sqrtf(de);
 }
+
+std::tuple<float, float, float>
+ColorUtil::LinearGradient(
+    const ColorUtil::Gradient &ramp,
+    float t) {
+
+  // Avoid dependency on logging, but this would be invalid.
+  if (ramp.size() == 0) return std::make_tuple(0.0f, 0.0f, 0.0f);
+
+  auto it = ramp.begin();
+  auto prev = *it;
+  ++it;
+  
+  {
+    const auto [x, r, g, b] = prev;
+    if (t < x) {
+      return std::make_tuple(r, g, b);
+    }
+  }
+
+  for (/* above */; it != ramp.end(); ++it) {
+    const auto now = *it;
+    const auto [px, pr, pg, pb] = prev;
+    const auto [x, r, g, b] = now;
+    if (t < x) {
+     // linear interpolation
+      const float w = x - px;
+      const float f = (t - px) / w;
+      const float omf = 1.0f - f;
+      return std::make_tuple(f * r + omf * pr,
+                             f * g + omf * pg,
+                             f * b + omf * pb);
+    }
+    prev = now;
+  }
+
+  {
+    const auto [x, r, g, b] = prev;
+    return std::make_tuple(r, g, b);
+  }
+}
+
+uint32_t ColorUtil::LinearGradient32(
+    const ColorUtil::Gradient &ramp,
+    float t) {
+  const auto [rf, gf, bf] = LinearGradient(ramp, t);
+  uint32_t r = std::clamp((int)std::round(rf * 255.0f), 0, 255);
+  uint32_t g = std::clamp((int)std::round(gf * 255.0f), 0, 255);
+  uint32_t b = std::clamp((int)std::round(bf * 255.0f), 0, 255);
+  return (r << 24) | (g << 16) | (b << 8) | 0xFF;
+}

@@ -84,6 +84,8 @@
          let elapsed = (+new Date()) - o.start;
          if (elapsed < 2000) {
            o.td.style.background = '#cfc';
+         } else if (elapsed < 5000) {
+           o.td.style.background = '#ffc';
          } else {
            o.td.style.background = '#fcc';
          }

@@ -15,6 +15,7 @@
 #include "base/stringprintf.h"
 #include "arcfour.h"
 #include "image.h"
+#include "color-util.h"
 
 #include "tetris.h"
 #include "nes-tetris.h"
@@ -626,48 +627,13 @@ static void HistoSimulatedRNG() {
   histo.Save("simulated.png");
 }
 
-static const vector<std::tuple<float, float, float, float>> rgb_ramp = {
+static constexpr ColorUtil::Gradient RGB_RAMP = {
   { 0.0f,  1.0f, 0.0f, 0.0f},
   { 0.25f, 1.0f, 1.0f, 0.0f},
   { 0.5f,  0.0f, 1.0f, 0.0f},
   { 0.75f, 0.0f, 1.0f, 1.0f},
   { 1.0f,  0.0f, 0.0f, 1.0f},
 };
-
-static std::tuple<float, float, float>
-LinearRamp(float t,
-           const vector<std::tuple<float, float, float, float>> &ramp) {
-  CHECK(!ramp.empty());
-  auto prev = ramp[0];
-
-  {
-    const auto [x, r, g, b] = prev;
-    if (t < x) {
-      return make_tuple(r, g, b);
-    }
-  }
-
-  for (int i = 1; i < (int)ramp.size(); i++) {
-    const auto now = ramp[i];
-    const auto [px, pr, pg, pb] = prev;
-    const auto [x, r, g, b] = now;
-    if (t < x) {
-     // linear interpolation
-      const float w = x - px;
-      const float f = (t - px) / w;
-      const float omf = 1.0f - f;
-      return make_tuple(f * r + omf * pr,
-                        f * g + omf * pg,
-                        f * b + omf * pb);
-    }
-    prev = now;
-  }
-
-  {
-    const auto [x, r, g, b] = prev;
-    return make_tuple(r, g, b);
-  }
-}
 
 // hard to read plot of the cycle
 [[maybe_unused]]
@@ -678,21 +644,16 @@ static void PlotSimulatedRNG() {
   img.Clear32(0x000000FF);
   RNGState state;
 
-  auto C = [](float f) -> uint8 {
-      return std::clamp(std::roundf(f * 255.0f), 0.0f, 255.0f);
-    };
-
   int prev_x = state.rng1 * SCALE + SCALE / 2;
   int prev_y = state.rng2 * SCALE + SCALE / 2;
   for (int iters = 0; iters < PERIOD; iters++) {
     state = NextRNG(state);
     double f = iters / (double)PERIOD;
-    const auto [rf, gf, bf] = LinearRamp(f, rgb_ramp);
+    uint32_t color = ColorUtil::LinearGradient32(RGB_RAMP, f);
     int x = state.rng1 * SCALE + SCALE / 2;
     int y = state.rng2 * SCALE + SCALE / 2;
 
-    img.BlendLineAA(prev_x, prev_y, x, y,
-                    C(rf), C(gf), C(bf), 0x33);
+    img.BlendLineAA32(prev_x, prev_y, x, y, color & 0xFFFFFF33);
 
     prev_x = x;
     prev_y = y;
@@ -713,18 +674,14 @@ static void HeatSimulatedRNG() {
   img.Clear32(0x000000FF);
   RNGState state;
 
-  auto C = [](float f) -> uint8 {
-      return std::clamp(std::roundf(f * 255.0f), 0.0f, 255.0f);
-    };
-
   for (int iters = 0; iters < PERIOD; iters++) {
     state = NextRNG(state);
     double f = iters / (double)PERIOD;
-    const auto [rf, gf, bf] = LinearRamp(f, rgb_ramp);
+    const uint32_t color = ColorUtil::LinearGradient32(RGB_RAMP, f);
     int x = state.rng1;
     int y = state.rng2;
 
-    img.SetPixel(x, y, C(rf), C(gf), C(bf), 0xFF);
+    img.SetPixel32(x, y, color);
   }
 
   const RNGState start_state;

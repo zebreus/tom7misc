@@ -152,7 +152,7 @@ void WriteData(const vector<pair<float, float>> &samples,
     bytes->push_back((uint8)((i >> 8) & 255));
   };
 
-  for (int i = 0; i < samples.size(); i++) {
+  for (size_t i = 0; i < samples.size(); i++) {
     const pair<float, float> &p = samples[i];
     int left = p.first * 32767.0;
     int right = p.second * 32767.0;
@@ -169,7 +169,7 @@ void WriteData(const vector<float> &samples,
     bytes->push_back((uint8)((i >> 8) & 255));
   };
 
-  for (int i = 0; i < samples.size(); i++) {
+  for (size_t i = 0; i < samples.size(); i++) {
     int s = samples[i] * 32767.0;
     w16(s);
   }

@@ -74,7 +74,7 @@ bswap_32 (unsigned int __x) {
 
 static inline unsigned long long
 bswap_64 (unsigned long long __x) {
-  return (((unsigned long long) bswap_32 (__x & 0xffffffffull)) << 32) | 
+  return (((unsigned long long) bswap_32 (__x & 0xffffffffull)) << 32) |
     (bswap_32 (__x >> 32));
 }
 
