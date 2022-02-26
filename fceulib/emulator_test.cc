@@ -402,28 +402,28 @@ static std::vector<TestCase> TestCases() {
 
   // Regression -- Tengen cart wasn't saving all its state.
   AddCase(
-    "skull.nes",
-    "!102_5b4ba3a51_",
-    0xb59675a9575ad9c2, 0x8cb8e7b965de27d6,
-    0x033c42cd77af7d26, 0x0aa00a661d5bc9ba,
-    NO_PAUSE_MASK);
+      "skull.nes",
+      "!102_5b4ba3a51_",
+      0xb59675a9575ad9c2, 0x8cb8e7b965de27d6,
+      0x033c42cd77af7d26, 0x0aa00a661d5bc9ba,
+      NO_PAUSE_MASK);
 
   AddCase(
-    "tetris.nes",
-    // from pingu project
-    "!" // 1 player
-    "554_7t" // press start on main menu
-    "142_"
-    "7c" // signals a place where we can wait to affect RNG (maybe)
-    "45_5t" // press start on game type menu
-    "82_7c" // another place to potentially wait (likely?)
-    "13_" // computed wait for L|O, to match schedule
-    "8_7t" // press start on A-type menu to begin game
-    "68_", // game started by now
-    0xa11f6d34392510df, 0x22e382001c8fa99b,
-    0x2d191c6dc3fcfd72, 0x09cdab0e8108dab7,
-    NO_PAUSE_MASK);
-
+      "tetris.nes",
+      // from pingu project
+      "!" // 1 player
+      "554_7t" // press start on main menu
+      "142_"
+      "7c" // signals a place where we can wait to affect RNG (maybe)
+      "45_5t" // press start on game type menu
+      "82_7c" // another place to potentially wait (likely?)
+      "13_" // computed wait for L|O, to match schedule
+      "8_7t" // press start on A-type menu to begin game
+      "68_", // game started by now
+      0xa11f6d34392510df, 0x22e382001c8fa99b,
+      0x2d191c6dc3fcfd72, 0x09cdab0e8108dab7,
+      NO_PAUSE_MASK);
+  
   AddCase(
       "mario.nes",
       // the classic mario-tom.fm7
@@ -545,7 +545,40 @@ static std::vector<TestCase> TestCases() {
       0x9ff8c5ca1ebbbd5d, 0x166819fb3a1bc9cc,
       0xb67b23f3a33b5620, 0xb7b133f2e76ce088,
       NO_PAUSE_MASK);
+  
+  AddCase(
+      "roadblasters.nes",
+      "!87_2b102_4b84_20l12_16r23_20r2_47b7_46a13_50b23_18b5ub135u11ru,u"
+      "4ru8u34lu30u5ub13u9ub9u9ua19u28ru16u16ru7u8ua8u15lu9u6ua13u8ua12u"
+      "9ua69u27ua11u12lu9u27ua,u5ru,u23ua21u14ua6+r6ru15+a6ru19u15ru41u"
+      "12ru19u12ru7u44lu4u37ru13u17ru3u51lu13u20ru5u11lu9u10ru9u19lu,+a"
+      "4ua5u6ua,u9ru7+a7ru15u57_99u9ua18u21ua7u33ua51u20lu132u30ru9u43lu"
+      "4+a4ua24u3ua4+l3lu8u10ua8u9ua5u9ua6u22lu26u21lu104u35lu56u33ru7ua"
+      "20u7ua12u4lu8+a5lu7+a11lu23u20lu22u3lu6+a2ua80u9lu32u10ua15u9ua"
+      "7u31ru12u9ua14u9ua9u7ua7u6ua7u5ua6u5ua4u28lu43u16ru62u",
+      0x6abe54e2d227b454, 0xd6416a3a2bf5a5a2,
+      0x3a7901c4a2842be5, 0x931aef0b84808308,
+      NO_PAUSE_MASK);
 
+  AddCase(
+      "tmnt.nes",
+      "!319_9t232_12d12_24l8_23u42_61d2_19r41_9a23_8b28_30r29ra80r3rd33d"
+      "7ld38d66_7d17rd6ra8r2rd44d,_17r4rb65r18ra73r9a18ra2r3_58l15_5r,_"
+      "6b5_6b4_7b4_8b30_8r6ra71r7_14l,_25a21ra57r4_7b24_86r,ra24a13ra6r"
+      "39ra7r64ra107r30ra,u,lu4l4lb5l4lb2b4_7b4_7b5_7b5_6b6_6b6_6b14_28r"
+      "8_150l11_5r7_3r6_3r4_6r4_4r4_10r3rb,r6_3b,rb5r6rb5_6rb4_7b5_7b4_"
+      "7b5_7b8_3b28_129r30_29r2ru107u7_29r3_20a6_6b10_28r8rb13r62_3a32ra"
+      ",ua,lu5l7lb6l7lb3l3_7r9rb4r11_23r6_12a2ba4b5_6b5_6b3_4b3rb16r9_"
+      "22l15_12a36ra2r19_10l15_8l6_37a8_36r,ru87u47_79r19rd85r15_77l9_"
+      "15u35_29r31_55d2rd3r8rb39r,ra5a5_3a3la31l7_6r17_22r32ra130r10ra"
+      "84r26ra,+u,ua2+r,ra,r9rb5r7rb4r7rb4r8rb4r7rb7r23ra5r42ra75r10ra"
+      "153r3rd56d,r,_89r4_19l2lb5b5_7b5_6b4_6b5_7b5_7b4_6b6_6b5_6b5_6b"
+      "5_7b5_6b5_6b5_7b3_2l6lb38l7lb35l6lb2b4_6b6_,l80_7a81_8a17_41a5_"
+      "11a8_22a6_12a37_9d36_26a6_8d7_17a21_14t99_16r74_",
+      0xc702457b07a89ece, 0x7f9abbd10051bf40,
+      0x45ccd952861d5ad8, 0x6402da4519e800dc,
+      NO_PAUSE_MASK);
+  
   return cases;
 }
 

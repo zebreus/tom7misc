@@ -1,9 +1,13 @@
 // This is a clone of cc-lib/base.h, but only included for the
 // testing code in this directory, since FCEULib doesn't need it
 // and I'd like to keep its dependencies manageable.
+//
+// XXX: Since this should only be used in tools (where I am already
+// depending on cc-lib) I should just switch to the unforked version
+// in cc-lib!
 
-#ifndef __TESTUTIL_H
-#define __TESTUTIL_H
+#ifndef _FCEULIB_TESTUTIL_H
+#define _FCEULIB_TESTUTIL_H
 
 #include <vector>
 #include <string>
