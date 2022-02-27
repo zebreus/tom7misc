@@ -157,15 +157,23 @@ static std::string MakeSource(const uint8_t *buf,
     "switch (idx) {\n"
     "default:\n";
 
+  int last_byte = -1;
   for (int i = 0; i < num_bytes; i++) {
-    if (i >= (int)offset && i < (int)(offset + count)) {
-      // Newly written byte.
-      StringAppendF(&out, "case %d: return %d;\n", i, buf[i - offset]);
-    } else {
-      // From existing program.
-      StringAppendF(&out, "case %d: return %d;\n", i, (*get_byte)(i));
-    }
+
+	const int this_byte =
+	  // newly written byte
+	  (i >= (int)offset && i < (int)(offset + count)) ?
+	  buf[i - offset] :
+	  // from compiled-in program
+	  (*get_byte)(i);
+
+	if (this_byte != last_byte)
+	  StringAppendF(&out, " return %d;\n", last_byte);
+
+	last_byte = this_byte;
+	StringAppendF(&out, "case %d:\n", i);
   }
+  StringAppendF(&out, " return %d;\n", last_byte);
   StringAppendF(&out,
                 "}\n"
                 "}\n");

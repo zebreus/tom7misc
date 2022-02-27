@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
     CHECK(0 == system("echo 3 > /proc/sys/vm/drop_caches"));
 
     iters++;
-    if (run_timer.Seconds() > 10.0) {
+    if (run_timer.Seconds() > 60.0) {
       break;
     }
   }
