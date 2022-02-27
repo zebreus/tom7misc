@@ -409,6 +409,18 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
              retry_state.retry_count, rng1, rng2, last_drop, drop_count,
              is_paused ? 'Y' : 'n',
              SimpleFM2::InputToString(outmovie.back()).c_str());
+
+      #if 0
+      if (outmovie.size() > 21289) {
+        Screenshot(*emu, "stuckagain.png");
+        SimpleFM2::WriteInputs("stuckagain.fm2",
+                               "tetris.nes",
+                               "base64:Ww5XFVjIx5aTe5avRpVhxg==",
+                               outmovie);
+        exit(-1);
+      }
+      #endif
+      
       next_report = seconds + REPORT_EVERY;
     }
 
@@ -503,16 +515,20 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
         target_nes_x != cur_x) {
 
       // Always unpause if we aren't in the correct spot.
-      if (is_paused && 0 == (retry_state.LastInput() & INPUT_T))
-        input |= INPUT_T;
-      
-      if ((frame % 2) == 0) {
-        // PERF: Can rotate in the most efficient direction.
-        if (move.shape != cur_shape)
-          input |= INPUT_A;
+      if (is_paused && 0 == (retry_state.LastInput() & INPUT_T)) {
+        // There seem to be cases where pausing and moving at
+        // the same time do not successfully unpause. So if we
+        // are unpausing, only do that.
+        input = INPUT_T;
+      } else {
+        if ((frame % 2) == 0) {
+          // PERF: Can rotate in the most efficient direction.
+          if (move.shape != cur_shape)
+            input |= INPUT_A;
 
-        if (target_nes_x < cur_x) input |= INPUT_L;
-        else if (target_nes_x > cur_x) input |= INPUT_R;
+          if (target_nes_x < cur_x) input |= INPUT_L;
+          else if (target_nes_x > cur_x) input |= INPUT_R;
+        }
       }
 
     } else {
@@ -527,22 +543,23 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
         // from which we can try a target frame.
 
         // Fastest is to unpause, if we are paused.
-        if (is_paused && 0 == (retry_state.LastInput() & INPUT_T))
-          input |= INPUT_T;
+        if (is_paused && 0 == (retry_state.LastInput() & INPUT_T)) {
+          input = INPUT_T;
+        } else {
+          // And fastest is to hold D, with the exception that if we
+          // were already holding D, we need to release for at least
+          // one frame, as the game will not interpret this as fast
+          // drop if we keep it held between drops. This only happens
+          // if the piece was already in the correct orientation and
+          // column (so we skip the above) AND we were coincidentally
+          // holding D at the end of the previous drop, but the simplest
+          // thing is to not consider D for the very first frame after
+          // saving.
 
-        // And fastest is to hold D, with the exception that if we
-        // were already holding D, we need to release for at least
-        // one frame, as the game will not interpret this as fast
-        // drop if we keep it held between drops. This only happens
-        // if the piece was already in the correct orientation and
-        // column (so we skip the above) AND we were coincidentally
-        // holding D at the end of the previous drop, but the simplest
-        // thing is to not consider D for the very first frame after
-        // saving.
-
-        if (retry_state.FramesSinceSave() > 0)        
-          input |= INPUT_D;
-        
+          if (retry_state.FramesSinceSave() > 0)        
+            input |= INPUT_D;
+        }
+          
       } else {
         // XXX!
         input = 0;
@@ -551,6 +568,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
         if (retry_state.FramesSinceSave() > retry_state.retry_count)
           input |= INPUT_D;
 
+        // XXX might want to only pause, if pausing
         // If we seem to be getting stuck, spam start to pause as well.
         if (retry_state.retry_count > 64) input |= (rc.Byte() & INPUT_T);
       }

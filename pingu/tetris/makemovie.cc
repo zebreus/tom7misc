@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
                          "tetris.nes",
                          "base64:Ww5XFVjIx5aTe5avRpVhxg==",
                          movie);
-  printf("Done! Dropped %d pieces in %d frames, %ld steps, %.2f sec\n",
+  printf("Done! Dropped %d pieces in %d frames, %lld steps, %.2f sec\n",
          pieces,
          (int)movie.size(),
          movie_maker.StepsExecuted(),
