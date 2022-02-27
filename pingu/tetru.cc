@@ -54,6 +54,15 @@ static constexpr const char *ROMFILE = "tetris/tetris.nes";
 // depth 6 (and it might be possible to reduce that).
 static constexpr int BLOCK_SIZE = 8;
 
+static string VecBytes(const std::vector<uint8> &v) {
+  string out;
+  for (uint8 b : v) {
+	StringAppendF(&out, "%02x", b);
+  }
+  return out;
+}
+
+
 struct CachingMovieMaker {
 
   struct CacheRow {
@@ -107,7 +116,8 @@ struct Game {
   }
 
   void Play(const vector<uint8> &bytes,
-            MovieMaker::Callbacks callbacks) {
+            MovieMaker::Callbacks callbacks,
+			const std::function<void(int, const string &)> &pr) {
     // Do we have it in cache?
     std::optional<CachingMovieMaker::CacheRow> orow =
       caching_movie_maker->GetCached(bytes);
@@ -116,8 +126,10 @@ struct Game {
 
       // XXX cheating?
       if (true) {
+		pr(seed, "load");
         emu->LoadUncompressed(orow.value().savestate);
       } else {
+		pr(seed, "cached");
         if (callbacks.game_start)
           callbacks.game_start(*emu, CACHED_PIECES);
         const std::vector<uint8> movie = orow.value().movie;
@@ -143,6 +155,8 @@ struct Game {
       std::vector<uint8> rev_bytes;
       for (int i = bytes.size() - 1; i >= 0; i--)
         rev_bytes.push_back(bytes[i]);
+
+	  pr(seed, VecBytes(rev_bytes));
 
       cache_row.movie = movie_maker->Play(rev_bytes, callbacks);
       cache_row.savestate = movie_maker->GetEmu()->SaveUncompressed();
@@ -247,6 +261,7 @@ struct Block {
   // XXX
   std::vector<uint8> debug_contents;
 
+  // XXX we should probably use global mutex for debug?
   // must hold lock
   void Viz() {
     nbdkit_debug("TVIZ[o %d %d %d ]ZIVT",
@@ -274,14 +289,6 @@ struct Block {
 
     outstanding_reads--;
     Viz();
-  }
-
-  static string VecBytes(const std::vector<uint8> &v) {
-    string out;
-    for (uint8 b : v) {
-      StringAppendF(&out, "%02x", b);
-    }
-    return out;
   }
 
   static string BoardBytes(const std::vector<uint8> &v) {
@@ -431,7 +438,13 @@ struct Block {
             };
 
           // write from bottom to top.
-          game->Play(pattern, callbacks);
+          game->Play(pattern, callbacks,
+					 // XXX hax
+					 [this](int seed, const string &op) {
+					   std::unique_lock<std::mutex> ul(mutex);
+					   nbdkit_debug("TVIZ[p %d %d %s]ZIVT\n",
+									id, seed, op.c_str());
+					 });
 
           nbdkit_debug("finished playing %d", id);
 

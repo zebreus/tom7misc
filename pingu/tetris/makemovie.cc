@@ -80,7 +80,13 @@ static void PlacedPiece(const Emulator &emu,
 
 int main(int argc, char **argv) {
   Timer run_timer;
-  MovieMaker movie_maker(SOLFILE, "tetris.nes", 12345);
+
+  // std::vector<uint8_t> pattern = {129, 0, 36, 44, 0, 68, 56, 0};
+  const std::vector<uint8_t> pattern =
+	{0xd7, 0xe7, 0xd3, 0x1b, 0x43, 0xcf, 0xf2, 0xde};
+  const int seed = 2510;
+
+  MovieMaker movie_maker(SOLFILE, "tetris.nes", seed);
 
   int pieces = 0;
   MovieMaker::Callbacks callbacks;
@@ -94,8 +100,6 @@ int main(int argc, char **argv) {
   callbacks.retried = Retried;
   callbacks.placed_piece = PlacedPiece;
   
-  std::vector<uint8_t> pattern = {129, 0, 36, 44, 0, 68, 56, 0};
-
   std::vector<uint8_t> movie = movie_maker.Play(pattern, callbacks);
   const Emulator *emu = movie_maker.GetEmu();
   Screenshot(*emu, "encoded-done.png");
@@ -104,7 +108,7 @@ int main(int argc, char **argv) {
                          "tetris.nes",
                          "base64:Ww5XFVjIx5aTe5avRpVhxg==",
                          movie);
-  printf("Done! Dropped %d pieces in %d frames, %lld steps, %.2f sec\n",
+  printf("Done! Dropped %d pieces in %d frames, %ld steps, %.2f sec\n",
          pieces,
          (int)movie.size(),
          movie_maker.StepsExecuted(),

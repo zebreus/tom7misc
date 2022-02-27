@@ -51,6 +51,10 @@ struct Block {
 
   int outstanding_reads = 0;
   int outstanding_writes = 0;
+  // Number of seconds since visualization began.
+  int64 lastupdate = 0;
+  int seed = 0;
+  string op;
 
   bool uninitialized = true;
   bool busy = false;
@@ -188,10 +192,11 @@ static void Loop() {
   ImageRGBA img(SCREENW, SCREENH);
 
   RE2 viz_command{".*TVIZ\\[(.+)\\]ZIVT.*"};
-  // XXX unused
   RE2 blockinfo_command("b ([0-9]+) ([0-9]+) ([0-9]+)");
   RE2 update_command("([rw]) ([0-9]+)");
   RE2 board_command("o ([0-9]+) ([0-9]+) ([0-9]+) ([a-z]*)");
+  // id, seed, bytes
+  RE2 op_command("p ([0-9]+) ([0-9]+) ([-0-9a-zA-Z]+)");
 
   // initial display...
   Redraw(&img);
@@ -199,24 +204,33 @@ static void Loop() {
   SDL_Flip(screen);
 
   Timer run_timer;
-  int last_update = 0;
+  int64 last_redraw = 0;
   for (;;) {
 
     string line, cmd;
     std::getline(cin, line);
+	const int64 sec = run_timer.Seconds();
 
     if (RE2::FullMatch(line, viz_command, &cmd)) {
 
       int idx, uninitialized, busy;
       char rw;
       int oreads, owrites;
-      string encoded_board;
+	  int seed;
+      string encoded_board, op;
       if (RE2::FullMatch(cmd, blockinfo_command,
                          &idx, &uninitialized, &busy)) {
         CHECK(idx >= 0 && idx < NUM_BLOCKS);
         Block *block = &blocks[idx];
         block->uninitialized = !!uninitialized;
         block->busy = !!busy;
+		block->lastupdate = sec;
+	  } else if (RE2::FullMatch(cmd, op_command, &idx, &seed, &op)) {
+        CHECK(idx >= 0 && idx < NUM_BLOCKS);
+        Block *block = &blocks[idx];
+        block->seed = seed;
+		block->op = op;
+		block->lastupdate = sec;
       } else if (RE2::FullMatch(cmd, update_command, &rw, &idx)) {
         if (rw == 'r') {
           last_read = idx;
@@ -233,6 +247,7 @@ static void Loop() {
         block->uninitialized = false;
         block->outstanding_reads = oreads;
         block->outstanding_writes = owrites;
+		block->lastupdate = sec;
         if (encoded_board.empty()) {
           // OK to leave out board.
         } else if (encoded_board.size() != (20 * 10) >> 1) {
@@ -243,8 +258,7 @@ static void Loop() {
         }
       }
 
-      int sec = run_timer.Seconds();
-      if (sec != last_update) {
+      if (sec != last_redraw) {
         // PERF: Only sometimes...
         Redraw(&img);
 
@@ -252,7 +266,7 @@ static void Loop() {
 
         BlitImagePart(img, scrollx, scrolly, SCREENW, SCREENH, 0, 0);
         SDL_Flip(screen);
-        last_update = sec;
+        last_redraw = sec;
       }
     } else if (!line.empty()) {
       printf("[%s]\n", line.c_str());
@@ -285,6 +299,34 @@ static void Loop() {
 
         case SDLK_s:
           break;
+
+		case SDLK_i: {
+		  printf("Dump info:\n");
+		  for (int i = 0; i < NUM_BLOCKS; i++) {
+			const Block &block = blocks[i];
+
+			if (block.outstanding_reads > 0 ||
+				block.outstanding_writes > 0) {
+			  int64 ago = sec - block.lastupdate;
+			  std::string boardstring;
+			  for (uint8_t b : block.board)
+				StringAppendF(&boardstring, "%02x", b);
+			  printf("Block %d: %d r %d w; %ld sec ago. seed %d op %s\n"
+					 "  busy %c, uninit %c, board: %s\n"
+					 ,
+					 i,
+					 block.outstanding_reads,
+					 block.outstanding_writes,
+					 ago,
+					 block.seed,
+					 block.op.c_str(),
+					 block.busy ? 'y' : 'n',
+					 block.uninitialized ? 'y' : 'n',
+					 boardstring.c_str());
+			}
+		  }
+		  break;
+		}
 
         default:
           break;
