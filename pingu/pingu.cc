@@ -28,65 +28,65 @@
 static constexpr int BLOCK_SIZE = 512;
 struct Block {
   Block(int id) : id(id) {
-	bzero(contents.data(), BLOCK_SIZE);
+    bzero(contents.data(), BLOCK_SIZE);
   }
 
   // Most hold mutex
   void Viz() {
-	nbdkit_debug("VIZ[b %d %d %d %d]ZIV",
-				 id,
-				 AllZero() ? 1 : 0,
-				 (int)reads.size(),
-				 (int)writes.size());
+    nbdkit_debug("VIZ[b %d %d %d %d]ZIV",
+                 id,
+                 AllZero() ? 1 : 0,
+                 (int)reads.size(),
+                 (int)writes.size());
   }
 
   // Read the indicated portion of the block into the buffer.
   void Read(uint8_t *buf, int start, int count) {
-	bool read_done = false;
-	std::unique_lock<std::mutex> ul(mutex);
-	reads.emplace_back(PendingRead{
-		  .buf = buf,
-		  .start = start,
-		  .count = count,
-		  .done = &read_done,
-	  });
-	Viz();
-	cond.wait(ul, [&read_done]{ return read_done; });
-	Viz();
+    bool read_done = false;
+    std::unique_lock<std::mutex> ul(mutex);
+    reads.emplace_back(PendingRead{
+          .buf = buf,
+          .start = start,
+          .count = count,
+          .done = &read_done,
+      });
+    Viz();
+    cond.wait(ul, [&read_done]{ return read_done; });
+    Viz();
   }
 
   // Write the buffer to the indicated portion of the block.
   void Write(const uint8_t *buf, int start, int count) {
-	bool write_done = false;
-	std::unique_lock<std::mutex> ul(mutex);
-	// PERF: Queueing multiple writes is not necessary as
-	// we will only write one piece of data (the last one).
-	// But we should be careful about returning until we
-	// have "completed" the earlier writes.
-	writes.emplace_back(PendingWrite{
-		  .buf = buf,
-		  .start = start,
-		  .count = count,
-		  .done = &write_done,
-	  });
-	Viz();
-	cond.wait(ul, [&write_done]{ return write_done; });
-	Viz();
+    bool write_done = false;
+    std::unique_lock<std::mutex> ul(mutex);
+    // PERF: Queueing multiple writes is not necessary as
+    // we will only write one piece of data (the last one).
+    // But we should be careful about returning until we
+    // have "completed" the earlier writes.
+    writes.emplace_back(PendingWrite{
+          .buf = buf,
+          .start = start,
+          .count = count,
+          .done = &write_done,
+      });
+    Viz();
+    cond.wait(ul, [&write_done]{ return write_done; });
+    Viz();
   }
 
   // Pending request to read this block into the buffer.
   struct PendingRead {
-	uint8_t *buf;
-	int start;
-	int count;
-	bool *done;
+    uint8_t *buf;
+    int start;
+    int count;
+    bool *done;
   };
 
   struct PendingWrite {
-	const uint8_t *buf;
-	int start;
-	int count;
-	bool *done;
+    const uint8_t *buf;
+    int start;
+    int count;
+    bool *done;
   };
 
   const int id = 0;
@@ -98,10 +98,10 @@ struct Block {
   std::vector<PendingWrite> writes;
 
   bool AllZero() const {
-	for (int i = 0; i < BLOCK_SIZE; i++) {
-	  if (contents[i] != 0) return false;
-	}
-	return true;
+    for (int i = 0; i < BLOCK_SIZE; i++) {
+      if (contents[i] != 0) return false;
+    }
+    return true;
   }
 
   // Private!
@@ -116,23 +116,23 @@ struct Pings {
 // store, but only provide access to it slowly.
 struct Blocks {
   explicit Blocks(int64_t num_blocks) : num_blocks(num_blocks) {
-	for (int i = 0; i < num_blocks; i++)
-	  mem.push_back(new Block(i));
+    for (int i = 0; i < num_blocks; i++)
+      mem.push_back(new Block(i));
   }
 
   inline void Read(int block_idx, uint8_t *buf, int start, int count) {
-	nbdkit_debug("Read %d[%d,%d] -> %p\n", block_idx, start, count, buf);
-	mem[block_idx]->Read(buf, start, count);
+    nbdkit_debug("Read %d[%d,%d] -> %p\n", block_idx, start, count, buf);
+    mem[block_idx]->Read(buf, start, count);
   }
 
   inline void Write(int block_idx, const uint8_t *buf, int start, int count) {
-	nbdkit_debug("Write %d[%d,%d] <- %p\n", block_idx, start, count, buf);
-	mem[block_idx]->Write(buf, start, count);
+    nbdkit_debug("Write %d[%d,%d] <- %p\n", block_idx, start, count, buf);
+    mem[block_idx]->Write(buf, start, count);
   }
 
   ~Blocks() {
-	for (Block *b : mem) delete b;
-	mem.clear();
+    for (Block *b : mem) delete b;
+    mem.clear();
   }
 
   const int64_t num_blocks = 0;
@@ -143,68 +143,68 @@ struct Blocks {
 struct Processor {
   Processor(Blocks *blocks) : blocks(blocks) {
     process_thread.reset(new std::thread(&Processor::ProcessThread, this));
-	nbdkit_debug("thread spawned %p\n", process_thread.get());
+    nbdkit_debug("thread spawned %p\n", process_thread.get());
   }
 
   void ProcessThread() {
-	printf("in the thread");
-	nbdkit_debug("process thread started\n");
-	ArcFour rc("process");
-	int64_t cursor = 0;
-	for (;;) {
-	  // int idx = RandTo(&rc, blocks->num_blocks);
-	  int idx = (cursor++) % blocks->num_blocks;
-	  Block *block = blocks->mem[idx];
+    printf("in the thread");
+    nbdkit_debug("process thread started\n");
+    ArcFour rc("process");
+    int64_t cursor = 0;
+    for (;;) {
+      // int idx = RandTo(&rc, blocks->num_blocks);
+      int idx = (cursor++) % blocks->num_blocks;
+      Block *block = blocks->mem[idx];
 
-	  nbdkit_debug("VIZ[u %d]ZIV", idx);
+      nbdkit_debug("VIZ[u %d]ZIV", idx);
 
-	  {
-		std::unique_lock<std::mutex> ul(block->mutex);
-		// nbdkit_debug("%d is unlocked", idx);
+      {
+        std::unique_lock<std::mutex> ul(block->mutex);
+        // nbdkit_debug("%d is unlocked", idx);
 
-		// Process all reads
-		for (const Block::PendingRead &pr : block->reads) {
-		  // using the private data..
-		  for (int i = 0; i < pr.count; i++)
-			pr.buf[i] = block->contents[pr.start + i];
-		  *pr.done = true;
-		}
-		block->reads.clear();
+        // Process all reads
+        for (const Block::PendingRead &pr : block->reads) {
+          // using the private data..
+          for (int i = 0; i < pr.count; i++)
+            pr.buf[i] = block->contents[pr.start + i];
+          *pr.done = true;
+        }
+        block->reads.clear();
 
-		// And all writes
-		// (PERF: We only need to write the last one but
-		// need to mark all as done)
-		for (const Block::PendingWrite &pw : block->writes) {
-		  // using the private data..
-		  for (int i = 0; i < pw.count; i++)
-			block->contents[pw.start + i] = pw.buf[i];
-		  *pw.done = true;
-		}
-		block->writes.clear();
-	  }
+        // And all writes
+        // (PERF: We only need to write the last one but
+        // need to mark all as done)
+        for (const Block::PendingWrite &pw : block->writes) {
+          // using the private data..
+          for (int i = 0; i < pw.count; i++)
+            block->contents[pw.start + i] = pw.buf[i];
+          *pw.done = true;
+        }
+        block->writes.clear();
+      }
 
-	  // Lock is released. Notify anyone waiting.
-	  block->cond.notify_all();
+      // Lock is released. Notify anyone waiting.
+      block->cond.notify_all();
 
-	  std::this_thread::sleep_for(
-		  std::chrono::milliseconds(10));
-	  {
-		MutexLock ml(&mutex);
-		if (should_die)
-		  goto die;
-	  }
-	}
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(10));
+      {
+        MutexLock ml(&mutex);
+        if (should_die)
+          goto die;
+      }
+    }
 
   die:;
   }
 
   ~Processor() {
-	{
-	  MutexLock ml(&mutex);
-	  should_die = true;
-	}
-	process_thread->join();
-	process_thread.reset(nullptr);
+    {
+      MutexLock ml(&mutex);
+      should_die = true;
+    }
+    process_thread->join();
+    process_thread.reset(nullptr);
   }
 
   std::mutex mutex;
@@ -239,13 +239,13 @@ static int pingu_config(const char *key, const char *value) {
     int64_t num_bytes = nbdkit_parse_size(value);
     if (num_bytes == -1)
       return -1;
-	if (num_bytes % BLOCK_SIZE != 0) {
-	  nbdkit_error("bytes must be divisible by block size, %d", BLOCK_SIZE);
-	  return -1;
-	}
+    if (num_bytes % BLOCK_SIZE != 0) {
+      nbdkit_error("bytes must be divisible by block size, %d", BLOCK_SIZE);
+      return -1;
+    }
 
-	num_blocks = num_bytes / BLOCK_SIZE;
-	
+    num_blocks = num_bytes / BLOCK_SIZE;
+
   } else {
     nbdkit_error("unknown parameter '%s'", key);
     return -1;
@@ -313,25 +313,25 @@ static int pingu_pread(void *handle, void *buf_void,
 
   // one block at a time
   for (;;) {
-	if (count == 0)
-	  return 0;
+    if (count == 0)
+      return 0;
 
-	// Read from the first block in the range
-	//
-	// [---------------][--------------...
-	//         ^
-	// [-skip--|-rest--]
-	int block_idx = offset / BLOCK_SIZE;
-	int skip = offset % BLOCK_SIZE;
-	int rest = BLOCK_SIZE - skip;
-	// But don't read beyond requested count
-	int bytes_to_read = std::min(rest, (int)count);
+    // Read from the first block in the range
+    //
+    // [---------------][--------------...
+    //         ^
+    // [-skip--|-rest--]
+    int block_idx = offset / BLOCK_SIZE;
+    int skip = offset % BLOCK_SIZE;
+    int rest = BLOCK_SIZE - skip;
+    // But don't read beyond requested count
+    int bytes_to_read = std::min(rest, (int)count);
 
-	blocks->Read(block_idx, buf, skip, bytes_to_read);
-	// Prepare for next iteration
-	count -= bytes_to_read;
-	buf += bytes_to_read;
-	offset += bytes_to_read;
+    blocks->Read(block_idx, buf, skip, bytes_to_read);
+    // Prepare for next iteration
+    count -= bytes_to_read;
+    buf += bytes_to_read;
+    offset += bytes_to_read;
   }
 
 }
@@ -347,19 +347,19 @@ static int pingu_pwrite(void *handle, const void *buf_void,
 
   // Just as in the read case.
   for (;;) {
-	if (count == 0)
-	  return 0;
+    if (count == 0)
+      return 0;
 
-	int block_idx = offset / BLOCK_SIZE;
-	int skip = offset % BLOCK_SIZE;
-	int rest = BLOCK_SIZE - skip;
-	int bytes_to_read = std::min(rest, (int)count);
+    int block_idx = offset / BLOCK_SIZE;
+    int skip = offset % BLOCK_SIZE;
+    int rest = BLOCK_SIZE - skip;
+    int bytes_to_read = std::min(rest, (int)count);
 
-	blocks->Write(block_idx, buf, skip, bytes_to_read);
-	// Prepare for next iteration
-	count -= bytes_to_read;
-	buf += bytes_to_read;
-	offset += bytes_to_read;
+    blocks->Write(block_idx, buf, skip, bytes_to_read);
+    // Prepare for next iteration
+    count -= bytes_to_read;
+    buf += bytes_to_read;
+    offset += bytes_to_read;
   }
 }
 

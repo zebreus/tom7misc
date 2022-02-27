@@ -28,27 +28,27 @@
 static constexpr int BLOCK_SIZE = 512;
 struct Block {
   Block(int id) : id(id) {
-	bzero(contents.data(), BLOCK_SIZE);
+    bzero(contents.data(), BLOCK_SIZE);
   }
 
   // Read the indicated portion of the block into the buffer.
   void Read(uint8_t *buf, int start, int count) {
-	nbdkit_debug("try read from block %d", id);
-	MutexLock ml(&mutex);
-	nbdkit_debug("ready to read from block %d", id);
-	for (int i = 0; i < count; i++) {
-	  *buf = contents[start + i];
-	  buf++;
-	}
+    nbdkit_debug("try read from block %d", id);
+    MutexLock ml(&mutex);
+    nbdkit_debug("ready to read from block %d", id);
+    for (int i = 0; i < count; i++) {
+      *buf = contents[start + i];
+      buf++;
+    }
   }
 
   // Write the buffer to the indicated portion of the block.
   void Write(const uint8_t *buf, int start, int count) {
-	MutexLock ml(&mutex);
-	for (int i = 0; i < count; i++) {
-	  contents[start + i] = *buf;
-	  buf++;
-	}
+    MutexLock ml(&mutex);
+    for (int i = 0; i < count; i++) {
+      contents[start + i] = *buf;
+      buf++;
+    }
   }
 
   const int id = 0;
@@ -60,23 +60,23 @@ struct Block {
 // store, but only provide access to it slowly.
 struct Blocks {
   explicit Blocks(int64_t num_blocks) : num_blocks(num_blocks) {
-	for (int i = 0; i < num_blocks; i++)
-	  mem.push_back(new Block(i));
+    for (int i = 0; i < num_blocks; i++)
+      mem.push_back(new Block(i));
   }
 
   inline void Read(int block_idx, uint8_t *buf, int start, int count) {
-	nbdkit_debug("Read %d[%d,%d] -> %p\n", block_idx, start, count, buf);
-	mem[block_idx]->Read(buf, start, count);
+    nbdkit_debug("Read %d[%d,%d] -> %p\n", block_idx, start, count, buf);
+    mem[block_idx]->Read(buf, start, count);
   }
 
   inline void Write(int block_idx, const uint8_t *buf, int start, int count) {
-	nbdkit_debug("Write %d[%d,%d] <- %p\n", block_idx, start, count, buf);
-	mem[block_idx]->Write(buf, start, count);
+    nbdkit_debug("Write %d[%d,%d] <- %p\n", block_idx, start, count, buf);
+    mem[block_idx]->Write(buf, start, count);
   }
 
   ~Blocks() {
-	for (Block *b : mem) delete b;
-	mem.clear();
+    for (Block *b : mem) delete b;
+    mem.clear();
   }
 
   const int64_t num_blocks = 0;
@@ -86,47 +86,47 @@ struct Blocks {
 // keeps all the locks locked except for one
 struct SlowDowner {
   SlowDowner(Blocks *blocks) : blocks(blocks) {
-	for (int i = 0; i < blocks->num_blocks; i++) {
-	  blocks->mem[i]->mutex.lock();
-	}
+    for (int i = 0; i < blocks->num_blocks; i++) {
+      blocks->mem[i]->mutex.lock();
+    }
 
     unlock_thread.reset(new std::thread(&SlowDowner::UnlockThread, this));
-	nbdkit_debug("thread spawned %p\n", unlock_thread.get());
+    nbdkit_debug("thread spawned %p\n", unlock_thread.get());
   }
 
   void UnlockThread() {
-	printf("in the thread");
-	nbdkit_debug("unlock thread started\n");
-	for (;;) {
-	  for (int i = 0; i < blocks->num_blocks; i++) {
-		blocks->mem[i]->mutex.unlock();
-		nbdkit_debug("%d is unlocked", i);
-		std::this_thread::sleep_for(
-			std::chrono::milliseconds(50));
-		blocks->mem[i]->mutex.lock();
+    printf("in the thread");
+    nbdkit_debug("unlock thread started\n");
+    for (;;) {
+      for (int i = 0; i < blocks->num_blocks; i++) {
+        blocks->mem[i]->mutex.unlock();
+        nbdkit_debug("%d is unlocked", i);
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(50));
+        blocks->mem[i]->mutex.lock();
 
-		{
-		  MutexLock ml(&mutex);
-		  if (should_die)
-			goto die;
-		}
-	  }
-	}
+        {
+          MutexLock ml(&mutex);
+          if (should_die)
+            goto die;
+        }
+      }
+    }
 
   die:
-	// unlock everything
-	for (int j = 0; j < blocks->num_blocks; j++) {
-	  blocks->mem[j]->mutex.unlock();
-	}
+    // unlock everything
+    for (int j = 0; j < blocks->num_blocks; j++) {
+      blocks->mem[j]->mutex.unlock();
+    }
   }
 
   ~SlowDowner() {
-	{
-	  MutexLock ml(&mutex);
-	  should_die = true;
-	}
-	unlock_thread->join();
-	unlock_thread.reset(nullptr);
+    {
+      MutexLock ml(&mutex);
+      should_die = true;
+    }
+    unlock_thread->join();
+    unlock_thread.reset(nullptr);
   }
 
   std::mutex mutex;
@@ -228,25 +228,25 @@ static int pingu_pread(void *handle, void *buf_void,
 
   // one block at a time
   for (;;) {
-	if (count == 0)
-	  return 0;
+    if (count == 0)
+      return 0;
 
-	// Read from the first block in the range
-	//
-	// [---------------][--------------...
-	//         ^
-	// [-skip--|-rest--]
-	int block_idx = offset / BLOCK_SIZE;
-	int skip = offset % BLOCK_SIZE;
-	int rest = BLOCK_SIZE - skip;
-	// But don't read beyond requested count
-	int bytes_to_read = std::min(rest, (int)count);
+    // Read from the first block in the range
+    //
+    // [---------------][--------------...
+    //         ^
+    // [-skip--|-rest--]
+    int block_idx = offset / BLOCK_SIZE;
+    int skip = offset % BLOCK_SIZE;
+    int rest = BLOCK_SIZE - skip;
+    // But don't read beyond requested count
+    int bytes_to_read = std::min(rest, (int)count);
 
-	blocks->Read(block_idx, buf, skip, bytes_to_read);
-	// Prepare for next iteration
-	count -= bytes_to_read;
-	buf += bytes_to_read;
-	offset += bytes_to_read;
+    blocks->Read(block_idx, buf, skip, bytes_to_read);
+    // Prepare for next iteration
+    count -= bytes_to_read;
+    buf += bytes_to_read;
+    offset += bytes_to_read;
   }
 
 }
@@ -262,19 +262,19 @@ static int pingu_pwrite(void *handle, const void *buf_void,
 
   // Just as in the read case.
   for (;;) {
-	if (count == 0)
-	  return 0;
+    if (count == 0)
+      return 0;
 
-	int block_idx = offset / BLOCK_SIZE;
-	int skip = offset % BLOCK_SIZE;
-	int rest = BLOCK_SIZE - skip;
-	int bytes_to_read = std::min(rest, (int)count);
+    int block_idx = offset / BLOCK_SIZE;
+    int skip = offset % BLOCK_SIZE;
+    int rest = BLOCK_SIZE - skip;
+    int bytes_to_read = std::min(rest, (int)count);
 
-	blocks->Write(block_idx, buf, skip, bytes_to_read);
-	// Prepare for next iteration
-	count -= bytes_to_read;
-	buf += bytes_to_read;
-	offset += bytes_to_read;
+    blocks->Write(block_idx, buf, skip, bytes_to_read);
+    // Prepare for next iteration
+    count -= bytes_to_read;
+    buf += bytes_to_read;
+    offset += bytes_to_read;
   }
 }
 

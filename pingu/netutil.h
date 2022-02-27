@@ -18,8 +18,8 @@ struct NetUtil {
   // canonical name for the host (or reuse hostname). If error is non-null,
   // populates this with additional info on failure.
   static std::optional<uint32_t> GetIPV4(const std::string &hostname,
-										 std::string *canonical_name = nullptr,
-										 std::string *error = nullptr);
+                                         std::string *canonical_name = nullptr,
+                                         std::string *error = nullptr);
 
   // a.b.c.d to network-order uint32
   static uint32_t OctetsToIP(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
@@ -39,10 +39,10 @@ struct NetUtil {
   static uint16_t ICMPChecksum(uint8_t *buf, size_t len);
 
   struct PingToSend {
-	uint16_t id = 0;
-	uint16_t seq = 0;
-	uint32_t ip = 0;
-	std::vector<uint8_t> data;
+    uint16_t id = 0;
+    uint16_t seq = 0;
+    uint32_t ip = 0;
+    std::vector<uint8_t> data;
   };
   // Send a ping on the socket (configured above). Returns false for
   // some immediate failures, but such cases will also just look
@@ -50,18 +50,18 @@ struct NetUtil {
   static bool SendPing(int fd, const PingToSend &ping);
 
   struct Ping {
-	uint16_t ident = 0;
-	uint16_t seq = 0;
-	struct timeval recvtime;
-	std::vector<uint8_t> data;
+    uint16_t ident = 0;
+    uint16_t seq = 0;
+    struct timeval recvtime;
+    std::vector<uint8_t> data;
   };
   // Receive a ping (if there is one) on the socket (configured above).
   // Returns nullopt if there is no ping or if it is invalid. In these
   // cases, populates the error string if it is non-null.
   static std::optional<Ping> ReceivePing(int fd, int payload_size,
-										 std::string *error = nullptr);
+                                         std::string *error = nullptr);
 
-  
+
 };
 
 #endif

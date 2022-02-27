@@ -51,7 +51,7 @@ struct Block {
 
   int outstanding_reads = 0;
   int outstanding_writes = 0;
-  
+
   bool uninitialized = true;
   bool busy = false;
 };
@@ -81,19 +81,19 @@ static void BlitImage(const ImageRGBA &img, int xpos, int ypos) {
 }
 
 static void BlitImagePart(const ImageRGBA &img,
-						  int srcx, int srcy,
-						  int srcw, int srch,
-						  int destx, int desty) {
+                          int srcx, int srcy,
+                          int srcw, int srch,
+                          int destx, int desty) {
   // PERF should invest in fast blit of ImageRGBA to SDL screen
   for (int y = 0; y < srch; y++) {
     for (int x = 0; x < srcw; x++) {
       int sx = srcx + x;
       int sy = srcy + y;
-	  int dx = destx + x;
-	  int dy = desty + y;
+      int dx = destx + x;
+      int dy = desty + y;
       if (sx >= 0 && sx < img.Width() &&
-		  sy >= 0 && sy < img.Height() &&
-		  dy >= 0 && dy < SCREENH &&
+          sy >= 0 && sy < img.Height() &&
+          dy >= 0 && dy < SCREENH &&
           dx >= 0 && dx < SCREENW) {
         auto [r, g, b, _] = img.GetPixel(sx, sy);
         sdlutil::drawpixel(screen, dx, dy, r, g, b);
@@ -107,80 +107,80 @@ static void Redraw(ImageRGBA *img) {
   printf("Redraw!\n");
   img->Clear32(0x000000FF);
   for (int yblock = 0; yblock < BLOCKSH; yblock++) {
-	for (int xblock = 0; xblock < BLOCKSW; xblock++) {
-	  const int idx = yblock * BLOCKSW + xblock;
-	  const Block &block = blocks[idx];
+    for (int xblock = 0; xblock < BLOCKSW; xblock++) {
+      const int idx = yblock * BLOCKSW + xblock;
+      const Block &block = blocks[idx];
 
-	  const int px = xblock * BLOCKWIDTH;
-	  const int py = yblock * BLOCKHEIGHT;
-	  bool parity = !!((idx + yblock) & 1);
-	  
-	  // has data?
-	  if (block.uninitialized || block.board.empty()) {
-		img->BlendRect32(px, py, BLOCKWIDTH, BLOCKHEIGHT,
-						 (xblock == 0 || xblock == BLOCKSW - 1) ? 0x440044FF :
-						 (parity ? 0x000044FF : 0x440000FF));
-	  } else {
-		// Draw board
-		for (int y = 0; y < 20; y++) {
-		  for (int x = 0; x < 10; x++) {
-			const uint8_t p = block.board[y * 10 + x];
-			static std::array<uint32_t, 6> colors = {
-			  0x000000FF,
-			  0x44FF44FF,
-			  0xFF4444FF,
-			  0x4444FFFF,
-			  0xFF44FFFF,
-			};
+      const int px = xblock * BLOCKWIDTH;
+      const int py = yblock * BLOCKHEIGHT;
+      bool parity = !!((idx + yblock) & 1);
 
-			img->SetPixel32(px + x + 1, py + y +1, colors[p]);
-		  }
-		}
-	  }
+      // has data?
+      if (block.uninitialized || block.board.empty()) {
+        img->BlendRect32(px, py, BLOCKWIDTH, BLOCKHEIGHT,
+                         (xblock == 0 || xblock == BLOCKSW - 1) ? 0x440044FF :
+                         (parity ? 0x000044FF : 0x440000FF));
+      } else {
+        // Draw board
+        for (int y = 0; y < 20; y++) {
+          for (int x = 0; x < 10; x++) {
+            const uint8_t p = block.board[y * 10 + x];
+            static std::array<uint32_t, 6> colors = {
+              0x000000FF,
+              0x44FF44FF,
+              0xFF4444FF,
+              0x4444FFFF,
+              0xFF44FFFF,
+            };
 
-	  if (block.outstanding_reads > 0) {
-		img->BlendText32(px, py + 10, 0x00FF0044,
-						 StringPrintf("%d", block.outstanding_reads));
-	  }
+            img->SetPixel32(px + x + 1, py + y +1, colors[p]);
+          }
+        }
+      }
 
-	  if (block.outstanding_writes > 0) {
-		img->BlendText32(px, py, 0xFF000044,
-						 StringPrintf("%d", block.outstanding_writes));
-	  }
-	  
-	  if (block.busy) {
-		/*
-		img->BlendRect32(px + 4, py + 4, 2, 2, 0xFF3333FF);
-		img->BlendBox32(px + 3, py + 3, 4, 4,
-						0xFF3333FF, 0xFF333377);
-		*/
-		img->SetPixel32(px, py, 0xFF0000FF);
-	  }
-	  
-	  if (idx == last_read) {
-		img->BlendBox32(px, py, BLOCKWIDTH, BLOCKHEIGHT,
-						0x00FF0077, 0x00FF0033);
-		/*
-		img->BlendRect32(px + 1, py + BLOCKHEIGHT / 2 - 1,
-						 BLOCKWIDTH - 2, 2, 0x00FF0033);
-		*/
-	  }
+      if (block.outstanding_reads > 0) {
+        img->BlendText32(px, py + 10, 0x00FF0044,
+                         StringPrintf("%d", block.outstanding_reads));
+      }
 
-	  if (idx == last_write) {
-		img->BlendBox32(px, py, BLOCKWIDTH, BLOCKHEIGHT,
-						0xFF000077, 0xFF000033);
-		/*
-		img->BlendRect32(px + BLOCKWIDTH / 2 - 1, py + 1, 
-						 2, BLOCKHEIGHT - 2, 0xFF000033);
-		*/
-	  }
+      if (block.outstanding_writes > 0) {
+        img->BlendText32(px, py, 0xFF000044,
+                         StringPrintf("%d", block.outstanding_writes));
+      }
 
-	  /*
-	  img->BlendText32(px + 2, py + 2,
-					   0xFFFFFF3F,
-					   StringPrintf("%03x", idx));
-	  */
-	}
+      if (block.busy) {
+        /*
+        img->BlendRect32(px + 4, py + 4, 2, 2, 0xFF3333FF);
+        img->BlendBox32(px + 3, py + 3, 4, 4,
+                        0xFF3333FF, 0xFF333377);
+        */
+        img->SetPixel32(px, py, 0xFF0000FF);
+      }
+
+      if (idx == last_read) {
+        img->BlendBox32(px, py, BLOCKWIDTH, BLOCKHEIGHT,
+                        0x00FF0077, 0x00FF0033);
+        /*
+        img->BlendRect32(px + 1, py + BLOCKHEIGHT / 2 - 1,
+                         BLOCKWIDTH - 2, 2, 0x00FF0033);
+        */
+      }
+
+      if (idx == last_write) {
+        img->BlendBox32(px, py, BLOCKWIDTH, BLOCKHEIGHT,
+                        0xFF000077, 0xFF000033);
+        /*
+        img->BlendRect32(px + BLOCKWIDTH / 2 - 1, py + 1,
+                         2, BLOCKHEIGHT - 2, 0xFF000033);
+        */
+      }
+
+      /*
+      img->BlendText32(px + 2, py + 2,
+                       0xFFFFFF3F,
+                       StringPrintf("%03x", idx));
+      */
+    }
   }
 }
 
@@ -192,7 +192,7 @@ static void Loop() {
   RE2 blockinfo_command("b ([0-9]+) ([0-9]+) ([0-9]+)");
   RE2 update_command("([rw]) ([0-9]+)");
   RE2 board_command("o ([0-9]+) ([0-9]+) ([0-9]+) ([a-z]*)");
-  
+
   // initial display...
   Redraw(&img);
   BlitImagePart(img, scrollx, scrolly, SCREENW, SCREENH, 0, 0);
@@ -202,66 +202,66 @@ static void Loop() {
   int last_update = 0;
   for (;;) {
 
-	string line, cmd;
-	std::getline(cin, line);
+    string line, cmd;
+    std::getline(cin, line);
 
-	if (RE2::FullMatch(line, viz_command, &cmd)) {
+    if (RE2::FullMatch(line, viz_command, &cmd)) {
 
-	  int idx, uninitialized, busy;
-	  char rw;
-	  int oreads, owrites;
-	  string encoded_board;
-	  if (RE2::FullMatch(cmd, blockinfo_command,
-						 &idx, &uninitialized, &busy)) {
-		CHECK(idx >= 0 && idx < NUM_BLOCKS);
-		Block *block = &blocks[idx];
-		block->uninitialized = !!uninitialized;
-		block->busy = !!busy;
-	  } else if (RE2::FullMatch(cmd, update_command, &rw, &idx)) {
-		if (rw == 'r') {
-		  last_read = idx;
-		} else if (rw == 'w') {
-		  last_write = idx;
-		}
-	  } else if (RE2::FullMatch(cmd, board_command,
-								&idx, &oreads, &owrites, &encoded_board)) {
-		/*
-		printf("%d Board %d: %s\n", (int)run_timer.Seconds(), idx,
-			   encoded_board.c_str());
-		*/
-		Block *block = &blocks[idx];
-		block->uninitialized = false;
-		block->outstanding_reads = oreads;
-		block->outstanding_writes = owrites;
-		if (encoded_board.empty()) {
-		  // OK to leave out board.
-		} else if (encoded_board.size() != (20 * 10) >> 1) {
-		  printf("Bad board\n");
-		} else {
-		  block->board = BoardPic::ToPixels(encoded_board);
-		  CHECK(block->board.size() == 20 * 10);
-		}
-	  }
+      int idx, uninitialized, busy;
+      char rw;
+      int oreads, owrites;
+      string encoded_board;
+      if (RE2::FullMatch(cmd, blockinfo_command,
+                         &idx, &uninitialized, &busy)) {
+        CHECK(idx >= 0 && idx < NUM_BLOCKS);
+        Block *block = &blocks[idx];
+        block->uninitialized = !!uninitialized;
+        block->busy = !!busy;
+      } else if (RE2::FullMatch(cmd, update_command, &rw, &idx)) {
+        if (rw == 'r') {
+          last_read = idx;
+        } else if (rw == 'w') {
+          last_write = idx;
+        }
+      } else if (RE2::FullMatch(cmd, board_command,
+                                &idx, &oreads, &owrites, &encoded_board)) {
+        /*
+        printf("%d Board %d: %s\n", (int)run_timer.Seconds(), idx,
+               encoded_board.c_str());
+        */
+        Block *block = &blocks[idx];
+        block->uninitialized = false;
+        block->outstanding_reads = oreads;
+        block->outstanding_writes = owrites;
+        if (encoded_board.empty()) {
+          // OK to leave out board.
+        } else if (encoded_board.size() != (20 * 10) >> 1) {
+          printf("Bad board\n");
+        } else {
+          block->board = BoardPic::ToPixels(encoded_board);
+          CHECK(block->board.size() == 20 * 10);
+        }
+      }
 
-	  int sec = run_timer.Seconds();
-	  if (sec != last_update) {
-		// PERF: Only sometimes...
-		Redraw(&img);
+      int sec = run_timer.Seconds();
+      if (sec != last_update) {
+        // PERF: Only sometimes...
+        Redraw(&img);
 
-		// XXX update scrollx
-	  
-		BlitImagePart(img, scrollx, scrolly, SCREENW, SCREENH, 0, 0);
-		SDL_Flip(screen);
-		last_update = sec;
-	  }
-	} else if (!line.empty()) {
-	  printf("[%s]\n", line.c_str());
-	}
+        // XXX update scrollx
+
+        BlitImagePart(img, scrollx, scrolly, SCREENW, SCREENH, 0, 0);
+        SDL_Flip(screen);
+        last_update = sec;
+      }
+    } else if (!line.empty()) {
+      printf("[%s]\n", line.c_str());
+    }
 
 
-	SDL_Event event;
-	while (SDL_PollEvent(&event)) {
-	  switch (event.type) {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+      switch (event.type) {
 #if 0
       case SDL_MOUSEMOTION: {
         SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent*)&event;
@@ -274,26 +274,26 @@ static void Loop() {
         break;
       }
 #endif
-		
-	  case SDL_QUIT:
-		return;
-	  case SDL_KEYDOWN:
-		switch (event.key.keysym.sym) {
 
-		case SDLK_ESCAPE:
-		  return;
+      case SDL_QUIT:
+        return;
+      case SDL_KEYDOWN:
+        switch (event.key.keysym.sym) {
 
-		case SDLK_s:
-		  break;
+        case SDLK_ESCAPE:
+          return;
 
-		default:
-		  break;
-		}
-		break;
-	  default:
-		break;
-	  }
-	}
+        case SDLK_s:
+          break;
+
+        default:
+          break;
+        }
+        break;
+      default:
+        break;
+      }
+    }
   }
 }
 
