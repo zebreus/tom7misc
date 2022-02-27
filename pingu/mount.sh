@@ -30,7 +30,8 @@ nbd-client -timeout 360000 -unix "$1" /dev/nbd0 || exit -1
 
 # -a disables alignment, saving space
 mkfs.vfat -F 12 -v -a -n "PINGU" /dev/nbd0 || exit -1
-mount /dev/nbd0 "$2" || exit -1
+# disable atime, or else reads produce writes
+mount -o noatime,nodiratime /dev/nbd0 "$2" || exit -1
 
 df -k "$2"
 echo "OK"

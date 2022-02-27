@@ -9,6 +9,7 @@ set +x
 
 # TODO make this a command-line option
 PLUGIN=compu
+# PLUGIN=memu
 # PLUGIN=tetru
 # PLUGIN=pingu
 MOUNTPOINT="/mnt/$PLUGIN"
@@ -31,8 +32,8 @@ if [ "$1" = "stop" ]; then
 	exit 0
 fi
 
-# Note: 65536 bytes (128 blocks) is too small for FAT
-# 
+# Note: 65536 bytes (128 blocks) is too small for FAT16
+# 51200 works for FAT12, without a partition table
 
 # note that the argument to --run includes an escaped $unixsocket;
 # this is a nbdkit concept, not a bash variable.

@@ -1,5 +1,5 @@
 
-all : pingu.so tetru.so compu.so
+all : pingu.so tetru.so compu.so memu.so
 
 CC_LIB=../cc-lib
 FCEULIB=../fceulib
@@ -29,8 +29,14 @@ compu.so : compu.o $(CC_LIB_OBJECTS)
 pingu.so : pingu.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) -shared -lpthread $^ -o $@
 
+memu.so : memu.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) -shared -lpthread $^ -o $@
+
 tetru.so : tetru.o $(CC_LIB_OBJECTS) $(TETRIS_OBJECTS) $(FCEULIB_OBJECTS)
-	$(CXX) $(CXXFLAGS) -shared -lpthread $^ -o $@ -lz -ldl
+	$(CXX) $(CXXFLAGS) -shared -lpthread $^ -o $@ -lz
+
+bench.exe : bench.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) -lpthread $^ -o $@
 
 netutil_test.exe : netutil.o netutil_test.o $(CC_LIB)/base/logging.o
 	$(CXX) -lpthread $^ -o $@
