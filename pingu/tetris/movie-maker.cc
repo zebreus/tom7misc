@@ -410,8 +410,8 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
              is_paused ? 'Y' : 'n',
              SimpleFM2::InputToString(outmovie.back()).c_str());
 
-      #if 0
-      if (outmovie.size() > 21289) {
+      #if 1
+      if (outmovie.size() > 17058) {
         Screenshot(*emu, "stuckagain.png");
         SimpleFM2::WriteInputs("stuckagain.fm2",
                                "tetris.nes",
@@ -570,7 +570,16 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
 
         // XXX might want to only pause, if pausing
         // If we seem to be getting stuck, spam start to pause as well.
-        if (retry_state.retry_count > 64) input |= (rc.Byte() & INPUT_T);
+
+        // Always try unpausing
+        if (retry_state.retry_count > 64) {
+          input |= (rc.Byte() & INPUT_T);
+        } else {
+          // always unpause if we are on early retries
+          if (is_paused && 0 == (retry_state.LastInput() & INPUT_T)) {
+            input = INPUT_T;
+          }
+        }
       }
         
     }

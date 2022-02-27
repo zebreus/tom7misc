@@ -82,9 +82,13 @@ int main(int argc, char **argv) {
   Timer run_timer;
 
   // std::vector<uint8_t> pattern = {129, 0, 36, 44, 0, 68, 56, 0};
+  // const std::vector<uint8_t> pattern =
+  // {0xd7, 0xe7, 0xd3, 0x1b, 0x43, 0xcf, 0xf2, 0xde};
+  // const int seed = 2510;
+
+  const int seed = 2766;
   const std::vector<uint8_t> pattern =
-	{0xd7, 0xe7, 0xd3, 0x1b, 0x43, 0xcf, 0xf2, 0xde};
-  const int seed = 2510;
+    {0x18, 0x79, 0xf8, 0xaf, 0xe5, 0x36, 0x72, 0x35};
 
   MovieMaker movie_maker(SOLFILE, "tetris.nes", seed);
 
