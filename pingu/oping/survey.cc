@@ -87,7 +87,7 @@ int main(int argc, char **v) {
   statcube.ScaleBy(3).Save("statcube.png");
 
   for (int c = 0; c < 256; c++) {
-    if (statses[c].has_response < (256 * 256 * 256 * 0.05f)) {
+    if (statses[c].has_response < (256 * 256 * 256 * 0.08f)) {
       printf("%d: Only %lld responses (%.2f%%)\n",
              c,
              statses[c].has_response,
