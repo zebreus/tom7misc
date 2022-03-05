@@ -16,13 +16,13 @@ SDLOPATH=$(SDLSDK)/build
 # SDLINCLUDES=-ISDL/include
 SDLINCLUDES=-I$(SDLSDK)/include
 
-CXXFLAGS=-Wall -march=native -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -ISDL/include -I. -I$(CCLIB) -std=c++17 -I$(FFTW)
+CXXFLAGS=-Wall -march=native -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare  -ISDL/include -I. -I$(CCLIB) -std=c++20 -I$(FFTW)
 
 # for 64 bits on windows
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-gcc
 
-CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -march=native -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO) -I ../cc-lib/ --std=c++17
+CPPFLAGS= -DDISABLE_SOUND=1 -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -march=native -m64 $(OPT) -DWIN32 -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO) -I ../cc-lib/ --std=c++20
 
 SDLARCH=x64
 SDLUTILOBJECTS=$(CCLIB)/sdl/sdlutil.o $(CCLIB)/sdl/font.o $(CCLIB)/sdl/cursor.o
