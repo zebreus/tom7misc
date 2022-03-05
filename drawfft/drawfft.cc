@@ -142,14 +142,14 @@ struct FFTBuffer2D {
     // auto [fwd, inv] = make_tuple(FFTW_REDFT10, FFTW_REDFT01);
 
     plan = fftw_plan_r2r_2d(size, size, in, out,
-			    fwd, fwd,
-			    FFTW_MEASURE);
+                            fwd, fwd,
+                            FFTW_MEASURE);
     printf("Forward plan:\n");
     fftw_print_plan(plan);
 
     rplan = fftw_plan_r2r_2d(size, size, out, in,
-			     inv, inv,
-			     FFTW_MEASURE);
+                             inv, inv,
+                             FFTW_MEASURE);
 
     printf("Inverse plan:\n");
     fftw_print_plan(rplan);
@@ -207,8 +207,8 @@ struct UI {
   FFTBuffer2D fft_buffer;
 
   void DrawThick(int x0, int y0,
-		 int x1, int y1,
-		 uint8 value);
+                 int x1, int y1,
+                 uint8 value);
   void FloodFill(int x, int y, uint8 value);
 
   void Forward();
@@ -224,7 +224,7 @@ struct UI {
 };
 
 UI::UI() : img(SQUARE, SQUARE), fft(SQUARE, SQUARE), gamut(SQUARE, SQUARE),
-	   fft_buffer(SQUARE) {
+       fft_buffer(SQUARE) {
   img.Clear(0x00);
 
   ImgChanged();
@@ -264,13 +264,13 @@ void UI::Forward () {
       mn = std::min(f, mn);
       uint8 g = 0x77;
       if (f > 1.0f) {
-	over++;
-	g = 0xFF;
-	f = 1.0f;
+        over++;
+        g = 0xFF;
+        f = 1.0f;
       } else if (f < -1.0f) {
-	under++;
-	g = 0x00;
-	f = -1.0f;
+        under++;
+        g = 0x00;
+        f = -1.0f;
       }
 
       uint8 v = (uint8) (127.5f + (f * 127.5f));
@@ -279,7 +279,7 @@ void UI::Forward () {
     }
   }
   printf("Max: %.2f, Min: %.2f   Over: %d, Under: %d\n",
-	 mx, mn, over, under);
+         mx, mn, over, under);
 
 }
 
@@ -305,12 +305,12 @@ void UI::DrawFft() {
       uint8 g = v;
       uint8 b = v;
       if (gam == 0xFF) {
-	g = 0x0;
-	b = 0x0;
+        g = 0x0;
+        b = 0x0;
       } else if (gam == 0x00) {
-	g = 0xFF;
-	r = 0x0;
-	b = 0x0;
+        g = 0xFF;
+        r = 0x0;
+        b = 0x0;
       }
       const uint32 color = SDL_MapRGBA(screen->format, r, g, b, 0xFF);
       sdlutil::SetPixel32(screen, FFTX + x, FFTY + y, color);
@@ -324,7 +324,7 @@ void UI::DrawFft() {
 // nullopt if the whole line is outside the rectangle.
 std::optional<std::tuple<int, int, int, int>>
 ClipLineToRect(std::tuple<int, int, int, int> line,
-	       std::tuple<int, int, int, int> rect) {
+               std::tuple<int, int, int, int> rect) {
   auto [lx0, ly0, lx1, ly1] = line;
   auto [rx0, ry0, rx1, ry1] = rect;
   // This algorithm wants rectangle bounds to be inclusive...
@@ -342,15 +342,15 @@ ClipLineToRect(std::tuple<int, int, int, int> line,
   auto ComputeOutCode = [rx0, ry0, rx1, ry1](int xx, int yy) {
       OutCode code = INSIDE;
       if (xx < rx0)
-	code |= LEFT;
+        code |= LEFT;
       else if (xx > rx1)
-	code |= RIGHT;
+        code |= RIGHT;
 
       // (XXX BOTTOM and TOP using Euclidean, not screen)
       if (yy < ry0)
-	code |= BOTTOM;
+        code |= BOTTOM;
       else if (yy > ry1)
-	code |= TOP;
+        code |= TOP;
       return code;
     };
 
@@ -412,8 +412,8 @@ ClipLineToRect(std::tuple<int, int, int, int> line,
 
 // Draw a line, if it falls on either the original or FFT image.
 void UI::DrawThick(int x0, int y0,
-		   int x1, int y1,
-		   uint8 value) {
+                   int x1, int y1,
+                   uint8 value) {
 
   std::tuple<int, int, int, int> line = {x0, y0, x1, y1};
   auto imgo = ClipLineToRect(line, IMGRECT);
@@ -422,12 +422,12 @@ void UI::DrawThick(int x0, int y0,
     static constexpr int THICKNESS = 3;
 
     auto ThickPixel = [this, value](int x, int y) {
-	static constexpr int LO = THICKNESS >> 1;
-	for (int xx = x - LO; xx < x - LO + THICKNESS; xx++) {
-	  for (int yy = y - LO; yy < y - LO + THICKNESS; yy++) {
-	    img.SetPixel(xx, yy, value);
-	  }
-	}
+        static constexpr int LO = THICKNESS >> 1;
+        for (int xx = x - LO; xx < x - LO + THICKNESS; xx++) {
+          for (int yy = y - LO; yy < y - LO + THICKNESS; yy++) {
+            img.SetPixel(xx, yy, value);
+          }
+        }
       };
 
     const auto [x0, y0, x1, y1] = imgo.value();
@@ -470,12 +470,12 @@ void UI::FloodFill(int x, int y, uint8 value) {
     // Treat the border of the image as a color != to the value
     // being replaced.
     auto GetPixel = [this, value, replace_value](int x, int y) -> uint8 {
-	if (x >= 0 && y >= 0 &&
-	    x < img.Width() && y < img.Height()) {
-	  return img.GetPixel(x, y);
-	} else {
-	  return ~replace_value;
-	}
+        if (x >= 0 && y >= 0 &&
+            x < img.Width() && y < img.Height()) {
+          return img.GetPixel(x, y);
+        } else {
+          return ~replace_value;
+        }
       };
 
     std::vector<std::pair<int, int>> todo;
@@ -488,11 +488,11 @@ void UI::FloodFill(int x, int y, uint8 value) {
 
       uint8 c = GetPixel(xx, yy);
       if (c == replace_value) {
-	img.SetPixel(xx, yy, value);
-	todo.emplace_back(xx - 1, yy);
-	todo.emplace_back(xx + 1, yy);
-	todo.emplace_back(xx, yy - 1);
-	todo.emplace_back(xx, yy + 1);
+        img.SetPixel(xx, yy, value);
+        todo.emplace_back(xx - 1, yy);
+        todo.emplace_back(xx + 1, yy);
+        todo.emplace_back(xx, yy - 1);
+        todo.emplace_back(xx, yy + 1);
       }
     }
 
@@ -564,7 +564,7 @@ void UI::Loop() {
         }
 
         case SDLK_q: {
-	  img.Clear(0x0);
+          img.Clear(0x0);
           ui_dirty = true;
           break;
         }
@@ -572,57 +572,57 @@ void UI::Loop() {
         case SDLK_KP_PLUS:
         case SDLK_EQUALS:
         case SDLK_PLUS:
-	  if (current_value < 0xF0) current_value += 0x10;
-	  else current_value = 0xFF;
-	  ui_dirty = true;
-	  break;
+          if (current_value < 0xF0) current_value += 0x10;
+          else current_value = 0xFF;
+          ui_dirty = true;
+          break;
 
         case SDLK_KP_MINUS:
         case SDLK_MINUS:
-	  if (current_value >= 0x10) current_value -= 0x10;
-	  else current_value = 0x00;
-	  ui_dirty = true;
-	  break;
+          if (current_value >= 0x10) current_value -= 0x10;
+          else current_value = 0x00;
+          ui_dirty = true;
+          break;
 
-	case SDLK_l: {
-	  if (event.key.keysym.mod & KMOD_CTRL) {
-	    printf("Load drawing.png...\n");
-	    fflush(stdout);
-	    std::unique_ptr<ImageRGBA> rgba(ImageRGBA::Load("drawing.png"));
-	    CHECK(rgba.get());
-	    for (int y = 0; y < SQUARE; y++) {
-	      for (int x = 0; x < SQUARE; x++) {
-		uint32 px = 0;
-		if (x < rgba->Width() && y < rgba->Height())
-		  px = rgba->GetPixel32(x, y);
-		constexpr float o255 = 1.0f / 255.0f;
-		float r = ((px >> 24) & 0xFF) * o255;
-		float g = ((px >> 16) & 0xFF) * o255;
-		float b = ((px >> 8) & 0xFF) * o255;
-		float a = (px & 0xFF) * o255;
-		float ll, aa, bb;
-		ColorUtil::RGBToLAB(r, g, b, &ll, &aa, &bb);
-		constexpr float scale100to255 = 255.0f / 100.0f;
-		float light = ll * scale100to255 * a;
-		img.SetPixel(x, y, (uint8)light);
-	      }
-	    }
+        case SDLK_l: {
+          if (event.key.keysym.mod & KMOD_CTRL) {
+            printf("Load drawing.png...\n");
+            fflush(stdout);
+            std::unique_ptr<ImageRGBA> rgba(ImageRGBA::Load("drawing.png"));
+            CHECK(rgba.get());
+            for (int y = 0; y < SQUARE; y++) {
+              for (int x = 0; x < SQUARE; x++) {
+                uint32 px = 0;
+                if (x < rgba->Width() && y < rgba->Height())
+                  px = rgba->GetPixel32(x, y);
+                constexpr float o255 = 1.0f / 255.0f;
+                float r = ((px >> 24) & 0xFF) * o255;
+                float g = ((px >> 16) & 0xFF) * o255;
+                float b = ((px >> 8) & 0xFF) * o255;
+                float a = (px & 0xFF) * o255;
+                float ll, aa, bb;
+                ColorUtil::RGBToLAB(r, g, b, &ll, &aa, &bb);
+                constexpr float scale100to255 = 255.0f / 100.0f;
+                float light = ll * scale100to255 * a;
+                img.SetPixel(x, y, (uint8)light);
+              }
+            }
 
-	    ImgChanged();
-	    ui_dirty = true;
-	  }
-	  break;
-	}
+            ImgChanged();
+            ui_dirty = true;
+          }
+          break;
+        }
 
         case SDLK_s: {
-	  if (event.key.keysym.mod & KMOD_CTRL) {
+          if (event.key.keysym.mod & KMOD_CTRL) {
 #if 0
-	    sdlutil::SavePNG("drawing.png", drawing);
-	    printf("Wrote drawing.png\n");
-	    fflush(stdout);
+            sdlutil::SavePNG("drawing.png", drawing);
+            printf("Wrote drawing.png\n");
+            fflush(stdout);
 #endif
-	  }
-	  break;
+          }
+          break;
         }
 
         case SDLK_0:
@@ -638,7 +638,7 @@ void UI::Loop() {
           // Not only are these in order, but they map to their
           // ASCII Values!
           const int n = ((event.key.keysym.sym - SDLK_0) + 9) % 10;
-	  current_value = (uint8)((n / 9.0f) * 255.0f);
+          current_value = (uint8)((n / 9.0f) * 255.0f);
           ui_dirty = true;
           break;
         }
@@ -650,7 +650,7 @@ void UI::Loop() {
 
       case SDL_MOUSEBUTTONDOWN: {
         // LMB/RMB, drag, etc.
-	SDL_MouseButtonEvent *e = (SDL_MouseButtonEvent*)&event;
+        SDL_MouseButtonEvent *e = (SDL_MouseButtonEvent*)&event;
         mousex = e->x;
         mousey = e->y;
 
@@ -732,7 +732,7 @@ void UI::DrawStatus() {
     for (int i = 0; i < 10; i++) {
       uint8 value = (uint8)((i / 10.0f) * 255.0f);
       const uint32 value32 = SDL_MapRGBA(screen->format,
-					 value, value, value, 0xFF);
+                                         value, value, value, 0xFF);
       sdlutil::fillrect(screen, value32,
                         SWATCHWIDTH * i, yy,
                         SWATCHWIDTH, FONTHEIGHT * 2);
@@ -800,12 +800,12 @@ void UI::Draw() {
 int main(int argc, char **argv) {
   /* Initialize SDL and network, if we're using it. */
   CHECK(SDL_Init(SDL_INIT_VIDEO |
-		 SDL_INIT_TIMER |
-		 SDL_INIT_AUDIO) >= 0);
+                 SDL_INIT_TIMER |
+                 SDL_INIT_AUDIO) >= 0);
   fprintf(stderr, "SDL initialized OK.\n");
 
   SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,
-		      SDL_DEFAULT_REPEAT_INTERVAL);
+                      SDL_DEFAULT_REPEAT_INTERVAL);
 
   SDL_EnableUNICODE(1);
 
@@ -818,25 +818,25 @@ int main(int argc, char **argv) {
   CHECK(screen);
 
   font = Font::Create(screen,
-		      "font.png",
-		      FONTCHARS,
-		      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+                      "font.png",
+                      FONTCHARS,
+                      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font != nullptr) << "Couldn't load font.";
 
 
 
   font2x = Font::CreateX(2,
-			 screen,
-			 "font.png",
-			 FONTCHARS,
-			 FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+                         screen,
+                         "font.png",
+                         FONTCHARS,
+                         FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font2x != nullptr) << "Couldn't load font.";
 
   font4x = Font::CreateX(4,
-			 screen,
-			 "font.png",
-			 FONTCHARS,
-			 FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+                         screen,
+                         "font.png",
+                         FONTCHARS,
+                         FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font4x != nullptr) << "Couldn't load font.";
 
   CHECK((cursor_arrow = Cursor::MakeArrow()));
