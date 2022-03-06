@@ -51,6 +51,10 @@ nes-tetris_test.exe : nes-tetris_test.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
 	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
+movie-maker_test.exe : movie-maker_test.o movie-maker.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	strip $@
+
 clean :
 	rm -f *.o $(FCEULIB_OBJECTS) $(CCLIB_OBJECTS) core
 

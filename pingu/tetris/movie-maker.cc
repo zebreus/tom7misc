@@ -25,6 +25,8 @@
 
 static constexpr bool VERBOSE = false;
 
+static constexpr int64 CALLBACK_EVERY_STEPS = 500;
+
 MovieMaker::MovieMaker(const std::string &solution_file,
                        const std::string &rom_file,
                        int64_t seed) :
@@ -71,9 +73,12 @@ static std::string StateWithNext(RNGState s) {
 // through, this  XXX docs
 struct RetryState {
 
-  RetryState(Emulator *emu, vector<uint8> *movie,
-             int64 *steps_executed) : emu(emu), movie(movie),
-                                      steps_executed(steps_executed) {
+  RetryState(Emulator *emu,
+             vector<uint8> *movie,
+             int64 *steps_executed,
+             MovieMaker::Callbacks *callbacks) :
+    emu(emu), movie(movie), steps_executed(steps_executed),
+    callbacks(callbacks) {
     Save();
   }
 
@@ -260,6 +265,12 @@ struct RetryState {
     #endif
     
     movie->push_back(input);
+
+    if (*steps_executed % CALLBACK_EVERY_STEPS == 0) {
+      if (callbacks != nullptr && callbacks->made_step) {
+        callbacks->made_step(*emu, *steps_executed);
+      }
+    }
   }
   
   // This is only meaningfully set once retry_count > 0.
@@ -284,6 +295,7 @@ private:
   Emulator *emu = nullptr;
   vector<uint8> *movie = nullptr;
   int64 *steps_executed = nullptr;
+  MovieMaker::Callbacks *callbacks = nullptr;
   
   // contains the rng state before executing each frame since
   // save_frame (so it is empty right after saving or restoring).
@@ -356,7 +368,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
     callbacks.game_start(*emu, (int)schedule.size());
 
   vector<uint8> outmovie = startmovie;  
-  RetryState retry_state(emu.get(), &outmovie, &steps_executed);
+  RetryState retry_state(emu.get(), &outmovie, &steps_executed, &callbacks);
   
   // Keep track of the RNG state. We can just read it from RAM
   // whenever, but it is useful to quickly predict future values so we

@@ -34,6 +34,9 @@ struct MovieMaker {
     // XXX not implemented
     // bytes done
     std::function<void(const Emulator &, int)> finished_byte;
+
+    // called periodically after stepping the emulator
+    std::function<void(const Emulator &, int64)> made_step;
   };
   
   MovieMaker(const std::string &solution_file,
