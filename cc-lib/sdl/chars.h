@@ -1,7 +1,16 @@
 
-// TODO: Should make these optional, since the color macros can easily cause
-// conflicts (e.g. with chess libs, ansi codes). But we need FONTCHARS to load
-// a font.
+#ifndef _CC_LIB_SDLUTIL_CHARS_H
+#define _CC_LIB_SDLUTIL_CHARS_H
+
+// This describes the font in font.png, which is used in many of my
+// projects.
+
+// TODO: Should probably do some work to clean this up or expose it a
+// different way, since it's easy for these defines to conflict with
+// other symbols (especially the color ones). The tricky thing is that
+// we really want these as macros, since we use them with string
+// concatenation at lexing time.
+
 #define WHITE "^0"
 #define BLUE "^1"
 #define RED "^2"
@@ -52,3 +61,8 @@
 
 #define FONTSTYLES 7
 
+#define FONTWIDTH 9
+#define FONTHEIGHT 16
+#define FONTOVERLAP 1
+
+#endif
