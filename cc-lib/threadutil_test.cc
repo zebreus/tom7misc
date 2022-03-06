@@ -78,12 +78,50 @@ static void TestMapi() {
   }
 }
 
+static void TestAsynchronously() {
+  static constexpr int MAX_THREADS = 4;
+
+  std::mutex m;
+  int simultaneous = 0;
+  int max_simultaneous = 0;
+  int ran = 0;
+
+  {
+    Asynchronously async(MAX_THREADS);  
+    for (int i = 0; i < 100; i++) {
+      async.Run([&m, &simultaneous, &max_simultaneous, &ran]() {
+          {
+            std::unique_lock<std::mutex> ul(m);
+            simultaneous++;
+            CHECK(simultaneous <= MAX_THREADS) << simultaneous;
+            max_simultaneous =
+              std::max(simultaneous, max_simultaneous);
+          }
+          std::this_thread::sleep_for(50ms);
+          {
+            std::unique_lock<std::mutex> ul(m);
+            ran++;
+            simultaneous--;
+            CHECK(simultaneous >= 0);
+          }
+        });
+    }
+  }
+
+  CHECK(simultaneous == 0);
+  CHECK(ran == 100);
+  CHECK(max_simultaneous == MAX_THREADS) << "This can fail "
+    "with bad schedules, but it would at least suggest that "
+    "the code could be improved to do what it says on the tin "
+    "in practice! " << max_simultaneous;
+}
+
 int main(int argc, char **argv) {
 
   TestMap();
   TestMapi();
   TestAccumulate();
-  
+  TestAsynchronously();
   
   printf("OK.\n");
   return 0;

@@ -365,7 +365,7 @@ void ParallelFan(int num_threads, const F &f) {
 // Manages running up to X asynchronous tasks in separate threads. This
 // is intended for use in situations like compressing and writing a
 // bunch of frames of a movie out to disk. There's substantial parallelism
-// opportunity, but it can bad if we eaglery generate the frames because
+// opportunity, but it can be bad if we eaglery generate the frames because
 // they might fill the entire memory. This automatically throttles once
 // the specified level of parallelism is reached, by running further calls
 // synchronously.
@@ -382,7 +382,7 @@ struct Asynchronously {
   // return until it's done.
   void Run(std::function<void()> f) {
     m.lock();
-    if (threads_active < max_threads) {
+    if (threads_active < max_threads - 1) {
       threads_active++;
       m.unlock();
       std::thread t{[this, f]() {
