@@ -7,6 +7,7 @@
 #include <mutex>
 #include <functional>
 #include <cstdint>
+#include <condition_variable>
 
 #if __cplusplus >= 201703L
 // shared_mutex only available in C++17 and later.
@@ -362,56 +363,53 @@ void ParallelFan(int num_threads, const F &f) {
   for (std::thread &t : threads) t.join();
 }
 
-// Manages running up to X asynchronous tasks in separate threads. This
-// is intended for use in situations like compressing and writing a
-// bunch of frames of a movie out to disk. There's substantial parallelism
-// opportunity, but it can be bad if we eaglery generate the frames because
-// they might fill the entire memory. This automatically throttles once
-// the specified level of parallelism is reached, by running further calls
-// synchronously.
-// 
-// The threads are started for each asynchronous Run (no thread pool),
-// making this kinda high-overhead but easy to manage. It at least
-// cleans up after itself.
+// Manages running up to X asynchronous tasks in separate threads.
+// This is intended for use in situations like compressing and writing
+// a bunch of frames of a movie out to disk in a loop. There's
+// substantial parallelism opportunity, but it can be bad if we
+// eaglery generate the frames because they might fill the entire
+// memory. This automatically throttles once the specified level of
+// parallelism is reached, by waiting until there is at least one
+// thread free before returning from Run.
+//
+// PERF: This could probably use a thread pool instead of spawning
+// for each task.
 struct Asynchronously {
-  explicit Asynchronously(int max_threads) : threads_active(0),
-                                             max_threads(max_threads) {}
+  explicit Asynchronously(int max_threads) : max_threads(max_threads) {}
 
-  // Run the function asynchronously if we haven't exceeded the maximum
-  // number of threads. Otherwise, run it in this thread and don't
-  // return until it's done.
+  // Wait until we have thread budget, run the function
+  // asynchronously, and return.
   void Run(std::function<void()> f) {
-    m.lock();
-    if (threads_active < max_threads - 1) {
+    {
+      std::unique_lock<std::mutex> ul(m);
+      // Wait (without the lock) until we have thread budget.
+      cond.wait(ul, [this]{ return threads_active < max_threads; });
       threads_active++;
-      m.unlock();
-      std::thread t{[this, f]() {
-          f();
-          MutexLock ml(&this->m);
-          threads_active--;
-        }};
-      t.detach();
-      
-    } else {
-      m.unlock();
-      // Run synchronously.
-      f();
     }
+
+    // Run the function asynchronously, without the lock.
+    std::thread t{[this, f]() {
+        f();
+        {
+          std::unique_lock<std::mutex> ul(m);
+          threads_active--;
+        }
+        // This may activate one waiting call (or the destructor).
+        cond.notify_one();
+      }};
+    t.detach();
   }
 
   // Wait until all threads have finished.
   ~Asynchronously() {
-    for (;;) {
-      MutexLock ml(&m);
-      if (threads_active == 0) {
-        return;
-      }
-    }
+    std::unique_lock<std::mutex> ul(m);
+    cond.wait(ul, [this]{ return threads_active == 0; });
   }
 
  private:
   std::mutex m;
-  int threads_active;
+  std::condition_variable cond;
+  int threads_active = 0;
   const int max_threads;
 };
 
