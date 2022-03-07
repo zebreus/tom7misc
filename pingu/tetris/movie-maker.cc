@@ -422,7 +422,7 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
              is_paused ? 'Y' : 'n',
              SimpleFM2::InputToString(outmovie.back()).c_str());
 
-      #if 1
+      #if 0
       if (outmovie.size() > 17058) {
         Screenshot(*emu, "stuckagain.png");
         SimpleFM2::WriteInputs("stuckagain.fm2",

@@ -294,8 +294,11 @@ static void Loop() {
       case SDL_KEYDOWN:
         switch (event.key.keysym.sym) {
 
+		  // disabled since I keep accidentally exiting!
+		  /*
         case SDLK_ESCAPE:
           return;
+		  */
 
         case SDLK_s:
           break;

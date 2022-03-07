@@ -26,7 +26,7 @@ $(FCEULIB)/%.o : $(FCEULIB)/%.cc
 compu.so : compu.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) -shared -lpthread $^ -o $@
 
-pingu.so : pingu.o $(CC_LIB_OBJECTS)
+pingu.so : pingu.o netutil.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) -shared -lpthread $^ -o $@
 
 memu.so : memu.o $(CC_LIB_OBJECTS)
