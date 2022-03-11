@@ -418,7 +418,13 @@ void Cart::FCEU_LoadGameSave(CartInfo *LocalHWInfo) {
       for (int x = 0; x < 4; x++) {
         if (LocalHWInfo->SaveGame[x]) {
           TRACEF("Doing it");
-          fread(LocalHWInfo->SaveGame[x], 1, LocalHWInfo->SaveGameLen[x], sp);
+
+		  if (LocalHWInfo->SaveGameLen[x] !=
+			  fread(LocalHWInfo->SaveGame[x], 1,
+					LocalHWInfo->SaveGameLen[x], sp)) {
+			// XXX should handle error...
+			return;
+		  }
         }
       }
     }

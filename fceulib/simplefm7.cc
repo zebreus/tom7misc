@@ -43,6 +43,7 @@
 #include <vector>
 #include <string>
 #include <ctype.h>
+#include <cstring>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
