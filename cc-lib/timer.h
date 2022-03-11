@@ -8,7 +8,7 @@
 // Starts timing when constructed. TODO: Pause() etc.
 struct Timer {
   Timer() : starttime(std::chrono::steady_clock::now()) {}
-
+  
   double Seconds() const {
     const std::chrono::time_point<std::chrono::steady_clock> stoptime =
       std::chrono::steady_clock::now();
@@ -21,7 +21,9 @@ struct Timer {
   }
 
  private:
-  const std::chrono::time_point<std::chrono::steady_clock> starttime;
+  // morally const, but not const to allow assignment from other Timer
+  // objects.
+  std::chrono::time_point<std::chrono::steady_clock> starttime;
 };
 
 #endif

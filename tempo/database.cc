@@ -26,10 +26,10 @@ using int32 = int32_t;
 using uint64 = uint64_t;
 using int64 = int64_t;
 
-static constexpr int SECONDS_BETWEEN_WRITES = 20;
-static constexpr int SECONDS_BETWEEN_UPDATE_SEENS = 61;
-static constexpr int SECONDS_BETWEEN_PINGS = 32;
-static constexpr int SECONDS_BETWEEN_PACKAGE_CHECKS = 3600 * 8;
+static constexpr double SECONDS_BETWEEN_WRITES = 20.0;
+static constexpr double SECONDS_BETWEEN_UPDATE_SEENS = 61.0;
+static constexpr double SECONDS_BETWEEN_PINGS = 32.0;
+static constexpr double SECONDS_BETWEEN_PACKAGE_CHECKS = 3600 * 8.0;
 
 #ifndef SVN_REVISION
 // Makefile is supposed to define this, but it's not essential.

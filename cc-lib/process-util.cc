@@ -26,7 +26,7 @@ std::optional<string> ProcessUtil::GetOutput(const string &cmd) {
     if (count < CHUNK_SIZE) break;
   }
   
-  fclose(f);
+  pclose(f);
 
   return {ret};
 }

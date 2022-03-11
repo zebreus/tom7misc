@@ -25,12 +25,12 @@
 #include "../cc-lib/pi/bcm2835.h"
 #include "../cc-lib/pi/netutil.h"
 #include "../cc-lib/pi/pi-util.h"
+#include "../cc-lib/periodically.h"
 
 #include "onewire.h"
 #include "database.h"
 #include "am2315.h"
 #include "logic.h"
-#include "periodically.h"
 
 using namespace std;
 using uint8 = uint8_t;
@@ -741,10 +741,11 @@ int main(int argc, char **argv) {
   int64 start = time(nullptr);
   int64 readings = 0LL;
 
-  // If the max update rate is close to exactly 0.5Hz, this may be
-  // a pessimal choice. With sub-second timing we could do better...
-  Periodically read_am2315_p(2);
-  Periodically run_logic_p(1);
+  // If the max update rate is close to exactly 0.5Hz, this may be a
+  // pessimal choice. Now that we have sub-second timing we could do
+  // better...
+  Periodically read_am2315_p(2.0);
+  Periodically run_logic_p(1.0);
 
   for (;;) {
 
