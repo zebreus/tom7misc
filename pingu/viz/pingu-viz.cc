@@ -12,6 +12,8 @@
 
 using namespace std;
 
+using uint32 = uint32_t;
+
 static constexpr int BLOCKSW = 10;
 static constexpr int BLOCKSH = 10;
 static constexpr int NUM_BLOCKS = BLOCKSW * BLOCKSH;
@@ -32,8 +34,10 @@ struct Block {
 
   int pending_reads = 0;
   int pending_writes = 0;
+  int outstanding = 0;
+  
+  bool initialized = false;
 
-  bool all_zero = false;
 };
 
 static std::array<Block, NUM_BLOCKS> blocks;
@@ -70,9 +74,27 @@ static void Redraw(ImageRGBA *img) {
       const int py = yblock * BLOCKSIZE;
 
       // has data?
-      if (!block.all_zero) {
+      if (block.initialized) {
+		uint32 color = 0xFFFFFFFF;
+		switch (block.outstanding) {
+		case 0: color = 0x222222FF; break;
+		case 1: color = 0x444444FF; break;
+		case 2: color = 0x888888FF; break;
+		case 3: color = 0xAAAAAAFF; break;
+		case 4: color = 0xDDDDDDFF; break;
+		default:
+		case 5: color = 0xFFFFFFFF; break;		  		  
+		}
+		
+        img->BlendRect32(px + 2, py + 2, BLOCKSIZE - 4, BLOCKSIZE - 4, color);
+        img->BlendBox32(px + 2, py + 2, BLOCKSIZE - 4, BLOCKSIZE - 4,
+                        color, color & 0xFFFFFF77);
+
+	  } else {
         img->BlendRect32(px + 2, py + 2, BLOCKSIZE - 4, BLOCKSIZE - 4,
-                         0x222244FF);
+                         0x442222FF);
+		img->BlendLineAA32(px + 2, px + 2, px + BLOCKSIZE - 4, px + BLOCKSIZE - 4,
+						   0xAA222277);
       }
 
       if (block.pending_reads > 0) {
@@ -85,7 +107,7 @@ static void Redraw(ImageRGBA *img) {
         img->BlendBox32(px + 3, py + 3, 4, 4,
                         0xFF3333FF, 0xFF333377);
       }
-
+	  
       if (idx == last_processed) {
         img->BlendRect32(px + 1, py + BLOCKSIZE / 2 - 1,
                          BLOCKSIZE - 2, 2, 0x00FF0077);
@@ -98,7 +120,7 @@ static void Loop() {
   ImageRGBA img(SCREENW, SCREENH);
 
   RE2 viz_command{".*VIZ\\[(.+)\\]ZIV.*"};
-  RE2 blockinfo_command("b ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)");
+  RE2 blockinfo_command("b ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)");
   RE2 update_command("u ([0-9]+)");
 
   for (;;) {
@@ -108,14 +130,15 @@ static void Loop() {
 
     if (RE2::FullMatch(line, viz_command, &cmd)) {
 
-      int idx, zero, reads, writes;
+      int idx, initialized, reads, writes, outstanding;
       if (RE2::FullMatch(cmd, blockinfo_command,
-                         &idx, &zero, &reads, &writes)) {
+                         &idx, &initialized, &reads, &writes, &outstanding)) {
         CHECK(idx >= 0 && idx < NUM_BLOCKS);
         Block *block = &blocks[idx];
-        block->all_zero = !!zero;
+        block->initialized = !!initialized;
         block->pending_reads = reads;
         block->pending_writes = writes;
+        block->outstanding = outstanding;		
       } else if (RE2::FullMatch(cmd, update_command, &idx)) {
         last_processed = idx;
       }

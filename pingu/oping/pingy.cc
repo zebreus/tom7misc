@@ -314,7 +314,7 @@ static void Pingy(uint8_t c) {
 	  FD_SET(fd4, &write_fds);
 
 	const int max_fd = fd4;
-	CHECK (max_fd < FD_SETSIZE);
+	CHECK(max_fd < FD_SETSIZE);
 
 	// Set up timeout for select.
 	timeval timeout;

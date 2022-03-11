@@ -28,6 +28,7 @@
 #include "randutil.h"
 #include "timer.h"
 #include "netutil.h"
+#include "periodically.h"
 
 #define THREAD_MODEL NBDKIT_THREAD_MODEL_PARALLEL
 
@@ -125,25 +126,34 @@ static constexpr std::array HOSTS = {
 };
 
 struct Block {
-  Block(int id) : id(id) {
-    bzero(contents.data(), BLOCK_SIZE);
-  }
+  Block(int id) : id(id) {}
 
   // Most hold mutex
   void Viz() {
-    nbdkit_debug("VIZ[b %d %d %d %d]ZIV",
+    nbdkit_debug("VIZ[b %d %d %d %d %d]ZIV",
                  id,
-                 AllZero() ? 1 : 0,
+				 is_initialized ? 1 : 0,
                  (int)reads.size(),
-                 (int)writes.size());
+                 (int)writes.size(),
+				 (int)outstanding.size());
   }
 
   // Read the indicated portion of the block into the buffer. This is
   // accomplished by registering ourselves as interested in the data
   // (when it comes back from a ping) and blocking until that happens.
   void Read(uint8_t *buf, int start, int count) {
-    bool read_done = false;
     std::unique_lock<std::mutex> ul(mutex);
+	// Certainly don't want to wait for pings if we read an uninitialized
+	// block, since we never sent any. Alternatively, we could kick off
+	// a write of random data and then enqueue this thread?
+	if (!is_initialized && writes.empty()) {
+	  nbdkit_debug("uninitialized read %d", id);
+	  for (int i = 0; i < count; i++)
+		buf[i] = 0x2A;
+	  return;
+	}
+
+    bool read_done = false;	
     reads.emplace_back(PendingRead{
           .buf = buf,
           .start = start,
@@ -161,10 +171,11 @@ struct Block {
   void Write(const uint8_t *buf, int start, int count) {
     bool write_done = false;
     std::unique_lock<std::mutex> ul(mutex);
-    // PERF: Queueing multiple writes is not necessary as
-    // we will only write one piece of data (the last one).
-    // But we should be careful about returning until we
-    // have "completed" the earlier writes.
+
+    // PERF: Queueing multiple writes is often not necessary as we
+    // will only write one piece of data (the last one). But we should
+    // be careful about returning until we have "completed" the
+    // earlier writes.
     writes.emplace_back(PendingWrite{
           .buf = buf,
           .start = start,
@@ -176,14 +187,98 @@ struct Block {
     Viz();
   }
 
+  // In the steady state, we write in response to receiving a ping.
+  // But we also need a way to send the initial pings to the network.
+  // This kicks off that process once we have a pending write.
+  //
+  // Returns the number of pings sent.
+  int Initialize(int write_fd) {
+	bool notify = false;
+	int sent = 0;
+	{
+	  MutexLock ml(&mutex);
+
+	  if (is_initialized) return 0;
+	  if (writes.empty()) return 0;
+
+	  // Otherwise, prep our initial data to send.
+      std::vector<uint8> data(BLOCK_SIZE, 0x5D);
+	  // Apply all pending writes in order.
+      for (PendingWrite &pw : writes) {
+        for (int i = 0; i < pw.count; i++)
+          data[pw.start + i] = pw.buf[i];
+        *pw.done = true;
+        notify = true;
+      }
+	  writes.clear();
+	  current_version++;
+
+	  sent = ReplenishWithData(data, write_fd);
+	  is_initialized = true;
+	}
+    if (notify) cond.notify_all();
+	return sent;	
+  }
+
+  // While we (temporarily) know what data the full block holds, send
+  // pings until we have the target number outstanding. Used both in
+  // the juggling and in initialization.
+  //
+  // Must hold the lock.
+  int ReplenishWithData(const std::vector<uint8> &data, int write_fd) {
+	CHECK(data.size() == BLOCK_SIZE);
+	int sent = 0;
+	
+	// Now, send pings to replenish up to the target. We'll
+	// do at least one here.
+	int outstanding_ok = 0;
+	for (const auto &[key_, op] : outstanding) {
+	  if (op.version == current_version &&
+		  op.sent_time.Seconds() < PING_TIMEOUT) {
+		outstanding_ok++;
+	  }
+	  // XXX otherwise just drop the oping?
+	}
+
+	const int to_send = TARGET_PINGS_PER_BLOCK - outstanding_ok;
+	CHECK(to_send >= 1) << "ok " << outstanding_ok << " to_send " << to_send;
+	for (int i = 0; i < to_send; i++) {
+	  uint32 key = MakeKey(id, seq_counter++);
+
+	  NetUtil::PingToSend pts;
+	  pts.data = data;
+	  pts.id = (key >> 16) & 0xFFFF;
+	  pts.seq = key & 0xFFFF;
+	  pts.ip = GetHost();
+
+	  OutstandingPing outping;
+	  outping.host = pts.ip;
+	  outping.version = current_version;
+		
+	  if (NetUtil::SendPing(write_fd, pts)) {
+		outstanding[key] = outping;
+		sent++;
+	  } else {
+		// XXX recover somehow; at least making another attempt?
+		nbdkit_debug("SendPing immediately failed");
+	  }
+	}
+
+	return sent;
+  }
+	
+  
   // Route a ping to this block, which will juggle it back
-  // into the network.
-  // TODO: Call this!
+  // into the network using write_fd. Returns the number of
+  // pings sent.
+  //
   // TODO: We can remove all our outstanding pings because they
   // are invalid (or timed out, etc.). If this happens then we
   // should at least fail the reads/writes so we don't just
-  // deadlock.
-  void ReceivedPing(const NetUtil::Ping &ping, int write_fd) {
+  // deadlock (or it should go back to the start state
+  // where it has undefined data?)
+  int ReceivedPing(const NetUtil::Ping &ping, int write_fd) {
+	int sent = 0;
     bool notify = false;
     {
       MutexLock ml(&mutex);
@@ -192,21 +287,20 @@ struct Block {
       auto it = outstanding.find(key);
       if (it == outstanding.end()) {
         // Wasn't found, probably because we already timed out.
-        return;
+        return 0;
       }
 
-      [[maybe_unused]]
       OutstandingPing oping = it->second;
       outstanding.erase(it);
       // TODO: could keep stats about this host
 
       // Invalid if the version is wrong.
 	  if (oping.version != current_version)
-		return;
+		return 0;
 	  
       // Invalid if we don't have the full block as the payload.
       if (ping.data.size() != BLOCK_SIZE)
-        return;
+        return 0;
 
       // Apply pending writes to the data.
       std::vector<uint8> data = ping.data;
@@ -234,42 +328,11 @@ struct Block {
       }
       reads.clear();
 
-      // Now, send pings to replenish up to the target. We'll
-      // do at least one here.
-      int outstanding_ok = 0;
-      for (const auto &[key_, op] : outstanding) {
-        if (op.version == current_version &&
-            op.sent_time.Seconds() < PING_TIMEOUT) {
-          outstanding_ok++;
-        }
-        // XXX otherwise just drop the oping?
-      }
-
-      const int to_send = TARGET_PINGS_PER_BLOCK - outstanding_ok;
-      CHECK(to_send >= 1) << "ok " << outstanding_ok << " to_send " << to_send;
-      for (int i = 0; i < to_send; i++) {
-        uint32 key = MakeKey(id, seq_counter++);
-
-        NetUtil::PingToSend pts;
-        pts.data = data;
-        pts.id = (key >> 16) & 0xFFFF;
-        pts.seq = key & 0xFFFF;
-        pts.ip = GetHost();
-
-		OutstandingPing outping;
-		oping.host = pts.ip;
-		oping.version = current_version;
-		
-        if (NetUtil::SendPing(write_fd, pts)) {
-		  outstanding[key] = outping;
-        } else {
-          // XXX recover somehow; at least making another attempt?
-          nbdkit_debug("SendPing immediately failed");
-        }
-      }
+	  sent = ReplenishWithData(data, write_fd);
     }
     
     if (notify) cond.notify_all();
+	return sent;
   }
 
   // holding lock
@@ -312,20 +375,12 @@ struct Block {
   int64 current_version = 0;
   uint32_t seq_counter = 0;
   int host_idx = 0;
+  bool is_initialized = false;
   
   // Protected by the mutex.
   std::vector<PendingRead> reads;
   std::vector<PendingWrite> writes;
 
-  bool AllZero() const {
-    for (int i = 0; i < BLOCK_SIZE; i++) {
-      if (contents[i] != 0) return false;
-    }
-    return true;
-  }
-
-  // Private! This is just for debugging; the whole point is NOT to store this.
-  std::array<uint8_t, BLOCK_SIZE> contents;
 };
 
 // Just an array of blocks.
@@ -336,16 +391,30 @@ struct Blocks {
       mem.push_back(new Block(i));
   }
 
-  inline void Read(int block_idx, uint8_t *buf, int start, int count) {
+  void Read(int block_idx, uint8_t *buf, int start, int count) {
     nbdkit_debug("Read %d[%d,%d] -> %p\n", block_idx, start, count, buf);
     mem[block_idx]->Read(buf, start, count);
   }
 
-  inline void Write(int block_idx, const uint8_t *buf, int start, int count) {
+  void Write(int block_idx, const uint8_t *buf, int start, int count) {
     nbdkit_debug("Write %d[%d,%d] <- %p\n", block_idx, start, count, buf);
     mem[block_idx]->Write(buf, start, count);
   }
 
+  int Initialize(int block_idx, int write_fd) {
+	return mem[block_idx]->Initialize(write_fd);
+  }
+  
+  // Route the ping to the correct block. Return the number of pings sent.
+  int ReceivedPing(const NetUtil::Ping &ping, int write_fd) {
+	const uint32_t key = (ping.ident << 16) | ping.seq;
+	const int block_idx = IdFromKey(key);
+	// Not one of our pings! Don't crash, at least.
+	if (block_idx < 0 || block_idx >= (int)mem.size())
+	  return 0;
+	return mem[block_idx]->ReceivedPing(ping, write_fd);
+  }
+  
   ~Blocks() {
     for (Block *b : mem) delete b;
     mem.clear();
@@ -355,7 +424,12 @@ struct Blocks {
   std::vector<Block *> mem;
 };
 
-// Processes pending reads/writes.
+static int64_t num_blocks = -1;
+// Allocated buffer.
+static Blocks *blocks = nullptr;
+
+// Central call to select() and routing of received pings to the appropriate
+// block.
 struct Processor {
   Processor(Blocks *blocks) : blocks(blocks) {
     process_thread.reset(new std::thread(&Processor::ProcessThread, this));
@@ -363,10 +437,17 @@ struct Processor {
   }
 
   void ProcessThread() {
-    printf("in the thread");
     nbdkit_debug("process thread started\n");
-    ArcFour rc("process");
-    int64_t cursor = 0;
+    // ArcFour rc("process");
+
+	int counter = 0;
+	int64_t pings_sent = 0, pings_received = 0;
+	
+	// Create IPV4 ICMP socket which we use for reading and writing.
+	std::string error;
+	std::optional<int> fd4o = NetUtil::MakeICMPSocket(&error);
+	CHECK(fd4o.has_value()) << "Must run as root! " << error;
+	const int fd4 = fd4o.value();
 
     // The structure of the loop is roughly this:
     //  - each Block has a set of outstanding pings that we think are
@@ -381,50 +462,67 @@ struct Processor {
     //  - 
 
     for (;;) {
-      // int idx = RandTo(&rc, blocks->num_blocks);
-      int idx = (cursor++) % blocks->num_blocks;
-      Block *block = blocks->mem[idx];
 
-      nbdkit_debug("VIZ[u %d]ZIV", idx);
+	  // reset these each time.
+	  fd_set read_fds;
+	  fd_set write_fds;
+	  FD_ZERO(&read_fds);
+	  FD_ZERO(&write_fds);
 
-      {
-        std::unique_lock<std::mutex> ul(block->mutex);
-        // nbdkit_debug("%d is unlocked", idx);
+	  // We always want to both read and write, to juggle.
+	  FD_SET(fd4, &read_fds);
+	  FD_SET(fd4, &write_fds);
+	  
+	  const int max_fd = fd4;
+	  CHECK(max_fd < FD_SETSIZE);
 
-        // Process all reads
-        for (const Block::PendingRead &pr : block->reads) {
-          // using the private data..
-          for (int i = 0; i < pr.count; i++)
-            pr.buf[i] = block->contents[pr.start + i];
-          *pr.done = true;
-        }
-        block->reads.clear();
+	  // This doesn't matter that much since we expect to be almost
+	  // constantly reading and writing.
+	  timeval timeout;
+	  timeout.tv_sec = 1;
+	  timeout.tv_usec = 0;
+	  
+	  int status = select(max_fd + 1, &read_fds, &write_fds, nullptr, &timeout);
+	  CHECK(status != -1);
 
-        // And all writes
-        // (PERF: We only need to write the last one but
-        // need to mark all as done)
-        for (const Block::PendingWrite &pw : block->writes) {
-          // using the private data..
-          for (int i = 0; i < pw.count; i++)
-            block->contents[pw.start + i] = pw.buf[i];
-          *pw.done = true;
-        }
-        block->writes.clear();
-      }
+	  // If we timed out, we're probably toast, since probably all our pings
+	  // failed (for every block!) but not much we can do, so just keep
+	  // waiting.
+	  if (status == 0) {
+		nbdkit_debug("Select timeout\n");
+		continue;
+	  }
 
-      // Lock is released. Notify anyone waiting.
-      block->cond.notify_all();
+	  // Initialize every block, round-robin, if it needs it.
+	  // PERF: Avoid repeatedly doing this, which is not harmful, but is wasteful.
+	  if (FD_ISSET(fd4, &write_fds)) {
+		pings_sent += blocks->Initialize(counter, fd4);
+		counter++;
+		counter %= num_blocks;
+	  }
+	  
+	  
+	  // We'll only do something if we receive a ping. But we also need to
+	  // be ready to write, so check both.
+	  if (FD_ISSET(fd4, &read_fds) && FD_ISSET(fd4, &write_fds)) {
+		std::optional<NetUtil::Ping> pingo =
+		  NetUtil::ReceivePing(fd4, BLOCK_SIZE);
 
-      std::this_thread::sleep_for(
-          std::chrono::milliseconds(10));
+		if (pingo.has_value()) {
+		  const NetUtil::Ping &ping = pingo.value();
+		  pings_received++;
+		  pings_sent += blocks->ReceivedPing(ping, fd4);
+		}
+	  }
+
       {
         MutexLock ml(&mutex);
         if (should_die)
-          goto die;
+		  break;
       }
     }
 
-  die:;
+	nbdkit_debug("process thread shutdown\n");
   }
 
   ~Processor() {
@@ -441,10 +539,6 @@ struct Processor {
   std::unique_ptr<std::thread> process_thread;
   Blocks *blocks = nullptr;
 };
-
-static int64_t num_blocks = -1;
-// Allocated buffer.
-static Blocks *blocks = nullptr;
 
 static Processor *processor = nullptr;
 
