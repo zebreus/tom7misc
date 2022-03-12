@@ -12,6 +12,7 @@
 #include "re2/re2.h"
 #include "image.h"
 #include "periodically.h"
+#include "timer.h"
 
 using namespace std;
 
@@ -52,6 +53,8 @@ static int last_write = -1;
 static int last_processed = -1;
 static int total_sent = -1, total_received = -1;
 static int target_ppb = 5;
+
+static Timer start_timer;
 
 static void BlitImage(const ImageRGBA &img, int xpos, int ypos) {
   // PERF should invest in fast blit of ImageRGBA to SDL screen
@@ -121,10 +124,14 @@ static void Redraw(ImageRGBA *img) {
     }
   }
 
-  img->BlendText32(1, img->Height() - 10, 0x00FFFFFF,
-				   StringPrintf("%d sent %d recv",
+  img->BlendText32(1, img->Height() - 20, 0xFF7700FF,
+				   StringPrintf("%d sent (%.1f/s)",
 								total_sent,
-								total_received));
+								total_sent / start_timer.Seconds()));
+  img->BlendText32(1, img->Height() - 10, 0x77FF00FF,
+				   StringPrintf("%d recv (%.1f/s)",
+								total_received,
+								total_received / start_timer.Seconds()));
 }
 
 static void Loop() {

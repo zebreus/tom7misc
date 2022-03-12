@@ -36,7 +36,7 @@
 
 // If set, then we have a fake internal network that echos pings, for
 // debugging.
-#define FAKE_NET 1
+#define FAKE_NET 0
 
 using uint32 = uint32_t;
 using int64 = int64_t;
@@ -640,7 +640,6 @@ struct Processor {
 	  #if FAKE_NET
 	  int status = fake_net.Select(max_fd + 1, &read_fds, &write_fds, nullptr, &timeout);
 	  #else
-	  #error unexpected XXX
 	  int status = select(max_fd + 1, &read_fds, &write_fds, nullptr, &timeout);
 	  #endif
 	  CHECK(status != -1);
