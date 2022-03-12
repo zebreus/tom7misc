@@ -39,7 +39,7 @@ struct NetUtil {
   static uint16_t ICMPChecksum(uint8_t *buf, size_t len);
 
   struct PingToSend {
-    uint16_t id = 0;
+    uint16_t ident = 0;
     uint16_t seq = 0;
     uint32_t ip = 0;
     std::vector<uint8_t> data;

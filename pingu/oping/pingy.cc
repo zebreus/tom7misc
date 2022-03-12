@@ -422,7 +422,7 @@ static void Pingy(uint8_t c) {
 
 		NetUtil::PingToSend ping_to_send;
 		ping_to_send.ip = ip;
-		ping_to_send.id = id;
+		ping_to_send.ident = id;
 		ping_to_send.seq = seq;
 		for (int i = 0; i < PAYLOAD_SIZE; i++) {
 		  ping_to_send.data.push_back(rc.Byte());

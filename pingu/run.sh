@@ -10,8 +10,8 @@ set +x
 # TODO make this a command-line option
 # PLUGIN=compu
 # PLUGIN=memu
-PLUGIN=tetru
-# PLUGIN=pingu
+# PLUGIN=tetru
+PLUGIN=pingu
 MOUNTPOINT="/mnt/$PLUGIN"
 SOCKET="/tmp/nbdsocket.$PLUGIN"
 

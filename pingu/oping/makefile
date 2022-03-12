@@ -5,9 +5,9 @@ CC_LIB=../../cc-lib
 CCLIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/arcfour.o $(CC_LIB)/image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_image.o $(CC_LIB)/util.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/color-util.o
 
 # mingw
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
-LFLAGS=-static
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
+# LFLAGS=-static
 
 # linux
 # LFLAGS=

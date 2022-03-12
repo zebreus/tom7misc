@@ -216,7 +216,7 @@ bool NetUtil::SendPing(int fd, const PingToSend &ping) {
   uint8_t buf[buflen] = {};
   struct icmp *icmp4 = (struct icmp *) buf;
   icmp4->icmp_type = ICMP_ECHO;
-  icmp4->icmp_id = htons(ping.id);
+  icmp4->icmp_id = htons(ping.ident);
   icmp4->icmp_seq = htons(ping.seq);
 
   uint8_t *data_dest = buf + ICMP_MINLEN;

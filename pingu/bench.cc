@@ -123,7 +123,7 @@ int main(int argc, char **argv) {
          (bytes_correct * 100.0) / bytes_read);
 
   printf("Finished %ld iters in %.2fs.\n"
-         "%.2f iters/sec %.2f bytes/sec overall\n",
+         "%.4f iters/sec %.2f bytes/sec overall\n",
          iters, run_sec,
          (double)iters / run_sec,
          (double)(bytes_read + bytes_written) / run_sec);

@@ -16,6 +16,7 @@
 #include <mutex>
 #include <vector>
 #include <condition_variable>
+#include <deque>
 
 #define NBDKIT_API_VERSION 2
 #include <nbdkit-plugin.h>
@@ -23,6 +24,7 @@
 #include "cleanup.h"
 #include "allocator.h"
 
+#include "base/stringprintf.h"
 #include "arcfour.h"
 #include "threadutil.h"
 #include "randutil.h"
@@ -32,13 +34,20 @@
 
 #define THREAD_MODEL NBDKIT_THREAD_MODEL_PARALLEL
 
+// If set, then we have a fake internal network that echos pings, for
+// debugging.
+#define FAKE_NET 1
+
 using uint32 = uint32_t;
 using int64 = int64_t;
 using uint64 = uint64_t;
 using uint8 = uint8_t;
 
+using Ping = NetUtil::Ping;
+using PingToSend = NetUtil::PingToSend;
+
 static constexpr double PING_TIMEOUT = 4.0;
-static constexpr int TARGET_PINGS_PER_BLOCK = 5;
+static constexpr int TARGET_PINGS_PER_BLOCK = 10;
 
 // Block size is same as ping payload size.
 static constexpr int BLOCK_SIZE = 512;
@@ -52,7 +61,7 @@ static constexpr int BITS_FOR_ID = 8;
 // TODO: Move to nbdutil or whatever
 #define CHECK(e) \
   if (e) {} else NbdFatal(__FILE__, __LINE__).Stream() \
-				   << "Check failed: " #e "\n"
+				   << "*************** Check failed: " #e "\n"
 
 namespace {
 class NbdOstreamBuf : public std::stringbuf {
@@ -78,21 +87,137 @@ private:
 };
 }  // namespace
 
+struct TokenBucket {
+  TokenBucket(double max_value, double tokens_per_sec,
+			  bool start_full = false) :
+	max_value(max_value), tokens_per_sec(tokens_per_sec),
+	last_update(std::chrono::steady_clock::now()) {
+	if (start_full) tokens = max_value;
+  }
+
+  // See if we can spend 'cost' tokens, and returns true if so
+  // (subtracting the tokens we spent). Refills the bucket first,
+  // based on the current time.
+  bool CanSpend(double cost) {
+	// Refill bucket based on elapsed time
+	const auto now = std::chrono::steady_clock::now();
+	const std::chrono::duration<double> elapsed = now - last_update;
+	last_update = now;
+	const double secs = elapsed.count();
+	tokens = std::min(max_value, tokens + tokens_per_sec * secs);
+	if (cost <= tokens) {
+	  // printf("ok with %.2fs elapsed, %.2f tokens\n", secs, tokens);
+	  tokens -= cost;
+	  return true;
+	}
+	return false;
+  }
+  
+private:
+  double tokens = 0.0;
+  const double max_value = 0.0;
+  const double tokens_per_sec = 0.0;
+  std::chrono::time_point<std::chrono::steady_clock> last_update;
+};
+
+struct FakeNet {
+  ArcFour rc;
+  std::deque<Ping> fake_pings;
+  TokenBucket tokens;
+  
+  // Lose this many out of 255 pings.
+  static constexpr int LOSS = 3;
+  static constexpr double PINGS_PER_SEC = 500.0;
+  
+  FakeNet() : rc(StringPrintf("fakenet.%lld", time(nullptr))), tokens(PINGS_PER_SEC,
+																	  PINGS_PER_SEC,
+																	  true) {}
+  
+  bool SendPing([[maybe_unused]] int fd,
+				const PingToSend &sping) {
+	Ping rping;
+	rping.ident = sping.ident;
+	rping.seq = sping.seq;
+	rping.data = sping.data;
+	if (rc.Byte() >= LOSS) {
+	  fake_pings.push_back(rping);
+	}
+	return true;
+  }
+
+  std::optional<Ping>
+  ReceivePing([[maybe_unused]] int fd,
+			  int payload_size,
+			  std::string *error = nullptr) {
+	CHECK(payload_size == BLOCK_SIZE);
+	if (!fake_pings.empty() && tokens.CanSpend(1.0)) {
+	  Ping rping = fake_pings.front();
+	  fake_pings.pop_front();
+	  
+	  gettimeofday(&rping.recvtime, nullptr);
+	  return {rping};
+	} else {
+	  return std::nullopt;
+	}
+  }
+
+  int Select(int maxfd, fd_set *read_fds, fd_set *write_fds,
+			 void *ignored, timeval *timeout_ignored) {
+	FD_ZERO(read_fds);
+	FD_ZERO(write_fds);
+
+	// we don't have the actual fd, so just set all of them in range
+	for (int i = 0; i < maxfd; i++) {
+	  // always ready to write
+	  FD_SET(i, write_fds);
+	  if (!fake_pings.empty()) {
+		FD_SET(i, read_fds);
+	  }
+	}
+	return 1;
+  }
+};
+
+#if FAKE_NET
+[[maybe_unused]]
+static FakeNet fake_net;
+#endif
+
+static inline bool SendPing(int fd, const PingToSend &ping) {
+  #if FAKE_NET
+  return fake_net.SendPing(fd, ping);
+  #else
+  return NetUtil::SendPing(fd, ping);
+  #endif
+}
+
+static inline std::optional<Ping>
+ReceivePing(int fd, int payload_size,
+			std::string *error = nullptr) {
+  #if FAKE_NET
+  return fake_net.ReceivePing(fd, payload_size, error);
+  #else
+  return NetUtil::ReceivePing(fd, payload_size, error);
+  #endif
+}
 
 [[maybe_unused]]
-static int IdFromKey(uint32_t key) {
+static constexpr int IdFromKey(uint32_t key) {
   static_assert(BITS_FOR_ID > 0 && BITS_FOR_ID < 32);
-  static constexpr uint32_t MASK = (1 << BITS_FOR_ID) - 1;
+  constexpr uint32_t MASK = (1 << BITS_FOR_ID) - 1;
   return (key >> (32 - BITS_FOR_ID)) & MASK;
 }
 
 [[maybe_unused]]
-static int MakeKey(int id, uint32_t rest) {
+static constexpr int MakeKey(int id, uint32_t rest) {
   static_assert(BITS_FOR_ID > 0 && BITS_FOR_ID < 32);
-  static constexpr uint32_t MASK = (1 << BITS_FOR_ID) - 1;
-  static constexpr uint32_t SHIFTED_MASK = MASK << (32 - BITS_FOR_ID);
+  constexpr uint32_t MASK = (1 << BITS_FOR_ID) - 1;
+  constexpr uint32_t SHIFTED_MASK = MASK << (32 - BITS_FOR_ID);
   return (rest & ~SHIFTED_MASK) | ((id & MASK) << (32 - BITS_FOR_ID));
 }
+
+static_assert(MakeKey(0x2A, 0xFFFFFFFF) == 0x2AFFFFFF);
+static_assert(IdFromKey(0x2AFFFFFF) == 0x2A);
 
 static constexpr uint32 MakeHost(int a, int b, int c, int d) {
   return ((uint32)a << 24) |
@@ -198,6 +323,21 @@ struct Block {
 	{
 	  MutexLock ml(&mutex);
 
+	  std::vector<uint32_t> keys_to_delete;
+	  for (const auto &[key, op] : outstanding) {
+		if (op.version != current_version) {
+		  keys_to_delete.push_back(key);
+		  nbdkit_debug("delete %08x because version %ld != current %ld",
+					   key, op.version, current_version);
+		} else if (double s = op.sent_time.Seconds(); s >= PING_TIMEOUT) {
+		  nbdkit_debug("delete %08x because %.3fs elapsed", key, s);
+		  keys_to_delete.push_back(key);
+		}
+	  }
+	  for (auto key : keys_to_delete) outstanding.erase(key);
+
+	  Viz();
+	  
 	  if (is_initialized) return 0;
 	  if (writes.empty()) return 0;
 
@@ -247,7 +387,7 @@ struct Block {
 
 	  NetUtil::PingToSend pts;
 	  pts.data = data;
-	  pts.id = (key >> 16) & 0xFFFF;
+	  pts.ident = (key >> 16) & 0xFFFF;
 	  pts.seq = key & 0xFFFF;
 	  pts.ip = GetHost();
 
@@ -255,7 +395,8 @@ struct Block {
 	  outping.host = pts.ip;
 	  outping.version = current_version;
 		
-	  if (NetUtil::SendPing(write_fd, pts)) {
+	  if (SendPing(write_fd, pts)) {
+		CHECK(outstanding.find(key) == outstanding.end()) << key;
 		outstanding[key] = outping;
 		sent++;
 	  } else {
@@ -442,13 +583,19 @@ struct Processor {
 
 	int counter = 0;
 	int64_t pings_sent = 0, pings_received = 0;
+
+	Periodically per_status(0.5);
 	
 	// Create IPV4 ICMP socket which we use for reading and writing.
+	#if FAKE_NET
+	const int fd4 = 5;
+	#else
 	std::string error;
 	std::optional<int> fd4o = NetUtil::MakeICMPSocket(&error);
 	CHECK(fd4o.has_value()) << "Must run as root! " << error;
 	const int fd4 = fd4o.value();
-
+	#endif
+	
     // The structure of the loop is roughly this:
     //  - each Block has a set of outstanding pings that we think are
     //    still valid (have not timed out).
@@ -463,6 +610,14 @@ struct Processor {
 
     for (;;) {
 
+	  if (per_status.ShouldRun()) {
+		nbdkit_debug("VIZ[s %ld %ld %d %d]ZIV",
+					 pings_sent,
+					 pings_received,
+					 counter,
+					 TARGET_PINGS_PER_BLOCK);
+	  }
+	  
 	  // reset these each time.
 	  fd_set read_fds;
 	  fd_set write_fds;
@@ -481,8 +636,13 @@ struct Processor {
 	  timeval timeout;
 	  timeout.tv_sec = 1;
 	  timeout.tv_usec = 0;
-	  
+
+	  #if FAKE_NET
+	  int status = fake_net.Select(max_fd + 1, &read_fds, &write_fds, nullptr, &timeout);
+	  #else
+	  #error unexpected XXX
 	  int status = select(max_fd + 1, &read_fds, &write_fds, nullptr, &timeout);
+	  #endif
 	  CHECK(status != -1);
 
 	  // If we timed out, we're probably toast, since probably all our pings
@@ -496,6 +656,7 @@ struct Processor {
 	  // Initialize every block, round-robin, if it needs it.
 	  // PERF: Avoid repeatedly doing this, which is not harmful, but is wasteful.
 	  if (FD_ISSET(fd4, &write_fds)) {
+		// nbdkit_debug("init %d", counter);
 		pings_sent += blocks->Initialize(counter, fd4);
 		counter++;
 		counter %= num_blocks;
@@ -505,11 +666,11 @@ struct Processor {
 	  // We'll only do something if we receive a ping. But we also need to
 	  // be ready to write, so check both.
 	  if (FD_ISSET(fd4, &read_fds) && FD_ISSET(fd4, &write_fds)) {
-		std::optional<NetUtil::Ping> pingo =
-		  NetUtil::ReceivePing(fd4, BLOCK_SIZE);
+		std::optional<NetUtil::Ping> pingo = ReceivePing(fd4, BLOCK_SIZE);
 
 		if (pingo.has_value()) {
 		  const NetUtil::Ping &ping = pingo.value();
+		  // nbdkit_debug("got ping %04x.%04x", ping.ident, ping.seq);		  
 		  pings_received++;
 		  pings_sent += blocks->ReceivedPing(ping, fd4);
 		}

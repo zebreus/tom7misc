@@ -2,20 +2,23 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <cmath>
 
 #include "SDL.h"
 
 #include "sdl/sdlutil.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "re2/re2.h"
 #include "image.h"
+#include "periodically.h"
 
 using namespace std;
 
 using uint32 = uint32_t;
 
-static constexpr int BLOCKSW = 10;
-static constexpr int BLOCKSH = 10;
+static constexpr int BLOCKSW = 16;
+static constexpr int BLOCKSH = 16;
 static constexpr int NUM_BLOCKS = BLOCKSW * BLOCKSH;
 
 static constexpr int BLOCKSIZE = 18;
@@ -47,6 +50,8 @@ static int last_read = -1;
 static int last_write = -1;
 [[maybe_unused]]
 static int last_processed = -1;
+static int total_sent = -1, total_received = -1;
+static int target_ppb = 5;
 
 static void BlitImage(const ImageRGBA &img, int xpos, int ypos) {
   // PERF should invest in fast blit of ImageRGBA to SDL screen
@@ -75,31 +80,30 @@ static void Redraw(ImageRGBA *img) {
 
       // has data?
       if (block.initialized) {
-		uint32 color = 0xFFFFFFFF;
-		switch (block.outstanding) {
-		case 0: color = 0x222222FF; break;
-		case 1: color = 0x444444FF; break;
-		case 2: color = 0x888888FF; break;
-		case 3: color = 0xAAAAAAFF; break;
-		case 4: color = 0xDDDDDDFF; break;
-		default:
-		case 5: color = 0xFFFFFFFF; break;		  		  
-		}
-		
+		float f = block.outstanding / (float)target_ppb;
+		uint32_t v = std::clamp((int)roundf(10.0 + f * 240.0), 10, 250);
+		uint32_t color = (v << 24) | (v << 16) | (v << 8) | 0xFF;
+				
         img->BlendRect32(px + 2, py + 2, BLOCKSIZE - 4, BLOCKSIZE - 4, color);
         img->BlendBox32(px + 2, py + 2, BLOCKSIZE - 4, BLOCKSIZE - 4,
                         color, color & 0xFFFFFF77);
 
+		if (block.outstanding == 0) {
+		  img->BlendLineAA32(px + BLOCKSIZE - 4, py + 2, px + 2, py + BLOCKSIZE - 4,
+							 0xAA222277);
+		}		
 	  } else {
         img->BlendRect32(px + 2, py + 2, BLOCKSIZE - 4, BLOCKSIZE - 4,
                          0x442222FF);
-		img->BlendLineAA32(px + 2, px + 2, px + BLOCKSIZE - 4, px + BLOCKSIZE - 4,
+		img->BlendLineAA32(px + 2, py + 2, px + BLOCKSIZE - 4, py + BLOCKSIZE - 4,
 						   0xAA222277);
       }
 
       if (block.pending_reads > 0) {
         img->BlendBox32(px + 1, py + 1, BLOCKSIZE - 2, BLOCKSIZE - 2,
                         0xCCFFCCFF, {0x77AA77FF});
+        img->BlendBox32(px + 2, py + 2, BLOCKSIZE - 4, BLOCKSIZE - 4,
+                        0x00330077, {0x00330033});
       }
 
       if (block.pending_writes > 0) {
@@ -110,10 +114,17 @@ static void Redraw(ImageRGBA *img) {
 	  
       if (idx == last_processed) {
         img->BlendRect32(px + 1, py + BLOCKSIZE / 2 - 1,
-                         BLOCKSIZE - 2, 2, 0x00FF0077);
+                         BLOCKSIZE - 2, 1, 0x00FF0077);
+        img->BlendRect32(px + 1, py + BLOCKSIZE / 2,
+                         BLOCKSIZE - 2, 1, 0x00330077);
       }
     }
   }
+
+  img->BlendText32(1, img->Height() - 10, 0x00FFFFFF,
+				   StringPrintf("%d sent %d recv",
+								total_sent,
+								total_received));
 }
 
 static void Loop() {
@@ -121,8 +132,10 @@ static void Loop() {
 
   RE2 viz_command{".*VIZ\\[(.+)\\]ZIV.*"};
   RE2 blockinfo_command("b ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)");
-  RE2 update_command("u ([0-9]+)");
+  RE2 stats_command("s ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)");
 
+  Periodically redraw_per(0.25);
+  
   for (;;) {
 
     string line, cmd;
@@ -131,6 +144,7 @@ static void Loop() {
     if (RE2::FullMatch(line, viz_command, &cmd)) {
 
       int idx, initialized, reads, writes, outstanding;
+	  
       if (RE2::FullMatch(cmd, blockinfo_command,
                          &idx, &initialized, &reads, &writes, &outstanding)) {
         CHECK(idx >= 0 && idx < NUM_BLOCKS);
@@ -139,18 +153,24 @@ static void Loop() {
         block->pending_reads = reads;
         block->pending_writes = writes;
         block->outstanding = outstanding;		
-      } else if (RE2::FullMatch(cmd, update_command, &idx)) {
-        last_processed = idx;
-      }
+      } else if (int sent, received, counter, target;
+				 RE2::FullMatch(cmd, stats_command, &sent, &received, &counter, &target)) {
+		total_sent = sent;
+		total_received = received;
+		last_processed = counter;
+		target_ppb = target;
+	  }
 
-      Redraw(&img);
-      BlitImage(img, 0, 0);
-      SDL_Flip(screen);
     } else if (!line.empty()) {
       printf("[%s]\n", line.c_str());
     }
 
-
+	if (redraw_per.ShouldRun()) {
+      Redraw(&img);
+      BlitImage(img, 0, 0);
+      SDL_Flip(screen);
+	}	  
+	
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
       switch (event.type) {
