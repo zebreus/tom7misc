@@ -12,13 +12,15 @@ LFLAGS=-lpthread
 
 CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/pi/netutil.o $(CC_LIB)/pi/bcm2835.o $(CC_LIB)/pi/pi-util.o $(CC_LIB)/arcfour.o
 
-ee_test.exe : ee_test.o $(CCLIB_OBJECTS)
+OBJECTS=drive.o
+
+ee_test.exe : ee_test.o $(OBJECTS) $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-setdemux.exe : setdemux.o $(CCLIB_OBJECTS)
+setdemux.exe : setdemux.o $(OBJECTS) $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-dump.exe : dump.o $(CCLIB_OBJECTS)
+dump.exe : dump.o $(OBJECTS) $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 clean :
