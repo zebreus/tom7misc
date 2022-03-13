@@ -133,6 +133,30 @@ struct RetryState {
   // don't even yet know how many frames it takes, minimally.
   int retry_count = 0;
 
+  int SlowdownFrames() {
+    // Can't do this until we have the frame table.
+    CHECK(retry_count > 0);
+    
+    // now try to get it exactly
+    for (int i = 0; i < HORIZON; i++) {
+      const auto &[count, rng, drop] = delays_reached[i];
+      if (count == 0 && drop == desired_shape) {
+        if (retry_count / 2 >= i) {
+          return i + retry_count - 1;
+        } else {
+          const int base_count = retry_count - 1;
+          const bool sign = !!(base_count & 1);
+          if (sign) {
+            return i - (base_count >> 1);
+          } else {
+            return i + (base_count >> 1);
+          }
+        }
+      }
+    }
+    CHECK(false) << "No successful drops predicted within horizon??";
+  }
+  
   void UpdateFrameTable(Shape desired, Shape got) {
     // Don't call this if we already succeeded!
     CHECK(desired != got);
@@ -181,6 +205,7 @@ struct RetryState {
 
     // Initialize the frame table the first time we retry.
     if (retry_count == 0) {
+      desired_shape = desired;
       // Prep table of RNG states up to the horizon, if instead
       // of dropping we were to delay some number of frames.
       
@@ -193,7 +218,7 @@ struct RetryState {
         delays_reached.emplace_back(0, s, drop);
         s = NextRNG(s);
       }
-      std::get<0>(delays_reached[0])++;
+      // count gets incremented in the normal path below
       CHECK(EqualRNG(std::get<1>(delays_reached[0]), rng_state));
       CHECK(std::get<2>(delays_reached[0]) == got);
 
@@ -206,13 +231,18 @@ struct RetryState {
     printf("Retry #%d, offset %d, %s, want %02x got %02x\n",
            retry_count, offset, RNGString(rng_state).c_str(),
            desired, got);
+    bool output_drop = false;
     for (int i = 0; i < (int)delays_reached.size(); i++) {
       const auto &[count, rng, drop] = delays_reached[i];
-      const bool this_one = i == (save_frame - min_frames);
-      if (count > 0 || this_one) {
-        printf("% 5d x% 5d  %s -> %02x %s\n",
-               i, count, RNGString(rng).c_str(), drop,
-               this_one ? " <---" : "");
+      const bool this_one = i == offset;
+      const bool correct_drop = drop == desired;
+      if (count > 0 || this_one || (correct_drop && !output_drop)) {
+        printf("% 5d x% 5d  %s  drop %c%02x%c %s\n",
+               i, count, RNGString(rng).c_str(),
+               correct_drop ? '[' : ' ', drop,
+               correct_drop ? ']' : ' ',
+               this_one ? " <--- +1" : "");
+        if (correct_drop) output_drop = true;
       }
     }
 #endif
@@ -239,6 +269,14 @@ struct RetryState {
     CHECK(offset < (int)delays_reached.size());
     std::get<0>(delays_reached[offset])++;
     const auto &[count_, rng, drop] = delays_reached[offset];
+
+    if (false) {
+      int total = 0;
+      for (const auto &[count, rng_, drop_] : delays_reached) {
+        total += count;
+      }
+      CHECK(total == retry_count + 1) << total << " vs " << (retry_count + 1);
+    }
     
     CHECK(EqualRNG(rng, rng_state) && got == drop) <<
       StringPrintf("On retry %d at offset %d:\n"
@@ -282,6 +320,7 @@ struct RetryState {
   static constexpr int HORIZON = 10000;
   // count, rng state, predicted drop on that frame
   std::vector<std::tuple<int, RNGState, uint8_t>> delays_reached;
+  Shape desired_shape = I_VERT;
   // XXX: only for debugging
   vector<uint8> min_delay_movie;
   
@@ -421,17 +460,6 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
              retry_state.retry_count, rng1, rng2, last_drop, drop_count,
              is_paused ? 'Y' : 'n',
              SimpleFM2::InputToString(outmovie.back()).c_str());
-
-      #if 0
-      if (outmovie.size() > 17058) {
-        Screenshot(*emu, "stuckagain.png");
-        SimpleFM2::WriteInputs("stuckagain.fm2",
-                               "tetris.nes",
-                               "base64:Ww5XFVjIx5aTe5avRpVhxg==",
-                               outmovie);
-        exit(-1);
-      }
-      #endif
       
       next_report = seconds + REPORT_EVERY;
     }
@@ -577,7 +605,9 @@ std::vector<uint8_t> MovieMaker::Play(const std::vector<uint8> &bytes,
         input = 0;
 
         // Hold down D, but wait a little longer on each retry.
-        if (retry_state.FramesSinceSave() > retry_state.retry_count)
+        const int slowdown_frames = retry_state.SlowdownFrames();
+        
+        if (retry_state.FramesSinceSave() > slowdown_frames)
           input |= INPUT_D;
 
         // XXX might want to only pause, if pausing

@@ -850,8 +850,16 @@ static void EndlessImprove() {
     const uint8 random_offset = rc.Byte();
 
     // Skip if strictly better than the nth best result.
-    static constexpr int BEST_TO_SKIP = 256 / 2;
+    // static constexpr int BEST_TO_SKIP = 256 / 2;
+    static constexpr int BEST_TO_SKIP = 0;
     static_assert(BEST_TO_SKIP >= 0 && BEST_TO_SKIP < 256);
+
+    // Skip if this many moves or fewer
+    static constexpr int ABS_TO_SKIP = 17;
+
+    // Might want to optimize 00 endlessly since it is so important?
+    static constexpr bool ALLOW_SKIPPING_ZERO = true;
+
     // Hack: Always keep threads working by doing a huge parallel
     // comprehension but only looking at the lowest byte.
     ParallelComp(256 * 256 * 256,
@@ -865,21 +873,28 @@ static void EndlessImprove() {
 
                      cur_best = best[idx];
 
-                     // always do 0 because it is so important
-                     if (idx != 0 && BEST_TO_SKIP > 0) {
-                       // XXX this does not work when we have no
-                       // solutions for some; better set BEST_TO_SKIP
-                       // to zero in that case.
-                       std::vector<int> sorted = best;
-                       std::sort(sorted.begin(), sorted.end());
-
-                       int cutoff_score = sorted[BEST_TO_SKIP];
-                       if (cur_best < cutoff_score) {
+                     if (idx != 0 || ALLOW_SKIPPING_ZERO) {
+                     
+                       if (cur_best <= ABS_TO_SKIP) {
                          skipping[idx] = true;
                          return;
                        }
-                     }
 
+                       if (BEST_TO_SKIP > 0) {
+                         // XXX this does not work when we have no
+                         // solutions for some; better set BEST_TO_SKIP
+                         // to zero in that case.
+                         std::vector<int> sorted = best;
+                         std::sort(sorted.begin(), sorted.end());
+
+                         int cutoff_score = sorted[BEST_TO_SKIP];
+                         if (cur_best < cutoff_score) {
+                           skipping[idx] = true;
+                           return;
+                         }
+                       }
+                     }
+                       
                      skipping[idx] = false;
                      
                      // Skip if someone is already working on it.

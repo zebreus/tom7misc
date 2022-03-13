@@ -1,4 +1,4 @@
-all : lucky.exe encode.exe tetris_test.exe play.exe makemovie.exe nes-tetris_test.exe
+all : lucky.exe encode.exe tetris_test.exe play.exe makemovie.exe nes-tetris_test.exe movie-maker_test.exe
 
 CC_LIB=../../cc-lib
 FCEULIB=../../fceulib
