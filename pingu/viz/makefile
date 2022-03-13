@@ -11,7 +11,7 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 %.o : %.cc
 	$(CXX) $(CXXFLAGS) -c $^ -o $@
 
-pingu-viz.exe : pingu-viz.o $(CC_LIB_OBJECTS) $(RE2_OBJECTS)
+pingu-viz.exe : pingu-viz.o ../netutil.o $(CC_LIB_OBJECTS) $(RE2_OBJECTS)
 	$(CXX) -O2 $^ `sdl-config --libs` -o $@ -lpthread
 
 tetru-viz.exe : tetru-viz.o $(CC_LIB_OBJECTS) $(RE2_OBJECTS)

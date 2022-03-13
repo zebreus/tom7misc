@@ -566,9 +566,11 @@ struct Block {
 	  {
 		double recv_sec = oping.sent_time.Seconds();
 		hosts->Received(oping.host, recv_sec);
+		/*
 		nbdkit_debug("response from %s in %.3fms",
 					 NetUtil::IPToString(oping.host).c_str(),
 					 1000.0 * recv_sec);
+		*/
 	  }
 
       outstanding.erase(it);
@@ -806,11 +808,11 @@ struct Processor {
   void HostStats() {
 	for (int host_idx = 0; host_idx < hosts->NumHosts(); host_idx++) {
 	  const Hosts::Host host = hosts->GetHost(host_idx);
-	  nbdkit_debug("%s: %ld+%ld %.2f%% %.1fms",
+	  nbdkit_debug("VIZ[h %s %ld %ld %d %d]ZIV",
 				   NetUtil::IPToString(host.ip).c_str(),
 				   host.recv, host.lost,
-				   (100.0 * host.reliability.Value()),
-				   (1000.0 * host.latency_sec.Value()));
+				   (int)round(1000.0 * host.reliability.Value()),
+				   (int)round(1000.0 * host.latency_sec.Value()));
 	}
   }
 				   
@@ -822,7 +824,7 @@ struct Processor {
 	int64_t pings_sent = 0, pings_received = 0;
 
 	Periodically per_status(0.5);
-	Periodically per_host_stats(10);
+	Periodically per_host_stats(3);
 	
 	// Create IPV4 ICMP socket which we use for reading and writing.
 	#if FAKE_NET

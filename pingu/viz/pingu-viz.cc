@@ -13,20 +13,23 @@
 #include "image.h"
 #include "periodically.h"
 #include "timer.h"
+#include "../netutil.h"
 
 using namespace std;
 
 using uint32 = uint32_t;
 
-static constexpr int BLOCKSW = 16;
-static constexpr int BLOCKSH = 16;
+static constexpr int BLOCKSW = 32;
+static constexpr int BLOCKSH = 8;
 static constexpr int NUM_BLOCKS = BLOCKSW * BLOCKSH;
 
 static constexpr int BLOCKSIZE = 18;
 
 static constexpr int SCREENW = BLOCKSIZE * BLOCKSW;
 // plus status bar etc.
-static constexpr int SCREENH = BLOCKSIZE * BLOCKSH;
+static constexpr int NUM_HOSTS = 60;
+static constexpr int BLOCKSHEIGHT = BLOCKSIZE * BLOCKSH;
+static constexpr int SCREENH = BLOCKSHEIGHT + 10 * NUM_HOSTS;
 
 static SDL_Surface *screen = nullptr;
 
@@ -53,6 +56,14 @@ static int last_write = -1;
 static int last_processed = -1;
 static int total_sent = -1, total_received = -1;
 static int target_ppb = 5;
+
+struct HostStats {
+  int64 recv = 0;
+  int64 lost = 0;
+  double reliability = 0.0;
+  double latency_sec = 0.0;
+};
+static std::map<uint32, HostStats> hosts;
 
 static Timer start_timer;
 
@@ -124,14 +135,25 @@ static void Redraw(ImageRGBA *img) {
     }
   }
 
-  img->BlendText32(1, img->Height() - 20, 0xFF7700FF,
+  img->BlendText32(1, BLOCKSHEIGHT - 20, 0xFF7700FF,
 				   StringPrintf("%d sent (%.1f/s)",
 								total_sent,
 								total_sent / start_timer.Seconds()));
-  img->BlendText32(1, img->Height() - 10, 0x77FF00FF,
+  img->BlendText32(1, BLOCKSHEIGHT - 10, 0x77FF00FF,
 				   StringPrintf("%d recv (%.1f/s)",
 								total_received,
 								total_received / start_timer.Seconds()));
+
+  int yy = BLOCKSHEIGHT + 1;
+  for (const auto &[ip, hs] : hosts) {
+	img->BlendText32(1, yy, 0xAAAAAAFF,
+					 StringPrintf("%s: %d+%d (%.1f%%) %.1fms",
+								  NetUtil::IPToString(ip).c_str(),
+								  hs.recv, hs.lost,
+								  hs.reliability * 100.0,
+								  hs.latency_sec * 1000.0));
+	yy += 10;
+  }
 }
 
 static void Loop() {
@@ -140,7 +162,9 @@ static void Loop() {
   RE2 viz_command{".*VIZ\\[(.+)\\]ZIV.*"};
   RE2 blockinfo_command("b ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)");
   RE2 stats_command("s ([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)");
-
+  RE2 host_command("h ([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.([0-9]+) "
+				   "([0-9]+) ([0-9]+) ([0-9]+) ([0-9]+)");
+  
   Periodically redraw_per(0.25);
   
   for (;;) {
@@ -166,8 +190,18 @@ static void Loop() {
 		total_received = received;
 		last_processed = counter;
 		target_ppb = target;
+	  } else if (int a, b, c, d, lost, recv, rel1000, sec1000;
+				 RE2::FullMatch(cmd, host_command, &a, &b, &c, &d, &recv, &lost,
+								&rel1000, &sec1000)) {
+		uint32_t ip = NetUtil::OctetsToIP(a, b, c, d);
+		HostStats *hs = &hosts[ip];
+		hs->lost = lost;
+		hs->recv = recv;
+		hs->reliability = rel1000 / 1000.0;
+		hs->latency_sec = sec1000 / 1000.0;
+	  } else {
+		printf("???? %s\n", line.c_str());
 	  }
-
     } else if (!line.empty()) {
       printf("[%s]\n", line.c_str());
     }
