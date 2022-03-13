@@ -36,7 +36,7 @@
 
 // If set, then we have a fake internal network that echos pings, for
 // debugging.
-#define FAKE_NET 0
+#define FAKE_NET 1
 
 using uint32 = uint32_t;
 using int64 = int64_t;
@@ -47,7 +47,7 @@ using Ping = NetUtil::Ping;
 using PingToSend = NetUtil::PingToSend;
 
 static constexpr double PING_TIMEOUT = 4.0;
-static constexpr int TARGET_PINGS_PER_BLOCK = 10;
+static constexpr int TARGET_PINGS_PER_BLOCK = 4;
 
 // Block size is same as ping payload size.
 static constexpr int BLOCK_SIZE = 512;
@@ -74,7 +74,7 @@ public:
 struct NbdFatal {
   NbdFatal(const char* file, int line) : os(&buf) {
     Stream() << file << ":" << line << ": ";
-  }	
+  }
   [[noreturn]]
   ~NbdFatal() {
     Stream() << "\n" << std::flush;
@@ -112,7 +112,7 @@ struct TokenBucket {
 	}
 	return false;
   }
-  
+
 private:
   double tokens = 0.0;
   const double max_value = 0.0;
@@ -124,15 +124,14 @@ struct FakeNet {
   ArcFour rc;
   std::deque<Ping> fake_pings;
   TokenBucket tokens;
-  
+
   // Lose this many out of 255 pings.
-  static constexpr int LOSS = 3;
-  static constexpr double PINGS_PER_SEC = 500.0;
-  
-  FakeNet() : rc(StringPrintf("fakenet.%lld", time(nullptr))), tokens(PINGS_PER_SEC,
-																	  PINGS_PER_SEC,
-																	  true) {}
-  
+  static constexpr int LOSS = 0;
+  static constexpr double PINGS_PER_SEC = 1000.0;
+
+  FakeNet() : rc(StringPrintf("fakenet.%lld", time(nullptr))),
+			  tokens(PINGS_PER_SEC, PINGS_PER_SEC, true) {}
+
   bool SendPing([[maybe_unused]] int fd,
 				const PingToSend &sping) {
 	Ping rping;
@@ -153,7 +152,7 @@ struct FakeNet {
 	if (!fake_pings.empty() && tokens.CanSpend(1.0)) {
 	  Ping rping = fake_pings.front();
 	  fake_pings.pop_front();
-	  
+
 	  gettimeofday(&rping.recvtime, nullptr);
 	  return {rping};
 	} else {
@@ -225,22 +224,15 @@ static constexpr uint32 MakeHost(int a, int b, int c, int d) {
     ((uint32)c << 8) |
     (uint32)d;
 }
-static constexpr std::array HOSTS = {
-  MakeHost(162, 125, 248, 18),
+static constexpr std::array ALL_HOSTS = {
+  // TODO document
   MakeHost(157, 240, 2, 35),
   MakeHost(13, 32, 181, 10),
   MakeHost(205, 251, 242, 103),
   MakeHost(17, 253, 144, 10),
-  MakeHost(23, 56, 211, 213),
-  MakeHost(77, 88, 55, 77),  // yandex.ru
-  MakeHost(182, 22, 16, 251),  // yahoo.co.jp
-  MakeHost(220, 181, 38, 251),  // baidu.com
-  MakeHost(140, 205, 220, 96),  // taobao.com
-  MakeHost(163, 53, 76, 86),  // flipkart.com
+  // Global
+  MakeHost(162, 125, 248, 18),  // dropbox.com
   MakeHost(185, 60, 216, 53),  // whatsapp.com
-  MakeHost(54, 239, 33, 92),  // amazon.in
-  MakeHost(104, 18, 7, 4),  // youm7.com
-  MakeHost(194, 232, 104, 149),  // orf.at
   MakeHost(151, 101, 2, 167),  // twitch.tv
   MakeHost(13, 107, 6, 156),  // office.com
   MakeHost(151, 101, 66, 87),  // ticketmaster.com
@@ -248,10 +240,146 @@ static constexpr std::array HOSTS = {
   MakeHost(64, 4, 250, 37),  // paypal.com
   MakeHost(136, 143, 190, 155),  // zoho.com
   MakeHost(13, 107, 21, 200),  // bing.com
+  // India
+  MakeHost(163, 53, 76, 86),  // flipkart.com
+  MakeHost(54, 239, 33, 92),  // amazon.in
+  // Egypt
+  MakeHost(104, 18, 7, 4),  // youm7.com
+  // China
+  MakeHost(220, 181, 38, 251),  // baidu.com
+  MakeHost(140, 205, 220, 96),  // taobao.com
+  MakeHost(47, 254, 177, 101),  // aliexpress.com
+  // Russia
+  MakeHost(77, 88, 55, 77),  // yandex.ru
+  // Austria
+  MakeHost(194, 232, 104, 149),  // orf.at
+  // Japan
+  MakeHost(210, 236, 244, 76),  // weblio.jp
+  MakeHost(210, 140, 92, 183),  // pixiv.net
+  MakeHost(182, 22, 25, 124),  // loco.yahoo.co.jp
+  MakeHost(199, 48, 210, 152),  // fc2.com
+  MakeHost(182, 22, 16, 251),  // yahoo.co.jp
+  // Thailand
+  MakeHost(203, 151, 133, 212),  // sanook.com
+  MakeHost(110, 164, 205, 207),  // mthai.com
+  MakeHost(202, 183, 165, 117),  // kapook.com
+  MakeHost(111, 223, 37, 134),  // teenee.com
+  MakeHost(203, 151, 85, 49),  // thairath.co.th
+  MakeHost(139, 99, 68, 204),  // pantip.com
+  MakeHost(103, 120, 246, 129),  // shopee.co.th
+  // New Zealand
+  MakeHost(103, 241, 84, 136),  // metservice.com
+  MakeHost(103, 197, 62, 103),  // health.govt.nz
+  MakeHost(150, 242, 41, 197),  // odt.co.nz
+  // Myanmar
+  MakeHost(203, 81, 88, 219),  // evisa.moip.gov.mm
+  MakeHost(146, 247, 14, 129),  // ohchr.org
+  // Sri Lanka
+  MakeHost(212, 114, 33, 35),  // kaymu.lk
+  MakeHost(165, 22, 255, 114),  // lankanewsweb.net
+  MakeHost(185, 146, 22, 233),  // live24.lk
+  // Madagascar
+  MakeHost(192, 139, 15, 34),  // univ-antananarivo.mg
+  MakeHost(154, 126, 32, 198),  // instat.mg
+  MakeHost(44, 188, 7, 146),  // webmail.moov.mg
+  MakeHost(41, 207, 44, 213),  // jira.pulse.mg
+  MakeHost(5, 135, 119, 241),  // clubic.com
+  // Iceland
+  MakeHost(185, 112, 145, 160),  // playiceland.is
+  MakeHost(92, 43, 192, 120),  // mbl.is
+  MakeHost(185, 21, 17, 244),  // visir.is
+  MakeHost(217, 9, 143, 30),  // pressan.is
+  MakeHost(80, 248, 22, 109),  // bland.is
+  // Brazil
+  MakeHost(186, 192, 90, 12),  // globo.com
+  MakeHost(200, 147, 3, 157),  // uol.com.br
+  MakeHost(143, 92, 75, 65),  // shopee.com.br
+  MakeHost(208, 84, 244, 116),  // terra.com.br
 };
 
+// Exponentially-weighted moving average
+struct EWMA {
+  explicit EWMA(double alpha = 0.5,
+				double initial_value = 0.0) :
+	alpha(alpha), value(initial_value) {}
+  double Value() const { return value; }
+  void Add(double d) {
+	value = alpha * d + (1.0 - alpha) * value;
+  }
+
+ private:
+  double alpha = 0.5, value = 0.0;
+};
+
+struct Hosts {
+  struct Host {
+	Host(uint32 ip) :
+	  ip(ip), reliability(0.20, 0.5), latency_sec(0.20, 0.030) {
+	}
+	uint32 ip = 0;
+	// sent = lost + recv + (unknown number of outstanding/discarded pings)
+	// totals, but maybe should have recent average
+	int64 lost = 0;
+	int64 recv = 0;
+	// some recent average of response times?
+	EWMA reliability;
+	EWMA latency_sec;
+  };
+
+  Hosts() : rc("hosts") {
+	for (uint32 ip : ALL_HOSTS) {
+	  hosts.emplace_back(ip);
+	}
+
+	Shuffle(&rc, &hosts);
+  }
+
+  void Lost(uint32 ip) {
+	MutexLock ml(&m);
+	for (Host &host : hosts) {
+	  if (host.ip == ip) {
+		host.lost++;
+		host.reliability.Add(0.0);
+		return;
+	  }
+	}
+  }
+
+  void Received(uint32 ip, double sec) {
+	MutexLock ml(&m);
+	for (Host &host : hosts) {
+	  if (host.ip == ip) {
+		host.recv++;
+		host.reliability.Add(1.0);		
+		host.latency_sec.Add(sec);
+		return;
+	  }
+	}
+  }
+
+  int NumHosts() {
+	MutexLock ml(&m);
+	return (int)hosts.size();
+  }
+  // Copying.
+  Host GetHost(int idx) {
+	MutexLock ml(&m);
+	CHECK(idx >= 0 && idx < (int)hosts.size());
+	return hosts[idx];
+  }
+
+private:
+  std::mutex m;
+  std::vector<Host> hosts;
+  ArcFour rc;
+};
+
+static Hosts *hosts = nullptr;
+
 struct Block {
-  Block(int id) : id(id) {}
+  Block(int id) : id(id) {
+	CHECK(hosts != nullptr);
+  }
 
   // Most hold mutex
   void Viz() {
@@ -278,7 +406,7 @@ struct Block {
 	  return;
 	}
 
-    bool read_done = false;	
+    bool read_done = false;
     reads.emplace_back(PendingRead{
           .buf = buf,
           .start = start,
@@ -329,15 +457,17 @@ struct Block {
 		  keys_to_delete.push_back(key);
 		  nbdkit_debug("delete %08x because version %ld != current %ld",
 					   key, op.version, current_version);
+		  // This isn't a host loss; it's just out of date.
 		} else if (double s = op.sent_time.Seconds(); s >= PING_TIMEOUT) {
 		  nbdkit_debug("delete %08x because %.3fs elapsed", key, s);
 		  keys_to_delete.push_back(key);
+		  hosts->Lost(op.host);
 		}
 	  }
 	  for (auto key : keys_to_delete) outstanding.erase(key);
 
 	  Viz();
-	  
+
 	  if (is_initialized) return 0;
 	  if (writes.empty()) return 0;
 
@@ -357,7 +487,7 @@ struct Block {
 	  is_initialized = true;
 	}
     if (notify) cond.notify_all();
-	return sent;	
+	return sent;
   }
 
   // While we (temporarily) know what data the full block holds, send
@@ -368,7 +498,7 @@ struct Block {
   int ReplenishWithData(const std::vector<uint8> &data, int write_fd) {
 	CHECK(data.size() == BLOCK_SIZE);
 	int sent = 0;
-	
+
 	// Now, send pings to replenish up to the target. We'll
 	// do at least one here.
 	int outstanding_ok = 0;
@@ -394,10 +524,11 @@ struct Block {
 	  OutstandingPing outping;
 	  outping.host = pts.ip;
 	  outping.version = current_version;
-		
+
 	  if (SendPing(write_fd, pts)) {
 		CHECK(outstanding.find(key) == outstanding.end()) << key;
 		outstanding[key] = outping;
+		// nbdkit_debug("at birth, %.4fs", outping.sent_time.Seconds());
 		sent++;
 	  } else {
 		// XXX recover somehow; at least making another attempt?
@@ -407,8 +538,8 @@ struct Block {
 
 	return sent;
   }
-	
-  
+
+
   // Route a ping to this block, which will juggle it back
   // into the network using write_fd. Returns the number of
   // pings sent.
@@ -432,13 +563,21 @@ struct Block {
       }
 
       OutstandingPing oping = it->second;
+	  {
+		double recv_sec = oping.sent_time.Seconds();
+		hosts->Received(oping.host, recv_sec);
+		nbdkit_debug("response from %s in %.3fms",
+					 NetUtil::IPToString(oping.host).c_str(),
+					 1000.0 * recv_sec);
+	  }
+
       outstanding.erase(it);
       // TODO: could keep stats about this host
 
       // Invalid if the version is wrong.
 	  if (oping.version != current_version)
 		return 0;
-	  
+
       // Invalid if we don't have the full block as the payload.
       if (ping.data.size() != BLOCK_SIZE)
         return 0;
@@ -471,19 +610,19 @@ struct Block {
 
 	  sent = ReplenishWithData(data, write_fd);
     }
-    
+
     if (notify) cond.notify_all();
 	return sent;
   }
 
   // holding lock
   uint32 GetHost() {
-    const uint32 h = HOSTS[host_idx];
+    const Hosts::Host h = hosts->GetHost(host_idx);
     host_idx++;
-    if (host_idx >= (int)HOSTS.size()) host_idx = 0;
-    return h;
+    if (host_idx >= hosts->NumHosts()) host_idx = 0;
+    return h.ip;
   }
-  
+
   // Represents a ping that we think is still waiting to come back.
   struct OutstandingPing {
     Timer sent_time;
@@ -491,7 +630,7 @@ struct Block {
     // TODO figure this out
     int64_t version = 0;
   };
-  
+
   // Pending request to read this block into the buffer.
   struct PendingRead {
     uint8_t *buf;
@@ -506,7 +645,7 @@ struct Block {
     int count;
     bool *done;
   };
-  
+
   const int id = 0;
   std::mutex mutex;
   std::condition_variable cond;
@@ -517,7 +656,7 @@ struct Block {
   uint32_t seq_counter = 0;
   int host_idx = 0;
   bool is_initialized = false;
-  
+
   // Protected by the mutex.
   std::vector<PendingRead> reads;
   std::vector<PendingWrite> writes;
@@ -545,7 +684,7 @@ struct Blocks {
   int Initialize(int block_idx, int write_fd) {
 	return mem[block_idx]->Initialize(write_fd);
   }
-  
+
   // Route the ping to the correct block. Return the number of pings sent.
   int ReceivedPing(const NetUtil::Ping &ping, int write_fd) {
 	const uint32_t key = (ping.ident << 16) | ping.seq;
@@ -555,7 +694,7 @@ struct Blocks {
 	  return 0;
 	return mem[block_idx]->ReceivedPing(ping, write_fd);
   }
-  
+
   ~Blocks() {
     for (Block *b : mem) delete b;
     mem.clear();
@@ -577,6 +716,104 @@ struct Processor {
     nbdkit_debug("thread spawned %p\n", process_thread.get());
   }
 
+  void TestHosts(int fd4) {
+	fd_set read_fds;
+	fd_set write_fds;
+
+	CHECK(hosts != nullptr);
+
+	uint32 next_key = 0xCAFEF00D;
+	for (int host_idx = 0; host_idx < hosts->NumHosts(); host_idx++) {
+	  const Hosts::Host host = hosts->GetHost(host_idx);
+	  const uint32 key = next_key++;
+
+	  NetUtil::PingToSend pts;
+	  for (int i = 0; i < BLOCK_SIZE; i++)
+		pts.data.push_back(i * 3);
+	  pts.ident = (key >> 16) & 0xFFFF;
+	  pts.seq = key & 0xFFFF;
+	  pts.ip = host.ip;
+
+
+	  Timer sent_timer;
+	  if (!SendPing(fd4, pts)) {
+		nbdkit_debug("Ping failed immediately for %s",
+					 NetUtil::IPToString(host.ip).c_str());
+		continue;
+	  }
+
+	  for (;;) {
+		// Wait for something to receive (or timeout).
+		FD_ZERO(&read_fds);
+		FD_ZERO(&write_fds);
+		FD_SET(fd4, &read_fds);
+		const int max_fd = fd4;
+		CHECK(max_fd < FD_SETSIZE);
+		timeval timeout;
+		timeout.tv_sec = 4;
+		timeout.tv_usec = 0;
+
+		#if FAKE_NET
+		int status = fake_net.Select(max_fd + 1, &read_fds, &write_fds,
+									 nullptr, &timeout);
+		#else
+		int status = select(max_fd + 1, &read_fds, &write_fds,
+							nullptr, &timeout);
+		#endif
+
+		if (status == 0) {
+		  nbdkit_debug("Ping timed out in select for %s",
+					   NetUtil::IPToString(host.ip).c_str());
+		  hosts->Lost(host.ip);
+		  goto next_host;
+		}
+
+		if (FD_ISSET(fd4, &read_fds)) {
+		  std::optional<NetUtil::Ping> pingo = ReceivePing(fd4, BLOCK_SIZE);
+		  if (pingo.has_value()) {
+			const NetUtil::Ping &rping = pingo.value();
+			const uint32_t rkey = ((uint32)rping.ident << 16) | rping.seq;
+			if (rkey != key) {
+			  nbdkit_debug("Wrong key while waiting for %s",
+						   NetUtil::IPToString(host.ip).c_str());
+			} else {
+			  double sec = sent_timer.Seconds();
+			  nbdkit_debug("%s: Response in %.3fs, key=%08x, %d data bytes",
+						   NetUtil::IPToString(host.ip).c_str(),
+						   sec, rkey, (int)rping.data.size());
+			  hosts->Received(host.ip, sec);
+			  goto next_host;
+			}
+		  }
+		}
+
+		if (sent_timer.Seconds() > 4.0) {
+		  nbdkit_debug("Ping timed out (timer) for %s",
+					   NetUtil::IPToString(host.ip).c_str());
+		  hosts->Lost(host.ip);
+		  goto next_host;
+		}
+	  }
+
+	next_host:;
+
+	}
+	nbdkit_debug("startup: pinged all hosts");
+
+	HostStats();
+  }
+
+  void HostStats() {
+	for (int host_idx = 0; host_idx < hosts->NumHosts(); host_idx++) {
+	  const Hosts::Host host = hosts->GetHost(host_idx);
+	  nbdkit_debug("%s: %ld+%ld %.2f%% %.1fms",
+				   NetUtil::IPToString(host.ip).c_str(),
+				   host.recv, host.lost,
+				   (100.0 * host.reliability.Value()),
+				   (1000.0 * host.latency_sec.Value()));
+	}
+  }
+				   
   void ProcessThread() {
     nbdkit_debug("process thread started\n");
     // ArcFour rc("process");
@@ -585,6 +822,7 @@ struct Processor {
 	int64_t pings_sent = 0, pings_received = 0;
 
 	Periodically per_status(0.5);
+	Periodically per_host_stats(10);
 	
 	// Create IPV4 ICMP socket which we use for reading and writing.
 	#if FAKE_NET
@@ -595,7 +833,9 @@ struct Processor {
 	CHECK(fd4o.has_value()) << "Must run as root! " << error;
 	const int fd4 = fd4o.value();
 	#endif
-	
+
+	TestHosts(fd4);
+
     // The structure of the loop is roughly this:
     //  - each Block has a set of outstanding pings that we think are
     //    still valid (have not timed out).
@@ -606,7 +846,7 @@ struct Processor {
     //      - so we are at least 1 below our target. send
     //        pings to get back up to the target, which
     //        should be at least one
-    //  - 
+    //  -
 
     for (;;) {
 
@@ -616,6 +856,8 @@ struct Processor {
 					 pings_received,
 					 counter,
 					 TARGET_PINGS_PER_BLOCK);
+	  } else if (per_host_stats.ShouldRun()) {
+		HostStats();
 	  }
 	  
 	  // reset these each time.
@@ -627,7 +869,7 @@ struct Processor {
 	  // We always want to both read and write, to juggle.
 	  FD_SET(fd4, &read_fds);
 	  FD_SET(fd4, &write_fds);
-	  
+
 	  const int max_fd = fd4;
 	  CHECK(max_fd < FD_SETSIZE);
 
@@ -660,8 +902,8 @@ struct Processor {
 		counter++;
 		counter %= num_blocks;
 	  }
-	  
-	  
+
+
 	  // We'll only do something if we receive a ping. But we also need to
 	  // be ready to write, so check both.
 	  if (FD_ISSET(fd4, &read_fds) && FD_ISSET(fd4, &write_fds)) {
@@ -669,7 +911,7 @@ struct Processor {
 
 		if (pingo.has_value()) {
 		  const NetUtil::Ping &ping = pingo.value();
-		  // nbdkit_debug("got ping %04x.%04x", ping.ident, ping.seq);		  
+		  // nbdkit_debug("got ping %04x.%04x", ping.ident, ping.seq);
 		  pings_received++;
 		  pings_sent += blocks->ReceivedPing(ping, fd4);
 		}
@@ -704,6 +946,7 @@ static Processor *processor = nullptr;
 
 static int pingu_after_fork(void) {
   nbdkit_debug("After fork! num_blocks %lu\n", num_blocks);
+  hosts = new Hosts;
   blocks = new Blocks(num_blocks);
   processor = new Processor(blocks);
   return 0;
@@ -715,6 +958,9 @@ static void pingu_unload(void) {
 
   delete blocks;
   blocks = nullptr;
+
+  delete hosts;
+  hosts = nullptr;
 }
 
 static int pingu_config(const char *key, const char *value) {
@@ -734,7 +980,7 @@ static int pingu_config(const char *key, const char *value) {
                    BITS_FOR_ID, num_blocks);
       return -1;
     }
-    
+
   } else {
     nbdkit_error("unknown parameter '%s'", key);
     return -1;
