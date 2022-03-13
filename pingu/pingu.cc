@@ -36,7 +36,7 @@
 
 // If set, then we have a fake internal network that echos pings, for
 // debugging.
-#define FAKE_NET 1
+#define FAKE_NET 0
 
 using uint32 = uint32_t;
 using int64 = int64_t;
@@ -90,34 +90,42 @@ private:
 struct TokenBucket {
   TokenBucket(double max_value, double tokens_per_sec,
 			  bool start_full = false) :
-	max_value(max_value), tokens_per_sec(tokens_per_sec),
-	last_update(std::chrono::steady_clock::now()) {
-	if (start_full) tokens = max_value;
+	last_update(std::chrono::steady_clock::now()),
+	tokens(start_full ? max_value : 0.0),
+	max_value(max_value), tokens_per_sec(tokens_per_sec) {
   }
 
   // See if we can spend 'cost' tokens, and returns true if so
   // (subtracting the tokens we spent). Refills the bucket first,
   // based on the current time.
   bool CanSpend(double cost) {
-	// Refill bucket based on elapsed time
-	const auto now = std::chrono::steady_clock::now();
-	const std::chrono::duration<double> elapsed = now - last_update;
-	last_update = now;
-	const double secs = elapsed.count();
-	tokens = std::min(max_value, tokens + tokens_per_sec * secs);
+	Refill();
 	if (cost <= tokens) {
-	  // printf("ok with %.2fs elapsed, %.2f tokens\n", secs, tokens);
 	  tokens -= cost;
 	  return true;
 	}
 	return false;
   }
 
+  double Peek() {
+	Refill();
+	return tokens;
+  }
+  
 private:
-  double tokens = 0.0;
-  const double max_value = 0.0;
-  const double tokens_per_sec = 0.0;
+  void Refill() {
+	// Refill bucket based on elapsed time
+	const auto now = std::chrono::steady_clock::now();
+	const std::chrono::duration<double> elapsed = now - last_update;
+	last_update = now;
+	const double secs = elapsed.count();
+	tokens = std::min(max_value, tokens + tokens_per_sec * secs);
+  }
   std::chrono::time_point<std::chrono::steady_clock> last_update;
+  double tokens = 0.0;
+  // morally const
+  double max_value = 0.0;
+  double tokens_per_sec = 0.0;
 };
 
 struct FakeNet {
@@ -251,6 +259,7 @@ static constexpr std::array ALL_HOSTS = {
   MakeHost(47, 254, 177, 101),  // aliexpress.com
   // Russia
   MakeHost(77, 88, 55, 77),  // yandex.ru
+  MakeHost(217, 20, 155, 13),  // ok.ru
   // Austria
   MakeHost(194, 232, 104, 149),  // orf.at
   // Japan
@@ -281,7 +290,7 @@ static constexpr std::array ALL_HOSTS = {
   // Madagascar
   MakeHost(192, 139, 15, 34),  // univ-antananarivo.mg
   MakeHost(154, 126, 32, 198),  // instat.mg
-  MakeHost(44, 188, 7, 146),  // webmail.moov.mg
+  MakeHost(41, 188, 7, 145),  // webmail.moov.mg
   MakeHost(41, 207, 44, 213),  // jira.pulse.mg
   MakeHost(5, 135, 119, 241),  // clubic.com
   // Iceland
@@ -295,6 +304,28 @@ static constexpr std::array ALL_HOSTS = {
   MakeHost(200, 147, 3, 157),  // uol.com.br
   MakeHost(143, 92, 75, 65),  // shopee.com.br
   MakeHost(208, 84, 244, 116),  // terra.com.br
+  // Lithuania
+  MakeHost(91, 234, 200, 112),  // delfi.lt
+  MakeHost(185, 11, 24, 36),  // 15min.lt
+  MakeHost(185, 134, 203, 12),  // gismeteo.lt
+  MakeHost(78, 24, 199, 9),  // seb.lt
+  // US: Alaska
+  MakeHost(199, 165, 82, 216),  // www.gi.alaska.edu
+  // US: Hwaii
+  MakeHost(104, 199, 126, 30),  // hawaiidt.com
+  // Poland
+  MakeHost(212, 77, 98, 9),  // wp.pl
+  MakeHost(185, 31, 27, 160),  // allegro.pl
+  MakeHost(46, 248, 183, 28),  // librus.pl
+  MakeHost(51, 83, 237, 191),  // wykop.pl
+  // South Africa
+  MakeHost(163, 195, 1, 225),  // gov.za
+  MakeHost(80, 88, 11, 43),  // property24.com
+  MakeHost(148, 251, 158, 101),  // showmax.com
+  // Afghanistan
+  MakeHost(213, 175, 208, 208),  // movie.af
+  MakeHost(194, 31, 194, 194),  // khabarnama.net
+  MakeHost(103, 204, 130, 16),  // tkg.af
 };
 
 // Exponentially-weighted moving average
@@ -311,10 +342,14 @@ struct EWMA {
   double alpha = 0.5, value = 0.0;
 };
 
+static constexpr double BURST_PER_HOST = 10.0;
+static constexpr double PPS_PER_HOST = 10.0;
+
 struct Hosts {
   struct Host {
 	Host(uint32 ip) :
-	  ip(ip), reliability(0.20, 0.5), latency_sec(0.20, 0.030) {
+	  ip(ip), reliability(0.20, 0.5), latency_sec(0.20, 0.030),
+	  tokens(BURST_PER_HOST, PPS_PER_HOST, true) {
 	}
 	uint32 ip = 0;
 	// sent = lost + recv + (unknown number of outstanding/discarded pings)
@@ -324,6 +359,8 @@ struct Hosts {
 	// some recent average of response times?
 	EWMA reliability;
 	EWMA latency_sec;
+
+	TokenBucket tokens;
   };
 
   Hosts() : rc("hosts") {
@@ -357,18 +394,48 @@ struct Hosts {
 	}
   }
 
+  // Iterating over all hosts for stats, etc.
   int NumHosts() {
 	MutexLock ml(&m);
 	return (int)hosts.size();
   }
   // Copying.
-  Host GetHost(int idx) {
+  Host GetHostNum(int idx) {
 	MutexLock ml(&m);
 	CHECK(idx >= 0 && idx < (int)hosts.size());
 	return hosts[idx];
   }
 
-private:
+  // Get a host, preferring hosts that are reliable and have high
+  // latency, but up to the limits of the token buffers. Assumes
+  // that the returned host is pinged.
+  //
+  // Copying.
+  Host GetBestHost() {
+	MutexLock ml(&m);
+	double best_score = 0.0;
+	int best_idx = 0;
+	for (int idx = 0; idx < (int)hosts.size(); idx++) {
+	  Host *host = &hosts[idx];
+	  double norm_tokens = host->tokens.Peek() / BURST_PER_HOST;
+	  double rel = host->reliability.Value();
+	  double s = host->latency_sec.Value();
+
+	  // How to weight these?
+	  double score = norm_tokens * (rel * rel) * s;
+	  if (score > best_score) {
+		best_idx = idx;
+		best_score = score;
+	  }
+	}
+	if (!hosts[best_idx].tokens.CanSpend(1.0)) {
+	  nbdkit_debug("Need more hosts to support this pings-per-second!");
+	}
+
+	return hosts[best_idx];
+  }
+  
+ private:
   std::mutex m;
   std::vector<Host> hosts;
   ArcFour rc;
@@ -617,11 +684,8 @@ struct Block {
 	return sent;
   }
 
-  // holding lock
-  uint32 GetHost() {
-    const Hosts::Host h = hosts->GetHost(host_idx);
-    host_idx++;
-    if (host_idx >= hosts->NumHosts()) host_idx = 0;
+  uint32 GetHost() const {
+    const Hosts::Host h = hosts->GetBestHost();
     return h.ip;
   }
 
@@ -656,7 +720,6 @@ struct Block {
   std::map<uint32_t, OutstandingPing> outstanding;
   int64 current_version = 0;
   uint32_t seq_counter = 0;
-  int host_idx = 0;
   bool is_initialized = false;
 
   // Protected by the mutex.
@@ -726,7 +789,7 @@ struct Processor {
 
 	uint32 next_key = 0xCAFEF00D;
 	for (int host_idx = 0; host_idx < hosts->NumHosts(); host_idx++) {
-	  const Hosts::Host host = hosts->GetHost(host_idx);
+	  const Hosts::Host host = hosts->GetHostNum(host_idx);
 	  const uint32 key = next_key++;
 
 	  NetUtil::PingToSend pts;
@@ -807,7 +870,7 @@ struct Processor {
 
   void HostStats() {
 	for (int host_idx = 0; host_idx < hosts->NumHosts(); host_idx++) {
-	  const Hosts::Host host = hosts->GetHost(host_idx);
+	  const Hosts::Host host = hosts->GetHostNum(host_idx);
 	  nbdkit_debug("VIZ[h %s %ld %ld %d %d]ZIV",
 				   NetUtil::IPToString(host.ip).c_str(),
 				   host.recv, host.lost,

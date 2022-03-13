@@ -27,7 +27,7 @@ static constexpr int BLOCKSIZE = 18;
 
 static constexpr int SCREENW = BLOCKSIZE * BLOCKSW;
 // plus status bar etc.
-static constexpr int NUM_HOSTS = 60;
+static constexpr int NUM_HOSTS = 80;
 static constexpr int BLOCKSHEIGHT = BLOCKSIZE * BLOCKSH;
 static constexpr int SCREENH = BLOCKSHEIGHT + 10 * NUM_HOSTS;
 
