@@ -1,5 +1,5 @@
 
-default: viewping.exe
+default: viewping.exe chainsaw.exe
 
 CC_LIB=../../cc-lib
 
@@ -32,6 +32,10 @@ CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -
 LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz $(OPT) $(FLTO) $(PROFILE) -lpsapi -static
 
 viewping.exe : viewping.o image64.o $(SDLOBJECTS) $(UTIL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+chainsaw.exe : chainsaw.o $(SDLOBJECTS) $(UTIL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

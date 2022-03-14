@@ -158,12 +158,35 @@ struct UI {
                   scrollx, scrolly, SCREENW, SCREENH, 0, 0);
   }
 
+  void DrawInfo() {
+    // In the current mipmap;
+    uint64 cx = mousex + scrollx;
+    uint64 cy = mousey + scrolly;
+
+    for (int scale = current_zoom; scale > 0; scale--) {
+      cx <<= 1;
+      cy <<= 1;
+    }
+
+    uint64 pos = HilbertCurve::To1D(16, cx, cy);
+    uint8 a = (pos >> 24) & 0xFF;
+    uint8 b = (pos >> 16) & 0xFF;
+    uint8 c = (pos >> 8)  & 0xFF;
+    uint8 d =  pos        & 0xFF;    
+
+    font->draw(16, SCREENH - font->height - 1,
+               StringPrintf("%d^1.^<%d^1.^<%d^1.^<%d",
+                            a, b, c, d));
+  }
+  
   double total_draw = 0.0;
   int num_draws = 0;
   void Draw() {
     Timer draw_timer;
     sdlutil::clearsurface(screen, 0xFF001100);
     DrawPings();
+    DrawInfo();
+
     total_draw += draw_timer.Seconds();
     num_draws++;
     if (num_draws % 100 == 0) {
@@ -232,6 +255,10 @@ struct UI {
             
             ui_dirty = true;
           }
+
+          // info hover
+          ui_dirty = true;
+          
           break;
         }
 
