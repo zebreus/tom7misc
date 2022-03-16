@@ -1,0 +1,106 @@
+\documentclass[twocolumn]{article}
+% {amsart}
+\usepackage[top=0.75in, left=0.65in, right=0.65in, bottom=0.6in]{geometry}
+
+\usepackage{float}
+
+% \usepackage{url}
+% \usepackage{xurl}
+\usepackage[pdftex]{hyperref}
+
+
+% \usepackage{code}
+% \usepackage{cite}
+\usepackage{latexsym}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+% IPA symbols. safe turns off overrides for like \! which I still want
+\usepackage[safe]{tipa}
+\usepackage{chessboard}
+\usepackage{supertabular}
+
+\usepackage[most]{tcolorbox}
+
+% lets me explicitly set a. or 1. etc. as enum label
+% \usepackage{enumitem}
+
+\pagestyle{empty}
+
+\usepackage{ulem}
+% go back to italics for emphasis, though
+\normalem
+
+\usepackage{natbib}
+
+\interfootnotelinepenalty=0
+\setlength{\footnotesep}{2em}
+
+\newcommand\sfrac[2]{\!{}\,^{#1}\!/{}\!_{#2}}
+
+% XXX the collection of crap above causes a first page
+% with just "1" on it (probably conflicting packages). This
+% magic just drops the first page, which is of course not
+% the right solution, but...
+\usepackage{atbegshi}% http://ctan.org/pkg/atbegshi
+\AtBeginDocument{\AtBeginShipoutNext{\AtBeginShipoutDiscard}}
+
+\begin{document}
+
+\title{Harder Drive: Hard drives we didn't want or need}
+\author{Dr.~Tom~Murphy~VII~Ph.D.}\thanks{
+Copyright \copyright\ 2022 the Regents of the Wikiplia Foundation.
+Appears in SIGBOVIK~2022 with the
+Input/Output error of the Association for Computational Heresy; {\em IEEEEEE!}
+press, Verlag-Verlag volume no.~0x40-2A. 6.6e-11 $N m^2kg^{-2}$
+}
+
+\renewcommand\th{\ensuremath{{}^{\textrm{th}}}}
+\newcommand\st{\ensuremath{{}^{\textrm{st}}}}
+\newcommand\rd{\ensuremath{{}^{\textrm{rd}}}}
+\newcommand\nd{\ensuremath{{}^{\textrm{nd}}}}
+
+\renewcommand\paragraph[1]{\smallskip \noindent{\bf #1}\enspace}
+
+\date{7 April 2022}
+
+\maketitle \thispagestyle{empty}
+
+\sloppypar
+
+
+\section{Introduction}
+
+\section{Conclusion}
+
+\paragraph{Acknowledgements.}
+
+I used {\tt nbdkit} to create block devices, which was a much sounder
+idea than writing my own kernel drivers. The code for sending and
+receiving pings was adapted from {\tt liboping}.
+
+Thanks to Rose, William, Sophia, Reed, Jessica, Max, and Finn for
+donating their nasal swabs to the project. I especially appreciate
+that they gave me these samples without any information about what I
+was even doing with them. That's true friendship. By the way, human
+cloning is possible now. Just sayin'.
+
+If you have a computer connected to the internet, then I attempted
+to send it a message during the course of this project. If your
+computer responded, then thank you for configuring it that way.
+
+Finally I would like to thank the SIGBOVIK program committee for letting
+me store this file in the proceedings:
+
+%
+% tar  -c -M  --record-size=2560 --tape-length=2953c --new-volume-script='echo out${TAR_VOLUME}.tar >& ${TAR_FD}' --file=out1.tar QR_code.bz2
+
+% (qr-encoded?
+
+\nocite{murphy2019eloworld}
+
+\bibliography{pingu}{}
+\bibliographystyle{plain}
+
+\end{document}
+
