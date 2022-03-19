@@ -1,5 +1,5 @@
 
-default: viewping.exe chainsaw.exe
+default: viewping.exe chainsaw.exe legend.exe
 
 CC_LIB=../../cc-lib
 
@@ -20,7 +20,7 @@ SDLOBJECTS=$(SDLOPATH)/SDL.o $(SDLOPATH)/SDL_error.o $(SDLOPATH)/SDL_fatal.o $(S
 
 LINKSDL=-lm -mthreads -luser32 -lgdi32 -lwinmm -ldxguid
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o
+UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/textsvg.o $(CC_LIB)/opt/opt.o
 
 CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20
 
@@ -38,6 +38,14 @@ viewping.exe : viewping.o image64.o $(SDLOBJECTS) $(UTIL_OBJECTS)
 chainsaw.exe : chainsaw.o $(SDLOBJECTS) $(UTIL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
+
+legend.exe : legend.o $(UTIL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+legend.svg : legend.exe
+	./legend.exe > $@
+	./dos2unix $@
 
 clean :
 	rm -f *.o $(UTIL_OBJECTS) $(SDLUTILOBJECTS) $(FCEULIBOBJECTS) $(OBJECTS) *.exe

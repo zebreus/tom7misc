@@ -160,14 +160,17 @@ struct UI {
 
   void DrawInfo() {
     // In the current mipmap;
-    uint64 cx = mousex + scrollx;
-    uint64 cy = mousey + scrolly;
+    int64 cx = mousex + scrollx;
+    int64 cy = mousey + scrolly;
 
     for (int scale = current_zoom; scale > 0; scale--) {
       cx <<= 1;
       cy <<= 1;
     }
 
+    cx = std::clamp(cx, int64{0}, int64{65535});
+    cy = std::clamp(cy, int64{0}, int64{65535});
+    
     uint64 pos = HilbertCurve::To1D(16, cx, cy);
     uint8 a = (pos >> 24) & 0xFF;
     uint8 b = (pos >> 16) & 0xFF;
@@ -268,6 +271,16 @@ struct UI {
             printf("ESCAPE.\n");
             return;
 
+          case SDLK_s:
+            if (current_zoom > 1) {
+              const string filename =
+                StringPrintf("zoom%d.png", current_zoom);
+              mipmaps[current_zoom]->Save(filename);
+              printf("Wrote %s\n", filename.c_str());
+            } else {
+              printf("Won't save zoom levels 0 or 1!\n");
+            }
+            break;
             // TODO zoom:
 #if 0
           case SDLK_KP_PLUS:
