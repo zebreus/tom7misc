@@ -134,9 +134,50 @@ static void TestRNG() {
   
 }
 
+static void TestFastRNG() {
+  for (int a = 0; a < 256; a++) {
+    for (int b = 0; b < 256; b++) {
+      RNGState input;
+      input.rng1 = a;
+      input.rng2 = b;
+
+      RNGState expected = NextRNG(input);
+      RNGState got = FastNextRNG(input);
+      CHECK(EqualRNG(expected, got)) << RNGString(input) << " wanted "
+                                     << RNGString(expected) << " got "
+                                     << RNGString(got);
+    }
+  }
+}
+
+static void TestFastNextPiece() {
+  for (int a = 0; a < 256; a++) {
+    for (int b = 0; b < 256; b++) {
+      for (uint8 p : {0x02, 0x07, 0x08, 0x0A, 0x0B, 0x0E, 0x12}) {
+        for (int c = 0; c < 256; c++) {
+          RNGState input;
+          input.rng1 = a;
+          input.rng2 = b;
+          input.last_drop = p;
+          input.drop_count = c;
+
+          RNGState expected = NextPiece(input);
+          RNGState got = FastNextPiece(input);
+          CHECK(EqualRNG(expected, got)) << RNGString(input) << " wanted "
+                                         << RNGString(expected) << " got "
+                                         << RNGString(got);
+        }
+      }
+    }
+  }
+}
+
+
 int main(int argc, char **argv) {
   TestDraw();
   TestRNG();
+  TestFastRNG();
+  TestFastNextPiece();
   printf("OK\n");
   return 0;
 }

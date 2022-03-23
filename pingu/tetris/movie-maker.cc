@@ -141,6 +141,8 @@ struct RetryState {
     for (int i = 0; i < HORIZON; i++) {
       const auto &[count, rng, drop] = delays_reached[i];
       if (count == 0 && drop == desired_shape) {
+        return (i + retry_count - 1);        
+#if 0
         if (retry_count / 2 >= i) {
           return i + retry_count - 1;
         } else {
@@ -152,6 +154,7 @@ struct RetryState {
             return i + (base_count >> 1);
           }
         }
+#endif
       }
     }
     CHECK(false) << "No successful drops predicted within horizon??";

@@ -4,12 +4,12 @@ CC_LIB=../../cc-lib
 FCEULIB=../../fceulib
 
 # windows
-# CXX=x86_64-w64-mingw32-g++
-# CC=x86_64-w64-mingw32-gcc
-# PLATFORM_LFLAGS=-static -L . libz.a
+CXX=x86_64-w64-mingw32-g++
+CC=x86_64-w64-mingw32-gcc
+PLATFORM_LFLAGS=-static -L . libz.a
 
 # linux
-PLATFORM_LFLAGS=-lz -lpthread
+# PLATFORM_LFLAGS=-lz -lpthread
 
 CXXFLAGS=-Wall -Werror --std=c++20 -O -DPSS_STYLE=2 -I $(CC_LIB) -I $(FCEULIB)
 LFLAGS=$(PLATFORM_LFLAGS)

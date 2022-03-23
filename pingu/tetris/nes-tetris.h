@@ -67,7 +67,8 @@ inline std::string RNGString(RNGState s) {
 // X = 17 (M_RNG1) and Y = 2 (its size), so we just
 // take those as constants.
 //
-// I think this is a two-tap LFSR. Its period is 32767.
+// This is a two-tap LFSR (see equivalent FastNextRNG
+// below). Its period is 32767.
 [[maybe_unused]]
 inline RNGState NextRNG(RNGState s) {
   uint8_t x = 17;
@@ -135,6 +136,22 @@ inline RNGState NextRNG(RNGState s) {
   //      rts
   return s;
 }
+
+// Same, but implemented as regular C code.
+[[maybe_unused]]
+inline RNGState FastNextRNG(RNGState s) {
+  // Pack
+  uint16 state = (s.rng1 << 8) | s.rng2;
+
+  uint16 carry = ((state >> 9) ^ (state >> 1)) & 1;
+  state = (state >> 1) | (carry << 15);
+
+  // Unpack.
+  s.rng1 = (state >> 8) & 0xFF;
+  s.rng2 = state & 0xFF;
+  return s;
+}
+
 
 // Generate next piece.
 // This is the code at $9907.
@@ -239,6 +256,31 @@ inline RNGState NextPiece(RNGState s) {
   //  rts
   return s;
 }
+
+// Simplified version of NextPiece.
+[[maybe_unused]]
+inline RNGState FastNextPiece(RNGState s) {
+  constexpr std::array<uint8_t, 8> PIECES = {
+    0x02, 0x07, 0x08, 0x0A, 0x0B, 0x0E, 0x12,
+    // not used
+    0x02,
+  };
+
+  s.drop_count++;
+
+  uint8_t a = (s.rng1 + s.drop_count) & 7;
+
+  if (a == 7 || PIECES[a] == s.last_drop) {
+    // re-roll if out of bounds, or repeat
+    s = NextRNG(s);
+    // mod 7 forces in-bounds, but repeats allowed
+    a = ((s.rng1 & 7) + s.last_drop) % 7;
+  }
+  
+  s.last_drop = PIECES[a];
+  return s;
+}
+
 
 // Square types in board array (0x400+):
 // EF = empty

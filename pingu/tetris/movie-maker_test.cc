@@ -52,6 +52,8 @@ static void CPrintf(const char* format, ...) {
 
 
 static constexpr int NUM_THREADS = 4;
+static constexpr int NUM_BYTES = 10;
+
 
 
 namespace {
@@ -207,7 +209,8 @@ static std::pair<int, int> RunOne(uint64 run_seed) {
 
   const int64_t mm_seed = RandTo(&rc, 1000000000);
   vector<uint8> encode;
-  for (int i = 0; i < 8; i++) encode.push_back(rc.Byte());
+  encode.reserve(NUM_BYTES);
+  for (int i = 0; i < NUM_BYTES; i++) encode.push_back(rc.Byte());
 
   Timer one_timer;
   MovieMaker mm("solutions.txt", "tetris.nes", mm_seed);
@@ -324,7 +327,8 @@ static void RunForever() {
       double sec = run_timer.Seconds();
       out.BlendText32(4, ybot, 0x779933FF,
                       StringPrintf("%lld done in %.1fs (%.4f bytes/sec)",
-                                   num_done, sec, (num_done * 8.0) / sec));
+                                   num_done, sec,
+                                   (num_done * (double)NUM_BYTES) / sec));
       out.Save("movie-maker-test.png");
     };
   
@@ -355,7 +359,7 @@ static void RunForever() {
                 ANSI_WHITE "bytes" ANSI_RESET "/" ANSI_WHITE "sec "
                 ANSI_WHITE "%.1f " ANSI_RESET "movie "
                 ANSI_WHITE "%.1f " ANSI_RESET "steps\n",
-                num_done, sec, (num_done * 8.0) / sec,
+                num_done, sec, (num_done * (double)NUM_BYTES) / sec,
                 avg_movie, avg_steps);
         SaveImage();
       }

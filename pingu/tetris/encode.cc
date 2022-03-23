@@ -30,7 +30,7 @@
 #include "tetris.h"
 #include "encoding.h"
 
-static constexpr int MAX_PARALLELISM = 24;
+static constexpr int MAX_PARALLELISM = 12;
 static constexpr bool ENDLESS = true;
 
 // TODO: Console stuff to cc-lib
@@ -122,7 +122,16 @@ constexpr int REPORT_EVERY = 10;
 [[maybe_unused]]
 static vector<Move> Encode(uint8 target,
                            const std::function<void(int)> &Phase1Callback,
+                           // Length of current best solution; used to
+                           // fail early since we only care about
+                           // improving on this.
                            int current_solution,
+                           // If non-empty, insist that the solution begin
+                           // with these moves. This can help us explore
+                           // more useful plans, since many of the best
+                           // known solutions are similar, and especially
+                           // at the beginning.
+                           const std::vector<Move> &movie_prefix = {},
                            bool loud = false) {
   const uint16 full_target = Encoding::FullTarget(target);
 
@@ -137,8 +146,8 @@ static vector<Move> Encode(uint8 target,
   static constexpr bool REPLAN_AFTER_ONE = true;
 
   static constexpr int PHASE1_SEARCH_DEPTH = ENDLESS ? 4 : 3;
-  static constexpr int PHASE2_SEARCH_DEPTH = ENDLESS ? 4 : 3;  
-  
+  static constexpr int PHASE2_SEARCH_DEPTH = ENDLESS ? 4 : 3;
+
   // Just in endless mode.
   static constexpr int MAX_TOTAL_MOVES = 250;
   int total_moves = 0;
@@ -276,7 +285,7 @@ static vector<Move> Encode(uint8 target,
           second_last_line & ~full_target;
 
         score -= 25'000.0 * std::popcount(second_last_incorrect);
-        
+
       } else {
         // Penalize for missing bits.
         score += -50'000.0 * std::popcount(todo);
@@ -492,11 +501,19 @@ static vector<Move> Encode(uint8 target,
 
   std::vector<Move> movie;
 
+  auto ResetMovie = [&]() {
+      tetris = Tetris();
+      movie.clear();
+      for (const Move &m : movie_prefix) {
+        CHECK(tetris.Place(m.shape, m.col));
+        movie.push_back(m);
+      }
+    };
+
   auto Restart1 = [&]() {
       Shuffle(&rc, &ALL_SHAPES);
       Shuffle(&rc, &ALL_COLS);
-      tetris = Tetris();
-      movie.clear();
+      ResetMovie();
       // Prevent Byzantine nontermination.
       total_moves++;
       if (loud) {
@@ -756,7 +773,7 @@ static void SolveAll() {
                             PrintTable();
                           };
                  std::vector<Move> movie = Encode(idx, Phase1Callback,
-                                                  9999, false);
+                                                  9999, {}, false);
                  if (!ENDLESS && movie.empty()) {
                    MutexLock ml(&m);
                    status[idx] = 0;
@@ -789,16 +806,17 @@ static void EndlessImprove() {
   CHECK(startsols.size() == 256) << "First SolveAll!";
 
   std::mutex m;
-  // 0 = not working, 1 = phase 1, 2 = phase 2
+  // num currently working
   std::vector<int> working(256, 0);
   std::vector<bool> improved(256, false);
   std::vector<bool> skipping(256, false);
-  std::vector<int> best(256, -2);
+  std::vector<std::vector<Move>> best;
+  best.resize(256);
   int moves_saved = 0;
   Timer run_timer;
   for (const auto &[idx, movie] : startsols) {
     CHECK(idx >= 0 && idx < 256) << idx;
-    best[idx] = movie.size();
+    best[idx] = movie;
   }
 
   auto PrintTable = [&m, &working, &improved, &skipping, &best,
@@ -832,12 +850,12 @@ static void EndlessImprove() {
             improved[idx] ? ANSI_GREEN : ANSI_RED;
 
           const char *colon =
-            working[idx] == 0 ? ANSI_GREY ":" :
+            working[idx] > 1 ? ANSI_PURPLE "=" :
             working[idx] == 1 ? ANSI_BLUE "=" :
-            ANSI_PURPLE "@";
+            ANSI_GREY ":";
           CPrintf("%s%02x%s%s% 3d" ANSI_RESET "   ",
                   idx_color,
-                  idx, colon, color, best[idx]);
+                  idx, colon, color, (int)best[idx].size());
         }
         CPrintf(ANSI_CLEARTOEOL "\n");
       }
@@ -846,89 +864,83 @@ static void EndlessImprove() {
 
   ArcFour rc(StringPrintf("ro-%lld", time(nullptr)));
 
-  for (;;) {
-    const uint8 random_offset = rc.Byte();
+  const uint8 random_offset = rc.Byte();
 
-    // Skip if strictly better than the nth best result.
-    // static constexpr int BEST_TO_SKIP = 256 / 2;
-    static constexpr int BEST_TO_SKIP = 0;
-    static_assert(BEST_TO_SKIP >= 0 && BEST_TO_SKIP < 256);
+  // Skip if this many moves or fewer
+  static constexpr int ABS_TO_SKIP = 17;
 
-    // Skip if this many moves or fewer
-    static constexpr int ABS_TO_SKIP = 17;
+  ParallelFan(MAX_PARALLELISM,
+              [&m, &working, &improved, &skipping, &best,
+               &moves_saved, random_offset,
+               &PrintTable](int thread_idx) {
+                ArcFour rc(StringPrintf("%d.th.%lld", thread_idx, time(nullptr)));
 
-    // Might want to optimize 00 endlessly since it is so important?
-    static constexpr bool ALLOW_SKIPPING_ZERO = true;
+                int next_start = (thread_idx + rc.Byte()) & 0xFF;
+                for (;;) {
+                  const auto [target, cur_best] = [&]() -> std::pair<int, int> {
+                      MutexLock ml(&m);
+                      for (int off = 0; off < 256; off++) {
+                        int idx = (next_start + off) & 0xFF;
 
-    // Hack: Always keep threads working by doing a huge parallel
-    // comprehension but only looking at the lowest byte.
-    ParallelComp(256 * 256 * 256,
-                 [&m, &working, &improved, &skipping, &best,
-                  &moves_saved, random_offset,
-                  &PrintTable](int raw_idx) {
-                   int idx = (raw_idx + random_offset) & 0xFF;
-                   int cur_best = 9999;
-                   {
-                     MutexLock ml(&m);
+                        const int cur_best = (int)best[idx].size();
+                        if (cur_best != 0 && cur_best <= ABS_TO_SKIP) {
+                          skipping[idx] = true;
+                          continue;
+                        }
 
-                     cur_best = best[idx];
+                        // Otherwise, ok!
+                        working[idx]++;
+                        return make_pair(idx, cur_best);
+                      }
 
-                     if (idx != 0 || ALLOW_SKIPPING_ZERO) {
-                     
-                       if (cur_best <= ABS_TO_SKIP) {
-                         skipping[idx] = true;
-                         return;
-                       }
+                      // If we don't find any, this is not great, but optimize zero
+                      // due to its importance.
+                      working[0]++;
+                      return make_pair(0, (int)best[0].size());
+                    }();
 
-                       if (BEST_TO_SKIP > 0) {
-                         // XXX this does not work when we have no
-                         // solutions for some; better set BEST_TO_SKIP
-                         // to zero in that case.
-                         std::vector<int> sorted = best;
-                         std::sort(sorted.begin(), sorted.end());
+                PrintTable();
 
-                         int cutoff_score = sorted[BEST_TO_SKIP];
-                         if (cur_best < cutoff_score) {
-                           skipping[idx] = true;
-                           return;
-                         }
-                       }
-                     }
-                       
-                     skipping[idx] = false;
-                     
-                     // Skip if someone is already working on it.
-                     if (working[idx] != 0)
-                       return;
-
-                     working[idx] = 1;
+                // even ok if this is the current target.
+                const int source = rc.Byte();
+                std::vector<Move> start_movie;
+                {
+                  MutexLock ml(&m);
+                  // Half the time, take some existing prefix.
+                  const auto &other = best[source];
+                  if (other.size() > 0 && (rc.Byte() & 1)) {
+                    int count = RandTo(&rc, std::max(1, (int)(best[source].size() * 0.25)));
+                    for (int i = 0; i < count && i < (int)other.size(); i++) {
+                      start_movie.push_back(other[i]);
+                    }
+                  }
+                }
+                std::function<void(int)> Phase1Callback =
+                  [&m, &working, &PrintTable, target](int phase1) {
+                    // WriteWithLock(&m, &best[idx], phase1);
+                    // WriteWithLock(&m, &working[target], 2);
+                    PrintTable();
+                  };
+                Timer timer;
+                std::vector<Move> movie = Encode(target, Phase1Callback,
+                                                 cur_best, start_movie, false);
+                 {
+                   MutexLock ml(&m);
+                   working[target]--;
+                   const int new_size = (int)movie.size();
+                   if (!movie.empty() && new_size < (int)best[target].size()) {
+                     improved[target] = true;
+                     moves_saved += (best[target].size() - new_size);
+                     best[target] = movie;
+                     AppendSolution(target, movie, timer.Seconds());
                    }
-                   PrintTable();
+                 }
+                 PrintTable();
 
-                   Timer timer;
-                   std::function<void(int)> Phase1Callback =
-                            [&m, &working, &PrintTable, idx](int phase1) {
-                              // WriteWithLock(&m, &best[idx], phase1);
-                              WriteWithLock(&m, &working[idx], 2);
-                              PrintTable();
-                            };
-                   std::vector<Move> movie = Encode(idx, Phase1Callback,
-                                                    cur_best, false);
-                   {
-                     MutexLock ml(&m);
-                     working[idx] = 0;
-                     int new_size = (int)movie.size();
-                     if (!movie.empty() && new_size < best[idx]) {
-                       improved[idx] = true;
-                       moves_saved += (best[idx] - new_size);
-                       best[idx] = new_size;
-                       AppendSolution(idx, movie, timer.Seconds());
-                     }
-                   }
-                   PrintTable();
-                 },
-                 MAX_PARALLELISM);
-  }
+                 next_start = (target + 1) & 0xFF;
+                }
+              });
+
 
   // XXX put in status
   /*
@@ -948,7 +960,7 @@ int main(int argc, char **argv) {
   if (!SetPriorityClass(GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)) {
     LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
   }
-  
+
   HANDLE hStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
   // mingw headers may not know about this new flag
   static constexpr int kVirtualTerminalProcessing = 0x0004;
