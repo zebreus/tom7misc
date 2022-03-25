@@ -16,9 +16,12 @@
 #include "arcfour.h"
 #include "image.h"
 #include "color-util.h"
+#include "textsvg.h"
+#include "util.h"
 
 #include "tetris.h"
 #include "nes-tetris.h"
+#include "tetris-emu.h"
 #include "encoding.h"
 
 using namespace std;
@@ -793,19 +796,25 @@ static void HeatPair() {
 // RNG code, in addition to a "write" breakpoint
 // on the rng state.)
 
+static constexpr bool IsShape(uint8_t s) {
+  for (uint8_t b : {0x02, 0x07, 0x08, 0x0A, 0x0B, 0x0E, 0x12})
+    if (b == s) return true;
+  return false;
+}
 
 struct TinySet {
-  static constexpr int MAX_SIZE = 4;
+  static constexpr int MAX_SIZE = 40; // XXX
 
-  // Perhaps a faster data structure since max 3 items!
-  std::unordered_set<int> items;
-  void Add(int item) {
-    items.insert(item);
-    if (items.size() > MAX_SIZE) {
-      printf("Too many items for %d,%d:\n", z, last_piece);
-      for (int item : items)
-        printf("%d, ", item);
-      LOG(FATAL) << "just added " << item;
+  // Perhaps a faster data structure since max 3 shapes!
+  std::unordered_set<Shape> shapes;
+  void Add(Shape shape) {
+    CHECK(IsShape((uint8_t)shape));
+    shapes.insert(shape);
+    if (shapes.size() > MAX_SIZE) {
+      printf("Too many shapes for %d,%d:\n", z, last_piece);
+      for (Shape shape : shapes)
+        printf("%d, ", (int)shape);
+      LOG(FATAL) << "just added " << (int)shape;
     }
   }
 
@@ -813,87 +822,102 @@ struct TinySet {
   const int z, last_piece;
 };
 
-// TODO: Worst case "droughts" for getting a certain piece in a state?
-// It could be that rng1 stays even for half the period, as one simple
-// example. This would be 8 minutes of real time at 60hz!
 [[maybe_unused]]
 static void AllRerolls() {
-  static constexpr std::array<uint8, 8> PIECES = {
+  static constexpr std::array<uint8, 8> SHAPES = {
     0x02, 0x07, 0x08, 0x0A, 0x0B, 0x0E, 0x12,
     // not used ?
     0x02,
   };
 
+  auto Shapes = [](int idx) -> Shape {
+      CHECK(idx >= 0 && idx < 7);
+      return (Shape)SHAPES[idx];
+    };
+  
   // for any counter / drop
   int histo_states[1 + TinySet::MAX_SIZE] = {};
   int max_piece[7] = {};
   int min_piece[7] = {9, 9, 9, 9, 9, 9, 9};
+  RNGState min_example[7] = {};
+  std::unordered_set<Shape> min_next[7] = {};
   int cant_dup[7] = {};
 
   // In this loop we represent last_drop as an index in [0,7],
-  // but the RNG state actually stores the shape from the PIECES
+  // but the RNG state actually stores the shape from the SHAPES
   // array above.
-  for (uint8 last_drop = 0; last_drop < 7; last_drop++) {
-    for (int z = 0; z < 256; z++) {
-      const uint8 tmp_drop_count = z;
-
+  for (uint8 last_drop_idx = 0; last_drop_idx < 7; last_drop_idx++) {
+    for (int drop_count = 0; drop_count < 256; drop_count++) {
       // show that the random state doesn't even matter
 
-      TinySet tes(z, last_drop);
+      TinySet tes(drop_count, last_drop_idx);
 
-      for (int x = 0; x < 256; x++) {
-        const uint8 tmp_rng1 = x;
-        // (as an index into PIECES)
-        const uint8 first_roll = (tmp_rng1 + (tmp_drop_count + 1)) & 0x7;
+      RNGState state;
+      state.last_drop = Shapes(last_drop_idx);
+      state.drop_count = drop_count;
+      for (int iter = 0; iter < 32767; iter++) {
+        // (as an index into SHAPES)
+        const uint8 first_roll_idx =
+          (state.rng1 + (state.drop_count + 1)) & 0x7;
 
-        if (first_roll == last_drop || first_roll == 0x7) {
+        if (first_roll_idx == last_drop_idx || first_roll_idx == 0x7) {
           // These are the re-roll scenarios.
-          // Try with all possible RNG states.
-          for (int y = 0; y < 256; y++) {
-            if (x == 0 && y == 0) continue;
+          RNGState after = FastNextPiece(state);
 
-            RNGState state;
-            state.rng1 = x;
-            state.rng2 = y;
-            state.last_drop = PIECES[last_drop];
-            state.drop_count = z;
-            RNGState after = NextPiece(state);
-
-            CHECK([after](){
-                for (uint8 s : PIECES)
-                  if (s == after.last_drop)
-                    return true;
-                return false;
-              }());
+          CHECK(IsShape(after.last_drop));
             
-            tes.Add(after.last_drop);
-          }
+          tes.Add((Shape)after.last_drop);
         }
+        state = FastNextRNG(state);
       }
 
-      CHECK(tes.items.size() < sizeof histo_states / sizeof(int));
-      histo_states[tes.items.size()]++;
-      max_piece[last_drop] = std::max(max_piece[last_drop],
-                                      (int)tes.items.size());
-      min_piece[last_drop] = std::min(min_piece[last_drop],
-                                      (int)tes.items.size());
+      {
+        RNGState start;
+        CHECK(state.rng1 == start.rng1 && state.rng2 == start.rng2) <<
+          "Should have looped entire period: " << RNGString(state);
+      }
+      
+      CHECK(tes.shapes.size() < sizeof histo_states / sizeof(int));
+      histo_states[tes.shapes.size()]++;
+      max_piece[last_drop_idx] = std::max(max_piece[last_drop_idx],
+                                          (int)tes.shapes.size());
+      if ((int)tes.shapes.size() < min_piece[last_drop_idx] ||
+          ((int)tes.shapes.size() == min_piece[last_drop_idx] &&
+           min_next[last_drop_idx].contains(Shapes(last_drop_idx)))) {
+        min_piece[last_drop_idx] = (int)tes.shapes.size();
+        RNGState state;
+        state.last_drop = Shapes(last_drop_idx);
+        state.drop_count = drop_count;
+        min_example[last_drop_idx] = state;
+        min_next[last_drop_idx] = tes.shapes;
+      }
 
-      if (tes.items.find(last_drop) == tes.items.end())
-        cant_dup[last_drop]++;
+       if (tes.shapes.find(Shapes(last_drop_idx)) == tes.shapes.end())
+        cant_dup[last_drop_idx]++;
     }
   }
   printf("OK\n");
   printf("Count with 0: %d, 1: %d, 2: %d, 3: %d 4: %d\n",
          histo_states[0], histo_states[1], histo_states[2], histo_states[3],
          histo_states[4]);
-
+  printf("There are 256 * 7 = 1792 scenarios:\n");
+  
   for (int p = 0; p < 7; p++) {
-    char pc = PieceChar(DecodePiece((Shape)PIECES[p]));
-    printf("Best case for piece %d=%c: %d, worst: %d, can't dup: %d/%d = %.02f%%\n",
-           p, pc, max_piece[p], min_piece[p], cant_dup[p],
-           256 * 7, (100.0 * cant_dup[p]) / (256 * 7));
+    char pc = PieceChar(DecodePiece(Shapes(p)));
+    printf("Best for piece %d=%c: %d, worst: %d eg. %c.%d (",
+           p, pc, max_piece[p], min_piece[p],
+           PieceChar(DecodePiece((Shape)min_example[p].last_drop)),
+           min_example[p].drop_count);
+    for (Shape s : min_next[p]) {
+      printf("%c", PieceChar(DecodePiece(s)));
+    }
+    
+    printf(") nodup: %d (%.02f%%)\n",
+           cant_dup[p],
+           (100.0 * cant_dup[p]) / (256 * 7));
   }
 }
+
 
 int main(int argc, char **argv) {
   // MakeStreak2();

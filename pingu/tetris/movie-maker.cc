@@ -21,6 +21,7 @@
 
 #include "tetris.h"
 #include "nes-tetris.h"
+#include "tetris-emu.h"
 #include "encoding.h"
 
 static constexpr bool VERBOSE = false;

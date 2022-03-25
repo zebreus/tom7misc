@@ -878,26 +878,34 @@ static void EndlessImprove() {
                 int next_start = (thread_idx + rc.Byte()) & 0xFF;
                 for (;;) {
                   const auto [target, cur_best] = [&]() -> std::pair<int, int> {
-                      MutexLock ml(&m);
-                      for (int off = 0; off < 256; off++) {
-                        int idx = (next_start + off) & 0xFF;
+                    MutexLock ml(&m);
 
-                        const int cur_best = (int)best[idx].size();
-                        if (cur_best != 0 && cur_best <= ABS_TO_SKIP) {
-                          skipping[idx] = true;
-                          continue;
-                        }
+                    // Hack: This one long solution is messing up my LaTeX.
+                    // Always work on it!
+                    if (thread_idx <= 1) {
+                      working[0xFF]++;
+                      return make_pair(0x84, (int)best[0xFF].size());
+                    }
+                    
+                    for (int off = 0; off < 256; off++) {
+                      int idx = (next_start + off) & 0xFF;
 
-                        // Otherwise, ok!
-                        working[idx]++;
-                        return make_pair(idx, cur_best);
+                      const int cur_best = (int)best[idx].size();
+                      if (cur_best != 0 && cur_best <= ABS_TO_SKIP) {
+                        skipping[idx] = true;
+                        continue;
                       }
 
-                      // If we don't find any, this is not great, but optimize zero
-                      // due to its importance.
-                      working[0]++;
-                      return make_pair(0, (int)best[0].size());
-                    }();
+                      // Otherwise, ok!
+                      working[idx]++;
+                      return make_pair(idx, cur_best);
+                    }
+
+                    // If we don't find any, this is not great, but
+                    // optimize zero due to its importance.
+                    working[0]++;
+                    return make_pair(0, (int)best[0].size());
+                  }();
 
                 PrintTable();
 
