@@ -56,16 +56,18 @@ struct Object {
   uint32 color = 0xFFFFFFFF;
 };
 
+template<double SEC = 1.0>
 struct Sim {
   int64 steps = 0;
   vector<Object> objects;
   double min_dstart = 10000000.0;
 
-  double max_dstart_squared = 0.0;
+  double Seconds() const {
+    return steps * SEC;
+  }
   
-  void UpdatePhysics(double s, bool verbose = false) {
+  void UpdatePhysics(bool verbose = false) {
     steps++;
-    // const double s = 1.0; //  1 / 10.0; // = 1.0 / 60.0;
     for (Object &obj : objects) {
       double rsquared = (obj.x_m * obj.x_m) + (obj.y_m * obj.y_m);
       double r = sqrt(rsquared);
@@ -94,26 +96,14 @@ struct Sim {
       // and then again, since we divide f_on_obj by r, we can
       // factor this out to the equivalent
       // fobj = (GRAVITATIONAL_CONSTANT * EARTH_MASS_KG * s / r * r);
-      double gx_mps = -GRAVITATIONAL_CONSTANT * EARTH_MASS_KG * s * obj.x_m / (r * rsquared);
-      double gy_mps = -GRAVITATIONAL_CONSTANT * EARTH_MASS_KG * s * obj.y_m / (r * rsquared);      
+      double gx_mps = -GRAVITATIONAL_CONSTANT * EARTH_MASS_KG * SEC * obj.x_m / (r * rsquared);
+      double gy_mps = -GRAVITATIONAL_CONSTANT * EARTH_MASS_KG * SEC * obj.y_m / (r * rsquared);      
 
-      obj.x_m += obj.dx_mps * s;
-      obj.y_m += obj.dy_mps * s;
+      obj.x_m += obj.dx_mps * SEC;
+      obj.y_m += obj.dy_mps * SEC;
 
       obj.dx_mps += gx_mps;
       obj.dy_mps += gy_mps;
-
-      // XXX
-      {
-        // Check if it has returned (but not instantly)
-        double dx = (obj.x_m - START_X);
-        double dy = (obj.y_m - START_Y);
-        double dstart_squared = (dx * dx) + (dy * dy);
-        if (dstart_squared < max_dstart_squared) {
-        } else {
-          max_dstart_squared = dstart_squared;
-        }
-      }
       
       if (verbose) {
         double dx = (obj.x_m - START_X);
@@ -122,10 +112,10 @@ struct Sim {
         if (steps > 10000) {
           min_dstart = std::min(dstart, min_dstart);
         }
-        printf("%lld. obj %.3f %.3f  d %.3f %.3f  to start: %.4f (%.4f - %.4f)\n",
+        printf("%lld. obj %.3f %.3f  d %.3f %.3f  to start: %.4f (min %.4f)\n",
                steps, 
                obj.x_m, obj.y_m, obj.dx_mps, obj.dy_mps,
-               dstart, min_dstart, sqrt(max_dstart_squared));
+               dstart, min_dstart);
       }
     }
   }
@@ -136,6 +126,12 @@ struct Sim {
 // within the constraints of:
 //  - the orbit has to be elliptical (not escaping)
 //  - the path should not intersect earth
+//
+// Turns out that this has a pretty easy solution after all, since the
+// shape (and thus length) of the orbit seems to only depend on the
+// initial speed and position; the angle just changes the angle of the
+// ellipse's axis. So throwing tangent to earth close to the escape
+// velocity maximizes the time.
 using OrbitOptimizer = Optimizer<0, 2, double>;
 
 // Returns negative time; positive return values represent infeasible
@@ -155,8 +151,10 @@ static OrbitOptimizer::return_type OptimizeMe(
     return make_pair(LARGE_TIME + (speed - EARTH_ESCAPE_SPEED),
                      nullopt);
 
+  constexpr int STEPS_PER_SECOND = 10;
+  
   // Then, simulate the orbit.
-  Sim sim;
+  Sim<1.0 / STEPS_PER_SECOND>  sim;
   {
     Object obj;
     obj.dx_mps = dx;
@@ -165,21 +163,15 @@ static OrbitOptimizer::return_type OptimizeMe(
     obj.y_m = START_Y;
     sim.objects.push_back(obj);
   }
-    
-  // this should be larger than the typical distance traveled
-  // in a time step.
-  [[maybe_unused]]
-  constexpr double DIST_RETURN_TO_START = 2000.0;
 
-  constexpr int STEPS_PER_SECOND = 10;
-      
   constexpr int MAX_ITERS = 3600 * 24 * 7 * STEPS_PER_SECOND;
-  [[maybe_unused]]
-  bool was_outside = false;
   double max_dstart_squared = 0.0;
   for (int i = 0; i < MAX_ITERS; i++) {
     const Object &obj = sim.objects[0];
-    // Always check if it has intersected earth.
+    // Always check if it has intersected earth. Note that even if it
+    // doesn't intersect on the outward trajectory, it may intersect
+    // on the inward. So this isn't really correct. But I decided that
+    // the optimal angle would be tangent to Earth, anyway.
     double rsquared = (obj.x_m * obj.x_m) + (obj.y_m * obj.y_m);
     if (rsquared < (EARTH_RADIUS_M * EARTH_RADIUS_M)) {
       // infeasible, but better if we go longer before colliding
@@ -197,23 +189,13 @@ static OrbitOptimizer::return_type OptimizeMe(
       max_dstart_squared = dstart_squared;
     }
 
-#if 0
-    if (dstart_squared <= (DIST_RETURN_TO_START * DIST_RETURN_TO_START)) {
-      if (was_outside) {
-        return make_pair(-1.0 * i, make_optional((double)i));
-      }
-    } else {
-      was_outside = true;
-    }
-#endif
-
-    sim.UpdatePhysics(1.0 / STEPS_PER_SECOND, false);
+    sim.UpdatePhysics(false);
   }
 
   // Too many iters. This should probably not happen, as we
   // exclude escape orbits, but the simulation is also not exact.
   // Not sure what we can return here?
-  return make_pair(9999999999999.0, nullopt); // OrbitOptimizer::INFEASIBLE;
+  return make_pair(9999999999999.0, nullopt);
 }
 
 static void Solve() {
@@ -260,36 +242,12 @@ static void Solve() {
 }
 
 struct UI {
-  UI() : physics_per(1.0), drawinfo_per(5.0) {
+  UI() : physics_per(1.0), timing_per(5.0) {
     Reset();
   }
 
   void Reset() {
     sim.objects.clear();
-
-    #if 0
-    {
-      /* orbit! */
-      Object saw;
-      saw.mass_kg = 5.0;
-      // supposedly earth's escape velocity is 11.2km, so
-      // this is in the right ballpark...
-      saw.dx_mps = 10000.0;
-      saw.dy_mps = 0.0;
-      saw.x_m = 0.0;
-      saw.y_m = EARTH_RADIUS_M + 1.5;
-      sim.objects.push_back(saw);
-    }
-    {
-      Object saw;
-      saw.mass_kg = 5.0;
-      saw.dx_mps = 9800.0;
-      saw.dy_mps = 200.0;
-      saw.x_m = 0.0;
-      saw.y_m = EARTH_RADIUS_M + 1.5;
-      sim.objects.push_back(saw);
-    }
-    #endif
 
     // Basically, only the speed and initial position matter here;
     // differences in the angle just change the angle of the ellipse
@@ -329,7 +287,7 @@ struct UI {
   
   double scrollx = 0, scrolly = 0;
 
-  Sim sim;
+  Sim<0.01> sim;
   std::vector<std::tuple<double, double, uint32>> points;
   
   void SetScroll(double sx, double sy) {
@@ -383,8 +341,8 @@ struct UI {
     }
   }
 
-  Periodically drawinfo_per;
-  double total_draw = 0.0;
+  Periodically timing_per;
+  double total_draw = 0.0, total_sim = 0.0;
   int num_draws = 0;
   void Draw() {
     Timer draw_timer;
@@ -393,18 +351,24 @@ struct UI {
 
     total_draw += draw_timer.Seconds();
     num_draws++;
-    if (drawinfo_per.ShouldRun()) {
-      printf("%d draws. Average draw time %.1fms\n",
-             num_draws, (total_draw * 1000.0) / num_draws);
-    }
   }
 
   void Loop() {
     Periodically makepoint_per(5.0);
+    Timer run_timer;
     for (;;) {
 
+      if (timing_per.ShouldRun()) {
+        double run_s = run_timer.Seconds();
+        printf("%d draws (avg %.1fms). %lld steps, (%.2f/sec, %.3fs/s)\n",
+               num_draws, (total_draw * 1000.0) / num_draws,
+               sim.steps,
+               sim.steps / run_s,
+               sim.Seconds() / run_s);
+      }
+      
       for (int i = 0; i < 1000; i++)
-        sim.UpdatePhysics(0.01, physics_per.ShouldRun());
+        sim.UpdatePhysics(physics_per.ShouldRun());
       ui_dirty = true;
 
       if (makepoint_per.ShouldRun()) {
@@ -471,34 +435,9 @@ struct UI {
           } else if (e->button == SDL_BUTTON_WHEELUP) {
             zoom_mpp /= 1.1;
             ui_dirty = true;
-#if 0
-            auto [fx, fy] = GetNormalizedPos(mousex, mousey);
-            
-            // scroll up = zoom in
-            if (current_zoom > 0) {
-              current_zoom--;
-              ui_dirty = true;
-            }
-            printf("Old f %.2f,%.2f now zoom %d\n", fx, fy, current_zoom);
-
-            auto [sx, sy] = GetScrollToNormalized(mousex, mousey, fx, fy);
-            SetScroll(sx, sy);
-#endif
           } else if (e->button == SDL_BUTTON_WHEELDOWN) {
             zoom_mpp *= 1.1;
             ui_dirty = true;
-#if 0
-            auto [fx, fy] = GetNormalizedPos(mousex, mousey);
-            if (current_zoom < mipmaps.size() - 1) {
-              current_zoom++;
-              ui_dirty = true;
-            }
-
-            printf("Old f %.2f,%.2f now zoom %d\n", fx, fy, current_zoom);
-
-            auto [sx, sy] = GetScrollToNormalized(mousex, mousey, fx, fy);
-            SetScroll(sx, sy);
-#endif
           }
 
           break;

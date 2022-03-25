@@ -34,6 +34,10 @@ static SDL_Cursor *cursor_arrow = nullptr, *cursor_bucket = nullptr;
 static SDL_Cursor *cursor_hand = nullptr, *cursor_hand_closed = nullptr;
 static SDL_Cursor *cursor_eraser = nullptr;
 
+static std::mutex stats_mutex;
+static int64 total_success = 0;
+static int64 total_wrong = 0;
+
 // First image is the full resolution (64k x 64k) and each
 // successive one is one quarter size (half on each dimension).
 static std::vector<Image64RGBA *> mipmaps;
@@ -56,6 +60,8 @@ static void ReadRaw(int octet_c, Image64RGBA *huge) {
   CHECK(pings.size() == 256 * 256 * 256) << "Incomplete/bad file "
                                          << filename;
 
+  int64 success = 0;
+  int64 wrong = 0;
   for (int a = 0; a < 256; a++) {
     for (int b = 0; b < 256; b++) {
       for (int d = 0; d < 256; d++) {
@@ -67,14 +73,26 @@ static void ReadRaw(int octet_c, Image64RGBA *huge) {
           
         const int64 pos_in_file = (a << 16) | (b << 8) | d;
         const uint8_t b = pings[pos_in_file];
-        const uint32_t color = (b == TIMEOUT || b == WRONG_DATA) ?
-          0x000000FF : 0xFFFFFFFF;
+
+        if (b == WRONG_DATA) wrong++;
+        const bool ok = !(b == TIMEOUT || b == WRONG_DATA);
+        if (ok) success++;
+        const uint32_t color = ok ? 0xFFFFFFFF : 0x000000FF;
         huge->SetPixel32(x64, y64, color);
       }
     }
   }
 
+  {
+    std::unique_lock<std::mutex> ul(stats_mutex);
+    total_success += success;
+    total_wrong += wrong;
+  }
+  
   printf(".");
+
+  
+
   /*
   {
     std::unique_lock<std::mutex> ul(screen_mutex);
@@ -107,6 +125,13 @@ static void Load() {
 
   // mipmaps[5]->Save("mipmap5.png");
   printf("All loaded in %.1fs\n", load_timer.Seconds());
+  const int64_t ip_addresses = 0x100000000LL;
+  printf("%lld / %lld = %.6f%% successful\n",
+         total_success, ip_addresses,
+         (100.0 * total_success) / (double)ip_addresses);
+  printf("%lld / %lld = %.6f%% wrong\n",
+         total_wrong, ip_addresses,
+         (100.0 * total_wrong) / (double)ip_addresses);
 }
 
 // Blit a rectangle from an Image64 to the screen.
