@@ -111,7 +111,7 @@ struct TokenBucket {
 	Refill();
 	return tokens;
   }
-  
+
 private:
   void Refill() {
 	// Refill bucket based on elapsed time
@@ -311,7 +311,7 @@ static constexpr std::array ALL_HOSTS = {
   MakeHost(78, 24, 199, 9),  // seb.lt
   // US: Alaska
   MakeHost(199, 165, 82, 216),  // www.gi.alaska.edu
-  // US: Hwaii
+  // US: Hawaii
   MakeHost(104, 199, 126, 30),  // hawaiidt.com
   // Poland
   MakeHost(212, 77, 98, 9),  // wp.pl
@@ -387,7 +387,7 @@ struct Hosts {
 	for (Host &host : hosts) {
 	  if (host.ip == ip) {
 		host.recv++;
-		host.reliability.Add(1.0);		
+		host.reliability.Add(1.0);
 		host.latency_sec.Add(sec);
 		return;
 	  }
@@ -434,7 +434,7 @@ struct Hosts {
 
 	return hosts[best_idx];
   }
-  
+
  private:
   std::mutex m;
   std::vector<Host> hosts;
@@ -692,6 +692,7 @@ struct Block {
   // Represents a ping that we think is still waiting to come back.
   struct OutstandingPing {
     Timer sent_time;
+    // So that we can update stats about the host.
     uint32_t host = 0;
     // TODO figure this out
     int64_t version = 0;
@@ -878,7 +879,7 @@ struct Processor {
 				   (int)round(1000.0 * host.latency_sec.Value()));
 	}
   }
-				   
+
   void ProcessThread() {
     nbdkit_debug("process thread started\n");
     // ArcFour rc("process");
@@ -888,7 +889,7 @@ struct Processor {
 
 	Periodically per_status(0.5);
 	Periodically per_host_stats(3);
-	
+
 	// Create IPV4 ICMP socket which we use for reading and writing.
 	#if FAKE_NET
 	const int fd4 = 5;
@@ -924,7 +925,7 @@ struct Processor {
 	  } else if (per_host_stats.ShouldRun()) {
 		HostStats();
 	  }
-	  
+
 	  // reset these each time.
 	  fd_set read_fds;
 	  fd_set write_fds;

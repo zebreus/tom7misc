@@ -213,7 +213,7 @@ static std::pair<int, int> RunOne(uint64 run_seed) {
   for (int i = 0; i < NUM_BYTES; i++) encode.push_back(rc.Byte());
 
   Timer one_timer;
-  MovieMaker mm("solutions.txt", "tetris.nes", mm_seed);
+  MovieMaker mm("best-solutions.txt", "tetris.nes", mm_seed);
 
   CPrintf("Encode [" ANSI_YELLOW "%s" ANSI_RESET "] "
           "with seed [" ANSI_WHITE "%llx" ANSI_RESET "]\n",

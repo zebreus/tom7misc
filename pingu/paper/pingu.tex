@@ -355,7 +355,7 @@ a nice poster, though and are in Figure~\ref{fig:internet}.
 9.18\% of addresses responded successfully within 4 seconds. Only
 4,529 hosts (0.000105\%) replied with the wrong data.
 
-\subsection{Harder Drive: Pingu}
+\subsection{Harder Drive: Pingu} \label{sec:pingu}
 
 I then built a block device, called {\tt pingu}\footnote{Named for the
   classic stop-motion penguin of the same name. Also as in ``i ping u
@@ -437,7 +437,7 @@ the status of each block and statistics on each host, as well as
 read/write activity. It is fun to watch the process of formatting
 it for FAT12 and reading/writing files.
 
-\subsubsection{Results.}
+\subsubsection{Results}
 
 Benchmarking approach.
 
@@ -593,16 +593,22 @@ Ideally we would be able to select a sequence of pieces that we want,
 and then force Tetris to give us those pieces. Since the LFSR update
 runs every frame, we can use a different number of frames while
 placing a piece, and get a different LFSR state at the point {\tt
-  NextPiece} is called. The LFSR is ``pretty good,'' so we
-can easily cause the first roll to be whatever value we want by
-just waiting. In the worst possible case we need to pause 98 frames
-before seeing all 8 rolls (Figure~\ref{fig:rollhisto}), which is
-1.5 seconds at the NES frame rate.
+  NextPiece} is called. The LFSR is ``pretty good,'' so we can easily
+cause the first roll to be whatever value we want by just waiting. In
+the worst possible case we need to pause 98 additional frames before
+seeing all 8 rolls (Figure~\ref{fig:rollhisto}), which is 1.5 seconds
+at the NES frame rate.
 
 \begin{figure}
   \includegraphics[width=\linewidth]{rollhisto}
   \caption {
-    XXX caption me
+    The maximum possible ``drought'' for the LFSR. This is
+    the number of iterations before we see all possible rolls (all
+    eight possible values for the low three bits), histogrammed
+    over all meaningful start states (LFSR state and drop count).
+    The minimal value is 8 (obviously, by pigeonhole) and rarely
+    it can be as high as 99, but most of the time we have seen
+    all rolls by a few dozen iterations.
     } \label{fig:rollhisto}
 \end{figure}
 
@@ -642,13 +648,15 @@ By manipulating the RNG we will be able to achieve any sequence of
 pieces, except if that sequence contains repeats. There is a similar
 consideration for the first two pieces of the game, which are
 generated on the same frame (current and next piece) and so only
-certain combinations are possible. To simplify this issue
-away, we begin by always playing the same starting sequence:
-\squarepiece 0 \lleft 3 \jright 6 \lright 2 \jleft 7. This means to
-drop a \squarepiece\ in column 0 (the leftmost column), \lleft\ in
-column 3 (the left edge of the piece goes in column 3), etc. This
-sequence clears two lines, leaving the board empty, with the only
-constraint now being that we cannot start with a \jleft\ piece.
+certain combinations are possible. To simplify this issue away, we
+begin by always playing the same starting sequence: \squarepiece 0
+\lleft 3 \jright 6 \lright 2 \jleft 7. This means to drop a
+\squarepiece\ in column 0 (the leftmost column), \lleft\ in column 3
+(the left edge of the piece goes in column 3), etc. This sequence
+clears two lines, leaving the board empty, with the only constraint
+now being that we cannot start with a \jleft\ piece. In fact we will
+always start with a \shoriz\ piece in the leftmost column to make
+use of the modular plans described in the next section.
 
 \subsubsection{Planning}
 
@@ -663,7 +671,7 @@ only be placed on top of existing blocks (Figure~\ref{fig:tetrisdot}).
   \caption{
     A screenshot of NES Tetris after playing for 2 minutes and 46
     seconds, encoding the sequence {\tt 0, 0, 0, 0, 64, 0, 0, 0}.
-    Floating blocks like this are very difficult to create. Try
+    Floating blocks like this are very difficult to make. Try
     creating a position like this, even by selecting your favorite
     piece at each step!
   } \label{fig:tetrisdot}
@@ -681,10 +689,14 @@ moves that takes a starting configuration like this, encodes the byte
 configuration with the \svert\ piece moved up one line. These plans
 are also nontrivial to construct, but we can take our time to solve
 each byte offline. Then, because they are compositional, we can assemble
-them to create any sequence of bytes at runtime.
+them to create any sequence of bytes at runtime.\footnote{
+  As one final complication, when we concatenate two of these sequences
+  we still need to avoid repeat pieces. We do this by only allowing a
+  sequence to end with the \shoriz\ or \ihoriz\ pieces, and not
+  allowing either of those to start sequences.}
 
 \begin{figure}
-  \includegraphics[width=\linewidth]{encodingscheme}
+  \includegraphics[width=0.6 \linewidth]{encodingscheme}
   \caption{
     The start state as we encode each byte. The \svert\ piece in the
     left column is known to be present, but we do not know the state
@@ -723,18 +735,21 @@ any leftover stuff).\!\footnote{Details here are in {\tt encode.cc}.
   much; no doubt it can be improved!} This finds solutions for all
 bytes easily; to find really good short sequences we just run it for
 hundreds of hours. This search uses my own implementation of Tetris,
-which can be simplified because e.g. we only drop pieces straight down.
+which can be simplified because e.g.~we only drop pieces straight down.
 It is orders of magnitude faster than emulating the NES Tetris ROM.
 
 With this setup, the best solutions I know of for each byte (as of
 publication) are as follows:
+
+% XXX a rare example of one that does not look like Hyrule.
+% the exception proves the Hyrule
 
 \input{solutions}
 
 An earlier version of this table did not fit neatly into the column.
 Rather than fiddle with \LaTeX\ layout, I instead expended significant
 CPU time to further optimize the problematic rows until they would
-be short enough to fit!
+be short enough to fit! This is the {\em true spirit of typography}.
 
 \subsubsection{Executing}
 
@@ -744,17 +759,90 @@ emulator (my version of FCEUX\cite{fceux} which I've heavily modified
 for e.g.~thread-safety) which allows us to save and restore states,
 inspect RAM, and execute frames much faster than real time.
 
+We always input a fixed sequence of button presses to the emulator to
+begin a game with the right starting pieces. We then starts executing
+the plan, which consists of the fixed starting sequence (puts us in an
+empty board with \svert\ in the leftmost column) and then the
+concatenation of the plans for the bytes we want to encode. All that
+is left is to place pieces according to this plan, while ensuring that
+we get the desired sequence of ``random'' piece drops.
 
+At the start of each piece, we save the emulator state, and then
+navigate it into the correct column. Holding down on the D-pad causes
+the piece to drop as fast as possible. When it lands, if we got the
+correct piece by chance, we just continue. Otherwise, we inspect the
+state of the random number generator (right {\em before} the piece
+dropped), and then simulate it using our reverse engineered version.
+We tabulate the piece that would drop if we were to take one
+additional frame to get here, then two, then three, and so on up to
+some fixed horizon.\footnote{The longest possible drought before we
+  see the desired piece (if we missed it on the first attempt) is 98
+  frames (Figure~\ref{fig:rollhisto}). But it is helpful to build in
+  significant redundancy, since there are some unusual situations
+  where we cannot drop exactly on a desired frame, and must
+  overshoot.} We can then restore the saved state and drop the piece
+more slowly (not pressing down on the controller), delaying for the
+correct number of frames to get the piece that we want. We can usually
+get this exactly right on the first try, but if not, we try again with
+slightly longer or shorter delays until successful. It is also
+possible to pause the game~\cite{murphy2013first} if the delay needs
+to be longer than the natural descent of the piece, which can happen
+when the game speeds up at later levels and the pile is high.
 
 \subsection{Harder Drive: Tetru}
 
+We can now build a hard drive with Tetris. It's called {\tt tetru},
+following the convention from Section~\ref{sec:pingu}.\footnote{Also
+  because Tetris is Russian and {\tt .ru} is the TLD for Russia.
+  Classic retcon which I just nailed.} The setup is straightforward:
+The block size is 8 bytes, and each block consists of a NES Tetris
+emulator. When we first write a block, we allocate the emulator, load
+the Tetris ROM, and use the procedure above to supply inputs to the
+game. The driver is multithreaded so 16 concurrent Tetris games can be
+in progress, although the block size is so small that we need several
+serial passes to write one ``normal'' 512-byte sector. To read a
+block, we just inspect the 200 bytes of memory at {\tt 0x400}.
+The byte {\tt 0xEF} is an empty cell ({\tt 0}) and any other byte is some
+part of a tetromino ({\tt 1}).
 
+If we re-write a cell, we reset the emulator and start again. It might
+be possible to clear the playfield by playing the game (for example it
+would be straightforward to precompute a plan that clears any bit
+pattern on a single line). But as the game gets faster and faster we
+may be unable to drop pieces in the correct locations, so it is safer
+to reset. This is something the player can do anyway, so there is no
+loss of authenticity.
 
+Finally, as an optimization, we also cache the input sequence that we
+compute for the 8 bytes the first time we do it; if we write that same
+pattern again then we can just replay the inputs rather than search
+for them a second time.
+
+Of course, there would be other ways to make this faster, too. For
+example, just the pointer to the emulator object for each block is 64
+bits, or 8 bytes itself.
+
+To create a minimal drive supporting a FAT12 filesystem, we need
+$51,200 \div 8 = 6,400$ emulators. This is not too bad, with the
+biggest challenge being to fit them all on the screen for some kind of
+visualization. XXX screenshot
+
+\subsubsection{Results}
+
+In order to benchmark we need some file to write to the filesystem. A
+natural choice is the NES Tetris ROM, which is 49,168 bytes. Though the
+device can store 51,200 bytes, there is significant overhead from the
+filesystem header, directory entry, and so on, and so we cannot store
+this file raw. 
 
 \section{Cue the coronavirus} \label{sec:cue}
 
 Sorry to remind you about the worldwide pandemic killing thousands of
 people every day, but
+
+\subsubsection{Results}
+
+\section{Other hard drives we really didn't need}
 
 \section{Conclusion}
 

@@ -68,11 +68,11 @@ void AllFirstRolls() {
     outer_state = FastNextRNG(outer_state);
   }
 
-  /*
-  for (int i = 0; i < (int)counts.size(); i++) {
-    printf("%d: %d\n", i, counts[i]);
-  }
 
+  for (int i = 0; i < (int)counts.size(); i++) {
+    printf("%d: %d\n", i, 1 + counts[i]);
+  }
+  /*
   printf("max_count: %d\n", max_count);
   */
 
@@ -86,17 +86,17 @@ void AllFirstRolls() {
     double height = std::max(0.01, 24.0 * f);
     StringAppendF(&svg,
                   "<rect x=\"%.3f\" y=\"%.3f\" "
-                  "width=\"0.90\" height=\"%.3f\" />\n",
+                  "width=\"0.80\" height=\"%.3f\" />\n",
                   (double)b, 24 - height, height);
   }
 
   for (int b = 0; b <= BUCKETS; b++) {
-    if (b % 5 == 0) {
+    if ((b + 1) % 5 == 0 && (b + 1) < 100) {
       StringAppendF(
           &svg,
           "%s\n",
           TextSVG::Text(b, 24.2 + 3.2, "sans-serif", 3.2,
-                        {{"#000", StringPrintf("%d", b)}}).c_str());
+                        {{"#000", StringPrintf("%d", b + 1)}}).c_str());
     }
   }
   

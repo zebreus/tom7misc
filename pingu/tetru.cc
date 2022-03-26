@@ -29,6 +29,7 @@
 
 #include "tetris.h"
 #include "nes-tetris.h"
+#include "tetris-emu.h"
 #include "movie-maker.h"
 #include "encoding.h"
 #include "viz/tetru-viz.h"

@@ -869,85 +869,88 @@ static void EndlessImprove() {
   // Skip if this many moves or fewer
   static constexpr int ABS_TO_SKIP = 17;
 
-  ParallelFan(MAX_PARALLELISM,
-              [&m, &working, &improved, &skipping, &best,
-               &moves_saved, random_offset,
-               &PrintTable](int thread_idx) {
-                ArcFour rc(StringPrintf("%d.th.%lld", thread_idx, time(nullptr)));
+  ParallelFan(
+      MAX_PARALLELISM,
+      [&m, &working, &improved, &skipping, &best,
+       &moves_saved, random_offset,
+       &PrintTable](int thread_idx) {
+        ArcFour rc(StringPrintf("%d.th.%lld", thread_idx, time(nullptr)));
 
-                int next_start = (thread_idx + rc.Byte()) & 0xFF;
-                for (;;) {
-                  const auto [target, cur_best] = [&]() -> std::pair<int, int> {
-                    MutexLock ml(&m);
+       int next_start = (thread_idx + rc.Byte()) & 0xFF;
+       for (;;) {
+         const auto [target, cur_best] = [&]() -> std::pair<int, int> {
+           MutexLock ml(&m);
 
-                    // Hack: This one long solution is messing up my LaTeX.
-                    // Always work on it!
-                    if (thread_idx <= 1) {
-                      working[0xFF]++;
-                      return make_pair(0x84, (int)best[0xFF].size());
-                    }
-                    
-                    for (int off = 0; off < 256; off++) {
-                      int idx = (next_start + off) & 0xFF;
+           // Hack: This one long solution is messing up my LaTeX.
+           // Always work on it!
+           if (thread_idx == 0) {
+             working[0xFF]++;
+             return make_pair(0x84, (int)best[0xFF].size());
+           }
 
-                      const int cur_best = (int)best[idx].size();
-                      if (cur_best != 0 && cur_best <= ABS_TO_SKIP) {
-                        skipping[idx] = true;
-                        continue;
-                      }
+           for (int off = 0; off < 256; off++) {
+             int idx = (next_start + off) & 0xFF;
 
-                      // Otherwise, ok!
-                      working[idx]++;
-                      return make_pair(idx, cur_best);
-                    }
+             const int cur_best = (int)best[idx].size();
+             if (cur_best != 0 && cur_best <= ABS_TO_SKIP) {
+               skipping[idx] = true;
+               continue;
+             }
 
-                    // If we don't find any, this is not great, but
-                    // optimize zero due to its importance.
-                    working[0]++;
-                    return make_pair(0, (int)best[0].size());
-                  }();
+             // Otherwise, ok!
+             working[idx]++;
+             return make_pair(idx, cur_best);
+           }
 
-                PrintTable();
+           // If we don't find any, this is not great, but
+           // optimize zero due to its importance.
+           working[0]++;
+           return make_pair(0, (int)best[0].size());
+         }();
 
-                // even ok if this is the current target.
-                const int source = rc.Byte();
-                std::vector<Move> start_movie;
-                {
-                  MutexLock ml(&m);
-                  // Half the time, take some existing prefix.
-                  const auto &other = best[source];
-                  if (other.size() > 0 && (rc.Byte() & 1)) {
-                    int count = RandTo(&rc, std::max(1, (int)(best[source].size() * 0.25)));
-                    for (int i = 0; i < count && i < (int)other.size(); i++) {
-                      start_movie.push_back(other[i]);
-                    }
-                  }
-                }
-                std::function<void(int)> Phase1Callback =
-                  [&m, &working, &PrintTable, target](int phase1) {
-                    // WriteWithLock(&m, &best[idx], phase1);
-                    // WriteWithLock(&m, &working[target], 2);
-                    PrintTable();
-                  };
-                Timer timer;
-                std::vector<Move> movie = Encode(target, Phase1Callback,
-                                                 cur_best, start_movie, false);
-                 {
-                   MutexLock ml(&m);
-                   working[target]--;
-                   const int new_size = (int)movie.size();
-                   if (!movie.empty() && new_size < (int)best[target].size()) {
-                     improved[target] = true;
-                     moves_saved += (best[target].size() - new_size);
-                     best[target] = movie;
-                     AppendSolution(target, movie, timer.Seconds());
-                   }
-                 }
-                 PrintTable();
+       PrintTable();
 
-                 next_start = (target + 1) & 0xFF;
-                }
-              });
+       // even ok if this is the current target.
+       const int source = rc.Byte();
+       std::vector<Move> start_movie;
+       {
+         MutexLock ml(&m);
+         // Half the time, take some existing prefix.
+         const auto &other = best[source];
+         if (other.size() > 0 && (rc.Byte() & 1)) {
+           int count =
+             RandTo(&rc,
+                    std::max(1, (int)(best[source].size() * 0.25)));
+           for (int i = 0; i < count && i < (int)other.size(); i++) {
+             start_movie.push_back(other[i]);
+           }
+         }
+       }
+       std::function<void(int)> Phase1Callback =
+         [&m, &working, &PrintTable, target](int phase1) {
+           // WriteWithLock(&m, &best[idx], phase1);
+           // WriteWithLock(&m, &working[target], 2);
+           PrintTable();
+         };
+       Timer timer;
+       std::vector<Move> movie = Encode(target, Phase1Callback,
+                                        cur_best, start_movie, false);
+        {
+          MutexLock ml(&m);
+          working[target]--;
+          const int new_size = (int)movie.size();
+          if (!movie.empty() && new_size < (int)best[target].size()) {
+            improved[target] = true;
+            moves_saved += (best[target].size() - new_size);
+            best[target] = movie;
+            AppendSolution(target, movie, timer.Seconds());
+          }
+        }
+        PrintTable();
+
+        next_start = (target + 1) & 0xFF;
+       }
+     });
 
 
   // XXX put in status

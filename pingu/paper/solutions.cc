@@ -45,7 +45,7 @@ static const char *ShapeTex(Shape s) {
 }
 
 int main(int argc, char **argv) {
-  static constexpr const char *solfile = "../tetris/solutions.txt";
+  static constexpr const char *solfile = "../tetris/best-solutions.txt";
   
   std::map<uint8_t, std::vector<Move>> sols =
     Encoding::ParseSolutions(solfile);

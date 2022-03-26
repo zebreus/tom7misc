@@ -21,9 +21,16 @@ struct Encoding {
   static constexpr uint16_t STDPOS2 = 0b1100000000;
   static constexpr uint16_t STDPOS3 = 0b0100000000;
 
+  // Note that the solution file produced by encode.exe includes
+  // each improved version (and runtimes), but we only keep the
+  // best solution for each byte here.
   static std::map<uint8_t, std::vector<Move>>
   ParseSolutions(const std::string &filename);
 
+  static void SaveSolutions(
+      const std::string &filename,
+      const std::map<uint8_t, std::vector<Move>> &sols);
+  
   static std::string GraphicalMoveString(Move m);
 
   static std::string MovieString(const std::vector<Move> &moves);

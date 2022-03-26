@@ -1,4 +1,10 @@
 
+// Takes the best solutions from solutions.txt and verifies that
+// they are correct; writes best-solutions.txt and play.png.
+//
+// With an argument, executes just one of the solutions and
+// displays the steps in ascii.
+
 #include <set>
 #include <map>
 #include <string>
@@ -123,6 +129,9 @@ int main(int argc, char **argv) {
     }
 
     CHECK(sols.size() == 256) << sols.size();
+
+    Encoding::SaveSolutions("best-solutions.txt", sols);
+    printf("Wrote best-solutions.txt\n");
   }
 
   printf("OK!\n");

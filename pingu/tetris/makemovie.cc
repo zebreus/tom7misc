@@ -27,7 +27,7 @@
 using namespace std;
 using uint8 = uint8_t;
 
-static constexpr const char *SOLFILE = "solutions.txt";
+static constexpr const char *SOLFILE = "best-solutions.txt";
 static constexpr const char *ROMFILE = "tetris.nes";
 
 // Save screenshot, cloning the const emulator and making a full step

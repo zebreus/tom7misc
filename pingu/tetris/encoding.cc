@@ -52,6 +52,22 @@ Encoding::ParseSolutions(const string &filename) {
   return ret;
 }
 
+void Encoding::SaveSolutions(
+    const std::string &filename,
+    const std::map<uint8_t, std::vector<Move>> &sols) {
+  FILE *f = fopen(filename.c_str(), "w");
+  CHECK(f != nullptr) << filename;
+  for (const auto &[idx, movie] : sols) {
+    // no source for timing info here, so we just write the sentinel
+    // '!', which is ignored above (it wants to find the space before
+    // it, though).
+    fprintf(f, "%02x %s !\n", idx,
+            MovieString(movie).c_str());
+  }
+  fclose(f);
+}
+
+
 string Encoding::GraphicalMoveString(Move m) {
   const std::array<uint16_t, 4> mask = ShapeMaskInCol(m.shape, m.col);
   string ret;
