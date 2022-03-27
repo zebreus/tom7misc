@@ -7,11 +7,17 @@ fi
 
 set +x
 
+# Note: 65536 bytes (128 blocks) is too small for FAT16
+# 51200 works for FAT12, without a partition table
+# DEVICE_SIZE=51200
+# just big enough for tetris.nes
+DEVICE_SIZE=69120
+
 # TODO make this a command-line option
 # PLUGIN=compu
 # PLUGIN=memu
-# PLUGIN=tetru
-PLUGIN=pingu
+PLUGIN=tetru
+# PLUGIN=pingu
 MOUNTPOINT="/mnt/$PLUGIN"
 SOCKET="/tmp/nbdsocket.$PLUGIN"
 
@@ -19,7 +25,7 @@ SOCKET="/tmp/nbdsocket.$PLUGIN"
 modprobe nbd
 
 # clean up any existing
-umount "$MOUNTPOINT"
+umount --force "$MOUNTPOINT"
 mkdir -p "$MOUNTPOINT"
 nbd-client -d /dev/nbd0
 killall -9 "$PLUGIN-viz.exe"
@@ -32,13 +38,10 @@ if [ "$1" = "stop" ]; then
 	exit 0
 fi
 
-# Note: 65536 bytes (128 blocks) is too small for FAT16
-# 51200 works for FAT12, without a partition table
-
 # note that the argument to --run includes an escaped $unixsocket;
 # this is a nbdkit concept, not a bash variable.
 
-../../nbdkit/server/nbdkit --verbose -U "$SOCKET" "./$PLUGIN.so" 51200 --run "./mount.sh \$unixsocket $MOUNTPOINT" 2>&1 | "viz/$PLUGIN-viz.exe"
+../../nbdkit/server/nbdkit --verbose -U "$SOCKET" "./$PLUGIN.so" ${DEVICE_SIZE} --run "./mount.sh \$unixsocket $MOUNTPOINT" 2>&1 | "viz/$PLUGIN-viz.exe"
 
 # grep -v 'TVIZ\[r '
 # drop-in replacement with memory plugin:

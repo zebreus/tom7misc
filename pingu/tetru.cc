@@ -44,15 +44,22 @@ using int64 = int64_t;
 
 static constexpr int MAX_CONCURRENT_EMUS = 16;
 
-static constexpr const char *SOLFILE = "tetris/solutions.txt";
+static constexpr const char *SOLFILE = "tetris/best-solutions.txt";
 static constexpr const char *ROMFILE = "tetris/tetris.nes";
+
+// If true, restore a savestate with a previously encoded byte if
+// we write it again. This may be considered cheating.
+static constexpr bool USE_SAVES = false;
 
 // Real blocks are very small: Each one corresponds to one
 // Tetris game.
 //
-// 8 is very natural but this could probably be as high
-// as 14, given that our plans all work on a board of
-// depth 6 (and it might be possible to reduce that).
+// 8 is very natural but this could probably be higher. (I
+// tested with 10 and it works fine, but beyond that it
+// may need some additional help, as movie-maker gets
+// stuck. We could produce plans that work with a shorter
+// playfield (currently 6) and/or improve movie-maker's ability
+// to deal with tight play at the top of the board.)
 static constexpr int BLOCK_SIZE = 8;
 
 static string VecBytes(const std::vector<uint8> &v) {
@@ -76,8 +83,10 @@ struct CachingMovieMaker {
     std::unique_lock<std::mutex> ul(m);
     auto it = cache.find(pattern);
     if (it == cache.end()) {
+	  cache_misses++;
       return {};
     } else {
+	  cache_hits++;
       return {it->second};
     }
   }
@@ -88,7 +97,14 @@ struct CachingMovieMaker {
     cache[pattern] = row;
   }
 
+  void CacheStats() {
+	std::unique_lock<std::mutex> ul(m);
+	nbdkit_debug("TVIZ[c %ld %ld %ld]ZIVT",
+				 cache_hits, cache_misses, cache.size());
+  }
+  
   std::mutex m;
+  int64 cache_hits = 0, cache_misses = 0;
   std::unordered_map<vector<uint8_t>,
                      CacheRow,
                      Hashing<vector<uint8_t>>> cache;
@@ -122,11 +138,11 @@ struct Game {
     // Do we have it in cache?
     std::optional<CachingMovieMaker::CacheRow> orow =
       caching_movie_maker->GetCached(bytes);
+	caching_movie_maker->CacheStats();
     if (orow.has_value()) {
       static constexpr int CACHED_PIECES = 25;
 
-      // XXX cheating?
-      if (true) {
+      if (USE_SAVES) {
 		pr(seed, "load");
         emu->LoadUncompressed(orow.value().savestate);
       } else {
@@ -160,8 +176,11 @@ struct Game {
 	  pr(seed, VecBytes(rev_bytes));
 
       cache_row.movie = movie_maker->Play(rev_bytes, callbacks);
-      cache_row.savestate = movie_maker->GetEmu()->SaveUncompressed();
+	  if (USE_SAVES) {
+		cache_row.savestate = movie_maker->GetEmu()->SaveUncompressed();
+	  }
       caching_movie_maker->AddCached(bytes, cache_row);
+	  caching_movie_maker->CacheStats();
     }
   }
 
@@ -175,18 +194,16 @@ struct Game {
 struct ThreadLimiter {
 
   void Flush() {
-    {
-      std::unique_lock<std::mutex> ul(m);
-      const int old_epoch = epoch;
-      epoch++;
+	std::unique_lock<std::mutex> ul(m);
+	const int old_epoch = epoch;
+	epoch++;
 
-      cond.wait(ul, [this, old_epoch]{
-          for (int64 e : outstanding_writes)
-            if (e <= old_epoch)
-              return false;
-          return true;
-        });
-    }
+	cond.wait(ul, [this, old_epoch]{
+		for (int64 e : outstanding_writes)
+		  if (e <= old_epoch)
+			return false;
+		return true;
+	  });
   }
 
   void Write(std::unique_ptr<std::function<void()>> f) {
@@ -495,7 +512,7 @@ struct Blocks {
   }
 
   inline void Write(int block_idx, const uint8_t *buf, int start, int count) {
-    nbdkit_debug("Write %d[%d,%d] <- %p\n", block_idx, start, count, buf);
+    // nbdkit_debug("Write %d[%d,%d] <- %p\n", block_idx, start, count, buf);
     nbdkit_debug("TVIZ[w %d]ZIVT", block_idx);
     mem[block_idx]->Write(buf, start, count);
   }

@@ -21,11 +21,18 @@ using namespace std;
 // static constexpr int BLOCKWIDTH = 11;
 // static constexpr int BLOCKHEIGHT = 20;
 
+// For a standard drive with 51200/8 blocks.
+// static constexpr int BLOCKSW = 200;
+// static constexpr int BLOCKSH = 32;
 
-static constexpr int BLOCKSW = 200;
-static constexpr int BLOCKSH = 32;
+// For 69120-byte drive, which is barely able to store tetris.nes.
+// 69120/8 = 8640 = 240 * 36
+static constexpr int BLOCKSW = 240;
+static constexpr int BLOCKSH = 36;
+
 static constexpr int NUM_BLOCKS = BLOCKSW * BLOCKSH;
 
+// Size of a single block (tetris game).
 static constexpr int BLOCKWIDTH = 12;
 static constexpr int BLOCKHEIGHT = 22;
 
@@ -69,6 +76,13 @@ static int last_write = -1;
 static int last_processed = -1;
 
 [[maybe_unused]]
+static int cache_hits = 0;
+[[maybe_unused]]
+static int cache_misses = 0;
+[[maybe_unused]]
+static int cache_size = 0;
+
+[[maybe_unused]]
 static void BlitImage(const ImageRGBA &img, int xpos, int ypos) {
   // PERF should invest in fast blit of ImageRGBA to SDL screen
   for (int y = 0; y < img.Height(); y++) {
@@ -107,7 +121,7 @@ static void BlitImagePart(const ImageRGBA &img,
 }
 
 // Redraw from scratch to offscreen image.
-static void Redraw(ImageRGBA *img) {
+static void Redraw(ImageRGBA *img, double run_sec) {
   printf("Redraw!\n");
   img->Clear32(0x000000FF);
   for (int yblock = 0; yblock < BLOCKSH; yblock++) {
@@ -186,6 +200,25 @@ static void Redraw(ImageRGBA *img) {
       */
     }
   }
+
+  int yy = img->Height() - 20 * 2;
+  auto ShadowText = [img](int x, int y, const std::string &s) {
+	  for (int dx : {-2, 0, 2}) {
+		for (int dy : {-2, 0, 2}) {
+		  if (dx != 0 || dy != 0) {
+			img->BlendText2x32(x + dx, y + dy, 0x00000033, s);
+		  }
+		}
+	  }
+	  img->BlendText2x32(x, y, 0xFFFFFFAA, s);
+	};
+  ShadowText(2, yy, StringPrintf("Runtime: %.2f sec", run_sec));
+  yy += 20;
+  ShadowText(2, yy,
+			 StringPrintf("cache: %d entries, %d hits, %d misses (%.2f%%)",
+						  cache_size, cache_hits, cache_misses,
+						  (cache_hits * 100.0) / (cache_hits + cache_misses)));
+
 }
 
 static void Loop() {
@@ -197,9 +230,10 @@ static void Loop() {
   RE2 board_command("o ([0-9]+) ([0-9]+) ([0-9]+) ([a-z]*)");
   // id, seed, bytes
   RE2 op_command("p ([0-9]+) ([0-9]+) ([-0-9a-zA-Z]+)");
-
+  RE2 cache_command("c ([0-9]+) ([0-9]+) ([0-9]+)");
+  
   // initial display...
-  Redraw(&img);
+  Redraw(&img, 0.0);
   BlitImagePart(img, scrollx, scrolly, SCREENW, SCREENH, 0, 0);
   SDL_Flip(screen);
 
@@ -256,11 +290,16 @@ static void Loop() {
           block->board = BoardPic::ToPixels(encoded_board);
           CHECK(block->board.size() == 20 * 10);
         }
-      }
+      } else if (int h, m, s;
+				 RE2::FullMatch(cmd, cache_command, &h, &m, &s)) {
+		cache_hits = h;
+		cache_misses = m;
+		cache_size = s;
+	  }
 
       if (sec != last_redraw) {
         // PERF: Only sometimes...
-        Redraw(&img);
+        Redraw(&img, run_timer.Seconds());
 
         // XXX update scrollx
 

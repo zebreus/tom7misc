@@ -835,6 +835,23 @@ device can store 51,200 bytes, there is significant overhead from the
 filesystem header, directory entry, and so on, and so we cannot store
 this file raw. 
 
+\begin{lstlisting}
+runtime 26899 sec
+4609 cache entries, 3996 hits, 4708 misses, 45.91%
+
+Results for /mnt/tetru, file tetris/tetris.nes (49168 bytes):
+Writes: 49168 bytes in 19132.53s, 2.57 bytes/sec
+ (0 short writes)
+Read: 49168 bytes in 0.80s, 61430.56 bytes/sec
+ (0 short reads) (0 errors, accuracy: 100.000%)
+Finished 1 iters in 19133.49s.
+0.0001 iters/sec 5.14 bytes/sec overall
+
+real	318m54.336s
+user	0m0.015s
+sys	0m0.687s
+\end{lstlisting}
+
 \section{Cue the coronavirus} \label{sec:cue}
 
 Sorry to remind you about the worldwide pandemic killing thousands of
