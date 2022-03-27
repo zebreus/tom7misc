@@ -62,6 +62,10 @@ movie-maker_test.exe : movie-maker_test.o movie-maker.o encoding.o $(CCLIB_OBJEC
 	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
+size.exe : size.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	strip $@
+
 clean :
 	rm -f *.o $(FCEULIB_OBJECTS) $(CCLIB_OBJECTS) core
 

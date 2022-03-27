@@ -41,6 +41,12 @@
 \interfootnotelinepenalty=0
 \setlength{\footnotesep}{2em}
 
+% \startsquarepar and \stopsquarepar allows justifying the
+% whole paragraph, including its last line
+\newcommand{\startsquarepar}{%
+    \par\begingroup \parfillskip 0pt \relax}
+\newcommand{\stopsquarepar}{%
+    \par\endgroup}
 
 % Style for code listings.
 \lstdefinestyle{codestyle}{
@@ -112,6 +118,8 @@ press, Verlag-Verlag volume no.~0x40-2A. 6.6e-11 $N m^2kg^{-2}$
 
 
 \section{Introduction}
+
+% TODO link source code
 
 \subsection{Chainsaws}
 
@@ -208,6 +216,8 @@ directly back, like an echo.
 
 \subsection{ICMP Echo}
 
+Sorry to remind you about the internet, which ... but,
+
 Back when the internet was a collaborative and basically nice place,
 the Internet Control Message Protocol (ICMP) was proposed as a way for
 network nodes to help each other out. This protocol allows sending
@@ -252,8 +262,8 @@ $0.15 sec$ = 833 Megabytes.
 In practice this proves to be much more difficult. Alas, even the
 apparently harmless \icmpecho\ has been regularly abused for
 denial-of-service attacks, such as the ``Ping of
-Death''\cite{wikipediapingofdeath} and ``Smurf
-attack''\cite{wikipediasmurfattack}. Thus, hosts almost always have
+Death''~\cite{wikipediapingofdeath} and ``Smurf
+attack''~\cite{wikipediasmurfattack}. Thus, hosts almost always have
 hard limits that we have to work within. We will face the following
 difficulties that cause us to fall far short of the ideal above:
 
@@ -307,7 +317,7 @@ sharing the connection get extremely bad performance, a no-no for the
 Work-from-Home video call life of the pandemic. This could be because
 my internet provider throttles ICMP; it could also be that some
 hardware or software in the path is not able to handle thousands of
-different IP addresses each second (e.g. there may be fixed-size NAT
+different IP addresses each second (e.g.~there may be fixed-size NAT
 tables). I tried using a VPN, but this had a much lower success rate;
 the VPN egress point probably throttles ICMP to prevent DDoS attacks,
 and it's possible that many internet gateways also simply block ICMP
@@ -317,13 +327,13 @@ ended up taking months. Eventually I rented time on several machines
 in different data centers to parallelize the process; this also
 produced a higher ping response rate than my home network, so I redid
 all of the already-completed sections for uniformity. The results make
-a nice poster, though and are in Figure~\ref{fig:internet}.
+a nice poster, though, and are in Figure~\ref{fig:internet}.
 
 \begin{figure*}[tp]
 \includegraphics[width=\textwidth]{internet}
 \caption{ The results of pinging all $2^{32}$ IPv4 addresses in early
   2022. The IP addresses are plotted along a 16-level Hilbert
-  Curve\cite{hilbert1891ueber}. The full image is 65536 $\times$ 65536
+  Curve~\cite{hilbert1891ueber}. The full image is 65536 $\times$ 65536
   pixels (and 4.2 Gigabits), which alas cannot be fit within the
   preposterously limited SIGBOVIK page and PDF size guidelines. This
   image is 2048 $\times$ 2048, so each pixel represents $32 \times 32$
@@ -335,9 +345,9 @@ a nice poster, though and are in Figure~\ref{fig:internet}.
   {\tt 255.*}; these are the former ``Class~D'' and ``Class~E''
   segments which are {\it multicast} and {\it reserved} respectively.
   There is a dark block at the center that almost always receives
-  responses, which is from the {\tt 127.*} ``loopback'' address. This
+  responses, which is from the {\tt 127.*} ``loopback'' addresses. This
   all makes sense. It is interesting to see how active regions allocate
-  their space; some have a variety of distinct patterns and others
+  their space; some have a variety of distinctive patterns and others
   seem uniformly random.
 %
   This way of plotting the address space is basically canonical, so it
@@ -349,7 +359,7 @@ a nice poster, though and are in Figure~\ref{fig:internet}.
 
 \begin{figure*}[htp]
   \includegraphics[width=2in]{legend}
-  \caption{ XXX } \label{fig:internetlegend}
+  \caption{ XXX we could also put some 1:1 zoomed regions? } \label{fig:internetlegend}
 \end{figure*}
 
 9.18\% of addresses responded successfully within 4 seconds. Only
@@ -361,11 +371,11 @@ I then built a block device, called {\tt pingu}\footnote{Named for the
   classic stop-motion penguin of the same name. Also as in ``i ping u
   2 store data\,\, thx 4 ur help''} using this concept. The smallest
 drive that can be formatted and mounted on linux is 51,200 bytes,
-using the FAT12 filesystem common on DOS floppy disks in the
-1980s.\cite{wikipediafat12}\footnote{ Try: \verb+mkfs.vfat -F 12 -v -a -n "PINGU"+ } So
-the device consists of one hundred 512-byte blocks. Each block will
-be stored inside multiple outstanding pings (for redundancy) with
-a 512-byte payload.
+using the FAT12 filesystem common on DOS floppy disks in the 1980s
+\cite{wikipediafat12}.\!\footnote{ Try:
+  \verb+mkfs.vfat -F 12 -v -a -n "PINGU"+ } So the device consists of
+one hundred 512-byte blocks. Each block will be stored inside multiple
+outstanding pings (for redundancy) with a 512-byte payload.
 
 Despite pinging the whole internet in Section~\ref{sec:ping-internet},
 we use a fixed set of IP addresses here. The reason for this is that
@@ -375,8 +385,8 @@ also prefer these to have uncorrelated failures, because if all of the
 outstanding pings fail for a block, then the data is permanently lost.
 So we want them to be geographically diverse, for example. I also
 prefer to use major commercial sites that can clearly bear the load,
-as opposed to e.g. someone's cell phone (who may even have metered
-bandwidth). I produced the list of ~75 hosts by searching for ``most
+as opposed to e.g.~someone's cell phone (who may even have metered
+bandwidth). I produced the list of \~75 hosts by searching for ``most
 popular websites in Madagascar'' (etc.) and manually pinging them to
 make sure the criteria are met, particularly the latency. Many sites
 worldwide use content networks (or are simply hosted in the United
@@ -394,17 +404,17 @@ we can detect timeouts and update host stats). There is also a queue
 of pending reads and writes. The contents of the block is not stored.
 
 \paragraph{Reading.} A call to read a block inserts itself in a queue
-and then blocks on a condition variable; it will not return until we
+and then waits on a condition variable; it will not return until we
 receive a ping that belongs to that block.
 
 \paragraph{Writing.} A call to write is accompanied by some data (the
-caller has allocated it). These are also enqueued and block until
-we receive a ping from the host and can process it. In the general
-case we cannot process a write without receiving the ping, because
-the write may only be to a portion of the block (and so we need to
-know the data outside that region). When we process the write we
-update the version counter so that we don't later use the data
-from any other outstanding redundant pings.
+caller has allocated it). These are also enqueued and wait
+synchronously until we receive a ping from the host and can process
+it. In the general case we cannot process a write without receiving
+the ping, because the write may only be to a portion of the block (and
+so we need to know the data outside that region). When we process the
+write we update the version counter so that we don't later use the
+data from any other outstanding redundant pings.
 
 \paragraph{Hosts.} With each host (IP address) we also keep track of
 its recent latency and reliability (exponentially-weighted moving
@@ -441,7 +451,7 @@ it for FAT12 and reading/writing files.
 
 Benchmarking approach.
 
-What file to store.
+What file to store. Improper Hierarchy criterion~\cite{murphy2018improper}.
 
 
 
@@ -524,9 +534,9 @@ are dropped.
 \subsubsection{Random pieces}
 
 The core of the piece drop logic is a 16-bit linear feedback shift
-register~\cite{golomb1967shift}\footnote{Fittingly, Golomb was a
+register~\cite{golomb1967shift}.\!\footnote{Fittingly, Golomb was a
   pioneer in both shift registers {\em and} polyominoes, the latter
-  which influenced Tetris itself!}. Equivalent C code is given in
+  which influenced Tetris itself!} Equivalent C code is given in
 Figure~\ref{fig:nextrng}. This 16-bit state is updated on every frame
 (and sometimes more; see below), and has period 32767.\footnote{ It is
   possible to create a 16-bit LFSR with a period of 65535, but this
@@ -535,6 +545,7 @@ Figure~\ref{fig:nextrng}. This 16-bit state is updated on every frame
   this and other bugs and inefficiencies.}
 
 \begin{figure}
+  \centering
   \begin{lstlisting}[language=C]
 uint16_t NextRNG(uint16_t state) {
   uint16_t carry = ((state >> 9) ^ (state >> 1)) & 1;
@@ -560,8 +571,7 @@ drop a new piece (and update the state):
 RNGState NextPiece(RNGState s) {
   constexpr std::array<uint8_t, 8> PIECES = {
     0x02, 0x07, 0x08, 0x0A, 0x0B, 0x0E, 0x12,
-    // not used
-    0x02,
+    /* not used */ 0x02,
   };
 
   s.drop_count++;
@@ -596,10 +606,11 @@ placing a piece, and get a different LFSR state at the point {\tt
   NextPiece} is called. The LFSR is ``pretty good,'' so we can easily
 cause the first roll to be whatever value we want by just waiting. In
 the worst possible case we need to pause 98 additional frames before
-seeing all 8 rolls (Figure~\ref{fig:rollhisto}), which is 1.5 seconds
+seeing all 8 rolls (Figure~\ref{fig:rollhisto}), which is 1.6 seconds
 at the NES frame rate.
 
 \begin{figure}
+  \centering
   \includegraphics[width=\linewidth]{rollhisto}
   \caption {
     The maximum possible ``drought'' for the LFSR. This is
@@ -614,10 +625,11 @@ at the NES frame rate.
 
 However, this does not work for re-rolls, which is the only way to get
 the same piece twice in a row. Even though we use the same ``pretty
-good'' LFSR, two successive calls are highly correlated. There are
-only two possible new values for the high byte of the LFSR
-(\verb|s.lfsr_hi|): \verb|(s.lfsr_hi >> 1)| and \verb|128 + (s.lfsr_hi >> 1)|.
-Worse, since these are congruent modulo $8$, we really just have
+good'' LFSR to get the second pseudorandom number, two successive
+calls are highly correlated. There are only two possible new values
+for the high byte of the LFSR (\verb|s.lfsr_hi|):
+\verb|(s.lfsr_hi >> 1)| and \verb|128 + (s.lfsr_hi >> 1)|. Worse,
+since these are congruent modulo $8$, we really just have
 \verb|(s.lfsr_hi >> 1)|.
  
 As a result, even if you have complete control over the LFSR state
@@ -655,7 +667,7 @@ begin by always playing the same starting sequence: \squarepiece 0
 (the left edge of the piece goes in column 3), etc. This sequence
 clears two lines, leaving the board empty, with the only constraint
 now being that we cannot start with a \jleft\ piece. In fact we will
-always start with a \shoriz\ piece in the leftmost column to make
+always start with a \svert\ piece in the leftmost column to make
 use of the modular plans described in the next section.
 
 \subsubsection{Planning}
@@ -667,6 +679,7 @@ patterns (few {\tt 1} bits) is pretty challenging because pieces can
 only be placed on top of existing blocks (Figure~\ref{fig:tetrisdot}).
 
 \begin{figure}
+  \centering
   \includegraphics[width=\linewidth]{tetrisdot}
   \caption{
     A screenshot of NES Tetris after playing for 2 minutes and 46
@@ -696,6 +709,7 @@ them to create any sequence of bytes at runtime.\footnote{
   allowing either of those to start sequences.}
 
 \begin{figure}
+  \centering
   \includegraphics[width=0.6 \linewidth]{encodingscheme}
   \caption{
     The start state as we encode each byte. The \svert\ piece in the
@@ -705,6 +719,7 @@ them to create any sequence of bytes at runtime.\footnote{
 \end{figure}
 
 \begin{figure}
+  \centering
   \begin{tabular}{cc}
   \includegraphics[width=0.4 \linewidth]{encode26a} &
   \includegraphics[width=0.4 \linewidth]{encode26b} \\
@@ -755,12 +770,12 @@ be short enough to fit! This is the {\em true spirit of typography}.
 
 Now that we have a solution for each byte, we want to play the NES
 game to put the desired pattern in the playfield. We use a NES
-emulator (my version of FCEUX\cite{fceux} which I've heavily modified
+emulator (my version of FCEUX~\cite{fceux} which I've heavily modified
 for e.g.~thread-safety) which allows us to save and restore states,
 inspect RAM, and execute frames much faster than real time.
 
 We always input a fixed sequence of button presses to the emulator to
-begin a game with the right starting pieces. We then starts executing
+begin a game with the right starting pieces. We then start executing
 the plan, which consists of the fixed starting sequence (puts us in an
 empty board with \svert\ in the leftmost column) and then the
 concatenation of the plans for the bytes we want to encode. All that
@@ -768,10 +783,10 @@ is left is to place pieces according to this plan, while ensuring that
 we get the desired sequence of ``random'' piece drops.
 
 At the start of each piece, we save the emulator state, and then
-navigate it into the correct column. Holding down on the D-pad causes
-the piece to drop as fast as possible. When it lands, if we got the
-correct piece by chance, we just continue. Otherwise, we inspect the
-state of the random number generator (right {\em before} the piece
+navigate the piece into the correct column. Holding down on the D-pad
+causes the piece to drop as fast as possible. When it lands, if we got
+the correct piece by chance, we just continue. Otherwise, we inspect
+the state of the random number generator (right {\em before} the piece
 dropped), and then simulate it using our reverse engineered version.
 We tabulate the piece that would drop if we were to take one
 additional frame to get here, then two, then three, and so on up to
@@ -822,20 +837,46 @@ Of course, there would be other ways to make this faster, too. For
 example, just the pointer to the emulator object for each block is 64
 bits, or 8 bytes itself.
 
-To create a minimal drive supporting a FAT12 filesystem, we need
-$51,200 \div 8 = 6,400$ emulators. This is not too bad, with the
-biggest challenge being to fit them all on the screen for some kind of
-visualization. XXX screenshot
-
 \subsubsection{Results}
 
 In order to benchmark we need some file to write to the filesystem. A
-natural choice is the NES Tetris ROM, which is 49,168 bytes. Though the
-device can store 51,200 bytes, there is significant overhead from the
-filesystem header, directory entry, and so on, and so we cannot store
-this file raw. 
+beautiful choice is the {\tt tetris.nes} ROM file, which is 49,168
+bytes. Though the minimal filesystem for FAT12 requires a device with
+51,200 bytes, there is significant overhead from the filesystem
+header, directory entry, and so on. So to store this ROM we create a
+device with 69,120 bytes, which is 8,640 NES Emulators. This is not
+too bad, with the biggest challenge being to fit them all on the
+screen for some kind of visualization. XXX screenshot
 
-\begin{lstlisting}
+(Of course then we need to emulate tetris from this drive! XXX)
+
+\paragraph{Qualitative.} This is a good Harder Drive. It solves a problem
+we don't have, which is that typical hard drive ``blocks'' are not made
+of actual ``blocks,'' but Tetris players will recognize that the data on
+the drive is indeed made from blocks. It is very satisfying to  XXX
+
+\paragraph{Cost.} Simulated on a computer, the up-front cost of storing
+data is fairly low. A basic 16-core desktop computer is about \$1,800
+in 2022. The software NES emulator uses 1,652,372 bytes of RAM for
+Tetris on a 64-bit machine, which is 650 instances per gigabyte. So we
+can store about 5200 bytes in about \$4.37 worth of RAM,\footnote{ In
+  2022, a Corsair 16GB DDR4 DIMM is only \$70. } which is 0.084 cents
+per byte. This could easily be improved; the emulators could be stored
+much more efficiently, because they are all emulating the same ROM. If
+we built this with actual Nintendo hardware, we would need one NES
+Console and one Tetris cartridge (or bootleg) per eight bytes. A used
+NES runs about \$150 and a Tetris cartridge about \$10. This is
+\$160 per byte, which 190 thousand times more expensive.
+
+\paragraph{Longevity.} The stored data lasts indefinitely, as long as
+the computer (or Beowulf cluster of NES consoles) remains powered.
+
+\paragraph{Speed.} Writing the 49,168-byte test file {\tt tetris.nes}
+takes 3 hours, 18 minutes and 52 seconds, for a data rate of 2.57
+bytes/sec. Due to its caching nature, writing to the hard drive gets
+faster as it stores more data. Reading is much faster at 61,430 bytes/sec.
+
+\begin{comment}
 runtime 26899 sec
 4609 cache entries, 3996 hits, 4708 misses, 45.91%
 
@@ -850,7 +891,22 @@ Finished 1 iters in 19133.49s.
 real	318m54.336s
 user	0m0.015s
 sys	0m0.687s
-\end{lstlisting}
+\end{comment}
+
+
+\paragraph{Power.} On a modern computer, a gigabyte of RAM uses about 375~mW of power~\cite{crucialpower}, so the marginal cost is 72~$\mu$W per byte.
+The NES console uses about 10 Watts, which would give us about 1.25~W per
+byte.
+
+\paragraph{Is rotational?} This drive \verb+is_rotational+, because the
+Tetris pieces are rotated to place them in the correct orientation.
+
+\paragraph{Harm to society.} There is no harm to society for the software
+emulation. If built on real NES consoles, hoarding thousands of these
+machines and cartridges would be considered antisocial, as they are
+historic items that are in limited supply, and many people still enjoy
+collecting and using them for their intended purpose.
+
 
 \section{Cue the coronavirus} \label{sec:cue}
 
@@ -858,6 +914,38 @@ Sorry to remind you about the worldwide pandemic killing thousands of
 people every day, but
 
 \subsubsection{Results}
+
+\paragraph{Qualitative.} 
+
+\paragraph{Cost.}
+
+\paragraph{Longevity.} This is the only drive considered where data
+are retained when powered down. The M24C04-W EEPROM is rated for 200
+years of data retention, and 4 million write cycles~\cite{stm24c0w}.
+At the current pace, this is likely to outlast the human race.
+
+\paragraph{Speed.} 
+
+\paragraph{Power.} The upfront power cost is low; we need to power
+the Raspberry Pi and various chips on the boards. Only one of the
+decorative LEDs is lit at a time, using about 1~mW. This totals about
+XXX mW.
+The marginal power cost is excellent: On the Cue cartridge, only the
+EEPROM is powered. During standby it uses no more than 3~$\mu$A at
+3.3~V, which is 9.9~$\mu$W for 512 bytes, or 19.3~nW per byte.
+
+\paragraph{Is rotational?} This drive is not rotational; it provides
+us SSD-like random access to the Cue cartridges, and the EEPROMs on
+board allow random access to each line of data.
+
+\paragraph{Harm to society.} Arguably, the drive is beneficial to
+society. First, it is built mostly from trash. Second, coronavirus
+testing saves lives or other hardship by informing infected people
+that they may be contagious; at a minimum it is good for the spirit by
+facilitating lower-anxiety gatherings. Finally, since the tests
+contain captured body fluids, this adds an all-too-rare ``human
+element'' to computing.
+
 
 \section{Other hard drives we really didn't need}
 
@@ -887,6 +975,7 @@ me store this file in the proceedings:
 
 % (qr-encoded?
 
+\startsquarepar
 \noindent
 \includegraphics[height=1.7in]{q01}
 \includegraphics[height=1.7in]{q02}
@@ -902,6 +991,7 @@ me store this file in the proceedings:
 \includegraphics[height=1.7in]{q12}
 \includegraphics[height=1.7in]{q13}
 \includegraphics[height=1.7in]{q14}
+\stopsquarepar
 
 \bibliography{pingu}{}
 \bibliographystyle{plain}

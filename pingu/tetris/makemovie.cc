@@ -87,9 +87,14 @@ int main(int argc, char **argv) {
     std::vector<uint8_t> pattern = {129, 0, 36, 44, 0, 68, 56, 0};
   */
 
+  /*
   int seed = 0;
   std::vector<uint8_t> pattern = {0, 0, 0, 0, 16, 0, 0, 0};
-  
+  */
+
+  int seed = 0;
+  std::vector<uint8_t> pattern = { 0, 42, 0, 10, 10, 0, 255, 7 };
+
   // const std::vector<uint8_t> pattern =
   // {0xd7, 0xe7, 0xd3, 0x1b, 0x43, 0xcf, 0xf2, 0xde};
   // const int seed = 2510;
