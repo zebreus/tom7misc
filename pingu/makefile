@@ -1,10 +1,21 @@
 
-all : pingu.so tetru.so compu.so memu.so
+all : pingu.so tetru.so compu.so memu.so sars.bin
 
 CC_LIB=../cc-lib
 FCEULIB=../fceulib
 
+# windows, which can't compile the block devices
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
+# CXXFLAGS=-Wall -Werror --std=c++20 -O -DPSS_STYLE=2 -I $(CC_LIB) -I $(FCEULIB)
+# PLATFORM_LFLAGS=-static
+# 
+# linux
+PLATFORM_LFLAGS=-lz -lpthread
 CXXFLAGS=-Wall -Werror --std=c++20 -O -I $(CC_LIB) -I ../../nbdkit/include -I ../../nbdkit/common/include -I ../../nbdkit/common/allocators -I ../../nbdkit/common/utils -I $(FCEULIB) -I tetris/ -fPIC -DPSS_STYLE=2
+
+LFLAGS=$(PLATFORM_LFLAGS)
+
 
 CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/util.o
 
@@ -43,6 +54,12 @@ netutil_test.exe : netutil.o netutil_test.o $(CC_LIB)/base/logging.o
 
 dlopen_test.exe : dlopen_test.o $(CC_LIB)/base/logging.o
 	$(CXX) -lpthread $^ -o $@
+
+makesars.exe : makesars.o $(CC_LIB_OBJECTS)
+	$(CXX) $^ -o $@ $(LFLAGS)
+
+sars.bin : sars.txt makesars.exe
+	./makesars.exe
 
 clean:
 	rm -f *.so *.o
