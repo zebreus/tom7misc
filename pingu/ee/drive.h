@@ -5,6 +5,7 @@
 
 struct CueDrive {
   // Six bits at 22, 23, 24, 25, 26, 27
+
   static constexpr int DEMUX_GPIO = 22;
 
   static constexpr int GROUP_SEL_A = 17;

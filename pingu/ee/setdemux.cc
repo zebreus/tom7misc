@@ -14,30 +14,29 @@ using uint8 = uint8_t;
 using uint32 = uint32_t;
 using namespace std;
 
-// XXX make configurable
-static constexpr bool USE_GROUP_A = true;
-
-
 int main(int argc, char **argv) {
 
   CHECK(bcm2835_init()) << "BCM Init failed!";
 
-  CHECK(argc == 2) << "Usage: ./setdemux.exe value\n"
-    "Run as root. value must be in [0, 7].\n";
+  CHECK(argc == 3) << "Usage: ./setdemux.exe group value\n"
+    "Run as root. group must be a or b. value must be in [0, 63]. \n";
 
-  int value = atoi(argv[1]);
+  char group = argv[1][0] | 32;
+  CHECK(group == 'a' || group == 'b') << group;
+  bool use_group_a = group == 'a';
+  int value = atoi(argv[2]);
   printf("Setting demux to %d\n", value);
 	 
-  CueDrive::SetDemux(USE_GROUP_A, value);
+  CueDrive::SetDemux(use_group_a, value);
   printf("Set to group=%c, addr %d\n",
-	 USE_GROUP_A ? 'A' : 'B',
+	 use_group_a ? 'A' : 'B',
 	 value);
   
   // blinkenlights demo
   #if 0
   uint8 v = 0;
   for (;;) {
-    CueDrive::SetDemux(USE_GROUP_A, v & 0b11);
+    CueDrive::SetDemux(use_group_a, v & 0b11);
     usleep(50000);
     v++;
   }  
