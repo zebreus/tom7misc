@@ -1,5 +1,5 @@
 
-all : pingu.so tetru.so compu.so memu.so sars.bin
+all : pingu.so tetru.so compu.so cueu.o memu.so sars.bin
 
 CC_LIB=../cc-lib
 FCEULIB=../fceulib
@@ -45,6 +45,9 @@ memu.so : memu.o $(CC_LIB_OBJECTS)
 
 tetru.so : tetru.o $(CC_LIB_OBJECTS) $(TETRIS_OBJECTS) $(FCEULIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) -shared -lpthread $^ -o $@ -lz
+
+cueu.so : cueu.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) -shared -lpthread $^ -o $@
 
 bench.exe : bench.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) -lpthread $^ -o $@

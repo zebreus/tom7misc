@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <unistd.h>
 
+#include <unordered_set>
 #include <sstream>
 #include <string>
 #include <map>
@@ -31,6 +32,8 @@
 #include "timer.h"
 #include "netutil.h"
 #include "periodically.h"
+
+#include "nbd-util.h"
 
 #define THREAD_MODEL NBDKIT_THREAD_MODEL_PARALLEL
 
@@ -57,35 +60,6 @@ static constexpr int BLOCK_SIZE = 512;
 // for a block and less robustness against random ping responses being
 // interpreted as valid.
 static constexpr int BITS_FOR_ID = 8;
-
-// TODO: Move to nbdutil or whatever
-#define CHECK(e) \
-  if (e) {} else NbdFatal(__FILE__, __LINE__).Stream() \
-				   << "*************** Check failed: " #e "\n"
-
-namespace {
-class NbdOstreamBuf : public std::stringbuf {
-public:
-  int sync() override {
-	nbdkit_debug("%s", str().c_str());
-	return 0;
-  }
-};
-struct NbdFatal {
-  NbdFatal(const char* file, int line) : os(&buf) {
-    Stream() << file << ":" << line << ": ";
-  }
-  [[noreturn]]
-  ~NbdFatal() {
-    Stream() << "\n" << std::flush;
-    abort();
-  }
-  std::ostream& Stream() { return os; }
-private:
-  NbdOstreamBuf buf;
-  std::ostream os;
-};
-}  // namespace
 
 struct TokenBucket {
   TokenBucket(double max_value, double tokens_per_sec,
@@ -233,26 +207,31 @@ static constexpr uint32 MakeHost(int a, int b, int c, int d) {
     (uint32)d;
 }
 static constexpr std::array ALL_HOSTS = {
-  // TODO document
-  MakeHost(157, 240, 2, 35),
-  MakeHost(13, 32, 181, 10),
-  MakeHost(205, 251, 242, 103),
-  MakeHost(17, 253, 144, 10),
-  // Global
+  // Global/US
   MakeHost(162, 125, 248, 18),  // dropbox.com
   MakeHost(185, 60, 216, 53),  // whatsapp.com
   MakeHost(151, 101, 2, 167),  // twitch.tv
-  MakeHost(13, 107, 6, 156),  // office.com
-  MakeHost(151, 101, 66, 87),  // ticketmaster.com
-  MakeHost(151, 101, 65, 140),  // reddit.com
-  MakeHost(64, 4, 250, 37),  // paypal.com
+  // MakeHost(13, 107, 6, 156),  // office.com
+  // MakeHost(151, 101, 66, 87),  // ticketmaster.com
+  // MakeHost(151, 101, 65, 140),  // reddit.com
+  // MakeHost(64, 4, 250, 37),  // paypal.com
   MakeHost(136, 143, 190, 155),  // zoho.com
-  MakeHost(13, 107, 21, 200),  // bing.com
+  // MakeHost(13, 107, 21, 200),  // bing.com
+  // Iceland
+  MakeHost(185, 112, 145, 160),  // playiceland.is
+  MakeHost(92, 43, 192, 120),  // mbl.is
+  MakeHost(185, 21, 17, 244),  // visir.is
+  MakeHost(217, 9, 143, 30),  // pressan.is
+  MakeHost(80, 248, 22, 109),  // bland.is
   // India
   MakeHost(163, 53, 76, 86),  // flipkart.com
   MakeHost(54, 239, 33, 92),  // amazon.in
+  // Indonesia
+  MakeHost(143, 92, 81, 70),  // shopee.co.id
+  MakeHost(103, 225, 66, 77),  // medcom.id
+  MakeHost(118, 98, 227, 101),  // kemdikbud.go.id
   // Egypt
-  MakeHost(104, 18, 7, 4),  // youm7.com
+  // MakeHost(104, 18, 7, 4),  // youm7.com
   // China
   MakeHost(220, 181, 38, 251),  // baidu.com
   MakeHost(140, 205, 220, 96),  // taobao.com
@@ -260,6 +239,7 @@ static constexpr std::array ALL_HOSTS = {
   // Russia
   MakeHost(77, 88, 55, 77),  // yandex.ru
   MakeHost(217, 20, 155, 13),  // ok.ru
+  MakeHost(5, 138, 100, 99),
   // Austria
   MakeHost(194, 232, 104, 149),  // orf.at
   // Japan
@@ -293,12 +273,6 @@ static constexpr std::array ALL_HOSTS = {
   MakeHost(41, 188, 7, 145),  // webmail.moov.mg
   MakeHost(41, 207, 44, 213),  // jira.pulse.mg
   MakeHost(5, 135, 119, 241),  // clubic.com
-  // Iceland
-  MakeHost(185, 112, 145, 160),  // playiceland.is
-  MakeHost(92, 43, 192, 120),  // mbl.is
-  MakeHost(185, 21, 17, 244),  // visir.is
-  MakeHost(217, 9, 143, 30),  // pressan.is
-  MakeHost(80, 248, 22, 109),  // bland.is
   // Brazil
   MakeHost(186, 192, 90, 12),  // globo.com
   MakeHost(200, 147, 3, 157),  // uol.com.br
@@ -313,11 +287,17 @@ static constexpr std::array ALL_HOSTS = {
   MakeHost(199, 165, 82, 216),  // www.gi.alaska.edu
   // US: Hawaii
   MakeHost(104, 199, 126, 30),  // hawaiidt.com
+  // Philippines
+  MakeHost(143, 92, 75, 65),  // shopee.ph
+  MakeHost(47, 246, 108, 222),  // lazlogistics.ph
+  MakeHost(47, 89, 88, 80),  // lazada.com.ph
   // Poland
   MakeHost(212, 77, 98, 9),  // wp.pl
   MakeHost(185, 31, 27, 160),  // allegro.pl
   MakeHost(46, 248, 183, 28),  // librus.pl
   MakeHost(51, 83, 237, 191),  // wykop.pl
+  // Palestine
+  MakeHost(213, 6, 65, 65),
   // South Africa
   MakeHost(163, 195, 1, 225),  // gov.za
   MakeHost(80, 88, 11, 43),  // property24.com
@@ -411,21 +391,23 @@ struct Hosts {
   // that the returned host is pinged.
   //
   // Copying.
-  Host GetBestHost() {
+  Host GetBestHost(const std::unordered_set<uint32_t> &used) {
 	MutexLock ml(&m);
 	double best_score = 0.0;
 	int best_idx = 0;
 	for (int idx = 0; idx < (int)hosts.size(); idx++) {
 	  Host *host = &hosts[idx];
-	  double norm_tokens = host->tokens.Peek() / BURST_PER_HOST;
-	  double rel = host->reliability.Value();
-	  double s = host->latency_sec.Value();
+	  if (!used.contains(host->ip)) {
+		double norm_tokens = host->tokens.Peek() / BURST_PER_HOST;
+		double rel = host->reliability.Value();
+		double s = host->latency_sec.Value();
 
-	  // How to weight these?
-	  double score = norm_tokens * (rel * rel) * s;
-	  if (score > best_score) {
-		best_idx = idx;
-		best_score = score;
+		// How to weight these?
+		double score = norm_tokens * (rel * rel) * s;
+		if (score > best_score) {
+		  best_idx = idx;
+		  best_score = score;
+		}
 	  }
 	}
 	if (!hosts[best_idx].tokens.CanSpend(1.0)) {
@@ -473,6 +455,14 @@ struct Block {
 	  return;
 	}
 
+	if (is_initialized && outstanding.empty()) {
+	  // This means we've failed to retain the data.
+	  nbdkit_debug("data lost for block %d", id);
+	  for (int i = 0; i < count; i++)
+		buf[i] = 0x00;
+	  return;
+	}
+	
     bool read_done = false;
     reads.emplace_back(PendingRead{
           .buf = buf,
@@ -579,6 +569,13 @@ struct Block {
 
 	const int to_send = TARGET_PINGS_PER_BLOCK - outstanding_ok;
 	CHECK(to_send >= 1) << "ok " << outstanding_ok << " to_send " << to_send;
+
+	// Currently used hosts, so that we don't repeat.
+	std::unordered_set<uint32_t> used;
+	for (const auto &[k_, op] : outstanding)
+	  if (op.version == current_version)
+		used.insert(op.host);
+
 	for (int i = 0; i < to_send; i++) {
 	  uint32 key = MakeKey(id, seq_counter++);
 
@@ -586,8 +583,9 @@ struct Block {
 	  pts.data = data;
 	  pts.ident = (key >> 16) & 0xFFFF;
 	  pts.seq = key & 0xFFFF;
-	  pts.ip = GetHost();
-
+	  pts.ip = GetHost(used);
+	  used.insert(pts.ip);
+	  
 	  OutstandingPing outping;
 	  outping.host = pts.ip;
 	  outping.version = current_version;
@@ -684,8 +682,9 @@ struct Block {
 	return sent;
   }
 
-  uint32 GetHost() const {
-    const Hosts::Host h = hosts->GetBestHost();
+  // Must hold lock.
+  uint32 GetHost(const std::unordered_set<uint32_t> &used) const {
+    const Hosts::Host h = hosts->GetBestHost(used);
     return h.ip;
   }
 

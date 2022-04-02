@@ -34,6 +34,7 @@
 #include "encoding.h"
 #include "viz/tetru-viz.h"
 #include "hashing.h"
+#incldue "base/stringprintf.h"
 
 #define THREAD_MODEL NBDKIT_THREAD_MODEL_PARALLEL
 
