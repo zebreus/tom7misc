@@ -98,7 +98,8 @@
 
 \title{Harder Drive: Hard drives we didn't want or need}
 \author{Dr.~Tom~Murphy~VII~Ph.D.}\thanks{
-Copyright \copyright\ 2022 the Regents of the Wikiplia Foundation.
+  % note I changed this to "Reagents" for 2022
+Copyright \copyright\ 2022 the Reagents of the Wikiplia Foundation.
 Appears in SIGBOVIK~2022 with the
 fatal Input/Output error of the Association for Computational Heresy; {\em IEEEEEE!}
 press, Verlag-Verlag volume no.~0x40-2A. 6.6e-11 $N m^2kg^{-2}$
@@ -137,8 +138,8 @@ judge them according to nontraditional criteria. This way, they will
 This is the secret of SIGBOVIK.
 
 This paper investigates several storage devices (``Harder Drives'')
-that we didn't want, or need.\footnote{ Source code can be found at
-  \url{sourceforge.net/p/tom7misc/svn/HEAD/tree/trunk/pingu/}. } In
+that we didn't want, or need.\footnote{ Source code and accompanying
+  video can be found at \url{tom7.org/harder/}. } In
 doing so, we will find inspiration from some vexing current events.
 Even if only tangentially related, creating structured thoughts on the
 periphery may help us digest them. It works for me. This is the
@@ -146,7 +147,8 @@ laxative of SIGBOVIK.
 
 Despite setting out to do an ``easy, fun project,'' of course I
 managed to make each one much more difficult than I initially
-anticipated. This is the curse of SIGBOVIK. Bon app\'etit.
+anticipated. And this, of course, is the {\em curse} of SIGBOVIK.
+Bon app\'etit.
 
 \subsection{Chainsaws}
 
@@ -360,7 +362,7 @@ second, but the packets are dropped somewhere if I exceed about 1000
 pings/sec. Even at 1000 pings/sec (a trivial amount of bandwidth) this
 behavior seems to wreak havoc on my home network; other devices
 sharing the connection get extremely bad performance, a no-no for the
-Work-From-Home video call lifestyle of the pandemic. This could be because
+Work-from-Home video call lifestyle of the pandemic. This could be because
 my internet provider throttles ICMP; it could also be that some
 hardware or software in the path is not able to handle thousands of
 different IP addresses each second (e.g.~there may be fixed-size NAT
@@ -437,9 +439,9 @@ a nice poster, though, and are in Figure~\ref{fig:internet}.
 \section{Harder Drive: Pingu} \label{sec:pingu}
 
 At last, I yearn to build a virtual hard drive using the ideas above.
-It will be called {\tt pingu}\footnote{Named for the classic
+It will be called {\tt pingu}.\!\footnote{Named for the classic
   stop-motion penguin of the same name. Also as in ``i ping u 2 store
-  data\,\, thx 4 ur help''}. To do that, I first had to figure out how
+  data\,\, thx 4 ur help''} To do that, I first had to figure out how
 to make a hard drive. This is no big deal.
 
 \subsubsection{nbdkit} \label{sec:nbdkit}
@@ -477,9 +479,9 @@ point, the device can be formatted with some filesystem.
 
 \subsubsection{Implementation}
 
-The smallest drive that can be formatted and mounted on linux is
-51,200 bytes, using the FAT12 filesystem common on DOS floppy disks in
-the 1980s \cite{wikipediafat12}.\!\footnote{ Try:
+The smallest drive that can be formatted and mounted on a normal Linux
+machine is 51,200 bytes, using the FAT12 filesystem common on DOS
+floppy disks in the 1980s \cite{wikipediafat12}.\!\footnote{ Try:
   \verb+mkfs.vfat -F 12 -v -a -n "PINGU"+ } So the device consists of
 one hundred 512-byte blocks. Each block will be stored inside multiple
 outstanding pings (for redundancy) with a 512-byte payload.
@@ -629,33 +631,30 @@ when the writes are actually taking place.
 
 \paragraph{Qualitative.} This is a good Harder Drive. It solves
 a problem we don't have, which is to unreliably store a small amount
-of data in an even smaller amount of memory.\!\footnote{
-  I considered whether it would be possible to create a drive
-  that used {\em no} memory for each additional block, and how
-  I might even define/measure that. This lead me to a brief experiment
-  with {\tt compu}, which never graduated to a proper Harder Drive.
-  This drive compiles the drive's contents as code, namely a
-  large switch statement that is of the form \verb+case ADDRESS: return DATA;+
-  for each address in storage. The joke is of course that if you
-  don't count the ``code,'' towards memory, you can sneak memory
-  into to the code. Of course, to write to the drive, we need to
-  rewrite the code and recompile it (this is done dynamically by
-  forking \verb|g++| (which obviously uses memory) and then
-  loading the recompiled symbol with \verb|dlopen|). I was
-  hoping that the compiler would be able to do some clever
-  optimizations on the switch statement, which might have led
-  to some interesting developments. But the only ones I observed
-  were the cases where the entire contents are the same byte,
-  or where each address contains the low byte of the address
-  as data. Otherwise it always just compiled as a table lookup,
-  which is pretty uninspiring. For completeness, this drive
-  was annoyingly fast in benchmarks (of course using its own
-  source code as the benchmark test file): 6,119 bytes/sec
-  writing; 10 Megabytes/sec reading.
-  } It treats latency as a
-desirable quantity, contrary to the usual preference. Implementing the
-drive was much more difficult than expected from back-of-the-envelope
-calculations.
+of data in an even smaller amount of memory.\!\footnote{ I considered
+  whether it would be possible to create a drive that used {\em no}
+  memory for each additional block, and how I might even
+  define/measure that. This lead me to a brief experiment with {\tt
+    compu}, which never graduated to a proper Harder Drive. This drive
+  compiles the drive's contents as code, namely a large switch
+  statement that is of the form \verb+case ADDRESS: return DATA;+ for
+  each address in storage. The joke is of course that if you don't
+  count the ``code'' towards memory, you can sneak memory into the
+  code. Of course, to write to the drive, we need to rewrite the code
+  and recompile it (this is done dynamically by forking \verb|g++| and
+  then loading the recompiled symbol with \verb|dlopen| (which
+  obviously uses memory)). I was hoping that the compiler would be
+  able to do some clever optimizations on the switch statement, which
+  might have led to some interesting developments. But the only ones I
+  observed were the cases where the entire contents are the same byte,
+  or where each address contains the low byte of the address as data.
+  Otherwise it always just compiled as a table lookup, which is pretty
+  uninspiring. For completeness, this drive was annoyingly fast in
+  benchmarks (of course using its own source code as the benchmark
+  test file): 6,119 bytes/sec writing; 10 Megabytes/sec reading. } It
+treats latency as a desirable quantity, contrary to the usual
+preference. Implementing the drive was much more difficult than
+expected from back-of-the-envelope calculations.
 
 \paragraph{Cost.} The cost consists of an up-front cost (a computer
 and network interface; even a \$35 Raspberry Pi should work fine) and
@@ -710,10 +709,11 @@ undersea cables are usually fiber optics), but it is not trivial. A
 typical undersea data cable's excitation power is on the order of tens
 of kilowatts, with repeaters every 100~km or so. Fortunately, the
 total bandwidth of such cables is extremely high, with these 512-byte
-packets representing a minuscule fraction. Assuming that the cost of
-the consumer internet connection also covers the marginal cost of the
-power in these backbones, at $0.15c/kwH$, this seems to be at most
-5.8~$\mu$Watts per byte-second.
+packets representing a minuscule fraction. Rather than try to multiply
+a big estimate by a small estimate, it is better to work from a known
+quantity: Assuming that the cost of the consumer internet connection
+also covers the marginal cost of the power in these backbones, at
+$0.15c/kwH$, this seems to be at most 5.8~$\mu$Watts per byte-second.
 
 % Not sure this makes any sense?
 % 0.15 * 125,000,000 bytes / 0.0000304 * (1000 * W) * 60 * 60 * sec)
@@ -722,10 +722,11 @@ power in these backbones, at $0.15c/kwH$, this seems to be at most
 
 \paragraph{Is rotational?} One of our criteria will be whether the
 drive should set the \verb+is_rotational+ flag for {\tt nbdkit}
-(Section~\ref{sec:nbdkit}). This drive is not rotational; although the
-initialization happens round-robin, due to the stochastic timing of the
-outstanding pings, the drive soon thereafter processes the blocks in a
-random order.
+(Section~\ref{sec:nbdkit}). The inspiration for this drive (orbital
+chainsaws or radio towers around the world) would be rotational, but
+this drive is not. Although the initialization happens round-robin,
+due to the stochastic timing of the outstanding pings, the drive soon
+thereafter processes the blocks in a random order.
 
 \paragraph{Harm to society.} The drive is definitely harmful to my
 home network; whether that can be considered a positive or negative to
@@ -795,11 +796,11 @@ have one free cell per line for parity. A good choice is to use 8
 cells per line for data, encoding a single byte, which is a nice round
 number.
 
-We can't use the full height of the playfield, since we need some
-room in which to maneuver pieces. 8 is a convenient choice here as
-well (although more is possible). Each Tetris game will store 64 bits
-in eight lines, each with eight bits. We'll use the venerable
-NES Tetris (Nintendo, 1989).
+We can't use the full height of the playfield, since we need some room
+in which to maneuver pieces. 8 is a convenient choice here as well
+(although more is possible). Each Tetris game will thus store 64 bits:
+Eight lines, each with eight bits. We'll use the venerable NES Tetris
+(Nintendo, 1989), which is also 8 bits.
 
 % I tested 10 bits; 529 examples successful. 12 fails, though (would
 % perhaps need to plan inside a more cramped space? or is the game
@@ -895,20 +896,6 @@ the worst possible case we need to pause 98 additional frames before
 seeing all 8 rolls (Figure~\ref{fig:rollhisto}), which is 1.6 seconds
 at the NES frame rate.
 
-\begin{figure}
-  \centering
-  \includegraphics[width=\linewidth]{rollhisto}
-  \caption {
-    The maximum possible ``drought'' for the NES Tetris LFSR. This is
-    the number of iterations before we see all possible rolls (all
-    eight possible values for the low three bits), histogrammed
-    over all meaningful start states (LFSR state and drop count).
-    The minimal value is 8 (obviously, by pigeonhole) and rarely
-    it can be as high as 99, but most of the time we have seen
-    all rolls by a few dozen iterations.
-    } \label{fig:rollhisto}
-\end{figure}
-
 However, this does not work for re-rolls, which is the only way to get
 the same piece twice in a row. Even though we use the same ``pretty
 good'' LFSR to get the second pseudorandom number, two successive
@@ -942,6 +929,20 @@ a row on the 3\rd\ and 4\th\ drop. All pieces other than
   like \verb|((s.rng2 & 15) ^ s.last_drop) % 7|.
 } Even when it is possible, it may
 require a long drought to get the LFSR in a rare working state.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\linewidth]{rollhisto}
+  \caption {
+    The maximum possible ``drought'' for the NES Tetris LFSR. This is
+    the number of iterations before we see all possible rolls (all
+    eight possible values for the low three bits), histogrammed
+    over all meaningful start states (LFSR state and drop count).
+    The minimal value is 8 (obviously, by pigeonhole) and rarely
+    it can be as high as 99, but most of the time we have seen
+    all rolls by a few dozen iterations.
+    } \label{fig:rollhisto}
+\end{figure}
 
 By manipulating the RNG we will be able to achieve any sequence of
 pieces, except if that sequence contains repeats. There is a similar
@@ -1422,7 +1423,7 @@ cc\hspace{0.3em}05\hspace{0.3em}01\hspace{0.3em}00\hspace{0.3em}00\hspace{0.3em}
     example the header for interfacing with the Raspberry Pi and the
     3:8 demultiplexor for selecting a daughter board. These parts are
     only populated once. The remainder is the daughter board: Eight
-    cutouts for cue cartridges mounted at 90$\deg$\ with castellated
+    cutouts for cue cartridges mounted at $90^\circ$ with castellated
     edges; an LED and support logic for each; the surface-mount bus
     switch ICs; another 3:8 demultiplexor for selecting the cartridge
     on this board. The design can accommodate 16 daughter boards, each
@@ -1478,7 +1479,7 @@ logical {\tt 0}). Finally, the cartridges themselves are very tricky
 to incorporate. They have very small plated connectors that normally
 mate with spring-loaded pins in the reader, but that component is not
 readily available (and would probably be expensive). Instead, I mount
-it at 90$\deg$ through a hole in the PCB, where the PCB has its own
+it at $90^\circ$ through a hole in the PCB, where the PCB has its own
 matching edge connector made with castellated holes. I also 3D printed
 a plastic jig that could hold the cartridge at the right angle during
 soldering. With generous acid flux and a steady hand, soldering these
@@ -1737,8 +1738,8 @@ uses about 0.31\% of the entire world's energy production,
 15.74~GW~\cite{cbeci}. Remember that this does not solve any
 interesting computational problems or accomplish anything useful; the
 only purpose is to create an expensive waste of power in order to
-avoid trusting a bank or set of banks. To store one megabyte, this is
-15.74~kW per byte.
+avoid trusting a bank or set of banks. To store one megabyte on an
+ongoing basis, this is 15.74~kW per byte.
 
 \paragraph{Is rotational?} It's not even rotational!
 

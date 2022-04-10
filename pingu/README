@@ -1,11 +1,26 @@
-TODO: describe this
 
+This is code (experimental, obviously) for several weird block devices
+("hard drives"). See the video and paper at tom7.org/harder for an
+introduction.
 
 Note this whole thing is super insecure, for many reasons!
 Don't run it on a system you care about!
 
  - unix domain socket has the wrong permissions
 
+Compiling is something like this (from memory):
+ - Get nbdkit (source) and compile it (in ../../nbdkit).
+ - Install nbd-client too
+
+make -j        (compile the .so plugins in this directory)
+make -C viz    (compile the optional visualizations)
+
+Modify run.sh to select the plugin you want, and the size.
+sudo ./run.sh
+
+You can then run
+sudo ./benchmark.exe /mnt/[somedrive] file
+to execute the simple benchmark.
 
 # drop disk caches
 sync && echo 3 | sudo tee /proc/sys/vm/drop_caches

@@ -87,7 +87,7 @@ string CueDrive::CodeString(int code) {
 }
 
 bool CueDrive::WriteVec(const std::vector<uint8> &msg,
-			bool verbose) {
+                        bool verbose) {
   uint8_t code =
     bcm2835_i2c_write((const char *)msg.data(), msg.size());
   if (verbose)

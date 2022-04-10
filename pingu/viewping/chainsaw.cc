@@ -253,6 +253,7 @@ struct UI {
     // differences in the angle just change the angle of the ellipse
     // (and some of them intersect earth and are invalid). So really
     // we just want to throw it tangent to Earth.
+#if 0
     Object saw1;
     saw1.mass_kg = 5.0;
     saw1.dx_mps = 9744.547698;
@@ -270,7 +271,8 @@ struct UI {
     saw2.y_m = START_Y;
     saw2.color = SDL_MapRGBA(screen->format, 0xFF, 0x33, 0x33, 0xFF);
     sim.objects.push_back(saw2);
-
+#endif
+    
     Object saw3;
     saw3.dx_mps = 11000.0;
     saw3.dy_mps = 0;
@@ -279,7 +281,7 @@ struct UI {
     saw3.color = SDL_MapRGBA(screen->format, 0xFF, 0xFF, 0x33, 0xFF);
     sim.objects.push_back(saw3);
 
-    printf("Saw2: %.6f\n", saw2.dx_mps);
+    // printf("Saw2: %.6f\n", saw2.dx_mps);
   }
   
 

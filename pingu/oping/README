@@ -1,3 +1,30 @@
-Stripped-down version (no autoconf, etc.) version of oping (see
-http://noping.cc) for local modification. This code is licensed
-under the LGPL (see ../LICENSE).
+
+oping.* and liboping.* are a heavily modified code from liboping.
+GPL licensed. See ../LICENSE.
+
+pingy.cc pings a large block of the ipv4 address space. You need to
+customize the main function and recompile to tell it what part to
+ping, and you probably also want to tweak the throttling constants at
+the top. Or just look at the graphic I made of the whole internet in
+the paper at tom7.org/harder/.
+
+You should be able to run this on a 2022 Ubuntu system by just installing
+gcc 10:
+
+sudo apt update
+sudo apt full-upgrade
+sudo apt install g++-10 subversion make emacs-nox
+sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 10
+sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-10 10
+sudo apt autoremove
+sudo apt autoclean
+svn checkout https://svn.code.sf.net/p/tom7misc/svn/trunk sf_svn
+cd sf_svn/pingu/oping
+make -j
+
+If you ping the whole internet, you can view the results with the
+code in ../viewping.
+
+The dat files are very sparse, and the PNGs only have minimal compression.
+Save yourself metered bandwidth: use sftp -C for compression
+

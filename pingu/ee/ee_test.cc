@@ -100,7 +100,7 @@ static bool WritePage(int addr, const std::vector<uint8_t> &page) {
 
           // allow one more chance (e.g. device came online during our
           // address write)
-	  CueDrive::WriteVec({(uint8)addr}, true);
+          CueDrive::WriteVec({(uint8)addr}, true);
           const int code = bcm2835_i2c_read(buf, PAGESIZE);
 
           if (code != BCM2835_I2C_REASON_OK) {

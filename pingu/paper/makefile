@@ -5,7 +5,7 @@ MAKEPDF=../../pactom/rsvg/rsvg-convert -f pdf
 TETROMIOES_BASE=i_vert i_horiz square t_up t_down t_left t_right j_up j_left j_down j_right z_horiz z_vert s_horiz s_vert l_up l_left l_down l_right
 TETROMINOES_SVG=$(addsuffix .svg,$(TETROMINOES_BASE))
 TETROMINOES_PDF=$(addsuffix .pdf,$(TETROMINOES_BASE))
-GRAPHICS=legend.pdf rollhisto.pdf $(TETROMINOES_PDF)
+GRAPHICS=legend.pdf rollhisto.pdf hyrule.png $(TETROMINOES_PDF)
 
 CC_LIB=../../cc-lib
 
@@ -48,15 +48,26 @@ solutions.exe : solutions.o ../tetris/encoding.o $(UTIL_OBJECTS)
 	@echo -n "!"
 
 solutions.tex : solutions.exe ../tetris/solutions.txt
-	./solutions.exe > $@
-	dos2unix $@
+	@./solutions.exe > $@
+	@dos2unix $@
+	@echo -n "%"
+
+hyrule.exe : hyrule.o ../tetris/encoding.o $(UTIL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+hyrule.png : hyrule.exe
+	@./hyrule.exe
+	@optipng -quiet -o9 $@
+	@echo -n "%"
 
 tetrominoes.exe : tetrominoes.o $(UTIL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 $(TETROMINOES_SVG) : tetrominoes.exe
-	./tetrominoes.exe
+	@./tetrominoes.exe
+	@echo -n "%"
 
 pingu.pdf : pingu.tex solutions.tex pingu.bib $(GRAPHICS)
 	pdflatex pingu

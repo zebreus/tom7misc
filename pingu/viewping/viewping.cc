@@ -203,7 +203,7 @@ struct UI {
     uint8 d =  pos        & 0xFF;    
 
     font->draw(16, SCREENH - font->height - 1,
-               StringPrintf("%d^1.^<%d^1.^<%d^1.^<%d",
+               StringPrintf("^2%d^1.^5%d^1.^7%d^1.^8%d",
                             a, b, c, d));
   }
   
@@ -404,10 +404,11 @@ int main(int argc, char **argv) {
   screen = sdlutil::makescreen(SCREENW, SCREENH);
   CHECK(screen != nullptr);
 
-  font = Font::Create(screen,
-                      "..\\..\\cc-lib\\sdl\\font.png",
-                      FONTCHARS,
-                      FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+  font = Font::CreateX(3,
+                       screen,
+                       "..\\..\\cc-lib\\sdl\\font.png",
+                       FONTCHARS,
+                       FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font != nullptr) << "Couldn't load font.";
   
   CHECK((cursor_arrow = Cursor::MakeArrow()));

@@ -63,7 +63,7 @@
       36
     ],
     "visible_layers": "003f3e0_80000001",
-    "zone_display_mode": 0
+    "zone_display_mode": 1
   },
   "meta": {
     "filename": "stackboard.kicad_prl",

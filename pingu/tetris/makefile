@@ -1,4 +1,4 @@
-all : lucky.exe encode.exe tetris_test.exe play.exe makemovie.exe nes-tetris_test.exe movie-maker_test.exe
+all : lucky.exe encode.exe tetris_test.exe play.exe makemovie.exe nes-tetris_test.exe movie-maker_test.exe makegraphic.exe render.exe
 
 CC_LIB=../../cc-lib
 FCEULIB=../../fceulib
@@ -43,6 +43,14 @@ play.exe : play.o encoding.o $(CCLIB_OBJECTS)
 	strip $@
 
 makemovie.exe : makemovie.o movie-maker.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	strip $@
+
+makegraphic.exe : makegraphic.o movie-maker.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+	strip $@
+
+render.exe : render.o movie-maker.o encoding.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
 	@$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 	strip $@
 
