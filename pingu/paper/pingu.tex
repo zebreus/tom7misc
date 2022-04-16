@@ -139,7 +139,7 @@ This is the secret of SIGBOVIK.
 
 This paper investigates several storage devices (``Harder Drives'')
 that we didn't want, or need.\footnote{ Source code and accompanying
-  video can be found at \url{tom7.org/harder/}. } In
+  video can be found at \url{http://tom7.org/harder/}. } In
 doing so, we will find inspiration from some vexing current events.
 Even if only tangentially related, creating structured thoughts on the
 periphery may help us digest them. It works for me. This is the
@@ -1538,12 +1538,12 @@ and get some benchmark numbers.
 We need a file to store on the drive to tie the knot and to run the
 benchmark. A beautiful choice here is the genetic sequence of
 SARS-CoV-2 (ancestral)~\cite{sarsncov2sequence} from
-GenBank~\cite{clark2016genbank}. This is a 77343 base-pair sequence;
-it would be too large to store in ASCII.\footnote{Plus, I'm a biology noob
+GenBank~\cite{clark2016genbank}. This is a 29903 base-pair sequence,
+but we need not store it in ASCII.\footnote{Plus, I'm a biology noob
   and I may just be missing something, but GenBank uses ``T'' in
   this sequence even though it should be U (uracil) in RNA, which seems
   very non-canonical?} Each nucleotide is only two bits of information,
-though, so we pack four of these into each byte for only 19336 bytes.
+so we pack four of these into each byte for only 7476 bytes.
 
 \paragraph{Qualitative.} This is a decent Harder Drive. It solves a problem
 we don't have, which is what to do with all those COVID-19 tests that

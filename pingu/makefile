@@ -5,14 +5,15 @@ CC_LIB=../cc-lib
 FCEULIB=../fceulib
 
 # windows, which can't compile the block devices
-# CXX=x86_64-w64-mingw32-g++
-# CC=x86_64-w64-mingw32-gcc
-# CXXFLAGS=-Wall -Werror --std=c++20 -O -DPSS_STYLE=2 -I $(CC_LIB) -I $(FCEULIB)
-# PLATFORM_LFLAGS=-static
+CXX=x86_64-w64-mingw32-g++
+CC=x86_64-w64-mingw32-gcc
+CXXFLAGS=-Wall -Werror --std=c++20 -O -DPSS_STYLE=2 -I $(CC_LIB) -I $(FCEULIB)
+PLATFORM_LFLAGS=-static
 # 
 # linux
-PLATFORM_LFLAGS=-lz -lpthread
-CXXFLAGS=-Wall -Werror --std=c++20 -O -I $(CC_LIB) -I ../../nbdkit/include -I ../../nbdkit/common/include -I ../../nbdkit/common/allocators -I ../../nbdkit/common/utils -I $(FCEULIB) -I tetris/ -fPIC -DPSS_STYLE=2
+
+# PLATFORM_LFLAGS=-lz -lpthread
+# CXXFLAGS=-Wall -Werror --std=c++20 -O -I $(CC_LIB) -I ../../nbdkit/include -I ../../nbdkit/common/include -I ../../nbdkit/common/allocators -I ../../nbdkit/common/utils -I $(FCEULIB) -I tetris/ -fPIC -DPSS_STYLE=2
 
 LFLAGS=$(PLATFORM_LFLAGS)
 

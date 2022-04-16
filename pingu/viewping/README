@@ -1,0 +1,40 @@
+viewping.exe                    Tom 7          15 Apr 2022
+
+Quick troubleshooting:
+ - Needs 64-bit Windows
+ - Needs a lot of RAM
+ - Make sure to unzip oping.7z
+
+
+This is a program for viewing the results of pinging the IPv4 address
+space, which I did in early 2022. See tom7.org/harder for a writeup
+and video (including some other projects). If you use this for
+something, consider citing the paper or linking to the site. :)
+
+This program expects to find files called pingX.dat for X in 0..255 in
+the current directory. You could try to generate those by pinging the
+internet yourself (using ../oping/pingy.exe) or maybe you got them
+with this program. You might need to uncompress them with 7zip. They
+total 4.2GB so they're too big for me to host permanently. :(
+
+For the same reason, this program needs a lot of RAM; the full size
+image is stored as RGBA (4.2B * 32 bits = 16 GB) and it also stores
+"mipmaps" for efficient zooming (maybe another ~16 GB). It requires
+a 64-bit machine to address that much data.
+
+In the color version, yellow is a fast response (low latency) and cyan
+is a slow one (up to 4s). The color ramp is not linear. Black
+means that no response was received before the timeout (or it had the
+wrong data). I would not take the latencies too seriously, because I
+sent pings from two different data centers in the US, and many
+confounding factors can affect latency (e.g. time of day that the ping
+was sent).
+
+After it loads, hold the left mouse button and drag to pan around,
+and use the mousewheel to scroll. The 's' key will save the (full)
+current zoom level as a png file, although it refuses to do this
+for zoom level 0, which would probably crash. You can make the
+resulting PNG file much smaller by reducing its color space (4bpp
+is a decent choice) and recompressing with something like optipng;
+the PNG export code is not tuned for high compression.
+

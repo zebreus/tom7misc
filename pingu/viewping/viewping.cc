@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <string>
 #include <mutex>
+#include <cmath>
 
 #include "SDL.h"
 
@@ -10,13 +11,14 @@
 #include "sdl/chars.h"
 #include "sdl/cursor.h"
 
-#include "image64.h"
 #include "base/logging.h"
-#include "util.h"
-#include "threadutil.h"
-#include "geom/hilbert-curve.h"
 #include "base/stringprintf.h"
+#include "color-util.h"
+#include "geom/hilbert-curve.h"
+#include "image64.h"
+#include "threadutil.h"
 #include "timer.h"
+#include "util.h"
 
 
 using namespace std;
@@ -27,7 +29,9 @@ static constexpr uint8_t WRONG_DATA = 255;
 static constexpr int SCREENW = 1920;
 static constexpr int SCREENH = 1080;
 
-std::mutex screen_mutex;
+static constexpr bool COLOR = false;
+
+static std::mutex screen_mutex;
 static SDL_Surface *screen = nullptr;
 static Font *font = nullptr;
 static SDL_Cursor *cursor_arrow = nullptr, *cursor_bucket = nullptr;
@@ -42,7 +46,10 @@ static int64 total_wrong = 0;
 // successive one is one quarter size (half on each dimension).
 static std::vector<Image64RGBA *> mipmaps;
 
-
+static constexpr ColorUtil::Gradient LATENCY{
+  GradRGB(0.0f, 0xFFFF00),
+  GradRGB(1.0f, 0x00FFFF), 
+};
 
 static void ReadRaw(int octet_c, Image64RGBA *huge) {
   /*
@@ -54,7 +61,7 @@ static void ReadRaw(int octet_c, Image64RGBA *huge) {
   }
   */
   
-  string filename = StringPrintf("../oping/ping%d.dat", (int)octet_c);
+  string filename = StringPrintf("ping%d.dat", (int)octet_c);
   std::vector<uint8_t> pings = Util::ReadFileBytes(filename);
   CHECK(!pings.empty()) << filename;
   CHECK(pings.size() == 256 * 256 * 256) << "Incomplete/bad file "
@@ -77,8 +84,17 @@ static void ReadRaw(int octet_c, Image64RGBA *huge) {
         if (b == WRONG_DATA) wrong++;
         const bool ok = !(b == TIMEOUT || b == WRONG_DATA);
         if (ok) success++;
-        const uint32_t color = ok ? 0xFFFFFFFF : 0x000000FF;
-        huge->SetPixel32(x64, y64, color);
+        if (COLOR) {
+          uint32_t color = 0x000000FF;
+          if (ok) {
+            const float f = powf((b - 1) / 253.0f, 0.25f);
+            color = ColorUtil::LinearGradient32(LATENCY, f);
+          }
+          huge->SetPixel32(x64, y64, color);
+        } else {
+          const uint32_t color = ok ? 0xFFFFFFFF : 0x000000FF;
+          huge->SetPixel32(x64, y64, color);
+        }
       }
     }
   }
@@ -105,6 +121,7 @@ static void ReadRaw(int octet_c, Image64RGBA *huge) {
 
 static void Load() {
   Timer load_timer;
+  printf("Loading many gigabytes of data into RAM...\n");
   Image64RGBA *huge = new Image64RGBA(65536, 65536);
   CHECK(huge != nullptr);
   printf("Allocated image of size %lld x %lld\n",
@@ -303,7 +320,7 @@ struct UI {
               mipmaps[current_zoom]->Save(filename);
               printf("Wrote %s\n", filename.c_str());
             } else {
-              printf("Won't save zoom levels 0 or 1!\n");
+              printf("Won't save zoom level 0 or 1!\n");
             }
             break;
             // TODO zoom:
@@ -406,9 +423,16 @@ int main(int argc, char **argv) {
 
   font = Font::CreateX(3,
                        screen,
-                       "..\\..\\cc-lib\\sdl\\font.png",
+                       "font.png",
                        FONTCHARS,
                        FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
+
+  if (font == nullptr)
+    font = Font::CreateX(3,
+                         screen,
+                         "..\\..\\cc-lib\\sdl\\font.png",
+                         FONTCHARS,
+                         FONTWIDTH, FONTHEIGHT, FONTSTYLES, 1, 3);
   CHECK(font != nullptr) << "Couldn't load font.";
   
   CHECK((cursor_arrow = Cursor::MakeArrow()));

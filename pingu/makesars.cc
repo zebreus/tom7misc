@@ -14,10 +14,10 @@ int main(int argc, char **argv) {
   string s;
   for (char c : rawf) {
     switch (c) {
-    case 'a': s.push_back('a');
-    case 'c': s.push_back('c');
-    case 't': s.push_back('u');  // This is actually uracil
-    case 'g': s.push_back('g');
+    case 'a': s.push_back('a'); break;
+    case 'c': s.push_back('c'); break;
+    case 't': s.push_back('u'); break; // This is actually uracil
+    case 'g': s.push_back('g'); break;
     case ' ':
     case '\n':
     case '\r':
