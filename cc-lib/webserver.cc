@@ -340,11 +340,10 @@ Handler ServerImpl::GetHandler(const Request &request) {
   printf("Get handler for [%s]\n", request.path.c_str());
   fflush(stdout);
   
-  for (const auto &p : handlers) {
-    const string &prefix = p.first;
+  for (const auto &[prefix, handler] : handlers) {
     // XXX use decoded path
     if (StartsWith(request.path, prefix))
-      return p.second;
+      return handler;
   }
   return GetDefaultHandler();
 }
