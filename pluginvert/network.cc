@@ -31,6 +31,7 @@ const char *TransferFunctionName(TransferFunction tf) {
   case RELU: return "RELU";
   case LEAKY_RELU: return "LEAKY_RELU";
   case IDENTITY: return "IDENTITY";
+  case TANH: return "TANH";
   default: return "??INVALID??";
   }
 }
@@ -89,12 +90,20 @@ const char *const Network::IDENTITY_FN =
   "#define FORWARD(potential) (potential)\n"
   "#define DERIVATIVE(fx) (1.0f)\n";
 
+// This also has a nice version in terms of the output:
+// 1 - tanh^2(x)   (which is possibly confusing notation for 1 - (tanh(x))^2).
+const char *const Network::TANH_FN =
+  "#define FORWARD(potential) (exp(-(potential * potential)))\n"
+  "#define DERIVATIVE(fx) (1.0f - fx * fx)\n";
+
+
 string Network::TransferFunctionDefines(TransferFunction tf) {
   switch (tf) {
   case SIGMOID: return Network::SIGMOID_FN;
   case RELU: return Network::RELU_FN;
   case LEAKY_RELU: return Network::LEAKY_RELU_FN;
   case IDENTITY: return Network::IDENTITY_FN;
+  case TANH: return Network::TANH_FN;
   default:
     CHECK(false) << "No define for transfer function "
                  << tf << ": " << TransferFunctionName(tf);
@@ -320,6 +329,10 @@ static float IdentityFn(float potential) {
   return potential;
 }
 
+static float TanhFn(float potential) {
+  return expf(-(potential * potential));
+}
+
 // TODO could make verbose version with template param?
 void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
   const Layer &dst_layer = layers[src_layer + 1];
@@ -345,6 +358,10 @@ void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
       break;
     case IDENTITY:
       RunForwardChunkWithFn<IdentityFn>(
+          src_values, chunk, dst_values, out_idx);
+      break;
+    case TANH:
+      RunForwardChunkWithFn<TanhFn>(
           src_values, chunk, dst_values, out_idx);
       break;
     default:
@@ -773,6 +790,65 @@ Chunk Network::Make1DConvolutionChunk(int span_start, int span_size,
 
     conv.num_occurrences_across = num_occurrences_across;
     CHECK(num_occurrences_down == 1);
+    conv.num_occurrences_down = num_occurrences_down;
+    conv.indices = std::move(indices);
+
+    conv.weights = std::vector<float>(
+        conv.indices_per_node * conv.num_features,
+        0.0f);
+    conv.biases = std::vector<float>(conv.num_features, 0.0f);
+  }
+
+  conv.weight_update = weight_update;
+  if (conv.weight_update == ADAM || weight_update == YOGI) {
+    conv.weights_aux.resize(conv.weights.size() * 2, 0.0f);
+    conv.biases_aux.resize(conv.biases.size() * 2, 0.0f);
+  }
+
+  conv.fixed = false;
+  return conv;
+}
+
+Chunk Network::Make2DConvolutionChunk(int span_start, int span_width, int span_height,
+                                      int num_features, int pattern_width, int pattern_height,
+                                      int x_stride, int y_stride,
+                                      TransferFunction transfer_function,
+                                      WeightUpdate weight_update) {
+  Chunk conv;
+  conv.type = CHUNK_CONVOLUTION_ARRAY;
+  conv.transfer_function = transfer_function;
+  conv.num_features = num_features;
+  conv.occurrence_x_stride = x_stride;
+  conv.occurrence_y_stride = y_stride;
+  conv.pattern_width = pattern_width;
+  conv.pattern_height = pattern_height;
+  conv.src_width = span_width;
+  conv.src_height = span_height;
+  conv.span_start = span_start;
+  conv.span_size = span_width * span_height;
+  conv.indices_per_node = pattern_width * pattern_height;
+
+  {
+    auto [indices, this_num_nodes,
+          num_occurrences_across, num_occurrences_down] =
+      MakeConvolutionArrayIndices(conv.span_start,
+                                  conv.span_size,
+                                  conv.num_features,
+                                  conv.pattern_width,
+                                  conv.pattern_height,
+                                  conv.src_width,
+                                  conv.src_height,
+                                  conv.occurrence_x_stride,
+                                  conv.occurrence_y_stride);
+    CHECK(this_num_nodes ==
+          num_features * num_occurrences_across * num_occurrences_down);
+    conv.num_nodes = this_num_nodes;
+    // XXX probably output should be presented in 2D as well
+    conv.width = conv.num_nodes;
+    conv.height = 1;
+    conv.channels = 1;
+
+    conv.num_occurrences_across = num_occurrences_across;
     conv.num_occurrences_down = num_occurrences_down;
     conv.indices = std::move(indices);
 
@@ -1453,6 +1529,7 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
           const float mag = [chunk]() {
               switch (chunk->transfer_function) {
               default:
+              case TANH:
               case IDENTITY:
                 return 1.0f / sqrtf(chunk->indices_per_node);
               case SIGMOID:

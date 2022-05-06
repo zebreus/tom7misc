@@ -67,6 +67,8 @@ enum TransferFunction {
   RELU = 1,
   LEAKY_RELU = 2,
   IDENTITY = 3,
+  // Output range is (-1, 1).
+  TANH = 4,
 
   NUM_TRANSFER_FUNCTIONS,
 };
@@ -259,12 +261,13 @@ struct Network {
   // generated code, like the OpenCL. Each #defines FORWARD(p) and
   // DERIVATIVE(fx) as C/C++/OpenCL. FORWARD is as you'd expect.
   // DERIVATIVE is given in terms of the *output* of the transfer
-  // function, because this is the most natural/efficient for the
-  // sigmoid, and can be done (a bit less naturally) for ReLU.
+  // function, because this is the most natural/efficient for
+  // sigmoid and tanh, and can be done (a bit less naturally) for ReLU.
   static const char *const SIGMOID_FN;
   static const char *const RELU_FN;
   static const char *const LEAKY_RELU_FN;
   static const char *const IDENTITY_FN;
+  static const char *const TANH_FN;
 
   // Return one of the above constants (or abort for an unknown
   // transfer function).
@@ -357,6 +360,15 @@ struct Network {
   static Chunk Make1DConvolutionChunk(int span_start, int span_size,
                                       int num_features, int pattern_width,
                                       int x_stride,
+                                      TransferFunction transfer_function,
+                                      WeightUpdate weight_update);
+
+  // And similarly for 2D convolutions.
+  static Chunk Make2DConvolutionChunk(int span_start,
+                                      int span_width, int span_height,
+                                      int num_features,
+                                      int pattern_width, int pattern_height,
+                                      int x_stride, int y_stride,
                                       TransferFunction transfer_function,
                                       WeightUpdate weight_update);
 

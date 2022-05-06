@@ -282,6 +282,9 @@ struct ForwardLayerCL {
   // Run the given layer of the network forward on each of the given
   // training instances, managing the parallelism internally.
   void RunForward(TrainingRoundGPU *train, int src_layer);
+  // Run only for some 0 <= num_examples_prefix <= train->num_examples.
+  // XXX worth keeping this?
+  void RunForwardPrefix(TrainingRoundGPU *train, int src_layer, int num_examples);
 
  private:
   // The kernel (and associated program) objects for a specific chunk.

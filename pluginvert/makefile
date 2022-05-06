@@ -1,8 +1,8 @@
 
-default: train.exe
+default: train-eval.exe
 
 # widen.exe
-all: train.exe get-modelinfo.exe get-layerweights.exe collate-errors.exe network_test.exe network-gpu_test.exe run-boolean.exe run-network.exe print-weights.exe process.exe plot-beta.exe hyper-one.exe hyper-suite.exe test-intersection.exe
+all: train.exe get-modelinfo.exe get-layerweights.exe collate-errors.exe network_test.exe network-gpu_test.exe run-boolean.exe run-network.exe print-weights.exe process.exe plot-beta.exe hyper-one.exe hyper-suite.exe test-intersection.exe train-eval.exe
 
 CC_LIB=../cc-lib
 FFTW=../../fftw-3.3.8
@@ -29,13 +29,13 @@ CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/mp3.o $(CC_LIB)/top.o $(CC_LIB)/wavesave.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/bounds.o
 
 #  -Wno-write-strings
-CPPFLAGS=-m64 $(OPT) -D__MINGW32__ $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 -I $(FFTW)/ --std=c++20
+CPPFLAGS=-m64 $(OPT) -D__MINGW32__ $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 -I $(FFTW)/ -I ../chess/ --std=c++20
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=$(UTIL_OBJECTS) $(RE2_OBJECTS) network.o error-history.o modelinfo.o audio-database.o
+OBJECTS=$(UTIL_OBJECTS) $(RE2_OBJECTS) network.o error-history.o modelinfo.o audio-database.o ../chess/chess.o
 
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static $(FFTW)/.libs/libfftw3.a
@@ -69,6 +69,12 @@ run-network.exe : run-network.o network.o network-test-util.o $(UTIL_OBJECTS)
 	@echo -n "!"
 
 train.exe : train.o network-gpu.o clutil.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+# This doesn't really belong here... split it off when the network code is
+# stabilized again.
+train-eval.exe : train-eval.o network-gpu.o clutil.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

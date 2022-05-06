@@ -231,6 +231,14 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, NetworkGPU *net_gpu) :
 }
 
 void ForwardLayerCL::RunForward(TrainingRoundGPU *train, int src_layer) {
+  RunForwardPrefix(train, src_layer, train->num_examples);
+}
+
+void ForwardLayerCL::RunForwardPrefix(TrainingRoundGPU *train, int src_layer,
+                                      int num_examples_prefix) {
+  if (num_examples_prefix == 0) return;
+  CHECK(num_examples_prefix <= train->num_examples);
+
   const int dst_layer = src_layer + 1;
 
   // TODO: Do we really want to share the same command queue across
@@ -299,7 +307,7 @@ void ForwardLayerCL::RunForward(TrainingRoundGPU *train, int src_layer) {
       size_t global_work_offset[] = { 0, 0, };
       size_t global_work_size[] = {
         (size_t)(chunk.num_nodes),
-        (size_t)(train->num_examples),
+        (size_t)(num_examples_prefix),
       };
 
       CHECK(ck.kernel != 0);
