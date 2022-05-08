@@ -2006,7 +2006,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::DodgeballAdam(
 
   constexpr float GRAVITY = 0.098f;
   constexpr float TIMESTEPS = 100;
-  
+
   auto f = [](const std::vector<float> &input) -> std::vector<float> {
     CHECK(input.size() == INPUT_SIZE);
     float x1  = input[0] * 3.0f;
@@ -2058,7 +2058,7 @@ NetworkTestUtil::TrainNet NetworkTestUtil::DodgeballAdam(
                                                  ADAM);
     layers.push_back(Network::LayerFromChunks(conv));
   }
-  
+
   for (int d = 0; d < depth; d++) {
     int prev_nodes = layers.back().num_nodes;
     Network::SparseSpan span{.span_start = 0,
@@ -2094,4 +2094,45 @@ NetworkTestUtil::TrainNet NetworkTestUtil::DodgeballAdam(
     .boolean_output = false,
   };
 
+}
+
+NetworkTestUtil::TrainNet NetworkTestUtil::TanhSignFunctionAdam() {
+  constexpr int INPUT_SIZE = 80;
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = INPUT_SIZE;
+  input_chunk.width = INPUT_SIZE;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  // Single dense node to compute sign of sum.
+  Chunk dense_chunk = Network::MakeDenseChunk(1, 0, INPUT_SIZE, TANH, ADAM);
+
+  Layer input_layer = Network::LayerFromChunks(input_chunk);
+  Layer dense_layer = Network::LayerFromChunks(dense_chunk);
+
+  Network net({input_layer, dense_layer});
+  net.NaNCheck(__func__);
+
+  CHECK(net.layers.size() == 2);
+  CHECK(net.layers[0].chunks.size() == 1);
+  CHECK(net.layers[1].chunks.size() == 1);
+
+  auto f = [](const std::vector<float> &input) {
+      double v = 0.0;
+      for (float f : input) v += f;
+
+      float s = v < 0.0 ? -1.0f : v > 0.0 ? 1.0f : 0.0;
+      std::vector<float> out;
+      out.push_back(s);
+      return out;
+    };
+
+  return TrainNet{
+    .name = "Sign of sum of inputs.",
+    .net = net,
+    .f = f,
+    .boolean_input = false,
+    .boolean_output = false,
+  };
 }

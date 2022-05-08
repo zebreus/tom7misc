@@ -16,6 +16,8 @@ using namespace std;
 using uint32 = uint32_t;
 using int64 = int64_t;
 
+static constexpr int MAX_PIXELS = 64000000;
+
 namespace {
 // XXX could make sense as a standalone utility?
 struct Histo {
@@ -383,7 +385,7 @@ static ImageRGBA ChunkWeightsSparseDense(
     int prev_nodes,
     bool diagnostic_mode) {
 
-  if ((int64)chunk.num_nodes * (int64)prev_nodes > (int64)5000000) {
+  if ((int64)chunk.num_nodes * (int64)prev_nodes > (int64)MAX_PIXELS) {
     return ErrorImage(StringPrintf("Too big! %d x %d",
                                    chunk.num_nodes, prev_nodes));
   }

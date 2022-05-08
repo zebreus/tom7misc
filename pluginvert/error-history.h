@@ -13,20 +13,25 @@
 // Not thread-safe.
 struct ErrorHistory {
 
-  ErrorHistory(const std::string &filename,
-               int num_models = 1);
+  explicit ErrorHistory(const std::string &filename,
+                        int num_models = 1);
 
   // OK to add rounds sparsely, or even out-of-order.
-  // is_eval false means this is training error, true means test (aka eval)
+  // Arbitrary (non-negative) column index can record different series
+  //   (e.g. 0 = train error, 1 = eval error; or a model with just two
+  //    outputs might graph error for both rather than combining).
   // 0 <= model_idx < num_models.
   void Add(int64_t round_number,
            double error_per_example,
-           bool is_eval,
+           int column_idx = 0,
            int model_idx = 0);
 
   void Save();
 
+  // Merge all the models into a single TSV, sub-sampling the data
+  // if max_points is given. Only the selected column is output.
   void WriteMergedTSV(const std::string &outfile,
+                      int column = 0,
                       std::optional<int> max_points = {}) const;
 
 private:
@@ -38,8 +43,8 @@ private:
   struct Record {
     int64_t round_number = 0;
     double error_per_example = 0.0;
+    int column_index = 0;
     int model_index = 0;
-    bool is_eval = false;
   };
 
   std::vector<Record> records;

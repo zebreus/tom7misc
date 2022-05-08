@@ -14,7 +14,6 @@
 #include "base/logging.h"
 
 #include "network.h"
-#include "timer.h"
 #include "clutil.h"
 
 // PERF: For many of these, we use mutexes to avoid setting a

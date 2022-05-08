@@ -93,7 +93,10 @@ const char *const Network::IDENTITY_FN =
 // This also has a nice version in terms of the output:
 // 1 - tanh^2(x)   (which is possibly confusing notation for 1 - (tanh(x))^2).
 const char *const Network::TANH_FN =
-  "#define FORWARD(potential) (exp(-(potential * potential)))\n"
+  // TODO: Make sure the common subexpressions are eliminated in opencl, or else
+  // do it manually!
+  // "#define FORWARD(potential) ((exp(potential) - exp(-(potential)))/(exp(potential) + exp(-(potential))))\n"
+  "#define FORWARD(potential) ((exp(2.0f * potential) - 1.0f) / (exp(2.0f * potential) + 1.0f))\n"
   "#define DERIVATIVE(fx) (1.0f - fx * fx)\n";
 
 
@@ -330,7 +333,13 @@ static float IdentityFn(float potential) {
 }
 
 static float TanhFn(float potential) {
-  return expf(-(potential * potential));
+  /*
+  const float ex = expf(potential);
+  const float enx = expf(-potential);
+  return (ex - enx)/(ex + enx);
+  */
+  const float e2x = exp(2.0f * potential);
+  return (e2x - 1.0f) / (e2x + 1.0f);
 }
 
 // TODO could make verbose version with template param?

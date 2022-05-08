@@ -17,6 +17,7 @@
 #include "threadutil.h"
 #include "image.h"
 #include "train-util.h"
+#include "timer.h"
 
 using namespace std;
 
@@ -765,9 +766,14 @@ static void AuditionTests() {
   // TRAIN_TEST(NetworkTestUtil::DodgeballAdam(113, 21, 4),
   //    2000000, 1000, 0.010f, fast_config, {100});
 
+  #if 0
   // gets under 0.04 in 700k rounds, perhaps keeps going
   TRAIN_TEST(NetworkTestUtil::DodgeballAdam(113, 21, 4),
              2000000, 1000, 0.040f, slower_config, {100});
+#endif
+
+  TRAIN_TEST(NetworkTestUtil::TanhSignFunctionAdam(),
+             2000000, 1000, 0.0010f, fast_config, {100});
 }
 
 int main(int argc, char **argv) {
@@ -786,7 +792,7 @@ int main(int argc, char **argv) {
   printf("ADAM tests OK\n");
 
   // not permanent...
-  // AuditionTests();
+  AuditionTests();
 
   delete cl;
 

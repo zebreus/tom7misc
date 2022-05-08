@@ -171,9 +171,13 @@ struct NetworkTestUtil {
   // which because they are already overlapping in the initial state).
   // Model starts with convolutions, since the objects are symmetric.
   // Predict whether the two objects will collide within 100 timesteps,
-  // and if so return the first colliding timestep/100. 
+  // and if so return the first colliding timestep/100.
   static TrainNet DodgeballAdam(int width, int ipn, int depth,
                                 int64_t seed = 1);
+
+  // Tests a very simple case for the tanh transfer function. The
+  // sign of the sum of inputs (-1, 0, 1).
+  static TrainNet TanhSignFunctionAdam();
 };
 
 

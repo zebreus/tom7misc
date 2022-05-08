@@ -21,15 +21,16 @@ ErrorHistory::ErrorHistory(const std::string &filename,
 
 void ErrorHistory::Add(int64_t round_number,
                        double error_per_example,
-                       bool is_eval,
+                       int column_idx,
                        int model_idx) {
   CHECK(round_number >= 0);
+  CHECK(column_idx >= 0) << column_idx;
   CHECK(model_idx >= 0 && model_idx < num_models) << model_idx << " " << num_models;
 
   records.push_back(Record{.round_number = round_number,
                            .error_per_example = error_per_example,
-                           .model_index = model_idx,
-                           .is_eval = is_eval});
+                           .column_index = column_idx,
+                           .model_index = model_idx});
 }
 
 void ErrorHistory::Save() {
@@ -38,12 +39,12 @@ void ErrorHistory::Save() {
   CHECK(f) << filename;
 
   for (const Record &r : records) {
-    fprintf(f, "%lld\t%d\t%c\t%.12g\n",
+    fprintf(f, "%lld\t%d\t%d\t%.12g\n",
             r.round_number, r.model_index,
-            r.is_eval ? 't' : 'f',
+            r.column_index,
             r.error_per_example);
   }
-  
+
   fclose(f);
   printf("Wrote %lld error records to %s\n", (int64_t)records.size(),
          filename.c_str());
@@ -59,7 +60,8 @@ void ErrorHistory::Load() {
     if (r.round_number == 0) continue;
     r.model_index = std::stoi(Util::chopto('\t', line));
     if (r.model_index < 0 || r.model_index >= num_models) continue;
-    r.is_eval = Util::chopto('\t', line) == "t";
+    r.column_index = std::stoi(Util::chopto('\t', line));
+    if (r.column_index < 0) continue;
     r.error_per_example = std::stod(Util::chopto('\t', line));
     records.push_back(r);
   }
@@ -70,11 +72,12 @@ void ErrorHistory::Load() {
 }
 
 void ErrorHistory::WriteMergedTSV(const string &outfile,
+                                  int column,
                                   std::optional<int> max_points) const {
   std::map<int64, vector<Record>> collated_records;
   for (const auto &record : records)
     collated_records[record.round_number].push_back(record);
-  
+
   vector<bool> had_error(num_models, false);
   auto AllHadError = [&had_error]() {
       for (bool b : had_error) if (!b) return false;
@@ -86,8 +89,7 @@ void ErrorHistory::WriteMergedTSV(const string &outfile,
   vector<std::pair<int64, vector<double>>> rows;
   for (const auto &[round, recs] : collated_records) {
     for (const auto &rec : recs) {
-      // TODO: Also output eval error?
-      if (!rec.is_eval) {
+      if (rec.column_index == column) {
         int idx = rec.model_index;
         had_error[idx] = true;
         last_error[idx] = rec.error_per_example;
@@ -110,7 +112,7 @@ void ErrorHistory::WriteMergedTSV(const string &outfile,
     CHECK(span > 0) << "rounds not sorted!?";
     const double ival = span / (double)out_points;
     #endif
-    
+
     vector<std::pair<int64, vector<double>>> out;
     out.reserve(out_points);
 
@@ -147,7 +149,7 @@ void ErrorHistory::WriteMergedTSV(const string &outfile,
 
     rows = std::move(out);
   }
-  
+
   FILE *f = fopen(outfile.c_str(), "wb");
   for (const auto &[round, vals] : rows) {
     fprintf(f, "%lld", round);

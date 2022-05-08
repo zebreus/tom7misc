@@ -91,6 +91,25 @@ struct TrainingImages {
                     layer_idx, chunk_idx, ct.c_str(),
                     title.c_str(),
                     net.rounds, image_every));
+
+            int xpos = IMAGE_WIDTH;
+            auto WriteRight = [&](const std::string &s, uint32_t color) {
+                int w = s.size() * 9 * 2;
+                xpos -= w;
+                (*image)->BlendText2x32(xpos, 2, color, s);
+              };
+            // weight: 0xFFFFFF00, bias: 0xFF777700
+            // weight_aux: FFFF00, FF00FF
+            // bias_aux: 00FF00, 00FFFF
+
+            WriteRight("ux",  0x00FFFFFF);
+            WriteRight(" ba", 0x00FF00FF);
+
+            WriteRight("ux",  0xFF00FFFF);
+            WriteRight(" wa", 0xFFFF00FF);
+
+            WriteRight(" bias", 0xFF7777FF);
+            WriteRight("weight", 0xFFFFFFFF);
           }
         }
       }
@@ -162,20 +181,10 @@ struct TrainingImages {
         const uint8_t weight_alpha =
           std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
 
-        for (float w : chunk.weights) {
-          // maybe better to AA this?
-          image->BlendPixel32(ix, ToScreenY(w),
-                              0xFFFFFF00 | weight_alpha);
-        }
-
         const uint8_t bias_alpha =
           std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
 
-        for (float b : chunk.biases) {
-          image->BlendPixel32(ix, ToScreenY(b),
-                              0xFF777700 | bias_alpha);
-        }
-
+        // Write the aux stuff first, so it does not obscure the main values.
         if (chunk.weight_update == ADAM) {
           CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
           CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
@@ -191,11 +200,24 @@ struct TrainingImages {
           for (int idx = 0; idx < chunk.biases.size(); idx++) {
             const float m = chunk.biases_aux[idx * 2 + 0];
             const float v = sqrtf(chunk.biases_aux[idx * 2 + 1]);
+
             image->BlendPixel32(ix, ToScreenY(m),
                                 0x00FF0000 | bias_alpha);
             image->BlendPixel32(ix, ToScreenY(v),
-                                0x00FF7700 | bias_alpha);
+                                0x00FFFF00 | bias_alpha);
           }
+        }
+
+
+        for (float w : chunk.weights) {
+          // maybe better to AA this?
+          image->BlendPixel32(ix, ToScreenY(w),
+                              0xFFFFFF00 | weight_alpha);
+        }
+
+        for (float b : chunk.biases) {
+          image->BlendPixel32(ix, ToScreenY(b),
+                              0xFF777700 | bias_alpha);
         }
 
         if (ix % 100 == 0) {
@@ -217,7 +239,8 @@ struct TrainingImages {
           auto &[image, filename] = p;
           image->Save(filename);
         }, 4);
-      printf("Wrote %d images\n", (int)to_save.size());
+      printf("Wrote %d image%s\n", (int)to_save.size(),
+             to_save.size() == 1 ? "" : "s");
     }
   }
 
