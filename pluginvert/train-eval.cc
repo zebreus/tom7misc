@@ -44,6 +44,8 @@ static constexpr WeightUpdate WEIGHT_UPDATE = ADAM;
 #define MODEL_BASE "eval"
 #define MODEL_NAME MODEL_BASE ".val"
 
+static constexpr bool AVOID_REPEATS = true;
+
 // 8x8x13 one-hot, then 1x side to move, 4x castling bits,
 // 8x en passant state
 static constexpr int SQUARE_SIZE = 13;
@@ -233,7 +235,8 @@ static void Train(Network *net) {
   static constexpr double HISTORY_EVERY_SEC = 120.0;
   Periodically history_per(HISTORY_EVERY_SEC);
 
-  constexpr int TIMING_EVERY = 20;
+  static constexpr double TIMING_EVERY_SEC = 20.0;
+  Periodically timing_per(TIMING_EVERY_SEC);
 
   static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100000;
 
@@ -357,6 +360,9 @@ static void Train(Network *net) {
         // maps game idx to the location of its positions in the input array.
         std::vector<std::pair<int, int>> offsets;
 
+        // penalty for repeats, etc. flat.
+        std::vector<float> penalty(EXAMPLES_PER_ROUND, 0.0f);
+
         Timer expand_timer;
         int next_pos = 0;
         for (int game_idx = 0; game_idx < games.size(); game_idx++) {
@@ -369,6 +375,11 @@ static void Train(Network *net) {
             for (int i = 0; i < game.legal.size(); i++) {
               game.pos.MoveExcursion(game.legal[i], [&]() {
                   BoardVecTo(game.pos, &inputs, next_pos * INPUT_SIZE);
+                  if (AVOID_REPEATS) {
+                    if (game.position_counts.contains(game.pos)) {
+                      penalty[next_pos] -= 100.0f;
+                    }
+                  }
                   return 0;
                 });
               next_pos++;
@@ -415,17 +426,18 @@ static void Train(Network *net) {
           // two scores (negating for black) has this property.
           if (game.pos.BlackMove()) {
             // If playing as black, reverse scores so that negative ones
-            // are good.
+            // are good. Always treat penalties as having the same sign
+            // (nominally, negative), though.
             for (int i = 0; i < game.legal.size(); i++) {
               float eval = outputs[(offset + i) * 2 + 0];
               float over = outputs[(offset + i) * 2 + 1];
-              scores[i] = -eval * over;
+              scores[i] = -eval * over + penalty[offset + i];
             }
           } else {
             for (int i = 0; i < game.legal.size(); i++) {
               float eval = outputs[(offset + i) * 2 + 0];
               float over = outputs[(offset + i) * 2 + 1];
-              scores[i] = eval * over;
+              scores[i] = eval * over + penalty[offset + i];
             }
           }
 
@@ -534,8 +546,10 @@ static void Train(Network *net) {
         example_queue.pop_front();
       }
 
-      printf("%d passes, %d examples (recycled %d) -> %d\n",
-             passes, eqsize, recycled, example_queue.size());
+      if (verbose_round) {
+        printf("%d passes, %d examples (recycled %d) -> %d\n",
+               passes, eqsize, recycled, example_queue.size());
+      }
 
       CHECK(inputs.size() == INPUT_SIZE * EXAMPLES_PER_ROUND);
       CHECK(expecteds.size() == OUTPUT_SIZE * EXAMPLES_PER_ROUND);
@@ -698,7 +712,7 @@ static void Train(Network *net) {
 
     round_ms += round_timer.MS();
 
-    if (iter % TIMING_EVERY == 0) {
+    if (timing_per.ShouldRun()) {
       double accounted_ms = example_ms + forward_ms +
         error_ms + decay_ms + backward_ms + update_ms + loss_ms +
         image_ms;

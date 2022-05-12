@@ -96,7 +96,9 @@ const char *const Network::TANH_FN =
   // TODO: Make sure the common subexpressions are eliminated in opencl, or else
   // do it manually!
   // "#define FORWARD(potential) ((exp(potential) - exp(-(potential)))/(exp(potential) + exp(-(potential))))\n"
-  "#define FORWARD(potential) ((exp(2.0f * potential) - 1.0f) / (exp(2.0f * potential) + 1.0f))\n"
+  // "#define FORWARD(potential) ((exp(2.0f * potential) - 1.0f) / (exp(2.0f * potential) + 1.0f))\n"
+  // PERF native_tanh?
+  "#define FORWARD(potentnail) tanh(potential)\n"
   "#define DERIVATIVE(fx) (1.0f - fx * fx)\n";
 
 
