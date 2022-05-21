@@ -29,8 +29,8 @@
 
 // OVERWRITE_GRAD, a bool. If true, then we write the
 //   gradients with = rather than accumulating with +=. This
-//   saves a memory read and allows to skip clearing the
-//   buffer as well.
+//   saves a memory read and allows the caller to skip clearing
+//   the buffer as well.
 
 #if OVERWRITE_GRAD
   #define ACCUMULATE(l, r) (l) = (r)
@@ -215,8 +215,11 @@ __kernel void UpdateWeightsConvolutional(
   // very principled. Adam may be able to fully account for the
   // benefit I (thought I) was getting.
   // TODO: Tune this hyperparameter.
+
+  // XXX I am trying sqrt again! This should perhaps be a configurable
+  // parameter, and we should make sure it's a compile-time constant!
   const float multiplier =
-    1.0f / (NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN);
+    1.0f / sqrt((float)(NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN));
 
   {
     // Update the one weight.

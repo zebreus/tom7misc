@@ -16,6 +16,8 @@
 #include <unordered_map>
 
 #include "chess.h"
+#include "pgn.h"
+#include "bigchess.h"
 #include "network.h"
 #include "network-test-util.h"
 #include "clutil.h"
@@ -41,6 +43,9 @@ using uint8 = uint8_t;
 
 static constexpr WeightUpdate WEIGHT_UPDATE = ADAM;
 
+static constexpr bool TRAIN_SELF_PLAY = false;
+static constexpr const char *GAME_PGN = "d:\\chess\\lichess_db_standard_rated_2020-06.pgn";
+
 #define MODEL_BASE "eval"
 #define MODEL_NAME MODEL_BASE ".val"
 
@@ -53,6 +58,37 @@ static constexpr int BOARD_SIZE = 8 * 8 * SQUARE_SIZE + 1 + 4 + 8;
 static constexpr int WHOSE_MOVE_IDX = 8 * 8 * SQUARE_SIZE;
 static constexpr int OTHER_STATE_IDX = WHOSE_MOVE_IDX + 1;
 static constexpr int OTHER_STATE_SIZE = 4 + 8;
+
+// Maps eval scores to [-1, +1]. The range [-0.75, +0.75] is used
+// for standard pawn score (no mate found); the rest for mate.
+static float MapEval(const PGN::Eval &eval) {
+  switch (eval.type) {
+  case PGN::EvalType::PAWNS: {
+    // The nominal range is [0, 64];
+    float f = std::clamp(eval.e.pawns, -64.0f, 64.0f);
+    return f * (0.75f / 64.0f);
+  }
+  case PGN::EvalType::MATE: {
+    // Not really any limit to the depth of a mate we could
+    // discover, so this asymptotically approaches 0. A mate
+    // in 1 has the highest bonus, 0.25f.
+
+    const int depth = abs(eval.e.mate) - 1;
+
+    // This scale is abitrary; we just want something that
+    // considers mate in 5 better than mate in 6, and so on.
+    static constexpr float SCALE = 0.1f;
+    float depth_bonus =
+      (1.0f - (1.0f / (1.0f + expf(-SCALE * depth)))) * 0.5f;
+    return eval.e.mate > 0 ?
+      0.75f + depth_bonus : -0.75f - depth_bonus;
+  }
+
+  default:
+    CHECK(false) << "Bad/unimplemented eval type";
+    return 0.0f;
+  }
+}
 
 // Write into the output vector starting at the given index; the space must
 // already be reserved.
@@ -97,6 +133,60 @@ static vector<float> BoardVec(const Position &pos) {
   BoardVecTo(pos, &ret, 0);
   return ret;
 }
+
+// When training from a database,
+static std::mutex pool_mutex;
+static std::vector<std::tuple<Position, float, float>> example_pool;
+static void PopulateExamples() {
+  PGNParser parser;
+  printf("Loading examples from %s...\n", GAME_PGN);
+  int64 num_games = 0, num_positions = 0, parse_errors = 0;
+  PGNTextStream ts(GAME_PGN);
+  string pgn_text;
+  while (ts.NextPGN(&pgn_text)) {
+    PGN pgn;
+    if (parser.Parse(pgn_text, &pgn)) {
+      if (!pgn.moves.empty() && pgn.moves[0].eval.has_value()) {
+        Position pos;
+        for (int i = 0; i < pgn.moves.size(); i++) {
+          const PGN::Move &m = pgn.moves[i];
+
+          Position::Move move;
+          if (!pos.ParseMove(m.move.c_str(), &move)) {
+            parse_errors++;
+            goto next_game;
+          }
+
+          pos.ApplyMove(move);
+
+          // Eval applies to position after move.
+          if (m.eval.has_value()) {
+            const float score = MapEval(m.eval.value());
+            const float over = i / (float)pgn.moves.size();
+
+            {
+              MutexLock ml(&pool_mutex);
+              example_pool.emplace_back(pos, score, over);
+            }
+            num_positions++;
+          }
+        }
+        num_games++;
+        if (num_games % 10000 == 0) {
+          printf("Read %lld games, %lld pos from %s\n", num_games, num_positions, GAME_PGN);
+        }
+      }
+    } else {
+      parse_errors++;
+    }
+  next_game:;
+  }
+
+  printf("Done loading examples from %s.\n"
+         "%lld games, %lld positions, %lld errors\n",
+         GAME_PGN, num_games, num_positions, parse_errors);
+}
+
 
 static constexpr int INPUT_SIZE = BOARD_SIZE;
 static constexpr int OUTPUT_SIZE = 2;
@@ -202,6 +292,8 @@ struct Game {
 };
 
 static void Train(Network *net) {
+  std::thread example_thread(&PopulateExamples);
+
   ArcFour rc(StringPrintf("%lld.train.%s", time(nullptr), MODEL_BASE));
 
   ErrorHistory error_history(StringPrintf("%s-error-history.tsv", MODEL_BASE));
@@ -217,7 +309,7 @@ static void Train(Network *net) {
   // get divergence after hundreds of thousands of rounds.
   // This happened again with the plugin parameter predictor
   // with a value of 1e-6!
-  update_config.adam_epsilon = 1.0e-4;
+  update_config.adam_epsilon = 1.0e-2;
 
   // XXX this should probably depend on the learning rate; if the
   // learning rate is too small, it won't even be able to overcome
@@ -240,7 +332,7 @@ static void Train(Network *net) {
 
   static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100000;
 
-  constexpr int IMAGE_EVERY = 10;
+  constexpr int IMAGE_EVERY = 100;
   TrainingImages images(*net, "train", MODEL_NAME, IMAGE_EVERY);
 
   printf("Training!\n");
@@ -308,248 +400,303 @@ static void Train(Network *net) {
 
     // Initialize training examples.
 
-    // We do this by self-playing until we have filled the budget.
-
     std::vector<float> inputs;
     inputs.resize(EXAMPLES_PER_ROUND * INPUT_SIZE);
     std::vector<float> expecteds;
     expecteds.resize(EXAMPLES_PER_ROUND * OUTPUT_SIZE);
 
-    {
+    if (TRAIN_SELF_PLAY) {
+      // We do this by self-playing until we have filled the budget.
+
+      {
+        Timer example_timer;
+
+        // scratch space to load boards to evaluate
+        std::vector<float> inputs;
+        inputs.resize(INPUT_SIZE * EXAMPLES_PER_ROUND);
+
+        // scratch space to read out the scores of moves at each position
+        std::vector<float> outputs;
+        outputs.resize(OUTPUT_SIZE * EXAMPLES_PER_ROUND);
+
+        int passes = 0;
+        for (;;) {
+          passes++;
+          // Are any games done? If so, take their positions as training
+          // data and maybe be done prepping examples.
+          for (Game &game : games) {
+            auto ro = game.GetResult();
+            if (ro.has_value()) {
+
+              Game game_over = game;
+              game = Game();
+
+              switch (ro.value()) {
+              case Game::Result::WHITE_WINS: white_wins++; break;
+              case Game::Result::BLACK_WINS: black_wins++; break;
+              case Game::Result::DRAW_BY_REPETITION: repetition_draws++; break;
+              case Game::Result::DRAW_50_MOVES: fifty_draws++; break;
+              case Game::Result::DRAW_STALEMATE: stalemate_draws++; break;
+              }
+
+              const float num_moves = (float)game_over.reached.size();
+              for (int i = game_over.reached.size(); i >= 0; i--) {
+                example_queue.emplace_back(std::move(game_over.reached[i]), ro.value(), i / num_moves);
+              }
+              if (example_queue.size() >= EXAMPLES_PER_ROUND) goto enough_examples;
+            }
+          }
+
+          // Otherwise, fill up the input buffer (as much as we can) with
+          // possible next states from the in-progress games.
+
+          // maps game idx to the location of its positions in the input array.
+          std::vector<std::pair<int, int>> offsets;
+
+          // penalty for repeats, etc. flat.
+          std::vector<float> penalty(EXAMPLES_PER_ROUND, 0.0f);
+
+          Timer expand_timer;
+          int next_pos = 0;
+          for (int game_idx = 0; game_idx < games.size(); game_idx++) {
+            const int num_left = EXAMPLES_PER_ROUND - next_pos;
+            CHECK(num_left >= 0);
+            if (num_left == 0) break;
+            Game &game = games[game_idx];
+            if (game.legal.size() <= num_left) {
+              offsets.emplace_back(game_idx, next_pos);
+              for (int i = 0; i < game.legal.size(); i++) {
+                game.pos.MoveExcursion(game.legal[i], [&]() {
+                    BoardVecTo(game.pos, &inputs, next_pos * INPUT_SIZE);
+                    if (AVOID_REPEATS) {
+                      if (game.position_counts.contains(game.pos)) {
+                        penalty[next_pos] -= 100.0f;
+                      }
+                    }
+                    return 0;
+                  });
+                next_pos++;
+              }
+            }
+          }
+          expand_ms += expand_timer.MS();
+
+          // This would mean all games have more than EXAMPLES_PER_ROUND next
+          // positions? That should not be possible.
+          CHECK(!offsets.empty());
+
+          // PERF: Only copy the prefix...
+          Timer eval_timer;
+          training->LoadInputs(inputs);
+
+          CHECK(next_pos <= EXAMPLES_PER_ROUND);
+          // Score the whole batch.
+          for (int src_layer = 0;
+               src_layer < net->layers.size() - 1;
+               src_layer++) {
+            // We only need to run legal.size() examples here; the
+            // rest are just leftover from the last round and we won't
+            // look at the outputs.
+            forward_cl->RunForwardPrefix(training.get(), src_layer, next_pos);
+          }
+
+          // PERF: Only copy the prefix that has meaningful data...
+          training->ExportOutputs(&outputs);
+          eval_ms += eval_timer.MS();
+
+          // Advance games that were in that set.
+          // printf("---\n");
+          Timer makemove_timer;
+          for (const auto &[game_idx, offset] : offsets) {
+            Game &game = games[game_idx];
+            // printf("game %d @%d %d moves\n", game_idx, offset, game.legal.size());
+            std::vector<float> scores(game.legal.size());
+
+            // We prever positions that have a favorable evaluation, and
+            // that are also closer to the end of the game. If we have
+            // to take an unfavorable position, we'd prefer for it to be
+            // closer to the beginning of the game. The product of the
+            // two scores (negating for black) has this property.
+            //
+            // as white:
+            // score  *  over
+            // bad pos, almost done
+            // -0.9   *  0.9   = -0.81
+            // bad pos, near beginning
+            // -0.9   *  0.1   = -0.09
+            // good pos, near beginning
+            // 0.9    *  0.1   = +0.09
+            // good pos, almost done
+            // 0.9    *  0.8   = +0.81
+            if (game.pos.BlackMove()) {
+              // If playing as black, reverse scores so that negative ones
+              // are good. Always treat penalties as having the same sign
+              // (nominally, negative), though.
+              for (int i = 0; i < game.legal.size(); i++) {
+                float eval = outputs[(offset + i) * 2 + 0];
+                float over = outputs[(offset + i) * 2 + 1];
+                scores[i] = -eval * over + penalty[offset + i];
+              }
+            } else {
+              for (int i = 0; i < game.legal.size(); i++) {
+                float eval = outputs[(offset + i) * 2 + 0];
+                float over = outputs[(offset + i) * 2 + 1];
+                scores[i] = eval * over + penalty[offset + i];
+              }
+            }
+
+            // Get index into game.legal array.
+            const int take_move = [&]() -> int {
+              if (game.legal.size() == 1)
+                return 0;
+
+              // index into game.legal array
+              std::vector<int> best_idx;
+              best_idx.reserve(game.legal.size());
+              for (int i = 0; i < game.legal.size(); i++) best_idx.push_back(i);
+              // Avoid biasing towards earlier moves when the distribution
+              // is very flat.
+              Shuffle(&rc, &best_idx);
+              // Sort by score, descending.
+              std::sort(best_idx.begin(), best_idx.end(),
+                        [&](int a, int b) {
+                          return scores[a] > scores[b];
+                        });
+
+              // Sample the move.
+              // Is there a more principled way (i.e. fewer parameters) to do this?
+              CHECK(game.legal.size() > 1);
+              const int n_best = std::clamp((int)game.legal.size() / 4,
+                                            1,
+                                            (int)game.legal.size() - 1);
+
+              // The next element; we base the scores for weighted sampling off this.
+              // Its score is the "bias".
+              const int bias_idx = std::clamp(n_best + 1, 0, (int)game.legal.size() - 1);
+              CHECK(bias_idx >= 0 && bias_idx < game.legal.size());
+              const int bias_elt = best_idx[bias_idx];
+              CHECK(bias_elt >= 0 && bias_elt < game.legal.size());
+              const float bias = scores[bias_elt];
+              const int best_elt = best_idx[0];
+              CHECK(best_elt >= 0 && best_elt < game.legal.size());
+              const float best_score = scores[best_elt];
+              // Scores are descending so we expect the best element to have a higher
+              // score than the bias element.
+              if (best_score <= bias) {
+                // Flat distribution. Choose uniformly.
+                return RandTo(&rc, n_best);
+              }
+
+              // Otherwise, weighted.
+              double total_weight = 0.0;
+              for (int i = 0; i < n_best; i++) {
+                int elt = best_idx[i];
+                CHECK(elt >= 0 && elt <= game.legal.size());
+                total_weight += scores[elt] - bias;
+              }
+
+              // We have best_score > bias, and the scores are descending
+              // in that range, so there should no negative values and at
+              // least one positive one.
+              CHECK(total_weight > 0.0);
+
+              // Now index into the mass in the standard way.
+              double point = RandDouble(&rc) * total_weight;
+              for (int i = 0; i < n_best; i++) {
+                int elt = best_idx[i];
+                CHECK(elt >= 0 && elt <= game.legal.size());
+                if (point < (scores[elt] - bias))
+                  return elt;
+                point -= (outputs[elt] - bias);
+              }
+
+              // Only can get here due to floating point
+              // approximations failing us.
+              return best_idx[0];
+            }();
+          CHECK(take_move >= 0 && take_move < game.legal.size());
+
+          game.MakeMove(take_move);
+          }
+          makemove_ms += makemove_timer.MS();
+        }
+
+      enough_examples:;
+        int eqsize = example_queue.size();
+
+        int recycled = 0;
+        CHECK(example_queue.size() >= EXAMPLES_PER_ROUND);
+        for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
+          const auto &[pos, result, over] = example_queue.front();
+          BoardVecTo(pos, &inputs, INPUT_SIZE * i);
+          auto ResultFloat = [](Game::Result r) -> float {
+              switch (r) {
+              case Game::Result::WHITE_WINS: return +1.0f;
+              case Game::Result::BLACK_WINS: return -1.0f;
+              default: return 0.0f;
+              }
+            };
+          expecteds[i * OUTPUT_SIZE + 0] = ResultFloat(result);
+          expecteds[i * OUTPUT_SIZE + 1] = over;
+
+          // Recycle some of the training data if it is from second half of
+          // the game and is not score zero.
+          if (over >= 0.5f && (result == Game::Result::WHITE_WINS ||
+                               result == Game::Result::BLACK_WINS) &&
+              (rc.Byte() & 1) == 1) {
+            recycled++;
+            example_queue.push_back(std::move(example_queue.front()));
+          }
+          example_queue.pop_front();
+        }
+
+        if (verbose_round) {
+          printf("%d passes, %d examples (recycled %d) -> %d\n",
+                 passes, eqsize, recycled, example_queue.size());
+        }
+
+        CHECK(inputs.size() == INPUT_SIZE * EXAMPLES_PER_ROUND);
+        CHECK(expecteds.size() == OUTPUT_SIZE * EXAMPLES_PER_ROUND);
+        training->LoadInputs(inputs);
+        training->LoadExpecteds(expecteds);
+        example_ms += example_timer.MS();
+      }
+    } else {
+      // From database.
       Timer example_timer;
 
-      // scratch space to load boards to evaluate
-      std::vector<float> inputs;
-      inputs.resize(INPUT_SIZE * EXAMPLES_PER_ROUND);
-
-      // scratch space to read out the scores of moves at each position
-      std::vector<float> outputs;
-      outputs.resize(OUTPUT_SIZE * EXAMPLES_PER_ROUND);
-
-      int passes = 0;
-      for (;;) {
-        passes++;
-        // Are any games done? If so, take their positions as training
-        // data and maybe be done prepping examples.
-        for (Game &game : games) {
-          auto ro = game.GetResult();
-          if (ro.has_value()) {
-
-            Game game_over = game;
-            game = Game();
-
-            switch (ro.value()) {
-            case Game::Result::WHITE_WINS: white_wins++; break;
-            case Game::Result::BLACK_WINS: black_wins++; break;
-            case Game::Result::DRAW_BY_REPETITION: repetition_draws++; break;
-            case Game::Result::DRAW_50_MOVES: fifty_draws++; break;
-            case Game::Result::DRAW_STALEMATE: stalemate_draws++; break;
+      static constexpr int MIN_EXAMPLES = 100000;
+      const int num_available = [](){
+          for (;;) {
+            {
+              MutexLock ml(&pool_mutex);
+              if (example_pool.size() >= MIN_EXAMPLES) {
+                return example_pool.size();
+              }
             }
-
-            const float num_moves = (float)game_over.reached.size();
-            for (int i = game_over.reached.size(); i >= 0; i--) {
-              example_queue.emplace_back(std::move(game_over.reached[i]), ro.value(), i / num_moves);
-            }
-            if (example_queue.size() >= EXAMPLES_PER_ROUND) goto enough_examples;
+            printf("Waiting until we have enough examples..\n");
+            std::this_thread::sleep_for(2s);
           }
-        }
+        }();
 
-        // Otherwise, fill up the input buffer (as much as we can) with
-        // possible next states from the in-progress games.
-
-        // maps game idx to the location of its positions in the input array.
-        std::vector<std::pair<int, int>> offsets;
-
-        // penalty for repeats, etc. flat.
-        std::vector<float> penalty(EXAMPLES_PER_ROUND, 0.0f);
-
-        Timer expand_timer;
-        int next_pos = 0;
-        for (int game_idx = 0; game_idx < games.size(); game_idx++) {
-          const int num_left = EXAMPLES_PER_ROUND - next_pos;
-          CHECK(num_left >= 0);
-          if (num_left == 0) break;
-          Game &game = games[game_idx];
-          if (game.legal.size() <= num_left) {
-            offsets.emplace_back(game_idx, next_pos);
-            for (int i = 0; i < game.legal.size(); i++) {
-              game.pos.MoveExcursion(game.legal[i], [&]() {
-                  BoardVecTo(game.pos, &inputs, next_pos * INPUT_SIZE);
-                  if (AVOID_REPEATS) {
-                    if (game.position_counts.contains(game.pos)) {
-                      penalty[next_pos] -= 100.0f;
-                    }
-                  }
-                  return 0;
-                });
-              next_pos++;
-            }
+      {
+        MutexLock ml(&pool_mutex);
+        for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
+          const int idx = RandTo(&rc, num_available);
+          const auto &[pos, score, over] = example_pool[idx];
+          if (i == 0 && verbose_round) {
+            printf("Eval %.5f Over %.3f:\n"
+                   "%s"
+                   "%s\n\n",
+                   score, over, pos.BoardString().c_str(),
+                   pos.ToFEN(1, 1).c_str());
           }
+          BoardVecTo(pos, &inputs, INPUT_SIZE * i);
+          expecteds[i * OUTPUT_SIZE + 0] = score;
+          expecteds[i * OUTPUT_SIZE + 1] = over;
         }
-        expand_ms += expand_timer.MS();
-
-        // This would mean all games have more than EXAMPLES_PER_ROUND next
-        // positions? That should not be possible.
-        CHECK(!offsets.empty());
-
-        // PERF: Only copy the prefix...
-        Timer eval_timer;
-        training->LoadInputs(inputs);
-
-        CHECK(next_pos <= EXAMPLES_PER_ROUND);
-        // Score the whole batch.
-        for (int src_layer = 0;
-             src_layer < net->layers.size() - 1;
-             src_layer++) {
-          // We only need to run legal.size() examples here; the
-          // rest are just leftover from the last round and we won't
-          // look at the outputs.
-          forward_cl->RunForwardPrefix(training.get(), src_layer, next_pos);
-        }
-
-        // PERF: Only copy the prefix that has meaningful data...
-        training->ExportOutputs(&outputs);
-        eval_ms += eval_timer.MS();
-
-        // Advance games that were in that set.
-        // printf("---\n");
-        Timer makemove_timer;
-        for (const auto &[game_idx, offset] : offsets) {
-          Game &game = games[game_idx];
-          // printf("game %d @%d %d moves\n", game_idx, offset, game.legal.size());
-          std::vector<float> scores(game.legal.size());
-
-          // We prever positions that have a favorable evaluation, and
-          // that are also closer to the end of the game. If we have
-          // to take an unfavorable position, we'd prefer for it to be
-          // closer to the beginning of the game. The product of the
-          // two scores (negating for black) has this property.
-          if (game.pos.BlackMove()) {
-            // If playing as black, reverse scores so that negative ones
-            // are good. Always treat penalties as having the same sign
-            // (nominally, negative), though.
-            for (int i = 0; i < game.legal.size(); i++) {
-              float eval = outputs[(offset + i) * 2 + 0];
-              float over = outputs[(offset + i) * 2 + 1];
-              scores[i] = -eval * over + penalty[offset + i];
-            }
-          } else {
-            for (int i = 0; i < game.legal.size(); i++) {
-              float eval = outputs[(offset + i) * 2 + 0];
-              float over = outputs[(offset + i) * 2 + 1];
-              scores[i] = eval * over + penalty[offset + i];
-            }
-          }
-
-          // Get index into game.legal array.
-          const int take_move = [&]() -> int {
-            if (game.legal.size() == 1)
-              return 0;
-
-            // index into game.legal array
-            std::vector<int> best_idx;
-            best_idx.reserve(game.legal.size());
-            for (int i = 0; i < game.legal.size(); i++) best_idx.push_back(i);
-            // Avoid biasing towards earlier moves when the distribution
-            // is very flat.
-            Shuffle(&rc, &best_idx);
-            // Sort by score, descending.
-            std::sort(best_idx.begin(), best_idx.end(),
-                      [&](int a, int b) {
-                        return scores[a] > scores[b];
-                      });
-
-            // Sample the move.
-            // Is there a more principled way (i.e. fewer parameters) to do this?
-            CHECK(game.legal.size() > 1);
-            const int n_best = std::clamp((int)game.legal.size() / 4,
-                                          1,
-                                          (int)game.legal.size() - 1);
-
-            // The next element; we base the scores for weighted sampling off this.
-            // Its score is the "bias".
-            const int bias_idx = std::clamp(n_best + 1, 0, (int)game.legal.size() - 1);
-            CHECK(bias_idx >= 0 && bias_idx < game.legal.size());
-            const int bias_elt = best_idx[bias_idx];
-            CHECK(bias_elt >= 0 && bias_elt < game.legal.size());
-            const float bias = scores[bias_elt];
-            const int best_elt = best_idx[0];
-            CHECK(best_elt >= 0 && best_elt < game.legal.size());
-            const float best_score = scores[best_elt];
-            // Scores are descending so we expect the best element to have a higher
-            // score than the bias element.
-            if (best_score <= bias) {
-              // Flat distribution. Choose uniformly.
-              return RandTo(&rc, n_best);
-            }
-
-            // Otherwise, weighted.
-            double total_weight = 0.0;
-            for (int i = 0; i < n_best; i++) {
-              int elt = best_idx[i];
-              CHECK(elt >= 0 && elt <= game.legal.size());
-              total_weight += scores[elt] - bias;
-            }
-
-            // We have best_score > bias, and the scores are descending
-            // in that range, so there should no negative values and at
-            // least one positive one.
-            CHECK(total_weight > 0.0);
-
-            // Now index into the mass in the standard way.
-            double point = RandDouble(&rc) * total_weight;
-            for (int i = 0; i < n_best; i++) {
-              int elt = best_idx[i];
-              CHECK(elt >= 0 && elt <= game.legal.size());
-              if (point < (scores[elt] - bias))
-                return elt;
-              point -= (outputs[elt] - bias);
-            }
-
-            // Only can get here due to floating point
-            // approximations failing us.
-            return best_idx[0];
-          }();
-        CHECK(take_move >= 0 && take_move < game.legal.size());
-
-        game.MakeMove(take_move);
-        }
-        makemove_ms += makemove_timer.MS();
       }
 
-    enough_examples:;
-      int eqsize = example_queue.size();
-
-      int recycled = 0;
-      CHECK(example_queue.size() >= EXAMPLES_PER_ROUND);
-      for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
-        const auto &[pos, result, over] = example_queue.front();
-        BoardVecTo(pos, &inputs, INPUT_SIZE * i);
-        auto ResultFloat = [](Game::Result r) -> float {
-            switch (r) {
-            case Game::Result::WHITE_WINS: return +1.0f;
-            case Game::Result::BLACK_WINS: return -1.0f;
-            default: return 0.0f;
-            }
-          };
-        expecteds[i * OUTPUT_SIZE + 0] = ResultFloat(result);
-        expecteds[i * OUTPUT_SIZE + 1] = over;
-
-        // Recycle some of the training data if it is from second half of
-        // the game and is not score zero.
-        if (over >= 0.5f && (result == Game::Result::WHITE_WINS ||
-                             result == Game::Result::BLACK_WINS) &&
-            (rc.Byte() & 1) == 1) {
-          recycled++;
-          example_queue.push_back(std::move(example_queue.front()));
-        }
-        example_queue.pop_front();
-      }
-
-      if (verbose_round) {
-        printf("%d passes, %d examples (recycled %d) -> %d\n",
-               passes, eqsize, recycled, example_queue.size());
-      }
 
       CHECK(inputs.size() == INPUT_SIZE * EXAMPLES_PER_ROUND);
       CHECK(expecteds.size() == OUTPUT_SIZE * EXAMPLES_PER_ROUND);
@@ -661,6 +808,11 @@ static void Train(Network *net) {
           min_loss = std::min(min_loss, loss);
           max_loss = std::max(max_loss, loss);
           average_loss += loss;
+
+          if (idx == 0) {
+            printf("Example 0: %s expected %.5f got %.5f\n",
+                   COLUMN_NAMES[col], expected, actual);
+          }
         }
         average_loss /= EXAMPLES_PER_ROUND;
 
@@ -702,6 +854,13 @@ static void Train(Network *net) {
       if (VERBOSE)
         printf("Wrote %s\n", filename.c_str());
       error_history.Save();
+      ImageRGBA error_image =
+        error_history.MakeImage(1920, 1080,
+                                {{0, 0xFFFF00AA},
+                                 {1, 0x00FFFFAA}}, 0);
+      string eimg_file = MODEL_BASE "-error.png";
+      error_image.Save(eimg_file);
+      printf("Wrote %s\n", eimg_file.c_str());
     }
 
     // Parameter for average_loss termination?

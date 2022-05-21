@@ -5,6 +5,9 @@
 #include <vector>
 #include <cstdint>
 #include <optional>
+#include <map>
+
+#include "image.h"
 
 // Stores error history (train, test) over time. Multiple models are
 // supported. Since we typically train a model over O(100k) rounds, we
@@ -33,6 +36,10 @@ struct ErrorHistory {
   void WriteMergedTSV(const std::string &outfile,
                       int column = 0,
                       std::optional<int> max_points = {}) const;
+
+  ImageRGBA MakeImage(int width, int height,
+                      std::map<int, uint32_t> column_colors,
+                      int model_idx) const;
 
 private:
   void Load();
