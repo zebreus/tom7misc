@@ -22,5 +22,8 @@ pactom.o : pactom.cc pactom.h
 maptest.exe : maptest.o pactom.o $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+zoomout.exe : zoomout.o pactom.o $(UTIL_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f *.o *.exe
