@@ -18,8 +18,8 @@ using uint64 = uint64_t;
 constexpr int CHARS_ACROSS = 16;
 constexpr int CHARS_DOWN = 8;
 
-constexpr int CHAR_WIDTH = EmbeddedFont::CHAR_WIDTH;
-constexpr int CHAR_HEIGHT = EmbeddedFont::CHAR_HEIGHT;
+constexpr int CH_WIDTH = EmbeddedFont::WIDTH;
+constexpr int CH_HEIGHT = EmbeddedFont::HEIGHT;
 
 constexpr int PX = 3;
 
@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
     "  Welcome to my font!  it is cozy here " B7_SMILE "  (ok) ";
   int cols = text.size();
   
-  ImageRGBA out{cols * CHAR_WIDTH * PX, CHAR_HEIGHT * PX};
+  ImageRGBA out{cols * CH_WIDTH * PX, CH_HEIGHT * PX};
   out.Clear32(0x000000FF);
   auto SetPixel = [&out](int x, int y) {
     for (int yy = 0; yy < PX; yy++) {
@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
   for (int x = 0; x < (int)text.size(); x++) {
     uint8 ch = text[x];
     EmbeddedFont::Blit(
-	(int)ch, x * CHAR_WIDTH, 0, SetPixel, ClearPixel);
+	(int)ch, x * CH_WIDTH, 0, SetPixel, ClearPixel);
   }
   
   out.Save("testembed.png");
