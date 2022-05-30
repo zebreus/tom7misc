@@ -50,9 +50,27 @@ static void BenchBlendPixel() {
   printf("Result: %llx\n", result);
 }
 
+static void BenchClear32() {
+  ImageRGBA image(250, 500);
+
+  Timer timer;
+  static constexpr int64 NUM_CLEARS = 1000000;
+  uint32_t state = 0x12345678;
+  for (int64 i = 0; i < NUM_CLEARS; i++) {
+    state = LFSRNext32(state);
+    image.Clear32(state);
+  }
+  
+  double sec = timer.Seconds();
+  printf("Clear32: %lld clears in %.3f sec =\n"
+         "%.3f Kc/sec\n", NUM_CLEARS, sec,
+         NUM_CLEARS / (sec * 1000.0));
+}
+
 int main(int argc, char **argv) {
   BenchBlendPixel();
-
+  BenchClear32();
+  
   printf("OK\n");
   return 0;
 }
