@@ -6,6 +6,21 @@
 #include "arcfour.h"
 #include "randutil.h"
 
+static void TestCreateAndDestroy() {
+  {
+    ImageRGBA img(100, 20);
+  }
+
+  {
+    ImageRGBA img;
+  }
+
+  {
+    std::vector<uint8_t> pixels(8, 0);
+    ImageRGBA img(pixels, 2, 1);
+  }
+}
+
 static void TestBilinearResize() {
   ImageA in(20, 20);
   in.Clear(0);
@@ -117,6 +132,7 @@ static void TestFilledCircle() {
 }
 
 int main(int argc, char **argv) {
+  TestCreateAndDestroy();
   TestBilinearResize();
   TestSampleBilinear();
   TestEq();

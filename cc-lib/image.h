@@ -21,7 +21,8 @@ struct ImageA;
 struct ImageRGBA {
   using uint8 = uint8_t;
   using uint32 = uint32_t;
-  ImageRGBA(const std::vector<uint8> &rgba, int width, int height);
+  ImageRGBA(const std::vector<uint8> &rgba8, int width, int height);
+  ImageRGBA(const std::vector<uint32> &rgba32, int width, int height);
   ImageRGBA(int width, int height);
   ImageRGBA() : width(0), height(0) {}
 
@@ -145,9 +146,11 @@ struct ImageRGBA {
                                 const ImageA &alpha);
 
 private:
+  std::vector<uint8_t> ToBuffer8() const;
   int width, height;
   // Size width * height * 4.
-  std::vector<uint8> rgba;
+  // Bytes are packed 0xRRGGBBAA, regardless of host endianness.
+  std::vector<uint32_t> rgba;
 };
 
 // Single-channel 8-bit bitmap.
@@ -256,47 +259,44 @@ private:
 // Implementations follow.
 
 
-ImageRGBA::uint32 ImageRGBA::GetPixel32(int x, int y) const {
+uint32_t ImageRGBA::GetPixel32(int x, int y) const {
   // Treat out-of-bounds reads as containing 00,00,00,00.
-  if (x < 0 || x >= width ||
-      y < 0 || y >= height) return 0;
-  const int base = (y * width + x) << 2;
-  const uint8_t r = rgba[base + 0];
-  const uint8_t g = rgba[base + 1];
-  const uint8_t b = rgba[base + 2];
-  const uint8_t a = rgba[base + 3];
-  return ((uint32)r << 24) | ((uint32)g << 16) | ((uint32)b << 8) | (uint32)a;
+  if ((unsigned)x >= (unsigned)width) return 0;
+  if ((unsigned)y >= (unsigned)height) return 0;
+  const int base = y * width + x;
+  return rgba[base];
 }
 
 std::tuple<uint8_t, uint8_t, uint8_t, uint8_t>
 ImageRGBA::GetPixel(int x, int y) const {
   // Treat out-of-bounds reads as containing 00,00,00,00.
-  if (x < 0 || x >= width ||
-      y < 0 || y >= height) return std::make_tuple(0, 0, 0, 0);
-  const int base = (y * width + x) << 2;
+  if ((unsigned)x >= (unsigned)width ||
+      (unsigned)y >= (unsigned)height)
+    return std::make_tuple(0, 0, 0, 0);
+
+  uint32 color = rgba[y * width + x];
   return std::make_tuple(
-      rgba[base], rgba[base + 1], rgba[base + 2], rgba[base + 3]);
+      (uint8_t)((color >> 24) & 255),
+      (uint8_t)((color >> 16) & 255),
+      (uint8_t)((color >> 8) & 255),
+      (uint8_t)(color & 255));
 }
 
 void ImageRGBA::SetPixel(int x, int y,
                          uint8 r, uint8 g, uint8 b, uint8 a) {
-  if (x < 0 || x >= width ||
-      y < 0 || y >= height) return;
-  int i = (y * width + x) * 4;
-  rgba[i + 0] = r;
-  rgba[i + 1] = g;
-  rgba[i + 2] = b;
-  rgba[i + 3] = a;
+  if ((unsigned)x >= (unsigned)width) return;
+  if ((unsigned)y >= (unsigned)height) return;
+
+  const uint32 color =
+    ((uint32)r << 24) | ((uint32)g << 16) | ((uint32)b << 8) | (uint32)a;
+  
+  rgba[y * width + x] = color;
 }
 
 void ImageRGBA::SetPixel32(int x, int y, uint32 color) {
-  if (x < 0 || x >= width ||
-      y < 0 || y >= height) return;
-  int i = (y * width + x) * 4;
-  rgba[i + 0] = (color >> 24) & 255;
-  rgba[i + 1] = (color >> 16) & 255;
-  rgba[i + 2] = (color >>  8) & 255;
-  rgba[i + 3] = (color      ) & 255;
+  if ((unsigned)x >= (unsigned)width) return;
+  if ((unsigned)y >= (unsigned)height) return;
+  rgba[y * width + x] = color;
 }
 
 
