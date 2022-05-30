@@ -32,7 +32,9 @@ struct sdlutil {
 
   // Assumes 32-bit surface, no bounds checking, inlined.
   inline static void SetPixel32(SDL_Surface *, int x, int y, Uint32 color);
-
+  // With bounds checking.
+  inline static void ClipPixel32(SDL_Surface *, int x, int y, Uint32 color);
+  
   // Load supported files using stb_image.
   static SDL_Surface *LoadImageFile(const std::string &filename);
   // Save using stb_image_write. Might only work for 32-bit RGBA.
@@ -185,6 +187,14 @@ inline void sdlutil::SetPixel32(SDL_Surface *surf, int x, int y,
                                 Uint32 color) {
   Uint32 *bufp = (Uint32 *)surf->pixels;
   bufp[y * (surf->pitch >> 2) + x] = color;
+}
+
+inline void sdlutil::ClipPixel32(SDL_Surface *surf, int x, int y,
+                                 Uint32 color) {
+  if (x < 0 || y < 0) return;
+  if (x >= surf->w) return;
+  if (y >= surf->h) return;
+  SetPixel32(surf, x, y, color);
 }
 
 

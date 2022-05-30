@@ -57,9 +57,9 @@
 
 /* additionally, one style just holds little helper
    images instead of letters */
-#define PICS "^6"
+#define PICS "^9"
 
-#define FONTSTYLES 7
+#define FONTSTYLES 8
 
 #define FONTWIDTH 9
 #define FONTHEIGHT 16

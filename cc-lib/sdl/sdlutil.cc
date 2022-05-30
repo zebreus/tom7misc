@@ -31,7 +31,7 @@ using namespace std;
 
    PERF: Instead inline SDL_GetRGBA and SDL_MapRGBA here. They
    are defined in sdl/src/video/SDL_pixels.c, and use shifts
-   and masks from the surfac; they won't be as fast as constexpr
+   and masks from the surface; they won't be as fast as constexpr
    masks but should inline decently fast without the function
    call overhead! (And then benchmark!)
 
