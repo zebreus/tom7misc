@@ -6,7 +6,7 @@ CC_LIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../arcfour.o
 # for 64 bits on windows
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-g++
-CXXFLAGS=-march=native -I. -I.. --std=c++17 -O2 -static
+CXXFLAGS=-march=native -I. -I.. --std=c++20 -O2 -static
 
 # For linux, others...
 # CXX=g++
@@ -44,6 +44,9 @@ md5_test.exe : md5_test.o md5.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 hash_bench.exe : sha256.o md5.o hash_bench.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+lfsr_test.exe : lfsr_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :
