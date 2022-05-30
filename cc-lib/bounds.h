@@ -35,13 +35,18 @@ struct Bounds {
   void Union(const Bounds &other);
 
   // Adds a fixed-sized margin around the entire bounds, in absolute units.
-  // Must be non-empty. d must be non-negative.
+  // If empty, does nothing. d must be non-negative.
   void AddMargin(double d);
+  // Add margin to the sides of the bounding box.
+  // If empty, does nothing. Arguments must be non-negative.
+  void AddMargins(double up, double right, double down, double left);
 
   // Add a margin on both sides of each dimension that's a fraction
   // (e.g. 0.01 for 1% on each side) of its current width. If empty,
   // does nothing. f must be non-negative.
-  void AddMarginsFrac(double f);
+  void AddMarginFrac(double f);
+  void AddMarginsFrac(double fup, double fright,
+                      double fdown, double fleft);
 
   // A common thing to do is collect some points into a bounding box,
   // which we then want to represent as a graphic of a different

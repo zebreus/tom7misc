@@ -43,20 +43,29 @@ void Bounds::Union(const Bounds &other) {
 }
 
 void Bounds::AddMargin(double d) {
-  maxx += d;
-  maxy += d;
-  minx -= d;
-  miny -= d;
+  AddMargins(d, d, d, d);
 }
 
-void Bounds::AddMarginsFrac(double f) {
+void Bounds::AddMargins(double up, double right, double down, double left) {
   if (Empty()) return;
-  const double wr = f * Width();
-  const double hr = f * Height();
-  minx -= wr;
-  maxx += wr;
-  miny -= hr;
-  maxy += hr;
+  maxx += right;
+  maxy += down;
+  minx -= left;
+  miny -= up;
+}
+
+void Bounds::AddMarginFrac(double f) {
+  AddMarginsFrac(f, f, f, f);
+}
+
+void Bounds::AddMarginsFrac(double fup, double fright,
+                            double fdown, double fleft) {
+  if (Empty()) return;
+  const double left = fleft * Width();
+  const double right = fright * Width();
+  const double up = fup * Height();
+  const double down = fdown * Height();
+  AddMargins(up, right, down, left);
 }
 
 double Bounds::Scaler::ScaleX(double x) const {
@@ -99,7 +108,7 @@ Bounds::Scaler Bounds::ScaleToFit(double neww, double newh,
   // by case analysis?
   const double center_x = centered ? (neww / scale - oldw) * 0.5 : 0.0;
   const double center_y = centered ? (newh / scale - oldh) * 0.5 : 0.0;
-  
+
   Scaler ret;
   ret.xoff = center_x - minx;
   ret.yoff = center_y - miny;

@@ -65,6 +65,15 @@ static void TestSimple() {
   CHECK_FEQ(bounds.MinX(), -2.5);
   CHECK_FEQ(bounds.MaxY(), 3.5);
   CHECK_FEQ(bounds.MinY(), -5.5);
+
+  //                    up right down left
+  bounds.AddMarginsFrac(0.1, 0.2, 0.3, 0.4);
+  CHECK_FEQ(bounds.Width(), 5.0 + (0.2 + 0.4) * 5.0);
+  CHECK_FEQ(bounds.Height(), 9.0 + (0.1 + 0.3) * 9.0);
+  CHECK_FEQ(bounds.MaxX(), 2.5 + 0.2 * 5.0);
+  CHECK_FEQ(bounds.MinX(), -2.5 - 0.4 * 5.0);
+  CHECK_FEQ(bounds.MaxY(), 3.5 + 0.3 * 9.0);
+  CHECK_FEQ(bounds.MinY(), -5.5 - 0.1 * 9.0);
 }
 
 static void TestStretch() {
