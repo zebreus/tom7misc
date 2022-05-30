@@ -9,7 +9,7 @@
 #include <chrono>
 
 struct Periodically {
-  Periodically(double wait_period_seconds) {
+  explicit Periodically(double wait_period_seconds) {
 	using namespace std::chrono_literals;	
 	wait_period = std::chrono::duration_cast<dur>(1s * wait_period_seconds);
 	// Immediately available.

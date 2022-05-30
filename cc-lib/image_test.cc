@@ -44,7 +44,7 @@ static void TestEq() {
 
 static void TestScaleDown() {
   ImageRGBA img(10, 10);
-  img.Clear32(0x00FF000);
+  img.Clear32(0x00FF0000);
   img.SetPixel32(0, 0, 0xFF000001);
   img.SetPixel32(1, 0, 0x0000FF0F);
   img.SetPixel32(0, 1, 0x00FF00AA);
@@ -52,7 +52,7 @@ static void TestScaleDown() {
   img.SetPixel32(2, 0, 0xFFFFFFFF);
   img.SetPixel32(3, 0, 0xFFFFFFFF);
   img.SetPixel32(2, 1, 0xFFFFFFFF);
-  img.SetPixel32(3, 1, 0xFFFFFFFF);    
+  img.SetPixel32(3, 1, 0xFFFFFFFF);
 
   img.BlendText32(2, 2, 0xFFFFFFFF, ":)");
   img.BlendLine32(9, 0, 0, 9, 0x00FFFFCC);
@@ -60,9 +60,9 @@ static void TestScaleDown() {
   img.Save("test-scaledown-in.png");
   ImageRGBA out = img.ScaleDownBy(2);
   out.Save("test-scaledown-out.png");
-  
+
   CHECK(out.Width() == img.Width() / 2);
-  CHECK(out.Height() == img.Height() / 2);  
+  CHECK(out.Height() == img.Height() / 2);
   {
     auto [r, g, b, a] = out.GetPixel(0, 0);
     CHECK(a == (0xAA + 0x0F + 0x01 + 0x00) / 4);
@@ -75,14 +75,57 @@ static void TestScaleDown() {
   CHECK(white == 0xFFFFFFFF) << white;
 }
 
+static void TestLineEndpoints() {
+  ImageRGBA img(10, 10);
+  img.Clear32(0x000000FF);
+  img.BlendLine32(1, 1, 3, 3, 0xFFFFFFFF);
+  CHECK(img.GetPixel32(1, 1) == 0xFFFFFFFF);
+  CHECK(img.GetPixel32(3, 3) == 0xFFFFFFFF);
+
+  // TODO: Test other directions of lines
+}
+
+static void TestFilledCircle() {
+  {
+    ImageRGBA img(10, 10);
+    img.Clear32(0x000000FF);
+    // This should cover the entire image.
+    img.BlendFilledCircle32(4, 4, 10, 0x23458A77);
+    for (int y = 0; y < 10; y++) {
+      for (int x = 0; x < 10; x++) {
+        uint32_t color = img.GetPixel32(x, y);
+        CHECK(color == 0x102040FF) << color;
+      }
+    }
+  }
+
+  {
+    ImageRGBA img(10, 10);
+    img.Clear32(0x000000FF);
+    // This should cover the entire image.
+    img.BlendFilledCircle32(4, 4, 1, 0x23458A77);
+    uint32_t in_color = img.GetPixel32(4, 4);
+    CHECK(in_color == 0x102040FF) << in_color;
+
+    uint32_t out_color1 = img.GetPixel32(5, 5);
+    CHECK(out_color1 == 0x000000FF);
+    uint32_t out_color2 = img.GetPixel32(3, 5);
+    CHECK(out_color2 == 0x000000FF);
+  }
+  
+  // TODO: More circle tests
+}
+
 int main(int argc, char **argv) {
   TestBilinearResize();
   TestSampleBilinear();
   TestEq();
   TestScaleDown();
+  TestLineEndpoints();
+  TestFilledCircle();
   
-  // XXX make tests for images!
-
+  // TODO: More image tests!
+  
   printf("OK\n");
   return 0;
 }

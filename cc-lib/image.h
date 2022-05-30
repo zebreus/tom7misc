@@ -57,7 +57,7 @@ struct ImageRGBA {
   // a pixel value. If the width and height are not divisible by
   // the scale, pixels are dropped.
   ImageRGBA ScaleDownBy(int scale) const;
-  
+
   // In RGBA order, where R value is MSB. x/y must be in bounds.
   inline uint32 GetPixel32(int x, int y) const;
   inline std::tuple<uint8, uint8, uint8, uint8> GetPixel(int x, int y) const;
@@ -99,6 +99,8 @@ struct ImageRGBA {
 
   // Clipped. Alpha blending.
   // This draws a crisp pixel line using Bresenham's algorithm.
+  // Includes start and end point. (TODO: Version that does not include
+  // the endpoint, for polylines with alpha.)
   void BlendLine(int x1, int y1, int x2, int y2,
                  uint8 r, uint8 g, uint8 b, uint8 a);
   void BlendLine32(int x1, int y1, int x2, int y2, uint32 color);
@@ -109,6 +111,8 @@ struct ImageRGBA {
   void BlendLineAA(float x1, float y1, float x2, float y2,
                    uint8 r, uint8 g, uint8 b, uint8 a);
   void BlendLineAA32(float x1, float y1, float x2, float y2, uint32 color);
+
+  void BlendFilledCircle32(int x, int y, int r, uint32 color);
 
   // Clipped, alpha blending.
   void BlendImage(int x, int y, const ImageRGBA &other);
@@ -127,7 +131,7 @@ struct ImageRGBA {
   // x/y out of bounds will repeat edge pixels.
   std::tuple<float, float, float, float>
   SampleBilinear(float x, float y) const;
-  
+
   // Extract single channel.
   ImageA Red() const;
   ImageA Green() const;
