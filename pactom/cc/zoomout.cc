@@ -26,7 +26,9 @@ static constexpr int WIDTH = 1920;
 static constexpr int HEIGHT = 1080;
 static constexpr int SCALE = 4;
 // Additional pixels to draw for line (0 = 1 pixel thick)
-static constexpr int RADIUS = 2;
+static constexpr int RADIUS = 3;
+// circle at end while in motino
+static constexpr int DOT_RADIUS = 16;
 
 static constexpr int NUM_FRAMES = 256;
 
@@ -158,6 +160,10 @@ int main(int argc, char **argv) {
             }
           }
 
+          if (i == last_pt - 2 && last_pt != p.size()) {
+            uint32_t dot_color = color | 0x77;
+            image.BlendFilledCircle32(x1, y1, DOT_RADIUS, dot_color);
+          }
         }
       }
 
