@@ -16,35 +16,83 @@ using half = _Float16;
 
 static constexpr int SAMPLES = 1000;
 
-static float Function(float scale, float f) {
-  float g = f * scale;
-  float h = g / scale;
-  return h;
-}
+template<class fptype>
+struct Func {
+  virtual fptype Eval(fptype f) const {
+	return f;
+  }
+  
+  virtual string Exp() const  = 0;
+};
 
-static float Function2(float off, float scale, float f) {
-  float g = f * scale + off;
-  float h = (g - off) / scale;
-  return h;
-}
+struct Function1 : public Func<float> {
+  const float scale;
+  Function1(float scale) : scale(scale) {}
+  float Eval(float f) const override {
+	float g = f * scale;
+	float h = g / scale;
+	return h;
+  }
+  string Exp() const override {
+	return StringPrintf("(f * %.9g) / %.9g", scale, scale);
+  }
+};
 
-static float Function3(float off, float scale, float f) {
-  float g = (f / scale) * off;
-  float h = (g / off) * scale;
-  return h;
-}
+struct Function2 : public Func<float> {
+  const float scale, off;
+  Function2(float scale, float off) : scale(scale), off(off) {}
+  float Eval(float f) const override {
+	float g = f * scale + off;
+	float h = (g - off) / scale;
+	return h;
+  }
+  string Exp() const override {
+	return StringPrintf("((f * %.9g + %.9g) - %.9g) / %.9g",
+						scale, off, off, scale);
+  }
+};
 
-static half Function4(half off, half scale, half f) {
-  half g = (f * off) * scale;
-  half h = (g / scale) / off;
-  return h;
-}
+struct Function3 : public Func<float> {
+  const float scale, off;
+  Function3(float scale, float off) : scale(scale), off(off) {}
+  float Eval(float f) const override {
+	float g = (f / scale) * off;
+	float h = (g / off) * scale;
+	return h;
+  }
+  string Exp() const override {
+	return StringPrintf("((f / %.9g) * %.9g) / %.9g) * %.9g",
+						scale, off, off, scale);
+  }
+};
 
-static half Function5(half off, half scale, half f) {
-  half g = (f + off) * scale;
-  half h = (g / scale) - off;
-  return h;
-}
+struct Function4 : public Func<half> {
+  const half scale, off;
+  Function4(half scale, half off) : scale(scale), off(off) {}
+  half Eval(half f) const override {
+	half g = (f * off) * scale;
+	half h = (g / scale) / off;
+	return h;
+  }
+  string Exp() const override {
+	return StringPrintf("((f * %.9g) * %.9g) / %.9g) / %.9g",
+						off, scale, scale, off);
+  }
+};
+
+struct Function5 : public Func<half> {
+  const half scale, off;
+  Function5(half scale, half off) : scale(scale), off(off) {}
+  half Eval(half f) const override {
+	half g = (f * off) * scale;
+	half h = (g / scale) / off;
+	return h;
+  }
+  string Exp() const override {
+	return StringPrintf("((f + %.9g) * %.9g) / %.9g) - %.9g",
+						off, scale, scale, off);
+  }
+};
 
 
 using GradOptimizer = Optimizer<0, 2, double>;
@@ -53,10 +101,11 @@ template<class fptype>
 static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   auto [scale, off] = arg.second;
   vector<fptype> samples;
+  Function5 fn(scale, off);
   for (int i = 0; i < SAMPLES; i++) {
 	// in [-1, 1]
 	fptype in = (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
-	fptype out = Function5((fptype)off, (fptype)scale, in);
+	fptype out = fn.Eval(in);
 	if (!std::isfinite((float)out)) return GradOptimizer::INFEASIBLE;
 	samples.push_back(out);
   }
@@ -110,23 +159,34 @@ static void Optimize() {
 		 "score %.17g\n", scale, off, score);
 }
 
-template<class F>
+template<class fptype>
 [[maybe_unused]]
-static void Graph(F fn, float scale, float off) {
-  using fptype = decltype(fn(0.0, 0.0, 0.0));
-  Bounds bounds, error_bounds, nonlinear_bounds;
+static void Graph(Func<fptype> *fn) {
+  Bounds bounds, error_bounds, nonlinear_bounds, deriv_bounds;
   double total_diff = 0.0;
-  vector<double> samples, error_samples, nonlinear_samples;
+  vector<double> samples, error_samples, nonlinear_samples, deriv_samples;
+
+  auto XAt = [&](int i) {
+	  return (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
+	};
+  auto YAt = [&](int i) {
+	  return fn->Eval(XAt(i));
+	};
   for (int i = 0; i < SAMPLES; i++) {
 	// in [-1, 1]
-	fptype in = (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
-	fptype out = fn(off, scale, in);
+	fptype in = XAt(i);
+	fptype out = YAt(i);
+	fptype out_prev = YAt(i - 1);
 	double diff = (out - in);
 	samples.push_back(out);
 	bounds.Bound(i, out);
+	
 	error_samples.push_back(diff);
 	error_bounds.Bound(i, diff);
-	// printf("%.19g\n", diff);
+
+	double deriv = out - out_prev;
+	deriv_samples.push_back(deriv);
+	deriv_bounds.Bound(i, deriv);
   }
   printf("Total diff: %.19g\n", total_diff);
 
@@ -151,31 +211,18 @@ static void Graph(F fn, float scale, float off) {
   }
 
   
-  constexpr int WIDTH = 512, HEIGHT = 512;
-  printf("Bounds %.3f %.3f to %.3f %.3f\n",
-         bounds.MinX(), bounds.MinY(),
-         bounds.MaxX(), bounds.MaxY());
-  printf("Error_Bounds %.11g %.11g to %.11g %.11g\n",
-         error_bounds.MinX(), error_bounds.MinY(),
-         error_bounds.MaxX(), error_bounds.MaxY());
+  constexpr int WIDTH = 512 + 200, HEIGHT = 512 + 200;
 
-  printf("Nonlinear_Bounds %.11g %.11g to %.11g %.11g\n",
-         nonlinear_bounds.MinX(), nonlinear_bounds.MinY(),
-         nonlinear_bounds.MaxX(), nonlinear_bounds.MaxY());
-
-  bounds.AddMarginsFrac(0.01);
-  error_bounds.AddMarginsFrac(0.01);
-  nonlinear_bounds.AddMarginsFrac(0.01);  
-  
-  Bounds::Scaler scaler = bounds.Stretch(WIDTH, HEIGHT).FlipY();
-  Bounds::Scaler error_scaler = error_bounds.Stretch(WIDTH, HEIGHT).FlipY();
-  Bounds::Scaler nonlinear_scaler =
-	nonlinear_bounds.Stretch(WIDTH, HEIGHT).FlipY();  
-  
+  bounds.AddMarginFrac(0.01);
+  error_bounds.AddMarginFrac(0.01);
+  nonlinear_bounds.AddMarginFrac(0.01);  
+  deriv_bounds.AddMarginFrac(0.01);
+    
   {
     ImageRGBA img(WIDTH, HEIGHT);
     img.Clear32(0x000000FF);
 
+	Bounds::Scaler error_scaler = error_bounds.Stretch(WIDTH, HEIGHT).FlipY();
     const int yaxis = error_scaler.ScaleY(0);
     img.BlendLine32(0, yaxis, WIDTH - 1, yaxis, 0xFFFFFF3F);
 
@@ -185,33 +232,39 @@ static void Graph(F fn, float scale, float off) {
 					  lo ? 0xFFFFFF11 : 0xFFFFFF22);
 	  lo = !lo;
 	}
-	
-	/*
-    for (int x = 0; x <= max_scale; x++) {
-      int xx = scaler.ScaleX(x);
-      img.BlendLine32(xx, 0, xx, HEIGHT - 1, 0xFFFFFF3F);
-      img.BlendText32(xx + 3, yaxis - 12, 0xFFFFFF7F,
-                      StringPrintf("%d", x));
-    }
-	*/
 
-	auto Plot = [&img](const vector<double> &samples,
-					   const Bounds::Scaler &scaler,
-					   uint32_t rgb) {
+	int ypos = 11;
+	auto Plot = [&img, &ypos](const vector<double> &samples,
+							  const Bounds &bounds,
+							  uint32_t rgb,
+							  const std::string &name) {
+		Bounds::Scaler scaler = 
+		  bounds.Stretch(WIDTH, HEIGHT).FlipY();
+
+		double low = 1/0.0, high = -1/0.0;
 		for (int i = 0; i < samples.size(); i++) {
 		  double d = samples[i];
+		  low = std::min(low, d);
+		  high = std::max(high, d);
 		  int x = round(scaler.ScaleX(i));
 		  int y = round(scaler.ScaleY(d));
-
-		  // img.BlendBox32(x - 1, y - 1, 3, 3, rgb | 0x7F, {rgb | 0x3F});
 		  img.BlendPixel32(x, y, rgb | 0xEE);
 		}
+
+		img.BlendText32(1, ypos, rgb | 0x77,
+						StringPrintf("%s: %.9g to %.9g",
+									 name.c_str(), low, high));
+
+		ypos += 10;
 	  };
 
-	Plot(samples, scaler, 0x7FFF7F00);
-	Plot(error_samples, error_scaler, 0xFF7F7F00);
-	Plot(nonlinear_samples, nonlinear_scaler, 0x7F7FFF00);	
+	Plot(samples, bounds, 0x7FFF7F00, "value");
+	Plot(error_samples, error_bounds, 0xFF7F7F00, "error");
+	Plot(nonlinear_samples, nonlinear_bounds, 0x7F7FFF00, "nonlinear");
+	Plot(deriv_samples, deriv_bounds, 0xFFFF7F00, "derivative");
 
+	img.BlendText32(1, 1, 0x888888AA, fn->Exp());
+	
     string filename = "grad.png";
     img.Save(filename);
   }
@@ -223,7 +276,7 @@ int main(int argc, char **argv) {
 	// Error_Bounds 0 -5.9604644775e-08 to 999 5.9604644775e-08
 	static constexpr float SCALE = 6.0077242583987507e+37;
 	static constexpr float OFF = 9.9159268948476343e+37;
-	Graph(Function2, SCALE, OFF);
+	Graph(new Function2(SCALE, OFF));
   }
 
   if (false) {
@@ -231,7 +284,7 @@ int main(int argc, char **argv) {
 	// static constexpr float OFF = 9.9630854128974192e+37;
 	static constexpr float SCALE = 9.9260844311214201e+37f;
 	static constexpr float OFF = 9.9630854128974192e+37f;
-	Graph(Function3, SCALE, OFF);
+	Graph(new Function3(SCALE, OFF));
   }
 
   if (false) {
@@ -239,7 +292,7 @@ int main(int argc, char **argv) {
 	// static constexpr float OFF = 9.9630854128974192e+37;
 	static constexpr float SCALE = 9.9684294429838515e+37;
 	static constexpr float OFF = 9.9438839619657644e+37;
-	Graph(Function3, SCALE, OFF);
+	Graph(new Function3(SCALE, OFF));
   }
 
   if (true) {
@@ -251,8 +304,8 @@ int main(int argc, char **argv) {
 	
 	// static constexpr half SCALE = 20765.713900227656f;
 	// static constexpr half OFF = 30555.616399484014f;
-	Graph(Function4, SCALE, OFF);
+	Graph(new Function4(SCALE, OFF));
   }
-  
+
   return 0;
 }
