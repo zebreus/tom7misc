@@ -16,8 +16,9 @@ using half = _Float16;
 
 static constexpr int SAMPLES = 1000;
 
-template<class fptype>
+template<class fptype_>
 struct Func {
+  using fptype = fptype_;
   virtual fptype Eval(fptype f) const {
 	return f;
   }
@@ -94,7 +95,32 @@ struct Function5 : public Func<half> {
   }
 };
 
+struct Function8 : public Func<half> {
+  half a, b, c, d, e, f, g, h;
+  Function8(half a, half b, half c, half d,
+			half e, half f, half g, half h) : a(a), b(b), c(c), d(d),
+											  e(e), f(f), g(g), h(h) {}
+  half Eval(half v) const override {
+	v += a;
+	v *= b;
+	v /= c;
+	v *= d;
+	v /= e;
+	v *= f;
+	v /= g;
+	v -= h;
+	return v;
+  }
+  string Exp() const override {
+	string ret;
+	for (const double z : {a, b, c, d, e, f, g, h}) {
+	  StringAppendF(&ret, "%.9g, ", z);
+	}
+	return ret;
+  }
+};
 
+#if 0
 using GradOptimizer = Optimizer<0, 2, double>;
 
 template<class fptype>
@@ -158,6 +184,189 @@ static void Optimize() {
 		 "static constexpr float OFF = %.17gf;\n"
 		 "score %.17g\n", scale, off, score);
 }
+#endif
+
+using GradOptimizer = Optimizer<0, 8, uint8>;
+
+static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
+  using fptype = Function8::fptype;
+  auto [a, b, c, d, e, f, g, h] = arg.second;
+  vector<fptype> samples, error_samples, deriv_samples;
+  Function8 fn(a, b, c, d, e, f, g, h);
+
+  auto XAt = [&](int i) {
+	  return (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
+	};
+  auto YAt = [&](int i) {
+	  return fn.Eval(XAt(i));
+	};
+  for (int i = 0; i < SAMPLES; i++) {
+	// in [-1, 1]
+	fptype in = XAt(i);
+	fptype out = YAt(i);
+	if (!std::isfinite((float)out)) return GradOptimizer::INFEASIBLE;
+	samples.push_back(out);
+	
+	double diff = (out - in);
+	if (!std::isfinite((float)diff)) return GradOptimizer::INFEASIBLE;	
+	error_samples.push_back(diff);
+
+	fptype out_prev = YAt(i - 1);
+	double deriv = out - out_prev;
+	if (!std::isfinite((float)deriv)) return GradOptimizer::INFEASIBLE;
+	deriv_samples.push_back(deriv);
+  }
+
+  // Compare to a linear interpolation of the first and last
+  // endpoints.
+  double f0 = samples[0];
+  double fend = (double)samples[SAMPLES - 1];
+  double rise = fend - f0;
+  double error = 0.0;
+  for (int i = 0; i < SAMPLES; i++) {
+	double frac = i / (double)(SAMPLES - 1);
+	double linear = frac * rise;
+	double diff = (double)samples[i] - linear;
+	error += sqrt(diff * diff);
+  }
+
+  error /= SAMPLES;
+
+  double penalty = 0.0;
+  // Prefer output range in [-1,1].
+  // e.g. if we have -3, then -1 - -3 = -1 + 3 = 2;
+  if (f0 < -1.0) penalty += -1.0 - f0;
+  if (fend > 1.0) penalty += fend - 1.0;
+  
+  // Prefer second derivative to be close to zero.
+  double d2 = 0.0;
+  for (int i = 1; i < deriv_samples.size(); i++) {
+	double d = deriv_samples[i] - deriv_samples[i - 1];
+	d2 += sqrt(d * d);
+  }
+
+  d2 /= (deriv_samples.size() - 1);
+  
+  // Want MORE error, so it has negative sign.
+  return make_pair(10.0 * penalty + d2 - error, make_optional('*'));
+}
+
+static void Stats(half a, half b, half c, half d,
+				  half e, half f, half g, half h) {
+  using fptype = Function8::fptype;
+  vector<fptype> samples, error_samples, deriv_samples;
+  Function8 fn(a, b, c, d, e, f, g, h);
+
+  auto XAt = [&](int i) {
+	  return (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
+	};
+  auto YAt = [&](int i) {
+	  return fn.Eval(XAt(i));
+	};
+  for (int i = 0; i < SAMPLES; i++) {
+	// in [-1, 1]
+	fptype in = XAt(i);
+	fptype out = YAt(i);
+	if (!std::isfinite((float)out)) {
+	  printf("infinite %d", i);
+	}
+	samples.push_back(out);
+	
+	double diff = (out - in);
+	if (!std::isfinite((float)diff)) {
+	  printf("infinite2 %d", i);
+	}
+	error_samples.push_back(diff);
+
+	fptype out_prev = YAt(i - 1);
+	double deriv = out - out_prev;
+	if (!std::isfinite((float)deriv)) {
+	  printf("infinite2 %d", i);
+	}
+	deriv_samples.push_back(deriv);
+  }
+
+  // Compare to a linear interpolation of the first and last
+  // endpoints.
+  double f0 = samples[0];
+  double fend = (double)samples[SAMPLES - 1];
+  double rise = fend - f0;
+  double error = 0.0;
+  for (int i = 0; i < SAMPLES; i++) {
+	double frac = i / (double)(SAMPLES - 1);
+	double linear = frac * rise;
+	double diff = (double)samples[i] - linear;
+	error += sqrt(diff * diff);
+  }
+  
+  error /= SAMPLES;
+
+  double penalty = 0.0;
+  // Prefer output range in [-1,1].
+  // e.g. if we have -3, then -1 - -3 = -1 + 3 = 2;
+  if (f0 < -1.0) penalty += -1.0 - f0;
+  if (fend > 1.0) penalty += fend - 1.0;
+  
+  // Prefer second derivative to be close to zero.
+  double d2 = 0.0;
+  for (int i = 1; i < deriv_samples.size(); i++) {
+	double d = deriv_samples[i] - deriv_samples[i - 1];
+	d2 += sqrt(d * d);
+  }
+
+  d2 /= (deriv_samples.size() - 1);
+
+  double score = penalty + d2 - error;
+  printf("f0: %.11g, fend: %.11g\n"
+		 "error %.11g, d2 %.11g\n"
+		 "so score %.11g\n",
+		 f0, fend,
+		 error, d2,
+		 score);
+}
+
+
+[[maybe_unused]]
+static std::array<double, 8> Optimize() {
+  // constexpr float LOW = 9.90e37;
+  // constexpr float HIGH = 1e38;
+  constexpr float LOW = 0;
+  constexpr float HIGH = 65504;
+  
+  printf("Search %.11g to %.11g\n", LOW, HIGH);
+  
+  GradOptimizer optimizer(OptimizeMe);
+  optimizer.Run(
+	  // int bounds
+	  {},
+	  // scale bounds
+	  {make_pair(LOW, HIGH),
+	   make_pair(LOW, HIGH),
+	   make_pair(LOW, HIGH),
+	   make_pair(LOW, HIGH),
+	   make_pair(LOW, HIGH),
+	   make_pair(LOW, HIGH),
+	   make_pair(LOW, HIGH),
+	   make_pair(LOW, HIGH),},
+	  {}, // calls
+	  {}, // feasible calls
+	  {30}, // seconds
+	  {});
+
+  auto bo = optimizer.GetBest();
+  CHECK(bo.has_value()) << "no feasible??";
+  const auto [arg, score, out_] = bo.value();
+  {
+	auto [a, b, c, d, e, f, g, h] = arg.second;
+	Stats(a, b, c, d, e, f, g, h);
+  }
+  printf("Best score: %.17g\n Params:\n", score);
+  for (const double d : arg.second) {
+	printf("%.17g,\n", d);
+  }
+  return arg.second;
+}
+
 
 template<class fptype>
 [[maybe_unused]]
@@ -258,11 +467,11 @@ static void Graph(Func<fptype> *fn) {
 		ypos += 10;
 	  };
 
-	Plot(samples, bounds, 0x7FFF7F00, "value");
 	Plot(error_samples, error_bounds, 0xFF7F7F00, "error");
 	Plot(nonlinear_samples, nonlinear_bounds, 0x7F7FFF00, "nonlinear");
 	Plot(deriv_samples, deriv_bounds, 0xFFFF7F00, "derivative");
-
+	Plot(samples, bounds, 0x7FFF7F00, "value");
+	
 	img.BlendText32(1, 1, 0x888888AA, fn->Exp());
 	
     string filename = "grad.png";
@@ -271,7 +480,10 @@ static void Graph(Func<fptype> *fn) {
 }
 
 int main(int argc, char **argv) {
-  // Optimize();
+
+  //Optimize();
+   //   return 0;
+   
   if (false) {
 	// Error_Bounds 0 -5.9604644775e-08 to 999 5.9604644775e-08
 	static constexpr float SCALE = 6.0077242583987507e+37;
@@ -295,7 +507,7 @@ int main(int argc, char **argv) {
 	Graph(new Function3(SCALE, OFF));
   }
 
-  if (true) {
+  if (false) {
 	// static constexpr float SCALE = 7.5600048108248608e-05f;
 	// static constexpr float OFF = 0.00039428695153609361f;
 
@@ -307,5 +519,18 @@ int main(int argc, char **argv) {
 	Graph(new Function4(SCALE, OFF));
   }
 
+  if (true) {
+	Graph(new Function8(
+217.08133671536692,
+68.328132197676823,
+70.589646206697722,
+195.43627373883018,
+68.168176480755761,
+70.357486727210997,
+196.29278662281129,
+216.25857880045993
+						));
+}
+  
   return 0;
 }
