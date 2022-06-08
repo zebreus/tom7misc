@@ -9,12 +9,25 @@
 #include "image.h"
 #include "bounds.h"
 #include "opt/optimizer.h"
+#include "half.h"
+#include "array-util.h"
 
 using namespace std;
 
-using half = _Float16;
+// using half = _Float16;
+
+using uint16 = uint16_t;
+using half_float::half;
+using namespace half_float::literal;
 
 static constexpr int SAMPLES = 1000;
+
+static half GetHalf(uint16 u) {
+  half h;
+  static_assert(sizeof (h) == sizeof (u));
+  memcpy((void*)&h, (void*)&u, sizeof (u));
+  return h;
+}
 
 template<class fptype_>
 struct Func {
@@ -173,7 +186,7 @@ static void Optimize() {
 	   make_pair(LOW, HIGH)},
 	  {}, // calls
 	  {}, // feasible calls
-	  {240}, // seconds
+	  {60 * 5}, // seconds
 	  {});
 
   auto bo = optimizer.GetBest();
@@ -186,16 +199,46 @@ static void Optimize() {
 }
 #endif
 
-using GradOptimizer = Optimizer<0, 8, uint8>;
+// Count the number of distinct values (e.g. in the codomain of the
+// function).
+template<class fptype>
+[[maybe_unused]]
+static int DistinctValues(const std::vector<fptype> &samples_in) {
+  std::vector<fptype> samples = samples_in;
+  std::sort(samples.begin(), samples.end());
+  int values = 1;
+  for (int i = 0; i < samples.size() - 1; i++) {
+    if (samples[i] != samples[i + 1]) values++;
+  }
+  return values;
+}
+
+using GradOptimizer = Optimizer<8, 0, uint8>;
 
 static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   using fptype = Function8::fptype;
-  auto [a, b, c, d, e, f, g, h] = arg.second;
-  vector<fptype> samples, error_samples, deriv_samples;
-  Function8 fn(a, b, c, d, e, f, g, h);
+  auto [a, b, c, d, e, f, g, h] =
+    MapArray([](int u) {
+        return GetHalf((uint16)std::clamp(u, 0, 65535));
+      }, arg.first);
 
-  auto XAt = [&](int i) {
-	  return (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
+  if (!std::isfinite(a) ||
+      !std::isfinite(b) ||
+      !std::isfinite(c) ||
+      !std::isfinite(d) ||
+      !std::isfinite(e) ||
+      !std::isfinite(f) ||
+      !std::isfinite(g) ||
+      !std::isfinite(h)) return GradOptimizer::INFEASIBLE;
+  
+  vector<fptype> samples;
+  vector<double> error_samples, deriv_samples;
+  Function8 fn((fptype)a, (fptype)b, (fptype)c, (fptype)d,
+               (fptype)e, (fptype)f, (fptype)g, (fptype)h);
+
+  auto XAt = [&](int i) -> fptype {
+	  return (fptype)(
+          (i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
 	};
   auto YAt = [&](int i) {
 	  return fn.Eval(XAt(i));
@@ -217,10 +260,18 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
 	deriv_samples.push_back(deriv);
   }
 
+  int distinct_values = DistinctValues(samples);
+  if (distinct_values < sqrt(SAMPLES))
+    return std::make_pair(100000000.0 - 100.0 * distinct_values,
+                          std::nullopt);
+  
   // Compare to a linear interpolation of the first and last
   // endpoints.
   double f0 = samples[0];
   double fend = (double)samples[SAMPLES - 1];
+  // These solutions are uninteresting even if there is error
+  // in between.
+  if (f0 == fend) return GradOptimizer::INFEASIBLE;
   double rise = fend - f0;
   double error = 0.0;
   for (int i = 0; i < SAMPLES; i++) {
@@ -236,7 +287,10 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   // Prefer output range in [-1,1].
   // e.g. if we have -3, then -1 - -3 = -1 + 3 = 2;
   if (f0 < -1.0) penalty += -1.0 - f0;
+  else if (f0 > 0) penalty += 1.0 + f0;
   if (fend > 1.0) penalty += fend - 1.0;
+  else if (fend < -1.0) penalty += 1.0 - fend;
+
   
   // Prefer second derivative to be close to zero.
   double d2 = 0.0;
@@ -248,17 +302,19 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   d2 /= (deriv_samples.size() - 1);
   
   // Want MORE error, so it has negative sign.
-  return make_pair(10.0 * penalty + d2 - error, make_optional('*'));
+  return make_pair(10.0 * penalty + 3 * d2 - 10 * error -
+                   distinct_values * 0.10, make_optional('*'));
 }
 
 static void Stats(half a, half b, half c, half d,
 				  half e, half f, half g, half h) {
   using fptype = Function8::fptype;
-  vector<fptype> samples, error_samples, deriv_samples;
+  vector<fptype> samples;
+  vector<double> error_samples, deriv_samples;
   Function8 fn(a, b, c, d, e, f, g, h);
 
-  auto XAt = [&](int i) {
-	  return (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
+  auto XAt = [&](int i) -> fptype {
+	  return (fptype)((i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
 	};
   auto YAt = [&](int i) {
 	  return fn.Eval(XAt(i));
@@ -286,11 +342,14 @@ static void Stats(half a, half b, half c, half d,
 	deriv_samples.push_back(deriv);
   }
 
+  const int distinct_values = DistinctValues(samples);
+  
   // Compare to a linear interpolation of the first and last
   // endpoints.
   double f0 = samples[0];
   double fend = (double)samples[SAMPLES - 1];
   double rise = fend - f0;
+  
   double error = 0.0;
   for (int i = 0; i < SAMPLES; i++) {
 	double frac = i / (double)(SAMPLES - 1);
@@ -299,13 +358,15 @@ static void Stats(half a, half b, half c, half d,
 	error += sqrt(diff * diff);
   }
   
-  error /= SAMPLES;
-
+  error /= SAMPLES;    
+  
   double penalty = 0.0;
   // Prefer output range in [-1,1].
   // e.g. if we have -3, then -1 - -3 = -1 + 3 = 2;
   if (f0 < -1.0) penalty += -1.0 - f0;
+  else if (f0 > 0) penalty += 1.0 + f0;
   if (fend > 1.0) penalty += fend - 1.0;
+  else if (fend < -1.0) penalty += 1.0 - fend;
   
   // Prefer second derivative to be close to zero.
   double d2 = 0.0;
@@ -319,27 +380,29 @@ static void Stats(half a, half b, half c, half d,
   double score = penalty + d2 - error;
   printf("f0: %.11g, fend: %.11g\n"
 		 "error %.11g, d2 %.11g\n"
+         "penalty %.11g\n"
+         "distinct values: %d\n"
 		 "so score %.11g\n",
 		 f0, fend,
 		 error, d2,
+         penalty,
+         distinct_values,
 		 score);
 }
 
 
 [[maybe_unused]]
-static std::array<double, 8> Optimize() {
+static std::array<uint16_t, 8> Optimize() {
   // constexpr float LOW = 9.90e37;
   // constexpr float HIGH = 1e38;
   constexpr float LOW = 0;
-  constexpr float HIGH = 65504;
+  constexpr float HIGH = 65535;
   
   printf("Search %.11g to %.11g\n", LOW, HIGH);
   
   GradOptimizer optimizer(OptimizeMe);
   optimizer.Run(
 	  // int bounds
-	  {},
-	  // scale bounds
 	  {make_pair(LOW, HIGH),
 	   make_pair(LOW, HIGH),
 	   make_pair(LOW, HIGH),
@@ -348,6 +411,8 @@ static std::array<double, 8> Optimize() {
 	   make_pair(LOW, HIGH),
 	   make_pair(LOW, HIGH),
 	   make_pair(LOW, HIGH),},
+      // float bounds
+      {},
 	  {}, // calls
 	  {}, // feasible calls
 	  {30}, // seconds
@@ -357,14 +422,24 @@ static std::array<double, 8> Optimize() {
   CHECK(bo.has_value()) << "no feasible??";
   const auto [arg, score, out_] = bo.value();
   {
-	auto [a, b, c, d, e, f, g, h] = arg.second;
-	Stats(a, b, c, d, e, f, g, h);
+	auto [a, b, c, d, e, f, g, h] =
+      MapArray([](int u) {
+          return GetHalf((uint16)std::clamp(u, 0, 65535));
+        }, arg.first);
+    
+	Stats((half)a, (half)b, (half)c, (half)d,
+          (half)e, (half)f, (half)g, (half)h);
   }
   printf("Best score: %.17g\n Params:\n", score);
-  for (const double d : arg.second) {
-	printf("%.17g,\n", d);
+
+  auto u16 =
+    MapArray([](int i) -> uint16 { return std::clamp(i, 0, 65535); },
+             arg.first);
+
+  for (const uint16 u : u16) {
+	printf("GetHalf(0x%04x),  // %.17g,\n", u, (double)GetHalf(u));
   }
-  return arg.second;
+  return u16;
 }
 
 
@@ -375,8 +450,8 @@ static void Graph(Func<fptype> *fn) {
   double total_diff = 0.0;
   vector<double> samples, error_samples, nonlinear_samples, deriv_samples;
 
-  auto XAt = [&](int i) {
-	  return (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
+  auto XAt = [&](int i) -> fptype {
+	  return (fptype)((i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
 	};
   auto YAt = [&](int i) {
 	  return fn->Eval(XAt(i));
@@ -420,7 +495,8 @@ static void Graph(Func<fptype> *fn) {
   }
 
   
-  constexpr int WIDTH = 512 + 200, HEIGHT = 512 + 200;
+  // constexpr int WIDTH = 512 + 200, HEIGHT = 512 + 200;
+  constexpr int WIDTH = 1024, HEIGHT = 1024;
 
   bounds.AddMarginFrac(0.01);
   error_bounds.AddMarginFrac(0.01);
@@ -476,14 +552,38 @@ static void Graph(Func<fptype> *fn) {
 	
     string filename = "grad.png";
     img.Save(filename);
+    printf("Wrote %s\n", filename.c_str());
   }
 }
 
 int main(int argc, char **argv) {
 
-  //Optimize();
-   //   return 0;
-   
+  // Optimize();
+  //     return 0;
+
+  std::array<uint16_t, 8> uu = Optimize();
+  {
+    auto [a, b, c, d, e, f, g, h] =
+      MapArray(GetHalf, uu);
+    Graph(new Function8(a, b, c, d,
+                        e, f, g, h));
+  }
+
+  return 0;
+  
+  if (false) {
+	Graph(new Function8(
+GetHalf(0xb809),  // -0.50439453125,
+GetHalf(0x0560),  // 8.20159912109375e-05,
+GetHalf(0x4f40),  // 29,
+GetHalf(0xa55e),  // -0.020965576171875,
+GetHalf(0x0549),  // 8.0645084381103516e-05,
+GetHalf(0x7a76),  // 52928,
+GetHalf(0x1291),  // 0.00080156326293945312,
+GetHalf(0xf414)  // -16704,
+						));
+  }
+  
   if (false) {
 	// Error_Bounds 0 -5.9604644775e-08 to 999 5.9604644775e-08
 	static constexpr float SCALE = 6.0077242583987507e+37;
@@ -511,26 +611,24 @@ int main(int argc, char **argv) {
 	// static constexpr float SCALE = 7.5600048108248608e-05f;
 	// static constexpr float OFF = 0.00039428695153609361f;
 
-	static constexpr float SCALE = 0.4388188340760063f;
-	static constexpr float OFF = 38235.825656460482f;
+	static const half SCALE = (half)0.4388188340760063f;
+	static const half OFF = (half)38235.825656460482f;
 	
 	// static constexpr half SCALE = 20765.713900227656f;
 	// static constexpr half OFF = 30555.616399484014f;
 	Graph(new Function4(SCALE, OFF));
   }
-
-  if (true) {
-	Graph(new Function8(
-217.08133671536692,
-68.328132197676823,
-70.589646206697722,
-195.43627373883018,
-68.168176480755761,
-70.357486727210997,
-196.29278662281129,
-216.25857880045993
-						));
-}
   
   return 0;
 }
+
+/*
+GetHalf(0xa0a0),  // -0.009033203125,
+GetHalf(0xa038),  // -0.00823974609375,
+GetHalf(0xa037),  // -0.00823211669921875,
+GetHalf(0xa03e),  // -0.0082855224609375,
+GetHalf(0xa03f),  // -0.00829315185546875,
+GetHalf(0xa03f),  // -0.00829315185546875,
+GetHalf(0xa03e),  // -0.0082855224609375,
+GetHalf(0x9f80),  // -0.00732421875,
+*/
