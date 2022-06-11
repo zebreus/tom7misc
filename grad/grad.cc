@@ -22,6 +22,12 @@ using namespace half_float::literal;
 
 static constexpr int SAMPLES = 1000;
 
+// Non-finite ranges for half: 7c00-7fff
+// fc00-ffff
+// So this representation is probably bad
+// to search over as integers, since it
+// is not monotonic and has two holes in it.
+
 static half GetHalf(uint16 u) {
   half h;
   static_assert(sizeof (h) == sizeof (u));
@@ -29,91 +35,100 @@ static half GetHalf(uint16 u) {
   return h;
 }
 
-template<class fptype_>
+template<class fptype_, size_t N>
 struct Func {
   using fptype = fptype_;
+  Func(const std::array<fptype, N> &args) : args(args) {}  
   virtual fptype Eval(fptype f) const {
 	return f;
   }
   
   virtual string Exp() const  = 0;
+  std::array<fptype, N> args;
 };
 
-struct Function1 : public Func<float> {
-  const float scale;
-  Function1(float scale) : scale(scale) {}
+struct Function1 : public Func<float, 1> {
+  using Func::Func;
   float Eval(float f) const override {
+    const float scale = args[0];
 	float g = f * scale;
 	float h = g / scale;
 	return h;
   }
   string Exp() const override {
+    const float scale = args[0];
 	return StringPrintf("(f * %.9g) / %.9g", scale, scale);
   }
 };
 
-struct Function2 : public Func<float> {
-  const float scale, off;
-  Function2(float scale, float off) : scale(scale), off(off) {}
+struct Function2 : public Func<float, 2> {
+  using Func::Func;
   float Eval(float f) const override {
+    const auto &[scale, off] = args;
 	float g = f * scale + off;
 	float h = (g - off) / scale;
 	return h;
   }
   string Exp() const override {
+    const auto &[scale, off] = args;
 	return StringPrintf("((f * %.9g + %.9g) - %.9g) / %.9g",
 						scale, off, off, scale);
   }
 };
 
-struct Function3 : public Func<float> {
-  const float scale, off;
-  Function3(float scale, float off) : scale(scale), off(off) {}
+struct Function3 : public Func<float, 2> {
+  using Func::Func;
   float Eval(float f) const override {
+    const auto &[scale, off] = args;
 	float g = (f / scale) * off;
 	float h = (g / off) * scale;
 	return h;
   }
   string Exp() const override {
+    const auto &[scale, off] = args;
+   
 	return StringPrintf("((f / %.9g) * %.9g) / %.9g) * %.9g",
 						scale, off, off, scale);
   }
 };
 
-struct Function4 : public Func<half> {
-  const half scale, off;
-  Function4(half scale, half off) : scale(scale), off(off) {}
+struct Function4 : public Func<half, 2> {
+  using Func::Func;
   half Eval(half f) const override {
+    const auto &[scale, off] = args;
+   
 	half g = (f * off) * scale;
 	half h = (g / scale) / off;
 	return h;
   }
   string Exp() const override {
+    const auto &[scale, off] = args;
+   
 	return StringPrintf("((f * %.9g) * %.9g) / %.9g) / %.9g",
 						off, scale, scale, off);
   }
 };
 
-struct Function5 : public Func<half> {
-  const half scale, off;
-  Function5(half scale, half off) : scale(scale), off(off) {}
+struct Function5 : public Func<half, 2> {
+  using Func::Func;
   half Eval(half f) const override {
+    const auto &[scale, off] = args;
+   
 	half g = (f * off) * scale;
 	half h = (g / scale) / off;
 	return h;
   }
   string Exp() const override {
+    const auto &[scale, off] = args;
 	return StringPrintf("((f + %.9g) * %.9g) / %.9g) - %.9g",
 						off, scale, scale, off);
   }
 };
 
-struct Function8 : public Func<half> {
-  half a, b, c, d, e, f, g, h;
-  Function8(half a, half b, half c, half d,
-			half e, half f, half g, half h) : a(a), b(b), c(c), d(d),
-											  e(e), f(f), g(g), h(h) {}
+struct Function8 : public Func<half, 8> {
+  using Func::Func;
   half Eval(half v) const override {
+    const auto &[a, b, c, d, e, f, g, h] = args;
 	v += a;
 	v *= b;
 	v /= c;
@@ -126,78 +141,12 @@ struct Function8 : public Func<half> {
   }
   string Exp() const override {
 	string ret;
-	for (const double z : {a, b, c, d, e, f, g, h}) {
+	for (const double z : args) {
 	  StringAppendF(&ret, "%.9g, ", z);
 	}
 	return ret;
   }
 };
-
-#if 0
-using GradOptimizer = Optimizer<0, 2, double>;
-
-template<class fptype>
-static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
-  auto [scale, off] = arg.second;
-  vector<fptype> samples;
-  Function5 fn(scale, off);
-  for (int i = 0; i < SAMPLES; i++) {
-	// in [-1, 1]
-	fptype in = (i / (fptype)(SAMPLES - 1)) * 2.0f - 1.0f;
-	fptype out = fn.Eval(in);
-	if (!std::isfinite((float)out)) return GradOptimizer::INFEASIBLE;
-	samples.push_back(out);
-  }
-
-  // Compare to a linear interpolation of the first and last
-  // endpoints.
-  double f0 = samples[0];
-  double rise = (double)samples[SAMPLES - 1] - f0;
-  double error = 0.0;
-  for (int i = 0; i < SAMPLES; i++) {
-	double frac = i / (double)(SAMPLES - 1);
-	double linear = frac * rise;
-	double diff = (double)samples[i] - linear;
-	error += diff * diff;
-  }
-
-  // No need to normalize since we are comparing by rank.  
-  // error /= SAMPLES;
-
-  // Want MORE error.
-  return make_pair(-error, make_optional(error));
-}
-
-[[maybe_unused]]
-static void Optimize() {
-  // constexpr float LOW = 9.90e37;
-  // constexpr float HIGH = 1e38;
-  constexpr float LOW = 0;
-  constexpr float HIGH = 65504;
-  
-  printf("Search %.11g to %.11g\n", LOW, HIGH);
-  
-  GradOptimizer optimizer(OptimizeMe<half>);
-  optimizer.Run(
-	  // int bounds
-	  {},
-	  // scale bounds
-	  {make_pair(LOW, HIGH),
-	   make_pair(LOW, HIGH)},
-	  {}, // calls
-	  {}, // feasible calls
-	  {60 * 5}, // seconds
-	  {});
-
-  auto bo = optimizer.GetBest();
-  CHECK(bo.has_value()) << "no feasible??";
-  const auto [arg, score, out_] = bo.value();
-  const auto [scale, off] = arg.second;
-  printf("static constexpr float SCALE = %.17gf;\n"
-		 "static constexpr float OFF = %.17gf;\n"
-		 "score %.17g\n", scale, off, score);
-}
-#endif
 
 // Count the number of distinct values (e.g. in the codomain of the
 // function).
@@ -217,11 +166,14 @@ using GradOptimizer = Optimizer<8, 0, uint8>;
 
 static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   using fptype = Function8::fptype;
-  auto [a, b, c, d, e, f, g, h] =
+  std::array<fptype, 8> fargs =
     MapArray([](int u) {
         return GetHalf((uint16)std::clamp(u, 0, 65535));
       }, arg.first);
 
+  const auto &[a, b, c, d, e, f, g, h] = fargs;
+
+  // XXX loop
   if (!std::isfinite(a) ||
       !std::isfinite(b) ||
       !std::isfinite(c) ||
@@ -233,8 +185,7 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   
   vector<fptype> samples;
   vector<double> error_samples, deriv_samples;
-  Function8 fn((fptype)a, (fptype)b, (fptype)c, (fptype)d,
-               (fptype)e, (fptype)f, (fptype)g, (fptype)h);
+  Function8 fn(fargs);
 
   auto XAt = [&](int i) -> fptype {
 	  return (fptype)(
@@ -306,12 +257,12 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
                    distinct_values * 0.10, make_optional('*'));
 }
 
-static void Stats(half a, half b, half c, half d,
-				  half e, half f, half g, half h) {
-  using fptype = Function8::fptype;
+// Maybe should just take Func?
+template<class fptype, size_t N>
+static void Stats(const std::array<fptype, N> &args) {
   vector<fptype> samples;
   vector<double> error_samples, deriv_samples;
-  Function8 fn(a, b, c, d, e, f, g, h);
+  Function8 fn(args);
 
   auto XAt = [&](int i) -> fptype {
 	  return (fptype)((i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
@@ -422,13 +373,12 @@ static std::array<uint16_t, 8> Optimize() {
   CHECK(bo.has_value()) << "no feasible??";
   const auto [arg, score, out_] = bo.value();
   {
-	auto [a, b, c, d, e, f, g, h] =
+	auto fargs =
       MapArray([](int u) {
           return GetHalf((uint16)std::clamp(u, 0, 65535));
         }, arg.first);
     
-	Stats((half)a, (half)b, (half)c, (half)d,
-          (half)e, (half)f, (half)g, (half)h);
+	Stats(fargs);
   }
   printf("Best score: %.17g\n Params:\n", score);
 
@@ -443,9 +393,9 @@ static std::array<uint16_t, 8> Optimize() {
 }
 
 
-template<class fptype>
+template<class fptype, size_t N>
 [[maybe_unused]]
-static void Graph(Func<fptype> *fn) {
+static void Graph(Func<fptype, N> *fn) {
   Bounds bounds, error_bounds, nonlinear_bounds, deriv_bounds;
   double total_diff = 0.0;
   vector<double> samples, error_samples, nonlinear_samples, deriv_samples;
@@ -557,22 +507,31 @@ static void Graph(Func<fptype> *fn) {
 }
 
 int main(int argc, char **argv) {
+#if 0
+  for (int u = 0; u < 65536; u++) {
+    half h = GetHalf(u);
+    double v = h;
+    const char *isf = std::isfinite(v) ? "" : "NOT";
+    printf("%04x = %.11g %s\n", u, v, isf);
+  }
 
+  return 0;
+#endif
+  
   // Optimize();
   //     return 0;
 
   std::array<uint16_t, 8> uu = Optimize();
   {
-    auto [a, b, c, d, e, f, g, h] =
-      MapArray(GetHalf, uu);
-    Graph(new Function8(a, b, c, d,
-                        e, f, g, h));
+    auto fargs = MapArray(GetHalf, uu);
+    Graph(new Function8(fargs));
   }
 
   return 0;
   
   if (false) {
 	Graph(new Function8(
+              {
 GetHalf(0xb809),  // -0.50439453125,
 GetHalf(0x0560),  // 8.20159912109375e-05,
 GetHalf(0x4f40),  // 29,
@@ -580,7 +539,8 @@ GetHalf(0xa55e),  // -0.020965576171875,
 GetHalf(0x0549),  // 8.0645084381103516e-05,
 GetHalf(0x7a76),  // 52928,
 GetHalf(0x1291),  // 0.00080156326293945312,
-GetHalf(0xf414)  // -16704,
+GetHalf(0xf414),  // -16704,
+              }
 						));
   }
   
@@ -588,7 +548,7 @@ GetHalf(0xf414)  // -16704,
 	// Error_Bounds 0 -5.9604644775e-08 to 999 5.9604644775e-08
 	static constexpr float SCALE = 6.0077242583987507e+37;
 	static constexpr float OFF = 9.9159268948476343e+37;
-	Graph(new Function2(SCALE, OFF));
+	Graph(new Function2({SCALE, OFF}));
   }
 
   if (false) {
@@ -596,7 +556,7 @@ GetHalf(0xf414)  // -16704,
 	// static constexpr float OFF = 9.9630854128974192e+37;
 	static constexpr float SCALE = 9.9260844311214201e+37f;
 	static constexpr float OFF = 9.9630854128974192e+37f;
-	Graph(new Function3(SCALE, OFF));
+	Graph(new Function3({SCALE, OFF}));
   }
 
   if (false) {
@@ -604,7 +564,7 @@ GetHalf(0xf414)  // -16704,
 	// static constexpr float OFF = 9.9630854128974192e+37;
 	static constexpr float SCALE = 9.9684294429838515e+37;
 	static constexpr float OFF = 9.9438839619657644e+37;
-	Graph(new Function3(SCALE, OFF));
+	Graph(new Function3({SCALE, OFF}));
   }
 
   if (false) {
@@ -616,7 +576,7 @@ GetHalf(0xf414)  // -16704,
 	
 	// static constexpr half SCALE = 20765.713900227656f;
 	// static constexpr half OFF = 30555.616399484014f;
-	Graph(new Function4(SCALE, OFF));
+	Graph(new Function4({SCALE, OFF}));
   }
   
   return 0;
