@@ -1,13 +1,13 @@
 
-default: grad.exe
+default: iter.exe
 
-all: grad.exe
+all: grad.exe iter.exe
 
 CC_LIB=../cc-lib
 
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
-LFLAGS=-flto -static
+# CXX=x86_64-w64-mingw32-g++
+# CC=x86_64-w64-mingw32-gcc
+# LFLAGS=-flto -static
 
 # no fast math!
 # this worked for clang
@@ -32,6 +32,10 @@ OBJECTS=$(UTIL_OBJECTS)
 # LFLAGS= -L. -m64 -Wl,--subsystem,console $(OPT) -static
 
 grad.exe : grad.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+iter.exe : iter.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
