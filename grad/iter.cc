@@ -60,7 +60,7 @@ static constexpr uint16 NEG_HIGH = 0xBC00; // -1
 // of the resulting value for the 65536 inputs.
 using Table = std::array<uint16_t, 65536>;
 
-static constexpr int SIZE = 1024;
+static constexpr int SIZE = 2048;
 static void Graph(const Table &table, uint32 color, ImageRGBA *img) {
   CHECK(img->Width() == SIZE);
   CHECK(img->Height() == SIZE);  
@@ -84,11 +84,19 @@ static void Graph(const Table &table, uint32 color, ImageRGBA *img) {
 }
 
 [[maybe_unused]]
-void UpdateTable(Table *table, std::function<half(half)> f) {
+void UpdateTable(Table *table, const std::function<half(half)> &f) {
   for (uint16 &u : *table) {
 	half in = GetHalf(u);
 	half out = f(in);
 	u = GetU16(out);
+  }
+}
+
+[[maybe_unused]]
+void UpdateTable16(Table *table, const std::function<uint16(uint16)> &f) {
+  for (int i = 0; i < table->size(); i++) {
+    // printf("%d\n", i);
+    (*table)[i] = f((*table)[i]);
   }
 }
 
@@ -100,7 +108,8 @@ Table IdentityTable() {
   return table;
 }
 
-int main(int argc, char **argv) {
+[[maybe_unused]]
+static void GraphRandomIterations() {
   ArcFour rc(StringPrintf("iter %lld", time(nullptr)));
   ImageRGBA img(SIZE, SIZE);
   img.Clear32(0x000000FF);
@@ -142,37 +151,153 @@ int main(int argc, char **argv) {
   }
 
   Graph(table, 0xFF000044, &img);
-  
-  /*
-	[i](half h) -> half {
-		h /= (half)((i + 1) * 2.0);
-		h += (half)(i * 3.0 / 2);
-		h -= (half)(i * 3.0 / 2);
-		h *= (half)((i + 1) * 2.0);
-		return h;
-	  }
-  */
-  
+
   string filename = "iter.png";
   img.Save(filename);
   printf("Wrote %s\n", filename.c_str());
 }
 
-#if 0
-int main(int argc, char **argv) {
-  std::map<uint16_t, double> gamut;
-  for (int u = 0; u < 65536; u++) {
-    half h = GetHalf(u);
-    double v = h;
-	if (std::isfinite(v) && v >= -1.0 && v <= 1.0) {
-	  gamut[u] = v;
-	}
+// Iteratively try to create a nonlinear shape.
+// At each step, we have the table of values, which represents
+// the function so far; we also keep the series of steps so we
+// can recreate it.
+
+struct Step {
+  // Otherwise, add.
+  bool mult = false;
+  uint16 value = 0;
+};
+
+struct State {
+  State() : table(IdentityTable()) {}
+  Table table;
+  std::vector<Step> steps;
+};
+
+string StepString(const Step &step) {
+  return StringPrintf("%c %.9g (%04x)",
+                      step.mult ? '*' : '+',
+                      (float)GetHalf(step.value), step.value);
+}
+
+// We don't require intermediate states to be centered, because
+// we can easily do this after the fact.
+// Get the additive and multiplicative offsets. ((f(x) + a) * m).
+static std::pair<half, half> Recentering(const Table &table) {
+  // first, place f(0) at 0.
+  const half offset = -GetHalf(table[GetU16((half)0.0)]);
+  const half scale = (half)1.0 /
+    (GetHalf(table[GetU16((half)1.0)]) + offset);
+  return make_pair(offset, scale);
+}
+
+static float Dist(const Table &table) {
+  const auto &[offset, scale] = Recentering(table);
+
+  auto RF = [&](half h) -> half {
+      return (GetHalf(table[GetU16(h)]) + offset) * scale;
+    };
+  
+  float d0 = RF((half)0.0) - (half)0.0;
+  float d1 = RF((half)1.0) - (half)1.0;
+  float dn = RF((half)-1.0) - (half)-0.125;
+
+  // In principle this is just sqrt(dn * dn) because of the recentering
+  // we just did. It might even be exact (the offset should be, but
+  // probably not every number has a reciprocal).
+  float dist = sqrtf(d0 * d0) + sqrtf(d1 * d1) + sqrtf(dn * dn);
+
+  return dist;
+}
+
+static void ApplyStep(Step step, Table *table) {
+  if (step.mult) {
+    UpdateTable16(table, [step](uint16 u) {
+        return GetU16(GetHalf(u) * GetHalf(step.value));
+      });
+  } else {
+    UpdateTable16(table, [step](uint16 u) {
+        return GetU16(GetHalf(u) + GetHalf(step.value));
+      });
+  }
+}
+
+// Add a step to the function, updating the table.
+static void Iterate(State *state) {
+  float best_dist = 9999999999.0f;
+  Step best_step;
+
+  auto Try = [state, &best_dist, &best_step](Step step) {
+      Table new_table = state->table;
+      ApplyStep(step, &new_table);
+      float dist = Dist(new_table);
+      if (dist < best_dist) {
+        best_step = step;
+        dist = best_dist;
+      }
+    };
+
+  for (bool mult : {false, true}) {
+    for (int u = POS_LOW; u < POS_HIGH; u++)
+      Try(Step({.mult = mult, .value = (uint16)u}));
+    for (int u = NEG_LOW; u < NEG_HIGH; u++)
+      Try(Step({.mult = mult, .value = (uint16)u}));
   }
 
-  for (const auto &[u, v] : gamut) {
-	printf("%04x = %.11g\n", u, v);
+  ApplyStep(best_step, &state->table);
+  state->steps.push_back(best_step);
+}
+
+static void MakeIterated() {
+  State state;
+  for (int i = 0; i < 100; i++) {
+    Iterate(&state);
+    string ss = StepString(state.steps.back());
+    printf("%d/100 %s\n", i, ss.c_str());
+    
+    {
+      ImageRGBA img(SIZE, SIZE);
+      img.Clear32(0x000000FF);
+      Table new_table = state.table;
+
+      const auto &[offset, scale] = Recentering(new_table);
+      ApplyStep(Step{.mult = false, .value = GetU16(offset)}, &new_table);
+      ApplyStep(Step{.mult = true, .value = GetU16(scale)}, &new_table);
+      
+      Graph(new_table, 0xFFFFFF77, &img);
+      img.BlendText32(3, 3, 0xFFFF55AA, ss);
+      string filename = StringPrintf("iterate-%03d.png", i);
+      img.Save(filename);
+    }
+  }
+
+  ImageRGBA img(SIZE, SIZE);
+  Graph(state.table, 0xFF000077, &img);
+  
+  string filename = "iterate.png";
+  img.Save(filename);
+  printf("Wrote %s\n", filename.c_str());
+}
+  
+int main(int argc, char **argv) {
+
+  State state;
+  for (int i = 0; i < 400; i++) {
+    ApplyStep(Step{.mult = true, .value = 0xbbffu}, &state.table);
   }
   
+  ImageRGBA img(SIZE, SIZE);
+  img.Clear32(0x000000FF);
+  Table new_table = state.table;
+
+  const auto &[offset, scale] = Recentering(new_table);
+  printf("Offset %.9g Scale %.9g\n", (float)offset, (float)scale);
+  ApplyStep(Step{.mult = false, .value = GetU16(offset)}, &new_table);
+  ApplyStep(Step{.mult = true, .value = GetU16(scale)}, &new_table);
+      
+  Graph(new_table, 0xFFFFFF77, &img);
+  string filename = "iterated.png";
+  img.Save(filename);
+
   return 0;
 }
-#endif

@@ -1,6 +1,11 @@
 
 #include <string>
 #include <cmath>
+#include <memory>
+#include <cstdint>
+#include <array>
+#include <vector>
+#include <algorithm>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -35,9 +40,32 @@ static half GetHalf(uint16 u) {
   return h;
 }
 
-template<class fptype_, size_t N>
+// Permutes u16 such that the space is monotonic when
+// interpreted as half, and all values are finite in [0, NUM_FINITE16);
+static constexpr uint16_t NUM_FINITE16 = 0xFFFF - 0x800 + 1;
+static uint16_t OrderU16(uint16 u) {
+  if (u < 0x7C00) {
+    // Put negative numbers first.
+    return 0xFBFF - u;
+  } else if (u < NUM_FINITE16) {
+    return u - 0x7C00;
+  } else {
+    // We don't really care about the order here (maybe we
+    // should care about -/+ infinity though?). But make this
+    // actually be a permutation of uint16.
+    uint16_t v = u - NUM_FINITE16;
+    if (v < 0x400) {
+      return 0xFC00 + v;
+    } else {
+      return 0x7C00 + (v - 0x400);
+    }
+  }
+}
+
+template<class fptype_, size_t N_>
 struct Func {
   using fptype = fptype_;
+  static constexpr int N = N_;
   Func(const std::array<fptype, N> &args) : args(args) {}  
   virtual fptype Eval(fptype f) const {
 	return f;
@@ -148,6 +176,41 @@ struct Function8 : public Func<half, 8> {
   }
 };
 
+struct Function16 : public Func<half, 16> {
+  using Func::Func;
+  half Eval(half v) const override {
+    const auto &[a, b, c, d, e, f, g, h,
+                 i, j, k, l, m, n, o, p] = args;
+    v += 8;
+    v += a;
+	v *= b;
+	v += c;
+	v += d;
+	v += e;
+    v += 16.0;
+    v += f;
+    v += g;
+    v *= h;
+    v += i;
+    v += j;
+    v += 16.0;    
+    v += k;
+    v += l;
+    v += m;
+    v += n;    
+	v *= o;
+	v -= p;
+	return v;
+  }
+  string Exp() const override {
+	string ret;
+	for (const double z : args) {
+	  StringAppendF(&ret, "%.9g, ", z);
+	}
+	return ret;
+  }
+};
+
 // Count the number of distinct values (e.g. in the codomain of the
 // function).
 template<class fptype>
@@ -162,31 +225,31 @@ static int DistinctValues(const std::vector<fptype> &samples_in) {
   return values;
 }
 
-using GradOptimizer = Optimizer<8, 0, uint8>;
+// N here has to agree with arity of F being optimized.
+using GradOptimizer = Optimizer<16, 0, uint8>;
 
+template<class F>
 static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
-  using fptype = Function8::fptype;
-  std::array<fptype, 8> fargs =
+  static constexpr int N = F::N;
+  using fptype = F::fptype;
+  static_assert(GradOptimizer::num_ints == N);
+
+  // This could be a type-specific conversion?
+  std::array<fptype, N> fargs =
     MapArray([](int u) {
-        return GetHalf((uint16)std::clamp(u, 0, 65535));
+        return GetHalf(OrderU16((uint16)std::clamp(u, 0, 65535)));
       }, arg.first);
 
-  const auto &[a, b, c, d, e, f, g, h] = fargs;
-
-  // XXX loop
-  if (!std::isfinite(a) ||
-      !std::isfinite(b) ||
-      !std::isfinite(c) ||
-      !std::isfinite(d) ||
-      !std::isfinite(e) ||
-      !std::isfinite(f) ||
-      !std::isfinite(g) ||
-      !std::isfinite(h)) return GradOptimizer::INFEASIBLE;
+  // XXX We could even CHECK this now.
+  for (const fptype f : fargs)
+    if (!std::isfinite(f))
+      return GradOptimizer::INFEASIBLE;
   
   vector<fptype> samples;
   vector<double> error_samples, deriv_samples;
-  Function8 fn(fargs);
+  F fn(fargs);
 
+  // from -1 to 1.
   auto XAt = [&](int i) -> fptype {
 	  return (fptype)(
           (i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
@@ -212,18 +275,24 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   }
 
   int distinct_values = DistinctValues(samples);
-  if (distinct_values < sqrt(SAMPLES))
+  /*
+  if (distinct_values < 25)
     return std::make_pair(100000000.0 - 100.0 * distinct_values,
                           std::nullopt);
+  */
+
+  float frac_distinct = distinct_values / (float)SAMPLES;
   
   // Compare to a linear interpolation of the first and last
   // endpoints.
   double f0 = samples[0];
   double fend = (double)samples[SAMPLES - 1];
+  double rise = fend - f0;
   // These solutions are uninteresting even if there is error
   // in between.
-  if (f0 == fend) return GradOptimizer::INFEASIBLE;
-  double rise = fend - f0;
+  // if (f0 == fend) return GradOptimizer::INFEASIBLE;
+  if (rise <= 0.0)
+    return std::make_pair(100000000.0 - rise, std::nullopt);
   double error = 0.0;
   for (int i = 0; i < SAMPLES; i++) {
 	double frac = i / (double)(SAMPLES - 1);
@@ -247,28 +316,46 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   double d2 = 0.0;
   for (int i = 1; i < deriv_samples.size(); i++) {
 	double d = deriv_samples[i] - deriv_samples[i - 1];
-	d2 += sqrt(d * d);
+	d2 += fabs(d); // sqrt(d * d);
   }
 
   d2 /= (deriv_samples.size() - 1);
+
+  double shape_dist = 0.0;
+  {
+    double vneg = samples[0];
+    double v0 = fn.Eval((half)0.0);
+    double vone = samples[SAMPLES - 1];
+
+    double dneg = vneg - -0.1;
+    double d0 = v0 - 0.0;
+    double done = vone - 1.0;
+    shape_dist += sqrt(dneg * dneg);
+    shape_dist += 2 * sqrt(d0 * d0);
+    shape_dist += sqrt(done * done);    
+  }
+
   
   // Want MORE error, so it has negative sign.
-  return make_pair(10.0 * penalty + 3 * d2 - 10 * error -
-                   distinct_values * 0.10, make_optional('*'));
+  /*
+  return make_pair(100.0 * penalty + 3 * d2 - 10 * error -
+                   frac_distinct * 10.0, make_optional('*'));
+  */
+  return make_pair(10 * shape_dist - frac_distinct + d2 - error,
+                   make_optional('*'));
 }
 
-// Maybe should just take Func?
 template<class fptype, size_t N>
-static void Stats(const std::array<fptype, N> &args) {
+[[maybe_unused]]
+static void Stats(Func<fptype, N> *fn) {
   vector<fptype> samples;
   vector<double> error_samples, deriv_samples;
-  Function8 fn(args);
 
   auto XAt = [&](int i) -> fptype {
 	  return (fptype)((i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
 	};
   auto YAt = [&](int i) {
-	  return fn.Eval(XAt(i));
+	  return fn->Eval(XAt(i));
 	};
   for (int i = 0; i < SAMPLES; i++) {
 	// in [-1, 1]
@@ -340,58 +427,6 @@ static void Stats(const std::array<fptype, N> &args) {
          distinct_values,
 		 score);
 }
-
-
-[[maybe_unused]]
-static std::array<uint16_t, 8> Optimize() {
-  // constexpr float LOW = 9.90e37;
-  // constexpr float HIGH = 1e38;
-  constexpr float LOW = 0;
-  constexpr float HIGH = 65535;
-  
-  printf("Search %.11g to %.11g\n", LOW, HIGH);
-  
-  GradOptimizer optimizer(OptimizeMe);
-  optimizer.Run(
-	  // int bounds
-	  {make_pair(LOW, HIGH),
-	   make_pair(LOW, HIGH),
-	   make_pair(LOW, HIGH),
-	   make_pair(LOW, HIGH),
-	   make_pair(LOW, HIGH),
-	   make_pair(LOW, HIGH),
-	   make_pair(LOW, HIGH),
-	   make_pair(LOW, HIGH),},
-      // float bounds
-      {},
-	  {}, // calls
-	  {}, // feasible calls
-	  {30}, // seconds
-	  {});
-
-  auto bo = optimizer.GetBest();
-  CHECK(bo.has_value()) << "no feasible??";
-  const auto [arg, score, out_] = bo.value();
-  {
-	auto fargs =
-      MapArray([](int u) {
-          return GetHalf((uint16)std::clamp(u, 0, 65535));
-        }, arg.first);
-    
-	Stats(fargs);
-  }
-  printf("Best score: %.17g\n Params:\n", score);
-
-  auto u16 =
-    MapArray([](int i) -> uint16 { return std::clamp(i, 0, 65535); },
-             arg.first);
-
-  for (const uint16 u : u16) {
-	printf("GetHalf(0x%04x),  // %.17g,\n", u, (double)GetHalf(u));
-  }
-  return u16;
-}
-
 
 template<class fptype, size_t N>
 [[maybe_unused]]
@@ -506,13 +541,68 @@ static void Graph(Func<fptype, N> *fn) {
   }
 }
 
+
+[[maybe_unused]]
+void Optimize() {
+  // constexpr float LOW = 9.90e37;
+  // constexpr float HIGH = 1e38;
+  constexpr int32_t LOW = 0;
+  constexpr int32_t HIGH = NUM_FINITE16 - 1;
+  
+  using F = Function16;
+  static const size_t N = F::N;
+
+  std::array<std::pair<int32_t, int32_t>, N> int_bounds;
+  for (int i = 0; i < N; i++)
+    int_bounds[i] = std::make_pair(LOW, HIGH);
+  
+  printf("Search %d to %d\n", LOW, HIGH);
+  
+  GradOptimizer optimizer(OptimizeMe<Function16>);
+  optimizer.Run(
+	  // int bounds
+	  int_bounds,
+      // float bounds
+      {},
+	  {}, // calls
+	  {}, // feasible calls
+	  {20 * 60}, // seconds
+	  {});
+
+  auto bo = optimizer.GetBest();
+  CHECK(bo.has_value()) << "no feasible??";
+  const auto [arg, score, out_] = bo.value();
+
+  // in half-native bit order
+  auto u16 =
+    MapArray([](int i) -> uint16 {
+        return OrderU16(std::clamp(i, 0, 65535));
+      },
+    arg.first);
+
+  auto fargs =
+    MapArray([](int u) { return GetHalf(u); }, u16);
+
+  std::unique_ptr<Func<half, N>> fn(new F(fargs));
+  Stats(fn.get());
+
+  printf("Best score: %.17g\n Params:\n", score);
+
+  for (const uint16 u : u16) {
+	printf("GetHalf(0x%04x),  // %.17g,\n", u, (double)GetHalf(u));
+  }
+
+  Graph(fn.get());
+}
+
 int main(int argc, char **argv) {
 #if 0
   for (int u = 0; u < 65536; u++) {
-    half h = GetHalf(u);
+    uint16_t uu = OrderU16(u);
+    half h = GetHalf(uu);
     double v = h;
     const char *isf = std::isfinite(v) ? "" : "NOT";
-    printf("%04x = %.11g %s\n", u, v, isf);
+    printf("%04x -> %04x = %.11g %s\n", u, uu, v, isf);
   }
 
   return 0;
@@ -521,12 +611,7 @@ int main(int argc, char **argv) {
   // Optimize();
   //     return 0;
 
-  std::array<uint16_t, 8> uu = Optimize();
-  {
-    auto fargs = MapArray(GetHalf, uu);
-    Graph(new Function8(fargs));
-  }
-
+  Optimize();
   return 0;
   
   if (false) {
