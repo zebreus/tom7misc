@@ -26,7 +26,7 @@ OPT=-O3
 CLINCLUDES="-I$(AMDSDK)/include"
 CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/mp3.o $(CC_LIB)/top.o $(CC_LIB)/wavesave.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/bounds.o
+CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/mp3.o $(CC_LIB)/top.o $(CC_LIB)/wavesave.o $(CC_LIB)/crypt/sha256.o $(CC_LIB)/bounds.o
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
@@ -37,7 +37,7 @@ CPPFLAGS=-m64 $(OPT) -D__MINGW32__ $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_L
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=$(UTIL_OBJECTS) $(RE2_OBJECTS) network.o error-history.o modelinfo.o audio-database.o ../chess/chess.o ../chess/pgn.o
+OBJECTS=$(CCLIB_OBJECTS) $(RE2_OBJECTS) network.o error-history.o modelinfo.o audio-database.o ../chess/chess.o ../chess/pgn.o
 
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static $(FFTW)/.libs/libfftw3.a
@@ -54,19 +54,19 @@ collate-errors.exe : collate-errors.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-network_test.exe : network.o network-test-util.o network_test.o $(UTIL_OBJECTS)
+network_test.exe : network.o network-test-util.o network_test.o $(CCLIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-network-gpu_test.exe : network.o network-gpu.o network-test-util.o network-gpu_test.o clutil.o $(UTIL_OBJECTS)
+network-gpu_test.exe : network.o network-gpu.o network-test-util.o network-gpu_test.o clutil.o $(CCLIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-run-boolean.exe : run-boolean.o network.o network-test-util.o $(UTIL_OBJECTS)
+run-boolean.exe : run-boolean.o network.o network-test-util.o $(CCLIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-run-network.exe : run-network.o network.o network-test-util.o $(UTIL_OBJECTS)
+run-network.exe : run-network.o network.o network-test-util.o $(CCLIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

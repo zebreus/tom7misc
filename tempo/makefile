@@ -22,6 +22,9 @@ tempo.exe : tempo.o $(OBJECTS) $(CCLIB_OBJECTS)
 am2315_test.exe : am2315_test.o am2315.o $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+backfill.exe : backfill.cc
+	x86_64-w64-mingw32-g++.exe -O backfill.cc -o backfill.exe
+
 clean :
 	rm -f *.o *.exe core $(CCLIB_OBJECTS)
 

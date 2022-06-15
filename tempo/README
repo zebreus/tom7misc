@@ -115,9 +115,9 @@ install, so I installed from source...
 
 # as root
 cd /usr/src
-wget https://tangentsoft.com/mysqlpp/releases/mysql++-3.2.5.tar.gz
-tar -zxvf mysql++-3.2.5.tar.gz
-cd mysql++-3.2.5
+wget https://tangentsoft.com/mysqlpp/releases/mysql++-3.3.0.tar.gz
+tar -zxvf mysql++-3.3.0.tar.gz
+cd mysql++-3.3.0
 ./configure --prefix=/usr
 make -j 2
 sudo make install

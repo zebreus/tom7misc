@@ -17,7 +17,7 @@ var CORE = 0xFF00FFFF;
 var SUBSTRATE = 0xFF003333;
 
 var PADDLE = 0xFF0000FF;
-    
+
 var PI2 = Math.PI * 2;
 function Physics() {
   if (holdingLeft) theta -= (Math.PI / 20);
@@ -35,7 +35,7 @@ function Physics() {
       return rads >= tmin || rads <= tmax;
     }
   };
-  
+
   //  inAngle(0, true);
 
   var src32, dst32, src8, dst8;
@@ -50,50 +50,51 @@ function Physics() {
     dst32 = buf32;
     dst8 = buf8;
   }
-  
+
   for (var y = 0; y < HEIGHT; y++) {
     for (var x = 0; x < WIDTH; x++) {
       var a = 0, b = 0, c = 0, d = 0, e = 0, f = 0, g = 0, h = 0;
       // a b c
       // d   e
       // f g h
-      
+
       if (y > 0) {
-	x > 0 && (a = src32[x - 1 + (y - 1) * WIDTH]);
-	b = src32[x + 0 + (y - 1) * WIDTH];
-	x < WIDTH - 1 && (c = src32[x + 1 + (y - 1) * WIDTH]);
+	    x > 0 && (a = src32[x - 1 + (y - 1) * WIDTH]);
+	    b = src32[x + 0 + (y - 1) * WIDTH];
+	    x < WIDTH - 1 && (c = src32[x + 1 + (y - 1) * WIDTH]);
       }
 
       x > 0 && (d = src32[x - 1 + y * WIDTH]);
       x < WIDTH - 1 && (e = src32[x + 1 + y * WIDTH]);
 
       if (y < HEIGHT - 1) {
-	x > 0 && (f = src32[x - 1 + (y + 1) * WIDTH]);
-	g = src32[x + 0 + (y + 1) * WIDTH];
-	x < WIDTH - 1 && (h = src32[x + 1 + (y + 1) * WIDTH]);
+	    x > 0 && (f = src32[x - 1 + (y + 1) * WIDTH]);
+	    g = src32[x + 0 + (y + 1) * WIDTH];
+	    x < WIDTH - 1 && (h = src32[x + 1 + (y + 1) * WIDTH]);
       }
 
       var distsq = (x - WIDTH / 2) * (x - WIDTH / 2) +
-	(y - WIDTH / 2) * (y - WIDTH / 2);
+	      (y - WIDTH / 2) * (y - WIDTH / 2);
 
-      if (distsq > 30 * 30 && distsq < 40 * 40 && 
+      if (distsq > 30 * 30 && distsq < 40 * 40 &&
 	  inAngle(Math.atan2(y - HEIGHT / 2, x - WIDTH / 2))) {
-	dst32[x + y * WIDTH] = PADDLE;
+	    dst32[x + y * WIDTH] = PADDLE;
       } else if (frames < 10 && x > 60 && x < 70 && y > 60 && y < 70) {
-	dst32[x + y * WIDTH] = 0xFFFF00FF;
+	    dst32[x + y * WIDTH] = 0xFFFF00FF;
       } else {
 
-	var ct = !!a + !!b + !!c +
-		 !!d +       !!e +
-		 !!f + !!g + !!h;
+	    var ct =
+            !!a + !!b + !!c +
+		    !!d +       !!e +
+		    !!f + !!g + !!h;
 
-	if (ct > 2 && ct < 7) {
-	  var i = ct - 2;
-	  dst32[x + y * WIDTH] = [0xFF00FFFF, 0xFF00DDDD,
-				  0xFF00BBBB, 0xFF008888][i];
-	} else {
-	  dst32[x + y * WIDTH] = 0x00000000;
-	}
+	    if (ct > 2 && ct < 7) {
+	      var i = ct - 2;
+	      dst32[x + y * WIDTH] = [0xFF00FFFF, 0xFF00DDDD,
+				                  0xFF00BBBB, 0xFF008888][i];
+	    } else {
+	      dst32[x + y * WIDTH] = 0x00000000;
+	    }
       }
     }
   }
@@ -227,7 +228,7 @@ document.onkeydown = function(e) {
     break;
     default:
     // console.log(e.keyCode);
-  } 
+  }
   // var elt = document.getElementById('key');
   // elt && (elt.innerHTML = 'key: ' + e.keyCode);
   return false;

@@ -26,7 +26,7 @@ struct Chessmaster {
   Position::Move GetMove(const Position &pos);
 
   // 256x256 screenshot, rgba. (Note: Advances one frame.)
-  std::vector<uint8> GetScreenshot();
+  std::vector<uint8_t> GetScreenshot();
 
   ~Chessmaster();
 
@@ -34,7 +34,7 @@ private:
   // Must hold lock.
   void InitEngine();
   // Must hold lock.
-  bool WaitInputReady(uint8 button);
+  bool WaitInputReady(uint8_t button);
   void Screenshot(const std::string &f);
   const int level;
   std::mutex emulator_m;

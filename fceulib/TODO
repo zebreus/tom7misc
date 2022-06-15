@@ -3,7 +3,13 @@ Misc:
 
 $ "/c/Program Files (x86)/Microsoft Concurrency Visualizer Collection Tools/CVCollectionCmd.exe" /Launch d:\\code\\fceulib\\emulator_test.exe /config cvconfig.xml /LaunchArgs "--output-file foo.txt"
 
-- I've been compiling with -g instead of -O3 for quite a while.
+ - For uses that create a lot of emulators (e.g. tetru) it would
+   be good to be able to load a cartridge once and then generate
+   multiple emulators from it. We can at least make the initialization
+   read from memory instead of from disk each time (FCEU_fread; there
+   are not that many calls).
+
+ - I've been compiling with -g instead of -O3 for quite a while.
    Do a comprehensive test to make sure it's okay!
 
  - proper in-memory treatment of battery backed saves. lots of

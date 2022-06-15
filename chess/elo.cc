@@ -25,6 +25,9 @@ using namespace std;
 using Move = Position::Move;
 using int64 = int64_t;
 
+// static constexpr const char *TOURNAMENT_FILE = "tournament.db";
+static constexpr const char *TOURNAMENT_FILE = "eval-tournament.db";
+
 static constexpr double ELO_START = 1000.0;
 
 // 9 and 20 were decent
@@ -621,6 +624,33 @@ int main(int argc, char **argv) {
   printf("Reading outcomes db:\n");
 
   std::unordered_set<string> ignore = {
+    "letter_a",
+    "letter_b",
+    "letter_c",
+    "letter_d",
+    "letter_e",
+    "letter_f",
+    "letter_g",
+    "letter_h",
+    "letter_i",
+    "letter_j",
+    "letter_k",
+    "letter_l",
+    "letter_m",
+    "letter_n",
+    "letter_o",
+    "letter_p",
+    "letter_q",
+    "letter_r",
+    "letter_s",
+    "letter_t",
+    "letter_u",
+    "letter_v",
+    "letter_w",
+    "letter_x",
+    "letter_y",
+    "letter_z",
+
     /*
     "stockfish1m_r64",
     "stockfish1m_r128",
@@ -640,7 +670,7 @@ int main(int argc, char **argv) {
     */
   };
 
-  Outcomes sparse_outcomes = TournamentDB::LoadFromFile("tournament.db", /* XXX */ ignore);
+  Outcomes sparse_outcomes = TournamentDB::LoadFromFile(TOURNAMENT_FILE, /* XXX */ ignore);
   printf("Densifying outcomes:\n");
   // Assign some arbitrary indices.
   int next_id = 0;

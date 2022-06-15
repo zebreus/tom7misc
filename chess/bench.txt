@@ -46,7 +46,7 @@ Final game is 17696 moves, ending with:
 The slack comes from the handful of times we switch from black moves
 to white moves:
   1. We need to at least move some white pawns out of the way before
-     we can get any black pawns to promote. 
+     we can get any black pawns to promote.
 
   after 34. bxa5:
   2b1kb2/2np1p1p/8/p7/p1p1p1p1/1r1r1q1n/PPPPPPPP/RNBQKB1R w Q - 0 35
@@ -152,7 +152,7 @@ directly, instead of using FEN:
 
 Better Rtos for SVG creation:
 - piece0.svg   20142 -> 18990 -> 18670 -> 18366
-- piece0.pdf   19360 -> 19360 -> 19360 
+- piece0.pdf   19360 -> 19360 -> 19360
 
 
 
@@ -160,7 +160,7 @@ Better Rtos for SVG creation:
 --------------------------------------------------
 
  time ./chessreduce.exe d:\\chess\\lichess_db_standard_rated_2014-06.pgn
- 
+
 real    2m40.769s
 user    0m0.015s
 sys     0m0.000s
@@ -336,4 +336,11 @@ of all positions.
 
 But the "positive" thing is that if we can figure out how to efficiently
 store the singletons, then we have essentially solved the problem.
+
+
+eniac benching:
+Ran 10 games.
+White wins 9; black wins 0; 1 draw.
+White: 219 moves in 2848.0ms/move.
+Black: 209 moves in 6.7ms/move.
 

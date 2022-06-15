@@ -117,12 +117,12 @@ function Font(img, w, h, overlap, fontchars) {
     for (var i = 0; i < s.length; i++) {
       var ch = s.charCodeAt(i);
       if (ch == 10) {
-	xx = x;
-	y += this.height - 1;
+	    xx = x;
+	    y += this.height - 1;
       } else {
-	this.chars[ch] &&
+	    this.chars[ch] &&
 	    ctx.drawImage(this.chars[ch], xx, y);
-	xx += this.width - this.overlap;
+	    xx += this.width - this.overlap;
       }
     }
   };
@@ -156,16 +156,16 @@ function ClearScreen() {
 var BigCanvas = function() {
   this.canvas =
       (function() {
-	var c = document.getElementById('bigcanvas');
-	if (!c) {
-	  c = document.createElement('canvas');
-	  document.body.appendChild(c);
-	  c.id = 'bigcanvas';
-	}
-	c.width = WIDTH * PX;
-	c.height = HEIGHT * PX;
-	c.style.border = '1px solid black';
-	return c;
+	    var c = document.getElementById('bigcanvas');
+	    if (!c) {
+	      c = document.createElement('canvas');
+	      document.body.appendChild(c);
+	      c.id = 'bigcanvas';
+	    }
+	    c.width = WIDTH * PX;
+	    c.height = HEIGHT * PX;
+	    c.style.border = '1px solid black';
+	    return c;
       })();
 
   this.ctx = this.canvas.getContext('2d');
@@ -192,16 +192,16 @@ var BigCanvas = function() {
     // If browser supports native blit without resampling, use it.
     for (var y = 0; y < HEIGHT; y++) {
       for (var x = 0; x < WIDTH; x++) {
-	var p = d1x32[y * WIDTH + x];
-	// p |= 0xFF000000;
-	// PERF
-	var o = (y * PX) * (WIDTH * PX) + (x * PX);
-	// PERF unroll?
-	for (var u = 0; u < PX; u++) {
-	  for (var v = 0; v < PX; v++) {
-	    d[o + u * WIDTH * PX + v] = p;
-	  }
-	}
+	    var p = d1x32[y * WIDTH + x];
+	    // p |= 0xFF000000;
+	    // PERF
+	    var o = (y * PX) * (WIDTH * PX) + (x * PX);
+	    // PERF unroll?
+	    for (var u = 0; u < PX; u++) {
+	      for (var v = 0; v < PX; v++) {
+	        d[o + u * WIDTH * PX + v] = p;
+	      }
+	    }
       }
     }
 

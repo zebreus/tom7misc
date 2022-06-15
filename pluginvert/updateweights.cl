@@ -218,8 +218,11 @@ __kernel void UpdateWeightsConvolutional(
 
   // XXX I am trying sqrt again! This should perhaps be a configurable
   // parameter, and we should make sure it's a compile-time constant!
-  const float multiplier =
-    1.0f / sqrt((float)(NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN));
+  //
+  // Maybe 1.0 is actually correct? This does permit large weight updates
+  // but each of these is indeed a downstream contribution, right?
+  const float multiplier = 1.0f;
+  // 1.0f / sqrt((float)(NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN));
 
   {
     // Update the one weight.

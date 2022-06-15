@@ -173,7 +173,8 @@ static void PopulateExamples() {
         }
         num_games++;
         if (num_games % 10000 == 0) {
-          printf("Read %lld games, %lld pos from %s\n", num_games, num_positions, GAME_PGN);
+          printf("Read %lld games, %lld pos from %s\n",
+                 num_games, num_positions, GAME_PGN);
         }
       }
     } else {
@@ -191,7 +192,6 @@ static void PopulateExamples() {
 static constexpr int INPUT_SIZE = BOARD_SIZE;
 static constexpr int OUTPUT_SIZE = 2;
 
-// Examples are about 2k.
 static constexpr int EXAMPLES_PER_ROUND = 1000;
 
 // In-progress game. We keep a few of these around and use them to
@@ -327,6 +327,9 @@ static void Train(Network *net) {
   static constexpr double HISTORY_EVERY_SEC = 120.0;
   Periodically history_per(HISTORY_EVERY_SEC);
 
+  static constexpr double SAVE_ERROR_IMAGES_EVERY = 130.0;
+  Periodically error_images_per(SAVE_ERROR_IMAGES_EVERY);
+
   static constexpr double TIMING_EVERY_SEC = 20.0;
   Periodically timing_per(TIMING_EVERY_SEC);
 
@@ -334,6 +337,15 @@ static void Train(Network *net) {
 
   constexpr int IMAGE_EVERY = 100;
   TrainingImages images(*net, "train", MODEL_NAME, IMAGE_EVERY);
+
+  constexpr int NUM_COLUMNS = 2;
+  std::array<const char *, NUM_COLUMNS> COLUMN_NAMES = {"score", "over"};
+  std::vector<std::unique_ptr<ErrorImage>> error_images;
+  for (int i = 0; i < NUM_COLUMNS; i++) {
+    string filename = StringPrintf("error-%d.png", i);
+    error_images.emplace_back(
+        std::make_unique<ErrorImage>(2000, EXAMPLES_PER_ROUND, filename));
+  }
 
   printf("Training!\n");
 
@@ -441,9 +453,11 @@ static void Train(Network *net) {
 
               const float num_moves = (float)game_over.reached.size();
               for (int i = game_over.reached.size(); i >= 0; i--) {
-                example_queue.emplace_back(std::move(game_over.reached[i]), ro.value(), i / num_moves);
+                example_queue.emplace_back(std::move(game_over.reached[i]),
+                                           ro.value(), i / num_moves);
               }
-              if (example_queue.size() >= EXAMPLES_PER_ROUND) goto enough_examples;
+              if (example_queue.size() >= EXAMPLES_PER_ROUND)
+                goto enough_examples;
             }
           }
 
@@ -509,7 +523,6 @@ static void Train(Network *net) {
           Timer makemove_timer;
           for (const auto &[game_idx, offset] : offsets) {
             Game &game = games[game_idx];
-            // printf("game %d @%d %d moves\n", game_idx, offset, game.legal.size());
             std::vector<float> scores(game.legal.size());
 
             // We prever positions that have a favorable evaluation, and
@@ -553,7 +566,8 @@ static void Train(Network *net) {
               // index into game.legal array
               std::vector<int> best_idx;
               best_idx.reserve(game.legal.size());
-              for (int i = 0; i < game.legal.size(); i++) best_idx.push_back(i);
+              for (int i = 0; i < game.legal.size(); i++)
+                best_idx.push_back(i);
               // Avoid biasing towards earlier moves when the distribution
               // is very flat.
               Shuffle(&rc, &best_idx);
@@ -563,16 +577,17 @@ static void Train(Network *net) {
                           return scores[a] > scores[b];
                         });
 
-              // Sample the move.
-              // Is there a more principled way (i.e. fewer parameters) to do this?
+              // Sample the move. Is there a more principled way (i.e.
+              // fewer parameters) to do this?
               CHECK(game.legal.size() > 1);
               const int n_best = std::clamp((int)game.legal.size() / 4,
                                             1,
                                             (int)game.legal.size() - 1);
 
-              // The next element; we base the scores for weighted sampling off this.
-              // Its score is the "bias".
-              const int bias_idx = std::clamp(n_best + 1, 0, (int)game.legal.size() - 1);
+              // The next element; we base the scores for weighted
+              // sampling off this. Its score is the "bias".
+              const int bias_idx =
+                std::clamp(n_best + 1, 0, (int)game.legal.size() - 1);
               CHECK(bias_idx >= 0 && bias_idx < game.legal.size());
               const int bias_elt = best_idx[bias_idx];
               CHECK(bias_elt >= 0 && bias_elt < game.legal.size());
@@ -580,8 +595,8 @@ static void Train(Network *net) {
               const int best_elt = best_idx[0];
               CHECK(best_elt >= 0 && best_elt < game.legal.size());
               const float best_score = scores[best_elt];
-              // Scores are descending so we expect the best element to have a higher
-              // score than the bias element.
+              // Scores are descending so we expect the best element
+              // to have a higher score than the bias element.
               if (best_score <= bias) {
                 // Flat distribution. Choose uniformly.
                 return RandTo(&rc, n_best);
@@ -795,15 +810,16 @@ static void Train(Network *net) {
       training->ExportOutputs(&actuals);
 
       const bool save_history = history_per.ShouldRun();
+      const bool save_error_images = error_images_per.ShouldRun();
       // compute loss for the two outputs on each example, actuals vs expecteds
-      constexpr int NUM_COLUMNS = 2;
-      std::array<const char *, NUM_COLUMNS> COLUMN_NAMES = {"score", "over"};
       for (int col = 0; col < NUM_COLUMNS; col++) {
 
+        std::vector<std::pair<float, float>> ex(EXAMPLES_PER_ROUND);
         float average_loss = 0, min_loss = 1.0f / 0.0f, max_loss = 0.0f;
         for (int idx = 0; idx < EXAMPLES_PER_ROUND; idx++) {
           float expected = expecteds[idx * NUM_COLUMNS + col];
           float actual = actuals[idx * NUM_COLUMNS + col];
+          ex[idx] = std::make_pair(expected, actual);
           float loss = fabsf(expected - actual);
           min_loss = std::min(min_loss, loss);
           max_loss = std::max(max_loss, loss);
@@ -818,6 +834,13 @@ static void Train(Network *net) {
 
         if (save_history) {
           error_history.Add(net->rounds, average_loss, col);
+        }
+
+        error_images[col]->Add(std::move(ex));
+
+        if (save_error_images) {
+          error_images[col]->Save();
+          printf("Wrote %s\n", error_images[col]->Filename().c_str());
         }
 
         printf("   %s: %.3f<%.3f<%.3f\n",
@@ -940,9 +963,9 @@ static unique_ptr<Network> NewEvalNetwork() {
 
   static constexpr int FEATURES_3x3 = 256;
   static constexpr int FEATURES_1x1 = 32;
-  static constexpr int FEATURES_8x1 = 64;
-  static constexpr int FEATURES_1x8 = 64;
-  static constexpr int NUM_INTERNAL_LAYERS = 1;
+  static constexpr int FEATURES_8x1 = 128;
+  static constexpr int FEATURES_1x8 = 128;
+  static constexpr int NUM_INTERNAL_LAYERS = 3;
 
   // The board is spatial, so do some convolution. 3x3.
   Chunk first_conv_chunk =
@@ -996,22 +1019,27 @@ static unique_ptr<Network> NewEvalNetwork() {
 
   // Then, more convolution and mixing layers.
   for (int layer = 0; layer < NUM_INTERNAL_LAYERS; layer++) {
+    const int conv_width = 
+      first_conv_chunk.num_occurrences_across * FEATURES_3x3 *
+      first_conv_chunk.num_occurrences_down;
     Chunk conv_chunk =
       Network::Make1DConvolutionChunk(
           // span start, width
           0,
-          first_conv_chunk.num_occurrences_across * FEATURES_3x3 *
-          first_conv_chunk.num_occurrences_down,
+          conv_width,
           // features, pattern width, stride.
           // each block processed independently, same size output
           FEATURES_3x3, FEATURES_3x3, FEATURES_3x3,
           LEAKY_RELU, WEIGHT_UPDATE);
 
-    // and more sparse mixing.
+    // and the sparse channel (which doesn't depend on the 3x3 convolutions)
     int prev_size = layers.back().num_nodes;
+    int skip_prefix = (layer == NUM_INTERNAL_LAYERS - 1) ? 0 : conv_width;
     Chunk sparse_chunk =
       Network::MakeRandomSparseChunk(
-          &rc, 4096, {Network::SparseSpan(0, prev_size, 48)}, LEAKY_RELU, ADAM);
+          &rc, 4096,
+          {Network::SparseSpan(skip_prefix, prev_size - skip_prefix, 24)},
+          LEAKY_RELU, ADAM);
 
     layers.push_back(Network::LayerFromChunks(conv_chunk, sparse_chunk));
   }
@@ -1025,7 +1053,8 @@ static unique_ptr<Network> NewEvalNetwork() {
     Chunk sparse_chunk =
       Network::MakeRandomSparseChunk(
           &rc, target_size,
-          {Network::SparseSpan(0, prev_size, prev_size / 16)}, LEAKY_RELU, ADAM);
+          {Network::SparseSpan(0, prev_size, prev_size / 16)},
+          LEAKY_RELU, ADAM);
 
     layers.push_back(Network::LayerFromChunks(sparse_chunk));
   }

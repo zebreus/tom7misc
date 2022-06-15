@@ -10,21 +10,23 @@
 
 // Results of a single game.
 struct Fates {
-  static constexpr uint8_t DIED = 0b10000000;
-  static constexpr uint8_t POS_MASK = 0b00111111;
+  using uint8 = uint8_t;
+  
+  static constexpr uint8 DIED = 0b10000000;
+  static constexpr uint8 POS_MASK = 0b00111111;
   // Initialized to their start squares (alive) in standard position.
-  uint8_t fates[32] = { 0,  1,  2,  3,  4,  5,  6,  7,
-                        8,  9, 10, 11, 12, 13, 14, 15,
-                       48, 49, 50, 51, 52, 53, 54, 55,
-                       56, 57, 58, 59, 60, 61, 62, 63, };
+  uint8 fates[32] = { 0,  1,  2,  3,  4,  5,  6,  7,
+                      8,  9, 10, 11, 12, 13, 14, 15,
+                      48, 49, 50, 51, 52, 53, 54, 55,
+                      56, 57, 58, 59, 60, 61, 62, 63, };
 
-  static constexpr uint8_t BLACK_QUEEN = 3;
-  static constexpr uint8_t WHITE_QUEEN = 27;
+  static constexpr uint8 BLACK_QUEEN = 3;
+  static constexpr uint8 WHITE_QUEEN = 27;
 
   // Return the piece index [0, 32) of the living piece at the given
   // square, or -1 if none.
   int PieceIndexAt(int r, int c) const {
-    uint8_t target = r * 8 + c;
+    uint8 target = r * 8 + c;
     for (int i = 0; i < 32; i++) {
       if (fates[i] == target) return i;
     }

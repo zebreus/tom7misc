@@ -2,6 +2,11 @@
 #include "chess.h"
 
 #include <string>
+#include <cstdint>
+#include <vector>
+#include <initializer_list>
+#include <cmath>
+#include <optional>
 
 #include "base/logging.h"
 #include "pgn.h"
@@ -11,7 +16,15 @@
 using namespace std;
 
 using Move = Position::Move;
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
+static constexpr bool VERBOSE = false;
+
+#define CHECK_NEAR(e1, e2) do {                             \
+    double v1 = (e1), v2 = (e2);                            \
+    CHECK(fabs(v1 - v2) < 0.0001) << v1 << " vs " << v2;    \
+  } while (false)
 
 static Position::Move ApplyMove(Position *pos, const char *pgn, Fates *fates) {
   Move m;
@@ -97,7 +110,7 @@ static void PlayGame(std::initializer_list<const char *> game) {
   for (const char *m : game) {
     Position::Move move = ApplyMove(&pos, m, &fates);
     pgame.PushMove(PackedGame::PackMove(move));
-    printf("%s\n", pos.BoardString().c_str());
+    if (VERBOSE) printf("%s\n", pos.BoardString().c_str());
   }
 
   Position pos2;
@@ -180,8 +193,9 @@ static void ReadPGN() {
 
   Fates fates;
   for (const PGN::Move &m : pgn.moves) {
+    CHECK(m.clock.has_value() && m.clock.value() > 0) << m.move;
     ApplyMove(&pos, m.move.c_str(), &fates);
-    printf("%s\n", pos.BoardString().c_str());
+    if (VERBOSE) printf("%s\n", pos.BoardString().c_str());
   }
 }
 
@@ -210,6 +224,58 @@ static void ReadPGNUnterminated() {
   CHECK(pgn.GetTimeControl() == std::make_pair(0, 0));
 }
 
+static void ReadPGNWithAnnotations() {
+  PGN pgn;
+  const char *kGame =
+    R"_([Event "Casual Blitz game"]
+[Date "2022.05.16"]
+[White "anonymous"]
+[Black "stockfish"]
+[Result "0-1"]
+[UTCDate "2022.01.01"]
+[UTCTime "23:12:58"]
+[WhiteElo "10"]
+[BlackElo "3000"]
+[Variant "Standard"]
+[TimeControl "300+3"]
+[ECO "A03"]
+[Opening "Bird Opening: Dutch Variation, Dudweiler Gambit"]
+[Termination "Normal"]
+[Annotator "lichess.org"]
+
+1. f4 { [%eval -0.31] [%clk 0:05:00] } 1... d5 { [%eval -0.16] [%clk 0:05:00] } 2. g4?? { (-0.16 → -4.44) Blunder. Nf3 was best. } { [%eval -4.44] [%clk 0:05:01] } { A03 Bird Opening: Dutch Variation, Dudweiler Gambit } 2... Bxg4 { [%eval -3.04] [%clk 0:05:00] } 3. h4?! { (-3.04 → -4.61) Inaccuracy. Bg2 was best. } { [%eval -4.61] [%clk 0:04:47] } 3... e6 { [%eval -3.9] [%clk 0:05:01] } 4. Rh3? { (-3.90 → -8.54) Mistake. Bg2 was best. } { [%eval -8.54] [%clk 0:04:38] } 4... Bxh3 { [%eval -8.27] [%clk 0:05:02] } 5. a3? { (-8.27 → Mate in 1) Checkmate is now unavoidable. Nxh3 was best. } { [%eval #-1] [%clk 0:04:38] } 5... Qxh4# { [%clk 0:05:00] } { Black wins by checkmate. } 0-1
+     )_";
+
+  CHECK(PGN::Parse(kGame, &pgn));
+  CHECK(pgn.result == PGN::Result::BLACK_WINS);
+  CHECK(pgn.GetTermination() == PGN::Termination::NORMAL);
+  CHECK(pgn.GetTimeControl() == std::make_pair(300, 3));
+
+  CHECK(pgn.moves.size() == 10);
+
+  const PGN::Move &m1 = pgn.moves[0];
+  CHECK(m1.move == "f4");
+  CHECK(m1.clock.has_value());
+  CHECK(m1.clock.value() == 5 * 60);
+  CHECK(m1.eval.has_value());
+  CHECK(m1.eval.value().type == PGN::EvalType::PAWNS);
+  CHECK_NEAR(m1.eval.value().e.pawns, -0.31);
+
+  const PGN::Move &m2 = pgn.moves[8];
+  CHECK(m2.move == "a3?") << m2.move;
+  CHECK(m2.clock.has_value());
+  CHECK(m2.clock.value() == 4 * 60 + 38);
+  CHECK(m2.eval.has_value());
+  CHECK(m2.eval.value().type == PGN::EvalType::MATE);
+  CHECK_EQ(m2.eval.value().e.mate, -1);
+
+  Position pos;
+  for (const PGN::Move &m : pgn.moves) {
+    ApplyMove(&pos, m.move.c_str(), nullptr);
+  }
+  CHECK(pos.IsMated());
+}
+
 static void Regression2Game() {
   PGN pgn;
   const char *kGame =
@@ -232,9 +298,9 @@ static void Regression2Game() {
 
   Fates fates;
   for (const PGN::Move &m : pgn.moves) {
-    printf("== %s ==\n", m.move.c_str());
+    if (VERBOSE) printf("== %s ==\n", m.move.c_str());
     ApplyMove(&pos, m.move.c_str(), &fates);
-    printf("%s\n", pos.BoardString().c_str());
+    if (VERBOSE) printf("%s\n", pos.BoardString().c_str());
   }
 }
 
@@ -462,13 +528,19 @@ static void TestEp() {
   CHECK("rnbq1bnr/ppppkppp/8/8/4PpP1/8/PPPPK2P/RNBQ1BNR b - g3 0 4" ==
         fen) << fen;
   Move ep;
+  std::optional<uint8> epc = pos.EnPassantColumn();
+  CHECK(epc.has_value());
+  CHECK_EQ(epc.value(), 6);
   CHECK(pos.ParseMove("fxg3", &ep));
   CHECK(pos.IsEnPassant(ep));
   CHECK(pos.IsLegal(ep));
   CHECK(pos.HasLegalMoves());
-  int kingrow, kingcol;
-  std::tie(kingrow, kingcol) = pos.GetCurrentKing();
+  const auto [kingrow, kingcol] = pos.GetCurrentKing();
   CHECK(kingrow == 1 && kingcol == 4) << kingrow << ", " << kingcol;
+  pos.ApplyMove(ep);
+
+  // Make sure we've cleared the ep state.
+  CHECK(!pos.EnPassantColumn().has_value());
 }
 
 static void TestParseMoves() {
@@ -480,15 +552,31 @@ static void TestParseMoves() {
   CHECK_EQ(moves[2].move, "Nf3");
 }
 
+static void TestParseMovesComment() {
+  std::vector<PGN::Move> moves;
+  CHECK(PGN::ParseMoves(
+            "1. d4 { comment } "
+            "1... d5 { another } { doubled } "
+            "2. Nf3 { [%eval -0.31] [%clk 0:05:00] } "
+            "2... Nf6 { (-8.27 → Mate in 1) Checkmate "
+            "is now unavoidable. Nxh3 was best. }"
+            "3. a3 ",
+            &moves));
+  CHECK_EQ(moves.size(), 5);
+  CHECK_EQ(moves[0].move, "d4");
+}
+
 int main(int argc, char **argv) {
   CheckInit();
   TestParseMoves();
+  TestParseMovesComment();
 
   PlayGame(kGame1);
   PlayGame(kGame2);
 
   ReadPGN();
   ReadPGNUnterminated();
+  ReadPGNWithAnnotations();
 
   Regression1();
   Regression2();
@@ -506,6 +594,8 @@ int main(int argc, char **argv) {
 
   RegressionBxa8n();
   RegressionRg8();
+
+  printf("\nOK\n");
   return 0;
 }
 

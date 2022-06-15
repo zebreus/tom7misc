@@ -171,6 +171,8 @@ bool Emulator::LoadGame(const string &path) {
   return true;
 }
 
+// TODO PERF: Looks like Emulator leaks a few hundred bytes
+// (tetris.nes, see pingu/tetris/size.cc).
 Emulator::~Emulator() {
   fc->fceu->FCEU_CloseGame();
   fc->fceu->GameInfo = nullptr;

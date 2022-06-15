@@ -32,6 +32,8 @@
 #include "almanac-player.h"
 #include "numeric-player.h"
 #include "letter-player.h"
+#include "eniac-player.h"
+#include "nneval-player.h"
 
 #define TESTING true
 
@@ -58,12 +60,15 @@
 using Move = Position::Move;
 using namespace std;
 
+// static constexpr const char *TOURNAMENT_FILE = "tournament.db";
+static constexpr const char *TOURNAMENT_FILE = "eval-tournament.db";
+
 // This used to be round-robin style, but since the work grows
 // quadratically, it got to the point that running even a single
 // round would take hours. New version picks cells that have
 // the fewest number of games, and runs those in parallel.
-static constexpr int THREADS = 16;
-static constexpr int RUN_FOR_SECONDS = 60 * 20;
+static constexpr int THREADS = 14;
+static constexpr int RUN_FOR_SECONDS = 60 * 20; // 60 * 60 * 4;
 
 // Fill in the diagonal just a little. After reaching this number of games,
 // we don't bother prioritizing self-play at all.
@@ -71,52 +76,60 @@ static constexpr int SELFPLAY_TARGET = 5;
 
 typedef Player *(*Entrant)();
 
-static Player *Stockfish1M_64512() {
+static Player *NNEval1() { return NNEval(1); }
+static Player *NNEval2() { return NNEval(2); }
+static Player *NNEval3() { return NNEval(3); }
+static Player *NNEval4() { return NNEval(4); }
+static Player *NNEval5() { return NNEval(5); }
+static Player *NNEval6() { return NNEval(6); }
+
+[[maybe_unused]] static Player *Stockfish1M_64512() {
   return new BlendRandom<64512>(Stockfish1M());
 }
-static Player *Stockfish1M_63488() {
+[[maybe_unused]] static Player *Stockfish1M_63488() {
   return new BlendRandom<63488>(Stockfish1M());
 }
-static Player *Stockfish1M_61440() {
+[[maybe_unused]] static Player *Stockfish1M_61440() {
   return new BlendRandom<61440>(Stockfish1M());
 }
-static Player *Stockfish1M_57344() {
+[[maybe_unused]] static Player *Stockfish1M_57344() {
   return new BlendRandom<57344>(Stockfish1M());
 }
-static Player *Stockfish1M_49152() {
+[[maybe_unused]] static Player *Stockfish1M_49152() {
   return new BlendRandom<49152>(Stockfish1M());
 }
-static Player *Stockfish1M_32768() {
+[[maybe_unused]] static Player *Stockfish1M_32768() {
   return new BlendRandom<32768>(Stockfish1M());
 }
-static Player *Stockfish1M_16384() {
+[[maybe_unused]] static Player *Stockfish1M_16384() {
   return new BlendRandom<16384>(Stockfish1M());
 }
-static Player *Stockfish1M_8192() {
+[[maybe_unused]] static Player *Stockfish1M_8192() {
   return new BlendRandom<8192>(Stockfish1M());
 }
-static Player *Stockfish1M_4096() {
+[[maybe_unused]] static Player *Stockfish1M_4096() {
   return new BlendRandom<4096>(Stockfish1M());
 }
-static Player *Stockfish1M_2048() {
+[[maybe_unused]] static Player *Stockfish1M_2048() {
   return new BlendRandom<2048>(Stockfish1M());
 }
-static Player *Stockfish1M_1024() {
+[[maybe_unused]] static Player *Stockfish1M_1024() {
   return new BlendRandom<1024>(Stockfish1M());
 }
-static Player *Stockfish1M_512() {
+[[maybe_unused]] static Player *Stockfish1M_512() {
   return new BlendRandom<512>(Stockfish1M());
 }
-static Player *Stockfish1M_256() {
+[[maybe_unused]] static Player *Stockfish1M_256() {
   return new BlendRandom<256>(Stockfish1M());
 }
-static Player *Stockfish1M_128() {
+[[maybe_unused]] static Player *Stockfish1M_128() {
   return new BlendRandom<128>(Stockfish1M());
 }
-static Player *Stockfish1M_64() {
+[[maybe_unused]] static Player *Stockfish1M_64() {
   return new BlendRandom<64>(Stockfish1M());
 }
 
+#if 0
 static Player *LetterA() { return Letter(0); }
 static Player *LetterB() { return Letter(1); }
 static Player *LetterC() { return Letter(2); }
@@ -143,10 +156,13 @@ static Player *LetterW() { return Letter(22); }
 static Player *LetterX() { return Letter(23); }
 static Player *LetterY() { return Letter(24); }
 static Player *LetterZ() { return Letter(25); }
+#endif
 
+#if 0
 const vector<Entrant> &GetEntrants() {
   static vector<Entrant> *entrants =
     new vector<Entrant>{
+    /*
                         LetterA,
                         LetterB,
                         LetterC,
@@ -173,6 +189,9 @@ const vector<Entrant> &GetEntrants() {
                         LetterX,
                         LetterY,
                         LetterZ,
+    */
+
+                        Eniac,
 
                         Safe,
                         Dangerous,
@@ -247,6 +266,38 @@ const vector<Entrant> &GetEntrants() {
   };
   return *entrants;
 }
+#else
+// mini-tournament for nn-eval players
+const vector<Entrant> &GetEntrants() {
+  static vector<Entrant> *entrants =
+    new vector<Entrant>{
+                        Worstfish,
+
+                        MinOpponentMoves,
+                        Random,
+                        SinglePlayer,
+
+                        NNEval1,
+                        NNEval2,
+                        NNEval3,
+                        NNEval4,
+                        NNEval5,
+                        NNEval6,
+
+                        Chessmaster1,
+
+                        Stockfish0,
+                        Stockfish1M,
+
+                        Stockfish1M_64512,
+                        Stockfish1M_63488,
+                        Stockfish1M_61440,
+                        Stockfish1M_32768,
+  };
+  return *entrants;
+}
+#endif
+
 
 // Under FIDE rules, after 50 moves without a pawn move or capture, a
 // player may CLAIM a draw. We don't allow these computer players to
@@ -808,7 +859,7 @@ static void RunTournament() {
   status_start_time = time(nullptr);
   status.resize(THREADS);
 
-  OutcomeTable outcome_table(TournamentDB::LoadFromFile("tournament.db"));
+  OutcomeTable outcome_table(TournamentDB::LoadFromFile(TOURNAMENT_FILE));
 
   std::unique_ptr<Totals> totals =
     std::make_unique<Totals>(names, outcome_table.outcomes);
@@ -820,7 +871,7 @@ static void RunTournament() {
                                         &outcome_table);
               });
 
-  TournamentDB::SaveToFile(outcome_table.outcomes, "tournament.db");
+  TournamentDB::SaveToFile(outcome_table.outcomes, TOURNAMENT_FILE);
 
   for (Player *p : entrants) delete p;
   entrants.clear();

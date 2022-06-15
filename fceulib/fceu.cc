@@ -167,8 +167,8 @@ FCEUGI *FCEU::FCEUI_LoadGame(const char *name, int OverwriteVidMode) {
 
   ResetGameLoaded();
 
-  // reset parameters so they're cleared just in case a format's loader
-  // doesnt know to do the clearing
+  // Reset parameters so they're cleared just in case a format's loader
+  // doesn't know to do the clearing.
   fc->ines->ClearMasterRomInfoParams();
 
   FCEU_CloseGame();

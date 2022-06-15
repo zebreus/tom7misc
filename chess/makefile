@@ -143,7 +143,7 @@ INCLUDES=-I "../cc-lib" -I "../cc-lib/city" -I "../cc-lib/re2" -I ../fceulib
 CPPFLAGS=-m64 $(INCLUDES) $(PLATFORMCFLAGS) $(SYMBOLS)
 
 # without static, can't find lz or lstdcxx maybe?
-LFLAGS=-m64 -mthreads $(PLATFORMLINK)
+LFLAGS=-march=native -m64 -mthreads $(PLATFORMLINK)
 
 RE2_OBJECTS=../cc-lib/re2/bitstate.o ../cc-lib/re2/compile.o ../cc-lib/re2/dfa.o ../cc-lib/re2/filtered_re2.o ../cc-lib/re2/mimics_pcre.o ../cc-lib/re2/nfa.o ../cc-lib/re2/onepass.o ../cc-lib/re2/parse.o ../cc-lib/re2/perl_groups.o ../cc-lib/re2/prefilter.o ../cc-lib/re2/prefilter_tree.o ../cc-lib/re2/prog.o ../cc-lib/re2/re2.o ../cc-lib/re2/regexp.o ../cc-lib/re2/set.o ../cc-lib/re2/simplify.o ../cc-lib/re2/stringpiece.o ../cc-lib/re2/tostring.o ../cc-lib/re2/unicode_casefold.o ../cc-lib/re2/unicode_groups.o ../cc-lib/re2/util/rune.o ../cc-lib/re2/util/strutil.o
 
@@ -196,7 +196,7 @@ maketable.exe : maketable.o chess.o $(CCLIB_OBJECTS)
 makeperm.exe : makeperm.o chess.o $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-tournament.exe : tournament-db.o tournament.o chess.o player.o almanac-player.o  packedgame.o pack.o common.o stockfish-player.o player-util.o uci-player.o stockfish.o subprocess.o chessmaster.o headless-graphics.o all-fate-data.o fate-player.o blind-player.o blind/unblinder.o blind/unblinder-mk0.o numeric-player.o letter-player.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+tournament.exe : tournament-db.o tournament.o chess.o player.o almanac-player.o  packedgame.o pack.o common.o stockfish-player.o player-util.o uci-player.o stockfish.o subprocess.o chessmaster.o headless-graphics.o all-fate-data.o fate-player.o blind-player.o blind/unblinder.o blind/unblinder-mk0.o numeric-player.o letter-player.o eniac.o eniac-player.o nneval-player.o ../pluginvert/network.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 elo.exe : elo.o tournament-db.o chess.o headless-graphics.o $(CCLIB_OBJECTS)
@@ -214,7 +214,7 @@ chessmaster.exe : chess.o player.o player-util.o chessmaster.o chessmaster-main.
 bigrat_test.exe : bigrat_test.o $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-testplayer.exe : chess.o player.o player-util.o fate-player.o almanac-player.o pack.o packedgame.o common.o all-fate-data.o chessmaster.o testplayer.o headless-graphics.o blind-player.o stockfish.o subprocess.o blind/unblinder.o blind/unblinder-mk0.o numeric-player.o $(FCEULIB_OBJECTS) $(CCLIB_OBJECTS)
+testplayer.exe : chess.o player.o player-util.o fate-player.o almanac-player.o pack.o packedgame.o common.o all-fate-data.o chessmaster.o testplayer.o headless-graphics.o blind-player.o stockfish.o subprocess.o blind/unblinder.o blind/unblinder-mk0.o numeric-player.o eniac-player.o eniac.o nneval-player.o ../pluginvert/network.o $(FCEULIB_OBJECTS) $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 pairs.exe : chess.o pairs.o $(CCLIB_OBJECTS)

@@ -3,10 +3,13 @@
 
 #include <string>
 #include <cstdint>
+#include <vector>
 
 using namespace std;
 
 using Move = Position::Move;
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 // XXX TODO: Delete all this debugging printing.
 #define IFDEBUG if (true) {} else

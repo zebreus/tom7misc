@@ -22,23 +22,37 @@ static constexpr const char *MOVE_RE =
   // The actual move text. This
   // includes characters for e.g. O-O-O#,
   // Nh3?!, and terminators like 1/2-1/2, *, 0-1.
-  "([-xKQPNRBa-h1-8=+!?#O0/*]+)"
-  // Post-move comments.
-  "\\s*((?:{[^}]*})?)";
+  "([-xKQPNRBa-h1-8=+!?#O0/*]+)";
 
-  // Just whitespace...
+static constexpr const char *COMMENT_RE =
+  // Post-move comments. This is where annotations live.
+  "\\s*{([^}]*)}\\s*";
+
+static constexpr const char *CLOCK_RE =
+  "\\s*\\[%clk ([0-9]+):([0-9]+):([0-9]+)\\]\\s*";
+static constexpr const char *EVAL_RE =
+  "\\s*\\[%eval ([-#.0-9]+)\\]\\s*";
+
+// Just whitespace...
 static constexpr const char *END_RE = "\\s*";
 
 PGNParser::PGNParser() :
   meta_line_re{META_LINE_RE},
   move_re{MOVE_RE},
+  comment_re{COMMENT_RE},
+  clock_re{CLOCK_RE},
+  eval_re{EVAL_RE},
   end_re{END_RE} {}
+
 
 // static
 bool PGNParser::Parse(const string &s, PGN *pgn) const {
   // Matches the text inside double-quotes in PGN. Repeatedly,
   // anything but a backslash or double quote, or an escaped
   // double-quote, or an escaped backslash.
+
+  // TODO: Parse (and drop?) alternate lines, which look like
+  // (3. Bg2 e6 4. d3 Nc6 5. Nf3 Bxf3 6. Bxf3 Qh4+ 7. Kf1 Bd6)
 
   re2::StringPiece input(s);
   string key, value;
@@ -57,8 +71,8 @@ bool PGNParser::Parse(const string &s, PGN *pgn) const {
   // Since the game can end on white's move, we simply allow
   // a move marker before white or black's move.
 
-  string move, post;
-  while (RE2::Consume(&input, move_re, &move, &post)) {
+  string move;
+  while (RE2::Consume(&input, move_re, &move)) {
     // printf("[%s] + [%s]\n", move.c_str(), post.c_str());
 
     if (move == "1-0") {
@@ -75,7 +89,42 @@ bool PGNParser::Parse(const string &s, PGN *pgn) const {
       return true;
     }
 
-    pgn->moves.emplace_back(move);
+    // Parse zero or more trailing comments. This loop allows
+    // duplicate annotations (e.g. two different %eval annotations,
+    // whether they are in the same comment or different comments).
+    // The second simply overwrites the first.
+    std::optional<PGN::Eval> eval;
+    std::optional<int> clock;
+
+    // In the lichess database, typical annotations look like:
+    // 29. Qxf8 { [%eval #12] [%clk 0:00:47] }
+    string post;
+    while (RE2::Consume(&input, comment_re, &post)) {
+      re2::StringPiece post_input(post);
+      for (;;) {
+        if (std::string e;
+            RE2::Consume(&post_input, eval_re, &e)) {
+          if (e[0] == '#') {
+            int moves = atoi(e.c_str() + 1);
+            eval.emplace();
+            eval->type = PGN::EvalType::MATE;
+            eval->e.mate = moves;
+          } else {
+            float pawns = atof(e.c_str());
+            eval.emplace();
+            eval->type = PGN::EvalType::PAWNS;
+            eval->e.pawns = pawns;
+          }
+        } else if (int h, m, s;
+                   RE2::Consume(&post_input, clock_re, &h, &m, &s)) {
+          clock.emplace(h * 3600 + m * 60 + s);
+        } else {
+          break;
+        }
+      }
+    }
+
+    pgn->moves.emplace_back(move, clock, eval);
   }
 
   // Make sure we consumed the whole input.

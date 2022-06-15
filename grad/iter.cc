@@ -13,6 +13,7 @@
 #include "color-util.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "threadutil.h"
 // #include "array-util.h"
 
 using namespace std;
@@ -60,7 +61,7 @@ static constexpr uint16 NEG_HIGH = 0xBC00; // -1
 // of the resulting value for the 65536 inputs.
 using Table = std::array<uint16_t, 65536>;
 
-static constexpr int SIZE = 2048;
+static constexpr int SIZE = 1920;
 static void Graph(const Table &table, uint32 color, ImageRGBA *img) {
   CHECK(img->Width() == SIZE);
   CHECK(img->Height() == SIZE);  
@@ -81,6 +82,30 @@ static void Graph(const Table &table, uint32 color, ImageRGBA *img) {
 
   for (int i = NEG_LOW; i < NEG_HIGH; i++) Plot(i);
   for (int i = POS_LOW; i < POS_HIGH; i++) Plot(i);
+}
+
+[[maybe_unused]]
+static void Grid(ImageRGBA *img) {
+  CHECK(img->Width() == SIZE);
+  CHECK(img->Height() == SIZE);  
+
+  auto MapCoord = [](double x, double y) -> pair<int, int> {
+    int xs = (int)std::round((SIZE / 2) + x * (SIZE / 2));
+    int ys = (int)std::round((SIZE / 2) + -y * (SIZE / 2));
+    return make_pair(xs, ys);
+  };
+  
+  for (double y = -1.0; y <= 1.0; y += 0.1) {
+    const auto [x0, y0] = MapCoord(-1.0, y);
+    const auto [x1, y1] = MapCoord(+1.0, y);
+    img->BlendLine32(x0, y0, x1, y1, 0xFFFFFF11);
+  }
+
+  for (double x = -1.0; x <= 1.0; x += 0.1) {
+    const auto [x0, y0] = MapCoord(x, -1.0);
+    const auto [x1, y1] = MapCoord(x, +1.0);
+    img->BlendLine32(x0, y0, x1, y1, 0xFFFFFF11);
+  }
 }
 
 [[maybe_unused]]
@@ -279,13 +304,40 @@ static void MakeIterated() {
   printf("Wrote %s\n", filename.c_str());
 }
   
+// Good: Iterate * 0x3bff 12000 times, recenter.
+
 int main(int argc, char **argv) {
 
+  Asynchronously asyn(8);
   State state;
-  for (int i = 0; i < 400; i++) {
-    ApplyStep(Step{.mult = true, .value = 0xbbffu}, &state.table);
+
+  const uint16 c = 0x3bffu;
+    
+  for (int i = 0; i < 10000; i++) {
+    ApplyStep(Step{.mult = true, .value = c}, &state.table);
+    ApplyStep(Step{.mult = false, .value = 0x8020u}, &state.table);
+    ApplyStep(Step{.mult = false, .value = 0x0020u}, &state.table);    
+
+    if (i % 100 == 0) {
+      asyn.Run([new_table = state.table, i]() mutable {
+          ImageRGBA img(SIZE, SIZE);
+          img.Clear32(0x000000FF);
+          Grid(&img);
+          // Table new_table = state.table;
+
+          const auto &[offset, scale] = Recentering(new_table);
+          printf("Offset %.9g Scale %.9g\n", (float)offset, (float)scale);
+          ApplyStep(Step{.mult = false, .value = GetU16(offset)}, &new_table);
+          ApplyStep(Step{.mult = true, .value = GetU16(scale)}, &new_table);
+      
+          Graph(new_table, 0xFFFFFF77, &img);
+          string filename = StringPrintf("iterated-%05d.png", i);
+          img.Save(filename);
+        });
+    }
   }
-  
+
+  #if 0
   ImageRGBA img(SIZE, SIZE);
   img.Clear32(0x000000FF);
   Table new_table = state.table;
@@ -298,6 +350,7 @@ int main(int argc, char **argv) {
   Graph(new_table, 0xFFFFFF77, &img);
   string filename = "iterated.png";
   img.Save(filename);
-
+#endif
+  
   return 0;
 }

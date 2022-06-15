@@ -12,6 +12,7 @@
 #include "base/stringprintf.h"
 #include "image.h"
 #include "threadutil.h"
+#include "color-util.h"
 
 // TODO: to .cc
 struct TrainingImages {
@@ -258,5 +259,97 @@ private:
   std::vector<std::vector<int>> image_x;
 };
 
+struct ErrorImage {
+  static constexpr int MARGIN = 4;
+  ErrorImage(int width,
+             int examples_per_round,
+             const std::string &filename,
+             bool continue_from_disk = true) :
+    width(width),
+    height((examples_per_round + MARGIN) * 3),
+    examples_per_round(examples_per_round),
+    filename(filename) {
+
+    if (continue_from_disk) {
+      image.reset(ImageRGBA::Load(filename));
+      if (image.get() != nullptr) {
+        // The next x position is stored at pixel 0,0.
+        const uint32_t px = image->GetPixel32(0, 0);
+        const uint32_t nx = px >> 8;
+        CHECK((px & 0xFF) == 0xFF &&
+              nx <= width) << filename << " does not have "
+          "correct secret pixel or constants changed; delete it "
+          "to continue";
+        image_x = nx;
+      }
+    }
+
+    if (image.get() == nullptr) {
+      image = std::make_unique<ImageRGBA>(width, height);
+      image->Clear32(0x000055FF);
+    }
+  }
+
+  const std::string &Filename() const {
+    return filename;
+  }
+
+  void Add(std::vector<std::pair<float, float>> ex) {
+    // TODO: Shrink instead of clearing.
+    if (image_x >= width) {
+      image->Clear32(0x000055FF);
+      image_x = 0;
+    }
+
+    CHECK(ex.size() == examples_per_round);
+    std::sort(ex.begin(), ex.end(),
+              [](const std::pair<float, float> &a,
+                 const std::pair<float, float> &b) {
+                if (a.first == b.first)
+                  return a.second < b.second;
+                return a.first < b.first;
+              });
+
+    for (int i = 0; i < examples_per_round; i++) {
+      const auto &[expected, actual] = ex[i];
+      const float diff = actual - expected;
+
+      const uint32 ce = ColorUtil::LinearGradient32(RED_GREEN, expected);
+      const uint32 ca = ColorUtil::LinearGradient32(RED_GREEN, actual);
+      const uint32 cd = ColorUtil::LinearGradient32(RED_GREEN, diff);
+
+      image->SetPixel32(image_x, MARGIN + i, ce);
+      image->SetPixel32(
+          image_x, MARGIN + examples_per_round + MARGIN + i, ca);
+      image->SetPixel32(
+          image_x, MARGIN + 2 * (examples_per_round + MARGIN) + i, cd);
+    }
+
+    image_x++;
+  }
+
+  void Save() {
+    // Top-left is secret pixel as with training images.
+    CHECK(image_x == (image_x & 0xFFFFFF)) << "out of range!";
+    image->SetPixel32(0, 0, ((uint32_t)image_x << 8) | 0xFF);
+    image->Save(filename);
+  }
+
+private:
+  static constexpr ColorUtil::Gradient RED_GREEN{
+    GradRGB(-2.0f, 0xFFFF88),
+    GradRGB(-1.0f, 0xFF0000),
+    GradRGB( 0.0f, 0x000000),
+    GradRGB(+1.0f, 0x00FF00),
+    GradRGB(+2.0f, 0x88FFFF),
+  };
+
+  const int width = 0;
+  const int height = 0;
+  const int examples_per_round = 0;
+  const std::string filename;
+  int image_x = 0;
+  std::unique_ptr<ImageRGBA> image;
+};
 
 #endif

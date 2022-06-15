@@ -129,6 +129,9 @@ Result PlayGame(Player *white_player, Player *black_player,
 
 static constexpr int NUM_GAMES = 10;
 
+// This benchmarks an expensive (search-based) player
+// against itself, testing GetLegalMove, MoveExcursion,
+// NumLegalMoves, IsInCheck.
 static void PlayerBenchmark() {
   std::unique_ptr<Player> white{SinglePlayer()};
   std::unique_ptr<Player> black{SinglePlayer()};
@@ -194,7 +197,8 @@ static void ExcursionBenchmark() {
       "r4b1r/pp1n2p1/1qp1k2p/4p3/3P4/2P5/P1P1Q1PP/1RB2RK1 b - - 2 15");
 
   Timer bench_timer;
-  static constexpr int LOOPS = 100000;
+  static constexpr int LOOPS = 200000;
+  int64 excursions = 0;
   for (int i = 0; i < LOOPS; i++) {
     for (const Position &orig_pos : positions) {
       Position excursion_pos = orig_pos;
@@ -206,6 +210,7 @@ static void ExcursionBenchmark() {
               "Should have applied move:\n" <<
               apply_pos.BoardString() << "\n" <<
               excursion_pos.BoardString();
+            excursions++;
             return 0;
           });
         CHECK(PositionEq{}(orig_pos, excursion_pos)) <<
@@ -217,13 +222,15 @@ static void ExcursionBenchmark() {
   }
 
   const double seconds = bench_timer.MS() / 1000.0;
-  printf("Total time: %.2fs\n", seconds);
+  printf("Total time: %.2fs, (%.1f excursions/sec)\n", seconds,
+         (double)excursions / seconds);
 }
 
 int main(int argc, char **argv) {
   (void)PlayerBenchmark;
   (void)ExcursionBenchmark;
 
+  // PlayerBenchmark();
   ExcursionBenchmark();
   return 0;
 }

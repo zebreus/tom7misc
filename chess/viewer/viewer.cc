@@ -28,6 +28,7 @@
 #include "../stockfish-player.h"
 #include "../fate-player.h"
 #include "../letter-player.h"
+#include "../nneval-player.h"
 #include "timer.h"
 
 // #include "unblinder.h"
@@ -698,7 +699,7 @@ void UI::LoadMoves(const string &movestring) {
   current_fates = Fates();
   movie_idx = 0;
   movie.clear();
-  for (const PGN::Move move : moves) {
+  for (const PGN::Move &move : moves) {
     Position::Move m;
     position.ParseMove(move.move.c_str(), &m);
     CHECK(MakeMove(ExplainedMove{m}));
@@ -2087,7 +2088,8 @@ int main(int argc, char **argv) {
   // ui.async_player.reset(new AsyncPlayer(BlindSingleKings()));
   // ui.async_player.reset(new AsyncPlayer(RationalPi()));
   // ui.async_player.reset(new AsyncPlayer(SuicideKing()));
-  ui.async_player.reset(new AsyncPlayer(Letter(2)));
+  // ui.async_player.reset(new AsyncPlayer(Letter(2)));
+  ui.async_player.reset(new AsyncPlayer(NNEval(0)));
 
   // ui.async_player.reset(new AsyncPlayer(NoIInsist()));
   // ui.async_player.reset(new AsyncPlayer(SinglePlayer()));

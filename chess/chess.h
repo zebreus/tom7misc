@@ -8,9 +8,7 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-
-using uint8 = std::uint8_t;
-using uint32 = std::uint32_t;
+#include <optional>
 
 // Several benchmarks confirm this to be faster, but
 // it can depend on the workload.
@@ -37,6 +35,9 @@ using uint32 = std::uint32_t;
 // TODO: Probably should separate out some of these static
 // methods into just like a "Chess" class or namespace.
 struct Position {
+  using uint8 = std::uint8_t;
+  using uint32 = std::uint32_t;
+
   enum Type : uint8 {
     PAWN = 1,
     KNIGHT = 2,
@@ -74,6 +75,14 @@ struct Position {
     const uint32 r = rows[row];
     const uint32 p = r >> (4 * (7 - col));
     return p & 0b1111;
+  }
+
+  // Same but a castling rook is just a rook.
+  uint8 SimplePieceAt(int row, int col) const {
+    uint8 p = PieceAt(row, col);
+    if (p == (WHITE | C_ROOK)) return (WHITE | ROOK);
+    else if (p == (BLACK | C_ROOK)) return (BLACK | ROOK);
+    return p;
   }
 
   inline void SetPiece(int row, int col, uint8 p) {
@@ -246,7 +255,8 @@ struct Position {
   // Returns true if the indicated square is attacked (by the other
   // player) in the current position. "Attacked" here means an otherwise
   // unrestricted piece would be able to move in its fashion to capture
-  // on that square, not considering check.
+  // on that square, not considering check. Does not consider en passant.
+  //
   // The square is typically unoccupied but it need not be.
   bool Attacked(int r, int c) const;
 
@@ -305,6 +315,14 @@ struct Position {
 
   inline static bool IsBlackSquare(int r, int c) {
     return !!((r ^ c) & 1);
+  }
+
+  // Return the column index of the pawn if the last move was a double
+  // pawn move (and so eligible to be captured en passant), or nullopt
+  // if none.
+  std::optional<uint8> EnPassantColumn() const {
+    if ((bits & DOUBLE) == 0) return std::nullopt;
+    else return {bits & PAWN_COL};
   }
 
  private:

@@ -27,6 +27,24 @@ using TestExample = NetworkTestUtil::TestExample;
 
 static CL *cl = nullptr;
 
+struct TestResult {
+  string name;
+  string func;
+  int line_number = 0;
+  double seconds = 0.0;
+  int64 rounds = 0;
+  std::optional<string> error;
+};
+
+static std::vector<TestResult> *TestResults() {
+  static std::vector<TestResult> *test_results =
+    new std::vector<TestResult>;
+  return test_results;
+}
+static void AddTestResult(const TestResult &tr) {
+  TestResults()->push_back(tr);
+}
+
 static void ForwardTests(TestNet test_net) {
   printf("\n--------------------------\n"
          "[Forward] Test net: %s\n", test_net.name.c_str());
@@ -192,8 +210,9 @@ static void TrainOnTestTests(TestNet test_net) {
   net_gpu->ReadFromGPU();
 }
 
-// Returns nullopt on success, otherwise an error message.
-static std::optional<string>
+// Returns the count of rounds on success, and an optional error
+// if training failed.
+static std::pair<int64, std::optional<string>>
 TrainTest(TrainNet train_net,
           int max_iterations,
           int examples_per_round,
@@ -248,6 +267,10 @@ TrainTest(TrainNet train_net,
   // Used to compute loss.
   std::vector<std::vector<float>> expected;
   expected.resize(training->num_examples);
+
+  // Also used in error message if we don't converge.
+  float average_loss = 0.0f;
+  float average_inc = 0.0f;
 
 
   Timer train_timer;
@@ -385,9 +408,10 @@ TrainTest(TrainNet train_net,
       if (VERBOSE > 1)
         printf("Got losses.\n");
 
-      float min_loss = 1.0f / 0.0f, average_loss = 0.0f, max_loss = 0.0f;
+      float min_loss = 1.0f / 0.0f, max_loss = 0.0f;
       int min_inc = net.layers.back().num_nodes + 1, max_inc = 0;
-      float average_inc = 0.0f;
+      average_loss = 0.0f;
+      average_inc = 0.0f;
       for (auto [loss_dist, loss_incorrect] : losses) {
         min_loss = std::min(loss_dist, min_loss);
         max_loss = std::max(loss_dist, max_loss);
@@ -433,14 +457,14 @@ TrainTest(TrainNet train_net,
     // Parameter for average_loss termination?
     if (finished) {
       printf("Successfully trained!\n");
-      return {};
+      return std::make_pair(iter, std::nullopt);
     }
   }
 
-  return {StringPrintf("Failed on %s:\n"
-                       "Didn't converge after %d iterations :(\n",
-                       train_net.name.c_str(),
-                       max_iterations)};
+  return std::make_pair(
+      max_iterations,
+      StringPrintf("didn't converge. error still %.6f",
+                   max_iterations));
 }
 
 static void TestChunkSchedule() {
@@ -561,12 +585,25 @@ static void QuickTests() {
 
 // TODO: Record results of tests in some table that we print out
 // at the end, or even log permanently.
-#define TRAIN_TEST(args...) do {                    \
-    auto eo = TrainTest(args);                      \
-    CHECK(!eo.has_value()) << "Train test failed: " \
-                           << #args                 \
-                           << "\nWith message:\n"   \
-                           << eo.value();           \
+#define TRAIN_TEST(args...) do {                        \
+  Timer test_timer;                                     \
+  const auto &[r, eo] = TrainTest(args);                \
+    TestResult result{.name = #args ,                   \
+                      .func = __func__,                 \
+                      .line_number = __LINE__,          \
+                      .seconds = test_timer.Seconds(),  \
+                      .rounds = r,                      \
+                      .error = eo};                     \
+    AddTestResult(result);                              \
+    if (eo.has_value()) {                               \
+      LOG(INFO) << "In "                                \
+        << __func__                                     \
+        << ":" << __LINE__ << "\n"                      \
+        << "Train test failed: "                        \
+        << #args                                        \
+        << "\nWith message:\n"                          \
+                << eo.value();                          \
+    }                                                   \
   } while(0)
 
 
@@ -576,11 +613,11 @@ static void SGDTests() {
   // The identity function is super easy to learn, so we should always
   // be able to learn this with the default update config.
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentitySparse(),
-             100000, 1000, 0.0001f, {});
+             200000, 1000, 0.001f, {});
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentityDense(),
-             100000, 1000, 0.0001f);
+             200000, 1000, 0.001f);
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentityConvolution(),
-             100000, 1000, 0.0001f);
+             200000, 1000, 0.001f);
 
   // Smaller batch size since there are only 2^3 possible inputs.
   // This will sporadically achieve zero boolean errors after a
@@ -596,6 +633,13 @@ static void SGDTests() {
                500000, 54, 0.001f);
   }
 
+  [[maybe_unused]]
+  UpdateWeightsCL::UpdateConfig fast_config = UpdateWeightsCL::UpdateConfig{
+    .base_learning_rate = 0.1f,
+    .learning_rate_dampening = 0.25f,
+    .adam_epsilon = 1.0e-6,
+  };
+  
   // Interesting example.
   // This has a very simple solution (bias=0, all weights=1), but
   // the average case (bias = input size / 2) is quite far from it;
@@ -603,11 +647,12 @@ static void SGDTests() {
   // bias. I wonder if this is a case where "pre-training" might
   // be useful.
   TRAIN_TEST(NetworkTestUtil::LearnCountOnesDense(),
-             10000, 1000,
+             20000, 1000,
              // Looks like it will eventually drop arbitrarily
              // low if you wait for it. Gets to this threshold
              // before about 600 rounds.
-             0.100f);
+             0.100f,
+             fast_config);
 
   // Counting can be done with a convolution; this stacks a 4->1
   // convolution and a 5->1 convolution, followed by a dense layer
@@ -615,9 +660,11 @@ static void SGDTests() {
   // Slow! Takes 891k rounds with default settings!
   // (And sensitive to initial conditions. When I changed the
   // name (only), which changes the PRNG, it got much slower)
-  TRAIN_TEST(NetworkTestUtil::LearnCountOnesConvConvDense(
-                 /* last layer fixed */ true),
-             1000000, 1000, 0.100f, UpdateWeightsCL::UpdateConfig());
+  if (false /* too slow! */) {
+    TRAIN_TEST(NetworkTestUtil::LearnCountOnesConvConvDense(
+                   /* last layer fixed */ true),
+               1000000, 1000, 0.100f, UpdateWeightsCL::UpdateConfig());
+  }
 }
 
 static void AdamTests() {
@@ -628,7 +675,6 @@ static void AdamTests() {
     .adam_epsilon = 1.0e-6,
   };
 
-  #if 0
   TRAIN_TEST(NetworkTestUtil::ForceAdam(
                  NetworkTestUtil::LearnTrivialIdentitySparse()),
              10000, 1000, 0.001f, fast_config);
@@ -682,8 +728,6 @@ static void AdamTests() {
   // About 16k rounds
   TRAIN_TEST(NetworkTestUtil::Atan2Adam(64, 6, 6),
              50000, 1000, 0.010f, fast_config);
-
-#endif
 
 
   // Open question: Why do weights move so slowly when the
@@ -772,23 +816,31 @@ static void AuditionTests() {
              2000000, 1000, 0.040f, slower_config, {100});
 #endif
 
+  // not working? diverges with all weights +max.
+  // why is that a good solution?
+  
+  // Tests tanh transfer function. Should be able to learn this simple
+  // function easily.
   TRAIN_TEST(NetworkTestUtil::TanhSignFunctionAdam(),
              2000000, 1000, 0.0010f, fast_config, {100});
+
 }
 
 int main(int argc, char **argv) {
   cl = new CL;
 
-  //  TestChunkSchedule();
+  Timer timer;
+  
+  TestChunkSchedule();
   printf("Chunk schedule OK\n");
 
   QuickTests();
   printf("Quick tests OK\n");
 
-  // SGDTests();
+  SGDTests();
   printf("SGD tests OK\n");
 
-  // AdamTests();
+  AdamTests();
   printf("ADAM tests OK\n");
 
   // not permanent...
@@ -796,6 +848,30 @@ int main(int argc, char **argv) {
 
   delete cl;
 
+  auto MinSec = [](double sec) {
+      int min = (int)sec / 60;
+      double sr = sec - (60.0 * min);
+      if (min > 0) {
+        return StringPrintf("%dm%.1fs", min, sr);
+      } else {
+        return StringPrintf("%.3fs", sec);
+      }
+    };
+  for (const TestResult &tr : *TestResults()) {
+    printf("%s\n"
+           "At %s:%d. Took %lld iters, %s.\n",
+           tr.name.c_str(),
+           tr.func.c_str(), tr.line_number,
+           tr.rounds, MinSec(tr.seconds).c_str());
+    if (tr.error.has_value()) {
+      printf("** FAIL: %s **\n",
+             tr.error.value().c_str());
+    }
+  }
+      
+  printf("Finished all tests in %s\n",
+         MinSec(timer.Seconds()).c_str());
+  
   printf("OK\n");
   return 0;
 }

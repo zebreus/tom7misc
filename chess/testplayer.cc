@@ -6,7 +6,8 @@
 #include <cstdint>
 #include <utility>
 
-#include "../cc-lib/base/logging.h"
+#include "base/logging.h"
+#include "image.h"
 
 #include "chess.h"
 #include "player.h"
@@ -15,8 +16,11 @@
 #include "numeric-player.h"
 #include "fates.h"
 #include "fate-player.h"
+#include "eniac-player.h"
+#include "timer.h"
+#include "nneval-player.h"
 
-// #define VERBOSE
+#define VERBOSE
 
 using namespace std;
 
@@ -46,10 +50,8 @@ struct TextExplainer : public Explainer {
     fflush(stdout);
   }
 
-  void SetGraphic(int w, int h,
-                  const std::vector<uint8> &rgba) override {
-    CHECK(rgba.size() == w * h * 4);
-    printf("(got %dx%d graphic)\n", w, h);
+  void SetGraphic(const ImageRGBA &img) override {
+    printf("(got %dx%d graphic)\n", img.Width(), img.Height());
     fflush(stdout);
   }
 
@@ -57,12 +59,22 @@ struct TextExplainer : public Explainer {
 };
 
 int main(int argc, char **argv) {
-  std::unique_ptr<Player> white_player{RationalPi()};
-  std::unique_ptr<Player> black_player{RationalE()};
+  // std::unique_ptr<Player> white_player{RationalPi()};
+  // std::unique_ptr<Player> black_player{RationalE()};
 
-  // #define VERBOSE
+  std::unique_ptr<Player> white_player{NNEval(1)};
+  std::unique_ptr<Player> black_player{NNEval(2)};
 
-  static constexpr int NUM_LOOPS = 1;
+  #define VERBOSE
+
+  static constexpr int NUM_LOOPS = 10;
+
+  int64_t white_moves = 0;
+  int64_t black_moves = 0;
+  double white_secs = 0.0;
+  double black_secs = 0.0;
+  int white_wins = 0;
+  int black_wins = 0;
 
   for (int loops = 0; loops < NUM_LOOPS; loops++) {
     std::unique_ptr<PlayerGame> white{white_player->CreateGame()};
@@ -75,17 +87,26 @@ int main(int argc, char **argv) {
     bool black_turn = false;
     int stale_moves = 0;
     while (pos.HasLegalMoves()) {
-  #ifdef VERBOSE
-      printf("\n----\n");
-      TextExplainer text_explainer{pos};
-      Explainer *explainer = &text_explainer;
-  #else
-      Explainer *explainer = nullptr;
-  #endif
+      #ifdef VERBOSE
+        printf("\n----\n");
+        TextExplainer text_explainer{pos};
+        Explainer *explainer = &text_explainer;
+      #else
+        Explainer *explainer = nullptr;
+      #endif
 
+      Timer move_timer;
       Position::Move move =
         black_turn ?
         black->GetMove(pos, explainer) : white->GetMove(pos, explainer);
+      if (black_turn) {
+        black_moves++;
+        black_secs += move_timer.Seconds();
+      } else {
+        white_moves++;
+        white_secs += move_timer.Seconds();
+      }
+
       CHECK(pos.IsLegal(move)) << pos.LongMoveString(move);
 
       if (pos.IsCapturing(move) ||
@@ -98,15 +119,15 @@ int main(int argc, char **argv) {
 
 
       if (!black_turn) {
-  #ifdef VERBOSE
-        printf(" %d.", movenum);
-  #endif
+        #ifdef VERBOSE
+          printf(" %d.", movenum);
+        #endif
         movenum++;
       }
-  #ifdef VSEBOSE
-      printf(" %s", pos.ShortMoveString(move).c_str());
-      fflush(stdout);
-  #endif
+      #ifdef VERBOSE
+        printf(" %s", pos.ShortMoveString(move).c_str());
+        fflush(stdout);
+      #endif
       white->ForceMove(pos, move);
       black->ForceMove(pos, move);
       fates.Update(pos, move);
@@ -114,11 +135,22 @@ int main(int argc, char **argv) {
       black_turn = !black_turn;
     }
 
-#if 1 || defined(VERBOSE)
-    printf("\nGame over:\n%s\n", pos.BoardString().c_str());
+    if (pos.IsMated()) {
+      if (black_turn) white_wins++;
+      else black_wins++;
+    }
+
+    #if 1 || defined(VERBOSE)
+      printf("\nGame over:\n%s\n", pos.BoardString().c_str());
     #endif
   }
   printf("Ran %d games.\n", NUM_LOOPS);
+  printf("White wins %d; black wins %d; %d draw.\n",
+         white_wins, black_wins, NUM_LOOPS - (white_wins + black_wins));
+  printf("White: %lld moves in %.1fms/move.\n",
+         white_moves, (white_secs * 1000.0) / white_moves);
+  printf("Black: %lld moves in %.1fms/move.\n",
+         black_moves, (black_secs * 1000.0) / black_moves);
   fflush(stdout);
 
   return 0;

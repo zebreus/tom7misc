@@ -50,7 +50,17 @@ ideas from Youtube:
  corresponding to the tree with the lowest standard deviation, ie
  minimize the effect that the opponent can have on the game (for
  better or worse.)"
+
+
+ Roy van Rijn @royvanrijn:
+  - prefer positions where your pieces attack a lot of empty space
+  - prefer positions where your pieces attack/defend other pieces
+
  
+ Evan Warfel:
+  - make some correspondence between chess moves and musical notes.
+    only allow/prefer certain move sequences that appear in
+    MIDI corpora (e.g. Bach vs Mozart)
 
 Maurdekye
 some chess engine suggestions:

@@ -22,7 +22,7 @@ static constexpr bool VERBOSE = false;
 namespace {
 
 // Bunch of code copied here from ../lowercase, cloned to keep it
-// as hermtic as possible.
+// as hermetic as possible.
 
 /// ----- network.h -----
 enum TransferFunction {
@@ -1027,7 +1027,7 @@ struct LetterPlayer : public StatelessPlayer {
 
         int YM = (SCALE * 8 - 9) / 2;
         if (YM < 0) YM = 0;
-        
+
         explained.BlendText32(xpos + 8 * SCALE + 2,
                               ypos + YM, 0x000000FF,
                               StringPrintf("%s. %.3f",
@@ -1035,7 +1035,7 @@ struct LetterPlayer : public StatelessPlayer {
                                            -score));
         ypos += 8 * SCALE + 8;
       }
-      
+
       explainer->SetGraphic(explained);
     }
 

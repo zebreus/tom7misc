@@ -255,9 +255,9 @@ struct BlindPlayer : public StatelessPlayer {
     return StringPrintf("Predict a board state%s.%s If valid (or can be made "
                         "valid trivially), use stockfish1m to make a move. "
                         "If move is invalid or other problem, random.",
+                        (single_king ? "" : " with exactly one king per side"),
                         (spycheck ? " First, spy-check pieces that we think are our "
-                         "own." : ""),
-                        (single_king ? "" : " with exactly one king per side"));
+                         "own." : ""));
   }
 
   const string name;

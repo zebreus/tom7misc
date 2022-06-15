@@ -207,7 +207,7 @@ ForwardLayerCL::ForwardLayerCL(CL *cl, NetworkGPU *net_gpu) :
         cl->BuildOneKernel(kernel_src, kernel_name, net_gpu->Verbose());
       CHECK(program != 0 && kernel != 0);
 
-      if (true) {
+      if (false) {
         optional<string> ptx = CL::DecodeProgram(program);
         if (ptx.has_value()) {
           int lines = Util::SplitToLines(ptx.value()).size();

@@ -12,10 +12,18 @@
 #include "base/stringprintf.h"
 #include "util.h"
 #include "image.h"
+#include "bounds.h"
 
 using namespace std;
 using int64 = int64_t;
 using uint32 = uint32_t;
+
+template<class C, class K, class V>
+static inline auto FindWithDefault(const C &cont, const K &key, V v) -> V {
+  auto cit = cont.find(key);
+  if (cit == cont.end()) return v;
+  return cit->second;
+}
 
 static inline constexpr HalfAlpha(uint32_t c) {
   uint32 rgb = c & 0xFFFFFF00;
@@ -115,13 +123,6 @@ void ErrorHistory::WriteMergedTSV(const string &outfile,
     const int64 out_points = max_points.value();
 
     CHECK(rows.size() >= 2) << "need at least two rows";
-    #if 0
-    const int64 round_min = rows[0].first;
-    const int64 round_max = rows[rows.size() - 1].first;
-    const int64 span = round_max - round_min;
-    CHECK(span > 0) << "rounds not sorted!?";
-    const double ival = span / (double)out_points;
-    #endif
 
     vector<std::pair<int64, vector<double>>> out;
     out.reserve(out_points);
@@ -186,40 +187,56 @@ ImageRGBA ErrorHistory::MakeImage(int width, int height,
   }
 
   if (collated_records.size() < 2) {
-    image.BlendText2x32(0, (height - 9) / 2,
+    image.BlendText2x32(4, (height - 9) / 2,
                         0xFF7777FF,
                         "Not enough records");
     return image;
   }
 
-  int64_t min_round = collated_records.begin()->first;
-  int64_t max_round = collated_records.rbegin()->first;
+  Bounds bounds;
 
-  // The global maximum error, for scaling the data vertically.
-  // We currently treat 0 error as the minimum.
-  double emax = 0.1;
-  for (const auto &[key_, vec] : collated_records)
-    for (const Record &r : vec)
-      emax = std::max(r.error_per_example, emax);
-
-  int round_width = max_round - min_round;
+  // TODO: Could use Bounds for this instead...
+  const int64_t min_round = collated_records.begin()->first;
+  const int64_t max_round = collated_records.rbegin()->first;
+  const int round_width = max_round - min_round;
   CHECK(round_width > 0);
 
-  // ???
+  // Always including y=0.
+  bounds.Bound(min_round, 0.0);
+  bounds.Bound(max_round, 0.0);
+
+  // Compute bounds of the data on the y axis.
+  for (const auto &[round, vec] : collated_records) {
+    for (const Record &r : vec) {
+      bounds.Bound(round, r.error_per_example);
+    }
+  }
+
+  // How to set this? This value seems to work reasonably well
+  // but maybe it is weird to depend on the width of the data.
   double exp_stretch = round_width / 8.0;
 
-  double prev_round = 0;
-  // Calculate each pixel column independently.
-  for (int x = 0; x < width; x++) {
-    double roundf = x / (double)width;
-    // Interpolated round at this column.
-    double round = min_round + roundf * round_width;
 
+  // A little bit of vertical margin.
+  bounds.AddMarginsFrac(0.05, 0.0, 0.05, 0.0);
+  Bounds::Scaler scaler = bounds.Stretch(width, height).FlipY();
+
+  auto ToIntY = [&](double v) {
+      return std::clamp((int)std::round(scaler.ScaleY(v)), 0, height - 1);
+    };
+
+  auto ValuesForRound = [&](double prev_round, double round) ->
+    // column mapped to average, min, max.
+    // Columns can be missing from the map, even if they were
+    // selected.
+    std::map<int, std::tuple<double, double, double>> {
     // Iterator to the first round >= round. We call
     // this the "upper bound" but it's what map<>::lower_bound
     // computes. Note that this point is just one of the columns,
     // so it's just a starting point for us.
     auto ub = collated_records.lower_bound(round);
+
+    std::map<int, std::tuple<double, double, double>> ret;
 
     // For each column:
     for (const auto &[col, color] : column_colors) {
@@ -265,42 +282,69 @@ ImageRGBA ErrorHistory::MakeImage(int width, int height,
       }
 
       // If we have any data, plot it.
-      if (vmass > 0.0) {
-
-        auto ToInt = [&](double v) {
-            double f = v / emax;
-            double ypos = f * height;
-            return std::clamp((int)std::round(height - ypos), 0, height - 1);
-          };
-
-        if (vmin.has_value() && vmax.has_value()) {
-          uint32 hcolor = HalfAlpha(color);
-          // Note reversed sense of min/max since y axis is inverted.
-          int ymax = ToInt(vmin.value());
-          int ymin = ToInt(vmax.value());
-          image.BlendPixel32(x, 0, 0x00FF00FF);
-          for (int y = ymin; y <= ymax; y++) {
-            image.BlendPixel32(x, y, hcolor);
-          }
-        }
-
-        double v = vtotal / vmass;
-        int y = ToInt(v);
-        image.BlendPixel32(x, y - 1, color);
-        image.BlendPixel32(x, y, color);
-        image.BlendPixel32(x, y + 1, color);
+      if (vmass > 0.0 && vmin.has_value() && vmax.has_value()) {
+        ret[col] =
+          std::make_tuple(vtotal / vmass, vmin.value(), vmax.value());
       }
+    }
+    return ret;
+  };
+
+
+  // TODO: Label y axis data.
+  int y0 = ToIntY(0.0);
+  image.BlendLine32(0, y0, width - 1, y0,
+                    0xFFFFFF77);
+  image.BlendText32(2, y0 - 9 - 2, 0xFFFFFFAA, "0.0");
+
+  for (const auto &[col, values] : ValuesForRound(0.0, max_round)) {
+    const uint32 color = FindWithDefault(column_colors, col, 0xFF0000FF);
+    const uint32 hcolor = HalfAlpha(color);
+    const auto &[v, vmin_, vmax_] = values;
+
+    int y = ToIntY(v);
+    image.BlendLine32(0, y, width - 1, y, HalfAlpha(hcolor));
+    // XXX something to avoid labels overlapping each other, and series.
+    // Like we could give several candidate positions and find the one
+    // that would write on top of the fewest existing non-black pixels.
+    string label = StringPrintf("%.4f", v);
+    image.BlendText32(width - 2 - label.size() * 9,
+                      y - 9 - 4, color, label);
+  }
+
+
+  double prev_round = 0;
+  // Calculate each pixel column independently.
+  for (int x = 0; x < width; x++) {
+    // Interpolated round at this column.
+    double round = scaler.UnscaleX(x);
+
+    for (const auto &[col, values] : ValuesForRound(prev_round, round)) {
+      // Should always be in the map.
+      const uint32 color = FindWithDefault(column_colors, col, 0xFF0000FF);
+      const auto &[v, vmin, vmax] = values;
+
+      uint32 hcolor = HalfAlpha(color);
+      // Note reversed sense of min/max since y axis is inverted.
+      int ymax = ToIntY(vmin);
+      int ymin = ToIntY(vmax);
+      image.BlendLine32(x, ymin, x, ymax, hcolor);
+
+      const int y = ToIntY(v);
+      image.BlendPixel32(x, y - 1, color);
+      image.BlendPixel32(x, y, color);
+      image.BlendPixel32(x, y + 1, color);
     }
 
     prev_round = round;
   }
 
-  image.BlendText32(1, height - 10, 0xFFFFFF77,
-                    StringPrintf("%lld", min_round));
+  image.BlendText32(1, height - 10, 0xFFAAAAAA,
+                    StringPrintf("round %lld", min_round));
 
   string maxr = StringPrintf("%lld", max_round);
   image.BlendText32(width - maxr.size() * 9 - 1, height - 10,
-                    0xFFFFFF77, maxr);
+                    0xFFAAAAAA, maxr);
 
   return image;
 }
