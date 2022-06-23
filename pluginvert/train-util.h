@@ -294,7 +294,9 @@ struct ErrorImage {
     return filename;
   }
 
+  // Takes a vector with examples_per_round elements: {expected, actual}
   void Add(std::vector<std::pair<float, float>> ex) {
+    CHECK(ex.size() == examples_per_round);
     // TODO: Shrink instead of clearing.
     if (image_x >= width) {
       image->Clear32(0x000055FF);

@@ -219,7 +219,10 @@ TrainTest(TrainNet train_net,
           float avg_loss_threshold,
           UpdateWeightsCL::UpdateConfig update_config =
           UpdateWeightsCL::UpdateConfig(),
-          optional<int> write_images_every = nullopt) {
+          optional<int> write_images_every = nullopt,
+          // Output indexes to graph error for. This happens
+          // whenever we compute error.
+          vector<int> write_error_images_for = {}) {
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = false;
@@ -233,6 +236,22 @@ TrainTest(TrainNet train_net,
                                     // these may not even be the same
                                     // problem!
                                     false));
+  }
+
+  struct ErrorImageRow {
+    int col = 0;
+    std::unique_ptr<ErrorImage> image;
+    // Temporary scratch space.
+    vector<pair<float, float>> ex;
+  };
+
+  vector<ErrorImageRow> error_images(write_error_images_for.size());
+  for (int idx = 0; idx < write_error_images_for.size(); idx++) {
+    const int col = write_error_images_for[idx];
+    error_images[idx].col = col;
+    error_images[idx].image = std::make_unique<ErrorImage>(
+        2000, examples_per_round, StringPrintf("test-error-%d.png", col),
+        false);
   }
 
   printf("\n--------------------------\n"
@@ -383,14 +402,30 @@ TrainTest(TrainNet train_net,
     if (iter < 100 ? (iter % 10 == 0) :
         iter < 1000 ? (iter % 100 == 0) :
         (iter % 1000 == 0)) {
+
+      // Populated for error images.
+      for (int cidx = 0; cidx < error_images.size(); cidx++) {
+        ErrorImageRow *row = &error_images[cidx];
+        row->ex.resize(examples_per_round);
+      }
+
       // Get loss as abs distance, plus number of incorrect (as booleans).
       // Size of examples = Number of training instances.
       std::vector<std::pair<float, int>> losses =
         ParallelMapi(expected,
-                     [&](int idx, const std::vector<float> exp) {
+                     [&](int idx, const std::vector<float> &exp) {
+                       // Loops over every example and gets its data.
                        std::vector<float> got;
                        got.resize(exp.size());
                        training->ExportOutput(idx, &got);
+
+                       // But the error images are organized by column.
+                       for (int cidx = 0; cidx < error_images.size(); cidx++) {
+                         ErrorImageRow *row = &error_images[cidx];
+                         CHECK(idx < row->ex.size());
+                         row->ex[idx].first = exp[cidx];
+                         row->ex[idx].second = got[cidx];
+                       }
 
                        int incorrect = 0;
                        float loss = 0.0f;
@@ -404,6 +439,14 @@ TrainTest(TrainNet train_net,
                        }
                        return std::make_pair(loss, incorrect);
                      }, MAX_PARALLELISM);
+
+      for (ErrorImageRow &row : error_images) {
+        row.image->Add(std::move(row.ex));
+        if ((iter < 10000 && iter % 1000 == 0) ||
+            iter % 10000 == 0) {
+          row.image->Save();
+        }
+      }
 
       if (VERBOSE > 1)
         printf("Got losses.\n");
@@ -456,6 +499,7 @@ TrainTest(TrainNet train_net,
 
     // Parameter for average_loss termination?
     if (finished) {
+      for (ErrorImageRow &row : error_images) row.image->Save();
       printf("Successfully trained!\n");
       return std::make_pair(iter, std::nullopt);
     }
@@ -639,7 +683,7 @@ static void SGDTests() {
     .learning_rate_dampening = 0.25f,
     .adam_epsilon = 1.0e-6,
   };
-  
+
   // Interesting example.
   // This has a very simple solution (bias=0, all weights=1), but
   // the average case (bias = input size / 2) is quite far from it;
@@ -768,6 +812,19 @@ static void AdamTests() {
     TRAIN_TEST(NetworkTestUtil::SparseLineIntersectionAdam(183, 42, 6),
                200000, 1000, 0.060f, hyper_config);
   }
+
+  // Tests tanh transfer function. Should be able to learn this simple
+  // function easily. Still it takes 40k rounds, perhaps because the
+  // learning rates are too conservative?
+  {
+    UpdateWeightsCL::UpdateConfig tanh_config = fast_config;
+    // For this problem, the solution is weights towards infinity. So
+    // don't constrain them too much.
+    tanh_config.weight_constrain_max = 1e5;
+
+    TRAIN_TEST(NetworkTestUtil::TanhSignFunctionAdam(),
+               100000, 1000, 0.025f, tanh_config, {100}, {0});
+  }
 }
 
 static void AuditionTests() {
@@ -814,23 +871,14 @@ static void AuditionTests() {
   // gets under 0.04 in 700k rounds, perhaps keeps going
   TRAIN_TEST(NetworkTestUtil::DodgeballAdam(113, 21, 4),
              2000000, 1000, 0.040f, slower_config, {100});
-#endif
-
-  // not working? diverges with all weights +max.
-  // why is that a good solution?
-  
-  // Tests tanh transfer function. Should be able to learn this simple
-  // function easily.
-  TRAIN_TEST(NetworkTestUtil::TanhSignFunctionAdam(),
-             2000000, 1000, 0.0010f, fast_config, {100});
-
+  #endif
 }
 
 int main(int argc, char **argv) {
   cl = new CL;
 
   Timer timer;
-  
+
   TestChunkSchedule();
   printf("Chunk schedule OK\n");
 
@@ -868,10 +916,10 @@ int main(int argc, char **argv) {
              tr.error.value().c_str());
     }
   }
-      
+
   printf("Finished all tests in %s\n",
          MinSec(timer.Seconds()).c_str());
-  
+
   printf("OK\n");
   return 0;
 }
