@@ -9,16 +9,25 @@ CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-gcc
 LFLAGS=-flto -static
 
-# no fast math!
-# this worked for clang
-# CXXFLAGS=-mfpmath=sse -msse2 -frounding-math -fno-fast-math -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
-OPT=-O2
-CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 $(OPT)
+# Note, this builds against AMD's distribution of OpenCL, since that's
+# the card I had when I started. It also works fine with an NVIDIA GPU,
+# and nvidia libs are a bit hard to find since they love CUDA.
+AMD_ARCH=x86_64
+# AMDSDK="/c/Program Files (x86)/AMD APP SDK"
+# mingw wants /c/, but TDM likes c:/
+# AMDSDK=c:/Program Files (x86)/AMD APP SDK/3.0
+AMDSDK=c:/code/AMD_SDK/
 
 CLINCLUDES="-I$(AMDSDK)/include"
 CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o
+# no fast math!
+# this worked for clang
+# CXXFLAGS=-mfpmath=sse -msse2 -frounding-math -fno-fast-math -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
+OPT=-O2
+CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 $(CLINCLUDES) -std=c++20 $(OPT)
+
+CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -27,15 +36,31 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 grad.s : grad.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -S -fverbose-asm -c $< -o $@
 
-OBJECTS=$(UTIL_OBJECTS)
+OBJECTS=$(CCLIB_OBJECTS)
 
-# LFLAGS= -L. -m64 -Wl,--subsystem,console $(OPT) -static
+LFLAGS= -L. -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static
 
 grad.exe : grad.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 iter.exe : iter.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+make-data.exe : make-data.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+network_test.exe : network.o network-test-util.o network_test.o $(CCLIB_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+network-gpu_test.exe : network.o network-gpu.o network-test-util.o network-gpu_test.o clutil.o $(CCLIB_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+train.exe : train.o network-gpu.o clutil.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
