@@ -13,7 +13,19 @@
 using TestNet = NetworkTestUtil::TestNet;
 using TestExample = NetworkTestUtil::TestExample;
 
-static constexpr bool VERBOSE = false;
+static constexpr bool VERBOSE = true;
+
+static std::vector<half> FloatsToHalves(const std::vector<float> &fs) {
+  std::vector<half> hs(fs.size());
+  for (int i = 0; i < fs.size(); i++) hs[i] = fs[i];
+  return hs;
+}
+
+static std::vector<float> HalvesToFloats(const std::vector<half> &hs) {
+  std::vector<float> fs(hs.size());
+  for (int i = 0; i < hs.size(); i++) fs[i] = hs[i];
+  return fs;
+}
 
 static void SimpleTests(TestNet test_net) {
   printf("======\n"
@@ -30,14 +42,18 @@ static void SimpleTests(TestNet test_net) {
 
         CHECK(stim.values[0].size() == n.layers[0].num_nodes);
         CHECK(example.input.size() == n.layers[0].num_nodes);
-        stim.values[0] = example.input;
+
+        const std::vector<half> input_half =
+          FloatsToHalves(example.input);
+        stim.values[0] = input_half;
         n.RunForward(&stim);
 
         if (VERBOSE) {
+          printf("Stim with %d layers:\n", (int)stim.values.size());
           for (int i = 0; i < stim.values.size(); i++) {
             printf("Stim Layer %d:\n  ", i);
-            for (float f : stim.values[i]) {
-              printf("%.3f ", f);
+            for (half f : stim.values[i]) {
+              printf("%.3f ", (float)f);
             }
             printf("\n");
           }
@@ -46,12 +62,13 @@ static void SimpleTests(TestNet test_net) {
         stim.NaNCheck(example.name);
 
         // No change to input
-        CHECK(stim.values[0] == example.input);
+        CHECK(stim.values[0] == input_half);
 
-        const std::vector<float> &out = stim.values.back();
+        const std::vector<half> &out = stim.values.back();
         CHECK(out.size() == n.layers.back().num_nodes);
 
-        CHECK_FEQV(out, example.output);
+        const std::vector<float> out_float = HalvesToFloats(out);
+        CHECK_FEQV(out_float, example.output);
       }
     };
 
@@ -78,6 +95,8 @@ static void SimpleTests(TestNet test_net) {
       const Chunk &chunk2 = net2->layers[i].chunks[c];
       // XXX test more stuff here...
       CHECK(chunk1.fixed == chunk2.fixed);
+      CHECK_FEQV(chunk1.weights, chunk2.weights);
+      CHECK_FEQV(chunk1.biases, chunk2.biases);
     }
   }
 

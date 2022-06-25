@@ -4,6 +4,13 @@
 // cc-lib, but for now I've been cloning and making improvements
 // with each ML project.
 
+// Hack alert! This is hard-coded to "half" precision (weights, biases)
+// for the "grad" project. It would be nice to be able to switch this
+// in mainline (as half and even quarter precision have significant
+// purchase) but that's a project for another day! One huge obstacle
+// is that nvidia openCL doesn't support half-precision operations,
+// just storage (vload_half, etc.).
+
 #ifndef _NETWORK_H
 #define _NETWORK_H
 
@@ -12,6 +19,10 @@
 #include <cstdint>
 
 #include "base/logging.h"
+
+#include "half.h"
+
+using half_float::half;
 
 // Maybe stuff that uses this should be in network-util or something.
 struct ArcFour;
@@ -69,8 +80,6 @@ enum TransferFunction {
   IDENTITY = 3,
   // Output range is (-1, 1).
   TANH = 4,
-
-
 
   NUM_TRANSFER_FUNCTIONS,
 };
@@ -204,17 +213,17 @@ struct Chunk {
   // are "feature major": The weights for all the indices of a
   // given feature are adjacent in the array.
   // For INPUT, ignored.
-  std::vector<float> weights;
+  std::vector<half> weights;
   // For SPARSE and DENSE chunks, one per node, so size num_nodes.
   // For CONVOLUTIONAL chunks, size num_features.
   // For INPUT chunks, ignored.
-  std::vector<float> biases;
+  std::vector<half> biases;
 
   // For weight_update = SGD, empty.
   // For ADAM or YOGI twice the size of weights or biases vectors.
   // Interleaved m and v parameters for memory locality.
-  std::vector<float> weights_aux;
-  std::vector<float> biases_aux;
+  std::vector<half> weights_aux;
+  std::vector<half> biases_aux;
 
   // These are presentational (e.g. used when rendering in the
   // training view), but width * height * channels must equal num_nodes.
@@ -317,10 +326,10 @@ struct Network {
 
 
   // Serialization header. Always starts with MAGIC.
-  static constexpr uint32_t MAGIC = MakeFOURCC('T', '7', 'n', 'w');
+  static constexpr uint32_t MAGIC = MakeFOURCC('T', '7', 'n', 'H');
   // ... and followed by this version identifier. When changing the
   // format in an incompatible way, always increment this.
-  static constexpr uint32_t FORMAT_ID = 0x27000772U;
+  static constexpr uint32_t FORMAT_ID = 0xFF000001U;
 
   // layer[0] is the input layer.
   vector<Layer> layers;
@@ -466,7 +475,7 @@ struct Stimulation {
     for (int i = 0; i < num_layers; i++) {
       const Layer &layer = net.layers[i];
       num_nodes.push_back(layer.num_nodes);
-      values[i].resize(layer.num_nodes, 0.0f);
+      values[i].resize(layer.num_nodes, (half)0.0f);
     }
   }
 
@@ -489,7 +498,7 @@ struct Stimulation {
 
   // Here the outer vector has size num_layers; first is the input.
   // Inner vector has size num_nodes[i], and just contains their output values.
-  std::vector<std::vector<float>> values;
+  std::vector<std::vector<half>> values;
 
   void CopyFrom(const Stimulation &other) {
     CHECK_EQ(this->values.size(), other.values.size());
@@ -515,7 +524,7 @@ struct Errors {
       // Note that we reserve space in the first layer's error, even
       // though this is the input and we don't normally backpropagate
       // to the input layer.
-      error[i].resize(layer.num_nodes, 0.0f);
+      error[i].resize(layer.num_nodes, (half)0.0f);
     }
   }
   // Empty, useless errors, but can be used to initialize vectors etc.
@@ -533,7 +542,7 @@ struct Errors {
   // them, where the error[0] is the input (empty; we don't compute
   // errors for the input; error[1] is the first real layer, and
   // and error[num_layers - 1] is the error for the output.
-  std::vector<std::vector<float>> error;
+  std::vector<std::vector<half>> error;
 
   int64_t Bytes() const;
 

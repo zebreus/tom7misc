@@ -9,17 +9,20 @@
 #include "network.h"
 
 // Note: Evaluates a and b a second time if check fails!
-#define CHECK_FEQ(a, b) CHECK(fabs((a) - (b)) < 0.00001) \
+// Also note that the precision target here is very low, given that
+// we are using half!
+#define CHECK_FEQ(a, b) CHECK(fabs((a) - (b)) < 0.1) \
   << #a " = " << (a) << " vs " #b " = " << (b)
 
 // Same, but for vectors of floats.
-#define CHECK_FEQV(aav, bbv) do {                           \
-    auto av = (aav), bv = (bbv);                            \
-    CHECK_EQ(av.size(), bv.size()) <<                       \
-      av.size() << " vs " << bv.size();                     \
-    for (size_t i = 0; i < av.size(); i++)                  \
-      CHECK_FEQ(av[i], bv[i]) <<                            \
-        "\n" #aav "[" << i << "] vs " #bbv "[" << i << "]"; \
+#define CHECK_FEQV(aav, bbv) do {                               \
+    auto av = (aav), bv = (bbv);                                \
+    CHECK_EQ(av.size(), bv.size()) <<                           \
+      av.size() << " vs " << bv.size();                         \
+    for (size_t i = 0; i < av.size(); i++)                      \
+      CHECK_FEQ(av[i], bv[i]) <<                                \
+        "\n" #aav "[" << i << "] vs " #bbv "[" << i << "]\n" << \
+        "with vectors of size " << av.size();                   \
   } while (0)
 
 struct NetworkTestUtil {

@@ -228,9 +228,9 @@ void Network::RunForward(Stimulation *stim) const {
 
 template<float (*fwd)(float)>
 static void RunForwardChunkWithFn(
-    const std::vector<float> &src_values,
+    const std::vector<half> &src_values,
     const Chunk &chunk,
-    std::vector<float> *dst_values,
+    std::vector<half> *dst_values,
     int out_start) {
 
   switch (chunk.type) {
@@ -248,7 +248,7 @@ static void RunForwardChunkWithFn(
           potential += w * v;
         }
 
-        const float out = fwd(potential);
+        const half out = (half)fwd(potential);
         (*dst_values)[out_start + node_idx] = out;
       }, 2);
     break;
@@ -268,7 +268,7 @@ static void RunForwardChunkWithFn(
           potential += w * v;
         }
 
-        const float out = fwd(potential);
+        const half out = (half)fwd(potential);
         (*dst_values)[out_start + node_idx] = out;
       }, 2);
     break;
@@ -301,7 +301,7 @@ static void RunForwardChunkWithFn(
             potential += w * v;
           }
 
-          const float out = fwd(potential);
+          const half out = (half)fwd(potential);
           (*dst_values)[out_start + node_idx] = out;
         }
       }, 4);
@@ -335,11 +335,6 @@ static float IdentityFn(float potential) {
 }
 
 static float TanhFn(float potential) {
-  /*
-  const float ex = expf(potential);
-  const float enx = expf(-potential);
-  return (ex - enx)/(ex + enx);
-  */
   const float e2x = exp(2.0f * potential);
   return (e2x - 1.0f) / (e2x + 1.0f);
 }
@@ -349,8 +344,8 @@ void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
   const Layer &dst_layer = layers[src_layer + 1];
   int out_idx = 0;
   // Both using global indices.
-  const std::vector<float> &src_values = stim->values[src_layer];
-  std::vector<float> *dst_values = &stim->values[src_layer + 1];
+  const std::vector<half> &src_values = stim->values[src_layer];
+  std::vector<half> *dst_values = &stim->values[src_layer + 1];
   for (const Chunk &chunk : dst_layer.chunks) {
     const TransferFunction transfer_function =
       chunk.transfer_function;
@@ -392,8 +387,8 @@ void Network::NaNCheck(const std::string &message) const {
   for (const Layer &layer : layers) {
     int w = 0, wn = 0, b = 0, bn = 0;
     for (const Chunk &chunk : layer.chunks) {
-      for (float f : chunk.weights) if (std::isnan(f)) wn++;
-      for (float f : chunk.biases) if (std::isnan(f)) bn++;
+      for (half f : chunk.weights) if (std::isnan((float)f)) wn++;
+      for (half f : chunk.biases) if (std::isnan((float)f)) bn++;
       w += chunk.weights.size();
       b += chunk.biases.size();
     }
@@ -564,12 +559,12 @@ Chunk Network::MakeDenseChunk(int num_nodes,
   chunk.indices_per_node = span_size;
   chunk.type = CHUNK_DENSE;
   chunk.transfer_function = transfer_function;
-  chunk.weights.resize(num_nodes * span_size, 0.0f);
-  chunk.biases.resize(num_nodes, 0.0f);
+  chunk.weights.resize(num_nodes * span_size, (half)0.0f);
+  chunk.biases.resize(num_nodes, (half)0.0f);
   chunk.weight_update = weight_update;
   if (weight_update == ADAM || weight_update == YOGI) {
-    chunk.weights_aux.resize(num_nodes * span_size * 2, 0.0f);
-    chunk.biases_aux.resize(num_nodes * 2, 0.0f);
+    chunk.weights_aux.resize(num_nodes * span_size * 2, (half)0.0f);
+    chunk.biases_aux.resize(num_nodes * 2, (half)0.0f);
   }
   chunk.width = num_nodes;
   chunk.height = 1;
@@ -660,11 +655,11 @@ Chunk Network::MakeRandomSparseChunk(
       chunk.indices.push_back(idx);
   }
 
-  chunk.weights.resize(num_nodes * indices_per_node, 0.0f);
-  chunk.biases.resize(num_nodes, 0.0f);
+  chunk.weights.resize(num_nodes * indices_per_node, (half)0.0f);
+  chunk.biases.resize(num_nodes, (half)0.0f);
   if (weight_update == ADAM || weight_update == YOGI) {
-    chunk.weights_aux.resize(chunk.weights.size() * 2, 0.0f);
-    chunk.biases_aux.resize(chunk.biases.size() * 2, 0.0f);
+    chunk.weights_aux.resize(chunk.weights.size() * 2, (half)0.0f);
+    chunk.biases_aux.resize(chunk.biases.size() * 2, (half)0.0f);
   }
 
   return chunk;
@@ -804,16 +799,16 @@ Chunk Network::Make1DConvolutionChunk(int span_start, int span_size,
     conv.num_occurrences_down = num_occurrences_down;
     conv.indices = std::move(indices);
 
-    conv.weights = std::vector<float>(
+    conv.weights = std::vector<half>(
         conv.indices_per_node * conv.num_features,
-        0.0f);
-    conv.biases = std::vector<float>(conv.num_features, 0.0f);
+        (half)0.0f);
+    conv.biases = std::vector<half>(conv.num_features, (half)0.0f);
   }
 
   conv.weight_update = weight_update;
   if (conv.weight_update == ADAM || weight_update == YOGI) {
-    conv.weights_aux.resize(conv.weights.size() * 2, 0.0f);
-    conv.biases_aux.resize(conv.biases.size() * 2, 0.0f);
+    conv.weights_aux.resize(conv.weights.size() * 2, (half)0.0f);
+    conv.biases_aux.resize(conv.biases.size() * 2, (half)0.0f);
   }
 
   conv.fixed = false;
@@ -863,16 +858,16 @@ Chunk Network::Make2DConvolutionChunk(int span_start, int span_width, int span_h
     conv.num_occurrences_down = num_occurrences_down;
     conv.indices = std::move(indices);
 
-    conv.weights = std::vector<float>(
+    conv.weights = std::vector<half>(
         conv.indices_per_node * conv.num_features,
-        0.0f);
-    conv.biases = std::vector<float>(conv.num_features, 0.0f);
+        (half)0.0f);
+    conv.biases = std::vector<half>(conv.num_features, (half)0.0f);
   }
 
   conv.weight_update = weight_update;
   if (conv.weight_update == ADAM || weight_update == YOGI) {
-    conv.weights_aux.resize(conv.weights.size() * 2, 0.0f);
-    conv.biases_aux.resize(conv.biases.size() * 2, 0.0f);
+    conv.weights_aux.resize(conv.weights.size() * 2, (half)0.0f);
+    conv.biases_aux.resize(conv.biases.size() * 2, (half)0.0f);
   }
 
   conv.fixed = false;
@@ -894,8 +889,8 @@ Chunk Network::MakeCopyChunk(int span_start, int span_size) {
   copy.indices.reserve(span_size);
   for (int i = 0; i < span_size; i++)
     copy.indices.push_back(span_start + i);
-  copy.weights.resize(span_size, 1.0f);
-  copy.biases.resize(span_size, 0.0f);
+  copy.weights.resize(span_size, (half)1.0f);
+  copy.biases.resize(span_size, (half)0.0f);
 
   copy.fixed = true;
   return copy;
@@ -914,6 +909,20 @@ static inline float UnpackFloat(uint32_t u) {
   static_assert(sizeof (float) == 4);
   float ret = 0;
   std::memcpy(&ret, &u, sizeof (float));
+  return ret;
+}
+
+static inline uint16_t PackHalf(half f) {
+  static_assert(sizeof (half) == 2);
+  uint16_t ret = 0;
+  std::memcpy(&ret, &f, sizeof (half));
+  return ret;
+}
+
+static inline half UnpackHalf(uint16_t u) {
+  static_assert(sizeof (half) == 2);
+  half ret = (half)0.0;
+  std::memcpy((void*)&ret, &u, sizeof (half));
   return ret;
 }
 
@@ -937,6 +946,11 @@ struct Reader {
     return UnpackFloat(u);
   }
 
+  inline half ReadHalf() {
+    uint16_t u = Read16();
+    return UnpackHalf(u);
+  }
+
   inline uint32_t Read32() {
     uint8_t a = ReadByte();
     uint8_t b = ReadByte();
@@ -946,9 +960,22 @@ struct Reader {
     return (a << 24) | (b << 16) | (c << 8) | d;
   }
 
+  inline uint16_t Read16() {
+    uint8_t a = ReadByte();
+    uint8_t b = ReadByte();
+
+    return (a << 8) | b;
+  }
+
   inline void ReadFloats(std::vector<float> *vec) {
     for (int i = 0; i < vec->size(); i++) {
       (*vec)[i] = ReadFloat();
+    }
+  }
+
+  inline void ReadHalves(std::vector<half> *vec) {
+    for (int i = 0; i < vec->size(); i++) {
+      (*vec)[i] = ReadHalf();
     }
   }
 
@@ -1032,12 +1059,28 @@ struct Writer {
     WriteByte((i >> 8)  & 0xFF);
     WriteByte( i        & 0xFF);
   }
+
+  inline void Write16(uint16_t i) {
+    WriteByte((i >> 8) & 0xFF);
+    WriteByte( i       & 0xFF);
+  }
+
   inline void WriteFloat(float value) {
     Write32(PackFloat(value));
   }
+
+  inline void WriteHalf(half value) {
+    Write16(PackHalf(value));
+  }
+
   inline void WriteFloats(const vector<float> &vec) {
     for (float f : vec)
       WriteFloat(f);
+  }
+
+  inline void WriteHalves(const vector<half> &vec) {
+    for (half f : vec)
+      WriteHalf(f);
   }
 
   const std::string &Name() const { return name; }
@@ -1187,8 +1230,8 @@ static Network *ReadFromReader(Reader *r) {
 
         // Shared weights.
         chunk.weights.resize(chunk.indices_per_node * chunk.num_features,
-                             0.0f);
-        chunk.biases.resize(chunk.num_features, 0.0f);
+                             (half)0.0f);
+        chunk.biases.resize(chunk.num_features, (half)0.0f);
 
         break;
       }
@@ -1216,8 +1259,8 @@ static Network *ReadFromReader(Reader *r) {
       }
 
       // Read the appropriate number of weights and biases.
-      r->ReadFloats(&chunk.weights);
-      r->ReadFloats(&chunk.biases);
+      r->ReadHalves(&chunk.weights);
+      r->ReadHalves(&chunk.biases);
 
       // For ADAM or YOGI, the aux parameters. We always have 2 per weight.
       if (chunk.weight_update == ADAM ||
@@ -1225,8 +1268,8 @@ static Network *ReadFromReader(Reader *r) {
         chunk.weights_aux.resize(chunk.weights.size() * 2);
         chunk.biases_aux.resize(chunk.biases.size() * 2);
 
-        r->ReadFloats(&chunk.weights_aux);
-        r->ReadFloats(&chunk.biases_aux);
+        r->ReadHalves(&chunk.weights_aux);
+        r->ReadHalves(&chunk.biases_aux);
       }
 
       chunk.width = r->Read32();
@@ -1372,11 +1415,11 @@ static void WriteToWriter(const Network &net, Writer *w) {
       default:
         CHECK(false) << "Unknown layer type!";
       }
-      w->WriteFloats(chunk.weights);
-      w->WriteFloats(chunk.biases);
+      w->WriteHalves(chunk.weights);
+      w->WriteHalves(chunk.biases);
 
-      w->WriteFloats(chunk.weights_aux);
-      w->WriteFloats(chunk.biases_aux);
+      w->WriteHalves(chunk.weights_aux);
+      w->WriteHalves(chunk.biases_aux);
 
       w->Write32(chunk.width);
       w->Write32(chunk.height);
@@ -1417,9 +1460,9 @@ int64 Stimulation::Bytes() const {
 void Stimulation::NaNCheck(const std::string &message) const {
   bool has_nans = false;
   vector<int> layer_nans;
-  for (const vector<float> &layer : values) {
+  for (const vector<half> &layer : values) {
     int v = 0;
-    for (float f : layer) if (std::isnan(f)) v++;
+    for (half f : layer) if (std::isnan((float)f)) v++;
     layer_nans.push_back(v);
     if (v > 0) has_nans = true;
   }
@@ -1456,23 +1499,23 @@ static void DeleteElements(C *cont) {
 void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
   [[maybe_unused]]
   auto RandomizeFloatsGaussian =
-    [](float mag, ArcFour *rc, vector<float> *vec) {
+    [](float mag, ArcFour *rc, vector<half> *vec) {
       RandomGaussian gauss{rc};
       for (int i = 0; i < vec->size(); i++) {
-        (*vec)[i] = mag * gauss.Next();
+        (*vec)[i] = (half)(mag * gauss.Next());
       }
     };
 
   [[maybe_unused]]
   auto RandomizeFloatsUniform =
-    [](float mag, ArcFour *rc, vector<float> *vec) {
+    [](float mag, ArcFour *rc, vector<half> *vec) {
       // Uniform from -mag to mag.
       const float width = 2.0f * mag;
       for (int i = 0; i < vec->size(); i++) {
         // Uniform in [0,1]
         double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
         float f = (width * d) - mag;
-        (*vec)[i] = f;
+        (*vec)[i] = (float)f;
       }
     };
 
@@ -1482,7 +1525,7 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
   // [-mag, -hole_frag * mag].
   [[maybe_unused]]
   auto RandomizeFloatsDonut =
-    [](float hole_frac, float mag, ArcFour *rc, vector<float> *vec) {
+    [](float hole_frac, float mag, ArcFour *rc, vector<half> *vec) {
       CHECK(hole_frac >= 0.0 && hole_frac < 1.0) << hole_frac;
       // One side.
       const double w = (1.0 - hole_frac) * mag;
@@ -1491,7 +1534,7 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
         double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
         bool s = (rc->Byte() & 1) != 0;
         float f = s ? d * -w : d * w;
-        (*vec)[i] = f;
+        (*vec)[i] = (half)f;
       }
     };
 
@@ -1514,7 +1557,7 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
             continue;
 
           // Standard advice is to leave biases at 0 to start.
-          for (float &f : chunk->biases) f = 0.0f;
+          for (half &f : chunk->biases) f = (half)0.0f;
 
           // Good weight initialization is important for training deep
           // models; if the initialized weights are too small, the
