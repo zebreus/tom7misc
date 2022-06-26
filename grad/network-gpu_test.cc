@@ -21,6 +21,8 @@
 
 using namespace std;
 
+// constexpr bool VERBOSE = true;
+
 using TestNet = NetworkTestUtil::TestNet;
 using TrainNet = NetworkTestUtil::TrainNet;
 using TestExample = NetworkTestUtil::TestExample;
@@ -45,6 +47,13 @@ static void AddTestResult(const TestResult &tr) {
   TestResults()->push_back(tr);
 }
 
+static inline uint16_t PackHalf(half f) {
+  static_assert(sizeof (half) == 2);
+  uint16_t ret = 0;
+  std::memcpy(&ret, &f, sizeof (half));
+  return ret;
+}
+
 static void ForwardTests(TestNet test_net) {
   printf("\n--------------------------\n"
          "[Forward] Test net: %s\n", test_net.name.c_str());
@@ -58,7 +67,7 @@ static void ForwardTests(TestNet test_net) {
     std::unique_ptr<TrainingRoundGPU> training_round =
       std::make_unique<TrainingRoundGPU>(1, cl, net);
 
-    training_round->LoadInput(0, example.input);
+    training_round->LoadInput(0, FloatsToHalves(example.input));
 
     std::unique_ptr<ForwardLayerCL> forward_cl =
       std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
@@ -70,18 +79,18 @@ static void ForwardTests(TestNet test_net) {
     }
 
     // Must be initialized to the correct size.
-    std::vector<float> gpu_out(net.layers.back().num_nodes, -1.0f);
+    std::vector<half> gpu_out(net.layers.back().num_nodes, (half)-1.0f);
     training_round->ExportOutput(0, &gpu_out);
 
-    CHECK_FEQV(gpu_out, example.output);
+    CHECK_FEQV(HalvesToFloats(gpu_out), example.output);
 
     // And via the stimulation, which should be the same...
     Stimulation stim(net);
     training_round->ExportStimulation(0, &stim);
     // No change to input layer.
-    CHECK_FEQV(stim.values[0], example.input);
+    CHECK_FEQV(HalvesToFloats(stim.values[0]), example.input);
     // Should have expected output after inference.
-    CHECK_FEQV(stim.values.back(), example.output);
+    CHECK_FEQV(HalvesToFloats(stim.values.back()), example.output);
   }
 }
 
@@ -99,8 +108,8 @@ static void StructuralTests(TestNet test_net) {
   // Perturb.
   for (auto &layer : net.layers) {
     for (auto &chunk : layer.chunks) {
-      for (float &f : chunk.weights) f++;
-      for (float &f : chunk.biases) f--;
+      for (half &f : chunk.weights) f += (half)1.0;
+      for (half &f : chunk.biases) f -= (half)1.0;
     }
   }
 
@@ -114,8 +123,8 @@ static void StructuralTests(TestNet test_net) {
   // Clear
   for (auto &layer : net.layers) {
     for (auto &chunk : layer.chunks) {
-      for (float &f : chunk.weights) f = 0.0;
-      for (float &f : chunk.biases) f = 0.0;
+      for (half &f : chunk.weights) f = (half)0.0;
+      for (half &f : chunk.biases) f = (half)0.0;
     }
   }
 
@@ -149,14 +158,14 @@ static void TrainOnTestTests(TestNet test_net) {
     std::unique_ptr<TrainingRoundGPU> training_round =
       std::make_unique<TrainingRoundGPU>(1, cl, net);
 
-    training_round->LoadInput(0, example.input);
+    training_round->LoadInput(0, FloatsToHalves(example.input));
 
     // Perturb the training example so that it is not exactly what the
     // network already predicts, just so that the errors are not
     // trivial zeroes.
-    vector<float> out = example.output;
-    for (float &f : out) {
-      f += gauss.Next();
+    vector<half> out = FloatsToHalves(example.output);
+    for (half &f : out) {
+      f += (half)gauss.Next();
     }
 
     training_round->LoadExpected(0, out);
@@ -284,7 +293,7 @@ TrainTest(TrainNet train_net,
       new TrainingRoundGPU(examples_per_round, cl, net));
 
   // Used to compute loss.
-  std::vector<std::vector<float>> expected;
+  std::vector<std::vector<half>> expected;
   expected.resize(training->num_examples);
 
   // Also used in error message if we don't converge.
@@ -297,7 +306,7 @@ TrainTest(TrainNet train_net,
   for (int iter = 0; iter < max_iterations; iter++) {
 
     // Initialize training examples as a batch.
-    std::vector<float> flat_inputs, flat_outputs;
+    std::vector<half> flat_inputs, flat_outputs;
     flat_inputs.reserve(train_net.NumInputs() * examples_per_round);
     flat_outputs.reserve(train_net.NumOutputs() * examples_per_round);
     for (int i = 0; i < training->num_examples; i++) {
@@ -333,12 +342,12 @@ TrainTest(TrainNet train_net,
       }
 
       // Much faster to load these in a batch.
-      for (float f : inputs) flat_inputs.push_back(f);
+      for (float f : inputs) flat_inputs.push_back((half)f);
       std::vector<float> outputs = train_net.f(inputs);
       CHECK(outputs.size() == train_net.NumOutputs());
-      for (float f : outputs) flat_outputs.push_back(f);
-      // PERF could save the flat outputs and base on that
-      expected[i] = std::move(outputs);
+      for (float f : outputs) flat_outputs.push_back((half)f);
+      // XXX could probably save these as floats?
+      expected[i] = FloatsToHalves(outputs);
     }
 
     training->LoadInputs(flat_inputs);
@@ -413,9 +422,9 @@ TrainTest(TrainNet train_net,
       // Size of examples = Number of training instances.
       std::vector<std::pair<float, int>> losses =
         ParallelMapi(expected,
-                     [&](int idx, const std::vector<float> &exp) {
+                     [&](int idx, const std::vector<half> &exp) {
                        // Loops over every example and gets its data.
-                       std::vector<float> got;
+                       std::vector<half> got;
                        got.resize(exp.size());
                        training->ExportOutput(idx, &got);
 
@@ -487,6 +496,16 @@ TrainTest(TrainNet train_net,
         (finished || (iter % write_images_every.value()) == 0)) {
       net_gpu->ReadFromGPU();
       images->Sample(net);
+      // XXXXX
+
+      CHECK(net.layers.size() == 2);
+      CHECK(net.layers[1].chunks.size() == 1);
+      const Chunk &chunk = net.layers[1].chunks[0];
+      printf("Weight: %04x = %.6f Bias: %04x = %.6f\n",
+             PackHalf(chunk.weights[0]),
+             (float)chunk.weights[0],
+             PackHalf(chunk.biases[0]),
+             (float)chunk.biases[0]);
     }
 
     if (SAVE_INTERMEDIATE && (finished || iter == 1000 || iter % 10000 == 0)) {
@@ -656,8 +675,18 @@ static void QuickTests() {
 static void SGDTests() {
   // The identity function is super easy to learn, so we should always
   // be able to learn this with the default update config.
+
+  UpdateWeightsCL::UpdateConfig zz_config = UpdateWeightsCL::UpdateConfig{
+    .base_learning_rate = 0.2f,
+    .learning_rate_dampening = 1.0f,
+    .adam_epsilon = 1.0e-6,
+  };
+
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentitySparse(),
-             200000, 1000, 0.001f, {});
+             200000, 4000, 0.001f, zz_config, {100}, {0});
+
+  return; // XXX
+
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentityDense(),
              200000, 1000, 0.001f);
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentityConvolution(),

@@ -724,16 +724,16 @@ void BackwardLayerCL::BackwardLayer(TrainingRoundGPU *train,
     // when ALL the chunks are OVERWRITE (and they cover the entire
     // input span?), which would happen in the common case that there
     // is just one chunk.
-    cl_float zero = 0.0f;
+    cl_half zero = 0.0f;
     CHECK_SUCCESS(
         clEnqueueFillBuffer(cl->queue,
                             all_src_error,
                             // pattern and its size in bytes
-                            &zero, sizeof (cl_float),
+                            &zero, sizeof (cl_half),
                             // offset and size to fill (in BYTES)
                             0, (size_t)(net.layers[src_layer].num_nodes *
                                         train->num_examples *
-                                        sizeof (cl_float)),
+                                        sizeof (cl_half)),
                             // no wait list or event
                             0, nullptr, nullptr));
     // This needs to be done before the kernel runs below. PERF that
@@ -1100,9 +1100,9 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
   std::tie(num_weight_grad, num_bias_grad) = ApportionScratch();
 
   weight_grad_tmp =
-    CreateUninitializedGPUMemory<float>(cl->context, num_weight_grad);
+    CreateUninitializedGPUMemory<half>(cl->context, num_weight_grad);
   bias_grad_tmp =
-    CreateUninitializedGPUMemory<float>(cl->context, num_bias_grad);
+    CreateUninitializedGPUMemory<half>(cl->context, num_bias_grad);
 
 
   for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
@@ -1339,18 +1339,18 @@ void UpdateWeightsCL::Update(TrainingRoundGPU *train, int layer_idx) {
 
       // Make sure this doesn't get destroyed before the queue
       // is finished..
-      const cl_float zero = 0.0f;
+      const cl_half zero = 0.0f;
       // does not clFinish!
-      auto ZeroFloats = [&](cl_mem buf, int start, int num) {
+      auto ZeroHalves = [&](cl_mem buf, int start, int num) {
           CHECK_SUCCESS(
               clEnqueueFillBuffer(cl->queue,
                                   buf,
                                   // pattern and its size in bytes
-                                  &zero, sizeof (cl_float),
+                                  &zero, sizeof (cl_half),
                                   // offset (in BYTES)
-                                  start * sizeof (cl_float),
+                                  start * sizeof (cl_half),
                                   // size to fill (in BYTES)
-                                  (size_t)(num * sizeof (cl_float)),
+                                  (size_t)(num * sizeof (cl_half)),
                                   // no wait list or event
                                   0, nullptr, nullptr));
         };
@@ -1364,8 +1364,8 @@ void UpdateWeightsCL::Update(TrainingRoundGPU *train, int layer_idx) {
         // no need to zero first.
       } else {
         // PERF: We only need to zero the region we're going to use!
-        ZeroFloats(weight_grad_tmp, 0, num_weight_grad);
-        ZeroFloats(bias_grad_tmp, 0, num_bias_grad);
+        ZeroHalves(weight_grad_tmp, 0, num_weight_grad);
+        ZeroHalves(bias_grad_tmp, 0, num_bias_grad);
         clFinish(cl->queue);
       }
 

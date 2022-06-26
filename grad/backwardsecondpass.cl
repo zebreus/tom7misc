@@ -22,9 +22,9 @@
 
 __kernel void BackwardSecondPass(
                   // Full src output, size layers[src].num_nodes per example.
-                  __global const float *restrict src_output,
+                  __global const half *restrict src_output,
                   // Full src errors, parallel to src_output.
-                  __global float *restrict src_error) {
+                  __global half *restrict src_error) {
   // index into chunk
   // PERF: We could avoid the constant offset by doing this
   // with global_work_offset?
@@ -35,16 +35,16 @@ __kernel void BackwardSecondPass(
   const int example_start = example_idx * SRC_LAYER_SIZE;
   // index into src_output etc.
   const int h_global = example_start + CHUNK_START + h_chunk;
-  const float out_h = src_output[h_global];
-  const float weighted_error_sum = src_error[h_global];
+  const float out_h = vload_half(h_global, src_output);
+  const float weighted_error_sum = vload_half(h_global, src_error);
 
   const float err = DERIVATIVE(out_h) * weighted_error_sum;
 
-  src_error[h_global] =
+  vstore_half(
   #if CLIP_ERROR
     fmax(-LARGE_ERROR, fmin(LARGE_ERROR, err))
   #else
     err
   #endif
-    ;
+    , h_global, src_error);
 }

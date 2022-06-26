@@ -33,9 +33,9 @@
 //   the buffer as well.
 
 #if OVERWRITE_GRAD
-  #define ACCUMULATE(l, r) (l) = (r)
+#define ACCUMULATE(idx, l, r) vstore_half((r), (idx), (l))
 #else
-  #define ACCUMULATE(l, r) (l) += (r)
+#define ACCUMULATE(idx, l, r) vstore_half(vload_half((idx), (l)) + (r), (idx), (l))
 #endif
 
 // Note this kernel does not depend on the transfer function.
@@ -43,16 +43,16 @@
 __kernel void UpdateWeightsSparse(
                  // full previous layer's output values;
                  // size src_layer.num_nodes per example
-                 __global const float *restrict prev_layer_output,
+                 __global const half *restrict prev_layer_output,
                  // full layer's error,
                  // size dst_layer.num_nodes per example
-                 __global const float *restrict layer_error,
+                 __global const half *restrict layer_error,
                  // chunk.num_nodes * INDICES_PER_NODE
                  __global const int *restrict chunk_indices,
                  // chunk.num_nodes * INDICES_PER_NODE,
-                 __global float *restrict weight_grads,
+                 __global half *restrict weight_grads,
                  // chunk.num_nodes
-                 __global float *restrict bias_grads,
+                 __global half *restrict bias_grads,
                  // In [0, num_examples).
                  int example_batch_start) {
   const int chunk_node_idx = get_global_id(0);
@@ -64,7 +64,8 @@ __kernel void UpdateWeightsSparse(
   const int dst_layer_start = example_num * DST_LAYER_SIZE;
 
   const int global_node_idx = CHUNK_START + chunk_node_idx;
-  const float delta_j = layer_error[dst_layer_start + global_node_idx];
+  const float delta_j =
+    vload_half(dst_layer_start + global_node_idx, layer_error);
 
   for (int input_idx = 0; input_idx < INDICES_PER_NODE; input_idx++) {
     const int edge_idx = INDICES_PER_NODE * chunk_node_idx + input_idx;
@@ -72,31 +73,32 @@ __kernel void UpdateWeightsSparse(
     // (These are already global to the previous layer, but should
     // be inside the span.)
     const int src_idx = chunk_indices[edge_idx];
-    const float x_ji = prev_layer_output[src_layer_start + src_idx];
+    const float x_ji =
+      vload_half(src_layer_start + src_idx, prev_layer_output);
 
     const float grad = delta_j * x_ji;
     // PERF fma();
-    ACCUMULATE(weight_grads[NUM_WEIGHTS * example_num_in_batch + edge_idx],
-               grad);
+    int idx = NUM_WEIGHTS * example_num_in_batch + edge_idx;
+    ACCUMULATE(idx, weight_grads, grad);
   }
 
   const float bgrad = delta_j;
-  ACCUMULATE(bias_grads[NUM_BIASES * example_num_in_batch + chunk_node_idx],
-             bgrad);
+  int idx = NUM_BIASES * example_num_in_batch + chunk_node_idx;
+  ACCUMULATE(idx, bias_grads, bgrad);
 }
 
 // When the layer is dense.
 __kernel void UpdateWeightsDense(
                  // full previous layer's output values
-                 __global const float *restrict prev_layer_output,
+                 __global const half *restrict prev_layer_output,
                  // full layer's error, size num_nodes
-                 __global const float *restrict layer_error,
+                 __global const half *restrict layer_error,
                  // (unused, invalid)
                  __global const int *restrict chunk_indices_unused,
                  // chunk.num_nodes * INDICES_PER_NODE,
-                 __global float *restrict weight_grads,
+                 __global half *restrict weight_grads,
                  // chunk.num_nodes
-                 __global float *restrict bias_grads,
+                 __global half *restrict bias_grads,
                  // In [0, num_examples).
                  int example_batch_start) {
   const int chunk_node_idx = get_global_id(0);
@@ -109,7 +111,8 @@ __kernel void UpdateWeightsDense(
   const int src_layer_start = example_num * SRC_LAYER_SIZE;
   const int dst_layer_start = example_num * DST_LAYER_SIZE;
 
-  const float delta_j = layer_error[dst_layer_start + global_node_idx];
+  const float delta_j =
+    vload_half(dst_layer_start + global_node_idx, layer_error);
   // const float learning_rate_times_delta_j = learning_rate * delta_j;
 
   for (int input_idx = 0; input_idx < INDICES_PER_NODE; input_idx++) {
@@ -118,17 +121,18 @@ __kernel void UpdateWeightsDense(
     // at the beginning of the span.
     const int src_idx = SPAN_START + input_idx;
 
-    const float x_ji = prev_layer_output[src_layer_start + src_idx];
+    const float x_ji =
+      vload_half(src_layer_start + src_idx, prev_layer_output);
 
     const float grad = delta_j * x_ji;
     // PERF fma();
-    ACCUMULATE(weight_grads[NUM_WEIGHTS * example_num_in_batch + edge_idx],
-               grad);
+    int idx = NUM_WEIGHTS * example_num_in_batch + edge_idx;
+    ACCUMULATE(idx, weight_grads, grad);
   }
 
   const float bgrad = delta_j;
-  ACCUMULATE(bias_grads[NUM_BIASES * example_num_in_batch + chunk_node_idx],
-             bgrad);
+  const int idx = NUM_BIASES * example_num_in_batch + chunk_node_idx;
+  ACCUMULATE(idx, bias_grads, bgrad);
 }
 
 // PERF: Try doing the bias update in its own kernel, since the
@@ -137,15 +141,15 @@ __kernel void UpdateWeightsDense(
 // weird if the current approach is actually faster.
 __kernel void UpdateWeightsConvolutional(
                  // full previous layer's output
-                 __global const float *restrict prev_layer_output,
+                 __global const half *restrict prev_layer_output,
                  // full layer's error, size num_nodes
-                 __global const float *restrict layer_error,
+                 __global const half *restrict layer_error,
                  // chunk.num_nodes * INDICES_PER_NODE
                  __global const int *restrict chunk_indices_unused,
                  // NUM_FEATURES * INDICES_PER_NODE,
-                 __global float *restrict weight_grads,
+                 __global half *restrict weight_grads,
                  // NUM_FEATURES
-                 __global float *restrict bias_grads,
+                 __global half *restrict bias_grads,
                  // In [0, num_examples).
                  int example_batch_start) {
   // in 0..NUM_FEATURES-1
@@ -188,7 +192,8 @@ __kernel void UpdateWeightsConvolutional(
 
       const int chunk_node_idx = occ * NUM_FEATURES + feature_num;
       const int global_node_idx = CHUNK_START + chunk_node_idx;
-      const float delta_j = layer_error[dst_layer_start + global_node_idx];
+      const float delta_j =
+        vload_half(dst_layer_start + global_node_idx, layer_error);
 
       // Always compute bias term; all but one is thrown out.
       bias_grad += delta_j;
@@ -205,7 +210,8 @@ __kernel void UpdateWeightsConvolutional(
       // const int src_idx = chunk_indices[occ * INDICES_PER_NODE + pidx];
       const int src_idx = SPAN_START + top_left + poff;
 
-      const float x_ji = prev_layer_output[src_layer_start + src_idx];
+      const float x_ji =
+        vload_half(src_layer_start + src_idx, prev_layer_output);
       // weight_grad += delta_j * x_ji;
       weight_grad = fma(delta_j, x_ji, weight_grad);
     }
@@ -229,15 +235,15 @@ __kernel void UpdateWeightsConvolutional(
     const int widx = feature_num * INDICES_PER_NODE + pidx;
     weight_grad *= multiplier;
     // PERF fma()
-    ACCUMULATE(weight_grads[NUM_WEIGHTS * example_num_in_batch + widx],
-               weight_grad);
+    const int idx = NUM_WEIGHTS * example_num_in_batch + widx;
+    ACCUMULATE(idx, weight_grads, weight_grad);
   }
 
   if (pidx == 0) {
     bias_grad *= multiplier;
     // PERF fma()
-    ACCUMULATE(bias_grads[NUM_BIASES * example_num_in_batch + feature_num],
-               bias_grad);
+    const int idx = NUM_BIASES * example_num_in_batch + feature_num;
+    ACCUMULATE(idx, bias_grads, bias_grad);
   }
 }
 

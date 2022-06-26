@@ -8,6 +8,8 @@
 
 #include "network.h"
 
+#include "half.h"
+
 // Note: Evaluates a and b a second time if check fails!
 // Also note that the precision target here is very low, given that
 // we are using half!
@@ -24,6 +26,19 @@
         "\n" #aav "[" << i << "] vs " #bbv "[" << i << "]\n" << \
         "with vectors of size " << av.size();                   \
   } while (0)
+
+
+inline std::vector<half> FloatsToHalves(const std::vector<float> &fs) {
+  std::vector<half> hs(fs.size());
+  for (int i = 0; i < fs.size(); i++) hs[i] = fs[i];
+  return hs;
+}
+
+inline std::vector<float> HalvesToFloats(const std::vector<half> &hs) {
+  std::vector<float> fs(hs.size());
+  for (int i = 0; i < hs.size(); i++) fs[i] = hs[i];
+  return fs;
+}
 
 struct NetworkTestUtil {
 

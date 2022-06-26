@@ -52,14 +52,15 @@ __kernel void UpdateWeightsSecondPass(
                  // biases.
                  const float constrain_max,
                  // These two are the same size.
-                 __global float *restrict grad_sums,
-                 __global float *restrict chunk_weights,
+                 __global half *restrict grad_sums,
+                 __global half *restrict chunk_weights,
                  // For SGD, empty. For ADAM, num_weights * 2
-                 __global float *restrict chunk_weights_aux) {
+                 __global half *restrict chunk_weights_aux) {
   const int idx = get_global_id(0);
 
   // Average gradient over all examples.
-  const float raw_grad = grad_sums[idx] * (1.0f / EXAMPLES_PER_ROUND);
+  const float raw_grad =
+    vload_half(idx, grad_sums) * (1.0f / EXAMPLES_PER_ROUND);
   #if CLIPPING
     // fmin and fmax should reject nan, inf
     const float grad = fmax(-1.0f, fmin(1.0f, raw_grad));
@@ -73,14 +74,14 @@ __kernel void UpdateWeightsSecondPass(
   #elif WEIGHT_UPDATE_ADAM
     const int midx = idx * 2;
     const int vidx = idx * 2 + 1;
-    const float m_prev = chunk_weights_aux[midx];
-    const float v_prev = chunk_weights_aux[vidx];
+    const float m_prev = vload_half(midx, chunk_weights_aux);
+    const float v_prev = vload_half(vidx, chunk_weights_aux);
     const float m_new = ADAM_B1 * m_prev + (1.0f - ADAM_B1) * grad;
     // PERF see below: Is the factored expression faster?
     const float v_new = ADAM_B2 * v_prev + (1.0f - ADAM_B2) * (grad * grad);
     // TODO: Avoid nan poisoning here
-    chunk_weights_aux[midx] = m_new;
-    chunk_weights_aux[vidx] = v_new;
+    vstore_half(m_new, midx, chunk_weights_aux);
+    vstore_half(v_new, vidx, chunk_weights_aux);
     #if NOHAT
       const float m_hat = m_new;
       const float v_hat = v_new;
@@ -93,8 +94,8 @@ __kernel void UpdateWeightsSecondPass(
     // Mostly the same as the Adam code.
     const int midx = idx * 2;
     const int vidx = idx * 2 + 1;
-    const float m_prev = chunk_weights_aux[midx];
-    const float v_prev = chunk_weights_aux[vidx];
+    const float m_prev = vload_half(midx, chunk_weights_aux);
+    const float v_prev = vload_half(vidx, chunk_weights_aux);
     const float m_new = ADAM_B1 * m_prev + (1.0f - ADAM_B1) * grad;
     // In Adam, ADAM_B2 * v_prev + (1.0f - ADAM_B2) * (grad * grad), ie.
     //   B2 * v + (1 - B2) * g^2
@@ -113,8 +114,8 @@ __kernel void UpdateWeightsSecondPass(
     const float s = sign(v_prev - gsquared);
     const float v_new = v_prev - (1.0f - ADAM_B2) * s * gsquared;
     // TODO: Avoid nan poisoning here
-    chunk_weights_aux[midx] = m_new;
-    chunk_weights_aux[vidx] = v_new;
+    vstore_half(m_new, midx, chunk_weights_aux);
+    vstore_half(v_new, vidx, chunk_weights_aux);
     #if NOHAT
       const float m_hat = m_new;
       const float v_hat = v_new;
@@ -128,11 +129,16 @@ __kernel void UpdateWeightsSecondPass(
   #endif
 
     // PERF -- generate a separate multiplier and value and use fma()
+
+  const float oldw = vload_half(idx, chunk_weights);
   #if CONSTRAIN
-    chunk_weights[idx] = fmax(-constrain_max,
-                              fmin(constrain_max,
-                                   chunk_weights[idx] + u));
+    const float w =
+      fmax(-constrain_max,
+           fmin(constrain_max,
+                oldw + u));
   #else
-    chunk_weights[idx] += u;
+    const float w = oldw + u;
   #endif
+
+  vstore_half(w, idx, chunk_weights);
 }

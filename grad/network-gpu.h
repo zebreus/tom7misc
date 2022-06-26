@@ -58,10 +58,10 @@ struct NetworkGPU {
     // normal cases (dense layers; unused _aux).
     // readonly.
     cl_mem indices;
-    // read/write.
+    // read/write. half precision.
     cl_mem weights;
     cl_mem biases;
-    // read/write
+    // read/write. half precision.
     cl_mem weights_aux;
     cl_mem biases_aux;
 
@@ -114,7 +114,6 @@ struct NetworkGPU {
                                        nullptr));
   }
 
-
   DISALLOW_COPY_AND_ASSIGN(NetworkGPU);
 };
 
@@ -134,20 +133,20 @@ struct TrainingRoundGPU {
     cl(cl), net(&net) {
     for (const Layer &layer : net.layers) {
       stimulations.push_back(
-          CreateUninitializedGPUMemory<float>(cl->context,
-                                              layer.num_nodes * num_examples));
+          CreateUninitializedGPUMemory<half>(cl->context,
+                                             layer.num_nodes * num_examples));
       errors.push_back(
-          CreateUninitializedGPUMemory<float>(cl->context,
-                                              layer.num_nodes * num_examples));
+          CreateUninitializedGPUMemory<half>(cl->context,
+                                             layer.num_nodes * num_examples));
     }
 
     expected =
-      CreateUninitializedGPUMemory<float>(cl->context,
-                                          output_size * num_examples);
+      CreateUninitializedGPUMemory<half>(cl->context,
+                                         output_size * num_examples);
   }
 
   // Load one example's input at the given index.
-  void LoadInput(int idx, const std::vector<float> &inputs) {
+  void LoadInput(int idx, const std::vector<half> &inputs) {
     CHECK(idx >= 0 && idx < num_examples);
     CHECK_EQ(inputs.size(), input_size);
     CopyOffsetBufferToGPU(idx, inputs, stimulations[0]);
@@ -155,13 +154,13 @@ struct TrainingRoundGPU {
   }
 
   // Load all the examples.
-  void LoadInputs(const std::vector<float> &inputs) {
+  void LoadInputs(const std::vector<half> &inputs) {
     CHECK_EQ(inputs.size(), input_size * num_examples);
     CopyBufferToGPU(cl->queue, inputs, stimulations[0]);
     clFinish(cl->queue);
   }
 
-  void LoadExpected(int idx, const std::vector<float> &values) {
+  void LoadExpected(int idx, const std::vector<half> &values) {
     CHECK(idx >= 0 && idx < num_examples);
     CHECK_EQ(values.size(), output_size);
     CopyOffsetBufferToGPU(idx, values, expected);
@@ -169,7 +168,7 @@ struct TrainingRoundGPU {
   }
 
   // Load all the examples.
-  void LoadExpecteds(const std::vector<float> &values) {
+  void LoadExpecteds(const std::vector<half> &values) {
     CHECK_EQ(values.size(), output_size * num_examples);
     CopyBufferToGPU(cl->queue, values, expected);
     clFinish(cl->queue);
@@ -197,7 +196,7 @@ struct TrainingRoundGPU {
 
   // Copy (only) the final layer of the stimulation back to main memory.
   // The output vector must already have the correct size.
-  void ExportOutput(int idx, std::vector<float> *out) {
+  void ExportOutput(int idx, std::vector<half> *out) {
     CHECK(idx >= 0 && idx < num_examples);
     CHECK(out->size() == output_size);
     CopyOffsetBufferFromGPUTo(idx, stimulations.back(), out);
@@ -205,7 +204,7 @@ struct TrainingRoundGPU {
   }
 
   // Same but for all examples.
-  void ExportOutputs(std::vector<float> *out) {
+  void ExportOutputs(std::vector<half> *out) {
     CHECK(out->size() == num_examples * output_size);
     CopyBufferFromGPUTo(cl->queue, stimulations.back(), out);
   }
@@ -240,29 +239,31 @@ struct TrainingRoundGPU {
   // Assuming buf is num_examples * vec.size() floats, copy the
   // vector's data to the indexed example in the buffer. Doesn't
   // wait for command to finish.
+  template<class fptype>
   void CopyOffsetBufferToGPU(int idx,
-                             const std::vector<float> &vec, cl_mem buf) {
+                             const std::vector<fptype> &vec, cl_mem buf) {
     CHECK(!vec.empty());
-    const int offset = sizeof (float) * vec.size() * idx;
+    const int offset = sizeof (fptype) * vec.size() * idx;
     CHECK_SUCCESS(clEnqueueWriteBuffer(
                       cl->queue, buf, CL_TRUE,
-                      offset, sizeof (float) * vec.size(), vec.data(),
+                      offset, sizeof (fptype) * vec.size(), vec.data(),
                       // No wait-list or event.
                       0, nullptr, nullptr));
   }
 
-  // Assuming src is num_examples * dst->size() floats, copy the
+  // Assuming src is num_examples * dst->size() fptypes, copy the
   // data for the indexed example to the destination.
   // Does not wait for command to finish.
+  template<class fptype>
   void CopyOffsetBufferFromGPUTo(int idx,
                                  cl_mem src,
-                                 std::vector<float> *dst) {
+                                 std::vector<fptype> *dst) {
     // Empty not supported by cl copy nor TrainingRound.
     CHECK(!dst->empty());
-    const int offset = sizeof (float) * dst->size() * idx;
+    const int offset = sizeof (fptype) * dst->size() * idx;
     CHECK_SUCCESS(
         clEnqueueReadBuffer(cl->queue, src, CL_TRUE,
-                            offset, sizeof (float) * dst->size(),
+                            offset, sizeof (fptype) * dst->size(),
                             dst->data(),
                             // No wait-list or event.
                             0, nullptr,
@@ -350,7 +351,7 @@ struct BackwardLayerCL {
   // creating this. They could have different values on a per-chunk
   // basis, though it's not clear why we'd ever do that.
   static constexpr bool CLIP_ERROR = true;
-  static constexpr float LARGE_ERROR = 1000000.0f;
+  static constexpr float LARGE_ERROR = 10000.0f;
 
   BackwardLayerCL(CL *cl, NetworkGPU *net);
   ~BackwardLayerCL();

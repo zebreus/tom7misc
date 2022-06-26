@@ -47,13 +47,13 @@ __kernel void BackwardChunkSparse(
                   __global const int *restrict inverted_indices,
                   // Weights for this chunk. Size chunk.num_nodes *
                   // chunk.indices_per_node.
-                  __global const float *restrict dst_weights,
+                  __global const half *restrict dst_weights,
                   // Full destination errors, size layers[dst].num_nodes per
                   // example.
-                  __global const float *restrict dst_error,
+                  __global const half *restrict dst_error,
                   // Full src errors, size layers[src].num_nodes per example.
                   // Where we write.
-                  __global float *restrict src_error) {
+                  __global half *restrict src_error) {
 
   // node index within the input span. in [0, SPAN_SIZE).
   const int h_span = get_global_id(0);
@@ -81,16 +81,19 @@ __kernel void BackwardChunkSparse(
 
     // weighted_error_sum += weight * error
     weighted_error_sum =
-      fma(dst_weights[cidx],
-          dst_error[dst_start_index + dst_node_idx],
+      fma(vload_half(cidx, dst_weights),
+          vload_half(dst_start_index + dst_node_idx, dst_error),
           weighted_error_sum);
   }
 
+
   #if OVERWRITE
-  src_error[src_start_index + h_global] = weighted_error_sum;
+  const float e = weighted_error_sum;
   #else
-  src_error[src_start_index + h_global] += weighted_error_sum;
+  const float e =
+    vload_half(src_start_index + h_global, src_error) + weighted_error_sum;
   #endif
+  vstore_half(e, src_start_index + h_global, src_error);
 }
 
 // For when the destination chunk is dense.
@@ -101,13 +104,13 @@ __kernel void BackwardChunkDense(
               __global const int *restrict inverted_indices_unused,
               // Weights for this chunk. Size chunk.num_nodes *
               // chunk.indices_per_node.
-              __global const float *restrict dst_weights,
+              __global const half *restrict dst_weights,
               // Full destination errors, size layers[dst].num_nodes per
               // example.
-              __global const float *restrict dst_error,
+              __global const half *restrict dst_error,
               // Full src errors, size layers[src].num_nodes per example.
               // Where we write.
-              __global float *restrict src_error) {
+              __global half *restrict src_error) {
   // h_span in [0, SPAN_SIZE]
   const int h_span = get_global_id(0);
   const int example_num = get_global_id(1);
@@ -129,16 +132,20 @@ __kernel void BackwardChunkDense(
     const int dst_node_idx = CHUNK_START + i;
 
     // weighted_error_sum += weight * error
-    weighted_error_sum = fma(dst_weights[cidx],
-                             dst_error[dst_start_index + dst_node_idx],
+    weighted_error_sum = fma(
+                             vload_half(cidx, dst_weights),
+                             vload_half(dst_start_index + dst_node_idx,
+                                        dst_error),
                              weighted_error_sum);
   }
 
   #if OVERWRITE
-  src_error[src_start_index + h_global] = weighted_error_sum;
+  const float e = weighted_error_sum;
   #else
-  src_error[src_start_index + h_global] += weighted_error_sum;
+  const float e =
+    vload_half(src_start_index + h_global, src_error) + weighted_error_sum;
   #endif
+  vstore_half(e, src_start_index + h_global, src_error);
 }
 
 // For convolutional chunks. This is like sparse in that we read the
@@ -152,13 +159,13 @@ __kernel void BackwardChunkConvolutional(
                   // XXX is there a simple expression for the size of this?
                   __global const int *restrict inverted_indices,
                   // Size chunk.num_nodes * dst_indices_per_node.
-                  __global const float *restrict dst_weights,
+                  __global const half *restrict dst_weights,
                   // Full destination errors, size layers[dst].num_nodes
                   // per example.
-                  __global const float *restrict dst_error,
+                  __global const half *restrict dst_error,
                   // Full src errors, size layers[src].num_nodes per
                   // example. Where we write.
-                  __global float *restrict src_error) {
+                  __global half *restrict src_error) {
 
   // node index within the input span. in [0, SPAN_SIZE).
   const int h_span = get_global_id(0);
@@ -191,15 +198,18 @@ __kernel void BackwardChunkConvolutional(
       // each index has its own weights
       const int weight_idx = DST_INDICES_PER_NODE * f + pattern_offset;
       // weighted_error_sum += weight * error
-      weighted_error_sum = fma(dst_weights[weight_idx],
-                               dst_error[dst_start_index + dst_node_idx],
+      weighted_error_sum = fma(vload_half(weight_idx, dst_weights),
+                               vload_half(dst_start_index + dst_node_idx,
+                                          dst_error),
                                weighted_error_sum);
     }
   }
 
   #if OVERWRITE
-  src_error[src_start_index + h_global] = weighted_error_sum;
+  const float e = weighted_error_sum;
   #else
-  src_error[src_start_index + h_global] += weighted_error_sum;
+  const float e =
+    vload_half(src_start_index + h_global, src_error) + weighted_error_sum;
   #endif
+  vstore_half(e, src_start_index + h_global, src_error);
 }

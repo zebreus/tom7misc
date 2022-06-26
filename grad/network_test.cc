@@ -15,18 +15,6 @@ using TestExample = NetworkTestUtil::TestExample;
 
 static constexpr bool VERBOSE = true;
 
-static std::vector<half> FloatsToHalves(const std::vector<float> &fs) {
-  std::vector<half> hs(fs.size());
-  for (int i = 0; i < fs.size(); i++) hs[i] = fs[i];
-  return hs;
-}
-
-static std::vector<float> HalvesToFloats(const std::vector<half> &hs) {
-  std::vector<float> fs(hs.size());
-  for (int i = 0; i < hs.size(); i++) fs[i] = hs[i];
-  return fs;
-}
-
 static void SimpleTests(TestNet test_net) {
   printf("======\n"
          "Testing %s:\n", test_net.name.c_str());

@@ -18,17 +18,17 @@
 //     reside
 
 // Each of the memories is a sub-buffer of the size of the chunk's span.
-__kernel void SetOutputError(__global const float *restrict actual_outputs,
-                             __global const float *restrict expected,
-                             __global float *restrict output_error) {
+__kernel void SetOutputError(__global const half *restrict actual_outputs,
+                             __global const half *restrict expected,
+                             __global half *restrict output_error) {
   // k is the index within the chunk
   const int k = get_global_id(0);
   const int example_num = get_global_id(1);
 
   const int idx = LAYER_SIZE * example_num + CHUNK_START + k;
 
-  const float out_k = actual_outputs[idx];
-  const float expected_k = expected[idx];
+  const float out_k = vload_half(idx, actual_outputs);
+  const float expected_k = vload_half(idx, expected);
 
   // Remapped values.
   const float rout_k = REMAP(CHUNK_IDX, k, out_k);
@@ -39,5 +39,6 @@ __kernel void SetOutputError(__global const float *restrict actual_outputs,
   // since this is most efficient for sigmoid and works for relu.
 
   // Note in some presentations this is out_k - expected_k.
-  output_error[idx] = DERIVATIVE(rout_k) * (rexpected_k - rout_k);
+  const float e = DERIVATIVE(rout_k) * (rexpected_k - rout_k);
+  vstore_half(e, idx, output_error);
 }
