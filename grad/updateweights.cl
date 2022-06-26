@@ -33,9 +33,11 @@
 //   the buffer as well.
 
 #if OVERWRITE_GRAD
-#define ACCUMULATE(idx, l, r) vstore_half((r), (idx), (l))
+// #define ACCUMULATE(idx, l, r) vstore_half((r), (idx), (l))
+#define ACCUMULATE(idx, l, r) (l)[(idx)] = (r)
 #else
-#define ACCUMULATE(idx, l, r) vstore_half(vload_half((idx), (l)) + (r), (idx), (l))
+// #define ACCUMULATE(idx, l, r) vstore_half(vload_half((idx), (l)) + (r), (idx), (l))
+#define ACCUMULATE(idx, l, r) (l)[(idx)] += (r)
 #endif
 
 // Note this kernel does not depend on the transfer function.
@@ -50,9 +52,9 @@ __kernel void UpdateWeightsSparse(
                  // chunk.num_nodes * INDICES_PER_NODE
                  __global const int *restrict chunk_indices,
                  // chunk.num_nodes * INDICES_PER_NODE,
-                 __global half *restrict weight_grads,
+                 __global float *restrict weight_grads,
                  // chunk.num_nodes
-                 __global half *restrict bias_grads,
+                 __global float *restrict bias_grads,
                  // In [0, num_examples).
                  int example_batch_start) {
   const int chunk_node_idx = get_global_id(0);

@@ -52,7 +52,7 @@ __kernel void UpdateWeightsSecondPass(
                  // biases.
                  const float constrain_max,
                  // These two are the same size.
-                 __global half *restrict grad_sums,
+                 __global float *restrict grad_sums,
                  __global half *restrict chunk_weights,
                  // For SGD, empty. For ADAM, num_weights * 2
                  __global half *restrict chunk_weights_aux) {
@@ -60,7 +60,7 @@ __kernel void UpdateWeightsSecondPass(
 
   // Average gradient over all examples.
   const float raw_grad =
-    vload_half(idx, grad_sums) * (1.0f / EXAMPLES_PER_ROUND);
+    grad_sums[idx] * (1.0f / EXAMPLES_PER_ROUND);
   #if CLIPPING
     // fmin and fmax should reject nan, inf
     const float grad = fmax(-1.0f, fmin(1.0f, raw_grad));
@@ -138,6 +138,8 @@ __kernel void UpdateWeightsSecondPass(
     const float w = oldw + u;
   #endif
 
+  // could do something like nextafter, if w == oldw?
+
   // With half precision, it's easy to get stuck with the
   // gradient too small to make any difference. So err towards
   // making a change to the weight, by rounding to the larger
@@ -146,9 +148,15 @@ __kernel void UpdateWeightsSecondPass(
   // this condition should compare oldw and w?)
 
   // Ugh, there is no "round away from zero" in OpenCL??
-  if (w > 0.0) {
-    vstore_half_rtp(w, idx, chunk_weights);
-  } else {
-    vstore_half_rtn(w, idx, chunk_weights);
-  }
+
+  #if
+    if (w > 0.0) {
+      vstore_half_rtp(w, idx, chunk_weights);
+    } else {
+      vstore_half_rtn(w, idx, chunk_weights);
+    }
+  #else
+    vstore_half(w, idx, chunk_weights);
+  #endif
+
 }

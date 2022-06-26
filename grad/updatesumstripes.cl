@@ -11,14 +11,15 @@ __kernel void UpdateSumStripes(
                  const int num_grads,
                  // flat scratch space of size
                  // num_grads * W
-                 __global half *restrict grad_sums) {
+                 __global float *restrict grad_sums) {
   const int idx = get_global_id(0);
 
   // PERF could compare looping from 1 to W and then using +=
   float sum = 0.0f;
   for (int i = 0; i < W; i++) {
-    sum += vload_half(i * num_grads + idx, grad_sums);
+    sum += grad_sums[i * num_grads + idx];
   }
 
-  vstore_half(sum, idx, grad_sums);
+  grad_sums[idx] = sum;
+  // vstore_half(sum, idx, grad_sums);
 }

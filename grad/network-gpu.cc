@@ -1100,9 +1100,9 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
   std::tie(num_weight_grad, num_bias_grad) = ApportionScratch();
 
   weight_grad_tmp =
-    CreateUninitializedGPUMemory<half>(cl->context, num_weight_grad);
+    CreateUninitializedGPUMemory<float>(cl->context, num_weight_grad);
   bias_grad_tmp =
-    CreateUninitializedGPUMemory<half>(cl->context, num_bias_grad);
+    CreateUninitializedGPUMemory<float>(cl->context, num_bias_grad);
 
 
   for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
@@ -1339,18 +1339,18 @@ void UpdateWeightsCL::Update(TrainingRoundGPU *train, int layer_idx) {
 
       // Make sure this doesn't get destroyed before the queue
       // is finished..
-      const cl_half zero = 0.0f;
+      const cl_float zero = 0.0f;
       // does not clFinish!
-      auto ZeroHalves = [&](cl_mem buf, int start, int num) {
+      auto ZeroFloats = [&](cl_mem buf, int start, int num) {
           CHECK_SUCCESS(
               clEnqueueFillBuffer(cl->queue,
                                   buf,
                                   // pattern and its size in bytes
-                                  &zero, sizeof (cl_half),
+                                  &zero, sizeof (cl_float),
                                   // offset (in BYTES)
-                                  start * sizeof (cl_half),
+                                  start * sizeof (cl_float),
                                   // size to fill (in BYTES)
-                                  (size_t)(num * sizeof (cl_half)),
+                                  (size_t)(num * sizeof (cl_float)),
                                   // no wait list or event
                                   0, nullptr, nullptr));
         };
@@ -1365,8 +1365,8 @@ void UpdateWeightsCL::Update(TrainingRoundGPU *train, int layer_idx) {
         // no need to zero first.
       } else {
         // PERF: We only need to zero the region we're going to use!
-        ZeroHalves(weight_grad_tmp, 0, num_weight_grad);
-        ZeroHalves(bias_grad_tmp, 0, num_bias_grad);
+        ZeroFloats(weight_grad_tmp, 0, num_weight_grad);
+        ZeroFloats(bias_grad_tmp, 0, num_bias_grad);
         clFinish(cl->queue);
       }
 
