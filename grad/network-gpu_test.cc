@@ -380,6 +380,7 @@ TrainTest(TrainNet train_net,
     if (VERBOSE > 1)
       printf("Backward pass.\n");
 
+    if (false)  // XXX
     for (int layer_idx = 0; layer_idx < net.layers.size(); layer_idx++) {
       decay_cl->Decay(layer_idx);
     }
@@ -506,6 +507,18 @@ TrainTest(TrainNet train_net,
              (float)chunk.weights[0],
              PackHalf(chunk.biases[0]),
              (float)chunk.biases[0]);
+
+      #if 0
+      for (int i = 0; i < 10 && i < examples_per_round; i++) {
+        Errors err(net);
+        training->ExportErrors(i, &err);
+        CHECK(err.error.size() == 2);
+        CHECK(err.error[1].size() == 1);
+        const half h = err.error[1][0];
+        printf("%04x = %.6f, ", PackHalf(h), (float)h);
+      }
+      printf("\n");
+      #endif
     }
 
     if (SAVE_INTERMEDIATE && (finished || iter == 1000 || iter % 10000 == 0)) {
@@ -676,16 +689,16 @@ static void SGDTests() {
   // The identity function is super easy to learn, so we should always
   // be able to learn this with the default update config.
 
+  #if 0
   UpdateWeightsCL::UpdateConfig zz_config = UpdateWeightsCL::UpdateConfig{
     .base_learning_rate = 0.2f,
     .learning_rate_dampening = 1.0f,
     .adam_epsilon = 1.0e-6,
   };
+#endif
 
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentitySparse(),
-             200000, 4000, 0.001f, zz_config, {100}, {0});
-
-  return; // XXX
+             200000, 4000, 0.001f, {}, {100}, {0});
 
   TRAIN_TEST(NetworkTestUtil::LearnTrivialIdentityDense(),
              200000, 1000, 0.001f);

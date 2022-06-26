@@ -128,8 +128,6 @@ __kernel void UpdateWeightsSecondPass(
     #error Weight update must be SGD, ADAM, or YOGI
   #endif
 
-    // PERF -- generate a separate multiplier and value and use fma()
-
   const float oldw = vload_half(idx, chunk_weights);
   #if CONSTRAIN
     const float w =
@@ -140,5 +138,17 @@ __kernel void UpdateWeightsSecondPass(
     const float w = oldw + u;
   #endif
 
-  vstore_half(w, idx, chunk_weights);
+  // With half precision, it's easy to get stuck with the
+  // gradient too small to make any difference. So err towards
+  // making a change to the weight, by rounding to the larger
+  // (magnitude) value. Of course this could just get stuck
+  // if we're instead arriving from the top? (XXX so perhaps
+  // this condition should compare oldw and w?)
+
+  // Ugh, there is no "round away from zero" in OpenCL??
+  if (w > 0.0) {
+    vstore_half_rtp(w, idx, chunk_weights);
+  } else {
+    vstore_half_rtn(w, idx, chunk_weights);
+  }
 }

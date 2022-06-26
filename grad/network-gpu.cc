@@ -1358,6 +1358,7 @@ void UpdateWeightsCL::Update(TrainingRoundGPU *train, int layer_idx) {
       // Zero the whole scratch space if necessary.
       CHECK(ck.w > 0 && ck.w <= examples_per_round) << ck.w << " " <<
         examples_per_round;
+      // printf("w = %d/%d\n", ck.w, examples_per_round);
       if (ck.w == examples_per_round) {
         // Since we run all examples in parallel with no need for
         // accumulation, the kernel will write with =. So there is
