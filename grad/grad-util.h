@@ -11,6 +11,8 @@
 #include "opt/optimizer.h"
 #include "half.h"
 #include "color-util.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 using uint32 = uint32_t;
 using uint16 = uint16_t;
@@ -48,11 +50,24 @@ struct GradUtil {
   static constexpr uint16 NEG_LOW  = 0x8000; // -0
   static constexpr uint16 NEG_HIGH = 0xBC00; // -1
 
+  // Run f on all u16s in [-1, +1].
   template<class F>
-  static inline void ForEveryFinite16(F f) {
+  static inline void ForPosNeg1(F f) {
+    // Negative
+    for (int u = NEG_LOW; u < NEG_HIGH; u++)
+      f((uint16)u);
+    // Positive
     for (int u = POS_LOW; u < POS_HIGH; u++)
       f((uint16)u);
-    for (int u = NEG_LOW; u < NEG_HIGH; u++)
+  }
+
+  template<class F>
+  static inline void ForEveryFinite16(F f) {
+    // Positive
+    for (int u = 0; u < 0x7c00; u++)
+      f((uint16)u);
+    // Negative
+    for (int u = 0x8000; u < 0xfc00; u++)
       f((uint16)u);
   }
 
@@ -60,7 +75,6 @@ struct GradUtil {
   // of the resulting value for the 65536 inputs.
   using Table = std::array<uint16_t, 65536>;
 
-  // XXX argument
   static void Graph(const Table &table, uint32 color, ImageRGBA *img) {
     CHECK(img->Width() == img->Height());
     const int size = img->Width();
@@ -71,16 +85,24 @@ struct GradUtil {
         double x = GetHalf(input);
         double y = GetHalf(output);
 
-        int xs = (int)std::round((size / 2) + x * (size / 2));
-        int ys = (int)std::round((size / 2) + -y * (size / 2));
+        int xs = (int)std::round((size / 2) + x * (size / 2.0));
+        int ys = (int)std::round((size / 2) + -y * (size / 2.0));
 
-        ys = std::clamp(ys, 0, size - 1);
+        // ys = std::clamp(ys, 0, size - 1);
 
-        img->BlendPixel32(xs, ys, color);
+        uint32 c = color;
+        /*
+        if (x < -1.0f) c = 0xFF000022;
+        else if (x > 1.0f) c = 0x00FF0022;
+        */
+        img->BlendPixel32(xs, ys, c);
       };
 
+    /*
     for (int i = NEG_LOW; i < NEG_HIGH; i++) Plot(i);
     for (int i = POS_LOW; i < POS_HIGH; i++) Plot(i);
+    */
+    ForEveryFinite16(Plot);
   }
 
   static void Grid(ImageRGBA *img) {
@@ -93,13 +115,13 @@ struct GradUtil {
       return make_pair(xs, ys);
     };
 
-    for (double y = -1.0; y <= 1.0; y += 0.1) {
+    for (double y = -1.0; y <= 1.0; y += 0.0625) {
       const auto [x0, y0] = MapCoord(-1.0, y);
       const auto [x1, y1] = MapCoord(+1.0, y);
       img->BlendLine32(x0, y0, x1, y1, 0xFFFFFF11);
     }
 
-    for (double x = -1.0; x <= 1.0; x += 0.1) {
+    for (double x = -1.0; x <= 1.0; x += 0.0625) {
       const auto [x0, y0] = MapCoord(x, -1.0);
       const auto [x1, y1] = MapCoord(x, +1.0);
       img->BlendLine32(x0, y0, x1, y1, 0xFFFFFF11);
