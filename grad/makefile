@@ -1,7 +1,7 @@
 
 default: iter.exe
 
-all: grad.exe iter.exe
+all: grad.exe iter.exe make-data.exe mnist_test.exe
 
 CC_LIB=../cc-lib
 
@@ -61,6 +61,10 @@ network-gpu_test.exe : network.o network-gpu.o network-test-util.o network-gpu_t
 	@echo -n "!"
 
 train.exe : train.o network-gpu.o clutil.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+mnist_test.exe : mnist_test.o $(CCLIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

@@ -44,6 +44,20 @@ struct GradUtil {
     return u;
   }
 
+  static inline uint32_t PackFloat(float f) {
+    static_assert(sizeof (float) == 4);
+    uint32_t ret = 0;
+    std::memcpy(&ret, &f, sizeof (float));
+    return ret;
+  }
+
+  static inline float UnpackFloat(uint32_t u) {
+    static_assert(sizeof (float) == 4);
+    float ret = 0.0f;
+    std::memcpy(&ret, &u, sizeof (float));
+    return ret;
+  }
+
   // Range of all u16s in [-1, +1].
   static constexpr uint16 POS_LOW  = 0x0000; // +0
   static constexpr uint16 POS_HIGH = 0x3C00; // +1
@@ -211,6 +225,42 @@ struct GradUtil {
         });
     }
   }
+
+  static std::vector<uint16_t> GetFunctionFromFile(
+      const std::string &filename) {
+    std::vector<uint16_t> ret(65536, 0);
+    std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(filename));
+    CHECK(img.get() != nullptr);
+    CHECK(img->Width() == 256 && img->Height() == 256);
+    for (int i = 0; i < 65536; i++) {
+      const int y = i / 256;
+      const int x = i % 256;
+      const auto [r, g, b, a] = img->GetPixel(x, y);
+      CHECK(b == 0 && a == 0xFF);
+      ret[i] = ((uint16_t)r << 8) | g;
+    }
+    return ret;
+  }
+
+  static std::vector<float> GetDerivativeFromFile(
+      const std::string &filename) {
+    std::vector<float> ret(65536, 0.0f);
+    std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(filename));
+    CHECK(img.get() != nullptr);
+    CHECK(img->Width() == 256 && img->Height() == 256);
+    // int nonzero = 0;
+    for (int i = 0; i < 65536; i++) {
+      const int y = i / 256;
+      const int x = i % 256;
+      uint32 u = img->GetPixel32(x, y);
+      // if (u) nonzero++;
+      ret[i] = UnpackFloat(u);
+      // printf("%d: %04x %.5f\n", i, u, ret[i]);
+    }
+    // printf("Num nonzero: %d\n", nonzero);
+    return ret;
+  }
+
 };
 
 #endif

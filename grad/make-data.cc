@@ -23,7 +23,7 @@ using Table = GradUtil::Table;
 using Step = GradUtil::Step;
 using State = GradUtil::State;
 
-static inline float UnpackFloat(uint16 u) {
+static inline float Unpack16AsFloat(uint16 u) {
   return (float)GradUtil::GetHalf(u);
 }
 
@@ -54,16 +54,26 @@ static State MakeTable1() {
 int main(int argc, char **argv) {
   State state = MakeTable1();
 
-  ImageRGBA forward(256, 256);
-  for (int i = 0; i < 65536; i++) {
-    uint16_t o = state.table[i];
-    uint8_t r = (o >> 8) & 255;
-    uint8_t g = o & 255;
-    int y = i >> 8;
-    int x = i & 255;
-    forward.SetPixel(x, y, r, g, 0x00, 0xFF);
+  {
+    ImageRGBA forward(256, 256);
+    for (int i = 0; i < 65536; i++) {
+      uint16_t o = state.table[i];
+      uint8_t r = (o >> 8) & 255;
+      uint8_t g = o & 255;
+      int y = i >> 8;
+      int x = i & 255;
+      forward.SetPixel(x, y, r, g, 0x00, 0xFF);
+    }
+    forward.Save("forward.png");
   }
-  forward.Save("forward.png");
+
+  {
+    std::vector<uint16> refn =
+      GradUtil::GetFunctionFromFile("forward.png");
+    for (int i = 0; i < 65536; i++) {
+      CHECK(state.table[i] == refn[i]) << i;
+    }
+  }
 
   // The derivative at a point, given as table mapping the
   // output value (y) to f'(x); this is what we use at training
@@ -107,34 +117,32 @@ int main(int argc, char **argv) {
   std::sort(points.begin(), points.end(),
             [](auto a, auto b) {
               if (a.first == b.first) {
-                float af = UnpackFloat(a.second);
-                float bf = UnpackFloat(b.second);
+                float af = Unpack16AsFloat(a.second);
+                float bf = Unpack16AsFloat(b.second);
                 return af < bf;
               }
-              float af = UnpackFloat(a.first);
-              float bf = UnpackFloat(b.first);
+              float af = Unpack16AsFloat(a.first);
+              float bf = Unpack16AsFloat(b.first);
               return af < bf;
             });
 
   for (const auto &[x, y] : points) {
-    CHECK(!std::isnan(UnpackFloat(x)));
-    CHECK(!std::isnan(UnpackFloat(y)));
+    CHECK(!std::isnan(Unpack16AsFloat(x)));
+    CHECK(!std::isnan(Unpack16AsFloat(y)));
   }
 
   auto GetPoint = [&points](int i) {
       const auto [x, y] = points[i];
-      return std::make_pair(UnpackFloat(x), UnpackFloat(y));
+      return std::make_pair(Unpack16AsFloat(x), Unpack16AsFloat(y));
     };
 
   // Check that the function is monotonic!
   for (int i = 1; i < points.size(); i++) {
     const auto [ax, ay] = points[i - 1];
     const auto [bx, by] = points[i];
-    CHECK(UnpackFloat(ax) <= UnpackFloat(bx));
-    CHECK(UnpackFloat(ay) <= UnpackFloat(by));
+    CHECK(Unpack16AsFloat(ax) <= Unpack16AsFloat(bx));
+    CHECK(Unpack16AsFloat(ay) <= Unpack16AsFloat(by));
   }
-
-
 
   // Now compute the derivative at every y value. We do this by
   // looping over y values (they are nondecreasing but may have
@@ -150,8 +158,8 @@ int main(int argc, char **argv) {
     double total_avg = 0.0;
     static constexpr int WINDOW_SIZE = 2;
     const auto [xu, yu] = points[i];
-    const double x = UnpackFloat(xu);
-    const double y = UnpackFloat(yu);
+    const double x = Unpack16AsFloat(xu);
+    const double y = Unpack16AsFloat(yu);
     if (!(std::isfinite(x) && std::isfinite(y)))
       continue;
 
@@ -211,8 +219,6 @@ int main(int argc, char **argv) {
               if (!deriv[v].empty())
                 return std::make_pair(v, deriv[v]);
             }
-            // None found.
-            return std::make_pair(u, std::vector<double>{});
 
           } else if (u >= 0x8000 && u <= 0xfc00) {
             for (uint16 v = u + dir;
@@ -221,12 +227,12 @@ int main(int argc, char **argv) {
               if (!deriv[v].empty())
                 return std::make_pair(v, deriv[v]);
             }
-            // None found.
-            return std::make_pair(u, std::vector<double>{});
 
           } else {
             CHECK(false) << u;
           }
+          // None found.
+          return std::make_pair(u, std::vector<double>{});
         };
 
         // The previous y that has a derivative, and the next.
@@ -238,9 +244,9 @@ int main(int argc, char **argv) {
 
         if (!pv.empty() && !nv.empty()) {
           // If we have both, interpolate.
-          double py = UnpackFloat(pyu);
-          double ny = UnpackFloat(nyu);
-          double y = UnpackFloat(yu);
+          double py = Unpack16AsFloat(pyu);
+          double ny = Unpack16AsFloat(nyu);
+          double y = Unpack16AsFloat(yu);
 
           double pd = AverageVec(pv);
           double nd = AverageVec(nv);
@@ -265,8 +271,33 @@ int main(int argc, char **argv) {
       CHECK(std::isfinite(deriv_out[yu])) << yu;
     });
 
+
   // TODO: Output derivative!
   ImageRGBA deriv_img(256, 256);
+  // int nonzero = 0;
+  for (int i = 0; i < 65536; i++) {
+    int y = i / 256;
+    int x = i % 256;
+    float f = deriv_out[i];
+    uint32 u = GradUtil::PackFloat(f);
+    // if (u) nonzero++;
+    deriv_img.SetPixel32(x, y, u);
+  }
+  // printf("Write nonzero: %d\n", nonzero);
+  deriv_img.Save("deriv.png");
+
+  // Test that it's round-trip clean
+  std::vector<float> rederiv =
+    GradUtil::GetDerivativeFromFile("deriv.png");
+  CHECK(rederiv.size() == 65536);
+  for (int i = 0; i < 65536; i++) {
+    float f1 = deriv_out[i];
+    float f2 = rederiv[i];
+    uint32 u1 = GradUtil::PackFloat(f1);
+    uint32 u2 = GradUtil::PackFloat(f2);
+    CHECK(u1 == u2) << i << ": " << u1 << " " << u2
+                    << " from " << f1 << " " << f2;
+  }
 
   string out_fwd = "static const uint16_t forward[65536] = {\n";
   for (int i = 0; i < 65536; i++) {
@@ -294,7 +325,7 @@ int main(int argc, char **argv) {
       if (!std::isfinite(deriv_out[u])) return;
 
       // Scaled
-      double y = UnpackFloat(u);
+      double y = Unpack16AsFloat(u);
       int ys = (int)std::round((IMAGE_SIZE / 2) + -y * (IMAGE_SIZE / 2.0));
 
       double d = deriv_out[u] * scale;

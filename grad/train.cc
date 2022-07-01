@@ -1,4 +1,3 @@
-// (From direct-words; needs to be gutted and rewritten for pluginvert!)
 
 #include "network-gpu.h"
 
