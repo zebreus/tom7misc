@@ -270,6 +270,7 @@ struct ErrorImage {
     examples_per_round(examples_per_round),
     filename(filename) {
 
+    printf("Create %s\n", filename.c_str());
     if (continue_from_disk) {
       image.reset(ImageRGBA::Load(filename));
       if (image.get() != nullptr) {
@@ -288,6 +289,7 @@ struct ErrorImage {
       image = std::make_unique<ImageRGBA>(width, height);
       image->Clear32(0x000055FF);
     }
+    printf("OK?\n");
   }
 
   const std::string &Filename() const {

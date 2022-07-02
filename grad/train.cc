@@ -62,14 +62,13 @@ struct ExampleThread {
   // then OUTPUT_SIZE * EXAMPLES_PER_ROUND.
   using example_type = std::pair<std::vector<float>, std::vector<float>>;
 
-  example_type GetExamples(int64 round_num) {
+  example_type GetExamples() {
     for (;;) {
       {
         MutexLock ml(&m);
-        auto it = q.find(round_num);
-        if (it != q.end()) {
-          example_type ret = std::move(it->second);
-          q.erase(it);
+        if (!q.empty()) {
+          example_type ret = std::move(q.front());
+          q.pop_front();
           return ret;
         }
       }
@@ -78,13 +77,16 @@ struct ExampleThread {
     }
   }
 
-  ExampleThread(int64 next_round) : next_example(next_round) {
+  ExampleThread() {
     mnist.reset(new MNIST("mnist/train"));
     CHECK(mnist.get() != nullptr);
     CHECK(mnist->width == IMG_WIDTH);
     CHECK(mnist->height == IMG_HEIGHT);
 
-    work_thread.reset(new std::thread(&Generate, this, 1));
+    // XXXXX
+    // printf("EXAMPLES DISABLED\n");
+    work_thread1.reset(new std::thread(&Generate, this, 1));
+    work_thread2.reset(new std::thread(&Generate, this, 2));
   }
 
   ~ExampleThread() {
@@ -98,36 +100,33 @@ private:
     printf("Started example thread %d.\n", id);
 
     // Not deterministic.
-    ArcFour rc(StringPrintf("%lld.ex", time(nullptr)));
+    ArcFour rc(StringPrintf("%d.%lld.ex", id, time(nullptr)));
+    RandomGaussian gauss(&rc);
 
     for (;;) {
       // If we need to generate an example, claim its number.
       // Otherwise, return -1.
-      const int64 next = [&]() -> int64 {
+      const bool want_more = [&]() -> bool {
           MutexLock ml(&m);
-          if (q.size() < TARGET_SIZE) {
-            int64 ex = next_example;
-            next_example++;
-            return ex;
-          } else {
-            return -1;
-          }
+          return q.size() < TARGET_SIZE;
         }();
 
-      if (next >= 0) {
+      if (want_more) {
         // examples_per_round * INPUT_SIZE
         std::vector<float> examples;
         // examples_per_round * OUTPUT_SIZE
         std::vector<float> outputs;
+        examples.reserve(EXAMPLES_PER_ROUND * INPUT_SIZE);
         outputs.reserve(EXAMPLES_PER_ROUND * OUTPUT_SIZE);
 
         // Fill 'em
         for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
 
           const int idx = RandTo(&rc, mnist->Num());
-
+          CHECK(idx < mnist->labels.size() &&
+                idx < mnist->images.size());
           // one-hot output label
-          int lab = mnist->labels[idx];
+          const int lab = mnist->labels[idx];
           for (int o = 0; o < OUTPUT_SIZE; o++) {
             outputs.push_back(lab == o ? 1.0f : 0.0f);
           }
@@ -135,9 +134,14 @@ private:
           // image data.
           // TODO: Randomly add noise, squish, pan, etc.
           const ImageA &img = mnist->images[idx];
+
+          // Shift by up to two pixels in each direction.
+          const int dx = RandTo(&rc, 5) - 2;
+          const int dy = RandTo(&rc, 5) - 2;
           for (int y = 0; y < IMG_HEIGHT; y++) {
             for (int x = 0; x < IMG_WIDTH; x++) {
-              float f = (float)img.GetPixel(x, y) / 255.0f;
+              float f = (float)img.GetPixel(x + dx, y + dy) / 255.0f;
+              f += gauss.Next() * 0.25f;
               examples.push_back(f);
             }
           }
@@ -148,8 +152,7 @@ private:
 
         {
           MutexLock ml(&m);
-          CHECK(q.find(next) == q.end()) << next;
-          q[next] = make_pair(std::move(examples), std::move(outputs));
+          q.emplace_back(std::move(examples), std::move(outputs));
         }
       } else {
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
@@ -160,15 +163,14 @@ private:
   std::unique_ptr<MNIST> mnist;
 
   std::mutex m;
-  // Round number for the next example to generate.
-  int64 next_example = 0;
-  std::map<int64, example_type> q;
+  // queue of examples, ready to train
+  std::deque<example_type> q;
 
-  std::unique_ptr<std::thread> work_thread;
+  std::unique_ptr<std::thread> work_thread1, work_thread2;
 };
 
 static void Train(Network *net) {
-  ExampleThread example_thread(net->rounds);
+  ExampleThread example_thread;
 
   ErrorHistory error_history("error-history.tsv");
 
@@ -217,13 +219,22 @@ static void Train(Network *net) {
 
   constexpr int NUM_COLUMNS = 10;
   std::vector<std::unique_ptr<ErrorImage>> error_images;
+  error_images.reserve(NUM_COLUMNS);
   for (int i = 0; i < NUM_COLUMNS; i++) {
     string filename = StringPrintf("error-%d.png", i);
     error_images.emplace_back(
-        std::make_unique<ErrorImage>(2000, EXAMPLES_PER_ROUND, filename));
+        std::make_unique<ErrorImage>(2000, EXAMPLES_PER_ROUND, filename,
+                                     true));
   }
+  CHECK(error_images.size() == NUM_COLUMNS);
+
+  if (VERBOSE > 1)
+    printf("Loaded/created error images.\n");
 
   auto net_gpu = make_unique<NetworkGPU>(cl, net);
+
+  if (VERBOSE > 1)
+    printf("Net on GPU.\n");
 
   std::unique_ptr<ForwardLayerCL> forward_cl =
     std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
@@ -239,6 +250,9 @@ static void Train(Network *net) {
                                       EXAMPLES_PER_ROUND,
                                       update_config);
 
+  if (VERBOSE > 1)
+    printf("Compiled CL.\n");
+
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(
       new TrainingRoundGPU(EXAMPLES_PER_ROUND, cl, *net));
@@ -246,6 +260,9 @@ static void Train(Network *net) {
   CHECK(!net->layers.empty());
   CHECK(net->layers[0].num_nodes == INPUT_SIZE);
   CHECK(net->layers.back().num_nodes == OUTPUT_SIZE);
+
+  if (VERBOSE > 1)
+    printf("Training round ready.\n");
 
   double round_ms = 0.0;
   double getexample_ms = 0.0;
@@ -272,7 +289,7 @@ static void Train(Network *net) {
 
     Timer getexample_timer;
     // All examples for the round, flat.
-    auto [inputs, expecteds] = example_thread.GetExamples(net->rounds);
+    auto [inputs, expecteds] = example_thread.GetExamples();
 
     getexample_ms += getexample_timer.MS();
 
@@ -400,12 +417,16 @@ static void Train(Network *net) {
         for (int idx = 0; idx < EXAMPLES_PER_ROUND; idx++) {
           float expected = expecteds[idx * NUM_COLUMNS + col];
           float actual = actuals[idx * NUM_COLUMNS + col];
+          if (idx == 0) {
+            printf("%+.2f%c ", actual, expected > 0.5f ? '<' : ' ');
+          }
           ex[idx] = std::make_pair(expected, actual);
           float loss = fabsf(expected - actual);
           min_loss = std::min(min_loss, loss);
           max_loss = std::max(max_loss, loss);
           average_loss += loss;
         }
+
         average_loss /= EXAMPLES_PER_ROUND;
 
         if (save_history) {
@@ -537,7 +558,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
   layers.push_back(Network::LayerFromChunks(input_chunk));
 
   const int CONV1_SIZE = 3;
-  const int CONV1_FEATURES = 32;
+  const int CONV1_FEATURES = 64;
 
   Chunk first_conv_chunk =
     Network::Make2DConvolutionChunk(
@@ -549,7 +570,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
         LEAKY_RELU, WEIGHT_UPDATE);
 
   const int CONV2_SIZE = 8;
-  const int CONV2_FEATURES = 32;
+  const int CONV2_FEATURES = 128;
 
   Chunk second_conv_chunk =
     Network::Make2DConvolutionChunk(
@@ -577,7 +598,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
   Chunk next_conv1 =
     Network::Make1DConvolutionChunk(
         0, num_conv1,
-        32, CONV1_FEATURES,
+        64, CONV1_FEATURES,
         // process the features as a block,
         CONV1_FEATURES,
         LEAKY_RELU, WEIGHT_UPDATE);
@@ -588,7 +609,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
   Chunk next_conv2 =
     Network::Make1DConvolutionChunk(
         num_conv1, num_conv2,
-        32, CONV2_FEATURES,
+        64, CONV2_FEATURES,
         CONV2_FEATURES,
         LEAKY_RELU, WEIGHT_UPDATE);
 
@@ -610,18 +631,24 @@ static unique_ptr<Network> NewDigitsNetwork() {
 
   layers.push_back(Network::LayerFromChunks(sparse3));
 
+  /*
   // more layers?
-
-  // Dense?
-  Chunk sparse_out =
+  Chunk sparse4 =
     Network::MakeRandomSparseChunk(
-        &rc, OUTPUT_SIZE,
-        {{.span_start = 0,
-              .span_size = layers.back().num_nodes,
-          .ipn = 64}},
+        &rc, 512, {{.span_start = 0, .span_size = layers.back().num_nodes,
+                    .ipn = 64}},
         LEAKY_RELU, WEIGHT_UPDATE);
 
-  layers.push_back(Network::LayerFromChunks(sparse_out));
+  layers.push_back(Network::LayerFromChunks(sparse4));
+  */
+
+  // Output layer.
+  Chunk dense_out =
+    Network::MakeDenseChunk(OUTPUT_SIZE,
+                            0, layers.back().num_nodes,
+                            LEAKY_RELU, WEIGHT_UPDATE);
+
+  layers.push_back(Network::LayerFromChunks(dense_out));
 
   CHECK(layers.back().num_nodes > 0);
 

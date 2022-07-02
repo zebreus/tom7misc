@@ -75,3 +75,6 @@ evaluate.exe : evaluate.o network.o network-gpu.o error-history.o clutil.o $(OBJ
 
 clean :
 	rm -f *.o $(OBJECTS) *.exe
+
+modelclean :
+	rm -f grad.val grad.*.val error-*.png error-history.tsv train-*.png modelinfo.png grad-layer*.png
