@@ -60,7 +60,7 @@ network-gpu_test.exe : network.o network-gpu.o network-test-util.o network-gpu_t
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-train.exe : train.o network-gpu.o clutil.o $(OBJECTS)
+train.exe : train.o network.o network-gpu.o error-history.o clutil.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

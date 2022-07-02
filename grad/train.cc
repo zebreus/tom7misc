@@ -12,8 +12,6 @@
 #include <deque>
 #include <numbers>
 
-#include <api/fftw3.h>
-
 #include "network.h"
 #include "network-test-util.h"
 #include "clutil.h"
@@ -25,10 +23,11 @@
 #include "image.h"
 #include "util.h"
 #include "train-util.h"
+#include "periodically.h"
+#include "timer.h"
 #include "error-history.h"
-#include "audio-database.h"
-#include "plugins.h"
-#include "crypt/sha256.h"
+
+#include "mnist.h"
 
 using namespace std;
 
@@ -44,35 +43,25 @@ static constexpr WeightUpdate WEIGHT_UPDATE = ADAM;
 
 static constexpr float TWO_PI = 2.0f * std::numbers::pi_v<float>;
 
-#define MODEL_BASE "params"
+#define MODEL_BASE "grad"
 #define MODEL_NAME MODEL_BASE ".val"
 
-// Size of time domain window in samples.
-constexpr int WINDOW_SIZE = 1024;
-using Plugin = Convolve4<WINDOW_SIZE>;
-constexpr int NUM_PARAMS = Plugin::NUM_PARAMETERS;
+// Known dimensions for mnist training data.
+static constexpr int IMG_WIDTH = 28;
+static constexpr int IMG_HEIGHT = 28;
 
-constexpr int INPUT_SIZE = WINDOW_SIZE + WINDOW_SIZE;
-constexpr int OUTPUT_SIZE = NUM_PARAMS;
-constexpr int SAMPLE_RATE = 44100;
+constexpr int INPUT_SIZE = IMG_WIDTH * IMG_HEIGHT;
+constexpr int OUTPUT_SIZE = 10;
 
-// Examples are about 2k.
+// Very small examples -- this can probably be much higher.
 static constexpr int EXAMPLES_PER_ROUND = 1000;
 
 struct ExampleThread {
+  // A full round's worth of examples.
+  // First element is INPUT_SIZE * EXAMPLES_PER_ROUND,
+  // then OUTPUT_SIZE * EXAMPLES_PER_ROUND.
   using example_type = std::pair<std::vector<float>, std::vector<float>>;
 
-  static constexpr int P_MP3 = 100;
-  static constexpr int P_SIN = 12;
-  static constexpr int P_SQUARE = 12;
-
-  // Rest is white noise.
-  static_assert(P_MP3 + P_SIN + P_SQUARE <= 256);
-
-  static constexpr int TARGET_SIZE = 3;
-
-  // TODO: Perhaps some more checking to make sure the round number
-  // is not desynchronized with the client?
   example_type GetExamples(int64 round_num) {
     for (;;) {
       {
@@ -90,9 +79,11 @@ struct ExampleThread {
   }
 
   ExampleThread(int64 next_round) : next_example(next_round) {
-    audio_database.reset(new AudioDatabase(WINDOW_SIZE, "corpus"));
-    // PERF only if we are trying to be deterministic
-    audio_database->WaitDone();
+    mnist.reset(new MNIST("mnist/train"));
+    CHECK(mnist.get() != nullptr);
+    CHECK(mnist->width == IMG_WIDTH);
+    CHECK(mnist->height == IMG_HEIGHT);
+
     work_thread.reset(new std::thread(&Generate, this, 1));
   }
 
@@ -101,96 +92,13 @@ struct ExampleThread {
   }
 
 private:
-  static vector<float> RandomSamples(AudioDatabase *db, ArcFour *rc) {
-    uint8 method = rc->Byte();
-    if (method < P_MP3) {
-      return db->GetBuffer(rc);
-    }
-    method -= P_MP3;
+  static constexpr int TARGET_SIZE = 10;
 
-    if (method < P_SIN) {
-      vector<float> ret;
-      ret.reserve(WINDOW_SIZE);
-
-      float amp = RandFloat(rc);
-      // PERF can bake in SAMPLE_RATE divisor too
-      float freq_twopi =
-        TWO_PI * (10.0f + RandFloat(rc) * 20000.0f);
-      // TODO: sample phases uniformly
-      const int phase = RandTo(rc, SAMPLE_RATE);
-      for (int i = 0; i < WINDOW_SIZE; i++) {
-        float sec = (i + phase) / (float)SAMPLE_RATE;
-        ret.push_back(amp * sin(freq_twopi * sec));
-      }
-      return ret;
-    }
-    method -= P_SIN;
-
-    if (method < P_SQUARE) {
-      // Simple square wave, not band-limited
-      vector<float> ret;
-      ret.reserve(WINDOW_SIZE);
-
-      float amp = RandFloat(rc);
-      float width = 2.0f + (RandFloat(rc) * (WINDOW_SIZE - 2.0f));
-      float count = RandFloat(rc) * WINDOW_SIZE;
-      bool on = rc->Byte() & 1;
-      for (int i = 0; i < WINDOW_SIZE; i++) {
-        count -= 1.0f;
-        if (count < 0.0f) {
-          on = !on;
-          count += width;
-        }
-        ret.push_back(on ? amp : -amp);
-      }
-      return ret;
-    }
-    method -= P_SQUARE;
-
-    // Otherwise, white noise.
-    {
-      vector<float> ret;
-      ret.reserve(WINDOW_SIZE);
-
-      for (int i = 0; i < WINDOW_SIZE; i++) {
-        float f = RandFloat(rc);
-        ret.push_back(f * 2.0f - 1.0f);
-      }
-      return ret;
-    }
-  }
-
-  // Perhaps should have more than one generation thread...
   void Generate(int id) {
     printf("Started example thread %d.\n", id);
 
-    // TODO: float ffts
-    using element_type = double;
-
-    fftw_plan plan;
-    [[maybe_unused]] fftw_plan rplan;
-    element_type *in = (element_type*)
-      fftw_malloc(sizeof (element_type) * WINDOW_SIZE);
-    element_type *out = (element_type*)
-      fftw_malloc(sizeof (element_type) * WINDOW_SIZE);
-
-    // Discrete Hartley Transform is its own inverse.
-    static constexpr fftw_r2r_kind fwd = FFTW_DHT;
-    static constexpr fftw_r2r_kind inv = FFTW_DHT;
-
-    // PERF: Use measure. But this can result in nondeterminism.
-    constexpr auto fftw_approach = FFTW_ESTIMATE;
-
-    plan = fftw_plan_r2r_1d(WINDOW_SIZE, in, out,
-                            fwd, fftw_approach);
-    // printf("Forward plan:\n");
-    // fftw_print_plan(plan);
-
-    rplan = fftw_plan_r2r_1d(WINDOW_SIZE, in, out,
-                             inv, fftw_approach);
-
-    // printf("Inverse plan:\n");
-    // fftw_print_plan(rplan);
+    // Not deterministic.
+    ArcFour rc(StringPrintf("%lld.ex", time(nullptr)));
 
     for (;;) {
       // If we need to generate an example, claim its number.
@@ -207,48 +115,31 @@ private:
         }();
 
       if (next >= 0) {
-        // PERF: In order to get deterministic examples, we re-seed
-        // the PRNG for each one, based on the round number. So
-        // something that initializes faster (PCG) would perhaps
-        // be better.
-        ArcFour rc(StringPrintf("%lld.ex", next_example));
-        // examples_per_round * INPUT_SIZE;
+        // examples_per_round * INPUT_SIZE
         std::vector<float> examples;
-        // examples_per_round * NUM_PARAMS
+        // examples_per_round * OUTPUT_SIZE
         std::vector<float> outputs;
+        outputs.reserve(EXAMPLES_PER_ROUND * OUTPUT_SIZE);
 
         // Fill 'em
         for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
-          // Random parameters
-          std::array<float, Plugin::NUM_PARAMETERS> params;
-          for (int p = 0; p < Plugin::NUM_PARAMETERS; p++) {
-            const Param &param = Plugin::PARAMS[p];
-            float f = RandomBeta(&rc, param.beta_a, param.beta_b);
-            // Note!
-            // We train to predict the position between [lb, ub]
-            // (as a number in [0, 1]) because the network has some
-            // built in priors against large values (e.g. absolute
-            // limits on weights/biases when clipping is turned on)
-            // and to avoid accuracy problems with large floats.
-            outputs.push_back(f);
 
-            params[p] = param.lb + (param.ub - param.lb) * f;
+          const int idx = RandTo(&rc, mnist->Num());
+
+          // one-hot output label
+          int lab = mnist->labels[idx];
+          for (int o = 0; o < OUTPUT_SIZE; o++) {
+            outputs.push_back(lab == o ? 1.0f : 0.0f);
           }
 
-          vector<float> samples =
-            Plugin::Process(RandomSamples(audio_database.get(), &rc),
-                            params);
-          CHECK(samples.size() == WINDOW_SIZE);
-          for (int s = 0; s < WINDOW_SIZE; s++)
-            in[s] = samples[s];
-          fftw_execute(plan);
-
-          // Regular samples
-          for (float f : samples) examples.push_back(f);
-          // 'FFT' values
-          for (int i = 0; i < WINDOW_SIZE; i++) {
-            // FFTW output needs to be normalized
-            examples.push_back((float)out[i] * (1.0f / WINDOW_SIZE));
+          // image data.
+          // TODO: Randomly add noise, squish, pan, etc.
+          const ImageA &img = mnist->images[idx];
+          for (int y = 0; y < IMG_HEIGHT; y++) {
+            for (int x = 0; x < IMG_WIDTH; x++) {
+              float f = (float)img.GetPixel(x, y) / 255.0f;
+              examples.push_back(f);
+            }
           }
         }
 
@@ -264,16 +155,9 @@ private:
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
       }
     }
-
-    /*
-    fftw_free(in);
-    fftw_free(out);
-    fftw_destroy_plan(plan);
-    fftw_destroy_plan(rplan);
-    */
   }
 
-  std::unique_ptr<AudioDatabase> audio_database;
+  std::unique_ptr<MNIST> mnist;
 
   std::mutex m;
   // Round number for the next example to generate.
@@ -310,20 +194,34 @@ static void Train(Network *net) {
   // On a verbose round we compute training error and print out
   // examples.
   constexpr int VERBOSE_EVERY = 1000;
-  // We save this to the error history file every this many
-  // verbose rounds.
-  constexpr int HISTORY_EVERY_VERBOSE = 5;
   int64 total_verbose = 0;
-  constexpr int TIMING_EVERY = 500;
+
+  // How often to also save error history to disk (if we run a
+  // verbose round).
+  static constexpr double HISTORY_EVERY_SEC = 120.0;
+  Periodically history_per(HISTORY_EVERY_SEC);
+
+  static constexpr double SAVE_ERROR_IMAGES_EVERY = 130.0;
+  Periodically error_images_per(SAVE_ERROR_IMAGES_EVERY);
+
+  static constexpr double TIMING_EVERY_SEC = 20.0;
+  Periodically timing_per(TIMING_EVERY_SEC);
+
 
   static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100000;
-
-  constexpr bool CHECKSUM_EXAMPLES = false;
 
   constexpr int IMAGE_EVERY = 100;
   TrainingImages images(*net, "train", MODEL_NAME, IMAGE_EVERY);
 
   printf("Training!\n");
+
+  constexpr int NUM_COLUMNS = 10;
+  std::vector<std::unique_ptr<ErrorImage>> error_images;
+  for (int i = 0; i < NUM_COLUMNS; i++) {
+    string filename = StringPrintf("error-%d.png", i);
+    error_images.emplace_back(
+        std::make_unique<ErrorImage>(2000, EXAMPLES_PER_ROUND, filename));
+  }
 
   auto net_gpu = make_unique<NetworkGPU>(cl, net);
 
@@ -373,23 +271,9 @@ static void Train(Network *net) {
     // (PERF: parallelize?)
 
     Timer getexample_timer;
-    // All examples for the round, flat, as word ids.
+    // All examples for the round, flat.
     auto [inputs, expecteds] = example_thread.GetExamples(net->rounds);
 
-    const string example_checksum = [&]() -> string {
-        if (CHECKSUM_EXAMPLES) {
-          // PERF
-          SHA256::Ctx c;
-          SHA256::Init(&c);
-          SHA256::Update(&c, (const uint8_t*)inputs.data(),
-                         inputs.size() * sizeof (float));
-          SHA256::Update(&c, (const uint8_t*)expecteds.data(),
-                         expecteds.size() * sizeof (float));
-          return SHA256::Ascii(SHA256::FinalVector(&c));
-        } else {
-          return "";
-        }
-      }();
     getexample_ms += getexample_timer.MS();
 
     {
@@ -497,61 +381,44 @@ static void Train(Network *net) {
       if (VERBOSE > 1)
         printf("Got expected\n");
 
-      string example_correct, example_predicted;
-      std::vector<float> losses =
-        UnParallelMapi(expected,
-                       [&](int idx, const std::vector<float> &exp) {
-                         std::vector<float> got;
-                         got.resize(exp.size());
-                         CHECK(got.size() == OUTPUT_SIZE);
-                         CHECK(idx >= 0 && idx < EXAMPLES_PER_ROUND);
-                         training->ExportOutput(idx, &got);
+      // Get loss as abs distance, plus number of incorrect (as booleans).
+      std::vector<float> actuals(EXAMPLES_PER_ROUND * OUTPUT_SIZE);
+      training->ExportOutputs(&actuals);
 
-                         // XXX if this is all we're doing, we should
-                         // instead use the already-computed
-                         // values from GetOutputError, perhaps
-                         // summing on GPU
-                         float loss = 0.0f;
-                         for (int i = 0; i < exp.size(); i++) {
-                           loss += fabsf(exp[i] - got[i]);
-                         }
+      const bool save_history = history_per.ShouldRun();
+      const bool save_error_images = error_images_per.ShouldRun();
+      // compute loss for each digit separately
+      for (int col = 0; col < NUM_COLUMNS; col++) {
 
-                         return loss;
-                       }, max_parallelism);
+        std::vector<std::pair<float, float>> ex(EXAMPLES_PER_ROUND);
+        float average_loss = 0, min_loss = 1.0f / 0.0f, max_loss = 0.0f;
+        for (int idx = 0; idx < EXAMPLES_PER_ROUND; idx++) {
+          float expected = expecteds[idx * NUM_COLUMNS + col];
+          float actual = actuals[idx * NUM_COLUMNS + col];
+          ex[idx] = std::make_pair(expected, actual);
+          float loss = fabsf(expected - actual);
+          min_loss = std::min(min_loss, loss);
+          max_loss = std::max(max_loss, loss);
+          average_loss += loss;
+        }
+        average_loss /= EXAMPLES_PER_ROUND;
 
-      if (VERBOSE > 1)
-        printf("Got losses.\n");
+        if (save_history) {
+          error_history.Add(net->rounds, average_loss, col);
+        }
 
-      float min_loss = 1.0f / 0.0f, average_loss = 0.0f, max_loss = 0.0f;
-      for (auto loss_dist : losses) {
-        min_loss = std::min(loss_dist, min_loss);
-        max_loss = std::max(loss_dist, max_loss);
-        average_loss += loss_dist;
+        error_images[col]->Add(std::move(ex));
+
+        if (save_error_images) {
+          error_images[col]->Save();
+          printf("Wrote %s\n", error_images[col]->Filename().c_str());
+        }
+
+        printf("   %c: %.3f<%.3f<%.3f\n",
+               '0' + col,
+               min_loss, average_loss, max_loss);
       }
-      average_loss /= losses.size();
 
-      const double total_sec = train_timer.MS() / 1000.0;
-      const double eps = total_examples / total_sec;
-
-      printf("%lld|%d: %.3f<%.3f<%.3f",
-             net->rounds, iter,
-             min_loss, average_loss, max_loss);
-      printf(" (%.2f eps)\n", eps);
-      if (!example_checksum.empty())
-        printf("%s\n", example_checksum.c_str());
-#if 0
-      printf("Inputs:\n");
-      for (int i = 0; i + 1033 < inputs.size() && i < 10; i++)
-        printf("%.9f %.9f ", inputs[i], inputs[1033 + i]);
-      printf("\nExpected:\n");
-      for (int i = 0; i < expecteds.size() && i < 10; i++)
-        printf("%.9f ", expecteds[i]);
-      printf("\n");
-#endif
-
-      if ((total_verbose % HISTORY_EVERY_VERBOSE) == 0) {
-        error_history.Add(net->rounds, average_loss, false);
-      }
       total_verbose++;
       loss_ms += loss_timer.MS();
     }
@@ -598,7 +465,7 @@ static void Train(Network *net) {
 
     round_ms += round_timer.MS();
 
-    if (iter % TIMING_EVERY == 0) {
+    if (timing_per.ShouldRun()) {
       double accounted_ms = getexample_ms + example_ms + forward_ms +
         error_ms + decay_ms + backward_ms + update_ms + loss_ms +
         image_ms;
@@ -649,37 +516,10 @@ static void Train(Network *net) {
   }
 }
 
+#if 0
 static unique_ptr<Network> NewParamsNetwork() {
   // Deterministic!
-  ArcFour rc("learn-params-network");
-
-  // After the input layer we have a repeated structure here.
-  // Every layer looks like this:
-  //  [G][lobals][ ][ ]  conv occs     [ ][ ][ --  fft  -- ]
-  //  |-NGLOB---||--NUM_FEATURES * NUM_OCC--||-FFT_WINDOW--|
-  //
-  // Where for the first layer, NUM_FEATURES is just 1 (samples,
-  // although we could easily support stereo pairs!) and NUM_OCC is
-  // WINDOW_SIZE, as though a 1x1 convolution with stride 1 was applied.
-  // FFT_WINDOW is WINDOW_SIZE (DHT) and G=NGLOB=0, as there are
-  // no globals yet.
-  //
-  // (Aside: for regularity and because it might be useful, we could
-  // consider having globals in the inputs. For predicting the
-  // waveform, these would include the parameter values. Other
-  // stuff might include sample rate (although this will be
-  // a constant during training?), min, max, average samples,
-  // or "mipmaps" of the waveform itself.)
-
-  struct Structure {
-    int G = 0;
-    int NGLOB = 0;
-    float GLOB_DENSITY = 0.25f;
-    int NUM_FEATURES = 0;
-    int OCC_DIVISOR = 1;
-    int FFT_WINDOW = 0;
-    float FFT_DENSITY = 0.25f;
-  };
+  ArcFour rc("learn-digits-network");
 
   // For the initial convolution.
   // 44.1 would be one millisecond.
@@ -960,7 +800,7 @@ static unique_ptr<Network> NewParamsNetwork() {
   printf("New network with %lld parameters\n", net->TotalParameters());
   return net;
 }
-
+#endif
 
 int main(int argc, char **argv) {
   cl = new CL;
@@ -969,7 +809,7 @@ int main(int argc, char **argv) {
       Network::ReadFromFile(MODEL_NAME));
 
   if (net.get() == nullptr) {
-    net = NewParamsNetwork();
+    net = NewDigitsNetwork();
     CHECK(net.get() != nullptr);
     net->SaveToFile(MODEL_NAME);
     printf("Wrote to %s\n", MODEL_NAME);
@@ -983,3 +823,4 @@ int main(int argc, char **argv) {
   printf("OK\n");
   return 0;
 }
+

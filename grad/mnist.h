@@ -17,6 +17,10 @@ struct MNIST {
     CHECK(images.size() == labels.size());
   }
 
+  int Num() const {
+    return labels.size();
+  }
+
   void LoadLabels(const std::string &filename) {
     std::vector<uint8_t> bytes = Util::ReadFileBytes(filename);
 
