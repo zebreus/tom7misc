@@ -388,6 +388,11 @@ static void Train(Network *net) {
       const bool save_history = history_per.ShouldRun();
       const bool save_error_images = error_images_per.ShouldRun();
       // compute loss for each digit separately
+
+      printf("%lld rounds [%.2f eps]:\n",
+             net->rounds,
+             (iter * EXAMPLES_PER_ROUND) / train_timer.Seconds());
+
       for (int col = 0; col < NUM_COLUMNS; col++) {
 
         std::vector<std::pair<float, float>> ex(EXAMPLES_PER_ROUND);
@@ -516,282 +521,109 @@ static void Train(Network *net) {
   }
 }
 
-#if 0
-static unique_ptr<Network> NewParamsNetwork() {
+static unique_ptr<Network> NewDigitsNetwork() {
   // Deterministic!
   ArcFour rc("learn-digits-network");
 
-  // For the initial convolution.
-  // 44.1 would be one millisecond.
-
-  static constexpr int INITIAL_CONV_WIDTH = 45;
-  static constexpr int DIV1 = 2, DIV2 = 2, DIV3 = 5;
-
-  {
-    static constexpr int INITIAL_OCC = WINDOW_SIZE - INITIAL_CONV_WIDTH + 1;
-    static_assert((INITIAL_OCC % (DIV1 * DIV2 * DIV3)) == 0);
-  }
-
-  // Each one actually yields two layers in the steady state.
-  vector<Structure> structures = {
-    // Describing the output of the first convolution; not all of
-    // these parameters are used.
-    Structure{
-      .G = 0, .NGLOB = 0, .GLOB_DENSITY = 1.0,
-      .NUM_FEATURES = INITIAL_CONV_WIDTH, .OCC_DIVISOR = 1,
-      .FFT_WINDOW = WINDOW_SIZE, .FFT_DENSITY = 1.0},
-    Structure{
-      .G = 8, .NGLOB = 56, .GLOB_DENSITY = 0.125f,
-      .NUM_FEATURES = (int)(INITIAL_CONV_WIDTH * 0.75), .OCC_DIVISOR = DIV1,
-      .FFT_WINDOW = (int)(WINDOW_SIZE * 0.75), .FFT_DENSITY = 0.25},
-    Structure{
-      .G = 8, .NGLOB = 120, .GLOB_DENSITY = 0.125f,
-      .NUM_FEATURES = (int)(INITIAL_CONV_WIDTH * 0.625), .OCC_DIVISOR = DIV2,
-      .FFT_WINDOW = (int)(WINDOW_SIZE * 0.50), .FFT_DENSITY = 0.25},
-    Structure{
-      .G = 8, .NGLOB = 56, .GLOB_DENSITY = 0.125f,
-      .NUM_FEATURES = (int)(INITIAL_CONV_WIDTH * 0.5), .OCC_DIVISOR = DIV3,
-      .FFT_WINDOW = (int)(WINDOW_SIZE * 0.25), .FFT_DENSITY = 0.25},
-  };
-
-  for (const Structure &s : structures) {
-    CHECK(s.G <= s.NGLOB);
-    CHECK(s.G >= 0);
-    CHECK(s.NGLOB >= 0);
-  }
-
   std::vector<Layer> layers;
 
-  static constexpr int INPUT_SIZE = WINDOW_SIZE * 2;
-  static_assert(INPUT_SIZE > 0);
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
   input_chunk.num_nodes = INPUT_SIZE;
-  input_chunk.width = INPUT_SIZE;
-  input_chunk.height = 1;
+  input_chunk.width = IMG_WIDTH;
+  input_chunk.height = IMG_HEIGHT;
   input_chunk.channels = 1;
 
   layers.push_back(Network::LayerFromChunks(input_chunk));
 
-  // First, convolution on the samples with stride=1.
+  const int CONV1_SIZE = 3;
+  const int CONV1_FEATURES = 32;
+
   Chunk first_conv_chunk =
-    Network::Make1DConvolutionChunk(
-        // Entire window
-        0, WINDOW_SIZE,
-        // num features = conv width, but this is not necessary
-        INITIAL_CONV_WIDTH, INITIAL_CONV_WIDTH,
-        // full overlap so that we are not baking in any particular
-        // phase.
-        1,
+    Network::Make2DConvolutionChunk(
+        // Entire image
+        0, IMG_WIDTH, IMG_HEIGHT,
+        CONV1_FEATURES, CONV1_SIZE, CONV1_SIZE,
+        // full overlap
+        1, 1,
         LEAKY_RELU, WEIGHT_UPDATE);
-  Chunk copy_fft_chunk = Network::MakeCopyChunk(WINDOW_SIZE, WINDOW_SIZE);
 
-  layers.push_back(Network::LayerFromChunks(first_conv_chunk, copy_fft_chunk));
+  const int CONV2_SIZE = 8;
+  const int CONV2_FEATURES = 32;
 
-  // TODO: Maybe more initial convolution layers here?
+  Chunk second_conv_chunk =
+    Network::Make2DConvolutionChunk(
+        // Entire image
+        0, IMG_WIDTH, IMG_HEIGHT,
+        CONV2_FEATURES, CONV2_SIZE, CONV2_SIZE,
+        // full overlap
+        1, 1,
+        LEAKY_RELU, WEIGHT_UPDATE);
+
+  int SPARSE1_SIZE = 256;
+  Chunk sparse_chunk =
+    Network::MakeRandomSparseChunk(
+        &rc, SPARSE1_SIZE,
+        {{.span_start = 0, .span_size = INPUT_SIZE, .ipn = 64}},
+        LEAKY_RELU, WEIGHT_UPDATE);
+
+  layers.push_back(Network::LayerFromChunks(first_conv_chunk,
+                                            second_conv_chunk,
+                                            sparse_chunk));
+
+  int num_conv1 =
+    CONV1_FEATURES * first_conv_chunk.num_occurrences_across *
+    first_conv_chunk.num_occurrences_down;
+  Chunk next_conv1 =
+    Network::Make1DConvolutionChunk(
+        0, num_conv1,
+        32, CONV1_FEATURES,
+        // process the features as a block,
+        CONV1_FEATURES,
+        LEAKY_RELU, WEIGHT_UPDATE);
+
+  int num_conv2 =
+    CONV2_FEATURES * second_conv_chunk.num_occurrences_across *
+    second_conv_chunk.num_occurrences_down;
+  Chunk next_conv2 =
+    Network::Make1DConvolutionChunk(
+        num_conv1, num_conv2,
+        32, CONV2_FEATURES,
+        CONV2_FEATURES,
+        LEAKY_RELU, WEIGHT_UPDATE);
+
+  Chunk sparse2 =
+    Network::MakeRandomSparseChunk(
+        &rc, 256, {{.span_start = num_conv1 + num_conv2,
+                    .span_size = SPARSE1_SIZE, .ipn = 64}},
+        LEAKY_RELU, WEIGHT_UPDATE);
+
+  layers.push_back(Network::LayerFromChunks(next_conv1,
+                                            next_conv2,
+                                            sparse2));
+
+  Chunk sparse3 =
+    Network::MakeRandomSparseChunk(
+        &rc, 512, {{.span_start = 0, .span_size = layers.back().num_nodes,
+                    .ipn = 64}},
+        LEAKY_RELU, WEIGHT_UPDATE);
+
+  layers.push_back(Network::LayerFromChunks(sparse3));
+
+  // more layers?
+
+  // Dense?
+  Chunk sparse_out =
+    Network::MakeRandomSparseChunk(
+        &rc, OUTPUT_SIZE,
+        {{.span_start = 0,
+              .span_size = layers.back().num_nodes,
+          .ipn = 64}},
+        LEAKY_RELU, WEIGHT_UPDATE);
+
+  layers.push_back(Network::LayerFromChunks(sparse_out));
 
   CHECK(layers.back().num_nodes > 0);
-
-  int prev_occurrences = first_conv_chunk.num_occurrences_across;
-  CHECK(prev_occurrences > 0);
-  for (int s = 1; s < structures.size(); s++) {
-    printf("s=%d, prev_occurrences=%d\n", s, prev_occurrences);
-    const Structure &prev = structures[s - 1];
-    const Structure &next = structures[s];
-
-    CHECK(next.G <= next.NGLOB);
-    CHECK(prev_occurrences % next.OCC_DIVISOR == 0) <<
-      "On s=" << s << ", " <<
-      next.OCC_DIVISOR << " must divide " << prev_occurrences;
-
-    // mostly we are mapping from 'prev' to 'next', but we actually
-    // create 'next' globals with the first of the two layers.
-    // XXX need to be clearer about prev vs next use of NGLOB, G, etc.
-
-    // Add the two layers. The first one updates globals using the
-    // whole previous layer, and distributes the first G globals to
-    // the convolution occurrences.
-
-    {
-      CHECK(next.NGLOB > 0) << "Could maybe handle this but the chunk "
-        "would be degenerate";
-
-      vector<Network::SparseSpan> spans;
-      // Depend on entire global block, if there is any.
-      if (prev.NGLOB > 0) {
-        spans.push_back(
-            Network::SparseSpan{
-              .span_start = 0,
-              .span_size = prev.NGLOB,
-              .ipn = prev.NGLOB,
-            });
-      }
-
-      // And depend sparsely on random subset of the rest.
-      const int num_rest = layers.back().num_nodes - prev.NGLOB;
-      CHECK(num_rest > 0);
-      const int rest_ipn = std::max((int)(num_rest * next.GLOB_DENSITY), 1);
-      spans.push_back(
-          Network::SparseSpan{
-            .span_start = prev.NGLOB,
-            .span_size = num_rest,
-            .ipn = rest_ipn});
-
-      Chunk glob = Network::MakeRandomSparseChunk(
-          &rc, next.NGLOB, spans, LEAKY_RELU, WEIGHT_UPDATE);
-
-      // Then, distribute G (from the previous layer; might be none)
-      // into each occurrence (after dividing), as well as copying the FFT.
-      Chunk dist;
-      dist.type = CHUNK_SPARSE;
-      dist.transfer_function = IDENTITY;
-      dist.span_start = 0;
-      // entire window, since we use the globals and the fft too
-      dist.span_size = layers.back().num_nodes;
-      // We only need one copy of G when we combine multiple occurrences
-      // because OCC_DIVISOR > 1.
-      dist.num_nodes = (prev.G + prev.NUM_FEATURES * next.OCC_DIVISOR) *
-        (prev_occurrences / next.OCC_DIVISOR) +
-        prev.FFT_WINDOW;
-      dist.indices_per_node = 1;
-      for (int occ = 0; occ < prev_occurrences / next.OCC_DIVISOR; occ++) {
-        const int feature_start =
-          prev.NGLOB + occ * prev.NUM_FEATURES * next.OCC_DIVISOR;
-        // First G globals.
-        for (int i = 0; i < prev.G; i++)
-          dist.indices.push_back(i);
-        // Then the features.
-        for (int f = 0; f < prev.NUM_FEATURES * next.OCC_DIVISOR; f++)
-          dist.indices.push_back(feature_start + f);
-      }
-      const int fft_start = prev.NGLOB + prev_occurrences * prev.NUM_FEATURES;
-      for (int i = 0; i < prev.FFT_WINDOW; i++)
-        dist.indices.push_back(fft_start + i);
-      CHECK(dist.indices.size() == dist.num_nodes);
-      // Pure copy.
-      dist.weights = std::vector<float>(dist.indices.size(), 1.0f);
-      dist.biases = std::vector<float>(dist.num_nodes, 0.0f);
-      dist.fixed = true;
-      dist.weight_update = SGD;
-      dist.width = dist.num_nodes;
-      dist.height = 1;
-      dist.channels = 1;
-
-      layers.push_back(
-          Network::LayerFromChunks(std::move(glob), std::move(dist)));
-    }
-
-    // Now, the actual work.
-    {
-      // Dense globals to globals.
-      // PERF: Maybe sparse would be better here too.
-      // We already created next.NGLOB globals above, so we use next
-      // here, not prev.
-      Chunk glob;
-      glob.type = CHUNK_DENSE;
-      glob.transfer_function = LEAKY_RELU;
-      glob.num_nodes = next.NGLOB;
-      glob.span_start = 0;
-      glob.span_size = next.NGLOB;
-      glob.indices_per_node = glob.span_size;
-      glob.weights.resize(glob.indices_per_node * glob.num_nodes);
-      glob.biases.resize(glob.num_nodes);
-      glob.weight_update = WEIGHT_UPDATE;
-      glob.weights_aux.resize(glob.weights.size() * 2, 0.0f);
-      glob.biases_aux.resize(glob.biases.size() * 2, 0.0f);
-      glob.fixed = false;
-      glob.width = glob.num_nodes;
-      glob.height = 1;
-      glob.channels = 1;
-
-      // Convolution, including the G globals we distributed above.
-      const int pattern_width =
-        prev.G + prev.NUM_FEATURES * next.OCC_DIVISOR;
-      Chunk conv =
-        Network::Make1DConvolutionChunk(
-            // Span is just the previous convolution part.
-            next.NGLOB, pattern_width * prev_occurrences / next.OCC_DIVISOR,
-            next.NUM_FEATURES, pattern_width,
-            // No overlap
-            pattern_width,
-            LEAKY_RELU, WEIGHT_UPDATE);
-      CHECK(conv.num_nodes ==
-            next.NUM_FEATURES *
-            prev_occurrences / next.OCC_DIVISOR);
-      CHECK(conv.num_occurrences_across == prev_occurrences / next.OCC_DIVISOR);
-
-      const int prev_fft_start =
-        next.NGLOB + pattern_width * prev_occurrences / next.OCC_DIVISOR;
-
-      const int index_pool_size = next.NGLOB + prev.FFT_WINDOW;
-      const int sparse_ipn = std::max(
-          (int)(next.FFT_DENSITY * index_pool_size), 1);
-      // Finally, sparse FFT.
-      Chunk fft;
-      fft.type = CHUNK_SPARSE;
-      fft.fixed = false;
-
-      fft.transfer_function = LEAKY_RELU;
-      fft.num_nodes = next.FFT_WINDOW;
-      fft.span_start = 0;
-      // Doesn't depend on conv part.
-      fft.span_size = layers.back().num_nodes;
-      fft.indices_per_node = sparse_ipn;
-      fft.weight_update = WEIGHT_UPDATE;
-      fft.width = fft.num_nodes;
-      fft.height = 1;
-      fft.channels = 1;
-
-      fft.weights.resize(fft.num_nodes * sparse_ipn, 0.0f);
-      fft.biases.resize(fft.num_nodes, 0.0f);
-      fft.weights_aux.resize(fft.weights.size() * 2, 0.0f);
-      fft.biases_aux.resize(fft.biases.size() * 2, 0.0f);
-
-      // TODO: Always include the corresponding node. Prefer
-      // nearby nodes.
-      for (int n = 0; n < fft.num_nodes; n++) {
-        // Add random indices.
-        vector<uint32_t> index_pool;
-        for (int i = 0; i < next.NGLOB; i++)
-          index_pool.push_back(i);
-        for (int i = 0; i < prev.FFT_WINDOW; i++)
-          index_pool.push_back(prev_fft_start + i);
-        CHECK(index_pool.size() == index_pool_size);
-        Shuffle(&rc, &index_pool);
-        index_pool.resize(sparse_ipn);
-        std::sort(index_pool.begin(), index_pool.end());
-        for (uint32_t idx : index_pool)
-          fft.indices.push_back(idx);
-      }
-
-
-      prev_occurrences = conv.num_occurrences_across;
-      layers.push_back(Network::LayerFromChunks(std::move(glob),
-                                                std::move(conv),
-                                                std::move(fft)));
-    }
-  }
-
-  // Finally, a dense layer to produce the required number of predicted
-  // parameters.
-  Chunk sink;
-  sink.type = CHUNK_DENSE;
-  sink.transfer_function = LEAKY_RELU;
-  sink.num_nodes = NUM_PARAMS;
-  sink.span_start = 0;
-  sink.span_size = layers.back().num_nodes;
-  sink.indices_per_node = sink.span_size;
-  sink.weights.resize(sink.indices_per_node * sink.num_nodes);
-  sink.biases.resize(sink.num_nodes);
-  sink.weight_update = WEIGHT_UPDATE;
-  sink.weights_aux.resize(sink.weights.size() * 2, 0.0f);
-  sink.biases_aux.resize(sink.biases.size() * 2, 0.0f);
-  sink.fixed = false;
-  sink.width = sink.num_nodes;
-  sink.height = 1;
-  sink.channels = 1;
-
-  layers.push_back(Network::LayerFromChunks(std::move(sink)));
 
   auto net = std::make_unique<Network>(layers);
 
@@ -800,7 +632,6 @@ static unique_ptr<Network> NewParamsNetwork() {
   printf("New network with %lld parameters\n", net->TotalParameters());
   return net;
 }
-#endif
 
 int main(int argc, char **argv) {
   cl = new CL;

@@ -1,7 +1,7 @@
 
-default: iter.exe
+default: iter.exe train.exe
 
-all: grad.exe iter.exe make-data.exe mnist_test.exe
+all: grad.exe iter.exe make-data.exe mnist_test.exe evaluate.exe
 
 CC_LIB=../cc-lib
 
@@ -67,6 +67,11 @@ train.exe : train.o network.o network-gpu.o error-history.o clutil.o $(OBJECTS)
 mnist_test.exe : mnist_test.o $(CCLIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
+
+evaluate.exe : evaluate.o network.o network-gpu.o error-history.o clutil.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 
 clean :
 	rm -f *.o $(OBJECTS) *.exe
