@@ -75,6 +75,10 @@ struct ImageRGBA {
   void BlendPixel(int x, int y, uint8 r, uint8 g, uint8 b, uint8 a);
   void BlendPixel32(int x, int y, uint32 color);
 
+  // TODO:
+  // Blend a filled rectangle with sub-pixel precision. Clips.
+  // void BlendRectSub32(float x, float y, float w, float h, uint32 color);
+
   // Blend a filled rectangle. Clips.
   void BlendRect(int x, int y, int w, int h,
                  uint8 r, uint8 g, uint8 b, uint8 a);
@@ -289,7 +293,7 @@ void ImageRGBA::SetPixel(int x, int y,
 
   const uint32 color =
     ((uint32)r << 24) | ((uint32)g << 16) | ((uint32)b << 8) | (uint32)a;
-  
+
   rgba[y * width + x] = color;
 }
 

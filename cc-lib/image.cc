@@ -142,12 +142,12 @@ ImageRGBA::ImageRGBA(const std::vector<uint32> &rgba32,
 // static
 ImageRGBA *ImageRGBA::Load(const string &filename) {
   vector<uint8> ret;
-  int width, height, bpp_unused;
+  int width = 0, height = 0, bpp_unused = 0;
   uint8 *stb_rgba = stbi_load(filename.c_str(),
                               &width, &height, &bpp_unused, 4);
+  if (stb_rgba == nullptr) return nullptr;
   const int bytes = width * height * 4;
   ret.resize(bytes);
-  if (stb_rgba == nullptr) return nullptr;
   // TODO: Is this portable (or even correct) wrt to endianness?
   memcpy(ret.data(), stb_rgba, bytes);
   stbi_image_free(stb_rgba);
@@ -156,13 +156,13 @@ ImageRGBA *ImageRGBA::Load(const string &filename) {
 
 ImageRGBA *ImageRGBA::LoadFromMemory(const char *data, size_t size) {
   vector<uint8> ret;
-  int width, height, bpp_unused;
+  int width = 0, height = 0, bpp_unused = 0;
   uint8 *stb_rgba = stbi_load_from_memory(
       (const stbi_uc*)data, size,
       &width, &height, &bpp_unused, 4);
+  if (stb_rgba == nullptr) return nullptr;
   const int bytes = width * height * 4;
   ret.resize(bytes);
-  if (stb_rgba == nullptr) return nullptr;
   // TODO: Is this portable (or even correct) wrt to endianness?
   memcpy(ret.data(), stb_rgba, bytes);
   stbi_image_free(stb_rgba);
@@ -213,13 +213,13 @@ bool ImageRGBA::Save(const std::string &filename) const {
 }
 
 vector<uint8> ImageRGBA::SaveToVec() const {
-  std::vector<uint8> buffer = ToBuffer8();  
+  std::vector<uint8> buffer = ToBuffer8();
   CHECK((int)buffer.size() == width * height * 4);
   return stbi_make_png_rgba(width, height, buffer.data());
 }
 
 string ImageRGBA::SaveToString() const {
-  std::vector<uint8> buffer = ToBuffer8();  
+  std::vector<uint8> buffer = ToBuffer8();
   CHECK((int)buffer.size() == width * height * 4);
   const vector<uint8> v = stbi_make_png_rgba(width, height, buffer.data());
   string ret;
@@ -335,7 +335,7 @@ void ImageRGBA::BlendPixel(int x, int y,
   if ((unsigned)y >= (unsigned)height) return;
 
   using word = uint16_t;
-  
+
   const int i = (y * width + x);
   const auto &[old_r, old_g, old_b, old_a] = Unpack32(rgba[i]);
   // TODO: Figure out how to blend when dest is also transparent.
@@ -356,8 +356,8 @@ void ImageRGBA::BlendPixel(int x, int y,
   // Note that the components cannot be > 0xFF.
   if (rr > 0xFF) __builtin_unreachable();
   if (gg > 0xFF) __builtin_unreachable();
-  if (bb > 0xFF) __builtin_unreachable();  
-  
+  if (bb > 0xFF) __builtin_unreachable();
+
   rgba[i] = Pack32(rr, gg, bb, 0xFF);
 }
 

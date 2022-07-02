@@ -1,4 +1,7 @@
 
+#ifndef _CC_LIB_OPT_OPTIMIZER_H
+#define _CC_LIB_OPT_OPTIMIZER_H
+
 // Fancier wrapper around black-box optimizer (opt.h).
 // Improvements here:
 //   - function can take integral parameters in addition
@@ -14,6 +17,8 @@
 
 #include <functional>
 #include <array>
+#include <cstring>
+#include <cmath>
 #include <optional>
 #include <utility>
 #include <limits>
@@ -324,14 +329,16 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
 
   // PERF: Better set biteopt parameters based on termination conditions.
   // Linear scaling is probably not right.
-  // Perhaps this could itself be optimized? 
+  // Perhaps this could itself be optimized?
   const int ITERS = 1000 * powf(N, 1.5f);
-  
+
   for (int seed = 1; !stop; seed++) {
-	// stop is set by the callback below, but g++ sometimes gets mad
-	(void)(stop = !!stop);
+  // stop is set by the callback below, but g++ sometimes gets mad
+  (void)(stop = !!stop);
     // PERF: Biteopt now has stopping conditions, so we should be able
-	// to be more accurate here.
+  // to be more accurate here.
     Opt::Minimize<N>(df, lbs, ubs, ITERS, 1, 1, seed);
   }
 }
+
+#endif
