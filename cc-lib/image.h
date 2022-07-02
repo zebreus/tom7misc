@@ -303,20 +303,21 @@ void ImageRGBA::SetPixel32(int x, int y, uint32 color) {
   rgba[y * width + x] = color;
 }
 
-
 uint8_t ImageA::GetPixel(int x, int y) const {
+  if ((unsigned)x >= (unsigned)width) return 0;
+  if ((unsigned)y >= (unsigned)height) return 0;
   return alpha[y * width + x];
 }
 
 void ImageA::SetPixel(int x, int y, uint8_t value) {
-  if (x < 0 || y < 0) return;
-  if (x >= width || y >= height) return;
+  if ((unsigned)x >= (unsigned)width) return;
+  if ((unsigned)y >= (unsigned)height) return;
   alpha[y * width + x] = value;
 }
 
 void ImageA::BlendPixel(int x, int y, uint8_t v) {
-  if (x < 0 || y < 0) return;
-  if (x >= width || y >= height) return;
+  if ((unsigned)x >= (unsigned)width) return;
+  if ((unsigned)y >= (unsigned)height) return;
   // XXX test this blending math
   uint8_t old = GetPixel(x, y);
   uint16_t opaque_part = 255 * v;
@@ -328,18 +329,20 @@ void ImageA::BlendPixel(int x, int y, uint8_t v) {
 
 
 float ImageF::GetPixel(int x, int y) const {
+  if ((unsigned)x >= (unsigned)width) return 0.0f;
+  if ((unsigned)y >= (unsigned)height) return 0.0f;
   return alpha[y * width + x];
 }
 
 void ImageF::SetPixel(int x, int y, float value) {
-  if (x < 0 || y < 0) return;
-  if (x >= width || y >= height) return;
+  if ((unsigned)x >= (unsigned)width) return;
+  if ((unsigned)y >= (unsigned)height) return;
   alpha[y * width + x] = std::clamp(value, 0.0f, 1.0f);
 }
 
 void ImageF::BlendPixel(int x, int y, float value) {
-  if (x < 0 || y < 0) return;
-  if (x >= width || y >= height) return;
+  if ((unsigned)x >= (unsigned)width) return;
+  if ((unsigned)y >= (unsigned)height) return;
   const float old = GetPixel(x, y);
   const float opaque_part = value;
   const float transparent_part = (1.0f - value) * old;
