@@ -555,7 +555,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
   input_chunk.height = IMG_HEIGHT;
   input_chunk.channels = 1;
 
-  constexpr TransferFunction TF = GRAD1;
+  constexpr TransferFunction TF = IDENTITY;
 
   layers.push_back(Network::LayerFromChunks(input_chunk));
 

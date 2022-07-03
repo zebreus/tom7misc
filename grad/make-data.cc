@@ -299,6 +299,7 @@ int main(int argc, char **argv) {
                     << " from " << f1 << " " << f2;
   }
 
+  #if 0
   string out_fwd = "static const uint16_t forward[65536] = {\n";
   for (int i = 0; i < 65536; i++) {
     if (i > 0 && i % 8 == 0) out_fwd += "\n";
@@ -306,6 +307,7 @@ int main(int argc, char **argv) {
   }
   out_fwd += "\n};\n";
   Util::WriteFile("the-data.h", out_fwd);
+  #endif
 
   ImageRGBA img(IMAGE_SIZE, IMAGE_SIZE);
   img.Clear32(0x000000FF);
