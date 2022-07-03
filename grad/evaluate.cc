@@ -8,6 +8,7 @@
 
 #include "timer.h"
 #include "image.h"
+#include "base/stringprintf.h"
 
 using namespace std;
 
@@ -75,7 +76,17 @@ int main(int argc, char **argv) {
   outputs.resize(NUM_TEST * OUTPUT_SIZE);
   training->ExportOutputs(&outputs);
 
+  const int PAD = 1;
+  const int ACROSS = 68;
+  const int DOWN = 38;
+  const int SQUARE = 28 + PAD;
+
+  ImageRGBA wrong(SQUARE * ACROSS, SQUARE * DOWN);
+  wrong.Clear32(0x000055FF);
+
+
   int correct = 0;
+  int xx = 0, yy = 0;
   for (int idx = 0; idx < NUM_TEST; idx++) {
     int besti = 0;
     float bestv = -1.0/0.0;
@@ -87,13 +98,29 @@ int main(int argc, char **argv) {
       }
     }
 
-    if (besti == mnist_test.labels[idx]) {
+    const int correct_label = mnist_test.labels[idx];
+    if (besti == correct_label) {
       correct++;
+    } else {
+      wrong.CopyImage(xx * SQUARE, yy * SQUARE,
+                      mnist_test.images[idx].GreyscaleRGBA());
+      wrong.BlendText32(xx * SQUARE, yy * SQUARE,
+                        0x00FF00AA,
+                        StringPrintf("%c", correct_label + '0'));
+      wrong.BlendText32(xx * SQUARE + (SQUARE - 10), yy * SQUARE,
+                        0xFF0000AA,
+                        StringPrintf("%c", besti + '0'));
+      xx++;
+      if (xx > ACROSS) {
+        xx = 0;
+        yy++;
+      }
     }
   }
 
   printf("%d/%d correct = %.3f%%\n",
          correct, NUM_TEST, (double)(correct * 100.0) / NUM_TEST);
+  wrong.Save("wrong.png");
 
   return 0;
 }

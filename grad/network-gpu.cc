@@ -299,6 +299,8 @@ void ForwardLayerCL::RunForwardPrefix(TrainingRoundGPU *train, int src_layer,
                                    (void *)&biases));
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 4, sizeof (cl_mem),
                                    (void *)&all_dst_values));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 5, sizeof (cl_mem),
+                                   (void *)&train->forward_table));
 
       // TODO: Break into smaller chunks if nodes * examples is
       // too large?
@@ -413,6 +415,8 @@ void SetOutputErrorCL::SetOutputError(TrainingRoundGPU *train) {
                                    (void *)&all_expected));
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
                                    (void *)&all_output_error));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel, 3, sizeof (cl_mem),
+                                   (void *)&train->deriv_table));
 
       size_t global_work_offset[] = { 0, 0, };
       size_t global_work_size[] = {
@@ -824,6 +828,8 @@ void BackwardLayerCL::BackwardLayer(TrainingRoundGPU *train,
                                    (void *)&all_src_output));
       CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 1, sizeof (cl_mem),
                                    (void *)&all_src_error));
+      CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 2, sizeof (cl_mem),
+                                   (void *)&train->deriv_table));
 
       size_t global_work_offset[] = { 0, 0 };
       size_t global_work_size[] = {

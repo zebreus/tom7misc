@@ -2,6 +2,9 @@
 #ifndef _GRAD_GRAD_UTIL_H
 #define _GRAD_GRAD_UTIL_H
 
+#include <memory>
+#include <cstdint>
+
 #include "base/logging.h"
 #include "base/stringprintf.h"
 

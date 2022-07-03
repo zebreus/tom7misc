@@ -20,11 +20,18 @@
 //   value I've used in the past: 1000000.0f
 // SRC_LAYER_SIZE, the number of nodes in the source layer.
 
+inline ushort FloatToU16(float f) {
+  ushort h;
+  vstore_half(f, 0, (half*)&h);
+  return h;
+}
+
 __kernel void BackwardSecondPass(
                   // Full src output, size layers[src].num_nodes per example.
                   __global const float *restrict src_output,
                   // Full src errors, parallel to src_output.
-                  __global float *restrict src_error) {
+                  __global float *restrict src_error,
+                  __global const float *restrict deriv_table) {
   // index into chunk
   // PERF: We could avoid the constant offset by doing this
   // with global_work_offset?

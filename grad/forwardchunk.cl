@@ -37,6 +37,12 @@ inline float ToHalf(float f) {
   return vload_half(0, (half*)&h);
 }
 
+inline ushort FloatToU16(float f) {
+  ushort h;
+  vstore_half(f, 0, (half*)&h);
+  return h;
+}
+
 // We don't actually need to know the number of nodes within the kernel;
 // the global id just tells us which node we work on. But the number
 // of indices per node is needed to compute offsets.
@@ -51,7 +57,8 @@ __kernel void ForwardChunkSparse(
                 // size chunk.num_nodes.
                 __global const float *restrict bias,
                 // size layers[dst_layer].num_nodes for each example
-                __global float *restrict output_values) {
+                __global float *restrict output_values,
+                __global const half *restrict forward_table) {
   const int node_idx = get_global_id(0);
   const int example_idx = get_global_id(1);
 
@@ -95,7 +102,8 @@ __kernel void ForwardChunkDense(
                 // to the interior of the destination layer's output
                 // stimulation, so that output_values[0] is the first
                 // output of the chunk.
-                __global float *restrict output_values) {
+                __global float *restrict output_values,
+                __global const half *restrict forward_table) {
   const int node_idx = get_global_id(0);
   const int example_idx = get_global_id(1);
 
@@ -135,7 +143,8 @@ __kernel void ForwardChunkConvolutional(
                 // to the interior of the destination layer's output
                 // stimulation, so that output_values[0] is the first
                 // output of the chunk.
-                __global float *restrict output_values) {
+                __global float *restrict output_values,
+                __global const half *restrict forward_table) {
 
   // Note: I tried making this a 2D kernel but it was measurably worse.
   const int node_idx = get_global_id(0);

@@ -17,10 +17,18 @@
 //  CHUNK_START - the position within the layer where the chunk's nodes
 //     reside
 
+inline ushort FloatToU16(float f) {
+  ushort h;
+  vstore_half(f, 0, (half*)&h);
+  return h;
+}
+
 // Each of the memories is a sub-buffer of the size of the chunk's span.
 __kernel void SetOutputError(__global const float *restrict actual_outputs,
                              __global const float *restrict expected,
-                             __global float *restrict output_error) {
+                             __global float *restrict output_error,
+                             __global const float *restrict deriv_table) {
+
   // k is the index within the chunk
   const int k = get_global_id(0);
   const int example_num = get_global_id(1);

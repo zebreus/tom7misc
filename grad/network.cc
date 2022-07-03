@@ -32,6 +32,7 @@ const char *TransferFunctionName(TransferFunction tf) {
   case LEAKY_RELU: return "LEAKY_RELU";
   case IDENTITY: return "IDENTITY";
   case TANH: return "TANH";
+  case GRAD1: return "GRAD1";
   default: return "??INVALID??";
   }
 }
@@ -98,9 +99,12 @@ const char *const Network::TANH_FN =
   // "#define FORWARD(potential) ((exp(potential) - exp(-(potential)))/(exp(potential) + exp(-(potential))))\n"
   // "#define FORWARD(potential) ((exp(2.0f * potential) - 1.0f) / (exp(2.0f * potential) + 1.0f))\n"
   // PERF native_tanh?
-  "#define FORWARD(potentnail) tanh(potential)\n"
+  "#define FORWARD(potential) tanh(potential)\n"
   "#define DERIVATIVE(fx) (1.0f - fx * fx)\n";
 
+const char *const Network::GRAD1_FN =
+  "#define FORWARD(potential) vload_half(FloatToU16(potential), forward_table)\n"
+  "#define DERIVATIVE(fx) deriv_table[FloatToU16(fx)]\n";
 
 string Network::TransferFunctionDefines(TransferFunction tf) {
   switch (tf) {
@@ -109,6 +113,7 @@ string Network::TransferFunctionDefines(TransferFunction tf) {
   case LEAKY_RELU: return Network::LEAKY_RELU_FN;
   case IDENTITY: return Network::IDENTITY_FN;
   case TANH: return Network::TANH_FN;
+  case GRAD1: return Network::GRAD1_FN;
   default:
     CHECK(false) << "No define for transfer function "
                  << tf << ": " << TransferFunctionName(tf);
@@ -374,6 +379,9 @@ void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
     case TANH:
       RunForwardChunkWithFn<TanhFn>(
           src_values, chunk, dst_values, out_idx);
+      break;
+    case GRAD1:
+      CHECK(false) << "Not implemented; needs table";
       break;
     default:
       CHECK(false) << "Unimplemented transfer function " <<
@@ -1540,6 +1548,9 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
           const float mag = [chunk]() {
               switch (chunk->transfer_function) {
               default:
+              case GRAD1:
+                // Grad1 also has zero mean, I believe, but we
+                // should maybe verify
               case TANH:
               case IDENTITY:
                 return 1.0f / sqrtf(chunk->indices_per_node);

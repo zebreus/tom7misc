@@ -555,6 +555,8 @@ static unique_ptr<Network> NewDigitsNetwork() {
   input_chunk.height = IMG_HEIGHT;
   input_chunk.channels = 1;
 
+  constexpr TransferFunction TF = GRAD1;
+
   layers.push_back(Network::LayerFromChunks(input_chunk));
 
   const int CONV1_SIZE = 3;
@@ -567,7 +569,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
         CONV1_FEATURES, CONV1_SIZE, CONV1_SIZE,
         // full overlap
         1, 1,
-        LEAKY_RELU, WEIGHT_UPDATE);
+        TF, WEIGHT_UPDATE);
 
   const int CONV2_SIZE = 8;
   const int CONV2_FEATURES = 128;
@@ -579,14 +581,14 @@ static unique_ptr<Network> NewDigitsNetwork() {
         CONV2_FEATURES, CONV2_SIZE, CONV2_SIZE,
         // full overlap
         1, 1,
-        LEAKY_RELU, WEIGHT_UPDATE);
+        TF, WEIGHT_UPDATE);
 
   int SPARSE1_SIZE = 256;
   Chunk sparse_chunk =
     Network::MakeRandomSparseChunk(
         &rc, SPARSE1_SIZE,
         {{.span_start = 0, .span_size = INPUT_SIZE, .ipn = 64}},
-        LEAKY_RELU, WEIGHT_UPDATE);
+        TF, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(first_conv_chunk,
                                             second_conv_chunk,
@@ -601,7 +603,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
         64, CONV1_FEATURES,
         // process the features as a block,
         CONV1_FEATURES,
-        LEAKY_RELU, WEIGHT_UPDATE);
+        TF, WEIGHT_UPDATE);
 
   int num_conv2 =
     CONV2_FEATURES * second_conv_chunk.num_occurrences_across *
@@ -611,13 +613,13 @@ static unique_ptr<Network> NewDigitsNetwork() {
         num_conv1, num_conv2,
         64, CONV2_FEATURES,
         CONV2_FEATURES,
-        LEAKY_RELU, WEIGHT_UPDATE);
+        TF, WEIGHT_UPDATE);
 
   Chunk sparse2 =
     Network::MakeRandomSparseChunk(
         &rc, 256, {{.span_start = num_conv1 + num_conv2,
                     .span_size = SPARSE1_SIZE, .ipn = 64}},
-        LEAKY_RELU, WEIGHT_UPDATE);
+        TF, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(next_conv1,
                                             next_conv2,
@@ -627,7 +629,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
     Network::MakeRandomSparseChunk(
         &rc, 512, {{.span_start = 0, .span_size = layers.back().num_nodes,
                     .ipn = 64}},
-        LEAKY_RELU, WEIGHT_UPDATE);
+        TF, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(sparse3));
 
@@ -637,7 +639,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
     Network::MakeRandomSparseChunk(
         &rc, 512, {{.span_start = 0, .span_size = layers.back().num_nodes,
                     .ipn = 64}},
-        LEAKY_RELU, WEIGHT_UPDATE);
+        TF, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(sparse4));
   */
@@ -646,7 +648,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
   Chunk dense_out =
     Network::MakeDenseChunk(OUTPUT_SIZE,
                             0, layers.back().num_nodes,
-                            LEAKY_RELU, WEIGHT_UPDATE);
+                            TF, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(dense_out));
 

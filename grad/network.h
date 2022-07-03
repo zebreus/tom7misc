@@ -70,6 +70,8 @@ enum TransferFunction {
   // Output range is (-1, 1).
   TANH = 4,
 
+  GRAD1 = 5,
+
   NUM_TRANSFER_FUNCTIONS,
 };
 
@@ -268,6 +270,7 @@ struct Network {
   static const char *const LEAKY_RELU_FN;
   static const char *const IDENTITY_FN;
   static const char *const TANH_FN;
+  static const char *const GRAD1_FN;
 
   // Return one of the above constants (or abort for an unknown
   // transfer function).

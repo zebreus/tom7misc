@@ -1,6 +1,8 @@
 
 // GPU (OpenCL) implementation of inference and training; goes
 // with network.h.
+//
+// I ruined this one with hacks for the "grad" project.
 
 #ifndef _NETWORK_GPU_H
 #define _NETWORK_GPU_H
@@ -10,11 +12,14 @@
 #include <vector>
 #include <mutex>
 #include <cstdint>
+#include <memory>
 
 #include "base/logging.h"
 
 #include "network.h"
 #include "clutil.h"
+
+#include "grad-util.h"
 
 // PERF: For many of these, we use mutexes to avoid setting a
 // kernels arguments from multiple threads. But we could have
@@ -144,6 +149,20 @@ struct TrainingRoundGPU {
     expected =
       CreateUninitializedGPUMemory<float>(cl->context,
                                           output_size * num_examples);
+
+    std::vector<uint16_t> fwd =
+      GradUtil::GetFunctionFromFile("forward.png");
+    std::vector<float> der =
+      GradUtil::GetDerivativeFromFile("deriv.png");
+
+    forward_table =
+      CreateUninitializedGPUMemory<uint16_t>(cl->context, 65536);
+    deriv_table =
+      CreateUninitializedGPUMemory<float>(cl->context, 65536);
+
+    CopyBufferToGPU(cl->queue, fwd, forward_table);
+    CopyBufferToGPU(cl->queue, der, deriv_table);
+    clFinish(cl->queue);
   }
 
   // Load one example's input at the given index.
@@ -220,6 +239,12 @@ struct TrainingRoundGPU {
   std::vector<cl_mem> errors;
   // Size of final stimulation * num_examples.
   cl_mem expected;
+
+  // HAX for grad project
+  // 65536 * half
+  cl_mem forward_table;
+  // 65536 * float
+  cl_mem deriv_table;
 
   ~TrainingRoundGPU() {
     for (cl_mem m : stimulations) {
