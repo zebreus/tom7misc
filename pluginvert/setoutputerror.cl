@@ -16,6 +16,12 @@
 //     sizes per example.
 //  CHUNK_START - the position within the layer where the chunk's nodes
 //     reside
+//  CLIP_ERROR - a boolean. If true, error values are clamped.
+//  LARGE_ERROR - a positive float giving the maximum permissible post-
+//   derivative error per node per round. This is not quite the same
+//   as a limit on the learning rate, because it also prevents large
+//   errors from being backpropagated. Ignored if CLIP_ERROR is false.
+//   value I've used in the past: 1000000.0f
 
 // Each of the memories is a sub-buffer of the size of the chunk's span.
 __kernel void SetOutputError(__global const float *restrict actual_outputs,
@@ -39,5 +45,14 @@ __kernel void SetOutputError(__global const float *restrict actual_outputs,
   // since this is most efficient for sigmoid and works for relu.
 
   // Note in some presentations this is out_k - expected_k.
-  output_error[idx] = DERIVATIVE(rout_k) * (rexpected_k - rout_k);
+  const float err = DERIVATIVE(rout_k) * (rexpected_k - rout_k);
+
+  output_error[idx] =
+  #if CLIP_ERROR
+    fmax(-LARGE_ERROR, fmin(LARGE_ERROR, err))
+  #else
+    err
+  #endif
+    ;
+
 }

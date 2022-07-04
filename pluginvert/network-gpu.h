@@ -308,6 +308,11 @@ struct ForwardLayerCL {
 // Set the error values from the actual and expected outputs, possibly
 // applying some remapping of them.
 struct SetOutputErrorCL {
+  // If true, prevent any error value from exceeding the given magnitude.
+  // In particular, infinite errors are troublesome because when we add
+  // +inf and -inf we get nan, which is harder to clip later.
+  static constexpr bool CLIP_ERROR = true;
+  static constexpr float LARGE_ERROR = 1000000.0f;
 
   // Optional remap function takes chunk id, node index within chunk, and
   // value; see setoutputerror.cl.

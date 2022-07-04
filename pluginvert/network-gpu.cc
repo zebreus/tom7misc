@@ -373,10 +373,14 @@ SetOutputErrorCL::SetOutputErrorCL(
                   "\n"
                   "#define CHUNK_START %d\n"
                   "#define CHUNK_IDX %d\n"
-                  "#define LAYER_SIZE %d\n",
+                  "#define LAYER_SIZE %d\n"
+                  "#define CLIP_ERROR %s\n"
+                  "#define LARGE_ERROR %0.8ff\n",
                   chunk_start,
                   chunk_idx,
-                  layer.num_nodes);
+                  layer.num_nodes,
+                  CLIP_ERROR ? "true" : "false",
+                  LARGE_ERROR);
 
     kernel_src += base_src;
 

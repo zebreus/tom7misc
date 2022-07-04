@@ -549,7 +549,7 @@ static ImageRGBA ChunkWeightsSparseDense(
   // span).
 
   static constexpr int MAX_GAP = 8;
-  static constexpr int GAP_DRAW_SIZE = 19;
+  static constexpr int GAP_DRAW_SIZE = 18;
   ModelInfo::Intervals iv(MAX_GAP, GAP_DRAW_SIZE);
   for (int x = 0; x < chunk.num_nodes; x++) {
     const int start = x * ipn;
@@ -628,16 +628,34 @@ static ImageRGBA ChunkWeightsSparseDense(
     }
   }
 
-  // XXX Draw gaps
+  // Draw gaps
   for (const auto &[gapy, skipped] : iv.GetGaps(prev_nodes)) {
     img.BlendBox32(WEIGHTSX, WEIGHTSY + gapy + 1,
                    chunk.num_nodes, GAP_DRAW_SIZE - 2,
                    0xFFFFFF77, {0xFFFFFF33});
+    // Stipple.
+    for (int y = 0; y < GAP_DRAW_SIZE - 6; y++) {
+      for (int x = 0; x < chunk.num_nodes - 4; x++) {
+        bool parity = (y & 1) ^ (x & 1);
+        if (parity)
+          img.BlendPixel32(WEIGHTSX + 2 + x, WEIGHTSY + gapy + 3 + y,
+                           0xFFFFFF77);
+      }
+    }
+
     string s = StringPrintf("%d skipped", skipped);
     int swidth = s.size() * 9;
+    for (int dy : {-1, 0, 1}) {
+      for (int dx : {-1, 0, 1}) {
+        img.BlendText32(WEIGHTSX + (chunk.num_nodes / 2) - (swidth / 2) + dx,
+                        WEIGHTSY + gapy + 5 + dy,
+                        0x000000FF, s);
+      }
+    }
     img.BlendText32(WEIGHTSX + (chunk.num_nodes / 2) - (swidth / 2),
                     WEIGHTSY + gapy + 5,
                     0xFFFFFFAA, s);
+
   }
 
   img.BlendText32(LEFT, 2, 0xCCCCCCFF,

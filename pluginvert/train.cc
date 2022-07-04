@@ -30,6 +30,7 @@
 #include "audio-database.h"
 #include "plugins.h"
 #include "crypt/sha256.h"
+#include "timer.h"
 
 using namespace std;
 
