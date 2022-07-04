@@ -508,7 +508,7 @@ TrainTest(TrainNet train_net,
   return std::make_pair(
       max_iterations,
       StringPrintf("didn't converge. error still %.6f",
-                   max_iterations));
+                   average_loss));
 }
 
 static void TestChunkSchedule() {

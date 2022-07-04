@@ -98,7 +98,7 @@ const char *const Network::TANH_FN =
   // "#define FORWARD(potential) ((exp(potential) - exp(-(potential)))/(exp(potential) + exp(-(potential))))\n"
   // "#define FORWARD(potential) ((exp(2.0f * potential) - 1.0f) / (exp(2.0f * potential) + 1.0f))\n"
   // PERF native_tanh?
-  "#define FORWARD(potentnail) tanh(potential)\n"
+  "#define FORWARD(potential) tanh(potential)\n"
   "#define DERIVATIVE(fx) (1.0f - fx * fx)\n";
 
 
@@ -912,7 +912,7 @@ static inline uint32_t PackFloat(float f) {
 
 static inline float UnpackFloat(uint32_t u) {
   static_assert(sizeof (float) == 4);
-  float ret = 0;
+  float ret = 0.0f;
   std::memcpy(&ret, &u, sizeof (float));
   return ret;
 }
@@ -1518,7 +1518,7 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
 
           // Good weight initialization is important for training deep
           // models; if the initialized weights are too small, the
-          // gradient vanishes and training stalls. If it is too
+          // gradient vanishes and training stalls. If they are too
           // large, it explodes. One standard goal is to maintain that
           // the output variance is the same as the input variance
           // for each node.

@@ -42,6 +42,10 @@ OBJECTS=$(CCLIB_OBJECTS) $(RE2_OBJECTS) network.o error-history.o modelinfo.o au
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static $(FFTW)/.libs/libfftw3.a
 
+modelinfo_test.exe : $(OBJECTS) modelinfo_test.o
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 get-modelinfo.exe : $(OBJECTS) get-modelinfo.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"

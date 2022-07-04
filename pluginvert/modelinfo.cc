@@ -378,6 +378,163 @@ static ImageRGBA ChunkWeightsConvolution(
   return img;
 }
 
+ModelInfo::Intervals::Intervals(int max_gap, int gap_draw_size) :
+  max_gap(max_gap), gap_draw_size(gap_draw_size) {}
+
+int ModelInfo::Intervals::GetPos(int idx) const {
+  int pos = 0;
+  CHECK(!ivals.empty()) << "Index must have been previously inserted";
+  const int first_start = ivals.begin()->first;
+  if (first_start != 0) pos += gap_draw_size;
+  for (auto it = ivals.begin(); it != ivals.end(); ++it) {
+    const auto [start, length] = *it;
+    if (idx >= start && idx < start + length) {
+      return pos + (idx - start);
+    }
+    pos += length;
+    pos += gap_draw_size;
+  }
+
+  CHECK(false) << "Index must have been previously inserted";
+  return 0;
+}
+
+std::vector<std::pair<int, int>>
+ModelInfo::Intervals::GetGaps(int size) const {
+  if (ivals.empty()) {
+    if (size == 0) return {};
+    else return {std::make_pair(0, size)};
+  }
+
+  std::vector<std::pair<int, int>> ret;
+
+  int pos = 0;
+  const int first_start = ivals.begin()->first;
+  if (first_start != 0) {
+    ret.emplace_back(pos, first_start);
+    pos += gap_draw_size;
+  }
+
+  for (auto it = ivals.begin(); it != ivals.end(); /* in loop */) {
+    const auto [start, length] = *it;
+    pos += length;
+
+    ++it;
+    if (it == ivals.end()) {
+      // Only a gap at the end if we are not ending at the size.
+      if (start + length != size) {
+        ret.emplace_back(pos, size - start + length);
+        pos += gap_draw_size;
+      }
+    } else {
+      const auto [next_start, next_length_] = *it;
+      ret.emplace_back(pos, next_start - start + length);
+      pos += gap_draw_size;
+    }
+  }
+
+  return ret;
+}
+
+void ModelInfo::Intervals::Add(int idx) {
+  if (ivals.empty()) {
+    // Create singleton interval.
+    ivals[idx] = 1;
+    return;
+  }
+
+  // First key *greater* than idx.
+  auto it = ivals.upper_bound(idx);
+  if (it == ivals.end()) {
+    CHECK(!ivals.empty());
+    --it;
+    const auto [start, length] = *it;
+    int gap = idx - (start + length);
+    if (gap < 0) {
+      // already included
+      return;
+    } if (gap < max_gap) {
+      // grow to include it
+      ivals[start] = idx - start + 1;
+      return;
+    } else {
+      // nothing after,
+      // so this is a new singleton interval
+      ivals[idx] = 1;
+      return;
+    }
+  } else if (it == ivals.begin()) {
+    CHECK(it != ivals.end());
+    const auto [start, length] = *it;
+    CHECK(start > idx);
+    int gap = start - idx;
+    if (gap < max_gap) {
+      // merge to the right
+      ivals.erase(it);
+      ivals[idx] = length + gap;
+      return;
+    } else {
+      // new singleton.
+      ivals[idx] = 1;
+      return;
+    }
+  }
+
+  // Otherwise, the general case where we are
+  // between two intervals.
+  CHECK(!ivals.empty());
+  const auto [next_start, next_length] = *it;
+  --it;
+  const auto [start, length] = *it;
+
+  int gap_left = idx - (start + length);
+  int gap_right = next_start - idx;
+  if (gap_left < 0) {
+    // already included
+    return;
+  } if (gap_left < max_gap && gap_right < max_gap) {
+    // merges the two intervals
+    ++it;
+    CHECK(it != ivals.end());
+    CHECK(it->first == next_start);
+    ivals.erase(it);
+    ivals[start] = (next_start + next_length) - start;
+    return;
+  } else if (gap_left < max_gap) {
+    // merge left
+    ivals[start] = idx - start + 1;
+    return;
+  } else if (gap_right < max_gap) {
+    // merge right
+    ++it;
+    CHECK(it != ivals.end());
+    CHECK(it->first == next_start);
+    ivals.erase(it);
+    ivals[idx] = next_length + gap_right;
+    return;
+  } else {
+    // new singleton
+    ivals[idx] = 1;
+    return;
+  }
+}
+
+bool ModelInfo::Intervals::IsInInterval(int idx) const {
+  if (ivals.empty()) return false;
+  auto it = ivals.upper_bound(idx);
+  if (it == ivals.begin()) return false;
+  --it;
+  const auto [start, length] = *it;
+  return idx >= start && idx < start + length;
+}
+
+int ModelInfo::Intervals::ImageSize(int size) const {
+  int ret = GetGaps(size).size() * gap_draw_size;
+  for (const auto &[start_, length] : ivals)
+    ret += length;
+  return ret;
+}
+
 static ImageRGBA ChunkWeightsSparseDense(
     const Chunk &chunk,
     int layer_idx,
@@ -385,16 +542,33 @@ static ImageRGBA ChunkWeightsSparseDense(
     int prev_nodes,
     bool diagnostic_mode) {
 
-  if ((int64)chunk.num_nodes * (int64)prev_nodes > (int64)MAX_PIXELS) {
-    return ErrorImage(StringPrintf("Too big! %d x %d",
-                                   chunk.num_nodes, prev_nodes));
-  }
-
   const int ipn = chunk.indices_per_node;
 
   // TODO: Consider only rendering the span. If we're using the full
   // width, we could at least highlight the span (or nodes outside the
   // span).
+
+  static constexpr int MAX_GAP = 8;
+  static constexpr int GAP_DRAW_SIZE = 19;
+  ModelInfo::Intervals iv(MAX_GAP, GAP_DRAW_SIZE);
+  for (int x = 0; x < chunk.num_nodes; x++) {
+    const int start = x * ipn;
+    for (int i = 0; i < ipn; i++) {
+      uint32 idx =
+        chunk.type == CHUNK_SPARSE ?
+        chunk.indices[start + i] :
+        chunk.span_start + i;
+      iv.Add(idx);
+    }
+  }
+
+  const int pixel_size = iv.ImageSize(prev_nodes);
+
+  if ((int64)chunk.num_nodes * (int64)pixel_size > (int64)MAX_PIXELS) {
+    return ErrorImage(StringPrintf("Too big! %d x %d",
+                                   chunk.num_nodes, prev_nodes));
+  }
+
 
   //     <--- this layer's nodes --->
   // ^
@@ -408,7 +582,7 @@ static ImageRGBA ChunkWeightsSparseDense(
   constexpr int RIGHT = 4;
   constexpr int BOTTOM = 4;
   ImageRGBA img(LEFT + RIGHT + chunk.num_nodes,
-                TOP + BOTTOM + prev_nodes);
+                TOP + BOTTOM + pixel_size);
 
   const uint32 missing_weight_color =
     diagnostic_mode ? 0x000060FF : 0x000000FF;
@@ -434,20 +608,36 @@ static ImageRGBA ChunkWeightsSparseDense(
       CHECK(idx < prev_nodes);
       has_reference[idx] = true;
       uint32 color = GetWeightColor(w, diagnostic_mode);
-      img.SetPixel32(WEIGHTSX + x, WEIGHTSY + idx, color);
+
+      int y = iv.GetPos(idx);
+
+      img.SetPixel32(WEIGHTSX + x, WEIGHTSY + y, color);
     }
   }
 
   if (diagnostic_mode) {
-    for (int y = 0; y < prev_nodes; y++) {
-      if (!has_reference[y]) {
+    for (int idx = 0; idx < prev_nodes; idx++) {
+      if (!has_reference[idx] && iv.IsInInterval(idx)) {
         for (int x = 0; x < chunk.num_nodes; x++) {
           // XXX: Configurable?
           // Would be missing_weight_color if not detected.
+          const int y = iv.GetPos(idx);
           img.SetPixel32(WEIGHTSX + x, WEIGHTSY + y, 0xFFFF00FF);
         }
       }
     }
+  }
+
+  // XXX Draw gaps
+  for (const auto &[gapy, skipped] : iv.GetGaps(prev_nodes)) {
+    img.BlendBox32(WEIGHTSX, WEIGHTSY + gapy + 1,
+                   chunk.num_nodes, GAP_DRAW_SIZE - 2,
+                   0xFFFFFF77, {0xFFFFFF33});
+    string s = StringPrintf("%d skipped", skipped);
+    int swidth = s.size() * 9;
+    img.BlendText32(WEIGHTSX + (chunk.num_nodes / 2) - (swidth / 2),
+                    WEIGHTSY + gapy + 5,
+                    0xFFFFFFAA, s);
   }
 
   img.BlendText32(LEFT, 2, 0xCCCCCCFF,
