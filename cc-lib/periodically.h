@@ -10,9 +10,9 @@
 
 struct Periodically {
   explicit Periodically(double wait_period_seconds) {
-	using namespace std::chrono_literals;	
-	wait_period = std::chrono::duration_cast<dur>(1s * wait_period_seconds);
-	// Immediately available.
+    using namespace std::chrono_literals;
+    wait_period = std::chrono::duration_cast<dur>(1s * wait_period_seconds);
+    // Immediately available.
     next_run = std::chrono::steady_clock::now();
   }
 
@@ -37,6 +37,14 @@ struct Periodically {
   void Reset() {
     paused = false;
     next_run = std::chrono::steady_clock::now() + wait_period;
+  }
+
+  // Sets the wait period, and resets the timer, so the next run
+  // will be in this many seconds.
+  void SetPeriod(double seconds) {
+    using namespace std::chrono_literals;
+    wait_period = std::chrono::duration_cast<dur>(1s * seconds);
+    Reset();
   }
 
 private:
