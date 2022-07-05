@@ -30,12 +30,18 @@
 //   OCCURRENCE_X_STRIDE, OCCURRENCE_Y_STRIDE, SRC_WIDTH
 
 // Rounds to nearest half.
+#if 1
 inline float ToHalf(float f) {
   // 16-bit temporary. Can't declare a variable of type 'half', alas.
   ushort h;
   vstore_half(f, 0, (half*)&h);
   return vload_half(0, (half*)&h);
 }
+#else
+inline float ToHalf(float f) {
+  return f;
+}
+#endif
 
 inline ushort FloatToU16(float f) {
   ushort h;
@@ -83,8 +89,10 @@ __kernel void ForwardChunkSparse(
     potential = ToHalf(ToHalf(w * v) + potential);
     // potential = fma(w, v, potential);
   }
-  output_values[dst_start + node_idx] =
-    ToHalf(FORWARD(potential));
+
+  // potential must already be rounded to half (it is)
+  // and the output of FORWARD will be rounded.
+  output_values[dst_start + node_idx] = FORWARD(potential);
 }
 
 // Dense version. Here we can read the indices in order without any
@@ -124,8 +132,9 @@ __kernel void ForwardChunkDense(
     potential = ToHalf(ToHalf(w * v) + potential);
   }
 
-  output_values[dst_start + node_idx] =
-    ToHalf(FORWARD(potential));
+  // potential must already be rounded to half (it is)
+  // and the output of FORWARD will be rounded.
+  output_values[dst_start + node_idx] = FORWARD(potential);
 }
 
 // This version derives the indices programmatically, which reduces memory
@@ -214,6 +223,7 @@ __kernel void ForwardChunkConvolutional(
     }
   }
 
-  output_values[dst_start + node_idx] =
-    ToHalf(FORWARD(potential));
+  // potential must already be rounded to half (it is)
+  // and the output of FORWARD will be rounded.
+  output_values[dst_start + node_idx] = FORWARD(potential);
 }

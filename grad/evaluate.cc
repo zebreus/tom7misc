@@ -1,9 +1,7 @@
 
 #include <memory>
 
-#include "network-gpu.h"
 #include "network.h"
-#include "mnist.h"
 #include "clutil.h"
 
 #include "timer.h"

@@ -80,10 +80,22 @@ __kernel void BackwardChunkSparse(
     const int dst_node_idx = CHUNK_START + cidx / DST_INDICES_PER_NODE;
 
     // weighted_error_sum += weight * error
+    const float owes = weighted_error_sum;
     weighted_error_sum =
       fma(dst_weights[cidx],
           dst_error[dst_start_index + dst_node_idx],
           weighted_error_sum);
+
+    /*
+    if (isnan(weighted_error_sum) || isinf(weighted_error_sum)) {
+      printf("BC-s %.3f + %.3f * %.3f -> %.3f at %dx%d\n",
+             owes,
+             dst_weights[cidx],
+             dst_error[dst_start_index + dst_node_idx],
+             weighted_error_sum,
+             h_global, i);
+    }
+    */
   }
 
   #if OVERWRITE
@@ -129,9 +141,21 @@ __kernel void BackwardChunkDense(
     const int dst_node_idx = CHUNK_START + i;
 
     // weighted_error_sum += weight * error
+    const float owes = weighted_error_sum;
     weighted_error_sum = fma(dst_weights[cidx],
                              dst_error[dst_start_index + dst_node_idx],
                              weighted_error_sum);
+
+    /*
+    if (isnan(weighted_error_sum) || isinf(weighted_error_sum)) {
+      printf("BC-d %.3f + %.3f * %.3f -> %.3f at %dx%d\n",
+             owes,
+             dst_weights[cidx],
+             dst_error[dst_start_index + dst_node_idx],
+             weighted_error_sum,
+             h_global, i);
+    }
+    */
   }
 
   #if OVERWRITE
@@ -191,11 +215,23 @@ __kernel void BackwardChunkConvolutional(
       // each index has its own weights
       const int weight_idx = DST_INDICES_PER_NODE * f + pattern_offset;
       // weighted_error_sum += weight * error
+      const float owes = weighted_error_sum; // XXX
       weighted_error_sum = fma(dst_weights[weight_idx],
                                dst_error[dst_start_index + dst_node_idx],
                                weighted_error_sum);
+      /*
+      if (isnan(weighted_error_sum) || isinf(weighted_error_sum)) {
+        printf("BC-c %.3f + %.3f * %.3f -> %.3f at %dx%dx%d\n",
+               owes,
+               dst_weights[weight_idx],
+               dst_error[dst_start_index + dst_node_idx],
+               weighted_error_sum,
+               h_global, i, f);
+      }
+      */
     }
   }
+
 
   #if OVERWRITE
   src_error[src_start_index + h_global] = weighted_error_sum;

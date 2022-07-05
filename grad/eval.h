@@ -12,6 +12,7 @@
 #include "network.h"
 #include "network-gpu.h"
 #include "image.h"
+#include "mnist.h"
 
 struct Evaluator {
   static constexpr int IMG_WIDTH = 28;
@@ -23,8 +24,6 @@ struct Evaluator {
   Evaluator(CL *cl) : cl(cl), mnist_test("mnist/t10k") {
     CHECK(mnist_test.width == IMG_WIDTH);
     CHECK(mnist_test.height == IMG_HEIGHT);
-
-
   }
 
   struct Result {
@@ -43,37 +42,6 @@ struct Evaluator {
     std::unique_ptr<ForwardLayerCL> forward_cl =
       std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
 
-    const int NUM_TEST = mnist_test.Num();
-
-    std::vector<float> inputs;
-    inputs.reserve(NUM_TEST * IMG_HEIGHT * IMG_WIDTH);
-    for (int i = 0; i < mnist_test.Num(); i++) {
-      const ImageA &img = mnist_test.images[i];
-      for (int y = 0; y < IMG_HEIGHT; y++) {
-        for (int x = 0; x < IMG_WIDTH; x++) {
-          float f = (float)img.GetPixel(x, y) / 255.0f;
-          inputs.push_back(f);
-        }
-      }
-    }
-
-    // Uninitialized training examples on GPU.
-    std::unique_ptr<TrainingRoundGPU> training(
-        new TrainingRoundGPU(NUM_TEST, cl, *net));
-
-    training->LoadInputs(inputs);
-
-    Timer fwd_timer;
-    for (int src_layer = 0;
-         src_layer < net->layers.size() - 1;
-         src_layer++) {
-      forward_cl->RunForward(training.get(), src_layer);
-    }
-    result.fwd_time = fwd_timer.Seconds();
-
-    std::vector<float> outputs;
-    outputs.resize(NUM_TEST * OUTPUT_SIZE);
-    training->ExportOutputs(&outputs);
 
     const int PAD = 1;
     const int ACROSS = 68;
@@ -82,36 +50,77 @@ struct Evaluator {
 
     result.wrong = ImageRGBA(SQUARE * ACROSS, SQUARE * DOWN);
     result.wrong.Clear32(0x000055FF);
-
-    result.total = NUM_TEST;
+    // Next position for wrong example.
     int xx = 0, yy = 0;
-    for (int idx = 0; idx < NUM_TEST; idx++) {
-      int besti = 0;
-      float bestv = -1.0/0.0;
-      for (int i = 0; i < OUTPUT_SIZE; i++) {
-        float f = outputs[idx * OUTPUT_SIZE + i];
-        if (f > bestv) {
-          bestv = f;
-          besti = i;
+
+    const int NUM_TEST = mnist_test.Num();
+    result.total = NUM_TEST;
+
+    CHECK(NUM_TEST % 10 == 0);
+    const int NUM_BATCH = NUM_TEST / 10;
+    // Uninitialized training examples on GPU.
+    std::unique_ptr<TrainingRoundGPU> training(
+        new TrainingRoundGPU(NUM_BATCH, cl, *net));
+
+    for (int batch = 0; batch < 10; batch++) {
+      std::vector<float> inputs;
+      inputs.reserve(NUM_BATCH * IMG_HEIGHT * IMG_WIDTH);
+      for (int i = 0; i < NUM_BATCH; i++) {
+        const int idx = batch * NUM_BATCH + i;
+        const ImageA &img = mnist_test.images[idx];
+        for (int y = 0; y < IMG_HEIGHT; y++) {
+          for (int x = 0; x < IMG_WIDTH; x++) {
+            float f = (float)img.GetPixel(x, y) / 255.0f;
+            inputs.push_back(f);
+          }
         }
       }
 
-      const int correct_label = mnist_test.labels[idx];
-      if (besti == correct_label) {
-        result.correct++;
-      } else {
-        result.wrong.CopyImage(xx * SQUARE, yy * SQUARE,
-                               mnist_test.images[idx].GreyscaleRGBA());
-        result.wrong.BlendText32(xx * SQUARE, yy * SQUARE,
-                                 0x00FF00AA,
-                                 StringPrintf("%c", correct_label + '0'));
-        result.wrong.BlendText32(xx * SQUARE + (SQUARE - 10), yy * SQUARE,
-                                 0xFF0000AA,
-                                 StringPrintf("%c", besti + '0'));
-        xx++;
-        if (xx > ACROSS) {
-          xx = 0;
-          yy++;
+      training->LoadInputs(inputs);
+
+      Timer fwd_timer;
+      for (int src_layer = 0;
+           src_layer < net->layers.size() - 1;
+           src_layer++) {
+        forward_cl->RunForward(training.get(), src_layer);
+      }
+      result.fwd_time += fwd_timer.Seconds();
+
+      std::vector<float> outputs;
+      outputs.resize(NUM_BATCH * OUTPUT_SIZE);
+      training->ExportOutputs(&outputs);
+
+      for (int idx = 0; idx < NUM_BATCH; idx++) {
+        int besti = 0;
+        float bestv = -1.0/0.0;
+        for (int i = 0; i < OUTPUT_SIZE; i++) {
+          float f = outputs[idx * OUTPUT_SIZE + i];
+          if (f > bestv) {
+            bestv = f;
+            besti = i;
+          }
+        }
+
+        // XXX
+        const int example_idx = batch * NUM_BATCH + idx;
+        const int correct_label = mnist_test.labels[example_idx];
+        if (besti == correct_label) {
+          result.correct++;
+        } else {
+          result.wrong.CopyImage(
+              xx * SQUARE, yy * SQUARE,
+              mnist_test.images[example_idx].GreyscaleRGBA());
+          result.wrong.BlendText32(xx * SQUARE, yy * SQUARE,
+                                   0x00FF00AA,
+                                   StringPrintf("%c", correct_label + '0'));
+          result.wrong.BlendText32(xx * SQUARE + (SQUARE - 10), yy * SQUARE,
+                                   0xFF0000AA,
+                                   StringPrintf("%c", besti + '0'));
+          xx++;
+          if (xx > ACROSS) {
+            xx = 0;
+            yy++;
+          }
         }
       }
     }

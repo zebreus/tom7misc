@@ -56,10 +56,13 @@ const char *WeightUpdateName(WeightUpdate wu) {
   }
 }
 
+// For these, potential will be already rounded to the nearest half.
+// The output of FORWARD should also be rounded.
+
 // PERF: native_recip? native_exp? It's likely that we can tolerate
 // inaccuracy of certain sorts.
 const char *const Network::SIGMOID_FN =
-  "#define FORWARD(potential) (1.0f / (1.0f + exp(-potential)))\n"
+  "#define FORWARD(potential) ToHalf(1.0f / ToHalf(1.0f + ToHalf(exp(-potential))))\n"
   // This wants to be given the actual output value f(potential).
   "#define DERIVATIVE(fx) (fx * (1.0f - fx))\n";
 
@@ -78,7 +81,7 @@ const char *const Network::RELU_FN =
 // PERF: Perhaps a power-of-two multiplication that can be implemented
 // by just changing the exponent? (a "shift")?
 const char *const Network::LEAKY_RELU_FN =
-  "#define FORWARD(potential) ((potential < 0.0f) ? potential * 0.01f : potential)\n"
+  "#define FORWARD(potential) ((potential < 0.0f) ? ToHalf(potential * 0.01f) : potential)\n"
   // See note above.
   "#define DERIVATIVE(fx) ((fx < 0.0f) ? 0.01f : 1.0f)\n";
 
@@ -99,7 +102,7 @@ const char *const Network::TANH_FN =
   // "#define FORWARD(potential) ((exp(potential) - exp(-(potential)))/(exp(potential) + exp(-(potential))))\n"
   // "#define FORWARD(potential) ((exp(2.0f * potential) - 1.0f) / (exp(2.0f * potential) + 1.0f))\n"
   // PERF native_tanh?
-  "#define FORWARD(potential) tanh(potential)\n"
+  "#define FORWARD(potential) ToHalf(tanh(potential))\n"
   "#define DERIVATIVE(fx) (1.0f - fx * fx)\n";
 
 const char *const Network::GRAD1_FN =

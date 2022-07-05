@@ -63,7 +63,7 @@ struct Func {
   static constexpr int N = N_;
   Func(const std::array<fptype, N> &args) : args(args) {}
   virtual fptype Eval(fptype f) const {
-  return f;
+    return f;
   }
 
   virtual string Exp() const  = 0;
@@ -74,13 +74,13 @@ struct Function1 : public Func<float, 1> {
   using Func::Func;
   float Eval(float f) const override {
     const float scale = args[0];
-  float g = f * scale;
-  float h = g / scale;
-  return h;
+    float g = f * scale;
+    float h = g / scale;
+    return h;
   }
   string Exp() const override {
     const float scale = args[0];
-  return StringPrintf("(f * %.9g) / %.9g", scale, scale);
+    return StringPrintf("(f * %.9g) / %.9g", scale, scale);
   }
 };
 
@@ -88,14 +88,14 @@ struct Function2 : public Func<float, 2> {
   using Func::Func;
   float Eval(float f) const override {
     const auto &[scale, off] = args;
-  float g = f * scale + off;
-  float h = (g - off) / scale;
-  return h;
+    float g = f * scale + off;
+    float h = (g - off) / scale;
+    return h;
   }
   string Exp() const override {
     const auto &[scale, off] = args;
-  return StringPrintf("((f * %.9g + %.9g) - %.9g) / %.9g",
-            scale, off, off, scale);
+    return StringPrintf("((f * %.9g + %.9g) - %.9g) / %.9g",
+                        scale, off, off, scale);
   }
 };
 
@@ -103,15 +103,15 @@ struct Function3 : public Func<float, 2> {
   using Func::Func;
   float Eval(float f) const override {
     const auto &[scale, off] = args;
-  float g = (f / scale) * off;
-  float h = (g / off) * scale;
-  return h;
+    float g = (f / scale) * off;
+    float h = (g / off) * scale;
+    return h;
   }
   string Exp() const override {
     const auto &[scale, off] = args;
 
-  return StringPrintf("((f / %.9g) * %.9g) / %.9g) * %.9g",
-            scale, off, off, scale);
+    return StringPrintf("((f / %.9g) * %.9g) / %.9g) * %.9g",
+                        scale, off, off, scale);
   }
 };
 
@@ -120,15 +120,15 @@ struct Function4 : public Func<half, 2> {
   half Eval(half f) const override {
     const auto &[scale, off] = args;
 
-  half g = (f * off) * scale;
-  half h = (g / scale) / off;
-  return h;
+    half g = (f * off) * scale;
+    half h = (g / scale) / off;
+    return h;
   }
   string Exp() const override {
     const auto &[scale, off] = args;
 
-  return StringPrintf("((f * %.9g) * %.9g) / %.9g) / %.9g",
-            off, scale, scale, off);
+    return StringPrintf("((f * %.9g) * %.9g) / %.9g) / %.9g",
+                        off, scale, scale, off);
   }
 };
 
@@ -137,14 +137,14 @@ struct Function5 : public Func<half, 2> {
   half Eval(half f) const override {
     const auto &[scale, off] = args;
 
-  half g = (f * off) * scale;
-  half h = (g / scale) / off;
-  return h;
+    half g = (f * off) * scale;
+    half h = (g / scale) / off;
+    return h;
   }
   string Exp() const override {
     const auto &[scale, off] = args;
-  return StringPrintf("((f + %.9g) * %.9g) / %.9g) - %.9g",
-            off, scale, scale, off);
+    return StringPrintf("((f + %.9g) * %.9g) / %.9g) - %.9g",
+                        off, scale, scale, off);
   }
 };
 
@@ -152,15 +152,15 @@ struct Function8 : public Func<half, 8> {
   using Func::Func;
   half Eval(half v) const override {
     const auto &[a, b, c, d, e, f, g, h] = args;
-  v += a;
-  v *= b;
-  v /= c;
-  v *= d;
-  v /= e;
-  v *= f;
-  v /= g;
-  v -= h;
-  return v;
+    v += a;
+    v *= b;
+    v /= c;
+    v *= d;
+    v /= e;
+    v *= f;
+    v /= g;
+    v -= h;
+    return v;
   }
   string Exp() const override {
   string ret;
@@ -178,10 +178,10 @@ struct Function16 : public Func<half, 16> {
                  i, j, k, l, m, n, o, p] = args;
     v += 8;
     v += a;
-  v *= b;
-  v += c;
-  v += d;
-  v += e;
+    v *= b;
+    v += c;
+    v += d;
+    v += e;
     v += 16.0;
     v += f;
     v += g;
@@ -193,16 +193,16 @@ struct Function16 : public Func<half, 16> {
     v += l;
     v += m;
     v += n;
-  v *= o;
-  v -= p;
-  return v;
+    v *= o;
+    v -= p;
+    return v;
   }
   string Exp() const override {
-  string ret;
-  for (const double z : args) {
-    StringAppendF(&ret, "%.9g, ", z);
-  }
-  return ret;
+    string ret;
+    for (const double z : args) {
+      StringAppendF(&ret, "%.9g, ", z);
+    }
+    return ret;
   }
 };
 
@@ -246,34 +246,34 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
 
   // from -1 to 1.
   auto XAt = [&](int i) -> fptype {
-    return (fptype)(
+      return (fptype)(
           (i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
-  };
+    };
   auto YAt = [&](int i) {
-    return fn.Eval(XAt(i));
-  };
+      return fn.Eval(XAt(i));
+    };
   for (int i = 0; i < SAMPLES; i++) {
-  // in [-1, 1]
-  fptype in = XAt(i);
-  fptype out = YAt(i);
-  if (!std::isfinite((float)out)) return GradOptimizer::INFEASIBLE;
-  samples.push_back(out);
+    // in [-1, 1]
+    fptype in = XAt(i);
+    fptype out = YAt(i);
+    if (!std::isfinite((float)out)) return GradOptimizer::INFEASIBLE;
+    samples.push_back(out);
 
-  double diff = (out - in);
-  if (!std::isfinite((float)diff)) return GradOptimizer::INFEASIBLE;
-  error_samples.push_back(diff);
+    double diff = (out - in);
+    if (!std::isfinite((float)diff)) return GradOptimizer::INFEASIBLE;
+    error_samples.push_back(diff);
 
-  fptype out_prev = YAt(i - 1);
-  double deriv = out - out_prev;
-  if (!std::isfinite((float)deriv)) return GradOptimizer::INFEASIBLE;
-  deriv_samples.push_back(deriv);
+    fptype out_prev = YAt(i - 1);
+    double deriv = out - out_prev;
+    if (!std::isfinite((float)deriv)) return GradOptimizer::INFEASIBLE;
+    deriv_samples.push_back(deriv);
   }
 
   int distinct_values = DistinctValues(samples);
   /*
-  if (distinct_values < 25)
+    if (distinct_values < 25)
     return std::make_pair(100000000.0 - 100.0 * distinct_values,
-                          std::nullopt);
+    std::nullopt);
   */
 
   float frac_distinct = distinct_values / (float)SAMPLES;
@@ -290,10 +290,10 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
     return std::make_pair(100000000.0 - rise, std::nullopt);
   double error = 0.0;
   for (int i = 0; i < SAMPLES; i++) {
-  double frac = i / (double)(SAMPLES - 1);
-  double linear = frac * rise;
-  double diff = (double)samples[i] - linear;
-  error += sqrt(diff * diff);
+    double frac = i / (double)(SAMPLES - 1);
+    double linear = frac * rise;
+    double diff = (double)samples[i] - linear;
+    error += sqrt(diff * diff);
   }
 
   error /= SAMPLES;
@@ -310,8 +310,8 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
   // Prefer second derivative to be close to zero.
   double d2 = 0.0;
   for (int i = 1; i < deriv_samples.size(); i++) {
-  double d = deriv_samples[i] - deriv_samples[i - 1];
-  d2 += fabs(d); // sqrt(d * d);
+    double d = deriv_samples[i] - deriv_samples[i - 1];
+    d2 += fabs(d); // sqrt(d * d);
   }
 
   d2 /= (deriv_samples.size() - 1);
@@ -333,8 +333,8 @@ static GradOptimizer::return_type OptimizeMe(GradOptimizer::arg_type arg) {
 
   // Want MORE error, so it has negative sign.
   /*
-  return make_pair(100.0 * penalty + 3 * d2 - 10 * error -
-                   frac_distinct * 10.0, make_optional('*'));
+    return make_pair(100.0 * penalty + 3 * d2 - 10 * error -
+    frac_distinct * 10.0, make_optional('*'));
   */
   return make_pair(10 * shape_dist - frac_distinct + d2 - error,
                    make_optional('*'));
@@ -347,32 +347,32 @@ static void Stats(Func<fptype, N> *fn) {
   vector<double> error_samples, deriv_samples;
 
   auto XAt = [&](int i) -> fptype {
-    return (fptype)((i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
-  };
+      return (fptype)((i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
+    };
   auto YAt = [&](int i) {
-    return fn->Eval(XAt(i));
-  };
+      return fn->Eval(XAt(i));
+    };
   for (int i = 0; i < SAMPLES; i++) {
-  // in [-1, 1]
-  fptype in = XAt(i);
-  fptype out = YAt(i);
-  if (!std::isfinite((float)out)) {
-    printf("infinite %d", i);
-  }
-  samples.push_back(out);
+    // in [-1, 1]
+    fptype in = XAt(i);
+    fptype out = YAt(i);
+    if (!std::isfinite((float)out)) {
+      printf("infinite %d", i);
+    }
+    samples.push_back(out);
 
-  double diff = (out - in);
-  if (!std::isfinite((float)diff)) {
-    printf("infinite2 %d", i);
-  }
-  error_samples.push_back(diff);
+    double diff = (out - in);
+    if (!std::isfinite((float)diff)) {
+      printf("infinite2 %d", i);
+    }
+    error_samples.push_back(diff);
 
-  fptype out_prev = YAt(i - 1);
-  double deriv = out - out_prev;
-  if (!std::isfinite((float)deriv)) {
-    printf("infinite2 %d", i);
-  }
-  deriv_samples.push_back(deriv);
+    fptype out_prev = YAt(i - 1);
+    double deriv = out - out_prev;
+    if (!std::isfinite((float)deriv)) {
+      printf("infinite2 %d", i);
+    }
+    deriv_samples.push_back(deriv);
   }
 
   const int distinct_values = DistinctValues(samples);
@@ -385,10 +385,10 @@ static void Stats(Func<fptype, N> *fn) {
 
   double error = 0.0;
   for (int i = 0; i < SAMPLES; i++) {
-  double frac = i / (double)(SAMPLES - 1);
-  double linear = frac * rise;
-  double diff = (double)samples[i] - linear;
-  error += sqrt(diff * diff);
+    double frac = i / (double)(SAMPLES - 1);
+    double linear = frac * rise;
+    double diff = (double)samples[i] - linear;
+    error += sqrt(diff * diff);
   }
 
   error /= SAMPLES;
@@ -404,8 +404,8 @@ static void Stats(Func<fptype, N> *fn) {
   // Prefer second derivative to be close to zero.
   double d2 = 0.0;
   for (int i = 1; i < deriv_samples.size(); i++) {
-  double d = deriv_samples[i] - deriv_samples[i - 1];
-  d2 += sqrt(d * d);
+    double d = deriv_samples[i] - deriv_samples[i - 1];
+    d2 += sqrt(d * d);
   }
 
   d2 /= (deriv_samples.size() - 1);
@@ -431,47 +431,47 @@ static void Graph(Func<fptype, N> *fn) {
   vector<double> samples, error_samples, nonlinear_samples, deriv_samples;
 
   auto XAt = [&](int i) -> fptype {
-    return (fptype)((i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
-  };
+      return (fptype)((i / (float)(SAMPLES - 1)) * 2.0f - 1.0f);
+    };
   auto YAt = [&](int i) {
-    return fn->Eval(XAt(i));
-  };
+      return fn->Eval(XAt(i));
+    };
   for (int i = 0; i < SAMPLES; i++) {
-  // in [-1, 1]
-  fptype in = XAt(i);
-  fptype out = YAt(i);
-  fptype out_prev = YAt(i - 1);
-  double diff = (out - in);
-  samples.push_back(out);
-  bounds.Bound(i, out);
+    // in [-1, 1]
+    fptype in = XAt(i);
+    fptype out = YAt(i);
+    fptype out_prev = YAt(i - 1);
+    double diff = (out - in);
+    samples.push_back(out);
+    bounds.Bound(i, out);
 
-  error_samples.push_back(diff);
-  error_bounds.Bound(i, diff);
+    error_samples.push_back(diff);
+    error_bounds.Bound(i, diff);
 
-  double deriv = out - out_prev;
-  deriv_samples.push_back(deriv);
-  deriv_bounds.Bound(i, deriv);
+    double deriv = out - out_prev;
+    deriv_samples.push_back(deriv);
+    deriv_bounds.Bound(i, deriv);
   }
   printf("Total diff: %.19g\n", total_diff);
 
   // Compare to a linear interpolation of the first and last
   // endpoints.
   {
-  double f0 = samples[0];
-  printf("Linear: %.9g to %.9g\n",
-       (double)f0, (double)samples[SAMPLES - 1]);
-  double rise = (double)samples[SAMPLES - 1] - f0;
-  double error = 0.0;
-  for (int i = 0; i < SAMPLES; i++) {
-    double frac = i / (double)(SAMPLES - 1);
-    double linear = frac * rise;
-    double diff = samples[i] - linear;
-    // printf("%.9g want %.9g\n", samples[i], linear);
-    error += diff * diff;
-    nonlinear_samples.push_back(diff);
-    nonlinear_bounds.Bound(i, diff);
-  }
-  printf("Squared error vs linear: %.19g\n", error);
+    double f0 = samples[0];
+    printf("Linear: %.9g to %.9g\n",
+           (double)f0, (double)samples[SAMPLES - 1]);
+    double rise = (double)samples[SAMPLES - 1] - f0;
+    double error = 0.0;
+    for (int i = 0; i < SAMPLES; i++) {
+      double frac = i / (double)(SAMPLES - 1);
+      double linear = frac * rise;
+      double diff = samples[i] - linear;
+      // printf("%.9g want %.9g\n", samples[i], linear);
+      error += diff * diff;
+      nonlinear_samples.push_back(diff);
+      nonlinear_bounds.Bound(i, diff);
+    }
+    printf("Squared error vs linear: %.19g\n", error);
   }
 
 
@@ -487,48 +487,48 @@ static void Graph(Func<fptype, N> *fn) {
     ImageRGBA img(WIDTH, HEIGHT);
     img.Clear32(0x000000FF);
 
-  Bounds::Scaler error_scaler = error_bounds.Stretch(WIDTH, HEIGHT).FlipY();
+    Bounds::Scaler error_scaler = error_bounds.Stretch(WIDTH, HEIGHT).FlipY();
     const int yaxis = error_scaler.ScaleY(0);
     img.BlendLine32(0, yaxis, WIDTH - 1, yaxis, 0xFFFFFF3F);
 
-  bool lo = false;
-  for (int x = 0; x < WIDTH; x += 10) {
-    img.BlendLine32(x, 0, x, HEIGHT - 1,
-            lo ? 0xFFFFFF11 : 0xFFFFFF22);
-    lo = !lo;
-  }
-
-  int ypos = 11;
-  auto Plot = [&img, &ypos](const vector<double> &samples,
-                const Bounds &bounds,
-                uint32_t rgb,
-                const std::string &name) {
-    Bounds::Scaler scaler =
-      bounds.Stretch(WIDTH, HEIGHT).FlipY();
-
-    double low = 1/0.0, high = -1/0.0;
-    for (int i = 0; i < samples.size(); i++) {
-      double d = samples[i];
-      low = std::min(low, d);
-      high = std::max(high, d);
-      int x = round(scaler.ScaleX(i));
-      int y = round(scaler.ScaleY(d));
-      img.BlendPixel32(x, y, rgb | 0xEE);
+    bool lo = false;
+    for (int x = 0; x < WIDTH; x += 10) {
+      img.BlendLine32(x, 0, x, HEIGHT - 1,
+                      lo ? 0xFFFFFF11 : 0xFFFFFF22);
+      lo = !lo;
     }
 
-    img.BlendText32(1, ypos, rgb | 0x77,
-            StringPrintf("%s: %.9g to %.9g",
-                   name.c_str(), low, high));
+    int ypos = 11;
+    auto Plot = [&img, &ypos](const vector<double> &samples,
+                              const Bounds &bounds,
+                              uint32_t rgb,
+                              const std::string &name) {
+        Bounds::Scaler scaler =
+          bounds.Stretch(WIDTH, HEIGHT).FlipY();
 
-    ypos += 10;
-    };
+        double low = 1/0.0, high = -1/0.0;
+        for (int i = 0; i < samples.size(); i++) {
+          double d = samples[i];
+          low = std::min(low, d);
+          high = std::max(high, d);
+          int x = round(scaler.ScaleX(i));
+          int y = round(scaler.ScaleY(d));
+          img.BlendPixel32(x, y, rgb | 0xEE);
+        }
 
-  Plot(error_samples, error_bounds, 0xFF7F7F00, "error");
-  Plot(nonlinear_samples, nonlinear_bounds, 0x7F7FFF00, "nonlinear");
-  Plot(deriv_samples, deriv_bounds, 0xFFFF7F00, "derivative");
-  Plot(samples, bounds, 0x7FFF7F00, "value");
+        img.BlendText32(1, ypos, rgb | 0x77,
+                        StringPrintf("%s: %.9g to %.9g",
+                                     name.c_str(), low, high));
 
-  img.BlendText32(1, 1, 0x888888AA, fn->Exp());
+        ypos += 10;
+      };
+
+    Plot(error_samples, error_bounds, 0xFF7F7F00, "error");
+    Plot(nonlinear_samples, nonlinear_bounds, 0x7F7FFF00, "nonlinear");
+    Plot(deriv_samples, deriv_bounds, 0xFFFF7F00, "derivative");
+    Plot(samples, bounds, 0x7FFF7F00, "value");
+
+    img.BlendText32(1, 1, 0x888888AA, fn->Exp());
 
     string filename = "grad.png";
     img.Save(filename);
@@ -555,14 +555,14 @@ void Optimize() {
 
   GradOptimizer optimizer(OptimizeMe<Function16>);
   optimizer.Run(
-    // int bounds
-    int_bounds,
+      // int bounds
+      int_bounds,
       // float bounds
       {},
-    {}, // calls
-    {}, // feasible calls
-    {20 * 60}, // seconds
-    {});
+      {}, // calls
+      {}, // feasible calls
+      {20 * 60}, // seconds
+      {});
 
   auto bo = optimizer.GetBest();
   CHECK(bo.has_value()) << "no feasible??";
@@ -584,7 +584,7 @@ void Optimize() {
   printf("Best score: %.17g\n Params:\n", score);
 
   for (const uint16 u : u16) {
-  printf("GradUtil::GetHalf(0x%04x),  // %.17g,\n", u,
+    printf("GradUtil::GetHalf(0x%04x),  // %.17g,\n", u,
            (double)GradUtil::GetHalf(u));
   }
 
@@ -611,53 +611,52 @@ int main(int argc, char **argv) {
   return 0;
 
   if (false) {
-  Graph(new Function8(
-              {
-GradUtil::GetHalf(0xb809),  // -0.50439453125,
-GradUtil::GetHalf(0x0560),  // 8.20159912109375e-05,
-GradUtil::GetHalf(0x4f40),  // 29,
-GradUtil::GetHalf(0xa55e),  // -0.020965576171875,
-GradUtil::GetHalf(0x0549),  // 8.0645084381103516e-05,
-GradUtil::GetHalf(0x7a76),  // 52928,
-GradUtil::GetHalf(0x1291),  // 0.00080156326293945312,
-GradUtil::GetHalf(0xf414),  // -16704,
-              }
-            ));
+    Graph(new Function8({
+          GradUtil::GetHalf(0xb809),  // -0.50439453125,
+          GradUtil::GetHalf(0x0560),  // 8.20159912109375e-05,
+          GradUtil::GetHalf(0x4f40),  // 29,
+          GradUtil::GetHalf(0xa55e),  // -0.020965576171875,
+          GradUtil::GetHalf(0x0549),  // 8.0645084381103516e-05,
+          GradUtil::GetHalf(0x7a76),  // 52928,
+          GradUtil::GetHalf(0x1291),  // 0.00080156326293945312,
+          GradUtil::GetHalf(0xf414),  // -16704,
+        }
+        ));
   }
 
   if (false) {
-  // Error_Bounds 0 -5.9604644775e-08 to 999 5.9604644775e-08
-  static constexpr float SCALE = 6.0077242583987507e+37;
-  static constexpr float OFF = 9.9159268948476343e+37;
-  Graph(new Function2({SCALE, OFF}));
+    // Error_Bounds 0 -5.9604644775e-08 to 999 5.9604644775e-08
+    static constexpr float SCALE = 6.0077242583987507e+37;
+    static constexpr float OFF = 9.9159268948476343e+37;
+    Graph(new Function2({SCALE, OFF}));
   }
 
   if (false) {
-  // static constexpr float SCALE = 9.9260844311214201e+37;
-  // static constexpr float OFF = 9.9630854128974192e+37;
-  static constexpr float SCALE = 9.9260844311214201e+37f;
-  static constexpr float OFF = 9.9630854128974192e+37f;
-  Graph(new Function3({SCALE, OFF}));
+    // static constexpr float SCALE = 9.9260844311214201e+37;
+    // static constexpr float OFF = 9.9630854128974192e+37;
+    static constexpr float SCALE = 9.9260844311214201e+37f;
+    static constexpr float OFF = 9.9630854128974192e+37f;
+    Graph(new Function3({SCALE, OFF}));
   }
 
   if (false) {
-  // static constexpr float SCALE = 9.9260844311214201e+37;
-  // static constexpr float OFF = 9.9630854128974192e+37;
-  static constexpr float SCALE = 9.9684294429838515e+37;
-  static constexpr float OFF = 9.9438839619657644e+37;
-  Graph(new Function3({SCALE, OFF}));
+    // static constexpr float SCALE = 9.9260844311214201e+37;
+    // static constexpr float OFF = 9.9630854128974192e+37;
+    static constexpr float SCALE = 9.9684294429838515e+37;
+    static constexpr float OFF = 9.9438839619657644e+37;
+    Graph(new Function3({SCALE, OFF}));
   }
 
   if (false) {
-  // static constexpr float SCALE = 7.5600048108248608e-05f;
-  // static constexpr float OFF = 0.00039428695153609361f;
+    // static constexpr float SCALE = 7.5600048108248608e-05f;
+    // static constexpr float OFF = 0.00039428695153609361f;
 
-  static const half SCALE = (half)0.4388188340760063f;
-  static const half OFF = (half)38235.825656460482f;
+    static const half SCALE = (half)0.4388188340760063f;
+    static const half OFF = (half)38235.825656460482f;
 
-  // static constexpr half SCALE = 20765.713900227656f;
-  // static constexpr half OFF = 30555.616399484014f;
-  Graph(new Function4({SCALE, OFF}));
+    // static constexpr half SCALE = 20765.713900227656f;
+    // static constexpr half OFF = 30555.616399484014f;
+    Graph(new Function4({SCALE, OFF}));
   }
 
   return 0;

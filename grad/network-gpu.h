@@ -333,6 +333,9 @@ struct ForwardLayerCL {
 // Set the error values from the actual and expected outputs, possibly
 // applying some remapping of them.
 struct SetOutputErrorCL {
+  static constexpr bool CLIP_ERROR = true;
+  // XXX made this much smaller for 16-bit
+  static constexpr float LARGE_ERROR = 10000.0f;
 
   // Optional remap function takes chunk id, node index within chunk, and
   // value; see setoutputerror.cl.
@@ -375,7 +378,8 @@ struct BackwardLayerCL {
   // creating this. They could have different values on a per-chunk
   // basis, though it's not clear why we'd ever do that.
   static constexpr bool CLIP_ERROR = true;
-  static constexpr float LARGE_ERROR = 1000000.0f;
+  // XXX made this much smaller for 16-bit
+  static constexpr float LARGE_ERROR = 10000.0f;
 
   BackwardLayerCL(CL *cl, NetworkGPU *net);
   ~BackwardLayerCL();

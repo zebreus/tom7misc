@@ -289,7 +289,6 @@ struct ErrorImage {
       image = std::make_unique<ImageRGBA>(width, height);
       image->Clear32(0x000055FF);
     }
-    printf("OK?\n");
   }
 
   const std::string &Filename() const {

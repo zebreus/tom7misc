@@ -38,10 +38,10 @@ static void GraphRandomIterations() {
   std::vector<double> values;
   CHECK(ITERS % 4 == 0);
   for (int i = 0; i < ITERS / 4; i++) {
-	values.push_back((i + 1));
-	values.push_back(-(i + 1));
-	values.push_back(1.0 / (i + 1));
-	values.push_back(-1.0 / (i + 1));
+    values.push_back((i + 1));
+    values.push_back(-(i + 1));
+    values.push_back(1.0 / (i + 1));
+    values.push_back(-1.0 / (i + 1));
   }
 
   Shuffle(&rc, &values);
@@ -51,19 +51,19 @@ static void GraphRandomIterations() {
   CHECK(sum == 0);
 
   auto F = [&](int i) {
-	  return std::function<half(half)>([&values, i](half h) -> half {
-		  CHECK(i < values.size()) << i << " vs " << values.size();
-		  return h + (half)(values[i]);
-		});
-	};
+      return std::function<half(half)>([&values, i](half h) -> half {
+          CHECK(i < values.size()) << i << " vs " << values.size();
+          return h + (half)(values[i]);
+        });
+    };
 
   GradUtil::Graph(table, 0xFFFFFF11, &img);
 
   CHECK(values.size() == ITERS);
   for (int i = 0; i < ITERS; i++) {
     GradUtil::UpdateTable(&table, F(i));
-	float f = i / (float)(ITERS - 1);
-	uint32 color = ColorUtil::LinearGradient32(
+    float f = i / (float)(ITERS - 1);
+    uint32 color = ColorUtil::LinearGradient32(
         GradUtil::GREEN_BLUE, f) & 0xFFFFFF22;
     GradUtil::Graph(table, color, &img);
   }
@@ -144,25 +144,31 @@ static void MakeIterated() {
 
 int main(int argc, char **argv) {
 
+  Table table_f1 = GradUtil::MakeTable1().table;
+
   Asynchronously asyn(8);
   State state;
 
   // First value <1
-  const uint16 c = 0x3bffu;
+  // const uint16 c = 0x3bffu;
   // it may be a little faster to do 3bfe?
   // This also works: first value >1
-  // const uint16 c = 0x3c01u;
+  const uint16 c = 0x3c01u;
   // const uint16 c = 0x3bfau;
 
-  for (int i = 0; i < 10000; i++) {
+  GradUtil::ApplyStep(Step{.mult = false,
+                           .value = GradUtil::GetU16(0.67_h)},
+                      &state.table);
+
+  for (int i = 0; i < 1000; i++) {
     GradUtil::ApplyStep(Step{.mult = true, .value = c}, &state.table);
     /*
-    GradUtil::ApplyStep(Step{.mult = false, .value = 0x8020u}, &state.table);
-    GradUtil::ApplyStep(Step{.mult = false, .value = 0x0020u}, &state.table);
+      GradUtil::ApplyStep(Step{.mult = false, .value = 0x8020u}, &state.table);
+      GradUtil::ApplyStep(Step{.mult = false, .value = 0x0020u}, &state.table);
     */
 
-    if (i % 100 == 0) {
-      asyn.Run([new_table = state.table, i]() mutable {
+    if (i % 50 == 0) {
+      asyn.Run([&table_f1, new_table = state.table, i]() mutable {
           ImageRGBA img(IMAGE_SIZE, IMAGE_SIZE);
           img.Clear32(0x000000FF);
           GradUtil::Grid(&img);
@@ -177,14 +183,20 @@ int main(int argc, char **argv) {
                                    .value = GradUtil::GetU16(scale)},
             &new_table);
 
-          GradUtil::Graph(new_table, 0xFFFFFF77, &img);
+          Table graph_table = GradUtil::Minus(table_f1, new_table);
+
+          GradUtil::ApplyStep(Step{.mult = true,
+                                   .value = GradUtil::GetU16(10.0_h)},
+            &graph_table);
+
+          GradUtil::Graph(graph_table, 0xFFFFFF77, &img);
           string filename = StringPrintf("iterated-%05d.png", i);
           img.Save(filename);
         });
     }
   }
 
-  #if 0
+#if 0
   ImageRGBA img(IMAGE_SIZE, IMAGE_SIZE);
   img.Clear32(0x000000FF);
   Table new_table = state.table;

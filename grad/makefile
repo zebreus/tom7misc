@@ -24,6 +24,8 @@ CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 # no fast math!
 # this worked for clang
 # CXXFLAGS=-mfpmath=sse -msse2 -frounding-math -fno-fast-math -march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
+# TODO: This may help if not already enabled?
+# -DHALF_ENABLE_F16C_INTRINSICS=1
 OPT=-O2
 CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 $(CLINCLUDES) -std=c++20 $(OPT)
 
@@ -72,6 +74,17 @@ evaluate.exe : evaluate.o network.o network-gpu.o error-history.o clutil.o $(OBJ
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+hash.exe : hash.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+makefn.exe : makefn.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+expression_test.exe : expression_test.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 clean :
 	rm -f *.o $(OBJECTS) *.exe

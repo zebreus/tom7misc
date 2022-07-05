@@ -229,6 +229,77 @@ struct GradUtil {
     }
   }
 
+  // With functions f and g, return h(x) = f(x) - g(x)
+  static Table Minus(const Table &f, const Table &g) {
+    Table out;
+    for (int i = 0; i < 65536; i++) {
+      uint16 x = (uint16)i;
+      half fh = GetHalf(f[x]);
+      half gh = GetHalf(g[x]);
+      uint16 y = GetU16(fh - gh);
+      out[x] = y;
+    }
+    return out;
+  }
+
+  // 500 iterations of multiplying by 0.99951171875, which
+  // is the first number smaller than one. Then rescale back
+  // to the original scale.
+  static State MakeTable1() {
+    static constexpr uint16 C = 0x3bffu;
+    static constexpr int ITERS = 500;
+    State state;
+    for (int i = 0; i < ITERS; i++) {
+      ApplyStep(Step{.mult = true, .value = C}, &state.table);
+    }
+
+    // And recenter.
+    const auto &[offset, scale] = Recentering(state.table);
+    // printf("Table1 offset %04x scale %04x\n",
+    //        GetU16(offset), GetU16(scale));
+    // printf("Offset %.9g Scale %.9g\n", (float)offset, (float)scale);
+    ApplyStep(Step{.mult = false,
+                   .value = GradUtil::GetU16(offset)},
+      &state.table);
+    ApplyStep(Step{.mult = true,
+                   .value = GradUtil::GetU16(scale)},
+      &state.table);
+    return state;
+  }
+
+  // This is a lot like the leaky relu function (between [-1, 1] at least)
+  // although the knee is not as pronounced. There's also significant
+  // discretization error.
+  static State MakeTable2() {
+    // This is -4.
+    static constexpr uint16 OFF = 0xc400;
+    // This is the first number smaller than 1.0.
+    static constexpr uint16 C = 0x3bffu;
+    static constexpr int ITERS = 300;
+    State state;
+
+    GradUtil::ApplyStep(Step{.mult = false, .value = OFF},
+                        &state.table);
+
+    for (int i = 0; i < ITERS; i++) {
+      ApplyStep(Step{.mult = true, .value = C}, &state.table);
+    }
+
+    // And recenter.
+    const auto &[offset, scale] = Recentering(state.table);
+    printf("Table2 offset %04x scale %04x\n",
+           GetU16(offset), GetU16(scale));
+
+    // printf("Offset %.9g Scale %.9g\n", (float)offset, (float)scale);
+    ApplyStep(Step{.mult = false,
+                   .value = GradUtil::GetU16(offset)},
+      &state.table);
+    ApplyStep(Step{.mult = true,
+                   .value = GradUtil::GetU16(scale)},
+      &state.table);
+    return state;
+  }
+
   static std::vector<uint16_t> GetFunctionFromFile(
       const std::string &filename) {
     std::vector<uint16_t> ret(65536, 0);

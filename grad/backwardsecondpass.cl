@@ -47,6 +47,12 @@ __kernel void BackwardSecondPass(
 
   const float err = DERIVATIVE(out_h) * weighted_error_sum;
 
+  if (isnan(err)) {
+    printf("BSP %.3f (%.3f) * %.3f -> %.3f at %d\n",
+           out_h, DERIVATIVE(out_h),
+           weighted_error_sum, err, h_global);
+  }
+
   src_error[h_global] =
   #if CLIP_ERROR
     fmax(-LARGE_ERROR, fmin(LARGE_ERROR, err))

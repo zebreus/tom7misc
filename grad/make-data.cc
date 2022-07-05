@@ -29,30 +29,8 @@ static inline float Unpack16AsFloat(uint16 u) {
 
 static constexpr int IMAGE_SIZE = 1920;
 
-// 500 iterations of multiplying by 0.99951171875, which
-// is the first number smaller than one.
-static State MakeTable1() {
-  static constexpr uint16 C = 0x3bffu;
-  static constexpr int ITERS = 500;
-  State state;
-  for (int i = 0; i < ITERS; i++) {
-    GradUtil::ApplyStep(Step{.mult = true, .value = C}, &state.table);
-  }
-
-  // And recenter.
-  const auto &[offset, scale] = GradUtil::Recentering(state.table);
-  // printf("Offset %.9g Scale %.9g\n", (float)offset, (float)scale);
-  GradUtil::ApplyStep(Step{.mult = false,
-                           .value = GradUtil::GetU16(offset)},
-    &state.table);
-  GradUtil::ApplyStep(Step{.mult = true,
-                           .value = GradUtil::GetU16(scale)},
-    &state.table);
-  return state;
-}
-
 int main(int argc, char **argv) {
-  State state = MakeTable1();
+  State state = GradUtil::MakeTable1();
 
   {
     ImageRGBA forward(256, 256);
@@ -271,6 +249,17 @@ int main(int argc, char **argv) {
       CHECK(std::isfinite(deriv_out[yu])) << yu;
     });
 
+  printf("deriv at 0xfbff (min finite): %.6f\n"
+         "deriv at 0x7bff (max finite): %.6f\n",
+         deriv_out[0xfbff],
+         deriv_out[0x7bff]);
+
+  // Extrapolate derivative at -inf and +inf. This keeps
+  // infinite errors from becoming nans (and it is easy
+  // to saturate at infinity with the max finite value
+  // being 65504!)
+  deriv_out[0xfc00] = deriv_out[0xfbff];
+  deriv_out[0x7c00] = deriv_out[0x7bff];
 
   // TODO: Output derivative!
   ImageRGBA deriv_img(256, 256);

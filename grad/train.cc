@@ -26,6 +26,7 @@
 #include "periodically.h"
 #include "timer.h"
 #include "error-history.h"
+#include "eval.h"
 
 #include "mnist.h"
 
@@ -174,6 +175,8 @@ static void Train(Network *net) {
 
   ErrorHistory error_history("error-history.tsv");
 
+  Evaluator evaluator(cl);
+
   static constexpr int max_parallelism = 4;
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
@@ -199,8 +202,13 @@ static void Train(Network *net) {
   int64 total_verbose = 0;
 
   // How often to also save error history to disk (if we run a
-  // verbose round).
-  static constexpr double HISTORY_EVERY_SEC = 120.0;
+  // verbose round). This also evaluates on the test data set
+  // simultaneously.
+  //
+  // Early in training, we do this more often, as the changes
+  // are often rapid then.
+  const double HISTORY_EVERY_SEC =
+    net->rounds < 1000 ? 30.0 : 120.0;
   Periodically history_per(HISTORY_EVERY_SEC);
 
   static constexpr double SAVE_ERROR_IMAGES_EVERY = 130.0;
@@ -410,6 +418,7 @@ static void Train(Network *net) {
              net->rounds,
              (iter * EXAMPLES_PER_ROUND) / train_timer.Seconds());
 
+      double overall_average_loss = 0.0;
       for (int col = 0; col < NUM_COLUMNS; col++) {
 
         std::vector<std::pair<float, float>> ex(EXAMPLES_PER_ROUND);
@@ -428,10 +437,7 @@ static void Train(Network *net) {
         }
 
         average_loss /= EXAMPLES_PER_ROUND;
-
-        if (save_history) {
-          error_history.Add(net->rounds, average_loss, col);
-        }
+        overall_average_loss += average_loss;
 
         error_images[col]->Add(std::move(ex));
 
@@ -443,6 +449,26 @@ static void Train(Network *net) {
         printf("   %c: %.3f<%.3f<%.3f\n",
                '0' + col,
                min_loss, average_loss, max_loss);
+      }
+
+      overall_average_loss /= NUM_COLUMNS;
+      printf("overall: %.4f\n", overall_average_loss);
+      if (save_history) {
+        net_gpu->ReadFromGPU();
+        Evaluator::Result res = evaluator.Evaluate(net);
+        res.wrong.Save("test-wrong.png");
+        double test_loss = (res.total - res.correct) / (double)res.total;
+        error_history.Add(net->rounds, overall_average_loss,
+                          ErrorHistory::ERROR_TRAIN);
+        error_history.Add(net->rounds, test_loss,
+                          ErrorHistory::ERROR_TEST);
+        printf("Test loss: %.4f in %.4fs\n", test_loss, res.fwd_time);
+        error_history.MakeImage(1920, 1080,
+                                {{ErrorHistory::ERROR_TRAIN, 0x0033FFFF},
+                                 {ErrorHistory::ERROR_TEST, 0x00FF00FF}},
+                                0).Save("error-history.png");
+        if (net->rounds > 1000)
+          history_per.SetPeriod(120.0);
       }
 
       total_verbose++;
@@ -555,7 +581,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
   input_chunk.height = IMG_HEIGHT;
   input_chunk.channels = 1;
 
-  constexpr TransferFunction TF = IDENTITY;
+  constexpr TransferFunction TF = LEAKY_RELU;
 
   layers.push_back(Network::LayerFromChunks(input_chunk));
 
@@ -583,66 +609,75 @@ static unique_ptr<Network> NewDigitsNetwork() {
         1, 1,
         TF, WEIGHT_UPDATE);
 
-  int SPARSE1_SIZE = 256;
-  Chunk sparse_chunk =
-    Network::MakeRandomSparseChunk(
-        &rc, SPARSE1_SIZE,
-        {{.span_start = 0, .span_size = INPUT_SIZE, .ipn = 64}},
-        TF, WEIGHT_UPDATE);
-
   layers.push_back(Network::LayerFromChunks(first_conv_chunk,
-                                            second_conv_chunk,
-                                            sparse_chunk));
+                                            second_conv_chunk));
+
+  printf("Conv1: %d x %d occ x %d\n"
+         "Conv2: %d x %d occ x %d\n",
+         first_conv_chunk.num_occurrences_across,
+         first_conv_chunk.num_occurrences_down,
+         first_conv_chunk.num_features,
+         second_conv_chunk.num_occurrences_across,
+         second_conv_chunk.num_occurrences_down,
+         second_conv_chunk.num_features);
 
   int num_conv1 =
     CONV1_FEATURES * first_conv_chunk.num_occurrences_across *
     first_conv_chunk.num_occurrences_down;
   Chunk next_conv1 =
-    Network::Make1DConvolutionChunk(
-        0, num_conv1,
-        64, CONV1_FEATURES,
-        // process the features as a block,
-        CONV1_FEATURES,
+    Network::Make2DConvolutionChunk(
+        0,
+        // Each occurrence becomes CONV1_FEATURES wide.
+        CONV1_FEATURES * first_conv_chunk.num_occurrences_across,
+        first_conv_chunk.num_occurrences_down,
+        // Process 2x2 blocks (of all features) into 32 features.
+        32, CONV1_FEATURES * 2, 2,
+        // no overlap
+        CONV1_FEATURES * 2, 2,
         TF, WEIGHT_UPDATE);
 
+  /*
   int num_conv2 =
     CONV2_FEATURES * second_conv_chunk.num_occurrences_across *
     second_conv_chunk.num_occurrences_down;
+  */
   Chunk next_conv2 =
-    Network::Make1DConvolutionChunk(
-        num_conv1, num_conv2,
-        64, CONV2_FEATURES,
-        CONV2_FEATURES,
-        TF, WEIGHT_UPDATE);
-
-  Chunk sparse2 =
-    Network::MakeRandomSparseChunk(
-        &rc, 256, {{.span_start = num_conv1 + num_conv2,
-                    .span_size = SPARSE1_SIZE, .ipn = 64}},
+    Network::Make2DConvolutionChunk(
+        // skip first conv chunk
+        num_conv1,
+        CONV2_FEATURES * second_conv_chunk.num_occurrences_across,
+        second_conv_chunk.num_occurrences_down,
+        // As above, into 32 features.
+        32, CONV2_FEATURES * 2, 2,
+        // No overlap.
+        CONV2_FEATURES * 2, 2,
         TF, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(next_conv1,
-                                            next_conv2,
-                                            sparse2));
+                                            next_conv2));
 
-  Chunk sparse3 =
-    Network::MakeRandomSparseChunk(
-        &rc, 512, {{.span_start = 0, .span_size = layers.back().num_nodes,
-                    .ipn = 64}},
-        TF, WEIGHT_UPDATE);
+  printf("Conv1: %d x %d occ x %d\n"
+         "Conv2: %d x %d occ x %d\n",
+         next_conv1.num_occurrences_across,
+         next_conv1.num_occurrences_down,
+         next_conv1.num_features,
+         next_conv2.num_occurrences_across,
+         next_conv2.num_occurrences_down,
+         next_conv2.num_features);
 
-  layers.push_back(Network::LayerFromChunks(sparse3));
-
-  /*
-  // more layers?
-  Chunk sparse4 =
-    Network::MakeRandomSparseChunk(
-        &rc, 512, {{.span_start = 0, .span_size = layers.back().num_nodes,
-                    .ipn = 64}},
-        TF, WEIGHT_UPDATE);
-
-  layers.push_back(Network::LayerFromChunks(sparse4));
-  */
+  // XXX added these for "deep" experiments.
+  const int NUM_DEEP = 2;
+  int layer_size = 1024;
+  for (int i = 0; i < NUM_DEEP; i++) {
+    int prev_size = layers.back().num_nodes;
+    Chunk sparse =
+      Network::MakeRandomSparseChunk(
+          &rc, layer_size, {{.span_start = 0, .span_size = prev_size,
+                             .ipn = prev_size / 16}},
+          TF, WEIGHT_UPDATE);
+    layers.push_back(Network::LayerFromChunks(sparse));
+    layer_size >>= 1;
+  }
 
   // Output layer.
   Chunk dense_out =
