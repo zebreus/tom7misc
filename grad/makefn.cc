@@ -10,6 +10,8 @@
 #include "timer.h"
 #include "image.h"
 #include "color-util.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 // Attempt to mimic a function with a "linear" expression
 // (within some range).
@@ -97,43 +99,48 @@ static const Exp *Op1Exp(Allocator *alloc,
 //
 // (x + c1) * 0.999 * ... * 0.999 * c3 - c4
 //            `---- c2 times ---'
-using Op1Optimizer = Optimizer<1, 3, uint8>;
+struct Op1 {
+  static constexpr int INT_ARGS = 1;
+  static constexpr int DOUBLE_ARGS = 3;
 
-static Op1Optimizer::function_type
-Op1Function(half low, half high, const Table &target) {
-  return Op1Optimizer::function_type(
-      [low, high, &target](Op1Optimizer::arg_type arg) ->
-      Op1Optimizer::return_type {
-        const int c2 = arg.first[0];
-        const auto &[c1, c3, c4] = arg.second;
+  static const Exp *GetExp(Allocator *alloc,
+                           const std::array<int, INT_ARGS> &ints,
+                           const std::array<double, DOUBLE_ARGS> &dbls) {
+    const auto &[c2] = ints;
+    const auto &[c1, c3, c4] = dbls;
+    return
+      alloc->PlusC(
+          alloc->TimesC(
+              alloc->TimesC(
+                  // x + c1
+                  alloc->PlusC(alloc->Var(), GetU16((half)c1)),
+                  // * 0.999 ...
+                  0x3bffu,
+                  c2),
+              GetU16((half)c3)),
+          GetU16((half)c4));
+  }
 
-        static constexpr bool VERBOSE = false;
+};
 
-        Timer eval_timer;
-        if (VERBOSE)
-          printf("Call with [%.3f, %d, %.3f, %.3f]\n",
-                 c1, c2, c3, c4);
+template<class Op>
+struct OpOptimizer {
+  using Opt = Optimizer<Op::INT_ARGS, Op::DOUBLE_ARGS, uint8>;
 
+  static Opt::function_type
+  GetFunction(half low, half high, const Table &target) {
+  return typename Opt::function_type(
+      [low, high, &target](const Opt::arg_type &arg) ->
+      Opt::return_type {
+        const auto &[ints, dbls] = arg;
         Allocator alloc;
-        const Exp *exp = Op1Exp(&alloc, c1, c2, c3, c4);
-
-        Timer tab_timer;
+        const Exp *exp = Op::GetExp(&alloc, ints, dbls);
         Table table = Exp::TabulateExpressionIn(exp, low, high);
-        double tab_sec = tab_timer.Seconds();
-        if (VERBOSE)
-          printf("  .. tab in %.3fs\n", tab_sec);
-
-        Timer err_timer;
         double error = Error(low, high, target, table);
-        double err_sec = err_timer.Seconds();
-
-        if (VERBOSE)
-          printf(" .. %.3fs [%.3f + %.3f]. error %.6f\n",
-                 eval_timer.Seconds(), tab_sec, err_sec, error);
-
         return std::make_pair(error, std::make_optional('o'));
       });
-}
+  }
+};
 
 
 // Try to approximate the target table within the range [low, high].
@@ -145,7 +152,8 @@ static const Exp *MakeFn(Allocator *alloc,
   // reduces the error.
 
   Timer opt_timer;
-  Op1Optimizer optimizer(Op1Function(low, high, target));
+  using Op1Optimizer = OpOptimizer<Op1>;
+  Op1Optimizer::Opt optimizer(Op1Optimizer::GetFunction(low, high, target));
   optimizer.Run(
       {make_pair(100, 600)},
       {make_pair(-18.0, +18.0),
@@ -154,7 +162,7 @@ static const Exp *MakeFn(Allocator *alloc,
       nullopt,
       nullopt,
       // seconds
-      {60.0},
+      {30.0},
       nullopt);
 
   double run_sec = opt_timer.Seconds();
@@ -165,12 +173,13 @@ static const Exp *MakeFn(Allocator *alloc,
   const auto argo = optimizer.GetBest();
   CHECK(argo.has_value());
   const auto &[arg, err, out_] = argo.value();
-  const int c2 = arg.first[0];
-  const auto &[c1, c3, c4] = arg.second;
+  const auto &[ints, dbls] = arg;
+  const int c2 = ints[0];
+  const auto &[c1, c3, c4] = dbls;
   printf("Best: %.4f %d %.4f %.4f\n"
          "Error: %.5f\n", c1, c2, c3, c4, err);
 
-  const Exp *exp = Op1Exp(alloc, c1, c2, c3, c4);
+  const Exp *exp = Op1::GetExp(alloc, ints, dbls);
 
   return exp;
 }
@@ -205,7 +214,7 @@ static const Exp *MakeLoop(Allocator *alloc,
   GradUtil::Grid(&all_img);
   GradUtil::Graph(target, 0xFFFFFF88, &all_img);
 
-  static constexpr int ITERS = 100;
+  static constexpr int ITERS = 1000;
   for (int i = 0; i < ITERS; i++) {
     double error = Error(low, high, target, table);
     printf("Iter %d, error: %.6f\n", i, error);
@@ -221,7 +230,7 @@ static const Exp *MakeLoop(Allocator *alloc,
           GradUtil::GREEN_BLUE, f) & 0xFFFFFF33;
 
       GradUtil::Graph(table, color, &all_img);
-      all_img.Save("sine-all.png");
+      all_img.Save("perm-all.png");
     }
 
     // so if we have e(x) = target(x) - table(x)
@@ -238,41 +247,56 @@ static const Exp *MakeLoop(Allocator *alloc,
       GradUtil::Graph(err_approx, 0xFF0000AA, &img);
       img.BlendText32(2, 2, 0xFFFFFFAA,
                       StringPrintf("Iter %d, error: %.6f", i, error));
-      img.Save(StringPrintf("sine%d.png", i));
+      img.Save(StringPrintf("perm%d.png", i));
     }
 
     // PERF: This can be done in place.
     table = Exp::TabulateExpression(exp);
+
+    {
+      std::string s = Exp::ExpString(exp);
+      Util::WriteFile("perm-best.txt", s);
+    }
   }
 
   return exp;
 }
 
+static Table RandomPermutation() {
+  ArcFour rc("makefn");
+
+  std::vector<uint8_t> permutation;
+  for (int i = 0; i < 256; i++)
+    permutation.push_back(i);
+
+  Shuffle(&rc, &permutation);
+
+  return MakeTableFromFn([&permutation](half x) {
+      // put x in [-1, 1];
+      double pos = (double)(x + 1) * 128.0;
+      int off = std::clamp((int)floor(pos), 0, 255);
+      double y = permutation[off];
+      return (half)(y / 128.0 - 1.0);
+    });
+}
+
 int main(int argc, char **argv) {
-  Table sine =
+  /*
+  Table target =
     MakeTableFromFn([](half x) {
         return sin(x * (half)3.141592653589);
       });
-
-  #if 0
-  Table best = MakeFn((half)-1.0, (half)+1.0, sine);
-
-  ImageRGBA img(2048, 2048);
-  img.Clear32(0x000000FF);
-  GradUtil::Grid(&img);
-  GradUtil::Graph(sine, 0xFFFFFF88, &img);
-  GradUtil::Graph(best, 0x33FF33AA, &img);
-  img.Save("sine.png");
-  #endif
+  */
+  Table target = RandomPermutation();
 
   Allocator alloc;
   [[maybe_unused]]
   const Exp *e = MakeLoop(&alloc,
-                          (half)-1.0, (half)+1.0, sine);
+                          (half)-1.0, (half)+1.0, target);
 
   {
     std::string s = Exp::ExpString(e);
-    Util::WriteFile("expression.txt", s);
+    Util::WriteFile("expression-perm.txt", s);
   }
 
   return 0;
