@@ -65,8 +65,8 @@ struct Op2 {
   static constexpr std::array<std::pair<double, double>, DOUBLE_ARGS>
   DOUBLE_BOUNDS = {
     make_pair(0.001, 1.25),
-    make_pair(-128.0, +128.0),
-    make_pair(-1.0, +1.0),
+    make_pair(-64.0, +64.0),
+    make_pair(-0.1, +0.1),
   };
 
   static const Exp *GetExp(Exp::Allocator *alloc,
@@ -74,12 +74,14 @@ struct Op2 {
                            const std::array<double, DOUBLE_ARGS> &dbls,
                            const Exp::Table &target) {
     const auto &[c1, c2, c3] = dbls;
+
+    double scaled_c2 = c2 * 4.0;
     return
       alloc->PlusC(
           alloc->PlusC(
               alloc->TimesC(alloc->Var(), Exp::GetU16((half)c1)),
-              Exp::GetU16((half)c2)),
-          Exp::GetU16((half)(c2 + c3)));
+              Exp::GetU16((half)scaled_c2)),
+          Exp::GetU16((half)-(scaled_c2 + c3)));
   }
 };
 
