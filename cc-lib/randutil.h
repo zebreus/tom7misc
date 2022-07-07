@@ -61,7 +61,7 @@ inline double RandDouble(ArcFour *rc) {
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
-  // PERF: Maybe could be multipling by the inverse?
+  // PERF: Maybe could be multiplying by the inverse?
   // It's a constant.
   return ((uu &   0x3FFFFFFFFFFFFFFFULL) /
           (double)0x3FFFFFFFFFFFFFFFULL);

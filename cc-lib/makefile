@@ -81,7 +81,7 @@ simpledxf.o : simpledxf.cc simpledxf.h
 threadutil_test.exe : threadutil.h threadutil_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) threadutil_test.o $(BASE) -o $@ -lpthread
 
-color-util_test.exe : color-util.o color-util_test.o stb_image_write.o arcfour.o $(BASE)
+color-util_test.exe : color-util.o color-util_test.o stb_image.o image.o stb_image_write.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 textsvg_test.exe : textsvg.o textsvg_test.o $(BASE)

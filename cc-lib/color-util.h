@@ -1,5 +1,5 @@
-#ifndef _CC_LIB_COLORUTIL_H
-#define _CC_LIB_COLORUTIL_H
+#ifndef _CC_LIB_COLOR_UTIL_H
+#define _CC_LIB_COLOR_UTIL_H
 
 #include <tuple>
 #include <cstdint>
@@ -9,20 +9,23 @@
 // Convenience for specifying rows in gradients as 0xRRGGBB.
 // This should be a member of ColorUtil but is not allowed, perhaps
 // because of a compiler bug?
-static inline constexpr 
+static inline constexpr
 std::tuple<float, float, float, float> GradRGB(float f, uint32_t rgb) {
   return std::tuple<float, float, float, float>(
       f,
       ((rgb >> 16) & 255) / 255.0f,
       ((rgb >>  8) & 255) / 255.0f,
       ( rgb        & 255) / 255.0f);
-}  
+}
 
 struct ColorUtil {
   // hue, saturation, value nominally in [0, 1].
+  // hue of 0.0 is red.
   // RGB output also in [0, 1].
   static void HSVToRGB(float hue, float saturation, float value,
                        float *r, float *g, float *b);
+  static std::tuple<float, float, float>
+  HSVToRGB(float hue, float saturation, float value);
 
   // Convert to CIE L*A*B*.
   // RGB channels are nominally in [0, 1].
@@ -44,7 +47,7 @@ struct ColorUtil {
   // initializer_list so that these can be constexpr.
   using Gradient = std::initializer_list<
     std::tuple<float, float, float, float>>;
-  
+
   // Three-channel linear gradient with the sample point t and the
   // gradient ramp specified. Typical usage would be for t in [0,1]
   // and RGB channels each in [0,1], but other uses are acceptable
@@ -55,7 +58,7 @@ struct ColorUtil {
 
   // As RGBA, with alpha=0xFF.
   static uint32_t LinearGradient32(const Gradient &ramp, float t);
-  
+
   static constexpr Gradient HEATED_METAL{
     GradRGB(0.0f,  0x000000),
     GradRGB(0.2f,  0x7700BB),

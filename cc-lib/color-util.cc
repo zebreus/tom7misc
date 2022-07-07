@@ -14,12 +14,10 @@ static inline T Clamp(T value, T low, T high) {
 }
 
 // static
-void ColorUtil::HSVToRGB(float h, float s, float v,
-                         float *r, float *g, float *b) {
+std::tuple<float, float, float>
+ColorUtil::HSVToRGB(float h, float s, float v) {
   if (s == 0.0f) {
-    *r = v;
-    *g = v;
-    *b = v;
+    return std::make_tuple(v, v, v);
   } else {
     const float hue = h * 6.0f;
     const int fh = (int)hue;
@@ -38,11 +36,16 @@ void ColorUtil::HSVToRGB(float h, float s, float v,
     default: red = v;      green = var_1;  blue = var_2; break;
     }
 
-    *r = red;
-    *g = green;
-    *b = blue;
+    return std::make_tuple(red, green, blue);
   }
 }
+
+// static
+void ColorUtil::HSVToRGB(float h, float s, float v,
+                         float *r, float *g, float *b) {
+  std::tie(*r, *g, *b) = HSVToRGB(h, s, v);
+}
+
 
 static std::tuple<float, float, float>
 sRGBToLAB(float srgb_r, float srgb_g, float srgb_b) {
@@ -144,7 +147,7 @@ ColorUtil::LinearGradient(
   auto it = ramp.begin();
   auto prev = *it;
   ++it;
-  
+
   {
     const auto [x, r, g, b] = prev;
     if (t < x) {
