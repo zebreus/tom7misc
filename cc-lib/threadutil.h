@@ -99,7 +99,7 @@ Res ParallelAccumulate(int64_t num,
   // Each thread gets its own accumulator so there's no need to
   // synchronize access.
   std::vector<Res> accs(num_threads, zero);
-  
+
   auto th = [&accs,
              &index_m, &next_index, num, &f](int thread_num) {
     // PERF consider creating the accumulator in the thread as
@@ -198,7 +198,7 @@ void UnParallelComp(int64_t num, const F &f, int max_concurrency_ignored) {
 // synchronize any accesses to shared data structures. Return value of
 // function is ignored.
 template<class T, class F>
-void ParallelAppi(const std::vector<T> &vec, 
+void ParallelAppi(const std::vector<T> &vec,
                   const F &f,
                   int max_concurrency) {
 
@@ -210,7 +210,7 @@ void ParallelAppi(const std::vector<T> &vec,
 
 // Same, but the typical case that the index is not needed.
 template<class T, class F>
-void ParallelApp(const std::vector<T> &vec, 
+void ParallelApp(const std::vector<T> &vec,
                  const F &f,
                  int max_concurrency) {
   auto ff = [&f](int64_t i_unused, const T &arg) { return f(arg); };
@@ -219,10 +219,24 @@ void ParallelApp(const std::vector<T> &vec,
 
 // Drop-in serial replacement for debugging, etc.
 template<class T, class F>
-void UnParallelApp(const std::vector<T> &vec, 
+void UnParallelApp(const std::vector<T> &vec,
                    const F &f,
                    int max_concurrency) {
   for (const auto &t : vec) f(t);
+}
+
+// e.g. InParallel(
+//    []() { some code; },
+//    []() { some more code; }
+// );
+
+template<class... Fs>
+inline void InParallel(Fs... fs) {
+  // PERF: Can we do this without copying?
+  std::vector v{std::function<void(void)>(fs)...};
+  ParallelApp(v, [](const std::function<void(void)> &f) {
+      f();
+    }, v.size());
 }
 
 

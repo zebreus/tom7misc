@@ -52,14 +52,14 @@ static void TestMap() {
                    ParallelMap(v, Square, i));
     }
   }
-    
+
   {
     vector<string> v;
     for (int i = 0; i < 100; i++)
       v.push_back(StringPrintf("hello %d", i));
 
     auto F = [](const string &s) { return s + " world"; };
-    
+
     for (int i = 0; i < 20; i++) {
       CheckSameVec(UnParallelMap(v, F, i), ParallelMap(v, F, i));
     }
@@ -69,7 +69,7 @@ static void TestMap() {
 static void TestMapi() {
   vector<char> ecs;
   for (int c = 0; c < 255; c++) ecs.push_back(c ^ 0x5F);
-  
+
   for (int th = 1; th < 100; th++) {
     vector<char> cs = ParallelMapi(ecs, [](int i, char c) {
         return (char)((c ^ 0x5f) - i);
@@ -87,7 +87,7 @@ static void TestAsynchronously() {
   int ran = 0;
 
   {
-    Asynchronously async(MAX_THREADS);  
+    Asynchronously async(MAX_THREADS);
     for (int i = 0; i < 100; i++) {
       async.Run([&m, &simultaneous, &max_simultaneous, &ran]() {
           {
@@ -116,13 +116,21 @@ static void TestAsynchronously() {
     "in practice! " << max_simultaneous;
 }
 
+static void TestInParallel() {
+  int a = 0, b = 0;
+  InParallel([&a]() { a++; },
+             [&b]() { b = 7; });
+  CHECK(a == 1 && b == 7);
+}
+
 int main(int argc, char **argv) {
 
   TestMap();
   TestMapi();
   TestAccumulate();
   TestAsynchronously();
-  
+  TestInParallel();
+
   printf("OK.\n");
   return 0;
 }
