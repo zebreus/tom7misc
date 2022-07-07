@@ -15,15 +15,17 @@
 //     avoid the overhead if THREADS=1
 //   - TODO: serialize state?
 
-#include <functional>
 #include <array>
-#include <cstring>
-#include <cmath>
-#include <optional>
-#include <utility>
-#include <limits>
+#include <bit>
 #include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <limits>
+#include <optional>
 #include <unordered_map>
+#include <utility>
 
 #include "opt/opt.h"
 
@@ -60,7 +62,8 @@ struct Optimizer {
   // function to optimize.
   using function_type = std::function<return_type(arg_type)>;
 
-  explicit Optimizer(function_type f);
+  explicit Optimizer(function_type f,
+                     uint64_t start_seed = 1);
 
   // Might already have a best candidate from a previous run or
   // known feasible solution. This is not currently used to inform
@@ -112,6 +115,8 @@ struct Optimizer {
   std::vector<std::tuple<arg_type, double, std::optional<OutputType>>>
   GetAll() const;
 
+  int64_t NumEvaluations() const { return evaluations; }
+
  private:
   static constexpr int N = N_INTS + N_DOUBLES;
   const function_type f;
@@ -151,6 +156,8 @@ struct Optimizer {
   // Same for the output. Not stored unless save_all is set.
   std::unordered_map<arg_type, std::optional<OutputType>,
                      HashArg> cached_output;
+  int64_t evaluations = 0;
+  uint64_t random_seed = 1;
   bool save_all = false;
 };
 
@@ -158,8 +165,9 @@ struct Optimizer {
 // Template implementations follow.
 
 template<int N_INTS, int N_DOUBLES, class OutputType>
-Optimizer<N_INTS, N_DOUBLES, OutputType>::Optimizer(function_type f) :
-  f(std::move(f)) {}
+Optimizer<N_INTS, N_DOUBLES, OutputType>::Optimizer(function_type f,
+                                                    uint64_t random_seed) :
+  f(std::move(f)), random_seed(random_seed) {}
 
 template<int N_INTS, int N_DOUBLES, class OutputType>
 void Optimizer<N_INTS, N_DOUBLES, OutputType>::SetSaveAll(bool save) {
@@ -301,6 +309,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
         }
       }
 
+      evaluations++;
       auto [score, res] = f(arg);
       cached_score[arg] = score;
       if (save_all) cached_output[arg] = res;
@@ -332,12 +341,28 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
   // Perhaps this could itself be optimized?
   const int ITERS = 1000 * powf(N, 1.5f);
 
-  for (int seed = 1; !stop; seed++) {
-  // stop is set by the callback below, but g++ sometimes gets mad
-  (void)(stop = !!stop);
+  // TODO:
+  auto LFSRNext = [](uint32_t state) -> uint32_t {
+    const uint32_t bit = std::popcount<uint32_t>(state & 0x8D777777) & 1;
+    return (state << 1) | bit;
+  };
+
+  uint32_t seed1 = (random_seed >> 32);
+  if (!seed1) seed1 = 1;
+  uint32_t seed2 = (random_seed & 0xFFFFFFFF);
+  if (!seed2) seed2 = 2;
+
+  while (!stop) {
+    seed1 = LFSRNext(seed1);
+    seed2 = LFSRNext(seed2);
+    // Update seed member so that next call to Run is (pseudo)independent.
+    random_seed = (uint64_t)seed1 << 32 | (uint64_t)seed2;
+
+    // stop is set by the callback below, but g++ sometimes gets mad
+    (void)(stop = !!stop);
     // PERF: Biteopt now has stopping conditions, so we should be able
-  // to be more accurate here.
-    Opt::Minimize<N>(df, lbs, ubs, ITERS, 1, 1, seed);
+    // to be more accurate here.
+    Opt::Minimize<N>(df, lbs, ubs, ITERS, 1, 1, random_seed);
   }
 }
 
