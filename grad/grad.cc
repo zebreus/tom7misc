@@ -425,7 +425,7 @@ static void Stats(Func<fptype, N> *fn) {
 
 template<class fptype, size_t N>
 [[maybe_unused]]
-static void Graph(Func<fptype, N> *fn) {
+static void Graph(const string &filename, Func<fptype, N> *fn) {
   Bounds bounds, error_bounds, nonlinear_bounds, deriv_bounds;
   double total_diff = 0.0;
   vector<double> samples, error_samples, nonlinear_samples, deriv_samples;
@@ -530,7 +530,6 @@ static void Graph(Func<fptype, N> *fn) {
 
     img.BlendText32(1, 1, 0x888888AA, fn->Exp());
 
-    string filename = "grad.png";
     img.Save(filename);
     printf("Wrote %s\n", filename.c_str());
   }
@@ -588,7 +587,7 @@ void Optimize() {
            (double)GradUtil::GetHalf(u));
   }
 
-  Graph(fn.get());
+  Graph("grad-optimize.png", fn.get());
 }
 
 int main(int argc, char **argv) {
@@ -607,47 +606,56 @@ int main(int argc, char **argv) {
   // Optimize();
   //     return 0;
 
-  Optimize();
-  return 0;
+  Graph("function8a.png",
+        new Function8({
+            GradUtil::GetHalf(0xb809),  // -0.50439453125,
+            GradUtil::GetHalf(0x0560),  // 8.20159912109375e-05,
+            GradUtil::GetHalf(0x4f40),  // 29,
+            GradUtil::GetHalf(0xa55e),  // -0.020965576171875,
+            GradUtil::GetHalf(0x0549),  // 8.0645084381103516e-05,
+            GradUtil::GetHalf(0x7a76),  // 52928,
+            GradUtil::GetHalf(0x1291),  // 0.00080156326293945312,
+            GradUtil::GetHalf(0xf414),  // -16704,
+          }
+          ));
 
-  if (false) {
-    Graph(new Function8({
-          GradUtil::GetHalf(0xb809),  // -0.50439453125,
-          GradUtil::GetHalf(0x0560),  // 8.20159912109375e-05,
-          GradUtil::GetHalf(0x4f40),  // 29,
-          GradUtil::GetHalf(0xa55e),  // -0.020965576171875,
-          GradUtil::GetHalf(0x0549),  // 8.0645084381103516e-05,
-          GradUtil::GetHalf(0x7a76),  // 52928,
-          GradUtil::GetHalf(0x1291),  // 0.00080156326293945312,
-          GradUtil::GetHalf(0xf414),  // -16704,
-        }
-        ));
-  }
+  Graph("function8b.png",
+        new Function8({
+            GradUtil::GetHalf(0xa0a0),  // -0.009033203125,
+            GradUtil::GetHalf(0xa038),  // -0.00823974609375,
+            GradUtil::GetHalf(0xa037),  // -0.00823211669921875,
+            GradUtil::GetHalf(0xa03e),  // -0.0082855224609375,
+            GradUtil::GetHalf(0xa03f),  // -0.00829315185546875,
+            GradUtil::GetHalf(0xa03f),  // -0.00829315185546875,
+            GradUtil::GetHalf(0xa03e),  // -0.0082855224609375,
+            GradUtil::GetHalf(0x9f80),  // -0.00732421875,
+          }
+          ));
 
-  if (false) {
+  {
     // Error_Bounds 0 -5.9604644775e-08 to 999 5.9604644775e-08
     static constexpr float SCALE = 6.0077242583987507e+37;
     static constexpr float OFF = 9.9159268948476343e+37;
-    Graph(new Function2({SCALE, OFF}));
+    Graph("function2.png", new Function2({SCALE, OFF}));
   }
 
-  if (false) {
+  {
     // static constexpr float SCALE = 9.9260844311214201e+37;
     // static constexpr float OFF = 9.9630854128974192e+37;
     static constexpr float SCALE = 9.9260844311214201e+37f;
     static constexpr float OFF = 9.9630854128974192e+37f;
-    Graph(new Function3({SCALE, OFF}));
+    Graph("function3a.png", new Function3({SCALE, OFF}));
   }
 
-  if (false) {
+  {
     // static constexpr float SCALE = 9.9260844311214201e+37;
     // static constexpr float OFF = 9.9630854128974192e+37;
     static constexpr float SCALE = 9.9684294429838515e+37;
     static constexpr float OFF = 9.9438839619657644e+37;
-    Graph(new Function3({SCALE, OFF}));
+    Graph("function3b.png", new Function3({SCALE, OFF}));
   }
 
-  if (false) {
+  {
     // static constexpr float SCALE = 7.5600048108248608e-05f;
     // static constexpr float OFF = 0.00039428695153609361f;
 
@@ -656,19 +664,11 @@ int main(int argc, char **argv) {
 
     // static constexpr half SCALE = 20765.713900227656f;
     // static constexpr half OFF = 30555.616399484014f;
-    Graph(new Function4({SCALE, OFF}));
+    Graph("function4.png", new Function4({SCALE, OFF}));
   }
 
   return 0;
 }
 
 /*
-GradUtil::GetHalf(0xa0a0),  // -0.009033203125,
-GradUtil::GetHalf(0xa038),  // -0.00823974609375,
-GradUtil::GetHalf(0xa037),  // -0.00823211669921875,
-GradUtil::GetHalf(0xa03e),  // -0.0082855224609375,
-GradUtil::GetHalf(0xa03f),  // -0.00829315185546875,
-GradUtil::GetHalf(0xa03f),  // -0.00829315185546875,
-GradUtil::GetHalf(0xa03e),  // -0.0082855224609375,
-GradUtil::GetHalf(0x9f80),  // -0.00732421875,
 */

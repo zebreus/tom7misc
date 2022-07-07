@@ -175,7 +175,10 @@ int main(int argc, char **argv) {
           // Table new_table = state.table;
 
           const auto &[offset, scale] = GradUtil::Recentering(new_table);
-          printf("Offset %.9g Scale %.9g\n", (float)offset, (float)scale);
+          printf("Iter %d. Offset %04x = %.9g Scale %04x = %.9g\n",
+                 i,
+                 GradUtil::GetU16(offset), (float)offset,
+                 GradUtil::GetU16(scale), (float)scale);
           GradUtil::ApplyStep(Step{.mult = false,
                                    .value = GradUtil::GetU16(offset)},
             &new_table);

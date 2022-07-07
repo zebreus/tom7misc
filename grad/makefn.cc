@@ -12,6 +12,9 @@
 #include "color-util.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "threadutil.h"
+
+#include "makefn-ops.h"
 
 // Attempt to mimic a function with a "linear" expression
 // (within some range).
@@ -79,50 +82,6 @@ double Error(half low, half high,
   return total_error / total_width;
 }
 
-static const Exp *Op1Exp(Allocator *alloc,
-                         double c1, int c2, double c3, double c4) {
-  return
-    alloc->PlusC(
-        alloc->TimesC(
-            alloc->TimesC(
-                // x + c1
-                alloc->PlusC(alloc->Var(), GetU16((half)c1)),
-                // * 0.999 ...
-                0x3bffu,
-                c2),
-            GetU16((half)c3)),
-        GetU16((half)c4));
-}
-
-// Operation 1.
-// Optimize this 4-parameter function:
-//
-// (x + c1) * 0.999 * ... * 0.999 * c3 - c4
-//            `---- c2 times ---'
-struct Op1 {
-  static constexpr int INT_ARGS = 1;
-  static constexpr int DOUBLE_ARGS = 3;
-
-  static const Exp *GetExp(Allocator *alloc,
-                           const std::array<int, INT_ARGS> &ints,
-                           const std::array<double, DOUBLE_ARGS> &dbls) {
-    const auto &[c2] = ints;
-    const auto &[c1, c3, c4] = dbls;
-    return
-      alloc->PlusC(
-          alloc->TimesC(
-              alloc->TimesC(
-                  // x + c1
-                  alloc->PlusC(alloc->Var(), GetU16((half)c1)),
-                  // * 0.999 ...
-                  0x3bffu,
-                  c2),
-              GetU16((half)c3)),
-          GetU16((half)c4));
-  }
-
-};
-
 template<class Op>
 struct OpOptimizer {
   using Opt = Optimizer<Op::INT_ARGS, Op::DOUBLE_ARGS, uint8>;
@@ -134,7 +93,7 @@ struct OpOptimizer {
       Opt::return_type {
         const auto &[ints, dbls] = arg;
         Allocator alloc;
-        const Exp *exp = Op::GetExp(&alloc, ints, dbls);
+        const Exp *exp = Op::GetExp(&alloc, ints, dbls, target);
         Table table = Exp::TabulateExpressionIn(exp, low, high);
         double error = Error(low, high, target, table);
         return std::make_pair(error, std::make_optional('o'));
@@ -146,40 +105,194 @@ struct OpOptimizer {
 // Try to approximate the target table within the range [low, high].
 static const Exp *MakeFn(Allocator *alloc,
                          half low, half high,
-                         const Table &target) {
+                         const Table &target,
+                         double time_sec) {
 
   // We try to make progress by finding a series of operations that
   // reduces the error.
 
-  Timer opt_timer;
-  using Op1Optimizer = OpOptimizer<Op1>;
-  Op1Optimizer::Opt optimizer(Op1Optimizer::GetFunction(low, high, target));
-  optimizer.Run(
-      {make_pair(100, 600)},
-      {make_pair(-18.0, +18.0),
-       make_pair(-18.0, +18.0),
-       make_pair(-18.0, +18.0)},
-      nullopt,
-      nullopt,
-      // seconds
-      {30.0},
-      nullopt);
+  // XXX make thread safe, etc.
+  static int64_t seed = 0xABCDEF0012345600ULL;
 
-  double run_sec = opt_timer.Seconds();
-  printf("Ran %lld evals in %.3fs [%.3f/sec]\n",
-         optimizer.NumEvaluations(), run_sec,
-         optimizer.NumEvaluations() / run_sec);
+  std::mutex m;
+  std::vector<std::tuple<string, const Exp *, double>> results;
 
-  const auto argo = optimizer.GetBest();
-  CHECK(argo.has_value());
-  const auto &[arg, err, out_] = argo.value();
-  const auto &[ints, dbls] = arg;
-  const int c2 = ints[0];
-  const auto &[c1, c3, c4] = dbls;
-  printf("Best: %.4f %d %.4f %.4f\n"
-         "Error: %.5f\n", c1, c2, c3, c4, err);
+  const int64_t seed1 = seed++;
+  const int64_t seed2 = seed++;
+  const int64_t seed3 = seed++;
+  const int64_t seed4 = seed++;
 
-  const Exp *exp = Op1::GetExp(alloc, ints, dbls);
+  InParallel(
+      [alloc, low, high, &target, time_sec, &m, &results, seed1]() {
+        Timer opt_timer;
+        using Op1Optimizer = OpOptimizer<Op1>;
+        Op1Optimizer::Opt optimizer(
+            Op1Optimizer::GetFunction(low, high, target),
+            seed1);
+        optimizer.Run(
+            Op1::INT_BOUNDS,
+            Op1::DOUBLE_BOUNDS,
+            nullopt,
+            nullopt,
+            // seconds
+            {time_sec},
+            nullopt);
+
+        double run_sec = opt_timer.Seconds();
+
+        const auto argo = optimizer.GetBest();
+        CHECK(argo.has_value());
+        const auto &[arg, err, out_] = argo.value();
+        const auto &[ints, dbls] = arg;
+        const int c2 = ints[0];
+        const auto &[c1, c3, c4] = dbls;
+        string desc =
+          StringPrintf("Op1: %.4f %d %.4f %.4f",
+                       c1, c2, c3, c4);
+
+        printf("Op1 Ran %lld evals in %.3fs [%.3f/sec] err %.4f\n",
+               optimizer.NumEvaluations(), run_sec,
+               optimizer.NumEvaluations() / run_sec,
+               err);
+
+        const Exp *exp = Op1::GetExp(alloc, ints, dbls, target);
+
+        {
+          MutexLock ml(&m);
+          results.emplace_back(desc, exp, err);
+        }
+      },
+      [alloc, low, high, &target, time_sec, &m, &results, seed2]() {
+        Timer opt_timer;
+        using Op2Optimizer = OpOptimizer<Op2>;
+        Op2Optimizer::Opt optimizer(
+            Op2Optimizer::GetFunction(low, high, target),
+            seed2);
+        optimizer.Run(
+            Op2::INT_BOUNDS,
+            Op2::DOUBLE_BOUNDS,
+            nullopt,
+            nullopt,
+            // seconds
+            {time_sec},
+            nullopt);
+
+        double run_sec = opt_timer.Seconds();
+
+        const auto argo = optimizer.GetBest();
+        CHECK(argo.has_value());
+        const auto &[arg, err, out_] = argo.value();
+        const auto &[c1, c2, c3] = arg.second;
+
+        string desc =
+          StringPrintf("Op2: %.4f %.4f %.4f",
+                       c1, c2, c3);
+
+        printf("Op2 Ran %lld evals in %.3fs [%.3f/sec] err %.4f\n",
+               optimizer.NumEvaluations(), run_sec,
+               optimizer.NumEvaluations() / run_sec,
+               err);
+
+        const Exp *exp = Op2::GetExp(alloc, arg.first, arg.second, target);
+
+        {
+          MutexLock ml(&m);
+          results.emplace_back(desc, exp, err);
+        }
+      },
+      [alloc, low, high, &target, time_sec, &m, &results, seed3]() {
+        Timer opt_timer;
+        using Op3Optimizer = OpOptimizer<Op3>;
+        Op3Optimizer::Opt optimizer(
+            Op3Optimizer::GetFunction(low, high, target),
+            seed3);
+        optimizer.Run(
+            Op3::INT_BOUNDS,
+            Op3::DOUBLE_BOUNDS,
+            nullopt,
+            nullopt,
+            // seconds
+            {time_sec},
+            nullopt);
+
+        double run_sec = opt_timer.Seconds();
+
+        const auto argo = optimizer.GetBest();
+        CHECK(argo.has_value());
+        const auto &[arg, err, out_] = argo.value();
+        const auto &[citers] = arg.first;
+        const auto &[c1, c2, c3, c4] = arg.second;
+
+        string desc =
+          StringPrintf("Op3: %d %.4f %.4f %.4f %.4f",
+                       citers, c1, c2, c3, c4);
+
+        printf("Op3 Ran %lld evals in %.3fs [%.3f/sec] err %.4f\n",
+               optimizer.NumEvaluations(), run_sec,
+               optimizer.NumEvaluations() / run_sec,
+               err);
+
+        const Exp *exp = Op3::GetExp(alloc, arg.first, arg.second, target);
+
+        {
+          MutexLock ml(&m);
+          results.emplace_back(desc, exp, err);
+        }
+      },
+      [alloc, low, high, &target, time_sec, &m, &results, seed4]() {
+        Timer opt_timer;
+        using Op4Optimizer = OpOptimizer<Op4>;
+        Op4Optimizer::Opt optimizer(
+            Op4Optimizer::GetFunction(low, high, target),
+            seed4);
+        optimizer.Run(
+            Op4::INT_BOUNDS,
+            Op4::DOUBLE_BOUNDS,
+            nullopt,
+            nullopt,
+            // seconds
+            {time_sec},
+            nullopt);
+
+        double run_sec = opt_timer.Seconds();
+
+        const auto argo = optimizer.GetBest();
+        CHECK(argo.has_value());
+        const auto &[arg, err, out_] = argo.value();
+        const auto &[it, u1, u2] = arg.first;
+        const auto &[xd, scale] = arg.second;
+
+        string desc =
+          StringPrintf("Op4: %d %d %d %.4f %.4f",
+                       it, u1, u2, xd, scale);
+
+        printf("Op4 Ran %lld evals in %.3fs [%.3f/sec] err %.4f\n",
+               optimizer.NumEvaluations(), run_sec,
+               optimizer.NumEvaluations() / run_sec,
+               err);
+
+        const Exp *exp = Op4::GetExp(alloc, arg.first, arg.second, target);
+
+        {
+          MutexLock ml(&m);
+          results.emplace_back(desc, exp, err);
+        }
+      }
+
+  );
+
+  double best_err = 1.0/0.0;
+  int bestidx = 0;
+  for (int i = 0; i < results.size(); i++) {
+    const auto &[desc_, exp_, err] = results[i];
+    if (err < best_err) {
+      bestidx = i;
+    }
+  }
+
+  const auto &[desc, exp, err] = results[bestidx];
+  printf("Best %d: %s (Error %.5f)\n",
+         bestidx, desc.c_str(), err);
 
   return exp;
 }
@@ -214,16 +327,10 @@ static const Exp *MakeLoop(Allocator *alloc,
   GradUtil::Grid(&all_img);
   GradUtil::Graph(target, 0xFFFFFF88, &all_img);
 
+  double error = Error(low, high, target, table);
+
   static constexpr int ITERS = 1000;
   for (int i = 0; i < ITERS; i++) {
-    double error = Error(low, high, target, table);
-    printf("Iter %d, error: %.6f\n", i, error);
-    ImageRGBA img(IMG_SIZE, IMG_SIZE);
-    img.Clear32(0x000000FF);
-    GradUtil::Grid(&img);
-    GradUtil::Graph(target, 0xFFFFFF88, &img);
-    GradUtil::Graph(table, 0x33FF33AA, &img);
-
     {
       float f = i / (float)(ITERS - 1);
       uint32 color = ColorUtil::LinearGradient32(
@@ -233,25 +340,53 @@ static const Exp *MakeLoop(Allocator *alloc,
       all_img.Save("perm-all.png");
     }
 
-    // so if we have e(x) = target(x) - table(x)
-    Table err = DiffTable(target, table);
-    // .. and we approximate error
-    const Exp *err_exp = MakeFn(alloc, low, high, err);
-    // then f(x) = table(x) + err(x)
-    // should improve our approximation.
-    exp = alloc->PlusE(exp, err_exp);
+    for (int tries = 1; /* in loop */; tries++) {
+      printf("Iter %d, error: %.6f\n", i, error);
+      ImageRGBA img(IMG_SIZE, IMG_SIZE);
+      img.Clear32(0x000000FF);
+      GradUtil::Grid(&img);
+      GradUtil::Graph(target, 0xFFFFFF88, &img);
+      GradUtil::Graph(table, 0x33FF33AA, &img);
 
-    {
-      Table err_approx = Exp::TabulateExpression(err_exp);
-      GradUtil::Graph(err, 0xFFFF00AA, &img);
-      GradUtil::Graph(err_approx, 0xFF0000AA, &img);
-      img.BlendText32(2, 2, 0xFFFFFFAA,
-                      StringPrintf("Iter %d, error: %.6f", i, error));
-      img.Save(StringPrintf("perm%d.png", i));
+      // so if we have e(x) = target(x) - table(x)
+      Table err = DiffTable(target, table);
+      // .. and we approximate error
+      const Exp *err_exp = MakeFn(alloc, low, high, err,
+                                  20.0 + 5 * tries);
+
+      {
+        Table err_approx = Exp::TabulateExpression(err_exp);
+        GradUtil::Graph(err, 0xFFFF00AA, &img);
+        GradUtil::Graph(err_approx, 0xFF0000AA, &img);
+        img.BlendText32(2, 2, 0xFFFFFFAA,
+                        StringPrintf("Iter %d, tries %d, error: %.6f",
+                                     i, tries, error));
+        img.Save(StringPrintf("perm%d.png", i));
+      }
+
+      // then f(x) = table(x) + err(x)
+      // should improve our approximation.
+      const Exp *exp_tmp = alloc->PlusE(exp, err_exp);
+      Table table_tmp = Exp::TabulateExpression(exp_tmp);
+
+      // but only keep these if the error dropped by a nontrivial
+      // amount.
+      static constexpr double MIN_ERROR_DROP = 1.0 / 1000.0;
+      double error_tmp = Error(low, high, target, table_tmp);
+      if (error - error_tmp >= MIN_ERROR_DROP) {
+        // Keep.
+        exp = exp_tmp;
+        // PERF: This can be done in place.
+        table = std::move(table_tmp);
+        error = error_tmp;
+        // Decrease time quanta when this happens?
+        break;
+      } else {
+        // Increase time quanta when this happens?
+        printf("Error %.5f -> %.5f. Retry.\n", error, error_tmp);
+      }
     }
 
-    // PERF: This can be done in place.
-    table = Exp::TabulateExpression(exp);
 
     {
       std::string s = Exp::ExpString(exp);
@@ -262,21 +397,21 @@ static const Exp *MakeLoop(Allocator *alloc,
   return exp;
 }
 
-static Table RandomPermutation() {
+static Table RandomPermutation(int num) {
   ArcFour rc("makefn");
 
   std::vector<uint8_t> permutation;
-  for (int i = 0; i < 256; i++)
+  for (int i = 0; i < num; i++)
     permutation.push_back(i);
 
   Shuffle(&rc, &permutation);
 
-  return MakeTableFromFn([&permutation](half x) {
+  return MakeTableFromFn([&permutation, num](half x) {
       // put x in [-1, 1];
-      double pos = (double)(x + 1) * 128.0;
-      int off = std::clamp((int)floor(pos), 0, 255);
+      double pos = (double)(x + 1) * (num / 2.0);
+      int off = std::clamp((int)floor(pos), 0, num - 1);
       double y = permutation[off];
-      return (half)(y / 128.0 - 1.0);
+      return (half)(y / (num / 2.0) - 1.0);
     });
 }
 
@@ -287,7 +422,7 @@ int main(int argc, char **argv) {
         return sin(x * (half)3.141592653589);
       });
   */
-  Table target = RandomPermutation();
+  Table target = RandomPermutation(16);
 
   Allocator alloc;
   [[maybe_unused]]

@@ -6,6 +6,8 @@
 #include <vector>
 #include <array>
 #include <string>
+#include <mutex>
+#include <map>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -29,6 +31,8 @@ struct Exp {
   uint16_t iters = 1;
   const Exp *a = nullptr, *b = nullptr;
 
+  // Thread-safe allocator. When the allocator goes out of scope,
+  // all allocated expressions within are deleted.
   struct Allocator {
 
     // TODO: Some way to release/copy an expression!
@@ -77,9 +81,13 @@ struct Exp {
   private:
     inline Exp *New(ExpType t) {
       Exp *e = new Exp(t);
-      allocations.push_back(e);
+      {
+        std::unique_lock<std::mutex> ml(m);
+        allocations.push_back(e);
+      }
       return e;
     }
+    std::mutex m;
     std::vector<Exp *> allocations;
   };
 
@@ -115,29 +123,39 @@ struct Exp {
     Table table;
   };
 
-  // Fast iteration of * 0x3bff.
-  static uint16_t FastTimes0x3bff(uint16_t lhs, int iters) {
-    static TimesTable *times_table100 =
-      new TimesTable(0x3bff, 100);
+  static uint16_t CachedTimes(uint16_t lhs, uint16_t c, int iters) {
+    static std::mutex times_table_m;
+    static std::map<uint16_t, std::pair<const TimesTable *,
+                                        const TimesTable *>> times_tables;
 
-    static TimesTable *times_table10 =
-      new TimesTable(0x3bff, 10);
-
+    const TimesTable *table100 = nullptr, *table10 = nullptr;
+    {
+      std::unique_lock<std::mutex> ml(times_table_m);
+      auto it = times_tables.find(c);
+      if (it != times_tables.end()) {
+        std::tie(table100, table10) = it->second;
+      } else {
+        // PERF could relinquish lock for this slow init
+        table100 = new TimesTable(c, 100);
+        table10 = new TimesTable(c, 10);
+        times_tables[c] = make_pair(table100, table10);
+      }
+    }
 
     while (iters > 100) {
-      lhs = times_table100->table[lhs];
+      lhs = table100->table[lhs];
       iters -= 100;
     }
 
     while (iters > 10) {
-      lhs = times_table10->table[lhs];
+      lhs = table10->table[lhs];
       iters -= 10;
     }
 
     half y = GetHalf(lhs);
-    const half c = GetHalf(0x3bff);
+    const half hc = GetHalf(c);
     for (int z = 0; z < iters; z++)
-      y *= c;
+      y *= hc;
     return GetU16(y);
   }
 
@@ -156,8 +174,8 @@ struct Exp {
     case TIMES_C: {
       uint16_t lhs = EvaluateOn(e->a, x);
 
-      if (e->c == 0x3bffu) {
-        return FastTimes0x3bff(lhs, e->iters);
+      if (e->iters >= 10) {
+        return CachedTimes(lhs, e->c, e->iters);
       }
 
       half res = GetHalf(lhs);
