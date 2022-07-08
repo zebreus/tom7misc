@@ -44,16 +44,6 @@ static inline uint16 GetU16(half h) {
   return u;
 }
 
-static Table MakeTableFromFn(const std::function<half(half)> &f) {
-  Table table;
-  for (int i = 0; i < 65536; i++) {
-    half x = GetHalf((uint16)i);
-    half y = f(x);
-    table[i] = GetU16(y);
-  }
-  return table;
-}
-
 double Error(half low, half high,
              const Table &target,
              const Table &f) {
@@ -103,17 +93,18 @@ struct OpOptimizer {
 
 
 // Try to approximate the target table within the range [low, high].
-static const Exp *MakeFn(Allocator *alloc,
-                         half low, half high,
-                         const Table &target,
-                         double time_sec) {
+static std::pair<std::string, const Exp *>
+MakeFn(Allocator *alloc,
+       half low, half high,
+       const Table &target,
+       double time_sec) {
 
   // We try to make progress by finding a series of operations that
   // reduces the error.
 
   // XXX make thread safe, etc. Probably don't want to use the
   // same sequence each time, either?
-  static int64_t seed = 0x0BCDEF0012345600ULL;
+  static int64_t seed = time(nullptr);
 
   std::mutex m;
   std::vector<std::tuple<string, const Exp *, double>> results;
@@ -194,7 +185,6 @@ static const Exp *MakeFn(Allocator *alloc,
           results.emplace_back(desc, exp, err);
         }
       },
-      #if 0
       [alloc, low, high, &target, time_sec, &m, &results, seed3]() {
         Timer opt_timer;
         using Op3Optimizer = OpOptimizer<Op3>;
@@ -230,7 +220,6 @@ static const Exp *MakeFn(Allocator *alloc,
           results.emplace_back(desc, exp, err);
         }
       },
-      #endif
       [alloc, low, high, &target, time_sec, &m, &results, seed4]() {
         Timer opt_timer;
         using Op4Optimizer = OpOptimizer<Op4>;
@@ -316,7 +305,7 @@ static const Exp *MakeFn(Allocator *alloc,
   printf("Best %d: %s (Error %.5f)\n",
          bestidx, desc.c_str(), err);
 
-  return exp;
+  return std::make_pair(desc, exp);
 }
 
 static Table DiffTable(const Table &a, const Table &b) {
@@ -335,6 +324,203 @@ static constexpr ColorUtil::Gradient GREEN_BLUE {
   GradRGB(1.0f,  0x0000FF),
 };
 
+
+struct Combine3Arg {
+  using CombineOpt = Optimizer<0, 3, uint8>;
+  static constexpr array<pair<double, double>, 3> DOUBLE_BOUNDS = {
+    make_pair(-2.0, 2.0),
+    make_pair(-2.0, 2.0),
+    make_pair(-2.0, 2.0),
+  };
+
+  static const Exp *LinearComb(const Allocator *alloc,
+                               const Exp *exp1,
+                               const Exp *exp2,
+                               double a, double b, double c) {
+    return alloc->PlusC(
+        // ax + by
+        alloc->PlusE(alloc->TimesC(exp1, Exp::GetU16((half)a)),
+                     alloc->TimesC(exp2, Exp::GetU16((half)b))),
+        // ... + c
+        Exp::GetU16((half)c));
+  }
+
+  static CombineOpt::function_type
+  GetFunction(const Exp *exp1,
+              const Exp *exp2,
+              half low, half high, const Table &target) {
+    return typename CombineOpt::function_type(
+        [exp1, exp2, low, high, &target](const CombineOpt::arg_type &arg) ->
+        CombineOpt::return_type {
+          const auto [a, b, c] = arg.second;
+          Allocator alloc;
+
+          const Exp *exp = LinearComb(&alloc, exp1, exp2, a, b, c);
+          Table table = Exp::TabulateExpressionIn(exp, low, high);
+          double error = Error(low, high, target, table);
+          return std::make_pair(error, std::make_optional('o'));
+      });
+  }
+
+  static const Exp *CombineTwo(Allocator *alloc,
+                               const Exp *exp1,
+                               const Exp *exp2,
+                               half low, half high,
+                               const Table &target,
+                               double seconds) {
+
+    CombineOpt optimizer(
+        GetFunction(exp1, exp2, low, high, target));
+
+    // Make sure to sample the endpoints.
+    optimizer.Sample(make_pair(std::array<int, 0>{},
+                               std::array<double, 3>{1.0, 0.0, 0.0}));
+    optimizer.Sample(make_pair(std::array<int, 0>{},
+                               std::array<double, 3>{0.0, 1.0, 0.0}));
+
+    optimizer.Run(
+        {},
+        DOUBLE_BOUNDS,
+        nullopt,
+        nullopt,
+        // seconds
+        {seconds},
+        nullopt);
+
+    const auto argo = optimizer.GetBest();
+    CHECK(argo.has_value());
+    const auto &[args, err, out_] = argo.value();
+    const auto &[a, b, c] = args.second;
+
+    printf("Best (Error %.4f): %.4f * a + %.4f * b + %.4f\n",
+           err, a, b, c);
+
+    return LinearComb(alloc, exp1, exp2, a, b, c);
+  }
+};
+
+struct Combine2Arg {
+  using CombineOpt = Optimizer<0, 2, uint8>;
+  static constexpr array<pair<double, double>, 2> DOUBLE_BOUNDS = {
+    make_pair(-0.1, 1.1),
+    make_pair(-0.1, 0.1),
+  };
+
+  static const Exp *LinearComb(const Allocator *alloc,
+                               const Exp *exp1,
+                               const Exp *exp2,
+                               double a, double c) {
+    return alloc->PlusC(
+        // ax + (1 - a)y
+        alloc->PlusE(alloc->TimesC(exp1, Exp::GetU16((half)a)),
+                     alloc->TimesC(exp2, Exp::GetU16((half)(1.0 - a)))),
+        // ... + c
+        Exp::GetU16((half)c));
+  }
+
+  static CombineOpt::function_type
+  GetFunction(const Exp *exp1,
+              const Exp *exp2,
+              half low, half high, const Table &target) {
+    return typename CombineOpt::function_type(
+        [exp1, exp2, low, high, &target](const CombineOpt::arg_type &arg) ->
+        CombineOpt::return_type {
+          const auto [a, c] = arg.second;
+          Allocator alloc;
+
+          const Exp *exp = LinearComb(&alloc, exp1, exp2, a, c);
+          Table table = Exp::TabulateExpressionIn(exp, low, high);
+          double error = Error(low, high, target, table);
+          return std::make_pair(error, std::make_optional('o'));
+      });
+  }
+
+  static const Exp *CombineTwo(Allocator *alloc,
+                               const Exp *exp1,
+                               const Exp *exp2,
+                               half low, half high,
+                               const Table &target,
+                               double seconds) {
+
+    CombineOpt optimizer(
+        GetFunction(exp1, exp2, low, high, target));
+
+    // Make sure to sample the endpoints.
+    #if 1
+    optimizer.Sample(make_pair(std::array<int, 0>{},
+                               std::array<double, 2>{1.0, 0.0}));
+    optimizer.Sample(make_pair(std::array<int, 0>{},
+                               std::array<double, 2>{0.0, 0.0}));
+    #endif
+
+    optimizer.Run(
+        {},
+        DOUBLE_BOUNDS,
+        nullopt,
+        nullopt,
+        // seconds
+        {seconds},
+        nullopt);
+
+    const auto argo = optimizer.GetBest();
+    CHECK(argo.has_value());
+    const auto &[args, err, out_] = argo.value();
+    const auto &[a, c] = args.second;
+
+    printf("Best (Error %.4f): %.4f * a + %.4f * b + %.4f\n",
+           err, a, 1.0 - a, c);
+
+    return LinearComb(alloc, exp1, exp2, a, c);
+  }
+};
+
+
+
+static const Exp *CombineExps(Allocator *alloc,
+                              const std::vector<const Exp *> &prev,
+                              half low, half high, const Table &target) {
+  if (prev.empty()) {
+    return alloc->TimesC(alloc->Var(), 0x0000);
+  }
+
+  auto Color = [&prev](int i) -> uint32_t {
+      float h = prev.size() > 1 ? i / (float)(prev.size() - 1) : 0.0f;
+      const auto [r, g, b] = ColorUtil::HSVToRGB(h, 1.0, 1.0);
+      return ColorUtil::FloatsTo32(r, g, b, 0.75);
+    };
+
+  // Draw them all.
+  ImageRGBA img(1920, 1920);
+  img.Clear32(0x000000FF);
+  GradUtil::Grid(&img);
+  for (int i = 0; i < prev.size(); i++) {
+    Table table = Exp::TabulateExpressionIn(prev[i], low, high);
+    double error = Error(low, high, target, table);
+    printf("Input function %d has error %.5f\n", i, error);
+    uint32_t color = Color(i);
+    GradUtil::Graph(table, color, &img);
+    img.BlendText2x32(2, i * 20, color,
+                      StringPrintf("Error: %.5f", error));
+  }
+
+  // Build a linear combination, two at a time.
+  const Exp *e = prev[0];
+  for (int i = 1; i < prev.size(); i++) {
+    e = Combine2Arg::CombineTwo(alloc, e, prev[i], low, high, target, 30.0);
+  }
+
+
+  Table result = Exp::TabulateExpressionIn(e, low, high);
+  GradUtil::Graph(result, 0xFFFFFFAA, &img);
+  double result_error = Error(low, high, target, result);
+  img.BlendText2x32(2, prev.size() * 20, 0xFFFFFFAA,
+                    StringPrintf("Combined error: %.5f", result_error));
+
+  printf("Combined error: %.5f\n", result_error);
+  img.Save("combine-inputs.png");
+  return e;
+}
+
 static const Exp *MakeLoop(Allocator *alloc,
                            half low, half high, const Table &target) {
   static constexpr int IMG_SIZE = 1920;
@@ -345,25 +531,20 @@ static const Exp *MakeLoop(Allocator *alloc,
   const Exp *exp = alloc->TimesC(alloc->Var(), 0x0000);
   static constexpr int START_ITER = 0;
 
+  #else
+  // Continue from previous expressions.
+
+  #include "perm-restart.h"
+  std::vector<const Exp *> prev = PreviousExps(alloc);
+  static constexpr int START_ITER = 0;
+
+  const Exp *exp = CombineExps(alloc, prev, low, high, target);
+  #endif
+
   ImageRGBA all_img(IMG_SIZE, IMG_SIZE);
   all_img.Clear32(0x000000FF);
   GradUtil::Grid(&all_img);
   GradUtil::Graph(target, 0xFFFFFF88, &all_img);
-
-  #else
-  // Restart! Needs some manual work.
-
-  #include "perm-restart.h"
-  const Exp *exp = StartExp(alloc);
-
-  std::unique_ptr<ImageRGBA> all_load(ImageRGBA::Load(ALLIMG_FILE));
-  CHECK(all_load.get() != nullptr);
-  CHECK(all_load->Width() == IMG_SIZE);
-  CHECK(all_load->Height() == IMG_SIZE);
-  ImageRGBA all_img = *all_load;
-  all_load.reset();
-
-  #endif
 
   // Loop invariant: table represents the exp and
   // error the current error relative to the target.
@@ -392,23 +573,28 @@ static const Exp *MakeLoop(Allocator *alloc,
       // so if we have e(x) = target(x) - table(x)
       Table err = DiffTable(target, table);
       // .. and we approximate error
-      const Exp *err_exp = MakeFn(alloc, low, high, err,
-                                  20.0 + 5 * tries);
+      const auto [desc, err_exp] =
+        MakeFn(alloc, low, high, err,
+               20.0 + 5 * tries);
 
       {
         Table err_approx = Exp::TabulateExpression(err_exp);
-        GradUtil::Graph(err, 0xFFFF00AA, &img);
+        GradUtil::Graph(err, 0xFFBB0088, &img);
         GradUtil::Graph(err_approx, 0xFF0000AA, &img);
         img.BlendText32(2, 2, 0xFFFFFFAA,
                         StringPrintf("Iter %d, tries %d, error: %.6f",
                                      i, tries, error));
-        img.Save(StringPrintf("perm%d.png", i));
       }
 
       // then f(x) = table(x) + err(x)
       // should improve our approximation.
       const Exp *exp_tmp = alloc->PlusE(exp, err_exp);
       Table table_tmp = Exp::TabulateExpression(exp_tmp);
+
+      GradUtil::Graph(table_tmp, 0x0077FF77, &img);
+      img.BlendText32(2, 12, 0x0077FFAA, desc);
+
+      img.Save(StringPrintf("perm%d.png", i));
 
       // but only keep these if the error dropped by a nontrivial
       // amount.
@@ -447,7 +633,7 @@ static Table RandomPermutation(int num) {
 
   Shuffle(&rc, &permutation);
 
-  return MakeTableFromFn([&permutation, num](half x) {
+  return Exp::MakeTableFromFn([&permutation, num](half x) {
       // put x in [-1, 1];
       double pos = (double)(x + 1) * (num / 2.0);
       int off = std::clamp((int)floor(pos), 0, num - 1);
@@ -459,7 +645,7 @@ static Table RandomPermutation(int num) {
 int main(int argc, char **argv) {
   /*
   Table target =
-    MakeTableFromFn([](half x) {
+    Exp::MakeTableFromFn([](half x) {
         return sin(x * (half)3.141592653589);
       });
   */

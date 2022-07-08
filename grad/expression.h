@@ -219,6 +219,16 @@ struct Exp {
     return ret;
   }
 
+  static Table MakeTableFromFn(const std::function<half(half)> &f) {
+    Table table;
+    for (int i = 0; i < 65536; i++) {
+      half x = Exp::GetHalf((uint16)i);
+      half y = f(x);
+      table[i] = Exp::GetU16(y);
+    }
+    return table;
+  }
+
   static std::string ExpString(const Exp *e) {
     switch (e->type) {
     case VAR: return "V";

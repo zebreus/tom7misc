@@ -92,7 +92,9 @@ struct GradUtil {
   // of the resulting value for the 65536 inputs.
   using Table = std::array<uint16_t, 65536>;
 
-  static void Graph(const Table &table, uint32 color, ImageRGBA *img) {
+  static void Graph(const Table &table, uint32 color, ImageRGBA *img,
+                    // XXX HAX
+                    int dy = 0) {
     CHECK(img->Width() == img->Height());
     const int size = img->Width();
 
@@ -103,7 +105,7 @@ struct GradUtil {
         double y = GetHalf(output);
 
         int xs = (int)std::round((size / 2) + x * (size / 2.0));
-        int ys = (int)std::round((size / 2) + -y * (size / 2.0));
+        int ys = (int)std::round((size / 2) + -y * (size / 2.0)) + dy;
 
         // ys = std::clamp(ys, 0, size - 1);
 

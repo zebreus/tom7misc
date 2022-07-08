@@ -18,16 +18,6 @@ using Table = Exp::Table;
 using uint32 = uint32_t;
 using uint8 = uint8_t;
 
-static Table MakeTableFromFn(const std::function<half(half)> &f) {
-  Table table;
-  for (int i = 0; i < 65536; i++) {
-    half x = Exp::GetHalf((uint16)i);
-    half y = f(x);
-    table[i] = Exp::GetU16(y);
-  }
-  return table;
-}
-
 template<size_t N>
 auto Sample(ArcFour *rc,
             const std::array<std::pair<int, int>, N> &bounds) ->
@@ -62,11 +52,7 @@ auto Sample(ArcFour *rc,
 }
 
 static uint32 MixRGB(float r, float g, float b, float a) {
-  uint32 rr = std::clamp((int)(r * 255.0f), 0, 255);
-  uint32 gg = std::clamp((int)(g * 255.0f), 0, 255);
-  uint32 bb = std::clamp((int)(b * 255.0f), 0, 255);
-  uint32 aa = std::clamp((int)(a * 255.0f), 0, 255);
-  return (rr << 24) | (gg << 16) | (bb << 8) | aa;
+  return ColorUtil::FloatsTo32(r, g, b, a);
 }
 
 static constexpr int IMAGE_SIZE = 1920;
@@ -124,7 +110,7 @@ static void PlotOp2() {
   ArcFour rc("op2");
   // Not used by op2.
   Table target =
-    MakeTableFromFn([](half x) {
+    Exp::MakeTableFromFn([](half x) {
         return sin(x * (half)3.141592653589);
       });
 
@@ -179,7 +165,7 @@ static void PlotOp3() {
   ArcFour rc("op3");
   // Not used by op3.
   Table target =
-    MakeTableFromFn([](half x) {
+    Exp::MakeTableFromFn([](half x) {
         return sin(x * (half)3.141592653589);
       });
 
@@ -188,7 +174,7 @@ static void PlotOp3() {
   GradUtil::Grid(&img);
 
   static constexpr int STROBE = 100;
-  static constexpr double STROBE_FRAC = 0.1;
+  // static constexpr double STROBE_FRAC = 0.1;
   static constexpr int SAMPLES = 50;
   static constexpr int STROBE_DIM = 0;
   Stats stats;
@@ -243,7 +229,7 @@ static void PlotOp4() {
   ArcFour rc("op4");
 
   Table target =
-    MakeTableFromFn([](half x) {
+    Exp::MakeTableFromFn([](half x) {
         return sin(x * (half)3.141592653589);
       });
 
@@ -308,7 +294,7 @@ static void PlotOp5() {
   ArcFour rc("op5");
 
   Table target =
-    MakeTableFromFn([](half x) {
+    Exp::MakeTableFromFn([](half x) {
         return sin(x * (half)3.141592653589);
       });
 
@@ -369,12 +355,105 @@ static void PlotOp5() {
   img.Save("op5.png");
 }
 
+// A nice discontinuous function; can we move it around?
+static void StrobeChoppy5() {
+
+  Table target =
+    Exp::MakeTableFromFn([](half x) {
+        return (half)0.0;
+      });
+
+  ImageRGBA img(IMAGE_SIZE, IMAGE_SIZE);
+  img.Clear32(0x000000FF);
+  GradUtil::Grid(&img);
+
+  static constexpr int STROBE = 50;
+  static constexpr double STROBE_FRAC = 0.01;
+  Stats stats;
+
+  const std::array<int, 2> BASE_INTS = {49758, 49152};
+  const std::array<double, 3> BASE_DOUBLES =
+    {0.0039, -3.9544, 0.0760};
+
+  Exp::Allocator alloc;
+
+  auto MakeExp = [&](int a, int b,
+                     double x, double y) {
+      const double z = 0.0;
+      const std::array<int, 2> INTS = {a, b};
+      const std::array<double, 3> DOUBLES = {x, y, z};
+
+      return
+        alloc.TimesC(
+            Op5::GetExp(&alloc, INTS, DOUBLES, target),
+            Exp::GetU16((half)32.0));
+    };
+
+  for (int s = 0; s < STROBE; s++) {
+    auto [i1, i2] = BASE_INTS;
+    auto [d1, d2, d3_] = BASE_DOUBLES;
+
+    [[maybe_unused]]
+    double d = StrobeOffset(Op5::DOUBLE_BOUNDS[0],
+                            s, STROBE, STROBE_FRAC);
+    [[maybe_unused]]
+    int di = StrobeOffsetI(s) * 2;
+    const Exp *exp = MakeExp(i1, i2 + di, d1, d2);
+
+    const float alpha = 0.05 + 0.15 * ((STROBE - s) / (float)STROBE);
+
+    const uint32 color = MixRGB(alpha, 0.5, 1.0, alpha);
+
+
+    Table result = Exp::TabulateExpression(exp);
+    stats.Accumulate(result);
+
+    GradUtil::Graph(result, color, &img, di);
+  }
+
+  stats.Report();
+
+  {
+    // original
+    auto [i1, i2] = BASE_INTS;
+    auto [d1, d2, d3_] = BASE_DOUBLES;
+    const Exp *exp = MakeExp(i1, i2, d1, d2);
+    Table result = Exp::TabulateExpression(exp);
+    GradUtil::Graph(result, 0xFFFFFFAA, &img, 0);
+    GradUtil::Graph(result, 0xFFFFFFAA, &img, 1);
+    printf("%s\n", Exp::ExpString(exp).c_str());
+
+    for (int i = 0; i < 16; i++) {
+      half x = (half)((i / (double)8) - 1.0);
+      x += (half)(1.0/32.0);
+
+      half y = Exp::GetHalf(Exp::EvaluateOn(exp, Exp::GetU16(x)));
+
+      double yi = ((double)y + 1.0) * 8.0;
+      int ypos =
+        // put above the line
+        -16 +
+        // 0 is the center
+        (IMAGE_SIZE / 2) +
+        (double)-y * (IMAGE_SIZE / 2);
+      img.BlendText32(i * (IMAGE_SIZE / 16) + 8,
+                      ypos,
+                      0xFFFFFFAA,
+                      StringPrintf("%.5f", yi));
+    }
+  }
+
+  img.Save("chop5.png");
+}
+
 
 int main(int argc, char **argv) {
-
+  /*
   PlotOp2();
   PlotOp3();
   PlotOp4();
   PlotOp5();
+  */
+  StrobeChoppy5();
   return 0;
 }
