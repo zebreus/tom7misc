@@ -47,30 +47,35 @@ static void TestIter() {
                 0xba45)),
         Exp::GetU16(10.0_h));
 
-  const Exp *f4 =
-    alloc.PlusE(
-        alloc.TimesC(
-            alloc.PlusC(
-                alloc.TimesC(
-                    // x - 4
-                    alloc.PlusC(alloc.Var(), 0xc400),
-                    // * 0.999 ...
-                    0x3bffu,
-                    200),
-                0x42d4),
-            0x3c00),
-        alloc.TimesC(
+  const Exp *f4a =
+    alloc.TimesC(
+        alloc.PlusC(
             alloc.TimesC(
-                alloc.PlusC(
-                    alloc.TimesC(
-                        // x - 4
-                        alloc.PlusC(alloc.Var(), 0xc400),
-                        // * 0.999 ...
-                        0x3bffu,
-                        300),
-                    0x42d4),
-                0x3c00),
-            Exp::GetU16(-1.0_h)));
+                // x - 4
+                alloc.PlusC(alloc.Neg(alloc.Var()), 0xc200),
+                // * 0.999 ...
+                0x3bffu,
+                200),
+            0x42d4),
+        0x3c00);
+
+  const Exp *f4b =
+    alloc.TimesC(
+        alloc.PlusC(
+            alloc.TimesC(
+                // x - 4
+                alloc.PlusC(alloc.Neg(alloc.Var()), 0xc300),
+                // * 0.999 ...
+                0x3bffu,
+                300),
+            0x42d4),
+        0x3c00);
+
+  const Exp *f4 =
+    alloc.PlusE(f4a,
+                alloc.Neg(f4b));
+
+  // Exp::GetU16(-1.0_h)));
 
 //         alloc.TimesC(
 //             alloc.PlusC(alloc.Var(), Exp::GetU16(-0.25_h)),
@@ -89,9 +94,11 @@ static void TestIter() {
   printf("Tabulated functions in %.3fs\n", sec);
   ImageRGBA img(1024, 1024);
   img.Clear32(0x000000FF);
+  /*
   GradUtil::Graph(result1, 0xFFFF7788, &img);
   GradUtil::Graph(result2, 0x77FFFF88, &img);
   GradUtil::Graph(result3, 0x7777FF88, &img);
+  */
   GradUtil::Graph(result4, 0xFF77FF88, &img);
   img.Save("expression-test.png");
 }

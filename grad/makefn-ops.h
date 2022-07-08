@@ -50,6 +50,16 @@ struct Op1 {
               Exp::GetU16((half)c3)),
           Exp::GetU16((half)c4));
   }
+
+  static std::string Describe(
+      const std::array<int, INT_ARGS> &ints,
+      const std::array<double, DOUBLE_ARGS> &dbls) {
+    const int c2 = ints[0];
+    const auto &[c1, c3, c4] = dbls;
+    return StringPrintf("Op1: %.4f %d %.4f %.4f",
+                        c1, c2, c3, c4);
+  }
+
 };
 
 // Operation 2.
@@ -64,7 +74,7 @@ struct Op2 {
 
   static constexpr std::array<std::pair<double, double>, DOUBLE_ARGS>
   DOUBLE_BOUNDS = {
-    make_pair(0.001, 1.25),
+    make_pair(-1.25, 1.25),
     make_pair(-64.0, +64.0),
     make_pair(-0.1, +0.1),
   };
@@ -82,6 +92,15 @@ struct Op2 {
               alloc->TimesC(alloc->Var(), Exp::GetU16((half)c1)),
               Exp::GetU16((half)scaled_c2)),
           Exp::GetU16((half)-(scaled_c2 + c3)));
+  }
+
+  static std::string Describe(
+      const std::array<int, INT_ARGS> &ints,
+      const std::array<double, DOUBLE_ARGS> &dbls) {
+    const auto &[c1, c2, c3] = dbls;
+
+    return StringPrintf("Op2: %.4f %.4f %.4f",
+                        c1, c2, c3);
   }
 };
 
@@ -142,6 +161,17 @@ struct Op3 {
                 Exp::GetU16((half)c3))),
         Exp::GetU16((half)c4));
   }
+
+  static std::string Describe(
+      const std::array<int, INT_ARGS> &ints,
+      const std::array<double, DOUBLE_ARGS> &dbls) {
+    const auto &[citers] = ints;
+    const auto &[c1, c2, c3, c4] = dbls;
+
+    return StringPrintf("Op3: %d %.4f %.4f %.4f %.4f",
+                        citers, c1, c2, c3, c4);
+  }
+
 };
 
 struct Op4 {
@@ -205,6 +235,85 @@ struct Op4 {
     return alloc->PlusC(f0, yneg);
   }
 
+  static std::string Describe(
+      const std::array<int, INT_ARGS> &ints,
+      const std::array<double, DOUBLE_ARGS> &dbls) {
+    const auto &[it, u1, u2] = ints;
+    const auto &[xd, scale] = dbls;
+
+    return StringPrintf("Op4: %d %d %d %.4f %.4f",
+                        it, u1, u2, xd, scale);
+  }
+
+};
+
+struct Op5 {
+  static constexpr int INT_ARGS = 2;
+  static constexpr int DOUBLE_ARGS = 3;
+
+  static constexpr std::array<std::pair<int, int>, INT_ARGS>
+  INT_BOUNDS = {
+    make_pair(0xc000, 0xc300),
+    make_pair(0xc000, 0xc300),
+  };
+
+  static constexpr std::array<std::pair<double, double>, DOUBLE_ARGS>
+  DOUBLE_BOUNDS = {
+    make_pair(-3.0, +3.0),
+    make_pair(-4.0, +4.0),
+    make_pair(-1.0, +1.0),
+  };
+
+  static const Exp *GetExp(Exp::Allocator *alloc,
+                           const std::array<int, INT_ARGS> &ints,
+                           const std::array<double, DOUBLE_ARGS> &dbls,
+                           const Exp::Table &target) {
+    const auto &[off1, off2] = ints;
+    const auto &[prescale, postscale, xd] = dbls;
+
+    const Exp *fa =
+      alloc->TimesC(
+          // x - 4
+          alloc->PlusC(alloc->TimesC(alloc->Var(),
+                                     Exp::GetU16((half)prescale)), off1),
+          // * 0.999 ...
+          0x3bffu,
+          200);
+
+    const Exp *fb =
+      alloc->TimesC(
+          // x - 4
+          alloc->PlusC(alloc->TimesC(alloc->Var(),
+                                     Exp::GetU16((half)prescale)), off2),
+          // * 0.999 ...
+          0x3bffu,
+          300);
+
+    const Exp *f0 =
+      alloc->TimesC(
+          alloc->PlusE(fa,
+                      alloc->Neg(fb)),
+          Exp::GetU16((half)postscale));
+
+    // Pick a point at which to analytically set the y values
+    // equal (within the limits of precision).
+    uint16_t x = Exp::GetU16((half)xd);
+    half fy = Exp::GetHalf(Exp::EvaluateOn(f0, x));
+    half ty = Exp::GetHalf(target[x]);
+    uint16 yneg = Exp::GetU16(ty - fy);
+
+    return alloc->PlusC(f0, yneg);
+  }
+
+  static std::string Describe(
+      const std::array<int, INT_ARGS> &ints,
+      const std::array<double, DOUBLE_ARGS> &dbls) {
+    const auto &[off1, off2] = ints;
+    const auto &[prescale, postscale, xd] = dbls;
+
+    return StringPrintf("Op5: %d %d %.4f %.4f %.4f",
+                        off1, off2, prescale, postscale, xd);
+  }
 };
 
 #endif

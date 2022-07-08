@@ -111,8 +111,9 @@ static const Exp *MakeFn(Allocator *alloc,
   // We try to make progress by finding a series of operations that
   // reduces the error.
 
-  // XXX make thread safe, etc.
-  static int64_t seed = 0xABCDEF0012345600ULL;
+  // XXX make thread safe, etc. Probably don't want to use the
+  // same sequence each time, either?
+  static int64_t seed = 0x0BCDEF0012345600ULL;
 
   std::mutex m;
   std::vector<std::tuple<string, const Exp *, double>> results;
@@ -142,13 +143,9 @@ static const Exp *MakeFn(Allocator *alloc,
 
         const auto argo = optimizer.GetBest();
         CHECK(argo.has_value());
-        const auto &[arg, err, out_] = argo.value();
-        const auto &[ints, dbls] = arg;
-        const int c2 = ints[0];
-        const auto &[c1, c3, c4] = dbls;
-        string desc =
-          StringPrintf("Op1: %.4f %d %.4f %.4f",
-                       c1, c2, c3, c4);
+        const auto &[args, err, out_] = argo.value();
+        const auto &[ints, dbls] = args;
+        string desc = Op1::Describe(ints, dbls);
 
         printf("Op1 Ran %lld evals in %.3fs [%.3f/sec] err %.4f\n",
                optimizer.NumEvaluations(), run_sec,
@@ -181,25 +178,23 @@ static const Exp *MakeFn(Allocator *alloc,
 
         const auto argo = optimizer.GetBest();
         CHECK(argo.has_value());
-        const auto &[arg, err, out_] = argo.value();
-        const auto &[c1, c2, c3] = arg.second;
-
-        string desc =
-          StringPrintf("Op2: %.4f %.4f %.4f",
-                       c1, c2, c3);
+        const auto &[args, err, out_] = argo.value();
+        const auto &[ints, dbls] = args;
+        string desc = Op2::Describe(ints, dbls);
 
         printf("Op2 Ran %lld evals in %.3fs [%.3f/sec] err %.4f\n",
                optimizer.NumEvaluations(), run_sec,
                optimizer.NumEvaluations() / run_sec,
                err);
 
-        const Exp *exp = Op2::GetExp(alloc, arg.first, arg.second, target);
+        const Exp *exp = Op2::GetExp(alloc, ints, dbls, target);
 
         {
           MutexLock ml(&m);
           results.emplace_back(desc, exp, err);
         }
       },
+      #if 0
       [alloc, low, high, &target, time_sec, &m, &results, seed3]() {
         Timer opt_timer;
         using Op3Optimizer = OpOptimizer<Op3>;
@@ -219,26 +214,23 @@ static const Exp *MakeFn(Allocator *alloc,
 
         const auto argo = optimizer.GetBest();
         CHECK(argo.has_value());
-        const auto &[arg, err, out_] = argo.value();
-        const auto &[citers] = arg.first;
-        const auto &[c1, c2, c3, c4] = arg.second;
-
-        string desc =
-          StringPrintf("Op3: %d %.4f %.4f %.4f %.4f",
-                       citers, c1, c2, c3, c4);
+        const auto &[args, err, out_] = argo.value();
+        const auto &[ints, dbls] = args;
+        string desc = Op3::Describe(ints, dbls);
 
         printf("Op3 Ran %lld evals in %.3fs [%.3f/sec] err %.4f\n",
                optimizer.NumEvaluations(), run_sec,
                optimizer.NumEvaluations() / run_sec,
                err);
 
-        const Exp *exp = Op3::GetExp(alloc, arg.first, arg.second, target);
+        const Exp *exp = Op3::GetExp(alloc, ints, dbls, target);
 
         {
           MutexLock ml(&m);
           results.emplace_back(desc, exp, err);
         }
       },
+      #endif
       [alloc, low, high, &target, time_sec, &m, &results, seed4]() {
         Timer opt_timer;
         using Op4Optimizer = OpOptimizer<Op4>;
@@ -258,27 +250,57 @@ static const Exp *MakeFn(Allocator *alloc,
 
         const auto argo = optimizer.GetBest();
         CHECK(argo.has_value());
-        const auto &[arg, err, out_] = argo.value();
-        const auto &[it, u1, u2] = arg.first;
-        const auto &[xd, scale] = arg.second;
-
-        string desc =
-          StringPrintf("Op4: %d %d %d %.4f %.4f",
-                       it, u1, u2, xd, scale);
+        const auto &[args, err, out_] = argo.value();
+        const auto &[ints, dbls] = args;
+        string desc = Op4::Describe(ints, dbls);
 
         printf("Op4 Ran %lld evals in %.3fs [%.3f/sec] err %.4f\n",
                optimizer.NumEvaluations(), run_sec,
                optimizer.NumEvaluations() / run_sec,
                err);
 
-        const Exp *exp = Op4::GetExp(alloc, arg.first, arg.second, target);
+        const Exp *exp = Op4::GetExp(alloc, ints, dbls, target);
+
+        {
+          MutexLock ml(&m);
+          results.emplace_back(desc, exp, err);
+        }
+      },
+      [alloc, low, high, &target, time_sec, &m, &results, seed4]() {
+        Timer opt_timer;
+        using Op5Optimizer = OpOptimizer<Op5>;
+        Op5Optimizer::Opt optimizer(
+            Op5Optimizer::GetFunction(low, high, target),
+            seed4);
+        optimizer.Run(
+            Op5::INT_BOUNDS,
+            Op5::DOUBLE_BOUNDS,
+            nullopt,
+            nullopt,
+            // seconds
+            {time_sec},
+            nullopt);
+
+        double run_sec = opt_timer.Seconds();
+
+        const auto argo = optimizer.GetBest();
+        CHECK(argo.has_value());
+        const auto &[args, err, out_] = argo.value();
+        const auto &[ints, dbls] = args;
+        string desc = Op5::Describe(ints, dbls);
+
+        printf("Op5 Ran %lld evals in %.3fs [%.3f/sec] err %.4f\n",
+               optimizer.NumEvaluations(), run_sec,
+               optimizer.NumEvaluations() / run_sec,
+               err);
+
+        const Exp *exp = Op5::GetExp(alloc, ints, dbls, target);
 
         {
           MutexLock ml(&m);
           results.emplace_back(desc, exp, err);
         }
       }
-
   );
 
   double best_err = 1.0/0.0;
@@ -315,29 +337,48 @@ static constexpr ColorUtil::Gradient GREEN_BLUE {
 
 static const Exp *MakeLoop(Allocator *alloc,
                            half low, half high, const Table &target) {
+  static constexpr int IMG_SIZE = 1920;
+  static const char *ALLIMG_FILE = "perm-all.png";
+
+  #if 1
   // We build up the expression.
   const Exp *exp = alloc->TimesC(alloc->Var(), 0x0000);
-  // Loop invariant: table represents the exp.
-  Table table = Exp::TabulateExpression(exp);
-
-  static constexpr int IMG_SIZE = 1920;
+  static constexpr int START_ITER = 0;
 
   ImageRGBA all_img(IMG_SIZE, IMG_SIZE);
   all_img.Clear32(0x000000FF);
   GradUtil::Grid(&all_img);
   GradUtil::Graph(target, 0xFFFFFF88, &all_img);
 
+  #else
+  // Restart! Needs some manual work.
+
+  #include "perm-restart.h"
+  const Exp *exp = StartExp(alloc);
+
+  std::unique_ptr<ImageRGBA> all_load(ImageRGBA::Load(ALLIMG_FILE));
+  CHECK(all_load.get() != nullptr);
+  CHECK(all_load->Width() == IMG_SIZE);
+  CHECK(all_load->Height() == IMG_SIZE);
+  ImageRGBA all_img = *all_load;
+  all_load.reset();
+
+  #endif
+
+  // Loop invariant: table represents the exp and
+  // error the current error relative to the target.
+  Table table = Exp::TabulateExpression(exp);
   double error = Error(low, high, target, table);
 
   static constexpr int ITERS = 1000;
-  for (int i = 0; i < ITERS; i++) {
+  for (int i = START_ITER; i < ITERS; i++) {
     {
       float f = i / (float)(ITERS - 1);
       uint32 color = ColorUtil::LinearGradient32(
           GradUtil::GREEN_BLUE, f) & 0xFFFFFF33;
 
       GradUtil::Graph(table, color, &all_img);
-      all_img.Save("perm-all.png");
+      all_img.Save(ALLIMG_FILE);
     }
 
     for (int tries = 1; /* in loop */; tries++) {
