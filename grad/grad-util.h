@@ -134,16 +134,38 @@ struct GradUtil {
       return make_pair(xs, ys);
     };
 
+    int parity = 0;
     for (double y = -1.0; y <= 1.0; y += 0.0625) {
       const auto [x0, y0] = MapCoord(-1.0, y);
       const auto [x1, y1] = MapCoord(+1.0, y);
-      img->BlendLine32(x0, y0, x1, y1, 0xFFFFFF11);
+      const uint32_t color = (parity == 0) ? 0xFFFFFF22 : 0xFFFFFF11;
+      img->BlendLine32(x0, y0, x1, y1, color);
+      parity++;
+      parity &= 3;
     }
 
+    parity = 0;
     for (double x = -1.0; x <= 1.0; x += 0.0625) {
       const auto [x0, y0] = MapCoord(x, -1.0);
       const auto [x1, y1] = MapCoord(x, +1.0);
-      img->BlendLine32(x0, y0, x1, y1, 0xFFFFFF11);
+      const uint32_t color = (parity == 0) ? 0xFFFFFF22 : 0xFFFFFF11;
+      img->BlendLine32(x0, y0, x1, y1, color);
+      parity++;
+      parity &= 3;
+    }
+
+    {
+      // y axis
+      const auto [x0, y0] = MapCoord(0.0, -1.0);
+      const auto [x1, y1] = MapCoord(0.0, +1.0);
+      img->BlendLine32(x0, y0, x1, y1, 0xFFFFFF22);
+    }
+
+    {
+      // x axis
+      const auto [x0, y0] = MapCoord(-1.0, 0.0);
+      const auto [x1, y1] = MapCoord(+1.0, 0.0);
+      img->BlendLine32(x0, y0, x1, y1, 0xFFFFFF22);
     }
   }
 
@@ -289,8 +311,8 @@ struct GradUtil {
 
     // And recenter.
     const auto &[offset, scale] = Recentering(state.table);
-    printf("Table2 offset %04x scale %04x\n",
-           GetU16(offset), GetU16(scale));
+    // printf("Table2 offset %04x scale %04x\n",
+    // GetU16(offset), GetU16(scale));
 
     // printf("Offset %.9g Scale %.9g\n", (float)offset, (float)scale);
     ApplyStep(Step{.mult = false,

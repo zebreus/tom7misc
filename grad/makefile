@@ -94,6 +94,14 @@ findchop.exe : findchop.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+chopreduce.exe : chopreduce.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+makesubst.exe : makesubst.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 clean :
 	rm -f *.o $(OBJECTS) *.exe
 

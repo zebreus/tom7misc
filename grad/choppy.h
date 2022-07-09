@@ -49,6 +49,10 @@ struct Choppy {
       int yy = std::round(yi);
       if (fabs(yi - yy) > EPSILON) {
         // Not "integral."
+        /*
+        printf("Not integral at x=%.4f (y=%.4f)\n",
+               (float)x, (float)y);
+        */
         return {};
       }
 
@@ -61,15 +65,28 @@ struct Choppy {
       half x = (half)((i / (double)(GRID/2)) - 1.0);
 
       // Check from 0.10 -- 0.90 of the interval.
-      half low  = x + (half)(i / GRID) * (half)0.10;
-      half high = x + (half)(i / GRID) * (half)0.90;
+      // (TODO: Tighten this up; that's still 20% of the whole
+      // function that could be wrong!)
+      half low  = x + (half)(1 / (float)(GRID/2)) * (half)0.10;
+      half high = x + (half)(1 / (float)(GRID/2)) * (half)0.90;
+
+      /*
+      printf("%d. x=%.3f check %.3f to %.3f\n",
+             i, (float)x, (float)low, (float)high);
+      */
 
       for (half pos = low; pos < high; pos = nextafter(pos, high)) {
         uint16 v = Exp::EvaluateOn(exp, Exp::GetU16(pos));
-
-        if (val[i] != v) {
+        if (val[i] != v && !((v & 0x7FFF) == 0 &&
+                             (val[i] & 0x7FFF) == 0)) {
           // Not the same value for the interval.
           // (Maybe we could accept it if "really close"?)
+
+          /*
+          printf("%d. %.3f to %.3f. now %.4f=%04x. got %04x, had %04x\n",
+                 i, (float)low, (float)high, (float)pos,
+                 Exp::GetU16(pos), v, val[i]);
+          */
           return {};
         }
       }
@@ -81,42 +98,110 @@ struct Choppy {
   struct DB {
     Allocator alloc;
 
+    enum class AddResult {
+      // Not added.
+      NOT_CHOPPY,
+      OUTSIDE_GRID,
+      NOT_NEW,
+      // Added.
+      SUCCESS_NEW,
+      SUCCESS_SMALLER,
+    };
+
+    void LoadFile(const std::string &filename) {
+      std::vector<string> lines =
+        Util::ReadFileToLines(filename);
+      for (const string &line : lines) {
+        if (line.empty()) continue;
+        if (line[0] == '/') continue;
+        string error;
+        const Exp *e = Exp::Deserialize(&alloc, line, &error);
+        CHECK(e != nullptr) << error << "\n" << line;
+        // Can be rejected by new stricter criteria (e.g. outside_grid)
+        // but nothing in the database should be invalid.
+        CHECK(Add(e) != AddResult::NOT_CHOPPY);
+      }
+    }
+
     // TODO: Any choppy function can be easily offset in the y
     // dimension (by just PlusC of 1/GRID) after the fact. So
     // we should normalize these, perhaps by centering on 0.
     // Integer scalings are also redundant (TimesC of an integer),
     // so perhaps we should also "reduce" them. But we can clean
     // this up later.
-    bool Add(const Exp *e) {
+
+    AddResult Add(const Exp *e) {
       auto go = GetChoppy(e);
-      if (!go.has_value()) return false;
+      if (!go.has_value()) return AddResult::NOT_CHOPPY;
       const std::array<int, GRID> &id = go.value();
+
+      // Exclude vectors whose coefficients are outside the grid.
+      // These could potentially be useful but they
+      // clog up the works.
+      for (int i : id) {
+        if (i < -(GRID/2) || i > (GRID/2)) {
+          return AddResult::OUTSIDE_GRID;
+        }
+      }
 
       // Should probably replace it if the expression is smaller.
       auto it = fns.find(id);
       if (it == fns.end()) {
         fns[id] = e;
-        return true;
+        return AddResult::SUCCESS_NEW;
+      } else {
+        const int newsize = Exp::ExpSize(e);
+        const int oldsize = Exp::ExpSize(it->second);
+        if (newsize < oldsize) {
+          fns[id] = e;
+          return AddResult::SUCCESS_SMALLER;
+        }
       }
-      return false;
+      return AddResult::NOT_NEW;
     }
 
-    void Dump() {
+    void DumpCode() {
       std::map<key_type, const Exp *> sorted;
       for (const auto &[k, v] : fns) sorted[k] = v;
+      printf("static constexpr const char *FNS[] = {\n");
       for (const auto &[k, v] : sorted) {
         printf("  //");
         for (int i : k) printf(" %d", i);
         printf("\n"
-               "  db->Add(%s);\n\n",
-               Exp::ExpString(v).c_str());
+               "  \"%s\",\n",
+               Exp::Serialize(v).c_str());
       }
+      printf("};\n");
+    }
+
+    std::string Dump() {
+      std::string out;
+      std::map<key_type, const Exp *> sorted;
+      for (const auto &[k, v] : fns) sorted[k] = v;
+      for (const auto &[k, v] : sorted) {
+        // Optional comments
+        StringAppendF(&out, "//");
+        for (int i : k) StringAppendF(&out, " %d", i);
+        string ser = Util::losewhitel(Exp::Serialize(v));
+        StringAppendF(&out, "\n"
+                      "%s\n",
+                      ser.c_str());
+      }
+      return out;
     }
 
     using key_type = std::array<int, GRID>;
+    static std::string KeyString(const key_type &k) {
+      string out;
+      for (int i = 0; i < GRID; i++) {
+        if (i != 0) StringAppendF(&out, " ");
+        StringAppendF(&out, " %d", k[i]);
+      }
+      return out;
+    }
+
     std::unordered_map<
       key_type, const Exp *, Hashing<key_type>> fns;
-
   };
 
 };

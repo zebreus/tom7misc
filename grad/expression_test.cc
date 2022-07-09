@@ -91,14 +91,22 @@ static void TestIter() {
   Table result4 = Exp::TabulateExpression(f4);
   double sec = tab_timer.Seconds();
 
+  for (const Exp *e : {f1, f2, f3, f4}) {
+    Table before = Exp::TabulateExpression(e);
+    string s = Exp::Serialize(e);
+    string err;
+    const Exp *ee = Exp::Deserialize(&alloc, s, &err);
+    CHECK(ee) << err << "\n" << s;
+    Table after = Exp::TabulateExpression(ee);
+    CHECK(before == after);
+  }
+
   printf("Tabulated functions in %.3fs\n", sec);
   ImageRGBA img(1024, 1024);
   img.Clear32(0x000000FF);
-  /*
   GradUtil::Graph(result1, 0xFFFF7788, &img);
   GradUtil::Graph(result2, 0x77FFFF88, &img);
   GradUtil::Graph(result3, 0x7777FF88, &img);
-  */
   GradUtil::Graph(result4, 0xFF77FF88, &img);
   img.Save("expression-test.png");
 }

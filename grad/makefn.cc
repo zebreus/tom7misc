@@ -113,8 +113,11 @@ MakeFn(Allocator *alloc,
   const int64_t seed2 = seed++;
   const int64_t seed3 = seed++;
   const int64_t seed4 = seed++;
+  const int64_t seed5 = seed++;
+  const int64_t seed6 = seed++;
 
   InParallel(
+#if 0
       [alloc, low, high, &target, time_sec, &m, &results, seed1]() {
         Timer opt_timer;
         using Op1Optimizer = OpOptimizer<Op1>;
@@ -255,12 +258,12 @@ MakeFn(Allocator *alloc,
           results.emplace_back(desc, exp, err);
         }
       },
-      [alloc, low, high, &target, time_sec, &m, &results, seed4]() {
+      [alloc, low, high, &target, time_sec, &m, &results, seed5]() {
         Timer opt_timer;
         using Op5Optimizer = OpOptimizer<Op5>;
         Op5Optimizer::Opt optimizer(
             Op5Optimizer::GetFunction(low, high, target),
-            seed4);
+            seed5);
         optimizer.Run(
             Op5::INT_BOUNDS,
             Op5::DOUBLE_BOUNDS,
@@ -289,7 +292,44 @@ MakeFn(Allocator *alloc,
           MutexLock ml(&m);
           results.emplace_back(desc, exp, err);
         }
+      },
+      #endif
+      [alloc, low, high, &target, time_sec, &m, &results, seed6]() {
+        Timer opt_timer;
+        using Op6Optimizer = OpOptimizer<Op6>;
+        Op6Optimizer::Opt optimizer(
+            Op6Optimizer::GetFunction(low, high, target),
+            seed6);
+        optimizer.Run(
+            Op6::INT_BOUNDS,
+            Op6::DOUBLE_BOUNDS,
+            nullopt,
+            nullopt,
+            // seconds
+            {time_sec},
+            nullopt);
+
+        double run_sec = opt_timer.Seconds();
+
+        const auto argo = optimizer.GetBest();
+        CHECK(argo.has_value());
+        const auto &[args, err, out_] = argo.value();
+        const auto &[ints, dbls] = args;
+        string desc = Op6::Describe(ints, dbls);
+
+        printf("Op6 Ran %lld evals in %.3fs [%.3f/sec] err %.4f\n",
+               optimizer.NumEvaluations(), run_sec,
+               optimizer.NumEvaluations() / run_sec,
+               err);
+
+        const Exp *exp = Op6::GetExp(alloc, ints, dbls, target);
+
+        {
+          MutexLock ml(&m);
+          results.emplace_back(desc, exp, err);
+        }
       }
+
   );
 
   double best_err = 1.0/0.0;

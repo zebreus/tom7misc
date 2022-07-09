@@ -12,6 +12,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "half.h"
+#include "util.h"
 
 using half_float::half;
 
@@ -227,6 +228,163 @@ struct Exp {
       table[i] = Exp::GetU16(y);
     }
     return table;
+  }
+
+  // [xe/x]e
+  static const Exp *Subst(Allocator *alloc,
+                          const Exp *e, const Exp *xe) {
+    // Note that variables are the only leaves, so there's
+    // currently no point in trying to avoid reallocations.
+    std::function<const Exp *(const Exp *)> Rec =
+      std::function<const Exp *(const Exp *)>(
+          [alloc, xe, &Rec](const Exp *e) -> const Exp * {
+          switch (e->type) {
+          case VAR:
+            return xe;
+          case PLUS_C:
+            return alloc->PlusC(Rec(e->a),
+                                e->c,
+                                e->iters);
+          case TIMES_C:
+            return alloc->TimesC(Rec(e->a),
+                                 e->c,
+                                 e->iters);
+          case PLUS_E:
+            return alloc->PlusE(Rec(e->a), Rec(e->b));
+          default:
+            CHECK(false) << "Unknown expression type";
+            return e;
+          }
+        });
+    return Rec(e);
+  }
+
+  static std::string Serialize(const Exp *e) {
+    std::string out;
+    std::function<void(const Exp *)> Rec =
+      std::function<void(const Exp *)>(
+        [&out, &Rec](const Exp *e) {
+          switch (e->type) {
+          case VAR:
+            StringAppendF(&out, " V");
+            return;
+
+          case PLUS_C:
+            Rec(e->a);
+            StringAppendF(&out, " P%04x%d", e->c, e->iters);
+            return;
+
+          case TIMES_C:
+            Rec(e->a);
+            StringAppendF(&out, " T%04x%d", e->c, e->iters);
+            return;
+
+          case PLUS_E: {
+            Rec(e->a);
+            Rec(e->b);
+            StringAppendF(&out, " E");
+            return;
+          }
+
+          default:
+            CHECK(false) << "Unknown expression type";
+          }
+        });
+    Rec(e);
+    return out;
+  }
+
+  static const Exp *Deserialize(Allocator *alloc,
+                                std::string s,
+                                std::string *err = nullptr) {
+    std::vector<const Exp *> stack;
+    const Exp *v = alloc->Var();
+
+    for (;;) {
+      string tok = Util::chop(s);
+      if (tok.empty()) {
+        if (stack.size() != 1) {
+          if (err != nullptr) {
+            *err = StringPrintf("Stack at end had %d elts\n",
+                                (int)stack.size());
+          }
+          return nullptr;
+        }
+        return stack[0];
+      }
+
+      if (tok == "V") stack.push_back(v);
+      else if (tok == "E") {
+        if (stack.size() < 2) {
+          if (err != nullptr) {
+            *err = "Not enough items on stack for E.";
+          }
+          return nullptr;
+        }
+
+        const Exp *b = stack.back();
+        stack.pop_back();
+        const Exp *a = stack.back();
+        stack.pop_back();
+        stack.push_back(alloc->PlusE(a, b));
+      } else {
+        if (!(tok[0] == 'P' || tok[0] == 'T') ||
+            tok.size() < 6) {
+          if (err != nullptr) {
+            *err = StringPrintf("Uknown token starting with %c\n",
+                                tok[0]);
+          }
+          return nullptr;
+        }
+
+        uint16_t c = 0;
+        for (int i = 1; i < 5; i++) {
+          c <<= 4;
+          c |= Util::HexDigitValue(tok[i]);
+        }
+
+        int iters = atoi(tok.c_str() + 5);
+        if (iters <= 0) {
+          if (err != nullptr) {
+            *err = StringPrintf("Bogus iter count %d in %s\n",
+                                iters, tok.c_str());
+          }
+          return nullptr;
+        }
+
+        if (stack.empty()) {
+          if (err != nullptr) {
+            *err = StringPrintf("Not enough items on stack for %c.",
+                                tok[0]);
+          }
+          return nullptr;
+        }
+
+        const Exp *a = stack.back();
+        stack.pop_back();
+
+        stack.push_back(
+            tok[0] == 'P' ?
+            alloc->PlusC(a, c, iters) :
+            alloc->TimesC(a, c, iters));
+      }
+    }
+  }
+
+  // Compute the size/cost of the expression. Each iteration in a
+  // PlusC or TimesC counts as though it were its own node.
+  static int ExpSize(const Exp *e) {
+    switch (e->type) {
+    case VAR: return 1;
+    case PLUS_C:
+    case TIMES_C:
+      return 1 + (e->iters - 1) + ExpSize(e->a);
+    case PLUS_E:
+      return 1 + ExpSize(e->a) + ExpSize(e->b);
+    default:
+      CHECK(false) << "Unknown expression type";
+      return 0;
+    }
   }
 
   static std::string ExpString(const Exp *e) {

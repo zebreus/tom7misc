@@ -316,4 +316,51 @@ struct Op5 {
   }
 };
 
+struct Op6 {
+  static constexpr int INT_ARGS = 0;
+  static constexpr int DOUBLE_ARGS = 2;
+
+  static constexpr std::array<std::pair<int, int>, INT_ARGS>
+  INT_BOUNDS = {};
+
+  static constexpr std::array<std::pair<double, double>, DOUBLE_ARGS>
+  DOUBLE_BOUNDS = {
+    make_pair(-1.0, +1.0),
+    make_pair(-8.0, +8.0),
+  };
+
+  static const Exp *GetExp(Exp::Allocator *alloc,
+                           const std::array<int, INT_ARGS> &ints,
+                           const std::array<double, DOUBLE_ARGS> &dbls,
+                           const Exp::Table &target) {
+    const auto &[x, y] = dbls;
+
+    auto T = [alloc](const Exp *e, uint16_t c, uint16_t iters) {
+        return alloc->TimesC(e, c, iters);
+      };
+    auto P = [alloc](const Exp *e, uint16_t c, uint16_t iters) {
+        return alloc->PlusC(e, c, iters);
+      };
+    auto E = [alloc](const Exp *a, const Exp *b) {
+        return alloc->PlusE(a, b);
+      };
+    const Exp *V =
+      alloc->PlusC(alloc->Var(), Exp::GetU16((half)x));
+
+    return
+      alloc->TimesC(
+          T(T(P(E(T(P(T(V,0xb5e4,1),0xc014,1),0x3bff,10),T(T(P(T(V,0xb5e4,1),0xc015,1),0x3bff,10),0xbc00,1)),0x9800,1),0x5800,1),0xbc00,1),
+          Exp::GetU16((half)y));
+  }
+
+  static std::string Describe(
+      const std::array<int, INT_ARGS> &ints,
+      const std::array<double, DOUBLE_ARGS> &dbls) {
+    const auto &[x, y] = dbls;
+
+    return StringPrintf("Op6: %.4f %.4f", x, y);
+  }
+};
+
+
 #endif

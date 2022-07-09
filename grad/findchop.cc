@@ -12,6 +12,7 @@
 #include "choppy.h"
 #include "grad-util.h"
 #include "color-util.h"
+#include "arcfour.h"
 
 // Makes a database of "choppy" functions.
 
@@ -20,12 +21,10 @@ using Allocator = Exp::Allocator;
 using Table = Exp::Table;
 
 static const Exp *GetOp5(Exp::Allocator *alloc,
-                         const std::array<int, 2> &ints,
-                         const std::array<double, 3> &dbls,
-                         const Exp::Table &target) {
-  const auto &[off1, off2] = ints;
-  const auto &[prescale, postscale, xd] = dbls;
-
+                         int iters1, int iters2,
+                         int off1, int off2,
+                         double prescale, double postscale,
+                         bool do_postscale = true) {
   const Exp *fa =
     alloc->TimesC(
         // x - 4
@@ -33,7 +32,7 @@ static const Exp *GetOp5(Exp::Allocator *alloc,
                                    Exp::GetU16((half)prescale)), off1),
         // * 0.999 ...
         0x3bffu,
-        200);
+        iters1);
 
   const Exp *fb =
     alloc->TimesC(
@@ -42,56 +41,34 @@ static const Exp *GetOp5(Exp::Allocator *alloc,
                                    Exp::GetU16((half)prescale)), off2),
         // * 0.999 ...
         0x3bffu,
-        300);
+        iters2);
 
   const Exp *f0 =
-    alloc->TimesC(
-        alloc->PlusE(fa,
-                    alloc->Neg(fb)),
-        Exp::GetU16((half)postscale));
+    alloc->PlusE(fa,
+                 alloc->Neg(fb));
 
-  // Pick a point at which to analytically set the y values
-  // equal (within the limits of precision).
-  uint16_t x = Exp::GetU16((half)xd);
-  half fy = Exp::GetHalf(Exp::EvaluateOn(f0, x));
-  half ty = Exp::GetHalf(target[x]);
-  uint16 yneg = Exp::GetU16(ty - fy);
-
-  return alloc->PlusC(f0, yneg);
+  return do_postscale ?
+    alloc->TimesC(f0, Exp::GetU16((half)postscale)) : f0;
 }
 
 
 static void Explore5(DB *db) {
-  static constexpr int IMAGE_SIZE = 1080;
+  // Original int bounds: {49758, 49152};
+  const std::array<double, 3> BASE_DOUBLES = {0.0039, -3.9544};
 
-  Table target =
-    Exp::MakeTableFromFn([](half x) {
-        return (half)0.0;
-      });
-
-  ImageRGBA img(IMAGE_SIZE, IMAGE_SIZE);
-  img.Clear32(0x000000FF);
-  GradUtil::Grid(&img);
-
-  static constexpr int STROBE = 50;
-
-  const std::array<int, 2> BASE_INTS = {49758, 49152};
-  const std::array<double, 3> BASE_DOUBLES =
-    {0.0039, -3.9544, 0.0760};
+  ArcFour rc(StringPrintf("explore.%lld", time(nullptr)));
+  RandomGaussian gauss(&rc);
 
   Exp::Allocator *alloc = &db->alloc;
 
   // Can return nullptr if not feasible.
-  auto MakeExp = [&](int a, int b,
-                     double x, double y) -> const Exp * {
-      const double z = 0.0;
-      const std::array<int, 2> INTS = {a, b};
-      const std::array<double, 3> DOUBLES = {x, y, z};
-
-      // PERF: Use a simplified version of op5 without the xd param.
+  auto MakeExp = [&](int iters1, int iters2,
+                     int a, int b,
+                     double x, double y,
+                     bool do_postscale) -> const Exp * {
       // Derive the scale.
-      const Exp *exp0 =
-        GetOp5(alloc, INTS, DOUBLES, target);
+      const Exp *exp0 = GetOp5(alloc, iters1, iters2, a, b, x, y,
+                               do_postscale);
 
       const half mid_x = (half)(1.0/(Choppy::GRID * 2.0));
 
@@ -148,104 +125,201 @@ static void Explore5(DB *db) {
     };
 
   int64 infeasible = 0;
-  int64 added = 0;
+  int64 added_new = 0, added_smaller = 0;
+  int64 not_choppy = 0, outside_grid = 0, not_new = 0;
   int64 done = 0;
 
   // run a full grid. bc00 = -1, c600 = -6.
   const int64 SIZE = 0xc600 - 0xbc00;
   const int64 TOTAL = SIZE * SIZE;
 
+  // Each loop takes about 1m22s.
+  for (int loop = 0; loop < 10; loop++)
   for (int i1 = 0xbc00; i1 < 0xc600; i1++) {
     for (int i2 = 0xbc00; i2 < 0xc600; i2++) {
+  // for (int i1 : {49758}) {
+  // for (int i2 : {49152}) {
       done++;
       if (done % 25000 == 0) {
-
         fprintf(stderr,
-                "Ran %lld/%d. (%.1f%%) %lld added, %lld infeasible (%.1f%%)\n",
-                done, TOTAL, (done * 100.0) / TOTAL, added, infeasible,
-                (infeasible * 100.0) / done);
+                "Ran %lldk/%dk (%.1f%%). %lld new %lld opt, "
+                "%lld infeasible (%.1f%%)\n",
+                done / 1024, TOTAL / 1024,
+                (done * 100.0) / TOTAL,
+                added_new, added_smaller,
+                infeasible, (infeasible * 100.0) / done);
       }
 
       auto [d1, d2, d3_] = BASE_DOUBLES;
 
-      const Exp *exp = MakeExp(i1, i2, d1, d2);
+      double r1 = gauss.Next() * 0.5 - 0.25;
+      double r2 = gauss.Next() * 0.5 - 0.25;
+
+      int io1 = gauss.Next() * 100 - 50;
+      int io2 = gauss.Next() * 100 - 50;
+
+      int iters1 = std::clamp(200 + io1, 10, 1000);
+      int iters2 = std::clamp(300 + io2, 10, 1000);
+
+      bool do_postscale = RandFloat(&rc) < 0.9;
+
+      const Exp *exp = MakeExp(
+          iters1, iters2,
+          i1 + io1, i2 + io2,
+          d1 + r1,
+          d2 + r2,
+          do_postscale);
       if (!exp) {
         infeasible++;
         continue;
       }
 
-      if (db->Add(exp)) {
-        added++;
+      #if 0
+      ImageRGBA img(1920, 1920);
+      img.Clear32(0x000000FF);
+      GradUtil::Grid(&img);
+      Table table = Exp::TabulateExpression(exp);
+      GradUtil::Graph(table, 0xFFFFFF88, &img);
+      img.Save("findchop.png");
+      #endif
 
-        float r = (i1 - 0xbc00) / (float)(0xc600 - 0xbc00);
-        float g = (i2 - 0xbc00) / (float)(0xc600 - 0xbc00);
-
-        const uint32 color = ColorUtil::FloatsTo32(r, g, 0.25f, 0.05f);
-        Table result = Exp::TabulateExpression(exp);
-        GradUtil::Graph(result, color, &img);
+      DB::AddResult ar = db->Add(exp);
+      switch (ar) {
+      case DB::AddResult::SUCCESS_NEW:
+        added_new++;
+        break;
+      case DB::AddResult::SUCCESS_SMALLER:
+        added_smaller++;
+        break;
+      case DB::AddResult::NOT_CHOPPY:
+        not_choppy++;
+        break;
+      case DB::AddResult::OUTSIDE_GRID:
+        outside_grid++;
+        break;
+      case DB::AddResult::NOT_NEW:
+        not_new++;
+        break;
       }
     }
   }
 
+  printf("Total done: %lld\n"
+         "Infeasible: %lld\n"
+         "Added new: %lld\n"
+         "Added smaller: %lld\n"
+         "Not choppy: %lld\n"
+         "Outside grid: %lld\n"
+         "Not new: %lld\n",
+         done, infeasible,
+         added_new, added_smaller,
+         not_choppy, outside_grid, not_new);
+}
 
-  {
-    // original
-    auto [i1, i2] = BASE_INTS;
-    auto [d1, d2, d3_] = BASE_DOUBLES;
-    const Exp *exp = MakeExp(i1, i2, d1, d2);
-    Table result = Exp::TabulateExpression(exp);
-    GradUtil::Graph(result, 0xFFFFFFAA, &img, 0);
-    GradUtil::Graph(result, 0xFFFFFFAA, &img, 1);
-    fprintf(stderr, "%s\n", Exp::ExpString(exp).c_str());
+static void Expand(DB *db) {
+  // Copy so that we don't have to deal with iterator
+  // invalidation.
+  std::vector<const Exp *> all;
+  for (const auto &[k, v] : db->fns) all.push_back(v);
 
-    for (int i = 0; i < 16; i++) {
-      half x = (half)((i / (double)8) - 1.0);
-      x += (half)(1.0/32.0);
+  const Exp *var = db->alloc.Var();
 
-      half y = Exp::GetHalf(Exp::EvaluateOn(exp, Exp::GetU16(x)));
+  int64 added_new = 0, added_smaller = 0;
+  int64 not_choppy = 0, outside_grid = 0, not_new = 0;
+  int64 done = 0;
 
-      double yi = ((double)y + 1.0) * 8.0;
-      int ypos =
-        // put above the line
-        -16 +
-        // 0 is the center
-        (IMAGE_SIZE / 2) +
-        (double)-y * (IMAGE_SIZE / 2);
-      img.BlendText32(i * (IMAGE_SIZE / 16) + 8,
-                      ypos,
-                      0xFFFFFFAA,
-                      StringPrintf("%.5f", yi));
+  for (const Exp *e : all) {
+    for (int xo = -8; xo <= 8; xo++) {
+      if (xo != 0) {
+        done++;
+        half dx = (half)(xo/(Choppy::GRID * 2.0));
+        const Exp *shifted =
+          Exp::Subst(&db->alloc,
+                     e,
+                     db->alloc.PlusC(var, Exp::GetU16(dx)));
+
+        DB::AddResult ar = db->Add(shifted);
+        switch (ar) {
+        case DB::AddResult::SUCCESS_NEW:
+          added_new++;
+          break;
+        case DB::AddResult::SUCCESS_SMALLER:
+          added_smaller++;
+          break;
+        case DB::AddResult::NOT_CHOPPY:
+          not_choppy++;
+          break;
+        case DB::AddResult::OUTSIDE_GRID:
+          outside_grid++;
+          break;
+        case DB::AddResult::NOT_NEW:
+          not_new++;
+          break;
+        }
+
+      }
+
     }
   }
 
-  img.Save("findchop5.png");
+  printf("Total done: %lld\n"
+         "Added new: %lld\n"
+         "Added smaller: %lld\n"
+         "Not choppy: %lld\n"
+         "Outside grid: %lld\n"
+         "Not new: %lld\n",
+         done,
+         added_new, added_smaller,
+         not_choppy, outside_grid, not_new);
 }
 
-static void SeedDB(DB *db) {
+#if 0
+[[maybe_unused]]
+static void SeedDBFromHeader(DB *db) {
   Allocator *alloc = &db->alloc;
-  auto T = [alloc](const Exp *e, uint16_t c, uint16_t iters) {
-      return alloc->TimesC(e, c, iters);
-    };
-  auto P = [alloc](const Exp *e, uint16_t c, uint16_t iters) {
-      return alloc->PlusC(e, c, iters);
-    };
-  auto E = [alloc](const Exp *a, const Exp *b) {
-      return alloc->PlusE(a, b);
-    };
-  const Exp *V = alloc->Var();
-
-#include "chop-db.h"
-
+  #include "seed-db.h"
+  for (const char *s : FNS) {
+    string error;
+    const Exp *e = Exp::Deserialize(alloc, s, &error);
+    CHECK(e != nullptr) << error << "\n" << s;
+    CHECK(db->Add(e));
+  }
 }
+#endif
+
+static void LoadDB(DB *db) {
+  std::vector<string> lines =
+    Util::ReadFileToLines("chopdb.txt");
+  int64 rejected = 0;
+  Allocator *alloc = &db->alloc;
+  for (const string &line : lines) {
+    if (line.empty()) continue;
+    if (line[0] == '/') continue;
+    string error;
+    const Exp *e = Exp::Deserialize(alloc, line, &error);
+    CHECK(e != nullptr) << error << "\n" << line;
+    // Can be rejected by new stricter criteria (e.g. outside_grid)
+    // but nothing in the database should be invalid.
+    auto res = db->Add(e);
+    if (res == DB::AddResult::NOT_CHOPPY)
+      rejected++;
+  }
+  if (rejected) {
+    printf("Warning: Rejected %lld as not choppy.\n", rejected);
+  }
+  printf("Chop DB size: %d\n", (int)db->fns.size());
+}
+
 
 int main(int argc, char **argv) {
   DB db;
-  SeedDB(&db);
+  LoadDB(&db);
 
-  // Explore5(&db);
+  Explore5(&db);
+  // Expand(&db);
 
-  printf("\n\ndb has %d distinct fns\n", (int)db.fns.size());
+  fprintf(stderr, "\n\ndb now has %d distinct fns\n", (int)db.fns.size());
 
-  db.Dump();
+  Util::WriteFile("chopdb.txt", db.Dump());
   return 0;
 }
