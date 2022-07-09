@@ -69,9 +69,8 @@ VerboseChoppy(const Exp *exp, ImageRGBA *img) {
   for (int i = 0; i < GRID; i++) {
     half x = (half)((i / (double)(GRID/2)) - 1.0);
 
-    // Check from 0.10 -- 0.90 of the interval.
-    half low  = x + (half)(1 / (float)(GRID/2)) * (half)0.10;
-    half high = x + (half)(1 / (float)(GRID/2)) * (half)0.90;
+    half low  = x + (half)(1 / (float)(GRID/2)) * (half)0.0125;
+    half high = x + (half)(1 / (float)(GRID/2)) * (half)0.9975;
 
     {
       DrawLine(low, -0.01, low, +0.01, 0xFFFFFF44);

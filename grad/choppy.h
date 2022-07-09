@@ -64,11 +64,11 @@ struct Choppy {
     for (int i = 0; i < GRID; i++) {
       half x = (half)((i / (double)(GRID/2)) - 1.0);
 
-      // Check from 0.10 -- 0.90 of the interval.
-      // (TODO: Tighten this up; that's still 20% of the whole
+      // Check from 0.0125 -- 0.9975 of the interval.
+      // (Note that's still 2.5% of the whole
       // function that could be wrong!)
-      half low  = x + (half)(1 / (float)(GRID/2)) * (half)0.10;
-      half high = x + (half)(1 / (float)(GRID/2)) * (half)0.90;
+      half low  = x + (half)(1 / (float)(GRID/2)) * (half)0.0125;
+      half high = x + (half)(1 / (float)(GRID/2)) * (half)0.9975;
 
       /*
       printf("%d. x=%.3f check %.3f to %.3f\n",

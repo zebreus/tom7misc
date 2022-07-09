@@ -20,6 +20,46 @@ using DB = Choppy::DB;
 using Allocator = Exp::Allocator;
 using Table = Exp::Table;
 
+struct Stats {
+  int64 done = 0;
+  int64 infeasible = 0;
+  int64 added_new = 0, added_smaller = 0;
+  int64 not_choppy = 0, outside_grid = 0, not_new = 0;
+
+  void Observe(DB::AddResult ar) {
+    switch (ar) {
+    case DB::AddResult::SUCCESS_NEW:
+      added_new++;
+      break;
+    case DB::AddResult::SUCCESS_SMALLER:
+      added_smaller++;
+      break;
+    case DB::AddResult::NOT_CHOPPY:
+      not_choppy++;
+      break;
+    case DB::AddResult::OUTSIDE_GRID:
+      outside_grid++;
+      break;
+    case DB::AddResult::NOT_NEW:
+      not_new++;
+      break;
+    }
+  }
+
+  void Report() {
+    printf("Total done: %lld\n"
+           "Infeasible: %lld\n"
+           "Added new: %lld\n"
+           "Added smaller: %lld\n"
+           "Not choppy: %lld\n"
+           "Outside grid: %lld\n"
+           "Not new: %lld\n",
+           done, infeasible,
+           added_new, added_smaller,
+           not_choppy, outside_grid, not_new);
+  }
+};
+
 static const Exp *GetOp5(Exp::Allocator *alloc,
                          int iters1, int iters2,
                          int off1, int off2,
@@ -124,99 +164,95 @@ static void Explore5(DB *db) {
       return nullptr;
     };
 
-  int64 infeasible = 0;
-  int64 added_new = 0, added_smaller = 0;
-  int64 not_choppy = 0, outside_grid = 0, not_new = 0;
-  int64 done = 0;
+  Stats stats;
+
+  // Each loop takes about 1m22s.
+  const int LOOPS = 10;
 
   // run a full grid. bc00 = -1, c600 = -6.
   const int64 SIZE = 0xc600 - 0xbc00;
-  const int64 TOTAL = SIZE * SIZE;
+  const int64 TOTAL = SIZE * SIZE * LOOPS;
 
-  // Each loop takes about 1m22s.
-  for (int loop = 0; loop < 10; loop++)
-  for (int i1 = 0xbc00; i1 < 0xc600; i1++) {
-    for (int i2 = 0xbc00; i2 < 0xc600; i2++) {
-  // for (int i1 : {49758}) {
-  // for (int i2 : {49152}) {
-      done++;
-      if (done % 25000 == 0) {
-        fprintf(stderr,
-                "Ran %lldk/%dk (%.1f%%). %lld new %lld opt, "
-                "%lld infeasible (%.1f%%)\n",
-                done / 1024, TOTAL / 1024,
-                (done * 100.0) / TOTAL,
-                added_new, added_smaller,
-                infeasible, (infeasible * 100.0) / done);
-      }
+  for (int loop = 0; loop < LOOPS; loop++) {
+    for (int i1 = 0xbc00; i1 < 0xc600; i1++) {
+      for (int i2 = 0xbc00; i2 < 0xc600; i2++) {
+    // for (int i1 : {49758}) {
+    // for (int i2 : {49152}) {
+        stats.done++;
+        if (stats.done % 25000 == 0) {
+          fprintf(stderr,
+                  "Ran %lldk/%dk (%.1f%%). %lld new %lld opt, "
+                  "%lld infeasible (%.1f%%)\n",
+                  stats.done / 1024, TOTAL / 1024,
+                  (stats.done * 100.0) / TOTAL,
+                  stats.added_new, stats.added_smaller,
+                  stats.infeasible,
+                  (stats.infeasible * 100.0) / stats.done);
+        }
 
-      auto [d1, d2, d3_] = BASE_DOUBLES;
+        auto [d1, d2, d3_] = BASE_DOUBLES;
 
-      double r1 = gauss.Next() * 0.5 - 0.25;
-      double r2 = gauss.Next() * 0.5 - 0.25;
+        double r1 = gauss.Next() * 0.5 - 0.25;
+        double r2 = gauss.Next() * 0.5 - 0.25;
 
-      int io1 = gauss.Next() * 100 - 50;
-      int io2 = gauss.Next() * 100 - 50;
+        int io1 = gauss.Next() * 100 - 50;
+        int io2 = gauss.Next() * 100 - 50;
 
-      int iters1 = std::clamp(200 + io1, 10, 1000);
-      int iters2 = std::clamp(300 + io2, 10, 1000);
+        int iters1 = std::clamp(200 + io1, 10, 1000);
+        int iters2 = std::clamp(300 + io2, 10, 1000);
 
-      bool do_postscale = RandFloat(&rc) < 0.9;
+        bool do_postscale = RandFloat(&rc) < 0.9;
 
-      const Exp *exp = MakeExp(
-          iters1, iters2,
-          i1 + io1, i2 + io2,
-          d1 + r1,
-          d2 + r2,
-          do_postscale);
-      if (!exp) {
-        infeasible++;
-        continue;
-      }
+        const Exp *exp = MakeExp(
+            iters1, iters2,
+            i1 + io1, i2 + io2,
+            d1 + r1,
+            d2 + r2,
+            do_postscale);
+        if (!exp) {
+          stats.infeasible++;
+          continue;
+        }
 
-      #if 0
-      ImageRGBA img(1920, 1920);
-      img.Clear32(0x000000FF);
-      GradUtil::Grid(&img);
-      Table table = Exp::TabulateExpression(exp);
-      GradUtil::Graph(table, 0xFFFFFF88, &img);
-      img.Save("findchop.png");
-      #endif
+        #if 0
+        ImageRGBA img(1920, 1920);
+        img.Clear32(0x000000FF);
+        GradUtil::Grid(&img);
+        Table table = Exp::TabulateExpression(exp);
+        GradUtil::Graph(table, 0xFFFFFF88, &img);
+        img.Save("findchop.png");
+        #endif
 
-      DB::AddResult ar = db->Add(exp);
-      switch (ar) {
-      case DB::AddResult::SUCCESS_NEW:
-        added_new++;
-        break;
-      case DB::AddResult::SUCCESS_SMALLER:
-        added_smaller++;
-        break;
-      case DB::AddResult::NOT_CHOPPY:
-        not_choppy++;
-        break;
-      case DB::AddResult::OUTSIDE_GRID:
-        outside_grid++;
-        break;
-      case DB::AddResult::NOT_NEW:
-        not_new++;
-        break;
+        DB::AddResult ar = db->Add(exp);
+        stats.Observe(ar);
       }
     }
   }
-
-  printf("Total done: %lld\n"
-         "Infeasible: %lld\n"
-         "Added new: %lld\n"
-         "Added smaller: %lld\n"
-         "Not choppy: %lld\n"
-         "Outside grid: %lld\n"
-         "Not new: %lld\n",
-         done, infeasible,
-         added_new, added_smaller,
-         not_choppy, outside_grid, not_new);
+  stats.Report();
 }
 
-static void Expand(DB *db) {
+static void ExpandNegate(DB *db) {
+  // Copy so that we don't have to deal with iterator
+  // invalidation.
+  std::vector<const Exp *> all;
+  for (const auto &[k, v] : db->fns) all.push_back(v);
+
+  const Exp *neg_var = db->alloc.TimesC(db->alloc.Var(), 0xbc00);
+  Stats stats;
+
+  for (const Exp *e : all) {
+    stats.done++;
+    const Exp *negated =
+      Exp::Subst(&db->alloc, e, neg_var);
+    DB::AddResult ar = db->Add(negated);
+    stats.Observe(ar);
+  }
+
+  stats.Report();
+}
+
+[[maybe_unused]]
+static void ExpandShift(DB *db) {
   // Copy so that we don't have to deal with iterator
   // invalidation.
   std::vector<const Exp *> all;
@@ -224,14 +260,12 @@ static void Expand(DB *db) {
 
   const Exp *var = db->alloc.Var();
 
-  int64 added_new = 0, added_smaller = 0;
-  int64 not_choppy = 0, outside_grid = 0, not_new = 0;
-  int64 done = 0;
+  Stats stats;
 
   for (const Exp *e : all) {
     for (int xo = -8; xo <= 8; xo++) {
       if (xo != 0) {
-        done++;
+        stats.done++;
         half dx = (half)(xo/(Choppy::GRID * 2.0));
         const Exp *shifted =
           Exp::Subst(&db->alloc,
@@ -239,38 +273,12 @@ static void Expand(DB *db) {
                      db->alloc.PlusC(var, Exp::GetU16(dx)));
 
         DB::AddResult ar = db->Add(shifted);
-        switch (ar) {
-        case DB::AddResult::SUCCESS_NEW:
-          added_new++;
-          break;
-        case DB::AddResult::SUCCESS_SMALLER:
-          added_smaller++;
-          break;
-        case DB::AddResult::NOT_CHOPPY:
-          not_choppy++;
-          break;
-        case DB::AddResult::OUTSIDE_GRID:
-          outside_grid++;
-          break;
-        case DB::AddResult::NOT_NEW:
-          not_new++;
-          break;
-        }
-
+        stats.Observe(ar);
       }
-
     }
   }
 
-  printf("Total done: %lld\n"
-         "Added new: %lld\n"
-         "Added smaller: %lld\n"
-         "Not choppy: %lld\n"
-         "Outside grid: %lld\n"
-         "Not new: %lld\n",
-         done,
-         added_new, added_smaller,
-         not_choppy, outside_grid, not_new);
+  stats.Report();
 }
 
 #if 0
@@ -315,8 +323,10 @@ int main(int argc, char **argv) {
   DB db;
   LoadDB(&db);
 
-  Explore5(&db);
-  // Expand(&db);
+  // Explore5(&db);
+  ExpandNegate(&db);
+  ExpandShift(&db);
+  ExpandReduce(&db);
 
   fprintf(stderr, "\n\ndb now has %d distinct fns\n", (int)db.fns.size());
 
