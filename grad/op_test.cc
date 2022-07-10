@@ -60,13 +60,15 @@ static constexpr int IMAGE_SIZE = 1920;
 static bool IsZero(const Table &table) {
   double total_sum = 0.0;
   double total_width = 2.0;
-  for (half pos = (half)-1.0; pos < (half)1.0; /* in loop */) {
-    half next = nextafter(pos, (half)1.0);
-    uint16 upos = Exp::GetU16(pos);
+  uint16 ulow = Exp::GetU16((half)-1.0);
+  uint16 uhigh = Exp::GetU16((half)+1.0);
+  for (uint16 upos = ulow; upos != uhigh; /* in loop */) {
+    uint16 unext = Exp::NextAfter16(upos);
     double err = Exp::GetHalf(table[upos]);
-    double width = (double)next - (double)pos;
+    // Same problem with Error here (point at -0 has zero width).
+    double width = (double)Exp::GetHalf(unext) - (double)Exp::GetHalf(upos);
     total_sum += fabs(err) * width;
-    pos = next;
+    upos = unext;
   }
 
   return (total_sum / total_width) < (half)0.001;

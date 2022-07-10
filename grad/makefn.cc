@@ -47,17 +47,20 @@ static inline uint16 GetU16(half h) {
 double Error(half low, half high,
              const Table &target,
              const Table &f) {
+  CHECK(low < high);
 
   double total_error = 0.0;
   double total_width = high - low;
-  for (half pos = low; pos < high; /* in loop */) {
-    half next = nextafter(pos, high);
-    uint16 upos = GetU16(pos);
-    /*
-    uint16 unext = GetU16(next);
-    printf("%.6f -> %.6f = %04x -> %04x\n", (float)pos, (float)next,
-           upos, unext);
-    */
+  for (uint16 upos = GetU16(low);
+       upos != GetU16(high);
+       /* in loop */) {
+    uint16 unext = NextAfter16(upos);
+    half next = GetHalf(unext);
+    half pos = GetHalf(upos);
+
+    // TODO: Should probably do something trapezoidal here,
+    // since the error at -0 is completely ignored by this;
+    // we have an interval [-0,0] which has width 0.0.
     half ytarget = GetHalf(target[upos]);
     half yf = GetHalf(f[upos]);
 
@@ -66,7 +69,7 @@ double Error(half low, half high,
 
     total_error += fabs(err) * width;
 
-    pos = next;
+    upos = unext;
   }
 
   return total_error / total_width;

@@ -1,6 +1,7 @@
 #include "expression.h"
 #include "timer.h"
 
+#include <array>
 #include <algorithm>
 #include <functional>
 #include <array>
@@ -15,6 +16,7 @@
 #include "color-util.h"
 
 #include "choppy.h"
+#include "ansi.h"
 
 using Table = Exp::Table;
 using uint32 = uint32_t;
@@ -23,6 +25,10 @@ using Allocator = Exp::Allocator;
 using DB = Choppy::DB;
 
 static constexpr int IMAGE_SIZE = 1920;
+
+static inline uint16 U(double d) {
+  return Exp::GetU16((half)d);
+}
 
 // Annoyingly we have to pass around the allocator pointer...
 struct ExpWrapper {
@@ -33,15 +39,25 @@ struct ExpWrapper {
 };
 
 static ExpWrapper operator+ (ExpWrapper e, uint16_t c) {
-  return ExpWrapper(e.alloc, e.alloc->PlusC(e.exp, c));
+  if (e.exp->type == PLUS_C && e.exp->c == c) {
+    return ExpWrapper(e.alloc,
+                      e.alloc->PlusC(e.exp->a, c, e.exp->iters + 1));
+  } else {
+    return ExpWrapper(e.alloc, e.alloc->PlusC(e.exp, c));
+  }
 }
 
 static ExpWrapper operator- (ExpWrapper e, uint16_t c) {
-  return ExpWrapper(e.alloc, e.alloc->PlusC(e.exp, 0x8000 ^ c));
+  return e + (uint16)(0x8000 ^ c);
 }
 
 static ExpWrapper operator* (ExpWrapper e, uint16_t c) {
-  return ExpWrapper(e.alloc, e.alloc->TimesC(e.exp, c));
+  if (e.exp->type == TIMES_C && e.exp->c == c) {
+    return ExpWrapper(e.alloc,
+                      e.alloc->TimesC(e.exp->a, c, e.exp->iters + 1));
+  } else {
+    return ExpWrapper(e.alloc, e.alloc->TimesC(e.exp, c));
+  }
 }
 
 static ExpWrapper operator+ (ExpWrapper a, ExpWrapper b) {
@@ -54,10 +70,155 @@ static ExpWrapper operator- (ExpWrapper a, ExpWrapper b) {
                                    a.alloc->Neg(b.exp)));
 }
 
+// sets f(0) = 0.
+static ExpWrapper operator~ (ExpWrapper a) {
+  const uint16 v = Exp::EvaluateOn(a.exp, 0x0000);
+  return a - v;
+}
+
+struct ColorPool {
+
+  int GetOrAdd(uint16 u) {
+    auto it = ids.find(u);
+    if (it == ids.end()) {
+      ids[u] = next++;
+    }
+    return ids[u];
+  }
+
+  // Or -1 if not present.
+  int Get(uint16 u) const {
+    auto it = ids.find(u);
+    if (it == ids.end()) return -1;
+    return it->second;
+  }
+
+  int next = 0;
+  std::map<uint16, int> ids;
+};
+
+static void PrintExpressionStats(const Exp *exp) {
+  CPrintf("For this expression:\n%s\nSerialized as:\n%s\n\n",
+          Exp::ExpString(exp).c_str(),
+          Exp::Serialize(exp).c_str());
+  Table result = Exp::TabulateExpressionIn(exp, (half)-1.0, (half)1.0);
+
+  std::vector<uint16> critical = {
+    // -1 and epsilon less
+    0xbc00,
+    0xbbff,
+    // -0.125 and epislon less
+    0xb000,
+    0xafff,
+    // very small negative
+    0x8002,
+    0x8001,
+    // negative zero, our foe!
+    0x8000,
+
+    // Positive small values
+    0x0000,
+    0x0001,
+    0x0002,
+    // almost .125
+    0x2fff,
+    0x3000,
+    // almost 1
+    0x3bff,
+    0x3c00,
+  };
+
+  ColorPool color_pool;
+
+  // First tally the colors.
+  for (uint16 ux : critical) {
+    uint16 uy = result[ux];
+    color_pool.GetOrAdd(uy);
+  }
+
+  auto GetColor = [&](uint16 u) ->
+    std::pair<const char *, const char *> {
+    static std::array C = {
+        ANSI_BLUE,
+        ANSI_CYAN,
+        ANSI_YELLOW,
+        ANSI_GREEN,
+        ANSI_PURPLE,
+        ANSI_RED,
+      };
+    int i = color_pool.Get(u);
+    if (i >= 0 && i < C.size()) {
+      return make_pair(C[i], ANSI_RESET);
+    } else {
+      return make_pair("", "");
+    }
+  };
+
+  auto HexColor = [&](uint16 u) {
+      auto [s, e] = GetColor(u);
+      return StringPrintf("%s%04x%s", s, u, e);
+    };
+
+  CPrintf("Critical points:\n");
+  for (uint16 ux : critical) {
+    uint16 uy = result[ux];
+    half x = Exp::GetHalf(ux);
+    half y = Exp::GetHalf(uy);
+
+    string xp = Util::Pad(17, StringPrintf("%.11g", (float)x));
+    string yp = Util::Pad(17, StringPrintf("%.11g", (float)y));
+
+    CPrintf("%s (%s) yields %s (%s)\n",
+            xp.c_str(), HexColor(ux).c_str(),
+            yp.c_str(), HexColor(uy).c_str());
+  }
+
+  // TODO: note nan/inf in range
+
+  std::map<uint16, std::pair<uint16, uint16>> values;
+  const half low = (half)-1.0;
+  const uint16 ulow = Exp::GetU16(low);
+  const half high = (half)1.0;
+  const uint16 uhigh = Exp::GetU16(high);
+  for (uint16 upos = ulow; upos != uhigh; upos = Exp::NextAfter16(upos)) {
+    uint16 x = upos;
+    uint16 y = result[x];
+    if (values.find(y) == values.end()) {
+      values[y] = make_pair(x, x);
+    } else {
+      half pos = Exp::GetHalf(upos);
+      auto &[first, last] = values[y];
+      if (pos < Exp::GetHalf(first)) first = x;
+      if (pos > Exp::GetHalf(last)) last = x;
+    }
+  }
+
+  // Nice if we could output these in sorted order (by first I guess?)
+  CPrintf("\n%d distinct values in [-1,1]\n", (int)values.size());
+  if (values.size() < 48) {
+    for (const auto &[v, fl] : values) {
+      const auto &[first, last] = fl;
+      string val = Util::Pad(17, StringPrintf("%.11g", (float)Exp::GetHalf(v)));
+      CPrintf("%s (%s): %.11g - %.11g (%s-%s)\n",
+              val.c_str(), HexColor(v).c_str(),
+              (float)Exp::GetHalf(first), (float)Exp::GetHalf(last),
+              HexColor(first).c_str(), HexColor(last).c_str());
+    }
+  }
+
+  auto chopo = Choppy::GetChoppy(exp);
+  if (chopo.has_value()) {
+    const auto &k = chopo.value();
+    CPrintf("Choppy: " ANSI_GREEN "%s\n" ANSI_RESET,
+            DB::KeyString(k).c_str());
+  } else {
+    CPrintf(ANSI_RED "Not choppy.\n" ANSI_RESET);
+  }
+}
+
 const Exp *TweakExpressions(Allocator *caller_alloc) {
   ArcFour rc(StringPrintf("tweak.%lld", time(nullptr)));
   auto P = [&rc](float f) { return RandFloat(&rc) < f; };
-  auto U = [](double d) { return Exp::GetU16((half)d); };
 
   ImageRGBA img(1920, 1920);
   img.Clear32(0x000000FF);
@@ -74,7 +235,46 @@ const Exp *TweakExpressions(Allocator *caller_alloc) {
     Allocator alloc;
     ExpWrapper ret(&alloc, alloc.Var());
 
+    auto RandBetween = [&](uint16 lo, uint16 hi) {
+        int range = hi - lo;
+        int x = RandTo(&rc, range);
+        return (uint16)(lo + x);
+      };
+
     auto RandomExp = [&]() -> ExpWrapper {
+        ExpWrapper var(&alloc, alloc.Var());
+
+        float pp = RandFloat(&rc);
+        uint16 r = (uint16)RandBetween(0, 0x2500);
+        if (pp < 0.33) {
+          var = var + r;
+          if (P(0.5)) var = var - r;
+        } else if (pp < 0.66) {
+          var = var - r;
+          if (P(0.5)) var = var + r;
+        }
+
+        var = var * U(0.125 / 4.0);
+
+        float pp2 = RandFloat(&rc);
+        if (pp2 < 0.33) {
+          var = var + (uint16)RandBetween(0x0000, 0x0100);
+          var = var - U(-0.125);
+        } else if (pp2 < 0.66) {
+          var = var - (uint16)RandBetween(0x0000, 0x0100);
+          var = var + U(-0.125);
+        }
+
+
+        for (int i = 0; i < (int)RandBetween(59, 66); i++)
+          var = var + (U(1.0) + i);
+
+        var = ~var;
+        return var;
+      };
+
+    [[maybe_unused]]
+    auto RandomExp2 = [&]() -> ExpWrapper {
         do {
           // XXX do these in a random order.
           if (P(0.40)) {
@@ -387,48 +587,94 @@ static void MakeChop() {
   Table result = Exp::TabulateExpression(exp);
   GradUtil::Graph(result, 0xFFFFFF88, &img);
 
-  std::map<uint16, std::pair<uint16, uint16>> values;
-  const half low = (half)-1.0;
-  const half high = (half)1.0;
-  for (half pos = low; pos < high; pos = nextafter(pos, high)) {
-    uint16 x = Exp::GetU16(pos);
-    uint16 y = result[x];
-    if (values.find(y) == values.end()) {
-      values[y] = make_pair(x, x);
-    } else {
-      auto &[first, last] = values[y];
-      if (pos < Exp::GetHalf(first)) first = x;
-      if (pos > Exp::GetHalf(last)) last = x;
-    }
-  }
-
-  printf("%d distinct values in [-1,1]\n", (int)values.size());
-  if (values.size() < 48) {
-    for (const auto &[v, fl] : values) {
-      const auto &[first, last] = fl;
-      printf("%.11g (%04x): %.11g - %.11g (%04x-%04x)\n",
-             (float)Exp::GetHalf(v), v,
-             (float)Exp::GetHalf(first), (float)Exp::GetHalf(last),
-             first, last);
-    }
-  }
-
-  auto chopo = Choppy::GetChoppy(exp);
-  if (chopo.has_value()) {
-    const auto &k = chopo.value();
-    printf("Choppy: %s\n", DB::KeyString(k).c_str());
-  } else {
-    printf("Not choppy.\n");
-  }
+  // Note this also tabulates.
+  PrintExpressionStats(exp);
 
   img.Save("manual.png");
   printf("Wrote manual.png");
 }
 
 
+static void Study() {
+  Allocator alloc;
+  ExpWrapper var(&alloc, alloc.Var());
+
+  // var = var + (uint16)0x247f;
+
+  var = var + 0x0001;
+
+  int iters = 10000;
+  for (int i = 0; i < iters; i++)
+    var = var * 0x3c01;
+
+  /*
+  var = var + 1;
+  var = var * U(1.0 / 2.0);
+  */
+
+  // var = var * U(1024);
+  // var = var * 0x000c;
+
+  #if 0
+  var = var + 2;
+
+  var = var * U(3.0);
+  // var = var * U(1.0 / 3.0);
+
+  //  = var - 0x0300;
+
+  int iters = 24;
+
+  for (int i = 0; i < iters; i++)
+    var = var * U(1.0 / 2.0);
+
+  for (int i = 0; i < iters; i++)
+    var = var * U(2.0);
+  #endif
+
+  // var = var + (uint16)0x0030;
+
+  /*
+  var = var - U(-0.125);
+
+  for (int i = 0; i < 63 ; i++)
+    var = var + (U(1.0) + i);
+  */
+
+  /*
+  for (int i = 0; i < 1024 ; i++)
+    var = var - U(1.0);
+  */
+
+  #if 0
+  var = var * U(64);
+  var = var * U(1.0/64);
+
+  var = var + U(1024);
+  var = var + U(-1024);
+
+  var = var + U(-1024);
+  var = var + U(1024);
+  #endif
+
+  // var = ~var;
+  const Exp *exp = var.exp;
+
+  PrintExpressionStats(exp);
+
+  ImageRGBA img(1024, 1024);
+  img.Clear32(0x000000FF);
+  Table result = Exp::TabulateExpression(exp);
+  GradUtil::Grid(&img);
+  GradUtil::Graph(result, 0xFFFFFF88, &img);
+  img.Save("study.png");
+}
 
 
 int main(int argc, char **argv) {
-  MakeChop();
+  AnsiInit();
+
+  // MakeChop();
+  Study();
   return 0;
 }

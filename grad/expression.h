@@ -221,19 +221,39 @@ struct Exp {
     return ret;
   }
 
+  // Always towards more positive numbers.
+  // Unlike nextafter, this includes -0 and 0, in that order.
+  // (Supposedly std::nextafter raises FE_INEXACT and FE_UNDERFLOW
+  // if the result is subnormal or zero??)
+  //
+  // Remember to test pos16 != high16, not pos16 < high16 (the u16s
+  // are not ordered like floats).
+  //
+  // Don't use this on nans, but what it actually does today is
+  // consider all the different NaNs to be signed, ordered and larger
+  // in magnitude than the corresponding infinities. This means that
+  // if you don't stop, you eventually get positive infinity and then
+  // "positive" nans, before wrapping around to "negative" nans.
+  static inline NextAfter16(uint16_t pos) {
+    // Zero comes immediately after -0.
+    if (pos == 0x8000) return 0x0000;
+    else if (pos > 0x8000) return pos - 1;
+    else return pos + 1;
+  }
+
   // Only fills the table in the range [low, high].
   static Table TabulateExpressionIn(const Exp *e,
                                     half low, half high) {
     Table ret;
     CHECK(low < high);
-    for (half pos = low; pos <= high; /* in loop */) {
-      half next = nextafter(pos, HUGE_VALH);
-      uint16_t upos = GetU16(pos);
-
+    uint16_t ulow = GetU16(low);
+    uint16_t uhigh = GetU16(high);
+    for (uint16 upos = ulow; upos != uhigh; upos = NextAfter16(upos)) {
       ret[upos] = EvaluateOn(e, upos);
-
-      pos = next;
     }
+    // include endpoint.
+    ret[uhigh] = EvaluateOn(e, uhigh);
+
     return ret;
   }
 

@@ -83,8 +83,10 @@ VerboseChoppy(const Exp *exp, ImageRGBA *img) {
       i, (float)x, (float)low, (float)high);
     */
 
-    for (half pos = low; pos < high; pos = nextafter(pos, high)) {
-      uint16 v = Exp::EvaluateOn(exp, Exp::GetU16(pos));
+    for (uint16 upos = Exp::GetU16(low);
+         upos != Exp::GetU16(high);
+         upos = Exp::NextAfter16(upos)) {
+      uint16 v = Exp::EvaluateOn(exp, upos);
       if (val[i] != v && !((v & 0x7FFF) == 0 &&
                            (val[i] & 0x7FFF) == 0)) {
         // Not the same value for the interval.

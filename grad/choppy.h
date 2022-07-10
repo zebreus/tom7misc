@@ -73,27 +73,32 @@ struct Choppy {
       // half high = x + (half)(1 / (float)(GRID/2)) * (half)0.9975;
 
       // Exact version!
-      half low = x;
-      half high = (half)(((i + 1) / (double)(GRID/2)) - 1.0);
+      uint16 ulow = Exp::GetU16(x);
+      uint16 uhigh = Exp::GetU16((half)(((i + 1) / (double)(GRID/2)) - 1.0));
 
       /*
       printf("%d. x=%.3f check %.3f to %.3f\n",
              i, (float)x, (float)low, (float)high);
       */
 
-      for (half pos = low; pos < high; pos = nextafter(pos, high)) {
-        uint16 v = Exp::EvaluateOn(exp, Exp::GetU16(pos));
-        if (val[i] != v && !((v & 0x7FFF) == 0 &&
-                             (val[i] & 0x7FFF) == 0)) {
-          // Not the same value for the interval.
-          // (Maybe we could accept it if "really close"?)
+      for (uint16 upos = ulow;
+           upos != uhigh; upos = Exp::NextAfter16(upos)) {
 
-          /*
-          printf("%d. %.3f to %.3f. now %.4f=%04x. got %04x, had %04x\n",
-                 i, (float)low, (float)high, (float)pos,
-                 Exp::GetU16(pos), v, val[i]);
-          */
-          return {};
+        // But don't concern ourselves with the value for -0.
+        if (upos != 0x8000) {
+          uint16 v = Exp::EvaluateOn(exp, upos);
+          if (val[i] != v && !((v & 0x7FFF) == 0 &&
+                               (val[i] & 0x7FFF) == 0)) {
+            // Not the same value for the interval.
+            // (Maybe we could accept it if "really close"?)
+
+            /*
+              printf("%d. %.3f to %.3f. now %.4f=%04x. got %04x, had %04x\n",
+              i, (float)low, (float)high, (float)pos,
+              Exp::GetU16(pos), v, val[i]);
+            */
+            return {};
+          }
         }
       }
     }

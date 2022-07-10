@@ -185,6 +185,7 @@ int main(int argc, char **argv) {
         // are no-non-empty buckets, the coordinate is not meaningful.
         auto GetAdjacentBucket = [&](uint16 u, int dir) ->
           pair<uint16, vector<double>> {
+          // TODO: Can use NextAfter16?
           // Here we really want like std::nextafter, but instead we
           // just stay in the two contiguous ranges where the values
           // are monotonic. As an improvement, it would be acceptable

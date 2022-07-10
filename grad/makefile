@@ -38,7 +38,7 @@ CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o
 grad.s : grad.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -S -fverbose-asm -c $< -o $@
 
-OBJECTS=$(CCLIB_OBJECTS)
+OBJECTS=$(CCLIB_OBJECTS) ansi.o
 
 LFLAGS= -L. -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static
 
