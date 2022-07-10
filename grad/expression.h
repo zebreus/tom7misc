@@ -36,28 +36,44 @@ struct Exp {
   // all allocated expressions within are deleted.
   struct Allocator {
 
+    Allocator() {
+      var = New(VAR);
+    }
+
     // TODO: Some way to release/copy an expression!
     ~Allocator() {
       for (Exp *e : allocations) delete e;
       allocations.clear();
     }
 
-    // TODO: Could index variable (using c, perhaps) to allow for
-    // linear functions of multiple variables.
-    static const Exp *Var() {
-      return new Exp(VAR);
+    const Exp *Copy(const Exp *other) {
+      switch (other->type) {
+      case VAR: return Var();
+      case PLUS_C: return PlusC(Copy(other->a), other->c, other->iters);
+      case TIMES_C: return TimesC(Copy(other->a), other->c, other->iters);
+      case PLUS_E: return PlusE(Copy(other->a), Copy(other->b));
+      default:
+        CHECK(false) << "unknown type";
+        return nullptr;
+      }
     }
 
-    static const Exp *PlusC(const Exp *e, uint16_t c, uint16_t iters = 1) {
-      Exp *ret = new Exp(PLUS_C);
+    // TODO: Could index variable (using c, perhaps) to allow for
+    // linear functions of multiple variables.
+    const Exp *Var() {
+      return var;
+    }
+
+    const Exp *PlusC(const Exp *e, uint16_t c, uint16_t iters = 1) {
+      Exp *ret = New(PLUS_C);
       ret->a = e;
       ret->c = c;
       ret->iters = iters;
       return ret;
     }
 
-    static const Exp *TimesC(const Exp *e, uint16_t c, uint16_t iters = 1) {
-      Exp *ret = new Exp(TIMES_C);
+    const Exp *TimesC(const Exp *e, uint16_t c, uint16_t iters = 1) {
+      Exp *ret = New(TIMES_C);
       ret->a = e;
       ret->c = c;
       ret->iters = iters;
@@ -65,15 +81,15 @@ struct Exp {
     }
 
     // TODO: Verify that this is equivalent to unary negation.
-    static const Exp *Neg(const Exp *e) {
-      Exp *ret = new Exp(TIMES_C);
+    const Exp *Neg(const Exp *e) {
+      Exp *ret = New(TIMES_C);
       ret->a = e;
       ret->c = 0xbc00;  // -1.0
       return ret;
     }
 
-    static const Exp *PlusE(const Exp *a, const Exp *b) {
-      Exp *ret = new Exp(PLUS_E);
+    const Exp *PlusE(const Exp *a, const Exp *b) {
+      Exp *ret = New(PLUS_E);
       ret->a = a;
       ret->b = b;
       return ret;
@@ -88,6 +104,7 @@ struct Exp {
       }
       return e;
     }
+    Exp *var = nullptr;
     std::mutex m;
     std::vector<Exp *> allocations;
   };
@@ -264,6 +281,7 @@ struct Exp {
     std::function<void(const Exp *)> Rec =
       std::function<void(const Exp *)>(
         [&out, &Rec](const Exp *e) {
+          CHECK(e != nullptr);
           switch (e->type) {
           case VAR:
             StringAppendF(&out, " V");

@@ -14,6 +14,8 @@
 #include "hashing.h"
 
 #include "choppy.h"
+#include "image.h"
+#include "color-util.h"
 
 // A choppy function is a stepwise function that produces
 // integer outputs on some grid. Here we use a grid of size 16,
@@ -67,8 +69,12 @@ struct Choppy {
       // Check from 0.0125 -- 0.9975 of the interval.
       // (Note that's still 2.5% of the whole
       // function that could be wrong!)
-      half low  = x + (half)(1 / (float)(GRID/2)) * (half)0.0125;
-      half high = x + (half)(1 / (float)(GRID/2)) * (half)0.9975;
+      // half low  = x + (half)(1 / (float)(GRID/2)) * (half)0.0125;
+      // half high = x + (half)(1 / (float)(GRID/2)) * (half)0.9975;
+
+      // Exact version!
+      half low = x;
+      half high = (half)(((i + 1) / (double)(GRID/2)) - 1.0);
 
       /*
       printf("%d. x=%.3f check %.3f to %.3f\n",
@@ -97,6 +103,7 @@ struct Choppy {
 
   struct DB {
     Allocator alloc;
+    std::mutex m;
 
     enum class AddResult {
       // Not added.
@@ -119,7 +126,8 @@ struct Choppy {
         CHECK(e != nullptr) << error << "\n" << line;
         // Can be rejected by new stricter criteria (e.g. outside_grid)
         // but nothing in the database should be invalid.
-        CHECK(Add(e) != AddResult::NOT_CHOPPY);
+        CHECK(Add(e) != AddResult::NOT_CHOPPY) << "from line: " << line
+                                               << "\n" << Exp::ExpString(e);
       }
     }
 
@@ -128,9 +136,13 @@ struct Choppy {
     // we should normalize these, perhaps by centering on 0.
     // Integer scalings are also redundant (TimesC of an integer),
     // so perhaps we should also "reduce" them. But we can clean
-    // this up later.
+    // this up later (see chopreduce.exe).
 
+    // The expression is copied if it is inserted, so it can be
+    // from another allocator, and can be invalidated after the
+    // call returns.
     AddResult Add(const Exp *e) {
+      CHECK(e != nullptr);
       auto go = GetChoppy(e);
       if (!go.has_value()) return AddResult::NOT_CHOPPY;
       const std::array<int, GRID> &id = go.value();
@@ -144,23 +156,26 @@ struct Choppy {
         }
       }
 
-      // Should probably replace it if the expression is smaller.
-      auto it = fns.find(id);
-      if (it == fns.end()) {
-        fns[id] = e;
-        return AddResult::SUCCESS_NEW;
-      } else {
-        const int newsize = Exp::ExpSize(e);
-        const int oldsize = Exp::ExpSize(it->second);
-        if (newsize < oldsize) {
-          fns[id] = e;
-          return AddResult::SUCCESS_SMALLER;
+      {
+        std::unique_lock<std::mutex> ml(m);
+        auto it = fns.find(id);
+        if (it == fns.end()) {
+          fns[id] = alloc.Copy(e);
+          return AddResult::SUCCESS_NEW;
+        } else {
+          const int newsize = Exp::ExpSize(e);
+          const int oldsize = Exp::ExpSize(it->second);
+          if (newsize < oldsize) {
+            fns[id] = alloc.Copy(e);
+            return AddResult::SUCCESS_SMALLER;
+          }
         }
       }
       return AddResult::NOT_NEW;
     }
 
     void DumpCode() {
+      std::unique_lock<std::mutex> ml(m);
       std::map<key_type, const Exp *> sorted;
       for (const auto &[k, v] : fns) sorted[k] = v;
       printf("static constexpr const char *FNS[] = {\n");
@@ -175,6 +190,7 @@ struct Choppy {
     }
 
     std::string Dump() {
+      std::unique_lock<std::mutex> ml(m);
       std::string out;
       std::map<key_type, const Exp *> sorted;
       for (const auto &[k, v] : fns) sorted[k] = v;
@@ -190,6 +206,31 @@ struct Choppy {
       return out;
     }
 
+    ImageRGBA Image() {
+      ImageRGBA img(GRID, fns.size());
+      std::map<key_type, const Exp *> sorted;
+      for (const auto &[k, v] : fns) sorted[k] = v;
+      int y = 0;
+      for (const auto &[k, v] : sorted) {
+        for (int x = 0; x < GRID; x++) {
+          int c = k[x];
+          float r = 0.0f, g = 0.0f;
+          if (c > 0) {
+            g = 0.1 + 0.9 * (c / (float)(GRID/2.0f));
+          } else if (c < 0) {
+            r = 0.1 + 0.9 * ((-c) / (float)(GRID/2.0f));
+          }
+
+          float b = (x & 1) ? 0.1f : 0.0f;
+
+          img.SetPixel32(x, y,
+                         ColorUtil::FloatsTo32(r, g, b, 1.0));
+        }
+        y++;
+      }
+      return img;
+    }
+
     using key_type = std::array<int, GRID>;
     static std::string KeyString(const key_type &k) {
       string out;
@@ -200,6 +241,7 @@ struct Choppy {
       return out;
     }
 
+    // Protected by mutex.
     std::unordered_map<
       key_type, const Exp *, Hashing<key_type>> fns;
   };

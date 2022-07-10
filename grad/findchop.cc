@@ -1,6 +1,8 @@
 
 #include <optional>
 #include <array>
+#include <mutex>
+#include <atomic>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -13,6 +15,8 @@
 #include "grad-util.h"
 #include "color-util.h"
 #include "arcfour.h"
+#include "timer.h"
+#include "threadutil.h"
 
 // Makes a database of "choppy" functions.
 
@@ -21,10 +25,12 @@ using Allocator = Exp::Allocator;
 using Table = Exp::Table;
 
 struct Stats {
-  int64 done = 0;
-  int64 infeasible = 0;
-  int64 added_new = 0, added_smaller = 0;
-  int64 not_choppy = 0, outside_grid = 0, not_new = 0;
+  Timer timer;
+  std::mutex m;
+  std::atomic<int64> done = 0;
+  std::atomic<int64> infeasible = 0;
+  std::atomic<int64> added_new = 0, added_smaller = 0;
+  std::atomic<int64> not_choppy = 0, outside_grid = 0, not_new = 0;
 
   void Observe(DB::AddResult ar) {
     switch (ar) {
@@ -46,7 +52,23 @@ struct Stats {
     }
   }
 
+  void Progress(int64 total) {
+    std::unique_lock<std::mutex> ml(m);
+    int persec = done.load() / timer.Seconds();
+    fprintf(stderr,
+            "Ran %lldk/%dM (%.1f%%; %d/s). %lld new %lld opt, "
+            "%lld infeasible (%.1f%%)\n",
+            done.load() / 1024, total / (1024 * 1024),
+            (done.load() * 100.0) / total,
+            persec,
+            added_new.load(), added_smaller.load(),
+            infeasible.load(),
+            (infeasible.load() * 100.0) / done.load());
+  }
+
+
   void Report() {
+    std::unique_lock<std::mutex> ml(m);
     printf("Total done: %lld\n"
            "Infeasible: %lld\n"
            "Added new: %lld\n"
@@ -54,14 +76,18 @@ struct Stats {
            "Not choppy: %lld\n"
            "Outside grid: %lld\n"
            "Not new: %lld\n",
-           done, infeasible,
-           added_new, added_smaller,
-           not_choppy, outside_grid, not_new);
+           done.load(), infeasible.load(),
+           added_new.load(), added_smaller.load(),
+           not_choppy.load(), outside_grid.load(),
+           not_new.load());
   }
 };
 
+// 0.99999...
+constexpr int STANDARD_M = 0x3bffu;
 static const Exp *GetOp5(Exp::Allocator *alloc,
                          int iters1, int iters2,
+                         int m1, int m2,
                          int off1, int off2,
                          double prescale, double postscale,
                          bool do_postscale = true) {
@@ -71,7 +97,7 @@ static const Exp *GetOp5(Exp::Allocator *alloc,
         alloc->PlusC(alloc->TimesC(alloc->Var(),
                                    Exp::GetU16((half)prescale)), off1),
         // * 0.999 ...
-        0x3bffu,
+        m1,
         iters1);
 
   const Exp *fb =
@@ -80,7 +106,7 @@ static const Exp *GetOp5(Exp::Allocator *alloc,
         alloc->PlusC(alloc->TimesC(alloc->Var(),
                                    Exp::GetU16((half)prescale)), off2),
         // * 0.999 ...
-        0x3bffu,
+        m2,
         iters2);
 
   const Exp *f0 =
@@ -96,18 +122,19 @@ static void Explore5(DB *db) {
   // Original int bounds: {49758, 49152};
   const std::array<double, 3> BASE_DOUBLES = {0.0039, -3.9544};
 
-  ArcFour rc(StringPrintf("explore.%lld", time(nullptr)));
-  RandomGaussian gauss(&rc);
-
-  Exp::Allocator *alloc = &db->alloc;
-
   // Can return nullptr if not feasible.
-  auto MakeExp = [&](int iters1, int iters2,
+  auto MakeExp = [&](Allocator *alloc,
+                     int iters1, int iters2,
+                     int m1, int m2,
                      int a, int b,
                      double x, double y,
                      bool do_postscale) -> const Exp * {
       // Derive the scale.
-      const Exp *exp0 = GetOp5(alloc, iters1, iters2, a, b, x, y,
+      const Exp *exp0 = GetOp5(alloc,
+                               iters1, iters2,
+                               m1, m2,
+                               a, b,
+                               x, y,
                                do_postscale);
 
       const half mid_x = (half)(1.0/(Choppy::GRID * 2.0));
@@ -164,70 +191,77 @@ static void Explore5(DB *db) {
       return nullptr;
     };
 
-  Stats stats;
-
   // Each loop takes about 1m22s.
   const int LOOPS = 10;
-
+  constexpr int NUM_THREADS = 4;
   // run a full grid. bc00 = -1, c600 = -6.
   const int64 SIZE = 0xc600 - 0xbc00;
   const int64 TOTAL = SIZE * SIZE * LOOPS;
 
-  for (int loop = 0; loop < LOOPS; loop++) {
-    for (int i1 = 0xbc00; i1 < 0xc600; i1++) {
-      for (int i2 = 0xbc00; i2 < 0xc600; i2++) {
-    // for (int i1 : {49758}) {
-    // for (int i2 : {49152}) {
-        stats.done++;
-        if (stats.done % 25000 == 0) {
-          fprintf(stderr,
-                  "Ran %lldk/%dk (%.1f%%). %lld new %lld opt, "
-                  "%lld infeasible (%.1f%%)\n",
-                  stats.done / 1024, TOTAL / 1024,
-                  (stats.done * 100.0) / TOTAL,
-                  stats.added_new, stats.added_smaller,
-                  stats.infeasible,
-                  (stats.infeasible * 100.0) / stats.done);
+  Stats stats;
+
+  ParallelComp(
+      LOOPS,
+      [&](int thread_idx) {
+        ArcFour rc(StringPrintf("%d.explore.%lld",
+                                thread_idx, time(nullptr)));
+        RandomGaussian gauss(&rc);
+        for (int i1 = 0xbc00; i1 < 0xc600; i1++) {
+          for (int i2 = 0xbc00; i2 < 0xc600; i2++) {
+            Allocator alloc;
+            stats.done++;
+            if (stats.done.load() % 25000 == 0) {
+              stats.Progress(TOTAL);
+            }
+
+            auto [d1, d2, d3_] = BASE_DOUBLES;
+
+            int m1 = STANDARD_M;
+            int m2 = STANDARD_M;
+            // Avoid exactly 0x3c00 = 1.0
+            if (RandFloat(&rc) > 0.75) {
+              m1 = 0x3bff - RandTo(&rc, 3);
+            } else if (RandFloat(&rc) > 0.9) {
+              m1 = 0x3c01 + RandTo(&rc, 3);
+            }
+
+            if (RandFloat(&rc) > 0.75) {
+              m2 = 0x3bff - RandTo(&rc, 3);
+            } else if (RandFloat(&rc) > 0.9) {
+              m2 = 0x3c01 + RandTo(&rc, 3);
+            }
+
+            double r1 = gauss.Next() * 0.5 - 0.25;
+            double r2 = gauss.Next() * 0.5 - 0.25;
+
+            int io1 = gauss.Next() * 100 - 50;
+            int io2 = gauss.Next() * 100 - 50;
+
+            int iters1 = std::clamp(200 + io1, 1, 1000);
+            int iters2 = std::clamp(300 + io2, 1, 1000);
+
+            bool do_postscale = RandFloat(&rc) < 0.9;
+
+            const Exp *exp = MakeExp(
+                &alloc,
+                iters1, iters2,
+                m1, m2,
+                i1 + io1, i2 + io2,
+                d1 + r1,
+                d2 + r2,
+                do_postscale);
+            if (!exp) {
+              stats.infeasible++;
+              continue;
+            }
+
+            DB::AddResult ar = db->Add(exp);
+            stats.Observe(ar);
+          }
         }
+      },
+      NUM_THREADS);
 
-        auto [d1, d2, d3_] = BASE_DOUBLES;
-
-        double r1 = gauss.Next() * 0.5 - 0.25;
-        double r2 = gauss.Next() * 0.5 - 0.25;
-
-        int io1 = gauss.Next() * 100 - 50;
-        int io2 = gauss.Next() * 100 - 50;
-
-        int iters1 = std::clamp(200 + io1, 10, 1000);
-        int iters2 = std::clamp(300 + io2, 10, 1000);
-
-        bool do_postscale = RandFloat(&rc) < 0.9;
-
-        const Exp *exp = MakeExp(
-            iters1, iters2,
-            i1 + io1, i2 + io2,
-            d1 + r1,
-            d2 + r2,
-            do_postscale);
-        if (!exp) {
-          stats.infeasible++;
-          continue;
-        }
-
-        #if 0
-        ImageRGBA img(1920, 1920);
-        img.Clear32(0x000000FF);
-        GradUtil::Grid(&img);
-        Table table = Exp::TabulateExpression(exp);
-        GradUtil::Graph(table, 0xFFFFFF88, &img);
-        img.Save("findchop.png");
-        #endif
-
-        DB::AddResult ar = db->Add(exp);
-        stats.Observe(ar);
-      }
-    }
-  }
   stats.Report();
 }
 
@@ -323,10 +357,9 @@ int main(int argc, char **argv) {
   DB db;
   LoadDB(&db);
 
-  // Explore5(&db);
+  Explore5(&db);
   ExpandNegate(&db);
   ExpandShift(&db);
-  ExpandReduce(&db);
 
   fprintf(stderr, "\n\ndb now has %d distinct fns\n", (int)db.fns.size());
 

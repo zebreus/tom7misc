@@ -22,7 +22,7 @@ using Table = Exp::Table;
 // thing, but even easier, we could see if we already have
 // solutions for any columns.
 static void Reduce(DB *db) {
-  std::array<std::optional<DB::key_type>, Choppy::GRID> solved;
+
 
   DB basis;
   // Add a vector [0, 0, 0, ..., X, ..., 0] with X != 0, if it
@@ -151,6 +151,86 @@ static void Reduce(DB *db) {
   printf("Single diff pass: %d now solved\n",
          (int)basis.fns.size());
 
+  // Finally, for each remaining row, shift it so that it has 1
+  // in the unsolved column. Then eliminate any nonzero columns
+  // using existing basis vectors.
+  std::array<const Exp *, Choppy::GRID> solved;
+  for (auto &e : solved) e = nullptr;
+  for (int col = 0; col < Choppy::GRID; col++) {
+    DB::key_type target_key;
+    for (int i = 0; i < Choppy::GRID; i++)
+      target_key[i] = (i == col) ? 1 : 0;
+
+    if (basis.fns.contains(target_key)) {
+      const Exp *fn = basis.fns[target_key];
+      CHECK(fn != nullptr);
+      solved[col] = fn;
+    }
+  }
+
+  for (int col = 0; col < Choppy::GRID; col++) {
+    if (solved[col] == nullptr) {
+      printf("Trying column-wise for col %d:\n", col);
+
+      for (const auto &[k, v] : db->fns) {
+        // e.g. if the column currently has 0, we want to add 1.
+        const int dy = 1 - k[col];
+        DB::key_type shift_key = k;
+        for (int &c : shift_key) c += dy;
+        CHECK(shift_key[col] == 1);
+
+        // Do we have solutions for the necessary positions?
+        for (int i = 0; i < Choppy::GRID; i++)
+          if (i != col && shift_key[i] != 0)
+            if (solved[i] == nullptr)
+              goto next_columnwise_row;
+
+        {
+          // Then create it.
+          const Exp *shift =
+            db->alloc.PlusC(v, Exp::GetU16((half)(1.0 / Choppy::GRID)));
+
+          for (int i = 0; i < Choppy::GRID; i++) {
+            if (i != col && shift_key[i] != 0) {
+              // multiply it to the same magnitude
+              int mult = shift_key[i];
+              const Exp *b = solved[i];
+              CHECK(b != nullptr) << "above";
+              shift = db->alloc.PlusE(
+                  shift,
+                  db->alloc.TimesC(b,
+                                   // but we're actually subtracting it
+                                   Exp::GetU16((half)-mult)));
+            }
+          }
+
+          DB::key_type new_key;
+          for (int i = 0; i < Choppy::GRID; i++) {
+            new_key[i] = (i == col) ? 1 : 0;
+          }
+
+          auto ar =
+            TryAddBasis(col, new_key, shift);
+
+          if (ar == DB::AddResult::SUCCESS_NEW ||
+              ar == DB::AddResult::SUCCESS_SMALLER) {
+            printf("Solved col %d from %s\n", DB::KeyString(k).c_str());
+            // XXX could continue to maybe find a
+            // smaller solution
+            goto next_columnwise_column;
+          }
+        }
+
+      next_columnwise_row:;
+      }
+
+    next_columnwise_column:;
+    }
+  }
+
+  printf("Column-wise pass: %d now solved\n",
+         (int)basis.fns.size());
+
   Util::WriteFile("basis.txt", basis.Dump());
 }
 
@@ -158,6 +238,7 @@ int main(int argc, char **argv) {
   DB db;
   printf("Load database:\n");
   db.LoadFile("chopdb.txt");
+  db.Image().ScaleBy(10).Save("database.png");
 
   Reduce(&db);
 

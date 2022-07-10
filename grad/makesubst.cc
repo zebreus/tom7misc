@@ -136,6 +136,7 @@ int main(int argc, char **argv) {
   }
 
   img.Save("makesubst.png");
+  printf("Wrote makesubst.txt\n");
 
   return 0;
 }
