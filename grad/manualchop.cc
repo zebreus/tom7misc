@@ -60,6 +60,12 @@ static ExpWrapper operator* (ExpWrapper e, uint16_t c) {
   }
 }
 
+// Just iteratively applying * will do this, but it also creates
+// a lot of garbage (and reduces locality).
+static ExpWrapper IteratedTimes(ExpWrapper e, uint16_t c, int iters) {
+  return ExpWrapper(e.alloc, e.alloc->TimesC(e.exp, c, iters));
+}
+
 static ExpWrapper operator+ (ExpWrapper a, ExpWrapper b) {
   return ExpWrapper(a.alloc, a.alloc->PlusE(a.exp, b.exp));
 }
@@ -97,11 +103,21 @@ struct ColorPool {
   std::map<uint16, int> ids;
 };
 
-static void PrintExpressionStats(const Exp *exp) {
+static Table PrintExpressionStats(const Exp *exp) {
+  /*
+  string exps = Exp::ExpString(exp);
+  string sers = Exp::Serialize(exp);
+  if (exps.size() > 256) exps = "(long)";
+  // but save the serialized version, so I don't lose e.g.
+  // a randomly-generated useful one
   CPrintf("For this expression:\n%s\nSerialized as:\n%s\n\n",
-          Exp::ExpString(exp).c_str(),
-          Exp::Serialize(exp).c_str());
+          exps.c_str(),
+          sers.c_str());
+  */
+  Timer tabulate_timer;
   Table result = Exp::TabulateExpressionIn(exp, (half)-1.0, (half)1.0);
+  CPrintf("Tabulated in " ANSI_YELLOW "%.3fs" ANSI_RESET ".\n",
+          tabulate_timer.Seconds());
 
   std::vector<uint16> critical = {
     // -1 and epsilon less
@@ -214,6 +230,8 @@ static void PrintExpressionStats(const Exp *exp) {
   } else {
     CPrintf(ANSI_RED "Not choppy.\n" ANSI_RESET);
   }
+
+  return result;
 }
 
 const Exp *TweakExpressions(Allocator *caller_alloc) {
@@ -601,12 +619,81 @@ static void Study() {
 
   // var = var + (uint16)0x247f;
 
-  var = var + 0x0001;
+  var = var + 0x0201;
+  // var = var - 0x0001;
 
-  int iters = 10000;
-  for (int i = 0; i < iters; i++)
-    var = var * 0x3c01;
+  // This approach is promising.
+  // Each time we do this, it does seem
+  // to reduce the number of distinct
+  // values. But it eventually seems to
+  // bottom out at 152. (And is verrrry slow)
 
+
+  // 10 loops, 432 distinct values, 25.5s
+  // 20 loops, 152 values, 53.159s
+  // 30 loops, 152 values, 88.814s
+  for (int j = 0; j < 30; j++) {
+
+    // with 100 iters, 5262
+    for (int i = 0; i < 100; i++) {
+
+      int iters = 10000;
+      var = IteratedTimes(var, 0x3c01, iters);
+      // for (int i = 0; i < iters; i++)
+      // var = var * 0x3c01;
+
+      var = var * U(1.0 / 1024);
+      var = var * U(1.0 / 8.0);
+
+      var = IteratedTimes(var, 0x3c01, iters);
+      // for (int i = 0; i < iters; i++)
+      // var = var * 0x3c01;
+
+      var = var * U(1.0 / 1024);
+      var = var * U(1.0 / 8.0);
+
+      var = IteratedTimes(var, 0x3c01, iters);
+      // for (int i = 0; i < iters; i++)
+      // var = var * 0x3c01;
+
+      var = var * U(1.0 / 1024);
+      var = var * U(1.0 / 8.0);
+
+      var = var * U(1.0 / 1.03125);
+
+    }
+
+    var = var * U(1.0 / 2.16796875);
+  }
+
+#if 0
+
+  var = var * U(1024.0);
+  // var = var * U(1.0 / 1024.);
+
+  var = var + U(10.0);
+  var = var - U(10.0);
+
+  var = var + U(64.0);
+  var = var - U(64.0);
+
+  // Now we have a lot of values (from old tiny ones)
+  // but -1 is -1056, 1 is 1056, so we have some room
+  // to scale this out.
+  var = var * U(60.0);
+  var = var * U(1 / 3.75);
+
+  var = var + U(512.0);
+  var = var - U(512.0);
+#endif
+
+  /*
+  var = var + U(512.0);
+  var = var - U(512.0);
+
+  var = var + U(4096.0);
+  var = var - U(4096.0);
+  */
   /*
   var = var + 1;
   var = var * U(1.0 / 2.0);
@@ -660,11 +747,10 @@ static void Study() {
   // var = ~var;
   const Exp *exp = var.exp;
 
-  PrintExpressionStats(exp);
+  Table result = PrintExpressionStats(exp);
 
   ImageRGBA img(1024, 1024);
   img.Clear32(0x000000FF);
-  Table result = Exp::TabulateExpression(exp);
   GradUtil::Grid(&img);
   GradUtil::Graph(result, 0xFFFFFF88, &img);
   img.Save("study.png");

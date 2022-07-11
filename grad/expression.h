@@ -177,8 +177,150 @@ struct Exp {
     return GetU16(y);
   }
 
-  // PERF: For iterated plus/times, we can have precomputed
-  // tables that apply the function e.g. 100 times.
+  // Non-recursive version that explicitly manages its stack,
+  // but it takes twice as long, at least for smaller
+  // expressions. :(
+  static uint16_t EvaluateOnExplicit(const Exp *exp, uint16_t x) {
+
+    enum FrameType : uint8_t {
+      FPLUSC,
+      FTIMESC,
+      FPLUSE1,
+      FPLUSE2,
+    };
+
+    enum Mode {
+      // with v = return value.
+      MODE_RETURN,
+      // with e = expression to evaluate
+      MODE_EVAL,
+    };
+
+    // 0-65535 are values
+    struct Frame {
+      union {
+        struct {
+          uint16_t c;
+          uint16_t iters;
+        } pt;
+        const Exp *other;
+      } u;
+      FrameType type;
+    };
+
+    // state
+    Mode mode = MODE_EVAL;
+    std::vector<Frame> stack;
+    const Exp *e = exp;
+    uint16_t v = 0;
+
+    for (;;) {
+      switch (mode) {
+
+      case MODE_EVAL:
+        switch (e->type) {
+        case VAR:
+          v = x;
+          mode = MODE_RETURN;
+          break;
+
+        case PLUS_C: {
+          Frame f;
+          f.type = FPLUSC;
+          f.u.pt.c = e->c;
+          f.u.pt.iters = e->iters;
+          stack.push_back(f);
+          e = e->a;
+          mode = MODE_EVAL;
+          break;
+        }
+
+        case TIMES_C: {
+          Frame f;
+          f.type = FTIMESC;
+          f.u.pt.c = e->c;
+          f.u.pt.iters = e->iters;
+          stack.push_back(f);
+          e = e->a;
+          mode = MODE_EVAL;
+          break;
+        }
+
+        case PLUS_E: {
+          Frame f;
+          f.type = FPLUSE1;
+          f.u.other = e->b;
+          stack.push_back(f);
+          e = e->a;
+          mode = MODE_EVAL;
+          break;
+        }
+
+        default:
+          CHECK(false) << "bad exp type";
+          return 0;
+        }
+        break;
+
+      case MODE_RETURN: {
+        if (stack.empty())
+          return v;
+
+        Frame &f = stack.back();
+        switch (f.type) {
+        case FPLUSC: {
+          half res = GetHalf(v);
+          half rhs = GetHalf(f.u.pt.c);
+          for (int i = 0; i < f.u.pt.iters; i++)
+            res += rhs;
+          v = GetU16(res);
+          stack.pop_back();
+          mode = MODE_RETURN;
+          break;
+        }
+
+        case FTIMESC: {
+          if (f.u.pt.iters >= 10) {
+            v = CachedTimes(v, f.u.pt.c, f.u.pt.iters);
+          } else {
+            half res = GetHalf(v);
+            half rhs = GetHalf(f.u.pt.c);
+            for (int i = 0; i < f.u.pt.iters; i++)
+              res *= rhs;
+            v = GetU16(res);
+          }
+          stack.pop_back();
+          mode = MODE_RETURN;
+          break;
+        }
+
+        case FPLUSE1: {
+          e = f.u.other;
+          f.type = FPLUSE2;
+          f.u.pt.c = v;
+          mode = MODE_EVAL;
+          break;
+        }
+
+        case FPLUSE2: {
+          half lhs = GetHalf(f.u.pt.c);
+          half rhs = GetHalf(v);
+          v = GetU16(lhs + rhs);
+          stack.pop_back();
+          mode = MODE_RETURN;
+          break;
+        }
+
+        default:
+          CHECK(false) << "bad frame";
+          return 0;
+        }
+      }
+
+      }
+    }
+  }
+
   static uint16_t EvaluateOn(const Exp *e, uint16_t x) {
     switch (e->type) {
     case VAR: return x;

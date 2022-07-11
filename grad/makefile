@@ -40,7 +40,8 @@ grad.s : grad.cc makefile
 
 OBJECTS=$(CCLIB_OBJECTS) ansi.o
 
-LFLAGS= -L. -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static
+# also increase stack size
+LFLAGS= -L. -m64 -Wl,--subsystem,console -Wl,--stack,33554432 $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static
 
 grad.exe : grad.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
