@@ -32,18 +32,7 @@ static constexpr int IMAGE_SIZE = 1920;
 int main(int argc, char **argv) {
   State state = GradUtil::MakeTable1();
 
-  {
-    ImageRGBA forward(256, 256);
-    for (int i = 0; i < 65536; i++) {
-      uint16_t o = state.table[i];
-      uint8_t r = (o >> 8) & 255;
-      uint8_t g = o & 255;
-      int y = i >> 8;
-      int x = i & 255;
-      forward.SetPixel(x, y, r, g, 0x00, 0xFF);
-    }
-    forward.Save("forward.png");
-  }
+  GradUtil::SaveFunctionToFile(state.table, "forward.png");
 
   {
     std::vector<uint16> refn =

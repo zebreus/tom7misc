@@ -71,10 +71,10 @@ struct GradUtil {
   template<class F>
   static inline void ForPosNeg1(F f) {
     // Negative
-    for (int u = NEG_LOW; u < NEG_HIGH; u++)
+    for (int u = NEG_LOW; u <= NEG_HIGH; u++)
       f((uint16)u);
     // Positive
-    for (int u = POS_LOW; u < POS_HIGH; u++)
+    for (int u = POS_LOW; u <= POS_HIGH; u++)
       f((uint16)u);
   }
 
@@ -322,6 +322,30 @@ struct GradUtil {
                    .value = GradUtil::GetU16(scale)},
       &state.table);
     return state;
+  }
+
+  static void SaveToImage(int size, const Table &table,
+                          const std::string &filename) {
+    ImageRGBA img(size, size);
+    img.Clear32(0x000000FF);
+    Grid(&img);
+    Graph(table, 0xFFFFFF77, &img);
+    img.Save(filename);
+  }
+
+  static void SaveFunctionToFile(
+      const Table &table,
+      const std::string &filename) {
+    ImageRGBA img(256, 256);
+    for (int i = 0; i < 65536; i++) {
+      uint16_t o = table[i];
+      uint8_t r = (o >> 8) & 255;
+      uint8_t g = o & 255;
+      int y = i >> 8;
+      int x = i & 255;
+      img.SetPixel(x, y, r, g, 0x00, 0xFF);
+    }
+    img.Save(filename);
   }
 
   static std::vector<uint16_t> GetFunctionFromFile(
