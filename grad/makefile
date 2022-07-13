@@ -107,6 +107,11 @@ manualchop.exe : manualchop.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+optimize.exe : optimize.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+
 clean :
 	rm -f *.o $(OBJECTS) *.exe
 
