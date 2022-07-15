@@ -1,5 +1,5 @@
 
-default: iter.exe train.exe
+default: iter.exe train.exe optimize.exe chopreduce.exe makesubst.exe
 
 all: grad.exe iter.exe make-data.exe mnist_test.exe evaluate.exe
 

@@ -193,6 +193,7 @@ struct GradUtil {
     return table;
   }
 
+  // TODO: Replace this with the representation in state.h.
   struct Step {
     // Otherwise, add.
     bool mult = false;

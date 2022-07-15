@@ -19,6 +19,8 @@
 #include "timer.h"
 #include "periodically.h"
 
+#include "state.h"
+
 using DB = Choppy::DB;
 using Allocator = Exp::Allocator;
 using Table = Exp::Table;
@@ -38,7 +40,96 @@ static void MaybeSaveDB(DB *db) {
   }
 }
 
-struct CopyAndReduce {
+
+// Reduce iterations multiplicatively.
+// Sometimes there are way too many iterations, and it would
+// be faster to use binary search to find the minimal number.
+// This is hard to arrange with the "depth" concept. So this
+// is basically just like the DropNode pass, but it reduces
+// the number of iterations by a multiplicative factor,
+// rather than one at a time.
+struct ReduceIters {
+  const std::string Name() const { return "ReduceIters"; }
+
+  const Exp *Run(Allocator *alloc_, const Exp *e) {
+    alloc = alloc_;
+    did_drop = false;
+    depth = 0;
+    // idea is to keep some secondary part of the cursor,
+    // like the lower/upper bound?
+    return Rec(e);
+  }
+
+  bool Done() const { return !did_drop; }
+
+  string CurrentDepth() const {
+    return StringPrintf("%lld", stop_depth);
+  }
+  void NextDepth() { stop_depth++; }
+
+  const Exp *Rec(const Exp *e) {
+    if (depth == stop_depth) {
+      // Drop the current node.
+      did_drop = true;
+      switch (e->type) {
+      case VAR:
+        return e;
+      case PLUS_C:
+        if (e->iters > 1) {
+          int new_iters = std::max(1, (int)std::round(e->iters * 0.90));
+          return alloc->PlusC(e->a, e->c, new_iters);
+        } else {
+          return e;
+        }
+        break;
+      case TIMES_C:
+        CHECK(e->iters != 0);
+        if (e->iters > 1) {
+          int new_iters = std::max(1, (int)std::round(e->iters * 0.90));
+          return alloc->TimesC(e->a, e->c, new_iters);
+        } else {
+          return e;
+        }
+        break;
+      case PLUS_E:
+        return e;
+      default:
+        CHECK(false);
+        return nullptr;
+      }
+
+    } else {
+      // Go deeper.
+      depth++;
+      switch (e->type) {
+      case VAR:
+        return e;
+      case PLUS_C:
+        return alloc->PlusC(Rec(e->a), e->c, e->iters);
+      case TIMES_C:
+        return alloc->TimesC(Rec(e->a), e->c, e->iters);
+      case PLUS_E: {
+        const Exp *ea = Rec(e->a);
+        const Exp *eb = Rec(e->b);
+        return alloc->PlusE(ea, eb);
+      }
+      default:
+        CHECK(false);
+        return nullptr;
+      }
+    }
+  }
+
+private:
+  Allocator *alloc = nullptr;
+  int64 depth = 0;
+  int64 stop_depth = 0;
+  bool did_drop = false;
+};
+
+
+struct DropNode {
+  const std::string Name() const { return "DropNode"; }
 
   const Exp *Run(Allocator *alloc_, const Exp *e) {
     alloc = alloc_;
@@ -47,7 +138,12 @@ struct CopyAndReduce {
     return Rec(e);
   }
 
-  bool Done() { return !did_drop; }
+  bool Done() const { return !did_drop; }
+
+  string CurrentDepth() const {
+    return StringPrintf("%lld", stop_depth);
+  }
+  void NextDepth() { stop_depth++; }
 
   const Exp *Rec(const Exp *e) {
     if (depth == stop_depth) {
@@ -105,6 +201,7 @@ struct CopyAndReduce {
     }
   }
 
+private:
   Allocator *alloc = nullptr;
   int64 depth = 0;
   int64 stop_depth = 0;
@@ -114,7 +211,6 @@ struct CopyAndReduce {
 static int64 TotalDepth(const Exp *e) {
   int64 depth = 0;
   std::function<void(const Exp *)> Rec = [&Rec, &depth](const Exp *e) {
-      // Go deeper.
       depth++;
       switch (e->type) {
       case VAR:
@@ -192,12 +288,20 @@ static void OptimizeOne(DB *db,
                         const Exp *exp) {
   Allocator *alloc = &db->alloc;
 
+  static constexpr double SAVE_EVERY = 60.0 * 5.0;
+
   auto StillWorks = [&](const Exp *exp) {
       auto chopo = Choppy::GetChoppy(exp);
       if (!chopo.has_value()) return false;
       if (chopo.value() != key) return false;
 
       return true;
+    };
+
+  auto StillWorksLinear = [&](const vector<Step> &steps) {
+      Allocator alloc;
+      const Exp *exp = State::GetExpressionFromSteps(&alloc, steps);
+      return StillWorks(exp);
     };
 
   const int start_size = Exp::ExpSize(exp);
@@ -214,69 +318,258 @@ static void OptimizeOne(DB *db,
             ANSI_RESET "\n");
   }
 
+
+  if (State::CanBeLinearized(exp)) {
+    CPrintf(ANSI_GREEN "Linearizable." ANSI_RESET "\n");
+    vector<Step> steps = State::Linearize(exp);
+
+
+    {
+      CPrintf("Running ChopSection on expression of size " ANSI_YELLOW
+              "%d" ANSI_RESET "\n", (int)steps.size());
+
+      int64 tries = 0;
+      Timer loop_timer;
+      // average one per second across all threads.
+      Periodically status_per((double)MAX_THREADS);
+      // Try to skip the first report, though.
+      (void)status_per.ShouldRun();
+      // Save occasionally so that we don't lose too much
+      // progress if we stop early.
+      Periodically checkpoint_per(SAVE_EVERY);
+      (void)checkpoint_per.ShouldRun();
+
+      constexpr int MAX_CHOP = 16;
+
+      for (int start_idx = 0; start_idx < steps.size(); start_idx++) {
+        // PERF: At the end, this tries (harmlessly) chopping non-existent
+        // steps.
+        for (int chop_size = MAX_CHOP; chop_size > 0; chop_size--) {
+          if (status_per.ShouldRun()) {
+            int64 step_size = 0;
+            for (const Step &step : steps)
+              step_size += step.iters;
+
+            CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+                    "Tries " ANSI_YELLOW "%lld" ANSI_RESET " ("
+                    ANSI_CYAN "%.3f " ANSI_RESET "/s) size "
+                    ANSI_PURPLE "%lld" ANSI_RESET
+                    " depth " ANSI_RED "%d" ANSI_RESET "/"
+                    ANSI_YELLOW "%d" ANSI_RESET "\n",
+                    "ChopSection",
+                    tries, (tries / loop_timer.Seconds()), step_size,
+                    start_idx, (int)steps.size());
+          }
+
+          // Try chopping.
+          vector<Step> chopped;
+          chopped.reserve(steps.size());
+          for (int i = 0; i < steps.size(); i++) {
+            if (i >= start_idx && i < start_idx + chop_size) {
+              // skip it.
+            } else {
+              chopped.push_back(steps[i]);
+            }
+          }
+
+          tries++;
+          if (StillWorksLinear(chopped)) {
+            steps = std::move(chopped);
+            CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+                    "Chopped " ANSI_BLUE "%d" ANSI_RESET " steps at "
+                    ANSI_PURPLE "%d" ANSI_RESET "! Now "
+                    ANSI_YELLOW "%d" ANSI_RESET " steps.\n",
+                    "ChopSection", chop_size, start_idx,
+                    (int)steps.size());
+
+            exp = State::GetExpressionFromSteps(alloc, steps);
+            if (checkpoint_per.ShouldRun()) {
+              db->Add(exp);
+              MaybeSaveDB(db);
+            }
+
+            // Reset chop size so that we keep trying to chop at
+            // this position (the steps have been replaced).
+            chop_size = MAX_CHOP + 1;
+          }
+        }
+      }
+    }
+
+    {
+      CPrintf("Running BinaryIters on expression of size " ANSI_YELLOW
+              "%d" ANSI_RESET "\n", (int)steps.size());
+
+      int64 tries = 0;
+      Timer loop_timer;
+      // average one per second across all threads.
+      Periodically status_per((double)MAX_THREADS);
+      // Try to skip the first report, though.
+      (void)status_per.ShouldRun();
+      // Save occasionally so that we don't lose too much
+      // progress if we stop early.
+      Periodically checkpoint_per(SAVE_EVERY);
+      (void)checkpoint_per.ShouldRun();
+
+      for (int start_idx = 0; start_idx < steps.size(); start_idx++) {
+        if (status_per.ShouldRun()) {
+          int64 step_size = 0;
+          for (const Step &step : steps)
+            step_size += step.iters;
+
+          CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+                  "Tries " ANSI_YELLOW "%lld" ANSI_RESET " ("
+                  ANSI_CYAN "%.3f " ANSI_RESET "/s) size "
+                  ANSI_PURPLE "%lld" ANSI_RESET
+                  " depth " ANSI_RED "%d" ANSI_RESET "/"
+                  ANSI_YELLOW "%d" ANSI_RESET "\n",
+                  "BinaryIters",
+                  tries, (tries / loop_timer.Seconds()), step_size,
+                  start_idx, (int)steps.size());
+        }
+
+        // Binary search for minimal iters.
+        {
+          CHECK(start_idx >= 0 && start_idx < steps.size());
+          const int original_iters = steps[start_idx].iters;
+          int search_steps = 0;
+
+          // iters does not work for values < lower_bound,
+          // so minimal iters is >= this value.
+          int lower_bound = 1;
+          // iters does work at this value, so minimal iters is
+          // <= this value.
+          int upper_bound = steps[start_idx].iters;
+
+          // Note that in the common case that iters == 1, we
+          // are already done.
+          while (lower_bound != upper_bound) {
+            CHECK(lower_bound < upper_bound);
+            // Rounding down, since we already know the result for upper_bound.
+            const int next_iters =
+              lower_bound + ((upper_bound - lower_bound) >> 1);
+
+            search_steps++;
+            steps[start_idx].iters = next_iters;
+            tries++;
+            if (StillWorksLinear(steps)) {
+              CHECK(next_iters < upper_bound);
+              upper_bound = next_iters;
+              CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+                      "lb " ANSI_BLUE "%d" ANSI_RESET " ub "
+                      ANSI_PURPLE "%d" ANSI_RESET " ("
+                      ANSI_YELLOW "%d" ANSI_RESET " steps).\n",
+                      "BinaryIters",
+                      lower_bound, upper_bound, search_steps);
+            } else {
+              lower_bound = next_iters + 1;
+            }
+          }
+
+          steps[start_idx].iters = upper_bound;
+          if (upper_bound < original_iters) {
+
+            CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+                    ANSI_GREEN "Reduced!" ANSI_RESET
+                    " Iters " ANSI_BLUE "%d" ANSI_RESET " -> "
+                    ANSI_PURPLE "%d" ANSI_RESET
+                    " in " ANSI_CYAN "%d" ANSI_RESET " steps.\n",
+                    "BinaryIters",
+                    original_iters, upper_bound,
+                    search_steps);
+            exp = State::GetExpressionFromSteps(alloc, steps);
+            if (checkpoint_per.ShouldRun()) {
+              db->Add(exp);
+              MaybeSaveDB(db);
+            }
+          }
+        }
+      }
+    }
+  }
+
   // For each expression, see if we can remove it (or reduce
   // its iterations) but retain the property.
 
-  CopyAndReduce car;
-  int64 tries = 0;
-  Timer loop_timer;
-  // average one per second across all threads.
-  Periodically status_per((double)MAX_THREADS);
-  // Try to skip the first report, though.
-  (void)status_per.ShouldRun();
-  // Save occasionally so that we don't lose too much
-  // progress if we stop early.
-  Periodically checkpoint_per(60.0 * 10.0);
-  (void)checkpoint_per.ShouldRun();
+  auto DoPhase = [db, alloc, &exp, start_size, &StillWorks]<typename Phase>(
+      Phase phase) {
+    const int total_depth = TotalDepth(exp);
+    int64 tries = 0;
+    Timer loop_timer;
+    // average one per second across all threads.
+    Periodically status_per((double)MAX_THREADS);
+    // Try to skip the first report, though.
+    (void)status_per.ShouldRun();
+    // Save occasionally so that we don't lose too much
+    // progress if we stop early.
+    Periodically checkpoint_per(SAVE_EVERY);
+    (void)checkpoint_per.ShouldRun();
 
-  int exp_size = Exp::ExpSize(exp);
-  const int total_depth = TotalDepth(exp);
-  for (;;) {
-    Allocator local_alloc;
-    tries++;
-    if (status_per.ShouldRun()) {
-      CPrintf("Tries " ANSI_YELLOW "%lld" ANSI_RESET " ("
-              ANSI_CYAN "%.3f " ANSI_RESET "/s) size "
-              ANSI_PURPLE "%d" ANSI_RESET
-              " depth " ANSI_RED "%d" ANSI_RESET "/"
-              ANSI_YELLOW "%d" ANSI_RESET "\n",
-              tries, (tries / loop_timer.Seconds()), exp_size,
-              car.stop_depth, total_depth);
-    }
-
-    const Exp *e = car.Run(&local_alloc, exp);
-
-    // Nothing changed.
-    if (car.Done())
-      break;
-
-    // Does the trimmed expression still work?
-    if (StillWorks(e)) {
-      int new_size = Exp::ExpSize(e);
-      if (new_size < exp_size) {
-        CPrintf(ANSI_GREEN "Reduced!" ANSI_RESET
-                " Start " ANSI_BLUE "%d" ANSI_RESET " now "
-                ANSI_PURPLE "%d" ANSI_RESET "\n",
-                start_size, new_size);
-        exp = alloc->Copy(e);
-        exp_size = new_size;
-        if (checkpoint_per.ShouldRun()) {
-          db->Add(exp);
-          MaybeSaveDB(db);
-        }
-        // Keep the same stop depth, since there's a new node
-        // (or lower iteration) at this position now.
-      } else {
-        // This can happen because we don't actually drop VAR nodes,
-        // but we pretend we did (for uniformity).
-        car.stop_depth++;
+    int exp_size = Exp::ExpSize(exp);
+    for (;;) {
+      Allocator local_alloc;
+      tries++;
+      if (status_per.ShouldRun()) {
+        CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+                "Tries " ANSI_YELLOW "%lld" ANSI_RESET " ("
+                ANSI_CYAN "%.3f " ANSI_RESET "/s) size "
+                ANSI_PURPLE "%d" ANSI_RESET
+                " depth " ANSI_RED "%s" ANSI_RESET "/"
+                ANSI_YELLOW "%d" ANSI_RESET "\n",
+                phase.Name().c_str(),
+                tries, (tries / loop_timer.Seconds()), exp_size,
+                phase.CurrentDepth().c_str(), total_depth);
       }
-    } else {
-      // Eventually this gets larger than the expression and
-      // we will be Done().
-      car.stop_depth++;
+
+      const Exp *e = phase.Run(&local_alloc, exp);
+
+      // Nothing changed.
+      if (phase.Done())
+        break;
+
+      // Does the trimmed expression still work?
+      if (StillWorks(e)) {
+        int new_size = Exp::ExpSize(e);
+        if (new_size < exp_size) {
+          CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+                  ANSI_GREEN "Reduced!" ANSI_RESET
+                  " Start " ANSI_BLUE "%d" ANSI_RESET " now "
+                  ANSI_PURPLE "%d" ANSI_RESET "\n",
+                  phase.Name().c_str(),
+                  start_size, new_size);
+          exp = alloc->Copy(e);
+          exp_size = new_size;
+          if (checkpoint_per.ShouldRun()) {
+            db->Add(exp);
+            MaybeSaveDB(db);
+          }
+          // Keep the same stop depth, as we may be able to apply
+          // another improvement at the same position.
+        } else {
+          // This can happen because we don't actually drop VAR nodes,
+          // but we pretend we did (for uniformity).
+          phase.NextDepth();
+        }
+      } else {
+        // Eventually this gets larger than the expression and
+        // we will be Done().
+        phase.NextDepth();
+      }
     }
+  };
+
+  if (!State::CanBeLinearized(exp)) {
+    CPrintf(ANSI_RED "Slow iter reduction: can't be linearized."
+            ANSI_RESET "\n");
+    DoPhase(ReduceIters());
   }
+
+  if (Exp::ExpSize(exp) < start_size) {
+    db->Add(exp);
+    MaybeSaveDB(db);
+  }
+
+  DoPhase(DropNode());
 
   const int end_size = Exp::ExpSize(exp);
   if (end_size < start_size) {
