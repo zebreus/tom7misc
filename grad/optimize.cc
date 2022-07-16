@@ -397,6 +397,104 @@ static void OptimizeOne(DB *db,
     }
 
     {
+      CPrintf("Running Meld on expression of size " ANSI_YELLOW
+              "%d" ANSI_RESET "\n", (int)steps.size());
+
+      int64 tries = 0;
+      Timer loop_timer;
+      // average one per second across all threads.
+      Periodically status_per((double)MAX_THREADS);
+      // Try to skip the first report, though.
+      (void)status_per.ShouldRun();
+      // Save occasionally so that we don't lose too much
+      // progress if we stop early.
+      Periodically checkpoint_per(SAVE_EVERY);
+      (void)checkpoint_per.ShouldRun();
+
+      constexpr int MAX_CHOP = 16;
+
+      for (int start_idx = 0; start_idx < steps.size(); start_idx++) {
+        // PERF: At the end, this tries (harmlessly) melding non-existent
+        // steps.
+        for (int meld_size = MAX_CHOP; meld_size > 1; meld_size--) {
+          if (status_per.ShouldRun()) {
+            int64 step_size = 0;
+            for (const Step &step : steps)
+              step_size += step.iters;
+
+            CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+                    "Tries " ANSI_YELLOW "%lld" ANSI_RESET " ("
+                    ANSI_CYAN "%.3f " ANSI_RESET "/s) size "
+                    ANSI_PURPLE "%lld" ANSI_RESET
+                    " depth " ANSI_RED "%d" ANSI_RESET "/"
+                    ANSI_YELLOW "%d" ANSI_RESET "\n",
+                    "Meld",
+                    tries, (tries / loop_timer.Seconds()), step_size,
+                    start_idx, (int)steps.size());
+          }
+
+          // Try chopping.
+          vector<Step> chopped;
+          chopped.reserve(steps.size());
+          double sum = 0.0;
+          double product = 1.0;
+          for (int i = 0; i < steps.size(); i++) {
+            if (i >= start_idx && i < start_idx + meld_size) {
+              const Step &step = steps[i];
+              double c = (double)Exp::GetHalf(step.c);
+
+              // This kind of doesn't make sense if there are
+              // a mix of plus/times, but we try anyway.
+              if (step.type == STEP_PLUS) {
+                // Or just multiply?
+                for (int z = 0; z < step.iters; z++)
+                  sum += c;
+              } else {
+                CHECK(step.type == STEP_TIMES);
+                for (int z = 0; z < step.iters; z++)
+                  product *= c;
+              }
+
+            } else  {
+              if (i == start_idx + meld_size) {
+                if (sum != 0.0)
+                  chopped.push_back(
+                      Step(STEP_PLUS, Exp::GetU16((half)sum), 1));
+                if (product != 1.0)
+                  chopped.push_back(
+                      Step(STEP_TIMES, Exp::GetU16((half)product), 1));
+              }
+              chopped.push_back(steps[i]);
+            }
+          }
+
+          tries++;
+          if (chopped.size() < steps.size() &&
+              StillWorksLinear(chopped)) {
+            steps = std::move(chopped);
+            CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+                    "Melded " ANSI_BLUE "%d" ANSI_RESET " steps at "
+                    ANSI_PURPLE "%d" ANSI_RESET "! Now "
+                    ANSI_YELLOW "%d" ANSI_RESET " steps.\n",
+                    "Meld", meld_size, start_idx,
+                    (int)steps.size());
+
+            exp = State::GetExpressionFromSteps(alloc, steps);
+            if (checkpoint_per.ShouldRun()) {
+              db->Add(exp);
+              MaybeSaveDB(db);
+            }
+
+            // Reset chop size so that we keep trying to chop at
+            // this position (the steps have been replaced).
+            meld_size = MAX_CHOP + 1;
+          }
+        }
+      }
+    }
+
+
+    {
       CPrintf("Running BinaryIters on expression of size " ANSI_YELLOW
               "%d" ANSI_RESET "\n", (int)steps.size());
 
@@ -559,8 +657,10 @@ static void OptimizeOne(DB *db,
   };
 
   if (!State::CanBeLinearized(exp)) {
-    CPrintf(ANSI_RED "Slow iter reduction: can't be linearized."
-            ANSI_RESET "\n");
+    if (start_size > 1000) {
+      CPrintf(ANSI_RED "Slow iter reduction: can't be linearized."
+              ANSI_RESET "\n");
+    }
     DoPhase(ReduceIters());
   }
 

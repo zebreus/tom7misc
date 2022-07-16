@@ -246,6 +246,14 @@ struct Choppy {
       return out;
     }
 
+    static key_type BasisKey(int col) {
+      key_type new_key;
+      for (int i = 0; i < Choppy::GRID; i++) {
+        new_key[i] = (i == col) ? 1 : 0;
+      }
+      return new_key;
+    }
+
     // Protected by mutex.
     std::unordered_map<
       key_type, const Exp *, Hashing<key_type>> fns;

@@ -204,10 +204,7 @@ static void Reduce(DB *db) {
             }
           }
 
-          DB::key_type new_key;
-          for (int i = 0; i < Choppy::GRID; i++) {
-            new_key[i] = (i == col) ? 1 : 0;
-          }
+          DB::key_type new_key = Choppy::BasisKey(col);
 
           auto ar =
             TryAddBasis(col, new_key, shift);

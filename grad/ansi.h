@@ -19,6 +19,15 @@
 #define ANSI_PURPLE "\x1B[1;35;40m"
 #define ANSI_RESET "\x1B[m"
 
+#define ARED(s) ANSI_RED s ANSI_RESET
+#define AGREY(s) ANSI_GREY s ANSI_RESET
+#define ABLUE(s) ANSI_BLUE s ANSI_RESET
+#define ACYAN(s) ANSI_CYAN s ANSI_RESET
+#define AYELLOW(s) ANSI_YELLOW s ANSI_RESET
+#define AGREEN(s) ANSI_GREEN s ANSI_RESET
+#define AWHITE(s) ANSI_WHITE s ANSI_RESET
+#define APURPLE(s) ANSI_PURPLE s ANSI_RESET
+
 void AnsiInit();
 
 // Same as printf, but using WriteConsole on windows so that we

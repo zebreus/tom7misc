@@ -104,6 +104,18 @@ VerboseChoppy(const Exp *exp, ImageRGBA *img) {
   return ret;
 }
 
+static bool IsMaximalCycle(const std::vector<int> &v) {
+  int len = 0, idx = 0;
+  do {
+    len++;
+    idx = v[idx];
+    if (idx < 0 || idx >= v.size())
+      return false;
+  } while (idx != 0);
+
+  return len == v.size();
+}
+
 int main(int argc, char **argv) {
   DB db;
   db.LoadFile("basis.txt");
@@ -111,6 +123,22 @@ int main(int argc, char **argv) {
   ImageRGBA img(1920, 1920);
   img.Clear32(0x000000FF);
   GradUtil::Grid(&img);
+
+  ArcFour rc("perms");
+  for (int p = 0; p < 16; p++) {
+    std::vector<int> perm;
+    for (int i = 0; i < 16; i++) perm.push_back((i + 1) & 15);
+    CHECK(IsMaximalCycle(perm)) << "simple cycle";
+    do {
+      Shuffle(&rc, &perm);
+    } while (!IsMaximalCycle(perm));
+
+    printf("Perm%d:", p);
+    for (int x : perm) printf(" %d", x);
+    printf("\n");
+  }
+  return 0;
+
 
   int idx = 0;
   std::map<DB::key_type, const Exp *> sorted;
