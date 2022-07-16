@@ -29,7 +29,7 @@ CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 OPT=-O2
 CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 $(CLINCLUDES) -std=c++20 $(OPT)
 
-CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o
+CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/bitbuffer.o
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -111,6 +111,18 @@ optimize.exe : optimize.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+goodrandom.exe : goodrandom.o $(OBJECTS) $(CC_LIB)/crypt/cryptrand.o
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+# external dependency on TestU01-2009
+TESTU01=../../TestU01-2009
+smallcrush-main.o : smallcrush-main.cc
+	@$(CXX) $(CXXFLAGS) $^ -o $@ -c -I $(TESTU01)/include
+
+smallcrush.exe : smallcrush-main.o $(OBJECTS)
+	@$(CXX) $^ -o $@ -L $(TESTU01)/mylib/.libs -L $(TESTU01)/probdist/.libs -L $(TESTU01)/testu01/.libs $(LFLAGS) -ltestu01 -lprobdist -lmylib -lm -lwsock32
+	@echo -n "!"
 
 clean :
 	rm -f *.o $(OBJECTS) *.exe

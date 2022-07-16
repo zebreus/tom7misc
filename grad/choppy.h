@@ -27,6 +27,7 @@
 // As a special consideration, we don't actually care about
 // the behavior on inputs of exactly integers (e.g. x=0),
 // just the segments in-between.
+// (Actually i think this is fixed now)
 
 struct Choppy {
   static constexpr int GRID = 16;

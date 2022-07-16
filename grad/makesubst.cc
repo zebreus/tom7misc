@@ -1,6 +1,9 @@
 
 #include <optional>
 #include <array>
+#include <vector>
+#include <set>
+#include <string>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -104,16 +107,70 @@ VerboseChoppy(const Exp *exp, ImageRGBA *img) {
   return ret;
 }
 
-static bool IsMaximalCycle(const std::vector<int> &v) {
-  int len = 0, idx = 0;
+
+static int CycleLengthAt(const std::vector<int> &v,
+                         int start_idx) {
+  int len = 0, idx = start_idx;
   do {
     len++;
     idx = v[idx];
-    if (idx < 0 || idx >= v.size())
-      return false;
-  } while (idx != 0);
+    CHECK(idx >= 0 && idx < v.size());
+  } while (idx != start_idx);
+  return len;
+}
 
-  return len == v.size();
+// Make a permutation with a particular form. The mask argument
+// is the same length as the returned permutation, and has a
+// cycle id at each position. The returned vector is a randomly
+// chosen permutation that has disjoint maximal-length cycles
+// as specified.
+static std::vector<int> MakePermutation(
+    ArcFour *rc,
+    const std::vector<int> &mask) {
+
+  std::vector<int> lens;
+  lens.resize(mask.size());
+
+  std::vector<int> ret;
+  ret.resize(mask.size());
+
+  for (;;) {
+    // Maps cycle id to all positions in the vector with that id.
+    std::map<int, std::vector<int>> cyclepos;
+    for (int i = 0; i < mask.size(); i++)
+      cyclepos[mask[i]].push_back(i);
+
+    // Length of the desired cycle at each position.
+    for (int i = 0; i < mask.size(); i++)
+      lens[i] = (int)cyclepos[mask[i]].size();
+
+    // Now shuffle those ids.
+    for (auto &[k_, v] : cyclepos) Shuffle(rc, &v);
+    // Generate the permutation.
+    CHECK(mask.size() == ret.size());
+    for (int i = 0; i < mask.size(); i++) {
+      const int cycle_id = mask[i];
+      auto &v = cyclepos[cycle_id];
+      CHECK(!v.empty());
+      ret[i] = v.back();
+      v.pop_back();
+    }
+
+    // Now, check that the cycles are actually maximal.
+    // PERF only really need to check this for one
+    // element of each cycle.
+    for (int i = 0; i < lens.size(); i++) {
+      if (CycleLengthAt(ret, i) != lens[i]) goto again;
+    }
+
+    return ret;
+
+  again:;
+  }
+}
+
+static bool IsMaximalCycle(const std::vector<int> &v) {
+  return CycleLengthAt(v, 0) == v.size();
 }
 
 int main(int argc, char **argv) {
@@ -124,7 +181,42 @@ int main(int argc, char **argv) {
   img.Clear32(0x000000FF);
   GradUtil::Grid(&img);
 
+  // We want the permutations to have cycles with different, and
+  // relatively prime, lengths. We also want these to be in different
+  // positions.
+  // Primes less than 16: 2, 3, 5, 7, 11, 13,
+  // So maybe 5+11 is the way to go?
+
   ArcFour rc("perms");
+
+  // Generate masks that have the properties we want.
+  std::set<std::vector<int>> masks;
+  for (int m = 0; m < 16; m++) {
+
+    // Find a mask that is not yet
+    std::vector<int> mask;
+    do {
+      mask.clear();
+      for (int i = 0; i < 5; i++) mask.push_back(0);
+      for (int i = 0; i < 11; i++) mask.push_back(1);
+      CHECK(mask.size() == 16);
+      Shuffle(&rc, &mask);
+    } while (masks.find(mask) != masks.end());
+
+    masks.insert(mask);
+  }
+
+  CHECK(masks.size() == 16);
+  for (const std::vector<int> &mask : masks) {
+    std::vector<int> perm = MakePermutation(&rc, mask);
+
+    printf(" {");
+    for (int x : perm) printf("%d, ", x);
+    printf(" },\n");
+  }
+
+
+#if 0
   for (int p = 0; p < 16; p++) {
     std::vector<int> perm;
     for (int i = 0; i < 16; i++) perm.push_back((i + 1) & 15);
@@ -133,10 +225,11 @@ int main(int argc, char **argv) {
       Shuffle(&rc, &perm);
     } while (!IsMaximalCycle(perm));
 
-    printf("Perm%d:", p);
-    for (int x : perm) printf(" %d", x);
-    printf("\n");
+    printf(" {", p);
+    for (int x : perm) printf("%d, ", x);
+    printf(" },\n");
   }
+#endif
   return 0;
 
 
