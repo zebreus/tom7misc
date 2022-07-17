@@ -1,6 +1,7 @@
 
 #include <vector>
 #include <cstdint>
+#include <bit>
 
 #ifdef __cplusplus
 extern "C" {
@@ -57,6 +58,7 @@ int main(int argc, char **argv) {
                                                << " bytes. But only had "
                                                << state.vec.size();
 
+
   #if 0
   std::vector<float> converted;
   converted.reserve(TARGET_FLOATS);
@@ -70,6 +72,9 @@ int main(int argc, char **argv) {
     converted.push_back(f);
   }
   #endif
+
+  // We can just use ufile_CreateReadBin maybe? see p86 of
+  // testu01.pdf
 
   unif01_Gen gen;
   gen.state = (void*)&state;
@@ -90,6 +95,34 @@ int main(int argc, char **argv) {
     };
 
   bbattery_SmallCrush(&gen);
+
+
+  {
+    int64 bits[2] = {};
+    int64 bytes[256] = {};
+    for (int i = 0; i < state.vec.size(); i++) {
+      uint8_t byte = state.vec[i];
+      int b = std::popcount<uint8_t>(byte);
+      bits[0] += 8 - b;
+      bits[1] += b;
+      bytes[byte]++;
+    }
+
+    printf("%lld zeroes, %lld ones (%.5f%%)\n",
+           bits[0], bits[1], (bits[1] * 100.0) / (bits[0] + bits[1]));
+    int mini = 0, maxi = 0;
+    for (int i = 1; i < 256; i++) {
+      if (bytes[i] < bytes[mini]) mini = i;
+      if (bytes[i] > bytes[maxi]) maxi = i;
+    }
+
+    printf("Rarest byte 0x%02x, %lld times (%.5f%%)\n"
+           "Most common 0x%02x, %lld times (%.5f%%)\n"
+           "Exactly 1/256 would be (%.5f%%)\n",
+           mini, bytes[mini], (bytes[mini] * 100.0) / state.vec.size(),
+           maxi, bytes[maxi], (bytes[maxi] * 100.0) / state.vec.size(),
+           100.0 / 256.0);
+  }
 
   printf("OK\n");
   return 0;

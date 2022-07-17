@@ -189,6 +189,7 @@ int main(int argc, char **argv) {
 
   ArcFour rc("perms");
 
+#if 0
   // Generate masks that have the properties we want.
   std::set<std::vector<int>> masks;
   for (int m = 0; m < 16; m++) {
@@ -214,6 +215,34 @@ int main(int argc, char **argv) {
     for (int x : perm) printf("%d, ", x);
     printf(" },\n");
   }
+#endif
+
+  // Generate masks that have the properties we want.
+  std::set<std::vector<int>> masks;
+  for (int m = 0; m < 16; m++) {
+
+    // Find a mask that is not yet
+    std::vector<int> mask;
+    do {
+      mask.clear();
+      for (int i = 0; i < 3; i++) mask.push_back(0);
+      for (int i = 0; i < 13; i++) mask.push_back(1);
+      CHECK(mask.size() == 16);
+      Shuffle(&rc, &mask);
+    } while (masks.find(mask) != masks.end());
+
+    masks.insert(mask);
+  }
+
+  CHECK(masks.size() == 16);
+  for (const std::vector<int> &mask : masks) {
+    std::vector<int> perm = MakePermutation(&rc, mask);
+
+    printf(" {");
+    for (int x : perm) printf("%d, ", x);
+    printf(" },\n");
+  }
+
 
 
 #if 0

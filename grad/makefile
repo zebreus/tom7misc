@@ -115,6 +115,10 @@ goodrandom.exe : goodrandom.o $(OBJECTS) $(CC_LIB)/crypt/cryptrand.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+xor.exe : xor.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 # external dependency on TestU01-2009
 TESTU01=../../TestU01-2009
 smallcrush-main.o : smallcrush-main.cc
