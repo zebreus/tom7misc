@@ -20,6 +20,8 @@ extern "C" {
 
 #include "base/logging.h"
 #include "ansi.h"
+#include "color-util.h"
+#include "image.h"
 
 static constexpr int TARGET_FLOATS = 51320000;
 
@@ -104,24 +106,28 @@ struct State {
   uint32_t a : 4, b : 4, c : 4, d : 4,
            e : 5, f : 4, g : 4, h : 4;
 
+  State () {
+    a = 1; b = 2; c = 3; d = 4;
+    e = 14; f = 13; g = 12; h = 11;
+  }
+
   inline uint8_t NextBit() {
     uint8_t aa = Subst(0, b);
     uint8_t bb = Subst(1, c);
     uint8_t cc = Subst(2, d);
-    uint8_t dd = Subst(3, e);
+    uint8_t dd = Subst(8, a);
 
     uint8_t ee = Subst(4, f);
     uint8_t ff = Subst(5, g);
     uint8_t gg = Subst(6, h);
-    uint8_t hh = Subst(7, a);
+    uint8_t hh = Subst(9, e);
 
-    aa = Subst(8, aa);
-    bb = ModularPlus(bb, gg);
-    cc = Subst(9, cc);
-    dd = ModularMinus(dd, bb);
-    ee = Subst(10, ee);
-    ff = Subst(11, ff);
-    hh = Subst(12, hh);
+    aa = ModularPlus(aa, ee);
+    bb = ModularPlus(bb, ff);
+    cc = ModularPlus(cc, gg);
+    dd = ModularPlus(dd, hh);
+
+    hh = ModularPlus(aa, hh);
 
     a = aa;
     b = bb;
@@ -151,12 +157,41 @@ int main(int argc, char **argv) {
   AnsiInit();
   CPrintf("Testing in-process.\n");
 
+  {
+    ImageRGBA img(512, 32);
+    State state;
+    for (int x = 0; x < img.Width(); x++) {
+      auto Plot = [&img, x](uint8_t bits, int offset) {
+          const auto [r, g, b] = ColorUtil::HSVToRGB(offset / 8.0, 1.0, 1.0);
+          const uint32_t color = ColorUtil::FloatsTo32(r, g, b, 1.0);
+          for (int y = 0; y < 4; y++) {
+            uint32_t c = (bits & 1) ? color : (color & 0x111111FF);
+            img.BlendPixel32(x, offset * 4 + 3 - y, c);
+            bits >>= 1;
+          }
+        };
+      (void)state.NextBit();
+      Plot(state.a, 0);
+      Plot(state.b, 1);
+      Plot(state.c, 2);
+      Plot(state.d, 3);
+      Plot(state.e, 4);
+      Plot(state.f, 5);
+      Plot(state.g, 6);
+      Plot(state.h, 7);
+    }
+    img.ScaleBy(4).Save("gen.png");
+    CPrintf("Wrote " ABLUE("gen.png") ".\n");
+  }
+
   State state;
+
+  char name[] = "in-process";
 
   unif01_Gen gen;
   gen.state = (void*)&state;
   gen.param = (void*)nullptr;
-  gen.name = "in-process";
+  gen.name = name;
   gen.GetU01 = +[](void *param, void *state) -> double {
       State *s = (State*)state;
       return (double)s->Next() / (double)0x100000000ULL;
