@@ -128,6 +128,15 @@ static half ModularPlus(half x, half y) {
   return msum;
 }
 
+static half ModularMinus(half x, half y) {
+  const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
+  half sum = x - y + HALF_GRID;
+  CHECK(sum >= (half)-2 && sum < (half)2) << sum;
+  half msum = Exp::GetHalf(mod_table[Exp::GetU16(sum)]);
+  return msum;
+}
+
+
 struct HashState {
   // Four halves in (-1,1].
   half a = GetHalf(0x38b9);
@@ -205,12 +214,13 @@ HashState NextState(HashState s) {
   half hh = Subst(7, s.a);
 
   aa = Subst(8, aa);
-  cc = Subst(9, cc);
-  ee = Subst(10, ee);
-  hh = Subst(11, hh);
-
-
   bb = ModularPlus(bb, gg);
+  cc = Subst(9, cc);
+  dd = ModularMinus(dd, bb);
+  ee = Subst(10, ee);
+  ff = Subst(11, ff);
+  hh = Subst(12, hh);
+
 
   CHECK(aa > -1.0_h && aa < 1.0_h) << StateString(s) << " " << aa;
   CHECK(bb > -1.0_h && bb < 1.0_h) << StateString(s) << " " << bb;

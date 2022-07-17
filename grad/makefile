@@ -124,7 +124,14 @@ TESTU01=../../TestU01-2009
 smallcrush-main.o : smallcrush-main.cc
 	@$(CXX) $(CXXFLAGS) $^ -o $@ -c -I $(TESTU01)/include
 
+smallcrush-gen.o : smallcrush-gen.cc
+	@$(CXX) $(CXXFLAGS) $^ -o $@ -c -I $(TESTU01)/include
+
 smallcrush.exe : smallcrush-main.o $(OBJECTS)
+	@$(CXX) $^ -o $@ -L $(TESTU01)/mylib/.libs -L $(TESTU01)/probdist/.libs -L $(TESTU01)/testu01/.libs $(LFLAGS) -ltestu01 -lprobdist -lmylib -lm -lwsock32
+	@echo -n "!"
+
+smallcrush-gen.exe : smallcrush-gen.o $(OBJECTS)
 	@$(CXX) $^ -o $@ -L $(TESTU01)/mylib/.libs -L $(TESTU01)/probdist/.libs -L $(TESTU01)/testu01/.libs $(LFLAGS) -ltestu01 -lprobdist -lmylib -lm -lwsock32
 	@echo -n "!"
 
