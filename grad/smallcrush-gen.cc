@@ -22,6 +22,7 @@ extern "C" {
 #include "ansi.h"
 #include "color-util.h"
 #include "image.h"
+#include "arcfour.h"
 
 static constexpr int TARGET_FLOATS = 51320000;
 
@@ -89,7 +90,7 @@ static const uint8_t PERMS[16][16] = {
 };
 
 static inline uint8_t Subst(uint8_t idx, uint8_t bits) {
-  return PERMS[idx][bits];
+  return PERMS[idx][bits & 15];
 }
 
 static inline uint8_t ModularPlus(uint8_t x, uint8_t y) {
@@ -101,17 +102,27 @@ static inline uint8_t ModularMinus(uint8_t x, uint8_t y) {
 }
 
 struct State {
+  int64 num_bits = 0;
 
   // each half represented four bits
   uint32_t a : 4, b : 4, c : 4, d : 4,
-           e : 5, f : 4, g : 4, h : 4;
+           e : 4, f : 4, g : 4, h : 4;
+  uint32_t i : 4, j : 4, k : 4, l : 4,
+           m : 4, n : 4, o : 4, p : 4;
 
   State () {
     a = 1; b = 2; c = 3; d = 4;
     e = 14; f = 13; g = 12; h = 11;
+    i = 5; j = 6; k = 7; l = 8;
+    m = 9; n = 10; o = 10; p = 15;
   }
 
   inline uint8_t NextBit() {
+    num_bits++;
+    if ((num_bits % (1 << 29) == 0)) {
+      printf("Generated %lld bits\n", num_bits);
+    }
+
     uint8_t aa = Subst(0, b);
     uint8_t bb = Subst(1, c);
     uint8_t cc = Subst(2, d);
@@ -122,12 +133,25 @@ struct State {
     uint8_t gg = Subst(6, h);
     uint8_t hh = Subst(9, e);
 
-    aa = ModularPlus(aa, ee);
+    uint8_t ii = Subst(7, j);
+    uint8_t jj = Subst(10, k);
+    uint8_t kk = Subst(11, l);
+    uint8_t ll = Subst(12, m);
+
+    uint8_t mm = Subst(13, n);
+    uint8_t nn = Subst(14, o);
+    uint8_t oo = Subst(15, p);
+    uint8_t pp = Subst(3, i);
+
+
+    aa = ModularPlus(aa, ii);
     bb = ModularPlus(bb, ff);
-    cc = ModularPlus(cc, gg);
+    cc = ModularPlus(cc, oo);
     dd = ModularPlus(dd, hh);
 
-    hh = ModularPlus(aa, hh);
+    hh = ModularPlus(hh, aa);
+    ii = ModularPlus(ii, ee);
+
 
     a = aa;
     b = bb;
@@ -137,13 +161,21 @@ struct State {
     f = ff;
     g = gg;
     h = hh;
+    i = ii;
+    j = jj;
+    k = kk;
+    l = ll;
+    m = mm;
+    n = nn;
+    o = oo;
+    p = pp;
 
     return a & 1;
   }
 
   uint32_t Next() {
     uint32_t ret = 0;
-    for (int i = 0; i < 32; i++) {
+    for (int idx = 0; idx < 32; idx++) {
       ret <<= 1;
       ret |= NextBit();
     }
@@ -158,11 +190,13 @@ int main(int argc, char **argv) {
   CPrintf("Testing in-process.\n");
 
   {
-    ImageRGBA img(512, 32);
+    constexpr int NUM_NYBBLES = 16;
+    ImageRGBA img(512, NUM_NYBBLES * 4);
     State state;
     for (int x = 0; x < img.Width(); x++) {
       auto Plot = [&img, x](uint8_t bits, int offset) {
-          const auto [r, g, b] = ColorUtil::HSVToRGB(offset / 8.0, 1.0, 1.0);
+          const auto [r, g, b] = ColorUtil::HSVToRGB(
+              offset / (float)NUM_NYBBLES, 1.0, 1.0);
           const uint32_t color = ColorUtil::FloatsTo32(r, g, b, 1.0);
           for (int y = 0; y < 4; y++) {
             uint32_t c = (bits & 1) ? color : (color & 0x111111FF);
@@ -179,6 +213,14 @@ int main(int argc, char **argv) {
       Plot(state.f, 5);
       Plot(state.g, 6);
       Plot(state.h, 7);
+      Plot(state.i, 8);
+      Plot(state.j, 9);
+      Plot(state.k, 10);
+      Plot(state.l, 11);
+      Plot(state.m, 12);
+      Plot(state.n, 13);
+      Plot(state.o, 14);
+      Plot(state.p, 15);
     }
     img.ScaleBy(4).Save("gen.png");
     CPrintf("Wrote " ABLUE("gen.png") ".\n");
@@ -206,16 +248,34 @@ int main(int argc, char **argv) {
       printf("(in-process)");
     };
 
-  bbattery_SmallCrush(&gen);
+  // CPrintf("Running " APURPLE("SmallCrush") "...\n");
+  // bbattery_SmallCrush(&gen);
 
+  CPrintf("Running " APURPLE("Crush") "...\n");
+  bbattery_Crush(&gen);
 
+  CPrintf("Getting " APURPLE("more stats") "...\n");
+  static constexpr int SIZE = 1 << 20;
+  static_assert((SIZE % 8) == 0);
+  std::vector<uint8_t> vec;
+  vec.reserve(SIZE);
+  {
+    State state;
+    state.Next();
+    while (vec.size() < SIZE) {
+      uint32_t x = state.Next();
+      vec.push_back((x >> 24) & 0xFF);
+      vec.push_back((x >> 16) & 0xFF);
+      vec.push_back((x >> 8) & 0xFF);
+      vec.push_back(x & 0xFF);
+    }
+  }
 
-  #if 0
   {
     int64 bits[2] = {};
     int64 bytes[256] = {};
-    for (int i = 0; i < state.vec.size(); i++) {
-      uint8_t byte = state.vec[i];
+    for (int i = 0; i < vec.size(); i++) {
+      uint8_t byte = vec[i];
       int b = std::popcount<uint8_t>(byte);
       bits[0] += 8 - b;
       bits[1] += b;
@@ -233,12 +293,11 @@ int main(int argc, char **argv) {
     printf("Rarest byte 0x%02x, %lld times (%.5f%%)\n"
            "Most common 0x%02x, %lld times (%.5f%%)\n"
            "Exactly 1/256 would be (%.5f%%)\n",
-           mini, bytes[mini], (bytes[mini] * 100.0) / state.vec.size(),
-           maxi, bytes[maxi], (bytes[maxi] * 100.0) / state.vec.size(),
+           mini, bytes[mini], (bytes[mini] * 100.0) / vec.size(),
+           maxi, bytes[maxi], (bytes[maxi] * 100.0) / vec.size(),
            100.0 / 256.0);
   }
-  #endif
 
-  printf("OK\n");
+  CPrintf(AGREEN("OK") "\n");
   return 0;
 }
