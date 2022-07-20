@@ -120,7 +120,10 @@ struct State {
   inline uint8_t NextBit() {
     num_bits++;
     if ((num_bits % (1 << 29) == 0)) {
-      printf("Generated %lld bits\n", num_bits);
+      // bigcrush uses close to 2^38 random numbers (32-bit)
+      int64 bits_needed = 32ULL * (1ULL << 38);
+      double pct = (num_bits / (double)bits_needed) * 100.0;
+      printf("Generated %lld bits (%.3f%%)\n", num_bits, pct);
     }
 
     uint8_t aa = Subst(0, b);
@@ -251,8 +254,12 @@ int main(int argc, char **argv) {
   // CPrintf("Running " APURPLE("SmallCrush") "...\n");
   // bbattery_SmallCrush(&gen);
 
-  CPrintf("Running " APURPLE("Crush") "...\n");
-  bbattery_Crush(&gen);
+  // CPrintf("Running " APURPLE("Crush") "...\n");
+  // bbattery_Crush(&gen);
+
+  CPrintf("Running " APURPLE("BigCrush") "...\n");
+  bbattery_BigCrush(&gen);
+
 
   CPrintf("Getting " APURPLE("more stats") "...\n");
   static constexpr int SIZE = 1 << 20;
