@@ -376,6 +376,94 @@ struct IndexQueue {
   std::vector<int> indices;
 };
 
+static bool HasExactAvalanche(const std::vector<int> &perm,
+                              bool verbose = false) {
+  // Now we want the S-boxes to satisfy the avalanche criteria. We
+  // can use the "strict avalache criteria", which is that changing
+  // each bit of the input changes exactly half of the output bits.
+  CHECK(std::has_single_bit(perm.size())) <<
+    "perm size must be a power of two";
+  int power = std::countr_zero(perm.size());
+  CHECK((1 << power) == perm.size());
+
+  if (verbose) {
+    printf("Size %d power %d: ", (int)perm.size(), power);
+    for (int x : perm) {
+      printf(" %d", x);
+    }
+    printf("\n");
+  }
+
+  auto BinaryString = [power](uint32_t x) {
+      string ret;
+      for (int bit = power - 1; bit >= 0; bit--) {
+        ret += (x & (1 << bit)) ? '1' : '0';
+      }
+      return ret;
+    };
+
+  // Half of the bits.
+  const int avalanche_target = power >> 1;
+
+  for (int idx = 0; idx < perm.size(); idx++) {
+    const uint32_t value = perm[idx];
+    for (int bit = 0; bit < power; bit++) {
+      // Flip the one bit.
+      const int oidx = idx ^ (1 << bit);
+      CHECK(oidx >= 0 && oidx < perm.size()) <<
+        idx << " " << bit << " " << oidx;
+      const uint32_t ovalue = perm[oidx];
+
+      const uint32_t diff = value ^ ovalue;
+      const int diffsize = std::popcount<uint32_t>(diff);
+      if (verbose) {
+        printf("index[%d=%s] and [%d=%s] = %s ^ %s (%s, %d)\n",
+               idx, BinaryString(idx).c_str(),
+               oidx, BinaryString(oidx).c_str(),
+               BinaryString(value).c_str(),
+               BinaryString(ovalue).c_str(),
+               BinaryString(diff).c_str(), diffsize);
+      }
+
+      // printf("%d want %d\n", diffsize, avalanche_target);
+      if (diffsize != avalanche_target) return false;
+    }
+  }
+  return true;
+}
+
+// An error is a pair of locations that should differ by avalanche_target
+// bits but do not.
+static std::vector<std::pair<int, int>>
+GetErrorPositions(const std::vector<int> &perm) {
+  int power = std::countr_zero(perm.size());
+  CHECK((1 << power) == perm.size());
+  // Half of the bits.
+  const int avalanche_target = power >> 1;
+
+  std::vector<std::pair<int, int>> errors;
+
+  for (int idx = 0; idx < perm.size(); idx++) {
+    const uint32_t value = perm[idx];
+    for (int bit = 0; bit < power; bit++) {
+      // Flip the one bit.
+      const int oidx = idx ^ (1 << bit);
+      CHECK(oidx >= 0 && oidx < perm.size()) <<
+        idx << " " << bit << " " << oidx;
+      const uint32_t ovalue = perm[oidx];
+
+      const uint32_t diff = value ^ ovalue;
+      const int diffsize = std::popcount<uint32_t>(diff);
+      if (diffsize != avalanche_target) {
+        errors.push_back(make_pair(idx, oidx));
+      }
+    }
+  }
+
+  return errors;
+}
+
+
 // Second attempt. Assigns all the affected slots at once.
 static std::vector<int> MakeAvalancheSubst(
     ArcFour *rc,
@@ -508,11 +596,105 @@ static std::vector<int> MakeAvalancheSubst(
     CHECK(ret.size() == size);
     CHECK(q.Empty());
     // XXX Could check that it's actually a permutation, etc.
+
+    CHECK(HasExactAvalanche(ret)) <<
+      HasExactAvalanche(ret, true);
     return ret;
 
   next_attempt:;
   }
 }
+
+
+// Third attempt. Here we start with a random permutation,
+// then identify a mistake and swap to fix it. We just
+// start over if no swaps are possible.
+static std::vector<int> MakeAvalancheSwap(
+    ArcFour *rc,
+    size_t size) {
+
+  static constexpr bool verbose = false;
+
+  CHECK(std::has_single_bit(size)) <<
+    "size must be a power of two";
+  const int power = std::countr_zero(size);
+  CHECK((1 << power) == size);
+
+  int64 tries = 0;
+  std::map<int, int64> failedat;
+
+  // If -1, then unassigned.
+  std::vector<int> ret;
+  for (int i = 0; i < size; i++) ret.push_back(i);
+
+
+  Timer run_timer;
+  for (;;) {
+    // Start over.
+    if (verbose) printf("Shuffle.\n");
+    Shuffle(rc, &ret);
+
+    auto error = GetErrorPositions(ret);
+    {
+    reduced_error:;
+      // Loop invariant is that error contains the current error
+      // for perm.
+
+      // Maybe we have no error?
+      if (error.empty()) {
+        CHECK(HasExactAvalanche(ret)) <<
+          HasExactAvalanche(ret, true);
+
+        return ret;
+      }
+
+      // Otherwise, find a swap that reduces the error.
+      // TODO: Not always in lex order!
+
+      for (int i = 0; i < error.size(); i++) {
+        const auto &[xi, yi] = error[i];
+
+        for (int j = i + 1; j < error.size(); j++) {
+          const auto &[xj, yj] = error[j];
+
+          for (const auto &[x, y] :
+                 {make_pair(xi, xj), make_pair(yi, yj)}) {
+            std::swap(ret[x], ret[y]);
+            // PERF could incrementally update.
+            auto new_error = GetErrorPositions(ret);
+            if (new_error.size() < error.size()) {
+              if (verbose)
+                printf("Reduced error from %d to %d\n", (int)error.size(),
+                       (int)new_error.size());
+              error = std::move(new_error);
+
+              goto reduced_error;
+            }
+
+            // undo it
+            std::swap(ret[x], ret[y]);
+          }
+        }
+      }
+    }
+
+    // No improvements were possible.
+    if (verbose) printf("Stuck at %d\n", (int)error.size());
+    failedat[error.size()]++;
+
+    tries++;
+    if ((tries % 10000) == 0) {
+      printf(ABLUE("%lld") " tries, " ACYAN("%.3f") "/sec.\n",
+             tries, tries / run_timer.Seconds());
+      for (const auto &[d, count] : failedat) {
+        printf("Failed at depth " APURPLE("%d") ": " ARED("%lld") " times\n",
+               d, count);
+      }
+    }
+
+  }
+}
+
 
 
 // Make a permutation with a particular form. The mask argument
@@ -560,34 +742,8 @@ static std::optional<std::vector<int>> MakePermutation(
       if (CycleLengthAt(ret, i) != lens[i]) goto again;
     }
 
-    if (require_avalanche) {
-      // Now we want the S-boxes to satisfy the avalanche criteria. We
-      // can use the "strict avalache criteria", which is that changing
-      // each bit of the input changes exactly half of the output bits.
-      CHECK(std::has_single_bit(mask.size())) <<
-        "mask must be a power of two";
-      int power = std::countr_zero(mask.size());
-      CHECK((1 << power) == mask.size());
-
-      // Half of the bits.
-      const int avalanche_target = power >> 1;
-
-      for (int idx = 0; idx < mask.size(); idx++) {
-        const uint32_t value = ret[idx];
-        for (int bit = 0; bit < power; bit++) {
-          // Flip the one bit.
-          const int oidx = idx ^ (1 << bit);
-          CHECK(oidx >= 0 && oidx < ret.size()) <<
-            idx << " " << bit << " " << oidx;
-          const uint32_t ovalue = ret[oidx];
-
-          const uint32_t diff = value ^ ovalue;
-          const int diffsize = std::popcount<uint32_t>(diff);
-          // printf("%d want %d\n", diffsize, avalanche_target);
-          if (diffsize != avalanche_target) goto again;
-        }
-      }
-    }
+    if (require_avalanche && !HasExactAvalanche(ret))
+      goto again;
 
     printf("OK\n");
     return ret;
@@ -686,10 +842,18 @@ static void Do4Bit() {
 static void MakeExactAvalanche() {
   ArcFour rc("exact-avalanche");
 
-  const int NUM = 16;
+  const int NUM = 4;
+  const int SIZE = 16;
   std::set<std::vector<int>> perms;
   while (perms.size() < NUM) {
-    std::vector<int> s = MakeAvalancheSubst(&rc, 16);
+    std::vector<int> s = MakeAvalancheSwap(&rc, SIZE);
+
+    printf(" {");
+    for (int x : s) printf("%d, ", x);
+    printf(" },\n");
+
+    CHECK(HasExactAvalanche(s));
+
     if (perms.find(s) == perms.end()) {
       printf("Got one!\n");
       perms.insert(s);
@@ -702,6 +866,43 @@ static void MakeExactAvalanche() {
     for (int x : perm) printf("%d, ", x);
     printf(" },\n");
   }
+}
+
+static void MakeExactAvalanche2() {
+  ArcFour rc("exact-avalanche");
+
+
+  std::vector<int> s1 = MakeAvalancheSubst(&rc, 4);
+  std::vector<int> s2 = MakeAvalancheSubst(&rc, 4);
+  std::vector<int> s3 = MakeAvalancheSubst(&rc, 4);
+  std::vector<int> s4 = MakeAvalancheSubst(&rc, 4);
+
+  CHECK(HasExactAvalanche(s1));
+  CHECK(HasExactAvalanche(s2));
+  CHECK(HasExactAvalanche(s3));
+  CHECK(HasExactAvalanche(s4));
+
+  std::vector<int> s;
+
+  // This doesn't work: The smaller sequences differ by 1 bit,
+  // but we'd need them to differ by two, even e.g. for indices
+  // 0 and 1.
+
+  for (int x : s1) s.push_back(x);
+  for (int x : s2) s.push_back(x + 4);
+  for (int x : s3) s.push_back(x + 8);
+  for (int x : s4) s.push_back(x + 12);
+
+  // And it's not like we can just correct it...
+  for (int i = 0; i < s.size(); i++) {
+    if (i & 1) s[i] ^= 8;
+  }
+
+  printf("\n{\n");
+  for (int x : s) printf(" %d", x);
+  printf("}\n");
+
+  CHECK(HasExactAvalanche(s)) << HasExactAvalanche(s, true);
 }
 
 
