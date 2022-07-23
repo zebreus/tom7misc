@@ -35,12 +35,11 @@ int main(int argc, char **argv) {
   }
 
   // There is no builtin popcount, so we define one.
-  CHECK(size == 16);
-  printf("(define-fun HasCorrectPopcnt ((x (_ BitVec 4))) Bool\n"
-         "  (or\n");
+  printf("(define-fun HasCorrectPopcnt ((x (_ BitVec %d))) Bool\n"
+         "  (or\n", power);
   for (int x = 0; x < size; x++) {
-    if (std::popcount<uint32_t>(x) == 2)
-      printf("    (= x (_ bv%d 4))\n", x);
+    if (std::popcount<uint32_t>(x) == power / 2)
+      printf("    (= x (_ bv%d %d))\n", x, power);
   }
   printf("  ))\n");
 

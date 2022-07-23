@@ -266,79 +266,6 @@ static int CycleLengthAt(const std::vector<int> &v,
   return len;
 }
 
-// Makes a permutation of the given size, which has the avalanche
-// property (exactly).
-[[maybe_unused]]
-static std::vector<int> MakeAvalancheSubstBuggyDeleteme(
-    ArcFour *rc,
-    size_t size) {
-
-  CHECK(std::has_single_bit(size)) <<
-    "size must be a power of two";
-  int power = std::countr_zero(size);
-  CHECK((1 << power) == size);
-
-  const int avalanche_target = power >> 1;
-
-  std::vector<int> q;
-  q.reserve(size);
-
-  std::vector<int> ret;
-  ret.reserve(size);
-
-  for (;;) {
-    ret.clear();
-
-    // Start with the bytes in random order.
-    q.clear();
-    for (int i = 0; i < size; i++) q.push_back(i);
-    Shuffle(rc, &q);
-
-    for (int idx = 0; idx < size; idx++) {
-      bool found_idx = false;
-      // Pick the next byte that would produce the avalanche
-      // property exactly.
-      CHECK(q.size() == size - idx);
-      for (int out_idx = q.size() - 1; out_idx >= 0; out_idx--) {
-        const uint32_t value = q[out_idx];
-
-        for (int bit = 0; bit < power; bit++) {
-          // Flip the single bit.
-          const int oidx = idx ^ (1 << bit);
-          // XXX: Oops, the oidx might be larger and not yet
-          // populated, duh! So we could greedily allocate it
-          // such that it has the property?
-          CHECK(oidx >= 0 && oidx < ret.size()) <<
-            idx << " " << bit << " " << oidx;
-          const uint32_t ovalue = ret[oidx];
-
-          const uint32_t diff = value ^ ovalue;
-          const int diffsize = std::popcount<uint32_t>(diff);
-          if (diffsize != avalanche_target) goto next_oidx;
-        }
-        // All bits passed, so we found an index.
-        found_idx = true;
-        ret.push_back(value);
-        // .. and consume the index.
-        q.erase(q.begin() + out_idx);
-        break;
-
-      next_oidx:;
-      }
-      // No index was found that works, so try again.
-      if (!found_idx) goto next_attempt;
-
-      // ... otherwise keep looping over the indices.
-    }
-
-    // We found a working value for every index, so we are done.
-    CHECK(ret.size() == size);
-    // XXX Could check that it's actually a permutation, etc.
-    return ret;
-
-  next_attempt:;
-  }
-}
 
 struct IndexQueue {
   IndexQueue(ArcFour *rc, size_t size) : rc(rc), size(size) {
@@ -431,6 +358,42 @@ static bool HasExactAvalanche(const std::vector<int> &perm,
   }
   return true;
 }
+
+// Returns -1 if any pair is more than 1 off the target avalanche
+// value. Otherwise, return the number of pairs that were not
+// exactly the target.
+static int AvalancheCount(const std::vector<int> &perm) {
+  CHECK(std::has_single_bit(perm.size())) <<
+    "perm size must be a power of two";
+  int power = std::countr_zero(perm.size());
+  CHECK((1 << power) == perm.size());
+
+  // Half of the bits.
+  const int avalanche_target = power >> 1;
+
+  int total_error = 0;
+  for (int idx = 0; idx < perm.size(); idx++) {
+    const uint32_t value = perm[idx];
+    for (int bit = 0; bit < power; bit++) {
+      // Flip the one bit.
+      const int oidx = idx ^ (1 << bit);
+      CHECK(oidx >= 0 && oidx < perm.size()) <<
+        idx << " " << bit << " " << oidx;
+      const uint32_t ovalue = perm[oidx];
+
+      const uint32_t diff = value ^ ovalue;
+      const int diffsize = std::popcount<uint32_t>(diff);
+
+      const int error = abs(diffsize - avalanche_target);
+      if (error > 1) {
+        return -1;
+      }
+      total_error += error;
+    }
+  }
+  return total_error;
+}
+
 
 // An error is a pair of locations that should differ by avalanche_target
 // bits but do not.
@@ -702,10 +665,9 @@ static std::vector<int> MakeAvalancheSwap(
 // cycle id at each position. The returned vector is a randomly
 // chosen permutation that has disjoint maximal-length cycles
 // as specified.
-static std::optional<std::vector<int>> MakePermutation(
+static std::vector<int> MakePermutation(
     ArcFour *rc,
-    const std::vector<int> &mask,
-    bool require_avalanche) {
+    const std::vector<int> &mask) {
 
   std::vector<int> lens;
   lens.resize(mask.size());
@@ -742,101 +704,14 @@ static std::optional<std::vector<int>> MakePermutation(
       if (CycleLengthAt(ret, i) != lens[i]) goto again;
     }
 
-    if (require_avalanche && !HasExactAvalanche(ret))
-      goto again;
-
-    printf("OK\n");
     return ret;
 
   again:;
-    if (tries == 100000) {
-      return std::nullopt;
-    }
   }
 }
 
 static bool IsMaximalCycle(const std::vector<int> &v) {
   return CycleLengthAt(v, 0) == v.size();
-}
-
-static void Test2Bit() {
-  ArcFour rc("2bit");
-  constexpr int BITS = 2;
-  constexpr int SIZE = 1 << BITS;
-  constexpr int NUM = 4;
-
-  std::vector<std::vector<int>> perms;
-  // Generate masks that have the properties we want.
-  std::set<std::vector<int>> masks;
-  while (perms.size() < NUM) {
-
-    // Find a mask that is not yet
-    std::vector<int> mask;
-    do {
-      mask.clear();
-      for (int i = 0; i < 2; i++) mask.push_back(0);
-      for (int i = 0; i < 2; i++) mask.push_back(1);
-      // for (int i = 0; i < SIZE; i++) mask.push_back(0);
-      CHECK(mask.size() == SIZE);
-      Shuffle(&rc, &mask);
-    } while (masks.find(mask) != masks.end());
-
-    auto permo = MakePermutation(&rc, mask, true);
-    if (permo.has_value()) {
-      masks.insert(mask);
-      std::vector<int> perm = std::move(permo.value());
-      for (int x : perm) printf("%d, ", x);
-      perms.push_back(std::move(permo.value()));
-    }
-  }
-
-  CHECK(perms.size() == NUM);
-  for (const std::vector<int> &perm : perms) {
-    printf(" {");
-    for (int x : perm) printf("%d, ", x);
-    printf(" },\n");
-  }
-
-}
-
-static void Do4Bit() {
-  ArcFour rc("2bit");
-  constexpr int BITS = 4;
-  constexpr int SIZE = 1 << BITS;
-  constexpr int NUM = 16;
-
-  std::vector<std::vector<int>> perms;
-  // Generate masks that have the properties we want.
-  std::set<std::vector<int>> masks;
-  while (perms.size() < NUM) {
-
-    // Find a mask that is not yet
-    std::vector<int> mask;
-    do {
-      mask.clear();
-      for (int i = 0; i < SIZE / 2; i++) mask.push_back(0);
-      for (int i = 0; i < SIZE / 2; i++) mask.push_back(1);
-      // for (int i = 0; i < SIZE; i++) mask.push_back(0);
-      CHECK(mask.size() == SIZE);
-      Shuffle(&rc, &mask);
-    } while (masks.find(mask) != masks.end());
-
-    auto permo = MakePermutation(&rc, mask, true);
-    if (permo.has_value()) {
-      masks.insert(mask);
-      std::vector<int> perm = std::move(permo.value());
-      for (int x : perm) printf("%d, ", x);
-      perms.push_back(std::move(permo.value()));
-    }
-  }
-
-  CHECK(perms.size() == NUM);
-  for (const std::vector<int> &perm : perms) {
-    printf(" {");
-    for (int x : perm) printf("%d, ", x);
-    printf(" },\n");
-  }
-
 }
 
 static void MakeExactAvalanche() {
@@ -905,11 +780,163 @@ static void MakeExactAvalanche2() {
   CHECK(HasExactAvalanche(s)) << HasExactAvalanche(s, true);
 }
 
+static void GetGoodSubst() {
+  ArcFour rc(StringPrintf("%lld.good-subst", time(nullptr)));
+
+  const int NUM = 2;
+  // We get about 60k attempts/sec.
+  const int ATTEMPTS = 5 * 60 * 60000;
+  const bool UNIQUE = true;
+
+  // Generate masks that have the properties we want.
+  std::set<std::vector<int>> unique_masks;
+  std::vector<std::vector<int>> masks;
+
+  for (int i = 0; i < NUM; i++) {
+    std::vector<int> mask;
+    do {
+      mask.clear();
+      // for (int i = 0; i < 5; i++) mask.push_back(0);
+      // for (int i = 0; i < 11; i++) mask.push_back(1);
+      for (int i = 0; i < 13; i++) mask.push_back(0);
+      for (int i = 0; i < 3; i++) mask.push_back(1);
+
+      CHECK(mask.size() == 16);
+      Shuffle(&rc, &mask);
+    } while (UNIQUE &&
+             unique_masks.find(mask) != unique_masks.end());
+
+    masks.push_back(mask);
+    unique_masks.insert(mask);
+  }
+
+  std::map<int, int> error_histo;
+
+  CHECK(masks.size() == NUM);
+  for (const std::vector<int> &mask : masks) {
+
+    std::vector<int> best_perm;
+    int best_error = 99999;
+
+    Timer attempt_timer;
+    int attempts = 0;
+    while (attempts < ATTEMPTS) {
+      std::vector<int> perm = MakePermutation(&rc, mask);
+      int error = AvalancheCount(perm);
+      error_histo[error]++;
+      if (error == -1) {
+        attempts++;
+        // again...
+      } else {
+        attempts++;
+        if (error < best_error) {
+          best_error = error;
+          best_perm = std::move(perm);
+        }
+      }
+    }
+
+    printf("// Best error was %d after %d attempts [%.3f/sec]\n",
+           best_error, attempts, attempts / attempt_timer.Seconds());
+    printf(" {");
+    for (int x : best_perm) printf("%d, ", x);
+    printf(" },\n");
+  }
+
+  for (auto [e, count] : error_histo) {
+    printf("Error %d: %d time(s)\n", e, count);
+  }
+}
+
+static void MakeBitPerm() {
+  ArcFour rc("bit-perm");
+
+  // One long cycle.
+  std::vector<int> mask;
+  for (int i = 0; i < 64; i++) mask.push_back(0);
+
+  int64 tries = 0;
+  std::map<int, int64> failedat;
+  for (;;) {
+    tries++;
+    std::vector<int> perm = MakePermutation(&rc, mask);
+    /*
+    printf("[");
+    for (int x : perm) printf("%d,", x);
+    printf("],\n");
+    */
+    // Now the requirement that each quartet sends all its
+    // bits to distinct quartets.
+    for (int n = 0; n < 16; n++) {
+      std::set<int> used;
+      // Could also avoid sending it to the same quartet?
+      // used.insert(n);
+      for (int i = 0; i < 4; i++) {
+        int out_quartet = perm[n * 4 + i] / 4;
+        if (used.contains(out_quartet)) {
+          // printf("Failed on quartet %d/16 (bit %d)\n", n, i);
+          failedat[n * 4 + i]++;
+          if ((tries % 100000) == 0) {
+            for (auto [d, c] : failedat) {
+              printf("At %lld: %lld times\n", d, c);
+            }
+          }
+          goto again;
+        }
+        used.insert(out_quartet);
+      }
+    }
+
+
+    for (auto [d, c] : failedat) {
+      printf("At %lld: %lld times\n", d, c);
+    }
+
+    printf("OK!\n{");
+    for (int x : perm) printf(" %d,", x);
+    printf("},\n");
+
+    // And inverted
+
+
+
+    return;
+
+  again:;
+  }
+
+}
+
+static void CycleStats() {
+  printf("// Old ones...\n");
+  std::vector<std::vector<int>> orig = {
+ {4, 3, 10, 0, 8, 13, 5, 11, 1, 6, 14, 15, 2, 7, 9, 12,  },
+ {1, 15, 4, 10, 6, 13, 5, 14, 11, 3, 7, 0, 9, 12, 2, 8,  },
+ {3, 15, 7, 2, 8, 12, 0, 6, 1, 14, 5, 9, 13, 11, 4, 10,  },
+ {15, 5, 13, 1, 11, 12, 14, 8, 10, 0, 6, 7, 4, 9, 3, 2,  },
+ {7, 9, 13, 2, 6, 3, 12, 4, 14, 5, 1, 8, 0, 11, 15, 10,  },
+ {14, 10, 13, 6, 3, 9, 12, 2, 4, 0, 7, 5, 1, 15, 11, 8,  },
+ {15, 3, 6, 9, 11, 4, 12, 1, 7, 8, 5, 14, 0, 2, 13, 10,  },
+ {11, 9, 14, 6, 3, 15, 8, 1, 5, 13, 7, 12, 4, 10, 0, 2,  },
+  };
+
+  for (const std::vector<int> &perm : orig) {
+    int errors = AvalancheCount(perm);
+    printf(" {");
+    for (int x : perm) printf("%d, ", x);
+    printf(" },   // %d error\n", errors);
+  }
+
+}
+
 
 int main(int argc, char **argv) {
   AnsiInit();
+  // CycleStats();
 
-  MakeExactAvalanche();
+  MakeBitPerm();
+
+  // GetGoodSubst();
 
   // RandStats();
   // AESStats();
@@ -959,37 +986,6 @@ int main(int argc, char **argv) {
     printf(" },\n");
   }
 #endif
-
-  std::vector<std::vector<int>> perms;
-  // Generate masks that have the properties we want.
-  std::set<std::vector<int>> masks;
-  while (perms.size() < 16) {
-
-    // Find a mask that is not yet
-    std::vector<int> mask;
-    do {
-      mask.clear();
-      // for (int i = 0; i < 3; i++) mask.push_back(0);
-      // for (int i = 0; i < 13; i++) mask.push_back(1);
-      for (int i = 0; i < 16; i++) mask.push_back(0);
-      CHECK(mask.size() == 16);
-      Shuffle(&rc, &mask);
-    } while (masks.find(mask) != masks.end());
-
-    auto permo = MakePermutation(&rc, mask, true);
-    if (permo.has_value()) {
-      masks.insert(mask);
-      perms.push_back(std::move(permo.value()));
-    }
-  }
-
-  CHECK(perms.size() == 16);
-  for (const std::vector<int> &perm : perms) {
-    printf(" {");
-    for (int x : perm) printf("%d, ", x);
-    printf(" },\n");
-  }
-
 
 
 #if 0

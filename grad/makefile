@@ -123,6 +123,10 @@ substz3.exe : substz3.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+permbench.exe : permbench.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 # external dependency on TestU01-2009
 TESTU01=../../TestU01-2009
 smallcrush-main.o : smallcrush-main.cc
