@@ -222,6 +222,9 @@ static inline uint64_t Method4(uint64_t in) {
   return out;
 }
 
+// Could also try PEXT and PDEP together, which would allow us to do
+// more bits at once. But even when the bits are ascending as required,
+// it's way faster (on zen2 at least) to just extract them individually.
 
 template<class F>
 double RunOne(const std::string &name, F f) {
