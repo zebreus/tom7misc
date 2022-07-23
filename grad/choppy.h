@@ -19,15 +19,15 @@
 
 // A choppy function is a stepwise function that produces
 // integer outputs on some grid. Here we use a grid of size 16,
-// spanning from [-1,1] in half space on both axes, so the
+// spanning from [-1,1) in half space on both axes, so the
 // "integers" are 0, 1/8, -1/8, 2/8, -2/8, ... 8/8, -8,8.
 // Internally we store these multiplied by (GRID/2), so they
 // take values 0, 1, -1, 2, -2... GRID/2, -GRID/2.
 //
-// As a special consideration, we don't actually care about
-// the behavior on inputs of exactly integers (e.g. x=0),
-// just the segments in-between.
-// (Actually i think this is fixed now)
+// Every floating point value >= each boundary (e.g. 0.125) and
+// strictly less than the next (e.g. 0.24987792969 but not 0.250)
+// has exactly the same output value. The only oddity is at -0
+// which is treated the same as +0.
 
 struct Choppy {
   static constexpr int GRID = 16;
@@ -67,12 +67,6 @@ struct Choppy {
     for (int i = 0; i < GRID; i++) {
       half x = (half)((i / (double)(GRID/2)) - 1.0);
 
-      // Check from 0.0125 -- 0.9975 of the interval.
-      // (Note that's still 2.5% of the whole
-      // function that could be wrong!)
-      // half low  = x + (half)(1 / (float)(GRID/2)) * (half)0.0125;
-      // half high = x + (half)(1 / (float)(GRID/2)) * (half)0.9975;
-
       // Exact version!
       uint16 ulow = Exp::GetU16(x);
       uint16 uhigh = Exp::GetU16((half)(((i + 1) / (double)(GRID/2)) - 1.0));
@@ -90,8 +84,7 @@ struct Choppy {
           uint16 v = Exp::EvaluateOn(exp, upos);
           if (val[i] != v && !((v & 0x7FFF) == 0 &&
                                (val[i] & 0x7FFF) == 0)) {
-            // Not the same value for the interval.
-            // (Maybe we could accept it if "really close"?)
+            // Not the same exact value for the interval.
 
             /*
               printf("%d. %.3f to %.3f. now %.4f=%04x. got %04x, had %04x\n",
