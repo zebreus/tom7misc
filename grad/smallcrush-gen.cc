@@ -208,6 +208,19 @@ struct State {
         SetHalf(i, b);
       });
 #endif
+
+    uint8_t aa = GetHalf(4);
+    uint8_t bb = GetHalf(5);
+    uint8_t cc = GetHalf(6);
+    uint8_t dd = GetHalf(7);
+    uint8_t ee = GetHalf(8);
+    uint8_t ff = GetHalf(9);
+
+    aa = ModularPlus(aa, cc);
+    bb = ModularMinus(bb, cc);
+    dd = ModularPlus(dd, ff);
+    ee = ModularMinus(ee, ff);
+
     uint8_t uu = GetHalf(10);
     uint8_t vv = GetHalf(11);
     uint8_t ww = GetHalf(12);
@@ -219,6 +232,13 @@ struct State {
     yy = ModularMinus(yy, xx);
     ww = ModularPlus(ww, uu);
     vv = ModularMinus(vv, uu);
+
+    SetHalf(4, aa);
+    SetHalf(5, bb);
+    SetHalf(6, cc);
+    SetHalf(7, dd);
+    SetHalf(8, ee);
+    SetHalf(9, ff);
 
     SetHalf(10, uu);
     SetHalf(11, vv);
@@ -232,10 +252,17 @@ struct State {
 
   uint32_t Next() {
     uint32_t ret = 0;
+
     for (int idx = 0; idx < 32; idx++) {
       ret <<= 1;
       ret |= NextBit();
     }
+
+    /*
+    for (int idx = 0; idx < 9; idx++)
+      (void)NextBit();
+    ret = data & 0xFFFFFFFF;
+    */
     return ret;
   }
 
@@ -305,11 +332,11 @@ int main(int argc, char **argv) {
       printf("(in-process)");
     };
 
-  CPrintf("Running " APURPLE("SmallCrush") "...\n");
-  bbattery_SmallCrush(&gen);
+  // CPrintf("Running " APURPLE("SmallCrush") "...\n");
+  // bbattery_SmallCrush(&gen);
 
-  // CPrintf("Running " APURPLE("Crush") "...\n");
-  // bbattery_Crush(&gen);
+  CPrintf("Running " APURPLE("Crush") "...\n");
+  bbattery_Crush(&gen);
 
   // CPrintf("Running " APURPLE("BigCrush") "...\n");
   // bbattery_BigCrush(&gen);

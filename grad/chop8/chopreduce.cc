@@ -9,7 +9,7 @@
 #include "half.h"
 #include "hashing.h"
 
-#include "choppy.h"
+#include "choppy8.h"
 #include "grad-util.h"
 #include "color-util.h"
 #include "arcfour.h"
@@ -235,7 +235,8 @@ int main(int argc, char **argv) {
   DB db;
   printf("Load database:\n");
   db.LoadFile("chopdb.txt");
-  db.Image().ScaleBy(10).Save("database.png");
+  db.LoadFile("basis.txt");
+  db.Image().ScaleBy(3).Save("database.png");
 
   Reduce(&db);
 

@@ -1,6 +1,6 @@
 
-#ifndef _GRAD_CHOPPY_H
-#define _GRAD_CHOPPY_H
+#ifndef _GRAD_CHOPPY8_H
+#define _GRAD_CHOPPY8_H
 
 #include <optional>
 #include <array>
@@ -12,7 +12,6 @@
 #include "expression.h"
 #include "half.h"
 #include "hashing.h"
-
 
 #include "image.h"
 #include "color-util.h"
@@ -30,7 +29,7 @@
 // which is treated the same as +0.
 
 struct Choppy {
-  static constexpr int GRID = 16;
+  static constexpr int GRID = 256;
   static constexpr double EPSILON = 0.0001;
 
   using Allocator = Exp::Allocator;

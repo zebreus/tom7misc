@@ -26,6 +26,7 @@ int main(int argc, char **argv) {
   // for this to be a proper permutation. Generate this constraint
   // when i < j:
 
+  #if 0
   for (int i = 0; i < size; i++) {
     for (int j = 0; j < size; j++) {
       if (i < j) {
@@ -33,6 +34,7 @@ int main(int argc, char **argv) {
       }
     }
   }
+  #endif
 
   // There is no builtin popcount, so we define one.
   printf("(define-fun HasCorrectPopcnt ((x (_ BitVec %d))) Bool\n"
