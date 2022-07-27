@@ -20,6 +20,7 @@
 #include "choppy.h"
 #include "ansi.h"
 
+using Choppy = ChoppyGrid<16>;
 using Table = Exp::Table;
 using uint32 = uint32_t;
 using uint8 = uint8_t;

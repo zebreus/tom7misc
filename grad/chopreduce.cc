@@ -14,6 +14,7 @@
 #include "color-util.h"
 #include "arcfour.h"
 
+using Choppy = ChoppyGrid<16>;
 using DB = Choppy::DB;
 using Allocator = Exp::Allocator;
 using Table = Exp::Table;

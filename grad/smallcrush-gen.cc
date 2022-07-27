@@ -39,99 +39,28 @@ inline void repeat(const F &f) {
   }
 }
 
-/*
-// cycles 5+11; only 16 pairs have non-perfect avalanche
- {9, 0, 15, 10, 11, 7, 13, 1, 12, 5, 6, 3, 2, 14, 8, 4,  },
- {11, 14, 13, 4, 2, 8, 7, 1, 10, 6, 0, 5, 15, 12, 3, 9,  },
- {13, 14, 1, 2, 7, 4, 11, 8, 9, 3, 15, 5, 0, 10, 6, 12,  },
- {3, 6, 4, 8, 9, 12, 7, 14, 10, 15, 2, 1, 0, 5, 11, 13,  },
- {3, 15, 9, 10, 7, 11, 4, 2, 0, 6, 5, 12, 1, 8, 13, 14,  },
- {10, 8, 9, 2, 15, 1, 12, 4, 6, 14, 5, 7, 3, 11, 0, 13,  },
- {5, 3, 7, 13, 15, 10, 4, 14, 0, 6, 11, 8, 9, 12, 1, 2,  },
- {13, 7, 14, 11, 1, 2, 4, 8, 3, 5, 0, 9, 10, 15, 6, 12,  },
-
- // cycle 16; error: 16
- {11, 13, 7, 14, 1, 8, 2, 4, 0, 5, 6, 15, 3, 9, 10, 12,  },
- {4, 13, 5, 12, 1, 11, 9, 10, 2, 7, 15, 6, 8, 14, 3, 0,  },
- {10, 6, 11, 13, 0, 3, 7, 4, 12, 5, 14, 8, 9, 15, 2, 1,  },
- {14, 2, 4, 7, 8, 11, 13, 1, 15, 10, 3, 9, 5, 12, 6, 0,  },
- {10, 9, 14, 4, 12, 0, 8, 2, 15, 5, 11, 13, 6, 3, 1, 7,  },
- {3, 5, 9, 15, 0, 6, 12, 10, 4, 14, 1, 8, 13, 11, 7, 2,  },
- {4, 8, 7, 1, 14, 13, 2, 11, 0, 6, 12, 5, 9, 15, 10, 3,  },
- {6, 13, 5, 7, 10, 4, 9, 14, 3, 11, 15, 1, 0, 2, 12, 8,  },
-
- // cycles 13+3; error: 16
- {13, 12, 1, 0, 7, 15, 4, 6, 14, 5, 8, 3, 11, 9, 2, 10,  },
- {14, 8, 11, 13, 2, 1, 7, 4, 10, 3, 12, 15, 0, 9, 6, 5,  },
- {1, 2, 8, 4, 15, 12, 9, 5, 7, 11, 14, 13, 6, 10, 0, 3,  },
- {15, 9, 12, 10, 5, 3, 0, 6, 2, 11, 1, 7, 8, 14, 4, 13,  },
- {6, 10, 7, 11, 5, 9, 1, 8, 12, 15, 4, 13, 0, 3, 2, 14,  },
- {13, 4, 11, 2, 12, 15, 0, 3, 1, 8, 7, 14, 5, 6, 9, 10,  },
- {1, 11, 13, 8, 6, 12, 10, 9, 7, 14, 4, 2, 3, 15, 0, 5,  },
- {8, 13, 5, 15, 2, 4, 3, 9, 11, 14, 0, 6, 1, 7, 10, 12,  },
-*/
-
-static constexpr uint8_t CONST[16] = {
-  // (note: from perms above)
-  13, 7, 14, 11, 1, 2, 4, 8, 3, 5, 0, 9, 10, 15, 6, 12,
+static constexpr uint8_t SUBST[256] = {
+// Best error was 1952 after 150000 attempts [438.966/sec]
+  178, 122, 20, 19, 31, 64, 70, 35, 75, 80, 154, 5, 47, 105, 93, 250, 217, 140, 191, 233, 58, 79, 212, 216, 237, 4, 141, 101, 160, 181, 107, 206, 180, 220, 248, 28, 133, 142, 143, 204, 117, 1, 175, 86, 243, 232, 73, 90, 150, 203, 218, 8, 219, 2, 111, 57, 48, 46, 130, 33, 174, 171, 189, 158, 6, 11, 254, 193, 18, 76, 227, 137, 149, 106, 115, 207, 224, 170, 38, 30, 82, 108, 74, 9, 235, 112, 16, 129, 100, 15, 109, 183, 59, 165, 62, 77, 194, 14, 169, 116, 161, 155, 246, 213, 238, 94, 134, 92, 146, 255, 173, 69, 56, 24, 12, 249, 54, 145, 166, 121, 99, 53, 123, 131, 81, 251, 103, 202, 135, 211, 242, 244, 26, 148, 228, 209, 167, 182, 97, 185, 197, 223, 44, 60, 231, 51, 110, 230, 177, 236, 132, 126, 66, 138, 114, 40, 45, 214, 186, 156, 10, 200, 221, 7, 32, 23, 198, 29, 196, 91, 13, 225, 68, 61, 229, 21, 159, 78, 22, 187, 226, 43, 252, 27, 241, 25, 188, 136, 127, 184, 201, 102, 0, 253, 151, 34, 247, 222, 49, 71, 50, 36, 118, 195, 128, 72, 120, 190, 240, 52, 84, 208, 157, 104, 88, 205, 42, 124, 89, 95, 163, 144, 147, 113, 41, 83, 39, 199, 172, 96, 152, 17, 153, 125, 55, 192, 67, 3, 119, 63, 234, 87, 176, 245, 164, 85, 65, 215, 179, 168, 98, 139, 162, 210, 239, 37,
 };
-
-
-static constexpr uint8_t PERMS[16][16] = {
-  // full 16
- {11, 13, 7, 14, 1, 8, 2, 4, 0, 5, 6, 15, 3, 9, 10, 12,  },
- {4, 13, 5, 12, 1, 11, 9, 10, 2, 7, 15, 6, 8, 14, 3, 0,  },
- {10, 6, 11, 13, 0, 3, 7, 4, 12, 5, 14, 8, 9, 15, 2, 1,  },
- {14, 2, 4, 7, 8, 11, 13, 1, 15, 10, 3, 9, 5, 12, 6, 0,  },
- {10, 9, 14, 4, 12, 0, 8, 2, 15, 5, 11, 13, 6, 3, 1, 7,  },
- {3, 5, 9, 15, 0, 6, 12, 10, 4, 14, 1, 8, 13, 11, 7, 2,  },
- {4, 8, 7, 1, 14, 13, 2, 11, 0, 6, 12, 5, 9, 15, 10, 3,  },
- {6, 13, 5, 7, 10, 4, 9, 14, 3, 11, 15, 1, 0, 2, 12, 8,  },
- // 5+11
- {9, 0, 15, 10, 11, 7, 13, 1, 12, 5, 6, 3, 2, 14, 8, 4,  },
- {11, 14, 13, 4, 2, 8, 7, 1, 10, 6, 0, 5, 15, 12, 3, 9,  },
- {13, 14, 1, 2, 7, 4, 11, 8, 9, 3, 15, 5, 0, 10, 6, 12,  },
- {3, 6, 4, 8, 9, 12, 7, 14, 10, 15, 2, 1, 0, 5, 11, 13,  },
- // 13+3
- {13, 12, 1, 0, 7, 15, 4, 6, 14, 5, 8, 3, 11, 9, 2, 10,  },
- {14, 8, 11, 13, 2, 1, 7, 4, 10, 3, 12, 15, 0, 9, 6, 5,  },
- {1, 2, 8, 4, 15, 12, 9, 5, 7, 11, 14, 13, 6, 10, 0, 3,  },
- {15, 9, 12, 10, 5, 3, 0, 6, 2, 11, 1, 7, 8, 14, 4, 13,  },
-};
-
-static inline uint8_t Subst(uint8_t idx, uint8_t bits) {
-  return PERMS[idx][bits & 15];
-}
 
 static inline uint8_t ModularPlus(uint8_t x, uint8_t y) {
-  return (x + y) & 15;
+  return (x + y) & 0xFF;
 }
 
 static inline uint8_t ModularMinus(uint8_t x, uint8_t y) {
-  return (x - y) & 15;
+  return (x - y) & 0xFF;
 }
 
 struct State {
   int64_t num_bits = 0;
 
   // Packed into eight-bit bytes as
-  // (a << 4 | b),(c << 4 | d),...
-  // uint8_t halves[8];
+  // a << 56 | b << 48 | ...
   uint64_t data;
 
-  #if 0
-  inline uint8_t GetHalf(int i) {
-    uint8_t b = halves[i >> 1];
-    if (i & 1) {
-      return b & 0xF;
-    } else {
-      return (b >> 4) & 0xF;
-    }
-  }
-  #endif
-
-  inline uint8_t GetHalf(int i) {
-    return (data >> (4 * (15 - i))) & 0xF;
+  inline uint8_t GetByte(int i) {
+    return (data >> (8 * (7 - i))) & 0xFF;
     // GetHalf is always called on constants, so it's a bit
     // surprising, but storing the bytes in the other order
     // may give about a 5% speedup (would need to recompute
@@ -139,10 +68,10 @@ struct State {
     // return (data >> (4 * i)) & 0xF;
   }
 
-  inline void SetHalf(int i, uint8_t b) {
-    uint64_t mask = (uint64_t)0b1111 << (4 * (15 - i));
+  inline void SetByte(int i, uint8_t b) {
+    uint64_t mask = (uint64_t)0b11111111 << (8 * (7 - i));
     data &= ~mask;
-    data |= (uint64_t)b << (4 * (15 - i));
+    data |= (uint64_t)b << (8 * (7 - i));
   }
 
   State () {
@@ -159,27 +88,12 @@ struct State {
       printf("Generated %lld bits (%.3f%%)\n", num_bits, pct);
     }
 
-    if (true) {
-      uint8_t o[16];
-      repeat<16>([this, &o](size_t i) {
-        o[i] = Subst(i, GetHalf(i));
-        });
-
-      uint64_t out = 0;
-      repeat<16>([&o, &out](size_t i) {
-          if ((o[i] & ~0b1111)) __builtin_unreachable();
-          out |= ((uint64_t)o[i] << (4 * (15 - i)));
-        });
-
-      data = out;
-    } else {
-      uint64_t out = 0;
-      repeat<16>([this, &out](size_t i) {
-          out <<= 4;
-          out |= Subst(i, GetHalf(i));
-        });
-      data = out;
-    }
+    uint64_t out = 0;
+    repeat<8>([this, &out](size_t i) {
+        out <<= 8;
+        out |= SUBST[GetByte(i)];
+      });
+    data = out;
 
     static constexpr std::array<int, 64> bit_indices = {
       49, 44, 34, 41, 0, 29, 40, 50, 39, 59, 8, 52, 35, 38,
@@ -200,54 +114,31 @@ struct State {
       data = out;
     }
 
-    // PERF! Could do two 64-bit masked adds instead.
-#if 0
-    repeat<16>([this](size_t i) {
-        uint8_t b = GetHalf(i);
-        b = ModularPlus(CONST[i], b);
-        SetHalf(i, b);
-      });
-#endif
+    uint8_t aa = GetByte(0);
+    uint8_t bb = GetByte(1);
+    uint8_t cc = GetByte(2);
+    uint8_t dd = GetByte(3);
+    uint8_t ee = GetByte(4);
+    uint8_t ff = GetByte(5);
+    uint8_t gg = GetByte(6);
+    uint8_t hh = GetByte(7);
 
-    uint8_t aa = GetHalf(4);
-    uint8_t bb = GetHalf(5);
-    uint8_t cc = GetHalf(6);
-    uint8_t dd = GetHalf(7);
-    uint8_t ee = GetHalf(8);
-    uint8_t ff = GetHalf(9);
+    aa = ModularPlus(aa, bb);
+    cc = ModularMinus(cc, bb);
 
-    aa = ModularPlus(aa, cc);
-    bb = ModularMinus(bb, cc);
-    dd = ModularPlus(dd, ff);
-    ee = ModularMinus(ee, ff);
+    dd = ModularPlus(dd, ee);
+    gg = ModularMinus(gg, ee);
 
-    uint8_t uu = GetHalf(10);
-    uint8_t vv = GetHalf(11);
-    uint8_t ww = GetHalf(12);
-    uint8_t xx = GetHalf(13);
-    uint8_t yy = GetHalf(14);
-    uint8_t zz = GetHalf(15);
+    SetByte(0, aa);
+    SetByte(1, bb);
+    SetByte(2, cc);
+    SetByte(3, dd);
+    SetByte(4, ee);
+    SetByte(5, ff);
+    SetByte(6, gg);
+    SetByte(7, hh);
 
-    zz = ModularPlus(zz, xx);
-    yy = ModularMinus(yy, xx);
-    ww = ModularPlus(ww, uu);
-    vv = ModularMinus(vv, uu);
-
-    SetHalf(4, aa);
-    SetHalf(5, bb);
-    SetHalf(6, cc);
-    SetHalf(7, dd);
-    SetHalf(8, ee);
-    SetHalf(9, ff);
-
-    SetHalf(10, uu);
-    SetHalf(11, vv);
-    SetHalf(12, ww);
-    SetHalf(13, xx);
-    SetHalf(14, yy);
-    SetHalf(15, zz);
-
-    return GetHalf(0) & 1;
+    return GetByte(0) & 1;
   }
 
   uint32_t Next() {
@@ -274,23 +165,23 @@ int main(int argc, char **argv) {
   CPrintf("Testing in-process.\n");
 
   {
-    constexpr int NUM_NYBBLES = 16;
-    ImageRGBA img(512, NUM_NYBBLES * 4);
+    constexpr int NUM_BYTES = 8;
+    ImageRGBA img(512, NUM_BYTES * 8);
     State state;
     for (int x = 0; x < img.Width(); x++) {
       auto Plot = [&img, x](uint8_t bits, int offset) {
           const auto [r, g, b] = ColorUtil::HSVToRGB(
-              offset / (float)NUM_NYBBLES, 1.0, 1.0);
+              offset / (float)NUM_BYTES, 1.0, 1.0);
           const uint32_t color = ColorUtil::FloatsTo32(r, g, b, 1.0);
-          for (int y = 0; y < 4; y++) {
+          for (int y = 0; y < 8; y++) {
             uint32_t c = (bits & 1) ? color : (color & 0x111111FF);
-            img.BlendPixel32(x, offset * 4 + 3 - y, c);
+            img.BlendPixel32(x, offset * 8 + 7 - y, c);
             bits >>= 1;
           }
         };
       (void)state.NextBit();
-      for (int i = 0; i < 16; i++) {
-        uint8_t h = state.GetHalf(i);
+      for (int i = 0; i < 8; i++) {
+        uint8_t h = state.GetByte(i);
         Plot(h, i);
       }
     }
@@ -335,11 +226,11 @@ int main(int argc, char **argv) {
   // CPrintf("Running " APURPLE("SmallCrush") "...\n");
   // bbattery_SmallCrush(&gen);
 
-  CPrintf("Running " APURPLE("Crush") "...\n");
-  bbattery_Crush(&gen);
+  // CPrintf("Running " APURPLE("Crush") "...\n");
+  // bbattery_Crush(&gen);
 
-  // CPrintf("Running " APURPLE("BigCrush") "...\n");
-  // bbattery_BigCrush(&gen);
+  CPrintf("Running " APURPLE("BigCrush") "...\n");
+  bbattery_BigCrush(&gen);
 
 
   CPrintf("Getting " APURPLE("more stats") "...\n");

@@ -95,6 +95,7 @@ static void TestIter() {
   {
     printf("Run deep:\n");
     Timer deep_timer;
+    [[maybe_unused]]
     Table result = Exp::TabulateExpressionIn(f5, (half)-1.0, (half)1.0);
     printf("Evaluate deep in %.3f sec\n",
            deep_timer.Seconds());

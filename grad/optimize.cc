@@ -21,6 +21,7 @@
 
 #include "state.h"
 
+using Choppy = ChoppyGrid<16>;
 using DB = Choppy::DB;
 using Allocator = Exp::Allocator;
 using Table = Exp::Table;

@@ -54,7 +54,7 @@ double Error(half low, half high,
   for (uint16 upos = GetU16(low);
        upos != GetU16(high);
        /* in loop */) {
-    uint16 unext = NextAfter16(upos);
+    uint16 unext = Exp::NextAfter16(upos);
     half next = GetHalf(unext);
     half pos = GetHalf(upos);
 
@@ -105,8 +105,6 @@ MakeFn(Allocator *alloc,
   // We try to make progress by finding a series of operations that
   // reduces the error.
 
-  // XXX make thread safe, etc. Probably don't want to use the
-  // same sequence each time, either?
   static int64_t seed = time(nullptr);
 
   std::mutex m;
@@ -120,7 +118,6 @@ MakeFn(Allocator *alloc,
   const int64_t seed6 = seed++;
 
   InParallel(
-#if 0
       [alloc, low, high, &target, time_sec, &m, &results, seed1]() {
         Timer opt_timer;
         using Op1Optimizer = OpOptimizer<Op1>;
@@ -296,7 +293,7 @@ MakeFn(Allocator *alloc,
           results.emplace_back(desc, exp, err);
         }
       },
-      #endif
+
       [alloc, low, high, &target, time_sec, &m, &results, seed6]() {
         Timer opt_timer;
         using Op6Optimizer = OpOptimizer<Op6>;
@@ -376,7 +373,7 @@ struct Combine3Arg {
     make_pair(-2.0, 2.0),
   };
 
-  static const Exp *LinearComb(const Allocator *alloc,
+  static const Exp *LinearComb(Allocator *alloc,
                                const Exp *exp1,
                                const Exp *exp2,
                                double a, double b, double c) {
@@ -449,7 +446,7 @@ struct Combine2Arg {
     make_pair(-0.1, 0.1),
   };
 
-  static const Exp *LinearComb(const Allocator *alloc,
+  static const Exp *LinearComb(Allocator *alloc,
                                const Exp *exp1,
                                const Exp *exp2,
                                double a, double c) {

@@ -26,77 +26,18 @@ using namespace std;
 
 using namespace half_float::literal;
 
+// XXX continue porting this to 8-bit
+using Choppy = ChoppyGrid<256>;
 using Allocator = Exp::Allocator;
 using DB = Choppy::DB;
 using Table = GradUtil::Table;
 using Step = GradUtil::Step;
 using State = GradUtil::State;
 
-
-
-static const uint8_t PERMS[16][16] = {
-  // length 5 cycle, length 11 cycle; non-overlapping.
- {4, 3, 10, 0, 8, 13, 5, 11, 1, 6, 14, 15, 2, 7, 9, 12,  },
- {1, 15, 4, 10, 6, 13, 5, 14, 11, 3, 7, 0, 9, 12, 2, 8,  },
- {3, 15, 7, 2, 8, 12, 0, 6, 1, 14, 5, 9, 13, 11, 4, 10,  },
- {15, 5, 13, 1, 11, 12, 14, 8, 10, 0, 6, 7, 4, 9, 3, 2,  },
- {7, 9, 13, 2, 6, 3, 12, 4, 14, 5, 1, 8, 0, 11, 15, 10,  },
- {14, 10, 13, 6, 3, 9, 12, 2, 4, 0, 7, 5, 1, 15, 11, 8,  },
- {15, 3, 6, 9, 11, 4, 12, 1, 7, 8, 5, 14, 0, 2, 13, 10,  },
- {11, 9, 14, 6, 3, 15, 8, 1, 5, 13, 7, 12, 4, 10, 0, 2,  },
- /*
- {11, 6, 8, 1, 3, 2, 10, 9, 7, 5, 14, 13, 0, 4, 15, 12,  },
- {8, 6, 10, 14, 5, 0, 7, 12, 1, 4, 13, 15, 3, 11, 9, 2,  },
- {9, 12, 5, 7, 6, 0, 13, 4, 10, 11, 1, 14, 2, 3, 15, 8,  },
- {2, 0, 6, 13, 11, 8, 5, 12, 10, 1, 14, 3, 9, 15, 7, 4,  },
- {1, 9, 11, 6, 14, 4, 12, 3, 2, 15, 5, 10, 13, 7, 0, 8,  },
- {12, 15, 1, 0, 5, 6, 14, 13, 4, 10, 7, 3, 2, 11, 8, 9,  },
- {10, 12, 1, 7, 5, 11, 0, 6, 14, 4, 15, 13, 3, 9, 2, 8,  },
- {1, 2, 15, 0, 11, 10, 13, 3, 9, 12, 14, 7, 4, 5, 6, 8,  },
- */
- // maximal cycles
-  {11, 0, 4, 9, 14, 12, 2, 1, 7, 8, 5, 15, 13, 6, 3, 10},
-  {14, 0, 6, 9, 12, 13, 5, 2, 10, 1, 4, 3, 15, 8, 7, 11},
-  {9, 8, 7, 4, 5, 13, 3, 11, 10, 6, 2, 12, 14, 15, 0, 1},
- /*
-  {1, 10, 8, 9, 5, 3, 13, 6, 4, 14, 7, 0, 2, 15, 11, 12},
-  {11, 4, 15, 10, 8, 1, 0, 9, 12, 5, 14, 3, 6, 7, 2, 13},
-  {11, 10, 15, 5, 0, 12, 4, 13, 14, 1, 3, 9, 2, 6, 7, 8},
-  {6, 10, 3, 4, 15, 1, 8, 0, 9, 13, 2, 5, 14, 11, 7, 12},
-  {3, 4, 15, 12, 9, 13, 5, 11, 2, 0, 6, 10, 8, 1, 7, 14},
-  {5, 6, 3, 12, 11, 2, 9, 13, 7, 15, 0, 8, 14, 1, 4, 10},
-  {3, 2, 9, 10, 14, 7, 4, 15, 12, 5, 13, 1, 6, 8, 11, 0},
-  {3, 15, 12, 1, 11, 6, 9, 0, 14, 2, 5, 7, 13, 8, 4, 10},
-  {3, 10, 12, 8, 13, 1, 9, 11, 6, 4, 2, 14, 7, 5, 15, 0},
-  {2, 3, 10, 14, 8, 0, 5, 4, 1, 7, 13, 9, 11, 15, 6, 12},
-  {5, 11, 1, 13, 3, 15, 0, 6, 9, 12, 4, 10, 14, 8, 7, 2},
-  {15, 13, 10, 11, 12, 4, 0, 3, 1, 14, 8, 6, 2, 7, 5, 9},
-  {13, 12, 7, 1, 2, 4, 3, 0, 5, 11, 6, 10, 15, 9, 8, 14},
- */
-
- // 13+3
- {4, 15, 6, 0, 3, 13, 12, 1, 7, 11, 14, 2, 5, 10, 8, 9,  },
- {3, 13, 10, 7, 11, 12, 8, 0, 2, 15, 9, 5, 6, 4, 1, 14,  },
- {12, 13, 9, 1, 10, 3, 2, 0, 5, 15, 8, 14, 7, 6, 4, 11,  },
- {13, 4, 11, 14, 2, 6, 7, 1, 3, 0, 5, 15, 8, 9, 10, 12,  },
- {5, 8, 15, 1, 12, 7, 4, 2, 3, 10, 6, 0, 11, 9, 13, 14,  },
- /*
- {4, 7, 15, 2, 6, 8, 11, 9, 10, 1, 14, 12, 13, 5, 3, 0,  },
- {14, 11, 3, 6, 7, 13, 9, 5, 0, 12, 4, 15, 8, 2, 10, 1,  },
- {3, 5, 15, 12, 0, 11, 4, 14, 6, 1, 2, 13, 9, 7, 8, 10,  },
- {1, 12, 9, 15, 3, 14, 7, 0, 13, 5, 8, 2, 10, 11, 6, 4,  },
- {14, 5, 8, 12, 1, 2, 11, 3, 6, 13, 9, 0, 7, 4, 15, 10,  },
- {12, 9, 0, 14, 13, 4, 10, 3, 2, 6, 15, 1, 7, 5, 11, 8,  },
- {10, 3, 12, 9, 14, 4, 15, 2, 7, 13, 1, 0, 11, 6, 5, 8,  },
- {12, 14, 11, 8, 13, 2, 4, 0, 7, 3, 15, 1, 10, 6, 9, 5,  },
- {4, 10, 6, 12, 14, 9, 8, 1, 7, 11, 0, 5, 13, 15, 3, 2,  },
- {2, 15, 11, 6, 8, 14, 12, 10, 0, 7, 4, 3, 1, 5, 13, 9,  },
- {10, 12, 6, 11, 5, 3, 13, 8, 9, 7, 15, 2, 14, 1, 0, 4,  },
- */
+static constexpr uint8_t SUBST[256] = {
+// Best error was 1952 after 150000 attempts [438.966/sec]
+  178, 122, 20, 19, 31, 64, 70, 35, 75, 80, 154, 5, 47, 105, 93, 250, 217, 140, 191, 233, 58, 79, 212, 216, 237, 4, 141, 101, 160, 181, 107, 206, 180, 220, 248, 28, 133, 142, 143, 204, 117, 1, 175, 86, 243, 232, 73, 90, 150, 203, 218, 8, 219, 2, 111, 57, 48, 46, 130, 33, 174, 171, 189, 158, 6, 11, 254, 193, 18, 76, 227, 137, 149, 106, 115, 207, 224, 170, 38, 30, 82, 108, 74, 9, 235, 112, 16, 129, 100, 15, 109, 183, 59, 165, 62, 77, 194, 14, 169, 116, 161, 155, 246, 213, 238, 94, 134, 92, 146, 255, 173, 69, 56, 24, 12, 249, 54, 145, 166, 121, 99, 53, 123, 131, 81, 251, 103, 202, 135, 211, 242, 244, 26, 148, 228, 209, 167, 182, 97, 185, 197, 223, 44, 60, 231, 51, 110, 230, 177, 236, 132, 126, 66, 138, 114, 40, 45, 214, 186, 156, 10, 200, 221, 7, 32, 23, 198, 29, 196, 91, 13, 225, 68, 61, 229, 21, 159, 78, 22, 187, 226, 43, 252, 27, 241, 25, 188, 136, 127, 184, 201, 102, 0, 253, 151, 34, 247, 222, 49, 71, 50, 36, 118, 195, 128, 72, 120, 190, 240, 52, 84, 208, 157, 104, 88, 205, 42, 124, 89, 95, 163, 144, 147, 113, 41, 83, 39, 199, 172, 96, 152, 17, 153, 125, 55, 192, 67, 3, 119, 63, 234, 87, 176, 245, 164, 85, 65, 215, 179, 168, 98, 139, 162, 210, 239, 37,
 };
-
-// Permutations.
-static Table tables[16];
 
 static inline half GetHalf(uint16 u) {
   return GradUtil::GetHalf(u);
@@ -106,11 +47,13 @@ static inline uint16 GetU16(half h) {
   return GradUtil::GetU16(h);
 }
 
-// Run one of the 16 substitution tables. A function from
-// (-1, 1) to (-1, 1).
-static half Subst(int n, half h) {
+// Substitution table.
+static Table subst_table;
+// Run the substitution table. A function from
+// [-1, 1) to [-1, 1).
+static half Subst(half h) {
   const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
-  return GetHalf(tables[n][GetU16(h)]) + HALF_GRID;
+  return GetHalf(subst_table[GetU16(h)]) + HALF_GRID;
 }
 
 static Table mod_table;
@@ -138,19 +81,28 @@ static half ModularMinus(half x, half y) {
 
 
 struct HashState {
-  // Four halves in (-1,1].
-  half a = GetHalf(0x38b9);
-  half b = GetHalf(0x2e36);
-  half c = GetHalf(0x159c);
-  half d = GetHalf(0x00bc);
 
-  half e = 3.0_h / ((half)Choppy::GRID / 2.0_h);
-  half f = 1.0_h / ((half)Choppy::GRID / 2.0_h);
-  half g = -4.0_h / ((half)Choppy::GRID / 2.0_h);
-  half h = -5.0_h / ((half)Choppy::GRID / 2.0_h);
+  HashState() {
+    // This is the constant for zero.
+    const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
+    a = HALF_GRID;
+    b = HALF_GRID;
+    c = HALF_GRID;
+    d = HALF_GRID;
+    e = HALF_GRID;
+    f = HALF_GRID;
+    g = HALF_GRID;
+    h = HALF_GRID;
+  }
+
+  // Eight halves in (-1,1]. Each represents 8 bits of state.
+
+  half a, b, c, d, e, f, g, h;
 };
 
-// h in [-1, 1).
+// TODO: Test that this works for every byte in
+// the 8-bit version!
+// h in [-1, 1). Returns the corresponding byte.
 static inline uint8_t HalfBits(half h) {
   // put in [0, 2)
   h += 1.0_h;
@@ -160,17 +112,17 @@ static inline uint8_t HalfBits(half h) {
   return (uint8_t)trunc(h);
 }
 
-static uint32_t AllBits(HashState hs) {
-  uint32_t ret = 0;
+static uint64_t AllBits(HashState hs) {
+  uint64_t ret = 0;
 
-  ret <<= 4; ret |= HalfBits(hs.a);
-  ret <<= 4; ret |= HalfBits(hs.b);
-  ret <<= 4; ret |= HalfBits(hs.c);
-  ret <<= 4; ret |= HalfBits(hs.d);
-  ret <<= 4; ret |= HalfBits(hs.e);
-  ret <<= 4; ret |= HalfBits(hs.f);
-  ret <<= 4; ret |= HalfBits(hs.g);
-  ret <<= 4; ret |= HalfBits(hs.h);
+  ret <<= 8; ret |= HalfBits(hs.a);
+  ret <<= 8; ret |= HalfBits(hs.b);
+  ret <<= 8; ret |= HalfBits(hs.c);
+  ret <<= 8; ret |= HalfBits(hs.d);
+  ret <<= 8; ret |= HalfBits(hs.e);
+  ret <<= 8; ret |= HalfBits(hs.f);
+  ret <<= 8; ret |= HalfBits(hs.g);
+  ret <<= 8; ret |= HalfBits(hs.h);
 
   return ret;
 }
@@ -199,28 +151,22 @@ HashState NextState(HashState s) {
   CHECK(s.g > -1.0_h && s.g < 1.0_h) << s.g;
   CHECK(s.h > -1.0_h && s.h < 1.0_h) << s.h;
 
-  // red
-  half aa = Subst(0, s.b);
-  // green
-  half bb = Subst(1, s.c);
-  // blue
-  half cc = Subst(2, s.d);
-  // purple
-  half dd = Subst(3, s.e);
+  half aa = Subst(s.a);
+  half bb = Subst(s.b);
+  half cc = Subst(s.c);
+  half dd = Subst(s.d);
+  half ee = Subst(s.e);
+  half ff = Subst(s.f);
+  half gg = Subst(s.g);
+  half hh = Subst(s.h);
 
-  half ee = Subst(4, s.f);
-  half ff = Subst(5, s.g);
-  half gg = Subst(6, s.h);
-  half hh = Subst(7, s.a);
+  // TODO: Apply bit permutation.
 
-  aa = Subst(8, aa);
-  bb = ModularPlus(bb, gg);
-  cc = Subst(9, cc);
-  dd = ModularMinus(dd, bb);
-  ee = Subst(10, ee);
-  ff = Subst(11, ff);
-  hh = Subst(12, hh);
+  aa = ModularPlus(aa, bb);
+  cc = ModularMinus(cc, bb);
 
+  dd = ModularPlus(dd, ee);
+  gg = ModularMinus(gg, ee);
 
   CHECK(aa > -1.0_h && aa < 1.0_h) << StateString(s) << " " << aa;
   CHECK(bb > -1.0_h && bb < 1.0_h) << StateString(s) << " " << bb;
@@ -243,42 +189,32 @@ HashState NextState(HashState s) {
   return s;
 }
 
-static std::vector<const Exp *> MakeExps(DB *basis) {
-  std::vector<const Exp *> ret;
-  for (int p = 0; p < 16; p++) {
-    std::vector<const Exp *> parts;
-    for (int col = 0; col < 16; col++) {
-      // magnitude at this position (as number of GRID cells).
-      int m = PERMS[p][col] - 8;
-      if (m != 0) {
-        DB::key_type key = DB::BasisKey(col);
-        auto it = basis->fns.find(key);
-        CHECK(it != basis->fns.end()) << "Incomplete basis: "
-                                      << DB::KeyString(key);
-        const Exp *e = it->second;
-        if (m != 1) {
-          e = basis->alloc.TimesC(e, Exp::GetU16((half)m), 1);
-        }
-        parts.push_back(e);
-      }
-    }
-    CHECK(!parts.empty()) << "Function was zero everywhere?";
-    const Exp *perm = parts[0];
-    for (int i = 1; i < parts.size(); i++) {
-      perm = basis->alloc.PlusE(perm, parts[i]);
-    }
-    ret.push_back(perm);
-  }
-  return ret;
-}
+static const Exp * MakeSubstExp(DB *basis) {
 
-static void InitTables(const std::vector<const Exp *> &exps) {
-  CHECK(exps.size() == 16);
-  //  for (int i = 0; i < exps.size(); i++) {
-  ParallelComp(16, [&](int i) {
-      CPrintf("Table " ACYAN("%d") ":\n", i);
-      tables[i] = Exp::TabulateExpression(exps[i]);
-    }, 4);
+  std::vector<const Exp *> parts;
+  for (int col = 0; col < Choppy::GRID; col++) {
+    // magnitude at this position (as number of GRID cells).
+    int m = SUBST[col] - Choppy::GRID/2;
+    if (m != 0) {
+      DB::key_type key = DB::BasisKey(col);
+      auto it = basis->fns.find(key);
+      CHECK(it != basis->fns.end()) << "Incomplete basis: "
+                                    << DB::KeyString(key);
+      const Exp *e = it->second;
+      if (m != 1) {
+        e = basis->alloc.TimesC(e, Exp::GetU16((half)m), 1);
+      }
+      parts.push_back(e);
+    }
+  }
+  CHECK(!parts.empty()) << "Function was zero everywhere?";
+
+  const Exp *perm = parts[0];
+  for (int i = 1; i < parts.size(); i++) {
+    perm = basis->alloc.PlusE(perm, parts[i]);
+  }
+
+  return perm;
 }
 
 static void InitModTable() {
@@ -321,17 +257,25 @@ static void InitModTable() {
           alloc.TimesC(alloc.PlusE(H, L), Exp::GetU16((half)-2.0))));
 }
 
+
+static void InitTables(DB *basis) {
+  InParallel(
+      [&]() {
+        subst_table = Exp::TabulateExpression(MakeSubstExp(basis));
+        CPrintf("Make " ACYAN("subst") ".\n");
+      },
+      []() {
+        InitModTable();
+        CPrintf("Make " ACYAN("mod") ".\n");
+      });
+}
+
 int main(int argc, char **argv) {
   AnsiInit();
   DB db;
   db.LoadFile("basis.txt");
 
-  std::vector<const Exp *> perm_exps = MakeExps(&db);
-  InitTables(perm_exps);
-
-  printf("Initialized 16 tables.\n");
-  InitModTable();
-  printf("Initialized mod table.\n");
+  InitTables(&db);
 
   {
     static constexpr int IMG_WIDTH = 1920 / 2;

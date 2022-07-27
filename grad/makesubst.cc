@@ -19,6 +19,7 @@
 #include "ansi.h"
 #include "timer.h"
 
+using Choppy = ChoppyGrid<16>;
 using DB = Choppy::DB;
 using Allocator = Exp::Allocator;
 using Table = Exp::Table;
@@ -359,10 +360,11 @@ static bool HasExactAvalanche(const std::vector<int> &perm,
   return true;
 }
 
-// Returns -1 if any pair is more than 1 off the target avalanche
-// value. Otherwise, return the number of pairs that were not
-// exactly the target.
-static int AvalancheCount(const std::vector<int> &perm) {
+// Returns -1 if any pair is more than 'limit' off the target
+// avalanche value. Otherwise, return the total error across
+// all pairs.
+static int AvalancheCount(const std::vector<int> &perm,
+                          int limit = 1) {
   CHECK(std::has_single_bit(perm.size())) <<
     "perm size must be a power of two";
   int power = std::countr_zero(perm.size());
@@ -385,7 +387,7 @@ static int AvalancheCount(const std::vector<int> &perm) {
       const int diffsize = std::popcount<uint32_t>(diff);
 
       const int error = abs(diffsize - avalanche_target);
-      if (error > 1) {
+      if (error > limit) {
         return -1;
       }
       total_error += error;
@@ -783,10 +785,12 @@ static void MakeExactAvalanche2() {
 static void GetGoodSubst() {
   ArcFour rc(StringPrintf("%lld.good-subst", time(nullptr)));
 
-  const int NUM = 2;
-  // We get about 60k attempts/sec.
-  const int ATTEMPTS = 5 * 60 * 60000;
-  const bool UNIQUE = true;
+  const int NUM = 8;
+  // We get about 60k attempts/sec for 16-position.
+  // 500/sec for 256-position.
+  const int ATTEMPTS = 5 * 60 * 500;
+  const bool UNIQUE = false;
+  const int SIZE = 256;
 
   // Generate masks that have the properties we want.
   std::set<std::vector<int>> unique_masks;
@@ -798,10 +802,13 @@ static void GetGoodSubst() {
       mask.clear();
       // for (int i = 0; i < 5; i++) mask.push_back(0);
       // for (int i = 0; i < 11; i++) mask.push_back(1);
-      for (int i = 0; i < 13; i++) mask.push_back(0);
-      for (int i = 0; i < 3; i++) mask.push_back(1);
+      // for (int i = 0; i < 13; i++) mask.push_back(0);
+      // for (int i = 0; i < 3; i++) mask.push_back(1);
 
-      CHECK(mask.size() == 16);
+      while (mask.size() < SIZE) mask.push_back(9);
+      // for (int i = 0; i < SIZE; i++) mask.push_back(0);
+
+      CHECK(mask.size() == SIZE);
       Shuffle(&rc, &mask);
     } while (UNIQUE &&
              unique_masks.find(mask) != unique_masks.end());
@@ -816,13 +823,13 @@ static void GetGoodSubst() {
   for (const std::vector<int> &mask : masks) {
 
     std::vector<int> best_perm;
-    int best_error = 99999;
+    int best_error = 9999999;
 
     Timer attempt_timer;
     int attempts = 0;
     while (attempts < ATTEMPTS) {
       std::vector<int> perm = MakePermutation(&rc, mask);
-      int error = AvalancheCount(perm);
+      int error = AvalancheCount(perm, 4);
       error_histo[error]++;
       if (error == -1) {
         attempts++;
@@ -934,9 +941,9 @@ int main(int argc, char **argv) {
   AnsiInit();
   // CycleStats();
 
-  MakeBitPerm();
+  // MakeBitPerm();
 
-  // GetGoodSubst();
+  GetGoodSubst();
 
   // RandStats();
   // AESStats();

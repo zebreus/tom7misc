@@ -2,6 +2,7 @@
 #ifndef _GRAD_CHOPPY_H
 #define _GRAD_CHOPPY_H
 
+#include <bit>
 #include <optional>
 #include <array>
 #include <map>
@@ -18,19 +19,29 @@
 #include "color-util.h"
 
 // A choppy function is a stepwise function that produces
-// integer outputs on some grid. Here we use a grid of size 16,
-// spanning from [-1,1) in half space on both axes, so the
-// "integers" are 0, 1/8, -1/8, 2/8, -2/8, ... 8/8, -8,8.
+// integer outputs on some grid. The grid size is given by the
+// template arg. The function's range of interest spans from
+// [-1,1) in half space on both axes, so with a grid size
+// of 16, the "integers" are 0, 1/8, -1/8, 2/8, -2/8, ... 8/8, -8,8.
 // Internally we store these multiplied by (GRID/2), so they
 // take values 0, 1, -1, 2, -2... GRID/2, -GRID/2.
+//
+// Early on I used a grid size of 16, but with improved techniques I
+// was able to get 256 to work, which is easier to work with for
+// stuff like hashing. (But I haven't yet migrated this code to
+// 256.)
 //
 // Every floating point value >= each boundary (e.g. 0.125) and
 // strictly less than the next (e.g. 0.24987792969 but not 0.250)
 // has exactly the same output value. The only oddity is at -0
 // which is treated the same as +0.
 
-struct Choppy {
-  static constexpr int GRID = 16;
+template<int GRID_ARG>
+struct ChoppyGrid {
+  static constexpr int GRID = GRID_ARG;
+  static_assert(std::has_single_bit<uint32_t>(GRID),
+                "Grid size must be a power of two");
+
   static constexpr double EPSILON = 0.0001;
 
   using Allocator = Exp::Allocator;
@@ -242,7 +253,7 @@ struct Choppy {
 
     static key_type BasisKey(int col) {
       key_type new_key;
-      for (int i = 0; i < Choppy::GRID; i++) {
+      for (int i = 0; i < GRID; i++) {
         new_key[i] = (i == col) ? 1 : 0;
       }
       return new_key;
