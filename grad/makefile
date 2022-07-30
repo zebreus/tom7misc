@@ -1,7 +1,7 @@
 
 default: iter.exe train.exe optimize.exe chopreduce.exe makesubst.exe
 
-all: grad.exe iter.exe make-data.exe mnist_test.exe evaluate.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe
+all: grad.exe iter.exe make-data.exe mnist_test.exe evaluate.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe
 
 CC_LIB=../cc-lib
 
@@ -124,6 +124,10 @@ substz3.exe : substz3.o $(OBJECTS)
 	@echo -n "!"
 
 permbench.exe : permbench.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+hcomplex_test.exe : hcomplex_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

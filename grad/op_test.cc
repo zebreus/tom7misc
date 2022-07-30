@@ -144,6 +144,40 @@ static void PlotOp2() {
   img.Save("op2.png");
 }
 
+static void PlotShift() {
+  ImageRGBA img(IMAGE_SIZE, IMAGE_SIZE);
+  img.Clear32(0x000000FF);
+  GradUtil::Grid(&img);
+
+  Table upresult;
+  Table scaled_upresult;
+  Table dnresult;
+  Table scaled_dnresult;
+  for (int i = 0; i < 65536; i++) {
+    {
+      uint16 upout = i << 1;
+      upresult[i] = upout;
+      half h = Exp::GetHalf(upout) / (half)32768.0;
+      scaled_upresult[i] = Exp::GetU16(h);
+    }
+
+    {
+      uint16 downout = i >> 1;
+      dnresult[i] = downout;
+      half h = Exp::GetHalf(downout) / (half)-512.0;
+      scaled_dnresult[i] = Exp::GetU16(h);
+    }
+  }
+
+  GradUtil::Graph(upresult, 0xAAAAFFAA, &img);
+  GradUtil::Graph(scaled_upresult, 0x3333FFAA, &img);
+  GradUtil::Graph(dnresult, 0xAAFFAAAA, &img);
+  GradUtil::Graph(scaled_dnresult, 0x33FF33AA, &img);
+
+  img.Save("op-shift.png");
+}
+
+
 static double StrobeOffset(std::pair<double, double> bound,
                            int s, int num_strobe, double frac) {
   auto [low, high] = bound;
@@ -456,6 +490,9 @@ int main(int argc, char **argv) {
   PlotOp4();
   PlotOp5();
   */
-  StrobeChoppy5();
+
+  PlotShift();
+
+  // StrobeChoppy5();
   return 0;
 }
