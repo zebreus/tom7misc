@@ -574,6 +574,7 @@ static const Exp *MakeLoop(Allocator *alloc,
   #else
   // Continue from previous expressions.
 
+  // TODO: Use serialized formats.
   #include "perm-restart.h"
   std::vector<const Exp *> prev = PreviousExps(alloc);
   static constexpr int START_ITER = 0;
@@ -656,7 +657,7 @@ static const Exp *MakeLoop(Allocator *alloc,
 
 
     {
-      std::string s = Exp::ExpString(exp);
+      std::string s = Exp::Serialize(exp);
       Util::WriteFile("perm-best.txt", s);
     }
   }
@@ -697,7 +698,7 @@ int main(int argc, char **argv) {
                           (half)-1.0, (half)+1.0, target);
 
   {
-    std::string s = Exp::ExpString(e);
+    std::string s = Exp::Serialize(e);
     Util::WriteFile("expression-perm.txt", s);
   }
 

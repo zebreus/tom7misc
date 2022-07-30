@@ -327,6 +327,7 @@ struct Exp {
     case PLUS_C: {
       half res = GetHalf(EvaluateOn(e->a, x));
       half rhs = GetHalf(e->c);
+      // TODO PERF: Cache plus table too?
       for (int i = 0; i < e->iters; i++)
         res += rhs;
       return GetU16(res);
@@ -407,6 +408,22 @@ struct Exp {
       table[i] = Exp::GetU16(y);
     }
     return table;
+  }
+
+  // Returns true if the expressions are syntactically equal.
+  static bool Eq(const Exp *a, const Exp *b) {
+    if (a->type != b->type) return false;
+    switch (a->type) {
+    case VAR: return true;
+    case PLUS_C:
+    case TIMES_C:
+      return a->c == b->c && a->iters == b->iters && Eq(a->a, b->a);
+    case PLUS_E:
+      return Eq(a->a, b->a) && Eq(a->b, b->b);
+    default:
+      CHECK(false) << "bad exp type";
+      return false;
+    }
   }
 
   // [xe/x]e

@@ -20,6 +20,34 @@ struct hcomplex {
   half Re() const { return rpart; }
   half Im() const { return ipart; }
 
+  inline hcomplex &operator +=(const hcomplex &rhs) {
+    rpart += rhs.rpart;
+    ipart += rhs.ipart;
+    return *this;
+  }
+
+  inline hcomplex &operator -=(const hcomplex &rhs) {
+    rpart -= rhs.rpart;
+    ipart -= rhs.ipart;
+    return *this;
+  }
+
+  inline hcomplex &operator +=(const half &rhs) {
+    rpart += rhs;
+    return *this;
+  }
+
+  inline hcomplex &operator -=(const half &rhs) {
+    rpart -= rhs;
+    return *this;
+  }
+
+  inline hcomplex &operator *=(const half &rhs) {
+    rpart *= rhs;
+    ipart *= rhs;
+    return *this;
+  }
+
  private:
   static inline constexpr uint16_t GetU16(half h) {
     uint16_t u;
