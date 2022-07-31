@@ -262,11 +262,36 @@ static const Exp *CleanRec(Allocator *alloc, const Exp *exp) {
     if (exp->c == 0x3c00)
       return CleanRec(alloc, exp->a);
 
-    // TODO: squash multiply by -1 with another multiplication.
+    // TODO even iterations of negative can be eliminated
+
+    // Muliplying by -1 can be done exactly if the nested
+    // operation is a multiplication that's done an ODD
+    // number of times.
+    if (exp->c == 0xbc00 &&
+        // this negation must be odd (or does nothing)
+        (exp->iters & 1) == 1 &&
+        exp->a->type == TIMES_C &&
+        // must be odd
+        (exp->a->iters & 1) == 1) {
+      // (Should also insist that the value is actually finite, etc.)
+      return CleanRec(alloc,
+                      alloc->TimesC(exp->a->a, exp->a->c ^ 0x8000,
+                                    exp->a->iters));
+    }
 
     const Exp *ea = CleanRec(alloc, exp->a);
     if (ea->type == TIMES_C &&
-        ea->c == exp->c) {
+        ea->c == 0xbc00 &&
+        (ea->iters & 1) == 1 &&
+        (exp->iters & 1) == 1) {
+      // As above, but in the opposite order.
+      // Pull a nested odd multiplication by -1 into this one.
+      return alloc->TimesC(ea->a, exp->c ^ 0x8000, exp->iters);
+
+    } else if (ea->type == TIMES_C &&
+               ea->c == exp->c) {
+      // Collapse two iterated multiplications by the same
+      // constant.
       int32 new_iters = (int32)exp->iters + (int32)ea->iters;
       if (new_iters <= 65535) {
         return alloc->TimesC(ea->a, exp->c, new_iters);
