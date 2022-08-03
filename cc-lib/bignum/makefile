@@ -8,12 +8,12 @@ CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-g++
 # CXX=g++
 # CC=gcc
-CXXFLAGS=-Wall -I. -I.. --std=c++14 -g -O2 # -static
+CXXFLAGS=-march=native -Wall -I. -I.. --std=c++20 -g -O2 # -static
 
 %.o : %.cc *.h
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
-big_test.exe : bigz.o bign.o bigq.o big_test.o $(BASE)
+big_test.exe : bigz.o bign.o bigq.o big.o big_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@ -static
 
 clean :

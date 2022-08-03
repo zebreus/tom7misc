@@ -15,40 +15,58 @@
 
 struct BigInt {
   BigInt() : BigInt(0LL) {}
-  explicit BigInt(int64_t n);
-  explicit BigInt(const std::string &digits);
-  
+  inline explicit BigInt(int64_t n);
+  inline explicit BigInt(const std::string &digits);
+
   // Value semantics with linear-time copies (like std::vector).
-  BigInt(const BigInt &other);
-  BigInt &operator =(const BigInt &other);
-  BigInt &operator =(BigInt &&other);
+  inline BigInt(const BigInt &other);
+  inline BigInt &operator =(const BigInt &other);
+  inline BigInt &operator =(BigInt &&other);
 
-  ~BigInt();
-  
-  std::string ToString(int base = 10) const;
+  inline ~BigInt();
 
-  bool IsEven() const;
-  bool IsOdd() const;
-  
-  static BigInt Negate(const BigInt &a);
-  static BigInt Abs(const BigInt &a);
-  static int Compare(const BigInt &a, const BigInt &b);
-  static BigInt Plus(const BigInt &a, const BigInt &b);
-  static BigInt Minus(const BigInt &a, const BigInt &b);
-  static BigInt Times(const BigInt &a, const BigInt &b);
-  static BigInt Div(const BigInt &a, const BigInt &b);
-  static BigInt Mod(const BigInt &a, const BigInt &b);
-  static BigInt Pow(const BigInt &a, uint64_t exponent);
-  
-  void Swap(BigInt *other);
-  
+  inline std::string ToString(int base = 10) const;
+
+  inline bool IsEven() const;
+  inline bool IsOdd() const;
+
+  inline static BigInt Negate(const BigInt &a);
+  inline static BigInt Abs(const BigInt &a);
+  inline static int Compare(const BigInt &a, const BigInt &b);
+  inline static bool Less(const BigInt &a, const BigInt &b);
+  inline static bool LessEq(const BigInt &a, const BigInt &b);
+  inline static bool Eq(const BigInt &a, const BigInt &b);
+  inline static bool Greater(const BigInt &a, const BigInt &b);
+  inline static bool GreaterEq(const BigInt &a, const BigInt &b);
+  inline static BigInt Plus(const BigInt &a, const BigInt &b);
+  inline static BigInt Minus(const BigInt &a, const BigInt &b);
+  inline static BigInt Times(const BigInt &a, const BigInt &b);
+  inline static BigInt Div(const BigInt &a, const BigInt &b);
+  inline static BigInt Mod(const BigInt &a, const BigInt &b);
+  inline static BigInt Pow(const BigInt &a, uint64_t exponent);
+  // Returns Q (a div b), R (a mod b) such that a = b * q + r
+  inline static std::pair<BigInt, BigInt> QuotRem(const BigInt &a,
+                                                  const BigInt &b);
+
+  // such that a0^b0 * a1^b1 * ... * an^bn = x,
+  // where a0...an are primes in ascending order
+  // and bi is >= 1
+  //
+  // If max_factor is not -1, then the final term may
+  // be composite if its factors are all greater than this
+  // number.
+  static std::vector<std::pair<BigInt, int>>
+  PrimeFactorization(const BigInt &x, int64_t max_factor = -1);
+
+  inline void Swap(BigInt *other);
+
 private:
   friend class BigRat;
   // Takes ownership.
   // nullptr token here is just used to distinguish from the version
   // that takes an int64 (would be ambiguous with BigInt(0)).
   explicit BigInt(BigZ z, nullptr_t token) : bigz(z) {}
-  
+
   // BigZ is a pointer to a bigz struct, which is the
   // header followed by digits.
   BigZ bigz = nullptr;
@@ -57,38 +75,45 @@ private:
 
 struct BigRat {
   // Zero.
-  BigRat() : BigRat(0LL, 1LL) {}
-  BigRat(int64_t numer, int64_t denom);
-  BigRat(const BigInt &numer, const BigInt &denom);
-  
-  BigRat(const BigRat &other);
-  BigRat &operator =(const BigRat &other);
-  BigRat &operator =(BigRat &&other);
+  inline BigRat() : BigRat(0LL, 1LL) {}
+  inline BigRat(int64_t numer, int64_t denom);
+  inline BigRat(int64_t numer);
+  inline BigRat(const BigInt &numer, const BigInt &denom);
+  inline BigRat(const BigInt &numer);
 
-  ~BigRat();
+  inline BigRat(const BigRat &other);
+  inline BigRat &operator =(const BigRat &other);
+  inline BigRat &operator =(BigRat &&other);
+
+  inline ~BigRat();
 
   // In base 10.
-  std::string ToString() const;
+  inline std::string ToString() const;
   // Only works when the numerator and denominator are small;
   // readily returns nan!
-  double ToDouble() const;
+  inline double ToDouble() const;
+  // Get the numerator and denominator.
+  inline std::pair<BigInt, BigInt> Parts() const;
 
-  static int Compare(const BigRat &a, const BigRat &b);
-  static BigRat Abs(const BigRat &a);
-  static BigRat Div(const BigRat &a, const BigRat &b);
-  static BigRat Inverse(const BigRat &a);
-  static BigRat Times(const BigRat &a, const BigRat &b);
-  static BigRat Negate(const BigRat &a);
-  static BigRat Plus(const BigRat &a, const BigRat &b);
-  static BigRat Minus(const BigRat &a, const BigRat &b);
+  inline static int Compare(const BigRat &a, const BigRat &b);
+  inline static bool Eq(const BigRat &a, const BigRat &b);
+  inline static BigRat Abs(const BigRat &a);
+  inline static BigRat Div(const BigRat &a, const BigRat &b);
+  inline static BigRat Inverse(const BigRat &a);
+  inline static BigRat Times(const BigRat &a, const BigRat &b);
+  inline static BigRat Negate(const BigRat &a);
+  inline static BigRat Plus(const BigRat &a, const BigRat &b);
+  inline static BigRat Minus(const BigRat &a, const BigRat &b);
+  inline static BigRat Pow(const BigRat &a, uint64_t exponent);
 
-  static BigRat ApproxDouble(double num, int64_t max_denom);
+  inline static BigRat ApproxDouble(double num, int64_t max_denom);
 
-  void Swap(BigRat *other);
-    
+  inline void Swap(BigRat *other);
+
 private:
   // Takes ownership.
-  explicit BigRat(BigQ q) : bigq(q) {}
+  // Token for disambiguation as above.
+  explicit BigRat(BigQ q, nullptr_t token) : bigq(q) {}
   // TODO: This is a pointer to a struct with two BigZs (pointers),
   // so it would probably be much better to just unpack it here.
   // bigq.cc is seemingly set up to do this by redefining some
@@ -157,6 +182,24 @@ int BigInt::Compare(const BigInt &a, const BigInt &b) {
   case BZ_GT: return 1;
   }
 }
+bool BigInt::Less(const BigInt &a, const BigInt &b) {
+  return BzCompare(a.bigz, b.bigz) == BZ_LT;
+}
+bool BigInt::LessEq(const BigInt &a, const BigInt &b) {
+  auto cmp = BzCompare(a.bigz, b.bigz);
+  return cmp == BZ_LT || cmp == BZ_EQ;
+}
+bool BigInt::Eq(const BigInt &a, const BigInt &b) {
+  return BzCompare(a.bigz, b.bigz) == BZ_EQ;
+}
+bool BigInt::Greater(const BigInt &a, const BigInt &b) {
+  return BzCompare(a.bigz, b.bigz) == BZ_GT;
+}
+bool BigInt::GreaterEq(const BigInt &a, const BigInt &b) {
+  auto cmp = BzCompare(a.bigz, b.bigz);
+  return cmp == BZ_GT || cmp == BZ_EQ;
+}
+
 BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
   return BigInt{BzAdd(a.bigz, b.bigz), nullptr};
 }
@@ -177,6 +220,14 @@ BigInt BigInt::Mod(const BigInt &a, const BigInt &b) {
   return BigInt{BzMod(a.bigz, b.bigz), nullptr};
 }
 
+// Returns Q (a div b), R (a mod b) such that a = b * q + r
+std::pair<BigInt, BigInt> BigInt::QuotRem(const BigInt &a,
+                                          const BigInt &b) {
+  BigZ r;
+  BigZ q = BzDivide(a.bigz, b.bigz, &r);
+  return std::make_pair(BigInt{q, nullptr}, BigInt{r, nullptr});
+}
+
 BigInt BigInt::Pow(const BigInt &a, uint64_t exponent) {
   return BigInt{BzPow(a.bigz, exponent), nullptr};
 }
@@ -187,8 +238,12 @@ BigRat::BigRat(int64_t numer, int64_t denom) {
   BigInt n{numer}, d{denom};
   bigq = BqCreate(n.bigz, d.bigz);
 }
+BigRat::BigRat(int64_t numer) : BigRat(numer, int64_t{1}) {}
+
 BigRat::BigRat(const BigInt &numer, const BigInt &denom)
   : bigq(BqCreate(numer.bigz, denom.bigz)) {}
+
+BigRat::BigRat(const BigInt &numer) : BigRat(numer, BigInt(1)) {}
 
 // PERF: Should have BqCopy so that we don't need to re-normalize.
 BigRat::BigRat(const BigRat &other) :
@@ -227,27 +282,38 @@ int BigRat::Compare(const BigRat &a, const BigRat &b) {
   }
 }
 
+bool BigRat::Eq(const BigRat &a, const BigRat &b) {
+  return BqCompare(a.bigq, b.bigq) == BQ_EQ;
+}
+
 BigRat BigRat::Abs(const BigRat &a) {
-  return BigRat{BqAbs(a.bigq)};
+  return BigRat{BqAbs(a.bigq), nullptr};
 }
 BigRat BigRat::Div(const BigRat &a, const BigRat &b) {
-  return BigRat{BqDiv(a.bigq, b.bigq)};
+  return BigRat{BqDiv(a.bigq, b.bigq), nullptr};
 }
 BigRat BigRat::Inverse(const BigRat &a) {
-  return BigRat{BqInverse(a.bigq)};
+  return BigRat{BqInverse(a.bigq), nullptr};
 }
 BigRat BigRat::Times(const BigRat &a, const BigRat &b) {
-  return BigRat{BqMultiply(a.bigq, b.bigq)};
+  return BigRat{BqMultiply(a.bigq, b.bigq), nullptr};
 }
 BigRat BigRat::Negate(const BigRat &a) {
-  return BigRat{BqNegate(a.bigq)};
+  return BigRat{BqNegate(a.bigq), nullptr};
 }
 BigRat BigRat::Plus(const BigRat &a, const BigRat &b) {
   BigQ res = BqAdd(a.bigq, b.bigq);
-  return BigRat{res};
+  return BigRat{res, nullptr};
 }
 BigRat BigRat::Minus(const BigRat &a, const BigRat &b) {
-  return BigRat{BqSubtract(a.bigq, b.bigq)};
+  return BigRat{BqSubtract(a.bigq, b.bigq), nullptr};
+}
+BigRat BigRat::Pow(const BigRat &a, uint64_t exponent) {
+  BigZ numer = BqGetNumerator(a.bigq);
+  BigZ denom = BqGetDenominator(a.bigq);
+  BigInt nn(BzPow(numer, exponent), nullptr);
+  BigInt dd(BzPow(denom, exponent), nullptr);
+  return BigRat(nn, dd);
 }
 
 std::string BigRat::ToString() const {
@@ -258,8 +324,13 @@ std::string BigRat::ToString() const {
   return ret;
 }
 
+std::pair<BigInt, BigInt> BigRat::Parts() const {
+  return std::make_pair(BigInt(BzCopy(BqGetNumerator(bigq)), nullptr),
+                        BigInt(BzCopy(BqGetDenominator(bigq)), nullptr));
+}
+
 BigRat BigRat::ApproxDouble(double num, int64_t max_denom) {
-return BigRat{BqFromDouble(num, max_denom)};
+  return BigRat{BqFromDouble(num, max_denom), nullptr};
 }
 
 double BigRat::ToDouble() const {
