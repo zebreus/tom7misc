@@ -173,16 +173,43 @@ std::pair<BigRat, BigRat> GetLinear(const Exp *exp) {
   }
 }
 
+static string FactorizedString(const BigInt &z) {
+  // XXX just factor and negate, but PrimeFactorization
+  // only works on positive inputs.
+  if (BigInt::Less(z, BigInt(0))) {
+    return z.ToString();
+  }
+
+  // XXX I think this is freezing because there are a lot of
+  //
+
+  // Would be nice to use a time limit instead of factor limit.
+  auto factors = BigInt::PrimeFactorization(z, 16);
+  string out;
+  for (const auto &[b, e] : factors) {
+    if (!out.empty()) StringAppendF(&out, " \\cdot ");
+    if (e == 1) {
+      StringAppendF(&out, "%s", b.ToString().c_str());
+    } else {
+      StringAppendF(&out, "%s^{%d}", b.ToString().c_str(), e);
+    }
+  }
+  return out;
+}
+
 static string RatToString(const BigRat &q) {
   const auto [numer, denom] = q.Parts();
   // TODO: Force denominator positive, if that's not
   // already guaranteed
   if (BigInt::Eq(denom, BigInt(1))) {
-    return numer.ToString();
+    return FactorizedString(numer);
   } else {
+    string ns = FactorizedString(numer);
+    string ds = FactorizedString(denom);
+
     return StringPrintf("\\frac{%s}{%s}",
-                        numer.ToString().c_str(),
-                        denom.ToString().c_str());
+                        ns.c_str(),
+                        ds.c_str());
   }
 }
 
@@ -288,7 +315,7 @@ int main(int argc, char **argv) {
     string lit = Literally("x", v);
     printf("$ %s $ \\\\\n", lit.c_str());
     // This will terminate in a few minutes, but the numbers it
-    // generates are usually way too big to be interesting!~
+    // generates are usually way too big to be interesting!
     string lin = Linearly("x", v);
     printf("$ = %s $\n\n", lin.c_str());
     fprintf(stderr, "%s\n", DB::KeyString(k).c_str());

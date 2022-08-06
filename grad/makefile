@@ -29,7 +29,7 @@ CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 OPT=-O2
 CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 $(CLINCLUDES) -std=c++20 $(OPT)
 
-CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/bitbuffer.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o
+CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/bitbuffer.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big.o
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -145,6 +145,10 @@ render.exe : render.o $(OBJECTS)
 
 # external dependency on TestU01-2009
 TESTU01=../../TestU01-2009
+
+testu01.o : testu01.cc
+	@$(CXX) $(CXXFLAGS) $^ -o $@ -c -I $(TESTU01)/include
+
 smallcrush-main.o : smallcrush-main.cc
 	@$(CXX) $(CXXFLAGS) $^ -o $@ -c -I $(TESTU01)/include
 
@@ -155,7 +159,7 @@ smallcrush.exe : smallcrush-main.o $(OBJECTS)
 	@$(CXX) $^ -o $@ -L $(TESTU01)/mylib/.libs -L $(TESTU01)/probdist/.libs -L $(TESTU01)/testu01/.libs $(LFLAGS) -ltestu01 -lprobdist -lmylib -lm -lwsock32
 	@echo -n "!"
 
-smallcrush-gen.exe : smallcrush-gen.o $(OBJECTS)
+smallcrush-gen.exe : smallcrush-gen.o testu01.o $(OBJECTS)
 	@$(CXX) $^ -o $@ -L $(TESTU01)/mylib/.libs -L $(TESTU01)/probdist/.libs -L $(TESTU01)/testu01/.libs $(LFLAGS) -ltestu01 -lprobdist -lmylib -lm -lwsock32
 	@echo -n "!"
 

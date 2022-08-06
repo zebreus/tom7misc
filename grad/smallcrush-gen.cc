@@ -2,6 +2,9 @@
 #include <vector>
 #include <cstdint>
 #include <bit>
+#include <cstring>
+#include <string>
+#include <functional>
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,7 +18,6 @@ extern "C" {
 }
 #endif
 
-
 #include "util.h"
 
 #include "base/logging.h"
@@ -24,6 +26,8 @@ extern "C" {
 #include "image.h"
 #include "arcfour.h"
 #include "timer.h"
+
+#include "testu01.h"
 
 static constexpr int TARGET_FLOATS = 51320000;
 
@@ -159,6 +163,35 @@ struct State {
 
 };
 
+namespace {
+struct TheGenerator : public Generator {
+  State state;
+  char name[16];
+  TheGenerator() {
+    strcpy(name, "in-process");
+  }
+
+  void FillGen(unif01_Gen *gen) override {
+
+    gen->state = (void*)&state;
+    gen->param = (void*)nullptr;
+    gen->name = name;
+    gen->GetU01 = +[](void *param, void *state) -> double {
+        State *s = (State*)state;
+        return (double)s->Next() / (double)0x100000000ULL;
+    };
+
+    gen->GetBits = +[](void *param, void *state) -> unsigned long {
+        State *s = (State*)state;
+        return s->Next();
+      };
+
+    gen->Write = +[](void *) {
+        printf("(in-process)");
+      };
+  }
+};
+}  // namespace
 
 int main(int argc, char **argv) {
   AnsiInit();
@@ -203,25 +236,8 @@ int main(int argc, char **argv) {
 
   State state;
 
-  char name[] = "in-process";
-
-  unif01_Gen gen;
-  gen.state = (void*)&state;
-  gen.param = (void*)nullptr;
-  gen.name = name;
-  gen.GetU01 = +[](void *param, void *state) -> double {
-      State *s = (State*)state;
-      return (double)s->Next() / (double)0x100000000ULL;
-    };
-
-  gen.GetBits = +[](void *param, void *state) -> unsigned long {
-      State *s = (State*)state;
-      return s->Next();
-    };
-
-  gen.Write = +[](void *) {
-      printf("(in-process)");
-    };
+  ParallelBigCrush([]() { return new TheGenerator; },
+                   "gen");
 
   // CPrintf("Running " APURPLE("SmallCrush") "...\n");
   // bbattery_SmallCrush(&gen);
@@ -229,9 +245,8 @@ int main(int argc, char **argv) {
   // CPrintf("Running " APURPLE("Crush") "...\n");
   // bbattery_Crush(&gen);
 
-  CPrintf("Running " APURPLE("BigCrush") "...\n");
-  bbattery_BigCrush(&gen);
-
+  // CPrintf("Running " APURPLE("BigCrush") "...\n");
+  // bbattery_BigCrush(&gen);
 
   CPrintf("Getting " APURPLE("more stats") "...\n");
   static constexpr int SIZE = 1 << 20;
