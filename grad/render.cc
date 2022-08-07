@@ -60,6 +60,17 @@ static Decoded Decode(half h) {
   return res;
 }
 
+#if 0
+// TODO:
+// Represents a rational in a factored form.
+struct PolyRat {
+  bool negative = false;
+  // Factored form.
+  std::vector<std::pair<BigNum, int>> numer;
+  std::vector<std::pair<BigNum, int>> denom;
+};
+#endif
+
 // For finite values.
 static BigRat ToRational(half h) {
   Decoded d = Decode(h);
@@ -85,46 +96,6 @@ static BigRat ToRational(half h) {
 
   return BigRat::Times(sbase, scale);
 }
-
-#if 0
-// Might be better to do a "debugging" version, but
-// there are various simplifications possible that
-// mean we don't want try to enumerate cases like this.
-// For example, 2^15 * (1 + 1023/1024) is an integer.
-// A single half, exactly represented (LaTeX).
-static string Literal(half h) {
-  Decoded d = Decode(h);
-
-  auto MaybeNegate = [&d](const string &s) {
-      if (d.negative) return "-" + s;
-      else return s;
-    };
-
-  if (d.is_nan) return "{\\sf NaN}";
-
-  if (d.is_inf) {
-    return MaybeNegate("\\infty{}");
-  }
-
-  if (d.significand == 0) {
-    if (!d.one_plus) {
-      // zero
-      return MaybeNegate("0");
-    } else {
-      // Powers of two.
-      if (d.exp >= 0 && d.exp <= 9) {
-        return MaybeNegate(StringPrintf("%d", 1 << d.exp));
-      } else {
-        if (d.negative) {
-          return StringPrintf("-(2^{%d})", d.exp);
-        } else {
-          return StringPrintf("2^{%d}", d.exp);
-        }
-      }
-    }
-  }
-}
-#endif
 
 // Simplifies to an equivalent (pretending the IEEE operations
 // are the mathematical operations with the same name) linear
@@ -180,6 +151,8 @@ static string FactorizedString(const BigInt &z) {
     return z.ToString();
   }
 
+  return z.ToString();
+#if 0
   // XXX I think this is freezing because there are a lot of
   //
 
@@ -195,6 +168,7 @@ static string FactorizedString(const BigInt &z) {
     }
   }
   return out;
+#endif
 }
 
 static string RatToString(const BigRat &q) {

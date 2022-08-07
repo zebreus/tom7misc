@@ -28,6 +28,23 @@
 #define AWHITE(s) ANSI_WHITE s ANSI_RESET
 #define APURPLE(s) ANSI_PURPLE s ANSI_RESET
 
+// standard two-level trick to expand and stringify
+#define ANSI_INTERNAL_STR2(s) #s
+#define ANSI_INTERNAL_STR(s) ANSI_INTERNAL_STR2(s)
+
+// r, g, b must be numbers (numberic literals or #defined constants)
+// in [0,255].
+#define AFGCOLOR(r, g, b, s) "\x1B[38;2;" \
+  ANSI_INTERNAL_STR(r) ";" \
+  ANSI_INTERNAL_STR(g) ";" \
+  ANSI_INTERNAL_STR(b) "m" s ANSI_RESET
+
+#define ABGCOLOR(r, g, b, s) "\x1B[48;2;" \
+  ANSI_INTERNAL_STR(r) ";" \
+  ANSI_INTERNAL_STR(g) ";" \
+  ANSI_INTERNAL_STR(b) "m" s ANSI_RESET
+
+// Call this in main for compatibility on windows.
 void AnsiInit();
 
 // Same as printf, but using WriteConsole on windows so that we

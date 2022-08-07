@@ -47,7 +47,6 @@ extern "C" {
 #include "swrite.h"
 #include "sres.h"
 #include "unif01.h"
-#include "ufile.h"
 
 #include "gofs.h"
 #include "gofw.h"
@@ -71,6 +70,7 @@ extern "C" {
 #include <mutex>
 #include <vector>
 #include <optional>
+#include <set>
 
 #include "util.h"
 #include "base/stringprintf.h"
@@ -94,25 +94,68 @@ extern "C" {
 
 using namespace std;
 
-static void WritepVal (double p)
-/*
- * Write a p-value with a nice format.
- */
-{
-   if (p < gofw_Suspectp) {
-      gofw_Writep0 (p);
+// From num.c, but returning a string.
+static std::string WriteD(double x, int I, int J, int K) {
+  std::string out;
+  int PosEntier = 0,             /* Le nombre de positions occupees par la
+                                    partie entiere de x */
+    EntierSign,                 /* Le nombre de chiffres significatifs
+                                   avant le point */
+    Neg = 0;                    /* Nombre n'egatif */
+  char S[100];
+  char *p;
 
-   } else if (p > 1.0 - gofw_Suspectp) {
-      if (p >= 1.0 - gofw_Epsilonp1) {
-         printf (" 1 - eps1");
-      } else if (p >= 1.0 - 1.0e-4) {
-         printf (" 1 - ");
-         num_WriteD (1.0 - p, 7, 2, 2);
-         /* printf (" 1 - %.2g ", 1.0 - p); */
-      } else if (p >= 1.0 - 1.0e-2)
-         printf ("  %.4f ", p);
-      else
-         printf ("   %.2f", p);
+  if (x == 0.0)
+    EntierSign = 1;
+  else {
+    EntierSign = PosEntier = floor (log10 (fabs (x)) + 1);
+    if (x < 0.0)
+      Neg = 1;
+  }
+  if (EntierSign <= 0)
+    PosEntier = 1;
+
+  if ((x == 0.0) ||
+      (((EntierSign + J) >= K) && (I >= (PosEntier + J + Neg + 1))))
+    StringAppendF(&out, "%*.*f", I, J, x);
+
+  else {
+    // Scientific notation
+    sprintf (S, "%*.*e", I, K - 1, x);
+    p = strstr (S, "e+0");
+    if (NULL == p)
+      p = strstr (S, "e-0");
+
+    /* remove the 0 in e-0 and in e+0 */
+    if (p) {
+      p += 2;
+      while ((*p = *(p + 1)))
+        p++;
+      StringAppendF(&out, " ");
+    }
+    StringAppendF(&out, "%s", S);
+  }
+  return out;
+}
+
+
+// a la gofw_Writep0, but returning a string.
+// The significance level of a test.
+static std::string Writep0(double p) {
+   if ((p >= 0.01) && (p <= 0.99))
+      return WriteD(p, 8, 2, 1);
+   else if (p < gofw_Epsilonp)
+      return "   eps  ";
+   else if (p < 0.01)
+      return WriteD(p, 8, 2, 2);
+   else if (p >= 1.0 - gofw_Epsilonp1)
+      return " 1 - eps1";
+   else if (p < 1.0 - 1.0e-4)
+      return StringPrintf("    %.4f", p);
+   else {
+     return StringPrintf(
+         " 1 - %s",
+         WriteD (1.0 - p, 7, 2, 2).c_str());
    }
 }
 
@@ -126,6 +169,10 @@ struct TestResult {
 
   TestResult(vector<pair<string, double>> values) :
     values(std::move(values)) {}
+
+  // Needs default constructor for vectors, etc.,
+  // but this does not represent a valid result.
+  TestResult() {}
 
   // name and pvalue
   vector<pair<string, double>> values;
@@ -142,16 +189,36 @@ struct Test {
 };
 }  // namespace
 
-// TODO: H:M:S, etc.
+static std::string AnsiPValue(double p) {
+  if (p < gofw_Suspectp || p > 1.0 - gofw_Suspectp) {
+    return StringPrintf(AYELLOW("%s") "  "
+                        "[" AYELLOW("**") ARED("FAILED") AYELLOW("**") "]",
+                        Writep0(p).c_str());
+  } else {
+    return StringPrintf(AGREEN("%s") "  " AGREY("(ok)"),
+                        Writep0(p).c_str());
+  }
+}
+
 static std::string AnsiTime(double seconds) {
   if (seconds < 60.0) {
     return StringPrintf(AYELLOW("%.3f") "s", seconds);
-  } else {
+  } else if (seconds < 60.0 * 60.0) {
     int sec = std::round(seconds);
     int omin = sec / 60;
     int osec = sec % 60;
     return StringPrintf(AYELLOW("%d") "m" AYELLOW("%02d") "s",
                         omin, osec);
+  } else {
+    int sec = std::round(seconds);
+    int ohour = sec / 3600;
+    sec -= ohour * 3600;
+    int omin = sec / 60;
+    int osec = sec % 60;
+    return StringPrintf(AYELLOW("%d") "h"
+                        AYELLOW("%d") "m"
+                        AYELLOW("%02d") "s",
+                        ohour, omin, osec);
   }
 }
 
@@ -174,9 +241,9 @@ static optional<pair<TestResult, double>> ParseResultFile(
     for (int i = 0; i < num; i++) {
       const int idx = 2 + i * 2;
       CHECK(idx + 1 < lines.size());
-      string name = lines[idx];
-      std::optional<double> opv = Util::ParseDoubleOpt(lines[idx + 1]);
-      CHECK(opv.has_value()) << filename << " malformed: " << lines[idx + 1];
+      std::optional<double> opv = Util::ParseDoubleOpt(lines[idx]);
+      CHECK(opv.has_value()) << filename << " malformed: " << lines[idx];
+      string name = lines[idx + 1];
       values.emplace_back(name, opv.value());
     }
 
@@ -193,98 +260,6 @@ static optional<pair<TestResult, double>> ParseResultFile(
     return make_pair(res, seconds);
   }
 }
-
-
-/*=========================================================================*/
-
-#if 0
-// This report is the summary of everything at the end. XXX redo it
-// to read from a single result.
-
-// TestNumber, pVal, bbattery_Testnames are all parallel arrays
-// of length N.
-
-static Report GetReport(
-    // Generator or file name
-    char *genName,
-    // Battery name
-    char *batName,
-    // Max. number of tests
-    int N,
-    /* p-values of the tests */
-    double pVal[],
-    /* Timer */
-    chrono_Chrono * Timer,
-    /* = TRUE for a file, FALSE for a gen */
-    lebool Flag,
-    /* = TRUE: write the version number */
-    lebool VersionFlag,
-    /* Number of bits in the random file */
-    double nb) {
-
-  int j, co;
-
-  co = 0;
-  /* Some of the tests have not been done: their pVal[j] < 0. */
-  for (j = 0; j < N; j++) {
-    if (pVal[j] >= 0.0)
-      co++;
-  }
-  printf ("\n Number of statistics:  %1d\n", co);
-  printf (" Total CPU time:   ");
-  chrono_Write (Timer, chrono_hms);
-
-  co = 0;
-  for (j = 0; j < N; j++) {
-    if (pVal[j] < 0.0)          /* That test was not done: pVal = -1 */
-      continue;
-    if ((pVal[j] < gofw_Suspectp) || (pVal[j] > 1.0 - gofw_Suspectp)) {
-      co++;
-      break;
-    }
-  }
-  if (co == 0) {
-    printf ("\n\n All tests were passed\n\n\n\n");
-    return;
-  }
-
-  if (gofw_Suspectp >= 0.01)
-    printf ("\n The following tests gave p-values outside [%.4g, %.2f]",
-            gofw_Suspectp, 1.0 - gofw_Suspectp);
-  else if (gofw_Suspectp >= 0.0001)
-    printf ("\n The following tests gave p-values outside [%.4g, %.4f]",
-            gofw_Suspectp, 1.0 - gofw_Suspectp);
-  else if (gofw_Suspectp >= 0.000001)
-    printf ("\n The following tests gave p-values outside [%.4g, %.6f]",
-            gofw_Suspectp, 1.0 - gofw_Suspectp);
-  else
-    printf ("\n The following tests gave p-values outside [%.4g, %.14f]",
-            gofw_Suspectp, 1.0 - gofw_Suspectp);
-  printf (":\n (eps  means a value < %6.1e)", gofw_Epsilonp);
-  printf (":\n (eps1 means a value < %6.1e)", gofw_Epsilonp1);
-  printf (":\n\n       Test                          p-value\n");
-  printf (" ----------------------------------------------\n");
-
-  co = 0;
-  for (j = 0; j < N; j++) {
-    if (pVal[j] < 0.0)          /* That test was not done: pVal = -1 */
-      continue;
-    if ((pVal[j] >= gofw_Suspectp) && (pVal[j] <= 1.0 - gofw_Suspectp))
-      continue;                /* That test was passed */
-    printf (" %2d ", TestNumber[j]);
-    printf (" %-30s", bbattery_TestNames[j]);
-    WritepVal (pVal[j]);
-    printf ("\n");
-    co++;
-  }
-
-  printf (" ----------------------------------------------\n");
-  if (co < N - 1) {
-    printf (" All other tests were passed\n");
-  }
-  printf ("\n\n\n");
-}
-#endif
 
 // Get the p-values in a swalk_RandomWalk1 test
 static vector<pair<string, double>>
@@ -957,26 +932,27 @@ void ParallelBigCrush (
   AddAppearanceSpacings(1, 10 * MILLION, BILLION, 27, 3, 15);
 
   auto AddWeightDistrib = [&](long N, long n,
-                              int r, long k, double alpha, double beta) {
+                              int r, long k, double alpha, int inv_beta) {
+      double beta = 1.0 / inv_beta;
       tests.emplace_back(
-          StringPrintf("weightdistrib%d", r),
+          StringPrintf("weightdistrib%d_%d", r, inv_beta),
           [N, n, r, k, alpha, beta](unif01_Gen *gen) {
             sres_Chi2 *res = sres_CreateChi2();
             svaria_WeightDistrib(gen, res, N, n, r, k, alpha, beta);
             TestResult result(
-                StringPrintf("WeightDistrib, r = %d", r),
+                StringPrintf("WeightDistrib, r = %d (%.5f)", r, beta),
                 res->pVal2[gofw_Mean]);
             sres_DeleteChi2(res);
             return result;
           });
     };
 
-  AddWeightDistrib(1, 20 * MILLION, 0, 256, 0.0, 0.25);
-  AddWeightDistrib(1, 20 * MILLION, 20, 256, 0.0, 0.25);
-  AddWeightDistrib(1, 20 * MILLION, 28, 256, 0.0, 0.25);
-  AddWeightDistrib(1, 20 * MILLION, 0, 256, 0.0, 0.0625);
-  AddWeightDistrib(1, 20 * MILLION, 10, 256, 0.0, 0.0625);
-  AddWeightDistrib(1, 20 * MILLION, 26, 256, 0.0, 0.0625);
+  AddWeightDistrib(1, 20 * MILLION, 0, 256, 0.0, 4);
+  AddWeightDistrib(1, 20 * MILLION, 20, 256, 0.0, 4);
+  AddWeightDistrib(1, 20 * MILLION, 28, 256, 0.0, 4);
+  AddWeightDistrib(1, 20 * MILLION, 0, 256, 0.0, 16);
+  AddWeightDistrib(1, 20 * MILLION, 10, 256, 0.0, 16);
+  AddWeightDistrib(1, 20 * MILLION, 26, 256, 0.0, 16);
 
   tests.emplace_back(
       "sumcollector",
@@ -1049,177 +1025,144 @@ void ParallelBigCrush (
           });
     };
 
-  AddWalk(1, 100 * MILLION, r, 5, 50, 50);
+  AddWalk(1, 100 * MILLION, 0, 5, 50, 50);
   AddWalk(1, 100 * MILLION, 25, 5, 50, 50);
-  AddWalk(1, 10 * MILLION, r, 10, 1000, 1000);
+  AddWalk(1, 10 * MILLION, 0, 10, 1000, 1000);
   AddWalk(1, 10 * MILLION, 20, 10, 1000, 1000);
-  AddWalk(1, 1 * MILLION, r, 15, 10000, 10000);
+  AddWalk(1, 1 * MILLION, 0, 15, 10000, 10000);
   AddWalk(1, 1 * MILLION, 15, 15, 10000, 10000);
 
-#if 0
-  {
-    scomp_Res *res;
-    res = scomp_CreateRes ();
-    ++j2;
-    {
-      scomp_LinearComp (gen, res, 1, 400 * THOUSAND + 20, r, 1);
-      bbattery_pVal[++j] = res->JumpNum->pVal2[gofw_Mean];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "LinearComp, r = 0");
-      bbattery_pVal[++j] = res->JumpSize->pVal2[gofw_Mean];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "LinearComp, r = 0");
-    }
+  auto AddLinearComp = [&](long N, long n, int r, int s) {
+      tests.emplace_back(
+          StringPrintf("linearcomp%d", r),
+          [N, n, r, s](unif01_Gen *gen) {
+            scomp_Res *res = scomp_CreateRes();
+            scomp_LinearComp(gen, res, N, n, r, s);
+            vector<pair<string, double>> values = {
+              make_pair(
+                  StringPrintf("LinearComp, r = %d (Num)", r),
+                  res->JumpNum->pVal2[gofw_Mean]),
+              // Note that in the original BigCrush, one of these
+              // is labeled r = 0 even though it should be r = 29.
+              make_pair(
+                  StringPrintf("LinearComp, r = %d (Size)", r),
+                  res->JumpSize->pVal2[gofw_Mean])
+            };
 
-    ++j2;
-    {
-      scomp_LinearComp (gen, res, 1, 400 * THOUSAND + 20, 29, 1);
-      bbattery_pVal[++j] = res->JumpNum->pVal2[gofw_Mean];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "LinearComp, r = 29");
-      bbattery_pVal[++j] = res->JumpSize->pVal2[gofw_Mean];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "LinearComp, r = 0");
-    }
-    scomp_DeleteRes (res);
-  }
-  {
-    sres_Basic *res;
-    res = sres_CreateBasic ();
-    ++j2;
-    {
-      scomp_LempelZiv (gen, res, 10, 27, r, s);
-      bbattery_pVal[++j] = res->pVal2[gofw_Sum];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "LempelZiv, r = 0");
-    }
+            scomp_DeleteRes(res);
+            return TestResult(values);
+          });
+    };
 
-    ++j2;
-    {
-      scomp_LempelZiv (gen, res, 10, 27, 15, 15);
-      bbattery_pVal[++j] = res->pVal2[gofw_Sum];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "LempelZiv, r = 15");
-    }
-    sres_DeleteBasic (res);
-  }
-  {
-    sspectral_Res *res;
-    res = sspectral_CreateRes ();
-    ++j2;
-    {
-      sspectral_Fourier3 (gen, res, 100 * THOUSAND, 14, r, 3);
-      bbattery_pVal[++j] = res->Bas->pVal2[gofw_AD];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "Fourier3, r = 0");
-    }
+  AddLinearComp(1, 400 * THOUSAND + 20, 0, 1);
+  AddLinearComp(1, 400 * THOUSAND + 20, 29, 1);
 
-    ++j2;
-    {
-      sspectral_Fourier3 (gen, res, 100 * THOUSAND, 14, 27, 3);
-      bbattery_pVal[++j] = res->Bas->pVal2[gofw_AD];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "Fourier3, r = 27");
-    }
-    sspectral_DeleteRes (res);
-  }
-  {
-    sstring_Res2 *res;
-    res = sstring_CreateRes2 ();
-    ++j2;
-    {
-      sstring_LongestHeadRun (gen, res, 1, 1000, r, 3, 20 + 10 * MILLION);
-      bbattery_pVal[++j] = res->Chi->pVal2[gofw_Mean];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "LongestHeadRun, r = 0");
-      bbattery_pVal[++j] = res->Disc->pVal2;
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "LongestHeadRun, r = 0");
-    }
+  auto AddLempelZiv = [&](long N, int k, int r, int s) {
+      tests.emplace_back(
+          StringPrintf("lempelziv%d", r),
+          [N, k, r, s](unif01_Gen *gen) {
+            sres_Basic *res = sres_CreateBasic();
+            scomp_LempelZiv(gen, res, N, k, r, s);
+            TestResult result(
+                StringPrintf("LempelZiv, r = %d", r),
+                res->pVal2[gofw_Sum]);
+            sres_DeleteBasic(res);
+            return result;
+          });
+    };
 
-    ++j2;
-    {
-      sstring_LongestHeadRun (gen, res, 1, 1000, 27, 3, 20 + 10 * MILLION);
-      bbattery_pVal[++j] = res->Chi->pVal2[gofw_Mean];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "LongestHeadRun, r = 27");
-      bbattery_pVal[++j] = res->Disc->pVal2;
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "LongestHeadRun, r = 27");
-    }
-    sstring_DeleteRes2 (res);
-  }
-  {
-    sres_Chi2 *res;
-    res = sres_CreateChi2 ();
-    ++j2;
-    {
-      sstring_PeriodsInStrings (gen, res, 10, BILLION/2, r, 10);
-      bbattery_pVal[++j] = res->pVal2[gofw_Sum];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "PeriodsInStrings, r = 0");
-    }
+  AddLempelZiv(10, 27, 0, 30);
+  AddLempelZiv(10, 27, 15, 15);
 
-    ++j2;
-    {
-      sstring_PeriodsInStrings (gen, res, 10, BILLION/2, 20, 10);
-      bbattery_pVal[++j] = res->pVal2[gofw_Sum];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "PeriodsInStrings, r = 20");
-    }
-    sres_DeleteChi2 (res);
-  }
-  {
-    sres_Basic *res;
-    res = sres_CreateBasic ();
-    ++j2;
-    {
-      sstring_HammingWeight2 (gen, res, 10, BILLION, r, 3, MILLION);
-      bbattery_pVal[++j] = res->pVal2[gofw_Sum];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "HammingWeight2, r = 0");
-    }
+  auto AddFourier = [&](long N, int k, int r, int s) {
+      tests.emplace_back(
+          StringPrintf("fourier%d", r),
+          [N, k, r, s](unif01_Gen *gen) {
+            sspectral_Res *res = sspectral_CreateRes();
+            sspectral_Fourier3(gen, res, N, k, r, s);
+            TestResult result(
+                StringPrintf("Fourier3, r = %d", r),
+                res->Bas->pVal2[gofw_AD]);
+            sspectral_DeleteRes(res);
+            return result;
+          });
+    };
 
-    ++j2;
-    {
-      sstring_HammingWeight2 (gen, res, 10, BILLION, 27, 3, MILLION);
-      bbattery_pVal[++j] = res->pVal2[gofw_Sum];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "HammingWeight2, r = 27");
-    }
-    sres_DeleteBasic (res);
-  }
-  {
-    sstring_Res *res;
-    res = sstring_CreateRes ();
-    ++j2;
-    {
-      sstring_HammingCorr (gen, res, 1, BILLION, 10, 10, s);
-      bbattery_pVal[++j] = res->Bas->pVal2[gofw_Mean];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "HammingCorr, L = 30");
-    }
+  AddFourier(100 * THOUSAND, 14, 0, 3);
+  AddFourier(100 * THOUSAND, 14, 27, 3);
 
-    ++j2;
-    {
-      sstring_HammingCorr (gen, res, 1, 100 * MILLION, 10, 10, 10 * s);
-      bbattery_pVal[++j] = res->Bas->pVal2[gofw_Mean];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "HammingCorr, L = 300");
-    }
+  auto AddLongestHeadRun = [&](long N, long n, int r, int s, long L) {
+      tests.emplace_back(
+          StringPrintf("headrun%d", r),
+          [N, n, r, s, L](unif01_Gen *gen) {
+            sstring_Res2 *res = sstring_CreateRes2();
+            sstring_LongestHeadRun (gen, res, N, n, r, s, L);
+            vector<pair<string, double>> values;
+            values.emplace_back(
+                StringPrintf("LongestHeadRun (Chi), r = %d", r),
+                res->Chi->pVal2[gofw_Mean]);
+            values.emplace_back(
+                StringPrintf("LongestHeadRun (Disc), r = %d", r),
+                res->Disc->pVal2);
+            sstring_DeleteRes2(res);
+            return TestResult(values);
+          });
+    };
 
-    ++j2;
-    {
-      sstring_HammingCorr (gen, res, 1, 100 * MILLION, 10, 10, 40 * s);
-      bbattery_pVal[++j] = res->Bas->pVal2[gofw_Mean];
-      TestNumber[j] = j2;
-      strcpy (bbattery_TestNames[j], "HammingCorr, L = 1200");
-    }
+  AddLongestHeadRun(1, 1000, 0, 3, 20 + 10 * MILLION);
+  AddLongestHeadRun(1, 1000, 27, 3, 20 + 10 * MILLION);
 
-    sstring_DeleteRes (res);
-  }
+  auto AddPeriodsInStrings = [&](long N, long n, int r, int s) {
+      tests.emplace_back(
+          StringPrintf("periods%d", r),
+          [N, n, r, s](unif01_Gen *gen) {
+            sres_Chi2 *res = sres_CreateChi2();
+            sstring_PeriodsInStrings(gen, res, N, n, r, s);
+            TestResult result(
+                StringPrintf("PeriodsInStrings, r = %d", r),
+                res->pVal2[gofw_Sum]);
+            sres_DeleteChi2(res);
+            return result;
+          });
+    };
 
-#endif
+  AddPeriodsInStrings(10, BILLION/2, 0, 10);
+  AddPeriodsInStrings(10, BILLION/2, 20, 10);
+
+  auto AddHammingWeight = [&](long N, long n, int r, int s, long L) {
+      tests.emplace_back(
+          StringPrintf("hamweight%d", r),
+          [N, n, r, s, L](unif01_Gen *gen) {
+            sres_Basic *res = sres_CreateBasic();
+            sstring_HammingWeight2(gen, res, N, n, r, s, L);
+            TestResult result(
+                StringPrintf("HammingWeight2, r = %d", r),
+                res->pVal2[gofw_Sum]);
+            sres_DeleteBasic(res);
+            return result;
+          });
+    };
+
+  AddHammingWeight(10, BILLION, 0, 3, MILLION);
+  AddHammingWeight(10, BILLION, 27, 3, MILLION);
+
+  auto AddHammingCorr = [&](long N, long n, int r, int s, int L) {
+      tests.emplace_back(
+          StringPrintf("hamcorr%d", L),
+          [N, n, r, s, L](unif01_Gen *gen) {
+            sstring_Res *res = sstring_CreateRes();
+            sstring_HammingCorr(gen, res, N, n, r, s, L);
+            TestResult result(
+                StringPrintf("HammingCorr, L = %d", L),
+                res->Bas->pVal2[gofw_Mean]);
+            sstring_DeleteRes(res);
+            return result;
+          });
+    };
+
+  AddHammingCorr(1, BILLION, 10, 10, 30);
+  AddHammingCorr(1, 100 * MILLION, 10, 10, 10 * 30);
+  AddHammingCorr(1, 100 * MILLION, 10, 10, 40 * 30);
 
   auto AddHammingIndep = [&](long N, long n, int r, int s, int L, int d,
                              bool mean) {
@@ -1227,6 +1170,7 @@ void ParallelBigCrush (
           StringPrintf("hamindep%d_%d", L, r),
           [N, n, r, s, L, d, mean](unif01_Gen *gen) {
             sstring_Res *res = sstring_CreateRes();
+            sstring_HammingIndep(gen, res, N, n, r, s, L, d);
             TestResult result(
                 StringPrintf("HammingIndep, L=%d, r=%d", L, r),
                 res->Bas->pVal2[mean ? gofw_Mean : gofw_Sum]);
@@ -1281,6 +1225,14 @@ void ParallelBigCrush (
   AddAutoCor(10, 30 + BILLION, 27, 3, 1);
   AddAutoCor(10, 30 + BILLION, 27, 3, 3);
 
+  // Simple self-check.
+  set<string> seen;
+  for (const auto &[name, f] : tests) {
+    CHECK(seen.find(name) == seen.end()) <<
+      "Duplicate test key " << name;
+    seen.insert(name);
+  }
+
   // Process all the tests.
 
   std::mutex m;
@@ -1288,9 +1240,14 @@ void ParallelBigCrush (
   printf("There are " AYELLOW("%d") " tests in the suite.\n",
          (int)tests.size());
 
-  ParallelAppi(
+  // with time in seconds
+  using MapResult = std::tuple<string, double, TestResult>;
+
+  std::vector<MapResult> test_results =
+  ParallelMapi(
       tests,
-      [&gengen, &filepart, &m](int64_t idx, const Test &test) {
+      [&gengen, &filepart, &m](int64_t idx, const Test &test) ->
+          MapResult {
         const string filename =
           StringPrintf("%s.%s.txt", filepart.c_str(),
                        test.name.c_str());
@@ -1308,7 +1265,7 @@ void ParallelBigCrush (
             printf("     " ABLUE("%s") ": p=" APURPLE("%.6f") "\n",
                    name.c_str(), pv);
           }
-          return;
+          return MapResult(test.name, seconds, res);
         }
 
         {
@@ -1335,7 +1292,7 @@ void ParallelBigCrush (
           StringAppendF(&resultfile,
                         "%.17g\n"
                         "%s\n",
-                        pv, name);
+                        pv, name.c_str());
         }
         Util::WriteFile(filename, resultfile);
         {
@@ -1350,5 +1307,21 @@ void ParallelBigCrush (
                    name.c_str(), pv);
           }
         }
+        return MapResult(test.name, seconds, result);
       }, NUM_THREADS);
+
+  printf("\n\n\n----------------------------------------------\n\n");
+
+  // Now print all results.
+  for (int i = 0; i < test_results.size(); i++) {
+    const auto &[test_name, seconds, result] = test_results[i];
+    printf("[%02d] %s\t" ACYAN("%s") ":\n", i,
+           AnsiTime(seconds).c_str(), test_name.c_str());
+    for (const auto &[name, pv] : result.values) {
+      printf("     " ABLUE("%s") ": p=%s\n",
+             name.c_str(), AnsiPValue(pv).c_str());
+    }
+  }
+
 }
+
