@@ -56,6 +56,29 @@ static inline uint8_t ModularMinus(uint8_t x, uint8_t y) {
   return (x - y) & 0xFF;
 }
 
+static inline uint64_t Permute(unit64_t data) {
+  // Reading bits from left (msb) to right (lsb), this gives
+  // the output location for each bit. So for example the
+  // first entry says that the 0th bit in the input is sent
+  // to the 49th bit in the output.
+  static constexpr std::array<int, 64> bit_indices = {
+    49, 44, 34, 41, 0, 29, 40, 50, 39, 59, 8, 52, 35, 38,
+    51, 3, 46, 43, 48, 31, 47, 23, 10, 5, 11, 12, 16, 36,
+    60, 42, 19, 57, 22, 30, 4, 33, 15, 6, 45, 53, 61, 58,
+    24, 54, 26, 63, 17, 55, 37, 56, 28, 2, 9, 1, 27, 62,
+    18, 32, 21, 13, 20, 7, 25, 14,
+  };
+
+  uint64_t out = 0;
+  repeat<64>([this, &out](size_t i) {
+      int in_pos = i;
+      uint64_t bit = (data >> (63 - in_pos)) & 1;
+      int out_pos = bit_indices[i];
+      out |= (bit << (63 - out_pos));
+    });
+  return out;
+}
+
 struct State {
   int64_t num_bits = 0;
 
@@ -99,24 +122,7 @@ struct State {
       });
     data = out;
 
-    static constexpr std::array<int, 64> bit_indices = {
-      49, 44, 34, 41, 0, 29, 40, 50, 39, 59, 8, 52, 35, 38,
-      51, 3, 46, 43, 48, 31, 47, 23, 10, 5, 11, 12, 16, 36,
-      60, 42, 19, 57, 22, 30, 4, 33, 15, 6, 45, 53, 61, 58,
-      24, 54, 26, 63, 17, 55, 37, 56, 28, 2, 9, 1, 27, 62,
-      18, 32, 21, 13, 20, 7, 25, 14,
-    };
-
-    {
-      uint64_t out = 0;
-      repeat<64>([this, &out](size_t i) {
-        int in_pos = i;
-        uint64_t bit = (data >> (63 - in_pos)) & 1;
-        int out_pos = bit_indices[i];
-        out |= (bit << (63 - out_pos));
-        });
-      data = out;
-    }
+    data = Permute(data);
 
     uint8_t aa = GetByte(0);
     uint8_t bb = GetByte(1);

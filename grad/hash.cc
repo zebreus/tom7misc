@@ -16,6 +16,7 @@
 #include "threadutil.h"
 
 #include "grad-util.h"
+#include "hash-util.h"
 #include "expression.h"
 #include "choppy.h"
 #include "ansi.h"
@@ -24,6 +25,7 @@
 
 using namespace std;
 
+using half_float::half;
 using namespace half_float::literal;
 
 // XXX continue porting this to 8-bit
@@ -35,8 +37,35 @@ using Step = GradUtil::Step;
 using State = GradUtil::State;
 
 static constexpr uint8_t SUBST[256] = {
-// Best error was 1952 after 150000 attempts [438.966/sec]
-  178, 122, 20, 19, 31, 64, 70, 35, 75, 80, 154, 5, 47, 105, 93, 250, 217, 140, 191, 233, 58, 79, 212, 216, 237, 4, 141, 101, 160, 181, 107, 206, 180, 220, 248, 28, 133, 142, 143, 204, 117, 1, 175, 86, 243, 232, 73, 90, 150, 203, 218, 8, 219, 2, 111, 57, 48, 46, 130, 33, 174, 171, 189, 158, 6, 11, 254, 193, 18, 76, 227, 137, 149, 106, 115, 207, 224, 170, 38, 30, 82, 108, 74, 9, 235, 112, 16, 129, 100, 15, 109, 183, 59, 165, 62, 77, 194, 14, 169, 116, 161, 155, 246, 213, 238, 94, 134, 92, 146, 255, 173, 69, 56, 24, 12, 249, 54, 145, 166, 121, 99, 53, 123, 131, 81, 251, 103, 202, 135, 211, 242, 244, 26, 148, 228, 209, 167, 182, 97, 185, 197, 223, 44, 60, 231, 51, 110, 230, 177, 236, 132, 126, 66, 138, 114, 40, 45, 214, 186, 156, 10, 200, 221, 7, 32, 23, 198, 29, 196, 91, 13, 225, 68, 61, 229, 21, 159, 78, 22, 187, 226, 43, 252, 27, 241, 25, 188, 136, 127, 184, 201, 102, 0, 253, 151, 34, 247, 222, 49, 71, 50, 36, 118, 195, 128, 72, 120, 190, 240, 52, 84, 208, 157, 104, 88, 205, 42, 124, 89, 95, 163, 144, 147, 113, 41, 83, 39, 199, 172, 96, 152, 17, 153, 125, 55, 192, 67, 3, 119, 63, 234, 87, 176, 245, 164, 85, 65, 215, 179, 168, 98, 139, 162, 210, 239, 37,
+  // Best error was 1952 after 150000 attempts [438.966/sec]
+  178, 122, 20, 19, 31, 64, 70, 35, 75, 80, 154, 5, 47, 105, 93, 250, 217,
+  140, 191, 233, 58, 79, 212, 216, 237, 4, 141, 101, 160, 181, 107, 206, 180,
+  220, 248, 28, 133, 142, 143, 204, 117, 1, 175, 86, 243, 232, 73, 90, 150,
+  203, 218, 8, 219, 2, 111, 57, 48, 46, 130, 33, 174, 171, 189, 158, 6, 11,
+  254, 193, 18, 76, 227, 137, 149, 106, 115, 207, 224, 170, 38, 30, 82, 108,
+  74, 9, 235, 112, 16, 129, 100, 15, 109, 183, 59, 165, 62, 77, 194, 14, 169,
+  116, 161, 155, 246, 213, 238, 94, 134, 92, 146, 255, 173, 69, 56, 24, 12,
+  249, 54, 145, 166, 121, 99, 53, 123, 131, 81, 251, 103, 202, 135, 211, 242,
+  244, 26, 148, 228, 209, 167, 182, 97, 185, 197, 223, 44, 60, 231, 51, 110,
+  230, 177, 236, 132, 126, 66, 138, 114, 40, 45, 214, 186, 156, 10, 200, 221,
+  7, 32, 23, 198, 29, 196, 91, 13, 225, 68, 61, 229, 21, 159, 78, 22, 187,
+  226, 43, 252, 27, 241, 25, 188, 136, 127, 184, 201, 102, 0, 253, 151, 34,
+  247, 222, 49, 71, 50, 36, 118, 195, 128, 72, 120, 190, 240, 52, 84, 208,
+  157, 104, 88, 205, 42, 124, 89, 95, 163, 144, 147, 113, 41, 83, 39, 199,
+  172, 96, 152, 17, 153, 125, 55, 192, 67, 3, 119, 63, 234, 87, 176, 245,
+  164, 85, 65, 215, 179, 168, 98, 139, 162, 210, 239, 37,
+};
+
+// Reading bits from left (msb) to right (lsb), this gives
+// the output location for each bit. So for example the
+// first entry says that the 0th bit in the input is sent
+// to the 49th bit in the output.
+static constexpr std::array<int, 64> PERM = {
+  49, 44, 34, 41, 0, 29, 40, 50, 39, 59, 8, 52, 35, 38,
+  51, 3, 46, 43, 48, 31, 47, 23, 10, 5, 11, 12, 16, 36,
+  60, 42, 19, 57, 22, 30, 4, 33, 15, 6, 45, 53, 61, 58,
+  24, 54, 26, 63, 17, 55, 37, 56, 28, 2, 9, 1, 27, 62,
+  18, 32, 21, 13, 20, 7, 25, 14,
 };
 
 static inline half GetHalf(uint16 u) {
@@ -64,10 +93,6 @@ static half ModularPlus(half x, half y) {
   half sum = x + y - HALF_GRID;
   CHECK(sum >= (half)-2 && sum < (half)2) << sum;
   half msum = Exp::GetHalf(mod_table[Exp::GetU16(sum)]);
-  /*
-  printf("%.11g + %.11g = %.11g mod to %.11g\n",
-         (float)x, (float)y, (float)sum, (float)msum);
-  */
   return msum;
 }
 
@@ -96,33 +121,20 @@ struct HashState {
   }
 
   // Eight halves in (-1,1]. Each represents 8 bits of state.
-
   half a, b, c, d, e, f, g, h;
 };
-
-// TODO: Test that this works for every byte in
-// the 8-bit version!
-// h in [-1, 1). Returns the corresponding byte.
-static inline uint8_t HalfBits(half h) {
-  // put in [0, 2)
-  h += 1.0_h;
-  // now in [0, 16)
-  h *= (Choppy::GRID / 2.0_h);
-  // and make integral
-  return (uint8_t)trunc(h);
-}
 
 static uint64_t AllBits(HashState hs) {
   uint64_t ret = 0;
 
-  ret <<= 8; ret |= HalfBits(hs.a);
-  ret <<= 8; ret |= HalfBits(hs.b);
-  ret <<= 8; ret |= HalfBits(hs.c);
-  ret <<= 8; ret |= HalfBits(hs.d);
-  ret <<= 8; ret |= HalfBits(hs.e);
-  ret <<= 8; ret |= HalfBits(hs.f);
-  ret <<= 8; ret |= HalfBits(hs.g);
-  ret <<= 8; ret |= HalfBits(hs.h);
+  ret <<= 8; ret |= HalfToBits(hs.a);
+  ret <<= 8; ret |= HalfToBits(hs.b);
+  ret <<= 8; ret |= HalfToBits(hs.c);
+  ret <<= 8; ret |= HalfToBits(hs.d);
+  ret <<= 8; ret |= HalfToBits(hs.e);
+  ret <<= 8; ret |= HalfToBits(hs.f);
+  ret <<= 8; ret |= HalfToBits(hs.g);
+  ret <<= 8; ret |= HalfToBits(hs.h);
 
   return ret;
 }
@@ -161,6 +173,8 @@ HashState NextState(HashState s) {
   half hh = Subst(s.h);
 
   // TODO: Apply bit permutation.
+  // aa = Permute
+
 
   aa = ModularPlus(aa, bb);
   cc = ModularMinus(cc, bb);
@@ -270,13 +284,31 @@ static void InitTables(DB *basis) {
       });
 }
 
+static inline uint8_t GetByte(uint64_t data, int i) {
+  return (data >> (8 * (7 - i))) & 0xFF;
+}
+
+static inline uint64_t Permute(uint64_t data) {
+  return HashUtil::Permute64(PERM, data);
+}
+
+
 int main(int argc, char **argv) {
   AnsiInit();
   DB db;
-  db.LoadFile("basis.txt");
+  db.LoadFile("basis8.txt");
+
+  for (int i = 0; i < 256; i++) {
+    CHECK(HalfToBits(BitsToHalf(i)) == i) << i;
+  }
+  printf(AGREEN("OK") "\n");
+
+  TestPerm(&db);
+  return 0;
 
   InitTables(&db);
 
+  #if 0
   {
     static constexpr int IMG_WIDTH = 1920 / 2;
     static constexpr int PLOT_HEIGHT = 1080 / 2;
@@ -338,7 +370,7 @@ int main(int argc, char **argv) {
       }
       hs = NextState(hs);
       // bb.WriteBits(16, AllBits(hs));
-      uint8 bit = HalfBits(hs.a) & 1;
+      uint8 bit = HalfToBits(hs.a) & 1;
       bb.WriteBit(bit);
 
       current_byte <<= 1;
@@ -373,6 +405,7 @@ int main(int argc, char **argv) {
     Util::WriteFileBytes("hash.bin", bb.GetBytes());
     printf("Wrote hash.bin\n");
   }
+  #endif
 
   return 0;
 }
