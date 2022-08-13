@@ -30,21 +30,21 @@
 ;; certain suffixes, for example .h (.c, .cc, .cpp, etc.).
 ;; We open the first one that works.
 (defvar switch-files-list '(
-			    ("\\.cc" ".h")
-			    ("\\.h" ".cc")
+                ("\\.cc" ".h")
+                ("\\.h" ".cc")
 
-                            ("\\.c" ".h")
-			    ("\\.h" ".c")
+                ("\\.c" ".h")
+                ("\\.h" ".c")
 
-			    ("\\.C" ".H")
-			    ("\\.H" ".C")
+                ("\\.C" ".H")
+                ("\\.H" ".C")
 
-			    ("\\.cpp" ".h")
-			    ("\\.h" ".cpp")
+                ("\\.cpp" ".h")
+                ("\\.h" ".cpp")
 
-			    ("-sig\\.sml" ".sml")
-			    ("\\.sml" "-sig.sml")
-			    )
+                ("-sig\\.sml" ".sml")
+                ("\\.sml" "-sig.sml")
+                )
   "A list of file regexp matches and replacements switch between.")
 
 (defvar switch-file-backto nil
@@ -58,12 +58,12 @@
 (defun switch-to-buffer-rec (fs)
   (if (null fs) nil
     (let* ((h (car fs))
-	   (tl (cdr fs)))
+       (tl (cdr fs)))
       (if (bufferp h)
-	  (progn
-	    (switch-to-buffer h)
-	    h)
-	(switch-to-buffer-rec tl)))
+      (progn
+        (switch-to-buffer h)
+        h)
+    (switch-to-buffer-rec tl)))
     ))
 
 ;; Like above, but opens files with find-file.
@@ -71,79 +71,79 @@
 (defun switch-by-opening-rec (fs)
   (if (null fs) nil
     (let* ((h (car fs))
-	   (tl (cdr fs))
-	   ;; modified in while loop
-	   (pathlist switch-files-paths))
+       (tl (cdr fs))
+       ;; modified in while loop
+       (pathlist switch-files-paths))
 
       (setq success nil)
       (while (and (not success) pathlist)
-	;; (message "expand-file-name %s %s" h (car pathlist))
-	(setq thefile (expand-file-name h (car pathlist)))
-	;; (message "file-exists-p %s" thefile)
-	(if (file-exists-p thefile)
-	    (setq success t)
-	  (setq pathlist (cdr pathlist))))
+    ;; (message "expand-file-name %s %s" h (car pathlist))
+    (setq thefile (expand-file-name h (car pathlist)))
+    ;; (message "file-exists-p %s" thefile)
+    (if (file-exists-p thefile)
+        (setq success t)
+      (setq pathlist (cdr pathlist))))
       (if success
-	  (progn
-	    (find-file thefile)
-	    thefile)
-	(switch-by-opening-rec tl)))))
+      (progn
+        (find-file thefile)
+        thefile)
+    (switch-by-opening-rec tl)))))
 
 
 
 (defun switch-files ()
   (interactive)
   (let* ((curbuffer (current-buffer))
-	 (buffername (buffer-file-name))
-	 ;; single file based on history or what we're looking at
-	 (already
-	  ;; are we staring at an include directive?
-	  ;; XXX do I need this? I don't think I ever use C-o for this. -tom7
-	  (or
-	   (and
-	    (looking-at
-	     "#include [<\\\"]\\([^/>\\\"]*\\|.*/[^/>\\\"]*\\)[>\\\"]")
-	    (buffer-substring (match-beginning 1) (match-end 1)))
-           ;; are we in a buffer that we know where to go back to already?
-	   ;; XXX if so, just prioritizing it as the first element might make
-	   ;; more sense than returning a singleton list...
-	   switch-file-backto))
+     (buffername (buffer-file-name))
+     ;; single file based on history or what we're looking at
+     (already
+      ;; are we staring at an include directive?
+      ;; XXX do I need this? I don't think I ever use C-o for this. -tom7
+      (or
+       (and
+        (looking-at
+         "#include [<\\\"]\\([^/>\\\"]*\\|.*/[^/>\\\"]*\\)[>\\\"]")
+        (buffer-substring (match-beginning 1) (match-end 1)))
+       ;; are we in a buffer that we know where to go back to already?
+       ;; XXX if so, just prioritizing it as the first element might make
+       ;; more sense than returning a singleton list...
+       switch-file-backto))
 
-	   ;; can we guess at a file name from the current buffer name?
+       ;; can we guess at a file name from the current buffer name?
 
 
-	 ; list of files to try switching to, in priority order
-	 (startfiles
-	  (if already
-	      ;; if we already have a single file, return that
-	      (list already)
-	    ;; otherwise, get all associations that match the buffer
-	    ;; (XXX more convoluted than it needs to be. we want mapPartial, but
-	    ;; instead we first map to the filename or nil, then filter out nils.
-	    ;; note that due to the history of this code, we need to do the
-	    ;; transform right after the match (uses regex match state))
-	    (let* ((matches-with-nils
-		    (seq-map
-		     (function (lambda (row)
-				 ;; (message "regex %s" (car key))
-				 (if (string-match
-				      (concat "\\(.*\\)" (car row))
-				      buffername)
-				     ;; matched
-				     (file-name-nondirectory
-				      (concat (substring buffername (match-beginning 1)
-							 (match-end 1))
-					      (cadr row)))
-				   ;; not matched
-				   nil)))
-		     switch-files-list))
-		   (targets (seq-filter
-			     (function (lambda (elt) (not (null elt))))
-			     matches-with-nils)))
+     ; list of files to try switching to, in priority order
+     (startfiles
+      (if already
+          ;; if we already have a single file, return that
+          (list already)
+        ;; otherwise, get all associations that match the buffer
+        ;; (XXX more convoluted than it needs to be. we want mapPartial, but
+        ;; instead we first map to the filename or nil, then filter out nils.
+        ;; note that due to the history of this code, we need to do the
+        ;; transform right after the match (uses regex match state))
+        (let* ((matches-with-nils
+            (seq-map
+             (function (lambda (row)
+                 ;; (message "regex %s" (car key))
+                 (if (string-match
+                      (concat "\\(.*\\)" (car row))
+                      buffername)
+                     ;; matched
+                     (file-name-nondirectory
+                      (concat (substring buffername (match-beginning 1)
+                             (match-end 1))
+                          (cadr row)))
+                   ;; not matched
+                   nil)))
+             switch-files-list))
+           (targets (seq-filter
+                 (function (lambda (elt) (not (null elt))))
+                 matches-with-nils)))
 
-	      (message "%s" targets)
-	      targets
-	 ))))
+          (message "%s" targets)
+          targets
+     ))))
 
     ;; body of let*
     ;; can we switch to anything in startfiles?
@@ -162,7 +162,7 @@
 
      (t
       (message "(From buffer '%s' name '%s', no targets matched: %s"
-	       curbuffer buffername startfiles)))
+           curbuffer buffername startfiles)))
     ))
 
 (global-set-key "\C-x\M-f" 'switch-files)

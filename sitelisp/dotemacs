@@ -99,22 +99,22 @@
        "-misc-fixed-bold-r-normal--13-100-100-100-c-70-iso8859-1"))
      ((eq window-system 'ns)
       (progn
-		(set-frame-font
-		 ;; Working OS X font: http://spacebar.org/stuff/FixedSys.dfont.zip
-		 ;; Don't use FixedSys Excelsior 2 or 3; they are "anti"-aliased!
+        (set-frame-font
+         ;; Working OS X font: http://spacebar.org/stuff/FixedSys.dfont.zip
+         ;; Don't use FixedSys Excelsior 2 or 3; they are "anti"-aliased!
 
-		 "-*-Menlo-bold-normal-normal-*-17-*-*-*-m-0-iso10646-1"
+         "-*-Menlo-bold-normal-normal-*-17-*-*-*-m-0-iso10646-1"
 
-		 ;; "FixedSys-15"
+         ;; "FixedSys-15"
 
-		 )
+         )
 
-		(modify-frame-parameters nil
-			(list '(top . 42) '(width . 80) '(height . 40)))
-		))
+        (modify-frame-parameters nil
+            (list '(top . 42) '(width . 80) '(height . 40)))
+        ))
      (t
       (modify-frame-parameters f (list '(height . 72)))
-	  ))
+      ))
 
     ))
 
@@ -437,6 +437,20 @@
   (c-set-offset 'innamespace [0]))
 (add-hook 'c++-mode-hook 'tom7-c-setup)
 
+(defun revert-without-prompting ()
+  "Revert the current buffer without prompting."
+  (interactive "*")
+  (revert-buffer t t))
+
+;; in image mode, 'g' should revert the image without
+;; confirmation, since the main use is to reload an
+;; image that has been regenerated.
+(add-hook 'image-mode-hook
+          (lambda ()
+            (local-set-key "g" 'revert-without-prompting)))
+
+
+
 ;; added this to suppress "free variable" warning at startup in 26.1.
 ;; not sure if it's the right way -tom7 28 Jul 2018
 (setq langelem nil)
@@ -503,33 +517,38 @@
 (add-hook 'text-mode-hook 'tab-preferences)
 (add-hook 'fundamental-mode 'tab-preferences)
 
-(defun untabify-buffer (&optional noisy)
-  "This untabifies the entire buffer, leaving the cursor where it is. (But destroying the mark.) Provide argument and no message will be printed."
-  (interactive "P")
-  (save-excursion
-    (untabify (point-min) (point-max))
-    (if noisy () (message "Untabified Buffer"))
-  ))
 
 (defun untabify-before-save ()
   (progn
     (untabify-buffer 0)
     nil))
 
-;; XXX this may not be buffer local now? It was active
-;; for a makefile, even :(
-(defun save-without-tabs ()
-  (progn
-    (add-hook 'before-save-hook 'untabify-before-save)
-    nil))
-
 ;; delete-trailing lines also removes the newline on the last line,
 ;; which I don't want
 (setq delete-trailing-lines nil)
 
+(defun no-remove-trailing-whitespace-file (f)
+  (string-match "[\\/]code[\\/]destroyfx[\\/]" f))
+
+(defun no-untabify-file (f)
+  (string-match "[Mm]akefile\\|[\\/]code[\\/]destroyfx[\\/]" f))
+
+;; XXX this may not be buffer local now? It was active
+;; for a makefile, even :(
+(defun save-without-tabs ()
+  (progn
+    (add-hook 'before-save-hook
+              (lambda ()
+                (if (not (no-untabify-file (buffer-file-name)))
+                    (untabify-before-save))))
+    nil))
+
 (defun save-without-trailing-whitespace ()
   (progn
-    (add-hook 'before-save-hook 'delete-trailing-whitespace)
+    (add-hook 'before-save-hook
+              (lambda ()
+                (if (not (no-remove-trailing-whitespace-file (buffer-file-name)))
+                    (delete-trailing-whitespace))))
     nil))
 
 
@@ -553,20 +572,20 @@
 (add-hook 'aaph-mode-hook 'save-without-trailing-whitespace)
 (add-hook 'aaph-mode-hook 'aaph-set-tabs)
 
-(add-hook 'c-mode-hook 'tab-preferences)
-(add-hook 'c-mode-hook 'reset-keys)
+(add-hook 'c-mode-common-hook 'tab-preferences)
+(add-hook 'c-mode-common-hook 'reset-keys)
 ;; maybe set this up so it applies in directories where
 ;; I have a clear preference and ownership?
-;; (add-hook 'c-mode-hook 'save-without-tabs)
-(add-hook 'c-mode-hook 'save-without-trailing-whitespace)
-
-(add-hook 'cc-mode-hook 'tab-preferences)
-(add-hook 'cc-mode-hook 'reset-keys)
-;; maybe set this up so it applies in directories where
-;; I have a clear preference and ownership?
+(add-hook 'c-mode-common-hook 'save-without-tabs)
+(add-hook 'c-mode-common-hook 'save-without-trailing-whitespace)
+;;
+;; (add-hook 'cc-mode-hook 'tab-preferences)
+;; (add-hook 'cc-mode-hook 'reset-keys)
+;; ;; maybe set this up so it applies in directories where
+;; ;; I have a clear preference and ownership?
 ;; (add-hook 'cc-mode-hook 'save-without-tabs)
-(add-hook 'cc-mode-hook 'save-without-trailing-whitespace)
-
+;; (add-hook 'cc-mode-hook 'save-without-trailing-whitespace)
+;;
 (put 'downcase-region 'disabled nil)
 
 (put 'upcase-region 'disabled nil)
