@@ -42,6 +42,11 @@
                 ("\\.cpp" ".h")
                 ("\\.h" ".cpp")
 
+                ;; we never switch *to* the test, but it can be
+                ;; useful to switch *away* from it.
+                ("_test\\.cc" ".h")
+                ("_test\\.cc" ".cc")
+
                 ("-sig\\.sml" ".sml")
                 ("\\.sml" "-sig.sml")
                 )
