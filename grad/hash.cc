@@ -86,30 +86,54 @@ static half Subst(half h) {
 }
 
 static Table mod_table;
+
 static half ModularPlus(half x, half y) {
   const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
-  // subtracting out one of the two HALF_GRIDs so that we don't
-  // round up
-  half sum = x + y - HALF_GRID;
-  CHECK(sum >= (half)-2 && sum < (half)2) << sum;
-  half msum = Exp::GetHalf(mod_table[Exp::GetU16(sum)]);
-  return msum;
+  // x and y are in [-1,1) but we want to treat them as numbers
+  // in [0,1).
+  half xx = ((x - HALF_GRID) + 1.0_h) * 0.5_h;
+  half yy = ((y - HALF_GRID) + 1.0_h) * 0.5_h;
+
+  // now the sum is in [0, 2).
+  half sum = xx + yy;
+  // Now in [-1, 3).
+  half asum = (sum * 2.0_h) - 1.0_h;
+  half msum = Exp::GetHalf(mod_table[Exp::GetU16(asum)]);
+
+  return msum + HALF_GRID;
 }
 
 static half ModularMinus(half x, half y) {
   const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
-  half sum = x - y + HALF_GRID;
-  CHECK(sum >= (half)-2 && sum < (half)2) << sum;
-  half msum = Exp::GetHalf(mod_table[Exp::GetU16(sum)]);
-  return msum;
+  half xx = ((x - HALF_GRID) + 1.0_h) * 0.5_h;
+  half yy = ((y - HALF_GRID) + 1.0_h) * 0.5_h;
+
+  // Difference is in [-1, 1].
+  half diff = xx - yy;
+  // And then in [-3, 1].
+  half adiff = (diff * 2.0_h) - 1.0_h;
+  half mdiff = Exp::GetHalf(mod_table[Exp::GetU16(adiff)]);
+  return mdiff + HALF_GRID;
 }
 
+static std::array<std::array<Table, 8>, 8> perm_tables;
+// PERF don't need to permanently allocate these
+static void MakePermTable(DB *basis) {
+  ParallelComp(8, [basis](int byte) {
+      std::array<const Exp *, 8> exps =
+        HashUtil::PermuteFn(PERM, basis, byte);
+
+      for (int i = 0; i < 8; i++) {
+        perm_tables[byte][i] = Exp::TabulateExpression(exps[i]);
+      }
+    }, 8);
+}
 
 struct HashState {
 
   HashState() {
     // This is the constant for zero.
-    const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
+    const half HALF_GRID = HashUtil::BitsToHalf(0);
     a = HALF_GRID;
     b = HALF_GRID;
     c = HALF_GRID;
@@ -127,14 +151,14 @@ struct HashState {
 static uint64_t AllBits(HashState hs) {
   uint64_t ret = 0;
 
-  ret <<= 8; ret |= HalfToBits(hs.a);
-  ret <<= 8; ret |= HalfToBits(hs.b);
-  ret <<= 8; ret |= HalfToBits(hs.c);
-  ret <<= 8; ret |= HalfToBits(hs.d);
-  ret <<= 8; ret |= HalfToBits(hs.e);
-  ret <<= 8; ret |= HalfToBits(hs.f);
-  ret <<= 8; ret |= HalfToBits(hs.g);
-  ret <<= 8; ret |= HalfToBits(hs.h);
+  ret <<= 8; ret |= HashUtil::HalfToBits(hs.a);
+  ret <<= 8; ret |= HashUtil::HalfToBits(hs.b);
+  ret <<= 8; ret |= HashUtil::HalfToBits(hs.c);
+  ret <<= 8; ret |= HashUtil::HalfToBits(hs.d);
+  ret <<= 8; ret |= HashUtil::HalfToBits(hs.e);
+  ret <<= 8; ret |= HashUtil::HalfToBits(hs.f);
+  ret <<= 8; ret |= HashUtil::HalfToBits(hs.g);
+  ret <<= 8; ret |= HashUtil::HalfToBits(hs.h);
 
   return ret;
 }
@@ -151,8 +175,52 @@ string StateString(HashState s) {
                       (float)s.h);
 }
 
+static half PermuteHalf(int out_byte,
+                        half a, half b, half c, half d,
+                        half e, half f, half g, half h) {
+  auto Norm = [](half h) -> half {
+      return (h * (1.0_h / 128.0_h)) - 1.0_h;
+    };
+
+  const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
+
+  const std::array<Table, 8> &fs = perm_tables[out_byte];
+  half f_a = Exp::GetHalf(fs[0][Exp::GetU16(a)]);
+  half f_b = Exp::GetHalf(fs[1][Exp::GetU16(b)]);
+  half f_c = Exp::GetHalf(fs[2][Exp::GetU16(c)]);
+  half f_d = Exp::GetHalf(fs[3][Exp::GetU16(d)]);
+  half f_e = Exp::GetHalf(fs[4][Exp::GetU16(e)]);
+  half f_f = Exp::GetHalf(fs[5][Exp::GetU16(f)]);
+  half f_g = Exp::GetHalf(fs[6][Exp::GetU16(g)]);
+  half f_h = Exp::GetHalf(fs[7][Exp::GetU16(h)]);
+
+  half out = Norm(f_a + f_b + f_c + f_d + f_e + f_f + f_g + f_h);
+  return out + HALF_GRID;
+}
+
 HashState NextState(HashState s) {
   // Only linear functions!
+
+  [[maybe_unused]]
+  auto Print = [](half a, half b, half c, half d,
+                  half e, half f, half g, half h,
+                  const string &step) {
+      printf(ARED("%02x") " " ABLUE("%02x") " "
+             AWHITE("%02x") " " AYELLOW("%02x") " "
+             AGREEN("%02x") " " "%02x" " "
+             APURPLE("%02x") " " ACYAN("%02x") " "
+             "[" AWHITE("%s") "]\n",
+             HashUtil::HalfToBits(a),
+             HashUtil::HalfToBits(b),
+             HashUtil::HalfToBits(c),
+             HashUtil::HalfToBits(d),
+             HashUtil::HalfToBits(e),
+             HashUtil::HalfToBits(f),
+             HashUtil::HalfToBits(g),
+             HashUtil::HalfToBits(h),
+             step.c_str());
+    };
+
 
   CHECK(s.a > -1.0_h && s.a < 1.0_h) << s.a;
   CHECK(s.b > -1.0_h && s.b < 1.0_h) << s.b;
@@ -163,24 +231,38 @@ HashState NextState(HashState s) {
   CHECK(s.g > -1.0_h && s.g < 1.0_h) << s.g;
   CHECK(s.h > -1.0_h && s.h < 1.0_h) << s.h;
 
-  half aa = Subst(s.a);
-  half bb = Subst(s.b);
-  half cc = Subst(s.c);
-  half dd = Subst(s.d);
-  half ee = Subst(s.e);
-  half ff = Subst(s.f);
-  half gg = Subst(s.g);
-  half hh = Subst(s.h);
+  // Print(s.a, s.b, s.c, s.d, s.e, s.f, s.g, s.h, "start");
 
-  // TODO: Apply bit permutation.
-  // aa = Permute
+  half a = Subst(s.a);
+  half b = Subst(s.b);
+  half c = Subst(s.c);
+  half d = Subst(s.d);
+  half e = Subst(s.e);
+  half f = Subst(s.f);
+  half g = Subst(s.g);
+  half h = Subst(s.h);
 
+  // Print(a, b, c, d, e, f, g, h, "subst'd");
+
+  // Apply bit permutation.
+  half aa = PermuteHalf(0, a, b, c, d, e, f, g, h);
+  half bb = PermuteHalf(1, a, b, c, d, e, f, g, h);
+  half cc = PermuteHalf(2, a, b, c, d, e, f, g, h);
+  half dd = PermuteHalf(3, a, b, c, d, e, f, g, h);
+  half ee = PermuteHalf(4, a, b, c, d, e, f, g, h);
+  half ff = PermuteHalf(5, a, b, c, d, e, f, g, h);
+  half gg = PermuteHalf(6, a, b, c, d, e, f, g, h);
+  half hh = PermuteHalf(7, a, b, c, d, e, f, g, h);
+
+  // Print(aa, bb, cc, dd, ee, ff, gg, hh, "permuted");
 
   aa = ModularPlus(aa, bb);
   cc = ModularMinus(cc, bb);
 
   dd = ModularPlus(dd, ee);
   gg = ModularMinus(gg, ee);
+
+  // Print(aa, bb, cc, dd, ee, ff, gg, hh, "plusminus");
 
   CHECK(aa > -1.0_h && aa < 1.0_h) << StateString(s) << " " << aa;
   CHECK(bb > -1.0_h && bb < 1.0_h) << StateString(s) << " " << bb;
@@ -199,6 +281,8 @@ HashState NextState(HashState s) {
   s.f = ff;
   s.g = gg;
   s.h = hh;
+
+  // CHECK(false) << "exit early";
 
   return s;
 }
@@ -234,54 +318,28 @@ static const Exp * MakeSubstExp(DB *basis) {
 static void InitModTable() {
   Allocator alloc;
 
-  static const char *ZERO_THRESHOLD = "V P02011 T3c019743 T07e01 P2fff1 T6c011 P5ff81 T44001 P3c001 T3c01559 T39031 T3c011160 T35421 T3c0123 T39dc1 T3c01137 T371e1 T3c01365 T39e61 T3c01346 T39a21 T3c01676 T38641 T3c01557 T39081 T3c01830 T329a1 T3c01336 T3a051 T3c01663 T1f111 Pe94f1 P694f1 T2b801 P64341 P68f31 Peb0d1 T34401 Pe8001 P68001 T30001";
-
-  const Exp *Z = Exp::Deserialize(&alloc, ZERO_THRESHOLD);
-
-  // Returns 0 for x < [-2, 1), and 1 for [1, 2).
-  const Exp *H =
-    alloc.TimesC(
-        Exp::Subst(&alloc,
-                   Z,
-                   alloc.TimesC(
-                       alloc.PlusC(alloc.Var(), Exp::GetU16((half)-1.0)),
-                       Exp::GetU16((half)0.5))),
-        Exp::GetU16((half)8.0));
-
-  // Returns -1 for x < [-2, -1) and 0 for [-1, 2).
-  const Exp *L =
-      alloc.PlusC(
-          alloc.TimesC(
-              Exp::Subst(&alloc,
-                         Z,
-                         alloc.TimesC(
-                             alloc.PlusC(alloc.Var(), Exp::GetU16((half)+1.0)),
-                             // Scale down more
-                             Exp::GetU16((half)0.25))),
-              Exp::GetU16((half)8.0)),
-          // and here we need to offset, giving -1 _____----- 0
-          //                          instead of 0 -----~~~~~ 1
-          Exp::GetU16((half)-1));
-
-  mod_table = Exp::TabulateExpression(
-      alloc.PlusE(
-          // The original expression, e.g. (x + y)
-          alloc.Var(),
-          // ... but with corrections if we go too high or low
-          alloc.TimesC(alloc.PlusE(H, L), Exp::GetU16((half)-2.0))));
+  const Exp *exp = HashUtil::ModExp(&alloc);
+  mod_table = Exp::TabulateExpression(exp);
 }
 
 
 static void InitTables(DB *basis) {
+  Timer timer;
   InParallel(
       [&]() {
         subst_table = Exp::TabulateExpression(MakeSubstExp(basis));
-        CPrintf("Make " ACYAN("subst") ".\n");
+        CPrintf("Made " ACYAN("subst") ".\n");
       },
       []() {
         InitModTable();
-        CPrintf("Make " ACYAN("mod") ".\n");
+        CPrintf("Made " ACYAN("mod") ".\n");
+      },
+      [&]() {
+        MakePermTable(basis);
+        CPrintf("Made " ACYAN("perm") ".\n");
       });
+  printf("Initialized in " ABLUE("%.3f") "s\n",
+         timer.Seconds());
 }
 
 static inline uint8_t GetByte(uint64_t data, int i) {
@@ -298,17 +356,8 @@ int main(int argc, char **argv) {
   DB db;
   db.LoadFile("basis8.txt");
 
-  for (int i = 0; i < 256; i++) {
-    CHECK(HalfToBits(BitsToHalf(i)) == i) << i;
-  }
-  printf(AGREEN("OK") "\n");
-
-  TestPerm(&db);
-  return 0;
-
   InitTables(&db);
 
-  #if 0
   {
     static constexpr int IMG_WIDTH = 1920 / 2;
     static constexpr int PLOT_HEIGHT = 1080 / 2;
@@ -322,7 +371,8 @@ int main(int argc, char **argv) {
       auto Plot = [&out, x](half h, uint32_t color) {
           double y = (PLOT_HEIGHT / 2.0) - h * ((PLOT_HEIGHT * 0.9) / 2.0);
           // printf("h: %.11g   plot: %.11g\n", (double)h, (double)y);
-          out.BlendPixel32(x, std::clamp((int)std::round(y), 0, PLOT_HEIGHT - 1),
+          out.BlendPixel32(x,
+                           std::clamp((int)std::round(y), 0, PLOT_HEIGHT - 1),
                            color);
         };
 
@@ -346,17 +396,14 @@ int main(int argc, char **argv) {
     printf("Wrote " ACYAN("hash.png") "\n");
   }
 
-
-  // XXX generate byte stats as we go; abort early if it obviously sux
-  if (true)  {
-
+  {
     int64 byte_count[256] = {};
     int64 bytes_counted = 0;
     uint8_t current_byte = 0;
     int current_bits = 0;
 
     // Generate a bitstream for statistical testing.
-    static constexpr int SIZE_BYTES = 205280000;
+    static constexpr int SIZE_BYTES = 6 * 1024 * 1024;
     HashState hs;
     BitBuffer bb;
     bb.Reserve(SIZE_BYTES * 8);
@@ -364,13 +411,13 @@ int main(int argc, char **argv) {
     // 16 bits at a time
     while (bb.NumBits() < SIZE_BYTES * 8) {
       int64 nb = bb.NumBits();
-      if ((nb % (1 << 20)) == 0) {
+      if ((nb % (1 << 15)) == 0) {
         CPrintf("%d" AGREY("/") "%d (" AGREEN("%.2f%%") ")\n", nb,
                SIZE_BYTES * 8, (nb * 100.0) / (SIZE_BYTES * 8));
       }
       hs = NextState(hs);
       // bb.WriteBits(16, AllBits(hs));
-      uint8 bit = HalfToBits(hs.a) & 1;
+      uint8 bit = HashUtil::HalfToBits(hs.a) & 1;
       bb.WriteBit(bit);
 
       current_byte <<= 1;
@@ -382,7 +429,7 @@ int main(int argc, char **argv) {
         current_byte = 0;
         bytes_counted++;
 
-        static constexpr int SANITY_BYTES = 1000000;
+        static constexpr int SANITY_BYTES = 1024 * 1024;
         if (bytes_counted == SANITY_BYTES) {
           int64 target = SANITY_BYTES / 256;
           for (int i = 0; i < 256; i++) {
@@ -405,7 +452,6 @@ int main(int argc, char **argv) {
     Util::WriteFileBytes("hash.bin", bb.GetBytes());
     printf("Wrote hash.bin\n");
   }
-  #endif
 
   return 0;
 }

@@ -73,6 +73,8 @@ struct HashUtil {
     return h;
   }
 
+  static const Exp *ModExp(Exp::Allocator *alloc);
+
 };
 
 #endif

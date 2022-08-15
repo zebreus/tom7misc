@@ -220,8 +220,114 @@ static void TestPerms(DB *basis) {
   }
 }
 
+static void TestBits() {
+  for (int i = 0; i < 256; i++) {
+    CHECK(HashUtil::HalfToBits(HashUtil::BitsToHalf(i)) == i) << i;
+  }
+}
+
+static half ModularPlus(const Exp *modexp, half x, half y) {
+  const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
+  // x and y are in [-1,1) but we want to treat them as numbers
+  // in [0,1).
+  half xx = ((x - HALF_GRID) + 1.0_h) * 0.5_h;
+  half yy = ((y - HALF_GRID) + 1.0_h) * 0.5_h;
+
+  // now the sum is in [0, 2).
+  half sum = xx + yy;
+  CHECK(sum >= 0.0_h && sum < 2.0_h) << sum;
+  // Now in [-1, 3).
+  half asum = (sum * 2.0_h) - 1.0_h;
+  CHECK(asum >= -2.0_h && asum < 3.0_h)
+    << x << " " << y << " " << asum;
+  half msum = Exp::GetHalf(Exp::EvaluateOn(modexp, Exp::GetU16(asum)));
+
+  if (false)
+  printf("%.6f + %.6f -> %.6f + %.6f = %.6f -> %.6f (%.6f)\n",
+         (float)x, (float)y,
+         (float)xx, (float)yy,
+         (float)sum, (float)asum,
+         (float)msum);
+
+  return msum + HALF_GRID;
+}
+
+static half ModularMinus(const Exp *modexp, half x, half y) {
+  const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
+  half xx = ((x - HALF_GRID) + 1.0_h) * 0.5_h;
+  half yy = ((y - HALF_GRID) + 1.0_h) * 0.5_h;
+
+  // Difference is in [-1, 1].
+  half diff = xx - yy;
+  CHECK(diff >= -1.0_h && diff <= 1.0_h) << diff;
+  // And then in [-3, 1].
+  half adiff = (diff * 2.0_h) - 1.0_h;
+  half mdiff = Exp::GetHalf(Exp::EvaluateOn(modexp, Exp::GetU16(adiff)));
+  return mdiff + HALF_GRID;
+}
+
+static void TestMod() {
+  Allocator alloc;
+  const Exp *e = HashUtil::ModExp(&alloc);
+
+  for (uint16_t u = Exp::GetU16((half)-3.0);
+       u <= Exp::GetU16((half)3.0);
+       u = Exp::NextAfter16(u)) {
+    half in = Exp::GetHalf(u);
+    half out = Exp::GetHalf(Exp::EvaluateOn(e, u));
+
+    if (in < -1.0_h) {
+      CHECK(in + 2.0_h == out) << in << " " << out;
+    } else if (in > 1.0_h) {
+      CHECK(in - 2.0_h == out) << in << " " << out;
+    } else {
+      CHECK(in == out);
+    }
+  }
+
+  // Plus.
+  for (int x = 0; x < 256; x++) {
+    half xh = HashUtil::BitsToHalf(x);
+    for (int y = 0; y < 256; y++) {
+      half yh = HashUtil::BitsToHalf(y);
+      uint8_t plus = (x + y) & 0xFF;
+
+      half hplus = ModularPlus(e, xh, yh);
+      uint8_t hplus8 = HashUtil::HalfToBits(hplus);
+      CHECK(plus == hplus8) <<
+        StringPrintf("expected %02x + %02x = %02x. Got %02x\n"
+                     "(%.6f + %.6f = %.6f)\n",
+                     x, y, plus, hplus8,
+                     (float)xh, (float)yh, (float)hplus);
+    }
+  }
+
+  // Minus.
+  for (int x = 0; x < 256; x++) {
+    half xh = HashUtil::BitsToHalf(x);
+    for (int y = 0; y < 256; y++) {
+      half yh = HashUtil::BitsToHalf(y);
+      uint8_t minus = (x - y) & 0xFF;
+
+      half hminus = ModularMinus(e, xh, yh);
+      uint8_t hminus8 = HashUtil::HalfToBits(hminus);
+      CHECK(minus == hminus8) <<
+        StringPrintf("expected %02x - %02x = %02x. Got %02x\n"
+                     "(%.6f + %.6f = %.6f)\n",
+                     x, y, minus, hminus8,
+                     (float)xh, (float)yh, (float)hminus);
+    }
+  }
+}
+
+
+
 int main(int argc, char **argv) {
   AnsiInit();
+
+  TestBits();
+
+  TestMod();
 
   // would be nice if we didn't keep allocating into
   // this arena,

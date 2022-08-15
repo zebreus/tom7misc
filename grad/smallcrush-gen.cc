@@ -56,7 +56,7 @@ static inline uint8_t ModularMinus(uint8_t x, uint8_t y) {
   return (x - y) & 0xFF;
 }
 
-static inline uint64_t Permute(unit64_t data) {
+static inline uint64_t Permute(uint64_t data) {
   // Reading bits from left (msb) to right (lsb), this gives
   // the output location for each bit. So for example the
   // first entry says that the 0th bit in the input is sent
@@ -70,7 +70,7 @@ static inline uint64_t Permute(unit64_t data) {
   };
 
   uint64_t out = 0;
-  repeat<64>([this, &out](size_t i) {
+  repeat<64>([data, &out](size_t i) {
       int in_pos = i;
       uint64_t bit = (data >> (63 - in_pos)) & 1;
       int out_pos = bit_indices[i];
@@ -115,6 +115,35 @@ struct State {
       printf("Generated %lld bits (%.3f%%)\n", num_bits, pct);
     }
 
+
+    [[maybe_unused]]
+    auto Print = [](uint8_t a, uint8_t b, uint8_t c, uint8_t d,
+                    uint8_t e, uint8_t f, uint8_t g, uint8_t h,
+                    const std::string &step) {
+        printf(ARED("%02x") " " ABLUE("%02x") " "
+               AWHITE("%02x") " " AYELLOW("%02x") " "
+               AGREEN("%02x") " " "%02x" " "
+               APURPLE("%02x") " " ACYAN("%02x") " "
+               "[" AWHITE("%s") "]\n",
+               a, b, c, d, e, f, g, h,
+               step.c_str());
+      };
+
+    [[maybe_unused]]
+    auto Print64 = [this, Print](const std::string &step) {
+        Print(GetByte(0),
+              GetByte(1),
+              GetByte(2),
+              GetByte(3),
+              GetByte(4),
+              GetByte(5),
+              GetByte(6),
+              GetByte(7),
+              step);
+      };
+
+    // Print64("start");
+
     uint64_t out = 0;
     repeat<8>([this, &out](size_t i) {
         out <<= 8;
@@ -122,7 +151,11 @@ struct State {
       });
     data = out;
 
+    // Print64("subst'd");
+
     data = Permute(data);
+
+    // Print64("permuted");
 
     uint8_t aa = GetByte(0);
     uint8_t bb = GetByte(1);
@@ -147,6 +180,10 @@ struct State {
     SetByte(5, ff);
     SetByte(6, gg);
     SetByte(7, hh);
+
+    // Print64("plusminus");
+
+    // CHECK(false) << "exit early";
 
     return GetByte(0) & 1;
   }
@@ -240,10 +277,54 @@ int main(int argc, char **argv) {
            state.data, sec, (TIMES / 1024.0) / sec);
   }
 
-  State state;
+  {
+    State state;
+    const std::vector<uint8_t> half_version =
+      Util::ReadFileBytes("hash.bin");
+    std::vector<uint8_t> ref_version;
+    ref_version.reserve(half_version.size());
 
-  ParallelBigCrush([]() { return new TheGenerator; },
-                   "gen");
+    printf("Checking " ABLUE("%d") " bytes from "
+           APURPLE("hash.bin") "\n", (int)half_version.size());
+
+    {
+      State state;
+      while (ref_version.size() < half_version.size()) {
+        uint8_t b = 0;
+        for (int i = 0; i < 8; i++) {
+          b <<= 1;
+          b |= state.NextBit();
+        }
+        ref_version.push_back(b);
+      }
+    }
+
+    CHECK(half_version.size() == ref_version.size());
+
+    int prefix = std::min((int)half_version.size(), 16);
+    printf(AWHITE("half begins:"));
+    for (int i = 0; i < prefix; i++)
+      printf(" %02x", half_version[i]);
+    printf("\n"
+           AWHITE(" ref begins:"));
+    for (int i = 0; i < prefix; i++)
+      printf(" %02x", ref_version[i]);
+    printf("\n");
+
+    for (int i = 0; i < (int)half_version.size(); i++) {
+      CHECK(half_version[i] == ref_version[i]) << i;
+    }
+    printf(AGREEN("OK") ": Matched " ABLUE("%d") " bytes against "
+           "half version\n");
+  }
+
+  return 0;
+
+  {
+    State state;
+    ParallelBigCrush([]() { return new TheGenerator; },
+                     "gen");
+  }
 
   // CPrintf("Running " APURPLE("SmallCrush") "...\n");
   // bbattery_SmallCrush(&gen);
