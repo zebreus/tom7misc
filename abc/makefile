@@ -1,8 +1,8 @@
 all : abc.exe benchbytes.exe makefreq.exe twocolumn.exe text2pdf.exe histo.exe historec.exe midi2abc.exe
 
 # just MLTON=mlton should work on most installations btw
-MLTON=/c/mlton/bin/mlton.bat
-# MLTON=mlton
+# MLTON=/c/mlton/bin/mlton.bat
+MLTON=mlton
 
 ABC_SML = abc.sml cil.sml toasm-sig.sml acc-sig.sml encode-x86-sig.sml optimize-asm-sig.sml toasm.sml acc.sml encode-x86.sml optimize-asm.sml tocil-sig.sml allocate-tmps-sig.sml exe-sig.sml optimize-cil-sig.sml tocil.sml allocate-tmps.sml exe.sml optimize-cil.sml tox86-sig.sml asm.sml flags.sml segment-sig.sml tox86.sml liveness-sig.sml segment.sml cil-pass-sig.sml liveness.sml cil-pass.sml machine-sig.sml tactics-sig.sml x86.sml cil-util-sig.sml machine.sml tactics-test.sml cil-util.sml main.sml tactics.sml
 
