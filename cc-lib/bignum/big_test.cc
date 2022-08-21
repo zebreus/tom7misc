@@ -1,6 +1,8 @@
 
 #include "big.h"
+#include "bign.h"
 
+#include <bit>
 #include <cstdint>
 #include <array>
 #include <vector>
@@ -8,6 +10,7 @@
 
 #include "../base/logging.h"
 #include "base/stringprintf.h"
+#include "timer.h"
 
 using int64 = int64_t;
 using namespace std;
@@ -99,13 +102,14 @@ static void TestPrimeFactors() {
     BigInt p1("207472224677348520782169522210760858748099647"
               "472111729275299258991219668475054965831008441"
               "6732550077");
-    BigInt p2("2777");
+    BigInt p2("31337");
 
     BigInt x = BigInt::Times(p1, p2);
 
-    // Importantly, we set a max factor
+    // Importantly, we set a max factor (greater than p2, and
+    // greater than the largest value in the primes list).
     std::vector<std::pair<BigInt, int>> factors =
-      BigInt::PrimeFactorization(x, 3000);
+      BigInt::PrimeFactorization(x, 40000);
 
     CHECK(factors.size() == 2);
     CHECK(factors[0].second == 1);
@@ -114,6 +118,36 @@ static void TestPrimeFactors() {
     CHECK(BigInt::Eq(factors[1].first, p1));
   }
 
+}
+
+static void BenchDiv2() {
+  double total_sec = 0.0;
+  const int64 iters = 100;
+  const BigInt zero(0);
+  const BigInt two(2);
+  for (int i = 0; i < iters; i++) {
+    BigInt x = BigInt::Pow(two, 30000);
+    Timer t;
+
+    for (;;) {
+      const auto [q, r] = BigInt::QuotRem(x, two);
+      if (BigInt::Eq(r, zero)) {
+        x = q;
+      } else {
+        break;
+      }
+    }
+
+    CHECK(BigInt::Eq(x, BigInt(1)));
+
+    total_sec += t.Seconds();
+    if (i % 10 == 0) {
+      printf("%d/%lld\n", i, iters);
+    }
+  }
+
+  printf("%lld iters in %.5fs = %.3f/s\n",
+         iters, total_sec, iters / total_sec);
 }
 
 static void TestPi() {
@@ -165,15 +199,55 @@ static void TestPi() {
   CHECK(BigRat::Compare(res, pi_ub) == -1);
 }
 
+static void TestLeadingZero() {
+  CHECK(BnnNumLeadingZeroBitsInDigit(1ULL) == 63);
+  CHECK(BnnNumLeadingZeroBitsInDigit(0b1000ULL) == 60);
+  CHECK(BnnNumLeadingZeroBitsInDigit(~0ULL) == 0);
+  CHECK(BnnNumLeadingZeroBitsInDigit(0ULL) == 64);
+
+  CHECK(std::countl_zero<BigNumDigit>(1ULL) == 63);
+  CHECK(std::countl_zero<BigNumDigit>(0b1000ULL) == 60);
+  CHECK(std::countl_zero<BigNumDigit>(~0ULL) == 0);
+  CHECK(std::countl_zero<BigNumDigit>(0ULL) == 64);
+}
+
+static void TestToInt() {
+# define ROUNDTRIP(x) \
+  CHECK((x) == BigInt((x)).ToInt().value_or(0xBEEF)) << x
+
+  ROUNDTRIP(0);
+  ROUNDTRIP(1);
+  ROUNDTRIP(-1);
+  ROUNDTRIP(0x7FFFFFFFFFFFFFFFLL);
+
+# define NOROUNDTRIP(bi) do {                                     \
+    std::optional<int64_t> io = (bi).ToInt();                     \
+    CHECK(!io.has_value()) << #bi << " =\n" << \
+      bi.ToString() << " " << io.value();     \
+  } while (false)
+  NOROUNDTRIP(BigInt::Plus(BigInt(0x7FFFFFFFFFFFFFFFLL), BigInt(1)));
+  NOROUNDTRIP(BigInt::Minus(BigInt::Negate(BigInt(0x7FFFFFFFFFFFFFFFLL)), BigInt(1)));
+  NOROUNDTRIP(BigInt::Times(BigInt(0x7FFFFFFFFFFFFFFFLL), BigInt(10000)));
+
+# undef ROUNDTRIP
+# undef NOROUNDTRIP
+}
+
 int main(int argc, char **argv) {
   printf("Start.\n");
   fflush(stdout);
+
+  TestToInt();
+
+  TestLeadingZero();
 
   TestPow();
   TestQuotRem();
   TestPrimeFactors();
 
   TestPi();
+
+  BenchDiv2();
 
   printf("OK\n");
 }

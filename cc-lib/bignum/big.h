@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <optional>
 
 struct BigInt {
   BigInt() : BigInt(0LL) {}
@@ -47,6 +48,7 @@ struct BigInt {
   // Returns Q (a div b), R (a mod b) such that a = b * q + r
   inline static std::pair<BigInt, BigInt> QuotRem(const BigInt &a,
                                                   const BigInt &b);
+  inline std::optional<int64_t> ToInt() const;
 
   // such that a0^b0 * a1^b1 * ... * an^bn = x,
   // where a0...an are primes in ascending order
@@ -55,6 +57,8 @@ struct BigInt {
   // If max_factor is not -1, then the final term may
   // be composite if its factors are all greater than this
   // number.
+  //
+  // Input must be positive.
   static std::vector<std::pair<BigInt, int>>
   PrimeFactorization(const BigInt &x, int64_t max_factor = -1);
 
@@ -163,6 +167,22 @@ std::string BigInt::ToString(int base) const {
   BzFreeString(buf);
   return ret;
 }
+
+std::optional<int64_t> BigInt::ToInt() const {
+  if (BzNumDigits(bigz) > (BigNumLength)1) {
+    return std::nullopt;
+  } else {
+    uint64_t digit = BzGetDigit(bigz, 0);
+    // Would overflow int64. (This may be a bug in BzToInteger?)
+    if (digit & 0x8000000000000000ULL)
+      return std::nullopt;
+    if (BzGetSign(bigz) == BZ_MINUS) {
+      return {-(int64_t)digit};
+    }
+    return {(int64_t)digit};
+  }
+}
+
 
 bool BigInt::IsEven() const { return BzIsEven(bigz); }
 bool BigInt::IsOdd() const { return BzIsOdd(bigz); }

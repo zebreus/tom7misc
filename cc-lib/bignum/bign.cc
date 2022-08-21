@@ -14,7 +14,7 @@
  * o Redistributions  in  binary form  must reproduce the above copyright
  *   notice, this list of conditions and  the following disclaimer in the
  *   documentation and/or other materials provided with the distribution.
- * 
+ *
  * THIS SOFTWARE  IS PROVIDED BY  THE COPYRIGHT HOLDERS  AND CONTRIBUTORS
  * "AS  IS" AND  ANY EXPRESS  OR IMPLIED  WARRANTIES, INCLUDING,  BUT NOT
  * LIMITED TO, THE IMPLIED  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -31,7 +31,7 @@
 /*
  *      bign.c : the kernel written in pure C (it uses no C library)
  *
- *      $Id: bign.c,v 1.61 2021/02/07 11:29:21 tom7 Exp $
+ *      $Id: bign.c,v 1.73 2022/08/03 22:51:42 tom7 Exp $
  */
 
 /*
@@ -61,6 +61,9 @@
 
 #include "bign.h"
 
+#include <bit>
+#include <compare>
+
 static void
 BnnDivideHelper(BigNum nn, BigNumLength nl, BigNum dd, BigNumLength dl);
 
@@ -87,7 +90,7 @@ BnnAssign(BigNum mm, const BigNum nn, BigNumLength nl) {
 
         if ((mm < nn) || (mm > (nn + nl))) {
                 /*
-                 * no memory overlap using classic loop 
+                 * no memory overlap using classic loop
                  */
                 for (d = 0; d < (int)nl; ++d) {
                         mm[d] = nn[d];
@@ -180,12 +183,17 @@ BnnNumCount(const BigNum nn, BigNumLength nl) {
         return (count);
 }
 
+
 BigNumLength
 BnnNumLeadingZeroBitsInDigit(BigNumDigit d) {
-        /*
-         * Returns the number of leading zero bits in a digit
-         */
+  /*
+   * Returns the number of leading zero bits in a digit
+   */
 
+  // This can use BSR on modern x86. -tom7
+  return std::countl_zero<BigNumDigit>(d);
+
+  #if 0
         BigNumDigit     mask = (BigNumDigit)(BN_ONE << (BN_DIGIT_SIZE - 1));
         BigNumLength    p;
 
@@ -198,6 +206,7 @@ BnnNumLeadingZeroBitsInDigit(BigNumDigit d) {
         }
 
         return (p);
+  #endif
 }
 
 BigNumBool
@@ -207,8 +216,6 @@ BnnIsPower2(const BigNum nn, BigNumLength nl) {
          */
 
         BigNumLength i;
-        BigNumLength nbits;
-        BigNumDigit  d;
 
         /*
          *      The n-1 digits must be 0
@@ -224,8 +231,15 @@ BnnIsPower2(const BigNum nn, BigNumLength nl) {
          *      There must be only 1 bit set on the last Digit.
          */
 
-        d     = nn[i];
-        nbits = 0;
+        // This can use POPCNT instruction on modern x86. Note
+        // that despite the comment above, the original code
+        // succeeds if there is zero or one bit set.
+        return std::popcount<BigNumDigit>(nn[i]) <= 1 ?
+          BN_TRUE : BN_FALSE;
+
+#if 0
+        BigNumDigit d     = nn[i];
+        BigNumLength nbits = 0;
 
         for (i = 0; i < (BigNumLength)BN_DIGIT_SIZE; ++i) {
                 if ((d & (BN_ONE << i)) != 0) {
@@ -239,6 +253,7 @@ BnnIsPower2(const BigNum nn, BigNumLength nl) {
         }
 
         return (BN_TRUE);
+#endif
 }
 
 BigNumBool
@@ -298,7 +313,16 @@ BnnCompareDigits(BigNumDigit d1, BigNumDigit d2) {
          *              BN_LT      if digit1 < digit2
          */
 
+  // g++ produces better code (just one comparison) for this.
+  // but clang's code looks pretty bad. -tom7
+#if 0
+  auto cmp = (d1 <=> d2);
+  if (cmp == std::strong_ordering::less) return BN_LT;
+  if (cmp == std::strong_ordering::greater) return BN_GT;
+  return BN_EQ;
+#else
         return ((BigNumCmp)((d1 > d2) ? BN_GT : (d1 == d2 ? BN_EQ : BN_LT)));
+#endif
 }
 
 void
@@ -829,7 +853,7 @@ BnnMultiply(BigNum pp,
          * Returns the CarryOut.
          *
          * Assumes:
-         *    Size(P) >= Size(M) + Size(N), 
+         *    Size(P) >= Size(M) + Size(N),
          *    Size(M) >= Size(N).
          */
 
@@ -987,7 +1011,7 @@ BnnDivide(BigNum nn, BigNumLength nl, BigNum dd, BigNumLength dl) {
          *    N div D => high-order bits of N, starting at N[dl]
          *    N mod D => low-order dl bits of N
          *
-         * Assumes 
+         * Assumes
          *    Size(N) > Size(D),
          *    last digit of N < last digit of D (if N > D).
          */
