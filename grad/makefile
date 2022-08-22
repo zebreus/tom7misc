@@ -151,6 +151,10 @@ hash-util_test.exe : hash-util_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+frac3d.exe : frac3d.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 # external dependency on TestU01-2009
 TESTU01=../../TestU01-2009
 
