@@ -28,6 +28,12 @@ struct ImageRGBA {
 
   // TODO: copy/assignment
 
+  // Requires equality of RGBA values (even if alpha is zero).
+  bool operator ==(const ImageRGBA &other) const;
+  // Deterministic hash, but not intended to be stable across
+  // invocations.
+  std::size_t Hash() const;
+
   int Width() const { return width; }
   int Height() const { return height; }
 
@@ -171,6 +177,8 @@ struct ImageA {
   ImageA &operator =(ImageA &&other) = default;
 
   bool operator ==(const ImageA &other) const;
+  // Deterministic hash, but not intended to be stable across
+  // invocations.
   std::size_t Hash() const;
 
   int Width() const { return width; }

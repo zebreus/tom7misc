@@ -240,6 +240,22 @@ ImageRGBA *ImageRGBA::Copy() const {
   return new ImageRGBA(rgba, width, height);
 }
 
+bool ImageRGBA::operator==(const ImageRGBA &other) const {
+  return other.Width() == Width() &&
+    other.Height() == Height() &&
+    other.rgba == rgba;
+}
+
+std::size_t ImageRGBA::Hash() const {
+  uint64_t h = width * 31337;
+  for (uint32_t v : rgba) {
+    h = (h << 13) | (h >> (64 - 13));
+    h ^= v;
+    h *= 65537;
+  }
+  return (std::size_t)h;
+}
+
 ImageRGBA ImageRGBA::Crop32(int x, int y, int w, int h,
                             uint32 fill_color) const {
   CHECK(w > 0 && h > 0) << w << " " << h;
@@ -347,9 +363,7 @@ void ImageRGBA::BlendPixel(int x, int y,
   // which is (r * a)/255 + (oldr * (1-a))/255
   // which is (r * a + oldr * (1-a))/255
   //
-  // (Note there are divisionless ways to compute /255, so this is
-  // probably OK. Allegedly gcc can do this; might want to verify the
-  // assembly.)
+  // (GCC computes the division with multiplication.)
   const word rr = (((word)r * (word)a) + (old_r * oma)) / 0xFF;
   const word gg = (((word)g * (word)a) + (old_g * oma)) / 0xFF;
   const word bb = (((word)b * (word)a) + (old_b * oma)) / 0xFF;
@@ -827,12 +841,12 @@ float ImageA::SampleBilinear(float x, float y) const {
 ImageA ImageA::ResizeBilinear(int nwidth, int nheight) const {
   ImageA ret{nwidth, nheight};
   // XXX Sampling is probably a little off wrt width-1 stuff?
+  const float scale_width = width / (float)nwidth;
+  const float scale_height = height / (float)nheight;
   for (int y = 0; y < nheight; y++) {
-    const float fy = y / (float)nheight;
-    const float sy = fy * height;
+    const float sy = y * scale_height;
     for (int x = 0; x < nwidth; x++) {
-      const float fx = x / (float)nwidth;
-      const float sx = fx * width;
+      const float sx = x * scale_width;
 
       float fv = SampleBilinear(sx, sy);
       ret.SetPixel(x, y, std::roundf(fv));
@@ -931,7 +945,7 @@ ImageF::ImageF(const ImageA &other) : width(other.Width()),
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
       alpha[y * width + x] =
-        other.GetPixel(x, y) / 255.0f;
+        other.GetPixel(x, y) * (1.0f / 255.0f);
     }
   }
 }
@@ -1001,12 +1015,12 @@ float ImageF::SampleBilinear(float x, float y, float outside_value) const {
 ImageF ImageF::ResizeBilinear(int nwidth, int nheight) const {
   ImageF ret{nwidth, nheight};
   // XXX Sampling is probably a little off wrt width-1 stuff?
+  const float scale_width = width / (float)nwidth;
+  const float scale_height = height / (float)nheight;
   for (int y = 0; y < nheight; y++) {
-    const float fy = y / (float)nheight;
-    const float sy = fy * height;
+    const float sy = y * scale_height;
     for (int x = 0; x < nwidth; x++) {
-      const float fx = x / (float)nwidth;
-      const float sx = fx * width;
+      const float sx = x * scale_width;
 
       float fv = SampleBilinear(sx, sy);
       ret.SetPixel(x, y, fv);

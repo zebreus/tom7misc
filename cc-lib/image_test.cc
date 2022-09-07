@@ -1,6 +1,9 @@
 
 #include "image.h"
 
+#include <unordered_set>
+#include <functional>
+
 #include "base/stringprintf.h"
 #include "base/logging.h"
 #include "arcfour.h"
@@ -18,6 +21,57 @@ static void TestCreateAndDestroy() {
   {
     std::vector<uint8_t> pixels(8, 0);
     ImageRGBA img(pixels, 2, 1);
+  }
+}
+
+// Overload std::hash to show how to put images in unordered_set, etc.
+// TODO: Consider promoting this to the header; it's not that bad.
+// (Overloading std:: functions is allowed if they involve user-defined
+// types.)
+template<>
+struct std::hash<ImageRGBA> {
+  std::size_t operator()(const ImageRGBA &s) const noexcept {
+    return s.Hash();
+  }
+};
+
+static void TestCopies() {
+  ImageRGBA img(10, 20);
+  img.Clear32(0x000000FF);
+  img.SetPixel32(2, 3, 0xFF00FF77);
+  img.SetPixel32(5, 4, 0xFF7700FF);
+
+  ImageRGBA img2 = img;
+  CHECK(img == img2);
+  CHECK(img.GetPixel32(2, 3) == 0xFF00FF77);
+  CHECK(img2.GetPixel32(2, 3) == 0xFF00FF77);
+
+  CHECK(img.Red() == img2.Red());
+  CHECK(img.Green() == img2.Green());
+  CHECK(img.Blue() == img2.Blue());
+  CHECK(img.Alpha() == img2.Alpha());
+
+  img2.SetPixel32(2, 3, 0x112233FF);
+  CHECK(img != img2);
+  CHECK(img.GetPixel32(2, 3) == 0xFF00FF77);
+  CHECK(img2.GetPixel32(2, 3) == 0x112233FF);
+
+  CHECK(img.Red() != img2.Red());
+  CHECK(img.Green() != img2.Green());
+  CHECK(img.Blue() != img2.Blue());
+  CHECK(img.Alpha() != img2.Alpha());
+
+  CHECK(img.Hash() != img2.Hash()) << "Technically we can "
+    "have hash collisions, but this would be pretty unlucky";
+
+  {
+    std::unordered_set<ImageRGBA> s;
+    CHECK(!s.contains(img));
+    s.insert(img);
+    CHECK(!s.contains(img2));
+    CHECK(s.contains(img));
+    s.insert(img2);
+    CHECK(s.size() == 2);
   }
 }
 
@@ -127,21 +181,24 @@ static void TestFilledCircle() {
     uint32_t out_color2 = img.GetPixel32(3, 5);
     CHECK(out_color2 == 0x000000FF);
   }
-  
+
   // TODO: More circle tests
 }
 
 int main(int argc, char **argv) {
   TestCreateAndDestroy();
+  TestCopies();
   TestBilinearResize();
   TestSampleBilinear();
   TestEq();
   TestScaleDown();
   TestLineEndpoints();
   TestFilledCircle();
-  
+
+  // TODO: Test SaveToVec / LoadFromMemory round trip
+
   // TODO: More image tests!
-  
+
   printf("OK\n");
   return 0;
 }
