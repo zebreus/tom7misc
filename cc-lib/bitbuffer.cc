@@ -1,14 +1,12 @@
 #include "bitbuffer.h"
 
 #include <string>
+#include <vector>
+#include <cstdint>
 
 using namespace std;
 
-int BitBuffer::ceil(int bits) {
-  return (bits >> 3) + !!(bits & 7);
-}
-
-
+#if 0
 bool BitBuffer::nbits(const string &s, int n, int &idx, unsigned int &out) {
 # define NTHBIT(x) !! (s[(x) >> 3] & (1 << (7 - ((x) & 7))))
 
@@ -25,44 +23,38 @@ bool BitBuffer::nbits(const string &s, int n, int &idx, unsigned int &out) {
 
 # undef NTHBIT
 }
+#endif
 
-string BitBuffer::getstring() {
-  int n = ceil(bits);
-  if (data) return string((char *)data, n);
-  else return "";
+string BitBuffer::GetString() const {
+  string s;
+  s.reserve(bytes.size());
+  for (uint8_t b : bytes) s.push_back(b);
+  return s;
 }
 
-void BitBuffer::writebits(int n, unsigned int b) {
-  /* assumes position already holds 0 */
-# define WRITEBIT(x, v) data[(x) >> 3] |= ((!!v) << (7 - ((x) & 7)))
+std::vector<uint8_t> BitBuffer::GetBytes() const {
+  return bytes;
+}
 
-  /* printf("writebits(%d, %d)\n", n, b); */
+void BitBuffer::Reserve(int64_t bits) {
+  bytes.reserve(Ceil(bits));
+}
 
-  for (int i = 0; i < n; i ++) {
-    int bytes_needed = ceil(bits + 1);
-
-    /* allocate more */
-    if (bytes_needed > size) {
-      int nsize = (size + 1) * 2;
-      unsigned char *tmp =
-        (unsigned char *) malloc(nsize * sizeof (unsigned char));
-      if (!tmp) abort();
-      memset(tmp, 0, nsize);
-      memcpy(tmp, data, size);
-      free(data);
-      data = tmp;
-      size = nsize;
-    }
-
-    int bit = !!(b & (1 << (n - (i + 1))));
-    /* printf("  write %d at %d\n", bit, bits); */
-    WRITEBIT(bits, bit);
-    bits++;
+void BitBuffer::WriteBit(bool bit) {
+  if ((num_bits & 7) == 0) {
+    bytes.push_back(0x00);
   }
 
-# undef WRITEBIT
+  if (bit) {
+    bytes[num_bits >> 3] |= (1 << (7 - (num_bits & 7)));
+  }
+  num_bits++;
 }
 
-BitBuffer:~BitBuffer() {
-  free(data);
+void BitBuffer::WriteBits(int n, unsigned int b) {
+  for (int i = 0; i < n; i ++) {
+    bool bit = !!(b & (1 << (n - (i + 1))));
+    WriteBit(bit);
+  }
 }
+
