@@ -22,6 +22,18 @@ static void TestShuffleCornerCases() {
   CHECK(v[0] == 7);
 }
 
+static void TestShuffleArray() {
+  ArcFour rc("sa");
+  std::array<int, 2> arr;
+  arr[0] = 1;
+  arr[1] = 7;
+
+  Shuffle(&rc, &arr);
+  CHECK(arr.size() == 2);
+  CHECK((arr[0] == 1 && arr[1] == 7) ||
+        (arr[1] == 1 && arr[0] == 7));
+}
+
 // Test that Shuffle produces each permutation with even
 // probability. It's pretty easy to get this wrong!
 static void TestShuffle(int n, double absolute_error) {
@@ -50,7 +62,7 @@ static void TestShuffle(int n, double absolute_error) {
     double observed_prob = p.second / (double)ITERS;
     printf("%s: %lld (p = %.8f)\n", p.first.c_str(),
            p.second, p.second / (double)ITERS);
-    if (fabs(observed_prob - correct_prob) > 
+    if (fabs(observed_prob - correct_prob) >
         absolute_error) {
       printf(" (but wanted %.8f.) "
              "... this is outside the allowed error "
@@ -65,4 +77,7 @@ int main(int argc, char **argv) {
   TestShuffle(2, 0.0005);
   TestShuffle(3, 0.0005);
   TestShuffle(4, 0.0005);
+  TestShuffleArray();
+
+  printf("\nOK\n");
 }
