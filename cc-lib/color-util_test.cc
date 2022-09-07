@@ -6,11 +6,15 @@
 #include <cstdint>
 
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
 #include "randutil.h"
 #include "image.h"
 
 using namespace std;
+
+using uint8 = uint8_t;
+using uint32 = uint32_t;
 
 #define CHECK_NEAR(a, b)                            \
   do {                                              \
@@ -22,16 +26,6 @@ using namespace std;
                       << "\n" #b << ": " << bb;     \
   } while (false)
 
-// This utility comes up a lot and should perhaps be part of
-// color util!
-static uint32 MixRGB(float r, float g, float b, float a) {
-  uint32 rr = std::clamp((int)(r * 255.0f), 0, 255);
-  uint32 gg = std::clamp((int)(g * 255.0f), 0, 255);
-  uint32 bb = std::clamp((int)(b * 255.0f), 0, 255);
-  uint32 aa = std::clamp((int)(a * 255.0f), 0, 255);
-  return (rr << 24) | (gg << 16) | (bb << 8) | aa;
-}
-
 static void TestHSV() {
   ImageRGBA out(256, 256);
   for (int y = 0; y < 256; y++) {
@@ -39,7 +33,7 @@ static void TestHSV() {
       float fx = x / 255.0;
       float fy = y / 255.0;
       const auto [r, g, b] = ColorUtil::HSVToRGB(fx, fy, 1.0f);
-      const uint32_t color = MixRGB(r, g, b, 1.0f);
+      const uint32_t color = ColorUtil::FloatsTo32(r, g, b, 1.0f);
       out.SetPixel32(x, y, color);
     }
   }
@@ -96,10 +90,31 @@ static void TestGradient() {
   }
 }
 
+static void TestConvert() {
+  for (int x = 0; x < 256; x++) {
+    uint8 r = x;
+    uint8 g = x ^ 0x10;
+    uint8 b = x + 33;
+    uint8 a = ~x;
+
+    uint32 rgba = ColorUtil::Pack32(r, g, b, a);
+    const auto [rr, gg, bb, aa] = ColorUtil::Unpack32(rgba);
+    CHECK(r == rr && g == gg && b == bb && a == aa);
+
+    const auto [rf, gf, bf, af] = ColorUtil::U32ToFloats(rgba);
+    const uint32_t rgba2 = ColorUtil::FloatsTo32(rf, gf, bf, af);
+
+    CHECK(rgba == rgba2) <<
+      StringPrintf("%08x vs %08x\n", rgba, rgba2);
+  }
+}
+
 int main () {
   TestHSV();
   TestLab();
   TestGradient();
+
+  TestConvert();
 
   printf("OK\n");
   return 0;

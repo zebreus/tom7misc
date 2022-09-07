@@ -5,14 +5,6 @@
 #include <tuple>
 #include <utility>
 
-// TODO: std::clamp
-template<class T>
-static inline T Clamp(T value, T low, T high) {
-  if (value < low) return low;
-  if (value > high) return high;
-  return value;
-}
-
 // static
 std::tuple<float, float, float>
 ColorUtil::HSVToRGB(float h, float s, float v) {
@@ -181,8 +173,6 @@ uint32_t ColorUtil::LinearGradient32(
     const ColorUtil::Gradient &ramp,
     float t) {
   const auto [rf, gf, bf] = LinearGradient(ramp, t);
-  uint32_t r = Clamp((int)std::round(rf * 255.0f), 0, 255);
-  uint32_t g = Clamp((int)std::round(gf * 255.0f), 0, 255);
-  uint32_t b = Clamp((int)std::round(bf * 255.0f), 0, 255);
-  return (r << 24) | (g << 16) | (b << 8) | 0xFF;
+  return FloatsTo32(rf, gf, bf, 1.0f);
 }
+

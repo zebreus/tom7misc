@@ -1,10 +1,11 @@
 #ifndef _CC_LIB_COLOR_UTIL_H
 #define _CC_LIB_COLOR_UTIL_H
 
-#include <tuple>
+#include <algorithm>
 #include <cstdint>
-#include <vector>
 #include <initializer_list>
+#include <tuple>
+#include <vector>
 
 // Convenience for specifying rows in gradients as 0xRRGGBB.
 // This should be a member of ColorUtil but is not allowed, perhaps
@@ -13,9 +14,9 @@ static inline constexpr
 std::tuple<float, float, float, float> GradRGB(float f, uint32_t rgb) {
   return std::tuple<float, float, float, float>(
       f,
-      ((rgb >> 16) & 255) / 255.0f,
-      ((rgb >>  8) & 255) / 255.0f,
-      ( rgb        & 255) / 255.0f);
+      ((rgb >> 16) & 255) * (1.0f / 255.0f),
+      ((rgb >>  8) & 255) * (1.0f / 255.0f),
+      ( rgb        & 255) * (1.0f / 255.0f));
 }
 
 struct ColorUtil {
@@ -44,6 +45,20 @@ struct ColorUtil {
   static float DeltaE(float l1, float a1, float b1,
                       float l2, float a2, float b2);
 
+  static constexpr std::tuple<uint8_t, uint8_t, uint8_t, uint8_t>
+  Unpack32(uint32_t rgba);
+
+  static constexpr uint32_t
+  Pack32(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
+
+
+  // Convert float RGBA components (nominally in [0, 1]; clamped) to
+  // 8-bit channels packed as RRGGBBAA.
+  static uint32_t FloatsTo32(float r, float g, float b, float a);
+  // Inverse of above.
+  static std::tuple<float, float, float, float>
+  U32ToFloats(uint32_t rgba);
+
   // initializer_list so that these can be constexpr.
   using Gradient = std::initializer_list<
     std::tuple<float, float, float, float>>;
@@ -69,6 +84,53 @@ struct ColorUtil {
 
 };
 
+
+// inline functions follow
+
+// We divide by 255 to convert to [0.0, 1.0] but multiply by 256 (and
+// truncate) to convert back to [0, 255]. This works round-trip for
+// all ints, but is there a more principled way that minimizes error?
+
+inline uint32_t ColorUtil::FloatsTo32(float r, float g, float b, float a) {
+  // Casting to int truncates towards zero. An exact 1.0 (for example) gets
+  // clamped.
+  uint32_t rr = std::clamp((int)(r * 256.0f), 0, 255);
+  uint32_t gg = std::clamp((int)(g * 256.0f), 0, 255);
+  uint32_t bb = std::clamp((int)(b * 256.0f), 0, 255);
+  uint32_t aa = std::clamp((int)(a * 256.0f), 0, 255);
+  return (rr << 24) | (gg << 16) | (bb << 8) | aa;
+}
+
+inline std::tuple<float, float, float, float>
+ColorUtil::U32ToFloats(uint32_t rgba) {
+  uint8_t r = (rgba >> 24) & 255;
+  uint8_t g = (rgba >> 16) & 255;
+  uint8_t b = (rgba >> 8) & 255;
+  uint8_t a = rgba & 255;
+
+  return std::make_tuple(
+      std::clamp(r * (1.0f / 255.0f), 0.0f, 1.0f),
+      std::clamp(g * (1.0f / 255.0f), 0.0f, 1.0f),
+      std::clamp(b * (1.0f / 255.0f), 0.0f, 1.0f),
+      std::clamp(a * (1.0f / 255.0f), 0.0f, 1.0f));
+}
+
+inline constexpr std::tuple<uint8_t, uint8_t, uint8_t, uint8_t>
+ColorUtil::Unpack32(uint32_t color) {
+  return {(uint8_t)((color >> 24) & 255),
+          (uint8_t)((color >> 16) & 255),
+          (uint8_t)((color >> 8) & 255),
+          (uint8_t)(color & 255)};
+}
+
+inline constexpr uint32_t
+ColorUtil::Pack32(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+  return
+    ((uint32_t)r << 24) |
+    ((uint32_t)g << 16) |
+    ((uint32_t)b << 8) |
+    (uint32_t)a;
+}
 
 #endif
 
