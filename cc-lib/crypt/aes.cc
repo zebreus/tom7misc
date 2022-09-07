@@ -26,10 +26,10 @@ ECB-AES128
     2b7e151628aed2a6abf7158809cf4f3c
 
   resulting cipher
-    3ad77bb40d7a3660a89ecaf32466ef97 
-    f5d3d58503b9699de785895a96fdbaaf 
-    43b1cd7f598ece23881b00e3ed030688 
-    7b0c785e27e8ad3f8223207104725dd4 
+    3ad77bb40d7a3660a89ecaf32466ef97
+    f5d3d58503b9699de785895a96fdbaaf
+    43b1cd7f598ece23881b00e3ed030688
+    7b0c785e27e8ad3f8223207104725dd4
 
 
 NOTE: String length must be evenly divisible by 16 bytes.
@@ -53,10 +53,10 @@ static constexpr int Nb = 4;
 typedef uint8 state_t[4][4];
 
 // The lookup-tables are marked const so they can be placed in
-// read-only storage instead of RAM The numbers below can be computed
+// read-only storage instead of RAM. The numbers below can be computed
 // dynamically trading ROM for RAM - This can be useful in (embedded)
 // bootloader applications, where ROM is often limited.
-static const uint8 sbox[256] = {
+static constexpr uint8 sbox[256] = {
   0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5,
   0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
   0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0,
@@ -90,7 +90,7 @@ static const uint8 sbox[256] = {
   0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68,
   0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16 };
 
-static const uint8 rsbox[256] = {
+static constexpr uint8 rsbox[256] = {
   0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38,
   0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
   0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87,
@@ -124,10 +124,10 @@ static const uint8 rsbox[256] = {
   0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26,
   0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d };
 
-// The round constant word array, Rcon[i], contains the values given by 
+// The round constant word array, Rcon[i], contains the values given by
 // x to the power (i-1) being powers of x (x is denoted as {02}) in
 // the field GF(2^8)
-static const uint8 Rcon[11] = {
+static constexpr uint8 Rcon[11] = {
   0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
 
 /*
@@ -137,7 +137,7 @@ static const uint8 Rcon[11] = {
  *
  * From Wikipedia's article on the Rijndael key schedule @
  * https://en.wikipedia.org/wiki/Rijndael_key_schedule#Rcon
- * 
+ *
  * "Only the first some of these constants are actually used – up to
  *  rcon[10] for AES-128 (as 11 round keys are needed), up to rcon[8]
  *  for AES-192, up to rcon[7] for AES-256. rcon[0] is not used in AES
@@ -152,11 +152,10 @@ static const uint8 Rcon[11] = {
 // in each round to decrypt the states.
 template<int KEY_WORDS, int NUM_ROUNDS>
 static void KeyExpansion(uint8 *round_key, const uint8 *Key) {
-  unsigned i, j, k;
   uint8 tempa[4]; // Used for the column/row operations
-  
+
   // The first round key is the key itself.
-  for (i = 0; i < KEY_WORDS; ++i) {
+  for (int i = 0; i < KEY_WORDS; ++i) {
     round_key[(i * 4) + 0] = Key[(i * 4) + 0];
     round_key[(i * 4) + 1] = Key[(i * 4) + 1];
     round_key[(i * 4) + 2] = Key[(i * 4) + 2];
@@ -164,9 +163,9 @@ static void KeyExpansion(uint8 *round_key, const uint8 *Key) {
   }
 
   // All other round keys are found from the previous round keys.
-  for (i = KEY_WORDS; i < Nb * (NUM_ROUNDS + 1); ++i) {
+  for (int i = KEY_WORDS; i < Nb * (NUM_ROUNDS + 1); ++i) {
     {
-      k = (i - 1) * 4;
+      const int k = (i - 1) * 4;
       tempa[0] = round_key[k + 0];
       tempa[1] = round_key[k + 1];
       tempa[2] = round_key[k + 2];
@@ -186,7 +185,7 @@ static void KeyExpansion(uint8 *round_key, const uint8 *Key) {
         tempa[3] = u8tmp;
       }
 
-      // SubWord() is a function that takes a four-byte input word and 
+      // SubWord() is a function that takes a four-byte input word and
       // applies the S-box to each of the four bytes to produce an output word.
 
       // Function Subword()
@@ -211,8 +210,8 @@ static void KeyExpansion(uint8 *round_key, const uint8 *Key) {
       }
     }
 
-    j = i * 4;
-    k = (i - KEY_WORDS) * 4;
+    const int j = i * 4;
+    const int k = (i - KEY_WORDS) * 4;
     round_key[j + 0] = round_key[k + 0] ^ tempa[0];
     round_key[j + 1] = round_key[k + 1] ^ tempa[1];
     round_key[j + 2] = round_key[k + 2] ^ tempa[2];
@@ -262,14 +261,14 @@ static void SubBytes(state_t *state) {
 // Each row is shifted with different offset.
 // Offset = Row number. So the first row is not shifted.
 static void ShiftRows(state_t *state) {
-  // Rotate first row 1 columns to left  
+  // Rotate first row 1 columns to left
   uint8 temp     = (*state)[0][1];
   (*state)[0][1] = (*state)[1][1];
   (*state)[1][1] = (*state)[2][1];
   (*state)[2][1] = (*state)[3][1];
   (*state)[3][1] = temp;
 
-  // Rotate second row 2 columns to left  
+  // Rotate second row 2 columns to left
   temp           = (*state)[0][2];
   (*state)[0][2] = (*state)[2][2];
   (*state)[2][2] = temp;
@@ -292,7 +291,7 @@ static constexpr uint8 xtime(uint8 x) {
 
 // MixColumns function mixes the columns of the state matrix
 static void MixColumns(state_t *state) {
-  for (uint8 i = 0; i < 4; ++i) {  
+  for (uint8 i = 0; i < 4; ++i) {
     uint8 t = (*state)[i][0];
     uint8 Tmp =
       (*state)[i][0] ^ (*state)[i][1] ^ (*state)[i][2] ^ (*state)[i][3];
@@ -314,7 +313,7 @@ static void MixColumns(state_t *state) {
 
 // Mul is used to multiply numbers in the field GF(2^8).
 // Note: The last call to xtime() is unneeded, but often ends up
-// generating a smaller binary The compiler seems to be able to
+// generating a smaller binary. The compiler seems to be able to
 // vectorize the operation better this way.
 static constexpr uint8 Mul(uint8 x, uint8 y) {
   return (((y & 1) * x) ^
@@ -328,7 +327,7 @@ static constexpr uint8 Mul(uint8 x, uint8 y) {
 // method used to multiply may be difficult to understand for the
 // inexperienced. Please use the references to gain more information.
 static void InvMixColumns(state_t *state) {
-  for (int i = 0; i < 4; ++i) { 
+  for (int i = 0; i < 4; ++i) {
     const uint8 a = (*state)[i][0];
     const uint8 b = (*state)[i][1];
     const uint8 c = (*state)[i][2];
@@ -353,14 +352,14 @@ static void InvSubBytes(state_t *state) {
 }
 
 static void InvShiftRows(state_t *state) {
-  // Rotate first row 1 columns to right  
+  // Rotate first row 1 columns to right
   uint8 temp = (*state)[3][1];
   (*state)[3][1] = (*state)[2][1];
   (*state)[2][1] = (*state)[1][1];
   (*state)[1][1] = (*state)[0][1];
   (*state)[0][1] = temp;
 
-  // Rotate second row 2 columns to right 
+  // Rotate second row 2 columns to right
   temp = (*state)[0][2];
   (*state)[0][2] = (*state)[2][2];
   (*state)[2][2] = temp;
@@ -382,8 +381,8 @@ static void InvShiftRows(state_t *state) {
 template<int NUM_ROUNDS>
 static void Cipher(state_t *state, const uint8 *round_key) {
   // Add the First round key to the state before starting the rounds.
-  AddRoundKey(0, state, round_key); 
-  
+  AddRoundKey(0, state, round_key);
+
   // There will be NUM_ROUNDS rounds.
   // The first NUM_ROUNDS-1 rounds are identical.
   // These NUM_ROUNDS-1 rounds are executed in the loop below.
@@ -393,7 +392,7 @@ static void Cipher(state_t *state, const uint8 *round_key) {
     MixColumns(state);
     AddRoundKey(round, state, round_key);
   }
-  
+
   // The last round is given below.
   // The MixColumns function is not here in the last round.
   SubBytes(state);
@@ -404,7 +403,7 @@ static void Cipher(state_t *state, const uint8 *round_key) {
 template<int NUM_ROUNDS>
 static void InvCipher(state_t *state, const uint8 *round_key) {
   // Add the First round key to the state before starting the rounds.
-  AddRoundKey(NUM_ROUNDS, state, round_key); 
+  AddRoundKey(NUM_ROUNDS, state, round_key);
 
   // There will be NUM_ROUNDS rounds.
   // The first NUM_ROUNDS-1 rounds are identical.
@@ -415,7 +414,7 @@ static void InvCipher(state_t *state, const uint8 *round_key) {
     AddRoundKey(round, state, round_key);
     InvMixColumns(state);
   }
-  
+
   // The last round is given below.
   // The MixColumns function is not here in the last round.
   InvShiftRows(state);
@@ -496,9 +495,9 @@ void AES<KEYBITS>::XcryptCTR(struct Ctx *ctx, uint8 *buf, uint32 length) {
         if (ctx->iv[bi] == 255) {
           ctx->iv[bi] = 0;
           continue;
-        } 
+        }
         ctx->iv[bi]++;
-        break;   
+        break;
       }
       bi = 0;
     }

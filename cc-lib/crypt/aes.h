@@ -8,7 +8,7 @@ struct AES {
   static_assert(KEYBITS == 256 ||
                 KEYBITS == 192 ||
                 KEYBITS == 128, "only these values supported");
-  
+
   // Block length in bytes. Same for all variants.
   static constexpr int BLOCKLEN = 16;
 
@@ -27,7 +27,7 @@ struct AES {
   // The number of rounds, which is the constant Nr in AES.
   static constexpr int NUM_ROUNDS =
     (KEYBITS == 256) ? 14 : (KEYBITS == 192) ? 12 : 10;
-  
+
   struct Ctx {
     uint8_t round_key[EXPKEYLEN];
     uint8_t iv[BLOCKLEN];
@@ -40,7 +40,7 @@ struct AES {
   static void Ctx_set_iv(struct Ctx *ctx, const uint8_t *iv);
 
   // Buffer size is exactly BLOCKLEN bytes.
-  // You need only InitCtx as IV is not used in ECB 
+  // You need only InitCtx as IV is not used in ECB
   // Note: ECB is considered insecure for most uses
   static void EncryptECB(const struct Ctx *ctx, uint8_t *buf);
   static void DecryptECB(const struct Ctx *ctx, uint8_t *buf);
@@ -50,18 +50,18 @@ struct AES {
   // Suggest https://en.wikipedia.org/wiki/Padding_(cryptography)#PKCS7
   //   for padding scheme.
   // NOTES: you need to set IV in ctx via InitCtxIV() or Ctx_set_iv()
-  //        no IV should ever be reused with the same key 
+  //        no IV should ever be reused with the same key
   static void EncryptCBC(struct Ctx *ctx, uint8_t *buf, uint32_t length);
   static void DecryptCBC(struct Ctx *ctx, uint8_t *buf, uint32_t length);
 
 
-  // Same function for encrypting as for decrypting. 
+  // Same function for encrypting as for decrypting.
   // IV is incremented for every block, and used after encryption as
   // XOR-compliment for output.
   // Suggest https://en.wikipedia.org/wiki/Padding_(cryptography)#PKCS7
   //   for padding scheme.
   // NOTES: you need to set IV in ctx with InitCtxIV() or Ctx_set_iv()
-  //        no IV should ever be reused with the same key 
+  //        no IV should ever be reused with the same key
   static void XcryptCTR(struct Ctx *ctx, uint8_t *buf, uint32_t length);
 };
 
