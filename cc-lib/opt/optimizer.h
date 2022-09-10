@@ -70,12 +70,12 @@ struct Optimizer {
   // the search at all, but guarantees that GetBest will return a
   // solution at least as good as this one.
   // Assumes f(best_arg) = {{best_score, best_output}}
-  void SetBest(arg_type best_arg, double best_score,
+  void SetBest(const arg_type &best_arg, double best_score,
                OutputType best_output);
 
   // Force sampling this arg, for example if we know an existing
   // feasible argument from a previous round but not its result.
-  void Sample(arg_type arg);
+  void Sample(const arg_type &arg);
 
   // Run
   void Run(
@@ -175,7 +175,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::SetSaveAll(bool save) {
 }
 
 template<int N_INTS, int N_DOUBLES, class OutputType>
-void Optimizer<N_INTS, N_DOUBLES, OutputType>::Sample(arg_type arg) {
+void Optimizer<N_INTS, N_DOUBLES, OutputType>::Sample(const arg_type &arg) {
   auto [score, res] = f(arg);
   cached_score[arg] = score;
   if (save_all) cached_output[arg] = res;
@@ -190,7 +190,7 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Sample(arg_type arg) {
 
 template<int N_INTS, int N_DOUBLES, class OutputType>
 void Optimizer<N_INTS, N_DOUBLES, OutputType>::SetBest(
-    arg_type best_arg, double best_score,
+    const arg_type &best_arg, double best_score,
     OutputType best_output) {
   // Add to cache no matter what.
   cached_score[best_arg] = best_score;
@@ -341,16 +341,19 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
   // Perhaps this could itself be optimized?
   const int ITERS = 1000 * powf(N, 1.5f);
 
-  // TODO:
+  // TODO: 64-bit LFSR
   auto LFSRNext = [](uint32_t state) -> uint32_t {
     const uint32_t bit = std::popcount<uint32_t>(state & 0x8D777777) & 1;
     return (state << 1) | bit;
   };
 
+  // LFSR requires nonzero seeds.
   uint32_t seed1 = (random_seed >> 32);
   if (!seed1) seed1 = 1;
   uint32_t seed2 = (random_seed & 0xFFFFFFFF);
   if (!seed2) seed2 = 2;
+
+  // XXX HERE
 
   while (!stop) {
     seed1 = LFSRNext(seed1);
