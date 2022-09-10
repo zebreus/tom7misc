@@ -12,7 +12,7 @@
 // an improvement even when a local one does exist. Therefore this
 // is best suited to fairly easy convex problems.
 
-#include <cstdio> // XXX
+// #include <cstdio>
 #include <array>
 #include <bit>
 #include <chrono>
@@ -31,6 +31,7 @@
 
 template<bool CACHE = true>
 struct LargeOptimizer {
+
   // Convenience constant for inputs where the function cannot even be
   // evaluated. However, optimization will be more efficient if you
   // instead return a penalty that exceeds any feasible score, and has
@@ -106,7 +107,8 @@ struct LargeOptimizer {
       // some unspecified amount.
       std::optional<double> max_seconds = std::nullopt,
       // Stop as soon as we have any output with a score <= target.
-      std::optional<double> target_score = std::nullopt);
+      std::optional<double> target_score = std::nullopt,
+      int params_per_pass = 24);
 
   // Get the best argument we found (with its score), if
   // any were feasible.
@@ -211,11 +213,13 @@ inline void LargeOptimizer<CACHE>::Run(
     std::optional<int> max_calls,
     std::optional<int> max_feasible_calls,
     std::optional<double> max_seconds,
-    std::optional<double> target_score) {
+    std::optional<double> target_score,
+    int params_per_pass) {
+  assert(params_per_pass > 0);
   const auto time_start = std::chrono::steady_clock::now();
 
   // TODO: This should somehow be dynamically determined?
-  static constexpr int PARAMS_PER_PASS = 32;
+  // static constexpr int PARAMS_PER_PASS = 32;
 
   // In here we pass off the optimization to Opt. But since
   // we have more parameters than Opt can handle at a time,
@@ -282,7 +286,7 @@ inline void LargeOptimizer<CACHE>::Run(
   do {
     stop = false;
     // Prep some subset.
-    std::vector<int> indices = GetSubset(PARAMS_PER_PASS);
+    std::vector<int> indices = GetSubset(params_per_pass);
     int n = indices.size();
 
     std::vector<bool> isint(n);
@@ -322,6 +326,7 @@ inline void LargeOptimizer<CACHE>::Run(
           const std::chrono::duration<double> time_elapsed =
             time_now - time_start;
           if (time_elapsed.count() > max_seconds.value()) {
+            // printf("Ended due to timeout.\n");
             stop = true;
             return LARGE_SCORE;
           }
@@ -360,6 +365,7 @@ inline void LargeOptimizer<CACHE>::Run(
         if (max_calls.has_value()) {
           num_calls++;
           if (num_calls > max_calls.value()) {
+            // printf("Ended due to max calls.\n");
             stop = true;
           }
         }
@@ -377,8 +383,10 @@ inline void LargeOptimizer<CACHE>::Run(
             }
           }
 
-          if (res.first <= target_score)
+          if (res.first <= target_score) {
+            // printf("Ended by reaching target score.\n");
             stop = true;
+          }
         }
         return res.first;
       };

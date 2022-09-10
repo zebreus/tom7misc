@@ -5,8 +5,10 @@
 #include <variant>
 #include <vector>
 
+#include "opt.h"
 #include "base/logging.h"
 #include "timer.h"
+#include "periodically.h"
 
 using namespace std;
 
@@ -39,6 +41,64 @@ static std::pair<double, bool> F1(const std::vector<double> &args) {
   printf("Got %.5f + %.5f\n", sum, neighbors);
 #endif
   return make_pair(sum + neighbors, true);
+}
+
+static void SelfOptimize(int n) {
+  static constexpr bool CACHE = false;
+
+  int64_t total_calls = 0;
+  Periodically spam_per(10.0);
+
+  const auto [arg, score] =
+  Opt::Minimize1D(
+      [n, &total_calls, &spam_per](double ppp) {
+        Timer run_timer;
+        using Optimizer = LargeOptimizer<CACHE>;
+        Optimizer opt([n, &total_calls, &spam_per](
+            const std::vector<double> v) {
+            total_calls++;
+            if (spam_per.ShouldRun()) {
+              printf("%lld calls\n", total_calls);
+            }
+            return F1(v);
+          }, n, 0);
+
+        // Needs a starting point that's feasible. Everything
+        // is feasible for this problem.
+        std::vector<double> example(n);
+        for (int i = 0; i < n; i++) {
+          example[i] = (((i ^ 97 + n) * 31337) % 200) - 100;
+        }
+        opt.Sample(example);
+
+        std::vector<typename Optimizer::arginfo> arginfos(n);
+        for (int i = 0; i < n; i++)
+          arginfos[i] = Optimizer::Double(-100.0, 100.0);
+        // Run for max 10 seconds because I already know settings that
+        // take ~6.
+        opt.Run(arginfos, {1000000}, nullopt, {10.0}, {0.01},
+                // This is the hyper-parameter being optimized.
+                (int)round(ppp));
+
+        auto besto = opt.GetBest();
+        CHECK(besto.has_value());
+        const auto &v = besto.value().first;
+
+        // Infeasible if it didn't solve it!
+        for (int i = 0; i < v.size(); i++) {
+          double d = v[i];
+          if (!(d >= -0.01 && d <= 0.01))
+            return 10000000000.0;
+        }
+
+        // Otherwise, faster wall-time is better.
+        double sec = run_timer.Seconds();
+        printf("With ppp=%d, %.3fs\n", (int)round(ppp), sec);
+        return run_timer.Seconds();
+      },
+      1.0, std::max(1.0, std::min(1000.0, (double)n)), 10);
+
+  printf("Best is %.3f taking %.3fs\n", arg, score);
 }
 
 template<bool CACHE = true>
@@ -102,6 +162,12 @@ int main(int argc, char **argv) {
   OptF1<false>(10);
 
   OptF1<false>(1000);
+
+  // Best is 26.
+  // SelfOptimize(100);
+
+  // Best is 21.
+  // SelfOptimize(1000);
 
   return 0;
 }
