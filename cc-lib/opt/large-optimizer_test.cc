@@ -1,5 +1,6 @@
 #include "large-optimizer.h"
 
+#include <cinttypes>
 #include <utility>
 #include <optional>
 #include <variant>
@@ -11,6 +12,25 @@
 #include "periodically.h"
 
 using namespace std;
+
+static std::pair<double, bool> OnlyIntegers(
+	const std::vector<double> &args) {
+  CHECK(args.size() == 1);  
+  double d = args[0];
+
+  CHECK(d == round(d)) << "Should only be called on integers";
+  
+  switch ((int)d) {
+  case 0: return make_pair(-1, true);
+  case 1: return make_pair(0, true);
+  case 2: return make_pair(1, true);
+  case 3:
+  default:
+	CHECK(false) << "Did not expect a call with d=" << d
+				 << "; this includes 3, the open upper bound.";
+	return make_pair(0, true);
+  }
+}
 
 // Fairly easy optimization problem. Neighboring
 // parameters should be close together; sum should
@@ -25,7 +45,7 @@ static std::pair<double, bool> F1(const std::vector<double> &args) {
 
   for (double d : args) {
     CHECK(std::isfinite(d));
-    CHECK(d >= -100.0 && d <= 100.0);
+    CHECK(d >= -100.0 && d <= 100.0) << d;
   }
 
   double sum = 0.0;
@@ -58,7 +78,7 @@ static void SelfOptimize(int n) {
             const std::vector<double> v) {
             total_calls++;
             if (spam_per.ShouldRun()) {
-              printf("%lld calls\n", total_calls);
+              printf("%" PRIi64 " calls\n", total_calls);
             }
             return F1(v);
           }, n, 0);
@@ -147,8 +167,78 @@ static void OptF1(int n) {
          n, run_timer.Seconds());
 }
 
+template<bool CACHE>
+static void OptIntegers() {
+  using Optimizer = LargeOptimizer<CACHE>;
+  {
+	Optimizer opt(OnlyIntegers, 1, 0);
+	std::vector<typename Optimizer::arginfo> arginfos = {
+	  Optimizer::Integer(0, 3),
+	};
+	opt.Sample({1.0});
+	opt.Run(arginfos, nullopt, nullopt, {0.5});
+	auto besto = opt.GetBest();
+	CHECK(besto.has_value());
+	CHECK(besto.value().first.size() == 1);
+	// If it can't find the best of three values in 0.5 sec, something
+	// is wrong!
+	CHECK(besto.value().first[0] == 0.0);
+  }
+
+  // Same but excluding 0, which would otherwise be the best
+  // solution.
+  {
+	Optimizer opt(OnlyIntegers, 1, 0);
+	std::vector<typename Optimizer::arginfo> arginfos = {
+	  Optimizer::Integer(1, 3),
+	};
+	opt.Sample({1.0});
+	opt.Run(arginfos, nullopt, nullopt, {0.5});
+	auto besto = opt.GetBest();
+	CHECK(besto.has_value());
+	CHECK(besto.value().first.size() == 1);
+	// If it can't find the best of two values in 0.5 sec, something
+	// is wrong!
+	CHECK(besto.value().first[0] == 1.0);
+  }
+}
+
+template<bool CACHE>
+static void OptDoubles() {
+  using Optimizer = LargeOptimizer<CACHE>;
+
+  {
+	Optimizer opt([](const std::vector<double> &v) {
+		CHECK(v.size() == 3);
+		// printf("%.3f %.3f %.3f\n", v[0], v[1], v[2]);
+		return std::make_pair(abs(v[1] - 3.141592653589), true);
+	  }, 3, 0);
+	std::vector<typename Optimizer::arginfo> arginfos = {
+	  Optimizer::Double(-100, -90),
+	  Optimizer::Double(-5, 5),
+	  Optimizer::Double(90, 100),
+	};
+	opt.Sample({-99.0, 0.0, 91.0});
+	// Optimize one arg at a time. Expect to eventually optimize
+	// the middle parameter.
+	opt.Run(arginfos, {1000000}, nullopt, {4}, {0.0005}, 1);
+	auto besto = opt.GetBest();
+	CHECK(besto.has_value());
+	CHECK(besto.value().first.size() == 3);
+	const double res = besto.value().first[1];
+	const double diff = res - 3.141592653589;
+	CHECK(abs(diff) < 0.001) << res << " " << diff;
+  }
+}
+
 int main(int argc, char **argv) {
 
+  OptIntegers<false>();  
+  OptIntegers<true>();
+  
+  OptDoubles<false>();  
+  OptDoubles<true>();
+  
   // Make sure it doesn't fail if we have fewer parameters
   // than the internal sample size, for example.
   OptF1(1);

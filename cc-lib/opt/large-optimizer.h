@@ -12,7 +12,7 @@
 // an improvement even when a local one does exist. Therefore this
 // is best suited to fairly easy convex problems.
 
-// #include <cstdio>
+#include <cstdio>
 #include <array>
 #include <bit>
 #include <chrono>
@@ -305,7 +305,7 @@ inline void LargeOptimizer<CACHE>::Run(
           [&](const std::pair<double, double> &dblarg) {
             isint[i] = false;
             lbs[i] = dblarg.first;
-            lbs[i] = dblarg.second;
+            ubs[i] = dblarg.second;
           }
         }, arginfos[idx]);
     }
@@ -414,6 +414,13 @@ inline void LargeOptimizer<CACHE>::Run(
     printf("ubs:");
     for (double d : ubs) printf(" %.3f", d);
     printf("\n");
+
+	printf("Current best: ");
+	for (double d : best.value().first) printf(" %.3f", d);
+	printf("\n");
+	
+	assert(n == lbs.size());
+	assert(n == ubs.size());	
     #endif
 
     // stop is set by the callback below, but g++ sometimes gets mad
