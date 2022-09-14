@@ -7,6 +7,13 @@
 //    double s[ MaxParPopCount ] = {};
 // to suppress a warning (code looked ok).
 //
+// In wrapParamReal, I changed
+//   ( maxv - rnd.getRndValue() * ( v - dv ));
+// to
+//   ( maxv - rnd.getRndValue() * ( v - maxv ));
+// as I believe was intended (otherwise it generates samples
+// outside the range. See: github.com/avaneev/biteopt/issues/6
+//
 // At the bottom are implementations of my wrapper in opt.h.
 
 
@@ -1533,7 +1540,7 @@ protected:
 
 			if( v < maxv + dv )
 			{
-				return( maxv - rnd.getRndValue() * ( v - dv ));
+				return( maxv - rnd.getRndValue() * ( v - maxv ));
 			}
 
 			return( maxv - rnd.getRndValue() * dv );
