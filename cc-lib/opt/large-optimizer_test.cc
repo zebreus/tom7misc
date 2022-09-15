@@ -10,25 +10,27 @@
 #include "base/logging.h"
 #include "timer.h"
 #include "periodically.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 using namespace std;
 
 static std::pair<double, bool> OnlyIntegers(
-	const std::vector<double> &args) {
-  CHECK(args.size() == 1);  
+    const std::vector<double> &args) {
+  CHECK(args.size() == 1);
   double d = args[0];
 
   CHECK(d == round(d)) << "Should only be called on integers";
-  
+
   switch ((int)d) {
   case 0: return make_pair(-1, true);
   case 1: return make_pair(0, true);
   case 2: return make_pair(1, true);
   case 3:
   default:
-	CHECK(false) << "Did not expect a call with d=" << d
-				 << "; this includes 3, the open upper bound.";
-	return make_pair(0, true);
+    CHECK(false) << "Did not expect a call with d=" << d
+                 << "; this includes 3, the open upper bound.";
+    return make_pair(0, true);
   }
 }
 
@@ -171,35 +173,35 @@ template<bool CACHE>
 static void OptIntegers() {
   using Optimizer = LargeOptimizer<CACHE>;
   {
-	Optimizer opt(OnlyIntegers, 1, 0);
-	std::vector<typename Optimizer::arginfo> arginfos = {
-	  Optimizer::Integer(0, 3),
-	};
-	opt.Sample({1.0});
-	opt.Run(arginfos, nullopt, nullopt, {0.5});
-	auto besto = opt.GetBest();
-	CHECK(besto.has_value());
-	CHECK(besto.value().first.size() == 1);
-	// If it can't find the best of three values in 0.5 sec, something
-	// is wrong!
-	CHECK(besto.value().first[0] == 0.0);
+    Optimizer opt(OnlyIntegers, 1, 0);
+    std::vector<typename Optimizer::arginfo> arginfos = {
+      Optimizer::Integer(0, 3),
+    };
+    opt.Sample({1.0});
+    opt.Run(arginfos, nullopt, nullopt, {0.5});
+    auto besto = opt.GetBest();
+    CHECK(besto.has_value());
+    CHECK(besto.value().first.size() == 1);
+    // If it can't find the best of three values in 0.5 sec, something
+    // is wrong!
+    CHECK(besto.value().first[0] == 0.0);
   }
 
   // Same but excluding 0, which would otherwise be the best
   // solution.
   {
-	Optimizer opt(OnlyIntegers, 1, 0);
-	std::vector<typename Optimizer::arginfo> arginfos = {
-	  Optimizer::Integer(1, 3),
-	};
-	opt.Sample({1.0});
-	opt.Run(arginfos, nullopt, nullopt, {0.5});
-	auto besto = opt.GetBest();
-	CHECK(besto.has_value());
-	CHECK(besto.value().first.size() == 1);
-	// If it can't find the best of two values in 0.5 sec, something
-	// is wrong!
-	CHECK(besto.value().first[0] == 1.0);
+    Optimizer opt(OnlyIntegers, 1, 0);
+    std::vector<typename Optimizer::arginfo> arginfos = {
+      Optimizer::Integer(1, 3),
+    };
+    opt.Sample({1.0});
+    opt.Run(arginfos, nullopt, nullopt, {0.5});
+    auto besto = opt.GetBest();
+    CHECK(besto.has_value());
+    CHECK(besto.value().first.size() == 1);
+    // If it can't find the best of two values in 0.5 sec, something
+    // is wrong!
+    CHECK(besto.value().first[0] == 1.0);
   }
 }
 
@@ -208,37 +210,132 @@ static void OptDoubles() {
   using Optimizer = LargeOptimizer<CACHE>;
 
   {
-	Optimizer opt([](const std::vector<double> &v) {
-		CHECK(v.size() == 3);
-		// printf("%.3f %.3f %.3f\n", v[0], v[1], v[2]);
-		return std::make_pair(abs(v[1] - 3.141592653589), true);
-	  }, 3, 0);
-	std::vector<typename Optimizer::arginfo> arginfos = {
-	  Optimizer::Double(-100, -90),
-	  Optimizer::Double(-5, 5),
-	  Optimizer::Double(90, 100),
-	};
-	opt.Sample({-99.0, 0.0, 91.0});
-	// Optimize one arg at a time. Expect to eventually optimize
-	// the middle parameter.
-	opt.Run(arginfos, {1000000}, nullopt, {4}, {0.0005}, 1);
-	auto besto = opt.GetBest();
-	CHECK(besto.has_value());
-	CHECK(besto.value().first.size() == 3);
-	const double res = besto.value().first[1];
-	const double diff = res - 3.141592653589;
-	CHECK(abs(diff) < 0.001) << res << " " << diff;
+    Optimizer opt([](const std::vector<double> &v) {
+        CHECK(v.size() == 3);
+        // printf("%.3f %.3f %.3f\n", v[0], v[1], v[2]);
+        return std::make_pair(abs(v[1] - 3.141592653589), true);
+      }, 3, 0);
+    std::vector<typename Optimizer::arginfo> arginfos = {
+      Optimizer::Double(-100, -90),
+      Optimizer::Double(-5, 5),
+      Optimizer::Double(90, 100),
+    };
+    opt.Sample({-99.0, 0.0, 91.0});
+    // Optimize one arg at a time. Expect to eventually optimize
+    // the middle parameter.
+    opt.Run(arginfos, {1000000}, nullopt, {4}, {0.0005}, 1);
+    auto besto = opt.GetBest();
+    CHECK(besto.has_value());
+    CHECK(besto.value().first.size() == 3);
+    const double res = besto.value().first[1];
+    const double diff = res - 3.141592653589;
+    CHECK(abs(diff) < 0.001) << res << " " << diff;
   }
+}
+
+std::pair<double, bool> LineFunction(const std::vector<double> &v) {
+  double err = 0.0;
+  for (int i = 0; i < v.size(); i++) {
+    double diff = v[i] - (double)i;
+    err += diff * diff;
+  }
+  return std::make_pair(sqrt(err), true);
+}
+
+// Test an easy function but with local optimization limited
+// (+/- 2 at each step). It should still eventually converge.
+template<bool CACHE>
+static void JitterTo() {
+  using Optimizer = LargeOptimizer<CACHE>;
+
+  {
+    const int N = 30;
+    Optimizer opt(LineFunction, N, 0);
+    std::vector<typename Optimizer::arginfo> arginfos;
+    std::vector<double> sample;
+    for (int i = 0; i < N; i++) {
+      arginfos.push_back(
+          Optimizer::Double(-100, +100, -2.0, +2.0));
+      sample.push_back(0.0);
+    }
+    opt.Sample(sample);
+    opt.Run(arginfos, {1000000}, nullopt, {4}, {0.0005}, 10);
+    auto besto = opt.GetBest();
+    CHECK(besto.has_value());
+    CHECK(besto.value().first.size() == N);
+    double total_err = 0.0;
+    for (int i = 0; i < N; i++) {
+      const double diff = abs(besto.value().first[i] - (double)i);
+      total_err += diff;
+    }
+    CHECK(abs(total_err) < 0.1) << total_err;
+  }
+
+}
+
+// This function is flat everywhere except very close to the
+// solution. Tests whether the down/up constraints on the
+// initial solution (which is close) are honored.
+std::pair<double, bool> Flat(const std::vector<double> &v) {
+
+  // Target is a bunch of tens.
+  double err = 0.0;
+  for (double d : v) {
+    if (d < 9.5 || d > 10.5) err += 100000.0;
+    err += abs(d - 10.0);
+  }
+  return std::make_pair(err, true);
+}
+
+// TODO: Same for doubles?
+template<bool CACHE>
+static void JitterInt() {
+  using Optimizer = LargeOptimizer<CACHE>;
+  ArcFour rc("jitter");
+
+  {
+    const int N = 30;
+    Optimizer opt(Flat, N, 0);
+    std::vector<typename Optimizer::arginfo> arginfos;
+    std::vector<double> sample;
+    for (int i = 0; i < N; i++) {
+      arginfos.push_back(
+          Optimizer::Integer(-10000000, +80000000, -5.0, +5.0));
+      // A value close to but not equal to 10.
+      int x = 0;
+      do {
+        x = RandTo(&rc, 8) - 4;
+      } while (x == 10);
+      sample.push_back(x);
+    }
+    opt.Sample(sample);
+    opt.Run(arginfos, {1000000}, nullopt, {4}, {0.0005}, 10);
+    auto besto = opt.GetBest();
+    CHECK(besto.has_value());
+    CHECK(besto.value().first.size() == N);
+    // Expect to solve it exactly on integers.
+    for (int i = 0; i < N; i++) {
+      double v = besto.value().first[i];
+      CHECK((int)round(v) == 10) << i << ": " << v;
+    }
+  }
+
 }
 
 int main(int argc, char **argv) {
 
-  OptIntegers<false>();  
+  OptIntegers<false>();
   OptIntegers<true>();
-  
-  OptDoubles<false>();  
+
+  OptDoubles<false>();
   OptDoubles<true>();
-  
+
+  JitterTo<false>();
+  JitterTo<true>();
+
+  JitterInt<false>();
+  JitterInt<true>();
+
   // Make sure it doesn't fail if we have fewer parameters
   // than the internal sample size, for example.
   OptF1(1);

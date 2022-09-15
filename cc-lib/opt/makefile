@@ -1,7 +1,7 @@
 
 default : opt_test.exe optimizer_test.exe
 
-BASE=../base/logging.o ../base/stringprintf.o
+BASE=../base/logging.o ../base/stringprintf.o ../arcfour.o
 
 # for 64 bits on windows
 CXX=x86_64-w64-mingw32-g++

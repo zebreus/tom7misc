@@ -56,20 +56,35 @@ struct LargeOptimizer {
                  uint64_t start_seed = 1);
 
   // Each argument needs to be described for the search procedure.
+  // We have both the absolute lower and upper bounds for the argument
+  // (the function being optimized is only called with values in that
+  // range) and the downward and upward search limits (in each optimization
+  // pass, we consider only values this far from the current best). The
+  // default for the search limits optimize within the entire bounds.
+  // Although we use extreme defaults here, it will not work well to
+  // use extremely large double bounds, as internally the optimizer
+  // wants to be able to work with "high - low" as a number that has
+  // reasonable precision.
+  //
   // The argument can be an integer with bounds [low, high),
   // or a double with bounds [low, high]. If integral, the function
   // is only called with an integer in that position (but represented
-  // as a double). Note that not all integers greater than 2^53 can
-  // be represented as doubles.
+  // as a double). All 32-bit integers can be represented exactly
+  // as doubles.
   using arginfo =
-    std::variant<std::pair<int64_t, int64_t>,
-                 std::pair<double, double>>;
-  static arginfo Double(double low, double high) {
-    return arginfo(std::make_pair(low, high));
+    std::variant<std::tuple<int32_t, int32_t, int32_t, int32_t>,
+                 std::tuple<double, double, double, double>>;
+  static arginfo Double(double low, double high,
+                        double down = -1.0/0.0,
+                        double up = 1.0/0.0) {
+    return arginfo(std::make_tuple(low, high, down, up));
   }
 
-  static arginfo Integer(int64_t low, int64_t high) {
-    return arginfo(std::make_pair(low, high));
+  static arginfo Integer(
+      int32_t low, int32_t high,
+      int32_t down = std::numeric_limits<int32_t>::lowest(),
+      int32_t up = std::numeric_limits<int32_t>::max()) {
+    return arginfo(std::make_tuple(low, high, down, up));
   }
 
   // It is currently required to call AddResult or Sample with a known
@@ -289,23 +304,37 @@ inline void LargeOptimizer<CACHE>::Run(
     std::vector<int> indices = GetSubset(params_per_pass);
     int n = indices.size();
 
+    // Optimization is based on the current best.
+    assert(best.has_value() &&
+           "must AddResult or Sample something feasible before Run");
+    const arg_type best_arg = best.value().first;
+
     std::vector<bool> isint(n);
     std::vector<double> lbs(n), ubs(n);
     for (int i = 0; i < n; i++) {
       int idx = indices[i];
       std::visit(detail::large_optimizer_overloaded {
-          [&](const std::pair<int64_t, int64_t> &intarg) {
+          [&](const std::tuple<int32_t, int32_t, int32_t, int32_t> &intarg) {
             isint[i] = true;
+            const auto &[low32, high32, down32, up32] = intarg;
+            // We work in the space of doubles; the precision should
+            // be adequate even if these 32-bit values are the max or min.
+            const double low = low32;
+            const double high = high32;
+
             // Note: The called function is responsible for
             // decrementing the sample if it floors to
             // exactly the upper bound.
-            lbs[i] = (double)intarg.first;
-            ubs[i] = (double)intarg.second;
+            lbs[i] = std::max(low, best_arg[idx] + (double)down32);
+            ubs[i] = std::min(high, best_arg[idx] + (double)up32);
           },
-          [&](const std::pair<double, double> &dblarg) {
+          [&](const std::tuple<double, double, double, double> &dblarg) {
+            const auto &[low, high, down, up] = dblarg;
             isint[i] = false;
-            lbs[i] = dblarg.first;
-            ubs[i] = dblarg.second;
+            // max/min work correctly when down/up are infinite (default),
+            // as long as low/high are finite.
+            lbs[i] = std::max(low, best_arg[idx] + down);
+            ubs[i] = std::min(high, best_arg[idx] + up);
           }
         }, arginfos[idx]);
     }
@@ -344,8 +373,12 @@ inline void LargeOptimizer<CACHE>::Run(
             int64_t a = (int64_t)floor(doubles[i]);
             // As described above; don't create invalid inputs if the
             // upper-bound is sampled exactly.
-            const int64_t ub = std::get<std::pair<int64_t, int64_t>>(
-                arginfos[idx]).second;
+            //
+            // XXX do we also want to treat "up" as exclusive? that
+            // would be mean decrementing if we got min(ub, cur + up).
+            const auto [lb_, ub, down_, up_] =
+              std::get<std::tuple<int32_t, int32_t,
+                                  int32_t, int32_t>>(arginfos[idx]);
             if (a >= ub) a = ub - 1;
             arg[idx] = a;
           } else {
@@ -415,12 +448,12 @@ inline void LargeOptimizer<CACHE>::Run(
     for (double d : ubs) printf(" %.3f", d);
     printf("\n");
 
-	printf("Current best: ");
-	for (double d : best.value().first) printf(" %.3f", d);
-	printf("\n");
-	
-	assert(n == lbs.size());
-	assert(n == ubs.size());	
+    printf("Current best: ");
+    for (double d : best.value().first) printf(" %.3f", d);
+    printf("\n");
+
+    assert(n == lbs.size());
+    assert(n == ubs.size());
     #endif
 
     // stop is set by the callback below, but g++ sometimes gets mad
@@ -429,6 +462,12 @@ inline void LargeOptimizer<CACHE>::Run(
     // to be more accurate here.
     (void)Opt::Minimize(n, df, lbs, ubs, ITERS, 1, 1, random_seed);
   } while (!stop);
+
+  #if 0
+  for (int i = 0; i < optcounts.size(); i++)
+    printf("Arg %d optimized %d time(s)\n", i, optcounts[i]);
+  #endif
+
 }
 
 #endif
