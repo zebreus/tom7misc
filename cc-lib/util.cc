@@ -9,6 +9,7 @@
 #include <type_traits>
 #include <string_view>
 #include <optional>
+#include <ctime>
 
 #include "util.h"
 
@@ -374,6 +375,8 @@ string Util::ReadFile(const string &s) {
 }
 
 // PERF: Benchmark against ForEachLine approach.
+// XXX: Probably this should return an empty vector if the
+// file does not exist?
 vector<string> Util::ReadFileToLines(const string &f) {
   return SplitToLines(ReadFile(f));
 }

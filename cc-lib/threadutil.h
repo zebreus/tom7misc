@@ -2,12 +2,13 @@
 #ifndef _CC_LIB_THREADUTIL_H
 #define _CC_LIB_THREADUTIL_H
 
-#include <vector>
-#include <thread>
-#include <mutex>
-#include <functional>
-#include <cstdint>
 #include <condition_variable>
+#include <cstdint>
+#include <functional>
+#include <mutex>
+#include <thread>
+#include <type_traits>
+#include <vector>
 
 #if __cplusplus >= 201703L
 // shared_mutex only available in C++17 and later.
@@ -229,7 +230,6 @@ void UnParallelApp(const std::vector<T> &vec,
 //    []() { some code; },
 //    []() { some more code; }
 // );
-
 template<class... Fs>
 inline void InParallel(Fs... fs) {
   // PERF: Can we do this without copying?
@@ -241,12 +241,15 @@ inline void InParallel(Fs... fs) {
 
 
 // Generate the vector containing {f(0), f(1), ..., f(num - 1)}.
+// The result type must be default-constructible.
 template<class F>
 auto ParallelTabulate(int64_t num,
                       const F &f,
                       int max_concurrency) ->
   std::vector<decltype(f((int64_t)0))> {
   using R = decltype(f((int64_t)0));
+  static_assert(std::is_default_constructible<R>::value,
+                "result must be default constructible");
   std::vector<R> result;
   result.resize(num);
   R *data = result.data();
@@ -267,6 +270,8 @@ auto ParallelMapi(const std::vector<T> &vec,
                   int max_concurrency) ->
   std::vector<decltype(f((int64_t)0, vec.front()))> {
   using R = decltype(f((int64_t)0, vec.front()));
+  static_assert(std::is_default_constructible<R>::value,
+                "result must be default constructible");
   std::vector<R> result;
   result.resize(vec.size());
 
@@ -299,6 +304,8 @@ auto UnParallelMap(const std::vector<T> &vec,
                    const F &f, int max_concurrency_ignored) ->
   std::vector<decltype(f(vec.front()))> {
   using R = decltype(f(vec.front()));
+  static_assert(std::is_default_constructible<R>::value,
+                "result must be default constructible");
   std::vector<R> result;
   result.resize(vec.size());
 
@@ -314,6 +321,8 @@ auto UnParallelMapi(const std::vector<T> &vec,
                     const F &f, int max_concurrency_ignored) ->
   std::vector<decltype(f((int64_t)0, vec.front()))> {
   using R = decltype(f((int64_t)0, vec.front()));
+  static_assert(std::is_default_constructible<R>::value,
+                "result must be default constructible");
   std::vector<R> result;
   result.resize(vec.size());
 

@@ -48,12 +48,24 @@ struct Hashing<std::pair<T, U>> {
 template<class T>
 struct Hashing<std::vector<T>> {
   std::size_t operator()(const std::vector<T> &v) const {
-	size_t h = 0xCAFED00D + v.size();
-	for (const T &t : v) {
-	  h += Hashing<T>()(t);
-	  h = hashing_internal::RotateSizeT(h, 13);
-	}
-	return h;
+    size_t h = 0xCAFED00D + v.size();
+    for (const T &t : v) {
+      h += Hashing<T>()(t);
+      h = hashing_internal::RotateSizeT(h, 13);
+    }
+    return h;
+  }
+};
+
+template<class T, size_t N>
+struct Hashing<std::array<T, N>> {
+  std::size_t operator()(const std::array<T, N> &v) const {
+    size_t h = 0xDECADE00 + N;
+    for (const T &t : v) {
+      h += Hashing<T>()(t);
+      h = hashing_internal::RotateSizeT(h, 17);
+    }
+    return h;
   }
 };
 

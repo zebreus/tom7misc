@@ -166,12 +166,30 @@ inline uint32 RandTo32(ArcFour *rc, uint32 n) {
   }
 }
 
-// Permute the elements of the array uniformly at random.
+// TODO: A typical use of this is to take n elements from a set at
+// random without replacement (shuffle and truncate). We can do this a
+// bit faster by only randomizing a prefix of the vector (note how
+// Shuffle only swaps in a triagular portion).
+
+// Permute the elements of the vector uniformly at random.
 template<class T>
 static void Shuffle(ArcFour *rc, std::vector<T> *v) {
   if (v->size() <= 1) return;
-  // PERF: Use Rand32 for small arrays.
+  // PERF: Use Rand32 for small vectors.
   for (uint64 i = v->size() - 1; i >= 1; i--) {
+    uint64 j = RandTo(rc, i + 1);
+    if (i != j) {
+      std::swap((*v)[i], (*v)[j]);
+    }
+  }
+}
+
+// Same, for an array.
+template<class T, size_t N>
+static void Shuffle(ArcFour *rc, std::array<T, N> *v) {
+  if constexpr (N <= 1) return;
+  // PERF: Use Rand32 for small arrays.
+  for (uint64 i = N - 1; i >= 1; i--) {
     uint64 j = RandTo(rc, i + 1);
     if (i != j) {
       std::swap((*v)[i], (*v)[j]);
