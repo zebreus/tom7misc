@@ -536,7 +536,7 @@ static const std::unordered_map<int, string> &CharNames() {
 // specific flags disable autokerning, in case that happens on export?
 // Lookup: 258 0 0 is lookup type and flags, which should probably
 // just be verbatim.
-// 
+//
 // Then the kerning data is stored in each glyph. For example we have
 //
 //     StartChar: T
@@ -570,7 +570,7 @@ string TTF::Font::ToSFD(const string &name) const {
     box = bitmap_grid_height;
     while (box < 400) box *= 10;
   }
-  
+
   // At least for SFD, ascent and descent seem to both be defined as
   // both positive. They are determined from the baseline.
   const int ascent = baseline * box;
@@ -596,13 +596,16 @@ string TTF::Font::ToSFD(const string &name) const {
     if (c != ' ') name_no_space += c;
   }
 
-  const char antialias_flag = antialias ? '1' : '0';
-  
+  // In FontForge 20220308, AntiAlias: 0 crashes the program on load.
+  // This is presumably a bug.
+  // const char antialias_flag = antialias ? '1' : '0';
+  const char antialias_flag = '1';
+
   // FYI the values in the Layer: command are what tell it that
   // we are using quadratic beziers.
   const int numchars = chars.size();
-  string out = StringPrintf(R"!(
-SplineFontDB: 3.2
+  string out = StringPrintf(
+R"!(SplineFontDB: 3.2
 FontName: %s
 FullName: %s
 FamilyName: %s
@@ -615,8 +618,6 @@ UnderlinePosition: -100
 UnderlineWidth: 50
 Ascent: %d
 Descent: %d
-LineGap: %d
-VLineGap: %d
 InvalidEm: 0
 LayerCount: 2
 Layer: 0 1 "Back" 1
@@ -624,6 +625,11 @@ Layer: 1 1 "Fore" 0
 OS2Version: 0
 OS2_WeightWidthSlopeOnly: 0
 OS2_UseTypoMetrics: 1
+PfmFamily: 0
+TTFWeight: 0
+TTFWidth: 0
+LineGap: %d
+VLineGap: %d
 OS2TypoAscent: 0
 OS2TypoAOffset: 1
 OS2TypoDescent: 0
@@ -639,19 +645,19 @@ HheadDescent: 0
 HheadDOffset: 1
 OS2Vendor: '%c%c%c%c'
 DEI: 91125
-Encoding: unicode
+Encoding: UnicodeFull
 UnicodeInterp: none
 NameList: AGL For New Fonts
 DisplaySize: -48
 AntiAlias: %c
 FitToEm: 0
-WinInfo: 54 18 11
-BeginChars: 65536 %d
+WinInfo: 64 8 5
+BeginChars: 1114112 %d
 )!", name_no_space.c_str(), name.c_str(), name.c_str(),
      copyright.c_str(),
      ascent, descent,
      native_linegap, native_linegap, native_linegap,
-     vendor[0], vendor[1], vendor[2], vendor[3],                       
+     vendor[0], vendor[1], vendor[2], vendor[3],
      antialias_flag,
      numchars);
 
