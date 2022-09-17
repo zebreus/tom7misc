@@ -18,6 +18,8 @@
 #include "threadutil.h"
 #include "timer.h"
 #include "periodically.h"
+#include "opt/large-optimizer.h"
+#include "diff.h"
 
 #include "state.h"
 
@@ -25,8 +27,9 @@ using Choppy = ChoppyGrid<256>;
 using DB = Choppy::DB;
 using Allocator = Exp::Allocator;
 using Table = Exp::Table;
+using namespace std;
 
-constexpr int MAX_THREADS = 4;
+constexpr int MAX_THREADS = 8;
 
 static void MaybeSaveDB(DB *db) {
   static std::mutex *m = new std::mutex;
@@ -128,6 +131,31 @@ private:
   bool did_drop = false;
 };
 
+static double Cost(const Exp *e) {
+  static constexpr double NODE = 100000.0;
+  switch (e->type) {
+  case VAR:
+    return NODE;
+  case PLUS_C:
+  case TIMES_C:
+    // Can be deleted.
+    if (e->iters == 0)
+      return 0.01 + Cost(e->a);
+
+    if (e->a->type == e->type &&
+        e->c == e->a->c) {
+      // Can be fused (unless too many iters).
+      return 0.1 + e->iters + Cost(e->a);
+    } else {
+      return NODE + e->iters + Cost(e->a);
+    }
+  case PLUS_E:
+    return NODE + Cost(e->a) + Cost(e->b);
+  default:
+    CHECK(false);
+    return 0.0;
+  }
+};
 
 struct DropNode {
   const std::string Name() const { return "DropNode"; }
@@ -209,6 +237,24 @@ private:
   bool did_drop = false;
 };
 
+static int NumParameters(const Exp *e) {
+  switch (e->type) {
+  case VAR:
+    return 0;
+  case PLUS_C:
+  case TIMES_C:
+    // constant and iterations.
+    return 2 + NumParameters(e->a);
+  case PLUS_E: {
+    // Include the possibility of dropping one child?
+    return NumParameters(e->a) + NumParameters(e->b);
+  }
+  default:
+    CHECK(false);
+    return 0;
+  }
+}
+
 static int64 TotalDepth(const Exp *e) {
   int64 depth = 0;
   std::function<void(const Exp *)> Rec = [&Rec, &depth](const Exp *e) {
@@ -242,6 +288,9 @@ static const Exp *CleanRec(Allocator *alloc, const Exp *exp) {
   case VAR:
     return exp;
   case PLUS_C: {
+    if (exp->iters == 0)
+      return CleanRec(alloc, exp->a);
+
     // Adding zero or negative zero (usually) does nothing.
     if (exp->c == 0x0000 || exp->c == 0x8000)
       return CleanRec(alloc, exp->a);
@@ -258,6 +307,9 @@ static const Exp *CleanRec(Allocator *alloc, const Exp *exp) {
     return alloc->PlusC(ea, exp->c, exp->iters);
   }
   case TIMES_C: {
+    if (exp->iters == 0)
+      return CleanRec(alloc, exp->a);
+
     // Multiplying by one does nothing.
     if (exp->c == 0x3c00)
       return CleanRec(alloc, exp->a);
@@ -309,9 +361,191 @@ static const Exp *CleanRec(Allocator *alloc, const Exp *exp) {
   }
 }
 
+// 8000-bc00: -0 to -1
+// 0-3c00: 0 to 1
+
+// Excludes -0.
+static constexpr int CHOPTABLE_SIZE = (0x3c00 + 1) * 2 - 1;
+using ChopTable = std::array<uint16_t, CHOPTABLE_SIZE>;
+
+// Fill from -1 to 1, inclusive, skipping -0.
+static void FillChopTable(const Exp *e, ChopTable *table) {
+  int idx = 0;
+  for (uint16 upos = 0x8001; upos <= 0xbc00; upos++)
+    (*table)[idx++] = Exp::EvaluateOn(e, upos);
+  for (uint16 upos = 0x0000; upos <= 0x3c00; upos++)
+    (*table)[idx++] = Exp::EvaluateOn(e, upos);
+  CHECK(idx == CHOPTABLE_SIZE) << idx;
+}
+
+static const Exp *JointOpt(DB *db,
+                           const DB::key_type &key,
+                           const Exp *exp,
+                           double sec,
+                           uint64_t seed) {
+
+  ChopTable orig_table;
+  FillChopTable(exp, &orig_table);
+
+  ChopTable tmp_table;
+  auto StillWorks = [&](const Exp *exp, double *score) {
+      FillChopTable(exp, &tmp_table);
+      int64 diff = 0;
+      for (int i = 0; i < CHOPTABLE_SIZE; i++) {
+        diff += abs((int)orig_table[i] - (int)tmp_table[i]);
+      }
+
+      if (diff != 0) {
+        *score = diff;
+        return false;
+      }
+
+      *score = 0;
+      return true;
+      /*
+      auto chopo = Choppy::GetChoppy(exp);
+      if (!chopo.has_value()) return false;
+      if (chopo.value() != key) return false;
+      return true;
+      */
+    };
+
+  using LO = LargeOptimizer<false>;
+
+  std::vector<LO::arginfo> args;
+  std::vector<double> cur;
+
+  std::function<void(const Exp *)> GetArgs =
+    [&args, &cur, &GetArgs](const Exp *e) {
+      switch (e->type) {
+      case VAR: return;
+      case PLUS_C:
+      case TIMES_C:
+        // Removes nans/infs at the high end. But maybe should
+        // reorder to avoid all of them?
+        // Only search a small region around the current best.
+        args.push_back(LO::Integer(0, 0xfc00, -8, +8));
+        cur.push_back((double)e->c);
+        // Allow more downward movement than up.
+        args.push_back(LO::Integer(0, 0x10000, -16, +6));
+        cur.push_back((double)e->iters);
+        GetArgs(e->a);
+        return;
+      case PLUS_E: {
+        GetArgs(e->a);
+        GetArgs(e->b);
+        return;
+      }
+      default:
+        CHECK(false);
+        return;
+      }
+    };
+
+  GetArgs(exp);
+  const int n = args.size();
+  CHECK(cur.size() == n);
+
+  // Nothing to optimize!
+  if (n == 0)
+    return exp;
+
+  auto SetArgs =
+    [exp](Allocator *alloc,
+          const std::vector<double> &args) -> const Exp * {
+
+      int idx = 0;
+      std::function<const Exp *(const Exp *)> Rec =
+        [alloc, &args, &idx, &Rec](const Exp *old) {
+          switch (old->type) {
+          case VAR: return old;
+          case PLUS_C: {
+            CHECK(idx < args.size() - 1);
+            uint16_t c = args[idx++];
+            uint16_t iters = args[idx++];
+            const Exp *a = Rec(old->a);
+            return alloc->PlusC(a, c, iters);
+          }
+          case TIMES_C: {
+            CHECK(idx < args.size() - 1);
+            uint16_t c = args[idx++];
+            uint16_t iters = args[idx++];
+            const Exp *a = Rec(old->a);
+            return alloc->TimesC(a, c, iters);
+          }
+          case PLUS_E: {
+            const Exp *a = Rec(old->a);
+            const Exp *b = Rec(old->b);
+            return alloc->PlusE(a, b);
+          }
+          default:
+            CHECK(false);
+            return old;
+          }
+        };
+
+      const Exp *ret = Rec(exp);
+      CHECK(idx == args.size());
+      return ret;
+    };
+
+  double start_score = 0.0/0.0;
+  static constexpr bool VERBOSE = false;
+  auto Score = [&](const LO::arg_type &args) {
+      if (VERBOSE) {
+        printf("Args: ");
+        for (double d : args) printf(" %d", (int)d);
+      }
+
+      Allocator alloc;
+      const Exp *e2 = SetArgs(&alloc, args);
+      // TODO: Gradient in infeasible region
+      double diff;
+      if (!StillWorks(e2, &diff)) {
+        if (VERBOSE) printf(" -> "
+                            ANSI_PURPLE "NO %.3f" ANSI_RESET
+                            "\n", diff);
+        return std::make_pair(1.0e30 + diff, false);
+      }
+      double cc = Cost(e2);
+      if (VERBOSE) printf(" -> %s%.3f" ANSI_RESET "\n",
+                          cc < start_score ? ANSI_GREEN :
+                          cc == start_score ? ANSI_WHITE :
+                          ANSI_RED,
+                          cc);
+      return std::make_pair(Cost(e2), true);
+    };
+
+  LO opt(Score, n, seed);
+  opt.Sample(cur);
+  auto ostart = opt.GetBest();
+  CHECK(ostart.has_value());
+  start_score = ostart.value().second;
+
+  opt.Run(args, nullopt, nullopt, {sec},
+          nullopt,
+          8);
+  auto oend = opt.GetBest();
+  CHECK(oend.has_value());
+  double end_score = oend.value().second;
+  if (end_score < start_score) {
+    printf(AGREEN("JointOpt reduced!") " From "
+           ACYAN("%.3f") " -> " ABLUE("%.3f") "\n",
+           start_score, end_score);
+    const Exp *opt_exp = SetArgs(&db->alloc, oend.value().first);
+    return opt_exp;
+  } else {
+    // printf(AGREY("JointOpt no reduction") "\n");
+    return exp;
+  }
+}
+
 static void OptimizeOne(DB *db,
+                        int idx,
+                        int num,
                         const DB::key_type &key,
                         const Exp *exp) {
+  ArcFour rc(StringPrintf("%d.%lld", idx, time(nullptr)));
   Allocator *alloc = &db->alloc;
 
   static constexpr double SAVE_EVERY = 60.0 * 5.0;
@@ -330,18 +564,54 @@ static void OptimizeOne(DB *db,
       return StillWorks(exp);
     };
 
+  const Exp *start_exp = exp;
   const int start_size = Exp::ExpSize(exp);
 
   // Make sure the entry has the key it purports to.
   CHECK(StillWorks(exp));
 
-  // First, delete expressions that do nothing.
-  const Exp *clean_exp = CleanRec(alloc, exp);
-  if (StillWorks(exp)) {
-    exp = clean_exp;
-  } else {
-    CPrintf(ANSI_RED "Clean did not preserve behavior!"
-            ANSI_RESET "\n");
+  {
+    // First, delete expressions that do nothing.
+    const Exp *clean_exp = CleanRec(alloc, exp);
+    if (StillWorks(exp)) {
+      exp = clean_exp;
+    } else {
+      CPrintf(ANSI_RED "Clean did not preserve behavior!"
+              ANSI_RESET "\n");
+      CHECK(false);
+    }
+  }
+
+  {
+    constexpr double JOINT_OPT_SEC = 60.0 * 1.0; // * 30.0;
+    uint64_t seed = Rand64(&rc);
+    const Exp *joint_exp = JointOpt(db, key, exp, JOINT_OPT_SEC, seed);
+    if (StillWorks(joint_exp)) {
+      exp = joint_exp;
+    } else {
+      printf(ARED("JointOpt did not perserve behavior!") "\n");
+      auto chopo = Choppy::GetChoppy(exp);
+      printf("Old key: %s\n", DB::KeyString(key).c_str());
+      printf("New key: ");
+      if (!chopo.has_value()) printf(" Not choppy!");
+      else printf("%s\n", DB::KeyString(chopo.value()).c_str());
+
+      CHECK(false) <<
+      "Was: " << Exp::Serialize(exp) << "\n"
+      "Now: " << Exp::Serialize(joint_exp);
+    }
+  }
+
+  // JointOpt can create opportunities for cleanup (e.g. iters = 0).
+  {
+    const Exp *clean_exp = CleanRec(alloc, exp);
+    if (StillWorks(exp)) {
+      exp = clean_exp;
+    } else {
+      CPrintf(ANSI_RED "(2) Clean did not preserve behavior!"
+              ANSI_RESET "\n");
+      CHECK(false);
+    }
   }
 
 
@@ -684,8 +954,10 @@ static void OptimizeOne(DB *db,
 
   if (!State::CanBeLinearized(exp)) {
     if (start_size > 1000) {
-      CPrintf(ANSI_RED "Slow iter reduction: can't be linearized."
-              ANSI_RESET "\n");
+      CPrintf(ANSI_GREY "[%d/%d] " ANSI_RESET
+              ANSI_RED "Slow iter reduction: can't be linearized."
+              ANSI_RESET "\n",
+              idx + 1, num);
     }
     DoPhase(ReduceIters());
   }
@@ -699,13 +971,21 @@ static void OptimizeOne(DB *db,
 
   const int end_size = Exp::ExpSize(exp);
   if (end_size < start_size) {
-    CPrintf("Reduced from " ANSI_BLUE "%d" ANSI_RESET " to "
-            ANSI_PURPLE "%d" ANSI_RESET "\n", start_size, end_size);
+    CPrintf(AWHITE("[%d/%d] ")
+            " Reduced from " ABLUE("%d") " to "
+            APURPLE("%d") "\n",
+            idx + 1, num,
+            start_size, end_size);
+
+    const auto [before, after] = ColorDiff(start_exp, exp);
+    printf(AWHITE("Was") ": %s\n", before.c_str());
+    printf(AWHITE("Now") ": %s\n", after.c_str());
+
     db->Add(exp);
     MaybeSaveDB(db);
   } else {
-    CPrintf(ANSI_GREY "No reduction (still %d)" ANSI_RESET "\n",
-            start_size);
+    CPrintf(ANSI_GREY "[%d/%d] No reduction (still %d)" ANSI_RESET "\n",
+            idx + 1, num, start_size);
   }
 }
 
@@ -719,15 +999,22 @@ int main(int argc, char **argv) {
 
   std::vector<std::pair<const DB::key_type &,
                         const Exp *>> all;
-  for (const auto &[k, v] : db.fns)
+  for (const auto &[k, v] : db.fns) {
+    // Other keys will work, but we generally optimize bases, so
+    // pipe up if something is unexpected.
+    for (const int z : k)
+      CHECK(z == 0 || z == 1) << DB::KeyString(k) << ":\n"
+                              << Exp::Serialize(v);
     all.emplace_back(k, v);
+  }
 
-  ParallelApp(all,
-              [&](const std::pair<
-                  const DB::key_type &, const Exp *> &arg) {
-                OptimizeOne(&db, arg.first, arg.second);
-              },
-              MAX_THREADS);
+  ParallelAppi(all,
+               [&](int idx, const std::pair<
+                   const DB::key_type &, const Exp *> &arg) {
+                 OptimizeOne(&db, idx, (int)all.size(),
+                             arg.first, arg.second);
+               },
+               MAX_THREADS);
 
   Util::WriteFile("optimized.txt", db.Dump());
 

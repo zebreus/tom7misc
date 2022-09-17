@@ -1,5 +1,5 @@
 
-default: iter.exe train.exe optimize.exe chopreduce.exe makesubst.exe
+default: iter.exe train.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe
 
 all: grad.exe iter.exe make-data.exe mnist_test.exe evaluate.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe ansi_test.exe hash-util_test.exe
 
@@ -29,7 +29,7 @@ CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 OPT=-O2
 CXXFLAGS=-march=native -m64 -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -Wno-mismatched-tags -I. -I$(CC_LIB) -I$(CC_LIB)/re2 $(CLINCLUDES) -std=c++20 $(OPT)
 
-CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/bitbuffer.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big.o
+CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/bounds.o $(CC_LIB)/bitbuffer.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/bignum/big.o $(CC_LIB)/geom/marching.o $(CC_LIB)/edit-distance.o
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -38,7 +38,7 @@ CCLIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o
 grad.s : grad.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -S -fverbose-asm -c $< -o $@
 
-OBJECTS=$(CCLIB_OBJECTS) ansi.o hash-util.o
+OBJECTS=$(CCLIB_OBJECTS) ansi.o hash-util.o diff.o
 
 # also increase stack size
 LFLAGS= -L. -m64 -Wl,--subsystem,console -Wl,--stack,335544320 $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static
@@ -151,9 +151,20 @@ hash-util_test.exe : hash-util_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-frac3d.exe : frac3d.o $(OBJECTS)
+frac3d.exe : frac3d.o meshopt-simplifier.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
+
+
+# this does not work. delete
+simplify-mesh.exe : simplify-mesh.o
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+colordiff.exe : colordiff.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 
 # external dependency on TestU01-2009
 TESTU01=../../TestU01-2009
@@ -174,7 +185,6 @@ smallcrush.exe : smallcrush-main.o $(OBJECTS)
 smallcrush-gen.exe : smallcrush-gen.o testu01.o $(OBJECTS)
 	@$(CXX) $^ -o $@ -L $(TESTU01)/mylib/.libs -L $(TESTU01)/probdist/.libs -L $(TESTU01)/testu01/.libs $(LFLAGS) -ltestu01 -lprobdist -lmylib -lm -lwsock32
 	@echo -n "!"
-
 
 clean :
 	rm -f *.o $(OBJECTS) *.exe

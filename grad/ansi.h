@@ -34,6 +34,16 @@
 
 // r, g, b must be numbers (numberic literals or #defined constants)
 // in [0,255].
+#define ANSI_FG(r, g, b) "\x1B[38;2;" \
+  ANSI_INTERNAL_STR(r) ";" \
+  ANSI_INTERNAL_STR(g) ";" \
+  ANSI_INTERNAL_STR(b) "m"
+
+#define ANSI_BG(r, g, b) "\x1B[48;2;" \
+  ANSI_INTERNAL_STR(r) ";" \
+  ANSI_INTERNAL_STR(g) ";" \
+  ANSI_INTERNAL_STR(b) "m"
+
 #define AFGCOLOR(r, g, b, s) "\x1B[38;2;" \
   ANSI_INTERNAL_STR(r) ";" \
   ANSI_INTERNAL_STR(g) ";" \
