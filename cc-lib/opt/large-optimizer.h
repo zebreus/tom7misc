@@ -427,6 +427,8 @@ inline void LargeOptimizer<CACHE>::Run(
     // PERF: Better set biteopt parameters based on termination conditions.
     // Linear scaling is probably not right.
     // Perhaps this could itself be optimized?
+    //
+    // XXX: When cardinality is low, we should certainly reduce this!
     const int ITERS = 1000;
 
     seed1 = LFSRNext(seed1);
