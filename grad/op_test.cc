@@ -153,6 +153,8 @@ static void PlotShift() {
   Table scaled_upresult;
   Table dnresult;
   Table scaled_dnresult;
+  Table dn2result;
+  Table dn2seresult;
   for (int i = 0; i < 65536; i++) {
     {
       uint16 upout = i << 1;
@@ -167,12 +169,41 @@ static void PlotShift() {
       half h = Exp::GetHalf(downout) / (half)-512.0;
       scaled_dnresult[i] = Exp::GetU16(h);
     }
+
+    {
+      uint16 down2out = i >> 2;
+      dn2result[i] = down2out;
+    }
+
+    {
+      // With sign extension.
+      uint16 down2seout = (i >> 2);
+      if (i & 0x8000) down2seout |= 0xC000;
+      dn2seresult[i] = down2seout;
+    }
+
   }
 
-  GradUtil::Graph(upresult, 0xAAAAFFAA, &img);
-  GradUtil::Graph(scaled_upresult, 0x3333FFAA, &img);
-  GradUtil::Graph(dnresult, 0xAAFFAAAA, &img);
-  GradUtil::Graph(scaled_dnresult, 0x33FF33AA, &img);
+  int ypos = 2;
+  auto Add = [&](const string &name, const Table &table, uint32 color) {
+      GradUtil::Graph(table, color, &img);
+      img.BlendText2x32(2, ypos, color, name);
+      ypos += 20;
+    };
+
+  /*
+  Add("up", upresult, 0xAAAAFFAA);
+  Add("up, scaled", scaled_upresult, 0x3333FFAA);
+  Add("down", dnresult, 0xAAFFAAAA);
+  Add("down, scaled", scaled_dnresult, 0x33FF33AA);
+  */
+
+  // shifting down by two seems to be a sweet spot that does not
+  // require any scaling to be reasonable (because down-shifting
+  // is basically scaling once the sign bit is in the exponent.
+  // Tom 7 approved!
+  Add("down2", dn2result, 0xFFAAAAAA);
+  // Add("down2, sign extended", dn2seresult, 0xFFAAFFAA);
 
   img.Save("op-shift.png");
 }
