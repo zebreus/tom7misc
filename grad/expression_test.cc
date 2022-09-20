@@ -20,7 +20,17 @@ static void TestIter() {
                 // * 0.999 ...
                 0x3bffu,
                 500),
+            // + -0, pointless...
             0x8000),
+        0x3d4b);
+
+  const Exp *f1b =
+    alloc.TimesC(
+        alloc.TimesC(
+            alloc.Var(),
+            // * 1.00000...1
+            0x3c01u,
+            500);
         0x3d4b);
 
   const Exp *f2 =
@@ -87,12 +97,13 @@ static void TestIter() {
 
   Timer tab_timer;
   Table result1 = Exp::TabulateExpression(f1);
+  Table result1b = Exp::TabulateExpression(f1b);
   Table result2 = Exp::TabulateExpression(f2);
   Table result3 = Exp::TabulateExpression(f3);
   Table result4 = Exp::TabulateExpression(f4);
   double sec = tab_timer.Seconds();
 
-  {
+  if (true) {
     printf("Run deep:\n");
     Timer deep_timer;
     [[maybe_unused]]
@@ -101,7 +112,7 @@ static void TestIter() {
            deep_timer.Seconds());
   }
 
-  for (const Exp *e : {f1, f2, f3, f4}) {
+  for (const Exp *e : {f1, f1b, f2, f3, f4}) {
     Table before = Exp::TabulateExpression(e);
     string s = Exp::Serialize(e);
     string err;
@@ -114,10 +125,11 @@ static void TestIter() {
   printf("Tabulated functions in %.3fs\n", sec);
   ImageRGBA img(1024, 1024);
   img.Clear32(0x000000FF);
-  GradUtil::Graph(result1, 0xFFFF7788, &img);
-  GradUtil::Graph(result2, 0x77FFFF88, &img);
-  GradUtil::Graph(result3, 0x7777FF88, &img);
-  GradUtil::Graph(result4, 0xFF77FF88, &img);
+  GradUtil::Graph(result1,  0xFFFF7788, &img);
+  GradUtil::Graph(result1b, 0x77FF7788, &img);
+  GradUtil::Graph(result2,  0x77FFFF88, &img);
+  GradUtil::Graph(result3,  0x7777FF88, &img);
+  GradUtil::Graph(result4,  0xFF77FF88, &img);
   img.Save("expression-test.png");
 }
 

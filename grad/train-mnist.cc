@@ -26,7 +26,7 @@
 #include "periodically.h"
 #include "timer.h"
 #include "error-history.h"
-#include "eval.h"
+#include "eval-mnist.h"
 
 #include "mnist.h"
 
@@ -175,7 +175,7 @@ static void Train(Network *net) {
 
   ErrorHistory error_history("error-history.tsv");
 
-  Evaluator evaluator(cl);
+  EvalMNIST evaluator(cl);
 
   static constexpr int max_parallelism = 4;
   // 0, 1, 2
@@ -455,7 +455,7 @@ static void Train(Network *net) {
       printf("overall: %.4f\n", overall_average_loss);
       if (save_history) {
         net_gpu->ReadFromGPU();
-        Evaluator::Result res = evaluator.Evaluate(net);
+        EvalMNIST::Result res = evaluator.Evaluate(net);
         res.wrong.Save("test-wrong.png");
         double test_loss = (res.total - res.correct) / (double)res.total;
         error_history.Add(net->rounds, overall_average_loss,

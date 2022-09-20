@@ -1,7 +1,7 @@
 
-default: iter.exe train.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe
+default: iter.exe train-mnist.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe
 
-all: grad.exe iter.exe make-data.exe mnist_test.exe evaluate.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe ansi_test.exe hash-util_test.exe
+all: grad.exe iter.exe make-data.exe mnist_test.exe evaluate-mnist.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe ansi_test.exe hash-util_test.exe
 
 CC_LIB=../cc-lib
 
@@ -63,7 +63,7 @@ network-gpu_test.exe : network.o network-gpu.o network-test-util.o network-gpu_t
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-train.exe : train.o network.o network-gpu.o error-history.o clutil.o $(OBJECTS)
+train-mnist.exe : train.o network.o network-gpu.o error-history.o clutil.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
@@ -71,7 +71,7 @@ mnist_test.exe : mnist_test.o $(CCLIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-evaluate.exe : evaluate.o network.o network-gpu.o error-history.o clutil.o $(OBJECTS)
+evaluate-mnist.exe : evaluate-mnist.o network.o network-gpu.o error-history.o clutil.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

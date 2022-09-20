@@ -1,6 +1,6 @@
 
-#ifndef _GRAD_EVAL_H
-#define _GRAD_EVAL_H
+#ifndef _GRAD_EVAL_MNIST_H
+#define _GRAD_EVAL_MNIST_H
 
 #include <memory>
 #include <vector>
@@ -14,14 +14,14 @@
 #include "image.h"
 #include "mnist.h"
 
-struct Evaluator {
+struct EvalMNIST {
   static constexpr int IMG_WIDTH = 28;
   static constexpr int IMG_HEIGHT = 28;
 
   static constexpr int INPUT_SIZE = IMG_WIDTH * IMG_HEIGHT;
   static constexpr int OUTPUT_SIZE = 10;
 
-  Evaluator(CL *cl) : cl(cl), mnist_test("mnist/t10k") {
+  EvalMNIST(CL *cl) : cl(cl), mnist_test("mnist/t10k") {
     CHECK(mnist_test.width == IMG_WIDTH);
     CHECK(mnist_test.height == IMG_HEIGHT);
   }

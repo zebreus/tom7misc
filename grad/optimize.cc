@@ -29,7 +29,10 @@ using Allocator = Exp::Allocator;
 using Table = Exp::Table;
 using namespace std;
 
-constexpr int MAX_THREADS = 8;
+// Don't optimize expressions smaller than this
+static constexpr int MIN_OPT = 1; // 000;
+
+static constexpr int MAX_THREADS = 8;
 
 static void MaybeSaveDB(DB *db) {
   static std::mutex *m = new std::mutex;
@@ -378,6 +381,204 @@ static void FillChopTable(const Exp *e, ChopTable *table) {
   CHECK(idx == CHOPTABLE_SIZE) << idx;
 }
 
+// Jitter each constant and iters independently.
+struct JointOptArgs1 {
+  using LO = LargeOptimizer<false>;
+  std::vector<LO::arginfo> arginfos;
+  std::vector<double> cur;
+
+  JointOptArgs1(const Exp *exp) {
+    GetArgs(exp);
+  }
+
+  void GetArgs(const Exp *e) {
+    switch (e->type) {
+    case VAR: return;
+    case PLUS_C:
+    case TIMES_C:
+      // Removes nans/infs at the high end. But maybe should
+      // reorder to avoid all of them?
+      // Only search a small region around the current best.
+      arginfos.push_back(LO::Integer(0, 0xfc00, -8, +8));
+      cur.push_back((double)e->c);
+      // Allow more downward movement than up.
+      arginfos.push_back(LO::Integer(0, 0x10000, -16, +6));
+      cur.push_back((double)e->iters);
+      GetArgs(e->a);
+      return;
+    case PLUS_E:
+      GetArgs(e->a);
+      GetArgs(e->b);
+      return;
+    default:
+      CHECK(false);
+      return;
+    }
+  }
+
+
+  const Exp *SetArgs(Allocator *alloc,
+                     const Exp *exp,
+                     const std::vector<double> &args) {
+    int idx = 0;
+    std::function<const Exp *(const Exp *)> Rec =
+      [alloc, &args, &idx, &Rec](const Exp *old) {
+        switch (old->type) {
+        case VAR: return old;
+        case PLUS_C: {
+          CHECK(idx < args.size() - 1);
+          uint16_t c = args[idx++];
+          uint16_t iters = args[idx++];
+          const Exp *a = Rec(old->a);
+          return alloc->PlusC(a, c, iters);
+        }
+        case TIMES_C: {
+          CHECK(idx < args.size() - 1);
+          uint16_t c = args[idx++];
+          uint16_t iters = args[idx++];
+          const Exp *a = Rec(old->a);
+          return alloc->TimesC(a, c, iters);
+        }
+        case PLUS_E: {
+          const Exp *a = Rec(old->a);
+          const Exp *b = Rec(old->b);
+          return alloc->PlusE(a, b);
+        }
+        default:
+          CHECK(false);
+          return old;
+        }
+      };
+
+    const Exp *ret = Rec(exp);
+    CHECK(idx == args.size());
+    return ret;
+  }
+
+};
+
+// Group by constant so that all occurrences are optimized together.
+struct JointOptArgs2 {
+  using LO = LargeOptimizer<false>;
+  std::vector<LO::arginfo> arginfos;
+  std::vector<double> cur;
+
+  // Same size as arginfos.
+  // For an argument index, the locations in the in-order traversal
+  // where it occurs. bool indicates whether this is iters (true)
+  // or constant (false).
+  std::vector<std::pair<bool, std::vector<int>>> locations;
+  // Number of positions (both constant/iters) being optimized.
+  int num_flat = 0;
+
+  JointOptArgs2(const Exp *exp) {
+    int next_index = 0;
+    std::map<std::pair<uint16_t, uint16_t>,
+             std::vector<int>> constants;
+    CollateArgs(exp, &next_index, &constants);
+
+    for (const auto &[k, v] : constants) {
+      const auto &[c, iters] = k;
+      // For each, two optimization arguments.
+      locations.emplace_back(false, v);
+      arginfos.push_back(LO::Integer(0, 0xfc00, -8, +8));
+      cur.push_back(c);
+
+      locations.emplace_back(true, v);
+      arginfos.push_back(LO::Integer(0, 0x10000, -16, +6));
+      cur.push_back(iters);
+
+      num_flat += v.size();
+    }
+
+    CHECK(locations.size() == arginfos.size());
+    CHECK(locations.size() == cur.size());
+  }
+
+  const Exp *SetArgs(Allocator *alloc,
+                     const Exp *exp,
+                     const std::vector<double> &collated_args) {
+
+    // Put back in flat order.
+    CHECK(locations.size() == collated_args.size());
+    std::vector<std::pair<uint16_t, uint16_t>> args(num_flat,
+                                                    make_pair(0, 0));
+    for (int i = 0; i < (int)collated_args.size(); i++) {
+      uint16_t val = collated_args[i];
+      const auto &[is_iters, vec] = locations[i];
+      for (int loc : vec) {
+        CHECK(loc >= 0 && loc < args.size());
+        if (is_iters) args[loc].second = val;
+        else args[loc].first = val;
+      }
+    }
+
+    int idx = 0;
+    std::function<const Exp *(const Exp *)> Rec =
+      [alloc, &args, &idx, &Rec](const Exp *old) {
+        switch (old->type) {
+        case VAR: return old;
+        case PLUS_C: {
+          CHECK(idx < args.size());
+          uint16_t c = args[idx].first;
+          uint16_t iters = args[idx].second;
+          idx++;
+          const Exp *a = Rec(old->a);
+          return alloc->PlusC(a, c, iters);
+        }
+        case TIMES_C: {
+          CHECK(idx < args.size());
+          uint16_t c = args[idx].first;
+          uint16_t iters = args[idx].second;
+          idx++;
+          const Exp *a = Rec(old->a);
+          return alloc->TimesC(a, c, iters);
+        }
+        case PLUS_E: {
+          const Exp *a = Rec(old->a);
+          const Exp *b = Rec(old->b);
+          return alloc->PlusE(a, b);
+        }
+        default:
+          CHECK(false);
+          return old;
+        }
+      };
+
+    const Exp *ret = Rec(exp);
+    CHECK(idx == args.size()) << idx << " " << args.size();
+    return ret;
+  }
+
+ private:
+  // Map from a constant/iters (in the original expression) to
+  // its indices in an in-order traversal.
+  void CollateArgs(const Exp *e,
+                   int *next_index,
+                   std::map<std::pair<uint16_t, uint16_t>,
+                   std::vector<int>> *constants) {
+    switch (e->type) {
+    case VAR: return;
+    case PLUS_C:
+    case TIMES_C:
+      (*constants)[make_pair(e->c, e->iters)].push_back(*next_index);
+      ++*next_index;
+      CollateArgs(e->a, next_index, constants);
+      return;
+    case PLUS_E:
+      CollateArgs(e->a, next_index, constants);
+      CollateArgs(e->b, next_index, constants);
+      return;
+    default:
+      CHECK(false);
+      return;
+    }
+  }
+
+};
+
+
+template<class JointOptArg>
 static const Exp *JointOpt(DB *db,
                            const DB::key_type &key,
                            const Exp *exp,
@@ -386,6 +587,9 @@ static const Exp *JointOpt(DB *db,
 
   ChopTable orig_table;
   FillChopTable(exp, &orig_table);
+
+  JointOptArg jo(exp);
+  const int n = jo.arginfos.size();
 
   ChopTable tmp_table;
   auto StillWorks = [&](const Exp *exp, double *score) {
@@ -402,92 +606,10 @@ static const Exp *JointOpt(DB *db,
 
       *score = 0;
       return true;
-      /*
-      auto chopo = Choppy::GetChoppy(exp);
-      if (!chopo.has_value()) return false;
-      if (chopo.value() != key) return false;
-      return true;
-      */
     };
 
   using LO = LargeOptimizer<false>;
 
-  std::vector<LO::arginfo> args;
-  std::vector<double> cur;
-
-  std::function<void(const Exp *)> GetArgs =
-    [&args, &cur, &GetArgs](const Exp *e) {
-      switch (e->type) {
-      case VAR: return;
-      case PLUS_C:
-      case TIMES_C:
-        // Removes nans/infs at the high end. But maybe should
-        // reorder to avoid all of them?
-        // Only search a small region around the current best.
-        args.push_back(LO::Integer(0, 0xfc00, -8, +8));
-        cur.push_back((double)e->c);
-        // Allow more downward movement than up.
-        args.push_back(LO::Integer(0, 0x10000, -16, +6));
-        cur.push_back((double)e->iters);
-        GetArgs(e->a);
-        return;
-      case PLUS_E: {
-        GetArgs(e->a);
-        GetArgs(e->b);
-        return;
-      }
-      default:
-        CHECK(false);
-        return;
-      }
-    };
-
-  GetArgs(exp);
-  const int n = args.size();
-  CHECK(cur.size() == n);
-
-  // Nothing to optimize!
-  if (n == 0)
-    return exp;
-
-  auto SetArgs =
-    [exp](Allocator *alloc,
-          const std::vector<double> &args) -> const Exp * {
-
-      int idx = 0;
-      std::function<const Exp *(const Exp *)> Rec =
-        [alloc, &args, &idx, &Rec](const Exp *old) {
-          switch (old->type) {
-          case VAR: return old;
-          case PLUS_C: {
-            CHECK(idx < args.size() - 1);
-            uint16_t c = args[idx++];
-            uint16_t iters = args[idx++];
-            const Exp *a = Rec(old->a);
-            return alloc->PlusC(a, c, iters);
-          }
-          case TIMES_C: {
-            CHECK(idx < args.size() - 1);
-            uint16_t c = args[idx++];
-            uint16_t iters = args[idx++];
-            const Exp *a = Rec(old->a);
-            return alloc->TimesC(a, c, iters);
-          }
-          case PLUS_E: {
-            const Exp *a = Rec(old->a);
-            const Exp *b = Rec(old->b);
-            return alloc->PlusE(a, b);
-          }
-          default:
-            CHECK(false);
-            return old;
-          }
-        };
-
-      const Exp *ret = Rec(exp);
-      CHECK(idx == args.size());
-      return ret;
-    };
 
   double start_score = 0.0/0.0;
   static constexpr bool VERBOSE = false;
@@ -498,7 +620,7 @@ static const Exp *JointOpt(DB *db,
       }
 
       Allocator alloc;
-      const Exp *e2 = SetArgs(&alloc, args);
+      const Exp *e2 = jo.SetArgs(&alloc, exp, args);
       // TODO: Gradient in infeasible region
       double diff;
       if (!StillWorks(e2, &diff)) {
@@ -517,12 +639,12 @@ static const Exp *JointOpt(DB *db,
     };
 
   LO opt(Score, n, seed);
-  opt.Sample(cur);
+  opt.Sample(jo.cur);
   auto ostart = opt.GetBest();
   CHECK(ostart.has_value());
   start_score = ostart.value().second;
 
-  opt.Run(args, nullopt, nullopt, {sec},
+  opt.Run(jo.arginfos, nullopt, nullopt, {sec},
           nullopt,
           8);
   auto oend = opt.GetBest();
@@ -532,10 +654,9 @@ static const Exp *JointOpt(DB *db,
     printf(AGREEN("JointOpt reduced!") " From "
            ACYAN("%.3f") " -> " ABLUE("%.3f") "\n",
            start_score, end_score);
-    const Exp *opt_exp = SetArgs(&db->alloc, oend.value().first);
+    const Exp *opt_exp = jo.SetArgs(&db->alloc, exp, oend.value().first);
     return opt_exp;
   } else {
-    // printf(AGREY("JointOpt no reduction") "\n");
     return exp;
   }
 }
@@ -544,7 +665,8 @@ static void OptimizeOne(DB *db,
                         int idx,
                         int num,
                         const DB::key_type &key,
-                        const Exp *exp) {
+                        const Exp *exp,
+                        int *size_in, int *size_out) {
   ArcFour rc(StringPrintf("%d.%lld", idx, time(nullptr)));
   Allocator *alloc = &db->alloc;
 
@@ -566,6 +688,7 @@ static void OptimizeOne(DB *db,
 
   const Exp *start_exp = exp;
   const int start_size = Exp::ExpSize(exp);
+  if (start_size < MIN_OPT) return;
 
   // Make sure the entry has the key it purports to.
   CHECK(StillWorks(exp));
@@ -582,10 +705,14 @@ static void OptimizeOne(DB *db,
     }
   }
 
+  // XXX run both JointOptArgs1 and JointOptArgs2!
+
   {
-    constexpr double JOINT_OPT_SEC = 60.0 * 1.0; // * 30.0;
+    // on basis8, 5 min takes 163 minutes.
+    constexpr double JOINT_OPT_SEC = 60.0 * 10.0; // * 30.0;
     uint64_t seed = Rand64(&rc);
-    const Exp *joint_exp = JointOpt(db, key, exp, JOINT_OPT_SEC, seed);
+    const Exp *joint_exp =
+      JointOpt<JointOptArgs2>(db, key, exp, JOINT_OPT_SEC, seed);
     if (StillWorks(joint_exp)) {
       exp = joint_exp;
     } else {
@@ -646,12 +773,13 @@ static void OptimizeOne(DB *db,
             for (const Step &step : steps)
               step_size += step.iters;
 
-            CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+            CPrintf(ANSI_GREY "[%d/%d %s] " ANSI_RESET
                     "Tries " ANSI_YELLOW "%lld" ANSI_RESET " ("
                     ANSI_CYAN "%.3f " ANSI_RESET "/s) size "
                     ANSI_PURPLE "%lld" ANSI_RESET
                     " depth " ANSI_RED "%d" ANSI_RESET "/"
                     ANSI_YELLOW "%d" ANSI_RESET "\n",
+                    idx + 1, num,
                     "ChopSection",
                     tries, (tries / loop_timer.Seconds()), step_size,
                     start_idx, (int)steps.size());
@@ -671,10 +799,11 @@ static void OptimizeOne(DB *db,
           tries++;
           if (StillWorksLinear(chopped)) {
             steps = std::move(chopped);
-            CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+            CPrintf(ANSI_GREY "[%d/%d %s] " ANSI_RESET
                     "Chopped " ANSI_BLUE "%d" ANSI_RESET " steps at "
                     ANSI_PURPLE "%d" ANSI_RESET "! Now "
                     ANSI_YELLOW "%d" ANSI_RESET " steps.\n",
+                    idx + 1, num,
                     "ChopSection", chop_size, start_idx,
                     (int)steps.size());
 
@@ -885,7 +1014,8 @@ static void OptimizeOne(DB *db,
   // For each expression, see if we can remove it (or reduce
   // its iterations) but retain the property.
 
-  auto DoPhase = [db, alloc, &exp, start_size, &StillWorks]<typename Phase>(
+  auto DoPhase = [db, alloc, &exp, idx, num,
+                  start_size, &StillWorks]<typename Phase>(
       Phase phase) {
     const int total_depth = TotalDepth(exp);
     int64 tries = 0;
@@ -904,12 +1034,13 @@ static void OptimizeOne(DB *db,
       Allocator local_alloc;
       tries++;
       if (status_per.ShouldRun()) {
-        CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+        CPrintf(ANSI_GREY "[%d/%d %s] " ANSI_RESET
                 "Tries " ANSI_YELLOW "%lld" ANSI_RESET " ("
                 ANSI_CYAN "%.3f " ANSI_RESET "/s) size "
                 ANSI_PURPLE "%d" ANSI_RESET
                 " depth " ANSI_RED "%s" ANSI_RESET "/"
                 ANSI_YELLOW "%d" ANSI_RESET "\n",
+                idx + 1, num,
                 phase.Name().c_str(),
                 tries, (tries / loop_timer.Seconds()), exp_size,
                 phase.CurrentDepth().c_str(), total_depth);
@@ -925,10 +1056,11 @@ static void OptimizeOne(DB *db,
       if (StillWorks(e)) {
         int new_size = Exp::ExpSize(e);
         if (new_size < exp_size) {
-          CPrintf(ANSI_GREY "[%s] " ANSI_RESET
+          CPrintf(ANSI_GREY "[%d/%d %s] " ANSI_RESET
                   ANSI_GREEN "Reduced!" ANSI_RESET
                   " Start " ANSI_BLUE "%d" ANSI_RESET " now "
                   ANSI_PURPLE "%d" ANSI_RESET "\n",
+                  idx + 1, num,
                   phase.Name().c_str(),
                   start_size, new_size);
           exp = alloc->Copy(e);
@@ -978,20 +1110,27 @@ static void OptimizeOne(DB *db,
             start_size, end_size);
 
     const auto [before, after] = ColorDiff(start_exp, exp);
-    printf(AWHITE("Was") ": %s\n", before.c_str());
-    printf(AWHITE("Now") ": %s\n", after.c_str());
+    printf(AWHITE("Was") ": %s" ANSI_RESET "\n", before.c_str());
+    printf(AWHITE("Now") ": %s" ANSI_RESET "\n", after.c_str());
+
+    *size_in += start_size;
+    *size_out += end_size;
 
     db->Add(exp);
     MaybeSaveDB(db);
   } else {
     CPrintf(ANSI_GREY "[%d/%d] No reduction (still %d)" ANSI_RESET "\n",
             idx + 1, num, start_size);
+
+    *size_in += start_size;
+    *size_out += start_size;
   }
 }
 
 int main(int argc, char **argv) {
   AnsiInit();
   CHECK(argc == 2) << "Give a database file on the command line.";
+  Timer run_timer;
 
   DB db;
   printf("Load database:\n");
@@ -1008,16 +1147,37 @@ int main(int argc, char **argv) {
     all.emplace_back(k, v);
   }
 
+  std::mutex total_m;
+  int64_t total_in = 0, total_out = 0;
   ParallelAppi(all,
                [&](int idx, const std::pair<
                    const DB::key_type &, const Exp *> &arg) {
+                 int size_in = 0, size_out = 0;
                  OptimizeOne(&db, idx, (int)all.size(),
-                             arg.first, arg.second);
+                             arg.first, arg.second,
+                             &size_in, &size_out);
+                 {
+                   MutexLock ml(&total_m);
+                   total_in += size_in;
+                   total_out += size_out;
+                 }
                },
                MAX_THREADS);
 
   Util::WriteFile("optimized.txt", db.Dump());
 
-  printf("OK\n");
+
+  printf("Done in " AYELLOW("%.3f") "s\n", run_timer.Seconds());
+  if (total_in == total_out) {
+    printf(AGREY("Size: %lld. No change.") "\n", total_in);
+  } else {
+    printf(AGREEN("Reduced!")
+           " Toal from " ACYAN("%lld") " -> " ABLUE("%lld")
+           "  (" APURPLE("%.2f%%") ")\n",
+           total_in, total_out,
+           (100.0 * (total_in - total_out)) / total_in);
+  }
+
+  printf(AGREEN("OK") "\n");
   return 0;
 }

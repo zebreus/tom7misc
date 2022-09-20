@@ -74,15 +74,32 @@ static hcomplex EvalWithTables(const Table &rtable,
 }
 
 static void Render(const Exp *e, string filebase) {
-  static constexpr int OVERSAMPLE = 8;
-  static constexpr int FRAMES = 10 * 60;
+  // static constexpr int OVERSAMPLE = 8;
+  // static constexpr int FRAMES = 10 * 60;
+  static constexpr int OVERSAMPLE = 4;
+  static constexpr int FRAMES = 100;
+
   const auto &[rtable, itable] = TabulateComplex(e);
 
+  /*
   const float XMIN0 = -2.3f, XMAX0 = 1.3f;
   const float YMIN0 = -1.8f, YMAX0 = 1.8f;
+  */
+  /*
+  const float XMIN0 = -1.5f, XMAX0 = 1.5f;
+  const float YMIN0 = -1.5f, YMAX0 = 1.5f;
+  */
+  const float XMIN0 = -1.0f, XMAX0 = 1.0f;
+  const float YMIN0 = -1.0f, YMAX0 = 1.0f;
 
+  /*
   const float XMIN1 = 0.1375f, XMAX1 = 0.2625;
   const float YMIN1 = 0.4875f, YMAX1 = 0.51250f;
+  */
+
+  const float XMIN1 = -0.0125f, XMAX1 = 0.0125f;
+  const float YMIN1 = -0.0125f, YMAX1 = 0.0125f;
+
 
   // No zoom
   // const float XMIN1 = XMIN0, XMAX1 = XMAX0;
@@ -105,11 +122,16 @@ static void Render(const Exp *e, string filebase) {
     ImageRGBA img(FRAME_WIDTH, FRAME_HEIGHT);
     img.Clear32(0x000000FF);
 
-    const float t = frame / (float)(FRAMES - 1);
+    const float t = frame / (float)(FRAMES);
     const float XMIN = std::lerp(XMIN0, XMIN1, t);
     const float XMAX = std::lerp(XMAX0, XMAX1, t);
     const float YMIN = std::lerp(YMIN0, YMIN1, t);
     const float YMAX = std::lerp(YMAX0, YMAX1, t);
+
+    CHECK(std::isfinite(XMIN)) << XMIN;
+    CHECK(std::isfinite(XMAX)) << XMAX;
+    CHECK(std::isfinite(YMIN)) << YMIN;
+    CHECK(std::isfinite(YMAX)) << YMAX;
 
     const float WIDTH = XMAX - XMIN;
     const float HEIGHT = YMAX - YMIN;
@@ -140,25 +162,29 @@ static void Render(const Exp *e, string filebase) {
           hcomplex z((half)0, (half)0);
           hcomplex c((half)x, (half)y);
 
-          #if 1
+          #if 0
             // magnitude mode
-            const int MAX_ITERS = 32;
+            const int MAX_ITERS = 256;
             for (int i = 0; i < MAX_ITERS; i++) {
-              z = EvalWithTables(rtable, itable, z) * c;
+              // z = EvalWithTables(rtable, itable, z) * c;
+              // z = EvalWithTables(rtable, itable, z) + c;
+              z = EvalWithTables(rtable, itable, z) + c;
+              // z = z + c;
               // z = z * z + c;
             }
 
-            float f = z.Abs() / 2.0f;
-            uint32 color = ColorUtil::LinearGradient32(
-                ColorUtil::HEATED_METAL, f);
+            float f = z.Abs() / 8.0f;
+             uint32 color = ColorUtil::LinearGradient32(
+                 ColorUtil::HEATED_METAL, f);
             img.SetPixel32(xp, yp, color);
             return;
 
           #else
             // escape mode
+            const int MAX_ITERS = 32;
             for (int i = 0; i < MAX_ITERS; i++) {
               // XXX need to know the actual escape
-              if (z.Abs() > (half)2) {
+              if (z.Abs() > (half)1.0) {
                 // Escaped. The number of iterations gives the pixel.
                 float f = i / (float)MAX_ITERS;
                 uint32 color = ColorUtil::LinearGradient32(
@@ -167,7 +193,8 @@ static void Render(const Exp *e, string filebase) {
                 return;
               }
 
-              z = EvaluateComplex(e, z) * c;
+              // z = EvaluateComplex(e, z) * c;
+              z = EvalWithTables(rtable, itable, z) + c;
               // z = z * z + c;
             }
             // Possibly in the set.
@@ -198,11 +225,29 @@ static void Render(const Exp *e, string filebase) {
 
 static void Frac1() {
   Exp::Allocator alloc;
+  /*
   string se = Util::ReadFile("perm16good2/converted.txt");
   string err;
   const Exp *e = Exp::Deserialize(&alloc, se, &err);
   CHECK(e) << err;
-  Render(e, "frac1_");
+  */
+
+  const Exp *e =
+    alloc.TimesC(
+        alloc.TimesC(
+            alloc.Var(),
+            // * 0.999 ...
+            // 0x3bffu,
+            // 1.0000000...1
+            0x3c01u,
+            500),
+        0x3960);
+
+  uint16_t u = Exp::EvaluateOn(e, Exp::GetU16((half)1.0));
+  uint16_t inv = Exp::GetU16((half)1.0 / Exp::GetHalf(u));
+  printf("inv: %04x\n", inv);
+
+  Render(e, "frac2_");
 }
 
 int main(int argc, char **argv) {
