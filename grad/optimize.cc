@@ -709,7 +709,7 @@ static void OptimizeOne(DB *db,
 
   {
     // on basis8, 5 min takes 163 minutes.
-    constexpr double JOINT_OPT_SEC = 60.0 * 10.0; // * 30.0;
+    constexpr double JOINT_OPT_SEC = 60.0 * 2.0; // * 30.0;
     uint64_t seed = Rand64(&rc);
     const Exp *joint_exp =
       JointOpt<JointOptArgs2>(db, key, exp, JOINT_OPT_SEC, seed);

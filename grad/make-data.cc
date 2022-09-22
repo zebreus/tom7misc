@@ -1,6 +1,9 @@
 
 #include <string>
 #include <cmath>
+#include <array>
+#include <cstdint>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -16,6 +19,7 @@
 #include "threadutil.h"
 
 #include "grad-util.h"
+#include "ansi.h"
 
 using namespace std;
 
@@ -29,22 +33,27 @@ static inline float Unpack16AsFloat(uint16 u) {
 
 static constexpr int IMAGE_SIZE = 1920;
 
-int main(int argc, char **argv) {
-  State state = GradUtil::MakeTable1();
+static void MakeData(const std::array<uint16_t, 65536> &table,
+                     const string &name) {
+  printf("Writing data for " ABLUE("%s") "\n", name.c_str());
+  const string forward_file = StringPrintf("forward-%s.png", name.c_str());
+  const string deriv_file = StringPrintf("deriv-%s.png", name.c_str());
+  const string viz_file = StringPrintf("viz-%s.png", name.c_str());
 
-  GradUtil::SaveFunctionToFile(state.table, "forward.png");
+  GradUtil::SaveFunctionToFile(table, forward_file);
 
+  // Check that the values are preserved round-trip.
   {
     std::vector<uint16> refn =
-      GradUtil::GetFunctionFromFile("forward.png");
+      GradUtil::GetFunctionFromFile(forward_file);
     for (int i = 0; i < 65536; i++) {
-      CHECK(state.table[i] == refn[i]) << i;
+      CHECK(table[i] == refn[i]) << i;
     }
   }
 
   // The derivative at a point, given as table mapping the
   // output value (y) to f'(x); this is what we use at training
-  // time. Note that this would seemling require the forward
+  // time. Note that this would seemingly require the forward
   // function to be bijective:
   //   (1) It must be "onto", because we want to have a value
   //       for every element in the table. We should only ever
@@ -76,8 +85,8 @@ int main(int argc, char **argv) {
   // We'll do the calculation as doubles, but output floats.
 
   std::vector<std::pair<uint16, uint16>> points;
-  GradUtil::ForEveryFinite16([&state, &points](uint16 x) {
-      uint16 y = state.table[x];
+  GradUtil::ForEveryFinite16([&table, &points](uint16 x) {
+      uint16 y = table[x];
       points.emplace_back(x, y);
     });
 
@@ -171,7 +180,7 @@ int main(int argc, char **argv) {
       } else {
         // Empty. Get the adjacent (in the given direction) bucket that
         // has values, along with the bucket's y coordinate. If there
-        // are no-non-empty buckets, the coordinate is not meaningful.
+        // are no non-empty buckets, the coordinate is not meaningful.
         auto GetAdjacentBucket = [&](uint16 u, int dir) ->
           pair<uint16, vector<double>> {
           // TODO: Can use NextAfter16?
@@ -239,8 +248,8 @@ int main(int argc, char **argv) {
       CHECK(std::isfinite(deriv_out[yu])) << yu;
     });
 
-  printf("deriv at 0xfbff (min finite): %.6f\n"
-         "deriv at 0x7bff (max finite): %.6f\n",
+  printf("  deriv at " AYELLOW("0xfbff") " (min finite): " APURPLE("%.6f") "\n"
+         "  deriv at " AYELLOW("0x7bff") " (max finite): " APURPLE("%.6f") "\n",
          deriv_out[0xfbff],
          deriv_out[0x7bff]);
 
@@ -251,7 +260,8 @@ int main(int argc, char **argv) {
   deriv_out[0xfc00] = deriv_out[0xfbff];
   deriv_out[0x7c00] = deriv_out[0x7bff];
 
-  // TODO: Output derivative!
+
+  // Output derivative.
   ImageRGBA deriv_img(256, 256);
   // int nonzero = 0;
   for (int i = 0; i < 65536; i++) {
@@ -263,11 +273,11 @@ int main(int argc, char **argv) {
     deriv_img.SetPixel32(x, y, u);
   }
   // printf("Write nonzero: %d\n", nonzero);
-  deriv_img.Save("deriv.png");
+  deriv_img.Save(deriv_file);
 
   // Test that it's round-trip clean
   std::vector<float> rederiv =
-    GradUtil::GetDerivativeFromFile("deriv.png");
+    GradUtil::GetDerivativeFromFile(deriv_file);
   CHECK(rederiv.size() == 65536);
   for (int i = 0; i < 65536; i++) {
     float f1 = deriv_out[i];
@@ -278,20 +288,12 @@ int main(int argc, char **argv) {
                     << " from " << f1 << " " << f2;
   }
 
-  #if 0
-  string out_fwd = "static const uint16_t forward[65536] = {\n";
-  for (int i = 0; i < 65536; i++) {
-    if (i > 0 && i % 8 == 0) out_fwd += "\n";
-    StringAppendF(&out_fwd, "0x%04x,", state.table[i]);
-  }
-  out_fwd += "\n};\n";
-  Util::WriteFile("the-data.h", out_fwd);
-  #endif
 
+  // And debugging/visualization image.
   ImageRGBA img(IMAGE_SIZE, IMAGE_SIZE);
   img.Clear32(0x000000FF);
   GradUtil::Grid(&img);
-  GradUtil::Graph(state.table, 0xFFFFFF77, &img);
+  GradUtil::Graph(table, 0xFFFFFF77, &img);
 
   // Graph derivative within this range.
   double max_mag = 0.0;
@@ -318,7 +320,15 @@ int main(int argc, char **argv) {
   img.BlendText32(IMAGE_SIZE - md.size() * 9 - 6, 2, 0xFFFF0077,
                   md);
 
-  string filename = "state.png";
-  img.Save(filename);
+  img.Save(viz_file);
+}
+
+int main(int argc, char **argv) {
+  AnsiInit();
+
+  State state = GradUtil::MakeTable1();
+
+  MakeData(state.table, "grad1");
+
   return 0;
 }

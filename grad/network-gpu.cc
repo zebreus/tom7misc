@@ -280,6 +280,8 @@ void ForwardLayerCL::RunForwardPrefix(TrainingRoundGPU *train, int src_layer,
     // size dst_num_nodes * num_examples
     cl_mem all_dst_values = train->stimulations[dst_layer];
 
+    cl_mem forward_table = train->GetForwardTable(chunk.transfer_function);
+
     // Can't have multiple threads setting a kernel's argument at one time.
     {
       MutexLock ml(&m);
@@ -300,7 +302,7 @@ void ForwardLayerCL::RunForwardPrefix(TrainingRoundGPU *train, int src_layer,
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 4, sizeof (cl_mem),
                                    (void *)&all_dst_values));
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 5, sizeof (cl_mem),
-                                   (void *)&train->forward_table));
+                                   (void *)&forward_table));
 
       // TODO: Break into smaller chunks if nodes * examples is
       // too large?
@@ -410,6 +412,8 @@ void SetOutputErrorCL::SetOutputError(TrainingRoundGPU *train) {
     const Chunk &chunk = layer.chunks[chunk_idx];
     const ChunkKernel &ck = kernels[chunk_idx];
 
+    cl_mem deriv_table = train->GetDerivTable(chunk.transfer_function);
+
     {
       MutexLock ml(&m);
 
@@ -420,7 +424,7 @@ void SetOutputErrorCL::SetOutputError(TrainingRoundGPU *train) {
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 2, sizeof (cl_mem),
                                    (void *)&all_output_error));
       CHECK_SUCCESS(clSetKernelArg(ck.kernel, 3, sizeof (cl_mem),
-                                   (void *)&train->deriv_table));
+                                   (void *)&deriv_table));
 
       size_t global_work_offset[] = { 0, 0, };
       size_t global_work_size[] = {
@@ -825,6 +829,8 @@ void BackwardLayerCL::BackwardLayer(TrainingRoundGPU *train,
     cl_mem all_src_output = train->stimulations[src_layer];
     cl_mem all_src_error = train->errors[src_layer];
 
+    cl_mem deriv_table = train->GetDerivTable(chunk.transfer_function);
+
     {
       MutexLock ml(&m);
 
@@ -833,7 +839,7 @@ void BackwardLayerCL::BackwardLayer(TrainingRoundGPU *train,
       CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 1, sizeof (cl_mem),
                                    (void *)&all_src_error));
       CHECK_SUCCESS(clSetKernelArg(ck.kernel2, 2, sizeof (cl_mem),
-                                   (void *)&train->deriv_table));
+                                   (void *)&deriv_table));
 
       size_t global_work_offset[] = { 0, 0 };
       size_t global_work_size[] = {

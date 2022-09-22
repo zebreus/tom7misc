@@ -150,19 +150,41 @@ struct TrainingRoundGPU {
       CreateUninitializedGPUMemory<float>(cl->context,
                                           output_size * num_examples);
 
-    std::vector<uint16_t> fwd =
-      GradUtil::GetFunctionFromFile("forward.png");
-    std::vector<float> der =
-      GradUtil::GetDerivativeFromFile("deriv.png");
+    for (const auto &[name, tf] :
+           std::initializer_list<
+           std::pair<std::string, TransferFunction>>{
+           {"grad1", GRAD1}
+         }) {
+      std::vector<uint16_t> fwd =
+        GradUtil::GetFunctionFromFile(
+            StringPrintf("forward-%s.png", name.c_str()));
+      std::vector<float> der =
+        GradUtil::GetDerivativeFromFile(
+            StringPrintf("deriv-%s.png", name.c_str()));
 
-    forward_table =
-      CreateUninitializedGPUMemory<uint16_t>(cl->context, 65536);
-    deriv_table =
-      CreateUninitializedGPUMemory<float>(cl->context, 65536);
+      forward_tables[tf] =
+        CreateUninitializedGPUMemory<uint16_t>(cl->context, 65536);
+      deriv_tables[tf] =
+        CreateUninitializedGPUMemory<float>(cl->context, 65536);
 
-    CopyBufferToGPU(cl->queue, fwd, forward_table);
-    CopyBufferToGPU(cl->queue, der, deriv_table);
+      CopyBufferToGPU(cl->queue, fwd, forward_tables[tf]);
+      CopyBufferToGPU(cl->queue, der, deriv_tables[tf]);
+    }
+
     clFinish(cl->queue);
+  }
+
+  // Get the tabled data if the transfer function needs it; otherwise 0.
+  cl_mem GetForwardTable(TransferFunction tf) {
+    auto it = forward_tables.find(tf);
+    if (it == forward_tables.end()) return 0;
+    else return it->second;
+  }
+
+  cl_mem GetDerivTable(TransferFunction tf) {
+    auto it = deriv_tables.find(tf);
+    if (it == deriv_tables.end()) return 0;
+    else return it->second;
   }
 
   // Load one example's input at the given index.
@@ -240,11 +262,11 @@ struct TrainingRoundGPU {
   // Size of final stimulation * num_examples.
   cl_mem expected;
 
-  // HAX for grad project
-  // 65536 * half
-  cl_mem forward_table;
-  // 65536 * float
-  cl_mem deriv_table;
+  // HAX for grad project.
+  // 65536 * half, for tabled transfer functions
+  std::map<TransferFunction, cl_mem> forward_tables;
+  // 65536 * float, for tabled transfer functions
+  std::map<TransferFunction, cl_mem> deriv_tables;
 
   ~TrainingRoundGPU() {
     for (cl_mem m : stimulations) {
@@ -254,6 +276,11 @@ struct TrainingRoundGPU {
       CHECK_SUCCESS(clReleaseMemObject(m));
     }
     CHECK_SUCCESS(clReleaseMemObject(expected));
+
+    for (auto &[k, m] : forward_tables)
+      CHECK_SUCCESS(clReleaseMemObject(m));
+    for (auto &[k, m] : deriv_tables)
+      CHECK_SUCCESS(clReleaseMemObject(m));
   }
 
   const int num_examples = 0;

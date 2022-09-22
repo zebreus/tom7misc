@@ -1,4 +1,7 @@
 
+// I modified this to take command-line arguments so that
+// it's easy to reproduce results, but haven't tested it yet.
+
 #include "network-gpu.h"
 
 #include <cmath>
@@ -170,10 +173,13 @@ private:
   std::unique_ptr<std::thread> work_thread1, work_thread2;
 };
 
-static void Train(Network *net) {
+static void Train(const string &dir, Network *net, int64 max_rounds) {
   ExampleThread example_thread;
 
-  ErrorHistory error_history("error-history.tsv");
+  const string error_history_file = Util::dirplus(dir, "error-history.tsv");
+  const string model_file = Util::dirplus(dir, MODEL_NAME);
+
+  ErrorHistory error_history(error_history_file);
 
   EvalMNIST evaluator(cl);
 
@@ -221,7 +227,8 @@ static void Train(Network *net) {
   static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100000;
 
   constexpr int IMAGE_EVERY = 100;
-  TrainingImages images(*net, "train", MODEL_NAME, IMAGE_EVERY);
+  TrainingImages images(*net, Util::dirplus(dir, "train"),
+                        model_file, IMAGE_EVERY);
 
   printf("Training!\n");
 
@@ -229,7 +236,7 @@ static void Train(Network *net) {
   std::vector<std::unique_ptr<ErrorImage>> error_images;
   error_images.reserve(NUM_COLUMNS);
   for (int i = 0; i < NUM_COLUMNS; i++) {
-    string filename = StringPrintf("error-%d.png", i);
+    string filename = Util::dirplus(dir, StringPrintf("error-%d.png", i));
     error_images.emplace_back(
         std::make_unique<ErrorImage>(2000, EXAMPLES_PER_ROUND, filename,
                                      true));
@@ -287,7 +294,7 @@ static void Train(Network *net) {
   int64 total_examples = 0LL;
   // seconds since timer started
   double last_save = 0.0;
-  for (int iter = 0; true; iter++) {
+  for (int iter = 0; net->rounds < max_rounds; iter++) {
     Timer round_timer;
 
     const bool verbose_round = (iter % VERBOSE_EVERY) == 0;
@@ -456,7 +463,7 @@ static void Train(Network *net) {
       if (save_history) {
         net_gpu->ReadFromGPU();
         EvalMNIST::Result res = evaluator.Evaluate(net);
-        res.wrong.Save("test-wrong.png");
+        res.wrong.Save(Util::dirplus(dir, "test-wrong.png"));
         double test_loss = (res.total - res.correct) / (double)res.total;
         error_history.Add(net->rounds, overall_average_loss,
                           ErrorHistory::ERROR_TRAIN);
@@ -466,7 +473,7 @@ static void Train(Network *net) {
         error_history.MakeImage(1920, 1080,
                                 {{ErrorHistory::ERROR_TRAIN, 0x0033FFFF},
                                  {ErrorHistory::ERROR_TEST, 0x00FF00FF}},
-                                0).Save("error-history.png");
+                                0).Save(Util::dirplus(dir, "error-history.png"));
         if (net->rounds > 1000)
           history_per.SetPeriod(120.0);
       }
@@ -501,8 +508,9 @@ static void Train(Network *net) {
       // Note that if we write a checkpoint, we don't also overwrite
       // the main model, which is less redundant but might be surprising?
       const string filename = checkpoint_timeout ?
-        StringPrintf(MODEL_BASE ".%lld.val", net->rounds) :
-        (string)MODEL_NAME;
+        StringPrintf("%s.%lld.val",
+                     Util::dirplus(dir, MODEL_BASE).c_str(),
+                     net->rounds) : model_file;
       net->SaveToFile(filename);
       if (VERBOSE)
         printf("Wrote %s\n", filename.c_str());
@@ -566,9 +574,17 @@ static void Train(Network *net) {
              other_ms * msr);
     }
   }
+
+  // (caller must save)
+  printf("Reached max_rounds of %lld.\n", max_rounds);
+  net->SaveToFile(model_file);
+  printf("Saved to %s.\n", model_file.c_str());
 }
 
-static unique_ptr<Network> NewDigitsNetwork() {
+static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
+  printf("New network with transfer function %s\n",
+         TransferFunctionName(tf));
+
   // Deterministic!
   ArcFour rc("learn-digits-network");
 
@@ -580,8 +596,6 @@ static unique_ptr<Network> NewDigitsNetwork() {
   input_chunk.width = IMG_WIDTH;
   input_chunk.height = IMG_HEIGHT;
   input_chunk.channels = 1;
-
-  constexpr TransferFunction TF = LEAKY_RELU;
 
   layers.push_back(Network::LayerFromChunks(input_chunk));
 
@@ -595,7 +609,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
         CONV1_FEATURES, CONV1_SIZE, CONV1_SIZE,
         // full overlap
         1, 1,
-        TF, WEIGHT_UPDATE);
+        tf, WEIGHT_UPDATE);
 
   const int CONV2_SIZE = 8;
   const int CONV2_FEATURES = 128;
@@ -607,7 +621,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
         CONV2_FEATURES, CONV2_SIZE, CONV2_SIZE,
         // full overlap
         1, 1,
-        TF, WEIGHT_UPDATE);
+        tf, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(first_conv_chunk,
                                             second_conv_chunk));
@@ -634,7 +648,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
         32, CONV1_FEATURES * 2, 2,
         // no overlap
         CONV1_FEATURES * 2, 2,
-        TF, WEIGHT_UPDATE);
+        tf, WEIGHT_UPDATE);
 
   /*
   int num_conv2 =
@@ -651,7 +665,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
         32, CONV2_FEATURES * 2, 2,
         // No overlap.
         CONV2_FEATURES * 2, 2,
-        TF, WEIGHT_UPDATE);
+        tf, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(next_conv1,
                                             next_conv2));
@@ -674,7 +688,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
       Network::MakeRandomSparseChunk(
           &rc, layer_size, {{.span_start = 0, .span_size = prev_size,
                              .ipn = prev_size / 16}},
-          TF, WEIGHT_UPDATE);
+          tf, WEIGHT_UPDATE);
     layers.push_back(Network::LayerFromChunks(sparse));
     layer_size >>= 1;
   }
@@ -683,7 +697,7 @@ static unique_ptr<Network> NewDigitsNetwork() {
   Chunk dense_out =
     Network::MakeDenseChunk(OUTPUT_SIZE,
                             0, layers.back().num_nodes,
-                            TF, WEIGHT_UPDATE);
+                            tf, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(dense_out));
 
@@ -698,22 +712,54 @@ static unique_ptr<Network> NewDigitsNetwork() {
 }
 
 int main(int argc, char **argv) {
+  CHECK(argc == 4) <<
+    "./train-mnist.exe dir transfer_function rounds\n"
+    "Notes:\n"
+    "  dir must exist. Resumes training if the dir\n"
+    "    contains a model file.\n"
+    "  transfer_function should be one of\n"
+    "    SIGMOID, RELU, LEAKY_RELU, IDENTITY\n"
+    "    TANH, GRAD1,\n";
+
+  const string dir = argv[1];
+  const string tfarg = argv[2];
+  const int64 max_rounds = (int64)atoll(argv[3]);
+  CHECK(max_rounds > 0) << argv[3];
+
+  const TransferFunction tf =
+    [&tfarg](){
+      for (int i = 0; i < NUM_TRANSFER_FUNCTIONS; i++) {
+        TransferFunction tf = (TransferFunction)i;
+        if (tfarg == TransferFunctionName(tf))
+          return tf;
+      }
+      CHECK(false) << "Unknown transfer function: " << tfarg;
+      return SIGMOID;
+    }();
+
   cl = new CL;
 
+  const string model_file = Util::dirplus(dir, MODEL_NAME);
+
   std::unique_ptr<Network> net(
-      Network::ReadFromFile(MODEL_NAME));
+      Network::ReadFromFile(model_file));
 
   if (net.get() == nullptr) {
-    net = NewDigitsNetwork();
+    net = NewDigitsNetwork(tf);
     CHECK(net.get() != nullptr);
-    net->SaveToFile(MODEL_NAME);
-    printf("Wrote to %s\n", MODEL_NAME);
+    net->SaveToFile(model_file);
+    printf("Wrote to %s\n", model_file.c_str());
   }
 
   net->StructuralCheck();
-  net->NaNCheck(MODEL_NAME);
+  net->NaNCheck(model_file);
 
-  Train(net.get());
+  if (net->rounds >= max_rounds) {
+    printf("%s: Already trained %lld rounds.\n",
+           model_file.c_str(), net->rounds);
+  } else {
+    Train(dir, net.get(), max_rounds);
+  }
 
   printf("OK\n");
   return 0;
