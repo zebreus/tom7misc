@@ -56,6 +56,16 @@ const char *WeightUpdateName(WeightUpdate wu) {
   }
 }
 
+TransferFunction ParseTransferFunction(const std::string &s) {
+  for (int i = 0; i < NUM_TRANSFER_FUNCTIONS; i++) {
+    TransferFunction tf = (TransferFunction)i;
+    if (s == TransferFunctionName(tf))
+      return tf;
+  }
+  CHECK(false) << "Unknown transfer function: " << s;
+  return SIGMOID;
+}
+
 // For these, potential will be already rounded to the nearest half.
 // The output of FORWARD should also be rounded.
 

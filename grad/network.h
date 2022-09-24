@@ -116,6 +116,9 @@ const char *TransferFunctionName(TransferFunction tf);
 const char *ChunkTypeName(ChunkType ct);
 const char *WeightUpdateName(WeightUpdate wu);
 
+// Aborts if invalid.
+TransferFunction ParseTransferFunction(const std::string &s);
+
 struct Stimulation;
 struct Errors;
 

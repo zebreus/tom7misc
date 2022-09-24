@@ -575,7 +575,6 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     }
   }
 
-  // (caller must save)
   printf("Reached max_rounds of %lld.\n", max_rounds);
   net->SaveToFile(model_file);
   printf("Saved to %s.\n", model_file.c_str());
@@ -722,20 +721,9 @@ int main(int argc, char **argv) {
     "    TANH, GRAD1,\n";
 
   const string dir = argv[1];
-  const string tfarg = argv[2];
+  const TransferFunction tf = ParseTransferFunction(argv[2]);
   const int64 max_rounds = (int64)atoll(argv[3]);
   CHECK(max_rounds > 0) << argv[3];
-
-  const TransferFunction tf =
-    [&tfarg](){
-      for (int i = 0; i < NUM_TRANSFER_FUNCTIONS; i++) {
-        TransferFunction tf = (TransferFunction)i;
-        if (tfarg == TransferFunctionName(tf))
-          return tf;
-      }
-      CHECK(false) << "Unknown transfer function: " << tfarg;
-      return SIGMOID;
-    }();
 
   cl = new CL;
 
