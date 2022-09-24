@@ -47,10 +47,8 @@ static constexpr WeightUpdate WEIGHT_UPDATE = ADAM;
 
 static constexpr const char *GAME_PGN = "d:\\chess\\lichess_db_standard_rated_2020-06.pgn";
 
-#define MODEL_BASE "eval"
+#define MODEL_BASE "chess"
 #define MODEL_NAME MODEL_BASE ".val"
-
-static constexpr bool AVOID_REPEATS = true;
 
 // 8x8x13 one-hot, then 4x castling bits,
 // 8x en passant state
@@ -191,7 +189,7 @@ static constexpr int INPUT_SIZE = BOARD_SIZE;
 // Just the evaluation.
 static constexpr int OUTPUT_SIZE = 1;
 
-static constexpr int EXAMPLES_PER_ROUND = 1000;
+static constexpr int EXAMPLES_PER_ROUND = 2048;
 
 // In-progress game. We keep a few of these around and use them to
 // generate training data. It is somewhat convoluted because we want
@@ -695,12 +693,12 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
   printf("Saved to %s.\n", model_file.c_str());
 }
 
-static unique_ptr<Network> NewEvalNetwork(TransferFunction tf) {
+static unique_ptr<Network> NewChessNetwork(TransferFunction tf) {
   printf("New network with transfer function %s\n",
          TransferFunctionName(tf));
 
   // Deterministic!
-  ArcFour rc("learn-eval-network");
+  ArcFour rc("learn-chess-network");
 
   std::vector<Layer> layers;
 
@@ -851,7 +849,7 @@ static unique_ptr<Network> NewEvalNetwork(TransferFunction tf) {
 int main(int argc, char **argv) {
 
   CHECK(argc == 4) <<
-    "./train-mnist.exe dir transfer_function rounds\n"
+    "./train-chess.exe dir transfer_function rounds\n"
     "Notes:\n"
     "  dir must exist. Resumes training if the dir\n"
     "    contains a model file.\n"
@@ -872,7 +870,7 @@ int main(int argc, char **argv) {
       Network::ReadFromFile(model_file));
 
   if (net.get() == nullptr) {
-    net = NewEvalNetwork(tf);
+    net = NewChessNetwork(tf);
     CHECK(net.get() != nullptr);
     net->SaveToFile(model_file);
     printf("Wrote to %s\n", model_file.c_str());
