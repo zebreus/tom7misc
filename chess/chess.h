@@ -325,6 +325,22 @@ struct Position {
     else return {bits & PAWN_COL};
   }
 
+  // For nullopt, no en passant column. If present, the value must
+  // be in [0, 8).
+  void SetEnPassantColumn(std::optional<uint8> ep) {
+    // Clear first.
+    bits &= ~(DOUBLE | PAWN_COL);
+    if (ep.has_value()) {
+      bits |= DOUBLE | ep.value();
+    }
+  }
+
+  // Flip the board to get the symmetric position (if white to move,
+  // then the resulting board will be black to move, but with white's
+  // former pieces, etc.) FlipSides(FlipSides(pos)) == pos for all
+  // legal positions.
+  static Position FlipSides(const Position &pos);
+
  private:
   // XXX document
   // Note: does not work for castling, e.p., other weird stuff?

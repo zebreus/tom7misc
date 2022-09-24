@@ -26,7 +26,8 @@ static constexpr bool VERBOSE = false;
     CHECK(fabs(v1 - v2) < 0.0001) << v1 << " vs " << v2;    \
   } while (false)
 
-static Position::Move ApplyMove(Position *pos, const char *pgn, Fates *fates) {
+static Position::Move ApplyMove(Position *pos, const char *pgn,
+                                Fates *fates) {
   Move m;
   const Position old_position = *pos;
   CHECK(pos->ParseMove(pgn, &m)) << pgn;
@@ -47,6 +48,13 @@ static Position::Move ApplyMove(Position *pos, const char *pgn, Fates *fates) {
     fates->Update(*pos, m);
   }
   pos->ApplyMove(m);
+
+  Position rev = Position::FlipSides(*pos);
+  CHECK(rev.BlackMove() != pos->BlackMove());
+  Position pos2 = Position::FlipSides(rev);
+  CHECK(PositionEq{}(*pos, pos2)) << pos->BoardString() << "\nrev:\n"
+                                  << rev.BoardString() << "\nrevrev:\n"
+                                  << pos2.BoardString();
   return m;
 }
 

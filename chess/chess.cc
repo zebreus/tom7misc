@@ -1418,6 +1418,36 @@ string Position::DebugMoveString(Move m) {
   return s;
 }
 
+// static
+Position Position::FlipSides(const Position &pos) {
+  Position rev;
+  // Flip pieces along the y axis, and also flip their
+  // color.
+  for (int row = 0; row < 8; row++) {
+    const int orow = 7 - row;
+    for (int col = 0; col < 8; col++) {
+      const uint8 p = pos.PieceAt(row, col);
+      if (p == EMPTY) {
+        rev.SetPiece(orow, col, EMPTY);
+      } else {
+        const uint8 c = COLOR_MASK & p;
+        const uint8 t = TYPE_MASK & p;
+        const uint8 op = (c == WHITE) ? BLACK | t : WHITE | t;
+        rev.SetPiece(orow, col, op);
+      }
+    }
+  }
+
+  // Flip metadata.
+  rev.SetBlackMove(!pos.BlackMove());
+  // The column for en passant (if any) stays the same.
+  rev.SetEnPassantColumn(pos.EnPassantColumn());
+  // Castling state is stored in the rooks themselves, which
+  // have flipped sides. So nothing to do there.
+  return rev;
+}
+
+
 namespace {
 // Various ways of collecting moves, used in the template below.
 // If Push returns true, we should stop collecting.
