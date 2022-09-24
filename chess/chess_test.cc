@@ -566,6 +566,27 @@ static void TestParseMovesComment() {
   CHECK_EQ(moves[0].move, "d4");
 }
 
+// Check that we can do a queenside castle even if the rook
+// and the adjacent empty square are attacked. Also, this move
+// results in mate.
+static void TestCastleMate() {
+  Position pos;
+  CHECK(Position::ParseFEN(
+            "2b1b3/pppkp3/rrp1p3/8/8/8/2P1PPPP/R3KBNR w KQ - 0 1",
+            &pos));
+  Move m;
+  m.src_row = 7;
+  m.src_col = 4;
+  m.dst_row = 7;
+  m.dst_col = 2;
+  m.promote_to = 0;
+  CHECK(pos.IsLegal(m)) << pos.BoardString();
+  CHECK(pos.LongMoveString(m) == "O-O-O");
+  CHECK(pos.PGNMoveSuffix(m) == "++");
+  pos.ApplyMove(m);
+  CHECK(pos.IsMated()) << pos.BoardString();
+}
+
 int main(int argc, char **argv) {
   CheckInit();
   TestParseMoves();
@@ -587,6 +608,8 @@ int main(int argc, char **argv) {
 
   ValidMoves1();
   ValidMoves2();
+
+  TestCastleMate();
 
   TestEp();
 

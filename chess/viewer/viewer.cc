@@ -2083,13 +2083,13 @@ int main(int argc, char **argv) {
   // ui.async_player.reset(new AsyncPlayer(MinOpponentMoves()));
   // ui.async_player.reset(new AsyncPlayer(AlmanacPopular()));
   // ui.async_player.reset(new AsyncPlayer(BlindSpycheck()));
-  // ui.async_player.reset(new AsyncPlayer(Chessmaster1()));
+  ui.async_player.reset(new AsyncPlayer(Chessmaster1()));
   // ui.async_player.reset(new AsyncPlayer(BinaryE()));
   // ui.async_player.reset(new AsyncPlayer(BlindSingleKings()));
   // ui.async_player.reset(new AsyncPlayer(RationalPi()));
   // ui.async_player.reset(new AsyncPlayer(SuicideKing()));
   // ui.async_player.reset(new AsyncPlayer(Letter(2)));
-  ui.async_player.reset(new AsyncPlayer(NNEval(0)));
+  // ui.async_player.reset(new AsyncPlayer(NNEval(0)));
 
   // ui.async_player.reset(new AsyncPlayer(NoIInsist()));
   // ui.async_player.reset(new AsyncPlayer(SinglePlayer()));
