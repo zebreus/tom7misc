@@ -35,6 +35,8 @@
 #include "timer.h"
 #include "periodically.h"
 
+#include "nnchess.h"
+
 using namespace std;
 
 static CL *cl = nullptr;
@@ -49,247 +51,13 @@ static constexpr const char *GAME_PGN = "d:\\chess\\lichess_db_standard_rated_20
 
 #define MODEL_BASE "chess"
 #define MODEL_NAME MODEL_BASE ".val"
-
-// 8x8x13 one-hot, then 4x castling bits,
-// 8x en passant state
-static constexpr int SQUARE_SIZE = 13;
-static constexpr int BOARD_SIZE = 8 * 8 * SQUARE_SIZE + 4 + 8;
-static constexpr int OTHER_STATE_IDX = 8 * 8 * SQUARE_SIZE;
-static constexpr int OTHER_STATE_SIZE = 4 + 8;
-
-// Maps eval scores to [-1, +1]. The range [-0.75, +0.75] is used
-// for standard pawn score (no mate found); the rest for mate.
-static float MapEval(const PGN::Eval &eval) {
-  switch (eval.type) {
-  case PGN::EvalType::PAWNS: {
-    // The nominal range is [0, 64];
-    float f = std::clamp(eval.e.pawns, -64.0f, 64.0f);
-    return f * (0.75f / 64.0f);
-  }
-  case PGN::EvalType::MATE: {
-    // Not really any limit to the depth of a mate we could
-    // discover, so this asymptotically approaches 0. A mate
-    // in 1 has the highest bonus, 0.25f.
-
-    const int depth = abs(eval.e.mate) - 1;
-
-    // This scale is abitrary; we just want something that
-    // considers mate in 5 better than mate in 6, and so on.
-    static constexpr float SCALE = 0.1f;
-    float depth_bonus =
-      (1.0f - (1.0f / (1.0f + expf(-SCALE * depth)))) * 0.5f;
-    return eval.e.mate > 0 ?
-      0.75f + depth_bonus : -0.75f - depth_bonus;
-  }
-
-  default:
-    CHECK(false) << "Bad/unimplemented eval type";
-    return 0.0f;
-  }
-}
-
-// Write into the output vector starting at the given index; the space must
-// already be reserved.
-//
-// For this experiment, the board must have white to move. Caller should
-// flip the position if it's black's move.
-static void BoardVecTo(const Position &pos, std::vector<float> *out, int idx) {
-  // Flip the board first.
-  CHECK(!pos.BlackMove());
-
-  for (int i = 0; i < BOARD_SIZE; i++) (*out)[idx + i] = 0.0f;
-
-  for (int y = 0; y < 8; y++) {
-    for (int x = 0; x < 8; x++) {
-      const uint8 p = pos.SimplePieceAt(y, x);
-      if (p == Position::EMPTY) {
-        (*out)[idx] = 1.0f;
-      } else if ((p & Position::COLOR_MASK) == Position::WHITE) {
-        const uint8 t = p & Position::TYPE_MASK;
-        (*out)[idx + 1 + t] = 1.0f;
-      } else {
-        // p & COLOR_MASK == BLACK
-        const uint8 t = p & Position::TYPE_MASK;
-        (*out)[idx + 1 + 6 + t] = 1.0f;
-      }
-      idx += 13;
-    }
-  }
-
-  // Castling.
-  (*out)[idx++] = pos.CanStillCastle(false, false) ? 1.0f : 0.0f;
-  (*out)[idx++] = pos.CanStillCastle(false, true) ? 1.0f : 0.0f;
-  (*out)[idx++] = pos.CanStillCastle(true, false) ? 1.0f : 0.0f;
-  (*out)[idx++] = pos.CanStillCastle(true, true) ? 1.0f : 0.0f;
-  // En passant state.
-  std::optional<uint8> ep = pos.EnPassantColumn();
-  if (ep.has_value()) {
-    uint8 c = ep.value() & 0x7;
-    (*out)[idx + c] = 1.0f;
-  }
-}
-
-// Loads example positions from a database in the background.
-static std::mutex pool_mutex;
-// position, eval, over. We don't use "over" for this experiment.
-static std::vector<std::tuple<Position, float, float>> example_pool;
-static void PopulateExamples() {
-  PGNParser parser;
-  printf("Loading examples from %s...\n", GAME_PGN);
-  int64 num_games = 0, num_positions = 0, parse_errors = 0;
-  PGNTextStream ts(GAME_PGN);
-  string pgn_text;
-  while (ts.NextPGN(&pgn_text)) {
-    PGN pgn;
-    if (parser.Parse(pgn_text, &pgn)) {
-      if (!pgn.moves.empty() && pgn.moves[0].eval.has_value()) {
-        Position pos;
-        for (int i = 0; i < pgn.moves.size(); i++) {
-          const PGN::Move &m = pgn.moves[i];
-
-          Position::Move move;
-          if (!pos.ParseMove(m.move.c_str(), &move)) {
-            parse_errors++;
-            goto next_game;
-          }
-
-          pos.ApplyMove(move);
-
-          // Eval applies to position after move.
-          if (m.eval.has_value()) {
-            const float score = MapEval(m.eval.value());
-            const float over = i / (float)pgn.moves.size();
-
-            {
-              MutexLock ml(&pool_mutex);
-              example_pool.emplace_back(pos, score, over);
-            }
-            num_positions++;
-          }
-        }
-        num_games++;
-        if (num_games % 10000 == 0) {
-          printf("Read %lld games, %lld pos from %s\n",
-                 num_games, num_positions, GAME_PGN);
-        }
-      }
-    } else {
-      parse_errors++;
-    }
-  next_game:;
-  }
-
-  printf("Done loading examples from %s.\n"
-         "%lld games, %lld positions, %lld errors\n",
-         GAME_PGN, num_games, num_positions, parse_errors);
-}
-
-
-static constexpr int INPUT_SIZE = BOARD_SIZE;
-// Just the evaluation.
-static constexpr int OUTPUT_SIZE = 1;
-
 static constexpr int EXAMPLES_PER_ROUND = 2048;
 
-// In-progress game. We keep a few of these around and use them to
-// generate training data. It is somewhat convoluted because we want
-// to evaluate a bunch of board states (across multiple games) in
-// a batch for efficiency.
-struct Game {
-  enum class Result {
-    WHITE_WINS,
-    BLACK_WINS,
-    DRAW_BY_REPETITION,
-    DRAW_50_MOVES,
-    DRAW_STALEMATE,
-    // ...
-  };
-
-  static const char *ResultString(Result r) {
-    switch (r) {
-    case Result::WHITE_WINS: return "WHITE";
-    case Result::BLACK_WINS: return "BLACK";
-    case Result::DRAW_BY_REPETITION: return "REPETITION";
-    case Result::DRAW_50_MOVES: return "50 MOVES";
-    case Result::DRAW_STALEMATE: return "STALEMATE";
-    default: return "??";
-    }
-  };
-
-  Game() {
-    legal = pos.GetLegalMoves();
-    // Not that we are trying to be precise about the
-    // stalemate rules here, but it is technically not
-    // FIDE rules to consider the initial position for
-    // repetition!
-    // position_counts[pos]++;
-    reached.push_back(pos);
-  }
-
-  // Returns the result if the game has ended.
-  std::optional<Result> GetResult() {
-    // We use threefold repetition (our player "claims" the draw).
-    const bool draw_by_repetition = position_counts[pos] >= 3;
-    const bool draw_50_moves = stale_moves > 100;
-    // also need to check draw by repetition, counter, and (dead position?)
-    if (draw_by_repetition || draw_50_moves || legal.empty()) {
-      // Game has ended. If it's black's move and we're mated, this is a
-      // win for white (+1), etc.
-      if (draw_by_repetition) {
-        return {Result::DRAW_BY_REPETITION};
-      } else if (draw_50_moves) {
-        return {Result::DRAW_50_MOVES};
-      } else if (pos.IsMated()) {
-        if (pos.BlackMove()) {
-          return {Result::WHITE_WINS};
-        } else {
-          return {Result::BLACK_WINS};
-        }
-      } else {
-        return {Result::DRAW_STALEMATE};
-      }
-    }
-
-    return std::nullopt;
-  }
-
-  void MakeMove(int n) {
-    CHECK(n >= 0 && n < legal.size());
-
-    stale_moves++;
-    Position::Move m = legal[n];
-    if (pos.IsCapturing(m) ||
-        pos.IsPawnMove(m)) {
-      stale_moves = 0;
-      position_counts.clear();
-    }
-    pos.ApplyMove(m);
-    legal = pos.GetLegalMoves();
-    position_counts[pos]++;
-    reached.push_back(pos);
-  }
-
-  Position pos;
-
-  // For detecting draws by repetition.
-  std::unordered_map<Position, int,
-                     PositionHash, PositionEq> position_counts;
-  // Count of moves without pawn move or capture. We probably aren't
-  // handling the end conditions correctly here, but it doesn't
-  // matter that much.
-  int stale_moves = 0;
-
-  // This is the history of the game, used for generating the training
-  // examples at the end.
-  std::vector<Position> reached;
-
-  // Number of legal moves in the current position.
-  std::vector<Position::Move> legal;
-
-};
-
 static void Train(const string &dir, Network *net, int64 max_rounds) {
-  std::thread example_thread(&PopulateExamples);
+  // Note that destructor does not stop the thread. If we want to
+  // have train exit cleanly, we'd need to add this.
+  ExamplePool *example_pool = new ExamplePool;
+  example_pool->PopulateExamplesInBackground(GAME_PGN, -1);
 
   ArcFour rc(StringPrintf("%lld.train.%s", time(nullptr), MODEL_BASE));
 
@@ -309,7 +77,9 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
   // get divergence after hundreds of thousands of rounds.
   // This happened again with the plugin parameter predictor
   // with a value of 1e-6!
-  update_config.adam_epsilon = 1.0e-2;
+
+  // was 1e-2
+  update_config.adam_epsilon = 1.0e-4;
 
   // XXX this should probably depend on the learning rate; if the
   // learning rate is too small, it won't even be able to overcome
@@ -371,8 +141,8 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       new TrainingRoundGPU(EXAMPLES_PER_ROUND, cl, *net));
 
   CHECK(!net->layers.empty());
-  CHECK(net->layers[0].num_nodes == INPUT_SIZE);
-  CHECK(net->layers.back().num_nodes == OUTPUT_SIZE);
+  CHECK(net->layers[0].num_nodes == NNChess::INPUT_SIZE);
+  CHECK(net->layers.back().num_nodes == NNChess::OUTPUT_SIZE);
 
   static constexpr double SAVE_EVERY_SEC = 180.0;
   Periodically save_per(SAVE_EVERY_SEC);
@@ -405,21 +175,21 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     // Initialize training examples.
 
     std::vector<float> inputs;
-    inputs.resize(EXAMPLES_PER_ROUND * INPUT_SIZE);
+    inputs.resize(EXAMPLES_PER_ROUND * NNChess::INPUT_SIZE);
     std::vector<float> expecteds;
-    expecteds.resize(EXAMPLES_PER_ROUND * OUTPUT_SIZE);
+    expecteds.resize(EXAMPLES_PER_ROUND * NNChess::OUTPUT_SIZE);
 
     {
       // Examples from database.
       Timer example_timer;
 
       static constexpr int MIN_EXAMPLES = 100000;
-      const int num_available = [](){
+      const int64 num_available = [example_pool](){
           for (;;) {
             {
-              MutexLock ml(&pool_mutex);
-              if (example_pool.size() >= MIN_EXAMPLES) {
-                return example_pool.size();
+              MutexLock ml(&example_pool->pool_mutex);
+              if (example_pool->pool.size() >= MIN_EXAMPLES) {
+                return example_pool->pool.size();
               }
             }
             printf("Waiting until we have enough examples..\n");
@@ -428,10 +198,10 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
         }();
 
       {
-        MutexLock ml(&pool_mutex);
+        MutexLock ml(&example_pool->pool_mutex);
         for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
-          const int idx = RandTo(&rc, num_available);
-          const auto &[pos, score, over] = example_pool[idx];
+          const int64 idx = RandTo(&rc, num_available);
+          const auto &[pos, score, over] = example_pool->pool[idx];
           if (i == 0 && verbose_round) {
             printf("Eval %.5f Over %.3f:\n"
                    "%s"
@@ -444,18 +214,18 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
           // board (and the eval) if it's black's move.
           if (pos.BlackMove()) {
             Position rev = Position::FlipSides(pos);
-            BoardVecTo(rev, &inputs, INPUT_SIZE * i);
-            expecteds[i * OUTPUT_SIZE + 0] = -score;
+            NNChess::BoardVecTo(rev, &inputs, NNChess::INPUT_SIZE * i);
+            expecteds[i * NNChess::OUTPUT_SIZE + 0] = -score;
           } else {
-            BoardVecTo(pos, &inputs, INPUT_SIZE * i);
-            expecteds[i * OUTPUT_SIZE + 0] = score;
+            NNChess::BoardVecTo(pos, &inputs, NNChess::INPUT_SIZE * i);
+            expecteds[i * NNChess::OUTPUT_SIZE + 0] = score;
           }
         }
       }
 
 
-      CHECK(inputs.size() == INPUT_SIZE * EXAMPLES_PER_ROUND);
-      CHECK(expecteds.size() == OUTPUT_SIZE * EXAMPLES_PER_ROUND);
+      CHECK(inputs.size() == NNChess::INPUT_SIZE * EXAMPLES_PER_ROUND);
+      CHECK(expecteds.size() == NNChess::OUTPUT_SIZE * EXAMPLES_PER_ROUND);
       training->LoadInputs(inputs);
       training->LoadExpecteds(expecteds);
       example_ms += example_timer.MS();
@@ -547,7 +317,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
              fifty_draws, stalemate_draws, eps);
 
       // Get loss as abs distance, plus number of incorrect (as booleans).
-      std::vector<float> actuals(EXAMPLES_PER_ROUND * OUTPUT_SIZE);
+      std::vector<float> actuals(EXAMPLES_PER_ROUND * NNChess::OUTPUT_SIZE);
       training->ExportOutputs(&actuals);
 
       const bool save_history = history_per.ShouldRun();
@@ -704,8 +474,8 @@ static unique_ptr<Network> NewChessNetwork(TransferFunction tf) {
 
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
-  input_chunk.num_nodes = INPUT_SIZE;
-  input_chunk.width = INPUT_SIZE;
+  input_chunk.num_nodes = NNChess::INPUT_SIZE;
+  input_chunk.width = NNChess::INPUT_SIZE;
   input_chunk.height = 1;
   input_chunk.channels = 1;
 
@@ -721,40 +491,41 @@ static unique_ptr<Network> NewChessNetwork(TransferFunction tf) {
   Chunk first_conv_chunk =
     Network::Make2DConvolutionChunk(
         // span start, width, height
-        0, 8 * SQUARE_SIZE, 8,
+        0, 8 * NNChess::SQUARE_SIZE, 8,
         // features, pattern size
-        FEATURES_3x3, 3 * SQUARE_SIZE, 3,
+        FEATURES_3x3, 3 * NNChess::SQUARE_SIZE, 3,
         // stride is one square, but align with the one-hot pieces
-        SQUARE_SIZE, 1,
+        NNChess::SQUARE_SIZE, 1,
         tf, WEIGHT_UPDATE);
 
   // Also a 1x1.
   Chunk square_conv_chunk =
     Network::Make2DConvolutionChunk(
-        0, 8 * SQUARE_SIZE, 8,
-        FEATURES_1x1, SQUARE_SIZE, 1,
-        SQUARE_SIZE, 1,
+        0, 8 * NNChess::SQUARE_SIZE, 8,
+        FEATURES_1x1, NNChess::SQUARE_SIZE, 1,
+        NNChess::SQUARE_SIZE, 1,
         tf, WEIGHT_UPDATE);
 
   // And 8x1, 1x8.
   Chunk row_conv_chunk =
     Network::Make2DConvolutionChunk(
-        0, 8 * SQUARE_SIZE, 8,
-        FEATURES_8x1, 8 * SQUARE_SIZE, 1,
-        8 * SQUARE_SIZE, 1,
+        0, 8 * NNChess::SQUARE_SIZE, 8,
+        FEATURES_8x1, 8 * NNChess::SQUARE_SIZE, 1,
+        8 * NNChess::SQUARE_SIZE, 1,
         tf, WEIGHT_UPDATE);
   Chunk col_conv_chunk =
     Network::Make2DConvolutionChunk(
-        0, 8 * SQUARE_SIZE, 8,
-        FEATURES_1x8, SQUARE_SIZE, 8,
-        SQUARE_SIZE, 8,
+        0, 8 * NNChess::SQUARE_SIZE, 8,
+        FEATURES_1x8, NNChess::SQUARE_SIZE, 8,
+        NNChess::SQUARE_SIZE, 8,
         tf, WEIGHT_UPDATE);
 
   vector<Network::SparseSpan> sparse_spans = {
     // Sample from the board.
-    Network::SparseSpan(0, 8 * 8 * SQUARE_SIZE, 63),
+    Network::SparseSpan(0, 8 * 8 * NNChess::SQUARE_SIZE, 63),
     // And one from the less-interesting state.
-    Network::SparseSpan(OTHER_STATE_IDX, OTHER_STATE_SIZE, 1),
+    Network::SparseSpan(NNChess::OTHER_STATE_IDX,
+                        NNChess::OTHER_STATE_SIZE, 1),
   };
   Chunk first_all_chunk =
     Network::MakeRandomSparseChunk(&rc, 2048, sparse_spans, tf, ADAM);
@@ -835,7 +606,7 @@ static unique_ptr<Network> NewChessNetwork(TransferFunction tf) {
 
   layers.push_back(
       Network::LayerFromChunks(std::move(sink1)));
-  CHECK(layers.back().num_nodes == OUTPUT_SIZE);
+  CHECK(layers.back().num_nodes == NNChess::OUTPUT_SIZE);
 
   auto net = std::make_unique<Network>(layers);
 
