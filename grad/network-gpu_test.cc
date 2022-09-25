@@ -18,6 +18,7 @@
 #include "image.h"
 #include "train-util.h"
 #include "timer.h"
+#include "periodically.h"
 
 using namespace std;
 
@@ -85,6 +86,76 @@ static void ForwardTests(TestNet test_net) {
   }
 }
 
+// Run forward, and check that the result is the same as the CC code.
+static void SameAsCPUTest() {
+  ArcFour rc("test");
+  static constexpr int ITERS = 200;
+  const std::set<TransferFunction> tfs = {
+    SIGMOID,
+    RELU,
+    LEAKY_RELU,
+    IDENTITY,
+    TANH,
+    GRAD1,
+  };
+  const std::set<ChunkType> cts = {
+    CHUNK_SPARSE,
+    CHUNK_DENSE,
+    CHUNK_CONVOLUTION_ARRAY,
+  };
+
+  Periodically per(10.0);
+  (void)per.ShouldRun();
+  RandomGaussian gauss(&rc);
+  for (int iter = 0; iter < ITERS; iter++) {
+    int num_inputs = 1 + RandTo(&rc, 7);
+    int num_outputs = 1 + RandTo(&rc, 7);
+    int real_layers = 1 + RandTo(&rc, 2);
+    int max_nodes = std::max(num_outputs, 1 + (int)RandTo(&rc, 31));
+    Network net = NetworkTestUtil::RandomNetwork(&rc,
+                                                 tfs, cts,
+                                                 num_inputs,
+                                                 num_outputs,
+                                                 real_layers,
+                                                 max_nodes);
+    CHECK(net.layers.front().num_nodes == num_inputs);
+    CHECK(net.layers.back().num_nodes == num_outputs);
+    Stimulation stim(net);
+    for (float &f : stim.values[0])
+      f = gauss.Next();
+    net.RunForward(&stim);
+    stim.NaNCheck("RunRandomForward");
+
+    auto net_gpu = make_unique<NetworkGPU>(cl, &net);
+    net_gpu->SetVerbose(false);
+
+    std::unique_ptr<TrainingRoundGPU> training_round =
+      std::make_unique<TrainingRoundGPU>(1, cl, net);
+
+    std::unique_ptr<ForwardLayerCL> forward_cl =
+      std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
+
+    training_round->LoadInput(0, stim.values[0]);
+
+    for (int src_layer = 0;
+         src_layer < net.layers.size() - 1;
+         src_layer++) {
+      forward_cl->RunForward(training_round.get(), src_layer);
+    }
+
+    // Must be initialized to the correct size.
+    std::vector<float> gpu_out(num_outputs, -1.0f);
+    training_round->ExportOutput(0, &gpu_out);
+
+    CHECK_FEQV(gpu_out, stim.values.back());
+
+    if (per.ShouldRun()) {
+      printf("%d/%d; ok so far\n", iter + 1, ITERS);
+    }
+  }
+
+  printf("Ran %d iters on random networks. GPU=CPU.\n", ITERS);
+}
 
 static void StructuralTests(TestNet test_net) {
   // TODO: More here.
@@ -884,6 +955,11 @@ int main(int argc, char **argv) {
 
   QuickTests();
   printf("Quick tests OK\n");
+
+  SameAsCPUTest();
+  printf("Same as CPU OK\n");
+
+  return 0;
 
   SGDTests();
   printf("SGD tests OK\n");

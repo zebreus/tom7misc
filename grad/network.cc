@@ -20,6 +20,10 @@
 #include "randutil.h"
 #include "arcfour.h"
 
+#include "half.h"
+
+using half = half_float::half;
+
 using namespace std;
 
 using uint32 = uint32_t;
@@ -244,6 +248,45 @@ void Network::RunForward(Stimulation *stim) const {
   }
 }
 
+static inline half GetHalf(uint16 u) {
+  half h;
+  static_assert(sizeof (h) == sizeof (u));
+  memcpy((void*)&h, (void*)&u, sizeof (u));
+  return h;
+}
+
+static inline uint16 GetU16(half h) {
+  uint16 u;
+  static_assert(sizeof (h) == sizeof (u));
+  memcpy((void*)&u, (void*)&h, sizeof (u));
+  return u;
+}
+
+namespace {
+struct Grad1Table {
+  std::array<uint16_t, 65536> data;
+  Grad1Table() {
+    half mult = GetHalf(0x3bffu);
+    half scale = GetHalf(0x3d4b);
+    // half scale = GetHalf(0x3b60);
+    for (int i = 0; i < 65536; i++) {
+      half h = GetHalf(i);
+      for (int i = 0; i < 500; i++)
+        h *= mult;
+      h *= scale;
+      data[i] = GetU16(h);
+    }
+  }
+};
+}  // namespace
+
+static float Grad1Fn(float f) {
+  static Grad1Table *table = new Grad1Table;
+  half in = (half)f;
+  half out = GetHalf(table->data[GetU16(in)]);
+  return (float)out;
+}
+
 template<float (*fwd)(float)>
 static void RunForwardChunkWithFn(
     const std::vector<float> &src_values,
@@ -394,7 +437,8 @@ void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
           src_values, chunk, dst_values, out_idx);
       break;
     case GRAD1:
-      CHECK(false) << "Not implemented; needs table";
+      RunForwardChunkWithFn<Grad1Fn>(
+          src_values, chunk, dst_values, out_idx);
       break;
     default:
       CHECK(false) << "Unimplemented transfer function " <<
@@ -691,6 +735,47 @@ Chunk Network::MakeRandomSparseChunk(
   return chunk;
 }
 
+std::pair<int, int>
+Network::GetNumOccurrences(
+    int pattern_width,
+    int pattern_height,
+    int src_width,
+    int src_height,
+    int occurrence_x_stride,
+    int occurrence_y_stride) {
+  CHECK(pattern_width >= 1);
+  CHECK(pattern_height >= 1);
+  CHECK(src_width >= 1);
+  CHECK(src_height >= 1);
+  CHECK(occurrence_x_stride >= 1);
+  CHECK(occurrence_y_stride >= 1);
+
+  const int num_occurrences_across = [&]() {
+      int count = 0;
+      int xpos = 0;
+      // pattern_width-1 is the last index we actually read
+      while (xpos + (pattern_width - 1) < src_width) {
+        // ok position
+        count++;
+        xpos += occurrence_x_stride;
+      }
+      return count;
+    }();
+  const int num_occurrences_down = [&]() {
+      int count = 0;
+      int ypos = 0;
+      // pattern_height-1 is the last index we actually read
+      while (ypos + (pattern_height - 1) < src_height) {
+        // ok position
+        count++;
+        ypos += occurrence_y_stride;
+      }
+      return count;
+    }();
+
+  return std::make_pair(num_occurrences_across,
+                        num_occurrences_down);
+}
 
 // static
 std::tuple<std::vector<uint32_t>, int, int, int>
@@ -721,29 +806,17 @@ Network::MakeConvolutionArrayIndices(
 
   const int indices_per_node = pattern_width * pattern_height;
 
-  const int num_occurrences_across = [&]() {
-      int count = 0;
-      int xpos = 0;
-      // pattern_width-1 is the last index we actually read
-      while (xpos + (pattern_width - 1) < src_width) {
-        // ok position
-        count++;
-        xpos += occurrence_x_stride;
-      }
-      return count;
-    }();
-  const int num_occurrences_down = [&]() {
-      int count = 0;
-      int ypos = 0;
-      // pattern_height-1 is the last index we actually read
-      while (ypos + (pattern_height - 1) < src_height) {
-        // ok position
-        count++;
-        ypos += occurrence_y_stride;
-      }
-      return count;
-    }();
+  const auto [num_occurrences_across,
+              num_occurrences_down] =
+    GetNumOccurrences(
+        pattern_width,
+        pattern_height,
+        src_width,
+        src_height,
+        occurrence_x_stride,
+        occurrence_y_stride);
 
+  CHECK(num_occurrences_across > 0);
   CHECK(num_occurrences_down > 0);
 
   const int num_occurrences = num_occurrences_across * num_occurrences_down;

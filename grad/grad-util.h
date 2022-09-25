@@ -279,17 +279,27 @@ struct GradUtil {
     }
 
     // And recenter.
+    [[maybe_unused]] static constexpr uint16 OFF = 0x8000;
+    static constexpr uint16 SCALE = 0x3d4b;
+
+    ApplyStep(Step{.mult = true, .value = SCALE}, &state.table);
+    return state;
+
+    /*
+    // This should produce the same result as above.
     const auto &[offset, scale] = Recentering(state.table);
-    // printf("Table1 offset %04x scale %04x\n",
-    //        GetU16(offset), GetU16(scale));
-    // printf("Offset %.9g Scale %.9g\n", (float)offset, (float)scale);
-    ApplyStep(Step{.mult = false,
+    printf("Table1 offset %04x scale %04x\n",
+            GetU16(offset), GetU16(scale));
+     printf("Offset %.9g Scale %.9g\n", (float)offset, (float)scale);
+
+     ApplyStep(Step{.mult = false,
                    .value = GradUtil::GetU16(offset)},
       &state.table);
     ApplyStep(Step{.mult = true,
                    .value = GradUtil::GetU16(scale)},
       &state.table);
     return state;
+    */
   }
 
   // This is a lot like the leaky relu function (between [-1, 1] at least)

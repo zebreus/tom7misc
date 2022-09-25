@@ -349,6 +349,18 @@ struct Network {
                               TransferFunction transfer_function,
                               WeightUpdate weight_update);
 
+  // Requires valid values. Returns the number of occurrences across,
+  // down.
+  static std::pair<int, int>
+  GetNumOccurrences(
+      int pattern_width,
+      int pattern_height,
+      int src_width,
+      int src_height,
+      int occurrence_x_stride,
+      int occurrence_y_stride);
+
+
   // XXX: This should return a Chunk?
   // returns indices, this_num_nodes,
   // num_occurrences_across, num_occurrences_down

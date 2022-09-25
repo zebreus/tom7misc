@@ -34,6 +34,7 @@
 #include "error-history.h"
 #include "timer.h"
 #include "periodically.h"
+#include "ansi.h"
 
 #include "nnchess.h"
 
@@ -146,10 +147,6 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
 
   static constexpr double SAVE_EVERY_SEC = 180.0;
   Periodically save_per(SAVE_EVERY_SEC);
-
-  // Stats from self-play.
-  int white_wins = 0, black_wins = 0,
-    repetition_draws = 0, fifty_draws = 0, stalemate_draws = 0;
 
   double round_ms = 0.0;
   double example_ms = 0.0;
@@ -309,12 +306,14 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       if (VERBOSE > 1)
         printf("Verbose round...\n");
 
-      const double total_sec = train_timer.MS() / 1000.0;
+      const double total_sec = train_timer.Seconds();
       const double eps = total_examples / total_sec;
-      printf("%lld|%d: %d wh %d bl %d rep %d fifty %d stale (%.2f eps)\n",
-             net->rounds, iter,
-             white_wins, black_wins, repetition_draws,
-             fifty_draws, stalemate_draws, eps);
+      const double rpm = iter / (total_sec / 60.0);
+
+      printf(AYELLOW("%lld") " rounds "
+             AWHITE("%d") " iter: (" ABLUE("%.2f") " rounds/min;  "
+             APURPLE("%.2f") " eps)\n",
+             net->rounds, iter, rpm, eps);
 
       // Get loss as abs distance, plus number of incorrect (as booleans).
       std::vector<float> actuals(EXAMPLES_PER_ROUND * NNChess::OUTPUT_SIZE);
@@ -458,6 +457,8 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     }
   }
 
+  printf("Training took %.2f hours\n",
+         train_timer.Seconds() / (60.0 * 60.0));
   printf("Reached max_rounds of %lld.\n", max_rounds);
   net->SaveToFile(model_file);
   printf("Saved to %s.\n", model_file.c_str());
@@ -618,7 +619,7 @@ static unique_ptr<Network> NewChessNetwork(TransferFunction tf) {
 
 
 int main(int argc, char **argv) {
-
+  AnsiInit();
   CHECK(argc == 4) <<
     "./train-chess.exe dir transfer_function rounds\n"
     "Notes:\n"

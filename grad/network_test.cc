@@ -8,6 +8,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "network-test-util.h"
+#include "randutil.h"
 #include "arcfour.h"
 
 using TestNet = NetworkTestUtil::TestNet;
@@ -193,6 +194,48 @@ static void TestSparseChunk() {
   }
 }
 
+static void RunRandomForward() {
+  ArcFour rc("test");
+  static constexpr int ITERS = 100;
+  const std::set<TransferFunction> tfs = {
+    SIGMOID,
+    RELU,
+    LEAKY_RELU,
+    IDENTITY,
+    TANH,
+
+    /* GRAD1 = 5,*/
+  };
+  const std::set<ChunkType> cts = {
+    CHUNK_SPARSE,
+    CHUNK_DENSE,
+    CHUNK_CONVOLUTION_ARRAY,
+  };
+
+  RandomGaussian gauss(&rc);
+  for (int i = 0; i < ITERS; i++) {
+    int num_inputs = 1 + RandTo(&rc, 7);
+    int num_outputs = 1 + RandTo(&rc, 7);
+    int real_layers = 1 + RandTo(&rc, 2);
+    int max_nodes = std::max(num_outputs, 1 + (int)RandTo(&rc, 31));
+    Network net = NetworkTestUtil::RandomNetwork(&rc,
+                                                 tfs, cts,
+                                                 num_inputs,
+                                                 num_outputs,
+                                                 real_layers,
+                                                 max_nodes);
+    CHECK(net.layers.front().num_nodes == num_inputs);
+    CHECK(net.layers.back().num_nodes == num_outputs);
+    Stimulation stim(net);
+    for (float &f : stim.values[0])
+      f = gauss.Next();
+    net.RunForward(&stim);
+    stim.NaNCheck("RunRandomForward");
+  }
+
+  printf("Ran %d iters on random networks\n", ITERS);
+}
+
 int main(int argc, char **argv) {
 
   SimpleTests(NetworkTestUtil::SingleSparse());
@@ -208,6 +251,8 @@ int main(int argc, char **argv) {
   SimpleTests(NetworkTestUtil::CountInternalEdges());
 
   TestSparseChunk();
+
+  RunRandomForward();
 
   printf("OK\n");
   return 0;

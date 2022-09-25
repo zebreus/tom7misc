@@ -4,6 +4,7 @@
 #include <functional>
 #include <vector>
 #include <string>
+#include <set>
 
 #include "network.h"
 #include "base/logging.h"
@@ -11,10 +12,21 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "lines.h"
+#include "opt/opt.h"
 
 static inline constexpr float Leaky(float f) {
   if (f < 0.0f) return 0.01f * f;
   return f;
+}
+
+template<size_t N>
+auto DoubleArrayToInts(const std::array<double, N> &a) ->
+  std::array<int, N> {
+  std::array<int, N> out;
+  for (size_t i = 0; i < N; i++) {
+    out[i] = (int)round(a[i]);
+  }
+  return out;
 }
 
 int NetworkTestUtil::TrainNet::NumInputs() const {
@@ -26,6 +38,205 @@ int NetworkTestUtil::TrainNet::NumOutputs() const {
   CHECK(!net.layers.empty());
   return net.layers.back().num_nodes;
 }
+
+Network NetworkTestUtil::RandomNetwork(ArcFour *rc,
+                                       const std::set<TransferFunction> &tfs,
+                                       const std::set<ChunkType> &cts,
+                                       int num_inputs, int num_outputs,
+                                       int num_real_layers,
+                                       int max_nodes_per_layer) {
+  CHECK(num_inputs > 0);
+  Chunk input_chunk;
+  input_chunk.type = CHUNK_INPUT;
+  input_chunk.num_nodes = num_inputs;
+  input_chunk.width = num_inputs;
+  input_chunk.height = 1;
+  input_chunk.channels = 1;
+
+  std::vector<Layer> layers;
+  layers.push_back(Network::LayerFromChunks(input_chunk));
+
+  std::vector<ChunkType> chunk_types;
+  for (const ChunkType &ct : cts) {
+    if (ct != CHUNK_INPUT) chunk_types.push_back(ct);
+  }
+  CHECK(!chunk_types.empty());
+
+  std::vector<TransferFunction> transfer_functions;
+  for (const TransferFunction &tf : tfs) {
+    transfer_functions.push_back(tf);
+  }
+  CHECK(!transfer_functions.empty());
+
+  CHECK(num_real_layers > 0);
+  CHECK(max_nodes_per_layer > 0);
+  CHECK(num_outputs > 0);
+
+  for (int layer_num = 0; layer_num < num_real_layers; layer_num++) {
+    const int previous_layer_size = layers.back().num_nodes;
+    const int num_nodes =
+      (layer_num == num_real_layers - 1) ? num_outputs :
+      std::max(1, (int)RandTo(rc, max_nodes_per_layer));
+    // (We may generate more than this to fill slack.)
+    const int num_chunks = std::min(num_nodes, 1 + (int)RandTo(rc, 3));
+
+    int nodes_left = num_nodes;
+    int chunks_left = num_chunks;
+    std::vector<Chunk> chunks;
+    while (chunks_left--) {
+      int nodes = (chunks_left == 0) ? nodes_left :
+        std::clamp((int)RandTo(rc, nodes_left), 1, nodes_left - chunks_left);
+      CHECK(nodes > 0);
+      nodes_left -= nodes;
+      CHECK(nodes_left >= 0);
+
+      const ChunkType ct = chunk_types[RandTo(rc, chunk_types.size())];
+      const TransferFunction tf =
+        transfer_functions[RandTo(rc, transfer_functions.size())];
+      switch (ct) {
+      case CHUNK_DENSE: {
+        // XXX We should probably make sure the entire previous
+        // layer is covered, since otherwise nodes will just be
+        // wasted.
+        int span_start = RandTo(rc, previous_layer_size);
+        int span_size = std::clamp(
+            (int)RandTo(rc, previous_layer_size - span_start),
+            1, previous_layer_size - span_start);
+
+        chunks.push_back(
+            Network::MakeDenseChunk(nodes,
+                           span_start, span_size,
+                           tf, ADAM));
+        break;
+      }
+      case CHUNK_SPARSE: {
+        // XXX Randomly make sparse spans that don't use the
+        // whole range.
+        chunks.push_back(
+            Network::MakeRandomSparseChunk(
+                rc, nodes,
+                {Network::SparseSpan{.span_start = 0,
+                      .span_size = previous_layer_size,
+                      .ipn = std::clamp(
+                          (int)RandTo(
+                              rc,
+                              std::max(1,
+                                       (int)sqrt(previous_layer_size))),
+                          1, previous_layer_size)}},
+                tf, ADAM));
+        break;
+      }
+      case CHUNK_CONVOLUTION_ARRAY: {
+        // Find something that fits.
+        // [num_features, pattern_width, pattern_height,
+        //  src_width, src_height, x_stride, y_stride]
+
+        const std::array<double, 7> lbs = {
+          1.0, 1.0, 1.0,
+          1.0, 1.0, 1.0, 1.0,
+        };
+
+        const std::array<double, 7> ubs = {
+          (double)nodes,
+          (double)previous_layer_size, (double)previous_layer_size,
+          (double)previous_layer_size, (double)previous_layer_size,
+          (double)previous_layer_size, (double)previous_layer_size,
+        };
+
+        std::function<double(const std::array<double, 7> &)> OptMe =
+          [&](const std::array<double, 7> &args) -> double {
+            const auto &[num_features, pattern_width, pattern_height,
+                         src_width, src_height, x_stride, y_stride] =
+              DoubleArrayToInts(args);
+
+            // Must not exceed largest possible span.
+            int size = pattern_width * pattern_height;
+            if (size > previous_layer_size)
+              return 100000000.0 + (size - previous_layer_size);
+
+            // Must fit at least one.
+            if (src_width > pattern_width)
+              return 10000000.0 + (src_width - pattern_width);
+            if (src_height > pattern_height)
+              return 10000000.0 + (src_height - pattern_height);
+
+            auto [ox, oy] =
+              Network::GetNumOccurrences(
+                  pattern_width,
+                  pattern_height,
+                  src_width,
+                  src_height,
+                  x_stride, y_stride);
+
+            int cnodes = ox * oy * num_features;
+            if (cnodes > nodes) {
+              return 1000000.0 + (cnodes - nodes);
+            } else {
+              return (double)(nodes - cnodes);
+            }
+          };
+
+        const auto [num_features, pattern_width, pattern_height,
+                    src_width, src_height, x_stride, y_stride] =
+          DoubleArrayToInts(
+              Opt::Minimize<7>(OptMe,
+                               lbs, ubs,
+                               1000,
+                               1,
+                               10,
+                               (int)Rand64(rc)).first);
+
+        Chunk chunk = Network::Make2DConvolutionChunk(
+            // span
+            0, src_width, src_height,
+            num_features,
+            pattern_width, pattern_height,
+            x_stride, y_stride,
+            tf, ADAM);
+
+        if (chunk.num_nodes > nodes) {
+          // Something went wrong, like the optimizer failed to
+          // find a valid solution.
+          chunks.push_back(Network::Make1DConvolutionChunk(
+              0, previous_layer_size, 1, previous_layer_size,
+              0, tf, ADAM));
+        } else {
+          // If there are leftover nodes to account for, we
+          // add another dense chunk.
+          int left = nodes - chunk.num_nodes;
+          chunks.push_back(chunk);
+          if (left > 0) {
+            chunks.push_back(
+                Network::MakeDenseChunk(left, 0, left, tf, ADAM));
+          }
+        }
+
+        break;
+      }
+      default:
+        LOG(FATAL) << "Unsupported chunk type";
+      }
+    }
+
+    layers.push_back({.num_nodes = num_nodes,
+                      .chunks = std::move(chunks)});
+  }
+
+  Network net(std::move(layers));
+
+  for (Layer &layer : net.layers) {
+    for (Chunk &chunk : layer.chunks) {
+      // Not tiny weights, but not trivial ones.
+      for (float &f : chunk.weights)
+        f = RandDouble(rc) * 2.0 - 1.0;
+      for (float &f : chunk.biases)
+        f = RandDouble(rc) * 2.0 - 1.0;
+    }
+  }
+
+  return net;
+}
+
 
 static void ForceWeightUpdateAdamOrYogi(NetworkTestUtil::TrainNet *net,
                                         WeightUpdate wu) {
