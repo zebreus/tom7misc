@@ -21,7 +21,6 @@
 #include "pgn.h"
 #include "bigchess.h"
 #include "network.h"
-#include "network-test-util.h"
 #include "clutil.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
