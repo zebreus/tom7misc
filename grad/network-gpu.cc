@@ -345,10 +345,11 @@ ForwardLayerCL::~ForwardLayerCL() {
 }
 
 
-
 SetOutputErrorCL::SetOutputErrorCL(
     CL *cl, NetworkGPU *net_gpu,
-    const std::optional<std::string> remap_define) : cl(cl), net_gpu(net_gpu) {
+    UpdateConfig config,
+    const std::optional<std::string> remap_define) : cl(cl), net_gpu(net_gpu),
+                                                     config(config) {
   const Network &net = *net_gpu->net;
   // This only runs on one layer, the output. But we do need to have the
   // transfer function's derivative.
@@ -383,8 +384,8 @@ SetOutputErrorCL::SetOutputErrorCL(
                   chunk_start,
                   chunk_idx,
                   layer.num_nodes,
-                  CLIP_ERROR ? "true" : "false",
-                  LARGE_ERROR);
+                  config.clip_error ? "true" : "false",
+                  config.error_max);
 
     kernel_src += base_src;
 
@@ -578,7 +579,9 @@ pair<vector<int>, vector<bool>> BackwardLayerCL::OptimizeChunkSchedule(
   return make_pair(schedule, overwrite);
 }
 
-BackwardLayerCL::BackwardLayerCL(CL *cl, NetworkGPU *net_gpu) : cl(cl), net_gpu(net_gpu) {
+BackwardLayerCL::BackwardLayerCL(CL *cl, NetworkGPU *net_gpu,
+                                 UpdateConfig config) :
+  cl(cl), net_gpu(net_gpu), config(config) {
   string base1_src = Util::ReadFile("backwardchunk.cl");
 
   const Network &net = *net_gpu->net;
@@ -683,8 +686,8 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, NetworkGPU *net_gpu) : cl(cl), net_gpu(
                     "#define LARGE_ERROR %0.8ff\n",
                     src_layer_size,
                     out_idx,
-                    CLIP_ERROR ? "true" : "false",
-                    LARGE_ERROR);
+                    config.clip_error ? "true" : "false",
+                    config.error_max);
 
       kernel_src += base2_src;
 

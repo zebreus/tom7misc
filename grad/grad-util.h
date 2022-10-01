@@ -104,8 +104,8 @@ struct GradUtil {
         double x = GetHalf(input);
         double y = GetHalf(output);
 
-        int xs = (int)std::round((size / 2) + x * (size / 2.0));
-        int ys = (int)std::round((size / 2) + -y * (size / 2.0)) + dy;
+        int xs = (int)std::round((size / 2.0) + x * (size / 2.0));
+        int ys = (int)std::round((size / 2.0) + -y * (size / 2.0)) + dy;
 
         // ys = std::clamp(ys, 0, size - 1);
 
@@ -379,8 +379,8 @@ struct GradUtil {
       const std::string &filename) {
     std::vector<float> ret(65536, 0.0f);
     std::unique_ptr<ImageRGBA> img(ImageRGBA::Load(filename));
-    CHECK(img.get() != nullptr);
-    CHECK(img->Width() == 256 && img->Height() == 256);
+    CHECK(img.get() != nullptr) << filename;
+    CHECK(img->Width() == 256 && img->Height() == 256) << filename;
     // int nonzero = 0;
     for (int i = 0; i < 65536; i++) {
       const int y = i / 256;

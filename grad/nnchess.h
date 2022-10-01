@@ -33,6 +33,7 @@
 #include "error-history.h"
 #include "timer.h"
 #include "periodically.h"
+#include "ansi.h"
 
 struct NNChess {
 
@@ -203,7 +204,8 @@ struct ExamplePool {
           }
           num_games++;
           if (num_games % 10000 == 0) {
-            printf("Read %lld games, %lld pos from %s\n",
+            printf(ANSI_GREY "Read %lld games, %lld pos from %s "
+                   ANSI_RESET "\n",
                    num_games, num_positions, filename.c_str());
           }
         }

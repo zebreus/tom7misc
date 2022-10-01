@@ -153,7 +153,8 @@ struct TrainingRoundGPU {
     for (const auto &[name, tf] :
            std::initializer_list<
            std::pair<std::string, TransferFunction>>{
-           {"grad1", GRAD1}
+           {"grad1", GRAD1},
+             // {"downshift2", DOWNSHIFT2},
          }) {
       std::vector<uint16_t> fwd =
         GradUtil::GetFunctionFromFile(
@@ -357,124 +358,7 @@ struct ForwardLayerCL {
   DISALLOW_COPY_AND_ASSIGN(ForwardLayerCL);
 };
 
-// Set the error values from the actual and expected outputs, possibly
-// applying some remapping of them.
-struct SetOutputErrorCL {
-  static constexpr bool CLIP_ERROR = true;
-  // XXX made this much smaller for 16-bit
-  static constexpr float LARGE_ERROR = 10000.0f;
-
-  // Optional remap function takes chunk id, node index within chunk, and
-  // value; see setoutputerror.cl.
-  SetOutputErrorCL(
-      CL *cl, NetworkGPU *net_gpu,
-      const std::optional<std::string> remap_define = std::nullopt);
-
-  // Runs on all the examples in the round.
-  void SetOutputError(TrainingRoundGPU *train);
-
-  ~SetOutputErrorCL() {
-    for (ChunkKernel &ck : kernels) {
-      clReleaseKernel(ck.kernel);
-      clReleaseProgram(ck.program);
-    }
-  }
-
-  struct ChunkKernel {
-    cl_program program = 0;
-    cl_kernel kernel = 0;
-  };
-
- private:
-  CL *cl = nullptr;
-  NetworkGPU *net_gpu = nullptr;
-
-  // One for each chunk in the final layer.
-  // Owned.
-  std::vector<ChunkKernel> kernels;
-
-  std::mutex m;
-
-  DISALLOW_COPY_AND_ASSIGN(SetOutputErrorCL);
-};
-
-// Propagate errors backwards. Note that errors flow from "dst" to "src".
-// There are two passes in here but this is hidden from the caller.
-struct BackwardLayerCL {
-  // See backwardsecondpass.cl. TODO: Make these configurable when
-  // creating this. They could have different values on a per-chunk
-  // basis, though it's not clear why we'd ever do that.
-  static constexpr bool CLIP_ERROR = true;
-  // XXX made this much smaller for 16-bit
-  static constexpr float LARGE_ERROR = 10000.0f;
-
-  BackwardLayerCL(CL *cl, NetworkGPU *net);
-  ~BackwardLayerCL();
-
-  // Propagate errors from dst_layer to dst_layer-1. Runs both passes.
-  // Runs on all examples in the round.
-  // PERF: If some prefix of the layers consist only of fixed chunks,
-  // then we don't need to propagate errors because we won't use them.
-  // This could be a big performance improvement if iteratively growing
-  // a model by adding layers at the end.
-  void BackwardLayer(TrainingRoundGPU *training_round,
-                     int dst_layer);
-
-  // Used internally to schedule chunks. This is only exposed for testing.
-  static std::pair<std::vector<int>, std::vector<bool>> OptimizeChunkSchedule(
-      const std::vector<Chunk> &chunks, bool verbose = false);
-
- private:
-  // Order in which to process the chunks for each layer. The compiled
-  // kernels are only correct if they are scheduled in this order,
-  // which we optimize to avoid += if possible.
-  std::vector<std::vector<int>> chunk_schedule;
-
-  // For this phase there are two passes, so two kernels.
-  struct ChunkKernel {
-    cl_program program1 = 0;
-    cl_kernel kernel1 = 0;
-
-    cl_program program2 = 0;
-    cl_kernel kernel2 = 0;
-  };
-
-  CL *cl = nullptr;
-  NetworkGPU *net_gpu = nullptr;
-
-  // Input layer has unused placeholder kernels (0) to keep this
-  // parallel to network structure.
-  std::vector<std::vector<ChunkKernel>> layer_kernels;
-
-  std::mutex m;
-
-  DISALLOW_COPY_AND_ASSIGN(BackwardLayerCL);
-};
-
-// Optional and unprincipled L2-like regularization.
-// Decays every weight by a constant multiplicative factor.
-struct DecayWeightsCL {
-
-  // Decay factor should be a number slightly less than 1, like 0.99999f.
-  DecayWeightsCL(CL *cl, NetworkGPU *net_gpu, float decay_factor);
-  ~DecayWeightsCL();
-
-  void Decay(int layer_idx);
-
- private:
-  // TODO: follow the learning rate schedule instead of a constant
-  // decay. Perhaps this can just be merged into updateweights.
-  const float decay_factor;
-  CL *cl = nullptr;
-  NetworkGPU *net_gpu = nullptr;
-
-  cl_program program;
-  cl_kernel kernel;
-  std::mutex m;
-
-  DISALLOW_COPY_AND_ASSIGN(DecayWeightsCL);
-};
-
+// TODO: Rename this to like, TrainingParams.
 // Network-wide configuration. The defaults are reasonable.
 // (Due to a gcc bug, this cannot be nested within UpdateWeightsCL
 // and used as a default argument.)
@@ -518,6 +402,143 @@ struct UpdateConfig {
   bool constrain = true;
   float weight_constrain_max = 16.0f;
   float bias_constrain_max = 16384.0f;
+
+  // If true, then propagated error is always in [-error_max, error_max].
+  bool clip_error = false;
+  float error_max = 1000.0;
+};
+
+// Set the error values from the actual and expected outputs, possibly
+// applying some remapping of them.
+struct SetOutputErrorCL {
+  using UpdateConfig = ::UpdateConfig;
+
+  #if 0
+  static constexpr bool CLIP_ERROR = true;
+  // XXX made this much smaller for 16-bit
+  // static constexpr float LARGE_ERROR = 10000.0f;
+  // XXX made this dramatically smaller for SIGMOID.
+  static constexpr float LARGE_ERROR = 5.0f;
+  #endif
+
+  // Optional remap function takes chunk id, node index within chunk, and
+  // value; see setoutputerror.cl.
+  SetOutputErrorCL(
+      CL *cl, NetworkGPU *net_gpu,
+      UpdateConfig config = {},
+      const std::optional<std::string> remap_define = std::nullopt);
+
+  // Runs on all the examples in the round.
+  void SetOutputError(TrainingRoundGPU *train);
+
+  ~SetOutputErrorCL() {
+    for (ChunkKernel &ck : kernels) {
+      clReleaseKernel(ck.kernel);
+      clReleaseProgram(ck.program);
+    }
+  }
+
+  struct ChunkKernel {
+    cl_program program = 0;
+    cl_kernel kernel = 0;
+  };
+
+ private:
+  CL *cl = nullptr;
+  NetworkGPU *net_gpu = nullptr;
+  const UpdateConfig config;
+
+  // One for each chunk in the final layer.
+  // Owned.
+  std::vector<ChunkKernel> kernels;
+
+  std::mutex m;
+
+  DISALLOW_COPY_AND_ASSIGN(SetOutputErrorCL);
+};
+
+// Propagate errors backwards. Note that errors flow from "dst" to "src".
+// There are two passes in here but this is hidden from the caller.
+struct BackwardLayerCL {
+  using UpdateConfig = ::UpdateConfig;
+#if 0
+  // See backwardsecondpass.cl. TODO: Make these configurable when
+  // creating this. They could have different values on a per-chunk
+  // basis, though it's not clear why we'd ever do that.
+  static constexpr bool CLIP_ERROR = true;
+  // XXX made this much smaller for 16-bit
+  // static constexpr float LARGE_ERROR = 10000.0f;
+  // XXX made this dramatically smaller for SIGMOID.
+  static constexpr float LARGE_ERROR = 1.0f;
+#endif
+
+
+  BackwardLayerCL(CL *cl, NetworkGPU *net, UpdateConfig config = {});
+  ~BackwardLayerCL();
+
+  // Propagate errors from dst_layer to dst_layer-1. Runs both passes.
+  // Runs on all examples in the round.
+  // PERF: If some prefix of the layers consist only of fixed chunks,
+  // then we don't need to propagate errors because we won't use them.
+  // This could be a big performance improvement if iteratively growing
+  // a model by adding layers at the end.
+  void BackwardLayer(TrainingRoundGPU *training_round,
+                     int dst_layer);
+
+  // Used internally to schedule chunks. This is only exposed for testing.
+  static std::pair<std::vector<int>, std::vector<bool>> OptimizeChunkSchedule(
+      const std::vector<Chunk> &chunks, bool verbose = false);
+
+ private:
+  // Order in which to process the chunks for each layer. The compiled
+  // kernels are only correct if they are scheduled in this order,
+  // which we optimize to avoid += if possible.
+  std::vector<std::vector<int>> chunk_schedule;
+
+  // For this phase there are two passes, so two kernels.
+  struct ChunkKernel {
+    cl_program program1 = 0;
+    cl_kernel kernel1 = 0;
+
+    cl_program program2 = 0;
+    cl_kernel kernel2 = 0;
+  };
+
+  CL *cl = nullptr;
+  NetworkGPU *net_gpu = nullptr;
+  const UpdateConfig config;
+
+  // Input layer has unused placeholder kernels (0) to keep this
+  // parallel to network structure.
+  std::vector<std::vector<ChunkKernel>> layer_kernels;
+
+  std::mutex m;
+
+  DISALLOW_COPY_AND_ASSIGN(BackwardLayerCL);
+};
+
+// Optional and unprincipled L2-like regularization.
+// Decays every weight by a constant multiplicative factor.
+struct DecayWeightsCL {
+
+  // Decay factor should be a number slightly less than 1, like 0.99999f.
+  DecayWeightsCL(CL *cl, NetworkGPU *net_gpu, float decay_factor);
+  ~DecayWeightsCL();
+
+  void Decay(int layer_idx);
+
+ private:
+  // TODO: follow the learning rate schedule instead of a constant
+  // decay. Perhaps this can just be merged into updateweights.
+  const float decay_factor;
+  CL *cl = nullptr;
+  NetworkGPU *net_gpu = nullptr;
+
+  cl_program program;
+  cl_kernel kernel;
+  std::mutex m;
+
+  DISALLOW_COPY_AND_ASSIGN(DecayWeightsCL);
 };
 
 

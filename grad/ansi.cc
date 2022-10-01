@@ -25,6 +25,11 @@ void AnsiInit() {
   DWORD old_mode = 0;
   GetConsoleMode(hStdOut, &old_mode);
   SetConsoleMode(hStdOut, old_mode | kVirtualTerminalProcessing);
+
+  // XXX Not related to ANSI; enables utf-8 output.
+  // Maybe we should separate this out? Someone might want to use
+  // high-ascii output?
+  SetConsoleOutputCP( CP_UTF8 );
   #endif
 }
 

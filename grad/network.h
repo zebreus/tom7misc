@@ -71,6 +71,7 @@ enum TransferFunction {
   TANH = 4,
 
   GRAD1 = 5,
+  DOWNSHIFT2 = 6,
 
   NUM_TRANSFER_FUNCTIONS,
 };
@@ -274,6 +275,7 @@ struct Network {
   static const char *const IDENTITY_FN;
   static const char *const TANH_FN;
   static const char *const GRAD1_FN;
+  static const char *const DOWNSHIFT2_FN;
 
   // Return one of the above constants (or abort for an unknown
   // transfer function).
@@ -568,6 +570,12 @@ struct Errors {
 // Randomize the weights in a network, like to initialize it for
 // training. TODO: Maybe should be in network-util or whatever.
 // TODO: Should parameterize this, probably!
-void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism = 2);
+struct RandomizationParams {
+  bool sigmoid_uniform = false;
+  float sigmoid_mag = 0.1f;
+};
+void RandomizeNetwork(ArcFour *rc, Network *net,
+                      RandomizationParams params = {},
+                      int max_parallelism = 2);
 
 #endif

@@ -49,6 +49,10 @@ inline ushort FloatToU16(float f) {
   return h;
 }
 
+inline float U16ToFloat(ushort u) {
+  return vload_half(0, (half*)&u);
+}
+
 // We don't actually need to know the number of nodes within the kernel;
 // the global id just tells us which node we work on. But the number
 // of indices per node is needed to compute offsets.

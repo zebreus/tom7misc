@@ -11,3 +11,6 @@ mkdir chess-identity
 mkdir chess-grad1
 ./train-chess.exe chess-grad1 GRAD1 200000
 
+mkdir chess-tanh
+./train-chess.exe chess-tanh TANH 200000
+

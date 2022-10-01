@@ -37,6 +37,7 @@ const char *TransferFunctionName(TransferFunction tf) {
   case IDENTITY: return "IDENTITY";
   case TANH: return "TANH";
   case GRAD1: return "GRAD1";
+  case DOWNSHIFT2: return "DOWNSHIFT2";
   default: return "??INVALID??";
   }
 }
@@ -78,7 +79,9 @@ TransferFunction ParseTransferFunction(const std::string &s) {
 const char *const Network::SIGMOID_FN =
   "#define FORWARD(potential) ToHalf(1.0f / ToHalf(1.0f + ToHalf(exp(-potential))))\n"
   // This wants to be given the actual output value f(potential).
-  "#define DERIVATIVE(fx) (fx * (1.0f - fx))\n";
+  // "#define DERIVATIVE(fx) (fx * (1.0f - fx))\n";
+  // XXX HAX!@!
+  "#define DERIVATIVE(fx) ((fx * (1.0f - fx)) + 0.01f)\n";
 
 // PERF: I think LEAKY_ is generally better, but this could be
 // implemented with fmax.
@@ -123,6 +126,11 @@ const char *const Network::GRAD1_FN =
   "#define FORWARD(potential) vload_half(FloatToU16(potential), forward_table)\n"
   "#define DERIVATIVE(fx) deriv_table[FloatToU16(fx)]\n";
 
+// Or just load the table?
+const char *const Network::DOWNSHIFT2_FN =
+  "#define FORWARD(potential) U16ToFloat(FloatToU16(potential) >> 2)\n"
+  "#define DERIVATIVE(fx) deriv_table[FloatToU16(fx)]\n";
+
 string Network::TransferFunctionDefines(TransferFunction tf) {
   switch (tf) {
   case SIGMOID: return Network::SIGMOID_FN;
@@ -131,6 +139,7 @@ string Network::TransferFunctionDefines(TransferFunction tf) {
   case IDENTITY: return Network::IDENTITY_FN;
   case TANH: return Network::TANH_FN;
   case GRAD1: return Network::GRAD1_FN;
+  case DOWNSHIFT2: return Network::DOWNSHIFT2_FN;
   default:
     CHECK(false) << "No define for transfer function "
                  << tf << ": " << TransferFunctionName(tf);
@@ -287,6 +296,11 @@ static float Grad1Fn(float f) {
   return (float)out;
 }
 
+static float Downshift2Fn(float f) {
+  uint16_t in = GetU16((half)f);
+  return (float)GetHalf(in >> 2);
+}
+
 template<float (*fwd)(float)>
 static void RunForwardChunkWithFn(
     const std::vector<float> &src_values,
@@ -438,6 +452,10 @@ void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
       break;
     case GRAD1:
       RunForwardChunkWithFn<Grad1Fn>(
+          src_values, chunk, dst_values, out_idx);
+      break;
+    case DOWNSHIFT2:
+      RunForwardChunkWithFn<Downshift2Fn>(
           src_values, chunk, dst_values, out_idx);
       break;
     default:
@@ -1547,48 +1565,9 @@ static void DeleteElements(C *cont) {
 }
 
 // Randomize the weights in a network. Doesn't do anything to indices.
-void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
-  [[maybe_unused]]
-  auto RandomizeFloatsGaussian =
-    [](float mag, ArcFour *rc, vector<float> *vec) {
-      RandomGaussian gauss{rc};
-      for (int i = 0; i < vec->size(); i++) {
-        (*vec)[i] = mag * gauss.Next();
-      }
-    };
-
-  [[maybe_unused]]
-  auto RandomizeFloatsUniform =
-    [](float mag, ArcFour *rc, vector<float> *vec) {
-      // Uniform from -mag to mag.
-      const float width = 2.0f * mag;
-      for (int i = 0; i < vec->size(); i++) {
-        // Uniform in [0,1]
-        double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
-        float f = (width * d) - mag;
-        (*vec)[i] = f;
-      }
-    };
-
-  // Weights of exactly zero are just wasting indices, as they do
-  // not affect the prediction nor propagated error.
-  // Here the values are always within [hole_frac * mag, mag] or
-  // [-mag, -hole_frag * mag].
-  [[maybe_unused]]
-  auto RandomizeFloatsDonut =
-    [](float hole_frac, float mag, ArcFour *rc, vector<float> *vec) {
-      CHECK(hole_frac >= 0.0 && hole_frac < 1.0) << hole_frac;
-      // One side.
-      const double w = (1.0 - hole_frac) * mag;
-      for (int i = 0; i < vec->size(); i++) {
-        // Uniform in [0,1]
-        double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
-        bool s = (rc->Byte() & 1) != 0;
-        float f = s ? d * -w : d * w;
-        (*vec)[i] = f;
-      }
-    };
-
+void RandomizeNetwork(ArcFour *rc, Network *net,
+                      RandomizationParams params,
+                      int max_parallelism) {
 
   // This must access rc serially.
   vector<ArcFour *> rcs;
@@ -1599,7 +1578,9 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
   // But now we can do all layers in parallel.
   ParallelComp(
       net->layers.size(),
-      [rcs, &RandomizeFloatsUniform, &RandomizeFloatsDonut, &net](int layer) {
+      [&params, rcs, &net](int layer) {
+        printf("Layer %d: there are %d chunks\n",
+               layer, (int)net->layers[layer].chunks.size());
         for (int chunk_idx = 0;
              chunk_idx < net->layers[layer].chunks.size();
              chunk_idx++) {
@@ -1609,6 +1590,39 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
 
           // Standard advice is to leave biases at 0 to start.
           for (float &f : chunk->biases) f = 0.0f;
+
+          // For sparse chunks, weights of exactly zero are just
+          // wasting indices, as they do not affect the prediction nor
+          // propagated error. Here we reject samples in (-hole,
+          // +hole). Note that if the hole is nonempty, and mean is
+          // nonzero, the generated samples with the hole rejected
+          // will not actually have the requested mean.
+          auto RandomizeFloatsDonut =
+            [layer, chunk_idx](
+                float mean, float hole, float mag, bool uniform,
+                ArcFour *rc, vector<float> *vec) {
+              printf("Layer %d chunk %d: mean %.5f, hole %.5f, mag %.5f, "
+                     "%s\n", layer, chunk_idx, mean, hole, mag,
+                     uniform ? "unif" : "gauss");
+              RandomGaussian gauss(rc);
+              CHECK(hole >= 0.0) << hole;
+              CHECK(!uniform ||
+                    (mean + mag) > hole ||
+                    (mean - mag) < -hole) << "Won't get any samples!";
+              for (int i = 0; i < vec->size(); i++) {
+                float f = 0.0;
+                do {
+                  // Uniform in [-1,1] or gaussian with mean 0.
+                  double d =
+                    uniform ?
+                    ((double)Rand32(rc) / (double)0xFFFFFFFF) * 2.0 - 1.0 :
+                    gauss.Next();
+                  f = (d - mean) * mag;
+                } while (fabsf(f) < hole);
+                (*vec)[i] = f;
+              }
+            };
+
 
           // Good weight initialization is important for training deep
           // models; if the initialized weights are too small, the
@@ -1629,30 +1643,48 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
           // ("Delving Deep into Rectifiers: Surpassing Human-Level
           // Performance on ImageNet Classification." K. He et. al.,
           // https://arxiv.org/pdf/1502.01852v1.pdf ).
-          // For SIGMOID...
+          //
+          // SIGMOID is well-known for vanishing gradients. Yilmaz and
+          // Poli (2022) recommend setting the mean nonzero (and
+          // in particular, negative) to avoid vanishing gradients.
+          // (I haven't seen this work yet, though.)
 
-          const float mag = [chunk]() {
-              switch (chunk->transfer_function) {
-              default:
-              case GRAD1:
-                // Grad1 also has zero mean, I believe, but we
-                // should maybe verify
-              case TANH:
-              case IDENTITY:
-                return 1.0f / sqrtf(chunk->indices_per_node);
-              case SIGMOID:
+          const float hole = chunk->type == CHUNK_SPARSE ? 0.001f : 0.0f;
 
-              case RELU:
-              case LEAKY_RELU:
-                return sqrtf(2.0 / chunk->indices_per_node);
-              }
-            }();
+          switch (chunk->transfer_function) {
+          default:
+          case GRAD1:
+            // Grad1 also has zero mean, I believe, but we
+            // should maybe verify
+          case TANH:
+          case IDENTITY:
+            RandomizeFloatsDonut(0.0, hole,
+                                 1.0f / sqrtf(chunk->indices_per_node),
+                                 true, rcs[layer], &chunk->weights);
+            break;
 
-          if (chunk->type == CHUNK_SPARSE) {
-            // If sparse, don't output zero (or other tiny) weights.
-            RandomizeFloatsDonut(0.01f, mag, rcs[layer], &chunk->weights);
-          } else {
-            RandomizeFloatsUniform(mag, rcs[layer], &chunk->weights);
+          case SIGMOID: {
+            const float mean =
+              std::max(-1.0f, -8.0f / chunk->indices_per_node);
+            // The paper recommends stddev =
+            const float mag = params.sigmoid_mag;
+            RandomizeFloatsDonut(mean, hole, mag,
+                                 params.sigmoid_uniform,
+                                 rcs[layer], &chunk->weights);
+            break;
+          }
+
+          case DOWNSHIFT2:
+            // Downshift2 is definitely not symmetric so using
+            // something like relu makes more sense. Can we
+            // compute this empirically? Doesn't matter?
+          case RELU:
+          case LEAKY_RELU: {
+            const float mag = sqrtf(2.0 / chunk->indices_per_node);
+            RandomizeFloatsDonut(0.0f, hole, mag, true,
+                                 rcs[layer], &chunk->weights);
+            break;
+          }
           }
         }
       }, max_parallelism);

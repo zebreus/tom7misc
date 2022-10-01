@@ -97,6 +97,7 @@ static void SameAsCPUTest() {
     IDENTITY,
     TANH,
     GRAD1,
+    DOWNSHIFT2,
   };
   const std::set<ChunkType> cts = {
     CHUNK_SPARSE,

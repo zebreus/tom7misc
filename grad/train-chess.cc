@@ -53,11 +53,37 @@ static constexpr const char *GAME_PGN = "d:\\chess\\lichess_db_standard_rated_20
 #define MODEL_NAME MODEL_BASE ".val"
 static constexpr int EXAMPLES_PER_ROUND = 2048;
 
-static void Train(const string &dir, Network *net, int64 max_rounds) {
-  // Note that destructor does not stop the thread. If we want to
-  // have train exit cleanly, we'd need to add this.
-  ExamplePool *example_pool = new ExamplePool;
-  example_pool->PopulateExamplesInBackground(GAME_PGN, -1);
+struct TrainParams {
+  UpdateConfig update_config = {};
+
+  bool do_decay = false;
+  // XXX this should probably depend on the learning rate; if the
+  // learning rate is too small, it won't even be able to overcome
+  // the decay
+  float decay_rate = 0.999999f;
+
+  TrainParams() {
+    update_config.base_learning_rate = 0.01f;
+    update_config.clipping = true;
+
+    update_config.clip_error = true;
+    update_config.error_max = 0.1f;
+
+    // This is conservative, but with larger exponents I would
+    // get divergence after hundreds of thousands of rounds.
+    // This happened again with the plugin parameter predictor
+    // with a value of 1e-6!
+
+    // was 1e-2
+    update_config.adam_epsilon = 1.0e-4;
+
+  }
+};
+
+static double Train(const string &dir, Network *net, int64 max_rounds,
+                    bool no_save,
+                    TrainParams params,
+                    ExamplePool *example_pool) {
 
   ArcFour rc(StringPrintf("%lld.train.%s", time(nullptr), MODEL_BASE));
 
@@ -69,43 +95,27 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
   static constexpr int max_parallelism = 4;
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
-  static constexpr bool SAVE_INTERMEDIATE = true;
-
-  UpdateWeightsCL::UpdateConfig update_config;
-  update_config.base_learning_rate = 0.1f;
-  // This is conservative, but with larger exponents I would
-  // get divergence after hundreds of thousands of rounds.
-  // This happened again with the plugin parameter predictor
-  // with a value of 1e-6!
-
-  // was 1e-2
-  update_config.adam_epsilon = 1.0e-4;
-
-  // XXX this should probably depend on the learning rate; if the
-  // learning rate is too small, it won't even be able to overcome
-  // the decay
-  static constexpr float DECAY_RATE = 0.999999f;
-  static constexpr bool DO_DECAY = false;
+  const bool SAVE_INTERMEDIATE = !no_save && true;
 
   // On a verbose round we compute training error and print out
   // examples.
-  static constexpr int VERBOSE_EVERY_SEC = 60.0;
+  const int VERBOSE_EVERY_SEC = 60.0;
   Periodically verbose_per(VERBOSE_EVERY_SEC);
 
   // How often to also save error history to disk (if we run a
   // verbose round).
-  static constexpr double HISTORY_EVERY_SEC = 120.0;
+  const double HISTORY_EVERY_SEC = no_save ? 999999.0 : 120.0;
   Periodically history_per(HISTORY_EVERY_SEC);
 
-  static constexpr double SAVE_ERROR_IMAGES_EVERY = 130.0;
+  const double SAVE_ERROR_IMAGES_EVERY = no_save ? 999999.0 : 130.0;
   Periodically error_images_per(SAVE_ERROR_IMAGES_EVERY);
 
-  static constexpr double TIMING_EVERY_SEC = 20.0;
+  const double TIMING_EVERY_SEC = 20.0;
   Periodically timing_per(TIMING_EVERY_SEC);
 
   static constexpr int64 CHECKPOINT_EVERY_ROUNDS = 100000;
 
-  constexpr int IMAGE_EVERY = 100;
+  const int IMAGE_EVERY = 100;
   TrainingImages images(*net, Util::dirplus(dir, "train"),
                         model_file, IMAGE_EVERY);
 
@@ -122,19 +132,23 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
 
   auto net_gpu = make_unique<NetworkGPU>(cl, net);
 
+  if (no_save) net_gpu->SetVerbose(false);
+
   std::unique_ptr<ForwardLayerCL> forward_cl =
     std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
   std::unique_ptr<SetOutputErrorCL> error_cl =
-    std::make_unique<SetOutputErrorCL>(cl, net_gpu.get());
+    std::make_unique<SetOutputErrorCL>(cl, net_gpu.get(),
+                                       params.update_config);
   std::unique_ptr<BackwardLayerCL> backward_cl =
-    std::make_unique<BackwardLayerCL>(cl, net_gpu.get());
-  [[maybe_unused]]
+    std::make_unique<BackwardLayerCL>(cl, net_gpu.get(),
+                                      params.update_config);
   std::unique_ptr<DecayWeightsCL> decay_cl =
-    std::make_unique<DecayWeightsCL>(cl, net_gpu.get(), DECAY_RATE);
+    std::make_unique<DecayWeightsCL>(cl, net_gpu.get(),
+                                     params.decay_rate);
   std::unique_ptr<UpdateWeightsCL> update_cl =
     std::make_unique<UpdateWeightsCL>(cl, net_gpu.get(),
                                       EXAMPLES_PER_ROUND,
-                                      update_config);
+                                      params.update_config);
 
   // Uninitialized training examples on GPU.
   std::unique_ptr<TrainingRoundGPU> training(
@@ -149,9 +163,6 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
 
   double round_ms = 0.0;
   double example_ms = 0.0;
-  double expand_ms = 0.0;
-  double makemove_ms = 0.0;
-  double eval_ms = 0.0;
   double forward_ms = 0.0;
   double error_ms = 0.0;
   double decay_ms = 0.0;
@@ -163,10 +174,12 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
   Timer train_timer;
   int64 total_examples = 0LL;
 
+  double last_error = 0.0;
   for (int iter = 0; net->rounds < max_rounds; iter++) {
     Timer round_timer;
 
-    const bool verbose_round = verbose_per.ShouldRun();
+    const bool last_round = net->rounds == max_rounds - 1;
+    const bool verbose_round = last_round || verbose_per.ShouldRun();
 
     // Initialize training examples.
 
@@ -179,7 +192,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       // Examples from database.
       Timer example_timer;
 
-      static constexpr int MIN_EXAMPLES = 100000;
+      static constexpr int MIN_EXAMPLES = 1000000;
       const int64 num_available = [example_pool](){
           for (;;) {
             {
@@ -202,7 +215,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
             printf("Eval %.5f Over %.3f:\n"
                    "%s"
                    "%s\n\n",
-                   score, over, pos.BoardString().c_str(),
+                   score, over, pos.UnicodeBoardString(true).c_str(),
                    pos.ToFEN(1, 1).c_str());
           }
 
@@ -266,7 +279,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     if (VERBOSE > 1)
       printf("Backward pass.\n");
 
-    if (DO_DECAY) {
+    if (params.do_decay) {
       Timer decay_timer;
       for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {
         decay_cl->Decay(layer_idx);
@@ -296,10 +309,6 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     net->examples += EXAMPLES_PER_ROUND;
     net->rounds++;
 
-    // (currently no way to actually finish, but we could set a
-    // training error threshold below.)
-    const bool finished = false;
-
     if (verbose_round) {
       Timer loss_timer;
       if (VERBOSE > 1)
@@ -318,8 +327,8 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       std::vector<float> actuals(EXAMPLES_PER_ROUND * NNChess::OUTPUT_SIZE);
       training->ExportOutputs(&actuals);
 
-      const bool save_history = history_per.ShouldRun();
-      const bool save_error_images = error_images_per.ShouldRun();
+      const bool save_history = !no_save && history_per.ShouldRun();
+      const bool save_error_images = !no_save && error_images_per.ShouldRun();
       // compute loss for the two outputs on each example, actuals vs expecteds
       for (int col = 0; col < NUM_COLUMNS; col++) {
 
@@ -354,6 +363,8 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
 
         printf("   %s: %.3f<%.3f<%.3f\n",
                COLUMN_NAMES[col], min_loss, average_loss, max_loss);
+
+        if (col == 0) last_error = average_loss;
       }
 
       loss_ms += loss_timer.MS();
@@ -362,19 +373,81 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     // TODO: Should probably synchronize saving images with saving
     // the model. Otherwise when we continue, we lose pixels that
     // were written to the image but not saved to disk.
-    if ((iter % IMAGE_EVERY) == 0) {
+
+    // Note: Saves every early round.
+    if (!no_save &&
+        (net->rounds < IMAGE_EVERY || (iter % IMAGE_EVERY) == 0)) {
       Timer image_timer;
       net_gpu->ReadFromGPU();
       images.Sample(*net);
       image_ms += image_timer.MS();
+
+      #if 0
+      // XXX HAX
+      Errors err(*net);
+      training->ExportErrors(0, &err);
+      for (int layer = 1; layer < err.error.size(); layer++) {
+        const std::vector<float> &e = err.error[layer];
+        const int num = e.size();
+        string filename =
+          StringPrintf("%s.r%lld.%d.png",
+                       Util::dirplus(dir, "err").c_str(),
+                       net->rounds, layer);
+        if (num == 1) {
+          string text = StringPrintf("%.11g", e[0]);
+          ImageRGBA img(text.size() * 9, 9);
+          img.Clear32(0x000000FF);
+          img.BlendText32(0, 0, 0xFFFFFFFF, text);
+          img.Save(filename);
+        } else {
+          const int w = sqrt(num) + 1;
+          const int h = (num / w) + 1;
+          CHECK(w * h >= num);
+          ImageRGBA img(w, h);
+          img.Clear32(0x000000FF);
+          for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+              int i = y * w + x;
+              if (i >= num) continue;
+
+              auto WeightColor = [](float f) -> uint32 {
+                  auto MapV = [](float f) -> uint8 {
+                      float ff = 0.0f;
+                      ff = sqrtf(f);
+                      return (uint8)std::clamp(
+                          (int)roundf(255.0f * ff),
+                          0,
+                          255);
+                    };
+
+                  if (!std::isfinite(f)) {
+                    return 0xFF00FFFF;
+                  } else if (f == 0.0f) {
+                    return 0xFFFF00FF;
+                  } else if (f > 0.0f) {
+                    uint32 v = MapV(f);
+                    return (v << 16) | 0xFF;
+                  } else {
+                    uint32 v = MapV(-f);
+                    return (v << 24) | 0xFF;
+                  }
+                };
+
+              img.SetPixel32(x, y, WeightColor(e[i]));
+            }
+          }
+          img.Save(filename);
+        }
+      }
+      #endif
     }
 
-    const bool save_timeout = save_per.ShouldRun();
+    const bool save_timeout = !no_save && save_per.ShouldRun();
 
     // Checkpoint (no overwrite) every X rounds.
     bool checkpoint_timeout = (net->rounds % CHECKPOINT_EVERY_ROUNDS) == 0;
 
-    if (SAVE_INTERMEDIATE && (save_timeout || checkpoint_timeout || finished ||
+    if (SAVE_INTERMEDIATE && (save_timeout || checkpoint_timeout ||
                               iter % 5000 == 0)) {
       net_gpu->ReadFromGPU();
       // Note that if we write a checkpoint, we don't also overwrite
@@ -383,7 +456,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
         StringPrintf("%s.%lld.val",
                      Util::dirplus(dir, MODEL_BASE).c_str(),
                      net->rounds) :
-        (string)MODEL_NAME;
+        model_file;
       net->SaveToFile(filename);
       if (VERBOSE)
         printf("Wrote %s\n", filename.c_str());
@@ -395,12 +468,6 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       string eimg_file = Util::dirplus(dir, MODEL_BASE "-error.png");
       error_image.Save(eimg_file);
       printf("Wrote %s\n", eimg_file.c_str());
-    }
-
-    // Parameter for average_loss termination?
-    if (finished) {
-      printf("Successfully trained!\n");
-      return;
     }
 
     round_ms += round_timer.MS();
@@ -430,7 +497,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
              image_ms * pct,
              other_ms * pct);
       double msr = 1.0 / (iter + 1);
-      printf("%.1fms [%.1f+%.1f+%.1f] ex  "
+      printf("%.1fms ex  "
              "%.1fms fwd  "
              "%.1fms err  "
              "%.1fms dec  "
@@ -440,11 +507,6 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
              "%.2fms img  "
              "%.1fms other\n",
              example_ms * msr,
-             /* */
-             expand_ms * msr,
-             eval_ms * msr,
-             makemove_ms * msr,
-             /* */
              forward_ms * msr,
              error_ms * msr,
              decay_ms * msr,
@@ -456,14 +518,64 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     }
   }
 
+  // Done.
+  net_gpu->ReadFromGPU();
+
+  /*
   printf("Training took %.2f hours\n",
          train_timer.Seconds() / (60.0 * 60.0));
   printf("Reached max_rounds of %lld.\n", max_rounds);
-  net->SaveToFile(model_file);
-  printf("Saved to %s.\n", model_file.c_str());
+  */
+  if (!no_save) {
+    net->SaveToFile(model_file);
+    printf("Saved to %s.\n", model_file.c_str());
+  }
+
+
+  // For hyperparameter optimization.
+  std::vector<int64> nonzero_error(net->layers.size(), 0);
+  {
+    // Get the number of nonzero errors on each layer, across
+    // all examples. Note the first and last layers won't be
+    // interesting, but we just compute them all for uniformity.
+    Errors err(*net);
+    for (int ex = 0; ex < EXAMPLES_PER_ROUND; ex++) {
+      training->ExportErrors(ex, &err);
+      for (int layer = 0; layer < err.error.size(); layer++) {
+        const std::vector<float> &e = err.error[layer];
+        for (float f : e) {
+          if (std::isfinite(f) && f != 0.0f) nonzero_error[layer]++;
+        }
+      }
+    }
+  }
+  printf("Ran " ABLUE("%lld") " rounds in "
+         AYELLOW("%.2f") " sec. " AWHITE("Zeroes per layer") ":\n",
+         max_rounds, train_timer.Seconds());
+  for (int i = 0; i < nonzero_error.size(); i++) {
+    printf("  %02d. %s%d" ANSI_RESET "\n",
+           i, nonzero_error[i] == 0 ? ANSI_RED : ANSI_GREEN,
+           nonzero_error[i]);
+  }
+
+  for (int i = nonzero_error.size() - 2; i > 0; i--) {
+    if (nonzero_error[i] == 0) {
+      // If the layer is all zero, we fail. But the later the
+      // layer where this happens, the worse.
+      const double badness = 100000 * pow(10.0, i);
+      // The less zero the next layer is, the better.
+      return badness - nonzero_error[i + 1];
+    }
+  }
+
+  // If we actually have a nontrivial network, then lower loss is
+  // preferable.
+  return last_error;
 }
 
-static unique_ptr<Network> NewChessNetwork(TransferFunction tf) {
+static unique_ptr<Network> NewChessNetwork(
+    TransferFunction tf,
+    RandomizationParams rand_params = {}) {
   printf("New network with transfer function %s\n",
          TransferFunctionName(tf));
 
@@ -611,52 +723,215 @@ static unique_ptr<Network> NewChessNetwork(TransferFunction tf) {
   auto net = std::make_unique<Network>(layers);
 
   printf("Randomize..\n");
-  RandomizeNetwork(&rc, net.get(), 2);
+  RandomizeNetwork(&rc, net.get(), rand_params, 2);
   printf("New network with %lld parameters\n", net->TotalParameters());
   return net;
 }
 
+// Note that destructor does not stop the thread. If we want to
+// have the program exit cleanly, we'd need to add this.
+static ExamplePool *example_pool = nullptr;
+
+
+static constexpr int OPT_ROUNDS = 2000;
+static constexpr int NUM_INTS = 2;
+static constexpr int NUM_DOUBLES = 8;
+using TrainOptimizer = Optimizer<NUM_INTS, NUM_DOUBLES, char>;
+
+static std::pair<TrainParams, RandomizationParams> GetParams(
+    const TrainOptimizer::arg_type &args) {
+  const auto &[clip_int, sigunif_int] = args.first;
+  const auto &[decay,
+               base_rate, dampening, adam_e,
+               weight_max, bias_max,
+               clip_error, sigmoid_mag] = args.second;
+
+  TrainParams tparams;
+
+  tparams.do_decay = decay < 0.0;
+  // Make sure the parameter is valid even if disabled.
+  tparams.decay_rate = decay < 0.0 ? (1.0 - exp(-decay)) : 0.999f;
+
+  tparams.update_config.base_learning_rate = exp(-base_rate);
+  tparams.update_config.learning_rate_dampening = dampening;
+
+  tparams.update_config.adam_epsilon = exp(-adam_e);
+
+  tparams.update_config.clipping = clip_int == 1;
+
+  tparams.update_config.constrain = weight_max > 1.0 || bias_max > 1.0;
+  tparams.update_config.weight_constrain_max = weight_max;
+  tparams.update_config.bias_constrain_max = bias_max;
+
+  tparams.update_config.clip_error = clip_error >= 1.0;
+  tparams.update_config.error_max = clip_error;
+
+  RandomizationParams rparams;
+  rparams.sigmoid_uniform = sigunif_int == 1;
+  rparams.sigmoid_mag = sigmoid_mag;
+
+  return make_pair(tparams, rparams);
+}
+
+static TrainOptimizer::return_type
+OptimizeMe(const TrainOptimizer::arg_type &args) {
+  printf("\n" ABGCOLOR(50, 0, 50,
+                       AFGCOLOR(240, 240, 240,
+                                "== Optimize with params ==")) "\n");
+  for (const double d : args.second) {
+    printf("  %.11g\n", d);
+  }
+
+  const auto &[tparams, rparams] = GetParams(args);
+
+  unique_ptr<Network> net = NewChessNetwork(SIGMOID, rparams);
+
+  double score = Train("opt-tmp", net.get(), OPT_ROUNDS,
+                       // no save
+                       true,
+                       tparams, example_pool);
+
+  // All args are "feasible"
+  return make_pair(score, make_optional('@'));
+}
+
+
 
 int main(int argc, char **argv) {
   AnsiInit();
-  CHECK(argc == 4) <<
-    "./train-chess.exe dir transfer_function rounds\n"
-    "Notes:\n"
-    "  dir must exist. Resumes training if the dir\n"
-    "    contains a model file.\n"
-    "  transfer_function should be one of\n"
-    "    SIGMOID, RELU, LEAKY_RELU, IDENTITY\n"
-    "    TANH, GRAD1,\n";
-
-  const string dir = argv[1];
-  const TransferFunction tf = ParseTransferFunction(argv[2]);
-  const int64 max_rounds = (int64)atoll(argv[3]);
-  CHECK(max_rounds > 0) << argv[3];
-
   cl = new CL;
 
-  const string model_file = Util::dirplus(dir, MODEL_NAME);
+  if (false) {
+    example_pool = new ExamplePool;
+    example_pool->PopulateExamplesInBackground(GAME_PGN, -1);
 
-  std::unique_ptr<Network> net(
-      Network::ReadFromFile(model_file));
+    const std::array<std::pair<int32_t, int32_t>, NUM_INTS>
+      int_bounds = {
+      // clipping, bool
+      make_pair(0, 2),
+      // uniform sigmoid initialization, bool
+      make_pair(0, 2),
+    };
 
-  if (net.get() == nullptr) {
-    net = NewChessNetwork(tf);
-    CHECK(net.get() != nullptr);
-    net->SaveToFile(model_file);
-    printf("Wrote to %s\n", model_file.c_str());
-  }
+    const std::array<std::pair<double, double>, NUM_DOUBLES>
+      double_bounds = {
+      // decay, 1 - (e^-x) if x < 0, or else disabled
+      make_pair(-18.0, 18.0),
 
-  net->StructuralCheck();
-  net->NaNCheck(model_file);
+      // learning rate, e^-x
+      make_pair(0.0, 16.0),
+      // dampening
+      make_pair(0.01, 100.0),
 
-  if (net->rounds >= max_rounds) {
-    printf("%s: Already trained %lld rounds.\n",
-           model_file.c_str(), net->rounds);
+      // adam_epsilon, e^-x
+      make_pair(0.0, 16.0),
+
+      // constrain disabled if both are <1.
+      // weight constrain max
+      make_pair(0.1f, 16.0f),
+      // bias constrain max
+      make_pair(0.1f, 16384.0f),
+
+      // clip error, disabled if <1
+      make_pair(0.1f, 1024.0),
+
+      // sigmoid mag
+      make_pair(0.00001f, 2.0f),
+    };
+
+    constexpr double hour = 3600.0;
+
+    Timer opt_timer;
+    TrainOptimizer opt(OptimizeMe, 0xCAFE);
+    opt.SetSaveAll(true);
+    opt.Run(int_bounds, double_bounds,
+            nullopt, nullopt, {2.0 * hour});
+
+    printf("Ran " ABLUE("%lld") " evaluations in "
+           AYELLOW("%.3f") " sec.\n",
+           opt.NumEvaluations(),
+           opt_timer.Seconds());
+
+    string tsv;
+    StringAppendF(&tsv,
+                  "SCORE\t"
+                  "clip\tsigunif\t"
+                  "decay\tbase_rate\tdampening\tadam_e\t"
+                  "weight_max\tbias_max\t"
+                  "clip_error\tsigmoid_mag\n");
+    for (const auto &[args, score, outopt_] : opt.GetAll()) {
+      const auto &[clip_int, sigunif_int] = args.first;
+      const auto &[decay,
+                   base_rate, dampening, adam_e,
+                   weight_max, bias_max,
+                   clip_error, sigmoid_mag] = args.second;
+      StringAppendF(&tsv,
+                    "%.11g\t"
+                    "%d\t%d\t"
+                    "%.11g\t%.11g\t%.11g\t%.11g\t"
+                    "%.11g\t%.11g\t"
+                    "%.11g\t%.11g\n",
+                    score,
+                    clip_int, sigunif_int,
+                    decay,
+                    base_rate, dampening, adam_e,
+                    weight_max, bias_max,
+                    clip_error, sigmoid_mag);
+    }
+
+    Util::WriteFile("records.tsv", tsv);
+    printf("Results:\n", tsv.c_str());
+
   } else {
-    Train(dir, net.get(), max_rounds);
+
+    CHECK(argc == 4) <<
+      "./train-chess.exe dir transfer_function rounds\n"
+      "Notes:\n"
+      "  dir must exist. Resumes training if the dir\n"
+      "    contains a model file.\n"
+      "  transfer_function should be one of\n"
+      "    SIGMOID, RELU, LEAKY_RELU, IDENTITY\n"
+      "    TANH, GRAD1,\n";
+
+    const string dir = argv[1];
+    const TransferFunction tf = ParseTransferFunction(argv[2]);
+    const int64 max_rounds = (int64)atoll(argv[3]);
+    CHECK(max_rounds > 0) << argv[3];
+
+    const auto [tparams, rparams] =
+      GetParams(
+          std::make_pair(
+              std::array<int32_t, NUM_INTS>{0, 1},
+              std::array<double,  NUM_DOUBLES>{18.0, 5.8300267747, 18.383389302, 14.109313061,
+                  3.0086677831, 8760.2582169, 1013.9750224, 1.1163693398}));
+
+    const string model_file = Util::dirplus(dir, MODEL_NAME);
+
+    example_pool = new ExamplePool;
+    example_pool->PopulateExamplesInBackground(GAME_PGN, -1);
+
+    std::unique_ptr<Network> net(
+        Network::ReadFromFile(model_file));
+
+    if (net.get() == nullptr) {
+      net = NewChessNetwork(tf, rparams);
+      CHECK(net.get() != nullptr);
+      net->SaveToFile(model_file);
+      printf("Wrote to %s\n", model_file.c_str());
+    }
+
+    net->StructuralCheck();
+    net->NaNCheck(model_file);
+
+    if (net->rounds >= max_rounds) {
+      printf("%s: Already trained %lld rounds.\n",
+             model_file.c_str(), net->rounds);
+    } else {
+      Train(dir, net.get(), max_rounds, false, tparams, example_pool);
+    }
+
+    printf("OK\n");
   }
 
-  printf("OK\n");
   return 0;
 }

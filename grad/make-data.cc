@@ -51,6 +51,44 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
     }
   }
 
+#if 1
+  {
+  // XXX DELETE - copy of below
+  // And debugging/visualization image.
+  ImageRGBA img(8192, 8192);
+  img.Clear32(0x000000FF);
+  GradUtil::Grid(&img);
+
+    // Loop over [-1, 1].
+    auto Plot = [&](uint16 input) {
+        uint16 output = table[input];
+        double x = GradUtil::GetHalf(input);
+        double y = GradUtil::GetHalf(output);
+
+        int xs = (int)std::round((img.Width() / 2) + x * (img.Width() / 8.0));
+        int ys = (int)std::round((img.Width() / 2) + -y * (img.Width() / 8.0));
+
+        // ys = std::clamp(ys, 0, size - 1);
+
+        uint32 c = 0xFFFFFF77;
+        /*
+        if (x < -1.0f) c = 0xFF000022;
+        else if (x > 1.0f) c = 0x00FF0022;
+        */
+        img.BlendPixel32(xs, ys, c);
+      };
+
+    /*
+    for (int i = NEG_LOW; i < NEG_HIGH; i++) Plot(i);
+    for (int i = POS_LOW; i < POS_HIGH; i++) Plot(i);
+    */
+    GradUtil::ForEveryFinite16(Plot);
+
+
+  img.Save("debug.png");
+  }
+#endif
+
   // The derivative at a point, given as table mapping the
   // output value (y) to f'(x); this is what we use at training
   // time. Note that this would seemingly require the forward
@@ -117,7 +155,10 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
     const auto [ax, ay] = points[i - 1];
     const auto [bx, by] = points[i];
     CHECK(Unpack16AsFloat(ax) <= Unpack16AsFloat(bx));
-    CHECK(Unpack16AsFloat(ay) <= Unpack16AsFloat(by));
+    if (false)
+    CHECK(Unpack16AsFloat(ay) <= Unpack16AsFloat(by)) <<
+      StringPrintf("Want %04x <= %04x (%.4f <= %.4f)\n",
+                   ay, by, Unpack16AsFloat(ay), Unpack16AsFloat(by));
   }
 
   // Now compute the derivative at every y value. We do this by
@@ -217,7 +258,8 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
         const auto [nyu, nv] = GetAdjacentBucket(yu, +1);
 
         // We should have adjacent points either up or down.
-        CHECK(!pv.empty() || nv.empty()) << yu;
+        CHECK(!pv.empty() || !nv.empty()) <<
+          StringPrintf("%04x = %.6f", yu, Unpack16AsFloat(yu));
 
         if (!pv.empty() && !nv.empty()) {
           // If we have both, interpolate.
@@ -326,9 +368,19 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
 int main(int argc, char **argv) {
   AnsiInit();
 
-  State state = GradUtil::MakeTable1();
+  {
+    State state = GradUtil::MakeTable1();
+    MakeData(state.table, "grad1");
+  }
 
-  MakeData(state.table, "grad1");
+  {
+    Table table;
+    for (int i = 0; i < 65536; i++) {
+      uint16 out = i >> 2;
+      table[i] = out;
+    }
+    MakeData(table, "downshift2");
+  }
 
   return 0;
 }
