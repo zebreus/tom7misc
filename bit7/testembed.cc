@@ -29,30 +29,30 @@ int main(int argc, char **argv) {
     B7_FILL_7 B7_FILL_6 B7_FILL_5 B7_FILL_4
     "  Welcome to my font!  it is cozy here " B7_SMILE "  (ok) ";
   int cols = text.size();
-  
+
   ImageRGBA out{cols * CH_WIDTH * PX, CH_HEIGHT * PX};
   out.Clear32(0x000000FF);
   auto SetPixel = [&out](int x, int y) {
-    for (int yy = 0; yy < PX; yy++) {
-      for (int xx = 0; xx < PX; xx++) {
-	out.SetPixel32(x * PX + xx, y * PX + yy, 0xFFFFFFFF);
+      for (int yy = 0; yy < PX; yy++) {
+        for (int xx = 0; xx < PX; xx++) {
+          out.SetPixel32(x * PX + xx, y * PX + yy, 0xFFFFFFFF);
+        }
       }
-    }
-  };
+    };
   auto ClearPixel = [&out](int x, int y) {
-    for (int yy = 0; yy < PX; yy++) {
-      for (int xx = 0; xx < PX; xx++) {
-	out.SetPixel32(x * PX + xx, y * PX + yy, 0x000033FF);
+      for (int yy = 0; yy < PX; yy++) {
+        for (int xx = 0; xx < PX; xx++) {
+          out.SetPixel32(x * PX + xx, y * PX + yy, 0x000033FF);
+        }
       }
-    }
-  };
-  
+    };
+
   for (int x = 0; x < (int)text.size(); x++) {
     uint8 ch = text[x];
     EmbeddedFont::Blit(
-	(int)ch, x * CH_WIDTH, 0, SetPixel, ClearPixel);
+        (int)ch, x * CH_WIDTH, 0, SetPixel, ClearPixel);
   }
-  
+
   out.Save("testembed.png");
   return 0;
 }

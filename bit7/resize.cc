@@ -32,20 +32,20 @@ int main(int argc, char **argv) {
   for (int cy = 0; cy < CHARS_DOWN; cy++) {
     for (int cx = 0; cx < CHARS_ACROSS; cx++) {
       for (int y = 0; y < NEW_CHAR_HEIGHT; y++) {
-	for (int x = 0; x < NEW_CHAR_WIDTH; x++) {
-	  if (x < OLD_CHAR_WIDTH && y < OLD_CHAR_HEIGHT) {
-	    int sx = cx * OLD_CHAR_WIDTH + x;
-	    int sy = cy * OLD_CHAR_HEIGHT + y;
-	    uint32 c = input->GetPixel32(sx, sy);
-	    int dx = cx * NEW_CHAR_WIDTH + x;
-	    int dy = cy * NEW_CHAR_HEIGHT + y;
-	    out.SetPixel32(dx, dy, c);
-	  }
-	}
+        for (int x = 0; x < NEW_CHAR_WIDTH; x++) {
+          if (x < OLD_CHAR_WIDTH && y < OLD_CHAR_HEIGHT) {
+            int sx = cx * OLD_CHAR_WIDTH + x;
+            int sy = cy * OLD_CHAR_HEIGHT + y;
+            uint32 c = input->GetPixel32(sx, sy);
+            int dx = cx * NEW_CHAR_WIDTH + x;
+            int dy = cy * NEW_CHAR_HEIGHT + y;
+            out.SetPixel32(dx, dy, c);
+          }
+        }
       }
     }
   }
-  
+
   // XXX filename including dimensions, or from command line?
   out.Save("resize.png");
 

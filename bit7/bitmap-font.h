@@ -4,6 +4,9 @@
 // XXX Still need to figure out the right interface for loading these guys,
 // and probably a version where W/H are not fixed (... rename this to FixedBitmapFont?)
 
+#ifndef _BIT7_BITMAP_FONT_H
+#define _BIT7_BITMAP_FONT_H
+
 #include <vector>
 
 template<int W, int H>
@@ -19,22 +22,22 @@ struct BitmapFont {
   // ClearBit are called (if non-null) for each pixel. They should be
   // callable like SetPixel(int x, int y).
   template<class FS, class FC>
-  void Blit(int c, int x, int y, 
-	    FS SetPixel,
-	    // TODO: Looks like supplying a default lambda here does not
-	    // actually work (can't infer type parameter?)
-	    FC ClearPixel = [](int, int){}) const {
+  void Blit(int c, int x, int y,
+      FS SetPixel,
+      // TODO: Looks like supplying a default lambda here does not
+      // actually work (can't infer type parameter?)
+      FC ClearPixel = [](int, int){}) const {
     for (int sy = 0; sy < CHAR_HEIGHT; sy++) {
       for (int sx = 0; sx < CHAR_WIDTH; sx++) {
-	if (GetBit(c, sx, sy)) {
-	  SetPixel(x + sx, y + sy);
-	} else {
-	  ClearPixel(x + sx, y + sy);
-	}
+        if (GetBit(c, sx, sy)) {
+          SetPixel(x + sx, y + sy);
+        } else {
+          ClearPixel(x + sx, y + sy);
+        }
       }
     }
   }
-  
+
   explicit BitmapFont(std::vector<bool> bits) : bits(std::move(bits)) {}
 
 private:
@@ -44,3 +47,4 @@ private:
   const std::vector<bool> bits;
 };
 
+#endif

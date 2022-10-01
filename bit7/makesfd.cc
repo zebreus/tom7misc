@@ -71,8 +71,14 @@ CODEPOINTS = {
   0x2022,
   // HORIZONTAL ELLIPSIS
   0x2026,
+  // EMOJI: CLOUD
+  0x2601,
+
+  // Left half block, right half block
+  0x258C, 0x2590,
+
   // rest of second line, unclaimed
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1,
   // ASCII, mapped to itself
   0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
   0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
@@ -80,8 +86,15 @@ CODEPOINTS = {
   0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
   0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69, 0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F,
   0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, -1,
-  // These are control characters. Can claim 'em.
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+  // white king, queen, rook, bishop, knight, pawn
+  0x2654, 0x2655, 0x2656, 0x2657, 0x2658, 0x2659,
+  // black
+  0x265A, 0x265B, 0x265C, 0x265D, 0x265E, 0x265F,
+
+  // Rest of chess piece line
+  -1, -1, -1, -1,
+  // control characters, unclaimed
   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   // Unicode Latin-1 Supplement, mapped to itself.
   // See https://en.wikibooks.org/wiki/Unicode/Character_reference/0000-0FFF
@@ -567,15 +580,18 @@ int main(int argc, char **argv) {
 
       if (width < 0) {
         if (!IsEmpty()) {
-          printf("Character at cx=%d, cy=%d has no width (black column) but "
-                 "has a glyph (white pixels).\n", cx, cy);
+          printf("%s: "
+                 "Character at cx=%d, cy=%d has no width (black column) but "
+                 "has a glyph (white pixels).\n",
+                 config.pngfile.c_str(), cx, cy);
           return -1;
         }
 
         continue;
       } else if (width == 0) {
-        printf("Character at cx=%d, cy=%d has zero width; not supported!\n",
-               cx, cy);
+        printf("%s: Character at cx=%d, cy=%d has zero width; "
+               "not supported!\n",
+               config.pngfile.c_str(), cx, cy);
         return -1;
       } else {
         // Glyph, but possibly an empty one...
@@ -640,7 +656,8 @@ int main(int argc, char **argv) {
      "  http://.com/ " INFTY  " (watch--said I--beloved)",
     };
 
-    ImageRGBA test(config.charbox_width * 32, output_height * testpattern.size());
+    ImageRGBA test(config.charbox_width * 32,
+                   output_height * testpattern.size());
     test.Clear32(0x000033FF);
 
     for (int lidx = 0; lidx < (int)testpattern.size(); lidx++) {

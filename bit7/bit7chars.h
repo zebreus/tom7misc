@@ -1,5 +1,5 @@
-#ifndef __BIT7CHARS_H
-#define __BIT7CHARS_H
+#ifndef _BIT7CHARS_H
+#define _BIT7CHARS_H
 
 #define B7_NULL "\x00"
 #define B7_SMILE "\x01"

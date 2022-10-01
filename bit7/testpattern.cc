@@ -35,14 +35,14 @@ int main(int argc, char **argv) {
     for (int cx = 0; cx < CHARS_ACROSS; cx++) {
       const int c = CHARS_ACROSS * cy + cx;
       for (int y = 0; y < CHAR_HEIGHT; y++) {
-	for (int x = 0; x < CHAR_WIDTH; x++) {
-	  if (x < CHAR_WIDTH && y < CHAR_HEIGHT) {
-	    int sx = cx * CHAR_WIDTH + x;
-	    int sy = cy * CHAR_HEIGHT + y;
-	    bool bit = (input->GetPixel32(sx, sy) & 0x000000FF) > 0x0000007F;
-	    bits[c * (CHAR_WIDTH * CHAR_HEIGHT) + y * CHAR_WIDTH + x] = bit;
-	  }
-	}
+        for (int x = 0; x < CHAR_WIDTH; x++) {
+          if (x < CHAR_WIDTH && y < CHAR_HEIGHT) {
+            int sx = cx * CHAR_WIDTH + x;
+            int sy = cy * CHAR_HEIGHT + y;
+            bool bit = (input->GetPixel32(sx, sy) & 0x000000FF) > 0x0000007F;
+            bits[c * (CHAR_WIDTH * CHAR_HEIGHT) + y * CHAR_WIDTH + x] = bit;
+          }
+        }
       }
     }
   }
@@ -55,27 +55,27 @@ int main(int argc, char **argv) {
      "  Welcome to my font!  it is cozy here " B7_SMILE "  (ok) ",
      "  Now is the FALL-TIME of our DISCONTENT !!|1Il ",
      "",
-     "  " B7_FILL_6 B7_FILL_6 B7_FILL_6 
-     B7_FILL_5 B7_FILL_5 B7_FILL_5 
-     B7_FILL_4 B7_FILL_4 B7_FILL_4 
-     B7_FILL_3 B7_FILL_3 B7_FILL_3 
-     B7_FILL_2 B7_FILL_2 B7_FILL_2 
-     B7_FILL_1 B7_FILL_1 B7_FILL_1 
-     B7_FILL_0 B7_FILL_0 B7_FILL_0 "  LET'S     " B7_OH, 
-     "  " B7_FILL_6 B7_FILL_6 B7_FILL_6 
-     B7_FILL_5 B7_FILL_5 B7_FILL_5 
-     B7_FILL_4 B7_FILL_4 B7_FILL_4 
-     B7_FILL_3 B7_FILL_3 B7_FILL_3 
-     B7_FILL_2 B7_FILL_2 B7_FILL_2 
-     B7_FILL_1 B7_FILL_1 B7_FILL_1 
-     B7_FILL_0 B7_FILL_0 B7_FILL_0 "     GET ", 
-     "  " B7_FILL_6 B7_FILL_6 B7_FILL_6 
-     B7_FILL_5 B7_FILL_5 B7_FILL_5 
-     B7_FILL_4 B7_FILL_4 B7_FILL_4 
-     B7_FILL_3 B7_FILL_3 B7_FILL_3 
-     B7_FILL_2 B7_FILL_2 B7_FILL_2 
-     B7_FILL_1 B7_FILL_1 B7_FILL_1 
-     B7_FILL_0 B7_FILL_0 B7_FILL_0 "      B-L-A-S-T-E-D !", 
+     "  " B7_FILL_6 B7_FILL_6 B7_FILL_6
+     B7_FILL_5 B7_FILL_5 B7_FILL_5
+     B7_FILL_4 B7_FILL_4 B7_FILL_4
+     B7_FILL_3 B7_FILL_3 B7_FILL_3
+     B7_FILL_2 B7_FILL_2 B7_FILL_2
+     B7_FILL_1 B7_FILL_1 B7_FILL_1
+     B7_FILL_0 B7_FILL_0 B7_FILL_0 "  LET'S     " B7_OH,
+     "  " B7_FILL_6 B7_FILL_6 B7_FILL_6
+     B7_FILL_5 B7_FILL_5 B7_FILL_5
+     B7_FILL_4 B7_FILL_4 B7_FILL_4
+     B7_FILL_3 B7_FILL_3 B7_FILL_3
+     B7_FILL_2 B7_FILL_2 B7_FILL_2
+     B7_FILL_1 B7_FILL_1 B7_FILL_1
+     B7_FILL_0 B7_FILL_0 B7_FILL_0 "     GET ",
+     "  " B7_FILL_6 B7_FILL_6 B7_FILL_6
+     B7_FILL_5 B7_FILL_5 B7_FILL_5
+     B7_FILL_4 B7_FILL_4 B7_FILL_4
+     B7_FILL_3 B7_FILL_3 B7_FILL_3
+     B7_FILL_2 B7_FILL_2 B7_FILL_2
+     B7_FILL_1 B7_FILL_1 B7_FILL_1
+     B7_FILL_0 B7_FILL_0 B7_FILL_0 "      B-L-A-S-T-E-D !",
      "",
      "  " B7_UNCHECKED " Enable hyper-drive      for (;;) {",
      "  " B7_CHECKED   " Enable ultra-disc         printf(\"hi?\\n\"); ",
@@ -95,11 +95,11 @@ int main(int argc, char **argv) {
 
   const int LINES = testpattern.size();
   const int COLS = [&testpattern]() {
-    int cols = 0;
-    for (const string &line : testpattern)
-      cols = std::max(cols, (int)line.size());
-    return cols;
-  }();
+      int cols = 0;
+      for (const string &line : testpattern)
+        cols = std::max(cols, (int)line.size());
+      return cols;
+    }();
 
   CHECK(COLS > 0 && LINES >= 2);
   for (int i = 1; i < (int)testpattern.size() - 1; i++) {
@@ -113,20 +113,20 @@ int main(int argc, char **argv) {
   ImageRGBA out{COLS * CHAR_WIDTH * PX, LINES * CHAR_HEIGHT * PX};
   out.Clear(0, 0, 0, 0);
   auto SetPixel = [&out](int x, int y) {
-    for (int yy = 0; yy < PX; yy++) {
-      for (int xx = 0; xx < PX; xx++) {
-	out.SetPixel32(x * PX + xx, y * PX + yy, 0xFFFFFFFF);
+      for (int yy = 0; yy < PX; yy++) {
+        for (int xx = 0; xx < PX; xx++) {
+          out.SetPixel32(x * PX + xx, y * PX + yy, 0xFFFFFFFF);
+        }
       }
-    }
-  };
+    };
   auto ClearPixel = [&out](int x, int y) {
-    for (int yy = 0; yy < PX; yy++) {
-      for (int xx = 0; xx < PX; xx++) {
-	out.SetPixel32(x * PX + xx, y * PX + yy, 0x000033FF);
+      for (int yy = 0; yy < PX; yy++) {
+        for (int xx = 0; xx < PX; xx++) {
+          out.SetPixel32(x * PX + xx, y * PX + yy, 0x000033FF);
+        }
       }
-    }
-  };
-  
+    };
+
   for (int y = 0; y < LINES; y++) {
     const string &line = testpattern[y];
     for (int x = 0; x < (int)line.size(); x++) {
@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
       font.Blit((int)ch, x * CHAR_WIDTH, y * CHAR_HEIGHT, SetPixel, ClearPixel);
     }
   }
-  
+
   // XXX filename including dimensions, or from command line?
   out.Save("testpattern.png");
 
