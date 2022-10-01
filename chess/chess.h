@@ -132,6 +132,12 @@ struct Position {
 
   // Show a 2D ASCII board.
   std::string BoardString() const;
+  // Using unicode pieces. The unicode codepoints were designed for
+  // black-on-white output, so the light_on_dark arg (default) flips
+  // them for typical terminals.
+  std::string UnicodeBoardString(bool light_on_dark = true) const;
+  // Including ANSI color codes for pieces, board squares.
+  std::string UnicodeAnsiBoardString() const;
   // Using capital letters for white, lowercase for black. Empty is space.
   static char HumanPieceChar(uint8 piece);
   static std::string HumanPieceString(uint8 piece);

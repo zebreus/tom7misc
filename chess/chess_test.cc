@@ -596,6 +596,7 @@ static void TestCastleMate() {
 }
 
 int main(int argc, char **argv) {
+
   CheckInit();
   TestParseMoves();
   TestParseMovesComment();

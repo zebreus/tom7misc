@@ -213,6 +213,140 @@ std::string Position::BoardString() const {
   return ret;
 }
 
+// TODO: Expose this?
+static std::string UnicodePiece(uint8_t p) {
+  if (p & Position::BLACK) {
+    switch (p & Position::TYPE_MASK) {
+    case Position::PAWN: return "♟"; // return "\u265F";
+    case Position::KNIGHT: return "\u265E";
+    case Position::BISHOP: return "\u265D";
+    case Position::C_ROOK:
+    case Position::ROOK: return "\u265C";
+    case Position::QUEEN: return "\u265B";
+    case Position::KING: return "\u265A";
+    case Position::EMPTY: return "-";
+    default: return "?";
+    }
+  } else {
+    switch (p & Position::TYPE_MASK) {
+    case Position::PAWN: return "\u2659";
+    case Position::KNIGHT: return "\u2658";
+    case Position::BISHOP: return "\u2657";
+    case Position::C_ROOK:
+    case Position::ROOK: return "\u2656";
+    case Position::QUEEN: return "\u2655";
+    case Position::KING: return "\u2654";
+    case Position::EMPTY: return "-";
+    default: return "?";
+    }
+  }
+}
+
+std::string Position::UnicodeBoardString(bool inverse) const {
+  string ret;
+  for (int r = 0; r < 8; r++) {
+    for (int c = 0; c < 8; c++) {
+      if (c != 0) ret.push_back(' ');
+      uint8_t p = PieceAt(r, c);
+      if (inverse) p ^= COLOR_MASK;
+      ret.append(UnicodePiece(p));
+    }
+    ret.push_back('\n');
+  }
+  return ret;
+}
+
+std::string Position::UnicodeAnsiBoardString() const {
+  // Pieces are taller than they are wide, so to make
+  // squares, we split the pieces between square in half.
+
+  #define ANSI_INTERNAL_STR2(s) #s
+  #define ANSI_INTERNAL_STR(s) ANSI_INTERNAL_STR2(s)
+  #define ANSI_RESET "\x1B[m"
+
+  #define FGCOLOR(r, g, b) "\x1B[38;2;" \
+    ANSI_INTERNAL_STR(r) ";" \
+    ANSI_INTERNAL_STR(g) ";" \
+    ANSI_INTERNAL_STR(b) "m"
+
+  #define BGCOLOR(r, g, b) "\x1B[48;2;" \
+    ANSI_INTERNAL_STR(r) ";" \
+    ANSI_INTERNAL_STR(g) ";" \
+    ANSI_INTERNAL_STR(b) "m"
+
+  #define WR 186
+  #define WG 186
+  #define WB 151
+
+  #define BR 102
+  #define BG 110
+  #define BB 94
+
+  #define R_HALF "\u2590"
+  #define L_HALF "\u258C"
+
+  string ret;
+  bool light = true;
+  for (int r = 0; r < 8; r++) {
+    if (light) {
+      ret += FGCOLOR(WR, WG, WB);
+    } else {
+      ret += FGCOLOR(BR, BG, BB);
+    }
+    ret += R_HALF;
+
+    for (int c = 0; c < 8; c++) {
+      if (light) {
+        ret += BGCOLOR(WR, WG, WB);
+      } else {
+        ret += BGCOLOR(BR, BG, BB);
+      }
+
+      // half square in-between pieces.
+      if (c != 0) {
+        if (light) {
+          ret += FGCOLOR(BR, BG, BB);
+          ret += L_HALF;
+        } else {
+          ret += FGCOLOR(WR, WG, WB);
+          ret += L_HALF;
+        }
+      }
+
+      const uint8_t p = PieceAt(r, c);
+      const uint8_t t = p & TYPE_MASK;
+
+      if (p != EMPTY) {
+        if ((p & COLOR_MASK) == BLACK) {
+          ret += FGCOLOR(0, 0, 0);
+        } else {
+          ret += FGCOLOR(255, 255, 255);
+        }
+
+        // Use the "black" pieces, which are solid color.
+        ret.append(UnicodePiece(t | BLACK));
+      } else {
+        ret.push_back(' ');
+      }
+
+      light = !light;
+    }
+
+    // Half-square to end the row, but also reset any current
+    // background color.
+    if (light) {
+      ret += ANSI_RESET FGCOLOR(BR, BG, BB);
+    } else {
+      ret += ANSI_RESET FGCOLOR(WR, WG, WB);
+    }
+
+    ret.append(L_HALF ANSI_RESET "\n");
+
+    light = !light;
+  }
+  return ret;
+}
+
 bool Position::ParseMove(const char *m, Move *move) {
   IFDEBUG printf("\n== %s ==\n", m);
 
