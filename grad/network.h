@@ -573,6 +573,7 @@ struct Errors {
 struct RandomizationParams {
   bool sigmoid_uniform = false;
   float sigmoid_mag = 0.1f;
+  std::string ToString() const;
 };
 void RandomizeNetwork(ArcFour *rc, Network *net,
                       RandomizationParams params = {},

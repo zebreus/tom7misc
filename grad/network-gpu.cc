@@ -1176,7 +1176,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
                     "#define NUM_FEATURES %d\n"
                     "#define NUM_WEIGHTS %lld\n"
                     "#define NUM_BIASES %lld\n"
-                    "#define OVERWRITE_GRAD %s\n",
+                    "#define OVERWRITE_GRAD %s\n"
+                    "#define CONV_UPDATE_EXPONENT %.11g\n",
                     net.layers[layer_idx - 1].num_nodes,
                     net.layers[layer_idx].num_nodes,
                     out_idx,
@@ -1193,7 +1194,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
                     chunk.num_features,
                     (int64)chunk.weights.size(),
                     (int64)chunk.biases.size(),
-                    w == examples_per_round ? "true" : "false");
+                    w == examples_per_round ? "true" : "false",
+                    config.conv_update_exponent);
 
       const string kernel1_name = UpdateWeights1KernelName(chunk.type);
 
@@ -1203,7 +1205,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
       ck.program1 = pk1.first;
       ck.kernel1 = pk1.second;
 
-      if (false) {
+      if (true) {
         optional<string> ptx = CL::DecodeProgram(ck.program1);
         if (ptx.has_value()) {
           int lines = Util::SplitToLines(ptx.value()).size();
@@ -1623,3 +1625,31 @@ void SummaryStatisticsCL::Compute(TrainingRoundGPU *training, int layer_idx) {
 
 }
 
+string UpdateConfig::ToString() const {
+  return StringPrintf("{.base_learning_rate = %.11g, "
+                      ".learning_rate_dampening = %.11g, "
+                      ".max_num_scratch = %lld, "
+                      ".adam_epsilon = %.11g, "
+                      ".adam_b1 = %.11g, "
+                      ".adam_b2 = %.11g, "
+                      ".clipping = %s, "
+                      ".constrain = %s, "
+                      ".weight_constrain_max = %.11g, "
+                      ".bias_constrain_max = %.11g, "
+                      ".clip_error = %s, "
+                      ".error_max = %.11g, "
+                      ".conv_update_exponent = %.11g }",
+                      base_learning_rate,
+                      learning_rate_dampening,
+                      max_num_scratch,
+                      adam_epsilon,
+                      adam_b1,
+                      adam_b2,
+                      clipping ? "true" : "false",
+                      constrain ? "true" : "false",
+                      weight_constrain_max,
+                      bias_constrain_max,
+                      clip_error ? "true" : "false",
+                      error_max,
+                      conv_update_exponent);
+}

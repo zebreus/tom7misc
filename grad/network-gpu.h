@@ -406,20 +406,21 @@ struct UpdateConfig {
   // If true, then propagated error is always in [-error_max, error_max].
   bool clip_error = false;
   float error_max = 1000.0;
+
+  // When updating a node in a convolutional layer, scale the update
+  // by 1/(occurrences^conv_update_exponent), where 0.0 yields no scaling
+  // (perhaps the most principled, as each occurrence is contributing
+  // error), 0.5 is 1/sqrt(occ), a compromise that has worked in the
+  // past, and 1.0 is 1/occ, as though there is just one occurrence.
+  float conv_update_exponent = 5.0f;
+
+  std::string ToString() const;
 };
 
 // Set the error values from the actual and expected outputs, possibly
 // applying some remapping of them.
 struct SetOutputErrorCL {
   using UpdateConfig = ::UpdateConfig;
-
-  #if 0
-  static constexpr bool CLIP_ERROR = true;
-  // XXX made this much smaller for 16-bit
-  // static constexpr float LARGE_ERROR = 10000.0f;
-  // XXX made this dramatically smaller for SIGMOID.
-  static constexpr float LARGE_ERROR = 5.0f;
-  #endif
 
   // Optional remap function takes chunk id, node index within chunk, and
   // value; see setoutputerror.cl.
@@ -461,17 +462,6 @@ struct SetOutputErrorCL {
 // There are two passes in here but this is hidden from the caller.
 struct BackwardLayerCL {
   using UpdateConfig = ::UpdateConfig;
-#if 0
-  // See backwardsecondpass.cl. TODO: Make these configurable when
-  // creating this. They could have different values on a per-chunk
-  // basis, though it's not clear why we'd ever do that.
-  static constexpr bool CLIP_ERROR = true;
-  // XXX made this much smaller for 16-bit
-  // static constexpr float LARGE_ERROR = 10000.0f;
-  // XXX made this dramatically smaller for SIGMOID.
-  static constexpr float LARGE_ERROR = 1.0f;
-#endif
-
 
   BackwardLayerCL(CL *cl, NetworkGPU *net, UpdateConfig config = {});
   ~BackwardLayerCL();

@@ -32,6 +32,10 @@
 //   saves a memory read and allows the caller to skip clearing
 //   the buffer as well.
 
+// CONV_UPDATE_EXPONENT, a float nominally in [0, 1]. Scales
+//   the contribution of a convolutional node by
+//   1/(occ^exp) where occ is the number of occurrences.
+
 #if OVERWRITE_GRAD
   #define ACCUMULATE(l, r) (l) = (r)
 #else
@@ -213,28 +217,37 @@ __kernel void UpdateWeightsConvolutional(
 
   // In the past I used the square root here, although it is not
   // very principled. Adam may be able to fully account for the
-  // benefit I (thought I) was getting.
-  // TODO: Tune this hyperparameter.
+  // benefit I (thought I) was getting. Maybe 1.0 is actually correct?
+  // This does permit large weight updates but each of these is indeed
+  // a downstream contribution, right?
 
-  // XXX I am trying sqrt again! This should perhaps be a configurable
-  // parameter, and we should make sure it's a compile-time constant!
-  //
-  // Maybe 1.0 is actually correct? This does permit large weight updates
-  // but each of these is indeed a downstream contribution, right?
-  const float multiplier = 1.0f;
-  // 1.0f / sqrt((float)(NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN));
+  // TODO: Tune this hyperparameter.
+  const float multiplier =
+    // These special cases are covered by the formula below, but we
+    // want to simplify the expression if possible. (Looks like my
+    // opencl implementation doesn't have trouble reducing this even
+    // if there's a call to pow()). But it doesn't fold a multiplication
+    // by exactly 1.0 below!
+    CONV_UPDATE_EXPONENT == 1.0f ? (1.0f / (NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN)) :
+    CONV_UPDATE_EXPONENT == 0.0f ? 1.0f :
+    CONV_UPDATE_EXPONENT == 0.5f ? (1.0f / sqrt((float)(NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN))) :
+    // General case.
+    (1.0f /
+     pow((float)(NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN), (float)CONV_UPDATE_EXPONENT));
 
   {
     // Update the one weight.
     const int widx = feature_num * INDICES_PER_NODE + pidx;
-    weight_grad *= multiplier;
+    if (CONV_UPDATE_EXPONENT != 0.0)
+      weight_grad *= multiplier;
     // PERF fma()
     ACCUMULATE(weight_grads[NUM_WEIGHTS * example_num_in_batch + widx],
                weight_grad);
   }
 
   if (pidx == 0) {
-    bias_grad *= multiplier;
+    if (CONV_UPDATE_EXPONENT != 0.0)
+      bias_grad *= multiplier;
     // PERF fma()
     ACCUMULATE(bias_grads[NUM_BIASES * example_num_in_batch + feature_num],
                bias_grad);

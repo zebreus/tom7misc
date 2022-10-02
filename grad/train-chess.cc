@@ -76,7 +76,15 @@ struct TrainParams {
 
     // was 1e-2
     update_config.adam_epsilon = 1.0e-4;
+  }
 
+  string ToString() const {
+    return StringPrintf("{.update_config = %s, "
+                        ".do_decay = %s, "
+                        ".decay_rate = %.11g}",
+                        update_config.ToString().c_str(),
+                        do_decay ? "true" : "false",
+                        decay_rate);
   }
 };
 
@@ -215,7 +223,7 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
             printf("Eval %.5f Over %.3f:\n"
                    "%s"
                    "%s\n\n",
-                   score, over, pos.UnicodeBoardString(true).c_str(),
+                   score, over, pos.UnicodeAnsiBoardString().c_str(),
                    pos.ToFEN(1, 1).c_str());
           }
 
@@ -904,6 +912,11 @@ int main(int argc, char **argv) {
               std::array<int32_t, NUM_INTS>{0, 1},
               std::array<double,  NUM_DOUBLES>{18.0, 5.8300267747, 18.383389302, 14.109313061,
                   3.0086677831, 8760.2582169, 1013.9750224, 1.1163693398}));
+
+    printf("Randomization params:\n%s\n",
+           rparams.ToString().c_str());
+    printf("Training params:\n%s\n",
+           tparams.ToString().c_str());
 
     const string model_file = Util::dirplus(dir, MODEL_NAME);
 

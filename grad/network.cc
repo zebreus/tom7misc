@@ -1555,6 +1555,13 @@ int64 Errors::Bytes() const {
   return ret;
 }
 
+string RandomizationParams::ToString() const {
+  return StringPrintf("{.sigmoid_uniform: %s, "
+                      ".sigmoid_mag: %.11g}",
+                      sigmoid_uniform ? "true" : "false",
+                      sigmoid_mag);
+}
+
 // .. utils
 template<class C>
 static void DeleteElements(C *cont) {
