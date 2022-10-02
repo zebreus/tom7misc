@@ -226,6 +226,18 @@ struct TrainingRoundGPU {
     clFinish(cl->queue);
   }
 
+  // Returns all the examples for each layer. The nodes for each
+  // layer are adjacent.
+  std::vector<std::vector<float>> ExportStimulationsFlat() {
+    std::vector<std::vector<float>> out(stimulations.size());
+    for (int layer = 0; layer < stimulations.size(); layer++) {
+      out[layer].resize(num_examples * net->layers[layer].num_nodes);
+      CopyBufferFromGPUTo(cl->queue, stimulations[layer], &out[layer]);
+    }
+    clFinish(cl->queue);
+    return out;
+  }
+
   void ExportErrors(int idx, Errors *err) {
     CHECK(idx >= 0 && idx < num_examples);
     CHECK_EQ(err->error.size(), errors.size())

@@ -14,6 +14,107 @@
 #include "threadutil.h"
 #include "color-util.h"
 
+// A single image storing history of some data, which is drawn a single column
+// at a time.
+struct HistoryImage {
+  static constexpr int HEADER_HEIGHT = 20;
+  HistoryImage(
+      const std::string &filename,
+      // Width must be a multiple of 2.
+      // Height is height of column. We always add a header, so the output
+      // image is taller.
+      int width, int col_height,
+      bool continue_from_disk = true) : filename(filename),
+                                        col_height(col_height) {
+    CHECK(width > 0 && col_height > 0);
+    CHECK((width % 2) == 0) << "Requires even width of image for "
+      "shrinking step";
+    const int height = col_height + HEADER_HEIGHT;
+
+    ImageRGBA *file_img = continue_from_disk ?
+      ImageRGBA::Load(filename) : nullptr;
+    if (file_img != nullptr) {
+      CHECK(file_img->Width() == width &&
+            file_img->Height() == height) << filename <<
+        "has the wrong dimensions (got " << file_img->Width() <<
+        " x " << file_img->Height() << "); delete it to continue";
+      image.reset(file_img);
+      // The next x position is stored at pixel 0,0.
+      const uint32_t px = image->GetPixel32(0, 0);
+      const uint32_t nx = px >> 8;
+      CHECK((px & 0xFF) == 0xFF &&
+            nx <= width) << filename << " does not have "
+        "correct secret pixel or constants changed; delete it "
+        "to continue";
+
+      col = nx;
+      printf("Continuing from %s at %d.\n", filename.c_str(), col);
+
+    } else {
+      image.reset(new ImageRGBA(width, height));
+      image->Clear32(0x000000FF);
+    }
+
+    CHECK(image.get() != nullptr);
+  }
+
+  // You can draw anything you want in the title region.
+  void ClearTitle() {
+    image->BlendRect32(0, 0, image->Width(), HEADER_HEIGHT, 0x000000FF);
+  }
+
+  void SetTitle(const std::string &s) {
+    ClearTitle();
+    image->BlendText2x32(1, 1, 0x9999AAFF, s);
+  }
+
+  void AddColumn(const ImageRGBA &column) {
+    CHECK(column.Width() == 1);
+    CHECK(column.Height() == col_height);
+
+    // If necessary, shrink old data to make room.
+    if (col >= image->Width()) {
+      // Skip over header.
+      for (int y = HEADER_HEIGHT; y < image->Height(); y++) {
+        // First half gets the entire image shrunk 2:1.
+        for (int x = 0; x < image->Width() / 2; x++) {
+          const auto [r1, g1, b1, a1] = image->GetPixel(x * 2 + 0, y);
+          const auto [r2, g2, b2, a2] = image->GetPixel(x * 2 + 1, y);
+          // We know we have full alpha here.
+          const uint8_t r = ((uint32_t)r1 + (uint32_t)r2) >> 1;
+          const uint8_t g = ((uint32_t)g1 + (uint32_t)g2) >> 1;
+          const uint8_t b = ((uint32_t)b1 + (uint32_t)b2) >> 1;
+          image->SetPixel(x, y, r, g, b, 0xFF);
+        }
+        // And clear the second half.
+        for (int x = image->Width() / 2; x < image->Width(); x++) {
+          image->SetPixel(x, y, 0, 0, 0, 0xFF);
+        }
+      }
+      col = image->Width() / 2;
+    }
+
+    CHECK(col < image->Width());
+    for (int y = 0; y < col_height; y++) {
+      image->SetPixel32(col, y, column.GetPixel32(0, y));
+    }
+    col++;
+  }
+
+  void Save() {
+    const int next_x = col + 1;
+    // Width must fit in 24 bits.
+    CHECK(next_x == (next_x & 0xFFFFFF)) << "out of range!";
+    image->SetPixel32(0, 0, ((uint32_t)next_x << 8) | 0xFF);
+    image->Save(filename);
+  }
+
+  std::string filename;
+  int col_height = 0;
+  std::unique_ptr<ImageRGBA> image;
+  int col = 0;
+};
+
 // TODO: to .cc
 struct TrainingImages {
   TrainingImages(const Network &net,
@@ -21,97 +122,77 @@ struct TrainingImages {
                  const std::string &title,
                  int image_every,
                  int image_width = 3000,
-                 int image_height = 1000,
+                 int image_col_height = 1000,
                  bool continue_from_disk = true) :
-    IMAGE_WIDTH(image_width), IMAGE_HEIGHT(image_height), basename(basename) {
-    CHECK((IMAGE_WIDTH % 2) == 0) << "Assumes even width of image for "
-      "shrinking step";
+    image_col_height(image_col_height) {
 
     // No images for input layer; it is not used.
     images.emplace_back();
-    image_x.emplace_back();
 
     for (int layer_idx = 1;
          layer_idx < net.layers.size();
          layer_idx++) {
+      // Empty vector of history images.
       images.emplace_back();
-      image_x.emplace_back();
       for (int chunk_idx = 0;
            chunk_idx < net.layers[layer_idx].chunks.size();
            chunk_idx++) {
         const Chunk &chunk = net.layers[layer_idx].chunks[chunk_idx];
 
-        image_x.back().push_back(0);
+        // Start null, as we may not populate it.
         images.back().emplace_back(nullptr);
-
-        std::unique_ptr<ImageRGBA> *image = &images.back().back();
+        std::unique_ptr<HistoryImage> *himage = &images.back().back();
 
         if (chunk.type == CHUNK_INPUT || chunk.fixed) {
           // Skip input chunks and fixed chunks, since nothing interesting ever
-          // happens for them.
-          CHECK(image->get() == nullptr);
+          // happens for them. (Note: This might not be true if we include errors
+          // and stimulations.)
+          CHECK(himage->get() == nullptr);
         } else {
 
-          // Load existing image from disk if we have one.
-          string filename = FilenameFor(layer_idx, chunk_idx);
-          ImageRGBA *file_img = continue_from_disk ?
-            ImageRGBA::Load(filename) : nullptr;
-          if (file_img != nullptr) {
-            CHECK(file_img->Width() == IMAGE_WIDTH &&
-                  file_img->Height() == IMAGE_HEIGHT) << filename <<
-              "has the wrong dimensions (got " << file_img->Width() <<
-              " x " << file_img->Height() << "); delete it to continue";
-            image->reset(file_img);
-            // The next x position is stored at pixel 0,0.
-            const uint32_t px = (*image)->GetPixel32(0, 0);
-            const uint32_t nx = px >> 8;
-            CHECK((px & 0xFF) == 0xFF &&
-                  nx <= IMAGE_WIDTH) << filename << " does not have "
-              "correct secret pixel or constants changed; delete it "
-              "to continue";
-            image_x.back().back() = nx;
-            printf("Continuing from %s at %d.\n", filename.c_str(), nx);
+          himage->reset(
+              new HistoryImage(FilenameFor(basename, layer_idx, chunk_idx),
+                               image_width, image_col_height,
+                               continue_from_disk));
 
-          } else {
-            image->reset(new ImageRGBA(IMAGE_WIDTH, IMAGE_HEIGHT));
-            (*image)->Clear32(0x000000FF);
-            std::string ct;
-            switch (chunk.type) {
-            case CHUNK_SPARSE: ct = "SPARSE"; break;
-            case CHUNK_DENSE: ct = "DENSE"; break;
-            case CHUNK_INPUT: ct = "INPUT"; break;
-            case CHUNK_CONVOLUTION_ARRAY: ct = "CONV"; break;
-            default: ct = ChunkTypeName(chunk.type); break;
-            }
+          (*himage)->ClearTitle();
 
-            (*image)->BlendText2x32(
-                2, 2, 0x9999AAFF,
-                StringPrintf(
-                    "Layer %d.%d (%s) | %s | "
-                    "Start Round %lld | 1 px = %d rounds",
-                    layer_idx, chunk_idx, ct.c_str(),
-                    title.c_str(),
-                    net.rounds, image_every));
-
-            int xpos = IMAGE_WIDTH;
-            auto WriteRight = [&](const std::string &s, uint32_t color) {
-                int w = s.size() * 9 * 2;
-                xpos -= w;
-                (*image)->BlendText2x32(xpos, 2, color, s);
-              };
-            // weight: 0xFFFFFF00, bias: 0xFF777700
-            // weight_aux: FFFF00, FF00FF
-            // bias_aux: 00FF00, 00FFFF
-
-            WriteRight("ux",  0x00FFFFFF);
-            WriteRight(" ba", 0x00FF00FF);
-
-            WriteRight("ux",  0xFF00FFFF);
-            WriteRight(" wa", 0xFFFF00FF);
-
-            WriteRight(" bias", 0xFF7777FF);
-            WriteRight("weight", 0xFFFFFFFF);
+          std::string ct;
+          switch (chunk.type) {
+          case CHUNK_SPARSE: ct = "SPARSE"; break;
+          case CHUNK_DENSE: ct = "DENSE"; break;
+          case CHUNK_INPUT: ct = "INPUT"; break;
+          case CHUNK_CONVOLUTION_ARRAY: ct = "CONV"; break;
+          default: ct = ChunkTypeName(chunk.type); break;
           }
+
+          (*himage)->image->BlendText2x32(
+              2, 2, 0x9999AAFF,
+              StringPrintf(
+                  "Layer %d.%d (%s) | %s | "
+                  "Start Round %lld | 1 px = %d rounds",
+                  layer_idx, chunk_idx, ct.c_str(),
+                  title.c_str(),
+                  net.rounds, image_every));
+
+          int xpos = image_width;
+          auto WriteRight = [&](const std::string &s, uint32_t color) {
+              int w = s.size() * 9 * 2;
+              xpos -= w;
+              (*himage)->image->BlendText2x32(xpos, 2, color, s);
+            };
+          // weight: 0xFFFFFF00, bias: 0xFF777700
+          // weight_aux: FFFF00, FF00FF
+          // bias_aux: 00FF00, 00FFFF
+
+          WriteRight("ux",  0x00FFFFFF);
+          WriteRight(" ba", 0x00FF00FF);
+
+          WriteRight("ux",  0xFF00FFFF);
+          WriteRight(" wa", 0xFFFF00FF);
+
+          WriteRight(" bias", 0xFF7777FF);
+          WriteRight("weight", 0xFFFFFFFF);
         }
       }
     }
@@ -119,8 +200,12 @@ struct TrainingImages {
 
   // Make sure you do net_gpu->ReadFromGPU() first!
   void Sample(const Network &net) {
-    // Batch these so we can save in parallel at the end.
-    vector<pair<ImageRGBA *, string>> to_save;
+    samples++;
+    const bool save_this_time = (samples % 100) == 0;
+    Asynchronously save_async(4);
+
+    // Writing to the same column. We only save asynchronously.
+    ImageRGBA column(1, image_col_height);
 
     for (int target_layer = 1;
          target_layer < net.layers.size();
@@ -130,53 +215,28 @@ struct TrainingImages {
            target_chunk < net.layers[target_layer].chunks.size();
            target_chunk++) {
         CHECK(target_chunk < images[target_layer].size());
-        ImageRGBA *image = images[target_layer][target_chunk].get();
+        HistoryImage *himage = images[target_layer][target_chunk].get();
         // For example, fixed chunks are skipped.
-        if (image == nullptr) continue;
-
-        // If we exceeded the bounds, shrink in place.
-        if (image_x[target_layer][target_chunk] >= image->Width()) {
-          printf("Shrink image for layer %d\n", target_layer);
-          // Skips over the text at the top (but not any pixels that
-          // were drawn over it...)
-          for (int y = 18; y < IMAGE_HEIGHT; y++) {
-            // First half gets the entire image shrunk 2:1.
-            for (int x = 0; x < IMAGE_WIDTH / 2; x++) {
-              const auto [r1, g1, b1, a1] = image->GetPixel(x * 2 + 0, y);
-              const auto [r2, g2, b2, a2] = image->GetPixel(x * 2 + 1, y);
-              // We know we have full alpha here.
-              const uint8_t r = ((uint32_t)r1 + (uint32_t)r2) >> 1;
-              const uint8_t g = ((uint32_t)g1 + (uint32_t)g2) >> 1;
-              const uint8_t b = ((uint32_t)b1 + (uint32_t)b2) >> 1;
-              image->SetPixel(x, y, r, g, b, 0xFF);
-            }
-            // And clear the second half.
-            for (int x = IMAGE_WIDTH / 2; x < image->Width(); x++) {
-              image->SetPixel(x, y, 0, 0, 0, 0xFF);
-            }
-          }
-          image_x[target_layer][target_chunk] = IMAGE_WIDTH / 2;
-        }
-
-        const int ix = image_x[target_layer][target_chunk];
-        if (ix >= image->Width()) continue;
+        if (himage == nullptr) continue;
 
         CHECK(net.layers.size() > 0);
         CHECK(target_layer < net.layers.size());
         const Layer &layer = net.layers[target_layer];
         const Chunk &chunk = layer.chunks[target_chunk];
 
+        column.Clear32(0x000000FF);
+
         auto ToScreenY = [this](float w) {
-            int yrev = w * float(IMAGE_HEIGHT / 4) + (IMAGE_HEIGHT / 2);
-            int y = IMAGE_HEIGHT - yrev;
+            int yrev = w * float(image_col_height / 4) + (image_col_height / 2);
+            int y = image_col_height - yrev;
             // Always draw on-screen.
-            return std::clamp(y, 0, IMAGE_HEIGHT - 1);
+            return std::clamp(y, 0, image_col_height - 1);
           };
         // 1, -1, x axis
-        if (ix & 1) {
-          image->BlendPixel32(ix, ToScreenY(1), 0xCCFFCC40);
-          image->BlendPixel32(ix, ToScreenY(0), 0xCCCCFFFF);
-          image->BlendPixel32(ix, ToScreenY(-1), 0xFFCCCC40);
+        if (himage->col & 1) {
+          column.BlendPixel32(0, ToScreenY(1),  0xCCFFCC40);
+          column.BlendPixel32(0, ToScreenY(0),  0xCCCCFFFF);
+          column.BlendPixel32(0, ToScreenY(-1), 0xFFCCCC40);
         }
 
         const uint8_t weight_alpha =
@@ -193,70 +253,59 @@ struct TrainingImages {
             const float m = chunk.weights_aux[idx * 2 + 0];
             const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
 
-            image->BlendPixel32(ix, ToScreenY(m),
+            column.BlendPixel32(0, ToScreenY(m),
                                 0xFFFF0000 | weight_alpha);
-            image->BlendPixel32(ix, ToScreenY(v),
+            column.BlendPixel32(0, ToScreenY(v),
                                 0xFF00FF00 | weight_alpha);
           }
           for (int idx = 0; idx < chunk.biases.size(); idx++) {
             const float m = chunk.biases_aux[idx * 2 + 0];
             const float v = sqrtf(chunk.biases_aux[idx * 2 + 1]);
 
-            image->BlendPixel32(ix, ToScreenY(m),
+            column.BlendPixel32(0, ToScreenY(m),
                                 0x00FF0000 | bias_alpha);
-            image->BlendPixel32(ix, ToScreenY(v),
+            column.BlendPixel32(0, ToScreenY(v),
                                 0x00FFFF00 | bias_alpha);
           }
         }
 
-
         for (float w : chunk.weights) {
           // maybe better to AA this?
-          image->BlendPixel32(ix, ToScreenY(w),
+          column.BlendPixel32(0, ToScreenY(w),
                               0xFFFFFF00 | weight_alpha);
         }
 
         for (float b : chunk.biases) {
-          image->BlendPixel32(ix, ToScreenY(b),
+          column.BlendPixel32(0, ToScreenY(b),
                               0xFF777700 | bias_alpha);
         }
 
-        if (ix % 100 == 0) {
-          const int next_x = ix + 1;
-          // Width must fit in 24 bits.
-          CHECK(next_x == (next_x & 0xFFFFFF)) << "out of range!";
-          image->SetPixel32(0, 0, ((uint32_t)next_x << 8) | 0xFF);
+        himage->AddColumn(column);
 
-          to_save.emplace_back(
-              image,
-              FilenameFor(target_layer, target_chunk));
+        if (save_this_time) {
+          save_async.Run([himage]() {
+              himage->Save();
+            });
         }
-        image_x[target_layer][target_chunk]++;
       }
     }
 
-    if (!to_save.empty()) {
-      ParallelApp(to_save, [](const pair<ImageRGBA *, string> &p) {
-          auto &[image, filename] = p;
-          image->Save(filename);
-        }, 4);
-      printf("Wrote %d image%s\n", (int)to_save.size(),
-             to_save.size() == 1 ? "" : "s");
+    if (save_this_time) {
+      save_async.Wait();
+      printf("Saved training images.\n");
     }
   }
 
 private:
-  string FilenameFor(int layer, int chunk) const {
+  string FilenameFor(const std::string &basename, int layer, int chunk) const {
     return StringPrintf("%s-%d.%d.png",
                         basename.c_str(), layer, chunk);
   }
 
-  const int IMAGE_WIDTH = 0, IMAGE_HEIGHT = 0;
-  const std::string basename;
+  const int image_col_height = 0;
+  uint32_t samples = 0;
   // Parallel to layers/chunks
-  std::vector<std::vector<std::unique_ptr<ImageRGBA>>> images;
-  // we can just have one of these right?
-  std::vector<std::vector<int>> image_x;
+  std::vector<std::vector<std::unique_ptr<HistoryImage>>> images;
 };
 
 struct ErrorImage {
