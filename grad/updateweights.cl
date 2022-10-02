@@ -223,21 +223,18 @@ __kernel void UpdateWeightsConvolutional(
 
   // TODO: Tune this hyperparameter.
   const float multiplier =
-    // These special cases are covered by the formula below, but we
-    // want to simplify the expression if possible. (Looks like my
-    // opencl implementation doesn't have trouble reducing this even
-    // if there's a call to pow()). But it doesn't fold a multiplication
-    // by exactly 1.0 below!
-    CONV_UPDATE_EXPONENT == 1.0f ? (1.0f / (NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN)) :
-    CONV_UPDATE_EXPONENT == 0.0f ? 1.0f :
-    CONV_UPDATE_EXPONENT == 0.5f ? (1.0f / sqrt((float)(NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN))) :
-    // General case.
-    (1.0f /
-     pow((float)(NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN), (float)CONV_UPDATE_EXPONENT));
+    // These special cases of 1.0, 0.5, and 0.0 are covered by the formula below,
+    // and my opencl implementation is happy to reduce this to a constant.
+    // But if the result is 1.0, it doesn't skip the multiplication below.
+    1.0f /
+    pow((float)(NUM_OCCURRENCES_ACROSS * NUM_OCCURRENCES_DOWN),
+        (float)CONV_UPDATE_EXPONENT);
 
   {
     // Update the one weight.
     const int widx = feature_num * INDICES_PER_NODE + pidx;
+    // This test is eliminated at compile time, but we want to skip
+    // the instruction in the case that the multiplier is exactly 1.0.
     if (CONV_UPDATE_EXPONENT != 0.0)
       weight_grad *= multiplier;
     // PERF fma()

@@ -412,7 +412,7 @@ struct UpdateConfig {
   // (perhaps the most principled, as each occurrence is contributing
   // error), 0.5 is 1/sqrt(occ), a compromise that has worked in the
   // past, and 1.0 is 1/occ, as though there is just one occurrence.
-  float conv_update_exponent = 5.0f;
+  float conv_update_exponent = 0.5f;
 
   std::string ToString() const;
 };

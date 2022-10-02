@@ -1205,7 +1205,7 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
       ck.program1 = pk1.first;
       ck.kernel1 = pk1.second;
 
-      if (true) {
+      if (false) {
         optional<string> ptx = CL::DecodeProgram(ck.program1);
         if (ptx.has_value()) {
           int lines = Util::SplitToLines(ptx.value()).size();
