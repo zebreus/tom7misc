@@ -1556,10 +1556,14 @@ int64 Errors::Bytes() const {
 }
 
 string RandomizationParams::ToString() const {
-  return StringPrintf("{.sigmoid_uniform: %s, "
-                      ".sigmoid_mag: %.11g}",
+  return StringPrintf("{.sigmoid_uniform = %s, "
+                      ".sigmoid_mag = %.11g, "
+                      ".zeromean_uniform = %s, "
+                      ".zeromean_numer = %.11g}",
                       sigmoid_uniform ? "true" : "false",
-                      sigmoid_mag);
+                      sigmoid_mag,
+                      zeromean_uniform ? "true" : "false",
+                      zeromean_numer);
 }
 
 // .. utils
@@ -1664,16 +1668,22 @@ void RandomizeNetwork(ArcFour *rc, Network *net,
             // Grad1 also has zero mean, I believe, but we
             // should maybe verify
           case TANH:
-          case IDENTITY:
+          case IDENTITY: {
+            // Glorot and Bengio use sqrt(6) here, but their denominator
+            // is sqrt of the number of nodes in this layer plus the
+            // previous.
+            const float numer = params.zeromean_numer;
             RandomizeFloatsDonut(0.0, hole,
-                                 1.0f / sqrtf(chunk->indices_per_node),
+                                 numer / sqrtf(chunk->indices_per_node),
                                  true, rcs[layer], &chunk->weights);
             break;
+          }
 
           case SIGMOID: {
+            // Yilmaz and Poli.
             const float mean =
               std::max(-1.0f, -8.0f / chunk->indices_per_node);
-            // The paper recommends stddev =
+            // The paper recommends stddev = 0.1.
             const float mag = params.sigmoid_mag;
             RandomizeFloatsDonut(mean, hole, mag,
                                  params.sigmoid_uniform,
@@ -1687,6 +1697,7 @@ void RandomizeNetwork(ArcFour *rc, Network *net,
             // compute this empirically? Doesn't matter?
           case RELU:
           case LEAKY_RELU: {
+            // XXX parameterize numerator
             const float mag = sqrtf(2.0 / chunk->indices_per_node);
             RandomizeFloatsDonut(0.0f, hole, mag, true,
                                  rcs[layer], &chunk->weights);

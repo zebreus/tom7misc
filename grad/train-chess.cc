@@ -62,22 +62,6 @@ struct TrainParams {
   // the decay
   float decay_rate = 0.999999f;
 
-  TrainParams() {
-    update_config.base_learning_rate = 0.01f;
-    update_config.clipping = true;
-
-    update_config.clip_error = true;
-    update_config.error_max = 0.1f;
-
-    // This is conservative, but with larger exponents I would
-    // get divergence after hundreds of thousands of rounds.
-    // This happened again with the plugin parameter predictor
-    // with a value of 1e-6!
-
-    // was 1e-2
-    update_config.adam_epsilon = 1.0e-4;
-  }
-
   string ToString() const {
     return StringPrintf("{.update_config = %s, "
                         ".do_decay = %s, "
@@ -87,6 +71,22 @@ struct TrainParams {
                         decay_rate);
   }
 };
+
+static TrainParams DefaultTrainParams() {
+  UpdateConfig update_config = {};
+
+  // These were values I used for the initial (not hyper-tuned)
+  // experiments.
+  update_config.base_learning_rate = 0.01f;
+  update_config.clipping = true;
+  update_config.clip_error = true;
+  update_config.error_max = 0.1f;
+  update_config.adam_epsilon = 1.0e-4;
+
+  TrainParams tparams = {};
+  tparams.update_config = update_config;
+  return tparams;
+}
 
 static double Train(const string &dir, Network *net, int64 max_rounds,
                     bool no_save,
@@ -382,7 +382,7 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
     // the model. Otherwise when we continue, we lose pixels that
     // were written to the image but not saved to disk.
 
-    // Note: Saves every early round.
+    // Note: Early on, this saves every round.
     if (!no_save &&
         (net->rounds < IMAGE_EVERY || (iter % IMAGE_EVERY) == 0)) {
       Timer image_timer;
@@ -558,7 +558,7 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
     }
   }
   printf("Ran " ABLUE("%lld") " rounds in "
-         AYELLOW("%.2f") " sec. " AWHITE("Zeroes per layer") ":\n",
+         AYELLOW("%.2f") " sec. " AWHITE("Non-zeroes per layer") ":\n",
          max_rounds, train_timer.Seconds());
   for (int i = 0; i < nonzero_error.size(); i++) {
     printf("  %02d. %s%d" ANSI_RESET "\n",
@@ -570,9 +570,9 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
     if (nonzero_error[i] == 0) {
       // If the layer is all zero, we fail. But the later the
       // layer where this happens, the worse.
-      const double badness = 100000 * pow(10.0, i);
+      const double badness = 100000000.0 * pow(10.0, i);
       // The less zero the next layer is, the better.
-      return badness - nonzero_error[i + 1];
+      return std::max(100000.0, badness - nonzero_error[i + 1]);
     }
   }
 
@@ -741,18 +741,64 @@ static unique_ptr<Network> NewChessNetwork(
 static ExamplePool *example_pool = nullptr;
 
 
+static constexpr TransferFunction OPT_TF = TANH;
 static constexpr int OPT_ROUNDS = 2000;
 static constexpr int NUM_INTS = 2;
-static constexpr int NUM_DOUBLES = 8;
+static constexpr int NUM_DOUBLES = 9;
 using TrainOptimizer = Optimizer<NUM_INTS, NUM_DOUBLES, char>;
+
+static std::pair<TrainParams, RandomizationParams>
+GetOptimizedParams(TransferFunction tf) {
+  switch (tf) {
+  case SIGMOID: {
+    // This was actually a sigmoid with a hacked in bonus derivative of 0.01.
+    #if 0
+    // sigmoid results, which were just the first sample!
+      GetParams(
+          std::make_pair(
+              std::array<int32_t, NUM_INTS>{0, 1},
+              std::array<double,  NUM_DOUBLES>{18.0, 5.8300267747, 18.383389302, 14.109313061,
+                  3.0086677831, 8760.2582169, 1013.9750224, 1.1163693398}));
+    #endif
+
+    RandomizationParams rparams =
+      RandomizationParams{.sigmoid_uniform = true, .sigmoid_mag = 1.1163693666};
+    TrainParams tparams =
+      TrainParams{.update_config = UpdateConfig{.base_learning_rate = 0.0029379983151, .learning_rate_dampening = 18.383389302, .max_num_scratch = 2147483648, .adam_epsilon = 7.4542367656e-07, .adam_b1 = 0.89999997616, .adam_b2 = 0.99900001287, .clipping = false, .constrain = true, .weight_constrain_max = 3.0086677074, .bias_constrain_max = 8760.2578125, .clip_error = true, .error_max = 1013.9750366 }, .do_decay = false, .decay_rate = 0.99900001287};
+    return make_pair(tparams, rparams);
+  }
+  case TANH: {
+    RandomizationParams rparams =
+      RandomizationParams{
+      .sigmoid_uniform = false, .sigmoid_mag = 0.10000000149,
+      .zeromean_uniform = true, .zeromean_numer = 0.84733331203};
+    TrainParams tparams =
+      TrainParams{
+      .update_config = {.base_learning_rate = 0.022586992263, .learning_rate_dampening = 51.75795321, .max_num_scratch = 2147483648, .adam_epsilon = 4.8231521532e-07, .adam_b1 = 0.89999997616, .adam_b2 = 0.99900001287, .clipping = false, .constrain = true, .weight_constrain_max = 5.5063300133, .bias_constrain_max = 13863.599609, .clip_error = true, .error_max = 816.96124268, .conv_update_exponent = 0.0065212696791 }, .do_decay = false, .decay_rate = 0.99900001287};
+    return make_pair(tparams, rparams);
+  }
+  default: {
+    printf("Note: No optimization results for %s\n",
+           TransferFunctionName(tf));
+    RandomizationParams rparams;
+    TrainParams tparams = DefaultTrainParams();
+    return make_pair(tparams, rparams);
+  }
+  }
+}
+
+
+
+
 
 static std::pair<TrainParams, RandomizationParams> GetParams(
     const TrainOptimizer::arg_type &args) {
-  const auto &[clip_int, sigunif_int] = args.first;
+  const auto &[clip_int, zmunif_int] = args.first;
   const auto &[decay,
                base_rate, dampening, adam_e,
                weight_max, bias_max,
-               clip_error, sigmoid_mag] = args.second;
+               clip_error, zeromean_numer,
+               conv_update] = args.second;
 
   TrainParams tparams;
 
@@ -774,9 +820,11 @@ static std::pair<TrainParams, RandomizationParams> GetParams(
   tparams.update_config.clip_error = clip_error >= 1.0;
   tparams.update_config.error_max = clip_error;
 
+  tparams.update_config.conv_update_exponent = conv_update;
+
   RandomizationParams rparams;
-  rparams.sigmoid_uniform = sigunif_int == 1;
-  rparams.sigmoid_mag = sigmoid_mag;
+  rparams.zeromean_uniform = zmunif_int == 1;
+  rparams.zeromean_numer = zeromean_numer;
 
   return make_pair(tparams, rparams);
 }
@@ -792,7 +840,7 @@ OptimizeMe(const TrainOptimizer::arg_type &args) {
 
   const auto &[tparams, rparams] = GetParams(args);
 
-  unique_ptr<Network> net = NewChessNetwork(SIGMOID, rparams);
+  unique_ptr<Network> net = NewChessNetwork(OPT_TF, rparams);
 
   double score = Train("opt-tmp", net.get(), OPT_ROUNDS,
                        // no save
@@ -805,9 +853,24 @@ OptimizeMe(const TrainOptimizer::arg_type &args) {
 
 
 
+
 int main(int argc, char **argv) {
   AnsiInit();
   cl = new CL;
+
+#if 0
+  const auto [tparams, rparams] =
+      GetParams(
+          std::make_pair(
+              std::array<int32_t, NUM_INTS>{0, 1},
+              std::array<double,  NUM_DOUBLES>{
+                10.31953607, 3.790381102, 51.75795321, 14.54466792, 5.506329934, 13863.59975, 816.9612668, 0.8473333159, 0.006521269745}));
+
+  printf("Randomization params:\n%s\n",
+         rparams.ToString().c_str());
+  printf("Training params:\n%s\n",
+         tparams.ToString().c_str());
+#endif
 
   if (false) {
     example_pool = new ExamplePool;
@@ -843,17 +906,21 @@ int main(int argc, char **argv) {
       // clip error, disabled if <1
       make_pair(0.1f, 1024.0),
 
-      // sigmoid mag
-      make_pair(0.00001f, 2.0f),
+      // mag of random initialization
+      make_pair(0.00001f, sqrtf(6.0f)),
+
+      // conv update
+      make_pair(0.0f, 1.1f),
     };
 
     constexpr double hour = 3600.0;
 
     Timer opt_timer;
-    TrainOptimizer opt(OptimizeMe, 0xCAFE);
+
+    TrainOptimizer opt(OptimizeMe, (int64_t)time(nullptr));
     opt.SetSaveAll(true);
     opt.Run(int_bounds, double_bounds,
-            nullopt, nullopt, {2.0 * hour});
+            nullopt, nullopt, {4 * hour});
 
     printf("Ran " ABLUE("%lld") " evaluations in "
            AYELLOW("%.3f") " sec.\n",
@@ -863,32 +930,35 @@ int main(int argc, char **argv) {
     string tsv;
     StringAppendF(&tsv,
                   "SCORE\t"
-                  "clip\tsigunif\t"
+                  "clip\tzmunif\t"
                   "decay\tbase_rate\tdampening\tadam_e\t"
                   "weight_max\tbias_max\t"
-                  "clip_error\tsigmoid_mag\n");
+                  "clip_error\tzeromean_numer\t"
+                  "conv_update\n");
     for (const auto &[args, score, outopt_] : opt.GetAll()) {
-      const auto &[clip_int, sigunif_int] = args.first;
+      const auto &[clip_int, zmunif_int] = args.first;
       const auto &[decay,
                    base_rate, dampening, adam_e,
                    weight_max, bias_max,
-                   clip_error, sigmoid_mag] = args.second;
+                   clip_error, zeromean_numer, conv_update] = args.second;
       StringAppendF(&tsv,
                     "%.11g\t"
                     "%d\t%d\t"
                     "%.11g\t%.11g\t%.11g\t%.11g\t"
                     "%.11g\t%.11g\t"
-                    "%.11g\t%.11g\n",
+                    "%.11g\t%.11g\t"
+                    "%.11g\n",
                     score,
-                    clip_int, sigunif_int,
+                    clip_int, zmunif_int,
                     decay,
                     base_rate, dampening, adam_e,
                     weight_max, bias_max,
-                    clip_error, sigmoid_mag);
+                    clip_error, zeromean_numer,
+                    conv_update);
     }
 
     Util::WriteFile("records.tsv", tsv);
-    printf("Results:\n", tsv.c_str());
+    printf("Results:\n%s\n", tsv.c_str());
 
   } else {
 
@@ -906,12 +976,7 @@ int main(int argc, char **argv) {
     const int64 max_rounds = (int64)atoll(argv[3]);
     CHECK(max_rounds > 0) << argv[3];
 
-    const auto [tparams, rparams] =
-      GetParams(
-          std::make_pair(
-              std::array<int32_t, NUM_INTS>{0, 1},
-              std::array<double,  NUM_DOUBLES>{18.0, 5.8300267747, 18.383389302, 14.109313061,
-                  3.0086677831, 8760.2582169, 1013.9750224, 1.1163693398}));
+    auto [tparams, rparams] = GetOptimizedParams(tf);
 
     printf("Randomization params:\n%s\n",
            rparams.ToString().c_str());
