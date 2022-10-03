@@ -53,6 +53,7 @@ static constexpr const char *GAME_PGN = "d:\\chess\\lichess_db_standard_rated_20
 #define MODEL_NAME MODEL_BASE ".val"
 static constexpr int EXAMPLES_PER_ROUND = 2048;
 
+// XXX to train-util etc.
 struct TrainParams {
   UpdateConfig update_config = {};
 
@@ -771,6 +772,15 @@ GetOptimizedParams(TransferFunction tf) {
     return make_pair(tparams, rparams);
   }
   case TANH: {
+    #if 0
+    GetParams(
+        std::make_pair(
+            std::array<int32_t, NUM_INTS>{0, 1},
+            std::array<double,  NUM_DOUBLES>{
+              10.31953607, 3.790381102, 51.75795321, 14.54466792, 5.506329934,
+                13863.59975, 816.9612668, 0.8473333159, 0.006521269745}));
+    #endif
+
     RandomizationParams rparams =
       RandomizationParams{
       .sigmoid_uniform = false, .sigmoid_mag = 0.10000000149,

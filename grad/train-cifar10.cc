@@ -1,9 +1,6 @@
 
-// Trains a network for the standard MNIST digit recognition test
+// Trains a network for the standard CIFAR10 image classification test
 // problem.
-
-// I modified this to take command-line arguments so that
-// it's easy to reproduce results, but haven't tested it yet.
 
 #include "network-gpu.h"
 
@@ -34,8 +31,8 @@
 #include "error-history.h"
 #include "ansi.h"
 
-#include "eval-mnist.h"
-#include "mnist.h"
+#include "eval-cifar10.h"
+#include "cifar10.h"
 
 using namespace std;
 
@@ -49,18 +46,55 @@ using int64 = int64_t;
 
 static constexpr WeightUpdate WEIGHT_UPDATE = ADAM;
 
-#define MODEL_BASE "grad"
+#define MODEL_BASE "classify"
 #define MODEL_NAME MODEL_BASE ".val"
 
-// Known dimensions for mnist training data.
-static constexpr int IMG_WIDTH = 28;
-static constexpr int IMG_HEIGHT = 28;
+// Known dimensions for CIFAR-10 training data.
+static constexpr int IMG_WIDTH = CIFAR10::WIDTH;
+static constexpr int IMG_HEIGHT = CIFAR10::HEIGHT;
 
 constexpr int INPUT_SIZE = IMG_WIDTH * IMG_HEIGHT;
-constexpr int OUTPUT_SIZE = 10;
+constexpr int OUTPUT_SIZE = CIFAR10::RADIX;
 
 // Very small examples -- this can probably be much higher.
-static constexpr int EXAMPLES_PER_ROUND = 1000;
+static constexpr int EXAMPLES_PER_ROUND = 1024;
+
+// XXX to train-util etc.
+struct TrainParams {
+  UpdateConfig update_config = {};
+
+  bool do_decay = false;
+  // XXX this should probably depend on the learning rate; if the
+  // learning rate is too small, it won't even be able to overcome
+  // the decay
+  float decay_rate = 0.999999f;
+
+  string ToString() const {
+    return StringPrintf("{.update_config = %s, "
+                        ".do_decay = %s, "
+                        ".decay_rate = %.11g}",
+                        update_config.ToString().c_str(),
+                        do_decay ? "true" : "false",
+                        decay_rate);
+  }
+};
+
+static TrainParams DefaultParams() {
+  TrainParams tparams;
+  // These are rounded versions of the optimized TANH from
+  // learn-chess; not tested.
+  tparams.update_config.base_learning_rate = 0.005f;
+  tparams.update_config.learning_rate_dampening = 13.0f;
+  tparams.update_config.adam_epsilon = 1.0e-6;
+  tparams.update_config.constrain = true;
+  tparams.update_config.weight_constrain_max = 3.0f;
+  tparams.update_config.bias_constrain_max = 8760.0f;
+  tparams.update_config.clip_error = true;
+  tparams.update_config.error_max = 1000.0f;
+
+  tparams.do_decay = false;
+  return tparams;
+}
 
 struct ExampleThread {
   // A full round's worth of examples.
@@ -84,13 +118,9 @@ struct ExampleThread {
   }
 
   ExampleThread() {
-    mnist.reset(new MNIST("mnist/train"));
-    CHECK(mnist.get() != nullptr);
-    CHECK(mnist->width == IMG_WIDTH);
-    CHECK(mnist->height == IMG_HEIGHT);
+    cifar10.reset(new CIFAR10("cifar10", false));
+    CHECK(cifar10.get() != nullptr);
 
-    // XXXXX
-    // printf("EXAMPLES DISABLED\n");
     work_thread1.reset(new std::thread(&Generate, this, 1));
     work_thread2.reset(new std::thread(&Generate, this, 2));
   }
@@ -126,27 +156,35 @@ private:
         // Fill 'em
         for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
 
-          const int idx = RandTo(&rc, mnist->Num());
-          CHECK(idx < mnist->labels.size() &&
-                idx < mnist->images.size());
+          const int idx = RandTo(&rc, cifar10->Num());
+          CHECK(idx < cifar10->labels.size() &&
+                idx < cifar10->images.size());
           // one-hot output label
-          const int lab = mnist->labels[idx];
+          const int lab = cifar10->labels[idx];
           for (int o = 0; o < OUTPUT_SIZE; o++) {
             outputs.push_back(lab == o ? 1.0f : 0.0f);
           }
 
           // image data.
-          // TODO: Randomly add noise, squish, pan, etc.
-          const ImageA &img = mnist->images[idx];
+          const ImageRGBA &img = cifar10->images[idx];
 
           // Shift by up to two pixels in each direction.
           const int dx = RandTo(&rc, 5) - 2;
           const int dy = RandTo(&rc, 5) - 2;
+          // And add a little gaussian noise.
+          static constexpr float NOISE_SCALE = 0.025f;
           for (int y = 0; y < IMG_HEIGHT; y++) {
+            // Copy pixels from border
+            int yy = std::clamp(y + dy, 0, IMG_HEIGHT - 1);
             for (int x = 0; x < IMG_WIDTH; x++) {
-              float f = (float)img.GetPixel(x + dx, y + dy) / 255.0f;
-              f += gauss.Next() * 0.25f;
-              examples.push_back(f);
+              int xx = std::clamp(x + dx, 0, IMG_WIDTH - 1);
+              auto [r, g, b, a_] = img.GetPixel(xx, yy);
+              examples.push_back(r * (1.0f / 255.0f) +
+                                 gauss.Next() * NOISE_SCALE);
+              examples.push_back(g * (1.0f / 255.0f) +
+                                 gauss.Next() * NOISE_SCALE);
+              examples.push_back(b * (1.0f / 255.0f) +
+                                 gauss.Next() * NOISE_SCALE);
             }
           }
         }
@@ -164,7 +202,7 @@ private:
     }
   }
 
-  std::unique_ptr<MNIST> mnist;
+  std::unique_ptr<CIFAR10> cifar10;
 
   std::mutex m;
   // queue of examples, ready to train
@@ -173,7 +211,8 @@ private:
   std::unique_ptr<std::thread> work_thread1, work_thread2;
 };
 
-static void Train(const string &dir, Network *net, int64 max_rounds) {
+static void Train(const string &dir, Network *net, int64 max_rounds,
+                  TrainParams params) {
   ExampleThread example_thread;
 
   const string error_history_file = Util::dirplus(dir, "error-history.tsv");
@@ -181,26 +220,12 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
 
   ErrorHistory error_history(error_history_file);
 
-  EvalMNIST evaluator(cl);
+  EvalCIFAR10 evaluator(cl);
 
   static constexpr int max_parallelism = 4;
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = true;
-
-  UpdateWeightsCL::UpdateConfig update_config;
-  update_config.base_learning_rate = 0.1f;
-  // This is conservative, but with larger exponents I would
-  // get divergence after hundreds of thousands of rounds.
-  // This happened again with the plugin parameter predictor
-  // with a value of 1e-6!
-  update_config.adam_epsilon = 1.0e-4;
-
-  // XXX this should probably depend on the learning rate; if the
-  // learning rate is too small, it won't even be able to overcome
-  // the decay
-  static constexpr float DECAY_RATE = 0.999999f;
-  static constexpr bool DO_DECAY = false;
 
   // On a verbose round we compute training error and print out
   // examples.
@@ -232,7 +257,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
 
   printf("Training!\n");
 
-  constexpr int NUM_COLUMNS = 10;
+  constexpr int NUM_COLUMNS = CIFAR10::RADIX;
   std::vector<std::unique_ptr<ErrorImage>> error_images;
   error_images.reserve(NUM_COLUMNS);
   for (int i = 0; i < NUM_COLUMNS; i++) {
@@ -254,16 +279,18 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
   std::unique_ptr<ForwardLayerCL> forward_cl =
     std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
   std::unique_ptr<SetOutputErrorCL> error_cl =
-    std::make_unique<SetOutputErrorCL>(cl, net_gpu.get());
+    std::make_unique<SetOutputErrorCL>(cl, net_gpu.get(),
+                                       params.update_config);
   std::unique_ptr<BackwardLayerCL> backward_cl =
-    std::make_unique<BackwardLayerCL>(cl, net_gpu.get());
-  [[maybe_unused]]
+    std::make_unique<BackwardLayerCL>(cl, net_gpu.get(),
+                                      params.update_config);
   std::unique_ptr<DecayWeightsCL> decay_cl =
-    std::make_unique<DecayWeightsCL>(cl, net_gpu.get(), DECAY_RATE);
+    std::make_unique<DecayWeightsCL>(cl, net_gpu.get(),
+                                     params.decay_rate);
   std::unique_ptr<UpdateWeightsCL> update_cl =
     std::make_unique<UpdateWeightsCL>(cl, net_gpu.get(),
                                       EXAMPLES_PER_ROUND,
-                                      update_config);
+                                      params.update_config);
 
   if (VERBOSE > 1)
     printf("Compiled CL.\n");
@@ -298,19 +325,6 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     Timer round_timer;
 
     const bool verbose_round = (iter % VERBOSE_EVERY) == 0;
-
-    const double total_sec = train_timer.Seconds();
-    const double eps = total_examples / total_sec;
-    const double rpm = iter / (total_sec / 60.0);
-
-    printf(AYELLOW("%lld") " rounds "
-           AWHITE("%d") " iter: (" ABLUE("%.2f") " rounds/min;  "
-           APURPLE("%.2f") " eps)\n",
-           net->rounds, iter, rpm, eps);
-
-
-    // Initialize training examples.
-    // (PERF: parallelize?)
 
     Timer getexample_timer;
     // All examples for the round, flat.
@@ -366,7 +380,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     if (VERBOSE > 1)
       printf("Backward pass.\n");
 
-    if (DO_DECAY) {
+    if (params.do_decay) {
       Timer decay_timer;
       for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {
         decay_cl->Decay(layer_idx);
@@ -405,6 +419,15 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       if (VERBOSE > 1)
         printf("Verbose round...\n");
 
+      const double total_sec = train_timer.Seconds();
+      const double eps = total_examples / total_sec;
+      const double rpm = iter / (total_sec / 60.0);
+
+      printf(AYELLOW("%lld") " rounds "
+             AWHITE("%d") " iter: (" ABLUE("%.2f") " rounds/min;  "
+             APURPLE("%.2f") " eps)\n",
+             net->rounds, iter, rpm, eps);
+
       // Get loss as abs distance, plus number of incorrect (as booleans).
 
       // PERF could do this on the flat vector, but we only need to
@@ -430,10 +453,6 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       const bool save_history = history_per.ShouldRun();
       const bool save_error_images = error_images_per.ShouldRun();
       // compute loss for each digit separately
-
-      printf("%lld rounds [%.2f eps]:\n",
-             net->rounds,
-             (iter * EXAMPLES_PER_ROUND) / train_timer.Seconds());
 
       double overall_average_loss = 0.0;
       for (int col = 0; col < NUM_COLUMNS; col++) {
@@ -472,7 +491,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       printf("overall: %.4f\n", overall_average_loss);
       if (save_history) {
         net_gpu->ReadFromGPU();
-        EvalMNIST::Result res = evaluator.Evaluate(net);
+        EvalCIFAR10::Result res = evaluator.Evaluate(net);
         res.wrong.Save(Util::dirplus(dir, "test-wrong.png"));
         double test_loss = (res.total - res.correct) / (double)res.total;
         error_history.Add(net->rounds, overall_average_loss,
@@ -495,7 +514,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     // TODO: Should probably synchronize saving images with saving
     // the model. Otherwise when we continue, we lose pixels that
     // were written to the image but not saved to disk.
-    if ((iter % IMAGE_EVERY) == 0) {
+    if (net->rounds < IMAGE_EVERY || (iter % IMAGE_EVERY) == 0) {
       Timer image_timer;
       net_gpu->ReadFromGPU();
       const vector<vector<float>> stims = training->ExportStimulationsFlat();
@@ -591,12 +610,12 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
   printf("Saved to %s.\n", model_file.c_str());
 }
 
-static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
+static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
   printf("New network with transfer function %s\n",
          TransferFunctionName(tf));
 
   // Deterministic!
-  ArcFour rc("learn-digits-network");
+  ArcFour rc("learn-images-network");
 
   std::vector<Layer> layers;
 
@@ -609,31 +628,28 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
 
   layers.push_back(Network::LayerFromChunks(input_chunk));
 
-  // RGB
-  const int CHANNELS = 3;
-  // i.e. 3x3 pixels
   const int CONV1_SIZE = 3;
   const int CONV1_FEATURES = 64;
 
   Chunk first_conv_chunk =
     Network::Make2DConvolutionChunk(
         // Entire image
-        0, IMG_WIDTH * CHANNELS, IMG_HEIGHT,
-        CONV1_FEATURES, CONV1_SIZE * CHANNELS, CONV1_SIZE,
+        0, IMG_WIDTH, IMG_HEIGHT,
+        CONV1_FEATURES, CONV1_SIZE, CONV1_SIZE,
         // full overlap
-        CHANNELS, 1,
+        1, 1,
         tf, WEIGHT_UPDATE);
 
   const int CONV2_SIZE = 8;
-  const int CONV2_FEATURES = 256;
+  const int CONV2_FEATURES = 128;
 
   Chunk second_conv_chunk =
     Network::Make2DConvolutionChunk(
         // Entire image
-        0, IMG_WIDTH * CHANNELS, IMG_HEIGHT,
-        CONV2_FEATURES, CONV2_SIZE * CHANNELS, CONV2_SIZE,
+        0, IMG_WIDTH, IMG_HEIGHT,
+        CONV2_FEATURES, CONV2_SIZE, CONV2_SIZE,
         // full overlap
-        CHANNELS, 1,
+        1, 1,
         tf, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(first_conv_chunk,
@@ -648,8 +664,6 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
          second_conv_chunk.num_occurrences_down,
          second_conv_chunk.num_features);
 
-  const int NUM_LAYER2_FEATURES = 32;
-
   int num_conv1 =
     CONV1_FEATURES * first_conv_chunk.num_occurrences_across *
     first_conv_chunk.num_occurrences_down;
@@ -660,7 +674,7 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
         CONV1_FEATURES * first_conv_chunk.num_occurrences_across,
         first_conv_chunk.num_occurrences_down,
         // Process 2x2 blocks (of all features) into 32 features.
-        NUM_LAYER2_FEATURES, CONV1_FEATURES * 2, 2,
+        32, CONV1_FEATURES * 2, 2,
         // no overlap
         CONV1_FEATURES * 2, 2,
         tf, WEIGHT_UPDATE);
@@ -677,7 +691,7 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
         CONV2_FEATURES * second_conv_chunk.num_occurrences_across,
         second_conv_chunk.num_occurrences_down,
         // As above, into 32 features.
-        NUM_LAYER2_FEATURES, CONV2_FEATURES * 2, 2,
+        32, CONV2_FEATURES * 2, 2,
         // No overlap.
         CONV2_FEATURES * 2, 2,
         tf, WEIGHT_UPDATE);
@@ -694,6 +708,7 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
          next_conv2.num_occurrences_down,
          next_conv2.num_features);
 
+  // XXX added these for "deep" experiments.
   const int NUM_DEEP = 2;
   int layer_size = 1024;
   for (int i = 0; i < NUM_DEEP; i++) {
@@ -707,12 +722,11 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
     layer_size >>= 1;
   }
 
-  // Output layer. Uses IDENTITY so that any transfer function can
-  // generate any gamut (but still be "linear").
+  // Output layer.
   Chunk dense_out =
     Network::MakeDenseChunk(OUTPUT_SIZE,
                             0, layers.back().num_nodes,
-                            IDENTITY, WEIGHT_UPDATE);
+                            tf, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(dense_out));
 
@@ -731,7 +745,7 @@ int main(int argc, char **argv) {
   AnsiInit();
 
   CHECK(argc == 4) <<
-    "./train-mnist.exe dir transfer_function rounds\n"
+    "./train-cifar10.exe dir transfer_function rounds\n"
     "Notes:\n"
     "  dir must exist. Resumes training if the dir\n"
     "    contains a model file.\n"
@@ -752,7 +766,7 @@ int main(int argc, char **argv) {
       Network::ReadFromFile(model_file));
 
   if (net.get() == nullptr) {
-    net = NewImagesNetwork(tf);
+    net = NewDigitsNetwork(tf);
     CHECK(net.get() != nullptr);
     net->SaveToFile(model_file);
     printf("Wrote to %s\n", model_file.c_str());
@@ -761,11 +775,13 @@ int main(int argc, char **argv) {
   net->StructuralCheck();
   net->NaNCheck(model_file);
 
+  TrainParams tparams = DefaultParams();
+
   if (net->rounds >= max_rounds) {
     printf("%s: Already trained %lld rounds.\n",
            model_file.c_str(), net->rounds);
   } else {
-    Train(dir, net.get(), max_rounds);
+    Train(dir, net.get(), max_rounds, tparams);
   }
 
   printf("OK\n");

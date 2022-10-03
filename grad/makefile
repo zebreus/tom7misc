@@ -1,7 +1,7 @@
 
-default: iter.exe train-mnist.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe train-chess.exe evaluate-chess.exe
+default: iter.exe train-mnist.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe train-chess.exe evaluate-chess.exe train-cifar10.exe
 
-all: grad.exe iter.exe make-data.exe mnist_test.exe train-mnist.exe evaluate-mnist.exe train-chess.exe evaluate-chess.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe ansi_test.exe hash-util_test.exe cifar10_test.exe
+all: grad.exe iter.exe make-data.exe mnist_test.exe train-mnist.exe evaluate-mnist.exe train-chess.exe evaluate-chess.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe ansi_test.exe hash-util_test.exe cifar10_test.exe evaluate-cifar10.exe
 
 CC_LIB=../cc-lib
 CHESS=../chess
@@ -76,6 +76,10 @@ train-mnist.exe : train-mnist.o network.o network-gpu.o error-history.o clutil.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+train-cifar10.exe : train-cifar10.o network.o network-gpu.o error-history.o clutil.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 mnist_test.exe : mnist_test.o $(CCLIB_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
@@ -89,6 +93,10 @@ evaluate-chess.exe : evaluate-chess.o network.o $(OBJECTS)
 	@echo -n "!"
 
 evaluate-mnist.exe : evaluate-mnist.o network.o network-gpu.o error-history.o clutil.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+evaluate-cifar10.exe : evaluate-cifar10.o network.o network-gpu.o error-history.o clutil.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
