@@ -96,7 +96,7 @@ struct HistoryImage {
 
     CHECK(col < image->Width());
     for (int y = 0; y < col_height; y++) {
-      image->SetPixel32(col, y, column.GetPixel32(0, y));
+      image->SetPixel32(col, y + HEADER_HEIGHT, column.GetPixel32(0, y));
     }
     col++;
   }
@@ -122,7 +122,7 @@ struct TrainingImages {
                  const std::string &title,
                  int image_every,
                  int image_width = 3000,
-                 int image_col_height = 1000,
+                 int image_col_height = 2000,
                  bool continue_from_disk = true) :
     image_col_height(image_col_height) {
 
@@ -199,10 +199,15 @@ struct TrainingImages {
   }
 
   // Make sure you do net_gpu->ReadFromGPU() first!
-  void Sample(const Network &net) {
+  void Sample(const Network &net,
+              int num_examples,
+              const std::vector<std::vector<float>> &stims) {
     samples++;
     const bool save_this_time = (samples % 100) == 0;
     Asynchronously save_async(4);
+
+    const int weight_height = image_col_height / 2;
+    const int stim_height = image_col_height - weight_height;
 
     // Writing to the same column. We only save asynchronously.
     ImageRGBA column(1, image_col_height);
@@ -211,82 +216,128 @@ struct TrainingImages {
          target_layer < net.layers.size();
          target_layer++) {
       CHECK(target_layer < images.size());
+
+      CHECK(target_layer < stims.size());
+      const std::vector<float> &layer_values = stims[target_layer];
+
+      int64_t chunk_start = 0;
       for (int target_chunk = 0;
            target_chunk < net.layers[target_layer].chunks.size();
            target_chunk++) {
         CHECK(target_chunk < images[target_layer].size());
-        HistoryImage *himage = images[target_layer][target_chunk].get();
-        // For example, fixed chunks are skipped.
-        if (himage == nullptr) continue;
-
         CHECK(net.layers.size() > 0);
         CHECK(target_layer < net.layers.size());
         const Layer &layer = net.layers[target_layer];
         const Chunk &chunk = layer.chunks[target_chunk];
 
-        column.Clear32(0x000000FF);
+        HistoryImage *himage = images[target_layer][target_chunk].get();
+        // For example, fixed chunks are skipped.
+        if (himage != nullptr) {
 
-        auto ToScreenY = [this](float w) {
-            int yrev = w * float(image_col_height / 4) + (image_col_height / 2);
-            int y = image_col_height - yrev;
-            // Always draw on-screen.
-            return std::clamp(y, 0, image_col_height - 1);
-          };
-        // 1, -1, x axis
-        if (himage->col & 1) {
-          column.BlendPixel32(0, ToScreenY(1),  0xCCFFCC40);
-          column.BlendPixel32(0, ToScreenY(0),  0xCCCCFFFF);
-          column.BlendPixel32(0, ToScreenY(-1), 0xFFCCCC40);
-        }
+          column.Clear32(0x000000FF);
 
-        const uint8_t weight_alpha =
-          std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
+          // top
 
-        const uint8_t bias_alpha =
-          std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
-
-        // Write the aux stuff first, so it does not obscure the main values.
-        if (chunk.weight_update == ADAM) {
-          CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
-          CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
-          for (int idx = 0; idx < chunk.weights.size(); idx++) {
-            const float m = chunk.weights_aux[idx * 2 + 0];
-            const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
-
-            column.BlendPixel32(0, ToScreenY(m),
-                                0xFFFF0000 | weight_alpha);
-            column.BlendPixel32(0, ToScreenY(v),
-                                0xFF00FF00 | weight_alpha);
+          auto TopToScreenY = [this, weight_height](float w) {
+              int yrev = w * float(weight_height / 4) + (weight_height / 2);
+              int y = weight_height - yrev;
+              // Always draw on-screen.
+              return std::clamp(y, 0, weight_height - 1);
+            };
+          // 1, -1, x axis
+          if (himage->col & 1) {
+            column.BlendPixel32(0, TopToScreenY(1),  0xCCFFCC40);
+            column.BlendPixel32(0, TopToScreenY(0),  0xCCCCFFFF);
+            column.BlendPixel32(0, TopToScreenY(-1), 0xFFCCCC40);
           }
-          for (int idx = 0; idx < chunk.biases.size(); idx++) {
-            const float m = chunk.biases_aux[idx * 2 + 0];
-            const float v = sqrtf(chunk.biases_aux[idx * 2 + 1]);
 
-            column.BlendPixel32(0, ToScreenY(m),
-                                0x00FF0000 | bias_alpha);
-            column.BlendPixel32(0, ToScreenY(v),
-                                0x00FFFF00 | bias_alpha);
+          const uint8_t weight_alpha =
+            std::clamp((255.0f / sqrtf(chunk.weights.size())), 10.0f, 240.0f);
+
+          const uint8_t bias_alpha =
+            std::clamp((255.0f / sqrtf(chunk.biases.size())), 10.0f, 240.0f);
+
+          // Write the aux stuff first, so it does not obscure the main values.
+          if (chunk.weight_update == ADAM) {
+            CHECK(chunk.weights_aux.size() == 2 * chunk.weights.size());
+            CHECK(chunk.biases_aux.size() == 2 * chunk.biases.size());
+            for (int idx = 0; idx < chunk.weights.size(); idx++) {
+              const float m = chunk.weights_aux[idx * 2 + 0];
+              const float v = sqrtf(chunk.weights_aux[idx * 2 + 1]);
+
+              column.BlendPixel32(0, TopToScreenY(m),
+                                  0xFFFF0000 | weight_alpha);
+              column.BlendPixel32(0, TopToScreenY(v),
+                                  0xFF00FF00 | weight_alpha);
+            }
+            for (int idx = 0; idx < chunk.biases.size(); idx++) {
+              const float m = chunk.biases_aux[idx * 2 + 0];
+              const float v = sqrtf(chunk.biases_aux[idx * 2 + 1]);
+
+              column.BlendPixel32(0, TopToScreenY(m),
+                                  0x00FF0000 | bias_alpha);
+              column.BlendPixel32(0, TopToScreenY(v),
+                                  0x00FFFF00 | bias_alpha);
+            }
+          }
+
+          for (float w : chunk.weights) {
+            // maybe better to AA this?
+            column.BlendPixel32(0, TopToScreenY(w),
+                                0xFFFFFF00 | weight_alpha);
+          }
+
+          for (float b : chunk.biases) {
+            column.BlendPixel32(0, TopToScreenY(b),
+                                0xFF777700 | bias_alpha);
+          }
+
+          // bottom
+
+          auto BotToScreenY = [this, weight_height, stim_height](float w) {
+              int yrev = w * float(stim_height / 4) + (stim_height / 2);
+              int y = weight_height + stim_height - yrev;
+              // Always draw on-screen.
+              return std::clamp(y, weight_height, image_col_height - 1);
+            };
+          // 1, -1, x axis
+          if (himage->col & 1) {
+            column.BlendPixel32(0, BotToScreenY(1),  0xCCFFCC40);
+            column.BlendPixel32(0, BotToScreenY(0),  0xCCCCFFFF);
+            column.BlendPixel32(0, BotToScreenY(-1), 0xFFCCCC40);
+          }
+
+          const uint8_t stim_alpha =
+            std::clamp((255.0f / sqrtf(chunk.num_nodes * num_examples)),
+                       10.0f, 240.0f);
+
+          for (int ex = 0; ex < num_examples; ex++) {
+            uint32_t c = ColorUtil::LinearGradient32(
+                RAINBOW, ex / (float)num_examples);
+
+            c &= ~0xFF;
+            c |= stim_alpha;
+
+            for (int i = 0; i < chunk.num_nodes; i++) {
+              const int idx =
+                layer.num_nodes * ex + (chunk_start + i);
+
+              CHECK(idx >= 0 && idx < layer_values.size());
+              const float f = layer_values[idx];
+              column.BlendPixel32(0, BotToScreenY(f), c);
+            }
+          }
+
+          himage->AddColumn(column);
+
+          if (save_this_time) {
+            save_async.Run([himage]() {
+                himage->Save();
+              });
           }
         }
 
-        for (float w : chunk.weights) {
-          // maybe better to AA this?
-          column.BlendPixel32(0, ToScreenY(w),
-                              0xFFFFFF00 | weight_alpha);
-        }
-
-        for (float b : chunk.biases) {
-          column.BlendPixel32(0, ToScreenY(b),
-                              0xFF777700 | bias_alpha);
-        }
-
-        himage->AddColumn(column);
-
-        if (save_this_time) {
-          save_async.Run([himage]() {
-              himage->Save();
-            });
-        }
+        chunk_start += chunk.num_nodes;
       }
     }
 
@@ -302,12 +353,23 @@ private:
                         basename.c_str(), layer, chunk);
   }
 
+  static constexpr ColorUtil::Gradient RAINBOW{
+    GradRGB(0.00f,  0xFF0000),
+    GradRGB(0.15f,  0xFFFF00),
+    GradRGB(0.30f,  0x00FF00),
+    GradRGB(0.45f,  0x00FFFF),
+    GradRGB(0.60f,  0x0000FF),
+    GradRGB(0.75f,  0xFF00FF),
+    GradRGB(1.00f,  0xFFFFFF),
+  };
+
   const int image_col_height = 0;
   uint32_t samples = 0;
   // Parallel to layers/chunks
   std::vector<std::vector<std::unique_ptr<HistoryImage>>> images;
 };
 
+// TODO: Use HistoryImage.
 struct ErrorImage {
   static constexpr int MARGIN = 4;
   ErrorImage(int width,

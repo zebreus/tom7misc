@@ -387,7 +387,10 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
         (net->rounds < IMAGE_EVERY || (iter % IMAGE_EVERY) == 0)) {
       Timer image_timer;
       net_gpu->ReadFromGPU();
-      images.Sample(*net);
+
+      const vector<vector<float>> stims = training->ExportStimulationsFlat();
+
+      images.Sample(*net, EXAMPLES_PER_ROUND, stims);
       image_ms += image_timer.MS();
 
       #if 0
