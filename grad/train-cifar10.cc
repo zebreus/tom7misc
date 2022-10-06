@@ -53,7 +53,8 @@ static constexpr WeightUpdate WEIGHT_UPDATE = ADAM;
 static constexpr int IMG_WIDTH = CIFAR10::WIDTH;
 static constexpr int IMG_HEIGHT = CIFAR10::HEIGHT;
 
-constexpr int INPUT_SIZE = IMG_WIDTH * IMG_HEIGHT;
+constexpr int IMG_CHANNELS = 3;
+constexpr int INPUT_SIZE = IMG_WIDTH * IMG_HEIGHT * IMG_CHANNELS;
 constexpr int OUTPUT_SIZE = CIFAR10::RADIX;
 
 // Very small examples -- this can probably be much higher.
@@ -82,7 +83,9 @@ struct TrainParams {
 static TrainParams DefaultParams() {
   TrainParams tparams;
   // These are rounded versions of the optimized TANH from
-  // learn-chess; not tested.
+  // learn-chess; not tested. (It worked fine for 200k rounds
+  // with leaky-relu, although it still appeared to be getting
+  // better when it stopped.)
   tparams.update_config.base_learning_rate = 0.005f;
   tparams.update_config.learning_rate_dampening = 13.0f;
   tparams.update_config.adam_epsilon = 1.0e-6;
@@ -126,7 +129,12 @@ struct ExampleThread {
   }
 
   ~ExampleThread() {
-    LOG(FATAL) << "unimplemented";
+    {
+      MutexLock ml(&m);
+      examplethread_should_die = true;
+    }
+    work_thread1->join();
+    work_thread2->join();
   }
 
 private:
@@ -140,10 +148,13 @@ private:
     RandomGaussian gauss(&rc);
 
     for (;;) {
-      const bool want_more = [&]() -> bool {
+      const auto [want_more, should_die] = [&]() -> pair<bool, bool> {
           MutexLock ml(&m);
-          return q.size() < TARGET_SIZE;
+          return make_pair(q.size() < TARGET_SIZE, examplethread_should_die);
         }();
+
+      if (should_die)
+        return;
 
       if (want_more) {
         // examples_per_round * INPUT_SIZE
@@ -206,6 +217,7 @@ private:
 
   std::mutex m;
   // queue of examples, ready to train
+  bool examplethread_should_die = false;
   std::deque<example_type> q;
 
   std::unique_ptr<std::thread> work_thread1, work_thread2;
@@ -219,6 +231,12 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
   const string model_file = Util::dirplus(dir, MODEL_NAME);
 
   ErrorHistory error_history(error_history_file);
+
+  std::array<std::string, CIFAR10::RADIX> labels;
+  for (int i = 0; i < CIFAR10::RADIX; i++)
+    labels[i] = CIFAR10::LabelString(i);
+  ConfusionImage<CIFAR10::RADIX> conf_image(
+      1920, labels, Util::dirplus(dir, "conf.png"));
 
   EvalCIFAR10 evaluator(cl);
 
@@ -245,7 +263,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
   static constexpr double SAVE_ERROR_IMAGES_EVERY = 130.0;
   Periodically error_images_per(SAVE_ERROR_IMAGES_EVERY);
 
-  static constexpr double TIMING_EVERY_SEC = 20.0;
+  static constexpr double TIMING_EVERY_SEC = 60.0;
   Periodically timing_per(TIMING_EVERY_SEC);
 
 
@@ -421,12 +439,16 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
 
       const double total_sec = train_timer.Seconds();
       const double eps = total_examples / total_sec;
-      const double rpm = iter / (total_sec / 60.0);
+      const double rps = iter / (double)total_sec;
+
+      const int rounds_left = max_rounds - net->rounds;
+      const double sec_left = rounds_left / rps;
 
       printf(AYELLOW("%lld") " rounds "
-             AWHITE("%d") " iter: (" ABLUE("%.2f") " rounds/min;  "
-             APURPLE("%.2f") " eps)\n",
-             net->rounds, iter, rpm, eps);
+             " | " ABLUE("%.2f") " rounds/min;  "
+             APURPLE("%.2f") " eps | ~" ACYAN("%.3f") " hours left\n",
+             net->rounds, rps * 60.0, eps,
+             sec_left / (60.0 * 60.0));
 
       // Get loss as abs distance, plus number of incorrect (as booleans).
 
@@ -492,6 +514,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
       if (save_history) {
         net_gpu->ReadFromGPU();
         EvalCIFAR10::Result res = evaluator.Evaluate(net);
+        EvalCIFAR10::TitleResult(&res);
         res.wrong.Save(Util::dirplus(dir, "test-wrong.png"));
         double test_loss = (res.total - res.correct) / (double)res.total;
         error_history.Add(net->rounds, overall_average_loss,
@@ -499,10 +522,14 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
         error_history.Add(net->rounds, test_loss,
                           ErrorHistory::ERROR_TEST);
         printf("Test loss: %.4f in %.4fs\n", test_loss, res.fwd_time);
-        error_history.MakeImage(1920, 1080,
-                                {{ErrorHistory::ERROR_TRAIN, 0x0033FFFF},
-                                 {ErrorHistory::ERROR_TEST, 0x00FF00FF}},
-                                0).Save(Util::dirplus(dir, "error-history.png"));
+        error_history.MakeImage(
+            1920, 1080,
+            {{ErrorHistory::ERROR_TRAIN, 0x0033FFFF},
+             {ErrorHistory::ERROR_TEST, 0x00FF00FF}},
+            0).Save(Util::dirplus(dir, "error-history.png"));
+        conf_image.Add(res.conf);
+        conf_image.Save();
+
         if (net->rounds > 1000)
           history_per.SetPeriod(120.0);
       }
@@ -610,12 +637,14 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
   printf("Saved to %s.\n", model_file.c_str());
 }
 
-static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
+static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
   printf("New network with transfer function %s\n",
          TransferFunctionName(tf));
 
   // Deterministic!
   ArcFour rc("learn-images-network");
+
+
 
   std::vector<Layer> layers;
 
@@ -624,32 +653,35 @@ static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
   input_chunk.num_nodes = INPUT_SIZE;
   input_chunk.width = IMG_WIDTH;
   input_chunk.height = IMG_HEIGHT;
-  input_chunk.channels = 1;
+  input_chunk.channels = IMG_CHANNELS;
 
   layers.push_back(Network::LayerFromChunks(input_chunk));
 
+  // RGB
+  const int CHANNELS = 3;
+  // i.e. 3x3 pixels
   const int CONV1_SIZE = 3;
   const int CONV1_FEATURES = 64;
 
   Chunk first_conv_chunk =
     Network::Make2DConvolutionChunk(
         // Entire image
-        0, IMG_WIDTH, IMG_HEIGHT,
-        CONV1_FEATURES, CONV1_SIZE, CONV1_SIZE,
+        0, IMG_WIDTH * CHANNELS, IMG_HEIGHT,
+        CONV1_FEATURES, CONV1_SIZE * CHANNELS, CONV1_SIZE,
         // full overlap
-        1, 1,
+        CHANNELS, 1,
         tf, WEIGHT_UPDATE);
 
   const int CONV2_SIZE = 8;
-  const int CONV2_FEATURES = 128;
+  const int CONV2_FEATURES = 256;
 
   Chunk second_conv_chunk =
     Network::Make2DConvolutionChunk(
         // Entire image
-        0, IMG_WIDTH, IMG_HEIGHT,
-        CONV2_FEATURES, CONV2_SIZE, CONV2_SIZE,
+        0, IMG_WIDTH * CHANNELS, IMG_HEIGHT,
+        CONV2_FEATURES, CONV2_SIZE * CHANNELS, CONV2_SIZE,
         // full overlap
-        1, 1,
+        CHANNELS, 1,
         tf, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(first_conv_chunk,
@@ -664,6 +696,8 @@ static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
          second_conv_chunk.num_occurrences_down,
          second_conv_chunk.num_features);
 
+  const int NUM_LAYER2_FEATURES = 32;
+
   int num_conv1 =
     CONV1_FEATURES * first_conv_chunk.num_occurrences_across *
     first_conv_chunk.num_occurrences_down;
@@ -674,7 +708,7 @@ static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
         CONV1_FEATURES * first_conv_chunk.num_occurrences_across,
         first_conv_chunk.num_occurrences_down,
         // Process 2x2 blocks (of all features) into 32 features.
-        32, CONV1_FEATURES * 2, 2,
+        NUM_LAYER2_FEATURES, CONV1_FEATURES * 2, 2,
         // no overlap
         CONV1_FEATURES * 2, 2,
         tf, WEIGHT_UPDATE);
@@ -691,7 +725,7 @@ static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
         CONV2_FEATURES * second_conv_chunk.num_occurrences_across,
         second_conv_chunk.num_occurrences_down,
         // As above, into 32 features.
-        32, CONV2_FEATURES * 2, 2,
+        NUM_LAYER2_FEATURES, CONV2_FEATURES * 2, 2,
         // No overlap.
         CONV2_FEATURES * 2, 2,
         tf, WEIGHT_UPDATE);
@@ -708,7 +742,6 @@ static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
          next_conv2.num_occurrences_down,
          next_conv2.num_features);
 
-  // XXX added these for "deep" experiments.
   const int NUM_DEEP = 2;
   int layer_size = 1024;
   for (int i = 0; i < NUM_DEEP; i++) {
@@ -722,11 +755,12 @@ static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
     layer_size >>= 1;
   }
 
-  // Output layer.
+  // Output layer. Uses IDENTITY so that any transfer function can
+  // generate any gamut (but still be "linear").
   Chunk dense_out =
     Network::MakeDenseChunk(OUTPUT_SIZE,
                             0, layers.back().num_nodes,
-                            tf, WEIGHT_UPDATE);
+                            IDENTITY, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(dense_out));
 
@@ -766,7 +800,7 @@ int main(int argc, char **argv) {
       Network::ReadFromFile(model_file));
 
   if (net.get() == nullptr) {
-    net = NewDigitsNetwork(tf);
+    net = NewImagesNetwork(tf);
     CHECK(net.get() != nullptr);
     net->SaveToFile(model_file);
     printf("Wrote to %s\n", model_file.c_str());

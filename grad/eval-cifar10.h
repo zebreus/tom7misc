@@ -30,11 +30,32 @@ struct EvalCIFAR10 {
     int correct = 0;
     double fwd_time = 0.0;
     ImageRGBA wrong;
+    // Confusion matrix. Rows are actual labels, columns are predicted.
+    // Sum across all cells = correct.
+    std::array<std::array<int, CIFAR10::RADIX>, CIFAR10::RADIX> conf;
   };
+
+  static void TitleResult(Result *r) {
+    if (r->wrong.Height() < 20) return;
+    r->wrong.BlendRect32(0, r->wrong.Height() - 20,
+                         r->wrong.Width(), 20, 0x000000AA);
+    r->wrong.BlendText2x32(
+        2, r->wrong.Height() - 19,
+        0xCCCCCCFF,
+        StringPrintf("%d total, %d correct (%.3f%%), %.1f ex/sec",
+                     r->total, r->correct,
+                     (r->correct * 100.0) / r->total,
+                     r->total / r->fwd_time));
+  }
 
   // Needs non-const network, but doesn't modify it.
   Result Evaluate(Network *net) {
     Result result;
+    for (int r = 0; r < CIFAR10::RADIX; r++) {
+      for (int c = 0; c < CIFAR10::RADIX; c++) {
+        result.conf[r][c] = 0;
+      }
+    }
 
     auto net_gpu = std::make_unique<NetworkGPU>(cl, net);
 
@@ -107,6 +128,7 @@ struct EvalCIFAR10 {
         // XXX
         const int example_idx = batch * NUM_PER_BATCH + idx;
         const int correct_label = cifar10_test.labels[example_idx];
+        result.conf[correct_label][besti]++;
         if (besti == correct_label) {
           result.correct++;
         } else {

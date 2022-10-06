@@ -591,7 +591,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
   printf("Saved to %s.\n", model_file.c_str());
 }
 
-static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
+static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
   printf("New network with transfer function %s\n",
          TransferFunctionName(tf));
 
@@ -609,31 +609,28 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
 
   layers.push_back(Network::LayerFromChunks(input_chunk));
 
-  // RGB
-  const int CHANNELS = 3;
-  // i.e. 3x3 pixels
   const int CONV1_SIZE = 3;
   const int CONV1_FEATURES = 64;
 
   Chunk first_conv_chunk =
     Network::Make2DConvolutionChunk(
         // Entire image
-        0, IMG_WIDTH * CHANNELS, IMG_HEIGHT,
-        CONV1_FEATURES, CONV1_SIZE * CHANNELS, CONV1_SIZE,
+        0, IMG_WIDTH, IMG_HEIGHT,
+        CONV1_FEATURES, CONV1_SIZE, CONV1_SIZE,
         // full overlap
-        CHANNELS, 1,
+        1, 1,
         tf, WEIGHT_UPDATE);
 
   const int CONV2_SIZE = 8;
-  const int CONV2_FEATURES = 256;
+  const int CONV2_FEATURES = 128;
 
   Chunk second_conv_chunk =
     Network::Make2DConvolutionChunk(
         // Entire image
-        0, IMG_WIDTH * CHANNELS, IMG_HEIGHT,
-        CONV2_FEATURES, CONV2_SIZE * CHANNELS, CONV2_SIZE,
+        0, IMG_WIDTH, IMG_HEIGHT,
+        CONV2_FEATURES, CONV2_SIZE, CONV2_SIZE,
         // full overlap
-        CHANNELS, 1,
+        1, 1,
         tf, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(first_conv_chunk,
@@ -648,8 +645,6 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
          second_conv_chunk.num_occurrences_down,
          second_conv_chunk.num_features);
 
-  const int NUM_LAYER2_FEATURES = 32;
-
   int num_conv1 =
     CONV1_FEATURES * first_conv_chunk.num_occurrences_across *
     first_conv_chunk.num_occurrences_down;
@@ -660,7 +655,7 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
         CONV1_FEATURES * first_conv_chunk.num_occurrences_across,
         first_conv_chunk.num_occurrences_down,
         // Process 2x2 blocks (of all features) into 32 features.
-        NUM_LAYER2_FEATURES, CONV1_FEATURES * 2, 2,
+        32, CONV1_FEATURES * 2, 2,
         // no overlap
         CONV1_FEATURES * 2, 2,
         tf, WEIGHT_UPDATE);
@@ -677,7 +672,7 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
         CONV2_FEATURES * second_conv_chunk.num_occurrences_across,
         second_conv_chunk.num_occurrences_down,
         // As above, into 32 features.
-        NUM_LAYER2_FEATURES, CONV2_FEATURES * 2, 2,
+        32, CONV2_FEATURES * 2, 2,
         // No overlap.
         CONV2_FEATURES * 2, 2,
         tf, WEIGHT_UPDATE);
@@ -694,6 +689,7 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
          next_conv2.num_occurrences_down,
          next_conv2.num_features);
 
+  // XXX added these for "deep" experiments.
   const int NUM_DEEP = 2;
   int layer_size = 1024;
   for (int i = 0; i < NUM_DEEP; i++) {
@@ -707,12 +703,11 @@ static unique_ptr<Network> NewImagesNetwork(TransferFunction tf) {
     layer_size >>= 1;
   }
 
-  // Output layer. Uses IDENTITY so that any transfer function can
-  // generate any gamut (but still be "linear").
+  // Output layer.
   Chunk dense_out =
     Network::MakeDenseChunk(OUTPUT_SIZE,
                             0, layers.back().num_nodes,
-                            IDENTITY, WEIGHT_UPDATE);
+                            tf, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(dense_out));
 
@@ -752,7 +747,7 @@ int main(int argc, char **argv) {
       Network::ReadFromFile(model_file));
 
   if (net.get() == nullptr) {
-    net = NewImagesNetwork(tf);
+    net = NewDigitsNetwork(tf);
     CHECK(net.get() != nullptr);
     net->SaveToFile(model_file);
     printf("Wrote to %s\n", model_file.c_str());

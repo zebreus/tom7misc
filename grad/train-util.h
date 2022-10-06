@@ -309,18 +309,18 @@ struct TrainingImages {
 
           const uint8_t stim_alpha =
             std::clamp((255.0f / sqrtf(chunk.num_nodes * num_examples)),
-                       10.0f, 240.0f);
+                       8.0f, 200.0f);
 
           for (int ex = 0; ex < num_examples; ex++) {
-            uint32_t c = ColorUtil::LinearGradient32(
-                RAINBOW, ex / (float)num_examples);
-
-            c &= ~0xFF;
-            c |= stim_alpha;
-
             for (int i = 0; i < chunk.num_nodes; i++) {
               const int idx =
                 layer.num_nodes * ex + (chunk_start + i);
+
+              float cf = i / (float)chunk.num_nodes;
+              uint32_t c = ColorUtil::LinearGradient32(RAINBOW, cf);
+
+              c &= ~0xFF;
+              c |= stim_alpha;
 
               CHECK(idx >= 0 && idx < layer_values.size());
               const float f = layer_values[idx];
@@ -368,6 +368,77 @@ private:
   // Parallel to layers/chunks
   std::vector<std::vector<std::unique_ptr<HistoryImage>>> images;
 };
+
+template<int RADIX>
+struct ConfusionImage {
+  static constexpr int COL_HEIGHT = 10 * RADIX * RADIX;
+  ConfusionImage(int width,
+                 const std::array<std::string, RADIX> &labels,
+                 const std::string &filename) : labels(labels),
+                                                himage(filename, width,
+                                                       COL_HEIGHT, true) {
+    static constexpr int LABCHAR = 6;
+    auto Trunc = [&](std::string label) {
+        if (label.size() > LABCHAR) label.resize(LABCHAR);
+        return Util::Pad(LABCHAR, label);
+      };
+
+    // XXX Should be able to reserve space on left in historyimage
+    if (himage.col == 0) {
+      himage.SetTitle("Confusions: Actual | Predicted");
+
+      // Init!
+      int yy = HistoryImage::HEADER_HEIGHT;
+      for (int actual = 0; actual < RADIX; actual++) {
+        std::string alab = Trunc(labels[actual]);
+        for (int pred = 0; pred < RADIX; pred++) {
+          std::string plab = Trunc(labels[pred]);
+          himage.image->BlendText32(1, yy, 0x8888CCFF, alab);
+          himage.image->BlendText32(1 + LABCHAR * 9, yy,
+                                    0x444444FF, "|");
+          himage.image->BlendText32(1 + (LABCHAR + 1) * 9, yy,
+                                    0xCC88CCFF, plab);
+          yy += 10;
+        }
+      }
+
+      himage.col = 1 + (LABCHAR + 1 + LABCHAR) * 9 + 2;
+    }
+  }
+
+  void Add(const std::array<std::array<int, RADIX>, RADIX> &conf) {
+    ImageRGBA col(1, COL_HEIGHT);
+    col.Clear32(0x000000FF);
+    int yy = 0;
+    for (int r = 0; r < RADIX; r++) {
+
+      int rtotal = 0;
+      for (const int cell : conf[r])
+        rtotal += cell;
+
+      for (int c = 0; c < RADIX; c++) {
+        float f = conf[r][c] / (float)rtotal;
+        uint8_t v = std::clamp((int)(f * 255.0f), 0, 255);
+
+        uint32_t color = 0xFF | ((r == c) ? (v << 16) : (v << 24));
+        for (int y = 0; y < 9; y++) {
+          col.SetPixel32(0, yy + y, color);
+        }
+        yy += 10;
+      }
+    }
+
+    himage.AddColumn(col);
+  }
+
+  void Save() {
+    himage.Save();
+  }
+
+  const std::array<std::string, RADIX> labels;
+  HistoryImage himage;
+};
+
 
 // TODO: Use HistoryImage.
 struct ErrorImage {

@@ -9,14 +9,14 @@
 #include "base/stringprintf.h"
 #include "base/logging.h"
 
-#include "eval-cifar10.h"
+#include "eval-mnist.h"
 
 using namespace std;
 
 static CL *cl = nullptr;
 
 int main(int argc, char **argv) {
-  CHECK(argc == 3) << "./evaluate-cifar10.exe modelfile wrong.png\n";
+  CHECK(argc == 3) << "./evaluate-mnist.exe modelfile wrong.png\n";
   cl = new CL;
 
   const string model_name = argv[1];
@@ -28,9 +28,9 @@ int main(int argc, char **argv) {
   net->StructuralCheck();
   net->NaNCheck(model_name);
 
-  EvalCIFAR10 evaluator(cl);
+  EvalMNIST evaluator(cl);
 
-  EvalCIFAR10::Result res = evaluator.Evaluate(net.get());
+  EvalMNIST::Result res = evaluator.Evaluate(net.get());
 
   printf("Predicted %d in %.3fs\n",
          res.total, res.fwd_time);
