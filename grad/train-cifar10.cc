@@ -540,7 +540,8 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
 
     // TODO: Should probably synchronize saving images with saving
     // the model. Otherwise when we continue, we lose pixels that
-    // were written to the image but not saved to disk.
+    // were written to the image but not saved to disk. We now explicitly
+    // save when we save the image,
     if (net->rounds < IMAGE_EVERY || (iter % IMAGE_EVERY) == 0) {
       Timer image_timer;
       net_gpu->ReadFromGPU();
@@ -572,6 +573,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
       if (VERBOSE)
         printf("Wrote %s\n", filename.c_str());
       error_history.Save();
+      images.Save();
     }
 
     // Parameter for average_loss termination?
@@ -631,6 +633,9 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
              other_ms * msr);
     }
   }
+
+  error_history.Save();
+  images.Save();
 
   printf("Reached max_rounds of %lld.\n", max_rounds);
   net->SaveToFile(model_file);

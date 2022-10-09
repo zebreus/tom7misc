@@ -68,6 +68,8 @@ struct GradUtil {
   static constexpr uint16 NEG_HIGH = 0xBC00; // -1
 
   // Run f on all u16s in [-1, +1].
+  // This runs in magnitude order; use ForNeg1To1Ascending
+  // for number line order.
   template<class F>
   static inline void ForPosNeg1(F f) {
     // Negative
@@ -85,6 +87,16 @@ struct GradUtil {
       f((uint16)u);
     // Negative
     for (int u = 0x8000; u < 0xfc00; u++)
+      f((uint16)u);
+  }
+
+  template<class F>
+  static inline void ForNeg1To1Ascending(F f) {
+    // Negative
+    for (int u = NEG_HIGH; u >= NEG_LOW; u--)
+      f((uint16)u);
+    // Positive
+    for (int u = POS_LOW; u <= POS_HIGH; u++)
       f((uint16)u);
   }
 

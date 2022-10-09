@@ -526,6 +526,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       if (VERBOSE)
         printf("Wrote %s\n", filename.c_str());
       error_history.Save();
+      images.Save();
     }
 
     // Parameter for average_loss termination?
@@ -585,6 +586,9 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
              other_ms * msr);
     }
   }
+
+  error_history.Save();
+  images.Save();
 
   printf("Reached max_rounds of %lld.\n", max_rounds);
   net->SaveToFile(model_file);

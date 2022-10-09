@@ -480,6 +480,7 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
       string eimg_file = Util::dirplus(dir, MODEL_BASE "-error.png");
       error_image.Save(eimg_file);
       printf("Wrote %s\n", eimg_file.c_str());
+      images.Save();
     }
 
     round_ms += round_timer.MS();

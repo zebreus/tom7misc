@@ -149,61 +149,91 @@ static void PlotShift() {
   img.Clear32(0x000000FF);
   GradUtil::Grid(&img);
 
-  Table upresult;
-  Table scaled_upresult;
-  Table dnresult;
-  Table scaled_dnresult;
-  Table dn2result;
-  Table dn2seresult;
+  Table up;
+  Table scaled_up;
+  Table dn;
+  Table scaled_dn;
+  Table dn2;
+  Table dn2se;
+  Table dnxor;
+  Table dn2xor;
+  Table dn2or;
   for (int i = 0; i < 65536; i++) {
     {
       uint16 upout = i << 1;
-      upresult[i] = upout;
+      up[i] = upout;
       half h = Exp::GetHalf(upout) / (half)32768.0;
-      scaled_upresult[i] = Exp::GetU16(h);
+      scaled_up[i] = Exp::GetU16(h);
     }
 
     {
       uint16 downout = i >> 1;
-      dnresult[i] = downout;
+      dn[i] = downout;
       half h = Exp::GetHalf(downout) / (half)-512.0;
-      scaled_dnresult[i] = Exp::GetU16(h);
+      scaled_dn[i] = Exp::GetU16(h);
     }
 
     {
       uint16 down2out = i >> 2;
-      dn2result[i] = down2out;
+      dn2[i] = down2out;
     }
 
     {
       // With sign extension.
       uint16 down2seout = (i >> 2);
       if (i & 0x8000) down2seout |= 0xC000;
-      dn2seresult[i] = down2seout;
+      dn2se[i] = down2seout;
+    }
+
+    {
+      dnxor[i] = (i >> 1) ^ i;
+    }
+
+    {
+      dn2xor[i] = (i >> 2) ^ i;
+    }
+
+    {
+      dn2or[i] = (i >> 2) | i;
     }
 
   }
 
   int ypos = 2;
-  auto Add = [&](const string &name, const Table &table, uint32 color) {
+  auto Add = [&](const string &name,
+                 const std::function<uint16(uint16)> &f,
+                 uint32 color) {
+      Table table;
+      for (int i = 0; i < 65536; i++) table[i] = f(i);
       GradUtil::Graph(table, color, &img);
       img.BlendText2x32(2, ypos, color, name);
       ypos += 20;
     };
 
   /*
-  Add("up", upresult, 0xAAAAFFAA);
-  Add("up, scaled", scaled_upresult, 0x3333FFAA);
-  Add("down", dnresult, 0xAAFFAAAA);
-  Add("down, scaled", scaled_dnresult, 0x33FF33AA);
+  Add("up", up, 0xAAAAFFAA);
+  Add("up, scaled", scaled_up, 0x3333FFAA);
+  Add("down", dn, 0xAAFFAAAA);
+  Add("down, scaled", scaled_dn, 0x33FF33AA);
   */
 
   // shifting down by two seems to be a sweet spot that does not
   // require any scaling to be reasonable (because down-shifting
-  // is basically scaling once the sign bit is in the exponent.
+  // is basically scaling once the sign bit is in the exponent).
   // Tom 7 approved!
-  Add("down2", dn2result, 0xFFAAAAAA);
-  // Add("down2, sign extended", dn2seresult, 0xFFAAFFAA);
+  Add("down2", [](uint16 u) { return u >> 2; }, 0xFFAAAAAA);
+  // Add("down2, sign extended", dn2se, 0xFFAAFFAA);
+
+  // Looks awesome, but probably useless!
+  // Add("dnxor", dnxor, 0x77AAFFAA);
+  // Add("dn2xor", dn2xor, 0xAAFF77AA);
+
+  Add("dn2or", [](uint16 u) { return (u >> 2) | u; }, 0x0066CCAA);
+
+  Add("DownUp", [](uint16 u) {
+      uint16 uu = u >> 2;
+      return uu << 2;
+    }, 0x00FFAAAA);
 
   img.Save("op-shift.png");
 }

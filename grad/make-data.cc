@@ -34,7 +34,8 @@ static inline float Unpack16AsFloat(uint16 u) {
 static constexpr int IMAGE_SIZE = 1920;
 
 static void MakeData(const std::array<uint16_t, 65536> &table,
-                     const string &name) {
+                     const string &name,
+                     bool force_monotonic) {
   printf("Writing data for " ABLUE("%s") "\n", name.c_str());
   const string forward_file = StringPrintf("forward-%s.png", name.c_str());
   const string deriv_file = StringPrintf("deriv-%s.png", name.c_str());
@@ -59,24 +60,26 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
   img.Clear32(0x000000FF);
   GradUtil::Grid(&img);
 
-    // Loop over [-1, 1].
-    auto Plot = [&](uint16 input) {
-        uint16 output = table[input];
-        double x = GradUtil::GetHalf(input);
-        double y = GradUtil::GetHalf(output);
+  double XBOUNDS = 65536.0;
+  double YBOUNDS = 8.0;
+  // Loop over [-1, 1].
+  auto Plot = [&](uint16 input) {
+      uint16 output = table[input];
+      double x = GradUtil::GetHalf(input);
+      double y = GradUtil::GetHalf(output);
 
-        int xs = (int)std::round((img.Width() / 2) + x * (img.Width() / 8.0));
-        int ys = (int)std::round((img.Width() / 2) + -y * (img.Width() / 8.0));
+      int xs = (int)std::round((img.Width() / 2) + x * (img.Width() / XBOUNDS));
+      int ys = (int)std::round((img.Height() / 2) + -y * (img.Width() / YBOUNDS));
 
-        // ys = std::clamp(ys, 0, size - 1);
+      // ys = std::clamp(ys, 0, size - 1);
 
-        uint32 c = 0xFFFFFF77;
-        /*
-        if (x < -1.0f) c = 0xFF000022;
-        else if (x > 1.0f) c = 0x00FF0022;
-        */
-        img.BlendPixel32(xs, ys, c);
-      };
+      uint32 c = 0xFF77FF77;
+      /*
+      if (x < -1.0f) c = 0xFF000022;
+      else if (x > 1.0f) c = 0x00FF0022;
+      */
+      img.BlendPixel32(xs, ys, c);
+    };
 
     /*
     for (int i = NEG_LOW; i < NEG_HIGH; i++) Plot(i);
@@ -122,6 +125,8 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
   // pointwise, but then apply a lowpass filter for smoothing.
   // We'll do the calculation as doubles, but output floats.
 
+  // Get all the x,y points and sort them by their x coordinates
+  // (in float space).
   std::vector<std::pair<uint16, uint16>> points;
   GradUtil::ForEveryFinite16([&table, &points](uint16 x) {
       uint16 y = table[x];
@@ -140,9 +145,15 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
               return af < bf;
             });
 
+  [[maybe_unused]]
+  bool has_negative = false, has_positive = false;
   for (const auto &[x, y] : points) {
-    CHECK(!std::isnan(Unpack16AsFloat(x)));
-    CHECK(!std::isnan(Unpack16AsFloat(y)));
+    const float fx = Unpack16AsFloat(x);
+    const float fy = Unpack16AsFloat(y);
+    CHECK(!std::isnan(fx));
+    CHECK(!std::isnan(fy));
+    if (fy < 0.0) has_negative = true;
+    if (fy > 0.0) has_positive = true;
   }
 
   auto GetPoint = [&points](int i) {
@@ -155,10 +166,11 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
     const auto [ax, ay] = points[i - 1];
     const auto [bx, by] = points[i];
     CHECK(Unpack16AsFloat(ax) <= Unpack16AsFloat(bx));
-    if (false)
+    if (!force_monotonic) {
     CHECK(Unpack16AsFloat(ay) <= Unpack16AsFloat(by)) <<
       StringPrintf("Want %04x <= %04x (%.4f <= %.4f)\n",
                    ay, by, Unpack16AsFloat(ay), Unpack16AsFloat(by));
+    }
   }
 
   // Now compute the derivative at every y value. We do this by
@@ -208,8 +220,34 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
     CHECK(!v.empty());
     double t = 0.0;
     for (double y : v) t += y;
-    return t / v.size();
+    double dx = t / v.size();
+    CHECK(std::isfinite(dx)) << t << " / " << v.size();
+    return dx;
   };
+
+  // Debug dump
+  if (false) {
+    FILE *f = fopen("deriv-data.txt", "wb");
+    CHECK(f);
+    for (int y = 0; y < 65536; y++) {
+      fprintf(f, "%04x = %.11g:", y, Unpack16AsFloat(y));
+      for (double d : deriv[y]) {
+        fprintf(f, " %.7f", d);
+      }
+      fprintf(f, "\n");
+    }
+    fclose(f);
+    printf("Wrote deriv-data.txt\n");
+  }
+
+  // Since the code below doesn't cross between positive and negative,
+  // if the function never outputs negative values then we won't be
+  // able to fill anything in there. This is true for downshift2. So
+  // as a hack, fill one value in with something arbitrary.
+  if (!has_negative) {
+    CHECK(deriv[0x8000].empty());
+    deriv[0x8000].push_back(1.0);
+  }
 
   // Now, fill in any gaps. Here we insist on a value for
   // every finite y.
@@ -222,8 +260,10 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
         // Empty. Get the adjacent (in the given direction) bucket that
         // has values, along with the bucket's y coordinate. If there
         // are no non-empty buckets, the coordinate is not meaningful.
-        auto GetAdjacentBucket = [&](uint16 u, int dir) ->
+        auto GetAdjacentBucket = [&](const uint16 u, const int dir) ->
           pair<uint16, vector<double>> {
+          bool verbose = u == 0x3f00; // false; // u == 0x8000; // u == 0x1f01;
+
           // TODO: Can use NextAfter16?
           // Here we really want like std::nextafter, but instead we
           // just stay in the two contiguous ranges where the values
@@ -231,25 +271,34 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
           // to go between -0 and 0.
           // Positive is 0-0x7c00. Negative is 0x8000-0xfc00.
           if (u >= 0x0000 && u <= 0x7c00) {
-            for (uint16 v = u + dir;
+            for (int v = u + dir;
                  v >= 0x0000 && v <= 0x7c00;
-                 u += dir) {
-              if (!deriv[v].empty())
+                 v += dir) {
+              if (!deriv[v].empty()) {
+                CHECK(!deriv[v].empty());
+                CHECK(deriv[v].size() > 0);
+                if (verbose) printf("return 0000-7c00: %d\n", deriv[v].size());
                 return std::make_pair(v, deriv[v]);
+              }
             }
 
           } else if (u >= 0x8000 && u <= 0xfc00) {
-            for (uint16 v = u + dir;
+            for (int v = u + dir;
                  v >= 0x8000 && v <= 0xfc00;
-                 u += dir) {
-              if (!deriv[v].empty())
+                 v += dir) {
+              if (verbose) printf("Try %04x.. %d\n", v, deriv[v].size());
+              if (!deriv[v].empty()) {
+                if (verbose) printf("return 8000-fc00: %d\n", deriv[v].size());
                 return std::make_pair(v, deriv[v]);
+              }
             }
 
           } else {
             CHECK(false) << u;
           }
+
           // None found.
+          if (verbose) printf("%04x %d return none\n", u, dir);
           return std::make_pair(u, std::vector<double>{});
         };
 
@@ -259,7 +308,12 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
 
         // We should have adjacent points either up or down.
         CHECK(!pv.empty() || !nv.empty()) <<
-          StringPrintf("%04x = %.6f", yu, Unpack16AsFloat(yu));
+          StringPrintf("At point: %04x = %.6f\n"
+                       "Prev with data: %04x = %.6f\n"
+                       "Next with data: %04x = %.6f\n",
+                       yu, Unpack16AsFloat(yu),
+                       pyu, Unpack16AsFloat(pyu),
+                       nyu, Unpack16AsFloat(nyu));
 
         if (!pv.empty() && !nv.empty()) {
           // If we have both, interpolate.
@@ -275,19 +329,37 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
           // floats.
           if (py <= y && y <= ny) {
             double f = (y - py) / ny - py;
-            deriv_out[yu] = std::lerp(pd, nd, f);
+            double dx = std::lerp(pd, nd, f);
+            CHECK(std::isfinite(dx)) <<
+              StringPrintf(
+                  "%04x: lerp(%.3f, %.3f, (%.3f - %.3f) / (%.3f - %.3f)) = %.3f",
+                  yu, pd, nd, y, py, ny, py, dx);
+            deriv_out[yu] = dx;
           } else if (ny <= y && y <= py) {
             double f = (y - ny) / py - ny;
-            deriv_out[yu] = std::lerp(nd, pd, f);
+            double dx = std::lerp(nd, pd, f);
+            CHECK(std::isfinite(dx)) <<
+              StringPrintf(
+                  "%04x: lerp(%.3f, %.3f, (%.3f - %.3f) / (%.3f - %.3f)) = %.3f",
+                  yu, nd, pd, y, ny, py, ny, dx);
+            deriv_out[yu] = dx;
           } else {
             CHECK(false) << "y points should be ordered";
           }
+        } else if (!pv.empty()) {
+          // Otherwise just copy the previous point.
+          deriv_out[yu] = AverageVec(pv);
+        } else {
+          // ... or next point.
+          CHECK(!nv.empty());
+          deriv_out[yu] = AverageVec(nv);
         }
       }
     });
 
   GradUtil::ForEveryFinite16([&deriv_out](uint16 yu) {
-      CHECK(std::isfinite(deriv_out[yu])) << yu;
+      CHECK(std::isfinite(deriv_out[yu])) <<
+        StringPrintf("%04x: %.3f\n", yu, deriv_out[yu]);
     });
 
   printf("  deriv at " AYELLOW("0xfbff") " (min finite): " APURPLE("%.6f") "\n"
@@ -344,18 +416,46 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
         max_mag = std::max(std::abs(deriv_out[u]), max_mag);
     });
 
+  // But clip extreme magnitudes.
+  max_mag = std::min(max_mag, 2.0);
+
   const double scale = ((IMAGE_SIZE / 2.0) * 0.9) / max_mag;
-  GradUtil::ForPosNeg1([&img, &deriv_out, scale](uint16 u) {
+  GradUtil::ForNeg1To1Ascending([&table, &img, &deriv_out, scale](uint16 yu) {
       // Or plot some error pixels. But we assert this above.
-      if (!std::isfinite(deriv_out[u])) return;
+      if (!std::isfinite(deriv_out[yu])) return;
 
       // Scaled
-      double y = Unpack16AsFloat(u);
+      double y = Unpack16AsFloat(yu);
       int ys = (int)std::round((IMAGE_SIZE / 2) + -y * (IMAGE_SIZE / 2.0));
 
-      double d = deriv_out[u] * scale;
+      double d = deriv_out[yu] * scale;
       int ds = (int)std::round((IMAGE_SIZE / 2) + d);
       img.BlendPixel32(ds, ys, 0xFFFF0077);
+      });
+
+  // Also plot the running integral of the derivative, to see that it's
+  // close to the original function. Start with the value immediately
+  // less than -1.
+  double yint = Unpack16AsFloat(table[0xbc01]);
+  double prevx = Unpack16AsFloat(0xbc01);
+  GradUtil::ForNeg1To1Ascending(
+      [&table, &img, &deriv_out, &yint, &prevx](uint16 xu) {
+
+      const double x = Unpack16AsFloat(xu);
+      CHECK(x >= prevx) << StringPrintf("want %.11g >= %.11g\n", x, prevx);
+      const double dx = x - prevx;
+      // Derivative table is indexed by f(x), not x.
+      const uint16 yu = table[xu];
+      const double dy = deriv_out[yu];
+
+      if (dx > 0.0)
+        yint += dy * dx;
+
+      int xs = (int)std::round((IMAGE_SIZE / 2.0) + x * (IMAGE_SIZE / 2.0));
+      int ys = (int)std::round((IMAGE_SIZE / 2.0) - yint * (IMAGE_SIZE / 2.0));
+      img.BlendPixel32(xs, ys, 0xFF000033);
+
+      prevx = x;
     });
 
   string md = StringPrintf("%0.5f", max_mag);
@@ -363,14 +463,15 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
                   md);
 
   img.Save(viz_file);
+  printf("Wrote viz to " AGREEN("%s") "\n", viz_file.c_str());
 }
 
 int main(int argc, char **argv) {
   AnsiInit();
 
-  {
+  if (true) {
     State state = GradUtil::MakeTable1();
-    MakeData(state.table, "grad1");
+    MakeData(state.table, "grad1", false);
   }
 
   {
@@ -379,7 +480,7 @@ int main(int argc, char **argv) {
       uint16 out = i >> 2;
       table[i] = out;
     }
-    MakeData(table, "downshift2");
+    MakeData(table, "downshift2", true);
   }
 
   return 0;

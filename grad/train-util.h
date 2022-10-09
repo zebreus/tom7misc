@@ -102,7 +102,7 @@ struct HistoryImage {
   }
 
   void Save() {
-    const int next_x = col + 1;
+    const int next_x = col;
     // Width must fit in 24 bits.
     CHECK(next_x == (next_x & 0xFFFFFF)) << "out of range!";
     image->SetPixel32(0, 0, ((uint32_t)next_x << 8) | 0xFF);
@@ -203,8 +203,6 @@ struct TrainingImages {
               int num_examples,
               const std::vector<std::vector<float>> &stims) {
     samples++;
-    const bool save_this_time = (samples % 100) == 0;
-    Asynchronously save_async(4);
 
     const int weight_height = image_col_height / 2;
     const int stim_height = image_col_height - weight_height;
@@ -330,21 +328,31 @@ struct TrainingImages {
 
           himage->AddColumn(column);
 
-          if (save_this_time) {
-            save_async.Run([himage]() {
-                himage->Save();
-              });
-          }
         }
 
         chunk_start += chunk.num_nodes;
       }
     }
 
-    if (save_this_time) {
-      save_async.Wait();
-      printf("Saved training images.\n");
+    if ((samples % 100) == 0) {
+      Save();
     }
+  }
+
+  void Save(int num_threads = 4) {
+
+    Asynchronously save_async(num_threads);
+
+    for (auto &vc : images) {
+      for (auto &himage : vc) {
+        save_async.Run([hi = himage.get()]() {
+            hi->Save();
+          });
+      }
+    }
+
+    save_async.Wait();
+    printf("Saved training images.\n");
   }
 
 private:
