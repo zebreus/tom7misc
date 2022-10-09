@@ -424,9 +424,13 @@ struct Asynchronously {
   }
 
   // Wait until all threads have finished.
-  ~Asynchronously() {
+  void Wait() {
     std::unique_lock<std::mutex> ul(m);
     cond.wait(ul, [this]{ return threads_active == 0; });
+  }
+
+  ~Asynchronously() {
+    Wait();
   }
 
  private:

@@ -10,6 +10,7 @@
 
 #include "randutil.h"
 #include "image.h"
+#include "timer.h"
 
 using namespace std;
 
@@ -109,7 +110,33 @@ static void TestConvert() {
   }
 }
 
+static void BenchLinearGradient() {
+  ImageRGBA out(256, 256);
+  out.Clear32(0x000000FF);
+
+  Timer timer;
+  static constexpr int ITERS = 2500;
+  for (int iters = 0; iters < ITERS; iters++) {
+    for (int y = 0; y < 256; y++) {
+      float fy = cosf(y * (3.14159f / 32.0f)) * 0.5f + 1.0f;
+      for (int x = 0; x < 256; x++) {
+        float fx = sinf(x * (3.14159f / 16.0f)) * 0.5f + 1.0f;
+        uint32_t c = ColorUtil::LinearGradient32(
+            ColorUtil::HEATED_METAL, fx * fy);
+        out.SetPixel32(x, y, c);
+      }
+    }
+  }
+  double sec = timer.Seconds();
+  printf("%d passes in %.3fs = %.3f p/s\n",
+         ITERS, sec, ITERS / sec);
+
+  out.Save("bench-lineargradient.png");
+}
+
 int main () {
+  BenchLinearGradient();
+
   TestHSV();
   TestLab();
   TestGradient();

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <tuple>
 #include <utility>
+#include <cmath>
 
 // static
 std::tuple<float, float, float>
@@ -152,13 +153,12 @@ ColorUtil::LinearGradient(
     const auto [px, pr, pg, pb] = prev;
     const auto [x, r, g, b] = now;
     if (t < x) {
-     // linear interpolation
+      // linear interpolation
       const float w = x - px;
       const float f = (t - px) / w;
-      const float omf = 1.0f - f;
-      return std::make_tuple(f * r + omf * pr,
-                             f * g + omf * pg,
-                             f * b + omf * pb);
+      return std::make_tuple(std::lerp(pr, r, f),
+                             std::lerp(pg, g, f),
+                             std::lerp(pb, b, f));
     }
     prev = now;
   }

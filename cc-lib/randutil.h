@@ -199,9 +199,9 @@ static void Shuffle(ArcFour *rc, std::array<T, N> *v) {
 
 // Generates two at once, so needs some state.
 struct RandomGaussian {
-  bool have = false;
-  double next = 0;
+  double next = 0.0;
   ArcFour *rc = nullptr;
+  bool have = false;
   explicit RandomGaussian(ArcFour *rc) : rc(rc) {}
   double Next() {
     if (have) {
