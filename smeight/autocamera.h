@@ -1,6 +1,6 @@
 
-#ifndef __AUTOCAMERA_H
-#define __AUTOCAMERA_H
+#ifndef _SMEIGHT_AUTOCAMERA_H
+#define _SMEIGHT_AUTOCAMERA_H
 
 #include "smeight.h"
 
@@ -22,13 +22,13 @@
 //    right way to distinguish.
 struct AutoCamera {
   static constexpr int NUM_EMULATORS = 16;
-  
+
   // Since emulator startup is a little expensive, this keeps
   // around an emulator instance (pass the cartridge filename).
   AutoCamera(const string &game, bool first_player = true);
 
   ~AutoCamera();
-  
+
   // TODO: Make the search procedure use multiple threads.
   //
   // All of this is predicated on the idea that there should
@@ -80,18 +80,18 @@ struct AutoCamera {
     // Same, but for y coordinates.
     vector<pair<uint16, int>> ymems;
   };
-  
+
   // Returns a vector of sprite indices that meet the criteria. Only
   // xmems will be filled in.
   vector<XYSprite> GetXSprites(const vector<uint8> &uncompressed_state,
-			       int *num_frames);
+                               int *num_frames);
 
   // Upgrade a set of sprites with only x coordinates to ones with
-  // both x and y coordinates. 
+  // both x and y coordinates.
   vector<XYSprite> FindYCoordinates(const vector<uint8> &uncompressed_state,
-				    int x_num_frames,
-				    const vector<XYSprite> &xsprites,
-				    vector<int> *player_sprites);
+                                    int x_num_frames,
+                                    const vector<XYSprite> &xsprites,
+                                    vector<int> *player_sprites);
 
   // Must have x and y coordinates filled in, i.e. after FindYCoordinates.
   //
@@ -117,9 +117,9 @@ struct AutoCamera {
   // into these locations). Returns true if successful, and sets is_top
   // accordingly.
   bool DetectViewType(const vector<uint8> &uncompressed_state,
-		      int x_num_frames,
-		      const vector<XYSprite> &consequential_sprites,
-		      bool *is_top);
+                      int x_num_frames,
+                      const vector<XYSprite> &consequential_sprites,
+                      bool *is_top);
 
   // Detect the camera angle address. This is assumed to be a single
   // byte in memory that takes different values depending on whether
@@ -129,20 +129,20 @@ struct AutoCamera {
   // Sprites do not have to be consequential.
   enum CameraStatus { CAMERA_ALL, CAMERA_LR, CAMERA_FAILED };
   CameraStatus DetectCameraAngle(const vector<uint8> &uncompressed_state,
-				 int x_num_frames,
-				 const vector<XYSprite> &xysprites,
-				 uint16 *addr,
-				 uint8 *up, uint8 *down,
-				 uint8 *left, uint8 *right);
+                                 int x_num_frames,
+                                 const vector<XYSprite> &xysprites,
+                                 uint16 *addr,
+                                 uint8 *up, uint8 *down,
+                                 uint8 *left, uint8 *right);
 
   // For printing out memory address (with optional offset) in XYSprite.
   static string AddrOffset(pair<uint16, int> p);
-  
+
  private:
   void GetSavestates(const vector<uint8> &uncompressed_state,
-		     int num_experiments,
-		     int x_num_frames,
-		     vector<vector<uint8>> *savestates);
+                     int num_experiments,
+                     int x_num_frames,
+                     vector<vector<uint8>> *savestates);
   const bool first_player = false;
   vector<Emulator *> emus;
 };

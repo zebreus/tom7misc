@@ -27,7 +27,7 @@ static uint64 Checksum(const uint64 *data, int num_words) {
     b = (b >> 13) | (b << (64 - 13));
     b ^= w & 0xFFFFFF;
     b += 0xBEEFFACEDEADF00D;
-    
+
     const uint64 t = a;
     a = b;
     b = t;
@@ -45,8 +45,8 @@ static uint64 Checksum(const uint64 *data, int num_words) {
 // use thread ids to grab a thread-local emulator.
 template<class F>
 static void ParallelIdx(int num,
-			const F &f,
-			int max_concurrency) {
+                        const F &f,
+                        int max_concurrency) {
   max_concurrency = std::min(num, max_concurrency);
   // Need at least one thread for correctness.
   CHECK(max_concurrency >= 1);
@@ -59,18 +59,18 @@ static void ParallelIdx(int num,
     // Thread applies f repeatedly until there are no more indices.
     auto th = [&index_m, &next_index, num, &f, thread_id]() {
       for (;;) {
-	index_m.lock();
-	if (next_index == num) {
-	  // All done. Don't increment counter so that other threads can
-	  // notice this too.
-	  index_m.unlock();
-	  return;
-	}
-	int my_index = next_index++;
-	index_m.unlock();
+        index_m.lock();
+        if (next_index == num) {
+          // All done. Don't increment counter so that other threads can
+          // notice this too.
+          index_m.unlock();
+          return;
+        }
+        int my_index = next_index++;
+        index_m.unlock();
 
-	// Do work, not holding mutex.
-	(void)f(thread_id, my_index);
+        // Do work, not holding mutex.
+        (void)f(thread_id, my_index);
       }
     };
 
@@ -90,7 +90,7 @@ static void UnParallelIdx(int num, const F &f, int max_concurrency_ignored) {
 uint64 AutoTiles::TilesCRC(const Emulator *emu) {
   const PPU *ppu = emu->GetFC()->ppu;
   const uint8 ppu_ctrl = ppu->PPU_values[0];
-   
+
   // BG pattern table can be at 0 or 0x1000, depending on control bit.
   const uint32 bg_pat_addr = (ppu_ctrl & (1 << 4)) ? 0x1000 : 0x0000;
   const uint8 *vram = emu->GetFC()->cart->VPagePointer(bg_pat_addr);
@@ -112,24 +112,24 @@ uint64 AutoTiles::TilesCRC(const Emulator *emu) {
 // XXX when walking left and right, consider forcing the y
 // coordinate to be the same each time, for games with gravity.
 static bool HaveLRControl(Emulator *emu,
-			  const vector<uint8> &start,
-			  const AngleRule &left_angle,
-			  const AngleRule &right_angle,
-			  int *nframes,
-			  const XYSprite &sprite) {
+                          const vector<uint8> &start,
+                          const AngleRule &left_angle,
+                          const AngleRule &right_angle,
+                          int *nframes,
+                          const XYSprite &sprite) {
   emu->LoadUncompressed(start);
   const uint8 *spram = emu->GetFC()->ppu->SPRAM;
   const uint8 startx = spram[sprite.sprite_idx * 4 + 3];
   const uint8 starty = spram[sprite.sprite_idx * 4 + 0];
-  
+
   printf("Sprite %d starts at %02x/%02x.\n", sprite.sprite_idx,
-	 startx, starty);
+         startx, starty);
 
   // Could try braking the player first?
   // uint8 *ram = emu->GetFC()->fceu->RAM;
 
   // XXX consider scroll pos!
-  
+
   // Face right.
   // ram[right_angle.memory_location] = right_angle.value;
   // Try walking right.
@@ -151,7 +151,7 @@ static bool HaveLRControl(Emulator *emu,
   }
 
   emu->LoadUncompressed(start);
-  
+
   // Face left.
   // ram[left_angle.memory_location] = left_angle.value;
   // Try walking left.
@@ -173,7 +173,7 @@ static bool HaveLRControl(Emulator *emu,
   }
 
   *nframes = max(walkleft, walkright);
-  
+
   return true;
 }
 
@@ -188,12 +188,12 @@ struct Experiment {
 }
 
 static void TestSolidity(Emulator *emu,
-			 const vector<uint8> &savestate,
-			 Experiment *expt,
-			 const AngleRule &left_angle,
-			 const AngleRule &right_angle,
-			 const XYSprite &sprite,
-			 int nframes) {
+                         const vector<uint8> &savestate,
+                         Experiment *expt,
+                         const AngleRule &left_angle,
+                         const AngleRule &right_angle,
+                         const XYSprite &sprite,
+                         int nframes) {
   emu->LoadUncompressed(savestate);
 
   // Ok, finally, a test of a single tile on-screen for solidity.
@@ -231,7 +231,7 @@ static void TestSolidity(Emulator *emu,
 
   uint8 *ram = emu->GetFC()->fceu->RAM;
   uint8 *spram = emu->GetFC()->ppu->SPRAM;
-  
+
   // Face left.
   // ram[left_angle.memory_location] = left_angle.value;
 
@@ -270,7 +270,7 @@ static void TestSolidity(Emulator *emu,
     emu->StepFull(INPUT_L, 0);
   }
 
-  
+
   if (spram[sprite.sprite_idx * 4 + 3] < xmiddle) {
     // printf("%d,%d Not solid! %2x < %2x ?< %02x\n", expt->x, expt->y,
     // spram[sprite.sprite_idx * 4 + 3], xmiddle, next_column);
@@ -285,9 +285,9 @@ static void TestSolidity(Emulator *emu,
 
 vector<AutoTiles::Tile> AutoTiles::
 GetTileInfo(Emulator *emu,
-	    const AngleRule &left_angle, const AngleRule &right_angle,
-	    bool is_top,
-	    const vector<XYSprite> &sprites) {
+            const AngleRule &left_angle, const AngleRule &right_angle,
+            bool is_top,
+            const vector<XYSprite> &sprites) {
   PPU *ppu = emu->GetFC()->ppu;
   const uint8 *nametable = ppu->NTARAM;
 
@@ -307,11 +307,11 @@ GetTileInfo(Emulator *emu,
       tileset = it->second;
     }
   }
-  
-  
+
+
   vector<Tile> ret;
   ret.resize((TILESW >> 1) * (TILESH >> 1));
-  
+
   vector<Experiment> experiments;
 
   // Fill in all the tiles, using existing knowledge of the tile quads
@@ -323,15 +323,15 @@ GetTileInfo(Emulator *emu,
 
       uint32 tileval = 0;
       for (int sy = 0; sy < 2; sy++) {
-	for (int sx = 0; sx < 2; sx++) {
-	  int srctx = xx + sx;
-	  int srcty = yy + sy;
-	  tileval <<= 8;
-	  tileval |=
-	    (srctx & 32) ?
-	    nametable[0x400 + srcty * TILESW + (srctx & 31)] :
-	    nametable[srcty * TILESW + srctx];
-	}
+        for (int sx = 0; sx < 2; sx++) {
+          int srctx = xx + sx;
+          int srcty = yy + sy;
+          tileval <<= 8;
+          tileval |=
+            (srctx & 32) ?
+            nametable[0x400 + srcty * TILESW + (srctx & 31)] :
+            nametable[srcty * TILESW + srctx];
+        }
       }
 
       const int idx = y * (TILESW >> 1) + x;
@@ -339,12 +339,12 @@ GetTileInfo(Emulator *emu,
 
       auto it = tileset->is_solid.find(tileval);
       if (it == tileset->is_solid.end()) {
-	experiments.push_back(Experiment{x, y, tileval, UNKNOWN});
-	// Should come back and fill this one in, but mark it
-	// as unknown since that is its current status.
-	ret[idx].solidity = UNKNOWN;
+        experiments.push_back(Experiment{x, y, tileval, UNKNOWN});
+        // Should come back and fill this one in, but mark it
+        // as unknown since that is its current status.
+        ret[idx].solidity = UNKNOWN;
       } else {
-	ret[idx].solidity = it->second ? SOLID : OPEN;
+        ret[idx].solidity = it->second ? SOLID : OPEN;
       }
     }
   }
@@ -367,68 +367,68 @@ GetTileInfo(Emulator *emu,
     printf("mem: %d,%d  spr: %d,%d\n", xloc, yloc, xsloc, ysloc);
 
     // if (xloc % 8 != 0) return ret;
-    
+
     // First of all, we need to be in a state where we have
     // control of the player. If we're not, there's no
     // point in trying experiments.
     vector<uint8> save = emu->SaveUncompressed();
 
-    
+
     int nframes;
     if (HaveLRControl(emus[0], save, left_angle, right_angle,
-		      &nframes, sprite)) {
+                      &nframes, sprite)) {
       printf("Have control in %d frames!\n", nframes);
-      
+
       auto DoExperiment = [this, &experiments, &save,
-			   &left_angle, &right_angle, &sprite,
-			   nframes](int thread_id, int expt_idx) {
-	// Run one experiment, in parallel.
+                           &left_angle, &right_angle, &sprite,
+                           nframes](int thread_id, int expt_idx) {
+        // Run one experiment, in parallel.
 
-	// XXX First test if this tileset has already been done?
+        // XXX First test if this tileset has already been done?
 
-	Emulator *emu = emus[thread_id];
-	Experiment *expt = &experiments[expt_idx];
-	TestSolidity(emu, save, expt,
-		     left_angle, right_angle, sprite, nframes);
+        Emulator *emu = emus[thread_id];
+        Experiment *expt = &experiments[expt_idx];
+        TestSolidity(emu, save, expt,
+                     left_angle, right_angle, sprite, nframes);
       };
 
       if (experiments.size() < 20) {
-	UnParallelIdx(experiments.size(), DoExperiment, NUM_EMULATORS);
+        UnParallelIdx(experiments.size(), DoExperiment, NUM_EMULATORS);
       } else {
-	// PERF can use fewer emulators when fewer tiles...
-	ParallelIdx(experiments.size(), DoExperiment, NUM_EMULATORS);
+        // PERF can use fewer emulators when fewer tiles...
+        ParallelIdx(experiments.size(), DoExperiment, NUM_EMULATORS);
       }
 
       int num_solid = 0, num_open = 0;
-      
+
       // Now promote the experiments into the cache.
       for (const Experiment &expt : experiments) {
-	if (expt.result != UNKNOWN) {
-	  const int idx = expt.y * (TILESW >> 1) + expt.x;
-	  ret[idx].solidity = expt.result;
-	  // There may be many results for the tile. Maybe get
-	  // consensus?
-	  tileset->is_solid[expt.tileval] = expt.result == SOLID;
-	  if (expt.result == SOLID) num_solid++;
-	  else if (expt.result == OPEN) num_open++;
-	}
+        if (expt.result != UNKNOWN) {
+          const int idx = expt.y * (TILESW >> 1) + expt.x;
+          ret[idx].solidity = expt.result;
+          // There may be many results for the tile. Maybe get
+          // consensus?
+          tileset->is_solid[expt.tileval] = expt.result == SOLID;
+          if (expt.result == SOLID) num_solid++;
+          else if (expt.result == OPEN) num_open++;
+        }
       }
 
       // (If we remapped a bunch of tiles, write out an image.)
       if (experiments.size() > 120) {
-	vector<uint8> rgba;
-	rgba.resize((TILESW >> 1) * (TILESH >> 1) * 4);
-	// XXX do!
+        vector<uint8> rgba;
+        rgba.resize((TILESW >> 1) * (TILESH >> 1) * 4);
+        // XXX do!
       }
 
       printf("In this experiment, %d solid, %d open.\n",
-	     num_solid, num_open);
+             num_solid, num_open);
       printf("mem: %d,%d  spr: %d,%d\n", xloc, yloc, xsloc, ysloc);
-      
+
     } else {
       printf("Can't experiment; no control.\n");
     }
   }
-  
+
   return ret;
 }

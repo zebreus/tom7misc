@@ -6,8 +6,8 @@
 
 // XXX should just merge this with cc-lib/wavesave.h
 
-#ifndef __WAVE_H
-#define __WAVE_H
+#ifndef _SMEIGHT_WAVE_H
+#define _SMEIGHT_WAVE_H
 
 #include <string>
 #include <vector>

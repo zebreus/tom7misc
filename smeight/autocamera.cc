@@ -51,7 +51,7 @@ struct InputGenerator {
     case 9: return INPUT_L | INPUT_U | ((i >> 3) & 1 ? INPUT_A : INPUT_B);
     case 10: return INPUT_R | INPUT_U | ((i >> 3) & 1 ? INPUT_B : INPUT_A);
     case 11: return ((i >> 3) & 1 ? INPUT_L : INPUT_R) |
-	((i >> 2) & 1 ? INPUT_U : INPUT_D);
+        ((i >> 2) & 1 ? INPUT_U : INPUT_D);
     default: {
       int x = id - 10;
       // In the general case, randomly combine some streams based on
@@ -69,14 +69,14 @@ struct InputGenerator {
     }
     }
   }
-  
+
   const int id;
   uint32 i = 0;
 };
 }
 
 AutoCamera::AutoCamera(const string &game,
-		       bool first_player) : first_player(first_player) {
+                       bool first_player) : first_player(first_player) {
   printf("Creating %d emulators for AutoCamera...\n", NUM_EMULATORS);
   for (int i = 0; i < NUM_EMULATORS; i++) {
     emus.push_back(Emulator::Create(game));
@@ -89,7 +89,7 @@ AutoCamera::~AutoCamera() {
 
 
 vector<AutoCamera::XYSprite> AutoCamera::GetXSprites(
-    const vector<uint8> &start, int *num_frames) { 
+    const vector<uint8> &start, int *num_frames) {
 
   Emulator *lemu = emus[0], *nemu = emus[1], *remu = emus[2];
 
@@ -98,7 +98,7 @@ vector<AutoCamera::XYSprite> AutoCamera::GetXSprites(
   lemu->LoadUncompressed(start);
   nemu->LoadUncompressed(start);
   remu->LoadUncompressed(start);
-  
+
   // "Old memory" from the previous frame. We use this because it's
   // common (universal?) for sprite memory to be copied early in the
   // frame and but then updated later, so that the sprite values lag
@@ -113,7 +113,7 @@ vector<AutoCamera::XYSprite> AutoCamera::GetXSprites(
 
     StepPlayer(lemu, first_player, INPUT_L);
     const uint8 *left = lemu->GetFC()->ppu->SPRAM;
-    
+
     StepPlayer(nemu, first_player, 0);
     const uint8 *none = nemu->GetFC()->ppu->SPRAM;
 
@@ -126,7 +126,7 @@ vector<AutoCamera::XYSprite> AutoCamera::GetXSprites(
     vector<uint8> lmem = lemu->GetMemory();
     vector<uint8> nmem = nemu->GetMemory();
     vector<uint8> rmem = remu->GetMemory();
-    
+
     vector<XYSprite> ret;
     for (int s = 0; s < 64; s++) {
       const uint8 left_y = left[s * 4 + 0];
@@ -151,50 +151,50 @@ vector<AutoCamera::XYSprite> AutoCamera::GetXSprites(
       const uint8 left_x = left[s * 4 + 3];
       const uint8 none_x = none[s * 4 + 3];
       const uint8 right_x = right[s * 4 + 3];
-	
+
       if (left_x < none_x && none_x < right_x) {
-	printf("[%d] Sprite %d could be player! x vals: %d < %d < %d\n",
-	       frames, s, left_x, none_x, right_x);
-	// Also insist that there is memory address for which
-	// the sprite x value matches in all three branches.
+        printf("[%d] Sprite %d could be player! x vals: %d < %d < %d\n",
+               frames, s, left_x, none_x, right_x);
+        // Also insist that there is memory address for which
+        // the sprite x value matches in all three branches.
 
-	// Maybe allow constant offsets here?
-	auto FindMems = [left_x, none_x, right_x](const vector<uint8> &lm,
-						  const vector<uint8> &nm,
-						  const vector<uint8> &rm) {
-	  vector<pair<uint16, int>> mems;
-	  for (uint16 i = 0; i < lm.size(); i++) {
-	    if (left_x == lm[i] && none_x == nm[i] && right_x == rm[i]) {
-	      // Note: Always using offset of zero here.
-	      mems.push_back({i, 0});
-	    }
-	  }
-	  return mems;
-	};
+        // Maybe allow constant offsets here?
+        auto FindMems = [left_x, none_x, right_x](const vector<uint8> &lm,
+                                                  const vector<uint8> &nm,
+                                                  const vector<uint8> &rm) {
+          vector<pair<uint16, int>> mems;
+          for (uint16 i = 0; i < lm.size(); i++) {
+            if (left_x == lm[i] && none_x == nm[i] && right_x == rm[i]) {
+              // Note: Always using offset of zero here.
+              mems.push_back({i, 0});
+            }
+          }
+          return mems;
+        };
 
-	vector<pair<uint16, int>> mems = FindMems(lmem, nmem, rmem);
-	if (false && !mems.empty()) {
-	  // XXX do ANY games work this way? See if we can simplify
-	  // it away. (This can cause false positives, too, in cases
-	  // where we just "luck into" two consecutive frames with the
-	  // same pixel values?)
-	  printf("[%d]    Good! Now mems:", frames);
-	  for (pair<uint16, int> m : mems)
-	    printf(" %s", AddrOffset(m).c_str());
-	  printf("\n");
-	  ret.push_back(XYSprite{s, false, mems, {}});
-	  
-	} else {
-	  vector<pair<uint16, int>> omems = FindMems(lomem, nomem, romem);
+        vector<pair<uint16, int>> mems = FindMems(lmem, nmem, rmem);
+        if (false && !mems.empty()) {
+          // XXX do ANY games work this way? See if we can simplify
+          // it away. (This can cause false positives, too, in cases
+          // where we just "luck into" two consecutive frames with the
+          // same pixel values?)
+          printf("[%d]    Good! Now mems:", frames);
+          for (pair<uint16, int> m : mems)
+            printf(" %s", AddrOffset(m).c_str());
+          printf("\n");
+          ret.push_back(XYSprite{s, false, mems, {}});
 
-	  if (!omems.empty()) {
-	    printf("[%d]    Good! Old mems:", frames);
-	    for (pair<uint16, int> m : omems)
-	      printf(" %s", AddrOffset(m).c_str());
-	    printf("\n");
-	    ret.push_back(XYSprite{s, true, omems, {}});
-	  }
-	}
+        } else {
+          vector<pair<uint16, int>> omems = FindMems(lomem, nomem, romem);
+
+          if (!omems.empty()) {
+            printf("[%d]    Good! Old mems:", frames);
+            for (pair<uint16, int> m : omems)
+              printf(" %s", AddrOffset(m).c_str());
+            printf("\n");
+            ret.push_back(XYSprite{s, true, omems, {}});
+          }
+        }
       }
     }
 
@@ -220,7 +220,7 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
 
   // make parameter, or decide that this can always be assumed.
   const bool lagmem = true;
-  
+
   // We're going to run a bunch of different experiments to get
   // our science data. The goal here is to have a number of memories
   // paired with sprite data, from which we can mine correlations.
@@ -240,10 +240,10 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
 
   struct Stepper {
     Stepper(bool first_player,
-	    bool lagmem,
-	    vector<Science> &sciences,
-	    int SEQ_LEN,
-	    Emulator *emu, int seq_num) :
+            bool lagmem,
+            vector<Science> &sciences,
+            int SEQ_LEN,
+            Emulator *emu, int seq_num) :
       first_player(first_player),
       lagmem(lagmem),
       sciences(sciences), SEQ_LEN(SEQ_LEN),
@@ -260,15 +260,15 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
       Science *science = &sciences[seq_num * SEQ_LEN + offset];
       vector<uint8> now_mem = emu->GetMemory();
       if (lagmem) {
-	science->mem = prev_mem;
+        science->mem = prev_mem;
       } else {
-	science->mem = now_mem;
+        science->mem = now_mem;
       }
 
       science->oam = OAM(emu);
       // Shift memory to previous.
       prev_mem.swap(now_mem);
-      
+
       offset++;
     }
 
@@ -282,9 +282,9 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
     int offset = 0;
     vector<uint8> prev_mem;
   };
-  
+
   auto OneSeq = [this, lagmem, &sciences, SEQ_LEN, &uncompressed_state,
-		 x_num_frames](int seq) {
+                 x_num_frames](int seq) {
     Emulator *emu = emus[seq];
     emu->LoadUncompressed(uncompressed_state);
     Stepper stepper(first_player, lagmem, sciences, SEQ_LEN, emu, seq);
@@ -302,9 +302,9 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
   }
 
   printf("Filtering on %d sciences (%.2f MB)...\n",
-	 (int)sciences.size(),
-	 (sciences.size() * (2048 + 256)) / (1024.0 * 1024.0));
-  
+         (int)sciences.size(),
+         (sciences.size() * (2048 + 256)) / (1024.0 * 1024.0));
+
   vector<XYSprite> withy;
   // Now whittle down x memory locations.
   for (const XYSprite &sprite : sprites) {
@@ -313,72 +313,72 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
     for (const pair<uint16, int> xaddr : sprite.xmems) {
       // Check every science.
       for (const Science &science : sciences) {
-	int mem_x = (int)science.mem[xaddr.first] + xaddr.second;
-	int sprite_x = science.oam[s * 4 + 3];
-	if (mem_x != sprite_x) {
-	  printf("Sprite %d xmem %04x eliminated since "
-		 "mem_x+%d = %d and sprite_x = %d\n",
-		 s, xaddr.first, xaddr.second, mem_x, sprite_x);
-	  goto fail_xaddr;
-	}
+        int mem_x = (int)science.mem[xaddr.first] + xaddr.second;
+        int sprite_x = science.oam[s * 4 + 3];
+        if (mem_x != sprite_x) {
+          printf("Sprite %d xmem %04x eliminated since "
+                 "mem_x+%d = %d and sprite_x = %d\n",
+                 s, xaddr.first, xaddr.second, mem_x, sprite_x);
+          goto fail_xaddr;
+        }
       }
 
       // OK, keep it!
       newsprite.xmems.push_back(xaddr);
-     
+
     fail_xaddr:;
     }
-   
+
     if (!newsprite.xmems.empty()) {
       // Try y locations too...
 
       for (uint16 yaddr = 0; yaddr < 2048; yaddr++) {
-	// We're solving for offset such that mem[yaddr] + offset = sprite.
-	// Offset may be signed. We don't have a candidate offset until
-	// our first comparison.
-	bool have_offset = false;
-	int offset = 0;
-	for (const Science &science : sciences) {
-	  // Promote to integer from uint8 so that w can do signed
-	  // comparison.
-	  const int actual_mem_y = science.mem[yaddr];
-	  const int sprite_y = science.oam[s * 4 + 0];
+        // We're solving for offset such that mem[yaddr] + offset = sprite.
+        // Offset may be signed. We don't have a candidate offset until
+        // our first comparison.
+        bool have_offset = false;
+        int offset = 0;
+        for (const Science &science : sciences) {
+          // Promote to integer from uint8 so that w can do signed
+          // comparison.
+          const int actual_mem_y = science.mem[yaddr];
+          const int sprite_y = science.oam[s * 4 + 0];
 
-	  const int this_offset = sprite_y - actual_mem_y;
-	  if (!have_offset) {
-	    have_offset = true;
-	    offset = this_offset;
-	  }
-	  
-	  if (this_offset != offset) {
-	    if (true && yaddr == 0x84) { // XXX zelda-specific debug output
-	      printf("Sprite %d ymem %04x (offset %d) eliminated since "
-		     "mem_y = %02x and sprite_y = %02x (so offset %d)\n",
-		     s, yaddr, offset,
-		     actual_mem_y, sprite_y, this_offset);
-	    }
-	    goto fail_yaddr;
-	  }
-	}
+          const int this_offset = sprite_y - actual_mem_y;
+          if (!have_offset) {
+            have_offset = true;
+            offset = this_offset;
+          }
 
-	newsprite.ymems.push_back({yaddr, offset});
+          if (this_offset != offset) {
+            if (true && yaddr == 0x84) { // XXX zelda-specific debug output
+              printf("Sprite %d ymem %04x (offset %d) eliminated since "
+                     "mem_y = %02x and sprite_y = %02x (so offset %d)\n",
+                     s, yaddr, offset,
+                     actual_mem_y, sprite_y, this_offset);
+            }
+            goto fail_yaddr;
+          }
+        }
+
+        newsprite.ymems.push_back({yaddr, offset});
 
       fail_yaddr:;
       }
 
       if (!newsprite.ymems.empty()) {
-	printf("Sprite %d has x candidates:", s);
-	for (auto xaddr : newsprite.xmems)
-	  printf(" %s", AddrOffset(xaddr).c_str());
-	printf("\n          and y candidates:");
-	for (auto yaddr : newsprite.ymems)
-	  printf(" %s", AddrOffset(yaddr).c_str());
-	printf("\n");
-	newsprite.sprite_idx = s;
-	newsprite.oldmem = lagmem;
-	withy.push_back(newsprite);
+        printf("Sprite %d has x candidates:", s);
+        for (auto xaddr : newsprite.xmems)
+          printf(" %s", AddrOffset(xaddr).c_str());
+        printf("\n          and y candidates:");
+        for (auto yaddr : newsprite.ymems)
+          printf(" %s", AddrOffset(yaddr).c_str());
+        printf("\n");
+        newsprite.sprite_idx = s;
+        newsprite.oldmem = lagmem;
+        withy.push_back(newsprite);
       } else {
-	printf("Sprite %d eliminted since there are no ymems left.\n", s);
+        printf("Sprite %d eliminted since there are no ymems left.\n", s);
       }
     } else {
       printf("Sprite %d eliminated since there are no xmems left.\n", s);
@@ -395,7 +395,7 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
       player_sprites->push_back(sprite.sprite_idx);
     }
   }
-  
+
   vector<XYSprite> ret;
   // Next, filter memory locations that are just source data for
   // the OAMDMA copy. Because the DMA has to be from a source address
@@ -406,53 +406,53 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
   for (const XYSprite &sprite : withy) {
     XYSprite newsprite;
     auto FilterByOAM = [&sciences, &sprite](
-	const vector<pair<uint16, int>> &addrs,
-	int oam_byte,
-	vector<pair<uint16, int>> *out) {
+        const vector<pair<uint16, int>> &addrs,
+        int oam_byte,
+        vector<pair<uint16, int>> *out) {
 
       // Test a single addr.
       auto OK = [&sciences, &sprite, oam_byte](pair<uint16, int> addr) {
-	// Wouldn't make sense for it to have an offset; OAMDMA doesn't
-	// modify anything.
-	if (addr.second != 0) return true;
-	// Quick filter: The address would have to match the corresponding
-	// coordinate in sprite data. Also, computes the DMA root address,
-	// which we need for the full check anyway.
-	uint16 dma_root = addr.first & ~0xFF;
-	if (addr.first != dma_root + sprite.sprite_idx * 4 + oam_byte) {
-	  // This coordinate of this sprite could not have come from
-	  // a DMA involving this address.
-	  return true;
-	}
+        // Wouldn't make sense for it to have an offset; OAMDMA doesn't
+        // modify anything.
+        if (addr.second != 0) return true;
+        // Quick filter: The address would have to match the corresponding
+        // coordinate in sprite data. Also, computes the DMA root address,
+        // which we need for the full check anyway.
+        uint16 dma_root = addr.first & ~0xFF;
+        if (addr.first != dma_root + sprite.sprite_idx * 4 + oam_byte) {
+          // This coordinate of this sprite could not have come from
+          // a DMA involving this address.
+          return true;
+        }
 
-	printf("%s-coord at addr %04x for sprite %d may be from DMA "
-	       "starting at %04x?\n", oam_byte ? "x" : "y",
-	       addr.first, sprite.sprite_idx, dma_root);
+        printf("%s-coord at addr %04x for sprite %d may be from DMA "
+               "starting at %04x?\n", oam_byte ? "x" : "y",
+               addr.first, sprite.sprite_idx, dma_root);
 
-	// If it aligns with potential DMA, check if sprite data
-	// matches a DMA at that address. If so, reject.
-	for (const Science &science : sciences) {
-	  for (int i = 0; i < 256; i++) {
-	    // PERF memcmp
-	    if (science.mem[dma_root + i] != science.oam[i]) {
-	      printf("But mem[%04x] = %2x whereas oam[%2x] = %2x.\n",
-		     dma_root + i, science.mem[dma_root + i],
-		     i, science.oam[i]);
-	      return true;
-	    }
-	  }
-	}
+        // If it aligns with potential DMA, check if sprite data
+        // matches a DMA at that address. If so, reject.
+        for (const Science &science : sciences) {
+          for (int i = 0; i < 256; i++) {
+            // PERF memcmp
+            if (science.mem[dma_root + i] != science.oam[i]) {
+              printf("But mem[%04x] = %2x whereas oam[%2x] = %2x.\n",
+                     dma_root + i, science.mem[dma_root + i],
+                     i, science.oam[i]);
+              return true;
+            }
+          }
+        }
 
-	// All science is consistent.
-	printf("Rejected %s-coord for sprite %d at %04x because it "
-	       "is consistent with just being DMA.\n",
-	       oam_byte ? "x" : "y", sprite.sprite_idx, addr.first);
-	return false;
+        // All science is consistent.
+        printf("Rejected %s-coord for sprite %d at %04x because it "
+               "is consistent with just being DMA.\n",
+               oam_byte ? "x" : "y", sprite.sprite_idx, addr.first);
+        return false;
       };
 
       for (const auto addr : addrs)
-	if (OK(addr))
-	  out->push_back(addr);
+        if (OK(addr))
+          out->push_back(addr);
     };
 
     FilterByOAM(sprite.xmems, 3, &newsprite.xmems);
@@ -461,10 +461,10 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
     if (!newsprite.xmems.empty() && !newsprite.ymems.empty()) {
       printf("Sprite %d has x candidates:", sprite.sprite_idx);
       for (auto xaddr : newsprite.xmems)
-	printf(" %s", AddrOffset(xaddr).c_str());
+        printf(" %s", AddrOffset(xaddr).c_str());
       printf("\n          and y candidates:");
       for (auto yaddr : newsprite.ymems)
-	printf(" %s", AddrOffset(yaddr).c_str());
+        printf(" %s", AddrOffset(yaddr).c_str());
       printf("\n");
 
       newsprite.sprite_idx = sprite.sprite_idx;
@@ -472,7 +472,7 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
       ret.push_back(newsprite);
     }
   }
-  
+
   return ret;
 }
 
@@ -504,82 +504,82 @@ vector<AutoCamera::XYSprite> AutoCamera::FilterForConsequentiality(
 
   vector<bool> known_consequential(2048, false);
   vector<bool> known_inconsequential(2048, false);
-  
+
   // PERF this could be parallelized. (careful because vector<bool>
   // certainly does not have thread-safe access to nearby bits!)
   //
   // Now, pick candidate memory locations.
   for (const XYSprite &sprite : sprites) {
     auto Consequential = [this, &savestates, &sprite,
-			  &known_consequential, &known_inconsequential](
-	pair<uint16, int> addr) {
+                          &known_consequential, &known_inconsequential](
+        pair<uint16, int> addr) {
       if (known_consequential[addr.first]) {
-	printf("Already decided %04x is consequential.\n", addr.first);
-	return true;
+        printf("Already decided %04x is consequential.\n", addr.first);
+        return true;
       }
       if (known_inconsequential[addr.first]) {
-	printf("Already decided %04x is inconsequential.\n", addr.first);
-	return false;
+        printf("Already decided %04x is inconsequential.\n", addr.first);
+        return false;
       }
       for (const vector<uint8> &save : savestates) {
-	Emulator *emu = emus[0];
-	// Perform the experiment.
-	
-	// First, the control:
-	emu->LoadUncompressed(save);
-	// Run with no input. The stimulus is the changing of
-	// the memory location.
-	StepFullPlayer(emu, first_player, 0);
-	StepFullPlayer(emu, first_player, 0);
+        Emulator *emu = emus[0];
+        // Perform the experiment.
 
-	// PERF The control OAM will be the same every time;
-	// compute it when computing savestates.
-	vector<uint8> ctrl_oam = OAM(emu);
-	vector<uint8> ctrl_mem = emu->GetMemory();
-	
-	// Same, but modifying the memory location:
-	emu->LoadUncompressed(save);
-	// How to pick the value to set? We should avoid
-	// putting it off screen, or generally near the edges
-	// of the screen, because that could trigger issues.
-	uint8 *ram = emu->GetFC()->fceu->RAM;
-	const uint8 oldval = ram[addr.first];
-	const uint8 newval = (oldval <= 128) ? oldval + 64 : oldval - 64;
+        // First, the control:
+        emu->LoadUncompressed(save);
+        // Run with no input. The stimulus is the changing of
+        // the memory location.
+        StepFullPlayer(emu, first_player, 0);
+        StepFullPlayer(emu, first_player, 0);
 
-	// Note this bypasses any RAM hooks, but I think that's
-	// the right thing to do.
-	ram[addr.first] = newval;
+        // PERF The control OAM will be the same every time;
+        // compute it when computing savestates.
+        vector<uint8> ctrl_oam = OAM(emu);
+        vector<uint8> ctrl_mem = emu->GetMemory();
 
-	StepFullPlayer(emu, first_player, 0);
-	StepFullPlayer(emu, first_player, 0);
-	vector<uint8> expt_oam = OAM(emu);
-	vector<uint8> expt_mem = emu->GetMemory();
+        // Same, but modifying the memory location:
+        emu->LoadUncompressed(save);
+        // How to pick the value to set? We should avoid
+        // putting it off screen, or generally near the edges
+        // of the screen, because that could trigger issues.
+        uint8 *ram = emu->GetFC()->fceu->RAM;
+        const uint8 oldval = ram[addr.first];
+        const uint8 newval = (oldval <= 128) ? oldval + 64 : oldval - 64;
 
-	if (ctrl_oam != expt_oam ||
-	    ctrl_mem != expt_mem) {
-	  known_consequential[addr.first] = true;
-	  return true;
-	}
+        // Note this bypasses any RAM hooks, but I think that's
+        // the right thing to do.
+        ram[addr.first] = newval;
+
+        StepFullPlayer(emu, first_player, 0);
+        StepFullPlayer(emu, first_player, 0);
+        vector<uint8> expt_oam = OAM(emu);
+        vector<uint8> expt_mem = emu->GetMemory();
+
+        if (ctrl_oam != expt_oam ||
+            ctrl_mem != expt_mem) {
+          known_consequential[addr.first] = true;
+          return true;
+        }
       }
       known_inconsequential[addr.first] = true;
       return false;
     };
-    
+
     for (pair<uint16, int> xaddr : sprite.xmems) {
       if (!Consequential(xaddr)) {
-	printf("sprite %d: x address %s is inconsequential\n",
-	       sprite.sprite_idx, AddrOffset(xaddr).c_str());
+        printf("sprite %d: x address %s is inconsequential\n",
+               sprite.sprite_idx, AddrOffset(xaddr).c_str());
       }
     }
-      
+
     for (pair<uint16, int> yaddr : sprite.ymems) {
       if (!Consequential(yaddr)) {
-	printf("sprite %d: y address %s is inconsequential\n",
-	       sprite.sprite_idx, AddrOffset(yaddr).c_str());
+        printf("sprite %d: y address %s is inconsequential\n",
+               sprite.sprite_idx, AddrOffset(yaddr).c_str());
       }
     }
   }
-  
+
   vector<XYSprite> ret;
   for (const XYSprite &sprite : sprites) {
     XYSprite newsprite;
@@ -587,26 +587,26 @@ vector<AutoCamera::XYSprite> AutoCamera::FilterForConsequentiality(
     newsprite.oldmem = sprite.oldmem;
     for (auto addr : sprite.xmems) {
       if (!known_inconsequential[addr.first]) {
-	newsprite.xmems.push_back(addr);
+        newsprite.xmems.push_back(addr);
       }
     }
     for (auto addr : sprite.ymems) {
       if (!known_inconsequential[addr.first]) {
-	newsprite.ymems.push_back(addr);
+        newsprite.ymems.push_back(addr);
       }
     }
 
     if (!newsprite.xmems.empty() &&
-	!newsprite.ymems.empty()) {
+        !newsprite.ymems.empty()) {
       printf("Sprite %d survived consequentiality.\n"
-	     "   x:", newsprite.sprite_idx);
+             "   x:", newsprite.sprite_idx);
       for (const auto addr : newsprite.xmems)
-	printf(" %s", AddrOffset(addr).c_str());
+        printf(" %s", AddrOffset(addr).c_str());
       printf("\n   y:");
       for (const auto addr : newsprite.ymems)
-	printf(" %s", AddrOffset(addr).c_str());
+        printf(" %s", AddrOffset(addr).c_str());
       printf("\n");
-      
+
       ret.push_back(newsprite);
     }
   }
@@ -615,9 +615,9 @@ vector<AutoCamera::XYSprite> AutoCamera::FilterForConsequentiality(
 }
 
 bool AutoCamera::DetectViewType(const vector<uint8> &uncompressed_state,
-				int x_num_frames,
-				const vector<XYSprite> &sprites,
-				bool *is_top) {
+                                int x_num_frames,
+                                const vector<XYSprite> &sprites,
+                                bool *is_top) {
   // We guess the view type as follows:
   //   - If moving the sprites up on the screen (by writing to their
   //     x,y coordinates) results in downward motion due to "gravity",
@@ -645,62 +645,62 @@ bool AutoCamera::DetectViewType(const vector<uint8> &uncompressed_state,
   // Protects the following two variables.
   std::mutex m;
   int experiments = 0, successes = 0;
-  
+
   auto OneEmu = [this, &sprites, &savestates,
-		 &m, &experiments, &successes](int idx) {
+                 &m, &experiments, &successes](int idx) {
     Emulator *emu = emus[idx];
     int this_experiments = 0, this_successes = 0;
     static constexpr int DROP_TIME = 24;
     for (const XYSprite &sprite : sprites) {
       for (uint8 x : {65, 128, 190}) {
-	for (uint8 y : {40, 120, 157}) {
-	  this_experiments++;
-	  emu->LoadUncompressed(savestates[idx]);
-	  uint8 *ram = emu->GetFC()->fceu->RAM;
+        for (uint8 y : {40, 120, 157}) {
+          this_experiments++;
+          emu->LoadUncompressed(savestates[idx]);
+          uint8 *ram = emu->GetFC()->fceu->RAM;
 
-	  // Set ALL the memory locations.
-	  // Since mem[addr] + offset = loc,
-	  // subtract the offset from the desired location.
-	  for (const auto xaddr : sprite.xmems)
-	    ram[xaddr.first] = x - xaddr.second;
-	  for (const auto yaddr : sprite.ymems)
-	    ram[yaddr.first] = y - yaddr.second;
+          // Set ALL the memory locations.
+          // Since mem[addr] + offset = loc,
+          // subtract the offset from the desired location.
+          for (const auto xaddr : sprite.xmems)
+            ram[xaddr.first] = x - xaddr.second;
+          for (const auto yaddr : sprite.ymems)
+            ram[yaddr.first] = y - yaddr.second;
 
-	  // Let the location soak in.
-	  StepPlayer(emu, first_player, 0);
-	  StepPlayer(emu, first_player, 0);
+          // Let the location soak in.
+          StepPlayer(emu, first_player, 0);
+          StepPlayer(emu, first_player, 0);
 
-	  const uint8 start_y =
-	    emu->GetFC()->ppu->SPRAM[sprite.sprite_idx * 4 + 0];
-	  // start y should be near the value we set.
-	  if (abs((int)start_y - (int)y) > 8) {
-	    printf("sprite %d expt %d,%d: "
-		   "Failed to influence y coordinate (it's %02x).\n",
-		   sprite.sprite_idx,
-		   // (Could print addresses here)
-		   x, y, start_y);
-	    continue;
-	  }
-	  
-	  // Now see if the sprite drops.
-	  for (int i = 0; i < DROP_TIME; i++) {
-	    StepPlayer(emu, first_player, 0);
-	  }
-	  const uint8 now_y =
-	    emu->GetFC()->ppu->SPRAM[sprite.sprite_idx * 4 + 0];
-	  // XXX maybe should set a lower bound on this; for zelda
-	  // we do see a few sprites increase by a few pixels. (Maybe
-	  // the player is being ejected from some block?)
-	  if (now_y > start_y) {
-	    #if 0
-	    printf("sprite %d expt %d,%d: "
-		   "Success dropping %02x to %02x.\n",
-		   sprite.sprite_idx,
-		   x, y, start_y, now_y);
-	    #endif
-	    this_successes++;
-	  }
-	}
+          const uint8 start_y =
+            emu->GetFC()->ppu->SPRAM[sprite.sprite_idx * 4 + 0];
+          // start y should be near the value we set.
+          if (abs((int)start_y - (int)y) > 8) {
+            printf("sprite %d expt %d,%d: "
+                   "Failed to influence y coordinate (it's %02x).\n",
+                   sprite.sprite_idx,
+                   // (Could print addresses here)
+                   x, y, start_y);
+            continue;
+          }
+
+          // Now see if the sprite drops.
+          for (int i = 0; i < DROP_TIME; i++) {
+            StepPlayer(emu, first_player, 0);
+          }
+          const uint8 now_y =
+            emu->GetFC()->ppu->SPRAM[sprite.sprite_idx * 4 + 0];
+          // XXX maybe should set a lower bound on this; for zelda
+          // we do see a few sprites increase by a few pixels. (Maybe
+          // the player is being ejected from some block?)
+          if (now_y > start_y) {
+            #if 0
+            printf("sprite %d expt %d,%d: "
+                   "Success dropping %02x to %02x.\n",
+                   sprite.sprite_idx,
+                   x, y, start_y, now_y);
+            #endif
+            this_successes++;
+          }
+        }
       }
       MutexLock ml(&m);
       experiments += this_experiments;
@@ -709,15 +709,15 @@ bool AutoCamera::DetectViewType(const vector<uint8> &uncompressed_state,
   };
 
   ParallelComp(NUM_EXPERIMENTS, OneEmu, 12);
-  
+
   printf("Overall: %d successes of %d experiments = %.3f success rate.\n",
-	 successes, experiments, (double)successes / experiments);
+         successes, experiments, (double)successes / experiments);
 
   if (successes * 2 > experiments) {
     *is_top = false;
     return true;
   }
- 
+
   return false;
 }
 
@@ -725,14 +725,14 @@ bool AutoCamera::DetectViewType(const vector<uint8> &uncompressed_state,
 // for stop_frames frames in a row, and max_stoptime is the maximum
 // number of frames to try for.
 static bool BrakePlayer(Emulator *emu,
-			bool first_player,
-			const AutoCamera::XYSprite &sprite,
-			int stop_frames, int max_stoptime) {
+                        bool first_player,
+                        const AutoCamera::XYSprite &sprite,
+                        int stop_frames, int max_stoptime) {
   CHECK(stop_frames > 0);
   uint8 lastx = emu->GetFC()->ppu->SPRAM[sprite.sprite_idx * 4 + 3];
   uint8 lasty = emu->GetFC()->ppu->SPRAM[sprite.sprite_idx * 4 + 0];
   uint32 lastscroll = emu->GetXScroll();
-    
+
   uint8 brake_input = 0;
   int current_stop_frames = stop_frames;
   for (int i = 0; i < max_stoptime; i++) {
@@ -744,7 +744,7 @@ static bool BrakePlayer(Emulator *emu,
     if (nowx == lastx && nowy == lasty && nowscroll == lastscroll) {
       current_stop_frames--;
       if (current_stop_frames == 0) {
-	return true;
+        return true;
       }
     } else {
       current_stop_frames = stop_frames;
@@ -754,7 +754,7 @@ static bool BrakePlayer(Emulator *emu,
     // of holding it too long. Allow holding it for the first 1/4, then
     // for the next 1/4, strobing it.
     if (i < (max_stoptime >> 2) ||
-	(i < (max_stoptime >> 1) && brake_input == 0)) {
+        (i < (max_stoptime >> 1) && brake_input == 0)) {
       // Moving right.
       if (nowx >= lastx + 1) brake_input = INPUT_L;
       else if (nowx <= lastx - 1) brake_input = INPUT_R;
@@ -773,17 +773,17 @@ static bool BrakePlayer(Emulator *emu,
 
 AutoCamera::CameraStatus
 AutoCamera::DetectCameraAngle(const vector<uint8> &uncompressed_state,
-			      int x_num_frames,
-			      const vector<XYSprite> &sprites,
-			      uint16 *addr,
-			      uint8 *up, uint8 *down,
-			      uint8 *left, uint8 *right) {
+                              int x_num_frames,
+                              const vector<XYSprite> &sprites,
+                              uint16 *addr,
+                              uint8 *up, uint8 *down,
+                              uint8 *left, uint8 *right) {
 
   if (sprites.empty())
     return CAMERA_FAILED;
 
   const XYSprite &sprite = sprites[0];
-  
+
   static constexpr int MAX_STOPTIME = 60;
 
   // Right now just doing this for one state (the current one) and
@@ -804,7 +804,7 @@ AutoCamera::DetectCameraAngle(const vector<uint8> &uncompressed_state,
   }
 
   SaveEmulatorImage(emu, "brake.png");
-    
+
   const vector<uint8> stopped = emu->SaveUncompressed();
 
   // Test the L/R (X) axis or U/D (Y) axis. This was written with left
@@ -829,7 +829,7 @@ AutoCamera::DetectCameraAngle(const vector<uint8> &uncompressed_state,
 
     SaveEmulatorImage(lemu, StringPrintf("%s.png", less));
     SaveEmulatorImage(remu, StringPrintf("%s.png", more));
-    
+
     // Find bytes where they're different.
     const uint8 *lram = lemu->GetFC()->fceu->RAM;
     const uint8 *rram = remu->GetFC()->fceu->RAM;
@@ -840,18 +840,18 @@ AutoCamera::DetectCameraAngle(const vector<uint8> &uncompressed_state,
     // when pressing left, right.
     for (int i = 0; i < 2048; i++) {
       if (lram[i] != rram[i]) {
-	candaddr->push_back(i);
-	candl->push_back(lram[i]);
-	candr->push_back(rram[i]);
+        candaddr->push_back(i);
+        candl->push_back(lram[i]);
+        candr->push_back(rram[i]);
       }
     }
 
     auto PrintCand = [less, more, candaddr, candl, candr](const char *when) {
       printf("%s-%s  After %s, %d candidates differences: ",
-	     less, more, when,
-	     (int)candaddr->size());
+             less, more, when,
+             (int)candaddr->size());
       for (int i = 0; i < candaddr->size(); i++) {
-	printf(" %04x (%02x/%02x)", (*candaddr)[i], (*candl)[i], (*candr)[i]);
+        printf(" %04x (%02x/%02x)", (*candaddr)[i], (*candl)[i], (*candr)[i]);
       }
       printf("\n");
     };
@@ -859,7 +859,7 @@ AutoCamera::DetectCameraAngle(const vector<uint8> &uncompressed_state,
     PrintCand("tap");
 
     auto Filter = [less, more, candaddr, candl, candr](
-	Emulator *facing_left, Emulator *facing_right) {
+        Emulator *facing_left, Emulator *facing_right) {
       uint8 *lram = facing_left->GetFC()->fceu->RAM;
       uint8 *rram = facing_right->GetFC()->fceu->RAM;
 
@@ -867,28 +867,28 @@ AutoCamera::DetectCameraAngle(const vector<uint8> &uncompressed_state,
       vector<uint8> newl, newr;
 
       for (int a = 0; a < candaddr->size(); a++) {
-	// By invariant, candl[a] != candr[a].
-	int addr = (*candaddr)[a];
-	if (lram[addr] != (*candl)[a] ||
-	    rram[addr] != (*candr)[a]) {
-	  printf("%s-%s  Eliminated %04x because wanted %02x/%02x "
-		 "but got %02x/%02x\n", less, more,
-		 addr, (*candl)[a], (*candr)[a], lram[addr], rram[addr]);
-	} else {
-	  newcand.push_back(addr);
-	  newl.push_back((*candl)[a]);
-	  newr.push_back((*candr)[a]);
-	}
+        // By invariant, candl[a] != candr[a].
+        int addr = (*candaddr)[a];
+        if (lram[addr] != (*candl)[a] ||
+            rram[addr] != (*candr)[a]) {
+          printf("%s-%s  Eliminated %04x because wanted %02x/%02x "
+                 "but got %02x/%02x\n", less, more,
+                 addr, (*candl)[a], (*candr)[a], lram[addr], rram[addr]);
+        } else {
+          newcand.push_back(addr);
+          newl.push_back((*candl)[a]);
+          newr.push_back((*candr)[a]);
+        }
       }
 
       candaddr->swap(newcand);
       candl->swap(newl);
       candr->swap(newr);
     };
- 
+
     // Savestate after executing a few steps of nothing.
     vector<uint8> savel, saver;
-    
+
     // Now, don't tap. Assume that we keep the same facing direction,
     // but for example that we stop animating.
     for (int i = 0; i < 12; i++) {
@@ -896,8 +896,8 @@ AutoCamera::DetectCameraAngle(const vector<uint8> &uncompressed_state,
       StepFullPlayer(remu, first_player, 0);
 
       if (i == 3) {
-	lemu->SaveUncompressed(&savel);
-	remu->SaveUncompressed(&saver);
+        lemu->SaveUncompressed(&savel);
+        remu->SaveUncompressed(&saver);
       }
 
       Filter(lemu, remu);
@@ -960,19 +960,19 @@ AutoCamera::DetectCameraAngle(const vector<uint8> &uncompressed_state,
       // We already know xlval and xrval are distinct (and likewise for
       // yvals) by invariant.
       if (xlval[x] != yuval[y] && xlval[x] != ydval[y] &&
-	  xrval[x] != yuval[y] && xrval[x] != ydval[y]) {
-	*addr = xaddr;
-	*up = yuval[y];
-	*down = ydval[y];
-	*left = xlval[x];
-	*right = xrval[x];
-	printf("Success! %04x udlr: %02x %02x %02x %02x :)\n",
-	       *addr, *up, *down, *left, *right);
-	return CAMERA_ALL;
+          xrval[x] != yuval[y] && xrval[x] != ydval[y]) {
+        *addr = xaddr;
+        *up = yuval[y];
+        *down = ydval[y];
+        *left = xlval[x];
+        *right = xrval[x];
+        printf("Success! %04x udlr: %02x %02x %02x %02x :)\n",
+               *addr, *up, *down, *left, *right);
+        return CAMERA_ALL;
       } else {
-	// Skip both; addresses only appear once.
-	x++;
-	y++;
+        // Skip both; addresses only appear once.
+        x++;
+        y++;
       }
     } else if (xaddr < yaddr) {
       // Advance left side until maybe equal.
@@ -1002,13 +1002,13 @@ string AutoCamera::AddrOffset(pair<uint16, int> p) {
 
 
 void AutoCamera::GetSavestates(const vector<uint8> &uncompressed_state,
-			       int num_experiments,
-			       int x_num_frames,
-			       vector<vector<uint8>> *savestates) {
+                               int num_experiments,
+                               int x_num_frames,
+                               vector<vector<uint8>> *savestates) {
   CHECK(num_experiments <= NUM_EMULATORS);
 
   savestates->resize(num_experiments);
-  
+
   auto OneExperiment =
     [this, &uncompressed_state, x_num_frames, savestates](int id) {
     Emulator *emu = emus[id];

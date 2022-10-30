@@ -1,6 +1,6 @@
 
-#ifndef __SMEIGHT_H
-#define __SMEIGHT_H
+#ifndef _SMEIGHT_SMEIGHT_H
+#define _SMEIGHT_SMEIGHT_H
 
 #include <string>
 #include <vector>
@@ -22,8 +22,8 @@
 // e.g. with C = map<int, string>. Third argument is the default.
 template<class K, class C>
 auto GetDefault(const C &container,
-		const K &key,
-		const decltype(container.find(key)->second) &def) ->
+                const K &key,
+                const decltype(container.find(key)->second) &def) ->
   decltype(container.find(key)->second) {
   auto it = container.find(key);
   if (it == container.end()) return def;
@@ -107,12 +107,12 @@ struct AngleRule {
 
 // XXX Move to utilities
 inline void SaveEmulatorImage(const Emulator *emu,
-			      const std::string &filename) {
+                              const std::string &filename) {
   std::vector<uint8> rgba = emu->GetImage();
   stbi_write_png(filename.c_str(),
-		 256, 240, 4,
-		 rgba.data(),
-		 256 * 4);
+                 256, 240, 4,
+                 rgba.data(),
+                 256 * 4);
   printf("Wrote %s.\n", filename.c_str());
 }
 

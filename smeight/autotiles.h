@@ -1,6 +1,6 @@
 
-#ifndef __AUTOTILES_H
-#define __AUTOTILES_H
+#ifndef _SMEIGHT_AUTOTILES_H
+#define _SMEIGHT_AUTOTILES_H
 
 #include "smeight.h"
 
@@ -14,7 +14,7 @@
 
 struct AutoTiles {
   static constexpr int NUM_EMULATORS = 16;
-  
+
   // Like autocamera, we keep a bunch of emulators around so that we
   // can do stuff in parallel.
   explicit AutoTiles(const string &game) {
@@ -42,18 +42,19 @@ struct AutoTiles {
     uint32 fourtiles = 0;
     Solidity solidity = UNKNOWN;
   };
-  
+
   // Get the solidity of the 16x16 tiles in the emulator state.
   // Supports scroll position, but treats it coarsely (16x16 pixel
   // blocks). If there are unknown tiles, pauses to experiment on them
   // (but may not succeed!).
-  std::vector<Tile> GetTileInfo(Emulator *emu,
-				// Need to know how to make the player face
-				// left and right.
-				const AngleRule &left, const AngleRule &right,
-				bool is_top,
-				const std::vector<AutoCamera::XYSprite> &cams);
-  
+  std::vector<Tile> GetTileInfo(
+      Emulator *emu,
+      // Need to know how to make the player face
+      // left and right.
+      const AngleRule &left, const AngleRule &right,
+      bool is_top,
+      const std::vector<AutoCamera::XYSprite> &cams);
+
   // All of the tilesets we've seen, keyed by CRC.
   std::unordered_map<uint64, Tileset*> tilesets;
 

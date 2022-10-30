@@ -1,5 +1,5 @@
-#ifndef __MATRICES_H
-#define __MATRICES_H
+#ifndef _SMEIGHT_MATRICES_H
+#define _SMEIGHT_MATRICES_H
 
 #include <cmath>
 
@@ -9,12 +9,12 @@
 
 struct Mat33 {
   Mat33(float a, float b, float c,
-	float d, float e, float f,
-	float g, float h, float i) :
+  float d, float e, float f,
+  float g, float h, float i) :
     a(a), b(b), c(c),
     d(d), e(e), f(f),
     g(g), h(h), i(i) {}
-  
+
   float
     a = 0.0f, b = 0.0f, c = 0.0f,
     d = 0.0f, e = 0.0f, f = 0.0f,
@@ -32,24 +32,24 @@ inline Mat33 RotYaw(float a) {
   const float cosa = cosf(a);
   const float sina = sinf(a);
   return Mat33(cosa, -sina, 0.0f,
-	       sina, cosa,  0.0f,
-	       0.0f, 0.0f,  1.0f);
+         sina, cosa,  0.0f,
+         0.0f, 0.0f,  1.0f);
 }
 
 inline Mat33 RotPitch(float a) {
   const float cosa = cosf(a);
   const float sina = sinf(a);
   return Mat33(cosa,  0.0f, sina,
-	       0.0f,  1.0f, 0.0f,
-	       -sina, 0.0f, cosa);
+         0.0f,  1.0f, 0.0f,
+         -sina, 0.0f, cosa);
 }
 
 inline Mat33 RotRoll(float a) {
   const float cosa = cosf(a);
   const float sina = sinf(a);
   return Mat33(1.0f, 0.0f, 0.0f,
-	       0.0f, cosa, -sina,
-	       0.0f, sina, cosa);
+         0.0f, cosa, -sina,
+         0.0f, sina, cosa);
 }
 
 struct Vec3 {
@@ -74,8 +74,8 @@ inline Vec3 NormVec3(const Vec3 &v) {
 
 inline Vec3 CrossVec3(const Vec3 &a, const Vec3 &b) {
   return Vec3(a.y * b.z - a.z * b.y,
-	      a.z * b.x - a.x * b.z,
-	      a.x * b.y - a.y * b.x);
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x);
 }
 
 inline Vec3 Mat33TimesVec3(const Mat33 &m, const Vec3 &v) {
