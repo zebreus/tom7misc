@@ -25,5 +25,8 @@ maptest.exe : maptest.o pactom.o $(UTIL_OBJECTS)
 zoomout.exe : zoomout.o pactom.o $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+sphere.exe : sphere.o $(UTIL_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f *.o *.exe
