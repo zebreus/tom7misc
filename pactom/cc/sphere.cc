@@ -4,10 +4,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <variant>
+#include <utility>
 
 #include "threadutil.h"
 #include "image.h"
 #include "color-util.h"
+#include "base/logging.h"
 
 static constexpr int THREADS = 24;
 
@@ -17,45 +20,48 @@ static constexpr double FAR_WIDTH = 100.0f;
 // static constexpr double NEAR_WIDTH = 0.01f;
 static constexpr double NEAR_WIDTH = 0.1f;
 
-static constexpr double ASPECT = 1920.0 / 1080.0;
+// static constexpr int FRAME_WIDTH = 1920;
+// static constexpr int FRAME_HEIGHT = 1080;
+static constexpr int FRAME_WIDTH = 2880;
+static constexpr int FRAME_HEIGHT = 1620;
+
+static constexpr double ASPECT = FRAME_WIDTH / (double)FRAME_HEIGHT;
 
 static constexpr double NEAR_HEIGHT = NEAR_WIDTH / ASPECT;
 static constexpr double FAR_HEIGHT = FAR_WIDTH / ASPECT;
 
-static constexpr int FRAME_WIDTH = 1920;
-static constexpr int FRAME_HEIGHT = 1080;
 
 using namespace yocto;
 
 static ImageRGBA *bluemarble = nullptr;
 
-mat3f RotYaw(double a) {
-  const double cosa = cos(a);
-  const double sina = sin(a);
+mat3f RotYaw(float a) {
+  const float cosa = cos(a);
+  const float sina = sin(a);
   return mat3f
-    {cosa, -sina, 0.0,
-     sina, cosa, 0.0,
-     0.0, 0.0, 1.0};
+    {cosa, -sina, 0.0f,
+     sina, cosa,  0.0f,
+     0.0f, 0.0f,  1.0f};
 }
 
-mat3f RotPitch(double a) {
-  const double cosa = cos(a);
-  const double sina = sin(a);
+mat3f RotPitch(float a) {
+  const float cosa = cos(a);
+  const float sina = sin(a);
 
   return mat3f
-    {cosa, 0.0, sina,
-     0.0, 1.0, 0.0,
-     -sina, 0.0, cosa};
+    {cosa,  0.0f, sina,
+     0.0f,  1.0f, 0.0f,
+     -sina, 0.0f, cosa};
 }
 
-mat3f RotRoll(double a) {
-  const double cosa = cos(a);
-  const double sina = sin(a);
+mat3f RotRoll(float a) {
+  const float cosa = cos(a);
+  const float sina = sin(a);
 
   return mat3f
-    {1.0, 0.0, 0.0,
-     0.0, cosa, -sina,
-     0.0, sina, cosa};
+    {1.0f, 0.0f, 0.0f,
+     0.0f, cosa, -sina,
+     0.0f, sina, cosa};
 }
 
 mat3f Rot(double yaw, double pitch, double roll) {
@@ -95,6 +101,56 @@ inline prim_intersection intersect_tetrahedron(
   return p0;
 }
 
+struct Sphere {
+  vec3f origin = {0.0f, 0.0f, 0.0f};
+  float radius = 0.0f;
+};
+
+struct Prim {
+  std::variant<Sphere, Tetrahedron> v;
+};
+
+struct Scene {
+  std::vector<Prim> prims;
+
+  // Updates ray with distance of next intersection (if any).
+  std::pair<int, prim_intersection> NextIntersection(
+      ray3f *ray) {
+    // Obviously this should use spatial data structures if the
+    // scene is big!
+    int isect_idx = -1;
+    prim_intersection isect;
+    isect.distance = flt_max;
+    isect.hit = false;
+    for (int idx = 0; idx < prims.size(); idx++) {
+      const Prim &p = prims[idx];
+      if (const Sphere *sphere = std::get_if<Sphere>(&p.v)) {
+        prim_intersection pi =
+          intersect_sphere(*ray, sphere->origin, sphere->radius);
+        if (pi.hit && pi.distance < isect.distance) {
+          isect = pi;
+          isect_idx = idx;
+        }
+
+      } else if (const Tetrahedron *tet = std::get_if<Tetrahedron>(&p.v)) {
+        prim_intersection pi =
+          intersect_tetrahedron(*ray, *tet);
+        if (pi.hit && pi.distance < isect.distance) {
+          isect = pi;
+          isect_idx = idx;
+        }
+
+      } else {
+        CHECK(false) << "Unknown prim??";
+      }
+    }
+
+    // XXX some more principled epsilon; nextafter?
+    if (isect.hit) ray->tmin = isect.distance + 0.00001;
+    return make_pair(isect_idx, isect);
+  }
+};
+
 
 static ImageRGBA RenderFrame(
     // Distance from Earth
@@ -115,9 +171,21 @@ static ImageRGBA RenderFrame(
   //  /
   // +z
 
+  Scene scene;
+  Sphere earth;
+  earth.radius = EARTH_RADIUS;
+  earth.origin = {0.0f, 0.0f, 0.0f};
+  scene.prims.emplace_back(earth);
+  vec3f tp1 = {0, -5, 0};
+  vec3f tp2 = {0, +5, 0};
+  vec3f tp3 = {5, 0, +5};
+  vec3f tp4 = {5, 0, -5};
+  Tetrahedron mouth(tp1, tp2, tp3, tp4);
+  scene.prims.emplace_back(mouth);
+
   ParallelComp2D(
       img.Width(), img.Height(),
-      [&img](int px, int py) {
+      [&img, &scene](int px, int py) {
         double xf = px / (double)img.Width();
         double yf = py / (double)img.Height();
 
@@ -152,6 +220,56 @@ static ImageRGBA RenderFrame(
         frame3f rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
         ray = transform_ray(rot_frame, ray);
 
+        bool in_mouth = false;
+        for (;;) {
+          const auto [idx, pi] = scene.NextIntersection(&ray);
+          if (!pi.hit) {
+            // space
+            img.SetPixel32(px, py, 0x111100FF);
+            break;
+          }
+
+          if (idx == 0) {
+            // sphere
+            if (in_mouth) {
+              // Ignore the surface of the sphere while
+              // inside the mouth cutout.
+            } else {
+              // Normal hit on sphere.
+              uint32_t color = bluemarble->GetPixel32(
+                  pi.uv.x * (double)bluemarble->Width(),
+                  pi.uv.y * (double)bluemarble->Height());
+
+              img.SetPixel32(px, py, color);
+              break;
+            }
+          } else if (idx == 1) {
+
+            if (in_mouth) {
+              // Exit mouth.
+              // Is this the inner surface of the sphere?
+              vec3f pt = ray.o + pi.distance * ray.d;
+              // XXX hard coded location of earth
+              if (length(pt) <= EARTH_RADIUS) {
+                uint32_t color = 0x550000FF;
+                img.SetPixel32(px, py, color);
+                in_mouth = false;
+                break;
+              } else {
+                // Exiting to free space
+                in_mouth = false;
+              }
+
+            } else {
+              // Enter mouth.
+              in_mouth = true;
+            }
+          } else {
+            CHECK(false) << "unknown prim";
+          }
+        }
+
+        #if 0
         // test: intersect sphere
         /*
           vec2f uv       = {0, 0};
@@ -179,12 +297,6 @@ static ImageRGBA RenderFrame(
           img.SetPixel32(px, py, 0x111100FF);
         }
 
-        vec3f tp1 = {0, -2.5, 0};
-        vec3f tp2 = {0, +2.5, 0};
-        vec3f tp3 = {5, 0, -5};
-        vec3f tp4 = {5, 0, +5};
-
-        Tetrahedron tet(tp1, tp2, tp3, tp4);
         prim_intersection t_isect = intersect_tetrahedron(ray, tet);
 
         if (t_isect.hit) {
@@ -194,6 +306,7 @@ static ImageRGBA RenderFrame(
           img.BlendPixel32(px, py,
                            ColorUtil::FloatsTo32(r, 0.0f, b, 0.2f));
         }
+        #endif
 
         // TODO:
         // For each pixel, compute what part of the
