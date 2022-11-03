@@ -11,6 +11,8 @@
 #include "image.h"
 #include "color-util.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
+#include "timer.h"
 
 static constexpr int THREADS = 24;
 
@@ -165,6 +167,8 @@ struct Scene {
 };
 
 
+// A good distance is 20.0
+// A good angle is 3.14159 + 0.25
 static ImageRGBA RenderFrame(
     // Distance from Earth
     double distance,
@@ -196,18 +200,19 @@ static ImageRGBA RenderFrame(
   Tetrahedron mouth(tp1, tp2, tp3, tp4);
   scene.prims.emplace_back(mouth);
 
-  ParallelComp2D(
-      img.Width(), img.Height(),
-      [&img, &scene](int px, int py) {
+  ParallelComp(
+      /* img.Width(), */ img.Height(),
+      [distance, angle, &img, &scene](int py) {
+      double yf = py / (double)img.Height();
+      for (int px = 0; px < img.Width(); px++) {
         double xf = px / (double)img.Width();
-        double yf = py / (double)img.Height();
 
         // image plane and far plane are parallel to the
         // xy plane.
         float far_dist = 100.0f;
         // (maybe we want much less to zoom to a
         // region on the planet?)
-        float near_dist = -20.1f;
+        float near_dist = -distance;
 
         float near_x = std::lerp(-NEAR_WIDTH * 0.5, NEAR_WIDTH * 0.5, xf);
         float near_y = std::lerp(-NEAR_HEIGHT * 0.5, NEAR_HEIGHT * 0.5, yf);
@@ -228,12 +233,16 @@ static ImageRGBA RenderFrame(
         // Default orientation would be facing the south pole.
         // Rotate...
         // double axis = 0.0;
-        mat3f rot = Rot(0.0, 3.14159 + 0.25, 3.14159 * 0.5);
+        mat3f rot = Rot(0.0, angle, 3.14159 * 0.5);
         // Rotate around origin.
         frame3f rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
         ray = transform_ray(rot_frame, ray);
 
+        // This doesn't work if the ray starts in the mouth!
+        // (We could check if -direction intersects to set the
+        // initial value? or orient the triangles correctly.)
         bool in_mouth = false;
+
         for (;;) {
           const auto [idx, pi] = scene.NextIntersection(&ray);
           if (!pi.hit) {
@@ -286,6 +295,7 @@ static ImageRGBA RenderFrame(
           }
         }
 
+      }
       }, THREADS);
 
   return img.ScaleDownBy(OVERSAMPLE);
@@ -299,8 +309,22 @@ int main(int argc, char **argv) {
   CHECK(bluemarble != nullptr);
   printf("Done.\n");
 
-  ImageRGBA img = RenderFrame(100, 0);
-  img.Save("sphere.png");
+  const int NUM_FRAMES = 60;
+  Timer run_timer;
+  Asynchronously async(8);
+  for (int i = 0; i < NUM_FRAMES; i++) {
+    double f = i / (double)(NUM_FRAMES - 1);
+    double distance = std::lerp(3, 20, f);
+    double angle = std::lerp(3.14159 + 3.14159, 3.14159 + 0.25, f);
+    ImageRGBA img = RenderFrame(distance, angle);
+    async.Run([i, img = std::move(img)]() {
+        img.Save(StringPrintf("sphere%d.png", i));
+      });
+  }
+
+  double sec = run_timer.Seconds();
+  printf("Wrote %d frames in %.1f sec (%.3f sec/frame).\n",
+         NUM_FRAMES, sec, sec / NUM_FRAMES);
 
   delete bluemarble;
   return 0;
