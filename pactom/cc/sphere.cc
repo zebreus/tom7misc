@@ -30,6 +30,19 @@ static constexpr double ASPECT = FRAME_WIDTH / (double)FRAME_HEIGHT;
 static constexpr double NEAR_HEIGHT = NEAR_WIDTH / ASPECT;
 static constexpr double FAR_HEIGHT = FAR_WIDTH / ASPECT;
 
+static constexpr float TOTAL_MILES = 800 + 1400 + 1800 + 25;
+// Normalized to [0, 1].
+static constexpr ColorUtil::Gradient INNER_EARTH {
+  GradRGB(0.0f / TOTAL_MILES, 0xEEEECC),
+  GradRGB(790.0f / TOTAL_MILES, 0xEEEECC),
+  GradRGB(801.0f / TOTAL_MILES, 0xf7dd24),
+  GradRGB(2200.0f / TOTAL_MILES, 0xf7dd24),
+  GradRGB(2201.0f / TOTAL_MILES, 0xf7dd24),
+  GradRGB(4000.0f / TOTAL_MILES, 0xcf1857),
+  GradRGB(4001.0f / TOTAL_MILES, 0x724719),
+  GradRGB(4024.0f / TOTAL_MILES, 0x724719),
+  GradRGB(1.0f, 0x046374),
+};
 
 using namespace yocto;
 
@@ -250,9 +263,13 @@ static ImageRGBA RenderFrame(
               // Is this the inner surface of the sphere?
               vec3f pt = ray.o + pi.distance * ray.d;
               // XXX hard coded location of earth
-              if (length(pt) <= EARTH_RADIUS) {
-                uint32_t color = 0x550000FF;
+              float r = length(pt);
+              if (r <= EARTH_RADIUS) {
+                uint32_t color = ColorUtil::LinearGradient32(
+                    INNER_EARTH, r / EARTH_RADIUS);
                 img.SetPixel32(px, py, color);
+                // But make it darker
+                img.BlendPixel32(px, py, 0x48270677);
                 in_mouth = false;
                 break;
               } else {
@@ -269,50 +286,6 @@ static ImageRGBA RenderFrame(
           }
         }
 
-        #if 0
-        // test: intersect sphere
-        /*
-          vec2f uv       = {0, 0};
-          float distance = flt_max;
-          bool  hit      = false;
-        */
-        prim_intersection s_isect =
-          intersect_sphere(ray, {0.0, 0.0, 0.0}, EARTH_RADIUS);
-
-        if (s_isect.hit) {
-          #if 0
-          float r = std::clamp(s_isect.uv.x, 0.0f, 1.0f);
-          float b = std::clamp(s_isect.uv.y, 0.0f, 1.0f);
-
-          img.SetPixel32(px, py,
-                         ColorUtil::FloatsTo32(r, 0.0f, b, 1.0f));
-          #endif
-          uint32_t color = bluemarble->GetPixel32(
-              s_isect.uv.x * (double)bluemarble->Width(),
-              s_isect.uv.y * (double)bluemarble->Height());
-
-          img.SetPixel32(px, py, color);
-
-        } else {
-          img.SetPixel32(px, py, 0x111100FF);
-        }
-
-        prim_intersection t_isect = intersect_tetrahedron(ray, tet);
-
-        if (t_isect.hit) {
-          float r = std::clamp(t_isect.uv.x, 0.0f, 1.0f);
-          float b = std::clamp(t_isect.uv.y, 0.0f, 1.0f);
-
-          img.BlendPixel32(px, py,
-                           ColorUtil::FloatsTo32(r, 0.0f, b, 0.2f));
-        }
-        #endif
-
-        // TODO:
-        // For each pixel, compute what part of the
-        // truncated sphere it sees, if any.
-
-        // Compute the texture coordinate at that pixel.
       }, THREADS);
 
   return img.ScaleDownBy(OVERSAMPLE);
