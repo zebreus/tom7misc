@@ -116,6 +116,44 @@ inline prim_intersection intersect_tetrahedron(
   return p0;
 }
 
+// From yocto_geometry.h, but fixing a bug (?) where the UV coordinates
+// are always from the back of the sphere
+inline prim_intersection intersect_sphere_front(
+    const ray3f& ray, const vec3f& p, float r) {
+  // compute parameters
+  auto a = dot(ray.d, ray.d);
+  auto b = 2 * dot(ray.o - p, ray.d);
+  auto c = dot(ray.o - p, ray.o - p) - r * r;
+
+  // check discriminant
+  auto dis = b * b - 4 * a * c;
+  if (dis < 0) return {};
+
+  // compute ray parameter
+  auto t = (-b - sqrt(dis)) / (2 * a);
+
+  // exit if not within bounds
+  if (t < ray.tmin || t > ray.tmax) return {};
+
+  #if 0
+  // try other ray parameter
+  t = (-b + sqrt(dis)) / (2 * a);
+
+  // exit if not within bounds
+  if (t < ray.tmin || t > ray.tmax) return {};
+  #endif
+
+  // compute local point for uvs
+  auto plocal = ((ray.o + ray.d * t) - p) / r;
+  auto u      = atan2(plocal.y, plocal.x) / (2 * pif);
+  if (u < 0) u += 1;
+  auto v = acos(clamp(plocal.z, -1.0f, 1.0f)) / pif;
+
+  // intersection occurred: set params and exit
+  return {{u, v}, t, true};
+}
+
+
 struct Sphere {
   vec3f origin = {0.0f, 0.0f, 0.0f};
   float radius = 0.0f;
@@ -127,6 +165,17 @@ struct Prim {
 
 struct Scene {
   std::vector<Prim> prims;
+
+  std::vector<std::pair<int, prim_intersection>> AllIntersections(
+      const ray3f &ray_in) {
+    ray3f ray = ray_in;
+    std::vector<std::pair<int, prim_intersection>> hits;
+    for (;;) {
+      auto p = NextIntersection(&ray);
+      if (!p.second.hit) return hits;
+      else hits.push_back(p);
+    }
+  }
 
   // Updates ray with distance of next intersection (if any).
   std::pair<int, prim_intersection> NextIntersection(
@@ -141,7 +190,7 @@ struct Scene {
       const Prim &p = prims[idx];
       if (const Sphere *sphere = std::get_if<Sphere>(&p.v)) {
         prim_intersection pi =
-          intersect_sphere(*ray, sphere->origin, sphere->radius);
+          intersect_sphere_front(*ray, sphere->origin, sphere->radius);
         if (pi.hit && pi.distance < isect.distance) {
           isect = pi;
           isect_idx = idx;
@@ -238,62 +287,71 @@ static ImageRGBA RenderFrame(
         frame3f rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
         ray = transform_ray(rot_frame, ray);
 
-        // This doesn't work if the ray starts in the mouth!
-        // (We could check if -direction intersects to set the
-        // initial value? or orient the triangles correctly.)
-        bool in_mouth = false;
 
-        for (;;) {
-          const auto [idx, pi] = scene.NextIntersection(&ray);
-          if (!pi.hit) {
-            // space
-            img.SetPixel32(px, py, 0x111100FF);
-            break;
-          }
+        const std::vector<std::pair<int, prim_intersection>> hits =
+          scene.AllIntersections(ray);
 
-          if (idx == 0) {
-            // sphere
-            if (in_mouth) {
-              // Ignore the surface of the sphere while
-              // inside the mouth cutout.
-            } else {
-              // Normal hit on sphere.
-              uint32_t color = bluemarble->GetPixel32(
-                  pi.uv.x * (double)bluemarble->Width(),
-                  pi.uv.y * (double)bluemarble->Height());
+        int num_tet = 0;
+        for (const auto &[idx, pi] : hits)
+          if (idx == 1) num_tet++;
 
-              img.SetPixel32(px, py, color);
-              break;
-            }
-          } else if (idx == 1) {
+        // Assume that if there are odd tetrahedron intersections,
+        // it's because we started inside.
+        bool in_mouth = !!(num_tet & 1);
 
-            if (in_mouth) {
-              // Exit mouth.
-              // Is this the inner surface of the sphere?
-              vec3f pt = ray.o + pi.distance * ray.d;
-              // XXX hard coded location of earth
-              float r = length(pt);
-              if (r <= EARTH_RADIUS) {
-                uint32_t color = ColorUtil::LinearGradient32(
-                    INNER_EARTH, r / EARTH_RADIUS);
-                img.SetPixel32(px, py, color);
-                // But make it darker
-                img.BlendPixel32(px, py, 0x48270677);
-                in_mouth = false;
-                break;
+        auto Trace = [&](){
+          for (const auto &[idx, pi] : hits) {
+            CHECK(pi.hit);
+
+            if (idx == 0) {
+              // sphere
+              if (in_mouth) {
+                // Ignore the surface of the sphere while
+                // inside the mouth cutout.
               } else {
-                // Exiting to free space
-                in_mouth = false;
-              }
+                // Normal hit on sphere.
+                uint32_t color = bluemarble->GetPixel32(
+                    pi.uv.x * (double)bluemarble->Width(),
+                    pi.uv.y * (double)bluemarble->Height());
 
+                img.SetPixel32(px, py, color);
+                return;
+              }
+            } else if (idx == 1) {
+
+              if (in_mouth) {
+                // Exit mouth.
+                // Is this the inner surface of the sphere?
+                vec3f pt = ray.o + pi.distance * ray.d;
+                // XXX hard coded location of earth
+                float r = length(pt);
+                if (r <= EARTH_RADIUS) {
+                  uint32_t color = ColorUtil::LinearGradient32(
+                      INNER_EARTH, r / EARTH_RADIUS);
+                  img.SetPixel32(px, py, color);
+                  // But make it darker
+                  img.BlendPixel32(px, py, 0x48270677);
+                  in_mouth = false;
+                  return;
+                } else {
+                  // Exiting to free space
+                  in_mouth = false;
+                }
+
+              } else {
+                // Enter mouth.
+                in_mouth = true;
+              }
             } else {
-              // Enter mouth.
-              in_mouth = true;
+              CHECK(false) << "unknown prim";
             }
-          } else {
-            CHECK(false) << "unknown prim";
           }
-        }
+
+          // did not hit solid, so render space
+          img.SetPixel32(px, py, 0x111100FF);
+        };
+
+        Trace();
 
       }
       }, THREADS);
@@ -305,9 +363,31 @@ int main(int argc, char **argv) {
 
   printf("Loading marble...\n");
   // bluemarble = ImageRGBA::Load("world_shaded_43k.jpg");
-  bluemarble = ImageRGBA::Load("bluemarble.png");
+  // bluemarble = ImageRGBA::Load("bluemarble.png");
+
+  // stb_image can't decode the original (integer overflow) but two
+  // hemispheres do fit. So load them individually and blit them into
+  // the full sphere texture.
+  string west_file = "land_shallow_topo_west.jpg";
+  string east_file = "land_shallow_topo_east.jpg";
+
+  std::unique_ptr<ImageRGBA> west(ImageRGBA::Load(west_file));
+  CHECK(west.get() != nullptr);
+  std::unique_ptr<ImageRGBA> east(ImageRGBA::Load(east_file));
+  CHECK(east.get() != nullptr);
+
+  CHECK(west->Height() == east->Height());
+  CHECK(west->Width() == east->Width());
+  bluemarble = new ImageRGBA(west->Width() * 2, west->Height());
   CHECK(bluemarble != nullptr);
-  printf("Done.\n");
+
+  bluemarble->CopyImage(0, 0, *west);
+  bluemarble->CopyImage(west->Width(), 0, *east);
+
+  west.reset();
+  east.reset();
+  printf("Done. Earth texture %d x %d\n",
+         bluemarble->Width(), bluemarble->Height());
 
   const int NUM_FRAMES = 60;
   Timer run_timer;
