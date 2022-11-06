@@ -33,7 +33,7 @@ static constexpr double SUN_RADIUS = 108.15f * EARTH_RADIUS;
 static constexpr double FAR_DIST = 100.0f;
 static constexpr double FAR_WIDTH = 100.0f;
 // static constexpr double NEAR_WIDTH = 0.01f;
-static constexpr double NEAR_WIDTH = 0.1f;
+static constexpr double NEAR_WIDTH = 0.005f;
 
 static constexpr float TOTAL_MILES = 800 + 1400 + 1800 + 25;
 // Normalized to [0, 1].
@@ -50,6 +50,42 @@ static constexpr ColorUtil::Gradient INNER_EARTH {
 };
 
 using namespace yocto;
+
+struct Convert {
+  // uv coordinates here are given in terms of the earth
+  // texture map image (already flipped horizontally).
+
+  // Wellsville
+  static constexpr double xu0 = 11921.0 / (21600.0 * 2.0);
+  static constexpr double yu0 = 5928.0 / 21600.0;
+
+  static constexpr double lat0 = 40.600658; // 40.5815756;
+  static constexpr double lon0 = -80.646501; // -80.5735614;
+
+  // Confluence
+  static constexpr double xu1 = 11999.0 / (21600.0 * 2.0);
+  static constexpr double yu1 = 5947.0 / 21600.0;
+  static constexpr double lat1 = 40.442487; // 40.4452293;
+  static constexpr double lon1 = -80.015946; // -80.140803;
+
+  static constexpr double lattoy = (yu1 - yu0) / (lat1 - lat0);
+  static constexpr double lontox = (xu1 - xu0) / (lon1 - lon0);
+
+  static constexpr double ytolat = (lat1 - lat0) / (yu1 - yu0);
+  static constexpr double xtolon = (lon1 - lon0) / (xu1 - xu0);
+
+  // Near Pittsburgh. Assumes world is flat, which is of
+  // course not true. Remember lat,lon is y,x.
+  static constexpr std::pair<double, double> ToUV(double lat, double lon) {
+    return make_pair((lon - lon0) * lontox + xu0,
+                     (lat - lat0) * lattoy + yu0);
+  }
+
+  static constexpr std::pair<double, double> ToLatLon(double u, double v) {
+    return make_pair((u - xu0) * xtolon + lon0,
+                     (v - yu0) * ytolat + lat0);
+  }
+};
 
 static ImageRGBA *bluemarble = nullptr;
 
@@ -201,7 +237,7 @@ double OptimizeMe(double a1, double a2, double a3, double distance) {
       ray3f ray;
       ray.o = near_pt;
       ray.d = far_pt - near_pt;
-      ray.tmin = 0.0000001f;
+      ray.tmin = 0.000000001f;
       ray.tmax = 10.0f;
 
       mat3f rot = Rot(a1, a2, a3);
@@ -215,31 +251,54 @@ double OptimizeMe(double a1, double a2, double a3, double distance) {
       return {make_pair(1.0f - pi.uv.x, pi.uv.y)};
     };
 
-  auto pi0 = GetUV(0.0f, 0.0f);
-  if (!pi0.has_value()) return 9999999.0f;
-  auto pi1 = GetUV(1.0f, 1.0f);
-  if (!pi1.has_value()) return 9999999.0f;
+  auto pi00 = GetUV(0.0f, 0.0f);
+  if (!pi00.has_value()) return 9999999.0f;
 
-  auto [ux0, uy0] = pi0.value();
-  auto [ux1, uy1] = pi1.value();
+  auto pi10 = GetUV(1.0f, 0.0f);
+  if (!pi10.has_value()) return 9999999.0f;
 
-  // TODO norm distance probably better
-  return abs(ux0 - ux) + abs(uy0 - uy) +
-    abs(ux1 - (ux + uw)) + abs(uy1 - (uy + uh));
+  auto pi01 = GetUV(0.0f, 1.0f);
+  if (!pi01.has_value()) return 9999999.0f;
+
+  auto pi11 = GetUV(1.0f, 1.0f);
+  if (!pi11.has_value()) return 9999999.0f;
+
+  auto [ux00, uy00] = pi00.value();
+  auto [ux10, uy10] = pi10.value();
+  auto [ux01, uy01] = pi01.value();
+  auto [ux11, uy11] = pi11.value();
+
+  auto SqDist = [](double x0, double y0,
+                   double x1, double y1) {
+      double xx = x0 - x1;
+      double yy = y0 - y1;
+      return xx * xx + yy * yy;
+    };
+
+  return
+    SqDist(ux00, uy00, ux, uy) +
+    SqDist(ux10, uy10, ux + uw, uy) +
+    SqDist(ux01, uy01, ux, uy + uh) +
+    SqDist(ux11, uy11, ux + uw, uy + uh);
 }
 
-static void Optimize() {
-  auto [a1, a2, a3, d] =
-    Opt::Minimize4D(OptimizeMe,
-                    std::make_tuple(0.0, 0.0, 0.0, 0.001),
-                    std::make_tuple(2 * PI, 2 * PI, 2 * PI, 10.0),
-                    100000, 1, 1000).first;
+static std::tuple<double, double, double, double> Optimize() {
+  static constexpr double d = 2.801;
+  auto [a1, a2, a3] =
+    Opt::Minimize3D([](double a1, double a2, double a3) {
+        return OptimizeMe(a1, a2, a3, d);
+      },
+    std::make_tuple(0.0, 0.0, 0.0),
+    std::make_tuple(2 * PI, 2 * PI, 2 * PI),
+    10000, 1, 1000).first;
   printf("Best:\n"
          "const double a1 = %.11f;\n"
          "const double a2 = %.11f;\n"
          "const double a3 = %.11f;\n"
          "const double distance = %.11f\n",
          a1, a2, a3, d);
+
+  return std::make_tuple(a1, a2, a3, d);
 }
 
 struct Scene {
@@ -250,9 +309,9 @@ struct Scene {
   // anyway.
 # define EARTH_TILT_RAD 0.41f
 # define SUN_ANGLE (2.0)
-  Sphere sun = {.origin = {SUN_DISTANCE * sin(EARTH_TILT_RAD),
-                           SUN_DISTANCE * sin(SUN_ANGLE),
-                           SUN_DISTANCE * cos(SUN_ANGLE)},
+  Sphere sun = {.origin = {float(SUN_DISTANCE * sin(EARTH_TILT_RAD)),
+                           float(SUN_DISTANCE * sin(SUN_ANGLE)),
+                           float(SUN_DISTANCE * cos(SUN_ANGLE))},
                 .radius = SUN_RADIUS};
 
   std::vector<std::pair<int, prim_intersection>> AllIntersections(
@@ -304,12 +363,54 @@ struct Scene {
   }
 };
 
-uint32_t EarthColor(float ux, float uy) {
-  const auto [r, g, b, a_] = bluemarble->SampleBilinear(
-      ux * bluemarble->Width(),
-      uy * bluemarble->Height());
+ImageRGBA *tile = nullptr;
 
-  return ColorUtil::FloatsTo32(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+uint32_t EarthColor(float ux, float uy) {
+  static constexpr auto tile_top = Convert::ToUV(
+      40.576817, -80.179213);
+  static constexpr auto tile_bot = Convert::ToUV(
+      40.293648, -79.515399);
+
+  auto In = [ux, uy](std::pair<double, double> a,
+                     std::pair<double, double> b) ->
+    std::optional<std::pair<double, double>> {
+
+    auto InOrder = [](double a, double b, double c) {
+        return a < c ? (a <= b && b < c) : (c <= b && b < a);
+      };
+
+    if (InOrder(a.first, ux, b.first) &&
+        InOrder(a.second, uy, b.second)) {
+        return std::make_pair((ux - a.first) / (b.first - a.first),
+                              (uy - a.second) / (b.second - a.second));
+      } else {
+        return std::nullopt;
+      }
+    };
+
+  /*
+  static constexpr auto usa1 = Convert::ToUV(48.348262, -124.675907);
+  static constexpr auto usa2 = Convert::ToUV(32.703243, -79.675909);
+  if (auto pou = In(usa1, usa2)) {
+    return 0xFFFF77FF;
+
+  } else
+  */
+
+  if (auto po = In(tile_top, tile_bot)) {
+    auto [x, y] = po.value();
+    const auto [r, g, b, a_] = tile->SampleBilinear(
+        // XXX maybe don't bother scaling down?
+        x * tile->Width(),
+        y * tile->Height());
+    return ColorUtil::FloatsTo32(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+  } else {
+    const auto [r, g, b, a_] = bluemarble->SampleBilinear(
+        ux * bluemarble->Width(),
+        uy * bluemarble->Height());
+
+    return ColorUtil::FloatsTo32(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+  }
 }
 
 
@@ -381,7 +482,7 @@ static ImageRGBA RenderFrame(
         ray3f ray;
         ray.o = near_pt;
         ray.d = far_pt - near_pt;
-        ray.tmin = 0.0000001f;
+        ray.tmin = 0.000000001f;
         ray.tmax = 10.0f;
 
         // Rotate...
@@ -482,8 +583,7 @@ static ImageRGBA RenderFrame(
                 // inside the mouth cutout.
               } else {
                 // Normal hit on sphere.
-                uint32_t color =
-                  EarthColor((1.0f - pi.uv.x), pi.uv.y);
+                uint32_t color = EarthColor(1.0f - pi.uv.x, pi.uv.y);
 
                 vec3f pt = ray.o + pi.distance * ray.d;
                 color = Shade(pt, color);
@@ -534,13 +634,29 @@ static ImageRGBA RenderFrame(
 
   ImageRGBA down = img.ScaleDownBy(oversample);
   down.BlendText32(5, 5, 0xFFFF22FF,
-                   StringPrintf("%.4f,%.4f,%.4f", a1, a2, a3));
+                   StringPrintf("%.9f,%.9f,%.9f", a1, a2, a3));
   return down;
 }
 
 int main(int argc, char **argv) {
 
-  // Optimize();
+  {
+    static constexpr auto usa1 = Convert::ToUV(48.348262, -124.675907);
+    static constexpr auto usa2 = Convert::ToUV(32.703243, -79.675909);
+
+    printf("%.6f,%.6f .. %.6f,%.6f\n",
+           usa1.first, usa1.second,
+           usa2.first, usa2.second);
+  }
+
+  //  const auto [a1, a2, a3, d_] = Optimize();
+  const double a1 = 0.117112122;
+  const double a2 = 3.008712215;
+  const double a3 = 2.284319047;
+  const double distance = 2.80100000000;
+
+  tile = ImageRGBA::Load("tile.png");
+  CHECK(tile != nullptr);
 
   printf("Loading marble...\n");
   // bluemarble = ImageRGBA::Load("world_shaded_43k.jpg");
@@ -565,11 +681,15 @@ int main(int argc, char **argv) {
 
   CHECK(west->Height() == east->Height());
   CHECK(west->Width() == east->Width());
+  Timer alloc_timer;
   bluemarble = new ImageRGBA(west->Width() * 2, west->Height());
+  printf("Alloc in %.4fs\n", alloc_timer.Seconds());
   CHECK(bluemarble != nullptr);
 
+  Timer copy_timer;
   bluemarble->CopyImage(0, 0, *west);
   bluemarble->CopyImage(west->Width(), 0, *east);
+  printf("Copy in %.4fs\n", copy_timer.Seconds());
 
   west.reset();
   east.reset();
@@ -580,20 +700,18 @@ int main(int argc, char **argv) {
   #endif
 
   auto FrameDistance = [](float f) {
-      return std::lerp(2.800428964, 20, f);
+      return std::lerp(2.80000428964, 6.0, f);
       // return std::lerp(3, 20, f);
     };
-  auto FrameAngle = [](float f) {
-      // 2*pi, 3.14159 + 0.25
-      // return 0.0f;
-      return f;
+  auto FrameAngle = [a1, a2, a3](float f) {
+      return std::make_tuple(a1, a2 - 0.0001 * f, a3 + 0.0001 * f);
     };
 
   // return std::lerp(0, 0.25, f); };
 
-  #if 0
+  #if 1
   Timer run_timer;
-  const int NUM_FRAMES = 60;
+  const int NUM_FRAMES = 120;
   Asynchronously async(8);
   // static constexpr int FRAME_WIDTH = 1920;
   // static constexpr int FRAME_HEIGHT = 1080;
@@ -603,9 +721,9 @@ int main(int argc, char **argv) {
   for (int i = 0; i < NUM_FRAMES; i++) {
     double f = i / (double)(NUM_FRAMES - 1);
     double distance = FrameDistance(f);
-    double angle = FrameAngle(f);
+    const auto [fa1, fa2, fa3] = FrameAngle(f);
     ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
-                                distance, angle);
+                                distance, fa1, fa2, fa3);
     async.Run([i, img = std::move(img)]() {
         img.Save(StringPrintf("sphere%d.png", i));
         printf("%d\n", i);
@@ -617,11 +735,11 @@ int main(int argc, char **argv) {
   #else
   ArcFour rc(StringPrintf("%lld", time(nullptr)));
   RandomGaussian gauss(&rc);
-  static constexpr int ACROSS = 4;
-  static constexpr int DOWN = 4;
+  static constexpr int ACROSS = 5;
+  static constexpr int DOWN = 5;
   static constexpr int ONEW = 288 * 2;
   static constexpr int ONEH = 162 * 2;
-  static constexpr int OVERSAMPLE = 1;
+  static constexpr int OVERSAMPLE = 2;
 
   // best
   /*
@@ -641,19 +759,21 @@ int main(int argc, char **argv) {
   const double a2 = 2.99730660274;
   const double a3 = 2.28557750908;
   */
+  /*
   const double a1 = 0.49672948489;
   const double a2 = 3.00654714633;
   const double a3 = 2.28445155746;
+  */
 
   ImageRGBA mosaic(ONEW * ACROSS, ONEH * DOWN);
   for (int y = 0; y < DOWN; y++) {
     for (int x = 0; x < ACROSS; x++) {
       int i = y * DOWN + x;
       double f = i / (double)(ACROSS * DOWN - 1);
-      double distance = FrameDistance(f);
+      double distance = 2.80000428964; // FrameDistance(f);
       // double angle = FrameAngle(f);
 
-      double scale = 0.0;
+      double scale = 0.0001;
       double aa1 = i == 0 ? a1 : a1 + gauss.Next() * scale;
       double aa2 = i == 0 ? a2 : a2 + gauss.Next() * scale;
       double aa3 = i == 0 ? a3 : a3 + gauss.Next() * scale;
@@ -666,8 +786,6 @@ int main(int argc, char **argv) {
   }
   mosaic.Save("mosaic.png");
   #endif
-
-
 
 
   delete bluemarble;
