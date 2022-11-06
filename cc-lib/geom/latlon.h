@@ -89,6 +89,13 @@ struct LatLon {
   // a few hundred miles of the tangent point.
   static InverseProjection InverseGnomonic(LatLon tangent);
 
+  // Project coordinates to a rectangle with linear scaling, as though
+  // the Earth is flat. Does not handle the antimeridan. A reasonable
+  // option for plotting onto map tiles at city-level zooms where the
+  // surface is approximately flat anywhere.
+  static Projection Linear(LatLon zerozero, LatLon oneone);
+  static InverseProjection InverseLinear(LatLon zerozero, LatLon oneone);
+
 private:
   LatLon(double lat, double lon) : lat(lat), lon(lon) {}
   // Internally stored as degrees, although rads might be better.

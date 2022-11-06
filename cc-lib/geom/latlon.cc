@@ -6,13 +6,11 @@
 #include <functional>
 #include <string>
 #include <cmath>
+#include <numbers>
 
 using namespace std;
 
-// Needs GCC 10!
-// #include <numbers>
-// constexpr double PI = std::numbers::pi_v;
-inline constexpr double PI = 3.14159265358979323846;
+inline constexpr double PI = std::numbers::pi;
 
 // For distance calculations, I only ported the iterative solution from
 // sml-lib, based on the note there.
@@ -251,6 +249,30 @@ LatLon::InverseProjection LatLon::InverseGnomonic(LatLon pos0) {
       return FromRads(phi, lambda);
     };
 }
+
+LatLon::Projection LatLon::Linear(LatLon zerozero, LatLon oneone) {
+  const double lattoy = 1.0 / (oneone.lat - zerozero.lat);
+  const double lontox = 1.0 / (oneone.lon - zerozero.lon);
+
+  // static constexpr double ytolat = (lat1 - lat0) / (yu1 - yu0);
+  // static constexpr double xtolon = (lon1 - lon0) / (xu1 - xu0);
+
+  return [zerozero, lattoy, lontox](LatLon pt) {
+      return std::make_pair((pt.lon - zerozero.lon) * lontox,
+                            (pt.lat - zerozero.lat) * lattoy);
+    };
+}
+LatLon::InverseProjection LatLon::InverseLinear(LatLon zerozero,
+                                                LatLon oneone) {
+  const double ytolat = oneone.lat - zerozero.lat;
+  const double xtolon = oneone.lon - zerozero.lon;
+
+  return [zerozero, ytolat, xtolon](double x, double y) {
+      return LatLon::FromDegs(zerozero.lat + ytolat * y,
+                              zerozero.lon + xtolon * x);
+    };
+}
+
 
 // Use gnomonic projection. In it, all great circles (from the origin)
 // are straight lines. No doubt there is a more direct method, though!

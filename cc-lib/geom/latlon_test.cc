@@ -98,12 +98,57 @@ static void TestGnomonic() {
   }
 }
 
+static void TestLinear() {
+  // These are the coordinates of the tile from pactom.
+  static constexpr double lat0 = 40.577355;
+  static constexpr double lon0 = -80.183547;
+
+  static constexpr double lat1 = 40.289646;
+  static constexpr double lon1 = -79.516107;
+
+  const LatLon tl = LatLon::FromDegs(lat0, lon0);
+  const LatLon br = LatLon::FromDegs(lat1, lon1);
+
+  static constexpr int tile_width = 11672;
+  static constexpr int tile_height = 6596;
+
+  LatLon::Projection p = LatLon::Linear(tl, br);
+  LatLon::InverseProjection ip = LatLon::InverseLinear(tl, br);
+
+  const LatLon fountain = LatLon::FromDegs(40.441807, -80.012831);
+  const int fountain_x = 2985;
+  const int fountain_y = 3106;
+
+  {
+    const auto [fx, fy] = p(fountain);
+    double fxx = fx * tile_width;
+    double fyy = fy * tile_height;
+
+    double dx = (fxx - fountain_x);
+    double dy = (fyy - fountain_y);
+
+    double dist = sqrt(dx * dx + dy * dy);
+    /*
+    printf("Want %d,%d  got  %.3f,%.3f (dist %.4f)\n",
+           fountain_x, fountain_y, fxx, fyy, dist);
+    */
+    // These coordinates are carefully tuned, so we should be very close.
+    CHECK(dist < 5);
+
+    const LatLon ll = ip(fx, fy);
+    double meters = LatLon::DistMeters(fountain, ll);
+    CHECK(meters < 0.1) << meters;
+  }
+}
+
 int main(int argc, char **argv) {
   TestPlusMinusMod();
   TestParse();
 
   TestDistance();
   TestGnomonic();
+
+  TestLinear();
 
   printf("OK\n");
   return 0;
