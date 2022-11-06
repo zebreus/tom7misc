@@ -590,27 +590,86 @@ void ImageRGBA::BlendImageRect(int dstx, int dsty, const ImageRGBA &other,
   }
 }
 
-void ImageRGBA::CopyImage(int x, int y, const ImageRGBA &other) {
-  // PERF can factor out the pixel clipping here, supposing the
-  // compiler cannot.
-  for (int yy = 0; yy < other.height; yy++) {
-    int yyy = y + yy;
-    // Exit early if off-screen.
-    if (yyy >= height) break;
-    for (int xx = 0; xx < other.width; xx++) {
-      int xxx = x + xx;
-      if (xxx >= width) break;
-      SetPixel32(xxx, yyy, other.GetPixel32(xx, yy));
-    }
+// This version assumes every pixel read/write is in bounds.
+// Assumes the two images do not alias.
+static void CopyImageRectUnclipped(
+    uint32_t *dest, int destwidth,
+    int dstx, int dsty,
+    const uint32_t *source, int sourcewidth,
+    int srcx, int srcy, int srcw, int srch) {
+  for (int yy = 0; yy < srch; yy++) {
+    const int syy = srcy + yy;
+    const int dyy = dsty + yy;
+
+    memcpy(dest + (dyy * destwidth) + dstx,
+           source + (syy * sourcewidth) + srcx,
+           srcw * sizeof (uint32_t));
   }
 }
 
+void ImageRGBA::CopyImage(int x, int y, const ImageRGBA &other) {
+  // Compute clipped rectangle.
+  int srcx = 0, srcy = 0;
+  int srcw = other.Width(), srch = other.Height();
+  // Clip left and top edges.
+  if (x < 0) { srcx -= x; srcw += x; x = 0; }
+  if (y < 0) { srcy -= y; srch += y; y = 0; }
+
+  // Clip right and bottom.
+  int right = (x + srcw) - width;
+  if (right > 0) srcw -= right;
+  int bottom = (y + srch) - height;
+  if (bottom > 0) srch -= bottom;
+
+  // Completely clipped; no-op.
+  if (srcw <= 0 || srch <= 0) return;
+
+  if (this == &other) {
+    // Overlapping copies don't work. (PERF: If the src/dest
+    // rectangles don't overlap, we can still use memcpy.)
+    // If they come from the same image, always use slow path
+    // via temporary:
+    ImageRGBA tmp(srcw, srch);
+    CopyImageRectUnclipped(
+        tmp.rgba.data(), tmp.Width(),
+        0, 0,
+        other.rgba.data(), other.Width(),
+        srcx, srcy, srcw, srch);
+    CopyImageRectUnclipped(
+        rgba.data(), width,
+        x, y,
+        tmp.rgba.data(), tmp.Width(),
+        0, 0, srcw, srch);
+  } else {
+    CopyImageRectUnclipped(
+        rgba.data(), width,
+        x, y,
+        other.rgba.data(), other.width,
+        srcx, srcy, srcw, srch);
+  }
+
+  #if 0
+  // PERF can factor out the pixel clipping here, supposing the
+  // compiler cannot.
+  const int maxy = std::min(other.height, height - y);
+  const int maxx = std::min(other.width, width - x);
+  for (int yy = 0; yy < maxy; yy++) {
+    const int yyy = y + yy;
+    for (int xx = 0; xx < maxx; xx++) {
+      const int xxx = x + xx;
+      SetPixel32(xxx, yyy, other.GetPixel32(xx, yy));
+    }
+  }
+  #endif
+}
+
+// PERF merge with CopyImage
 void ImageRGBA::CopyImageRect(int dstx, int dsty, const ImageRGBA &other,
                               int srcx, int srcy, int srcw, int srch) {
   for (int yy = 0; yy < srch; yy++) {
     const int syy = srcy + yy;
     const int dyy = dsty + yy;
-    // Exit early if outside dstination.
+    // Exit early if outside destination.
     if (dyy >= height) break;
     // Exit early if outside source.
     if (syy >= other.height) break;

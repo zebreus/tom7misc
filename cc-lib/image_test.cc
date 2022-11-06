@@ -185,6 +185,57 @@ static void TestFilledCircle() {
   // TODO: More circle tests
 }
 
+static void TestCopyImage() {
+  ImageRGBA brush(3, 2);
+  brush.Clear32(0xFFFFFFFF);
+  // Red in top left, blue in bottom right
+  brush.SetPixel32(0, 0, 0xFF0000FF);
+  brush.SetPixel32(2, 1, 0x0000FFFF);
+
+  ImageRGBA canvas(10, 9);
+  canvas.Clear32(0x666666FF);
+
+  // Completely clipped.
+  canvas.CopyImage(-1000, -1000, brush);
+  canvas.CopyImage(1000, -1000, brush);
+  canvas.CopyImage(-1000, 1000, brush);
+  canvas.CopyImage(1000, 1000, brush);
+
+  // Set top-left pixel blue
+  canvas.CopyImage(-2, -1, brush);
+
+  // And bottom-right pixel red
+  canvas.CopyImage(9, 8, brush);
+
+  // brush.ScaleBy(10).Save("deleteme-brush.png");
+  // canvas.ScaleBy(10).Save("deleteme-canvas.png");
+
+# define CHECK_COPYIMAGE() do {                      \
+    for (int y = 0; y < 9; y++) {                    \
+      for (int x = 0; x < 10; x++) {                 \
+        uint32_t c = canvas.GetPixel32(x, y);        \
+        if (0) printf("%08x %d,%d\n", c, x, y);      \
+        if (y == 0 && x == 0) {                      \
+          CHECK(c == 0x0000FFFF);                    \
+        } else if (y == 8 && x == 9) {               \
+          CHECK(c == 0xFF0000FF);                    \
+        } else {                                     \
+          CHECK(c == 0x666666FF) << x << " " << y;   \
+        }                                            \
+      }                                              \
+    }                                                \
+  } while (0)
+
+  CHECK_COPYIMAGE();
+
+  canvas.CopyImage(0, 0, canvas);
+
+  CHECK_COPYIMAGE();
+
+  // XXX test self-copies with overlap (this should
+  // be correct now, but it is not really tested)
+}
+
 int main(int argc, char **argv) {
   TestCreateAndDestroy();
   TestCopies();
@@ -194,6 +245,7 @@ int main(int argc, char **argv) {
   TestScaleDown();
   TestLineEndpoints();
   TestFilledCircle();
+  TestCopyImage();
 
   // TODO: Test SaveToVec / LoadFromMemory round trip
 

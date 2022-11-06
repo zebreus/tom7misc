@@ -76,6 +76,14 @@ struct Opt {
              int depth = 1,
              int attempts = 10);
 
+  inline static std::pair<std::tuple<double, double, double, double>, double>
+  Minimize4D(const std::function<double(double, double, double, double)> &f,
+             std::tuple<double, double, double, double> lower_bound,
+             std::tuple<double, double, double, double> upper_bound,
+             int iters,
+             int depth = 1,
+             int attempts = 10);
+
   // TODO: 4, etc.
 
   // TODO: Improve the way we specify tuning parameters (they can
@@ -182,6 +190,36 @@ Opt::Minimize3D(const std::function<double(double, double, double)> &f,
       std::make_tuple(std::get<0>(aarg),
                       std::get<1>(aarg),
                       std::get<2>(aarg)), best);
+}
+
+std::pair<std::tuple<double, double, double, double>, double>
+Opt::Minimize4D(const std::function<double(double, double, double, double)> &f,
+                std::tuple<double, double, double, double> lower_bound,
+                std::tuple<double, double, double, double> upper_bound,
+                int iters,
+                int depth,
+                int attempts) {
+  const auto [aarg, best] =
+    Minimize<4>([&f](const std::array<double, 4> &d) -> double {
+        return f(std::get<0>(d), std::get<1>(d),
+                 std::get<2>(d), std::get<3>(d));
+      },
+    std::array<double, 4>{
+        std::get<0>(lower_bound),
+        std::get<1>(lower_bound),
+        std::get<2>(lower_bound),
+        std::get<3>(lower_bound)},
+    std::array<double, 4>{
+        std::get<0>(upper_bound),
+        std::get<1>(upper_bound),
+        std::get<2>(upper_bound),
+        std::get<3>(upper_bound)},
+    iters, depth, attempts, 1);
+  return std::make_pair(
+      std::make_tuple(std::get<0>(aarg),
+                      std::get<1>(aarg),
+                      std::get<2>(aarg),
+                      std::get<3>(aarg)), best);
 }
 
 

@@ -9,11 +9,17 @@
 #include <chrono>
 
 struct Periodically {
-  explicit Periodically(double wait_period_seconds) {
+  // If start_ready is true, then the next call to ShouldRun will return
+  // true. Otherwise, we wait for the period to elapse first.
+  explicit Periodically(double wait_period_seconds, bool start_ready = true) {
     using namespace std::chrono_literals;
     wait_period = std::chrono::duration_cast<dur>(1s * wait_period_seconds);
     // Immediately available.
-    next_run = std::chrono::steady_clock::now();
+    if (start_ready) {
+      next_run = std::chrono::steady_clock::now();
+    } else {
+      next_run = std::chrono::steady_clock::now() + wait_period;
+    }
   }
 
   // Return true if 'seconds' has elapsed since the last run.
