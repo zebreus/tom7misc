@@ -550,6 +550,7 @@ void ImageRGBA::BlendFilledCircle32(int x, int y, int r, uint32 color) {
   }
 }
 
+// TODO: Does not handle overlap correctly.
 void ImageRGBA::BlendImage(int x, int y, const ImageRGBA &other) {
   // PERF can factor out the pixel clipping here, supposing the
   // compiler cannot.
@@ -565,6 +566,7 @@ void ImageRGBA::BlendImage(int x, int y, const ImageRGBA &other) {
   }
 }
 
+// TODO: Does not handle overlap correctly.
 void ImageRGBA::BlendImageRect(int dstx, int dsty, const ImageRGBA &other,
                                int srcx, int srcy, int srcw, int srch) {
   for (int yy = 0; yy < srch; yy++) {
@@ -647,23 +649,10 @@ void ImageRGBA::CopyImage(int x, int y, const ImageRGBA &other) {
         other.rgba.data(), other.width,
         srcx, srcy, srcw, srch);
   }
-
-  #if 0
-  // PERF can factor out the pixel clipping here, supposing the
-  // compiler cannot.
-  const int maxy = std::min(other.height, height - y);
-  const int maxx = std::min(other.width, width - x);
-  for (int yy = 0; yy < maxy; yy++) {
-    const int yyy = y + yy;
-    for (int xx = 0; xx < maxx; xx++) {
-      const int xxx = x + xx;
-      SetPixel32(xxx, yyy, other.GetPixel32(xx, yy));
-    }
-  }
-  #endif
 }
 
-// PERF merge with CopyImage
+// PERF merge with CopyImage (that approach is like 7x faster and
+// handles overlap)
 void ImageRGBA::CopyImageRect(int dstx, int dsty, const ImageRGBA &other,
                               int srcx, int srcy, int srcw, int srch) {
   for (int yy = 0; yy < srch; yy++) {

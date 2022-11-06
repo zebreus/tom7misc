@@ -8,6 +8,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
+#include "arcfour.h"
 #include "randutil.h"
 #include "image.h"
 #include "timer.h"
@@ -39,6 +40,26 @@ static void TestHSV() {
     }
   }
   out.Save("hsv.png");
+}
+
+static void TestRGBToHSV() {
+  ArcFour rc("hsv");
+  for (int i = 0; i < 10000; i++) {
+    uint8 r = rc.Byte();
+    uint8 g = rc.Byte();
+    uint8 b = rc.Byte();
+
+    uint32 c = ColorUtil::Pack32(r, g, b, 0xFF);
+
+    auto [rf, gf, bf, af_] = ColorUtil::U32ToFloats(c);
+    const auto [h, s, v] = ColorUtil::RGBToHSV(rf, gf, bf);
+    CHECK(h >= 0.0f && h <= 1.0f);
+    CHECK(s >= 0.0f && s <= 1.0f);
+    CHECK(v >= 0.0f && v <= 1.0f);
+    const auto [rr, gg, bb] = ColorUtil::HSVToRGB(h, s, v);
+    const uint32 cc = ColorUtil::FloatsTo32(rr, gg, bb, 1.0f);
+    CHECK(c == cc) << StringPrintf("%08x vs %08x", c, cc);
+  }
 }
 
 static void TestLab() {
@@ -128,7 +149,7 @@ static void BenchLinearGradient() {
     }
   }
   double sec = timer.Seconds();
-  printf("%d passes in %.3fs = %.3f p/s\n",
+  printf("LinearGradient: %d passes in %.3fs = %.3f p/s\n",
          ITERS, sec, ITERS / sec);
 
   out.Save("bench-lineargradient.png");
@@ -142,6 +163,8 @@ int main () {
   TestGradient();
 
   TestConvert();
+
+  TestRGBToHSV();
 
   printf("OK\n");
   return 0;

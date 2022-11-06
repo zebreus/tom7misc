@@ -39,6 +39,35 @@ void ColorUtil::HSVToRGB(float h, float s, float v,
   std::tie(*r, *g, *b) = HSVToRGB(h, s, v);
 }
 
+std::tuple<float, float, float>
+ColorUtil::RGBToHSV(float r, float g, float b) {
+  // std::minmax is not better in 2022!
+  const float mx = std::max({r, g, b});
+  const float mn = std::min({r, g, b});
+
+  const float delta = mx - mn;
+  float h = 0.0f;
+  if (delta > 0.0f) {
+    if (mx == r) {
+      h = (g - b) / delta;
+    } else if (mx == g) {
+      h = (b - r) / delta + 2;
+    } else {
+      h = (r - g) / delta + 4;
+    }
+
+    h = fmod(h, 6.0f);
+    if (h < 0.0f) h += 6.0f;
+  }
+  // We use the range [0, 1].
+  h *= (1.0f / 6.0f);
+
+  const float v = mx;
+
+  const float s = v == 0.0f ? 0.0f : delta / v;
+
+  return std::make_tuple(h, s, v);
+}
 
 static std::tuple<float, float, float>
 sRGBToLAB(float srgb_r, float srgb_g, float srgb_b) {

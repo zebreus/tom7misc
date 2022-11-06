@@ -28,6 +28,10 @@ struct ColorUtil {
   static std::tuple<float, float, float>
   HSVToRGB(float hue, float saturation, float value);
 
+  // For RGB values in [0, 1].
+  static std::tuple<float, float, float>
+  RGBToHSV(float r, float g, float b);
+
   // Convert to CIE L*A*B*.
   // RGB channels are nominally in [0, 1].
   // Here RGB is interpreted as sRGB with a D65 reference white.
