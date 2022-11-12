@@ -145,5 +145,8 @@ image_bench.exe : image_bench.o image.o stb_image.o stb_image_write.o $(BASE)
 bitbuffer_test.exe : bitbuffer.o bitbuffer_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+image-frgba_test.exe : image-frgba.o image-frgba_test.o tinyexr.o image.o stb_image.o stb_image_write.o color-util.o util.o $(BASE)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f *.o *.exe *.deleteme test-*.png $(BASE) $(RE2_OBJECTS)

@@ -1,4 +1,4 @@
-cc-lib                             Tom 7       14 Apr 2020
+cc-lib                             Tom 7       12 Nov 2022
 
 Like my "sml-lib", this is my attempt to get all of my frequently used
 C++ libraries into a single place so that different copies don't
@@ -12,7 +12,7 @@ it's kind of complicated, you know?
 As of 2020 I'm pretty much on C++17 everywhere now, so these libraries
 may assume C++17 features and semantics. It's worth it. GCC 8 seems ok
 for C++17, but I am now on at least 9.2 on every platform. On Windows,
-I use and endorse x86_64-w64-mingw32-g++, which is version 10.2+!. On
+I use and endorse x86_64-w64-mingw32-g++, which is version 11.3+!. On
 linux, just get the newest GCC.
 
 Some of what's here is google "base" libraries, since those are quite
@@ -24,7 +24,8 @@ The Google Template Library in gtl/ is APACHE20.
 Sean Barrett's excellently simple stb_* libraries are in the public
 domain; see the notices at the tops of those files. I've made some
 modifications to them. I've imported some other single-file libs and
-modified them, like dr_wav.
+modified them, like dr_wav and tinyexr. Each has its license (generally
+very permissive) embedded in the .h or .cc file or both.
 
 Some of the numerical routines in randutil are based on Numpy. If you
 believe that this is a "copy" or "substantial portion", then please
@@ -119,3 +120,8 @@ guitar/       - Guitar chord fingering database.
 opt/          - Black-box function optimization.
 geom/         - Utitlities for geometry and computer graphics: Marching cubes
                 algorithm, Earth latitude-longitude routines, Hilbert curves.
+stb_image_*   - Lower-level image reading and writing. I usually use the
+                higher-level image.h.
+tinyexr       - Lower-level reading and writing of the slighly exotic EXR
+                file format.
+

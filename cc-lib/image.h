@@ -65,7 +65,8 @@ struct ImageRGBA {
   // the scale, pixels are dropped.
   ImageRGBA ScaleDownBy(int scale) const;
 
-  // In RGBA order, where R value is MSB. x/y must be in bounds.
+  // In RGBA order, where R value is MSB. Pixels outside the image
+  // read as 0,0,0,0.
   inline uint32 GetPixel32(int x, int y) const;
   inline std::tuple<uint8, uint8, uint8, uint8> GetPixel(int x, int y) const;
 
@@ -158,7 +159,7 @@ struct ImageRGBA {
 private:
   std::vector<uint8_t> ToBuffer8() const;
   int width, height;
-  // Size width * height * 4.
+  // Size width * height.
   // Bytes are packed 0xRRGGBBAA, regardless of host endianness.
   std::vector<uint32_t> rgba;
 };
