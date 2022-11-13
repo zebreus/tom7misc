@@ -1,6 +1,4 @@
 
-#include "yocto_geometry.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -11,6 +9,7 @@
 #include <cmath>
 #include <numbers>
 
+#include "yocto_geometry.h"
 #include "threadutil.h"
 #include "image.h"
 #include "color-util.h"
@@ -20,21 +19,26 @@
 #include "randutil.h"
 #include "arcfour.h"
 #include "opt/opt.h"
+#include "pactom.h"
+#include "lines.h"
+#include "image-frgba.h"
 
 static constexpr double PI = std::numbers::pi;
 
 static constexpr int THREADS = 24;
 
-static constexpr double EARTH_RADIUS = 2.8f;
+static constexpr double EARTH_RADIUS = 2.8;
+static constexpr double MILES = 3963.19 / 2.8;
 // static constexpr double SUN_DISTANCE = 23214.0f * EARTH_RADIUS;
-static constexpr double SUN_DISTANCE = 1000.0f;
-static constexpr double SUN_RADIUS = 108.15f * EARTH_RADIUS;
+static constexpr double SUN_DISTANCE = 1000.0;
+static constexpr double SUN_RADIUS = 108.15 * EARTH_RADIUS;
 
-static constexpr double FAR_DIST = 100.0f;
-static constexpr double FAR_WIDTH = 100.0f;
+static constexpr double FAR_DIST = 100.0;
+static constexpr double FAR_WIDTH = 100.0;
 // static constexpr double NEAR_WIDTH = 0.01f;
-static constexpr double NEAR_WIDTH = 0.005f;
+static constexpr double NEAR_WIDTH = 0.005;
 
+// of inner earth
 static constexpr float TOTAL_MILES = 800 + 1400 + 1800 + 25;
 // Normalized to [0, 1].
 static constexpr ColorUtil::Gradient INNER_EARTH {
@@ -51,6 +55,8 @@ static constexpr ColorUtil::Gradient INNER_EARTH {
 
 using namespace yocto;
 
+PacTom *pactom = nullptr;
+
 struct Convert {
   // uv coordinates here are given in terms of the earth
   // texture map image (already flipped horizontally).
@@ -59,14 +65,14 @@ struct Convert {
   static constexpr double xu0 = 11921.0 / (21600.0 * 2.0);
   static constexpr double yu0 = 5928.0 / 21600.0;
 
-  static constexpr double lat0 = 40.600658; // 40.5815756;
-  static constexpr double lon0 = -80.646501; // -80.5735614;
+  static constexpr double lat0 = 40.600658;
+  static constexpr double lon0 = -80.646501;
 
   // Confluence
   static constexpr double xu1 = 11999.0 / (21600.0 * 2.0);
   static constexpr double yu1 = 5947.0 / 21600.0;
-  static constexpr double lat1 = 40.442487; // 40.4452293;
-  static constexpr double lon1 = -80.015946; // -80.140803;
+  static constexpr double lat1 = 40.442487;
+  static constexpr double lon1 = -80.015946;
 
   static constexpr double lattoy = (yu1 - yu0) / (lat1 - lat0);
   static constexpr double lontox = (xu1 - xu0) / (lon1 - lon0);
@@ -88,6 +94,8 @@ struct Convert {
 };
 
 static ImageRGBA *bluemarble = nullptr;
+// static ImageRGBA *stars = nullptr;
+static ImageFRGBA *stars = nullptr;
 
 mat3f RotYaw(float a) {
   const float cosa = cos(a);
@@ -304,7 +312,6 @@ static std::tuple<double, double, double, double> Optimize() {
 struct Scene {
   std::vector<Prim> prims;
 
-
   // Could do an actual 3D rotation here, but the distance is made up
   // anyway.
 # define EARTH_TILT_RAD 0.41f
@@ -363,13 +370,75 @@ struct Scene {
   }
 };
 
-ImageRGBA *tile = nullptr;
+struct Tile {
+  // old
+  // static constexpr double lat0 = 40.576817;
+  // static constexpr double lon0 = -80.179213;
+  // static constexpr double lat1 = 40.293648;
+  // static constexpr double lon1 = -79.515399;
 
-uint32_t EarthColor(float ux, float uy) {
-  static constexpr auto tile_top = Convert::ToUV(
-      40.576817, -80.179213);
-  static constexpr auto tile_bot = Convert::ToUV(
-      40.293648, -79.515399);
+  static constexpr double lat0 = 40.577355;
+  static constexpr double lon0 = -80.183547;
+
+  static constexpr double lat1 = 40.289646;
+  static constexpr double lon1 = -79.516107;
+
+  static constexpr auto tile_top = Convert::ToUV(lat0, lon0);
+  static constexpr auto tile_bot = Convert::ToUV(lat1, lon1);
+
+  LatLon::Projection proj;
+
+  // TODO: shift colors to match marble image
+  Tile() {
+    image.reset(ImageRGBA::Load("tile-recolored.png"));
+    CHECK(image.get() != nullptr);
+    proj = LatLon::Linear(LatLon::FromDegs(lat0, lon0),
+                          LatLon::FromDegs(lat1, lon1));
+  }
+
+  std::pair<double, double> ToXY(LatLon ll) {
+    const auto [fx, fy] = proj(ll);
+    return std::make_pair(fx * image->Width(),
+                          fy * image->Height());
+  }
+
+  void Drawhoods(PacTom *pactom) {
+    static constexpr int RADIUS = 4;
+    CHECK(pactom != nullptr);
+
+    for (const auto &[name, path] : pactom->hoods) {
+      constexpr uint32 color = 0xFFFFAA;
+      for (int i = 0; i < path.size() - 1; i++) {
+        const LatLon latlon0 = path[i];
+        const LatLon latlon1 = path[i + 1];
+        auto [x0, y0] = ToXY(latlon0);
+        auto [x1, y1] = ToXY(latlon1);
+
+        for (const auto [x, y] :
+               Line<int>{(int)x0, (int)y0, (int)x1, (int)y1}) {
+          for (int dy = -RADIUS; dy <= RADIUS; dy++) {
+            const int ddy = dy * dy;
+            for (int dx = -RADIUS; dx <= RADIUS; dx++) {
+              const int ddx = dx * dx;
+              if (ddy + ddx <= RADIUS * RADIUS) {
+                image->BlendPixel32(x + dx, y + dy, color);
+              }
+            }
+          }
+        }
+
+      }
+    }
+
+  }
+
+  std::unique_ptr<ImageRGBA> image;
+};
+
+Tile *tile = nullptr;
+
+// distance is distance from camera to surface
+uint32_t EarthColor(float ux, float uy, double distance) {
 
   auto In = [ux, uy](std::pair<double, double> a,
                      std::pair<double, double> b) ->
@@ -388,34 +457,36 @@ uint32_t EarthColor(float ux, float uy) {
       }
     };
 
-  /*
-  static constexpr auto usa1 = Convert::ToUV(48.348262, -124.675907);
-  static constexpr auto usa2 = Convert::ToUV(32.703243, -79.675909);
-  if (auto pou = In(usa1, usa2)) {
-    return 0xFFFF77FF;
+  float r, g, b, a_;
+  std::tie(r, g, b, a_) = bluemarble->SampleBilinear(
+      ux * bluemarble->Width(),
+      uy * bluemarble->Height());
 
-  } else
-  */
-
-  if (auto po = In(tile_top, tile_bot)) {
+  // TODO: Fade towards edges of tile.
+  if (auto po = In(Tile::tile_top, Tile::tile_bot)) {
     auto [x, y] = po.value();
-    const auto [r, g, b, a_] = tile->SampleBilinear(
+    const auto [rr, gg, bb, a_] = tile->image->SampleBilinear(
         // XXX maybe don't bother scaling down?
-        x * tile->Width(),
-        y * tile->Height());
-    return ColorUtil::FloatsTo32(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
-  } else {
-    const auto [r, g, b, a_] = bluemarble->SampleBilinear(
-        ux * bluemarble->Width(),
-        uy * bluemarble->Height());
+        x * tile->image->Width(),
+        y * tile->image->Height());
 
-    return ColorUtil::FloatsTo32(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+    // Fade out when we get far away.
+    static constexpr double distance_close = 0.00015;
+    static constexpr double distance_far = 0.00463;
+
+    float mix_frac = distance < distance_close ? 1.0f :
+                                distance >= distance_far ? 0.0f :
+      (1.0f - ((distance - distance_close) / (distance_far - distance_close)));
+
+    r = std::lerp(r, rr, mix_frac);
+    g = std::lerp(g, gg, mix_frac);
+    b = std::lerp(b, bb, mix_frac);
   }
+
+  return ColorUtil::FloatsTo32(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
 }
 
 
-// A good distance is 20.0
-// A good angle is 3.14159 + 0.25
 static ImageRGBA RenderFrame(
     int frame_width,
     int frame_height,
@@ -446,18 +517,31 @@ static ImageRGBA RenderFrame(
   vec3f tp2 = {0, +5, 0};
   vec3f tp3 = {5, 0, +5};
   vec3f tp4 = {5, 0, -5};
+
+  // Don't just comment stuff out, as we use the indices
+  // in the rendering logic!
   Tetrahedron mouth(tp1, tp2, tp3, tp4);
-  // scene.prims.emplace_back(mouth);
+  scene.prims.emplace_back(mouth);
+
+  Sphere starbox;
+  starbox.radius = 90.0;
+  starbox.origin = {0.0f, 0.0f, 0.0f};
+  scene.prims.emplace_back(starbox);
+
+  Sphere atmosphere;
+  atmosphere.radius = EARTH_RADIUS + 9 + 31 + 53 + 372;
+  atmosphere.origin = {0.0f, 0.0f, 0.0f};
 
   const double aspect = frame_width / (double)frame_height;
 
   const double near_height = NEAR_WIDTH / aspect;
   const double far_height = FAR_WIDTH / aspect;
 
-
+  bool first = true;
   ParallelComp(
       /* img.Width(), */ img.Height(),
-      [distance, a1, a2, a3, near_height, far_height, &img, &scene](int py) {
+      [&first, distance, a1, a2, a3, near_height, far_height,
+       &img, &scene](int py) {
       double yf = py / (double)img.Height();
       for (int px = 0; px < img.Width(); px++) {
         double xf = px / (double)img.Width();
@@ -477,7 +561,6 @@ static ImageRGBA RenderFrame(
 
         vec3f near_pt = {near_x, near_y, -near_dist};
         vec3f far_pt = {far_x, far_y, -far_dist};
-        // vec3f far_pt = {0, 0, 0};
 
         ray3f ray;
         ray.o = near_pt;
@@ -486,10 +569,6 @@ static ImageRGBA RenderFrame(
         ray.tmax = 10.0f;
 
         // Rotate...
-        // double axis = 0.0;
-        // double lat = (40.4314779 / 90) * 3.1415926535;
-        // double lon = (-80.0507117 / 90) * 3.1415926535;
-        // mat3f rot = Rot(0.0, angle, 3.14159 * 0.5);
         mat3f rot = Rot(a1, a2, a3);
         // Rotate around origin.
         frame3f rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
@@ -522,10 +601,6 @@ static ImageRGBA RenderFrame(
 
             const std::vector<std::pair<int, prim_intersection>> shadow_hits =
               scene.AllIntersections(shadow_ray);
-            /*
-            if (!shadow_hits.empty())
-              printf("Shadow hits: %d\n", shadow_hits.size());
-            */
 
             int s_num_tet = 0;
             for (const auto &[idx, pi] : shadow_hits)
@@ -583,7 +658,12 @@ static ImageRGBA RenderFrame(
                 // inside the mouth cutout.
               } else {
                 // Normal hit on sphere.
-                uint32_t color = EarthColor(1.0f - pi.uv.x, pi.uv.y);
+                if (first) {
+                  // printf("%.5f\n", pi.distance);
+                  first = false;
+                }
+                uint32_t color = EarthColor(1.0f - pi.uv.x, pi.uv.y,
+                                            pi.distance);
 
                 vec3f pt = ray.o + pi.distance * ray.d;
                 color = Shade(pt, color);
@@ -618,13 +698,22 @@ static ImageRGBA RenderFrame(
                 // Enter mouth.
                 in_mouth = true;
               }
+            } else if (idx == 2) {
+              // Hit stars
+
+              double x = pi.uv.x * stars->Width();
+              double y = pi.uv.y * stars->Height();
+              auto [r, g, b, a_] = stars->SampleBilinear(x, y);
+              uint32_t color = ColorUtil::FloatsTo32(r, g, b, 1.0f);
+              img.SetPixel32(px, py, color);
+              return;
             } else {
               CHECK(false) << "unknown prim";
             }
           }
 
           // did not hit solid, so render space
-          img.SetPixel32(px, py, 0x111100FF);
+          img.SetPixel32(px, py, 0xFF1100FF);
         };
 
         Trace();
@@ -635,28 +724,26 @@ static ImageRGBA RenderFrame(
   ImageRGBA down = img.ScaleDownBy(oversample);
   down.BlendText32(5, 5, 0xFFFF22FF,
                    StringPrintf("%.9f,%.9f,%.9f", a1, a2, a3));
+  down.BlendText32(5, 15, 0xFF22FFFF,
+                   StringPrintf("%.9f", distance));
   return down;
 }
 
 int main(int argc, char **argv) {
 
-  {
-    static constexpr auto usa1 = Convert::ToUV(48.348262, -124.675907);
-    static constexpr auto usa2 = Convert::ToUV(32.703243, -79.675909);
+  auto pt = PacTom::FromFiles({"../pac.kml", "../pac2.kml"},
+                              "../neighborhoods.kml");
+  CHECK(pt.get() != nullptr);
+  pactom = pt.release();
 
-    printf("%.6f,%.6f .. %.6f,%.6f\n",
-           usa1.first, usa1.second,
-           usa2.first, usa2.second);
-  }
+  tile = new Tile;
+  tile->Drawhoods(pactom);
 
   //  const auto [a1, a2, a3, d_] = Optimize();
   const double a1 = 0.117112122;
   const double a2 = 3.008712215;
   const double a3 = 2.284319047;
   const double distance = 2.80100000000;
-
-  tile = ImageRGBA::Load("tile.png");
-  CHECK(tile != nullptr);
 
   printf("Loading marble...\n");
   // bluemarble = ImageRGBA::Load("world_shaded_43k.jpg");
@@ -672,12 +759,13 @@ int main(int argc, char **argv) {
 
   #if 1
   InParallel(
+      // XXX 64k
+      [&](){ stars = ImageFRGBA::Load("starmap_2020_64k.exr"); },
       [&](){ west.reset(ImageRGBA::Load(west_file)); },
       [&](){ east.reset(ImageRGBA::Load(east_file)); });
-  // std::unique_ptr<ImageRGBA> west(ImageRGBA::Load(west_file));
   CHECK(west.get() != nullptr);
-  // std::unique_ptr<ImageRGBA> east(ImageRGBA::Load(east_file));
   CHECK(east.get() != nullptr);
+  CHECK(stars != nullptr);
 
   CHECK(west->Height() == east->Height());
   CHECK(west->Width() == east->Width());
@@ -693,21 +781,34 @@ int main(int argc, char **argv) {
 
   west.reset();
   east.reset();
-  printf("Done. Earth texture %d x %d\n",
-         bluemarble->Width(), bluemarble->Height());
+  printf("Done. Earth texture %d x %d\n Stars %lld x %lld",
+         bluemarble->Width(), bluemarble->Height(),
+         stars->Width(), stars->Height());
   #else
   bluemarble = ImageRGBA::Load("bluemarble.png");
+  {
+    // Load smaller file but convert to FRGBA
+    // (We could use an even smaller placeholder here...)
+    ImageRGBA *starsjpg = ImageRGBA::Load("stars.jpg");
+    CHECK(starsjpg != nullptr);
+    stars = new ImageFRGBA(*starsjpg);
+    delete starsjpg;
+  }
   #endif
 
+  CHECK(stars != nullptr);
+  CHECK(bluemarble != nullptr);
+
+  // XXX
+  ImageFRGBA sstars = stars->ScaleDownBy(4);
+  sstars.ToRGBA().Save("sstars.png");
+
   auto FrameDistance = [](float f) {
-      return std::lerp(2.80000428964, 6.0, f);
-      // return std::lerp(3, 20, f);
+      return std::lerp(2.80000428964, 14.0, f * f * f);
     };
   auto FrameAngle = [a1, a2, a3](float f) {
-      return std::make_tuple(a1, a2 - 0.0001 * f, a3 + 0.0001 * f);
+      return std::make_tuple(a1, a2 + 0.002 * f, a3 - 0.8 * f);
     };
-
-  // return std::lerp(0, 0.25, f); };
 
   #if 1
   Timer run_timer;
@@ -732,7 +833,9 @@ int main(int argc, char **argv) {
   double sec = run_timer.Seconds();
   printf("Wrote %d frames in %.1f sec (%.3f sec/frame).\n",
          NUM_FRAMES, sec, sec / NUM_FRAMES);
+
   #else
+
   ArcFour rc(StringPrintf("%lld", time(nullptr)));
   RandomGaussian gauss(&rc);
   static constexpr int ACROSS = 5;
@@ -741,46 +844,24 @@ int main(int argc, char **argv) {
   static constexpr int ONEH = 162 * 2;
   static constexpr int OVERSAMPLE = 2;
 
-  // best
-  /*
-  const double a1 = 0.580167;
-  const double a2 = 2.986757;
-  const double a3 = 2.287507;
-  */
-
-  /*
-  const double a1 = 0.486626907;
-  const double a2 = 3.019623116;
-  const double a3 = 2.282994048;
-  */
-
-  /*
-  const double a1 = 0.50481783779;
-  const double a2 = 2.99730660274;
-  const double a3 = 2.28557750908;
-  */
-  /*
-  const double a1 = 0.49672948489;
-  const double a2 = 3.00654714633;
-  const double a3 = 2.28445155746;
-  */
-
   ImageRGBA mosaic(ONEW * ACROSS, ONEH * DOWN);
   for (int y = 0; y < DOWN; y++) {
     for (int x = 0; x < ACROSS; x++) {
       int i = y * DOWN + x;
       double f = i / (double)(ACROSS * DOWN - 1);
-      double distance = 2.80000428964; // FrameDistance(f);
-      // double angle = FrameAngle(f);
+      double distance = FrameDistance(f);
+      const auto [fa1, fa2, fa3] = FrameAngle(f);
 
+      /*
       double scale = 0.0001;
       double aa1 = i == 0 ? a1 : a1 + gauss.Next() * scale;
       double aa2 = i == 0 ? a2 : a2 + gauss.Next() * scale;
       double aa3 = i == 0 ? a3 : a3 + gauss.Next() * scale;
+      */
 
       ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
                                   distance,
-                                  aa1, aa2, aa3);
+                                  fa1, fa2, fa3);
       mosaic.CopyImage(x * ONEW, y * ONEH, img);
     }
   }
