@@ -47,13 +47,16 @@ struct ImageFRGBA {
   static ImageFRGBA *LoadFromMemory(const std::vector<uint8_t> &bytes);
   static ImageFRGBA *LoadFromMemory(const unsigned char *data, size_t size);
 
-  // Saves EXR format.
+  // TODO: Saves EXR format.
+  /*
   bool Save(const std::string &filename) const;
   std::vector<uint8_t> SaveToVec() const;
   std::string SaveToString() const;
+  */
 
   // In RGBA order. Pixels outside the image are 0,0,0,0.
-  inline std::tuple<float, float, float, float> GetPixel(int64 x, int64 y) const;
+  inline std::tuple<float, float, float, float>
+  GetPixel(int64 x, int64 y) const;
 
   // Clear the image to a single value.
   void Clear(float r, float g, float b, float a);
@@ -69,11 +72,11 @@ struct ImageFRGBA {
       float r = 0.0f, float g = 0.0f, float b = 0.0f, float a = 0.0f) const;
 
   // Scale by a positive integer factor, crisp pixels.
-  ImageFRGBA ScaleBy(int64 scale) const;
+  ImageFRGBA ScaleBy(int scale) const;
   // Scale down by averaging boxes of size scale x scale to produce
   // a pixel value. If the width and height are not divisible by
   // the scale, pixels are dropped.
-  ImageFRGBA ScaleDownBy(int64 scale) const;
+  ImageFRGBA ScaleDownBy(int scale) const;
 
   // Blend pixel with existing data.
   // Note: Currently assumes existing alpha is 0xFF.
@@ -88,7 +91,7 @@ struct ImageFRGBA {
   // corners (not their centers).
   // x/y out of bounds will repeat edge pixels.
   std::tuple<float, float, float, float>
-  SampleBilinear(float x, float y) const;
+  SampleBilinear(double x, double y) const;
 
   // Extract single channel.
   ImageF Red() const;

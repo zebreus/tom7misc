@@ -132,7 +132,6 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #endif
 
 // https://stackoverflow.com/questions/5047971/how-do-i-check-for-c11-support
-#if __cplusplus > 199711L || (defined(_MSC_VER) && _MSC_VER >= 1900)
 #define TINYEXR_HAS_CXX11 (1)
 // C++11
 #include <cstdint>
@@ -142,7 +141,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <thread>
 #endif
 
-#endif  // __cplusplus > 199711L
+using int64 = int64_t;
 
 #if TINYEXR_USE_OPENMP
 #include <omp.h>
@@ -181,23 +180,9 @@ static unsigned char *stbi_zlib_compress(unsigned char *data, int data_len, int 
 
 namespace tinyexr {
 
-#if __cplusplus > 199711L
 // C++11
 typedef uint64_t tinyexr_uint64;
 typedef int64_t tinyexr_int64;
-#else
-// Although `long long` is not a standard type pre C++11, assume it is defined
-// as a compiler's extension.
-#ifdef __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wc++11-long-long"
-#endif
-typedef unsigned long long tinyexr_uint64;
-typedef long long tinyexr_int64;
-#ifdef __clang__
-#pragma clang diagnostic pop
-#endif
-#endif
 
 // static bool IsBigEndian(void) {
 //  union {
@@ -4531,8 +4516,7 @@ static int DecodeChunk(EXRImage *exr_image, const EXRHeader *exr_header,
       if (err) {
         std::stringstream ss;
         ss << "data_with or data_height too large. data_width: " << data_width
-           << ", "
-           << "data_height = " << data_height << std::endl;
+           << ", data_height = " << data_height << std::endl;
         (*err) += ss.str();
       }
       return TINYEXR_ERROR_INVALID_DATA;
@@ -4542,8 +4526,7 @@ static int DecodeChunk(EXRImage *exr_image, const EXRHeader *exr_header,
         if (err) {
           std::stringstream ss;
           ss << "tile with or tile height too large. tile width: " << exr_header->tile_size_x
-            << ", "
-            << "tile height = " << exr_header->tile_size_y << std::endl;
+            << ", tile height = " << exr_header->tile_size_y << std::endl;
           (*err) += ss.str();
         }
         return TINYEXR_ERROR_INVALID_DATA;
@@ -5501,6 +5484,8 @@ int LoadEXR(float **out_rgba, int *width, int *height, const char *filename,
                           /* layername */ NULL, err);
 }
 
+// XXX could probably delete this function, which doesn't work for
+// large files anyway? or call the in-memory copy below -tom7
 int LoadEXRWithLayer(float **out_rgba, int *width, int *height,
                      const char *filename, const char *layername,
                      const char **err) {
@@ -5513,9 +5498,7 @@ int LoadEXRWithLayer(float **out_rgba, int *width, int *height,
   EXRImage exr_image;
   EXRHeader exr_header;
   InitEXRHeader(&exr_header);
-  printf("init image\n");
   InitEXRImage(&exr_image);
-  printf("init image ok\n");
 
   {
     int ret = ParseEXRVersionFromFile(&exr_version, filename);
@@ -5535,7 +5518,6 @@ int LoadEXRWithLayer(float **out_rgba, int *width, int *height,
     }
   }
 
-  printf("Parse header...\n");
   {
     int ret = ParseEXRHeaderFromFile(&exr_header, &exr_version, filename, err);
     if (ret != TINYEXR_SUCCESS) {
@@ -5544,16 +5526,12 @@ int LoadEXRWithLayer(float **out_rgba, int *width, int *height,
     }
   }
 
-  printf("Read half channel...\n");
-
   // Read HALF channel as FLOAT.
   for (int i = 0; i < exr_header.num_channels; i++) {
     if (exr_header.pixel_types[i] == TINYEXR_PIXELTYPE_HALF) {
       exr_header.requested_pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT;
     }
   }
-
-  printf("Loadfromfile.\n");
 
   // TODO: Probably limit loading to layers (channels) selected by layer index
   {
@@ -5563,8 +5541,6 @@ int LoadEXRWithLayer(float **out_rgba, int *width, int *height,
       return ret;
     }
   }
-
-  printf("Loadfromfile ok\n");
 
   // RGBA
   int idxR = -1;
@@ -5578,8 +5554,6 @@ int LoadEXRWithLayer(float **out_rgba, int *width, int *height,
   std::vector<tinyexr::LayerChannel> channels;
   tinyexr::ChannelsInLayer(
       exr_header, layername == NULL ? "" : std::string(layername), channels);
-
-  printf("channels..\n");
 
   if (channels.size() < 1) {
     if (layername == NULL) {
@@ -5596,7 +5570,6 @@ int LoadEXRWithLayer(float **out_rgba, int *width, int *height,
   size_t ch_count = channels.size() < 4 ? channels.size() : 4;
   for (size_t c = 0; c < ch_count; c++) {
     const tinyexr::LayerChannel &ch = channels[c];
-
     if (ch.name == "R") {
       idxR = int(ch.index);
     } else if (ch.name == "G") {
@@ -5763,9 +5736,7 @@ int LoadEXRWithLayerFromMemory(
   EXRImage exr_image;
   EXRHeader exr_header;
   InitEXRHeader(&exr_header);
-  printf("init image\n");
   InitEXRImage(&exr_image);
-  printf("init image ok\n");
 
   {
     int ret = ParseEXRVersionFromMemory(&exr_version, buffer,
@@ -5786,7 +5757,6 @@ int LoadEXRWithLayerFromMemory(
     }
   }
 
-  printf("Parse header...\n");
   {
     int ret = ParseEXRHeaderFromMemory(&exr_header, &exr_version,
                                        buffer, size, err);
@@ -5796,16 +5766,12 @@ int LoadEXRWithLayerFromMemory(
     }
   }
 
-  printf("Read half channel...\n");
-
   // Read HALF channel as FLOAT.
   for (int i = 0; i < exr_header.num_channels; i++) {
     if (exr_header.pixel_types[i] == TINYEXR_PIXELTYPE_HALF) {
       exr_header.requested_pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT;
     }
   }
-
-  printf("Loadfromfile.\n");
 
   // TODO: Probably limit loading to layers (channels) selected by layer index
   {
@@ -5816,8 +5782,6 @@ int LoadEXRWithLayerFromMemory(
       return ret;
     }
   }
-
-  printf("Loadfromfile ok\n");
 
   // RGBA
   int idxR = -1;
@@ -5831,8 +5795,6 @@ int LoadEXRWithLayerFromMemory(
   std::vector<tinyexr::LayerChannel> channels;
   tinyexr::ChannelsInLayer(
       exr_header, layername == NULL ? "" : std::string(layername), channels);
-
-  printf("channels..\n");
 
   if (channels.size() < 1) {
     if (layername == NULL) {
@@ -5936,18 +5898,19 @@ int LoadEXRWithLayerFromMemory(
       return TINYEXR_ERROR_INVALID_DATA;
     }
 
-    (*out_rgba) = reinterpret_cast<float *>(
-        malloc(4 * sizeof(float) * static_cast<size_t>(exr_image.width) *
-               static_cast<size_t>(exr_image.height)));
+    size_t buffer_size = 4 * sizeof(float) *
+      static_cast<size_t>(exr_image.width) *
+      static_cast<size_t>(exr_image.height);
+    (*out_rgba) = reinterpret_cast<float *>(malloc(buffer_size));
     if (exr_header.tiled) {
       for (int it = 0; it < exr_image.num_tiles; it++) {
-        for (int j = 0; j < exr_header.tile_size_y; j++) {
-          for (int i = 0; i < exr_header.tile_size_x; i++) {
-            const int ii =
+        for (int64 j = 0; j < exr_header.tile_size_y; j++) {
+          for (int64 i = 0; i < exr_header.tile_size_x; i++) {
+            const int64 ii =
                 exr_image.tiles[it].offset_x * exr_header.tile_size_x + i;
-            const int jj =
+            const int64 jj =
                 exr_image.tiles[it].offset_y * exr_header.tile_size_y + j;
-            const int idx = ii + jj * exr_image.width;
+            const int64 idx = ii + jj * exr_image.width;
 
             // out of region check.
             if (ii >= exr_image.width) {
@@ -5956,7 +5919,7 @@ int LoadEXRWithLayerFromMemory(
             if (jj >= exr_image.height) {
               continue;
             }
-            const int srcIdx = i + j * exr_header.tile_size_x;
+            const int64 srcIdx = i + j * exr_header.tile_size_x;
             unsigned char **src = exr_image.tiles[it].images;
             (*out_rgba)[4 * idx + 0] =
                 reinterpret_cast<float **>(src)[idxR][srcIdx];
@@ -5968,13 +5931,13 @@ int LoadEXRWithLayerFromMemory(
               (*out_rgba)[4 * idx + 3] =
                   reinterpret_cast<float **>(src)[idxA][srcIdx];
             } else {
-              (*out_rgba)[4 * idx + 3] = 1.0;
+              (*out_rgba)[4 * idx + 3] = 1.0f;
             }
           }
         }
       }
     } else {
-      for (int i = 0; i < exr_image.width * exr_image.height; i++) {
+      for (int64 i = 0; i < exr_image.width * (int64)exr_image.height; i++) {
         (*out_rgba)[4 * i + 0] =
             reinterpret_cast<float **>(exr_image.images)[idxR][i];
         (*out_rgba)[4 * i + 1] =
@@ -5985,7 +5948,7 @@ int LoadEXRWithLayerFromMemory(
           (*out_rgba)[4 * i + 3] =
               reinterpret_cast<float **>(exr_image.images)[idxA][i];
         } else {
-          (*out_rgba)[4 * i + 3] = 1.0;
+          (*out_rgba)[4 * i + 3] = 1.0f;
         }
       }
     }
@@ -6315,7 +6278,6 @@ int LoadEXRImageFromFile(EXRImage *exr_image, const EXRHeader *exr_header,
     return TINYEXR_ERROR_INVALID_FILE;
   }
 
-  printf("Filesize: %zu\n", filesize);
   std::vector<unsigned char> buf(filesize);  // @todo { use mmap }
   {
     size_t ret;
@@ -6348,6 +6310,7 @@ int LoadEXRImageFromMemory(EXRImage *exr_image, const EXRHeader *exr_header,
   const unsigned char *marker = reinterpret_cast<const unsigned char *>(
       memory + exr_header->header_len +
       8);  // +8 for magic number + version header.
+  // Why not subtract header from size? -tom7
   return tinyexr::DecodeEXRImage(exr_image, exr_header, head, marker, size,
                                  err);
 }
@@ -7985,8 +7948,6 @@ int ParseEXRHeaderFromFile(EXRHeader *exr_header, const EXRVersion *exr_version,
   fseek(fp, 0, SEEK_END);
   filesize = static_cast<size_t>(ftell(fp));
   fseek(fp, 0, SEEK_SET);
-
-  printf("header filesize: %zu\n", filesize);
 
   std::vector<unsigned char> buf(filesize);  // @todo { use mmap }
   {

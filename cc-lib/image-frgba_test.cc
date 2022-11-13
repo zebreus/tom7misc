@@ -32,6 +32,9 @@ static void Trivial() {
   ASSERT_PIXEL(copy, 0, 0, 0.1, 0.2, 0.3, 0.4);
 }
 
+// XXX these tests depend on test files that are not checked
+// in (they're huge) -- we should generate them with tinyexr
+// on the fly instead
 static void TestLoad() {
   printf("test-load\n");
   const char *FILENAME = "sample.exr";
@@ -49,7 +52,7 @@ static void TestLoadHuge() {
     ImageFRGBA::Load("starmap_2020_64k.exr");
   CHECK(fimg != nullptr);
   printf("no I'm here\n");
-  printf("Loaded %d x %d\n", fimg->Width(), fimg->Height());
+  printf("Loaded %lld x %lld\n", fimg->Width(), fimg->Height());
   delete fimg;
 }
 
