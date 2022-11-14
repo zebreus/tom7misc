@@ -9,7 +9,8 @@
 #include <cmath>
 #include <numbers>
 
-#include "yocto_geometry.h"
+#include "yocto_matht.h"
+#include "yocto_geometryt.h"
 #include "threadutil.h"
 #include "image.h"
 #include "color-util.h"
@@ -39,7 +40,7 @@ static constexpr double FAR_WIDTH = 100.0;
 static constexpr double NEAR_WIDTH = 0.005;
 
 // of inner earth
-static constexpr float TOTAL_MILES = 800 + 1400 + 1800 + 25;
+static constexpr double TOTAL_MILES = 800 + 1400 + 1800 + 25;
 // Normalized to [0, 1].
 static constexpr ColorUtil::Gradient INNER_EARTH {
   GradRGB(0.0f / TOTAL_MILES, 0xEEEECC),
@@ -97,52 +98,59 @@ static ImageRGBA *bluemarble = nullptr;
 // static ImageRGBA *stars = nullptr;
 static ImageFRGBA *stars = nullptr;
 
-mat3f RotYaw(float a) {
-  const float cosa = cos(a);
-  const float sina = sin(a);
-  return mat3f
-    {cosa, -sina, 0.0f,
-     sina, cosa,  0.0f,
-     0.0f, 0.0f,  1.0f};
+using mat3d = yocto::mat<double, 3>;
+using vec3d = yocto::vec<double, 3>;
+using ray3d = yocto::ray<double, 3>;
+using frame3d = yocto::frame<double, 3>;
+using prim_isect_d = yocto::prim_intersection<double>;
+
+
+mat3d RotYaw(double a) {
+  const double cosa = cos(a);
+  const double sina = sin(a);
+  return mat3d
+    {cosa, -sina, 0.0,
+     sina, cosa,  0.0,
+     0.0, 0.0,  1.0};
 }
 
-mat3f RotPitch(float a) {
-  const float cosa = cos(a);
-  const float sina = sin(a);
+mat3d RotPitch(double a) {
+  const double cosa = cos(a);
+  const double sina = sin(a);
 
-  return mat3f
-    {cosa,  0.0f, sina,
-     0.0f,  1.0f, 0.0f,
-     -sina, 0.0f, cosa};
+  return mat3d
+    {cosa,  0.0, sina,
+     0.0,  1.0, 0.0,
+     -sina, 0.0, cosa};
 }
 
-mat3f RotRoll(float a) {
-  const float cosa = cos(a);
-  const float sina = sin(a);
+mat3d RotRoll(double a) {
+  const double cosa = cos(a);
+  const double sina = sin(a);
 
-  return mat3f
-    {1.0f, 0.0f, 0.0f,
-     0.0f, cosa, -sina,
-     0.0f, sina, cosa};
+  return mat3d
+    {1.0, 0.0, 0.0,
+     0.0, cosa, -sina,
+     0.0, sina, cosa};
 }
 
-mat3f Rot(double yaw, double pitch, double roll) {
-  mat3f mr = RotRoll(roll);
-  mat3f mp = RotPitch(pitch);
-  mat3f my = RotYaw(yaw);
-  mat3f m = mp * my;
-  mat3f n = mr * m;
+mat3d Rot(double yaw, double pitch, double roll) {
+  mat3d mr = RotRoll(roll);
+  mat3d mp = RotPitch(pitch);
+  mat3d my = RotYaw(yaw);
+  mat3d m = mp * my;
+  mat3d n = mr * m;
   return n;
 }
 
 struct Tetrahedron {
-  vec3f p0, p1, p2, p3;
+  vec3d p0, p1, p2, p3;
 };
 
 // TODO: Doesn't tell us which face it hit; same UV coordinates no matter
 // what.
-inline prim_intersection intersect_tetrahedron(
-    const ray3f& ray, const Tetrahedron &tet) {
+inline prim_isect_d intersect_tetrahedron(
+    const ray3d& ray, const Tetrahedron &tet) {
 
   //    1---3
   //   / \ /
@@ -150,10 +158,10 @@ inline prim_intersection intersect_tetrahedron(
 
   // TODO: These all have the same winding order, but probably we want
   // to pick them so that they have consistent UV coordinates or something.
-  prim_intersection p0 = intersect_triangle(ray, tet.p0, tet.p1, tet.p2);
-  prim_intersection p1 = intersect_triangle(ray, tet.p1, tet.p3, tet.p2);
-  prim_intersection p2 = intersect_triangle(ray, tet.p0, tet.p3, tet.p1);
-  prim_intersection p3 = intersect_triangle(ray, tet.p2, tet.p3, tet.p0);
+  prim_isect_d p0 = intersect_triangle(ray, tet.p0, tet.p1, tet.p2);
+  prim_isect_d p1 = intersect_triangle(ray, tet.p1, tet.p3, tet.p2);
+  prim_isect_d p2 = intersect_triangle(ray, tet.p0, tet.p3, tet.p1);
+  prim_isect_d p3 = intersect_triangle(ray, tet.p2, tet.p3, tet.p0);
 
   // take the closest one
   for (const auto &p : {p1, p2, p3}) {
@@ -164,8 +172,8 @@ inline prim_intersection intersect_tetrahedron(
 }
 
 struct Sphere {
-  vec3f origin = {0.0f, 0.0f, 0.0f};
-  float radius = 0.0f;
+  vec3d origin = {0.0f, 0.0f, 0.0f};
+  double radius = 0.0f;
 };
 
 struct Prim {
@@ -174,8 +182,8 @@ struct Prim {
 
 // From yocto_geometry.h, but fixing a bug (?) where the UV coordinates
 // are always from the back of the sphere
-inline prim_intersection intersect_sphere_front(
-    const ray3f& ray, const vec3f& p, float r) {
+inline prim_isect_d intersect_sphere_front(
+    const ray3d& ray, const vec3d& p, double r) {
   // compute parameters
   auto a = dot(ray.d, ray.d);
   auto b = 2 * dot(ray.o - p, ray.d);
@@ -185,16 +193,16 @@ inline prim_intersection intersect_sphere_front(
   auto dis = b * b - 4 * a * c;
   if (dis < 0) return {};
 
-  auto MaybeIntersect = [&](float t) -> prim_intersection {
-      prim_intersection isect;
+  auto MaybeIntersect = [&](double t) -> prim_isect_d {
+      prim_isect_d isect;
       isect.hit = false;
       if (t < ray.tmin || t > ray.tmax) return isect;
 
       // compute local point for uvs
       auto plocal = ((ray.o + ray.d * t) - p) / r;
-      auto u      = atan2(plocal.y, plocal.x) / (2 * pif);
+      auto u      = atan2(plocal.y, plocal.x) / (2 * PI);
       if (u < 0) u += 1;
-      auto v = acos(clamp(plocal.z, -1.0f, 1.0f)) / pif;
+      auto v = acos(clamp(plocal.z, -1.0, 1.0)) / PI;
 
       // intersect front
       isect.hit = true;
@@ -204,7 +212,7 @@ inline prim_intersection intersect_sphere_front(
       return isect;
     };
 
-  prim_intersection front = MaybeIntersect((-b - sqrt(dis)) / (2 * a));
+  prim_isect_d front = MaybeIntersect((-b - sqrt(dis)) / (2 * a));
   if (front.hit) return front;
 
   return MaybeIntersect((-b + sqrt(dis)) / (2 * a));
@@ -229,30 +237,30 @@ double OptimizeMe(double a1, double a2, double a3, double distance) {
   double uw = 65.0 / TEX_WIDTH;
   double uh = 37.0 / TEX_HEIGHT;
 
-  auto GetUV = [&](float xf, float yf) ->
+  auto GetUV = [&](double xf, double yf) ->
     std::optional<std::pair<float, float>> {
-      float far_dist = FAR_DIST;
-      float near_dist = -distance;
-      float near_x = std::lerp(-NEAR_WIDTH * 0.5, NEAR_WIDTH * 0.5, xf);
-      float near_y = std::lerp(-near_height * 0.5, near_height * 0.5, yf);
+      double far_dist = FAR_DIST;
+      double near_dist = -distance;
+      double near_x = std::lerp(-NEAR_WIDTH * 0.5, NEAR_WIDTH * 0.5, xf);
+      double near_y = std::lerp(-near_height * 0.5, near_height * 0.5, yf);
 
-      float far_x = std::lerp(-FAR_WIDTH * 0.5, FAR_WIDTH * 0.5, xf);
-      float far_y = std::lerp(-far_height * 0.5, far_height * 0.5, yf);
+      double far_x = std::lerp(-FAR_WIDTH * 0.5, FAR_WIDTH * 0.5, xf);
+      double far_y = std::lerp(-far_height * 0.5, far_height * 0.5, yf);
 
-      vec3f near_pt = {near_x, near_y, -near_dist};
-      vec3f far_pt = {far_x, far_y, -far_dist};
+      vec3d near_pt = {near_x, near_y, -near_dist};
+      vec3d far_pt = {far_x, far_y, -far_dist};
 
-      ray3f ray;
+      ray3d ray;
       ray.o = near_pt;
       ray.d = far_pt - near_pt;
       ray.tmin = 0.000000001f;
       ray.tmax = 10.0f;
 
-      mat3f rot = Rot(a1, a2, a3);
-      frame3f rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
+      mat3d rot = Rot(a1, a2, a3);
+      frame3d rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
       ray = transform_ray(rot_frame, ray);
 
-      prim_intersection pi = intersect_sphere_front(
+      prim_isect_d pi = intersect_sphere_front(
           ray, earth.origin, earth.radius);
 
       if (!pi.hit) return std::nullopt;
@@ -316,15 +324,15 @@ struct Scene {
   // anyway.
 # define EARTH_TILT_RAD 0.41f
 # define SUN_ANGLE (2.0)
-  Sphere sun = {.origin = {float(SUN_DISTANCE * sin(EARTH_TILT_RAD)),
-                           float(SUN_DISTANCE * sin(SUN_ANGLE)),
-                           float(SUN_DISTANCE * cos(SUN_ANGLE))},
+  Sphere sun = {.origin = {double(SUN_DISTANCE * sin(EARTH_TILT_RAD)),
+                           double(SUN_DISTANCE * sin(SUN_ANGLE)),
+                           double(SUN_DISTANCE * cos(SUN_ANGLE))},
                 .radius = SUN_RADIUS};
 
-  std::vector<std::pair<int, prim_intersection>> AllIntersections(
-      const ray3f &ray_in) {
-    ray3f ray = ray_in;
-    std::vector<std::pair<int, prim_intersection>> hits;
+  std::vector<std::pair<int, prim_isect_d>> AllIntersections(
+      const ray3d &ray_in) {
+    ray3d ray = ray_in;
+    std::vector<std::pair<int, prim_isect_d>> hits;
     for (;;) {
       auto p = NextIntersection(&ray);
       if (!p.second.hit) return hits;
@@ -333,18 +341,18 @@ struct Scene {
   }
 
   // Updates ray with distance of next intersection (if any).
-  std::pair<int, prim_intersection> NextIntersection(
-      ray3f *ray) {
+  std::pair<int, prim_isect_d> NextIntersection(
+      ray3d *ray) {
     // Obviously this should use spatial data structures if the
     // scene is big!
     int isect_idx = -1;
-    prim_intersection isect;
+    prim_isect_d isect;
     isect.distance = flt_max;
     isect.hit = false;
     for (int idx = 0; idx < prims.size(); idx++) {
       const Prim &p = prims[idx];
       if (const Sphere *sphere = std::get_if<Sphere>(&p.v)) {
-        prim_intersection pi =
+        prim_isect_d pi =
           intersect_sphere_front(*ray, sphere->origin, sphere->radius);
         if (pi.hit && pi.distance < isect.distance) {
           isect = pi;
@@ -352,7 +360,7 @@ struct Scene {
         }
 
       } else if (const Tetrahedron *tet = std::get_if<Tetrahedron>(&p.v)) {
-        prim_intersection pi =
+        prim_isect_d pi =
           intersect_tetrahedron(*ray, *tet);
         if (pi.hit && pi.distance < isect.distance) {
           isect = pi;
@@ -365,7 +373,7 @@ struct Scene {
     }
 
     // XXX some more principled epsilon; nextafter?
-    if (isect.hit) ray->tmin = isect.distance + 0.00001;
+    if (isect.hit) ray->tmin = isect.distance + 0.000001;
     return make_pair(isect_idx, isect);
   }
 };
@@ -438,7 +446,7 @@ struct Tile {
 Tile *tile = nullptr;
 
 // distance is distance from camera to surface
-uint32_t EarthColor(float ux, float uy, double distance) {
+uint32_t EarthColor(double ux, double uy, double distance) {
 
   auto In = [ux, uy](std::pair<double, double> a,
                      std::pair<double, double> b) ->
@@ -486,6 +494,26 @@ uint32_t EarthColor(float ux, float uy, double distance) {
   return ColorUtil::FloatsTo32(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
 }
 
+template<class T>
+static inline int Sign(T val) {
+  return (T(0) < val) - (val < T(0));
+}
+
+static bool InTetrahedron(const vec3d &pt,
+                          const Tetrahedron &tet) {
+  auto SameSide = [&pt](const vec3d &v0, const vec3d &v1,
+                        const vec3d &v2, const vec3d &v3) {
+      vec3d normal = cross(v1 - v0, v2 - v0);
+      double dot30 = dot(normal, v3 - v0);
+      double dotp = dot(normal, pt - v0);
+      return Sign(dot30) == Sign(dotp);
+    };
+
+  return SameSide(tet.p0, tet.p1, tet.p2, tet.p3) &&
+    SameSide(tet.p1, tet.p2, tet.p3, tet.p0) &&
+    SameSide(tet.p2, tet.p3, tet.p0, tet.p1) &&
+    SameSide(tet.p3, tet.p0, tet.p1, tet.p2);
+}
 
 static ImageRGBA RenderFrame(
     int frame_width,
@@ -513,10 +541,10 @@ static ImageRGBA RenderFrame(
   earth.radius = EARTH_RADIUS;
   earth.origin = {0.0f, 0.0f, 0.0f};
   scene.prims.emplace_back(earth);
-  vec3f tp1 = {0, -5, 0};
-  vec3f tp2 = {0, +5, 0};
-  vec3f tp3 = {5, 0, +5};
-  vec3f tp4 = {5, 0, -5};
+  vec3d tp1 = {0, -5, 0};
+  vec3d tp2 = {0, +5, 0};
+  vec3d tp3 = {5, 0, +5};
+  vec3d tp4 = {5, 0, -5};
 
   // Don't just comment stuff out, as we use the indices
   // in the rendering logic!
@@ -540,7 +568,7 @@ static ImageRGBA RenderFrame(
   bool first = true;
   ParallelComp(
       /* img.Width(), */ img.Height(),
-      [&first, distance, a1, a2, a3, near_height, far_height,
+      [&first, mouth, distance, a1, a2, a3, near_height, far_height,
        &img, &scene](int py) {
       double yf = py / (double)img.Height();
       for (int px = 0; px < img.Width(); px++) {
@@ -548,36 +576,37 @@ static ImageRGBA RenderFrame(
 
         // image plane and far plane are parallel to the
         // xy plane.
-        float far_dist = FAR_DIST;
+        double far_dist = FAR_DIST;
         // (maybe we want much less to zoom to a
         // region on the planet?)
-        float near_dist = -distance;
+        double near_dist = -distance;
 
-        float near_x = std::lerp(-NEAR_WIDTH * 0.5, NEAR_WIDTH * 0.5, xf);
-        float near_y = std::lerp(-near_height * 0.5, near_height * 0.5, yf);
+        double near_x = std::lerp(-NEAR_WIDTH * 0.5, NEAR_WIDTH * 0.5, xf);
+        double near_y = std::lerp(-near_height * 0.5, near_height * 0.5, yf);
 
-        float far_x = std::lerp(-FAR_WIDTH * 0.5, FAR_WIDTH * 0.5, xf);
-        float far_y = std::lerp(-far_height * 0.5, far_height * 0.5, yf);
+        double far_x = std::lerp(-FAR_WIDTH * 0.5, FAR_WIDTH * 0.5, xf);
+        double far_y = std::lerp(-far_height * 0.5, far_height * 0.5, yf);
 
-        vec3f near_pt = {near_x, near_y, -near_dist};
-        vec3f far_pt = {far_x, far_y, -far_dist};
+        vec3d near_pt = {near_x, near_y, -near_dist};
+        vec3d far_pt = {far_x, far_y, -far_dist};
 
-        ray3f ray;
+        ray3d ray;
         ray.o = near_pt;
         ray.d = far_pt - near_pt;
         ray.tmin = 0.000000001f;
         ray.tmax = 10.0f;
 
         // Rotate...
-        mat3f rot = Rot(a1, a2, a3);
+        mat3d rot = Rot(a1, a2, a3);
         // Rotate around origin.
-        frame3f rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
+        frame3d rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
         ray = transform_ray(rot_frame, ray);
 
 
-        const std::vector<std::pair<int, prim_intersection>> hits =
+        const std::vector<std::pair<int, prim_isect_d>> hits =
           scene.AllIntersections(ray);
 
+        #if 0
         int num_tet = 0;
         for (const auto &[idx, pi] : hits)
           if (idx == 1) num_tet++;
@@ -585,21 +614,24 @@ static ImageRGBA RenderFrame(
         // Assume that if there are odd tetrahedron intersections,
         // it's because we started inside.
         bool in_mouth = !!(num_tet & 1);
+        #endif
+
+        bool in_mouth = InTetrahedron(ray.o, mouth);
 
         // 0.0f = fully shadow
-        auto Illumination = [&scene](vec3f start) -> float {
+        auto Illumination = [&scene](vec3d start) -> float {
             // XXX
             return 1.0f;
 
             // TODO: Sample sun as disc
-            ray3f shadow_ray;
-            vec3f dir = scene.sun.origin - start;
+            ray3d shadow_ray;
+            vec3d dir = scene.sun.origin - start;
             shadow_ray.o = start;
             shadow_ray.d = dir;
             shadow_ray.tmin = 0.001f;
             shadow_ray.tmax = SUN_DISTANCE * 2.0f;
 
-            const std::vector<std::pair<int, prim_intersection>> shadow_hits =
+            const std::vector<std::pair<int, prim_isect_d>> shadow_hits =
               scene.AllIntersections(shadow_ray);
 
             int s_num_tet = 0;
@@ -615,9 +647,9 @@ static ImageRGBA RenderFrame(
                 if (s_in_mouth) {
                   // Exit mouth.
                   // Is this the inner surface of the sphere?
-                  vec3f pt = shadow_ray.o + pi.distance * shadow_ray.d;
+                  vec3d pt = shadow_ray.o + pi.distance * shadow_ray.d;
                   // XXX hard coded location of earth
-                  float r = length(pt);
+                  double r = length(pt);
                   if (r <= EARTH_RADIUS) {
                     return 0.0f;
                   } else {
@@ -638,7 +670,7 @@ static ImageRGBA RenderFrame(
             return 1.0f;
           };
 
-        auto Shade = [&](vec3f pt, uint32_t color) {
+        auto Shade = [&](vec3d pt, uint32_t color) {
             float light = std::clamp(Illumination(pt), 0.25f, 1.0f);
             auto [r, g, b, a_] = ColorUtil::U32ToFloats(color);
             return ColorUtil::FloatsTo32(light * r,
@@ -665,7 +697,7 @@ static ImageRGBA RenderFrame(
                 uint32_t color = EarthColor(1.0f - pi.uv.x, pi.uv.y,
                                             pi.distance);
 
-                vec3f pt = ray.o + pi.distance * ray.d;
+                vec3d pt = ray.o + pi.distance * ray.d;
                 color = Shade(pt, color);
 
                 img.SetPixel32(px, py, color);
@@ -676,9 +708,9 @@ static ImageRGBA RenderFrame(
               if (in_mouth) {
                 // Exit mouth.
                 // Is this the inner surface of the sphere?
-                vec3f pt = ray.o + pi.distance * ray.d;
+                vec3d pt = ray.o + pi.distance * ray.d;
                 // XXX hard coded location of earth
-                float r = length(pt);
+                double r = length(pt);
                 if (r <= EARTH_RADIUS) {
                   uint32_t color = ColorUtil::LinearGradient32(
                       INNER_EARTH, r / EARTH_RADIUS);
@@ -703,7 +735,11 @@ static ImageRGBA RenderFrame(
 
               double x = pi.uv.x * stars->Width();
               double y = pi.uv.y * stars->Height();
-              auto [r, g, b, a_] = stars->SampleBilinear(x, y);
+              float r, g, b, a_;
+              std::tie(r, g, b, a_) = stars->SampleBilinear(x, y);
+              r = sqrtf(r);
+              g = sqrtf(g);
+              b = sqrtf(b);
               uint32_t color = ColorUtil::FloatsTo32(r, g, b, 1.0f);
               img.SetPixel32(px, py, color);
               return;
@@ -803,10 +839,10 @@ int main(int argc, char **argv) {
   ImageFRGBA sstars = stars->ScaleDownBy(4);
   sstars.ToRGBA().Save("sstars.png");
 
-  auto FrameDistance = [](float f) {
+  auto FrameDistance = [](double f) {
       return std::lerp(2.80000428964, 14.0, f * f * f);
     };
-  auto FrameAngle = [a1, a2, a3](float f) {
+  auto FrameAngle = [a1, a2, a3](double f) {
       return std::make_tuple(a1, a2 + 0.002 * f, a3 - 0.8 * f);
     };
 
