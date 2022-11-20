@@ -29,7 +29,7 @@ static constexpr double PI = std::numbers::pi;
 static constexpr int THREADS = 24;
 
 static constexpr double EARTH_RADIUS = 2.8;
-static constexpr double MILES = 3963.19 / 2.8;
+static constexpr double MILES = 2.8 / 3963.19;
 // static constexpr double SUN_DISTANCE = 23214.0f * EARTH_RADIUS;
 static constexpr double SUN_DISTANCE = 1000.0;
 static constexpr double SUN_RADIUS = 108.15 * EARTH_RADIUS;
@@ -53,6 +53,38 @@ static constexpr ColorUtil::Gradient INNER_EARTH {
   GradRGB(4024.0f / TOTAL_MILES, 0x724719),
   GradRGB(1.0f, 0x046374),
 };
+
+// Made up
+/*
+static constexpr ColorUtil::Gradient ATMOSPHERE {
+  GradRGB(0.0f, 0xe7181c),
+  GradRGB(0.3f, 0x7a3a33),
+  // GradRGB(0.9f, 0x595120),
+  GradRGB(0.9f, 0x00FF00),
+  GradRGB(0.975f, 0x8b7ace),
+  // GradRGB(1.0f, 0x8bc0ff),
+  GradRGB(0x985f, 0x0000FF),
+  GradRGB(0.99f, 0x440cff),
+  GradRGB(1.0f, 0x6600ff),
+};
+*/
+
+// Made up. From outside (0.0) to inside (1.0).
+static constexpr ColorUtil::Gradient ATMOSPHERE {
+  GradRGB(0.0f, 0x7700FF),
+  GradRGB(0.15f, 0xFF77FF),
+  GradRGB(0.25f, 0xffa21e),
+  GradRGB(1.0f, 0x000000),
+};
+
+
+/*
+  GradRGB(0.0f, 0xe7e8ec),
+  GradRGB(0.1f, 0x7a9ac3),
+  GradRGB(0.35f, 0x5991e0),
+  GradRGB(0.75f, 0x8b9aee),
+  GradRGB(1.0f, 0x8bc0ff),
+*/
 
 using namespace yocto;
 
@@ -330,7 +362,7 @@ struct Scene {
                 .radius = SUN_RADIUS};
 
   std::vector<std::pair<int, prim_isect_d>> AllIntersections(
-      const ray3d &ray_in) {
+      const ray3d &ray_in) const {
     ray3d ray = ray_in;
     std::vector<std::pair<int, prim_isect_d>> hits;
     for (;;) {
@@ -342,7 +374,7 @@ struct Scene {
 
   // Updates ray with distance of next intersection (if any).
   std::pair<int, prim_isect_d> NextIntersection(
-      ray3d *ray) {
+      ray3d *ray) const {
     // Obviously this should use spatial data structures if the
     // scene is big!
     int isect_idx = -1;
@@ -515,6 +547,66 @@ static bool InTetrahedron(const vec3d &pt,
     SameSide(tet.p3, tet.p0, tet.p1, tet.p2);
 }
 
+static bool InSphere(const vec3d &pt,
+                     const Sphere &sphere) {
+  return length(pt - sphere.origin) < sphere.radius;
+}
+
+// 0.0f = fully shadow
+inline static float Illumination(const Scene &scene,
+                                 const Tetrahedron &mouth,
+                                 vec3d start) {
+  // XXX
+  return 1.0f;
+
+  // TODO: Sample sun as disc
+  ray3d shadow_ray;
+  vec3d dir = scene.sun.origin - start;
+  shadow_ray.o = start;
+  shadow_ray.d = dir;
+  shadow_ray.tmin = 0.00001f;
+  shadow_ray.tmax = SUN_DISTANCE * 2.0f;
+
+  const std::vector<std::pair<int, prim_isect_d>> shadow_hits =
+    scene.AllIntersections(shadow_ray);
+
+  bool s_in_mouth = InTetrahedron(shadow_ray.o, mouth);
+
+  for (const auto &[idx, pi] : shadow_hits) {
+    if (idx == 0) {
+      // sphere
+      if (!s_in_mouth) return 0.0f;
+    } else if (idx == 1) {
+      if (s_in_mouth) {
+        // Exit mouth.
+        // Is this the inner surface of the sphere?
+        vec3d pt = shadow_ray.o + pi.distance * shadow_ray.d;
+        // XXX hard coded location of earth
+        double r = length(pt);
+        if (r <= EARTH_RADIUS) {
+          return 0.0f;
+        } else {
+          // Exiting to free space
+          s_in_mouth = false;
+        }
+
+      } else {
+        // Enter mouth.
+        s_in_mouth = true;
+      }
+    } else if (idx == 2) {
+      // ignore skybox
+    } else if (idx == 3) {
+      // could scatter light through atmosphere?
+    } else {
+      CHECK(false) << "unknown prim";
+    }
+  }
+
+  // reaches sun
+  return 1.0f;
+}
+
 static ImageRGBA RenderFrame(
     int frame_width,
     int frame_height,
@@ -557,8 +649,9 @@ static ImageRGBA RenderFrame(
   scene.prims.emplace_back(starbox);
 
   Sphere atmosphere;
-  atmosphere.radius = EARTH_RADIUS + 9 + 31 + 53 + 372;
+  atmosphere.radius = EARTH_RADIUS + (9 + 31 + 53 + 372) * MILES;
   atmosphere.origin = {0.0f, 0.0f, 0.0f};
+  scene.prims.emplace_back(atmosphere);
 
   const double aspect = frame_width / (double)frame_height;
 
@@ -568,7 +661,8 @@ static ImageRGBA RenderFrame(
   bool first = true;
   ParallelComp(
       /* img.Width(), */ img.Height(),
-      [&first, mouth, distance, a1, a2, a3, near_height, far_height,
+      [&first, &mouth, &atmosphere,
+       distance, a1, a2, a3, near_height, far_height,
        &img, &scene](int py) {
       double yf = py / (double)img.Height();
       for (int px = 0; px < img.Width(); px++) {
@@ -606,72 +700,22 @@ static ImageRGBA RenderFrame(
         const std::vector<std::pair<int, prim_isect_d>> hits =
           scene.AllIntersections(ray);
 
-        #if 0
-        int num_tet = 0;
-        for (const auto &[idx, pi] : hits)
-          if (idx == 1) num_tet++;
-
-        // Assume that if there are odd tetrahedron intersections,
-        // it's because we started inside.
-        bool in_mouth = !!(num_tet & 1);
-        #endif
-
-        bool in_mouth = InTetrahedron(ray.o, mouth);
-
-        // 0.0f = fully shadow
-        auto Illumination = [&scene](vec3d start) -> float {
-            // XXX
-            return 1.0f;
-
-            // TODO: Sample sun as disc
-            ray3d shadow_ray;
-            vec3d dir = scene.sun.origin - start;
-            shadow_ray.o = start;
-            shadow_ray.d = dir;
-            shadow_ray.tmin = 0.001f;
-            shadow_ray.tmax = SUN_DISTANCE * 2.0f;
-
-            const std::vector<std::pair<int, prim_isect_d>> shadow_hits =
-              scene.AllIntersections(shadow_ray);
-
-            int s_num_tet = 0;
-            for (const auto &[idx, pi] : shadow_hits)
-              if (idx == 1) s_num_tet++;
-            bool s_in_mouth = !!(s_num_tet & 1);
-
-            for (const auto &[idx, pi] : shadow_hits) {
-              if (idx == 0) {
-                // sphere
-                if (!s_in_mouth) return 0.0f;
-              } else if (idx == 1) {
-                if (s_in_mouth) {
-                  // Exit mouth.
-                  // Is this the inner surface of the sphere?
-                  vec3d pt = shadow_ray.o + pi.distance * shadow_ray.d;
-                  // XXX hard coded location of earth
-                  double r = length(pt);
-                  if (r <= EARTH_RADIUS) {
-                    return 0.0f;
-                  } else {
-                    // Exiting to free space
-                    s_in_mouth = false;
-                  }
-
-                } else {
-                  // Enter mouth.
-                  s_in_mouth = true;
-                }
-              } else {
-                CHECK(false) << "unknown prim";
-              }
-            }
-
-            // reaches sun
-            return 1.0f;
+        // Translucent elements we traced through.
+        std::vector<uint32_t> blend;
+        auto EmitColor = [&img, px, py, &blend](uint32_t color) {
+            img.SetPixel32(px, py, color);
+            for (int i = blend.size() - 1; i >= 0; i--)
+              img.BlendPixel32(px, py, blend[i]);
           };
 
+        bool in_mouth = InTetrahedron(ray.o, mouth);
+        // point where we entered atmosphere
+        std::optional<vec3d> in_atmosphere = InSphere(ray.o, atmosphere) ?
+          std::optional<vec3d>{ray.o} : std::nullopt;
+
         auto Shade = [&](vec3d pt, uint32_t color) {
-            float light = std::clamp(Illumination(pt), 0.25f, 1.0f);
+            float light = std::clamp(Illumination(scene, mouth, pt),
+                                     0.25f, 1.0f);
             auto [r, g, b, a_] = ColorUtil::U32ToFloats(color);
             return ColorUtil::FloatsTo32(light * r,
                                          light * g,
@@ -700,7 +744,7 @@ static ImageRGBA RenderFrame(
                 vec3d pt = ray.o + pi.distance * ray.d;
                 color = Shade(pt, color);
 
-                img.SetPixel32(px, py, color);
+                EmitColor(color);
                 return;
               }
             } else if (idx == 1) {
@@ -718,7 +762,7 @@ static ImageRGBA RenderFrame(
                   // But make it darker
                   // img.BlendPixel32(px, py, 0x48270677);
                   color = Shade(pt, color);
-                  img.SetPixel32(px, py, color);
+                  EmitColor(color);
                   in_mouth = false;
                   return;
                 } else {
@@ -741,14 +785,46 @@ static ImageRGBA RenderFrame(
               g = sqrtf(g);
               b = sqrtf(b);
               uint32_t color = ColorUtil::FloatsTo32(r, g, b, 1.0f);
-              img.SetPixel32(px, py, color);
+              EmitColor(color);
               return;
+            } else if (idx == 3) {
+              // Atmosphere
+              vec3d pt = ray.o + pi.distance * ray.d;
+              if (!in_atmosphere.has_value()) {
+                in_atmosphere = {pt};
+                // printf("enter atmosphere\n");
+              } else {
+                vec3d chord = pt - in_atmosphere.value();
+                double len = length(chord);
+
+                double max_len = atmosphere.radius * 2.0;
+                // But most chords are only a tiny fraction.
+                double frac = len / max_len;
+                frac = pow(frac, 2);
+
+
+                // XXX based on chord length!
+                // blend.push_back(0x0000FF22);
+
+                const auto [r, g, b] = ColorUtil::LinearGradient(
+                    ATMOSPHERE, frac);
+
+                uint32 color = ColorUtil::FloatsTo32(
+                    r, g, b, frac);
+
+                blend.push_back(color);
+
+                in_atmosphere = std::nullopt;
+                // printf("exit atmosphere.\n");
+              }
+
+
             } else {
               CHECK(false) << "unknown prim";
             }
           }
 
-          // did not hit solid, so render space
+          // did not hit solid, so render error color
           img.SetPixel32(px, py, 0xFF1100FF);
         };
 
@@ -795,7 +871,6 @@ int main(int argc, char **argv) {
 
   #if 1
   InParallel(
-      // XXX 64k
       [&](){ stars = ImageFRGBA::Load("starmap_2020_64k.exr"); },
       [&](){ west.reset(ImageRGBA::Load(west_file)); },
       [&](){ east.reset(ImageRGBA::Load(east_file)); });
@@ -817,16 +892,20 @@ int main(int argc, char **argv) {
 
   west.reset();
   east.reset();
-  printf("Done. Earth texture %d x %d\n Stars %lld x %lld",
-         bluemarble->Width(), bluemarble->Height(),
-         stars->Width(), stars->Height());
+
+  // XXX
+  // ImageFRGBA sstars = stars->ScaleDownBy(4);
+  // sstars.ToRGBA().Save("sstars.png");
+
   #else
+
   bluemarble = ImageRGBA::Load("bluemarble.png");
   {
     // Load smaller file but convert to FRGBA
     // (We could use an even smaller placeholder here...)
-    ImageRGBA *starsjpg = ImageRGBA::Load("stars.jpg");
+    ImageRGBA *starsjpg = ImageRGBA::Load("sstars.png"); // "stars.jpg");
     CHECK(starsjpg != nullptr);
+    printf("New from JPG:\n");
     stars = new ImageFRGBA(*starsjpg);
     delete starsjpg;
   }
@@ -835,9 +914,9 @@ int main(int argc, char **argv) {
   CHECK(stars != nullptr);
   CHECK(bluemarble != nullptr);
 
-  // XXX
-  ImageFRGBA sstars = stars->ScaleDownBy(4);
-  sstars.ToRGBA().Save("sstars.png");
+  printf("Done. Earth texture %d x %d\n Stars %lld x %lld\n",
+         bluemarble->Width(), bluemarble->Height(),
+         stars->Width(), stars->Height());
 
   auto FrameDistance = [](double f) {
       return std::lerp(2.80000428964, 14.0, f * f * f);
@@ -846,65 +925,127 @@ int main(int argc, char **argv) {
       return std::make_tuple(a1, a2 + 0.002 * f, a3 - 0.8 * f);
     };
 
-  #if 1
-  Timer run_timer;
-  const int NUM_FRAMES = 120;
-  Asynchronously async(8);
-  // static constexpr int FRAME_WIDTH = 1920;
-  // static constexpr int FRAME_HEIGHT = 1080;
+  enum RenderMode {
+    FRAMES,
+    ONE_FRAME,
+    MOSAIC,
+    FRAME_VARIANTS,
+  };
+
+  RenderMode mode = FRAMES;
+  const int target_frame = 91;
   static constexpr int FRAME_WIDTH = 2880;
   static constexpr int FRAME_HEIGHT = 1620;
   static constexpr int OVERSAMPLE = 2;
-  for (int i = 0; i < NUM_FRAMES; i++) {
-    double f = i / (double)(NUM_FRAMES - 1);
+  static constexpr int NUM_FRAMES = 120;
+
+  switch (mode) {
+  case FRAMES: {
+    Timer run_timer;
+    Asynchronously async(8);
+    // static constexpr int FRAME_WIDTH = 1920;
+    // static constexpr int FRAME_HEIGHT = 1080;
+    for (int i = 0; i < NUM_FRAMES; i++) {
+      double f = i / (double)(NUM_FRAMES - 1);
+      double distance = FrameDistance(f);
+      const auto [fa1, fa2, fa3] = FrameAngle(f);
+      ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
+                                  distance, fa1, fa2, fa3);
+      async.Run([i, img = std::move(img)]() {
+          img.Save(StringPrintf("sphere%d.png", i));
+          printf("%d\n", i);
+        });
+    }
+    double sec = run_timer.Seconds();
+    printf("Wrote %d frames in %.1f sec (%.3f sec/frame).\n",
+           NUM_FRAMES, sec, sec / NUM_FRAMES);
+
+    break;
+  }
+
+  case MOSAIC: {
+    static constexpr int ACROSS = 5;
+    static constexpr int DOWN = 5;
+    static constexpr int ONEW = 288 * 2;
+    static constexpr int ONEH = 162 * 2;
+    static constexpr int OVERSAMPLE = 2;
+
+    ImageRGBA mosaic(ONEW * ACROSS, ONEH * DOWN);
+    for (int y = 0; y < DOWN; y++) {
+      for (int x = 0; x < ACROSS; x++) {
+        int i = y * DOWN + x;
+        double f = i / (double)(ACROSS * DOWN - 1);
+        double distance = FrameDistance(f);
+        const auto [fa1, fa2, fa3] = FrameAngle(f);
+        ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
+                                    distance,
+                                    fa1, fa2, fa3);
+        mosaic.CopyImage(x * ONEW, y * ONEH, img);
+      }
+    }
+    mosaic.Save("mosaic.png");
+    printf("Wrote mosaic.png\n");
+    break;
+  }
+
+  case FRAME_VARIANTS: {
+
+    ArcFour rc(StringPrintf("%lld", time(nullptr)));
+    RandomGaussian gauss(&rc);
+    static constexpr int ACROSS = 5;
+    static constexpr int DOWN = 5;
+    static constexpr int ONEW = 288 * 2;
+    static constexpr int ONEH = 162 * 2;
+    static constexpr int OVERSAMPLE = 2;
+
+    ImageRGBA variants(ONEW * ACROSS, ONEH * DOWN);
+    for (int y = 0; y < DOWN; y++) {
+      for (int x = 0; x < ACROSS; x++) {
+        int i = y * DOWN + x;
+        double f = target_frame / (double)(ACROSS * DOWN - 1);
+        double distance = FrameDistance(f);
+        double aa1, aa2, aa3;
+        std::tie(aa1, aa2, aa3) = FrameAngle(f);
+
+        double scale = 0.0001;
+
+        if (i > 0) {
+          aa1 += gauss.Next() * scale;
+          aa2 += gauss.Next() * scale;
+          aa3 += gauss.Next() * scale;
+          distance += gauss.Next() * scale;
+        }
+
+        ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
+                                    distance,
+                                    aa1, aa2, aa3);
+        variants.CopyImage(x * ONEW, y * ONEH, img);
+      }
+    }
+    string filename = StringPrintf("variants%d.png", target_frame);
+    variants.Save(filename);
+    printf("Wrote %s\n", filename.c_str());
+
+    break;
+  }
+
+  case ONE_FRAME: {
+
+    Timer run_timer;
+    double f = target_frame / (double)(NUM_FRAMES - 1);
     double distance = FrameDistance(f);
     const auto [fa1, fa2, fa3] = FrameAngle(f);
     ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
                                 distance, fa1, fa2, fa3);
-    async.Run([i, img = std::move(img)]() {
-        img.Save(StringPrintf("sphere%d.png", i));
-        printf("%d\n", i);
-      });
+    img.Save(StringPrintf("frame%d.png", target_frame));
+    double sec = run_timer.Seconds();
+    printf("Wrote frame in %.1f sec.\n", sec);
+
+    break;
   }
-  double sec = run_timer.Seconds();
-  printf("Wrote %d frames in %.1f sec (%.3f sec/frame).\n",
-         NUM_FRAMES, sec, sec / NUM_FRAMES);
-
-  #else
-
-  ArcFour rc(StringPrintf("%lld", time(nullptr)));
-  RandomGaussian gauss(&rc);
-  static constexpr int ACROSS = 5;
-  static constexpr int DOWN = 5;
-  static constexpr int ONEW = 288 * 2;
-  static constexpr int ONEH = 162 * 2;
-  static constexpr int OVERSAMPLE = 2;
-
-  ImageRGBA mosaic(ONEW * ACROSS, ONEH * DOWN);
-  for (int y = 0; y < DOWN; y++) {
-    for (int x = 0; x < ACROSS; x++) {
-      int i = y * DOWN + x;
-      double f = i / (double)(ACROSS * DOWN - 1);
-      double distance = FrameDistance(f);
-      const auto [fa1, fa2, fa3] = FrameAngle(f);
-
-      /*
-      double scale = 0.0001;
-      double aa1 = i == 0 ? a1 : a1 + gauss.Next() * scale;
-      double aa2 = i == 0 ? a2 : a2 + gauss.Next() * scale;
-      double aa3 = i == 0 ? a3 : a3 + gauss.Next() * scale;
-      */
-
-      ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
-                                  distance,
-                                  fa1, fa2, fa3);
-      mosaic.CopyImage(x * ONEW, y * ONEH, img);
-    }
   }
-  mosaic.Save("mosaic.png");
-  #endif
-
 
   delete bluemarble;
+  delete stars;
   return 0;
 }
