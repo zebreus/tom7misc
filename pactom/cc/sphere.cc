@@ -54,21 +54,6 @@ static constexpr ColorUtil::Gradient INNER_EARTH {
   GradRGB(1.0f, 0x046374),
 };
 
-// Made up
-/*
-static constexpr ColorUtil::Gradient ATMOSPHERE {
-  GradRGB(0.0f, 0xe7181c),
-  GradRGB(0.3f, 0x7a3a33),
-  // GradRGB(0.9f, 0x595120),
-  GradRGB(0.9f, 0x00FF00),
-  GradRGB(0.975f, 0x8b7ace),
-  // GradRGB(1.0f, 0x8bc0ff),
-  GradRGB(0x985f, 0x0000FF),
-  GradRGB(0.99f, 0x440cff),
-  GradRGB(1.0f, 0x6600ff),
-};
-*/
-
 // Made up. From outside (0.0) to inside (1.0).
 static constexpr ColorUtil::Gradient ATMOSPHERE {
   GradRGB(0.0f, 0x7700FF),
@@ -76,15 +61,6 @@ static constexpr ColorUtil::Gradient ATMOSPHERE {
   GradRGB(0.25f, 0xffa21e),
   GradRGB(1.0f, 0x000000),
 };
-
-
-/*
-  GradRGB(0.0f, 0xe7e8ec),
-  GradRGB(0.1f, 0x7a9ac3),
-  GradRGB(0.35f, 0x5991e0),
-  GradRGB(0.75f, 0x8b9aee),
-  GradRGB(1.0f, 0x8bc0ff),
-*/
 
 using namespace yocto;
 
@@ -410,13 +386,72 @@ struct Scene {
   }
 };
 
-struct Tile {
-  // old
-  // static constexpr double lat0 = 40.576817;
-  // static constexpr double lon0 = -80.179213;
-  // static constexpr double lat1 = 40.293648;
-  // static constexpr double lon1 = -79.515399;
+struct WideTile {
+  // pulaski twp
+  static constexpr double lat0 = 41.069922;
+  static constexpr double lon0 = -80.480119;
 
+  // londonderry twp
+  static constexpr double lat1 = 39.769658;
+  static constexpr double lon1 = -78.745817;
+
+  static constexpr auto tile_top = Convert::ToUV(lat0, lon0);
+  static constexpr auto tile_bot = Convert::ToUV(lat1, lon1);
+
+  static constexpr double center_u =
+    (tile_top.first + tile_bot.first) * 0.5;
+  static constexpr double center_v =
+    (tile_top.second + tile_bot.second) * 0.5;
+
+  static constexpr double width_uv =
+    abs(tile_top.first - tile_bot.first);
+  static constexpr double height_uv =
+    abs(tile_top.second - tile_bot.second);
+
+  WideTile() {
+    image.reset(ImageRGBA::Load("tilewide.png"));
+    CHECK(image.get() != nullptr);
+    // proj = LatLon::Linear(LatLon::FromDegs(lat0, lon0),
+    //                       LatLon::FromDegs(lat1, lon1));
+    Recolor();
+  }
+
+  void Recolor() {
+    for (int y = 0; y < image->Height(); y++) {
+      for (int x = 0; x < image->Width(); x++) {
+        uint32 c = image->GetPixel32(x, y);
+        const auto [r, g, b] = RecolorPixel(c);
+        image->SetPixel32(x, y, ColorUtil::FloatsTo32(r, g, b, 1.0f));
+      }
+    }
+  }
+
+  static inline std::tuple<double, double, double>
+  RecolorPixel(uint32 color) {
+    static constexpr double ho = -.01; // 0.0; // -0.02143107475;
+    static constexpr double so = 0.34924340224;
+    static constexpr double vo = -0.025; // -0.05219921795;
+
+    auto [ro, go, bo, ao_] = ColorUtil::U32ToFloats(color);
+    float h, s, v;
+    std::tie(h, s, v) = ColorUtil::RGBToHSV(ro, go, bo);
+
+    // Hue should wrap around.
+    h += ho;
+    if (h < 0.0) h += 1.0;
+    if (h > 1.0) h -= 1.0;
+    // But these should saturate.
+    s = std::clamp(s + so, 0.0, 1.0);
+    v = std::clamp(v + vo, 0.0, 1.0);
+
+    return ColorUtil::HSVToRGB(h, s, v);
+  }
+
+
+  std::unique_ptr<ImageRGBA> image;
+};
+
+struct Tile {
   static constexpr double lat0 = 40.577355;
   static constexpr double lon0 = -80.183547;
 
@@ -426,14 +461,26 @@ struct Tile {
   static constexpr auto tile_top = Convert::ToUV(lat0, lon0);
   static constexpr auto tile_bot = Convert::ToUV(lat1, lon1);
 
+  // in uv
+  static constexpr double center_u =
+    (tile_top.first + tile_bot.first) * 0.5;
+  static constexpr double center_v =
+    (tile_top.second + tile_bot.second) * 0.5;
+
+  static constexpr double width_uv =
+    abs(tile_top.first - tile_bot.first);
+  static constexpr double height_uv =
+    abs(tile_top.second - tile_bot.second);
+
   LatLon::Projection proj;
 
   // TODO: shift colors to match marble image
   Tile() {
-    image.reset(ImageRGBA::Load("tile-recolored.png"));
+    image.reset(ImageRGBA::Load("tile.png"));
     CHECK(image.get() != nullptr);
     proj = LatLon::Linear(LatLon::FromDegs(lat0, lon0),
                           LatLon::FromDegs(lat1, lon1));
+    Recolor();
   }
 
   std::pair<double, double> ToXY(LatLon ll) {
@@ -441,6 +488,38 @@ struct Tile {
     return std::make_pair(fx * image->Width(),
                           fy * image->Height());
   }
+
+  void Recolor() {
+    for (int y = 0; y < image->Height(); y++) {
+      for (int x = 0; x < image->Width(); x++) {
+        uint32 c = image->GetPixel32(x, y);
+        const auto [r, g, b] = RecolorPixel(c);
+        image->SetPixel32(x, y, ColorUtil::FloatsTo32(r, g, b, 1.0f));
+      }
+    }
+  }
+
+  static inline std::tuple<double, double, double>
+  RecolorPixel(uint32 color) {
+    static constexpr double ho = -0.02143107475;
+    static constexpr double so = 0.34924340224;
+    static constexpr double vo = -0.05219921795;
+
+    auto [ro, go, bo, ao_] = ColorUtil::U32ToFloats(color);
+    float h, s, v;
+    std::tie(h, s, v) = ColorUtil::RGBToHSV(ro, go, bo);
+
+    // Hue should wrap around.
+    h += ho;
+    if (h < 0.0) h += 1.0;
+    if (h > 1.0) h -= 1.0;
+    // But these should saturate.
+    s = std::clamp(s + so, 0.0, 1.0);
+    v = std::clamp(v + vo, 0.0, 1.0);
+
+    return ColorUtil::HSVToRGB(h, s, v);
+  }
+
 
   void Drawhoods(PacTom *pactom) {
     static constexpr int RADIUS = 4;
@@ -475,11 +554,14 @@ struct Tile {
   std::unique_ptr<ImageRGBA> image;
 };
 
-Tile *tile = nullptr;
+static WideTile *widetile = nullptr;
+static Tile *tile = nullptr;
 
-// distance is distance from camera to surface
-uint32_t EarthColor(double ux, double uy, double distance) {
-
+template<class TILE>
+std::tuple<float, float, float> BlendIfInside(const TILE *tile,
+                                              double ux, double uy,
+                                              double distance,
+                                              float r, float g, float b) {
   auto In = [ux, uy](std::pair<double, double> a,
                      std::pair<double, double> b) ->
     std::optional<std::pair<double, double>> {
@@ -497,19 +579,25 @@ uint32_t EarthColor(double ux, double uy, double distance) {
       }
     };
 
-  float r, g, b, a_;
-  std::tie(r, g, b, a_) = bluemarble->SampleBilinear(
-      ux * bluemarble->Width(),
-      uy * bluemarble->Height());
-
-  // TODO: Fade towards edges of tile.
-  if (auto po = In(Tile::tile_top, Tile::tile_bot)) {
+  if (auto po = In(TILE::tile_top, TILE::tile_bot)) {
     auto [x, y] = po.value();
     const auto [rr, gg, bb, a_] = tile->image->SampleBilinear(
         // XXX maybe don't bother scaling down?
         x * tile->image->Width(),
         y * tile->image->Height());
 
+    // distance from center.
+    double dx = (ux - TILE::center_u);
+    double dy = (uy - TILE::center_v);
+    const double rdist = sqrt((dx * dx) + (dy * dy));
+
+    static constexpr double radius =
+      std::min(TILE::width_uv,
+               TILE::height_uv) * 0.45;
+    // printf("%.17g radius\n", radius);
+    // CHECK(false);
+
+    // XXX parameterized
     // Fade out when we get far away.
     static constexpr double distance_close = 0.00015;
     static constexpr double distance_far = 0.00463;
@@ -518,10 +606,31 @@ uint32_t EarthColor(double ux, double uy, double distance) {
                                 distance >= distance_far ? 0.0f :
       (1.0f - ((distance - distance_close) / (distance_far - distance_close)));
 
+    // Fade towards edges of tile.
+    if (rdist > radius) {
+      // XXX scale should be param here too
+      mix_frac *= (1.0 - tanh(10.0 * ((rdist / radius) - 1.0)));
+    }
+
     r = std::lerp(r, rr, mix_frac);
     g = std::lerp(g, gg, mix_frac);
     b = std::lerp(b, bb, mix_frac);
   }
+
+  return std::make_tuple(r, g, b);
+}
+
+// distance is distance from camera to surface
+uint32_t EarthColor(double ux, double uy, double distance) {
+
+  float r, g, b, a_;
+  std::tie(r, g, b, a_) = bluemarble->SampleBilinear(
+      ux * bluemarble->Width(),
+      uy * bluemarble->Height());
+
+  // Two zoom levels; wider goes behind narrower.
+  std::tie(r, g, b) = BlendIfInside(widetile, ux, uy, distance, r, g, b);
+  std::tie(r, g, b) = BlendIfInside(tile, ux, uy, distance, r, g, b);
 
   return ColorUtil::FloatsTo32(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
 }
@@ -550,6 +659,48 @@ static bool InTetrahedron(const vec3d &pt,
 static bool InSphere(const vec3d &pt,
                      const Sphere &sphere) {
   return length(pt - sphere.origin) < sphere.radius;
+}
+
+// Camera position.
+struct Position {
+  double distance = 2.80100000000;
+
+  double a1 = 0.117112122;
+  double a2 = 3.008712215;
+  double a3 = 2.284319047;
+};
+
+static Position InterpolatePos(const Position &a,
+                               const Position &b,
+                               double f) {
+  Position ret;
+  ret.distance = std::lerp(a.distance, b.distance, f);
+  ret.a1 = std::lerp(a.a1, b.a1, f);
+  ret.a2 = std::lerp(a.a2, b.a2, f);
+  ret.a3 = std::lerp(a.a3, b.a3, f);
+  return ret;
+}
+
+struct Shot {
+  // Assuming 60fps.
+  int num_frames = 60;
+
+  Position start;
+  Position end;
+
+  bool draw_atmosphere = true;
+  bool draw_mouth = true;
+
+  std::function<double(double)> easing = [](double f) { return f; };
+};
+
+static double EaseOutQuart(double f) {
+  double sf = (1.0 - f) * (1.0 - f);
+  return 1.0 - (sf * sf);
+}
+
+static double EaseInOutSin(double f) {
+  return 0.5 * (1.0 + sin(3.141592653589 * (f - 0.5)));
 }
 
 // 0.0f = fully shadow
@@ -611,10 +762,9 @@ static ImageRGBA RenderFrame(
     int frame_width,
     int frame_height,
     int oversample,
-    // Distance from Earth
-    double distance,
-    // Rotation of Earth along its axis
-    double a1, double a2, double a3) {
+    Position pos,
+    bool draw_atmosphere,
+    bool draw_mouth) {
 
   ImageRGBA img(frame_width * oversample, frame_height * oversample);
 
@@ -660,10 +810,8 @@ static ImageRGBA RenderFrame(
 
   bool first = true;
   ParallelComp(
-      /* img.Width(), */ img.Height(),
-      [&first, &mouth, &atmosphere,
-       distance, a1, a2, a3, near_height, far_height,
-       &img, &scene](int py) {
+      img.Height(),
+      [&](int py) {
       double yf = py / (double)img.Height();
       for (int px = 0; px < img.Width(); px++) {
         double xf = px / (double)img.Width();
@@ -673,7 +821,7 @@ static ImageRGBA RenderFrame(
         double far_dist = FAR_DIST;
         // (maybe we want much less to zoom to a
         // region on the planet?)
-        double near_dist = -distance;
+        double near_dist = -pos.distance;
 
         double near_x = std::lerp(-NEAR_WIDTH * 0.5, NEAR_WIDTH * 0.5, xf);
         double near_y = std::lerp(-near_height * 0.5, near_height * 0.5, yf);
@@ -691,7 +839,7 @@ static ImageRGBA RenderFrame(
         ray.tmax = 10.0f;
 
         // Rotate...
-        mat3d rot = Rot(a1, a2, a3);
+        mat3d rot = Rot(pos.a1, pos.a2, pos.a3);
         // Rotate around origin.
         frame3d rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
         ray = transform_ray(rot_frame, ray);
@@ -708,10 +856,11 @@ static ImageRGBA RenderFrame(
               img.BlendPixel32(px, py, blend[i]);
           };
 
-        bool in_mouth = InTetrahedron(ray.o, mouth);
+        bool in_mouth = draw_mouth && InTetrahedron(ray.o, mouth);
         // point where we entered atmosphere
-        std::optional<vec3d> in_atmosphere = InSphere(ray.o, atmosphere) ?
-          std::optional<vec3d>{ray.o} : std::nullopt;
+        std::optional<vec3d> in_atmosphere =
+          (draw_atmosphere && InSphere(ray.o, atmosphere)) ?
+           std::optional<vec3d>{ray.o} : std::nullopt;
 
         auto Shade = [&](vec3d pt, uint32_t color) {
             float light = std::clamp(Illumination(scene, mouth, pt),
@@ -724,8 +873,32 @@ static ImageRGBA RenderFrame(
           };
 
         auto Trace = [&](){
+
           for (const auto &[idx, pi] : hits) {
             CHECK(pi.hit);
+
+            auto ExitAtmosphere = [&]() {
+                if (!in_atmosphere.has_value()) return;
+
+                vec3d pt = ray.o + pi.distance * ray.d;
+                vec3d chord = pt - in_atmosphere.value();
+                double len = length(chord);
+
+                double max_len = atmosphere.radius * 2.0;
+                // But most chords are only a tiny fraction.
+                double frac = len / max_len;
+                frac = pow(frac, 2);
+
+                const auto [r, g, b] = ColorUtil::LinearGradient(
+                    ATMOSPHERE, frac);
+
+                uint32 color = ColorUtil::FloatsTo32(
+                    r, g, b, frac);
+
+                blend.push_back(color);
+
+                in_atmosphere = std::nullopt;
+              };
 
             if (idx == 0) {
               // sphere
@@ -734,6 +907,9 @@ static ImageRGBA RenderFrame(
                 // inside the mouth cutout.
               } else {
                 // Normal hit on sphere.
+
+                ExitAtmosphere();
+
                 if (first) {
                   // printf("%.5f\n", pi.distance);
                   first = false;
@@ -756,6 +932,8 @@ static ImageRGBA RenderFrame(
                 // XXX hard coded location of earth
                 double r = length(pt);
                 if (r <= EARTH_RADIUS) {
+                  ExitAtmosphere();
+
                   uint32_t color = ColorUtil::LinearGradient32(
                       INNER_EARTH, r / EARTH_RADIUS);
 
@@ -772,12 +950,16 @@ static ImageRGBA RenderFrame(
 
               } else {
                 // Enter mouth.
-                in_mouth = true;
+                if (draw_mouth) {
+                  in_mouth = true;
+                }
               }
             } else if (idx == 2) {
               // Hit stars
 
-              double x = pi.uv.x * stars->Width();
+              const double wrap_x = fmod(pi.uv.x + 0.5, 1.0);
+
+              double x = wrap_x * stars->Width();
               double y = pi.uv.y * stars->Height();
               float r, g, b, a_;
               std::tie(r, g, b, a_) = stars->SampleBilinear(x, y);
@@ -791,33 +973,13 @@ static ImageRGBA RenderFrame(
               // Atmosphere
               vec3d pt = ray.o + pi.distance * ray.d;
               if (!in_atmosphere.has_value()) {
-                in_atmosphere = {pt};
+                if (draw_atmosphere) {
+                  in_atmosphere = {pt};
+                }
                 // printf("enter atmosphere\n");
               } else {
-                vec3d chord = pt - in_atmosphere.value();
-                double len = length(chord);
-
-                double max_len = atmosphere.radius * 2.0;
-                // But most chords are only a tiny fraction.
-                double frac = len / max_len;
-                frac = pow(frac, 2);
-
-
-                // XXX based on chord length!
-                // blend.push_back(0x0000FF22);
-
-                const auto [r, g, b] = ColorUtil::LinearGradient(
-                    ATMOSPHERE, frac);
-
-                uint32 color = ColorUtil::FloatsTo32(
-                    r, g, b, frac);
-
-                blend.push_back(color);
-
-                in_atmosphere = std::nullopt;
-                // printf("exit atmosphere.\n");
+                ExitAtmosphere();
               }
-
 
             } else {
               CHECK(false) << "unknown prim";
@@ -835,9 +997,10 @@ static ImageRGBA RenderFrame(
 
   ImageRGBA down = img.ScaleDownBy(oversample);
   down.BlendText32(5, 5, 0xFFFF22FF,
-                   StringPrintf("%.9f,%.9f,%.9f", a1, a2, a3));
+                   StringPrintf("%.9f,%.9f,%.9f",
+                                pos.a1, pos.a2, pos.a3));
   down.BlendText32(5, 15, 0xFF22FFFF,
-                   StringPrintf("%.9f", distance));
+                   StringPrintf("%.9f", pos.distance));
   return down;
 }
 
@@ -848,8 +1011,14 @@ int main(int argc, char **argv) {
   CHECK(pt.get() != nullptr);
   pactom = pt.release();
 
-  tile = new Tile;
-  tile->Drawhoods(pactom);
+  InParallel(
+      [](){
+        tile = new Tile;
+        tile->Drawhoods(pactom);
+      },
+      [](){
+        widetile = new WideTile;
+      });
 
   //  const auto [a1, a2, a3, d_] = Optimize();
   const double a1 = 0.117112122;
@@ -918,13 +1087,6 @@ int main(int argc, char **argv) {
          bluemarble->Width(), bluemarble->Height(),
          stars->Width(), stars->Height());
 
-  auto FrameDistance = [](double f) {
-      return std::lerp(2.80000428964, 14.0, f * f * f);
-    };
-  auto FrameAngle = [a1, a2, a3](double f) {
-      return std::make_tuple(a1, a2 + 0.002 * f, a3 - 0.8 * f);
-    };
-
   enum RenderMode {
     FRAMES,
     ONE_FRAME,
@@ -933,54 +1095,118 @@ int main(int argc, char **argv) {
   };
 
   RenderMode mode = FRAMES;
-  const int target_frame = 91;
-  static constexpr int FRAME_WIDTH = 2880;
-  static constexpr int FRAME_HEIGHT = 1620;
-  static constexpr int OVERSAMPLE = 2;
-  static constexpr int NUM_FRAMES = 120;
+  const int target_shot = 0;
+  const int target_frame = 200;
+  // static constexpr int FRAME_WIDTH = 2880;
+  // static constexpr int FRAME_HEIGHT = 1620;
+  static constexpr int FRAME_WIDTH = 1920;
+  static constexpr int FRAME_HEIGHT = 1080;
+  static constexpr int OVERSAMPLE = 3;
+
+  Position pittsburgh;
+  // pittsburgh.distance = 2.80000428964;
+  pittsburgh.distance = 2.81133246;
+  pittsburgh.a1 = 0.116977384;
+  pittsburgh.a2 = 3.008537539;
+  pittsburgh.a3 = 2.284259683;
+
+  Position chainsaw;
+  chainsaw.distance = 42.8;
+  chainsaw.a1 = 0.11;
+  chainsaw.a2 = 3.00;
+  chainsaw.a3 = 2.27;
+
+  Position pacman;
+  /*
+  pacman.distance = 14.0;
+  pacman.a1 = a1;
+  pacman.a2 = a2 + 0.002;
+  pacman.a3 = a3 - 0.8;
+  */
+
+  pacman.distance = 15.5;
+  pacman.a1 = a1;
+  pacman.a2 = a2 + 0.002 - 3.141592653589;
+  pacman.a3 = a3 - 0.8;
+
+  constexpr int SCENE_FRAMES = 240;
+
+  Shot zoomin_shot;
+  zoomin_shot.start = chainsaw;
+  zoomin_shot.end = pittsburgh;
+  zoomin_shot.num_frames = SCENE_FRAMES;
+  zoomin_shot.draw_atmosphere = true;
+  zoomin_shot.draw_mouth = false;
+  zoomin_shot.easing = EaseOutQuart;
+
+  Shot zoomout_shot;
+  zoomout_shot.start = pittsburgh;
+  zoomout_shot.end = pacman;
+  zoomout_shot.num_frames = SCENE_FRAMES;
+  zoomout_shot.draw_atmosphere = false;
+  zoomout_shot.draw_mouth = true;
+  zoomout_shot.easing = EaseInOutSin;
+
+  std::vector<Shot> shots = {zoomin_shot, zoomout_shot};
+  int total_frames = 0;
+  for (const Shot &shot : shots) total_frames += shot.num_frames;
 
   switch (mode) {
   case FRAMES: {
     Timer run_timer;
     Asynchronously async(8);
-    // static constexpr int FRAME_WIDTH = 1920;
-    // static constexpr int FRAME_HEIGHT = 1080;
-    for (int i = 0; i < NUM_FRAMES; i++) {
-      double f = i / (double)(NUM_FRAMES - 1);
-      double distance = FrameDistance(f);
-      const auto [fa1, fa2, fa3] = FrameAngle(f);
-      ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
-                                  distance, fa1, fa2, fa3);
-      async.Run([i, img = std::move(img)]() {
-          img.Save(StringPrintf("sphere%d.png", i));
-          printf("%d\n", i);
-        });
+    for (int s = 0; s < shots.size(); s++) {
+      const Shot &shot = shots[s];
+      for (int i = 0; i < shot.num_frames; i++) {
+        double f = shot.easing(i / (double)(shot.num_frames - 1));
+        Position pos = InterpolatePos(shot.start, shot.end, f);
+        ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
+                                    pos,
+                                    shot.draw_atmosphere,
+                                    shot.draw_mouth);
+        async.Run([s, i, img = std::move(img)]() {
+            img.Save(StringPrintf("sphere%d.%d.png", s, i));
+            printf("%d.%d\n", s, i);
+          });
+      }
     }
     double sec = run_timer.Seconds();
     printf("Wrote %d frames in %.1f sec (%.3f sec/frame).\n",
-           NUM_FRAMES, sec, sec / NUM_FRAMES);
+           total_frames, sec, sec / total_frames);
 
     break;
   }
 
   case MOSAIC: {
-    static constexpr int ACROSS = 5;
-    static constexpr int DOWN = 5;
-    static constexpr int ONEW = 288 * 2;
-    static constexpr int ONEH = 162 * 2;
+    static constexpr int ACROSS = 8;
+    static constexpr int DOWN = 8;
+    static constexpr int ONEW = 192 * 2;
+    static constexpr int ONEH = 108 * 2;
     static constexpr int OVERSAMPLE = 2;
 
+    // Would be nice if this ensured rendering endpoints...
     ImageRGBA mosaic(ONEW * ACROSS, ONEH * DOWN);
     for (int y = 0; y < DOWN; y++) {
       for (int x = 0; x < ACROSS; x++) {
         int i = y * DOWN + x;
-        double f = i / (double)(ACROSS * DOWN - 1);
-        double distance = FrameDistance(f);
-        const auto [fa1, fa2, fa3] = FrameAngle(f);
-        ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
-                                    distance,
-                                    fa1, fa2, fa3);
-        mosaic.CopyImage(x * ONEW, y * ONEH, img);
+        double all_f = i / (double)(ACROSS * DOWN - 1);
+        int global_idx = total_frames * all_f;
+
+        for (int s = 0; s < shots.size(); s++) {
+          const Shot &shot = shots[s];
+          if (global_idx < shot.num_frames) {
+            double f = global_idx / (double)(shot.num_frames - 1);
+            Position pos = InterpolatePos(shot.start, shot.end, f);
+            ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
+                                        pos,
+                                        shot.draw_atmosphere,
+                                        shot.draw_mouth);
+            mosaic.CopyImage(x * ONEW, y * ONEH, img);
+            break;
+          } else {
+            global_idx -= shot.num_frames;
+          }
+        }
       }
     }
     mosaic.Save("mosaic.png");
@@ -992,37 +1218,43 @@ int main(int argc, char **argv) {
 
     ArcFour rc(StringPrintf("%lld", time(nullptr)));
     RandomGaussian gauss(&rc);
-    static constexpr int ACROSS = 5;
-    static constexpr int DOWN = 5;
-    static constexpr int ONEW = 288 * 2;
-    static constexpr int ONEH = 162 * 2;
+    static constexpr int ACROSS = 3;
+    static constexpr int DOWN = 3;
+    // static constexpr int ONEW = 288 * 2;
+    // static constexpr int ONEH = 162 * 2;
+    static constexpr int ONEW = 1920;
+    static constexpr int ONEH = 1080;
     static constexpr int OVERSAMPLE = 2;
 
     ImageRGBA variants(ONEW * ACROSS, ONEH * DOWN);
+    const Shot &shot = shots[target_shot];
+    double f = shot.easing(target_frame / (double)(shot.num_frames - 1));
+    const Position center_pos = InterpolatePos(shot.start, shot.end, f);
+
     for (int y = 0; y < DOWN; y++) {
       for (int x = 0; x < ACROSS; x++) {
-        int i = y * DOWN + x;
-        double f = target_frame / (double)(ACROSS * DOWN - 1);
-        double distance = FrameDistance(f);
-        double aa1, aa2, aa3;
-        std::tie(aa1, aa2, aa3) = FrameAngle(f);
 
-        double scale = 0.0001;
-
-        if (i > 0) {
-          aa1 += gauss.Next() * scale;
-          aa2 += gauss.Next() * scale;
-          aa3 += gauss.Next() * scale;
-          distance += gauss.Next() * scale;
+        Position pos = center_pos;
+        if (y > 0 || x > 0) {
+          const double scale = 0.0001;
+          pos.a1 += gauss.Next() * scale;
+          pos.a2 += gauss.Next() * scale;
+          pos.a3 += gauss.Next() * scale;
+          pos.distance += gauss.Next() * scale;
         }
 
         ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
-                                    distance,
-                                    aa1, aa2, aa3);
+                                    pos,
+                                    shot.draw_atmosphere,
+                                    shot.draw_mouth);
+        CHECK(img.Width() == ONEW);
+        CHECK(img.Height() == ONEH);
+
         variants.CopyImage(x * ONEW, y * ONEH, img);
       }
     }
-    string filename = StringPrintf("variants%d.png", target_frame);
+    string filename = StringPrintf("variants%d.%d.png",
+                                   target_shot, target_frame);
     variants.Save(filename);
     printf("Wrote %s\n", filename.c_str());
 
@@ -1030,14 +1262,15 @@ int main(int argc, char **argv) {
   }
 
   case ONE_FRAME: {
-
     Timer run_timer;
-    double f = target_frame / (double)(NUM_FRAMES - 1);
-    double distance = FrameDistance(f);
-    const auto [fa1, fa2, fa3] = FrameAngle(f);
+    const Shot &shot = shots[target_shot];
+    double f = shot.easing(target_frame / (double)(shot.num_frames - 1));
+    Position pos = InterpolatePos(shot.start, shot.end, f);
     ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
-                                distance, fa1, fa2, fa3);
-    img.Save(StringPrintf("frame%d.png", target_frame));
+                                pos,
+                                shot.draw_atmosphere,
+                                shot.draw_mouth);
+    img.Save(StringPrintf("frame%d.%d.png", target_shot, target_frame));
     double sec = run_timer.Seconds();
     printf("Wrote frame in %.1f sec.\n", sec);
 

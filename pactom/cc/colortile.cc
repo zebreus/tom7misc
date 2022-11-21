@@ -92,9 +92,9 @@ static std::tuple<double, double, double> Optimize() {
                     std::make_tuple(0.5, 0.5, 0.5),
                     1000, 1, 10).first;
   printf("Best:\n"
-         "const double ho = %.11f;\n"
-         "const double so = %.11f;\n"
-         "const double vo = %.11f;\n",
+         "static constexpr double ho = %.11f;\n"
+         "static constexpr double so = %.11f;\n"
+         "static constexpr double vo = %.11f;\n",
          ho, so, vo);
 
   return std::make_tuple(ho, so, vo);
