@@ -13,6 +13,7 @@
 #include "util.h"
 #include "base/logging.h"
 #include "optional-iterator.h"
+#include "re2/re2.h"
 
 using namespace std;
 
@@ -91,6 +92,22 @@ static string RequireLeaf(XML::Node &node, string_view name) {
   return so.value();
 }
 
+static int MonthNum(const string &m) {
+  if (m == "Jan") return 1;
+  if (m == "Feb") return 2;
+  if (m == "Mar") return 3;
+  if (m == "Apr") return 4;
+  if (m == "May") return 5;
+  if (m == "Jun") return 6;
+  if (m == "Jul") return 7;
+  if (m == "Aug") return 8;
+  if (m == "Sep") return 9;
+  if (m == "Oct") return 10;
+  if (m == "Nov") return 11;
+  if (m == "Dec") return 12;
+  CHECK(false) << "Bad month: " << m;
+}
+
 /*
 before
 Loaded 262 paths with 439778 waypoints.
@@ -154,6 +171,29 @@ struct KmlRec {
         CHECK(name_ctx != "") << "linestring with no name";
         run.name = name_ctx;
         // TODO: Parse date from desc or name.
+        int month = 0, day = 0, year = 0;
+        string days, months;
+#define ANY_RE "(?:a|[^a])*"
+        if (RE2::FullMatch(desc_ctx,
+                           ANY_RE ">([0-9]?[0-9])/([0-9]?[0-9])/([0-9][0-9])\\s"
+                           ANY_RE,
+                           &month, &day, &year)) {
+          run.month = month;
+          run.day = day;
+          run.year = 2000 + year;
+        } else if (RE2::FullMatch(
+                       desc_ctx,
+                       ANY_RE
+                       "(...),\\s(...)\\s([0-9]?[0-9]),\\s([0-9][0-9][0-9][0-9])\\s"
+                       ANY_RE,
+                       &days, &months, &day, &year)) {
+          run.month = MonthNum(months);
+          run.day = day;
+          run.year = year;
+        } else {
+          printf("Name [%s]\nDesc: [%s]\n",
+                 name_ctx.c_str(), desc_ctx.c_str());
+        }
 
         string coords = RequireLeaf(node, "coordinates");
         run.path = ParseCoords(filename, coords);

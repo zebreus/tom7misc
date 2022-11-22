@@ -21,7 +21,8 @@ struct PacTom {
   // Parallel to above.
   struct Run {
     std::string name;
-    // Might not have a date :/
+    // e.g. 2000, 1, 1, for 1 January 2000.
+    // Note: Might not have a date :/
     int year = 0, month = 0, day = 0;
     // Position and elevation, but no timing info.
     std::vector<std::pair<LatLon, double>> path;
