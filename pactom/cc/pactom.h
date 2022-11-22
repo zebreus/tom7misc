@@ -18,8 +18,15 @@ struct PacTom {
       const std::vector<std::string> &files,
       const std::optional<std::string> &neighborhoods);
 
-  // Position and elevation. No naming or timing.
-  std::vector<std::vector<std::pair<LatLon, double>>> paths;
+  // Parallel to above.
+  struct Run {
+    std::string name;
+    // Might not have a date :/
+    int year = 0, month = 0, day = 0;
+    // Position and elevation, but no timing info.
+    std::vector<std::pair<LatLon, double>> path;
+  };
+  std::vector<Run> runs;
 
   // Borders of neighborhoods, if loaded.
   std::map<std::string, std::vector<LatLon>> hoods;

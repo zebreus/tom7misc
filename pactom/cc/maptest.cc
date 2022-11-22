@@ -15,6 +15,7 @@
 #include "randutil.h"
 #include "color-util.h"
 #include "osm.h"
+#include "ansi.h"
 
 using namespace std;
 
@@ -72,6 +73,8 @@ inline static uint32_t WayColor(OSM::Highway highway) {
 }
 
 int main(int argc, char **argv) {
+  AnsiInit();
+
   ArcFour rc("pactom");
   unique_ptr<PacTom> pactom = PacTom::FromFiles({"../pac.kml",
                                                  "../pac2.kml"},
@@ -80,16 +83,26 @@ int main(int argc, char **argv) {
   CHECK(pactom.get() != nullptr);
 
   double path_feet = 0.0, tripath_feet = 0.0;
-  for (const auto &p : pactom->paths) {
-    for (int i = 0; i < p.size() - 1; i++) {
-      const auto &[latlon0, elev0] = p[i];
-      const auto &[latlon1, elev1] = p[i + 1];
+  for (int ridx = 0; ridx < pactom->runs.size(); ridx++) {
+    const auto &r = pactom->runs[ridx];
+    double pf = 0.0, tf = 0.0;
+    for (int i = 0; i < r.path.size() - 1; i++) {
+      const auto &[latlon0, elev0] = r.path[i];
+      const auto &[latlon1, elev1] = r.path[i + 1];
       double dist1 = LatLon::DistFeet(latlon0, latlon1);
-      path_feet += dist1;
+      pf += dist1;
       double dz = (elev1 - elev0) * METERS_TO_FEET;
 
-      tripath_feet += sqrt(dz * dz + dist1 * dist1);
+      tf += sqrt(dz * dz + dist1 * dist1);
     }
+    printf("%d" AGREY(".") " "
+           ABLUE("%s") AGREY(":") " "
+           AYELLOW("%.3f") AGREY("/") AWHITE("%.3f") " "
+           "mi.\n", ridx, r.name.c_str(),
+           pf / 5280.0, tf / 5280.0);
+
+    path_feet += pf;
+    tripath_feet += tf;
   }
   printf("Total miles: %.6f\n", path_feet / 5280.0);
   printf("Including elev: %.6f\n", tripath_feet / 5280.0);
@@ -108,10 +121,11 @@ int main(int argc, char **argv) {
          osm.nodes.size(), osm.ways.size());
 
   int64 pts = 0;
-  for (auto &p : pactom->paths) pts += p.size();
+  for (const auto &r : pactom->runs)
+    pts += r.path.size();
 
-  printf("Loaded %lld paths with %lld waypoints.\n",
-         pactom->paths.size(), pts);
+  printf("Loaded %lld runs with %lld waypoints.\n",
+         pactom->runs.size(), pts);
   printf("There are %d hoods\n", pactom->hoods.size());
 
   const LatLon home = LatLon::FromDegs(40.452911, -79.936313);
@@ -120,8 +134,8 @@ int main(int argc, char **argv) {
 
   // Find the extrema.
   Bounds bounds;
-  for (const auto &p : pactom->paths) {
-    for (const auto &[latlon, elev] : p) {
+  for (const auto &r : pactom->runs) {
+    for (const auto &[latlon, elev] : r.path) {
       auto [x, y] = Project(latlon);
       bounds.Bound(x, y);
     }
@@ -178,19 +192,17 @@ int main(int argc, char **argv) {
     }
   }
 
-  #if 0
-  for (const auto &p : pactom->paths) {
+  for (const auto &r : pactom->runs) {
     const uint32 color = RandomBrightColor(&rc) & 0xFFFFFF33; // XXX
-    for (int i = 0; i < p.size() - 1; i++) {
-      const auto &[latlon0, elev0] = p[i];
-      const auto &[latlon1, elev1] = p[i + 1];
+    for (int i = 0; i < r.path.size() - 1; i++) {
+      const auto &[latlon0, elev0] = r.path[i];
+      const auto &[latlon1, elev1] = r.path[i + 1];
       auto [x0, y0] = scaler.Scale(Project(latlon0));
       auto [x1, y1] = scaler.Scale(Project(latlon1));
 
       DrawThickLine<RADIUS>(&image, x0, y0, x1, y1, color);
     }
   }
-  #endif
 
   ImageRGBA out = image.ScaleDownBy(SCALE);
 

@@ -45,6 +45,24 @@ static uint32 RandomBrightColor(ArcFour *rc) {
   return (rr << 24) | (gg << 16) | (bb << 8) | 0xFF;
 }
 
+template<int RADIUS>
+static void DrawThickLine(ImageRGBA *image,
+                          int x0, int y0, int x1, int y1,
+                          uint32_t color) {
+  image->BlendPixel32(x0, y0, color);
+  for (const auto [x, y] : Line<int>{(int)x0, (int)y0, (int)x1, (int)y1}) {
+    for (int dy = -RADIUS; dy <= RADIUS; dy++) {
+      const int ddy = dy * dy;
+      for (int dx = -RADIUS; dx <= RADIUS; dx++) {
+        const int ddx = dx * dx;
+        if (ddy + ddx <= RADIUS * RADIUS) {
+          image->BlendPixel32(x + dx, y + dy, color);
+        }
+      }
+    }
+  }
+}
+
 int main(int argc, char **argv) {
   ArcFour rc("pactom");
   unique_ptr<PacTom> pactom = PacTom::FromFiles({"../pac.kml",
@@ -53,30 +71,22 @@ int main(int argc, char **argv) {
     );
   CHECK(pactom.get() != nullptr);
 
-  int64 pts = 0;
-  for (auto &p : pactom->paths) pts += p.size();
-
-  printf("Loaded %lld paths with %lld waypoints.\n",
-         pactom->paths.size(), pts);
-  printf("There are %d hoods\n", pactom->hoods.size());
-
+  std::vector<uint32_t> colors;
   std::vector<std::pair<uint32_t,
                         std::vector<std::pair<LatLon, double>>>> paths;
-  paths.reserve(pactom->paths.size());
-  for (const auto &p : pactom->paths) {
+  for (const auto &r : pactom->runs) {
     uint32_t color = RandomBrightColor(&rc) & 0xFFFFFF33; // XXX
-    paths.emplace_back(color, p);
+    colors.emplace_back(color);
   }
 
   const LatLon home = LatLon::FromDegs(40.452911, -79.936313);
   LatLon::Projection Project = LatLon::Gnomonic(home);
   const std::pair<double, double> home_pt = Project(home);
-  // LatLon::Projection Project = LatLon::PlateCarree();
 
   // Find the extrema.
   Bounds bounds;
-  for (const auto &[color_, p] : paths) {
-    for (const auto &[latlon, elev] : p) {
+  for (const auto &r : pactom->runs) {
+    for (const auto &[latlon, elev] : r.path) {
       auto [x, y] = Project(latlon);
       bounds.Bound(x, y);
     }
@@ -122,23 +132,13 @@ int main(int argc, char **argv) {
           auto [x0, y0] = ScaleInterp(frame_frac, Project(latlon0));
           auto [x1, y1] = ScaleInterp(frame_frac, Project(latlon1));
 
-          for (const auto [x, y] :
-                 Line<int>{(int)x0, (int)y0, (int)x1, (int)y1}) {
-            for (int dy = -RADIUS; dy <= RADIUS; dy++) {
-              const int ddy = dy * dy;
-              for (int dx = -RADIUS; dx <= RADIUS; dx++) {
-                const int ddx = dx * dx;
-                if (ddy + ddx <= RADIUS * RADIUS) {
-                  image.BlendPixel32(x + dx, y + dy, color);
-                }
-              }
-            }
-          }
-
+          DrawThickLine<RADIUS>(&image, x0, y0, x1, y1, color);
         }
       }
 
-      for (const auto &[color, p] : paths) {
+      for (int idx = 0; idx < pactom->runs.size(); idx++) {
+        const uint32_t color = colors[idx];
+        const auto &p = pactom->runs[idx].path;
         const int last_pt =
           std::clamp((int)std::round(p.size() * frame_frac), 0, (int)p.size());
         for (int i = 0; i < last_pt - 1; i++) {
@@ -147,18 +147,7 @@ int main(int argc, char **argv) {
           auto [x0, y0] = ScaleInterp(frame_frac, Project(latlon0));
           auto [x1, y1] = ScaleInterp(frame_frac, Project(latlon1));
 
-          for (const auto [x, y] :
-                 Line<int>{(int)x0, (int)y0, (int)x1, (int)y1}) {
-            for (int dy = -RADIUS; dy <= RADIUS; dy++) {
-              const int ddy = dy * dy;
-              for (int dx = -RADIUS; dx <= RADIUS; dx++) {
-                const int ddx = dx * dx;
-                if (ddy + ddx <= RADIUS * RADIUS) {
-                  image.BlendPixel32(x + dx, y + dy, color);
-                }
-              }
-            }
-          }
+          DrawThickLine<RADIUS>(&image, x0, y0, x1, y1, color);
 
           if (i == last_pt - 2 && last_pt != p.size()) {
             uint32_t dot_color = color | 0x77;

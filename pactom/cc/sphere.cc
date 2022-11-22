@@ -23,6 +23,7 @@
 #include "pactom.h"
 #include "lines.h"
 #include "image-frgba.h"
+#include "osm.h"
 
 static constexpr double PI = std::numbers::pi;
 
@@ -520,8 +521,23 @@ struct Tile {
     return ColorUtil::HSVToRGB(h, s, v);
   }
 
+  template<int RADIUS>
+  void DrawThickLine(int x0, int y0, int x1, int y1, uint32_t color) {
+    for (const auto [x, y] :
+           Line<int>{(int)x0, (int)y0, (int)x1, (int)y1}) {
+      for (int dy = -RADIUS; dy <= RADIUS; dy++) {
+        const int ddy = dy * dy;
+        for (int dx = -RADIUS; dx <= RADIUS; dx++) {
+          const int ddx = dx * dx;
+          if (ddy + ddx <= RADIUS * RADIUS) {
+            image->BlendPixel32(x + dx, y + dy, color);
+          }
+        }
+      }
+    }
+  }
 
-  void Drawhoods(PacTom *pactom) {
+  void DrawHoods(PacTom *pactom) {
     static constexpr int RADIUS = 4;
     CHECK(pactom != nullptr);
 
@@ -533,22 +549,45 @@ struct Tile {
         auto [x0, y0] = ToXY(latlon0);
         auto [x1, y1] = ToXY(latlon1);
 
-        for (const auto [x, y] :
-               Line<int>{(int)x0, (int)y0, (int)x1, (int)y1}) {
-          for (int dy = -RADIUS; dy <= RADIUS; dy++) {
-            const int ddy = dy * dy;
-            for (int dx = -RADIUS; dx <= RADIUS; dx++) {
-              const int ddx = dx * dx;
-              if (ddy + ddx <= RADIUS * RADIUS) {
-                image->BlendPixel32(x + dx, y + dy, color);
-              }
+        DrawThickLine<RADIUS>(x0, y0, x1, y1, color);
+      }
+    }
+  }
+
+  static bool DrawRoad(OSM::Highway highway) {
+    return highway != OSM::NONE;
+  }
+
+  void DrawStreets(const PacTom &pactom,
+                   const OSM &osm) {
+    static constexpr int RADIUS = 2;
+
+    for (const auto &[way_id, way] : osm.ways) {
+      if (DrawRoad(way.highway)) {
+        const uint32 color = 0x55101077;
+        for (int i = 0; i < way.points.size() - 1; i++) {
+          const uint64_t id0 = way.points[i];
+          const uint64_t id1 = way.points[i + 1];
+
+          auto it0 = osm.nodes.find(id0);
+          auto it1 = osm.nodes.find(id1);
+          if (it0 != osm.nodes.end() &&
+              it1 != osm.nodes.end()) {
+            const LatLon latlon0 = it0->second;
+            const LatLon latlon1 = it1->second;
+
+            auto [x0, y0] = ToXY(latlon0);
+            auto [x1, y1] = ToXY(latlon1);
+
+            if (-1 != pactom.InNeighborhood(latlon0) &&
+                -1 != pactom.InNeighborhood(latlon1)) {
+
+              DrawThickLine<RADIUS>(x0, y0, x1, y1, color);
             }
           }
         }
-
       }
     }
-
   }
 
   std::unique_ptr<ImageRGBA> image;
@@ -1011,10 +1050,21 @@ int main(int argc, char **argv) {
   CHECK(pt.get() != nullptr);
   pactom = pt.release();
 
+  OSM osm;
+  for (const string osmfile : {
+        "../pittsburgh-center.osm",
+        "../pittsburgh-northeast.osm",
+        "../pittsburgh-north.osm",
+        "../pittsburgh-south.osm",
+        "../pittsburgh-southwest.osm",
+        "../pittsburgh-west.osm",
+       }) osm.AddFile(osmfile);
+
   InParallel(
-      [](){
+      [&](){
         tile = new Tile;
-        tile->Drawhoods(pactom);
+        tile->DrawStreets(*pactom, osm);
+        tile->DrawHoods(pactom);
       },
       [](){
         widetile = new WideTile;
@@ -1094,9 +1144,9 @@ int main(int argc, char **argv) {
     FRAME_VARIANTS,
   };
 
-  RenderMode mode = FRAMES;
+  RenderMode mode = ONE_FRAME;
   const int target_shot = 0;
-  const int target_frame = 200;
+  const int target_frame = 239;
   // static constexpr int FRAME_WIDTH = 2880;
   // static constexpr int FRAME_HEIGHT = 1620;
   static constexpr int FRAME_WIDTH = 1920;

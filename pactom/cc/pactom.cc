@@ -54,40 +54,6 @@ static vector<pair<LatLon, double>> ParseCoords(const string &error_context,
   return out;
 }
 
-struct KmlRec {
-  using NodeType = XML::NodeType;
-  using Node = XML::Node;
-
-  KmlRec(const string &filename) : filename(filename) {}
-
-  const string filename;
-  // Populated by Process.
-  vector<vector<pair<LatLon, double>>> paths;
-
-  void Process(Node &node) {
-    if (node.type == NodeType::Element) {
-      if (node.tag == "coordinates") {
-        if (node.children.size() == 1 &&
-            node.children[0].type == NodeType::Text) {
-
-          paths.emplace_back(ParseCoords(filename,
-                                         node.children[0].contents));
-
-        } else {
-          LOG(FATAL) << filename << ": Expected <coordinates> node to have "
-            "a single text child.";
-        }
-      } else if (node.tag == "GroundOverlay") {
-        // Unimplemented, but see pactom.sml.
-      } else {
-        for (Node &child : node.children) {
-          Process(child);
-        }
-      }
-    }
-  }
-};
-
 // Find the first descendant with the given tag name (case-sensitive),
 // or return nullptr;
 // XXX to xml.h?
@@ -103,21 +69,104 @@ static XML::Node *FindTag(XML::Node &node, string_view name) {
   return nullptr;
 }
 
-// Require a descendant with <name>text</name> and return text.
-static string RequireLeaf(XML::Node &node, string_view name) {
+static std::optional<string> GetLeaf(XML::Node &node, string_view name) {
   if (XML::Node *c = FindTag(node, name)) {
     if (c->type == XML::NodeType::Element &&
         c->children.size() == 0) {
-      return "";
+      return {""};
     } else if (c->type == XML::NodeType::Element &&
                c->children.size() == 1 &&
                c->children[0].type == XML::NodeType::Text) {
-      return c->children[0].contents;
+      return {c->children[0].contents};
     }
-    CHECK(false) << "Expected <" << name << "> to just contain text.";
+    return nullopt;
   }
-  CHECK(false) << "Expected descandant <" << name << ">";
+  return nullopt;
 }
+
+// Require a descendant with <name>text</name> and return text.
+static string RequireLeaf(XML::Node &node, string_view name) {
+  optional<string> so = GetLeaf(node, name);
+  CHECK(so.has_value()) << "Expected descendant <" << name << "> with text";
+  return so.value();
+}
+
+/*
+before
+Loaded 262 paths with 439778 waypoints.
+There are 93 hoods
+*/
+struct KmlRec {
+  using NodeType = XML::NodeType;
+  using Node = XML::Node;
+
+  KmlRec(const string &filename) : filename(filename) {}
+
+  const string filename;
+  // Populated by Process.
+  vector<PacTom::Run> runs;
+
+  // Due to the many different approaches I used to store these, there are multiple
+  // different representations.
+  //
+  // <folder>
+  //   <name>Actual Name</name>
+  //   <description>Actual Desc</description>
+  //   <placemark>
+  //     <name>Track</name>
+  //     <linestring>
+  //       <coordinates>Actual Lat/Lon</coordinates>
+  //       ...
+  //
+  // or older
+  //
+  // <placemark>
+  //   <name>Actual Name</name>
+  //   <description>Actual Desc</description>
+  //   <linestring>
+  //      <coordinates>Actual Lat/Lon</coordinates>
+  //      ...
+  //
+  // So the strategy here is to recursively look for <linestring>, but
+  // to keep track of the best name/desc from either the surrounding
+  // folder of placemark tag.
+  void Process(Node &node, string name_ctx, string desc_ctx) {
+    if (node.type == NodeType::Element) {
+
+      if (Util::lcase(node.tag) == "placemark" ||
+          Util::lcase(node.tag) == "folder") {
+        auto nameo = GetLeaf(node, "name");
+        auto desco = GetLeaf(node, "description");
+        if (nameo.has_value() && Util::lcase(nameo.value()) != "track") {
+          name_ctx = nameo.value();
+        }
+
+        if (desco.has_value() && desco.value() != "") {
+          desc_ctx = desco.value();
+        }
+
+        for (Node &child : node.children) {
+          Process(child, name_ctx, desc_ctx);
+        }
+      } else if (Util::lcase(node.tag) == "linestring") {
+        // This is presumed to be a run.
+        PacTom::Run run;
+        CHECK(name_ctx != "") << "linestring with no name";
+        run.name = name_ctx;
+        // TODO: Parse date from desc or name.
+
+        string coords = RequireLeaf(node, "coordinates");
+        run.path = ParseCoords(filename, coords);
+        runs.emplace_back(std::move(run));
+      } else {
+        for (Node &child : node.children) {
+          Process(child, name_ctx, desc_ctx);
+        }
+      }
+    }
+  }
+};
+
 
 struct HoodRec {
   std::map<string, std::vector<LatLon>> polys;
@@ -166,10 +215,10 @@ std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
 
     XML::Node &node = nodeopt.value();
     KmlRec kmlrec(file);
-    kmlrec.Process(node);
-    for (auto &path : kmlrec.paths)
-      pactom->paths.emplace_back(std::move(path));
-    kmlrec.paths.clear();
+    kmlrec.Process(node, "", "");
+    for (auto &run : kmlrec.runs)
+      pactom->runs.emplace_back(std::move(run));
+    kmlrec.runs.clear();
   }
 
   for (const string &file : GetOpt(hoodfile)) {

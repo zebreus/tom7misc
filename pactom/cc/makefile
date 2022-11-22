@@ -1,5 +1,5 @@
 
-default : maptest.exe sphere.exe
+default : maptest.exe sphere.exe zoomout.exe colortile.exe
 
 CC_LIB=../../cc-lib
 
@@ -14,7 +14,7 @@ CXXFLAGS=-march=native -I$(CC_LIB) --std=c++20 -O3 -static -flto
 # CXXFLAGS=-I. --std=c++17 -O2 -DNDEBUG=1
 
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/geom/latlon.o $(CC_LIB)/xml.o $(CC_LIB)/bounds.o $(CC_LIB)/image-frgba.o $(CC_LIB)/tinyexr.o
+UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/geom/latlon.o $(CC_LIB)/xml.o $(CC_LIB)/bounds.o $(CC_LIB)/image-frgba.o $(CC_LIB)/tinyexr.o $(CC_LIB)/ansi.o
 
 PACTOM_OBJECTS=pactom.o osm.o
 
