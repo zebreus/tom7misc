@@ -44,7 +44,7 @@ static LatLon FromRads(double lat, double lon) {
   return LatLon::FromDegs(RAD_TO_DEGS * lat, RAD_TO_DEGS * lon);
 }
 
-std::pair<double, double> LatLon::ToDegs() {
+std::pair<double, double> LatLon::ToDegs() const {
   return std::make_pair(lat, lon);
 }
 

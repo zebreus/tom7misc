@@ -35,4 +35,4 @@ hilbert-curve_test.exe : hilbert-curve_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :
-	rm -f *.o *.exe
+	rm -f *.o *.exe $(CC_LIB_OBJECTS)

@@ -9,6 +9,9 @@
 
 // Position on the earth.
 struct LatLon {
+  // For vectors, etc.
+  LatLon() : lat(0.0), lon(0.0) {}
+  LatLon(const LatLon &other) : lat(other.lat), lon(other.lon) {}
 
   /* latitude measured in degrees. Positive is north and negative is south.
      longitude measured in degrees. Positive is east and negative is west.
@@ -31,7 +34,7 @@ struct LatLon {
 
   /* latitude always in [-90, +90),
      longitude always in [-180, +180). */
-  std::pair<double, double> ToDegs();
+  std::pair<double, double> ToDegs() const;
   // TODO: ToRads
 
   /* Angle of a vector, in radians, where 0 is to the East and pi/2 is

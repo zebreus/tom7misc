@@ -14,6 +14,9 @@ struct Bounds {
   void Bound(double x, double y);
   void Bound(std::pair<double, double> p);
 
+  // The margins are included.
+  bool Contains(double x, double y) const;
+
   // Returns true if no points have been added. When the bounding box
   // is empty, several functions below should not be called.
   bool Empty() const;

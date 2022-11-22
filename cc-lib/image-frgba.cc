@@ -56,7 +56,7 @@ ImageRGBA ImageFRGBA::ToRGBA() const {
 }
 
 ImageFRGBA::ImageFRGBA(const ImageRGBA &other) :
-  width(other.Width()), height(other.Height()) {
+  ImageFRGBA(other.Width(), other.Height()) {
   for (int64 y = 0; y < Height(); y++) {
     for (int64 x = 0; x < Width(); x++) {
       uint32_t c = other.GetPixel32(x, y);

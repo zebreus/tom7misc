@@ -21,6 +21,11 @@ void Bounds::Bound(std::pair<double, double> p) {
   Bound(p.first, p.second);
 }
 
+bool Bounds::Contains(double x, double y) const {
+  return x >= minx && x <= maxx &&
+    y >= miny && y <= maxy && !is_empty;
+}
+
 bool Bounds::Empty() const { return is_empty; }
 
 double Bounds::MinX() const { return minx; }
