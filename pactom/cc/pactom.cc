@@ -7,6 +7,7 @@
 #include <string_view>
 #include <map>
 #include <utility>
+#include <cmath>
 
 #include "xml.h"
 #include "geom/latlon.h"
@@ -14,6 +15,9 @@
 #include "base/logging.h"
 #include "optional-iterator.h"
 #include "re2/re2.h"
+
+#include "edit-distance.h"
+#include "threadutil.h"
 
 using namespace std;
 
@@ -127,6 +131,25 @@ static std::optional<string> GetLeafMatching(
   return nullopt;
 }
 
+static void GetAll(XML::Node &node, string_view name,
+                   std::vector<string> *out) {
+  if (node.type == XML::NodeType::Element) {
+    if (node.tag == name) {
+      if (node.children.size() == 0)
+        out->push_back("");
+
+      if (node.children.size() == 1 &&
+          node.children[0].type == XML::NodeType::Text) {
+        out->push_back(node.children[0].contents);
+      }
+    }
+
+    for (XML::Node &child : node.children) {
+      GetAll(child, name, out);
+    }
+  }
+}
+
 
 // Require a descendant with <name>text</name> and return text.
 static string RequireLeaf(XML::Node &node, string_view name) {
@@ -208,6 +231,8 @@ struct KmlRec {
   KmlRec(const string &filename) : filename(filename) {}
 
   const string filename;
+  string file_desc;
+
   // Populated by Process.
   vector<PacTom::Run> runs;
 
@@ -235,7 +260,24 @@ struct KmlRec {
   // So the strategy here is to recursively look for <linestring>, but
   // to keep track of the best name/desc from either the surrounding
   // folder of placemark tag.
-  void Process(Node &node, string name_ctx, string desc_ctx) {
+  void Process(Node &node, bool one_run_per_file) {
+    if (one_run_per_file) {
+      std::vector<string> all;
+      GetAll(node, "description", &all);
+      // Don't really care how this looks; we're just going to mine it
+      // for dates.
+      file_desc = Util::Join(all, "\n");
+    }
+
+    ProcessRec(node, "", "");
+
+    if (one_run_per_file) {
+      CHECK(runs.size() == 1) << filename << ": Expected one run per file; "
+        "got " << runs.size();
+    }
+  }
+
+  void ProcessRec(Node &node, string name_ctx, string desc_ctx) {
     if (node.type == NodeType::Element) {
 
       if (Util::lcase(node.tag) == "placemark" ||
@@ -258,18 +300,9 @@ struct KmlRec {
         if (desco.has_value() && desco.value() != "") {
           desc_ctx = desco.value();
         }
-        #if 0
-        else if (nameo.has_value() && Util::lcase(nameo.value()) == "track") {
-          // In this case, expect we're in a folder with
-          // <Placemark><name>Track</name> ...</Placemark>
-          // <Placemark>
-
-
-        }
-        #endif
 
         for (Node &child : node.children) {
-          Process(child, name_ctx, desc_ctx);
+          ProcessRec(child, name_ctx, desc_ctx);
         }
       } else if (Util::lcase(node.tag) == "linestring") {
         // This is presumed to be a run.
@@ -277,9 +310,10 @@ struct KmlRec {
         CHECK(name_ctx != "") << filename << ": linestring with no name";
         run.name = name_ctx;
 
-        auto ymdo = ParseDesc(name_ctx, desc_ctx);
-        if (ymdo.has_value()) {
+        if (auto ymdo = ParseDesc(name_ctx, desc_ctx)) {
           std::tie(run.year, run.month, run.day) = ymdo.value();
+        } else if (auto fymdo = ParseDesc(filename, file_desc)) {
+          std::tie(run.year, run.month, run.day) = fymdo.value();
         }
 
         string coords = RequireLeaf(node, "coordinates");
@@ -287,7 +321,7 @@ struct KmlRec {
         runs.emplace_back(std::move(run));
       } else {
         for (Node &child : node.children) {
-          Process(child, name_ctx, desc_ctx);
+          ProcessRec(child, name_ctx, desc_ctx);
         }
       }
     }
@@ -328,7 +362,8 @@ struct HoodRec {
 };
 
 std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
-                                          const optional<string> &hoodfile) {
+                                          const optional<string> &hoodfile,
+                                          bool one_run_per_file) {
   std::unique_ptr<PacTom> pactom(new PacTom);
 
   for (const string &file : files) {
@@ -347,7 +382,7 @@ std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
 
     XML::Node &node = nodeopt.value();
     KmlRec kmlrec(file);
-    kmlrec.Process(node, "", "");
+    kmlrec.Process(node, one_run_per_file);
     for (auto &run : kmlrec.runs)
       pactom->runs.emplace_back(std::move(run));
     kmlrec.runs.clear();
@@ -417,4 +452,63 @@ int PacTom::InNeighborhood(LatLon pos) const {
   }
 
   return -1;
+}
+
+// Lower is better.
+static int RunEditDistance(const PacTom::Run &a, const PacTom::Run &b) {
+
+  // ??
+  auto DeletionCost = [&a](int x) { return 1; };
+  auto InsertionCost = [&b](int x) { return 1; };
+
+  auto SubstCost = [&a, &b](int ai, int bi) -> int {
+      const auto [ya, xa] = a.path[ai].first.ToDegs();
+      const auto [yb, xb] = b.path[bi].first.ToDegs();
+
+      double dx = xa - xb;
+      double dy = ya - yb;
+      return sqrt(dx * dx + dy * dy) * 1000;
+    };
+
+  const auto [cmds, score] = EditDistance::GetAlignment(a.path.size(),
+                                                        b.path.size(),
+                                                        DeletionCost,
+                                                        InsertionCost,
+                                                        SubstCost);
+  return score;
+}
+
+void PacTom::SetDatesFrom(const PacTom &other, int max_threads) {
+  ParallelComp(runs.size(),
+               [this, &other](int idx) {
+                 Run &run = runs[idx];
+                 if (run.year > 0)
+                   return;
+
+                 int best = 10000000;
+                 int bestidx = 0;
+                 for (int oidx = 0; oidx < other.runs.size(); oidx++) {
+                   const Run &rother = other.runs[oidx];
+                   if (rother.year == 0)
+                     continue;
+
+                   // XXX filter by length, etc.?
+                   int score = RunEditDistance(run, rother);
+                   if (score < best) {
+                     bestidx = oidx;
+                     best = score;
+                   }
+                 }
+
+                 const Run &rother = other.runs[bestidx];
+                 printf("Matched [%s] to [%s], score %d\n",
+                        run.name.c_str(),
+                        rother.name.c_str(),
+                        best);
+                 if (best < 300) {
+                   run.year = rother.year;
+                   run.month = rother.month;
+                   run.day = rother.day;
+                 }
+               }, max_threads);
 }

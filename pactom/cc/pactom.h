@@ -16,7 +16,10 @@ struct PacTom {
 
   static std::unique_ptr<PacTom> FromFiles(
       const std::vector<std::string> &files,
-      const std::optional<std::string> &neighborhoods);
+      const std::optional<std::string> &neighborhoods,
+      // If true, will mine any description from the
+      // file for the run's date.
+      bool one_run_per_file = false);
 
   // Parallel to above.
   struct Run {
@@ -36,6 +39,8 @@ struct PacTom {
 
   // Return -1 if not in any neighborhood; otherwise neighborhood id.
   int InNeighborhood(LatLon pos) const;
+
+  void SetDatesFrom(const PacTom &other, int max_threads = 1);
 
  private:
   PacTom();

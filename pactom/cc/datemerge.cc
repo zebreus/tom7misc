@@ -13,6 +13,8 @@
 #include "util.h"
 #include "ansi.h"
 
+#include "timer.h"
+
 using namespace std;
 
 static constexpr double METERS_TO_FEET = 3.28084;
@@ -31,16 +33,18 @@ int main(int argc, char **argv) {
   }
   printf("%d runs in tomdir\n", tomdir.size());
 
-  unique_ptr<PacTom> pactom = PacTom::FromFiles(tomdir, "../neighborhoods.kml");
-  CHECK(pactom.get() != nullptr);
+  unique_ptr<PacTom> tompac = PacTom::FromFiles(
+      tomdir, "../neighborhoods.kml", true);
+  CHECK(tompac.get() != nullptr);
 
-  #if 0
   unique_ptr<PacTom> pactom = PacTom::FromFiles({"../pac.kml",
                                                  "../pac2.kml"},
-    "../neighborhoods.kml"
-    );
+    "../neighborhoods.kml", false);
   CHECK(pactom.get() != nullptr);
-  #endif
+
+  Timer timer;
+  pactom->SetDatesFrom(*tompac, 18);
+  printf("Merged in %.3f sec\n", timer.Seconds());
 
   int has_date = 0;
   double path_feet = 0.0, tripath_feet = 0.0;
@@ -77,4 +81,5 @@ int main(int argc, char **argv) {
   printf("Including elev: %.6f\n", tripath_feet / 5280.0);
   printf("%d/%d have dates\n", has_date, pactom->runs.size());
 
+  return 0;
 }
