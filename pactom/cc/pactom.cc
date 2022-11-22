@@ -156,7 +156,7 @@ std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
   std::unique_ptr<PacTom> pactom(new PacTom);
 
   for (const string &file : files) {
-    const string &contents = Util::ReadFile(file);
+    const string contents = Util::ReadFile(file);
     if (contents.empty()) return nullptr;
 
     string error;
@@ -173,7 +173,7 @@ std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
   }
 
   for (const string &file : GetOpt(hoodfile)) {
-    const string &contents = Util::ReadFile(file);
+    const string contents = Util::ReadFile(file);
     if (!contents.empty()) {
       string error;
       optional<XML::Node> nodeopt = XML::Parse(contents, &error);
