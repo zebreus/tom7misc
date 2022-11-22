@@ -188,5 +188,50 @@ std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
     }
   }
 
+  for (const auto &[name, poly] : pactom->hoods) {
+    pactom->neighborhood_names.push_back(name);
+
+    Bounds bounds;
+    for (const LatLon pos : poly) {
+      const auto [y, x] = pos.ToDegs();
+      bounds.Bound(x, y);
+    }
+
+    pactom->hood_boxes.push_back(make_pair(bounds, &poly));
+  }
+
   return pactom;
+}
+
+static bool PointInside(const std::vector<LatLon> &poly,
+                        LatLon pos) {
+  const auto [y, x] = pos.ToDegs();
+  bool odd = false;
+
+  int jdx = poly.size() - 1;
+  for (int idx = 0; idx < poly.size(); idx++) {
+    const auto [yi, xi] = poly[idx].ToDegs();
+    const auto [yj, xj] = poly[jdx].ToDegs();
+
+
+    if (yi > y != yj > y &&
+        x < ((xj - xi) * (y - yi) / (yj - yi) + xi))
+      odd = !odd;
+    jdx = idx;
+  }
+  return odd;
+}
+
+int PacTom::InNeighborhood(LatLon pos) const {
+  // Naive! PERF: Use a spatial data structure.
+
+  const auto [y, x] = pos.ToDegs();
+  for (int i = 0; i < hood_boxes.size(); i++) {
+    const auto &[bbox, ppoly] = hood_boxes[i];
+    if (bbox.Contains(x, y) && PointInside(*ppoly, pos)) {
+      return i;
+    }
+  }
+
+  return -1;
 }

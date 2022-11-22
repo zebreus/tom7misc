@@ -21,6 +21,7 @@ using namespace std;
 
 using int64 = int64_t;
 
+static constexpr double METERS_TO_FEET = 3.28084;
 static constexpr int WIDTH = 1920;
 static constexpr int HEIGHT = 1080;
 static constexpr int SCALE = 4;
@@ -78,15 +79,20 @@ int main(int argc, char **argv) {
     );
   CHECK(pactom.get() != nullptr);
 
-  double path_feet = 0.0;
+  double path_feet = 0.0, tripath_feet = 0.0;
   for (const auto &p : pactom->paths) {
     for (int i = 0; i < p.size() - 1; i++) {
       const auto &[latlon0, elev0] = p[i];
       const auto &[latlon1, elev1] = p[i + 1];
-      path_feet += LatLon::DistFeet(latlon0, latlon1);
+      double dist1 = LatLon::DistFeet(latlon0, latlon1);
+      path_feet += dist1;
+      double dz = (elev1 - elev0) * METERS_TO_FEET;
+
+      tripath_feet += sqrt(dz * dz + dist1 * dist1);
     }
   }
   printf("Total miles: %.6f\n", path_feet / 5280.0);
+  printf("Including elev: %.6f\n", tripath_feet / 5280.0);
 
   OSM osm;
   for (const string osmfile : {
@@ -128,6 +134,7 @@ int main(int argc, char **argv) {
   ImageRGBA image(WIDTH * SCALE, HEIGHT * SCALE);
   image.Clear32(0x000000FF);
 
+  double road_feet = 0.0;
   for (const auto &[way_id, way] : osm.ways) {
     if (DrawRoad(way.highway)) {
       const uint32 color = WayColor(way.highway);
@@ -141,14 +148,23 @@ int main(int argc, char **argv) {
             it1 != osm.nodes.end()) {
           const LatLon latlon0 = it0->second;
           const LatLon latlon1 = it1->second;
-          auto [x0, y0] = scaler.Scale(Project(latlon0));
-          auto [x1, y1] = scaler.Scale(Project(latlon1));
 
-          DrawThickLine<RADIUS>(&image, x0, y0, x1, y1, color);
+            auto [x0, y0] = scaler.Scale(Project(latlon0));
+            auto [x1, y1] = scaler.Scale(Project(latlon1));
+
+          if (-1 != pactom->InNeighborhood(latlon0) &&
+              -1 != pactom->InNeighborhood(latlon1)) {
+
+            road_feet += LatLon::DistFeet(latlon0, latlon1);
+            DrawThickLine<RADIUS>(&image, x0, y0, x1, y1, color);
+          } else {
+            DrawThickLine<RADIUS>(&image, x0, y0, x1, y1, 0x000033FF);
+          }
         }
       }
     }
   }
+  printf("Total road miles: %.6f\n", road_feet / 5280.0);
 
   for (const auto &[name, path] : pactom->hoods) {
     constexpr uint32 color = 0x909090FF;

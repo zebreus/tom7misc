@@ -10,6 +10,7 @@
 #include <map>
 
 #include "geom/latlon.h"
+#include "bounds.h"
 
 struct PacTom {
 
@@ -23,9 +24,15 @@ struct PacTom {
   // Borders of neighborhoods, if loaded.
   std::map<std::string, std::vector<LatLon>> hoods;
 
+  std::vector<std::string> neighborhood_names;
+
+  // Return -1 if not in any neighborhood; otherwise neighborhood id.
+  int InNeighborhood(LatLon pos) const;
+
  private:
   PacTom();
 
+  std::vector<std::pair<Bounds, const std::vector<LatLon> *>> hood_boxes;
 };
 
 
