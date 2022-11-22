@@ -1,5 +1,5 @@
 
-default : maptest.exe sphere.exe zoomout.exe colortile.exe
+default : maptest.exe sphere.exe zoomout.exe colortile.exe datemerge.exe
 
 CC_LIB=../../cc-lib
 
@@ -36,6 +36,9 @@ sphere.exe : sphere.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 colortile.exe : colortile.o $(UTIL_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+datemerge.exe : datemerge.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :

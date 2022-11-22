@@ -38,9 +38,11 @@ static vector<pair<LatLon, double>> ParseCoords(const string &error_context,
                                       [](char c) {
                                         return c == ',';
                                       });
-    CHECK_EQ(lle.size(), 3) << error_context
-                            << ": Expected lon,lat,elev but got "
-                            << coord;
+    if (lle.size() != 2 && lle.size() != 3) {
+      CHECK(false) << error_context
+                   << ": Expected lon,lat,elev? but got "
+                   << coord;
+    }
     auto RequireDouble = [&error_context, &coord](const string &f) {
         optional<double> od = Util::ParseDoubleOpt(f);
         CHECK(od.has_value()) << error_context
@@ -50,7 +52,7 @@ static vector<pair<LatLon, double>> ParseCoords(const string &error_context,
       };
     out.emplace_back(LatLon::FromDegs(RequireDouble(lle[1]),
                                       RequireDouble(lle[0])),
-                     RequireDouble(lle[2]));
+                     lle.size() > 2 ? RequireDouble(lle[2]) : 0.0);
   }
   return out;
 }
@@ -85,6 +87,47 @@ static std::optional<string> GetLeaf(XML::Node &node, string_view name) {
   return nullopt;
 }
 
+template<class F>
+static XML::Node *FindTagMatching(XML::Node &node, string_view name, F f) {
+  if (node.type == XML::NodeType::Element) {
+    if (node.tag == name)
+      return &node;
+
+    for (XML::Node &child : node.children)
+      if (XML::Node *n = FindTag(child, name))
+        return n;
+  }
+  return nullptr;
+}
+
+// Get the string contents of the first leaf node with the given name,
+// whose contents passes the predicate.
+template<class F>
+static std::optional<string> GetLeafMatching(
+    XML::Node &node, string_view name, const F &f) {
+
+  if (node.type == XML::NodeType::Element) {
+    if (node.tag == name) {
+      if (node.children.size() == 0 && f(""))
+        return {""};
+
+      if (node.children.size() == 1 &&
+          node.children[0].type == XML::NodeType::Text &&
+          f(node.children[0].contents)) {
+        return {node.children[0].contents};
+      }
+    }
+
+    for (XML::Node &child : node.children) {
+      auto ro = GetLeafMatching(child, name, f);
+      if (ro.has_value()) return ro;
+    }
+  }
+
+  return nullopt;
+}
+
+
 // Require a descendant with <name>text</name> and return text.
 static string RequireLeaf(XML::Node &node, string_view name) {
   optional<string> so = GetLeaf(node, name);
@@ -92,7 +135,8 @@ static string RequireLeaf(XML::Node &node, string_view name) {
   return so.value();
 }
 
-static int MonthNum(const string &m) {
+#define MONTH3 "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
+static int MonthNum(const string &m, const string &err_ctx) {
   if (m == "Jan") return 1;
   if (m == "Feb") return 2;
   if (m == "Mar") return 3;
@@ -105,7 +149,51 @@ static int MonthNum(const string &m) {
   if (m == "Oct") return 10;
   if (m == "Nov") return 11;
   if (m == "Dec") return 12;
-  CHECK(false) << "Bad month: " << m;
+  CHECK(false) << "Bad month: " << m << " in " << err_ctx;
+  return 0;
+}
+
+// Return Y/M/D.
+static std::optional<std::tuple<int, int, int>> ParseDesc(
+    const string &name,
+    const string &desc) {
+  // TODO: Parse date from desc or name.
+  int month = 0, day = 0, year = 0;
+  string days, months;
+#define ANY_RE "(?:a|[^a])*"
+  if (RE2::FullMatch(desc,
+                     ANY_RE ">([0-9]?[0-9])/([0-9]?[0-9])/([0-9][0-9])\\s"
+                     ANY_RE,
+                     &month, &day, &year)) {
+    return {make_tuple(2000 + year, month, day)};
+  } else if (RE2::FullMatch(
+                 desc,
+                 ANY_RE
+                 "(...),\\s(" MONTH3 ")\\s([0-9]?[0-9]),\\s([0-9][0-9][0-9][0-9])\\s"
+                 ANY_RE,
+                 &days, &months, &day, &year)) {
+    return {make_tuple(year, MonthNum(months, desc), day)};
+
+  } else if (RE2::FullMatch(
+                 desc,
+                 ANY_RE
+                 "(...),\\s([0-9]?[0-9])\\s(" MONTH3 ")\\s([0-9][0-9][0-9][0-9])\\s"
+                 ANY_RE,
+                 &days, &day, &months, &year)) {
+    return {make_tuple(year, MonthNum(months, desc), day)};
+  } else if (RE2::FullMatch(
+                 desc,
+                 // >Sat Sep 01 21:01:35 GMT 2018 by
+                 ANY_RE
+                 ">(...)\\s(" MONTH3 ")\\s([0-9][0-9])\\s[0-9:]+\\sGMT\\s([0-9][0-9][0-9][0-9])\\sby"
+                 ANY_RE,
+                 &days, &months, &day, &year)) {
+    return {make_tuple(year, MonthNum(months, desc), day)};
+  }
+
+  printf("Name [%s]\nDesc: [%s]\n",
+         name.c_str(), desc.c_str());
+  return nullopt;
 }
 
 /*
@@ -153,7 +241,16 @@ struct KmlRec {
       if (Util::lcase(node.tag) == "placemark" ||
           Util::lcase(node.tag) == "folder") {
         auto nameo = GetLeaf(node, "name");
-        auto desco = GetLeaf(node, "description");
+        // Need to skip this description which prevents us from finding the
+        // date within the "laps" folder for some activities, since there's
+        // a description of the laps folder itself.
+        auto desco = GetLeafMatching(
+            node, "description",
+            [](const string &d) {
+              return d != "" &&
+                d != "Laps, start and end splits recorded in the activity.";
+            });
+
         if (nameo.has_value() && Util::lcase(nameo.value()) != "track") {
           name_ctx = nameo.value();
         }
@@ -161,6 +258,15 @@ struct KmlRec {
         if (desco.has_value() && desco.value() != "") {
           desc_ctx = desco.value();
         }
+        #if 0
+        else if (nameo.has_value() && Util::lcase(nameo.value()) == "track") {
+          // In this case, expect we're in a folder with
+          // <Placemark><name>Track</name> ...</Placemark>
+          // <Placemark>
+
+
+        }
+        #endif
 
         for (Node &child : node.children) {
           Process(child, name_ctx, desc_ctx);
@@ -168,31 +274,12 @@ struct KmlRec {
       } else if (Util::lcase(node.tag) == "linestring") {
         // This is presumed to be a run.
         PacTom::Run run;
-        CHECK(name_ctx != "") << "linestring with no name";
+        CHECK(name_ctx != "") << filename << ": linestring with no name";
         run.name = name_ctx;
-        // TODO: Parse date from desc or name.
-        int month = 0, day = 0, year = 0;
-        string days, months;
-#define ANY_RE "(?:a|[^a])*"
-        if (RE2::FullMatch(desc_ctx,
-                           ANY_RE ">([0-9]?[0-9])/([0-9]?[0-9])/([0-9][0-9])\\s"
-                           ANY_RE,
-                           &month, &day, &year)) {
-          run.month = month;
-          run.day = day;
-          run.year = 2000 + year;
-        } else if (RE2::FullMatch(
-                       desc_ctx,
-                       ANY_RE
-                       "(...),\\s(...)\\s([0-9]?[0-9]),\\s([0-9][0-9][0-9][0-9])\\s"
-                       ANY_RE,
-                       &days, &months, &day, &year)) {
-          run.month = MonthNum(months);
-          run.day = day;
-          run.year = year;
-        } else {
-          printf("Name [%s]\nDesc: [%s]\n",
-                 name_ctx.c_str(), desc_ctx.c_str());
+
+        auto ymdo = ParseDesc(name_ctx, desc_ctx);
+        if (ymdo.has_value()) {
+          std::tie(run.year, run.month, run.day) = ymdo.value();
         }
 
         string coords = RequireLeaf(node, "coordinates");
@@ -246,12 +333,17 @@ std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
 
   for (const string &file : files) {
     const string contents = Util::ReadFile(file);
-    if (contents.empty()) return nullptr;
+    if (contents.empty()) {
+      printf("%s: Empty or unreadable\n", file.c_str());
+      return nullptr;
+    }
 
     string error;
     optional<XML::Node> nodeopt = XML::Parse(contents, &error);
-    if (!nodeopt.has_value())
-      return nullptr;
+    if (!nodeopt.has_value()) {
+      printf("%s: XML doesn't parse (%s)\n", file.c_str(), error.c_str());
+      continue;
+    }
 
     XML::Node &node = nodeopt.value();
     KmlRec kmlrec(file);
@@ -266,8 +358,10 @@ std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
     if (!contents.empty()) {
       string error;
       optional<XML::Node> nodeopt = XML::Parse(contents, &error);
-      if (!nodeopt.has_value())
+      if (!nodeopt.has_value()) {
+        printf("%s doesn't parse (%s)\n", file.c_str(), error.c_str());
         return nullptr;
+      }
 
       XML::Node &node = nodeopt.value();
       HoodRec hoodrec;
