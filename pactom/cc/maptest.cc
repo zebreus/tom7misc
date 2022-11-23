@@ -17,6 +17,8 @@
 #include "osm.h"
 #include "ansi.h"
 
+#include "pactom-util.h"
+
 using namespace std;
 
 
@@ -76,26 +78,15 @@ int main(int argc, char **argv) {
   AnsiInit();
 
   ArcFour rc("pactom");
-  unique_ptr<PacTom> pactom = PacTom::FromFiles({"../pac.kml",
-                                                 "../pac2.kml"},
-    "../neighborhoods.kml"
-    );
+  unique_ptr<PacTom> pactom = PacTomUtil::Load(false);
   CHECK(pactom.get() != nullptr);
 
   int has_date = 0;
-  double path_feet = 0.0, tripath_feet = 0.0;
+  double path_miles = 0.0, tripath_miles = 0.0;
   for (int ridx = 0; ridx < pactom->runs.size(); ridx++) {
     const auto &run = pactom->runs[ridx];
-    double pf = 0.0, tf = 0.0;
-    for (int i = 0; i < run.path.size() - 1; i++) {
-      const auto &[latlon0, elev0] = run.path[i];
-      const auto &[latlon1, elev1] = run.path[i + 1];
-      double dist1 = LatLon::DistFeet(latlon0, latlon1);
-      pf += dist1;
-      double dz = (elev1 - elev0) * METERS_TO_FEET;
-
-      tf += sqrt(dz * dz + dist1 * dist1);
-    }
+    double pm = PacTom::RunMiles(run, false);
+    double tm = PacTom::RunMiles(run, true);
 
     const char *DCOLOR = run.year == 0 ? ANSI_RED : ANSI_PURPLE;
     if (run.year > 0) has_date++;
@@ -108,13 +99,13 @@ int main(int argc, char **argv) {
            "mi.\n", ridx,
            DCOLOR, run.year, DCOLOR, run.month, DCOLOR, run.day,
            run.name.c_str(),
-           pf / 5280.0, tf / 5280.0);
+           pm, tm);
 
-    path_feet += pf;
-    tripath_feet += tf;
+    path_miles += pm;
+    tripath_miles += tm;
   }
-  printf("Total miles: %.6f\n", path_feet / 5280.0);
-  printf("Including elev: %.6f\n", tripath_feet / 5280.0);
+  printf("Total miles: %.6f\n", path_miles);
+  printf("Including elev: %.6f\n", tripath_miles);
   printf("%d/%d have dates\n", has_date, pactom->runs.size());
 
   OSM osm;

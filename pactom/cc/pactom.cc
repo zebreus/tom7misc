@@ -21,6 +21,8 @@
 
 using namespace std;
 
+static constexpr double METERS_TO_FEET = 3.28084;
+
 PacTom::PacTom() {}
 
 static vector<pair<LatLon, double>> ParseCoords(const string &error_context,
@@ -223,6 +225,11 @@ static std::optional<std::tuple<int, int, int>> ParseDesc(
 before
 Loaded 262 paths with 439778 waypoints.
 There are 93 hoods
+
+Now:
+Loaded 269 runs with 442338 waypoints.
+There are 93 hoods
+
 */
 struct KmlRec {
   using NodeType = XML::NodeType;
@@ -454,61 +461,19 @@ int PacTom::InNeighborhood(LatLon pos) const {
   return -1;
 }
 
-// Lower is better.
-static int RunEditDistance(const PacTom::Run &a, const PacTom::Run &b) {
-
-  // ??
-  auto DeletionCost = [&a](int x) { return 1; };
-  auto InsertionCost = [&b](int x) { return 1; };
-
-  auto SubstCost = [&a, &b](int ai, int bi) -> int {
-      const auto [ya, xa] = a.path[ai].first.ToDegs();
-      const auto [yb, xb] = b.path[bi].first.ToDegs();
-
-      double dx = xa - xb;
-      double dy = ya - yb;
-      return sqrt(dx * dx + dy * dy) * 1000;
-    };
-
-  const auto [cmds, score] = EditDistance::GetAlignment(a.path.size(),
-                                                        b.path.size(),
-                                                        DeletionCost,
-                                                        InsertionCost,
-                                                        SubstCost);
-  return score;
+double PacTom::RunMiles(const Run &run, bool use_elevation) {
+  double res = 0.0;
+  for (int i = 0; i < run.path.size() - 1; i++) {
+    const auto &[latlon0, elev0] = run.path[i];
+    const auto &[latlon1, elev1] = run.path[i + 1];
+    double dist1 = LatLon::DistFeet(latlon0, latlon1);
+    if (use_elevation) {
+      double dz = (elev1 - elev0) * METERS_TO_FEET;
+      res += sqrt(dz * dz + dist1 * dist1);
+    } else {
+      res += dist1;
+    }
+  }
+  return res / 5280.0;
 }
 
-void PacTom::SetDatesFrom(const PacTom &other, int max_threads) {
-  ParallelComp(runs.size(),
-               [this, &other](int idx) {
-                 Run &run = runs[idx];
-                 if (run.year > 0)
-                   return;
-
-                 int best = 10000000;
-                 int bestidx = 0;
-                 for (int oidx = 0; oidx < other.runs.size(); oidx++) {
-                   const Run &rother = other.runs[oidx];
-                   if (rother.year == 0)
-                     continue;
-
-                   // XXX filter by length, etc.?
-                   int score = RunEditDistance(run, rother);
-                   if (score < best) {
-                     bestidx = oidx;
-                     best = score;
-                   }
-                 }
-
-                 const Run &rother = other.runs[bestidx];
-                 printf("Matched [%s] to [%s], score %d\n",
-                        run.name.c_str(),
-                        rother.name.c_str(),
-                        best);
-                 if (best < 300) {
-                   run.year = rother.year;
-                   run.month = rother.month;
-                   run.day = rother.day;
-                 }
-               }, max_threads);
-}

@@ -1,5 +1,5 @@
 
-default : maptest.exe sphere.exe zoomout.exe colortile.exe datemerge.exe
+default : maptest.exe sphere.exe zoomout.exe colortile.exe datemerge.exe runstats.exe
 
 CC_LIB=../../cc-lib
 
@@ -18,7 +18,7 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 
 UTIL_OBJECTS=$(RE2_OBJECTS) $(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/geom/latlon.o $(CC_LIB)/xml.o $(CC_LIB)/bounds.o $(CC_LIB)/image-frgba.o $(CC_LIB)/tinyexr.o $(CC_LIB)/ansi.o $(CC_LIB)/edit-distance.o
 
-PACTOM_OBJECTS=pactom.o osm.o
+PACTOM_OBJECTS=pactom.o osm.o pactom-util.o
 
 pactom.o : pactom.cc pactom.h
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
@@ -41,5 +41,9 @@ colortile.exe : colortile.o $(UTIL_OBJECTS)
 datemerge.exe : datemerge.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+runstats.exe : runstats.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f *.o *.exe $(UTIL_OBJECTS)
+

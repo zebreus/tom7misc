@@ -32,6 +32,11 @@ struct PacTom {
   };
   std::vector<Run> runs;
 
+  // The length of the run in miles. Considers the small gain in
+  // surface distance from running up/down hills if use_elevation
+  // is true.
+  static double RunMiles(const Run &run, bool use_elevation = true);
+
   // Borders of neighborhoods, if loaded.
   std::map<std::string, std::vector<LatLon>> hoods;
 
@@ -39,8 +44,6 @@ struct PacTom {
 
   // Return -1 if not in any neighborhood; otherwise neighborhood id.
   int InNeighborhood(LatLon pos) const;
-
-  void SetDatesFrom(const PacTom &other, int max_threads = 1);
 
  private:
   PacTom();
