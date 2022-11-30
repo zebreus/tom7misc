@@ -6,23 +6,42 @@
 #include "image.h"
 
 #include "base/stringprintf.h"
+#include "config.h"
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
 
-constexpr int CHARS_ACROSS = 16;
-constexpr int CHARS_DOWN = 16;
-
 int main(int argc, char **argv) {
+  CHECK(argc == 2) << "./makegrid.exe config.cfg\n";
+
+  const Config config = Config::ParseConfig(argv[1]);
+
+
+  // TODO: Make this configurable from command-line
+  // (probably we could take a second config file).
   // Use this image as starting char data, if non-empty.
   const string in_file = ""; // "dfx-snooty.png";
   const int IN_CHAR_WIDTH = 11;
   const int IN_CHAR_HEIGHT = 10;
 
   // XXX from command-line.
-  const int CHAR_WIDTH = 9;
-  const int CHAR_HEIGHT = 16;
+  const int CHAR_WIDTH = config.charbox_width;
+  const int CHAR_HEIGHT = config.charbox_height;
+
+  const int CHARS_ACROSS = config.chars_across;
+  const int CHARS_DOWN = config.chars_down;
+
+  CHECK(config.fixed_width) << "TODO: I should add black bars or at "
+    "least make space for them if the config is not fixed-width.";
+
+  // number of pixels on the bottom to shade as "descent"
+  const int DESCENT = config.descent;
+  CHECK(DESCENT >= 0 && DESCENT <= CHAR_HEIGHT);
+
+  // number of pixels on the right to shade
+  const int SPACING = config.spacing;
+  CHECK(SPACING >= 0 && SPACING <= CHAR_WIDTH);
 
   std::unique_ptr<ImageRGBA> infont;
   if (!in_file.empty()) {
@@ -37,13 +56,6 @@ int main(int argc, char **argv) {
 
   ImageRGBA grid{CHAR_WIDTH * CHARS_ACROSS, CHAR_HEIGHT * CHARS_DOWN};
   grid.Clear(0, 0, 0, 0xFF);
-
-  // number of pixels on the bottom to shade as "descent"
-  static constexpr int DESCENT = 3;
-  static_assert (DESCENT >= 0 && DESCENT <= CHAR_HEIGHT);
-
-  static constexpr int SPACING = 1;
-  static_assert (SPACING >= 0 && SPACING <= CHAR_WIDTH);
 
   // XXX different colors for descent/edge?
   static constexpr uint32 ODD_COLOR = 0x000033FF;
@@ -89,7 +101,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  // XXX filename including dimensions, or from command line?
+  // XXX filename from config if present?
   grid.Save(StringPrintf("grid%dx%d.png", CHAR_WIDTH, CHAR_HEIGHT));
 
   for (int y = 0; y < CHARS_DOWN; y++) {

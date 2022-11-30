@@ -21,6 +21,7 @@
 #include "base/logging.h"
 #include "fonts/island-finder.h"
 #include "fonts/ttf.h"
+#include "config.h"
 
 using namespace std;
 using uint8 = uint8_t;
@@ -108,7 +109,7 @@ CODEPOINTS = {
 
 
 // XXX remove
-static constexpr bool verbose = false;
+static constexpr bool VERBOSE = false;
 
 template<class C, class K>
 static bool ContainsKey(const C &c, const K &k) {
@@ -125,61 +126,27 @@ struct Glyph {
   // (transparent) and any other value is "on".
   ImageA pic;
 };
-
-struct Config {
-  string pngfile;
-
-  string name;
-  string copyright;
-
-  // If true, copy uppercase letters to lowercase (where missing).
-  bool no_lowercase = false;
-
-  // Size of regular grid in input image (see e.g. makegrid).
-  int charbox_width = 0;
-  int charbox_height = 0;
-  // Pixels at the bottom of the charbox that are beneath the baseline.
-  int descent = 0;
-
-  // Arrangement of characters in PNG file.
-  int chars_across = 16;
-  int chars_down = 8;
-
-  // Additional space between lines, in pixels.
-  int extra_linespacing = 0;
-};
 }
 
-static Config ParseConfig(const std::string &cfgfile) {
-  Config config;
-  std::map<string, string> m = Util::ReadFileToMap(cfgfile);
-  CHECK(!m.empty()) << "Couldn't read config file " << cfgfile;
-  config.pngfile = m["pngfile"];
+static bool EmptyGlyph(const Glyph &g) {
+  for (int y = 0; y < g.pic.Height(); y++)
+    for (int x = 0; x < g.pic.Width(); x++)
+      if (g.pic.GetPixel(x, y) != 0) return false;
+  return true;
+}
+
+static Config ParseAndCheckConfig(const std::string &cfgfile) {
+  Config config = Config::ParseConfig(cfgfile);
   CHECK(!config.pngfile.empty()) << "Required config line: pngfile";
-  config.name = m["name"];
   CHECK(!config.name.empty()) << "Required config line: name";
-  config.copyright = m["copyright"];
-  config.charbox_width = atoi(m["charbox-width"].c_str());
+
   CHECK(config.charbox_width > 0) << "Config line charbox-width must be >0";
-  config.charbox_height = atoi(m["charbox-height"].c_str());
   CHECK(config.charbox_height > 0) << "Config line charbox-height must be >0";
-  config.charbox_height = atoi(m["charbox-height"].c_str());
-  config.descent = atoi(m["descent"].c_str());
+
   CHECK(config.descent >= 0) << "Config line charbox-height must be >= 0";
 
-  if (m.find("chars-across") != m.end())
-    config.chars_across = atoi(m["chars-across"].c_str());
   CHECK(config.chars_across > 0);
-
-  if (m.find("chars-down") != m.end())
-    config.chars_down = atoi(m["chars-down"].c_str());
   CHECK(config.chars_down > 0);
-
-  if (m.find("extra-linespacing") != m.end())
-    config.extra_linespacing = atoi(m["extra-linespacing"].c_str());
-
-  if (m.find("no-lowercase") != m.end())
-    config.no_lowercase = true;
 
   return config;
 }
@@ -444,7 +411,7 @@ static TTF::Char Vectorize(const Glyph &glyph) {
 
   std::function<vector<TTF::Contour>(int, uint8)> VectorizeRec =
     [&maps, &VectorizeRec](int d, uint8 parent) -> vector<TTF::Contour> {
-      if (verbose) printf("DEPTH %d/%d\n", d, maps.max_depth);
+      if (VERBOSE) printf("DEPTH %d/%d\n", d, maps.max_depth);
       if (d > maps.max_depth) return {};
 
       std::vector<TTF::Contour> contours;
@@ -471,7 +438,7 @@ static TTF::Char Vectorize(const Glyph &glyph) {
 
       // Now, for each component...
       for (const auto &[this_eqc, descendants] : eqclasses) {
-        if (verbose) {
+        if (VERBOSE) {
           printf("Tracing eqc %d (descendants:", this_eqc);
           for (uint8 d : descendants) printf(" %d", d);
           printf(")\n");
@@ -518,13 +485,17 @@ int main(int argc, char **argv) {
   CHECK(argc == 3 || argc == 4) <<
     "Usage: ./makesfd.exe config.cfg out.sfd [testpattern.png]\n";
 
-  const Config config = ParseConfig(argv[1]);
+  const Config config = ParseAndCheckConfig(argv[1]);
+  if (VERBOSE)
+    printf("Converting from %s\n", argv[1]);
   const string out_sfd = argv[2];
   const string out_test_png = (argc > 3) ? argv[3] : "";
 
   const int chars_across = config.chars_across;
   const int chars_down = config.chars_down;
 
+  // XXX: Make it so we can just set a fixed width in the config
+  // and ignore black lines?
   // 'spacing' is presentational in makegrid; we derive the width
   // from the black line in each character cell.
 
@@ -547,6 +518,8 @@ int main(int argc, char **argv) {
 
       // Get width, by searching for a column of all black.
       auto GetWidth = [&]() {
+          if (config.fixed_width)
+            return config.charbox_width;
           for (int x = 0; x < config.charbox_width; x++) {
             auto IsBlackColumn = [&]() {
                 int sx = cx * config.charbox_width + x;
@@ -618,14 +591,16 @@ int main(int argc, char **argv) {
   if (config.no_lowercase) {
     for (int c = 'A'; c <= 'Z'; c++) {
       int lc = c | 32;
-      if (font.find(c) != font.end() &&
-          font.find(lc) == font.end()) {
+      bool lc_missing = font.find(lc) == font.end() ||
+        (config.fixed_width && EmptyGlyph(font[lc]));
+      if (font.find(c) != font.end() && lc_missing) {
         font[lc] = font[c];
       }
     }
   }
 
   if (!out_test_png.empty()) {
+    const int BORDER = 2;
     const int output_height = config.charbox_height + config.extra_linespacing;
 
     // Output test pattern PNG.
@@ -656,14 +631,14 @@ int main(int argc, char **argv) {
      "  http://.com/ " INFTY  " (watch--said I--beloved)",
     };
 
-    ImageRGBA test(config.charbox_width * 32,
-                   output_height * testpattern.size());
+    ImageRGBA test(config.charbox_width * 48 + 2 * BORDER,
+                   output_height * testpattern.size() + 2 * BORDER);
     test.Clear32(0x000033FF);
 
     for (int lidx = 0; lidx < (int)testpattern.size(); lidx++) {
       const string &line = testpattern[lidx];
-      const int ypos = lidx * output_height;
-      int xpos = 2;
+      const int ypos = BORDER + lidx * output_height;
+      int xpos = BORDER;
       for (int cidx = 0; cidx < (int)line.size(); cidx++) {
         const int codepoint = line[cidx];
         auto it = font.find(codepoint);
@@ -683,16 +658,24 @@ int main(int argc, char **argv) {
 
   TTF::Font ttf_font;
   for (const auto &[index, glyph] : font) {
+    // Don't warn about empty glyphs if the font is fixed-width, as
+    // there is no other way to indicate a missing glyph.
+    bool ok_missing = config.fixed_width && EmptyGlyph(glyph);
+
     if (index >= (int)CODEPOINTS.size()) {
-      printf("Skipping glyph at %d,%d because it is outside the codepoint "
-             "array!\n", index % chars_across, index / chars_across);
+      if (!ok_missing) {
+        printf("Skipping glyph at %d,%d because it is outside the codepoint "
+               "array!\n", index % chars_across, index / chars_across);
+      }
       continue;
     }
     CHECK(index >= 0 && index < (int)CODEPOINTS.size());
     const int codepoint = CODEPOINTS[index];
     if (codepoint < 0) {
-      printf("Skipping glyph at %d,%d because the codepoint is not "
-             "configured!\n", index % chars_across, index / chars_across);
+      if (!ok_missing) {
+        printf("Skipping glyph at %d,%d because the codepoint is not "
+               "configured!\n", index % chars_across, index / chars_across);
+      }
     } else {
       TTF::Char ch = Vectorize(glyph);
 
