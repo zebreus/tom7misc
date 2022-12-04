@@ -13,6 +13,10 @@ CXXFLAGS=-march=native -I.. --std=c++20 -O2 -static
 # CC=gcc
 # CXXFLAGS=-I. --std=c++17 -O2 -DNDEBUG=1
 
+%.o : %.cc *.h makefile
+	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+	@echo -n "."
+
 latlon.o : latlon.cc latlon.h
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
@@ -20,6 +24,9 @@ latlon_test.o : latlon_test.cc latlon.h
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
 latlon_test.exe : latlon.o latlon_test.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+latlon-tree_test.exe : latlon.o latlon-tree_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 bezier.o : bezier.cc bezier.h

@@ -20,6 +20,12 @@ inline constexpr double PI = std::numbers::pi;
 // Used to put degrees in the range [-90, +90), for example, since
 // some computations cause them to "wrap around".
 
+// XXX As I recall, remainder (or fmod) can actually give you
+// the endpoint of the expected open interval, because of
+// floating point rounding up (precision is higher near zero
+// than at 180). Might be a non-issue the way we use it,
+// since the range is symmetric? Find a test case and fix.
+// (Calling fmod twice may be the simplest.)
 static double PlusMinusMod(double d, double mx) {
   // Shift by mx so that we have a value in [0, 2 * max).
   double twomax = mx * 2.0;
@@ -80,7 +86,7 @@ optional<LatLon> LatLon::FromString(const string &s_orig) {
 // http://www.movable-type.co.uk/scripts/latlong-vincenty.html
 
 
-static double DistMetersVincenty (LatLon pos1, LatLon pos2) {
+static double DistMetersVincenty(LatLon pos1, LatLon pos2) {
   const auto [lat1, lon1] = pos1.ToDegs();
   const auto [lat2, lon2] = pos2.ToDegs();
 

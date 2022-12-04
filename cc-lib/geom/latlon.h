@@ -32,7 +32,8 @@ struct LatLon {
 
   // TODO: FromDMS, FromRads, etc.
 
-  /* latitude always in [-90, +90),
+  /* Returns (lat, lon).
+     latitude always in [-90, +90),
      longitude always in [-180, +180). */
   std::pair<double, double> ToDegs() const;
   // TODO: ToRads
