@@ -6,6 +6,7 @@
 #include <variant>
 #include <utility>
 #include <vector>
+#include <tuple>
 
 #include "geom/latlon.h"
 #include "base/logging.h"
@@ -35,7 +36,9 @@ struct LatLonTree {
   template<class F>
   void App(const F &f) const;
 
-  std::vector<std::pair<LatLon, T>>
+  // Return all points within the given radius, with their data
+  // and the distance (in meters).
+  std::vector<std::tuple<LatLon, T, double>>
   Lookup(LatLon pos, double radius) const;
 
   // TODO: Closest point query.
@@ -107,7 +110,7 @@ struct LLKDTree {
     }
   }
 
-  std::vector<std::pair<LatLon, T>>
+  std::vector<std::tuple<LatLon, T, double>>
   Lookup(LatLon pos, double radius) const {
     const auto &[pos_lat, pos_lon] = pos.ToDegs();
     // Because of the radius, we have to look on both sides of the
@@ -118,7 +121,7 @@ struct LLKDTree {
     // great circles.
 
     std::vector<Node *> q = {root.get()};
-    std::vector<std::pair<LatLon, T>> out;
+    std::vector<std::tuple<LatLon, T, double>> out;
     while (!q.empty()) {
       Node *node = q.back();
       q.pop_back();
@@ -151,8 +154,9 @@ struct LLKDTree {
 
       } else {
         for (const auto &[ll, t] : std::get<Leaf>(*node)) {
-          if (LatLon::DistMeters(pos, ll) <= radius) {
-            out.emplace_back(ll, t);
+          const double dist = LatLon::DistMeters(pos, ll);
+          if (dist <= radius) {
+            out.emplace_back(ll, t, dist);
           }
         }
       }
@@ -254,13 +258,13 @@ void LatLonTree<T>::Insert(LatLon pos, T t) {
 }
 
 template<class T>
-std::vector<std::pair<LatLon, T>>
+std::vector<std::tuple<LatLon, T, double>>
 LatLonTree<T>::Lookup(LatLon pos, double radius) const {
   const auto &[pos_lat, pos_lon] = pos.ToDegs();
 
   // If it's near longitude 0.0 or 180.0, we need to check both.
-  if (LatLon::DistMeters(LatLon::FromDegs(pos_lat, 0.0), pos) ||
-      LatLon::DistMeters(LatLon::FromDegs(pos_lat, 180.0), pos)) {
+  if (LatLon::DistMeters(LatLon::FromDegs(pos_lat, 0.0), pos) <= radius ||
+      LatLon::DistMeters(LatLon::FromDegs(pos_lat, 180.0), pos) <= radius) {
     // Slow case
     auto v1 = west.Lookup(pos, radius);
     auto v2 = east.Lookup(pos, radius);
