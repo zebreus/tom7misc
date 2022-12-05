@@ -17,7 +17,7 @@ struct
     val xzero = 0.0
     val yzero = 0.0
     fun dist p pp = LatLon.dist_meters (p, pp)
-        
+
     (* PERF: Probably a straightforward formula for great circles
        along lines of latitude and longitude, but this also suffices *)
     fun xdist (x1 : xpos, x2 : xpos) = dist (pos (x1, yzero)) (pos (x2, yzero))
@@ -49,7 +49,7 @@ struct
   fun lookuppoint { w, e } p d =
       let val { lon = x, lat = y } = LatLon.todegs p
       in
-          (* If it's near latitude 0.0 or 180.0, we need to check both. *)
+          (* If it's near longitude 0.0 or 180.0, we need to check both. *)
           (if QArg.dleq (QArg.dist p (QArg.pos (0.0, y)), d) orelse
               QArg.dleq (QArg.dist p (QArg.pos (180.0, y)), d)
            then (* Slow case *)
