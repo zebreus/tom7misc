@@ -68,6 +68,8 @@ struct Util {
   static bool WriteUint64File(const string &filename,
                               const std::vector<uint64_t> &contents);
 
+  // Return a vector of all the files and directories in the target
+  // dir. Skips ".", ".." but is not built to handle any funny business.
   static std::vector<string> ListFiles(const string &dir);
 
   // Join the strings in the input vector with the given delimiter.

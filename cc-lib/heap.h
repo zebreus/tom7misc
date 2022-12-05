@@ -1,5 +1,10 @@
 /* Reimplementation of mutable heaps from scratch, based on
-   my sml implementation.
+   my sml implementation. The main reason to use this instead
+   of std::priority_queue or operations like std::make_heap
+   is that this gives you a O(log(n)) way of updating the
+   priority of a node (used in e.g. Dijkstra's algorithm).
+
+   These are min-heaps.
 */
 
 #ifndef _CC_LIB_HEAP_H
@@ -7,6 +12,8 @@
 
 #include <vector>
 
+// Heaps are intrusive: The values stored within should be derived
+// from this class.
 struct Heapable {
   /* The Heap uses this to store the index of this element in the heap,
      which allows you to update the Heapable value and then tell the
@@ -15,7 +22,7 @@ struct Heapable {
      You usually shouldn't read or write it.
 
      If this becomes -1, then the item has been deleted. */
-  int location;
+  int location = -1;
 };
 
 template<class Priority /* has comparison operators, value semantics */,
@@ -23,8 +30,8 @@ template<class Priority /* has comparison operators, value semantics */,
 class Heap {
  public:
   struct Cell {
-    Priority priority;
-    Value *value;
+    Priority priority = 0;
+    Value *value = nullptr;
   };
 
   bool Valid(const Value *v) { return v->location != -1; }
@@ -87,7 +94,7 @@ class Heap {
     }
     return cells[0];
   }
-  
+
   // Returns and removes the (well, *a*) node with the smallest score.
   // Heap may not be empty.
   Cell PopMinimum() {
@@ -116,7 +123,7 @@ class Heap {
     return cells[v->location];
   }
 
- 
+
   void AdjustPriority(Value *v, Priority p) {
     /* PERF this is simple, but we could also test whether this
        is an increase or decrease, and then percolate_up or
@@ -149,7 +156,7 @@ class Heap {
 
     return cells[i];
   }
-  
+
  private:
   // Requires that the heap be nonempty.
   Cell RemoveLast() {
