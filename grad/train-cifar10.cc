@@ -90,7 +90,7 @@ static TrainParams DefaultParams() {
   tparams.update_config.learning_rate_dampening = 13.0f;
   tparams.update_config.adam_epsilon = 1.0e-6;
   tparams.update_config.constrain = true;
-  tparams.update_config.weight_constrain_max = 3.0f;
+  tparams.update_config.weight_constrain_max = 16.0f;
   tparams.update_config.bias_constrain_max = 8760.0f;
   tparams.update_config.clip_error = true;
   tparams.update_config.error_max = 1000.0f;
@@ -541,7 +541,8 @@ static void Train(const string &dir, Network *net, int64 max_rounds,
     // TODO: Should probably synchronize saving images with saving
     // the model. Otherwise when we continue, we lose pixels that
     // were written to the image but not saved to disk. We now explicitly
-    // save when we save the image,
+    // save when we save the image, so many be should NOT implicitly
+    // save inside Sample.
     if (net->rounds < IMAGE_EVERY || (iter % IMAGE_EVERY) == 0) {
       Timer image_timer;
       net_gpu->ReadFromGPU();
@@ -790,7 +791,7 @@ int main(int argc, char **argv) {
     "    contains a model file.\n"
     "  transfer_function should be one of\n"
     "    SIGMOID, RELU, LEAKY_RELU, IDENTITY\n"
-    "    TANH, GRAD1,\n";
+    "    TANH, GRAD1, DOWNSHIFT2\n";
 
   const string dir = argv[1];
   const TransferFunction tf = ParseTransferFunction(argv[2]);

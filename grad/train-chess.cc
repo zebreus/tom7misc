@@ -325,12 +325,16 @@ static double Train(const string &dir, Network *net, int64 max_rounds,
 
       const double total_sec = train_timer.Seconds();
       const double eps = total_examples / total_sec;
-      const double rpm = iter / (total_sec / 60.0);
+      const double rps = iter / (double)total_sec;
+
+      const int rounds_left = max_rounds - net->rounds;
+      const double sec_left = rounds_left / rps;
 
       printf(AYELLOW("%lld") " rounds "
-             AWHITE("%d") " iter: (" ABLUE("%.2f") " rounds/min;  "
-             APURPLE("%.2f") " eps)\n",
-             net->rounds, iter, rpm, eps);
+             " | " ABLUE("%.2f") " rounds/min;  "
+             APURPLE("%.2f") " eps | ~" ACYAN("%.3f") " hours left\n",
+             net->rounds, rps * 60.0, eps,
+             sec_left / (60.0 * 60.0));
 
       // Get loss as abs distance, plus number of incorrect (as booleans).
       std::vector<float> actuals(EXAMPLES_PER_ROUND * NNChess::OUTPUT_SIZE);
@@ -791,6 +795,22 @@ GetOptimizedParams(TransferFunction tf) {
       .update_config = {.base_learning_rate = 0.022586992263, .learning_rate_dampening = 51.75795321, .max_num_scratch = 2147483648, .adam_epsilon = 4.8231521532e-07, .adam_b1 = 0.89999997616, .adam_b2 = 0.99900001287, .clipping = false, .constrain = true, .weight_constrain_max = 5.5063300133, .bias_constrain_max = 13863.599609, .clip_error = true, .error_max = 816.96124268, .conv_update_exponent = 0.0065212696791 }, .do_decay = false, .decay_rate = 0.99900001287};
     return make_pair(tparams, rparams);
   }
+  case DOWNSHIFT2: {
+    // These are the same params used for training MNIST for all of
+    // the transfer functions.
+    TrainParams tparams;
+    tparams.update_config.base_learning_rate = 0.005f;
+    tparams.update_config.learning_rate_dampening = 8.0f;
+    tparams.update_config.adam_epsilon = 1.0e-6;
+    tparams.update_config.constrain = true;
+    tparams.update_config.weight_constrain_max = 16.0f;
+    tparams.update_config.bias_constrain_max = 8760.0f;
+    tparams.update_config.clip_error = true;
+    tparams.update_config.error_max = 1000.0f;
+
+    tparams.do_decay = false;
+    return make_pair(tparams, RandomizationParams());
+  }
   default: {
     printf("Note: No optimization results for %s\n",
            TransferFunctionName(tf));
@@ -800,9 +820,6 @@ GetOptimizedParams(TransferFunction tf) {
   }
   }
 }
-
-
-
 
 
 static std::pair<TrainParams, RandomizationParams> GetParams(
@@ -983,7 +1000,7 @@ int main(int argc, char **argv) {
       "    contains a model file.\n"
       "  transfer_function should be one of\n"
       "    SIGMOID, RELU, LEAKY_RELU, IDENTITY\n"
-      "    TANH, GRAD1,\n";
+      "    TANH, GRAD1, DOWNSHIFT2,\n";
 
     const string dir = argv[1];
     const TransferFunction tf = ParseTransferFunction(argv[2]);

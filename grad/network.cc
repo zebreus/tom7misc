@@ -126,8 +126,9 @@ const char *const Network::GRAD1_FN =
   "#define FORWARD(potential) vload_half(FloatToU16(potential), forward_table)\n"
   "#define DERIVATIVE(fx) deriv_table[FloatToU16(fx)]\n";
 
-// Or just load the table?
 const char *const Network::DOWNSHIFT2_FN =
+  // Computing it on the fly is presumably faster than reading from the
+  // table, but I didn't benchmark it.
   "#define FORWARD(potential) U16ToFloat(FloatToU16(potential) >> 2)\n"
   "#define DERIVATIVE(fx) deriv_table[FloatToU16(fx)]\n";
 

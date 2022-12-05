@@ -121,8 +121,8 @@ struct TrainingImages {
                  const std::string &basename,
                  const std::string &title,
                  int image_every,
-                 int image_width = 3000,
-                 int image_col_height = 2000,
+                 int image_width = 3200,
+                 int image_col_height = 1920,
                  bool continue_from_disk = true) :
     image_col_height(image_col_height) {
 
@@ -144,9 +144,9 @@ struct TrainingImages {
         std::unique_ptr<HistoryImage> *himage = &images.back().back();
 
         if (chunk.type == CHUNK_INPUT || chunk.fixed) {
-          // Skip input chunks and fixed chunks, since nothing interesting ever
-          // happens for them. (Note: This might not be true if we include errors
-          // and stimulations.)
+          // Skip input chunks and fixed chunks, since nothing
+          // interesting ever happens for them. (Note: This might not
+          // be true if we include errors and stimulations.)
           CHECK(himage->get() == nullptr);
         } else {
 

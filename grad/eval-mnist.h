@@ -31,11 +31,20 @@ struct EvalMNIST {
     int correct = 0;
     double fwd_time = 0.0;
     ImageRGBA wrong;
+    // Confusion matrix. Rows are actual labels, columns are predicted.
+    // Sum across all cells = correct.
+    std::array<std::array<int, MNIST::RADIX>, MNIST::RADIX> conf;
   };
 
   // Needs non-const network, but doesn't modify it.
   Result Evaluate(Network *net) {
     Result result;
+
+    for (int r = 0; r < MNIST::RADIX; r++) {
+      for (int c = 0; c < MNIST::RADIX; c++) {
+        result.conf[r][c] = 0;
+      }
+    }
 
     auto net_gpu = std::make_unique<NetworkGPU>(cl, net);
 
@@ -57,16 +66,16 @@ struct EvalMNIST {
     result.total = NUM_TEST;
 
     CHECK(NUM_TEST % 10 == 0);
-    const int NUM_BATCH = NUM_TEST / 10;
+    const int NUM_PER_BATCH = NUM_TEST / 10;
     // Uninitialized training examples on GPU.
     std::unique_ptr<TrainingRoundGPU> training(
-        new TrainingRoundGPU(NUM_BATCH, cl, *net));
+        new TrainingRoundGPU(NUM_PER_BATCH, cl, *net));
 
     for (int batch = 0; batch < 10; batch++) {
       std::vector<float> inputs;
-      inputs.reserve(NUM_BATCH * IMG_HEIGHT * IMG_WIDTH);
-      for (int i = 0; i < NUM_BATCH; i++) {
-        const int idx = batch * NUM_BATCH + i;
+      inputs.reserve(NUM_PER_BATCH * IMG_HEIGHT * IMG_WIDTH);
+      for (int i = 0; i < NUM_PER_BATCH; i++) {
+        const int idx = batch * NUM_PER_BATCH + i;
         const ImageA &img = mnist_test.images[idx];
         for (int y = 0; y < IMG_HEIGHT; y++) {
           for (int x = 0; x < IMG_WIDTH; x++) {
@@ -87,10 +96,10 @@ struct EvalMNIST {
       result.fwd_time += fwd_timer.Seconds();
 
       std::vector<float> outputs;
-      outputs.resize(NUM_BATCH * OUTPUT_SIZE);
+      outputs.resize(NUM_PER_BATCH * OUTPUT_SIZE);
       training->ExportOutputs(&outputs);
 
-      for (int idx = 0; idx < NUM_BATCH; idx++) {
+      for (int idx = 0; idx < NUM_PER_BATCH; idx++) {
         int besti = 0;
         float bestv = -1.0/0.0;
         for (int i = 0; i < OUTPUT_SIZE; i++) {
@@ -102,8 +111,9 @@ struct EvalMNIST {
         }
 
         // XXX
-        const int example_idx = batch * NUM_BATCH + idx;
+        const int example_idx = batch * NUM_PER_BATCH + idx;
         const int correct_label = mnist_test.labels[example_idx];
+        result.conf[correct_label][besti]++;
         if (besti == correct_label) {
           result.correct++;
         } else {

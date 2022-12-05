@@ -62,6 +62,43 @@ constexpr int OUTPUT_SIZE = 10;
 // Very small examples -- this can probably be much higher.
 static constexpr int EXAMPLES_PER_ROUND = 1000;
 
+// XXX to train-util etc.
+struct TrainParams {
+  UpdateConfig update_config = {};
+
+  bool do_decay = false;
+  // XXX this should probably depend on the learning rate; if the
+  // learning rate is too small, it won't even be able to overcome
+  // the decay
+  float decay_rate = 0.999999f;
+
+  string ToString() const {
+    return StringPrintf("{.update_config = %s, "
+                        ".do_decay = %s, "
+                        ".decay_rate = %.11g}",
+                        update_config.ToString().c_str(),
+                        do_decay ? "true" : "false",
+                        decay_rate);
+  }
+};
+
+static TrainParams DefaultParams() {
+  TrainParams tparams;
+  // These are rounded versions of the optimized TANH from
+  // learn-chess, and the same used for CIFAR10.
+  tparams.update_config.base_learning_rate = 0.005f;
+  tparams.update_config.learning_rate_dampening = 8.0f;
+  tparams.update_config.adam_epsilon = 1.0e-6;
+  tparams.update_config.constrain = true;
+  tparams.update_config.weight_constrain_max = 16.0f;
+  tparams.update_config.bias_constrain_max = 8760.0f;
+  tparams.update_config.clip_error = true;
+  tparams.update_config.error_max = 1000.0f;
+
+  tparams.do_decay = false;
+  return tparams;
+}
+
 struct ExampleThread {
   // A full round's worth of examples.
   // First element is INPUT_SIZE * EXAMPLES_PER_ROUND,
@@ -173,7 +210,9 @@ private:
   std::unique_ptr<std::thread> work_thread1, work_thread2;
 };
 
-static void Train(const string &dir, Network *net, int64 max_rounds) {
+static void Train(const string &dir, Network *net,
+                  int64 max_rounds,
+                  TrainParams params) {
   ExampleThread example_thread;
 
   const string error_history_file = Util::dirplus(dir, "error-history.tsv");
@@ -181,26 +220,18 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
 
   ErrorHistory error_history(error_history_file);
 
+  std::array<std::string, MNIST::RADIX> labels;
+  for (int i = 0; i < MNIST::RADIX; i++)
+    labels[i] = StringPrintf("%d", i);
+  ConfusionImage<MNIST::RADIX> conf_image(
+      1920, labels, Util::dirplus(dir, "conf.png"));
+
   EvalMNIST evaluator(cl);
 
   static constexpr int max_parallelism = 4;
   // 0, 1, 2
   static constexpr int VERBOSE = 1;
   static constexpr bool SAVE_INTERMEDIATE = true;
-
-  UpdateWeightsCL::UpdateConfig update_config;
-  update_config.base_learning_rate = 0.1f;
-  // This is conservative, but with larger exponents I would
-  // get divergence after hundreds of thousands of rounds.
-  // This happened again with the plugin parameter predictor
-  // with a value of 1e-6!
-  update_config.adam_epsilon = 1.0e-4;
-
-  // XXX this should probably depend on the learning rate; if the
-  // learning rate is too small, it won't even be able to overcome
-  // the decay
-  static constexpr float DECAY_RATE = 0.999999f;
-  static constexpr bool DO_DECAY = false;
 
   // On a verbose round we compute training error and print out
   // examples.
@@ -254,16 +285,17 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
   std::unique_ptr<ForwardLayerCL> forward_cl =
     std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
   std::unique_ptr<SetOutputErrorCL> error_cl =
-    std::make_unique<SetOutputErrorCL>(cl, net_gpu.get());
+    std::make_unique<SetOutputErrorCL>(cl, net_gpu.get(),
+                                       params.update_config);
   std::unique_ptr<BackwardLayerCL> backward_cl =
-    std::make_unique<BackwardLayerCL>(cl, net_gpu.get());
-  [[maybe_unused]]
+    std::make_unique<BackwardLayerCL>(cl, net_gpu.get(),
+                                      params.update_config);
   std::unique_ptr<DecayWeightsCL> decay_cl =
-    std::make_unique<DecayWeightsCL>(cl, net_gpu.get(), DECAY_RATE);
+    std::make_unique<DecayWeightsCL>(cl, net_gpu.get(), params.decay_rate);
   std::unique_ptr<UpdateWeightsCL> update_cl =
     std::make_unique<UpdateWeightsCL>(cl, net_gpu.get(),
                                       EXAMPLES_PER_ROUND,
-                                      update_config);
+                                      params.update_config);
 
   if (VERBOSE > 1)
     printf("Compiled CL.\n");
@@ -298,16 +330,6 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     Timer round_timer;
 
     const bool verbose_round = (iter % VERBOSE_EVERY) == 0;
-
-    const double total_sec = train_timer.Seconds();
-    const double eps = total_examples / total_sec;
-    const double rpm = iter / (total_sec / 60.0);
-
-    printf(AYELLOW("%lld") " rounds "
-           AWHITE("%d") " iter: (" ABLUE("%.2f") " rounds/min;  "
-           APURPLE("%.2f") " eps)\n",
-           net->rounds, iter, rpm, eps);
-
 
     // Initialize training examples.
     // (PERF: parallelize?)
@@ -366,7 +388,7 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
     if (VERBOSE > 1)
       printf("Backward pass.\n");
 
-    if (DO_DECAY) {
+    if (params.do_decay) {
       Timer decay_timer;
       for (int layer_idx = 0; layer_idx < net->layers.size(); layer_idx++) {
         decay_cl->Decay(layer_idx);
@@ -405,6 +427,19 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       if (VERBOSE > 1)
         printf("Verbose round...\n");
 
+      const double total_sec = train_timer.Seconds();
+      const double eps = total_examples / total_sec;
+      const double rps = iter / (double)total_sec;
+
+      const int rounds_left = max_rounds - net->rounds;
+      const double sec_left = rounds_left / rps;
+
+      printf(AYELLOW("%lld") " rounds "
+             " | " ABLUE("%.2f") " rounds/min;  "
+             APURPLE("%.2f") " eps | ~" ACYAN("%.3f") " hours left\n",
+             net->rounds, rps * 60.0, eps,
+             sec_left / (60.0 * 60.0));
+
       // Get loss as abs distance, plus number of incorrect (as booleans).
 
       // PERF could do this on the flat vector, but we only need to
@@ -430,10 +465,6 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
       const bool save_history = history_per.ShouldRun();
       const bool save_error_images = error_images_per.ShouldRun();
       // compute loss for each digit separately
-
-      printf("%lld rounds [%.2f eps]:\n",
-             net->rounds,
-             (iter * EXAMPLES_PER_ROUND) / train_timer.Seconds());
 
       double overall_average_loss = 0.0;
       for (int col = 0; col < NUM_COLUMNS; col++) {
@@ -480,10 +511,14 @@ static void Train(const string &dir, Network *net, int64 max_rounds) {
         error_history.Add(net->rounds, test_loss,
                           ErrorHistory::ERROR_TEST);
         printf("Test loss: %.4f in %.4fs\n", test_loss, res.fwd_time);
-        error_history.MakeImage(1920, 1080,
-                                {{ErrorHistory::ERROR_TRAIN, 0x0033FFFF},
-                                 {ErrorHistory::ERROR_TEST, 0x00FF00FF}},
-                                0).Save(Util::dirplus(dir, "error-history.png"));
+        error_history.MakeImage(
+            1920, 1080,
+            {{ErrorHistory::ERROR_TRAIN, 0x0033FFFF},
+             {ErrorHistory::ERROR_TEST, 0x00FF00FF}},
+            0).Save(Util::dirplus(dir, "error-history.png"));
+        conf_image.Add(res.conf);
+        conf_image.Save();
+
         if (net->rounds > 1000)
           history_per.SetPeriod(120.0);
       }
@@ -711,7 +746,7 @@ static unique_ptr<Network> NewDigitsNetwork(TransferFunction tf) {
   Chunk dense_out =
     Network::MakeDenseChunk(OUTPUT_SIZE,
                             0, layers.back().num_nodes,
-                            tf, WEIGHT_UPDATE);
+                            IDENTITY, WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(dense_out));
 
@@ -760,11 +795,13 @@ int main(int argc, char **argv) {
   net->StructuralCheck();
   net->NaNCheck(model_file);
 
+  TrainParams tparams = DefaultParams();
+
   if (net->rounds >= max_rounds) {
     printf("%s: Already trained %lld rounds.\n",
            model_file.c_str(), net->rounds);
   } else {
-    Train(dir, net.get(), max_rounds);
+    Train(dir, net.get(), max_rounds, tparams);
   }
 
   printf("OK\n");

@@ -153,8 +153,8 @@ struct TrainingRoundGPU {
     for (const auto &[name, tf] :
            std::initializer_list<
            std::pair<std::string, TransferFunction>>{
-           {"grad1", GRAD1},
-             // {"downshift2", DOWNSHIFT2},
+             {"grad1", GRAD1},
+             {"downshift2", DOWNSHIFT2},
          }) {
       std::vector<uint16_t> fwd =
         GradUtil::GetFunctionFromFile(

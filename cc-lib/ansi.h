@@ -1,9 +1,8 @@
 
-// TODO: To cc-lib? I don't love that you have to call a special
-// printf, nor the init.
+// TODO: Clean up for CC_LIB.
 
-#ifndef _GRAD_ANSI_H
-#define _GRAD_ANSI_H
+#ifndef _CC_LIB_ANSI_H
+#define _CC_LIB_ANSI_H
 
 #define ANSI_PREVLINE "\x1B[F"
 #define ANSI_CLEARLINE "\x1B[2K"

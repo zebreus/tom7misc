@@ -11,6 +11,8 @@
 
 // Set of labeled images, which could be either train or test.
 struct MNIST {
+  static constexpr int RADIX = 10;
+
   MNIST(const std::string &base) {
     LoadLabels(base + "-labels-idx1-ubyte");
     LoadImages(base + "-images-idx3-ubyte");
@@ -45,7 +47,7 @@ struct MNIST {
     labels.resize(num_items);
     for (int i = 0; i < num_items; i++) {
       uint8_t lab = GetByte();
-      CHECK(lab <= 0x09) << lab;
+      CHECK(lab < RADIX) << lab;
       labels[i] = lab;
     }
     CHECK(idx == bytes.size());
