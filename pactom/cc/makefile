@@ -29,6 +29,9 @@ osm.o : osm.cc osm.h
 maptest.exe : maptest.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+shortest.exe : shortest.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 zoomout.exe : zoomout.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 

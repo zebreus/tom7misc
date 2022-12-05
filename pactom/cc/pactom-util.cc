@@ -13,6 +13,7 @@
 #include "timer.h"
 
 using namespace std;
+using Run = PacTom::Run;
 
 std::unique_ptr<PacTom> PacTomUtil::Load(bool merge_dates) {
   #define TOMDIR "d:\\oldtom\\runs"
@@ -38,6 +39,7 @@ std::unique_ptr<PacTom> PacTomUtil::Load(bool merge_dates) {
     Timer timer;
     PacTomUtil::SetDatesFrom(pactom.get(), *tompac, 18);
     printf("Merged in %.3f sec\n", timer.Seconds());
+    SortByDate(pactom.get());
   }
 
   return pactom;
@@ -74,9 +76,24 @@ void PacTomUtil::SetDatesFrom(PacTom *dest, const PacTom &other, int max_threads
                  if (run.year > 0)
                    return;
 
+                 std::vector<int> oidxes;
+                 oidxes.reserve(other.runs.size());
+                 for (int i = 0; i < other.runs.size(); i++) {
+                   if (i > 0 && run.name == other.runs[i].name) {
+                     // If there's an exact name match, compare it first
+                     // to save time.
+                     int t = oidxes[0];
+                     oidxes[0] = i;
+                     oidxes.push_back(t);
+                   } else {
+                     oidxes.push_back(i);
+                   }
+                 }
+                 CHECK(oidxes.size() == other.runs.size());
+
                  int best = 10000000;
                  int bestidx = 0;
-                 for (int oidx = 0; oidx < other.runs.size(); oidx++) {
+                 for (int oidx : oidxes) {
                    const PacTom::Run &rother = other.runs[oidx];
                    if (rother.year == 0)
                      continue;
@@ -86,6 +103,9 @@ void PacTomUtil::SetDatesFrom(PacTom *dest, const PacTom &other, int max_threads
                    if (score < best) {
                      bestidx = oidx;
                      best = score;
+                     // Once we have an exact match, no reason to
+                     // try more options.
+                     if (best == 0) break;
                    }
                  }
 
@@ -100,4 +120,17 @@ void PacTomUtil::SetDatesFrom(PacTom *dest, const PacTom &other, int max_threads
                    run.day = rother.day;
                  }
                }, max_threads);
+}
+
+bool CompareByDate(const Run &a, const Run &b) {
+  auto ToNum = [](const Run &r) {
+      return (r.year * 10000) + (r.month * 100) + r.day;
+    };
+  return ToNum(a) < ToNum(b);
+}
+
+void PacTomUtil::SortByDate(PacTom *dest) {
+  std::sort(dest->runs.begin(),
+            dest->runs.end(),
+            CompareByDate);
 }

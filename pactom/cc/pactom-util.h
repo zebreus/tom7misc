@@ -12,6 +12,8 @@ struct PacTomUtil {
 
   static void SetDatesFrom(PacTom *dest, const PacTom &other, int max_threads = 1);
 
+  static void SortByDate(PacTom *dest);
+
 };
 
 #endif

@@ -11,12 +11,13 @@
 
 #include "xml.h"
 #include "geom/latlon.h"
+#include "geom/latlon-tree.h"
 #include "util.h"
 #include "base/logging.h"
 #include "optional-iterator.h"
 #include "re2/re2.h"
+#include "heap.h"
 
-#include "edit-distance.h"
 #include "threadutil.h"
 
 using namespace std;
@@ -216,8 +217,6 @@ static std::optional<std::tuple<int, int, int>> ParseDesc(
     return {make_tuple(year, MonthNum(months, desc), day)};
   }
 
-  printf("Name [%s]\nDesc: [%s]\n",
-         name.c_str(), desc.c_str());
   return nullopt;
 }
 
@@ -321,6 +320,10 @@ struct KmlRec {
           std::tie(run.year, run.month, run.day) = ymdo.value();
         } else if (auto fymdo = ParseDesc(filename, file_desc)) {
           std::tie(run.year, run.month, run.day) = fymdo.value();
+        } else {
+          printf("Couldn't parse. Name: [%s|%s]\nDesc: [%s|%s]\n",
+                 filename.c_str(), name_ctx.c_str(),
+                 file_desc.c_str(), desc_ctx.c_str());
         }
 
         string coords = RequireLeaf(node, "coordinates");
@@ -477,3 +480,247 @@ double PacTom::RunMiles(const Run &run, bool use_elevation) {
   return res / 5280.0;
 }
 
+struct GraphNode {
+  LatLon pos;
+  // Unique list of neighbors. Could consider a set
+  // data structure, but we expect these to be small.
+  std::vector<int> neighbors;
+
+  GraphNode(LatLon pos, std::vector<int> neighbors) :
+    pos(pos), neighbors(std::move(neighbors)) {}
+  void AddEdge(int other) {
+    for (int o : neighbors) {
+      if (o == other) return;
+    }
+    neighbors.push_back(other);
+  }
+};
+
+// Distances in meters for this part.
+//
+// If points on the same path are greater than 250m apart, assume a
+// data problem and don't create that edge.
+static constexpr double PATH_ERROR = 250.0;
+// Distance within which we create an implicit edge between nearby
+// points, even if I didn't physically travel between them.
+static constexpr double MERGE_DISTANCE = 25.0;
+// Distance within which we just snap points to be the same node.
+static constexpr double SAME_DISTANCE = 1.0;
+
+struct Graph {
+  // with index into nodes.
+  LatLonTree<int> latlontree;
+
+  std::vector<GraphNode> nodes;
+  int AddNode(LatLon pos) {
+    std::vector<std::tuple<LatLon, int, double>> close =
+      latlontree.Lookup(pos, SAME_DISTANCE);
+    // It's possible for there to be multiple nodes within the
+    // snap distance (that didn't themselves snap together).
+    // Take the closest one.
+    if (!close.empty()) {
+      std::sort(close.begin(),
+                close.end(),
+                [](const std::tuple<LatLon, int, double> &a,
+                   const std::tuple<LatLon, int, double> &b) {
+                  return std::get<2>(a) < std::get<2>(b);
+                });
+      return std::get<1>(close[0]);
+    } else {
+      // Otherwise, a new node.
+      const int next_node = nodes.size();
+      nodes.emplace_back(pos, std::vector<int>{});
+      latlontree.Insert(pos, next_node);
+      return next_node;
+    }
+  }
+
+  // Add edges in both directions.
+  void AddEdge(int from, int to) {
+    CHECK(from >= 0 && from < nodes.size() &&
+          to >= 0 && to < nodes.size() &&
+          from != to);
+
+    nodes[from].AddEdge(to);
+    nodes[to].AddEdge(from);
+  }
+
+  // Might reuse an existing node if there's one that's
+  // already close enough.
+  int AddNodeWithEdge(int node_from, LatLon pos_to) {
+    CHECK(node_from >= 0 && node_from < nodes.size());
+    // TODO PERF: Can also find if this node would land on an existing
+    // edge (and add a new node there, and return it) or cross an
+    // existing edge...
+
+    const int node_to = AddNode(pos_to);
+    if (node_from != node_to) {
+      AddEdge(node_from, node_to);
+    }
+    return node_to;
+  }
+
+};
+
+PacTom::SpanningTree PacTom::MakeSpanningTree(LatLon home_pos,
+                                              int num_threads) {
+  Graph graph;
+
+  printf("Build graph from runs: ");
+  for (const auto &run : runs) {
+    if (run.path.empty()) continue;
+
+    LatLon last_pos = run.path[0].first;
+    int node = graph.AddNode(last_pos);
+    for (const auto &[ll, elev_] : run.path) {
+      double dist = LatLon::DistMeters(last_pos, ll);
+      if (dist > PATH_ERROR) {
+        // Probably a data problem (lost GPS, etc.)
+        // so do not connect them.
+        last_pos = ll;
+        node = graph.AddNode(last_pos);
+      } else {
+
+        last_pos = ll;
+        node = graph.AddNodeWithEdge(node, ll);
+      }
+    }
+    printf(".");
+  }
+  printf("\n");
+
+  {
+    printf("Link nearby nodes.\n");
+    // This doesn't add nodes nor modify the latlon tree, so
+    // we can do it in parallel. But the edge updates have to
+    // be mutually exclusive.
+    std::mutex m;
+    ParallelComp(
+        graph.nodes.size(),
+        [&m, &graph](int idx) {
+          LatLon pos = graph.nodes[idx].pos;
+          std::vector<std::tuple<LatLon, int, double>> close =
+            graph.latlontree.Lookup(pos, MERGE_DISTANCE);
+          for (const auto &[ll, oidx, dist] : close) {
+            if (idx != oidx) {
+              MutexLock ml(&m);
+              graph.AddEdge(idx, oidx);
+            }
+          }
+        },
+        num_threads);
+  }
+
+  printf("Get shortest paths.\n");
+  // Get node closest to home. We assume there's a node
+  // within 100m (better would be to use a GetClosest query
+  // in the latlon tree, but it is not implemented).
+  const auto [home_node_idx, home_node_dist] = [&]() {
+      std::vector<std::tuple<LatLon, int, double>> close =
+        graph.latlontree.Lookup(home_pos, 100.0);
+      CHECK(!close.empty()) << "No node within 100m of home!";
+      // Take the closest one.
+      std::sort(close.begin(),
+                close.end(),
+                [](const std::tuple<LatLon, int, double> &a,
+                   const std::tuple<LatLon, int, double> &b) {
+                  return std::get<2>(a) < std::get<2>(b);
+                });
+      return make_pair(std::get<1>(close[0]), std::get<2>(close[0]));
+    }();
+
+  // Calculate shortest paths using Dijkstra's algorithm.
+  // Rather than use intrusive heap locations, we keep this
+  // array of otherwise-empty values parallel to the graph's
+  // nodes.
+  std::vector<Heapable> heapvalues(graph.nodes.size());
+  auto HeapIdx = [&heapvalues](Heapable *h) {
+      // (Don't divide by sizeof!)
+      return h - &heapvalues[0];
+    };
+  // PERF
+  for (int i = 0; i < heapvalues.size(); i++) {
+    CHECK(HeapIdx(&heapvalues[i]) == i) << i;
+  }
+
+  std::unordered_map<int, double> done;
+  using NodeHeap = Heap<double, Heapable>;
+  NodeHeap nodeheap;
+  nodeheap.Insert(home_node_dist, &heapvalues[home_node_idx]);
+  while (!nodeheap.Empty()) {
+    NodeHeap::Cell cell = nodeheap.PopMinimum();
+    // Insert each of its neighbors with the path distance.
+    const double dist = cell.priority;
+    const int src_idx = HeapIdx(cell.value);
+    CHECK(done.find(src_idx) == done.end());
+    done[src_idx] = dist;
+    CHECK(src_idx >= 0 && src_idx < graph.nodes.size());
+    for (const int dst_idx : graph.nodes[src_idx].neighbors) {
+      if (done.find(dst_idx) == done.end()) {
+        // Not already finished.
+        const double new_dist = dist +
+          LatLon::DistMeters(graph.nodes[src_idx].pos,
+                             graph.nodes[dst_idx].pos);
+        Heapable *value = &heapvalues[dst_idx];
+        if (value->location < 0) {
+          // Not already inserted.
+          nodeheap.Insert(new_dist, value);
+        } else {
+          // Adjust priority in place if smaller.
+          NodeHeap::Cell ocell = nodeheap.GetCell(&heapvalues[dst_idx]);
+          if (new_dist < ocell.priority) {
+            nodeheap.AdjustPriority(value, new_dist);
+          }
+        }
+      }
+    }
+  }
+
+  printf("Make spanning tree.\n");
+
+  auto GetDist = [&](int idx) {
+      CHECK(idx >= 0 && idx < graph.nodes.size());
+      auto it = done.find(idx);
+      // CHECK(it != done.end());
+      if (it == done.end()) return 1.0 / 0.0;
+      return it->second;
+    };
+
+  SpanningTree stree;
+  stree.nodes.resize(graph.nodes.size());
+  stree.root = home_node_idx;
+  // Each node can just be evaluated in parallel now.
+  ParallelComp(
+      graph.nodes.size(),
+      [&](int idx) {
+        const GraphNode &gnode = graph.nodes[idx];
+        SpanningTree::Node *snode = &stree.nodes[idx];
+        snode->pos = gnode.pos;
+        // Could return inf if we had unreachable nodes.
+        snode->dist = GetDist(idx);
+
+        if (idx == home_node_idx) {
+          snode->parent = -1;
+        } else {
+          // Get best parent.
+          int besti = -1;
+          double best_dist = 1.0 / 0.0;
+          for (int oidx : gnode.neighbors) {
+            double new_dist =
+              LatLon::DistMeters(gnode.pos,
+                                 graph.nodes[oidx].pos) +
+              GetDist(oidx);
+            if (new_dist < best_dist) {
+              besti = oidx;
+              best_dist = new_dist;
+            }
+          }
+          // Might still be -1 if no neighbors, or
+          // all infinite.
+          snode->parent = besti;
+        }
+      },
+      num_threads);
+
+  return stree;
+}

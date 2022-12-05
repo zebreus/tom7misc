@@ -1035,11 +1035,13 @@ static ImageRGBA RenderFrame(
       }, THREADS);
 
   ImageRGBA down = img.ScaleDownBy(oversample);
+#if 0
   down.BlendText32(5, 5, 0xFFFF22FF,
                    StringPrintf("%.9f,%.9f,%.9f",
                                 pos.a1, pos.a2, pos.a3));
   down.BlendText32(5, 15, 0xFF22FFFF,
                    StringPrintf("%.9f", pos.distance));
+#endif
   return down;
 }
 
@@ -1145,13 +1147,13 @@ int main(int argc, char **argv) {
   };
 
   RenderMode mode = ONE_FRAME;
-  const int target_shot = 0;
+  const int target_shot = 1;
   const int target_frame = 239;
   // static constexpr int FRAME_WIDTH = 2880;
   // static constexpr int FRAME_HEIGHT = 1620;
   static constexpr int FRAME_WIDTH = 1920;
   static constexpr int FRAME_HEIGHT = 1080;
-  static constexpr int OVERSAMPLE = 3;
+  static constexpr int OVERSAMPLE = 4;
 
   Position pittsburgh;
   // pittsburgh.distance = 2.80000428964;

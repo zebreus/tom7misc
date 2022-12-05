@@ -15,6 +15,12 @@ int main(int argc, char **argv) {
 
   std::unique_ptr<PacTom> pactom = PacTomUtil::Load(true);
 
+  double total_miles = 0.0;
+  for (const PacTom::Run &run : pactom->runs) {
+    total_miles += PacTom::RunMiles(run);
+  }
+  printf("Total miles: %.5f\n", total_miles);
+
   std::map<int, int> by_year;
   {
     string out;

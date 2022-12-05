@@ -24,7 +24,7 @@ int main(int argc, char **argv) {
   std::unique_ptr<PacTom> pactom = PacTomUtil::Load(true);
 
   int has_date = 0;
-  double path_feet = 0.0, tripath_feet = 0.0;
+  double path_miles = 0.0, tripath_miles = 0.0;
   for (int ridx = 0; ridx < pactom->runs.size(); ridx++) {
     const auto &run = pactom->runs[ridx];
     double pm = PacTom::RunMiles(run, false);
@@ -43,11 +43,11 @@ int main(int argc, char **argv) {
            run.name.c_str(),
            pm, tm);
 
-    path_feet += pm;
-    tripath_feet += tm;
+    path_miles += pm;
+    tripath_miles += tm;
   }
-  printf("Total miles: %.6f\n", path_feet / 5280.0);
-  printf("Including elev: %.6f\n", tripath_feet / 5280.0);
+  printf("Total miles: %.6f\n", path_miles);
+  printf("Including elev: %.6f\n", tripath_miles);
   printf("%d/%d have dates\n", has_date, pactom->runs.size());
 
   return 0;

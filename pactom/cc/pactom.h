@@ -45,6 +45,23 @@ struct PacTom {
   // Return -1 if not in any neighborhood; otherwise neighborhood id.
   int InNeighborhood(LatLon pos) const;
 
+  struct SpanningTree {
+    struct Node {
+      LatLon pos;
+      // Distance to root.
+      double dist = 0.0;
+      // Adjacent node that gets us closer to root, or -1
+      // if this is the root (or if the node is not connected
+      // to the root).
+      int parent = 0;
+    };
+    std::vector<Node> nodes;
+    int root = 0;
+  };
+
+  SpanningTree MakeSpanningTree(LatLon home_pos,
+                                int num_threads = 8);
+
  private:
   PacTom();
 
