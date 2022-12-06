@@ -38,6 +38,9 @@ zoomout.exe : zoomout.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
 sphere.exe : sphere.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+solar.exe : solar.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 colortile.exe : colortile.o $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
