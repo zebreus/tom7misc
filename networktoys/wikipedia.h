@@ -47,14 +47,14 @@ struct Wikipedia {
   // Remove markup like ''italics'' and '''bold'''.
   virtual void RemoveMarkup(std::string *body) = 0;
 
+  // Replace some UTF-8 sequences with simpler ASCII ones, mostly
+  // fancy quotes and dashes.
+  virtual void ASCIIify(std::string *body) = 0;
+
   // TODO:
   // Remove between {| ... |}. Seldom prose.
   virtual void RemoveTables(std::string *body) = 0;
 
-  // TODO:
-  // Replace some UTF-8 sequences with simpler ASCII ones, mostly
-  // fancy quotes and dashes.
-  virtual void ASCIIify(std::string *body) = 0;
 
   // TODO: Remove [http://site.com hyperlinks], replacing with the
   // linked text.
