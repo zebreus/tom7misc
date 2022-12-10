@@ -50,6 +50,9 @@ datemerge.exe : datemerge.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
 runstats.exe : runstats.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
+ddd.exe : ddd.o $(UTIL_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
 clean :
 	rm -f *.o *.exe $(UTIL_OBJECTS)
 
