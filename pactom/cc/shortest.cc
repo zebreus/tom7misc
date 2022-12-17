@@ -34,41 +34,6 @@ static constexpr int RADIUS = 2 * 4;
 
 using SpanningTree = PacTom::SpanningTree;
 
-template<int RADIUS>
-static void DrawThickLine(ImageRGBA *image,
-                          int x0, int y0, int x1, int y1,
-                          uint32_t color) {
-  image->BlendPixel32(x0, y0, color);
-  for (const auto [x, y] : Line<int>{(int)x0, (int)y0, (int)x1, (int)y1}) {
-    for (int dy = -RADIUS; dy <= RADIUS; dy++) {
-      const int ddy = dy * dy;
-      for (int dx = -RADIUS; dx <= RADIUS; dx++) {
-        const int ddx = dx * dx;
-        if (ddy + ddx <= RADIUS * RADIUS) {
-          image->BlendPixel32(x + dx, y + dy, color);
-        }
-      }
-    }
-  }
-}
-
-static uint32 RandomBrightColor(ArcFour *rc) {
-  const float h = RandFloat(rc);
-  const float s = 0.5f + (0.5f * RandFloat(rc));
-  const float v = 0.5f + (0.5f * RandFloat(rc));
-  float r, g, b;
-  ColorUtil::HSVToRGB(h, s, v, &r, &g, &b);
-  const uint32 rr = std::clamp((int)roundf(r * 255.0f), 0, 255);
-  const uint32 gg = std::clamp((int)roundf(g * 255.0f), 0, 255);
-  const uint32 bb = std::clamp((int)roundf(b * 255.0f), 0, 255);
-
-  return (rr << 24) | (gg << 16) | (bb << 8) | 0xFF;
-}
-
-struct Shortest {
-
-};
-
 int main(int argc, char **argv) {
   AnsiInit();
 
@@ -107,7 +72,7 @@ int main(int argc, char **argv) {
       auto [x0, y0] = scaler.Scale(Project(latlon0));
       auto [x1, y1] = scaler.Scale(Project(latlon1));
 
-      DrawThickLine<RADIUS>(&image, x0, y0, x1, y1, color);
+      PacTomUtil::DrawThickLine<RADIUS>(&image, x0, y0, x1, y1, color);
     }
   }
 
@@ -122,7 +87,7 @@ int main(int argc, char **argv) {
           rhoo.value() / (PI * 2.0), 1.0, 1.0);
 
       const uint32_t color = ColorUtil::FloatsTo32(r, g, b, 0.25f);
-      DrawThickLine<RADIUS>(&image, x0, y0, x1, y1, color);
+      PacTomUtil::DrawThickLine<RADIUS>(&image, x0, y0, x1, y1, color);
     }
   }
 

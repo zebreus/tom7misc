@@ -251,10 +251,17 @@ struct Tile {
 
 using mat3d = yocto::mat<double, 3>;
 using vec3d = yocto::vec<double, 3>;
+using vec2d = yocto::vec<double, 2>;
 using ray3d = yocto::ray<double, 3>;
 using frame3d = yocto::frame<double, 3>;
 using prim_isect_d = yocto::prim_intersection<double>;
 
+inline vec3d InterpolateVec(const vec3d &a, const vec3d &b, double t) {
+  return vec3d{
+      std::lerp(a[0], b[0], t),
+      std::lerp(a[1], b[1], t),
+      std::lerp(a[2], b[2], t)};
+}
 
 inline mat3d RotYaw(double a) {
   const double cosa = cos(a);

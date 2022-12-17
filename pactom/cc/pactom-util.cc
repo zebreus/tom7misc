@@ -5,15 +5,20 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <cstdint>
 
 #include "util.h"
 #include "edit-distance.h"
 #include "threadutil.h"
 #include "base/logging.h"
 #include "timer.h"
+#include "randutil.h"
+#include "color-util.h"
 
 using namespace std;
 using Run = PacTom::Run;
+
+using uint32 = uint32_t;
 
 std::unique_ptr<PacTom> PacTomUtil::Load(bool merge_dates) {
   #define TOMDIR "d:\\oldtom\\runs"
@@ -133,4 +138,17 @@ void PacTomUtil::SortByDate(PacTom *dest) {
   std::sort(dest->runs.begin(),
             dest->runs.end(),
             CompareByDate);
+}
+
+uint32 PacTomUtil::RandomBrightColor(ArcFour *rc) {
+  const float h = RandFloat(rc);
+  const float s = 0.5f + (0.5f * RandFloat(rc));
+  const float v = 0.5f + (0.5f * RandFloat(rc));
+  float r, g, b;
+  ColorUtil::HSVToRGB(h, s, v, &r, &g, &b);
+  const uint32 rr = std::clamp((int)roundf(r * 255.0f), 0, 255);
+  const uint32 gg = std::clamp((int)roundf(g * 255.0f), 0, 255);
+  const uint32 bb = std::clamp((int)roundf(b * 255.0f), 0, 255);
+
+  return (rr << 24) | (gg << 16) | (bb << 8) | 0xFF;
 }

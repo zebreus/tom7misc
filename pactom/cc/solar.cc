@@ -25,6 +25,8 @@
 #include "image-frgba.h"
 #include "osm.h"
 #include "render.h"
+#include "textsvg.h"
+#include "util.h"
 
 static constexpr double PI = std::numbers::pi;
 
@@ -39,6 +41,9 @@ static constexpr double FAR_DIST = 100.0;
 static constexpr double FAR_WIDTH = 100.0;
 // static constexpr double NEAR_WIDTH = 0.01f;
 static constexpr double NEAR_WIDTH = 0.005;
+
+static constexpr double PLANET_SPACING = EARTH_RADIUS * 5.0;
+static constexpr vec3d PLANET_VEC = {0.0, PLANET_SPACING, 0.0};
 
 // of inner earth
 static constexpr double TOTAL_MILES = 800 + 1400 + 1800 + 25;
@@ -56,10 +61,38 @@ static constexpr ColorUtil::Gradient INNER_EARTH {
 };
 
 // Made up. From outside (0.0) to inside (1.0).
-static constexpr ColorUtil::Gradient ATMOSPHERE {
+static constexpr ColorUtil::Gradient EARTH_ATMOSPHERE_GRADIENT {
   GradRGB(0.0f, 0x7700FF),
   GradRGB(0.15f, 0xFF77FF),
   GradRGB(0.25f, 0xffa21e),
+  GradRGB(1.0f, 0x000000),
+};
+
+static constexpr ColorUtil::Gradient MARS_ATMOSPHERE_GRADIENT {
+  GradRGB(0.0f, 0x770022),
+  GradRGB(0.15f, 0xFF3333),
+  GradRGB(0.25f, 0xff5200),
+  GradRGB(1.0f, 0x000000),
+};
+
+static constexpr ColorUtil::Gradient JUPITER_ATMOSPHERE_GRADIENT {
+  GradRGB(0.0f, 0x770077),
+  GradRGB(0.15f, 0x992233),
+  GradRGB(0.25f, 0xff5200),
+  GradRGB(1.0f, 0x000000),
+};
+
+static constexpr ColorUtil::Gradient SATURN_ATMOSPHERE_GRADIENT {
+  GradRGB(0.0f, 0x770077),
+  GradRGB(0.15f, 0x992233),
+  GradRGB(0.25f, 0xff5200),
+  GradRGB(1.0f, 0x000000),
+};
+
+static constexpr ColorUtil::Gradient HEAVEN_ATMOSPHERE_GRADIENT {
+  GradRGB(0.0f, 0xFF00FF),
+  GradRGB(0.15f, 0xAA77FF),
+  GradRGB(0.25f, 0x5577FF),
   GradRGB(1.0f, 0x000000),
 };
 
@@ -67,114 +100,23 @@ using namespace yocto;
 
 static PacTom *pactom = nullptr;
 
+static ImageRGBA *heaventexture = nullptr;
+static ImageRGBA *jupitertexture = nullptr;
+static ImageRGBA *marstexture = nullptr;
+static ImageRGBA *saturntexture = nullptr;
+static ImageRGBA *venustexture = nullptr;
 static ImageRGBA *bluemarble = nullptr;
 static ImageFRGBA *stars = nullptr;
-
-double OptimizeMe(double a1, double a2, double a3, double distance) {
-  const double frame_width = 1920;
-  const double frame_height = 1080;
-  const double aspect = frame_width / (double)frame_height;
-
-  const double near_height = NEAR_WIDTH / aspect;
-  const double far_height = FAR_WIDTH / aspect;
-
-  Sphere earth;
-  earth.radius = EARTH_RADIUS;
-  earth.origin = {0.0f, 0.0f, 0.0f};
-
-  double TEX_WIDTH = 21600 * 2;
-  double TEX_HEIGHT = 21600;
-  double ux = 11973.0 / TEX_WIDTH;
-  double uy = 5930.0 / TEX_HEIGHT;
-  double uw = 65.0 / TEX_WIDTH;
-  double uh = 37.0 / TEX_HEIGHT;
-
-  auto GetUV = [&](double xf, double yf) ->
-    std::optional<std::pair<float, float>> {
-      double far_dist = FAR_DIST;
-      double near_dist = -distance;
-      double near_x = std::lerp(-NEAR_WIDTH * 0.5, NEAR_WIDTH * 0.5, xf);
-      double near_y = std::lerp(-near_height * 0.5, near_height * 0.5, yf);
-
-      double far_x = std::lerp(-FAR_WIDTH * 0.5, FAR_WIDTH * 0.5, xf);
-      double far_y = std::lerp(-far_height * 0.5, far_height * 0.5, yf);
-
-      vec3d near_pt = {near_x, near_y, -near_dist};
-      vec3d far_pt = {far_x, far_y, -far_dist};
-
-      ray3d ray;
-      ray.o = near_pt;
-      ray.d = far_pt - near_pt;
-      ray.tmin = 0.000000001f;
-      ray.tmax = 10.0f;
-
-      mat3d rot = Rot(a1, a2, a3);
-      frame3d rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
-      ray = transform_ray(rot_frame, ray);
-
-      prim_isect_d pi = intersect_sphere_front(
-          ray, earth.origin, earth.radius);
-
-      if (!pi.hit) return std::nullopt;
-      return {make_pair(1.0f - pi.uv.x, pi.uv.y)};
-    };
-
-  auto pi00 = GetUV(0.0f, 0.0f);
-  if (!pi00.has_value()) return 9999999.0f;
-
-  auto pi10 = GetUV(1.0f, 0.0f);
-  if (!pi10.has_value()) return 9999999.0f;
-
-  auto pi01 = GetUV(0.0f, 1.0f);
-  if (!pi01.has_value()) return 9999999.0f;
-
-  auto pi11 = GetUV(1.0f, 1.0f);
-  if (!pi11.has_value()) return 9999999.0f;
-
-  auto [ux00, uy00] = pi00.value();
-  auto [ux10, uy10] = pi10.value();
-  auto [ux01, uy01] = pi01.value();
-  auto [ux11, uy11] = pi11.value();
-
-  auto SqDist = [](double x0, double y0,
-                   double x1, double y1) {
-      double xx = x0 - x1;
-      double yy = y0 - y1;
-      return xx * xx + yy * yy;
-    };
-
-  return
-    SqDist(ux00, uy00, ux, uy) +
-    SqDist(ux10, uy10, ux + uw, uy) +
-    SqDist(ux01, uy01, ux, uy + uh) +
-    SqDist(ux11, uy11, ux + uw, uy + uh);
-}
-
-static std::tuple<double, double, double, double> Optimize() {
-  static constexpr double d = 2.801;
-  auto [a1, a2, a3] =
-    Opt::Minimize3D([](double a1, double a2, double a3) {
-        return OptimizeMe(a1, a2, a3, d);
-      },
-    std::make_tuple(0.0, 0.0, 0.0),
-    std::make_tuple(2 * PI, 2 * PI, 2 * PI),
-    10000, 1, 1000).first;
-  printf("Best:\n"
-         "const double a1 = %.11f;\n"
-         "const double a2 = %.11f;\n"
-         "const double a3 = %.11f;\n"
-         "const double distance = %.11f\n",
-         a1, a2, a3, d);
-
-  return std::make_tuple(a1, a2, a3, d);
-}
 
 static WideTile *widetile = nullptr;
 static Tile *tile = nullptr;
 
-
 // distance is distance from camera to surface
 uint32_t EarthColor(double ux, double uy, double distance) {
+
+  CHECK(bluemarble != nullptr);
+  CHECK(widetile != nullptr);
+  CHECK(tile != nullptr);
 
   float r, g, b, a_;
   std::tie(r, g, b, a_) = bluemarble->SampleBilinear(
@@ -188,23 +130,36 @@ uint32_t EarthColor(double ux, double uy, double distance) {
   return ColorUtil::FloatsTo32(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
 }
 
-// Camera position.
-struct Position {
-  double distance = 2.80100000000;
+// distance is distance from camera to surface
+uint32_t PlanetColor(ImageRGBA *texture,
+                     double ux, double uy, double distance) {
+  CHECK(texture != nullptr);
 
-  double a1 = 0.117112122;
-  double a2 = 3.008712215;
-  double a3 = 2.284319047;
+  float r, g, b, a_;
+  std::tie(r, g, b, a_) = texture->SampleBilinear(
+      ux * texture->Width(),
+      uy * texture->Height());
+
+  return ColorUtil::FloatsTo32(r / 255.0f, g / 255.0f, b / 255.0f, 1.0f);
+}
+
+// Camera position.
+struct CameraPosition {
+  vec3d pos;
+  vec3d up;
+
+  vec3d look_at;
 };
 
-static Position InterpolatePos(const Position &a,
-                               const Position &b,
-                               double f) {
-  Position ret;
-  ret.distance = std::lerp(a.distance, b.distance, f);
-  ret.a1 = std::lerp(a.a1, b.a1, f);
-  ret.a2 = std::lerp(a.a2, b.a2, f);
-  ret.a3 = std::lerp(a.a3, b.a3, f);
+static CameraPosition InterpolatePos(const CameraPosition &a,
+                                     const CameraPosition &b,
+                                     double f) {
+
+  CameraPosition ret;
+  ret.pos = InterpolateVec(a.pos, b.pos, f);
+  ret.up = InterpolateVec(a.up, b.up, f);
+  ret.look_at = InterpolateVec(a.look_at, b.look_at, f);
+
   return ret;
 }
 
@@ -212,14 +167,23 @@ struct Shot {
   // Assuming 60fps.
   int num_frames = 60;
 
-  Position start;
-  Position end;
+  // At time in [0, 1].
+  std::function<CameraPosition(double)> getpos = [](double f) {
+      CHECK(false) << "unimplemented";
+      return CameraPosition();
+    };
 
-  bool draw_atmosphere = true;
-  bool draw_mouth = true;
-
+  // Time remapping
   std::function<double(double)> easing = [](double f) { return f; };
 };
+
+std::function<CameraPosition(double)> LinearCamera(
+    CameraPosition start,
+    CameraPosition end) {
+  return [start, end](double f) {
+      return InterpolatePos(start, end, f);
+    };
+}
 
 static double EaseOutQuart(double f) {
   double sf = (1.0 - f) * (1.0 - f);
@@ -230,120 +194,159 @@ static double EaseInOutSin(double f) {
   return 0.5 * (1.0 + sin(3.141592653589 * (f - 0.5)));
 }
 
-// 0.0f = fully shadow
-inline static float Illumination(const Scene &scene,
-                                 const Tetrahedron &mouth,
-                                 vec3d start) {
-  // XXX
-  // I never quite got this to look good, so it's disabled.
-  return 1.0f;
+struct Atmosphere {
+  ColorUtil::Gradient gradient;
+};
 
-  // Could do an actual 3D rotation here, but the distance is made up
-  // anyway.
-# define EARTH_TILT_RAD 0.41f
-# define SUN_ANGLE 2.0
-  Sphere sun = {.origin = {double(SUN_DISTANCE * sin(EARTH_TILT_RAD)),
-                           double(SUN_DISTANCE * sin(SUN_ANGLE)),
-                           double(SUN_DISTANCE * cos(SUN_ANGLE))},
-                .radius = SUN_RADIUS};
+struct System {
 
-  // TODO: Sample sun as disc
-  ray3d shadow_ray;
-  vec3d dir = sun.origin - start;
-  shadow_ray.o = start;
-  shadow_ray.d = dir;
-  shadow_ray.tmin = 0.00001f;
-  shadow_ray.tmax = SUN_DISTANCE * 2.0f;
+  System() {
+    // Right-handed:
+    //
+    //   ^ +y   -z (into scene)
+    //   |    /
+    //   |  /
+    //   |/
+    //   *-------> +x
+    //  /
+    // +z
 
-  const std::vector<std::pair<int, prim_isect_d>> shadow_hits =
-    scene.AllIntersections(shadow_ray);
+    earth.radius = EARTH_RADIUS;
+    earth.origin = {0.0f, 0.0f, 0.0f};
+    EARTH_PRIM = scene.prims.size();
+    scene.prims.emplace_back(earth);
 
-  bool s_in_mouth = InTetrahedron(shadow_ray.o, mouth);
+    earth_atmosphere.radius = EARTH_RADIUS + (9 + 31 + 53 + 372) * MILES;
+    earth_atmosphere.origin = {0.0f, 0.0f, 0.0f};
+    EARTH_ATMOSPHERE_PRIM = scene.prims.size();
+    atmos[EARTH_ATMOSPHERE_PRIM].gradient = EARTH_ATMOSPHERE_GRADIENT;
+    scene.prims.emplace_back(earth_atmosphere);
 
-  for (const auto &[idx, pi] : shadow_hits) {
-    if (idx == 0) {
-      // sphere
-      if (!s_in_mouth) return 0.0f;
-    } else if (idx == 1) {
-      if (s_in_mouth) {
-        // Exit mouth.
-        // Is this the inner surface of the sphere?
-        vec3d pt = shadow_ray.o + pi.distance * shadow_ray.d;
-        // XXX hard coded location of earth
-        double r = length(pt);
-        if (r <= EARTH_RADIUS) {
-          return 0.0f;
-        } else {
-          // Exiting to free space
-          s_in_mouth = false;
-        }
+    vec3d tp1 = RotYaw(PI / -2) * (earth.origin + vec3d{0, -5, 0});
+    vec3d tp2 = RotYaw(PI / -2) * (earth.origin + vec3d{0, +5, 0});
+    vec3d tp3 = RotYaw(PI / -2) * (earth.origin + vec3d{5, 0, +5});
+    vec3d tp4 = RotYaw(PI / -2) * (earth.origin + vec3d{5, 0, -5});
 
-      } else {
-        // Enter mouth.
-        s_in_mouth = true;
-      }
-    } else if (idx == 2) {
-      // ignore skybox
-    } else if (idx == 3) {
-      // could scatter light through atmosphere?
-    } else {
-      CHECK(false) << "unknown prim";
-    }
+    mouth = Tetrahedron(tp1, tp2, tp3, tp4);
+    MOUTH_PRIM = scene.prims.size();
+    scene.prims.emplace_back(mouth);
+
+    constexpr double MARS_RADIUS = EARTH_RADIUS * 0.8;
+
+    mars.radius = MARS_RADIUS;
+    mars.origin = 1 * PLANET_VEC;
+    MARS_PRIM = scene.prims.size();
+    scene.prims.emplace_back(mars);
+
+    mars_atmosphere.radius = mars.radius * 1.1;
+    mars_atmosphere.origin = mars.origin;
+    MARS_ATMOSPHERE_PRIM = scene.prims.size();
+    atmos[MARS_ATMOSPHERE_PRIM].gradient = MARS_ATMOSPHERE_GRADIENT;
+    scene.prims.emplace_back(mars_atmosphere);
+
+    constexpr double JUPITER_RADIUS = EARTH_RADIUS * 2.0;
+
+    jupiter.radius = JUPITER_RADIUS;
+    jupiter.origin = 2 * PLANET_VEC;
+    JUPITER_PRIM = scene.prims.size();
+    scene.prims.emplace_back(jupiter);
+
+    jupiter_atmosphere.radius = jupiter.radius * 1.2;
+    jupiter_atmosphere.origin = jupiter.origin;
+    JUPITER_ATMOSPHERE_PRIM = scene.prims.size();
+    atmos[JUPITER_ATMOSPHERE_PRIM].gradient = JUPITER_ATMOSPHERE_GRADIENT;
+    scene.prims.emplace_back(jupiter_atmosphere);
+
+    constexpr double SATURN_RADIUS = JUPITER_RADIUS * 0.8;
+    saturn.radius = SATURN_RADIUS;
+    saturn.origin = 3 * PLANET_VEC;
+    SATURN_PRIM = scene.prims.size();
+    scene.prims.emplace_back(saturn);
+
+    saturn_atmosphere.radius = saturn.radius * 1.2;
+    saturn_atmosphere.origin = saturn.origin;
+    SATURN_ATMOSPHERE_PRIM = scene.prims.size();
+    atmos[SATURN_ATMOSPHERE_PRIM].gradient = SATURN_ATMOSPHERE_GRADIENT;
+    scene.prims.emplace_back(saturn_atmosphere);
+
+    heaven.radius = EARTH_RADIUS;
+    heaven.origin = 4 * PLANET_VEC;
+    HEAVEN_PRIM = scene.prims.size();
+    scene.prims.emplace_back(heaven);
+
+    heaven_atmosphere.radius = heaven.radius * 1.2;
+    heaven_atmosphere.origin = heaven.origin;
+    HEAVEN_ATMOSPHERE_PRIM = scene.prims.size();
+    atmos[HEAVEN_ATMOSPHERE_PRIM].gradient = HEAVEN_ATMOSPHERE_GRADIENT;
+    scene.prims.emplace_back(heaven_atmosphere);
+
+    starbox.radius = 250.0;
+    starbox.origin = {0.0f, 0.0f, 0.0f};
+    STARS_PRIM = scene.prims.size();
+    scene.prims.emplace_back(starbox);
+
   }
 
-  // reaches sun
-  return 1.0f;
-}
+  Scene scene;
+  std::unordered_map<int, Atmosphere> atmos;
+  Sphere earth, mars, jupiter, saturn, heaven, starbox;
+  Sphere earth_atmosphere, mars_atmosphere, jupiter_atmosphere,
+    saturn_atmosphere, heaven_atmosphere;
+  Tetrahedron mouth;
+
+  int EARTH_PRIM, MARS_PRIM, JUPITER_PRIM, SATURN_PRIM, HEAVEN_PRIM,
+    STARS_PRIM;
+  int EARTH_ATMOSPHERE_PRIM, MARS_ATMOSPHERE_PRIM, JUPITER_ATMOSPHERE_PRIM,
+    SATURN_ATMOSPHERE_PRIM, HEAVEN_ATMOSPHERE_PRIM;
+  int MOUTH_PRIM;
+
+  void ToSVG(const string &filename) {
+    // planets are stacked along y axis, so leave out z
+    constexpr double SIZE = EARTH_RADIUS * 24;
+    string out = TextSVG::Header(SIZE, SIZE);
+    for (const auto &prim : scene.prims) {
+      if (const Sphere *sphere = std::get_if<Sphere>(&prim.v)) {
+        StringAppendF(&out,
+                      "<circle fill=\"none\" stroke=\"#000\" "
+                      "cx=\"%s\" cy=\"%s\" r=\"%s\" />\n",
+                      TextSVG::Rtos(sphere->origin.x).c_str(),
+                      TextSVG::Rtos(sphere->origin.y).c_str(),
+                      TextSVG::Rtos(sphere->radius).c_str());
+      }
+    }
+
+    out += TextSVG::Footer();
+    Util::WriteFile(filename, out);
+    printf("Wrote %s\n", filename.c_str());
+  }
+
+};
+
 
 static ImageRGBA RenderFrame(
     int frame_width,
     int frame_height,
     int oversample,
-    Position pos,
-    bool draw_atmosphere,
-    bool draw_mouth) {
+    CameraPosition pos) {
+
+  const System system;
+
+  static constexpr bool draw_mouth = true;
+  static constexpr bool draw_atmosphere = true;
 
   ImageRGBA img(frame_width * oversample, frame_height * oversample);
 
-  // Right-handed:
-  //
-  //   ^ +y   -z (into scene)
-  //   |    /
-  //   |  /
-  //   |/
-  //   *-------> +x
-  //  /
-  // +z
-
-  Scene scene;
-  Sphere earth;
-  earth.radius = EARTH_RADIUS;
-  earth.origin = {0.0f, 0.0f, 0.0f};
-  scene.prims.emplace_back(earth);
-  vec3d tp1 = {0, -5, 0};
-  vec3d tp2 = {0, +5, 0};
-  vec3d tp3 = {5, 0, +5};
-  vec3d tp4 = {5, 0, -5};
-
-  // Don't just comment stuff out, as we use the indices
-  // in the rendering logic!
-  Tetrahedron mouth(tp1, tp2, tp3, tp4);
-  scene.prims.emplace_back(mouth);
-
-  Sphere starbox;
-  starbox.radius = 90.0;
-  starbox.origin = {0.0f, 0.0f, 0.0f};
-  scene.prims.emplace_back(starbox);
-
-  Sphere atmosphere;
-  atmosphere.radius = EARTH_RADIUS + (9 + 31 + 53 + 372) * MILES;
-  atmosphere.origin = {0.0f, 0.0f, 0.0f};
-  scene.prims.emplace_back(atmosphere);
 
   const double aspect = frame_width / (double)frame_height;
 
   const double near_height = NEAR_WIDTH / aspect;
   const double far_height = FAR_WIDTH / aspect;
+
+  const vec3d forward = normalize(pos.look_at - pos.pos);
+  const vec3d up = normalize(pos.up);
+
+
+  const frame3d camera = lookat_frame(pos.pos, pos.look_at, pos.up);
 
   bool first = true;
   ParallelComp(
@@ -353,37 +356,11 @@ static ImageRGBA RenderFrame(
       for (int px = 0; px < img.Width(); px++) {
         double xf = px / (double)img.Width();
 
-        // image plane and far plane are parallel to the
-        // xy plane.
-        double far_dist = FAR_DIST;
-        // (maybe we want much less to zoom to a
-        // region on the planet?)
-        double near_dist = -pos.distance;
-
-        double near_x = std::lerp(-NEAR_WIDTH * 0.5, NEAR_WIDTH * 0.5, xf);
-        double near_y = std::lerp(-near_height * 0.5, near_height * 0.5, yf);
-
-        double far_x = std::lerp(-FAR_WIDTH * 0.5, FAR_WIDTH * 0.5, xf);
-        double far_y = std::lerp(-far_height * 0.5, far_height * 0.5, yf);
-
-        vec3d near_pt = {near_x, near_y, -near_dist};
-        vec3d far_pt = {far_x, far_y, -far_dist};
-
-        ray3d ray;
-        ray.o = near_pt;
-        ray.d = far_pt - near_pt;
-        ray.tmin = 0.000000001f;
-        ray.tmax = 10.0f;
-
-        // Rotate...
-        mat3d rot = Rot(pos.a1, pos.a2, pos.a3);
-        // Rotate around origin.
-        frame3d rot_frame = make_frame(rot, {0.0, 0.0, 0.0});
-        ray = transform_ray(rot_frame, ray);
-
+        ray3d ray =
+          camera_ray(camera, 100.0, aspect, FAR_WIDTH, vec2d{xf, yf});
 
         const std::vector<std::pair<int, prim_isect_d>> hits =
-          scene.AllIntersections(ray);
+          system.scene.AllIntersections(ray);
 
         // Translucent elements we traced through.
         std::vector<uint32_t> blend;
@@ -393,15 +370,24 @@ static ImageRGBA RenderFrame(
               img.BlendPixel32(px, py, blend[i]);
           };
 
-        bool in_mouth = draw_mouth && InTetrahedron(ray.o, mouth);
-        // point where we entered atmosphere
-        std::optional<vec3d> in_atmosphere =
-          (draw_atmosphere && InSphere(ray.o, atmosphere)) ?
-           std::optional<vec3d>{ray.o} : std::nullopt;
+        bool in_mouth = draw_mouth && InTetrahedron(ray.o, system.mouth);
+
+        // atmospheres do not intersect; we are in just one at a
+        // time.
+        // point where we entered atmosphere, prim index of atmosphere
+        std::optional<std::pair<vec3d, int>> in_atmosphere;
+        for (const auto &[prim_idx, gradient_] : system.atmos) {
+          const Sphere *sphere =
+            std::get_if<Sphere>(&system.scene.prims[prim_idx].v);
+          CHECK(sphere != nullptr);
+          if (InSphere(ray.o, *sphere)) {
+            in_atmosphere.emplace(ray.o, prim_idx);
+            break;
+          }
+        }
 
         auto Shade = [&](vec3d pt, uint32_t color) {
-            float light = std::clamp(Illumination(scene, mouth, pt),
-                                     0.25f, 1.0f);
+            const float light = 1.0f;
             auto [r, g, b, a_] = ColorUtil::U32ToFloats(color);
             return ColorUtil::FloatsTo32(light * r,
                                          light * g,
@@ -416,18 +402,26 @@ static ImageRGBA RenderFrame(
 
             auto ExitAtmosphere = [&]() {
                 if (!in_atmosphere.has_value()) return;
+                const auto &[enter_pt, prim_idx] = in_atmosphere.value();
+                const Sphere *sphere =
+                  std::get_if<Sphere>(&system.scene.prims[prim_idx].v);
+                CHECK(sphere != nullptr);
+
+                auto ait = system.atmos.find(prim_idx);
+                CHECK(ait != system.atmos.end());
+                const Atmosphere &atm = ait->second;
 
                 vec3d pt = ray.o + pi.distance * ray.d;
-                vec3d chord = pt - in_atmosphere.value();
+                vec3d chord = pt - enter_pt;
                 double len = length(chord);
 
-                double max_len = atmosphere.radius * 2.0;
+                double max_len = sphere->radius * 2.0;
                 // But most chords are only a tiny fraction.
                 double frac = len / max_len;
                 frac = pow(frac, 2);
 
                 const auto [r, g, b] = ColorUtil::LinearGradient(
-                    ATMOSPHERE, frac);
+                    atm.gradient, frac);
 
                 uint32 color = ColorUtil::FloatsTo32(
                     r, g, b, frac);
@@ -437,7 +431,7 @@ static ImageRGBA RenderFrame(
                 in_atmosphere = std::nullopt;
               };
 
-            if (idx == 0) {
+            if (idx == system.EARTH_PRIM) {
               // sphere
               if (in_mouth) {
                 // Ignore the surface of the sphere while
@@ -460,14 +454,61 @@ static ImageRGBA RenderFrame(
                 EmitColor(color);
                 return;
               }
-            } else if (idx == 1) {
+            } else if (idx == system.MARS_PRIM) {
+              ExitAtmosphere();
+              uint32_t color = PlanetColor(marstexture,
+                                           1.0f - pi.uv.x, pi.uv.y,
+                                           pi.distance);
+
+              vec3d pt = ray.o + pi.distance * ray.d;
+              color = Shade(pt, color);
+
+              EmitColor(color);
+              return;
+
+            } else if (idx == system.JUPITER_PRIM) {
+              ExitAtmosphere();
+              uint32_t color = PlanetColor(jupitertexture,
+                                           1.0f - pi.uv.x, pi.uv.y,
+                                           pi.distance);
+
+              vec3d pt = ray.o + pi.distance * ray.d;
+              color = Shade(pt, color);
+
+              EmitColor(color);
+              return;
+
+            } else if (idx == system.HEAVEN_PRIM) {
+              ExitAtmosphere();
+              uint32_t color = PlanetColor(heaventexture,
+                                           1.0f - pi.uv.x, pi.uv.y,
+                                           pi.distance);
+
+              vec3d pt = ray.o + pi.distance * ray.d;
+              color = Shade(pt, color);
+
+              EmitColor(color);
+              return;
+
+            } else if (idx == system.SATURN_PRIM) {
+              ExitAtmosphere();
+              uint32_t color = PlanetColor(saturntexture,
+                                           1.0f - pi.uv.x, pi.uv.y,
+                                           pi.distance);
+
+              vec3d pt = ray.o + pi.distance * ray.d;
+              color = Shade(pt, color);
+
+              EmitColor(color);
+              return;
+
+            } else if (idx == system.MOUTH_PRIM) {
 
               if (in_mouth) {
                 // Exit mouth.
                 // Is this the inner surface of the sphere?
                 vec3d pt = ray.o + pi.distance * ray.d;
-                // XXX hard coded location of earth
-                double r = length(pt);
+                double r = length(pt - system.earth.origin);
                 if (r <= EARTH_RADIUS) {
                   ExitAtmosphere();
 
@@ -491,11 +532,12 @@ static ImageRGBA RenderFrame(
                   in_mouth = true;
                 }
               }
-            } else if (idx == 2) {
+            } else if (idx == system.STARS_PRIM) {
               // Hit stars
 
               const double wrap_x = fmod(pi.uv.x + 0.5, 1.0);
 
+              CHECK(stars != nullptr);
               double x = wrap_x * stars->Width();
               double y = pi.uv.y * stars->Height();
               float r, g, b, a_;
@@ -506,14 +548,15 @@ static ImageRGBA RenderFrame(
               uint32_t color = ColorUtil::FloatsTo32(r, g, b, 1.0f);
               EmitColor(color);
               return;
-            } else if (idx == 3) {
+            } else if (idx == system.EARTH_ATMOSPHERE_PRIM ||
+                       idx == system.MARS_ATMOSPHERE_PRIM ||
+                       idx == system.JUPITER_ATMOSPHERE_PRIM ||
+                       idx == system.SATURN_ATMOSPHERE_PRIM ||
+                       idx == system.HEAVEN_ATMOSPHERE_PRIM) {
               // Atmosphere
               vec3d pt = ray.o + pi.distance * ray.d;
               if (!in_atmosphere.has_value()) {
-                if (draw_atmosphere) {
-                  in_atmosphere = {pt};
-                }
-                // printf("enter atmosphere\n");
+                in_atmosphere.emplace(pt, idx);
               } else {
                 ExitAtmosphere();
               }
@@ -543,14 +586,91 @@ static ImageRGBA RenderFrame(
   return down;
 }
 
+// Load textures into global variables.
+template<bool HUGE_TEXTURES>
+static void LoadTextures() {
+  printf("Loading textures...\n");
+
+  InParallel(
+      [&]() { jupitertexture = ImageRGBA::Load("jupiter.jpg"); },
+      [&]() { heaventexture = ImageRGBA::Load("heaven.png"); },
+      [&]() { marstexture = ImageRGBA::Load("mars.jpg"); },
+      [&]() { saturntexture = ImageRGBA::Load("saturn.jpg"); },
+      [&]() { venustexture = ImageRGBA::Load("venus.jpg"); }
+             );
+
+  // stb_image can't decode the original (integer overflow) but two
+  // hemispheres do fit. So load them individually and blit them into
+  // the full sphere texture.
+
+  std::unique_ptr<ImageRGBA> west, east;
+
+  if constexpr (HUGE_TEXTURES) {
+    string west_file = "land_shallow_topo_west.jpg";
+    string east_file = "land_shallow_topo_east.jpg";
+    InParallel(
+        [&](){ stars = ImageFRGBA::Load("starmap_2020_64k.exr"); },
+        [&](){ west.reset(ImageRGBA::Load(west_file)); },
+        [&](){ east.reset(ImageRGBA::Load(east_file)); });
+    CHECK(west.get() != nullptr);
+    CHECK(east.get() != nullptr);
+    CHECK(stars != nullptr);
+
+    CHECK(west->Height() == east->Height());
+    CHECK(west->Width() == east->Width());
+    Timer alloc_timer;
+    bluemarble = new ImageRGBA(west->Width() * 2, west->Height());
+    printf("Alloc in %.4fs\n", alloc_timer.Seconds());
+    CHECK(bluemarble != nullptr);
+
+    Timer copy_timer;
+    bluemarble->CopyImage(0, 0, *west);
+    bluemarble->CopyImage(west->Width(), 0, *east);
+    printf("Copy in %.4fs\n", copy_timer.Seconds());
+
+    west.reset();
+    east.reset();
+
+  } else {
+
+    bluemarble = ImageRGBA::Load("bluemarble.png");
+    {
+      // Load smaller file but convert to FRGBA
+      // (We could use an even smaller placeholder here...)
+      ImageRGBA *starsjpg = ImageRGBA::Load("sstars.png"); // "stars.jpg");
+      CHECK(starsjpg != nullptr);
+      printf("New from JPG:\n");
+      stars = new ImageFRGBA(*starsjpg);
+      delete starsjpg;
+    }
+  }
+
+
+  // Different underlying image types but all have Width, Height.
+#define SHOWSIZE(img) do { \
+  CHECK(img != nullptr) << #img; \
+  printf(#img " size %lld x %lld\n", \
+         (int64)img->Width(), (int64)img->Height()); \
+  } while (0)
+
+  SHOWSIZE(bluemarble);
+  SHOWSIZE(stars);
+  SHOWSIZE(jupitertexture);
+  SHOWSIZE(marstexture);
+  SHOWSIZE(saturntexture);
+  SHOWSIZE(venustexture);
+#undef SHOWSIZE
+}
+
 int main(int argc, char **argv) {
 
+  OSM osm;
+  #if 0
   auto pt = PacTom::FromFiles({"../pac.kml", "../pac2.kml"},
                               "../neighborhoods.kml");
   CHECK(pt.get() != nullptr);
   pactom = pt.release();
 
-  OSM osm;
   for (const string osmfile : {
         "../pittsburgh-center.osm",
         "../pittsburgh-northeast.osm",
@@ -559,83 +679,21 @@ int main(int argc, char **argv) {
         "../pittsburgh-southwest.osm",
         "../pittsburgh-west.osm",
        }) osm.AddFile(osmfile);
+  #endif
 
   InParallel(
       [&](){
         tile = new Tile;
-        tile->DrawStreets(*pactom, osm);
-        tile->DrawHoods(pactom);
+        if (pactom != nullptr) {
+          tile->DrawStreets(*pactom, osm);
+          tile->DrawHoods(pactom);
+        }
       },
       [](){
         widetile = new WideTile;
       });
 
-  //  const auto [a1, a2, a3, d_] = Optimize();
-  const double a1 = 0.117112122;
-  const double a2 = 3.008712215;
-  const double a3 = 2.284319047;
-  const double distance = 2.80100000000;
-
-  printf("Loading marble...\n");
-  // bluemarble = ImageRGBA::Load("world_shaded_43k.jpg");
-  // bluemarble = ImageRGBA::Load("bluemarble.png");
-
-  // stb_image can't decode the original (integer overflow) but two
-  // hemispheres do fit. So load them individually and blit them into
-  // the full sphere texture.
-  string west_file = "land_shallow_topo_west.jpg";
-  string east_file = "land_shallow_topo_east.jpg";
-
-  std::unique_ptr<ImageRGBA> west, east;
-
-  #if 1
-  InParallel(
-      [&](){ stars = ImageFRGBA::Load("starmap_2020_64k.exr"); },
-      [&](){ west.reset(ImageRGBA::Load(west_file)); },
-      [&](){ east.reset(ImageRGBA::Load(east_file)); });
-  CHECK(west.get() != nullptr);
-  CHECK(east.get() != nullptr);
-  CHECK(stars != nullptr);
-
-  CHECK(west->Height() == east->Height());
-  CHECK(west->Width() == east->Width());
-  Timer alloc_timer;
-  bluemarble = new ImageRGBA(west->Width() * 2, west->Height());
-  printf("Alloc in %.4fs\n", alloc_timer.Seconds());
-  CHECK(bluemarble != nullptr);
-
-  Timer copy_timer;
-  bluemarble->CopyImage(0, 0, *west);
-  bluemarble->CopyImage(west->Width(), 0, *east);
-  printf("Copy in %.4fs\n", copy_timer.Seconds());
-
-  west.reset();
-  east.reset();
-
-  // XXX
-  // ImageFRGBA sstars = stars->ScaleDownBy(4);
-  // sstars.ToRGBA().Save("sstars.png");
-
-  #else
-
-  bluemarble = ImageRGBA::Load("bluemarble.png");
-  {
-    // Load smaller file but convert to FRGBA
-    // (We could use an even smaller placeholder here...)
-    ImageRGBA *starsjpg = ImageRGBA::Load("sstars.png"); // "stars.jpg");
-    CHECK(starsjpg != nullptr);
-    printf("New from JPG:\n");
-    stars = new ImageFRGBA(*starsjpg);
-    delete starsjpg;
-  }
-  #endif
-
-  CHECK(stars != nullptr);
-  CHECK(bluemarble != nullptr);
-
-  printf("Done. Earth texture %d x %d\n Stars %lld x %lld\n",
-         bluemarble->Width(), bluemarble->Height(),
-         stars->Width(), stars->Height());
+  LoadTextures<false>();
 
   enum RenderMode {
     FRAMES,
@@ -644,7 +702,7 @@ int main(int argc, char **argv) {
     FRAME_VARIANTS,
   };
 
-  RenderMode mode = ONE_FRAME;
+  RenderMode mode = FRAMES;
   const int target_shot = 1;
   const int target_frame = 239;
   // static constexpr int FRAME_WIDTH = 2880;
@@ -653,51 +711,46 @@ int main(int argc, char **argv) {
   static constexpr int FRAME_HEIGHT = 1080;
   static constexpr int OVERSAMPLE = 4;
 
-  Position pittsburgh;
-  // pittsburgh.distance = 2.80000428964;
-  pittsburgh.distance = 2.81133246;
-  pittsburgh.a1 = 0.116977384;
-  pittsburgh.a2 = 3.008537539;
-  pittsburgh.a3 = 2.284259683;
+  System system;
+  system.ToSVG("solar-system.svg");
 
-  Position chainsaw;
-  chainsaw.distance = 42.8;
-  chainsaw.a1 = 0.11;
-  chainsaw.a2 = 3.00;
-  chainsaw.a3 = 2.27;
+  CameraPosition start;
+  start.pos = {EARTH_RADIUS * 3, 0, 0};
+  start.look_at = {0, 0, 0};
+  start.up = {0, 0, 1};
 
-  Position pacman;
-  /*
-  pacman.distance = 14.0;
-  pacman.a1 = a1;
-  pacman.a2 = a2 + 0.002;
-  pacman.a3 = a3 - 0.8;
-  */
+  CameraPosition look_at_mars;
+  look_at_mars.pos = start.pos;
+  look_at_mars.look_at = {0.0, +PLANET_SPACING, 0.0};
+  look_at_mars.up = start.up;
 
-  pacman.distance = 15.5;
-  pacman.a1 = a1;
-  pacman.a2 = a2 + 0.002 - 3.141592653589;
-  pacman.a3 = a3 - 0.8;
+  CameraPosition look_at_saturn;
+  look_at_saturn.pos =
+    {EARTH_RADIUS * -5, +PLANET_SPACING * 3, 0.0};
+  look_at_saturn.look_at = {0.0, +PLANET_SPACING * 3, 0};
+  look_at_saturn.up = start.up;
 
-  constexpr int SCENE_FRAMES = 240;
+  CameraPosition look_at_heaven;
+  look_at_heaven.pos =
+    {EARTH_RADIUS * -5, +PLANET_SPACING * 4, 0.0};
+  look_at_heaven.look_at = system.heaven.origin;
+  look_at_heaven.up = start.up;
 
-  Shot zoomin_shot;
-  zoomin_shot.start = chainsaw;
-  zoomin_shot.end = pittsburgh;
-  zoomin_shot.num_frames = SCENE_FRAMES;
-  zoomin_shot.draw_atmosphere = true;
-  zoomin_shot.draw_mouth = false;
-  zoomin_shot.easing = EaseOutQuart;
+  constexpr int SCENE_FRAMES = 12;
 
-  Shot zoomout_shot;
-  zoomout_shot.start = pittsburgh;
-  zoomout_shot.end = pacman;
-  zoomout_shot.num_frames = SCENE_FRAMES;
-  zoomout_shot.draw_atmosphere = false;
-  zoomout_shot.draw_mouth = true;
-  zoomout_shot.easing = EaseInOutSin;
 
-  std::vector<Shot> shots = {zoomin_shot, zoomout_shot};
+
+  Shot shot1;
+  shot1.getpos = LinearCamera(start, look_at_mars);
+  shot1.num_frames = SCENE_FRAMES;
+  // shot1.easing = EaseOutQuart;
+
+  Shot shot2;
+  shot2.getpos = LinearCamera(look_at_mars, look_at_heaven);
+  shot2.num_frames = SCENE_FRAMES;
+  shot2.easing = EaseOutQuart;
+
+  std::vector<Shot> shots = {shot1, shot2};
   int total_frames = 0;
   for (const Shot &shot : shots) total_frames += shot.num_frames;
 
@@ -709,13 +762,11 @@ int main(int argc, char **argv) {
       const Shot &shot = shots[s];
       for (int i = 0; i < shot.num_frames; i++) {
         double f = shot.easing(i / (double)(shot.num_frames - 1));
-        Position pos = InterpolatePos(shot.start, shot.end, f);
+        CameraPosition pos = shot.getpos(f);
         ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
-                                    pos,
-                                    shot.draw_atmosphere,
-                                    shot.draw_mouth);
+                                    pos);
         async.Run([s, i, img = std::move(img)]() {
-            img.Save(StringPrintf("sphere%d.%d.png", s, i));
+            img.Save(StringPrintf("solar/solar%d.%d.png", s, i));
             printf("%d.%d\n", s, i);
           });
       }
@@ -746,11 +797,8 @@ int main(int argc, char **argv) {
           const Shot &shot = shots[s];
           if (global_idx < shot.num_frames) {
             double f = global_idx / (double)(shot.num_frames - 1);
-            Position pos = InterpolatePos(shot.start, shot.end, f);
-            ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
-                                        pos,
-                                        shot.draw_atmosphere,
-                                        shot.draw_mouth);
+            CameraPosition pos = shot.getpos(f);
+            ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE, pos);
             mosaic.CopyImage(x * ONEW, y * ONEH, img);
             break;
           } else {
@@ -759,8 +807,8 @@ int main(int argc, char **argv) {
         }
       }
     }
-    mosaic.Save("mosaic.png");
-    printf("Wrote mosaic.png\n");
+    mosaic.Save("solar/mosaic.png");
+    printf("Wrote solar/mosaic.png\n");
     break;
   }
 
@@ -779,24 +827,26 @@ int main(int argc, char **argv) {
     ImageRGBA variants(ONEW * ACROSS, ONEH * DOWN);
     const Shot &shot = shots[target_shot];
     double f = shot.easing(target_frame / (double)(shot.num_frames - 1));
-    const Position center_pos = InterpolatePos(shot.start, shot.end, f);
+    const CameraPosition center_pos = shot.getpos(f);
 
     for (int y = 0; y < DOWN; y++) {
       for (int x = 0; x < ACROSS; x++) {
 
-        Position pos = center_pos;
+        CameraPosition pos = center_pos;
         if (y > 0 || x > 0) {
-          const double scale = 0.0001;
-          pos.a1 += gauss.Next() * scale;
-          pos.a2 += gauss.Next() * scale;
-          pos.a3 += gauss.Next() * scale;
-          pos.distance += gauss.Next() * scale;
+          static constexpr double scale = 0.0001;
+          auto RV = [&gauss]() {
+              return vec3d(gauss.Next() * scale,
+                           gauss.Next() * scale,
+                           gauss.Next() * scale);
+            };
+
+          pos.pos += RV();
+          pos.look_at += RV();
+          pos.up += RV();
         }
 
-        ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
-                                    pos,
-                                    shot.draw_atmosphere,
-                                    shot.draw_mouth);
+        ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE, pos);
         CHECK(img.Width() == ONEW);
         CHECK(img.Height() == ONEH);
 
@@ -815,12 +865,10 @@ int main(int argc, char **argv) {
     Timer run_timer;
     const Shot &shot = shots[target_shot];
     double f = shot.easing(target_frame / (double)(shot.num_frames - 1));
-    Position pos = InterpolatePos(shot.start, shot.end, f);
+    CameraPosition pos = shot.getpos(f);
     ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
-                                pos,
-                                shot.draw_atmosphere,
-                                shot.draw_mouth);
-    img.Save(StringPrintf("frame%d.%d.png", target_shot, target_frame));
+                                pos);
+    img.Save(StringPrintf("solar/frame%d.%d.png", target_shot, target_frame));
     double sec = run_timer.Seconds();
     printf("Wrote frame in %.1f sec.\n", sec);
 
