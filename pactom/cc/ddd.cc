@@ -119,30 +119,28 @@ int main(int argc, char **argv) {
 
   static constexpr int NUM_FRAMES = 30 * 60;
 
-  {
-    Asynchronously async(12);
-    for (int f = 0; f < NUM_FRAMES; f++) {
-      ImageRGBA out(WIDTH, HEIGHT);
-      out.Clear32(0x4f105cFF);
+  ParallelComp(
+      NUM_FRAMES,
+      [&](int f) {
+        ImageRGBA out(WIDTH, HEIGHT);
+        out.Clear32(0x4f105cFF);
 
-      for (int z = layers.size() - 1; z >= 0; z--) {
-        Layer &layer = layers[z];
-        Pos &pos = layer.pos;
-        int xx = pos.ox + sin(pos.angle) * pos.dist;
-        int yy = pos.oy + cos(pos.angle) * pos.dist;
-        pos.angle += pos.da;
-        out.BlendImage(xx, yy, layer.image);
-        // fog
-        out.BlendRect32(0, 0, WIDTH, HEIGHT, 0x4f105c06);
-      }
+        for (int z = layers.size() - 1; z >= 0; z--) {
+          const Layer &layer = layers[z];
+          const Pos &pos = layer.pos;
+          const double angle = pos.angle + f * pos.da;
+          const int xx = pos.ox + sin(angle) * pos.dist;
+          const int yy = pos.oy + cos(angle) * pos.dist;
+          out.BlendImage(xx, yy, layer.image);
+          // fog
+          out.BlendRect32(0, 0, WIDTH, HEIGHT, 0x4f105c06);
+        }
 
-      async.Run([f, out = std::move(out)]() {
-          string filename = StringPrintf("ddd-out\\ddd-%d.png", f);
-          out.Save(filename);
-          printf("%s\n", filename.c_str());
-        });
-    }
-  }
+        string filename = StringPrintf("ddd-out\\ddd-%d.png", f);
+        out.Save(filename);
+        printf("%s\n", filename.c_str());
+      },
+      12);
 
   printf("Wrote ddd-out\\ddd-*.png\n");
   return 0;
