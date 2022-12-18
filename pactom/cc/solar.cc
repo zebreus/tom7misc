@@ -151,6 +151,36 @@ struct CameraPosition {
   vec3d look_at;
 };
 
+// for t in [0, 1]
+static vec3d EvaluateCubicBezier(vec3d start, vec3d c1, vec3d c2, vec3d end,
+                                 double t) {
+  const double omt = 1.0 - t;
+  const double omt_squared = omt * omt;
+  const double omt_cubed = omt_squared * omt;
+  const double t_squared = t * t;
+  const double t_cubed = t_squared * t;
+
+  return omt_cubed * start +
+    3.0 * omt_squared * t * c1 +
+    3.0 * omt * t_squared * c2 +
+    t_cubed * end;
+}
+
+// We can be smarter by tesselating this, but for this problem just
+// sampling a bunch of points is plenty.
+static double CubicBezierLength(vec3d start, vec3d c1, vec3d c2, vec3d end) {
+  static constexpr int SAMPLES = 1024;
+  double total_length = 0.0;
+  vec3d prev = start;
+  for (int i = 0; i < SAMPLES; i++) {
+    const double t = (i + 1) / SAMPLES;
+    vec3d pt = EvaluateCubicBezier(start, c1, c2, end, t);
+    total_length += length(pt - prev);
+    prev = pt;
+  }
+  return total_length;
+}
+
 static CameraPosition InterpolatePos(const CameraPosition &a,
                                      const CameraPosition &b,
                                      double f) {
@@ -184,6 +214,60 @@ std::function<CameraPosition(double)> LinearCamera(
       return InterpolatePos(start, end, f);
     };
 }
+
+struct CameraSwing {
+  // Cubic bezier for camera pos.
+  vec3d c1, c2, end;
+  // at the end. Linear interpolation.
+  vec3d look_at;
+  vec3d up;
+};
+
+struct Path {
+  CameraPosition start;
+  std::vector<CameraSwing> swings;
+};
+
+std::function<CameraPosition(double)> PathCamera(Path path) {
+  // If degenerate...
+  if (path.swings.empty())
+    return [s = path.start](double f) {
+      return s;
+    };
+
+  return [path](double f) {
+      double scaled_f = f * path.swings.size();
+      // truncating
+      int idx = scaled_f;
+      if (idx < 0) return path.start;
+      if (idx >= path.swings.size()) {
+        CameraPosition end;
+        const CameraSwing &swing = path.swings.back();
+        end.pos = swing.end;
+        end.up = swing.up;
+        end.look_at = swing.look_at;
+        return end;
+      }
+
+      const double t = scaled_f - idx;
+      // This could be cleaner if we used CameraPosition in Swing?
+      const vec3d start_pos =
+        idx == 0 ? path.start.pos : path.swings[idx - 1].end;
+      const vec3d start_up =
+        idx == 0 ? path.start.up : path.swings[idx - 1].up;
+      const vec3d start_la =
+        idx == 0 ? path.start.look_at : path.swings[idx - 1].look_at;
+      const CameraSwing &swing = path.swings[idx];
+      CameraPosition cp;
+      cp.pos = EvaluateCubicBezier(start_pos, swing.c1, swing.c2, swing.end,
+                                   t);
+      // cp.pos = InterpolateVec(start_pos, swing.end, t);
+      cp.up = InterpolateVec(start_up, swing.up, t);
+      cp.look_at = InterpolateVec(start_la, swing.look_at, t);
+      return cp;
+    };
+}
+
 
 static double EaseOutQuart(double f) {
   double sf = (1.0 - f) * (1.0 - f);
@@ -714,6 +798,56 @@ int main(int argc, char **argv) {
   System system;
   system.ToSVG("solar-system.svg");
 
+  vec3d point = {-10.4,0,0};
+
+  Path path;
+  path.start.pos = point;
+  path.start.look_at = {0.0, 0.0, 0.0};
+  path.start.up = {0, 0, 1};
+
+  // Absolute.
+  auto CurveTo = [&path, &point](vec3d c1, vec3d c2, vec3d end,
+                                 vec3d look_at) {
+      CameraSwing swing;
+      swing.c1 = c1;
+      swing.c2 = c2;
+      swing.end = end;
+      swing.look_at = look_at;
+      swing.up = {0, 0, 1};
+      path.swings.push_back(swing);
+      point = end;
+    };
+
+  auto CurveToRelative = [&point, &CurveTo](vec3d c1, vec3d c2, vec3d end,
+                                            vec3d look_at) {
+      c1 += point;
+      c2 += point;
+      end += point;
+
+      CurveTo(c1, c2, end, look_at);
+    };
+
+  // capital is absolute
+  // lowercase is relative
+
+  CurveToRelative({1.7,2.2,0}, {2.3,4.8,0}, {9.9,6.7,0.0},
+                  // Look at Mars
+                  system.mars.origin);
+  CurveTo({6.3,8.4,0}, {16,9.8,0}, {18.6,19.5,0},
+          system.saturn.origin);
+  CurveToRelative({1.2,4.5,0}, {2.7,24.8,0}, {-1.5,30.3,0},
+                  system.heaven.origin);
+  CurveToRelative({-3.9,5.2,0}, {-9.4,6.1,0}, {-14.3,6.2,0},
+                  system.heaven.origin);
+
+  // Now we can get the (non-length-normalized) position as
+  // a function of t (index into the curves by 1/curves).
+  // But we want to remap time so that we move along the full
+  // path at a constant speed, so instead weight the segments
+  // by their length.
+  // TODO
+
+#if 0
   CameraPosition start;
   start.pos = {EARTH_RADIUS * 3, 0, 0};
   start.look_at = {0, 0, 0};
@@ -735,22 +869,22 @@ int main(int argc, char **argv) {
     {EARTH_RADIUS * -5, +PLANET_SPACING * 4, 0.0};
   look_at_heaven.look_at = system.heaven.origin;
   look_at_heaven.up = start.up;
+#endif
 
-  constexpr int SCENE_FRAMES = 12;
-
+  constexpr int SCENE_FRAMES = 240;
 
 
   Shot shot1;
-  shot1.getpos = LinearCamera(start, look_at_mars);
+  shot1.getpos = PathCamera(path);
   shot1.num_frames = SCENE_FRAMES;
   // shot1.easing = EaseOutQuart;
 
-  Shot shot2;
-  shot2.getpos = LinearCamera(look_at_mars, look_at_heaven);
-  shot2.num_frames = SCENE_FRAMES;
-  shot2.easing = EaseOutQuart;
+//   Shot shot2;
+//   shot2.getpos = LinearCamera(look_at_mars, look_at_heaven);
+//   shot2.num_frames = SCENE_FRAMES;
+//   shot2.easing = EaseOutQuart;
 
-  std::vector<Shot> shots = {shot1, shot2};
+  std::vector<Shot> shots = {shot1};
   int total_frames = 0;
   for (const Shot &shot : shots) total_frames += shot.num_frames;
 
