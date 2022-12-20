@@ -334,8 +334,12 @@ struct Sphere {
   double radius = 0.0f;
 };
 
+struct Triangle {
+  vec3d p0 = {0, 0, 0}, p1 = {0, 0, 0}, p2 = {0, 0, 0};
+};
+
 struct Prim {
-  std::variant<Sphere, Tetrahedron> v;
+  std::variant<Sphere, Tetrahedron, Triangle> v;
 };
 
 // From yocto_geometry.h, but fixing a bug (?) where the UV coordinates
@@ -414,6 +418,15 @@ struct Scene {
       } else if (const Tetrahedron *tet = std::get_if<Tetrahedron>(&p.v)) {
         prim_isect_d pi =
           intersect_tetrahedron(*ray, *tet);
+        if (pi.hit && pi.distance < isect.distance) {
+          isect = pi;
+          isect_idx = idx;
+        }
+
+      } else if (const Triangle *tri = std::get_if<Triangle>(&p.v)) {
+        prim_isect_d pi =
+          intersect_triangle(*ray, tri->p0, tri->p1, tri->p2);
+
         if (pi.hit && pi.distance < isect.distance) {
           isect = pi;
           isect_idx = idx;

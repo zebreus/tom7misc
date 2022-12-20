@@ -16,6 +16,7 @@
 #include "randutil.h"
 #include "color-util.h"
 #include "threadutil.h"
+#include "pactom-util.h"
 
 using namespace std;
 

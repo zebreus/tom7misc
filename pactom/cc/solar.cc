@@ -45,6 +45,11 @@ static constexpr double NEAR_WIDTH = 0.005;
 static constexpr double PLANET_SPACING = EARTH_RADIUS * 5.0;
 static constexpr vec3d PLANET_VEC = {0.0, PLANET_SPACING, 0.0};
 
+static constexpr double JUPITER_RADIUS = EARTH_RADIUS * 2.0;
+static constexpr double SATURN_RADIUS = JUPITER_RADIUS * 0.8;
+static constexpr double SATURN_RING_INNER_RADIUS = SATURN_RADIUS * 1.4;
+static constexpr double SATURN_RING_RADIUS = SATURN_RADIUS * 2;
+
 // of inner earth
 static constexpr double TOTAL_MILES = 800 + 1400 + 1800 + 25;
 // Normalized to [0, 1].
@@ -104,6 +109,7 @@ static ImageRGBA *heaventexture = nullptr;
 static ImageRGBA *jupitertexture = nullptr;
 static ImageRGBA *marstexture = nullptr;
 static ImageRGBA *saturntexture = nullptr;
+static ImageRGBA *saturnringtexture = nullptr;
 static ImageRGBA *venustexture = nullptr;
 static ImageRGBA *bluemarble = nullptr;
 static ImageFRGBA *stars = nullptr;
@@ -221,6 +227,8 @@ struct CameraSwing {
   // at the end. Linear interpolation.
   vec3d look_at;
   vec3d up;
+  std::function<double(double)> look_at_easing =
+    [](double f) { return f; };
 };
 
 struct Path {
@@ -235,36 +243,52 @@ std::function<CameraPosition(double)> PathCamera(Path path) {
       return s;
     };
 
-  return [path](double f) {
-      double scaled_f = f * path.swings.size();
-      // truncating
-      int idx = scaled_f;
-      if (idx < 0) return path.start;
-      if (idx >= path.swings.size()) {
-        CameraPosition end;
-        const CameraSwing &swing = path.swings.back();
-        end.pos = swing.end;
-        end.up = swing.up;
-        end.look_at = swing.look_at;
-        return end;
+  // Distance of each segment, so that we spend the same amount
+  // of time on each one.
+  vec3d prev = path.start.pos;
+  std::vector<double> dists;
+  double total_dist = 0.0;
+  for (const CameraSwing &swing : path.swings) {
+    double d = CubicBezierLength(prev, swing.c1, swing.c2, swing.end);
+    dists.push_back(d);
+    total_dist += d;
+    prev = swing.end;
+  }
+
+  CHECK(dists.size() == path.swings.size());
+  return [path = std::move(path),
+          dists = std::move(dists),
+          total_dist](double f) {
+      double dist_along_path = f * total_dist;
+      if (dist_along_path <= 0.0) return path.start;
+
+      // Loop over swings, consuming distance from
+      // dist_along_path, until we find the swing we're in.
+      CameraPosition prev = path.start;
+      for (int i = 0; i < path.swings.size(); i++) {
+        const CameraSwing &swing = path.swings[i];
+        const double d = dists[i];
+        if (dist_along_path < d) {
+          double t = dist_along_path / d;
+          CameraPosition cp;
+          cp.pos = EvaluateCubicBezier(
+              prev.pos, swing.c1, swing.c2, swing.end, t);
+          cp.up = InterpolateVec(prev.up, swing.up, t);
+          cp.look_at = InterpolateVec(prev.look_at, swing.look_at,
+                                      swing.look_at_easing(t));
+          return cp;
+        } else {
+          // To next
+          prev.pos = swing.end;
+          prev.look_at = swing.look_at;
+          prev.up = swing.up;
+          dist_along_path -= d;
+        }
       }
 
-      const double t = scaled_f - idx;
-      // This could be cleaner if we used CameraPosition in Swing?
-      const vec3d start_pos =
-        idx == 0 ? path.start.pos : path.swings[idx - 1].end;
-      const vec3d start_up =
-        idx == 0 ? path.start.up : path.swings[idx - 1].up;
-      const vec3d start_la =
-        idx == 0 ? path.start.look_at : path.swings[idx - 1].look_at;
-      const CameraSwing &swing = path.swings[idx];
-      CameraPosition cp;
-      cp.pos = EvaluateCubicBezier(start_pos, swing.c1, swing.c2, swing.end,
-                                   t);
-      // cp.pos = InterpolateVec(start_pos, swing.end, t);
-      cp.up = InterpolateVec(start_up, swing.up, t);
-      cp.look_at = InterpolateVec(start_la, swing.look_at, t);
-      return cp;
+      // Past the end.
+      return prev;
+
     };
 }
 
@@ -328,8 +352,6 @@ struct System {
     atmos[MARS_ATMOSPHERE_PRIM].gradient = MARS_ATMOSPHERE_GRADIENT;
     scene.prims.emplace_back(mars_atmosphere);
 
-    constexpr double JUPITER_RADIUS = EARTH_RADIUS * 2.0;
-
     jupiter.radius = JUPITER_RADIUS;
     jupiter.origin = 2 * PLANET_VEC;
     JUPITER_PRIM = scene.prims.size();
@@ -341,7 +363,6 @@ struct System {
     atmos[JUPITER_ATMOSPHERE_PRIM].gradient = JUPITER_ATMOSPHERE_GRADIENT;
     scene.prims.emplace_back(jupiter_atmosphere);
 
-    constexpr double SATURN_RADIUS = JUPITER_RADIUS * 0.8;
     saturn.radius = SATURN_RADIUS;
     saturn.origin = 3 * PLANET_VEC;
     SATURN_PRIM = scene.prims.size();
@@ -352,6 +373,31 @@ struct System {
     SATURN_ATMOSPHERE_PRIM = scene.prims.size();
     atmos[SATURN_ATMOSPHERE_PRIM].gradient = SATURN_ATMOSPHERE_GRADIENT;
     scene.prims.emplace_back(saturn_atmosphere);
+
+    // Saturn's ring is just a textured triangle. Start at the
+    // origin and rotate it.
+    Triangle ring;
+    // The size doesn't really matter; it just needs to be big
+    // enough to fit the ring radius.
+    auto PlaceRing = [this](vec3d v) {
+        // v = RotYaw(1.0) * v;
+        // v =
+        // Rotate!
+        auto frame = rotation_frame({0.6, 0.3, 0.5}, pi / 3);
+
+        return transform_point(frame, v) + saturn.origin;
+      };
+
+    ring.p0 = PlaceRing({0, SATURN_RING_RADIUS * 4, 0});
+    ring.p1 = PlaceRing({SATURN_RING_RADIUS * 2,
+                         -0.62 * 2 * SATURN_RING_RADIUS,
+                         0});
+    ring.p2 = PlaceRing({-SATURN_RING_RADIUS * 2,
+                         -0.62 * 2 * SATURN_RING_RADIUS,
+                         0});
+
+    SATURN_RING_PRIM = scene.prims.size();
+    scene.prims.emplace_back(ring);
 
     heaven.radius = EARTH_RADIUS;
     heaven.origin = 4 * PLANET_VEC;
@@ -377,11 +423,13 @@ struct System {
   Sphere earth_atmosphere, mars_atmosphere, jupiter_atmosphere,
     saturn_atmosphere, heaven_atmosphere;
   Tetrahedron mouth;
+  Triangle saturn_ring;
 
   int EARTH_PRIM, MARS_PRIM, JUPITER_PRIM, SATURN_PRIM, HEAVEN_PRIM,
     STARS_PRIM;
   int EARTH_ATMOSPHERE_PRIM, MARS_ATMOSPHERE_PRIM, JUPITER_ATMOSPHERE_PRIM,
     SATURN_ATMOSPHERE_PRIM, HEAVEN_ATMOSPHERE_PRIM;
+  int SATURN_RING_PRIM;
   int MOUTH_PRIM;
 
   void ToSVG(const string &filename) {
@@ -529,7 +577,11 @@ static ImageRGBA RenderFrame(
                   // printf("%.5f\n", pi.distance);
                   first = false;
                 }
-                uint32_t color = EarthColor(1.0f - pi.uv.x, pi.uv.y,
+                double ux = 1.0 - pi.uv.x;
+                // hack: Rotating uv coordinates
+                ux = fmod(pi.uv.x + 0.25, 1.0);
+
+                uint32_t color = EarthColor(ux, pi.uv.y,
                                             pi.distance);
 
                 vec3d pt = ray.o + pi.distance * ray.d;
@@ -585,6 +637,31 @@ static ImageRGBA RenderFrame(
 
               EmitColor(color);
               return;
+
+            } else if (idx == system.SATURN_RING_PRIM) {
+
+              //    printf("ring hit!\n");
+
+              vec3d pt = (ray.o + pi.distance * ray.d);
+              double len = length(pt - system.saturn.origin);
+
+              if (len > SATURN_RING_INNER_RADIUS &&
+                  len < SATURN_RING_RADIUS) {
+                double ux = (len - SATURN_RING_INNER_RADIUS) /
+                  (SATURN_RING_RADIUS - SATURN_RING_INNER_RADIUS);
+
+                float r, g, b, a;
+                std::tie(r, g, b, a) = saturnringtexture->SampleBilinear(
+                    ux * saturnringtexture->Width(),
+                    0.5 * saturnringtexture->Height());
+                uint32_t c =
+                  ColorUtil::FloatsTo32(
+                      r / 255.0f, g / 255.0f, b / 255.0f, (a * 0.5f) / 255.0f);
+
+                blend.push_back(c);
+              } /* else {
+                blend.push_back(0xFF0000AA);
+                } */
 
             } else if (idx == system.MOUTH_PRIM) {
 
@@ -680,6 +757,7 @@ static void LoadTextures() {
       [&]() { heaventexture = ImageRGBA::Load("heaven.png"); },
       [&]() { marstexture = ImageRGBA::Load("mars.jpg"); },
       [&]() { saturntexture = ImageRGBA::Load("saturn.jpg"); },
+      [&]() { saturnringtexture = ImageRGBA::Load("saturn-ring.png"); },
       [&]() { venustexture = ImageRGBA::Load("venus.jpg"); }
              );
 
@@ -738,10 +816,12 @@ static void LoadTextures() {
   } while (0)
 
   SHOWSIZE(bluemarble);
+  SHOWSIZE(heaventexture);
   SHOWSIZE(stars);
   SHOWSIZE(jupitertexture);
   SHOWSIZE(marstexture);
   SHOWSIZE(saturntexture);
+  SHOWSIZE(saturnringtexture);
   SHOWSIZE(venustexture);
 #undef SHOWSIZE
 }
@@ -777,7 +857,7 @@ int main(int argc, char **argv) {
         widetile = new WideTile;
       });
 
-  LoadTextures<false>();
+  LoadTextures<true>();
 
   enum RenderMode {
     FRAMES,
@@ -787,8 +867,8 @@ int main(int argc, char **argv) {
   };
 
   RenderMode mode = FRAMES;
-  const int target_shot = 1;
-  const int target_frame = 239;
+  const int target_shot = 0;
+  const int target_frame = 279;
   // static constexpr int FRAME_WIDTH = 2880;
   // static constexpr int FRAME_HEIGHT = 1620;
   static constexpr int FRAME_WIDTH = 1920;
@@ -798,7 +878,18 @@ int main(int argc, char **argv) {
   System system;
   system.ToSVG("solar-system.svg");
 
-  vec3d point = {-10.4,0,0};
+  /*
+  auto TransformPos = [](vec3d v) {
+      v.x *= -1.0;
+      return v;
+    };
+  */
+  auto TransformPos = [](vec3d v) { return v; };
+
+  // vec3d point = {-10.4,0,0};
+  vec3d point = {2.0,0,2.08};
+  point = TransformPos(point);
+
 
   Path path;
   path.start.pos = point;
@@ -806,16 +897,16 @@ int main(int argc, char **argv) {
   path.start.up = {0, 0, 1};
 
   // Absolute.
-  auto CurveTo = [&path, &point](vec3d c1, vec3d c2, vec3d end,
-                                 vec3d look_at) {
+  auto CurveTo = [&](vec3d c1, vec3d c2, vec3d end, vec3d look_at) {
       CameraSwing swing;
-      swing.c1 = c1;
-      swing.c2 = c2;
-      swing.end = end;
-      swing.look_at = look_at;
+      swing.c1 = TransformPos(c1);
+      swing.c2 = TransformPos(c2);
+      swing.end = TransformPos(end);
+      swing.look_at = TransformPos(look_at);
       swing.up = {0, 0, 1};
       path.swings.push_back(swing);
-      point = end;
+      point = TransformPos(end);
+      return &path.swings.back();
     };
 
   auto CurveToRelative = [&point, &CurveTo](vec3d c1, vec3d c2, vec3d end,
@@ -824,11 +915,28 @@ int main(int argc, char **argv) {
       c2 += point;
       end += point;
 
-      CurveTo(c1, c2, end, look_at);
+      return CurveTo(c1, c2, end, look_at);
     };
 
   // capital is absolute
   // lowercase is relative
+
+  CurveToRelative({0,0,0}, {3.9,-1.2,0}, {6.2,0.5,0},
+                  system.earth.origin);
+
+  CameraSwing *look_at_mars =
+    CurveToRelative({1,0.7,0}, {2.3,2.3,0}, {-0.6,4.6,0},
+                    system.mars.origin);
+  look_at_mars->look_at_easing = EaseInOutSin;
+
+  CurveTo({3.4,8.2,0}, {-4,6.4, 0}, {-9.9,14,0},
+          system.saturn.origin);
+
+  CurveToRelative({-6.6,8.4,0}, {-7.3,42.3,0}, {7.1,42,0},
+                  system.heaven.origin);
+
+  /*
+  CurveToRelative({0,0,0}, {-7.6,-3.3,0}, {-7.6,2.3,0});
 
   CurveToRelative({1.7,2.2,0}, {2.3,4.8,0}, {9.9,6.7,0.0},
                   // Look at Mars
@@ -839,39 +947,9 @@ int main(int argc, char **argv) {
                   system.heaven.origin);
   CurveToRelative({-3.9,5.2,0}, {-9.4,6.1,0}, {-14.3,6.2,0},
                   system.heaven.origin);
+  */
 
-  // Now we can get the (non-length-normalized) position as
-  // a function of t (index into the curves by 1/curves).
-  // But we want to remap time so that we move along the full
-  // path at a constant speed, so instead weight the segments
-  // by their length.
-  // TODO
-
-#if 0
-  CameraPosition start;
-  start.pos = {EARTH_RADIUS * 3, 0, 0};
-  start.look_at = {0, 0, 0};
-  start.up = {0, 0, 1};
-
-  CameraPosition look_at_mars;
-  look_at_mars.pos = start.pos;
-  look_at_mars.look_at = {0.0, +PLANET_SPACING, 0.0};
-  look_at_mars.up = start.up;
-
-  CameraPosition look_at_saturn;
-  look_at_saturn.pos =
-    {EARTH_RADIUS * -5, +PLANET_SPACING * 3, 0.0};
-  look_at_saturn.look_at = {0.0, +PLANET_SPACING * 3, 0};
-  look_at_saturn.up = start.up;
-
-  CameraPosition look_at_heaven;
-  look_at_heaven.pos =
-    {EARTH_RADIUS * -5, +PLANET_SPACING * 4, 0.0};
-  look_at_heaven.look_at = system.heaven.origin;
-  look_at_heaven.up = start.up;
-#endif
-
-  constexpr int SCENE_FRAMES = 240;
+  constexpr int SCENE_FRAMES = 60 * 10;
 
 
   Shot shot1;
@@ -879,10 +957,6 @@ int main(int argc, char **argv) {
   shot1.num_frames = SCENE_FRAMES;
   // shot1.easing = EaseOutQuart;
 
-//   Shot shot2;
-//   shot2.getpos = LinearCamera(look_at_mars, look_at_heaven);
-//   shot2.num_frames = SCENE_FRAMES;
-//   shot2.easing = EaseOutQuart;
 
   std::vector<Shot> shots = {shot1};
   int total_frames = 0;
@@ -968,7 +1042,7 @@ int main(int argc, char **argv) {
 
         CameraPosition pos = center_pos;
         if (y > 0 || x > 0) {
-          static constexpr double scale = 0.0001;
+          static constexpr double scale = 0.01;
           auto RV = [&gauss]() {
               return vec3d(gauss.Next() * scale,
                            gauss.Next() * scale,
@@ -976,8 +1050,8 @@ int main(int argc, char **argv) {
             };
 
           pos.pos += RV();
-          pos.look_at += RV();
-          pos.up += RV();
+          // pos.look_at += RV();
+          // pos.up += RV();
         }
 
         ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE, pos);
@@ -985,6 +1059,9 @@ int main(int argc, char **argv) {
         CHECK(img.Height() == ONEH);
 
         variants.CopyImage(x * ONEW, y * ONEH, img);
+        variants.BlendText32(x * ONEW, y * ONEH, 0x00FFFFFF,
+                             StringPrintf("%.4f,%.4f,%.4f",
+                                          pos.pos.x, pos.pos.y, pos.pos.z));
       }
     }
     string filename = StringPrintf("variants%d.%d.png",
@@ -1002,9 +1079,11 @@ int main(int argc, char **argv) {
     CameraPosition pos = shot.getpos(f);
     ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
                                 pos);
-    img.Save(StringPrintf("solar/frame%d.%d.png", target_shot, target_frame));
+    string filename = StringPrintf("solar/frame%d.%d.png",
+                                   target_shot, target_frame);
+    img.Save(filename);
     double sec = run_timer.Seconds();
-    printf("Wrote frame in %.1f sec.\n", sec);
+    printf("Wrote %s in %.1f sec.\n", filename.c_str(), sec);
 
     break;
   }

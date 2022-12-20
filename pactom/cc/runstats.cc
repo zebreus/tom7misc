@@ -28,7 +28,8 @@ int main(int argc, char **argv) {
       if (run.year > 0) {
         by_year[run.year]++;
         StringAppendF(&out, "%04d-%02d-%02d\t%.5f\n",
-                      run.year, run.month, run.day, PacTom::RunMiles(run, true));
+                      run.year, run.month, run.day,
+                      PacTom::RunMiles(run, true));
       }
     }
 
