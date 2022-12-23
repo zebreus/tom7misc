@@ -393,7 +393,7 @@ struct
                   all_a
     end
 
-  (* If points on the same path are greater than 50m apart, assume a
+  (* If points on the same path are greater than 250m apart, assume a
      data problem and don't create that edge. *)
   val PATH_ERROR_M = 250.0
   (* Distance within which we create an implicit edge between nearby

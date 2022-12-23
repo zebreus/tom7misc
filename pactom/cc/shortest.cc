@@ -24,13 +24,15 @@ using namespace std;
 
 using int64 = int64_t;
 
+static constexpr int ZOOM = 8;
+
 static constexpr double PI = std::numbers::pi;
 static constexpr double METERS_TO_FEET = 3.28084;
-static constexpr int WIDTH = 1920 * 4;
-static constexpr int HEIGHT = 1080 * 4;
+static constexpr int WIDTH = 1920 * ZOOM;
+static constexpr int HEIGHT = 1080 * ZOOM;
 static constexpr int SCALE = 4;
 // Additional pixels to draw for line (0 = 1 pixel thick)
-static constexpr int RADIUS = 2 * 4;
+static constexpr int RADIUS = 2 * ZOOM;
 
 using SpanningTree = PacTom::SpanningTree;
 

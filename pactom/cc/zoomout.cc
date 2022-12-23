@@ -27,18 +27,15 @@ static constexpr int WIDTH = 1920;
 static constexpr int HEIGHT = 1080;
 static constexpr int SCALE = 4;
 // Additional pixels to draw for line (0 = 1 pixel thick)
-static constexpr int RADIUS = 3;
-// circle at end while in motino
-static constexpr int DOT_RADIUS = 16;
+static constexpr int RADIUS = 4;
+// circle at end while in motion
+static constexpr int DOT_RADIUS = 18;
 
-static constexpr int NUM_FRAMES = 256;
+static constexpr int NUM_FRAMES = 512 + 256;
 
 int main(int argc, char **argv) {
   ArcFour rc("pactom");
-  unique_ptr<PacTom> pactom = PacTom::FromFiles({"../pac.kml",
-                                                 "../pac2.kml"},
-    "../neighborhoods.kml"
-    );
+  unique_ptr<PacTom> pactom = PacTomUtil::Load(false);
   CHECK(pactom.get() != nullptr);
 
   std::vector<uint32_t> colors;
@@ -46,7 +43,7 @@ int main(int argc, char **argv) {
                         std::vector<std::pair<LatLon, double>>>> paths;
   for (const auto &r : pactom->runs) {
     uint32_t color =
-      PacTomUtil::RandomBrightColor(&rc) & 0xFFFFFF33; // XXX
+      PacTomUtil::RandomBrightColor(&rc) & 0xFFFFFF77; // XXX
     colors.emplace_back(color);
   }
 
@@ -129,7 +126,7 @@ int main(int argc, char **argv) {
 
       ImageRGBA out = image.ScaleDownBy(SCALE);
 
-      out.Save(StringPrintf("zoom%04d.png", (int)frame));
+      out.Save(StringPrintf("zoomout/zoom%04d.png", (int)frame));
       printf(".");
     };
 

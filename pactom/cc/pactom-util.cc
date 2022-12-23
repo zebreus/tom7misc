@@ -21,20 +21,6 @@ using Run = PacTom::Run;
 using uint32 = uint32_t;
 
 std::unique_ptr<PacTom> PacTomUtil::Load(bool merge_dates) {
-  #define TOMDIR "d:\\oldtom\\runs"
-  vector<string> raw_tomdir = Util::ListFiles(TOMDIR);
-  vector<string> tomdir;
-  for (string &f : raw_tomdir) {
-    if (f != "CVS" && f.find("~") == string::npos &&
-        !Util::StartsWith(f, "3dwr")) {
-      tomdir.push_back(Util::dirplus(TOMDIR, f));
-    }
-  }
-  printf("%d runs in tomdir\n", tomdir.size());
-
-  unique_ptr<PacTom> tompac = PacTom::FromFiles(tomdir, "", "", true);
-  CHECK(tompac.get() != nullptr);
-
   unique_ptr<PacTom> pactom = PacTom::FromFiles({"../pac.kml",
                                                  "../pac2.kml"},
     "../neighborhoods.kml",
@@ -44,6 +30,21 @@ std::unique_ptr<PacTom> PacTomUtil::Load(bool merge_dates) {
 
   if (merge_dates) {
     Timer timer;
+
+    #define TOMDIR "d:\\oldtom\\runs"
+    vector<string> raw_tomdir = Util::ListFiles(TOMDIR);
+    vector<string> tomdir;
+    for (string &f : raw_tomdir) {
+      if (f != "CVS" && f.find("~") == string::npos &&
+          !Util::StartsWith(f, "3dwr")) {
+        tomdir.push_back(Util::dirplus(TOMDIR, f));
+      }
+    }
+    printf("%d runs in tomdir\n", tomdir.size());
+
+    unique_ptr<PacTom> tompac = PacTom::FromFiles(tomdir, "", "", true);
+    CHECK(tompac.get() != nullptr);
+
     PacTomUtil::SetDatesFrom(pactom.get(), *tompac, 18);
     printf("Merged in %.3f sec\n", timer.Seconds());
     SortByDate(pactom.get());
