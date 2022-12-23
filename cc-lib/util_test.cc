@@ -228,6 +228,83 @@ static void TestStoi() {
   CHECK_EQ(Util::stoi("a"), 0);
 }
 
+static void TestMatchSpec() {
+  CHECK(Util::matchspec("u", 'u'));
+  CHECK(!Util::matchspec("u", 'v'));
+  CHECK(Util::matchspec("uv", 'u'));
+  CHECK(Util::matchspec("uv", 'v'));
+  CHECK(Util::matchspec("0-9", '3'));
+  CHECK(Util::matchspec("0-9", '0'));
+  CHECK(Util::matchspec("0-9", '9'));
+  CHECK(!Util::matchspec("0-9", 'a'));
+  CHECK(Util::matchspec("0-9a-z", 'a'));
+  CHECK(Util::matchspec("a-z0-9", 'a'));
+  CHECK(Util::matchspec("a-z0-9", '3'));
+  CHECK(Util::matchspec("0-9a-z", '3'));
+
+  CHECK(!Util::matchspec("^u", 'u'));
+  CHECK(Util::matchspec("^u", 'v'));
+  CHECK(!Util::matchspec("^uv", 'u'));
+  CHECK(!Util::matchspec("^uv", 'v'));
+  CHECK(!Util::matchspec("^0-9", '3'));
+  CHECK(!Util::matchspec("^0-9", '0'));
+  CHECK(!Util::matchspec("^0-9", '9'));
+  CHECK(Util::matchspec("^0-9", 'a'));
+  CHECK(!Util::matchspec("^0-9a-z", 'a'));
+  CHECK(!Util::matchspec("^a-z0-9", 'a'));
+  CHECK(!Util::matchspec("^a-z0-9", '3'));
+  CHECK(!Util::matchspec("^0-9a-z", '3'));
+}
+
+static void TestMatchesWildcard() {
+  CHECK(Util::MatchesWildcard("abc", "abc"));
+  CHECK(!Util::MatchesWildcard("", "abc"));
+  CHECK(Util::MatchesWildcard("", ""));
+  CHECK(!Util::MatchesWildcard("", "a"));
+  CHECK(Util::MatchesWildcard("a?c", "abc"));
+  CHECK(!Util::MatchesWildcard("a?c", "ac"));
+
+  CHECK(Util::MatchesWildcard("*.exe", "debug.exe"));
+  CHECK(!Util::MatchesWildcard("*.exe", "debug.com"));
+  CHECK(!Util::MatchesWildcard("*.exe", "debug.exeno"));
+  CHECK(Util::MatchesWildcard("*.exe", ".exe"));
+
+  CHECK(Util::MatchesWildcard("debug.*", "debug.exe"));
+  CHECK(Util::MatchesWildcard("debug.*", "debug.com"));
+  CHECK(Util::MatchesWildcard("debug.*", "debug."));
+  CHECK(!Util::MatchesWildcard("debug.*", "format.com"));
+
+  CHECK(Util::MatchesWildcard("f*.exe", "format.exe"));
+  CHECK(!Util::MatchesWildcard("f*.exe", "debug.exe"));
+
+  CHECK(Util::MatchesWildcard("f*.*.exe", "format.00.exe"));
+  CHECK(!Util::MatchesWildcard("f*.*.exe", "format.exe"));
+
+  CHECK(Util::MatchesWildcard("z*", "zzzz"));
+  CHECK(Util::MatchesWildcard("z*", "z"));
+  CHECK(Util::MatchesWildcard("*z*", "z"));
+
+  CHECK(Util::MatchesWildcard("*?*", "z"));
+  CHECK(Util::MatchesWildcard("*?*", "abcdefg"));
+  CHECK(!Util::MatchesWildcard("*?*", ""));
+  CHECK(!Util::MatchesWildcard("?", ""));
+  CHECK(!Util::MatchesWildcard("?", "aa"));
+
+  CHECK(Util::MatchesWildcard("*", ""));
+  CHECK(Util::MatchesWildcard("**", ""));
+  CHECK(Util::MatchesWildcard("*", "hi"));
+  CHECK(Util::MatchesWildcard("***", "hi"));
+  CHECK(Util::MatchesWildcard("h***", "hi"));
+  CHECK(Util::MatchesWildcard("h***i", "hi"));
+  CHECK(Util::MatchesWildcard("h***i***", "hi"));
+  CHECK(Util::MatchesWildcard("h***?***", "hi"));
+  CHECK(Util::MatchesWildcard("h***?***", "him"));
+  CHECK(!Util::MatchesWildcard("**h***?***", "jh"));
+
+  CHECK(Util::MatchesWildcard("dddddd_*_Layer-*.png",
+                              "dddddd_0053_Layer-44.png"));
+}
+
 int main(int argc, char **argv) {
   TestItos();
   TestStoi();
@@ -242,6 +319,8 @@ int main(int argc, char **argv) {
   TestPrefixSuffix();
   TestParseDouble();
   TestFactorize();
+  TestMatchSpec();
+  TestMatchesWildcard();
   printf("OK\n");
   return 0;
 }

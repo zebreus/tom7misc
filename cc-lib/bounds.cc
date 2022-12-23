@@ -80,6 +80,10 @@ double Bounds::Scaler::ScaleY(double y) const {
   return (y + yoff) * ys;
 }
 std::pair<double, double>
+Bounds::Scaler::Scale(double x, double y) const {
+  return {ScaleX(x), ScaleY(y)};
+}
+std::pair<double, double>
 Bounds::Scaler::Scale(std::pair<double, double> p) const {
   return {ScaleX(p.first), ScaleY(p.second)};
 }
@@ -91,6 +95,10 @@ double Bounds::Scaler::UnscaleX(double x) const {
 double Bounds::Scaler::UnscaleY(double y) const {
   // PERF could compute and save xs inverse?
   return (y / ys) - yoff;
+}
+std::pair<double, double>
+Bounds::Scaler::Unscale(double x, double y) const {
+  return {UnscaleX(x), UnscaleY(y)};
 }
 std::pair<double, double>
 Bounds::Scaler::Unscale(std::pair<double, double> p) const {

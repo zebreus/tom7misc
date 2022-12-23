@@ -236,6 +236,20 @@ static void TestCopyImage() {
   // be correct now, but it is not really tested)
 }
 
+static void TestVerticalText() {
+  ImageRGBA img(256, 128);
+  img.Clear32(0x000000FF);
+
+  img.BlendBox32(10, 10, img.Width() - 10 - 10, img.Height() - 10 - 10,
+                 0x3333FFAA, 0x3333FF55);
+
+  img.BlendTextVert32(11, 11, false, 0xFFFF00FF, "hey test");
+  img.BlendTextVert32(img.Width() - 10 - 1 - 9,
+                      img.Height() - 10 - 1,
+                      true, 0xFF00FFFF, "what is this");
+  img.Save("image-test-vertical-text.png");
+}
+
 int main(int argc, char **argv) {
   TestCreateAndDestroy();
   TestCopies();
@@ -246,6 +260,8 @@ int main(int argc, char **argv) {
   TestLineEndpoints();
   TestFilledCircle();
   TestCopyImage();
+
+  TestVerticalText();
 
   // TODO: Test SaveToVec / LoadFromMemory round trip
 

@@ -128,6 +128,11 @@ struct Util {
      XXX document */
   static bool matchspec(string spec, char c);
 
+  /* Returns true if s matches the wildcard; the character *
+     means any sequence of bytes (or none) and the character
+     ? means any single byte. */
+  static bool MatchesWildcard(string_view wildcard, string_view s);
+
   /* An ordering on strings that gives a more "natural" sort:
      Tutorial 1, ..., Tutorial 9, Tutorial 10, Tutorial 11, ...
      rather than

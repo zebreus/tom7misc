@@ -103,6 +103,11 @@ struct ImageRGBA {
                  const std::string &s);
   void BlendText32(int x, int y, uint32 color, const std::string &s);
 
+  // x specifies the left edge, whether up or down. y specifies the
+  // bottom if up, or top if down.
+  void BlendTextVert32(int x, int y, bool up,
+                       uint32 color, const std::string &s);
+
   // Same font, but scaled to (crisp) 2x2 pixels.
   void BlendText2x(int x, int y,
                    uint8 r, uint8 g, uint8 b, uint8 a,

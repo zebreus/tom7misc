@@ -65,12 +65,14 @@ struct Bounds {
     // into bounds) to screen coordinates.
     double ScaleX(double x) const;
     double ScaleY(double y) const;
+    std::pair<double, double> Scale(double x, double y) const;
     std::pair<double, double> Scale(std::pair<double, double> p) const;
 
     // Inverse of the above (i.e., convert from screen coordinates to
     // points in the original coordinate system).
     double UnscaleX(double x) const;
     double UnscaleY(double y) const;
+    std::pair<double, double> Unscale(double x, double y) const;
     std::pair<double, double> Unscale(std::pair<double, double> p) const;
 
     // Derive new scalers.

@@ -474,6 +474,28 @@ void ImageRGBA::BlendText(int x, int y,
   BlendText32(x, y, Pack32(r, g, b, a), s);
 }
 
+void ImageRGBA::BlendTextVert32(int x, int y, bool up,
+                                uint32 color, const string &s) {
+  const int startx = up ? x : x + EmbeddedFont::HEIGHT;
+  const int starty = y; // up ? y + EmbeddedFont::WIDTH * s.size() : y;
+  auto SetPixelUp = [this, color, startx, starty](int xx, int yy) {
+      this->BlendPixel32(startx + yy, starty - xx, color);
+    };
+  auto SetPixelDown = [this, color, startx, starty](int xx, int yy) {
+      this->BlendPixel32(startx - yy, starty + xx, color);
+    };
+
+  std::function<void(int, int)> Set =
+    up ? std::function<void(int, int)>(SetPixelUp) :
+    std::function<void(int, int)>(SetPixelDown);
+  for (int i = 0; i < (int)s.size(); i++) {
+    uint8 c = s[i];
+    EmbeddedFont::Blit(c, i * EmbeddedFont::WIDTH, 0,
+                       Set,
+                       [](int x, int y) {});
+  }
+}
+
 void ImageRGBA::BlendText2x32(int x, int y, uint32 color, const string &s) {
   for (int i = 0; i < (int)s.size(); i++) {
     // Here we draw to "0,0", and then this function scales and translates.
@@ -572,7 +594,7 @@ void ImageRGBA::BlendImageRect(int dstx, int dsty, const ImageRGBA &other,
   for (int yy = 0; yy < srch; yy++) {
     const int syy = srcy + yy;
     const int dyy = dsty + yy;
-    // Exit early if outside dstination.
+    // Exit early if outside destination.
     if (dyy >= height) break;
     // Exit early if outside source.
     if (syy >= other.height) break;

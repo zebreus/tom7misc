@@ -10,6 +10,7 @@
 #include <string_view>
 #include <optional>
 #include <ctime>
+#include <unordered_set>
 
 #include "util.h"
 
@@ -1067,6 +1068,82 @@ bool Util::matchspec(string spec, char c) {
   return false; /* no match */
 }
 
+bool Util::MatchesWildcard(string_view wildcard_, string_view s) {
+  // Normalize to remove strings of asterisks; this is the same
+  // as a single asterisk but makes matching more expensive (and
+  // complicates the lookahead approach used in the * case below.
+  string wildcard;
+  wildcard.reserve(wildcard.size());
+  bool last_star = false;
+  for (size_t i = 0; i < wildcard_.size(); i++) {
+    if (wildcard_[i] == '*') {
+      if (!last_star)
+        wildcard.push_back('*');
+      last_star = true;
+    } else {
+      wildcard.push_back(wildcard_[i]);
+      last_star = false;
+    }
+  }
+
+  // printf("Normalized: %s\n", wildcard.c_str());
+
+  // We think of the wildcard as a finite state machine; this gives
+  // the set of states (as indices into the wildcard) that we
+  // might be at.
+  std::unordered_set<size_t> pos = {0};
+
+  for (size_t i = 0; i < s.size(); i++) {
+    // Next character to match.
+    const char sc = s[i];
+    if (pos.empty()) return false;
+    std::unordered_set<size_t> new_pos;
+    for (size_t x : pos) {
+      // After the last char is a valid position, but can't be
+      // matched since we know there are more characters in s.
+      if (x < wildcard.size()) {
+        const char wc = wildcard[x];
+        switch (wc) {
+        case '?':
+          // Matches any single byte.
+          new_pos.insert(x + 1);
+          break;
+
+        case '*':
+          // Here we can stay in the same position
+          // OR proceed to the next.
+          new_pos.insert(x);
+          // XXX Seems like there should be a cleaner
+          // way to do this?
+          if (x + 1 < wildcard.size() &&
+              (wildcard[x + 1] == '?' ||
+               sc == wildcard[x + 1])) {
+            new_pos.insert(x + 2);
+          }
+          break;
+
+        default:
+          if (sc == wc)
+            new_pos.insert(x + 1);
+          break;
+        }
+      }
+    }
+
+    pos = std::move(new_pos);
+    #if 0
+    printf("sc %c pos:", sc);
+    for (size_t x : pos) printf(" %d", (int)x);
+    printf("\n");
+    #endif
+  }
+
+  // Need to consume the entire wildcard, unless it
+  // ends with a *.
+  return pos.contains(wildcard.size()) ||
+    (!wildcard.empty() && wildcard[wildcard.size() - 1] == '*' &&
+     pos.contains(wildcard.size() - 1));
+}
 
 bool Util::library_matches(char k, const string &s) {
   /* skip symbolic */
