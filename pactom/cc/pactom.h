@@ -17,6 +17,7 @@ struct PacTom {
   static std::unique_ptr<PacTom> FromFiles(
       const std::vector<std::string> &files,
       const std::optional<std::string> &neighborhoods,
+      const std::optional<std::string> &countyfile,
       // If true, will mine any description from the
       // file for the run's date.
       bool one_run_per_file = false);
@@ -39,11 +40,14 @@ struct PacTom {
 
   // Borders of neighborhoods, if loaded.
   std::map<std::string, std::vector<LatLon>> hoods;
-
   std::vector<std::string> neighborhood_names;
-
   // Return -1 if not in any neighborhood; otherwise neighborhood id.
   int InNeighborhood(LatLon pos) const;
+
+  // Like above, but for municipalities in Allegheny County (if loaded).
+  std::map<std::string, std::vector<LatLon>> munis;
+  std::vector<std::string> muni_names;
+  int InMuni(LatLon pos) const;
 
   struct SpanningTree {
     struct Node {
@@ -65,7 +69,16 @@ struct PacTom {
  private:
   PacTom();
 
+  // Load neighborhoods or municipalities, which are represented the
+  // same way. Returns false on failure.
+  static bool LoadHoods(
+      const std::string &file,
+      std::map<std::string, std::vector<LatLon>> *borders,
+      std::vector<std::string> *names,
+      std::vector<std::pair<Bounds, const std::vector<LatLon> *>> *boxes);
+
   std::vector<std::pair<Bounds, const std::vector<LatLon> *>> hood_boxes;
+  std::vector<std::pair<Bounds, const std::vector<LatLon> *>> muni_boxes;
 };
 
 

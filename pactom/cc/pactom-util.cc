@@ -32,12 +32,14 @@ std::unique_ptr<PacTom> PacTomUtil::Load(bool merge_dates) {
   }
   printf("%d runs in tomdir\n", tomdir.size());
 
-  unique_ptr<PacTom> tompac = PacTom::FromFiles(tomdir, "", true);
+  unique_ptr<PacTom> tompac = PacTom::FromFiles(tomdir, "", "", true);
   CHECK(tompac.get() != nullptr);
 
   unique_ptr<PacTom> pactom = PacTom::FromFiles({"../pac.kml",
                                                  "../pac2.kml"},
-    "../neighborhoods.kml", false);
+    "../neighborhoods.kml",
+    "../allegheny-county.kml",
+    false);
   CHECK(pactom.get() != nullptr);
 
   if (merge_dates) {
@@ -74,7 +76,8 @@ static int RunEditDistance(const PacTom::Run &a, const PacTom::Run &b) {
   return score;
 }
 
-void PacTomUtil::SetDatesFrom(PacTom *dest, const PacTom &other, int max_threads) {
+void PacTomUtil::SetDatesFrom(
+    PacTom *dest, const PacTom &other, int max_threads) {
   ParallelComp(dest->runs.size(),
                [dest, &other](int idx) {
                  PacTom::Run &run = dest->runs[idx];

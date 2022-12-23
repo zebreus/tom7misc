@@ -221,11 +221,7 @@ static std::optional<std::tuple<int, int, int>> ParseDesc(
 }
 
 /*
-before
-Loaded 262 paths with 439778 waypoints.
-There are 93 hoods
 
-Now:
 Loaded 269 runs with 442338 waypoints.
 There are 93 hoods
 
@@ -339,6 +335,8 @@ struct KmlRec {
 };
 
 
+// This parses my "neighborhoods" file and also the KML
+// county file from the Allegheny GIS site.
 struct HoodRec {
   std::map<string, std::vector<LatLon>> polys;
 
@@ -371,9 +369,11 @@ struct HoodRec {
   }
 };
 
-std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
-                                          const optional<string> &hoodfile,
-                                          bool one_run_per_file) {
+std::unique_ptr<PacTom> PacTom::FromFiles(
+    const vector<string> &files,
+    const optional<string> &hoodfile,
+    const std::optional<std::string> &countyfile,
+    bool one_run_per_file) {
   std::unique_ptr<PacTom> pactom(new PacTom);
 
   for (const string &file : files) {
@@ -399,25 +399,50 @@ std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
   }
 
   for (const string &file : GetOpt(hoodfile)) {
-    const string contents = Util::ReadFile(file);
-    if (!contents.empty()) {
-      string error;
-      optional<XML::Node> nodeopt = XML::Parse(contents, &error);
-      if (!nodeopt.has_value()) {
-        printf("%s doesn't parse (%s)\n", file.c_str(), error.c_str());
-        return nullptr;
-      }
-
-      XML::Node &node = nodeopt.value();
-      HoodRec hoodrec;
-      hoodrec.Process(node);
-
-      pactom->hoods = std::move(hoodrec.polys);
+    if (!PacTom::LoadHoods(file,
+                           &pactom->hoods,
+                           &pactom->neighborhood_names,
+                           &pactom->hood_boxes)) {
+      return nullptr;
     }
   }
 
-  for (const auto &[name, poly] : pactom->hoods) {
-    pactom->neighborhood_names.push_back(name);
+  for (const string &file : GetOpt(countyfile)) {
+    if (!PacTom::LoadHoods(file,
+                           &pactom->munis,
+                           &pactom->muni_names,
+                           &pactom->muni_boxes)) {
+      return nullptr;
+    }
+  }
+
+  return pactom;
+}
+
+bool PacTom::LoadHoods(
+    const string &file,
+    std::map<std::string, std::vector<LatLon>> *borders,
+    std::vector<std::string> *names,
+    std::vector<std::pair<Bounds, const std::vector<LatLon> *>> *boxes) {
+
+  const string contents = Util::ReadFile(file);
+  if (!contents.empty()) {
+    string error;
+    optional<XML::Node> nodeopt = XML::Parse(contents, &error);
+    if (!nodeopt.has_value()) {
+      printf("%s doesn't parse (%s)\n", file.c_str(), error.c_str());
+      return false;
+    }
+
+    XML::Node &node = nodeopt.value();
+    HoodRec hoodrec;
+    hoodrec.Process(node);
+
+    *borders = std::move(hoodrec.polys);
+  }
+
+  for (const auto &[name, poly] : *borders) {
+    names->push_back(name);
 
     Bounds bounds;
     for (const LatLon pos : poly) {
@@ -425,10 +450,9 @@ std::unique_ptr<PacTom> PacTom::FromFiles(const vector<string> &files,
       bounds.Bound(x, y);
     }
 
-    pactom->hood_boxes.push_back(make_pair(bounds, &poly));
+    boxes->push_back(make_pair(bounds, &poly));
   }
-
-  return pactom;
+  return true;
 }
 
 static bool PointInside(const std::vector<LatLon> &poly,
@@ -463,6 +487,21 @@ int PacTom::InNeighborhood(LatLon pos) const {
 
   return -1;
 }
+
+int PacTom::InMuni(LatLon pos) const {
+  // Naive! PERF: Use a spatial data structure.
+
+  const auto [y, x] = pos.ToDegs();
+  for (int i = 0; i < muni_boxes.size(); i++) {
+    const auto &[bbox, ppoly] = muni_boxes[i];
+    if (bbox.Contains(x, y) && PointInside(*ppoly, pos)) {
+      return i;
+    }
+  }
+
+  return -1;
+}
+
 
 double PacTom::RunMiles(const Run &run, bool use_elevation) {
   double res = 0.0;
