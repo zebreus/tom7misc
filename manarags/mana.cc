@@ -4,9 +4,9 @@
 //--------------------------------------------------------------------------
 
 #include <string>
-#include <stdlib.h>
-#include <fstream.h>
-#include <iostream.h>
+#include <cstdlib>
+#include <fstream>
+#include <iostream>
 
 #define MAXWORDLEN 32
 #define STATMOD 1000
@@ -35,18 +35,18 @@ string lcase(string in);
 string lcase(string in) {
   for(unsigned int i= 0; i < in.length(); i++) {
     if (in[i] >= 'A' &&
-	in[i] <= 'Z') in[i] = in[i] | 32;
+  in[i] <= 'Z') in[i] = in[i] | 32;
   }
   return in;
 }
 
-main (int argc,char**argv) {
+int main (int argc,char**argv) {
 string infile = "wordlist.asc";
      if (!argv[1]) {
         cerr << "Manarags 2 by Tom Murphy 7\n"
                 "http://www.andrew.cmu.edu/~twm/mana/\n\n"
                 "mana [-q][-i wordfile][-m minlen][-f forced]\n"
-	        "       [-f forced][...][-b biggestwords] phrasetoanagram\n\n"
+          "       [-f forced][...][-b biggestwords] phrasetoanagram\n\n"
                 "recommended that you redirect to a file:\n\n"
                 "mana lambdacalculus > lambda.txt\n";
         exit(-1);

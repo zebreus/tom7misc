@@ -1,5 +1,8 @@
-default : mana
+default : mana.exe
 
-mana : mana.cc
-	g++ mana.cc -O3 -fomit-frame-pointer -fno-exceptions -fnonnull-objects -o mana
-	strip mana
+mana.exe : mana.cc
+	g++ $^ --std=c++20 -march=native -O3 -fomit-frame-pointer -fno-exceptions -static -o $@
+	strip mana.exe
+
+clean :
+	rm -f *.o mana.exe
