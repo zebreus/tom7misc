@@ -22,6 +22,6 @@ sig
 
   (* Estimate the current memory usage, for debug messages. May produce
      nonsensical values on platforms where it is not supported. *)
-  val memorySize : unit -> int
+  val memorySize : unit -> IntInf.int
 
 end

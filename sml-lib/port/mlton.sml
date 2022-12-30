@@ -15,6 +15,6 @@ struct
 
   val shareAll = MLton.shareAll
 
-  val memorySize = MLton.size
+  val memorySize = IntInf.fromLarge o MLton.size
 
 end

@@ -2,7 +2,7 @@
 # default : programs outputs thumbnails
 # default : kmlcat
 # default : shortest.kml shortest.svg
-default : map map.svg
+default : map.exe map.svg
 # default : llt.svg
 
 # XXXXXXXXXXXXXXXXXXXXX
@@ -17,35 +17,36 @@ PACTOMLIB=pactom.sml pactom-sig.sml ../sml-lib/files/xml/xml*.sml ../sml-lib/mis
 TIME=
 
 # '/c/program files (x86)/mlton/bin/mlton'
-MLTON=/c/mlton/bin/mlton.bat -target x86_64-w64-mingw32 -codegen amd64
+# MLTON=/c/mlton/bin/mlton.bat -target x86_64-w64-mingw32 -codegen amd64
+MLTON=/usr/src/mlton/bin/mlton
 
 # Generating programs.
-programs : shortestpaths colorize map elevsvg makepoints radial lltsvg kmlcat
+programs : shortestpaths.exe colorize.exe map.exe elevsvg.exe makepoints.exe radial.exe lltsvg.exe kmlcat.exe
 
-kmlcat : kmlcat.sml kmlcat.cm ../sml-lib/util/*.sml
-	${MLTON} kmlcat.cm
+kmlcat.exe : kmlcat.sml kmlcat.mlb ../sml-lib/util/*.sml
+	${MLTON} -output $@ kmlcat.mlb
 
-shortestpaths : shortestpaths.sml shortestpaths.cm ${PACTOMLIB} 
-	${MLTON} shortestpaths.cm
+shortestpaths.exe : shortestpaths.sml shortestpaths.mlb ${PACTOMLIB} 
+	${MLTON} -output $@ shortestpaths.mlb
 
-colorize : colorize.sml colorize.cm ${PACTOMLIB}
-	${MLTON} colorize.cm
+colorize.exe : colorize.sml colorize.mlb ${PACTOMLIB}
+	${MLTON} -output $@ colorize.mlb
 
-map : map.sml map.cm ${PACTOMLIB}
-	${MLTON} map.cm
+map.exe : map.sml map.mlb ${PACTOMLIB}
+	${MLTON} -output $@ map.mlb
 
 # XXX need output for this
-elevsvg : elevsvg.sml elevsvg.cm ${PACTOMLIB}
-	${MLTON} elevsvg.cm
+elevsvg.exe : elevsvg.sml elevsvg.mlb ${PACTOMLIB}
+	${MLTON} -output $@ elevsvg.mlb
 
-makepoints : makepoints.sml makepoints.cm ${PACTOMLIB} ../sml-lib/geom/*.sml
-	${MLTON} makepoints.cm
+makepoints.exe : makepoints.sml makepoints.mlb ${PACTOMLIB} ../sml-lib/geom/*.sml
+	${MLTON} -output $@ makepoints.mlb
 
-radial : radial.sml radial.cm ${PACTOMLIB} ../sml-lib/geom/*.sml
-	${MLTON} radial.cm
+radial.exe : radial.sml radial.mlb ${PACTOMLIB} ../sml-lib/geom/*.sml
+	${MLTON} -output $@ radial.mlb
 
-lltsvg : lltsvg.sml lltsvg.cm ${PACTOMLIB}
-	${MLTON} lltsvg.cm
+lltsvg.exe : lltsvg.sml lltsvg.mlb ${PACTOMLIB}
+	${MLTON} -output $@ lltsvg.mlb
 
 # outputs
 # XXX these should explicitly depend on inputs, like pac.kml
@@ -53,23 +54,23 @@ lltsvg : lltsvg.sml lltsvg.cm ${PACTOMLIB}
 outputs : radial.svg points.kml llt.svg map.svg
 
 map.svg : pac.kml pacannotations.kml pac2.kml neighborhoods.kml interstate-logo.svg # map
-	${TIME} ./map > $@
+	${TIME} ./map.exe > $@
 
 radial.svg : pac.kml pac2.kml # radial
-	${TIME} ./radial > $@
+	${TIME} ./radial.exe > $@
 
 points.kml : neighborhoods.kml # makepoints 
-	${TIME} ./makepoints > $@
+	${TIME} ./makepoints.exe > $@
 
 # This is getting near the maximum memory for 32 bit machines! Probably can do some
 # kind of pre-thinning of the points, or maybe a more efficient kd-tree representation,
-# or merge at load time?
+# or merge at load time? (Or just use the new C++ version...)
 # @MLton max-heap 600m --
 shortest.kml shortest.svg :  pac.kml pac2.kml # shortestpaths
-	${TIME} ./shortestpaths -kmlout shortest.kml -svgout shortest.svg
+	${TIME} ./shortestpaths.exe -kmlout shortest.kml -svgout shortest.svg
 
 llt.svg :  pac.kml pac2.kml # lltsvg
-	${TIME} ./lltsvg > $@
+	${TIME} ./lltsvg.exe > $@
 
 
 # MAKETHUMB=convert -scale 400
@@ -97,10 +98,10 @@ radial.png : radial.svg
 	${MAKEPDF} $< -o $@
 
 # Obsolete
-obsolete : parsexml
+obsolete : parsexml.exe
 
-parsexml : parsexml.cm parsexml.sml ${PACTOMLIB}
-	${MLTON} parsexml.cm
+parsexml.exe : parsexml.mlb parsexml.sml ${PACTOMLIB}
+	${MLTON} -output $@ parsexml.mlb
 
 # For release, we expect the following files in the current directory:
 #   pac.kml
@@ -124,7 +125,7 @@ release/%.pdf : %.pdf
 # XXX also annotations, neighborhood, etc.
 release/pactom.kmz : pac.kml pac2.kml # kmlcat
 	rm -f _pactom.kml
-	./kmlcat pac.kml pac2.kml > _pactom.kml
+	./kmlcat.exe pac.kml pac2.kml > _pactom.kml
 	rm -f release/pactom.kmz
 	zip release/pactom.kmz _pactom.kml
 
@@ -141,4 +142,4 @@ clean :
 veryclean : clean
 	rm -rf release
 	mkdir release
-	rm -f shortest.kml shortest.svg map.svg shortest.pdf map.pdf radial.svg points.kml radial.pdf kmlcat map shortestpaths colorize elevsvg makepoints radial lltsvg
+	rm -f shortest.kml shortest.svg map.svg shortest.pdf map.pdf radial.svg points.kml radial.pdf *.exe
