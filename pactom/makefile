@@ -13,12 +13,14 @@ all : programs outputs thumbnails pdfs obsolete release
 
 PACTOMLIB=pactom.sml pactom-sig.sml ../sml-lib/files/xml/xml*.sml ../sml-lib/misc/color*.sml ../sml-lib/geom/latlon*.sml ../sml-lib/geom/snappoint*.sml ../sml-lib/geom/latlontree*.sml ../sml-lib/geom/quadtree*.sml ../sml-lib/geom/pointlocation*.sml ../sml-lib/data/undirected-graph*.sml ../sml-lib/util/growarray*.sml ../sml-lib/algo/heap*.sml
 
+RSVG=rsvg-convert
+
 # has trouble on new cygwin, because it's a bash builtin?
 TIME=
 
 # '/c/program files (x86)/mlton/bin/mlton'
 # MLTON=/c/mlton/bin/mlton.bat -target x86_64-w64-mingw32 -codegen amd64
-MLTON=/usr/src/mlton/bin/mlton
+MLTON=/home/tom/mlton/bin/mlton
 
 # Generating programs.
 programs : shortestpaths.exe colorize.exe map.exe elevsvg.exe makepoints.exe radial.exe lltsvg.exe kmlcat.exe
@@ -75,8 +77,8 @@ llt.svg :  pac.kml pac2.kml # lltsvg
 
 # MAKETHUMB=convert -scale 400
 # MAKETHUMB="/c/program files/inkscape/inkscape"
-MAKETHUMB=rsvg/rsvg-convert --keep-aspect-ratio --width=580
-MAKEPDF=rsvg/rsvg-convert -f pdf
+MAKETHUMB=$(RSVG) --keep-aspect-ratio --width=580
+MAKEPDF=$(RSVG) -f pdf
 
 # XXX Text rendering is not that good this way. Might want to render at a much
 # larger size then downsample with imagemagick?
