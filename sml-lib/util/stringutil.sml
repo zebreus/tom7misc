@@ -567,6 +567,20 @@ struct
       SysWord.toInt (SysWord.orb(SysWord.fromInt(ord ch),
                                  SysWord.fromInt 4400)) mod 55
 
+  fun parsehexstring32 s =
+    if CharVector.all Char.isHexDigit s
+    then
+      let
+        fun loop n result =
+          if n < size s
+          then loop (n + 1) result * 0w16 +
+            (Word32.fromInt (hexvalue (CharVector.sub(s, n))))
+          else result
+      in
+        SOME (loop 0 (0w0 : Word32.word))
+      end
+   else NONE
+
   fun hexdump s =
     let
       (* one chunk of <= 16 bytes *)

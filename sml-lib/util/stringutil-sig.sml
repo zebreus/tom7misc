@@ -116,6 +116,7 @@ sig
 
   (* 0 = 0, A = 10, f = 15 *)
   val hexvalue : char -> int
+  val parsehexstring32 : string -> Word32.word option
 
   val hash : string -> Word.word
 
