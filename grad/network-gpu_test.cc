@@ -333,7 +333,7 @@ TrainTest(TrainNet train_net,
 
   Network &net = train_net.net;
   // Initialize with random weights.
-  RandomizeNetwork(&rc, &net, 2);
+  RandomizeNetwork(&rc, &net, {}, 2);
 
   auto net_gpu = make_unique<NetworkGPU>(cl, &net);
   net_gpu->SetVerbose(false);
@@ -558,7 +558,8 @@ TrainTest(TrainNet train_net,
         write_images_every.has_value() &&
         (finished || (iter % write_images_every.value()) == 0)) {
       net_gpu->ReadFromGPU();
-      images->Sample(net);
+      const vector<vector<float>> stims = training->ExportStimulationsFlat();
+      images->Sample(net, examples_per_round, stims);
     }
 
     if (SAVE_INTERMEDIATE && (finished || iter == 1000 || iter % 10000 == 0)) {
