@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <string>
+#include <set>
 
 #include "network.h"
 
@@ -178,6 +179,17 @@ struct NetworkTestUtil {
   // Tests a very simple case for the tanh transfer function. The
   // sign of the sum of inputs (-1, 0, 1).
   static TrainNet TanhSignFunctionAdam();
+
+  // Create a random network, using transfer functions from the set
+  // and chunk types from the other set (we use CHUNK_INPUt regardless
+  // of whether it is present). Used to test for example
+  // that the CPU and GPU implementations agree.
+  static Network RandomNetwork(ArcFour *rc,
+                               const std::set<TransferFunction> &tfs,
+                               const std::set<ChunkType> &cts,
+                               int num_inputs, int num_outputs,
+                               int num_real_layers,
+                               int max_nodes_per_layer);
 };
 
 

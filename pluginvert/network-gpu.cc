@@ -341,10 +341,11 @@ ForwardLayerCL::~ForwardLayerCL() {
 }
 
 
-
 SetOutputErrorCL::SetOutputErrorCL(
     CL *cl, NetworkGPU *net_gpu,
-    const std::optional<std::string> remap_define) : cl(cl), net_gpu(net_gpu) {
+    UpdateConfig config,
+    const std::optional<std::string> remap_define) : cl(cl), net_gpu(net_gpu),
+                                                     config(config) {
   const Network &net = *net_gpu->net;
   // This only runs on one layer, the output. But we do need to have the
   // transfer function's derivative.
@@ -379,8 +380,8 @@ SetOutputErrorCL::SetOutputErrorCL(
                   chunk_start,
                   chunk_idx,
                   layer.num_nodes,
-                  CLIP_ERROR ? "true" : "false",
-                  LARGE_ERROR);
+                  config.clip_error ? "true" : "false",
+                  config.error_max);
 
     kernel_src += base_src;
 
@@ -570,7 +571,9 @@ pair<vector<int>, vector<bool>> BackwardLayerCL::OptimizeChunkSchedule(
   return make_pair(schedule, overwrite);
 }
 
-BackwardLayerCL::BackwardLayerCL(CL *cl, NetworkGPU *net_gpu) : cl(cl), net_gpu(net_gpu) {
+BackwardLayerCL::BackwardLayerCL(CL *cl, NetworkGPU *net_gpu,
+                                 UpdateConfig config) :
+  cl(cl), net_gpu(net_gpu), config(config) {
   string base1_src = Util::ReadFile("backwardchunk.cl");
 
   const Network &net = *net_gpu->net;
@@ -675,8 +678,8 @@ BackwardLayerCL::BackwardLayerCL(CL *cl, NetworkGPU *net_gpu) : cl(cl), net_gpu(
                     "#define LARGE_ERROR %0.8ff\n",
                     src_layer_size,
                     out_idx,
-                    CLIP_ERROR ? "true" : "false",
-                    LARGE_ERROR);
+                    config.clip_error ? "true" : "false",
+                    config.error_max);
 
       kernel_src += base2_src;
 
@@ -1161,7 +1164,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
                     "#define NUM_FEATURES %d\n"
                     "#define NUM_WEIGHTS %lld\n"
                     "#define NUM_BIASES %lld\n"
-                    "#define OVERWRITE_GRAD %s\n",
+                    "#define OVERWRITE_GRAD %s\n"
+                    "#define CONV_UPDATE_EXPONENT %.11g\n",
                     net.layers[layer_idx - 1].num_nodes,
                     net.layers[layer_idx].num_nodes,
                     out_idx,
@@ -1178,7 +1182,8 @@ UpdateWeightsCL::UpdateWeightsCL(CL *cl, NetworkGPU *net_gpu,
                     chunk.num_features,
                     (int64)chunk.weights.size(),
                     (int64)chunk.biases.size(),
-                    w == examples_per_round ? "true" : "false");
+                    w == examples_per_round ? "true" : "false",
+                    config.conv_update_exponent);
 
       const string kernel1_name = UpdateWeights1KernelName(chunk.type);
 
@@ -1608,3 +1613,31 @@ void SummaryStatisticsCL::Compute(TrainingRoundGPU *training, int layer_idx) {
 
 }
 
+string UpdateConfig::ToString() const {
+  return StringPrintf("{.base_learning_rate = %.11g, "
+                      ".learning_rate_dampening = %.11g, "
+                      ".max_num_scratch = %lld, "
+                      ".adam_epsilon = %.11g, "
+                      ".adam_b1 = %.11g, "
+                      ".adam_b2 = %.11g, "
+                      ".clipping = %s, "
+                      ".constrain = %s, "
+                      ".weight_constrain_max = %.11g, "
+                      ".bias_constrain_max = %.11g, "
+                      ".clip_error = %s, "
+                      ".error_max = %.11g, "
+                      ".conv_update_exponent = %.11g }",
+                      base_learning_rate,
+                      learning_rate_dampening,
+                      max_num_scratch,
+                      adam_epsilon,
+                      adam_b1,
+                      adam_b2,
+                      clipping ? "true" : "false",
+                      constrain ? "true" : "false",
+                      weight_constrain_max,
+                      bias_constrain_max,
+                      clip_error ? "true" : "false",
+                      error_max,
+                      conv_update_exponent);
+}

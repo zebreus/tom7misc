@@ -114,6 +114,9 @@ const char *TransferFunctionName(TransferFunction tf);
 const char *ChunkTypeName(ChunkType ct);
 const char *WeightUpdateName(WeightUpdate wu);
 
+// Aborts if invalid.
+TransferFunction ParseTransferFunction(const std::string &s);
+
 struct Stimulation;
 struct Errors;
 
@@ -343,6 +346,18 @@ struct Network {
                               TransferFunction transfer_function,
                               WeightUpdate weight_update);
 
+  // Requires valid values. Returns the number of occurrences across,
+  // down.
+  static std::pair<int, int>
+  GetNumOccurrences(
+      int pattern_width,
+      int pattern_height,
+      int src_width,
+      int src_height,
+      int occurrence_x_stride,
+      int occurrence_y_stride);
+
+
   // XXX: This should return a Chunk?
   // returns indices, this_num_nodes,
   // num_occurrences_across, num_occurrences_down
@@ -550,6 +565,19 @@ struct Errors {
 // Randomize the weights in a network, like to initialize it for
 // training. TODO: Maybe should be in network-util or whatever.
 // TODO: Should parameterize this, probably!
-void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism = 2);
+struct RandomizationParams {
+  bool sigmoid_uniform = false;
+  float sigmoid_mag = 0.1f;
+
+  // Functions with zero mean, like tanh, are initialized
+  // with a uniform distribution in [-mag/sqrt(ipn), mag/sqrt(ipn)].
+  bool zeromean_uniform = true;
+  float zeromean_numer = 1.0f;
+
+  std::string ToString() const;
+};
+void RandomizeNetwork(ArcFour *rc, Network *net,
+                      RandomizationParams params = {},
+                      int max_parallelism = 2);
 
 #endif

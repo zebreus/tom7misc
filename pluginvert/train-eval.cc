@@ -856,7 +856,8 @@ static void Train(Network *net) {
     if ((iter % IMAGE_EVERY) == 0) {
       Timer image_timer;
       net_gpu->ReadFromGPU();
-      images.Sample(*net);
+      const vector<vector<float>> stims = training->ExportStimulationsFlat();
+      images.Sample(*net, EXAMPLES_PER_ROUND, stims);
       image_ms += image_timer.MS();
     }
 
@@ -1019,7 +1020,7 @@ static unique_ptr<Network> NewEvalNetwork() {
 
   // Then, more convolution and mixing layers.
   for (int layer = 0; layer < NUM_INTERNAL_LAYERS; layer++) {
-    const int conv_width = 
+    const int conv_width =
       first_conv_chunk.num_occurrences_across * FEATURES_3x3 *
       first_conv_chunk.num_occurrences_down;
     Chunk conv_chunk =
@@ -1107,7 +1108,7 @@ static unique_ptr<Network> NewEvalNetwork() {
   auto net = std::make_unique<Network>(layers);
 
   printf("Randomize..\n");
-  RandomizeNetwork(&rc, net.get(), 2);
+  RandomizeNetwork(&rc, net.get(), {}, 2);
   printf("New network with %lld parameters\n", net->TotalParameters());
   return net;
 }

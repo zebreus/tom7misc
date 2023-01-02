@@ -15,6 +15,9 @@
 //
 // Not thread-safe.
 struct ErrorHistory {
+  // Standardized columns, but use of these is optional.
+  static constexpr int ERROR_TRAIN = 0;
+  static constexpr int ERROR_TEST = 1;
 
   explicit ErrorHistory(const std::string &filename,
                         int num_models = 1);

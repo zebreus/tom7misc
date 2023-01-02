@@ -55,6 +55,16 @@ const char *WeightUpdateName(WeightUpdate wu) {
   }
 }
 
+TransferFunction ParseTransferFunction(const std::string &s) {
+  for (int i = 0; i < NUM_TRANSFER_FUNCTIONS; i++) {
+    TransferFunction tf = (TransferFunction)i;
+    if (s == TransferFunctionName(tf))
+      return tf;
+  }
+  CHECK(false) << "Unknown transfer function: " << s;
+  return SIGMOID;
+}
+
 // PERF: native_recip? native_exp? It's likely that we can tolerate
 // inaccuracy of certain sorts.
 const char *const Network::SIGMOID_FN =
@@ -670,6 +680,47 @@ Chunk Network::MakeRandomSparseChunk(
   return chunk;
 }
 
+std::pair<int, int>
+Network::GetNumOccurrences(
+    int pattern_width,
+    int pattern_height,
+    int src_width,
+    int src_height,
+    int occurrence_x_stride,
+    int occurrence_y_stride) {
+  CHECK(pattern_width >= 1);
+  CHECK(pattern_height >= 1);
+  CHECK(src_width >= 1);
+  CHECK(src_height >= 1);
+  CHECK(occurrence_x_stride >= 1);
+  CHECK(occurrence_y_stride >= 1);
+
+  const int num_occurrences_across = [&]() {
+      int count = 0;
+      int xpos = 0;
+      // pattern_width-1 is the last index we actually read
+      while (xpos + (pattern_width - 1) < src_width) {
+        // ok position
+        count++;
+        xpos += occurrence_x_stride;
+      }
+      return count;
+    }();
+  const int num_occurrences_down = [&]() {
+      int count = 0;
+      int ypos = 0;
+      // pattern_height-1 is the last index we actually read
+      while (ypos + (pattern_height - 1) < src_height) {
+        // ok position
+        count++;
+        ypos += occurrence_y_stride;
+      }
+      return count;
+    }();
+
+  return std::make_pair(num_occurrences_across,
+                        num_occurrences_down);
+}
 
 // static
 std::tuple<std::vector<uint32_t>, int, int, int>
@@ -700,29 +751,17 @@ Network::MakeConvolutionArrayIndices(
 
   const int indices_per_node = pattern_width * pattern_height;
 
-  const int num_occurrences_across = [&]() {
-      int count = 0;
-      int xpos = 0;
-      // pattern_width-1 is the last index we actually read
-      while (xpos + (pattern_width - 1) < src_width) {
-        // ok position
-        count++;
-        xpos += occurrence_x_stride;
-      }
-      return count;
-    }();
-  const int num_occurrences_down = [&]() {
-      int count = 0;
-      int ypos = 0;
-      // pattern_height-1 is the last index we actually read
-      while (ypos + (pattern_height - 1) < src_height) {
-        // ok position
-        count++;
-        ypos += occurrence_y_stride;
-      }
-      return count;
-    }();
+  const auto [num_occurrences_across,
+              num_occurrences_down] =
+    GetNumOccurrences(
+        pattern_width,
+        pattern_height,
+        src_width,
+        src_height,
+        occurrence_x_stride,
+        occurrence_y_stride);
 
+  CHECK(num_occurrences_across > 0);
   CHECK(num_occurrences_down > 0);
 
   const int num_occurrences = num_occurrences_across * num_occurrences_down;
@@ -1443,6 +1482,17 @@ int64 Errors::Bytes() const {
   return ret;
 }
 
+string RandomizationParams::ToString() const {
+  return StringPrintf("{.sigmoid_uniform = %s, "
+                      ".sigmoid_mag = %.11g, "
+                      ".zeromean_uniform = %s, "
+                      ".zeromean_numer = %.11g}",
+                      sigmoid_uniform ? "true" : "false",
+                      sigmoid_mag,
+                      zeromean_uniform ? "true" : "false",
+                      zeromean_numer);
+}
+
 // .. utils
 template<class C>
 static void DeleteElements(C *cont) {
@@ -1453,48 +1503,9 @@ static void DeleteElements(C *cont) {
 }
 
 // Randomize the weights in a network. Doesn't do anything to indices.
-void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
-  [[maybe_unused]]
-  auto RandomizeFloatsGaussian =
-    [](float mag, ArcFour *rc, vector<float> *vec) {
-      RandomGaussian gauss{rc};
-      for (int i = 0; i < vec->size(); i++) {
-        (*vec)[i] = mag * gauss.Next();
-      }
-    };
-
-  [[maybe_unused]]
-  auto RandomizeFloatsUniform =
-    [](float mag, ArcFour *rc, vector<float> *vec) {
-      // Uniform from -mag to mag.
-      const float width = 2.0f * mag;
-      for (int i = 0; i < vec->size(); i++) {
-        // Uniform in [0,1]
-        double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
-        float f = (width * d) - mag;
-        (*vec)[i] = f;
-      }
-    };
-
-  // Weights of exactly zero are just wasting indices, as they do
-  // not affect the prediction nor propagated error.
-  // Here the values are always within [hole_frac * mag, mag] or
-  // [-mag, -hole_frag * mag].
-  [[maybe_unused]]
-  auto RandomizeFloatsDonut =
-    [](float hole_frac, float mag, ArcFour *rc, vector<float> *vec) {
-      CHECK(hole_frac >= 0.0 && hole_frac < 1.0) << hole_frac;
-      // One side.
-      const double w = (1.0 - hole_frac) * mag;
-      for (int i = 0; i < vec->size(); i++) {
-        // Uniform in [0,1]
-        double d = (double)Rand32(rc) / (double)0xFFFFFFFF;
-        bool s = (rc->Byte() & 1) != 0;
-        float f = s ? d * -w : d * w;
-        (*vec)[i] = f;
-      }
-    };
-
+void RandomizeNetwork(ArcFour *rc, Network *net,
+                      RandomizationParams params,
+                      int max_parallelism) {
 
   // This must access rc serially.
   vector<ArcFour *> rcs;
@@ -1505,7 +1516,9 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
   // But now we can do all layers in parallel.
   ParallelComp(
       net->layers.size(),
-      [rcs, &RandomizeFloatsUniform, &RandomizeFloatsDonut, &net](int layer) {
+      [&params, rcs, &net](int layer) {
+        printf("Layer %d: there are %d chunks\n",
+               layer, (int)net->layers[layer].chunks.size());
         for (int chunk_idx = 0;
              chunk_idx < net->layers[layer].chunks.size();
              chunk_idx++) {
@@ -1515,6 +1528,39 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
 
           // Standard advice is to leave biases at 0 to start.
           for (float &f : chunk->biases) f = 0.0f;
+
+          // For sparse chunks, weights of exactly zero are just
+          // wasting indices, as they do not affect the prediction nor
+          // propagated error. Here we reject samples in (-hole,
+          // +hole). Note that if the hole is nonempty, and mean is
+          // nonzero, the generated samples with the hole rejected
+          // will not actually have the requested mean.
+          auto RandomizeFloatsDonut =
+            [layer, chunk_idx](
+                float mean, float hole, float mag, bool uniform,
+                ArcFour *rc, vector<float> *vec) {
+              printf("Layer %d chunk %d: mean %.5f, hole %.5f, mag %.5f, "
+                     "%s\n", layer, chunk_idx, mean, hole, mag,
+                     uniform ? "unif" : "gauss");
+              RandomGaussian gauss(rc);
+              CHECK(hole >= 0.0) << hole;
+              CHECK(!uniform ||
+                    (mean + mag) > hole ||
+                    (mean - mag) < -hole) << "Won't get any samples!";
+              for (int i = 0; i < vec->size(); i++) {
+                float f = 0.0;
+                do {
+                  // Uniform in [-1,1] or gaussian with mean 0.
+                  double d =
+                    uniform ?
+                    ((double)Rand32(rc) / (double)0xFFFFFFFF) * 2.0 - 1.0 :
+                    gauss.Next();
+                  f = (d - mean) * mag;
+                } while (fabsf(f) < hole);
+                (*vec)[i] = f;
+              }
+            };
+
 
           // Good weight initialization is important for training deep
           // models; if the initialized weights are too small, the
@@ -1535,27 +1581,48 @@ void RandomizeNetwork(ArcFour *rc, Network *net, int max_parallelism) {
           // ("Delving Deep into Rectifiers: Surpassing Human-Level
           // Performance on ImageNet Classification." K. He et. al.,
           // https://arxiv.org/pdf/1502.01852v1.pdf ).
-          // For SIGMOID...
+          //
+          // SIGMOID is well-known for vanishing gradients. Yilmaz and
+          // Poli (2022) recommend setting the mean nonzero (and
+          // in particular, negative) to avoid vanishing gradients.
+          // (I haven't seen this work yet, though.)
 
-          const float mag = [chunk]() {
-              switch (chunk->transfer_function) {
-              default:
-              case TANH:
-              case IDENTITY:
-                return 1.0f / sqrtf(chunk->indices_per_node);
-              case SIGMOID:
+          const float hole = chunk->type == CHUNK_SPARSE ? 0.001f : 0.0f;
 
-              case RELU:
-              case LEAKY_RELU:
-                return sqrtf(2.0 / chunk->indices_per_node);
-              }
-            }();
+          switch (chunk->transfer_function) {
+          default:
+          case TANH:
+          case IDENTITY: {
+            // Glorot and Bengio use sqrt(6) here, but their denominator
+            // is sqrt of the number of nodes in this layer plus the
+            // previous.
+            const float numer = params.zeromean_numer;
+            RandomizeFloatsDonut(0.0, hole,
+                                 numer / sqrtf(chunk->indices_per_node),
+                                 true, rcs[layer], &chunk->weights);
+            break;
+          }
 
-          if (chunk->type == CHUNK_SPARSE) {
-            // If sparse, don't output zero (or other tiny) weights.
-            RandomizeFloatsDonut(0.01f, mag, rcs[layer], &chunk->weights);
-          } else {
-            RandomizeFloatsUniform(mag, rcs[layer], &chunk->weights);
+          case SIGMOID: {
+            // Yilmaz and Poli.
+            const float mean =
+              std::max(-1.0f, -8.0f / chunk->indices_per_node);
+            // The paper recommends stddev = 0.1.
+            const float mag = params.sigmoid_mag;
+            RandomizeFloatsDonut(mean, hole, mag,
+                                 params.sigmoid_uniform,
+                                 rcs[layer], &chunk->weights);
+            break;
+          }
+
+          case RELU:
+          case LEAKY_RELU: {
+            // XXX parameterize numerator
+            const float mag = sqrtf(2.0 / chunk->indices_per_node);
+            RandomizeFloatsDonut(0.0f, hole, mag, true,
+                                 rcs[layer], &chunk->weights);
+            break;
+          }
           }
         }
       }, max_parallelism);
