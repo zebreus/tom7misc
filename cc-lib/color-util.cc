@@ -158,6 +158,22 @@ float ColorUtil::DeltaE(float l1, float a1, float b1,
   return de <= 0.0f ? 0.0f : sqrtf(de);
 }
 
+// TODO: Use std::lerp, but note this is c++20 only
+static inline float Lerp(float a, float b, float t) {
+  if (t < 0.0f) return a;
+  if (t >= 1.0f) return b;
+  return a * (1.0f - t) + t * b;
+}
+
+std::tuple<float, float, float> ColorUtil::Mix3Channels(
+    float ra, float ga, float ba,
+    float rb, float gb, float bb,
+    float t) {
+  return std::make_tuple(Lerp(ra, rb, t),
+                         Lerp(ga, gb, t),
+                         Lerp(ba, bb, t));
+}
+
 std::tuple<float, float, float>
 ColorUtil::LinearGradient(
     const ColorUtil::Gradient &ramp,
@@ -185,9 +201,10 @@ ColorUtil::LinearGradient(
       // linear interpolation
       const float w = x - px;
       const float f = (t - px) / w;
-      return std::make_tuple(std::lerp(pr, r, f),
-                             std::lerp(pg, g, f),
-                             std::lerp(pb, b, f));
+      // TODO: Better quality to mix in LAB space.
+      return Mix3Channels(pr, pg, pb,
+                          r, g, b,
+                          f);
     }
     prev = now;
   }

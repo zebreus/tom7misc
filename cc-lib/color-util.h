@@ -63,6 +63,13 @@ struct ColorUtil {
   static std::tuple<float, float, float, float>
   U32ToFloats(uint32_t rgba);
 
+  // Mix 3 color channels (linear interpolation). Note that it is
+  // better to mix in a perceptual color space like LAB than in RGB.
+  static std::tuple<float, float, float>
+  Mix3Channels(float ra, float ga, float ba,
+               float rb, float gb, float bb,
+               float t);
+
   // initializer_list so that these can be constexpr.
   using Gradient = std::initializer_list<
     std::tuple<float, float, float, float>>;

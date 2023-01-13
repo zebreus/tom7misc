@@ -38,9 +38,9 @@ struct LatLon {
   std::pair<double, double> ToDegs() const;
   // TODO: ToRads
 
-  /* Angle of a vector, in radians, where 0 is to the East and pi/2 is
-     to the north. The angle is undefined when the points are the same
-     or antipodes, in which case nullopt is returned.
+  /* Angle of a vector from a to b, in radians, where 0 is to the East
+     and pi/2 is to the north. The angle is undefined when the points
+     are the same or antipodes, in which case nullopt is returned.
      nb. I don't think this works if the source is the North or South
      pole. */
   static std::optional<double> Angle(LatLon a, LatLon b);

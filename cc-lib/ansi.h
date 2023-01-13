@@ -4,6 +4,9 @@
 #ifndef _CC_LIB_ANSI_H
 #define _CC_LIB_ANSI_H
 
+#include <string>
+#include <cstdint>
+
 #define ANSI_PREVLINE "\x1B[F"
 #define ANSI_CLEARLINE "\x1B[2K"
 #define ANSI_CLEARTOEOL "\x1B[0K"
@@ -53,6 +56,11 @@
   ANSI_INTERNAL_STR(g) ";" \
   ANSI_INTERNAL_STR(b) "m" s ANSI_RESET
 
+// Without ANSI_RESET.
+std::string AnsiForegroundRGB(uint8_t r, uint8_t g, uint8_t b);
+std::string AnsiBackgroundRGB(uint8_t r, uint8_t g, uint8_t b);
+
+
 // Call this in main for compatibility on windows.
 void AnsiInit();
 
@@ -62,5 +70,19 @@ void AnsiInit();
 // specific ones. Calls normal printf on other platforms, which
 // hopefully support the ansi codes.
 void CPrintf(const char* format, ...);
+
+
+inline std::string AnsiForegroundRGB(uint8_t r, uint8_t g, uint8_t b) {
+  char escape[24] = {};
+  sprintf(escape, "\x1B[38;2;%d;%d;%dm", r, g, b);
+  return escape;
+}
+
+inline std::string AnsiBackgroundRGB(uint8_t r, uint8_t g, uint8_t b) {
+  // Max size is 12.
+  char escape[24] = {};
+  sprintf(escape, "\x1B[48;2;%d;%d;%dm", r, g, b);
+  return escape;
+}
 
 #endif

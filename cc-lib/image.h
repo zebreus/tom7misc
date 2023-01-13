@@ -114,6 +114,9 @@ struct ImageRGBA {
                    const std::string &s);
   void BlendText2x32(int x, int y, uint32 color, const std::string &s);
 
+  void BlendTextVert2x32(int x, int y, bool up,
+                         uint32 color, const std::string &s);
+
   // Clipped. Alpha blending.
   // This draws a crisp pixel line using Bresenham's algorithm.
   // Includes start and end point. (TODO: Version that does not include

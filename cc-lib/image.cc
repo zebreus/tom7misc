@@ -519,6 +519,38 @@ void ImageRGBA::BlendText2x(int x, int y,
   BlendText2x32(x, y, Pack32(r, g, b, a), s);
 }
 
+void ImageRGBA::BlendTextVert2x32(int x, int y, bool up,
+                                  uint32 color, const string &s) {
+  const int startx = up ? x : x + EmbeddedFont::HEIGHT * 2;
+  const int starty = y;
+  auto SetPixelUp = [this, color, startx, starty](int xx, int yy) {
+      int x = startx + yy * 2;
+      int y = starty - xx * 2;
+      this->BlendPixel32(x + 0, y + 0, color);
+      this->BlendPixel32(x + 1, y + 0, color);
+      this->BlendPixel32(x + 0, y + 1, color);
+      this->BlendPixel32(x + 1, y + 1, color);
+    };
+  auto SetPixelDown = [this, color, startx, starty](int xx, int yy) {
+      int x = startx - yy * 2;
+      int y = starty + xx * 2;
+      this->BlendPixel32(x + 0, y + 0, color);
+      this->BlendPixel32(x + 1, y + 0, color);
+      this->BlendPixel32(x + 0, y + 1, color);
+      this->BlendPixel32(x + 1, y + 1, color);
+    };
+
+  std::function<void(int, int)> Set =
+    up ? std::function<void(int, int)>(SetPixelUp) :
+    std::function<void(int, int)>(SetPixelDown);
+  for (int i = 0; i < (int)s.size(); i++) {
+    uint8 c = s[i];
+    EmbeddedFont::Blit(c, i * EmbeddedFont::WIDTH * 2, 0,
+                       Set,
+                       [](int x, int y) {});
+  }
+}
+
 void ImageRGBA::BlendLine32(int x1, int y1, int x2, int y2,
                             uint32 color) {
   const auto [r, g, b, a] = Unpack32(color);

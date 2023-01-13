@@ -11,6 +11,7 @@
 using namespace std;
 
 inline constexpr double PI = std::numbers::pi;
+inline constexpr double TWO_PI = 2.0 * PI;
 
 // For distance calculations, I only ported the iterative solution from
 // sml-lib, based on the note there.
@@ -291,5 +292,12 @@ optional<double> LatLon::Angle(LatLon src, LatLon dst) {
   double dx = dstx - srcx;
   double dy = dsty - srcy;
   if (dx == 0.0 && dy == 0.0) return nullopt;
-  return make_optional(atan2(dy, dx));
+
+  double angle = atan2(dy, dx);
+
+  // Angle can be negative. fmod twice so that we never get
+  // exactly two pi, even if the first one rounds to it.
+  double a = fmod(fmod(angle + TWO_PI, TWO_PI), TWO_PI);
+
+  return make_optional(a);
 }
