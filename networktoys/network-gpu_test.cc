@@ -5,6 +5,7 @@
 #include <vector>
 #include <functional>
 #include <string>
+#include <set>
 
 #include "network.h"
 #include "network-test-util.h"

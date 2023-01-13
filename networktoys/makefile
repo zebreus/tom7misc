@@ -151,9 +151,5 @@ direct-widen.exe : direct-widen.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-acronymy.exe : acronymy.o wikipedia.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
 clean :
 	rm -f *.o $(UTIL_OBJECTS) $(SDLUTILOBJECTS) $(FCEULIBOBJECTS) $(OBJECTS) *.exe

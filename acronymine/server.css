@@ -1,0 +1,7 @@
+body {
+    font: 12px Helvetica,sans-serif
+}
+
+input.wordinput {
+    border: 2px solid black;
+}
