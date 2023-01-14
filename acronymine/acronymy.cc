@@ -23,6 +23,7 @@
 #include "periodically.h"
 #include "lastn-buffer.h"
 
+#include "freq.h"
 #include "word2vec.h"
 
 using namespace std;
@@ -39,6 +40,7 @@ static constexpr const char *WIKIPEDIA_FILE =
 
 static constexpr const char *WORD2VEC_FILE =
   "c:\\code\\word2vec\\GoogleNews-vectors-negative300.bin";
+static constexpr const char *WORD2VEC_FILL_FILE = "word2vecfill.txt";
 
 using Article = Wikipedia::Article;
 
@@ -48,6 +50,7 @@ static constexpr int NUM_THREADS = 12;
 static constexpr int MAX_ACRONYMS = 50;
 
 static std::unordered_set<string> *words = nullptr;
+static Freq *freq = nullptr;
 
 static std::mutex acronym_mutex;
 // Map strings to their expansions, each with its score.
@@ -56,6 +59,20 @@ static std::unordered_map<
 static std::map<int, int64> *num_acronyms = nullptr;
 
 static void TakeBestAcronyms(std::vector<std::pair<float, string>> *v) {
+  {
+    // Keep at most one copy of each acronym.
+    std::unordered_set<string> seen;
+    std::vector<std::pair<float, string>> keep;
+    keep.reserve(v->size());
+    for (const auto &[f, s] : *v) {
+      if (!seen.contains(s)) {
+        keep.emplace_back(f, s);
+        seen.insert(s);
+      }
+    }
+    *v = std::move(keep);
+  }
+
   std::sort(v->begin(), v->end(),
             [](const std::pair<float, std::string> &a,
                const std::pair<float, std::string> &b) {
@@ -66,12 +83,12 @@ static void TakeBestAcronyms(std::vector<std::pair<float, string>> *v) {
 }
 
 static void Process() {
-
   std::unique_ptr<Wikipedia> wiki(Wikipedia::Create(WIKIPEDIA_FILE));
   CHECK(wiki.get() != nullptr) << WIKIPEDIA_FILE;
 
   printf("%d words in dictionary\n", (int)words->size());
-  std::unique_ptr<Word2Vec> w2v(Word2Vec::Load(WORD2VEC_FILE, *words));
+  std::unique_ptr<Word2Vec> w2v(
+      Word2Vec::Load(WORD2VEC_FILE, WORD2VEC_FILL_FILE, *words));
   CHECK(w2v.get() != nullptr) << WORD2VEC_FILE;
   printf("Word2Vec: %d words (vec %d floats)\n",
          (int)w2v->NumWords(),
@@ -87,25 +104,35 @@ static void Process() {
 
   Timer timer;
 
-  auto ScoreAcronym = [&w2v](const std::string &word,
-                             const std::vector<std::string> &expansion) ->
+  auto ScoreAcronym = [&w2v](
+      const std::string &word,
+      const std::vector<std::string> &expansion) ->
     float {
       const int wordidx = w2v->GetWord(word);
       if (wordidx < 0) return -.07f;
+
+      // its "probability" based on frequency (but compared to
+      // the most probable sentence, "the the the ...")
+      double prob = 1.0;
 
       std::vector<float> expv(w2v->Size(), 0.0f);
       for (const std::string &w : expansion) {
         const int widx = w2v->GetWord(w);
         if (widx >= 0) {
-          std::vector<float> wv = w2v->Vec(widx);
+          // XXX compare using raw vec here.
+          std::vector<float> wv = w2v->NormVec(widx);
           for (int i = 0; i < expv.size(); i++)
             expv[i] += wv[i];
         }
+        prob *= freq->NormalizedFreq(w);
       }
       Word2Vec::Norm(&expv);
 
+      // Hack so that the probabilities are not so small.
+      prob = sqrt(sqrt(prob));
+
       // Score is cosine similarity now.
-      return w2v->Similarity(expv, wordidx);
+      return 0.75 * w2v->Similarity(expv, wordidx) + 0.25 * prob;
     };
 
   auto OneArticle = [&Normalize, &ScoreAcronym, &wiki](Article *article) {
@@ -138,7 +165,7 @@ static void Process() {
             lastn_words.push_back(word);
             lastn_chars.push_back(word[0]);
 
-            // Now do we have any
+            // Now do we have any acronyms?
             for (int len = MIN_WORD; len <= MAX_WORD; len++) {
               string w;
               for (int i = 0; i < len; i++) {
@@ -283,19 +310,19 @@ int main(int argc, char **argv) {
 
   acronyms = new std::unordered_map<string, vector<pair<float, string>>>;
   num_acronyms = new std::map<int, int64>;
-  {
-    int max_word = 0;
-    vector<string> wordlist =
-      Util::ReadFileToLines("word-list.txt");
-    words = new unordered_set<string>;
-    for (string &s : wordlist) {
-      max_word = std::max(max_word, (int)s.size());
-      if (s.size() >= MIN_WORD) {
-        words->insert(std::move(s));
-      }
-    }
-    printf("Longest word: %d\n", max_word);
+
+  int max_word = 0;
+  vector<string> wordlist =
+    Util::ReadFileToLines("word-list.txt");
+  words = new unordered_set<string>;
+  for (string &s : wordlist) {
+    max_word = std::max(max_word, (int)s.size());
+    words->insert(std::move(s));
   }
+  printf("Longest word: %d\n", max_word);
+
+  freq = Freq::Load("freq.txt", *words);
+  CHECK(freq != nullptr);
 
   Process();
   return 0;

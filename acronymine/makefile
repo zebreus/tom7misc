@@ -1,10 +1,14 @@
 
-default: acronymy.exe word2vec_test.exe nextword.exe server.exe
+default: acronymy.exe word2vec_test.exe nextword.exe server.exe compute-freq.exe freq_test.exe
 
 CC_LIB=../cc-lib
 
+# Normal people set this to g++ and gcc (or just comment it out)
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-gcc
+
+
+# For targets that need OpenCL
 
 # Note, this builds against AMD's distribution of OpenCL, since that's
 # the card I had when I started. It also works fine with an NVIDIA GPU,
@@ -37,7 +41,7 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=network.o error-history.o network-gpu.o clutil.o wikipedia.o word2vec.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
+OBJECTS=network.o error-history.o network-gpu.o clutil.o wikipedia.o freq.o word2vec.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
 
 acronymy.exe : acronymy.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -53,6 +57,14 @@ nextword.exe : nextword.o $(OBJECTS)
 
 server.exe : server.o $(OBJECTS) $(CC_LIB)/webserver.o
 	@$(CXX) $^ -o $@ $(LFLAGS) $(SOCK_LFLAGS) -lpthread
+	@echo -n "!"
+
+compute-freq.exe : compute-freq.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+freq_test.exe : freq_test.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 clean :

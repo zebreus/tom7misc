@@ -1,0 +1,99 @@
+# lines beginning with # are ignored
+# otherwise, a line should be (space separated):
+# target word that's missing from missing from w2v model
+# followed by n pairs of an integer weight and a word
+#   (that IS in the model)
+#
+# e.g.
+# colour 10000 color 1 british 1 britain 1 english 1 canada
+
+# Same trick (who knows if it works) to make these basically
+# synonyms for the US English variant, but slightly towards
+# "british spelling". (Perhaps we have pairs of words that
+# are in word2vec so we could just get the UK-US vector?)
+
+centre 10000 center 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+centres 10000 centers 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+
+honour 10000 honor 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+honours 10000 honors 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+honoured 10000 honored 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+honouring 10000 honoring 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+honourable 10000 honorable 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+
+labour 10000 labor 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+labours 10000 labors 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+laboured 10000 labored 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+labourer 10000 laborer 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+labourers 10000 laborers 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+labouring 10000 laboring 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+labourious 10000 laborious 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+
+defence 10000 defense 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+defences 10000 defenses 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+
+theatre 10000 theater 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+theatres 10000 theaters 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+programme 10000 program 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+programmes 10000 programs 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+harbour 10000 harbor 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+harbours 10000 harbors 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+harboured 10000 harbored 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+harbouring 10000 harboring 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+favour 10000 favor 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+favours 10000 favors 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+favoured 10000 favored 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+favouring 10000 favoring 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+favourite 10000 favorite 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+metres 10000 meters 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+metre 10000 meter 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+
+colour 10000 color 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+colours 10000 colors 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+coloured 10000 colored 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+colouring 10000 coloring 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+colourful 10000 colorful 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+
+catalogue 10000 catalog 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+catalogues 10000 catalogs 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+
+armoured 10000 armored 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+armouring 10000 armoring 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+armours 10000 armors 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+
+criticised 10000 criticized 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+criticising 10000 criticizing 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+
+aluminium 10000 aluminum 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+aluminiums 10000 aluminums 1 british 1 britain 1 english 1 canada 1 canadian 1 australia 1 australian
+
+# Variant spellings are just treated as exact synonyms.
+# These might be because the source data (news articles) follow
+# some style guide?
+cancelled 1 canceled
+cancelling 1 canceling
+grey 1 gray
+greys 1 grays
+greyed 1 grayed
+greyer 1 grayer
+travelled 1 traveled
+traveller 1 traveler
+travelling 1 traveling
+archaeology 1 archeology
+
+# "have" is for the nonstandard "should have" -> "should of"
+of 100 from 1 have 1 belonging 1 comprising 1 containing
+
+and 100 also 5 with 5 plus 4 but 2 then 1 ampersand 1 moreover 1 both
+
+in 1000 within 1000 inside 10 above 10 below 5 inner 5 internal 1 inch
+
+a 1000 an 100 the 1 one
+
+# no idea how to express the concept of this word's use as part
+# of infinitives!
+to 100 toward 100 towards 10 from 10 upon 10 fro 5 per
+
+# common in wikipedia, but I didn't try
+# unsortable (6618) mising from w2v
+

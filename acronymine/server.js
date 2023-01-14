@@ -30,10 +30,38 @@ function IsWord(w) {
   return WORD_RE.test(w);
 }
 
+function WordAt(idx) {
+  let elt = document.getElementById('word' + idx);
+  return elt.value;
+}
+
 // PERF Could cache the list...
 function SetSimilar(idx, value) {
   let elt = document.getElementById('under' + idx);
   FetchLines('/similar/' + WORD[idx] + '/' + value,
+             text => {
+               elt.innerHTML = '';
+               let lines = text.split(/\r?\n/);
+               for (let line of lines) {
+                 TEXT(line, elt);
+                 BR('', elt);
+               }
+             });
+}
+
+// Perhaps should do this in batch, as the model
+// can efficiently predict many at once.
+function Predict(idx) {
+  // The starting phrase should be at least 7 words,
+  // so that we always have enough context. Best if
+  // the end is informative.
+  let phrase = 'an acronym defining the word ' + WORD + ' is';
+  for (let i = 0; i < idx; i++) {
+    phrase += ' ' + WordAt(i);
+  }
+  let elt = document.getElementById('pred' + idx);
+
+  FetchLines('/next/' + phrase,
              text => {
                elt.innerHTML = '';
                let lines = text.split(/\r?\n/);
@@ -50,6 +78,10 @@ function InputChange(idx, elt, value) {
     elt.style.background = '#DFD';
     elt.style.border = '2px solid #090';
     SetSimilar(idx, value);
+    // All predictions following this position are affected.
+    for (let i = idx; i < WORD.length; i++) {
+      Predict(i);
+    }
   } else {
     elt.style.background = '#FDD';
     elt.style.border = '2px solid #900';
@@ -60,7 +92,10 @@ function Fill() {
   for (let idx = 0; idx < WORD.length; idx++) {
     let elt = document.getElementById('word' + idx);
     elt.value = WORD;
-    InputChange(idx, elt, WORD);
+    SetSimilar(idx, WORD);
+  }
+  for (let i = 0; i < WORD.length; i++) {
+    Predict(i);
   }
 }
 

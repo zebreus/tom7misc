@@ -41,26 +41,97 @@ using Request = WebServer::Request;
 
 static constexpr const char *WORD2VEC_FILE =
   "c:\\code\\word2vec\\GoogleNews-vectors-negative300.bin";
+static constexpr const char *WORD2VEC_FILL_FILE = "word2vecfill.txt";
+
+static constexpr int NEXTWORD_PREV_WORDS = 7;
+// The previous words, plus the word to predict.
+static constexpr int NEXTWORD_PHRASE_SIZE = NEXTWORD_PREV_WORDS + 1;
+static constexpr const char *NEXTWORD_MODEL_FILE =
+  "sparseonly\\nextword.val";
 
 static CL *cl = nullptr;
 
 using int64 = int64_t;
 
-#define MODEL_BASE "nextword"
-#define MODEL_NAME MODEL_BASE ".val"
-
-constexpr int VEC_SIZE = 300;
-constexpr int PREV_WORDS = 7;
-// The previous words, plus the word to predict.
-static constexpr int PHRASE_SIZE = PREV_WORDS + 1;
-
-constexpr int INPUT_SIZE = PREV_WORDS * VEC_SIZE;
-constexpr int OUTPUT_SIZE = VEC_SIZE;
+static constexpr int VEC_SIZE = 300;
 
 static std::unordered_set<std::string> *words = nullptr;
 static Word2Vec *w2v = nullptr;
 
+struct NextWord {
+  // static constexpr int BATCH_SIZE = 1024;
+  NextWord(const string &model_file)
+    : net(Network::ReadFromFile(model_file)) {
+    CHECK(net.get() != nullptr);
+    net->StructuralCheck();
+    net->NaNCheck(model_file);
+    CHECK(cl != nullptr);
+    net_gpu = std::make_unique<NetworkGPU>(cl, net.get());
+    forward_cl = std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
+    printf("Loaded NextWord model.\n");
+  }
+
+  static constexpr int VEC_SIZE = 300;
+  static constexpr int INPUT_SIZE = VEC_SIZE * NEXTWORD_PREV_WORDS;
+  static constexpr int OUTPUT_SIZE = VEC_SIZE;
+
+  // Predict just the next word. Takes PREV_WORDS preceding
+  // words as their word2vec indices.
+  uint32_t PredictOne(const std::vector<uint32_t> &prev) {
+    CHECK(w2v != nullptr);
+    CHECK(w2v->Size() == VEC_SIZE);
+    CHECK(prev.size() == NEXTWORD_PREV_WORDS);
+
+    static constexpr int BATCH_SIZE = 1;
+
+    // Uninitialized training examples on GPU.
+    // PERF: Only need the stimulations to be allocated here.
+    std::unique_ptr<TrainingRoundGPU> training(
+        new TrainingRoundGPU(BATCH_SIZE, cl, *net));
+
+    std::vector<float> inputs;
+    inputs.reserve(BATCH_SIZE * INPUT_SIZE);
+
+    // All but the last word.
+    for (int j = 0; j < NEXTWORD_PREV_WORDS; j++) {
+      for (float f : w2v->NormVec(prev[j])) {
+        inputs.push_back(f);
+      }
+    }
+
+    training->LoadInputs(inputs);
+
+    Timer fwd_timer;
+    for (int src_layer = 0;
+         src_layer < net->layers.size() - 1;
+         src_layer++) {
+      forward_cl->RunForward(training.get(), src_layer);
+    }
+    printf("Took %.5fs\n", fwd_timer.Seconds());
+
+    std::vector<float> outputs;
+    outputs.resize(BATCH_SIZE * OUTPUT_SIZE);
+    training->ExportOutputs(&outputs);
+
+    // Now we have the predicted vector in output.
+    Word2Vec::Norm(&outputs);
+
+    const auto [next, similarity] =
+      w2v->MostSimilarWord(outputs);
+
+    return next;
+  }
+
+  std::unique_ptr<Network> net;
+  std::unique_ptr<NetworkGPU> net_gpu;
+  std::unique_ptr<ForwardLayerCL> forward_cl;
+  std::unique_ptr<TrainingRoundGPU> training;
+};
+
+static NextWord *nextword = nullptr;
+
 static void LoadData() {
+  Timer load_timer;
   {
     int max_word = 0;
     vector<string> wordlist =
@@ -74,14 +145,19 @@ static void LoadData() {
     printf("Longest word: %d\n", max_word);
   }
 
-  w2v = Word2Vec::Load(WORD2VEC_FILE, *words);
-  CHECK(w2v != nullptr) << WORD2VEC_FILE;
+  InParallel([]() {
+      w2v = Word2Vec::Load(WORD2VEC_FILE, WORD2VEC_FILL_FILE, *words);
+      CHECK(w2v != nullptr) << WORD2VEC_FILE;
 
-  printf("Word2Vec: %d words (vec %d floats)\n",
-         (int)w2v->NumWords(),
-         w2v->Size());
+      printf("Word2Vec: %d words (vec %d floats)\n",
+             (int)w2v->NumWords(),
+             w2v->Size());
+    },
+  []() {
+    nextword = new NextWord(NEXTWORD_MODEL_FILE);
+  });
 
-  // TODO: Load model
+  printf("Everything loaded in %.2fs\n", load_timer.Seconds());
 }
 
 static Response Fail404(const string &message) {
@@ -156,6 +232,71 @@ SlashHandler(const WebServer::Request &req) {
   return response;
 }
 
+static string Harden(const string &s) {
+  string out;
+  for (int i = 0; i < s.size(); i++) {
+    char c = s[i];
+    if (isalnum(c)) {
+      out.push_back(c);
+    } else {
+      // Could include code, etc.
+      out.push_back('?');
+    }
+  }
+  return out;
+}
+
+static WebServer::Response
+NextHandler(const WebServer::Request &req) {
+  WebServer::Response response;
+  response.code = 200;
+  response.status = "OK";
+  response.content_type = "text/html; charset=UTF-8";
+
+  std::vector<std::string> path_parts =
+    Util::Fields(req.path, [](char c) { return c == '/'; });
+  if (path_parts.size() != 3 || path_parts[2].empty()) {
+    return Fail404(
+        StringPrintf(
+            "Got %d parts. "
+            "want /next/space+separated+phrase",
+            (int)path_parts.size()));
+  }
+  CHECK(path_parts[0].empty() && path_parts[1] == "next");
+  string phrase = WebServer::URLDecode(Util::lcase(path_parts[2]));
+  std::vector<string> words =
+    Util::Tokens(phrase, [](char c) { return c == ' '; });
+
+  printf("%d words:", (int)words.size());
+  for (const string &w : words)
+    printf(" [%s]", w.c_str());
+  printf("\n");
+
+  if (words.size() < NEXTWORD_PREV_WORDS)
+    return Fail404(StringPrintf("need at least %d words of context",
+                                NEXTWORD_PREV_WORDS));
+
+  std::vector<uint32> encoded;
+  encoded.reserve(NEXTWORD_PREV_WORDS);
+  // only the ones at the end
+  for (int i = words.size() - NEXTWORD_PREV_WORDS;
+       i < words.size();
+       i++) {
+    const string &word = words[i];
+    int w = w2v->GetWord(word);
+    if (w < 0)
+      return Fail404(
+          StringPrintf("A word (%s) is not in the dictionary!",
+                       Harden(word).c_str()));
+    encoded.push_back((uint32_t)w);
+  }
+
+  uint32_t next = nextword->PredictOne(encoded);
+
+  response.body = w2v->WordString(next);
+  return response;
+}
+
 
 static WebServer::Response
 DefineHandler(const WebServer::Request &req) {
@@ -165,14 +306,14 @@ DefineHandler(const WebServer::Request &req) {
     return Fail404(
         StringPrintf(
             "Got %d parts. "
-            "want /define/word some word",
+            "want /define/word for some word",
             (int)path_parts.size()));
   }
   CHECK(path_parts[0].empty() && path_parts[1] == "define");
   string word = Util::lcase(path_parts[2]);
 
   if (!words->contains(word))
-    Fail404("This word is not in the dictionary!");
+    return Fail404("This word is not in the dictionary!");
 
   WebServer::Response response;
   response.code = 200;
@@ -225,6 +366,12 @@ DefineHandler(const WebServer::Request &req) {
   StringAppendF(&html, "</tr><tr>");
   for (int i = 0; i < word.size(); i++) {
     StringAppendF(&html,
+                  "<td class=\"pred\" id=\"pred%d\"></td>\n",
+                  i);
+  }
+  StringAppendF(&html, "</tr><tr>");
+  for (int i = 0; i < word.size(); i++) {
+    StringAppendF(&html,
                   "<td class=\"under\" id=\"under%d\"></td>\n",
                   i);
   }
@@ -251,6 +398,7 @@ static void ServerThread() {
 
   server->AddHandler("/similar/", SimilarHandler);
   server->AddHandler("/define/", DefineHandler);
+  server->AddHandler("/next/", NextHandler);
   server->AddHandler("/", SlashHandler);
   server->ListenOn(8008);
   return;
@@ -259,6 +407,7 @@ static void ServerThread() {
 
 int main(int argc, char **argv) {
   AnsiInit();
+  cl = new CL;
   LoadData();
 
   std::thread server_thread(ServerThread);

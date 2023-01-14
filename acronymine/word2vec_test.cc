@@ -12,6 +12,7 @@
 #include "image.h"
 
 #define DATA_FILE "c:\\code\\word2vec\\GoogleNews-vectors-negative300.bin"
+#define FILL_FILE "word2vecfill.txt"
 
 using namespace std;
 
@@ -23,31 +24,42 @@ static void CheckSimple(bool use_filter) {
     filter.insert("sadness");
     filter.insert("melancholy");
     filter.insert("test");
+    filter.insert("color");
+    filter.insert("colour");
   }
 
   std::unique_ptr<Word2Vec> wv(
-      Word2Vec::Load(DATA_FILE, filter));
+      Word2Vec::Load(DATA_FILE, FILL_FILE, filter));
 
   int miles = wv->GetWord("miles");
   int kilometers = wv->GetWord("kilometers");
   int sadness = wv->GetWord("sadness");
   int melancholy = wv->GetWord("melancholy");
+  int color = wv->GetWord("color");
+  int colour = wv->GetWord("colour");
   CHECK(miles != -1);
   CHECK(kilometers != -1);
   CHECK(sadness != -1);
   CHECK(melancholy != -1);
+  CHECK(color != -1);
+  CHECK(colour != -1) << "This word comes from fill file.";
 
   CHECK(miles != kilometers);
   CHECK(miles != sadness);
   CHECK(miles != melancholy);
 
+  // Should not be exactly the same.
+  CHECK(color != colour);
+
   {
-    ImageRGBA img(wv->Size(), 4);
+    std::vector<int> testwords =
+      {miles, kilometers, sadness, melancholy, color, colour};
+    ImageRGBA img(wv->Size(), testwords.size());
     img.Clear32(0x000000FF);
 
     int y = 0;
-    for (int word : {miles, kilometers, sadness, melancholy}) {
-      std::vector<float> vec = wv->Vec(word);
+    for (int word : testwords) {
+      std::vector<float> vec = wv->NormVec(word);
       for (int x = 0; x < vec.size(); x++) {
         float f = vec[x];
         uint8_t r = f < 0.0 ? sqrtf(sqrtf(-f)) * 255.0f : 0.0;
@@ -61,7 +73,7 @@ static void CheckSimple(bool use_filter) {
   }
 
   for (int word : {miles, kilometers, sadness, melancholy}) {
-    std::vector<float> vec = wv->Vec(word);
+    std::vector<float> vec = wv->NormVec(word);
     printf("%d:", word);
     for (float f : vec) printf(" %.3f", f);
     printf("\n");
@@ -76,13 +88,17 @@ static void CheckSimple(bool use_filter) {
   const float ks = wv->Similarity(kilometers, sadness);
   const float km = wv->Similarity(kilometers, melancholy);
 
+  const float usuk = wv->Similarity(color, colour);
+
   printf("distdist %.11g\n"
          "saddist  %.11g\n"
          "ms mm    %.11g %.11g\n"
-         "ks km    %.11g %.11g\n",
+         "ks km    %.11g %.11g\n"
+         "usuk     %.11g\n",
          distdist, saddist,
          ms, mm,
-         ks, km);
+         ks, km,
+         usuk);
 
   // These should be similar (i.e. positive)
   CHECK(distdist > 0.0f) << distdist;

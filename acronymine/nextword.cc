@@ -44,6 +44,7 @@ static constexpr const char *WIKIPEDIA_FILE =
 
 static constexpr const char *WORD2VEC_FILE =
   "c:\\code\\word2vec\\GoogleNews-vectors-negative300.bin";
+static constexpr const char *WORD2VEC_FILL_FILE "word2vecfill.txt";
 
 static CL *cl = nullptr;
 
@@ -54,13 +55,13 @@ static constexpr WeightUpdate WEIGHT_UPDATE = ADAM;
 #define MODEL_BASE "nextword"
 #define MODEL_NAME MODEL_BASE ".val"
 
-constexpr int VEC_SIZE = 300;
-constexpr int PREV_WORDS = 7;
+static constexpr int VEC_SIZE = 300;
+static constexpr int PREV_WORDS = 7;
 // The previous words, plus the word to predict.
 static constexpr int PHRASE_SIZE = PREV_WORDS + 1;
 
-constexpr int INPUT_SIZE = PREV_WORDS * VEC_SIZE;
-constexpr int OUTPUT_SIZE = VEC_SIZE;
+static constexpr int INPUT_SIZE = PREV_WORDS * VEC_SIZE;
+static constexpr int OUTPUT_SIZE = VEC_SIZE;
 
 static constexpr int EXAMPLES_PER_ROUND = 1024;
 
@@ -81,7 +82,7 @@ static void LoadData() {
     printf("Longest word: %d\n", max_word);
   }
 
-  w2v = Word2Vec::Load(WORD2VEC_FILE, *words);
+  w2v = Word2Vec::Load(WORD2VEC_FILE, WORD2VEC_FILL_FILE, *words);
   CHECK(w2v != nullptr) << WORD2VEC_FILE;
 
   printf("Word2Vec: %d words (vec %d floats)\n",
@@ -1153,8 +1154,8 @@ int main(int argc, char **argv) {
   TrainParams tparams = DefaultParams();
   // tparams.update_config.base_learning_rate = 0.01f;
   // tparams.update_config.learning_rate_dampening = 13.0f;
-  tparams.update_config.base_learning_rate = 0.4f;
-  tparams.update_config.learning_rate_dampening = 0.125f;
+  tparams.update_config.base_learning_rate = 0.1f;
+  tparams.update_config.learning_rate_dampening = 0.2f;
   tparams.update_config.adam_epsilon = 1.0e-5;
 
   Train(dir, net.get(), tparams);
