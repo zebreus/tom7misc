@@ -1,10 +1,11 @@
 #ifndef _ACRONYMY_FREQ_H
 #define _ACRONYMY_FREQ_H
 
-#include <string>
-#include <unordered_set>
 #include <cstdint>
+#include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 struct Freq {
   static Freq *Load(const std::string &filename,
@@ -28,6 +29,9 @@ struct Freq {
   double NormalizedFreq(const std::string &word) const {
     return RawFreq(word) * norm_scale;
   }
+
+  // With the most frequent words first.
+  std::vector<std::string> SortedWords() const;
 
  private:
   // Use Load.
