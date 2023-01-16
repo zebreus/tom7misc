@@ -1,5 +1,5 @@
 
-default: iter.exe train-mnist.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe train-chess.exe evaluate-chess.exe train-cifar10.exe
+default: iter.exe train-mnist.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe train-chess.exe evaluate-chess.exe train-cifar10.exe fluint8_test.exe
 
 all: grad.exe iter.exe make-data.exe mnist_test.exe train-mnist.exe evaluate-mnist.exe train-chess.exe evaluate-chess.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe hash-util_test.exe cifar10_test.exe evaluate-cifar10.exe
 
@@ -43,7 +43,7 @@ CHESS_OBJECTS=$(CHESS)/chess.o $(CHESS)/pgn.o
 grad.s : grad.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -S -fverbose-asm -c $< -o $@
 
-OBJECTS=$(CCLIB_OBJECTS) $(RE2_OBJECTS) $(CHESS_OBJECTS) hash-util.o diff.o
+OBJECTS=$(CCLIB_OBJECTS) $(RE2_OBJECTS) $(CHESS_OBJECTS) hash-util.o diff.o fluint8.o
 
 # also increase stack size
 LFLAGS= -L. -m64 -Wl,--subsystem,console -Wl,--stack,335544320 $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static
@@ -186,6 +186,9 @@ colordiff.exe : colordiff.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+fluint8_test.exe : fluint8_test.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
 
 # external dependency on TestU01-2009
 TESTU01=../../TestU01-2009

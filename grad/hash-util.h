@@ -16,7 +16,7 @@ struct HashUtil {
   // Permutations are specified by an array of 64 ints.
   // Reading bits from left (msb) to right (lsb), this gives
   // the output location for each bit. So if the first entry
-  // is 49, that saysd that the 0th bit in the input is sent
+  // is 49, that says that the 0th bit in the input is sent
   // to the 49th bit in the output.
 
   // A permute function computes a single byte (stored in a half)
@@ -49,8 +49,6 @@ struct HashUtil {
     return out;
   }
 
-  // TODO: Test that this works for every byte in
-  // the 8-bit version!
   // h in [-1, 1). Returns the corresponding byte.
   static inline uint8_t HalfToBits(half h) {
     using namespace half_float::literal;
@@ -73,6 +71,8 @@ struct HashUtil {
     return h;
   }
 
+  // Expression that mods x to the range [-1, 1) as long
+  // as x is in [-2, 2).
   static const Exp *ModExp(Exp::Allocator *alloc);
 
 };

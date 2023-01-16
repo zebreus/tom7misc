@@ -1,4 +1,6 @@
 
+// Complex numbers with half-precision floats.
+
 #ifndef _GRAD_HCOMPLEX_H
 #define _GRAD_HCOMPLEX_H
 
