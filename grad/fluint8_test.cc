@@ -3,27 +3,41 @@
 
 #include <cstdint>
 
+#include "expression.h"
 #include "half.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
 using uint8 = uint8_t;
 
-static void CheckCanonical(Fluint8 f) {
+static void CheckCanonical(Fluint8 f, uint8 x, uint8 y,
+                           const char *fn, const char *name, int line) {
   uint16_t frep = f.Representation();
   uint8 meaning = f.ToInt();
   Fluint8 canon(meaning);
   uint16_t crep = canon.Representation();
-  CHECK(frep == crep) << "Not canonical: " << meaning
-                      << " rep by " << frep << " but "
-                      << crep << " is canonical.";
+  CHECK(frep == crep) << "Line " << line
+                      << " (" << fn << " aka " << name << "): "
+                      << "On args "
+                      << StringPrintf("(%02x = %d, %02x = %d)", x, x, y, y)
+                      << "\nNot canonical: "
+                      << StringPrintf("%02x = %d rep by %04x (%.3f) "
+                                      "but %04x (%.3f) is canonical.",
+                                      meaning, meaning,
+                                      frep,
+                                      (float)Exp::GetHalf(frep),
+                                      crep,
+                                      (float)Exp::GetHalf(crep));
 }
+#define CHECK_CANONICAL(name, f, x, y)                      \
+  CheckCanonical(f, x, y, __func__, name, __LINE__)
 
 static void TestToFrom() {
   for (int i = 0; i < 256; i++) {
     uint8 b = i;
     Fluint8 f(b);
     CHECK(f.ToInt() == b);
-    CheckCanonical(f);
+    CHECK_CANONICAL("tofrom", f, b, b);
   }
 }
 
@@ -60,8 +74,9 @@ static void TestPlus() {
         Fluint8 zf = xf + yf;
 
         CHECK(z == zf.ToInt()) <<
-          x << " * " << y << " -> " << zf.ToInt();
-        CheckCanonical(zf);
+          StringPrintf("%02x (%d) + %02x (%d) -> %02x (%d) want %02x (%d)",
+                       x, x, y, y, zf.ToInt(), zf.ToInt(), z, z);
+        CHECK_CANONICAL("plus", zf, x, y);
       });
 }
 
@@ -73,8 +88,9 @@ static void TestMinus() {
         Fluint8 zf = xf - yf;
 
         CHECK(z == zf.ToInt()) <<
-          x << " * " << y << " -> " << zf.ToInt();
-        CheckCanonical(zf);
+          StringPrintf("%02x (%d) - %02x (%d) -> %02x (%d) want %02x (%d)",
+                       x, x, y, y, zf.ToInt(), zf.ToInt(), z, z);
+        CHECK_CANONICAL("minus", zf, x, y);
       });
 }
 
@@ -86,7 +102,7 @@ static void TestNegate() {
 
         CHECK(z == zf.ToInt()) <<
           "-" << x << " -> " << zf.ToInt();
-        CheckCanonical(zf);
+        CHECK_CANONICAL("negate", zf, z, z);
       });
 }
 
@@ -98,8 +114,8 @@ static void TestPostIncrement() {
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt());
-        CheckCanonical(xf);
-        CheckCanonical(zf);
+        CHECK_CANONICAL("postinc", xf, x, x);
+        CHECK_CANONICAL("postinc", zf, x, x);
       });
 }
 
@@ -111,8 +127,8 @@ static void TestPreIncrement() {
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt());
-        CheckCanonical(xf);
-        CheckCanonical(zf);
+        CHECK_CANONICAL("preinc", xf, x, x);
+        CHECK_CANONICAL("preinc", zf, x, x);
       });
 }
 
@@ -124,8 +140,8 @@ static void TestPostDecrement() {
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt());
-        CheckCanonical(xf);
-        CheckCanonical(zf);
+        CHECK_CANONICAL("postdec", xf, x, x);
+        CHECK_CANONICAL("postdec", zf, x, x);
       });
 }
 
@@ -137,8 +153,8 @@ static void TestPreDecrement() {
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt());
-        CheckCanonical(xf);
-        CheckCanonical(zf);
+        CHECK_CANONICAL("predec", xf, x, x);
+        CHECK_CANONICAL("predec", zf, x, x);
       });
 }
 
@@ -152,8 +168,8 @@ static void TestPlusEq() {
         CHECK(x == xf.ToInt());
         CHECK(y == yf.ToInt());
         CHECK(z == zf.ToInt());
-        CheckCanonical(xf);
-        CheckCanonical(zf);
+        CHECK_CANONICAL("pluseq", xf, x, y);
+        CHECK_CANONICAL("pluseq", zf, x, y);
       });
 }
 
@@ -167,8 +183,8 @@ static void TestMinusEq() {
         CHECK(x == xf.ToInt());
         CHECK(y == yf.ToInt());
         CHECK(z == zf.ToInt());
-        CheckCanonical(xf);
-        CheckCanonical(zf);
+        CHECK_CANONICAL("minuseq", xf, x, y);
+        CHECK_CANONICAL("minuseq", zf, x, y);
       });
 }
 
@@ -181,7 +197,7 @@ static void TestLeftShift() {
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt());
-        CheckCanonical(zf);
+        CHECK_CANONICAL("leftshift", zf, x, N);
       });
 }
 

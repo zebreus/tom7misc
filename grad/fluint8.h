@@ -20,9 +20,6 @@ struct Fluint8 {
   static Fluint8 Plus(Fluint8 a, Fluint8 b);
   static Fluint8 Minus(Fluint8 a, Fluint8 b);
 
-  // Evaluate the expression with the given value for the variable.
-  static Fluint8 Eval(const Exp *, Fluint8 x);
-
   // Left shift by a compile-time constant.
   template<size_t n>
   static Fluint8 LeftShift(Fluint8 x);
@@ -31,6 +28,10 @@ struct Fluint8 {
   uint16_t Representation() const;
 
  private:
+  // Evaluate the expression with the given value for the variable.
+  static half_float::half Eval(const Exp *, half_float::half h);
+  // static Fluint8 Eval(const Exp *, Fluint8 x);
+
   explicit Fluint8(half_float::half h) : h(h) {}
   half_float::half h;
 };
