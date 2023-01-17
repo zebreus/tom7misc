@@ -24,6 +24,12 @@ struct Fluint8 {
   template<size_t n>
   static Fluint8 LeftShift(Fluint8 x);
 
+  template<size_t n>
+  static Fluint8 RightShift(Fluint8 x);
+
+  // One bit; no sign extension.
+  static Fluint8 RightShift1(Fluint8 x);
+
   // For testing.
   uint16_t Representation() const;
 
@@ -96,6 +102,16 @@ Fluint8 Fluint8::LeftShift(Fluint8 x) {
   } else {
     Fluint8 y = LeftShift<N - 1>(x);
     return y + y;
+  }
+}
+
+template<size_t N>
+Fluint8 Fluint8::RightShift(Fluint8 x) {
+  if constexpr (N == 0) {
+    return x;
+  } else {
+    Fluint8 y = RightShift<N - 1>(x);
+    return RightShift1(y);
   }
 }
 

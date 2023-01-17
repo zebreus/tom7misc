@@ -19,6 +19,13 @@ static Allocator *GetAlloc() {
   return alloc;
 }
 
+static const Exp *Canonicalize() {
+  static const Exp *canon =
+    Exp::Deserialize(GetAlloc(), Util::ReadFile("canon.txt"));
+  CHECK(canon != nullptr);
+  return canon;
+}
+
 // Indicates (value is 1) if the variable is greater than or equal to
 // the argument.
 static const Exp *IndicateGreater(half h) {
@@ -101,4 +108,12 @@ Fluint8 Fluint8::Minus(Fluint8 x, Fluint8 y) {
   const half s = Eval(correct, zz);
 
   return Fluint8(s * 256.0_h - 0.5_h);
+}
+
+Fluint8 Fluint8::RightShift1(Fluint8 x) {
+  const half z = (x.h * 0.5_h - 128.0_h) * (1.0_h / 128.0_h);
+  // printf("%.3f -> %.3f\n", (float)x.h, (float)z);
+  // Canonicalize works in [-1, 1) space.
+  const half r = Eval(Canonicalize(), z);
+  return Fluint8(r * 128.0_h + 128.0_h);
 }

@@ -496,6 +496,7 @@ struct Exp {
                                 std::string *err = nullptr) {
     std::vector<const Exp *> stack;
     const Exp *v = alloc->Var();
+    s = Util::NormalizeWhitespace(s);
 
     for (;;) {
       string tok = Util::chop(s);

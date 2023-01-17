@@ -1,5 +1,5 @@
 
-default: iter.exe train-mnist.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe train-chess.exe evaluate-chess.exe train-cifar10.exe fluint8_test.exe
+default: iter.exe train-mnist.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe train-chess.exe evaluate-chess.exe train-cifar10.exe fluint8_test.exe makechop.exe
 
 all: grad.exe iter.exe make-data.exe mnist_test.exe train-mnist.exe evaluate-mnist.exe train-chess.exe evaluate-chess.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe hash-util_test.exe cifar10_test.exe evaluate-cifar10.exe
 
@@ -121,6 +121,10 @@ findchop.exe : findchop.o $(OBJECTS)
 	@echo -n "!"
 
 chopreduce.exe : chopreduce.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+makechop.exe : makechop.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

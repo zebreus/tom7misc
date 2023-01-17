@@ -213,6 +213,35 @@ static void TestLeftShifts() {
   TestLeftShift<8>();
 }
 
+template<size_t N>
+static void TestRightShift() {
+  ForAll(
+      [](uint8 x, Fluint8 xf) {
+        uint8 z = x >> N;
+        Fluint8 zf = Fluint8::RightShift<N>(xf);
+
+        CHECK(x == xf.ToInt());
+        CHECK(z == zf.ToInt()) <<
+          StringPrintf("%02x (%d) >> %d = %02x (%d) want %02x (%d)",
+                       x, x, N,
+                       zf.ToInt(), zf.ToInt(), z, z);
+        CHECK_CANONICAL("rightshift", zf, x, N);
+      });
+}
+
+static void TestRightShifts() {
+  TestRightShift<0>();
+  TestRightShift<1>();
+  TestRightShift<2>();
+  TestRightShift<3>();
+  TestRightShift<4>();
+  TestRightShift<5>();
+  TestRightShift<6>();
+  TestRightShift<7>();
+  TestRightShift<8>();
+}
+
+
 int main(int argc, char **argv) {
   TestToFrom();
   TestPlus();
@@ -226,6 +255,8 @@ int main(int argc, char **argv) {
   TestMinusEq();
 
   TestLeftShifts();
+
+  TestRightShifts();
 
   printf("OK\n");
   return 0;

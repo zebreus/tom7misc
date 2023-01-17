@@ -29,6 +29,10 @@ using Allocator = Exp::Allocator;
 using Table = Exp::Table;
 using namespace std;
 
+// Other keys will work, but we generally optimize bases, so
+// pipe up if something is unexpected.
+static constexpr bool REQUIRE_BASIS = false;
+
 // Don't optimize expressions smaller than this
 static constexpr int MIN_OPT = 1; // 000;
 
@@ -670,6 +674,8 @@ static void OptimizeOne(DB *db,
   ArcFour rc(StringPrintf("%d.%lld", idx, time(nullptr)));
   Allocator *alloc = &db->alloc;
 
+  static constexpr bool VERBOSE = true;
+
   static constexpr double SAVE_EVERY = 60.0 * 5.0;
 
   auto StillWorks = [&](const Exp *exp) {
@@ -692,6 +698,7 @@ static void OptimizeOne(DB *db,
 
   // Make sure the entry has the key it purports to.
   CHECK(StillWorks(exp));
+  if (VERBOSE) printf("Still works at start.\n");
 
   {
     // First, delete expressions that do nothing.
@@ -704,6 +711,8 @@ static void OptimizeOne(DB *db,
       CHECK(false);
     }
   }
+
+  if (VERBOSE) printf("Cleaned.\n");
 
   // XXX run both JointOptArgs1 and JointOptArgs2!
 
@@ -728,6 +737,8 @@ static void OptimizeOne(DB *db,
       "Now: " << Exp::Serialize(joint_exp);
     }
   }
+
+  if (VERBOSE) printf("JointOpt done.\n");
 
   // JointOpt can create opportunities for cleanup (e.g. iters = 0).
   {
@@ -1139,11 +1150,11 @@ int main(int argc, char **argv) {
   std::vector<std::pair<const DB::key_type &,
                         const Exp *>> all;
   for (const auto &[k, v] : db.fns) {
-    // Other keys will work, but we generally optimize bases, so
-    // pipe up if something is unexpected.
-    for (const int z : k)
-      CHECK(z == 0 || z == 1) << DB::KeyString(k) << ":\n"
-                              << Exp::Serialize(v);
+    if (REQUIRE_BASIS) {
+      for (const int z : k)
+        CHECK(z == 0 || z == 1) << DB::KeyString(k) << ":\n"
+                                << Exp::Serialize(v);
+    }
     all.emplace_back(k, v);
   }
 
