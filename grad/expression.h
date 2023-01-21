@@ -109,6 +109,7 @@ struct Exp {
     std::vector<Exp *> allocations;
   };
 
+  // TODO std::bit_cast
   static inline half GetHalf(uint16_t u) {
     half h;
     static_assert(sizeof (h) == sizeof (u));

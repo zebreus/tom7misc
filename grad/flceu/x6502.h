@@ -25,8 +25,10 @@
 #include "fceu.h"
 #include "fc.h"
 
-// XXX
-#include "base/logging.h"
+#include "fluint8.h"
+
+// using fluint8 = uint8;
+
 
 struct X6502 {
   // Initialize with fc pointer, since memory reads/writes
@@ -51,16 +53,20 @@ struct X6502 {
      when I do, though.  Perhaps an IPC() macro? */
 
   // Program counter.
+  // XXX this is part of processor state so it should be
+  // fluint16?
   uint16 reg_PC;
   // A is accumulator, X and Y other general purpose registes.
   // S is the stack pointer. Stack grows "down" (push decrements).
   // P is processor flags (from msb to lsb: NVUBDIZC).
   // PI is another copy of the processor flags, maybe having
   // to do with interrupt handling, which I don't understand.
-  uint8 reg_A, reg_X, reg_Y, reg_S, reg_P, reg_PI;
+  Fluint8 reg_A, reg_X, reg_Y, reg_S, reg_P, reg_PI;
   // I think this is set for some instructions that halt the
   // processor until an interrupt.
   uint8 jammed;
+
+  Fluint8 XXX;
 
   int32 count;
   /* Simulated IRQ pin held low (or is it high?).
@@ -103,12 +109,7 @@ private:
   }
 
   inline uint8 RdRAM(unsigned int A) {
-    // PERF: We should read directly from ram in this case (and
-    // see what other ones are possible); cheats at this level
-    // are not important. -tom7
-    //bbit edited: this was changed so cheat substitution would work
-    return (DB = fc->fceu->ARead[A](fc, A));
-    // return (DB=RAM[A]);
+    return (DB = fc->fceu->RAM[A]);
   }
 
   inline void WrRAM(unsigned int A, uint8 V) {

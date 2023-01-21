@@ -14,7 +14,7 @@
 #include "half.h"
 #include "hashing.h"
 
-
+#include "base/stringprintf.h"
 #include "image.h"
 #include "color-util.h"
 
@@ -22,14 +22,13 @@
 // integer outputs on some grid. The grid size is given by the
 // template arg. The function's range of interest spans from
 // [-1,1) in half space on both axes, so with a grid size
-// of 16, the "integers" are 0, 1/8, -1/8, 2/8, -2/8, ... 8/8, -8,8.
+// of 16, the "integers" are 0, -1/8, 1/8, -2/8, 2/8, ... -8/8.
 // Internally we store these multiplied by (GRID/2), so they
-// take values 0, 1, -1, 2, -2... GRID/2, -GRID/2.
+// take values 0, -1, 1, -2, 2, ... -GRID/2  (but excluding GRID/2).
 //
 // Early on I used a grid size of 16, but with improved techniques I
 // was able to get 256 to work, which is easier to work with for
-// stuff like hashing. (But I haven't yet migrated this code to
-// 256.)
+// stuff like hashing. So GRID=256 is the canonical choice here now.
 //
 // Every floating point value >= each boundary (e.g. 0.125) and
 // strictly less than the next (e.g. 0.24987792969 but not 0.250)
@@ -110,6 +109,106 @@ struct ChoppyGrid {
 
     return {ret};
   }
+
+  static std::pair<
+    // Choppy value, but only valid if the corresponding bool is true
+    std::array<int, GRID>,
+    // is correct?
+    std::array<bool, GRID>>
+  VerboseChoppy(const Exp *exp, ImageRGBA *img, std::string *message) {
+    CHECK(img->Width() == img->Height());
+    const int size = img->Width();
+
+    auto MapCoord = [size](double x, double y) -> pair<int, int> {
+      int xs = (int)std::round((size / 2) + x * (size / 2));
+      int ys = (int)std::round((size / 2) + -y * (size / 2));
+      return make_pair(xs, ys);
+    };
+
+    auto DrawLine = [img, &MapCoord](double x0, double y0,
+                                     double x1, double y1,
+                                     uint32_t color) {
+        auto [i0, j0] = MapCoord(x0, y0);
+        auto [i1, j1] = MapCoord(x1, y1);
+        img->BlendLine32(i0, j0, i1, j1, color);
+      };
+
+    std::array<int, GRID> ret;
+    std::array<bool, GRID> correct;
+    std::array<uint16_t, GRID> val;
+
+    std::optional<std::string> failure_message;
+    auto AddFailure = [&failure_message](const std::string &msg) {
+        if (!failure_message.has_value()) {
+          failure_message.emplace(msg);
+        }
+      };
+
+    // Midpoints have to be integers.
+    for (int i = 0; i < GRID; i++) {
+      half x = (half)((i / (double)(GRID/2)) - 1.0);
+      x += (half)(1.0/(GRID * 2.0));
+
+      half y = Exp::GetHalf(Exp::EvaluateOn(exp, Exp::GetU16(x)));
+      double yi = ((double)y + 1.0) * (GRID / 2);
+
+      correct[i] = true;
+      int yy = std::round(yi);
+      if (fabs(yi - yy) > EPSILON) {
+        // Not "integral."
+        AddFailure(StringPrintf("Not integral at x=%.4f (y=%.4f)\n",
+                                (float)x, (float)y));
+        int sx = MapCoord(x, 0).first;
+        img->BlendLine32(sx, 0, sx, img->Height(), 0xFF000033);
+        correct[i] = false;
+      }
+
+      ret[i] = yy - (GRID / 2);
+      val[i] = Exp::GetU16(y);
+    }
+
+    // XXX exit early if we've already failed?
+
+    // Also check that the surrounding values are exactly equal.
+    for (int i = 0; i < GRID; i++) {
+
+      half x = (half)((i / (double)(GRID/2)) - 1.0);
+
+      // Exact version!
+      uint16 ulow = Exp::GetU16(x);
+      uint16 uhigh = Exp::GetU16((half)(((i + 1) / (double)(GRID/2)) - 1.0));
+
+      for (uint16 upos = ulow;
+           upos != uhigh; upos = Exp::NextAfter16(upos)) {
+
+        // But don't concern ourselves with the value for -0.
+        if (upos != 0x8000) {
+          uint16 v = Exp::EvaluateOn(exp, upos);
+          if (val[i] != v && !((v & 0x7FFF) == 0 &&
+                               (val[i] & 0x7FFF) == 0)) {
+            // Not the same exact value for the interval.
+
+            AddFailure(
+                StringPrintf(
+                    "%d. %04x to %04x (%.4f to %.4f). "
+                    "now %04x=%.4f. got %04x, had %04x\n",
+                    i, ulow, uhigh,
+                    Exp::GetHalf(ulow), Exp::GetHalf(uhigh),
+                    upos, (float)Exp::GetHalf(upos),
+                    v, val[i]));
+            int sx = MapCoord(x, 0).first;
+            img->BlendLine32(sx, 0, sx, img->Height(), 0x0000FF33);
+            correct[i] = false;
+          }
+        }
+      }
+    }
+
+    if (message != nullptr && failure_message.has_value())
+      *message = failure_message.value();
+    return make_pair(ret, correct);
+  }
+
 
   struct DB {
     Allocator alloc;

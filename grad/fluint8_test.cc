@@ -241,8 +241,19 @@ static void TestRightShifts() {
   TestRightShift<8>();
 }
 
+static void Gen16() {
+  for (int i = 0; i < 256; i++) {
+    half h = (half)(float)i;
+    uint16_t u = Exp::GetU16(h);
+    printf("%04x, ", u);
+    if (i % 8 == 7) printf("\n");
+  }
+  printf("\n");
+}
 
 int main(int argc, char **argv) {
+  Gen16();
+
   TestToFrom();
   TestPlus();
   TestMinus();

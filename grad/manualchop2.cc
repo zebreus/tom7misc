@@ -1,5 +1,6 @@
-// Semi-manual attempts to find a specific "choppy" function,
-// which I think was the "zero threshold" one.
+// Semi-manual search for Choppy (256) functions that are useful in
+// fluint8. (We can construct any choppy function from the basis, but
+// they are often much larger than needed.)
 
 #include "expression.h"
 #include "timer.h"
@@ -23,7 +24,7 @@
 #include "choppy.h"
 #include "ansi.h"
 
-using Choppy = ChoppyGrid<16>;
+using Choppy = ChoppyGrid<256>;
 using Table = Exp::Table;
 using uint32 = uint32_t;
 using uint8 = uint8_t;
@@ -34,6 +35,63 @@ static constexpr int IMAGE_SIZE = 1920;
 
 static inline uint16 U(double d) {
   return Exp::GetU16((half)d);
+}
+
+// Abstract choppy goal.
+// This one is the "Canonize" function, which is basically
+// floor (rounding towards -inf) for every value in [-1, 1)
+// except -0.
+struct GoalCanonize {
+  static_assert(Choppy::GRID == 256);
+  constexpr static DB::key_type TargetKey() {
+    DB::key_type key;
+    for (int i = 0; i < 256; i++)
+      key[i] = -128 + i;
+    return key;
+  }
+
+  // TODO:
+  static constexpr std::initializer_list<uint16> critical = {
+    // -1 and epsilon less
+    0xbc00,
+    0xbbff,
+    // -1/128 and epsilon less
+    0xa000,
+    0x9fff,
+    // very small negative
+    0x8002,
+    0x8001,
+    // negative zero, our foe!
+    0x8000,
+
+    // Positive small values
+    0x0000,
+    0x0001,
+    0x0002,
+    // almost 1/128, then 1/128
+    0x1fff,
+    0x2000,
+    // almost 1
+    0x3bff,
+    0x3c00,
+  };
+
+
+};
+
+using Goal = GoalCanonize;
+
+static bool IsCorrect(const DB::key_type &chop) {
+  static constexpr DB::key_type correct_chop = Goal::TargetKey();
+  return chop == correct_chop;
+}
+
+static bool IsCorrect(const Exp *e) {
+  auto chopo = Choppy::GetChoppy(e);
+  if (!chopo.has_value())
+    return false;
+
+  return IsCorrect(chopo.value());
 }
 
 // Annoyingly we have to pass around the allocator pointer...
@@ -93,6 +151,13 @@ static ExpWrapper operator~ (ExpWrapper a) {
   return a - v;
 }
 
+// sets f(1) = 1.
+static ExpWrapper operator! (ExpWrapper a) {
+  const uint16 v = Exp::EvaluateOn(a.exp, 0x3c00);
+  half inv_h = 1.0_h / Exp::GetHalf(v);
+  return a * U(inv_h);
+}
+
 struct ColorPool {
 
   int GetOrAdd(uint16 u) {
@@ -115,35 +180,10 @@ struct ColorPool {
 };
 
 static void PrintExpressionStats(const Table &result) {
-  std::vector<uint16> critical = {
-    // -1 and epsilon less
-    0xbc00,
-    0xbbff,
-    // -0.125 and epislon less
-    0xb000,
-    0xafff,
-    // very small negative
-    0x8002,
-    0x8001,
-    // negative zero, our foe!
-    0x8000,
-
-    // Positive small values
-    0x0000,
-    0x0001,
-    0x0002,
-    // almost .125
-    0x2fff,
-    0x3000,
-    // almost 1
-    0x3bff,
-    0x3c00,
-  };
-
   ColorPool color_pool;
 
   // First tally the colors.
-  for (uint16 ux : critical) {
+  for (uint16 ux : Goal::critical) {
     uint16 uy = result[ux];
     color_pool.GetOrAdd(uy);
   }
@@ -172,7 +212,7 @@ static void PrintExpressionStats(const Table &result) {
     };
 
   CPrintf("Critical points:\n");
-  for (uint16 ux : critical) {
+  for (uint16 ux : Goal::critical) {
     uint16 uy = result[ux];
     half x = Exp::GetHalf(ux);
     half y = Exp::GetHalf(uy);
@@ -267,8 +307,6 @@ static void PrintExpressionStats(const Table &result) {
               HexColor(first).c_str(), HexColor(last).c_str());
     }
   }
-
-
 }
 
 static Table PrintExpressionStats(const Exp *exp) {
@@ -301,384 +339,6 @@ static int NumDistinctValues(const Table &table) {
   }
 
   return (int)values.size();
-}
-
-const Exp *TweakExpressions(Allocator *caller_alloc) {
-  ArcFour rc(StringPrintf("tweak.%lld", time(nullptr)));
-  auto P = [&rc](float f) { return RandFloat(&rc) < f; };
-
-  ImageRGBA img(1920, 1920);
-  img.Clear32(0x000000FF);
-  GradUtil::Grid(&img);
-
-  int64 quickok = 0;
-  int imaged = 0;
-  for (int64 iters = 0; true; iters++) {
-
-    if (iters && ((iters < 1000 && iters % 10 == 0) || iters % 10000 == 0)) {
-      printf("%d iters, %.3f%% qok\n", iters, (quickok * 100.0) / iters);
-    }
-
-    Allocator alloc;
-    ExpWrapper ret(&alloc, alloc.Var());
-
-    auto RandBetween = [&](uint16 lo, uint16 hi) {
-        int range = hi - lo;
-        int x = RandTo(&rc, range);
-        return (uint16)(lo + x);
-      };
-
-    auto RandomExp = [&]() -> ExpWrapper {
-        ExpWrapper var(&alloc, alloc.Var());
-
-        float pp = RandFloat(&rc);
-        uint16 r = (uint16)RandBetween(0, 0x2500);
-        if (pp < 0.33) {
-          var = var + r;
-          if (P(0.5)) var = var - r;
-        } else if (pp < 0.66) {
-          var = var - r;
-          if (P(0.5)) var = var + r;
-        }
-
-        var = var * U(0.125 / 4.0);
-
-        float pp2 = RandFloat(&rc);
-        if (pp2 < 0.33) {
-          var = var + (uint16)RandBetween(0x0000, 0x0100);
-          var = var - U(-0.125);
-        } else if (pp2 < 0.66) {
-          var = var - (uint16)RandBetween(0x0000, 0x0100);
-          var = var + U(-0.125);
-        }
-
-
-        for (int i = 0; i < (int)RandBetween(59, 66); i++)
-          var = var + (U(1.0) + i);
-
-        var = ~var;
-        return var;
-      };
-
-    [[maybe_unused]]
-    auto RandomExp2 = [&]() -> ExpWrapper {
-        do {
-          // XXX do these in a random order.
-          if (P(0.40)) {
-            uint16_t small = RandTo(&rc, 0x68e);
-            ret = ret + small;
-            if (P(0.60)) {
-              ret = ret - small;
-              if (P(0.66)) {
-                ret = ret - small;
-                ret = ret + small;
-              }
-            }
-          }
-
-          if (P(0.50)) {
-            int num = RandTo(&rc, 64);
-            while (num--)
-              ret = ret + U(RandDouble(&rc) * 2.0 - 1.0);
-          }
-
-          if (P(0.50)) {
-            ret = ret * U(1.0 + RandDouble(&rc) * 64.0);
-          }
-
-          if (P(0.40)) {
-            int ones = P(0.33) ? 0 : RandTo(&rc, 512);
-
-            // PERF: iterated
-            for (int i = 0; i < ones; i++)
-              ret = ret + U(1.0);
-            for (int i = 0; i < ones; i++)
-              ret = ret + U(-1.0);
-          }
-
-          if (P(0.50)) {
-            ret = ret * U(1.0 + RandDouble(&rc) * 64.0);
-          }
-
-          if (P(0.20)) {
-            ret = ret * U(1024.0);
-            ret = ret * U(512.0);
-            double d = RandDouble(&rc) * 128.0;
-            ret = ret * U(d);
-            if (P(0.20)) {
-              ret = ret + U(1.0);
-              ret = ret + U(1.0);
-              ret = ret + U(-1.0);
-              ret = ret + U(-1.0);
-              ret = ret + U(-1.0);
-              ret = ret + U(1.0);
-            }
-
-            ret = ret * U(1.0 / d);
-            ret = ret * U(1.0/512.0);
-            ret = ret * U(1.0/1024.0);
-          }
-
-          if (P(0.50)) {
-            ret = ret * U(1.0 / (RandDouble(&rc) * 512.0));
-          }
-
-          if (P(0.50)) {
-            int num = 1 + RandTo(&rc, 64);
-            while (num--)
-              ret = ret + U(RandDouble(&rc) * 16.0 - 8.0);
-          }
-
-          // If none of the dice came up, it will be useless, so loop.
-        } while (ret.exp->type == VAR);
-
-        return ret;
-      };
-
-    ret = RandomExp();
-    while (P(0.33))
-      ret = ret - RandomExp();
-
-    const Exp *e = ret.exp;
-    // Quick check
-    uint16 ypos = Exp::EvaluateOn(e, Exp::GetU16((half)(1.0 / 16.0)));
-    uint16 yneg = Exp::EvaluateOn(e, Exp::GetU16((half)(-1.0 / 16.0)));
-
-    if (ypos != yneg) {
-      quickok++;
-
-      // offset so it's within range
-      e = alloc.PlusC(e, ypos ^ 0x8000);
-
-      static constexpr int NUM_TO_PLOT = 1000;
-      if (imaged < NUM_TO_PLOT) {
-        Table result = Exp::TabulateExpressionIn(e, (half)-1.0, (half)+1.0);
-        const auto [r, g, b] = ColorUtil::HSVToRGB(RandFloat(&rc), 1.0, 1.0);
-        uint32 color = ColorUtil::FloatsTo32(r, g, b, 0x11 / (float)0xFF);
-        GradUtil::Graph(result, color, &img);
-        printf("%");
-      } else if (imaged == NUM_TO_PLOT) {
-        img.Save("tweak.png");
-        printf("Wrote tweak.png\n");
-      }
-      imaged++;
-
-      auto chopo = Choppy::GetChoppy(e);
-      if (chopo.has_value()) {
-        const auto &k = chopo.value();
-        if (k[7] != k[8]) {
-          printf("k: %s\n"
-                 "%s",
-                 DB::KeyString(k).c_str(),
-                 Exp::ExpString(e).c_str());
-          return caller_alloc->Copy(e);
-        }
-      }
-    }
-  }
-}
-
-// Just need something that has different and nonzero
-// values around 0, and we should be done. Seems like
-// this should be easy to do manually?
-static void MakeChop() {
-  ImageRGBA img(IMAGE_SIZE, IMAGE_SIZE);
-  img.Clear32(0x000000FF);
-  GradUtil::Grid(&img);
-
-  DB db;
-
-  // Allocator *alloc = &db.alloc;
-  Allocator *alloc = &db.alloc;
-
-  #if 0
-  half scale = (half)4.0;
-  int iters = 8;
-
-  half offset = (half)64.0;
-  int oiters = 8;
-
-  const Exp *exp =
-      alloc->TimesC(
-        alloc->PlusC(
-            alloc->PlusC(
-                alloc->TimesC(alloc->Var(),
-                              Exp::GetU16(scale),
-                              iters),
-                Exp::GetU16(offset),
-                oiters),
-            Exp::GetU16(-offset),
-            oiters),
-        Exp::GetU16((half)1.0 / scale),
-        iters);
-#endif
-
-  #if 0
-  half offset = (half)256;
-  int iters = 1;
-
-  // This is VERY close.. maybe with some local search it could
-  // be made to work?
-  const Exp *exp =
-    alloc->PlusC(
-    alloc->PlusC(
-        alloc->PlusC(
-            alloc->PlusC(
-                alloc->PlusC(
-                    alloc->PlusC(
-                        alloc->Var(),
-                        Exp::GetU16((half)(1 - 0.0625*2))),
-                    Exp::GetU16(offset),
-                    iters),
-                Exp::GetU16(-offset),
-                iters),
-            Exp::GetU16(-offset),
-            iters),
-        Exp::GetU16(offset),
-        iters),
-    Exp::GetU16((half)-1.0));
-  #endif
-
-
-  #if 0
-  half offset = (half)511;
-
-  uint16 one = Exp::GetU16((half)1);
-  uint16 negone = Exp::GetU16((half)-1);
-
-  uint16 eps = 0x0001;
-
-  ExpWrapper base =
-    ((ExpWrapper(alloc->Var()) + one + one + one + negone) *
-     Exp::GetU16((half)(1.0/512.0)) *
-     Exp::GetU16((half)(1.0/512.0)) *
-     Exp::GetU16((half)(1.0/64))) *
-    Exp::GetU16((half)64.0) *
-    Exp::GetU16((half)512.0) *
-    Exp::GetU16((half)512.0) + one + negone;
-
-  ExpWrapper ew = base;
-  /*
-    base +
-    one + one + one +
-    negone + negone + negone;
-  */
-  /*
-    Exp::GetU16(-offset) +
-    Exp::GetU16(-offset) +
-    Exp::GetU16(offset)
-  */
-  const Exp *exp = ew.exp;
-
-  // This is VERY close.. maybe with some local search it could
-  // be made to work?
-    /*
-  const Exp *exp =
-    alloc->PlusC(
-    alloc->PlusC(
-        alloc->PlusC(
-            alloc->PlusC(
-                alloc->PlusC(
-                    alloc->PlusC(
-                        alloc->Var(),
-                        Exp::GetU16((half)(1 - 0.0625*2)) + 0),
-                    Exp::GetU16(offset),
-                    iters),
-                Exp::GetU16(-offset) + 1,
-                iters),
-            Exp::GetU16(-offset),
-            iters),
-        Exp::GetU16(offset),
-        iters),
-    Exp::GetU16((half)-1.0));
-    */
-  #endif
-
-#if 0
-  half offset = (half)64.0;
-  int iters = 8;
-
-  const Exp *exp =
-    alloc->PlusC(
-        alloc->PlusC(
-            // alloc->PlusC(
-            alloc->Var(),
-            // 0xb17f),
-            Exp::GetU16(offset),
-            iters),
-        Exp::GetU16(-offset),
-        iters);
-#endif
-
-#if 0
-  half offset = (half)1024;
-
-  const Exp *exp = [&]() {
-      int64 parity = 0;
-      half lo0 = (half)0.1; // (half)-1;
-      half hi0 = (half)1;
-      for (half pos0 = lo0; pos0 < hi0; pos0 = nextafter(pos0, hi0)) {
-        parity++;
-        if (parity % 100 == 0)
-          printf("%.6g/%.6g\n", (float)pos0, (float)hi0);
-        half lo1 = (half)0.95;
-        half hi1 = (half)1.05;
-        for (half pos1 = lo1; pos1 < hi1; pos1 = nextafter(pos1, hi1)) {
-
-          for (int dx = -100; dx < 100; dx++) {
-          const Exp *e =
-            alloc->PlusC(
-                alloc->PlusC(
-                    alloc->PlusC(
-                        alloc->PlusC(
-                            alloc->PlusC(
-                                alloc->PlusC(
-                                    alloc->TimesC(
-                                        alloc->PlusC(
-                                            alloc->Var(),
-                                            pos0),
-                                        pos1),
-                                    Exp::GetU16((half)(1 - 0.0625*8)) + dx),
-                                Exp::GetU16(offset)),
-                            Exp::GetU16(-offset)),
-                        Exp::GetU16(-offset)),
-                    Exp::GetU16(offset)),
-                Exp::GetU16((half)-1.0));
-
-          // Quick check
-          uint16 ypos = Exp::EvaluateOn(e, Exp::GetU16((half)(1.0 / 16.0)));
-          uint16 yneg = Exp::EvaluateOn(e, Exp::GetU16((half)(-1.0 / 16.0)));
-
-          if (ypos != yneg) {
-            auto chopo = Choppy::GetChoppy(e);
-            if (chopo.has_value()) {
-              const auto &k = chopo.value();
-              if (k[7] != k[8]) {
-                printf("pos0: %04x pos1: %04x dx: %d\n",
-                       Exp::GetU16(pos0), Exp::GetU16(pos1),
-                       dx);
-                return e;
-              }
-            }
-          }
-          }
-        }
-      }
-      printf("Failed\n");
-      return alloc->Var();
-    }();
-  #endif
-
-  const Exp *exp = TweakExpressions(alloc);
-
-  Table result = Exp::TabulateExpression(exp);
-  GradUtil::Graph(result, 0xFFFFFF88, &img);
-
-  // Note this also tabulates.
-  PrintExpressionStats(exp);
-
-  img.Save("manual.png");
-  printf("Wrote manual.png");
 }
 
 // Checks loop invariants for Search.
@@ -730,6 +390,7 @@ static half RandHalfIn(ArcFour *rc, half low, half high) {
   return (half)(dl + RandDouble(rc) * width);
 }
 
+#if 0
 static void Search() {
   // It looks like this might have a solution but that
   // it may require a large number of operations. So
@@ -1048,290 +709,66 @@ static void Search() {
     }
   }
 }
+#endif
 
 static void Study() {
   Allocator alloc;
 
-  /*
-  // This will flatten out everything in the middle,
-  // but doesn't move values > 32768.
-
-  var = var + 0x0201;
-  var = var * U(65000);
-  var = IteratedPlus(var, U(15.9921875), 10000);
-  var = IteratedPlus(var, U(-15.9921875), 10000);
-  */
-
-  #if 0
-  // Does not work.
-  ExpWrapper e1(&alloc, alloc.Var());
-  e1 = e1 + 0x0201;
-  e1 = e1 * U(32768);
-  e1 = IteratedPlus(e1, U(-8.0), 10000);
-  e1 = e1 * U(1/128.0);
-
-  ExpWrapper e2(&alloc, alloc.Var());
-  e2 = e2 + 0x0201;
-  e2 = e2 * U(32768);
-  e2 = IteratedPlus(e2, U(8.0), 10000);
-  e2 = e2 * U(1/128.0);
-
-  ExpWrapper var = e2 - e1;
-  var = var * U(1/512.0);
-
-  var = ~ var;
-  #endif
-
   ExpWrapper var(&alloc, alloc.Var());
 
-  // Based on the below.
-  var = var + 0x0201;
-  var = IteratedTimes(var, 0x3c01, 10000);
-  var = var * U(1.0 / 8321);
-  var = var + 0x2fff;
-  var = var - 0x2fff;
-  var = var - 0x2fff;
-  var = var + 0x2fff;
-  var = var * U(4100.0);
-  var = var + U(510);
-  var = var * U(4);
-  var = var - U(2040);
-  var = IteratedPlus(var, U(1), 2040);
-  var = IteratedPlus(var, U(-1), 4080);
-  var = var + U(2040.0);
 
-
-#if 0
-  // also promising, and could come back to this!
-
-
-  // var = var + (uint16)0x247f;
-
-  // First we shift this over. This places
-  // small values on both sides of zero.
-  var = var + 0x0201;
-
-  // This iterated multiplication stretches
-  // the line out nonlinearly, because of
-  // different rounding error.
-  var = IteratedTimes(var, 0x3c01, 10000);
-  // This division reduces the number of
-  // distinct values. It also rounds some of
-  // the positive values less than zero to
-  // zero.
-  var = var * U(1.0 / 8321);
-
-  // Shifting up and back adds more discretization
-  // error, but this is the largest value that
-  // does not round the small values near zero
-  // (0x027e, 0x027f) to zero. They become 0x400.
-  var = var + 0x2fff;
-  var = var - 0x2fff;
-
-  // Same thing on the other side.
-  var = var - 0x2fff;
-  var = var + 0x2fff;
-
-  var = var * U(4100.0);
-  // now the small values are slightly more than 0.25
-
-  // So when shifting, we preserve the quarter.
-  var = var + U(510.0);
-
-  // Values look like this now.
+  var = var + U(1.0 / Choppy::GRID);
+  var = var * U(128.0);
   /*
--1                (bc00) yields -3590             (eb03)
--0.99951171875    (bbff) yields -3586             (eb01)
--0.125            (b000) yields -1.75             (bf00)
--0.12493896484    (afff) yields -1.75             (bf00)
--1.1920928955e-07 (8002) yields 510               (5ff8)
--5.9604644775e-08 (8001) yields 510               (5ff8)
--0                (8000) yields 510.25            (5ff9)
-0                 (0000) yields 510.25            (5ff9)
-5.9604644775e-08  (0001) yields 510.25            (5ff9)
-1.1920928955e-07  (0002) yields 510.25            (5ff9)
-0.12493896484     (2fff) yields 1022.5            (63fd)
-0.125             (3000) yields 1022.5            (63fd)
-0.99951171875     (3bff) yields 4608              (6c80)
-1                 (3c00) yields 4608              (6c80)
-  */
-
-  var = var * U(4.0);
-  // now we have 2040 < 0, and 2041 at zero.
-  var = var - U(2040.0);
-
-  var = var * U(0.25);
-  var = var + U(511.0);
-
-  var = var * U(11.66);
-  var = var - U(5959);
-
-  var = var * U(1 / 999.0);
-  var = var * U(1 / 47.8125);
-
-  var = IteratedTimes(var, 0x3c01, 10000);
-
-  for (int i = 0; i < 512; i += 3) {
-    var = var - U(i);
-    var = var + U(i);
-  }
-
-  var = var * U(1 / 3.6);
-  var = var - U(511);
-  var = var * U(8.0);
-
-  var = IteratedPlus(var, U(2.0), 2044);
-
-  var = IteratedPlus(var, U(1.0), 2048);
-
-  var = var - U(2048);
-  var = IteratedPlus(var, U(-1.0), 2000);
-  var = var + U(2000);
-
-  var = var * U(1.0 / 12360.0);
-
-  var = ~ var;
-
-  var = var * U(20000);
-#endif
-
-
-#if 0
-  // This approach is promising.
-  // Each time we do this, it does seem
-  // to reduce the number of distinct
-  // values. But it eventually seems to
-  // bottom out at 152. (And is verrrry slow)
-
-  // I think this was the starting condition?
-  // check r4659.
-  var = var + 0x0201;
-  // 10 loops, 432 distinct values, 25.5s
-  // 20 loops, 152 values, 53.159s
-  // 30 loops, 152 values, 88.814s
-  for (int j = 0; j < 30; j++) {
-
-    // with 100 iters, 5262
-    for (int i = 0; i < 100; i++) {
-
-      int iters = 10000;
-      var = IteratedTimes(var, 0x3c01, iters);
-      // for (int i = 0; i < iters; i++)
-      // var = var * 0x3c01;
-
-      var = var * U(1.0 / 1024);
-      var = var * U(1.0 / 8.0);
-
-      var = IteratedTimes(var, 0x3c01, iters);
-      // for (int i = 0; i < iters; i++)
-      // var = var * 0x3c01;
-
-      var = var * U(1.0 / 1024);
-      var = var * U(1.0 / 8.0);
-
-      var = IteratedTimes(var, 0x3c01, iters);
-      // for (int i = 0; i < iters; i++)
-      // var = var * 0x3c01;
-
-      var = var * U(1.0 / 1024);
-      var = var * U(1.0 / 8.0);
-
-      var = var * U(1.0 / 1.03125);
-
-    }
-
-    var = var * U(1.0 / 2.16796875);
-  }
-  #endif
-
-#if 0
-
-  var = var * U(1024.0);
-  // var = var * U(1.0 / 1024.);
-
-  var = var + U(10.0);
-  var = var - U(10.0);
-
-  var = var + U(64.0);
-  var = var - U(64.0);
-
-  // Now we have a lot of values (from old tiny ones)
-  // but -1 is -1056, 1 is 1056, so we have some room
-  // to scale this out.
-  var = var * U(60.0);
-  var = var * U(1 / 3.75);
-
-  var = var + U(512.0);
-  var = var - U(512.0);
-#endif
-
-  /*
-  var = var + U(512.0);
-  var = var - U(512.0);
-
-  var = var + U(4096.0);
-  var = var - U(4096.0);
-  */
-  /*
-  var = var + 1;
-  var = var * U(1.0 / 2.0);
-  */
-
-  // var = var * U(1024);
-  // var = var * 0x000c;
-
-  #if 0
-  var = var + 2;
-
-  var = var * U(3.0);
-  // var = var * U(1.0 / 3.0);
-
-  //  = var - 0x0300;
-
-  int iters = 24;
-
-  for (int i = 0; i < iters; i++)
-    var = var * U(1.0 / 2.0);
-
-  for (int i = 0; i < iters; i++)
-    var = var * U(2.0);
-  #endif
-
-  // var = var + (uint16)0x0030;
-
-  /*
-  var = var - U(-0.125);
-
-  for (int i = 0; i < 63 ; i++)
-    var = var + (U(1.0) + i);
-  */
-
-  /*
-  for (int i = 0; i < 1024 ; i++)
-    var = var - U(1.0);
-  */
-
-  #if 0
-  var = var * U(64);
-  var = var * U(1.0/64);
-
   var = var + U(1024);
-  var = var + U(-1024);
-
-  var = var + U(-1024);
+  var = var - U(1024);
+  var = var - U(1024);
   var = var + U(1024);
-  #endif
+  */
+  var = var * U(1 / 128.0);
 
-  // var = ~var;
+  // center and rescale it
+  var = ~var;
+  var = !var;
+
   const Exp *exp = var.exp;
 
   Table result = PrintExpressionStats(exp);
+  if (IsCorrect(exp)) {
+    printf(AGREEN("== Correct! ==") "\n");
+    string out = Exp::Serialize(exp) + "\n";
+    Util::WriteFile("manual-chop.txt", out);
+    printf("Wrote manual-chop.txt.\n");
+    printf("Result: %s\n", out.c_str());
+  } else {
+    ImageRGBA verbose(2048, 2048);
+    verbose.Clear32(0x000000FF);
+    GradUtil::Grid(&verbose);
+    string message;
+    auto target_key = Goal::TargetKey();
+    const auto [k, c] = Choppy::VerboseChoppy(exp, &verbose, &message);
+    for (int i = 0; i < Choppy::GRID; i++) {
+      if (!c[i]) {
+        if (k[i] == target_key[i]) printf(ARED(" %d"), k[i]);
+        else printf(AYELLOW(" %d") AGREY("(%d)"), k[i], target_key[i]);
+      } else {
+        if (k[i] == target_key[i]) printf(AGREEN(" %d"), k[i]);
+        else printf(ACYAN(" %d") AGREY("(%d)"), k[i], target_key[i]);
+      }
+    }
+    printf("\n");
+    printf(ARED("Example failure") ":\n%s\n", message.c_str());
+    GradUtil::Graph(result, 0xFFFFFF77, &verbose);
+    verbose.Save("verbose.png");
+    printf("... wrote verbose.png\n");
+  }
 
   ImageRGBA img(1024, 1024);
   img.Clear32(0x000000FF);
   GradUtil::Grid(&img);
   GradUtil::Graph(result, 0xFFFFFF88, &img);
   img.Save("study.png");
+  printf("Wrote study.png\n");
 }
 
 static void HalfStats() {
@@ -1360,12 +797,13 @@ static void HalfStats() {
 
 int main(int argc, char **argv) {
   AnsiInit();
-  HalfStats();
+  // HalfStats();
 
   // MakeChop();
   // Study();
 
-  Search();
+  Study();
+  // Search();
 
   return 0;
 }

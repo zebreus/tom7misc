@@ -38,6 +38,15 @@ static constexpr int MIN_OPT = 1; // 000;
 
 static constexpr int MAX_THREADS = 8;
 
+// TODO: Guard more optimizations with flags.
+static constexpr uint64_t OPT_JOINT1 = (1ULL << 1);
+static constexpr uint64_t OPT_JOINT2 = (1ULL << 2);
+static constexpr uint64_t OPT_REDUCEITERS = (1ULL << 3);
+static constexpr uint64_t OPT_DROPNODE = (1ULL << 4);
+
+static constexpr uint64_t OPTIMIZATIONS_ENABLED =
+   OPT_JOINT1 | OPT_JOINT2;
+
 static void MaybeSaveDB(DB *db) {
   static std::mutex *m = new std::mutex;
   static Periodically *save_per = new Periodically(60.0);
@@ -716,42 +725,47 @@ static void OptimizeOne(DB *db,
 
   // XXX run both JointOptArgs1 and JointOptArgs2!
 
-  {
-    // on basis8, 5 min takes 163 minutes.
-    constexpr double JOINT_OPT_SEC = 60.0 * 15.0; // * 30.0;
-    uint64_t seed = Rand64(&rc);
-    const Exp *joint_exp =
-      JointOpt<JointOptArgs2>(db, key, exp, JOINT_OPT_SEC, seed);
-    if (StillWorks(joint_exp)) {
-      exp = joint_exp;
-    } else {
-      printf(ARED("JointOpt did not perserve behavior!") "\n");
-      auto chopo = Choppy::GetChoppy(exp);
-      printf("Old key: %s\n", DB::KeyString(key).c_str());
-      printf("New key: ");
-      if (!chopo.has_value()) printf(" Not choppy!");
-      else printf("%s\n", DB::KeyString(chopo.value()).c_str());
+  auto DoJointOpt = [&]<class JO>(const uint64_t OPT_NAME) {
+    if (OPTIMIZATIONS_ENABLED & OPT_NAME) {
+      // on basis8, 5 min takes 163 minutes.
+      constexpr double JOINT_OPT_SEC = 60 * 60.0; // 60.0 * 15.0; // * 30.0;
+      uint64_t seed = Rand64(&rc);
+      const Exp *joint_exp =
+        JointOpt<JO>(db, key, exp, JOINT_OPT_SEC, seed);
+      if (StillWorks(joint_exp)) {
+        exp = joint_exp;
+      } else {
+        printf(ARED("JointOpt did not perserve behavior!") "\n");
+        auto chopo = Choppy::GetChoppy(exp);
+        printf("Old key: %s\n", DB::KeyString(key).c_str());
+        printf("New key: ");
+        if (!chopo.has_value()) printf(" Not choppy!");
+        else printf("%s\n", DB::KeyString(chopo.value()).c_str());
 
-      CHECK(false) <<
-      "Was: " << Exp::Serialize(exp) << "\n"
-      "Now: " << Exp::Serialize(joint_exp);
+        CHECK(false) <<
+        "Was: " << Exp::Serialize(exp) << "\n"
+        "Now: " << Exp::Serialize(joint_exp);
+      }
+
+      if (VERBOSE) printf("JointOpt done.\n");
+
+      // JointOpt can create opportunities for cleanup (e.g. iters = 0).
+      {
+        const Exp *clean_exp = CleanRec(alloc, exp);
+        if (StillWorks(exp)) {
+          exp = clean_exp;
+        } else {
+          CPrintf(ANSI_RED "(2) Clean did not preserve behavior!"
+                  ANSI_RESET "\n");
+          CHECK(false);
+        }
+      }
     }
-  }
+  };
 
-  if (VERBOSE) printf("JointOpt done.\n");
-
-  // JointOpt can create opportunities for cleanup (e.g. iters = 0).
-  {
-    const Exp *clean_exp = CleanRec(alloc, exp);
-    if (StillWorks(exp)) {
-      exp = clean_exp;
-    } else {
-      CPrintf(ANSI_RED "(2) Clean did not preserve behavior!"
-              ANSI_RESET "\n");
-      CHECK(false);
-    }
-  }
-
+  // Call the templated lambda with an explicit arg.
+  DoJointOpt.template operator()<JointOptArgs1>(OPT_JOINT1);
+  DoJointOpt.template operator()<JointOptArgs2>(OPT_JOINT2);
 
   if (State::CanBeLinearized(exp)) {
     CPrintf(ANSI_GREEN "Linearizable." ANSI_RESET "\n");
@@ -1095,7 +1109,8 @@ static void OptimizeOne(DB *db,
     }
   };
 
-  if (!State::CanBeLinearized(exp)) {
+  if ((OPTIMIZATIONS_ENABLED & OPT_REDUCEITERS) &&
+      !State::CanBeLinearized(exp)) {
     if (start_size > 1000) {
       CPrintf(ANSI_GREY "[%d/%d] " ANSI_RESET
               ANSI_RED "Slow iter reduction: can't be linearized."
@@ -1110,7 +1125,9 @@ static void OptimizeOne(DB *db,
     MaybeSaveDB(db);
   }
 
-  DoPhase(DropNode());
+  if (OPTIMIZATIONS_ENABLED & OPT_DROPNODE) {
+    DoPhase(DropNode());
+  }
 
   const int end_size = Exp::ExpSize(exp);
   if (end_size < start_size) {

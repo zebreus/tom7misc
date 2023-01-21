@@ -26,14 +26,14 @@
 
 #include "tracing.h"
 
-#define N_FLAG 0x80
-#define V_FLAG 0x40
-#define U_FLAG 0x20
-#define B_FLAG 0x10
-#define D_FLAG 0x08
-#define I_FLAG 0x04
-#define Z_FLAG 0x02
-#define C_FLAG 0x01
+static constexpr Fluint8 N_FLAG{0x80};
+static constexpr Fluint8 V_FLAG{0x40};
+static constexpr Fluint8 U_FLAG{0x20};
+static constexpr Fluint8 B_FLAG{0x10};
+static constexpr Fluint8 D_FLAG{0x08};
+static constexpr Fluint8 I_FLAG{0x04};
+static constexpr Fluint8 Z_FLAG{0x02};
+static constexpr Fluint8 C_FLAG{0x01};
 
 #define ADDCYC(x)            \
   {                          \
@@ -61,11 +61,11 @@ void X6502::DMW(uint32 A, uint8 V) {
 #define PUSH(V)              \
   {                          \
     uint8 VTMP = V;          \
-    WrRAM(0x100 + reg_S, VTMP); \
+    WrRAM(0x100 + reg_S.ToInt(), VTMP);         \
     reg_S--;                    \
   }
 
-#define POP() RdRAM(0x100 + (++reg_S))
+#define POP() RdRAM(0x100 + (++reg_S).ToInt())
 
 // I think this stands for "zero and negative" table, which has the
 // zero and negative cpu flag set for each possible byte. The
@@ -75,22 +75,23 @@ void X6502::DMW(uint32 A, uint8 V) {
 // what's tested to populate the table, so flags |= (b & 0x80)).
 // Anyway, I inlined the values rather than establishing them when the
 // emulator starts up, mostly for thread safety sake. -tom7
-static constexpr uint8 ZNTable[256] = {
-    Z_FLAG, 0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      0,      0,      0,      0,      0,      0,      0,
-    0,      0,      N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+static constexpr Fluint8 NO_FLAGS{0};
+static constexpr Fluint8 ZNTable[256] = {
+    Z_FLAG, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
     N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
     N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
     N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
@@ -109,6 +110,7 @@ static constexpr uint8 ZNTable[256] = {
 /* Some of these operations will only make sense if you know what the flag
    constants are. */
 
+#if 0
 
 #define X_ZN(zort)          \
   reg_P &= ~(Z_FLAG | N_FLAG); \
@@ -654,7 +656,7 @@ void X6502::Run(int32 cycles) {
   #ifdef AOT_INSTRUMENTATION
   cycles_histo[std::max(0, std::min(cycles, 1023))]++;
   #endif
-  
+
   if (fc->fceu->PAL) {
     cycles *= 15;  // 15*4=60
   } else {
@@ -720,7 +722,7 @@ void X6502::RunLoop() {
     #ifdef AOT_INSTRUMENTATION
     pc_histo[reg_PC]++;
     #endif
-    
+
     const uint8 b1 = RdMem(reg_PC);
     // printf("Read %x -> opcode %02x\n", reg_PC, b1);
 
@@ -1214,3 +1216,5 @@ void X6502::RunLoop() {
   TRACEF("Exiting X6502_Run normally: " TRACE_MACHINEFMT, TRACE_MACHINEARGS);
   TRACEA(fc->fceu->RAM, 0x800);
 }
+
+#endif

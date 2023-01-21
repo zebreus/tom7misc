@@ -12,6 +12,8 @@ using Allocator = Exp::Allocator;
 
 static constexpr int CHOPPY_GRID = 256;
 
+int64_t Fluint8::num_cheats = 0;
+
 uint16_t Fluint8::Representation() const { return Exp::GetU16(h); }
 
 static Allocator *GetAlloc() {
@@ -42,10 +44,6 @@ static const Exp *IndicateGreater(half h) {
         // TODO: Bake this into ZERO_THRESHOLD, yeah?
         // Scale to return 1, not 1/8.
         Exp::GetU16(8.0_h));
-}
-
-Fluint8::Fluint8(uint8_t b) {
-  h = (int)b;
 }
 
 uint8_t Fluint8::ToInt() const {
