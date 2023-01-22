@@ -68,11 +68,11 @@ uint64 Emulator::Registers() const {
   const X6502 *x = fc->X;
   uint64 ret = 0LL;
   ret <<= 16; ret |= x->reg_PC;
-  ret <<= 8; ret |= x->reg_A;
-  ret <<= 8; ret |= x->reg_X;
-  ret <<= 8; ret |= x->reg_Y;
-  ret <<= 8; ret |= x->reg_S;
-  ret <<= 8; ret |= x->reg_P;
+  ret <<= 8; ret |= x->GetA();
+  ret <<= 8; ret |= x->GetX();
+  ret <<= 8; ret |= x->GetY();
+  ret <<= 8; ret |= x->GetS();
+  ret <<= 8; ret |= x->GetP();
   return ret;
 }
 
@@ -81,18 +81,21 @@ uint64 Emulator::MachineChecksum() const {
   md5_starts(&ctx);
 
   // All of RAM.
-  md5_update(&ctx, fc->fceu->RAM, RAM_BYTE_SIZE);  
+  md5_update(&ctx, fc->fceu->RAM, RAM_BYTE_SIZE);
 
   // CPU registers. Be insensitive to endianness here.
   uint8 pc_high = fc->X->reg_PC >> 8;
   uint8 pc_low = fc->X->reg_PC & 0xFF;
   md5_update(&ctx, &pc_high, 1);
   md5_update(&ctx, &pc_low, 1);
-  md5_update(&ctx, &fc->X->reg_A, 1);
-  md5_update(&ctx, &fc->X->reg_X, 1);
-  md5_update(&ctx, &fc->X->reg_Y, 1);
-  md5_update(&ctx, &fc->X->reg_S, 1);
-  md5_update(&ctx, &fc->X->reg_P, 1);
+  auto AddByte = [&ctx](uint8 b) {
+      md5_update(&ctx, &b, 1);
+    };
+  AddByte(fc->X->GetA());
+  AddByte(fc->X->GetX());
+  AddByte(fc->X->GetY());
+  AddByte(fc->X->GetS());
+  AddByte(fc->X->GetP());
   // Not including PI, which I think is an implementation detail.
   // counts are also excluded.
   md5_update(&ctx, &fc->X->DB, 1);

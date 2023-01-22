@@ -14,6 +14,8 @@ static constexpr int CHOPPY_GRID = 256;
 
 int64_t Fluint8::num_cheats = 0;
 
+#if !FLUINT8_WRAP
+
 uint16_t Fluint8::Representation() const { return Exp::GetU16(h); }
 
 static Allocator *GetAlloc() {
@@ -22,8 +24,13 @@ static Allocator *GetAlloc() {
 }
 
 static const Exp *Canonicalize() {
-  static const Exp *canon =
-    Exp::Deserialize(GetAlloc(), Util::ReadFile("canon.txt"));
+  static const Exp *canon = []() {
+      printf("Load canon.txt\n");
+      const Exp *e =
+        Exp::Deserialize(GetAlloc(), Util::ReadFile("canon.txt"));
+      printf("GOT %p\n", e);
+      return e;
+    }();
   CHECK(canon != nullptr);
   return canon;
 }
@@ -115,3 +122,20 @@ Fluint8 Fluint8::RightShift1(Fluint8 x) {
   const half r = Eval(Canonicalize(), z);
   return Fluint8(r * 128.0_h + 128.0_h);
 }
+
+// TODO!
+
+Fluint8 Fluint8::BitwiseXor(Fluint8 a, Fluint8 b) {
+  Cheat();
+  return Fluint8(a.ToInt() ^ b.ToInt());
+}
+Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
+  Cheat();
+  return Fluint8(a.ToInt() & b.ToInt());
+}
+Fluint8 Fluint8::BitwiseOr(Fluint8 a, Fluint8 b) {
+  Cheat();
+  return Fluint8(a.ToInt() | b.ToInt());
+}
+
+#endif

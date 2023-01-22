@@ -9,6 +9,82 @@
 
 struct Exp;
 
+// If set, use uint8 to implement it (for debugging)
+#define FLUINT8_WRAP 0
+
+#if FLUINT8_WRAP
+
+struct Fluint8 {
+  uint8_t b = 0;
+  explicit constexpr Fluint8(uint8_t b) : b(b) {}
+  uint8_t ToInt() const { return b; }
+
+  // TODO: This should not be supported; instead we want like ?:
+  /*
+  operator bool() const {
+    num_cheats++;
+    return ToInt() != 0;
+  }
+  */
+
+  bool operator !() const { return ToInt() == 0; }
+
+  constexpr Fluint8() : b(0) {}
+  Fluint8(Fluint8 &&other) = default;
+  Fluint8(const Fluint8 &other) = default;
+  constexpr Fluint8 &operator =(const Fluint8 &) = default;
+
+  static Fluint8 Plus(Fluint8 a, Fluint8 b) {
+    return Fluint8(a.ToInt() + b.ToInt());
+  }
+  static Fluint8 Minus(Fluint8 a, Fluint8 b) {
+    return Fluint8(a.ToInt() - b.ToInt());
+  }
+
+  static Fluint8 BitwiseXor(Fluint8 a, Fluint8 b) {
+    return Fluint8(a.ToInt() ^ b.ToInt());
+  }
+
+  static Fluint8 BitwiseAnd(Fluint8 a, Fluint8 b) {
+    return Fluint8(a.ToInt() & b.ToInt());
+  }
+
+  static Fluint8 BitwiseOr(Fluint8 a, Fluint8 b) {
+    return Fluint8(a.ToInt() | b.ToInt());
+  }
+
+  // Left shift by a compile-time constant.
+  template<size_t n>
+  static Fluint8 LeftShift(Fluint8 x) {
+    return Fluint8(x.ToInt() << n);
+  }
+
+  template<size_t n>
+  static Fluint8 RightShift(Fluint8 x) {
+    return Fluint8(x.ToInt() >> n);
+  }
+
+  // One bit; no sign extension.
+  static Fluint8 RightShift1(Fluint8 x) {
+    return RightShift<1>(x);
+  }
+
+  // For testing.
+  uint16_t Representation() const { return b; }
+
+  // During development; returns the number of instructions issued
+  // that are not yet implemented with floats!
+  static void Cheat() { num_cheats++; }
+  static int64_t NumCheats() { return num_cheats; }
+  static void ClearCheats() { num_cheats = 0; }
+
+ private:
+
+  static int64_t num_cheats;
+};
+
+#else
+
 struct Fluint8 {
   using half = half_float::half;
 
@@ -18,6 +94,15 @@ struct Fluint8 {
   }
 
   uint8_t ToInt() const;
+
+  // TODO: This should not be supported; instead we want like ?:
+  bool operator !() const { return ToInt() == 0; }
+#if 0
+  operator bool() const {
+    num_cheats++;
+    return ToInt() != 0;
+  }
+#endif
 
   constexpr Fluint8() : h(GetHalf(TABLE[0])) {}
   Fluint8(Fluint8 &&other) = default;
@@ -46,8 +131,9 @@ struct Fluint8 {
 
   // During development; returns the number of instructions issued
   // that are not yet implemented with floats!
-  static int64_t NumCheats();
-  static void ClearCheats();
+  static void Cheat() { num_cheats++; }
+  static int64_t NumCheats() { return num_cheats; }
+  static void ClearCheats() { num_cheats = 0; }
 
  private:
   // Evaluate the expression with the given value for the variable.
@@ -105,6 +191,8 @@ struct Fluint8 {
   static int64_t num_cheats;
 };
 
+#endif
+
 // Overloaded operators.
 
 inline Fluint8 operator +(const Fluint8 &a, const Fluint8 &b) {
@@ -133,6 +221,10 @@ inline Fluint8 operator +(const Fluint8 &a) {
 
 inline Fluint8 operator -(const Fluint8 &a) {
   return Fluint8::Minus(Fluint8(0), a);
+}
+
+inline Fluint8 operator ~(const Fluint8 &a) {
+  return Fluint8::BitwiseXor(Fluint8(255), a);
 }
 
 inline Fluint8& operator++(Fluint8 &a) {
@@ -184,6 +276,7 @@ inline Fluint8& operator&=(Fluint8 &a, const Fluint8 &b) {
 
 
 // Template implementations.
+#if !FLUINT8_WRAP
 
 template<size_t N>
 Fluint8 Fluint8::LeftShift(Fluint8 x) {
@@ -205,6 +298,7 @@ Fluint8 Fluint8::RightShift(Fluint8 x) {
   }
 }
 
+#endif
 
 #endif
 

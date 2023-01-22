@@ -52,6 +52,9 @@ struct X6502 {
      I'll need to AND PC after increments to 0xFFFF
      when I do, though.  Perhaps an IPC() macro? */
 
+  // XXX make sure if you change something you also change its
+  // size in state.cc.
+
   // Program counter.
   // XXX this is part of processor state so it should be
   // fluint16?
@@ -66,7 +69,12 @@ struct X6502 {
   // processor until an interrupt.
   uint8 jammed;
 
-  Fluint8 XXX;
+  uint8 GetA() const { return reg_A.ToInt(); }
+  uint8 GetX() const { return reg_X.ToInt(); }
+  uint8 GetY() const { return reg_Y.ToInt(); }
+  uint8 GetS() const { return reg_S.ToInt(); }
+  uint8 GetP() const { return reg_P.ToInt(); }
+  uint8 GetPI() const { return reg_PI.ToInt(); }
 
   int32 count;
   /* Simulated IRQ pin held low (or is it high?).
@@ -98,6 +106,155 @@ struct X6502 {
   void (*MapIRQHook)(FC *, int) = nullptr;
 
 private:
+  inline void PUSH(Fluint8 v) {
+    WrRAM(0x100 + reg_S.ToInt(), v.ToInt());
+    reg_S--;
+  }
+
+  inline void PUSH16(uint16_t vv) {
+    WrRAM(0x100 + reg_S.ToInt(), (vv >> 8) & 0xFF);
+    reg_S--;
+    WrRAM(0x100 + reg_S.ToInt(), vv & 0xFF);
+    reg_S--;
+  }
+
+  inline uint8 POP() {
+    return RdRAM(0x100 + (++reg_S).ToInt());
+  }
+
+  inline uint16_t POP16() {
+    uint16 ret = POP();
+    ret |= ((uint16)POP()) << 8;
+    return ret;
+  }
+
+  /* Indexed Indirect */
+  uint16_t GetIX() {
+    Fluint8 tmp(RdMem(reg_PC));
+    reg_PC++;
+    tmp += reg_X;
+    uint16 ret = RdRAM(tmp.ToInt());
+    tmp++;
+    ret |= ((uint16)RdRAM(tmp.ToInt())) << 8;
+    return ret;
+  }
+
+  // Zero Page
+  Fluint8 GetZP() {
+    Fluint8 ret(RdMem(reg_PC));
+    reg_PC++;
+    return ret;
+  }
+
+  /* Zero Page Indexed */
+  Fluint8 GetZPI(Fluint8 i) {
+    Fluint8 ret = i + Fluint8(RdMem(reg_PC));
+    reg_PC++;
+    return ret;
+  }
+
+  /* Absolute */
+  uint16_t GetAB() {
+    uint16_t ret = RdMem(reg_PC);
+    reg_PC++;
+    ret |= RdMem(reg_PC) << 8;
+    reg_PC++;
+    return ret;
+  }
+
+  /* Absolute Indexed(for writes and rmws) */
+  uint16_t GetABIWR(Fluint8 i) {
+    uint16_t rt = GetAB();
+    uint16_t target = rt;
+    target += i.ToInt();
+    target &= 0xFFFF;
+    (void)RdMem((target & 0x00FF) | (rt & 0xFF00));
+    return target;
+  }
+
+  /* Absolute Indexed(for reads) */
+  uint16_t GetABIRD(Fluint8 i) {
+    uint16 tmp = GetAB();
+    uint16 ret = tmp;
+    ret += i.ToInt();
+    if ((ret ^ tmp) & 0x100) {
+      ret &= 0xFFFF;
+      RdMem(ret ^ 0x100);
+      ADDCYC(1);
+    }
+    return ret;
+  }
+
+  /* Indirect Indexed(for reads) */
+  uint16_t GetIYRD() {
+    uint8 tmp = RdMem(reg_PC);
+    reg_PC++;
+    uint16_t rt = RdRAM(tmp);
+    tmp++;
+    rt |= ((uint16_t)RdRAM(tmp)) << 8;
+    uint16 ret = rt;
+    ret += reg_Y.ToInt();
+    if ((ret ^ rt) & 0x100) {
+      ret &= 0xFFFF;
+      (void)RdMem(ret ^ 0x100);
+      ADDCYC(1);
+    }
+    return ret;
+  }
+
+
+  /* Indirect Indexed(for writes and rmws) */
+  uint16_t GetIYWR() {
+    uint8 tmp = RdMem(reg_PC);
+    reg_PC++;
+    uint16 rt = RdRAM(tmp);
+    tmp++;
+    rt |= ((uint16)RdRAM(tmp)) << 8;
+    uint16 ret = rt;
+    ret += reg_Y.ToInt();
+    ret &= 0xFFFF;
+    (void)RdMem((ret & 0x00FF) | (rt & 0xFF00));
+    return ret;
+  }
+
+  void X_ZN(Fluint8 zort) {
+    reg_P &= ~(Z_FLAG | N_FLAG);
+    reg_P |= ZNTable[zort.ToInt()];
+  }
+
+  void X_ZNT(Fluint8 zort) {
+    reg_P |= ZNTable[zort.ToInt()];
+  }
+
+  void CMPL(Fluint8 a1, Fluint8 a2) {
+    Fluint8::Cheat();
+    uint32 t = a1.ToInt() - a2.ToInt();
+    X_ZN(Fluint8(t) & Fluint8(0xFF));
+    reg_P &= ~C_FLAG;
+    reg_P |= (Fluint8((uint8)(t >> 8)) & C_FLAG) ^ C_FLAG;
+  }
+
+  void JR(bool cond) {
+    if (cond) {
+      int32 disp = (int8)RdMem(reg_PC);
+      reg_PC++;
+      ADDCYC(1);
+      uint32 tmp = reg_PC;
+      reg_PC += disp;
+      if ((tmp ^ reg_PC) & 0x100) {
+        ADDCYC(1);
+      }
+    } else {
+      reg_PC++;
+    }
+  }
+
+  void ADDCYC(int x) {
+    this->tcount += x;
+    this->count -= x * 48;
+    timestamp += x;
+  }
+
   // normal memory read
   inline uint8 RdMem(unsigned int A) {
     return DB = fc->fceu->ARead[A](fc, A);
@@ -115,6 +272,59 @@ private:
   inline void WrRAM(unsigned int A, uint8 V) {
     fc->fceu->RAM[A] = V;
   }
+
+  static constexpr Fluint8 N_FLAG{0x80};
+  static constexpr Fluint8 V_FLAG{0x40};
+  static constexpr Fluint8 U_FLAG{0x20};
+  static constexpr Fluint8 B_FLAG{0x10};
+  static constexpr Fluint8 D_FLAG{0x08};
+  static constexpr Fluint8 I_FLAG{0x04};
+  static constexpr Fluint8 Z_FLAG{0x02};
+  static constexpr Fluint8 C_FLAG{0x01};
+
+
+  // I think this stands for "zero and negative" table, which has the
+  // zero and negative cpu flag set for each possible byte. The
+  // information content is pretty low, and we might consider replacing
+  // the ZN/ZNT macros with something that computes from the byte itself
+  // (for example, the N flag is actually 0x80 which is the same bit as
+  // what's tested to populate the table, so flags |= (b & 0x80)).
+  // Anyway, I inlined the values rather than establishing them when the
+  // emulator starts up, mostly for thread safety sake. -tom7
+  /* Some of these operations will only make sense if you know what the flag
+     constants are. */
+  static constexpr Fluint8 NO_FLAGS{0};
+  static constexpr Fluint8 ZNTable[256] = {
+    Z_FLAG, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
+    NO_FLAGS, NO_FLAGS, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+    N_FLAG, N_FLAG, N_FLAG, N_FLAG,
+  };
 
   FC *fc = nullptr;
   DISALLOW_COPY_AND_ASSIGN(X6502);

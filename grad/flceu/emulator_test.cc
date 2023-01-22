@@ -34,6 +34,8 @@
 #include "threadutil.h"
 #include "tracing.h"
 
+#include "fluint8.h"
+
 // Number of random inputs to run after the fixed inputs.
 // This of course affects the checksums, so it should
 // probably not be changed.
@@ -610,15 +612,29 @@ int main(int argc, char **argv) {
     } else {
       printf("%s [%.2fs]:\n"
              "      0x%016llx, 0x%016llx,\n"
+             "      0x%016llx, 0x%016llx,\n"
+             "but wanted\n"
+             "      0x%016llx, 0x%016llx,\n"
              "      0x%016llx, 0x%016llx,\n",
              tc.game.cart.c_str(),
              serial_timer.Seconds(),
              result.nes_after_fixed,
              result.img_after_fixed,
              result.nes_after_random,
-             result.img_after_random);
+             result.img_after_random,
+
+             tc.result.nes_after_fixed,
+             tc.result.img_after_fixed,
+             tc.result.nes_after_random,
+             tc.result.img_after_random);
+      CHECK(false);
     }
+
+    // printf("EXIT EARLY\n");
+    // return 0;
   }
+
+  printf("Total fluint8 cheatz: %lld\n", Fluint8::NumCheats());
 
   printf("Ran everything in %.2fs\n", test_timer.Seconds());
 

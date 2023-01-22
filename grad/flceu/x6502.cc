@@ -26,24 +26,6 @@
 
 #include "tracing.h"
 
-static constexpr Fluint8 N_FLAG{0x80};
-static constexpr Fluint8 V_FLAG{0x40};
-static constexpr Fluint8 U_FLAG{0x20};
-static constexpr Fluint8 B_FLAG{0x10};
-static constexpr Fluint8 D_FLAG{0x08};
-static constexpr Fluint8 I_FLAG{0x04};
-static constexpr Fluint8 Z_FLAG{0x02};
-static constexpr Fluint8 C_FLAG{0x01};
-
-#define ADDCYC(x)            \
-  {                          \
-    int __x = x;             \
-    this->tcount += __x;     \
-    this->count -= __x * 48; \
-    timestamp += __x;        \
-  }
-
-
 X6502::X6502(FC *fc) : fc(fc) {
   CHECK(fc != nullptr);
 }
@@ -57,83 +39,6 @@ void X6502::DMW(uint32 A, uint8 V) {
   ADDCYC(1);
   fc->fceu->BWrite[A](fc, A, V);
 }
-
-#define PUSH(V)              \
-  {                          \
-    uint8 VTMP = V;          \
-    WrRAM(0x100 + reg_S.ToInt(), VTMP);         \
-    reg_S--;                    \
-  }
-
-#define POP() RdRAM(0x100 + (++reg_S).ToInt())
-
-// I think this stands for "zero and negative" table, which has the
-// zero and negative cpu flag set for each possible byte. The
-// information content is pretty low, and we might consider replacing
-// the ZN/ZNT macros with something that computes from the byte itself
-// (for example, the N flag is actually 0x80 which is the same bit as
-// what's tested to populate the table, so flags |= (b & 0x80)).
-// Anyway, I inlined the values rather than establishing them when the
-// emulator starts up, mostly for thread safety sake. -tom7
-static constexpr Fluint8 NO_FLAGS{0};
-static constexpr Fluint8 ZNTable[256] = {
-    Z_FLAG, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-};
-/* Some of these operations will only make sense if you know what the flag
-   constants are. */
-
-#if 0
-
-#define X_ZN(zort)          \
-  reg_P &= ~(Z_FLAG | N_FLAG); \
-  reg_P |= ZNTable[zort]
-#define X_ZNT(zort) reg_P |= ZNTable[zort]
-
-#define JR(cond)                    \
-  {                                 \
-    if (cond) {                     \
-      uint32 tmp;                   \
-      int32 disp;                   \
-      disp = (int8)RdMem(reg_PC);   \
-      reg_PC++;                     \
-      ADDCYC(1);                    \
-      tmp = reg_PC;                 \
-      reg_PC += disp;               \
-      if ((tmp ^ reg_PC) & 0x100) { \
-        ADDCYC(1);                  \
-      }                             \
-    } else {                        \
-      reg_PC++;                     \
-    }                               \
-  }
 
 #define LDA \
   reg_A = x;   \
@@ -151,7 +56,8 @@ static constexpr Fluint8 ZNTable[256] = {
   X_ZN(reg_A)
 #define BIT                                \
   reg_P &= ~(Z_FLAG | V_FLAG | N_FLAG);    \
-  reg_P |= ZNTable[x & reg_A] & Z_FLAG;    \
+  Fluint8::Cheat(); \
+  reg_P |= ZNTable[(x & reg_A).ToInt()] & Z_FLAG; \
   reg_P |= x & (V_FLAG | N_FLAG)
 #define EOR    \
   reg_A ^= x;  \
@@ -160,43 +66,42 @@ static constexpr Fluint8 ZNTable[256] = {
   reg_A |= x;  \
   X_ZN(reg_A)
 
+// TODO: Implement add with carry natively
 #define ADC                                                             \
   {                                                                     \
-    uint32 l = reg_A + x + (reg_P & 1);                                 \
+    Fluint8::Cheat();                                                   \
+    uint32 l = reg_A.ToInt() + (x).ToInt() + (reg_P & Fluint8(1)).ToInt(); \
     reg_P &= ~(Z_FLAG | C_FLAG | N_FLAG | V_FLAG);                      \
-    reg_P |= ((((reg_A ^ x) & 0x80) ^ 0x80) &                           \
-              ((reg_A ^ l) & 0x80)) >> 1;                               \
-    reg_P |= (l >> 8) & C_FLAG;                                         \
-    reg_A = l;                                                          \
+    reg_P |= Fluint8::RightShift<1>(((((reg_A ^ x) & Fluint8(0x80)) ^ Fluint8(0x80)) & \
+                                     ((reg_A ^ Fluint8((uint8)l)) & Fluint8(0x80)))); \
+    reg_P |= Fluint8((uint8)(l >> 8)) & C_FLAG;                         \
+    reg_A = Fluint8((uint8)l);                                          \
     X_ZNT(reg_A);                                                       \
   }
 
 #define SBC                                              \
   {                                                      \
-    uint32 l = reg_A - x - ((reg_P & 1) ^ 1);            \
+    Fluint8::Cheat();                                    \
+    uint32 l = reg_A.ToInt() - x.ToInt() -               \
+      ((reg_P & Fluint8(1)) ^ Fluint8(1)).ToInt();       \
     reg_P &= ~(Z_FLAG | C_FLAG | N_FLAG | V_FLAG);       \
-    reg_P |= ((reg_A ^ l) & (reg_A ^ x) & 0x80) >> 1;    \
-    reg_P |= ((l >> 8) & C_FLAG) ^ C_FLAG;               \
-    reg_A = l;                                           \
+    reg_P |= Fluint8::RightShift<1>(                                    \
+        ((reg_A ^ Fluint8((uint8)l)) & (reg_A ^ x)                      \
+                                     & Fluint8(0x80)));                 \
+    reg_P |= (Fluint8((uint8)(l >> 8)) & C_FLAG) ^ C_FLAG;              \
+    reg_A = Fluint8((uint8)l);                                          \
     X_ZNT(reg_A);                                        \
   }
 
-#define CMPL(a1, a2)                       \
-  {                                        \
-    uint32 t = a1 - a2;                    \
-    X_ZN(t & 0xFF);                        \
-    reg_P &= ~C_FLAG;                      \
-    reg_P |= ((t >> 8) & C_FLAG) ^ C_FLAG; \
-  }
-
 /* Special undocumented operation.  Very similar to CMP. */
-#define AXS                                   \
-  {                                           \
-    uint32 t = (reg_A & reg_X) - x;           \
-    X_ZN(t & 0xFF);                           \
-    reg_P &= ~C_FLAG;                         \
-    reg_P |= ((t >> 8) & C_FLAG) ^ C_FLAG;    \
-    reg_X = t;                                \
+#define AXS                                         \
+  {                                                 \
+    Fluint8::Cheat();                               \
+    uint32 t = (reg_A & reg_X).ToInt() - x.ToInt(); \
+    X_ZN(Fluint8(t) & Fluint8(0xFF));               \
+    reg_P &= ~C_FLAG;                                       \
+    reg_P |= (Fluint8((uint8)(t >> 8)) & C_FLAG) ^ C_FLAG;  \
+    reg_X = Fluint8((uint8)t);                              \
   }
 
 #define CMP CMPL(reg_A, x)
@@ -211,350 +116,233 @@ static constexpr Fluint8 ZNTable[256] = {
   x++;      \
   X_ZN(x)
 
-#define ASL      \
-  reg_P &= ~C_FLAG; \
-  reg_P |= x >> 7;  \
-  x <<= 1;       \
+#define ASL                                \
+  reg_P &= ~C_FLAG;                        \
+  reg_P |= Fluint8::RightShift<7>(x);      \
+  x = Fluint8::LeftShift<1>(x);            \
   X_ZN(x)
-#define LSR                          \
+#define LSR                             \
   reg_P &= ~(C_FLAG | N_FLAG | Z_FLAG); \
-  reg_P |= x & 1;                       \
-  x >>= 1;                           \
+  reg_P |= x & Fluint8(1);              \
+  x = Fluint8::RightShift<1>(x);        \
   X_ZNT(x)
 
 /* For undocumented instructions, maybe for other things later... */
-#define LSRA                         \
-  reg_P &= ~(C_FLAG | N_FLAG | Z_FLAG); \
-  reg_P |= reg_A & 1;                      \
-  reg_A >>= 1;                          \
+#define LSRA                               \
+  reg_P &= ~(C_FLAG | N_FLAG | Z_FLAG);    \
+  reg_P |= reg_A & Fluint8(1);             \
+  reg_A = Fluint8::RightShift<1>(reg_A);   \
   X_ZNT(reg_A)
 
-#define ROL                            \
-  {                                    \
-    uint8 l = x >> 7;                  \
-    x <<= 1;                           \
-    x |= reg_P & C_FLAG;                  \
-    reg_P &= ~(Z_FLAG | N_FLAG | C_FLAG); \
-    reg_P |= l;                           \
-    X_ZNT(x);                          \
+#define ROL                                \
+  {                                        \
+    Fluint8 l = Fluint8::RightShift<7>(x);   \
+    x = Fluint8::LeftShift<1>(x);          \
+    x |= reg_P & C_FLAG;                   \
+    reg_P &= ~(Z_FLAG | N_FLAG | C_FLAG);  \
+    reg_P |= l;                            \
+    X_ZNT(x);                              \
   }
-#define ROR                            \
-  {                                    \
-    uint8 l = x & 1;                   \
-    x >>= 1;                           \
-    x |= (reg_P & C_FLAG) << 7;           \
-    reg_P &= ~(Z_FLAG | N_FLAG | C_FLAG); \
-    reg_P |= l;                           \
-    X_ZNT(x);                          \
+
+#define ROR                                     \
+  {                                             \
+    Fluint8 l = x & Fluint8(1);                 \
+    x = Fluint8::RightShift<1>(x);              \
+    x |= Fluint8::LeftShift<7>(reg_P & C_FLAG); \
+    reg_P &= ~(Z_FLAG | N_FLAG | C_FLAG);       \
+    reg_P |= l;                                 \
+    X_ZNT(x);                                   \
   }
 
 /* Icky icky thing for some undocumented instructions.  Can easily be
    broken if names of local variables are changed.
 */
 
-/* Absolute */
-#define GetAB(target)             \
-  {                               \
-    target = RdMem(reg_PC);       \
-    reg_PC++;                     \
-    target |= RdMem(reg_PC) << 8; \
-    reg_PC++;                     \
-  }
-
-/* Absolute Indexed(for reads) */
-#define GetABIRD(target, i)       \
-  {                               \
-    unsigned int tmp;             \
-    GetAB(tmp);                   \
-    target = tmp;                 \
-    target += i;                  \
-    if ((target ^ tmp) & 0x100) { \
-      target &= 0xFFFF;           \
-      RdMem(target ^ 0x100);      \
-      ADDCYC(1);                  \
-    }                             \
-  }
-
-/* Absolute Indexed(for writes and rmws) */
-#define GetABIWR(target, i)                   \
-  {                                           \
-    unsigned int rt;                          \
-    GetAB(rt);                                \
-    target = rt;                              \
-    target += i;                              \
-    target &= 0xFFFF;                         \
-    RdMem((target & 0x00FF) | (rt & 0xFF00)); \
-  }
-
-/* Zero Page */
-#define GetZP(target)       \
-  {                         \
-    target = RdMem(reg_PC); \
-    reg_PC++;               \
-  }
-
-/* Zero Page Indexed */
-#define GetZPI(target, i)       \
-  {                             \
-    target = i + RdMem(reg_PC); \
-    reg_PC++;                   \
-  }
-
-/* Indexed Indirect */
-#define GetIX(target)             \
-  {                               \
-    uint8 tmp;                    \
-    tmp = RdMem(reg_PC);          \
-    reg_PC++;                     \
-    tmp += reg_X;                 \
-    target = RdRAM(tmp);          \
-    tmp++;                        \
-    target |= RdRAM(tmp) << 8;    \
-  }
-
-/* Indirect Indexed(for reads) */
-#define GetIYRD(target)          \
-  {                              \
-    unsigned int rt;             \
-    uint8 tmp;                   \
-    tmp = RdMem(reg_PC);         \
-    reg_PC++;                    \
-    rt = RdRAM(tmp);             \
-    tmp++;                       \
-    rt |= RdRAM(tmp) << 8;       \
-    target = rt;                 \
-    target += reg_Y;             \
-    if ((target ^ rt) & 0x100) { \
-      target &= 0xFFFF;          \
-      RdMem(target ^ 0x100);     \
-      ADDCYC(1);                 \
-    }                            \
-  }
-
-/* Indirect Indexed(for writes and rmws) */
-#define GetIYWR(target)                       \
-  {                                           \
-    unsigned int rt;                          \
-    uint8 tmp;                                \
-    tmp = RdMem(reg_PC);                      \
-    reg_PC++;                                 \
-    rt = RdRAM(tmp);                          \
-    tmp++;                                    \
-    rt |= RdRAM(tmp) << 8;                    \
-    target = rt;                              \
-    target += reg_Y;                          \
-    target &= 0xFFFF;                         \
-    RdMem((target & 0x00FF) | (rt & 0xFF00)); \
-  }
-
 /* Now come the macros to wrap up all of the above stuff addressing
    mode functions and operation macros. Note that operation macros
    will always operate(redundant redundant) on the variable "x".
 */
 
-#define RMW_A(op)    \
-  {                  \
-    uint8 x = reg_A; \
-    op;              \
-    reg_A = x;       \
-    break;           \
+#define RMW_A(op)      \
+  {                    \
+    Fluint8 x = reg_A; \
+    op;                \
+    reg_A = x;         \
+    break;             \
   }
-#define RMW_AB(op)   \
-  {                  \
-    unsigned int AA; \
-    uint8 x;         \
-    GetAB(AA);       \
-    x = RdMem(AA);   \
-    WrMem(AA, x);    \
-    op;              \
-    WrMem(AA, x);    \
-    break;           \
+#define RMW_AB(op)           \
+  {                          \
+    uint16 AA = GetAB();   \
+    Fluint8 x(RdMem(AA));    \
+    WrMem(AA, x.ToInt());    \
+    op;                      \
+    WrMem(AA, x.ToInt());    \
+    break;                   \
   }
-#define RMW_ABI(reg, op) \
-  {                      \
-    unsigned int AA;     \
-    uint8 x;             \
-    GetABIWR(AA, reg);   \
-    x = RdMem(AA);       \
-    WrMem(AA, x);        \
-    op;                  \
-    WrMem(AA, x);        \
-    break;               \
+
+#define RMW_ABI(reg, op)         \
+  {                              \
+    uint16 AA = GetABIWR(reg); \
+    Fluint8 x(RdMem(AA));        \
+    WrMem(AA, x.ToInt());        \
+    op;                          \
+    WrMem(AA, x.ToInt());        \
+    break;                       \
   }
 #define RMW_ABX(op) RMW_ABI(reg_X, op)
 #define RMW_ABY(op) RMW_ABI(reg_Y, op)
-#define RMW_IX(op)   \
-  {                  \
-    unsigned int AA; \
-    uint8 x;         \
-    GetIX(AA);       \
-    x = RdMem(AA);   \
-    WrMem(AA, x);    \
-    op;              \
-    WrMem(AA, x);    \
-    break;           \
+#define RMW_IX(op)           \
+  {                          \
+    uint16_t AA = GetIX();   \
+    Fluint8 x(RdMem(AA));    \
+    WrMem(AA, x.ToInt());    \
+    op;                      \
+    WrMem(AA, x.ToInt());    \
+    break;                   \
   }
-#define RMW_IY(op)   \
-  {                  \
-    unsigned int AA; \
-    uint8 x;         \
-    GetIYWR(AA);     \
-    x = RdMem(AA);   \
-    WrMem(AA, x);    \
-    op;              \
-    WrMem(AA, x);    \
-    break;           \
+#define RMW_IY(op)           \
+  {                          \
+    uint16_t AA = GetIX();   \
+    AA = GetIYWR();          \
+    Fluint8 x(RdMem(AA));    \
+    WrMem(AA, x.ToInt());    \
+    op;                      \
+    WrMem(AA, x.ToInt());    \
+    break;                   \
   }
-#define RMW_ZP(op) \
-  {                \
-    uint8 AA;      \
-    uint8 x;       \
-    GetZP(AA);     \
-    x = RdRAM(AA); \
-    op;            \
-    WrRAM(AA, x);  \
-    break;         \
+#define RMW_ZP(op)         \
+  {                        \
+    Fluint8 AA = GetZP();  \
+    Fluint8 x(RdRAM(AA.ToInt()));               \
+    op;                    \
+    WrRAM(AA.ToInt(), x.ToInt());               \
+    break;                 \
   }
-#define RMW_ZPX(op)    \
-  {                    \
-    uint8 AA;          \
-    uint8 x;           \
-    GetZPI(AA, reg_X); \
-    x = RdRAM(AA);     \
-    op;                \
-    WrRAM(AA, x);      \
-    break;             \
+#define RMW_ZPX(op)        \
+  {                        \
+    Fluint8 AA = GetZPI(reg_X);     \
+    Fluint8 x(RdRAM(AA.ToInt()));   \
+    op;                    \
+    WrRAM(AA.ToInt(), x.ToInt());               \
+    break;                 \
   }
 
-#define LD_IM(op)      \
-  {                    \
-    uint8 x;           \
-    x = RdMem(reg_PC); \
-    reg_PC++;          \
-    op;                \
-    break;             \
+#define LD_IM(op)              \
+  {                            \
+    Fluint8 x(RdMem(reg_PC));  \
+    reg_PC++;                  \
+    op;                        \
+    break;                     \
   }
-#define LD_ZP(op)  \
-  {                \
-    uint8 AA;      \
-    uint8 x;       \
-    GetZP(AA);     \
-    x = RdRAM(AA); \
-    op;            \
-    break;         \
+
+#define LD_ZP(op)          \
+  {                        \
+    Fluint8 AA = GetZP();                     \
+    Fluint8 x(RdRAM(AA.ToInt()));               \
+    op;                    \
+    break;                 \
   }
-#define LD_ZPX(op)      \
-  {                     \
-    uint8 AA;           \
-    uint8 x;            \
-    GetZPI(AA, reg_X);  \
-    x = RdRAM(AA);      \
-    op;                 \
-    break;              \
+#define LD_ZPX(op)              \
+  {                             \
+    Fluint8 AA = GetZPI(reg_X);          \
+    Fluint8 x(RdRAM(AA.ToInt()));        \
+    op;                         \
+    break;                      \
   }
-#define LD_ZPY(op)     \
-  {                    \
-    uint8 AA;          \
-    uint8 x;           \
-    GetZPI(AA, reg_Y); \
-    x = RdRAM(AA);     \
-    op;                \
-    break;             \
+
+#define LD_ZPY(op)          \
+  {                         \
+    Fluint8 AA = GetZPI(reg_Y);      \
+    Fluint8 x(RdRAM(AA.ToInt()));    \
+    op;                     \
+    break;                  \
   }
-#define LD_AB(op)                     \
-  {                                   \
-    unsigned int AA;                  \
-    uint8 x;                          \
-    GetAB(AA);                        \
-    TRACEN(AA);                       \
-    x = RdMem(AA);                    \
-    TRACEF("Read %d -> %02x", AA, x); \
-    (void) x;                         \
-    op;                               \
-    break;                            \
+#define LD_AB(op)           \
+  {                         \
+    uint16 AA = GetAB();    \
+    Fluint8 x(RdMem(AA));   \
+    (void) x;               \
+    op;                     \
+    break;                  \
   }
-#define LD_ABI(reg, op) \
-  {                     \
-    unsigned int AA;    \
-    uint8 x;            \
-    GetABIRD(AA, reg);  \
-    x = RdMem(AA);      \
-    (void) x;           \
-    op;                 \
-    break;              \
+
+#define LD_ABI(reg, op)         \
+  {                             \
+    uint16 AA = GetABIRD(reg);          \
+    Fluint8 x(RdMem(AA));       \
+    (void) x;                   \
+    op;                         \
+    break;                      \
   }
 #define LD_ABX(op) LD_ABI(reg_X, op)
 #define LD_ABY(op) LD_ABI(reg_Y, op)
-#define LD_IX(op)    \
-  {                  \
-    unsigned int AA; \
-    uint8 x;         \
-    GetIX(AA);       \
-    x = RdMem(AA);   \
-    op;              \
-    break;           \
+#define LD_IX(op)            \
+  {                          \
+    uint16 AA = GetIX();     \
+    Fluint8 x(RdMem(AA));    \
+    op;                      \
+    break;                   \
   }
-#define LD_IY(op)    \
-  {                  \
-    unsigned int AA; \
-    uint8 x;         \
-    GetIYRD(AA);     \
-    x = RdMem(AA);   \
-    op;              \
-    break;           \
+#define LD_IY(op)            \
+  {                          \
+    uint16 AA = GetIYRD();   \
+    Fluint8 x(RdMem(AA));    \
+    op;                      \
+    break;                   \
   }
 
 #define ST_ZP(r)  \
   {               \
-    uint8 AA;     \
-    GetZP(AA);    \
-    WrRAM(AA, r); \
+    Fluint8 AA = GetZP();                    \
+    WrRAM(AA.ToInt(), (r).ToInt());          \
     break;        \
   }
 #define ST_ZPX(r)      \
   {                    \
-    uint8 AA;          \
-    GetZPI(AA, reg_X); \
-    WrRAM(AA, r);      \
+    Fluint8 AA = GetZPI(reg_X); \
+    WrRAM(AA.ToInt(), (r).ToInt());             \
     break;             \
   }
 #define ST_ZPY(r)      \
   {                    \
-    uint8 AA;          \
-    GetZPI(AA, reg_Y); \
-    WrRAM(AA, r);      \
+    Fluint8 AA = GetZPI(reg_Y); \
+    WrRAM(AA.ToInt(), (r).ToInt());             \
     break;             \
   }
 #define ST_AB(r)     \
   {                  \
-    unsigned int AA; \
-    GetAB(AA);       \
-    WrMem(AA, r);    \
+    uint16 AA = GetAB();       \
+    WrMem(AA, (r).ToInt());    \
     break;           \
   }
 #define ST_ABI(reg, r) \
   {                    \
-    unsigned int AA;   \
-    GetABIWR(AA, reg); \
-    WrMem(AA, r);      \
+    uint16 AA = GetABIWR(reg); \
+    WrMem(AA, (r).ToInt());    \
     break;             \
   }
 #define ST_ABX(r) ST_ABI(reg_X, r)
 #define ST_ABY(r) ST_ABI(reg_Y, r)
-#define ST_IX(r)     \
-  {                  \
-    unsigned int AA; \
-    GetIX(AA);       \
-    WrMem(AA, r);    \
-    break;           \
+#define ST_IX(r)          \
+  {                       \
+    uint16 AA = GetIX();  \
+    WrMem(AA, (r).ToInt());                     \
+    break;                \
   }
-#define ST_IY(r)     \
-  {                  \
-    unsigned int AA; \
-    GetIYWR(AA);     \
-    WrMem(AA, r);    \
-    break;           \
+#define ST_IY(r)                                \
+  {                                             \
+    uint16 AA = GetIYWR();                      \
+    WrMem(AA, (r).ToInt());                     \
+    break;                                      \
   }
+
+// Several undocument instructions AND with the high byte
+// of the address, plus one. Computes that expression.
+static Fluint8 WeirdHiByte(uint16_t aa, Fluint8 r) {
+  Fluint8::Cheat();
+  uint16_t hi = (aa - r.ToInt()) >> 8;
+  return Fluint8((uint8)hi) + Fluint8(1);
+}
 
 static constexpr uint8 CycTable[256] = {
     /*0x00*/ 7, 6, 2, 8, 3, 3, 5, 5, 3, 2, 2, 2, 4, 4, 6, 6,
@@ -576,27 +364,22 @@ static constexpr uint8 CycTable[256] = {
 };
 
 void X6502::IRQBegin(int w) {
-  TRACEF("IRQBegin %d", w);
   IRQlow |= w;
 }
 
 void X6502::IRQEnd(int w) {
-  TRACEF("IRQEnd %d", w);
   IRQlow &= ~w;
 }
 
 void X6502::TriggerNMI() {
-  TRACEFUN();
   IRQlow |= FCEU_IQNMI;
 }
 
 void X6502::TriggerNMI2() {
-  TRACEFUN();
   IRQlow |= FCEU_IQNMI2;
 }
 
 void X6502::Reset() {
-  TRACEFUN();
   IRQlow = FCEU_IQRESET;
 }
 
@@ -606,53 +389,27 @@ void X6502::Init() {
   // Initialize the CPU fields.
   // (Don't memset; we have non-CPU members now!)
   tcount = 0;
-  reg_A = reg_X = reg_Y = reg_S = reg_P = reg_PI = 0;
+  reg_A = reg_X = reg_Y = reg_S = reg_P = reg_PI = Fluint8(0);
   jammed = 0;
   count = 0;
   IRQlow = 0;
   DB = 0;
   timestamp = 0;
   MapIRQHook = nullptr;
-
-// Now initialized statically. -tom7
-#if 0
-  for(int i = 0; i < sizeof(ZNTable); i++) {
-    if (!i) {
-      ZNTable[i] = Z_FLAG;
-    } else if ( i & 0x80 ) {
-      ZNTable[i] = N_FLAG;
-    } else {
-      ZNTable[i] = 0;
-    }
-  }
-#endif
 }
 
 void X6502::Power() {
-  count = tcount = IRQlow =
-    reg_PC = reg_A = reg_X = reg_Y = reg_P = reg_PI =
-    DB = jammed = 0;
-  reg_S = 0xFD;
+  count = tcount = IRQlow = 0;
+  reg_PC = 0;
+  reg_A = reg_X = reg_Y = reg_P = reg_PI = Fluint8(0);
+  reg_S = Fluint8(0xFD);
+  DB = jammed = 0;
+
   timestamp = 0;
   Reset();
 }
 
-#define TRACE_MACHINEFMT \
-  "X: %d %04x %02x %02x %02x %02x %02x %02x / %02x %u %02x"
-#define TRACE_MACHINEARGS \
-  count, reg_PC, reg_A, reg_X, reg_Y, reg_S, reg_P, reg_PI, \
-  jammed, IRQlow, DB
-
 void X6502::Run(int32 cycles) {
-  // Temporarily disable tracing unless this is the particular cycle
-  // we're intereted in.
-  // TRACE_SCOPED_STAY_ENABLED_IF(false);
-  TRACE_SCOPED_STAY_ENABLED_IF(false);
-  TRACEF("x6502_Run(%d) @ %d " TRACE_MACHINEFMT, cycles, timestamp,
-         TRACE_MACHINEARGS);
-  TRACEA(fc->fceu->RAM, 0x800);
-  // TRACEA(fc->ppu->PPU_values, 4);
-
   #ifdef AOT_INSTRUMENTATION
   cycles_histo[std::max(0, std::min(cycles, 1023))]++;
   #endif
@@ -670,12 +427,8 @@ void X6502::Run(int32 cycles) {
 
 void X6502::RunLoop() {
   while (count > 0) {
-    TRACE_SCOPED_STAY_ENABLED_IF(false);
-    TRACEF("while " TRACE_MACHINEFMT, TRACE_MACHINEARGS);
-    TRACEA(fc->fceu->RAM, 0x800);
 
     if (IRQlow) {
-      TRACEF("IRQlow set.");
       if (IRQlow & FCEU_IQRESET) {
         reg_PC = RdMem(0xFFFC);
         reg_PC |= RdMem(0xFFFD) << 8;
@@ -688,8 +441,7 @@ void X6502::RunLoop() {
       } else if (IRQlow & FCEU_IQNMI) {
         if (!jammed) {
           ADDCYC(7);
-          PUSH(reg_PC >> 8);
-          PUSH(reg_PC);
+          PUSH16(reg_PC);
           PUSH((reg_P & ~B_FLAG) | (U_FLAG));
           reg_P |= I_FLAG;
           reg_PC = RdMem(0xFFFA);
@@ -697,10 +449,9 @@ void X6502::RunLoop() {
           IRQlow &= ~FCEU_IQNMI;
         }
       } else {
-        if (!(reg_PI & I_FLAG) && !jammed) {
+        if ((reg_PI & I_FLAG).ToInt() == 0 && !jammed) {
           ADDCYC(7);
-          PUSH(reg_PC >> 8);
-          PUSH(reg_PC);
+          PUSH16(reg_PC);
           PUSH((reg_P & ~B_FLAG) | (U_FLAG));
           reg_P |= I_FLAG;
           reg_PC = RdMem(0xFFFE);
@@ -733,12 +484,25 @@ void X6502::RunLoop() {
     if (MapIRQHook) MapIRQHook(fc, temp);
     fc->sound->SoundCPUHook(temp);
     reg_PC++;
-    TRACEN(b1);
+
+    // XXX dispatching on the instruction byte is (probably?)
+    // cheating
+    Fluint8::Cheat();
+
+    // XXX DO NOT SUBMIT
+    #if 0
+    static int64 trace_cycles = 0;
+    if (trace_cycles++ < 100000) {
+      printf("%04x:%02x  %02x.%02x.%02x.%02x.%02x\n",
+             reg_PC, b1,
+             reg_A.ToInt(), reg_X.ToInt(), reg_Y.ToInt(), reg_S.ToInt(), reg_P.ToInt());
+    }
+    #endif
+
     switch (b1) {
       case 0x00: /* BRK */
         reg_PC++;
-        PUSH(reg_PC >> 8);
-        PUSH(reg_PC);
+        PUSH16(reg_PC);
         PUSH(reg_P | U_FLAG | B_FLAG);
         reg_P |= I_FLAG;
         reg_PI |= I_FLAG;
@@ -747,26 +511,35 @@ void X6502::RunLoop() {
         break;
 
       case 0x40: /* RTI */
-        reg_P = POP();
+        reg_P = Fluint8(POP());
         /* reg_PI=reg_P; This is probably incorrect, so it's commented out. */
         reg_PI = reg_P;
-        reg_PC = POP();
-        reg_PC |= POP() << 8;
+        reg_PC = POP16();
         break;
 
       case 0x60: /* RTS */
-        reg_PC = POP();
-        reg_PC |= POP() << 8;
+        reg_PC = POP16();
         reg_PC++;
         break;
 
-      case 0x48: /* PHA */ PUSH(reg_A); break;
-      case 0x08: /* PHP */ PUSH(reg_P | U_FLAG | B_FLAG); break;
-      case 0x68: /* PLA */
-        reg_A = POP();
+      case 0x48:
+        /* PHA */
+        PUSH(reg_A);
+        break;
+      case 0x08:
+        /* PHP */
+        PUSH(reg_P | U_FLAG | B_FLAG);
+        break;
+      case 0x68:
+        /* PLA */
+        reg_A = Fluint8(POP());
         X_ZN(reg_A);
         break;
-      case 0x28: /* PLP */ reg_P = POP(); break;
+
+      case 0x28:
+        /* PLP */
+        reg_P = Fluint8(POP());
+        break;
       case 0x4C: {
         /* JMP ABSOLUTE */
         uint16 ptmp = reg_PC;
@@ -776,22 +549,23 @@ void X6502::RunLoop() {
         ptmp++;
         npc |= RdMem(ptmp) << 8;
         reg_PC = npc;
-      } break;
+        break;
+      }
+
       case 0x6C: {
         /* JMP INDIRECT */
-        uint32 tmp;
-        GetAB(tmp);
+        uint32 tmp = GetAB();
         reg_PC = RdMem(tmp);
         reg_PC |= RdMem(((tmp + 1) & 0x00FF) | (tmp & 0xFF00)) << 8;
         break;
       }
-      case 0x20: /* JSR */
-      {
+
+      case 0x20: {
+        /* JSR */
         uint8 npc;
         npc = RdMem(reg_PC);
         reg_PC++;
-        PUSH(reg_PC >> 8);
-        PUSH(reg_PC);
+        PUSH16(reg_PC);
         reg_PC = RdMem(reg_PC) << 8;
         reg_PC |= npc;
         break;
@@ -852,6 +626,7 @@ void X6502::RunLoop() {
 
       case 0xEA: /* NOP */ break;
 
+
       case 0x0A: RMW_A(ASL);
       case 0x06: RMW_ZP(ASL);
       case 0x16: RMW_ZPX(ASL);
@@ -906,6 +681,7 @@ void X6502::RunLoop() {
 
       case 0x24: LD_ZP(BIT);
       case 0x2C: LD_AB(BIT);
+
 
       case 0xC9: LD_IM(CMP);
       case 0xC5: LD_ZP(CMP);
@@ -973,6 +749,7 @@ void X6502::RunLoop() {
       case 0xE1: LD_IX(SBC);
       case 0xF1: LD_IY(SBC);
 
+
       case 0x85: ST_ZP(reg_A);
       case 0x95: ST_ZPX(reg_A);
       case 0x8D: ST_AB(reg_A);
@@ -997,12 +774,12 @@ void X6502::RunLoop() {
 
       /* BCS */
       case 0xB0:
-        JR(reg_P & C_FLAG);
+        JR(!!(reg_P & C_FLAG));
         break;
 
       /* BEQ */
       case 0xF0:
-        JR(reg_P & Z_FLAG);
+        JR(!!(reg_P & Z_FLAG));
         break;
 
       /* BNE */
@@ -1012,7 +789,7 @@ void X6502::RunLoop() {
 
       /* BMI */
       case 0x30:
-        JR(reg_P & N_FLAG);
+        JR(!!(reg_P & N_FLAG));
         break;
 
       /* BPL */
@@ -1027,7 +804,7 @@ void X6502::RunLoop() {
 
       /* BVS */
       case 0x70:
-        JR(reg_P & V_FLAG);
+        JR(!!(reg_P & V_FLAG));
         break;
 
       // default: printf("Bad %02x at $%04x\n",b1,X.PC);break;
@@ -1038,7 +815,7 @@ void X6502::RunLoop() {
       /* AAC */
       case 0x2B:
       case 0x0B:
-        LD_IM(AND; reg_P &= ~C_FLAG; reg_P |= reg_A >> 7);
+        LD_IM(AND; reg_P &= ~C_FLAG; reg_P |= Fluint8::RightShift<7>(reg_A));
 
       /* AAX */
       case 0x87: ST_ZP(reg_A & reg_X);
@@ -1049,19 +826,28 @@ void X6502::RunLoop() {
 
       /* ARR - ARGH, MATEY! */
       case 0x6B: {
-        uint8 arrtmp;
-        LD_IM(AND; reg_P &= ~V_FLAG; reg_P |= (reg_A ^ (reg_A >> 1)) & 0x40;
-              arrtmp = reg_A >> 7; reg_A >>= 1; reg_A |= (reg_P & C_FLAG) << 7;
-              reg_P &= ~C_FLAG; reg_P |= arrtmp; X_ZN(reg_A));
+        Fluint8 arrtmp;
+        LD_IM(AND;
+              reg_P &= ~V_FLAG;
+              reg_P |= (reg_A ^ Fluint8::RightShift<1>(reg_A)) & Fluint8(0x40);
+              arrtmp = Fluint8::RightShift<7>(reg_A);
+              reg_A = Fluint8::RightShift<1>(reg_A);
+              reg_A |= Fluint8::LeftShift<7>(reg_P & C_FLAG);
+              reg_P &= ~C_FLAG;
+              reg_P |= arrtmp;
+              X_ZN(reg_A));
       }
+
       /* ASR */
       case 0x4B:
         LD_IM(AND; LSRA);
 
       /* ATX(OAL) Is this(OR with $EE) correct? Blargg did some test
-         and found the constant to be OR with is $FF for NES */
+         and found the constant to be OR with is $FF for NES
+
+         (but of course OR with FF is degenerate! -tom7) */
       case 0xAB:
-        LD_IM(reg_A |= 0xFF; AND; reg_X = reg_A);
+        LD_IM(reg_A |= Fluint8(0xFF); AND; reg_X = reg_A);
 
       /* AXS */
       case 0xCB:
@@ -1179,21 +965,25 @@ void X6502::RunLoop() {
       case 0x53: RMW_IY(LSR; EOR);
 
       /* AXA - SHA */
-      case 0x93: ST_IY(reg_A & reg_X & (((AA - reg_Y) >> 8) + 1));
-      case 0x9F: ST_ABY(reg_A & reg_X & (((AA - reg_Y) >> 8) + 1));
+      case 0x93:
+        Fluint8::Cheat();
+        ST_IY(reg_A & reg_X & WeirdHiByte(AA, reg_Y));
+      case 0x9F:
+        Fluint8::Cheat();
+        ST_ABY(reg_A & reg_X & WeirdHiByte(AA, reg_Y));
 
       /* SYA */
       case 0x9C:
-        ST_ABX(reg_Y & (((AA - reg_X) >> 8) + 1));
+        ST_ABX(reg_Y & WeirdHiByte(AA, reg_X));
 
       /* SXA */
       case 0x9E:
-        ST_ABY(reg_X & (((AA - reg_Y) >> 8) + 1));
+        ST_ABY(reg_X & WeirdHiByte(AA, reg_Y));
 
       /* XAS */
       case 0x9B:
         reg_S = reg_A & reg_X;
-        ST_ABY(reg_S & (((AA - reg_Y) >> 8) + 1));
+        ST_ABY(reg_S & WeirdHiByte(AA, reg_Y));
 
       /* TOP */
       case 0x0C:
@@ -1208,13 +998,9 @@ void X6502::RunLoop() {
 
       /* XAA - BIG QUESTION MARK HERE */
       case 0x8B:
-        reg_A |= 0xEE;
+        reg_A |= Fluint8(0xEE);
         reg_A &= reg_X;
         LD_IM(AND);
     }
   }
-  TRACEF("Exiting X6502_Run normally: " TRACE_MACHINEFMT, TRACE_MACHINEARGS);
-  TRACEA(fc->fceu->RAM, 0x800);
 }
-
-#endif

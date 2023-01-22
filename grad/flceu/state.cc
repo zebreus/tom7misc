@@ -335,11 +335,11 @@ State::State(FC *fc) :
   fc(fc),
   sfcpu({
       {&fc->X->reg_PC, 2 | FCEUSTATE_RLSB, "rgPC"},
-      {&fc->X->reg_A, 1, "regA"},
-      {&fc->X->reg_P, 1, "regP"},
-      {&fc->X->reg_X, 1, "regX"},
-      {&fc->X->reg_Y, 1, "regY"},
-      {&fc->X->reg_S, 1, "regS"},
+      {&fc->X->reg_A, sizeof fc->X->reg_A, "regA"},
+      {&fc->X->reg_P, sizeof fc->X->reg_P, "regP"},
+      {&fc->X->reg_X, sizeof fc->X->reg_X, "regX"},
+      {&fc->X->reg_Y, sizeof fc->X->reg_Y, "regY"},
+      {&fc->X->reg_S, sizeof fc->X->reg_S, "regS"},
       {fc->fceu->RAM, 0x800, "RAMM"},
     }),
   sfcpuc({
@@ -350,7 +350,7 @@ State::State(FC *fc) :
       {&fc->fceu->timestampbase,
        sizeof(fc->fceu->timestampbase) | FCEUSTATE_RLSB, "TSBS"},
       // alternative to the "quick and dirty hack"
-      {&fc->X->reg_PI, 1, "MooP"},
+      {&fc->X->reg_PI, sizeof fc->X->reg_PI, "MooP"},
       // This was not included in FCEUltra, but I can't see any
       // reason why it shouldn't be (it's updated with each memory
       // read and used by some boards), and execution diverges if
