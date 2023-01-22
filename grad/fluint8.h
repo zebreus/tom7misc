@@ -20,14 +20,10 @@ struct Fluint8 {
   uint8_t ToInt() const { return b; }
 
   // TODO: This should not be supported; instead we want like ?:
-  /*
-  operator bool() const {
-    num_cheats++;
-    return ToInt() != 0;
+  bool operator !() const {
+    Cheat();
+    return ToInt() == 0;
   }
-  */
-
-  bool operator !() const { return ToInt() == 0; }
 
   constexpr Fluint8() : b(0) {}
   Fluint8(Fluint8 &&other) = default;
@@ -35,21 +31,26 @@ struct Fluint8 {
   constexpr Fluint8 &operator =(const Fluint8 &) = default;
 
   static Fluint8 Plus(Fluint8 a, Fluint8 b) {
+    Cheat();
     return Fluint8(a.ToInt() + b.ToInt());
   }
   static Fluint8 Minus(Fluint8 a, Fluint8 b) {
+    Cheat();
     return Fluint8(a.ToInt() - b.ToInt());
   }
 
   static Fluint8 BitwiseXor(Fluint8 a, Fluint8 b) {
+    Cheat();
     return Fluint8(a.ToInt() ^ b.ToInt());
   }
 
   static Fluint8 BitwiseAnd(Fluint8 a, Fluint8 b) {
+    Cheat();
     return Fluint8(a.ToInt() & b.ToInt());
   }
 
   static Fluint8 BitwiseOr(Fluint8 a, Fluint8 b) {
+    Cheat();
     return Fluint8(a.ToInt() | b.ToInt());
   }
 
@@ -78,6 +79,8 @@ struct Fluint8 {
   static int64_t NumCheats() { return num_cheats; }
   static void ClearCheats() { num_cheats = 0; }
 
+  static void Warm() {}
+
  private:
 
   static int64_t num_cheats;
@@ -96,13 +99,10 @@ struct Fluint8 {
   uint8_t ToInt() const;
 
   // TODO: This should not be supported; instead we want like ?:
-  bool operator !() const { return ToInt() == 0; }
-#if 0
-  operator bool() const {
-    num_cheats++;
-    return ToInt() != 0;
+  bool operator !() const {
+    Cheat();
+    return ToInt() == 0;
   }
-#endif
 
   constexpr Fluint8() : h(GetHalf(TABLE[0])) {}
   Fluint8(Fluint8 &&other) = default;
@@ -135,6 +135,9 @@ struct Fluint8 {
   static int64_t NumCheats() { return num_cheats; }
   static void ClearCheats() { num_cheats = 0; }
 
+  // For benchmarking; load lazy-loaded expressions.
+  static void Warm();
+
  private:
   // Evaluate the expression with the given value for the variable.
   static half_float::half Eval(const Exp *, half_float::half h);
@@ -150,6 +153,8 @@ struct Fluint8 {
   static constexpr inline half_float::half GetHalf(uint16_t u) {
     return std::bit_cast<half_float::half, uint16_t>(u);
   }
+
+  static half Canonicalize(half h);
 
   // We want a constexpr constructor, so this is the representation
   // of each of the 256 bytes.
@@ -288,6 +293,7 @@ Fluint8 Fluint8::LeftShift(Fluint8 x) {
   }
 }
 
+#if 0
 template<size_t N>
 Fluint8 Fluint8::RightShift(Fluint8 x) {
   if constexpr (N == 0) {
@@ -297,6 +303,28 @@ Fluint8 Fluint8::RightShift(Fluint8 x) {
     return RightShift1(y);
   }
 }
+#else
+
+template<size_t N>
+Fluint8 Fluint8::RightShift(Fluint8 x) {
+  using namespace half_float::literal;
+  if constexpr (N == 0) {
+    return x;
+  } else if constexpr (N < 5) {
+    // This doesn't work for divisors >5, but maybe it could?
+    // XXX should be compile-time constant
+    half divi = 1.0_h;
+    for (size_t i = 0; i < N; i++) divi *= 0.5_h;
+
+    const half z = (x.h * divi - 128.0_h) * (1.0_h / 128.0_h);
+    const half r = Canonicalize(z);
+    return Fluint8(r * 128.0_h + 128.0_h);
+  } else {
+    Fluint8 y = RightShift<N - 4>(x);
+    return RightShift<4>(y);
+  }
+}
+#endif
 
 #endif
 

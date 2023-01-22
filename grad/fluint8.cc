@@ -23,7 +23,7 @@ static Allocator *GetAlloc() {
   return alloc;
 }
 
-static const Exp *Canonicalize() {
+static const Exp *CanonicalizeExp() {
   static const Exp *canon = []() {
       printf("Load canon.txt\n");
       const Exp *e =
@@ -115,12 +115,22 @@ Fluint8 Fluint8::Minus(Fluint8 x, Fluint8 y) {
   return Fluint8(s * 256.0_h - 0.5_h);
 }
 
+half Fluint8::Canonicalize(half z) {
+  return Eval(CanonicalizeExp(), z);
+}
+
 Fluint8 Fluint8::RightShift1(Fluint8 x) {
+#if 1
   const half z = (x.h * 0.5_h - 128.0_h) * (1.0_h / 128.0_h);
   // printf("%.3f -> %.3f\n", (float)x.h, (float)z);
+  // PERF: Could use a faster expression here that only
+  // works for the
   // Canonicalize works in [-1, 1) space.
-  const half r = Eval(Canonicalize(), z);
+  const half r = Canonicalize(z);
   return Fluint8(r * 128.0_h + 128.0_h);
+#else
+  return Fluint8((x.h * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h);
+#endif
 }
 
 // TODO!
@@ -136,6 +146,12 @@ Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
 Fluint8 Fluint8::BitwiseOr(Fluint8 a, Fluint8 b) {
   Cheat();
   return Fluint8(a.ToInt() | b.ToInt());
+}
+
+void Fluint8::Warm() {
+  (void)CanonicalizeExp();
+  (void)Fluint8::Plus(Fluint8(1), Fluint8(2));
+  (void)Fluint8::Minus(Fluint8(3), Fluint8(4));
 }
 
 #endif
