@@ -143,6 +143,11 @@ struct Fluint8 {
   static half_float::half Eval(const Exp *, half_float::half h);
   // static Fluint8 Eval(const Exp *, Fluint8 x);
 
+  // Put in [-1,1) "choppy" form, or construct a fluint8 in
+  // that form. Both are linear ops (just scale/offset).
+  half_float::half ToChoppy() const;
+  static Fluint8 FromChoppy(half_float::half h);
+
   explicit Fluint8(half_float::half h) : h(h) {}
   half_float::half h;
 
@@ -293,7 +298,6 @@ Fluint8 Fluint8::LeftShift(Fluint8 x) {
   }
 }
 
-#if 0
 template<size_t N>
 Fluint8 Fluint8::RightShift(Fluint8 x) {
   if constexpr (N == 0) {
@@ -303,28 +307,6 @@ Fluint8 Fluint8::RightShift(Fluint8 x) {
     return RightShift1(y);
   }
 }
-#else
-
-template<size_t N>
-Fluint8 Fluint8::RightShift(Fluint8 x) {
-  using namespace half_float::literal;
-  if constexpr (N == 0) {
-    return x;
-  } else if constexpr (N < 5) {
-    // This doesn't work for divisors >5, but maybe it could?
-    // XXX should be compile-time constant
-    half divi = 1.0_h;
-    for (size_t i = 0; i < N; i++) divi *= 0.5_h;
-
-    const half z = (x.h * divi - 128.0_h) * (1.0_h / 128.0_h);
-    const half r = Canonicalize(z);
-    return Fluint8(r * 128.0_h + 128.0_h);
-  } else {
-    Fluint8 y = RightShift<N - 4>(x);
-    return RightShift<4>(y);
-  }
-}
-#endif
 
 #endif
 

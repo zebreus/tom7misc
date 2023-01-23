@@ -4,6 +4,7 @@
 
 #include "half.h"
 #include "expression.h"
+#include "choppy.h"
 
 using namespace half_float;
 using namespace half_float::literal;
@@ -11,6 +12,8 @@ using namespace half_float::literal;
 using Allocator = Exp::Allocator;
 
 static constexpr int CHOPPY_GRID = 256;
+using Choppy = ChoppyGrid<CHOPPY_GRID>;
+using DB = Choppy::DB;
 
 int64_t Fluint8::num_cheats = 0;
 
@@ -18,9 +21,17 @@ int64_t Fluint8::num_cheats = 0;
 
 uint16_t Fluint8::Representation() const { return Exp::GetU16(h); }
 
+static Choppy::DB *GetDB() {
+  static Choppy::DB *db = []() {
+      auto *db = new Choppy::DB;
+      db->LoadFile("basis.txt");
+      return db;
+    }();
+  return db;
+}
+
 static Allocator *GetAlloc() {
-  static Allocator *alloc = new Exp::Allocator;
-  return alloc;
+  return &GetDB()->alloc;
 }
 
 static const Exp *CanonicalizeExp() {
@@ -119,18 +130,10 @@ half Fluint8::Canonicalize(half z) {
   return Eval(CanonicalizeExp(), z);
 }
 
+// This only works when in canonical form, but it's much
+// faster than the old approach of using Canonicalize!
 Fluint8 Fluint8::RightShift1(Fluint8 x) {
-#if 1
-  const half z = (x.h * 0.5_h - 128.0_h) * (1.0_h / 128.0_h);
-  // printf("%.3f -> %.3f\n", (float)x.h, (float)z);
-  // PERF: Could use a faster expression here that only
-  // works for the
-  // Canonicalize works in [-1, 1) space.
-  const half r = Canonicalize(z);
-  return Fluint8(r * 128.0_h + 128.0_h);
-#else
   return Fluint8((x.h * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h);
-#endif
 }
 
 // TODO!
@@ -139,13 +142,84 @@ Fluint8 Fluint8::BitwiseXor(Fluint8 a, Fluint8 b) {
   Cheat();
   return Fluint8(a.ToInt() ^ b.ToInt());
 }
-Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
-  Cheat();
-  return Fluint8(a.ToInt() & b.ToInt());
+
+static const std::vector<const Exp *> &BitExps() {
+  static std::vector<const Exp *> bitexps = []() {
+      static Choppy::DB *db = GetDB();
+      auto RequireKey = [](const DB::key_type &key) -> const Exp * {
+          auto it = db->fns.find(key);
+          CHECK(it != db->fns.end());
+          return it->second;
+        };
+
+      // To do bitwise ops, we select each bit from each input
+      // using the basis functions. Then for example
+      std::vector<const Exp *> bitexps;
+      for (int bit = 0; bit < 8; bit++) {
+        // Get all keys (byte values) that have this bit set.
+        std::vector<const Exp *> select;
+        for (int byte = 0; byte < 256; byte++) {
+          if (byte & (1 << bit)) {
+            auto key = DB::BasisKey(byte);
+            const Exp *e = RequireKey(key);
+            select.push_back(e);
+          }
+        }
+        // Half the bytes have this bit set, by definition.
+        CHECK(select.size() == 128);
+        // Add them all together, but scale so that the expression
+        // evaluates to either 1.0 (bit is set) or 0.0.
+        const Exp *e =
+          db->alloc.TimesC(db->alloc.PlusV(select),
+                           // 128.0_h
+                           0x5800);
+        bitexps.push_back(e);
+      }
+
+      return bitexps;
+    }();
+  return bitexps;
 }
+
+Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
+  static const std::vector<const Exp *> &bitexps = BitExps();
+
+  // Get to the chopa
+  const half chopa = a.ToChoppy();
+  const half chopb = b.ToChoppy();
+
+  std::array<half, 8> abit, bbit, obit;
+  for (int bit = 0; bit < 8; bit++) {
+    abit[bit] = GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa)));
+    bbit[bit] = GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopb)));
+    // Multiplication is like AND.
+    obit[bit] = abit[bit] * obit[bit];
+  }
+
+  // Now obit[i] is 1.0 if both a and b had that bit set. So just
+  // compute the resulting fluint. We compute the native (0-255)
+  // representation directly.
+
+  half result = 0.0_h;
+  for (int bit = 0; bit < 8; bit++) {
+    half scale = (half)(1 << bit);
+    result += obit[bit] * scale;
+  }
+
+  return Fluint8(result);
+}
+
 Fluint8 Fluint8::BitwiseOr(Fluint8 a, Fluint8 b) {
   Cheat();
   return Fluint8(a.ToInt() | b.ToInt());
+}
+
+half_float::half Fluint8::ToChoppy() const {
+  return h * (1.0_h / 128.0_h) - 1.0_h;
+}
+
+Fluint8 Fluint8::FromChoppy(half_float::half h) {
+  return Fluint8((h + 1.0_h) * 128.0_h);
 }
 
 void Fluint8::Warm() {
