@@ -112,6 +112,8 @@ struct Fluint8 {
   static Fluint8 Plus(Fluint8 a, Fluint8 b);
   static Fluint8 Minus(Fluint8 a, Fluint8 b);
 
+  // PERF: Bitwise ops with a constant are very common in 6502,
+  // and could be much faster.
   static Fluint8 BitwiseXor(Fluint8 a, Fluint8 b);
   static Fluint8 BitwiseAnd(Fluint8 a, Fluint8 b);
   static Fluint8 BitwiseOr(Fluint8 a, Fluint8 b);

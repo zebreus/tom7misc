@@ -98,7 +98,7 @@ struct Exp {
     const Exp *PlusV(const std::vector<const Exp *> &v) {
       CHECK(!v.empty());
       const Exp *r = v[0];
-      for (int i = 1; i < v.size(); i++) {
+      for (int i = 1; i < (int)v.size(); i++) {
         r = PlusE(r, v[i]);
       }
       return r;

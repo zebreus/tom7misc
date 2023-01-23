@@ -287,7 +287,7 @@ HashState NextState(HashState s) {
   return s;
 }
 
-static const Exp * MakeSubstExp(DB *basis) {
+static const Exp *MakeSubstExp(DB *basis) {
 
   std::vector<const Exp *> parts;
   for (int col = 0; col < Choppy::GRID; col++) {

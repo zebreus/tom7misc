@@ -24,7 +24,7 @@ uint16_t Fluint8::Representation() const { return Exp::GetU16(h); }
 static Choppy::DB *GetDB() {
   static Choppy::DB *db = []() {
       auto *db = new Choppy::DB;
-      db->LoadFile("basis.txt");
+      db->LoadFile("basis8.txt");
       return db;
     }();
   return db;
@@ -184,6 +184,8 @@ static const std::vector<const Exp *> &BitExps() {
 Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
   static const std::vector<const Exp *> &bitexps = BitExps();
 
+  // printf("%.2f & %.2f\n", (float)a.h, (float)b.h);
+
   // Get to the chopa
   const half chopa = a.ToChoppy();
   const half chopb = b.ToChoppy();
@@ -193,7 +195,13 @@ Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
     abit[bit] = GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa)));
     bbit[bit] = GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopb)));
     // Multiplication is like AND.
-    obit[bit] = abit[bit] * obit[bit];
+    obit[bit] = abit[bit] * bbit[bit];
+
+    /*
+    printf("bit %d = %d: a=%.3f b=%.3f o=%.3f\n",
+           bit, (1 << bit),
+           (float)abit[bit], (float)bbit[bit], (float)obit[bit]);
+    */
   }
 
   // Now obit[i] is 1.0 if both a and b had that bit set. So just
@@ -224,6 +232,7 @@ Fluint8 Fluint8::FromChoppy(half_float::half h) {
 
 void Fluint8::Warm() {
   (void)CanonicalizeExp();
+  (void)BitExps();
   (void)Fluint8::Plus(Fluint8(1), Fluint8(2));
   (void)Fluint8::Minus(Fluint8(3), Fluint8(4));
 }

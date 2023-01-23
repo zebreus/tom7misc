@@ -94,6 +94,35 @@ static void TestMinus() {
       });
 }
 
+static void TestAnd() {
+  ForAllPairs(
+      [](uint8 x, uint8 y,
+         Fluint8 xf, Fluint8 yf) {
+        uint8 z = x & y;
+        Fluint8 zf = xf & yf;
+
+        CHECK(z == zf.ToInt()) <<
+          StringPrintf("%02x (%d) & %02x (%d) -> %02x (%d) want %02x (%d)",
+                       x, x, y, y, zf.ToInt(), zf.ToInt(), z, z);
+        CHECK_CANONICAL("and", zf, x, y);
+      });
+}
+
+static void TestAndEq() {
+  ForAllPairs(
+      [](uint8 x, uint8 y,
+         Fluint8 xf, Fluint8 yf) {
+        uint8 z = x &= y;
+        Fluint8 zf = xf &= yf;
+
+        CHECK(x == xf.ToInt());
+        CHECK(y == yf.ToInt());
+        CHECK(z == zf.ToInt());
+        CHECK_CANONICAL("andeq", xf, x, y);
+        CHECK_CANONICAL("andeq", zf, x, y);
+      });
+}
+
 static void TestNegate() {
   ForAll(
       [](uint8 x, Fluint8 xf) {
@@ -264,6 +293,9 @@ int main(int argc, char **argv) {
   TestPostDecrement();
   TestPlusEq();
   TestMinusEq();
+
+  TestAnd();
+  TestAndEq();
 
   TestLeftShifts();
 
