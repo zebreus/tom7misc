@@ -94,7 +94,11 @@ int main(int argc, char **argv) {
 
   double exec_seconds = -1.0;
 
-  static constexpr int MIN_EXECUTIONS = 5;
+  // This is simplified to just use a time budget, since each
+  // execution is so slow (and the number of seconds so high)
+  // that convergence otherwise takes way too long.
+  static constexpr int MIN_EXECUTIONS = 1;
+  static constexpr int MAX_SECONDS = 60.0 * 30.0;
   int executions = 0;
   double total_time = 0.0;
   vector<int> last_means;
@@ -103,26 +107,16 @@ int main(int argc, char **argv) {
     executions++;
     total_time += sec;
     double mean = total_time / (double)executions;
-    // TODO: Use actual variance to compute convergence. This
-    // depends too much on base 10 (e.g. if the mean is very close
-    // to the rounding boundary, it will likely run more times).
-    int mtrunc = (int)mean; // XXX (int)(round(mean * 10.0));
-    if (last_means.size() >= MIN_EXECUTIONS) {
-      if ([&]() {
-          for (int lm : last_means) {
-            if (lm != mtrunc) return false;
-          }
-          return true;
-        }()) {
-        // Convergence!
-        exec_seconds = mean;
-        break;
-      }
-      // Discard oldest to keep 5 means.
-      last_means.erase(last_means.begin());
+
+    if (executions >= MIN_EXECUTIONS &&
+        total_time > MAX_SECONDS) {
+      // Convergence!
+      exec_seconds = mean;
+      break;
     }
-    last_means.push_back(mtrunc);
-    printf("Round %4d in %.4f, mean %.4f\n", executions, sec, mean);
+
+    printf("Round %4d in %.4f, mean %.4f, %lld cheats\n",
+           executions, sec, mean, Fluint8::NumCheats());
     fflush(stdout);
   }
 

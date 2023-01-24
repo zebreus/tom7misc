@@ -136,12 +136,6 @@ Fluint8 Fluint8::RightShift1(Fluint8 x) {
   return Fluint8((x.h * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h);
 }
 
-// TODO!
-
-Fluint8 Fluint8::BitwiseXor(Fluint8 a, Fluint8 b) {
-  Cheat();
-  return Fluint8(a.ToInt() ^ b.ToInt());
-}
 
 static const std::vector<const Exp *> &BitExps() {
   static std::vector<const Exp *> bitexps = []() {
@@ -181,14 +175,16 @@ static const std::vector<const Exp *> &BitExps() {
   return bitexps;
 }
 
-Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
+// Returns the bits (as an integral half in [0, 255]) that are in
+// common between the args, i.e. a & b.
+half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
   static const std::vector<const Exp *> &bitexps = BitExps();
-
-  // printf("%.2f & %.2f\n", (float)a.h, (float)b.h);
 
   // Get to the chopa
   const half chopa = a.ToChoppy();
   const half chopb = b.ToChoppy();
+
+  // printf("%.2f & %.2f\n", (float)a.h, (float)b.h);
 
   std::array<half, 8> abit, bbit, obit;
   for (int bit = 0; bit < 8; bit++) {
@@ -207,19 +203,33 @@ Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
   // Now obit[i] is 1.0 if both a and b had that bit set. So just
   // compute the resulting fluint. We compute the native (0-255)
   // representation directly.
-
-  half result = 0.0_h;
+  half common_bits = 0.0_h;
   for (int bit = 0; bit < 8; bit++) {
     half scale = (half)(1 << bit);
-    result += obit[bit] * scale;
+    common_bits += obit[bit] * scale;
   }
+
+  return common_bits;
+}
+
+Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
+  return Fluint8(GetCommonBits(a, b));
+}
+
+Fluint8 Fluint8::BitwiseOr(Fluint8 a, Fluint8 b) {
+  half common_bits = GetCommonBits(a, b);
+  // Neither the subtraction nor addition can overflow here, so
+  // we can just do this directly without corrections.
+  half result = (a.h - common_bits) + b.h;
 
   return Fluint8(result);
 }
 
-Fluint8 Fluint8::BitwiseOr(Fluint8 a, Fluint8 b) {
-  Cheat();
-  return Fluint8(a.ToInt() | b.ToInt());
+Fluint8 Fluint8::BitwiseXor(Fluint8 a, Fluint8 b) {
+  half common_bits = GetCommonBits(a, b);
+  // XOR is just the bits that the two do NOT have in common.
+  half result = (a.h - common_bits) + (b.h - common_bits);
+  return Fluint8(result);
 }
 
 half_float::half Fluint8::ToChoppy() const {

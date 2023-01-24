@@ -161,6 +161,9 @@ struct Fluint8 {
     return std::bit_cast<half_float::half, uint16_t>(u);
   }
 
+  // Compute bitwise AND.
+  static half GetCommonBits(Fluint8 a, Fluint8 b);
+
   static half Canonicalize(half h);
 
   // We want a constexpr constructor, so this is the representation

@@ -123,6 +123,64 @@ static void TestAndEq() {
       });
 }
 
+static void TestOr() {
+  ForAllPairs(
+      [](uint8 x, uint8 y,
+         Fluint8 xf, Fluint8 yf) {
+        uint8 z = x | y;
+        Fluint8 zf = xf | yf;
+
+        CHECK(z == zf.ToInt()) <<
+          StringPrintf("%02x (%d) | %02x (%d) -> %02x (%d) want %02x (%d)",
+                       x, x, y, y, zf.ToInt(), zf.ToInt(), z, z);
+        CHECK_CANONICAL("or", zf, x, y);
+      });
+}
+
+static void TestOrEq() {
+  ForAllPairs(
+      [](uint8 x, uint8 y,
+         Fluint8 xf, Fluint8 yf) {
+        uint8 z = x |= y;
+        Fluint8 zf = xf |= yf;
+
+        CHECK(x == xf.ToInt());
+        CHECK(y == yf.ToInt());
+        CHECK(z == zf.ToInt());
+        CHECK_CANONICAL("oreq", xf, x, y);
+        CHECK_CANONICAL("oreq", zf, x, y);
+      });
+}
+
+static void TestXor() {
+  ForAllPairs(
+      [](uint8 x, uint8 y,
+         Fluint8 xf, Fluint8 yf) {
+        uint8 z = x ^ y;
+        Fluint8 zf = xf ^ yf;
+
+        CHECK(z == zf.ToInt()) <<
+          StringPrintf("%02x (%d) ^ %02x (%d) -> %02x (%d) want %02x (%d)",
+                       x, x, y, y, zf.ToInt(), zf.ToInt(), z, z);
+        CHECK_CANONICAL("xor", zf, x, y);
+      });
+}
+
+static void TestXorEq() {
+  ForAllPairs(
+      [](uint8 x, uint8 y,
+         Fluint8 xf, Fluint8 yf) {
+        uint8 z = x ^= y;
+        Fluint8 zf = xf ^= yf;
+
+        CHECK(x == xf.ToInt());
+        CHECK(y == yf.ToInt());
+        CHECK(z == zf.ToInt());
+        CHECK_CANONICAL("xoreq", xf, x, y);
+        CHECK_CANONICAL("xoreq", zf, x, y);
+      });
+}
+
 static void TestNegate() {
   ForAll(
       [](uint8 x, Fluint8 xf) {
@@ -296,6 +354,13 @@ int main(int argc, char **argv) {
 
   TestAnd();
   TestAndEq();
+
+  TestOr();
+  TestOrEq();
+
+  TestXor();
+  TestXorEq();
+
 
   TestLeftShifts();
 
