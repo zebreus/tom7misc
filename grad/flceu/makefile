@@ -62,7 +62,7 @@ CPPFLAGS=-DPSS_STYLE=1 -DDUMMY_UI $(ARCH) $(OPT) $(PLATFORMCFLAGS) -DHAVE_ALLOCA
 GRAD_OBJECTS=../fluint8.o
 
 # Should just be used for testing/utilities.
-CCLIBOBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/city/city.o $(CC_LIB)/rle.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/wavesave.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o
+CCLIBOBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/city/city.o $(CC_LIB)/rle.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/wavesave.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/ansi.o
 
 MAPPEROBJECTS=mappers/6.o mappers/61.o mappers/24and26.o mappers/51.o mappers/69.o mappers/77.o mappers/40.o mappers/mmc2and4.o mappers/71.o mappers/79.o mappers/41.o mappers/72.o mappers/80.o mappers/42.o mappers/62.o mappers/73.o mappers/85.o mappers/emu2413.o mappers/46.o mappers/65.o mappers/75.o mappers/50.o mappers/67.o mappers/76.o mappers/tengen.o
 

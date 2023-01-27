@@ -54,11 +54,11 @@ void X6502::DMW(uint32 A, uint8 V) {
 #define AND    \
   reg_A &= x;  \
   X_ZN(reg_A)
-#define BIT                                \
-  reg_P &= ~(Z_FLAG | V_FLAG | N_FLAG);    \
-  Fluint8::Cheat(); \
-  reg_P |= ZNTable[(x & reg_A).ToInt()] & Z_FLAG; \
-  reg_P |= x & (V_FLAG | N_FLAG)
+#define BIT                                                             \
+  reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | V_FLAG8 | N_FLAG8)>(reg_P); \
+  Fluint8::Cheat();                                                     \
+  reg_P |= Fluint8::AndWith<Z_FLAG8>(ZNTable[(x & reg_A).ToInt()]);      \
+  reg_P |= Fluint8::AndWith<(uint8_t)(V_FLAG8 | N_FLAG8)>(x)
 #define EOR    \
   reg_A ^= x;  \
   X_ZN(reg_A)
@@ -69,26 +69,27 @@ void X6502::DMW(uint32 A, uint8 V) {
 // TODO: Implement add with carry natively
 #define ADC                                                             \
   {                                                                     \
+    Fluint8 p_lo_bit = Fluint8::AndWith<1>(reg_P);                      \
     Fluint8::Cheat();                                                   \
-    uint32 l = reg_A.ToInt() + (x).ToInt() + (reg_P & Fluint8(1)).ToInt(); \
-    reg_P &= ~(Z_FLAG | C_FLAG | N_FLAG | V_FLAG);                      \
-    reg_P |= Fluint8::RightShift<1>(((((reg_A ^ x) & Fluint8(0x80)) ^ Fluint8(0x80)) & \
-                                     ((reg_A ^ Fluint8((uint8)l)) & Fluint8(0x80)))); \
-    reg_P |= Fluint8((uint8)(l >> 8)) & C_FLAG;                         \
+    uint32 l = reg_A.ToInt() + (x).ToInt() + p_lo_bit.ToInt();          \
+    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P); \
+    Fluint8 aaa = Fluint8::XorWith<0x80>(Fluint8::AndWith<0x80>(reg_A ^ x)); \
+    Fluint8 bbb = Fluint8::AndWith<0x80>(reg_A ^ Fluint8((uint8)l));    \
+    reg_P |= Fluint8::RightShift<1>(aaa & bbb);                         \
+    reg_P |= Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(l >> 8))); \
     reg_A = Fluint8((uint8)l);                                          \
     X_ZNT(reg_A);                                                       \
   }
 
 #define SBC                                              \
   {                                                      \
+    Fluint8 p_nlo_bit = Fluint8::XorWith<1>(Fluint8::AndWith<1>(reg_P)); \
     Fluint8::Cheat();                                    \
-    uint32 l = reg_A.ToInt() - x.ToInt() -               \
-      ((reg_P & Fluint8(1)) ^ Fluint8(1)).ToInt();       \
-    reg_P &= ~(Z_FLAG | C_FLAG | N_FLAG | V_FLAG);       \
-    reg_P |= Fluint8::RightShift<1>(                                    \
-        ((reg_A ^ Fluint8((uint8)l)) & (reg_A ^ x)                      \
-                                     & Fluint8(0x80)));                 \
-    reg_P |= (Fluint8((uint8)(l >> 8)) & C_FLAG) ^ C_FLAG;              \
+    uint32 l = reg_A.ToInt() - x.ToInt() - p_nlo_bit.ToInt();  \
+    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P); \
+    Fluint8 aaa = Fluint8::AndWith<0x80>((reg_A ^ Fluint8((uint8)l)) & (reg_A ^ x)); \
+    reg_P |= Fluint8::RightShift<1>(aaa);  \
+    reg_P |= Fluint8::XorWith<C_FLAG8>(Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(l >> 8)))); \
     reg_A = Fluint8((uint8)l);                                          \
     X_ZNT(reg_A);                                        \
   }
@@ -98,10 +99,10 @@ void X6502::DMW(uint32 A, uint8 V) {
   {                                                 \
     Fluint8::Cheat();                               \
     uint32 t = (reg_A & reg_X).ToInt() - x.ToInt(); \
-    X_ZN(Fluint8(t) & Fluint8(0xFF));               \
-    reg_P &= ~C_FLAG;                                       \
-    reg_P |= (Fluint8((uint8)(t >> 8)) & C_FLAG) ^ C_FLAG;  \
-    reg_X = Fluint8((uint8)t);                              \
+    X_ZN(Fluint8(t));                                                   \
+    reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);                 \
+    reg_P |= Fluint8::XorWith<C_FLAG8>(Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(t >> 8)))); \
+    reg_X = Fluint8((uint8)t);                                          \
   }
 
 #define CMP CMPL(reg_A, x)
@@ -116,21 +117,21 @@ void X6502::DMW(uint32 A, uint8 V) {
   x++;      \
   X_ZN(x)
 
-#define ASL                                \
-  reg_P &= ~C_FLAG;                        \
-  reg_P |= Fluint8::RightShift<7>(x);      \
-  x = Fluint8::LeftShift<1>(x);            \
+#define ASL                                          \
+  reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P); \
+  reg_P |= Fluint8::RightShift<7>(x);                \
+  x = Fluint8::LeftShift<1>(x);                      \
   X_ZN(x)
 #define LSR                             \
-  reg_P &= ~(C_FLAG | N_FLAG | Z_FLAG); \
-  reg_P |= x & Fluint8(1);              \
+  reg_P = Fluint8::AndWith<(uint8_t)~(C_FLAG8 | N_FLAG8 | Z_FLAG8)>(reg_P); \
+  reg_P |= Fluint8::AndWith<1>(x); \
   x = Fluint8::RightShift<1>(x);        \
   X_ZNT(x)
 
 /* For undocumented instructions, maybe for other things later... */
 #define LSRA                               \
-  reg_P &= ~(C_FLAG | N_FLAG | Z_FLAG);    \
-  reg_P |= reg_A & Fluint8(1);             \
+  reg_P = Fluint8::AndWith<(uint8_t)~(C_FLAG8 | N_FLAG8 | Z_FLAG8)>(reg_P); \
+  reg_P |= Fluint8::AndWith<1>(reg_A); \
   reg_A = Fluint8::RightShift<1>(reg_A);   \
   X_ZNT(reg_A)
 
@@ -138,18 +139,18 @@ void X6502::DMW(uint32 A, uint8 V) {
   {                                        \
     Fluint8 l = Fluint8::RightShift<7>(x);   \
     x = Fluint8::LeftShift<1>(x);          \
-    x |= reg_P & C_FLAG;                   \
-    reg_P &= ~(Z_FLAG | N_FLAG | C_FLAG);  \
+    x |= Fluint8::AndWith<C_FLAG8>(reg_P);  \
+    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P); \
     reg_P |= l;                            \
     X_ZNT(x);                              \
   }
 
 #define ROR                                     \
   {                                             \
-    Fluint8 l = x & Fluint8(1);                 \
+    Fluint8 l = Fluint8::AndWith<1>(x);  \
     x = Fluint8::RightShift<1>(x);              \
-    x |= Fluint8::LeftShift<7>(reg_P & C_FLAG); \
-    reg_P &= ~(Z_FLAG | N_FLAG | C_FLAG);       \
+    x |= Fluint8::LeftShift<7>(Fluint8::AndWith<C_FLAG8>(reg_P));        \
+    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P); \
     reg_P |= l;                                 \
     X_ZNT(x);                                   \
   }
@@ -442,18 +443,21 @@ void X6502::RunLoop() {
         if (!jammed) {
           ADDCYC(7);
           PUSH16(reg_PC);
-          PUSH((reg_P & ~B_FLAG) | (U_FLAG));
-          reg_P |= I_FLAG;
+          const Fluint8 pnb = Fluint8::AndWith<(uint8_t)~B_FLAG8>(reg_P);
+          PUSH(Fluint8::OrWith<U_FLAG8>(pnb));
+          reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
           reg_PC = RdMem(0xFFFA);
           reg_PC |= RdMem(0xFFFB) << 8;
           IRQlow &= ~FCEU_IQNMI;
         }
       } else {
-        if ((reg_PI & I_FLAG).ToInt() == 0 && !jammed) {
+        const Fluint8 fpi = Fluint8::AndWith<I_FLAG8>(reg_PI);
+        if (fpi.ToInt() == 0 && !jammed) {
           ADDCYC(7);
           PUSH16(reg_PC);
-          PUSH((reg_P & ~B_FLAG) | (U_FLAG));
-          reg_P |= I_FLAG;
+          const Fluint8 pnb = Fluint8::AndWith<(uint8_t)~B_FLAG8>(reg_P);
+          PUSH(Fluint8::OrWith<U_FLAG8>(pnb));
+          reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
           reg_PC = RdMem(0xFFFE);
           reg_PC |= RdMem(0xFFFF) << 8;
         }
@@ -503,9 +507,9 @@ void X6502::RunLoop() {
       case 0x00: /* BRK */
         reg_PC++;
         PUSH16(reg_PC);
-        PUSH(reg_P | U_FLAG | B_FLAG);
-        reg_P |= I_FLAG;
-        reg_PI |= I_FLAG;
+        PUSH(Fluint8::OrWith<(uint8_t)(U_FLAG8 | B_FLAG8)>(reg_P));
+        reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
+        reg_PI = Fluint8::OrWith<I_FLAG8>(reg_PI);
         reg_PC = RdMem(0xFFFE);
         reg_PC |= RdMem(0xFFFF) << 8;
         break;
@@ -528,7 +532,7 @@ void X6502::RunLoop() {
         break;
       case 0x08:
         /* PHP */
-        PUSH(reg_P | U_FLAG | B_FLAG);
+        PUSH(Fluint8::OrWith<(uint8_t)(U_FLAG8 | B_FLAG8)>(reg_P));
         break;
       case 0x68:
         /* PLA */
@@ -615,14 +619,19 @@ void X6502::RunLoop() {
         X_ZN(reg_Y);
         break;
 
-      case 0x18: /* CLC */ reg_P &= ~C_FLAG; break;
-      case 0xD8: /* CLD */ reg_P &= ~D_FLAG; break;
-      case 0x58: /* CLI */ reg_P &= ~I_FLAG; break;
-      case 0xB8: /* CLV */ reg_P &= ~V_FLAG; break;
+        // PERF with constants
+      case 0x18: /* CLC */
+        reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P); break;
+      case 0xD8: /* CLD */
+        reg_P = Fluint8::AndWith<(uint8_t)~D_FLAG8>(reg_P); break;
+      case 0x58: /* CLI */
+        reg_P = Fluint8::AndWith<(uint8_t)~I_FLAG8>(reg_P); break;
+      case 0xB8: /* CLV */
+        reg_P = Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P); break;
 
-      case 0x38: /* SEC */ reg_P |= C_FLAG; break;
-      case 0xF8: /* SED */ reg_P |= D_FLAG; break;
-      case 0x78: /* SEI */ reg_P |= I_FLAG; break;
+      case 0x38: /* SEC */ reg_P = Fluint8::OrWith<C_FLAG8>(reg_P); break;
+      case 0xF8: /* SED */ reg_P = Fluint8::OrWith<D_FLAG8>(reg_P); break;
+      case 0x78: /* SEI */ reg_P = Fluint8::OrWith<I_FLAG8>(reg_P); break;
 
       case 0xEA: /* NOP */ break;
 
@@ -767,44 +776,45 @@ void X6502::RunLoop() {
       case 0x8C:
         ST_AB(reg_Y);
 
+        // PERF with constants
       /* BCC */
       case 0x90:
-        JR(!(reg_P & C_FLAG));
+        JR(!(Fluint8::AndWith<C_FLAG8>(reg_P)));
         break;
 
       /* BCS */
       case 0xB0:
-        JR(!!(reg_P & C_FLAG));
+        JR(!!(Fluint8::AndWith<C_FLAG8>(reg_P)));
         break;
 
       /* BEQ */
       case 0xF0:
-        JR(!!(reg_P & Z_FLAG));
+        JR(!!(Fluint8::AndWith<Z_FLAG8>(reg_P)));
         break;
 
       /* BNE */
       case 0xD0:
-        JR(!(reg_P & Z_FLAG));
+        JR(!(Fluint8::AndWith<Z_FLAG8>(reg_P)));
         break;
 
       /* BMI */
       case 0x30:
-        JR(!!(reg_P & N_FLAG));
+        JR(!!(Fluint8::AndWith<N_FLAG8>(reg_P)));
         break;
 
       /* BPL */
       case 0x10:
-        JR(!(reg_P & N_FLAG));
+        JR(!(Fluint8::AndWith<N_FLAG8>(reg_P)));
         break;
 
       /* BVC */
       case 0x50:
-        JR(!(reg_P & V_FLAG));
+        JR(!(Fluint8::AndWith<V_FLAG8>(reg_P)));
         break;
 
       /* BVS */
       case 0x70:
-        JR(!!(reg_P & V_FLAG));
+        JR(!!(Fluint8::AndWith<V_FLAG8>(reg_P)));
         break;
 
       // default: printf("Bad %02x at $%04x\n",b1,X.PC);break;
@@ -815,7 +825,9 @@ void X6502::RunLoop() {
       /* AAC */
       case 0x2B:
       case 0x0B:
-        LD_IM(AND; reg_P &= ~C_FLAG; reg_P |= Fluint8::RightShift<7>(reg_A));
+        LD_IM(AND;
+              reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
+              reg_P |= Fluint8::RightShift<7>(reg_A));
 
       /* AAX */
       case 0x87: ST_ZP(reg_A & reg_X);
@@ -828,12 +840,13 @@ void X6502::RunLoop() {
       case 0x6B: {
         Fluint8 arrtmp;
         LD_IM(AND;
-              reg_P &= ~V_FLAG;
-              reg_P |= (reg_A ^ Fluint8::RightShift<1>(reg_A)) & Fluint8(0x40);
+              reg_P = Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P);
+              reg_P |=
+                Fluint8::AndWith<0x40>(reg_A ^ Fluint8::RightShift<1>(reg_A));
               arrtmp = Fluint8::RightShift<7>(reg_A);
               reg_A = Fluint8::RightShift<1>(reg_A);
-              reg_A |= Fluint8::LeftShift<7>(reg_P & C_FLAG);
-              reg_P &= ~C_FLAG;
+              reg_A |= Fluint8::LeftShift<7>(Fluint8::AndWith<C_FLAG8>(reg_P));
+              reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
               reg_P |= arrtmp;
               X_ZN(reg_A));
       }
@@ -998,7 +1011,7 @@ void X6502::RunLoop() {
 
       /* XAA - BIG QUESTION MARK HERE */
       case 0x8B:
-        reg_A |= Fluint8(0xEE);
+        reg_A = Fluint8::OrWith<0xEE>(reg_A);
         reg_A &= reg_X;
         LD_IM(AND);
     }

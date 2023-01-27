@@ -137,7 +137,7 @@ Fluint8 Fluint8::RightShift1(Fluint8 x) {
 }
 
 
-static const std::vector<const Exp *> &BitExps() {
+const std::vector<const Exp *> &Fluint8::BitExps() {
   static std::vector<const Exp *> bitexps = []() {
       static Choppy::DB *db = GetDB();
       auto RequireKey = [](const DB::key_type &key) -> const Exp * {
@@ -188,6 +188,7 @@ half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
 
   std::array<half, 8> abit, bbit, obit;
   for (int bit = 0; bit < 8; bit++) {
+    // PERF no need to save these intermediates
     abit[bit] = GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa)));
     bbit[bit] = GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopb)));
     // Multiplication is like AND.

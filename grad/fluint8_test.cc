@@ -123,6 +123,70 @@ static void TestAndEq() {
       });
 }
 
+template<int N>
+static void TestAndWith() {
+  if constexpr (N < 0) {
+      // done.
+  } else {
+    ForAll(
+        [](uint8 x, Fluint8 xf) {
+          static constexpr uint8 B = N;
+          uint8 z = x & B;
+          Fluint8 zf = Fluint8::AndWith<B>(xf);
+
+          CHECK(z == zf.ToInt()) <<
+            StringPrintf("%02x (%d) & constant %02x (%d) -> "
+                         "%02x (%d) want %02x (%d)",
+                         x, x, B, B, zf.ToInt(), zf.ToInt(), z, z);
+        CHECK_CANONICAL("and-with", zf, x, B);
+      });
+    TestAndWith<N - 1>();
+  }
+}
+
+template<int N>
+static void TestOrWith() {
+  if constexpr (N < 0) {
+      // done.
+  } else {
+    ForAll(
+        [](uint8 x, Fluint8 xf) {
+          static constexpr uint8 B = N;
+          uint8 z = x | B;
+          Fluint8 zf = Fluint8::OrWith<B>(xf);
+
+          CHECK(z == zf.ToInt()) <<
+            StringPrintf("%02x (%d) | constant %02x (%d) -> "
+                         "%02x (%d) want %02x (%d)",
+                         x, x, B, B, zf.ToInt(), zf.ToInt(), z, z);
+        CHECK_CANONICAL("or-with", zf, x, B);
+      });
+    TestOrWith<N - 1>();
+  }
+}
+
+template<int N>
+static void TestXorWith() {
+  if constexpr (N < 0) {
+      // done.
+  } else {
+    ForAll(
+        [](uint8 x, Fluint8 xf) {
+          static constexpr uint8 B = N;
+          uint8 z = x ^ B;
+          Fluint8 zf = Fluint8::XorWith<B>(xf);
+
+          CHECK(z == zf.ToInt()) <<
+            StringPrintf("%02x (%d) ^ constant %02x (%d) -> "
+                         "%02x (%d) want %02x (%d)",
+                         x, x, B, B, zf.ToInt(), zf.ToInt(), z, z);
+        CHECK_CANONICAL("xor-with", zf, x, B);
+      });
+    TestXorWith<N - 1>();
+  }
+}
+
+
 static void TestOr() {
   ForAllPairs(
       [](uint8 x, uint8 y,
@@ -361,6 +425,9 @@ int main(int argc, char **argv) {
   TestXor();
   TestXorEq();
 
+  TestAndWith<255>();
+  TestOrWith<255>();
+  TestXorWith<255>();
 
   TestLeftShifts();
 

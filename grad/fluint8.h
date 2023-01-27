@@ -6,8 +6,7 @@
 #include <bit>
 
 #include "half.h"
-
-struct Exp;
+#include "expression.h"
 
 // If set, use uint8 to implement it (for debugging)
 #define FLUINT8_WRAP 0
@@ -52,6 +51,11 @@ struct Fluint8 {
   static Fluint8 BitwiseOr(Fluint8 a, Fluint8 b) {
     Cheat();
     return Fluint8(a.ToInt() | b.ToInt());
+  }
+
+  template<uint8_t B>
+  static Fluint8 AndWith(Fluint8 a) {
+    return BitwiseAnd(a, Fluint8(B));
   }
 
   // Left shift by a compile-time constant.
@@ -118,6 +122,20 @@ struct Fluint8 {
   static Fluint8 BitwiseAnd(Fluint8 a, Fluint8 b);
   static Fluint8 BitwiseOr(Fluint8 a, Fluint8 b);
 
+  // With a compile-time constant, which is very common, and
+  // can be done much faster.
+  template<uint8_t b>
+  static Fluint8 AndWith(Fluint8 a);
+
+  template<uint8_t b>
+  static Fluint8 OrWith(Fluint8 a);
+
+  template<uint8_t b>
+  static Fluint8 XorWith(Fluint8 a);
+
+  // TODO: (x & c) ^ c is a common pattern in x6502,
+  // which we could do in one step.
+
   // Left shift by a compile-time constant.
   template<size_t n>
   static Fluint8 LeftShift(Fluint8 x);
@@ -161,8 +179,14 @@ struct Fluint8 {
     return std::bit_cast<half_float::half, uint16_t>(u);
   }
 
+  // Internal expressions used for extracting bits.
+  static const std::vector<const Exp *> &BitExps();
+
   // Compute bitwise AND.
   static half GetCommonBits(Fluint8 a, Fluint8 b);
+  // .. and with compile-time constant
+  template<uint8_t B>
+  static half GetCommonBitsWith(Fluint8 a);
 
   static half Canonicalize(half h);
 
@@ -312,6 +336,89 @@ Fluint8 Fluint8::RightShift(Fluint8 x) {
     return RightShift1(y);
   }
 }
+
+template<uint8_t B>
+half_float::half Fluint8::GetCommonBitsWith(Fluint8 a) {
+  static const std::vector<const Exp *> &bitexps = BitExps();
+
+  // Get to the chopa
+  const half chopa = a.ToChoppy();
+
+  // As in GetCommonBits, we compute the result directly in [0, 255]
+  // space.
+
+  // XXX unroll this so that it's clear that it's compile-time
+  half common_bits = (half)0.0f;
+  for (int bit = 0; bit < 8; bit++) {
+    if ((1 << bit) & B) {
+      // We know the bit from the constant b is 1, so copy the
+      // bit from a.
+      const half scale = (half)(1 << bit);
+      common_bits +=
+        GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa))) * scale;
+    } else {
+      // Otherwise it is zero and contributes nothing to the output.
+    }
+  }
+
+  return common_bits;
+}
+
+template<uint8_t B>
+Fluint8 Fluint8::AndWith(Fluint8 a) {
+  return Fluint8(GetCommonBitsWith<B>(a));
+}
+
+template<uint8_t B>
+Fluint8 Fluint8::OrWith(Fluint8 a) {
+  static const std::vector<const Exp *> &bitexps = BitExps();
+
+  // Get to the chopa
+  const half chopa = a.ToChoppy();
+
+  // Compute the result directly in [0, 255] space.
+  // XXX unroll this so that it's clear that it's compile-time
+  half result = (half)0.0f;
+  for (int bit = 0; bit < 8; bit++) {
+    const half scale = (half)(1 << bit);
+    if ((1 << bit) & B) {
+      // If the bit is one in the source, always emit 1.
+      result += scale;
+    } else {
+      // Else copy the bit from a.
+      result +=
+        GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa))) * scale;
+    }
+  }
+
+  return Fluint8(result);
+}
+
+template<uint8_t B>
+Fluint8 Fluint8::XorWith(Fluint8 a) {
+  static const std::vector<const Exp *> &bitexps = BitExps();
+
+  // Get to the chopa
+  const half chopa = a.ToChoppy();
+
+  // Compute the result directly in [0, 255] space.
+  // XXX unroll this so that it's clear that it's compile-time
+  half result = (half)0.0f;
+  for (int bit = 0; bit < 8; bit++) {
+    const half scale = (half)(1 << bit);
+    const half a_bit = GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa)));
+    if ((1 << bit) & B) {
+      // Toggle the bit.
+      result += scale * (1.0 - a_bit);
+    } else {
+      // Else copy the bit from a.
+      result += scale * a_bit;
+    }
+  }
+
+  return Fluint8(result);
+}
+
 
 #endif
 

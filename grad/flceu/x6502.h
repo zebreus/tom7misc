@@ -218,7 +218,7 @@ private:
   }
 
   void X_ZN(Fluint8 zort) {
-    reg_P &= ~(Z_FLAG | N_FLAG);
+    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8)>(reg_P);
     reg_P |= ZNTable[zort.ToInt()];
   }
 
@@ -229,9 +229,11 @@ private:
   void CMPL(Fluint8 a1, Fluint8 a2) {
     Fluint8::Cheat();
     uint32 t = a1.ToInt() - a2.ToInt();
-    X_ZN(Fluint8(t) & Fluint8(0xFF));
-    reg_P &= ~C_FLAG;
-    reg_P |= (Fluint8((uint8)(t >> 8)) & C_FLAG) ^ C_FLAG;
+    X_ZN(Fluint8(t));
+    reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
+    reg_P |=
+      Fluint8::XorWith<C_FLAG8>(
+          Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(t >> 8))));
   }
 
   void JR(bool cond) {
@@ -273,14 +275,26 @@ private:
     fc->fceu->RAM[A] = V;
   }
 
-  static constexpr Fluint8 N_FLAG{0x80};
-  static constexpr Fluint8 V_FLAG{0x40};
-  static constexpr Fluint8 U_FLAG{0x20};
-  static constexpr Fluint8 B_FLAG{0x10};
-  static constexpr Fluint8 D_FLAG{0x08};
-  static constexpr Fluint8 I_FLAG{0x04};
-  static constexpr Fluint8 Z_FLAG{0x02};
-  static constexpr Fluint8 C_FLAG{0x01};
+  // Commonly we do bitwise ops with compile-time constants,
+  // which can be faster than fully dynamic fluint operations.
+  static constexpr uint8_t N_FLAG8{0x80};
+  static constexpr uint8_t V_FLAG8{0x40};
+  static constexpr uint8_t U_FLAG8{0x20};
+  static constexpr uint8_t B_FLAG8{0x10};
+  static constexpr uint8_t D_FLAG8{0x08};
+  static constexpr uint8_t I_FLAG8{0x04};
+  static constexpr uint8_t Z_FLAG8{0x02};
+  static constexpr uint8_t C_FLAG8{0x01};
+
+  // But the constants are also available as fluints.
+  static constexpr Fluint8 N_FLAG{N_FLAG8};
+  static constexpr Fluint8 V_FLAG{V_FLAG8};
+  static constexpr Fluint8 U_FLAG{U_FLAG8};
+  static constexpr Fluint8 B_FLAG{B_FLAG8};
+  static constexpr Fluint8 D_FLAG{D_FLAG8};
+  static constexpr Fluint8 I_FLAG{I_FLAG8};
+  static constexpr Fluint8 Z_FLAG{Z_FLAG8};
+  static constexpr Fluint8 C_FLAG{C_FLAG8};
 
 
   // I think this stands for "zero and negative" table, which has the
@@ -337,8 +351,8 @@ private:
 #define FCEU_IQEXT2     0x002
 /* ... */
 #define FCEU_IQRESET    0x020
-#define FCEU_IQNMI2  0x040  // Delayed NMI, gets converted to *_IQNMI
-#define FCEU_IQNMI  0x080
+#define FCEU_IQNMI2     0x040  // Delayed NMI, gets converted to *_IQNMI
+#define FCEU_IQNMI      0x080
 #define FCEU_IQDPCM     0x100
 #define FCEU_IQFCOUNT   0x200
 #define FCEU_IQTEMP     0x800

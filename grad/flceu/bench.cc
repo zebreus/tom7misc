@@ -18,6 +18,8 @@
 #include "simplefm7.h"
 #include "timer.h"
 #include "image.h"
+#include "periodically.h"
+#include "ansi.h"
 
 #include "x6502.h"
 
@@ -43,6 +45,7 @@ std::tuple<uint64, uint64, double> RunBenchmark(Emulator *emu,
                                                 const vector<uint8> &movie) {
   emu->LoadUncompressed(start);
   Timer exec_timer;
+  Periodically slow_per(10.0);
 
   // Only the last step needs to be full, so that we render the image.
   for (int i = 0; i < (int)movie.size() - 1; i++) {
@@ -54,6 +57,17 @@ std::tuple<uint64, uint64, double> RunBenchmark(Emulator *emu,
       printf("Wrote %d\n", i);
     }
     */
+    if (i % 50 == 0) {
+      if (slow_per.ShouldRun()) {
+        double sec = exec_timer.Seconds();
+        double fps = i / sec;
+        double left = ((int)movie.size() - i) / fps;
+        printf("%d/%d frames in %.2fs (" ACYAN("%.4f") " fps) eta "
+               ARED("%.1f") "s\n",
+               i, (int)movie.size(),
+               sec, i / sec, left);
+      }
+    }
   }
   emu->StepFull(movie[movie.size() - 1], 0);
 
@@ -63,6 +77,7 @@ std::tuple<uint64, uint64, double> RunBenchmark(Emulator *emu,
 }
 
 int main(int argc, char **argv) {
+  AnsiInit();
   char date[256] = {};
   int64 now = time(nullptr);
   strftime(date, 254, "%d-%b-%Y %H:%M:%S", localtime(&now));
