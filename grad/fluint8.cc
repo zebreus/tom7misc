@@ -178,6 +178,29 @@ const std::vector<const Exp *> &Fluint8::BitExps() {
 // Returns the bits (as an integral half in [0, 255]) that are in
 // common between the args, i.e. a & b.
 half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
+
+#if 1
+  half common = (half)0.0f;
+  Fluint8 aa = a, bb = b;
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    // Low order bit as a - ((a >> 1) << 1)
+    Fluint8 aashift = RightShift1(aa);
+    Fluint8 bbshift = RightShift1(bb);
+    half a_bit = aa.h - LeftShift1Under128(aashift).h;
+    half b_bit = bb.h - LeftShift1Under128(bbshift).h;
+    const half scale = (half)(1 << bit_idx);
+
+    // Multiplication is like AND.
+    common += scale * (a_bit * b_bit);
+
+    // and keep shifting down
+    aa = aashift;
+    bb = bbshift;
+  }
+
+  return common;
+
+  #else
   static const std::vector<const Exp *> &bitexps = BitExps();
 
   // Get to the chopa
@@ -212,6 +235,7 @@ half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
   }
 
   return common_bits;
+  #endif
 }
 
 Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
