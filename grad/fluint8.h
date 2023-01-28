@@ -354,8 +354,15 @@ half_float::half Fluint8::GetCommonBitsWith(Fluint8 a) {
       // We know the bit from the constant b is 1, so copy the
       // bit from a.
       const half scale = (half)(1 << bit);
-      common_bits +=
-        GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa))) * scale;
+      if (bit == 0) {
+        // Low order bit as a - ((a >> 1) << 1)
+        // PERF: We can just keep doing this to extract bits, right?
+        half f = a.h - LeftShift<1>(RightShift1(a)).h;
+        common_bits += f * scale;
+      } else {
+        common_bits +=
+          GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa))) * scale;
+      }
     } else {
       // Otherwise it is zero and contributes nothing to the output.
     }
