@@ -186,6 +186,7 @@ half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
 
   // printf("%.2f & %.2f\n", (float)a.h, (float)b.h);
 
+  // PERF: We can do the same shift trick here
   std::array<half, 8> abit, bbit, obit;
   for (int bit = 0; bit < 8; bit++) {
     // PERF no need to save these intermediates

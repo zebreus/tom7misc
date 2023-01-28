@@ -339,34 +339,58 @@ Fluint8 Fluint8::RightShift(Fluint8 x) {
 
 template<uint8_t B>
 half_float::half Fluint8::GetCommonBitsWith(Fluint8 a) {
+
+  // As in GetCommonBits, we compute the result directly in [0, 255]
+  // space.
+
+#if 1
+  // XXX unroll this so that it's clear that it's compile-time
+  half common_bits = (half)0.0f;
+  Fluint8 aa = a;
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    // Low order bit as a - ((a >> 1) << 1)
+    Fluint8 aashift = RightShift1(aa);
+
+    if ((1 << bit_idx) & B) {
+      half bit = aa.h - LeftShift<1>(aashift).h;
+      // We know the bit from the constant b is 1, so copy the
+      // bit from a.
+      const half scale = (half)(1 << bit_idx);
+      common_bits += bit * scale;
+    } else {
+      // Otherwise it is zero and contributes nothing to the output.
+    }
+    // and keep shifting down
+    aa = aashift;
+  }
+
+#else
   static const std::vector<const Exp *> &bitexps = BitExps();
 
   // Get to the chopa
   const half chopa = a.ToChoppy();
 
-  // As in GetCommonBits, we compute the result directly in [0, 255]
-  // space.
-
   // XXX unroll this so that it's clear that it's compile-time
   half common_bits = (half)0.0f;
-  for (int bit = 0; bit < 8; bit++) {
-    if ((1 << bit) & B) {
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    if ((1 << bit_idx) & B) {
       // We know the bit from the constant b is 1, so copy the
       // bit from a.
-      const half scale = (half)(1 << bit);
-      if (bit == 0) {
+      const half scale = (half)(1 << bit_idx);
+      if (bit_idx == 0) {
         // Low order bit as a - ((a >> 1) << 1)
         // PERF: We can just keep doing this to extract bits, right?
         half f = a.h - LeftShift<1>(RightShift1(a)).h;
         common_bits += f * scale;
       } else {
         common_bits +=
-          GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa))) * scale;
+          GetHalf(Exp::EvaluateOn(bitexps[bit_idx], GetU16(chopa))) * scale;
       }
     } else {
       // Otherwise it is zero and contributes nothing to the output.
     }
   }
+#endif
 
   return common_bits;
 }
@@ -378,6 +402,30 @@ Fluint8 Fluint8::AndWith(Fluint8 a) {
 
 template<uint8_t B>
 Fluint8 Fluint8::OrWith(Fluint8 a) {
+#if 1
+
+  half result = (half)0.0f;
+  Fluint8 aa = a;
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    // Low order bit as a - ((a >> 1) << 1)
+    Fluint8 aashift = RightShift1(aa);
+
+    const half scale = (half)(1 << bit_idx);
+    if ((1 << bit_idx) & B) {
+      // If the bit is one in the source, always emit one.
+      result += scale;
+    } else {
+      // Else copy the bit from a.
+      half bit = aa.h - LeftShift<1>(aashift).h;
+      result += bit * scale;
+    }
+    // and keep shifting down
+    aa = aashift;
+  }
+
+  return Fluint8(result);
+
+#else
   static const std::vector<const Exp *> &bitexps = BitExps();
 
   // Get to the chopa
@@ -386,19 +434,20 @@ Fluint8 Fluint8::OrWith(Fluint8 a) {
   // Compute the result directly in [0, 255] space.
   // XXX unroll this so that it's clear that it's compile-time
   half result = (half)0.0f;
-  for (int bit = 0; bit < 8; bit++) {
-    const half scale = (half)(1 << bit);
-    if ((1 << bit) & B) {
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    const half scale = (half)(1 << bit_idx);
+    if ((1 << bit_idx) & B) {
       // If the bit is one in the source, always emit 1.
       result += scale;
     } else {
       // Else copy the bit from a.
       result +=
-        GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa))) * scale;
+        GetHalf(Exp::EvaluateOn(bitexps[bit_idx], GetU16(chopa))) * scale;
     }
   }
 
   return Fluint8(result);
+#endif
 }
 
 template<uint8_t B>
@@ -411,10 +460,11 @@ Fluint8 Fluint8::XorWith(Fluint8 a) {
   // Compute the result directly in [0, 255] space.
   // XXX unroll this so that it's clear that it's compile-time
   half result = (half)0.0f;
-  for (int bit = 0; bit < 8; bit++) {
-    const half scale = (half)(1 << bit);
-    const half a_bit = GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa)));
-    if ((1 << bit) & B) {
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    const half scale = (half)(1 << bit_idx);
+    const half a_bit =
+      GetHalf(Exp::EvaluateOn(bitexps[bit_idx], GetU16(chopa)));
+    if ((1 << bit_idx) & B) {
       // Toggle the bit.
       result += scale * (1.0 - a_bit);
     } else {
