@@ -230,8 +230,6 @@ private:
     // Can't overflow because these are two different bits.
     Fluint8 res = Fluint8::PlusNoOverflow(nf, zf);
 
-    // PERF
-    CHECK(res.ToInt() == ZNTable[zort.ToInt()].ToInt());
     return res;
   }
 
@@ -283,6 +281,72 @@ private:
     timestamp += x;
   }
 
+  template<class F>
+  void ST_ZP(F rf) {
+    uint16_t AA = GetZP().ToInt();
+    WrRAM(AA, rf(AA).ToInt());
+  }
+
+  template<class F>
+  void ST_ZPX(F rf) {
+    uint16_t AA = GetZPI(reg_X).ToInt();
+    WrRAM(AA, rf(AA).ToInt());
+  }
+
+  template<class F>
+  void ST_ZPY(F rf) {
+    uint16_t AA = GetZPI(reg_Y).ToInt();
+    WrRAM(AA, rf(AA).ToInt());
+  }
+
+  template<class F>
+  void ST_AB(F rf) {
+    uint16 AA = GetAB();
+    WrMem(AA, rf(AA).ToInt());
+  }
+
+  template<class F>
+  void ST_ABI(Fluint8 reg, F rf) {
+    uint16 AA = GetABIWR(reg);
+    WrMem(AA, rf(AA).ToInt());
+  }
+
+  template<class F>
+  void ST_ABX(F rf) {
+    return ST_ABI(reg_X, rf);
+  }
+
+  template<class F>
+  void ST_ABY(F rf) {
+    return ST_ABI(reg_Y, rf);
+  }
+
+  template<class F>
+  void ST_IX(F rf) {
+    uint16 AA = GetIX();
+    WrMem(AA, rf(AA).ToInt());
+  }
+
+  template<class F>
+  void ST_IY(F rf) {
+    uint16 AA = GetIYWR();
+    WrMem(AA, rf(AA).ToInt());
+  }
+
+  void ADC(Fluint8 x) {
+    // TODO: Implement add with carry natively
+    Fluint8 p_carry_bit = Fluint8::AndWith<C_FLAG8>(reg_P);
+    Fluint8::Cheat();
+    uint32 l = reg_A.ToInt() + (x).ToInt() + p_carry_bit.ToInt();
+    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
+    Fluint8 aaa = Fluint8::XorWith<0x80>(Fluint8::AndWith<0x80>(reg_A ^ x));
+    Fluint8 bbb = Fluint8::AndWith<0x80>(reg_A ^ Fluint8((uint8)l));
+    reg_P |= Fluint8::RightShift<1>(aaa & bbb);
+    reg_P |= Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(l >> 8)));
+    reg_A = Fluint8((uint8)l);
+    X_ZNT(reg_A);
+  }
+
   // normal memory read
   inline uint8 RdMem(unsigned int A) {
     return DB = fc->fceu->ARead[A](fc, A);
@@ -321,53 +385,6 @@ private:
   static constexpr Fluint8 I_FLAG{I_FLAG8};
   static constexpr Fluint8 Z_FLAG{Z_FLAG8};
   static constexpr Fluint8 C_FLAG{C_FLAG8};
-
-
-  // XXX This is replaced with the ZnFlags function, so this is just
-  // used for some assertions now. Can delete it.
-  //
-  // I think this stands for "zero and negative" table, which has the
-  // zero and negative cpu flag set for each possible byte. The
-  // information content is pretty low, and we might consider replacing
-  // the ZN/ZNT macros with something that computes from the byte itself
-  // (for example, the N flag is actually 0x80 which is the same bit as
-  // what's tested to populate the table, so flags |= (b & 0x80)).
-  // Anyway, I inlined the values rather than establishing them when the
-  // emulator starts up, mostly for thread safety sake. -tom7
-  /* Some of these operations will only make sense if you know what the flag
-     constants are. */
-  static constexpr Fluint8 NO_FLAGS{0};
-  static constexpr Fluint8 ZNTable[256] = {
-    Z_FLAG, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS, NO_FLAGS,
-    NO_FLAGS, NO_FLAGS, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-    N_FLAG, N_FLAG, N_FLAG, N_FLAG,
-  };
 
   FC *fc = nullptr;
   DISALLOW_COPY_AND_ASSIGN(X6502);

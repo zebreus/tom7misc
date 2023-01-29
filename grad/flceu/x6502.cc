@@ -66,24 +66,10 @@ void X6502::DMW(uint32 A, uint8 V) {
   reg_A |= x;  \
   X_ZN(reg_A)
 
-// TODO: Implement add with carry natively
-#define ADC                                                             \
-  {                                                                     \
-    Fluint8 p_lo_bit = Fluint8::AndWith<1>(reg_P);                      \
-    Fluint8::Cheat();                                                   \
-    uint32 l = reg_A.ToInt() + (x).ToInt() + p_lo_bit.ToInt();          \
-    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P); \
-    Fluint8 aaa = Fluint8::XorWith<0x80>(Fluint8::AndWith<0x80>(reg_A ^ x)); \
-    Fluint8 bbb = Fluint8::AndWith<0x80>(reg_A ^ Fluint8((uint8)l));    \
-    reg_P |= Fluint8::RightShift<1>(aaa & bbb);                         \
-    reg_P |= Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(l >> 8))); \
-    reg_A = Fluint8((uint8)l);                                          \
-    X_ZNT(reg_A);                                                       \
-  }
-
 #define SBC                                              \
   {                                                      \
-    Fluint8 p_nlo_bit = Fluint8::XorWith<1>(Fluint8::AndWith<1>(reg_P)); \
+    Fluint8 p_nlo_bit = Fluint8::XorWith<C_FLAG8>(       \
+        Fluint8::AndWith<C_FLAG8>(reg_P));               \
     Fluint8::Cheat();                                    \
     uint32 l = reg_A.ToInt() - x.ToInt() - p_nlo_bit.ToInt();  \
     reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P); \
@@ -295,52 +281,7 @@ void X6502::DMW(uint32 A, uint8 V) {
     break;                   \
   }
 
-#define ST_ZP(r)  \
-  {               \
-    Fluint8 AA = GetZP();                    \
-    WrRAM(AA.ToInt(), (r).ToInt());          \
-    break;        \
-  }
-#define ST_ZPX(r)      \
-  {                    \
-    Fluint8 AA = GetZPI(reg_X); \
-    WrRAM(AA.ToInt(), (r).ToInt());             \
-    break;             \
-  }
-#define ST_ZPY(r)      \
-  {                    \
-    Fluint8 AA = GetZPI(reg_Y); \
-    WrRAM(AA.ToInt(), (r).ToInt());             \
-    break;             \
-  }
-#define ST_AB(r)     \
-  {                  \
-    uint16 AA = GetAB();       \
-    WrMem(AA, (r).ToInt());    \
-    break;           \
-  }
-#define ST_ABI(reg, r) \
-  {                    \
-    uint16 AA = GetABIWR(reg); \
-    WrMem(AA, (r).ToInt());    \
-    break;             \
-  }
-#define ST_ABX(r) ST_ABI(reg_X, r)
-#define ST_ABY(r) ST_ABI(reg_Y, r)
-#define ST_IX(r)          \
-  {                       \
-    uint16 AA = GetIX();  \
-    WrMem(AA, (r).ToInt());                     \
-    break;                \
-  }
-#define ST_IY(r)                                \
-  {                                             \
-    uint16 AA = GetIYWR();                      \
-    WrMem(AA, (r).ToInt());                     \
-    break;                                      \
-  }
-
-// Several undocument instructions AND with the high byte
+// Several undocumented instructions AND with the high byte
 // of the address, plus one. Computes that expression.
 static Fluint8 WeirdHiByte(uint16_t aa, Fluint8 r) {
   Fluint8::Cheat();
@@ -682,14 +623,14 @@ void X6502::RunLoop() {
       case 0x6E: RMW_AB(ROR);
       case 0x7E: RMW_ABX(ROR);
 
-      case 0x69: LD_IM(ADC);
-      case 0x65: LD_ZP(ADC);
-      case 0x75: LD_ZPX(ADC);
-      case 0x6D: LD_AB(ADC);
-      case 0x7D: LD_ABX(ADC);
-      case 0x79: LD_ABY(ADC);
-      case 0x61: LD_IX(ADC);
-      case 0x71: LD_IY(ADC);
+      case 0x69: LD_IM(ADC(x));
+      case 0x65: LD_ZP(ADC(x));
+      case 0x75: LD_ZPX(ADC(x));
+      case 0x6D: LD_AB(ADC(x));
+      case 0x7D: LD_ABX(ADC(x));
+      case 0x79: LD_ABY(ADC(x));
+      case 0x61: LD_IX(ADC(x));
+      case 0x71: LD_IY(ADC(x));
 
       case 0x29: LD_IM(AND);
       case 0x25: LD_ZP(AND);
@@ -771,21 +712,21 @@ void X6502::RunLoop() {
       case 0xF1: LD_IY(SBC);
 
 
-      case 0x85: ST_ZP(reg_A);
-      case 0x95: ST_ZPX(reg_A);
-      case 0x8D: ST_AB(reg_A);
-      case 0x9D: ST_ABX(reg_A);
-      case 0x99: ST_ABY(reg_A);
-      case 0x81: ST_IX(reg_A);
-      case 0x91: ST_IY(reg_A);
+    case 0x85: ST_ZP([this](uint16_t AA) { return reg_A; }); break;
+    case 0x95: ST_ZPX([this](uint16_t AA) { return reg_A; }); break;
+    case 0x8D: ST_AB([this](uint16_t AA) { return reg_A; }); break;
+    case 0x9D: ST_ABX([this](uint16_t AA) { return reg_A; }); break;
+    case 0x99: ST_ABY([this](uint16_t AA) { return reg_A; }); break;
+    case 0x81: ST_IX([this](uint16_t AA) { return reg_A; }); break;
+    case 0x91: ST_IY([this](uint16_t AA) { return reg_A; }); break;
 
-      case 0x86: ST_ZP(reg_X);
-      case 0x96: ST_ZPY(reg_X);
-      case 0x8E: ST_AB(reg_X);
+    case 0x86: ST_ZP([this](uint16_t AA) { return reg_X; }); break;
+    case 0x96: ST_ZPY([this](uint16_t AA) { return reg_X; }); break;
+    case 0x8E: ST_AB([this](uint16_t AA) { return reg_X; }); break;
 
-      case 0x84: ST_ZP(reg_Y);
-      case 0x94: ST_ZPX(reg_Y);
-      case 0x8C: ST_AB(reg_Y);
+    case 0x84: ST_ZP([this](uint16_t AA) { return reg_Y; }); break;
+    case 0x94: ST_ZPX([this](uint16_t AA) { return reg_Y; }); break;
+    case 0x8C: ST_AB([this](uint16_t AA) { return reg_Y; }); break;
 
       // PERF Since we are extracting a single
       // bit, can make something like HasBit
@@ -845,19 +786,20 @@ void X6502::RunLoop() {
               reg_P |= Fluint8::RightShift<7>(reg_A));
 
       /* AAX */
-      case 0x87: ST_ZP(reg_A & reg_X);
-      case 0x97: ST_ZPY(reg_A & reg_X);
-      case 0x8F: ST_AB(reg_A & reg_X);
-      case 0x83:
-        ST_IX(reg_A & reg_X);
+    case 0x87: ST_ZP([this](uint16_t AA) { return reg_A & reg_X; }); break;
+    case 0x97: ST_ZPY([this](uint16_t AA) { return reg_A & reg_X; }); break;
+    case 0x8F: ST_AB([this](uint16_t AA) { return reg_A & reg_X; }); break;
+    case 0x83: ST_IX([this](uint16_t AA) { return reg_A & reg_X; }); break;
 
       /* ARR - ARGH, MATEY! */
       case 0x6B: {
         Fluint8 arrtmp;
         LD_IM(AND;
-              reg_P = Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P);
-              reg_P |=
-                Fluint8::AndWith<V_FLAG8>(reg_A ^ Fluint8::RightShift<1>(reg_A));
+              reg_P =
+              Fluint8::PlusNoOverflow(
+                  Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P),
+                  Fluint8::AndWith<V_FLAG8>(reg_A ^
+                                            Fluint8::RightShift<1>(reg_A)));
               arrtmp = Fluint8::RightShift<7>(reg_A);
               reg_A = Fluint8::RightShift<1>(reg_A);
               reg_A |= Fluint8::LeftShift<7>(Fluint8::AndWith<C_FLAG8>(reg_P));
@@ -966,13 +908,13 @@ void X6502::RunLoop() {
       case 0x33: RMW_IY(ROL; AND);
 
       /* RRA */
-      case 0x67: RMW_ZP(ROR; ADC);
-      case 0x77: RMW_ZPX(ROR; ADC);
-      case 0x6F: RMW_AB(ROR; ADC);
-      case 0x7F: RMW_ABX(ROR; ADC);
-      case 0x7B: RMW_ABY(ROR; ADC);
-      case 0x63: RMW_IX(ROR; ADC);
-      case 0x73: RMW_IY(ROR; ADC);
+      case 0x67: RMW_ZP(ROR; ADC(x));
+      case 0x77: RMW_ZPX(ROR; ADC(x));
+      case 0x6F: RMW_AB(ROR; ADC(x));
+      case 0x7F: RMW_ABX(ROR; ADC(x));
+      case 0x7B: RMW_ABY(ROR; ADC(x));
+      case 0x63: RMW_IX(ROR; ADC(x));
+      case 0x73: RMW_IY(ROR; ADC(x));
 
       /* SLO */
       case 0x07: RMW_ZP(ASL; ORA);
@@ -994,24 +936,37 @@ void X6502::RunLoop() {
 
       /* AXA - SHA */
       case 0x93:
-        Fluint8::Cheat();
-        ST_IY(reg_A & reg_X & WeirdHiByte(AA, reg_Y));
+        ST_IY([this](uint16_t AA) {
+            return reg_A & reg_X & WeirdHiByte(AA, reg_Y);
+          });
+        break;
       case 0x9F:
-        Fluint8::Cheat();
-        ST_ABY(reg_A & reg_X & WeirdHiByte(AA, reg_Y));
+        ST_ABY([this](uint16_t AA) {
+            return reg_A & reg_X & WeirdHiByte(AA, reg_Y);
+          });
+        break;
 
       /* SYA */
       case 0x9C:
-        ST_ABX(reg_Y & WeirdHiByte(AA, reg_X));
+        ST_ABX([this](uint16_t AA) {
+            return reg_Y & WeirdHiByte(AA, reg_X);
+        });
+        break;
 
       /* SXA */
       case 0x9E:
-        ST_ABY(reg_X & WeirdHiByte(AA, reg_Y));
+        ST_ABY([this](uint16_t AA) {
+            return reg_X & WeirdHiByte(AA, reg_Y);
+        });
+        break;
 
       /* XAS */
       case 0x9B:
         reg_S = reg_A & reg_X;
-        ST_ABY(reg_S & WeirdHiByte(AA, reg_Y));
+        ST_ABY([this](uint16_t AA) {
+            return reg_S & WeirdHiByte(AA, reg_Y);
+        });
+        break;
 
       /* TOP */
       case 0x0C:
