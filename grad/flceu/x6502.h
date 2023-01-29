@@ -335,15 +335,29 @@ private:
 
   void ADC(Fluint8 x) {
     // TODO: Implement add with carry natively
-    Fluint8 p_carry_bit = Fluint8::AndWith<C_FLAG8>(reg_P);
-    Fluint8::Cheat();
-    uint32 l = reg_A.ToInt() + (x).ToInt() + p_carry_bit.ToInt();
+    static_assert(C_FLAG8 == 0x01, "we assume this is the one's place");
+    const Fluint8 p_carry_bit = Fluint8::AndWith<C_FLAG8>(reg_P);
+    auto [carry1, sum1] = Fluint8::AddWithCarry(reg_A, x);
+    auto [carry2, sum] = Fluint8::AddWithCarry(sum1, p_carry_bit);
+
+    // Since p_carry_bit is at most 1, these can't both overflow.
+    Fluint8 carry = Fluint8::PlusNoOverflow(carry1, carry2);
+
+    // uint32 l = reg_A.ToInt() + (x).ToInt() + p_carry_bit.ToInt();
     reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
-    Fluint8 aaa = Fluint8::XorWith<0x80>(Fluint8::AndWith<0x80>(reg_A ^ x));
-    Fluint8 bbb = Fluint8::AndWith<0x80>(reg_A ^ Fluint8((uint8)l));
+    // I don't understand this part.. we compute the V flag from
+    // some combination of negative flags on inputs? idk. -tom7
+    Fluint8 aaa = Fluint8::XorWith<N_FLAG8>(
+        Fluint8::AndWith<N_FLAG8>(reg_A ^ x));
+    Fluint8 bbb = Fluint8::AndWith<N_FLAG8>(reg_A ^ sum);
+    static_assert(N_FLAG8 >> 1 == V_FLAG8);
     reg_P |= Fluint8::RightShift<1>(aaa & bbb);
-    reg_P |= Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(l >> 8)));
-    reg_A = Fluint8((uint8)l);
+
+    // PERF: Cleared above, so we can use PlusNoOverflow?
+    reg_P |= carry;
+    reg_A = sum;
+    // PERF since we already cleared Z and N flags, can use
+    // PlusNoOverflow
     X_ZNT(reg_A);
   }
 

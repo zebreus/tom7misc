@@ -107,6 +107,27 @@ Fluint8 Fluint8::Plus(Fluint8 x, Fluint8 y) {
   return Fluint8(s * 256.0_h - 0.5_h);
 }
 
+std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
+  // Correct value, except that it could be in [256,512).
+  // We add 0.5 here since the indicator is "strictly greater",
+  // not greater-eq.
+  const half z = x.h + y.h + 0.5_h;
+
+  // We have to be in a reasonable range for the indicator
+  // function to work.
+  const half zz = z * (1.0_h / 256.0_h);
+
+  static const Exp *gtexp = IndicateGreater(1.0_h);
+  const half is_gt = Eval(gtexp, zz);
+
+  const half sum_mod_1 = zz - is_gt;
+
+  // Scale back to canonical range.
+  const Fluint8 sum(sum_mod_1 * 256.0_h - 0.5_h);
+
+  return make_pair(Fluint8(is_gt), sum);
+}
+
 Fluint8 Fluint8::Minus(Fluint8 x, Fluint8 y) {
   Allocator *alloc = GetAlloc();
   // This can work just like plus.

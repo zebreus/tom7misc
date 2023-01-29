@@ -80,6 +80,29 @@ static void TestPlus() {
       });
 }
 
+static void TestAddWithCarry() {
+  ForAllPairs(
+      [](uint16_t x, uint16_t y,
+         Fluint8 xf, Fluint8 yf) {
+        uint16_t z = x + y;
+        uint8_t zsum = z;
+        uint8_t zcarry = (z >> 8);
+        CHECK(zcarry == 0 || zcarry == 1);
+        const auto [carry, sum] = Fluint8::AddWithCarry(xf, yf);
+
+        CHECK(zsum == sum.ToInt() &&
+              zcarry == carry.ToInt()) <<
+          StringPrintf("%02x (%d) + %02x (%d) -> "
+                       "(%02x, %02x) (%d, %d) want (%02x, %02x) (%d, %d)",
+                       x, x, y, y,
+                       carry.ToInt(), sum.ToInt(),
+                       carry.ToInt(), sum.ToInt(),
+                       zcarry, zsum, zcarry, zsum);
+        CHECK_CANONICAL("addwithcarry-carry", carry, x, y);
+        CHECK_CANONICAL("addwithcarry-sum", sum, x, y);
+      });
+}
+
 static void TestMinus() {
   ForAllPairs(
       [](uint8 x, uint8 y,
@@ -438,6 +461,8 @@ int main(int argc, char **argv) {
   TestPostDecrement();
   TestPlusEq();
   TestMinusEq();
+
+  TestAddWithCarry();
 
   TestAnd();
   TestAndEq();
