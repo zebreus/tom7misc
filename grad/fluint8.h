@@ -103,10 +103,9 @@ struct Fluint8 {
   uint8_t ToInt() const;
 
   // TODO: This should not be supported; instead we want like ?:
-  bool operator !() const {
-    Cheat();
-    return ToInt() == 0;
-  }
+  // bool operator !() const {
+  // return IsZero(*this);
+  // }
 
   constexpr Fluint8() : h(GetHalf(TABLE[0])) {}
   Fluint8(Fluint8 &&other) = default;
@@ -121,6 +120,11 @@ struct Fluint8 {
   static Fluint8 BitwiseXor(Fluint8 a, Fluint8 b);
   static Fluint8 BitwiseAnd(Fluint8 a, Fluint8 b);
   static Fluint8 BitwiseOr(Fluint8 a, Fluint8 b);
+
+  // a.k.a. !, this returns (a == 0) ? 1 : 0.
+  static Fluint8 IsZero(Fluint8 a);
+  // Same as !!
+  static Fluint8 IsntZero(Fluint8 a);
 
   // With a compile-time constant, which is very common, and
   // can be done much faster.
@@ -158,6 +162,19 @@ struct Fluint8 {
   // For benchmarking; load lazy-loaded expressions.
   static void Warm();
 
+  // Operations with preconditions. The result is undefined
+  // if the preconditions are not satisfied!
+
+  // Computes x << 1, assuming x < 128.
+  static Fluint8 LeftShift1Under128(Fluint8 x) {
+    return Fluint8(x.h + x.h);
+  }
+
+  // Computes a + b, as long as the sum is < 256.
+  static Fluint8 PlusNoOverflow(Fluint8 a, Fluint8 b) {
+    return Fluint8(a.h + b.h);
+  }
+
  private:
   // Evaluate the expression with the given value for the variable.
   static half_float::half Eval(const Exp *, half_float::half h);
@@ -184,11 +201,6 @@ struct Fluint8 {
 
   // Compute bitwise AND.
   static half GetCommonBits(Fluint8 a, Fluint8 b);
-
-  // Computes x << 1, assuming x < 128.
-  static Fluint8 LeftShift1Under128(Fluint8 x) {
-    return Fluint8(x.h + x.h);
-  }
 
   static half Canonicalize(half h);
 
@@ -395,7 +407,6 @@ Fluint8 Fluint8::OrWith(Fluint8 a) {
 
 template<uint8_t B>
 Fluint8 Fluint8::XorWith(Fluint8 a) {
-#if 1
   half result = (half)0.0f;
   Fluint8 aa = a;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
@@ -415,33 +426,7 @@ Fluint8 Fluint8::XorWith(Fluint8 a) {
   }
 
   return Fluint8(result);
-#else
-
-  static const std::vector<const Exp *> &bitexps = BitExps();
-
-  // Get to the chopa
-  const half chopa = a.ToChoppy();
-
-  // Compute the result directly in [0, 255] space.
-  // XXX unroll this so that it's clear that it's compile-time
-  half result = (half)0.0f;
-  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
-    const half scale = (half)(1 << bit_idx);
-    const half a_bit =
-      GetHalf(Exp::EvaluateOn(bitexps[bit_idx], GetU16(chopa)));
-    if ((1 << bit_idx) & B) {
-      // Toggle the bit.
-      result += scale * (1.0 - a_bit);
-    } else {
-      // Else copy the bit from a.
-      result += scale * a_bit;
-    }
-  }
-
-  return Fluint8(result);
-#endif
 }
-
 
 #endif
 

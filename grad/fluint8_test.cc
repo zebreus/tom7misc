@@ -402,8 +402,31 @@ static void Gen16() {
   printf("\n");
 }
 
+static void TestIsZero() {
+  ForAll(
+      [](uint8 x, Fluint8 xf) {
+        uint8 z = (x == 0);
+        Fluint8 zf = Fluint8::IsZero(xf);
+        CHECK(z == zf.ToInt());
+        CHECK_CANONICAL("is-zero", zf, z, z);
+      });
+}
+
+static void TestIsntZero() {
+  ForAll(
+      [](uint8 x, Fluint8 xf) {
+        uint8 z = (x != 0);
+        Fluint8 zf = Fluint8::IsntZero(xf);
+        CHECK(z == zf.ToInt());
+        CHECK_CANONICAL("isnt-zero", zf, z, z);
+      });
+}
+
 int main(int argc, char **argv) {
   Gen16();
+
+  TestIsZero();
+  TestIsntZero();
 
   TestToFrom();
   TestPlus();

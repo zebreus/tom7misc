@@ -175,11 +175,16 @@ const std::vector<const Exp *> &Fluint8::BitExps() {
   return bitexps;
 }
 
+/* This comment is a memorial to a great joke which is no
+   longer necessary:
+
+  // Get to the chopa
+  const half chopa = a.ToChoppy();
+*/
+
 // Returns the bits (as an integral half in [0, 255]) that are in
 // common between the args, i.e. a & b.
 half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
-
-#if 1
   half common = (half)0.0f;
   Fluint8 aa = a, bb = b;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
@@ -199,43 +204,6 @@ half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
   }
 
   return common;
-
-  #else
-  static const std::vector<const Exp *> &bitexps = BitExps();
-
-  // Get to the chopa
-  const half chopa = a.ToChoppy();
-  const half chopb = b.ToChoppy();
-
-  // printf("%.2f & %.2f\n", (float)a.h, (float)b.h);
-
-  // PERF: We can do the same shift trick here
-  std::array<half, 8> abit, bbit, obit;
-  for (int bit = 0; bit < 8; bit++) {
-    // PERF no need to save these intermediates
-    abit[bit] = GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopa)));
-    bbit[bit] = GetHalf(Exp::EvaluateOn(bitexps[bit], GetU16(chopb)));
-    // Multiplication is like AND.
-    obit[bit] = abit[bit] * bbit[bit];
-
-    /*
-    printf("bit %d = %d: a=%.3f b=%.3f o=%.3f\n",
-           bit, (1 << bit),
-           (float)abit[bit], (float)bbit[bit], (float)obit[bit]);
-    */
-  }
-
-  // Now obit[i] is 1.0 if both a and b had that bit set. So just
-  // compute the resulting fluint. We compute the native (0-255)
-  // representation directly.
-  half common_bits = 0.0_h;
-  for (int bit = 0; bit < 8; bit++) {
-    half scale = (half)(1 << bit);
-    common_bits += obit[bit] * scale;
-  }
-
-  return common_bits;
-  #endif
 }
 
 Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
@@ -264,6 +232,78 @@ half_float::half Fluint8::ToChoppy() const {
 
 Fluint8 Fluint8::FromChoppy(half_float::half h) {
   return Fluint8((h + 1.0_h) * 128.0_h);
+}
+
+Fluint8 Fluint8::IsntZero(Fluint8 a) {
+  // A simple way to do this is to extract all the (negated) bits
+  // and multiply them together. But this would mean multiplying
+  // a by itself, and so is not linear.
+  //
+  // Instead, do the same but ADD the bits. Now we have a
+  // number in [0, 8]. So now we can do the whole thing again
+  // and get a number in [0, 4], etc.
+
+  half num_ones = (half)0.0f;
+  Fluint8 aa = a;
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    Fluint8 aashift = RightShift1(aa);
+    half a_bit = aa.h - LeftShift1Under128(aashift).h;
+    num_ones += a_bit;
+    aa = aashift;
+  }
+
+  CHECK(num_ones >= (half)0.0f && num_ones <= (half)8.0f);
+
+  // now count the ones in num_ones.
+  aa = Fluint8(num_ones);
+  num_ones = (half)0.0f;
+  for (int bit_idx = 0; bit_idx < 4; bit_idx++) {
+    Fluint8 aashift = RightShift1(aa);
+    half a_bit = aa.h - LeftShift1Under128(aashift).h;
+    num_ones += a_bit;
+    aa = aashift;
+  }
+
+  CHECK(num_ones >= (half)0.0f && num_ones <= (half)4.0f);
+
+  // and again ...
+  aa = Fluint8(num_ones);
+  num_ones = (half)0.0f;
+  for (int bit_idx = 0; bit_idx < 3; bit_idx++) {
+    Fluint8 aashift = RightShift1(aa);
+    half a_bit = aa.h - LeftShift1Under128(aashift).h;
+    num_ones += a_bit;
+    aa = aashift;
+  }
+
+  CHECK(num_ones >= (half)0.0f && num_ones <= (half)3.0f);
+
+  // and again ...
+  aa = Fluint8(num_ones);
+  num_ones = (half)0.0f;
+  for (int bit_idx = 0; bit_idx < 2; bit_idx++) {
+    Fluint8 aashift = RightShift1(aa);
+    half a_bit = aa.h - LeftShift1Under128(aashift).h;
+    num_ones += a_bit;
+    aa = aashift;
+  }
+
+  CHECK(num_ones >= (half)0.0f && num_ones <= (half)2.0f);
+
+  // Now num_ones is either 0, 1, or 2. Since 1 and 2 is each
+  // represented with a single bit, we can collapse them with
+  // a shift and add:
+  //   num_ones    output
+  //         00         0
+  //         01         1
+  //         10         1
+  Fluint8 nn(num_ones);
+  return Fluint8(nn.h + RightShift1(nn).h);
+}
+
+Fluint8 Fluint8::IsZero(Fluint8 a) {
+  // We know IsZero returns 1 or 0.
+  return Fluint8(1.0_h - IsntZero(a).h);
 }
 
 void Fluint8::Warm() {

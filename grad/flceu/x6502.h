@@ -217,27 +217,53 @@ private:
     return ret;
   }
 
+  // Implements the ZNTable (zero flag and negative flag),
+  // returning 0, Z_FLAG, or N_FLAG.
+  Fluint8 ZnFlags(Fluint8 zort) {
+    static_assert(N_FLAG8 == 0x80, "This requires the negative flag "
+                  "to be the same as the sign bit.");
+    static_assert(Z_FLAG8 == 0x02, "This expects the zero flag to "
+                  "have a specific value, although this would be "
+                  "easily remedied.");
+    Fluint8 zf = Fluint8::LeftShift1Under128(Fluint8::IsZero(zort));
+    Fluint8 nf = Fluint8::AndWith<N_FLAG8>(zort);
+    // Can't overflow because these are two different bits.
+    Fluint8 res = Fluint8::PlusNoOverflow(nf, zf);
+
+    // PERF
+    CHECK(res.ToInt() == ZNTable[zort.ToInt()].ToInt());
+    return res;
+  }
+
   void X_ZN(Fluint8 zort) {
     reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8)>(reg_P);
-    reg_P |= ZNTable[zort.ToInt()];
+    // We just masked out the bits, so this can't overflow.
+    reg_P = Fluint8::PlusNoOverflow(reg_P, ZnFlags(zort));
   }
 
   void X_ZNT(Fluint8 zort) {
-    reg_P |= ZNTable[zort.ToInt()];
+    reg_P |= ZnFlags(zort);
   }
 
   void CMPL(Fluint8 a1, Fluint8 a2) {
     Fluint8::Cheat();
     uint32 t = a1.ToInt() - a2.ToInt();
     X_ZN(Fluint8(t));
-    reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
-    reg_P |=
-      Fluint8::XorWith<C_FLAG8>(
-          Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(t >> 8))));
+    reg_P =
+      Fluint8::PlusNoOverflow(
+          Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P),
+          Fluint8::XorWith<C_FLAG8>(
+              Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(t >> 8)))));
   }
 
-  void JR(bool cond) {
-    if (cond) {
+  // Input should be 1 or 0.
+  void JR(Fluint8 cond) {
+    {
+      uint8_t cc = cond.ToInt();
+      CHECK(cc == 0 || cc == 1) << cc;
+    }
+    Fluint8::Cheat();
+    if (cond.ToInt()) {
       int32 disp = (int8)RdMem(reg_PC);
       reg_PC++;
       ADDCYC(1);
@@ -297,6 +323,9 @@ private:
   static constexpr Fluint8 C_FLAG{C_FLAG8};
 
 
+  // XXX This is replaced with the ZnFlags function, so this is just
+  // used for some assertions now. Can delete it.
+  //
   // I think this stands for "zero and negative" table, which has the
   // zero and negative cpu flag set for each possible byte. The
   // information content is pretty low, and we might consider replacing

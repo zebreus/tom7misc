@@ -113,6 +113,7 @@ int main(int argc, char **argv) {
   // execution is so slow (and the number of seconds so high)
   // that convergence otherwise takes way too long.
   static constexpr int MIN_EXECUTIONS = 1;
+  static constexpr int MAX_EXECUTIONS = 10;
   static constexpr int MAX_SECONDS = 60.0 * 30.0;
   int executions = 0;
   double total_time = 0.0;
@@ -124,7 +125,8 @@ int main(int argc, char **argv) {
     double mean = total_time / (double)executions;
 
     if (executions >= MIN_EXECUTIONS &&
-        total_time > MAX_SECONDS) {
+        (executions >= MAX_EXECUTIONS ||
+         total_time > MAX_SECONDS)) {
       // Convergence!
       exec_seconds = mean;
       break;

@@ -56,8 +56,8 @@ void X6502::DMW(uint32 A, uint8 V) {
   X_ZN(reg_A)
 #define BIT                                                             \
   reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | V_FLAG8 | N_FLAG8)>(reg_P); \
-  Fluint8::Cheat();                                                     \
-  reg_P |= Fluint8::AndWith<Z_FLAG8>(ZNTable[(x & reg_A).ToInt()]);      \
+  /* PERF can simplify this ... just use iszero? */                     \
+  reg_P |= Fluint8::AndWith<Z_FLAG8>(ZnFlags(x & reg_A));               \
   reg_P |= Fluint8::AndWith<(uint8_t)(V_FLAG8 | N_FLAG8)>(x)
 #define EOR    \
   reg_A ^= x;  \
@@ -100,8 +100,11 @@ void X6502::DMW(uint32 A, uint8 V) {
     Fluint8::Cheat();                               \
     uint32 t = (reg_A & reg_X).ToInt() - x.ToInt(); \
     X_ZN(Fluint8(t));                                                   \
-    reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);                 \
-    reg_P |= Fluint8::XorWith<C_FLAG8>(Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(t >> 8)))); \
+    reg_P =                                                             \
+      Fluint8::PlusNoOverflow(                                          \
+          Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P),                   \
+          Fluint8::XorWith<C_FLAG8>(                                    \
+            Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(t >> 8)))));      \
     reg_X = Fluint8((uint8)t);                                          \
   }
 
@@ -619,19 +622,28 @@ void X6502::RunLoop() {
         X_ZN(reg_Y);
         break;
 
-        // PERF with constants
       case 0x18: /* CLC */
-        reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P); break;
+        reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
+        break;
       case 0xD8: /* CLD */
-        reg_P = Fluint8::AndWith<(uint8_t)~D_FLAG8>(reg_P); break;
+        reg_P = Fluint8::AndWith<(uint8_t)~D_FLAG8>(reg_P);
+        break;
       case 0x58: /* CLI */
-        reg_P = Fluint8::AndWith<(uint8_t)~I_FLAG8>(reg_P); break;
+        reg_P = Fluint8::AndWith<(uint8_t)~I_FLAG8>(reg_P);
+        break;
       case 0xB8: /* CLV */
-        reg_P = Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P); break;
+        reg_P = Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P);
+        break;
 
-      case 0x38: /* SEC */ reg_P = Fluint8::OrWith<C_FLAG8>(reg_P); break;
-      case 0xF8: /* SED */ reg_P = Fluint8::OrWith<D_FLAG8>(reg_P); break;
-      case 0x78: /* SEI */ reg_P = Fluint8::OrWith<I_FLAG8>(reg_P); break;
+      case 0x38: /* SEC */
+        reg_P = Fluint8::OrWith<C_FLAG8>(reg_P);
+        break;
+      case 0xF8: /* SED */
+        reg_P = Fluint8::OrWith<D_FLAG8>(reg_P);
+        break;
+      case 0x78: /* SEI */
+        reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
+        break;
 
       case 0xEA: /* NOP */ break;
 
@@ -773,48 +785,51 @@ void X6502::RunLoop() {
 
       case 0x84: ST_ZP(reg_Y);
       case 0x94: ST_ZPX(reg_Y);
-      case 0x8C:
-        ST_AB(reg_Y);
+      case 0x8C: ST_AB(reg_Y);
 
-        // PERF with constants
+      // PERF Since we are extracting a single
+      // bit, can make something like HasBit
+      // instead of using the full generality
+      // of IsZero.
+
       /* BCC */
       case 0x90:
-        JR(!(Fluint8::AndWith<C_FLAG8>(reg_P)));
+        JR(Fluint8::IsZero(Fluint8::AndWith<C_FLAG8>(reg_P)));
         break;
 
       /* BCS */
       case 0xB0:
-        JR(!!(Fluint8::AndWith<C_FLAG8>(reg_P)));
+        JR(Fluint8::IsntZero(Fluint8::AndWith<C_FLAG8>(reg_P)));
         break;
 
       /* BEQ */
       case 0xF0:
-        JR(!!(Fluint8::AndWith<Z_FLAG8>(reg_P)));
+        JR(Fluint8::IsntZero(Fluint8::AndWith<Z_FLAG8>(reg_P)));
         break;
 
       /* BNE */
       case 0xD0:
-        JR(!(Fluint8::AndWith<Z_FLAG8>(reg_P)));
+        JR(Fluint8::IsZero(Fluint8::AndWith<Z_FLAG8>(reg_P)));
         break;
 
       /* BMI */
       case 0x30:
-        JR(!!(Fluint8::AndWith<N_FLAG8>(reg_P)));
+        JR(Fluint8::IsntZero(Fluint8::AndWith<N_FLAG8>(reg_P)));
         break;
 
       /* BPL */
       case 0x10:
-        JR(!(Fluint8::AndWith<N_FLAG8>(reg_P)));
+        JR(Fluint8::IsZero(Fluint8::AndWith<N_FLAG8>(reg_P)));
         break;
 
       /* BVC */
       case 0x50:
-        JR(!(Fluint8::AndWith<V_FLAG8>(reg_P)));
+        JR(Fluint8::IsZero(Fluint8::AndWith<V_FLAG8>(reg_P)));
         break;
 
       /* BVS */
       case 0x70:
-        JR(!!(Fluint8::AndWith<V_FLAG8>(reg_P)));
+        JR(Fluint8::IsntZero(Fluint8::AndWith<V_FLAG8>(reg_P)));
         break;
 
       // default: printf("Bad %02x at $%04x\n",b1,X.PC);break;
@@ -842,7 +857,7 @@ void X6502::RunLoop() {
         LD_IM(AND;
               reg_P = Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P);
               reg_P |=
-                Fluint8::AndWith<0x40>(reg_A ^ Fluint8::RightShift<1>(reg_A));
+                Fluint8::AndWith<V_FLAG8>(reg_A ^ Fluint8::RightShift<1>(reg_A));
               arrtmp = Fluint8::RightShift<7>(reg_A);
               reg_A = Fluint8::RightShift<1>(reg_A);
               reg_A |= Fluint8::LeftShift<7>(Fluint8::AndWith<C_FLAG8>(reg_P));
