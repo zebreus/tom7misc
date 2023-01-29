@@ -103,6 +103,30 @@ static void TestAddWithCarry() {
       });
 }
 
+static void TestSubtractWithCarry() {
+  ForAllPairs(
+      [](uint16_t x, uint16_t y,
+         Fluint8 xf, Fluint8 yf) {
+        uint16_t z = x - y;
+        uint8_t zdiff = z;
+        uint8_t zcarry = (z >> 8) & 1;
+        CHECK(zcarry == 0 || zcarry == 1);
+        const auto [carry, diff] = Fluint8::SubtractWithCarry(xf, yf);
+
+        CHECK(zdiff == diff.ToInt() &&
+              zcarry == carry.ToInt()) <<
+          StringPrintf("%02x (%d) - %02x (%d) -> "
+                       "(%02x, %02x) (%d, %d) want (%02x, %02x) (%d, %d)",
+                       x, x, y, y,
+                       carry.ToInt(), diff.ToInt(),
+                       carry.ToInt(), diff.ToInt(),
+                       zcarry, zdiff, zcarry, zdiff);
+        CHECK_CANONICAL("subwithcarry-carry", carry, x, y);
+        CHECK_CANONICAL("subwithcarry-diff", diff, x, y);
+      });
+}
+
+
 static void TestMinus() {
   ForAllPairs(
       [](uint8 x, uint8 y,
@@ -448,6 +472,7 @@ static void TestIsntZero() {
 int main(int argc, char **argv) {
   Gen16();
 
+
   TestIsZero();
   TestIsntZero();
 
@@ -463,6 +488,7 @@ int main(int argc, char **argv) {
   TestMinusEq();
 
   TestAddWithCarry();
+  TestSubtractWithCarry();
 
   TestAnd();
   TestAndEq();
@@ -478,7 +504,6 @@ int main(int argc, char **argv) {
   TestXorWith<255>();
 
   TestLeftShifts();
-
   TestRightShifts();
 
   printf("OK\n");

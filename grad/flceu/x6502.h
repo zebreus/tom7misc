@@ -35,15 +35,12 @@ struct X6502 {
   // trigger callbacks.
   explicit X6502(FC *fc);
 
-  #ifdef AOT_INSTRUMENTATION
-  // Number of times the PC had the corresponding value.
-  int64 pc_histo[0x10000] = {};
-  // Number of times Run was called with the given number of cycles
-  // (prior to multiplication for NTSC/PAL). Last element means that
-  // number or greater.
-  int64 cycles_histo[1024] = {};
-  #endif
-  // int64 entered_aot[0x10000] = {};
+  // PERF: Cheap but unnecessary histogram of instructions
+  // used.
+  int64 inst_histo[256] = {};
+  void ClearInstHisto() {
+    for (int i = 0; i < 256; i++) inst_histo[i] = 0;
+  }
 
   /* Temporary cycle counter */
   int32 tcount;
@@ -244,6 +241,7 @@ private:
   }
 
   void CMPL(Fluint8 a1, Fluint8 a2) {
+    // TODO: Can use subtract with carry?
     Fluint8::Cheat();
     uint32 t = a1.ToInt() - a2.ToInt();
     X_ZN(Fluint8(t));
@@ -334,7 +332,6 @@ private:
   }
 
   void ADC(Fluint8 x) {
-    // TODO: Implement add with carry natively
     static_assert(C_FLAG8 == 0x01, "we assume this is the one's place");
     const Fluint8 p_carry_bit = Fluint8::AndWith<C_FLAG8>(reg_P);
     auto [carry1, sum1] = Fluint8::AddWithCarry(reg_A, x);
@@ -344,13 +341,17 @@ private:
     Fluint8 carry = Fluint8::PlusNoOverflow(carry1, carry2);
 
     // uint32 l = reg_A.ToInt() + (x).ToInt() + p_carry_bit.ToInt();
-    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
-    // I don't understand this part.. we compute the V flag from
-    // some combination of negative flags on inputs? idk. -tom7
-    Fluint8 aaa = Fluint8::XorWith<N_FLAG8>(
-        Fluint8::AndWith<N_FLAG8>(reg_A ^ x));
-    Fluint8 bbb = Fluint8::AndWith<N_FLAG8>(reg_A ^ sum);
-    static_assert(N_FLAG8 >> 1 == V_FLAG8);
+    reg_P = Fluint8::AndWith<
+      (uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
+    // The overflow is for signed arithmetic. It tells us if we've
+    // added two positive numbers but got a negative one, or added two
+    // negative numbers but got a positive one. (If the signs are
+    // different, overflow is not possible.) This is computed from the
+    // sign bits.
+    Fluint8 aaa = Fluint8::XorWith<0x80>(
+        Fluint8::AndWith<0x80>(reg_A ^ x));
+    Fluint8 bbb = Fluint8::AndWith<0x80>(reg_A ^ sum);
+    static_assert(V_FLAG8 == 0x40);
     reg_P |= Fluint8::RightShift<1>(aaa & bbb);
 
     // PERF: Cleared above, so we can use PlusNoOverflow?
@@ -360,6 +361,27 @@ private:
     // PlusNoOverflow
     X_ZNT(reg_A);
   }
+
+  void SBC(Fluint8 x) {
+    // TODO: Implement subtract with carry natively
+    // On 6502, the borrow flag is !Carry.
+    Fluint8 p_ncarry_bit = Fluint8::XorWith<C_FLAG8>(
+        Fluint8::AndWith<C_FLAG8>(reg_P));
+    Fluint8::Cheat();
+    uint32 l = reg_A.ToInt() - x.ToInt() - p_ncarry_bit.ToInt();
+    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
+    // As above, detect overflow by looking at sign bits.
+    Fluint8 aaa = Fluint8::AndWith<0x80>(
+        (reg_A ^ Fluint8((uint8)l)) & (reg_A ^ x));
+    static_assert(V_FLAG8 == 0x40);
+    // PERF Cleared above; can PlusNoOverflow
+    reg_P |= Fluint8::RightShift<1>(aaa);
+    // PERF here too
+    reg_P |= Fluint8::XorWith<C_FLAG8>(Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(l >> 8))));
+    reg_A = Fluint8((uint8)l);
+    X_ZNT(reg_A);
+  }
+
 
   // normal memory read
   inline uint8 RdMem(unsigned int A) {

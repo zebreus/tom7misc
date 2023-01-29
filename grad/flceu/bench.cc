@@ -1,6 +1,7 @@
 
 #include "emulator.h"
 
+#include <bit>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -39,11 +40,27 @@ static constexpr const char *MOVIE =
   "669_";
 static constexpr uint64 expected_nes = 0x8eed7b59ec6a1163ULL;
 static constexpr uint64 expected_img = 0xad90a1030e98e8e5ULL;
+static constexpr uint64 expected_inst = 0xb106a13670bbd088ULL;
 
-std::tuple<uint64, uint64, double> RunBenchmark(Emulator *emu,
-                                                const vector<uint8> &start,
-                                                const vector<uint8> &movie) {
+static uint64 InstHistoChecksum(Emulator *emu) {
+  uint64 out = 0xCAFE1234C0FFEEEEULL;
+  const X6502 *x = emu->GetFC()->X;
+  for (int i = 0; i < 256; i++) {
+    // printf("%02x: %lld (%llx)\n", i, x->inst_histo[i], out);
+    out += x->inst_histo[i];
+    // Random number
+    out *= 0x45c1d4edd839ff81ULL;
+    out = std::rotr(out, 17);
+  }
+  return out;
+}
+
+std::tuple<uint64, uint64, uint64, double> RunBenchmark(
+    Emulator *emu,
+    const vector<uint8> &start,
+    const vector<uint8> &movie) {
   emu->LoadUncompressed(start);
+  emu->GetFC()->X->ClearInstHisto();
   Timer exec_timer;
   Periodically slow_per(10.0);
 
@@ -73,6 +90,7 @@ std::tuple<uint64, uint64, double> RunBenchmark(Emulator *emu,
 
   const double exec_seconds = exec_timer.Seconds();
   return make_tuple(emu->MachineChecksum(), emu->ImageChecksum(),
+                    InstHistoChecksum(emu),
                     exec_seconds);
 }
 
@@ -119,7 +137,20 @@ int main(int argc, char **argv) {
   double total_time = 0.0;
   vector<int> last_means;
   for (int i = 0; /* exit upon convergence */; i++) {
-    const auto [ram, img, sec] = RunBenchmark(emu.get(), start, movie);
+    const auto [ram, img, inst, sec] = RunBenchmark(emu.get(), start, movie);
+
+    CHECK(ram == expected_nes &&
+          img == expected_img &&
+          inst == expected_inst) <<
+      StringPrintf("Failed checksums on round %d:\n"
+                   "RAM:  Got %016llx wanted %016llx\n"
+                   "IMG:  Got %016llx wanted %016llx\n"
+                   "INST: Got %016llx wanted %016llx\n",
+                   i,
+                   ram, expected_nes,
+                   img, expected_img,
+                   inst, expected_inst);
+
     executions++;
     total_time += sec;
     double mean = total_time / (double)executions;

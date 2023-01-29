@@ -66,20 +66,6 @@ void X6502::DMW(uint32 A, uint8 V) {
   reg_A |= x;  \
   X_ZN(reg_A)
 
-#define SBC                                              \
-  {                                                      \
-    Fluint8 p_nlo_bit = Fluint8::XorWith<C_FLAG8>(       \
-        Fluint8::AndWith<C_FLAG8>(reg_P));               \
-    Fluint8::Cheat();                                    \
-    uint32 l = reg_A.ToInt() - x.ToInt() - p_nlo_bit.ToInt();  \
-    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P); \
-    Fluint8 aaa = Fluint8::AndWith<0x80>((reg_A ^ Fluint8((uint8)l)) & (reg_A ^ x)); \
-    reg_P |= Fluint8::RightShift<1>(aaa);  \
-    reg_P |= Fluint8::XorWith<C_FLAG8>(Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(l >> 8)))); \
-    reg_A = Fluint8((uint8)l);                                          \
-    X_ZNT(reg_A);                                        \
-  }
-
 /* Special undocumented operation.  Very similar to CMP. */
 #define AXS                                         \
   {                                                 \
@@ -355,10 +341,6 @@ void X6502::Power() {
 }
 
 void X6502::Run(int32 cycles) {
-  #ifdef AOT_INSTRUMENTATION
-  cycles_histo[std::max(0, std::min(cycles, 1023))]++;
-  #endif
-
   if (fc->fceu->PAL) {
     cycles *= 15;  // 15*4=60
   } else {
@@ -418,10 +400,6 @@ void X6502::RunLoop() {
     reg_PI = reg_P;
     // Get the next instruction.
 
-    #ifdef AOT_INSTRUMENTATION
-    pc_histo[reg_PC]++;
-    #endif
-
     const uint8 b1 = RdMem(reg_PC);
     // printf("Read %x -> opcode %02x\n", reg_PC, b1);
 
@@ -446,6 +424,8 @@ void X6502::RunLoop() {
              reg_A.ToInt(), reg_X.ToInt(), reg_Y.ToInt(), reg_S.ToInt(), reg_P.ToInt());
     }
     #endif
+
+    inst_histo[b1]++;
 
     switch (b1) {
       case 0x00: /* BRK */
@@ -702,14 +682,14 @@ void X6502::RunLoop() {
       case 0x11: LD_IY(ORA);
 
       case 0xEB: /* (undocumented) */
-      case 0xE9: LD_IM(SBC);
-      case 0xE5: LD_ZP(SBC);
-      case 0xF5: LD_ZPX(SBC);
-      case 0xED: LD_AB(SBC);
-      case 0xFD: LD_ABX(SBC);
-      case 0xF9: LD_ABY(SBC);
-      case 0xE1: LD_IX(SBC);
-      case 0xF1: LD_IY(SBC);
+      case 0xE9: LD_IM(SBC(x));
+      case 0xE5: LD_ZP(SBC(x));
+      case 0xF5: LD_ZPX(SBC(x));
+      case 0xED: LD_AB(SBC(x));
+      case 0xFD: LD_ABX(SBC(x));
+      case 0xF9: LD_ABY(SBC(x));
+      case 0xE1: LD_IX(SBC(x));
+      case 0xF1: LD_IY(SBC(x));
 
 
     case 0x85: ST_ZP([this](uint16_t AA) { return reg_A; }); break;
@@ -833,13 +813,13 @@ void X6502::RunLoop() {
       case 0xD3: RMW_IY(DEC; CMP);
 
       /* ISB */
-      case 0xE7: RMW_ZP(INC; SBC);
-      case 0xF7: RMW_ZPX(INC; SBC);
-      case 0xEF: RMW_AB(INC; SBC);
-      case 0xFF: RMW_ABX(INC; SBC);
-      case 0xFB: RMW_ABY(INC; SBC);
-      case 0xE3: RMW_IX(INC; SBC);
-      case 0xF3: RMW_IY(INC; SBC);
+      case 0xE7: RMW_ZP(INC; SBC(x));
+      case 0xF7: RMW_ZPX(INC; SBC(x));
+      case 0xEF: RMW_AB(INC; SBC(x));
+      case 0xFF: RMW_ABX(INC; SBC(x));
+      case 0xFB: RMW_ABY(INC; SBC(x));
+      case 0xE3: RMW_IX(INC; SBC(x));
+      case 0xF3: RMW_IY(INC; SBC(x));
 
       /* DOP */
       case 0x04: reg_PC++; break;

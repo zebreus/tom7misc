@@ -117,6 +117,7 @@ struct Fluint8 {
 
   // The first element is the carry; always 0 or 1.
   static std::pair<Fluint8, Fluint8> AddWithCarry(Fluint8 a, Fluint8 b);
+  static std::pair<Fluint8, Fluint8> SubtractWithCarry(Fluint8 a, Fluint8 b);
 
   // PERF: Bitwise ops with a constant are very common in 6502,
   // and could be much faster.
