@@ -161,7 +161,7 @@ struct CounterImpl final : public WebServer::Counter {
     MutexLock ml(&m);
     return value;
   }
-  
+
   int64 value = 0LL;
 };
 
@@ -255,7 +255,7 @@ struct ServerImpl final : public WebServer {
 
   bool AcceptConnectionsUntilStopped(const struct sockaddr *address,
                                      socklen_t addressLength);
-  
+
   vector<pair<string, Handler>> handlers;
   void AddHandler(const string &prefix, Handler h) override {
     MutexLock ml(&global_mutex);
@@ -302,11 +302,11 @@ struct ServerImpl final : public WebServer {
         }
 
         resp.body += "</table></body>\n";
-        
+
         return resp;
       };
   }
-  
+
   std::mutex global_mutex;
   bool should_run = true;
   sockettype listenerfd = 0;
@@ -339,7 +339,7 @@ Handler ServerImpl::GetHandler(const Request &request) {
 
   printf("Get handler for [%s]\n", request.path.c_str());
   fflush(stdout);
-  
+
   for (const auto &[prefix, handler] : handlers) {
     // XXX use decoded path
     if (StartsWith(request.path, prefix))
@@ -348,15 +348,16 @@ Handler ServerImpl::GetHandler(const Request &request) {
   return GetDefaultHandler();
 }
 
-static string URLDecode(const char *encoded) {
+string WebServer::URLDecode(const string &enc_string) {
+  const char *encoded = enc_string.c_str();
   string decoded;
-  
+
   enum URLDecodeState {
     Normal,
     PercentFirstDigit,
     PercentSecondDigit
   };
-  
+
   /* these three vars unescape % escaped things */
   URLDecodeState state = Normal;
   char first_digit = '\0';
@@ -418,24 +419,24 @@ std::vector<std::pair<std::string, std::string>> Request::Params() const {
   // Parameters are separated from path by '?'.
   size_t qpos = path.find('?');
   if (qpos == string::npos) return {};
-  
+
   std::string params = path.substr(qpos + 1, string::npos);
   // ez-cheezy way to make sure each k=v is terminated by an
   // ampersand.
   params.push_back('&');
-  
+
   vector<pair<string, string>> kvs;
   size_t start = 0;
   for (;;) {
     size_t apos = params.find('&', start);
     if (apos == string::npos) break;
-    
+
     string kv = params.substr(start, apos - start);
     size_t epos = kv.find('=');
     if (epos != string::npos) {
       string k = kv.substr(0, epos);
       string v = kv.substr(epos + 1, string::npos);
-      kvs.emplace_back(URLDecode(k.c_str()), URLDecode(v.c_str()));
+      kvs.emplace_back(URLDecode(k), URLDecode(v));
     } else {
       // Skip it...
     }
@@ -498,14 +499,14 @@ string WebServer::HTMLEscape(const string &input) {
   return output;
 }
 
-/* parses a typical HTTP request looking for the first line: 
-   GET /path HTTP/1.0\r\n 
-   Data is passed incrementally to Parse, and the object keeps some 
+/* parses a typical HTTP request looking for the first line:
+   GET /path HTTP/1.0\r\n
+   Data is passed incrementally to Parse, and the object keeps some
    internal state. */
-struct RequestParser { 
+struct RequestParser {
   explicit RequestParser(Request *request) : request(request) {}
   Request *request = nullptr;
-  
+
   enum class RequestParseState  {
     Method,
     Path,
@@ -531,7 +532,7 @@ struct RequestParser {
   bool Finished() const {
     return state == RequestParseState::Done;
   }
-  
+
   void Parse(const char *requestFragment, size_t requestFragmentLength) {
     for (size_t i = 0; i < requestFragmentLength; i++) {
       char c = requestFragment[i];
@@ -735,7 +736,7 @@ bool ServerImpl::AcceptConnectionsUntilStopped(const struct sockaddr *address,
                "Continuing because we might still succeed...\n",
                SOMAXCONN, strerror(errno), errno);
   }
-  /* print out the addresses we're listening on. 
+  /* print out the addresses we're listening on.
      Special-case IPv4 0.0.0.0 bind-to-all-interfaces */
   bool printed = false;
   if (address->sa_family == AF_INET) {
@@ -776,8 +777,8 @@ bool ServerImpl::AcceptConnectionsUntilStopped(const struct sockaddr *address,
         continue;
       }
       if (ret > 0) break;
-    } 
-    
+    }
+
     if (!ReadWithLock(&global_mutex, &should_run)) break;
 
     next_connection->remote_addr_length = sizeof(next_connection->remote_addr);
@@ -878,7 +879,7 @@ static int SendResponse(Connection *connection, const Response &response,
     return -1;
   }
   *bytesSent = *bytesSent + sendResult;
-  
+
   /* Second, if a response body exists, send that */
   if (!response.body.empty()) {
     sendResult = send(connection->socketfd, response.body.c_str(), response.body.size(), 0);
@@ -939,7 +940,7 @@ static void connectionHandlerThread(void *connection_pointer) {
       break;
     }
   }
-  
+
   requestPrintWarnings(&connection->request,
                        connection->remote_host, connection->remote_port);
 
@@ -958,7 +959,7 @@ static void connectionHandlerThread(void *connection_pointer) {
                        response.status.c_str(),
                        (int64)bytesSent);
     }
-    
+
     connection->bytes_sent = bytesSent;
 
   } else {
@@ -978,7 +979,7 @@ static void connectionHandlerThread(void *connection_pointer) {
   server->bytes_sent->IncrementBy(connection->bytes_sent);
   server->bytes_received->IncrementBy(connection->bytes_received);
   server->active_connections->IncrementBy(-1LL);
-  
+
   ews_printf_debug("Connection from %s:%s closed\n",
                    connection->remote_host, connection->remote_port);
   {
@@ -1070,7 +1071,7 @@ ServerImpl::ServerImpl() {
   active_connections = GetCounter("active connections");
   bytes_sent = GetCounter("bytes sent");
   bytes_received = GetCounter("bytes received");
-  
+
   ignoreSIGPIPE();
 }
 

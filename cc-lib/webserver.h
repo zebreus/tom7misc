@@ -16,7 +16,7 @@ struct WebServer {
   // another thread), and then returns true.
   // Returns false on failure (e.g. port already in use).
   virtual bool ListenOn(uint16_t port) = 0;
-  
+
   // XXX could just be destructor?
   virtual void Stop() = 0;
 
@@ -30,7 +30,7 @@ struct WebServer {
   struct Response;
   using Handler = std::function<Response(const Request &)>;
   virtual void AddHandler(const std::string &prefix, Handler handler) = 0;
-  
+
   // Built-in handler that displays server stats.
   // e.g. server.AddHandler("/stats", server.GetStatsHandler());
   virtual Handler GetStatsHandler() const = 0;
@@ -45,7 +45,7 @@ struct WebServer {
     /* HTTP path/URI ( /index.html?name=Forrest%20Heller ) */
     std::string path;
 
-    // Content length as sent by the client. 
+    // Content length as sent by the client.
     int content_length = 0;
     /* the request body. Used for POST forms and JSON blobs */
     std::string body;
@@ -95,14 +95,14 @@ struct WebServer {
     inline void Increment() { IncrementBy(1LL); }
     virtual void SetTo(int64_t v) = 0;
     virtual int64_t Value() = 0;
-    
+
   protected:
     // Use WebServer::GetCounter.
     Counter();
   };
 
   static Counter *GetCounter(const std::string &name);
-  
+
   // Utilities.
 
   // Returns e.g. "text/html; charset=UTF-8" for a file whose name
@@ -112,7 +112,9 @@ struct WebServer {
                                    const std::string &contents);
   // Basic, slow: Replace " < & etc. with HTML entities.
   static std::string HTMLEscape(const std::string &input);
-  
+
+  static std::string URLDecode(const std::string &input);
+
 protected:
   // Use factory method.
   WebServer() {};
