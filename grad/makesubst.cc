@@ -946,7 +946,9 @@ int main(int argc, char **argv) {
     img.BlendText32(2, idx * 10, color,
                     StringPrintf("%d. %s", idx, Exp::ExpString(v).c_str()));
 
-    VerboseChoppy(v, &img);
+    // (I didn't test this after moving this to choppy.h;
+    // it might not make any sense!)
+    (void)Choppy::VerboseChoppy(v, &img, nullptr);
 
     idx++;
   }

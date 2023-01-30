@@ -125,6 +125,7 @@ struct ChoppyGrid {
       return make_pair(xs, ys);
     };
 
+    [[maybe_unused]]
     auto DrawLine = [img, &MapCoord](double x0, double y0,
                                      double x1, double y1,
                                      uint32_t color) {
