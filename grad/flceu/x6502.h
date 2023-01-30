@@ -240,16 +240,49 @@ private:
     reg_P |= ZnFlags(zort);
   }
 
+  void LDA(Fluint8 x) {
+    reg_A = x;
+    X_ZN(reg_A);
+  }
+  void LDX(Fluint8 x) {
+    reg_X = x;
+    X_ZN(reg_X);
+  }
+  void LDY(Fluint8 x) {
+    reg_Y = x;
+    X_ZN(reg_Y);
+  }
+
+  void AND(Fluint8 x) {
+    reg_A &= x;
+    X_ZN(reg_A);
+  }
+
+  void BIT(Fluint8 x) {
+    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | V_FLAG8 | N_FLAG8)>(reg_P);
+    // PERF: AddNoOverflow
+    /* PERF can simplify this ... just use iszero? */
+    reg_P |= Fluint8::AndWith<Z_FLAG8>(ZnFlags(x & reg_A));
+    reg_P |= Fluint8::AndWith<(uint8_t)(V_FLAG8 | N_FLAG8)>(x);
+  }
+
+  void EOR(Fluint8 x) {
+    reg_A ^= x;
+    X_ZN(reg_A);
+  }
+  void ORA(Fluint8 x) {
+    reg_A |= x;
+    X_ZN(reg_A);
+  }
+
   void CMPL(Fluint8 a1, Fluint8 a2) {
-    // TODO: Can use subtract with carry?
-    Fluint8::Cheat();
-    uint32 t = a1.ToInt() - a2.ToInt();
-    X_ZN(Fluint8(t));
+    auto [carry, diff] = Fluint8::SubtractWithCarry(a1, a2);
+    X_ZN(diff);
     reg_P =
       Fluint8::PlusNoOverflow(
           Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P),
           Fluint8::XorWith<C_FLAG8>(
-              Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(t >> 8)))));
+              Fluint8::AndWith<C_FLAG8>(carry)));
   }
 
   // Input should be 1 or 0.
@@ -352,10 +385,12 @@ private:
         Fluint8::AndWith<0x80>(reg_A ^ x));
     Fluint8 bbb = Fluint8::AndWith<0x80>(reg_A ^ sum);
     static_assert(V_FLAG8 == 0x40);
-    reg_P |= Fluint8::RightShift<1>(aaa & bbb);
 
-    // PERF: Cleared above, so we can use PlusNoOverflow?
-    reg_P |= carry;
+    CHECK((reg_P.ToInt() & (V_FLAG8 | C_FLAG8)) == 0);
+    // Sets overflow bit, which was cleared above.
+    reg_P = Fluint8::PlusNoOverflow(reg_P, Fluint8::RightShift<1>(aaa & bbb));
+    // Sets carry bit, which was cleared above.
+    reg_P = Fluint8::PlusNoOverflow(reg_P, carry);
     reg_A = sum;
     // PERF since we already cleared Z and N flags, can use
     // PlusNoOverflow
@@ -363,23 +398,60 @@ private:
   }
 
   void SBC(Fluint8 x) {
-    // TODO: Implement subtract with carry natively
+    static_assert(C_FLAG8 == 0x01, "we assume this is the one's place");
     // On 6502, the borrow flag is !Carry.
     Fluint8 p_ncarry_bit = Fluint8::XorWith<C_FLAG8>(
         Fluint8::AndWith<C_FLAG8>(reg_P));
-    Fluint8::Cheat();
-    uint32 l = reg_A.ToInt() - x.ToInt() - p_ncarry_bit.ToInt();
-    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
+
+    auto [carry1, diff1] = Fluint8::SubtractWithCarry(reg_A, x);
+    auto [carry2, diff] = Fluint8::SubtractWithCarry(diff1, p_ncarry_bit);
+
+    // As in ADC.
+    Fluint8 carry = Fluint8::PlusNoOverflow(carry1, carry2);
+
+    // uint32 l = reg_A.ToInt() - x.ToInt() - p_ncarry_bit.ToInt();
+    reg_P = Fluint8::AndWith<
+      (uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
     // As above, detect overflow by looking at sign bits.
-    Fluint8 aaa = Fluint8::AndWith<0x80>(
-        (reg_A ^ Fluint8((uint8)l)) & (reg_A ^ x));
+    Fluint8 aaa = reg_A ^ diff;
+    Fluint8 bbb = reg_A ^ x;
+    Fluint8 overflow = Fluint8::AndWith<0x80>(aaa & bbb);
     static_assert(V_FLAG8 == 0x40);
-    // PERF Cleared above; can PlusNoOverflow
-    reg_P |= Fluint8::RightShift<1>(aaa);
-    // PERF here too
-    reg_P |= Fluint8::XorWith<C_FLAG8>(Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(l >> 8))));
-    reg_A = Fluint8((uint8)l);
+
+    CHECK((reg_P.ToInt() & (V_FLAG8 | C_FLAG8)) == 0);
+    // V_FLAG8 bit is cleared above.
+    reg_P = Fluint8::PlusNoOverflow(reg_P, Fluint8::RightShift<1>(overflow));
+    // C_FLAG8 bit is cleared above.
+    reg_P = Fluint8::PlusNoOverflow(
+        reg_P,
+        Fluint8::XorWith<C_FLAG8>(Fluint8::AndWith<C_FLAG8>(carry)));
+    reg_A = diff;
+    // PERF since we already cleared Z and N flags, can use
+    // PlusNoOverflow here too
     X_ZNT(reg_A);
+  }
+
+  void LSRA() {
+    /* For undocumented instructions, maybe for other things later... */
+    reg_P = Fluint8::AndWith<(uint8_t)~(C_FLAG8 | N_FLAG8 | Z_FLAG8)>(reg_P);
+    reg_P |= Fluint8::AndWith<1>(reg_A);
+    reg_A = Fluint8::RightShift<1>(reg_A);
+    X_ZNT(reg_A);
+  }
+
+  /* Special undocumented operation.  Very similar to CMP. */
+  void AXS(Fluint8 x) {
+    // TODO: Should be easy with SubtractWithCarry, but we have no
+    // test coverage :/
+    Fluint8::Cheat();
+    uint32 t = (reg_A & reg_X).ToInt() - x.ToInt();
+    X_ZN(Fluint8(t));
+    reg_P =
+      Fluint8::PlusNoOverflow(
+          Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P),
+          Fluint8::XorWith<C_FLAG8>(
+            Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(t >> 8)))));
+    reg_X = Fluint8((uint8)t);
   }
 
 

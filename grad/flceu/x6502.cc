@@ -40,46 +40,6 @@ void X6502::DMW(uint32 A, uint8 V) {
   fc->fceu->BWrite[A](fc, A, V);
 }
 
-#define LDA \
-  reg_A = x;   \
-  X_ZN(reg_A)
-#define LDX \
-  reg_X = x;   \
-  X_ZN(reg_X)
-#define LDY \
-  reg_Y = x;   \
-  X_ZN(reg_Y)
-
-/* All of the freaky arithmetic operations. */
-#define AND    \
-  reg_A &= x;  \
-  X_ZN(reg_A)
-#define BIT                                                             \
-  reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | V_FLAG8 | N_FLAG8)>(reg_P); \
-  /* PERF can simplify this ... just use iszero? */                     \
-  reg_P |= Fluint8::AndWith<Z_FLAG8>(ZnFlags(x & reg_A));               \
-  reg_P |= Fluint8::AndWith<(uint8_t)(V_FLAG8 | N_FLAG8)>(x)
-#define EOR    \
-  reg_A ^= x;  \
-  X_ZN(reg_A)
-#define ORA    \
-  reg_A |= x;  \
-  X_ZN(reg_A)
-
-/* Special undocumented operation.  Very similar to CMP. */
-#define AXS                                         \
-  {                                                 \
-    Fluint8::Cheat();                               \
-    uint32 t = (reg_A & reg_X).ToInt() - x.ToInt(); \
-    X_ZN(Fluint8(t));                                                   \
-    reg_P =                                                             \
-      Fluint8::PlusNoOverflow(                                          \
-          Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P),                   \
-          Fluint8::XorWith<C_FLAG8>(                                    \
-            Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(t >> 8)))));      \
-    reg_X = Fluint8((uint8)t);                                          \
-  }
-
 #define CMP CMPL(reg_A, x)
 #define CPX CMPL(reg_X, x)
 #define CPY CMPL(reg_Y, x)
@@ -103,13 +63,6 @@ void X6502::DMW(uint32 A, uint8 V) {
   x = Fluint8::RightShift<1>(x);        \
   X_ZNT(x)
 
-/* For undocumented instructions, maybe for other things later... */
-#define LSRA                               \
-  reg_P = Fluint8::AndWith<(uint8_t)~(C_FLAG8 | N_FLAG8 | Z_FLAG8)>(reg_P); \
-  reg_P |= Fluint8::AndWith<1>(reg_A); \
-  reg_A = Fluint8::RightShift<1>(reg_A);   \
-  X_ZNT(reg_A)
-
 #define ROL                                \
   {                                        \
     Fluint8 l = Fluint8::RightShift<7>(x);   \
@@ -129,10 +82,6 @@ void X6502::DMW(uint32 A, uint8 V) {
     reg_P |= l;                                 \
     X_ZNT(x);                                   \
   }
-
-/* Icky icky thing for some undocumented instructions.  Can easily be
-   broken if names of local variables are changed.
-*/
 
 /* Now come the macros to wrap up all of the above stuff addressing
    mode functions and operation macros. Note that operation macros
@@ -471,9 +420,7 @@ void X6502::RunLoop() {
       case 0x4C: {
         /* JMP ABSOLUTE */
         uint16 ptmp = reg_PC;
-        unsigned int npc;
-
-        npc = RdMem(ptmp);
+        unsigned int npc = RdMem(ptmp);
         ptmp++;
         npc |= RdMem(ptmp) << 8;
         reg_PC = npc;
@@ -612,17 +559,17 @@ void X6502::RunLoop() {
       case 0x61: LD_IX(ADC(x));
       case 0x71: LD_IY(ADC(x));
 
-      case 0x29: LD_IM(AND);
-      case 0x25: LD_ZP(AND);
-      case 0x35: LD_ZPX(AND);
-      case 0x2D: LD_AB(AND);
-      case 0x3D: LD_ABX(AND);
-      case 0x39: LD_ABY(AND);
-      case 0x21: LD_IX(AND);
-      case 0x31: LD_IY(AND);
+      case 0x29: LD_IM(AND(x));
+      case 0x25: LD_ZP(AND(x));
+      case 0x35: LD_ZPX(AND(x));
+      case 0x2D: LD_AB(AND(x));
+      case 0x3D: LD_ABX(AND(x));
+      case 0x39: LD_ABY(AND(x));
+      case 0x21: LD_IX(AND(x));
+      case 0x31: LD_IY(AND(x));
 
-      case 0x24: LD_ZP(BIT);
-      case 0x2C: LD_AB(BIT);
+      case 0x24: LD_ZP(BIT(x));
+      case 0x2C: LD_AB(BIT(x));
 
 
       case 0xC9: LD_IM(CMP);
@@ -642,44 +589,44 @@ void X6502::RunLoop() {
       case 0xC4: LD_ZP(CPY);
       case 0xCC: LD_AB(CPY);
 
-      case 0x49: LD_IM(EOR);
-      case 0x45: LD_ZP(EOR);
-      case 0x55: LD_ZPX(EOR);
-      case 0x4D: LD_AB(EOR);
-      case 0x5D: LD_ABX(EOR);
-      case 0x59: LD_ABY(EOR);
-      case 0x41: LD_IX(EOR);
-      case 0x51: LD_IY(EOR);
+      case 0x49: LD_IM(EOR(x));
+      case 0x45: LD_ZP(EOR(x));
+      case 0x55: LD_ZPX(EOR(x));
+      case 0x4D: LD_AB(EOR(x));
+      case 0x5D: LD_ABX(EOR(x));
+      case 0x59: LD_ABY(EOR(x));
+      case 0x41: LD_IX(EOR(x));
+      case 0x51: LD_IY(EOR(x));
 
-      case 0xA9: LD_IM(LDA);
-      case 0xA5: LD_ZP(LDA);
-      case 0xB5: LD_ZPX(LDA);
-      case 0xAD: LD_AB(LDA);
-      case 0xBD: LD_ABX(LDA);
-      case 0xB9: LD_ABY(LDA);
-      case 0xA1: LD_IX(LDA);
-      case 0xB1: LD_IY(LDA);
+      case 0xA9: LD_IM(LDA(x));
+      case 0xA5: LD_ZP(LDA(x));
+      case 0xB5: LD_ZPX(LDA(x));
+      case 0xAD: LD_AB(LDA(x));
+      case 0xBD: LD_ABX(LDA(x));
+      case 0xB9: LD_ABY(LDA(x));
+      case 0xA1: LD_IX(LDA(x));
+      case 0xB1: LD_IY(LDA(x));
 
-      case 0xA2: LD_IM(LDX);
-      case 0xA6: LD_ZP(LDX);
-      case 0xB6: LD_ZPY(LDX);
-      case 0xAE: LD_AB(LDX);
-      case 0xBE: LD_ABY(LDX);
+      case 0xA2: LD_IM(LDX(x));
+      case 0xA6: LD_ZP(LDX(x));
+      case 0xB6: LD_ZPY(LDX(x));
+      case 0xAE: LD_AB(LDX(x));
+      case 0xBE: LD_ABY(LDX(x));
 
-      case 0xA0: LD_IM(LDY);
-      case 0xA4: LD_ZP(LDY);
-      case 0xB4: LD_ZPX(LDY);
-      case 0xAC: LD_AB(LDY);
-      case 0xBC: LD_ABX(LDY);
+      case 0xA0: LD_IM(LDY(x));
+      case 0xA4: LD_ZP(LDY(x));
+      case 0xB4: LD_ZPX(LDY(x));
+      case 0xAC: LD_AB(LDY(x));
+      case 0xBC: LD_ABX(LDY(x));
 
-      case 0x09: LD_IM(ORA);
-      case 0x05: LD_ZP(ORA);
-      case 0x15: LD_ZPX(ORA);
-      case 0x0D: LD_AB(ORA);
-      case 0x1D: LD_ABX(ORA);
-      case 0x19: LD_ABY(ORA);
-      case 0x01: LD_IX(ORA);
-      case 0x11: LD_IY(ORA);
+      case 0x09: LD_IM(ORA(x));
+      case 0x05: LD_ZP(ORA(x));
+      case 0x15: LD_ZPX(ORA(x));
+      case 0x0D: LD_AB(ORA(x));
+      case 0x1D: LD_ABX(ORA(x));
+      case 0x19: LD_ABY(ORA(x));
+      case 0x01: LD_IX(ORA(x));
+      case 0x11: LD_IY(ORA(x));
 
       case 0xEB: /* (undocumented) */
       case 0xE9: LD_IM(SBC(x));
@@ -761,7 +708,7 @@ void X6502::RunLoop() {
       /* AAC */
       case 0x2B:
       case 0x0B:
-        LD_IM(AND;
+        LD_IM(AND(x);
               reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
               reg_P |= Fluint8::RightShift<7>(reg_A));
 
@@ -774,7 +721,7 @@ void X6502::RunLoop() {
       /* ARR - ARGH, MATEY! */
       case 0x6B: {
         Fluint8 arrtmp;
-        LD_IM(AND;
+        LD_IM(AND(x);
               reg_P =
               Fluint8::PlusNoOverflow(
                   Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P),
@@ -790,18 +737,18 @@ void X6502::RunLoop() {
 
       /* ASR */
       case 0x4B:
-        LD_IM(AND; LSRA);
+        LD_IM(AND(x); LSRA());
 
       /* ATX(OAL) Is this(OR with $EE) correct? Blargg did some test
          and found the constant to be OR with is $FF for NES
 
          (but of course OR with FF is degenerate! -tom7) */
       case 0xAB:
-        LD_IM(reg_A |= Fluint8(0xFF); AND; reg_X = reg_A);
+        LD_IM(reg_A |= Fluint8(0xFF); AND(x); reg_X = reg_A);
 
       /* AXS */
       case 0xCB:
-        LD_IM(AXS);
+        LD_IM(AXS(x));
 
       /* DCP */
       case 0xC7: RMW_ZP(DEC; CMP);
@@ -862,12 +809,12 @@ void X6502::RunLoop() {
         RMW_ABY(reg_S &= x; reg_A = reg_X = reg_S; X_ZN(reg_X));
 
       /* LAX */
-      case 0xA7: LD_ZP(LDA; LDX);
-      case 0xB7: LD_ZPY(LDA; LDX);
-      case 0xAF: LD_AB(LDA; LDX);
-      case 0xBF: LD_ABY(LDA; LDX);
-      case 0xA3: LD_IX(LDA; LDX);
-      case 0xB3: LD_IY(LDA; LDX);
+      case 0xA7: LD_ZP(LDA(x); LDX(x));
+      case 0xB7: LD_ZPY(LDA(x); LDX(x));
+      case 0xAF: LD_AB(LDA(x); LDX(x));
+      case 0xBF: LD_ABY(LDA(x); LDX(x));
+      case 0xA3: LD_IX(LDA(x); LDX(x));
+      case 0xB3: LD_IY(LDA(x); LDX(x));
 
       /* NOP */
       case 0x1A:
@@ -879,13 +826,13 @@ void X6502::RunLoop() {
         break;
 
       /* RLA */
-      case 0x27: RMW_ZP(ROL; AND);
-      case 0x37: RMW_ZPX(ROL; AND);
-      case 0x2F: RMW_AB(ROL; AND);
-      case 0x3F: RMW_ABX(ROL; AND);
-      case 0x3B: RMW_ABY(ROL; AND);
-      case 0x23: RMW_IX(ROL; AND);
-      case 0x33: RMW_IY(ROL; AND);
+      case 0x27: RMW_ZP(ROL; AND(x));
+      case 0x37: RMW_ZPX(ROL; AND(x));
+      case 0x2F: RMW_AB(ROL; AND(x));
+      case 0x3F: RMW_ABX(ROL; AND(x));
+      case 0x3B: RMW_ABY(ROL; AND(x));
+      case 0x23: RMW_IX(ROL; AND(x));
+      case 0x33: RMW_IY(ROL; AND(x));
 
       /* RRA */
       case 0x67: RMW_ZP(ROR; ADC(x));
@@ -897,22 +844,22 @@ void X6502::RunLoop() {
       case 0x73: RMW_IY(ROR; ADC(x));
 
       /* SLO */
-      case 0x07: RMW_ZP(ASL; ORA);
-      case 0x17: RMW_ZPX(ASL; ORA);
-      case 0x0F: RMW_AB(ASL; ORA);
-      case 0x1F: RMW_ABX(ASL; ORA);
-      case 0x1B: RMW_ABY(ASL; ORA);
-      case 0x03: RMW_IX(ASL; ORA);
-      case 0x13: RMW_IY(ASL; ORA);
+      case 0x07: RMW_ZP(ASL; ORA(x));
+      case 0x17: RMW_ZPX(ASL; ORA(x));
+      case 0x0F: RMW_AB(ASL; ORA(x));
+      case 0x1F: RMW_ABX(ASL; ORA(x));
+      case 0x1B: RMW_ABY(ASL; ORA(x));
+      case 0x03: RMW_IX(ASL; ORA(x));
+      case 0x13: RMW_IY(ASL; ORA(x));
 
       /* SRE */
-      case 0x47: RMW_ZP(LSR; EOR);
-      case 0x57: RMW_ZPX(LSR; EOR);
-      case 0x4F: RMW_AB(LSR; EOR);
-      case 0x5F: RMW_ABX(LSR; EOR);
-      case 0x5B: RMW_ABY(LSR; EOR);
-      case 0x43: RMW_IX(LSR; EOR);
-      case 0x53: RMW_IY(LSR; EOR);
+      case 0x47: RMW_ZP(LSR; EOR(x));
+      case 0x57: RMW_ZPX(LSR; EOR(x));
+      case 0x4F: RMW_AB(LSR; EOR(x));
+      case 0x5F: RMW_ABX(LSR; EOR(x));
+      case 0x5B: RMW_ABY(LSR; EOR(x));
+      case 0x43: RMW_IX(LSR; EOR(x));
+      case 0x53: RMW_IY(LSR; EOR(x));
 
       /* AXA - SHA */
       case 0x93:
@@ -963,7 +910,7 @@ void X6502::RunLoop() {
       case 0x8B:
         reg_A = Fluint8::OrWith<0xEE>(reg_A);
         reg_A &= reg_X;
-        LD_IM(AND);
+        LD_IM(AND(x));
     }
   }
 }

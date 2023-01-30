@@ -22,6 +22,7 @@
 #include "periodically.h"
 #include "ansi.h"
 
+#include "opcodes.h"
 #include "x6502.h"
 
 #define ROMDIR "../../fceulib/roms/"
@@ -212,6 +213,22 @@ int main(int argc, char **argv) {
             warm_seconds, startup_seconds, exec_seconds,
             cheats, cpr, desc.c_str());
     fclose(f);
+  }
+
+  {
+    string inst;
+    int64 total = 0;
+    const X6502 *X = emu->GetFC()->X;
+    for (int i = 0; i < 256; i++) {
+      int64 count = X->inst_histo[i];
+      total += count;
+      StringAppendF(&inst, "%02x:\t%s\t\t%lld\n",
+                    i, fceulib_2a03_opcode_name[i],
+                    count);
+    }
+    Util::WriteFile("instruction-counts-bench.txt", inst);
+    printf("Total instructions: %lld\n", total);
+    printf("Wrote histogram to instruction-counts-bench.txt\n");
   }
 
   return status;

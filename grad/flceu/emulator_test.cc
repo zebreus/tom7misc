@@ -30,6 +30,8 @@
 #include "simplefm7.h"
 #include "timer.h"
 #include "randutil.h"
+#include "x6502.h"
+#include "opcodes.h"
 
 #include "threadutil.h"
 #include "tracing.h"
@@ -67,6 +69,9 @@ struct SerialResult {
   uint64 img_after_fixed = 0ULL;
   // Image checksum after further executing the "random" inputs.
   uint64 img_after_random = 0ULL;
+
+  // Number of times each instruction was executed.
+  int64_t instcounts[256] = {};
 };
 
 struct TestCase {
@@ -358,6 +363,13 @@ static SerialResult RunGameSerially(
     DoSeekSpan(seekto, dist, compressed);
   }
 
+  {
+    const X6502 *x = emu->GetFC()->X;
+    for (int i = 0; i < 256; i++) {
+      res.instcounts[i] = x->inst_histo[i];
+    }
+  }
+
   Update("Delete emu.");
   // Don't need this any more.
   emu.reset(nullptr);
@@ -590,6 +602,8 @@ int main(int argc, char **argv) {
 
   const std::vector<TestCase> test_cases = TestCases();
 
+  int64 all_instcounts[256] = {};
+
   // TODO: Run these in parallel.
   int correct = 0, total = 0;
   for (const TestCase &tc : test_cases) {
@@ -600,6 +614,8 @@ int main(int argc, char **argv) {
             printf("[%s]\n", s.c_str());
           }, tc.game);
     total++;
+    for (int i = 0; i < 256; i++)
+      all_instcounts[i] += result.instcounts[i];
     bool is_correct =
       result.nes_after_fixed == tc.result.nes_after_fixed &&
       result.img_after_fixed == tc.result.img_after_fixed &&
@@ -632,6 +648,20 @@ int main(int argc, char **argv) {
 
     // printf("EXIT EARLY\n");
     // return 0;
+  }
+
+  {
+    string inst;
+    int64 total = 0;
+    for (int i = 0; i < 256; i++) {
+      total += all_instcounts[i];
+      StringAppendF(&inst, "%02x\t%s\t%lld\n",
+                    i, fceulib_2a03_opcode_name[i],
+                    all_instcounts[i]);
+    }
+    Util::WriteFile("instruction-counts-emutest.txt", inst);
+    printf("Total instructions: %lld\n", total);
+    printf("Wrote histogram to instruction-counts-emutest.txt\n");
   }
 
   printf("Total fluint8 cheatz: %lld\n", Fluint8::NumCheats());
