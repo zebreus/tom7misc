@@ -91,7 +91,7 @@ EMUOBJECTS=$(FCEUOBJECTS) $(MAPPEROBJECTS) $(UTILSOBJECTS) $(PALLETESOBJECTS) $(
 # included in all tests, etc.
 BASEOBJECTS=$(CCLIBOBJECTS)
 
-FCEULIB_OBJECTS=emulator.o headless-driver.o stringprintf.o trace.o tracing.o
+FCEULIB_OBJECTS=emulator.o headless-driver.o stringprintf.o trace.o tracing.o opcodes.o
 # simplefm2.o emulator.o util.o
 
 OBJECTS=$(BASEOBJECTS) $(EMUOBJECTS) $(FCEULIB_OBJECTS)
