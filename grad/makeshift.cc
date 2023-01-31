@@ -21,14 +21,15 @@ static constexpr inline half_float::half GetHalf(uint16_t u) {
 
 template<class F>
 static int ForAll(F f) {
-  double dist = 0;
+  double dist = 0.0;
   for (int x = 0; x < 256; x++) {
     dist += f((uint8_t)x, (half)x);
   }
   return dist;
 }
 
-static int TestRightShift4(double fudge, double offset) {
+[[maybe_unused]]
+static double TestRightShift4(double fudge, double offset) {
   return
     ForAll(
         [fudge, offset](uint8_t x, half xh) {
@@ -43,6 +44,18 @@ static int TestRightShift4(double fudge, double offset) {
         });
 }
 
+static double TestRightShift1(double a, double b) {
+  return
+    ForAll(
+        [a, b](uint8_t x, half xh) {
+          uint8_t z = x >> 1;
+          half zh = xh * (half)a + (half)b - (half)b;
+          double dist = zh - (half)z;
+          return dist * dist;
+        });
+}
+
+
 using ShiftOpt = Optimizer<0, 2, char>;
 
 
@@ -50,16 +63,14 @@ int main(int argc, char **argv) {
 
   ShiftOpt opt([](const ShiftOpt::arg_type &arg) {
       const auto [fudge, offset] = arg.second;
-      double err = TestRightShift4(fudge, offset);
+      double err = TestRightShift1(fudge, offset);
       return std::make_pair(err, std::make_optional('x'));
     }, time(nullptr));
 
-
-
   opt.Run({},
           {
-            make_pair(-2.0, 2.0),
-            make_pair(512.0, 2048.0),
+            make_pair(0.45, 0.55),
+            make_pair(255.0, 2049.0),
           },
           nullopt, nullopt, {60.0});
 

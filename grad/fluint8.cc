@@ -48,6 +48,7 @@ static const Exp *CanonicalizeExp() {
 
 // Indicates (value is 1) if the variable is greater than or equal to
 // the argument.
+[[maybe_unused]]
 static const Exp *IndicateGreater(half h) {
   static Allocator *alloc = GetAlloc();
   // zero when <0, 1/8 when >= 0 (or -0).
@@ -113,7 +114,8 @@ Fluint8 Fluint8::Plus(Fluint8 x, Fluint8 y) {
   // Shift down 8 times to get the overflow bit.
   half o = z;
   for (int i = 0; i < 8; i++) {
-    o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
+    o = RightShiftHalf1(o);
+    // o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
   }
 
   CHECK(o == 1.0_h || o == 0.0_h) << o;
@@ -148,7 +150,8 @@ std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
   // Shift down 8 times to get the overflow bit.
   half o = z;
   for (int i = 0; i < 8; i++) {
-    o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
+    o = RightShiftHalf1(o);
+    // o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
   }
 
   CHECK(o == 1.0_h || o == 0.0_h) << o;
@@ -181,7 +184,8 @@ std::pair<Fluint8, Fluint8> Fluint8::SubtractWithCarry(Fluint8 x, Fluint8 y) {
   // Shift down 8 times to get the overflow bit.
   half o = z;
   for (int i = 0; i < 8; i++) {
-    o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
+    o = RightShiftHalf1(o);
+    // o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
   }
 
   CHECK(o == 1.0_h || o == 0.0_h) << o;
@@ -220,7 +224,7 @@ half Fluint8::Canonicalize(half z) {
 // This only works when in canonical form, but it's much
 // faster than the old approach of using Canonicalize!
 Fluint8 Fluint8::RightShift1(Fluint8 x) {
-  return Fluint8((x.h * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h);
+  return Fluint8(RightShiftHalf1(x.h));
 }
 
 

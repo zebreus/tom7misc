@@ -192,6 +192,14 @@ struct Fluint8 {
   explicit Fluint8(half_float::half h) : h(h) {}
   half_float::half h;
 
+  // Internal expressions used for extracting bits.
+  static const std::vector<const Exp *> &BitExps();
+
+  // Compute bitwise AND.
+  static half GetCommonBits(Fluint8 a, Fluint8 b);
+
+  static half Canonicalize(half h);
+
   static constexpr inline uint16_t GetU16(half_float::half h) {
     return std::bit_cast<uint16_t, half_float::half>(h);
   }
@@ -200,13 +208,22 @@ struct Fluint8 {
     return std::bit_cast<half_float::half, uint16_t>(u);
   }
 
-  // Internal expressions used for extracting bits.
-  static const std::vector<const Exp *> &BitExps();
+  static half RightShiftHalf1(half xh) {
+    // Hand-made version. We divide, which give us almost the right
+    // answer, and then round to an integer by shifting up by 1024
+    // (where only integers are representable in half precision) and
+    // back. The -0.25 is just a fudge factor so that we round in the
+    // right direction.
+    // return Fluint8((x.h * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h);
 
-  // Compute bitwise AND.
-  static half GetCommonBits(Fluint8 a, Fluint8 b);
-
-  static half Canonicalize(half h);
+    // Same idea, but found through search; it just happens to work.
+    // Here the fudge is built into the scale.
+    // approximately 0.49853515625
+    static constexpr half SCALE = GetHalf(0x37fa);
+    // 1741
+    static constexpr half OFFSET = GetHalf(0x66cd);
+    return xh * SCALE + OFFSET - OFFSET;
+  }
 
   // We want a constexpr constructor, so this is the representation
   // of each of the 256 bytes.
