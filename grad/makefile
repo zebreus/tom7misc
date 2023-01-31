@@ -198,6 +198,10 @@ fluint8_test.exe : fluint8_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+makeshift.exe : makeshift.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 # external dependency on TestU01-2009
 TESTU01=../../TestU01-2009
 

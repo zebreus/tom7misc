@@ -347,8 +347,15 @@ Fluint8 Fluint8::LeftShift(Fluint8 x) {
 
 template<size_t N>
 Fluint8 Fluint8::RightShift(Fluint8 x) {
+  using namespace half_float::literal;
   if constexpr (N == 0) {
     return x;
+  } else if constexpr (N == 4) {
+    // Similar idea to RightShift1, but found programmatically
+    // with makeshift.cc.
+    half y = ((x.h * (1.0_h / 16.0_h) - GetHalf(0x37b5)) +
+              GetHalf(0x6630) - GetHalf(0x6630));
+    return Fluint8(y);
   } else {
     Fluint8 y = RightShift<N - 1>(x);
     return RightShift1(y);

@@ -77,6 +77,7 @@ half Fluint8::Eval(const Exp *exp, half h) {
 // functions of these. Note we should be careful when multiplying,
 // since e.g. x * x is not linear!
 Fluint8 Fluint8::Plus(Fluint8 x, Fluint8 y) {
+#if 0
   Allocator *alloc = GetAlloc();
   // Correct value, except that it could be in [256,512).
   // We add 0.5 here since the indicator is "strictly greater",
@@ -105,9 +106,23 @@ Fluint8 Fluint8::Plus(Fluint8 x, Fluint8 y) {
 
   // Scale back to canonical range.
   return Fluint8(s * 256.0_h - 0.5_h);
+#else
+  // Correct value, but maybe 256 too high because of overflow.
+  const half z = x.h + y.h;
+
+  // Shift down 8 times to get the overflow bit.
+  half o = z;
+  for (int i = 0; i < 8; i++) {
+    o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
+  }
+
+  CHECK(o == 1.0_h || o == 0.0_h) << o;
+  return Fluint8(z - o * 256.0_h);
+#endif
 }
 
 std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
+#if 0
   // Correct value, except that it could be in [256,512).
   // We add 0.5 here since the indicator is "strictly greater",
   // not greater-eq.
@@ -126,9 +141,23 @@ std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
   const Fluint8 sum(sum_mod_1 * 256.0_h - 0.5_h);
 
   return make_pair(Fluint8(is_gt), sum);
+#else
+  // Correct value, but maybe 256 too high because of overflow.
+  const half z = x.h + y.h;
+
+  // Shift down 8 times to get the overflow bit.
+  half o = z;
+  for (int i = 0; i < 8; i++) {
+    o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
+  }
+
+  CHECK(o == 1.0_h || o == 0.0_h) << o;
+  return make_pair(Fluint8(o), Fluint8(z - o * 256.0_h));
+#endif
 }
 
 std::pair<Fluint8, Fluint8> Fluint8::SubtractWithCarry(Fluint8 x, Fluint8 y) {
+#if 0
   // Like AddWithCarry, but the result could be less than 0.
   // So just add 256 and correct the same way as we do for AWC.
   const half z = x.h - y.h + 256.5_h;
@@ -146,9 +175,22 @@ std::pair<Fluint8, Fluint8> Fluint8::SubtractWithCarry(Fluint8 x, Fluint8 y) {
   const Fluint8 diff(diff_mod_1 * 256.0_h - 0.5_h);
 
   return make_pair(Fluint8(1.0_h - is_gt), diff);
+#else
+  const half z = x.h - y.h + 256.0_h;
+
+  // Shift down 8 times to get the overflow bit.
+  half o = z;
+  for (int i = 0; i < 8; i++) {
+    o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
+  }
+
+  CHECK(o == 1.0_h || o == 0.0_h) << o;
+  return make_pair(Fluint8(1.0_h - o), Fluint8(z - o * 256.0_h));
+#endif
 }
 
 Fluint8 Fluint8::Minus(Fluint8 x, Fluint8 y) {
+#if 0
   Allocator *alloc = GetAlloc();
   // This can work just like plus.
   const half z = x.h - y.h + 256.5_h;
@@ -165,6 +207,10 @@ Fluint8 Fluint8::Minus(Fluint8 x, Fluint8 y) {
   const half s = Eval(correct, zz);
 
   return Fluint8(s * 256.0_h - 0.5_h);
+#else
+  auto [carry, diff] = SubtractWithCarry(x, y);
+  return diff;
+#endif
 }
 
 half Fluint8::Canonicalize(half z) {

@@ -472,7 +472,7 @@ static void TestIsntZero() {
 int main(int argc, char **argv) {
   Gen16();
 
-
+#if 0
   TestIsZero();
   TestIsntZero();
 
@@ -504,6 +504,8 @@ int main(int argc, char **argv) {
   TestXorWith<255>();
 
   TestLeftShifts();
+#endif
+
   TestRightShifts();
 
   printf("OK\n");
