@@ -119,8 +119,8 @@ struct Fluint8 {
   static std::pair<Fluint8, Fluint8> AddWithCarry(Fluint8 a, Fluint8 b);
   static std::pair<Fluint8, Fluint8> SubtractWithCarry(Fluint8 a, Fluint8 b);
 
-  // PERF: Bitwise ops with a constant are very common in 6502,
-  // and could be much faster.
+  // Note: If one argument is a compile-time constant, AndWith (etc.)
+  // below can be a lot faster.
   static Fluint8 BitwiseXor(Fluint8 a, Fluint8 b);
   static Fluint8 BitwiseAnd(Fluint8 a, Fluint8 b);
   static Fluint8 BitwiseOr(Fluint8 a, Fluint8 b);

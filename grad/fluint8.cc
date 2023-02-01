@@ -88,10 +88,6 @@ std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
 
   // Shift down 8 times to get the overflow bit.
   half o = RightShiftHalf8(z);
-  // for (int i = 0; i < 8; i++) {
-  // o = RightShiftHalf1(o);
-    // o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
-  // }
 
   CHECK(o == 1.0_h || o == 0.0_h) << o;
   return make_pair(Fluint8(o), Fluint8(z - o * 256.0_h));
@@ -102,10 +98,6 @@ std::pair<Fluint8, Fluint8> Fluint8::SubtractWithCarry(Fluint8 x, Fluint8 y) {
 
   // Shift down 8 times to get the overflow bit.
   half o = RightShiftHalf8(z);
-  //  for (int i = 0; i < 8; i++) {
-  //    o = RightShiftHalf1(o);
-    // o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
-  // }
 
   CHECK(o == 1.0_h || o == 0.0_h) << o;
   return make_pair(Fluint8(1.0_h - o), Fluint8(z - o * 256.0_h));

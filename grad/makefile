@@ -43,7 +43,7 @@ CHESS_OBJECTS=$(CHESS)/chess.o $(CHESS)/pgn.o
 grad.s : grad.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -S -fverbose-asm -c $< -o $@
 
-OBJECTS=$(CCLIB_OBJECTS) $(RE2_OBJECTS) $(CHESS_OBJECTS) hash-util.o diff.o fluint8.o
+OBJECTS=$(CCLIB_OBJECTS) $(RE2_OBJECTS) $(CHESS_OBJECTS) hash-util.o diff.o fluint8.o fluint16.o
 
 # also increase stack size
 LFLAGS= -L. -m64 -Wl,--subsystem,console -Wl,--stack,335544320 $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static
@@ -195,6 +195,10 @@ colordiff.exe : colordiff.o $(OBJECTS)
 	@echo -n "!"
 
 fluint8_test.exe : fluint8_test.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+fluint16_test.exe : fluint16_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
