@@ -20,10 +20,20 @@ static constexpr inline half_float::half GetHalf(uint16_t u) {
 }
 
 template<class F>
-static int ForAll(F f) {
+static double ForAll(F f) {
   double dist = 0.0;
   for (int x = 0; x < 256; x++) {
     dist += f((uint8_t)x, (half)x);
+  }
+  return dist;
+}
+
+// Same, for 9-bit expressions
+template<class F>
+static double ForAll9(F f) {
+  double dist = 0.0;
+  for (int x = 0; x < 512; x++) {
+    dist += f((uint16_t)x, (half)x);
   }
   return dist;
 }
@@ -44,6 +54,7 @@ static double TestRightShift4(double fudge, double offset) {
         });
 }
 
+[[maybe_unused]]
 static double TestRightShift1(double a, double b) {
   return
     ForAll(
@@ -55,32 +66,70 @@ static double TestRightShift1(double a, double b) {
         });
 }
 
+static double TestRightShift2(double a, double b, double c) {
+  return
+    ForAll(
+        [a, b, c](uint8_t x, half xh) {
+          uint8_t z = x >> 2;
+          // Didn't find any solutions for e.g. x * a + b - c.
+          half zh = xh * 0.25_h + (half)a + (half)b - (half)c;
+          double dist = zh - (half)z;
+          return dist * dist;
+        });
+}
 
-using ShiftOpt = Optimizer<0, 2, char>;
+// (Didn't actually try smaller expressions here.)
+static double TestRightShift3(double a, double b, double c) {
+  return
+    ForAll(
+        [a, b, c](uint8_t x, half xh) {
+          uint8_t z = x >> 3;
+          half zh = xh * 0.125_h + (half)a + (half)b - (half)c;
+          double dist = zh - (half)z;
+          return dist * dist;
+        });
+}
+
+static double TestRightShift8(double a, double b, double c) {
+  return
+    ForAll9(
+        [a, b, c](uint16_t x, half xh) {
+          uint16_t z = x >> 8;
+          half zh = xh * (1.0_h / 256.0_h) + (half)a + (half)b - (half)c;
+          double dist = zh - (half)z;
+          return dist * dist;
+        });
+}
+
+
+using ShiftOpt = Optimizer<0, 3, char>;
 
 
 int main(int argc, char **argv) {
 
   ShiftOpt opt([](const ShiftOpt::arg_type &arg) {
-      const auto [fudge, offset] = arg.second;
-      double err = TestRightShift1(fudge, offset);
+      const auto [a, b, c] = arg.second;
+      double err = TestRightShift8(a, b, c);
       return std::make_pair(err, std::make_optional('x'));
     }, time(nullptr));
 
   opt.Run({},
           {
-            make_pair(0.45, 0.55),
+            make_pair(-0.51, 0.51),
+            make_pair(255.0, 2049.0),
             make_pair(255.0, 2049.0),
           },
-          nullopt, nullopt, {60.0});
+          nullopt, nullopt, {60.0}, {0.0});
 
   const auto [arg, score, out_] = opt.GetBest().value();
-  const auto &[fudge, offset] = arg.second;
-  printf("Fudge: %.19g = %.11g (0x%04x)\n"
-         "Offset: %.19g = %.11g (0x%04x)\n"
+  const auto &[a, b, c] = arg.second;
+  printf("a: %.19g = %.11g (0x%04x)\n"
+         "b: %.19g = %.11g (0x%04x)\n"
+         "c: %.19g = %.11g (0x%04x)\n"
          "score %.19g\n",
-         fudge, (float)(half)fudge, GetU16((half)fudge),
-         offset, (float)(half)offset, GetU16((half)offset),
+         a, (float)(half)a, GetU16((half)a),
+         b, (float)(half)b, GetU16((half)b),
+         c, (float)(half)c, GetU16((half)c),
          score);
 
   return 0;

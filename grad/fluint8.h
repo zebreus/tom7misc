@@ -225,6 +225,25 @@ struct Fluint8 {
     return xh * SCALE + OFFSET - OFFSET;
   }
 
+  static half RightShiftHalf2(half xh) {
+    static constexpr half OFFSET1 = GetHalf(0xb54e);
+    static constexpr half OFFSET2 = GetHalf(0x6417);
+    return xh * (half)0.25f + OFFSET1 + OFFSET2 - OFFSET2;
+  }
+
+  static half RightShiftHalf3(half xh) {
+    static constexpr half OFFSET1 = GetHalf(0xb642);
+    static constexpr half OFFSET2 = GetHalf(0x67bc);
+    return xh * (half)0.125f + OFFSET1 + OFFSET2 - OFFSET2;
+  }
+
+  // Works for integers in [0, 512); always results in 1 or 0.
+  static half RightShiftHalf8(half xh) {
+    static constexpr half OFFSET1 = GetHalf(0xb7f6);
+    static constexpr half OFFSET2 = GetHalf(0x66b0);
+    return xh * (half)(1.0f / 256.0f) + OFFSET1 + OFFSET2 - OFFSET2;
+  }
+
   // We want a constexpr constructor, so this is the representation
   // of each of the 256 bytes.
   static constexpr uint16_t TABLE[256] = {
@@ -367,12 +386,21 @@ Fluint8 Fluint8::RightShift(Fluint8 x) {
   using namespace half_float::literal;
   if constexpr (N == 0) {
     return x;
-  } else if constexpr (N == 4) {
+  } else if constexpr (N >= 4) {
+    Fluint8 y = RightShift<N - 4>(x);
     // Similar idea to RightShift1, but found programmatically
     // with makeshift.cc.
-    half y = ((x.h * (1.0_h / 16.0_h) - GetHalf(0x37b5)) +
+    half z = ((y.h * (1.0_h / 16.0_h) - GetHalf(0x37b5)) +
               GetHalf(0x6630) - GetHalf(0x6630));
-    return Fluint8(y);
+    return Fluint8(z);
+  } else if constexpr (N >= 3) {
+    Fluint8 y = RightShift<N - 3>(x);
+    half z = RightShiftHalf3(y.h);
+    return Fluint8(z);
+  } else if constexpr (N >= 2) {
+    Fluint8 y = RightShift<N - 2>(x);
+    half z = RightShiftHalf2(y.h);
+    return Fluint8(z);
   } else {
     Fluint8 y = RightShift<N - 1>(x);
     return RightShift1(y);

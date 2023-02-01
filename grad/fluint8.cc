@@ -78,143 +78,42 @@ half Fluint8::Eval(const Exp *exp, half h) {
 // functions of these. Note we should be careful when multiplying,
 // since e.g. x * x is not linear!
 Fluint8 Fluint8::Plus(Fluint8 x, Fluint8 y) {
-#if 0
-  Allocator *alloc = GetAlloc();
-  // Correct value, except that it could be in [256,512).
-  // We add 0.5 here since the indicator is "strictly greater",
-  // not greater-eq.
-  const half z = x.h + y.h + 0.5_h;
-
-  // We have to be in a reasonable range for the indicator
-  // function to work.
-  const half zz = z * (1.0_h / 256.0_h);
-
-  static const Exp *correct =
-    alloc->PlusE(
-        // The original expression, x + y, scaled into [0, 2).
-        alloc->Var(),
-        // but subtracting 1 if over 1.
-        alloc->TimesC(IndicateGreater(1.0_h),
-                      Exp::GetU16(-1.0_h)));
-  const half s = Eval(correct, zz);
-
-  /*
-  printf("%.5f + %.5f + 0.5 = %.5f zz %.5f, s %.5f\n",
-         (float)x.h, (float)y.h, (float)z,
-         (float)zz,
-         (float)s);
-  */
-
-  // Scale back to canonical range.
-  return Fluint8(s * 256.0_h - 0.5_h);
-#else
-  // Correct value, but maybe 256 too high because of overflow.
-  const half z = x.h + y.h;
-
-  // Shift down 8 times to get the overflow bit.
-  half o = z;
-  for (int i = 0; i < 8; i++) {
-    o = RightShiftHalf1(o);
-    // o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
-  }
-
-  CHECK(o == 1.0_h || o == 0.0_h) << o;
-  return Fluint8(z - o * 256.0_h);
-#endif
+  auto [carry, sum] = AddWithCarry(x, y);
+  return sum;
 }
 
 std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
-#if 0
-  // Correct value, except that it could be in [256,512).
-  // We add 0.5 here since the indicator is "strictly greater",
-  // not greater-eq.
-  const half z = x.h + y.h + 0.5_h;
-
-  // We have to be in a reasonable range for the indicator
-  // function to work.
-  const half zz = z * (1.0_h / 256.0_h);
-
-  static const Exp *gtexp = IndicateGreater(1.0_h);
-  const half is_gt = Eval(gtexp, zz);
-
-  const half sum_mod_1 = zz - is_gt;
-
-  // Scale back to canonical range.
-  const Fluint8 sum(sum_mod_1 * 256.0_h - 0.5_h);
-
-  return make_pair(Fluint8(is_gt), sum);
-#else
   // Correct value, but maybe 256 too high because of overflow.
   const half z = x.h + y.h;
 
   // Shift down 8 times to get the overflow bit.
-  half o = z;
-  for (int i = 0; i < 8; i++) {
-    o = RightShiftHalf1(o);
+  half o = RightShiftHalf8(z);
+  // for (int i = 0; i < 8; i++) {
+  // o = RightShiftHalf1(o);
     // o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
-  }
+  // }
 
   CHECK(o == 1.0_h || o == 0.0_h) << o;
   return make_pair(Fluint8(o), Fluint8(z - o * 256.0_h));
-#endif
 }
 
 std::pair<Fluint8, Fluint8> Fluint8::SubtractWithCarry(Fluint8 x, Fluint8 y) {
-#if 0
-  // Like AddWithCarry, but the result could be less than 0.
-  // So just add 256 and correct the same way as we do for AWC.
-  const half z = x.h - y.h + 256.5_h;
-
-  // We have to be in a reasonable range for the indicator
-  // function to work.
-  const half zz = z * (1.0_h / 256.0_h);
-
-  static const Exp *gtexp = IndicateGreater(1.0_h);
-  const half is_gt = Eval(gtexp, zz);
-
-  const half diff_mod_1 = zz - is_gt;
-
-  // Scale back to canonical range.
-  const Fluint8 diff(diff_mod_1 * 256.0_h - 0.5_h);
-
-  return make_pair(Fluint8(1.0_h - is_gt), diff);
-#else
   const half z = x.h - y.h + 256.0_h;
 
   // Shift down 8 times to get the overflow bit.
-  half o = z;
-  for (int i = 0; i < 8; i++) {
-    o = RightShiftHalf1(o);
+  half o = RightShiftHalf8(z);
+  //  for (int i = 0; i < 8; i++) {
+  //    o = RightShiftHalf1(o);
     // o = (o * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h;
-  }
+  // }
 
   CHECK(o == 1.0_h || o == 0.0_h) << o;
   return make_pair(Fluint8(1.0_h - o), Fluint8(z - o * 256.0_h));
-#endif
 }
 
 Fluint8 Fluint8::Minus(Fluint8 x, Fluint8 y) {
-#if 0
-  Allocator *alloc = GetAlloc();
-  // This can work just like plus.
-  const half z = x.h - y.h + 256.5_h;
-
-  const half zz = z * (1.0_h / 256.0_h);
-
-  static const Exp *correct =
-    alloc->PlusE(
-        // The original expression, x + y, scaled into [0, 2).
-        alloc->Var(),
-        // but subtracting 1 if over 1.
-        alloc->TimesC(IndicateGreater(1.0_h),
-                      Exp::GetU16(-1.0_h)));
-  const half s = Eval(correct, zz);
-
-  return Fluint8(s * 256.0_h - 0.5_h);
-#else
   auto [carry, diff] = SubtractWithCarry(x, y);
   return diff;
-#endif
 }
 
 half Fluint8::Canonicalize(half z) {
