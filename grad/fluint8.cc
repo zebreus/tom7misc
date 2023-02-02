@@ -177,8 +177,16 @@ half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
     half b_bit = bb.h - LeftShift1Under128(bbshift).h;
     const half scale = (half)(1 << bit_idx);
 
+
     // Multiplication is like AND.
-    common += scale * (a_bit * b_bit);
+    // But note that if we tried to do GetCommonBits(z, z) here,
+    // we would end up multiplying some function of z by some
+    // function of z, which is not linear. So instead of
+    // multiplying, we compute "a & b" as "(a + b) >> 1".
+    // const half and_bits = (a_bit * b_bit);
+    const half and_bits = RightShiftHalf1(a_bit + b_bit);
+    // (Whereas scale is just a constant...)
+    common += scale * and_bits;
 
     // and keep shifting down
     aa = aashift;

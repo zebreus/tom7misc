@@ -439,6 +439,7 @@ static void TestRightShifts() {
   TestRightShift<8>();
 }
 
+[[maybe_unused]]
 static void Gen16() {
   for (int i = 0; i < 256; i++) {
     half h = (half)(float)i;
@@ -470,40 +471,40 @@ static void TestIsntZero() {
 }
 
 int main(int argc, char **argv) {
-  Gen16();
+  // Gen16();
 
-  TestIsZero();
-  TestIsntZero();
+  TestIsZero(); printf("IsZero OK\n");
+  TestIsntZero(); printf("IsntZero OK\n");
 
-  TestToFrom();
-  TestPlus();
-  TestMinus();
-  TestNegate();
-  TestPreIncrement();
-  TestPostIncrement();
-  TestPreDecrement();
-  TestPostDecrement();
-  TestPlusEq();
-  TestMinusEq();
+  TestToFrom(); printf("ToFrom OK\n");
+  TestPlus(); printf("Plus OK\n");
+  TestMinus(); printf("Minus OK\n");
+  TestNegate(); printf("Negate OK\n");
+  TestPreIncrement(); printf("PreIncrement OK\n");
+  TestPostIncrement(); printf("PostIncrement OK\n");
+  TestPreDecrement(); printf("PreDecrement OK\n");
+  TestPostDecrement(); printf("PostDecrement OK\n");
+  TestPlusEq(); printf("PlusEq OK\n");
+  TestMinusEq(); printf("MinusEq OK\n");
 
-  TestAddWithCarry();
-  TestSubtractWithCarry();
+  TestAddWithCarry(); printf("AddWithCarry OK\n");
+  TestSubtractWithCarry(); printf("SubtractWithCarry OK\n");
 
-  TestAnd();
-  TestAndEq();
+  TestAnd(); printf("And OK\n");
+  TestAndEq(); printf("AndEq OK\n");
 
-  TestOr();
-  TestOrEq();
+  TestOr(); printf("Or OK\n");
+  TestOrEq(); printf("OrEq OK\n");
 
-  TestXor();
-  TestXorEq();
+  TestXor(); printf("Xor OK\n");
+  TestXorEq(); printf("XorEq OK\n");
 
-  TestAndWith<255>();
-  TestOrWith<255>();
-  TestXorWith<255>();
+  TestAndWith<255>(); printf("AndWith OK\n");
+  TestOrWith<255>(); printf("OrWith OK\n");
+  TestXorWith<255>(); printf("XorWith OK\n");
 
-  TestLeftShifts();
-  TestRightShifts();
+  TestLeftShifts(); printf("LeftShifts OK\n");
+  TestRightShifts(); printf("RightShifts OK\n");
 
   printf("OK\n");
   return 0;
