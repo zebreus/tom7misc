@@ -18,6 +18,7 @@ struct Fluint16 {
   }
 
   explicit constexpr Fluint16(Fluint8 lo) : hi(0), lo(lo) {}
+  Fluint16(Fluint8 hi, Fluint8 lo) : hi(hi), lo(lo) {}
 
   uint16_t ToInt() const;
 
@@ -25,6 +26,9 @@ struct Fluint16 {
   Fluint16(Fluint16 &&other) = default;
   Fluint16(const Fluint16 &other) = default;
   constexpr Fluint16 &operator =(const Fluint16 &) = default;
+
+  Fluint8 Hi() const { return hi; }
+  Fluint8 Lo() const { return lo; }
 
   static Fluint16 Plus(Fluint16 a, Fluint16 b);
   static Fluint16 Minus(Fluint16 a, Fluint16 b);
@@ -53,7 +57,6 @@ struct Fluint16 {
   uint16_t Representation() const;
 
  private:
-  Fluint16(Fluint8 hi, Fluint8 lo) : hi(hi), lo(lo) {}
   Fluint8 hi, lo;
 };
 

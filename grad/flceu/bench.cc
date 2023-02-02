@@ -134,6 +134,7 @@ int main(int argc, char **argv) {
   static constexpr int MIN_EXECUTIONS = 1;
   static constexpr int MAX_EXECUTIONS = 10;
   static constexpr int MAX_SECONDS = 60.0 * 30.0;
+  static constexpr int MIN_SECONDS = 60.0;
   int executions = 0;
   double total_time = 0.0;
   vector<int> last_means;
@@ -156,10 +157,11 @@ int main(int argc, char **argv) {
     total_time += sec;
     double mean = total_time / (double)executions;
 
-    if (executions >= MIN_EXECUTIONS &&
+    if ((executions >= MIN_EXECUTIONS &&
+         total_time >= MIN_SECONDS) &&
         (executions >= MAX_EXECUTIONS ||
          total_time > MAX_SECONDS)) {
-      // Convergence!
+      // Done!
       exec_seconds = mean;
       break;
     }

@@ -59,7 +59,7 @@ INCLUDES=-I ".." -I "$(CC_LIB)" -I "$(CC_LIB)/city" -I "."
 # tom7 added -mthreads on 9/7!
 CPPFLAGS=-DPSS_STYLE=1 -DDUMMY_UI $(ARCH) $(OPT) $(PLATFORMCFLAGS) -DHAVE_ALLOCA -DNOWINSTUFF $(INCLUDES) $(PROFILE) $(FLTO) --std=c++20
 
-GRAD_OBJECTS=../fluint8.o
+GRAD_OBJECTS=../fluint8.o ../fluint16.o
 
 # Should just be used for testing/utilities.
 CCLIBOBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/city/city.o $(CC_LIB)/rle.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/wavesave.o $(CC_LIB)/image.o $(CC_LIB)/stb_image.o $(CC_LIB)/ansi.o

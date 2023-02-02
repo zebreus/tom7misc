@@ -26,9 +26,7 @@
 #include "fc.h"
 
 #include "fluint8.h"
-
-// using fluint8 = uint8;
-
+#include "fluint16.h"
 
 struct X6502 {
   // Initialize with fc pointer, since memory reads/writes
@@ -202,16 +200,16 @@ private:
 
   /* Indirect Indexed(for writes and rmws) */
   uint16_t GetIYWR() {
-    uint8 tmp = RdMem(reg_PC);
+    Fluint8 tmp(RdMem(reg_PC));
     reg_PC++;
-    uint16 rt = RdRAM(tmp);
-    tmp++;
-    rt |= ((uint16)RdRAM(tmp)) << 8;
-    uint16 ret = rt;
-    ret += reg_Y.ToInt();
-    ret &= 0xFFFF;
-    (void)RdMem((ret & 0x00FF) | (rt & 0xFF00));
-    return ret;
+    Fluint8 lo(RdRAM(Fluint16(tmp)));
+    Fluint8 hi(RdRAM(Fluint16(tmp + Fluint8(0x01))));
+    Fluint16 rt(hi, lo);
+    // PERF directly add Fluint8
+    Fluint16 ret = rt + Fluint16(reg_Y);
+    (void)RdMem((ret & Fluint16(0x00FF)) | (rt & Fluint16(0xFF00)));
+    Fluint8::Cheat();
+    return ret.ToInt();
   }
 
   // Implements the ZNTable (zero flag and negative flag),
@@ -314,32 +312,32 @@ private:
 
   template<class F>
   void ST_ZP(F rf) {
-    uint16_t AA = GetZP().ToInt();
-    WrRAM(AA, rf(AA).ToInt());
+    Fluint16 AA(GetZP());
+    WrRAM(AA, rf(AA));
   }
 
   template<class F>
   void ST_ZPX(F rf) {
-    uint16_t AA = GetZPI(reg_X).ToInt();
-    WrRAM(AA, rf(AA).ToInt());
+    Fluint16 AA(GetZPI(reg_X));
+    WrRAM(AA, rf(AA));
   }
 
   template<class F>
   void ST_ZPY(F rf) {
-    uint16_t AA = GetZPI(reg_Y).ToInt();
-    WrRAM(AA, rf(AA).ToInt());
+    Fluint16 AA(GetZPI(reg_Y));
+    WrRAM(AA, rf(AA));
   }
 
   template<class F>
   void ST_AB(F rf) {
-    uint16 AA = GetAB();
-    WrMem(AA, rf(AA).ToInt());
+    Fluint16 AA(GetAB());
+    WrMem(AA, rf(AA));
   }
 
   template<class F>
   void ST_ABI(Fluint8 reg, F rf) {
-    uint16 AA = GetABIWR(reg);
-    WrMem(AA, rf(AA).ToInt());
+    Fluint16 AA(GetABIWR(reg));
+    WrMem(AA, rf(AA));
   }
 
   template<class F>
@@ -354,14 +352,14 @@ private:
 
   template<class F>
   void ST_IX(F rf) {
-    uint16 AA = GetIX();
-    WrMem(AA, rf(AA).ToInt());
+    Fluint16 AA(GetIX());
+    WrMem(AA, rf(AA));
   }
 
   template<class F>
   void ST_IY(F rf) {
-    uint16 AA = GetIYWR();
-    WrMem(AA, rf(AA).ToInt());
+    Fluint16 AA(GetIYWR());
+    WrMem(AA, rf(AA));
   }
 
   void ADC(Fluint8 x) {
@@ -460,17 +458,33 @@ private:
     return DB = fc->fceu->ARead[A](fc, A);
   }
 
+  inline Fluint8 RdMem(Fluint16 A) {
+    return Fluint8(DB = fc->fceu->ARead[A.ToInt()](fc, A.ToInt()));
+  }
+
   // normal memory write
   inline void WrMem(unsigned int A, uint8 V) {
     fc->fceu->BWrite[A](fc, A, V);
+  }
+
+  inline void WrMem(Fluint16 A, Fluint8 V) {
+    fc->fceu->BWrite[A.ToInt()](fc, A.ToInt(), V.ToInt());
   }
 
   inline uint8 RdRAM(unsigned int A) {
     return (DB = fc->fceu->RAM[A]);
   }
 
+  inline Fluint8 RdRAM(Fluint16 A) {
+    return Fluint8(DB = fc->fceu->RAM[A.ToInt()]);
+  }
+
   inline void WrRAM(unsigned int A, uint8 V) {
     fc->fceu->RAM[A] = V;
+  }
+
+  inline void WrRAM(Fluint16 A, Fluint8 V) {
+    fc->fceu->RAM[A.ToInt()] = V.ToInt();
   }
 
   // Commonly we do bitwise ops with compile-time constants,

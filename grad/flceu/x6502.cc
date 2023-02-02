@@ -218,10 +218,9 @@ void X6502::DMW(uint32 A, uint8 V) {
 
 // Several undocumented instructions AND with the high byte
 // of the address, plus one. Computes that expression.
-static Fluint8 WeirdHiByte(uint16_t aa, Fluint8 r) {
-  Fluint8::Cheat();
-  uint16_t hi = (aa - r.ToInt()) >> 8;
-  return Fluint8((uint8)hi) + Fluint8(1);
+static Fluint8 WeirdHiByte(Fluint16 aa, Fluint8 r) {
+  Fluint8 hi = (aa - Fluint16(r)).Hi();
+  return hi + Fluint8(0x1);
 }
 
 static constexpr uint8 CycTable[256] = {
@@ -639,21 +638,21 @@ void X6502::RunLoop() {
       case 0xF1: LD_IY(SBC(x));
 
 
-    case 0x85: ST_ZP([this](uint16_t AA) { return reg_A; }); break;
-    case 0x95: ST_ZPX([this](uint16_t AA) { return reg_A; }); break;
-    case 0x8D: ST_AB([this](uint16_t AA) { return reg_A; }); break;
-    case 0x9D: ST_ABX([this](uint16_t AA) { return reg_A; }); break;
-    case 0x99: ST_ABY([this](uint16_t AA) { return reg_A; }); break;
-    case 0x81: ST_IX([this](uint16_t AA) { return reg_A; }); break;
-    case 0x91: ST_IY([this](uint16_t AA) { return reg_A; }); break;
+    case 0x85: ST_ZP([this](Fluint16 AA) { return reg_A; }); break;
+    case 0x95: ST_ZPX([this](Fluint16 AA) { return reg_A; }); break;
+    case 0x8D: ST_AB([this](Fluint16 AA) { return reg_A; }); break;
+    case 0x9D: ST_ABX([this](Fluint16 AA) { return reg_A; }); break;
+    case 0x99: ST_ABY([this](Fluint16 AA) { return reg_A; }); break;
+    case 0x81: ST_IX([this](Fluint16 AA) { return reg_A; }); break;
+    case 0x91: ST_IY([this](Fluint16 AA) { return reg_A; }); break;
 
-    case 0x86: ST_ZP([this](uint16_t AA) { return reg_X; }); break;
-    case 0x96: ST_ZPY([this](uint16_t AA) { return reg_X; }); break;
-    case 0x8E: ST_AB([this](uint16_t AA) { return reg_X; }); break;
+    case 0x86: ST_ZP([this](Fluint16 AA) { return reg_X; }); break;
+    case 0x96: ST_ZPY([this](Fluint16 AA) { return reg_X; }); break;
+    case 0x8E: ST_AB([this](Fluint16 AA) { return reg_X; }); break;
 
-    case 0x84: ST_ZP([this](uint16_t AA) { return reg_Y; }); break;
-    case 0x94: ST_ZPX([this](uint16_t AA) { return reg_Y; }); break;
-    case 0x8C: ST_AB([this](uint16_t AA) { return reg_Y; }); break;
+    case 0x84: ST_ZP([this](Fluint16 AA) { return reg_Y; }); break;
+    case 0x94: ST_ZPX([this](Fluint16 AA) { return reg_Y; }); break;
+    case 0x8C: ST_AB([this](Fluint16 AA) { return reg_Y; }); break;
 
       // PERF Since we are extracting a single
       // bit, can make something like HasBit
@@ -713,10 +712,10 @@ void X6502::RunLoop() {
               reg_P |= Fluint8::RightShift<7>(reg_A));
 
       /* AAX */
-    case 0x87: ST_ZP([this](uint16_t AA) { return reg_A & reg_X; }); break;
-    case 0x97: ST_ZPY([this](uint16_t AA) { return reg_A & reg_X; }); break;
-    case 0x8F: ST_AB([this](uint16_t AA) { return reg_A & reg_X; }); break;
-    case 0x83: ST_IX([this](uint16_t AA) { return reg_A & reg_X; }); break;
+    case 0x87: ST_ZP([this](Fluint16 AA) { return reg_A & reg_X; }); break;
+    case 0x97: ST_ZPY([this](Fluint16 AA) { return reg_A & reg_X; }); break;
+    case 0x8F: ST_AB([this](Fluint16 AA) { return reg_A & reg_X; }); break;
+    case 0x83: ST_IX([this](Fluint16 AA) { return reg_A & reg_X; }); break;
 
       /* ARR - ARGH, MATEY! */
       case 0x6B: {
@@ -863,26 +862,26 @@ void X6502::RunLoop() {
 
       /* AXA - SHA */
       case 0x93:
-        ST_IY([this](uint16_t AA) {
+        ST_IY([this](Fluint16 AA) {
             return reg_A & reg_X & WeirdHiByte(AA, reg_Y);
           });
         break;
       case 0x9F:
-        ST_ABY([this](uint16_t AA) {
+        ST_ABY([this](Fluint16 AA) {
             return reg_A & reg_X & WeirdHiByte(AA, reg_Y);
           });
         break;
 
       /* SYA */
       case 0x9C:
-        ST_ABX([this](uint16_t AA) {
+        ST_ABX([this](Fluint16 AA) {
             return reg_Y & WeirdHiByte(AA, reg_X);
         });
         break;
 
       /* SXA */
       case 0x9E:
-        ST_ABY([this](uint16_t AA) {
+        ST_ABY([this](Fluint16 AA) {
             return reg_X & WeirdHiByte(AA, reg_Y);
         });
         break;
@@ -890,7 +889,7 @@ void X6502::RunLoop() {
       /* XAS */
       case 0x9B:
         reg_S = reg_A & reg_X;
-        ST_ABY([this](uint16_t AA) {
+        ST_ABY([this](Fluint16 AA) {
             return reg_S & WeirdHiByte(AA, reg_Y);
         });
         break;
