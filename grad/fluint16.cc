@@ -41,3 +41,17 @@ uint16_t Fluint16::ToInt() const {
   uint16_t l = lo.ToInt();
   return (h << 8) | l;
 }
+
+Fluint16 Fluint16::Plus(Fluint16 a, Fluint16 b) {
+  auto [lcarry, lsum] = Fluint8::AddWithCarry(a.lo, b.lo);
+  // carry here is ignored
+  Fluint8 hsum = a.hi + b.hi + lcarry;
+  return Fluint16(hsum, lsum);
+}
+
+Fluint16 Fluint16::Minus(Fluint16 a, Fluint16 b) {
+  auto [lcarry, ldiff] = Fluint8::SubtractWithCarry(a.lo, b.lo);
+  // carry here is ignored
+  Fluint8 hdiff = a.hi - b.hi - lcarry;
+  return Fluint16(hdiff, ldiff);
+}
