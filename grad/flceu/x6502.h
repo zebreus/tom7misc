@@ -124,14 +124,14 @@ private:
   }
 
   /* Indexed Indirect */
-  uint16_t GetIX() {
+  Fluint16 GetIX() {
     Fluint8 tmp(RdMem(reg_PC));
     reg_PC++;
     tmp += reg_X;
-    uint16 ret = RdRAM(tmp.ToInt());
+    Fluint8 lo = RdRAM(Fluint16(tmp));
     tmp++;
-    ret |= ((uint16)RdRAM(tmp.ToInt())) << 8;
-    return ret;
+    Fluint8 hi = RdRAM(Fluint16(tmp));
+    return Fluint16(hi, lo);
   }
 
   // Zero Page
@@ -149,17 +149,18 @@ private:
   }
 
   /* Absolute */
-  uint16_t GetAB() {
-    uint16_t ret = RdMem(reg_PC);
+  Fluint16 GetAB() {
+    Fluint8 lo = RdMem(Fluint16(reg_PC));
     reg_PC++;
-    ret |= RdMem(reg_PC) << 8;
+    Fluint8 hi = RdMem(Fluint16(reg_PC));
     reg_PC++;
-    return ret;
+    return Fluint16(hi, lo);
   }
 
   /* Absolute Indexed(for writes and rmws) */
   uint16_t GetABIWR(Fluint8 i) {
-    uint16_t rt = GetAB();
+    Fluint8::Cheat();
+    uint16_t rt = GetAB().ToInt();
     uint16_t target = rt;
     target += i.ToInt();
     target &= 0xFFFF;
@@ -169,7 +170,8 @@ private:
 
   /* Absolute Indexed(for reads) */
   uint16_t GetABIRD(Fluint8 i) {
-    uint16 tmp = GetAB();
+    Fluint8::Cheat();
+    uint16 tmp = GetAB().ToInt();
     uint16 ret = tmp;
     ret += i.ToInt();
     if ((ret ^ tmp) & 0x100) {
@@ -199,7 +201,7 @@ private:
 
 
   /* Indirect Indexed(for writes and rmws) */
-  uint16_t GetIYWR() {
+  Fluint16 GetIYWR() {
     Fluint8 tmp(RdMem(reg_PC));
     reg_PC++;
     Fluint8 lo(RdRAM(Fluint16(tmp)));
@@ -208,8 +210,7 @@ private:
     // PERF directly add Fluint8
     Fluint16 ret = rt + Fluint16(reg_Y);
     (void)RdMem((ret & Fluint16(0x00FF)) | (rt & Fluint16(0xFF00)));
-    Fluint8::Cheat();
-    return ret.ToInt();
+    return ret;
   }
 
   // Implements the ZNTable (zero flag and negative flag),
@@ -304,6 +305,22 @@ private:
     }
   }
 
+  Fluint8 ASL(Fluint8 x) {
+    reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
+    reg_P |= Fluint8::RightShift<7>(x);
+    x = Fluint8::LeftShift<1>(x);
+    X_ZN(x);
+    return x;
+  }
+
+  Fluint8 LSR(Fluint8 x) {
+    reg_P = Fluint8::AndWith<(uint8_t)~(C_FLAG8 | N_FLAG8 | Z_FLAG8)>(reg_P);
+    reg_P |= Fluint8::AndWith<1>(x);
+    x = Fluint8::RightShift<1>(x);
+    X_ZNT(x);
+    return x;
+  }
+
   void ADDCYC(int x) {
     this->tcount += x;
     this->count -= x * 48;
@@ -330,7 +347,7 @@ private:
 
   template<class F>
   void ST_AB(F rf) {
-    Fluint16 AA(GetAB());
+    Fluint16 AA = GetAB();
     WrMem(AA, rf(AA));
   }
 
@@ -352,13 +369,13 @@ private:
 
   template<class F>
   void ST_IX(F rf) {
-    Fluint16 AA(GetIX());
+    Fluint16 AA = GetIX();
     WrMem(AA, rf(AA));
   }
 
   template<class F>
   void ST_IY(F rf) {
-    Fluint16 AA(GetIYWR());
+    Fluint16 AA = GetIYWR();
     WrMem(AA, rf(AA));
   }
 
