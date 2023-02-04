@@ -27,6 +27,8 @@ struct Fluint16 {
   Fluint16(const Fluint16 &other) = default;
   constexpr Fluint16 &operator =(const Fluint16 &) = default;
 
+  static Fluint16 SignExtend(Fluint8 a);
+
   Fluint8 Hi() const { return hi; }
   Fluint8 Lo() const { return lo; }
 

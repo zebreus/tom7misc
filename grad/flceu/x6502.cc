@@ -352,7 +352,7 @@ void X6502::RunLoop() {
       }
 
       case 0x40: /* RTI */
-        reg_P = Fluint8(POP());
+        reg_P = POP();
         /* reg_PI=reg_P; This is probably incorrect, so it's commented out. */
         reg_PI = reg_P;
         reg_PC = POP16();
@@ -373,13 +373,13 @@ void X6502::RunLoop() {
         break;
       case 0x68:
         /* PLA */
-        reg_A = Fluint8(POP());
+        reg_A = POP();
         X_ZN(reg_A);
         break;
 
       case 0x28:
         /* PLP */
-        reg_P = Fluint8(POP());
+        reg_P = POP();
         break;
       case 0x4C: {
         /* JMP ABSOLUTE */

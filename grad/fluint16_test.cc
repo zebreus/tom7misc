@@ -115,6 +115,15 @@ static void Add8() {
     });
 }
 
+static void SignExtend() {
+  for (int i = 0; i < 256; i++) {
+    uint8 u = i;
+    uint16 uu = (int8)u;
+    Fluint16 f = Fluint16::SignExtend(Fluint8(u));
+
+    CHECK_EQ16(uu, f.ToInt());
+  }
+}
 
 static void Increment() {
   for (int i = 0; i < 65536; i++) {
@@ -124,8 +133,8 @@ static void Increment() {
 
       uint16_t ou = u++;
       Fluint16 of = f++;
-      CHECK_EQ(ou, of.ToInt());
-      CHECK_EQ(u, f.ToInt());
+      CHECK_EQ16(ou, of.ToInt());
+      CHECK_EQ16(u, f.ToInt());
     }
 
     {
@@ -134,8 +143,8 @@ static void Increment() {
 
       uint16_t ou = ++u;
       Fluint16 of = ++f;
-      CHECK_EQ(ou, of.ToInt());
-      CHECK_EQ(u, f.ToInt());
+      CHECK_EQ16(ou, of.ToInt());
+      CHECK_EQ16(u, f.ToInt());
     }
   }
 }
@@ -205,6 +214,7 @@ int main(int argc, char **argv) {
   Decrement(); printf("Decrement OK\n");
   Zero(); printf("Zero OK\n");
   Add8(); printf("Add8 OK\n");
+  SignExtend(); printf("SignExtend OK\n");
 
   printf("OK\n");
   return 0;

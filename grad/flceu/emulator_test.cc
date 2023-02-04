@@ -70,6 +70,9 @@ struct SerialResult {
   // Image checksum after further executing the "random" inputs.
   uint64 img_after_random = 0ULL;
 
+  uint64 mem_trace_fixed = 0ULL;
+  uint64 mem_trace_random = 0ULL;
+
   // Number of times each instruction was executed.
   int64_t instcounts[256] = {};
 };
@@ -296,6 +299,7 @@ static SerialResult RunGameSerially(
   for (uint8 b : game.start_inputs) SaveAndStep(b);
   res.nes_after_fixed = emu->MachineChecksum();
   res.img_after_fixed = emu->ImageChecksum();
+  res.mem_trace_fixed = emu->GetFC()->X->mem_trace;
 
   TRACEF("after_fixed %llu.", res.after_fixed);
 
@@ -309,7 +313,7 @@ static SerialResult RunGameSerially(
 
   res.nes_after_random = emu->MachineChecksum();
   res.img_after_random = emu->ImageChecksum();
-
+  res.mem_trace_random = emu->GetFC()->X->mem_trace;
 
   // Test replaying inputs at each save state, and verifying that
   // we get the same result as before.
@@ -400,6 +404,9 @@ static std::vector<TestCase> TestCases() {
                                    uint64 img_after_fixed,
                                    uint64 nes_after_random,
                                    uint64 img_after_random,
+                                   uint64 mem_trace_fixed,
+                                   uint64 mem_trace_random,
+
                                    uint8 input_mask = 0xFF) {
       TestCase tc;
       tc.game.cart = romdir + rom;
@@ -411,6 +418,9 @@ static std::vector<TestCase> TestCases() {
       tc.result.img_after_fixed = img_after_fixed;
       tc.result.nes_after_random = nes_after_random;
       tc.result.img_after_random = img_after_random;
+      tc.result.mem_trace_fixed = mem_trace_fixed;
+      tc.result.mem_trace_random = mem_trace_random;
+
       cases.push_back(std::move(tc));
     };
 
@@ -420,6 +430,7 @@ static std::vector<TestCase> TestCases() {
       "!102_5b4ba3a51_",
       0xb59675a9575ad9c2, 0x8cb8e7b965de27d6,
       0x033c42cd77af7d26, 0x0aa00a661d5bc9ba,
+      0x4390e3152ce3fe92, 0xeb44060aac2e3f5c,
       NO_PAUSE_MASK);
 
   AddCase(
@@ -436,6 +447,7 @@ static std::vector<TestCase> TestCases() {
       "68_", // game started by now
       0xa11f6d34392510df, 0x22e382001c8fa99b,
       0x2d191c6dc3fcfd72, 0x09cdab0e8108dab7,
+      0x1cbdb56a72ba01bc, 0xea68caaed889149f,
       NO_PAUSE_MASK);
 
   AddCase(
@@ -451,6 +463,7 @@ static std::vector<TestCase> TestCases() {
       "7r6rb37+a26rb28+a33rb7b,rb24+a18rb70b19rb15+a46rb50b93_",
       0xde47a8ba400f0420, 0x7effb50e22f4bb8c,
       0x789b062eb745727f, 0xb6074768f640fc4e,
+      0x2648704d8a22c5ea, 0x3f16586c315fcabc,
       NO_PAUSE_MASK);
 
   AddCase(
@@ -489,6 +502,7 @@ static std::vector<TestCase> TestCases() {
       "2-l,ba2+rd5rd,+b26b17_14b10ba2a159_",
       0xab5f0fedc68d6354, 0x9f4151c61deccf95,
       0xfbe6cd679a05a42c, 0x956efa919c1fcb69,
+      0x3ec3411d5a590984, 0x3e4300492808a8f8,
       NO_PAUSE_MASK);
 
   AddCase(
@@ -497,6 +511,7 @@ static std::vector<TestCase> TestCases() {
       "3r3_13rb415_28r24rb13r9_5r22ra12l15r17rb24r17l3_9r25rb14r26b390_29r,_",
       0x6b3c8af22f464f14, 0x4bf13ff46d43c815,
       0x4c618f04cbdf59c6, 0xd73856ca6cd981de,
+      0x9d75b35e5e0bd3b7, 0x91b12890bef243e0,
       NO_PAUSE_MASK);
 
   // MMC5 test
@@ -515,6 +530,7 @@ static std::vector<TestCase> TestCases() {
       "7_26d9db17d7da9d7da4d8da3d2ld110l,ld158d6rd30r",
       0x392a643312b7f66f, 0x2ae89b730620b17d,
       0x33c6e5b2559abb61, 0x303b5fbd8a88c4f3,
+      0x223c49b5a9282be9, 0x6363f00d7e2dcbc9,
       NO_PAUSE_MASK);
 
   AddCase(
@@ -524,6 +540,7 @@ static std::vector<TestCase> TestCases() {
       "390_29r,_",
       0x0955e79fac38b042, 0xcba13ce30d2f5a4c,
       0x0afefd76e33f7123, 0xf8394dea5122def9,
+      0x8c87523f7f9b040a, 0x9cabd90d7348894a,
       NO_PAUSE_MASK);
 
   // XXX Uses battery-backed NVROM. Do something more hygienic than simply
@@ -545,6 +562,7 @@ static std::vector<TestCase> TestCases() {
       "7ru2+b5rb2b27_2ub7+r10ru3r13_5b8rb27r2rb39b4rb23r5rd19d3rd81r8_",
       0x9ef660ec6d3a4c42, 0x90da26f8730019fb,
       0x32d697b5554ccc63, 0x50b382e337a460af,
+      0x985e0dab21b58994, 0x7e0e7518a1b90ea7,
       NO_PAUSE_MASK);
 
   AddCase(
@@ -558,6 +576,7 @@ static std::vector<TestCase> TestCases() {
       "273_8a9_7a129_8a56_6a29_9a57_8a237_",
       0x9ff8c5ca1ebbbd5d, 0x166819fb3a1bc9cc,
       0xb67b23f3a33b5620, 0xb7b133f2e76ce088,
+      0xa1bc9537e5f3a442, 0x6d97a0e232c9e4cf,
       NO_PAUSE_MASK);
 
   AddCase(
@@ -572,6 +591,7 @@ static std::vector<TestCase> TestCases() {
       "7u31ru12u9ua14u9ua9u7ua7u6ua7u5ua6u5ua4u28lu43u16ru62u",
       0x6abe54e2d227b454, 0xd6416a3a2bf5a5a2,
       0x3a7901c4a2842be5, 0x931aef0b84808308,
+      0xe7b9994c808f06ea, 0xe8d173c6df9b7b81,
       NO_PAUSE_MASK);
 
   AddCase(
@@ -591,6 +611,7 @@ static std::vector<TestCase> TestCases() {
       "11a8_22a6_12a37_9d36_26a6_8d7_17a21_14t99_16r74_",
       0xc702457b07a89ece, 0x7f9abbd10051bf40,
       0x45ccd952861d5ad8, 0x6402da4519e800dc,
+      0xb926fe8c7e89d023, 0x0f8ca9c6ffbbc668,
       NO_PAUSE_MASK);
 
   return cases;
@@ -620,7 +641,9 @@ int main(int argc, char **argv) {
       result.nes_after_fixed == tc.result.nes_after_fixed &&
       result.img_after_fixed == tc.result.img_after_fixed &&
       result.nes_after_random == tc.result.nes_after_random &&
-      result.img_after_random == tc.result.img_after_random;
+      result.img_after_random == tc.result.img_after_random &&
+      result.mem_trace_fixed == tc.result.mem_trace_fixed &&
+      result.mem_trace_random == tc.result.mem_trace_random;
     if (is_correct)  {
       correct++;
       printf("%s [%.2fs]: correct!\n", tc.game.cart.c_str(),
@@ -629,7 +652,9 @@ int main(int argc, char **argv) {
       printf("%s [%.2fs]:\n"
              "      0x%016llx, 0x%016llx,\n"
              "      0x%016llx, 0x%016llx,\n"
+             "      0x%016llx, 0x%016llx,\n"
              "but wanted\n"
+             "      0x%016llx, 0x%016llx,\n"
              "      0x%016llx, 0x%016llx,\n"
              "      0x%016llx, 0x%016llx,\n",
              tc.game.cart.c_str(),
@@ -638,11 +663,15 @@ int main(int argc, char **argv) {
              result.img_after_fixed,
              result.nes_after_random,
              result.img_after_random,
+             result.mem_trace_fixed,
+             result.mem_trace_random,
 
              tc.result.nes_after_fixed,
              tc.result.img_after_fixed,
              tc.result.nes_after_random,
-             tc.result.img_after_random);
+             tc.result.img_after_random,
+             tc.result.mem_trace_fixed,
+             tc.result.mem_trace_random);
       CHECK(false);
     }
 

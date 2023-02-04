@@ -28,10 +28,6 @@
 #define ROMDIR "../../fceulib/roms/"
 static constexpr const char *ROMFILE = ROMDIR "mario.nes";
 
-// mario-long.fm7
-// static constexpr uint64 expected_nes = 0x0c8abfc012bf6c84ULL;
-// static constexpr uint64 expected_img = 0x9c8975828c9578a7ULL;
-
 // Beats Mario 1-1.
 static constexpr const char *MOVIE =
   "!14_6t5_4t3_3t6_4t2_3t4_3t11_,b7rb4b228rb21+a21rb3+a37rb45+a20rb"
@@ -116,8 +112,6 @@ int main(int argc, char **argv) {
          date, desc.c_str());
 
   Timer warm_timer;
-  Fluint8::Warm();
-  const double warm_seconds = warm_timer.Seconds();
 
   Timer startup_timer;
   // TODO: This is not really fair since it counts all the IO.
@@ -190,10 +184,9 @@ int main(int argc, char **argv) {
           img_checksum);
 
   fprintf(stderr,
-          "Warmup time:  %.4fs\n"
           "Startup time: %.4fs\n"
           "Exec time:    %.4fs\n",
-          warm_seconds, startup_seconds, exec_seconds);
+          startup_seconds, exec_seconds);
 
   const int64 cheats = Fluint8::NumCheats();
   const double cpr = (double)cheats / (double)executions;
@@ -222,7 +215,9 @@ int main(int argc, char **argv) {
     fprintf(f, "%s,%s,%.4f,%.4f,%.4f,%lld,%.4f,%s\n",
             date,
             status ? "FAIL" : "OK",
-            warm_seconds, startup_seconds, exec_seconds,
+            // was warm_time
+            0.0,
+            startup_seconds, exec_seconds,
             cheats, cpr, desc.c_str());
     fclose(f);
   }

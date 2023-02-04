@@ -46,10 +46,6 @@ struct X6502 {
   /* Temporary cycle counter */
   int32 tcount;
 
-  /* I'll change this to uint32 later...
-     I'll need to AND PC after increments to 0xFFFF
-     when I do, though.  Perhaps an IPC() macro? */
-
   // XXX make sure if you change something you also change its
   // size in state.cc.
 
@@ -123,25 +119,23 @@ struct X6502 {
 
 private:
   inline void PUSH(Fluint8 v) {
-    WrRAM(0x100 + reg_S.ToInt(), v.ToInt());
+    WrRAM(Fluint16(0x100) + reg_S, v);
     reg_S--;
   }
 
   inline void PUSH16(Fluint16 vv) {
-    WrRAM(0x100 + reg_S.ToInt(), vv.Hi().ToInt());
-    reg_S--;
-    WrRAM(0x100 + reg_S.ToInt(), vv.Lo().ToInt());
-    reg_S--;
+    PUSH(vv.Hi());
+    PUSH(vv.Lo());
   }
 
-  // XXX Fluint8
-  inline uint8 POP() {
-    return RdRAM(0x100 + (++reg_S).ToInt());
+  inline Fluint8 POP() {
+    reg_S++;
+    return RdRAM(Fluint16(0x100) + reg_S);
   }
 
   inline Fluint16 POP16() {
-    Fluint8 lo(POP());
-    Fluint8 hi(POP());
+    Fluint8 lo = POP();
+    Fluint8 hi = POP();
     return Fluint16(hi, lo);
   }
 
@@ -182,8 +176,7 @@ private:
   /* Absolute Indexed (for writes and rmws) */
   Fluint16 GetABIWR(Fluint8 i) {
     Fluint16 rt = GetAB();
-    Fluint16 target = rt;
-    target += Fluint16(i);
+    Fluint16 target = rt + i;
     (void)RdMem((target & Fluint16(0x00FF)) | (rt & Fluint16(0xFF00)));
     return target;
   }
@@ -191,10 +184,13 @@ private:
   /* Absolute Indexed (for reads) */
   Fluint16 GetABIRD(Fluint8 i) {
     Fluint16 tmp = GetAB();
-    Fluint16 ret = tmp + Fluint16(i);
+    Fluint16 ret = tmp + i;
+    Fluint8 cc = Fluint16::RightShift<8>((ret ^ tmp) & Fluint16(0x100)).Lo();
+    (void)RdMemIf(cc, ret ^ Fluint16(0x100));
+
+    // XXX is cycle count in scope?
     Fluint8::Cheat();
-    if (Fluint16::RightShift<8>((ret ^ tmp) & Fluint16(0x100)).ToInt()) {
-      (void)RdMem(ret ^ Fluint16(0x100));
+    if (cc.ToInt() == 0x01) {
       ADDCYC(1);
     }
     return ret;
@@ -207,10 +203,13 @@ private:
     Fluint8 lo = RdRAM(Fluint16(tmp));
     Fluint8 hi = RdRAM(Fluint16(tmp + Fluint8(1)));
     Fluint16 rt(hi, lo);
-    Fluint16 ret = rt + Fluint16(reg_Y);
+    Fluint16 ret = rt + reg_Y;
+    Fluint8 cc = Fluint16::RightShift<8>((ret ^ rt) & Fluint16(0x100)).Lo();
+    (void)RdMemIf(cc, ret ^ Fluint16(0x100));
+
+    // XXX is cycle count in scope?
     Fluint8::Cheat();
-    if (Fluint16::RightShift<8>((ret ^ rt) & Fluint16(0x100)).ToInt()) {
-      (void)RdMem(ret ^ Fluint16(0x100));
+    if (cc.ToInt() == 0x01) {
       ADDCYC(1);
     }
     return ret;
@@ -221,11 +220,10 @@ private:
   Fluint16 GetIYWR() {
     Fluint8 tmp(RdMem(reg_PC));
     reg_PC++;
-    Fluint8 lo(RdRAM(Fluint16(tmp)));
-    Fluint8 hi(RdRAM(Fluint16(tmp + Fluint8(0x01))));
+    Fluint8 lo = RdRAM(Fluint16(tmp));
+    Fluint8 hi = RdRAM(Fluint16(tmp + Fluint8(0x01)));
     Fluint16 rt(hi, lo);
-    // PERF directly add Fluint8
-    Fluint16 ret = rt + Fluint16(reg_Y);
+    Fluint16 ret = rt + reg_Y;
     (void)RdMem((ret & Fluint16(0x00FF)) | (rt & Fluint16(0xFF00)));
     return ret;
   }
@@ -307,20 +305,16 @@ private:
       uint8_t cc = cond.ToInt();
       CHECK(cc == 0 || cc == 1) << cc;
     }
+
+    // TODO: Do this without branching!
     Fluint8::Cheat();
     if (cond.ToInt()) {
-      Fluint8::Cheat();
-      int32 disp = (int8)RdMem(reg_PC).ToInt();
+      // This is treated as signed.
+      Fluint8 disp = RdMem(reg_PC);
       reg_PC++;
       ADDCYC(1);
       Fluint16 tmp = reg_PC;
-      // Need signed addition
-      Fluint8::Cheat();
-      if (disp < 0) {
-        reg_PC -= Fluint16(-disp);
-      } else {
-        reg_PC += Fluint16(disp);
-      }
+      reg_PC += Fluint16::SignExtend(disp);
 
       Fluint8::Cheat();
       if (Fluint16::IsntZero((tmp ^ reg_PC) & Fluint16(0x100)).ToInt()) {
@@ -531,9 +525,20 @@ private:
   // of these to make sure we're not dropping or reordering them
   // (which often does not matter to games, but could).
   inline Fluint8 RdMem(Fluint16 A) {
-    uint16_t AA = A.ToInt();
-    TraceRead(AA);
-    return Fluint8(DB = fc->fceu->ARead[AA](fc, AA));
+    return RdMemIf(Fluint8(0x01), A);
+  }
+
+  inline Fluint8 RdMemIf(Fluint8 cond, Fluint16 A) {
+    const uint8_t cc = cond.ToInt();
+    CHECK(cc == 0x00 || cc == 0x01) << cc;
+    if (cond.ToInt() == 0x01) {
+      uint16_t AA = A.ToInt();
+      TraceRead(AA);
+      return Fluint8(DB = fc->fceu->ARead[AA](fc, AA));
+    } else {
+      // Arbitrary
+      return Fluint8(0x00);
+    }
   }
 
   // normal memory write
@@ -544,16 +549,8 @@ private:
     fc->fceu->BWrite[AA](fc, AA, VV);
   }
 
-  inline uint8 RdRAM(unsigned int A) {
-    return (DB = fc->fceu->RAM[A]);
-  }
-
   inline Fluint8 RdRAM(Fluint16 A) {
     return Fluint8(DB = fc->fceu->RAM[A.ToInt()]);
-  }
-
-  inline void WrRAM(unsigned int A, uint8 V) {
-    fc->fceu->RAM[A] = V;
   }
 
   inline void WrRAM(Fluint16 A, Fluint8 V) {

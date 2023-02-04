@@ -18,16 +18,19 @@ struct Fluint8 {
   explicit constexpr Fluint8(uint8_t b) : b(b) {}
   uint8_t ToInt() const { return b; }
 
-  // TODO: This should not be supported; instead we want like ?:
-  bool operator !() const {
-    Cheat();
-    return ToInt() == 0;
-  }
-
   constexpr Fluint8() : b(0) {}
   Fluint8(Fluint8 &&other) = default;
   Fluint8(const Fluint8 &other) = default;
   constexpr Fluint8 &operator =(const Fluint8 &) = default;
+
+  static Fluint8 IsZero(Fluint8 a) {
+    Cheat();
+    return Fluint8(a.b ? 0x00 : 0x01);
+  }
+  static Fluint8 IsntZero(Fluint8 a) {
+    Cheat();
+    return Fluint8(a.b ? 0x01 : 0x00);
+  }
 
   static Fluint8 Plus(Fluint8 a, Fluint8 b) {
     Cheat();
@@ -58,6 +61,16 @@ struct Fluint8 {
     return BitwiseAnd(a, Fluint8(B));
   }
 
+  template<uint8_t B>
+  static Fluint8 OrWith(Fluint8 a) {
+    return BitwiseOr(a, Fluint8(B));
+  }
+
+  template<uint8_t B>
+  static Fluint8 XorWith(Fluint8 a) {
+    return BitwiseXor(a, Fluint8(B));
+  }
+
   // Left shift by a compile-time constant.
   template<size_t n>
   static Fluint8 LeftShift(Fluint8 x) {
@@ -74,6 +87,30 @@ struct Fluint8 {
     return RightShift<1>(x);
   }
 
+  static Fluint8 LeftShift1Under128(Fluint8 x) {
+    return LeftShift<1>(x);
+  }
+
+  static Fluint8 PlusNoOverflow(Fluint8 a, Fluint8 b) {
+    return Plus(a, b);
+  }
+
+  static std::pair<Fluint8, Fluint8> AddWithCarry(Fluint8 a, Fluint8 b) {
+    uint32_t aa = a.b, bb = b.b;
+    uint32_t cc = aa + bb;
+    Cheat();
+    return make_pair(Fluint8((cc & 0x100) ? 0x01 : 0x00),
+                     Fluint8(cc & 0xFF));
+  }
+
+  static std::pair<Fluint8, Fluint8> SubtractWithCarry(Fluint8 a, Fluint8 b) {
+    uint32_t aa = a.b, bb = b.b;
+    uint32_t cc = aa - bb;
+    Cheat();
+    return make_pair(Fluint8((cc & 0x100) ? 0x01 : 0x00),
+                     Fluint8(cc & 0xFF));
+  }
+
   // For testing.
   uint16_t Representation() const { return b; }
 
@@ -82,9 +119,6 @@ struct Fluint8 {
   static void Cheat() { num_cheats++; }
   static int64_t NumCheats() { return num_cheats; }
   static void ClearCheats() { num_cheats = 0; }
-
-  // XXX delete
-  static void Warm() {}
 
  private:
 
@@ -130,6 +164,12 @@ struct Fluint8 {
   static Fluint8 IsZero(Fluint8 a);
   // Same as !!
   static Fluint8 IsntZero(Fluint8 a);
+
+  // For cc = 0x01 or 0x00 (only), returns c ? t : 0.
+  static Fluint8 If(Fluint8 cc, Fluint8 t);
+
+  // For cc = 0x01 or 0x00 (only), returns c ? t : f.
+  static Fluint8 IfElse(Fluint8 cc, Fluint8 t, Fluint8 f);
 
   // With a compile-time constant, which is very common, and
   // can be done much faster.

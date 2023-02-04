@@ -77,3 +77,18 @@ Fluint8 Fluint16::IsntZero(Fluint16 a) {
   // PERF could be faster since we know it's just one bit
   return hz | lz;
 }
+
+Fluint16 Fluint16::SignExtend(Fluint8 a) {
+  // Either 0x80 or 0.
+  Fluint8 sign = Fluint8::AndWith<0x80>(a);
+  // Spread the bit to all bits.
+  // 1100000
+  sign |= Fluint8::RightShift<1>(sign);
+  // 1111000
+  sign = Fluint8::PlusNoOverflow(sign, Fluint8::RightShift<2>(sign));
+  // 1111111
+  sign = Fluint8::PlusNoOverflow(sign, Fluint8::RightShift<4>(sign));
+  CHECK(sign.ToInt() == 0xFF || sign.ToInt() == 0x00);
+
+  return Fluint16(sign, a);
+}

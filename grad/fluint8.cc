@@ -188,10 +188,35 @@ Fluint8 Fluint8::IsZero(Fluint8 a) {
   return Fluint8(1.0_h - IsntZero(a).h);
 }
 
-// XXX this is probably unnecessary now
-void Fluint8::Warm() {
-  (void)Fluint8::Plus(Fluint8(1), Fluint8(2));
-  (void)Fluint8::Minus(Fluint8(3), Fluint8(4));
+// For cc = 0x01 or 0x00 (only), returns c ? t : 0.
+Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
+  // Could do this by spreading the cc to 0xFF or 0x00 and
+  // using AND, but it is faster to just keep consulting the
+  // ones place of cc.
+
+  half kept = (half)0.0f;
+  Fluint8 tt = t;
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    // Low order bit as a - ((a >> 1) << 1)
+    Fluint8 ttshift = RightShift1(tt);
+    half t_bit = tt.h - LeftShift1Under128(ttshift).h;
+    const half scale = (half)(1 << bit_idx);
+
+    const half and_bits = RightShiftHalf1(t_bit + cc.h);
+    kept += scale * and_bits;
+
+    // and keep shifting down
+    tt = ttshift;
+  }
+
+  return Fluint8(kept);
 }
+
+// For cc = 0x01 or 0x00 (only), returns c ? t : f.
+Fluint8 Fluint8::IfElse(Fluint8 cc, Fluint8 t, Fluint8 f) {
+  // PERF probably can be faster to do this directly?
+  return PlusNoOverflow(If(cc, t), If(XorWith<0x01>(cc), f));
+}
+
 
 #endif

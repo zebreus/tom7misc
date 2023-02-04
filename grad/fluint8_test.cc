@@ -470,6 +470,40 @@ static void TestIsntZero() {
       });
 }
 
+static void TestIf() {
+  ForAll(
+      [](uint8 x, Fluint8 xf) {
+        {
+          Fluint8 zf = Fluint8::If(Fluint8(0x01), xf);
+          CHECK(x == zf.ToInt());
+          CHECK_CANONICAL("if-true", zf, x, x);
+        }
+        {
+          Fluint8 zf = Fluint8::If(Fluint8(0x00), xf);
+          CHECK(0 == zf.ToInt());
+          CHECK_CANONICAL("if-false", zf, x, x);
+        }
+      });
+}
+
+static void TestIfElse() {
+  ForAllPairs(
+      [](uint8 x, uint8 y,
+         Fluint8 xf, Fluint8 yf) {
+        {
+          Fluint8 zf = Fluint8::IfElse(Fluint8(0x01), xf, yf);
+          CHECK(x == zf.ToInt());
+          CHECK_CANONICAL("ifelse-true", zf, x, y);
+        }
+        {
+          Fluint8 zf = Fluint8::IfElse(Fluint8(0x00), xf, yf);
+          CHECK(y == zf.ToInt());
+          CHECK_CANONICAL("ifelse-false", zf, x, y);
+        }
+      });
+}
+
+
 int main(int argc, char **argv) {
   // Gen16();
 
@@ -505,6 +539,9 @@ int main(int argc, char **argv) {
 
   TestLeftShifts(); printf("LeftShifts OK\n");
   TestRightShifts(); printf("RightShifts OK\n");
+
+  TestIf(); printf("If OK\n");
+  TestIfElse(); printf("IfElse OK\n");
 
   printf("OK\n");
   return 0;
