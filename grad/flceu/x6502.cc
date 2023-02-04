@@ -40,10 +40,6 @@ void X6502::DMW(uint32 A, uint8 V) {
   fc->fceu->BWrite[A](fc, A, V);
 }
 
-#define CMP CMPL(reg_A, x)
-#define CPX CMPL(reg_X, x)
-#define CPY CMPL(reg_Y, x)
-
 /* The following operations modify the byte being worked on. */
 #define DEC \
   x--;      \
@@ -52,25 +48,6 @@ void X6502::DMW(uint32 A, uint8 V) {
   x++;      \
   X_ZN(x)
 
-#define ROL                                \
-  {                                        \
-    Fluint8 l = Fluint8::RightShift<7>(x);   \
-    x = Fluint8::LeftShift<1>(x);          \
-    x |= Fluint8::AndWith<C_FLAG8>(reg_P);  \
-    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P); \
-    reg_P |= l;                            \
-    X_ZNT(x);                              \
-  }
-
-#define ROR                                     \
-  {                                             \
-    Fluint8 l = Fluint8::AndWith<1>(x);  \
-    x = Fluint8::RightShift<1>(x);              \
-    x |= Fluint8::LeftShift<7>(Fluint8::AndWith<C_FLAG8>(reg_P));        \
-    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P); \
-    reg_P |= l;                                 \
-    X_ZNT(x);                                   \
-  }
 
 /* Now come the macros to wrap up all of the above stuff addressing
    mode functions and operation macros. Note that operation macros
@@ -86,7 +63,7 @@ void X6502::DMW(uint32 A, uint8 V) {
   }
 #define RMW_AB(op)           \
   {                          \
-    Fluint16 AA = GetAB();   \
+    const Fluint16 AA = GetAB();                \
     Fluint8 x(RdMem(AA));    \
     WrMem(AA, x);            \
     op;                      \
@@ -96,7 +73,7 @@ void X6502::DMW(uint32 A, uint8 V) {
 
 #define RMW_ABI(reg, op)         \
   {                              \
-    Fluint16 AA(GetABIWR(reg));  \
+    const Fluint16 AA = GetABIWR(reg);  \
     Fluint8 x(RdMem(AA));        \
     WrMem(AA, x);                \
     op;                          \
@@ -105,36 +82,36 @@ void X6502::DMW(uint32 A, uint8 V) {
   }
 #define RMW_ABX(op) RMW_ABI(reg_X, op)
 #define RMW_ABY(op) RMW_ABI(reg_Y, op)
-#define RMW_IX(op)           \
-  {                          \
-    Fluint16 AA = GetIX();    \
-    Fluint8 x(RdMem(AA));    \
-    WrMem(AA, x);            \
-    op;                      \
-    WrMem(AA, x);            \
-    break;                   \
+#define RMW_IX(op)                  \
+  {                                 \
+    const Fluint16 AA = GetIX();    \
+    Fluint8 x(RdMem(AA));           \
+    WrMem(AA, x);                   \
+    op;                             \
+    WrMem(AA, x);                   \
+    break;                          \
   }
-#define RMW_IY(op)           \
-  {                          \
-    (void)GetIX();           \
-    Fluint16 AA = GetIYWR(); \
-    Fluint8 x(RdMem(AA));    \
-    WrMem(AA, x);            \
-    op;                      \
-    WrMem(AA, x);            \
-    break;                   \
+#define RMW_IY(op)                 \
+  {                                \
+    (void)GetIX();                 \
+    const Fluint16 AA = GetIYWR(); \
+    Fluint8 x(RdMem(AA));          \
+    WrMem(AA, x);                  \
+    op;                            \
+    WrMem(AA, x);                  \
+    break;                         \
   }
-#define RMW_ZP(op)         \
-  {                        \
-    Fluint16 AA(GetZP());  \
-    Fluint8 x = RdRAM(AA); \
-    op;                    \
-    WrRAM(AA, x);          \
-    break;                 \
+#define RMW_ZP(op)               \
+  {                              \
+    const Fluint16 AA(GetZP());  \
+    Fluint8 x = RdRAM(AA);       \
+    op;                          \
+    WrRAM(AA, x);                \
+    break;                       \
   }
 #define RMW_ZPX(op)                             \
   {                                             \
-    Fluint16 AA(GetZPI(reg_X));                 \
+    const Fluint16 AA(GetZPI(reg_X));           \
     Fluint8 x = RdRAM(AA);                      \
     op;                                         \
     WrRAM(AA, x);                               \
@@ -149,31 +126,31 @@ void X6502::DMW(uint32 A, uint8 V) {
     break;                     \
   }
 
-#define LD_ZP(op)                        \
-  {                                      \
-    Fluint16 AA(GetZP());                \
-    Fluint8 x = RdRAM(AA);               \
-    op;                                  \
-    break;                               \
+#define LD_ZP(op)                              \
+  {                                            \
+    const Fluint16 AA(GetZP());                \
+    Fluint8 x = RdRAM(AA);                     \
+    op;                                        \
+    break;                                     \
   }
-#define LD_ZPX(op)                       \
-  {                                      \
-    Fluint16 AA(GetZPI(reg_X));          \
-    Fluint8 x = RdRAM(AA);               \
-    op;                                  \
-    break;                               \
+#define LD_ZPX(op)                             \
+  {                                            \
+    const Fluint16 AA(GetZPI(reg_X));          \
+    Fluint8 x = RdRAM(AA);                     \
+    op;                                        \
+    break;                                     \
   }
 
-#define LD_ZPY(op)                   \
-  {                                  \
-    Fluint16 AA(GetZPI(reg_Y));      \
-    Fluint8 x = RdRAM(AA);           \
-    op;                              \
-    break;                           \
+#define LD_ZPY(op)                         \
+  {                                        \
+    const Fluint16 AA(GetZPI(reg_Y));      \
+    Fluint8 x = RdRAM(AA);                 \
+    op;                                    \
+    break;                                 \
   }
 #define LD_AB(op)           \
   {                         \
-    Fluint16 AA = GetAB();  \
+    const Fluint16 AA = GetAB();  \
     Fluint8 x = RdMem(AA);  \
     (void) x;               \
     op;                     \
@@ -182,7 +159,7 @@ void X6502::DMW(uint32 A, uint8 V) {
 
 #define LD_ABI(reg, op)             \
   {                                 \
-    Fluint16 AA(GetABIRD(reg));     \
+    Fluint16 AA = GetABIRD(reg);    \
     Fluint8 x = RdMem(AA);          \
     (void) x;                       \
     op;                             \
@@ -192,14 +169,14 @@ void X6502::DMW(uint32 A, uint8 V) {
 #define LD_ABY(op) LD_ABI(reg_Y, op)
 #define LD_IX(op)            \
   {                          \
-    Fluint16 AA = GetIX();   \
+    const Fluint16 AA = GetIX();   \
     Fluint8 x = RdMem(AA);   \
     op;                      \
     break;                   \
   }
 #define LD_IY(op)            \
   {                          \
-    Fluint16 AA(GetIYRD());  \
+    const Fluint16 AA = GetIYRD(); \
     Fluint8 x = RdMem(AA);   \
     op;                      \
     break;                   \
@@ -305,7 +282,7 @@ void X6502::RunLoop() {
       } else if (IRQlow & FCEU_IQNMI) {
         if (!jammed) {
           ADDCYC(7);
-          PUSH16(reg_PC);
+          PUSH16(Fluint16(reg_PC));
           const Fluint8 pnb = Fluint8::AndWith<(uint8_t)~B_FLAG8>(reg_P);
           PUSH(Fluint8::OrWith<U_FLAG8>(pnb));
           reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
@@ -317,7 +294,7 @@ void X6502::RunLoop() {
         const Fluint8 fpi = Fluint8::AndWith<I_FLAG8>(reg_PI);
         if (fpi.ToInt() == 0 && !jammed) {
           ADDCYC(7);
-          PUSH16(reg_PC);
+          PUSH16(Fluint16(reg_PC));
           const Fluint8 pnb = Fluint8::AndWith<(uint8_t)~B_FLAG8>(reg_P);
           PUSH(Fluint8::OrWith<U_FLAG8>(pnb));
           reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
@@ -367,7 +344,7 @@ void X6502::RunLoop() {
     switch (b1) {
       case 0x00: /* BRK */
         reg_PC++;
-        PUSH16(reg_PC);
+        PUSH16(Fluint16(reg_PC));
         PUSH(Fluint8::OrWith<(uint8_t)(U_FLAG8 | B_FLAG8)>(reg_P));
         reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
         reg_PI = Fluint8::OrWith<I_FLAG8>(reg_PI);
@@ -379,11 +356,11 @@ void X6502::RunLoop() {
         reg_P = Fluint8(POP());
         /* reg_PI=reg_P; This is probably incorrect, so it's commented out. */
         reg_PI = reg_P;
-        reg_PC = POP16();
+        reg_PC = POP16().ToInt();
         break;
 
       case 0x60: /* RTS */
-        reg_PC = POP16();
+        reg_PC = POP16().ToInt();
         reg_PC++;
         break;
 
@@ -431,8 +408,7 @@ void X6502::RunLoop() {
         Fluint16 opc(reg_PC);
         Fluint16 opc1 = opc + Fluint16(0x01);
         Fluint8 lo = RdMem(opc);
-        Fluint8::Cheat(); // XXX native PUSH16
-        PUSH16(opc1.ToInt());
+        PUSH16(opc1);
         Fluint8 hi = RdMem(opc1);
         Fluint8::Cheat();
         reg_PC = Fluint16(hi, lo).ToInt();
@@ -531,17 +507,17 @@ void X6502::RunLoop() {
       case 0x4E: RMW_AB(x = LSR(x));
       case 0x5E: RMW_ABX(x = LSR(x));
 
-      case 0x2A: RMW_A(ROL);
-      case 0x26: RMW_ZP(ROL);
-      case 0x36: RMW_ZPX(ROL);
-      case 0x2E: RMW_AB(ROL);
-      case 0x3E: RMW_ABX(ROL);
+      case 0x2A: RMW_A(x = ROL(x));
+      case 0x26: RMW_ZP(x = ROL(x));
+      case 0x36: RMW_ZPX(x = ROL(x));
+      case 0x2E: RMW_AB(x = ROL(x));
+      case 0x3E: RMW_ABX(x = ROL(x));
 
-      case 0x6A: RMW_A(ROR);
-      case 0x66: RMW_ZP(ROR);
-      case 0x76: RMW_ZPX(ROR);
-      case 0x6E: RMW_AB(ROR);
-      case 0x7E: RMW_ABX(ROR);
+      case 0x6A: RMW_A(x = ROR(x););
+      case 0x66: RMW_ZP(x = ROR(x););
+      case 0x76: RMW_ZPX(x = ROR(x););
+      case 0x6E: RMW_AB(x = ROR(x););
+      case 0x7E: RMW_ABX(x = ROR(x););
 
       case 0x69: LD_IM(ADC(x));
       case 0x65: LD_ZP(ADC(x));
@@ -565,22 +541,22 @@ void X6502::RunLoop() {
       case 0x2C: LD_AB(BIT(x));
 
 
-      case 0xC9: LD_IM(CMP);
-      case 0xC5: LD_ZP(CMP);
-      case 0xD5: LD_ZPX(CMP);
-      case 0xCD: LD_AB(CMP);
-      case 0xDD: LD_ABX(CMP);
-      case 0xD9: LD_ABY(CMP);
-      case 0xC1: LD_IX(CMP);
-      case 0xD1: LD_IY(CMP);
+      case 0xC9: LD_IM(CMPL(reg_A, x));
+      case 0xC5: LD_ZP(CMPL(reg_A, x));
+      case 0xD5: LD_ZPX(CMPL(reg_A, x));
+      case 0xCD: LD_AB(CMPL(reg_A, x));
+      case 0xDD: LD_ABX(CMPL(reg_A, x));
+      case 0xD9: LD_ABY(CMPL(reg_A, x));
+      case 0xC1: LD_IX(CMPL(reg_A, x));
+      case 0xD1: LD_IY(CMPL(reg_A, x));
 
-      case 0xE0: LD_IM(CPX);
-      case 0xE4: LD_ZP(CPX);
-      case 0xEC: LD_AB(CPX);
+      case 0xE0: LD_IM(CMPL(reg_X, x));
+      case 0xE4: LD_ZP(CMPL(reg_X, x));
+      case 0xEC: LD_AB(CMPL(reg_X, x));
 
-      case 0xC0: LD_IM(CPY);
-      case 0xC4: LD_ZP(CPY);
-      case 0xCC: LD_AB(CPY);
+      case 0xC0: LD_IM(CMPL(reg_Y, x));
+      case 0xC4: LD_ZP(CMPL(reg_Y, x));
+      case 0xCC: LD_AB(CMPL(reg_Y, x));
 
       case 0x49: LD_IM(EOR(x));
       case 0x45: LD_ZP(EOR(x));
@@ -744,13 +720,13 @@ void X6502::RunLoop() {
         LD_IM(AXS(x));
 
       /* DCP */
-      case 0xC7: RMW_ZP(DEC; CMP);
-      case 0xD7: RMW_ZPX(DEC; CMP);
-      case 0xCF: RMW_AB(DEC; CMP);
-      case 0xDF: RMW_ABX(DEC; CMP);
-      case 0xDB: RMW_ABY(DEC; CMP);
-      case 0xC3: RMW_IX(DEC; CMP);
-      case 0xD3: RMW_IY(DEC; CMP);
+      case 0xC7: RMW_ZP(DEC; CMPL(reg_A, x));
+      case 0xD7: RMW_ZPX(DEC; CMPL(reg_A, x));
+      case 0xCF: RMW_AB(DEC; CMPL(reg_A, x));
+      case 0xDF: RMW_ABX(DEC; CMPL(reg_A, x));
+      case 0xDB: RMW_ABY(DEC; CMPL(reg_A, x));
+      case 0xC3: RMW_IX(DEC; CMPL(reg_A, x));
+      case 0xD3: RMW_IY(DEC; CMPL(reg_A, x));
 
       /* ISB */
       case 0xE7: RMW_ZP(INC; SBC(x));
@@ -819,22 +795,22 @@ void X6502::RunLoop() {
         break;
 
       /* RLA */
-      case 0x27: RMW_ZP(ROL; AND(x));
-      case 0x37: RMW_ZPX(ROL; AND(x));
-      case 0x2F: RMW_AB(ROL; AND(x));
-      case 0x3F: RMW_ABX(ROL; AND(x));
-      case 0x3B: RMW_ABY(ROL; AND(x));
-      case 0x23: RMW_IX(ROL; AND(x));
-      case 0x33: RMW_IY(ROL; AND(x));
+      case 0x27: RMW_ZP(x = ROL(x); AND(x));
+      case 0x37: RMW_ZPX(x = ROL(x); AND(x));
+      case 0x2F: RMW_AB(x = ROL(x); AND(x));
+      case 0x3F: RMW_ABX(x = ROL(x); AND(x));
+      case 0x3B: RMW_ABY(x = ROL(x); AND(x));
+      case 0x23: RMW_IX(x = ROL(x); AND(x));
+      case 0x33: RMW_IY(x = ROL(x); AND(x));
 
       /* RRA */
-      case 0x67: RMW_ZP(ROR; ADC(x));
-      case 0x77: RMW_ZPX(ROR; ADC(x));
-      case 0x6F: RMW_AB(ROR; ADC(x));
-      case 0x7F: RMW_ABX(ROR; ADC(x));
-      case 0x7B: RMW_ABY(ROR; ADC(x));
-      case 0x63: RMW_IX(ROR; ADC(x));
-      case 0x73: RMW_IY(ROR; ADC(x));
+      case 0x67: RMW_ZP(x = ROR(x); ADC(x));
+      case 0x77: RMW_ZPX(x = ROR(x); ADC(x));
+      case 0x6F: RMW_AB(x = ROR(x); ADC(x));
+      case 0x7F: RMW_ABX(x = ROR(x); ADC(x));
+      case 0x7B: RMW_ABY(x = ROR(x); ADC(x));
+      case 0x63: RMW_IX(x = ROR(x); ADC(x));
+      case 0x73: RMW_IY(x = ROR(x); ADC(x));
 
       /* SLO */
       case 0x07: RMW_ZP(x = ASL(x); ORA(x));

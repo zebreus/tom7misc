@@ -334,7 +334,7 @@ void State::AddExStateReal(void *v, uint32 s, int type, SKEY desc,
 State::State(FC *fc) :
   fc(fc),
   sfcpu({
-      {&fc->X->reg_PC, 2 | FCEUSTATE_RLSB, "rgPC"},
+      {&fc->X->reg_PC, sizeof fc->X->reg_PC | FCEUSTATE_RLSB, "rgPC"},
       {&fc->X->reg_A, sizeof fc->X->reg_A, "regA"},
       {&fc->X->reg_P, sizeof fc->X->reg_P, "regP"},
       {&fc->X->reg_X, sizeof fc->X->reg_X, "regX"},

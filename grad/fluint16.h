@@ -38,9 +38,9 @@ struct Fluint16 {
   static Fluint16 BitwiseOr(Fluint16 a, Fluint16 b);
 
   // a.k.a. !, this returns (a == 0) ? 1 : 0.
-  // static Fluint16 IsZero(Fluint16 a);
+  static Fluint8 IsZero(Fluint16 a);
   // Same as !!
-  // static Fluint16 IsntZero(Fluint16 a);
+  static Fluint8 IsntZero(Fluint16 a);
 
   // Left shift by a compile-time constant.
   template<size_t n>

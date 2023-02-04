@@ -150,6 +150,23 @@ static void Decrement() {
   }
 }
 
+static void Zero() {
+  for (int i = 0; i < 65536; i++) {
+    {
+      uint16_t u = i;
+      Fluint16 f(u);
+
+      Fluint8 z = Fluint16::IsZero(f);
+      Fluint8 nz = Fluint16::IsntZero(f);
+      CHECK(z.ToInt() != nz.ToInt());
+      CHECK(z.ToInt() <= 1);
+      CHECK(nz.ToInt() <= 1);
+      if (u) CHECK(nz.ToInt() == 1);
+      else CHECK(z.ToInt() == 1);
+    }
+  }
+}
+
 
 int main(int argc, char **argv) {
 
@@ -160,6 +177,7 @@ int main(int argc, char **argv) {
   Increment(); printf("Increment OK\n");
   Subtraction(); printf("Subtraction OK\n");
   Decrement(); printf("Decrement OK\n");
+  Zero(); printf("Zero OK\n");
 
   printf("OK\n");
   return 0;

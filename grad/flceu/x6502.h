@@ -106,10 +106,10 @@ private:
     reg_S--;
   }
 
-  inline void PUSH16(uint16_t vv) {
-    WrRAM(0x100 + reg_S.ToInt(), (vv >> 8) & 0xFF);
+  inline void PUSH16(Fluint16 vv) {
+    WrRAM(0x100 + reg_S.ToInt(), vv.Hi().ToInt());
     reg_S--;
-    WrRAM(0x100 + reg_S.ToInt(), vv & 0xFF);
+    WrRAM(0x100 + reg_S.ToInt(), vv.Lo().ToInt());
     reg_S--;
   }
 
@@ -117,10 +117,10 @@ private:
     return RdRAM(0x100 + (++reg_S).ToInt());
   }
 
-  inline uint16_t POP16() {
-    uint16 ret = POP();
-    ret |= ((uint16)POP()) << 8;
-    return ret;
+  inline Fluint16 POP16() {
+    Fluint8 lo(POP());
+    Fluint8 hi(POP());
+    return Fluint16(hi, lo);
   }
 
   /* Indexed Indirect */
@@ -157,43 +157,38 @@ private:
     return Fluint16(hi, lo);
   }
 
-  /* Absolute Indexed(for writes and rmws) */
-  uint16_t GetABIWR(Fluint8 i) {
-    Fluint8::Cheat();
-    uint16_t rt = GetAB().ToInt();
-    uint16_t target = rt;
-    target += i.ToInt();
-    target &= 0xFFFF;
-    (void)RdMem((target & 0x00FF) | (rt & 0xFF00));
+  /* Absolute Indexed (for writes and rmws) */
+  Fluint16 GetABIWR(Fluint8 i) {
+    Fluint16 rt = GetAB();
+    Fluint16 target = rt;
+    target += Fluint16(i);
+    (void)RdMem((target & Fluint16(0x00FF)) | (rt & Fluint16(0xFF00)));
     return target;
   }
 
-  /* Absolute Indexed(for reads) */
-  uint16_t GetABIRD(Fluint8 i) {
+  /* Absolute Indexed (for reads) */
+  Fluint16 GetABIRD(Fluint8 i) {
+    Fluint16 tmp = GetAB();
+    Fluint16 ret = tmp + Fluint16(i);
     Fluint8::Cheat();
-    uint16 tmp = GetAB().ToInt();
-    uint16 ret = tmp;
-    ret += i.ToInt();
-    if ((ret ^ tmp) & 0x100) {
-      ret &= 0xFFFF;
-      RdMem(ret ^ 0x100);
+    if (Fluint16::RightShift<8>((ret ^ tmp) & Fluint16(0x100)).ToInt()) {
+      (void)RdMem(ret ^ Fluint16(0x100));
       ADDCYC(1);
     }
     return ret;
   }
 
-  /* Indirect Indexed(for reads) */
-  uint16_t GetIYRD() {
-    uint8 tmp = RdMem(reg_PC);
+  /* Indirect Indexed (for reads) */
+  Fluint16 GetIYRD() {
+    Fluint8 tmp(RdMem(reg_PC));
     reg_PC++;
-    uint16_t rt = RdRAM(tmp);
-    tmp++;
-    rt |= ((uint16_t)RdRAM(tmp)) << 8;
-    uint16 ret = rt;
-    ret += reg_Y.ToInt();
-    if ((ret ^ rt) & 0x100) {
-      ret &= 0xFFFF;
-      (void)RdMem(ret ^ 0x100);
+    Fluint8 lo = RdRAM(Fluint16(tmp));
+    Fluint8 hi = RdRAM(Fluint16(tmp + Fluint8(1)));
+    Fluint16 rt(hi, lo);
+    Fluint16 ret = rt + Fluint16(reg_Y);
+    Fluint8::Cheat();
+    if (Fluint16::RightShift<8>((ret ^ rt) & Fluint16(0x100)).ToInt()) {
+      (void)RdMem(ret ^ Fluint16(0x100));
       ADDCYC(1);
     }
     return ret;
@@ -321,6 +316,26 @@ private:
     return x;
   }
 
+  Fluint8 ROL(Fluint8 x) {
+    Fluint8 l = Fluint8::RightShift<7>(x);
+    x = Fluint8::LeftShift<1>(x);
+    x |= Fluint8::AndWith<C_FLAG8>(reg_P);
+    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P);
+    reg_P |= l;
+    X_ZNT(x);
+    return x;
+  }
+
+  Fluint8 ROR(Fluint8 x) {
+    Fluint8 l = Fluint8::AndWith<1>(x);
+    x = Fluint8::RightShift<1>(x);
+    x |= Fluint8::LeftShift<7>(Fluint8::AndWith<C_FLAG8>(reg_P));
+    reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P);
+    reg_P |= l;
+    X_ZNT(x);
+    return x;
+  }
+
   void ADDCYC(int x) {
     this->tcount += x;
     this->count -= x * 48;
@@ -353,7 +368,7 @@ private:
 
   template<class F>
   void ST_ABI(Fluint8 reg, F rf) {
-    Fluint16 AA(GetABIWR(reg));
+    Fluint16 AA = GetABIWR(reg);
     WrMem(AA, rf(AA));
   }
 
