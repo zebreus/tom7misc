@@ -40,15 +40,6 @@ void X6502::DMW(uint32 A, uint8 V) {
   fc->fceu->BWrite[A](fc, A, V);
 }
 
-/* The following operations modify the byte being worked on. */
-#define DEC \
-  x--;      \
-  X_ZN(x)
-#define INC \
-  x++;      \
-  X_ZN(x)
-
-
 /* Now come the macros to wrap up all of the above stuff addressing
    mode functions and operation macros. Note that operation macros
    will always operate(redundant redundant) on the variable "x".
@@ -64,7 +55,7 @@ void X6502::DMW(uint32 A, uint8 V) {
 #define RMW_AB(op)           \
   {                          \
     const Fluint16 AA = GetAB();                \
-    Fluint8 x(RdMem(AA));    \
+    Fluint8 x = RdMem(AA);                      \
     WrMem(AA, x);            \
     op;                      \
     WrMem(AA, x);            \
@@ -74,7 +65,7 @@ void X6502::DMW(uint32 A, uint8 V) {
 #define RMW_ABI(reg, op)         \
   {                              \
     const Fluint16 AA = GetABIWR(reg);  \
-    Fluint8 x(RdMem(AA));        \
+    Fluint8 x = RdMem(AA);        \
     WrMem(AA, x);                \
     op;                          \
     WrMem(AA, x);                \
@@ -85,7 +76,7 @@ void X6502::DMW(uint32 A, uint8 V) {
 #define RMW_IX(op)                  \
   {                                 \
     const Fluint16 AA = GetIX();    \
-    Fluint8 x(RdMem(AA));           \
+    Fluint8 x = RdMem(AA);           \
     WrMem(AA, x);                   \
     op;                             \
     WrMem(AA, x);                   \
@@ -95,7 +86,7 @@ void X6502::DMW(uint32 A, uint8 V) {
   {                                \
     (void)GetIX();                 \
     const Fluint16 AA = GetIYWR(); \
-    Fluint8 x(RdMem(AA));          \
+    Fluint8 x = RdMem(AA);          \
     WrMem(AA, x);                  \
     op;                            \
     WrMem(AA, x);                  \
@@ -120,7 +111,7 @@ void X6502::DMW(uint32 A, uint8 V) {
 
 #define LD_IM(op)              \
   {                            \
-    Fluint8 x(RdMem(reg_PC));  \
+    Fluint8 x = RdMem(reg_PC);  \
     reg_PC++;                  \
     op;                        \
     break;                     \
@@ -234,6 +225,7 @@ void X6502::Init() {
   // Initialize the CPU fields.
   // (Don't memset; we have non-CPU members now!)
   tcount = 0;
+  reg_PC = Fluint16(0);
   reg_A = reg_X = reg_Y = reg_S = reg_P = reg_PI = Fluint8(0);
   jammed = 0;
   count = 0;
@@ -245,12 +237,14 @@ void X6502::Init() {
 
 void X6502::Power() {
   count = tcount = IRQlow = 0;
-  reg_PC = 0;
+  reg_PC = Fluint16(0);
   reg_A = reg_X = reg_Y = reg_P = reg_PI = Fluint8(0);
   reg_S = Fluint8(0xFD);
   DB = jammed = 0;
 
   timestamp = 0;
+  ClearMemTrace();
+  ClearInstHisto();
   Reset();
 }
 
@@ -271,8 +265,9 @@ void X6502::RunLoop() {
 
     if (IRQlow) {
       if (IRQlow & FCEU_IQRESET) {
-        reg_PC = RdMem(0xFFFC);
-        reg_PC |= RdMem(0xFFFD) << 8;
+        Fluint8 lo = RdMem(Fluint16(0xFFFC));
+        Fluint8 hi = RdMem(Fluint16(0xFFFD));
+        reg_PC = Fluint16(hi, lo);
         jammed = 0;
         reg_PI = reg_P = I_FLAG;
         IRQlow &= ~FCEU_IQRESET;
@@ -282,24 +277,26 @@ void X6502::RunLoop() {
       } else if (IRQlow & FCEU_IQNMI) {
         if (!jammed) {
           ADDCYC(7);
-          PUSH16(Fluint16(reg_PC));
+          PUSH16(reg_PC);
           const Fluint8 pnb = Fluint8::AndWith<(uint8_t)~B_FLAG8>(reg_P);
           PUSH(Fluint8::OrWith<U_FLAG8>(pnb));
           reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
-          reg_PC = RdMem(0xFFFA);
-          reg_PC |= RdMem(0xFFFB) << 8;
+          Fluint8 lo = RdMem(Fluint16(0xFFFA));
+          Fluint8 hi = RdMem(Fluint16(0xFFFB));
+          reg_PC = Fluint16(hi, lo);
           IRQlow &= ~FCEU_IQNMI;
         }
       } else {
         const Fluint8 fpi = Fluint8::AndWith<I_FLAG8>(reg_PI);
         if (fpi.ToInt() == 0 && !jammed) {
           ADDCYC(7);
-          PUSH16(Fluint16(reg_PC));
+          PUSH16(reg_PC);
           const Fluint8 pnb = Fluint8::AndWith<(uint8_t)~B_FLAG8>(reg_P);
           PUSH(Fluint8::OrWith<U_FLAG8>(pnb));
           reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
-          reg_PC = RdMem(0xFFFE);
-          reg_PC |= RdMem(0xFFFF) << 8;
+          Fluint8 lo = RdMem(Fluint16(0xFFFE));
+          Fluint8 hi = RdMem(Fluint16(0xFFFF));
+          reg_PC = Fluint16(hi, lo);
         }
       }
       IRQlow &= ~(FCEU_IQTEMP);
@@ -314,10 +311,10 @@ void X6502::RunLoop() {
     reg_PI = reg_P;
     // Get the next instruction.
 
-    const uint8 b1 = RdMem(reg_PC);
+    const Fluint8 b1 = RdMem(reg_PC);
     // printf("Read %x -> opcode %02x\n", reg_PC, b1);
 
-    ADDCYC(CycTable[b1]);
+    ADDCYC(CycTable[b1.ToInt()]);
 
     int32 temp = tcount;
     tcount = 0;
@@ -334,33 +331,35 @@ void X6502::RunLoop() {
     static int64 trace_cycles = 0;
     if (trace_cycles++ < 100000) {
       printf("%04x:%02x  %02x.%02x.%02x.%02x.%02x\n",
-             reg_PC, b1,
+             reg_PC.ToInt(), b1,
              reg_A.ToInt(), reg_X.ToInt(), reg_Y.ToInt(), reg_S.ToInt(), reg_P.ToInt());
     }
     #endif
 
-    inst_histo[b1]++;
+    inst_histo[b1.ToInt()]++;
 
-    switch (b1) {
-      case 0x00: /* BRK */
+    switch (b1.ToInt()) {
+      case 0x00: { /* BRK */
         reg_PC++;
-        PUSH16(Fluint16(reg_PC));
+        PUSH16(reg_PC);
         PUSH(Fluint8::OrWith<(uint8_t)(U_FLAG8 | B_FLAG8)>(reg_P));
         reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
         reg_PI = Fluint8::OrWith<I_FLAG8>(reg_PI);
-        reg_PC = RdMem(0xFFFE);
-        reg_PC |= RdMem(0xFFFF) << 8;
+        Fluint8 lo = RdMem(Fluint16(0xFFFE));
+        Fluint8 hi = RdMem(Fluint16(0xFFFF));
+        reg_PC = Fluint16(hi, lo);
         break;
+      }
 
       case 0x40: /* RTI */
         reg_P = Fluint8(POP());
         /* reg_PI=reg_P; This is probably incorrect, so it's commented out. */
         reg_PI = reg_P;
-        reg_PC = POP16().ToInt();
+        reg_PC = POP16();
         break;
 
       case 0x60: /* RTS */
-        reg_PC = POP16().ToInt();
+        reg_PC = POP16();
         reg_PC++;
         break;
 
@@ -384,11 +383,12 @@ void X6502::RunLoop() {
         break;
       case 0x4C: {
         /* JMP ABSOLUTE */
+        // XXX use pc directly
         Fluint16 ptmp(reg_PC);
         Fluint8 lo = RdMem(ptmp);
-        Fluint8 hi = RdMem(ptmp + Fluint16(0x01));
+        Fluint8 hi = RdMem(ptmp + Fluint8(0x01));
         Fluint8::Cheat();
-        reg_PC = Fluint16(hi, lo).ToInt();
+        reg_PC = Fluint16(hi, lo);
         break;
       }
 
@@ -396,22 +396,22 @@ void X6502::RunLoop() {
         /* JMP INDIRECT */
         Fluint16 tmp = GetAB();
         Fluint8 lo = RdMem(tmp);
-        Fluint8 hi = RdMem(((tmp + Fluint16(0x01)) & Fluint16(0x00FF)) |
+        Fluint8 hi = RdMem(((tmp + Fluint8(0x01)) & Fluint16(0x00FF)) |
                            (tmp & Fluint16(0xFF00)));
         Fluint8::Cheat();
-        reg_PC = Fluint16(hi, lo).ToInt();
+        reg_PC = Fluint16(hi, lo);
         break;
       }
 
       case 0x20: {
         /* JSR */
         Fluint16 opc(reg_PC);
-        Fluint16 opc1 = opc + Fluint16(0x01);
+        Fluint16 opc1 = opc + Fluint8(0x01);
         Fluint8 lo = RdMem(opc);
         PUSH16(opc1);
         Fluint8 hi = RdMem(opc1);
         Fluint8::Cheat();
-        reg_PC = Fluint16(hi, lo).ToInt();
+        reg_PC = Fluint16(hi, lo);
         break;
       }
       case 0xAA: /* TAX */
@@ -491,15 +491,15 @@ void X6502::RunLoop() {
       case 0x0E: RMW_AB(x = ASL(x));
       case 0x1E: RMW_ABX(x = ASL(x));
 
-      case 0xC6: RMW_ZP(DEC);
-      case 0xD6: RMW_ZPX(DEC);
-      case 0xCE: RMW_AB(DEC);
-      case 0xDE: RMW_ABX(DEC);
+      case 0xC6: RMW_ZP(x = DEC(x););
+      case 0xD6: RMW_ZPX(x = DEC(x););
+      case 0xCE: RMW_AB(x = DEC(x););
+      case 0xDE: RMW_ABX(x = DEC(x););
 
-      case 0xE6: RMW_ZP(INC);
-      case 0xF6: RMW_ZPX(INC);
-      case 0xEE: RMW_AB(INC);
-      case 0xFE: RMW_ABX(INC);
+      case 0xE6: RMW_ZP(x = INC(x););
+      case 0xF6: RMW_ZPX(x = INC(x););
+      case 0xEE: RMW_AB(x = INC(x););
+      case 0xFE: RMW_ABX(x = INC(x););
 
       case 0x4A: RMW_A(x = LSR(x));
       case 0x46: RMW_ZP(x = LSR(x));
@@ -720,22 +720,22 @@ void X6502::RunLoop() {
         LD_IM(AXS(x));
 
       /* DCP */
-      case 0xC7: RMW_ZP(DEC; CMPL(reg_A, x));
-      case 0xD7: RMW_ZPX(DEC; CMPL(reg_A, x));
-      case 0xCF: RMW_AB(DEC; CMPL(reg_A, x));
-      case 0xDF: RMW_ABX(DEC; CMPL(reg_A, x));
-      case 0xDB: RMW_ABY(DEC; CMPL(reg_A, x));
-      case 0xC3: RMW_IX(DEC; CMPL(reg_A, x));
-      case 0xD3: RMW_IY(DEC; CMPL(reg_A, x));
+      case 0xC7: RMW_ZP(x = DEC(x); CMPL(reg_A, x));
+      case 0xD7: RMW_ZPX(x = DEC(x); CMPL(reg_A, x));
+      case 0xCF: RMW_AB(x = DEC(x); CMPL(reg_A, x));
+      case 0xDF: RMW_ABX(x = DEC(x); CMPL(reg_A, x));
+      case 0xDB: RMW_ABY(x = DEC(x); CMPL(reg_A, x));
+      case 0xC3: RMW_IX(x = DEC(x); CMPL(reg_A, x));
+      case 0xD3: RMW_IY(x = DEC(x); CMPL(reg_A, x));
 
       /* ISB */
-      case 0xE7: RMW_ZP(INC; SBC(x));
-      case 0xF7: RMW_ZPX(INC; SBC(x));
-      case 0xEF: RMW_AB(INC; SBC(x));
-      case 0xFF: RMW_ABX(INC; SBC(x));
-      case 0xFB: RMW_ABY(INC; SBC(x));
-      case 0xE3: RMW_IX(INC; SBC(x));
-      case 0xF3: RMW_IY(INC; SBC(x));
+      case 0xE7: RMW_ZP(x = INC(x); SBC(x));
+      case 0xF7: RMW_ZPX(x = INC(x); SBC(x));
+      case 0xEF: RMW_AB(x = INC(x); SBC(x));
+      case 0xFF: RMW_ABX(x = INC(x); SBC(x));
+      case 0xFB: RMW_ABY(x = INC(x); SBC(x));
+      case 0xE3: RMW_IX(x = INC(x); SBC(x));
+      case 0xF3: RMW_IY(x = INC(x); SBC(x));
 
       /* DOP */
       case 0x04: reg_PC++; break;

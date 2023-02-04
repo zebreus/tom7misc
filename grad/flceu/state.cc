@@ -357,6 +357,8 @@ State::State(FC *fc) :
       // it's not saved/restored. (See "Skull & Crossbones" around
       // FCEUlib revision 2379.)
       {&fc->X->DB, 1, "DBDB"},
+      // XXX for flceu regression tests
+      {&fc->X->mem_trace, sizeof fc->X->mem_trace, "memT"},
     })
 {
   /* empty */

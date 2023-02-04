@@ -83,6 +83,7 @@ struct Fluint8 {
   static int64_t NumCheats() { return num_cheats; }
   static void ClearCheats() { num_cheats = 0; }
 
+  // XXX delete
   static void Warm() {}
 
  private:
@@ -164,6 +165,7 @@ struct Fluint8 {
   static void ClearCheats() { num_cheats = 0; }
 
   // For benchmarking; load lazy-loaded expressions.
+  // XXX no longer needed
   static void Warm();
 
   // Operations with preconditions. The result is undefined
@@ -180,20 +182,8 @@ struct Fluint8 {
   }
 
  private:
-  // Evaluate the expression with the given value for the variable.
-  static half_float::half Eval(const Exp *, half_float::half h);
-  // static Fluint8 Eval(const Exp *, Fluint8 x);
-
-  // Put in [-1,1) "choppy" form, or construct a fluint8 in
-  // that form. Both are linear ops (just scale/offset).
-  half_float::half ToChoppy() const;
-  static Fluint8 FromChoppy(half_float::half h);
-
   explicit Fluint8(half_float::half h) : h(h) {}
   half_float::half h;
-
-  // Internal expressions used for extracting bits.
-  static const std::vector<const Exp *> &BitExps();
 
   // Compute bitwise AND.
   static half GetCommonBits(Fluint8 a, Fluint8 b);

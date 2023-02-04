@@ -42,6 +42,7 @@ static constexpr const char *MOVIE =
 static constexpr uint64 expected_nes = 0x8eed7b59ec6a1163ULL;
 static constexpr uint64 expected_img = 0xad90a1030e98e8e5ULL;
 static constexpr uint64 expected_inst = 0xb106a13670bbd088ULL;
+static constexpr uint64 expected_mem = 0x70db77bbffa5a4c6ULL;
 
 static uint64 InstHistoChecksum(Emulator *emu) {
   uint64 out = 0xCAFE1234C0FFEEEEULL;
@@ -56,12 +57,17 @@ static uint64 InstHistoChecksum(Emulator *emu) {
   return out;
 }
 
-std::tuple<uint64, uint64, uint64, double> RunBenchmark(
+static uint64 MemTrace(Emulator *emu) {
+  return emu->GetFC()->X->mem_trace;
+}
+
+std::tuple<uint64, uint64, uint64, uint64, double> RunBenchmark(
     Emulator *emu,
     const vector<uint8> &start,
     const vector<uint8> &movie) {
   emu->LoadUncompressed(start);
   emu->GetFC()->X->ClearInstHisto();
+  emu->GetFC()->X->ClearMemTrace();
   Timer exec_timer;
   Periodically slow_per(10.0);
 
@@ -92,6 +98,7 @@ std::tuple<uint64, uint64, uint64, double> RunBenchmark(
   const double exec_seconds = exec_timer.Seconds();
   return make_tuple(emu->MachineChecksum(), emu->ImageChecksum(),
                     InstHistoChecksum(emu),
+                    MemTrace(emu),
                     exec_seconds);
 }
 
@@ -139,7 +146,8 @@ int main(int argc, char **argv) {
   double total_time = 0.0;
   vector<int> last_means;
   for (int i = 0; /* exit upon convergence */; i++) {
-    const auto [ram, img, inst, sec] = RunBenchmark(emu.get(), start, movie);
+    const auto [ram, img, inst, mem, sec] =
+      RunBenchmark(emu.get(), start, movie);
 
     CHECK(ram == expected_nes &&
           img == expected_img &&
@@ -147,11 +155,13 @@ int main(int argc, char **argv) {
       StringPrintf("Failed checksums on round %d:\n"
                    "RAM:  Got %016llx wanted %016llx\n"
                    "IMG:  Got %016llx wanted %016llx\n"
-                   "INST: Got %016llx wanted %016llx\n",
+                   "INST: Got %016llx wanted %016llx\n"
+                   "MEM:  Got %016llx wanted %016llx\n",
                    i,
                    ram, expected_nes,
                    img, expected_img,
-                   inst, expected_inst);
+                   inst, expected_inst,
+                   mem, expected_mem);
 
     executions++;
     total_time += sec;

@@ -15,16 +15,6 @@
 static constexpr uint16_t LFSR_POLY1 = 0xBDDD;
 static constexpr uint16_t LFSR_POLY2 = 0xD008;
 
-#if 0
-inline uint16_t Next16a(uint16_t state) {
-  return LFSRNext<uint16_t, 0xBDDD>(state);
-}
-
-inline uint16_t Next16b(uint16_t state) {
-  return ;
-}
-#endif
-
 template<uint16_t POLY>
 void ManyPairs(std::function<void(uint16_t, uint16_t, Fluint16, Fluint16)> f) {
   uint16_t state1 = 0x0000, state2 = 0xCAFE;
@@ -41,6 +31,26 @@ void ManyPairs(std::function<void(uint16_t, uint16_t, Fluint16, Fluint16)> f) {
     f(~state2, state1, Fluint16(~state2), Fluint16(state1));
   }
 };
+
+template<uint16_t POLY>
+void ManyPairs8(std::function<void(uint16_t, uint8_t, Fluint16, Fluint8)> f) {
+  uint16_t state1 = 0x0000, state2 = 0xCAFE;
+
+  // Each of the words
+  for (int i = 0; i < 65536; i++) {
+    state1++;
+    state2 = LFSRNext<uint16_t, POLY>(state2);
+    f(state1, (uint8)state2, Fluint16(state1), Fluint8((uint8)state2));
+  }
+
+  // Each of the bytes
+  for (int i = 0; i < 256; i++) {
+    state1++;
+    state2 = LFSRNext<uint16_t, POLY>(state2);
+    f(~state2, (uint8)state1, Fluint16(~state2), Fluint8((uint8)state1));
+  }
+};
+
 
 static void RightShifts() {
   for (int i = 0; i < 65536; i++) {
@@ -89,6 +99,22 @@ static void Addition() {
     CHECK_EQ16(sum, fsum.ToInt());
     });
 }
+
+static void Add8() {
+  ManyPairs8<LFSR_POLY1>([](
+      uint16_t state1, uint8_t state2,
+      Fluint16 f1, Fluint8 f2) {
+    const uint16_t sum = state1 + state2;
+
+    const Fluint16 fsum = f1 + f2;
+    Fluint16 fsum2 = f1;
+    fsum2 += f2;
+
+    CHECK_EQ16(sum, fsum.ToInt());
+    CHECK_EQ16(sum, fsum2.ToInt());
+    });
+}
+
 
 static void Increment() {
   for (int i = 0; i < 65536; i++) {
@@ -178,6 +204,7 @@ int main(int argc, char **argv) {
   Subtraction(); printf("Subtraction OK\n");
   Decrement(); printf("Decrement OK\n");
   Zero(); printf("Zero OK\n");
+  Add8(); printf("Add8 OK\n");
 
   printf("OK\n");
   return 0;

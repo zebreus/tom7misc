@@ -18,8 +18,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef __X6502_H
-#define __X6502_H
+#ifndef _X6502_H
+#define _X6502_H
+
+#include <cstdint>
+#include <bit>
 
 #include "tracing.h"
 #include "fceu.h"
@@ -51,9 +54,7 @@ struct X6502 {
   // size in state.cc.
 
   // Program counter.
-  // XXX this is part of processor state so it should be
-  // fluint16?
-  uint16 reg_PC;
+  Fluint16 reg_PC;
   // A is accumulator, X and Y other general purpose registes.
   // S is the stack pointer. Stack grows "down" (push decrements).
   // P is processor flags (from msb to lsb: NVUBDIZC).
@@ -64,6 +65,7 @@ struct X6502 {
   // processor until an interrupt.
   uint8 jammed;
 
+  uint16_t GetPC() const { return reg_PC.ToInt(); }
   uint8 GetA() const { return reg_A.ToInt(); }
   uint8 GetX() const { return reg_X.ToInt(); }
   uint8 GetY() const { return reg_Y.ToInt(); }
@@ -100,6 +102,25 @@ struct X6502 {
 
   void (*MapIRQHook)(FC *, int) = nullptr;
 
+  // TODO: compute some hash of memory reads/writes so that we can
+  // ensure that we're preserving the order for them
+  uint64_t mem_trace = 0;
+  inline void ClearMemTrace() { mem_trace = 0; }
+  inline void TraceRead(uint16_t AA) {
+    // XXX improve this hash!
+    mem_trace ^= AA;
+    mem_trace = std::rotr(mem_trace, 31);
+    mem_trace = mem_trace * 5 + 0xe6546b64;
+  }
+
+  inline void TraceWrite(uint16_t AA, uint8_t VV) {
+    // XXX improve this hash!
+    mem_trace ^= AA;
+    mem_trace = std::rotr(mem_trace, 41);
+    mem_trace += VV;
+    mem_trace = mem_trace * 5 + 0xe6546b64;
+  }
+
 private:
   inline void PUSH(Fluint8 v) {
     WrRAM(0x100 + reg_S.ToInt(), v.ToInt());
@@ -113,6 +134,7 @@ private:
     reg_S--;
   }
 
+  // XXX Fluint8
   inline uint8 POP() {
     return RdRAM(0x100 + (++reg_S).ToInt());
   }
@@ -125,7 +147,7 @@ private:
 
   /* Indexed Indirect */
   Fluint16 GetIX() {
-    Fluint8 tmp(RdMem(reg_PC));
+    Fluint8 tmp = RdMem(reg_PC);
     reg_PC++;
     tmp += reg_X;
     Fluint8 lo = RdRAM(Fluint16(tmp));
@@ -136,23 +158,23 @@ private:
 
   // Zero Page
   Fluint8 GetZP() {
-    Fluint8 ret(RdMem(reg_PC));
+    Fluint8 ret = RdMem(reg_PC);
     reg_PC++;
     return ret;
   }
 
   /* Zero Page Indexed */
   Fluint8 GetZPI(Fluint8 i) {
-    Fluint8 ret = i + Fluint8(RdMem(reg_PC));
+    Fluint8 ret = i + RdMem(reg_PC);
     reg_PC++;
     return ret;
   }
 
   /* Absolute */
   Fluint16 GetAB() {
-    Fluint8 lo = RdMem(Fluint16(reg_PC));
+    Fluint8 lo = RdMem(reg_PC);
     reg_PC++;
-    Fluint8 hi = RdMem(Fluint16(reg_PC));
+    Fluint8 hi = RdMem(reg_PC);
     reg_PC++;
     return Fluint16(hi, lo);
   }
@@ -287,12 +309,21 @@ private:
     }
     Fluint8::Cheat();
     if (cond.ToInt()) {
-      int32 disp = (int8)RdMem(reg_PC);
+      Fluint8::Cheat();
+      int32 disp = (int8)RdMem(reg_PC).ToInt();
       reg_PC++;
       ADDCYC(1);
-      uint32 tmp = reg_PC;
-      reg_PC += disp;
-      if ((tmp ^ reg_PC) & 0x100) {
+      Fluint16 tmp = reg_PC;
+      // Need signed addition
+      Fluint8::Cheat();
+      if (disp < 0) {
+        reg_PC -= Fluint16(-disp);
+      } else {
+        reg_PC += Fluint16(disp);
+      }
+
+      Fluint8::Cheat();
+      if (Fluint16::IsntZero((tmp ^ reg_PC) & Fluint16(0x100)).ToInt()) {
         ADDCYC(1);
       }
     } else {
@@ -313,6 +344,18 @@ private:
     reg_P |= Fluint8::AndWith<1>(x);
     x = Fluint8::RightShift<1>(x);
     X_ZNT(x);
+    return x;
+  }
+
+  Fluint8 DEC(Fluint8 x) {
+    x--;
+    X_ZN(x);
+    return x;
+  }
+
+  Fluint8 INC(Fluint8 x) {
+    x++;
+    X_ZN(x);
     return x;
   }
 
@@ -472,7 +515,7 @@ private:
   /* Special undocumented operation.  Very similar to CMP. */
   void AXS(Fluint8 x) {
     // TODO: Should be easy with SubtractWithCarry, but we have no
-    // test coverage :/
+    // test coverage for this instruction :/
     Fluint8::Cheat();
     uint32 t = (reg_A & reg_X).ToInt() - x.ToInt();
     X_ZN(Fluint8(t));
@@ -484,23 +527,21 @@ private:
     reg_X = Fluint8((uint8)t);
   }
 
-
-  // normal memory read
-  inline uint8 RdMem(unsigned int A) {
-    return DB = fc->fceu->ARead[A](fc, A);
-  }
-
+  // normal memory read, which calls hooks. We trace the sequence
+  // of these to make sure we're not dropping or reordering them
+  // (which often does not matter to games, but could).
   inline Fluint8 RdMem(Fluint16 A) {
-    return Fluint8(DB = fc->fceu->ARead[A.ToInt()](fc, A.ToInt()));
+    uint16_t AA = A.ToInt();
+    TraceRead(AA);
+    return Fluint8(DB = fc->fceu->ARead[AA](fc, AA));
   }
 
   // normal memory write
-  inline void WrMem(unsigned int A, uint8 V) {
-    fc->fceu->BWrite[A](fc, A, V);
-  }
-
   inline void WrMem(Fluint16 A, Fluint8 V) {
-    fc->fceu->BWrite[A.ToInt()](fc, A.ToInt(), V.ToInt());
+    uint16_t AA = A.ToInt();
+    uint8_t VV = V.ToInt();
+    TraceWrite(AA, VV);
+    fc->fceu->BWrite[AA](fc, AA, VV);
   }
 
   inline uint8 RdRAM(unsigned int A) {

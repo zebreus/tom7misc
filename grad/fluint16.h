@@ -31,6 +31,7 @@ struct Fluint16 {
   Fluint8 Lo() const { return lo; }
 
   static Fluint16 Plus(Fluint16 a, Fluint16 b);
+  static Fluint16 Plus(Fluint16 a, Fluint8 b);
   static Fluint16 Minus(Fluint16 a, Fluint16 b);
 
   static Fluint16 BitwiseXor(Fluint16 a, Fluint16 b);
@@ -66,6 +67,10 @@ inline Fluint16 operator +(const Fluint16 &a, const Fluint16 &b) {
   return Fluint16::Plus(a, b);
 }
 
+inline Fluint16 operator +(const Fluint16 &a, const Fluint8 &b) {
+  return Fluint16::Plus(a, b);
+}
+
 inline Fluint16 operator -(const Fluint16 &a, const Fluint16 &b) {
   return Fluint16::Minus(a, b);
 }
@@ -95,16 +100,17 @@ inline Fluint16 operator ~(const Fluint16 &a) {
 }
 
 inline Fluint16& operator++(Fluint16 &a) {
-  a = Fluint16::Plus(a, Fluint16(1));
+  a = Fluint16::Plus(a, Fluint8(1));
   return a;
 }
 
 inline Fluint16 operator++(Fluint16 &a, int) {
   Fluint16 ret = a;
-  a = Fluint16::Plus(a, Fluint16(1));
+  a = Fluint16::Plus(a, Fluint8(1));
   return ret;
 }
 
+// PERF can implement 8-bit version as with plus
 inline Fluint16& operator--(Fluint16 &a) {
   a = Fluint16::Minus(a, Fluint16(1));
   return a;
@@ -117,6 +123,11 @@ inline Fluint16 operator--(Fluint16 &a, int) {
 }
 
 inline Fluint16& operator+=(Fluint16 &a, const Fluint16 &b) {
+  a = a + b;
+  return a;
+}
+
+inline Fluint16& operator+=(Fluint16 &a, const Fluint8 &b) {
   a = a + b;
   return a;
 }

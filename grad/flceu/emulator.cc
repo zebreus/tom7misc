@@ -67,7 +67,7 @@ uint64 Emulator::ImageChecksum() const {
 uint64 Emulator::Registers() const {
   const X6502 *x = fc->X;
   uint64 ret = 0LL;
-  ret <<= 16; ret |= x->reg_PC;
+  ret <<= 16; ret |= x->GetPC();
   ret <<= 8; ret |= x->GetA();
   ret <<= 8; ret |= x->GetX();
   ret <<= 8; ret |= x->GetY();
@@ -84,8 +84,8 @@ uint64 Emulator::MachineChecksum() const {
   md5_update(&ctx, fc->fceu->RAM, RAM_BYTE_SIZE);
 
   // CPU registers. Be insensitive to endianness here.
-  uint8 pc_high = fc->X->reg_PC >> 8;
-  uint8 pc_low = fc->X->reg_PC & 0xFF;
+  uint8 pc_high = fc->X->GetPC() >> 8;
+  uint8 pc_low = fc->X->GetPC() & 0xFF;
   md5_update(&ctx, &pc_high, 1);
   md5_update(&ctx, &pc_low, 1);
   auto AddByte = [&ctx](uint8 b) {
