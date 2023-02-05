@@ -442,7 +442,65 @@ private:
     WrMem(AA, rf(AA));
   }
 
-  void ADC(Fluint8 x) {
+  template<class F>
+  void LD_IY(F op) {
+    const Fluint16 AA = GetIYRD();
+    const Fluint8 x = RdMem(AA);
+    op(x);
+  }
+
+  template<class F>
+  void LD_IX(F op) {
+    const Fluint16 AA = GetIX();
+    const Fluint8 x = RdMem(AA);
+    op(x);
+  }
+
+  template<class F>
+  void LD_AB(F op) {
+    const Fluint16 AA = GetAB();
+    [[maybe_unused]] const Fluint8 x = RdMem(AA);
+    op(x);
+  }
+
+  template<class F>
+  void LD_ABI(Fluint8 reg, F op) {
+    const Fluint16 AA = GetABIRD(reg);
+    [[maybe_unused]] const Fluint8 x = RdMem(AA);
+    op(x);
+  }
+  template<class F> void LD_ABX(F op) { LD_ABI(reg_X, op); }
+  template<class F> void LD_ABY(F op) { LD_ABI(reg_Y, op); }
+
+  template<class F>
+  void LD_ZPY(F op) {
+    const Fluint16 AA(GetZPI(reg_Y));
+    const Fluint8 x = RdRAM(AA);
+    op(x);
+  }
+
+  template<class F>
+  void LD_ZPX(F op) {
+    const Fluint16 AA(GetZPI(reg_X));
+    const Fluint8 x = RdRAM(AA);
+    op(x);
+  }
+
+  template<class F>
+  void LD_ZP(F op) {
+    const Fluint16 AA(GetZP());
+    const Fluint8 x = RdRAM(AA);
+    op(x);
+  }
+
+  template<class F>
+  void LD_IM(F op) {
+    const Fluint8 x = RdMem(reg_PC);
+    reg_PC++;
+    op(x);
+  }
+
+  Fluint8 ADC(Fluint8 x) {
     static_assert(C_FLAG8 == 0x01, "we assume this is the one's place");
     const Fluint8 p_carry_bit = Fluint8::AndWith<C_FLAG8>(reg_P);
     auto [carry1, sum1] = Fluint8::AddWithCarry(reg_A, x);
@@ -473,9 +531,10 @@ private:
     // PERF since we already cleared Z and N flags, can use
     // PlusNoOverflow
     X_ZNT(reg_A);
+    return x;
   }
 
-  void SBC(Fluint8 x) {
+  Fluint8 SBC(Fluint8 x) {
     static_assert(C_FLAG8 == 0x01, "we assume this is the one's place");
     // On 6502, the borrow flag is !Carry.
     Fluint8 p_ncarry_bit = Fluint8::XorWith<C_FLAG8>(
@@ -507,6 +566,7 @@ private:
     // PERF since we already cleared Z and N flags, can use
     // PlusNoOverflow here too
     X_ZNT(reg_A);
+    return x;
   }
 
   void LSRA() {
