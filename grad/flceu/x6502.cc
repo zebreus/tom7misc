@@ -387,7 +387,6 @@ void X6502::RunLoop() {
         Fluint16 ptmp(reg_PC);
         Fluint8 lo = RdMem(ptmp);
         Fluint8 hi = RdMem(ptmp + Fluint8(0x01));
-        Fluint8::Cheat();
         reg_PC = Fluint16(hi, lo);
         break;
       }
@@ -398,7 +397,6 @@ void X6502::RunLoop() {
         Fluint8 lo = RdMem(tmp);
         Fluint8 hi = RdMem(((tmp + Fluint8(0x01)) & Fluint16(0x00FF)) |
                            (tmp & Fluint16(0xFF00)));
-        Fluint8::Cheat();
         reg_PC = Fluint16(hi, lo);
         break;
       }
@@ -410,7 +408,6 @@ void X6502::RunLoop() {
         Fluint8 lo = RdMem(opc);
         PUSH16(opc1);
         Fluint8 hi = RdMem(opc1);
-        Fluint8::Cheat();
         reg_PC = Fluint16(hi, lo);
         break;
       }

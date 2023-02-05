@@ -299,29 +299,40 @@ private:
               Fluint8::AndWith<C_FLAG8>(carry)));
   }
 
-  // Input should be 1 or 0.
+  // Input must be 0x01 or 0x00.
   void JR(Fluint8 cond) {
     {
       uint8_t cc = cond.ToInt();
-      CHECK(cc == 0 || cc == 1) << cc;
+      CHECK(cc == 0x00 || cc == 0x01) << cc;
     }
 
-    // TODO: Do this without branching!
-    Fluint8::Cheat();
-    if (cond.ToInt()) {
-      // This is treated as signed.
-      Fluint8 disp = RdMem(reg_PC);
-      reg_PC++;
-      ADDCYC(1);
-      Fluint16 tmp = reg_PC;
-      reg_PC += Fluint16::SignExtend(disp);
+    // Signed displacement. We'll only use it if cond is true.
+    Fluint8 disp = RdMemIf(cond, reg_PC);
 
-      Fluint8::Cheat();
-      if (Fluint16::IsntZero((tmp ^ reg_PC) & Fluint16(0x100)).ToInt()) {
-        ADDCYC(1);
-      }
-    } else {
-      reg_PC++;
+    // Program counter incremented whether the branch is
+    // taken or not (which makes sense as we would not
+    // want to execute the displacement byte!)
+    reg_PC++;
+
+    Fluint8::Cheat(); // XXX in scope?
+    if (cond.ToInt() == 0x01) {
+      ADDCYC(1);
+    }
+
+    Fluint16 old_pc = reg_PC;
+    // Only modify the PC if condition is true. We have to
+    // sign extend it to 16 bits first (but this does nothing
+    // to zero).
+
+    reg_PC += Fluint16::SignExtend(Fluint8::If(cond, disp));
+
+    // Additional cycle is taken if this crosses a "page" boundary.
+    Fluint8::Cheat(); // XXX in scope?
+    if (Fluint16::IsntZero((old_pc ^ reg_PC) & Fluint16(0x100)).ToInt()) {
+      // Note that this branch cannot be taken unless cond is true,
+      // as old_pc will equal reg_PC otherwise.
+      CHECK(cond.ToInt() == 0x01);
+      ADDCYC(1);
     }
   }
 
