@@ -90,7 +90,7 @@ struct X6502 {
   void IRQEnd(int w);
 
   // DMA read and write, I think. Like normal memory read/write,
-  // but consumes a CPU cycle.
+  // but consumes a CPU cycle. These are (only) used externally.
   uint8 DMR(uint32 A);
   void DMW(uint32 A, uint8 V);
 
@@ -190,9 +190,8 @@ private:
 
     // XXX is cycle count in scope?
     Fluint8::Cheat();
-    if (cc.ToInt() == 0x01) {
-      ADDCYC(1);
-    }
+    ADDCYC(cc.ToInt());
+
     return ret;
   }
 
@@ -209,9 +208,8 @@ private:
 
     // XXX is cycle count in scope?
     Fluint8::Cheat();
-    if (cc.ToInt() == 0x01) {
-      ADDCYC(1);
-    }
+    ADDCYC(cc.ToInt());
+
     return ret;
   }
 
@@ -315,25 +313,20 @@ private:
     reg_PC++;
 
     Fluint8::Cheat(); // XXX in scope?
-    if (cond.ToInt() == 0x01) {
-      ADDCYC(1);
-    }
+    ADDCYC(cond.ToInt());
 
     Fluint16 old_pc = reg_PC;
+
     // Only modify the PC if condition is true. We have to
     // sign extend it to 16 bits first (but this does nothing
     // to zero).
-
     reg_PC += Fluint16::SignExtend(Fluint8::If(cond, disp));
 
     // Additional cycle is taken if this crosses a "page" boundary.
+    // Note this does nothing if the cond is false, as old_pc = reg_PC
+    // in that case.
     Fluint8::Cheat(); // XXX in scope?
-    if (Fluint16::IsntZero((old_pc ^ reg_PC) & Fluint16(0x100)).ToInt()) {
-      // Note that this branch cannot be taken unless cond is true,
-      // as old_pc will equal reg_PC otherwise.
-      CHECK(cond.ToInt() == 0x01);
-      ADDCYC(1);
-    }
+    ADDCYC(Fluint16::IsntZero((old_pc ^ reg_PC) & Fluint16(0x100)));
   }
 
   Fluint8 ASL(Fluint8 x) {
@@ -498,6 +491,69 @@ private:
     const Fluint8 x = RdMem(reg_PC);
     reg_PC++;
     op(x);
+  }
+
+  template<class F>
+  void RMW_ZPX(F op) {
+    const Fluint16 AA(GetZPI(reg_X));
+    Fluint8 x = RdRAM(AA);
+    x = op(x);
+    WrRAM(AA, x);
+  }
+
+  template<class F>
+  void RMW_ZP(F op) {
+    const Fluint16 AA(GetZP());
+    Fluint8 x = RdRAM(AA);
+    x = op(x);
+    WrRAM(AA, x);
+  }
+
+  template<class F>
+  void RMW_IY(F op) {
+    (void)GetIX();
+    const Fluint16 AA = GetIYWR();
+    Fluint8 x = RdMem(AA);
+    WrMem(AA, x);
+    x = op(x);
+    WrMem(AA, x);
+  }
+
+  template<class F>
+  void RMW_IX(F op) {
+    const Fluint16 AA = GetIX();
+    Fluint8 x = RdMem(AA);
+    WrMem(AA, x);
+    x = op(x);
+    WrMem(AA, x);
+  }
+
+  template<class F>
+  void RMW_ABI(Fluint8 reg, F op) {
+    const Fluint16 AA = GetABIWR(reg);
+    Fluint8 x = RdMem(AA);
+    WrMem(AA, x);
+    x = op(x);
+    WrMem(AA, x);
+  }
+
+  template<class F> void RMW_ABX(F op) { RMW_ABI(reg_X, op); }
+  template<class F> void RMW_ABY(F op) { RMW_ABI(reg_Y, op); }
+
+  template<class F>
+  void RMW_AB(F op) {
+    const Fluint16 AA = GetAB();
+    Fluint8 x = RdMem(AA);
+    WrMem(AA, x);
+    x = op(x);
+    WrMem(AA, x);
+  }
+
+  template<class F>
+  void RMW_A(F op) {
+    Fluint8 x = reg_A;
+    x = op(x);
+    reg_A = x;
   }
 
   Fluint8 ADC(Fluint8 x) {

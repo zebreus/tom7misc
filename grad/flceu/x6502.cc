@@ -40,75 +40,6 @@ void X6502::DMW(uint32 A, uint8 V) {
   fc->fceu->BWrite[A](fc, A, V);
 }
 
-/* Now come the macros to wrap up all of the above stuff addressing
-   mode functions and operation macros. Note that operation macros
-   will always operate(redundant redundant) on the variable "x".
-*/
-
-#define RMW_A(op)      \
-  {                    \
-    Fluint8 x = reg_A; \
-    op;                \
-    reg_A = x;         \
-    break;             \
-  }
-#define RMW_AB(op)           \
-  {                          \
-    const Fluint16 AA = GetAB();                \
-    Fluint8 x = RdMem(AA);                      \
-    WrMem(AA, x);            \
-    op;                      \
-    WrMem(AA, x);            \
-    break;                   \
-  }
-
-#define RMW_ABI(reg, op)         \
-  {                              \
-    const Fluint16 AA = GetABIWR(reg);  \
-    Fluint8 x = RdMem(AA);        \
-    WrMem(AA, x);                \
-    op;                          \
-    WrMem(AA, x);                \
-    break;                       \
-  }
-#define RMW_ABX(op) RMW_ABI(reg_X, op)
-#define RMW_ABY(op) RMW_ABI(reg_Y, op)
-#define RMW_IX(op)                  \
-  {                                 \
-    const Fluint16 AA = GetIX();    \
-    Fluint8 x = RdMem(AA);           \
-    WrMem(AA, x);                   \
-    op;                             \
-    WrMem(AA, x);                   \
-    break;                          \
-  }
-#define RMW_IY(op)                 \
-  {                                \
-    (void)GetIX();                 \
-    const Fluint16 AA = GetIYWR(); \
-    Fluint8 x = RdMem(AA);          \
-    WrMem(AA, x);                  \
-    op;                            \
-    WrMem(AA, x);                  \
-    break;                         \
-  }
-#define RMW_ZP(op)               \
-  {                              \
-    const Fluint16 AA(GetZP());  \
-    Fluint8 x = RdRAM(AA);       \
-    op;                          \
-    WrRAM(AA, x);                \
-    break;                       \
-  }
-#define RMW_ZPX(op)                             \
-  {                                             \
-    const Fluint16 AA(GetZPI(reg_X));           \
-    Fluint8 x = RdRAM(AA);                      \
-    op;                                         \
-    WrRAM(AA, x);                               \
-    break;                                      \
-  }
-
 // Several undocumented instructions AND with the high byte
 // of the address, plus one. Computes that expression.
 static Fluint8 WeirdHiByte(Fluint16 aa, Fluint8 r) {
@@ -418,39 +349,39 @@ void X6502::RunLoop() {
       case 0xEA: /* NOP */ break;
 
 
-      case 0x0A: RMW_A(x = ASL(x)); break;
-      case 0x06: RMW_ZP(x = ASL(x)); break;
-      case 0x16: RMW_ZPX(x = ASL(x)); break;
-      case 0x0E: RMW_AB(x = ASL(x)); break;
-      case 0x1E: RMW_ABX(x = ASL(x)); break;
+    case 0x0A: RMW_A([this](Fluint8 x) { return ASL(x); }); break;
+    case 0x06: RMW_ZP([this](Fluint8 x) { return ASL(x); }); break;
+    case 0x16: RMW_ZPX([this](Fluint8 x) { return ASL(x); }); break;
+    case 0x0E: RMW_AB([this](Fluint8 x) { return ASL(x); }); break;
+    case 0x1E: RMW_ABX([this](Fluint8 x) { return ASL(x); }); break;
 
-      case 0xC6: RMW_ZP(x = DEC(x);); break;
-      case 0xD6: RMW_ZPX(x = DEC(x);); break;
-      case 0xCE: RMW_AB(x = DEC(x);); break;
-      case 0xDE: RMW_ABX(x = DEC(x);); break;
+    case 0xC6: RMW_ZP([this](Fluint8 x) { return DEC(x); }); break;
+    case 0xD6: RMW_ZPX([this](Fluint8 x) { return DEC(x); }); break;
+    case 0xCE: RMW_AB([this](Fluint8 x) { return DEC(x); }); break;
+    case 0xDE: RMW_ABX([this](Fluint8 x) { return DEC(x); }); break;
 
-      case 0xE6: RMW_ZP(x = INC(x);); break;
-      case 0xF6: RMW_ZPX(x = INC(x);); break;
-      case 0xEE: RMW_AB(x = INC(x);); break;
-      case 0xFE: RMW_ABX(x = INC(x);); break;
+    case 0xE6: RMW_ZP([this](Fluint8 x) { return INC(x); }); break;
+    case 0xF6: RMW_ZPX([this](Fluint8 x) { return INC(x); }); break;
+    case 0xEE: RMW_AB([this](Fluint8 x) { return INC(x); }); break;
+    case 0xFE: RMW_ABX([this](Fluint8 x) { return INC(x); }); break;
 
-      case 0x4A: RMW_A(x = LSR(x)); break;
-      case 0x46: RMW_ZP(x = LSR(x)); break;
-      case 0x56: RMW_ZPX(x = LSR(x)); break;
-      case 0x4E: RMW_AB(x = LSR(x)); break;
-      case 0x5E: RMW_ABX(x = LSR(x)); break;
+    case 0x4A: RMW_A([this](Fluint8 x) { return LSR(x); }); break;
+    case 0x46: RMW_ZP([this](Fluint8 x) { return LSR(x); }); break;
+    case 0x56: RMW_ZPX([this](Fluint8 x) { return LSR(x); }); break;
+    case 0x4E: RMW_AB([this](Fluint8 x) { return LSR(x); }); break;
+    case 0x5E: RMW_ABX([this](Fluint8 x) { return LSR(x); }); break;
 
-      case 0x2A: RMW_A(x = ROL(x)); break;
-      case 0x26: RMW_ZP(x = ROL(x)); break;
-      case 0x36: RMW_ZPX(x = ROL(x)); break;
-      case 0x2E: RMW_AB(x = ROL(x)); break;
-      case 0x3E: RMW_ABX(x = ROL(x)); break;
+    case 0x2A: RMW_A([this](Fluint8 x) { return ROL(x); }); break;
+    case 0x26: RMW_ZP([this](Fluint8 x) { return ROL(x); }); break;
+    case 0x36: RMW_ZPX([this](Fluint8 x) { return ROL(x); }); break;
+    case 0x2E: RMW_AB([this](Fluint8 x) { return ROL(x); }); break;
+    case 0x3E: RMW_ABX([this](Fluint8 x) { return ROL(x); }); break;
 
-      case 0x6A: RMW_A(x = ROR(x);); break;
-      case 0x66: RMW_ZP(x = ROR(x);); break;
-      case 0x76: RMW_ZPX(x = ROR(x);); break;
-      case 0x6E: RMW_AB(x = ROR(x);); break;
-      case 0x7E: RMW_ABX(x = ROR(x);); break;
+    case 0x6A: RMW_A([this](Fluint8 x) { return ROR(x); }); break;
+    case 0x66: RMW_ZP([this](Fluint8 x) { return ROR(x); }); break;
+    case 0x76: RMW_ZPX([this](Fluint8 x) { return ROR(x); }); break;
+    case 0x6E: RMW_AB([this](Fluint8 x) { return ROR(x); }); break;
+    case 0x7E: RMW_ABX([this](Fluint8 x) { return ROR(x); }); break;
 
     case 0x69: LD_IM([this](Fluint8 x) { ADC(x); }); break;
     case 0x65: LD_ZP([this](Fluint8 x) { ADC(x); }); break;
@@ -459,7 +390,7 @@ void X6502::RunLoop() {
     case 0x7D: LD_ABX([this](Fluint8 x) { ADC(x); }); break;
     case 0x79: LD_ABY([this](Fluint8 x) { ADC(x); }); break;
     case 0x61: LD_IX([this](Fluint8 x) { ADC(x); }); break;
-      case 0x71: LD_IY([this](Fluint8 x) { ADC(x); }); break;
+    case 0x71: LD_IY([this](Fluint8 x) { ADC(x); }); break;
 
     case 0x29: LD_IM([this](Fluint8 x) { AND(x); }); break;
     case 0x25: LD_ZP([this](Fluint8 x) { AND(x); }); break;
@@ -530,7 +461,7 @@ void X6502::RunLoop() {
     case 0x01: LD_IX([this](Fluint8 x) { ORA(x); }); break;
     case 0x11: LD_IY([this](Fluint8 x) { ORA(x); }); break;
 
-      case 0xEB: /* (undocumented) */
+    case 0xEB: /* (undocumented) */
     case 0xE9: LD_IM([this](Fluint8 x) { SBC(x); }); break;
     case 0xE5: LD_ZP([this](Fluint8 x) { SBC(x); }); break;
     case 0xF5: LD_ZPX([this](Fluint8 x) { SBC(x); }); break;
@@ -557,65 +488,64 @@ void X6502::RunLoop() {
     case 0x94: ST_ZPX([this](Fluint16 AA) { return reg_Y; }); break;
     case 0x8C: ST_AB([this](Fluint16 AA) { return reg_Y; }); break;
 
-      // PERF Since we are extracting a single
-      // bit, can make something like HasBit
-      // instead of using the full generality
-      // of IsZero.
+    // PERF Since we are extracting a single
+    // bit, can make something like HasBit
+    // instead of using the full generality
+    // of IsZero.
 
-      /* BCC */
-      case 0x90:
-        JR(Fluint8::IsZero(Fluint8::AndWith<C_FLAG8>(reg_P)));
-        break;
+    /* BCC */
+    case 0x90:
+      JR(Fluint8::IsZero(Fluint8::AndWith<C_FLAG8>(reg_P)));
+      break;
 
-      /* BCS */
-      case 0xB0:
-        JR(Fluint8::IsntZero(Fluint8::AndWith<C_FLAG8>(reg_P)));
-        break;
+    /* BCS */
+    case 0xB0:
+      JR(Fluint8::IsntZero(Fluint8::AndWith<C_FLAG8>(reg_P)));
+      break;
 
-      /* BEQ */
-      case 0xF0:
-        JR(Fluint8::IsntZero(Fluint8::AndWith<Z_FLAG8>(reg_P)));
-        break;
+    /* BEQ */
+    case 0xF0:
+      JR(Fluint8::IsntZero(Fluint8::AndWith<Z_FLAG8>(reg_P)));
+      break;
 
-      /* BNE */
-      case 0xD0:
-        JR(Fluint8::IsZero(Fluint8::AndWith<Z_FLAG8>(reg_P)));
-        break;
+    /* BNE */
+    case 0xD0:
+      JR(Fluint8::IsZero(Fluint8::AndWith<Z_FLAG8>(reg_P)));
+      break;
 
-      /* BMI */
-      case 0x30:
-        JR(Fluint8::IsntZero(Fluint8::AndWith<N_FLAG8>(reg_P)));
-        break;
+    /* BMI */
+    case 0x30:
+      JR(Fluint8::IsntZero(Fluint8::AndWith<N_FLAG8>(reg_P)));
+      break;
 
-      /* BPL */
-      case 0x10:
-        JR(Fluint8::IsZero(Fluint8::AndWith<N_FLAG8>(reg_P)));
-        break;
+    /* BPL */
+    case 0x10:
+      JR(Fluint8::IsZero(Fluint8::AndWith<N_FLAG8>(reg_P)));
+      break;
 
-      /* BVC */
-      case 0x50:
-        JR(Fluint8::IsZero(Fluint8::AndWith<V_FLAG8>(reg_P)));
-        break;
+    /* BVC */
+    case 0x50:
+      JR(Fluint8::IsZero(Fluint8::AndWith<V_FLAG8>(reg_P)));
+      break;
 
-      /* BVS */
-      case 0x70:
-        JR(Fluint8::IsntZero(Fluint8::AndWith<V_FLAG8>(reg_P)));
-        break;
+    /* BVS */
+    case 0x70:
+      JR(Fluint8::IsntZero(Fluint8::AndWith<V_FLAG8>(reg_P)));
+      break;
 
-      // default: printf("Bad %02x at $%04x\n",b1,X.PC);break;
-      /* Here comes the undocumented instructions block.  Note that this
-         implementation may be "wrong".  If so, please tell me.
-      */
+    /* Here comes the undocumented instructions block.  Note that this
+       implementation may be "wrong".  If so, please tell me.
+    */
 
       /* AAC */
-      case 0x2B:
-      case 0x0B:
-        LD_IM([this](Fluint8 x) {
-            AND(x);
-            reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
-            reg_P |= Fluint8::RightShift<7>(reg_A);
-          });
-        break;
+    case 0x2B:
+    case 0x0B:
+      LD_IM([this](Fluint8 x) {
+          AND(x);
+          reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
+          reg_P |= Fluint8::RightShift<7>(reg_A);
+        });
+      break;
 
       /* AAX */
     case 0x87: ST_ZP([this](Fluint16 AA) { return reg_A & reg_X; }); break;
@@ -623,105 +553,173 @@ void X6502::RunLoop() {
     case 0x8F: ST_AB([this](Fluint16 AA) { return reg_A & reg_X; }); break;
     case 0x83: ST_IX([this](Fluint16 AA) { return reg_A & reg_X; }); break;
 
-      /* ARR - ARGH, MATEY! */
-      case 0x6B: {
-        LD_IM([this](Fluint8 x) {
-            AND(x);
-            reg_P =
-              Fluint8::PlusNoOverflow(
-                  Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P),
-                  Fluint8::AndWith<V_FLAG8>(reg_A ^
-                                            Fluint8::RightShift<1>(reg_A)));
-            Fluint8 arrtmp = Fluint8::RightShift<7>(reg_A);
-            reg_A = Fluint8::RightShift<1>(reg_A);
-            reg_A |= Fluint8::LeftShift<7>(Fluint8::AndWith<C_FLAG8>(reg_P));
-            reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
-            reg_P |= arrtmp;
-            X_ZN(reg_A);
-          });
-        break;
-      }
+    /* ARR - ARGH, MATEY! */
+    case 0x6B: {
+      LD_IM([this](Fluint8 x) {
+          AND(x);
+          reg_P =
+            Fluint8::PlusNoOverflow(
+                Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P),
+                Fluint8::AndWith<V_FLAG8>(reg_A ^
+                                          Fluint8::RightShift<1>(reg_A)));
+          Fluint8 arrtmp = Fluint8::RightShift<7>(reg_A);
+          reg_A = Fluint8::RightShift<1>(reg_A);
+          reg_A |= Fluint8::LeftShift<7>(Fluint8::AndWith<C_FLAG8>(reg_P));
+          reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
+          reg_P |= arrtmp;
+          X_ZN(reg_A);
+        });
+      break;
+    }
 
-      /* ASR */
-      case 0x4B:
-        LD_IM([this](Fluint8 x) { AND(x); LSRA(); });
-        break;
+    /* ASR */
+    case 0x4B:
+      LD_IM([this](Fluint8 x) { AND(x); LSRA(); });
+      break;
 
-      /* ATX(OAL) Is this(OR with $EE) correct? Blargg did some test
-         and found the constant to be OR with is $FF for NES
+    /* ATX(OAL) Is this(OR with $EE) correct? Blargg did some test
+       and found the constant to be OR with is $FF for NES
 
-         (but of course OR with FF is degenerate! -tom7) */
-      case 0xAB:
-        LD_IM([this](Fluint8 x) {
-            reg_A = Fluint8::OrWith<0xFF>(reg_A);
-            AND(x);
-            reg_X = reg_A;
-          });
-        break;
+       (but of course OR with FF is degenerate! -tom7) */
+    case 0xAB:
+      LD_IM([this](Fluint8 x) {
+          reg_A = Fluint8::OrWith<0xFF>(reg_A);
+          AND(x);
+          reg_X = reg_A;
+        });
+      break;
 
-      /* AXS */
-      case 0xCB:
-        LD_IM([this](Fluint8 x) { AXS(x); });
-        break;
+    /* AXS */
+    case 0xCB:
+      LD_IM([this](Fluint8 x) { AXS(x); });
+      break;
 
       /* DCP */
-      case 0xC7: RMW_ZP(x = DEC(x); CMPL(reg_A, x)); break;
-      case 0xD7: RMW_ZPX(x = DEC(x); CMPL(reg_A, x)); break;
-      case 0xCF: RMW_AB(x = DEC(x); CMPL(reg_A, x)); break;
-      case 0xDF: RMW_ABX(x = DEC(x); CMPL(reg_A, x)); break;
-      case 0xDB: RMW_ABY(x = DEC(x); CMPL(reg_A, x)); break;
-      case 0xC3: RMW_IX(x = DEC(x); CMPL(reg_A, x)); break;
-      case 0xD3: RMW_IY(x = DEC(x); CMPL(reg_A, x)); break;
+    case 0xC7: RMW_ZP([this](Fluint8 x) {
+        x = DEC(x);
+        CMPL(reg_A, x);
+        return x;
+      });
+      break;
+    case 0xD7: RMW_ZPX([this](Fluint8 x) {
+        x = DEC(x);
+        CMPL(reg_A, x);
+        return x;
+      });
+      break;
+    case 0xCF: RMW_AB([this](Fluint8 x) {
+        x = DEC(x);
+        CMPL(reg_A, x);
+        return x;
+      });
+      break;
+    case 0xDF: RMW_ABX([this](Fluint8 x) {
+        x = DEC(x);
+        CMPL(reg_A, x);
+        return x;
+      });
+      break;
+    case 0xDB: RMW_ABY([this](Fluint8 x) {
+        x = DEC(x);
+        CMPL(reg_A, x);
+        return x;
+      });
+      break;
+    case 0xC3: RMW_IX([this](Fluint8 x) {
+        x = DEC(x);
+        CMPL(reg_A, x);
+        return x;
+      });
+      break;
+    case 0xD3: RMW_IY([this](Fluint8 x) {
+        x = DEC(x);
+        CMPL(reg_A, x);
+        return x;
+      });
+      break;
 
       /* ISB */
-      case 0xE7: RMW_ZP(x = INC(x); SBC(x)); break;
-      case 0xF7: RMW_ZPX(x = INC(x); SBC(x)); break;
-      case 0xEF: RMW_AB(x = INC(x); SBC(x)); break;
-      case 0xFF: RMW_ABX(x = INC(x); SBC(x)); break;
-      case 0xFB: RMW_ABY(x = INC(x); SBC(x)); break;
-      case 0xE3: RMW_IX(x = INC(x); SBC(x)); break;
-      case 0xF3: RMW_IY(x = INC(x); SBC(x)); break;
+    case 0xE7: RMW_ZP([this](Fluint8 x) {
+        x = INC(x);
+        return SBC(x);
+      });
+      break;
+    case 0xF7: RMW_ZPX([this](Fluint8 x) {
+        x = INC(x);
+        return SBC(x);
+      });
+      break;
+    case 0xEF: RMW_AB([this](Fluint8 x) {
+        x = INC(x);
+        return SBC(x);
+      });
+      break;
+    case 0xFF: RMW_ABX([this](Fluint8 x) {
+        x = INC(x);
+        return SBC(x);
+      });
+      break;
+    case 0xFB: RMW_ABY([this](Fluint8 x) {
+        x = INC(x);
+        return SBC(x);
+      });
+      break;
+    case 0xE3: RMW_IX([this](Fluint8 x) {
+        x = INC(x);
+        return SBC(x);
+      });
+      break;
+    case 0xF3: RMW_IY([this](Fluint8 x) {
+        x = INC(x);
+        return SBC(x);
+      });
+      break;
 
-      /* DOP */
-      case 0x04: reg_PC++; break;
-      case 0x14: reg_PC++; break;
-      case 0x34: reg_PC++; break;
-      case 0x44: reg_PC++; break;
-      case 0x54: reg_PC++; break;
-      case 0x64: reg_PC++; break;
-      case 0x74: reg_PC++; break;
+    /* DOP */
+    case 0x04: reg_PC++; break;
+    case 0x14: reg_PC++; break;
+    case 0x34: reg_PC++; break;
+    case 0x44: reg_PC++; break;
+    case 0x54: reg_PC++; break;
+    case 0x64: reg_PC++; break;
+    case 0x74: reg_PC++; break;
 
-      case 0x80: reg_PC++; break;
-      case 0x82: reg_PC++; break;
-      case 0x89: reg_PC++; break;
-      case 0xC2: reg_PC++; break;
-      case 0xD4: reg_PC++; break;
-      case 0xE2: reg_PC++; break;
-      case 0xF4: reg_PC++; break;
+    case 0x80: reg_PC++; break;
+    case 0x82: reg_PC++; break;
+    case 0x89: reg_PC++; break;
+    case 0xC2: reg_PC++; break;
+    case 0xD4: reg_PC++; break;
+    case 0xE2: reg_PC++; break;
+    case 0xF4: reg_PC++; break;
 
-      /* KIL */
+    /* KIL */
 
-      case 0x02:
-      case 0x12:
-      case 0x22:
-      case 0x32:
-      case 0x42:
-      case 0x52:
-      case 0x62:
-      case 0x72:
-      case 0x92:
-      case 0xB2:
-      case 0xD2:
-      case 0xF2:
-        ADDCYC(0xFF);
-        jammed = 1;
-        reg_PC--;
-        break;
+    case 0x02:
+    case 0x12:
+    case 0x22:
+    case 0x32:
+    case 0x42:
+    case 0x52:
+    case 0x62:
+    case 0x72:
+    case 0x92:
+    case 0xB2:
+    case 0xD2:
+    case 0xF2:
+      ADDCYC(0xFF);
+      jammed = 1;
+      reg_PC--;
+      break;
 
-      /* LAR */
-      case 0xBB:
-        RMW_ABY(reg_S &= x; reg_A = reg_X = reg_S; X_ZN(reg_X));
-        break;
+    /* LAR */
+    case 0xBB:
+      RMW_ABY([this](Fluint8 x) {
+          reg_S &= x;
+          reg_A = reg_X = reg_S;
+          X_ZN(reg_X);
+          return x;
+        });
+      break;
 
       /* LAX */
     case 0xA7: LD_ZP([this](Fluint8 x) { LDA(x); LDX(x); }); break;
@@ -731,104 +729,237 @@ void X6502::RunLoop() {
     case 0xA3: LD_IX([this](Fluint8 x) { LDA(x); LDX(x); }); break;
     case 0xB3: LD_IY([this](Fluint8 x) { LDA(x); LDX(x); }); break;
 
-      /* NOP */
-      case 0x1A:
-      case 0x3A:
-      case 0x5A:
-      case 0x7A:
-      case 0xDA:
-      case 0xFA:
-        break;
+    /* NOP */
+    case 0x1A:
+    case 0x3A:
+    case 0x5A:
+    case 0x7A:
+    case 0xDA:
+    case 0xFA:
+      break;
 
       /* RLA */
-      case 0x27: RMW_ZP(x = ROL(x); AND(x)); break;
-      case 0x37: RMW_ZPX(x = ROL(x); AND(x)); break;
-      case 0x2F: RMW_AB(x = ROL(x); AND(x)); break;
-      case 0x3F: RMW_ABX(x = ROL(x); AND(x)); break;
-      case 0x3B: RMW_ABY(x = ROL(x); AND(x)); break;
-      case 0x23: RMW_IX(x = ROL(x); AND(x)); break;
-      case 0x33: RMW_IY(x = ROL(x); AND(x)); break;
+    case 0x27: RMW_ZP([this](Fluint8 x) {
+        x = ROL(x);
+        AND(x);
+        return x;
+      });
+      break;
+    case 0x37: RMW_ZPX([this](Fluint8 x) {
+        x = ROL(x);
+        AND(x);
+        return x;
+      });
+      break;
+    case 0x2F: RMW_AB([this](Fluint8 x) {
+        x = ROL(x);
+        AND(x);
+        return x;
+      });
+      break;
+    case 0x3F: RMW_ABX([this](Fluint8 x) {
+        x = ROL(x);
+        AND(x);
+        return x;
+      });
+      break;
+    case 0x3B: RMW_ABY([this](Fluint8 x) {
+        x = ROL(x);
+        AND(x);
+        return x;
+      });
+      break;
+    case 0x23: RMW_IX([this](Fluint8 x) {
+        x = ROL(x);
+        AND(x);
+        return x;
+      });
+      break;
+    case 0x33: RMW_IY([this](Fluint8 x) {
+        x = ROL(x);
+        AND(x);
+        return x;
+      });
+      break;
 
       /* RRA */
-      case 0x67: RMW_ZP(x = ROR(x); ADC(x)); break;
-      case 0x77: RMW_ZPX(x = ROR(x); ADC(x)); break;
-      case 0x6F: RMW_AB(x = ROR(x); ADC(x)); break;
-      case 0x7F: RMW_ABX(x = ROR(x); ADC(x)); break;
-      case 0x7B: RMW_ABY(x = ROR(x); ADC(x)); break;
-      case 0x63: RMW_IX(x = ROR(x); ADC(x)); break;
-      case 0x73: RMW_IY(x = ROR(x); ADC(x)); break;
+    case 0x67: RMW_ZP([this](Fluint8 x) {
+        x = ROR(x);
+        return ADC(x);
+      });
+      break;
+    case 0x77: RMW_ZPX([this](Fluint8 x) {
+        x = ROR(x);
+        return ADC(x);
+      });
+      break;
+    case 0x6F: RMW_AB([this](Fluint8 x) {
+        x = ROR(x);
+        return ADC(x);
+      });
+      break;
+    case 0x7F: RMW_ABX([this](Fluint8 x) {
+        x = ROR(x);
+        return ADC(x);
+      });
+      break;
+    case 0x7B: RMW_ABY([this](Fluint8 x) {
+        x = ROR(x);
+        return ADC(x);
+      });
+      break;
+    case 0x63: RMW_IX([this](Fluint8 x) {
+        x = ROR(x);
+        return ADC(x);
+      });
+      break;
+    case 0x73: RMW_IY([this](Fluint8 x) {
+        x = ROR(x);
+        return ADC(x);
+      });
+      break;
 
       /* SLO */
-      case 0x07: RMW_ZP(x = ASL(x); ORA(x)); break;
-      case 0x17: RMW_ZPX(x = ASL(x); ORA(x)); break;
-      case 0x0F: RMW_AB(x = ASL(x); ORA(x)); break;
-      case 0x1F: RMW_ABX(x = ASL(x); ORA(x)); break;
-      case 0x1B: RMW_ABY(x = ASL(x); ORA(x)); break;
-      case 0x03: RMW_IX(x = ASL(x); ORA(x)); break;
-      case 0x13: RMW_IY(x = ASL(x); ORA(x)); break;
+    case 0x07: RMW_ZP([this](Fluint8 x) {
+        x = ASL(x);
+        ORA(x);
+        return x;
+      });
+      break;
+    case 0x17: RMW_ZPX([this](Fluint8 x) {
+        x = ASL(x);
+        ORA(x);
+        return x;
+      });
+      break;
+    case 0x0F: RMW_AB([this](Fluint8 x) {
+        x = ASL(x);
+        ORA(x);
+        return x;
+      });
+      break;
+    case 0x1F: RMW_ABX([this](Fluint8 x) {
+        x = ASL(x);
+        ORA(x);
+        return x;
+      });
+      break;
+    case 0x1B: RMW_ABY([this](Fluint8 x) {
+        x = ASL(x);
+        ORA(x);
+        return x;
+      });
+      break;
+    case 0x03: RMW_IX([this](Fluint8 x) {
+        x = ASL(x);
+        ORA(x);
+        return x;
+      });
+      break;
+    case 0x13: RMW_IY([this](Fluint8 x) {
+        x = ASL(x);
+        ORA(x);
+        return x;
+      });
+      break;
 
       /* SRE */
-      case 0x47: RMW_ZP(x = LSR(x); EOR(x)); break;
-      case 0x57: RMW_ZPX(x = LSR(x); EOR(x)); break;
-      case 0x4F: RMW_AB(x = LSR(x); EOR(x)); break;
-      case 0x5F: RMW_ABX(x = LSR(x); EOR(x)); break;
-      case 0x5B: RMW_ABY(x = LSR(x); EOR(x)); break;
-      case 0x43: RMW_IX(x = LSR(x); EOR(x)); break;
-      case 0x53: RMW_IY(x = LSR(x); EOR(x)); break;
+    case 0x47: RMW_ZP([this](Fluint8 x) {
+        x = LSR(x);
+        EOR(x);
+        return x;
+      });
+      break;
+    case 0x57: RMW_ZPX([this](Fluint8 x) {
+        x = LSR(x);
+        EOR(x);
+        return x;
+      });
+      break;
+    case 0x4F: RMW_AB([this](Fluint8 x) {
+        x = LSR(x);
+        EOR(x);
+        return x;
+      });
+      break;
+    case 0x5F: RMW_ABX([this](Fluint8 x) {
+        x = LSR(x);
+        EOR(x);
+        return x;
+      });
+      break;
+    case 0x5B: RMW_ABY([this](Fluint8 x) {
+        x = LSR(x);
+        EOR(x);
+        return x;
+      });
+      break;
+    case 0x43: RMW_IX([this](Fluint8 x) {
+        x = LSR(x);
+        EOR(x);
+        return x;
+      });
+      break;
+    case 0x53: RMW_IY([this](Fluint8 x) {
+        x = LSR(x);
+        EOR(x);
+        return x;
+      });
+      break;
 
-      /* AXA - SHA */
-      case 0x93:
-        ST_IY([this](Fluint16 AA) {
-            return reg_A & reg_X & WeirdHiByte(AA, reg_Y);
-          });
-        break;
-      case 0x9F:
-        ST_ABY([this](Fluint16 AA) {
-            return reg_A & reg_X & WeirdHiByte(AA, reg_Y);
-          });
-        break;
-
-      /* SYA */
-      case 0x9C:
-        ST_ABX([this](Fluint16 AA) {
-            return reg_Y & WeirdHiByte(AA, reg_X);
+    /* AXA - SHA */
+    case 0x93:
+      ST_IY([this](Fluint16 AA) {
+          return reg_A & reg_X & WeirdHiByte(AA, reg_Y);
         });
-        break;
-
-      /* SXA */
-      case 0x9E:
-        ST_ABY([this](Fluint16 AA) {
-            return reg_X & WeirdHiByte(AA, reg_Y);
+      break;
+    case 0x9F:
+      ST_ABY([this](Fluint16 AA) {
+          return reg_A & reg_X & WeirdHiByte(AA, reg_Y);
         });
-        break;
+      break;
 
-      /* XAS */
-      case 0x9B:
-        reg_S = reg_A & reg_X;
-        ST_ABY([this](Fluint16 AA) {
-            return reg_S & WeirdHiByte(AA, reg_Y);
-        });
-        break;
+    /* SYA */
+    case 0x9C:
+      ST_ABX([this](Fluint16 AA) {
+          return reg_Y & WeirdHiByte(AA, reg_X);
+      });
+      break;
 
-      /* TOP */
-      case 0x0C:
-        LD_AB([this](Fluint8 x) { });
-        break;
-      case 0x1C:
-      case 0x3C:
-      case 0x5C:
-      case 0x7C:
-      case 0xDC:
-      case 0xFC:
-        LD_ABX([this](Fluint8 x) { });
-        break;
+    /* SXA */
+    case 0x9E:
+      ST_ABY([this](Fluint16 AA) {
+          return reg_X & WeirdHiByte(AA, reg_Y);
+      });
+      break;
 
-      /* XAA - BIG QUESTION MARK HERE */
-      case 0x8B:
-        reg_A = Fluint8::OrWith<0xEE>(reg_A);
-        reg_A &= reg_X;
-        LD_IM([this](Fluint8 x) { AND(x); });
-        break;
+    /* XAS */
+    case 0x9B:
+      reg_S = reg_A & reg_X;
+      ST_ABY([this](Fluint16 AA) {
+          return reg_S & WeirdHiByte(AA, reg_Y);
+      });
+      break;
+
+    /* TOP */
+    case 0x0C:
+      LD_AB([this](Fluint8 x) { });
+      break;
+    case 0x1C:
+    case 0x3C:
+    case 0x5C:
+    case 0x7C:
+    case 0xDC:
+    case 0xFC:
+      LD_ABX([this](Fluint8 x) { });
+      break;
+
+    /* XAA - BIG QUESTION MARK HERE */
+    case 0x8B:
+      reg_A = Fluint8::OrWith<0xEE>(reg_A);
+      reg_A &= reg_X;
+      LD_IM([this](Fluint8 x) { AND(x); });
+      break;
     }
   }
 }
