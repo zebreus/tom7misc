@@ -22,15 +22,15 @@ int main(int argc, char **argv) {
     string arg = argv[i];
     if (arg == "-prg") {
       if (got_type) {
-	fprintf(stderr, "-prg or -chr only once.\n");
-	return -1;
+        fprintf(stderr, "-prg or -chr only once.\n");
+        return -1;
       }
       dump_prg = true;
       got_type = true;
     } else if (arg == "-chr") {
       if (got_type) {
-	fprintf(stderr, "-prg or -chr only once.\n");
-	return -1;
+        fprintf(stderr, "-prg or -chr only once.\n");
+        return -1;
       }
 
       dump_prg = false;
@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
 
   const string infile = args[0];
   const string outfile = args[1];
-  
+
   FILE *inf = fopen(infile.c_str(), "rb");
   if (inf == 0) {
     fprintf(stderr, "Can't read %s\n", infile.c_str());
@@ -92,12 +92,12 @@ int main(int argc, char **argv) {
   }
 
   int mult = mirror ? 2 : 1;
-  
+
   if (dump_prg) {
     for (int i = 0; i < mult; i++) {
       if (prg_bytes != fwrite(prg, 1, prg_bytes, outf)) {
-	fprintf(stderr, "Couldn't write %d rom bytes?\n", prg_bytes);
-	return -1;
+        fprintf(stderr, "Couldn't write %d rom bytes?\n", prg_bytes);
+        return -1;
       }
     }
     fprintf(stderr, "Successfully wrote %d PRG Bytes to %s.\n",
@@ -105,8 +105,8 @@ int main(int argc, char **argv) {
   } else {
     for (int i = 0; i < mult; i++) {
       if (chr_bytes != fwrite(chr, 1, chr_bytes, outf)) {
-	fprintf(stderr, "Couldn't write %d rom bytes?\n", chr_bytes);
-	return -1;
+        fprintf(stderr, "Couldn't write %d rom bytes?\n", chr_bytes);
+        return -1;
       }
     }
     fprintf(stderr, "Successfully wrote %d CHR Bytes to %s.\n",
