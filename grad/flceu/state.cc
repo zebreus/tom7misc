@@ -334,12 +334,12 @@ void State::AddExStateReal(void *v, uint32 s, int type, SKEY desc,
 State::State(FC *fc) :
   fc(fc),
   sfcpu({
-      {&fc->X->reg_PC, sizeof fc->X->reg_PC | FCEUSTATE_RLSB, "rgPC"},
-      {&fc->X->reg_A, sizeof fc->X->reg_A, "regA"},
-      {&fc->X->reg_P, sizeof fc->X->reg_P, "regP"},
-      {&fc->X->reg_X, sizeof fc->X->reg_X, "regX"},
-      {&fc->X->reg_Y, sizeof fc->X->reg_Y, "regY"},
-      {&fc->X->reg_S, sizeof fc->X->reg_S, "regS"},
+      {&fc->X->cpu.reg_PC, sizeof fc->X->cpu.reg_PC | FCEUSTATE_RLSB, "rgPC"},
+      {&fc->X->cpu.reg_A,  sizeof fc->X->cpu.reg_A, "regA"},
+      {&fc->X->cpu.reg_P,  sizeof fc->X->cpu.reg_P, "regP"},
+      {&fc->X->cpu.reg_X,  sizeof fc->X->cpu.reg_X, "regX"},
+      {&fc->X->cpu.reg_Y,  sizeof fc->X->cpu.reg_Y, "regY"},
+      {&fc->X->cpu.reg_S,  sizeof fc->X->cpu.reg_S, "regS"},
       {fc->fceu->RAM, 0x800, "RAMM"},
     }),
   sfcpuc({
@@ -350,7 +350,7 @@ State::State(FC *fc) :
       {&fc->fceu->timestampbase,
        sizeof(fc->fceu->timestampbase) | FCEUSTATE_RLSB, "TSBS"},
       // alternative to the "quick and dirty hack"
-      {&fc->X->reg_PI, sizeof fc->X->reg_PI, "MooP"},
+      {&fc->X->cpu.reg_PI, sizeof fc->X->cpu.reg_PI, "MooP"},
       // This was not included in FCEUltra, but I can't see any
       // reason why it shouldn't be (it's updated with each memory
       // read and used by some boards), and execution diverges if
