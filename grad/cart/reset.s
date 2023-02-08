@@ -18,6 +18,13 @@ skip: .byte $00
 nops: .byte $00
 dops: .byte $00
 tops: .byte $00
+oflo: .byte $00
+rrao: .byte $00
+rraa: .byte $00
+saxo: .byte $00
+asro: .byte $00
+sreo: .byte $00
+srea: .byte $00
 
 .segment "HEADER"
 
@@ -133,6 +140,46 @@ Blankram:                       ;puts zero in all CPU RAM
 
 ;;; want 27 (decimal)
   stx tops
+
+;;;  test CLV instruction
+  lda #$f0
+  adc #$81
+;;;  overflow flag is set; clear it
+  clv
+;;;  now expect the jump is not taken
+  bvs noflow
+  sta oflo
+
+noflow:
+
+;;; test RRA
+;;; start with something non-trivial
+  lda #$81
+  sta rrao
+;;; RRA: read, rotate right, add with carry, write back
+  .byte $6f
+  .word rrao
+  sta rraa
+
+;;; SAX takes an immediate address and stores
+;;; A & X there.
+  lda #$0f
+  .byte $8f
+  .word saxo
+
+;;; ASR (or LSR) loads an immediate, ANDS with A, shifts right
+  lda #$8f
+  .byte $4b,$88
+;; result should be $44
+  sta asro
+
+;;; test SRE
+  lda #$41
+  sta sreo
+;;; reads, left shift, or with A, write shifted value back
+  .byte $4f
+  .word sreo
+  sta srea
 
 :
         lda $2002
