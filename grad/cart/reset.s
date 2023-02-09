@@ -12,7 +12,12 @@
 
 .segment "ZEROPAGE"
 
-; no variables yet
+;;;  these memory locations (on the zero page, at the beginning
+;;;  of RAM) store the outcomes of executing various instructions,
+;;;  with the idea that if the instruction is implemented incorrectly
+;;;  that the memory locations will have the wrong value (and the
+;;;  video output will thus be wrong too). The tests are not that
+;;;  comprehensive, though!
 
 skip: .byte $00
 nops: .byte $00
@@ -25,6 +30,27 @@ saxo: .byte $00
 asro: .byte $00
 sreo: .byte $00
 srea: .byte $00
+shyo: .byte $00
+shxo: .byte $00
+arro: .byte $00
+xaso: .byte $00
+xass: .byte $00
+atxo: .byte $00
+sbco: .byte $00
+isbo: .byte $00
+isba: .byte $00
+sedf: .byte $00
+rlao: .byte $00
+rlaa: .byte $00
+dcpo: .byte $00
+dcpf: .byte $00
+alro: .byte $00
+anco: .byte $00
+ancf: .byte $00
+an2o: .byte $00
+an2f: .byte $00
+
+savestack:  .byte $00
 
 .segment "HEADER"
 
@@ -69,7 +95,7 @@ Blankram:                       ;puts zero in all CPU RAM
         bne Blankram
 
 ;;; NOP
-  ldx $0
+  ldx #$00
   .byte $1a
   inx
   .byte $3a
@@ -180,6 +206,110 @@ noflow:
   .byte $4f
   .word sreo
   sta srea
+
+;;;  SHY aka SYA
+;;;  takes address, adds x, writes some function of y, resulting addr, x
+  ldx #shyo
+  ldy #$f7
+  .byte $9c,$00,$00
+
+;;;  SHX aka SXA
+;;;  same thing, x reg
+  ldy #shyo
+  ldx #$cc
+  .byte $9e,$00,$00
+
+
+;;;  ARR - mysterious!
+;;;  takes an immediate value, ands with A, does some weird shifting
+;;;  with flags
+  lda #$2A
+  .byte $6b,$f3
+  sta arro
+
+;;; XAS aka TAS
+;;;  takes immediate address, adds y, stores something weird based
+;;;  on the address, Y, and stack registers. Also messes up the
+;;;  stack register. bonkers!
+  tsx
+  stx savestack
+
+  ldy xaso
+  ldx #$2a
+  .byte $9b,$00,$00
+;;;  observe stack reg is modified
+  tsx
+  stx xass
+
+  ldx savestack
+  txs
+
+;;; ATX
+;;; bizarre instruction that basically sets a and x to the immediate
+;;;  value
+  lda #$98
+  .byte $ab,$13
+  stx atxo
+
+;;; SBC - undocumented opcode (same as $e9)
+  lda #$2a
+  .byte $eb,$11
+  sta sbco
+
+;;;  ISC aka ISB
+;;;  read-modify-write, here from zero page. decrements the
+;;;  value and subtracts it from a.
+  ldx #$ee
+  stx isbo
+  .byte $e7,isbo
+  sta isba
+
+;;;   SED sets the decimal flag, which is unused on NES
+  .byte $f8
+  ;; push flags to stack, pop to read 'em
+  php
+  pla
+  sta sedf
+
+;;; RLA - read-modify-write: rotate left and AND
+  ldx #$2a
+  stx rlao
+  lda #$f3
+  .byte $2f
+  .word rlao
+  sta rlaa
+
+;;; DCP - read-modify-write: decrement and compare
+  stx dcpo
+  ;;  using zero page addressing
+  .byte $c7,dcpo
+  ;;  save flags to see what compare did
+  php
+  pla
+  sta dcpf
+
+;;;  ALR aka ASR
+  ;;  AND with immediate and shift right
+  lda #$fe
+  .byte $4b,$57
+  sta alro
+
+;;;  ANC aka AAC
+;;;  AND with immediate, but update carry flag (?)
+  lda #$ef
+  .byte $0b,$87
+  sta anco
+  php
+  pla
+  sta ancf
+
+  ;;  different opcode, same instruction
+  lda #$5f
+  .byte $2b,$47
+  sta an2o
+  php
+  pla
+  sta an2f
 
 :
         lda $2002
