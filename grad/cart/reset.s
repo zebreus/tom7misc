@@ -49,6 +49,7 @@ anco: .byte $00
 ancf: .byte $00
 an2o: .byte $00
 an2f: .byte $00
+sloo: .byte $00
 
 savestack:  .byte $00
 
@@ -214,9 +215,11 @@ noflow:
   .byte $9c,$00,$00
 
 ;;;  SHX aka SXA
-;;;  same thing, x reg
-  ldy #shyo
-  ldx #$cc
+;;;  same thing, x reg. since the function computed is basically
+;;;  ((0 + y) - y) + 1, we want something odd in x so that $01 is
+;;;  written.
+  ldy #shxo
+  ldx #$cd
   .byte $9e,$00,$00
 
 
@@ -234,8 +237,8 @@ noflow:
   tsx
   stx savestack
 
-  ldy xaso
-  ldx #$2a
+  ldy #xaso
+  ldx #$2b
   .byte $9b,$00,$00
 ;;;  observe stack reg is modified
   tsx
@@ -265,7 +268,7 @@ noflow:
   sta isba
 
 ;;;   SED sets the decimal flag, which is unused on NES
-  .byte $f8
+  sed
   ;; push flags to stack, pop to read 'em
   php
   pla
@@ -310,6 +313,16 @@ noflow:
   php
   pla
   sta an2f
+
+;;;  SLO: read-modify-write, shift left and OR
+
+  ldx #$2a
+  stx sloo
+  .byte $07,sloo
+
+;;;  all checked up to here! memory contains:
+;;;  00 06 14 1b 71 c0 42 0b 44 20 61 01 01 91 01 01
+;;;  13 18 ef 29 ec 54 50 29 3d 2b 87 bd 47 3c 54
 
 :
         lda $2002

@@ -2,17 +2,10 @@
 // coverage for:
 
 families done: ASR, CLV, SRE, SAX, RRA, SHY, ARR,
-TAS, SHX, ATX, SED, RLA, DCP, ALR
+TAS, SHX, ATX, SED, RLA, DCP, ALR, SLO
 
-still to do: SLO, XAA, AHX, LAX, AXS
+still to do: XAA, AHX, LAX, AXS
 
-03  SLO (d,x)   0
-07  SLO d   0
-0f  SLO a   0
-13  SLO (d),y   0
-17  SLO d,x 0
-1b  SLO a,y 0
-1f  SLO a,x 0
 8b  XAA #i  0
 93  AHX (d),y   0
 9f  AHX a,y 0
