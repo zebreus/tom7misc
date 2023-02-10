@@ -61,6 +61,13 @@ laso: .byte $00
 lasa: .byte $00
 lasx: .byte $00
 lass: .byte $00
+ahxo: .byte $00
+
+fina: .byte $00
+finx: .byte $00
+finy: .byte $00
+finf: .byte $00
+fins: .byte $00
 
 savestack:  .byte $00
 
@@ -381,10 +388,33 @@ noflow:
   ldx savestack
   txs
 
-;;;  all checked up to here! memory contains:
+;;;  AHX aka AXA
+;;; stores a & x & weirdhibyte to addr+y
+  ldy #ahxo
+;;;  want two odd numbers because weirdhibyte is basically 1
+  lda #$33
+  ldx #$f7
+  .byte $9f,$00,$00
+
+;;; now dump state, for one more chance of catching any
+;;;  discrepancies
+
+  sta fina
+  stx finx
+  sty finy
+  php
+  pla
+  sta finf
+  tsx
+  stx fins
+
+;;;  with the final expected memory contents (beginning of
+;;;  zero page):
 ;;;  00 06 14 1b 71 c0 42 0b 44 20 61 01 01 91 01 01
 ;;;  13 18 ef 29 ec 54 50 29 3d 2b 87 bd 47 3c 54 2f
-;;;  46 3C 04 3D 1b 1b 7b 7a 7a 7a
+;;;  46 3C 04 3D 1b 1b 7b 7a 7a 7a 01 33 f7 2a bd ff
+;;;  ff
+
 
 :
         lda $2002

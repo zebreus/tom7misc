@@ -2,12 +2,10 @@
 // coverage for:
 
 families done: ASR, CLV, SRE, SAX, RRA, SHY, ARR,
-TAS, SHX, ATX, SED, RLA, DCP, ALR, SLO, XAA, AXS
+TAS, SHX, ATX, SED, RLA, DCP, ALR, SLO, XAA, AXS, AHX
 
-still to do: AHX
-
-93  AHX (d),y   0
-9f  AHX a,y 0
+We don't cover all the opcodes, but now at least we
+have all the instruction families.
 
 // Full old list
 01  ORA (d,x)   0
