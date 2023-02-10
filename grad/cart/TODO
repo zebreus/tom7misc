@@ -2,24 +2,12 @@
 // coverage for:
 
 families done: ASR, CLV, SRE, SAX, RRA, SHY, ARR,
-TAS, SHX, ATX, SED, RLA, DCP, ALR, SLO
+TAS, SHX, ATX, SED, RLA, DCP, ALR, SLO, XAA, AXS
 
-still to do: XAA, AHX, LAX, AXS
+still to do: AHX
 
-8b  XAA #i  0
 93  AHX (d),y   0
 9f  AHX a,y 0
-a3  LAX (d,x)   0
-a7  LAX d   0
-ab  LAX #i  0
-af  LAX a   0
-b3  LAX (d),y   0
-b6  LDX d,y 0
-b7  LAX d,y 0
-bb  LAS a,y 0
-bf  LAX a,y 0
-cb  AXS #i  0
-
 
 // Full old list
 01  ORA (d,x)   0

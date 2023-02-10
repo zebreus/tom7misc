@@ -50,6 +50,17 @@ ancf: .byte $00
 an2o: .byte $00
 an2f: .byte $00
 sloo: .byte $00
+xaao: .byte $00
+axsx: .byte $00
+axsf: .byte $00
+ax2x: .byte $00
+ax2f: .byte $00
+laxa: .byte $00
+laxx: .byte $00
+laso: .byte $00
+lasa: .byte $00
+lasx: .byte $00
+lass: .byte $00
 
 savestack:  .byte $00
 
@@ -320,9 +331,60 @@ noflow:
   stx sloo
   .byte $07,sloo
 
+;;; XAA. Takes an immediate. a = (a | 0xEE) & x, then a &= imm.
+  ldx #$3f
+  lda #$f7
+  .byte $8b,$6f
+  sta xaao
+
+;;;  AXS. Takes immediate, "very similar to cmp"
+  lda #$f7
+  .byte $cb,$f1
+  stx axsx
+  php
+  pla
+  sta axsf
+;;; now again with carry
+  .byte $cb,$00
+  stx ax2x
+  php
+  pla
+  sta ax2f
+
+;;; LAX - loads a and x (here from zero page)
+  .byte $a7,tops
+  sta laxa
+  sta laxx
+
+;;; LAS aka LAR read-modify-write, from addr+y, ands with s (??) and
+;;; copies that to A and X. writes the same thing that was read.
+
+  tsx
+  stx savestack
+  ;;  make stack not trivial
+  php
+
+  ;; put something non-trivial there, then load its offset
+  ;; (base addr will be 0000)
+  ldx #$7b
+  stx laso
+  ldy #laso
+
+  .byte $bb,$00,$00
+  sta lasa
+  stx lasx
+;;;  observe stack reg is modified
+  tsx
+  stx lass
+
+;; and put it back
+  ldx savestack
+  txs
+
 ;;;  all checked up to here! memory contains:
 ;;;  00 06 14 1b 71 c0 42 0b 44 20 61 01 01 91 01 01
-;;;  13 18 ef 29 ec 54 50 29 3d 2b 87 bd 47 3c 54
+;;;  13 18 ef 29 ec 54 50 29 3d 2b 87 bd 47 3c 54 2f
+;;;  46 3C 04 3D 1b 1b 7b 7a 7a 7a
 
 :
         lda $2002
