@@ -266,10 +266,10 @@ struct Fluint8 {
   }
 
   static half RightShiftHalf7(half xh) {
-    // PERF: Didn't look for smaller expressions yet!
-    static constexpr half OFFSET1 = GetHalf(0x0fad); // 0.00046849...
-    static constexpr half OFFSET2 = GetHalf(0x6459);
-    return xh * (half)(1.0f / 256.0f) + OFFSET1 + OFFSET2 - OFFSET2;
+    static constexpr half SCALE = GetHalf(0x1c03); // 0.0039177...
+    static constexpr half OFFSET = GetHalf(0x66c8);
+    // return xh * (half)(1.0f / 256.0f) + OFFSET1 + OFFSET2 - OFFSET2;
+    return xh * SCALE + OFFSET - OFFSET;
   }
 
   // Works for integers in [0, 512); always results in 1 or 0.

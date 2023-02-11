@@ -90,6 +90,19 @@ static double TestRightShift3(double a, double b, double c) {
         });
 }
 
+static double TestRightShift7(double a, double b, double c) {
+  return
+    ForAll(
+        [a, b, c](uint8_t x, half xh) {
+          uint8_t z = x >> 7;
+          // half zh = xh * (1.0_h / 256.0_h) + (half)a + (half)b - (half)c;
+          half zh = xh * (half)a + (half)b - (half)c;
+          double dist = zh - (half)z;
+          return dist * dist;
+        });
+}
+
+// Note: Tests in 0..511
 static double TestRightShift8(double a, double b, double c) {
   return
     ForAll9(
@@ -109,13 +122,14 @@ int main(int argc, char **argv) {
 
   ShiftOpt opt([](const ShiftOpt::arg_type &arg) {
       const auto [a, b, c] = arg.second;
-      double err = TestRightShift8(a, b, c);
+      double err = TestRightShift7(a, b, c);
       return std::make_pair(err, std::make_optional('x'));
     }, time(nullptr));
 
   opt.Run({},
           {
-            make_pair(-0.51, 0.51),
+            // make_pair(-0.51, 0.51),
+            make_pair(1.0 / 300.0, 1.0 / 60.0),
             make_pair(255.0, 2049.0),
             make_pair(255.0, 2049.0),
           },
