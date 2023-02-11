@@ -122,11 +122,32 @@ struct X6502 {
     Fluint16 cycles;
 
     Fluint8 jammed;
+    // 1 if this instruction is active, otherwise 0.
+    Fluint8 active;
 
     X6502 *parent;
 
     void AddCycle(Fluint8 x) {
       cycles += x;
+    }
+
+    inline Fluint8 RdMem(Fluint16 A) {
+      return parent->RdMemIf(active, A);
+    }
+
+    inline void WrMem(Fluint16 A, Fluint8 V) {
+      parent->WrMemIf(active, A, V);
+    }
+
+    // We could make this non-conditional if we had a local
+    // memory bus (DB), but I don't think that is more
+    // authentic.
+    inline Fluint8 RdRAM(Fluint16 A) {
+      return parent->RdRAMIf(active, A);
+    }
+
+    inline void WrRAM(Fluint16 A, Fluint8 V) {
+      parent->WrRAMIf(active, A, V);
     }
 
     inline void BRK() {
@@ -938,17 +959,16 @@ struct X6502 {
 
     /* Special undocumented operation.  Very similar to CMP. */
     void AXS(Fluint8 x) {
-      // TODO: Should be easy with SubtractWithCarry, but we have no
-      // test coverage for this instruction :/
-      Fluint8::Cheat();
-      uint32 t = (reg_A & reg_X).ToInt() - x.ToInt();
-      X_ZN(Fluint8(t));
+      auto [carry, diff] =
+        Fluint8::SubtractWithCarry(reg_A & reg_X, x);
+      // uint32 t = (reg_A & reg_X).ToInt() - x.ToInt();
+      X_ZN(diff);
       reg_P =
         Fluint8::PlusNoOverflow(
             Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P),
             Fluint8::XorWith<C_FLAG8>(
-              Fluint8::AndWith<C_FLAG8>(Fluint8((uint8)(t >> 8)))));
-      reg_X = Fluint8((uint8)t);
+                Fluint8::AndWith<C_FLAG8>(carry)));
+      reg_X = diff;
     }
 
     // End CPU
@@ -974,10 +994,11 @@ private:
   inline Fluint8 RdMemIf(Fluint8 cond, Fluint16 A) {
     const uint8_t cc = cond.ToInt();
     CHECK(cc == 0x00 || cc == 0x01) << cc;
-    if (cond.ToInt() == 0x01) {
+    if (cc == 0x01) {
       uint16_t AA = A.ToInt();
       TraceRead(AA);
-      return Fluint8(DB = fc->fceu->ARead[AA](fc, AA));
+      DB = fc->fceu->ARead[AA](fc, AA);
+      return Fluint8(DB);
     } else {
       // Arbitrary
       return Fluint8(0x00);
@@ -986,18 +1007,50 @@ private:
 
   // normal memory write
   inline void WrMem(Fluint16 A, Fluint8 V) {
-    uint16_t AA = A.ToInt();
-    uint8_t VV = V.ToInt();
-    TraceWrite(AA, VV);
-    fc->fceu->BWrite[AA](fc, AA, VV);
+    WrMemIf(Fluint8(0x01), A, V);
+  }
+
+  inline void WrMemIf(Fluint8 cond, Fluint16 A, Fluint8 V) {
+    const uint8_t cc = cond.ToInt();
+    CHECK(cc == 0x00 || cc == 0x01) << cc;
+    if (cc == 0x01) {
+      uint16_t AA = A.ToInt();
+      uint8_t VV = V.ToInt();
+      TraceWrite(AA, VV);
+      fc->fceu->BWrite[AA](fc, AA, VV);
+    } else {
+      // No effect
+    }
   }
 
   inline Fluint8 RdRAM(Fluint16 A) {
-    return Fluint8(DB = fc->fceu->RAM[A.ToInt()]);
+    return RdRAMIf(Fluint8(0x01), A);
+  }
+
+  inline Fluint8 RdRAMIf(Fluint8 cond, Fluint16 A) {
+    const uint8_t cc = cond.ToInt();
+    CHECK(cc == 0x00 || cc == 0x01) << cc;
+    if (cc == 0x01) {
+      DB = fc->fceu->RAM[A.ToInt()];
+      return Fluint8(DB);
+    } else {
+      // Arbitrary
+      return Fluint8(0x00);
+    }
   }
 
   inline void WrRAM(Fluint16 A, Fluint8 V) {
-    fc->fceu->RAM[A.ToInt()] = V.ToInt();
+    return WrRAMIf(Fluint8(0x01), A, V);
+  }
+
+  inline void WrRAMIf(Fluint8 cond, Fluint16 A, Fluint8 V) {
+    const uint8_t cc = cond.ToInt();
+    CHECK(cc == 0x00 || cc == 0x01) << cc;
+    if (cc == 0x01) {
+      fc->fceu->RAM[A.ToInt()] = V.ToInt();
+    } else {
+      // No effect
+    }
   }
 
   // Commonly we do bitwise ops with compile-time constants,
