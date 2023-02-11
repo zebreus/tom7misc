@@ -37,6 +37,8 @@
 #include "tracing.h"
 
 #include "fluint8.h"
+#include "util.h"
+#include "image.h"
 
 // Number of random inputs to run after the fixed inputs.
 // This of course affects the checksums, so it should
@@ -58,6 +60,20 @@ struct Game {
   string random_seed = "randoms";
   uint8_t input_mask = 0xFF;
 };
+
+// This could be improved, but also, just don't give it weird
+// filenames pls :)
+static string TryBasename(string f) {
+  (void)Util::TryStripSuffix(".nes", &f);
+  auto slash = f.rfind("/");
+  if (slash == string::npos) return f;
+  return f.substr(slash + 1, string::npos);
+}
+static string Basename(const Game &game) {
+  string f = TryBasename(game.cart);
+  if (f.empty()) return "empty";
+  return f;
+}
 
 // Result state hashes from running the test case.
 struct SerialResult {
@@ -301,6 +317,11 @@ static SerialResult RunGameSerially(
   res.img_after_fixed = emu->ImageChecksum();
   res.mem_trace_fixed = emu->GetFC()->X->mem_trace;
 
+  ImageRGBA img(emu->GetImage(), 256, 256);
+  string imgname = Basename(game) + ".png";
+  img.Save(imgname);
+  printf("Wrote %s\n", imgname.c_str());
+
   TRACEF("after_fixed %llu.", res.after_fixed);
 
   Update("Random inputs.");
@@ -423,6 +444,16 @@ static std::vector<TestCase> TestCases() {
 
       cases.push_back(std::move(tc));
     };
+
+  AddCase(
+      "test1.nes",
+      // One player. No input; just wait long enough for
+      // it to paint the screen.
+      "!256_",
+      0x47d8448f2dfca78c, 0x27025ad8cd8c4f9b,
+      0xc69c09c660bf5638, 0x8ebd1aa4f181715c,
+      0x81480cc53f0f5f2c, 0x8bd8fa0a82bef14a,
+      NO_PAUSE_MASK);
 
   // Regression -- Tengen cart wasn't saving all its state.
   AddCase(
