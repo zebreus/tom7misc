@@ -137,11 +137,6 @@ struct Fluint8 {
 
   uint8_t ToInt() const;
 
-  // TODO: This should not be supported; instead we want like ?:
-  // bool operator !() const {
-  // return IsZero(*this);
-  // }
-
   constexpr Fluint8() : h(GetHalf(TABLE[0])) {}
   Fluint8(Fluint8 &&other) = default;
   Fluint8(const Fluint8 &other) = default;
@@ -164,6 +159,9 @@ struct Fluint8 {
   static Fluint8 IsZero(Fluint8 a);
   // Same as !!
   static Fluint8 IsntZero(Fluint8 a);
+
+  // (a == b) ? 1 : 0
+  static Fluint8 Eq(Fluint8 a, Fluint8 b);
 
   // For cc = 0x01 or 0x00 (only), returns c ? t : 0.
   static Fluint8 If(Fluint8 cc, Fluint8 t);
@@ -265,6 +263,13 @@ struct Fluint8 {
     static constexpr half OFFSET1 = GetHalf(0xb642);
     static constexpr half OFFSET2 = GetHalf(0x67bc);
     return xh * (half)0.125f + OFFSET1 + OFFSET2 - OFFSET2;
+  }
+
+  static half RightShiftHalf7(half xh) {
+    // PERF: Didn't look for smaller expressions yet!
+    static constexpr half OFFSET1 = GetHalf(0x0fad); // 0.00046849...
+    static constexpr half OFFSET2 = GetHalf(0x6459);
+    return xh * (half)(1.0f / 256.0f) + OFFSET1 + OFFSET2 - OFFSET2;
   }
 
   // Works for integers in [0, 512); always results in 1 or 0.
@@ -416,6 +421,10 @@ Fluint8 Fluint8::RightShift(Fluint8 x) {
   using namespace half_float::literal;
   if constexpr (N == 0) {
     return x;
+  } else if constexpr (N >= 7) {
+    Fluint8 y = RightShift<N - 7>(x);
+    half z = RightShiftHalf7(y.h);
+    return Fluint8(z);
   } else if constexpr (N >= 4) {
     Fluint8 y = RightShift<N - 4>(x);
     // Similar idea to RightShift1, but found programmatically

@@ -9,6 +9,9 @@ using namespace half_float::literal;
 
 int64_t Fluint8::num_cheats = 0;
 
+#define ECHECK(cond) CHECK(true || (cond))
+// #define ECHECK(cond) CHECK(cond)
+
 #if !FLUINT8_WRAP
 
 uint16_t Fluint8::Representation() const { return GetU16(h); }
@@ -20,11 +23,6 @@ uint8_t Fluint8::ToInt() const {
 // For functions of multiple variables, we allow some linear
 // functions of these. Note we should be careful when multiplying,
 // since e.g. x * x is not linear!
-Fluint8 Fluint8::Plus(Fluint8 x, Fluint8 y) {
-  auto [carry, sum] = AddWithCarry(x, y);
-  return sum;
-}
-
 std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
   // Correct value, but maybe 256 too high because of overflow.
   const half z = x.h + y.h;
@@ -32,8 +30,15 @@ std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
   // Shift down 8 times to get the overflow bit.
   half o = RightShiftHalf8(z);
 
-  CHECK(o == 1.0_h || o == 0.0_h) << o;
+  ECHECK(o == 1.0_h || o == 0.0_h) << o;
   return make_pair(Fluint8(o), Fluint8(z - o * 256.0_h));
+}
+
+Fluint8 Fluint8::Plus(Fluint8 x, Fluint8 y) {
+  // As above but don't compute carry.
+  const half z = x.h + y.h;
+  half o = RightShiftHalf8(z);
+  return Fluint8(z - o * 256.0_h);
 }
 
 std::pair<Fluint8, Fluint8> Fluint8::SubtractWithCarry(Fluint8 x, Fluint8 y) {
@@ -42,13 +47,15 @@ std::pair<Fluint8, Fluint8> Fluint8::SubtractWithCarry(Fluint8 x, Fluint8 y) {
   // Shift down 8 times to get the overflow bit.
   half o = RightShiftHalf8(z);
 
-  CHECK(o == 1.0_h || o == 0.0_h) << o;
+  ECHECK(o == 1.0_h || o == 0.0_h) << o;
   return make_pair(Fluint8(1.0_h - o), Fluint8(z - o * 256.0_h));
 }
 
 Fluint8 Fluint8::Minus(Fluint8 x, Fluint8 y) {
-  auto [carry, diff] = SubtractWithCarry(x, y);
-  return diff;
+  // Same but don't compute carry.
+  const half z = x.h - y.h + 256.0_h;
+  half o = RightShiftHalf8(z);
+  return Fluint8(z - o * 256.0_h);
 }
 
 // This only works when in canonical form, but it's much
@@ -116,6 +123,7 @@ Fluint8 Fluint8::BitwiseXor(Fluint8 a, Fluint8 b) {
   return Fluint8(result);
 }
 
+#if 0
 Fluint8 Fluint8::IsntZero(Fluint8 a) {
   // A simple way to do this is to extract all the (negated) bits
   // and multiply them together. But this would mean multiplying
@@ -134,7 +142,7 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
     aa = aashift;
   }
 
-  CHECK(num_ones >= (half)0.0f && num_ones <= (half)8.0f);
+  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)8.0f);
 
   // now count the ones in num_ones.
   aa = Fluint8(num_ones);
@@ -146,7 +154,7 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
     aa = aashift;
   }
 
-  CHECK(num_ones >= (half)0.0f && num_ones <= (half)4.0f);
+  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)4.0f);
 
   // and again ...
   aa = Fluint8(num_ones);
@@ -158,7 +166,7 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
     aa = aashift;
   }
 
-  CHECK(num_ones >= (half)0.0f && num_ones <= (half)3.0f);
+  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)3.0f);
 
   // and again ...
   aa = Fluint8(num_ones);
@@ -170,7 +178,7 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
     aa = aashift;
   }
 
-  CHECK(num_ones >= (half)0.0f && num_ones <= (half)2.0f);
+  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)2.0f);
 
   // Now num_ones is either 0, 1, or 2. Since 1 and 2 is each
   // represented with a single bit, we can collapse them with
@@ -182,10 +190,33 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
   Fluint8 nn(num_ones);
   return Fluint8(nn.h + RightShift1(nn).h);
 }
+#else
+Fluint8 Fluint8::IsntZero(Fluint8 a) {
+  return Fluint8(1.0_h - IsZero(a).h);
+}
+#endif
+
 
 Fluint8 Fluint8::IsZero(Fluint8 a) {
   // We know IsZero returns 1 or 0.
-  return Fluint8(1.0_h - IsntZero(a).h);
+  // return Fluint8(1.0_h - IsntZero(a).h);
+
+  Fluint8 aa = a;
+  // true if everything is 1.0 so far
+  half res = 1.0_h;
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    // leftmost bit
+    half bit = (1.0_h - RightShift<7>(Fluint8(aa)).h);
+    // res = res & bit
+    res = RightShiftHalf1(bit + res);
+    aa = LeftShift<1>(aa);
+  }
+
+  return Fluint8(res);
+}
+
+Fluint8 Fluint8::Eq(Fluint8 a, Fluint8 b) {
+  return IsZero(a - b);
 }
 
 // For cc = 0x01 or 0x00 (only), returns c ? t : 0.

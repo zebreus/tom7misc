@@ -503,6 +503,22 @@ static void TestIfElse() {
       });
 }
 
+static void TestEq() {
+  ForAllPairs(
+      [](uint8 x, uint8 y,
+         Fluint8 xf, Fluint8 yf) {
+
+        bool eq = x == y;
+        Fluint8 feq = Fluint8::Eq(xf, yf);
+        if (eq) {
+          CHECK(feq.ToInt() == 1);
+        } else {
+          CHECK(feq.ToInt() == 0);
+        }
+        CHECK_CANONICAL("eq", feq, x, y);
+      });
+}
+
 
 int main(int argc, char **argv) {
   // Gen16();
@@ -542,6 +558,8 @@ int main(int argc, char **argv) {
 
   TestIf(); printf("If OK\n");
   TestIfElse(); printf("IfElse OK\n");
+
+  TestEq(); printf("Eq OK\n");
 
   printf("OK\n");
   return 0;
