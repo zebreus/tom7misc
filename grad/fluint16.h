@@ -45,6 +45,9 @@ struct Fluint16 {
   // Same as !!
   static Fluint8 IsntZero(Fluint16 a);
 
+  // For cc = 0x01 or 0x00 (only), returns c ? t : 0.
+  static Fluint16 If(Fluint8 cc, Fluint16 t);
+
   // Left shift by a compile-time constant.
   template<size_t n>
   static Fluint16 LeftShift(Fluint16 x);

@@ -523,9 +523,6 @@ static void TestEq() {
 int main(int argc, char **argv) {
   // Gen16();
 
-  TestIsZero(); printf("IsZero OK\n");
-  TestIsntZero(); printf("IsntZero OK\n");
-
   TestToFrom(); printf("ToFrom OK\n");
   TestPlus(); printf("Plus OK\n");
   TestMinus(); printf("Minus OK\n");
@@ -558,6 +555,9 @@ int main(int argc, char **argv) {
 
   TestIf(); printf("If OK\n");
   TestIfElse(); printf("IfElse OK\n");
+
+  TestIsZero(); printf("IsZero OK\n");
+  TestIsntZero(); printf("IsntZero OK\n");
 
   TestEq(); printf("Eq OK\n");
 

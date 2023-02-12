@@ -92,3 +92,7 @@ Fluint16 Fluint16::SignExtend(Fluint8 a) {
 
   return Fluint16(sign, a);
 }
+
+Fluint16 Fluint16::If(Fluint8 cc, Fluint16 t) {
+  return Fluint16(Fluint8::If(cc, t.Hi()), Fluint8::If(cc, t.Lo()));
+}

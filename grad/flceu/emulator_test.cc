@@ -312,7 +312,13 @@ static SerialResult RunGameSerially(
     };
 
   Update("Fixed inputs.");
-  for (uint8 b : game.start_inputs) SaveAndStep(b);
+  {
+    int counter = 0;
+    for (uint8 b : game.start_inputs) {
+      SaveAndStep(b);
+      if (counter % 100 == 0) printf(".");
+    }
+  }
   res.nes_after_fixed = emu->MachineChecksum();
   res.img_after_fixed = emu->ImageChecksum();
   res.mem_trace_fixed = emu->GetFC()->X->mem_trace;
@@ -326,10 +332,16 @@ static SerialResult RunGameSerially(
 
   Update("Random inputs.");
 
-  for (uint8 b : InputStream(game.random_seed,
-                             NUM_RANDOM_INPUTS,
-                             game.input_mask)) {
-    SaveAndStep(b);
+  {
+    int counter = 0;
+    for (uint8 b : InputStream(game.random_seed,
+                               NUM_RANDOM_INPUTS,
+                               game.input_mask)) {
+      SaveAndStep(b);
+      counter++;
+      // XXX
+      if (counter % 100 == 0) printf(".");
+    }
   }
 
   res.nes_after_random = emu->MachineChecksum();

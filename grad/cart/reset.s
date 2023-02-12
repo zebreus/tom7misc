@@ -416,6 +416,11 @@ noflow:
 ;;;  ff
 
 
+  jmp ActualStart
+
+  .asciiz "Test ROM #1 by Tom 7, 2023. Distribute freely. Exercises some undocumented and rare instructions. The bytes displayed in the video are the output (the beginning of the zero page). They are not checked by the ROM itself; instead you need to verify them against a known good emulator."
+
+ActualStart:
 :
         lda $2002
         bpl :-

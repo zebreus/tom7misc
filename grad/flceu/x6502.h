@@ -131,6 +131,8 @@ struct X6502 {
       cycles += x;
     }
 
+    // These local versions of memory I/O only perform the operation
+    // if active is 0x01 (passing this to the native RdMemIf etc.).
     inline Fluint8 RdMem(Fluint16 A) {
       return parent->RdMemIf(active, A);
     }
@@ -156,8 +158,8 @@ struct X6502 {
       PUSH(Fluint8::OrWith<(uint8_t)(U_FLAG8 | B_FLAG8)>(reg_P));
       reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
       reg_PI = Fluint8::OrWith<I_FLAG8>(reg_PI);
-      Fluint8 lo = parent->RdMem(Fluint16(0xFFFE));
-      Fluint8 hi = parent->RdMem(Fluint16(0xFFFF));
+      Fluint8 lo = RdMem(Fluint16(0xFFFE));
+      Fluint8 hi = RdMem(Fluint16(0xFFFF));
       reg_PC = Fluint16(hi, lo);
     }
 
@@ -194,17 +196,17 @@ struct X6502 {
       /* JMP ABSOLUTE */
       // XXX use pc directly
       Fluint16 ptmp(reg_PC);
-      Fluint8 lo = parent->RdMem(ptmp);
-      Fluint8 hi = parent->RdMem(ptmp + Fluint8(0x01));
+      Fluint8 lo = RdMem(ptmp);
+      Fluint8 hi = RdMem(ptmp + Fluint8(0x01));
       reg_PC = Fluint16(hi, lo);
     }
 
     inline void JMPIND() {
       /* JMP INDIRECT */
       Fluint16 tmp = GetAB();
-      Fluint8 lo = parent->RdMem(tmp);
-      Fluint8 hi = parent->RdMem(((tmp + Fluint8(0x01)) & Fluint16(0x00FF)) |
-                                 (tmp & Fluint16(0xFF00)));
+      Fluint8 lo = RdMem(tmp);
+      Fluint8 hi = RdMem(((tmp + Fluint8(0x01)) & Fluint16(0x00FF)) |
+                         (tmp & Fluint16(0xFF00)));
       reg_PC = Fluint16(hi, lo);
     }
 
@@ -212,9 +214,9 @@ struct X6502 {
       /* JSR */
       Fluint16 opc(reg_PC);
       Fluint16 opc1 = opc + Fluint8(0x01);
-      Fluint8 lo = parent->RdMem(opc);
+      Fluint8 lo = RdMem(opc);
       PUSH16(opc1);
-      Fluint8 hi = parent->RdMem(opc1);
+      Fluint8 hi = RdMem(opc1);
       reg_PC = Fluint16(hi, lo);
     }
 
@@ -427,7 +429,7 @@ struct X6502 {
     }
 
     inline void PUSH(Fluint8 v) {
-      parent->WrRAM(Fluint16(0x100) + reg_S, v);
+      WrRAM(Fluint16(0x100) + reg_S, v);
       reg_S--;
     }
 
@@ -438,7 +440,7 @@ struct X6502 {
 
     inline Fluint8 POP() {
       reg_S++;
-      return parent->RdRAM(Fluint16(0x100) + reg_S);
+      return RdRAM(Fluint16(0x100) + reg_S);
     }
 
     inline Fluint16 POP16() {
@@ -456,34 +458,34 @@ struct X6502 {
 
     /* Indexed Indirect */
     Fluint16 GetIX() {
-      Fluint8 tmp = parent->RdMem(reg_PC);
+      Fluint8 tmp = RdMem(reg_PC);
       reg_PC++;
       tmp += reg_X;
-      Fluint8 lo = parent->RdRAM(Fluint16(tmp));
+      Fluint8 lo = RdRAM(Fluint16(tmp));
       tmp++;
-      Fluint8 hi = parent->RdRAM(Fluint16(tmp));
+      Fluint8 hi = RdRAM(Fluint16(tmp));
       return Fluint16(hi, lo);
     }
 
     // Zero Page
     Fluint8 GetZP() {
-      Fluint8 ret = parent->RdMem(reg_PC);
+      Fluint8 ret = RdMem(reg_PC);
       reg_PC++;
       return ret;
     }
 
     /* Zero Page Indexed */
     Fluint8 GetZPI(Fluint8 i) {
-      Fluint8 ret = i + parent->RdMem(reg_PC);
+      Fluint8 ret = i + RdMem(reg_PC);
       reg_PC++;
       return ret;
     }
 
     /* Absolute */
     Fluint16 GetAB() {
-      Fluint8 lo = parent->RdMem(reg_PC);
+      Fluint8 lo = RdMem(reg_PC);
       reg_PC++;
-      Fluint8 hi = parent->RdMem(reg_PC);
+      Fluint8 hi = RdMem(reg_PC);
       reg_PC++;
       return Fluint16(hi, lo);
     }
@@ -492,8 +494,8 @@ struct X6502 {
     Fluint16 GetABIWR(Fluint8 i) {
       Fluint16 rt = GetAB();
       Fluint16 target = rt + i;
-      (void)parent->RdMem((target & Fluint16(0x00FF)) |
-                          (rt & Fluint16(0xFF00)));
+      (void)RdMem((target & Fluint16(0x00FF)) |
+                  (rt & Fluint16(0xFF00)));
       return target;
     }
 
@@ -521,7 +523,7 @@ struct X6502 {
       Fluint16 tmp = GetAB();
       Fluint16 ret = tmp + i;
       Fluint8 cc = Fluint16::RightShift<8>((ret ^ tmp) & Fluint16(0x100)).Lo();
-      (void)parent->RdMemIf(cc, ret ^ Fluint16(0x100));
+      (void)parent->RdMemIf(cc & active, ret ^ Fluint16(0x100));
 
       AddCycle(cc);
 
@@ -530,14 +532,14 @@ struct X6502 {
 
     /* Indirect Indexed (for reads) */
     Fluint16 GetIYRD() {
-      Fluint8 tmp(parent->RdMem(reg_PC));
+      Fluint8 tmp(RdMem(reg_PC));
       reg_PC++;
-      Fluint8 lo = parent->RdRAM(Fluint16(tmp));
-      Fluint8 hi = parent->RdRAM(Fluint16(tmp + Fluint8(1)));
+      Fluint8 lo = RdRAM(Fluint16(tmp));
+      Fluint8 hi = RdRAM(Fluint16(tmp + Fluint8(1)));
       Fluint16 rt(hi, lo);
       Fluint16 ret = rt + reg_Y;
       Fluint8 cc = Fluint16::RightShift<8>((ret ^ rt) & Fluint16(0x100)).Lo();
-      (void)parent->RdMemIf(cc, ret ^ Fluint16(0x100));
+      (void)parent->RdMemIf(cc & active, ret ^ Fluint16(0x100));
 
       AddCycle(cc);
 
@@ -547,14 +549,14 @@ struct X6502 {
 
     /* Indirect Indexed(for writes and rmws) */
     Fluint16 GetIYWR() {
-      Fluint8 tmp(parent->RdMem(reg_PC));
+      Fluint8 tmp(RdMem(reg_PC));
       reg_PC++;
-      Fluint8 lo = parent->RdRAM(Fluint16(tmp));
-      Fluint8 hi = parent->RdRAM(Fluint16(tmp + Fluint8(0x01)));
+      Fluint8 lo = RdRAM(Fluint16(tmp));
+      Fluint8 hi = RdRAM(Fluint16(tmp + Fluint8(0x01)));
       Fluint16 rt(hi, lo);
       Fluint16 ret = rt + reg_Y;
-      (void)parent->RdMem((ret & Fluint16(0x00FF)) |
-                          (rt & Fluint16(0xFF00)));
+      (void)RdMem((ret & Fluint16(0x00FF)) |
+                  (rt & Fluint16(0xFF00)));
       return ret;
     }
 
@@ -637,7 +639,7 @@ struct X6502 {
       }
 
       // Signed displacement. We'll only use it if cond is true.
-      Fluint8 disp = parent->RdMemIf(cond, reg_PC);
+      Fluint8 disp = parent->RdMemIf(cond & active, reg_PC);
 
       // Program counter incremented whether the branch is
       // taken or not (which makes sense as we would not
@@ -710,31 +712,31 @@ struct X6502 {
     template<class F>
     void ST_ZP(F rf) {
       Fluint16 AA(GetZP());
-      parent->WrRAM(AA, rf(this, AA));
+      WrRAM(AA, rf(this, AA));
     }
 
     template<class F>
     void ST_ZPX(F rf) {
       Fluint16 AA(GetZPI(reg_X));
-      parent->WrRAM(AA, rf(this, AA));
+      WrRAM(AA, rf(this, AA));
     }
 
     template<class F>
     void ST_ZPY(F rf) {
       Fluint16 AA(GetZPI(reg_Y));
-      parent->WrRAM(AA, rf(this, AA));
+      WrRAM(AA, rf(this, AA));
     }
 
     template<class F>
     void ST_AB(F rf) {
       Fluint16 AA = GetAB();
-      parent->WrMem(AA, rf(this, AA));
+      WrMem(AA, rf(this, AA));
     }
 
     template<class F>
     void ST_ABI(Fluint8 reg, F rf) {
       Fluint16 AA = GetABIWR(reg);
-      parent->WrMem(AA, rf(this, AA));
+      WrMem(AA, rf(this, AA));
     }
 
     template<class F>
@@ -750,40 +752,40 @@ struct X6502 {
     template<class F>
     void ST_IX(F rf) {
       Fluint16 AA = GetIX();
-      parent->WrMem(AA, rf(this, AA));
+      WrMem(AA, rf(this, AA));
     }
 
     template<class F>
     void ST_IY(F rf) {
       Fluint16 AA = GetIYWR();
-      parent->WrMem(AA, rf(this, AA));
+      WrMem(AA, rf(this, AA));
     }
 
     template<class F>
     void LD_IY(F op) {
       const Fluint16 AA = GetIYRD();
-      const Fluint8 x = parent->RdMem(AA);
+      const Fluint8 x = RdMem(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_IX(F op) {
       const Fluint16 AA = GetIX();
-      const Fluint8 x = parent->RdMem(AA);
+      const Fluint8 x = RdMem(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_AB(F op) {
       const Fluint16 AA = GetAB();
-      [[maybe_unused]] const Fluint8 x = parent->RdMem(AA);
+      const Fluint8 x = RdMem(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_ABI(Fluint8 reg, F op) {
       const Fluint16 AA = GetABIRD(reg);
-      [[maybe_unused]] const Fluint8 x = parent->RdMem(AA);
+      const Fluint8 x = RdMem(AA);
       op(this, x);
     }
     template<class F> void LD_ABX(F op) { LD_ABI(reg_X, op); }
@@ -792,27 +794,27 @@ struct X6502 {
     template<class F>
     void LD_ZPY(F op) {
       const Fluint16 AA(GetZPI(reg_Y));
-      const Fluint8 x = parent->RdRAM(AA);
+      const Fluint8 x = RdRAM(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_ZPX(F op) {
       const Fluint16 AA(GetZPI(reg_X));
-      const Fluint8 x = parent->RdRAM(AA);
+      const Fluint8 x = RdRAM(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_ZP(F op) {
       const Fluint16 AA(GetZP());
-      const Fluint8 x = parent->RdRAM(AA);
+      const Fluint8 x = RdRAM(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_IM(F op) {
-      const Fluint8 x = parent->RdMem(reg_PC);
+      const Fluint8 x = RdMem(reg_PC);
       reg_PC++;
       op(this, x);
     }
@@ -820,45 +822,45 @@ struct X6502 {
     template<class F>
     void RMW_ZPX(F op) {
       const Fluint16 AA(GetZPI(reg_X));
-      Fluint8 x = parent->RdRAM(AA);
+      Fluint8 x = RdRAM(AA);
       x = op(this, x);
-      parent->WrRAM(AA, x);
+      WrRAM(AA, x);
     }
 
     template<class F>
     void RMW_ZP(F op) {
       const Fluint16 AA(GetZP());
-      Fluint8 x = parent->RdRAM(AA);
+      Fluint8 x = RdRAM(AA);
       x = op(this, x);
-      parent->WrRAM(AA, x);
+      WrRAM(AA, x);
     }
 
     template<class F>
     void RMW_IY(F op) {
       (void)GetIX();
       const Fluint16 AA = GetIYWR();
-      Fluint8 x = parent->RdMem(AA);
-      parent->WrMem(AA, x);
+      Fluint8 x = RdMem(AA);
+      WrMem(AA, x);
       x = op(this, x);
-      parent->WrMem(AA, x);
+      WrMem(AA, x);
     }
 
     template<class F>
     void RMW_IX(F op) {
       const Fluint16 AA = GetIX();
-      Fluint8 x = parent->RdMem(AA);
-      parent->WrMem(AA, x);
+      Fluint8 x = RdMem(AA);
+      WrMem(AA, x);
       x = op(this, x);
-      parent->WrMem(AA, x);
+      WrMem(AA, x);
     }
 
     template<class F>
     void RMW_ABI(Fluint8 reg, F op) {
       const Fluint16 AA = GetABIWR(reg);
-      Fluint8 x = parent->RdMem(AA);
-      parent->WrMem(AA, x);
+      Fluint8 x = RdMem(AA);
+      WrMem(AA, x);
       x = op(this, x);
-      parent->WrMem(AA, x);
+      WrMem(AA, x);
     }
 
     template<class F> void RMW_ABX(F op) { RMW_ABI(reg_X, op); }
@@ -867,10 +869,10 @@ struct X6502 {
     template<class F>
     void RMW_AB(F op) {
       const Fluint16 AA = GetAB();
-      Fluint8 x = parent->RdMem(AA);
-      parent->WrMem(AA, x);
+      Fluint8 x = RdMem(AA);
+      WrMem(AA, x);
       x = op(this, x);
-      parent->WrMem(AA, x);
+      WrMem(AA, x);
     }
 
     template<class F>

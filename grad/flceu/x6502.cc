@@ -26,6 +26,8 @@
 
 #include "tracing.h"
 
+#define FAST_INSTRUCTION_DISPATCH 1
+
 X6502::X6502(FC *fc) : fc(fc) {
   CHECK(fc != nullptr);
 }
@@ -85,11 +87,12 @@ void X6502::Init() {
   // Initialize the CPU fields.
   // (Don't memset; we have non-CPU members now!)
   tcount = 0;
-  cpu.reg_PC = Fluint16(0);
+  cpu.reg_PC = Fluint16(0x0000);
   cpu.reg_A = cpu.reg_X = cpu.reg_Y = cpu.reg_S = cpu.reg_P = cpu.reg_PI =
-    Fluint8(0);
-  cpu.cycles = Fluint16(0);
+    Fluint8(0x00);
+  cpu.cycles = Fluint16(0x0000);
   cpu.jammed = Fluint8(0x00);
+  cpu.active = Fluint8(0x01);
   cpu.parent = this;
   count = 0;
   IRQlow = 0;
@@ -100,12 +103,13 @@ void X6502::Init() {
 
 void X6502::Power() {
   count = tcount = IRQlow = 0;
-  cpu.reg_PC = Fluint16(0);
-  cpu.reg_A = cpu.reg_X = cpu.reg_Y = cpu.reg_P = cpu.reg_PI = Fluint8(0);
-  cpu.cycles = Fluint16(0);
+  cpu.reg_PC = Fluint16(0x0000);
+  cpu.reg_A = cpu.reg_X = cpu.reg_Y = cpu.reg_P = cpu.reg_PI = Fluint8(0x00);
+  cpu.cycles = Fluint16(0x0000);
   cpu.reg_S = Fluint8(0xFD);
   DB = 0;
   cpu.jammed = Fluint8(0x00);
+  cpu.active = Fluint8(0x01);
   cpu.parent = this;
 
   timestamp = 0;
@@ -177,10 +181,10 @@ void X6502::RunLoop() {
     cpu.reg_PI = cpu.reg_P;
     // Get the next instruction.
 
-    const Fluint8 b1 = RdMem(cpu.reg_PC);
+    const Fluint8 opcode = RdMem(cpu.reg_PC);
     // printf("Read %x -> opcode %02x\n", reg_PC, b1);
 
-    ADDCYC(CycTable[b1.ToInt()]);
+    ADDCYC(CycTable[opcode.ToInt()]);
 
     int32 temp = tcount;
     tcount = 0;
@@ -188,20 +192,22 @@ void X6502::RunLoop() {
     fc->sound->SoundCPUHook(temp);
     cpu.reg_PC++;
 
-    // XXX dispatching on the instruction byte is cheating
-    Fluint8::Cheat();
 
     // One cpu state per instruction (we execute them all
     // in parallel).
     std::array<CPU, 256> cpus;
     for (int i = 0; i < 256; i++) {
       cpus[i] = cpu;
+      cpus[i].active = Fluint8::Eq(Fluint8(i), opcode);
       cpus[i].parent = this;
     }
 
-    inst_histo[b1.ToInt()]++;
+    inst_histo[opcode.ToInt()]++;
 
-    switch (b1.ToInt()) {
+    // XXX dispatching on the instruction byte is cheating
+    Fluint8::Cheat();
+
+    switch (opcode.ToInt()) {
     case 0x00: cpus[0x00].BRK(); break;
     case 0x40: cpus[0x40].RTI(); break;
     case 0x60: cpus[0x60].RTS(); break;
@@ -644,11 +650,61 @@ void X6502::RunLoop() {
       CHECK(false) << "Unimplemented";
     }
 
-    // Now copy the result of the actual instruction back.
+    #if FAST_INSTRUCTION_DISPATCH
     Fluint8::Cheat();
-    cpu = cpus[b1.ToInt()];
+    cpu = cpus[opcode.ToInt()];
+    // Maybe we should make a distinction between one of these sub-CPUs
+    // and the main one?
+    cpu.active = Fluint8(0x01);
     ADDCYC(cpu.cycles.ToInt());
     cpu.cycles = Fluint16(0);
 
+    #else
+    // Real way. We basically sum up all the component instructions,
+    // but computing zero if inactive.
+
+    // Now copy the result of the actual instruction back.
+    #define CLEARREG8(reg) cpu. reg = Fluint8(0x00)
+    #define CLEARREG16(reg) cpu. reg = Fluint16(0x00)
+
+    #define COPYREG8(idx, reg) do {                                    \
+        Fluint8 v_if = Fluint8::If(cpus[idx].active, cpus[idx]. reg ); \
+        cpu. reg = Fluint8::PlusNoOverflow(cpu. reg , v_if);           \
+      } while (false)
+
+    // PERF: Instead of +=, could have some analog of PlusNoOverflow
+    // (native fp plus on each byte ) for Fluint16, because at most one
+    // term will be nonzero.
+    #define COPYREG16(idx, reg) do {                                     \
+        Fluint16 v_if = Fluint16::If(cpus[idx].active, cpus[idx]. reg ); \
+        cpu. reg += v_if;                                                \
+      } while (false)
+
+    CLEARREG(reg_A);
+    CLEARREG(reg_X);
+    CLEARREG(reg_Y);
+    CLEARREG(reg_S);
+    CLEARREG(reg_P);
+    CLEARREG(reg_PI);
+    CLEARREG(jammed);
+
+    for (int i = 0; i < 256; i++) {
+      COPYREG8(i, reg_A);
+      COPYREG8(i, reg_X);
+      COPYREG8(i, reg_Y);
+      COPYREG8(i, reg_S);
+      COPYREG8(i, reg_P);
+      COPYREG8(i, reg_PI);
+      COPYREG8(i, jammed);
+
+      COPYREG16(i, reg_PC);
+      // The cycles field is the count consumed by that particular
+      // instruction; we're adding it rather than overwriting since
+      // it's supposed to be cumulative. Note also that memory handlers
+      // (if executed) could have updated this for the main CPU.
+      ADDCYC(Fluint16::If(cpus[i].active, cpus[i].cycles).ToInt());
+    }
+
+    #endif
   }
 }

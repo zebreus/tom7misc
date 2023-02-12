@@ -190,12 +190,19 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
   Fluint8 nn(num_ones);
   return Fluint8(nn.h + RightShift1(nn).h);
 }
-#else
+
+Fluint8 Fluint8::IsZero(Fluint8 a) {
+  return Fluint8(1.0_h - IsntZero(a).h);
+}
+
+#endif
+
+#if 0
+// This is worse!
+
 Fluint8 Fluint8::IsntZero(Fluint8 a) {
   return Fluint8(1.0_h - IsZero(a).h);
 }
-#endif
-
 
 Fluint8 Fluint8::IsZero(Fluint8 a) {
   // We know IsZero returns 1 or 0.
@@ -206,14 +213,32 @@ Fluint8 Fluint8::IsZero(Fluint8 a) {
   half res = 1.0_h;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // leftmost bit
-    half bit = (1.0_h - RightShift<7>(Fluint8(aa)).h);
-    // res = res & bit
-    res = RightShiftHalf1(bit + res);
-    aa = LeftShift<1>(aa);
+    half bit = RightShift<7>(aa).h;
+    half nbit = (1.0_h - bit);
+    // res = res & ~bit
+    res = RightShiftHalf1(nbit + res);
+    // aa = LeftShift<1>(aa);
+    // We already have the high bit, so mask it off if necessary
+    aa = Fluint8(aa.h - bit * 128.0_h);
+    aa = LeftShift1Under128(aa);
   }
 
   return Fluint8(res);
 }
+
+#endif
+
+Fluint8 Fluint8::IsntZero(Fluint8 a) {
+  // PERF: Might be shorter version of 0F step.
+  // PERF: Instead of multiplying in FF step, maybe could
+  // just be subtraction fused with first addition of 0F step.
+  return Fluint8(CompressHalf0F(CompressHalfFF(a.h)));
+}
+
+Fluint8 Fluint8::IsZero(Fluint8 a) {
+  return Fluint8(1.0_h - IsntZero(a).h);
+}
+
 
 Fluint8 Fluint8::Eq(Fluint8 a, Fluint8 b) {
   return IsZero(a - b);

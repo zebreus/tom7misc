@@ -279,6 +279,24 @@ struct Fluint8 {
     return xh * (half)(1.0f / 256.0f) + OFFSET1 + OFFSET2 - OFFSET2;
   }
 
+  // For any input, outputs a value with mask 0x0F,
+  // which preserves zeroness.
+  static inline half CompressHalfFF(half xh) {
+    static constexpr half a = GetHalf(0x4b80);  // 15
+    static constexpr half b = GetHalf(0x7bf7);  // 65248
+    static constexpr half c = GetHalf(0x2800);  // 0.03125
+    return (xh + a + b - b) * c;
+  }
+
+  // For input with mask 0x0F, outputs 0x01 or 0x00, preserving
+  // zeroness.
+  static inline half CompressHalf0F(half xh) {
+    static constexpr half a = GetHalf(0x477a);  // 7.4765...
+    static constexpr half b = GetHalf(0x741f);  // 16880
+    static constexpr half c = GetHalf(0x2c00);  // 0.0625
+    return (xh + a + b - b) * c;
+  }
+
   // We want a constexpr constructor, so this is the representation
   // of each of the 256 bytes.
   static constexpr uint16_t TABLE[256] = {
