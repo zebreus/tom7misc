@@ -692,6 +692,7 @@ struct X6502 {
     Fluint8 ROL(Fluint8 x) {
       Fluint8 l = Fluint8::RightShift<7>(x);
       x = Fluint8::LeftShift<1>(x);
+      // PERF PlusNoOverflow
       x |= Fluint8::AndWith<C_FLAG8>(reg_P);
       reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P);
       reg_P |= l;

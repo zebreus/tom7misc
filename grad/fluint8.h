@@ -254,22 +254,31 @@ struct Fluint8 {
   }
 
   static half RightShiftHalf2(half xh) {
+    static constexpr half SCALE = GetHalf(0x3400);
     static constexpr half OFFSET1 = GetHalf(0xb54e);
     static constexpr half OFFSET2 = GetHalf(0x6417);
-    return xh * (half)0.25f + OFFSET1 + OFFSET2 - OFFSET2;
+    return xh * SCALE + OFFSET1 + OFFSET2 - OFFSET2;
   }
 
   static half RightShiftHalf3(half xh) {
+    static constexpr half SCALE = GetHalf(0x3000); // 0.125
     static constexpr half OFFSET1 = GetHalf(0xb642);
     static constexpr half OFFSET2 = GetHalf(0x67bc);
-    return xh * (half)0.125f + OFFSET1 + OFFSET2 - OFFSET2;
+    return xh * SCALE + OFFSET1 + OFFSET2 - OFFSET2;
   }
 
   static half RightShiftHalf7(half xh) {
     static constexpr half SCALE = GetHalf(0x1c03); // 0.0039177...
     static constexpr half OFFSET = GetHalf(0x66c8);
-    // return xh * (half)(1.0f / 256.0f) + OFFSET1 + OFFSET2 - OFFSET2;
     return xh * SCALE + OFFSET - OFFSET;
+  }
+
+  static half RightShiftHalf4(half xh) {
+    using namespace half_float::literal;
+    static constexpr half SCALE = GetHalf(0x2c00);  // 1/16
+    static constexpr half OFFSET1 = GetHalf(0x37b5);
+    static constexpr half OFFSET2 = GetHalf(0x6630);
+    return (xh * SCALE - OFFSET1) + OFFSET2 - OFFSET2;
   }
 
   // Works for integers in [0, 512); always results in 1 or 0.
@@ -436,28 +445,20 @@ Fluint8 Fluint8::LeftShift(Fluint8 x) {
 
 template<size_t N>
 Fluint8 Fluint8::RightShift(Fluint8 x) {
-  using namespace half_float::literal;
   if constexpr (N == 0) {
     return x;
   } else if constexpr (N >= 7) {
     Fluint8 y = RightShift<N - 7>(x);
-    half z = RightShiftHalf7(y.h);
-    return Fluint8(z);
+    return Fluint8(RightShiftHalf7(y.h));
   } else if constexpr (N >= 4) {
     Fluint8 y = RightShift<N - 4>(x);
-    // Similar idea to RightShift1, but found programmatically
-    // with makeshift.cc.
-    half z = ((y.h * (1.0_h / 16.0_h) - GetHalf(0x37b5)) +
-              GetHalf(0x6630) - GetHalf(0x6630));
-    return Fluint8(z);
+    return Fluint8(RightShiftHalf4(y.h));
   } else if constexpr (N >= 3) {
     Fluint8 y = RightShift<N - 3>(x);
-    half z = RightShiftHalf3(y.h);
-    return Fluint8(z);
+    return Fluint8(RightShiftHalf3(y.h));
   } else if constexpr (N >= 2) {
     Fluint8 y = RightShift<N - 2>(x);
-    half z = RightShiftHalf2(y.h);
-    return Fluint8(z);
+    return Fluint8(RightShiftHalf2(y.h));
   } else {
     Fluint8 y = RightShift<N - 1>(x);
     return RightShift1(y);
