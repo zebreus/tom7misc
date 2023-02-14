@@ -471,16 +471,25 @@ static void TestIsntZero() {
 }
 
 static void TestIf() {
+  /*
+  ForAll(
+      [](uint8 x, Fluint8 xf) {
+
+        Fluint8 tf = Fluint8::If(Fluint8(0x01), xf);
+        Fluint8 ff = Fluint8::If(Fluint8(0x00), xf);
+        printf("%02x: t: %02x f: %02x\n", x, tf.ToInt(), ff.ToInt());
+      });
+  */
   ForAll(
       [](uint8 x, Fluint8 xf) {
         {
           Fluint8 zf = Fluint8::If(Fluint8(0x01), xf);
-          CHECK(x == zf.ToInt());
+          CHECK(x == zf.ToInt()) << (int)x << " " << (int)zf.ToInt();
           CHECK_CANONICAL("if-true", zf, x, x);
         }
         {
           Fluint8 zf = Fluint8::If(Fluint8(0x00), xf);
-          CHECK(0 == zf.ToInt());
+          CHECK(0 == zf.ToInt()) << (int)x << " " << (int)zf.ToInt();
           CHECK_CANONICAL("if-false", zf, x, x);
         }
       });

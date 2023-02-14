@@ -523,6 +523,7 @@ struct X6502 {
       Fluint16 tmp = GetAB();
       Fluint16 ret = tmp + i;
       Fluint8 cc = Fluint16::RightShift<8>((ret ^ tmp) & Fluint16(0x100)).Lo();
+      // PERF: Could have a boolean & that assumes 1 or 0.
       (void)parent->RdMemIf(cc & active, ret ^ Fluint16(0x100));
 
       AddCycle(cc);
@@ -535,10 +536,11 @@ struct X6502 {
       Fluint8 tmp(RdMem(reg_PC));
       reg_PC++;
       Fluint8 lo = RdRAM(Fluint16(tmp));
-      Fluint8 hi = RdRAM(Fluint16(tmp + Fluint8(1)));
+      Fluint8 hi = RdRAM(Fluint16(tmp + Fluint8(0x01)));
       Fluint16 rt(hi, lo);
       Fluint16 ret = rt + reg_Y;
       Fluint8 cc = Fluint16::RightShift<8>((ret ^ rt) & Fluint16(0x100)).Lo();
+      // PERF: Could have a boolean & that assumes 1 or 0.
       (void)parent->RdMemIf(cc & active, ret ^ Fluint16(0x100));
 
       AddCycle(cc);

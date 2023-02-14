@@ -283,9 +283,10 @@ struct Fluint8 {
 
   // Works for integers in [0, 512); always results in 1 or 0.
   static half RightShiftHalf8(half xh) {
+    static constexpr half SCALE = GetHalf(0x1c00); // 1/256
     static constexpr half OFFSET1 = GetHalf(0xb7f6);
     static constexpr half OFFSET2 = GetHalf(0x66b0);
-    return xh * (half)(1.0f / 256.0f) + OFFSET1 + OFFSET2 - OFFSET2;
+    return xh * SCALE + OFFSET1 + OFFSET2 - OFFSET2;
   }
 
   // For any input, outputs a value with mask 0x0F,
@@ -379,28 +380,28 @@ inline Fluint8 operator -(const Fluint8 &a) {
 }
 
 inline Fluint8 operator ~(const Fluint8 &a) {
-  return Fluint8::BitwiseXor(Fluint8(255), a);
+  return Fluint8::XorWith<0xFF>(a);
 }
 
 inline Fluint8& operator++(Fluint8 &a) {
-  a = Fluint8::Plus(a, Fluint8(1));
+  a = Fluint8::Plus(a, Fluint8(0x01));
   return a;
 }
 
 inline Fluint8 operator++(Fluint8 &a, int) {
   Fluint8 ret = a;
-  a = Fluint8::Plus(a, Fluint8(1));
+  a = Fluint8::Plus(a, Fluint8(0x01));
   return ret;
 }
 
 inline Fluint8& operator--(Fluint8 &a) {
-  a = Fluint8::Minus(a, Fluint8(1));
+  a = Fluint8::Minus(a, Fluint8(0x01));
   return a;
 }
 
 inline Fluint8 operator--(Fluint8 &a, int) {
   Fluint8 ret = a;
-  a = Fluint8::Minus(a, Fluint8(1));
+  a = Fluint8::Minus(a, Fluint8(0x01));
   return ret;
 }
 
@@ -471,7 +472,7 @@ Fluint8 Fluint8::AndWith(Fluint8 a) {
   // space.
 
   // XXX unroll this so that it's clear that it's compile-time
-  half common_bits = (half)0.0f;
+  half common_bits = GetHalf(0x0000);
   Fluint8 aa = a;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // Low order bit as a - ((a >> 1) << 1)
@@ -483,7 +484,8 @@ Fluint8 Fluint8::AndWith(Fluint8 a) {
       half bit = aa.h - LeftShift1Under128(aashift).h;
       // We know the bit from the constant b is 1, so copy the
       // bit from a.
-      const half scale = (half)(1 << bit_idx);
+      // Computes 2^bit_idx
+      const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
       common_bits += scale * bit;
     } else {
       // Otherwise it is zero and contributes nothing to the output.
@@ -497,13 +499,14 @@ Fluint8 Fluint8::AndWith(Fluint8 a) {
 
 template<uint8_t B>
 Fluint8 Fluint8::OrWith(Fluint8 a) {
-  half result = (half)0.0f;
+  half result = GetHalf(0x0000);
   Fluint8 aa = a;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // Low order bit as a - ((a >> 1) << 1)
     Fluint8 aashift = RightShift1(aa);
 
-    const half scale = (half)(1 << bit_idx);
+    // Computes 2^bit_idx
+    const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
     if ((1 << bit_idx) & B) {
       // If the bit is one in the source, always emit one.
       result += scale;
@@ -521,16 +524,17 @@ Fluint8 Fluint8::OrWith(Fluint8 a) {
 
 template<uint8_t B>
 Fluint8 Fluint8::XorWith(Fluint8 a) {
-  half result = (half)0.0f;
+  static constexpr half HALF1 = GetHalf(0x3c00);
+  half result = GetHalf(0x0000);
   Fluint8 aa = a;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // Low order bit as a - ((a >> 1) << 1)
     Fluint8 aashift = RightShift1(aa);
     half bit = aa.h - LeftShift1Under128(aashift).h;
-    const half scale = (half)(1 << bit_idx);
+    const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
     if ((1 << bit_idx) & B) {
       // Toggle the bit.
-      result += scale * (1.0 - bit);
+      result += scale * (HALF1 - bit);
     } else {
       // Else copy the bit from a.
       result += scale * bit;

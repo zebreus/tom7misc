@@ -14,6 +14,16 @@ int64_t Fluint8::num_cheats = 0;
 
 #if !FLUINT8_WRAP
 
+template<std::size_t N, class F, std::size_t START = 0>
+inline void Repeat(const F &f) {
+  if constexpr (N == 0) {
+    return;
+  } else {
+    f(START);
+    Repeat<N - 1, F, START + 1>(f);
+  }
+}
+
 uint16_t Fluint8::Representation() const { return GetU16(h); }
 
 uint8_t Fluint8::ToInt() const {
@@ -24,6 +34,8 @@ uint8_t Fluint8::ToInt() const {
 // functions of these. Note we should be careful when multiplying,
 // since e.g. x * x is not linear!
 std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
+  static constexpr half HALF256 = GetHalf(0x5c00);
+
   // Correct value, but maybe 256 too high because of overflow.
   const half z = x.h + y.h;
 
@@ -31,31 +43,37 @@ std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
   half o = RightShiftHalf8(z);
 
   ECHECK(o == 1.0_h || o == 0.0_h) << o;
-  return make_pair(Fluint8(o), Fluint8(z - o * 256.0_h));
+  return make_pair(Fluint8(o), Fluint8(z - o * HALF256));
 }
 
 Fluint8 Fluint8::Plus(Fluint8 x, Fluint8 y) {
+  static constexpr half HALF256 = GetHalf(0x5c00);
+
   // As above but don't compute carry.
   const half z = x.h + y.h;
   half o = RightShiftHalf8(z);
-  return Fluint8(z - o * 256.0_h);
+  return Fluint8(z - o * HALF256);
 }
 
 std::pair<Fluint8, Fluint8> Fluint8::SubtractWithCarry(Fluint8 x, Fluint8 y) {
-  const half z = x.h - y.h + 256.0_h;
+  static constexpr half HALF256 = GetHalf(0x5c00);
+  static constexpr half HALF1 = GetHalf(0x3c00);
+
+  const half z = x.h - y.h + HALF256;
 
   // Shift down 8 times to get the overflow bit.
   half o = RightShiftHalf8(z);
 
   ECHECK(o == 1.0_h || o == 0.0_h) << o;
-  return make_pair(Fluint8(1.0_h - o), Fluint8(z - o * 256.0_h));
+  return make_pair(Fluint8(HALF1 - o), Fluint8(z - o * HALF256));
 }
 
 Fluint8 Fluint8::Minus(Fluint8 x, Fluint8 y) {
+  static constexpr half HALF256 = GetHalf(0x5c00);
   // Same but don't compute carry.
-  const half z = x.h - y.h + 256.0_h;
+  const half z = x.h - y.h + HALF256;
   half o = RightShiftHalf8(z);
-  return Fluint8(z - o * 256.0_h);
+  return Fluint8(z - o * HALF256);
 }
 
 // This only works when in canonical form, but it's much
@@ -74,7 +92,19 @@ Fluint8 Fluint8::RightShift1(Fluint8 x) {
 // Returns the bits (as an integral half in [0, 255]) that are in
 // common between the args, i.e. a & b.
 half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
-  half common = (half)0.0f;
+  // Note: This can be computed as
+  // const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
+  static constexpr std::array<half, 8> HALF_POW2 = {
+    GetHalf(0x3c00),  // 1.0
+    GetHalf(0x4000),  // 2.0
+    GetHalf(0x4400),  // 4.0
+    GetHalf(0x4800),  // 8.0
+    GetHalf(0x4c00),  // 16.0
+    GetHalf(0x5000),  // 32.0
+    GetHalf(0x5400),  // 64.0
+    GetHalf(0x5800),  // 128.0
+  };
+  half common = GetHalf(0x0000);
   Fluint8 aa = a, bb = b;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // Low order bit as a - ((a >> 1) << 1)
@@ -82,8 +112,8 @@ half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
     Fluint8 bbshift = RightShift1(bb);
     half a_bit = aa.h - LeftShift1Under128(aashift).h;
     half b_bit = bb.h - LeftShift1Under128(bbshift).h;
-    const half scale = (half)(1 << bit_idx);
-
+    const half scale = HALF_POW2[bit_idx];
+    // const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
 
     // Multiplication is like AND.
     // But note that if we tried to do GetCommonBits(z, z) here,
@@ -132,7 +162,8 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
 }
 
 Fluint8 Fluint8::IsZero(Fluint8 a) {
-  return Fluint8(1.0_h - IsntZero(a).h);
+  static constexpr half HALF1 = GetHalf(0x3c00);
+  return Fluint8(HALF1 - IsntZero(a).h);
 }
 
 
@@ -140,28 +171,61 @@ Fluint8 Fluint8::Eq(Fluint8 a, Fluint8 b) {
   return IsZero(a - b);
 }
 
-// For cc = 0x01 or 0x00 (only), returns c ? t : 0.
+// New approach is much more mysterious, but twice as fast as
+// the previous. The trick centers around some constants,
+// that when added and subtracted, reduce the number of distinct
+// values until everything becomes zero. But we premultiply
+// those constants by (1 - cc), so (and this requires cc to be
+// exactly 0x00 or 0x01) the values added are actually zero
+// in the case that the condition is true. So this either adds
+// a bunch of zeroes (and leaves the value as-is) or adds magic
+// constants that causes the result to be zero.
+//
+// I was only able to solve this for values <= 0x80, so we
+// actually do that, then flip the values around with (128 - x),
+// then do it again.
 Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
-  // Could do this by spreading the cc to 0xFF or 0x00 and
-  // using AND, but it is faster to just keep consulting the
-  // ones place of cc.
+  // PERF: We can probably do this in fewer than 9 steps?
+  static constexpr std::array<half, 9> OFF = {
+    GetHalf(0x780e), GetHalf(0x77fd), GetHalf(0x79f9),
+    GetHalf(0x77fb), GetHalf(0x795c), GetHalf(0x77fd),
+    GetHalf(0x7a33), GetHalf(0x77ff), GetHalf(0x7800),
+  };
 
-  half kept = (half)0.0f;
-  Fluint8 tt = t;
-  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
-    // Low order bit as a - ((a >> 1) << 1)
-    Fluint8 ttshift = RightShift1(tt);
-    half t_bit = tt.h - LeftShift1Under128(ttshift).h;
-    const half scale = (half)(1 << bit_idx);
+  static constexpr half HALF1 = GetHalf(0x3c00);
+  static constexpr half HALF128 = GetHalf(0x5800);
+  static constexpr half HALFNEG1 = GetHalf(0xbc00);
+  static constexpr half HALF0 = GetHalf(0x0000);
 
-    const half and_bits = RightShiftHalf1(t_bit + cc.h);
-    kept += scale * and_bits;
+  half xh = t.h;
+  const half nch = HALF1 - cc.h;
+  const half c128 = HALF128 * nch;
 
-    // and keep shifting down
-    tt = ttshift;
+  std::array<half, OFF.size()> COFF;
+  for (int i = 0; i < OFF.size(); i++) {
+    // This results in 0 or the constant.
+    COFF[i] = OFF[i] * nch;
   }
 
-  return Fluint8(kept);
+  // Now do the dance
+  for (const half &h : COFF) {
+    xh += h;
+    xh -= h;
+  }
+
+  xh = (c128 - xh);
+
+  for (const half &h : COFF) {
+    xh += h;
+    xh -= h;
+  }
+
+  // 128 - x above was 0 - x in the true case, which
+  // negates the value; so flip the sign here. We need
+  // to add zero to avoid outputing -0.
+  xh = xh * HALFNEG1 + HALF0;
+
+  return Fluint8(xh);
 }
 
 // For cc = 0x01 or 0x00 (only), returns c ? t : f.

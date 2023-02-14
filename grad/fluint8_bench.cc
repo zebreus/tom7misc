@@ -128,13 +128,51 @@ static void BenchAddWithCarry() {
     });
 }
 
+static void BenchAnd() {
+  Benchmark bench("BitwiseAnd", 2000);
+
+  bench.Run([&]() {
+      for (int i = 0; i < 256; i++) {
+        for (int j = 0; j < 256; j++) {
+          Fluint8 ii(i), jj(j);
+
+          Fluint8 c = ii & jj;
+          bench.Op();
+          bench.Observe(c);
+        }
+      }
+    });
+}
+
+static void BenchIf() {
+  Benchmark bench("If", 1000);
+
+  bench.Run([&]() {
+      for (int i = 0; i < 256; i++) {
+        Fluint8 ii(i & 1);
+        for (int j = 0; j < 256; j++) {
+          Fluint8 jj(j);
+
+          Fluint8 c = Fluint8::If(ii, jj);
+          bench.Op();
+          bench.Observe(c);
+        }
+      }
+    });
+}
+
+
 int main(int argc, char **argv) {
   AnsiInit();
 
-  // BenchEq();
+  /*
+  BenchEq();
   BenchRightShifts();
   BenchPlus();
   BenchAddWithCarry();
+  BenchAnd();
+  */
+  BenchIf();
 
   return 0;
 }

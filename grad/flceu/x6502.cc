@@ -26,7 +26,7 @@
 
 #include "tracing.h"
 
-#define FAST_INSTRUCTION_DISPATCH 1
+#define FAST_INSTRUCTION_DISPATCH 0
 
 X6502::X6502(FC *fc) : fc(fc) {
   CHECK(fc != nullptr);
@@ -673,20 +673,22 @@ void X6502::RunLoop() {
       } while (false)
 
     // PERF: Instead of +=, could have some analog of PlusNoOverflow
-    // (native fp plus on each byte ) for Fluint16, because at most one
+    // (native fp plus on each byte) for Fluint16, because at most one
     // term will be nonzero.
     #define COPYREG16(idx, reg) do {                                     \
         Fluint16 v_if = Fluint16::If(cpus[idx].active, cpus[idx]. reg ); \
         cpu. reg += v_if;                                                \
       } while (false)
 
-    CLEARREG(reg_A);
-    CLEARREG(reg_X);
-    CLEARREG(reg_Y);
-    CLEARREG(reg_S);
-    CLEARREG(reg_P);
-    CLEARREG(reg_PI);
-    CLEARREG(jammed);
+    CLEARREG8(reg_A);
+    CLEARREG8(reg_X);
+    CLEARREG8(reg_Y);
+    CLEARREG8(reg_S);
+    CLEARREG8(reg_P);
+    CLEARREG8(reg_PI);
+    CLEARREG8(jammed);
+    CLEARREG16(reg_PC);
+    // But not clearing cycles...
 
     for (int i = 0; i < 256; i++) {
       COPYREG8(i, reg_A);

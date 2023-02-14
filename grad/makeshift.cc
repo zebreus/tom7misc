@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <bit>
+#include <unordered_set>
 
 #include "half.h"
 #include "opt/optimizer.h"
@@ -474,13 +475,171 @@ static void MakeCompress() {
          ok ? ANSI_GREEN : ANSI_RED, StringBits(mask).c_str());
 }
 
+template<size_t N>
+half FIF(const std::array<double, N> &arg, half xh) {
+#if 1
+  for (uint16_t z : {0x780e, 0x77fd, 0x79f9,
+        0x77fb, 0x795c, 0x77fd, 0x7a33, 0x77ff, 0x7800
+        }) {
+    half h = GetHalf(z);
+    xh += h;
+    xh -= h;
+  }
+#endif
+
+  for (int i = 0; i < N; i++) {
+    if (true || N & 1) {
+      xh += (half)arg[i];
+      xh -= (half)arg[i];
+    } else {
+      xh -= (half)arg[i];
+      xh += (half)arg[i];
+    }
+  }
+
+  return xh;
+}
+
+template<size_t N>
+static double IfN(const std::array<double, N> &arg) {
+  // Compute the function.
+  auto F = [&arg](uint8_t x) {
+      return FIF<N>(arg, (half)x);
+    };
+
+  int inf_penalty = 0;
+  float integer_penalty = 0.0, nonzero_penalty = 0.0;
+  // Fewer distinct values is a strong heuristic.
+  std::unordered_set<int> distinct;
+  for (int x = 0; x < 256; x++) {
+    half zh = F(x);
+    int zi = (int)zh;
+    distinct.insert(zi);
+    if (!isfinite(zi)) inf_penalty++;
+
+    // Require integers.
+    if (zi != zh) {
+      float dz = (float)zh - (float)zi;
+      integer_penalty += std::max(0.00125f, dz * dz);
+    }
+
+    // We want everything to be zero.
+    nonzero_penalty += zh * zh;
+  }
+
+  return inf_penalty * 10000000.0 +
+    integer_penalty * 100000.0 +
+    distinct.size() * 1000.0 +
+    nonzero_penalty;
+}
+
+// Trying to make a more direct version of "if(cc, v)",
+// where cc is either 0 or 1, and we return either 0 or v.
+// One idea is if we take ncc = (1 - cc), then we can compute
+// offset = ncc * 65000
+// v1 = v + offset - offset
+// which does nothing when offset is zero, preserving the
+// value, but causes a lot of rounding when offset was large.
+// if we can get everything to round to zero, then we win!
+// so basically we are looking for some series of additions
+// that result in zero for everything in [0, 255].
+template<size_t N>
+static void MakeIf() {
+#if 0
+  using IfOpt = Optimizer<0, N, char>;
+
+  IfOpt opt([](const IfOpt::arg_type &arg) {
+      double err = IfN<N>(arg.second);
+      return std::make_pair(err, std::make_optional('x'));
+    }, time(nullptr));
+
+  std::array<std::pair<double, double>, N> bounds;
+  for (int i = 0; i < N; i++) {
+    bounds[i] = make_pair(-257.0, 65472.0);
+  }
+
+  opt.Run({}, bounds,
+          nullopt, nullopt, {60.0}, {0.0});
+
+  const auto [arg, score, out_] = opt.GetBest().value();
+  printf("Best score: %.19g\nParams:\n", score);
+  for (int i = 0; i < arg.second.size(); i++) {
+    double a = arg.second[i];
+    printf("  %.19g = %.11g (0x%04x)\n",
+           a, (float)(half)a, GetU16((half)a));
+  }
+
+  auto Fold = [&arg](uint8_t x) {
+      half xh = (half)x;
+      return FIF<N>(arg.second, xh);
+    };
+
+#endif
+
+
+  auto F = [](uint8_t x) {
+      half xh = (half)x;
+      for (uint16_t z : {0x780e, 0x77fd, 0x79f9,
+            0x77fb, 0x795c, 0x77fd, 0x7a33, 0x77ff, 0x7800
+            }) {
+        half h = GetHalf(z);
+        xh += h;
+        xh -= h;
+      }
+
+      xh = 128.0 - xh;
+
+      for (uint16_t z : {0x780e, 0x77fd, 0x79f9,
+            0x77fb, 0x795c, 0x77fd, 0x7a33, 0x77ff, 0x7800
+            }) {
+        half h = GetHalf(z);
+        xh += h;
+        xh -= h;
+      }
+
+      return xh;
+    };
+
+  auto StringBits = [](uint8_t zi) {
+      string bits(8, '?');
+      for (int b = 0; b < 8; b++) {
+        bits[b] = (zi & (1 << (7 - b))) ? '1' : '0';
+      }
+      return bits;
+    };
+
+  std::unordered_set<int> distinct;
+  bool ok = true;
+  for (int i = 0; i < 256; i++) {
+    half zh = F(i);
+    int zi = zh;
+    printf("%02x: ", i);
+    if (zh != (half)zi) {
+      printf(ARED("%.11g") "\n", (float)zh);
+      ok = false;
+    } else {
+      distinct.insert(zi);
+      if (zi < 0 || zi >= 256) {
+        printf(ARED("%d") "\n", zi);
+        ok = false;
+      } else {
+        printf("%02x: %02x (%s)\n", i, zi, StringBits(zi).c_str());
+      }
+    }
+  }
+
+  printf("%d distinct elements (%s)\n",
+         (int)distinct.size(), ok ? AGREEN("ok") : ARED("invalid"));
+}
+
 
 int main(int argc, char **argv) {
   AnsiInit();
   // OptimizeShift();
   // MakeShiftAdd();
 
-  MakeCompress<0x0F>();
+  // MakeCompress<0x0F>();
+  MakeIf<6>();
 
   return 0;
 }
