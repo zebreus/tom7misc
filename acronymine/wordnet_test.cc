@@ -26,12 +26,27 @@ static void TestFreq() {
 
   printf("Most frequent words:\n");
   std::vector<std::string> most = freq->SortedWords();
-  CHECK(most.size() >= 500);
-  for (int i = 0; i < 500; i++) {
-    uint32_t props = wordnet->GetProps(most[i]);
-    printf("  %08x %s %s\n", props, most[i].c_str(),
+  // CHECK(most.size() >= 1000);
+  int64_t missing = 0, present = 0;
+  for (int i = 0; i < most.size(); i++) {
+    const string &word = most[i];
+    uint32_t props = wordnet->GetProps(word);
+    int64_t f = freq->RawFreq(word);
+    printf("  %09lld %08x %s %s\n", f, props, word.c_str(),
            WordNet::PropString(props).c_str());
+
+    if (f > 0) {
+      if (props == 0) {
+        missing += (f - 1);
+      } else {
+        present += (f - 1);
+      }
+    }
   }
+
+  double denom = (missing + present) / 100.0;
+  fprintf(stderr, "%lld occ. missing, %lld present  (%.3f%% / %.3f%%)\n",
+          missing, present, missing / denom, present / denom);
 }
 
 
