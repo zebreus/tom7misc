@@ -1,5 +1,5 @@
 
-default: acronymy.exe word2vec_test.exe nextword.exe server.exe compute-freq.exe freq_test.exe wordnet_test.exe
+default: acronymy.exe word2vec_test.exe nextword.exe server.exe compute-freq.exe freq_test.exe wordnet_test.exe sentencelike.exe
 
 CC_LIB=../cc-lib
 
@@ -41,7 +41,7 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=network.o error-history.o network-gpu.o clutil.o wikipedia.o freq.o word2vec.o wordnet.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
+OBJECTS=network.o error-history.o network-gpu.o clutil.o wikipedia.o freq.o word2vec.o wordnet.o acronym-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
 
 acronymy.exe : acronymy.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -52,6 +52,10 @@ word2vec_test.exe : word2vec_test.o $(OBJECTS)
 	@echo -n "!"
 
 nextword.exe : nextword.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+sentencelike.exe : sentencelike.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

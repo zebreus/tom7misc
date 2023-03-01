@@ -88,6 +88,8 @@ __kernel void UpdateWeightsSecondPass(
       const float m_hat = m_new / (1.0f - pow(ADAM_B1, round_number + 1));
       const float v_hat = v_new / (1.0f - pow(ADAM_B2, round_number + 1));
     #endif
+    // TODO: Do we get better precision if we have
+    // (learning_rate / scale) * m_hat ?
     const float u = learning_rate * (m_hat / (sqrt(v_hat) + ADAM_EPSILON));
   #elif WEIGHT_UPDATE_YOGI
     // Mostly the same as the Adam code.

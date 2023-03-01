@@ -1,6 +1,6 @@
-
-// Trains a network to predict the next word using word2vec
-// embeddings.
+// Convolutional model for predicting the probability that some
+// word sequence comes from Wikipedia. This one uses part-of-speech
+// info (wordnet) and word frequency information.
 
 #include "network-gpu.h"
 
@@ -33,9 +33,11 @@
 #include "lastn-buffer.h"
 #include "color-util.h"
 
+#include "acronym-util.h"
 #include "word2vec.h"
 #include "wikipedia.h"
-#include "acronym-util.h"
+#include "freq.h"
+#include "wordnet.h"
 
 using namespace std;
 
@@ -47,33 +49,44 @@ static constexpr const char *WORD2VEC_FILE =
   "c:\\code\\word2vec\\GoogleNews-vectors-negative300.bin";
 static constexpr const char *WORD2VEC_FILL_FILE = "word2vecfill.txt";
 
+static constexpr const char *WORDNET_DIR = "wordnet";
+
+static constexpr const char *FREQ_FILE = "freq.txt";
+static constexpr const char *WORDLIST_FILE = "word-list.txt";
+
 static CL *cl = nullptr;
 
 using int64 = int64_t;
 
 static constexpr WeightUpdate WEIGHT_UPDATE = ADAM;
 
-#define MODEL_BASE "nextword"
+#define MODEL_BASE "sentencelike"
 #define MODEL_NAME MODEL_BASE ".val"
 
 static constexpr int VEC_SIZE = 300;
-static constexpr int PREV_WORDS = 7;
-// The previous words, plus the word to predict.
-static constexpr int PHRASE_SIZE = PREV_WORDS + 1;
+static constexpr int WORDNET_PROPS = 13;
+static_assert(WORDNET_PROPS == WordNet::NUM_PROPS,
+              "can't change an existing model, though");
+static constexpr int PHRASE_SIZE = 8;
 
-static constexpr int INPUT_SIZE = PREV_WORDS * VEC_SIZE;
-static constexpr int OUTPUT_SIZE = VEC_SIZE;
+// w2v vector, normalized frequency, wordnet props
+static constexpr int ONE_WORD_SIZE = (VEC_SIZE + 1 + WORDNET_PROPS);
+
+static constexpr int INPUT_SIZE = PHRASE_SIZE * ONE_WORD_SIZE;
+static constexpr int OUTPUT_SIZE = 1;
 
 static constexpr int EXAMPLES_PER_ROUND = 1024;
 
 static std::unordered_set<std::string> *words = nullptr;
 static Word2Vec *w2v = nullptr;
+static Freq *freq = nullptr;
+static WordNet *wordnet = nullptr;
 
 static void LoadData() {
   {
     int max_word = 0;
     vector<string> wordlist =
-      Util::ReadFileToLines("..\\manarags\\wordlist.asc");
+      Util::ReadFileToLines("word-list.txt");
     words = new unordered_set<string>;
     for (string &s : wordlist) {
       max_word = std::max(max_word, (int)s.size());
@@ -83,12 +96,25 @@ static void LoadData() {
     printf("Longest word: %d\n", max_word);
   }
 
-  w2v = Word2Vec::Load(WORD2VEC_FILE, WORD2VEC_FILL_FILE, *words);
-  CHECK(w2v != nullptr) << WORD2VEC_FILE;
+  InParallel(
+      [](){
+        w2v = Word2Vec::Load(WORD2VEC_FILE, WORD2VEC_FILL_FILE, *words);
+        CHECK(w2v != nullptr) << WORD2VEC_FILE;
+      },
+      [](){
+        freq = Freq::Load(FREQ_FILE, *words);
+        CHECK(freq != nullptr) << FREQ_FILE;
+      },
+      []() {
+        wordnet = WordNet::Load(WORDNET_DIR, *words);
+        CHECK(wordnet != nullptr) << WORDNET_DIR;
+      });
 
-  printf("Word2Vec: %d words (vec %d floats)\n",
-         (int)w2v->NumWords(),
-         w2v->Size());
+  printf("Done loading.\n"
+         "Word2Vec: %d words (vec %d floats)\n"
+         "WordNet: %d words (%d props)\n",
+         (int)w2v->NumWords(), w2v->Size(),
+         wordnet->NumWords(), WordNet::NUM_PROPS);
 }
 
 // XXX to train-util etc.
@@ -113,13 +139,9 @@ struct TrainParams {
 
 static TrainParams DefaultParams() {
   TrainParams tparams;
-  // These are rounded versions of the optimized TANH from
-  // learn-chess; not tested. (It worked fine for 200k rounds
-  // with leaky-relu, although it still appeared to be getting
-  // better when it stopped.)
-  tparams.update_config.base_learning_rate = 0.005f;
-  tparams.update_config.learning_rate_dampening = 13.0f;
-  tparams.update_config.adam_epsilon = 1.0e-6;
+  tparams.update_config.base_learning_rate = 0.1f;
+  tparams.update_config.learning_rate_dampening = 0.25f;
+  tparams.update_config.adam_epsilon = 1.0e-5;
   tparams.update_config.constrain = true;
   tparams.update_config.weight_constrain_max = 16.0f;
   tparams.update_config.bias_constrain_max = 8760.0f;
@@ -131,24 +153,38 @@ static TrainParams DefaultParams() {
 }
 
 // Load the floats for the phrase on the end of the inputs and ouputs.
-static void LoadExample(
+static void LoadPredExample(
     const std::array<uint32_t, PHRASE_SIZE> &phrase,
+    bool is_sentence,
     std::vector<float> *inputs,
     std::vector<float> *outputs) {
-  // All but the last word.
-  for (int j = 0; j < PHRASE_SIZE - 1; j++) {
-    for (float f : w2v->NormVec(phrase[j])) {
+
+  for (int j = 0; j < PHRASE_SIZE; j++) {
+    uint32_t w = phrase[j];
+    const string &word = w2v->WordString(w);
+    // word2vec vector; required
+    for (float f : w2v->NormVec(w)) {
       inputs->push_back(f);
+    }
+    // frequency
+    inputs->push_back(freq->NormalizedFreq(word));
+    // wordnet props
+    uint32_t props = wordnet->GetProps(word);
+    for (int i = 0; i < WORDNET_PROPS; i++) {
+      inputs->push_back((props & (1 << i)) ? 1.0f : 0.0f);
     }
   }
 
-  // Output label is last word.
-  for (float f : w2v->NormVec(phrase[PHRASE_SIZE - 1])) {
-    outputs->push_back(f);
-  }
+  // Output label is either -1 or +1.
+  outputs->push_back(is_sentence ? 1.0f : -1.0f);
 }
 
 struct ExampleThread {
+  // Need multiple types of examples:
+  //   For the prediction model:
+  //     Real phrases from wikipedia -> 1.0
+  //     Made up phrase -> -1.0
+
   // A full round's worth of examples.
   // First element is INPUT_SIZE * EXAMPLES_PER_ROUND,
   // then OUTPUT_SIZE * EXAMPLES_PER_ROUND.
@@ -312,16 +348,43 @@ private:
         outputs.reserve(EXAMPLES_PER_ROUND * OUTPUT_SIZE);
 
         // Fill 'em
-        for (int i = 0; i < EXAMPLES_PER_ROUND; i++) {
+        static_assert(EXAMPLES_PER_ROUND % 2 == 0);
+        for (int i = 0; i < EXAMPLES_PER_ROUND; i += 2) {
 
-          std::array<uint32_t, PHRASE_SIZE> phrase;
+          // Real example
           {
-            MutexLock ml(&pool_mutex);
-            const int idx = RandTo(&rc, phrase_pool.size());
-            phrase = phrase_pool[idx];
+            std::array<uint32_t, PHRASE_SIZE> real_phrase;
+            {
+              MutexLock ml(&pool_mutex);
+              const int idx = RandTo(&rc, phrase_pool.size());
+              real_phrase = phrase_pool[idx];
+            }
+
+            LoadPredExample(real_phrase, true, &examples, &outputs);
           }
 
-          LoadExample(phrase, &examples, &outputs);
+          // Noise example
+          {
+            std::array<uint32_t, PHRASE_SIZE> noise_phrase;
+            for (int w = 0; w < PHRASE_SIZE; w++) {
+              const int idx = [&rc]() {
+                  // Some words are not in word2vec, so keep sampling until
+                  // we get ones that are.
+                  // PERF: We could have prepared our own vector (of uint32)
+                  // instead of using Freq here?
+                  for (;;) {
+                    int64_t sample_idx = RandTo(&rc, freq->TotalCount());
+                    std::string word = freq->ByWeightedSampleIndex(sample_idx);
+                    const int idx = w2v->GetWord(word);
+                    if (idx >= 0)
+                      return idx;
+                  }
+                }();
+              noise_phrase[w] = idx;
+            }
+            LoadPredExample(noise_phrase, false, &examples, &outputs);
+          }
+
         }
 
         CHECK(examples.size() == EXAMPLES_PER_ROUND * INPUT_SIZE);
@@ -348,7 +411,7 @@ private:
 // Evaluate on some fixed test phrases that are not from the
 // database.
 struct Evaluator {
-  std::vector<std::string> raw_phrases = {
+  std::vector<std::string> good_phrases = {
     "each phrase should be at least as long as the target length "
     "  and every word must be in the dictionary",
     "there should also be no punctuation in the sentences",
@@ -405,35 +468,75 @@ struct Evaluator {
       "contractor so that they are not paid benefits",
   };
 
-  std::vector<std::array<uint32_t, PHRASE_SIZE>> eval_phrases;
+  std::vector<std::string> noise_phrases = {
+    "the the the the the no the the the",
+    "st william san richard dr los angeles von francisco "
+      "joe jim steve kong chris tony francis hong brian alan "
+      "roger gordon carl eric juan",
+    "centrifuge cere cerebrate certificate certify chafe chaff "
+      "chaffer chagrin chain chain chain chair chairman chalk "
+      "chalk chalk challenge chamber chamfer champ champion "
+      "chance chance chance chandelle change",
+    "the of and in a to was is for as by on with that from "
+      "at were it his he an or are which be this align had "
+      "also has not",
+    "wrong verbs order the of word sentence a",
+    "semantically entertainment polish soon bay is was be tribes "
+      "database use few",
+    "narrative navigation varies verse muscle tissue argues "
+      "targets ukrainian wealthy prefecture probability ask raid "
+      "devoted susan blind feeling mario hughes publishers gauge eat",
+    "this would be a goods sentence except for then errors",
+    // TODO: more! perhaps construct these randomly like in
+    // the training data?
+  };
+
+  int num_real = 0;
+  std::vector<std::pair<std::array<uint32_t, PHRASE_SIZE>, bool>> eval_phrases;
+  std::vector<std::pair<int, std::string>> readable_phrases;
 
   Evaluator(CL *cl, Word2Vec *w2v) : cl(cl), w2v(w2v) {
-    for (const string &rp : raw_phrases) {
-      std::vector<std::string> article_words =
-        Util::Tokens(rp,
-                     [](char c) {
-                       // Break on anything not a-z0-9.
-                       return !std::isalnum(c);
-                     });
+    auto AddPhrases = [&](const std::vector<std::string> &phrases,
+                          bool real) {
+        for (int rpidx = 0; rpidx < phrases.size(); rpidx++) {
+          const string &rp = phrases[rpidx];
+          std::vector<std::string> article_words =
+            Util::Tokens(rp,
+                         [](char c) {
+                           // Break on anything not a-z0-9.
+                           return !std::isalnum(c);
+                         });
 
-      for (const std::array<uint32_t, PHRASE_SIZE> &a :
-             AcronymUtil::GetPhrases<PHRASE_SIZE>(w2v, article_words)) {
-        eval_phrases.push_back(a);
-      }
-    }
+          for (const std::array<uint32_t, PHRASE_SIZE> &a :
+                 AcronymUtil::GetPhrases<PHRASE_SIZE>(w2v, article_words)) {
+            eval_phrases.push_back(make_pair(a, real));
+            std::vector<string> rv;
+            rv.reserve(a.size());
+            for (uint32_t w : a) {
+              rv.push_back(w2v->WordString(w));
+            }
+            readable_phrases.push_back(make_pair(rpidx, Util::Join(rv, " ")));
+          }
+        }
+      };
+
+    AddPhrases(good_phrases, true);
+    num_real = eval_phrases.size();
+    AddPhrases(noise_phrases, false);
     CHECK(!eval_phrases.empty());
+    CHECK(eval_phrases.size() == readable_phrases.size());
   }
 
   struct Result {
-    double avg_dist = 0.0;
-    double avg_angle = 0.0;
-    // angle, dist, prefix, predicted, (expected)
-    std::vector<std::tuple<float, float, string, string, string>> examples;
+    double average_loss = 0.0;
+    // predicted, expected, phrase
+    std::vector<std::tuple<float, bool, int, string>> examples;
     // For a batch.
     double fwd_time = 0.0;
-    // Number exactly correct
-    int correct = 0;
-    int total = 0;
+    // "Correct" if we have the same sign.
+    int correct_noise = 0, correct_real = 0;
+    // Number of examples.
+    int total_noise = 0, total_real = 0;
   };
 
   // Needs non-const network, but doesn't modify it.
@@ -450,19 +553,19 @@ struct Evaluator {
     CHECK(NUM_TEST <= 1024);
     const int BATCH_SIZE = NUM_TEST;
 
-    result.total = NUM_TEST;
-
     // Uninitialized training examples on GPU.
     std::unique_ptr<TrainingRoundGPU> training(
         new TrainingRoundGPU(BATCH_SIZE, cl, *net));
 
     std::vector<float> inputs;
     inputs.reserve(BATCH_SIZE * INPUT_SIZE);
-    std::vector<float> outputs;
-    outputs.reserve(BATCH_SIZE * OUTPUT_SIZE);
+    std::vector<float> expected_outputs;
+    expected_outputs.reserve(BATCH_SIZE * OUTPUT_SIZE);
 
     for (int i = 0; i < BATCH_SIZE; i++) {
-      LoadExample(eval_phrases[i], &inputs, &outputs);
+      LoadPredExample(eval_phrases[i].first,
+                      eval_phrases[i].second,
+                      &inputs, &expected_outputs);
     }
 
     training->LoadInputs(inputs);
@@ -480,46 +583,23 @@ struct Evaluator {
     training->ExportOutputs(&actual_outputs);
 
     for (int ex = 0; ex < BATCH_SIZE; ex++) {
-      const auto &phrase = eval_phrases[ex];
+      CHECK(OUTPUT_SIZE == 1);
+      double loss = fabs(actual_outputs[ex] - expected_outputs[ex]);
+      result.average_loss += loss;
 
-      // Using euclidean distance
-      double sqdist = 0.0;
-      for (int i = 0; i < OUTPUT_SIZE; i++) {
-        double di = outputs[ex * OUTPUT_SIZE + i] -
-          actual_outputs[ex * OUTPUT_SIZE + i];
-        sqdist += di * di;
-      }
-      const double dist = sqrt(sqdist);
-      result.avg_dist += dist;
+      if (actual_outputs[ex] < 0.0 && expected_outputs[ex] < 0.0)
+        result.correct_noise++;
+      if (actual_outputs[ex] > 0.0 && expected_outputs[ex] > 0.0)
+        result.correct_real++;
 
-      // PERF: Could add a float* version to Word2Vec.
-      std::vector<float> ovec(OUTPUT_SIZE);
-      for (int i = 0; i < OUTPUT_SIZE; i++) {
-        ovec[i] = actual_outputs[ex * OUTPUT_SIZE + i];
-      }
-      Word2Vec::Norm(&ovec);
-
-      const auto [actual_w, angle_] = w2v->MostSimilarWord(ovec);
-      const int expected_w = phrase.back();
-      const float angle = w2v->Similarity(actual_w, expected_w);
-      result.avg_angle += angle;
-      if (actual_w == expected_w) {
-        result.correct++;
-      }
-
-      string prefix;
-      for (int i = 0; i < phrase.size() - 1; i++) {
-        if (!prefix.empty()) prefix += " ";
-        prefix += w2v->WordString(phrase[i]);
-      }
-      const string &expected_s = w2v->WordString(expected_w);
-      const string &actual_s = w2v->WordString(actual_w);
       result.examples.emplace_back(
-          angle, (float)dist, prefix, actual_s, expected_s);
+          actual_outputs[ex], expected_outputs[ex] > 0.0,
+          readable_phrases[ex].first, readable_phrases[ex].second);
     }
 
-    result.avg_dist /= NUM_TEST;
-    result.avg_angle /= NUM_TEST;
+    result.average_loss /= NUM_TEST;
+    result.total_noise = NUM_TEST - num_real;
+    result.total_real = num_real;
 
     return result;
   }
@@ -735,57 +815,60 @@ static void Train(const string &dir, Network *net,
 
       const bool save_history = history_per.ShouldRun();
 
-      double avg_dist = 0.0;
+      double avg_loss = 0.0;
       for (int idx = 0; idx < EXAMPLES_PER_ROUND; idx++) {
-        double sqdist = 0.0;
-        for (int i = 0; i < OUTPUT_SIZE; i++) {
-          float expected = expecteds[idx * OUTPUT_SIZE + i];
-          float actual = actuals[idx * OUTPUT_SIZE + i];
-          float d = actual - expected;
-          sqdist += d * d;
-        }
-        avg_dist += sqrt(sqdist);
+        CHECK(OUTPUT_SIZE == 1);
+        float loss = fabsf(expecteds[idx] - actuals[idx]);
+        avg_loss += loss;
       }
-      avg_dist /= EXAMPLES_PER_ROUND;
+      avg_loss /= EXAMPLES_PER_ROUND;
 
-      printf("   Avg dist: %.6f\n", avg_dist);
+      printf("   Avg loss: %.6f\n", avg_loss);
 
       if (save_history) {
         constexpr int ERROR_TRAIN = 0;
-        constexpr int ERROR_EVAL_DIST = 1;
-        constexpr int ERROR_EVAL_ANGLE = 2;
-        constexpr int ERROR_EVAL_EXACT = 3;
+        constexpr int ERROR_EVAL_LOSS = 1;
+        constexpr int ERROR_EVAL_RCORRECT = 2;
+        constexpr int ERROR_EVAL_NCORRECT = 3;
 
         net_gpu->ReadFromGPU();
         Evaluator::Result res = evaluator.Evaluate(net);
 
         // For each of these a score of 0 means perfect.
-        error_history.Add(net->rounds, avg_dist,
+        // Loss can be (nominally) as high as 2, so we scale those down.
+        error_history.Add(net->rounds, avg_loss * 0.5,
                           ERROR_TRAIN);
-        error_history.Add(net->rounds, res.avg_dist,
-                          ERROR_EVAL_DIST);
-        // This score is natively between -1 and 1, with 1 being best.
-        // So we invert the sense and half it.
-        double angle_loss = 1.0 - ((res.avg_angle + 1) * 0.5);
-        error_history.Add(net->rounds, angle_loss,
-                          ERROR_EVAL_ANGLE);
-        // 0 is best
-        double test_loss = (res.total - res.correct) / (double)res.total;
-        error_history.Add(net->rounds, test_loss,
-                          ERROR_EVAL_EXACT);
+        error_history.Add(net->rounds, res.average_loss * 0.5,
+                          ERROR_EVAL_LOSS);
+
+        const double real_errors =
+          1.0 - (res.correct_real / (double)res.total_real);
+        error_history.Add(net->rounds, real_errors,
+                          ERROR_EVAL_RCORRECT);
+
+        const double noise_errors =
+          1.0 - (res.correct_noise / (double)res.total_noise);
+        error_history.Add(net->rounds, noise_errors,
+                          ERROR_EVAL_NCORRECT);
 
 
-        printf("Test loss: %.4f in %.4fs\n", test_loss, res.fwd_time);
-        printf("%d/%d exactly correct\n", res.correct, res.total);
+        printf(
+            "Real (%d/%d) Noise (%d/%d) [train %.5f | eval %.5f] in %.4fs \n",
+            res.correct_real, res.total_real,
+            res.correct_noise, res.total_noise,
+            avg_loss, res.average_loss,
+            res.fwd_time);
+
         error_history.MakeImage(
             1920, 1080,
             {{ERROR_TRAIN, {0x0033FFFF, "train"}},
-             {ERROR_EVAL_DIST, {0x00FF00FF, "dist"}},
-             {ERROR_EVAL_ANGLE, {0x77AA33FF, "angle"}},
-             {ERROR_EVAL_EXACT, {0x00FFFFFF, "exact"}},
+             {ERROR_EVAL_LOSS, {0xFFAA33FF, "eval"}},
+             {ERROR_EVAL_RCORRECT, {0x33FF33FF, "real"}},
+             {ERROR_EVAL_NCORRECT, {0xFF3333FF, "noise"}},
             },
             0).Save(Util::dirplus(dir, "error-history.png"));
 
+        #if 0
         auto AnsiHeat = [](float f) {
             uint32_t color = ColorUtil::LinearGradient32(
                 ColorUtil::HEATED_METAL, f);
@@ -795,21 +878,30 @@ static void Train(const string &dir, Network *net,
                            AnsiForegroundRGB(r, g, b).c_str(),
                            f);
           };
+        #endif
 
-        printf(AGREY("angle") " " AGREY("dist") "  phrase...\n");
-        for (const auto &[angle, dist, prefix, predicted, expected] :
-               res.examples) {
-          printf(
-              "%s %s %s ",
-              AnsiHeat(angle).c_str(),
-              AnsiHeat(dist).c_str(),
-              prefix.c_str());
-          if (predicted == expected) {
-            printf(AGREEN("%s") "\n", predicted.c_str());
+        printf(AGREY("pred") " " AGREY("real") "  phrase...\n");
+        int last_idx = -1;
+        for (const auto &[pred, real, idx, phrase] : res.examples) {
+          const bool correct = real ? pred > 0.0f : pred < 0.0f;
+          /*
+          if (real) {
+            if (real_left == 0) continue;
+            real_left--;
           } else {
-            printf(ARED("%s") " (" AYELLOW("%s") ")\n",
-                   predicted.c_str(), expected.c_str());
+            if (noise_left == 0) continue;
+            noise_left--;
           }
+          */
+          if (idx == last_idx) continue;
+          last_idx = idx;
+
+          printf(
+              "%s%s" ANSI_RESET " %s %s\n",
+              correct ? ANSI_GREEN : ANSI_RED,
+              StringPrintf("%.3f", pred).c_str(),
+              real ? "Y" : "N",
+              phrase.c_str());
         }
 
         if (net->rounds > 1000)
@@ -925,146 +1017,53 @@ static void Train(const string &dir, Network *net,
   printf("Saved to %s.\n", model_file.c_str());
 }
 
-static unique_ptr<Network> NewNextwordNetwork() {
+static unique_ptr<Network> NewSentencelikeNetwork() {
   // Deterministic!
-  ArcFour rc("learn-nextword-network");
+  ArcFour rc("learn-sentencelike-network");
 
   std::vector<Layer> layers;
 
   Chunk input_chunk;
   input_chunk.type = CHUNK_INPUT;
   input_chunk.num_nodes = INPUT_SIZE;
-  input_chunk.width = VEC_SIZE;
-  input_chunk.height = PREV_WORDS;
+  input_chunk.width = INPUT_SIZE;
+  input_chunk.height = 1;
   input_chunk.channels = 1;
 
   layers.push_back(Network::LayerFromChunks(input_chunk));
 
-  // The network consists of some convolutional part
-  // (PREV_WORDS spans) and some sparse part. The sparse
-  // part depends on everything.
+  // All convolutional.
 
-  enum Structure {
-    CONV_SPARSE,
-    CONV_ONLY,
-    SPARSE_ONLY,
-  };
+  int prev_blocks = PHRASE_SIZE;
+  int prev_features = ONE_WORD_SIZE;
 
-  Structure structure = SPARSE_ONLY;
+  while (prev_blocks >= 3) {
+    int window = 3; // layers.size() > 1 ? 3 : 2;
+    int num_features = 1024;
+    Chunk conv_chunk =
+      Network::Make1DConvolutionChunk(
+          0, prev_blocks * prev_features,
+          num_features,
+          // 'window' words
+          prev_features * window,
+          // overlapping, but treating each word as a unit
+          prev_features,
+          LEAKY_RELU, WEIGHT_UPDATE);
 
-  switch (structure) {
-  case CONV_SPARSE: {
-    std::vector<std::tuple<int, bool, int>> structure = {
-      // features, overlap, num_nodes
-      {512, true, 2048},
-      {256, true, 2048 + 1024},
-      {128, true, 768},
-    };
+    layers.push_back(Network::LayerFromChunks(conv_chunk));
 
-    int prev_layer_size = input_chunk.num_nodes;
-    int prev_features = VEC_SIZE;
-    int num_words = PREV_WORDS;
-    for (const auto &[features, olap, sparse_nodes] : structure) {
-      CHECK(num_words > 0);
-      Chunk conv_chunk =
-        Network::Make1DConvolutionChunk(
-            // The convolutional portion
-            0, num_words * prev_features,
-            features,
-            // possibly overlapping
-            olap ? prev_features * 2 : prev_features,
-            // but always one "word" at a time
-            prev_features,
-            LEAKY_RELU, WEIGHT_UPDATE);
-      // sliding window of size 2 always reduces the number of
-      // "words" by one.
-      if (olap) num_words--;
-      Chunk sparse_chunk =
-        Network::MakeRandomSparseChunk(
-            &rc,
-            sparse_nodes,
-            vector<Network::SparseSpan>{{
-                .span_start = 0,
-                  .span_size = prev_layer_size,
-                  .ipn = prev_layer_size / 8}},
-            LEAKY_RELU,
-            WEIGHT_UPDATE);
-
-      layers.push_back(Network::LayerFromChunks(conv_chunk, sparse_chunk));
-      prev_features = features;
-      prev_layer_size = layers.back().num_nodes;
-    }
-    break;
-  }
-  case CONV_ONLY: {
-
-    // convolution only
-    const int features = 1024;
-    const int ngram_size = 3;
-    int prev_features = VEC_SIZE;
-    int num_words = PREV_WORDS;
-
-    while (num_words > ngram_size) {
-      Chunk conv_chunk =
-        Network::Make1DConvolutionChunk(
-            // The convolutional portion
-            0, num_words * prev_features,
-            features,
-            // input is n "words"
-            prev_features * ngram_size,
-            // but stride is one
-            prev_features,
-            LEAKY_RELU, WEIGHT_UPDATE);
-      // sliding window of size 2 always reduces the number of
-      // "words" by ngram_size - 1.
-      num_words -= (ngram_size - 1);
-
-      layers.push_back(Network::LayerFromChunks(conv_chunk));
-      prev_features = features;
-    }
-    break;
+    // For a window size of two, this always reduces the number
+    // of words by one.
+    prev_blocks = prev_blocks - (window - 1);
+    CHECK(prev_blocks >= 1);
+    prev_features = num_features;
   }
 
-  case SPARSE_ONLY: {
-
-    std::vector<int> num_nodes = {
-      (int)(8192 * 1.5),
-      4096,
-      2048,
-      512,
-    };
-
-    int prev_layer_size = layers.back().num_nodes;
-    for (int sparse_nodes : num_nodes) {
-      Chunk sparse_chunk =
-        Network::MakeRandomSparseChunk(
-            &rc,
-            sparse_nodes,
-            vector<Network::SparseSpan>{{
-                .span_start = 0,
-                  .span_size = prev_layer_size,
-                  .ipn = prev_layer_size / 8}},
-            LEAKY_RELU,
-            WEIGHT_UPDATE);
-
-      layers.push_back(Network::LayerFromChunks(sparse_chunk));
-      prev_layer_size = layers.back().num_nodes;
-    }
-
-    break;
-  }
-  default:
-    LOG(FATAL) << "Unknown structure";
-  }
-
-
-  // Want positive and negative outputs so we use IDENTITY here,
-  // although tanh may also make sense (the actual values are all
-  // on the unit sphere).
+  // Need both positive and negative outputs, so TANH makes sense.
   Chunk dense_out =
-    Network::MakeDenseChunk(VEC_SIZE,
+    Network::MakeDenseChunk(1,
                             0, layers.back().num_nodes,
-                            IDENTITY,
+                            TANH,
                             WEIGHT_UPDATE);
 
   layers.push_back(Network::LayerFromChunks(dense_out));
@@ -1084,7 +1083,7 @@ int main(int argc, char **argv) {
   AnsiInit();
 
   CHECK(argc == 2) <<
-    "./nextword.exe dir"
+    "./sentencelike.exe dir"
     "Notes:\n"
     "  dir must exist. Resumes training if the dir\n"
     "    contains a model file.\n";
@@ -1097,11 +1096,10 @@ int main(int argc, char **argv) {
 
   const string model_file = Util::dirplus(dir, MODEL_NAME);
 
-  std::unique_ptr<Network> net(
-      Network::ReadFromFile(model_file));
+  std::unique_ptr<Network> net(Network::ReadFromFile(model_file));
 
   if (net.get() == nullptr) {
-    net = NewNextwordNetwork();
+    net = NewSentencelikeNetwork();
     CHECK(net.get() != nullptr);
     net->SaveToFile(model_file);
     printf("Wrote to %s\n", model_file.c_str());
@@ -1110,15 +1108,11 @@ int main(int argc, char **argv) {
   net->StructuralCheck();
   net->NaNCheck(model_file);
 
-  // XXX
-  // net->layers.back().chunks[0].transfer_function = IDENTITY;
-  // net->rounds = 0;
-
   TrainParams tparams = DefaultParams();
   // tparams.update_config.base_learning_rate = 0.01f;
   // tparams.update_config.learning_rate_dampening = 13.0f;
-  tparams.update_config.base_learning_rate = 0.1f;
-  tparams.update_config.learning_rate_dampening = 0.2f;
+  tparams.update_config.base_learning_rate = (1.0f / 4096.0f);
+  tparams.update_config.learning_rate_dampening = 0.25f;
   tparams.update_config.adam_epsilon = 1.0e-5;
 
   Train(dir, net.get(), tparams);

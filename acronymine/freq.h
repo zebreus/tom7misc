@@ -26,12 +26,19 @@ struct Freq {
     return RawFreq(word) * probability_scale;
   }
 
+  // Where the most common word is 1.0.
   double NormalizedFreq(const std::string &word) const {
     return RawFreq(word) * norm_scale;
   }
 
   // With the most frequent words first.
-  std::vector<std::string> SortedWords() const;
+  std::vector<std::string> SortedWords() const { return sorted; }
+
+  int64_t TotalCount() const { return total_count; }
+  // For sample_idx < total_count, returns the weighted sample
+  // at that position. (e.g. ByWeightedSampleIndex(RandTo(TotalCount()))
+  // gives you a random word according to the frequency distribution.)
+  std::string ByWeightedSampleIndex(int64_t sample_idx) const;
 
  private:
   // Use Load.
@@ -44,6 +51,10 @@ struct Freq {
   double probability_scale = 1.0;
   // 1 / max_count
   double norm_scale = 1.0;
+
+  // Parallel, sorted by descending frequency.
+  std::vector<std::string> sorted;
+  std::vector<int64_t> counts;
 };
 
 #endif
