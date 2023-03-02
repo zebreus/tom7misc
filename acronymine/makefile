@@ -1,5 +1,5 @@
 
-default: acronymy.exe word2vec_test.exe nextword.exe server.exe compute-freq.exe freq_test.exe wordnet_test.exe sentencelike.exe
+default: acronymy.exe word2vec_test.exe nextword.exe server.exe compute-freq.exe freq_test.exe wordnet_test.exe train-sentencelike.exe
 
 CC_LIB=../cc-lib
 
@@ -55,7 +55,7 @@ nextword.exe : nextword.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-sentencelike.exe : sentencelike.o $(OBJECTS)
+train-sentencelike.exe : train-sentencelike.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

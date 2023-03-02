@@ -466,6 +466,9 @@ struct Evaluator {
       "musical keyboards",
     "a gig worker is usually classified as an independent "
       "contractor so that they are not paid benefits",
+    // Actual phrase from Wikipedia (2023).
+    "russian forces improved their focus on the protection "
+      "of supply lines by advancing slowly and methodically",
   };
 
   std::vector<std::string> noise_phrases = {
@@ -487,6 +490,12 @@ struct Evaluator {
       "targets ukrainian wealthy prefecture probability ask raid "
       "devoted susan blind feeling mario hughes publishers gauge eat",
     "this would be a goods sentence except for then errors",
+
+    // Actual phrase from wikipedia (2023) but with the word order
+    // randomized.
+    "methodically by improved and advancing supply russian focus "
+      "forces the lines slowly their of protection on",
+
     // TODO: more! perhaps construct these randomly like in
     // the training data?
   };

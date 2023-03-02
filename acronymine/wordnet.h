@@ -46,7 +46,8 @@ struct WordNet {
   static constexpr int NUM_PROPS = 13;
 
   // Get the property bitmask for the word. Returns 0 for unknown
-  // words (but also for known words with no properties).
+  // words (but also for known words with no properties, though there
+  // should be none of these for a properly initialized database).
   uint32_t GetProps(const std::string &word) const {
     auto it = props.find(word);
     if (it == props.end()) return 0u;
