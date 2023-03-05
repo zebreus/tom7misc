@@ -25,8 +25,12 @@
 #include "sound.h"
 
 #include "tracing.h"
+#include "threadutil.h"
 
+#define RUN_ALL_INSTRUCTIONS 1
 #define FAST_INSTRUCTION_DISPATCH 0
+
+static constexpr int NUM_THREADS = 8;
 
 X6502::X6502(FC *fc) : fc(fc) {
   CHECK(fc != nullptr);
@@ -204,10 +208,8 @@ void X6502::RunLoop() {
 
     inst_histo[opcode.ToInt()]++;
 
-    // XXX dispatching on the instruction byte is cheating
-    Fluint8::Cheat();
-
-    switch (opcode.ToInt()) {
+    auto RunInstruction = [&](uint8 op) {
+    switch (op) {
     case 0x00: cpus[0x00].BRK(); break;
     case 0x40: cpus[0x40].RTI(); break;
     case 0x60: cpus[0x60].RTS(); break;
@@ -649,7 +651,41 @@ void X6502::RunLoop() {
     default:
       CHECK(false) << "Unimplemented";
     }
+    };
 
+    #if RUN_ALL_INSTRUCTIONS
+    auto RunOne = [&](int idx) {
+        // Run the corresponding instruction.
+        RunInstruction(idx);
+
+        #if !FAST_INSTRUCTION_DISPATCH
+        #define MAYBE_CLEAR_REG8(reg) \
+          cpus[idx]. reg = Fluint8::If(cpus[idx].active, cpus[idx]. reg )
+        #define MAYBE_CLEAR_REG16(reg) \
+          cpus[idx]. reg = Fluint16::If(cpus[idx].active, cpus[idx]. reg )
+
+        // Zero the registers if this instruction wasn't active,
+        // so that we can sum them in serial below.
+        MAYBE_CLEAR_REG8(reg_A);
+        MAYBE_CLEAR_REG8(reg_X);
+        MAYBE_CLEAR_REG8(reg_Y);
+        MAYBE_CLEAR_REG8(reg_S);
+        MAYBE_CLEAR_REG8(reg_P);
+        MAYBE_CLEAR_REG8(reg_PI);
+        MAYBE_CLEAR_REG8(jammed);
+        MAYBE_CLEAR_REG16(reg_PC);
+        MAYBE_CLEAR_REG16(cycles);
+
+        #endif
+      };
+    ParallelComp(256, RunOne, NUM_THREADS);
+    #else
+    // (Dispatching on the instruction byte is cheating.)
+    Fluint8::Cheat();
+    RunInstruction(opcode.ToInt());
+    #endif
+
+    // Now copy the result of the actual instruction back.
     #if FAST_INSTRUCTION_DISPATCH
     Fluint8::Cheat();
     cpu = cpus[opcode.ToInt()];
@@ -661,23 +697,20 @@ void X6502::RunLoop() {
 
     #else
     // Real way. We basically sum up all the component instructions,
-    // but computing zero if inactive.
+    // but all of the inactive ones have been zeroed above.
 
-    // Now copy the result of the actual instruction back.
     #define CLEARREG8(reg) cpu. reg = Fluint8(0x00)
     #define CLEARREG16(reg) cpu. reg = Fluint16(0x00)
 
-    #define COPYREG8(idx, reg) do {                                    \
-        Fluint8 v_if = Fluint8::If(cpus[idx].active, cpus[idx]. reg ); \
-        cpu. reg = Fluint8::PlusNoOverflow(cpu. reg , v_if);           \
+
+    #define COPYREG8(idx, reg) do {                                     \
+        cpu. reg = Fluint8::PlusNoOverflow(cpu. reg , cpus[idx]. reg ); \
       } while (false)
 
-    // PERF: Instead of +=, could have some analog of PlusNoOverflow
-    // (native fp plus on each byte) for Fluint16, because at most one
+    // PlusNoByteOverflow is safe here because at most one
     // term will be nonzero.
-    #define COPYREG16(idx, reg) do {                                     \
-        Fluint16 v_if = Fluint16::If(cpus[idx].active, cpus[idx]. reg ); \
-        cpu. reg += v_if;                                                \
+    #define COPYREG16(idx, reg) do {                                        \
+        cpu. reg = Fluint16::PlusNoByteOverflow(cpu. reg, cpus[idx]. reg ); \
       } while (false)
 
     CLEARREG8(reg_A);
@@ -704,7 +737,8 @@ void X6502::RunLoop() {
       // instruction; we're adding it rather than overwriting since
       // it's supposed to be cumulative. Note also that memory handlers
       // (if executed) could have updated this for the main CPU.
-      ADDCYC(Fluint16::If(cpus[i].active, cpus[i].cycles).ToInt());
+      // ADDCYC(Fluint16::If(cpus[i].active, cpus[i].cycles).ToInt());
+      ADDCYC(cpus[i].cycles.ToInt());
     }
 
     #endif

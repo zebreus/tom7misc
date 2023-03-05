@@ -59,6 +59,10 @@ struct Fluint16 {
   static Fluint16 RightShift1(Fluint16 x);
   static Fluint16 LeftShift1(Fluint16 x);
 
+  // Computes a + b, if neither (ah + bh) nor (al + bl) overflows.
+  // (h is the high byte, l is the low).
+  static Fluint16 PlusNoByteOverflow(Fluint16 a, Fluint16 b);
+
   // For testing.
   uint16_t Representation() const;
 

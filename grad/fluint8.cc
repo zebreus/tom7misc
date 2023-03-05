@@ -185,11 +185,23 @@ Fluint8 Fluint8::Eq(Fluint8 a, Fluint8 b) {
 // actually do that, then flip the values around with (128 - x),
 // then do it again.
 Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
-  // PERF: We can probably do this in fewer than 9 steps?
-  static constexpr std::array<half, 9> OFF = {
+  // PERF: We can probably do this in fewer than 8 steps?
+  static constexpr std::array<half, 8> OFF = {
+    GetHalf(0x77f9),
+    GetHalf(0x7829),
+    GetHalf(0x77fb),
+    GetHalf(0x78e2),
+    GetHalf(0x77fd),
+    GetHalf(0x780b),
+    GetHalf(0x77ff),
+    GetHalf(0x7864),
+
+    // old way, 9 steps
+    /*
     GetHalf(0x780e), GetHalf(0x77fd), GetHalf(0x79f9),
     GetHalf(0x77fb), GetHalf(0x795c), GetHalf(0x77fd),
     GetHalf(0x7a33), GetHalf(0x77ff), GetHalf(0x7800),
+    */
   };
 
   static constexpr half HALF1 = GetHalf(0x3c00);
@@ -202,7 +214,7 @@ Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
   const half c128 = HALF128 * nch;
 
   std::array<half, OFF.size()> COFF;
-  for (int i = 0; i < OFF.size(); i++) {
+  for (int i = 0; i < (int)OFF.size(); i++) {
     // This results in 0 or the constant.
     COFF[i] = OFF[i] * nch;
   }
@@ -231,8 +243,12 @@ Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
 // For cc = 0x01 or 0x00 (only), returns c ? t : f.
 Fluint8 Fluint8::IfElse(Fluint8 cc, Fluint8 t, Fluint8 f) {
   // PERF probably can be faster to do this directly?
+  // PERF Could have BooleanNot
   return PlusNoOverflow(If(cc, t), If(XorWith<0x01>(cc), f));
 }
 
+Fluint8 Fluint8::BooleanAnd(Fluint8 a, Fluint8 b) {
+  return RightShift1(PlusNoOverflow(a, b));
+}
 
 #endif

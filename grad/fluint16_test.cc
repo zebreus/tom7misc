@@ -202,6 +202,22 @@ static void Zero() {
   }
 }
 
+static void PlusNoByteOverflow() {
+  ManyPairs<LFSR_POLY1>([](
+      uint16_t state1, uint16_t state2,
+      Fluint16 f1, Fluint16 f2) {
+
+      // Only needs to work when preconditions are satisfied.
+      int al = state1 & 0xFF, bl = state2 & 0xFF;
+      int ah = state1 >> 8, bh = state2 >> 8;
+      if ((al + bl) < 256 && (ah + bh) < 256) {
+        const Fluint16 fsum = Fluint16::PlusNoByteOverflow(f1, f2);
+        const uint16_t sum = state1 + state2;
+        CHECK_EQ16(sum, fsum.ToInt());
+      }
+    });
+}
+
 
 int main(int argc, char **argv) {
 
@@ -215,6 +231,7 @@ int main(int argc, char **argv) {
   Zero(); printf("Zero OK\n");
   Add8(); printf("Add8 OK\n");
   SignExtend(); printf("SignExtend OK\n");
+  PlusNoByteOverflow(); printf("PlusNoByteOverflow OK\n");
 
   printf("OK\n");
   return 0;

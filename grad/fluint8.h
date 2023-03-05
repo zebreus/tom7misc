@@ -169,6 +169,9 @@ struct Fluint8 {
   // For cc = 0x01 or 0x00 (only), returns c ? t : f.
   static Fluint8 IfElse(Fluint8 cc, Fluint8 t, Fluint8 f);
 
+  // For a and b = 0x01 or 0x00 (only), returns a && b.
+  static Fluint8 BooleanAnd(Fluint8 a, Fluint8 b);
+
   // With a compile-time constant, which is very common, and
   // can be done much faster.
   template<uint8_t b>

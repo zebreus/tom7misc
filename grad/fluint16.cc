@@ -57,6 +57,11 @@ Fluint16 Fluint16::Plus(Fluint16 a, Fluint8 b) {
   return Fluint16(hsum, lsum);
 }
 
+Fluint16 Fluint16::PlusNoByteOverflow(Fluint16 a, Fluint16 b) {
+  return Fluint16(Fluint8::PlusNoOverflow(a.hi, b.hi),
+                  Fluint8::PlusNoOverflow(a.lo, b.lo));
+}
+
 Fluint16 Fluint16::Minus(Fluint16 a, Fluint16 b) {
   auto [lcarry, ldiff] = Fluint8::SubtractWithCarry(a.lo, b.lo);
   // carry here is ignored
