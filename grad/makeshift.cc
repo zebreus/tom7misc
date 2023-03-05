@@ -475,26 +475,49 @@ static void MakeCompress() {
          ok ? ANSI_GREEN : ANSI_RED, StringBits(mask).c_str());
 }
 
+// Long run on N=7 produced this, which has two distinct
+// values, so might be close to something good?
+[[maybe_unused]]
+static half FIF7(half xh) {
+  static constexpr std::array<double, 7> arg = {
+    32719.28394646058587, // = 32720 (0x77fd)
+    32674.43583008654241, // = 32672 (0x77fa)
+    32684.92828486524013, // = 32688 (0x77fb)
+    41713.42322387963941, // = 41728 (0x7918)
+    32720.1946089412013,  // = 32720 (0x77fd)
+    50066.62457804620499, // = 50080 (0x7a1d)
+    32752.82554916590743, // = 32752 (0x77ff)
+  };
+  for (int i = 0; i < arg.size(); i++) {
+    xh += (half)arg[i];
+    xh -= (half)arg[i];
+  }
+
+  static constexpr half HALF128 = GetHalf(0x5800);
+  xh = HALF128 - xh;
+
+  for (int i = 0; i < arg.size(); i++) {
+    xh += (half)arg[i];
+    xh -= (half)arg[i];
+  }
+
+  return xh;
+}
+
+
 template<size_t N>
 half FIF(const std::array<double, N> &arg, half xh) {
-#if 1
-  for (uint16_t z : {0x780e, 0x77fd, 0x79f9,
-        0x77fb, 0x795c, 0x77fd, 0x7a33, 0x77ff, 0x7800
-        }) {
-    half h = GetHalf(z);
-    xh += h;
-    xh -= h;
+  for (int i = 0; i < N; i++) {
+    xh += (half)arg[i];
+    xh -= (half)arg[i];
   }
-#endif
+
+  static constexpr half HALF128 = GetHalf(0x5800);
+  xh = HALF128 - xh;
 
   for (int i = 0; i < N; i++) {
-    if (true || N & 1) {
-      xh += (half)arg[i];
-      xh -= (half)arg[i];
-    } else {
-      xh -= (half)arg[i];
-      xh += (half)arg[i];
-    }
+    xh += (half)arg[i];
+    xh -= (half)arg[i];
   }
 
   return xh;
@@ -545,7 +568,7 @@ static double IfN(const std::array<double, N> &arg) {
 // that result in zero for everything in [0, 255].
 template<size_t N>
 static void MakeIf() {
-#if 0
+#if 1
   using IfOpt = Optimizer<0, N, char>;
 
   IfOpt opt([](const IfOpt::arg_type &arg) {
@@ -559,7 +582,7 @@ static void MakeIf() {
   }
 
   opt.Run({}, bounds,
-          nullopt, nullopt, {60.0}, {0.0});
+          nullopt, nullopt, {2.0 * 60.0 * 60.0}, {0.0});
 
   const auto [arg, score, out_] = opt.GetBest().value();
   printf("Best score: %.19g\nParams:\n", score);
@@ -569,7 +592,7 @@ static void MakeIf() {
            a, (float)(half)a, GetU16((half)a));
   }
 
-  auto Fold = [&arg](uint8_t x) {
+  auto F = [&arg](uint8_t x) {
       half xh = (half)x;
       return FIF<N>(arg.second, xh);
     };
@@ -577,6 +600,7 @@ static void MakeIf() {
 #endif
 
 
+  /*
   auto F = [](uint8_t x) {
       half xh = (half)x;
       for (uint16_t z : {0x780e, 0x77fd, 0x79f9,
@@ -599,6 +623,7 @@ static void MakeIf() {
 
       return xh;
     };
+  */
 
   auto StringBits = [](uint8_t zi) {
       string bits(8, '?');
@@ -639,7 +664,7 @@ int main(int argc, char **argv) {
   // MakeShiftAdd();
 
   // MakeCompress<0x0F>();
-  MakeIf<6>();
+  MakeIf<8>();
 
   return 0;
 }
