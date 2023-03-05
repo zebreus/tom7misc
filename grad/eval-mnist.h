@@ -13,6 +13,7 @@
 #include "network-gpu.h"
 #include "image.h"
 #include "mnist.h"
+#include "timer.h"
 
 struct EvalMNIST {
   static constexpr int IMG_WIDTH = 28;

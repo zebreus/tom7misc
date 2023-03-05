@@ -133,7 +133,13 @@ struct ExampleThread {
   }
 
   ~ExampleThread() {
-    LOG(FATAL) << "unimplemented";
+    // Note: Never actually tested
+    {
+      MutexLock ml(&m);
+      should_die = true;
+    }
+    work_thread1->join();
+    work_thread2->join();
   }
 
 private:
@@ -147,10 +153,12 @@ private:
     RandomGaussian gauss(&rc);
 
     for (;;) {
-      const bool want_more = [&]() -> bool {
+      const auto [want_more, die] = [&]() -> std::pair<bool, bool>  {
           MutexLock ml(&m);
-          return q.size() < TARGET_SIZE;
+          return make_pair(q.size() < TARGET_SIZE, should_die);
         }();
+
+      if (die) return;
 
       if (want_more) {
         // examples_per_round * INPUT_SIZE
@@ -204,6 +212,7 @@ private:
   std::unique_ptr<MNIST> mnist;
 
   std::mutex m;
+  bool should_die = false;
   // queue of examples, ready to train
   std::deque<example_type> q;
 
@@ -771,7 +780,7 @@ int main(int argc, char **argv) {
     "    contains a model file.\n"
     "  transfer_function should be one of\n"
     "    SIGMOID, RELU, LEAKY_RELU, IDENTITY\n"
-    "    TANH, GRAD1,\n";
+    "    TANH, GRAD1, DOWNSHIFT2, PLUS64, \n";
 
   const string dir = argv[1];
   const TransferFunction tf = ParseTransferFunction(argv[2]);
