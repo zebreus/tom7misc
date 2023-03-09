@@ -38,6 +38,7 @@ const char *TransferFunctionName(TransferFunction tf) {
   case TANH: return "TANH";
   case GRAD1: return "GRAD1";
   case DOWNSHIFT2: return "DOWNSHIFT2";
+  case PLUS64: return "PLUS64";
   default: return "??INVALID??";
   }
 }
@@ -132,6 +133,18 @@ const char *const Network::DOWNSHIFT2_FN =
   "#define FORWARD(potential) U16ToFloat(FloatToU16(potential) >> 2)\n"
   "#define DERIVATIVE(fx) deriv_table[FloatToU16(fx)]\n";
 
+const char *const Network::PLUS64_FN =
+  // Computing it on the fly is presumably faster than reading from the
+  // table, but I didn't benchmark it.
+  // PERF: Might be equivalent to avoid the outer ToHalf.
+  "#define FORWARD(potential) ToHalf(ToHalf(potential + 64.0f) - 64.0f)\n"
+  // The derivative is degenerate (0 everywhere except at discontinuities)
+  // unless we apply significant smoothing. Even if we did that, it's not
+  // possible to express it in terms of the output since there are only a
+  // handful of discrete values. So we use an approximate analytical
+  // derivative, which might still work (?).
+  "#define DERIVATIVE(fx) 1.0f\n";
+
 string Network::TransferFunctionDefines(TransferFunction tf) {
   switch (tf) {
   case SIGMOID: return Network::SIGMOID_FN;
@@ -141,6 +154,7 @@ string Network::TransferFunctionDefines(TransferFunction tf) {
   case TANH: return Network::TANH_FN;
   case GRAD1: return Network::GRAD1_FN;
   case DOWNSHIFT2: return Network::DOWNSHIFT2_FN;
+  case PLUS64: return Network::PLUS64_FN;
   default:
     CHECK(false) << "No define for transfer function "
                  << tf << ": " << TransferFunctionName(tf);

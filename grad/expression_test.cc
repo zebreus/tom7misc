@@ -30,7 +30,7 @@ static void TestIter() {
             alloc.Var(),
             // * 1.00000...1
             0x3c01u,
-            500);
+            500),
         0x3d4b);
 
   const Exp *f2 =
@@ -87,6 +87,37 @@ static void TestIter() {
     alloc.PlusE(f4a,
                 alloc.Neg(f4b));
 
+  /*
+  const Exp *boxcar25 =
+    alloc.PlusE(
+        // x + 0.25
+        alloc.PlusC(alloc.Var(), 0x3400),
+        // - x
+        alloc.Neg(alloc.Var()));
+  */
+
+  // Almost boxcar...
+  /*
+  const Exp *boxcar25 =
+    alloc.TimesC(
+        alloc.PlusE(
+            // x + 0.25
+            alloc.PlusC(alloc.Var(), 0x0400),
+            // - x
+            alloc.Neg(alloc.Var())),
+        0x7000);
+  */
+
+  const Exp *boxcar25 =
+    alloc.TimesC(
+        alloc.PlusE(
+            // x * (1 - 1/2048)
+            alloc.TimesC(alloc.Var(), 0x3bff),
+            // - x
+            alloc.Neg(alloc.Var())),
+        0x6400);
+
+
   // Deep one.
   const Exp *f5 = alloc.Var();
   for (int i = 0; i < 100000; i++)
@@ -103,7 +134,7 @@ static void TestIter() {
   Table result4 = Exp::TabulateExpression(f4);
   double sec = tab_timer.Seconds();
 
-  if (true) {
+  if (false) {
     printf("Run deep:\n");
     Timer deep_timer;
     [[maybe_unused]]
@@ -123,14 +154,27 @@ static void TestIter() {
   }
 
   printf("Tabulated functions in %.3fs\n", sec);
-  ImageRGBA img(1024, 1024);
-  img.Clear32(0x000000FF);
-  GradUtil::Graph(result1,  0xFFFF7788, &img);
-  GradUtil::Graph(result1b, 0x77FF7788, &img);
-  GradUtil::Graph(result2,  0x77FFFF88, &img);
-  GradUtil::Graph(result3,  0x7777FF88, &img);
-  GradUtil::Graph(result4,  0xFF77FF88, &img);
-  img.Save("expression-test.png");
+
+  {
+    ImageRGBA img(1024, 1024);
+    img.Clear32(0x000000FF);
+    GradUtil::Graph(result1,  0xFFFF7788, &img);
+    GradUtil::Graph(result1b, 0x77FF7788, &img);
+    GradUtil::Graph(result2,  0x77FFFF88, &img);
+    GradUtil::Graph(result3,  0x7777FF88, &img);
+    GradUtil::Graph(result4,  0xFF77FF88, &img);
+    img.Save("expression-test.png");
+  }
+
+  {
+    ImageRGBA img(2048, 2048);
+    img.Clear32(0x000000FF);
+    GradUtil::Grid(&img);
+    Table bc = Exp::TabulateExpression(boxcar25);
+    GradUtil::Graph(bc, 0xFFFF7788, &img);
+    img.Save("boxcar25.png");
+  }
+
 }
 
 static void TestStack() {

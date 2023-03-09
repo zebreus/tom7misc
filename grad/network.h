@@ -72,6 +72,7 @@ enum TransferFunction {
 
   GRAD1 = 5,
   DOWNSHIFT2 = 6,
+  PLUS64 = 7,
 
   NUM_TRANSFER_FUNCTIONS,
 };
@@ -276,6 +277,7 @@ struct Network {
   static const char *const TANH_FN;
   static const char *const GRAD1_FN;
   static const char *const DOWNSHIFT2_FN;
+  static const char *const PLUS64_FN;
 
   // Return one of the above constants (or abort for an unknown
   // transfer function).

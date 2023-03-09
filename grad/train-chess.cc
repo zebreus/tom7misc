@@ -1000,7 +1000,7 @@ int main(int argc, char **argv) {
       "    contains a model file.\n"
       "  transfer_function should be one of\n"
       "    SIGMOID, RELU, LEAKY_RELU, IDENTITY\n"
-      "    TANH, GRAD1, DOWNSHIFT2,\n";
+      "    TANH, GRAD1, DOWNSHIFT2, PLUS64,\n";
 
     const string dir = argv[1];
     const TransferFunction tf = ParseTransferFunction(argv[2]);

@@ -216,8 +216,8 @@ private:
   std::unique_ptr<CIFAR10> cifar10;
 
   std::mutex m;
-  // queue of examples, ready to train
   bool examplethread_should_die = false;
+  // queue of examples, ready to train
   std::deque<example_type> q;
 
   std::unique_ptr<std::thread> work_thread1, work_thread2;
@@ -791,7 +791,7 @@ int main(int argc, char **argv) {
     "    contains a model file.\n"
     "  transfer_function should be one of\n"
     "    SIGMOID, RELU, LEAKY_RELU, IDENTITY\n"
-    "    TANH, GRAD1, DOWNSHIFT2\n";
+    "    TANH, GRAD1, DOWNSHIFT2, PLUS64\n";
 
   const string dir = argv[1];
   const TransferFunction tf = ParseTransferFunction(argv[2]);
