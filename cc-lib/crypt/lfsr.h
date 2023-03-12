@@ -28,6 +28,7 @@ inline constexpr uint32_t LFSRNext32(uint32_t state) {
 }
 
 inline constexpr uint16_t LFSRNext16(uint16_t state) {
+  // For 16, other options include 0xD008, ...
   return LFSRNext<uint16_t, 0xBDDD>(state);
 }
 

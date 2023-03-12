@@ -13,6 +13,10 @@ CXXFLAGS=-march=native -I. -I.. --std=c++20 -O2 -static
 # CC=gcc
 # CXXFLAGS=-I. -I.. --std=c++17 -O2 -DNDEBUG=1
 
+%.o : %.cc *.h makefile
+	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
+	@echo -n "."
+
 aes.o : aes.cc aes.h
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 

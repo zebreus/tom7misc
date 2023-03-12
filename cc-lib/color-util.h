@@ -86,11 +86,11 @@ struct ColorUtil {
   static uint32_t LinearGradient32(const Gradient &ramp, float t);
 
   static constexpr Gradient HEATED_METAL{
-    GradRGB(0.0f,  0x000000),
-    GradRGB(0.2f,  0x7700BB),
-    GradRGB(0.5f,  0xFF0000),
-    GradRGB(0.8f,  0xFFFF00),
-    GradRGB(1.0f,  0xFFFFFF)
+    GradRGB(0.0f, 0x000000),
+    GradRGB(0.2f, 0x7700BB),
+    GradRGB(0.5f, 0xFF0000),
+    GradRGB(0.8f, 0xFFFF00),
+    GradRGB(1.0f, 0xFFFFFF)
   };
 
 };

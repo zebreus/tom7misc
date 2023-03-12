@@ -36,8 +36,8 @@ limitations under the License.
 // NOTE(zhifengc): This class should be redesigned to avoid reallocating a
 // vector for each Extract.
 
-#ifndef __CC_LIB_GTL_TOP_N_H_
-#define __CC_LIB_GTL_TOP_N_H_
+#ifndef _CC_LIB_GTL_TOP_N_H
+#define _CC_LIB_GTL_TOP_N_H
 
 #include <stddef.h>
 #include <algorithm>
