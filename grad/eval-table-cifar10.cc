@@ -19,7 +19,7 @@ static void MakeEvalTableCIFAR10(const string &outfile) {
     {"sigmoid", "cifar10-sigmoid"},
     {"tanh", "cifar10-tanh"},
     {"leaky-relu", "cifar10-leaky"},
-    //    {"plus64", "cifar10-plus64"},
+    {"plus64", "cifar10-plus64"},
     {"grad1", "cifar10-grad1"},
     {"identity", "cifar10-identity"},
     {"downshift2", "cifar10-downshift2"},

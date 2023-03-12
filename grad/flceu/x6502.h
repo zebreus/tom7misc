@@ -523,8 +523,8 @@ struct X6502 {
       Fluint16 tmp = GetAB();
       Fluint16 ret = tmp + i;
       Fluint8 cc = Fluint16::RightShift<8>((ret ^ tmp) & Fluint16(0x100)).Lo();
-      // PERF: Could have a boolean & that assumes 1 or 0.
-      (void)parent->RdMemIf(cc & active, ret ^ Fluint16(0x100));
+      (void)parent->RdMemIf(Fluint8::BooleanAnd(cc, active),
+                            ret ^ Fluint16(0x100));
 
       AddCycle(cc);
 
@@ -540,8 +540,8 @@ struct X6502 {
       Fluint16 rt(hi, lo);
       Fluint16 ret = rt + reg_Y;
       Fluint8 cc = Fluint16::RightShift<8>((ret ^ rt) & Fluint16(0x100)).Lo();
-      // PERF: Could have a boolean & that assumes 1 or 0.
-      (void)parent->RdMemIf(cc & active, ret ^ Fluint16(0x100));
+      (void)parent->RdMemIf(Fluint8::BooleanAnd(cc, active),
+                            ret ^ Fluint16(0x100));
 
       AddCycle(cc);
 
@@ -641,7 +641,8 @@ struct X6502 {
       }
 
       // Signed displacement. We'll only use it if cond is true.
-      Fluint8 disp = parent->RdMemIf(cond & active, reg_PC);
+      Fluint8 disp =
+        parent->RdMemIf(Fluint8::BooleanAnd(cond, active), reg_PC);
 
       // Program counter incremented whether the branch is
       // taken or not (which makes sense as we would not

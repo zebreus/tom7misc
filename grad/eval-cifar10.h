@@ -13,6 +13,7 @@
 #include "network-gpu.h"
 #include "image.h"
 #include "cifar10.h"
+#include "timer.h"
 
 struct EvalCIFAR10 {
   static constexpr int IMG_WIDTH = CIFAR10::WIDTH;

@@ -129,13 +129,20 @@ static void Rainbow() {
         double err = (double)h - d;
 
         uint32_t color = ColorUtil::LinearGradient32(SIGN, err);
-        eimg.BlendPixel32(x, y, color & 0xFFFFFFAA);
+        // XXX or x?
+        eimg.BlendPixel32(i, y, color & 0xFFFFFFAA);
       }
     }
 
     for (int i = 0; i < WIDTH; i++) {
       values[i] *= SCALE;
       dvalues[i] *= DSCALE;
+    }
+
+    if (y == 500) {
+      for (int i = 0; i < WIDTH; i++) {
+        eimg.BlendPixel32(i, y, 0x000000AA);
+      }
     }
   }
 

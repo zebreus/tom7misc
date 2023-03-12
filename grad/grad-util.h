@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <cstdint>
+#include <bit>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -33,20 +34,16 @@ struct GradUtil {
   // So this representation is probably bad
   // to search over as integers, since it
   // is not monotonic and has two holes in it.
-  static inline half GetHalf(uint16 u) {
-    half h;
-    static_assert(sizeof (h) == sizeof (u));
-    memcpy((void*)&h, (void*)&u, sizeof (u));
-    return h;
+
+  static constexpr inline uint16_t GetU16(half_float::half h) {
+    return std::bit_cast<uint16_t, half_float::half>(h);
   }
 
-  static inline uint16 GetU16(half h) {
-    uint16 u;
-    static_assert(sizeof (h) == sizeof (u));
-    memcpy((void*)&u, (void*)&h, sizeof (u));
-    return u;
+  static constexpr inline half_float::half GetHalf(uint16_t u) {
+    return std::bit_cast<half_float::half, uint16_t>(u);
   }
 
+  // Can use bit_cast for these too.
   static inline uint32_t PackFloat(float f) {
     static_assert(sizeof (float) == 4);
     uint32_t ret = 0;

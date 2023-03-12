@@ -16,7 +16,7 @@ static void MakeEvalTableChess(const string &outfile) {
     {"sigmoid", "chess-sigmoid"},
     {"tanh", "chess-tanh"},
     {"leaky-relu", "chess-leaky"},
-    // {"plus64", "chess-plus64"},
+    {"plus64", "chess-plus64"},
     {"grad1", "chess-grad1"},
     {"identity", "chess-identity"},
     {"downshift2", "chess-downshift2"},

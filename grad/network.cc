@@ -316,6 +316,13 @@ static float Downshift2Fn(float f) {
   return (float)GetHalf(in >> 2);
 }
 
+static float Plus64Fn(float f) {
+  half h = (half)f;
+  h += GetHalf(0x5400);  // 64
+  h += GetHalf(0xd400);  // -64
+  return (float)h;
+}
+
 template<float (*fwd)(float)>
 static void RunForwardChunkWithFn(
     const std::vector<float> &src_values,
@@ -471,6 +478,10 @@ void Network::RunForwardLayer(Stimulation *stim, int src_layer) const {
       break;
     case DOWNSHIFT2:
       RunForwardChunkWithFn<Downshift2Fn>(
+          src_values, chunk, dst_values, out_idx);
+      break;
+    case PLUS64:
+      RunForwardChunkWithFn<Plus64Fn>(
           src_values, chunk, dst_values, out_idx);
       break;
     default:

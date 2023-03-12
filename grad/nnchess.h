@@ -1,8 +1,6 @@
 #ifndef _GRAD_NNCHESS_H
 #define _GRAD_NNCHESS_H
 
-#include "network-gpu.h"
-
 #include <cmath>
 #include <memory>
 #include <vector>
@@ -17,22 +15,14 @@
 #include <unordered_map>
 
 #include "chess.h"
-#include "pgn.h"
 #include "bigchess.h"
-#include "network.h"
-#include "network-test-util.h"
-#include "clutil.h"
+#include "pgn.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "arcfour.h"
 #include "randutil.h"
 #include "threadutil.h"
-#include "image.h"
 #include "util.h"
-#include "train-util.h"
-#include "error-history.h"
-#include "timer.h"
-#include "periodically.h"
 #include "ansi.h"
 
 struct NNChess {
@@ -149,17 +139,20 @@ struct NNChess {
 struct ExamplePool {
   // Loads example positions from a database in the background.
   std::mutex pool_mutex;
+  bool example_thread_should_die = false;
+  bool done = false;
+  std::thread *examples_thread = nullptr;
   // position, eval, over.
   std::vector<std::tuple<Position, float, float>> pool;
 
   void PopulateExamplesInBackground(
       const std::string &filename,
       int64 max_positions) {
-    // XXX leaks
-    (void) new std::thread(&ExamplePool::PopulateExamples,
-                           this,
-                           filename,
-                           max_positions);
+    CHECK(examples_thread == nullptr);
+    examples_thread = new std::thread(&ExamplePool::PopulateExamples,
+                                      this,
+                                      filename,
+                                      max_positions);
   }
 
   void PopulateExamples(
@@ -186,6 +179,8 @@ struct ExamplePool {
 
             pos.ApplyMove(move);
 
+            // XXX: This does not handle checkmate or stalemate,
+            // which don't get eval!
             // Eval applies to position after move.
             if (m.eval.has_value()) {
               const float score = NNChess::MapEval(m.eval.value());
@@ -193,6 +188,10 @@ struct ExamplePool {
 
               {
                 MutexLock ml(&pool_mutex);
+                if (example_thread_should_die) {
+                  done = true;
+                  return;
+                }
                 pool.emplace_back(pos, score, over);
               }
               num_positions++;
@@ -219,6 +218,28 @@ struct ExamplePool {
     printf("Done loading examples from %s.\n"
            "%lld games, %lld positions, %lld errors\n",
            filename.c_str(), num_games, num_positions, parse_errors);
+    done = true;
+  }
+
+  void WaitForAll() {
+    for (;;) {
+      {
+        MutexLock ml(&pool_mutex);
+        if (done)
+          return;
+      }
+      // PERF: Faster with condition variable.
+      std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+  }
+
+  ~ExamplePool() {
+    {
+      MutexLock ml(&pool_mutex);
+      example_thread_should_die = true;
+    }
+    examples_thread->join();
+    examples_thread = nullptr;
   }
 };
 
