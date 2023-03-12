@@ -281,16 +281,20 @@ ImageRGBA ImageRGBA::Crop32(int x, int y, int w, int h,
 }
 
 ImageRGBA ImageRGBA::ScaleBy(int scale) const {
+  return ScaleBy(scale, scale);
+}
+
+ImageRGBA ImageRGBA::ScaleBy(int xscale, int yscale) const {
   // 1 is not useful, but it does work
-  CHECK(scale >= 1);
-  ImageRGBA ret(width * scale, height * scale);
+  CHECK(xscale >= 1 && yscale >= 1);
+  ImageRGBA ret(width * xscale, height * yscale);
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
       const uint32 color = GetPixel32(x, y);
-      for (int yy = 0; yy < scale; yy++) {
-        for (int xx = 0; xx < scale; xx++) {
-          ret.SetPixel32(x * scale + xx,
-                         y * scale + yy,
+      for (int yy = 0; yy < yscale; yy++) {
+        for (int xx = 0; xx < xscale; xx++) {
+          ret.SetPixel32(x * xscale + xx,
+                         y * yscale + yy,
                          color);
         }
       }
@@ -879,16 +883,19 @@ std::size_t ImageA::Hash() const {
 }
 
 ImageA ImageA::ScaleBy(int scale) const {
-  // 1 is not useful, but it does work
-  CHECK(scale >= 1);
-  ImageA ret(width * scale, height * scale);
+  return ScaleBy(scale, scale);
+}
+
+ImageA ImageA::ScaleBy(int xscale, int yscale) const {
+  CHECK(xscale >= 1 && yscale >= 1);
+  ImageA ret(width * xscale, height * yscale);
   for (int y = 0; y < height; y++) {
     for (int x = 0; x < width; x++) {
       const uint8 color = GetPixel(x, y);
-      for (int yy = 0; yy < scale; yy++) {
-        for (int xx = 0; xx < scale; xx++) {
-          ret.SetPixel(x * scale + xx,
-                       y * scale + yy,
+      for (int yy = 0; yy < yscale; yy++) {
+        for (int xx = 0; xx < xscale; xx++) {
+          ret.SetPixel(x * xscale + xx,
+                       y * yscale + yy,
                        color);
         }
       }
@@ -896,6 +903,7 @@ ImageA ImageA::ScaleBy(int scale) const {
   }
   return ret;
 }
+
 
 void ImageA::Clear(uint8 value) {
   for (int i = 0; i < (int)alpha.size(); i++) alpha[i] = value;
