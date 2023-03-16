@@ -23,7 +23,12 @@ struct Generator {
   virtual ~Generator() {}
 };
 
-void ParallelBigCrush (
+struct BigCrushTestResult {
+  std::string name;
+  double p_value;
+};
+
+std::vector<BigCrushTestResult> ParallelBigCrush(
     const std::function<Generator*()> &gengen,
     const std::string &filepart,
     int NUM_THREADS = 12);

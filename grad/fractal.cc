@@ -73,24 +73,38 @@ static hcomplex EvalWithTables(const Table &rtable,
                   Exp::GetHalf(itable[Exp::GetU16(c.Im())]));
 }
 
-static void Render(const Exp *e, string filebase) {
+enum Mode {
+  F_TIMES_C,
+  F_PLUS_C,
+  Z_SQUARED_PLUS_C,
+};
+
+template<bool MAGNITUDE_MODE, Mode MODE, int MAX_ITERS>
+static void Render(const std::pair<Table, Table> &tables,
+                   string filebase) {
   // static constexpr int OVERSAMPLE = 8;
   // static constexpr int FRAMES = 10 * 60;
-  static constexpr int OVERSAMPLE = 4;
-  static constexpr int FRAMES = 100;
 
-  const auto &[rtable, itable] = TabulateComplex(e);
+  // static constexpr int OVERSAMPLE = 4;
+  // static constexpr int FRAMES = 100;
 
-  /*
+  // Render for paper
+  static constexpr int OVERSAMPLE = 8;
+  static constexpr int FRAMES = 2;
+
+  static constexpr bool ADD_TEXT = false;
+
+  const auto &[rtable, itable] = tables;
+
   const float XMIN0 = -2.3f, XMAX0 = 1.3f;
   const float YMIN0 = -1.8f, YMAX0 = 1.8f;
-  */
+
   /*
   const float XMIN0 = -1.5f, XMAX0 = 1.5f;
   const float YMIN0 = -1.5f, YMAX0 = 1.5f;
   */
-  const float XMIN0 = -1.0f, XMAX0 = 1.0f;
-  const float YMIN0 = -1.0f, YMAX0 = 1.0f;
+  // const float XMIN0 = -1.0f, XMAX0 = 1.0f;
+  // const float YMIN0 = -1.0f, YMAX0 = 1.0f;
 
   /*
   const float XMIN1 = 0.1375f, XMAX1 = 0.2625;
@@ -144,7 +158,7 @@ static void Render(const Exp *e, string filebase) {
     ParallelComp2D(
         FRAME_HEIGHT, FRAME_WIDTH,
         [XMIN, YMIN, WIDTH, HEIGHT, frame,
-         &img, e, &rtable, &itable](int yp, int xp) {
+         &img, &rtable, &itable](int yp, int xp) {
           if (xp == 0 && (yp % 1024) == 0) {
             printf("[" AYELLOW("%d") "/" AYELLOW("%d") "] "
                    "Row " ABLUE("%d") "/" ABLUE("%d") "\n",
@@ -162,29 +176,29 @@ static void Render(const Exp *e, string filebase) {
           hcomplex z((half)0, (half)0);
           hcomplex c((half)x, (half)y);
 
-          #if 0
+          if constexpr (MAGNITUDE_MODE) {
             // magnitude mode
-            const int MAX_ITERS = 256;
             for (int i = 0; i < MAX_ITERS; i++) {
-              // z = EvalWithTables(rtable, itable, z) * c;
-              // z = EvalWithTables(rtable, itable, z) + c;
-              z = EvalWithTables(rtable, itable, z) + c;
-              // z = z + c;
-              // z = z * z + c;
+              if constexpr (MODE == F_TIMES_C) {
+                z = EvalWithTables(rtable, itable, z) * c;
+              } else if constexpr (MODE == F_PLUS_C) {
+                z = EvalWithTables(rtable, itable, z) + c;
+              } else if constexpr (MODE == Z_SQUARED_PLUS_C) {
+                z = z * z + c;
+              }
             }
 
-            float f = z.Abs() / 8.0f;
-             uint32 color = ColorUtil::LinearGradient32(
-                 ColorUtil::HEATED_METAL, f);
+            float f = z.Abs() / 1.0f;
+            uint32 color = ColorUtil::LinearGradient32(
+                ColorUtil::HEATED_METAL, f);
             img.SetPixel32(xp, yp, color);
             return;
 
-          #else
+          } else {
             // escape mode
-            const int MAX_ITERS = 32;
             for (int i = 0; i < MAX_ITERS; i++) {
               // XXX need to know the actual escape
-              if (z.Abs() > (half)1.0) {
+              if (z.Abs() > (half)2.0) {
                 // Escaped. The number of iterations gives the pixel.
                 float f = i / (float)MAX_ITERS;
                 uint32 color = ColorUtil::LinearGradient32(
@@ -193,13 +207,17 @@ static void Render(const Exp *e, string filebase) {
                 return;
               }
 
-              // z = EvaluateComplex(e, z) * c;
-              z = EvalWithTables(rtable, itable, z) + c;
-              // z = z * z + c;
+              if constexpr (MODE == F_TIMES_C) {
+                z = EvalWithTables(rtable, itable, z) * c;
+              } else if constexpr (MODE == F_PLUS_C) {
+                z = EvalWithTables(rtable, itable, z) + c;
+              } else if constexpr (MODE == Z_SQUARED_PLUS_C) {
+                z = z * z + c;
+              }
             }
             // Possibly in the set.
             img.SetPixel32(xp, yp, 0xFFFFFFFF);
-          #endif
+          }
 
         },
         NUM_THREADS);
@@ -209,12 +227,14 @@ static void Render(const Exp *e, string filebase) {
 
     ImageRGBA scaled = img.ScaleDownBy(OVERSAMPLE);
 
-    scaled.BlendText32(XMARGIN, 2, 0xFFFFFFFF,
-                       StringPrintf("min %.4f,%.4f", XMIN, YMIN));
-    string maxx = StringPrintf("max %.4f,%.4f", XMAX, YMAX);
-    scaled.BlendText32(scaled.Width() - XMARGIN - maxx.size() * 9 - 2,
-                       scaled.Height() - 9 - 2, 0xFFFFFFFF,
-                       maxx);
+    if (ADD_TEXT) {
+      scaled.BlendText32(XMARGIN, 2, 0xFFFFFFFF,
+                         StringPrintf("min %.4f,%.4f", XMIN, YMIN));
+      string maxx = StringPrintf("max %.4f,%.4f", XMAX, YMAX);
+      scaled.BlendText32(scaled.Width() - XMARGIN - maxx.size() * 9 - 2,
+                         scaled.Height() - 9 - 2, 0xFFFFFFFF,
+                         maxx);
+    }
 
     string filename = StringPrintf("%s%d.png", filebase.c_str(), frame);
 
@@ -223,14 +243,24 @@ static void Render(const Exp *e, string filebase) {
   }
 }
 
+[[maybe_unused]]
 static void Frac1() {
   Exp::Allocator alloc;
-  /*
   string se = Util::ReadFile("perm16good2/converted.txt");
   string err;
   const Exp *e = Exp::Deserialize(&alloc, se, &err);
   CHECK(e) << err;
-  */
+
+  uint16_t u = Exp::EvaluateOn(e, Exp::GetU16((half)1.0));
+  uint16_t inv = Exp::GetU16((half)1.0 / Exp::GetHalf(u));
+  printf("inv: %04x\n", inv);
+
+  Render<true, F_TIMES_C, 256>(TabulateComplex(e), "frac1_");
+}
+
+[[maybe_unused]]
+static void Frac2() {
+  Exp::Allocator alloc;
 
   const Exp *e =
     alloc.TimesC(
@@ -247,12 +277,35 @@ static void Frac1() {
   uint16_t inv = Exp::GetU16((half)1.0 / Exp::GetHalf(u));
   printf("inv: %04x\n", inv);
 
-  Render(e, "frac2_");
+  // XXX these may not be the right params.
+  Render<true, F_TIMES_C, 256>(TabulateComplex(e), "frac2_");
 }
+
+[[maybe_unused]]
+static void SquareBrot() {
+  Exp::Allocator alloc;
+  string se = Util::ReadFile("perm-best.txt");
+  string err;
+  const Exp *e = Exp::Deserialize(&alloc, se, &err);
+  CHECK(e) << err;
+  Render<false, F_PLUS_C, 256>(TabulateComplex(e), "squarebrot_");
+}
+
+[[maybe_unused]]
+static void Mandelbrot() {
+  Exp::Allocator alloc;
+  Render<false, Z_SQUARED_PLUS_C, 64>(
+      // unused tables
+      make_pair(Table(), Table()),
+      "mandelbrot_");
+}
+
 
 int main(int argc, char **argv) {
   AnsiInit();
-  Frac1();
+  // Frac1();
+  SquareBrot();
+  Mandelbrot();
 
   printf(AGREEN("OK") "\n");
   return 0;

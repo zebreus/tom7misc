@@ -9,7 +9,7 @@
 #include "ansi.h"
 
 #include "grad-util.h"
-
+#include "expression.h"
 
 #include "half.h"
 
@@ -80,7 +80,8 @@ static void ComputeStats(const string &name, const F &f) {
 
 template<class F>
 static void PlotSVG(const string &outfile,
-                    const F &f, double xlo, double xhi,
+                    const F &f,
+                    double xlo, double xhi,
                     double ylo, double yhi,
                     // nominally, inches
                     double svg_width, double svg_height,
@@ -165,6 +166,8 @@ int main(int argc, char **argv) {
 
   HalfStats();
 
+  Exp::Allocator alloc;
+
   PlotSVG("tanh.svg",
           [](half h) { return tanh(h); },
           // Tanh,
@@ -240,8 +243,47 @@ int main(int argc, char **argv) {
             return GradUtil::GetHalf(table1.table[GradUtil::GetU16(h)]) - h;
           },
           -1.0, 1.0,
-          -1.0, 1.0,
+          -0.2, 0.2,
+          2.0, 0.4);
+
+  string error;
+  const Exp *perm16good2 =
+    Exp::Deserialize(
+        &alloc,
+        Util::ReadFile("perm16good2.txt"),
+        &error);
+  CHECK(perm16good2 != nullptr) << error;
+
+  printf(AWHITE("perm16good2") " is " AYELLOW("%d") " operations.\n",
+         Exp::ExpSize(perm16good2));
+  PlotSVG("perm16good2.svg",
+          [perm16good2](half h) {
+            return GradUtil::GetHalf(
+                Exp::EvaluateOn(perm16good2,
+                                GradUtil::GetU16(h)));
+          },
+          -1.1, 0.9,
+          -1, 1,
           2.0, 2.0);
+
+  const Exp *square =
+    Exp::Deserialize(
+        &alloc,
+        Util::ReadFile("square.txt"),
+        &error);
+  CHECK(square != nullptr) << error;
+
+  printf(AWHITE("square") " is " AYELLOW("%d") " operations.\n",
+         Exp::ExpSize(square));
+  PlotSVG("square.svg",
+          [square](half h) {
+            return GradUtil::GetHalf(
+                Exp::EvaluateOn(square,
+                                GradUtil::GetU16(h)));
+          },
+          -2, 2,
+          -0.375, 3.575,
+          4.0, 4.0);
 
   /*
   PlotSVG("downshift2.svg",

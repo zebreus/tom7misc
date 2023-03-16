@@ -21,6 +21,8 @@ extern "C" {
 #include "util.h"
 
 #include "base/logging.h"
+#include "base/stringprintf.h"
+
 #include "ansi.h"
 #include "color-util.h"
 #include "image.h"
@@ -318,13 +320,23 @@ int main(int argc, char **argv) {
            "half version\n");
   }
 
-  return 0;
-
   {
     State state;
-    ParallelBigCrush([]() { return new TheGenerator; },
-                     "gen");
+    auto flat = ParallelBigCrush([]() { return new TheGenerator; },
+                                 "gen");
+
+    // Wants to be wrapped with e.g. \begin{tabular}{rl}
+    std::string tex;
+    for (const BigCrushTestResult &bctr : flat) {
+      StringAppendF(&tex, "%s & $%.4f$ \\\\\n",
+                    bctr.name.c_str(), bctr.p_value);
+    }
+    static const char *OUTFILE = "paper/testu01.tex";
+    Util::WriteFile(OUTFILE, tex);
+    printf("Wrote " AGREEN("%s") ".\n", OUTFILE);
   }
+
+  return 0;
 
   // CPrintf("Running " APURPLE("SmallCrush") "...\n");
   // bbattery_SmallCrush(&gen);

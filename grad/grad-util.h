@@ -133,6 +133,91 @@ struct GradUtil {
     ForEveryFinite16(Plot);
   }
 
+  static void GridWithBounds(const Bounds &bounds, ImageRGBA *img,
+                             double xtick = 0.125,
+                             double ytick = 0.125) {
+    Bounds::Scaler scaler = bounds.Stretch(img->Width(), img->Height()).FlipY();
+
+    // In native coordinates.
+    double top = scaler.UnscaleY(0.0);
+    double bot = scaler.UnscaleY(img->Height());
+
+    double left = scaler.UnscaleX(0.0);
+    double right = scaler.UnscaleX(img->Width());
+
+    {
+      // ticks on x axis
+      int parity = 0;
+      for (double x = xtick; x < right || -x > left; x += xtick) {
+        // Positive and negative ticks at once.
+        double px = scaler.ScaleX(x);
+        double nx = scaler.ScaleX(-x);
+        double y0 = scaler.ScaleY(top);
+        double y1 = scaler.ScaleY(bot);
+        const uint32_t color = (parity == 0) ? 0xFFFFFF22 : 0xFFFFFF11;
+        img->BlendLine32(px, y0, px, y1, color);
+        img->BlendLine32(nx, y0, nx, y1, color);
+        parity++;
+        parity &= 3;
+      }
+    }
+
+    {
+      // ticks on y axis
+      int parity = 0;
+      for (double y = ytick; y < top || -y > bot; y += ytick) {
+        double py = scaler.ScaleY(y);
+        double ny = scaler.ScaleY(-y);
+        double x0 = scaler.ScaleX(left);
+        double x1 = scaler.ScaleX(right);
+        const uint32_t color = (parity == 0) ? 0xFFFFFF22 : 0xFFFFFF11;
+        img->BlendLine32(x0, py, x1, py, color);
+        img->BlendLine32(x0, ny, x1, ny, color);
+        parity++;
+        parity &= 3;
+      }
+    }
+
+    {
+      // y axis
+      const auto [x0, y0] = scaler.Scale(0.0, top);
+      const auto [x1, y1] = scaler.Scale(0.0, bot);
+      img->BlendLine32(x0, y0, x1, y1, 0xFFFFFF22);
+    }
+
+    {
+      // x axis
+      const auto [x0, y0] = scaler.Scale(left, 0.0);
+      const auto [x1, y1] = scaler.Scale(right, 0.0);
+      img->BlendLine32(x0, y0, x1, y1, 0xFFFFFF22);
+    }
+
+  }
+
+  static void GraphWithBounds(
+      const Bounds &bounds,
+      const Table &table, uint32 color, ImageRGBA *img) {
+
+    Bounds::Scaler scaler =
+      bounds.Stretch(img->Width(), img->Height()).FlipY();
+
+    // Plot a single value
+    auto Plot = [&](uint16 input) {
+        uint16 output = table[input];
+        double x = GetHalf(input);
+        double y = GetHalf(output);
+
+        auto [xs, ys] = scaler.Scale(x, y);
+
+        uint32 c = color;
+        img->BlendPixel32((int)std::round(xs), (int)std::round(ys), c);
+      };
+
+    // Plot everything, even if off screen.
+    ForEveryFinite16(Plot);
+  }
+
+
   static void Grid(ImageRGBA *img) {
     CHECK(img->Width() == img->Height());
     const int size = img->Width();

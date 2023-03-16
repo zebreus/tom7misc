@@ -292,8 +292,10 @@ MakeFn(Allocator *alloc,
           MutexLock ml(&m);
           results.emplace_back(desc, exp, err);
         }
-      },
+      }
 
+      /*
+        ,
       [alloc, low, high, &target, time_sec, &m, &results, seed6]() {
         Timer opt_timer;
         using Op6Optimizer = OpOptimizer<Op6>;
@@ -329,7 +331,7 @@ MakeFn(Allocator *alloc,
           results.emplace_back(desc, exp, err);
         }
       }
-
+      */
   );
 
   double best_err = 1.0/0.0;
@@ -562,35 +564,41 @@ static const Exp *CombineExps(Allocator *alloc,
 }
 
 static const Exp *MakeLoop(Allocator *alloc,
-                           half low, half high, const Table &target) {
+                           half xlow, half xhigh, const Table &target) {
   static constexpr int IMG_SIZE = 1920;
   static const char *ALLIMG_FILE = "perm-all.png";
 
-  #if 1
+  // Use only the original function to set bounds, so that we can
+  // animate the iterated approximations as frames with the same
+  // scale.
+  Bounds bounds;
+  CHECK(xlow < xhigh);
+  for (uint16_t xu = GradUtil::GetU16(xlow);
+       xu != GradUtil::GetU16(xhigh);
+       xu = Exp::NextAfter16(xu)) {
+    half x = GradUtil::GetHalf(xu);
+    half y = GradUtil::GetHalf(target[xu]);
+    if (isfinite(y)) {
+      bounds.Bound((float)x, (float)y);
+    }
+  }
+
+  bounds.AddMarginFrac(0.05);
+
   // We build up the expression.
+  // TODO: Support continuing again (use serialization format).
   const Exp *exp = alloc->TimesC(alloc->Var(), 0x0000);
   static constexpr int START_ITER = 0;
 
-  #else
-  // Continue from previous expressions.
-
-  // TODO: Use serialized formats.
-  #include "perm-restart.h"
-  std::vector<const Exp *> prev = PreviousExps(alloc);
-  static constexpr int START_ITER = 0;
-
-  const Exp *exp = CombineExps(alloc, prev, low, high, target);
-  #endif
-
   ImageRGBA all_img(IMG_SIZE, IMG_SIZE);
   all_img.Clear32(0x000000FF);
-  GradUtil::Grid(&all_img);
-  GradUtil::Graph(target, 0xFFFFFF88, &all_img);
+  GradUtil::GridWithBounds(bounds, &all_img);
+  GradUtil::GraphWithBounds(bounds, target, 0xFFFFFF88, &all_img);
 
   // Loop invariant: table represents the exp and
   // error the current error relative to the target.
   Table table = Exp::TabulateExpression(exp);
-  double error = Error(low, high, target, table);
+  double error = Error(xlow, xhigh, target, table);
 
   static constexpr int ITERS = 1000;
   for (int i = START_ITER; i < ITERS; i++) {
@@ -599,7 +607,7 @@ static const Exp *MakeLoop(Allocator *alloc,
       uint32 color = ColorUtil::LinearGradient32(
           GradUtil::GREEN_BLUE, f) & 0xFFFFFF33;
 
-      GradUtil::Graph(table, color, &all_img);
+      GradUtil::GraphWithBounds(bounds, table, color, &all_img);
       all_img.Save(ALLIMG_FILE);
     }
 
@@ -607,21 +615,21 @@ static const Exp *MakeLoop(Allocator *alloc,
       printf("Iter %d, error: %.6f\n", i, error);
       ImageRGBA img(IMG_SIZE, IMG_SIZE);
       img.Clear32(0x000000FF);
-      GradUtil::Grid(&img);
-      GradUtil::Graph(target, 0xFFFFFF88, &img);
-      GradUtil::Graph(table, 0x33FF33AA, &img);
+      GradUtil::GridWithBounds(bounds, &img);
+      GradUtil::GraphWithBounds(bounds, target, 0xFFFFFF88, &img);
+      GradUtil::GraphWithBounds(bounds, table, 0x33FF33AA, &img);
 
       // so if we have e(x) = target(x) - table(x)
       Table err = DiffTable(target, table);
       // .. and we approximate error
       const auto [desc, err_exp] =
-        MakeFn(alloc, low, high, err,
+        MakeFn(alloc, xlow, xhigh, err,
                20.0 + 5 * tries);
 
       {
         Table err_approx = Exp::TabulateExpression(err_exp);
-        GradUtil::Graph(err, 0xFFBB0088, &img);
-        GradUtil::Graph(err_approx, 0xFF0000AA, &img);
+        GradUtil::GraphWithBounds(bounds, err, 0xFFBB0088, &img);
+        GradUtil::GraphWithBounds(bounds, err_approx, 0xFF0000AA, &img);
         img.BlendText32(2, 2, 0xFFFFFFAA,
                         StringPrintf("Iter %d, tries %d, error: %.6f",
                                      i, tries, error));
@@ -632,7 +640,7 @@ static const Exp *MakeLoop(Allocator *alloc,
       const Exp *exp_tmp = alloc->PlusE(exp, err_exp);
       Table table_tmp = Exp::TabulateExpression(exp_tmp);
 
-      GradUtil::Graph(table_tmp, 0x0077FF77, &img);
+      GradUtil::GraphWithBounds(bounds, table_tmp, 0x0077FF77, &img);
       img.BlendText32(2, 12, 0x0077FFAA, desc);
 
       img.Save(StringPrintf("perm%d.png", i));
@@ -640,7 +648,7 @@ static const Exp *MakeLoop(Allocator *alloc,
       // but only keep these if the error dropped by a nontrivial
       // amount.
       static constexpr double MIN_ERROR_DROP = 1.0 / 1000.0;
-      double error_tmp = Error(low, high, target, table_tmp);
+      double error_tmp = Error(xlow, xhigh, target, table_tmp);
       if (error - error_tmp >= MIN_ERROR_DROP) {
         // Keep.
         exp = exp_tmp;
@@ -690,16 +698,24 @@ int main(int argc, char **argv) {
         return sin(x * (half)3.141592653589);
       });
   */
+  /*
   Table target = RandomPermutation(16);
+  */
+
+  Table target =
+    Exp::MakeTableFromFn([](half x) {
+        return x * x;
+      });
 
   Allocator alloc;
-  [[maybe_unused]]
-  const Exp *e = MakeLoop(&alloc,
-                          (half)-1.0, (half)+1.0, target);
+
+  const Exp *e =
+    MakeLoop(&alloc,
+             (half)-4.0, (half)+4.0, target);
 
   {
     std::string s = Exp::Serialize(e);
-    Util::WriteFile("expression-perm.txt", s);
+    Util::WriteFile("expression-sq.txt", s);
   }
 
   return 0;

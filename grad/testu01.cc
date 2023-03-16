@@ -323,7 +323,7 @@ GetPVal_CPairs(snpair_Res *res, int t) {
 
 /*=========================================================================*/
 
-void ParallelBigCrush (
+std::vector<BigCrushTestResult> ParallelBigCrush(
     const std::function<Generator*()> &gengen,
     const std::string &filepart,
     int NUM_THREADS) {
@@ -1323,5 +1323,12 @@ void ParallelBigCrush (
     }
   }
 
+  std::vector<BigCrushTestResult> flat;
+  for (const auto &[test_name_, seconds, result] : test_results) {
+    for (const auto &[name, pv] : result.values) {
+      flat.push_back(BigCrushTestResult{.name = name, .p_value = pv});
+    }
+  }
+  return flat;
 }
 

@@ -20,7 +20,7 @@
 % IPA symbols. safe turns off overrides for like \! which I still want
 % \usepackage[safe]{tipa}
 % \usepackage{chessboard}
-% \usepackage{supertabular}
+\usepackage{supertabular}
 \usepackage{enumitem}
 
 % \usepackage[most]{tcolorbox}
@@ -172,7 +172,7 @@ completeness in the field of Plumbing.
 
 TODO intro: We'll develop a better understanding of where floating point inaccuracy comes from, and how to get it quickly, and how to use it for our benefit.
 
-\section{A Refresher on Neural Networks}
+\section{A refresher on neural networks}
 Let's repeat the professor's lesson. This section is easily skippable
 if you are a plucky student who thinks they already know everything.
 At a high level, a NN is a way of implementing a numeric function
@@ -202,6 +202,7 @@ as some kind of neuron, the neuron ``fires'' (activates) with some
 probability. This probability gets higher as its input values get
 larger (but note that weights can be negative, so upstream neurons can
 also have an inhibitory effect). But since it is a probability, the
+% XXX ok but tanh actually outputs [-1,1]
 value must be in [0, 1]; the transfer function ensures this.
 
 \paragraph{Differentiability.}
@@ -246,7 +247,7 @@ This means that with a linear transfer function, a NN could never
 learn even a simple function like XOR. Many problems we want to learn
 are in fact much more complicated.
 
-\section{A Fine Terminological Issue}
+\section{A fine terminological issue}
 affine vs linear
 
 (Here we need to clarify exactly what operations we allow!) THE RULES
@@ -465,8 +466,6 @@ mathematically linear. It is equivalent to $f(x) = x * 1.036535$.
   } \label{fig:rainbow}
 \end{figure}
 
-% XXX DELETE Another nice thing about this function is that it does not introduce unnecessary infinities. The previous functions both overflow on some inputs. For example, adding 128 to the largest finite value 65504 (and several values smaller than that) gives inf, from which there is no way back. In contrast, multiplying by a number slightly less than one never in (XXX is this true because of the last scaling?) (XXX No it is not!)
-
 So now we have a ``good'' candidate function, which we'll call \gradone.
 It is ``good'' in the sense that it is computationally non-linear
 despite being mathematically linear, so it may prove my professor
@@ -486,12 +485,12 @@ stochastic gradient descent, we need to be able to evaluate the
 derivative of the transfer function at any point.
  XXX TODO EXPLAIN IT
 
-\subsection{Bonus Digression}
+\subsection{Bonus digression: Downshift}
 Having freed myself from needing to ``do math'' in order to
 differentiate exotic functions, I pondered other weird transfer
 functions. For example, the rectified linear transfer function is very
 simple and works well, but is it the fastest possible transfer
-function that might work? It does involve a conditional, which naively
+function that might work? It does involve a conditional, which na\"ively
 implies comparison and branching (although probably most processors
 can do this with a conditional move). Because the floating point
 format is packed with fields that represent different things, many
@@ -513,9 +512,46 @@ DIAGRAM: TODO: in illustrator
 [0][0][s][e][e][e][e][m] [m] [m] [m] [m] [m] [m] [m]
 \end{verbatim}
 
-The sign bit is shifted into the exponent, which means that the output is always non-negative (like the rectified linear function) and is non-linear (discontinuity at zero, as negative numbers have a much larger exponent that positive ones). Further nonlinearity comes from the exponential representation (shifts divide the exponent by four) and reinterpretation of exponent bits as mantissa bits. There is additional weirdness in the details. Shifting by two places is better than one, as it cannot produce Inf or NaN. We will also evaluate this transfer function, called shift2, below.
+The sign bit is shifted into the exponent, which means that the output
+is always non-negative (like the rectified linear function) and is
+non-linear (discontinuity at zero, as negative numbers have a much
+larger exponent that positive ones). Further nonlinearity comes from
+the exponential representation (shifts divide the exponent by four)
+and reinterpretation of exponent bits as mantissa bits. There is
+additional weirdness in the details. Shifting by two places is better
+than one, as it cannot produce Inf or NaN.
+% Something about its derivative?
+We will also evaluate this transfer function, called \downshifttwo,
+below.
 
-I implemented all this as a modification of my custom NN training and inference system, ``Tom7Flow.'' Tom7Flow is generally much worse than mainstream packages; it is based on deprecated OpenCL technology, is prone to divergence or stagnation during training due to naive choices of hyperparameters, etc. But it is at least well suited to silly experiments that take the form, ``What if deep learning but worse?'' such as the current exercise. In order to realize the idea completely, I modified the inference code to calculate with half-precision arithmetic (not just the transfer function). This means that the trained networks can be executed using only half-precision operations (and just addition and multiplication by constants). Unfortunately, while my GPU supports half-precision math natively, and OpenCL supports half-precision operations as an extension, this extension is somehow not supported (??) by my drivers, perhaps because OpenCL is so thoroughly deprecated. It does support half precision as a *storage* format, which allows you to write a full-precision float to a 16-bit value (rounding to half) or read a 16-bit half into a float (all half values can be represented exactly in full precision). So with this one operation it is straightforward to implement half-precision addition and scaling. You maintain the invariant that any float value is always exactly a half, and after you perform addition or multiplication, you round to half (by storing in a 16-bit memory location and reading it back). This definitionally produces the same results as the native operation.
+I implemented all this as a modification of my custom NN training and
+inference system, ``Tom7Flow.'' Tom7Flow is generally much worse than
+mainstream packages; it is based on deprecated OpenCL technology, is
+prone to divergence or stagnation during training due to na\"ive
+choices of hyperparameters, etc. But it is at least well suited to
+silly experiments that take the form, ``What if deep learning but
+worse?'' such as the current exercise. In order to realize the idea
+completely, I modified the inference code to calculate with
+half-precision arithmetic (not just the transfer function). This means
+that the trained networks can be executed using only half-precision
+operations (and just addition and multiplication by constants).
+Unfortunately, while my GPU supports half-precision math natively, and
+OpenCL supports half-precision operations as an
+extension~\cite{openclextensions}, this extension is somehow not
+supported (??) by my drivers, perhaps because OpenCL is so thoroughly
+deprecated. It does support half precision as a *storage* format,
+which allows you to write a full-precision float to a 16-bit value
+(rounding to half) or read a 16-bit half into a float (all half values
+can be represented exactly in full precision). So with this one
+operation it is straightforward to implement half-precision addition
+and scaling. You maintain the invariant that any float value is always
+exactly a half, and after you perform addition or multiplication, you
+round to half (by storing in a 16-bit memory location and reading it
+back). This definitionally produces the same results as the native
+operation.\footnote{I also verified consistent results using the
+  \verb+half.h+ software implementation. Many of the evaluation
+  results quoted in the paper are actually executed on the CPU
+  using this library.}
 
 I initially tried a version of training that worked entirely using
 half precision (network parameters are half, backpropagated errors and
@@ -534,7 +570,10 @@ values smoothly, avoiding stalls due to underflow.
 TODO: half.h~\cite{half} somewhere above?
 
 \subsection{Neural network experimental results}
-In order to evaluate this transfer function, I ran a suite of benchmark problems. For each problem, I compare the same network architecture (i.e.~the number of layers, their connectivity, etc.) but using different transfer functions.
+In order to evaluate this transfer function, I ran a suite of
+benchmark problems. For each problem, I compare the same network
+architecture (i.e.~the number of layers, their connectivity, random
+initialization, etc.) but using different transfer functions.
 
 The transfer functions are:
 
@@ -761,6 +800,8 @@ form of the function to a series of additions and (positive) scaling.
 There are other expressions that are mathematically linear but don't
 take that form; for example:
 
+% FIXME XXX TODO
+
 $$f(x) = x + 0.25 - x$$
 
 This is mathematically equivalent to $f(x) = 0.25$, but with floating point, it
@@ -797,40 +838,189 @@ Where $x$ is the function variable, and {\tt c} is one of the 63,488
 finite half-precision constants. We can derive negation $(E * -1)$ and
 subtraction of constants $(E + -{\tt c})$ and expressions $(E + (E *
 -1))$ since every number has an exact negation by flipping its sign
-bit. Most divisions are also possible, when $\sfrac{1}{{\tt c}}$ is
-representable.
+bit. Exact divisions possible when $\sfrac{1}{{\tt c}}$ is
+representable, and there is almost always a close approximation.
 
 (HERE, can we get an animation approximating the sine function or something?)
 
-This formulation leads to a tempting approach for approximating a function iteratively, like a Taylor series. Given a target function like $sin(x)$, we can begin with an approximate expression for it, like $x$, and then add and subtract terms to improve the approximation. I don't know of any systematic way to improve the approximation at each step (they are not well-behaved mathematically, and I am not good at math), but by using computer search I can sure make some complicated functions with many different shapes.
+This formulation leads to a tempting approach for approximating a
+function iteratively, like a Taylor series. Given a target function
+like $\mathrm{sin}(x)$, we can begin with an approximate expression for it,
+like $x$, and then add and subtract terms to improve the
+approximation. I don't know of any systematic way to improve the
+approximation at each step (they are not well-behaved mathematically,
+and I am not good at math), but by using computer search I can sure
+make some complicated functions with many different shapes.
 
-It is fun to watch an animation of the successively improving approximations, but you can't see that since you're reading an old-fashioned paper. Perhaps you can find a video of this at tom7.org/grad.
+It is fun to watch an animation of the successively improving
+approximations, but you can't see that since you're reading an
+old-fashioned paper. Perhaps you can find a video of this at
+\verb+tom7.org/grad+.
 
+\subsection{Fractals}
+Next, I endeavored to deploy these functions for something useful:
+Fractals. Famously, fractals are simple functions with complex (often
+literally) behavior. For example, the Mandelbrot set considers each
+complex point $c$ (plotted on the plane as $x + yi$) and computes
+whether $z_i$ = $z_{i-1}^2 + c$ diverges or not. It's lovely, but
+squaring is not linear!
 
-OLD Given a target function $r$ like $r_0(x) = sin(x)$, we start with an approximation of it, like
+What if we just create a linear function that approximates $f(x) = x^2$?
+This is definitely possible, using the approach described above. After
+184 successful error-reducing rounds we get the following approximation,
+with 112,204 linear operations:
 
-$$f_1(x) = x$$
+\begin{center}
+\includegraphics[width=0.55 \linewidth]{square}
+\end{center}
 
-and then we have a new target function
+Aside from the funny business near the origin, this is a fairly
+accurate approximation of the square function, so you might hope that
+it would draw a perverted Mandelbrot set. Unfortunately, it produces
+a much sadder blotch (Figure~\ref{fig:squarebrot}). To see why, consider
+the normal definition of squaring for a complex number:
 
-$$r_1(x) = r_0(x) - f_1(x)$$
+\[
+\begin{array}{rcl}
+  (a + b\mathrm{i})^2 & = & a^2 + 2ab\mathrm{i} + b^2\mathrm{i}^2 \\
+                      & = & a^2 + 2ab\mathrm{i} - b^2 \\
+\end{array}
+\]
 
-which is the residual error.
+Note that the real coefficient $a$ ends up part of the imaginary
+coefficient $2ab$ in the result, and the imaginary coefficient
+$b$ becomes part of the real part. This means that squaring a complex
+number cross-pollinates between the two components, yielding a
+kind of wacky rotation if we think of them as 2D coordinates.
 
+But here, squaring is approximated as a series of operations
+of the form $w_1 + w_2$ and $w \times c$ for constants $c$.
+These operations on complex numbers are less interesting:
 
-Next, I endeavored to deploy these functions for something useful: Fractals. Famously, fractals are simple functions with complex (often literally) behavior. For example, the Mandelbrot set considers each complex point $c$ (plotted on the plane as $x + yi$) and computes whether $z_i$ = $z_{i-1}^2 + c$ diverges or not. It's lovely, but squaring is not linear!
+\[
+\begin{array}{rcl}
+  (a_1 + b_1\mathrm{i}) + (a_2 + b_2\mathrm{i}) & = & (a_1 + a_2) + (b_1 + b_2)\mathrm{i} \\[1em]
+  (a + b\mathrm{i}) \times c & = & ac + bc\mathrm{i} \\
+\end{array}
+\]
 
+Alas, these operations are boring; the real parts always stay real and
+the imaginary parts always stay imaginary. This is why the crummy
+blotch has all sorts of vertical and horizontal lines in it: As we
+iterate the function we are iterating two independent components, and
+the resulting picture is just some interference pattern between them.
 
+This seems pretty definitive. Even if we had some kind of hardware
+implementation of complex numbers with rounding error to abuse, there
+would be no reason to have the linear operations do any
+cross-pollinated rounding. Professors take note: The complex numbers
+do provide some refuge!
 
-Bonus Digression: Baffling numbers
+\begin{figure}[htp]
+  \includegraphics[width=0.95 \linewidth]{squarebrot}
+  \caption{TODO describe} \label{fig:squarebrot}
+\end{figure}
 
+Still, a lot of chaos can emerge from these functions that should not
+be possible with ``linear'' ones. For example, here is a complicated
+function made by stringing 36,637 addition and scaling operations
+together:
 
+\begin{center}
+\includegraphics[width=0.75 \linewidth]{perm16good2}
+\end{center}
+
+\begin{figure}[htp]
+  \includegraphics[width=0.95 \linewidth]{perm16frac}
+  \caption{TODO describe} \label{fig:perm16frac}
+\end{figure}
+
+I think this is a fractal in the sense that it is chaotic, has
+a color gradient, and could be on the cover of an electronic
+music album. It is not a fractal in the sense that if you zoom in
+on it, you get infinite detail of self-similar shapes. In fact,
+if you zoom in on it only a modest amount, you encounter rectangular
+pixels as you reach the limits of half-precision floating point.
+(And because this fractal is built by abusing those very limits,
+it is not even possible to get more detail by increasing the
+accuracy!)
+% what does it look like if rendered with floats instead?
+
+\subsection{Bonus digression: Baffling numbers}
+Imagine you are my professor. You assign a class project to ``make
+fractals using floating point roundoff error,'' for some reason. You
+spot me in the computer lab and I'm obviously way off track, because
+on-screen is some kind of {\Huge \it 3D fractal}. The Mandelbrot set cannot
+be extended to three dimensions, you say, because of the Frobenius
+theorem: Only algebras of dimension 1 (real numbers), 2 (complex
+numbers) and 4 (quaternions) work~\cite{frobenius1878lineare}. Unclear
+how the professor speaks the citation aloud in this scenario. I say I
+``know'' this fact, but I ``don't care.'' You say that my
+three-dimensional algebra can't be associative, because that's ``just
+a mathematical fact.'' I say you know what else isn't associative?
+{\em The floating point numbers, my dude}.
+
+Enter the {\bf baffling numbers}, ill-advised extensions of the
+complex numbers to three dimensions. Here we have numbers of the form
+$a + b\mathrm{i} + c\mathrm{j}$. Addition is just pointwise, and there
+are several options to complete the story for multiplication, namely
+the values of the cells $A$, $B$, and $C$ in this table:
+%
+\[
+\begin{array}{c|ccc}
+  \multicolumn{1}{c}{\times} & 1          &  \mathrm{i} & \mathrm{j} \\
+  \cline{2-4}
+  1          & 1          &  \mathrm{i} & \mathrm{j} \\
+  \mathrm{i} & \mathrm{i} & -1          & U \\
+  \mathrm{j} & \mathrm{j} &  V          & W \\
+\end{array}
+\]
+
+% What I actually used:
+
+% AR, AI, AJ,
+% BR, BI, BJ,
+% CR, CI, CJ
+
+% 0, 1, 0,   = i
+% 0, 0, 1,   = j
+% 1, 0, 0    = 1
+
+The cells $U$, $V$, and $W$ are baffling numbers (coefficients $a$,
+$b$, $c$ in $a + b\mathrm{i} + c\mathrm{j}$). Some choices are
+degenerate, but this gives us a family of options. It is known that no
+matter the choices, this does ``not work'' (in the sense that the
+resulting algebra is not associative\footnote{Or else is equivalent to
+  the complex numbers.}) but we don't need associativity to draw
+fractals. Plus, who's gonna stop me, FROBENIUS??
+
+\begin{figure}[htp]
+  \includegraphics[width=0.95 \linewidth]{bafflebrot}
+  \caption{
+    TODO describe
+  } \label{fig:bafflebrot}
+\end{figure}
+
+I tried a few options, but thought that $U = \textrm{i}$, $V =
+\textrm{j}$ and $W = 1$ produced satisfyingly trippy results. The
+Mandelbrot is straightforwardly generalized to the ``Bafflebrot'' (the
+starting point $c$ is just a baffling number now; everything else is
+the same). I generated a 3D object by defining an implicit surface
+based on whether a sampled point is still inside the set after 25
+iterations, using Marching Cubes~\cite{lorensen1987marching} to
+discretize it. The object is truncated along its $\textrm{j}$ axis,
+showing a perfect ripe Mandelbrot inside. The resulting mesh is 2
+gigabytes and crashes every library that attempts to programmatically
+simplify it. I do admire and encourage its defiant spirit. A
+rendering appears in Figure~\ref{fig:bafflebrot}.
+
+\medskip
 Drawing fractals is fun and everything, but I grew weary of the
 exercise because there is no real goal other than to make a cool
 picture. Instead I turned to something with a clearer challenge to
 overcome: Linear Cryptography.
 
-\section{Linear Cryptography}
+\section{Linear cryptography}
 Cryptography is like fractals minus drugs. One of the most basic
 components of cryptography is a pseudorandom number generator. This
 kind of function takes some state and produces a new state that
@@ -843,9 +1033,9 @@ Another thing that professors will tell you about cryptography is that good cryp
 
 $\uparrow$ Here's a good description of linear cryptanalysis of DES: https://www.apprendre-en-ligne.net/crypto/bibliotheque/PDF/lincrypt.pdf
 
-In terms of goals, pseudorandom number generation has a more clear objective than fractals, although it's not so easy to pin down formally. We don't even know if such functions exist, mathematically. (XXX cite) There exist many functions that look like good pseudorandom generators, but that actually have back doors that make them easy to invert. (A symmetric encryption algorithm like AES, with the key hidden, has this property.)\footnote{And let us never forget that RSA DSI (yes, that RSA) took a \$X million bribe from the NSA to put a backdoor in one of their pseudorandom number generators!} Practically speaking, though, we can subject the function to a wide variety of statistical tests, and if it looks random to every test, then this gives us good confidence.\footnote{Truly good cryptographic algorithms are also openly studied by experts. Of course nothing in here is to be used seriously, and not just because these algorithms are ridiculously slow!}
+In terms of goals, pseudorandom number generation has a more clear objective than fractals, although it's not so easy to pin down formally. We don't even know if such functions exist, mathematically. (XXX cite) There exist many functions that look like good pseudorandom generators, but that actually have back doors that make them easy to invert. (A symmetric encryption algorithm like AES, with the key hidden, has this property.)\footnote{And let us never forget that RSA DSI (yes, that RSA) took a \$10 million bribe from the NSA to put a backdoor in one of their pseudorandom number generators~\cite{reuters2013secret}!} Practically speaking, though, we can subject the function to a wide variety of statistical tests, and if it looks random to every test, then this gives us good confidence.\footnote{Truly good cryptographic algorithms are also openly studied by experts. Of course nothing in here is to be used seriously, and not just because these algorithms are ridiculously slow!}
 
-Specifically, my goal is to design an algorithm that takes 64 bits of data (represented as half-precision floats) to another 64 bits, such that the stream of low-order bits from iterating this function passes the TestU01's ``Big Crush'' suite of 106 statistical tests\cite{XXXbigcrush}. This suite is a successor to Marsaglia's ``DieHard'' battery of tests\cite{XXXmarsaglia}, itself an improvement on Knuth's tests from The Art Of Computer Programming\cite{XXXknuth}.
+Specifically, my goal is to design an algorithm that takes 64 bits of data (represented as half-precision floats) to another 64 bits, such that the stream of low-order bits from iterating this function passes the TestU01's ``Big Crush'' suite of 106 statistical tests\cite{lecuyer2007testu01}. This suite is a successor to Marsaglia's ``DieHard'' battery of tests\cite{marsaglia1996diehard}, itself an improvement on Knuth's tests from The Art Of Computer Programming\cite{knuth1997art}.
 
 The basis of this function is the classic substitution-permutation network. First, each of the eight bytes are substituted with a different byte using a table (this is the mathematically non-linear step). Then, the 64 bits are permuted. Finally, some of the bytes are modified additively. These last two steps are mathematically linear. Equivalent C++ code appears in Figure~\ref{XXXhash}
 
@@ -855,7 +1045,7 @@ The basis of this function is the classic substitution-permutation network. Firs
 
 The substitution table (``s-boxes'') was generated by computer search with an objective to maximize the ``avalanche property'' (when a bit of the input is complemented, about half of the output bits should be complemented). The permutation was generated to maximize dispersion; each quartet sends each bit to a distinct quartet in the output. This is not the important part. We could have just used known good tables.
 
-To implement this with half-precision floating point, we could represent each bit with its own half, but that is no fun. The state will be represented with eight half-precision floats, each representing 8 bits of information. They will be stored as values in [-1, 1), with each 1/128 interval representing one of the 256 values (0 is anything in [-1, -0.9921875), 1 is anything in [-0.9921875, -0.984375), and so on). This means that iterating the function on *any starting value* in the [-1, 1] interval will produce pseudorandom results. So for example we can guarantee that a ``fractal'' plotted using this function will look ``fully messed up'' and not just have a few distinguished points of randomness. I'll say now that this is unnecessarily hard; in the next section of this paper we'll see a substantially more efficient approach for handling discrete data. But working on the entire domain makes for some challenging problems and shows that we've developed substantial mastery of the continuous case.
+To implement this with half-precision floating point, we could represent each bit with its own half, but that is no fun. The state will be represented with eight half-precision floats, each representing 8 bits of information. They will be stored as values in [-1, 1), with each $\sfrac{1}{128}$ interval representing one of the 256 values (0 is anything in [-1, -0.9921875), 1 is anything in [-0.9921875, -0.984375), and so on). This means that iterating the function on *any starting value* in the [-1, 1] interval will produce pseudorandom results. So for example we can guarantee that a ``fractal'' plotted using this function will look ``fully messed up'' and not just have a few distinguished points of randomness. I'll say now that this is unnecessarily hard; in the next section of this paper we'll see a substantially more efficient approach for handling discrete data. But working on the entire domain makes for some challenging problems and shows that we've developed substantial mastery of the continuous case.
 
 Speaking of which, my first approach was to try to approximate the substitution function (since it replaces one 8-bit byte with another, it corresponds to a single function of type $half \rightarrow half$) using the iterative approach described in Section XXX. Although it is possible to get reasonable approximations with this method (most values are transformed to a value near the desired one), this will not suffice; when iterating the function we find that the value easily gets stuck in short cycles due to this inaccuracy.
 
@@ -876,11 +1066,25 @@ hashing,
 choppy functions
 
 
-
 hash benchmark results
 To evaluate the quality of the pseudorandom number generator, I used the TestU01 ``Big Crush'' suite. This test needs a sample of 1.64 billion bits, so I actually evaluated it on equivalent code that performs the steps using normal integer operations. Even then, the suite takes several days to run, so I modified it to run tests in parallel and cache the results of completed tests. This saved me from losing data if my computer crashed or needed to be rebooted.
 
 Results appear in figure XXX. Passing these tests does not ensure that the pseudorandom number generator is good for cryptography, although it is a good start.
+
+\tablefirsthead{%
+  {\bf Test} & {\bf p-value} \\
+}
+\tablehead{%
+  \ldots\ {\bf Test} & {\bf p-value} \\
+}
+
+{\footnotesize
+\begin{supertabular}{rl}
+  \input{testu01}
+\end{supertabular}
+}
+
+% suspect p is 0.001 (or > 1- that)
 
 If we were building an encryption algorithm (a symmetric block
 cipher), it would be natural to use this as its ``round function.'' In
@@ -889,17 +1093,18 @@ a Feistel network~\cite{feistel1973cryptography}, each input block
 key bits (for example with XOR) and then passed to this function. Its
 output is XORed with the other half; the two halves are swapped, and
 this ``round'' is repeated many times until we believe that the data
-are suitably screwed up. Decryption is the inverse. We can use
+are suitably screwed up. Decryption is the reverse. We can use
 addition and subtraction mod $2^8$ to combine the data instead of XOR
 (which is addition mod $2^1$), so we already have all the operations
-we need to build a whole block cipher here. (I guess I could just do
-it?)
+we need to build a whole block cipher here. (XXX I guess I could just do
+it?) As Bruce Schneier says,\footnote{{\it Applied Cryptography},
+  Second Edition, page 351.} ``It is easy to design a block cipher.''
 
 Bonus digression:
 Diagonalizing bigcrush?
 
 
-\section{Non-Linear gameplay} \label{sec:sixtyfive}
+\section{Non-linear gameplay} \label{sec:sixtyfive}
 Having developed a basis for extracting arbitrary bits, we can express
 any function of a single variable, and we've seen how some other
 functions (like addition mod $2^8$) can be done. At this point, it
@@ -932,7 +1137,8 @@ Flinuint8
 
 Goedelization?
 
-
+This also gives us an even more linear chess engine (including
+game tree search and a user interface) by emulating {\tt chessmaster.nes}.
 
 
 
