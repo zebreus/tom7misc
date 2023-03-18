@@ -438,7 +438,7 @@ accumulates and becomes significant with many iterations
 (Figure~\ref{fig:rainbow}). Unlike the previous functions, the output
 here is much smoother (it looks piecewise-linear); in each of these
 segments its derivative is nondegenerate. Of course, this function is
-mathematically linear. It is equivalent to $f(x) = x * 1.036535$.
+mathematically linear. It is equivalent to $f(x) = x \times 1.036535$.
 
 \begin{figure}[htp]
   \includegraphics[width=0.95 \linewidth]{rainbow} \\[1em]
@@ -589,6 +589,13 @@ The transfer functions are:
 
 TODO: Describe derivatives above?
 
+\paragraph{Flattened models.}
+For the transfer functions that are mathematically linear, we can also
+compute the equivalent linear model. This just consists of a single
+dense layer, using the identity transfer function, that computes the
+linear function of the input. These appear in the results as ``flat''
+variants.
+
 \paragraph{MNIST.}
 The first problem is the Modified National Institute of Standards and
 Technology handwriting dataset (MNIST). This is a standardized dataset
@@ -611,7 +618,7 @@ evaluated, but the output layer always used the identity transfer
 function. This is not a good choice for this problem (softmax makes
 more sense since the output is categorical) but I wanted the linear
 models to be truly linear. Using the same transfer function would have
-also disadvantaged functions with limited output range; \downshifttwo
+also disadvantaged functions with limited output range; \downshifttwo\
 for example can technically output 1.0, but only for very large inputs
 (8192.0). The final identity layer can easily scale the useful range
 of the transfer function to the nominal range of the output. (This is
@@ -717,7 +724,7 @@ more shallow: Due to a bug\footnote{ I used the annotations like
   because the eval scores would have to be \verb|[%eval #+0]| (``mate
   in 0'') or \verb|[%eval #-0]| (necessitating use of the floating
   point coprocessor) to express the winner, and there does not seem to
-  be a clean way to express the definite value of stalemate. } in the
+  be a natural way to express the definite value of stalemate. } in the
 way training examples are gathered, the models were never exposed to
 checkmate or stalemate positions! Since training takes several days
 per function and the iron-fistedly punctilious SIGBOVIK deadlines were
@@ -763,13 +770,27 @@ ideologically pure using techniques from Section~\ref{sec:sixtyfive}.
 \end{figure}
 
 \begin{figure}[htp]
-  TODO
-  \caption{Here I will put the ELO WORLD results.}
-  \label{fig:elo}
+  % This is the output of elo.exe but I manually inverted the
+  % background colors to make it print better.
+  \includegraphics[width=\linewidth]{elo}
+  \caption{ Results of a chess tournament. Players include ones based
+    on the learned position evaluation with different transfer
+    functions; these players simply take the move that results in the
+    most favorable eval (no game tree search). They compete with some
+    standardized players from the Elo~World
+    project~\cite{murphy2019eloworld}. Rows represent the player as
+    white, columns as black. A green cell means that White generally
+    wins; blue a draw; red a loss. An $\times$ in a cell means that
+    this outcome occurred in every game. The left column is the
+    resulting Elo rating~\cite{elo1978rating}. The best model
+    {\tt leaky\_fix} performs decently well, similar to NES Chessmaster
+    or a Stockfish diluted to about $60\%$ strength with random
+    moves (both of these engines perform game tree search). The
+    centerpiece of the paper is the ``linear'' \gradone\ transfer
+    function; here its learned chess player slightly outperforms
+    Stockfish diluted to $50\%$ strength with random moves.
+  } \label{fig:elo}
 \end{figure}
-
-XXX compare ``flattened'' linear model. it may be the case
-that real models take advantage of roundoff nonlinearity?
 
 \paragraph{What transfer function is best?}
 The results on each of these problems are similar: The ``leaky
@@ -787,6 +808,23 @@ centerpiece of the first third of this paper---performs decently on
 all problems. It clearly outperforms the linear models, despite
 being ``linear.''
 
+It is also interesting to compare the flattened versions of the linear
+transfer functions. These are the computed (mathematically) equivalent
+single-layer linear models. For \plussixtyfour\ the flattened version
+is worse in all cases; the unflattened model is taking advantage of
+the discretization in some way. For \gradone\ it is dramatically
+worse, both because \gradone\ models are substantially using the
+roundoff error and because the mathematical version of this function
+($f(x) = x \times 1.036535$) is not even a good linear approximation
+of the actual result (e.g. $\gradone(1) = 1$). Finally, the result
+for the identity transfer function should be mathematically equivalent,
+but it does not always produce the same results. This is unsurprising
+since we know that floating point calculations are not perfectly
+accurate, but it does hint that deep networks may make use of
+floating point roundoff internally, even if they are not using silly
+transfer functions!
+
+\smallskip
 Having proved the professor wrong, we could stop there, but did huge
 mathematical breakthroughs ever arise from taking the option to stop
 there?!
@@ -838,10 +876,10 @@ Where $x$ is the function variable, and {\tt c} is one of the 63,488
 finite half-precision constants. We can derive negation $(E * -1)$ and
 subtraction of constants $(E + -{\tt c})$ and expressions $(E + (E *
 -1))$ since every number has an exact negation by flipping its sign
-bit. Exact divisions possible when $\sfrac{1}{{\tt c}}$ is
+bit. Exact division is possible when $\sfrac{1}{{\tt c}}$ is
 representable, and there is almost always a close approximation.
 
-(HERE, can we get an animation approximating the sine function or something?)
+(XXX, can we get an animation approximating the sine function or something?)
 
 This formulation leads to a tempting approach for approximating a
 function iteratively, like a Taylor series. Given a target function
@@ -888,10 +926,11 @@ the normal definition of squaring for a complex number:
 \]
 
 Note that the real coefficient $a$ ends up part of the imaginary
-coefficient $2ab$ in the result, and the imaginary coefficient
-$b$ becomes part of the real part. This means that squaring a complex
-number cross-pollinates between the two components, yielding a
-kind of wacky rotation if we think of them as 2D coordinates.
+coefficient $2ab$ in the result, and the imaginary coefficient $b$
+becomes part of the real part (because $\mathrm{i}^2$ is real). This
+means that squaring a complex number cross-pollinates between the two
+components, yielding a kind of wacky rotation if we think of them as
+2D coordinates.
 
 But here, squaring is approximated as a series of operations
 of the form $w_1 + w_2$ and $w \times c$ for constants $c$.
@@ -918,7 +957,11 @@ do provide some refuge!
 
 \begin{figure}[htp]
   \includegraphics[width=0.95 \linewidth]{squarebrot}
-  \caption{TODO describe} \label{fig:squarebrot}
+  \caption{
+    A garbage ``fractal'' that results from trying to approximate
+    squaring of complex numbers using linear complex operations. Alas, it
+    cannot be done. The complex numbers are truly special.
+  } \label{fig:squarebrot}
 \end{figure}
 
 Still, a lot of chaos can emerge from these functions that should not
@@ -932,25 +975,37 @@ together:
 
 \begin{figure}[htp]
   \includegraphics[width=0.95 \linewidth]{perm16frac}
-  \caption{TODO describe} \label{fig:perm16frac}
+  \caption{
+    A fractal made from iterating a ``linear'' function $f$. The color
+    is the magnitude of $z_{256}$ with $z_i = f(z_{i-1}) \times c$.
+    $c$ is the complex coordinate $x + y\mathrm{i}$, a constant.
+  } \label{fig:perm16frac}
 \end{figure}
 
-I think this is a fractal in the sense that it is chaotic, has
-a color gradient, and could be on the cover of an electronic
-music album. It is not a fractal in the sense that if you zoom in
-on it, you get infinite detail of self-similar shapes. In fact,
-if you zoom in on it only a modest amount, you encounter rectangular
-pixels as you reach the limits of half-precision floating point.
-(And because this fractal is built by abusing those very limits,
-it is not even possible to get more detail by increasing the
-accuracy!)
+Iterating this function produces chaotic results because of its
+nonmonotonicity. In Figure~\ref{fig:perm16frac} I plot (using color)
+the magnitude of $z$ after 256 iterations of
+
+$$z_i = f(z_{i-1}) \times c$$
+
+This is linear (as $c$ is a constant and $f$ a linear function).
+Nonetheless, it produces an appealing picture. I think this is a
+fractal in the sense that it is chaotic, has a color gradient, and
+could be on the cover of an electronic music album. It is not a
+fractal in the sense that if you zoom in on it, you get infinite
+detail of self-similar shapes. In fact, if you zoom in on it only a
+modest amount, you encounter rectangular pixels as you reach the
+limits of half-precision floating point. (And because this fractal is
+built by abusing those very limits, it is not even possible to get
+more detail by increasing the accuracy!)
 % what does it look like if rendered with floats instead?
+
 
 \subsection{Bonus digression: Baffling numbers}
 Imagine you are my professor. You assign a class project to ``make
 fractals using floating point roundoff error,'' for some reason. You
 spot me in the computer lab and I'm obviously way off track, because
-on-screen is some kind of {\Huge \it 3D fractal}. The Mandelbrot set cannot
+on-screen is some kind of {\huge \it 3D fractal}. The Mandelbrot set cannot
 be extended to three dimensions, you say, because of the Frobenius
 theorem: Only algebras of dimension 1 (real numbers), 2 (complex
 numbers) and 4 (quaternions) work~\cite{frobenius1878lineare}. Unclear
@@ -1029,7 +1084,21 @@ construct one-way functions (``hash functions'') and from those we can
 make symmetric ciphers (using, say, a Feistel network), with which we
 can encrypt and decrypt data.
 
-Another thing that professors will tell you about cryptography is that good cryptographic functions cannot be linear. (XXX an explanation of what ``linear'' means in this context. Like XOR is linear, but we used that as an example that has no linear approximation in the NN section.) One good reason for this is that even if the function is a *little bit linear* then linear cryptanalysis can be used to recover bits of the key with a lot of example data. Standard advice is to alternate both linear (e.g.~xor, or multiplication mod $2^n$) and non-linear (e.g.~substitution) operations. [[XXX citation here, like from Applied Cryptography.]] Of course we will prove this wrong by developing a good pseudorandom function that uses only ``linear'' operations on half-precision floating point numbers.
+Another thing that professors will tell you about cryptography is that
+good cryptographic functions cannot be linear. (XXX an explanation of
+what ``linear'' means in this context. Like XOR is linear, but we used
+that as an example that has no linear approximation in the NN
+section.) One good reason for this is that even if the function is
+{\em a little bit linear} then linear cryptanalysis can be used to recover
+bits of the key with a lot of example data. Standard advice is to
+alternate both linear (e.g.~xor, or multiplication mod $2^n$) and
+non-linear (e.g.~substitution) operations. (``[Substitutions] are
+generally the only nonlinear step in an algoritm; they are what give a
+block cipher its security.''\footnote{{\it Applied Cryptography},
+  Second Edition, page 349~\cite{schneier1996applied}.} Of course we
+will prove this wrong by developing a good pseudorandom function that
+uses only ``linear'' operations on half-precision floating point
+numbers.
 
 $\uparrow$ Here's a good description of linear cryptanalysis of DES: https://www.apprendre-en-ligne.net/crypto/bibliotheque/PDF/lincrypt.pdf
 
@@ -1045,7 +1114,7 @@ The basis of this function is the classic substitution-permutation network. Firs
 
 The substitution table (``s-boxes'') was generated by computer search with an objective to maximize the ``avalanche property'' (when a bit of the input is complemented, about half of the output bits should be complemented). The permutation was generated to maximize dispersion; each quartet sends each bit to a distinct quartet in the output. This is not the important part. We could have just used known good tables.
 
-To implement this with half-precision floating point, we could represent each bit with its own half, but that is no fun. The state will be represented with eight half-precision floats, each representing 8 bits of information. They will be stored as values in [-1, 1), with each $\sfrac{1}{128}$ interval representing one of the 256 values (0 is anything in [-1, -0.9921875), 1 is anything in [-0.9921875, -0.984375), and so on). This means that iterating the function on *any starting value* in the [-1, 1] interval will produce pseudorandom results. So for example we can guarantee that a ``fractal'' plotted using this function will look ``fully messed up'' and not just have a few distinguished points of randomness. I'll say now that this is unnecessarily hard; in the next section of this paper we'll see a substantially more efficient approach for handling discrete data. But working on the entire domain makes for some challenging problems and shows that we've developed substantial mastery of the continuous case.
+To implement this with half-precision floating point, we could represent each bit with its own half, but that is no fun. The state will be represented with eight half-precision floats, each representing 8 bits of information. They will be stored as values in [-1, 1), with each $\sfrac{1}{128}$ interval representing one of the 256 values (0 is anything in [-1, -0.9921875), 1 is anything in [-0.9921875, -0.984375), and so on). This means that iterating the function on {\em any starting value} in the [-1, 1] interval will produce pseudorandom results. So for example we can guarantee that a ``fractal'' plotted using this function will look ``fully messed up'' and not just have a few distinguished points of randomness. I'll say now that this is unnecessarily hard; in the next section of this paper we'll see a substantially more efficient approach for handling discrete data. But working on the entire domain makes for some challenging problems and shows that we've developed substantial mastery of the continuous case.
 
 Speaking of which, my first approach was to try to approximate the substitution function (since it replaces one 8-bit byte with another, it corresponds to a single function of type $half \rightarrow half$) using the iterative approach described in Section XXX. Although it is possible to get reasonable approximations with this method (most values are transformed to a value near the desired one), this will not suffice; when iterating the function we find that the value easily gets stuck in short cycles due to this inaccuracy.
 
@@ -1070,19 +1139,33 @@ hash benchmark results
 To evaluate the quality of the pseudorandom number generator, I used the TestU01 ``Big Crush'' suite. This test needs a sample of 1.64 billion bits, so I actually evaluated it on equivalent code that performs the steps using normal integer operations. Even then, the suite takes several days to run, so I modified it to run tests in parallel and cache the results of completed tests. This saved me from losing data if my computer crashed or needed to be rebooted.
 
 Results appear in figure XXX. Passing these tests does not ensure that the pseudorandom number generator is good for cryptography, although it is a good start.
+%
+% \tablefirsthead{%
+%   {\bf Test} & {\bf p-value} \\
+% }
+% \tablehead{%
+%   \ldots\ {\bf Test} & {\bf p-value} \\
+% }
+%
 
-\tablefirsthead{%
-  {\bf Test} & {\bf p-value} \\
-}
-\tablehead{%
-  \ldots\ {\bf Test} & {\bf p-value} \\
-}
+% {
+%   \footnotesize
+% \begin{supertabular}{rl}
+%   \input{testu01}
+% \end{supertabular}
+% }
+%
 
-{\footnotesize
-\begin{supertabular}{rl}
-  \input{testu01}
-\end{supertabular}
-}
+\begin{figure*}[tp]
+  \footnotesize
+  \begin{tabular}{rl|rl|rl}
+    {\bf Test} & {\bf p-value} &
+    {\bf Test} & {\bf p-value} &
+    {\bf Test} & {\bf p-value} \\
+    \input{testu01}
+  \end{tabular}
+  \caption{TODO caption} \label{fig:testu01}
+\end{figure*}
 
 % suspect p is 0.001 (or > 1- that)
 

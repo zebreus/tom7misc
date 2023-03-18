@@ -340,8 +340,8 @@ static void RunForwardChunkWithFn(
 
         for (int i = 0; i < chunk.indices_per_node; i++) {
           const float w = chunk.weights[my_weights + i];
-          const int srci = chunk.span_start + i;
-          const float v = src_values[srci];
+          const int src_idx = chunk.span_start + i;
+          const float v = src_values[src_idx];
           potential += w * v;
         }
 
@@ -360,8 +360,8 @@ static void RunForwardChunkWithFn(
 
         for (int i = 0; i < chunk.indices_per_node; i++) {
           const float w = chunk.weights[my_weights + i];
-          const int srci = chunk.indices[my_indices + i];
-          const float v = src_values[srci];
+          const int src_idx = chunk.indices[my_indices + i];
+          const float v = src_values[src_idx];
           potential += w * v;
         }
 
@@ -393,8 +393,8 @@ static void RunForwardChunkWithFn(
 
           for (int i = 0; i < chunk.indices_per_node; i++) {
             const float w = chunk.weights[my_weights + i];
-            const int srci = chunk.indices[my_indices + i];
-            const float v = src_values[srci];
+            const int src_idx = chunk.indices[my_indices + i];
+            const float v = src_values[src_idx];
             potential += w * v;
           }
 
@@ -1804,11 +1804,6 @@ bool Network::CanFlatten(const Network &net) {
   for (const Layer &layer : net.layers) {
     for (const Chunk &chunk : layer.chunks) {
       if (chunk.type != CHUNK_INPUT) {
-        // XXX FIX
-        if (chunk.type != CHUNK_DENSE &&
-            chunk.type != CHUNK_SPARSE)
-          return false;
-
         switch (chunk.transfer_function) {
         case IDENTITY:
         case PLUS64:
@@ -1865,7 +1860,6 @@ Network Network::Flatten(const Network &net) {
     lin.weights[idx] = 1.0;
     prev_layer.push_back(std::move(lin));
   }
-  printf("(start) prev_layer size: %d\n", prev_layer.size());
 
   for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
     // Loop invariant: prev_layer is the solution so far for layer_idx-1.
@@ -1917,9 +1911,42 @@ Network Network::Flatten(const Network &net) {
         }
         break;
 
-      case CHUNK_CONVOLUTION_ARRAY:
-        CHECK(false) << "Unimplemented: conv.";
+      case CHUNK_CONVOLUTION_ARRAY: {
+
+        const int num_features = chunk.num_features;
+        const int num_occurrences = chunk.num_occurrences_across *
+          chunk.num_occurrences_down;
+
+        for (int occurrence_number = 0;
+             occurrence_number < num_occurrences;
+             occurrence_number++) {
+          // Output features are interleaved.
+          for (int feature_number = 0;
+               feature_number < num_features;
+               feature_number++) {
+            Lin lin(input_nodes);
+            lin.bias = chunk.biases[feature_number];
+
+            // weights are feature-major
+            const int my_weights = feature_number * chunk.indices_per_node;
+            // same array of indices for each feature in the
+            // occurrence
+            const int my_indices = occurrence_number * chunk.indices_per_node;
+
+            for (int i = 0; i < chunk.indices_per_node; i++) {
+              const float weight = chunk.weights[my_weights + i];
+              const int src_idx = chunk.indices[my_indices + i];
+              lin += prev_layer[src_idx] * weight;
+            }
+
+            lin.Transfer(chunk.transfer_function);
+
+            this_layer.push_back(std::move(lin));
+          }
+        }
+
         break;
+      }
       default:
         CHECK(false) << "Unimplemented chunk type "
                      << ChunkTypeName(chunk.type);
@@ -1929,8 +1956,6 @@ Network Network::Flatten(const Network &net) {
     CHECK(this_layer.size() == layer_nodes);
     prev_layer = std::move(this_layer);
   }
-
-  printf("(start) prev_layer size: %d\n", prev_layer.size());
 
   // So now prev_layer represents the linear function of the input
   // layer that we wanted.
@@ -1958,6 +1983,5 @@ Network Network::Flatten(const Network &net) {
 
   ret.push_back(Network::LayerFromChunks(std::move(chunk)));
 
-  // XXX HERE
   return Network(ret);
 }

@@ -262,8 +262,8 @@ int main(int argc, char **argv) {
                 Exp::EvaluateOn(perm16good2,
                                 GradUtil::GetU16(h)));
           },
-          -1.1, 0.9,
           -1, 1,
+          -1.1, 0.9,
           2.0, 2.0);
 
   const Exp *square =

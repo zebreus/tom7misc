@@ -320,6 +320,8 @@ int main(int argc, char **argv) {
            "half version\n");
   }
 
+  /*
+    one column
   {
     State state;
     auto flat = ParallelBigCrush([]() { return new TheGenerator; },
@@ -335,6 +337,45 @@ int main(int argc, char **argv) {
     Util::WriteFile(OUTFILE, tex);
     printf("Wrote " AGREEN("%s") ".\n", OUTFILE);
   }
+  */
+
+  {
+    State state;
+    auto flat = ParallelBigCrush([]() { return new TheGenerator; },
+                                 "gen");
+
+    const int NUM_COLUMNS = 3;
+    int NUM_ROWS = flat.size() / NUM_COLUMNS;
+    if (NUM_ROWS * NUM_COLUMNS < flat.size()) NUM_ROWS++;
+    CHECK(NUM_ROWS * NUM_COLUMNS >= flat.size());
+
+    printf("%d rows, %d columns", NUM_ROWS, NUM_COLUMNS);
+    // Wants to be wrapped with e.g. \begin{tabular}{rl|rl|rl}
+    std::string tex;
+    for (int y = 0; y < NUM_ROWS; y++) {
+      for (int x = 0; x < NUM_COLUMNS; x++) {
+        int idx = x * NUM_ROWS + y;
+        string name, pvalue;
+
+        // Can be out of bounds at the end.
+        if (idx >= 0 && idx < flat.size()) {
+          const BigCrushTestResult &bctr = flat[idx];
+          name = bctr.name;
+          pvalue = StringPrintf("$%.4f$", bctr.p_value);
+        }
+
+        if (x != 0)
+          StringAppendF(&tex, " & ");
+        StringAppendF(&tex, "%s & %s ",
+                      name.c_str(), pvalue.c_str());
+      }
+      StringAppendF(&tex, "\\\\\n");
+    }
+    static const char *OUTFILE = "paper/testu01.tex";
+    Util::WriteFile(OUTFILE, tex);
+    printf("Wrote " AGREEN("%s") ".\n", OUTFILE);
+  }
+
 
   return 0;
 

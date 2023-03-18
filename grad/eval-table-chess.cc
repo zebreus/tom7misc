@@ -12,24 +12,29 @@
 using namespace std;
 
 static void MakeEvalTableChess(const string &outfile) {
-  vector<tuple<string, string>> experiments = {
-    {"sigmoid", "chess-sigmoid"},
-    {"tanh", "chess-tanh"},
-    {"leaky-relu", "chess-leaky"},
-    {"plus64", "chess-plus64"},
-    {"grad1", "chess-grad1"},
-    {"identity", "chess-identity"},
-    {"downshift2", "chess-downshift2"},
+  vector<tuple<string, string, bool>> experiments = {
+    {"sigmoid", "chess-sigmoid", false},
+    {"tanh", "chess-tanh", false},
+    {"leaky-relu", "chess-leaky", false},
+    {"plus64", "chess-plus64", false},
+    {"grad1", "chess-grad1", false},
+    {"identity", "chess-identity", false},
+    {"downshift2", "chess-downshift2", false},
+
+    {"plus64", "chess-plus64", true},
+    {"grad1", "chess-grad1", true},
+    {"identity", "chess-identity", true},
   };
 
   EvalChess eval;
 
   string table =
     StringPrintf(
-        "\\begin{tabular}{rrr}\n"
-        "{\\bf transfer function} & {\\bf loss} & {\\bf accuracy} \\\\\n"
+        "\\begin{tabular}{rcrr}\n"
+        "{\\bf transfer function} & {\\bf flat} & "
+        "{\\bf loss} & {\\bf accuracy} \\\\\n"
         "\\hline \n");
-  for (const auto &[name, dir] : experiments) {
+  for (const auto &[name, dir, flatten] : experiments) {
     string model_file = Util::dirplus(dir, "chess.val");
     std::unique_ptr<Network> net(
         Network::ReadFromFile(model_file));
@@ -37,12 +42,21 @@ static void MakeEvalTableChess(const string &outfile) {
     net->StructuralCheck();
     net->NaNCheck(model_file);
 
+    if (flatten) {
+      printf(APURPLE("flatten") " " ACYAN("%s") "...\n",
+             name.c_str());
+      Network flat = Network::Flatten(*net);
+      *net = flat;
+    }
+
     const auto [loss, acc] = eval.Evaluate(*net);
     double pct = acc * 100.0;
-    StringAppendF(&table, "%s & %.3f & %.3f\\%% \\\\\n",
-                  name.c_str(), loss, pct);
-    printf(ACYAN("%s") ": " APURPLE("%.3f") " " ABLUE("%.3f") "%%\n",
-           name.c_str(), loss, pct);
+    StringAppendF(&table, "%s & %s & %.3f & %.3f\\%% \\\\\n",
+                  name.c_str(), flatten ? "$\\times$" : " ", loss, pct);
+    printf(ACYAN("%s") "%s: " APURPLE("%.3f") " " ABLUE("%.3f") "%%\n",
+           name.c_str(),
+           flatten ? " " APURPLE("(flat)") : "",
+           loss, pct);
   }
   StringAppendF(&table, "\\end{tabular}\n");
 

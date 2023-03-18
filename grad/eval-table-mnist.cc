@@ -15,14 +15,18 @@ static CL *cl = nullptr;
 
 
 static void MakeEvalTableMNIST(const string &outfile) {
-  vector<tuple<string, string>> experiments = {
-    {"sigmoid", "mnist-sigmoid"},
-    {"tanh", "mnist-tanh"},
-    {"leaky-relu", "mnist-leaky"},
-    {"plus64", "mnist-plus64"},
-    {"grad1", "mnist-grad1"},
-    {"identity", "mnist-identity"},
-    {"downshift2", "mnist-downshift2"},
+  vector<tuple<string, string, bool>> experiments = {
+    {"sigmoid", "mnist-sigmoid", false},
+    {"tanh", "mnist-tanh", false},
+    {"leaky-relu", "mnist-leaky", false},
+    {"plus64", "mnist-plus64", false},
+    {"grad1", "mnist-grad1", false},
+    {"identity", "mnist-identity", false},
+    {"downshift2", "mnist-downshift2", false},
+
+    {"plus64", "mnist-plus64", true},
+    {"grad1", "mnist-grad1", true},
+    {"identity", "mnist-identity", true},
   };
 
   CHECK(cl != nullptr);
@@ -30,10 +34,10 @@ static void MakeEvalTableMNIST(const string &outfile) {
 
   string table =
     StringPrintf(
-        "\\begin{tabular}{rr}\n"
-        "{\\bf transfer function} & {\\bf accuracy} \\\\\n"
+        "\\begin{tabular}{rcr}\n"
+        "{\\bf transfer function} & {\\bf flat} & {\\bf accuracy} \\\\\n"
         "\\hline \n");
-  for (const auto &[name, dir] : experiments) {
+  for (const auto &[name, dir, flatten] : experiments) {
     string model_file = Util::dirplus(dir, "grad.val");
     std::unique_ptr<Network> net(
         Network::ReadFromFile(model_file));
@@ -41,12 +45,21 @@ static void MakeEvalTableMNIST(const string &outfile) {
     net->StructuralCheck();
     net->NaNCheck(model_file);
 
+    if (flatten) {
+      printf(APURPLE("flatten") " " ACYAN("%s") "...\n",
+             name.c_str());
+      Network flat = Network::Flatten(*net);
+      *net = flat;
+    }
+
     EvalMNIST::Result result = eval.Evaluate(net.get());
     double pct = (result.correct * 100.0) / result.total;
-    StringAppendF(&table, "%s & %.2f\\%% \\\\\n",
-                  name.c_str(), pct);
-    printf(ACYAN("%s") ": " ABLUE("%.3f") "%%\n",
-           name.c_str(), pct);
+    StringAppendF(&table, "%s & %s & %.2f\\%% \\\\\n",
+                  name.c_str(), flatten ? "$\\times$" : " ", pct);
+    printf(ACYAN("%s") "%s: " ABLUE("%.3f") "%%\n",
+           name.c_str(),
+           flatten ? " " APURPLE("(flat)") : "",
+           pct);
   }
   StringAppendF(&table, "\\end{tabular}\n");
 

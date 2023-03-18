@@ -63,4 +63,4 @@ grad.pdf : grad.tex mnist.tex cifar10.tex chess.tex grad.bib $(GRAPHICS)
 	${MAKEPDF} $< -o $@
 
 clean :
-	rm -f $(UTIL_OBJECTS) *.o
+	rm -f $(UTIL_OBJECTS) *.o grad.aux grad.bbl grad.out grad.log

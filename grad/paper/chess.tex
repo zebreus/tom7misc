@@ -1,11 +1,14 @@
-\begin{tabular}{rrr}
-{\bf transfer function} & {\bf loss} & {\bf accuracy} \\
-\hline 
-sigmoid & 0.168 & 72.046\% \\
-tanh & 0.117 & 78.527\% \\
-leaky-relu & 0.118 & 78.172\% \\
-plus64 & 0.162 & 75.406\% \\
-grad1 & 0.111 & 78.924\% \\
-identity & 0.161 & 75.975\% \\
-downshift2 & 0.211 & 68.066\% \\
+\begin{tabular}{rcrr}
+{\bf transfer function} & {\bf flat} & {\bf loss} & {\bf accuracy} \\
+\hline
+sigmoid &   & 0.168 & 72.046\% \\
+tanh &   & 0.117 & 78.527\% \\
+leaky-relu &   & 0.118 & 78.172\% \\
+plus64 &   & 0.162 & 75.406\% \\
+grad1 &   & 0.111 & 78.924\% \\
+identity &   & 0.161 & 75.975\% \\
+downshift2 &   & 0.211 & 68.066\% \\
+plus64 & $\times$ & 0.161 & 75.779\% \\
+grad1 & $\times$ & 0.527 & 58.187\% \\
+identity & $\times$ & 0.161 & 75.975\% \\
 \end{tabular}
