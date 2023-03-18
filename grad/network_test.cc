@@ -10,6 +10,7 @@
 #include "network-test-util.h"
 #include "randutil.h"
 #include "arcfour.h"
+#include "ansi.h"
 
 using TestNet = NetworkTestUtil::TestNet;
 using TestExample = NetworkTestUtil::TestExample;
@@ -84,6 +85,14 @@ static void SimpleTests(TestNet test_net) {
 
   // Check that the deserialized network also works!
   StimTests(*net2);
+
+  // If it's suitable for flattening, test that
+  if (Network::CanFlatten(net)) {
+    printf("Can flatten " APURPLE("%s") "\n", test_net.name.c_str());
+    Network net3 = Network::Flatten(net);
+    StimTests(net3);
+    printf("   " AGREEN("OK") "\n");
+  }
 }
 
 // TODO: Test inverted indices computation, referring to this old
@@ -237,6 +246,7 @@ static void RunRandomForward() {
 }
 
 int main(int argc, char **argv) {
+  AnsiInit();
 
   SimpleTests(NetworkTestUtil::SingleSparse());
   SimpleTests(NetworkTestUtil::SingleDense());

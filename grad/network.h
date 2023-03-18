@@ -428,6 +428,16 @@ struct Network {
   InvertedIndices ComputeInvertedIndices(int layer_idx,
                                          int chunk_idx) const;
 
+  // True if the whole network can be flattened (grad project).
+  // Perhaps we should support partial flattening for removing
+  // identity layers, but I don't know of real uses for this.
+  static bool CanFlatten(const Network &net);
+
+  // Flatten a network into a single IDENTITY layer. Uses the
+  // mathematical definition of each transfer function, and only
+  // works for IDENTITY, GRAD1, PLUS64.
+  static Network Flatten(const Network &net);
+
   // Rounds trained. This matters when restarting from disk, because
   // for example the learning rate depends on the round.
   int64_t rounds = 0;

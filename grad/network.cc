@@ -1735,3 +1735,229 @@ void RandomizeNetwork(ArcFour *rc, Network *net,
 
   DeleteElements(&rcs);
 }
+
+// Representing a linear (affine) function of the input layer.
+namespace {
+struct Lin {
+  Lin(int size) : weights(size, 0.0) {}
+  // Weighted sum.
+  std::vector<double> weights;
+  // ... plus this bias term.
+  double bias = 0.0;
+
+  void Transfer(TransferFunction tf) {
+    switch (tf) {
+    default:
+      CHECK(false) << TransferFunctionName(tf) << " unimplemented.";
+      break;
+    case SIGMOID:
+    case TANH:
+    case LEAKY_RELU:
+    case RELU:
+    case DOWNSHIFT2:
+      CHECK(false) << TransferFunctionName(tf) << " is not linear.";
+      break;
+    case IDENTITY:
+    case PLUS64:
+      // Nothing to do, as the function is mathematically f(x) = x.
+      break;
+    case GRAD1:
+      // On the one hand we've rescaled it such that f(1) = 1 in practice,
+      // but the ideologically consistent thing to do here is the
+      // result of all the linear operations therein, which is to
+      // first multiply by (1-1/2048)^500, then by the normalizing
+      // constant. These don't match, so it's about 1.037.
+      auto MG = [](double d) -> double {
+          return d * 0.78333075731269282352007446863408 * 1.3232421875;
+        };
+      for (double &w : weights) w = MG(w);
+      bias = MG(bias);
+      break;
+    }
+  }
+};
+}  // namespace
+
+static Lin operator +(const Lin &a, const Lin &b) {
+  Lin ret = a;
+  for (int i = 0; i < a.weights.size(); i++)
+    ret.weights[i] += b.weights[i];
+  ret.bias += b.bias;
+  return ret;
+}
+
+static Lin &operator +=(Lin &a, const Lin &b) {
+  for (int i = 0; i < a.weights.size(); i++)
+    a.weights[i] += b.weights[i];
+  a.bias += b.bias;
+  return a;
+}
+
+static Lin operator *(const Lin &a, double s) {
+  Lin ret = a;
+  for (double &w : ret.weights) w *= s;
+  ret.bias *= s;
+  return ret;
+}
+
+bool Network::CanFlatten(const Network &net) {
+  for (const Layer &layer : net.layers) {
+    for (const Chunk &chunk : layer.chunks) {
+      if (chunk.type != CHUNK_INPUT) {
+        // XXX FIX
+        if (chunk.type != CHUNK_DENSE &&
+            chunk.type != CHUNK_SPARSE)
+          return false;
+
+        switch (chunk.transfer_function) {
+        case IDENTITY:
+        case PLUS64:
+        case GRAD1:
+          // OK
+          break;
+        case SIGMOID:
+        case TANH:
+        case LEAKY_RELU:
+        case RELU:
+        case DOWNSHIFT2:
+          return false;
+          break;
+        default:
+          CHECK(false) << "Not implemented: "
+                       << TransferFunctionName(chunk.transfer_function);
+        }
+      }
+    }
+  }
+  return true;
+}
+
+Network Network::Flatten(const Network &net) {
+  std::vector<Layer> ret;
+  // Input layer stays the same.
+  ret.push_back(net.layers[0]);
+
+  const int input_nodes = net.layers[0].num_nodes;
+
+  // Single output chunk, the same size as the original output layer.
+  // For simplicity, it depends on every node in the input.
+  Chunk out = MakeDenseChunk(net.layers.back().num_nodes,
+                             0, input_nodes,
+                             IDENTITY,
+                             SGD);
+
+  // Now set its weights.
+  // Each node will end up being some linear function of all the
+  // inputs. A simple way to do this is to just recursively
+  // compute that. But since there are exponentially many paths
+  // to the input layer, this is crazy slow. Instead, we work from
+  // the input layer forward, computing each layer as array of Lin.
+  // In essence, this is the forward pass, but representing each
+  // activation as a linear function of the input, rather than
+  // a single scalar value.
+
+  // Identity matrix for input.
+  std::vector<Lin> prev_layer;
+  prev_layer.reserve(input_nodes);
+  for (int idx = 0; idx < input_nodes; idx++) {
+    Lin lin(input_nodes);
+    lin.bias = 0.0;
+    lin.weights[idx] = 1.0;
+    prev_layer.push_back(std::move(lin));
+  }
+  printf("(start) prev_layer size: %d\n", prev_layer.size());
+
+  for (int layer_idx = 1; layer_idx < net.layers.size(); layer_idx++) {
+    // Loop invariant: prev_layer is the solution so far for layer_idx-1.
+    const int layer_nodes = net.layers[layer_idx].num_nodes;
+    // We build this incrementally by pushing so that we don't
+    // need to keep track of so many ids.
+    std::vector<Lin> this_layer;
+    this_layer.reserve(layer_nodes);
+    for (const Chunk &chunk : net.layers[layer_idx].chunks) {
+      switch (chunk.type) {
+      case CHUNK_INPUT: CHECK(false) << "Input chunk after first layer.";
+        break;
+      case CHUNK_DENSE:
+        for (int idx = 0; idx < chunk.num_nodes; idx++) {
+          Lin lin(input_nodes);
+          lin.bias = chunk.biases[idx];
+          for (int off = 0; off < chunk.indices_per_node; off++) {
+            const int src_idx = chunk.span_start + off;
+            const int widx = idx * chunk.indices_per_node + off;
+            const float weight = chunk.weights[widx];
+            lin += prev_layer[src_idx] * weight;
+          }
+
+          // And the transfer function.
+          lin.Transfer(chunk.transfer_function);
+
+          this_layer.push_back(std::move(lin));
+        }
+        break;
+      case CHUNK_SPARSE:
+        for (int idx = 0; idx < chunk.num_nodes; idx++) {
+          Lin lin(input_nodes);
+          lin.bias = chunk.biases[idx];
+          for (int off = 0; off < chunk.indices_per_node; off++) {
+            const int widx = idx * chunk.indices_per_node + off;
+            CHECK(widx < chunk.indices.size());
+            CHECK(widx < chunk.weights.size());
+            // span_start is already included in the index
+            const int src_idx = chunk.indices[widx];
+            CHECK(src_idx < prev_layer.size());
+            const float weight = chunk.weights[widx];
+            lin += prev_layer[src_idx] * weight;
+          }
+
+          // And the transfer function.
+          lin.Transfer(chunk.transfer_function);
+
+          this_layer.push_back(std::move(lin));
+        }
+        break;
+
+      case CHUNK_CONVOLUTION_ARRAY:
+        CHECK(false) << "Unimplemented: conv.";
+        break;
+      default:
+        CHECK(false) << "Unimplemented chunk type "
+                     << ChunkTypeName(chunk.type);
+      }
+    }
+
+    CHECK(this_layer.size() == layer_nodes);
+    prev_layer = std::move(this_layer);
+  }
+
+  printf("(start) prev_layer size: %d\n", prev_layer.size());
+
+  // So now prev_layer represents the linear function of the input
+  // layer that we wanted.
+  Chunk chunk = MakeDenseChunk(prev_layer.size(),
+                               // span is entire input
+                               0, input_nodes,
+                               // by definition the identity transfer
+                               // function
+                               IDENTITY,
+                               // probably aren't going to train on
+                               // this.
+                               SGD);
+  chunk.fixed = true;
+
+  // Copy weights and biases.
+  int widx = 0, bidx = 0;
+  for (const Lin &lin : prev_layer) {
+    for (double w : lin.weights)
+      chunk.weights[widx++] = w;
+    chunk.biases[bidx++] = lin.bias;
+  }
+
+  CHECK(widx == chunk.weights.size()) << widx << " vs " << chunk.weights.size();
+  CHECK(bidx == chunk.biases.size());
+
+  ret.push_back(Network::LayerFromChunks(std::move(chunk)));
+
+  // XXX HERE
+  return Network(ret);
+}
