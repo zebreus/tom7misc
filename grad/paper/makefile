@@ -2,7 +2,7 @@ default : grad.pdf
 
 MAKEPDF=../../pactom/rsvg/rsvg-convert -f pdf
 
-GRAPHICS=tanh.pdf relu.pdf plus128.pdf grad1.pdf downshift2.pdf boxcar25.pdf times100zoom.pdf grad1minusx.pdf perm16good2.pdf square.pdf
+GRAPHICS=tanh.pdf relu.pdf plus128.pdf grad1.pdf downshift2.pdf boxcar25.pdf times100zoom.pdf grad1minusx.pdf perm16good2.pdf square.pdf cipher.pdf
 
 CC_LIB=../../cc-lib
 
@@ -34,6 +34,9 @@ tanh%svg relu%svg plus128%svg times128%svg times100%svg grad1%svg grad1minusx%sv
 	./plot.exe
 
 plot.exe : plot.o $(UTIL_OBJECTS)
+	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LFLAGS) $^ -o $@
+
+cipher.exe : cipher.o $(UTIL_OBJECTS)
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(LFLAGS) $^ -o $@
 
 # to generate figures, in the parent directory:

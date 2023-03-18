@@ -72,15 +72,15 @@ Fluint16 Fluint16::Minus(Fluint16 a, Fluint16 b) {
 Fluint8 Fluint16::IsZero(Fluint16 a) {
   Fluint8 hz = Fluint8::IsZero(a.hi);
   Fluint8 lz = Fluint8::IsZero(a.lo);
-  // This is hz & lz, but we know only the low bit is set.
-  return Fluint8::RightShift<1>(Fluint8::PlusNoOverflow(hz, lz));
+  // Just one bit, so we can use the faster boolean operator.
+  return Fluint8::BooleanAnd(hz, lz);
 }
 
 Fluint8 Fluint16::IsntZero(Fluint16 a) {
   Fluint8 hz = Fluint8::IsntZero(a.hi);
   Fluint8 lz = Fluint8::IsntZero(a.lo);
-  // PERF could be faster since we know it's just one bit
-  return hz | lz;
+  // Just one bit, so we can use the faster boolean operator.
+  return Fluint8::BooleanOr(hz, lz);
 }
 
 Fluint16 Fluint16::SignExtend(Fluint8 a) {

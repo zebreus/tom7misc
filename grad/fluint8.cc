@@ -251,4 +251,9 @@ Fluint8 Fluint8::BooleanAnd(Fluint8 a, Fluint8 b) {
   return RightShift1(PlusNoOverflow(a, b));
 }
 
+Fluint8 Fluint8::BooleanOr(Fluint8 a, Fluint8 b) {
+  half anded = BooleanAnd(a, b).h;
+  return Fluint8((a.h - anded) + b.h);
+}
+
 #endif

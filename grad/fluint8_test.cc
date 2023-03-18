@@ -546,6 +546,24 @@ static void TestBooleanAnd() {
   CHECK(f11.ToInt() == 1);
 }
 
+static void TestBooleanOr() {
+
+  Fluint8 f00 = Fluint8::BooleanOr(Fluint8(0x00), Fluint8(0x00));
+  Fluint8 f01 = Fluint8::BooleanOr(Fluint8(0x00), Fluint8(0x01));
+  Fluint8 f10 = Fluint8::BooleanOr(Fluint8(0x01), Fluint8(0x00));
+  Fluint8 f11 = Fluint8::BooleanOr(Fluint8(0x01), Fluint8(0x01));
+
+  CHECK_CANONICAL("boolean-or", f00, 0, 0);
+  CHECK_CANONICAL("boolean-or", f01, 0, 1);
+  CHECK_CANONICAL("boolean-or", f10, 1, 0);
+  CHECK_CANONICAL("boolean-or", f11, 1, 1);
+
+  CHECK(f00.ToInt() == 0);
+  CHECK(f01.ToInt() == 1);
+  CHECK(f10.ToInt() == 1);
+  CHECK(f11.ToInt() == 1);
+}
+
 
 int main(int argc, char **argv) {
   // Gen16();
@@ -589,6 +607,7 @@ int main(int argc, char **argv) {
   TestEq(); printf("Eq OK\n");
 
   TestBooleanAnd(); printf("BooleanAnd OK\n");
+  TestBooleanOr(); printf("BooleanOr OK\n");
 
   printf("OK\n");
   return 0;

@@ -895,7 +895,7 @@ approximations, but you can't see that since you're reading an
 old-fashioned paper. Perhaps you can find a video of this at
 \verb+tom7.org/grad+.
 
-\subsection{Fractals}
+\subsection{Fractals} \label{sec:fractals}
 Next, I endeavored to deploy these functions for something useful:
 Fractals. Famously, fractals are simple functions with complex (often
 literally) behavior. For example, the Mandelbrot set considers each
@@ -988,10 +988,10 @@ the magnitude of $z$ after 256 iterations of
 
 $$z_i = f(z_{i-1}) \times c$$
 
-This is linear (as $c$ is a constant and $f$ a linear function).
-Nonetheless, it produces an appealing picture. I think this is a
-fractal in the sense that it is chaotic, has a color gradient, and
-could be on the cover of an electronic music album. It is not a
+This is mathematically linear (as $c$ is a constant and $f$ a linear
+function). Nonetheless, it produces an appealing picture. I think this
+is a fractal in the sense that it is chaotic, has a color gradient,
+and could be on the cover of an electronic music album. It is not a
 fractal in the sense that if you zoom in on it, you get infinite
 detail of self-similar shapes. In fact, if you zoom in on it only a
 modest amount, you encounter rectangular pixels as you reach the
@@ -1005,7 +1005,7 @@ more detail by increasing the accuracy!)
 Imagine you are my professor. You assign a class project to ``make
 fractals using floating point roundoff error,'' for some reason. You
 spot me in the computer lab and I'm obviously way off track, because
-on-screen is some kind of {\huge \it 3D fractal}. The Mandelbrot set cannot
+on-screen is some kind of {\Large \it 3D fractal}. The Mandelbrot set cannot
 be extended to three dimensions, you say, because of the Frobenius
 theorem: Only algebras of dimension 1 (real numbers), 2 (complex
 numbers) and 4 (quaternions) work~\cite{frobenius1878lineare}. Unclear
@@ -1100,25 +1100,91 @@ will prove this wrong by developing a good pseudorandom function that
 uses only ``linear'' operations on half-precision floating point
 numbers.
 
-$\uparrow$ Here's a good description of linear cryptanalysis of DES: https://www.apprendre-en-ligne.net/crypto/bibliotheque/PDF/lincrypt.pdf
+$\uparrow$ XXX Here's a good description of linear cryptanalysis of DES: https://www.apprendre-en-ligne.net/crypto/bibliotheque/PDF/lincrypt.pdf
 
-In terms of goals, pseudorandom number generation has a more clear objective than fractals, although it's not so easy to pin down formally. We don't even know if such functions exist, mathematically. (XXX cite) There exist many functions that look like good pseudorandom generators, but that actually have back doors that make them easy to invert. (A symmetric encryption algorithm like AES, with the key hidden, has this property.)\footnote{And let us never forget that RSA DSI (yes, that RSA) took a \$10 million bribe from the NSA to put a backdoor in one of their pseudorandom number generators~\cite{reuters2013secret}!} Practically speaking, though, we can subject the function to a wide variety of statistical tests, and if it looks random to every test, then this gives us good confidence.\footnote{Truly good cryptographic algorithms are also openly studied by experts. Of course nothing in here is to be used seriously, and not just because these algorithms are ridiculously slow!}
+In terms of goals, pseudorandom number generation has a more clear
+objective than fractals, although it's not so easy to pin down
+formally. We don't even know if such functions exist, mathematically.
+(XXX cite) There exist many functions that look like good pseudorandom
+generators, but that actually have back doors that make them easy to
+invert. (A symmetric encryption algorithm like AES, with the key
+hidden, has this property.)\footnote{And let us never forget that RSA
+  DSI (yes, that RSA) took a \$10 million bribe from the NSA to put a
+  backdoor in one of their pseudorandom number
+  generators~\cite{reuters2013secret}!} Practically speaking, though,
+we can subject the function to a wide variety of statistical tests,
+and if it looks random to every test, then this gives us good
+confidence.\footnote{Truly good cryptographic algorithms are also
+  openly studied by experts. Of course nothing in here is to be used
+  seriously, and not just because these algorithms are ridiculously
+  slow. But I guess if you are stuck on a desert island with only the
+  floating point addition and scaling operations, and a copy of this
+  paper, then it would be a reasonable starting point for encrypting
+  your messages. I do not recommend, if stranded on a desert island,
+  to send encrypted messages: They may not be readable to your
+  potential rescuers!}
 
-Specifically, my goal is to design an algorithm that takes 64 bits of data (represented as half-precision floats) to another 64 bits, such that the stream of low-order bits from iterating this function passes the TestU01's ``Big Crush'' suite of 106 statistical tests\cite{lecuyer2007testu01}. This suite is a successor to Marsaglia's ``DieHard'' battery of tests\cite{marsaglia1996diehard}, itself an improvement on Knuth's tests from The Art Of Computer Programming\cite{knuth1997art}.
+Specifically, my goal is to design an algorithm that takes 64 bits of
+data (represented as half-precision floats) to another 64 bits, such
+that the stream of low-order bits from iterating this function passes
+the TestU01's ``Big Crush'' suite of 106 statistical
+tests\cite{lecuyer2007testu01}. This suite is a successor to
+Marsaglia's ``DieHard'' battery of tests\cite{marsaglia1996diehard},
+itself an improvement on Knuth's tests from The Art Of Computer
+Programming\cite{knuth1997art}.
 
-The basis of this function is the classic substitution-permutation network. First, each of the eight bytes are substituted with a different byte using a table (this is the mathematically non-linear step). Then, the 64 bits are permuted. Finally, some of the bytes are modified additively. These last two steps are mathematically linear. Equivalent C++ code appears in Figure~\ref{XXXhash}
+The basis of this function is the classic substitution-permutation
+network. First, each of the eight bytes are substituted with a
+different byte using a table (this is the mathematically non-linear
+step). Then, the 64 bits are permuted. Finally, some of the bytes are
+modified additively. An illustration appears in Figure~\ref{fig:cipher}.
 
 \begin{figure}
-(CODE HERE)
+\includegraphics[width=\linewidth]{cipher-ai}
+\caption{ TODO describe } \label{fig:cipher}
 \end{figure}
 
-The substitution table (``s-boxes'') was generated by computer search with an objective to maximize the ``avalanche property'' (when a bit of the input is complemented, about half of the output bits should be complemented). The permutation was generated to maximize dispersion; each quartet sends each bit to a distinct quartet in the output. This is not the important part. We could have just used known good tables.
+The substitution table (``s-boxes'') was generated by computer search
+with an objective to maximize the ``avalanche property'' (when a bit
+of the input is complemented, about half of the output bits should be
+complemented). The permutation was generated to maximize dispersion;
+each quartet sends each bit to a distinct quartet in the output. This
+is not the important part. We could have just used known good tables.
 
-To implement this with half-precision floating point, we could represent each bit with its own half, but that is no fun. The state will be represented with eight half-precision floats, each representing 8 bits of information. They will be stored as values in [-1, 1), with each $\sfrac{1}{128}$ interval representing one of the 256 values (0 is anything in [-1, -0.9921875), 1 is anything in [-0.9921875, -0.984375), and so on). This means that iterating the function on {\em any starting value} in the [-1, 1] interval will produce pseudorandom results. So for example we can guarantee that a ``fractal'' plotted using this function will look ``fully messed up'' and not just have a few distinguished points of randomness. I'll say now that this is unnecessarily hard; in the next section of this paper we'll see a substantially more efficient approach for handling discrete data. But working on the entire domain makes for some challenging problems and shows that we've developed substantial mastery of the continuous case.
+To implement this with half-precision floating point, we could
+represent each bit with its own half, but that is no fun. The state
+will be represented with eight half-precision floats, each
+representing one byte's worth of information. A byte will be stored as
+a values in [-1, 1), with each $\sfrac{1}{128}$ interval representing
+one of the 256 values (0 is anything in [-1, -0.9921875), 1 is
+anything in [-0.9921875, -0.984375), and so on). This means that
+iterating the function on {\em any starting value} in the [-1, 1]
+interval will produce pseudorandom results. So for example
+we can guarantee that a ``fractal'' plotted using this function
+will look ``fully messed up'' and not just have a few
+distinguished points of randomness.
+% (redundant with below.)
+% \!\footnote{In fact the chaotic
+%  function used to make fractals in Section~\ref{sec:fractals} was
+%  an early attempt to create a 4-bit permutation using the
+%  iterative approximation approach. Although it gets reasonably
+%  close to the goal, it does not work for cryptography because
+%  iterating it tends to reach fixed points or short cycles.}
+I'll say now that this is unnecessarily hard; in the next
+section of this paper we'll see a substantially more efficient
+approach for handling discrete data. But working on the entire domain
+makes for some challenging problems and shows that we've developed
+substantial mastery of the continuous case.
 
-Speaking of which, my first approach was to try to approximate the substitution function (since it replaces one 8-bit byte with another, it corresponds to a single function of type $half \rightarrow half$) using the iterative approach described in Section XXX. Although it is possible to get reasonable approximations with this method (most values are transformed to a value near the desired one), this will not suffice; when iterating the function we find that the value easily gets stuck in short cycles due to this inaccuracy.
-
-FIGURE: Show approximation? If there's a good one?
+Speaking of which, my first approach was to try to approximate the
+substitution function (since it replaces one 8-bit byte with another,
+it corresponds to a single discontinuous function of type $half
+\rightarrow half$) using the iterative approach described in
+Section~\ref{sec:fractals}. Although it is possible to get reasonable
+approximations with this method (most values are transformed to a
+value near the desired one), this will not suffice; when iterating the
+function we find that the value easily gets stuck in short cycles due
+to this inaccuracy.
 
 I found a better approach, using (brief description).
 To understand this, let's start with the implementation of addition modulo 256.
@@ -1138,23 +1204,9 @@ choppy functions
 hash benchmark results
 To evaluate the quality of the pseudorandom number generator, I used the TestU01 ``Big Crush'' suite. This test needs a sample of 1.64 billion bits, so I actually evaluated it on equivalent code that performs the steps using normal integer operations. Even then, the suite takes several days to run, so I modified it to run tests in parallel and cache the results of completed tests. This saved me from losing data if my computer crashed or needed to be rebooted.
 
-Results appear in figure XXX. Passing these tests does not ensure that the pseudorandom number generator is good for cryptography, although it is a good start.
-%
-% \tablefirsthead{%
-%   {\bf Test} & {\bf p-value} \\
-% }
-% \tablehead{%
-%   \ldots\ {\bf Test} & {\bf p-value} \\
-% }
-%
-
-% {
-%   \footnotesize
-% \begin{supertabular}{rl}
-%   \input{testu01}
-% \end{supertabular}
-% }
-%
+Results appear in Figure~\ref{fig:testu01}. Passing these tests does
+not ensure that the pseudorandom number generator is good for
+cryptography, although it is a good start.
 
 \begin{figure*}[tp]
   \footnotesize
@@ -1164,10 +1216,13 @@ Results appear in figure XXX. Passing these tests does not ensure that the pseud
     {\bf Test} & {\bf p-value} \\
     \input{testu01}
   \end{tabular}
-  \caption{TODO caption} \label{fig:testu01}
+  \caption{
+    Results of the TestU01 ``Big Crush'' suite on the
+    pseudorandom number generator built from floating point roundoff
+    error. A p-value of $< 0.001$ or $> 0.999$ is considered
+    suspect by the suite, so all tests pass here.
+  } \label{fig:testu01}
 \end{figure*}
-
-% suspect p is 0.001 (or > 1- that)
 
 If we were building an encryption algorithm (a symmetric block
 cipher), it would be natural to use this as its ``round function.'' In
