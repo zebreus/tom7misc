@@ -1,4 +1,7 @@
 
+// Optimize a choppy database to make smaller equivalent expressions.
+// How did I not call this choptimize??
+
 #include <optional>
 #include <array>
 #include <utility>

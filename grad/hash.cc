@@ -1,4 +1,12 @@
 
+// Implementation of pseudorandom stream (not actually a "hash")
+// with half-precision floats. Equivalent thing is implemented much
+// more efficiently (in C++) in smallcrush-gen.cc.
+//
+// This one dumps a large sample of the stream (can be compared
+// to reference offline, or tested for randomness) and benchmarks
+// the throughput.
+
 #include <string>
 #include <cmath>
 
@@ -28,7 +36,6 @@ using namespace std;
 using half_float::half;
 using namespace half_float::literal;
 
-// XXX continue porting this to 8-bit
 using Choppy = ChoppyGrid<256>;
 using Allocator = Exp::Allocator;
 using DB = Choppy::DB;

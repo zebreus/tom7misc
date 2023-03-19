@@ -14,7 +14,7 @@
 #include "color-util.h"
 #include "arcfour.h"
 
-using Choppy = ChoppyGrid<16>;
+using Choppy = ChoppyGrid<256>;
 using DB = Choppy::DB;
 using Allocator = Exp::Allocator;
 using Table = Exp::Table;
@@ -229,13 +229,13 @@ static void Reduce(DB *db) {
   printf("Column-wise pass: %d now solved\n",
          (int)basis.fns.size());
 
-  Util::WriteFile("basis.txt", basis.Dump());
+  // Util::WriteFile("basis.txt", basis.Dump());
 }
 
 int main(int argc, char **argv) {
   DB db;
   printf("Load database:\n");
-  db.LoadFile("chopdb.txt");
+  db.LoadFile("basis8.txt");
   db.Image().ScaleBy(10).Save("database.png");
 
   Reduce(&db);

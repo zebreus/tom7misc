@@ -266,6 +266,42 @@ static half ModularMinus(const Exp *modexp, half x, half y) {
   return mdiff + HALF_GRID;
 }
 
+static void TestNewZT() {
+  auto ModHalf = [](half h) {
+      h += 1.0_h;
+      h += 201.0_h;
+      h -= 201.0_h;
+      return h * 0.5_h;
+    };
+
+  /*
+  static half RightShiftHalf7(half xh) {
+    static constexpr half SCALE = GetHalf(0x1c03); // 0.0039177...
+    static constexpr half OFFSET = GetHalf(0x66c8);
+    return xh * SCALE + OFFSET - OFFSET;
+  }
+  */
+
+  for (uint16_t u = Exp::GetU16((half)-3.0);
+       u != Exp::GetU16((half)3.0);
+       u = Exp::NextAfter16(u)) {
+    half in = Exp::GetHalf(u);
+    half out = ModHalf(in);
+
+    printf("%04x -> %04x  (%.6g -> %.6g)\n",
+           u, Exp::GetU16(out), (float)in, (float)out);
+    /*
+    if (in < 0.0_h) {
+      CHECK(out == 0.0_h) << in << " " << out;
+    } else {
+      CHECK(out == 1.0_h) << in << " " << out;
+    }
+    */
+  }
+
+  printf(AGREEN("ZT OK") "\n");
+
+}
 
 static void TestMod() {
   Allocator alloc;
@@ -326,13 +362,10 @@ static void TestMod() {
 int main(int argc, char **argv) {
   AnsiInit();
 
+  TestNewZT();
+  return 0; // FIXME
+
   TestMod();
-
-  // TestNewZT();
-  // return 0;
-
-
-
   TestBits();
 
   // would be nice if we didn't keep allocating into

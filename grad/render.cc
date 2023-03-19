@@ -91,6 +91,7 @@ static Decoded Decode(half h) {
 
 static vector<string> BigConstantLines(const BigInt &x) {
   static constexpr int DIGITS_WIDE = 80;
+  // static constexpr int DIGITS_WIDE = 100;
   BigInt zero(0);
   CHECK(!BigInt::Less(x, zero));
 
@@ -107,6 +108,7 @@ static vector<string> BigConstantLines(const BigInt &x) {
 }
 
 static constexpr int MAX_LINES = 12;
+// static constexpr int MAX_LINES = 800;
 static void CropTooManyLines(std::vector<string> *lines) {
   const int keep = MAX_LINES - 1;
   const int elided = lines->size() - keep;
@@ -439,30 +441,48 @@ int main(int argc, char **argv) {
   std::map<DB::key_type, const Exp *> sorted;
   for (const auto &[k, v] : db.fns) sorted[k] = v;
 
-  for (const auto &[k, v] : sorted) {
-    Timer timer;
-    string key = DB::KeyString(k);
-    printf(AGREY("%s:") "\n", key.c_str());
-    if (false &&
-        (key == " 0  0  0  0  0  0  0  0  1  0  0  0  0  0  0  0" ||
-         key == " 0  0  0  0  0  0  0  1  0  0  0  0  0  0  0  0")) {
-      printf(ARED("skipped") "\n");
-      continue;
-    }
-    StringAppendF(&out, "\n\\bigskip \n\\bigskip \n");
-    StringAppendF(&out, "{\\bf %s} \\\\\n", key.c_str());
-    string lit = Literally("x", v);
-    StringAppendF(&out, "$ %s $ \\\\\n", lit.c_str());
+  auto RenderOneExp = [](const Exp *v, string *out) {
+      Timer timer;
+      string lit = Literally("x", v);
+      StringAppendF(out, "$ %s $ \\\\\n", lit.c_str());
 
-    StringAppendF(&out, "\n\\scalebox{2}{$$=$$}\n");
-    // This will terminate in a few minutes, but the numbers it
-    // generates are usually way too big to be interesting!
-    string lin = Linearly("x", v);
-    StringAppendF(&out, "\\[\n%s\n\\]\n\n", lin.c_str());
-    printf("... " ABLUE("%d") " lit "
-           APURPLE("%d") " lin. "
-           "Done in %s\n", (int)lit.size(), (int)lin.size(),
-           AnsiTime(timer.Seconds()).c_str());
+      StringAppendF(out, "\n\\scalebox{2}{$$=$$}\n");
+      // This will terminate in a few minutes, but the numbers it
+      // generates are usually way too big to be interesting!
+      string lin = Linearly("x", v);
+      StringAppendF(out, "\\[\n%s\n\\]\n\n", lin.c_str());
+      printf("... " ABLUE("%d") " lit "
+             APURPLE("%d") " lin. "
+             "Done in %s\n", (int)lit.size(), (int)lin.size(),
+             AnsiTime(timer.Seconds()).c_str());
+    };
+
+  static constexpr bool SHOW_BASIS = false;
+
+  if (SHOW_BASIS) {
+
+    for (const auto &[k, v] : sorted) {
+      string key = DB::KeyString(k);
+      printf(AGREY("%s:") "\n", key.c_str());
+      if (false &&
+          (key == " 0  0  0  0  0  0  0  0  1  0  0  0  0  0  0  0" ||
+           key == " 0  0  0  0  0  0  0  1  0  0  0  0  0  0  0  0")) {
+        printf(ARED("skipped") "\n");
+        continue;
+      }
+      StringAppendF(&out, "\n\\bigskip \n\\bigskip \n");
+      StringAppendF(&out, "{\\bf %s} \\\\\n", key.c_str());
+      RenderOneExp(v, &out);
+    }
+
+  }
+
+  {
+    static const char *ZERO_THRESHOLD = "V P02011 T3c019743 T07e01 P2fff1 T6c011 P5ff81 T44001 P3c001 T3c01559 T39031 T3c011160 T35421 T3c0123 T39dc1 T3c01137 T371e1 T3c01365 T39e61 T3c01346 T39a21 T3c01676 T38641 T3c01557 T39081 T3c01830 T329a1 T3c01336 T3a051 T3c01663 T1f111 Pe94f1 P694f1 T2b801 P64341 P68f31 Peb0d1 T34401 Pe8001 P68001 T30001";
+
+    StringAppendF(&out, "{\\bf Zero-threshold}: \\\\\n");
+    const Exp *Z = Exp::Deserialize(&db.alloc, ZERO_THRESHOLD);
+    RenderOneExp(Z, &out);
   }
 
   StringAppendF(&out, "\\end{document}\n");

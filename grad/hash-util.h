@@ -54,7 +54,7 @@ struct HashUtil {
     using namespace half_float::literal;
     // put in [0, 2)
     h += 1.0_h;
-    // now in [0, 16)
+    // now in [0, 256)
     h *= (Choppy::GRID / 2.0_h);
     // and make integral
     return (uint8_t)trunc(h);

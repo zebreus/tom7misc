@@ -76,6 +76,13 @@ static void ComputeStats(const string &name, const F &f) {
          (double)minf, (double)maxf,
          (int)distinct_ival.size(),
          (100.0 * distinct_ival.size()) / (double)num_finite);
+  if (distinct_ival.size() < 32) {
+    printf("  Distinct values: ");
+    for (uint16_t u : distinct_ival) {
+      printf(AWHITE("%04x") " (" ABLUE("%.11g") ") ", u, (float)GradUtil::GetHalf(u));
+    }
+    printf("\n");
+  }
 }
 
 template<class F>
@@ -98,7 +105,8 @@ static void PlotSVG(const string &outfile,
   double px_width = svg_width * 300.0;
   double px_height = svg_height * 300.0;
 
-  Bounds::Scaler scaler = bounds.ScaleToFit(px_width, px_height, true).FlipY();
+  Bounds::Scaler scaler = bounds.Stretch(px_width, px_height).FlipY();
+  // bounds.ScaleToFit(px_width, px_height, true).FlipY();
 
   string out = TextSVG::HeaderEx(0.0, 0.0, px_width, px_height,
                                  "px",
@@ -282,8 +290,27 @@ int main(int argc, char **argv) {
                                 GradUtil::GetU16(h)));
           },
           -2, 2,
-          -0.375, 3.575,
+          -0.4, 3.6,
           4.0, 4.0);
+
+  const Exp *basisvec =
+    Exp::Deserialize(
+        &alloc,
+        "V Pb27d1 Pb4011 T98001 Pc3d92 T3c02118 V Pb4011 T98001 E Tcfff1 V "
+        "Pb23d1 Pb4011 T98001 Pc3d92 T3c02118 T4ffe1 E Ta8001",
+        &error);
+  CHECK(basisvec != nullptr) << error;
+  printf(AWHITE("basisvec") " is " AYELLOW("%d") " operations.\n",
+         Exp::ExpSize(basisvec));
+  PlotSVG("basisvec.svg",
+          [basisvec](half h) {
+            return GradUtil::GetHalf(
+                Exp::EvaluateOn(basisvec,
+                                GradUtil::GetU16(h)));
+          },
+          -1, 1,
+          -0.0125, 0.0125,
+          2.0, 1.0);
 
   /*
   PlotSVG("downshift2.svg",
