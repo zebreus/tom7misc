@@ -266,22 +266,23 @@ static half ModularMinus(const Exp *modexp, half x, half y) {
   return mdiff + HALF_GRID;
 }
 
+
 static void TestMod() {
   Allocator alloc;
   const Exp *e = HashUtil::ModExp(&alloc);
 
   for (uint16_t u = Exp::GetU16((half)-3.0);
-       u <= Exp::GetU16((half)3.0);
+       u != Exp::GetU16((half)3.0);
        u = Exp::NextAfter16(u)) {
     half in = Exp::GetHalf(u);
     half out = Exp::GetHalf(Exp::EvaluateOn(e, u));
 
     if (in < -1.0_h) {
       CHECK(in + 2.0_h == out) << in << " " << out;
-    } else if (in > 1.0_h) {
+    } else if (in >= 1.0_h) {
       CHECK(in - 2.0_h == out) << in << " " << out;
     } else {
-      CHECK(in == out);
+      CHECK(in == out) << in << " " << out;
     }
   }
 
@@ -325,9 +326,14 @@ static void TestMod() {
 int main(int argc, char **argv) {
   AnsiInit();
 
-  TestBits();
-
   TestMod();
+
+  // TestNewZT();
+  // return 0;
+
+
+
+  TestBits();
 
   // would be nice if we didn't keep allocating into
   // this arena,
