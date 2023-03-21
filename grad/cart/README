@@ -1,0 +1,11 @@
+This is a test cartridge for the NES, intended for emulator
+development. It exercises some undocumented 6502 instructions that
+didn't have coverage in other NES ROMs that I have, and then displays
+the first half of RAM on-screen. The idea is that if the instructions
+are implemented incorrectly, the RAM and screenshot will be incorrect.
+See reset.s for some details.
+
+Use and distribute freely.
+
+ - Tom 7,  19 Mar 2023
+

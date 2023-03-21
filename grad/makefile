@@ -232,6 +232,10 @@ eval-table-chess.exe : eval-table-chess.o $(CL_OBJECTS) $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+old.exe : old.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 # external dependency on TestU01-2009
 TESTU01=../../TestU01-2009
 

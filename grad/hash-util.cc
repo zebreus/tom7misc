@@ -97,19 +97,6 @@ std::array<const Exp *, 8> HashUtil::PermuteFn(
             indicator,
             Exp::GetU16((half)out_mask));
 
-#if 0
-        // XXX ded.
-        half hh = (half)(out_mask / (Choppy::GRID / 2.0));
-        printf("out mask is %02x. so scale %.6f\n", out_mask, (float)hh);
-
-        // Then we want it to take on the value in out_mask,
-        // so that it contributes the corresponding bit. Note that
-        // this
-        indicator = alloc->TimesC(
-            indicator,
-            Exp::GetU16((half)(out_mask / (Choppy::GRID / 2.0))));
-#endif
-
         parts.push_back(indicator);
       }
     }

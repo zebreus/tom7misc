@@ -43,6 +43,8 @@ using Table = GradUtil::Table;
 using Step = GradUtil::Step;
 using State = GradUtil::State;
 
+static constexpr bool USE_TABLES = false;
+
 static constexpr uint8_t SUBST[256] = {
   // Best error was 1952 after 150000 attempts [438.966/sec]
   178, 122, 20, 19, 31, 64, 70, 35, 75, 80, 154, 5, 47, 105, 93, 250, 217,
@@ -84,14 +86,18 @@ static inline uint16 GetU16(half h) {
 }
 
 // Substitution table.
+static const Exp *subst_exp = nullptr;
 static Table subst_table;
 // Run the substitution table. A function from
 // [-1, 1) to [-1, 1).
 static half Subst(half h) {
   const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
-  return GetHalf(subst_table[GetU16(h)]) + HALF_GRID;
+  uint16_t u = USE_TABLES ? subst_table[GetU16(h)] :
+    Exp::EvaluateOn(subst_exp, GetU16(h));
+  return GetHalf(u) + HALF_GRID;
 }
 
+static const Exp *mod_exp = nullptr;
 static Table mod_table;
 
 static half ModularPlus(half x, half y) {
@@ -105,7 +111,8 @@ static half ModularPlus(half x, half y) {
   half sum = xx + yy;
   // Now in [-1, 3).
   half asum = (sum * 2.0_h) - 1.0_h;
-  half msum = Exp::GetHalf(mod_table[Exp::GetU16(asum)]);
+  uint16_t u = Exp::GetU16(asum);
+  half msum = Exp::GetHalf(USE_TABLES ? mod_table[u] : Exp::EvaluateOn(mod_exp, u));
 
   return msum + HALF_GRID;
 }
@@ -119,19 +126,21 @@ static half ModularMinus(half x, half y) {
   half diff = xx - yy;
   // And then in [-3, 1].
   half adiff = (diff * 2.0_h) - 1.0_h;
-  half mdiff = Exp::GetHalf(mod_table[Exp::GetU16(adiff)]);
+  uint16_t u = Exp::GetU16(adiff);
+  half mdiff = Exp::GetHalf(USE_TABLES ? mod_table[u] : Exp::EvaluateOn(mod_exp, u));
   return mdiff + HALF_GRID;
 }
 
+static std::array<std::array<const Exp *, 8>, 8> perm_exps = {};
 static std::array<std::array<Table, 8>, 8> perm_tables;
-// PERF don't need to permanently allocate these
 static void MakePermTable(DB *basis) {
   ParallelComp(8, [basis](int byte) {
-      std::array<const Exp *, 8> exps =
-        HashUtil::PermuteFn(PERM, basis, byte);
+      perm_exps[byte] = HashUtil::PermuteFn(PERM, basis, byte);
 
-      for (int i = 0; i < 8; i++) {
-        perm_tables[byte][i] = Exp::TabulateExpression(exps[i]);
+      if (USE_TABLES) {
+        for (int i = 0; i < 8; i++) {
+          perm_tables[byte][i] = Exp::TabulateExpression(perm_exps[byte][i]);
+        }
       }
     }, 8);
 }
@@ -191,15 +200,37 @@ static half PermuteHalf(int out_byte,
 
   const half HALF_GRID = (half)(0.5 / (Choppy::GRID * 2));
 
-  const std::array<Table, 8> &fs = perm_tables[out_byte];
-  half f_a = Exp::GetHalf(fs[0][Exp::GetU16(a)]);
-  half f_b = Exp::GetHalf(fs[1][Exp::GetU16(b)]);
-  half f_c = Exp::GetHalf(fs[2][Exp::GetU16(c)]);
-  half f_d = Exp::GetHalf(fs[3][Exp::GetU16(d)]);
-  half f_e = Exp::GetHalf(fs[4][Exp::GetU16(e)]);
-  half f_f = Exp::GetHalf(fs[5][Exp::GetU16(f)]);
-  half f_g = Exp::GetHalf(fs[6][Exp::GetU16(g)]);
-  half f_h = Exp::GetHalf(fs[7][Exp::GetU16(h)]);
+  uint16_t aa, bb, cc, dd, ee, ff, gg, hh;
+  if constexpr (USE_TABLES) {
+    const std::array<Table, 8> &ts = perm_tables[out_byte];
+    aa = ts[0][Exp::GetU16(a)];
+    bb = ts[1][Exp::GetU16(b)];
+    cc = ts[2][Exp::GetU16(c)];
+    dd = ts[3][Exp::GetU16(d)];
+    ee = ts[4][Exp::GetU16(e)];
+    ff = ts[5][Exp::GetU16(f)];
+    gg = ts[6][Exp::GetU16(g)];
+    hh = ts[7][Exp::GetU16(h)];
+  } else {
+    const std::array<const Exp *, 8> &es = perm_exps[out_byte];
+    aa = Exp::EvaluateOn(es[0], Exp::GetU16(a));
+    bb = Exp::EvaluateOn(es[1], Exp::GetU16(b));
+    cc = Exp::EvaluateOn(es[2], Exp::GetU16(c));
+    dd = Exp::EvaluateOn(es[3], Exp::GetU16(d));
+    ee = Exp::EvaluateOn(es[4], Exp::GetU16(e));
+    ff = Exp::EvaluateOn(es[5], Exp::GetU16(f));
+    gg = Exp::EvaluateOn(es[6], Exp::GetU16(g));
+    hh = Exp::EvaluateOn(es[7], Exp::GetU16(h));
+  }
+
+  half f_a = Exp::GetHalf(aa);
+  half f_b = Exp::GetHalf(bb);
+  half f_c = Exp::GetHalf(cc);
+  half f_d = Exp::GetHalf(dd);
+  half f_e = Exp::GetHalf(ee);
+  half f_f = Exp::GetHalf(ff);
+  half f_g = Exp::GetHalf(gg);
+  half f_h = Exp::GetHalf(hh);
 
   half out = Norm(f_a + f_b + f_c + f_d + f_e + f_f + f_g + f_h);
   return out + HALF_GRID;
@@ -323,10 +354,11 @@ static const Exp *MakeSubstExp(DB *basis) {
 }
 
 static void InitModTable() {
-  Allocator alloc;
+  static Allocator *alloc = new Allocator;
 
-  const Exp *exp = HashUtil::ModExp(&alloc);
-  mod_table = Exp::TabulateExpression(exp);
+  mod_exp = HashUtil::ModExp(alloc);
+  if (USE_TABLES)
+    mod_table = Exp::TabulateExpression(mod_exp);
 }
 
 
@@ -334,7 +366,9 @@ static void InitTables(DB *basis) {
   Timer timer;
   InParallel(
       [&]() {
-        subst_table = Exp::TabulateExpression(MakeSubstExp(basis));
+        subst_exp = MakeSubstExp(basis);
+        if (USE_TABLES)
+          subst_table = Exp::TabulateExpression(subst_exp);
         CPrintf("Made " ACYAN("subst") ".\n");
       },
       []() {
@@ -419,8 +453,9 @@ int main(int argc, char **argv) {
     while (bb.NumBits() < SIZE_BYTES * 8) {
       int64 nb = bb.NumBits();
       if ((nb % (1 << 15)) == 0) {
-        CPrintf("%d" AGREY("/") "%d (" AGREEN("%.2f%%") ")\n", nb,
-               SIZE_BYTES * 8, (nb * 100.0) / (SIZE_BYTES * 8));
+        double yps = (nb / 8.0) / timer.Seconds();
+        CPrintf("%d" AGREY("/") "%d (" AGREEN("%.2f%%") ") [" ABLUE ("%.3f") " bytes/sec]\n", nb,
+                SIZE_BYTES * 8, (nb * 100.0) / (SIZE_BYTES * 8), yps);
       }
       hs = NextState(hs);
       // bb.WriteBits(16, AllBits(hs));

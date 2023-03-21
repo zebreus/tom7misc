@@ -66,6 +66,8 @@
 \newcommand\xbyx[2]{\ensuremath{#1 {\times} #2}}
 \newcommand\basis{\ensuremath{\textrm{\bf b}}}
 
+\newcommand\comment[1]{}
+
 % XXX the collection of crap above causes a first page
 % with just "1" on it (probably conflicting packages). This
 % magic just drops the first page, which is of course not
@@ -265,7 +267,7 @@ precision) and the result of an operation is always rounded to a
 representable number. IEEE-754 floating point comes in different
 ``spice levels,'' with ``32-bits'' being ``float'' and ``64-bits''
 being ``double.'' Although spice levels as low as 3 bits make
-sense\cite{murphy2019nan}, 8-bit (``mild'') is occasionally used in
+sense~\cite{murphy2019nan}, 8-bit (``mild'') is occasionally used in
 real applications, and 16-bit (``half'') is quite common in machine
 learning. Usually the reason to prefer half precision is that it uses
 less memory, and so your GPU can store networks that are twice as big
@@ -296,7 +298,7 @@ Floating point does have many perversions, but many programmers come
 to believe all sorts of dangerous superstitions about it. One idea is
 that floating point is somehow always inexact, and so that you always
 have to check that two numbers are equal ``within some
-epsilon''\cite{murphy2014epsilon}. This may work ``in practice'' but
+epsilon''~\cite{murphy2014epsilon}. This may work ``in practice'' but
 it is actually pretty sloppy. Floating point imprecision is not
 random, nor is it constrained to a fixed epsilon. Operations are
 defined much more usefully: Each one computes the mathematically
@@ -1043,8 +1045,8 @@ the values of the cells $A$, $B$, and $C$ in this table:
 % 0, 0, 1,   = j
 % 1, 0, 0    = 1
 
-The cells $U$, $V$, and $W$ are baffling numbers (coefficients $a$,
-$b$, $c$ in $a + b\mathrm{i} + c\mathrm{j}$). Some choices are
+The cells $U$, $V$, and $W$ are baffling numbers (i.e.~each some
+$a + b\mathrm{i} + c\mathrm{j}$). Some choices are
 degenerate, but this gives us a family of options. It is known that no
 matter the choices, this does ``not work'' (in the sense that the
 resulting algebra is not associative\footnote{Or else is equivalent to
@@ -1077,7 +1079,7 @@ exercise because there is no real goal other than to make a cool
 picture. Instead I turned to something with a clearer challenge to
 overcome: Linear Cryptography.
 
-\section{Linear cryptography}
+\section{Linear cryptography} \label{sec:eightbitchoppy}
 Cryptography is like fractals minus drugs. One of the most basic
 components of cryptography is a pseudorandom number generator. This
 kind of function takes some state and produces a new state that
@@ -1097,7 +1099,7 @@ alternate both linear (e.g.~xor, or multiplication mod $2^n$) and
 non-linear (e.g.~substitution) operations. (``[Substitutions] are
 generally the only nonlinear step in an algoritm; they are what give a
 block cipher its security.''\footnote{{\it Applied Cryptography},
-  Second Edition, page 349~\cite{schneier1996applied}.} Of course we
+  Second Edition, page~349~\cite{schneier1996applied}.} Of course we
 will prove this wrong by developing a good pseudorandom function that
 uses only ``linear'' operations on half-precision floating point
 numbers.
@@ -1130,10 +1132,10 @@ Specifically, my goal is to design an algorithm that takes 64 bits of
 data (represented as half-precision floats) to another 64 bits, such
 that the stream of low-order bits from iterating this function passes
 the TestU01's ``Big Crush'' suite of 106 statistical
-tests\cite{lecuyer2007testu01}. This suite is a successor to
-Marsaglia's ``DieHard'' battery of tests\cite{marsaglia1996diehard},
+tests~\cite{lecuyer2007testu01}. This suite is a successor to
+Marsaglia's ``DieHard'' battery of tests~\cite{marsaglia1996diehard},
 itself an improvement on Knuth's tests from The Art Of Computer
-Programming\cite{knuth1997art}.
+Programming~\cite{knuth1997art}.
 
 The basis of this function is the classic substitution-permutation
 network. First, each of the eight bytes are substituted with a
@@ -1206,7 +1208,7 @@ that isolate specific intervals of interest. For example,
 Within the interval [-1, 1), this function takes on exactly two
   values: zero\footnote{Actually, $-0$!} and $\sfrac{1}{128}$. It returns
   $\sfrac{1}{128}$ only for exactly the interval $[\sfrac{121}{128},
-    \sfrac{122}{128}]$. This is the interval that represents the
+    \sfrac{122}{128})$. This is the interval that represents the
   number 249 ($128 + 121$; remember that the first 128 integers are in
   $[-1, 0)$). The expression that computes this is
 
@@ -1215,16 +1217,16 @@ Within the interval [-1, 1), this function takes on exactly two
   f(x) = \\[0.5em]
   \left(
   \begin{array}{l}
-    (x - \frac{9}{64} - \frac{1}{4} \times{} \frac{-1}{512} - \frac{1255}{512} \times^{\scriptscriptstyle 164} \frac{1027}{1024}) + \\[0.5em]
-    (x - \frac{1}{4} \times{} \frac{-1}{512} - \frac{597}{512} \times^{\scriptscriptstyle 188} \frac{1277}{2048} \times{} -1) + \\[0.5em]
+    (x - \frac{9}{64} - \frac{1}{4} \times{} \frac{-1}{512} - \frac{1255}{512} \times^{\scriptscriptstyle 164} \frac{1027}{1024})\, + \\[0.5em]
+    (x - \frac{1}{4} \times{} \frac{-1}{512} - \frac{597}{512} \times^{\scriptscriptstyle 188} \frac{1277}{2048} \times{} -\!1)\, + \\[0.5em]
     \frac{517}{128} \times{} -32 \\[0.5em]
   \end{array}
   \right) + \\[2em]
 %
   \left(
   \begin{array}{l}
-    (x - \frac{17}{128} - \frac{1}{4} \times{} \frac{-1}{512} - \frac{1255}{512} \times^{\scriptscriptstyle 164} \frac{1027}{1024}) + \\[0.5em]
-    (x - \frac{1}{4} \times{} \frac{-1}{512} - \frac{597}{512} \times^{\scriptscriptstyle 188} \frac{1277}{2048} \times{} -1) + \\[0.5em]
+    (x - \frac{17}{128} - \frac{1}{4} \times{} \frac{-1}{512} - \frac{1255}{512} \times^{\scriptscriptstyle 164} \frac{1027}{1024})\, + \\[0.5em]
+    (x - \frac{1}{4} \times{} \frac{-1}{512} - \frac{597}{512} \times^{\scriptscriptstyle 188} \frac{1277}{2048} \times{} -\!1)\, + \\[0.5em]
     \frac{517}{128} \times{} 32
   \end{array}
   \right) \times{} \frac{-1}{32} \\
@@ -1269,7 +1271,7 @@ That is, the function produces the same result for any representation
 of an integer, and that result is the smallest representation of an
 integer. These functions are maximally useful in that they are
 ``liberal in what they accept,'' but ``conservative in what they
-return''~\cite{rfc761}. This means that each function also can be
+return''~\cite{rfc761}. It also means that each function also can be
 understood as a function $\mathbb{Z}_{256} \rightarrow
 \mathbb{Z}_{256}$, so we can represent them as a vector of 256
 integers. The basis vectors $\basis_n$ are those that are of the form
@@ -1293,6 +1295,8 @@ challenging for $n$ near 128; this is the point $0.0$ in
 half-precision. Specifically, the hardest problem was to make a
 function that produced different results for inputs $< 0.0$ versus
 inputs $\geq 0.0$. This is the {\em zero-threshold problem}.
+
+% XXX something about optimization, which I wasted loads of time on?
 
 \paragraph{Why is this hard?}
 Distinguishing between negative and non-negative numbers is
@@ -1355,14 +1359,22 @@ In any case, with this function it was possible to form a complete basis. This b
 makes it ``easy'' to perform operations on half values that represent bytes. For
 example, the s-box step substitutes some distinct byte for each different input
 byte. This would normally be implemented with a table lookup. If we compute
-$\basis_n(x) \times 128 \times \mathrm{subst}[n]$, this returns the correct
-result $\mathrm{subst}[n]$ if the $x$ input $x$ is $n$, and $0$ otherwise.
+$\basis_n(x) \times \mathrm{subst}[n]$, this returns the correct\footnote{Technically
+  we need to do some multiplicative adjustments to put the value in $[-1, 1)$.}
+result $\mathrm{subst}[n]$ if the input $x = n$, and $0$ otherwise.
 So if we just sum all 256 of these up, exactly one of them will be nonzero,
 and the correct substituted value.
 
 Permutation is defined on the component bits. Here, we compose a function that
-computes each of the eight output bytes. For each byte, we use the same approach
-of summing
+computes each of the eight output bytes. We use the same approach of summing
+a bunch of $\basis_n(x)$ evaluations (each multiplied by the correct answer).
+Here we are testing whether the input has some particular bit set (a sum of the
+128 $\basis_n(x)$ functions where $n$ has that bit set), and the output is the
+power of two that sets the appropriate output bit. Many of these functions would
+have simpler implementations (for example, ``is the high-order bit set?'' is the
+same as the zero-threshold function) but at this point I was happy to just have
+something working, and taking some joy in how absurdly large the functions
+were getting.
 
 The cipher also includes addition and subtraction mod 256. Addition
 and subtraction are already available for half-precision floats, and
@@ -1375,50 +1387,16 @@ This is straightforward with the zero threshold function;\footnote{Compare to
 we produce a corrective factor if the result is $\geq 1$ or $< -1$ (and zero otherwise).
 We then add those corrective factors produce the remainder we desire.
 
-%
-% See Search() in manualchop.cc, especially at that revision. I think the
-% key here is that I (foolishly?) defined intervals as being closed on their
-% lower side, so I need [0, 0.0078125) to be positive, including zero. But
-%   this is (I think?) different from what we get in the fluint approach.
-%   Check.
-% )
-%
-Adding
-The pseudorandom function has a step where some bytes are computed as $a = b \oplus c$, where $\oplus$ is addition mod 256. This can be computed in the [-1, 1) representation by first
-adding 1 to both of $b$ and $c$ (giving values in [0, 2)), then adding the quantities together (giving values in [0, 4)), then computing some ``mod'' function to put the value back in [0, 2), then subtracting 1 to get a value in [-1, 1).
-
-TODO: Why isn't zero-threshold enough to compute threshold at any point? e.g.~[(x-1)/x]zt gives a threshold around 1?
-(I think it actually is? Zero is just hard because of the high precision near there.)
-
-
 TODO: nextafter. ``floating point is like JavaScript. Every time you get seriously into it, you will discover some horror that you had never known before.''
 
-To understand this, let's start with the implementation of addition modulo 256.
-
-(ACTUALLY: Need to check if \verb+zero_threshold+ is actually the
-hardest thing. I think it is? If so, we should perhaps do that one
-last.
-``finally found solution'' in r4670
-
-
-OK! Summary to self for later: The tricks in the fluint8 paper work for integral values, just like my fluint8.h.
-The graphs are a bit misleading in this sense. In particular (see old.cc), the endpoints of the intervals for the
-fmod function are
-
-\begin{lstlisting}
- c3800000 -> c3800000 (-256 -> -256)
- bf000080 -> 00000000 (-0.50000762939 -> 0)
- 437f8001 -> 43800000 (255.50001526 -> 256)
- 43ffc000 -> 44000000 (511.5 -> 512)
-\end{lstlisting}
-
-So it works great for its purpose, but not if we insist on intervals like [0, 0.125).
-
-
 \paragraph{Benchmark results.}
-To evaluate the quality of the pseudorandom number generator, I used the TestU01 ``Big Crush'' suite. This test needs a sample of 1.64 billion bits, so I actually evaluated it on equivalent code that performs the steps using normal integer operations. Even then, the suite takes several days to run, so I modified it to run tests in parallel and cache the results of completed tests. This saved me from losing data if my computer crashed or needed to be rebooted.
-
-Benchmark (tabled version): 18685.22030 bytes/sec
+To evaluate the quality of the pseudorandom number generator, I used
+the TestU01 ``Big Crush'' suite. This test needs a sample of 1.64
+billion bits, so I actually evaluated it on equivalent code that
+performs the steps using normal integer operations. Even then, the
+suite takes several days to run, so I modified it to run tests in
+parallel and cache the results of completed tests. This saved me from
+losing data if my computer crashed or needed to be rebooted.
 
 Results appear in Figure~\ref{fig:testu01}. Passing these tests does
 not ensure that the pseudorandom number generator is good for
@@ -1440,6 +1418,12 @@ cryptography, although it is a good start.
   } \label{fig:testu01}
 \end{figure*}
 
+Running single-threaded on a 3.0 GHz Threadripper 2990WX, this
+function generates 25.8 bytes of randomness per second, which is slow.
+By precomputing the substitution, permutation, and zero threshold
+expressions (so they can be performed by lookup into 64k-entry tables),
+it generates 18,685.2 bytes per second, which is still slow.
+
 If we were building an encryption algorithm (a symmetric block
 cipher), it would be natural to use this as its ``round function.'' In
 a Feistel network~\cite{feistel1973cryptography}, each input block
@@ -1450,12 +1434,9 @@ this ``round'' is repeated many times until we believe that the data
 are suitably screwed up. Decryption is the reverse. We can use
 addition and subtraction mod $2^8$ to combine the data instead of XOR
 (which is addition mod $2^1$), so we already have all the operations
-we need to build a whole block cipher here. (XXX I guess I could just do
-it?) As Bruce Schneier says,\footnote{{\it Applied Cryptography},
-  Second Edition, page 351.} ``It is easy to design a block cipher.''
-
-Bonus digression:
-Diagonalizing bigcrush?
+we need to build a whole block cipher here. As Bruce Schneier
+says,\footnote{{\it Applied Cryptography}, Second Edition, page 351.}
+``It is easy to design a block cipher.''
 
 
 \section{Non-linear gameplay} \label{sec:sixtyfive}
@@ -1478,23 +1459,114 @@ it can do something interesting.
 
 \subsection{Fluint8}
 
-Didn't I already write this paper???
+First of all, if we want to do some serious computation, 25.8 bytes
+per second isn't going to cut it. To look for performance enhancing
+substances, I perused the back catalog of the world's most prestigious
+conference, SIGBOVIK. There in the 2018 edition, on page 125, I found
+an intriguing paper, {\it The fluint8 Software Integer Library}, by
+Jim McCann and \ldots Tom Murphy VII? Wait, that's me? {\large \em I already
+wrote this paper?!}
+
+The {\it fluint8} library represents an element of $\mathbb{Z}_{256}$
+(a.k.a.~{\tt uint8}) as a 32-bit float, and provides multiplication,
+addition, subtraction, negation, division, and bitwise functions and,
+or, and exclusive or.
+
+Compared to the approach discussed in Section~\ref{sec:eightbitchoppy}
+using ``choppy functions,'' {\it fluint8} has much more simple and
+sensible implementations of functions like addition:
+
+\begin{lstlisting}
+inline float fu8_add(float a, float b) {
+  float x = a + b;
+  x -= x - 127.5f + 3221225472.0f - 3221225472.0f;
+  return x;
+}
+\end{lstlisting}
+
+The \verb|x -= x...| line applies the corrective factor to implement
+wrap-around, which we previously did using the zero-threshold function.
+Why can it be done so much more simply here? First, {\it fluint8}
+represents $n \in \mathbb{Z}_{256}$ as $n$, so a number like $27$ is
+represented as $27.0$ instead of $-1 + \sfrac{27}{128}$.
+%  This is
+% somewhat less fiddly, since all numbers are positive and roundoff
+% error is easier to come by as values get larger.
+Second, it
+requires that the number be represented {\em exactly} as this value.
+The figures in the paper are somewhat misleading as they are plotted
+only for input values that are already exact integers; if we test
+\verb+fu8_add+ on values like 100.1875 and 11.0703125 we do not get
+111 (Figure~\ref{fig:adderrordetail}). On the other hand, this is a
+very reasonable choice to make; we can simply have a representation
+invariant that only one of these 256 values is used, and preserve that
+invariant with every operation. It won't work great for the continuous
+domain (e.g.~plotting fractals) but is a much better choice for
+discrete data (e.g.~encryption).
 
 \begin{figure}[htp]
-  \includegraphics[width=0.9 \linewidth]{testrom}
+  \begin{center}
+    \includegraphics[width=0.75 \linewidth]{add-error-detail}
+  \end{center}
+  \caption { Error of the {\it fluint8} addition function on general
+    floating point values in [0, 256). This is a detailed zoom of the
+      region $x \in [252, 256)$ and $y \in [0, 4)$, but the rest of
+          the image is almost identical. Each pixel compares the sum
+          of $x$ and $y$ to the expected value ($\lfloor x \rfloor +
+          \lfloor y \rfloor \,\textsf{mod}\, 256$). The top-left pixel in
+          each cell is the case where $x$ and $y$ are integers; we get
+          the correct result (no error). All other pixels are wrong,
+          either too high (green) or too low (red).
+          %
+          Graphic produced using {\tt ImageRGBA} computational
+          {\tt for} loop engine.
+  } \label{fig:adderrordetail}
+\end{figure}
+
+This same approach will work with half-precision floats, as every
+number in [0, 256) can be represented exactly.\footnote{In fact, all
+    integers from -2048 to 2048 are available, so we could consider
+    implementing signed 11-bit numbers in a future {\it flsint11}
+    library.}
+
+Finally, the library uses several operations that are not linear!
+In particular, its implementation of bitwise functions like xor
+perform squaring and multiplication of the two arguments. It
+was not a design goal of {\it fluint8} to use only addition and
+scaling, but it is a design goal today, so we must address that.
+
+\subsection{hfluint8}
+
+half float, hf, l stands for ``linear'' this time
+
+\comment{ OK! Summary to self for later: The tricks in the fluint8
+  paper work for integral values, just like my fluint8.h. The graphs
+  are a bit misleading in this sense. In particular (see old.cc), the
+  endpoints of the intervals for the fmod function are
+
+\begin{lstlisting}
+ c3800000 -> c3800000 (-256 -> -256)
+ bf000080 -> 00000000 (-0.50000762939 -> 0)
+ 437f8001 -> 43800000 (255.50001526 -> 256)
+ 43ffc000 -> 44000000 (511.5 -> 512)
+\end{lstlisting}
+
+So it works great for its purpose, but not if we insist on intervals like [0, 0.125).
+}
+
+\subsection{It's a-fine, Mario!}
+
+\begin{figure}[htp]
+  \begin{center}
+    \includegraphics[width=0.9 \linewidth]{testrom}
+  \end{center}
   \caption{
     Exciting ``game''
   } \label{fig:testrom}
 \end{figure}
 
-Flinuint8
-
-Goedelization?
-
 This also gives us an even more linear chess engine (including
 game tree search and a user interface) by emulating {\tt chessmaster.nes}.
-
-
 
 
 % For posterity, old approaches to IsntZero
@@ -1621,6 +1693,11 @@ Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
   return Fluint8(kept);
 }
 \end{lstlisting}
+
+% Goedelization? ??
+
+\section{Conclusion}
+The professor has been defeated. The dead horse has been beaten.
 
 \bibliography{grad}{}
 \bibliographystyle{plain}
