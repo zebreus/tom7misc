@@ -76,8 +76,6 @@ Fluint8 Fluint8::Minus(Fluint8 x, Fluint8 y) {
   return Fluint8(z - o * HALF256);
 }
 
-// This only works when in canonical form, but it's much
-// faster than the old approach of using Canonicalize!
 Fluint8 Fluint8::RightShift1(Fluint8 x) {
   return Fluint8(RightShiftHalf1(x.h));
 }
@@ -91,7 +89,7 @@ Fluint8 Fluint8::RightShift1(Fluint8 x) {
 
 // Returns the bits (as an integral half in [0, 255]) that are in
 // common between the args, i.e. a & b.
-half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
+half Fluint8::BitwiseAndHalf(Fluint8 a, Fluint8 b) {
   // Note: This can be computed as
   // const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
   static constexpr std::array<half, 8> HALF_POW2 = {
@@ -116,7 +114,7 @@ half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
     // const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
 
     // Multiplication is like AND.
-    // But note that if we tried to do GetCommonBits(z, z) here,
+    // But note that if we tried to do BitwiseAndHalf(z, z) here,
     // we would end up multiplying some function of z by some
     // function of z, which is not linear. So instead of
     // multiplying, we compute "a & b" as "(a + b) >> 1".
@@ -134,11 +132,11 @@ half Fluint8::GetCommonBits(Fluint8 a, Fluint8 b) {
 }
 
 Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
-  return Fluint8(GetCommonBits(a, b));
+  return Fluint8(BitwiseAndHalf(a, b));
 }
 
 Fluint8 Fluint8::BitwiseOr(Fluint8 a, Fluint8 b) {
-  half common_bits = GetCommonBits(a, b);
+  half common_bits = BitwiseAndHalf(a, b);
   // Neither the subtraction nor addition can overflow here, so
   // we can just do this directly without corrections.
   half result = (a.h - common_bits) + b.h;
@@ -147,23 +145,36 @@ Fluint8 Fluint8::BitwiseOr(Fluint8 a, Fluint8 b) {
 }
 
 Fluint8 Fluint8::BitwiseXor(Fluint8 a, Fluint8 b) {
-  half common_bits = GetCommonBits(a, b);
+  half common_bits = BitwiseAndHalf(a, b);
   // XOR is just the bits that the two do NOT have in common.
   half result = (a.h - common_bits) + (b.h - common_bits);
   return Fluint8(result);
 }
 
 
+// PERF: How about ((255 - a) + 1) >> 8?
+// That should be way faster right?
 Fluint8 Fluint8::IsntZero(Fluint8 a) {
+  static constexpr half HALF1 = GetHalf(0x3c00);
+  return Fluint8(HALF1 - IsZero(a).h);
+
+
   // PERF: Might be shorter version of 0F step.
   // PERF: Instead of multiplying in FF step, maybe could
   // just be subtraction fused with first addition of 0F step.
-  return Fluint8(CompressHalf0F(CompressHalfFF(a.h)));
+  // return Fluint8(CompressHalf0F(CompressHalfFF(a.h)));
 }
 
 Fluint8 Fluint8::IsZero(Fluint8 a) {
-  static constexpr half HALF1 = GetHalf(0x3c00);
-  return Fluint8(HALF1 - IsntZero(a).h);
+  static constexpr half H255 = GetHalf(0x5bf8);  // 255.0
+  static constexpr half H1 = GetHalf(0x3c00);  // 1.0
+  half nota = (H255 - a.h);
+  // Now this only overflows if the input was zero.
+  half res = RightShiftHalf1(nota + H1);
+  return Fluint8(res);
+
+  //   static constexpr half HALF1 = GetHalf(0x3c00);
+  // return Fluint8(HALF1 - IsntZero(a).h);
 }
 
 

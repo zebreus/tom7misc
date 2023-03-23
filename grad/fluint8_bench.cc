@@ -161,6 +161,52 @@ static void BenchIf() {
     });
 }
 
+static void BenchIsZero() {
+  Benchmark bench("IsZero", 1000);
+
+  bench.Run([&]() {
+      for (int z = 0; z < 500; z++)
+      for (int j = 0; j < 256; j++) {
+        Fluint8 jj(j);
+
+        Fluint8 c = Fluint8::IsZero(jj);
+        bench.Op();
+        bench.Observe(c);
+      }
+    });
+}
+
+// Compare dynamic and compile-time versions of AND.
+static void BenchAndT() {
+  {
+    Benchmark bench("BitwiseAnd80", 2000);
+
+    bench.Run([&]() {
+      Fluint8 ii(80);
+      for (int z = 0; z < 100; z++)
+      for (int j = 0; j < 256; j++) {
+        Fluint8 jj(j);
+        Fluint8 c = ii & jj;
+        bench.Op();
+        bench.Observe(c);
+      }
+    });
+  }
+
+  {
+    Benchmark bench("BitwiseAndWith80", 2000);
+    bench.Run([&]() {
+      for (int z = 0; z < 100; z++)
+      for (int j = 0; j < 256; j++) {
+        Fluint8 jj(j);
+        Fluint8 c = Fluint8::AndWith<0x80>(jj);
+        bench.Op();
+        bench.Observe(c);
+      }
+    });
+  }
+}
+
 
 int main(int argc, char **argv) {
   AnsiInit();
@@ -171,8 +217,11 @@ int main(int argc, char **argv) {
   BenchPlus();
   BenchAddWithCarry();
   BenchAnd();
-  */
   BenchIf();
+  BenchAndT();
+  */
+
+  BenchIsZero();
 
   return 0;
 }

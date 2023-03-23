@@ -229,7 +229,7 @@ struct Fluint8 {
   half_float::half h;
 
   // Compute bitwise AND.
-  static half GetCommonBits(Fluint8 a, Fluint8 b);
+  static half BitwiseAndHalf(Fluint8 a, Fluint8 b);
 
   static half Canonicalize(half h);
 
@@ -279,7 +279,6 @@ struct Fluint8 {
   }
 
   static half RightShiftHalf4(half xh) {
-    using namespace half_float::literal;
     static constexpr half SCALE = GetHalf(0x2c00);  // 1/16
     static constexpr half OFFSET1 = GetHalf(0x37b5);
     static constexpr half OFFSET2 = GetHalf(0x6630);
@@ -473,7 +472,7 @@ Fluint8 Fluint8::RightShift(Fluint8 x) {
 
 template<uint8_t B>
 Fluint8 Fluint8::AndWith(Fluint8 a) {
-  // As in GetCommonBits, we compute the result directly in [0, 255]
+  // As in BitwiseAndHalf, we compute the result directly in [0, 255]
   // space.
 
   // XXX unroll this so that it's clear that it's compile-time
@@ -496,6 +495,9 @@ Fluint8 Fluint8::AndWith(Fluint8 a) {
       // Otherwise it is zero and contributes nothing to the output.
     }
     // and keep shifting down
+    // PERF: We know we can do larger shifts faster, so we may
+    // be able to do some template tricks that would help when
+    // the constant is sparse.
     aa = aashift;
   }
 

@@ -1376,6 +1376,7 @@ same as the zero-threshold function) but at this point I was happy to just have
 something working, and taking some joy in how absurdly large the functions
 were getting.
 
+\label{sec:cryptmodularaddition}
 The cipher also includes addition and subtraction mod 256. Addition
 and subtraction are already available for half-precision floats, and
 they have faithful behavior, so we just need to implement the wrapping-around
@@ -1516,18 +1517,17 @@ discrete data (e.g.~encryption).
           \lfloor y \rfloor \,\textsf{mod}\, 256$). The top-left pixel in
           each cell is the case where $x$ and $y$ are integers; we get
           the correct result (no error). All other pixels are wrong,
-          either too high (green) or too low (red).
+          either too high (green) or too low (red). The modular addition
+          operation from Section~\ref{sec:cryptmodularaddition} is not
+          pictured for comparison because it would be all white, meaning
+          no error. You can actually imagine it occupies any blank portion
+          of this paper, such as the inner hole of a letter `o,' or the
+          entire back of a page if printed single-sided.
           %
           Graphic produced using {\tt ImageRGBA} computational
           {\tt for} loop engine.
   } \label{fig:adderrordetail}
 \end{figure}
-
-This same approach will work with half-precision floats, as every
-number in [0, 256) can be represented exactly.\footnote{In fact, all
-    integers from -2048 to 2048 are available, so we could consider
-    implementing signed 11-bit numbers in a future {\it flsint11}
-    library.}
 
 Finally, the library uses several operations that are not linear!
 In particular, its implementation of bitwise functions like xor
@@ -1537,7 +1537,154 @@ scaling, but it is a design goal today, so we must address that.
 
 \subsection{hfluint8}
 
-half float, hf, l stands for ``linear'' this time
+The use of nonlinear operations is a problem we will rectify,
+forthwith, but the other ideas are suitable for building a computer.
+In the {\it hfluint8} (for half float linear unsigned int 8-bit)
+library, a \verb+hfluint8+ will be represented by a single
+half-precision floating point number, and always one of the exact
+integral values in [0, 256).\footnote{In fact, all integers from -2048
+    to 2048 are available, so we could consider implementing signed
+    11-bit numbers in a future {\it flsint11} library.}
+
+\begin{lstlisting}
+struct hfluint8 {
+  half h;
+  // ...
+};
+\end{lstlisting}
+
+Let's begin with one helper function:
+
+\begin{lstlisting}
+ static half RightShiftHalf8(half xh) {
+   static constexpr half SCALE = GetHalf(0x1c00);  // 1/256
+   static constexpr half OFFSET1 = GetHalf(0xb7f6);
+   static constexpr half OFFSET2 = GetHalf(0x66b0);
+   return xh * SCALE + OFFSET1 + OFFSET2 - OFFSET2;
+ }
+\end{lstlisting}
+
+If the function is given an integral half \verb+xh+ in $[0, 512)$, it
+  returns \verb+xh >> 8+. This value is always $1$ or $0$. The calls
+  to \verb+GetHalf+ interpet a 16-bit constant as a half, which is
+  useful to be precise (many decimal expressions like $0.1$ are not
+  exactly representable in floating point). I also found that if
+  you use literals like \verb+0.00390625_h+, the code runs much much
+  more slowly because it inhibits some optimizations or perhaps
+  the user-defined literals are parsed at runtime (?!). Aside
+  from wanting to avoid operations like parsing that might not be
+  addition and scaling on halfs, we will struggle with performance
+  of these functions as we use them for real computing. Anyway,
+  we are just dividing by 256 (by multiplying by $\sfrac{1}{256}$)
+  and then adding some mysterious constants to ensure that the
+  result is exactly $1$ or $0$.
+
+Next, we can perform addition:
+
+\begin{lstlisting}
+hfluint8 hfluint8::Plus(hfluint8 x, hfluint8 y) {
+  static constexpr half HALF256 = GetHalf(0x5c00);
+  const half z = x.h + y.h;
+  half o = RightShiftHalf8(z);
+  return hfluint8(z - o * HALF256);
+}
+\end{lstlisting}
+
+As in {\it fluint8} we can simply add the arguments, giving a result
+in $[0, 512)$. The shift function just discussed then allows us to
+  compute $1$ if the value is out of range or $0$ otherwise. We
+  multiply this by a corrective constant (256.0) and subtract that
+  away. So easy.
+
+For all other operations we work on the domain $[0, 256)$. We also have
+a right shift by one bit:
+\begin{lstlisting}
+static half RightShiftHalf1(half xh) {
+  static constexpr half SCALE = GetHalf(0x37fa); // 0.49853515625
+  static constexpr half OFFSET = GetHalf(0x66cd); // 1741.0
+  return xh * SCALE + OFFSET - OFFSET;
+}
+\end{lstlisting}
+
+Right shifting is integer division by two. Roughly we are dividing by
+two and then offsetting to a part of the floating point number line
+where only integers are representable, then offsetting back. However,
+with a constant of exactly $0.5$ some of the rounding would be in the
+wrong direction; the constant $0.49853515625$ just happens to work.
+
+We can shift by multiple places by repeating this operation multiple
+times.
+% Note that we can't do a \verb+for+ loop
+However, the library has direct solutions several other shift distances,
+since this is more efficient than repeating a single shift.
+
+\begin{lstlisting}
+half hfluint8::BitwiseAndHalf(hfluint8 a, hfluint8 b) {
+  half result = GetHalf(0x0000);
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    // Low order bit as a - ((a >> 1) << 1)
+    hfluint8 ashift = RightShift1(a);
+    hfluint8 bshift = RightShift1(b);
+    half a_bit = a.h - LeftShift1Under128(ashift).h;
+    half b_bit = b.h - LeftShift1Under128(bshift).h;
+    // Computes 2^bit_idx.
+    const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
+    const half and_bits = RightShiftHalf1(a_bit + b_bit);
+    result += scale * and_bits;
+
+    // and keep shifting down
+    a = ashift;
+    b = bshift;
+  }
+
+  return result;
+}
+
+\end{lstlisting}
+
+This function shifts each input down 8 times, stripping off
+the low order bit at each step. Note that since we run this
+loop exactly 8 times, it can simply be unrolled, removing
+any whiff of non-linearity, and the constants computed at
+compile time. \verb+LeftShift1Under128(x)+ is just $x + x$
+without any need to worry about wrapping around.
+
+An interesting line is the computation of \verb+and_bits+,
+which is the logical AND of the low-order bit from $a$ and $b$.
+In {\it fluint8} we simply compute \verb+a_bit * b_bit+. This
+has the correct value, but is not linear (observe that if
+we were to compute \verb+x & x+ we would end up squaring a
+function of $x$ here). Instead we compute \verb|(a_bit + b_bit) >> 1|,
+which produces the correct result.
+
+Given this function we can also easily compute OR and XOR:
+
+\begin{lstlisting}
+hfluint8 hfluint8::BitwiseOr(hfluint8 a, hfluint8 b) {
+  half common_bits = BitwiseAndHalf(a, b);
+  half result = (a.h - common_bits) + b.h;
+}
+
+hfluint8 hfluint8::BitwiseXor(hfluint8 a, hfluint8 b) {
+  half common_bits = BitwiseAndHalf(a, b);
+  half result = (a.h - common_bits) + (b.h - common_bits);
+  return hfluint8(result);
+}
+\end{lstlisting}
+
+These subtractions and additions cannot overflow.
+
+It will be common to perform bitwise operations with constants, so
+{\it hfluint8} supports versions with a compile-time constant
+argument, which can skip a bunch of work. These run about $5{}\times$
+faster.
+
+IsZero: Several earlier versions before realizing (while writing
+this paper) that you can do
+(255.0 - a) + 1 and then use the RightShiftHalf1 function we already
+have.
+
+  % hfluenza!!
 
 \comment{ OK! Summary to self for later: The tricks in the fluint8
   paper work for integral values, just like my fluint8.h. The graphs
@@ -1571,7 +1718,7 @@ game tree search and a user interface) by emulating {\tt chessmaster.nes}.
 
 % For posterity, old approaches to IsntZero
 \begin{lstlisting}[language=C]
-Fluint8 Fluint8::IsntZero(Fluint8 a) {
+hfluint8 hfluint8::IsntZero(hfluint8 a) {
   // A simple way to do this is to extract all the (negated) bits
   // and multiply them together. But this would mean multiplying
   // a by itself, and so is not linear.
@@ -1581,9 +1728,9 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
   // and get a number in [0, 4], etc.
 
   half num_ones = (half)0.0f;
-  Fluint8 aa = a;
+  hfluint8 aa = a;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
-    Fluint8 aashift = RightShift1(aa);
+    hfluint8 aashift = RightShift1(aa);
     half a_bit = aa.h - LeftShift1Under128(aashift).h;
     num_ones += a_bit;
     aa = aashift;
@@ -1592,10 +1739,10 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
   ECHECK(num_ones >= (half)0.0f && num_ones <= (half)8.0f);
 
   // now count the ones in num_ones.
-  aa = Fluint8(num_ones);
+  aa = hfluint8(num_ones);
   num_ones = (half)0.0f;
   for (int bit_idx = 0; bit_idx < 4; bit_idx++) {
-    Fluint8 aashift = RightShift1(aa);
+    hfluint8 aashift = RightShift1(aa);
     half a_bit = aa.h - LeftShift1Under128(aashift).h;
     num_ones += a_bit;
     aa = aashift;
@@ -1604,10 +1751,10 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
   ECHECK(num_ones >= (half)0.0f && num_ones <= (half)4.0f);
 
   // and again ...
-  aa = Fluint8(num_ones);
+  aa = hfluint8(num_ones);
   num_ones = (half)0.0f;
   for (int bit_idx = 0; bit_idx < 3; bit_idx++) {
-    Fluint8 aashift = RightShift1(aa);
+    hfluint8 aashift = RightShift1(aa);
     half a_bit = aa.h - LeftShift1Under128(aashift).h;
     num_ones += a_bit;
     aa = aashift;
@@ -1616,10 +1763,10 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
   ECHECK(num_ones >= (half)0.0f && num_ones <= (half)3.0f);
 
   // and again ...
-  aa = Fluint8(num_ones);
+  aa = hfluint8(num_ones);
   num_ones = (half)0.0f;
   for (int bit_idx = 0; bit_idx < 2; bit_idx++) {
-    Fluint8 aashift = RightShift1(aa);
+    hfluint8 aashift = RightShift1(aa);
     half a_bit = aa.h - LeftShift1Under128(aashift).h;
     num_ones += a_bit;
     aa = aashift;
@@ -1634,15 +1781,15 @@ Fluint8 Fluint8::IsntZero(Fluint8 a) {
   //         00         0
   //         01         1
   //         10         1
-  Fluint8 nn(num_ones);
-  return Fluint8(nn.h + RightShift1(nn).h);
+  hfluint8 nn(num_ones);
+  return hfluint8(nn.h + RightShift1(nn).h);
 }
 
-static Fluint8 OldIsZero1(Fluint8 a) {
+static hfluint8 OldIsZero1(hfluint8 a) {
   // We know IsZero returns 1 or 0.
-  // return Fluint8(1.0_h - IsntZero(a).h);
+  // return hfluint8(1.0_h - IsntZero(a).h);
 
-  Fluint8 aa = a;
+  hfluint8 aa = a;
   // true if everything is 1.0 so far
   half res = 1.0_h;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
@@ -1653,11 +1800,11 @@ static Fluint8 OldIsZero1(Fluint8 a) {
     res = RightShiftHalf1(nbit + res);
     // aa = LeftShift<1>(aa);
     // We already have the high bit, so mask it off if necessary
-    aa = Fluint8(aa.h - bit * 128.0_h);
+    aa = hfluint8(aa.h - bit * 128.0_h);
     aa = LeftShift1Under128(aa);
   }
 
-  return Fluint8(res);
+  return hfluint8(res);
 }
 \end{lstlisting}
 
@@ -1666,7 +1813,7 @@ static Fluint8 OldIsZero1(Fluint8 a) {
 
 \begin{lstlisting}[language=C]
   // For cc = 0x01 or 0x00 (only), returns c ? t : 0.
-Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
+hfluint8 hfluint8::If(hfluint8 cc, hfluint8 t) {
   // Multiplying cc * t gives us what we want, but this may
   // violate linearity (e.g.~if the two inputs are the same).
 
@@ -1675,10 +1822,10 @@ Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
   // the ones place of cc.
 
   half kept = GetHalf(0x0000);
-  Fluint8 tt = t;
+  hfluint8 tt = t;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // Low order bit as a - ((a >> 1) << 1)
-    Fluint8 ttshift = RightShift1(tt);
+    hfluint8 ttshift = RightShift1(tt);
     half t_bit = tt.h - LeftShift1Under128(ttshift).h;
     // Computes 2^bit_idx
     const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
@@ -1690,7 +1837,7 @@ Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
     tt = ttshift;
   }
 
-  return Fluint8(kept);
+  return hfluint8(kept);
 }
 \end{lstlisting}
 
