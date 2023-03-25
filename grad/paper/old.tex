@@ -1,0 +1,124 @@
+% For posterity, old approaches to IsntZero
+\begin{lstlisting}[language=C]
+hfluint8 hfluint8::IsntZero(hfluint8 a) {
+  // A simple way to do this is to extract all the (negated) bits
+  // and multiply them together. But this would mean multiplying
+  // a by itself, and so is not linear.
+  //
+  // Instead, do the same but ADD the bits. Now we have a
+  // number in [0, 8]. So now we can do the whole thing again
+  // and get a number in [0, 4], etc.
+
+  half num_ones = (half)0.0f;
+  hfluint8 aa = a;
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    hfluint8 aashift = RightShift1(aa);
+    half a_bit = aa.h - LeftShift1Under128(aashift).h;
+    num_ones += a_bit;
+    aa = aashift;
+  }
+
+  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)8.0f);
+
+  // now count the ones in num_ones.
+  aa = hfluint8(num_ones);
+  num_ones = (half)0.0f;
+  for (int bit_idx = 0; bit_idx < 4; bit_idx++) {
+    hfluint8 aashift = RightShift1(aa);
+    half a_bit = aa.h - LeftShift1Under128(aashift).h;
+    num_ones += a_bit;
+    aa = aashift;
+  }
+
+  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)4.0f);
+
+  // and again ...
+  aa = hfluint8(num_ones);
+  num_ones = (half)0.0f;
+  for (int bit_idx = 0; bit_idx < 3; bit_idx++) {
+    hfluint8 aashift = RightShift1(aa);
+    half a_bit = aa.h - LeftShift1Under128(aashift).h;
+    num_ones += a_bit;
+    aa = aashift;
+  }
+
+  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)3.0f);
+
+  // and again ...
+  aa = hfluint8(num_ones);
+  num_ones = (half)0.0f;
+  for (int bit_idx = 0; bit_idx < 2; bit_idx++) {
+    hfluint8 aashift = RightShift1(aa);
+    half a_bit = aa.h - LeftShift1Under128(aashift).h;
+    num_ones += a_bit;
+    aa = aashift;
+  }
+
+  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)2.0f);
+
+  // Now num_ones is either 0, 1, or 2. Since 1 and 2 is each
+  // represented with a single bit, we can collapse them with
+  // a shift and add:
+  //   num_ones    output
+  //         00         0
+  //         01         1
+  //         10         1
+  hfluint8 nn(num_ones);
+  return hfluint8(nn.h + RightShift1(nn).h);
+}
+
+static hfluint8 OldIsZero1(hfluint8 a) {
+  // We know IsZero returns 1 or 0.
+  // return hfluint8(1.0_h - IsntZero(a).h);
+
+  hfluint8 aa = a;
+  // true if everything is 1.0 so far
+  half res = 1.0_h;
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    // leftmost bit
+    half bit = RightShift<7>(aa).h;
+    half nbit = (1.0_h - bit);
+    // res = res & ~bit
+    res = RightShiftHalf1(nbit + res);
+    // aa = LeftShift<1>(aa);
+    // We already have the high bit, so mask it off if necessary
+    aa = hfluint8(aa.h - bit * 128.0_h);
+    aa = LeftShift1Under128(aa);
+  }
+
+  return hfluint8(res);
+}
+\end{lstlisting}
+
+
+% old approach to If
+
+\begin{lstlisting}[language=C]
+  // For cc = 0x01 or 0x00 (only), returns c ? t : 0.
+hfluint8 hfluint8::If(hfluint8 cc, hfluint8 t) {
+  // Multiplying cc * t gives us what we want, but this may
+  // violate linearity (e.g.~if the two inputs are the same).
+
+  // Could do this by spreading the cc to 0xFF or 0x00 (cc * 255 will
+  // do that) and using AND, but it is faster to just keep consulting
+  // the ones place of cc.
+
+  half kept = GetHalf(0x0000);
+  hfluint8 tt = t;
+  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+    // Low order bit as a - ((a >> 1) << 1)
+    hfluint8 ttshift = RightShift1(tt);
+    half t_bit = tt.h - LeftShift1Under128(ttshift).h;
+    // Computes 2^bit_idx
+    const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
+
+    const half and_bits = RightShiftHalf1(t_bit + cc.h);
+    kept += scale * and_bits;
+
+    // and keep shifting down
+    tt = ttshift;
+  }
+
+  return hfluint8(kept);
+}
+\end{lstlisting}

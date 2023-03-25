@@ -3,6 +3,7 @@ default : grad.pdf
 MAKEPDF=../../pactom/rsvg/rsvg-convert -f pdf
 
 # Note that rsvg-convert fails on cipher.svg; it's converted manually
+# Same for  downshiftbits.pdf
 GRAPHICS=tanh.pdf relu.pdf plus128.pdf grad1.pdf downshift2.pdf boxcar25.pdf times100zoom.pdf grad1minusx.pdf perm16good2.pdf square.pdf basisvec.pdf
 
 CC_LIB=../../cc-lib

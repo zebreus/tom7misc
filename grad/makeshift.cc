@@ -657,6 +657,29 @@ static void MakeIf() {
          (int)distinct.size(), ok ? AGREEN("ok") : ARED("invalid"));
 }
 
+static void PrintIf() {
+  static std::array<half, 8> OFF = {
+    GetHalf(0x77f9), GetHalf(0x7829),
+    GetHalf(0x77fb), GetHalf(0x78e2),
+    GetHalf(0x77fd), GetHalf(0x780b),
+    GetHalf(0x77ff), GetHalf(0x7864),
+  };
+
+  auto StringBits = [](uint8_t zi) {
+      string bits(8, '?');
+      for (int b = 0; b < 8; b++) {
+        bits[b] = (zi & (1 << (7 - b))) ? '1' : '0';
+      }
+      return bits;
+    };
+
+  for (int i = 0; i < 256; i++) {
+    half xh = (half)i;
+    for (const half &h : OFF) xh = xh + h - h;
+    printf("%02x: %s\n", i, StringBits((int)xh).c_str());
+  }
+}
+
 
 int main(int argc, char **argv) {
   AnsiInit();
@@ -664,7 +687,10 @@ int main(int argc, char **argv) {
   // MakeShiftAdd();
 
   // MakeCompress<0x0F>();
-  MakeIf<8>();
+
+  // MakeIf<8>();
+
+  PrintIf();
 
   return 0;
 }

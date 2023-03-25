@@ -1,12 +1,14 @@
 #include "textsvg.h"
 
 #include <unordered_set>
+#include <string>
 
 #include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "bounds.h"
 #include "ansi.h"
+#include "threadutil.h"
 
 #include "grad-util.h"
 #include "expression.h"
@@ -164,6 +166,38 @@ static void PlotSVG(const string &outfile,
   printf("Wrote %s\n", outfile.c_str());
 }
 
+static void PlotSerializedSVG(const string &expfile, const string &svgfile,
+                              double xlo, double xhi,
+                              double ylo, double yhi,
+                              // nominally, inches
+                              double svg_width, double svg_height,
+                              // e.g. in 1/DPI
+                              double precision = 0.00001) {
+  Exp::Allocator alloc;
+  string error;
+  const Exp *exp =
+    Exp::Deserialize(
+        &alloc,
+        Util::ReadFile(expfile),
+        &error);
+  CHECK(exp != nullptr) << expfile << " " << error;
+
+  printf(AWHITE("%s") " is " AYELLOW("%d") " operations.\n",
+         expfile.c_str(),
+         Exp::ExpSize(exp));
+  PlotSVG(svgfile,
+          [exp](half h) {
+            return GradUtil::GetHalf(
+                Exp::EvaluateOn(exp,
+                                GradUtil::GetU16(h)));
+          },
+          xlo, xhi,
+          ylo, yhi,
+          svg_width, svg_height,
+          precision);
+}
+
+
 /*
 static double Tanh(half h) {
   return tanh(h);
@@ -173,8 +207,6 @@ int main(int argc, char **argv) {
   AnsiInit();
 
   HalfStats();
-
-  Exp::Allocator alloc;
 
   PlotSVG("tanh.svg",
           [](half h) { return tanh(h); },
@@ -254,63 +286,25 @@ int main(int argc, char **argv) {
           -0.2, 0.2,
           2.0, 0.4);
 
-  string error;
-  const Exp *perm16good2 =
-    Exp::Deserialize(
-        &alloc,
-        Util::ReadFile("perm16good2.txt"),
-        &error);
-  CHECK(perm16good2 != nullptr) << error;
-
-  printf(AWHITE("perm16good2") " is " AYELLOW("%d") " operations.\n",
-         Exp::ExpSize(perm16good2));
-  PlotSVG("perm16good2.svg",
-          [perm16good2](half h) {
-            return GradUtil::GetHalf(
-                Exp::EvaluateOn(perm16good2,
-                                GradUtil::GetU16(h)));
-          },
-          -1, 1,
-          -1.1, 0.9,
-          2.0, 2.0);
-
-  const Exp *square =
-    Exp::Deserialize(
-        &alloc,
-        Util::ReadFile("square.txt"),
-        &error);
-  CHECK(square != nullptr) << error;
-
-  printf(AWHITE("square") " is " AYELLOW("%d") " operations.\n",
-         Exp::ExpSize(square));
-  PlotSVG("square.svg",
-          [square](half h) {
-            return GradUtil::GetHalf(
-                Exp::EvaluateOn(square,
-                                GradUtil::GetU16(h)));
-          },
-          -2, 2,
-          -0.4, 3.6,
-          4.0, 4.0);
-
-  const Exp *basisvec =
-    Exp::Deserialize(
-        &alloc,
-        "V Pb27d1 Pb4011 T98001 Pc3d92 T3c02118 V Pb4011 T98001 E Tcfff1 V "
-        "Pb23d1 Pb4011 T98001 Pc3d92 T3c02118 T4ffe1 E Ta8001",
-        &error);
-  CHECK(basisvec != nullptr) << error;
-  printf(AWHITE("basisvec") " is " AYELLOW("%d") " operations.\n",
-         Exp::ExpSize(basisvec));
-  PlotSVG("basisvec.svg",
-          [basisvec](half h) {
-            return GradUtil::GetHalf(
-                Exp::EvaluateOn(basisvec,
-                                GradUtil::GetU16(h)));
-          },
-          -1, 1,
-          -0.0125, 0.0125,
-          2.0, 1.0);
+  InParallel(
+      []{
+        PlotSerializedSVG("perm16good2.txt", "perm16good2.svg",
+                          -1, 1,
+                          -1.1, 0.9,
+                          2.0, 2.0);
+      },
+      []{
+        PlotSerializedSVG("square.txt", "square.svg",
+                          -2, 2,
+                          -0.4, 3.6,
+                          4.0, 4.0);
+      },
+      []{
+        PlotSerializedSVG("basisvec.txt", "basisvec.svg",
+                          -1, 1,
+                          -0.0125, 0.0125,
+                          2.0, 1.0);
+      });
 
   /*
   PlotSVG("downshift2.svg",
@@ -330,7 +324,8 @@ int main(int argc, char **argv) {
           // maybe from [-0.5 to 0.5]?
           -0.5, 0.5,
           -0.05, 0.15,
-          1.0, 0.2);
+          1.0, 0.2,
+          0.0000001);
 
   PlotSVG("boxcar25.svg",
           [&table1](half h) {

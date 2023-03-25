@@ -242,7 +242,7 @@ struct Fluint8 {
   }
 
   static half RightShiftHalf1(half xh) {
-    // Hand-made version. We divide, which give us almost the right
+    // Hand-made version. We divide, which gives us almost the right
     // answer, and then round to an integer by shifting up by 1024
     // (where only integers are representable in half precision) and
     // back. The -0.25 is just a fudge factor so that we round in the

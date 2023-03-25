@@ -152,17 +152,9 @@ Fluint8 Fluint8::BitwiseXor(Fluint8 a, Fluint8 b) {
 }
 
 
-// PERF: How about ((255 - a) + 1) >> 8?
-// That should be way faster right?
 Fluint8 Fluint8::IsntZero(Fluint8 a) {
   static constexpr half HALF1 = GetHalf(0x3c00);
   return Fluint8(HALF1 - IsZero(a).h);
-
-
-  // PERF: Might be shorter version of 0F step.
-  // PERF: Instead of multiplying in FF step, maybe could
-  // just be subtraction fused with first addition of 0F step.
-  // return Fluint8(CompressHalf0F(CompressHalfFF(a.h)));
 }
 
 Fluint8 Fluint8::IsZero(Fluint8 a) {
@@ -170,11 +162,8 @@ Fluint8 Fluint8::IsZero(Fluint8 a) {
   static constexpr half H1 = GetHalf(0x3c00);  // 1.0
   half nota = (H255 - a.h);
   // Now this only overflows if the input was zero.
-  half res = RightShiftHalf1(nota + H1);
+  half res = RightShiftHalf8(nota + H1);
   return Fluint8(res);
-
-  //   static constexpr half HALF1 = GetHalf(0x3c00);
-  // return Fluint8(HALF1 - IsntZero(a).h);
 }
 
 
@@ -206,13 +195,6 @@ Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
     GetHalf(0x780b),
     GetHalf(0x77ff),
     GetHalf(0x7864),
-
-    // old way, 9 steps
-    /*
-    GetHalf(0x780e), GetHalf(0x77fd), GetHalf(0x79f9),
-    GetHalf(0x77fb), GetHalf(0x795c), GetHalf(0x77fd),
-    GetHalf(0x7a33), GetHalf(0x77ff), GetHalf(0x7800),
-    */
   };
 
   static constexpr half HALF1 = GetHalf(0x3c00);
@@ -231,17 +213,9 @@ Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
   }
 
   // Now do the dance
-  for (const half &h : COFF) {
-    xh += h;
-    xh -= h;
-  }
-
+  for (const half &h : COFF) xh = xh + h - h;
   xh = (c128 - xh);
-
-  for (const half &h : COFF) {
-    xh += h;
-    xh -= h;
-  }
+  for (const half &h : COFF) xh = xh + h - h;
 
   // 128 - x above was 0 - x in the true case, which
   // negates the value; so flip the sign here. We need

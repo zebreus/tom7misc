@@ -92,6 +92,7 @@ inline float fu8_add(float a, float b) {
   return x;
 }
 
+static constexpr bool FLOOR_OUT = true;
 template<class F>
 static void All(int size, F f) {
   for (int y = 0; y < size; y++) {
@@ -104,6 +105,8 @@ static void All(int size, F f) {
       uint8 y8 = (uint8)fy;
       uint8 x8 = (uint8)fx;
       uint8 s8 = x8 + y8;
+
+      if constexpr (FLOOR_OUT) fs = floorf(fs);
 
       float err = fs - (float)s8;
       f(x, y, err);

@@ -25,6 +25,12 @@
 \usepackage{supertabular}
 \usepackage{enumitem}
 
+% Put a line under figure captions, to better separate them from
+% the text.
+\usepackage{caption}
+\DeclareCaptionFormat{tomlinesep}{#1#2#3\hrulefill}
+\captionsetup[figure]{format=tomlinesep}
+
 % \usepackage[most]{tcolorbox}
 
 % lets me explicitly set a. or 1. etc. as enum label
@@ -311,7 +317,7 @@ gap between representable numbers: Up to 32 for half-precision. But it
 also means that operations whose results can be exactly represented
 have no error; for example adding integral half values less than 512
 will always give an exact integer result, which can be compared using
-==. We will use this later in Section~\ref{sec:sixtyfive}. It is
+==. We will use this later in Section~\ref{sec:fluint}. It is
 neither necessary nor sufficient compare for ``equality'' with some
 ``epsilon.''
 
@@ -505,17 +511,14 @@ The most promising I found was a right shift by two places.
 \includegraphics[width=0.95 \linewidth]{downshift2}
 \end{center}
 
-TODO: Diagrams of other operations
+% Optional TODO: Diagrams of other operations
 
-Shifting is about the cheapest possible thing a processor can do. Its behavior on floating point numbers is interesting,
+Shifting is about the cheapest possible thing a processor can do. Its
+behavior on floating point numbers is interesting:
 
-DIAGRAM: TODO: in illustrator
+\includegraphics[width=0.9 \linewidth]{downshiftbits}
 
-\begin{verbatim}
-[s][e][e][e][e][e][m][m][m] [m] [m] [m] [m] [m] [m] [m]
-[0][0][s][e][e][e][e][m] [m] [m] [m] [m] [m] [m] [m]
-\end{verbatim}
-
+Note the different regions for sign, exponent, and mantissa.
 The sign bit is shifted into the exponent, which means that the output
 is always non-negative (like the rectified linear function) and is
 non-linear (discontinuity at zero, as negative numbers have a much
@@ -1233,8 +1236,7 @@ Within the interval [-1, 1), this function takes on exactly two
 \end{array}
 \]
 
-where $E \times^{n} c$ means $E \times c \times c \times c \ldots$ for $n$ iterations.
-
+\noindent where $E \times^{n} c$ means $E \times c \times c \times c \ldots$ for $n$ iterations.
 Mathematically this is equivalent to this constant function (all $x$s cancel out):
 $$f(x) = \frac{13^{164} \times{} 79^{164}}{2^{1656}}$$
 
@@ -1440,7 +1442,7 @@ says,\footnote{{\it Applied Cryptography}, Second Edition, page 351.}
 ``It is easy to design a block cipher.''
 
 
-\section{Non-linear gameplay} \label{sec:sixtyfive}
+\section{Linear computing}
 Having developed a basis for extracting arbitrary bits, we can express
 any function of a single variable, and we've seen how some other
 functions (like addition mod $2^8$) can be done. At this point, it
@@ -1458,16 +1460,17 @@ make the opposite concession: Let's make a computer that is exciting
 to use, but that makes some (reasonable) ideological concessions so that
 it can do something interesting.
 
-\subsection{Fluint8}
+\subsection{Fluint8} \label{sec:fluint}
 
 First of all, if we want to do some serious computation, 25.8 bytes
 per second isn't going to cut it. To look for performance enhancing
 substances, I perused the back catalog of the world's most prestigious
 conference, SIGBOVIK. There in the 2018 edition, on page 125, I found
 an intriguing paper, {\it The fluint8 Software Integer Library}, by
-Jim McCann and \ldots Tom Murphy VII? Wait, that's me? {\large \em I already
+Drs.~Jim McCann and \ldots Tom Murphy VII? Wait, that's me? {\large \em I already
 wrote this paper?!}
 
+\medskip
 The {\it fluint8} library represents an element of $\mathbb{Z}_{256}$
 (a.k.a.~{\tt uint8}) as a 32-bit float, and provides multiplication,
 addition, subtraction, negation, division, and bitwise functions and,
@@ -1489,48 +1492,59 @@ The \verb|x -= x...| line applies the corrective factor to implement
 wrap-around, which we previously did using the zero-threshold function.
 Why can it be done so much more simply here? First, {\it fluint8}
 represents $n \in \mathbb{Z}_{256}$ as $n$, so a number like $27$ is
-represented as $27.0$ instead of $-1 + \sfrac{27}{128}$.
+represented as $27.0$ instead of, say, $-1 + \sfrac{27}{128}$.
 %  This is
 % somewhat less fiddly, since all numbers are positive and roundoff
 % error is easier to come by as values get larger.
 Second, it
 requires that the number be represented {\em exactly} as this value.
-The figures in the paper are somewhat misleading as they are plotted
+The figures in the {\it fluint8} paper are somewhat misleading as they are plotted
 only for input values that are already exact integers; if we test
 \verb+fu8_add+ on values like 100.1875 and 11.0703125 we do not get
 111 (Figure~\ref{fig:adderrordetail}). On the other hand, this is a
-very reasonable choice to make; we can simply have a representation
+very practical choice to make; we can simply have a representation
 invariant that only one of these 256 values is used, and preserve that
 invariant with every operation. It won't work great for the continuous
 domain (e.g.~plotting fractals) but is a much better choice for
 discrete data (e.g.~encryption).
+Since I like to work at the intersection of Theory, Impractice, and Practice,
+this is appealing!
+
 
 \begin{figure}[htp]
   \begin{center}
     \includegraphics[width=0.75 \linewidth]{add-error-detail}
+     \\[1em]
+    \includegraphics[width=0.75 \linewidth]{add-error-floor}
   \end{center}
-  \caption { Error of the {\it fluint8} addition function on general
+  \caption { {\bf Top}: Error of the {\it fluint8} addition function on general
     floating point values in [0, 256). This is a detailed zoom of the
       region $x \in [252, 256)$ and $y \in [0, 4)$, but the rest of
-          the image is almost identical. Each pixel compares the sum
+          the image is almost identical. Each pixel compares the {\it fluint8} sum
           of $x$ and $y$ to the expected value ($\lfloor x \rfloor +
           \lfloor y \rfloor \,\textsf{mod}\, 256$). The top-left pixel in
           each cell is the case where $x$ and $y$ are integers; we get
           the correct result (no error). All other pixels are wrong,
-          either too high (green) or too low (red). The modular addition
+          either too high (green) or too low (red).
+              \\[1em]
+          {\bf Bottom}: Same with the error of the {\em floor} of {\it fluint8}'s
+          sum function. This shows that the output is usually not even in the
+          correct interval. However, observe the multitude of Triforces!
+              \\[1em]
+          {\bf Nowhere, or a lot of places if you think about it}: The modular addition
           operation from Section~\ref{sec:cryptmodularaddition} is not
           pictured for comparison because it would be all white, meaning
           no error. You can actually imagine it occupies any blank portion
           of this paper, such as the inner hole of a letter `o,' or the
           entire back of a page if printed single-sided.
-          %
-          Graphic produced using {\tt ImageRGBA} computational
+              \\[0.25em]
+          Graphics produced using {\tt ImageRGBA} computational
           {\tt for} loop engine.
   } \label{fig:adderrordetail}
 \end{figure}
 
-Finally, the library uses several operations that are not linear!
-In particular, its implementation of bitwise functions like xor
+But: The library uses several operations that are not linear!
+In particular, its implementation of bitwise functions like XOR
 perform squaring and multiplication of the two arguments. It
 was not a design goal of {\it fluint8} to use only addition and
 scaling, but it is a design goal today, so we must address that.
@@ -1544,7 +1558,7 @@ library, a \verb+hfluint8+ will be represented by a single
 half-precision floating point number, and always one of the exact
 integral values in [0, 256).\footnote{In fact, all integers from -2048
     to 2048 are available, so we could consider implementing signed
-    11-bit numbers in a future {\it flsint11} library.}
+    11-bit numbers in a future {\it hflsint11} library.}
 
 \begin{lstlisting}
 struct hfluint8 {
@@ -1553,15 +1567,21 @@ struct hfluint8 {
 };
 \end{lstlisting}
 
-Let's begin with one helper function:
+Let's begin with one helper function:\footnote{These code samples have
+  been simplified to fit the extremely capricious SIGBOVIK column
+  width requirements. For example, \verb+GetHalf+ is a
+  \verb+constexpr+ function, so these constants are really declared as
+  \verb+static constexpr+ and computed completely at compile time. See
+  the full code and verify that it complies with {\it the rules} at
+  \url{https://sourceforge.net/p/tom7misc/svn/HEAD/tree/trunk/grad/}.}
 
 \begin{lstlisting}
- static half RightShiftHalf8(half xh) {
-   static constexpr half SCALE = GetHalf(0x1c00);  // 1/256
-   static constexpr half OFFSET1 = GetHalf(0xb7f6);
-   static constexpr half OFFSET2 = GetHalf(0x66b0);
-   return xh * SCALE + OFFSET1 + OFFSET2 - OFFSET2;
- }
+half RightShiftHalf8(half xh) {
+  half SCALE = GetHalf(0x1c00);  // 1/256
+  half OFFSET1 = GetHalf(0xb7f6);
+  half OFFSET2 = GetHalf(0x66b0);
+  return xh * SCALE + OFFSET1 + OFFSET2 - OFFSET2;
+}
 \end{lstlisting}
 
 If the function is given an integral half \verb+xh+ in $[0, 512)$, it
@@ -1583,8 +1603,8 @@ Next, we can perform addition:
 
 \begin{lstlisting}
 hfluint8 hfluint8::Plus(hfluint8 x, hfluint8 y) {
-  static constexpr half HALF256 = GetHalf(0x5c00);
-  const half z = x.h + y.h;
+  half HALF256 = GetHalf(0x5c00); // 256.0
+  half z = x.h + y.h;
   half o = RightShiftHalf8(z);
   return hfluint8(z - o * HALF256);
 }
@@ -1599,9 +1619,9 @@ in $[0, 512)$. The shift function just discussed then allows us to
 For all other operations we work on the domain $[0, 256)$. We also have
 a right shift by one bit:
 \begin{lstlisting}
-static half RightShiftHalf1(half xh) {
-  static constexpr half SCALE = GetHalf(0x37fa); // 0.49853515625
-  static constexpr half OFFSET = GetHalf(0x66cd); // 1741.0
+half RightShiftHalf1(half xh) {
+  half SCALE = GetHalf(0x37fa); // 0.4985...
+  half OFFSET = GetHalf(0x66cd); // 1741.0
   return xh * SCALE + OFFSET - OFFSET;
 }
 \end{lstlisting}
@@ -1615,11 +1635,13 @@ wrong direction; the constant $0.49853515625$ just happens to work.
 We can shift by multiple places by repeating this operation multiple
 times.
 % Note that we can't do a \verb+for+ loop
-However, the library has direct solutions several other shift distances,
-since this is more efficient than repeating a single shift.
+However, the library has direct solutions for several other shift
+distances, since this is more efficient than repeating a single shift.
+
+Next, bitwise operations. These are all based on the AND function:
 
 \begin{lstlisting}
-half hfluint8::BitwiseAndHalf(hfluint8 a, hfluint8 b) {
+half BitwiseAndHalf(hfluint8 a, hfluint8 b) {
   half result = GetHalf(0x0000);
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // Low order bit as a - ((a >> 1) << 1)
@@ -1628,18 +1650,16 @@ half hfluint8::BitwiseAndHalf(hfluint8 a, hfluint8 b) {
     half a_bit = a.h - LeftShift1Under128(ashift).h;
     half b_bit = b.h - LeftShift1Under128(bshift).h;
     // Computes 2^bit_idx.
-    const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
-    const half and_bits = RightShiftHalf1(a_bit + b_bit);
+    half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
+    half and_bits = RightShiftHalf1(a_bit + b_bit);
     result += scale * and_bits;
 
     // and keep shifting down
     a = ashift;
     b = bshift;
   }
-
   return result;
 }
-
 \end{lstlisting}
 
 This function shifts each input down 8 times, stripping off
@@ -1647,7 +1667,8 @@ the low order bit at each step. Note that since we run this
 loop exactly 8 times, it can simply be unrolled, removing
 any whiff of non-linearity, and the constants computed at
 compile time. \verb+LeftShift1Under128(x)+ is just $x + x$
-without any need to worry about wrapping around.
+without any need to worry about modular arithmetic, as it
+cannot overflow.
 
 An interesting line is the computation of \verb+and_bits+,
 which is the logical AND of the low-order bit from $a$ and $b$.
@@ -1657,18 +1678,18 @@ we were to compute \verb+x & x+ we would end up squaring a
 function of $x$ here). Instead we compute \verb|(a_bit + b_bit) >> 1|,
 which produces the correct result.
 
-Given this function we can also easily compute OR and XOR:
+Being able to compute the bits in common allows us to easily compute
+OR and XOR:
 
 \begin{lstlisting}
-hfluint8 hfluint8::BitwiseOr(hfluint8 a, hfluint8 b) {
-  half common_bits = BitwiseAndHalf(a, b);
-  half result = (a.h - common_bits) + b.h;
+hfluint8 BitwiseOr(hfluint8 a, hfluint8 b) {
+  half common = BitwiseAndHalf(a, b);
+  return hfluint8((a.h - common) + b.h);
 }
 
-hfluint8 hfluint8::BitwiseXor(hfluint8 a, hfluint8 b) {
-  half common_bits = BitwiseAndHalf(a, b);
-  half result = (a.h - common_bits) + (b.h - common_bits);
-  return hfluint8(result);
+hfluint8 BitwiseXor(hfluint8 a, hfluint8 b) {
+  half common = BitwiseAndHalf(a, b);
+  return hfluint8((a.h - common) + (b.h - common));
 }
 \end{lstlisting}
 
@@ -1676,15 +1697,121 @@ These subtractions and additions cannot overflow.
 
 It will be common to perform bitwise operations with constants, so
 {\it hfluint8} supports versions with a compile-time constant
-argument, which can skip a bunch of work. These run about $5{}\times$
+argument, which can skip a bunch of work. These run about $5{}{\scriptsize \times}$
 faster.
 
-IsZero: Several earlier versions before realizing (while writing
-this paper) that you can do
-(255.0 - a) + 1 and then use the RightShiftHalf1 function we already
-have.
+We also have some operations that are not supported by {\it fluint8}
+but that we will need for the current project. A basic operation is
+to test for zero. \verb|IsZero| returns $1$ if the input is $0$, or
+returns $0$ for any other argument:
 
-  % hfluenza!!
+\begin{lstlisting}
+hfluint8 IsZero(hfluint8 a) {
+  half H255 = GetHalf(0x5bf8);  // 255.0
+  half H1 = GetHalf(0x3c00);  // 1.0
+  half nota = (H255 - a.h);
+  return hfluint8(RightShiftHalf8(nota + H1));
+}
+\end{lstlisting}
+
+For an input of zero, complementing it yields 255, and adding $1$
+overflows to set the 8\th\ bit. So we shift that bit to the ones
+place and are done.\footnote{Earlier iterations of this function
+  were much more complex! For example, $x + 15 + 65248 - 65248 \times 0.03125$
+  maps $0$ to $0$, but any other number to some number in $[1, 15]$,
+  and then a similar function compresses that range down to exactly $0$ or $1$.
+  But sometimes you miss the obvious stuff until you start writing
+  a paper about it for a prestigious conference. No doubt some other
+  functions in here could be improved!}
+
+With this, \verb+Eq(a, b)+ is just \verb+IsZero(a - b)+. We can define
+a number of operations like ``boolean or'' that assume inputs of
+exactly $1$ or $0$; these are straightforward and much faster than
+their bitwise counterparts. We could think of these values as {\it
+  hflbools}, although we still use the {\it hfluint8} type for them.
+
+The main way to use a {\it hflbool} is \verb+If+.
+\verb|If(cc, t)| returns \verb+t+ if \verb+cc+ is exactly $1$,
+returns $0$ if \verb+cc+ is $0$, and is otherwise undefined. A
+simple implementation of this is:
+
+\begin{lstlisting}
+  half H255 = GetHalf(0x5bf8);  // 255.0
+  hfluint8 mask = hfluint8(cc.h * H255);
+  return BitwiseAnd(mask, t);
+\end{lstlisting}
+
+This computes either the mask \verb+00000000+ or \verb+11111111+ and
+uses the existing bitwise AND operation. Bitwise AND is not fast, and
+it does more work than it needs to in this case because we know one of
+the arguments is all zeroes or all ones. It is faster to inline the
+bitwise AND routine but keep checking the ones place. Even better is
+this wild ride:
+
+% // 32656
+% // 34080
+% // 32688
+% // 40000
+% // 32720
+% // 33120
+% // 32752
+% // 35968
+
+\begin{lstlisting}
+hfluint8 If(hfluint8 cc, hfluint8 t) {
+  static std::array<half, 8> OFF = {
+    GetHalf(0x77f9), GetHalf(0x7829),
+    GetHalf(0x77fb), GetHalf(0x78e2),
+    GetHalf(0x77fd), GetHalf(0x780b),
+    GetHalf(0x77ff), GetHalf(0x7864),
+  };
+
+  half HALF1 = GetHalf(0x3c00);  // 1
+  half HALF128 = GetHalf(0x5800);  // 128
+  half HALFNEG1 = GetHalf(0xbc00);  // -1
+  half HALF0 = GetHalf(0x0000);  // 0
+
+  half xh = t.h;
+  half nch = HALF1 - cc.h;
+  half c128 = HALF128 * nch;
+
+  std::array<half, 8> COFF;
+  for (int i = 0; i < 8; i++)
+    COFF[i] = OFF[i] * nch;
+
+  for (const half &h : COFF) xh = xh + h - h;
+  xh = (c128 - xh);
+  for (const half &h : COFF) xh = xh + h - h;
+
+  return hfluint8(xh * HALFNEG1 + HALF0);
+}
+\end{lstlisting}
+
+The 8 constants in \verb+OFF+, when added to and subtracted from a
+{\it hfluint8}, will always round such that the low six bits become
+$0$. To have behavior conditional on $cc$, first we multiply each
+constant by $1 - cc$. This results in either the original constant or
+$0$. If zero, then adding and subtracting them does nothing. Then we
+add and subtract those results, clearing the low six bits, and
+(conditionally, using the same trick of multiplying by the condition)
+subtract from $128$. This clears the top two bits for the range of
+possible values (but may reset low-order bits). Then we add and
+subtract the sequence again, clearing the low six bits again. At the
+end we apply a corrective negation and then add $0$ to avoid
+outputting $-0$ and we're done.
+
+\paragraph{hfluint16.}
+Several other operations are available for {\it hfluint8}, like
+\verb+AddWithCarry+, but we shan't elaborate them all here, lest we
+contract hfluenza. One more concept is needed before we get to the
+application: 16-bit integers. The {\it hfluint16} type is implemented
+as a pair of {\it hfluint8} bytes. We will only need a small number of
+operations: Addition, subtraction, bitwise operations, sign extension
+of {\it hfluint8}, \verb+If+, and stuff like that. These are all
+cleanly implemented in terms of the {\it fluint8} operations like
+\verb+AddWithCarry+.
+
+
 
 \comment{ OK! Summary to self for later: The tricks in the fluint8
   paper work for integral values, just like my fluint8.h. The graphs
@@ -1701,7 +1828,168 @@ have.
 So it works great for its purpose, but not if we insist on intervals like [0, 0.125).
 }
 
-\subsection{It's a-fine, Mario!}
+\subsection{Linear gameplay} \label{sec:sixtyfive}
+
+Now we can build an 8-bit computer. I like to work at the intersection
+of theory, impractice, practice, and entertainment, and the most
+entertaining 8-bit computer is the Nintendo Entertainment System, so
+let's build that. The full NES has many components (video output,
+controllers, sound, RAM, cartridge mappers), and it's not even clear
+what it would mean to implement ``linear'' versions of these. So for
+this project we will replace the CPU, which is a variant of the Motorola
+6502 called the Ricoh 2A03. Each instruction that the CPU executes
+will be done entirely with linear half-precision floating point
+operations. This is done in software emulation, upgrading a version of
+the FCEUX Emulator~\cite{FCEUX} that I forked many years
+ago~\cite{murphy2013first}.
+
+The 2A03 has 8-bit registers {\tt A}, {\tt X}, {\tt Y}, a stack pointer {\tt S}
+and processor flags {\tt P}. Each is represented as a {\it hfluint8}, of course.
+It also has a 16-bit program counter {\tt PC}, which we represent as a {\it hfluint16}.
+Putting aside the many complexities, at each step it reads the byte at
+the program counter, which denotes one of its 256 instructions. It then executes
+the corresponding instruction, which produces new values for the registers
+and advances the program counter a variable amount. For example, a very simple
+instruction is {\tt TAX} ({\tt 0xAA}), which could be implemented like this:
+
+\begin{lstlisting}
+reg_X = reg_A;
+reg_P = (Z_FLAG8 | N_FLAG8) & reg_P;
+hfluint8 zf = IsZero(reg_A) << 1;
+hfluint8 nf = N_FLAG8 & reg_A;
+reg_P = reg_P | nf | zf;
+\end{lstlisting}
+
+It is not implemented like this. Everything gets more complicated. But anyway,
+the {\tt TAX} instruction Transfers (copies) the A register to the X register,
+and then updates the Zero and Negative bits of the flags register. We have all
+of these operations on {\it hfluint8}, so it's just a matter of doing it.
+
+\paragraph{Memory.}
+For instructions that act solely on registers, this approach suffices.
+Most instructions read from or write to memory, including just to read
+additional arguments to the instruction. This is a problem because we
+don't have any kind of branching; we always need to execute the exact
+same sequence of additions and scaling operations. We can work with
+this by computing condition codes: ``Is this write actually happening,
+or are we just computing it because we always have to do the same
+sequence of operations?'' Then a write {\tt addr = val} can be made
+conditional using our {\tt If} operation, like
+
+$${\tt mem}_{\tt addr} = {\tt If}(cc, val) + {\tt If}(1 - cc, {\tt mem}_{\tt addr})$$
+
+This has other problems (for example when the address is not know at
+compile time, which is typical) but the biggest one is that all memory
+accesses on the NES are potentially effectful. This is because various
+things are attached to the memory controller that perform actions when
+addresses are accessed. For example, writing two consecutive bytes to
+{\tt 0x2006} will load them as an address into another chip (the PPU)
+and then writing to {\tt 0x2007} will write bytes into video memory at
+that address. Writing to {\tt 0x4014} will begin a DMA loop that copies
+256 bytes from the main address space to video RAM, suspending the CPU for
+512+ cycles. Reads can have effects as well, and these effects are not
+from a small set because they can include arbitrary hardware in the
+cartridge itself~\cite{murphy2018reverse}!
+
+So here we have a sort of concession: We introduce two primitive operations
+\verb+ReadIf(cc, addr)+ and \verb+WriteIf(cc, addr, val)+. These take
+a {\it hfluint8} condition {\tt cc} (exactly $0$ or $1$), a {\it hfluint16}
+address, and (for writes) a {\it hfluint8} value to write. If the condition
+code is $0$, nothing happens, and an arbitrary value is returned. If $1$,
+the read or write takes place, including its side-effects. This would
+be a realistic model if we implemented a hardware version of this chip,
+which only used floating point operations internally; its hardware pins
+for interfacing with memory would simply include a bit for whether we
+actually want the read or write to happen.\!\footnote{
+  A similar concession is made for interrupts. This is handled at the start of
+  the instruction loop using C code, though all the computation is performed
+  with {\it hfluint8}. Essentially we can think of the interrupt handling
+  as being done in a linear way, but the decision to handle an interrupt
+  instead of executing an instruction being done by ``hardware.''}
+(The actual 2A03 pinout has a ``R/W'' pin, for example.)
+
+\paragraph{Doing it correctly.}
+The remainder is reasonably straightforward given the tools we've already
+built. One challenge is simply not screwing up. 256 instructions is a lot,
+and the original code is extremely awful; it is filled with macro hacks
+that assume specific variable names and values of constants, pirate jokes,
+references to mysterious global variables named stuff like {\tt temp},
+between developers commenting out each other's ``wrong'' code, and so on.
+As I developed the {\it hfluint8}-based emulator, I strove to keep the
+emulator in a working state as often as possible so that I could test it
+against the reference implementation. One technique was to do various
+pieces of code in easy, cheating ways, but to record each time I cheated
+by incrementing a global counter. Each time I replaced reasonable fast
+code with ideologically pure, non-cheating code, which is typically much slower,
+the cheating went down and the runtime went up; see Figure~\ref{fig:cheating}.
+This makes it like a game.
+
+\begin{figure}[htp]
+  TODO: cheating chart
+  \caption{
+    During the development of the emulator, the FPS achieved (blue) versus
+    the number of times the code ``cheats'' due to incomplete implementation (red).
+    Log scale. Honestly there's not much to get from this except that we start
+    with a lot of FPS (3500) and a lot of cheats (65 million) and end with
+    few FPS (0.1) and no cheats. I guess it also shows that this took many
+    iterations to implement. The reason that cheats does not monotonically
+    decrease is that a single cheat (e.g. a {\tt switch} on the instruction byte)
+    can mask the need for hundreds of other cheats.
+  } \label{fig:cheating}
+\end{figure}
+
+Another challenge is that the 2A03 has dozens of undocumented
+instructions with mysterious behavior. Most of these are not used by
+any game in my test suite, which means I run the risk of breaking one
+of these instructions and not knowing. Some of these instructions are
+very weird, since they are essentially the consequence of 6502
+sub-units (designed for implementing other instructions) being
+connected together in ways that are not motivated by useful behavior.
+For example, the {\tt XAA} instruction ({\tt 0x8B}) bitwise-ORs the
+{\tt A} register with {\tt 0xEE} (setting all but two bits), then ANDs
+with the {\tt X} register, then {\tt AND}s with an immediate byte.
+Others are just as weird but much more complex. Since I want the
+emulator to be as complete and correct as possible, I wrote a new
+``game'' that I could use as an additional test ROM
+(Figure~\ref{fig:testrom}). This ``game'' executes dozens of
+undocumented instructions at startup, writing interesting state to RAM
+to create a record of their behavior. The game then displays the first
+half of RAM on screen. This gives some amount of protection against
+regression on these instructions.
+
+\paragraph{Everything, everywhere, all at once.}
+Each instruction is otherwise straightforward to implement. The
+remaining challenge has to do with the instruction dispatch. A natural
+way to write the instruction loop is to do {\tt switch} on the
+instruction byte, but that is not a linear operation. Instead, we
+always execute all of the instructions. Before this, we make 256
+copies of the CPU state (the registers); this is linear because it's
+just copying a finite number of variables. Each copy also has an {\tt
+  active} flag (a {\it hfluint8} with $1$ or $0$). We set this for
+exactly one of these instructions, by computing
+\verb+If(Eq(insn_byte, n))+ for each of the 256 {\tt n}. Then we
+execute each instruction on its copy of the state; it does all its
+computation, and any read or write is additionally conditioned on
+its {\tt active} flag.
+
+We then need to select the instruction that was actually executed
+and copy its state back to the ``real'' CPU state. We do this by
+conditionally clearing each register:
+
+$${\tt reg = If(active, reg)}$$
+
+We then set the real CPU's register to the sum of all of the registers
+from the instruction-specific states. Exactly one (the active one)
+will be nonzero, so we get that value. We use this same technique to
+keep track of how many cycles have elapsed, since various emulator
+timing depends on this.
+
+A bad thing about this approach is that it's more than 256 times slower
+than just executing a single instruction, and this is the main reason
+why the emulator is so slow. A good thing is that there is no cheating.
+Another good thing is that the instructions are all reading and writing
+distinct data, so they can actually be executed in parallel. The final
+benchmarks here are from running on 8 cores.
 
 \begin{figure}[htp]
   \begin{center}
@@ -1709,142 +1997,98 @@ So it works great for its purpose, but not if we insist on intervals like [0, 0.
   \end{center}
   \caption{
     Exciting ``game''
+The ``game''
+cannot be won. It exists only to destroy your mind.
   } \label{fig:testrom}
 \end{figure}
 
-This also gives us an even more linear chess engine (including
-game tree search and a user interface) by emulating {\tt chessmaster.nes}.
+\subsubsection{It's a-fine, Mario!}
 
+The emulator can play any NES game supported by FCEUX (which is basically
+all of them; despite the horrors in this emulator's code, it has great
+compatibility). My benchmark was the first level of the classic
+{\it Super Mario Bros.}, playing sequence of 2210 inputs that completes
+level \verb+1-1+ in 36 seconds. The emulator runs this as fast (or as slow)
+as it can. The original implementation runs at 3500~FPS; after many performance
+tweaks I got my {\it hfluint8} version to run at
 
-% For posterity, old approaches to IsntZero
-\begin{lstlisting}[language=C]
-hfluint8 hfluint8::IsntZero(hfluint8 a) {
-  // A simple way to do this is to extract all the (negated) bits
-  // and multiply them together. But this would mean multiplying
-  // a by itself, and so is not linear.
-  //
-  // Instead, do the same but ADD the bits. Now we have a
-  // number in [0, 8]. So now we can do the whole thing again
-  // and get a number in [0, 4], etc.
+$${\large 0.1154~\textrm{FPS}}$$
 
-  half num_ones = (half)0.0f;
-  hfluint8 aa = a;
-  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
-    hfluint8 aashift = RightShift1(aa);
-    half a_bit = aa.h - LeftShift1Under128(aashift).h;
-    num_ones += a_bit;
-    aa = aashift;
-  }
+In print, the frame-rate is always zero, anyway
+(Figure~\ref{fig:mario}). 8.6 seconds per frame is firmly in ``not
+playable'' territory, but it is tolerable for installation artwork,
+let's say. I have played AAA titles that, at launch, inexplicably had
+comparable framerates on a high-end GPU, and these games were no doubt
+executing a great many non-linear instructions.
 
-  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)8.0f);
-
-  // now count the ones in num_ones.
-  aa = hfluint8(num_ones);
-  num_ones = (half)0.0f;
-  for (int bit_idx = 0; bit_idx < 4; bit_idx++) {
-    hfluint8 aashift = RightShift1(aa);
-    half a_bit = aa.h - LeftShift1Under128(aashift).h;
-    num_ones += a_bit;
-    aa = aashift;
-  }
-
-  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)4.0f);
-
-  // and again ...
-  aa = hfluint8(num_ones);
-  num_ones = (half)0.0f;
-  for (int bit_idx = 0; bit_idx < 3; bit_idx++) {
-    hfluint8 aashift = RightShift1(aa);
-    half a_bit = aa.h - LeftShift1Under128(aashift).h;
-    num_ones += a_bit;
-    aa = aashift;
-  }
-
-  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)3.0f);
-
-  // and again ...
-  aa = hfluint8(num_ones);
-  num_ones = (half)0.0f;
-  for (int bit_idx = 0; bit_idx < 2; bit_idx++) {
-    hfluint8 aashift = RightShift1(aa);
-    half a_bit = aa.h - LeftShift1Under128(aashift).h;
-    num_ones += a_bit;
-    aa = aashift;
-  }
-
-  ECHECK(num_ones >= (half)0.0f && num_ones <= (half)2.0f);
-
-  // Now num_ones is either 0, 1, or 2. Since 1 and 2 is each
-  // represented with a single bit, we can collapse them with
-  // a shift and add:
-  //   num_ones    output
-  //         00         0
-  //         01         1
-  //         10         1
-  hfluint8 nn(num_ones);
-  return hfluint8(nn.h + RightShift1(nn).h);
-}
-
-static hfluint8 OldIsZero1(hfluint8 a) {
-  // We know IsZero returns 1 or 0.
-  // return hfluint8(1.0_h - IsntZero(a).h);
-
-  hfluint8 aa = a;
-  // true if everything is 1.0 so far
-  half res = 1.0_h;
-  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
-    // leftmost bit
-    half bit = RightShift<7>(aa).h;
-    half nbit = (1.0_h - bit);
-    // res = res & ~bit
-    res = RightShiftHalf1(nbit + res);
-    // aa = LeftShift<1>(aa);
-    // We already have the high bit, so mask it off if necessary
-    aa = hfluint8(aa.h - bit * 128.0_h);
-    aa = LeftShift1Under128(aa);
-  }
-
-  return hfluint8(res);
-}
-\end{lstlisting}
-
-
-% old approach to If
-
-\begin{lstlisting}[language=C]
-  // For cc = 0x01 or 0x00 (only), returns c ? t : 0.
-hfluint8 hfluint8::If(hfluint8 cc, hfluint8 t) {
-  // Multiplying cc * t gives us what we want, but this may
-  // violate linearity (e.g.~if the two inputs are the same).
-
-  // Could do this by spreading the cc to 0xFF or 0x00 (cc * 255 will
-  // do that) and using AND, but it is faster to just keep consulting
-  // the ones place of cc.
-
-  half kept = GetHalf(0x0000);
-  hfluint8 tt = t;
-  for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
-    // Low order bit as a - ((a >> 1) << 1)
-    hfluint8 ttshift = RightShift1(tt);
-    half t_bit = tt.h - LeftShift1Under128(ttshift).h;
-    // Computes 2^bit_idx
-    const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
-
-    const half and_bits = RightShiftHalf1(t_bit + cc.h);
-    kept += scale * and_bits;
-
-    // and keep shifting down
-    tt = ttshift;
-  }
-
-  return hfluint8(kept);
-}
-\end{lstlisting}
-
-% Goedelization? ??
+\begin{figure}[htp]
+  \begin{center}
+    \includegraphics[width=0.9 \linewidth]{mario-1800}
+  \end{center}
+  \caption{
+    Mario completing level {\tt 1-1} in 36 seconds of game time,
+    or 19,143 minutes of wall time, using only floating point roundoff
+    error from addition and scaling.
+  } \label{fig:mario}
+\end{figure}
 
 \section{Conclusion}
-The professor has been defeated. The dead horse has been beaten.
+
+Implementing a basic computer (with an extant software library) using
+floating point addition and scaling demonstrates the highly general
+computing power they contain, despite approximating mathematically
+limited operations. We can say informally that they are Turing
+complete. This also renders the previous sections moot; performance
+notwithstanding, we could directly implement the Mandelbrot set, the
+{\tt tanh} transfer function, or AES using this 8-bit computer. It
+also immediately gives us a linear chess engine (including game tree
+search and a user interface) by emulating {\tt chessmaster.nes}; in
+fact this engine already participated in our tournament
+(Figure~\ref{fig:elo})!
+
+\subsection{Future work}
+
+If I remember correctly (and I probably don't), Go\"edel showed that
+an axiomatic system with addition and multiplication can encode
+sufficient facts about the natural numbers to engender {\it
+  incompleteness}~\cite{goedel1930incompleteness}. However, a system
+with only addition (such as Presburger arithmetic) does not have this
+problem. Incompleteness is similar to the halting problem for {\it
+  Turing complete} systems; in that it is easy to encounter given a
+small set of primitives and the canonical demonstration is a
+diagonalization argument. Is floating point addition alone Turing
+complete? Can we prove it? If so, is the fact that real mathematical
+addition and multiplication have this deep incompleteness property
+related to the fact that IEEE-754 multiplication have the deep
+computational property?\footnote{No.} Coincidence?!\footnote{Yes.}
+
+Thinking about the 2A03 implementation, each loop executes the exact
+same set of instructions, with a high degree of parallelism. The use
+of condition codes mimics the way that VLIW machines and modern GPUs
+execute data-parallel programs. This seems to lend itself to highly
+parallel execution on GPUs; in fact the ``Tensor cores'' designed for
+accelerating ML inference can likely execute these floating-point
+operations. Moreover, since the operations being executed are linear,
+the entire computation is trivially differentiable. This means that,
+if you don't think about it too hard (but you need to think about it a
+medium amount of hard, because it is a confusing thought), you could
+use NES instructions as transfer functions in a network, and
+back-propagate errors (giving an error vector towards a machine state
+and controller inputs that would yield the desired output state). This
+of course would not actually work, similar to how automatic
+differentiation does not actually work.
+
+Other applications of this technology are possible, and further study
+is warranted. For example, a common act in video editing is to
+rearrange clips from a source video in alphabetical
+order~\cite{murphy2014arst}. It was formerly believed that this
+required non-linear video editing (aside from ``Already Being Filmed
+In Lexicographic Order Type Videos''). But it seems straightforward to
+use techniques from this paper to perform them linearly.
+
+\subsubsection{Conclusion Conclusion}
+A line has been drawn in the sand. The professor has been defeated. The dead horse has been beaten.
+The paper is finally over.
 
 \bibliography{grad}{}
 \bibliographystyle{plain}

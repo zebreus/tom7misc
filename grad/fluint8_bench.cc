@@ -217,11 +217,11 @@ int main(int argc, char **argv) {
   BenchPlus();
   BenchAddWithCarry();
   BenchAnd();
-  BenchIf();
   BenchAndT();
   */
-
   BenchIsZero();
+
+  BenchIf();
 
   return 0;
 }
