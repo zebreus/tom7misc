@@ -143,12 +143,42 @@ static void AddImage(int size) {
   img.Save("add-error.png");
 }
 
+#if 0
+static void NextAfter() {
+  int64_t n = 0;
+  for (float f = -0.000125f; f < 0.000125; /* in loop */) {
+    if (n % 100000 == 0) printf("%.11g\n", f);
+    if (!std::isfinite(f)) {
+      printf("not finite: %.11g\n", f);
+    }
+    f = std::nextafter(f, 100.0f);
+    n++;
+  }
+  printf("ok\n");
+}
+#endif
+
+static void NextAfter() {
+  int64_t n = 0;
+  for (half f = -0.5_h; f < 1.0_h; /* in loop */) {
+    printf("%.11g\n", (float)f);
+    if (!std::isfinite(f)) {
+      printf("not finite: %.11g\n", (float)f);
+    }
+    f = nextafter((half)f, (half)100.0);
+    n++;
+  }
+  printf("ok\n");
+}
+
+
 int main(int argc, char **argv) {
   printf("16:\n");
   // Test16();
 
   // HowMany16();
-  AddImage(8192);
+  // AddImage(8192);
+  NextAfter();
 
   // printf("32:\n");
   // Test32();

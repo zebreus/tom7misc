@@ -21,7 +21,7 @@
 \usepackage{graphicx}
 % IPA symbols. safe turns off overrides for like \! which I still want
 % \usepackage[safe]{tipa}
-% \usepackage{chessboard}
+\usepackage{chessboard}
 \usepackage{supertabular}
 \usepackage{enumitem}
 
@@ -72,7 +72,7 @@
 \newcommand\xbyx[2]{\ensuremath{#1 {\times} #2}}
 \newcommand\basis{\ensuremath{\textrm{\bf b}}}
 
-\newcommand\comment[1]{}
+\renewcommand\comment[1]{}
 
 % XXX the collection of crap above causes a first page
 % with just "1" on it (probably conflicting packages). This
@@ -104,7 +104,7 @@ press, Verlag-Verlag volume no.~0x40-2A. 1 ULP
 
 \renewcommand\paragraph[1]{\smallskip \noindent{\bf #1}\enspace}
 
-\date{X April 2023}
+\date{0 April 2023}
 
 \maketitle \thispagestyle{empty}
 
@@ -298,6 +298,23 @@ Here I will put a histogram of the values.
   } \label{fig:histogram}
 \end{figure}
 
+Some CPUs have native support for half-precision IEEE, but typically
+via non-standard intrinsics or compiler flags. Since people using
+half-precision are usually doing so in the interests of performance,
+many configurations will ``help'' you by performing practical but
+incorrect optimizations. This is similar to what happens when enabling
+\verb|--ffast-math|, which stands for Final Fantasy AST Math, meaning
+that the abstract syntax tree of your program will be manipulated
+using fantasies about Math that do not apply to IEEE-754, and your
+Final result can be arbitrarily different. For the ideas in this paper
+to work, \verb|--ffast-math| is prohibited. And it will be slow!
+
+Rather than deal with non-standard stuff, I found a nice library
+called {\tt half.h}~\cite{half} that implements IEEE-754 compliant
+half-precision in portable C++. I use this throughout the project
+and it matches the behavior of my GPU. I recommend it for similar
+hijinks.
+
 % Where does floating point imprecision come from?
 \paragraph{Origins of Imprecision.}
 Floating point does have many perversions, but many programmers come
@@ -439,22 +456,11 @@ half precision yields $0.755859375$ (mathematically it would be $(1 -
 error. We set $f(1.0) = 1.0$ by multiplying by the inverse of this
 constant, which is $1.3232421875$.
 
-Why does this result in the zig-zags? Multiplication by $(1 -
-\sfrac{1}{2048})$ affects numbers differently. For constants less than
-$6.1094760895 \times 10^{-5}$, the value is unchanged; we round back up to
-the original value. For all other finite inputs it produces a smaller
-value, but with rounding error that depends on the value. This error
-accumulates and becomes significant with many iterations
-(Figure~\ref{fig:rainbow}). Unlike the previous functions, the output
-here is much smoother (it looks piecewise-linear); in each of these
-segments its derivative is nondegenerate. Of course, this function is
-mathematically linear. It is equivalent to $f(x) = x \times 1.036535$.
-
-\begin{figure}[htp]
+\begin{figure}[tp]
   \includegraphics[width=0.95 \linewidth]{rainbow} \\[1em]
   \includegraphics[width=0.95 \linewidth]{rainbow-error}
   \caption{
-    How repeated multiplying by $1 - \sfrac{1}{2048}$ affects values in
+    How repeatedly multiplying by $1 - \sfrac{1}{2048}$ affects values in
     [0, 1].
     The width of the image is the interval [0, 1], with zero at the left.
     \\[1em]
@@ -475,6 +481,17 @@ mathematically linear. It is equivalent to $f(x) = x \times 1.036535$.
     the \gradone\ transfer function.
   } \label{fig:rainbow}
 \end{figure}
+
+Why does this result in the zig-zags? Multiplication by $(1 -
+\sfrac{1}{2048})$ affects numbers differently. For constants less than
+$6.1094760895 \times 10^{-5}$, the value is unchanged; we round back up to
+the original value. For all other finite inputs it produces a smaller
+value, but with rounding error that depends on the value. This error
+accumulates and becomes significant with many iterations
+(Figure~\ref{fig:rainbow}). Unlike the previous functions, the output
+here is much smoother (it looks piecewise-linear); in each of these
+segments its derivative is nondegenerate. Of course, this function is
+mathematically linear. It is equivalent to $f(x) = x \times 1.036535$.
 
 So now we have a ``good'' candidate function, which we'll call \gradone.
 It is ``good'' in the sense that it is computationally non-linear
@@ -573,8 +590,6 @@ for the forward step (where we round to half after every operation).
 In addition to being simpler, representing intermediate learned
 weights as floats seems to help training approach the final half
 values smoothly, avoiding stalls due to underflow.
-
-TODO: half.h~\cite{half} somewhere above?
 
 \subsection{Neural network experimental results}
 In order to evaluate this transfer function, I ran a suite of
@@ -682,6 +697,18 @@ times as wide to account for the three color channels.
 
 
 Results for CIFAR-10 appear in Figure~\ref{fig:cifar10results}.
+One of the nice things about using standard problems is that we
+can understand how the results stack up against other researchers.
+Consulting a leaderboard of public results~\cite{benenson2023are}
+I see that the worst publicly known accuracy for CIFAR-10 is 75.86\%~\cite{mcdonnell2015enhanced}.
+The best result for the current work, using the sensible Leaky Relu transfer function,
+is 73.11\%. So this is\ldots last place. That's actually pretty good;
+last place is the first winner (when counting from the end). Not to
+mention that we can get into even laster place by using the other
+exotic transfer functions. Even putting aside their aesthetic appeal,
+I feel that these inferior transfer functions are an important
+contribution to the field, as it seems to me that AI is getting too
+good, and too fast! Let's take it easy there, guys!
 
 \paragraph{Chess.}
 This problem attempts to learn a good evaluation function for chess
@@ -691,28 +718,35 @@ database) evaluated by a strong chess engine
 scores: ``Mate in N'' if one side is known to have a series of N moves
 that wins (but ``Mate in 1'' is still better than ``Mate in 4''), or a
 more subjective score, measured in pawns. (The score in pawns can
-seemingly be arbitrarily high, which is kind of funny because how
-could you even have that many pawns on a 64-square board? Here's an
-idea for a SIGBOVIK paper: What's the highest scoring chess position,
-according to Stockfish, for which it cannot deduce mate?)
-% r1r1r2k/p1p1p1p1/PpPpPpPp/1P1P1P1P/BRBRBRBR/RBRBRBRB/BRBRBRBR/K1RBRBRQ w - - 0 1
-% Evaluated as +99.0 at depth 56/99
-Mate is of
-course categorically better than the pawn score, as it is exact.
-Anyway, I squash this score into the range [-1, 1] and that becomes
-the training instance. This network's first layer has 256 \xbyx{3}{3}
-convolutional features, overlapping, as well as 32 \xbyx{1}{1} and
-128 \xbyx{8}{1} and \xbyx{1}{8}. Each of these is measured in terms
-of squares on the board, but each square actually corresponds to 13
-inputs, for the 13 possible things that can be in that square (exactly
-one set to 1.0). We also have some non-square inputs, like the
-castling privileges and en passant state. So it's not just the
-convolutional features but some sparse nodes too. And then we have
-some more layers (you can check out the source code if you really care
-about these details, which I doubt!) and then a final dense layer with
-a single output using the identity transfer function as before. No
-training data augmentation here, but I do normalize the board so that
-it is always white to move.
+seemingly be higher than 64, which is kind of funny because how
+are the pawns gonna fit on a 64-square board? {\large \it DUAL-WIELD?}\,\footnote{
+  \begin{tabular}{p{0.35 \linewidth}p{0.50 \linewidth}}
+    \chessboard[setfen=r1r1r2k/p1p1p1p1/PpPpPpPp/1P1P1P1P/BRBRBRBR/RBRBRBRB/BRBRBRBR/K1RBRBRQ w - - 0 1,tinyboard,showmover=false] &
+    % this table is very confusing to tex, but fortunately we can just use
+    % negative vspace! beautiful!
+    \vspace{-1.05in}
+  Here's an idea for a SIGBOVIK paper: What's the highest scoring chess position,
+  according to Stockfish, for which it cannot deduce mate? One logistical
+  challenge is that it seems to top out at +99, such as on this position
+  (still no mate at depth 84).
+  \end{tabular}
+  })
+%
+Mate is of course categorically better than the pawn score, as it is
+exact. Anyway, I squash this score into the range [-1, 1] and that
+becomes the training instance. This network's first layer has 256
+\xbyx{3}{3} convolutional features, overlapping, as well as 32
+\xbyx{1}{1} and 128 \xbyx{8}{1} and \xbyx{1}{8}. Each of these is
+measured in terms of squares on the board, but each square actually
+corresponds to 13 inputs, for the 13 possible things that can be in
+that square (exactly one set to 1.0). We also have some non-square
+inputs, like the castling privileges and en passant state. So it's not
+just the convolutional features but some sparse nodes too. And then we
+have some more layers (you can check out the source code if you really
+care about these details, which I doubt!) and then a final dense layer
+with a single output using the identity transfer function as before.
+No training data augmentation here, but I do normalize the board so
+that it is always white to move.
 
 For chess we can compute the accuracy, comparing to Stockfish as
 ground truth (Figure~\ref{fig:chessresults}). We can also use the
@@ -886,8 +920,6 @@ subtraction of constants $(E + -{\tt c})$ and expressions $(E + (E *
 bit. Exact division is possible when $\sfrac{1}{{\tt c}}$ is
 representable, and there is almost always a close approximation.
 
-(XXX, can we get an animation approximating the sine function or something?)
-
 This formulation leads to a tempting approach for approximating a
 function iteratively, like a Taylor series. Given a target function
 like $\mathrm{sin}(x)$, we can begin with an approximate expression for it,
@@ -1059,7 +1091,11 @@ fractals. Plus, who's gonna stop me, FROBENIUS??
 \begin{figure}[htp]
   \includegraphics[width=0.95 \linewidth]{bafflebrot}
   \caption{
-    TODO describe
+    The 3D ``bafflebrot'' sliced in half and projected to 2D.
+    This fractal was created with the ``illegal'' number system
+    called the {\it baffling numbers}. They're like the complex
+    numbers but more so. The object is truncated along its
+    $\textrm{j}$ axis, showing a perfect ripe Mandelbrot inside.
   } \label{fig:bafflebrot}
 \end{figure}
 
@@ -1070,11 +1106,10 @@ starting point $c$ is just a baffling number now; everything else is
 the same). I generated a 3D object by defining an implicit surface
 based on whether a sampled point is still inside the set after 25
 iterations, using Marching Cubes~\cite{lorensen1987marching} to
-discretize it. The object is truncated along its $\textrm{j}$ axis,
-showing a perfect ripe Mandelbrot inside. The resulting mesh is 2
-gigabytes and crashes every library that attempts to programmatically
-simplify it. I do admire and encourage its defiant spirit. A
-rendering appears in Figure~\ref{fig:bafflebrot}.
+discretize it. The resulting mesh is 2 gigabytes and crashes every
+library that attempts to programmatically simplify it. I do admire and
+encourage its defiant spirit. A rendering appears in
+Figure~\ref{fig:bafflebrot}.
 
 \medskip
 Drawing fractals is fun and everything, but I grew weary of the
@@ -1092,44 +1127,49 @@ make symmetric ciphers (using, say, a Feistel network), with which we
 can encrypt and decrypt data.
 
 Another thing that professors will tell you about cryptography is that
-good cryptographic functions cannot be linear. (XXX an explanation of
-what ``linear'' means in this context. Like XOR is linear, but we used
-that as an example that has no linear approximation in the NN
-section.) One good reason for this is that even if the function is
-{\em a little bit linear} then linear cryptanalysis can be used to recover
-bits of the key with a lot of example data. Standard advice is to
-alternate both linear (e.g.~xor, or multiplication mod $2^n$) and
-non-linear (e.g.~substitution) operations. (``[Substitutions] are
-generally the only nonlinear step in an algoritm; they are what give a
-block cipher its security.''\footnote{{\it Applied Cryptography},
-  Second Edition, page~349~\cite{schneier1996applied}.} Of course we
-will prove this wrong by developing a good pseudorandom function that
-uses only ``linear'' operations on half-precision floating point
-numbers.
+good cryptographic functions cannot be linear. In this context, linear
+includes in a finite ring like $\mathbb{Z}_{256}$ or (especially)
+$\mathbb{Z}_{2}$, i.e.~bits.\footnote{So XOR is considered linear
+  here, even though we previously observed that there is no linear
+  function on real numbers that fits it!} One good reason for this is
+that even if the function is {\em a little bit linear} then linear
+cryptanalysis can be used to recover bits of the key with a lot of
+example data~\cite{matsui1994linear}. Standard advice is to alternate
+both linear (e.g.~XOR, or multiplication mod $2^n$) and non-linear
+(e.g.~substitution) operations. (``[Substitutions] are generally the
+only nonlinear step in an algorithm; they are what give a block cipher
+its security.''\footnote{{\it Applied Cryptography}, Second Edition,
+  page~349~\cite{schneier1996applied}.}) Of course we will prove this
+adage wrong by developing a good pseudorandom function that uses only
+``linear'' operations on half-precision floating point numbers.
 
-$\uparrow$ XXX Here's a good description of linear cryptanalysis of DES: https://www.apprendre-en-ligne.net/crypto/bibliotheque/PDF/lincrypt.pdf
+% Here's a good readable description of linear cryptanalysis of DES:
+% https://www.apprendre-en-ligne.net/crypto/bibliotheque/PDF/lincrypt.pdf
 
 In terms of goals, pseudorandom number generation has a more clear
 objective than fractals, although it's not so easy to pin down
-formally. We don't even know if such functions exist, mathematically.
-(XXX cite) There exist many functions that look like good pseudorandom
-generators, but that actually have back doors that make them easy to
-invert. (A symmetric encryption algorithm like AES, with the key
-hidden, has this property.)\footnote{And let us never forget that RSA
-  DSI (yes, that RSA) took a \$10 million bribe from the NSA to put a
-  backdoor in one of their pseudorandom number
-  generators~\cite{reuters2013secret}!} Practically speaking, though,
-we can subject the function to a wide variety of statistical tests,
-and if it looks random to every test, then this gives us good
-confidence.\footnote{Truly good cryptographic algorithms are also
-  openly studied by experts. Of course nothing in here is to be used
-  seriously, and not just because these algorithms are ridiculously
-  slow. But I guess if you are stuck on a desert island with only the
-  floating point addition and scaling operations, and a copy of this
-  paper, then it would be a reasonable starting point for encrypting
-  your messages. I do not recommend, if stranded on a desert island,
-  to send encrypted messages: They may not be readable to your
-  potential rescuers!}
+formally. We don't even know if such functions exist,
+mathematically~\cite{haastad1999pseudorandom}, although there are
+generators that are provably secure assuming some other problems are
+actually hard~\cite{blum1986simple} (but these problems are only {\em
+  believed} to be hard). There exist many functions that look like
+good pseudorandom generators, but that actually have back doors that
+make them easy to predict. (Iteration of a symmetric encryption
+algorithm like AES, with the key hidden, has this
+property.)\footnote{And let us never forget that RSA DSI (yes, that
+  RSA) took a \$10 million bribe from the NSA to put a backdoor in one
+  of their pseudorandom number generators~\cite{reuters2013secret}!}
+Practically speaking, though, we can subject the function to a wide
+variety of statistical tests, and if it looks random to every test,
+then this gives us good confidence.\footnote{Truly good cryptographic
+  algorithms are also openly studied by experts. Of course nothing in
+  here is to be used seriously, and not just because these algorithms
+  are ridiculously slow. But I guess if you are stuck on a desert
+  island with only the floating point addition and scaling operations,
+  and a copy of this paper, then it would be a reasonable starting
+  point for encrypting your messages. I do not recommend, if stranded
+  on a desert island, to send encrypted messages: They may not be
+  readable to your potential rescuers!}
 
 Specifically, my goal is to design an algorithm that takes 64 bits of
 data (represented as half-precision floats) to another 64 bits, such
@@ -1390,9 +1430,57 @@ This is straightforward with the zero threshold function;\footnote{Compare to
 we produce a corrective factor if the result is $\geq 1$ or $< -1$ (and zero otherwise).
 We then add those corrective factors produce the remainder we desire.
 
-TODO: nextafter. ``floating point is like JavaScript. Every time you get seriously into it, you will discover some horror that you had never known before.''
+\comment{
+\subsection{Bonus digression: Floating point horrors}
 
-\paragraph{Benchmark results.}
+Floating point is like JavaScript. Even when you think you are approaching
+some level of expertise, every time you get seriously into it, you will discover
+some horror that you had never known before.
+
+Testing the functions in this section, like the basis functions,
+requires looping over the entire domain of a half-open interval like
+$[-1, -1 + \sfrac{1}{128})$. We want to check that the function
+  produces the same result for any of these representations of the
+  corresponding integer. This is a little tricky for floating point
+  numbers; we can't just ``add one'' to get to the next number,
+  and the distance between representable numbers changes depending
+  on where we are on the number line.
+
+Now, I hear you say, floating point has a solution: {\tt nextafter}.
+${\tt nextafter}(f, d)$, you remember, gives the next distinct
+value after $f$ when moving toward the float $d$ (for example +Inf).
+So we can just do a loop like
+
+\begin{lstlisting}
+for (half h = -1.0 + n/128.0;
+     h < -1.0 + (n + 1)/128.0;
+     h = nextafter(h, 1.0/0.0)) {
+  // ...
+}
+\end{lstlisting}
+
+{\large HA!} This does not work. For reasons I cannot understand,
+{\tt nextafter} has a mandate special case that ``if [...] the
+result is subnormal or zero, raises \verb+FE_INEXACT+ and \verb+FE_UNDERFLOW+'',
+which means that {\tt nextafter} cannot be used to enumerate an interval that
+contains zero, or even one that contains valid small floating point
+numbers (subnormals). What? Why?
+Instead, I implemented my own version that works on the binary
+representation; this is slightly annoying because the negative
+numbers come in the opposite order of the positive, and they
+are not adjacent. But it is not as annoying as raising an
+exception!
+
+(Actually, it looks like I was just wrong about this! It does raise
+exceptions but they are silent, so looping does work. I think what
+was going wrong was a classic mistake: I was calling the wrong version
+of nextafter (e.g. the float one), which will not work because the deltas
+are too small. I think this is is because of good ol' C++ argument dependent
+lookup. std::nextafter doesn't call the one from half.h, but using namespace std; nextafter
+does. Cool)
+}
+
+\subsection{Benchmark results}
 To evaluate the quality of the pseudorandom number generator, I used
 the TestU01 ``Big Crush'' suite. This test needs a sample of 1.64
 billion bits, so I actually evaluated it on equivalent code that
@@ -1442,7 +1530,7 @@ says,\footnote{{\it Applied Cryptography}, Second Edition, page 351.}
 ``It is easy to design a block cipher.''
 
 
-\section{Linear computing}
+\section{THE ULTIMATE THROWBACK}
 Having developed a basis for extracting arbitrary bits, we can express
 any function of a single variable, and we've seen how some other
 functions (like addition mod $2^8$) can be done. At this point, it
@@ -1925,7 +2013,7 @@ the cheating went down and the runtime went up; see Figure~\ref{fig:cheating}.
 This makes it like a game.
 
 \begin{figure}[htp]
-  TODO: cheating chart
+  \includegraphics[width=0.95 \linewidth]{fpscheats}
   \caption{
     During the development of the emulator, the FPS achieved (blue) versus
     the number of times the code ``cheats'' due to incomplete implementation (red).
@@ -1996,21 +2084,22 @@ benchmarks here are from running on 8 cores.
     \includegraphics[width=0.9 \linewidth]{testrom}
   \end{center}
   \caption{
-    Exciting ``game''
-The ``game''
-cannot be won. It exists only to destroy your mind.
+    Exciting Nintendo ``game'' showing the first half of the NES RAM after
+    executing a test of dozens of undocumented instructions.
+    The ``game'' cannot be won. It exists only to destroy your mind.
   } \label{fig:testrom}
 \end{figure}
 
 \subsubsection{It's a-fine, Mario!}
 
-The emulator can play any NES game supported by FCEUX (which is basically
-all of them; despite the horrors in this emulator's code, it has great
-compatibility). My benchmark was the first level of the classic
-{\it Super Mario Bros.}, playing sequence of 2210 inputs that completes
-level \verb+1-1+ in 36 seconds. The emulator runs this as fast (or as slow)
-as it can. The original implementation runs at 3500~FPS; after many performance
-tweaks I got my {\it hfluint8} version to run at
+The emulator can play any NES game supported by FCEUX (which is
+basically all of them; despite the horrors in this emulator's code, it
+has great compatibility). My benchmark was the first level of the
+classic {\it Super Mario Bros.}, playing sequence of 2210 inputs that
+completes level \verb+1-1+ in 36 seconds. The emulator runs this as
+fast (or as slow) as it can. Normal frame rate is 60~FPS. The original
+implementation runs at 3500~FPS; after many performance tweaks I got
+my {\it hfluint8} version to run at
 
 $${\large 0.1154~\textrm{FPS}}$$
 
@@ -2061,6 +2150,10 @@ complete? Can we prove it? If so, is the fact that real mathematical
 addition and multiplication have this deep incompleteness property
 related to the fact that IEEE-754 multiplication have the deep
 computational property?\footnote{No.} Coincidence?!\footnote{Yes.}
+
+If not addition alone, the FMA (fused multiply-add) instruction very
+likely suffices, as it performs both a multiplication and addition.
+This makes sense, as the equation $F = MA$ is fundamental to physics.
 
 Thinking about the 2A03 implementation, each loop executes the exact
 same set of instructions, with a high degree of parallelism. The use
