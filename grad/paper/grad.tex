@@ -117,7 +117,8 @@ press, Verlag-Verlag volume no.~0x40-2A. 1 ULP
 
 Imagine you are my professor. Maybe you actually were my professor, in
 which case you may already be sweating before I say any more. The
-subject matter is Neural Networks. You draw the
+subject matter is Neural Networks. You draw an illustration on the
+board with a node's inputs, and its output via a transfer function.
 
 ``Now this transfer function can be almost anything. Typically it
 would be something like the hyperbolic tangent, which looks like this.
@@ -151,7 +152,7 @@ don't have distributivity, commutativity, etc.''
 
 ``Uh. I think that's technically true, but for all practical purposes \ldots''
 
-``What about *im*practical purposes?''
+``What about {\em im}practical purposes?''
 
 You vigorously strangle me, and I die.
 
@@ -180,40 +181,43 @@ digressions. By studying these functions we'll see that they are
 almost arbitrarily rich, and conclude with a demonstration of their
 completeness in the field of Plumbing.
 
-TODO intro: We'll develop a better understanding of where floating point inaccuracy comes from, and how to get it quickly, and how to use it for our benefit.
-
 \section{A refresher on neural networks}
 Let's repeat the professor's lesson. This section is easily skippable
 if you are a plucky student who thinks they already know everything.
 At a high level, a NN is a way of implementing a numeric function
 (takes a bunch of numbers as input, and gives a bunch of numbers as
-output). The network consists of a number of {\it layers}, where the first
-layer is the input and the last layer is the output.
+output). The network consists of a number of {\it layers}, where the
+first layer is the input and the last layer is the output. Each layer
+is an array of nodes. Here is a simple three-layer network with some
+of the nodes labeled:
 
-TODO DIAGRAM
+\begin{center}
+\includegraphics[width=0.65 \linewidth]{neural-network}
+\end{center}
 
-The numbers that fill in each layer are its {\it activations}. Each
-layer's activations are computed from (just) the previous layer,
-according to a formula:
+The numbers that fill in each layer are its {\it activations} (here some
+of these values are labeled {\sf a}, {\sf b}, \ldots). Each
+layer's activations are computed from (just) the previous layer. Looking
+at the bold portion in the example, the value of {\sf e} is given as
+%
+% $$a_i = TF(w_{1i} \times p_1 + \ldots w_{ni} \times p_n + b_i)$$
+$$\textsf{e} = TF(w_{0} \times \textsf{a} + w_{1} \times \textsf{b} + w_{2} \times \textsf{c} + w_{3} \times \textsf{d} + \textsf{bias})$$
 
-$$a_i = TF(w_{1i} * p_1 + \ldots w_{ni} * p_n + b_i)$$
-
-Where $p_j$ is the activation of the $j$th node on the previous layer,
-and $w_{ji}$ is the weight parameter, and $b_i$ is the bias parameter.
-The weight and bias parameters are learned during the training of the
-neural network, but just become constants when using the NN to compute
-its output.
+The multiplicative weight ($w_i$) and additive bias (\textsf{bias}) parameters are
+learned during the training of the neural network, but just become
+constants when using the NN to compute its output.
 
 $TF$ is the transfer function, which is of particular interest in this
 project. Classically, the transfer function was some kind of sigmoid.
 The {\tt tanh} function pictured in the introduction is a good example
-of a sigmoid. The intuition behind this is that, thinking about $a_i$
+of a sigmoid. The intuition behind this is that, thinking about a node
 as some kind of neuron, the neuron ``fires'' (activates) with some
 probability. This probability gets higher as its input values get
-larger (but note that weights can be negative, so upstream neurons can
-also have an inhibitory effect). But since it is a probability, the
-% XXX ok but tanh actually outputs [-1,1]
-value must be in [0, 1]; the transfer function ensures this.
+larger, but can't be higher than 1. Note that weights can be negative,
+so upstream neurons can have an inhibitory effect. In fact it is
+frequently useful for neurons to ``negatively fire'' (outputting -1).
+The {\tt tanh} function clamps the result symmetrically to $(-1, 1)$
+rather than a probability.
 
 \paragraph{Differentiability.}
 Another important property of the transfer function is that it be
@@ -234,13 +238,13 @@ including extremely simple ones. The most popular transfer function in
 \includegraphics[width=0.33 \linewidth]{relu}
 \end{center}
 
-This one is extremely easy to implement (\verb+x < 0 ? 0 : x+), is fast
-and seems to work very well, possibly because its derivative is
+This one is extremely easy to implement (\verb+x < 0 ? 0 : x+), is
+fast and seems to work very well, possibly because its derivative is
 significant (one) on the entire positive side. (In contrast, sigmoids
 tend to get ``stuck'' because of their saturating behavior; their
-derivatives become nearly zero.) Note that it is not actually
-differentiable (discontinuity at zero) but ``for all practical
-purposes'' it is differentiable.
+derivatives become nearly zero when activations are high.) Note that
+it is not actually differentiable (discontinuity at zero) but ``for
+all practical purposes'' it is differentiable.
 
 The (only?) apparently essential quality of the transfer function is
 that it be non-linear. If it is instead of the form $TF(x) = mx + b$,
@@ -249,7 +253,7 @@ linear functions of linear functions (weighted sum) are linear. This
 causes the entire NN to be a linear function. It is well known that a
 linear function ``cannot'' represent some other simple functions, such
 as XOR.
-
+%
 $$\nexists m,n,b.\,\, XOR(x, y) \approxeq m x + n y + b$$
 % FORMULA: Not exists m n b, such that $XOR(x, y) \approxeq m x + n y + b$
 
@@ -258,10 +262,21 @@ learn even a simple function like XOR. Many problems we want to learn
 are in fact much more complicated.
 
 \section{A fine terminological issue}
-affine vs linear
+My smart math friend Jason refers to a function like $f(x) = mx + b$
+pejoratively as ``high school linear.'' Depending on what class you're
+in, this may formally be an {\it affine} function because of the bias
+term $b$.\footnote{In these contexts, a linear function must obey $f(0 \times x) = 0 \times f(x)$,
+so it must be zero at zero.} Here I use ``linear'' to mean a polynomial
+of degree $\leq 1$. If you wanna perjorate me as being in high school,
+so be it.
 
-(Here we need to clarify exactly what operations we allow!) THE RULES
-
+\paragraph{The Rules.}
+To be precise, we will allow addition and scaling by constants. When
+we have a ``linear'' function of multiple variables, these variables
+can be individually scaled and added, but not multiplied. So for
+a function like $f(x, y, z) = x + 3y - 2z + 4$ is allowed, as is
+anything mathematically equivalent to it (like $f(x, y, z) = 2x + 4 + 2y - 2z - x + y - 0$).
+$f(x, y, z) = xy + z$ is not permitted.
 
 \section{Half-precision IEEE-754 floating point}
 In this project we'll abuse floating point inaccuracy to create
@@ -292,13 +307,21 @@ are representable. 65504 is the largest finite number, and up here,
 only multiples of 32 are available.
 
 \begin{figure}
-FIGURE: HISTOGRAM
+  \begin{center}
+    \includegraphics[width=0.65 \linewidth]{histo}
+  \end{center}
 \caption{
-Here I will put a histogram of the values.
+  Histogram of how many values are representable along the
+  number line for half-precision floating point, showing
+  their logarithmic spacing. The x axis
+  ranges from -256 to 256. There are a significant number of
+  values outside this range (clamped to the left and right
+  edge), but it is easy to see that most of the values are
+  clustered near the origin.
   } \label{fig:histogram}
 \end{figure}
 
-Some CPUs have native support for half-precision IEEE, but typically
+Some CPUs have native support for half-precision IEEE-754, but typically
 via non-standard intrinsics or compiler flags. Since people using
 half-precision are usually doing so in the interests of performance,
 many configurations will ``help'' you by performing practical but
@@ -371,7 +394,7 @@ get a function that takes values in [-1, 1] to values in [-1, 1], we
 want to first add a constant (giving us perhaps a large value) and
 then add a negative constant, bringing us back in range. For example,
 the constant 128 gives us the function
-
+%
 $$f(x) = x + 128.0 - 128.0$$
 
 This is of course mathematically the same as $f(x) = x$ (the
@@ -402,8 +425,8 @@ discontinuities, where it is undefined. We do test this approach
 (with the constant 64.0) later, though.
 
 Scaling gives similar results. Consider
-
-$$f(x) = x * 100.0 * (1.0 / 100.0)$$
+%
+$$f(x) = x \times 100.0 \times (1.0 / 100.0)$$
 
 In this project we never actually divide (although this would not
 violate linearity) since most floating point numbers have approximate
@@ -436,10 +459,10 @@ the input by a number very close to one. Here's what happens if you
 multiply the input by $0.99951171875$ (which is the next number
 smaller than one, equal to $1 - \sfrac{1}{2048}$) five hundred times,
 and then scale back at the end:
-
+%
 \[
 \begin{array}{rcl}
-  f(x) & = & x * (1 - \sfrac{1}{2048}) * (1 - \sfrac{1}{2048}) * \ldots \textrm{500 times} \ldots * \\
+  f(x) & = & x \times (1 - \sfrac{1}{2048}) \times (1 - \sfrac{1}{2048}) \times \ldots \textrm{500 times} \ldots \times \\
   \, & \, & 1.3232421875$$
 \end{array}
 \]
@@ -456,9 +479,11 @@ half precision yields $0.755859375$ (mathematically it would be $(1 -
 error. We set $f(1.0) = 1.0$ by multiplying by the inverse of this
 constant, which is $1.3232421875$.
 
-\begin{figure}[tp]
-  \includegraphics[width=0.95 \linewidth]{rainbow} \\[1em]
-  \includegraphics[width=0.95 \linewidth]{rainbow-error}
+\begin{figure}[t!p]
+  \begin{center}
+    \includegraphics[width=0.85 \linewidth]{rainbow} \\[1em]
+    \includegraphics[width=0.85 \linewidth]{rainbow-error}
+  \end{center}
   \caption{
     How repeatedly multiplying by $1 - \sfrac{1}{2048}$ affects values in
     [0, 1].
@@ -509,8 +534,58 @@ we can perform the 501 multiplications and get the same result.)
 \paragraph{Differentiating.}
 Speaking of training, in order to train a neural network using
 stochastic gradient descent, we need to be able to evaluate the
-derivative of the transfer function at any point.
- XXX TODO EXPLAIN IT
+derivative of the transfer function at any point. We use that
+derivative to decide what direction to move the parameters (it gives
+us the ``gradient'' that we ``descend'') as we propagate errors back
+through the network. There is an annoyance here, or if you like, an
+opportunity for a trick. We typically store the activation of each
+node, which is the {\em output} of the transfer function, but the
+derivative of a function is normally described in terms of the {\em
+  input} (for example we say if $f(x) = x^2$ then $f'(x) = 2x$). We
+could store both the input and output for this step, or store only the
+input and recreate the outputs by running the transfer function. But
+the trick: We can compute the derivative as function of the output.
+For $f(x) = x^2$ we could say $f'(f(x)) = 2\sqrt{x}$. Oops! That
+doesn't actually work for $x^2$ because the square root could
+either be negative or positive, and the derivative is different
+depending on which one it is. In order for this trick to work,
+the transfer function has to be injective.\footnote{Or at least
+  when $f(x_1) = f(x_2)$, $f'(x_1) = f'(x_2)$. For the rectified
+  linear unit, for example, all negative inputs are mapped to zero.
+  But the derivative is also just zero in this region.}
+Fortunately this is the case for the classic transfer functions,
+and this trick is well known so you don't even need to do any math;
+you just look it up.
+
+\begin{figure}
+  \begin{center}
+    \includegraphics[width=0.65 \linewidth]{grad1oscilloscope}
+  \end{center}
+  \caption{
+    Computed derivative (blue) of the \gradone\ function. Since we need
+    the derivative in terms of \gradone's {\em output}, the
+    derivative is oriented along the y axis; each blue dot's $x$ coordinate
+    gives the derivative at the point on the black line that shares a $y$
+    coordinate. It's an oscilloscope!
+  } \label{fig:grad1oscilloscope}
+\end{figure}
+
+For new transfer functions like \gradone, we need to figure something
+out. This function does appear injective if we squint at it, although
+it is not really injective if you zoom way in: There are
+some distinct inputs that result in the same output due to rounding.
+But this is true for almost all floating-point functions already.
+I'll be damned if I can come up with an analytic derivative for this
+thing, though. At best it would be some piecewise linear thing, requiring
+some table. Since our domain is only 16-bit, it is completely practical
+to just table the entire derivative (keyed by the output value, as we need).
+I do this programmatically. We do not want the derivative to reflect
+the step function that we see at very fine scales (the derivative should
+never be 0 for this function, for eaxmple), so I use a lowpass
+filter. The result looks good, oscillating between two different slopes
+as expected (Figure~\ref{fig:grad1oscilloscope}). The derivative
+is loaded into GPU memory during training and the table lookups are
+plenty fast.
 
 \subsection{Bonus digression: Downshift}
 Having freed myself from needing to ``do math'' in order to
@@ -522,7 +597,8 @@ implies comparison and branching (although probably most processors
 can do this with a conditional move). Because the floating point
 format is packed with fields that represent different things, many
 simple operations on its bits have interesting non-linear behavior.
-The most promising I found was a right shift by two places.
+The most promising I found was a right shift by two places. It looks
+like this:
 
 \begin{center}
 \includegraphics[width=0.95 \linewidth]{downshift2}
@@ -563,7 +639,7 @@ Unfortunately, while my GPU supports half-precision math natively, and
 OpenCL supports half-precision operations as an
 extension~\cite{openclextensions}, this extension is somehow not
 supported (??) by my drivers, perhaps because OpenCL is so thoroughly
-deprecated. It does support half precision as a *storage* format,
+deprecated. It does support half precision as a {\em storage} format,
 which allows you to write a full-precision float to a 16-bit value
 (rounding to half) or read a 16-bit half into a float (all half values
 can be represented exactly in full precision). So with this one
@@ -609,8 +685,6 @@ The transfer functions are:
 \item {\bf identity}: The function $f(x) = x$. This is an important comparison because it shows us what a ``true'' linear (both mathematically and computationally) network is capable of.
 \end{itemize}
 
-TODO: Describe derivatives above?
-
 \paragraph{Flattened models.}
 For the transfer functions that are mathematically linear, we can also
 compute the equivalent linear model. This just consists of a single
@@ -654,7 +728,9 @@ trick~\cite{kingma2014adam}, which does give me much better results
 than plain SGD in my experiments.
 
 \begin{figure}[htp]
-  \input{mnist}
+  \begin{center}
+    \input{mnist}
+  \end{center}
   \caption{
     Results on the standardized MNIST data set. Accuracy is the
     fraction of results from the held-out test data for which the
@@ -663,7 +739,9 @@ than plain SGD in my experiments.
 \end{figure}
 
 \begin{figure}[htp]
-  \includegraphics[width=0.9 \linewidth]{mnist-bug}
+  \begin{center}
+    \includegraphics[width=0.9 \linewidth]{mnist-bug}
+  \end{center}
   \caption{
     Bug.
   } \label{fig:mnistbug}
@@ -687,7 +765,9 @@ except that in the first convolutional layer, each window is three
 times as wide to account for the three color channels.
 
 \begin{figure}[htp]
-  \input{cifar10}
+  \begin{center}
+    \input{cifar10}
+  \end{center}
   \caption{
     Results on the standardized CIFAR10 data set. As with MNIST,
     accuracy is the fraction of results from the held-out test
@@ -728,12 +808,12 @@ are the pawns gonna fit on a 64-square board? {\large \it DUAL-WIELD?}\,\footnot
   Here's an idea for a SIGBOVIK paper: What's the highest scoring chess position,
   according to Stockfish, for which it cannot deduce mate? One logistical
   challenge is that it seems to top out at +99, such as on this position
-  (still no mate at depth 84).
+  (still no mate at depth 89).
   \end{tabular}
   })
 %
 Mate is of course categorically better than the pawn score, as it is
-exact. Anyway, I squash this score into the range [-1, 1] and that
+exact. Anyway, I squash this score into the range $[-1, 1]$ and that
 becomes the training instance. This network's first layer has 256
 \xbyx{3}{3} convolutional features, overlapping, as well as 32
 \xbyx{1}{1} and 128 \xbyx{8}{1} and \xbyx{1}{8}. Each of these is
@@ -798,7 +878,9 @@ floating point addition and scaling! We could make this even more
 ideologically pure using techniques from Section~\ref{sec:sixtyfive}.
 
 \begin{figure}[htp]
-  \input{chess}
+  \begin{center}
+    \input{chess}
+  \end{center}
   \caption{
     Results of learning Stockfish's position evaluation function.
     Stockfish scores are normalized to a [-1, 1] scale, and loss
@@ -813,7 +895,9 @@ ideologically pure using techniques from Section~\ref{sec:sixtyfive}.
 \begin{figure}[htp]
   % This is the output of elo.exe but I manually inverted the
   % background colors to make it print better.
-  \includegraphics[width=\linewidth]{elo}
+  \begin{center}
+    \includegraphics[width=\linewidth]{elo}
+  \end{center}
   \caption{ Results of a chess tournament. Players include ones based
     on the learned position evaluation with different transfer
     functions; these players simply take the move that results in the
@@ -835,19 +919,21 @@ ideologically pure using techniques from Section~\ref{sec:sixtyfive}.
 
 \paragraph{What transfer function is best?}
 The results on each of these problems are similar: The ``leaky
-rectified'' transfer function is generally best or close to best.
-The identity transfer function, which yields a simple linear model,
-is generally worst or close to worst. The sigmoid functions are
-all over the place. The experimental \downshifttwo\ function is
-generally bad, perhaps because its output is strictly positive or
-it has such a small dynamic range. The small amount of nonlinearity
-introduced by \plussixtyfour\ does seem to give it a small edge
-over the identity, but its lack of an interesting derivative and
-the fact that it only produces a small number of output values seem
-to be limiting. Importantly, the \gradone\ function---the
-centerpiece of the first third of this paper---performs decently on
-all problems. It clearly outperforms the linear models, despite
-being ``linear.''
+rectified'' transfer function is generally best or close to best. The
+identity transfer function, which yields a simple linear model, is
+generally worst or close to worst. The sigmoid functions are all over
+the place. It is known that they are prone to vanishing gradients in
+deep networks, and I may simply have unfavorable hyperparameter
+settings for them. The experimental \downshifttwo\ function is
+generally bad, perhaps because its output is strictly positive or it
+has such a small dynamic range. Its shape also seems prone to the
+vanishing gradient problem. The small amount of nonlinearity
+introduced by \plussixtyfour\ does seem to give it a small edge over
+the identity, but its lack of an interesting derivative and the fact
+that it only produces a small number of output values seem to be
+limiting. Importantly, the \gradone\ function---the centerpiece of the
+first third of this paper---performs decently on all problems. It
+clearly outperforms the linear models, despite being ``linear.''
 
 It is also interesting to compare the flattened versions of the linear
 transfer functions. These are the computed (mathematically) equivalent
@@ -878,9 +964,9 @@ mathematical operation, then round), they preserve monotonicity: If $x
 form of the function to a series of additions and (positive) scaling.
 There are other expressions that are mathematically linear but don't
 take that form; for example:
-
+%
 % FIXME XXX TODO
-
+%
 $$f(x) = x + 0.25 - x$$
 
 This is mathematically equivalent to $f(x) = 0.25$, but with floating point, it
@@ -907,15 +993,15 @@ general we'll consider expressions of this form:
 \[
 \begin{array}{rrl}
 E & ::= & x              \\
-  &  |  & E * {\tt c}    \\
+  &  |  & E \times {\tt c}    \\
   &  |  & E + {\tt c}    \\
   &  |  & E + E          \\
 \end{array}
 \]
 
 Where $x$ is the function variable, and {\tt c} is one of the 63,488
-finite half-precision constants. We can derive negation $(E * -1)$ and
-subtraction of constants $(E + -{\tt c})$ and expressions $(E + (E *
+finite half-precision constants. We can derive negation $(E \times -1)$ and
+subtraction of constants $(E + -{\tt c})$ and expressions $(E + (E \times
 -1))$ since every number has an exact negation by flipping its sign
 bit. Exact division is possible when $\sfrac{1}{{\tt c}}$ is
 representable, and there is almost always a close approximation.
@@ -995,7 +1081,9 @@ cross-pollinated rounding. Professors take note: The complex numbers
 do provide some refuge!
 
 \begin{figure}[htp]
-  \includegraphics[width=0.95 \linewidth]{squarebrot}
+  \begin{center}
+    \includegraphics[width=0.95 \linewidth]{squarebrot}
+  \end{center}
   \caption{
     A garbage ``fractal'' that results from trying to approximate
     squaring of complex numbers using linear complex operations. Alas, it
@@ -1013,7 +1101,9 @@ together:
 \end{center}
 
 \begin{figure}[htp]
-  \includegraphics[width=0.95 \linewidth]{perm16frac}
+  \begin{center}
+    \includegraphics[width=0.95 \linewidth]{perm16frac}
+  \end{center}
   \caption{
     A fractal made from iterating a ``linear'' function $f$. The color
     is the magnitude of $z_{256}$ with $z_i = f(z_{i-1}) \times c$.
@@ -1089,7 +1179,9 @@ resulting algebra is not associative\footnote{Or else is equivalent to
 fractals. Plus, who's gonna stop me, FROBENIUS??
 
 \begin{figure}[htp]
-  \includegraphics[width=0.95 \linewidth]{bafflebrot}
+  \begin{center}
+    \includegraphics[width=0.95 \linewidth]{bafflebrot}
+  \end{center}
   \caption{
     The 3D ``bafflebrot'' sliced in half and projected to 2D.
     This fractal was created with the ``illegal'' number system
@@ -1186,15 +1278,17 @@ different byte using a table (this is the mathematically non-linear
 step). Then, the 64 bits are permuted. Finally, some of the bytes are
 modified additively. An illustration appears in Figure~\ref{fig:cipher}.
 
-\begin{figure}
-\includegraphics[width=\linewidth]{cipher}
-\caption{The substitution-permutation network that forms a half decent
-  pseudorandom number generator. The same substitution (``s-box'') is
-  applied to each byte. Then the 64 bits are permuted. Finally, bytes
-  are combined with modular addition and subtraction. This function
-  passes the ``Big Crush'' suite and can be implemented with only
-  half-precision floating point addition and scaling.
-} \label{fig:cipher}
+\begin{figure}[htp]
+  \begin{center}
+    \includegraphics[width=\linewidth]{cipher}
+  \end{center}
+  \caption{The substitution-permutation network that forms a half decent
+    pseudorandom number generator. The same substitution (``s-box'') is
+    applied to each byte. Then the 64 bits are permuted. Finally, bytes
+    are combined with modular addition and subtraction. This function
+    passes the ``Big Crush'' suite and can be implemented with only
+    half-precision floating point addition and scaling.
+  } \label{fig:cipher}
 \end{figure}
 
 The substitution table (``s-boxes'') was generated by computer search
@@ -2013,7 +2107,9 @@ the cheating went down and the runtime went up; see Figure~\ref{fig:cheating}.
 This makes it like a game.
 
 \begin{figure}[htp]
-  \includegraphics[width=0.95 \linewidth]{fpscheats}
+  \begin{center}
+    \includegraphics[width=0.95 \linewidth]{fpscheats}
+  \end{center}
   \caption{
     During the development of the emulator, the FPS achieved (blue) versus
     the number of times the code ``cheats'' due to incomplete implementation (red).
@@ -2101,7 +2197,9 @@ fast (or as slow) as it can. Normal frame rate is 60~FPS. The original
 implementation runs at 3500~FPS; after many performance tweaks I got
 my {\it hfluint8} version to run at
 
-$${\large 0.1154~\textrm{FPS}}$$
+\begin{center}
+{\large 0.1154~FPS}
+\end{center}
 
 In print, the frame-rate is always zero, anyway
 (Figure~\ref{fig:mario}). 8.6 seconds per frame is firmly in ``not
@@ -2143,17 +2241,20 @@ sufficient facts about the natural numbers to engender {\it
   incompleteness}~\cite{goedel1930incompleteness}. However, a system
 with only addition (such as Presburger arithmetic) does not have this
 problem. Incompleteness is similar to the halting problem for {\it
-  Turing complete} systems; in that it is easy to encounter given a
+  Turing complete} systems, in that it is easy to encounter given a
 small set of primitives and the canonical demonstration is a
 diagonalization argument. Is floating point addition alone Turing
 complete? Can we prove it? If so, is the fact that real mathematical
 addition and multiplication have this deep incompleteness property
-related to the fact that IEEE-754 multiplication have the deep
-computational property?\footnote{No.} Coincidence?!\footnote{Yes.}
+related to the fact that IEEE-754 addition and multiplication have the
+deep computational property?\footnote{No.}
+Coincidence?!\footnote{Yes.}
 
 If not addition alone, the FMA (fused multiply-add) instruction very
 likely suffices, as it performs both a multiplication and addition.
 This makes sense, as the equation $F = MA$ is fundamental to physics.
+
+Linear logic???
 
 Thinking about the 2A03 implementation, each loop executes the exact
 same set of instructions, with a high degree of parallelism. The use

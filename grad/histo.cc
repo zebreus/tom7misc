@@ -103,7 +103,7 @@ struct Histo {
     int x = maxi > (width / 2) ? maxi - (lw + 2) : maxi + 3;
     // Align with the peak, taking into account tallest_bucket.
     int y = (1.0 - tallest_bucket) * (height - 1);
-    img.BlendText(x, y, 0xFF, label);
+    // img.BlendText(x, y, 0xFF, label);
 
     return make_tuple(lo, hi, img);
   }
@@ -174,31 +174,32 @@ ImageRGBA RenderHistogram(const GradUtil::Table &table,
 
   ImageA himg = rhimg.ScaleBy(bucket_width, 1);
   ImageRGBA color(himg.Width(), himg.Height());
+  color.Clear32(0xFFFFFFFF);
 
   // Always ticks at 0.1.
   const ImageRGBA timg = Histo::TickImage(width, height, lo, hi,
-                                          0xFF777735,
+                                          0xFFEEEE35,
                                           0xFFFFFF75,
-                                          0x77FF7735,
+                                          0xEEFFEE35,
                                           0.125f);
   color.BlendImage(0, 0, timg);
 
   // minor ticks if scale is very small?
   const ImageRGBA mtimg = Histo::TickImage(width, height, lo, hi,
-                                           0xFF777720,
+                                           0xFFEEEE20,
                                            0xFFFFFF40,
-                                           0x77FF7720,
+                                           0xEEFFEE20,
                                            0.03125f);
   color.BlendImage(0, 0, mtimg);
 
-  color.BlendImage(0, 0, himg.AlphaMaskRGBA(0xFF, 0xFF, 0x00));
+  color.BlendImage(0, 0, himg.AlphaMaskRGBA(0x00, 0x00, 0x00));
 
   return color;
 }
 
 static void Histos() {
   GradUtil::Table table = GradUtil::IdentityTable();
-  ImageRGBA img = RenderHistogram(table, 1920, 1080, 2, {-256.0}, {256.0});
+  ImageRGBA img = RenderHistogram(table, 2048, 1080, 2, {-256.0}, {256.0});
   img.Save("histo.png");
 }
 

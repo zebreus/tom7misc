@@ -329,11 +329,13 @@ int main(int argc, char **argv) {
 
   PlotSVG("boxcar25.svg",
           [&table1](half h) {
-            return (h + (half)0.25f) - h;
+            return ((h + (half)16.0f) - h) * (half)(1/16.0f);
           },
-          -1, 1,
-          0.25 - 0.0125, 0.25 + 0.0125,
-          1, 0.0125 * 2);
+          -16, 16,
+          -16, 16,
+          1.0, 1.0);
+          // 0.25 - 0.0125, 0.25 + 0.0125,
+          // 1, 0.0125 * 2);
 
   PlotSVG("identity.svg",
           [&table1](half h) {
