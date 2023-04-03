@@ -13,7 +13,7 @@ using namespace std;
 
 static void MakeEvalTableChess(const string &outfile) {
   vector<tuple<string, string, bool>> experiments = {
-    {"sigmoid", "chess-sigmoid", false},
+    {"logistic", "chess-sigmoid", false},
     {"tanh", "chess-tanh", false},
     {"leaky-relu", "chess-leaky", false},
     {"plus64", "chess-plus64", false},

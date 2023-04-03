@@ -1,10 +1,15 @@
 default : grad.pdf
+all: grad.pdf plot.exe cipher.exe
 
 MAKEPDF=../../pactom/rsvg/rsvg-convert -f pdf
 
 # Note that rsvg-convert fails on cipher.svg; it's converted manually
-# Same for  downshiftbits.pdf
-GRAPHICS=tanh.pdf relu.pdf plus128.pdf grad1.pdf downshift2.pdf boxcar25.pdf times100zoom.pdf grad1minusx.pdf perm16good2.pdf square.pdf basisvec.pdf
+# Same for downshiftbits.pdf
+# Same for times100zoom.pdf
+GRAPHICS=tanh.pdf relu.pdf plus128.pdf grad1.pdf downshift2.pdf boxcar4096.pdf grad1minusx.pdf perm16good2.pdf square.pdf basisvec.pdf
+
+# Prevent make from deleting the intermediate SVGs.
+.PRECIOUS: $(GRAPHICS:.pdf=.svg)
 
 CC_LIB=../../cc-lib
 
@@ -32,7 +37,7 @@ LFLAGS= -m64 -Wl,--subsystem,console -O -static
 
 # % is "necessary" here so that make doesn't invoke the rule multiple times
 # in parallel.
-tanh%svg relu%svg plus128%svg times128%svg times100%svg grad1%svg grad1minusx%svg downshift2%svg boxcar25%svg perm16good2%svg square%svg basisvec%svg : plot%exe
+tanh%svg relu%svg plus128%svg grad1%svg grad1minusx%svg downshift2%svg boxcar4096%svg perm16good2%svg square%svg basisvec%svg : plot%exe
 	./plot.exe
 
 plot.exe : plot.o $(UTIL_OBJECTS)

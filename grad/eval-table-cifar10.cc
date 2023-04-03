@@ -16,7 +16,7 @@ static CL *cl = nullptr;
 
 static void MakeEvalTableCIFAR10(const string &outfile) {
   vector<tuple<string, string, bool>> experiments = {
-    {"sigmoid", "cifar10-sigmoid", false},
+    {"logistic", "cifar10-sigmoid", false},
     {"tanh", "cifar10-tanh", false},
     {"leaky-relu", "cifar10-leaky", false},
     {"plus64", "cifar10-plus64", false},

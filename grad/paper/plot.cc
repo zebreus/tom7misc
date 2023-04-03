@@ -270,21 +270,25 @@ int main(int argc, char **argv) {
 
   const auto table1 = GradUtil::MakeTable1();
 
-  PlotSVG("grad1.svg",
-          [&table1](half h) {
-            return GradUtil::GetHalf(table1.table[GradUtil::GetU16(h)]);
-          },
-          -1.0, 1.0,
-          -1.0, 1.0,
-          2.0, 2.0);
-
-  PlotSVG("grad1minusx.svg",
-          [&table1](half h) {
-            return GradUtil::GetHalf(table1.table[GradUtil::GetU16(h)]) - h;
-          },
-          -1.0, 1.0,
-          -0.2, 0.2,
-          2.0, 0.4);
+  InParallel(
+      [&]{
+        PlotSVG("grad1.svg",
+                [&table1](half h) {
+                  return GradUtil::GetHalf(table1.table[GradUtil::GetU16(h)]);
+                },
+                -1.0, 1.0,
+                -1.0, 1.0,
+                2.0, 2.0);
+      },
+      [&]{
+        PlotSVG("grad1minusx.svg",
+                [&table1](half h) {
+                  return GradUtil::GetHalf(table1.table[GradUtil::GetU16(h)]) - h;
+                },
+                -1.0, 1.0,
+                -0.2, 0.2,
+                2.0, 0.4);
+      });
 
   InParallel(
       []{
@@ -296,7 +300,7 @@ int main(int argc, char **argv) {
       []{
         PlotSerializedSVG("square.txt", "square.svg",
                           -2, 2,
-                          -0.4, 3.6,
+                          -0.45, 3.55,
                           4.0, 4.0);
       },
       []{
@@ -317,6 +321,18 @@ int main(int argc, char **argv) {
           2.0, 0.2);
   */
 
+  PlotSVG("boxcar4096.svg",
+          [](half in) {
+            // return ((h + 0.25) - h) * (half)(4.0f);
+            // return (in * (half)32) - (in + (half)1024.0 - (half)1024.0) * (half)32;
+            return (in - (half)4096 - in + (half)4096); // - (half)4096 + (half)4096;
+          },
+          -8, 8,
+          -4, 4,
+          1.0, 0.5);
+          // 0.25 - 0.0125, 0.25 + 0.0125,
+          // 1, 0.0125 * 2);
+
   PlotSVG("downshift2.svg",
           [&table1](half h) {
             return GradUtil::GetHalf(GradUtil::GetU16(h) >> 2);
@@ -326,16 +342,6 @@ int main(int argc, char **argv) {
           -0.05, 0.15,
           1.0, 0.2,
           0.0000001);
-
-  PlotSVG("boxcar25.svg",
-          [&table1](half h) {
-            return ((h + (half)16.0f) - h) * (half)(1/16.0f);
-          },
-          -16, 16,
-          -16, 16,
-          1.0, 1.0);
-          // 0.25 - 0.0125, 0.25 + 0.0125,
-          // 1, 0.0125 * 2);
 
   PlotSVG("identity.svg",
           [&table1](half h) {

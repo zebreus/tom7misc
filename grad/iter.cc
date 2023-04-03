@@ -23,7 +23,10 @@ using Table = GradUtil::Table;
 using Step = GradUtil::Step;
 using State = GradUtil::State;
 
-static constexpr int IMAGE_SIZE = 1920;
+static constexpr int SCALE = 2;
+static constexpr int PX = 2;
+static constexpr int OUT_SIZE = 1080;
+static constexpr int IMAGE_SIZE = OUT_SIZE * SCALE;
 
 [[maybe_unused]]
 static void GraphRandomIterations() {
@@ -140,11 +143,8 @@ static void MakeIterated() {
   printf("Wrote %s\n", filename.c_str());
 }
 
-// Good: Iterate * 0x3bff 12000 times, recenter.
-
-int main(int argc, char **argv) {
-
-  Table table_f1 = GradUtil::MakeTable1().table;
+static void OldIterated() {
+    Table table_f1 = GradUtil::MakeTable1().table;
 
   Asynchronously asyn(8);
   State state;
@@ -215,6 +215,55 @@ int main(int argc, char **argv) {
   string filename = "iterated.png";
   img.Save(filename);
 #endif
+}
+
+static void IterateGrad1ForVideo() {
+  Asynchronously asyn(8);
+  State state;
+
+  // First value <1
+  static constexpr uint16 c = 0x3bffu;
+
+  for (int i = 0; i < 600; i++) {
+    GradUtil::ApplyStep(Step{.mult = true, .value = c}, &state.table);
+    /*
+      GradUtil::ApplyStep(Step{.mult = false, .value = 0x8020u}, &state.table);
+      GradUtil::ApplyStep(Step{.mult = false, .value = 0x0020u}, &state.table);
+    */
+
+    asyn.Run([new_table = state.table, i]() mutable {
+        ImageRGBA img(IMAGE_SIZE, IMAGE_SIZE);
+        img.Clear32(0x000000FF);
+        GradUtil::Grid(&img);
+
+        const auto &[offset, scale] = GradUtil::Recentering(new_table);
+        printf("Iter %d. Offset %04x = %.9g Scale %04x = %.9g\n",
+               i,
+               GradUtil::GetU16(offset), (float)offset,
+               GradUtil::GetU16(scale), (float)scale);
+        GradUtil::ApplyStep(Step{.mult = true,
+                                 .value = GradUtil::GetU16(scale)},
+          &new_table);
+
+        GradUtil::GraphPx<PX>(new_table, 0xFFFFAA44, &img);
+        ImageRGBA out = img.ScaleDownBy(SCALE);
+        out.BlendText2x32(
+            16, 16, 0xFFFFFFFF,
+            StringPrintf("f(x) = x * c * ... %3d times ... * %.4f",
+                         i, (float)scale));
+
+        string filename = StringPrintf("grad1-%05d.png", i);
+        out.Save(filename);
+      });
+  }
+
+}
+
+// Good: Iterate * 0x3bff 12000 times, recenter.
+
+int main(int argc, char **argv) {
+  // OldIterated();
+  IterateGrad1ForVideo();
 
   return 0;
 }

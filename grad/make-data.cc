@@ -31,7 +31,9 @@ static inline float Unpack16AsFloat(uint16 u) {
   return (float)GradUtil::GetHalf(u);
 }
 
-static constexpr int IMAGE_SIZE = 1920;
+static constexpr int IMAGE_SIZE = 1080;
+static constexpr bool DRAW_DERIVATIVE = false;
+static constexpr bool DRAW_INTEGRAL = false;
 
 static void MakeData(const std::array<uint16_t, 65536> &table,
                      const string &name,
@@ -419,44 +421,50 @@ static void MakeData(const std::array<uint16_t, 65536> &table,
   // But clip extreme magnitudes.
   max_mag = std::min(max_mag, 2.0);
 
-  const double scale = ((IMAGE_SIZE / 2.0) * 0.9) / max_mag;
-  GradUtil::ForNeg1To1Ascending([&table, &img, &deriv_out, scale](uint16 yu) {
-      // Or plot some error pixels. But we assert this above.
-      if (!std::isfinite(deriv_out[yu])) return;
+  if (DRAW_DERIVATIVE) {
+    const double scale = ((IMAGE_SIZE / 2.0) * 0.9) / max_mag;
+    GradUtil::ForNeg1To1Ascending([&table, &img, &deriv_out, scale](uint16 yu) {
+        // Or plot some error pixels. But we assert this above.
+        if (!std::isfinite(deriv_out[yu])) return;
 
-      // Scaled
-      double y = Unpack16AsFloat(yu);
-      int ys = (int)std::round((IMAGE_SIZE / 2) + -y * (IMAGE_SIZE / 2.0));
+        // Scaled
+        double y = Unpack16AsFloat(yu);
+        int ys = (int)std::round((IMAGE_SIZE / 2) + -y * (IMAGE_SIZE / 2.0));
 
-      double d = deriv_out[yu] * scale;
-      int ds = (int)std::round((IMAGE_SIZE / 2) + d);
-      img.BlendPixel32(ds, ys, 0xFFFF0077);
+        double d = deriv_out[yu] * scale;
+        int ds = (int)std::round((IMAGE_SIZE / 2) + d);
+        img.BlendPixel32(ds, ys, 0xFFFF0077);
       });
+  }
 
-  // Also plot the running integral of the derivative, to see that it's
-  // close to the original function. Start with the value immediately
-  // less than -1.
-  double yint = Unpack16AsFloat(table[0xbc01]);
-  double prevx = Unpack16AsFloat(0xbc01);
-  GradUtil::ForNeg1To1Ascending(
-      [&table, &img, &deriv_out, &yint, &prevx](uint16 xu) {
+  if (DRAW_INTEGRAL) {
+    // Also plot the running integral of the derivative, to see that it's
+    // close to the original function. Start with the value immediately
+    // less than -1.
+    double yint = Unpack16AsFloat(table[0xbc01]);
+    double prevx = Unpack16AsFloat(0xbc01);
+    GradUtil::ForNeg1To1Ascending(
+        [&table, &img, &deriv_out, &yint, &prevx](uint16 xu) {
 
-      const double x = Unpack16AsFloat(xu);
-      CHECK(x >= prevx) << StringPrintf("want %.11g >= %.11g\n", x, prevx);
-      const double dx = x - prevx;
-      // Derivative table is indexed by f(x), not x.
-      const uint16 yu = table[xu];
-      const double dy = deriv_out[yu];
+        const double x = Unpack16AsFloat(xu);
+        CHECK(x >= prevx) << StringPrintf("want %.11g >= %.11g\n", x, prevx);
+        const double dx = x - prevx;
+        // Derivative table is indexed by f(x), not x.
+        const uint16 yu = table[xu];
+        const double dy = deriv_out[yu];
 
-      if (dx > 0.0)
-        yint += dy * dx;
+        if (dx > 0.0)
+          yint += dy * dx;
 
-      int xs = (int)std::round((IMAGE_SIZE / 2.0) + x * (IMAGE_SIZE / 2.0));
-      int ys = (int)std::round((IMAGE_SIZE / 2.0) - yint * (IMAGE_SIZE / 2.0));
-      img.BlendPixel32(xs, ys, 0xFF000033);
+        int xs =
+          (int)std::round((IMAGE_SIZE / 2.0) + x * (IMAGE_SIZE / 2.0));
+        int ys =
+          (int)std::round((IMAGE_SIZE / 2.0) - yint * (IMAGE_SIZE / 2.0));
+        img.BlendPixel32(xs, ys, 0xFF000033);
 
-      prevx = x;
-    });
+        prevx = x;
+      });
+  }
 
   string md = StringPrintf("%0.5f", max_mag);
   img.BlendText32(IMAGE_SIZE - md.size() * 9 - 6, 2, 0xFFFF0077,

@@ -133,6 +133,34 @@ struct GradUtil {
     ForEveryFinite16(Plot);
   }
 
+  template<size_t PX>
+  static void GraphPx(const Table &table, uint32 color, ImageRGBA *img) {
+    CHECK(img->Width() == img->Height());
+    const int size = img->Width();
+
+    // Loop over [-1, 1].
+    auto Plot = [&](uint16 input) {
+        uint16 output = table[input];
+        double x = GetHalf(input);
+        double y = GetHalf(output);
+
+        int xs = (int)std::round((size / 2.0) + x * (size / 2.0));
+        int ys = (int)std::round((size / 2.0) + -y * (size / 2.0));
+
+        for (int yy = -(int)PX; yy <= (int)PX; yy++) {
+          for (int xx = -(int)PX; xx <= (int)PX; xx++) {
+            constexpr size_t SPX = PX * PX;
+            if (xx * xx + yy * yy <= SPX) {
+              img->BlendPixel32(xs + xx, ys + yy, color);
+            }
+          }
+        }
+      };
+
+    ForEveryFinite16(Plot);
+  }
+
+
   static void GridWithBounds(const Bounds &bounds, ImageRGBA *img,
                              double xtick = 0.125,
                              double ytick = 0.125) {

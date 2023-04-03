@@ -171,6 +171,23 @@ static void NextAfter() {
   printf("ok\n");
 }
 
+static void BoxCar() {
+  uint16_t last_ou = 0x0001;
+  for (uint16_t u = GetU16(-256.0_h);
+       u != GetU16(256.0_h);
+       u = NextAfter16(u)) {
+    half in = GetHalf(u);
+    // half out = (in * (half)16) - (in + (half)1024.0 - (half)1024.0) * (half)16;
+    half out = (in - (half)4096 - in + (half)4096);
+    uint16_t ou = GetU16(out);
+    if (ou != last_ou) {
+      printf("%04x -> %04x (%.11g -> %.11g)\n", u, ou, (float)in, (float)out);
+      last_ou = ou;
+    }
+  }
+}
+
+
 
 int main(int argc, char **argv) {
   printf("16:\n");
@@ -178,10 +195,11 @@ int main(int argc, char **argv) {
 
   // HowMany16();
   // AddImage(8192);
-  NextAfter();
+  // NextAfter();
 
   // printf("32:\n");
   // Test32();
+  BoxCar();
 
   return 0;
 }

@@ -16,7 +16,7 @@ static CL *cl = nullptr;
 
 static void MakeEvalTableMNIST(const string &outfile) {
   vector<tuple<string, string, bool>> experiments = {
-    {"sigmoid", "mnist-sigmoid", false},
+    {"logistic", "mnist-sigmoid", false},
     {"tanh", "mnist-tanh", false},
     {"leaky-relu", "mnist-leaky", false},
     {"plus64", "mnist-plus64", false},
