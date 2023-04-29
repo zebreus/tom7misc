@@ -28,8 +28,8 @@
 #include "fceu.h"
 #include "fc.h"
 
-#include "fluint8.h"
-#include "fluint16.h"
+#include "hfluint8.h"
+#include "hfluint16.h"
 
 struct X6502 {
   // Initialize with fc pointer, since memory reads/writes
@@ -111,56 +111,56 @@ struct X6502 {
 
   struct CPU {
     // Program counter.
-    Fluint16 reg_PC;
+    hfluint16 reg_PC;
     // A is accumulator, X and Y other general purpose registes.
     // S is the stack pointer. Stack grows "down" (push decrements).
     // P is processor flags (from msb to lsb: NVUBDIZC).
     // PI is another copy of the processor flags, maybe having
     // to do with interrupt handling, which I don't understand.
-    Fluint8 reg_A, reg_X, reg_Y, reg_S, reg_P, reg_PI;
+    hfluint8 reg_A, reg_X, reg_Y, reg_S, reg_P, reg_PI;
     // Cycle count for a single instruction.
-    Fluint16 cycles;
+    hfluint16 cycles;
 
-    Fluint8 jammed;
+    hfluint8 jammed;
     // 1 if this instruction is active, otherwise 0.
-    Fluint8 active;
+    hfluint8 active;
 
     X6502 *parent;
 
-    void AddCycle(Fluint8 x) {
+    void AddCycle(hfluint8 x) {
       cycles += x;
     }
 
     // These local versions of memory I/O only perform the operation
     // if active is 0x01 (passing this to the native RdMemIf etc.).
-    inline Fluint8 RdMem(Fluint16 A) {
+    inline hfluint8 RdMem(hfluint16 A) {
       return parent->RdMemIf(active, A);
     }
 
-    inline void WrMem(Fluint16 A, Fluint8 V) {
+    inline void WrMem(hfluint16 A, hfluint8 V) {
       parent->WrMemIf(active, A, V);
     }
 
     // We could make this non-conditional if we had a local
     // memory bus (DB), but I don't think that is more
     // authentic.
-    inline Fluint8 RdRAM(Fluint16 A) {
+    inline hfluint8 RdRAM(hfluint16 A) {
       return parent->RdRAMIf(active, A);
     }
 
-    inline void WrRAM(Fluint16 A, Fluint8 V) {
+    inline void WrRAM(hfluint16 A, hfluint8 V) {
       parent->WrRAMIf(active, A, V);
     }
 
     inline void BRK() {
       reg_PC++;
       PUSH16(reg_PC);
-      PUSH(Fluint8::OrWith<(uint8_t)(U_FLAG8 | B_FLAG8)>(reg_P));
-      reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
-      reg_PI = Fluint8::OrWith<I_FLAG8>(reg_PI);
-      Fluint8 lo = RdMem(Fluint16(0xFFFE));
-      Fluint8 hi = RdMem(Fluint16(0xFFFF));
-      reg_PC = Fluint16(hi, lo);
+      PUSH(hfluint8::OrWith<(uint8_t)(U_FLAG8 | B_FLAG8)>(reg_P));
+      reg_P = hfluint8::OrWith<I_FLAG8>(reg_P);
+      reg_PI = hfluint8::OrWith<I_FLAG8>(reg_PI);
+      hfluint8 lo = RdMem(hfluint16(0xFFFE));
+      hfluint8 hi = RdMem(hfluint16(0xFFFF));
+      reg_PC = hfluint16(hi, lo);
     }
 
     inline void RTI() {
@@ -185,7 +185,7 @@ struct X6502 {
     }
 
     inline void PHP() {
-      PUSH(Fluint8::OrWith<(uint8_t)(U_FLAG8 | B_FLAG8)>(reg_P));
+      PUSH(hfluint8::OrWith<(uint8_t)(U_FLAG8 | B_FLAG8)>(reg_P));
     }
 
     inline void PLP() {
@@ -195,43 +195,43 @@ struct X6502 {
     inline void JMPABS() {
       /* JMP ABSOLUTE */
       // XXX use pc directly
-      Fluint16 ptmp(reg_PC);
-      Fluint8 lo = RdMem(ptmp);
-      Fluint8 hi = RdMem(ptmp + Fluint8(0x01));
-      reg_PC = Fluint16(hi, lo);
+      hfluint16 ptmp(reg_PC);
+      hfluint8 lo = RdMem(ptmp);
+      hfluint8 hi = RdMem(ptmp + hfluint8(0x01));
+      reg_PC = hfluint16(hi, lo);
     }
 
     inline void JMPIND() {
       /* JMP INDIRECT */
-      Fluint16 tmp = GetAB();
-      Fluint8 lo = RdMem(tmp);
-      Fluint8 hi = RdMem(((tmp + Fluint8(0x01)) & Fluint16(0x00FF)) |
-                         (tmp & Fluint16(0xFF00)));
-      reg_PC = Fluint16(hi, lo);
+      hfluint16 tmp = GetAB();
+      hfluint8 lo = RdMem(tmp);
+      hfluint8 hi = RdMem(((tmp + hfluint8(0x01)) & hfluint16(0x00FF)) |
+                         (tmp & hfluint16(0xFF00)));
+      reg_PC = hfluint16(hi, lo);
     }
 
     inline void JSR() {
       /* JSR */
-      Fluint16 opc(reg_PC);
-      Fluint16 opc1 = opc + Fluint8(0x01);
-      Fluint8 lo = RdMem(opc);
+      hfluint16 opc(reg_PC);
+      hfluint16 opc1 = opc + hfluint8(0x01);
+      hfluint8 lo = RdMem(opc);
       PUSH16(opc1);
-      Fluint8 hi = RdMem(opc1);
-      reg_PC = Fluint16(hi, lo);
+      hfluint8 hi = RdMem(opc1);
+      reg_PC = hfluint16(hi, lo);
     }
 
-    inline void ARR(Fluint8 x) {
+    inline void ARR(hfluint8 x) {
       /* ARR - ARGH, MATEY! */
       AND(x);
       reg_P =
-        Fluint8::PlusNoOverflow(
-            Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P),
-            Fluint8::AndWith<V_FLAG8>(reg_A ^
-                                      Fluint8::RightShift<1>(reg_A)));
-      Fluint8 arrtmp = Fluint8::RightShift<7>(reg_A);
-      reg_A = Fluint8::RightShift<1>(reg_A);
-      reg_A |= Fluint8::LeftShift<7>(Fluint8::AndWith<C_FLAG8>(reg_P));
-      reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
+        hfluint8::PlusNoOverflow(
+            hfluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P),
+            hfluint8::AndWith<V_FLAG8>(reg_A ^
+                                      hfluint8::RightShift<1>(reg_A)));
+      hfluint8 arrtmp = hfluint8::RightShift<7>(reg_A);
+      reg_A = hfluint8::RightShift<1>(reg_A);
+      reg_A |= hfluint8::LeftShift<7>(hfluint8::AndWith<C_FLAG8>(reg_P));
+      reg_P = hfluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
       reg_P |= arrtmp;
       X_ZN(reg_A);
     }
@@ -286,216 +286,216 @@ struct X6502 {
     }
 
     inline void CLC() {
-      reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
+      reg_P = hfluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
     }
 
     inline void CLD() {
-      reg_P = Fluint8::AndWith<(uint8_t)~D_FLAG8>(reg_P);
+      reg_P = hfluint8::AndWith<(uint8_t)~D_FLAG8>(reg_P);
     }
 
     inline void CLI() {
-      reg_P = Fluint8::AndWith<(uint8_t)~I_FLAG8>(reg_P);
+      reg_P = hfluint8::AndWith<(uint8_t)~I_FLAG8>(reg_P);
     }
 
     inline void CLV() {
-      reg_P = Fluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P);
+      reg_P = hfluint8::AndWith<(uint8_t)~V_FLAG8>(reg_P);
     }
 
     inline void SEC() {
-      reg_P = Fluint8::OrWith<C_FLAG8>(reg_P);
+      reg_P = hfluint8::OrWith<C_FLAG8>(reg_P);
     }
 
     inline void SED() {
-      reg_P = Fluint8::OrWith<D_FLAG8>(reg_P);
+      reg_P = hfluint8::OrWith<D_FLAG8>(reg_P);
     }
 
     inline void SEI() {
-      reg_P = Fluint8::OrWith<I_FLAG8>(reg_P);
+      reg_P = hfluint8::OrWith<I_FLAG8>(reg_P);
     }
 
     // PERF For the branch instructions, since we are extracting a
     // single bit, can make something like HasBit instead of using the
     // full generality of IsZero.
     inline void BCC() {
-      JR(Fluint8::IsZero(Fluint8::AndWith<C_FLAG8>(reg_P)));
+      JR(hfluint8::IsZero(hfluint8::AndWith<C_FLAG8>(reg_P)));
     }
 
     inline void BCS() {
-      JR(Fluint8::IsntZero(Fluint8::AndWith<C_FLAG8>(reg_P)));
+      JR(hfluint8::IsntZero(hfluint8::AndWith<C_FLAG8>(reg_P)));
     }
 
     inline void BEQ() {
-      JR(Fluint8::IsntZero(Fluint8::AndWith<Z_FLAG8>(reg_P)));
+      JR(hfluint8::IsntZero(hfluint8::AndWith<Z_FLAG8>(reg_P)));
     }
 
     inline void BNE() {
-      JR(Fluint8::IsZero(Fluint8::AndWith<Z_FLAG8>(reg_P)));
+      JR(hfluint8::IsZero(hfluint8::AndWith<Z_FLAG8>(reg_P)));
     }
 
     inline void BMI() {
-      JR(Fluint8::IsntZero(Fluint8::AndWith<N_FLAG8>(reg_P)));
+      JR(hfluint8::IsntZero(hfluint8::AndWith<N_FLAG8>(reg_P)));
     }
 
     inline void BPL() {
-      JR(Fluint8::IsZero(Fluint8::AndWith<N_FLAG8>(reg_P)));
+      JR(hfluint8::IsZero(hfluint8::AndWith<N_FLAG8>(reg_P)));
     }
 
     inline void BVC() {
-      JR(Fluint8::IsZero(Fluint8::AndWith<V_FLAG8>(reg_P)));
+      JR(hfluint8::IsZero(hfluint8::AndWith<V_FLAG8>(reg_P)));
     }
 
     inline void BVS() {
-      JR(Fluint8::IsntZero(Fluint8::AndWith<V_FLAG8>(reg_P)));
+      JR(hfluint8::IsntZero(hfluint8::AndWith<V_FLAG8>(reg_P)));
     }
 
-    inline void AAC(Fluint8 x) {
+    inline void AAC(hfluint8 x) {
       AND(x);
-      reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
-      reg_P |= Fluint8::RightShift<7>(reg_A);
+      reg_P = hfluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
+      reg_P |= hfluint8::RightShift<7>(reg_A);
     }
 
-    inline void ATX(Fluint8 x) {
+    inline void ATX(hfluint8 x) {
       /* ATX(OAL) Is this(OR with $EE) correct? Blargg did some test
          and found the constant to be OR with is $FF for NES
 
          (but of course OR with FF is degenerate! -tom7) */
-      reg_A = Fluint8::OrWith<0xFF>(reg_A);
+      reg_A = hfluint8::OrWith<0xFF>(reg_A);
       AND(x);
       reg_X = reg_A;
     }
 
-    inline Fluint8 DCP(Fluint8 x) {
+    inline hfluint8 DCP(hfluint8 x) {
       x = DEC(x);
       CMPL(reg_A, x);
       return x;
     }
 
-    inline Fluint8 ISB(Fluint8 x) {
+    inline hfluint8 ISB(hfluint8 x) {
       x = INC(x);
       return SBC(x);
     }
 
     inline void KIL() {
-      AddCycle(Fluint8(0xFF));
-      jammed = Fluint8(0x01);
+      AddCycle(hfluint8(0xFF));
+      jammed = hfluint8(0x01);
       reg_PC--;
     }
 
-    inline Fluint8 LAR(Fluint8 x) {
+    inline hfluint8 LAR(hfluint8 x) {
       reg_S &= x;
       reg_A = reg_X = reg_S;
       X_ZN(reg_X);
       return x;
     }
 
-    inline void LAX(Fluint8 x) {
+    inline void LAX(hfluint8 x) {
       LDA(x);
       LDX(x);
     }
 
-    inline Fluint8 RLA(Fluint8 x) {
+    inline hfluint8 RLA(hfluint8 x) {
       x = ROL(x);
       AND(x);
       return x;
     }
 
-    inline Fluint8 RRA(Fluint8 x) {
+    inline hfluint8 RRA(hfluint8 x) {
       x = ROR(x);
       return ADC(x);
     }
 
-    inline Fluint8 SLO(Fluint8 x) {
+    inline hfluint8 SLO(hfluint8 x) {
       x = ASL(x);
       ORA(x);
       return x;
     }
 
-    inline Fluint8 SRE(Fluint8 x) {
+    inline hfluint8 SRE(hfluint8 x) {
       x = LSR(x);
       EOR(x);
       return x;
     }
 
-    inline Fluint8 AXA(Fluint16 AA) {
+    inline hfluint8 AXA(hfluint16 AA) {
       return reg_A & reg_X & WeirdHiByte(AA, reg_Y);
     }
 
-    inline Fluint8 SYA(Fluint16 AA) {
+    inline hfluint8 SYA(hfluint16 AA) {
       return reg_Y & WeirdHiByte(AA, reg_X);
     }
 
-    inline Fluint8 SXA(Fluint16 AA) {
+    inline hfluint8 SXA(hfluint16 AA) {
       return reg_X & WeirdHiByte(AA, reg_Y);
     }
 
-    inline void PUSH(Fluint8 v) {
-      WrRAM(Fluint16(0x100) + reg_S, v);
+    inline void PUSH(hfluint8 v) {
+      WrRAM(hfluint16(0x100) + reg_S, v);
       reg_S--;
     }
 
-    inline void PUSH16(Fluint16 vv) {
+    inline void PUSH16(hfluint16 vv) {
       PUSH(vv.Hi());
       PUSH(vv.Lo());
     }
 
-    inline Fluint8 POP() {
+    inline hfluint8 POP() {
       reg_S++;
-      return RdRAM(Fluint16(0x100) + reg_S);
+      return RdRAM(hfluint16(0x100) + reg_S);
     }
 
-    inline Fluint16 POP16() {
-      Fluint8 lo = POP();
-      Fluint8 hi = POP();
-      return Fluint16(hi, lo);
+    inline hfluint16 POP16() {
+      hfluint8 lo = POP();
+      hfluint8 hi = POP();
+      return hfluint16(hi, lo);
     }
 
     // Several undocumented instructions AND with the high byte
     // of the address, plus one. Computes that expression.
-    static Fluint8 WeirdHiByte(Fluint16 aa, Fluint8 r) {
-      Fluint8 hi = (aa - Fluint16(r)).Hi();
-      return hi + Fluint8(0x01);
+    static hfluint8 WeirdHiByte(hfluint16 aa, hfluint8 r) {
+      hfluint8 hi = (aa - hfluint16(r)).Hi();
+      return hi + hfluint8(0x01);
     }
 
     /* Indexed Indirect */
-    Fluint16 GetIX() {
-      Fluint8 tmp = RdMem(reg_PC);
+    hfluint16 GetIX() {
+      hfluint8 tmp = RdMem(reg_PC);
       reg_PC++;
       tmp += reg_X;
-      Fluint8 lo = RdRAM(Fluint16(tmp));
+      hfluint8 lo = RdRAM(hfluint16(tmp));
       tmp++;
-      Fluint8 hi = RdRAM(Fluint16(tmp));
-      return Fluint16(hi, lo);
+      hfluint8 hi = RdRAM(hfluint16(tmp));
+      return hfluint16(hi, lo);
     }
 
     // Zero Page
-    Fluint8 GetZP() {
-      Fluint8 ret = RdMem(reg_PC);
+    hfluint8 GetZP() {
+      hfluint8 ret = RdMem(reg_PC);
       reg_PC++;
       return ret;
     }
 
     /* Zero Page Indexed */
-    Fluint8 GetZPI(Fluint8 i) {
-      Fluint8 ret = i + RdMem(reg_PC);
+    hfluint8 GetZPI(hfluint8 i) {
+      hfluint8 ret = i + RdMem(reg_PC);
       reg_PC++;
       return ret;
     }
 
     /* Absolute */
-    Fluint16 GetAB() {
-      Fluint8 lo = RdMem(reg_PC);
+    hfluint16 GetAB() {
+      hfluint8 lo = RdMem(reg_PC);
       reg_PC++;
-      Fluint8 hi = RdMem(reg_PC);
+      hfluint8 hi = RdMem(reg_PC);
       reg_PC++;
-      return Fluint16(hi, lo);
+      return hfluint16(hi, lo);
     }
 
     /* Absolute Indexed (for writes and rmws) */
-    Fluint16 GetABIWR(Fluint8 i) {
-      Fluint16 rt = GetAB();
-      Fluint16 target = rt + i;
-      (void)RdMem((target & Fluint16(0x00FF)) |
-                  (rt & Fluint16(0xFF00)));
+    hfluint16 GetABIWR(hfluint8 i) {
+      hfluint16 rt = GetAB();
+      hfluint16 target = rt + i;
+      (void)RdMem((target & hfluint16(0x00FF)) |
+                  (rt & hfluint16(0xFF00)));
       return target;
     }
 
@@ -506,25 +506,25 @@ struct X6502 {
       // about the stack pointer?
       // (No test coverage for this...)
       reg_S = reg_A & reg_X;
-      ST_ABY([](CPU *cpu, Fluint16 AA) {
+      ST_ABY([](CPU *cpu, hfluint16 AA) {
           return cpu->reg_S & cpu->WeirdHiByte(AA, cpu->reg_Y);
       });
     }
 
     void XAA() {
       // XXX similar...
-      reg_A = Fluint8::OrWith<0xEE>(reg_A);
+      reg_A = hfluint8::OrWith<0xEE>(reg_A);
       reg_A &= reg_X;
-      LD_IM([](CPU *cpu, Fluint8 x) { cpu->AND(x); });
+      LD_IM([](CPU *cpu, hfluint8 x) { cpu->AND(x); });
     }
 
     /* Absolute Indexed (for reads) */
-    Fluint16 GetABIRD(Fluint8 i) {
-      Fluint16 tmp = GetAB();
-      Fluint16 ret = tmp + i;
-      Fluint8 cc = Fluint16::RightShift<8>((ret ^ tmp) & Fluint16(0x100)).Lo();
-      (void)parent->RdMemIf(Fluint8::BooleanAnd(cc, active),
-                            ret ^ Fluint16(0x100));
+    hfluint16 GetABIRD(hfluint8 i) {
+      hfluint16 tmp = GetAB();
+      hfluint16 ret = tmp + i;
+      hfluint8 cc = hfluint16::RightShift<8>((ret ^ tmp) & hfluint16(0x100)).Lo();
+      (void)parent->RdMemIf(hfluint8::BooleanAnd(cc, active),
+                            ret ^ hfluint16(0x100));
 
       AddCycle(cc);
 
@@ -532,16 +532,16 @@ struct X6502 {
     }
 
     /* Indirect Indexed (for reads) */
-    Fluint16 GetIYRD() {
-      Fluint8 tmp(RdMem(reg_PC));
+    hfluint16 GetIYRD() {
+      hfluint8 tmp(RdMem(reg_PC));
       reg_PC++;
-      Fluint8 lo = RdRAM(Fluint16(tmp));
-      Fluint8 hi = RdRAM(Fluint16(tmp + Fluint8(0x01)));
-      Fluint16 rt(hi, lo);
-      Fluint16 ret = rt + reg_Y;
-      Fluint8 cc = Fluint16::RightShift<8>((ret ^ rt) & Fluint16(0x100)).Lo();
-      (void)parent->RdMemIf(Fluint8::BooleanAnd(cc, active),
-                            ret ^ Fluint16(0x100));
+      hfluint8 lo = RdRAM(hfluint16(tmp));
+      hfluint8 hi = RdRAM(hfluint16(tmp + hfluint8(0x01)));
+      hfluint16 rt(hi, lo);
+      hfluint16 ret = rt + reg_Y;
+      hfluint8 cc = hfluint16::RightShift<8>((ret ^ rt) & hfluint16(0x100)).Lo();
+      (void)parent->RdMemIf(hfluint8::BooleanAnd(cc, active),
+                            ret ^ hfluint16(0x100));
 
       AddCycle(cc);
 
@@ -550,99 +550,99 @@ struct X6502 {
 
 
     /* Indirect Indexed(for writes and rmws) */
-    Fluint16 GetIYWR() {
-      Fluint8 tmp(RdMem(reg_PC));
+    hfluint16 GetIYWR() {
+      hfluint8 tmp(RdMem(reg_PC));
       reg_PC++;
-      Fluint8 lo = RdRAM(Fluint16(tmp));
-      Fluint8 hi = RdRAM(Fluint16(tmp + Fluint8(0x01)));
-      Fluint16 rt(hi, lo);
-      Fluint16 ret = rt + reg_Y;
-      (void)RdMem((ret & Fluint16(0x00FF)) |
-                  (rt & Fluint16(0xFF00)));
+      hfluint8 lo = RdRAM(hfluint16(tmp));
+      hfluint8 hi = RdRAM(hfluint16(tmp + hfluint8(0x01)));
+      hfluint16 rt(hi, lo);
+      hfluint16 ret = rt + reg_Y;
+      (void)RdMem((ret & hfluint16(0x00FF)) |
+                  (rt & hfluint16(0xFF00)));
       return ret;
     }
 
     // Implements the ZNTable (zero flag and negative flag),
     // returning 0, Z_FLAG, or N_FLAG.
-    Fluint8 ZnFlags(Fluint8 zort) {
+    hfluint8 ZnFlags(hfluint8 zort) {
       static_assert(N_FLAG8 == 0x80, "This requires the negative flag "
                     "to be the same as the sign bit.");
       static_assert(Z_FLAG8 == 0x02, "This expects the zero flag to "
                     "have a specific value, although this would be "
                     "easily remedied.");
-      Fluint8 zf = Fluint8::LeftShift1Under128(Fluint8::IsZero(zort));
-      Fluint8 nf = Fluint8::AndWith<N_FLAG8>(zort);
+      hfluint8 zf = hfluint8::LeftShift1Under128(hfluint8::IsZero(zort));
+      hfluint8 nf = hfluint8::AndWith<N_FLAG8>(zort);
       // Can't overflow because these are two different bits.
-      Fluint8 res = Fluint8::PlusNoOverflow(nf, zf);
+      hfluint8 res = hfluint8::PlusNoOverflow(nf, zf);
 
       return res;
     }
 
-    void X_ZN(Fluint8 zort) {
-      reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8)>(reg_P);
+    void X_ZN(hfluint8 zort) {
+      reg_P = hfluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8)>(reg_P);
       // We just masked out the bits, so this can't overflow.
-      reg_P = Fluint8::PlusNoOverflow(reg_P, ZnFlags(zort));
+      reg_P = hfluint8::PlusNoOverflow(reg_P, ZnFlags(zort));
     }
 
-    void X_ZNT(Fluint8 zort) {
+    void X_ZNT(hfluint8 zort) {
       reg_P |= ZnFlags(zort);
     }
 
-    void LDA(Fluint8 x) {
+    void LDA(hfluint8 x) {
       reg_A = x;
       X_ZN(reg_A);
     }
-    void LDX(Fluint8 x) {
+    void LDX(hfluint8 x) {
       reg_X = x;
       X_ZN(reg_X);
     }
-    void LDY(Fluint8 x) {
+    void LDY(hfluint8 x) {
       reg_Y = x;
       X_ZN(reg_Y);
     }
 
-    void AND(Fluint8 x) {
+    void AND(hfluint8 x) {
       reg_A &= x;
       X_ZN(reg_A);
     }
 
-    void BIT(Fluint8 x) {
-      reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | V_FLAG8 | N_FLAG8)>(reg_P);
+    void BIT(hfluint8 x) {
+      reg_P = hfluint8::AndWith<(uint8_t)~(Z_FLAG8 | V_FLAG8 | N_FLAG8)>(reg_P);
       // PERF: AddNoOverflow
       /* PERF can simplify this ... just use iszero? */
-      reg_P |= Fluint8::AndWith<Z_FLAG8>(ZnFlags(x & reg_A));
-      reg_P |= Fluint8::AndWith<(uint8_t)(V_FLAG8 | N_FLAG8)>(x);
+      reg_P |= hfluint8::AndWith<Z_FLAG8>(ZnFlags(x & reg_A));
+      reg_P |= hfluint8::AndWith<(uint8_t)(V_FLAG8 | N_FLAG8)>(x);
     }
 
-    void EOR(Fluint8 x) {
+    void EOR(hfluint8 x) {
       reg_A ^= x;
       X_ZN(reg_A);
     }
-    void ORA(Fluint8 x) {
+    void ORA(hfluint8 x) {
       reg_A |= x;
       X_ZN(reg_A);
     }
 
-    void CMPL(Fluint8 a1, Fluint8 a2) {
-      auto [carry, diff] = Fluint8::SubtractWithCarry(a1, a2);
+    void CMPL(hfluint8 a1, hfluint8 a2) {
+      auto [carry, diff] = hfluint8::SubtractWithCarry(a1, a2);
       X_ZN(diff);
       reg_P =
-        Fluint8::PlusNoOverflow(
-            Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P),
-            Fluint8::XorWith<C_FLAG8>(
-                Fluint8::AndWith<C_FLAG8>(carry)));
+        hfluint8::PlusNoOverflow(
+            hfluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P),
+            hfluint8::XorWith<C_FLAG8>(
+                hfluint8::AndWith<C_FLAG8>(carry)));
     }
 
     // Input must be 0x01 or 0x00.
-    void JR(Fluint8 cond) {
+    void JR(hfluint8 cond) {
       {
         uint8_t cc = cond.ToInt();
         CHECK(cc == 0x00 || cc == 0x01) << cc;
       }
 
       // Signed displacement. We'll only use it if cond is true.
-      Fluint8 disp =
-        parent->RdMemIf(Fluint8::BooleanAnd(cond, active), reg_PC);
+      hfluint8 disp =
+        parent->RdMemIf(hfluint8::BooleanAnd(cond, active), reg_PC);
 
       // Program counter incremented whether the branch is
       // taken or not (which makes sense as we would not
@@ -651,63 +651,63 @@ struct X6502 {
 
       AddCycle(cond);
 
-      Fluint16 old_pc = reg_PC;
+      hfluint16 old_pc = reg_PC;
 
       // Only modify the PC if condition is true. We have to
       // sign extend it to 16 bits first (but this does nothing
       // to zero).
-      reg_PC += Fluint16::SignExtend(Fluint8::If(cond, disp));
+      reg_PC += hfluint16::SignExtend(hfluint8::If(cond, disp));
 
       // Additional cycle is taken if this crosses a "page" boundary.
       // Note this does nothing if the cond is false, as old_pc = reg_PC
       // in that case.
-      AddCycle(Fluint16::IsntZero((old_pc ^ reg_PC) & Fluint16(0x100)));
+      AddCycle(hfluint16::IsntZero((old_pc ^ reg_PC) & hfluint16(0x100)));
     }
 
-    Fluint8 ASL(Fluint8 x) {
-      reg_P = Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
-      reg_P |= Fluint8::RightShift<7>(x);
-      x = Fluint8::LeftShift<1>(x);
+    hfluint8 ASL(hfluint8 x) {
+      reg_P = hfluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P);
+      reg_P |= hfluint8::RightShift<7>(x);
+      x = hfluint8::LeftShift<1>(x);
       X_ZN(x);
       return x;
     }
 
-    Fluint8 LSR(Fluint8 x) {
-      reg_P = Fluint8::AndWith<(uint8_t)~(C_FLAG8 | N_FLAG8 | Z_FLAG8)>(reg_P);
-      reg_P |= Fluint8::AndWith<1>(x);
-      x = Fluint8::RightShift<1>(x);
+    hfluint8 LSR(hfluint8 x) {
+      reg_P = hfluint8::AndWith<(uint8_t)~(C_FLAG8 | N_FLAG8 | Z_FLAG8)>(reg_P);
+      reg_P |= hfluint8::AndWith<1>(x);
+      x = hfluint8::RightShift<1>(x);
       X_ZNT(x);
       return x;
     }
 
-    Fluint8 DEC(Fluint8 x) {
+    hfluint8 DEC(hfluint8 x) {
       x--;
       X_ZN(x);
       return x;
     }
 
-    Fluint8 INC(Fluint8 x) {
+    hfluint8 INC(hfluint8 x) {
       x++;
       X_ZN(x);
       return x;
     }
 
-    Fluint8 ROL(Fluint8 x) {
-      Fluint8 l = Fluint8::RightShift<7>(x);
-      x = Fluint8::LeftShift<1>(x);
+    hfluint8 ROL(hfluint8 x) {
+      hfluint8 l = hfluint8::RightShift<7>(x);
+      x = hfluint8::LeftShift<1>(x);
       // PERF PlusNoOverflow
-      x |= Fluint8::AndWith<C_FLAG8>(reg_P);
-      reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P);
+      x |= hfluint8::AndWith<C_FLAG8>(reg_P);
+      reg_P = hfluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P);
       reg_P |= l;
       X_ZNT(x);
       return x;
     }
 
-    Fluint8 ROR(Fluint8 x) {
-      Fluint8 l = Fluint8::AndWith<1>(x);
-      x = Fluint8::RightShift<1>(x);
-      x |= Fluint8::LeftShift<7>(Fluint8::AndWith<C_FLAG8>(reg_P));
-      reg_P = Fluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P);
+    hfluint8 ROR(hfluint8 x) {
+      hfluint8 l = hfluint8::AndWith<1>(x);
+      x = hfluint8::RightShift<1>(x);
+      x |= hfluint8::LeftShift<7>(hfluint8::AndWith<C_FLAG8>(reg_P));
+      reg_P = hfluint8::AndWith<(uint8_t)~(Z_FLAG8 | N_FLAG8 | C_FLAG8)>(reg_P);
       reg_P |= l;
       X_ZNT(x);
       return x;
@@ -715,31 +715,31 @@ struct X6502 {
 
     template<class F>
     void ST_ZP(F rf) {
-      Fluint16 AA(GetZP());
+      hfluint16 AA(GetZP());
       WrRAM(AA, rf(this, AA));
     }
 
     template<class F>
     void ST_ZPX(F rf) {
-      Fluint16 AA(GetZPI(reg_X));
+      hfluint16 AA(GetZPI(reg_X));
       WrRAM(AA, rf(this, AA));
     }
 
     template<class F>
     void ST_ZPY(F rf) {
-      Fluint16 AA(GetZPI(reg_Y));
+      hfluint16 AA(GetZPI(reg_Y));
       WrRAM(AA, rf(this, AA));
     }
 
     template<class F>
     void ST_AB(F rf) {
-      Fluint16 AA = GetAB();
+      hfluint16 AA = GetAB();
       WrMem(AA, rf(this, AA));
     }
 
     template<class F>
-    void ST_ABI(Fluint8 reg, F rf) {
-      Fluint16 AA = GetABIWR(reg);
+    void ST_ABI(hfluint8 reg, F rf) {
+      hfluint16 AA = GetABIWR(reg);
       WrMem(AA, rf(this, AA));
     }
 
@@ -755,41 +755,41 @@ struct X6502 {
 
     template<class F>
     void ST_IX(F rf) {
-      Fluint16 AA = GetIX();
+      hfluint16 AA = GetIX();
       WrMem(AA, rf(this, AA));
     }
 
     template<class F>
     void ST_IY(F rf) {
-      Fluint16 AA = GetIYWR();
+      hfluint16 AA = GetIYWR();
       WrMem(AA, rf(this, AA));
     }
 
     template<class F>
     void LD_IY(F op) {
-      const Fluint16 AA = GetIYRD();
-      const Fluint8 x = RdMem(AA);
+      const hfluint16 AA = GetIYRD();
+      const hfluint8 x = RdMem(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_IX(F op) {
-      const Fluint16 AA = GetIX();
-      const Fluint8 x = RdMem(AA);
+      const hfluint16 AA = GetIX();
+      const hfluint8 x = RdMem(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_AB(F op) {
-      const Fluint16 AA = GetAB();
-      const Fluint8 x = RdMem(AA);
+      const hfluint16 AA = GetAB();
+      const hfluint8 x = RdMem(AA);
       op(this, x);
     }
 
     template<class F>
-    void LD_ABI(Fluint8 reg, F op) {
-      const Fluint16 AA = GetABIRD(reg);
-      const Fluint8 x = RdMem(AA);
+    void LD_ABI(hfluint8 reg, F op) {
+      const hfluint16 AA = GetABIRD(reg);
+      const hfluint8 x = RdMem(AA);
       op(this, x);
     }
     template<class F> void LD_ABX(F op) { LD_ABI(reg_X, op); }
@@ -797,44 +797,44 @@ struct X6502 {
 
     template<class F>
     void LD_ZPY(F op) {
-      const Fluint16 AA(GetZPI(reg_Y));
-      const Fluint8 x = RdRAM(AA);
+      const hfluint16 AA(GetZPI(reg_Y));
+      const hfluint8 x = RdRAM(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_ZPX(F op) {
-      const Fluint16 AA(GetZPI(reg_X));
-      const Fluint8 x = RdRAM(AA);
+      const hfluint16 AA(GetZPI(reg_X));
+      const hfluint8 x = RdRAM(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_ZP(F op) {
-      const Fluint16 AA(GetZP());
-      const Fluint8 x = RdRAM(AA);
+      const hfluint16 AA(GetZP());
+      const hfluint8 x = RdRAM(AA);
       op(this, x);
     }
 
     template<class F>
     void LD_IM(F op) {
-      const Fluint8 x = RdMem(reg_PC);
+      const hfluint8 x = RdMem(reg_PC);
       reg_PC++;
       op(this, x);
     }
 
     template<class F>
     void RMW_ZPX(F op) {
-      const Fluint16 AA(GetZPI(reg_X));
-      Fluint8 x = RdRAM(AA);
+      const hfluint16 AA(GetZPI(reg_X));
+      hfluint8 x = RdRAM(AA);
       x = op(this, x);
       WrRAM(AA, x);
     }
 
     template<class F>
     void RMW_ZP(F op) {
-      const Fluint16 AA(GetZP());
-      Fluint8 x = RdRAM(AA);
+      const hfluint16 AA(GetZP());
+      hfluint8 x = RdRAM(AA);
       x = op(this, x);
       WrRAM(AA, x);
     }
@@ -842,8 +842,8 @@ struct X6502 {
     template<class F>
     void RMW_IY(F op) {
       (void)GetIX();
-      const Fluint16 AA = GetIYWR();
-      Fluint8 x = RdMem(AA);
+      const hfluint16 AA = GetIYWR();
+      hfluint8 x = RdMem(AA);
       WrMem(AA, x);
       x = op(this, x);
       WrMem(AA, x);
@@ -851,17 +851,17 @@ struct X6502 {
 
     template<class F>
     void RMW_IX(F op) {
-      const Fluint16 AA = GetIX();
-      Fluint8 x = RdMem(AA);
+      const hfluint16 AA = GetIX();
+      hfluint8 x = RdMem(AA);
       WrMem(AA, x);
       x = op(this, x);
       WrMem(AA, x);
     }
 
     template<class F>
-    void RMW_ABI(Fluint8 reg, F op) {
-      const Fluint16 AA = GetABIWR(reg);
-      Fluint8 x = RdMem(AA);
+    void RMW_ABI(hfluint8 reg, F op) {
+      const hfluint16 AA = GetABIWR(reg);
+      hfluint8 x = RdMem(AA);
       WrMem(AA, x);
       x = op(this, x);
       WrMem(AA, x);
@@ -872,8 +872,8 @@ struct X6502 {
 
     template<class F>
     void RMW_AB(F op) {
-      const Fluint16 AA = GetAB();
-      Fluint8 x = RdMem(AA);
+      const hfluint16 AA = GetAB();
+      hfluint8 x = RdMem(AA);
       WrMem(AA, x);
       x = op(this, x);
       WrMem(AA, x);
@@ -881,38 +881,38 @@ struct X6502 {
 
     template<class F>
     void RMW_A(F op) {
-      Fluint8 x = reg_A;
+      hfluint8 x = reg_A;
       x = op(this, x);
       reg_A = x;
     }
 
-    Fluint8 ADC(Fluint8 x) {
+    hfluint8 ADC(hfluint8 x) {
       static_assert(C_FLAG8 == 0x01, "we assume this is the one's place");
-      const Fluint8 p_carry_bit = Fluint8::AndWith<C_FLAG8>(reg_P);
-      auto [carry1, sum1] = Fluint8::AddWithCarry(reg_A, x);
-      auto [carry2, sum] = Fluint8::AddWithCarry(sum1, p_carry_bit);
+      const hfluint8 p_carry_bit = hfluint8::AndWith<C_FLAG8>(reg_P);
+      auto [carry1, sum1] = hfluint8::AddWithCarry(reg_A, x);
+      auto [carry2, sum] = hfluint8::AddWithCarry(sum1, p_carry_bit);
 
       // Since p_carry_bit is at most 1, these can't both overflow.
-      Fluint8 carry = Fluint8::PlusNoOverflow(carry1, carry2);
+      hfluint8 carry = hfluint8::PlusNoOverflow(carry1, carry2);
 
       // uint32 l = reg_A.ToInt() + (x).ToInt() + p_carry_bit.ToInt();
-      reg_P = Fluint8::AndWith<
+      reg_P = hfluint8::AndWith<
         (uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
       // The overflow is for signed arithmetic. It tells us if we've
       // added two positive numbers but got a negative one, or added two
       // negative numbers but got a positive one. (If the signs are
       // different, overflow is not possible.) This is computed from the
       // sign bits.
-      Fluint8 aaa = Fluint8::XorWith<0x80>(
-          Fluint8::AndWith<0x80>(reg_A ^ x));
-      Fluint8 bbb = Fluint8::AndWith<0x80>(reg_A ^ sum);
+      hfluint8 aaa = hfluint8::XorWith<0x80>(
+          hfluint8::AndWith<0x80>(reg_A ^ x));
+      hfluint8 bbb = hfluint8::AndWith<0x80>(reg_A ^ sum);
       static_assert(V_FLAG8 == 0x40);
 
       CHECK((reg_P.ToInt() & (V_FLAG8 | C_FLAG8)) == 0);
       // Sets overflow bit, which was cleared above.
-      reg_P = Fluint8::PlusNoOverflow(reg_P, Fluint8::RightShift<1>(aaa & bbb));
+      reg_P = hfluint8::PlusNoOverflow(reg_P, hfluint8::RightShift<1>(aaa & bbb));
       // Sets carry bit, which was cleared above.
-      reg_P = Fluint8::PlusNoOverflow(reg_P, carry);
+      reg_P = hfluint8::PlusNoOverflow(reg_P, carry);
       reg_A = sum;
       // PERF since we already cleared Z and N flags, can use
       // PlusNoOverflow
@@ -920,34 +920,34 @@ struct X6502 {
       return x;
     }
 
-    Fluint8 SBC(Fluint8 x) {
+    hfluint8 SBC(hfluint8 x) {
       static_assert(C_FLAG8 == 0x01, "we assume this is the one's place");
       // On 6502, the borrow flag is !Carry.
-      Fluint8 p_ncarry_bit = Fluint8::XorWith<C_FLAG8>(
-          Fluint8::AndWith<C_FLAG8>(reg_P));
+      hfluint8 p_ncarry_bit = hfluint8::XorWith<C_FLAG8>(
+          hfluint8::AndWith<C_FLAG8>(reg_P));
 
-      auto [carry1, diff1] = Fluint8::SubtractWithCarry(reg_A, x);
-      auto [carry2, diff] = Fluint8::SubtractWithCarry(diff1, p_ncarry_bit);
+      auto [carry1, diff1] = hfluint8::SubtractWithCarry(reg_A, x);
+      auto [carry2, diff] = hfluint8::SubtractWithCarry(diff1, p_ncarry_bit);
 
       // As in ADC.
-      Fluint8 carry = Fluint8::PlusNoOverflow(carry1, carry2);
+      hfluint8 carry = hfluint8::PlusNoOverflow(carry1, carry2);
 
       // uint32 l = reg_A.ToInt() - x.ToInt() - p_ncarry_bit.ToInt();
-      reg_P = Fluint8::AndWith<
+      reg_P = hfluint8::AndWith<
         (uint8_t)~(Z_FLAG8 | C_FLAG8 | N_FLAG8 | V_FLAG8)>(reg_P);
       // As above, detect overflow by looking at sign bits.
-      Fluint8 aaa = reg_A ^ diff;
-      Fluint8 bbb = reg_A ^ x;
-      Fluint8 overflow = Fluint8::AndWith<0x80>(aaa & bbb);
+      hfluint8 aaa = reg_A ^ diff;
+      hfluint8 bbb = reg_A ^ x;
+      hfluint8 overflow = hfluint8::AndWith<0x80>(aaa & bbb);
       static_assert(V_FLAG8 == 0x40);
 
       CHECK((reg_P.ToInt() & (V_FLAG8 | C_FLAG8)) == 0);
       // V_FLAG8 bit is cleared above.
-      reg_P = Fluint8::PlusNoOverflow(reg_P, Fluint8::RightShift<1>(overflow));
+      reg_P = hfluint8::PlusNoOverflow(reg_P, hfluint8::RightShift<1>(overflow));
       // C_FLAG8 bit is cleared above.
-      reg_P = Fluint8::PlusNoOverflow(
+      reg_P = hfluint8::PlusNoOverflow(
           reg_P,
-          Fluint8::XorWith<C_FLAG8>(Fluint8::AndWith<C_FLAG8>(carry)));
+          hfluint8::XorWith<C_FLAG8>(hfluint8::AndWith<C_FLAG8>(carry)));
       reg_A = diff;
       // PERF since we already cleared Z and N flags, can use
       // PlusNoOverflow here too
@@ -957,23 +957,23 @@ struct X6502 {
 
     void LSRA() {
       /* For undocumented instructions, maybe for other things later... */
-      reg_P = Fluint8::AndWith<(uint8_t)~(C_FLAG8 | N_FLAG8 | Z_FLAG8)>(reg_P);
-      reg_P |= Fluint8::AndWith<1>(reg_A);
-      reg_A = Fluint8::RightShift<1>(reg_A);
+      reg_P = hfluint8::AndWith<(uint8_t)~(C_FLAG8 | N_FLAG8 | Z_FLAG8)>(reg_P);
+      reg_P |= hfluint8::AndWith<1>(reg_A);
+      reg_A = hfluint8::RightShift<1>(reg_A);
       X_ZNT(reg_A);
     }
 
     /* Special undocumented operation.  Very similar to CMP. */
-    void AXS(Fluint8 x) {
+    void AXS(hfluint8 x) {
       auto [carry, diff] =
-        Fluint8::SubtractWithCarry(reg_A & reg_X, x);
+        hfluint8::SubtractWithCarry(reg_A & reg_X, x);
       // uint32 t = (reg_A & reg_X).ToInt() - x.ToInt();
       X_ZN(diff);
       reg_P =
-        Fluint8::PlusNoOverflow(
-            Fluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P),
-            Fluint8::XorWith<C_FLAG8>(
-                Fluint8::AndWith<C_FLAG8>(carry)));
+        hfluint8::PlusNoOverflow(
+            hfluint8::AndWith<(uint8_t)~C_FLAG8>(reg_P),
+            hfluint8::XorWith<C_FLAG8>(
+                hfluint8::AndWith<C_FLAG8>(carry)));
       reg_X = diff;
     }
 
@@ -993,30 +993,30 @@ private:
   // normal memory read, which calls hooks. We trace the sequence
   // of these to make sure we're not dropping or reordering them
   // (which often does not matter to games, but could).
-  inline Fluint8 RdMem(Fluint16 A) {
-    return RdMemIf(Fluint8(0x01), A);
+  inline hfluint8 RdMem(hfluint16 A) {
+    return RdMemIf(hfluint8(0x01), A);
   }
 
-  inline Fluint8 RdMemIf(Fluint8 cond, Fluint16 A) {
+  inline hfluint8 RdMemIf(hfluint8 cond, hfluint16 A) {
     const uint8_t cc = cond.ToInt();
     CHECK(cc == 0x00 || cc == 0x01) << cc;
     if (cc == 0x01) {
       uint16_t AA = A.ToInt();
       TraceRead(AA);
       DB = fc->fceu->ARead[AA](fc, AA);
-      return Fluint8(DB);
+      return hfluint8(DB);
     } else {
       // Arbitrary
-      return Fluint8(0x00);
+      return hfluint8(0x00);
     }
   }
 
   // normal memory write
-  inline void WrMem(Fluint16 A, Fluint8 V) {
-    WrMemIf(Fluint8(0x01), A, V);
+  inline void WrMem(hfluint16 A, hfluint8 V) {
+    WrMemIf(hfluint8(0x01), A, V);
   }
 
-  inline void WrMemIf(Fluint8 cond, Fluint16 A, Fluint8 V) {
+  inline void WrMemIf(hfluint8 cond, hfluint16 A, hfluint8 V) {
     const uint8_t cc = cond.ToInt();
     CHECK(cc == 0x00 || cc == 0x01) << cc;
     if (cc == 0x01) {
@@ -1029,27 +1029,27 @@ private:
     }
   }
 
-  inline Fluint8 RdRAM(Fluint16 A) {
-    return RdRAMIf(Fluint8(0x01), A);
+  inline hfluint8 RdRAM(hfluint16 A) {
+    return RdRAMIf(hfluint8(0x01), A);
   }
 
-  inline Fluint8 RdRAMIf(Fluint8 cond, Fluint16 A) {
+  inline hfluint8 RdRAMIf(hfluint8 cond, hfluint16 A) {
     const uint8_t cc = cond.ToInt();
     CHECK(cc == 0x00 || cc == 0x01) << cc;
     if (cc == 0x01) {
       DB = fc->fceu->RAM[A.ToInt()];
-      return Fluint8(DB);
+      return hfluint8(DB);
     } else {
       // Arbitrary
-      return Fluint8(0x00);
+      return hfluint8(0x00);
     }
   }
 
-  inline void WrRAM(Fluint16 A, Fluint8 V) {
-    return WrRAMIf(Fluint8(0x01), A, V);
+  inline void WrRAM(hfluint16 A, hfluint8 V) {
+    return WrRAMIf(hfluint8(0x01), A, V);
   }
 
-  inline void WrRAMIf(Fluint8 cond, Fluint16 A, Fluint8 V) {
+  inline void WrRAMIf(hfluint8 cond, hfluint16 A, hfluint8 V) {
     const uint8_t cc = cond.ToInt();
     CHECK(cc == 0x00 || cc == 0x01) << cc;
     if (cc == 0x01) {
@@ -1071,14 +1071,14 @@ private:
   static constexpr uint8_t C_FLAG8{0x01};
 
   // But the constants are also available as fluints.
-  static constexpr Fluint8 N_FLAG{N_FLAG8};
-  static constexpr Fluint8 V_FLAG{V_FLAG8};
-  static constexpr Fluint8 U_FLAG{U_FLAG8};
-  static constexpr Fluint8 B_FLAG{B_FLAG8};
-  static constexpr Fluint8 D_FLAG{D_FLAG8};
-  static constexpr Fluint8 I_FLAG{I_FLAG8};
-  static constexpr Fluint8 Z_FLAG{Z_FLAG8};
-  static constexpr Fluint8 C_FLAG{C_FLAG8};
+  static constexpr hfluint8 N_FLAG{N_FLAG8};
+  static constexpr hfluint8 V_FLAG{V_FLAG8};
+  static constexpr hfluint8 U_FLAG{U_FLAG8};
+  static constexpr hfluint8 B_FLAG{B_FLAG8};
+  static constexpr hfluint8 D_FLAG{D_FLAG8};
+  static constexpr hfluint8 I_FLAG{I_FLAG8};
+  static constexpr hfluint8 Z_FLAG{Z_FLAG8};
+  static constexpr hfluint8 C_FLAG{C_FLAG8};
 
   FC *fc = nullptr;
   DISALLOW_COPY_AND_ASSIGN(X6502);

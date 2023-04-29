@@ -1,6 +1,6 @@
 
-#ifndef _GRAD_FLUINT8_H
-#define _GRAD_FLUINT8_H
+#ifndef _GRAD_HFLUINT8_H
+#define _GRAD_HFLUINT8_H
 
 #include <cstdint>
 #include <bit>
@@ -9,106 +9,106 @@
 #include "expression.h"
 
 // If set, use uint8 to implement it (for debugging)
-#define FLUINT8_WRAP 0
+#define HFLUINT8_WRAP 0
 
-#if FLUINT8_WRAP
+#if HFLUINT8_WRAP
 
-struct Fluint8 {
+struct hfluint8 {
   uint8_t b = 0;
-  explicit constexpr Fluint8(uint8_t b) : b(b) {}
+  explicit constexpr hfluint8(uint8_t b) : b(b) {}
   uint8_t ToInt() const { return b; }
 
-  constexpr Fluint8() : b(0) {}
-  Fluint8(Fluint8 &&other) = default;
-  Fluint8(const Fluint8 &other) = default;
-  constexpr Fluint8 &operator =(const Fluint8 &) = default;
+  constexpr hfluint8() : b(0) {}
+  hfluint8(hfluint8 &&other) = default;
+  hfluint8(const hfluint8 &other) = default;
+  constexpr hfluint8 &operator =(const hfluint8 &) = default;
 
-  static Fluint8 IsZero(Fluint8 a) {
+  static hfluint8 IsZero(hfluint8 a) {
     Cheat();
-    return Fluint8(a.b ? 0x00 : 0x01);
+    return hfluint8(a.b ? 0x00 : 0x01);
   }
-  static Fluint8 IsntZero(Fluint8 a) {
+  static hfluint8 IsntZero(hfluint8 a) {
     Cheat();
-    return Fluint8(a.b ? 0x01 : 0x00);
-  }
-
-  static Fluint8 Plus(Fluint8 a, Fluint8 b) {
-    Cheat();
-    return Fluint8(a.ToInt() + b.ToInt());
-  }
-  static Fluint8 Minus(Fluint8 a, Fluint8 b) {
-    Cheat();
-    return Fluint8(a.ToInt() - b.ToInt());
+    return hfluint8(a.b ? 0x01 : 0x00);
   }
 
-  static Fluint8 BitwiseXor(Fluint8 a, Fluint8 b) {
+  static hfluint8 Plus(hfluint8 a, hfluint8 b) {
     Cheat();
-    return Fluint8(a.ToInt() ^ b.ToInt());
+    return hfluint8(a.ToInt() + b.ToInt());
+  }
+  static hfluint8 Minus(hfluint8 a, hfluint8 b) {
+    Cheat();
+    return hfluint8(a.ToInt() - b.ToInt());
   }
 
-  static Fluint8 BitwiseAnd(Fluint8 a, Fluint8 b) {
+  static hfluint8 BitwiseXor(hfluint8 a, hfluint8 b) {
     Cheat();
-    return Fluint8(a.ToInt() & b.ToInt());
+    return hfluint8(a.ToInt() ^ b.ToInt());
   }
 
-  static Fluint8 BitwiseOr(Fluint8 a, Fluint8 b) {
+  static hfluint8 BitwiseAnd(hfluint8 a, hfluint8 b) {
     Cheat();
-    return Fluint8(a.ToInt() | b.ToInt());
+    return hfluint8(a.ToInt() & b.ToInt());
+  }
+
+  static hfluint8 BitwiseOr(hfluint8 a, hfluint8 b) {
+    Cheat();
+    return hfluint8(a.ToInt() | b.ToInt());
   }
 
   template<uint8_t B>
-  static Fluint8 AndWith(Fluint8 a) {
-    return BitwiseAnd(a, Fluint8(B));
+  static hfluint8 AndWith(hfluint8 a) {
+    return BitwiseAnd(a, hfluint8(B));
   }
 
   template<uint8_t B>
-  static Fluint8 OrWith(Fluint8 a) {
-    return BitwiseOr(a, Fluint8(B));
+  static hfluint8 OrWith(hfluint8 a) {
+    return BitwiseOr(a, hfluint8(B));
   }
 
   template<uint8_t B>
-  static Fluint8 XorWith(Fluint8 a) {
-    return BitwiseXor(a, Fluint8(B));
+  static hfluint8 XorWith(hfluint8 a) {
+    return BitwiseXor(a, hfluint8(B));
   }
 
   // Left shift by a compile-time constant.
   template<size_t n>
-  static Fluint8 LeftShift(Fluint8 x) {
-    return Fluint8(x.ToInt() << n);
+  static hfluint8 LeftShift(hfluint8 x) {
+    return hfluint8(x.ToInt() << n);
   }
 
   template<size_t n>
-  static Fluint8 RightShift(Fluint8 x) {
-    return Fluint8(x.ToInt() >> n);
+  static hfluint8 RightShift(hfluint8 x) {
+    return hfluint8(x.ToInt() >> n);
   }
 
   // One bit; no sign extension.
-  static Fluint8 RightShift1(Fluint8 x) {
+  static hfluint8 RightShift1(hfluint8 x) {
     return RightShift<1>(x);
   }
 
-  static Fluint8 LeftShift1Under128(Fluint8 x) {
+  static hfluint8 LeftShift1Under128(hfluint8 x) {
     return LeftShift<1>(x);
   }
 
-  static Fluint8 PlusNoOverflow(Fluint8 a, Fluint8 b) {
+  static hfluint8 PlusNoOverflow(hfluint8 a, hfluint8 b) {
     return Plus(a, b);
   }
 
-  static std::pair<Fluint8, Fluint8> AddWithCarry(Fluint8 a, Fluint8 b) {
+  static std::pair<hfluint8, hfluint8> AddWithCarry(hfluint8 a, hfluint8 b) {
     uint32_t aa = a.b, bb = b.b;
     uint32_t cc = aa + bb;
     Cheat();
-    return make_pair(Fluint8((cc & 0x100) ? 0x01 : 0x00),
-                     Fluint8(cc & 0xFF));
+    return make_pair(hfluint8((cc & 0x100) ? 0x01 : 0x00),
+                     hfluint8(cc & 0xFF));
   }
 
-  static std::pair<Fluint8, Fluint8> SubtractWithCarry(Fluint8 a, Fluint8 b) {
+  static std::pair<hfluint8, hfluint8> SubtractWithCarry(hfluint8 a, hfluint8 b) {
     uint32_t aa = a.b, bb = b.b;
     uint32_t cc = aa - bb;
     Cheat();
-    return make_pair(Fluint8((cc & 0x100) ? 0x01 : 0x00),
-                     Fluint8(cc & 0xFF));
+    return make_pair(hfluint8((cc & 0x100) ? 0x01 : 0x00),
+                     hfluint8(cc & 0xFF));
   }
 
   // For testing.
@@ -127,76 +127,76 @@ struct Fluint8 {
 
 #else
 
-struct Fluint8 {
+struct hfluint8 {
   using half = half_float::half;
 
   // Converting in/out uses non-linear operations, of course.
-  explicit constexpr Fluint8(uint8_t b) {
+  explicit constexpr hfluint8(uint8_t b) {
     h = GetHalf(TABLE[b]);
   }
 
   uint8_t ToInt() const;
 
-  constexpr Fluint8() : h(GetHalf(TABLE[0])) {}
-  Fluint8(Fluint8 &&other) = default;
-  Fluint8(const Fluint8 &other) = default;
-  constexpr Fluint8 &operator =(const Fluint8 &) = default;
+  constexpr hfluint8() : h(GetHalf(TABLE[0])) {}
+  hfluint8(hfluint8 &&other) = default;
+  hfluint8(const hfluint8 &other) = default;
+  constexpr hfluint8 &operator =(const hfluint8 &) = default;
 
-  static Fluint8 Plus(Fluint8 a, Fluint8 b);
-  static Fluint8 Minus(Fluint8 a, Fluint8 b);
+  static hfluint8 Plus(hfluint8 a, hfluint8 b);
+  static hfluint8 Minus(hfluint8 a, hfluint8 b);
 
   // The first element is the carry; always 0 or 1.
-  static std::pair<Fluint8, Fluint8> AddWithCarry(Fluint8 a, Fluint8 b);
-  static std::pair<Fluint8, Fluint8> SubtractWithCarry(Fluint8 a, Fluint8 b);
+  static std::pair<hfluint8, hfluint8> AddWithCarry(hfluint8 a, hfluint8 b);
+  static std::pair<hfluint8, hfluint8> SubtractWithCarry(hfluint8 a, hfluint8 b);
 
   // Note: If one argument is a compile-time constant, AndWith (etc.)
   // below can be a lot faster.
-  static Fluint8 BitwiseXor(Fluint8 a, Fluint8 b);
-  static Fluint8 BitwiseAnd(Fluint8 a, Fluint8 b);
-  static Fluint8 BitwiseOr(Fluint8 a, Fluint8 b);
+  static hfluint8 BitwiseXor(hfluint8 a, hfluint8 b);
+  static hfluint8 BitwiseAnd(hfluint8 a, hfluint8 b);
+  static hfluint8 BitwiseOr(hfluint8 a, hfluint8 b);
 
   // a.k.a. !, this returns (a == 0) ? 1 : 0.
-  static Fluint8 IsZero(Fluint8 a);
+  static hfluint8 IsZero(hfluint8 a);
   // Same as !!
-  static Fluint8 IsntZero(Fluint8 a);
+  static hfluint8 IsntZero(hfluint8 a);
 
   // (a == b) ? 1 : 0
-  static Fluint8 Eq(Fluint8 a, Fluint8 b);
+  static hfluint8 Eq(hfluint8 a, hfluint8 b);
 
   // For cc = 0x01 or 0x00 (only), returns c ? t : 0.
-  static Fluint8 If(Fluint8 cc, Fluint8 t);
+  static hfluint8 If(hfluint8 cc, hfluint8 t);
 
   // For cc = 0x01 or 0x00 (only), returns c ? t : f.
-  static Fluint8 IfElse(Fluint8 cc, Fluint8 t, Fluint8 f);
+  static hfluint8 IfElse(hfluint8 cc, hfluint8 t, hfluint8 f);
 
   // For a and b = 0x01 or 0x00 (only), returns a && b.
-  static Fluint8 BooleanAnd(Fluint8 a, Fluint8 b);
+  static hfluint8 BooleanAnd(hfluint8 a, hfluint8 b);
   // For a and b = 0x01 or 0x00 (only), returns a || b.
-  static Fluint8 BooleanOr(Fluint8 a, Fluint8 b);
+  static hfluint8 BooleanOr(hfluint8 a, hfluint8 b);
 
   // With a compile-time constant, which is very common, and
   // can be done much faster.
   template<uint8_t b>
-  static Fluint8 AndWith(Fluint8 a);
+  static hfluint8 AndWith(hfluint8 a);
 
   template<uint8_t b>
-  static Fluint8 OrWith(Fluint8 a);
+  static hfluint8 OrWith(hfluint8 a);
 
   template<uint8_t b>
-  static Fluint8 XorWith(Fluint8 a);
+  static hfluint8 XorWith(hfluint8 a);
 
   // TODO: (x & c) ^ c is a common pattern in x6502,
   // which we could do in one step.
 
   // Left shift by a compile-time constant.
   template<size_t n>
-  static Fluint8 LeftShift(Fluint8 x);
+  static hfluint8 LeftShift(hfluint8 x);
 
   template<size_t n>
-  static Fluint8 RightShift(Fluint8 x);
+  static hfluint8 RightShift(hfluint8 x);
 
   // One bit; no sign extension.
-  static Fluint8 RightShift1(Fluint8 x);
+  static hfluint8 RightShift1(hfluint8 x);
 
   // For testing.
   uint16_t Representation() const;
@@ -215,21 +215,21 @@ struct Fluint8 {
   // if the preconditions are not satisfied!
 
   // Computes x << 1, assuming x < 128.
-  static Fluint8 LeftShift1Under128(Fluint8 x) {
-    return Fluint8(x.h + x.h);
+  static hfluint8 LeftShift1Under128(hfluint8 x) {
+    return hfluint8(x.h + x.h);
   }
 
   // Computes a + b, as long as the sum is < 256.
-  static Fluint8 PlusNoOverflow(Fluint8 a, Fluint8 b) {
-    return Fluint8(a.h + b.h);
+  static hfluint8 PlusNoOverflow(hfluint8 a, hfluint8 b) {
+    return hfluint8(a.h + b.h);
   }
 
  private:
-  explicit Fluint8(half_float::half h) : h(h) {}
+  explicit hfluint8(half_float::half h) : h(h) {}
   half_float::half h;
 
   // Compute bitwise AND.
-  static half BitwiseAndHalf(Fluint8 a, Fluint8 b);
+  static half BitwiseAndHalf(hfluint8 a, hfluint8 b);
 
   static half Canonicalize(half h);
 
@@ -247,7 +247,7 @@ struct Fluint8 {
     // (where only integers are representable in half precision) and
     // back. The -0.25 is just a fudge factor so that we round in the
     // right direction.
-    // return Fluint8((x.h * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h);
+    // return hfluint8((x.h * 0.5_h - 0.25_h) + 1024.0_h - 1024.0_h);
 
     // Same idea, but found through search; it just happens to work.
     // Here the fudge is built into the scale.
@@ -355,132 +355,132 @@ struct Fluint8 {
 
 // Overloaded operators.
 
-inline Fluint8 operator +(const Fluint8 &a, const Fluint8 &b) {
-  return Fluint8::Plus(a, b);
+inline hfluint8 operator +(const hfluint8 &a, const hfluint8 &b) {
+  return hfluint8::Plus(a, b);
 }
 
-inline Fluint8 operator -(const Fluint8 &a, const Fluint8 &b) {
-  return Fluint8::Minus(a, b);
+inline hfluint8 operator -(const hfluint8 &a, const hfluint8 &b) {
+  return hfluint8::Minus(a, b);
 }
 
-inline Fluint8 operator ^(const Fluint8 &a, const Fluint8 &b) {
-  return Fluint8::BitwiseXor(a, b);
+inline hfluint8 operator ^(const hfluint8 &a, const hfluint8 &b) {
+  return hfluint8::BitwiseXor(a, b);
 }
 
-inline Fluint8 operator |(const Fluint8 &a, const Fluint8 &b) {
-  return Fluint8::BitwiseOr(a, b);
+inline hfluint8 operator |(const hfluint8 &a, const hfluint8 &b) {
+  return hfluint8::BitwiseOr(a, b);
 }
 
-inline Fluint8 operator &(const Fluint8 &a, const Fluint8 &b) {
-  return Fluint8::BitwiseAnd(a, b);
+inline hfluint8 operator &(const hfluint8 &a, const hfluint8 &b) {
+  return hfluint8::BitwiseAnd(a, b);
 }
 
-inline Fluint8 operator +(const Fluint8 &a) {
+inline hfluint8 operator +(const hfluint8 &a) {
   return a;
 }
 
-inline Fluint8 operator -(const Fluint8 &a) {
-  return Fluint8::Minus(Fluint8(0), a);
+inline hfluint8 operator -(const hfluint8 &a) {
+  return hfluint8::Minus(hfluint8(0), a);
 }
 
-inline Fluint8 operator ~(const Fluint8 &a) {
-  return Fluint8::XorWith<0xFF>(a);
+inline hfluint8 operator ~(const hfluint8 &a) {
+  return hfluint8::XorWith<0xFF>(a);
 }
 
-inline Fluint8& operator++(Fluint8 &a) {
-  a = Fluint8::Plus(a, Fluint8(0x01));
+inline hfluint8& operator++(hfluint8 &a) {
+  a = hfluint8::Plus(a, hfluint8(0x01));
   return a;
 }
 
-inline Fluint8 operator++(Fluint8 &a, int) {
-  Fluint8 ret = a;
-  a = Fluint8::Plus(a, Fluint8(0x01));
+inline hfluint8 operator++(hfluint8 &a, int) {
+  hfluint8 ret = a;
+  a = hfluint8::Plus(a, hfluint8(0x01));
   return ret;
 }
 
-inline Fluint8& operator--(Fluint8 &a) {
-  a = Fluint8::Minus(a, Fluint8(0x01));
+inline hfluint8& operator--(hfluint8 &a) {
+  a = hfluint8::Minus(a, hfluint8(0x01));
   return a;
 }
 
-inline Fluint8 operator--(Fluint8 &a, int) {
-  Fluint8 ret = a;
-  a = Fluint8::Minus(a, Fluint8(0x01));
+inline hfluint8 operator--(hfluint8 &a, int) {
+  hfluint8 ret = a;
+  a = hfluint8::Minus(a, hfluint8(0x01));
   return ret;
 }
 
-inline Fluint8& operator+=(Fluint8 &a, const Fluint8 &b) {
+inline hfluint8& operator+=(hfluint8 &a, const hfluint8 &b) {
   a = a + b;
   return a;
 }
 
-inline Fluint8& operator-=(Fluint8 &a, const Fluint8 &b) {
+inline hfluint8& operator-=(hfluint8 &a, const hfluint8 &b) {
   a = a - b;
   return a;
 }
 
-inline Fluint8& operator^=(Fluint8 &a, const Fluint8 &b) {
+inline hfluint8& operator^=(hfluint8 &a, const hfluint8 &b) {
   a = a ^ b;
   return a;
 }
 
-inline Fluint8& operator|=(Fluint8 &a, const Fluint8 &b) {
+inline hfluint8& operator|=(hfluint8 &a, const hfluint8 &b) {
   a = a | b;
   return a;
 }
 
-inline Fluint8& operator&=(Fluint8 &a, const Fluint8 &b) {
+inline hfluint8& operator&=(hfluint8 &a, const hfluint8 &b) {
   a = a & b;
   return a;
 }
 
 
 // Template implementations.
-#if !FLUINT8_WRAP
+#if !HFLUINT8_WRAP
 
 template<size_t N>
-Fluint8 Fluint8::LeftShift(Fluint8 x) {
+hfluint8 hfluint8::LeftShift(hfluint8 x) {
   if constexpr (N == 0) {
     return x;
   } else {
-    Fluint8 y = LeftShift<N - 1>(x);
+    hfluint8 y = LeftShift<N - 1>(x);
     return y + y;
   }
 }
 
 template<size_t N>
-Fluint8 Fluint8::RightShift(Fluint8 x) {
+hfluint8 hfluint8::RightShift(hfluint8 x) {
   if constexpr (N == 0) {
     return x;
   } else if constexpr (N >= 7) {
-    Fluint8 y = RightShift<N - 7>(x);
-    return Fluint8(RightShiftHalf7(y.h));
+    hfluint8 y = RightShift<N - 7>(x);
+    return hfluint8(RightShiftHalf7(y.h));
   } else if constexpr (N >= 4) {
-    Fluint8 y = RightShift<N - 4>(x);
-    return Fluint8(RightShiftHalf4(y.h));
+    hfluint8 y = RightShift<N - 4>(x);
+    return hfluint8(RightShiftHalf4(y.h));
   } else if constexpr (N >= 3) {
-    Fluint8 y = RightShift<N - 3>(x);
-    return Fluint8(RightShiftHalf3(y.h));
+    hfluint8 y = RightShift<N - 3>(x);
+    return hfluint8(RightShiftHalf3(y.h));
   } else if constexpr (N >= 2) {
-    Fluint8 y = RightShift<N - 2>(x);
-    return Fluint8(RightShiftHalf2(y.h));
+    hfluint8 y = RightShift<N - 2>(x);
+    return hfluint8(RightShiftHalf2(y.h));
   } else {
-    Fluint8 y = RightShift<N - 1>(x);
+    hfluint8 y = RightShift<N - 1>(x);
     return RightShift1(y);
   }
 }
 
 template<uint8_t B>
-Fluint8 Fluint8::AndWith(Fluint8 a) {
+hfluint8 hfluint8::AndWith(hfluint8 a) {
   // As in BitwiseAndHalf, we compute the result directly in [0, 255]
   // space.
 
   // XXX unroll this so that it's clear that it's compile-time
   half common_bits = GetHalf(0x0000);
-  Fluint8 aa = a;
+  hfluint8 aa = a;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // Low order bit as a - ((a >> 1) << 1)
-    Fluint8 aashift = RightShift1(aa);
+    hfluint8 aashift = RightShift1(aa);
 
     if ((1 << bit_idx) & B) {
       // The shifted value does not have its high bit fast,
@@ -501,16 +501,16 @@ Fluint8 Fluint8::AndWith(Fluint8 a) {
     aa = aashift;
   }
 
-  return Fluint8(common_bits);
+  return hfluint8(common_bits);
 }
 
 template<uint8_t B>
-Fluint8 Fluint8::OrWith(Fluint8 a) {
+hfluint8 hfluint8::OrWith(hfluint8 a) {
   half result = GetHalf(0x0000);
-  Fluint8 aa = a;
+  hfluint8 aa = a;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // Low order bit as a - ((a >> 1) << 1)
-    Fluint8 aashift = RightShift1(aa);
+    hfluint8 aashift = RightShift1(aa);
 
     // Computes 2^bit_idx
     const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
@@ -526,17 +526,17 @@ Fluint8 Fluint8::OrWith(Fluint8 a) {
     aa = aashift;
   }
 
-  return Fluint8(result);
+  return hfluint8(result);
 }
 
 template<uint8_t B>
-Fluint8 Fluint8::XorWith(Fluint8 a) {
+hfluint8 hfluint8::XorWith(hfluint8 a) {
   static constexpr half HALF1 = GetHalf(0x3c00);
   half result = GetHalf(0x0000);
-  Fluint8 aa = a;
+  hfluint8 aa = a;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // Low order bit as a - ((a >> 1) << 1)
-    Fluint8 aashift = RightShift1(aa);
+    hfluint8 aashift = RightShift1(aa);
     half bit = aa.h - LeftShift1Under128(aashift).h;
     const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
     if ((1 << bit_idx) & B) {
@@ -550,7 +550,7 @@ Fluint8 Fluint8::XorWith(Fluint8 a) {
     aa = aashift;
   }
 
-  return Fluint8(result);
+  return hfluint8(result);
 }
 
 #endif

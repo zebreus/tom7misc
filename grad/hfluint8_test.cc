@@ -1,5 +1,5 @@
 
-#include "fluint8.h"
+#include "hfluint8.h"
 
 #include <cstdint>
 
@@ -10,11 +10,11 @@
 
 using uint8 = uint8_t;
 
-static void CheckCanonical(Fluint8 f, uint8 x, uint8 y,
+static void CheckCanonical(hfluint8 f, uint8 x, uint8 y,
                            const char *fn, const char *name, int line) {
   uint16_t frep = f.Representation();
   uint8 meaning = f.ToInt();
-  Fluint8 canon(meaning);
+  hfluint8 canon(meaning);
   uint16_t crep = canon.Representation();
   CHECK(frep == crep) << "Line " << line
                       << " (" << fn << " aka " << name << "): "
@@ -35,7 +35,7 @@ static void CheckCanonical(Fluint8 f, uint8 x, uint8 y,
 static void TestToFrom() {
   for (int i = 0; i < 256; i++) {
     uint8 b = i;
-    Fluint8 f(b);
+    hfluint8 f(b);
     CHECK(f.ToInt() == b);
     CHECK_CANONICAL("tofrom", f, b, b);
   }
@@ -45,7 +45,7 @@ template<class F>
 static void ForAll(F f) {
   for (int x = 0; x < 256; x++) {
     uint8 xx = x;
-    Fluint8 xf(xx);
+    hfluint8 xf(xx);
     f(xx, xf);
   }
 }
@@ -58,8 +58,8 @@ static void ForAllPairs(F f) {
       uint8 xx = x;
       uint8 yy = y;
 
-      Fluint8 xf(xx);
-      Fluint8 yf(yy);
+      hfluint8 xf(xx);
+      hfluint8 yf(yy);
 
       f(xx, yy, xf, yf);
     }
@@ -69,9 +69,9 @@ static void ForAllPairs(F f) {
 static void TestPlus() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint8 z = x + y;
-        Fluint8 zf = xf + yf;
+        hfluint8 zf = xf + yf;
 
         CHECK(z == zf.ToInt()) <<
           StringPrintf("%02x (%d) + %02x (%d) -> %02x (%d) want %02x (%d)",
@@ -83,12 +83,12 @@ static void TestPlus() {
 static void TestAddWithCarry() {
   ForAllPairs(
       [](uint16_t x, uint16_t y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint16_t z = x + y;
         uint8_t zsum = z;
         uint8_t zcarry = (z >> 8);
         CHECK(zcarry == 0 || zcarry == 1);
-        const auto [carry, sum] = Fluint8::AddWithCarry(xf, yf);
+        const auto [carry, sum] = hfluint8::AddWithCarry(xf, yf);
 
         CHECK(zsum == sum.ToInt() &&
               zcarry == carry.ToInt()) <<
@@ -106,12 +106,12 @@ static void TestAddWithCarry() {
 static void TestSubtractWithCarry() {
   ForAllPairs(
       [](uint16_t x, uint16_t y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint16_t z = x - y;
         uint8_t zdiff = z;
         uint8_t zcarry = (z >> 8) & 1;
         CHECK(zcarry == 0 || zcarry == 1);
-        const auto [carry, diff] = Fluint8::SubtractWithCarry(xf, yf);
+        const auto [carry, diff] = hfluint8::SubtractWithCarry(xf, yf);
 
         CHECK(zdiff == diff.ToInt() &&
               zcarry == carry.ToInt()) <<
@@ -130,9 +130,9 @@ static void TestSubtractWithCarry() {
 static void TestMinus() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint8 z = x - y;
-        Fluint8 zf = xf - yf;
+        hfluint8 zf = xf - yf;
 
         CHECK(z == zf.ToInt()) <<
           StringPrintf("%02x (%d) - %02x (%d) -> %02x (%d) want %02x (%d)",
@@ -144,9 +144,9 @@ static void TestMinus() {
 static void TestAnd() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint8 z = x & y;
-        Fluint8 zf = xf & yf;
+        hfluint8 zf = xf & yf;
 
         CHECK(z == zf.ToInt()) <<
           StringPrintf("%02x (%d) & %02x (%d) -> %02x (%d) want %02x (%d)",
@@ -158,9 +158,9 @@ static void TestAnd() {
 static void TestAndEq() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint8 z = x &= y;
-        Fluint8 zf = xf &= yf;
+        hfluint8 zf = xf &= yf;
 
         CHECK(x == xf.ToInt());
         CHECK(y == yf.ToInt());
@@ -176,10 +176,10 @@ static void TestAndWith() {
       // done.
   } else {
     ForAll(
-        [](uint8 x, Fluint8 xf) {
+        [](uint8 x, hfluint8 xf) {
           static constexpr uint8 B = N;
           uint8 z = x & B;
-          Fluint8 zf = Fluint8::AndWith<B>(xf);
+          hfluint8 zf = hfluint8::AndWith<B>(xf);
 
           CHECK(z == zf.ToInt()) <<
             StringPrintf("%02x (%d) & constant %02x (%d) -> "
@@ -197,10 +197,10 @@ static void TestOrWith() {
       // done.
   } else {
     ForAll(
-        [](uint8 x, Fluint8 xf) {
+        [](uint8 x, hfluint8 xf) {
           static constexpr uint8 B = N;
           uint8 z = x | B;
-          Fluint8 zf = Fluint8::OrWith<B>(xf);
+          hfluint8 zf = hfluint8::OrWith<B>(xf);
 
           CHECK(z == zf.ToInt()) <<
             StringPrintf("%02x (%d) | constant %02x (%d) -> "
@@ -218,10 +218,10 @@ static void TestXorWith() {
       // done.
   } else {
     ForAll(
-        [](uint8 x, Fluint8 xf) {
+        [](uint8 x, hfluint8 xf) {
           static constexpr uint8 B = N;
           uint8 z = x ^ B;
-          Fluint8 zf = Fluint8::XorWith<B>(xf);
+          hfluint8 zf = hfluint8::XorWith<B>(xf);
 
           CHECK(z == zf.ToInt()) <<
             StringPrintf("%02x (%d) ^ constant %02x (%d) -> "
@@ -237,9 +237,9 @@ static void TestXorWith() {
 static void TestOr() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint8 z = x | y;
-        Fluint8 zf = xf | yf;
+        hfluint8 zf = xf | yf;
 
         CHECK(z == zf.ToInt()) <<
           StringPrintf("%02x (%d) | %02x (%d) -> %02x (%d) want %02x (%d)",
@@ -251,9 +251,9 @@ static void TestOr() {
 static void TestOrEq() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint8 z = x |= y;
-        Fluint8 zf = xf |= yf;
+        hfluint8 zf = xf |= yf;
 
         CHECK(x == xf.ToInt());
         CHECK(y == yf.ToInt());
@@ -266,9 +266,9 @@ static void TestOrEq() {
 static void TestXor() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint8 z = x ^ y;
-        Fluint8 zf = xf ^ yf;
+        hfluint8 zf = xf ^ yf;
 
         CHECK(z == zf.ToInt()) <<
           StringPrintf("%02x (%d) ^ %02x (%d) -> %02x (%d) want %02x (%d)",
@@ -280,9 +280,9 @@ static void TestXor() {
 static void TestXorEq() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint8 z = x ^= y;
-        Fluint8 zf = xf ^= yf;
+        hfluint8 zf = xf ^= yf;
 
         CHECK(x == xf.ToInt());
         CHECK(y == yf.ToInt());
@@ -294,9 +294,9 @@ static void TestXorEq() {
 
 static void TestNegate() {
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
         uint8 z = -x;
-        Fluint8 zf = -xf;
+        hfluint8 zf = -xf;
 
         CHECK(z == zf.ToInt()) <<
           "-" << x << " -> " << zf.ToInt();
@@ -306,9 +306,9 @@ static void TestNegate() {
 
 static void TestPostIncrement() {
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
         uint8 z = x++;
-        Fluint8 zf = xf++;
+        hfluint8 zf = xf++;
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt());
@@ -319,9 +319,9 @@ static void TestPostIncrement() {
 
 static void TestPreIncrement() {
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
         uint8 z = ++x;
-        Fluint8 zf = ++xf;
+        hfluint8 zf = ++xf;
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt());
@@ -332,9 +332,9 @@ static void TestPreIncrement() {
 
 static void TestPostDecrement() {
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
         uint8 z = x--;
-        Fluint8 zf = xf--;
+        hfluint8 zf = xf--;
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt());
@@ -345,9 +345,9 @@ static void TestPostDecrement() {
 
 static void TestPreDecrement() {
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
         uint8 z = --x;
-        Fluint8 zf = --xf;
+        hfluint8 zf = --xf;
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt());
@@ -359,9 +359,9 @@ static void TestPreDecrement() {
 static void TestPlusEq() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint8 z = x += y;
-        Fluint8 zf = xf += yf;
+        hfluint8 zf = xf += yf;
 
         CHECK(x == xf.ToInt());
         CHECK(y == yf.ToInt());
@@ -374,9 +374,9 @@ static void TestPlusEq() {
 static void TestMinusEq() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         uint8 z = x -= y;
-        Fluint8 zf = xf -= yf;
+        hfluint8 zf = xf -= yf;
 
         CHECK(x == xf.ToInt());
         CHECK(y == yf.ToInt());
@@ -389,9 +389,9 @@ static void TestMinusEq() {
 template<size_t N>
 static void TestLeftShift() {
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
         uint8 z = x << N;
-        Fluint8 zf = Fluint8::LeftShift<N>(xf);
+        hfluint8 zf = hfluint8::LeftShift<N>(xf);
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt());
@@ -414,9 +414,9 @@ static void TestLeftShifts() {
 template<size_t N>
 static void TestRightShift() {
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
         uint8 z = x >> N;
-        Fluint8 zf = Fluint8::RightShift<N>(xf);
+        hfluint8 zf = hfluint8::RightShift<N>(xf);
 
         CHECK(x == xf.ToInt());
         CHECK(z == zf.ToInt()) <<
@@ -452,9 +452,9 @@ static void Gen16() {
 
 static void TestIsZero() {
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
         uint8 z = (x == 0);
-        Fluint8 zf = Fluint8::IsZero(xf);
+        hfluint8 zf = hfluint8::IsZero(xf);
         CHECK(z == zf.ToInt()) << StringPrintf("%d vs %d", z, zf.ToInt());
         CHECK_CANONICAL("is-zero", zf, z, z);
       });
@@ -462,9 +462,9 @@ static void TestIsZero() {
 
 static void TestIsntZero() {
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
         uint8 z = (x != 0);
-        Fluint8 zf = Fluint8::IsntZero(xf);
+        hfluint8 zf = hfluint8::IsntZero(xf);
         CHECK(z == zf.ToInt()) << StringPrintf("%d vs %d", z, zf.ToInt());
         CHECK_CANONICAL("isnt-zero", zf, z, z);
       });
@@ -473,22 +473,22 @@ static void TestIsntZero() {
 static void TestIf() {
   /*
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
 
-        Fluint8 tf = Fluint8::If(Fluint8(0x01), xf);
-        Fluint8 ff = Fluint8::If(Fluint8(0x00), xf);
+        hfluint8 tf = hfluint8::If(hfluint8(0x01), xf);
+        hfluint8 ff = hfluint8::If(hfluint8(0x00), xf);
         printf("%02x: t: %02x f: %02x\n", x, tf.ToInt(), ff.ToInt());
       });
   */
   ForAll(
-      [](uint8 x, Fluint8 xf) {
+      [](uint8 x, hfluint8 xf) {
         {
-          Fluint8 zf = Fluint8::If(Fluint8(0x01), xf);
+          hfluint8 zf = hfluint8::If(hfluint8(0x01), xf);
           CHECK(x == zf.ToInt()) << (int)x << " " << (int)zf.ToInt();
           CHECK_CANONICAL("if-true", zf, x, x);
         }
         {
-          Fluint8 zf = Fluint8::If(Fluint8(0x00), xf);
+          hfluint8 zf = hfluint8::If(hfluint8(0x00), xf);
           CHECK(0 == zf.ToInt()) << (int)x << " " << (int)zf.ToInt();
           CHECK_CANONICAL("if-false", zf, x, x);
         }
@@ -498,14 +498,14 @@ static void TestIf() {
 static void TestIfElse() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
         {
-          Fluint8 zf = Fluint8::IfElse(Fluint8(0x01), xf, yf);
+          hfluint8 zf = hfluint8::IfElse(hfluint8(0x01), xf, yf);
           CHECK(x == zf.ToInt());
           CHECK_CANONICAL("ifelse-true", zf, x, y);
         }
         {
-          Fluint8 zf = Fluint8::IfElse(Fluint8(0x00), xf, yf);
+          hfluint8 zf = hfluint8::IfElse(hfluint8(0x00), xf, yf);
           CHECK(y == zf.ToInt());
           CHECK_CANONICAL("ifelse-false", zf, x, y);
         }
@@ -515,10 +515,10 @@ static void TestIfElse() {
 static void TestEq() {
   ForAllPairs(
       [](uint8 x, uint8 y,
-         Fluint8 xf, Fluint8 yf) {
+         hfluint8 xf, hfluint8 yf) {
 
         bool eq = x == y;
-        Fluint8 feq = Fluint8::Eq(xf, yf);
+        hfluint8 feq = hfluint8::Eq(xf, yf);
         if (eq) {
           CHECK(feq.ToInt() == 1);
         } else {
@@ -530,10 +530,10 @@ static void TestEq() {
 
 static void TestBooleanAnd() {
 
-  Fluint8 f00 = Fluint8::BooleanAnd(Fluint8(0x00), Fluint8(0x00));
-  Fluint8 f01 = Fluint8::BooleanAnd(Fluint8(0x00), Fluint8(0x01));
-  Fluint8 f10 = Fluint8::BooleanAnd(Fluint8(0x01), Fluint8(0x00));
-  Fluint8 f11 = Fluint8::BooleanAnd(Fluint8(0x01), Fluint8(0x01));
+  hfluint8 f00 = hfluint8::BooleanAnd(hfluint8(0x00), hfluint8(0x00));
+  hfluint8 f01 = hfluint8::BooleanAnd(hfluint8(0x00), hfluint8(0x01));
+  hfluint8 f10 = hfluint8::BooleanAnd(hfluint8(0x01), hfluint8(0x00));
+  hfluint8 f11 = hfluint8::BooleanAnd(hfluint8(0x01), hfluint8(0x01));
 
   CHECK_CANONICAL("boolean-and", f00, 0, 0);
   CHECK_CANONICAL("boolean-and", f01, 0, 1);
@@ -548,10 +548,10 @@ static void TestBooleanAnd() {
 
 static void TestBooleanOr() {
 
-  Fluint8 f00 = Fluint8::BooleanOr(Fluint8(0x00), Fluint8(0x00));
-  Fluint8 f01 = Fluint8::BooleanOr(Fluint8(0x00), Fluint8(0x01));
-  Fluint8 f10 = Fluint8::BooleanOr(Fluint8(0x01), Fluint8(0x00));
-  Fluint8 f11 = Fluint8::BooleanOr(Fluint8(0x01), Fluint8(0x01));
+  hfluint8 f00 = hfluint8::BooleanOr(hfluint8(0x00), hfluint8(0x00));
+  hfluint8 f01 = hfluint8::BooleanOr(hfluint8(0x00), hfluint8(0x01));
+  hfluint8 f10 = hfluint8::BooleanOr(hfluint8(0x01), hfluint8(0x00));
+  hfluint8 f11 = hfluint8::BooleanOr(hfluint8(0x01), hfluint8(0x01));
 
   CHECK_CANONICAL("boolean-or", f00, 0, 0);
   CHECK_CANONICAL("boolean-or", f01, 0, 1);

@@ -91,12 +91,12 @@ void X6502::Init() {
   // Initialize the CPU fields.
   // (Don't memset; we have non-CPU members now!)
   tcount = 0;
-  cpu.reg_PC = Fluint16(0x0000);
+  cpu.reg_PC = hfluint16(0x0000);
   cpu.reg_A = cpu.reg_X = cpu.reg_Y = cpu.reg_S = cpu.reg_P = cpu.reg_PI =
-    Fluint8(0x00);
-  cpu.cycles = Fluint16(0x0000);
-  cpu.jammed = Fluint8(0x00);
-  cpu.active = Fluint8(0x01);
+    hfluint8(0x00);
+  cpu.cycles = hfluint16(0x0000);
+  cpu.jammed = hfluint8(0x00);
+  cpu.active = hfluint8(0x01);
   cpu.parent = this;
   count = 0;
   IRQlow = 0;
@@ -107,13 +107,13 @@ void X6502::Init() {
 
 void X6502::Power() {
   count = tcount = IRQlow = 0;
-  cpu.reg_PC = Fluint16(0x0000);
-  cpu.reg_A = cpu.reg_X = cpu.reg_Y = cpu.reg_P = cpu.reg_PI = Fluint8(0x00);
-  cpu.cycles = Fluint16(0x0000);
-  cpu.reg_S = Fluint8(0xFD);
+  cpu.reg_PC = hfluint16(0x0000);
+  cpu.reg_A = cpu.reg_X = cpu.reg_Y = cpu.reg_P = cpu.reg_PI = hfluint8(0x00);
+  cpu.cycles = hfluint16(0x0000);
+  cpu.reg_S = hfluint8(0xFD);
   DB = 0;
-  cpu.jammed = Fluint8(0x00);
-  cpu.active = Fluint8(0x01);
+  cpu.jammed = hfluint8(0x00);
+  cpu.active = hfluint8(0x01);
   cpu.parent = this;
 
   timestamp = 0;
@@ -139,10 +139,10 @@ void X6502::RunLoop() {
 
     if (IRQlow) {
       if (IRQlow & FCEU_IQRESET) {
-        Fluint8 lo = RdMem(Fluint16(0xFFFC));
-        Fluint8 hi = RdMem(Fluint16(0xFFFD));
-        cpu.reg_PC = Fluint16(hi, lo);
-        cpu.jammed = Fluint8(0x00);
+        hfluint8 lo = RdMem(hfluint16(0xFFFC));
+        hfluint8 hi = RdMem(hfluint16(0xFFFD));
+        cpu.reg_PC = hfluint16(hi, lo);
+        cpu.jammed = hfluint8(0x00);
         cpu.reg_PI = cpu.reg_P = I_FLAG;
         IRQlow &= ~FCEU_IQRESET;
       } else if (IRQlow & FCEU_IQNMI2) {
@@ -152,25 +152,25 @@ void X6502::RunLoop() {
         if (!cpu.jammed.ToInt()) {
           ADDCYC(7);
           cpu.PUSH16(cpu.reg_PC);
-          const Fluint8 pnb = Fluint8::AndWith<(uint8_t)~B_FLAG8>(cpu.reg_P);
-          cpu.PUSH(Fluint8::OrWith<U_FLAG8>(pnb));
-          cpu.reg_P = Fluint8::OrWith<I_FLAG8>(cpu.reg_P);
-          Fluint8 lo = RdMem(Fluint16(0xFFFA));
-          Fluint8 hi = RdMem(Fluint16(0xFFFB));
-          cpu.reg_PC = Fluint16(hi, lo);
+          const hfluint8 pnb = hfluint8::AndWith<(uint8_t)~B_FLAG8>(cpu.reg_P);
+          cpu.PUSH(hfluint8::OrWith<U_FLAG8>(pnb));
+          cpu.reg_P = hfluint8::OrWith<I_FLAG8>(cpu.reg_P);
+          hfluint8 lo = RdMem(hfluint16(0xFFFA));
+          hfluint8 hi = RdMem(hfluint16(0xFFFB));
+          cpu.reg_PC = hfluint16(hi, lo);
           IRQlow &= ~FCEU_IQNMI;
         }
       } else {
-        const Fluint8 fpi = Fluint8::AndWith<I_FLAG8>(cpu.reg_PI);
+        const hfluint8 fpi = hfluint8::AndWith<I_FLAG8>(cpu.reg_PI);
         if (fpi.ToInt() == 0 && !cpu.jammed.ToInt()) {
           ADDCYC(7);
           cpu.PUSH16(cpu.reg_PC);
-          const Fluint8 pnb = Fluint8::AndWith<(uint8_t)~B_FLAG8>(cpu.reg_P);
-          cpu.PUSH(Fluint8::OrWith<U_FLAG8>(pnb));
-          cpu.reg_P = Fluint8::OrWith<I_FLAG8>(cpu.reg_P);
-          Fluint8 lo = RdMem(Fluint16(0xFFFE));
-          Fluint8 hi = RdMem(Fluint16(0xFFFF));
-          cpu.reg_PC = Fluint16(hi, lo);
+          const hfluint8 pnb = hfluint8::AndWith<(uint8_t)~B_FLAG8>(cpu.reg_P);
+          cpu.PUSH(hfluint8::OrWith<U_FLAG8>(pnb));
+          cpu.reg_P = hfluint8::OrWith<I_FLAG8>(cpu.reg_P);
+          hfluint8 lo = RdMem(hfluint16(0xFFFE));
+          hfluint8 hi = RdMem(hfluint16(0xFFFF));
+          cpu.reg_PC = hfluint16(hi, lo);
         }
       }
       IRQlow &= ~(FCEU_IQTEMP);
@@ -185,7 +185,7 @@ void X6502::RunLoop() {
     cpu.reg_PI = cpu.reg_P;
     // Get the next instruction.
 
-    const Fluint8 opcode = RdMem(cpu.reg_PC);
+    const hfluint8 opcode = RdMem(cpu.reg_PC);
     // printf("Read %x -> opcode %02x\n", reg_PC, b1);
 
     ADDCYC(CycTable[opcode.ToInt()]);
@@ -202,7 +202,7 @@ void X6502::RunLoop() {
     std::array<CPU, 256> cpus;
     for (int i = 0; i < 256; i++) {
       cpus[i] = cpu;
-      cpus[i].active = Fluint8::Eq(Fluint8(i), opcode);
+      cpus[i].active = hfluint8::Eq(hfluint8(i), opcode);
       cpus[i].parent = this;
     }
 
@@ -246,145 +246,145 @@ void X6502::RunLoop() {
     case 0xF8: cpus[0xF8].SED(); break;
     case 0x78: cpus[0x78].SEI(); break;
 
-    case 0x0A: cpus[0x0A].RMW_A([](CPU *cpu, Fluint8 x) { return cpu->ASL(x); }); break;
-    case 0x06: cpus[0x06].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->ASL(x); }); break;
-    case 0x16: cpus[0x16].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->ASL(x); }); break;
-    case 0x0E: cpus[0x0E].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->ASL(x); }); break;
-    case 0x1E: cpus[0x1E].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->ASL(x); }); break;
+    case 0x0A: cpus[0x0A].RMW_A([](CPU *cpu, hfluint8 x) { return cpu->ASL(x); }); break;
+    case 0x06: cpus[0x06].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->ASL(x); }); break;
+    case 0x16: cpus[0x16].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->ASL(x); }); break;
+    case 0x0E: cpus[0x0E].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->ASL(x); }); break;
+    case 0x1E: cpus[0x1E].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->ASL(x); }); break;
 
-    case 0xC6: cpus[0xC6].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->DEC(x); }); break;
-    case 0xD6: cpus[0xD6].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->DEC(x); }); break;
-    case 0xCE: cpus[0xCE].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->DEC(x); }); break;
-    case 0xDE: cpus[0xDE].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->DEC(x); }); break;
+    case 0xC6: cpus[0xC6].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->DEC(x); }); break;
+    case 0xD6: cpus[0xD6].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->DEC(x); }); break;
+    case 0xCE: cpus[0xCE].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->DEC(x); }); break;
+    case 0xDE: cpus[0xDE].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->DEC(x); }); break;
 
-    case 0xE6: cpus[0xE6].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->INC(x); }); break;
-    case 0xF6: cpus[0xF6].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->INC(x); }); break;
-    case 0xEE: cpus[0xEE].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->INC(x); }); break;
-    case 0xFE: cpus[0xFE].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->INC(x); }); break;
+    case 0xE6: cpus[0xE6].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->INC(x); }); break;
+    case 0xF6: cpus[0xF6].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->INC(x); }); break;
+    case 0xEE: cpus[0xEE].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->INC(x); }); break;
+    case 0xFE: cpus[0xFE].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->INC(x); }); break;
 
-    case 0x4A: cpus[0x4A].RMW_A([](CPU *cpu, Fluint8 x) { return cpu->LSR(x); }); break;
-    case 0x46: cpus[0x46].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->LSR(x); }); break;
-    case 0x56: cpus[0x56].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->LSR(x); }); break;
-    case 0x4E: cpus[0x4E].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->LSR(x); }); break;
-    case 0x5E: cpus[0x5E].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->LSR(x); }); break;
+    case 0x4A: cpus[0x4A].RMW_A([](CPU *cpu, hfluint8 x) { return cpu->LSR(x); }); break;
+    case 0x46: cpus[0x46].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->LSR(x); }); break;
+    case 0x56: cpus[0x56].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->LSR(x); }); break;
+    case 0x4E: cpus[0x4E].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->LSR(x); }); break;
+    case 0x5E: cpus[0x5E].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->LSR(x); }); break;
 
-    case 0x2A: cpus[0x2A].RMW_A([](CPU *cpu, Fluint8 x) { return cpu->ROL(x); }); break;
-    case 0x26: cpus[0x26].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->ROL(x); }); break;
-    case 0x36: cpus[0x36].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->ROL(x); }); break;
-    case 0x2E: cpus[0x2E].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->ROL(x); }); break;
-    case 0x3E: cpus[0x3E].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->ROL(x); }); break;
+    case 0x2A: cpus[0x2A].RMW_A([](CPU *cpu, hfluint8 x) { return cpu->ROL(x); }); break;
+    case 0x26: cpus[0x26].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->ROL(x); }); break;
+    case 0x36: cpus[0x36].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->ROL(x); }); break;
+    case 0x2E: cpus[0x2E].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->ROL(x); }); break;
+    case 0x3E: cpus[0x3E].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->ROL(x); }); break;
 
-    case 0x6A: cpus[0x6A].RMW_A([](CPU *cpu, Fluint8 x) { return cpu->ROR(x); }); break;
-    case 0x66: cpus[0x66].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->ROR(x); }); break;
-    case 0x76: cpus[0x76].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->ROR(x); }); break;
-    case 0x6E: cpus[0x6E].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->ROR(x); }); break;
-    case 0x7E: cpus[0x7E].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->ROR(x); }); break;
+    case 0x6A: cpus[0x6A].RMW_A([](CPU *cpu, hfluint8 x) { return cpu->ROR(x); }); break;
+    case 0x66: cpus[0x66].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->ROR(x); }); break;
+    case 0x76: cpus[0x76].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->ROR(x); }); break;
+    case 0x6E: cpus[0x6E].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->ROR(x); }); break;
+    case 0x7E: cpus[0x7E].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->ROR(x); }); break;
 
-    case 0x69: cpus[0x69].LD_IM([](CPU *cpu, Fluint8 x) { cpu->ADC(x); }); break;
-    case 0x65: cpus[0x65].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->ADC(x); }); break;
-    case 0x75: cpus[0x75].LD_ZPX([](CPU *cpu, Fluint8 x) { cpu->ADC(x); }); break;
-    case 0x6D: cpus[0x6D].LD_AB([](CPU *cpu, Fluint8 x) { cpu->ADC(x); }); break;
-    case 0x7D: cpus[0x7D].LD_ABX([](CPU *cpu, Fluint8 x) { cpu->ADC(x); }); break;
-    case 0x79: cpus[0x79].LD_ABY([](CPU *cpu, Fluint8 x) { cpu->ADC(x); }); break;
-    case 0x61: cpus[0x61].LD_IX([](CPU *cpu, Fluint8 x) { cpu->ADC(x); }); break;
-    case 0x71: cpus[0x71].LD_IY([](CPU *cpu, Fluint8 x) { cpu->ADC(x); }); break;
+    case 0x69: cpus[0x69].LD_IM([](CPU *cpu, hfluint8 x) { cpu->ADC(x); }); break;
+    case 0x65: cpus[0x65].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->ADC(x); }); break;
+    case 0x75: cpus[0x75].LD_ZPX([](CPU *cpu, hfluint8 x) { cpu->ADC(x); }); break;
+    case 0x6D: cpus[0x6D].LD_AB([](CPU *cpu, hfluint8 x) { cpu->ADC(x); }); break;
+    case 0x7D: cpus[0x7D].LD_ABX([](CPU *cpu, hfluint8 x) { cpu->ADC(x); }); break;
+    case 0x79: cpus[0x79].LD_ABY([](CPU *cpu, hfluint8 x) { cpu->ADC(x); }); break;
+    case 0x61: cpus[0x61].LD_IX([](CPU *cpu, hfluint8 x) { cpu->ADC(x); }); break;
+    case 0x71: cpus[0x71].LD_IY([](CPU *cpu, hfluint8 x) { cpu->ADC(x); }); break;
 
-    case 0x29: cpus[0x29].LD_IM([](CPU *cpu, Fluint8 x) { cpu->AND(x); }); break;
-    case 0x25: cpus[0x25].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->AND(x); }); break;
-    case 0x35: cpus[0x35].LD_ZPX([](CPU *cpu, Fluint8 x) { cpu->AND(x); }); break;
-    case 0x2D: cpus[0x2D].LD_AB([](CPU *cpu, Fluint8 x) { cpu->AND(x); }); break;
-    case 0x3D: cpus[0x3D].LD_ABX([](CPU *cpu, Fluint8 x) { cpu->AND(x); }); break;
-    case 0x39: cpus[0x39].LD_ABY([](CPU *cpu, Fluint8 x) { cpu->AND(x); }); break;
-    case 0x21: cpus[0x21].LD_IX([](CPU *cpu, Fluint8 x) { cpu->AND(x); }); break;
-    case 0x31: cpus[0x31].LD_IY([](CPU *cpu, Fluint8 x) { cpu->AND(x); }); break;
+    case 0x29: cpus[0x29].LD_IM([](CPU *cpu, hfluint8 x) { cpu->AND(x); }); break;
+    case 0x25: cpus[0x25].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->AND(x); }); break;
+    case 0x35: cpus[0x35].LD_ZPX([](CPU *cpu, hfluint8 x) { cpu->AND(x); }); break;
+    case 0x2D: cpus[0x2D].LD_AB([](CPU *cpu, hfluint8 x) { cpu->AND(x); }); break;
+    case 0x3D: cpus[0x3D].LD_ABX([](CPU *cpu, hfluint8 x) { cpu->AND(x); }); break;
+    case 0x39: cpus[0x39].LD_ABY([](CPU *cpu, hfluint8 x) { cpu->AND(x); }); break;
+    case 0x21: cpus[0x21].LD_IX([](CPU *cpu, hfluint8 x) { cpu->AND(x); }); break;
+    case 0x31: cpus[0x31].LD_IY([](CPU *cpu, hfluint8 x) { cpu->AND(x); }); break;
 
-    case 0x24: cpus[0x24].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->BIT(x); }); break;
-    case 0x2C: cpus[0x2C].LD_AB([](CPU *cpu, Fluint8 x) { cpu->BIT(x); }); break;
+    case 0x24: cpus[0x24].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->BIT(x); }); break;
+    case 0x2C: cpus[0x2C].LD_AB([](CPU *cpu, hfluint8 x) { cpu->BIT(x); }); break;
 
 
-    case 0xC9: cpus[0xC9].LD_IM([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
-    case 0xC5: cpus[0xC5].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
-    case 0xD5: cpus[0xD5].LD_ZPX([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
-    case 0xCD: cpus[0xCD].LD_AB([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
-    case 0xDD: cpus[0xDD].LD_ABX([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
-    case 0xD9: cpus[0xD9].LD_ABY([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
-    case 0xC1: cpus[0xC1].LD_IX([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
-    case 0xD1: cpus[0xD1].LD_IY([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
+    case 0xC9: cpus[0xC9].LD_IM([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
+    case 0xC5: cpus[0xC5].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
+    case 0xD5: cpus[0xD5].LD_ZPX([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
+    case 0xCD: cpus[0xCD].LD_AB([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
+    case 0xDD: cpus[0xDD].LD_ABX([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
+    case 0xD9: cpus[0xD9].LD_ABY([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
+    case 0xC1: cpus[0xC1].LD_IX([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
+    case 0xD1: cpus[0xD1].LD_IY([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_A, x); }); break;
 
-    case 0xE0: cpus[0xE0].LD_IM([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_X, x); }); break;
-    case 0xE4: cpus[0xE4].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_X, x); }); break;
-    case 0xEC: cpus[0xEC].LD_AB([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_X, x); }); break;
+    case 0xE0: cpus[0xE0].LD_IM([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_X, x); }); break;
+    case 0xE4: cpus[0xE4].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_X, x); }); break;
+    case 0xEC: cpus[0xEC].LD_AB([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_X, x); }); break;
 
-    case 0xC0: cpus[0xC0].LD_IM([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_Y, x); }); break;
-    case 0xC4: cpus[0xC4].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_Y, x); }); break;
-    case 0xCC: cpus[0xCC].LD_AB([](CPU *cpu, Fluint8 x) { cpu->CMPL(cpu->reg_Y, x); }); break;
+    case 0xC0: cpus[0xC0].LD_IM([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_Y, x); }); break;
+    case 0xC4: cpus[0xC4].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_Y, x); }); break;
+    case 0xCC: cpus[0xCC].LD_AB([](CPU *cpu, hfluint8 x) { cpu->CMPL(cpu->reg_Y, x); }); break;
 
-    case 0x49: cpus[0x49].LD_IM([](CPU *cpu, Fluint8 x) { cpu->EOR(x); }); break;
-    case 0x45: cpus[0x45].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->EOR(x); }); break;
-    case 0x55: cpus[0x55].LD_ZPX([](CPU *cpu, Fluint8 x) { cpu->EOR(x); }); break;
-    case 0x4D: cpus[0x4D].LD_AB([](CPU *cpu, Fluint8 x) { cpu->EOR(x); }); break;
-    case 0x5D: cpus[0x5D].LD_ABX([](CPU *cpu, Fluint8 x) { cpu->EOR(x); }); break;
-    case 0x59: cpus[0x59].LD_ABY([](CPU *cpu, Fluint8 x) { cpu->EOR(x); }); break;
-    case 0x41: cpus[0x41].LD_IX([](CPU *cpu, Fluint8 x) { cpu->EOR(x); }); break;
-    case 0x51: cpus[0x51].LD_IY([](CPU *cpu, Fluint8 x) { cpu->EOR(x); }); break;
+    case 0x49: cpus[0x49].LD_IM([](CPU *cpu, hfluint8 x) { cpu->EOR(x); }); break;
+    case 0x45: cpus[0x45].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->EOR(x); }); break;
+    case 0x55: cpus[0x55].LD_ZPX([](CPU *cpu, hfluint8 x) { cpu->EOR(x); }); break;
+    case 0x4D: cpus[0x4D].LD_AB([](CPU *cpu, hfluint8 x) { cpu->EOR(x); }); break;
+    case 0x5D: cpus[0x5D].LD_ABX([](CPU *cpu, hfluint8 x) { cpu->EOR(x); }); break;
+    case 0x59: cpus[0x59].LD_ABY([](CPU *cpu, hfluint8 x) { cpu->EOR(x); }); break;
+    case 0x41: cpus[0x41].LD_IX([](CPU *cpu, hfluint8 x) { cpu->EOR(x); }); break;
+    case 0x51: cpus[0x51].LD_IY([](CPU *cpu, hfluint8 x) { cpu->EOR(x); }); break;
 
-    case 0xA9: cpus[0xA9].LD_IM([](CPU *cpu, Fluint8 x) { cpu->LDA(x); }); break;
-    case 0xA5: cpus[0xA5].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->LDA(x); }); break;
-    case 0xB5: cpus[0xB5].LD_ZPX([](CPU *cpu, Fluint8 x) { cpu->LDA(x); }); break;
-    case 0xAD: cpus[0xAD].LD_AB([](CPU *cpu, Fluint8 x) { cpu->LDA(x); }); break;
-    case 0xBD: cpus[0xBD].LD_ABX([](CPU *cpu, Fluint8 x) { cpu->LDA(x); }); break;
-    case 0xB9: cpus[0xB9].LD_ABY([](CPU *cpu, Fluint8 x) { cpu->LDA(x); }); break;
-    case 0xA1: cpus[0xA1].LD_IX([](CPU *cpu, Fluint8 x) { cpu->LDA(x); }); break;
-    case 0xB1: cpus[0xB1].LD_IY([](CPU *cpu, Fluint8 x) { cpu->LDA(x); }); break;
+    case 0xA9: cpus[0xA9].LD_IM([](CPU *cpu, hfluint8 x) { cpu->LDA(x); }); break;
+    case 0xA5: cpus[0xA5].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->LDA(x); }); break;
+    case 0xB5: cpus[0xB5].LD_ZPX([](CPU *cpu, hfluint8 x) { cpu->LDA(x); }); break;
+    case 0xAD: cpus[0xAD].LD_AB([](CPU *cpu, hfluint8 x) { cpu->LDA(x); }); break;
+    case 0xBD: cpus[0xBD].LD_ABX([](CPU *cpu, hfluint8 x) { cpu->LDA(x); }); break;
+    case 0xB9: cpus[0xB9].LD_ABY([](CPU *cpu, hfluint8 x) { cpu->LDA(x); }); break;
+    case 0xA1: cpus[0xA1].LD_IX([](CPU *cpu, hfluint8 x) { cpu->LDA(x); }); break;
+    case 0xB1: cpus[0xB1].LD_IY([](CPU *cpu, hfluint8 x) { cpu->LDA(x); }); break;
 
-    case 0xA2: cpus[0xA2].LD_IM([](CPU *cpu, Fluint8 x) { cpu->LDX(x); }); break;
-    case 0xA6: cpus[0xA6].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->LDX(x); }); break;
-    case 0xB6: cpus[0xB6].LD_ZPY([](CPU *cpu, Fluint8 x) { cpu->LDX(x); }); break;
-    case 0xAE: cpus[0xAE].LD_AB([](CPU *cpu, Fluint8 x) { cpu->LDX(x); }); break;
-    case 0xBE: cpus[0xBE].LD_ABY([](CPU *cpu, Fluint8 x) { cpu->LDX(x); }); break;
+    case 0xA2: cpus[0xA2].LD_IM([](CPU *cpu, hfluint8 x) { cpu->LDX(x); }); break;
+    case 0xA6: cpus[0xA6].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->LDX(x); }); break;
+    case 0xB6: cpus[0xB6].LD_ZPY([](CPU *cpu, hfluint8 x) { cpu->LDX(x); }); break;
+    case 0xAE: cpus[0xAE].LD_AB([](CPU *cpu, hfluint8 x) { cpu->LDX(x); }); break;
+    case 0xBE: cpus[0xBE].LD_ABY([](CPU *cpu, hfluint8 x) { cpu->LDX(x); }); break;
 
-    case 0xA0: cpus[0xA0].LD_IM([](CPU *cpu, Fluint8 x) { cpu->LDY(x); }); break;
-    case 0xA4: cpus[0xA4].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->LDY(x); }); break;
-    case 0xB4: cpus[0xB4].LD_ZPX([](CPU *cpu, Fluint8 x) { cpu->LDY(x); }); break;
-    case 0xAC: cpus[0xAC].LD_AB([](CPU *cpu, Fluint8 x) { cpu->LDY(x); }); break;
-    case 0xBC: cpus[0xBC].LD_ABX([](CPU *cpu, Fluint8 x) { cpu->LDY(x); }); break;
+    case 0xA0: cpus[0xA0].LD_IM([](CPU *cpu, hfluint8 x) { cpu->LDY(x); }); break;
+    case 0xA4: cpus[0xA4].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->LDY(x); }); break;
+    case 0xB4: cpus[0xB4].LD_ZPX([](CPU *cpu, hfluint8 x) { cpu->LDY(x); }); break;
+    case 0xAC: cpus[0xAC].LD_AB([](CPU *cpu, hfluint8 x) { cpu->LDY(x); }); break;
+    case 0xBC: cpus[0xBC].LD_ABX([](CPU *cpu, hfluint8 x) { cpu->LDY(x); }); break;
 
-    case 0x09: cpus[0x09].LD_IM([](CPU *cpu, Fluint8 x) { cpu->ORA(x); }); break;
-    case 0x05: cpus[0x05].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->ORA(x); }); break;
-    case 0x15: cpus[0x15].LD_ZPX([](CPU *cpu, Fluint8 x) { cpu->ORA(x); }); break;
-    case 0x0D: cpus[0x0D].LD_AB([](CPU *cpu, Fluint8 x) { cpu->ORA(x); }); break;
-    case 0x1D: cpus[0x1D].LD_ABX([](CPU *cpu, Fluint8 x) { cpu->ORA(x); }); break;
-    case 0x19: cpus[0x19].LD_ABY([](CPU *cpu, Fluint8 x) { cpu->ORA(x); }); break;
-    case 0x01: cpus[0x01].LD_IX([](CPU *cpu, Fluint8 x) { cpu->ORA(x); }); break;
-    case 0x11: cpus[0x11].LD_IY([](CPU *cpu, Fluint8 x) { cpu->ORA(x); }); break;
+    case 0x09: cpus[0x09].LD_IM([](CPU *cpu, hfluint8 x) { cpu->ORA(x); }); break;
+    case 0x05: cpus[0x05].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->ORA(x); }); break;
+    case 0x15: cpus[0x15].LD_ZPX([](CPU *cpu, hfluint8 x) { cpu->ORA(x); }); break;
+    case 0x0D: cpus[0x0D].LD_AB([](CPU *cpu, hfluint8 x) { cpu->ORA(x); }); break;
+    case 0x1D: cpus[0x1D].LD_ABX([](CPU *cpu, hfluint8 x) { cpu->ORA(x); }); break;
+    case 0x19: cpus[0x19].LD_ABY([](CPU *cpu, hfluint8 x) { cpu->ORA(x); }); break;
+    case 0x01: cpus[0x01].LD_IX([](CPU *cpu, hfluint8 x) { cpu->ORA(x); }); break;
+    case 0x11: cpus[0x11].LD_IY([](CPU *cpu, hfluint8 x) { cpu->ORA(x); }); break;
 
     // Undocumented; same as E9
-    case 0xEB: cpus[0xEB].LD_IM([](CPU *cpu, Fluint8 x) { cpu->SBC(x); }); break;
-    case 0xE9: cpus[0xE9].LD_IM([](CPU *cpu, Fluint8 x) { cpu->SBC(x); }); break;
-    case 0xE5: cpus[0xE5].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->SBC(x); }); break;
-    case 0xF5: cpus[0xF5].LD_ZPX([](CPU *cpu, Fluint8 x) { cpu->SBC(x); }); break;
-    case 0xED: cpus[0xED].LD_AB([](CPU *cpu, Fluint8 x) { cpu->SBC(x); }); break;
-    case 0xFD: cpus[0xFD].LD_ABX([](CPU *cpu, Fluint8 x) { cpu->SBC(x); }); break;
-    case 0xF9: cpus[0xF9].LD_ABY([](CPU *cpu, Fluint8 x) { cpu->SBC(x); }); break;
-    case 0xE1: cpus[0xE1].LD_IX([](CPU *cpu, Fluint8 x) { cpu->SBC(x); }); break;
-    case 0xF1: cpus[0xF1].LD_IY([](CPU *cpu, Fluint8 x) { cpu->SBC(x); }); break;
+    case 0xEB: cpus[0xEB].LD_IM([](CPU *cpu, hfluint8 x) { cpu->SBC(x); }); break;
+    case 0xE9: cpus[0xE9].LD_IM([](CPU *cpu, hfluint8 x) { cpu->SBC(x); }); break;
+    case 0xE5: cpus[0xE5].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->SBC(x); }); break;
+    case 0xF5: cpus[0xF5].LD_ZPX([](CPU *cpu, hfluint8 x) { cpu->SBC(x); }); break;
+    case 0xED: cpus[0xED].LD_AB([](CPU *cpu, hfluint8 x) { cpu->SBC(x); }); break;
+    case 0xFD: cpus[0xFD].LD_ABX([](CPU *cpu, hfluint8 x) { cpu->SBC(x); }); break;
+    case 0xF9: cpus[0xF9].LD_ABY([](CPU *cpu, hfluint8 x) { cpu->SBC(x); }); break;
+    case 0xE1: cpus[0xE1].LD_IX([](CPU *cpu, hfluint8 x) { cpu->SBC(x); }); break;
+    case 0xF1: cpus[0xF1].LD_IY([](CPU *cpu, hfluint8 x) { cpu->SBC(x); }); break;
 
 
-    case 0x85: cpus[0x85].ST_ZP([](CPU *cpu, Fluint16 AA) { return cpu->reg_A; }); break;
-    case 0x95: cpus[0x95].ST_ZPX([](CPU *cpu, Fluint16 AA) { return cpu->reg_A; }); break;
-    case 0x8D: cpus[0x8D].ST_AB([](CPU *cpu, Fluint16 AA) { return cpu->reg_A; }); break;
-    case 0x9D: cpus[0x9D].ST_ABX([](CPU *cpu, Fluint16 AA) { return cpu->reg_A; }); break;
-    case 0x99: cpus[0x99].ST_ABY([](CPU *cpu, Fluint16 AA) { return cpu->reg_A; }); break;
-    case 0x81: cpus[0x81].ST_IX([](CPU *cpu, Fluint16 AA) { return cpu->reg_A; }); break;
-    case 0x91: cpus[0x91].ST_IY([](CPU *cpu, Fluint16 AA) { return cpu->reg_A; }); break;
+    case 0x85: cpus[0x85].ST_ZP([](CPU *cpu, hfluint16 AA) { return cpu->reg_A; }); break;
+    case 0x95: cpus[0x95].ST_ZPX([](CPU *cpu, hfluint16 AA) { return cpu->reg_A; }); break;
+    case 0x8D: cpus[0x8D].ST_AB([](CPU *cpu, hfluint16 AA) { return cpu->reg_A; }); break;
+    case 0x9D: cpus[0x9D].ST_ABX([](CPU *cpu, hfluint16 AA) { return cpu->reg_A; }); break;
+    case 0x99: cpus[0x99].ST_ABY([](CPU *cpu, hfluint16 AA) { return cpu->reg_A; }); break;
+    case 0x81: cpus[0x81].ST_IX([](CPU *cpu, hfluint16 AA) { return cpu->reg_A; }); break;
+    case 0x91: cpus[0x91].ST_IY([](CPU *cpu, hfluint16 AA) { return cpu->reg_A; }); break;
 
-    case 0x86: cpus[0x86].ST_ZP([](CPU *cpu, Fluint16 AA) { return cpu->reg_X; }); break;
-    case 0x96: cpus[0x96].ST_ZPY([](CPU *cpu, Fluint16 AA) { return cpu->reg_X; }); break;
-    case 0x8E: cpus[0x8E].ST_AB([](CPU *cpu, Fluint16 AA) { return cpu->reg_X; }); break;
+    case 0x86: cpus[0x86].ST_ZP([](CPU *cpu, hfluint16 AA) { return cpu->reg_X; }); break;
+    case 0x96: cpus[0x96].ST_ZPY([](CPU *cpu, hfluint16 AA) { return cpu->reg_X; }); break;
+    case 0x8E: cpus[0x8E].ST_AB([](CPU *cpu, hfluint16 AA) { return cpu->reg_X; }); break;
 
-    case 0x84: cpus[0x84].ST_ZP([](CPU *cpu, Fluint16 AA) { return cpu->reg_Y; }); break;
-    case 0x94: cpus[0x94].ST_ZPX([](CPU *cpu, Fluint16 AA) { return cpu->reg_Y; }); break;
-    case 0x8C: cpus[0x8C].ST_AB([](CPU *cpu, Fluint16 AA) { return cpu->reg_Y; }); break;
+    case 0x84: cpus[0x84].ST_ZP([](CPU *cpu, hfluint16 AA) { return cpu->reg_Y; }); break;
+    case 0x94: cpus[0x94].ST_ZPX([](CPU *cpu, hfluint16 AA) { return cpu->reg_Y; }); break;
+    case 0x8C: cpus[0x8C].ST_AB([](CPU *cpu, hfluint16 AA) { return cpu->reg_Y; }); break;
 
     case 0x90: cpus[0x90].BCC(); break;
     case 0xB0: cpus[0xB0].BCS(); break;
@@ -396,77 +396,77 @@ void X6502::RunLoop() {
     case 0x70: cpus[0x70].BVS(); break;
 
     // ** Undocumented instructions **
-    case 0x2B: cpus[0x2B].LD_IM([](CPU *cpu, Fluint8 x) { cpu->AAC(x); }); break;
-    case 0x0B: cpus[0x0B].LD_IM([](CPU *cpu, Fluint8 x) { cpu->AAC(x); }); break;
+    case 0x2B: cpus[0x2B].LD_IM([](CPU *cpu, hfluint8 x) { cpu->AAC(x); }); break;
+    case 0x0B: cpus[0x0B].LD_IM([](CPU *cpu, hfluint8 x) { cpu->AAC(x); }); break;
 
 
     /* AAX */
-    case 0x87: cpus[0x87].ST_ZP([](CPU *cpu, Fluint16 AA) { return cpu->reg_A & cpu->reg_X; }); break;
-    case 0x97: cpus[0x97].ST_ZPY([](CPU *cpu, Fluint16 AA) { return cpu->reg_A & cpu->reg_X; }); break;
-    case 0x8F: cpus[0x8F].ST_AB([](CPU *cpu, Fluint16 AA) { return cpu->reg_A & cpu->reg_X; }); break;
-    case 0x83: cpus[0x83].ST_IX([](CPU *cpu, Fluint16 AA) { return cpu->reg_A & cpu->reg_X; }); break;
+    case 0x87: cpus[0x87].ST_ZP([](CPU *cpu, hfluint16 AA) { return cpu->reg_A & cpu->reg_X; }); break;
+    case 0x97: cpus[0x97].ST_ZPY([](CPU *cpu, hfluint16 AA) { return cpu->reg_A & cpu->reg_X; }); break;
+    case 0x8F: cpus[0x8F].ST_AB([](CPU *cpu, hfluint16 AA) { return cpu->reg_A & cpu->reg_X; }); break;
+    case 0x83: cpus[0x83].ST_IX([](CPU *cpu, hfluint16 AA) { return cpu->reg_A & cpu->reg_X; }); break;
 
     case 0x6B:
-      cpus[0x6B].LD_IM([](CPU *cpu, Fluint8 x) { cpu->ARR(x); });
+      cpus[0x6B].LD_IM([](CPU *cpu, hfluint8 x) { cpu->ARR(x); });
       break;
 
     /* ASR */
     case 0x4B:
-      cpus[0x4B].LD_IM([](CPU *cpu, Fluint8 x) { cpu->AND(x); cpu->LSRA(); });
+      cpus[0x4B].LD_IM([](CPU *cpu, hfluint8 x) { cpu->AND(x); cpu->LSRA(); });
       break;
 
     case 0xAB:
-      cpus[0xAB].LD_IM([](CPU *cpu, Fluint8 x) { cpu->ATX(x); });
+      cpus[0xAB].LD_IM([](CPU *cpu, hfluint8 x) { cpu->ATX(x); });
       break;
 
     case 0xCB:
-      cpus[0xCB].LD_IM([](CPU *cpu, Fluint8 x) { cpu->AXS(x); });
+      cpus[0xCB].LD_IM([](CPU *cpu, hfluint8 x) { cpu->AXS(x); });
       break;
 
     /* DCP */
     case 0xC7:
-      cpus[0xC7].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->DCP(x); });
+      cpus[0xC7].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->DCP(x); });
       break;
     case 0xD7:
-      cpus[0xD7].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->DCP(x); });
+      cpus[0xD7].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->DCP(x); });
       break;
     case 0xCF:
-      cpus[0xCF].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->DCP(x); });
+      cpus[0xCF].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->DCP(x); });
       break;
     case 0xDF:
-      cpus[0xDF].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->DCP(x); });
+      cpus[0xDF].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->DCP(x); });
       break;
     case 0xDB:
-      cpus[0xDB].RMW_ABY([](CPU *cpu, Fluint8 x) { return cpu->DCP(x); });
+      cpus[0xDB].RMW_ABY([](CPU *cpu, hfluint8 x) { return cpu->DCP(x); });
       break;
     case 0xC3:
-      cpus[0xC3].RMW_IX([](CPU *cpu, Fluint8 x) { return cpu->DCP(x); });
+      cpus[0xC3].RMW_IX([](CPU *cpu, hfluint8 x) { return cpu->DCP(x); });
       break;
     case 0xD3:
-      cpus[0xD3].RMW_IY([](CPU *cpu, Fluint8 x) { return cpu->DCP(x); });
+      cpus[0xD3].RMW_IY([](CPU *cpu, hfluint8 x) { return cpu->DCP(x); });
       break;
 
     /* ISB */
     case 0xE7:
-      cpus[0xE7].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->ISB(x); });
+      cpus[0xE7].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->ISB(x); });
       break;
     case 0xF7:
-      cpus[0xF7].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->ISB(x); });
+      cpus[0xF7].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->ISB(x); });
       break;
     case 0xEF:
-      cpus[0xEF].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->ISB(x); });
+      cpus[0xEF].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->ISB(x); });
       break;
     case 0xFF:
-      cpus[0xFF].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->ISB(x); });
+      cpus[0xFF].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->ISB(x); });
       break;
     case 0xFB:
-      cpus[0xFB].RMW_ABY([](CPU *cpu, Fluint8 x) { return cpu->ISB(x); });
+      cpus[0xFB].RMW_ABY([](CPU *cpu, hfluint8 x) { return cpu->ISB(x); });
       break;
     case 0xE3:
-      cpus[0xE3].RMW_IX([](CPU *cpu, Fluint8 x) { return cpu->ISB(x); });
+      cpus[0xE3].RMW_IX([](CPU *cpu, hfluint8 x) { return cpu->ISB(x); });
       break;
     case 0xF3:
-      cpus[0xF3].RMW_IY([](CPU *cpu, Fluint8 x) { return cpu->ISB(x); });
+      cpus[0xF3].RMW_IY([](CPU *cpu, hfluint8 x) { return cpu->ISB(x); });
       break;
 
     /* DOP */
@@ -500,16 +500,16 @@ void X6502::RunLoop() {
     case 0xF2: cpus[0xF2].KIL(); break;
 
     case 0xBB:
-      cpus[0xBB].RMW_ABY([](CPU *cpu, Fluint8 x) { return cpu->LAR(x); });
+      cpus[0xBB].RMW_ABY([](CPU *cpu, hfluint8 x) { return cpu->LAR(x); });
       break;
 
       /* LAX */
-    case 0xA7: cpus[0xA7].LD_ZP([](CPU *cpu, Fluint8 x) { cpu->LAX(x); }); break;
-    case 0xB7: cpus[0xB7].LD_ZPY([](CPU *cpu, Fluint8 x) { cpu->LAX(x); }); break;
-    case 0xAF: cpus[0xAF].LD_AB([](CPU *cpu, Fluint8 x) { cpu->LAX(x); }); break;
-    case 0xBF: cpus[0xBF].LD_ABY([](CPU *cpu, Fluint8 x) { cpu->LAX(x); }); break;
-    case 0xA3: cpus[0xA3].LD_IX([](CPU *cpu, Fluint8 x) { cpu->LAX(x); }); break;
-    case 0xB3: cpus[0xB3].LD_IY([](CPU *cpu, Fluint8 x) { cpu->LAX(x); }); break;
+    case 0xA7: cpus[0xA7].LD_ZP([](CPU *cpu, hfluint8 x) { cpu->LAX(x); }); break;
+    case 0xB7: cpus[0xB7].LD_ZPY([](CPU *cpu, hfluint8 x) { cpu->LAX(x); }); break;
+    case 0xAF: cpus[0xAF].LD_AB([](CPU *cpu, hfluint8 x) { cpu->LAX(x); }); break;
+    case 0xBF: cpus[0xBF].LD_ABY([](CPU *cpu, hfluint8 x) { cpu->LAX(x); }); break;
+    case 0xA3: cpus[0xA3].LD_IX([](CPU *cpu, hfluint8 x) { cpu->LAX(x); }); break;
+    case 0xB3: cpus[0xB3].LD_IY([](CPU *cpu, hfluint8 x) { cpu->LAX(x); }); break;
 
     /* NOP */
     case 0x1A: break;
@@ -521,112 +521,112 @@ void X6502::RunLoop() {
 
     /* RLA */
     case 0x27:
-      cpus[0x27].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->RLA(x); });
+      cpus[0x27].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->RLA(x); });
       break;
     case 0x37:
-      cpus[0x37].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->RLA(x); });
+      cpus[0x37].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->RLA(x); });
       break;
     case 0x2F:
-      cpus[0x2F].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->RLA(x); });
+      cpus[0x2F].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->RLA(x); });
       break;
     case 0x3F:
-      cpus[0x3F].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->RLA(x); });
+      cpus[0x3F].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->RLA(x); });
       break;
     case 0x3B:
-      cpus[0x3B].RMW_ABY([](CPU *cpu, Fluint8 x) { return cpu->RLA(x); });
+      cpus[0x3B].RMW_ABY([](CPU *cpu, hfluint8 x) { return cpu->RLA(x); });
       break;
     case 0x23:
-      cpus[0x23].RMW_IX([](CPU *cpu, Fluint8 x) { return cpu->RLA(x); });
+      cpus[0x23].RMW_IX([](CPU *cpu, hfluint8 x) { return cpu->RLA(x); });
       break;
     case 0x33:
-      cpus[0x33].RMW_IY([](CPU *cpu, Fluint8 x) { return cpu->RLA(x); });
+      cpus[0x33].RMW_IY([](CPU *cpu, hfluint8 x) { return cpu->RLA(x); });
       break;
 
     /* RRA */
     case 0x67:
-      cpus[0x67].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->RRA(x); });
+      cpus[0x67].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->RRA(x); });
       break;
     case 0x77:
-      cpus[0x77].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->RRA(x); });
+      cpus[0x77].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->RRA(x); });
       break;
     case 0x6F:
-      cpus[0x6F].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->RRA(x); });
+      cpus[0x6F].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->RRA(x); });
       break;
     case 0x7F:
-      cpus[0x7F].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->RRA(x); });
+      cpus[0x7F].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->RRA(x); });
       break;
     case 0x7B:
-      cpus[0x7B].RMW_ABY([](CPU *cpu, Fluint8 x) { return cpu->RRA(x); });
+      cpus[0x7B].RMW_ABY([](CPU *cpu, hfluint8 x) { return cpu->RRA(x); });
       break;
     case 0x63:
-      cpus[0x63].RMW_IX([](CPU *cpu, Fluint8 x) { return cpu->RRA(x); });
+      cpus[0x63].RMW_IX([](CPU *cpu, hfluint8 x) { return cpu->RRA(x); });
       break;
     case 0x73:
-      cpus[0x73].RMW_IY([](CPU *cpu, Fluint8 x) { return cpu->RRA(x); });
+      cpus[0x73].RMW_IY([](CPU *cpu, hfluint8 x) { return cpu->RRA(x); });
       break;
 
     /* SLO */
     case 0x07:
-      cpus[0x07].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->SLO(x); });
+      cpus[0x07].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->SLO(x); });
       break;
     case 0x17:
-      cpus[0x17].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->SLO(x); });
+      cpus[0x17].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->SLO(x); });
       break;
     case 0x0F:
-      cpus[0x0F].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->SLO(x); });
+      cpus[0x0F].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->SLO(x); });
       break;
     case 0x1F:
-      cpus[0x1F].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->SLO(x); });
+      cpus[0x1F].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->SLO(x); });
       break;
     case 0x1B:
-      cpus[0x1B].RMW_ABY([](CPU *cpu, Fluint8 x) { return cpu->SLO(x); });
+      cpus[0x1B].RMW_ABY([](CPU *cpu, hfluint8 x) { return cpu->SLO(x); });
       break;
     case 0x03:
-      cpus[0x03].RMW_IX([](CPU *cpu, Fluint8 x) { return cpu->SLO(x); });
+      cpus[0x03].RMW_IX([](CPU *cpu, hfluint8 x) { return cpu->SLO(x); });
       break;
     case 0x13:
-      cpus[0x13].RMW_IY([](CPU *cpu, Fluint8 x) { return cpu->SLO(x); });
+      cpus[0x13].RMW_IY([](CPU *cpu, hfluint8 x) { return cpu->SLO(x); });
       break;
 
     /* SRE */
     case 0x47:
-      cpus[0x47].RMW_ZP([](CPU *cpu, Fluint8 x) { return cpu->SRE(x); });
+      cpus[0x47].RMW_ZP([](CPU *cpu, hfluint8 x) { return cpu->SRE(x); });
       break;
     case 0x57:
-      cpus[0x57].RMW_ZPX([](CPU *cpu, Fluint8 x) { return cpu->SRE(x); });
+      cpus[0x57].RMW_ZPX([](CPU *cpu, hfluint8 x) { return cpu->SRE(x); });
       break;
     case 0x4F:
-      cpus[0x4F].RMW_AB([](CPU *cpu, Fluint8 x) { return cpu->SRE(x); });
+      cpus[0x4F].RMW_AB([](CPU *cpu, hfluint8 x) { return cpu->SRE(x); });
       break;
     case 0x5F:
-      cpus[0x5F].RMW_ABX([](CPU *cpu, Fluint8 x) { return cpu->SRE(x); });
+      cpus[0x5F].RMW_ABX([](CPU *cpu, hfluint8 x) { return cpu->SRE(x); });
       break;
     case 0x5B:
-      cpus[0x5B].RMW_ABY([](CPU *cpu, Fluint8 x) { return cpu->SRE(x); });
+      cpus[0x5B].RMW_ABY([](CPU *cpu, hfluint8 x) { return cpu->SRE(x); });
       break;
     case 0x43:
-      cpus[0x43].RMW_IX([](CPU *cpu, Fluint8 x) { return cpu->SRE(x); });
+      cpus[0x43].RMW_IX([](CPU *cpu, hfluint8 x) { return cpu->SRE(x); });
       break;
     case 0x53:
-      cpus[0x53].RMW_IY([](CPU *cpu, Fluint8 x) { return cpu->SRE(x); });
+      cpus[0x53].RMW_IY([](CPU *cpu, hfluint8 x) { return cpu->SRE(x); });
       break;
 
     /* AXA - SHA */
     case 0x93:
-      cpus[0x93].ST_IY([](CPU *cpu, Fluint16 AA) { return cpu->AXA(AA); });
+      cpus[0x93].ST_IY([](CPU *cpu, hfluint16 AA) { return cpu->AXA(AA); });
       break;
     case 0x9F:
-      cpus[0x9F].ST_ABY([](CPU *cpu, Fluint16 AA) { return cpu->AXA(AA); });
+      cpus[0x9F].ST_ABY([](CPU *cpu, hfluint16 AA) { return cpu->AXA(AA); });
       break;
 
     /* SYA */
     case 0x9C:
-      cpus[0x9C].ST_ABX([](CPU *cpu, Fluint16 AA) { return cpu->SYA(AA); });
+      cpus[0x9C].ST_ABX([](CPU *cpu, hfluint16 AA) { return cpu->SYA(AA); });
       break;
 
     /* SXA */
     case 0x9E:
-      cpus[0x9E].ST_ABY([](CPU *cpu, Fluint16 AA) { return cpu->SXA(AA); });
+      cpus[0x9E].ST_ABY([](CPU *cpu, hfluint16 AA) { return cpu->SXA(AA); });
       break;
 
     /* XAS */
@@ -636,15 +636,15 @@ void X6502::RunLoop() {
 
     /* TOP */
     case 0x0C:
-      cpus[0x0C].LD_AB([](CPU *cpu, Fluint8 x) { });
+      cpus[0x0C].LD_AB([](CPU *cpu, hfluint8 x) { });
       break;
 
-    case 0x1C: cpus[0x1C].LD_ABX([](CPU *cpu, Fluint8 x) { }); break;
-    case 0x3C: cpus[0x3C].LD_ABX([](CPU *cpu, Fluint8 x) { }); break;
-    case 0x5C: cpus[0x5C].LD_ABX([](CPU *cpu, Fluint8 x) { }); break;
-    case 0x7C: cpus[0x7C].LD_ABX([](CPU *cpu, Fluint8 x) { }); break;
-    case 0xDC: cpus[0xDC].LD_ABX([](CPU *cpu, Fluint8 x) { }); break;
-    case 0xFC: cpus[0xFC].LD_ABX([](CPU *cpu, Fluint8 x) { }); break;
+    case 0x1C: cpus[0x1C].LD_ABX([](CPU *cpu, hfluint8 x) { }); break;
+    case 0x3C: cpus[0x3C].LD_ABX([](CPU *cpu, hfluint8 x) { }); break;
+    case 0x5C: cpus[0x5C].LD_ABX([](CPU *cpu, hfluint8 x) { }); break;
+    case 0x7C: cpus[0x7C].LD_ABX([](CPU *cpu, hfluint8 x) { }); break;
+    case 0xDC: cpus[0xDC].LD_ABX([](CPU *cpu, hfluint8 x) { }); break;
+    case 0xFC: cpus[0xFC].LD_ABX([](CPU *cpu, hfluint8 x) { }); break;
 
     case 0x8B: cpus[0x8B].XAA(); break;
 
@@ -660,9 +660,9 @@ void X6502::RunLoop() {
 
         #if !FAST_INSTRUCTION_DISPATCH
         #define MAYBE_CLEAR_REG8(reg) \
-          cpus[idx]. reg = Fluint8::If(cpus[idx].active, cpus[idx]. reg )
+          cpus[idx]. reg = hfluint8::If(cpus[idx].active, cpus[idx]. reg )
         #define MAYBE_CLEAR_REG16(reg) \
-          cpus[idx]. reg = Fluint16::If(cpus[idx].active, cpus[idx]. reg )
+          cpus[idx]. reg = hfluint16::If(cpus[idx].active, cpus[idx]. reg )
 
         // Zero the registers if this instruction wasn't active,
         // so that we can sum them in serial below.
@@ -681,36 +681,36 @@ void X6502::RunLoop() {
     ParallelComp(256, RunOne, NUM_THREADS);
     #else
     // (Dispatching on the instruction byte is cheating.)
-    Fluint8::Cheat();
+    hfluint8::Cheat();
     RunInstruction(opcode.ToInt());
     #endif
 
     // Now copy the result of the actual instruction back.
     #if FAST_INSTRUCTION_DISPATCH
-    Fluint8::Cheat();
+    hfluint8::Cheat();
     cpu = cpus[opcode.ToInt()];
     // Maybe we should make a distinction between one of these sub-CPUs
     // and the main one?
-    cpu.active = Fluint8(0x01);
+    cpu.active = hfluint8(0x01);
     ADDCYC(cpu.cycles.ToInt());
-    cpu.cycles = Fluint16(0);
+    cpu.cycles = hfluint16(0);
 
     #else
     // Real way. We basically sum up all the component instructions,
     // but all of the inactive ones have been zeroed above.
 
-    #define CLEARREG8(reg) cpu. reg = Fluint8(0x00)
-    #define CLEARREG16(reg) cpu. reg = Fluint16(0x00)
+    #define CLEARREG8(reg) cpu. reg = hfluint8(0x00)
+    #define CLEARREG16(reg) cpu. reg = hfluint16(0x00)
 
 
     #define COPYREG8(idx, reg) do {                                     \
-        cpu. reg = Fluint8::PlusNoOverflow(cpu. reg , cpus[idx]. reg ); \
+        cpu. reg = hfluint8::PlusNoOverflow(cpu. reg , cpus[idx]. reg ); \
       } while (false)
 
     // PlusNoByteOverflow is safe here because at most one
     // term will be nonzero.
     #define COPYREG16(idx, reg) do {                                        \
-        cpu. reg = Fluint16::PlusNoByteOverflow(cpu. reg, cpus[idx]. reg ); \
+        cpu. reg = hfluint16::PlusNoByteOverflow(cpu. reg, cpus[idx]. reg ); \
       } while (false)
 
     CLEARREG8(reg_A);
@@ -737,7 +737,7 @@ void X6502::RunLoop() {
       // instruction; we're adding it rather than overwriting since
       // it's supposed to be cumulative. Note also that memory handlers
       // (if executed) could have updated this for the main CPU.
-      // ADDCYC(Fluint16::If(cpus[i].active, cpus[i].cycles).ToInt());
+      // ADDCYC(hfluint16::If(cpus[i].active, cpus[i].cycles).ToInt());
       ADDCYC(cpus[i].cycles.ToInt());
     }
 

@@ -171,7 +171,7 @@ int main(int argc, char **argv) {
     }
 
     printf("Round %4d in %.4f, mean %.4f, %lld cheats\n",
-           executions, sec, mean, Fluint8::NumCheats());
+           executions, sec, mean, hfluint8::NumCheats());
     fflush(stdout);
   }
 
@@ -188,7 +188,7 @@ int main(int argc, char **argv) {
           "Exec time:    %.4fs\n",
           startup_seconds, exec_seconds);
 
-  const int64 cheats = Fluint8::NumCheats();
+  const int64 cheats = hfluint8::NumCheats();
   const double cpr = (double)cheats / (double)executions;
   fprintf(stderr,
           "Cheats:       %lld\n"

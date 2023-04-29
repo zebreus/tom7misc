@@ -3,7 +3,7 @@
 #include <cstdint>
 
 #include "timer.h"
-#include "fluint8.h"
+#include "hfluint8.h"
 
 #include "base/stringprintf.h"
 #include "ansi.h"
@@ -20,7 +20,7 @@ struct Benchmark {
   inline void Op() {
     ops++;
   }
-  inline void Observe(const Fluint8 f) {
+  inline void Observe(const hfluint8 f) {
     out += f.ToInt();
   }
 
@@ -55,11 +55,11 @@ static void BenchEq() {
 
   bench.Run([&]() {
       for (int i = 0; i < 256; i++) {
-        Fluint8 ii(i);
+        hfluint8 ii(i);
         for (int j = 0; j < 256; j++) {
-          Fluint8 jj(j);
+          hfluint8 jj(j);
 
-          Fluint8 c = Fluint8::Eq(ii, jj);
+          hfluint8 c = hfluint8::Eq(ii, jj);
           bench.Op();
           bench.Observe(c);
         }
@@ -74,9 +74,9 @@ static void BenchRightShift() {
   bench.Run([&]() {
     for (int sub_iters = 0; sub_iters < 256; sub_iters++)
       for (int i = 0; i < 256; i++) {
-        Fluint8 ii(i);
+        hfluint8 ii(i);
 
-        Fluint8 c = Fluint8::RightShift<N>(ii);
+        hfluint8 c = hfluint8::RightShift<N>(ii);
         bench.Op();
         bench.Observe(c);
       }
@@ -101,9 +101,9 @@ static void BenchPlus() {
   bench.Run([&]() {
       for (int i = 0; i < 256; i++) {
         for (int j = 0; j < 256; j++) {
-          Fluint8 ii(i), jj(j);
+          hfluint8 ii(i), jj(j);
 
-          Fluint8 c = ii + jj;
+          hfluint8 c = ii + jj;
           bench.Op();
           bench.Observe(c);
         }
@@ -117,9 +117,9 @@ static void BenchAddWithCarry() {
   bench.Run([&]() {
       for (int i = 0; i < 256; i++) {
         for (int j = 0; j < 256; j++) {
-          Fluint8 ii(i), jj(j);
+          hfluint8 ii(i), jj(j);
 
-          const auto &[c, d] = Fluint8::AddWithCarry(ii, jj);
+          const auto &[c, d] = hfluint8::AddWithCarry(ii, jj);
           bench.Op();
           bench.Observe(c);
           bench.Observe(d);
@@ -134,9 +134,9 @@ static void BenchAnd() {
   bench.Run([&]() {
       for (int i = 0; i < 256; i++) {
         for (int j = 0; j < 256; j++) {
-          Fluint8 ii(i), jj(j);
+          hfluint8 ii(i), jj(j);
 
-          Fluint8 c = ii & jj;
+          hfluint8 c = ii & jj;
           bench.Op();
           bench.Observe(c);
         }
@@ -149,11 +149,11 @@ static void BenchIf() {
 
   bench.Run([&]() {
       for (int i = 0; i < 256; i++) {
-        Fluint8 ii(i & 1);
+        hfluint8 ii(i & 1);
         for (int j = 0; j < 256; j++) {
-          Fluint8 jj(j);
+          hfluint8 jj(j);
 
-          Fluint8 c = Fluint8::If(ii, jj);
+          hfluint8 c = hfluint8::If(ii, jj);
           bench.Op();
           bench.Observe(c);
         }
@@ -167,9 +167,9 @@ static void BenchIsZero() {
   bench.Run([&]() {
       for (int z = 0; z < 500; z++)
       for (int j = 0; j < 256; j++) {
-        Fluint8 jj(j);
+        hfluint8 jj(j);
 
-        Fluint8 c = Fluint8::IsZero(jj);
+        hfluint8 c = hfluint8::IsZero(jj);
         bench.Op();
         bench.Observe(c);
       }
@@ -182,11 +182,11 @@ static void BenchAndT() {
     Benchmark bench("BitwiseAnd80", 2000);
 
     bench.Run([&]() {
-      Fluint8 ii(80);
+      hfluint8 ii(80);
       for (int z = 0; z < 100; z++)
       for (int j = 0; j < 256; j++) {
-        Fluint8 jj(j);
-        Fluint8 c = ii & jj;
+        hfluint8 jj(j);
+        hfluint8 c = ii & jj;
         bench.Op();
         bench.Observe(c);
       }
@@ -198,8 +198,8 @@ static void BenchAndT() {
     bench.Run([&]() {
       for (int z = 0; z < 100; z++)
       for (int j = 0; j < 256; j++) {
-        Fluint8 jj(j);
-        Fluint8 c = Fluint8::AndWith<0x80>(jj);
+        hfluint8 jj(j);
+        hfluint8 c = hfluint8::AndWith<0x80>(jj);
         bench.Op();
         bench.Observe(c);
       }

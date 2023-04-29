@@ -1,4 +1,4 @@
-#include "fluint8.h"
+#include "hfluint8.h"
 
 #include <cstdint>
 
@@ -7,12 +7,12 @@
 using namespace half_float;
 using namespace half_float::literal;
 
-int64_t Fluint8::num_cheats = 0;
+int64_t hfluint8::num_cheats = 0;
 
 #define ECHECK(cond) CHECK(true || (cond))
 // #define ECHECK(cond) CHECK(cond)
 
-#if !FLUINT8_WRAP
+#if !HFLUINT8_WRAP
 
 template<std::size_t N, class F, std::size_t START = 0>
 inline void Repeat(const F &f) {
@@ -24,16 +24,16 @@ inline void Repeat(const F &f) {
   }
 }
 
-uint16_t Fluint8::Representation() const { return GetU16(h); }
+uint16_t hfluint8::Representation() const { return GetU16(h); }
 
-uint8_t Fluint8::ToInt() const {
+uint8_t hfluint8::ToInt() const {
   return (int)h;
 }
 
 // For functions of multiple variables, we allow some linear
 // functions of these. Note we should be careful when multiplying,
 // since e.g. x * x is not linear!
-std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
+std::pair<hfluint8, hfluint8> hfluint8::AddWithCarry(hfluint8 x, hfluint8 y) {
   static constexpr half HALF256 = GetHalf(0x5c00);
 
   // Correct value, but maybe 256 too high because of overflow.
@@ -43,19 +43,19 @@ std::pair<Fluint8, Fluint8> Fluint8::AddWithCarry(Fluint8 x, Fluint8 y) {
   half o = RightShiftHalf8(z);
 
   ECHECK(o == 1.0_h || o == 0.0_h) << o;
-  return make_pair(Fluint8(o), Fluint8(z - o * HALF256));
+  return make_pair(hfluint8(o), hfluint8(z - o * HALF256));
 }
 
-Fluint8 Fluint8::Plus(Fluint8 x, Fluint8 y) {
+hfluint8 hfluint8::Plus(hfluint8 x, hfluint8 y) {
   static constexpr half HALF256 = GetHalf(0x5c00);
 
   // As above but don't compute carry.
   const half z = x.h + y.h;
   half o = RightShiftHalf8(z);
-  return Fluint8(z - o * HALF256);
+  return hfluint8(z - o * HALF256);
 }
 
-std::pair<Fluint8, Fluint8> Fluint8::SubtractWithCarry(Fluint8 x, Fluint8 y) {
+std::pair<hfluint8, hfluint8> hfluint8::SubtractWithCarry(hfluint8 x, hfluint8 y) {
   static constexpr half HALF256 = GetHalf(0x5c00);
   static constexpr half HALF1 = GetHalf(0x3c00);
 
@@ -65,19 +65,19 @@ std::pair<Fluint8, Fluint8> Fluint8::SubtractWithCarry(Fluint8 x, Fluint8 y) {
   half o = RightShiftHalf8(z);
 
   ECHECK(o == 1.0_h || o == 0.0_h) << o;
-  return make_pair(Fluint8(HALF1 - o), Fluint8(z - o * HALF256));
+  return make_pair(hfluint8(HALF1 - o), hfluint8(z - o * HALF256));
 }
 
-Fluint8 Fluint8::Minus(Fluint8 x, Fluint8 y) {
+hfluint8 hfluint8::Minus(hfluint8 x, hfluint8 y) {
   static constexpr half HALF256 = GetHalf(0x5c00);
   // Same but don't compute carry.
   const half z = x.h - y.h + HALF256;
   half o = RightShiftHalf8(z);
-  return Fluint8(z - o * HALF256);
+  return hfluint8(z - o * HALF256);
 }
 
-Fluint8 Fluint8::RightShift1(Fluint8 x) {
-  return Fluint8(RightShiftHalf1(x.h));
+hfluint8 hfluint8::RightShift1(hfluint8 x) {
+  return hfluint8(RightShiftHalf1(x.h));
 }
 
 /* This comment is a memorial to a great joke which is no
@@ -89,7 +89,7 @@ Fluint8 Fluint8::RightShift1(Fluint8 x) {
 
 // Returns the bits (as an integral half in [0, 255]) that are in
 // common between the args, i.e. a & b.
-half Fluint8::BitwiseAndHalf(Fluint8 a, Fluint8 b) {
+half hfluint8::BitwiseAndHalf(hfluint8 a, hfluint8 b) {
   // Note: This can be computed as
   // const half scale = GetHalf(0x3c00 + 0x400 * bit_idx);
   static constexpr std::array<half, 8> HALF_POW2 = {
@@ -103,11 +103,11 @@ half Fluint8::BitwiseAndHalf(Fluint8 a, Fluint8 b) {
     GetHalf(0x5800),  // 128.0
   };
   half common = GetHalf(0x0000);
-  Fluint8 aa = a, bb = b;
+  hfluint8 aa = a, bb = b;
   for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
     // Low order bit as a - ((a >> 1) << 1)
-    Fluint8 aashift = RightShift1(aa);
-    Fluint8 bbshift = RightShift1(bb);
+    hfluint8 aashift = RightShift1(aa);
+    hfluint8 bbshift = RightShift1(bb);
     half a_bit = aa.h - LeftShift1Under128(aashift).h;
     half b_bit = bb.h - LeftShift1Under128(bbshift).h;
     const half scale = HALF_POW2[bit_idx];
@@ -131,43 +131,43 @@ half Fluint8::BitwiseAndHalf(Fluint8 a, Fluint8 b) {
   return common;
 }
 
-Fluint8 Fluint8::BitwiseAnd(Fluint8 a, Fluint8 b) {
-  return Fluint8(BitwiseAndHalf(a, b));
+hfluint8 hfluint8::BitwiseAnd(hfluint8 a, hfluint8 b) {
+  return hfluint8(BitwiseAndHalf(a, b));
 }
 
-Fluint8 Fluint8::BitwiseOr(Fluint8 a, Fluint8 b) {
+hfluint8 hfluint8::BitwiseOr(hfluint8 a, hfluint8 b) {
   half common_bits = BitwiseAndHalf(a, b);
   // Neither the subtraction nor addition can overflow here, so
   // we can just do this directly without corrections.
   half result = (a.h - common_bits) + b.h;
 
-  return Fluint8(result);
+  return hfluint8(result);
 }
 
-Fluint8 Fluint8::BitwiseXor(Fluint8 a, Fluint8 b) {
+hfluint8 hfluint8::BitwiseXor(hfluint8 a, hfluint8 b) {
   half common_bits = BitwiseAndHalf(a, b);
   // XOR is just the bits that the two do NOT have in common.
   half result = (a.h - common_bits) + (b.h - common_bits);
-  return Fluint8(result);
+  return hfluint8(result);
 }
 
 
-Fluint8 Fluint8::IsntZero(Fluint8 a) {
+hfluint8 hfluint8::IsntZero(hfluint8 a) {
   static constexpr half HALF1 = GetHalf(0x3c00);
-  return Fluint8(HALF1 - IsZero(a).h);
+  return hfluint8(HALF1 - IsZero(a).h);
 }
 
-Fluint8 Fluint8::IsZero(Fluint8 a) {
+hfluint8 hfluint8::IsZero(hfluint8 a) {
   static constexpr half H255 = GetHalf(0x5bf8);  // 255.0
   static constexpr half H1 = GetHalf(0x3c00);  // 1.0
   half nota = (H255 - a.h);
   // Now this only overflows if the input was zero.
   half res = RightShiftHalf8(nota + H1);
-  return Fluint8(res);
+  return hfluint8(res);
 }
 
 
-Fluint8 Fluint8::Eq(Fluint8 a, Fluint8 b) {
+hfluint8 hfluint8::Eq(hfluint8 a, hfluint8 b) {
   return IsZero(a - b);
 }
 
@@ -184,7 +184,7 @@ Fluint8 Fluint8::Eq(Fluint8 a, Fluint8 b) {
 // I was only able to solve this for values <= 0x80, so we
 // actually do that, then flip the values around with (128 - x),
 // then do it again.
-Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
+hfluint8 hfluint8::If(hfluint8 cc, hfluint8 t) {
   // PERF: We can probably do this in fewer than 8 steps?
   static constexpr std::array<half, 8> OFF = {
     GetHalf(0x77f9),
@@ -222,23 +222,23 @@ Fluint8 Fluint8::If(Fluint8 cc, Fluint8 t) {
   // to add zero to avoid outputing -0.
   xh = xh * HALFNEG1 + HALF0;
 
-  return Fluint8(xh);
+  return hfluint8(xh);
 }
 
 // For cc = 0x01 or 0x00 (only), returns c ? t : f.
-Fluint8 Fluint8::IfElse(Fluint8 cc, Fluint8 t, Fluint8 f) {
+hfluint8 hfluint8::IfElse(hfluint8 cc, hfluint8 t, hfluint8 f) {
   // PERF probably can be faster to do this directly?
   // PERF Could have BooleanNot
   return PlusNoOverflow(If(cc, t), If(XorWith<0x01>(cc), f));
 }
 
-Fluint8 Fluint8::BooleanAnd(Fluint8 a, Fluint8 b) {
+hfluint8 hfluint8::BooleanAnd(hfluint8 a, hfluint8 b) {
   return RightShift1(PlusNoOverflow(a, b));
 }
 
-Fluint8 Fluint8::BooleanOr(Fluint8 a, Fluint8 b) {
+hfluint8 hfluint8::BooleanOr(hfluint8 a, hfluint8 b) {
   half anded = BooleanAnd(a, b).h;
-  return Fluint8((a.h - anded) + b.h);
+  return hfluint8((a.h - anded) + b.h);
 }
 
 #endif

@@ -36,7 +36,7 @@
 #include "threadutil.h"
 #include "tracing.h"
 
-#include "fluint8.h"
+#include "hfluint8.h"
 #include "util.h"
 #include "image.h"
 
@@ -736,7 +736,7 @@ int main(int argc, char **argv) {
     printf("Wrote histogram to instruction-counts-emutest.txt\n");
   }
 
-  printf("Total fluint8 cheatz: %lld\n", Fluint8::NumCheats());
+  printf("Total hfluint8 cheatz: %lld\n", hfluint8::NumCheats());
 
   printf("Ran everything in %.2fs\n", test_timer.Seconds());
 

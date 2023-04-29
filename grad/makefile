@@ -1,7 +1,7 @@
 
-default: iter.exe train-mnist.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe train-chess.exe evaluate-chess.exe train-cifar10.exe fluint8_test.exe makechop.exe manualchop2.exe histo.exe race.exe eval-table-mnist.exe eval-table-cifar10.exe eval-table-chess.exe zt.exe improvezt.exe
+default: iter.exe train-mnist.exe optimize.exe chopreduce.exe makesubst.exe colordiff.exe train-chess.exe evaluate-chess.exe train-cifar10.exe hfluint8_test.exe makechop.exe manualchop2.exe histo.exe race.exe eval-table-mnist.exe eval-table-cifar10.exe eval-table-chess.exe zt.exe improvezt.exe
 
-all: grad.exe iter.exe make-data.exe mnist_test.exe train-mnist.exe evaluate-mnist.exe train-chess.exe evaluate-chess.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe manualchop2.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe hash-util_test.exe cifar10_test.exe evaluate-cifar10.exe fluint8_bench.exe
+all: grad.exe iter.exe make-data.exe mnist_test.exe train-mnist.exe evaluate-mnist.exe train-chess.exe evaluate-chess.exe smallcrush.exe smallcrush-gen.exe permbench.exe substz3.exe xor.exe goodrandom.exe optimize.exe manualchop.exe manualchop2.exe makesubst.exe chopreduce.exe findchop.exe op_test.exe expression_test.exe makefn.exe hash.exe network-gpu_test.exe network_test.exe hcomplex_test.exe fractal.exe render.exe hash-util_test.exe cifar10_test.exe evaluate-cifar10.exe hfluint8_bench.exe
 
 CC_LIB=../cc-lib
 CHESS=../chess
@@ -45,7 +45,7 @@ CL_OBJECTS=network.o network-gpu.o error-history.o clutil.o
 grad.s : grad.cc makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -S -fverbose-asm -c $< -o $@
 
-OBJECTS=$(CCLIB_OBJECTS) $(RE2_OBJECTS) $(CHESS_OBJECTS) hash-util.o diff.o fluint8.o fluint16.o
+OBJECTS=$(CCLIB_OBJECTS) $(RE2_OBJECTS) $(CHESS_OBJECTS) hash-util.o diff.o hfluint8.o hfluint16.o
 
 # also increase stack size
 LFLAGS= -L. -m64 -Wl,--subsystem,console -Wl,--stack,335544320 $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) -lpsapi -static
@@ -204,15 +204,15 @@ colordiff.exe : colordiff.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-fluint8_test.exe : fluint8_test.o $(OBJECTS)
+hfluint8_test.exe : hfluint8_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-fluint8_bench.exe : fluint8_bench.o $(OBJECTS)
+hfluint8_bench.exe : hfluint8_bench.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-fluint16_test.exe : fluint16_test.o $(OBJECTS)
+hfluint16_test.exe : hfluint16_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
