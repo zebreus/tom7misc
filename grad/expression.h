@@ -552,7 +552,7 @@ struct Exp {
         }
 
         int iters = atoi(tok.c_str() + 5);
-        if (iters <= 0) {
+        if (iters < 0) {
           if (err != nullptr) {
             *err = StringPrintf("Bogus iter count %d in %s\n",
                                 iters, tok.c_str());
