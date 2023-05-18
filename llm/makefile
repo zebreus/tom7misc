@@ -1,5 +1,5 @@
-# Define the default target now so that it is always the first target
-default: main acronymy quantize quantize-stats perplexity embedding vdot
+
+default: acronymy.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -11,6 +11,8 @@ TOM7_INCLUDES=-I../../openblas/include -I../../cuda/include
 TOM7_LIBS=-L../../openblas/lib -L$(CUDA_PATH)/lib/x64 -static
 LLAMA_OPENBLAS=1
 # LLAMA_CUBLAS=1
+
+LLAMA_DIR=../llama
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -45,9 +47,9 @@ endif
 #
 
 # keep standard at C11 and C++11
-CFLAGS   = -I.              $(TOM7_INCLUDES) -O3 -std=c11   -fPIC
-CXXFLAGS = -I. -I./examples -O3 -std=c++11 -fPIC
-LDFLAGS  = $(TOM7_LIBS)
+CFLAGS   = -I. -I$(LLAMA_DIR) $(TOM7_INCLUDES) -O3 -std=c11   -fPIC
+CXXFLAGS = -I. -I$(LLAMA_DIR) -I./examples -O3 -std=c++20 -fPIC
+LDFLAGS  = $(TOM7_LIBS) -m64 -Wl,--subsystem,console -lpsapi
 
 ifndef LLAMA_DEBUG
 	CFLAGS   += -DNDEBUG
@@ -140,7 +142,7 @@ ifdef LLAMA_CUBLAS
 	OBJS      += ggml-cuda.o
 	NVCC      = nvcc
 	NVCCFLAGS = --forward-unknown-to-host-compiler -arch=native
-ggml-cuda.o: ggml-cuda.cu ggml-cuda.h
+ggml-cuda.o: $(LLAMA_DIR)/ggml-cuda.cu $(LLAMA_DIR)/ggml-cuda.h
 	$(NVCC) $(NVCCFLAGS) $(CXXFLAGS) -Wno-pedantic -c $< -o $@
 endif
 ifdef LLAMA_CLBLAST
@@ -152,7 +154,7 @@ ifdef LLAMA_CLBLAST
 		LDFLAGS += -lclblast -lOpenCL
 	endif
 	OBJS    += ggml-opencl.o
-ggml-opencl.o: ggml-opencl.c ggml-opencl.h
+ggml-opencl.o: $(LLAMA_DIR)/ggml-opencl.c $(LLAMA_DIR)/ggml-opencl.h
 	$(CC) $(CFLAGS) -c $< -o $@
 endif
 ifneq ($(filter aarch64%,$(UNAME_M)),)
@@ -177,84 +179,42 @@ endif
 #
 # Print build information
 #
-
-$(info I llama.cpp build info: )
-$(info I UNAME_S:  $(UNAME_S))
-$(info I UNAME_P:  $(UNAME_P))
-$(info I UNAME_M:  $(UNAME_M))
-$(info I CFLAGS:   $(CFLAGS))
-$(info I CXXFLAGS: $(CXXFLAGS))
-$(info I LDFLAGS:  $(LDFLAGS))
-$(info I CC:       $(CCV))
-$(info I CXX:      $(CXXV))
-$(info )
-
+#
+# $(info I llama.cpp build info: )
+# $(info I UNAME_S:  $(UNAME_S))
+# $(info I UNAME_P:  $(UNAME_P))
+# $(info I UNAME_M:  $(UNAME_M))
+# $(info I CFLAGS:   $(CFLAGS))
+# $(info I CXXFLAGS: $(CXXFLAGS))
+# $(info I LDFLAGS:  $(LDFLAGS))
+# $(info I CC:       $(CCV))
+# $(info I CXX:      $(CXXV))
+# $(info )
+#
 #
 # Build library
 #
 
-ggml.o: ggml.c ggml.h ggml-cuda.h
-	$(CC)  $(CFLAGS)   -c $< -o $@
+ggml.o: $(LLAMA_DIR)/ggml.c $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/ggml-cuda.h
+	$(CC) $(CFLAGS)   -c $< -o $@
 
-llama.o: llama.cpp ggml.h ggml-cuda.h llama.h llama-util.h
+llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/llama-util.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-common.o: examples/common.cpp examples/common.h
+# XXX remove this
+common.o: $(LLAMA_DIR)/examples/common.cpp $(LLAMA_DIR)/examples/common.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-libllama.so: llama.o ggml.o $(OBJS)
-	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
+# removed -tom7
+# libllama.so: llama.o ggml.o $(OBJS)
+# 	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
 
-clean:
-	rm -vf *.o main quantize quantize-stats perplexity embedding benchmark-matmult save-load-state build-info.h
+%.o : %.cc
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-#
-# Examples
-#
-
-main: examples/main/main.cpp build-info.h ggml.o llama.o common.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
-	@echo
-	@echo '====  Run ./main -h for help.  ===='
-	@echo
-
-acronymy: examples/main/acronymy.cpp build-info.h ggml.o llama.o common.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
-
-quantize: examples/quantize/quantize.cpp build-info.h ggml.o llama.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
-
-quantize-stats: examples/quantize-stats/quantize-stats.cpp build-info.h ggml.o llama.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
-
-perplexity: examples/perplexity/perplexity.cpp build-info.h ggml.o llama.o common.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
-
-embedding: examples/embedding/embedding.cpp build-info.h ggml.o llama.o common.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
-
-save-load-state: examples/save-load-state/save-load-state.cpp build-info.h ggml.o llama.o common.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
-
-build-info.h: $(wildcard .git/index) scripts/build-info.sh
-	@sh scripts/build-info.sh > $@.tmp
-	@if ! cmp -s $@.tmp $@; then \
-		mv $@.tmp $@; \
-	else \
-		rm $@.tmp; \
-	fi
-
-#
-# Tests
-#
-
-benchmark-matmult: examples/benchmark/benchmark-matmult.cpp build-info.h ggml.o $(OBJS)
-	$(CXX) $(CXXFLAGS) $(filter-out %.h,$^) -o $@ $(LDFLAGS)
-	./$@
-
-vdot: pocs/vdot/vdot.cpp ggml.o $(OBJS)
+acronymy.exe: acronymy.o ggml.o llama.o common.o $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-.PHONY: tests
-tests:
-	bash ./tests/run-tests.sh
+clean:
+	rm -f *.o acronymy.exe
+

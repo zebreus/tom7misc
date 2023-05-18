@@ -3,7 +3,7 @@
 #define _GNU_SOURCE
 #endif
 
-#include "common.h"
+#include "examples/common.h"
 #include "llama.h"
 #include "build-info.h"
 
@@ -77,7 +77,7 @@ static inline bool ContainsChar(const std::string &s, char t) {
 
 int main(int argc, char ** argv) {
   gpt_params params;
-  params.model = "models/65B/ggml-model-q4_0.bin";
+  params.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // params.model = "models/7B/ggml-model-q4_0.bin";
   params.mirostat = 2;
 
