@@ -12,7 +12,11 @@ TOM7_LIBS=-L../../openblas/lib -L$(CUDA_PATH)/lib/x64 -static
 LLAMA_OPENBLAS=1
 # LLAMA_CUBLAS=1
 
+CC_LIB=../cc-lib
+
 LLAMA_DIR=../llama
+
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -47,8 +51,8 @@ endif
 #
 
 # keep standard at C11 and C++11
-CFLAGS   = -I. -I$(LLAMA_DIR) $(TOM7_INCLUDES) -O3 -std=c11   -fPIC
-CXXFLAGS = -I. -I$(LLAMA_DIR) -I./examples -O3 -std=c++20 -fPIC
+CFLAGS   = -I. -I$(LLAMA_DIR) -I$(CC_LIB) $(TOM7_INCLUDES) -O3 -std=c11   -fPIC
+CXXFLAGS = -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I./examples -O3 -std=c++20 -fPIC
 LDFLAGS  = $(TOM7_LIBS) -m64 -Wl,--subsystem,console -lpsapi
 
 ifndef LLAMA_DEBUG
@@ -57,8 +61,8 @@ ifndef LLAMA_DEBUG
 endif
 
 # warnings
-CFLAGS   += -Wall -Wextra -Wpedantic -Wcast-qual -Wdouble-promotion -Wshadow -Wstrict-prototypes -Wpointer-arith
-CXXFLAGS += -Wall -Wextra -Wpedantic -Wcast-qual -Wno-unused-function -Wno-multichar
+CFLAGS   += -Wall -Wextra -Wcast-qual -Wdouble-promotion -Wshadow -Wstrict-prototypes -Wpointer-arith
+CXXFLAGS += -Wall -Wextra -Wcast-qual -Wno-unused-parameter -Wno-unused-function -Wno-multichar
 
 # OS specific
 # TODO: support Windows
@@ -202,8 +206,8 @@ llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/ggml-cuda.h $(L
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # XXX remove this
-common.o: $(LLAMA_DIR)/examples/common.cpp $(LLAMA_DIR)/examples/common.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+# common.o: $(LLAMA_DIR)/examples/common.cpp $(LLAMA_DIR)/examples/common.h
+# 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # removed -tom7
 # libllama.so: llama.o ggml.o $(OBJS)
@@ -212,7 +216,7 @@ common.o: $(LLAMA_DIR)/examples/common.cpp $(LLAMA_DIR)/examples/common.h
 %.o : %.cc
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-acronymy.exe: acronymy.o ggml.o llama.o common.o $(OBJS)
+acronymy.exe: acronymy.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
