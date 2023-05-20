@@ -14,135 +14,22 @@
 #include <vector>
 
 #include "base/logging.h"
-#include "base/stringprintf.h"
 #include "ansi.h"
-#include "timer.h"
 
 #include "llm.h"
 
 using namespace std;
 
-static bool IsAscii(const std::string &s) {
-  for (char c : s) {
-    if (c < ' ' || c > '~') return false;
-  }
-  return true;
-}
-
-static bool AllSpace(const std::string &s) {
-  for (char c : s) {
-    if (c != ' ') return false;
-  }
-  return true;
-}
-
-static bool IsAlphabetical(const std::string &s) {
-  for (char c : s) {
-    if (c == ' ') continue;
-    if (c >= 'a' && c <= 'z') continue;
-    if (c >= 'A' && c <= 'Z') continue;
-    return false;
-  }
-  return true;
-}
-
-static inline bool ContainsChar(const std::string &s, char t) {
-  for (char c : s)
-    if (c == t) return true;
-  return false;
-}
-
-static std::string AnsiTime(double seconds) {
-  if (seconds < 1.0) {
-    return StringPrintf(AYELLOW("%.2f") "ms", seconds * 1000.0);
-  } else if (seconds < 60.0) {
-    return StringPrintf(AYELLOW("%.3f") "s", seconds);
-  } else if (seconds < 60.0 * 60.0) {
-    int sec = std::round(seconds);
-    int omin = sec / 60;
-    int osec = sec % 60;
-    return StringPrintf(AYELLOW("%d") "m" AYELLOW("%02d") "s",
-                        omin, osec);
-  } else {
-    int sec = std::round(seconds);
-    int ohour = sec / 3600;
-    sec -= ohour * 3600;
-    int omin = sec / 60;
-    int osec = sec % 60;
-    return StringPrintf(AYELLOW("%d") "h"
-                        AYELLOW("%d") "m"
-                        AYELLOW("%02d") "s",
-                        ohour, omin, osec);
-  }
-}
-
-static void EmitTimer(const std::string &name, const Timer &timer) {
-  printf(AWHITE("%s") " in %s\n",
-         name.c_str(),
-         AnsiTime(timer.Seconds()).c_str());
-}
-
 int main(int argc, char ** argv) {
   AnsiInit();
-  Timer model_timer;
 
   LLM::Params lparams;
   lparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   lparams.mirostat = 2;
 
   LLM llm(lparams);
-  EmitTimer("Loaded model", model_timer);
 
-  std::vector<std::string> words = {
-    "racers",
-    "hauling",
-    "bottom",
-    "meritless",
-    "exciting",
-    "applying",
-    "independent",
-    "related",
-    "unifying",
-    "summarizing",
-    "vivacious",
-    "offering",
-    "occurrences",
-    "scrutiny",
-    "unlikely",
-    "lives",
-    "mammals",
-    "violence",
-    "nonsensical",
-    "crazily",
-  };
-
-# define WORD_PREFIX "Word: "
-# define ACRONYM_PREFIX "Backronym: "
-
-  string prompt =
-    "Bacronyms are definitions as acronyms. Each word of the definition "
-    "starts with "
-    "the corresponding letter of the word being defined. Every word "
-    "counts, even short words like \"in\" or \"the.\" Only the first "
-    "letter of each word in the definition is considered. Each word "
-    "must be a real word without spelling errors. The word "
-    "being defined should not appear in its definition, nor conjugates.\n\n"
-
-    "Examples:\n"
-    WORD_PREFIX "fomo\n"
-    ACRONYM_PREFIX "Fear Of Missing Out\n"
-    WORD_PREFIX "distribute\n"
-    ACRONYM_PREFIX "Deliver Items Systematically To Receiving Individuals By Urgent Truckloads Efficiently\n"
-    WORD_PREFIX "path\n"
-    ACRONYM_PREFIX "Passage Across The Hill\n"
-    WORD_PREFIX "moving\n"
-    ACRONYM_PREFIX "Making Oneself Veer Into Neighboring Geography\n"
-    WORD_PREFIX "gap\n"
-    ACRONYM_PREFIX "Gone Access Path\n"
-    WORD_PREFIX "surfeit\n"
-    ACRONYM_PREFIX "Surplus Undermining Responsible Food Eating In Teatimes\n"
-    WORD_PREFIX "yolo\n"
-    ACRONYM_PREFIX "You Only Live Once\n";
+  // TODO!
 
   llama_context * ctx = llm.lctx;
 
@@ -238,37 +125,16 @@ int main(int argc, char ** argv) {
     return 0;
   }
 
-  {
-    Timer prompt_timer;
-    llm.DoPrompt(prompt);
-    EmitTimer("Evaluated prompt", prompt_timer);
-  }
 
-  Timer save_state_timer;
-  const LLM::State start_state = llm.SaveState();
-  EmitTimer("Saved start state", save_state_timer);
-  printf("Start state is ~" ABLUE("%lld") " megabytes\n",
-         (int64_t)(start_state.llama_state.size() / (1024LL * 1024LL)));
+  llm.DoPrompt(prompt);
 
   // Now expand acronyms.
 
-  bool first = true;
   for (const string &word : words) {
-    printf(AWHITE(" == ") APURPLE("%s") AWHITE (" == ") "\n",
-           word.c_str());
-    if (!first) {
-      Timer load_state_timer;
-      llm.LoadState(start_state);
-      EmitTimer("Reloaded start state", load_state_timer);
-    }
-    first = false;
-
     {
-      Timer word_prompt_timer;
-      string prompt = WORD_PREFIX + word + "\n" ACRONYM_PREFIX;
+      string prompt = "Word: " + word + "\nAcronym Definition: ";
       auto prompt_tok = llm.Tokenize(prompt, false);
       llm.TakeTokenBatch(prompt_tok);
-      EmitTimer("Evaluated word prompt", word_prompt_timer);
     }
 
     string result = "";
@@ -402,7 +268,7 @@ int main(int argc, char ** argv) {
                        const std::pair<string, float> &b) {
                       return a.second > b.second;
                     });
-          for (int i = 0; i < 12 && i < (int)toks.size(); i++) {
+          for (int i = 0; i < 24 && i < (int)toks.size(); i++) {
             printf("  [%s] %.9f\n", toks[i].first.c_str(), toks[i].second);
           }
         } else {

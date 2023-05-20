@@ -139,9 +139,11 @@ struct LLM {
     // The data pointer in here is owned by the Candidates object.
     llama_token_data_array ltda;
 
-    // Cheap "iterator" (ranged for loops).
+    // Cheap "iterator" (for ranged for loops).
     llama_token_data *begin() { return ltda.data; }
     llama_token_data *end() { return ltda.data + ltda.size; }
+    const llama_token_data *begin() const { return ltda.data; }
+    const llama_token_data *end() const { return ltda.data + ltda.size; }
 
     ~Candidates() {
       delete []ltda.data;
@@ -274,6 +276,43 @@ struct LLM {
       llama_sample_temperature(lctx, &cand->ltda, temp);
       return llama_sample_token(lctx, &cand->ltda);
     }
+  }
+
+  // State of the transformer, i.e. some tokens have been evaluated,
+  // and it's ready to generate the next one. The contents should be
+  // treated as opaque and only loaded back into the same LLM
+  // instance, as they need to agree with context internals.
+  struct State {
+    std::vector<uint8_t> llama_state;
+    std::vector<llama_token> last_n_tokens;
+    int num_last = 0;
+    float mirostat_mu = 10.0f;
+  };
+
+  State SaveState() const {
+    State state;
+    const size_t n_state_size_max = llama_get_state_size(lctx);
+    state.llama_state.resize(n_state_size_max);
+    const size_t n_state_size_cur =
+      llama_copy_state_data(lctx, state.llama_state.data());
+    state.llama_state.resize(n_state_size_cur);
+    state.llama_state.shrink_to_fit();
+
+    state.last_n_tokens = last_n_tokens;
+    state.num_last = num_last;
+    state.mirostat_mu = mirostat_mu;
+    return state;
+  }
+
+  void LoadState(const State &state) {
+    Reset();
+    size_t bytes_read =
+      llama_set_state_data(lctx,
+                           (const uint8_t *)state.llama_state.data());
+    CHECK(bytes_read == state.llama_state.size());
+    last_n_tokens = state.last_n_tokens;
+    num_last = state.num_last;
+    mirostat_mu = state.mirostat_mu;
   }
 
   // private:
