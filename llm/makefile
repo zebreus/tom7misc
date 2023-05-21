@@ -1,5 +1,5 @@
 
-default: acronymy.exe
+default: acronymy.exe benchmark.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -217,6 +217,12 @@ llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/ggml-cuda.h $(L
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 acronymy.exe: acronymy.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+benchmark.exe: benchmark.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+test.exe: test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:

@@ -45,6 +45,14 @@ struct LLMParams {
 
 struct LLM {
   using Params = LLMParams;
+
+  enum class SampleType {
+    GREEDY,
+    MIROSTAT_1,
+    MIROSTAT_2,
+    TEMPERATURE,
+  };
+
   LLM(const Params &params = Params()) {
     num_threads = params.num_threads;
     const int seed = params.seed >= 0 ? params.seed : time(nullptr);
@@ -71,6 +79,15 @@ struct LLM {
     last_n_tokens.resize(params.context_size);
     Reset();
   }
+
+  ~LLM() {
+    llama_free(lctx);
+    lctx = nullptr;
+  }
+
+  // Copying not supported!
+  LLM(const LLM &other) = delete;
+  LLM &operator =(LLM other) = delete;
 
   // add_bos should be passed for the very first text ("beginning of stream"
   // token).
@@ -123,6 +140,43 @@ struct LLM {
                                              << (int)embd_inp.size()
                                              << " tokens)";
     TakeTokenBatch(embd_inp);
+  }
+
+  void InsertString(const string &s) {
+    TakeTokenBatch(Tokenize(s, false));
+  }
+
+  std::string TokenString(llama_token t) {
+    return llama_token_to_str(lctx, t);
+  }
+
+  // Generate until we we see the given delimiter. Return the string up
+  // until the beginning of the delimiter (note that there may have been
+  // more characters generated after that). If max_length is
+  // non-negative, return the empty string if we don't see the target
+  // delimiter before accumulating that many characters. (Note: The returned
+  // string can actually exceed max_length if the delimiter is a substring
+  // of some token.)
+  std::string GenerateUntil(const string &delimiter,
+                            SampleType sample_type = SampleType::MIROSTAT_2,
+                            int max_length = -1) {
+    std::string got;
+    for (;;) {
+      std::unique_ptr<LLM::Candidates> candidates = GetCandidates();
+      int id = SampleToken(sample_type, std::move(candidates));
+      // Commit the token.
+      TakeToken(id);
+      got += TokenString(id);
+
+      // PERF don't need to search the whole string each time.
+      auto pos = got.find(delimiter);
+      if (pos != string::npos) {
+        return got.substr(0, pos);
+      }
+      if (max_length >= 0 && (int)got.size() > max_length) {
+        return "";
+      }
+    }
   }
 
   void Reset() {
@@ -231,13 +285,6 @@ struct LLM {
 
     return cand;
   }
-
-  enum class SampleType {
-    GREEDY,
-    MIROSTAT_1,
-    MIROSTAT_2,
-    TEMPERATURE,
-  };
 
   // Samples a token from the logits. This does not accept the token
   // (although it does currently update sampler state).

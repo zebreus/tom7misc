@@ -146,8 +146,6 @@ int main(int argc, char ** argv) {
 
   llama_context * ctx = llm.lctx;
 
-  std::vector<llama_token> session_tokens;
-
   // Facts about the vocabulary!
   // Only one token has a newline in it, which is the newline token.
   // Space only appears leading tokens, although there are a number
@@ -265,9 +263,8 @@ int main(int argc, char ** argv) {
 
     {
       Timer word_prompt_timer;
-      string prompt = WORD_PREFIX + word + "\n" ACRONYM_PREFIX;
-      auto prompt_tok = llm.Tokenize(prompt, false);
-      llm.TakeTokenBatch(prompt_tok);
+      string word_prompt = WORD_PREFIX + word + "\n" ACRONYM_PREFIX;
+      llm.InsertString(word_prompt);
       EmitTimer("Evaluated word prompt", word_prompt_timer);
     }
 
