@@ -146,6 +146,10 @@ struct LLM {
     TakeTokenBatch(Tokenize(s, false));
   }
 
+  int VocabSize() const {
+    return llama_n_vocab(lctx);
+  }
+
   std::string TokenString(llama_token t) {
     return llama_token_to_str(lctx, t);
   }
@@ -349,6 +353,42 @@ struct LLM {
     state.num_last = num_last;
     state.mirostat_mu = mirostat_mu;
     return state;
+  }
+
+  void AnsiPrintCandidates(const Candidates &candidates,
+                           int maximum) {
+
+    auto IsAscii = [](const std::string &s) {
+        for (char c : s) {
+          if (c < ' ' || c > '~') return false;
+        }
+        return true;
+      };
+
+    std::vector<std::pair<string, float>> toks;
+    for (const llama_token_data &tok : candidates) {
+      if (tok.id == llama_token_nl()) {
+        toks.emplace_back("\\n", tok.logit);
+      } else {
+        string s = TokenString(tok.id);
+        if (IsAscii(s)) {
+          toks.emplace_back(s, tok.logit);
+        } else {
+          toks.emplace_back("??", tok.logit);
+        }
+      }
+    }
+
+    std::sort(toks.begin(), toks.end(),
+              [](const std::pair<string, float> &a,
+                 const std::pair<string, float> &b) {
+                return a.second > b.second;
+              });
+    for (int i = 0;
+         (maximum < 0 || i < maximum) && i < (int)toks.size();
+         i++) {
+      printf("  [%s] %.9f\n", toks[i].first.c_str(), toks[i].second);
+    }
   }
 
   void LoadState(const State &state) {

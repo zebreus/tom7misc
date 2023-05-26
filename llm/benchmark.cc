@@ -19,6 +19,8 @@
 #include "timer.h"
 #include "util.h"
 #include "vector-util.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 #include "llm.h"
 
@@ -90,9 +92,85 @@ Problem LoadFreeformProblem(const string &filename) {
     Question q =
       make_pair(Util::LoseWhiteL(Util::LoseWhiteR(v[0])),
                 Util::LoseWhiteL(Util::LoseWhiteR(v[1])));
-    if (idx == 2) problem.example = std::move(q);
-    else problem.questions.push_back(std::move(q));
+    problem.questions.push_back(std::move(q));
   }
+  CHECK(!problem.questions.empty());
+
+  // The first question is the example.
+  problem.example = std::move(problem.questions[0]);
+  problem.questions.erase(problem.questions.begin());
+
+  return problem;
+}
+
+Problem LoadMultipleChoiceProblem(const string &filename) {
+  ArcFour rc(StringPrintf("%lld", time(nullptr)));
+  std::vector<string> lines = Util::ReadFileToLines(filename);
+  for (string &line : lines) {
+    line = Util::LoseWhiteL(Util::LoseWhiteR(std::move(line)));
+  }
+
+  FilterVector(&lines, [](const std::string &line) {
+      if (line.empty()) return false;
+      if (line[0] == '#') return false;
+      return true;
+    });
+
+  CHECK(lines.size() >= 4);
+  Problem problem;
+  problem.name = std::move(lines[0]);
+  problem.prompt = std::move(lines[1]);
+
+  // State of current question; we read line-by-line.
+  string statement;
+  // Exactly one choice should be marked correct.
+  vector<std::pair<bool, string>> choices;
+
+  auto EmitQuestion = [&rc, &problem, &statement, &choices]() {
+      CHECK(!statement.empty());
+      CHECK(!choices.empty());
+      Shuffle(&rc, &choices);
+
+      int correct_idx = -1;
+      string rendered = StringPrintf("%s\n", statement.c_str());
+      for (int i = 0; i < (int)choices.size(); i++) {
+        if (choices[i].first) correct_idx = i;
+        StringAppendF(&rendered, " (%c) %s", 'a' + i,
+                      choices[i].second.c_str());
+        if (i < (int)choices.size() - 1) StringAppendF(&rendered, "\n");
+      }
+
+      problem.questions.emplace_back(
+          rendered,
+          StringPrintf("%c", 'a' + correct_idx));
+
+      statement.clear();
+      choices.clear();
+  };
+  for (int idx = 2; idx < (int)lines.size(); idx++) {
+    string &line = lines[idx];
+    bool is_correct = false, is_choice = false;
+    if (Util::TryStripPrefix("(*)", &line)) is_correct = is_choice = true;
+    else if (Util::TryStripPrefix("*", &line)) is_choice = true;
+
+    if (is_choice) {
+      // Asterisk has already been stripped.
+      choices.emplace_back(is_correct,
+                           Util::LoseWhiteL(Util::LoseWhiteR(line)));
+    } else {
+      if (!statement.empty()) EmitQuestion();
+      statement = Util::LoseWhiteL(Util::LoseWhiteR(line));
+    }
+  }
+
+  // Emit final question.
+  if (!statement.empty()) EmitQuestion();
+
+  // The first question is the example.
+  CHECK(!problem.questions.empty());
+  problem.example = std::move(problem.questions[0]);
+  problem.questions.erase(problem.questions.begin());
+
   return problem;
 }
 
@@ -104,14 +182,18 @@ static std::pair<string, string> WrapQuestion(const Question &q) {
 }
 
 static void RunProblem(const Problem &problem, LLM *llm) {
+  string prompt = problem.prompt + "\n";
   printf(AWHITE(" == ") APURPLE("%s") AWHITE(" == ") "\n",
          problem.name.c_str());
+  printf(AGREY("%s"), prompt.c_str());
   Timer startup_timer;
   llm->Reset();
-  llm->DoPrompt(problem.prompt);
+  llm->DoPrompt(prompt);
 
   const auto [wq, wa] = WrapQuestion(problem.example);
-  llm->InsertString(wq + wa);
+  string example_string = wq + wa;
+  printf(AGREY("%s"), example_string.c_str());
+  llm->InsertString(example_string);
   const LLM::State start_state = llm->SaveState();
   EmitTimer("started problem", startup_timer);
 
@@ -155,14 +237,19 @@ int main(int argc, char ** argv) {
   LLM::Params lparams;
   // lparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
   lparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
+  // lparams.model = "../llama/models/65B/ggml-model-f16.bin";
   lparams.mirostat = 2;
 
   LLM llm(lparams);
   EmitTimer("Loaded model", model_timer);
 
-  RunProblem(LoadFreeformProblem("code.txt"), &llm);
-  RunProblem(LoadFreeformProblem("trivia.txt"), &llm);
-  RunProblem(LoadFreeformProblem("trivia-personal.txt"), &llm);
+  // Would prefer for this to parse and validate PGN, as well as
+  // prompt a different way (no need for Question and Answer).
+  RunProblem(LoadFreeformProblem("chess.txt"), &llm);
+  // RunProblem(LoadMultipleChoiceProblem("multiple.txt"), &llm);
+  // RunProblem(LoadFreeformProblem("code.txt"), &llm);
+  // RunProblem(LoadFreeformProblem("trivia.txt"), &llm);
+  // RunProblem(LoadFreeformProblem("trivia-personal.txt"), &llm);
 
   llama_print_timings(llm.lctx);
 

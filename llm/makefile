@@ -1,5 +1,5 @@
 
-default: acronymy.exe benchmark.exe
+default: acronymy.exe benchmark.exe chat.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -16,7 +16,7 @@ CC_LIB=../cc-lib
 
 LLAMA_DIR=../llama
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -223,6 +223,9 @@ benchmark.exe: benchmark.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 test.exe: test.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+chat.exe: chat.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
