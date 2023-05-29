@@ -24,6 +24,9 @@
 
 #include "llm.h"
 
+// Prevent runaway (no correct answer can be longer).
+static constexpr int MAX_ANSWER = 80;
+
 using namespace std;
 
 static std::string AnsiTime(double seconds) {
@@ -56,8 +59,8 @@ static void EmitTimer(const std::string &name, const Timer &timer) {
          AnsiTime(timer.Seconds()).c_str());
 }
 
-// Question text; expected answer.
-using Question = std::pair<std::string, std::string>;
+// Question text; expected answer(s).
+using Question = std::pair<std::string, std::vector<std::string>>;
 
 struct Problem {
   // The problem name; a-z0-9_.
@@ -88,11 +91,14 @@ Problem LoadFreeformProblem(const string &filename) {
   for (int idx = 2; idx < (int)lines.size(); idx++) {
     const string &line = lines[idx];
     vector<string> v = Util::Split(line, '|');
-    CHECK(v.size() == 2) << line;
-    Question q =
-      make_pair(Util::LoseWhiteL(Util::LoseWhiteR(v[0])),
-                Util::LoseWhiteL(Util::LoseWhiteR(v[1])));
-    problem.questions.push_back(std::move(q));
+    CHECK(v.size() >= 2) << filename << ": " << line;
+    // Strip all surrounding whitespace.
+    for (string &s : v) s = Util::LoseWhiteL(Util::LoseWhiteR(s));
+    string q = std::move(v[0]);
+    // Answers are all the remaining fields
+    v.erase(v.begin());
+    Question question = make_pair(q, v);
+    problem.questions.push_back(std::move(question));
   }
   CHECK(!problem.questions.empty());
 
@@ -104,7 +110,7 @@ Problem LoadFreeformProblem(const string &filename) {
 }
 
 Problem LoadMultipleChoiceProblem(const string &filename) {
-  ArcFour rc(StringPrintf("%lld", time(nullptr)));
+  ArcFour rc(StringPrintf("%s.%lld", filename.c_str(), time(nullptr)));
   std::vector<string> lines = Util::ReadFileToLines(filename);
   for (string &line : lines) {
     line = Util::LoseWhiteL(Util::LoseWhiteR(std::move(line)));
@@ -126,7 +132,7 @@ Problem LoadMultipleChoiceProblem(const string &filename) {
   // Exactly one choice should be marked correct.
   vector<std::pair<bool, string>> choices;
 
-  auto EmitQuestion = [&rc, &problem, &statement, &choices]() {
+  auto EmitQuestion = [&filename, &rc, &problem, &statement, &choices]() {
       CHECK(!statement.empty());
       CHECK(!choices.empty());
       Shuffle(&rc, &choices);
@@ -139,10 +145,12 @@ Problem LoadMultipleChoiceProblem(const string &filename) {
                       choices[i].second.c_str());
         if (i < (int)choices.size() - 1) StringAppendF(&rendered, "\n");
       }
-
+      CHECK(correct_idx >= 0) << filename
+                              << "\nNo correct answer:\n"
+                              << rendered;
       problem.questions.emplace_back(
           rendered,
-          StringPrintf("%c", 'a' + correct_idx));
+          std::vector<string>{StringPrintf("%c", 'a' + correct_idx)});
 
       statement.clear();
       choices.clear();
@@ -178,10 +186,34 @@ static std::pair<string, string> WrapQuestion(const Question &q) {
   return make_pair(
       StringPrintf("Question: %s\n"
                    "Answer: [", q.first.c_str()),
-      StringPrintf("%s]\n", q.second.c_str()));
+      StringPrintf("%s]\n", q.second[0].c_str()));
 }
 
-static void RunProblem(const Problem &problem, LLM *llm) {
+struct Result {
+  Result() {}
+  Result(string name, int correct, int total, double sec) :
+    name(name), correct(correct), total(total), total_sec(sec) {}
+  string name;
+  int correct = 0;
+  int total = 0;
+  double total_sec = 0.0;
+};
+
+static string AnsiResultString(const Result &result) {
+  const double pct = (result.correct * 100.0) / result.total;
+  return StringPrintf(
+      APURPLE("%s") ": "
+      "Scored " AYELLOW("%d") "/" AWHITE("%d")
+      " (" AGREEN("%.2f%%") ") in %s",
+      result.name.c_str(),
+      result.correct, result.total,
+      pct, AnsiTime(result.total_sec).c_str());
+}
+
+
+static Result RunProblem(const Problem &problem,
+                         LLM::SampleType sample_type,
+                         LLM *llm) {
   string prompt = problem.prompt + "\n";
   printf(AWHITE(" == ") APURPLE("%s") AWHITE(" == ") "\n",
          problem.name.c_str());
@@ -210,48 +242,88 @@ static void RunProblem(const Problem &problem, LLM *llm) {
     printf(AGREY("%s"), wq.c_str());
     llm->InsertString(wq);
 
-    string answer = llm->GenerateUntil("]");
-    bool correct = Util::lcase(answer) == Util::lcase(question.second);
+    string answer = llm->GenerateUntil("]", sample_type, MAX_ANSWER);
+    const bool is_correct =
+      [&]() {
+        const string lanswer = Util::lcase(answer);
+        for (const auto &a : question.second)
+          if (lanswer == Util::lcase(a))
+            return true;
+        return false;
+      }();
     if (answer.empty()) {
       printf(ARED("INVALID") "\n");
-    } else if (correct) {
-      printf(AGREEN("%s") "\n", answer.c_str());
+    } else if (is_correct) {
+      printf(AGREEN("%s") "]\n", answer.c_str());
       num_correct++;
     } else {
-      printf(ARED("%s") " (want %s)\n",
-             answer.c_str(), question.second.c_str());
+      // (Only shows one of the correct answers)
+      const string first_answer = question.second[0];
+      printf(ARED("%s") "] (want %s)\n",
+             answer.c_str(), first_answer.c_str());
     }
   }
 
-  double pct = (100.0 * num_correct) / problem.questions.size();
-  // XXX return/record etc.
-  printf("Done in %s. Scored %d/%d (%.2f%%)\n",
-         AnsiTime(answer_timer.Seconds()).c_str(),
-         num_correct, (int)problem.questions.size(), pct);
+  Result result(problem.name,
+                num_correct, (int)problem.questions.size(),
+                answer_timer.Seconds());
+  printf("== Done ==\n"
+         "%s\n", AnsiResultString(result).c_str());
+  return result;
 }
 
 int main(int argc, char ** argv) {
   AnsiInit();
   Timer model_timer;
+  Timer total_timer;
+
+  std::vector<Problem> problems;
+
+  // Load problems first so that parse errors don't cause us to
+  // waste a huge amount of time!
+
+  problems.emplace_back(LoadFreeformProblem("classical-logic.txt"));
+  problems.emplace_back(LoadFreeformProblem("digits.txt"));
+  // Would prefer for this to parse and validate PGN, as well as
+  // prompt a different way (no need for Question and Answer).
+  problems.emplace_back(LoadFreeformProblem("chess.txt"));
+  problems.emplace_back(LoadMultipleChoiceProblem("multiple.txt"));
+  problems.emplace_back(LoadFreeformProblem("code.txt"));
+  problems.emplace_back(LoadFreeformProblem("trivia.txt"));
+  problems.emplace_back(LoadFreeformProblem("trivia-personal.txt"));
+  printf("Loaded " APURPLE("%d") " problems.\n", (int)problems.size());
 
   LLM::Params lparams;
   // lparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
-  lparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
+  // lparams.model = "../llama/models/7B/ggml-model-f16.bin";
+  // lparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
+  // lparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
+  lparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
   // lparams.model = "../llama/models/65B/ggml-model-f16.bin";
-  lparams.mirostat = 2;
+  // lparams.mirostat = 2;
+  LLM::SampleType sample_type = LLM::SampleType::GREEDY;
 
   LLM llm(lparams);
   EmitTimer("Loaded model", model_timer);
 
-  // Would prefer for this to parse and validate PGN, as well as
-  // prompt a different way (no need for Question and Answer).
-  RunProblem(LoadFreeformProblem("chess.txt"), &llm);
-  // RunProblem(LoadMultipleChoiceProblem("multiple.txt"), &llm);
-  // RunProblem(LoadFreeformProblem("code.txt"), &llm);
-  // RunProblem(LoadFreeformProblem("trivia.txt"), &llm);
-  // RunProblem(LoadFreeformProblem("trivia-personal.txt"), &llm);
+  std::map<string, Result> results;
+
+  for (const Problem &problem : problems) {
+    Result result = RunProblem(problem, sample_type, &llm);
+    results[result.name] = result;
+
+    // Always print all, since this takes a long time.
+    printf("\n\nResults so far:\n");
+    for (const auto &[name_, res] : results) {
+      printf("%s\n", AnsiResultString(res).c_str());
+    }
+  }
 
   llama_print_timings(llm.lctx);
+
+  printf("Model: " AWHITE("%s") "\n", lparams.model.c_str());
+  printf("\nTotal benchmark time: %s\n",
+         AnsiTime(total_timer.Seconds()).c_str());
 
   return 0;
 }

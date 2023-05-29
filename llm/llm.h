@@ -395,7 +395,10 @@ struct LLM {
     Reset();
     size_t bytes_read =
       llama_set_state_data(lctx,
-                           (const uint8_t *)state.llama_state.data());
+                           // XXX I think this is morally const, but
+                           // should check.
+                           const_cast<uint8_t *>(
+                               state.llama_state.data()));
     CHECK(bytes_read == state.llama_state.size());
     last_n_tokens = state.last_n_tokens;
     num_last = state.num_last;

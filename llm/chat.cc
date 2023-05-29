@@ -87,18 +87,36 @@ static std::vector<std::string> ReadFileToNormalizedLines(
 struct Line {
   // e.g. <Tom> What about impractical purposes?
   // Could support actions etc. later.
+  enum Type {
+    THOUGHT = 0,
+    SPOKEN = 1,
+  };
+  Type type;
   string speaker;
   string message;
 };
 
+static string LinePrefixToString(Line::Type type, const string &name) {
+  switch (type) {
+  case Line::SPOKEN:
+    return StringPrintf("<%s>", name.c_str());
+  case Line::THOUGHT:
+    return StringPrintf("*%s thinks*", name.c_str());
+  default:
+    return "??";
+  }
+}
+
 static string LineToString(const Line &line) {
-  return StringPrintf("<%s> %s\n",
-                      line.speaker.c_str(), line.message.c_str());
+  return StringPrintf("%s %s\n",
+                      LinePrefixToString(line.type, line.speaker).c_str(),
+                      line.message.c_str());
 }
 
 struct Participant {
   static constexpr const char *MODEL =
     "../llama/models/65B/ggml-model-q4_0.bin";
+    // "../llama/models/7B/ggml-model-q4_0.bin";
 
   Participant(std::string name, std::string prompt) : name(name),
                                                       my_prompt(prompt) {
@@ -124,6 +142,10 @@ struct Participant {
   void Reset(const std::vector<Line> &transcript) {
     llm->LoadState(start_state);
     for (const Line &line : transcript) {
+      // Don't share private thoughts.
+      if (line.type == Line::THOUGHT && line.speaker != name)
+        continue;
+
       llm->InsertString(LineToString(line));
     }
   }
@@ -173,8 +195,9 @@ static void RunRoom(
     EmitTimer("created " + ppt->name, load_timer);
   }
 
-  // Tokens that contain <, which we use to down-weight
-  std::vector<bool> contains_lt;
+  // Tokens that contain <, which we use to down-weight <Alice>.
+  // Similarly for *
+  std::vector<bool> contains_lt, contains_star;
   {
     CHECK(!room.participants.empty());
     LLM *llm = room.participants[0]->llm.get();
@@ -183,12 +206,14 @@ static void RunRoom(
     for (int id = 0; id < nv; id++) {
       const string s = llm->TokenString(id);
       contains_lt.push_back(ContainsChar(s, '<'));
+      contains_star.push_back(ContainsChar(s, '*'));
     }
   }
 
   // Generate a message. Doesn't allow the message to be empty, by
   // penalizing the newline token until there's at least something output.
-  auto GetMessage = [&contains_lt](LLM *llm, int max_length) -> string {
+  auto GetMessage = [&contains_lt, &contains_star](
+      LLM *llm, int max_length) -> string {
       LLM::SampleType sample_type = LLM::SampleType::MIROSTAT_2;
       std::string got;
       // Negative infinity.
@@ -200,7 +225,7 @@ static void RunRoom(
 
         for (llama_token_data &tok : *candidates) {
           // Don't allow starting a new <Speaker> in-line.
-          if (contains_lt[tok.id]) {
+          if (contains_lt[tok.id] || contains_star[tok.id]) {
             tok.logit = IMPOSSIBLE;
             continue;
           }
@@ -249,7 +274,8 @@ static void RunRoom(
 
   // TODO: Reset when max transcript size is exceeded!
   ArcFour rc(StringPrintf("chat:%lld", time(nullptr)));
-  int next_speaker_idx = RandTo(&rc, room.participants.size());
+  const int NUM_ROBIN = room.participants.size() * 2;
+  int next_robin = RandTo(&rc, NUM_ROBIN);
   static constexpr bool ROUND_ROBIN = true;
   static constexpr int MIN_TRANSCRIPT = 6;
   static constexpr int MAX_TRANSCRIPT = 32;
@@ -258,23 +284,28 @@ static void RunRoom(
 
     // Choose next speaker.
 
-    const int speaker_idx = [&]() -> int {
+    const auto [speaker_idx, line_type] = [&]() ->
+      std::pair<int, Line::Type> {
         if (ROUND_ROBIN) {
-          int idx = next_speaker_idx;
-          next_speaker_idx++;
-          next_speaker_idx %= room.participants.size();
-          return idx;
+
+          int sidx = next_robin / 2;
+          int type = next_robin % 2;
+          next_robin++;
+          next_robin %= NUM_ROBIN;
+          return std::make_pair(sidx, (Line::Type)type);
         } else {
-          return RandTo(&rc, room.participants.size());
+          return std::make_pair(
+              RandTo(&rc, room.participants.size()),
+              (Line::Type)RandTo(&rc, 2));
         }
       }();
 
     Participant *ppt = room.participants[speaker_idx];
     // Give the participant their own name, and read until the
     // end of line.
-    ppt->llm->InsertString(StringPrintf("<%s>", ppt->name.c_str()));
+    ppt->llm->InsertString(LinePrefixToString(line_type, ppt->name));
     string message = GetMessage(ppt->llm.get(), 80 + 80);
-    {
+    if (false) {
       printf(ANSI_GREY "Bytes generated:");
       int blen = 0;
       for (char c : message) {
@@ -288,14 +319,15 @@ static void RunRoom(
       printf(ANSI_RESET "\n");
     }
 
-    Line line{.speaker = ppt->name,
+    Line line{.type = line_type,
+              .speaker = ppt->name,
               .message = Util::LoseWhiteL(Util::LoseWhiteR(message))};
     // Add to transcript.
     room.transcript.emplace_back(line);
 
     // Play for all other participants.
     Timer other_timer;
-    {
+    if (line_type != Line::THOUGHT) {
       string rendered_line = LineToString(line);
       for (Participant *oppt : room.participants) {
         if (oppt->name != ppt->name) {
@@ -305,8 +337,17 @@ static void RunRoom(
     }
     double other_seconds = other_timer.Seconds();
 
-    printf(AGREY("<") AWHITE("%s") AGREY(">") " %s\n",
-           line.speaker.c_str(), line.message.c_str());
+    switch (line_type) {
+    case Line::SPOKEN:
+      printf(AGREY("<") AWHITE("%s") AGREY(">") " %s\n",
+             line.speaker.c_str(), line.message.c_str());
+      break;
+    case Line::THOUGHT:
+      printf(AGREY("*") AWHITE("%s") ABLUE(" thinks") AGREY("*") " "
+             ABLUE("%s") "\n",
+             line.speaker.c_str(), line.message.c_str());
+      break;
+    }
     printf("%s " AGREY("(") "%s " AGREY("other)") "\n",
            AnsiTime(line_timer.Seconds()).c_str(),
            AnsiTime(other_seconds).c_str());
