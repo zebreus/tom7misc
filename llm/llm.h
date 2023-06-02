@@ -164,6 +164,22 @@ struct LLM {
   std::string GenerateUntil(const string &delimiter,
                             SampleType sample_type = SampleType::MIROSTAT_2,
                             int max_length = -1) {
+    const auto &[got, success] =
+      GenerateUntilEx(delimiter, sample_type, max_length);
+    if (success) return got;
+    else return "";
+  }
+
+  // As above, but: If we exceed the max length, return the string so far.
+  // Second component of pair is true we successfully saw the delimiter.
+  // If force_delimiter is true, then once we reach the max length, we
+  // insert the delimiter string into the LLM state (but still return false
+  // for success).
+  std::pair<std::string, bool> GenerateUntilEx(
+      const string &delimiter,
+      SampleType sample_type = SampleType::MIROSTAT_2,
+      int max_length = -1,
+      bool force_delimiter = false) {
     std::string got;
     for (;;) {
       std::unique_ptr<LLM::Candidates> candidates = GetCandidates();
@@ -175,13 +191,15 @@ struct LLM {
       // PERF don't need to search the whole string each time.
       auto pos = got.find(delimiter);
       if (pos != string::npos) {
-        return got.substr(0, pos);
+        return make_pair(got.substr(0, pos), true);
       }
       if (max_length >= 0 && (int)got.size() > max_length) {
-        return "";
+        InsertString(delimiter);
+        return make_pair(got, false);
       }
     }
   }
+
 
   void Reset() {
     // (Or use BOS token?)
@@ -288,6 +306,16 @@ struct LLM {
     }
 
     return cand;
+  }
+
+  static const char *SampleTypeString(SampleType type) {
+    switch (type) {
+    default: return "???";
+    case SampleType::GREEDY: return "GREEDY";
+    case SampleType::MIROSTAT_1: return "MIROSTAT_1";
+    case SampleType::MIROSTAT_2: return "MIROSTAT_2";
+    case SampleType::TEMPERATURE: return "TEMPERATURE";
+    }
   }
 
   // Samples a token from the logits. This does not accept the token

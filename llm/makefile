@@ -228,6 +228,9 @@ test.exe: test.o $(CC_LIB_OBJECTS)
 chat.exe: chat.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
+run-um.exe : run-um.o um.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 clean:
 	rm -f *.o acronymy.exe
 
