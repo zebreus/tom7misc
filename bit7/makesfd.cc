@@ -21,7 +21,7 @@
 #include "base/logging.h"
 #include "fonts/island-finder.h"
 #include "fonts/ttf.h"
-#include "config.h"
+#include "font-image.h"
 
 using namespace std;
 using uint8 = uint8_t;
@@ -31,10 +31,10 @@ using uint64 = uint64_t;
 // TODO: Would be nice for this to be configurable!
 // Standard layout of input file, based on characters
 // that were useful for DestroyFX. If -1, the spot
-// is unclaimed. Should be fine to extend past 128
+// is unclaimed. Should be fine to extend past this many
 // characters by increasing CHARS_DOWN too.
 constexpr int MAPPED_CHARS_ACROSS = 16;
-constexpr int MAPPED_CHARS_DOWN = 16;
+constexpr int MAPPED_CHARS_DOWN = 20;
 
 static constexpr array<int, MAPPED_CHARS_ACROSS * MAPPED_CHARS_DOWN>
 CODEPOINTS = {
@@ -78,8 +78,22 @@ CODEPOINTS = {
   // Left half block, right half block
   0x258C, 0x2590,
 
-  // rest of second line, unclaimed
-  -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  // dagger, double-dagger
+  0x2020, 0x2021,
+
+  // checkmark, heavy checkmark,
+  0x2713, 0x2714,
+  // ballot x, heavy ballot x,
+  0x2717, 0x2718,
+
+  // Trade Mark Sign
+  0x2122,
+
+  // Ideographic full stop (big japanese period)
+  0x3002,
+  // turnstile (a.k.a. right tack)
+  0x22A2,
+
   // ASCII, mapped to itself
   0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F,
   0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, 0x3E, 0x3F,
@@ -95,8 +109,12 @@ CODEPOINTS = {
 
   // Rest of chess piece line
   -1, -1, -1, -1,
-  // control characters, unclaimed
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+  // Black circle, black square
+  0x25CF, 0x25A0,
+  // geometric shapes line, unclaimed
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
   // Unicode Latin-1 Supplement, mapped to itself.
   // See https://en.wikibooks.org/wiki/Unicode/Character_reference/0000-0FFF
   0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF,
@@ -105,6 +123,69 @@ CODEPOINTS = {
   0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF,
   0xE0, 0xE1, 0xE2, 0xE3, 0xE4, 0xE5, 0xE6, 0xE7, 0xE8, 0xE9, 0xEA, 0xEB, 0xEC, 0xED, 0xEE, 0xEF,
   0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
+
+  // unclaimed
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+  // TODO: Greek; in progress
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  // unclaimed - more greek / cyrillic here
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+  // math
+  // exists, forall
+  0x2203, 0x2200,
+  // rest of math, unclaimed
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+};
+
+// e.g. use the glyph for hyphen (0x2D) to render U+2212 (minus).
+static constexpr std::initializer_list<std::pair<int, int>>
+REUSE_FOR = {
+  // hyphen used as minus
+  {0x2D, 0x2212},
+  // ascii -> cyrillic
+  {'S', 0x0405},
+  {'J', 0x0408},
+  {'A', 0x0410},
+  {'B', 0x0412},
+  {'E', 0x0415},
+  {'M', 0x041C},
+  {'H', 0x041D},
+  {'O', 0x041E},
+  {'P', 0x0420},
+  {'C', 0x0421},
+  {'T', 0x0422},
+  {'X', 0x0425},
+  {'a', 0x0430},
+  {'e', 0x0435},
+  {'o', 0x043E},
+  {'p', 0x0440},
+  {'c', 0x0441},
+  {'x', 0x0445},
+  {'s', 0x0455},
+  {'i', 0x0456},
+  {'j', 0x0458},
+  // TODO: More cyrillic can be copied from Latin-1, Greek.
+
+  // Full-width comma
+  {',', 0xFF0C},
+  // Ideographic space
+  {' ', 0x3000},
+  // Fullwidth parentheses
+  // Actually we can just map these all from ascii?
+  // en.wikipedia.org/wiki/Halfwidth_and_Fullwidth_Forms_(Unicode_block)
+  {'(', 0xFF08},
+  {')', 0xFF09},
+
+  // bullet -> katakana middle dot
+  {0x2022, 0x30FB},
+
+  // Black circle -> black circle for record
+  {0x25CF, 0x23FA},
+  // Same for square
+  {0x25A0, 0x23F9},
+
 };
 
 
@@ -126,6 +207,18 @@ struct Glyph {
   // (transparent) and any other value is "on".
   ImageA pic;
 };
+}
+
+static string GlyphString(const Glyph &glyph) {
+  string out;
+  for (int y = 0; y < glyph.pic.Height(); y++) {
+    for (int x = 0; x < glyph.pic.Width(); x++) {
+      char c = (glyph.pic.GetPixel(x, y) != 0) ? '#' : '.';
+      out += c;
+    }
+    out += '\n';
+  }
+  return out;
 }
 
 static bool EmptyGlyph(const Glyph &g) {
@@ -666,6 +759,7 @@ int main(int argc, char **argv) {
       if (!ok_missing) {
         printf("Skipping glyph at %d,%d because it is outside the codepoint "
                "array!\n", index % chars_across, index / chars_across);
+        printf("%s", GlyphString(glyph).c_str());
       }
       continue;
     }
@@ -675,6 +769,8 @@ int main(int argc, char **argv) {
       if (!ok_missing) {
         printf("Skipping glyph at %d,%d because the codepoint is not "
                "configured!\n", index % chars_across, index / chars_across);
+        printf("%s", GlyphString(glyph).c_str());
+        CHECK(!EmptyGlyph(glyph));
       }
     } else {
       TTF::Char ch = Vectorize(glyph);
@@ -685,6 +781,18 @@ int main(int argc, char **argv) {
         }, &ch);
 
       ttf_font.chars[codepoint] = std::move(ch);
+    }
+  }
+
+  for (const auto &[src, dst] : REUSE_FOR) {
+    // If we do have the source, but don't have the dest, copy.
+    // (PERF: I think it's possible for a single outline to be used
+    // for multiple characters, so we should do that instead! Or
+    // dedupe as a separate matter.)
+    if (ttf_font.chars.find(src) != ttf_font.chars.end() &&
+        ttf_font.chars.find(dst) == ttf_font.chars.end()) {
+      printf("Copy %04x to %04x\n", src, dst);
+      ttf_font.chars[dst] = ttf_font.chars[src];
     }
   }
 

@@ -17,7 +17,7 @@ CCLIB_FONT_OBJECTS=../cc-lib/fonts/island-finder.o ../cc-lib/fonts/ttf.o ../cc-l
 	@$(CXX) $(CXXFLAGS) -c $^ -o $@
 	@echo -n "."
 
-makegrid.exe : makegrid.o config.o $(CCLIB_OBJECTS)
+makegrid.exe : makegrid.o font-image.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
 resize.exe : resize.o $(CCLIB_OBJECTS)
@@ -39,7 +39,7 @@ testembed.o : testembed.cc embed9x9.h
 testembed.exe : testembed.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
-makesfd.exe : makesfd.o config.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
+makesfd.exe : makesfd.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
 dfx-pasement.sfd : dfx-pasement.png dfx-pasement.cfg makesfd.exe

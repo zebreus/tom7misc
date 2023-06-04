@@ -6,7 +6,7 @@
 #include "image.h"
 
 #include "base/stringprintf.h"
-#include "config.h"
+#include "font-image.h"
 
 using uint8 = uint8_t;
 using uint32 = uint32_t;
