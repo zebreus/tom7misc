@@ -6,7 +6,7 @@ default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe make
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-gcc
 
-CXXFLAGS=--std=c++17 -O2 -Wall -I../cc-lib/
+CXXFLAGS=--std=c++20 -O2 -Wall -I../cc-lib/
 LFLAGS=-static
 
 CCLIB_OBJECTS=../cc-lib/stb_image.o ../cc-lib/stb_image_write.o ../cc-lib/image.o ../cc-lib/base/logging.o ../cc-lib/base/stringprintf.o ../cc-lib/util.o
