@@ -60,14 +60,16 @@ bool FontImage::EmptyGlyph(const Glyph &g) {
   return true;
 }
 
-FontImage::FontImage(const Config &config) {
+FontImage::FontImage(const Config &config) : config(config) {
   const int chars_across = config.chars_across;
   const int chars_down = config.chars_down;
 
-  // XXX: Make it so we can just set a fixed width in the config
-  // and ignore black lines?
-  // 'spacing' is presentational in makegrid; we derive the width
-  // from the black line in each character cell.
+  // For fixed-width fonts, the width is always the size of the charbox
+  // minus the intra-character spacing (ignored pixels).
+
+  // For proportional fonts, 'spacing' is presentational (used by
+  // makegrid). We derive the width from the black line in each
+  // character cell.
 
   std::unique_ptr<ImageRGBA> input(ImageRGBA::Load(config.pngfile));
   CHECK(input.get() != nullptr) << "Couldn't load: " << config.pngfile;
@@ -85,8 +87,9 @@ FontImage::FontImage(const Config &config) {
 
       // Get width, by searching for a column of all black.
       auto GetWidth = [&]() {
+          // TODO: Check for pixels outside this region.
           if (config.fixed_width)
-            return config.charbox_width;
+            return config.charbox_width - config.spacing;
           for (int x = 0; x < config.charbox_width; x++) {
             auto IsBlackColumn = [&]() {
                 int sx = cx * config.charbox_width + x;
@@ -156,3 +159,51 @@ FontImage::FontImage(const Config &config) {
   }
 }
 
+void FontImage::SaveImage(const std::string &filename,
+                          int chars_across, int chars_down) {
+  const int ww = config.charbox_width;
+  const int hh = config.charbox_height;
+  ImageRGBA out(chars_across * ww, chars_down * hh);
+  out.Clear32(0xFF0000FF);
+  for (int y = 0; y < chars_down; y++) {
+    for (int x = 0; x < chars_across; x++) {
+      const int idx = y * chars_across + x;
+      const bool odd = !!((x + y) & 1);
+
+      const uint32_t bgcolor = odd ? 0x594d96FF : 0x828a19FF;
+      const uint32_t locolor = odd ? 0x453984FF : 0x636a0eFF;
+
+      // Fill whole grid cell to start.
+      int xs = x * ww;
+      int ys = y * hh;
+      out.BlendRect32(xs, ys, ww, hh, bgcolor);
+      out.BlendRect32(xs, ys + hh - config.descent,
+                      ww, config.descent, locolor);
+
+      // Blit the glyph.
+      int glyph_width = 0;
+      if (glyphs.find(idx) != glyphs.end()) {
+        const Glyph &glyph = glyphs[idx];
+        for (int yy = 0; yy < glyph.pic.Height(); yy++) {
+          for (int xx = 0; xx < glyph.pic.Width(); xx++) {
+            if (glyph.pic.GetPixel(xx, yy) > 0) {
+              out.SetPixel32(xs + xx, ys + yy, 0xFFFFFFFF);
+            }
+          }
+        }
+        glyph_width = glyph.pic.Width();
+      }
+
+      if (config.fixed_width)
+        glyph_width = config.charbox_width - config.spacing;
+
+      // Fill remaining horizontal with black.
+      int sp = config.charbox_width - glyph_width;
+      // printf("%d - %d - %d\n", config.charbox_width, glyph_width, sp);
+      out.BlendRect32(xs + glyph_width, ys, sp, hh,
+                      0x000000FF);
+    }
+  }
+
+  out.Save(filename);
+}

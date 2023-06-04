@@ -1,7 +1,7 @@
 
 all: default
 
-default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe fixedersys1x.sfd fixedersys2x.sfd
+default : makegrid.exe resize.exe testpattern.exe embedcc.exe testembed.exe makesfd.exe normalize.exe merge2x.exe fixedersys1x.sfd fixedersys2x.sfd
 
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-gcc
@@ -40,6 +40,12 @@ testembed.exe : testembed.o $(CCLIB_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
 makesfd.exe : makesfd.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
+	$(CXX) $(LFLAGS) $^ -o $@
+
+normalize.exe : normalize.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
+	$(CXX) $(LFLAGS) $^ -o $@
+
+merge2x.exe : merge2x.o font-image.o $(CCLIB_OBJECTS) $(CCLIB_FONT_OBJECTS)
 	$(CXX) $(LFLAGS) $^ -o $@
 
 dfx-pasement.sfd : dfx-pasement.png dfx-pasement.cfg makesfd.exe

@@ -54,8 +54,15 @@ struct FontImage {
 
   explicit FontImage(const Config &config);
 
+  // Save the glyphs as a normalized image. Any characters with indices
+  // outside chars_across * chars_down is discarded. Any character with
+  // no glyph will just be blank.
+  void SaveImage(const std::string &filename,
+                 int chars_across, int chars_down);
+
   // Map from character index (position in image) to glyph.
   std::map<int, Glyph> glyphs;
+  Config config;
 };
 
 
