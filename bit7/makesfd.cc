@@ -28,6 +28,8 @@ using uint8 = uint8_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
 
+using Glyph = FontImage::Glyph;
+
 // TODO: Would be nice for this to be configurable!
 // Standard layout of input file, based on characters
 // that were useful for DestroyFX. If -1, the spot
@@ -195,37 +197,6 @@ static constexpr bool VERBOSE = false;
 template<class C, class K>
 static bool ContainsKey(const C &c, const K &k) {
   return c.find(k) != c.end();
-}
-
-namespace {
-struct Glyph {
-  // Can be negative, allowing for overhang on a character like j, for example.
-  // XXX not implemented
-  int left_edge = 0;
-  // Height will be charbox_height; width of the image may vary from
-  // glyph to glyph. This is a 1-bit bitmap; 0 means "off"
-  // (transparent) and any other value is "on".
-  ImageA pic;
-};
-}
-
-static string GlyphString(const Glyph &glyph) {
-  string out;
-  for (int y = 0; y < glyph.pic.Height(); y++) {
-    for (int x = 0; x < glyph.pic.Width(); x++) {
-      char c = (glyph.pic.GetPixel(x, y) != 0) ? '#' : '.';
-      out += c;
-    }
-    out += '\n';
-  }
-  return out;
-}
-
-static bool EmptyGlyph(const Glyph &g) {
-  for (int y = 0; y < g.pic.Height(); y++)
-    for (int x = 0; x < g.pic.Width(); x++)
-      if (g.pic.GetPixel(x, y) != 0) return false;
-  return true;
 }
 
 static Config ParseAndCheckConfig(const std::string &cfgfile) {
@@ -584,108 +555,15 @@ int main(int argc, char **argv) {
   const string out_sfd = argv[2];
   const string out_test_png = (argc > 3) ? argv[3] : "";
 
-  const int chars_across = config.chars_across;
-  const int chars_down = config.chars_down;
-
-  // XXX: Make it so we can just set a fixed width in the config
-  // and ignore black lines?
-  // 'spacing' is presentational in makegrid; we derive the width
-  // from the black line in each character cell.
-
-  std::unique_ptr<ImageRGBA> input(ImageRGBA::Load(config.pngfile));
-  CHECK(input.get() != nullptr) << "Couldn't load: " << config.pngfile;
-  CHECK(chars_across * config.charbox_width == input->Width() &&
-        chars_down * config.charbox_height == input->Height()) <<
-    "Image with configured charboxes " << config.charbox_width << "x"
-                                       << config.charbox_height <<
-    " should be " << (chars_across * config.charbox_width) << "x"
-                  << (chars_down * config.charbox_height) << " but got "
-                  << input->Width() << "x" << input->Height();
-
-  // Map from character index (position in image) to glyph.
-  std::map<int, Glyph> font;
-
-  for (int cy = 0; cy < chars_down; cy++) {
-    for (int cx = 0; cx < chars_across; cx++) {
-      const int cidx = chars_across * cy + cx;
-
-      // Get width, by searching for a column of all black.
-      auto GetWidth = [&]() {
-          if (config.fixed_width)
-            return config.charbox_width;
-          for (int x = 0; x < config.charbox_width; x++) {
-            auto IsBlackColumn = [&]() {
-                int sx = cx * config.charbox_width + x;
-                for (int y = 0; y < config.charbox_height; y++) {
-                  int sy = cy * config.charbox_height + y;
-                  uint32 color = input->GetPixel32(sx, sy);
-                  if (color != 0x000000FF) return false;
-                }
-                return true;
-              };
-            if (IsBlackColumn()) {
-              return x;
-            }
-          }
-          return -1;
-        };
-      // -1 if not found. This is tolerated for totally empty characters.
-      const int width = GetWidth();
-
-      auto IsEmpty = [&]() {
-          for (int y = 0; y < config.charbox_height; y++) {
-            for (int x = 0; x < config.charbox_width; x++) {
-              int sx = cx * config.charbox_width + x;
-              int sy = cy * config.charbox_height + y;
-              uint32 color = input->GetPixel32(sx, sy);
-              if (color == 0xFFFFFFFF) return false;
-            }
-          }
-          return true;
-        };
-
-      if (width < 0) {
-        if (!IsEmpty()) {
-          printf("%s: "
-                 "Character at cx=%d, cy=%d has no width (black column) but "
-                 "has a glyph (white pixels).\n",
-                 config.pngfile.c_str(), cx, cy);
-          return -1;
-        }
-
-        continue;
-      } else if (width == 0) {
-        printf("%s: Character at cx=%d, cy=%d has zero width; "
-               "not supported!\n",
-               config.pngfile.c_str(), cx, cy);
-        return -1;
-      } else {
-        // Glyph, but possibly an empty one...
-        ImageA pic{width, config.charbox_height};
-        pic.Clear(0x00);
-
-        for (int y = 0; y < config.charbox_height; y++) {
-          for (int x = 0; x < width; x++) {
-            int sx = cx * config.charbox_width + x;
-            int sy = cy * config.charbox_height + y;
-            bool bit = input->GetPixel32(sx, sy) == 0xFFFFFFFF;
-            if (bit) pic.SetPixel(x, y, 0xFF);
-          }
-        }
-
-        Glyph *glyph = &font[cidx];
-        // No way to set this from image yet...
-        glyph->left_edge = 0;
-        glyph->pic = std::move(pic);
-      }
-    }
-  }
+  FontImage font_image(config);
+  // XXX
+  auto &font = font_image.glyphs;
 
   if (config.no_lowercase) {
     for (int c = 'A'; c <= 'Z'; c++) {
       int lc = c | 32;
       bool lc_missing = font.find(lc) == font.end() ||
-        (config.fixed_width && EmptyGlyph(font[lc]));
+        (config.fixed_width && FontImage::EmptyGlyph(font[lc]));
       if (font.find(c) != font.end() && lc_missing) {
         font[lc] = font[c];
       }
@@ -749,17 +627,20 @@ int main(int argc, char **argv) {
 
   const double one_pixel = 1.0 / config.charbox_height;
 
+  const int chars_across = config.chars_across;
+
   TTF::Font ttf_font;
   for (const auto &[index, glyph] : font) {
     // Don't warn about empty glyphs if the font is fixed-width, as
     // there is no other way to indicate a missing glyph.
-    bool ok_missing = config.fixed_width && EmptyGlyph(glyph);
+    bool ok_missing = config.fixed_width && FontImage::EmptyGlyph(glyph);
 
     if (index >= (int)CODEPOINTS.size()) {
       if (!ok_missing) {
         printf("Skipping glyph at %d,%d because it is outside the codepoint "
-               "array!\n", index % chars_across, index / chars_across);
-        printf("%s", GlyphString(glyph).c_str());
+               "array!\n", index % chars_across,
+               index / chars_across);
+        printf("%s", FontImage::GlyphString(glyph).c_str());
       }
       continue;
     }
@@ -769,8 +650,7 @@ int main(int argc, char **argv) {
       if (!ok_missing) {
         printf("Skipping glyph at %d,%d because the codepoint is not "
                "configured!\n", index % chars_across, index / chars_across);
-        printf("%s", GlyphString(glyph).c_str());
-        CHECK(!EmptyGlyph(glyph));
+        printf("%s", FontImage::GlyphString(glyph).c_str());
       }
     } else {
       TTF::Char ch = Vectorize(glyph);

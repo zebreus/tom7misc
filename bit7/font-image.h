@@ -1,7 +1,9 @@
-#ifndef _BIT7_CONFIG_H
-#define _BIT7_CONFIG_H
+#ifndef _BIT7_FONT_IMAGE_H
+#define _BIT7_FONT_IMAGE_H
 
 #include <string>
+#include <map>
+#include "image.h"
 
 struct Config {
   std::string pngfile;
@@ -35,5 +37,26 @@ struct Config {
 
   static Config ParseConfig(const std::string &cfgfile);
 };
+
+struct FontImage {
+  struct Glyph {
+    // Can be negative, allowing for overhang on a character like j,
+    // for example. XXX not implemented
+    int left_edge = 0;
+    // Height will be charbox_height; width of the image may vary from
+    // glyph to glyph. This is a 1-bit bitmap; 0 means "off"
+    // (transparent) and any other value is "on".
+    ImageA pic;
+  };
+
+  static std::string GlyphString(const Glyph &glyph);
+  static bool EmptyGlyph(const Glyph &g);
+
+  explicit FontImage(const Config &config);
+
+  // Map from character index (position in image) to glyph.
+  std::map<int, Glyph> glyphs;
+};
+
 
 #endif
