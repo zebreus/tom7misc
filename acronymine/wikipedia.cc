@@ -441,7 +441,13 @@ struct WikipediaImpl : public Wikipedia {
   }
 
   void ASCIIify(string *body) override {
+    // Fancy double quotes
     RE2::GlobalReplace(body, "(?:\u201C|\u201D)", "\"");
+    // Minus sign and en dash.
+    RE2::GlobalReplace(body, "(?:\u2212|\u2013)", "-");
+    // Em dash.
+    RE2::GlobalReplace(body, "(?:\u2014)", "--");
+
     // TODO: fancy single quotes
   }
 

@@ -5,9 +5,11 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <mutex>
 
 #include "base/logging.h"
 
+#include "threadutil.h"
 #include "network.h"
 #include "network-gpu.h"
 #include "clutil.h"
@@ -23,10 +25,6 @@ struct SentenceLike {
     CHECK(net.get() != nullptr);
     net->StructuralCheck();
     net->NaNCheck(model_file);
-    CHECK(cl != nullptr);
-    net_gpu = std::make_unique<NetworkGPU>(cl, net.get());
-    forward_cl = std::make_unique<ForwardLayerCL>(cl, net_gpu.get());
-    printf("Loaded SentenceLike model.\n");
   }
 
   static constexpr int VEC_SIZE = 300;
@@ -44,6 +42,7 @@ struct SentenceLike {
   Word2Vec *w2v = nullptr;
   Freq *freq = nullptr;
   WordNet *wordnet = nullptr;
+  std::mutex mu;
 
   std::unordered_map<char, std::vector<uint32_t>> words_to_try;
 

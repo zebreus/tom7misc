@@ -49,6 +49,7 @@ function SetSimilar(idx, value) {
              });
 }
 
+/*
 // Perhaps should do this in batch, as the model
 // can efficiently predict many at once.
 function Predict(idx) {
@@ -71,6 +72,26 @@ function Predict(idx) {
                }
              });
 }
+*/
+
+function Predict(idx) {
+  let phrase = '';
+  for (let i = 0; i < WORD.length; i++) {
+    if (i != 0) phrase += ' ';
+    phrase += WordAt(i);
+  }
+  let elt = document.getElementById('pred' + idx);
+
+  FetchLines('/guess/' + WORD + '/' + WORD[idx] + '/' + idx + '/' + phrase,
+             text => {
+               elt.innerHTML = '';
+               let lines = text.split(/\r?\n/);
+               for (let line of lines) {
+                 TEXT(line, elt);
+                 BR('', elt);
+               }
+             });
+}
 
 function InputChange(idx, elt, value) {
   // XXX check start char
@@ -78,8 +99,8 @@ function InputChange(idx, elt, value) {
     elt.style.background = '#DFD';
     elt.style.border = '2px solid #090';
     SetSimilar(idx, value);
-    // All predictions following this position are affected.
-    for (let i = idx; i < WORD.length; i++) {
+    // All predictions are affected.
+    for (let i = 0; i < WORD.length; i++) {
       Predict(i);
     }
   } else {

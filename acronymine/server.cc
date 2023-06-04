@@ -32,6 +32,9 @@
 #include "lastn-buffer.h"
 #include "gtl/top_n.h"
 
+#include "freq.h"
+#include "sentencelike.h"
+#include "wordnet.h"
 #include "word2vec.h"
 
 using namespace std;
@@ -43,11 +46,19 @@ static constexpr const char *WORD2VEC_FILE =
   "c:\\code\\word2vec\\GoogleNews-vectors-negative300.bin";
 static constexpr const char *WORD2VEC_FILL_FILE = "word2vecfill.txt";
 
-static constexpr int NEXTWORD_PREV_WORDS = 7;
+static constexpr const char *WORDNET_DIR = "wordnet";
+static constexpr const char *FREQ_FILE = "freq.txt";
+
+
+// static constexpr int NEXTWORD_PREV_WORDS = 7;
 // The previous words, plus the word to predict.
-static constexpr int NEXTWORD_PHRASE_SIZE = NEXTWORD_PREV_WORDS + 1;
-static constexpr const char *NEXTWORD_MODEL_FILE =
-  "sparseonly\\nextword.val";
+// static constexpr int NEXTWORD_PHRASE_SIZE = NEXTWORD_PREV_WORDS + 1;
+// static constexpr const char *NEXTWORD_MODEL_FILE =
+//   "sparseonly\\nextword.val";
+
+static constexpr const char *SENTENCELIKE_MODEL_FILE =
+  "sentencelike\\sentencelike.val";
+static constexpr const int WORDS_PER_CHAR = 16384;
 
 static CL *cl = nullptr;
 
@@ -58,6 +69,10 @@ static constexpr int VEC_SIZE = 300;
 static std::unordered_set<std::string> *words = nullptr;
 static Word2Vec *w2v = nullptr;
 
+static Freq *freq = nullptr;
+static WordNet *wordnet = nullptr;
+
+#if 0
 struct NextWord {
   // static constexpr int BATCH_SIZE = 1024;
   NextWord(const string &model_file)
@@ -129,6 +144,9 @@ struct NextWord {
 };
 
 static NextWord *nextword = nullptr;
+#endif
+
+static SentenceLike *sentencelike = nullptr;
 
 static void LoadData() {
   Timer load_timer;
@@ -153,9 +171,20 @@ static void LoadData() {
              (int)w2v->NumWords(),
              w2v->Size());
     },
+  [](){
+    freq = Freq::Load(FREQ_FILE, *words);
+    CHECK(freq != nullptr) << FREQ_FILE;
+  },
   []() {
-    nextword = new NextWord(NEXTWORD_MODEL_FILE);
+    wordnet = WordNet::Load(WORDNET_DIR, *words);
+    CHECK(wordnet != nullptr) << WORDNET_DIR;
+  },
+  []() {
+    sentencelike = new SentenceLike(SENTENCELIKE_MODEL_FILE);
   });
+
+  printf("Init SentenceLike:\n");
+  sentencelike->Init(cl, w2v, freq, wordnet, WORDS_PER_CHAR);
 
   printf("Everything loaded in %.2fs\n", load_timer.Seconds());
 }
@@ -246,6 +275,7 @@ static string Harden(const string &s) {
   return out;
 }
 
+#if 0
 static WebServer::Response
 NextHandler(const WebServer::Request &req) {
   WebServer::Response response;
@@ -294,6 +324,111 @@ NextHandler(const WebServer::Request &req) {
   uint32_t next = nextword->PredictOne(encoded);
 
   response.body = w2v->WordString(next);
+  return response;
+}
+#endif
+
+static WebServer::Response
+GuessHandler(const WebServer::Request &req) {
+  WebServer::Response response;
+  response.code = 200;
+  response.status = "OK";
+  response.content_type = "text/html; charset=UTF-8";
+
+  std::vector<std::string> path_parts =
+    Util::Fields(req.path, [](char c) { return c == '/'; });
+  if (path_parts.size() != 6 ||
+      // target
+      path_parts[2].empty() ||
+      // char
+      path_parts[3].size() != 1 ||
+      // slot
+      path_parts[4].empty() ||
+      // phrase
+      path_parts[5].empty()) {
+    return Fail404(
+        StringPrintf(
+            "Got %d parts. "
+            "want /guess/target/c/n/space+separated+phrase",
+            (int)path_parts.size()));
+  }
+  CHECK(path_parts[0].empty() && path_parts[1] == "guess");
+  const string target = WebServer::URLDecode(Util::lcase(path_parts[2]));
+  const char c = path_parts[3][0];
+  int n = atoi(path_parts[4].c_str());
+  const string wordstring = WebServer::URLDecode(Util::lcase(path_parts[5]));
+  std::vector<string> words =
+    Util::Tokens(wordstring, [](char c) { return c == ' '; });
+
+  printf("Guess char [%c] slot %d target [%s]:\n",
+         c, n, target.c_str());
+  printf("%d words:", (int)words.size());
+  for (const string &w : words)
+    printf(" [%s]", w.c_str());
+  printf("\n");
+
+  auto PushFront = [&n, &words](const std::vector<string> &front) {
+      std::vector<string> ret;
+      ret.reserve(front.size() + words.size());
+      for (const string &s : front) ret.push_back(s);
+      for (const string &s : words) ret.push_back(std::move(s));
+      // Shift slot being predicted.
+      n += front.size();
+      words = std::move(ret);
+    };
+
+  switch (words.size()) {
+  case 0:
+  case 1:
+    return Fail404("Phrase too short.");
+  case 2:
+    PushFront({target, "is", "an", "acronym", "expanding", "to"});
+    break;
+  case 3:
+    PushFront({target, "is", "an", "acronym", "meaning"});
+    break;
+  case 4:
+    PushFront({target, "is", "defined", "as"});
+    break;
+  case 5:
+    PushFront({target, "stands", "for"});
+    break;
+  case 6:
+    PushFront({target, "means"});
+    break;
+  case 7:
+    PushFront({target});
+    break;
+  case 8:
+    break;
+  default:
+    // XXX Delete words, keeping context for the slot
+    return Fail404("unimplemented for 9+ words");
+  }
+
+  CHECK(words.size() == 8);
+  CHECK(SentenceLike::PHRASE_SIZE == 8);
+
+  std::vector<uint32_t> phrase;
+  phrase.reserve(SentenceLike::PHRASE_SIZE);
+  for (const string &w : words) {
+    int id = w2v->GetWord(w);
+    if (id < 0)
+      return Fail404("unknown word!");
+    phrase.push_back(id);
+  }
+
+  printf("[%d] PredictOne:\n", n);
+  std::vector<std::pair<uint32_t, float>> best =
+    sentencelike->PredictOne(phrase, c, n, 32);
+  printf("Best size: %d\n", (int)best.size());
+
+  string res;
+  for (const auto &[w, f] : best) {
+    StringAppendF(&res, "%.3f %s\n", f, w2v->WordString(w).c_str());
+  }
+
+  response.body = res;
   return response;
 }
 
@@ -398,7 +533,8 @@ static void ServerThread() {
 
   server->AddHandler("/similar/", SimilarHandler);
   server->AddHandler("/define/", DefineHandler);
-  server->AddHandler("/next/", NextHandler);
+  // server->AddHandler("/next/", NextHandler);
+  server->AddHandler("/guess/", GuessHandler);
   server->AddHandler("/", SlashHandler);
   server->ListenOn(8008);
   return;

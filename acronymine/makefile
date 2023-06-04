@@ -1,5 +1,5 @@
 
-default: acronymy.exe word2vec_test.exe nextword.exe server.exe compute-freq.exe freq_test.exe wordnet_test.exe train-sentencelike.exe
+default: acronymy.exe word2vec_test.exe nextword.exe server.exe compute-freq.exe freq_test.exe wordnet_test.exe train-sentencelike.exe unicode.exe
 
 CC_LIB=../cc-lib
 
@@ -27,7 +27,7 @@ CLINCLUDES="-I$(AMDSDK)/include"
 CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 
 #  -Wno-write-strings
-CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20
+CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 
 # without static, can't find lz or lstdcxx maybe?
 LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -lpsapi -static
@@ -41,7 +41,7 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=network.o error-history.o network-gpu.o clutil.o wikipedia.o freq.o word2vec.o wordnet.o acronym-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
+OBJECTS=network.o error-history.o network-gpu.o clutil.o wikipedia.o freq.o word2vec.o wordnet.o acronym-util.o sentencelike.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
 
 acronymy.exe : acronymy.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -61,6 +61,10 @@ train-sentencelike.exe : train-sentencelike.o $(OBJECTS)
 
 server.exe : server.o $(OBJECTS) $(CC_LIB)/webserver.o
 	@$(CXX) $^ -o $@ $(LFLAGS) $(SOCK_LFLAGS) -lpthread
+	@echo -n "!"
+
+unicode.exe : unicode.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 compute-freq.exe : compute-freq.o $(OBJECTS)
