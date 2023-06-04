@@ -190,7 +190,7 @@ struct Util {
   static bool TryStripSuffix(string_view suffix, string *s);
   // Same, for prefix.
   static bool TryStripPrefix(string_view prefix, string_view *s);
-  static bool TryStripPrefix(string_view suffix, string *s);
+  static bool TryStripPrefix(string_view prefix, string *s);
 
   /* split the string up to the first
      occurrence of character c. The character
@@ -200,7 +200,7 @@ struct Util {
 
   /* erase any whitespace up to the first
      non-whitespace char. */
-  static string losewhitel(const string &s);
+  static string LoseWhiteL(const string &s);
   // Remove trailing whitespace.
   static string LoseWhiteR(string s);
 
@@ -269,6 +269,14 @@ struct Util {
   // Returns 0-15 for valid hex digits (0-9a-fA-F) and arbitrary (really,
   // it's weird) values for other chars.
   static int HexDigitValue(char c);
+
+  // For a number in 0-15, return its corresponding hex digit (lowercase).
+  // (Otherwise, returns something arbitrary.)
+  static char HexDigit(int v);
+
+  // Encode the codepoint as a 1-4 byte string. Returns the empty string
+  // if the codepoint is out of range.
+  static std::string EncodeUTF8(uint32_t codepoint);
 
   // Prime factorization with trial division (not fast). Input must be > 1.
   // Output in sorted order.

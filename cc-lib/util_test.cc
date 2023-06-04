@@ -276,6 +276,7 @@ static void TestMatchesWildcard() {
 
   CHECK(Util::MatchesWildcard("f*.exe", "format.exe"));
   CHECK(!Util::MatchesWildcard("f*.exe", "debug.exe"));
+  CHECK(!Util::MatchesWildcard("f*.exe", "f.com"));
 
   CHECK(Util::MatchesWildcard("f*.*.exe", "format.00.exe"));
   CHECK(!Util::MatchesWildcard("f*.*.exe", "format.exe"));
@@ -305,6 +306,39 @@ static void TestMatchesWildcard() {
                               "dddddd_0053_Layer-44.png"));
 }
 
+static void TestHex() {
+  for (int i = 0; i < 0x10; i++) {
+    char c = Util::HexDigit(i);
+    CHECK(Util::IsHexDigit(c));
+    CHECK(Util::HexDigitValue(c) == i);
+    // Also test the other case for letters.
+    if (c < '0' || c > '9') {
+      CHECK(Util::IsHexDigit(c ^ 32));
+      CHECK(Util::HexDigitValue(c ^ 32) == i);
+    }
+  }
+}
+
+// Could perhaps be in Util itself...
+static string ToHex(const std::string &s) {
+  string out;
+  out.resize(s.size() * 2);
+  for (int i = 0; i < (int)s.size(); i++) {
+    out[i * 2 + 0] = Util::HexDigit((s[i] >> 4) & 0xF);
+    out[i * 2 + 0] = Util::HexDigit(s[i] & 0xF);
+  }
+  return out;
+}
+
+static void TestUnicode() {
+  CHECK("*" == Util::EncodeUTF8('*'));
+  // Katakana Letter Small Tu
+  CHECK("\xE3\x83\x83" == Util::EncodeUTF8(0x30C3));
+  // Emoji Banana
+  string banana = Util::EncodeUTF8(0x1F34C);
+  CHECK("\xF0\x9F\x8D\x8C" == banana) << ToHex(banana);
+}
+
 int main(int argc, char **argv) {
   TestItos();
   TestStoi();
@@ -321,6 +355,9 @@ int main(int argc, char **argv) {
   TestFactorize();
   TestMatchSpec();
   TestMatchesWildcard();
+  TestHex();
+  TestUnicode();
+
   printf("OK\n");
   return 0;
 }

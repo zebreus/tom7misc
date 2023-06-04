@@ -23,7 +23,7 @@ DateLogger::DateLogger() {
 #endif
 }
 
-const char* const DateLogger::HumanDate() {
+const char* DateLogger::HumanDate() {
 #ifdef __MINGW32__
   return "mingw";
 #else

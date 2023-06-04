@@ -5,9 +5,10 @@
 #include <vector>
 
 // LastNBuffer<T> is an efficient fixed-size (N elements) buffer that
-// stores (only) the last N elements of type T pushed into it. Pushing
-// is constant time and accessing any element by index is also
-// constant time. (It is implemented as a circular vector of size N.)
+// stores (only) the last N elements of type T pushed into it. It is
+// always "full" with N elements. Pushing is constant time and
+// accessing any element by index is also constant time. (It is
+// implemented as a circular vector of size N.)
 //
 // T is expected to have value semantics.
 
@@ -31,8 +32,8 @@ struct LastNBuffer {
   void push_front(const T &t);
   // void push_front(T &&t); // TODO
 
-  int size() const { return n; }
-  
+  int size() const { return (int)data.size(); }
+
   T &operator [](int i) {
     return data[Wrap(zero + i)];
   }
@@ -43,29 +44,30 @@ struct LastNBuffer {
   template<class F>
   void App(F f) const {
     // PERF don't need to compute indices so many times
+    const int n = size();
     for (int i = 0; i < n; i++) {
       f((*this)[i]);
     }
   }
 
-  
+
  private:
   // Like idx % n, but only works when idx is in [0, 2 * n - 1]. This
   // is sufficient because "zero" is always in [0, n - 1].
   inline int Wrap(int idx) const {
+    const int n = size();
     return (idx >= n) ? idx - n : idx;
   }
   // Always in [0, n - 1].
   int zero = 0;
-  // n == data.size()
-  const int n = 0;
+  // Fixed size. Maybe could avoid the overhead of vector.
   std::vector<T> data;
 };
 
 // Template implementations follow.
 template<class T>
 LastNBuffer<T>::LastNBuffer(int n, T default_value) :
-  zero(0), n(n), data(n, default_value) {}
+  zero(0), data(n, default_value) {}
 
 template<class T>
 void LastNBuffer<T>::RotateLeft() {
@@ -75,7 +77,7 @@ void LastNBuffer<T>::RotateLeft() {
 template<class T>
 void LastNBuffer<T>::RotateRight() {
   zero--;
-  if (zero < 0) zero += n;
+  if (zero < 0) zero += size();
 }
 
 template<class T>

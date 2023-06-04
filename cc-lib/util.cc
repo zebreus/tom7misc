@@ -96,6 +96,40 @@ int Util::HexDigitValue(char c) {
   return ((int)c | 4400) % 55;
 }
 
+char Util::HexDigit(int v) {
+  return "0123456789abcdef"[v & 0xF];
+}
+
+std::string Util::EncodeUTF8(uint32_t codepoint) {
+  if (codepoint < 0x80) {
+    string s;
+    s.resize(1);
+    s[0] = (uint8_t)codepoint;
+    return s;
+  } else if (codepoint < 0x800) {
+    string s;
+    s.resize(2);
+    s[0] = 0xC0 | (codepoint >> 6);
+    s[1] = 0x80 | (codepoint & 0x3F);
+    return s;
+  } else if (codepoint < 0x10000) {
+    string s;
+    s.resize(3);
+    s[0] = 0xE0 | (codepoint >> 12);
+    s[1] = 0x80 | ((codepoint >> 6) & 0x3F);
+    s[2] = 0x80 | (codepoint & 0x3F);
+    return s;
+  } else if (codepoint < 0x110000) {
+    string s;
+    s.resize(4);
+    s[0] = 0xF0 | (codepoint >> 18);
+    s[1] = 0x80 | ((codepoint >> 12) & 0x3F);
+    s[2] = 0x80 | ((codepoint >> 6) & 0x3F);
+    s[3] = 0x80 | (codepoint & 0x3F);
+    return s;
+  }
+  return "";
+}
 
 namespace {
 struct LineReal : public line {
@@ -428,7 +462,7 @@ map<string, string> Util::ReadFileToMap(const string &f) {
   for (int i = 0; i < (int)lines.size(); i++) {
     string rest = lines[i];
     string tok = chop(rest);
-    rest = losewhitel(rest);
+    rest = LoseWhiteL(rest);
     m.insert(make_pair(tok, rest));
   }
   return m;
@@ -834,7 +868,7 @@ string Util::chopto(char c, string &line) {
   return acc;
 }
 
-string Util::losewhitel(const string &s) {
+string Util::LoseWhiteL(const string &s) {
   for (unsigned int i = 0; i < s.length(); i ++) {
     switch(s[i]) {
     case ' ':
@@ -1071,7 +1105,7 @@ bool Util::matchspec(string spec, char c) {
 bool Util::MatchesWildcard(string_view wildcard_, string_view s) {
   // Normalize to remove strings of asterisks; this is the same
   // as a single asterisk but makes matching more expensive (and
-  // complicates the lookahead approach used in the * case below.
+  // complicates the lookahead approach used in the * case below).
   string wildcard;
   wildcard.reserve(wildcard.size());
   bool last_star = false;

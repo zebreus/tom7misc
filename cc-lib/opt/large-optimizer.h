@@ -129,6 +129,8 @@ struct LargeOptimizer {
   // any were feasible.
   std::optional<std::pair<arg_type, double>> GetBest() const;
 
+  int64_t NumEvaluations() const { return evaluations; }
+
  private:
   const function_type f;
 
@@ -175,7 +177,7 @@ struct LargeOptimizer {
   std::unordered_map<arg_type, std::pair<double, bool>, HashArg>
   cached_score;
 
-  // Same for the output. Not stored unless save_all is set.
+  // Number of times we evaluated the target function.
   int64_t evaluations = 0;
   // seed1 and seed2 always nonzero.
   uint32_t seed1 = 1, seed2 = 2;

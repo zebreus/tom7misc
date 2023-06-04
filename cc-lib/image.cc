@@ -196,7 +196,7 @@ std::vector<uint8_t> ImageRGBA::ToBuffer8() const {
   for (int i = 0; i < width * height; i++) {
     CHECK(i < (int)rgba.size());
     const auto &[r, g, b, a] = Unpack32(rgba[i]);
-    CHECK(i * 4 + 3 < (int)ret.size());
+    CHECK(i * 4 + 3 < (int)ret.size()) << i << " " << ret.size();
     ret[i * 4 + 0] = r;
     ret[i * 4 + 1] = g;
     ret[i * 4 + 2] = b;
