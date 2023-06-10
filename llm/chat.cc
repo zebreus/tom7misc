@@ -121,10 +121,11 @@ struct Participant {
   Participant(std::string name, std::string prompt) : name(name),
                                                       my_prompt(prompt) {
     Timer model_timer;
-    LLM::Params lparams;
-    lparams.model = MODEL;
-    lparams.mirostat = 2;
-    llm.reset(new LLM(lparams));
+    ContextParams cparams;
+    cparams.model = MODEL;
+    SamplerParams sparams;
+    sparams.type = SampleType::MIROSTAT_2;
+    llm.reset(new LLM(cparams, sparams));
     EmitTimer("Loaded model for " + name, model_timer);
   }
 
@@ -214,13 +215,14 @@ static void RunRoom(
   // penalizing the newline token until there's at least something output.
   auto GetMessage = [&contains_lt, &contains_star](
       LLM *llm, int max_length) -> string {
-      LLM::SampleType sample_type = LLM::SampleType::MIROSTAT_2;
       std::string got;
       // Negative infinity.
       static constexpr float IMPOSSIBLE =
         -std::numeric_limits<float>::infinity();
       for (;;) {
-        std::unique_ptr<LLM::Candidates> candidates = llm->GetCandidates();
+        std::unique_ptr<LLM::Candidates> candidates =
+          llm->context.GetCandidates();
+        llm->sampler.Penalize(candidates.get());
         const bool no_message_yet = OnlyWhitespace(got);
 
         for (llama_token_data &tok : *candidates) {
@@ -242,7 +244,8 @@ static void RunRoom(
 
         // llm->AnsiPrintCandidates(*candidates, 12);
 
-        const int id = llm->SampleToken(sample_type, std::move(candidates));
+        const int id = llm->sampler.SampleToken(&llm->context,
+                                                std::move(candidates));
 
         if (id == llama_token_nl())
           return got;

@@ -213,7 +213,7 @@ llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/ggml-cuda.h $(L
 # libllama.so: llama.o ggml.o $(OBJS)
 # 	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
 
-%.o : %.cc
+%.o : %.cc llm.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 acronymy.exe: acronymy.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
@@ -231,6 +231,15 @@ chat.exe: chat.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
 run-um.exe : run-um.o um.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
+extract-codex.exe : extract-codex.o um.o $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+llum.exe : llum.o um.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+generate.exe : generate.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
 clean:
-	rm -f *.o acronymy.exe
+	rm -f *.o acronymy.exe benchmark.exe test.exe chat.exe run-um.exe extract-codex.exe llum.exe generate.exe
 
