@@ -86,11 +86,12 @@ int main(int argc, char ** argv) {
   AnsiInit();
   Timer model_timer;
 
-  LLM::Params lparams;
-  lparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
-  lparams.mirostat = 2;
+  ContextParams cparams;
+  cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
+  SamplerParams sparams;
+  sparams.type = SampleType::MIROSTAT_2;
 
-  LLM llm(lparams);
+  LLM llm(cparams, sparams);
   EmitTimer("Loaded model", model_timer);
 
   std::vector<std::string> words = {
@@ -144,7 +145,7 @@ int main(int argc, char ** argv) {
     WORD_PREFIX "yolo\n"
     ACRONYM_PREFIX "You Only Live Once\n";
 
-  llama_context * ctx = llm.lctx;
+  llama_context *ctx = llm.context.lctx;
 
   // Facts about the vocabulary!
   // Only one token has a newline in it, which is the newline token.
@@ -188,13 +189,7 @@ int main(int argc, char ** argv) {
     const int nv = llama_n_vocab(ctx);
     printf("Vocab size: %d\n", nv);
     for (int id = 0; id < nv; id++) {
-      const char *sp = llama_token_to_str(ctx, id);
-      if (sp == nullptr) {
-        printf("Token %d null??\n", id);
-        return -1;
-      }
-
-      string s = sp;
+      string s = llm.TokenString(id);
       if (IsAscii(s)) {
         ascii++;
       }
@@ -209,19 +204,6 @@ int main(int argc, char ** argv) {
           has_space_inside++;
           // These turn out to be strings that are all spaces.
           printf("%d [%s]\n", id, s.c_str());
-        }
-      }
-
-      if (false) {
-        if (sp == nullptr) {
-          printf("%d nullptr\n", id);
-        } else {
-          std::string s = sp;
-          if (IsAscii(s)) {
-            printf("%d [%s]\n", id, s.c_str());
-          } else {
-            printf("%d [?]\n", id);
-          }
         }
       }
     }
@@ -246,7 +228,8 @@ int main(int argc, char ** argv) {
   const LLM::State start_state = llm.SaveState();
   EmitTimer("Saved start state", save_state_timer);
   printf("Start state is ~" ABLUE("%lld") " megabytes\n",
-         (int64_t)(start_state.llama_state.size() / (1024LL * 1024LL)));
+         (int64_t)(start_state.context_state.llama_state.size() /
+                   (1024LL * 1024LL)));
 
   // Now expand acronyms.
 
@@ -276,12 +259,9 @@ int main(int argc, char ** argv) {
     // we have output its first letter.
     bool in_word = false;
     for (;;) {
-      // this is size n_vocab (just the last token) if
-      // params.logits_all is false (XXX assert!)
-      // auto logits = llama_get_logits(ctx);
-
-      std::unique_ptr<LLM::Candidates> candidates = llm.GetCandidates();
-
+      std::unique_ptr<Context::Candidates> candidates =
+        llm.context.GetCandidates();
+      llm.sampler.Penalize(candidates.get());
 
       int rejected = 0;
       static constexpr float IMPOSSIBLE = -1.0e28f;
@@ -371,45 +351,12 @@ int main(int argc, char ** argv) {
 
       static constexpr bool SHOW_TOKENS = true;
       if (SHOW_TOKENS) {
-        // XXX just use some native sorting of Candidates?
-        std::vector<std::pair<string, float>> toks;
-        static constexpr bool PRINT_ALL = false;
-        printf("Rejected %d. Remaining: ", rejected);
-        for (const llama_token_data &tok : *candidates) {
-          if (tok.logit > IMPOSSIBLE) {
-            if (tok.id == llama_token_nl()) {
-              if (PRINT_ALL) printf("[\\n] ");
-              toks.emplace_back("\\n", tok.logit);
-            } else {
-              string s = llama_token_to_str(ctx, tok.id);
-              if (IsAscii(s)) {
-                if (PRINT_ALL) printf("[%s] ", s.c_str());
-                toks.emplace_back(s, tok.logit);
-              } else {
-                if (PRINT_ALL) printf("[??] ");
-                toks.emplace_back("??", tok.logit);
-              }
-            }
-          }
-        }
-        if (!PRINT_ALL) {
-          printf("\n");
-          std::sort(toks.begin(), toks.end(),
-                    [](const std::pair<string, float> &a,
-                       const std::pair<string, float> &b) {
-                      return a.second > b.second;
-                    });
-          for (int i = 0; i < 12 && i < (int)toks.size(); i++) {
-            printf("  [%s] %.9f\n", toks[i].first.c_str(), toks[i].second);
-          }
-        } else {
-          printf("\n");
-        }
+        llm.AnsiPrintCandidates(*candidates, 12);
       }
 
       // Sample it.
-      int id = llm.SampleToken(LLM::SampleType::MIROSTAT_2,
-                               std::move(candidates));
+      int id = llm.sampler.SampleToken(&llm.context,
+                                       std::move(candidates));
       // Commit the token.
       llm.TakeToken(id);
 
@@ -424,7 +371,7 @@ int main(int argc, char ** argv) {
         break;
       }
 
-      result += llama_token_to_str(ctx, id);
+      result += llm.TokenString(id);
 
       if (result.size() > 120) {
         // XXX Should find a better way to get out of these ruts.
@@ -449,11 +396,6 @@ int main(int argc, char ** argv) {
     }
 
   }
-
-
-
-  llama_print_timings(ctx);
-  llama_free(ctx);
 
   return 0;
 }

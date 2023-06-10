@@ -255,11 +255,12 @@ static string AnsiResultString(const Result &result) {
 
 
 static Result RunProblem(const Problem &problem,
-                         LLM::SampleType sample_type,
                          LLM *llm) {
   string prompt = problem.prompt;
   if (USE_THOUGHT) {
-    StringAppendF(&prompt, " Before answering, show your thought process, also surrounded by square brackets.");
+    StringAppendF(&prompt,
+                  " Before answering, show your thought process, "
+                  "also surrounded by square brackets.");
   }
   StringAppendF(&prompt, "\n");
   printf(AWHITE(" == ") APURPLE("%s") AWHITE(" == ") "\n",
@@ -307,7 +308,7 @@ static Result RunProblem(const Problem &problem,
       printf(AGREY("%s"), qp.c_str());
       llm->InsertString(qp);
       string thought =
-        llm->GenerateUntilEx("]", sample_type, MAX_THOUGHT, true).first;
+        llm->GenerateUntilEx("]", MAX_THOUGHT, true).first;
       printf(ABLUE("%s") "]", thought.c_str());
       string qa = "\n" ANSWER_BEFORE;
       printf(AGREY("%s"), qa.c_str());
@@ -319,7 +320,7 @@ static Result RunProblem(const Problem &problem,
     }
 
     string answer =
-      llm->GenerateUntilEx("]", sample_type, MAX_ANSWER, true).first;
+      llm->GenerateUntilEx("]", MAX_ANSWER, true).first;
     const bool is_correct =
       [&]() {
         const string lanswer = Util::lcase(answer);
@@ -371,24 +372,23 @@ int main(int argc, char ** argv) {
   problems.emplace_back(LoadFreeformProblem("trivia-personal.txt"));
   printf("Loaded " APURPLE("%d") " problems.\n", (int)problems.size());
 
-  LLM::Params lparams;
-  // lparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
-  // lparams.model = "../llama/models/7B/ggml-model-f16.bin";
-  // lparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
-  // lparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
-  lparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  // lparams.model = "../llama/models/65B/ggml-model-f16.bin";
-  // lparams.mirostat = 2;
-  // LLM::SampleType sample_type = LLM::SampleType::GREEDY;
-  LLM::SampleType sample_type = LLM::SampleType::MIROSTAT_2;
+  ContextParams cparams;
+  cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
+  // cparams.model = "../llama/models/7B/ggml-model-f16.bin";
+  // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
+  // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
+  // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
+  // cparams.model = "../llama/models/65B/ggml-model-f16.bin";
+  SamplerParams sparams;
+  sparams.type = SampleType::MIROSTAT_2;
 
-  LLM llm(lparams);
+  LLM llm(cparams, sparams);
   EmitTimer("Loaded model", model_timer);
 
   std::map<string, Result> results;
 
   for (const Problem &problem : problems) {
-    Result result = RunProblem(problem, sample_type, &llm);
+    Result result = RunProblem(problem, &llm);
     results[result.name] = result;
 
     // Always print all, since this takes a long time.
@@ -398,11 +398,12 @@ int main(int argc, char ** argv) {
     }
   }
 
-  llama_print_timings(llm.lctx);
+  llama_print_timings(llm.context.lctx);
 
-  printf("Model: " AWHITE("%s") "\n", lparams.model.c_str());
+  // TODO: Dump full context/sampler params, like to a spreadsheet.
+  printf("Model: " AWHITE("%s") "\n", cparams.model.c_str());
   printf("Sample type: " AYELLOW("%s") "\n",
-         LLM::SampleTypeString(sample_type));
+         Sampler::SampleTypeString(sparams.type));
   printf("Using thoughts: " AYELLOW("%s") "\n", USE_THOUGHT ? "YES" : "NO");
   printf("\nTotal benchmark time: %s\n",
          AnsiTime(total_timer.Seconds()).c_str());
