@@ -1,0 +1,139 @@
+<!doctype html>
+<script>
+
+ // everything is mm
+ // Pitch is the spacing from the start of one pad to the start of
+ // the next pad.
+ const PITCH = 2.54;
+ // The space between pads. This does not need to be exact.
+ const GAP = 0.75;
+ const COPPER_WIDTH = PITCH - GAP;
+ const NUM_PER_SIDE = 30;
+ // Famicom has three pins that are longer.
+ const SHORT_COPPER_LENGTH = 7.5;
+ const LONG_COPPER_LENGTH = 8.5;
+ // Distance from farthest edge of pad to board edge.
+ const COPPER_TO_EDGE = 9.15;
+ const TEXTY = -(COPPER_TO_EDGE + 2.1);
+
+ // The length of the narrow part of the edge connector.
+ const INSERT_DEPTH = 11;
+ // const INSERT_WIDTH = (SIDE_EDGE_GAP * 2) + PITCH * NUM_PER_SIDE - GAP;
+ const INSERT_WIDTH = 78.4;
+ // on the left and right side, the distance from the
+ // edge of the pcb to the closest edge of the copper pad.
+ // const SIDE_EDGE_GAP = 1.2;
+ const SIDE_EDGE_GAP = (INSERT_WIDTH - (PITCH * NUM_PER_SIDE - GAP)) * 0.5;
+
+ function makepads() {
+   let top = '';
+   let bot = '';
+
+   let text = '';
+
+   let next_x = SIDE_EDGE_GAP;
+   for (let i = 0; i < NUM_PER_SIDE; i++) {
+     let w = COPPER_WIDTH;
+     let h = (i == 0 || i == 15 || i == NUM_PER_SIDE - 1) ?
+             LONG_COPPER_LENGTH : SHORT_COPPER_LENGTH;
+     // top
+     let y = -COPPER_TO_EDGE;
+     // next_x gives the left edge, but we need the center.
+     let cx = next_x + (w / 2);
+     let cy = y + (h / 2);
+     let size = '(size ' + w.toFixed(3) + ' ' + h.toFixed(3)+ ')';
+     let pos = '(at ' + cx.toFixed(3) + ' ' + cy.toFixed(3) + ')';
+     top += '  (pad ' + (i + 1) + ' connect rect ' +
+            pos + ' ' + size + ' (layers F.Cu F.Mask Eco1.User))\n'
+     bot += '  (pad ' + (i + 1 + NUM_PER_SIDE) + ' connect rect ' +
+            pos + ' ' + size + ' (layers B.Cu B.Mask Eco2.User))\n'
+
+     // Not evenly spaced, but anything else just looks weird.
+     if (i == 0 || i == 9 || i == 19 || i == 29) {
+       text +=
+         '(fp_text user ' + (i + 1) +
+         ' (at ' + cx.toFixed(3) + ' ' + TEXTY.toFixed(3) + ')' +
+         ' (layer F.Fab)\n' +
+         '  (effects (font (size 1 1) (thickness 0.15)))\n' +
+         ')\n';
+     }
+
+     next_x += PITCH;
+   }
+
+   let preamble =
+     '(module cartedge (layer F.Cu) (tedit 5ADD41CB)\n' +
+     '(fp_text reference REF** (at 8.89 2.032) (layer F.SilkS) hide\n' +
+     ' (effects (font (size 1 1) (thickness 0.15)))\n' +
+     ')\n';
+
+   // Left pcb edge
+   // j *                                  * h
+   //   |                                  |
+   // i *---* e                      f *---* g
+   //    IE |                          |
+   //       |                          |
+   //       * a                        * d
+   //        \                        /
+   //         *----------------------*
+   //         b                       c
+   let ex = 0;
+   let ey = -INSERT_DEPTH;
+   let fx = INSERT_WIDTH;
+   let fy = ey;
+
+   let ax = 0;
+   let ay = -SIDE_EDGE_GAP;
+   let bx = SIDE_EDGE_GAP;
+   let by = 0;
+   let cx = INSERT_WIDTH - SIDE_EDGE_GAP;
+   let cy = by;
+   let dx = INSERT_WIDTH;
+   let dy = ay;
+
+   let IE = 5.21;
+   // original cart board
+   // let IJ = 28.43;
+   // but there's more room...
+   let IJ = 46.4;
+   let JH = 88.48;
+   let ix = -IE;
+   let iy = ey;
+   let gx = JH - IE;
+   let gy = fy;
+
+   let jx = ix;
+   let jy = iy - IJ;
+
+   let hx = gx;
+   let hy = jy;
+
+   let cuts = '';
+   let Cut = (x1, y1, x2, y2) => {
+     cuts +=
+       `(fp_line (start ${x1} ${y1}) (end ${x2} ${y2})
+       (stroke (width 0.12) (type default)) (layer "Edge.Cuts"))\n`;
+   };
+
+   Cut(jx, jy, ix, iy);
+   Cut(ix, iy, ex, ey);
+   Cut(ex, ey, ax, ay);
+   Cut(ax, ay, bx, by);
+   Cut(bx, by, cx, cy);
+   Cut(cx, cy, dx, dy);
+   Cut(dx, dy, fx, fy);
+   Cut(fx, fy, gx, gy);
+   Cut(gx, gy, hx, hy);
+   Cut(hx, hy, jx, jy);
+
+   let suffix = ')';
+
+   return preamble + top + bot + text + cuts + suffix;
+ }
+
+</script>
+<body onload="document.getElementById('out').innerText = makepads()">
+
+<pre id="out">
+</pre>
+</body>
