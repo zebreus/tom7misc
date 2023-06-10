@@ -41,6 +41,7 @@ struct LastNBuffer {
     return data[Wrap(zero + i)];
   }
 
+
   template<class F>
   void App(F f) const {
     // PERF don't need to compute indices so many times
@@ -50,6 +51,48 @@ struct LastNBuffer {
     }
   }
 
+  // An iterator is one of the elements, or one past the last element.
+  struct iterator {
+    // XXX We should be able to have random access. Need to implement:
+    //   https://en.cppreference.com/w/cpp/named_req/RandomAccessIterator
+    // using iterator_category = std::random_access_iterator_tag;
+    using iterator_category = std::bidirectional_iterator_tag;
+    using difference_type   = size_t;
+    using value_type        = T;
+    using pointer           = value_type *;
+    using reference         = value_type &;
+
+    reference operator*() { return (*buffer)[idx]; }
+    pointer operator->() { return &(*buffer)[idx]; }
+
+    iterator& operator++() { idx++; return *this; }
+    iterator operator++(int postfix_) {
+      iterator tmp = *this; ++(*this); return tmp;
+    }
+
+    // These don't compare the buffer itself, since it would be ub
+    // to compare iterators from two different containers.
+    friend bool operator== (const iterator& a, const iterator& b) {
+      return a.idx == b.idx;
+    }
+    friend bool operator!= (const iterator& a, const iterator& b) {
+      return a.idx != b.idx;
+    }
+
+    iterator(LastNBuffer *buffer, size_t idx) : buffer(buffer), idx(idx) {}
+  private:
+    // To avoid oddities (e.g. difference_type) that I don't fully
+    // understand, iterators are done with indices.
+    // PERF: It can probably done with bare pointers, although the
+    // iterator struct still needs to know where to know how to wrap
+    // around.
+    LastNBuffer *buffer = nullptr;
+    size_t idx = 0;
+  };
+
+  iterator begin() { return iterator(this, 0); }
+  iterator end() { return iterator(this, size()); }
+  // TODO: Const iterators.
 
  private:
   // Like idx % n, but only works when idx is in [0, 2 * n - 1]. This

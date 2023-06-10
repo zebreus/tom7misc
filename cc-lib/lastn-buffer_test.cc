@@ -62,9 +62,34 @@ static void TestBasic() {
          });
 }
 
+static void TestIterators() {
+
+  for (int off = 0; off < 5; off++) {
+    LastNBuffer<char> buf(5, 'x');
+    // start at different offsets
+    for (int i = 0; i < off; i++) buf.push_back('z');
+
+    buf.push_back('h');
+    buf.push_back('e');
+    buf.push_back('l');
+    buf.push_back('l');
+    buf.push_back('o');
+
+    string res = "";
+    for (char c : buf) {
+      res += c;
+    }
+
+    CHECK_EQ(res, "hello") << off;
+  }
+
+  // TODO: Test STL algorithms?
+}
+
 int main(int argc, char **argv) {
   CanInstantiate();
   TestBasic();
+  TestIterators();
   printf("OK\n");
   return 0;
 }
