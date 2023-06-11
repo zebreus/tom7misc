@@ -1,4 +1,7 @@
 
+#ifndef _LLM_LLM_H
+#define _LLM_LLM_H
+
 #include <cstdint>
 #include <string>
 #include <memory>
@@ -610,3 +613,5 @@ struct LLM {
   Context context;
   Sampler sampler;
 };
+
+#endif

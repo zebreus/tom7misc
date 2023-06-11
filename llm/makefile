@@ -1,5 +1,5 @@
 
-default: acronymy.exe benchmark.exe chat.exe
+default: acronymy.exe benchmark.exe chat.exe dump-tokens.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -213,7 +213,7 @@ llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/ggml-cuda.h $(L
 # libllama.so: llama.o ggml.o $(OBJS)
 # 	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
 
-%.o : %.cc llm.h
+%.o : %.cc llm.h nfa.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 acronymy.exe: acronymy.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
@@ -238,6 +238,12 @@ llum.exe : llum.o um.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 generate.exe : generate.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+dump-tokens.exe : dump-tokens.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+nfa_test.exe : nfa_test.o $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
