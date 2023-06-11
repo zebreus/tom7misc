@@ -100,6 +100,27 @@ char Util::HexDigit(int v) {
   return "0123456789abcdef"[v & 0xF];
 }
 
+std::string Util::HexString(const std::string &s,
+                            const char *sep_ptr,
+                            const char *prefix_ptr) {
+  string sep = sep_ptr ? (string)sep_ptr : "";
+  string pfx = prefix_ptr ? (string)prefix_ptr : "";
+
+  if (s.empty()) return "";
+
+  string out;
+  out.reserve(s.size() * (2 + pfx.size()) + (s.size() - 1) * sep.size());
+  for (int i = 0; i < (int)s.size(); i++) {
+    char c = s[i];
+    if (i != 0) out += sep;
+    out += pfx;
+    out += HexDigit((c >> 4) & 0xF);
+    out += HexDigit(c & 0xF);
+  }
+  return out;
+}
+
+
 std::string Util::EncodeUTF8(uint32_t codepoint) {
   if (codepoint < 0x80) {
     string s;

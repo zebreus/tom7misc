@@ -9,6 +9,13 @@
 
 using namespace std;
 
+#define CHECK_SEQ(a, b) do { \
+  auto aa = (a); \
+  auto bb = (b); \
+  CHECK(aa == bb) << "Expected equal strings:\n" << #a << "\n" << #b \
+                  << "\nValues:\n" << aa << "\n" << bb << "\n";      \
+  } while (false)
+
 static string SlowReadFile(const string &filename) {
   FILE *f = fopen(filename.c_str(), "rb");
   if (!f) return "";
@@ -319,16 +326,37 @@ static void TestHex() {
   }
 }
 
-// Could perhaps be in Util itself...
+// This can be done with HexString, but keeping it around
+// so that HexString can also be tested against it.
 static string ToHex(const std::string &s) {
   string out;
   out.resize(s.size() * 2);
   for (int i = 0; i < (int)s.size(); i++) {
     out[i * 2 + 0] = Util::HexDigit((s[i] >> 4) & 0xF);
-    out[i * 2 + 0] = Util::HexDigit(s[i] & 0xF);
+    out[i * 2 + 1] = Util::HexDigit(s[i] & 0xF);
   }
   return out;
 }
+
+static void TestHexString() {
+  CHECK_SEQ(Util::HexString(""), ToHex(""));
+  CHECK_SEQ(Util::HexString("*"), ToHex("*"));
+  CHECK_SEQ(Util::HexString("", "", ""), ToHex(""));
+  CHECK_SEQ(Util::HexString("*", "", ""), ToHex("*"));
+  CHECK_SEQ(Util::HexString("\x0f\xf0\x88\x77" "frog"),
+            ToHex("\x0f\xf0\x88\x77" "frog"));
+  {
+    string s = "mystery";
+    s[1] = '\0';
+    s[4] = '\xFF';
+    CHECK_SEQ(Util::HexString(s), ToHex(s));
+  }
+
+  CHECK_SEQ(Util::HexString("hi"), "6869");
+  CHECK_SEQ(Util::HexString("hi", "_"), "68_69");
+  CHECK_SEQ(Util::HexString("hi", ", ", "0x"), "0x68, 0x69");
+}
+
 
 static void TestUnicode() {
   CHECK("*" == Util::EncodeUTF8('*'));
@@ -356,6 +384,7 @@ int main(int argc, char **argv) {
   TestMatchSpec();
   TestMatchesWildcard();
   TestHex();
+  TestHexString();
   TestUnicode();
 
   printf("OK\n");

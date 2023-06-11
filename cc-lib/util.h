@@ -274,6 +274,13 @@ struct Util {
   // (Otherwise, returns something arbitrary.)
   static char HexDigit(int v);
 
+  // Convert each byte of the input into two lowercase hex digits.
+  // If non-null, each byte is prefixed by the prefix, and each pair of
+  // bytes is separated by the separator.
+  static std::string HexString(const std::string &s,
+                               const char *sep = nullptr,
+                               const char *prefix = nullptr);
+
   // Encode the codepoint as a 1-4 byte string. Returns the empty string
   // if the codepoint is out of range.
   static std::string EncodeUTF8(uint32_t codepoint);
