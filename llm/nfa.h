@@ -6,8 +6,12 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
+#include <string>
+#include <string_view>
+#include <functional>
 
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
 // Tokens are numeric, and must be in [0, radix).
 template<int RADIX_>
@@ -37,7 +41,28 @@ struct NFA {
         }
       }
     }
-    printf("Valid.\n");
+  }
+
+  void DebugPrint() const {
+    printf("start states:");
+    for (int i : start_states) printf(" %d", i);
+    printf("\n");
+    for (int i = 0; i < (int)nodes.size(); i++) {
+      printf("%d.%s\n", i, nodes[i].accepting ? " (ACC)" : "");
+      for (const auto &[c, nexts] : nodes[i].next_idx) {
+        std::string ch = StringPrintf("(%d)", c);
+        if constexpr (RADIX == 256 || RADIX == 257) {
+            if (c >= 'a' && c <= 'z') {
+              ch = StringPrintf("%c", c);
+            } else if (c == 256) {
+              ch = "EPS";
+            }
+          }
+        printf("  %s:", ch.c_str());
+        for (int n : nexts) printf(" %d", n);
+        printf("\n");
+      }
+    }
   }
 
   std::vector<Node> nodes;
@@ -196,7 +221,7 @@ struct RegEx {
   using C = ENFA::C;
   static constexpr C EPSILON = RADIX;
 
-  static ENFA LiteralString(const std::string &s) {
+  static ENFA LiteralString(std::string_view s) {
     std::vector<C> v;
     v.resize(s.size());
     for (int i = 0; i < (int)s.size(); i++) v[i] = s[i];
@@ -254,6 +279,47 @@ struct RegEx {
     return out;
   }
 
+  static ENFA Plus(const ENFA &a) {
+    ENFA out = a;
+    // All the accepting states remain accepting. But they
+    // also get epsilon transitions back to the start states.
+    for (typename ENFA::Node &node : out.nodes) {
+      if (node.accepting) {
+        for (int s : out.start_states) {
+          node.next_idx[EPSILON].insert(s);
+        }
+      }
+    }
+    return out;
+  }
+
+  static ENFA Question(const ENFA &a) {
+    ENFA out = a;
+    for (int s : out.start_states) {
+      out.nodes[s].accepting = true;
+    }
+    return out;
+  }
+
+  static ENFA Star(const ENFA &a) {
+    return Question(Plus(a));
+  }
+
+  // Expression that only matches the empty string.
+  static ENFA Empty() {
+    ENFA out;
+    typename ENFA::Node node;
+    node.accepting = true;
+    out.nodes.push_back(node);
+    out.start_states = {0};
+    return out;
+  }
+
+  // Expression that matches nothing.
+  static ENFA Void() {
+    return ENFA();
+  }
+
 private:
   // Append the nodes from enfa to out, by putting them at the end of
   // the nodes (and rewriting their indices). Keeps every accepting
@@ -281,6 +347,195 @@ private:
   }
 
 };
+
+// Parse a string to a byte-based Epsilon-NFA.
+//
+// The following characters are special:
+//  [], denoting a character class
+//  (), a grouping (no capturing supported)
+//  e? e* e+
+//  . matches ANY byte (note: many other regex languages
+//                      exclude stuff like newline or \0)
+//  e1|e2 matches
+//  \  escapes the next character.
+static NFA<257> Parse(const std::string &s) {
+  using RE = ::RegEx<256>;
+  using ENFA = typename RE::ENFA;
+
+  std::function<ENFA(std::string_view)> ParseRec =
+    [&ParseRec](std::string_view s) {
+
+      auto GetToMatchingBracket = [](std::string_view s) {
+          CHECK(!s.empty());
+          CHECK(s[0] == '(');
+          for (int i = 1; i < (int)s.size(); i++) {
+            switch (s[i]) {
+            case ']':
+              return i;
+            case '\\':
+              CHECK(i + 1 != (int)s.size() - 1) << "Illegal escape";
+              i++;
+              break;
+              // TODO: Something special for ^ and -?
+            default:
+              break;
+            }
+          }
+          CHECK(false) << "Unclosed [";
+          return 0;
+        };
+
+      // For a substring that starts with (, return the position
+      // of the matching closing parenthesis, or abort.
+      std::function<int(std::string_view)> GetToMatchingParen =
+        [&GetToMatchingBracket,
+         &GetToMatchingParen](std::string_view s) -> int {
+          CHECK(!s.empty());
+          CHECK(s[0] == '(');
+
+          for (int i = 1; i < (int)s.size(); i++) {
+            switch (s[i]) {
+            case ')':
+              return i;
+            case '(':
+              // Skip the parenthesized expression, recursively.
+              i += GetToMatchingParen(s.substr(i));
+              break;
+            case '\\':
+              CHECK(i + 1 != (int)s.size() - 1) << "Illegal escape";
+              i++;
+              break;
+            case '[':
+              // Skip.
+              i += GetToMatchingBracket(s.substr(i));
+              break;
+            default:
+              break;
+            }
+          }
+          CHECK(false) << "Unclosed (";
+          return 0;
+        };
+
+      // Return the sequence of regex strings that are separated by |,
+      // respecting parentheses, brackets, and escapes.
+      auto SplitOr = [&GetToMatchingBracket,
+                      &GetToMatchingParen](std::string_view s) ->
+        std::vector<std::string_view> {
+        std::vector<std::string_view> ret;
+
+        int cur_start = 0;
+        for (int i = 0; i < (int)s.size(); i++) {
+          switch (s[i]) {
+          case '(':
+            i += GetToMatchingParen(s.substr(i));
+            break;
+          case '[':
+            i += GetToMatchingBracket(s.substr(i));
+            break;
+          case '|':
+            // Not including the bar.
+            ret.push_back(s.substr(cur_start, i - cur_start));
+            cur_start = i + 1;
+            break;
+          case '\\':
+            CHECK(i + 1 != (int)s.size() - 1) << "Illegal escape";
+            i++;
+            break;
+          default:
+            break;
+          }
+        }
+        // Always at least one element.
+        ret.push_back(s.substr(cur_start));
+        return ret;
+      };
+
+      // Now, parse. Disjunction is the weakest-binding, so first
+      // split by |.
+      std::vector<std::string_view> dis = SplitOr(s);
+      CHECK(!dis.empty()) << "Bug";
+
+      // Compile one string clause into an ENFA. No disjunctions are
+      // allowed at the top-level.
+      auto CompileOneClause =
+        [&ParseRec,
+         &GetToMatchingParen,
+         &GetToMatchingBracket](std::string_view s) -> ENFA {
+          std::vector<ENFA> nfas;
+          for (int i = 0; i < (int)s.size(); i++) {
+            switch (s[i]) {
+            case '(': {
+              int end_pos = GetToMatchingParen(s.substr(i));
+              CHECK(end_pos - i - 1 >= 0);
+              // The expression inside the parentheses.
+              std::string_view inner = s.substr(i + 1, end_pos - i - 1);
+
+              nfas.push_back(ParseRec(inner));
+              // and skip over it
+              i += end_pos;
+              break;
+            }
+            case ')':
+              CHECK(false) << "Mismatched parens.";
+              break;
+            case '\\':
+              CHECK(i + 1 != (int)s.size() - 1) << "Illegal escape";
+              i++;
+              break;
+            case '[':
+              CHECK(false) << "unimplemented []";
+              break;
+            case ']':
+              CHECK(false) << "Mismatched brackets.";
+              break;
+
+            case '*':
+              CHECK(false) << "unimplemented *";
+              break;
+
+            case '+':
+              CHECK(false) << "unimplemented +";
+              break;
+
+            case '?':
+              CHECK(false) << "unimplemented ?";
+              break;
+
+            default: {
+              // PERF should probably do a whole literal sequence at once?
+              // But we have to be careful about "abc*" which does not mean
+              // "(abc)*".
+              ENFA cnfa = RE::LiteralString(s.substr(i, 1));
+              nfas.push_back(std::move(cnfa));
+              break;
+            }
+            }
+          }
+
+          // The result is their concatenation.
+          if (nfas.empty()) return RE::Empty();
+          ENFA out = std::move(*nfas.begin());
+          for (int i = 1; i < (int)nfas.size(); i++)
+            out = RE::Concat(out, nfas[i]);
+          return out;
+        };
+
+      // Now compile each one, joining it with the last.
+      // Void is the unit for Or.
+      ENFA nfa = RE::Void();
+      for (std::string_view ss : dis) {
+        printf("Disjunctive clause {%s}\n", ((std::string)ss).c_str());
+        ENFA nfa2 = CompileOneClause(ss);
+        nfa2.CheckValidity();
+        nfa = RE::Or(nfa, nfa2);
+      }
+
+      return nfa;
+    };
+
+  return ParseRec(s);
+}
 
 
 #endif
