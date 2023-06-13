@@ -1,6 +1,7 @@
 #ifndef _CC_LIB_RANDUTIL_H
 #define _CC_LIB_RANDUTIL_H
 
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>

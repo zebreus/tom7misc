@@ -3,6 +3,7 @@
 #define _CC_LIB_LASTN_BUFFER_H
 
 #include <vector>
+#include <cstddef>
 
 // LastNBuffer<T> is an efficient fixed-size (N elements) buffer that
 // stores (only) the last N elements of type T pushed into it. It is
