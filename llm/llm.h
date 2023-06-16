@@ -10,6 +10,7 @@
 
 #include "base/logging.h"
 #include "lastn-buffer.h"
+#include "nfa.h"
 
 // LLM - This will be the convenience wrapper (TODO)
 
@@ -67,6 +68,10 @@ struct SamplerParams {
 
   // logit bias for specific tokens
   std::unordered_map<llama_token, float> logit_bias;
+
+  // A single NFA that the output must conform to.
+  // NFA nfa = Top();
+  string regex = ".*";
 };
 
 struct Context;
@@ -277,13 +282,16 @@ struct Sampler {
   using Candidates = Context::Candidates;
 
   // Degenerate sampler; can't be used.
-  Sampler() : vocab_size(0), last_n_tokens(0, 0) {}
+  Sampler() : context(nullptr), vocab_size(0), last_n_tokens(0, 0) {}
 
-  Sampler(int vocab_size, const SamplerParams &params = SamplerParams()) :
+  // We only need two things from the context: The RNG and the
+  // vocabulary. Would be better to decouple them.
+  Sampler(Context *context,
+          const SamplerParams &params = SamplerParams()) :
+    context(context),
     params(params),
-    vocab_size(vocab_size),
+    vocab_size(context->VocabSize()),
     last_n_tokens(params.repeat_last_n, 0) {
-
     Reset();
   }
 
@@ -302,11 +310,7 @@ struct Sampler {
   // algorithm).
   // You probably want to call Penalize on the candidates first.
   // Consumes the candidates.
-  llama_token SampleToken(
-      // XXX this is just used for the rng, since we call the internal
-      // llama functions. We can do without it by reproducing them here.
-      Context *context,
-      std::unique_ptr<Candidates> cand) {
+  llama_token SampleToken(std::unique_ptr<Candidates> cand) {
     llama_context *lctx = context->lctx;
 
     switch (params.type) {
@@ -341,6 +345,12 @@ struct Sampler {
     last_n_tokens.push_front(id);
     num_last++;
     if (num_last == last_n_tokens.size()) num_last = last_n_tokens.size();
+
+    // advance matcher state.
+    std::string s = context->TokenString(id);
+    for (uint8_t c : s) {
+      matcher.Advance(c);
+    }
   }
 
   void ObserveBatch(const std::vector<llama_token> &ids) {
@@ -348,6 +358,7 @@ struct Sampler {
   }
 
   void Reset() {
+    ResetRegEx();
     // 0 token is <unk>, which I think means invalid.
     // (Or use BOS token?)
     std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
@@ -355,9 +366,56 @@ struct Sampler {
     num_last = 0;
   }
 
-  // Apply penalties to candidates.
-  void Penalize(Candidates *cands) {
+  // Reset the regex
+  void ResetRegEx() {
+    nfa = RemoveEpsilon<256>(Parse(params.regex));
+    matcher = NFAMatcher<256>(nfa);
+  }
 
+  // Set the regex (and reset the matcher).
+  void SetRegEx(const std::string &re) {
+    params.regex = re;
+    ResetRegEx();
+  }
+
+  // Filter to those tokens that would leave the matcher in a
+  // non-stuck state (note that "stuck" detection in NFA is currently
+  // incomplete). Doesn't advance the matcher. Returns true if
+  // there are tokens that can still be sampled.
+  bool FilterByNFA(Candidates *cands) const {
+    // TODO: I think we can actually just shrink the candidates
+    // array, which would have other advantages.
+    static constexpr float IMPOSSIBLE = -1.0e28f;
+    bool any_left = false;
+    for (llama_token_data &cand : *cands) {
+      CHECK(cand.id >= 0 && cand.id < vocab_size);
+      std::string s = context->TokenString(cand.id);
+      // Some special tokens (EOS, BOS) are empty. We should not
+      // predict them when conforming to a regex!
+      // (But this is kind of a hack...)
+      if (s.empty()) {
+        cand.logit = IMPOSSIBLE;
+        continue;
+      }
+
+      NFAMatcher<256> mcopy = matcher;
+      for (uint8_t c : s)
+        mcopy.Advance(c);
+      if (mcopy.Stuck()) {
+        cand.logit = IMPOSSIBLE;
+      } else {
+        any_left = true;
+      }
+    }
+    return any_left;
+  }
+
+  bool Stuck() const {
+    return matcher.Stuck();
+  }
+
+  // Apply penalties to candidates.
+  void Penalize(Candidates *cands) const {
     cands->ltda.sorted = false;
 
     // Save nl logit so that we can restore it if
@@ -411,7 +469,7 @@ struct Sampler {
 
     // From llama_sample_frequency_and_presence_penalties.
     if (last_do > 0 && (params.frequency_penalty != 0.0f ||
-                              params.presence_penalty != 0.0f)) {
+                        params.presence_penalty != 0.0f)) {
       ComputeCount();
 
       for (llama_token_data &cand : *cands) {
@@ -435,9 +493,11 @@ struct Sampler {
   }
 
 private:
+  Context *context = nullptr;
   // Would generally be ok to change these on the fly, but not e.g. the
   // last_n_tokens size.
   Params params;
+  // This should probably be like a pointer to a vocab object?
   int vocab_size = 0;
   // Contains the tokens recently evaluated, up to the maximum.
   // Most recent token at position 0. So [0...num_last) are the
@@ -450,6 +510,9 @@ private:
 
   // State for various sampler types.
   float mirostat_mu = 10.0f;
+
+  NFA<256> nfa;
+  NFAMatcher<256> matcher;
 };
 
 struct LLM {
@@ -457,7 +520,7 @@ struct LLM {
 
   LLM(const ContextParams &context_params,
       const SamplerParams &sampler_params) : context(context_params),
-                                             sampler(context.VocabSize(),
+                                             sampler(&context,
                                                      sampler_params) {
   }
 
@@ -467,7 +530,8 @@ struct LLM {
   int Sample() {
     std::unique_ptr<Context::Candidates> candidates = context.GetCandidates();
     sampler.Penalize(candidates.get());
-    return sampler.SampleToken(&context, std::move(candidates));
+    sampler.FilterByNFA(candidates.get());
+    return sampler.SampleToken(std::move(candidates));
   }
 
   std::string SampleAndTake() {
@@ -516,7 +580,8 @@ struct LLM {
     for (;;) {
       std::unique_ptr<Context::Candidates> candidates = context.GetCandidates();
       sampler.Penalize(candidates.get());
-      int id = sampler.SampleToken(&context, std::move(candidates));
+      sampler.FilterByNFA(candidates.get());
+      int id = sampler.SampleToken(std::move(candidates));
       // Commit the token.
       TakeTokenBatch({id});
       got += context.TokenString(id);

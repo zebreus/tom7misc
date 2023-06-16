@@ -1,5 +1,5 @@
 
-default: acronymy.exe benchmark.exe chat.exe dump-tokens.exe
+default: acronymy.exe benchmark.exe chat.exe dump-tokens.exe generate.exe continue.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -238,6 +238,9 @@ llum.exe : llum.o um.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 generate.exe : generate.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+continue.exe : continue.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 dump-tokens.exe : dump-tokens.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)

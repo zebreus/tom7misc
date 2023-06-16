@@ -23,6 +23,7 @@
 #include "randutil.h"
 
 #include "llm.h"
+#include "llm-util.h"
 
 using namespace std;
 
@@ -37,36 +38,6 @@ static inline bool ContainsChar(const std::string &s, char t) {
   for (char c : s)
     if (c == t) return true;
   return false;
-}
-
-static std::string AnsiTime(double seconds) {
-  if (seconds < 1.0) {
-    return StringPrintf(AYELLOW("%.2f") "ms", seconds * 1000.0);
-  } else if (seconds < 60.0) {
-    return StringPrintf(AYELLOW("%.3f") "s", seconds);
-  } else if (seconds < 60.0 * 60.0) {
-    int sec = std::round(seconds);
-    int omin = sec / 60;
-    int osec = sec % 60;
-    return StringPrintf(AYELLOW("%d") "m" AYELLOW("%02d") "s",
-                        omin, osec);
-  } else {
-    int sec = std::round(seconds);
-    int ohour = sec / 3600;
-    sec -= ohour * 3600;
-    int omin = sec / 60;
-    int osec = sec % 60;
-    return StringPrintf(AYELLOW("%d") "h"
-                        AYELLOW("%d") "m"
-                        AYELLOW("%02d") "s",
-                        ohour, omin, osec);
-  }
-}
-
-static void EmitTimer(const std::string &name, const Timer &timer) {
-  printf(AWHITE("%s") " in %s\n",
-         name.c_str(),
-         AnsiTime(timer.Seconds()).c_str());
 }
 
 static std::vector<std::string> ReadFileToNormalizedLines(
@@ -244,8 +215,7 @@ static void RunRoom(
 
         // llm->AnsiPrintCandidates(*candidates, 12);
 
-        const int id = llm->sampler.SampleToken(&llm->context,
-                                                std::move(candidates));
+        const int id = llm->sampler.SampleToken(std::move(candidates));
 
         if (id == llama_token_nl())
           return got;

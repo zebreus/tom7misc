@@ -204,6 +204,19 @@ static void TestRegEx() {
 
   CHECK(!Matches(RemoveEpsilon<256>(ByteRegEx::Void()), ""));
   CHECK(Matches(RemoveEpsilon<256>(ByteRegEx::Empty()), ""));
+
+  {
+    auto ewords = ByteRegEx::LiteralSet({"abacus", "abdomen", "abs"});
+    auto words = RemoveEpsilon<256>(ewords);
+
+    printf("%s\n", words.DebugString().c_str());
+
+    CHECK(Matches(words, "abacus"));
+    CHECK(Matches(words, "abdomen"));
+    CHECK(Matches(words, "abs"));
+    CHECK(!Matches(words, "ab"));
+    CHECK(!Matches(words, ""));
+  }
 }
 
 static void TestRegExParse() {
@@ -263,6 +276,12 @@ static void TestRegExParse() {
   CHECK_NO_MATCH("(a)(b)", "a(");
   CHECK_NO_MATCH("(a)(b)", ")b");
   CHECK_NO_MATCH("(a)(b)", "(b");
+
+  CHECK_MATCH("()", "");
+  CHECK_MATCH("a()", "a");
+  CHECK_MATCH("()b", "b");
+  CHECK_MATCH("(())b", "b");
+  CHECK_MATCH("a(())b", "ab");
 
   CHECK_MATCH("(abc)*", "");
   CHECK_MATCH("(abc)*", "abcabc");
@@ -392,6 +411,12 @@ static void TestRegExParse() {
   CHECK_MATCH("(a|\\||b)*", "ab||");
   CHECK_MATCH("(a|\\||b)+", "|");
 
+  CHECK_MATCH("[]", "");
+  CHECK_NO_MATCH("[]", "a");
+
+  CHECK_MATCH("[^]", "a");
+  CHECK_NO_MATCH("[^]", "");
+
   {
     string email = "[a-z][a-z0-9_]*@[a-z][-a-z0-9]*\\.(com|net|org)";
     CHECK_MATCH(email, "the_beatles@music.com");
@@ -404,6 +429,8 @@ static void TestRegExParse() {
 }
 
 int main(int argc, char **argv) {
+  // printf("%s\n", Parse("car|cab").DebugString().c_str());
+
   TestSimpleEnfa();
   TestRegEx();
   TestRegExParse();

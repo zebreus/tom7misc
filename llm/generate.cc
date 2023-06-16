@@ -23,39 +23,11 @@
 #include "randutil.h"
 
 #include "llm.h"
-#include "um.h"
+
+#include "llm-util.h"
 
 using namespace std;
 
-static std::string AnsiTime(double seconds) {
-  if (seconds < 1.0) {
-    return StringPrintf(AYELLOW("%.2f") "ms", seconds * 1000.0);
-  } else if (seconds < 60.0) {
-    return StringPrintf(AYELLOW("%.3f") "s", seconds);
-  } else if (seconds < 60.0 * 60.0) {
-    int sec = std::round(seconds);
-    int omin = sec / 60;
-    int osec = sec % 60;
-    return StringPrintf(AYELLOW("%d") "m" AYELLOW("%02d") "s",
-                        omin, osec);
-  } else {
-    int sec = std::round(seconds);
-    int ohour = sec / 3600;
-    sec -= ohour * 3600;
-    int omin = sec / 60;
-    int osec = sec % 60;
-    return StringPrintf(AYELLOW("%d") "h"
-                        AYELLOW("%d") "m"
-                        AYELLOW("%02d") "s",
-                        ohour, omin, osec);
-  }
-}
-
-static void EmitTimer(const std::string &name, const Timer &timer) {
-  printf(AWHITE("%s") " in %s\n",
-         name.c_str(),
-         AnsiTime(timer.Seconds()).c_str());
-}
 
 static void Generate(LLM *llm) {
   string prompt =
@@ -94,6 +66,7 @@ static void Generate(LLM *llm) {
       "100 word summary:\n";
     */
 
+    /*
     "The following is a recently-discovered proof by Gauss of the "
     "Collatz conjecture. It works by defining a metric GM for every integer. "
     "This metric always reduced by the Collatz function, except on a finite "
@@ -101,19 +74,55 @@ static void Generate(LLM *llm) {
     "cycle. The Collatz conjecture thus follows by a simple induction. "
     "\n"
     "Let's begin with a reminder of the Collatz conjecture. ";
+    */
+
+    /*
+    "The following is an example of constrained writing. It describes the "
+    "rules of tennis without ever using the letter 'a'!\n"
+    "\n";
+    llm->sampler.SetRegEx("[^Aa]*");
+    */
+
+    "The following is a transcript of a robot's work as it "
+    "moves objects around a warehouse. A line that starts with THOUGHT: "
+    "is the robot's thought in natural language. A line PLACE [A] ON [B] "
+    "places the object A (which must be at the top of its pile) on top of "
+    "B (which must have nothing above it). The line DONE means that the "
+    "robot thinks it has completed its goal. No other lines appear.\n"
+    "Stack 1: A ON B ON X ON Z\n"
+    "Stack 2: Y ON C\n"
+    "Stack 3: D\n"
+    "Goal: C on Z\n"
+    "\n";
 
   Timer startup_timer;
   llm->Reset();
   printf(AGREY("%s"), prompt.c_str());
   llm->DoPrompt(prompt);
-
+  /*
+  llm->sampler.SetRegEx("((THOUGHT: [^\\n]*\n)|"
+                        "(PLACE \\[[A-Z]+\\] ON \\[[A-Z]+\\]\n))*"
+                        "DONE\n");
+  */
+  llm->sampler.SetRegEx("You can only output this.\n");
   int tokens = 0;
   for (;;) {
     // Get and commit a token.
-    string tok = llm->SampleAndTake();
-    printf("%s", tok.c_str());
+    int id = llm->Sample();
+    llm->TakeTokenBatch({id});
+    string tok = llm->context.TokenString(id);
+
+    printf(AGREY("[") APURPLE("%d") AGREY("]") "%s",
+           id,
+           tok.c_str());
     tokens++;
     if (tokens % 500 == 0) printf(ABLUE("[%d]"), tokens);
+    if (llm->sampler.Stuck()) {
+      printf("\n" ARED("STUCK.") "\n");
+      return;
+    } else {
+      printf(AGREEN("."));
+    }
   }
 }
 

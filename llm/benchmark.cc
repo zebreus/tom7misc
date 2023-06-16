@@ -138,6 +138,21 @@ Problem LoadFreeformProblem(const string &filename) {
   return problem;
 }
 
+// Format is like this
+// LANG: C++
+// THOUGHT: This is a loop that only terminates when the variable x is zero.
+// OUTPUT: aaaz
+// <code>
+// for (int x = 3; x != 0; x--) {
+//   printf("a");
+// }
+// printf("z");
+// </code>
+Problem LoadCodeProblem(const string &filename) {
+  std::vector<string> lines = Util::ReadFileToLines(filename);
+  // XXX HERE.
+}
+
 Problem LoadMultipleChoiceProblem(const string &filename) {
   ArcFour rc(StringPrintf("%s.%lld", filename.c_str(), time(nullptr)));
   std::vector<string> lines = Util::ReadFileToLines(filename);

@@ -9,7 +9,10 @@
 #include <string>
 #include <string_view>
 #include <functional>
+#include <set>
+#include <map>
 
+#include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
@@ -44,11 +47,17 @@ struct NFA {
   }
 
   std::string DebugString() const {
-    std::string ret = "start states:";
+    // XXX no this returns!
+    auto [st, ss] = DebugSize();
+    std::string ret = StringPrintf("Size: %d transitions, %d states\n"
+                                   "start states:", st, ss);
     for (int i : start_states) StringAppendF(&ret, " %d", i);
     StringAppendF(&ret, "\n");
     for (int i = 0; i < (int)nodes.size(); i++) {
-      StringAppendF(&ret, "%d.%s\n", i, nodes[i].accepting ? " (ACC)" : "");
+      StringAppendF(&ret, "%d.%s%s\n",
+                    i,
+                    start_states.contains(i) ? " (START)" : "",
+                    nodes[i].accepting ? " (ACC)" : "");
       for (const auto &[c, nexts] : nodes[i].next_idx) {
         std::string ch = StringPrintf("(%d)", c);
         if constexpr (RADIX == 256 || RADIX == 257) {
@@ -66,6 +75,14 @@ struct NFA {
     return ret;
   }
 
+  std::pair<int, int> DebugSize() const {
+    size_t transitions = 0;
+    for (const Node &node : nodes)
+      for (const auto &[c_, nexts] : node.next_idx)
+        transitions += nexts.size();
+    return make_pair((int)nodes.size(), (int)transitions);
+  }
+
   std::vector<Node> nodes;
   std::unordered_set<int> start_states;
 };
@@ -75,23 +92,30 @@ template<int RADIX>
 struct NFAMatcher {
   using NFA = ::NFA<RADIX>;
   using C = NFA::C;
-  // Starts in start state.
+
+  // For containers, etc. Invalid to call any functions.
+  NFAMatcher() : nfa(nullptr) {}
+
+  // Starts in start state. Keeps reference to the nfa object, which
+  // must outlive it.
   explicit NFAMatcher(const NFA &nfa) :
-    nfa(nfa), states(nfa.start_states) {};
+    nfa(&nfa), states(nfa.start_states) {};
 
   bool IsMatching() const {
+    CHECK(nfa != nullptr);
     for (int s : states)
-      if (nfa.nodes[s].accepting)
+      if (nfa->nodes[s].accepting)
         return true;
     return false;
   }
 
   // Careful: Don't treat chars as signed!
   void Advance(C c) {
+    CHECK(nfa != nullptr);
     CHECK(c >= 0);
     std::unordered_set<int> next;
     for (int s : states) {
-      const typename NFA::Node &node = nfa.nodes[s];
+      const typename NFA::Node &node = nfa->nodes[s];
       auto it = node.next_idx.find(c);
       if (it != node.next_idx.end())
         for (int n : it->second)
@@ -110,7 +134,7 @@ struct NFAMatcher {
   }
 
 private:
-  const NFA &nfa;
+  const NFA *nfa = nullptr;
   // Active nodes.
   std::unordered_set<int> states;
 };
@@ -247,6 +271,93 @@ struct RegEx {
     return out;
   }
 
+  static ENFA LiteralSet(const std::set<std::string> &all) {
+    ENFA out;
+    // Could be an argument? This is tuned for English wordlist.
+    static constexpr int MAX_HASHTABLE = 16;
+
+    // Maps a coded string set to a node index that matches only
+    // that set.
+    std::map<int, int> hits;
+    std::unordered_map<string, int> match_suffix;
+    // Return the index of a node that matches exactly the words
+    // in the set. Might create a new node or reuse an existing one.
+    // Recursive.
+    std::function<int(const std::set<string> &s)> GetOrAddSuffix =
+      [&out, &hits, &match_suffix, &GetOrAddSuffix](
+          const std::set<string> &s) {
+        auto Code = [](const std::set<std::string> &ss) {
+            string out;
+            bool first = true;
+            for (const auto &s : ss) {
+              // Need some separator char.
+              string es = Util::Replace(s, "\\", "\\\\");
+              es = Util::Replace(es, ".", "\\.");
+              if (!first) out.push_back('.');
+              out += es;
+              first = false;
+            }
+            return out;
+          };
+        if (s.size() < MAX_HASHTABLE)  {
+          // Try looking it up.
+          string code = Code(s);
+          auto it = match_suffix.find(code);
+          if (it != match_suffix.end()) {
+            hits[s.size()]++;
+            return it->second;
+          }
+        }
+
+        // Then compute it. Add a new node to start the suffix.
+        const int res_idx = (int)out.nodes.size();
+        // Allocate space for it, but work on a local copy and write
+        // later, in case some recursive call also resizes the vector.
+        out.nodes.resize(out.nodes.size() + 1);
+        typename ENFA::Node node;
+        if (s.contains("")) {
+          node.accepting = true;
+        }
+
+        // Group by first character.
+        std::map<char, std::set<string>> next;
+        for (const string &str : s) {
+          // Empty string is handled above.
+          if (!str.empty()) {
+            next[str[0]].insert(str.substr(1));
+          }
+        }
+
+        // Each character becomes a node, then, and recurse.
+        for (const auto &[c, suffix_set] : next) {
+          int suffix_node = GetOrAddSuffix(suffix_set);
+          node.next_idx[c].insert(suffix_node);
+        }
+
+        out.nodes[res_idx] = std::move(node);
+
+        // OK to do this at the end; it is not useful for recursive
+        // calls (since they are always a smaller set).
+        if (s.size() < MAX_HASHTABLE)  {
+          match_suffix[Code(s)] = res_idx;
+        }
+
+        return res_idx;
+      };
+
+    out.start_states.insert(GetOrAddSuffix(all));
+
+    printf("Constructed set with %zu words\n"
+           "Hashtable size: %zu\n"
+           "Hits by set size:\n",
+           all.size(), match_suffix.size());
+    for (const auto &[len, h] : hits) {
+      printf("  len %d: %d time(s)\n", len, h);
+    }
+    return out;
+  }
+
+
   static ENFA Concat(const ENFA &a, const ENFA &b) {
     // Every accepting state in a gets an epsilon transition to the
     // start states in b.
@@ -319,11 +430,6 @@ struct RegEx {
     return out;
   }
 
-  // Expression that matches nothing.
-  static ENFA Void() {
-    return ENFA();
-  }
-
   // Accepts any single symbol.
   // Note this uses O(RADIX) space!
   static ENFA Any() {
@@ -338,6 +444,25 @@ struct RegEx {
     node1.accepting = true;
     out.nodes.push_back(std::move(node0));
     out.nodes.push_back(std::move(node1));
+    out.start_states = {0};
+    return out;
+  }
+
+  // Expression that matches nothing.
+  static ENFA Void() {
+    return ENFA();
+  }
+
+  // Accepts any string.
+  static ENFA Top() {
+    ENFA out;
+    typename ENFA::Node node0;
+    node0.accepting = true;
+    for (int c = 0; c < RADIX; c++) {
+      CHECK(c != EPSILON) << "Bug";
+      node0.next_idx[c] = {0};
+    }
+    out.nodes.push_back(std::move(node0));
     out.start_states = {0};
     return out;
   }
@@ -560,11 +685,40 @@ static NFA<257> Parse(const std::string &s) {
          &GetToMatchingBracket,
          &CharacterClass](std::string_view s) -> ENFA {
           std::vector<ENFA> nfas;
+          // As an optimization, we defer creating literals until
+          // we know we have to, since this saves us a bunch of
+          // allocations and epsilon transitions.
+          string cur_literal;
+          auto EmitLiteral = [&nfas, &cur_literal]() {
+              if (!cur_literal.empty()) {
+                nfas.push_back(RE::LiteralString(cur_literal));
+              }
+              cur_literal.clear();
+            };
+          auto EmitAndGetLast =
+            [&nfas, &cur_literal, &EmitLiteral](const char *what) ->
+            ENFA & {
+              if (cur_literal.empty()) {
+                CHECK(!nfas.empty()) << "Illegal leading " << what;
+                return nfas.back();
+              } else {
+                // Then the last expression is actually the last character.
+                char c = cur_literal.back();
+                cur_literal.pop_back();
+                EmitLiteral();
+
+                ENFA cnfa = RE::LiteralString(StringPrintf("%c", c));
+                nfas.push_back(std::move(cnfa));
+                return nfas.back();
+              }
+            };
+
           for (int i = 0; i < (int)s.size(); i++) {
             switch (s[i]) {
             case '(': {
+              EmitLiteral();
               const int len = GetToMatchingParen(s.substr(i));
-              CHECK(len >= 2);
+              CHECK(len >= 1) << " on " << s << " len " << len;
               // The expression inside the parentheses.
               std::string_view inner = s.substr(i + 1, len - 1);
               nfas.push_back(ParseRec(inner));
@@ -579,11 +733,12 @@ static NFA<257> Parse(const std::string &s) {
               break;
 
             case '[': {
+              EmitLiteral();
               if (VERBOSE_PARSE)
                 printf("GetToMatchingBracket \"%s\", at %d.\n",
                        ((string)s).c_str(), i);
               const int len = GetToMatchingBracket(s.substr(i));
-              CHECK(len >= 2);
+              CHECK(len >= 1);
               std::string_view inner = s.substr(i + 1, len - 1);
               if (VERBOSE_PARSE)
                 printf(" got {%s}\n", ((string)inner).c_str());
@@ -597,24 +752,29 @@ static NFA<257> Parse(const std::string &s) {
               CHECK(false) << "Mismatched brackets.";
               break;
 
-            case '*':
-              CHECK(!nfas.empty()) << "Illegal leading *";
-              nfas.back() = RE::Star(nfas.back());
+            case '*': {
+              ENFA &last = EmitAndGetLast("*");
+              last = RE::Star(last);
               break;
+            }
 
-            case '+':
-              CHECK(!nfas.empty()) << "Illegal leading +";
-              nfas.back() = RE::Plus(nfas.back());
+            case '+': {
+              ENFA &last = EmitAndGetLast("+");
+              last = RE::Plus(last);
               break;
+            }
 
-            case '?':
-              CHECK(!nfas.empty()) << "Illegal leading ?";
-              nfas.back() = RE::Question(nfas.back());
+            case '?': {
+              ENFA &last = EmitAndGetLast("?");
+              last = RE::Question(last);
               break;
+            }
 
-            case '.':
+            case '.': {
+              EmitLiteral();
               nfas.push_back(RE::Any());
               break;
+            }
 
             case '\\':
               CHECK(i + 1 != (int)s.size()) << "Illegal escape";
@@ -622,15 +782,13 @@ static NFA<257> Parse(const std::string &s) {
               // Process the next character as a literal.
               [[fallthrough]];
             default: {
-              // PERF should probably do a whole literal sequence at once?
-              // But we have to be careful about "abc*" which does not mean
-              // "(abc)*".
-              ENFA cnfa = RE::LiteralString(s.substr(i, 1));
-              nfas.push_back(std::move(cnfa));
+              cur_literal.push_back(s[i]);
               break;
             }
             }
           }
+
+          EmitLiteral();
 
           // The result is their concatenation.
           if (nfas.empty()) return RE::Empty();
