@@ -347,6 +347,7 @@ struct RegEx {
 
     out.start_states.insert(GetOrAddSuffix(all));
 
+    /*
     printf("Constructed set with %zu words\n"
            "Hashtable size: %zu\n"
            "Hits by set size:\n",
@@ -354,6 +355,8 @@ struct RegEx {
     for (const auto &[len, h] : hits) {
       printf("  len %d: %d time(s)\n", len, h);
     }
+    */
+
     return out;
   }
 

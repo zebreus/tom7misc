@@ -100,26 +100,26 @@ int main(int argc, char ** argv) {
   EmitTimer("Loaded model", model_timer);
 
   std::vector<std::string> words = {
-    "athletic",
-    "hauling",
-    "bottom",
-    "meritless",
-    "exciting",
-    "applying",
-    "independent",
-    "related",
-    "unifying",
-    "summarizing",
-    "vivacious",
-    "offering",
-    "occurrences",
-    "scrutiny",
-    "unlikely",
-    "lives",
-    "mammals",
-    "violence",
     "nonsensical",
+    "violence",
+    "mammals",
+    "lives",
+    "unlikely",
+    "scrutiny",
+    "occurrences",
     "crazily",
+    "offering",
+    "vivacious",
+    "unifying",
+    "related",
+    "independent",
+    "applying",
+    "exciting",
+    "meritless",
+    "bottom",
+    "grandiloquence",
+    "hauling",
+    "athletic",
   };
 
 # define WORD_PREFIX "Word: "
@@ -150,8 +150,10 @@ int main(int argc, char ** argv) {
     WORD_PREFIX "yolo\n"
     ACRONYM_PREFIX "You Only Live Once\n";
 
-  std::vector<NFA<256>> letter_nfa;
-  letter_nfa.resize(26);
+  // Precomputed word sets for each letter.
+  // These are ENFA type but don't actually use epsilons!
+  std::vector<NFA<257>> letter_enfa;
+  letter_enfa.resize(26);
   {
     std::vector<string> dict =
       Util::ReadFileToLines("../acronymine/word-list.txt");
@@ -160,32 +162,7 @@ int main(int argc, char ** argv) {
     std::mutex m;
     ParallelComp(26,
                  [&](int idx) {
-                   // XXX generate NFA directly?
-                   char c = 'a' + idx;
-                   #if 0
-                   // Uppercase first.
-                   string letter_regex = StringPrintf("%c(", c & ~32);
-                   // Add all words in dictionary that start with this
-                   // letter.
-                   bool first = true;
-                   for (const string &ss : dict) {
-                     string s = Util::lcase(ss);
-
-                     if (s.size() > 1 && s[0] == c) {
-                       if (!IsAlphabetical(s)) {
-                         printf("Not alphabetical: %s\n", s.c_str());
-                         continue;
-                       }
-
-                       if (!first) StringAppendF(&letter_regex, "|");
-                       StringAppendF(&letter_regex, "%s", s.substr(1).c_str());
-                       first = false;
-                     }
-                   }
-                   StringAppendF(&letter_regex, ")");
-                   auto enfa = Parse(letter_regex);
-                   #endif
-
+                   const char c = 'a' + idx;
                    std::set<string> letter_words;
                    for (const string &ss : dict) {
                      string s = Util::lcase(ss);
@@ -200,18 +177,13 @@ int main(int argc, char ** argv) {
                        letter_words.insert(s);
                      }
                    }
-                   auto enfa = RegEx<256>::LiteralSet(letter_words);
 
-                   letter_nfa[idx] = RemoveEpsilon<256>(enfa);
+                   letter_enfa[idx] = RegEx<256>::LiteralSet(letter_words);
                    {
                      MutexLock ml(&m);
-                     auto [et, es] = enfa.DebugSize();
-                     auto [t, s] = letter_nfa[idx].DebugSize();
-                     printf(AGREEN("%c") " " ABLUE("ENFA") " %d t %d s"
-                            " " APURPLE("NFA") " %d t %d s\n",
-                            c,
-                            et, es,
-                            t, s);
+                     auto [t, s] = letter_enfa[idx].DebugSize();
+                     printf(AGREEN("%c") " " ABLUE("ENFA") " %d t %d s\n",
+                            c, t, s);
                    }
                  },
                  4);
@@ -252,16 +224,26 @@ int main(int argc, char ** argv) {
       EmitTimer("Evaluated word prompt", word_prompt_timer);
     }
 
-    // Make regex for its expansion.
-    string regex;
-    for (int i = 0; i < (int)word.size(); i++) {
-      if (i != 0) regex += " ";
-      StringAppendF(&regex, "%c[a-z]*", word[i] & ~32);
+    // Make NFA for its expansion. This only allows valid acronyms using
+    // (lexical) acronymy rules.
+    {
+      Timer word_nfa_timer;
+      using RE = RegEx<256>;
+      NFA<257> word_enfa = RE::Empty();
+      for (int i = 0; i < (int)word.size(); i++) {
+        char c = word[i];
+        CHECK(c >= 'a' && c <= 'z');
+        const NFA<257> &w = letter_enfa[c - 'a'];
+        if (i != 0) word_enfa = RE::Concat(word_enfa, RE::LiteralString(" "));
+        word_enfa = RE::Concat(word_enfa, w);
+      }
+      word_enfa = RE::Concat(word_enfa, RE::LiteralString("\n"));
+      auto nfa = RemoveEpsilon<256>(word_enfa);
+      auto [t, s] = nfa.DebugSize();
+      printf("Resulting NFA size: %d t %d s\n", t, s);
+      llm.sampler.SetNFA(std::move(nfa));
+      EmitTimer("set word nfa", word_nfa_timer);
     }
-    regex += "\n";
-    printf(AGREY("%s") "\n", regex.c_str());
-
-    llm.sampler.SetRegEx(regex);
 
     auto Generate = [&]() -> std::optional<string> {
       Timer gen_timer;
@@ -287,8 +269,9 @@ int main(int argc, char ** argv) {
         }
 
         string tok = llm.context.TokenString(id);
+        printf(AWHITE("%s") " = %s" ABLUE("%s") "\n",
+               word.c_str(), result.c_str(), tok.c_str());
         result += tok;
-        printf(AWHITE("%s") " = %s\n", word.c_str(), result.c_str());
 
         if (result.size() > 120) {
           // XXX Should find a better way to get out of these ruts.

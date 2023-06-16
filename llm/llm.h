@@ -378,6 +378,13 @@ struct Sampler {
     ResetRegEx();
   }
 
+  // Note that this does not update the regex string, so Reset
+  // will not remember what happened here.
+  void SetNFA(NFA<256> nfa_arg) {
+    nfa = std::move(nfa_arg);
+    matcher = NFAMatcher<256>(nfa);
+  }
+
   // Filter to those tokens that would leave the matcher in a
   // non-stuck state (note that "stuck" detection in NFA is currently
   // incomplete). Doesn't advance the matcher. Returns true if
