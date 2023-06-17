@@ -369,7 +369,7 @@ struct Sampler {
   // Reset the regex
   void ResetRegEx() {
     nfa = RemoveEpsilon<256>(Parse(params.regex));
-    matcher = NFAMatcher<256>(nfa);
+    ResetNFA();
   }
 
   // Set the regex (and reset the matcher).
@@ -382,6 +382,10 @@ struct Sampler {
   // will not remember what happened here.
   void SetNFA(NFA<256> nfa_arg) {
     nfa = std::move(nfa_arg);
+    ResetNFA();
+  }
+
+  void ResetNFA() {
     matcher = NFAMatcher<256>(nfa);
   }
 

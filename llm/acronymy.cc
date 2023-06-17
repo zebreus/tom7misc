@@ -23,22 +23,9 @@
 #include "util.h"
 #include "llm.h"
 #include "nfa.h"
+#include "llm-util.h"
 
 using namespace std;
-
-static bool IsAscii(const std::string &s) {
-  for (char c : s) {
-    if (c < ' ' || c > '~') return false;
-  }
-  return true;
-}
-
-static bool AllSpace(const std::string &s) {
-  for (char c : s) {
-    if (c != ' ') return false;
-  }
-  return true;
-}
 
 static bool IsAlphabetical(const std::string &s) {
   for (char c : s) {
@@ -50,54 +37,46 @@ static bool IsAlphabetical(const std::string &s) {
   return true;
 }
 
-static inline bool ContainsChar(const std::string &s, char t) {
-  for (char c : s)
-    if (c == t) return true;
-  return false;
+// XXX these trailing spaces might actually be bad because
+// of the way tokenization works
+
+static string WordPrefix(const string &word) {
+  return "Word: ";
 }
 
-static std::string AnsiTime(double seconds) {
-  if (seconds < 1.0) {
-    return StringPrintf(AYELLOW("%.2f") "ms", seconds * 1000.0);
-  } else if (seconds < 60.0) {
-    return StringPrintf(AYELLOW("%.3f") "s", seconds);
-  } else if (seconds < 60.0 * 60.0) {
-    int sec = std::round(seconds);
-    int omin = sec / 60;
-    int osec = sec % 60;
-    return StringPrintf(AYELLOW("%d") "m" AYELLOW("%02d") "s",
-                        omin, osec);
-  } else {
-    int sec = std::round(seconds);
-    int ohour = sec / 3600;
-    sec -= ohour * 3600;
-    int omin = sec / 60;
-    int osec = sec % 60;
-    return StringPrintf(AYELLOW("%d") "h"
-                        AYELLOW("%d") "m"
-                        AYELLOW("%02d") "s",
-                        ohour, omin, osec);
-  }
+static string AcronymPrefix(const string &word) {
+  return StringPrintf("Backronym of \"%s\": ", word.c_str());
 }
 
-static void EmitTimer(const std::string &name, const Timer &timer) {
-  printf(AWHITE("%s") " in %s\n",
-         name.c_str(),
-         AnsiTime(timer.Seconds()).c_str());
+static string DefinitionPrefix(const string &word) {
+  return StringPrintf("Normal definition of \"%s\": ", word.c_str());
+}
+
+static string BrainstormPrefix(const string &word, char c) {
+  return StringPrintf("Word ideas for \"%s\" starting with %c: ",
+                      word.c_str(), c & ~32);
 }
 
 int main(int argc, char ** argv) {
+  using RE = RegEx<256>;
+
   AnsiInit();
   Timer model_timer;
 
   ContextParams cparams;
-  // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
+  // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
   cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;
 
   LLM llm(cparams, sparams);
   EmitTimer("Loaded model", model_timer);
+
+  auto InsertString = [&llm](const string &s) {
+      printf(AGREY("%s"), s.c_str());
+      fflush(stdout);
+      llm.InsertString(s);
+    };
 
   std::vector<std::string> words = {
     "nonsensical",
@@ -122,8 +101,51 @@ int main(int argc, char ** argv) {
     "athletic",
   };
 
-# define WORD_PREFIX "Word: "
-# define ACRONYM_PREFIX "Backronym: "
+  struct Example {
+    string word;
+    string defn;
+    std::map<char, std::vector<string>> brainstorm;
+    string acronym;
+  };
+
+  std::vector<Example> examples = {
+    Example{.word = "path",
+            .defn = "A way or track laid down for walking or made by "
+            "continual treading.",
+            .brainstorm = {
+        {'A', {"approach", "avenue", "across", "alley"}},
+        {'H', {"highroad", "horizon", "heading"}},
+        {'P', {"passage", "pursuit", "paved"}},
+        {'T', {"trajectory", "trail", "toward", "to"}}},
+            .acronym = "Passage Across The Hill",
+    },
+    Example{.word = "moving",
+            .defn = "Gerund of moving, which means to go in a specific direction.",
+            .brainstorm = {
+        {'M', {"making", "marching", "migrate"}},
+        {'O', {"oneself", "orient"}},
+        {'V', {"veer", "venture", "venturing"}},
+        {'I', {"inching"}},
+        {'N', {"nudge", "near", "navigate"}},
+        {'G', {"gravitate", "go", "getting"}},
+            },
+            .acronym = "Making Oneself Veer Into Neighboring Geography",
+    },
+  };
+
+    /*
+    WORD_PREFIX "fomo\n"
+    ACRONYM_PREFIX "Fear Of Missing Out\n"
+    WORD_PREFIX "distribute\n"
+    ACRONYM_PREFIX "Deliver Items Systematically To Receiving Individuals By Urgent Truckloads Efficiently\n"
+    WORD_PREFIX "gap\n"
+    ACRONYM_PREFIX "Gone Access Path\n"
+    WORD_PREFIX "surfeit\n"
+    ACRONYM_PREFIX "Surplus Undermining Responsible Food Eating In Teatimes\n"
+    WORD_PREFIX "yolo\n"
+    ACRONYM_PREFIX "You Only Live Once\n";
+    */
+
 
   string prompt =
     "Bacronyms are definitions as acronyms. Each word of the definition "
@@ -134,21 +156,28 @@ int main(int argc, char ** argv) {
     "must be a real word without spelling errors. The word "
     "being defined should not appear in its definition, nor conjugates.\n\n"
 
-    "Examples:\n"
-    WORD_PREFIX "fomo\n"
-    ACRONYM_PREFIX "Fear Of Missing Out\n"
-    WORD_PREFIX "distribute\n"
-    ACRONYM_PREFIX "Deliver Items Systematically To Receiving Individuals By Urgent Truckloads Efficiently\n"
-    WORD_PREFIX "path\n"
-    ACRONYM_PREFIX "Passage Across The Hill\n"
-    WORD_PREFIX "moving\n"
-    ACRONYM_PREFIX "Making Oneself Veer Into Neighboring Geography\n"
-    WORD_PREFIX "gap\n"
-    ACRONYM_PREFIX "Gone Access Path\n"
-    WORD_PREFIX "surfeit\n"
-    ACRONYM_PREFIX "Surplus Undermining Responsible Food Eating In Teatimes\n"
-    WORD_PREFIX "yolo\n"
-    ACRONYM_PREFIX "You Only Live Once\n";
+    "It can be useful to brainstorm words that start with the letters first."
+    "\nExamples:\n";
+
+  for (const Example &example : examples) {
+    StringAppendF(&prompt, "%s%s",
+                  WordPrefix(example.word).c_str(),
+                  example.word.c_str());
+    StringAppendF(&prompt, "%s%s",
+                  DefinitionPrefix(example.word).c_str(),
+                  example.defn.c_str());
+    for (const auto &[c, v] : example.brainstorm) {
+      StringAppendF(&prompt, "%s",
+                    BrainstormPrefix(example.word, c).c_str());
+      for (const string &s : v)
+        StringAppendF(&prompt, "%s, ", s.c_str());
+      StringAppendF(&prompt, "\n");
+    }
+
+    StringAppendF(&prompt, "%s%s",
+                  AcronymPrefix(example.word).c_str(),
+                  example.acronym.c_str());
+  }
 
   // Precomputed word sets for each letter.
   // These are ENFA type but don't actually use epsilons!
@@ -192,6 +221,7 @@ int main(int argc, char ** argv) {
 
   {
     Timer prompt_timer;
+    printf(AGREY("%s") "\n", prompt.c_str());
     llm.DoPrompt(prompt);
     EmitTimer("Evaluated prompt", prompt_timer);
   }
@@ -219,16 +249,56 @@ int main(int argc, char ** argv) {
 
     {
       Timer word_prompt_timer;
-      string word_prompt = WORD_PREFIX + word + "\n" ACRONYM_PREFIX;
-      llm.InsertString(word_prompt);
+      string word_prompt = StringPrintf("%s%s\n",
+                                        WordPrefix(word).c_str(),
+                                        word.c_str());
+      InsertString(word_prompt);
       EmitTimer("Evaluated word prompt", word_prompt_timer);
     }
+
+
+    // Make these optional. All these do is (hopefully?) condition the
+    // transformer to generate better acronyms below.
+
+    // Definition.
+    {
+      Timer define_timer;
+      InsertString(DefinitionPrefix(word));
+      llm.sampler.SetRegEx("[^\\n]*\n");
+      auto [defn, _] = llm.GenerateUntilEx("\n", 120, true);
+      printf("\n" AYELLOW("Definition") ": %s\n", defn.c_str());
+      EmitTimer("defined", define_timer);
+    }
+
+    // Brainstorm some words.
+    // (Alternatively, we could just insert these from word2vec).
+    {
+      Timer brainstorm_timer;
+      std::set<char> letters;
+      for (char c : word) letters.insert(c);
+      for (char c : letters) {
+        CHECK(c >= 'a' && c <= 'z');
+        InsertString(BrainstormPrefix(word, c));
+        // static constexpr int NUM_STORM = 3;
+        // XXX wrong because we don't actually want to end with a comma.
+        NFA<257> enfa =
+          RE::Concat(RE::Plus(RE::Concat(letter_enfa[c - 'a'],
+                                         RE::LiteralString(", "))),
+                     RE::LiteralString("\n"));
+        auto nfa = RemoveEpsilon<256>(enfa);
+        llm.sampler.SetNFA(std::move(nfa));
+        auto [storm, _] = llm.GenerateUntilEx("\n", 40, true);
+        printf("\n" ACYAN("%c ideas") ": %s\n", c, storm.c_str());
+      }
+      EmitTimer("brainstormed", brainstorm_timer);
+    }
+
+    InsertString(AcronymPrefix(word));
 
     // Make NFA for its expansion. This only allows valid acronyms using
     // (lexical) acronymy rules.
     {
       Timer word_nfa_timer;
-      using RE = RegEx<256>;
       NFA<257> word_enfa = RE::Empty();
       for (int i = 0; i < (int)word.size(); i++) {
         char c = word[i];
@@ -247,6 +317,7 @@ int main(int argc, char ** argv) {
 
     auto Generate = [&]() -> std::optional<string> {
       Timer gen_timer;
+
       string result;
       for (;;) {
         // Get and commit a token (verbosely).
@@ -273,6 +344,8 @@ int main(int argc, char ** argv) {
                word.c_str(), result.c_str(), tok.c_str());
         result += tok;
 
+        // This should no longer actually be possible, since we limit
+        // to words in the actual dictionary.
         if (result.size() > 120) {
           // XXX Should find a better way to get out of these ruts.
           printf(ARED("Failed.") "\n");

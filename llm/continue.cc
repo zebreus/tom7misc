@@ -71,11 +71,11 @@ int main(int argc, char ** argv) {
   {
     auto enfa = Parse(regex);
     auto nfa = RemoveEpsilon<256>(enfa);
-    printf("Prompt size %zu.\nENFA: ", prompt.size());
-    enfa.PrintDebugStats();
-    printf("\nNFA: ");
-    nfa.PrintDebugStats();
-    printf("\n");
+    auto [et, es] = enfa.DebugSize();
+    auto [t, s] = nfa.DebugSize();
+    printf("Prompt size %zu.\n"
+           "ENFA: %d t %d s\n"
+           "NFA: %d t %d s\n", prompt.size(), et, es, t, s);
   }
   // AnsiInit();
   Timer model_timer;
@@ -85,8 +85,8 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/7B/ggml-model-f16.bin";
   // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
-  cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
+  // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
+  cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-f16.bin";
 
   SamplerParams sparams;

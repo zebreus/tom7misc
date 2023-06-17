@@ -34,12 +34,6 @@ static bool OnlyWhitespace(const std::string &s) {
   return true;
 }
 
-static inline bool ContainsChar(const std::string &s, char t) {
-  for (char c : s)
-    if (c == t) return true;
-  return false;
-}
-
 static std::vector<std::string> ReadFileToNormalizedLines(
     const std::string &filename) {
   std::vector<string> lines = Util::ReadFileToLines(filename);

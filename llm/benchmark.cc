@@ -23,6 +23,7 @@
 #include "randutil.h"
 
 #include "llm.h"
+#include "llm-util.h"
 
 // Prevent runaway (no correct answer can be longer).
 static constexpr int MAX_ANSWER = 80;
@@ -36,42 +37,12 @@ static inline std::string CleanWhitespace(std::string s) {
   return Util::LoseWhiteL(Util::LoseWhiteR(std::move(s)));
 }
 
-static std::string AnsiTime(double seconds) {
-  if (seconds < 1.0) {
-    return StringPrintf(AYELLOW("%.2f") "ms", seconds * 1000.0);
-  } else if (seconds < 60.0) {
-    return StringPrintf(AYELLOW("%.3f") "s", seconds);
-  } else if (seconds < 60.0 * 60.0) {
-    int sec = std::round(seconds);
-    int omin = sec / 60;
-    int osec = sec % 60;
-    return StringPrintf(AYELLOW("%d") "m" AYELLOW("%02d") "s",
-                        omin, osec);
-  } else {
-    int sec = std::round(seconds);
-    int ohour = sec / 3600;
-    sec -= ohour * 3600;
-    int omin = sec / 60;
-    int osec = sec % 60;
-    return StringPrintf(AYELLOW("%d") "h"
-                        AYELLOW("%d") "m"
-                        AYELLOW("%02d") "s",
-                        ohour, omin, osec);
-  }
-}
-
-static void EmitTimer(const std::string &name, const Timer &timer) {
-  printf(AWHITE("%s") " in %s\n",
-         name.c_str(),
-         AnsiTime(timer.Seconds()).c_str());
-}
-
 // Question text; expected answer(s).
 struct Question {
   string statement;
   // "Show your work" for the example problem.
   string thought;
-  std::vector<std::string> answers;
+  std::vector<string> answers;
 };
 
 struct Problem {
@@ -82,7 +53,35 @@ struct Problem {
   // Unscored example input/output pair.
   Question example;
   std::vector<Question> questions;
+
+  string question_before = "Question: ";
+  string question_after = "\n";
+
+  string answer_before = "Answer: [";
+  string answer_after = "]\n";
 };
+
+// Consumes lines from the vector. Returns the first one that
+// is not empty nor a comment (#), after trimming outer whitespace.
+string GetNonCommentLine(const string &error_context,
+                         std::vector<string> *lines) {
+  for (;;) {
+    CHECK(!lines->empty()) << error_context;
+    string line = CleanWhitespace((*lines)[0]);
+    lines->erase(lines->begin());
+    if (line.empty()) continue;
+    if (line[0] == '#') continue;
+    return line;
+  }
+}
+
+// Read the header of a problem file. This is currently the name and
+// prompt. Consumes lines from the vector.
+void ReadHeader(const string &error_context,
+                std::vector<string> *lines, Problem *problem) {
+  problem->name = GetNonCommentLine(error_context, lines);
+  problem->prompt = GetNonCommentLine(error_context, lines);
+}
 
 Problem LoadFreeformProblem(const string &filename) {
   std::vector<string> lines = Util::ReadFileToLines(filename);
@@ -90,17 +89,16 @@ Problem LoadFreeformProblem(const string &filename) {
     line = CleanWhitespace(std::move(line));
   }
 
-  FilterVector(&lines, [](const std::string &line) {
+  FilterVector(&lines, [](const string &line) {
       if (line.empty()) return false;
       if (line[0] == '#') return false;
       return true;
     });
 
-  CHECK(lines.size() >= 4);
   Problem problem;
-  problem.name = std::move(lines[0]);
-  problem.prompt = std::move(lines[1]);
-  for (int idx = 2; idx < (int)lines.size(); idx++) {
+  ReadHeader(filename, &lines, &problem);
+
+  for (int idx = 0; idx < (int)lines.size(); idx++) {
     const string &line = lines[idx];
     vector<string> v = Util::Split(line, '|');
     CHECK(v.size() >= 2) << filename << ": " << line;
@@ -150,7 +148,86 @@ Problem LoadFreeformProblem(const string &filename) {
 // </code>
 Problem LoadCodeProblem(const string &filename) {
   std::vector<string> lines = Util::ReadFileToLines(filename);
-  // XXX HERE.
+
+  Problem problem;
+  ReadHeader(filename, &lines, &problem);
+
+  // This is sort of a hack, but since the question itself has
+  // "Language: ", we don't need a prefix.
+  problem.question_before = "";
+
+  // Make it clearer we're looking for the program's output, not
+  // some other "answer".
+  problem.answer_before = "Output: [";
+
+  string lang;
+  string thought;
+  string output;
+  string code;
+  std::map<string, string> parts;
+  auto EmitQuestion = [&filename,
+                       &problem, &lang, &thought, &output, &code]() {
+      // But thought is optional.
+      CHECK(!lang.empty());
+      CHECK(!output.empty());
+      CHECK(!code.empty());
+
+      Question question;
+      question.statement =
+        StringPrintf("Language: %s\n"
+                     "<code>\n"
+                     "%s"
+                     "</code>\n", lang.c_str(), code.c_str());
+      question.thought = std::move(thought);
+      question.answers.push_back(std::move(output));
+      problem.questions.emplace_back(std::move(question));
+
+      lang.clear();
+      output.clear();
+      code.clear();
+      thought.clear();
+    };
+
+  bool in_code = false;
+  for (int i = 0; i < (int)lines.size(); i++) {
+    string line = lines[i];
+
+    if (in_code) {
+      if (line == "</code>") {
+        in_code = false;
+        // Done with question.
+        EmitQuestion();
+      } else {
+        code += line;
+        code += "\n";
+        // StringAppendF(&code, "%s\n", line.c_str());
+      }
+    } else {
+      // Normalize whitespace only outside of code block.
+      line = CleanWhitespace(std::move(line));
+      if (line.empty()) continue;
+      if (line[0] == '#') continue;
+
+      if (Util::TryStripPrefix("<code>", &line)) {
+        in_code = true;
+      } else if (Util::TryStripPrefix("LANG: ", &line)) {
+        lang = line;
+      } else if (Util::TryStripPrefix("THOUGHT: ", &line)) {
+        thought = line;
+      } else if (Util::TryStripPrefix("OUTPUT: ", &line)) {
+        output = line;
+      } else {
+        CHECK(false) << filename << ": Invalid line: " << line;
+      }
+    }
+  }
+
+  // The first question is the example.
+  CHECK(!problem.questions.empty()) << filename;
+  problem.example = std::move(problem.questions[0]);
+  problem.questions.erase(problem.questions.begin());
+
+  return problem;
 }
 
 Problem LoadMultipleChoiceProblem(const string &filename) {
@@ -160,16 +237,14 @@ Problem LoadMultipleChoiceProblem(const string &filename) {
     line = CleanWhitespace(std::move(line));
   }
 
-  FilterVector(&lines, [](const std::string &line) {
+  FilterVector(&lines, [](const string &line) {
       if (line.empty()) return false;
       if (line[0] == '#') return false;
       return true;
     });
 
-  CHECK(lines.size() >= 4);
   Problem problem;
-  problem.name = std::move(lines[0]);
-  problem.prompt = std::move(lines[1]);
+  ReadHeader(filename, &lines, &problem);
 
   // State of current question; we read line-by-line.
   string statement;
@@ -205,7 +280,7 @@ Problem LoadMultipleChoiceProblem(const string &filename) {
       thought.clear();
       choices.clear();
   };
-  for (int idx = 2; idx < (int)lines.size(); idx++) {
+  for (int idx = 0; idx < (int)lines.size(); idx++) {
     string &line = lines[idx];
     bool is_thought = false, is_correct = false, is_choice = false;
     if (Util::TryStripPrefix("(*)", &line)) is_correct = is_choice = true;
@@ -240,12 +315,8 @@ Problem LoadMultipleChoiceProblem(const string &filename) {
   return problem;
 }
 
-#define QUESTION_BEFORE "Question: "
-#define QUESTION_AFTER "\n"
 #define THOUGHT_BEFORE "Thought: ["
 #define THOUGHT_AFTER "]\n"
-#define ANSWER_BEFORE "Answer: ["
-#define ANSWER_AFTER "]\n"
 
 struct Result {
   Result() {}
@@ -286,8 +357,10 @@ static Result RunProblem(const Problem &problem,
   llm->DoPrompt(prompt);
 
   string example_string =
-    StringPrintf(QUESTION_BEFORE "%s" QUESTION_AFTER,
-                 problem.example.statement.c_str());
+    StringPrintf("%s" "%s" "%s",
+                 problem.question_before.c_str(),
+                 problem.example.statement.c_str(),
+                 problem.question_after.c_str());
   if (USE_THOUGHT) {
     StringAppendF(&example_string,
                   THOUGHT_BEFORE "%s" THOUGHT_AFTER,
@@ -295,8 +368,10 @@ static Result RunProblem(const Problem &problem,
   }
 
   StringAppendF(&example_string,
-                ANSWER_BEFORE "%s" ANSWER_AFTER,
-                problem.example.answers[0].c_str());
+                "%s" "%s" "%s",
+                problem.answer_before.c_str(),
+                problem.example.answers[0].c_str(),
+                problem.answer_after.c_str());
 
   printf(AGREY("%s"), example_string.c_str());
   llm->InsertString(example_string);
@@ -313,8 +388,10 @@ static Result RunProblem(const Problem &problem,
     first = false;
 
     string qp =
-      StringPrintf(QUESTION_BEFORE "%s" QUESTION_AFTER,
-                   question.statement.c_str());
+      StringPrintf("%s" "%s" "%s",
+                   problem.question_before.c_str(),
+                   question.statement.c_str(),
+                   problem.question_after.c_str());
 
     // Put the cursor after "Answer: ", maybe consuming and printing
     // a thought if that is enabled.
@@ -325,11 +402,12 @@ static Result RunProblem(const Problem &problem,
       string thought =
         llm->GenerateUntilEx("]", MAX_THOUGHT, true).first;
       printf(ABLUE("%s") "]", thought.c_str());
-      string qa = "\n" ANSWER_BEFORE;
+      // XXX THOUGHT_AFTER?
+      string qa = "\n" + problem.answer_before;
       printf(AGREY("%s"), qa.c_str());
       llm->InsertString(qa);
     } else {
-      StringAppendF(&qp, ANSWER_BEFORE);
+      qp += problem.answer_before;
       printf(AGREY("%s"), qp.c_str());
       llm->InsertString(qp);
     }
@@ -375,6 +453,7 @@ int main(int argc, char ** argv) {
   // Load problems first so that parse errors don't cause us to
   // waste a huge amount of time!
 
+  problems.emplace_back(LoadCodeProblem("code.txt"));
   problems.emplace_back(LoadFreeformProblem("classical-logic.txt"));
   problems.emplace_back(LoadMultipleChoiceProblem("multiple.txt"));
   problems.emplace_back(LoadFreeformProblem("trivia.txt"));
@@ -383,7 +462,7 @@ int main(int argc, char ** argv) {
   // Would prefer for this to parse and validate PGN, as well as
   // prompt a different way (no need for Question and Answer).
   problems.emplace_back(LoadFreeformProblem("chess.txt"));
-  problems.emplace_back(LoadFreeformProblem("code.txt"));
+  //   problems.emplace_back(LoadFreeformProblem("code.txt"));
   problems.emplace_back(LoadFreeformProblem("trivia-personal.txt"));
   printf("Loaded " APURPLE("%d") " problems.\n", (int)problems.size());
 

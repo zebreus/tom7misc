@@ -805,6 +805,8 @@ static NFA<257> Parse(const std::string &s) {
       // Void is the unit for Or.
       ENFA nfa = RE::Void();
       for (std::string_view ss : dis) {
+        // PERF: If they are all just string literals, might as well
+        // use LiteralSet here.
         if (VERBOSE_PARSE)
           printf("Disjunctive clause {%s}\n", ((std::string)ss).c_str());
         ENFA nfa2 = CompileOneClause(ss);

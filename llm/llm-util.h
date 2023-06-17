@@ -39,4 +39,25 @@ inline void EmitTimer(const std::string &name, const Timer &timer) {
          AnsiTime(timer.Seconds()).c_str());
 }
 
+static inline bool ContainsChar(const std::string &s, char t) {
+  for (char c : s)
+    if (c == t) return true;
+  return false;
+}
+
+
+static bool IsAscii(const std::string &s) {
+  for (char c : s) {
+    if (c < ' ' || c > '~') return false;
+  }
+  return true;
+}
+
+static bool AllSpace(const std::string &s) {
+  for (char c : s) {
+    if (c != ' ') return false;
+  }
+  return true;
+}
+
 #endif

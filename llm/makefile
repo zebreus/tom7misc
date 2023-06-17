@@ -1,5 +1,5 @@
 
-default: acronymy.exe benchmark.exe chat.exe dump-tokens.exe generate.exe continue.exe
+default: acronymy.exe benchmark.exe chat.exe dump-tokens.exe generate.exe continue.exe llum.exe nfa_test.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
