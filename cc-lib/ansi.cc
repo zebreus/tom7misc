@@ -3,6 +3,7 @@
 
 #include <cstdlib>
 #include <string>
+#include <cmath>
 
 #ifdef __MINGW32__
 #include <windows.h>
@@ -53,4 +54,30 @@ void CPrintf(const char* format, ...) {
   #else
   printf("%s", result.c_str());
   #endif
+}
+
+std::string AnsiTime(double seconds) {
+  char result[64] = {};
+  if (seconds < 1.0) {
+    sprintf(result, AYELLOW("%.2f") "ms", seconds * 1000.0);
+  } else if (seconds < 60.0) {
+    sprintf(result, AYELLOW("%.3f") "s", seconds);
+  } else if (seconds < 60.0 * 60.0) {
+    int sec = std::round(seconds);
+    int omin = sec / 60;
+    int osec = sec % 60;
+    sprintf(result, AYELLOW("%d") "m" AYELLOW("%02d") "s",
+            omin, osec);
+  } else {
+    int sec = std::round(seconds);
+    int ohour = sec / 3600;
+    sec -= ohour * 3600;
+    int omin = sec / 60;
+    int osec = sec % 60;
+    sprintf(result, AYELLOW("%d") "h"
+            AYELLOW("%d") "m"
+            AYELLOW("%02d") "s",
+            ohour, omin, osec);
+  }
+  return (string)result;
 }

@@ -1406,7 +1406,8 @@ vector<int> Util::Factorize(int n) {
   }
 
   // Factor to try. Once we eliminate a factor there's no
-  // reason to ever try it again, so
+  // reason to ever try it again, so this only ever increases,
+  // and the output will be sorted in nondecreasing order.
   int f = 3;
 
   while (f * f <= n) {

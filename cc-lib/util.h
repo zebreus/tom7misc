@@ -285,6 +285,7 @@ struct Util {
   // if the codepoint is out of range.
   static std::string EncodeUTF8(uint32_t codepoint);
 
+  // TODO: Migrate everyone to factorize.h, which is faster.
   // Prime factorization with trial division (not fast). Input must be > 1.
   // Output in sorted order.
   static std::vector<int> Factorize(int n);

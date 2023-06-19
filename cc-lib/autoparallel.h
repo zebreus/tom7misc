@@ -51,8 +51,9 @@ struct AutoParallelComp {
       ReadCache();
       // Number of milliseconds since we started running, so
       // that we can throttle saving.
-      last_save = save_timer.MS();
+      last_save = run_timer.MS();
     }
+    last_status = run_timer.MS();
     rc = std::make_unique<ArcFour>(
         StringPrintf("apc%lld.%f", time(nullptr), last_save));
   }
@@ -98,8 +99,25 @@ struct AutoParallelComp {
     return ParallelMapi(vec, ff);
   }
 
+
   template<class F>
   void ParallelComp(int64_t num, const F &f) {
+    // Break into batches, so that large calls can still do some
+    // autotuning.
+    const int64_t MAX_BATCH_SIZE = max_parallelism * (int64_t)1000;
+    for (int64_t start = 0; start < num; start += MAX_BATCH_SIZE) {
+      const int64_t THIS_BATCH = std::min(MAX_BATCH_SIZE, num - start);
+      ParallelCompInternal(THIS_BATCH,
+                           [num, start, &f](int64_t idx) {
+                             // debuggin'
+                             CHECK(start + idx < num);
+                             f(start + idx);
+                           });
+    }
+  }
+
+  // Gets the number of threads to use for one round.
+  int GetNumThreads(bool verbose_round = false) {
     // We want to balance between running the actual fastest bucket,
     // and running new experiments to improve our understanding of
     // buckets. The way we do this is to generate a variate for each
@@ -116,16 +134,31 @@ struct AutoParallelComp {
     // Remember, i=0 means threads=1
     int best_i = 0;
     double best_ms = std::numeric_limits<double>::infinity();
+
     for (int i = 0; i < max_parallelism; i++) {
-      // XXX just use the computed mean once we get to max_samples!
-      const double stdev = experiments[i].current_stdev;
-      const double mean = experiments[i].current_mean;
-      const double ms = gauss.Next() * stdev + mean;
-      if (verbose) {
-        printf(
-            " %d parallelism: %d samples, predict %.5f +/ %.5fms ~= %.5fms\n",
-            i + 1, (int)experiments[i].sample_ms.size(), mean, stdev, ms);
-      }
+      const double ms = [this, i, verbose_round, &gauss]() {
+          if (experiments[i].sample_ms.size() >= max_samples) {
+            // Once we have enough samples, just used the computed
+            // mean without randomness.
+            const double ms = experiments[i].current_mean;
+            if (verbose_round) {
+              printf(" %d parallelism: DONE. %.5fms\n", i + 1, ms);
+            }
+            return ms;
+          } else {
+            const double stdev = experiments[i].current_stdev;
+            const double mean = experiments[i].current_mean;
+            const double ms = gauss.Next() * stdev + mean;
+            if (verbose_round) {
+              printf(
+                  " %d parallelism: %d samples, "
+                  "predict %.5f +/ %.5fms ~= %.5fms\n",
+                  i + 1, (int)experiments[i].sample_ms.size(), mean, stdev, ms);
+            }
+            return ms;
+          }
+        }();
+
       if (ms < best_ms) {
         best_i = i;
         best_ms = ms;
@@ -139,6 +172,9 @@ struct AutoParallelComp {
 
         int bsamples = experiments[best_i].sample_ms.size();
         int nsamples = experiments[neighbor].sample_ms.size();
+        // Never jitter if we are done with the other bucket.
+        if (nsamples >= max_samples) return false;
+
         int diff = bsamples - nsamples;
         if (diff <= 0) return false;
         // The bigger the difference, the more likely we are to do this.
@@ -151,16 +187,35 @@ struct AutoParallelComp {
     // more samples. (could even loop this?)
     if (!Consider(-1)) Consider(+1);
 
-    const int threads = best_i + 1;
-    if (verbose) {
+    if (verbose_round) {
       printf("AutoParallelComp: Selected threads=%d (%.5f ms +/- %.5f)\n",
-             threads,
+             best_i + 1,
              experiments[best_i].current_mean,
              experiments[best_i].current_stdev);
     }
 
+    return best_i + 1;
+  }
+
+  // Core routine that balances the workload. Usually call one of the
+  // other functions instead.
+  template<class F>
+  void ParallelCompInternal(int64_t num, const F &f) {
+
+    bool verbose_round = false;
+    if (verbose) {
+      const double elapsed_ms = run_timer.MS() - last_status;
+      if (elapsed_ms > VERBOSE_EVERY_MS) {
+        verbose_round = true;
+        last_status = run_timer.MS();
+      }
+    }
+
+    const int threads = GetNumThreads(verbose_round);
+    CHECK(threads > 0);
+
     MsTimer expt_timer;
-    if (best_i == 0) {
+    if (threads <= 1) {
       // Run in serial without any locking etc.
       for (int64_t i = 0; i < num; i++) {
         (void)f(i);
@@ -169,15 +224,18 @@ struct AutoParallelComp {
       // Use unqualified version from threadutil.
       ::ParallelComp(num, f, threads);
     }
-    const double actual_ms = expt_timer.MS();
+
+    // Compute time per element.
+    const double actual_ms = expt_timer.MS() / (double)num;
 
     // If we're still taking samples, add it and update the
     // model parameters.
+    int best_i = threads - 1;
     if (experiments[best_i].sample_ms.size() < max_samples) {
       experiments[best_i].sample_ms.push_back(actual_ms);
       UpdateStatistics(&experiments[best_i]);
-      if (verbose) {
-        printf("Got %.5fms. Set threads=%d to %d samples: %.5f +/- %.5f\n",
+      if (verbose_round) {
+        printf("Got %.5fms/elt. Set threads=%d to %d samples: %.5f +/- %.5f\n",
                actual_ms,
                best_i + 1,
                (int)experiments[best_i].sample_ms.size(),
@@ -210,7 +268,7 @@ struct AutoParallelComp {
     }
     // (Don't count the time it took to save, for pathological
     // cases..)
-    last_save = save_timer.MS();
+    last_save = run_timer.MS();
   }
 
   void PrintHisto() {
@@ -270,8 +328,9 @@ private:
   // This can certainly be improved!
   struct Experiment {
     // Actual sample values collected, up to max_samples.
+    // sample_ms is (now) the number of milliseconds per element, not per call.
     std::vector<double> sample_ms;
-    // Invariant: These agree from the sample_ms vector.
+    // Invariant: These agree with the sample_ms vector.
     // Note that 0.0 is a good (though wrong) initial estimate
     // since that means experimenting with an empty bucket will
     // beat out any bucket with actual data.
@@ -281,10 +340,11 @@ private:
 
   // (make configurable?)
   static constexpr double SAVE_EVERY_MS = 60.0 * 1000.0;
+  static constexpr double VERBOSE_EVERY_MS = 30.0 * 1000.0;
 
   void MaybeWriteCache() {
     if (cachefile.empty()) return;
-    const double elapsed_ms = save_timer.MS() - last_save;
+    const double elapsed_ms = run_timer.MS() - last_save;
     if (elapsed_ms > SAVE_EVERY_MS) {
       WriteCache();
     }
@@ -380,8 +440,8 @@ private:
   std::unique_ptr<ArcFour> rc;
   // experiments[i] is i+1 threads
   std::vector<Experiment> experiments;
-  MsTimer save_timer;
-  double last_save = 0.0;
+  MsTimer run_timer;
+  double last_save = 0.0, last_status = 0.0;
 };
 
 #endif

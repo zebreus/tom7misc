@@ -88,4 +88,8 @@ inline std::string AnsiBackgroundRGB(uint8_t r, uint8_t g, uint8_t b) {
   return escape;
 }
 
+// Return an ansi-colored representation of the duration, with arbitrary
+// but Tom 7-approved choices of color and significant figures.
+std::string AnsiTime(double seconds);
+
 #endif

@@ -1,19 +1,26 @@
 
-#include "big.h"
+#include "factorize.h"
 
+#include <cstdlib>
 #include <array>
-#include <vector>
 #include <cstdint>
+#include <vector>
 #include <utility>
-
-// TODO: The "factor" program from GNU coreutils would
-// be a good source for algorithmic improvements to this.
-
-// TODO: Move to big-util or something so that we don't
-// need to include it by default?
+#include <cmath>
 
 using namespace std;
 
+static uint64_t Sqrt64(uint64_t n) {
+  if (n == 0) return 0;
+  uint64_t r = std::sqrt((double)n);
+  return r - (r * r - 1 >= n);
+}
+
+// PERF: Gaps between primes are <= 250 all the
+// way up to 387096383. So this could easily be represented
+// with 8-bit deltas.
+
+// We could have all the 16-bit primes?
 static constexpr array<uint16_t, 1000> PRIMES = {
   2,3,5,7,11,13,17,19,23,29,
   31,37,41,43,47,53,59,61,67,71,
@@ -117,51 +124,47 @@ static constexpr array<uint16_t, 1000> PRIMES = {
   7841,7853,7867,7873,7877,7879,7883,7901,7907,7919,
 };
 
-std::vector<std::pair<BigInt, int>>
-BigInt::PrimeFactorization(const BigInt &x, int64_t mf) {
+
+std::vector<std::pair<uint64_t, int>>
+Factorize::PrimeFactorization(uint64_t x) {
+  // TODO: Allow as argument
+  uint64_t max_factor = x;
+
   // Simple trial division.
   // It would not be hard to incorporate Fermat's method too,
   // for cases that the number has factors close to its square
   // root too (this may be common?).
 
   // Factors in increasing order.
-  std::vector<std::pair<BigInt, int>> factors;
+  std::vector<std::pair<uint64_t, int>> factors;
 
-  BigInt cur = x;
-  BigInt zero(0);
-  BigInt two(2);
-
-  // Illegal input.
-  if (!BigInt::Greater(x, zero))
-    return factors;
-
-  BigInt max_factor(mf);
-  // Without a max factor, use the starting number itself.
-  if (mf < 0 || BigInt::Greater(max_factor, x))
-    max_factor = x;
+  if (x <= 1) return {};
 
   // Add the factor, or increment its exponent if it is the
   // one already at the end. This requires that the factors
   // are added in ascending order (which they are).
-  auto PushFactor = [&factors](const BigInt &b) {
+  auto PushFactor = [&factors](uint64_t b) {
       if (!factors.empty() &&
-          BigInt::Eq(factors.back().first, b)) {
+          factors.back().first == b) {
         factors.back().second++;
       } else {
-        factors.push_back(make_pair(b, 1));
+        factors.emplace_back(b, 1);
       }
     };
 
+  // Current value being factored; as we find factors, we divide
+  // this target.
+  uint64_t cur = x;
   // First, using the prime list.
   for (int i = 0; i < (int)PRIMES.size(); /* in loop */) {
-    BigInt prime(PRIMES[i]);
-    if (BigInt::Greater(prime, max_factor))
+    uint64_t prime = PRIMES[i];
+    if (prime > max_factor)
       break;
 
-    const auto [q, r] = BigInt::QuotRem(cur, prime);
-    if (BigInt::Eq(r, zero)) {
-      cur = q;
-      if (BigInt::Greater(max_factor, cur))
+    uint64_t rem = cur % prime;
+    if (rem == 0) {
+      cur = cur / prime;
+      if (max_factor > cur)
         max_factor = cur;
       PushFactor(prime);
       // But don't increment i, as it may appear as a
@@ -173,35 +176,44 @@ BigInt::PrimeFactorization(const BigInt &x, int64_t mf) {
 
   // Once we exhausted the prime list, do the same
   // but with odd numbers up to the square root.
-  BigInt divisor((int64_t)PRIMES.back());
-  divisor = BigInt::Plus(divisor, two);
+  uint64_t divisor = PRIMES.back();
+  divisor += 2;
+  uint64_t sqrtcur = Sqrt64(cur) + 1;
   for (;;) {
-    if (mf >= 0 && BigInt::Greater(divisor, max_factor))
+    // skip if a multiple of 3.
+    if (divisor > max_factor)
       break;
 
-    // TODO: Would be faster to compute ceil(sqrt(cur)) each
-    // time we have a new cur, right? We can then just have
-    // the single max_factor as well.
-    BigInt sq = BigInt::Times(divisor, divisor);
-    if (BigInt::Greater(sq, cur))
+    if (divisor > sqrtcur)
       break;
 
-    // TODO: Is it faster to skip ones with small factors?
-    const auto [q, r] = BigInt::QuotRem(cur, divisor);
-    if (BigInt::Eq(r, zero)) {
-      cur = q;
+    const uint64_t rem = cur % divisor;
+    if (rem == 0) {
+      cur = cur / divisor;
+      sqrtcur = Sqrt64(cur) + 1;
       PushFactor(divisor);
       // But don't increment i, as it may appear as a
       // factor many times.
     } else {
-      // At least we skip even ones.
-      divisor = BigInt::Plus(divisor, two);
+      do {
+        // Always skip even numbers; this is trivial.
+        divisor += 2;
+        // But also skip divisors with small factors. Modding by
+        // small constants can be compiled into multiplication
+        // tricks, so this is faster than doing another proper
+        // loop.
+      } while ((divisor % 3) == 0 ||
+               (divisor % 5) == 0 ||
+               (divisor % 7) == 0 ||
+               (divisor % 11) == 0 ||
+               (divisor % 13) == 0 ||
+               (divisor % 17) == 0);
     }
   }
 
   // And the number itself, which we now know is prime
   // (unless we reached the max factor).
-  if (!BigInt::Eq(cur, BigInt(1))) {
+  if (cur != 1) {
     PushFactor(cur);
   }
 

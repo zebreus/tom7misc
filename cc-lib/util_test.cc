@@ -367,6 +367,13 @@ static void TestUnicode() {
   CHECK("\xF0\x9F\x8D\x8C" == banana) << ToHex(banana);
 }
 
+static void TestReplace() {
+  CHECK_SEQ(Util::Replace("abc", "b", "xxx"), "axxxc");
+  CHECK_SEQ(Util::Replace("abc", "z", "xxx"), "abc");
+  CHECK_SEQ(Util::Replace("aaa", "a", "aba"), "abaabaaba");
+  CHECK_SEQ(Util::Replace("unaffected", "", "z"), "unaffected");
+}
+
 int main(int argc, char **argv) {
   TestItos();
   TestStoi();
@@ -386,6 +393,7 @@ int main(int argc, char **argv) {
   TestHex();
   TestHexString();
   TestUnicode();
+  TestReplace();
 
   printf("OK\n");
   return 0;
