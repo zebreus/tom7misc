@@ -36,13 +36,17 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=clutil.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
+OBJECTS=clutil.o sos-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
 
 sos.exe : sos.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 msos.exe : msos.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+sos-util_test.exe : sos-util_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
