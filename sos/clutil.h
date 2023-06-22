@@ -131,12 +131,13 @@ static cl_mem CreateUninitializedGPUMemory(cl_context context, size_t n_items) {
   CHECK(n_items > 0) << "Empty buffers not supported :(";
   cl_int create_error = 0;
   size_t size_bytes = sizeof (T) * n_items;
-  printf("Bytes: %zu\n", size_bytes);
+  // printf("Bytes: %zu\n", size_bytes);
   cl_mem buf =
     clCreateBuffer(context, 0, size_bytes, nullptr, &create_error);
   CHECK_SUCCESS(create_error);
   CHECK(buf != 0);
 
+  /*
   size_t actual = 0;
   CHECK_SUCCESS(
     clGetMemObjectInfo(buf,
@@ -145,6 +146,7 @@ static cl_mem CreateUninitializedGPUMemory(cl_context context, size_t n_items) {
                        &actual,
                        nullptr));
   printf("Actual byte size: %zu\n", actual);
+  */
   return buf;
 }
 
@@ -153,6 +155,7 @@ static std::vector<T> CopyBufferFromGPU(cl_command_queue cmd,
                                         cl_mem buf, int n) {
   CHECK(n > 0) << "Empty buffers not supported :(";
 
+  /*
   size_t actual = 0;
   CHECK_SUCCESS(
     clGetMemObjectInfo(buf,
@@ -161,11 +164,12 @@ static std::vector<T> CopyBufferFromGPU(cl_command_queue cmd,
                        &actual,
                        nullptr));
   printf("Actual byte size: %zu\n", actual);
+  */
 
   std::vector<T> vec;
   vec.resize(n);
   size_t size_bytes = sizeof (T) * n;
-  printf("Size bytes: %zu\n", size_bytes);
+  // printf("Size bytes: %zu\n", size_bytes);
   CHECK_SUCCESS(clEnqueueReadBuffer(cmd, buf, CL_TRUE, 0, size_bytes,
                                     vec.data(),
                                     // No wait-list or event.

@@ -1,5 +1,5 @@
 
-default: msos.exe sos.exe
+default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe
 
 CC_LIB=../cc-lib
 
@@ -47,6 +47,10 @@ msos.exe : msos.o $(OBJECTS)
 	@echo -n "!"
 
 sos-util_test.exe : sos-util_test.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+sos-gpu_test.exe : sos-gpu_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

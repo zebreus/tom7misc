@@ -136,8 +136,8 @@ ReferenceValidate3(uint64_t sum) {
 # define MAGIC11 0x23b
 
 /* Return the square root if the input is a square, otherwise 0.  */
-inline static uint64_t
-MaybeSquare (uint64_t x) {
+inline static bool
+MaybeSquare(uint64_t x) {
   /* Uses the tests suggested by Cohen.  Excludes 99% of the non-squares before
      computing the square root.  */
   return (((MAGIC64 >> (x & 63)) & 1)
@@ -150,6 +150,10 @@ MaybeSquare (uint64_t x) {
 
 std::vector<std::pair<uint64_t, uint64_t>>
 BruteGetNWays(uint64_t sum) {
+  // We use 0 as a sentinel value below, so get that out of the way.
+  // PERF: We could request this as a precondition.
+  if (sum == 0) return {{0, 0}};
+
   // Neither factor can be larger than the square root.
   // uint64_t limit_b = Sqrt64(sum);
   // while (limit_b * limit_b < sum) limit_b++;
