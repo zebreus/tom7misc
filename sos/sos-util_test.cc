@@ -82,14 +82,14 @@ static void TestCWW() {
   }
 }
 
-// 264.3/sec -> 244401.7/sec :)
+// 264.3/sec -> 244401.7/sec -> 1040228/sec :)
 static void TestBruteN() {
   std::mutex m;
   int triples = 0;
   Timer timer;
   static constexpr uint64_t START = 100'000'000;
-  static constexpr uint64_t NUM   = 100'000'00;
-  Periodically status_per(10.0);
+  static constexpr uint64_t NUM   =  10'000'000;
+  Periodically status_per(5.0);
   ParallelComp(
     NUM,
     [&triples, &status_per, &timer, &m](uint64_t idx) {
@@ -128,6 +128,7 @@ static void TestBruteN() {
   printf("Total triples: %d/%llu\n", triples, NUM);
   printf("Done in %s. (%s/ea.)\n",
          AnsiTime(sec).c_str(), AnsiTime(sec / NUM).c_str());
+  printf(" = %.1f/sec\n", NUM / sec);
 }
 
 

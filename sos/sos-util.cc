@@ -127,6 +127,27 @@ ReferenceValidate3(uint64_t sum) {
   return nullopt;
 }
 
+// from factor.c; GPL
+
+/* MAGIC[N] has a bit i set iff i is a quadratic residue mod N.  */
+# define MAGIC64 0x0202021202030213ULL
+# define MAGIC63 0x0402483012450293ULL
+# define MAGIC65 0x218a019866014613ULL
+# define MAGIC11 0x23b
+
+/* Return the square root if the input is a square, otherwise 0.  */
+inline static uint64_t
+MaybeSquare (uint64_t x) {
+  /* Uses the tests suggested by Cohen.  Excludes 99% of the non-squares before
+     computing the square root.  */
+  return (((MAGIC64 >> (x & 63)) & 1)
+          && ((MAGIC63 >> (x % 63)) & 1)
+          /* Both 0 and 64 are squares mod (65).  */
+          && ((MAGIC65 >> ((x % 65) & 63)) & 1)
+          && ((MAGIC11 >> (x % 11) & 1)));
+}
+
+
 std::vector<std::pair<uint64_t, uint64_t>>
 BruteGetNWays(uint64_t sum) {
   // Neither factor can be larger than the square root.
@@ -142,13 +163,20 @@ BruteGetNWays(uint64_t sum) {
   auto GetOther = [sum](uint64_t x) -> uint64_t {
       uint64_t xx = x * x;
       uint64_t target = sum - xx;
+      if (!MaybeSquare(target))
+        return 0;
+
       uint64_t y = Sqrt64(target);
+      if (y * y != target)
+        return 0;
+
       // Insist that the result is smaller than the
       // input, even if it would work. We find it the
       // other way. Try x = 7072 for sum = 100012225.
-      if (y < x) return 0;
-      if (y * y == target) return y;
-      else return 0;
+      if (y < x)
+        return 0;
+
+      return y;
     };
 
   // The way we ensure distinctness is that the pairs are ordered
@@ -163,3 +191,58 @@ BruteGetNWays(uint64_t sum) {
 
   return ret;
 }
+
+#if 0
+// from factor.c, gpl
+
+// uintmax_t should be uint64
+static uintmax_t
+isqrt (uintmax_t n)
+{
+  uintmax_t x;
+  unsigned c;
+  if (n == 0)
+    return 0;
+
+  count_leading_zeros (c, n);
+
+  /* Make x > sqrt(n).  This will be invariant through the loop.  */
+  x = (uintmax_t) 1 << ((W_TYPE_SIZE + 1 - c) / 2);
+
+  for (;;)
+    {
+      uintmax_t y = (x + n / x) / 2;
+      if (y >= x)
+        return x;
+
+      x = y;
+    }
+}
+
+
+/* MAGIC[N] has a bit i set iff i is a quadratic residue mod N.  */
+# define MAGIC64 0x0202021202030213ULL
+# define MAGIC63 0x0402483012450293ULL
+# define MAGIC65 0x218a019866014613ULL
+# define MAGIC11 0x23b
+
+/* Return the square root if the input is a square, otherwise 0.  */
+ATTRIBUTE_CONST
+static uintmax_t
+is_square (uintmax_t x)
+{
+  /* Uses the tests suggested by Cohen.  Excludes 99% of the non-squares before
+     computing the square root.  */
+  if (((MAGIC64 >> (x & 63)) & 1)
+      && ((MAGIC63 >> (x % 63)) & 1)
+      /* Both 0 and 64 are squares mod (65).  */
+      && ((MAGIC65 >> ((x % 65) & 63)) & 1)
+      && ((MAGIC11 >> (x % 11) & 1)))
+    {
+      uintmax_t r = isqrt (x);
+      if (r * r == x)
+        return r;
+    }
+  return 0;
+}
+#endif
