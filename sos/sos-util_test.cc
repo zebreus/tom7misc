@@ -99,6 +99,9 @@ static void TestBruteN() {
 
       int num = ChaiWahWu(i);
       if (num > 3) {
+        // Note: We can pass num to make this faster, but
+        // in a test it makes sense to check that we don't
+        // get *too many*.
         std::vector<std::pair<uint64_t, uint64_t>> nways =
           BruteGetNWays(i);
         for (const auto &[a, b] : nways) {
@@ -131,9 +134,22 @@ static void TestBruteN() {
   printf(" = %.1f/sec\n", NUM / sec);
 }
 
+static void TestSimple() {
+  for (int i = 2; i < 60; i++) {
+    int num = ChaiWahWu(i);
+    std::vector<std::pair<uint64_t, uint64_t>> nways_fast =
+      BruteGetNWays(i, num);
+    std::vector<std::pair<uint64_t, uint64_t>> nways =
+      BruteGetNWays(i);
+    CHECK(nways_fast.size() == nways.size());
+    CHECK(num == (int)nways.size());
+    printf("%d: %d ways: %s\n", i, num, WaysString(nways).c_str());
+  }
+}
 
 int main(int argc, char **argv) {
   AnsiInit();
+  TestSimple();
   TestCWW();
   TestBruteN();
 

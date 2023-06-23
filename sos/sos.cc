@@ -224,8 +224,8 @@ static void GenCWW() {
   double nways_sec = 0.0;
   double try_sec = 0.0;
 
-  static constexpr uint64_t START = 65'000'000'000;
-  static constexpr uint64_t NUM   =  5'000'000'000; /* ' */
+  static constexpr uint64_t START = 72'000'000'000;
+  static constexpr uint64_t NUM   = 12'000'000'000; /* ' */
   Periodically status_per(10.0);
   comp.
     ParallelComp(
@@ -247,7 +247,7 @@ static void GenCWW() {
         if (nways > 3) {
           // Timer nways_timer;
           std::vector<std::pair<uint64_t, uint64_t>> ways =
-            BruteGetNWays(num);
+            BruteGetNWays(num, nways);
           // double nways_sec = nways_timer.Seconds();
 
           // Timer try_timer;
@@ -310,7 +310,9 @@ static void GenCWW() {
 
     FILE *f = fopen("sos.txt", "ab");
     CHECK(f != nullptr);
-    fprintf(f, "Done in %s\n", AnsiStripCodes(AnsiTime(sec)).c_str());
+    fprintf(f, "Done in %s (%s/ea.)\n",
+            AnsiStripCodes(AnsiTime(sec)).c_str(),
+            AnsiStripCodes(AnsiTime(sec / NUM)).c_str());
     fprintf(f,
             "%lld rf %lld rh"
             " %lld rff %lld rhh"

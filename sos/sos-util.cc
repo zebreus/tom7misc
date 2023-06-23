@@ -149,7 +149,8 @@ MaybeSquare(uint64_t x) {
 
 
 std::vector<std::pair<uint64_t, uint64_t>>
-BruteGetNWays(uint64_t sum) {
+BruteGetNWays(uint64_t sum, int num_expected) {
+  if (num_expected == 0) return {};
   // We use 0 as a sentinel value below, so get that out of the way.
   // PERF: We could request this as a precondition.
   if (sum == 0) return {{0, 0}};
@@ -190,6 +191,8 @@ BruteGetNWays(uint64_t sum) {
   for (uint64_t a = 0; a <= limit_a; a++) {
     if (uint64_t b = GetOther(a)) {
       ret.emplace_back(a, b);
+      if (num_expected >= 0 && (int)ret.size() == num_expected)
+        return ret;
     }
   }
 

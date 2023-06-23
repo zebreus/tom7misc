@@ -11,7 +11,7 @@ static CL *cl = nullptr;
 static constexpr bool CHECK_ANSWERS = true;
 
 static void TestNWays() {
-  NWaysGPU nways_gpu(cl);
+  NWaysGPU nways_gpu(cl, 1);
 
   double gpu_sec = 0.0;
   double cpu_sec = 0.0;
@@ -23,8 +23,11 @@ static void TestNWays() {
     cpu_sec += cpu_timer.Seconds();
 
     Timer gpu_timer;
-    std::vector<std::pair<uint64_t, uint64_t>> out_gpu =
-      nways_gpu.GetNWays(sum);
+    // XXX compute second arg. but it is unused.
+    std::vector<std::pair<uint64_t, uint32_t>> in_gpu = {{sum, 3}};
+    std::vector<std::vector<std::pair<uint64_t, uint64_t>>> outs_gpu =
+      nways_gpu.GetNWays(in_gpu);
+    const auto out_gpu = outs_gpu[0];
     gpu_sec += gpu_timer.Seconds();
 
     if constexpr (CHECK_ANSWERS) {

@@ -32,10 +32,11 @@ std::optional<std::tuple<uint64_t, uint64_t,
 ReferenceValidate3(uint64_t sum);
 
 // Generate all of the ways that the sum can be written as
-// a^2 + b^2.
+// a^2 + b^2. If num_expected is nonnegative, stop once we
+// get that many.
 // Brute force, but with smarter limits on search.
 std::vector<std::pair<uint64_t, uint64_t>>
-BruteGetNWays(uint64_t sum);
+BruteGetNWays(uint64_t sum, int num_expected = -1);
 
 std::string WaysString(
     const std::vector<std::pair<uint64_t, uint64_t>> &v);

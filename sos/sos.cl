@@ -43,25 +43,37 @@ inline static uint64_t Sqrt64(uint64_t n) {
 
 
 // Try to find b such that a^2 + b^2 = sum, with a <= b.
-// If successful, output (a,b) to out[next_out] and increment
-// next_out by two.
-__kernel void NWays(uint64_t sum,
-                    __global uint32_t *next_out,
-                    __global uint64_t *out) {
+// If successful, output (a,b) to out[out_size] and increment
+// out_size by two.
+__kernel void NWays(__global const uint64_t *restrict sums,
+                    __global uint32_t *restrict out_size,
+                    __global uint64_t *restrict out) {
 
 
   // The way we ensure distinctness is that the pairs are ordered
   // a < b, and the search (and vector) is ordered by the first
   // element.
 
-  uint64_t a = get_global_id(0);
+  const uint64_t a = get_global_id(0);
+  const int sum_idx = get_global_id(1);
+  const uint64_t sum = sums[sum_idx];
 
-  uint64_t aa = a * a;
-  uint64_t target = sum - aa;
+  const uint64_t aa = a * a;
+
+  const uint64_t target = sum - aa;
   if (!MaybeSquare(target))
     return;
 
-  uint64_t b = Sqrt64(target);
+  // The limit is set for the largest sum, so we need to deal with
+  // this raggedness. I think the advantage of testing early could
+  // be that a batch of work units finish early (when we reach the
+  // padding part). The advantage of testing late is that threads
+  // would reach the most common bail-out with fewer instructions.
+  // This latter thing seems better?
+  if (aa * 2 > sum)
+    return;
+
+  const uint64_t b = Sqrt64(target);
   if (b * b != target)
     return;
 
@@ -71,9 +83,9 @@ __kernel void NWays(uint64_t sum,
   if (b < a)
     return;
 
-  // Get unique indices in the output array. This is rare
+  // Get unique indices in this row's output array. This is very rare
   // so the synchronization overhead should not be too bad.
-  uint32_t idx = atomic_add(next_out, 2);
+  uint32_t idx = atomic_add(&out_size[sum_idx], 2);
   out[idx] = a;
   out[idx + 1] = b;
 }
