@@ -211,7 +211,7 @@ static void Try(int z,
 static void GenCWW() {
   // XXX test that it can compile this opencl code
   CHECK(cl != nullptr);
-  NWaysGPU nways_gpu(cl);
+  // NWaysGPU nways_gpu(cl);
 
   AutoParallelComp comp(16, 1000, true, "cww.autoparallel");
 
@@ -225,7 +225,7 @@ static void GenCWW() {
   double try_sec = 0.0;
 
   static constexpr uint64_t START = 65'000'000'000;
-  static constexpr uint64_t NUM   = 15'000'000'000; /* ' */
+  static constexpr uint64_t NUM   =  5'000'000'000; /* ' */
   Periodically status_per(10.0);
   comp.
     ParallelComp(
