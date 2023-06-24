@@ -11,28 +11,32 @@
 #include "clutil.h"
 #include "util.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "sos-util.h"
 #include "timer.h"
 #include "ansi.h"
 
-// This does work but it's way slower than I expected. It doesn't seem
-// to be the kernel that's taking the time, but some kind of overhead.
-// Maybe if we can run a batch of numbers all at once?
+
+
+// Runs many in batch. Even though there's a lot of paralellism for
+// a single number, it does not even come close to beating the CPU
+// unless we do a 2D workload.
 struct NWaysGPU {
   // This code needs to allocate a rectangular buffer in order to write
   // the ways for each input. This gives the width of that buffer, and
   // then also sets the maximum that we could output.
   static constexpr int MAX_WAYS = 32;
 
-  static constexpr bool CHECK_OUTPUT = true;
+  static constexpr bool CHECK_OUTPUT = false;
 
   CL *cl = nullptr;
   int height = 0;
 
   NWaysGPU(CL *cl, int height) : cl(cl), height(height) {
-    std::string defines = "";
+    std::string defines = StringPrintf("#define MAX_WAYS %d\n",
+                                       MAX_WAYS);
     std::string kernel_src = defines + Util::ReadFile("sos.cl");
-    std::tie(program, kernel) = cl->BuildOneKernel(kernel_src, "NWays");
+    std::tie(program, kernel) = cl->BuildOneKernel(kernel_src, "NWays", false);
     CHECK(kernel != 0);
 
     // Input buffer.
@@ -116,6 +120,7 @@ struct NWaysGPU {
       while (lim * lim < (sum / 2)) lim++;
       limit_a = std::max(limit_a, lim);
       sums.push_back(sum);
+      CHECK(e_ <= MAX_WAYS) << sum << " " << e_;
     }
     TIMER_END(prep);
 
@@ -207,17 +212,35 @@ struct NWaysGPU {
       output_sizes =
         CopyBufferFromGPU<uint32_t>(cl->queue, output_size_gpu, height);
       output_rect =
-        CopyBufferFromGPU<uint64_t>(cl->queue, output_gpu, MAX_WAYS * 2);
+        CopyBufferFromGPU<uint64_t>(cl->queue, output_gpu,
+                                    height * MAX_WAYS * 2);
       TIMER_END(read);
     }
     // Done with GPU.
+
+    // XXX verbose
+    if (false) {
+    for (int y = 0; y < height; y++) {
+      printf(ABLUE("%llu") " " ACYAN("%d") " size: " APURPLE("%d") "\n",
+             inputs[y].first, (int)inputs[y].second, (int)output_sizes[y]);
+      for (int x = 0; x < MAX_WAYS; x ++) {
+        int rect_base = y * MAX_WAYS * 2;
+        CHECK(rect_base < output_rect.size()) <<
+          rect_base << " " << output_rect.size();
+        uint64_t a = output_rect[rect_base + x * 2 + 0];
+        uint64_t b = output_rect[rect_base + x * 2 + 1];
+        printf("  %llu^2 + %llu^2 " AGREY("= %llu") "\n",
+               a, b, a * a + b * b);
+      }
+    }
+    }
 
     TIMER_START(ret);
     CHECK((int)output_sizes.size() == height);
     std::vector<std::vector<std::pair<uint64_t, uint64_t>>> ret;
     ret.reserve(height);
     for (int row = 0; row < height; row++) {
-      const int sum = inputs[row].first;
+      const uint64_t sum = inputs[row].first;
       const int rect_base = row * MAX_WAYS * 2;
       std::vector<std::pair<uint64_t, uint64_t>> one_ret;
       const int size = output_sizes[row];
@@ -230,7 +253,7 @@ struct NWaysGPU {
         if (CHECK_OUTPUT) {
           CHECK(a * a + b * b == sum) << "at " << i << ": "
                                       << a << "^2 + " << b << "^2 != "
-                                      << sum;
+                                      << sum << "(out size " << size << ")";
         }
         one_ret.emplace_back(a, b);
       }

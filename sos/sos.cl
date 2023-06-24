@@ -60,10 +60,6 @@ __kernel void NWays(__global const uint64_t *restrict sums,
 
   const uint64_t aa = a * a;
 
-  const uint64_t target = sum - aa;
-  if (!MaybeSquare(target))
-    return;
-
   // The limit is set for the largest sum, so we need to deal with
   // this raggedness. I think the advantage of testing early could
   // be that a batch of work units finish early (when we reach the
@@ -72,6 +68,12 @@ __kernel void NWays(__global const uint64_t *restrict sums,
   // This latter thing seems better?
   if (aa * 2 > sum)
     return;
+
+
+  const uint64_t target = sum - aa;
+  if (!MaybeSquare(target))
+    return;
+
 
   const uint64_t b = Sqrt64(target);
   if (b * b != target)
@@ -85,7 +87,8 @@ __kernel void NWays(__global const uint64_t *restrict sums,
 
   // Get unique indices in this row's output array. This is very rare
   // so the synchronization overhead should not be too bad.
-  uint32_t idx = atomic_add(&out_size[sum_idx], 2);
-  out[idx] = a;
-  out[idx + 1] = b;
+  uint32_t row_idx = atomic_add(&out_size[sum_idx], 2);
+  const uint32_t row_base = sum_idx * MAX_WAYS * 2;
+  out[row_base + row_idx] = a;
+  out[row_base + row_idx + 1] = b;
 }

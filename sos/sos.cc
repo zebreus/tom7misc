@@ -6,6 +6,7 @@
 #include <bit>
 #include <tuple>
 #include <atomic>
+#include <deque>
 
 #include <windows.h>
 
@@ -31,25 +32,51 @@ static CL *cl = nullptr;
 
 using int64 = int64_t;
 
+// Tuned by sos-gpu_test.
+static constexpr int GPU_HEIGHT = 49912;
+static constexpr uint64_t EPOCH_SIZE = 1'000'000'000; /* ' */
+static constexpr int TRY_PARALLELISM = 4;
 
+static std::mutex file_mutex;
+static const char *INTERESTING_FILE = "interesting.txt";
+static const char *DONE_FILE = "sos-done.txt";
 
-// Some useful facts:
-//  Must be in OEIS https://oeis.org/A004431, sum of two distinct squares.
-//  OEIS https://oeis.org/A000161 gives the count of ways, so if
-//  A000161[n] >= 2, it is in this set.
-//
-//  https://proofwiki.org/wiki/Sum_of_2_Squares_in_2_Distinct_Ways
-//    if m and n are in the set, then m*n is in the set (except
-//    possibly for some equivalences like a = b).
-// https://users.rowan.edu/~hassen/Papers/SUM%20OF%20TWO%20SQUARES%20IN%20MORE%20THAN%20ONE%20WAY.pdf
-//    If it's in the set, then it is the product of sums of squares.
+static uint64_t GetDone() {
+  MutexLock ml(&file_mutex);
+  string s = Util::ReadFile(DONE_FILE);
+  if (s.empty()) return 0;
+  return stoull(s);
+}
 
+static void SetDone(uint64 next) {
+  MutexLock ml(&file_mutex);
+  Util::WriteFile(DONE_FILE, StringPrintf("%llu\n", next));
+}
+
+static void Interesting(const std::string &s) {
+  MutexLock ml(&file_mutex);
+  printf("%s\n", s.c_str());
+  string raw = AnsiStripCodes(s);
+  FILE *f = fopen(INTERESTING_FILE, "ab");
+  CHECK(f != nullptr);
+  fprintf(f, "%s\n", raw.c_str());
+  fclose(f);
+}
+
+// These are not guaranteed to be accurate!
 static std::atomic<int64_t> rejected_f{0ULL};
 static std::atomic<int64_t> rejected_h{0ULL};
 static std::atomic<int64_t> rejected_ff{0ULL};
 static std::atomic<int64_t> rejected_hh{0ULL};
 static std::atomic<int64_t> rejected_aa{0ULL};
 #define INCREMENT(rej) rej.fetch_add(1, std::memory_order_relaxed)
+static void ResetCounters() {
+  rejected_f.store(0ULL);
+  rejected_h.store(0ULL);
+  rejected_ff.store(0ULL);
+  rejected_hh.store(0ULL);
+  rejected_aa.store(0ULL);
+}
 
 // So now take numbers that can be written as sums of squares
 // three ways: Z = B^2 + C^2 = D^2 + G^2 = E^2 + I^2
@@ -130,7 +157,8 @@ static void Try(int z,
             const uint64_t ii = i * i;
 
             // f is specified two ways; they must have the
-            // same sum then.
+            // same sum then. This is by far the most common
+            // rejection reason.
             if (cc + ii != dd + ee) {
               INCREMENT(rejected_f);
               return;
@@ -138,6 +166,7 @@ static void Try(int z,
             // Same for h.
             if (gg + ii != bb + ee) {
               // XXX This never fails? Is it implied by the above?
+              // Prove it?
               INCREMENT(rejected_h);
               return;
             }
@@ -157,19 +186,22 @@ static void Try(int z,
             if (h * h != hh) {
               INCREMENT(rejected_hh);
               const uint64_t aa = sum - (bb + cc);
-              printf("\n"
-                     ARED("sqrt(%llu)^2") " %llu^2 %llu^2\n"
-                     "%llu^2 %llu^2 %llu^2\n"
-                     "%llu^2 " ARED("sqrt(%llu)^2") " %llu^2\n"
-                     ARED("but %llu * %llu != %llu") "\n"
-                     "Sum: %llu\n",
-                     aa, b, c,
-                     d, e, f,
-                     g, hh, i,
-                     // error
-                     h, h, hh,
-                     sum);
-
+              Interesting(
+                  StringPrintf(
+                      // For easy parsing. Everything is its squared version.
+                      "(!) %llu %llu %llu %llu %llu %llu %llu %llu %llu\n"
+                      ARED("sqrt(%llu)^2") " %llu^2 %llu^2\n"
+                      "%llu^2 %llu^2 %llu^2\n"
+                      "%llu^2 " ARED("sqrt(%llu)^2") " %llu^2\n"
+                      ARED("but %llu * %llu != %llu") "\n"
+                      "Sum: %llu\n",
+                      aa, bb, cc, dd, ee, ff, gg, hh, ii,
+                      aa, b, c,
+                      d, e, f,
+                      g, hh, i,
+                      // error
+                      h, h, hh,
+                      sum));
               return;
             }
 
@@ -177,29 +209,40 @@ static void Try(int z,
             const uint64_t a = Sqrt64(aa);
             if (a * a != aa) {
               INCREMENT(rejected_aa);
-              printf("\n"
-                     ARED("sqrt(%llu)^2") " %llu^2 %llu^2\n"
-                     "%llu^2 %llu^2 %llu^2\n"
-                     "%llu^2 %llu^2 %llu^2\n"
-                     ARED("but %llu * %llu != %llu") "\n"
-                     "Sum: %llu\n",
-                     aa, b, c,
-                     d, e, f,
-                     g, h, i,
-                     // error
-                     a, a, aa,
-                     sum);
+              Interesting(
+                  StringPrintf(
+                      // For easy parsing. Everything is its squared version.
+                      "(!!!) %llu %llu %llu %llu %llu %llu %llu %llu %llu\n"
+                      ARED("sqrt(%llu)^2") " %llu^2 %llu^2\n"
+                      "%llu^2 %llu^2 %llu^2\n"
+                      "%llu^2 %llu^2 %llu^2\n"
+                      ARED("but %llu * %llu != %llu") "\n"
+                      "Sum: %llu\n",
+                      aa, bb, cc, dd, ee, ff, gg, hh, ii,
+                      aa, b, c,
+                      d, e, f,
+                      g, h, i,
+                      // error
+                      a, a, aa,
+                      sum));
               return;
             }
 
-            printf("%llu^2 %llu^2 %llu^2\n"
-                   "%llu^2 %llu^2 %llu^2\n"
-                   "%llu^2 %llu^2 %llu^2\n"
-                   "Sum: %llu\n",
-                   a, b, c,
-                   d, e, f,
-                   g, h, i,
-                   sum);
+            string success =
+              StringPrintf("(!!!!!)"
+                           "%llu^2 %llu^2 %llu^2\n"
+                           "%llu^2 %llu^2 %llu^2\n"
+                           "%llu^2 %llu^2 %llu^2\n"
+                           "Sum: %llu\n"
+                           AGREEN("It works?!") "\n",
+                           a, b, c,
+                           d, e, f,
+                           g, h, i,
+                           sum);
+
+            Interesting(success);
+
+            printf("Success!!\n");
 
             printf("Note: didn't completely check for uniqueness "
                    "or overflow!\n");
@@ -208,136 +251,385 @@ static void Try(int z,
 
 }
 
-static void GenCWW() {
-  // XXX test that it can compile this opencl code
-  CHECK(cl != nullptr);
-  // NWaysGPU nways_gpu(cl);
+// TODO: To threadutil?
+template<class Item>
+struct BatchedWorkQueue {
+  const int batch_size = 0;
+  BatchedWorkQueue(int batch_size) : batch_size(batch_size) {
+    CHECK(batch_size > 0);
+    // Set up invariant.
+    queue.push_back(std::vector<Item>{});
+  }
 
-  AutoParallelComp comp(16, 1000, true, "cww.autoparallel");
+  std::mutex mutex;
+  std::condition_variable cond;
+  // Add at the end. This always consists of a series (maybe zero)
+  // of full vectors and an incomplete vector (maybe empty) at the
+  // end. (Unless "done", in which case it can be empty.)
+  std::deque<std::vector<Item>> queue;
+  bool done = false;
+
+  // Consumers of the work queue call this in a loop. If the result
+  // is nullopt, then the queue is done. The final work item can be
+  // smaller than the batch size, but not empty.
+  std::optional<std::vector<Item>> WaitGet() {
+    std::vector<Item> batch;
+    {
+      std::unique_lock ml(mutex);
+      cond.wait(ml, [this] {
+          // Either the queue is empty (and we're totally done)
+          // or there's something in the queue.
+          if (done) return true;
+          CHECK(!queue.empty());
+          return queue.front().size() == batch_size;
+        });
+      if (done && queue.empty()) return nullopt;
+      // Now holding lock with a full batch (or the last batch).
+      // Take ownership.
+      batch = std::move(queue.front());
+      // It's the responsibility of those that insert into the
+      // queue to maintain the presence of an incomplete vector.
+      // So we can just remove the full one.
+      queue.pop_front();
+    }
+    cond.notify_all();
+
+    return {batch};
+  }
+
+  void WaitAdd(const Item &item) {
+    {
+      std::unique_lock ml(mutex);
+      CHECK(!done);
+      CHECK(!queue.empty() && queue.back().size() < batch_size);
+      queue.back().push_back(item);
+      if (queue.back().size() == batch_size) {
+        // Finished batch, so add new empty batch.
+        queue.push_back(std::vector<Item>());
+      }
+    }
+    cond.notify_all();
+  }
+
+  void MarkDone() {
+    {
+      std::unique_lock ml(mutex);
+      CHECK(!done);
+      done = true;
+    }
+    cond.notify_all();
+  }
+
+  // Might be useful to be able to add in batch.
+};
+
+// TODO: To threadutil?
+// Here, a serial queue. This is intended for larger items (perhaps
+// pre-batched work).
+template<class Item>
+struct WorkQueue {
+  // TODO: Could support max queue size pretty easily.
+  WorkQueue() {
+  }
+
+  std::mutex mutex;
+  std::condition_variable cond;
+  // The items. Can be empty.
+  std::deque<Item> queue;
+  bool done = false;
+
+  // Consumers of the work queue call this in a loop. If nullopt,
+  // then the queue is done.
+  std::optional<Item> WaitGet() {
+    Item item;
+    {
+      std::unique_lock ml(mutex);
+      cond.wait(ml, [this] {
+          if (done) return true;
+          return !queue.empty();
+        });
+
+      if (done && queue.empty()) return nullopt;
+
+      item = std::move(queue.front());
+      queue.pop_front();
+    }
+    cond.notify_all();
+
+    return {item};
+  }
+
+  void WaitAdd(const Item &item) {
+    {
+      std::unique_lock ml(mutex);
+      CHECK(!done);
+      queue.push_back(item);
+    }
+    cond.notify_all();
+  }
+
+  void WaitAdd(Item &&item) {
+    {
+      std::unique_lock ml(mutex);
+      CHECK(!done);
+      queue.emplace_back(item);
+    }
+    cond.notify_all();
+  }
+
+  void MarkDone() {
+    {
+      std::unique_lock ml(mutex);
+      CHECK(!done);
+      done = true;
+    }
+    cond.notify_all();
+  }
+
+};
+
+struct TryMe {
+  uint64_t num;
+  std::vector<std::pair<uint64_t, uint64_t>> squareways;
+};
+
+
+struct SOS {
+  std::unique_ptr<AutoParallelComp> comp;
+  std::unique_ptr<NWaysGPU> nways_gpu;
+
+  // An element is a number and its expected number of ways.
+  std::unique_ptr<
+    BatchedWorkQueue<std::pair<uint64_t, uint32_t>>
+    > nways_queue;
+  std::unique_ptr<
+    WorkQueue<std::vector<TryMe>>
+    > try_queue;
+
+  SOS() : status_per(10.0) {
+    // Cache is pretty workload-dependent, so just tune in-process.
+    comp.reset(new AutoParallelComp(16, 1000, false
+                                    /* , "cww.autoparallel" */));
+    nways_gpu.reset(new NWaysGPU(cl, GPU_HEIGHT));
+
+    nways_queue.reset(
+        new BatchedWorkQueue<std::pair<uint64_t, uint32_t>>(GPU_HEIGHT));
+    try_queue.reset(new WorkQueue<std::vector<TryMe>>());
+  }
+
+  void GPUThread() {
+    for (;;) {
+      std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
+        nways_queue->WaitGet();
+
+      if (!batchopt.has_value()) {
+        // Done!
+        printf("GPU thread done!\n");
+        fflush(stdout);
+
+        try_queue->MarkDone();
+        return;
+      }
+
+      auto batch = std::move(batchopt.value());
+      const int real_batch_size = batch.size();
+
+      // Last batch can be incomplete.
+      CHECK(batch.size() <= GPU_HEIGHT);
+      while (batch.size() < GPU_HEIGHT) {
+        // Fill with dummy values.
+        batch.push_back(NWaysGPU::dummy);
+      }
+      std::vector<std::vector<std::pair<uint64_t, uint64_t>>> res =
+        nways_gpu->GetNWays(batch);
+
+      // Rejoin with the number. PERF: We could avoid some copying here
+      // if it's a bottleneck.
+      std::vector<TryMe> trybatch;
+      trybatch.reserve(GPU_HEIGHT);
+      // But only populate the real batch size, in case this is the
+      // last batch and short.
+      for (int i = 0; i < real_batch_size; i++)
+        trybatch.emplace_back(TryMe{.num = batch[i].first,
+                                    .squareways = std::move(res[i])});
+      res.clear();
+
+      // Add to CPU-side Try queue.
+      try_queue->WaitAdd(std::move(trybatch));
+      trybatch.clear();
+      {
+        MutexLock ml(&m);
+        done_nways += real_batch_size;
+      }
+    }
+  }
 
   std::mutex m;
-  int triples = 0;
   Timer timer;
+  // These were too big to process on the GPU.
+  uint64_t too_big = 0;
+  // Many are rejected because they can't be written as the sum of
+  // squares enough ways.
+  uint64_t ineligible = 0;
+  // These two should eventually reach the same value.
+  uint64_t triples = 0;
+  uint64_t done_nways = 0;
+  // Including ineligible. This eventually reaches EPOCH_SIZE.
+  uint64_t done = 0;
+  Periodically status_per;
 
-  std::mutex tm;
-  double cww_sec = 0.0;
-  double nways_sec = 0.0;
-  double try_sec = 0.0;
-
-  static constexpr uint64_t START = 72'000'000'000;
-  static constexpr uint64_t NUM   = 12'000'000'000; /* ' */
-  Periodically status_per(10.0);
-  comp.
-    ParallelComp(
-      NUM,
-      [&triples, &status_per, &timer, &m,
-       &tm, &cww_sec, &nways_sec, &try_sec](uint64_t idx) {
-        uint64_t num = START + idx;
-
-        // Timer cww_timer;
-        int nways = ChaiWahWu(num);
-        /*
-        double cww_sec = cww_timer.Seconds();
-        {
-          MutexLock tml(&tm);
-          cww_sec += cww_sec;
-        }
-        */
-
-        if (nways > 3) {
-          // Timer nways_timer;
-          std::vector<std::pair<uint64_t, uint64_t>> ways =
-            BruteGetNWays(num, nways);
-          // double nways_sec = nways_timer.Seconds();
-
-          // Timer try_timer;
-          Try(num, ways);
-          /*
-          double try_sec = try_timer.Seconds();
-          {
-            MutexLock tml(&tm);
-            nways_sec += nways_sec;
-            try_sec += try_sec;
-          }
-          */
-
-          {
-            MutexLock ml(&m);
-            triples++;
-            if (status_per.ShouldRun()) {
-              double pct = (triples * 100.0)/(double)idx;
-              double sec = timer.Seconds();
-              double nps = idx / sec;
-              printf("%d/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
-                     triples, idx, pct, AnsiTime(sec).c_str(), nps);
-              const int64_t rf = rejected_f.load();
-              const int64_t rh = rejected_h.load();
-              const int64_t rff = rejected_ff.load();
-              const int64_t rhh = rejected_hh.load();
-              const int64_t raa = rejected_aa.load();
-              printf("%lld " AGREY("rf") " %lld " AGREY("rh")
-                     " %lld " AGREY("rff") " %lld " AGREY("rhh")
-                     " %lld " AGREY("raa") "\n",
-                     rf, rh, rff, rhh, raa);
-              // Not counting overhead...
-              double total_sec = cww_sec + nways_sec + try_sec;
-              printf("Timing: %s cww %s nways %s try (%.2f%% + %.2f%% + %.2f%%)\n",
-                     AnsiTime(cww_sec).c_str(),
-                     AnsiTime(nways_sec).c_str(),
-                     AnsiTime(try_sec).c_str(),
-                     100.0 * cww_sec / total_sec,
-                     100.0 * nways_sec / total_sec,
-                     100.0 * try_sec / total_sec);
-              string bar = AnsiProgressBar(idx, NUM, "Running", sec);
-              // XXX put in stable spot
-              printf("%s\n", bar.c_str());
-            }
-          }
-        }
-      });
-
-  double sec = timer.Seconds();
-  printf("Total triples: %d/%llu\n", triples, NUM);
-  printf(AGREEN ("Done") " in %s. (%s/ea.)\n",
-         AnsiTime(sec).c_str(), AnsiTime(sec / NUM).c_str());
-  printf("Did %llu-%llu\n", START, START + NUM - 1);
-  {
+  // Must hold lock m.
+  void PrintStats() {
+    double pct = (triples * 100.0)/(double)done;
+    double sec = timer.Seconds();
+    double nps = done / sec;
+    printf("%llu/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
+           triples, done, pct, AnsiTime(sec).c_str(), nps);
     const int64_t rf = rejected_f.load();
     const int64_t rh = rejected_h.load();
     const int64_t rff = rejected_ff.load();
     const int64_t rhh = rejected_hh.load();
     const int64_t raa = rejected_aa.load();
+    printf("%lld " AGREY("rf") " %lld " AGREY("rh")
+           " %lld " AGREY("rff") " %lld " AGREY("rhh")
+           " %lld " AGREY("raa") "\n",
+           rf, rh, rff, rhh, raa);
+    printf(ARED("%llu") " too big\n", too_big);
+    string info = StringPrintf("%llu inel  %llu nw",
+                               ineligible, done_nways);
+    string bar = AnsiProgressBar(done, EPOCH_SIZE, info, sec);
+    // XXX put in stable spot
+    printf("%s\n", bar.c_str());
+  }
 
-    FILE *f = fopen("sos.txt", "ab");
-    CHECK(f != nullptr);
-    fprintf(f, "Done in %s (%s/ea.)\n",
-            AnsiStripCodes(AnsiTime(sec)).c_str(),
-            AnsiStripCodes(AnsiTime(sec / NUM)).c_str());
-    fprintf(f,
-            "%lld rf %lld rh"
-            " %lld rff %lld rhh"
-            " %lld raa\n",
-            rf, rh, rff, rhh, raa);
-    fprintf(f, "Did %llu-%llu\n", START, START + NUM - 1);
-    fclose(f);
+  void TryThread() {
+    for (;;) {
+      std::optional<std::vector<TryMe>> batchopt = try_queue->WaitGet();
+      if (!batchopt.has_value()) {
+        // Totally done!
+        printf("Try thread done!\n");
+        fflush(stdout);
+        return;
+      }
+
+      const auto &batch = batchopt.value();
+      printf("Try batch of size %d\n", (int)batch.size());
+
+      ParallelApp(
+          batch,
+          [](const TryMe &tryme) {
+            Try(tryme.num, tryme.squareways);
+          },
+          TRY_PARALLELISM);
+
+      {
+        MutexLock ml(&m);
+        done += batch.size();
+        if (status_per.ShouldRun()) {
+          PrintStats();
+        }
+      }
+    }
+  }
+
+  void RunEpoch(uint64_t start) {
+    CHECK(cl != nullptr);
+
+    printf(AWHITE("==") " Start epoch " APURPLE("%llu") "+ " AWHITE("==") "\n",
+           start);
+
+    std::thread gpu_thread(&GPUThread, this);
+    std::thread try_thread(&TryThread, this);
+
+    ResetCounters();
+    comp->
+      ParallelComp(
+        EPOCH_SIZE,
+        [this, start](uint64_t idx) {
+          const uint64_t num = start + idx;
+
+          const int nways = ChaiWahWu(num);
+
+          if (nways >= 3) {
+            if (nways > NWaysGPU::MAX_WAYS) {
+              {
+                MutexLock ml(&m);
+                too_big++;
+              }
+              // Do on CPU.
+              std::vector<std::pair<uint64_t, uint64_t>> ways =
+                BruteGetNWays(num, nways);
+              TryMe tryme;
+              tryme.num = num;
+              tryme.squareways = std::move(ways);
+              try_queue->WaitAdd({std::move(tryme)});
+
+            } else {
+              nways_queue->WaitAdd(make_pair(num, nways));
+            }
+          } else {
+            MutexLock ml(&m);
+            ineligible++;
+            done++;
+          }
+        });
+
+    nways_queue->MarkDone();
+
+    printf("Waiting for GPU thread.\n");
+    gpu_thread.join();
+    printf("Waiting for Try thread.\n");
+    try_thread.join();
+
+    printf(AGREEN("Done with epoch!") "\n");
+
+    printf(AWHITE("Autoparallel histo") ":\n");
+    comp->PrintHisto();
+
+    double sec = timer.Seconds();
+    printf("Total triples: %llu/%llu\n", triples, EPOCH_SIZE);
+    printf(AGREEN ("Done") " in %s. (%s/ea.)\n",
+           AnsiTime(sec).c_str(), AnsiTime(sec / EPOCH_SIZE).c_str());
+    printf("Did %llu-%llu\n", start, start + EPOCH_SIZE - 1);
+    {
+      const int64_t rf = rejected_f.load();
+      const int64_t rh = rejected_h.load();
+      const int64_t rff = rejected_ff.load();
+      const int64_t rhh = rejected_hh.load();
+      const int64_t raa = rejected_aa.load();
+
+      Interesting(
+          StringPrintf("EPOCH %llu %llu %llu %lld %lld %lld %lld %lld\n",
+                       start, EPOCH_SIZE, triples,
+                       rf, rh, rff, rh, raa));
+
+      FILE *f = fopen("sos.txt", "ab");
+      CHECK(f != nullptr);
+      fprintf(f, "Done in %s (%s/ea.)\n",
+              AnsiStripCodes(AnsiTime(sec)).c_str(),
+              AnsiStripCodes(AnsiTime(sec / EPOCH_SIZE)).c_str());
+      fprintf(f,
+              "%lld rf %lld rh"
+              " %lld rff %lld rhh"
+              " %lld raa\n",
+              rf, rh, rff, rhh, raa);
+      fprintf(f, "Did %llu-%llu\n", start, start + EPOCH_SIZE - 1);
+      fclose(f);
+    }
+  }
+
+};
+
+static void Run() {
+  uint64_t start = GetDone();
+  for (;;) {
+    SOS sos;
+    sos.RunEpoch(start);
+    start += EPOCH_SIZE;
+    SetDone(start);
   }
 }
 
-// So now take numbers that can be written as sums of squares
-// three ways: Z = B^2 + C^2 = D^2 + G^2 = E^2 + I^2
-//
-//  [a]  B   C
-//
-//   D   E  [f]
-//
-//   G  [h]  I
-//
-// This gives us the SUM = G + E + C, which then uniquely
-// determines a, f, h (if they exist). Since the starting
-// values were distinct, these residues are also distinct.
-//
-// The order of (B, C), (D, G), (E, I) matters, although there
-// are some symmetries. We can req
 
 int main(int argc, char **argv) {
   AnsiInit();
@@ -347,7 +639,7 @@ int main(int argc, char **argv) {
     LOG(FATAL) << "Unable to go to BELOW_NORMAL priority.\n";
   }
 
-  GenCWW();
+  Run();
 
   return 0;
 }
