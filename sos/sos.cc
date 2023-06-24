@@ -65,14 +65,12 @@ static void Interesting(const std::string &s) {
 
 // These are not guaranteed to be accurate!
 static std::atomic<int64_t> rejected_f{0ULL};
-static std::atomic<int64_t> rejected_h{0ULL};
 static std::atomic<int64_t> rejected_ff{0ULL};
 static std::atomic<int64_t> rejected_hh{0ULL};
 static std::atomic<int64_t> rejected_aa{0ULL};
 #define INCREMENT(rej) rej.fetch_add(1, std::memory_order_relaxed)
 static void ResetCounters() {
   rejected_f.store(0ULL);
-  rejected_h.store(0ULL);
   rejected_ff.store(0ULL);
   rejected_hh.store(0ULL);
   rejected_aa.store(0ULL);
@@ -163,13 +161,8 @@ static void Try(int z,
               INCREMENT(rejected_f);
               return;
             }
-            // Same for h.
-            if (gg + ii != bb + ee) {
-              // XXX This never fails? Is it implied by the above?
-              // Prove it?
-              INCREMENT(rejected_h);
-              return;
-            }
+
+            // Now we also know gg + ii == bb + ee. See sos.z3.
 
             // Finally, check that a, f, h are integral.
             const uint64_t sum = cc + ee + gg;
@@ -242,10 +235,15 @@ static void Try(int z,
 
             Interesting(success);
 
+            CHECK(gg + ii == bb + ee) << "Supposedly this is always "
+              "the case (see sos.z3).";
+
             printf("Success!!\n");
 
             printf("Note: didn't completely check for uniqueness "
                    "or overflow!\n");
+
+
             CHECK(false) << "winner";
           });
 
@@ -459,6 +457,7 @@ struct SOS {
       trybatch.clear();
       {
         MutexLock ml(&m);
+        triples += real_batch_size;
         done_nways += real_batch_size;
       }
     }
@@ -476,24 +475,30 @@ struct SOS {
   uint64_t done_nways = 0;
   // Including ineligible. This eventually reaches EPOCH_SIZE.
   uint64_t done = 0;
+
+  uint64_t not_div_5 = 0;
+
   Periodically status_per;
 
   // Must hold lock m.
   void PrintStats() {
+    // TODO "status bar" (maybe in ansi.h) that keeps track of
+    // whether anything but the status bar has been printed, so
+    // that we can overwrite it in place?
     double pct = (triples * 100.0)/(double)done;
     double sec = timer.Seconds();
     double nps = done / sec;
     printf("%llu/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
            triples, done, pct, AnsiTime(sec).c_str(), nps);
     const int64_t rf = rejected_f.load();
-    const int64_t rh = rejected_h.load();
     const int64_t rff = rejected_ff.load();
     const int64_t rhh = rejected_hh.load();
     const int64_t raa = rejected_aa.load();
-    printf("%lld " AGREY("rf") " %lld " AGREY("rh")
+    printf("%lld " AGREY("rf")
            " %lld " AGREY("rff") " %lld " AGREY("rhh")
-           " %lld " AGREY("raa") "\n",
-           rf, rh, rff, rhh, raa);
+           " %lld " AGREY("raa")
+           " %llu " AGREY("not div 5") "\n",
+           rf, rff, rhh, raa, not_div_5);
     printf(ARED("%llu") " too big\n", too_big);
     string info = StringPrintf("%llu inel  %llu nw",
                                ineligible, done_nways);
@@ -513,7 +518,6 @@ struct SOS {
       }
 
       const auto &batch = batchopt.value();
-      printf("Try batch of size %d\n", (int)batch.size());
 
       ParallelApp(
           batch,
@@ -551,11 +555,11 @@ struct SOS {
           const int nways = ChaiWahWu(num);
 
           if (nways >= 3) {
+            if (num % 5 != 0) {
+              MutexLock ml(&m);
+              not_div_5++;
+            }
             if (nways > NWaysGPU::MAX_WAYS) {
-              {
-                MutexLock ml(&m);
-                too_big++;
-              }
               // Do on CPU.
               std::vector<std::pair<uint64_t, uint64_t>> ways =
                 BruteGetNWays(num, nways);
@@ -564,6 +568,12 @@ struct SOS {
               tryme.squareways = std::move(ways);
               try_queue->WaitAdd({std::move(tryme)});
 
+              {
+                MutexLock ml(&m);
+                too_big++;
+                triples++;
+                done_nways++;
+              }
             } else {
               nways_queue->WaitAdd(make_pair(num, nways));
             }
@@ -593,15 +603,17 @@ struct SOS {
     printf("Did %llu-%llu\n", start, start + EPOCH_SIZE - 1);
     {
       const int64_t rf = rejected_f.load();
-      const int64_t rh = rejected_h.load();
       const int64_t rff = rejected_ff.load();
       const int64_t rhh = rejected_hh.load();
       const int64_t raa = rejected_aa.load();
 
       Interesting(
-          StringPrintf("EPOCH %llu %llu %llu %lld %lld %lld %lld %lld\n",
+          StringPrintf("EPOCH %llu %llu %llu "
+                       "%lld %lld %lld %lld %lld "
+                       "%llu\n",
                        start, EPOCH_SIZE, triples,
-                       rf, rh, rff, rh, raa));
+                       rf, rff, rhh, raa,
+                       not_div_5));
 
       FILE *f = fopen("sos.txt", "ab");
       CHECK(f != nullptr);
@@ -609,10 +621,10 @@ struct SOS {
               AnsiStripCodes(AnsiTime(sec)).c_str(),
               AnsiStripCodes(AnsiTime(sec / EPOCH_SIZE)).c_str());
       fprintf(f,
-              "%lld rf %lld rh"
+              "%lld rf "
               " %lld rff %lld rhh"
               " %lld raa\n",
-              rf, rh, rff, rhh, raa);
+              rf, rff, rhh, raa);
       fprintf(f, "Did %llu-%llu\n", start, start + EPOCH_SIZE - 1);
       fclose(f);
     }
