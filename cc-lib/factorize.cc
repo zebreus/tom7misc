@@ -8,6 +8,7 @@
 #include <utility>
 #include <cmath>
 #include <cassert>
+#include <tuple>
 
 #include "base/logging.h"
 
@@ -67,9 +68,9 @@ static constexpr int ComputeDeltas() {
 static constexpr int FIRST_OMITTED_PRIME = ComputeDeltas();
 
 static void
-factor_using_pollard_rho (uint64_t n, unsigned long int a,
-                          std::vector<std::pair<uint64_t, int>> *factors);
-static bool prime_p (uint64_t n);
+FactorUsingPollardRho(uint64_t n, unsigned long int a,
+                      std::vector<std::pair<uint64_t, int>> *factors);
+static bool IsPrime(uint64_t n);
 
 // Add the factor, or increment its exponent if it is the
 // one already at the end. Normally we are inserting in ascending
@@ -148,10 +149,10 @@ InternalFactorize(uint64_t x, bool use_pr) {
   }
 
   if (use_pr) {
-    if (prime_p(cur)) {
+    if (IsPrime(cur)) {
       PushFactor(&factors, cur);
     } else {
-      factor_using_pollard_rho (cur, 1, &factors);
+      FactorUsingPollardRho(cur, 1, &factors);
       // Pollard-rho does not generate factors in ascending order.
       NormalizeFactors(&factors);
     }
@@ -225,96 +226,99 @@ static_assert(W_TYPE_SIZE == 64);
 // TODO: continue uintmax_t -> uint64_t.
 // XXX macros to templates etc.
 
-#define sub_ddmmss(rh, rl, ah, al, bh, bl)                             \
-  do {                                                                  \
-    uintmax_t _cy;                                                      \
-    _cy = (al) < (bl);                                                  \
-    (rl) = (al) - (bl);                                                 \
-    (rh) = (ah) - (bh) - _cy;                                           \
-  } while (0)
+// Subtracts 128-bit words.
+// returns high, low
+static inline std::pair<uint64_t, uint64_t>
+Sub128(uint64_t ah, uint64_t al,
+       uint64_t bh, uint64_t bl) {
+  uint64_t carry = al < bl;
+  return std::make_pair(ah - bh - carry, al - bl);
+}
 
-#define rsh2(rh, rl, ah, al, cnt)                                       \
-  do {                                                                  \
-    (rl) = ((ah) << (W_TYPE_SIZE - (cnt))) | ((al) >> (cnt));           \
-    (rh) = (ah) >> (cnt);                                               \
-  } while (0)
+// Right-shifts a 128-bit quantity by count.
+// returns high, low
+static inline std::pair<uint64_t, uint64_t>
+RightShift128(uint64_t ah, uint64_t al, int count) {
+  return std::make_pair(ah >> count,
+                        (ah << (64 - count)) | (al >> count));
+}
 
-#define ge2(ah, al, bh, bl)                                             \
-  ((ah) > (bh) || ((ah) == (bh) && (al) >= (bl)))
+static inline bool GreaterEq128(uint64_t ah, uint64_t al,
+                                uint64_t bh, uint64_t bl) {
+  return ah > bh || (ah == bh && al >= bl);
+}
 
-# define udiv_qrnnd(q, r, n1, n0, d)                                    \
-  do {                                                                  \
-    uintmax_t __d1, __d0, __q, __r1, __r0;                              \
-                                                                        \
-    assert ((n1) < (d));                                                \
-    __d1 = (d); __d0 = 0;                                               \
-    __r1 = (n1); __r0 = (n0);                                           \
-    __q = 0;                                                            \
-    for (unsigned int __i = W_TYPE_SIZE; __i > 0; __i--)                \
-      {                                                                 \
-        rsh2 (__d1, __d0, __d1, __d0, 1);                               \
-        __q <<= 1;                                                      \
-        if (ge2 (__r1, __r0, __d1, __d0))                               \
-          {                                                             \
-            __q++;                                                      \
-            sub_ddmmss (__r1, __r0, __r1, __r0, __d1, __d0);            \
-          }                                                             \
-      }                                                                 \
-    (r) = __r0;                                                         \
-    (q) = __q;                                                          \
-  } while (0)
+
+// Returns q, r.
+// Note we only ever use the second component, so maybe we should
+// just get rid of the quotient?
+static inline std::pair<uint64_t, uint64_t> UDiv128(uint64_t n1,
+                                                    uint64_t n0,
+                                                    uint64_t d) {
+  assert (n1 < d);
+  uint64_t d1 = d;
+  uint64_t d0 = 0;
+  uint64_t r1 = n1;
+  uint64_t r0 = n0;
+  uint64_t q = 0;
+  for (unsigned int i = W_TYPE_SIZE; i > 0; i--) {
+    std::tie(d1, d0) = RightShift128(d1, d0, 1);
+    q <<= 1;
+    if (GreaterEq128(r1, r0, d1, d0)) {
+      q++;
+      std::tie(r1, r0) = Sub128(r1, r0, d1, d0);
+    }
+  }
+  return std::make_pair(q, r0);
+}
 
 
 /* x B (mod n).  */
-#define redcify(r_prim, r, n)                                           \
-  do {                                                                  \
-    [[maybe_unused]] uintmax_t _redcify_q;          \
-    udiv_qrnnd (_redcify_q, r_prim, r, 0, n);                           \
-  } while (0)
+static inline uint64_t Redcify(uint64_t r, uint64_t n) {
+  return UDiv128(r, 0, n).second;
+}
 
 /* Requires that a < n and b <= n */
-#define submod(r,a,b,n)                                                 \
-  do {                                                                  \
-    uintmax_t _t = - (uintmax_t) (a < b);                               \
-    (r) = ((n) & _t) + (a) - (b);                                       \
-  } while (0)
+static inline uint64_t SubMod(uint64_t a, uint64_t b, uint64_t n) {
+  uint64_t t = - (uint64_t) (a < b);
+  return (n & t) + a - b;
+}
 
-#define addmod(r,a,b,n)                                                 \
-  submod ((r), (a), ((n) - (b)), (n))
+static inline uint64_t AddMod(uint64_t a, uint64_t b, uint64_t n) {
+  return SubMod(a, n - b, n);
+}
 
-# define __ll_B ((uintmax_t) 1 << (W_TYPE_SIZE / 2))
-# define __ll_lowpart(t)  ((uintmax_t) (t) & (__ll_B - 1))
-# define __ll_highpart(t) ((uintmax_t) (t) >> (W_TYPE_SIZE / 2))
+#define ll_B ((uint64_t) 1 << (W_TYPE_SIZE / 2))
+#define ll_lowpart(t)  ((uint64_t) (t) & (ll_B - 1))
+#define ll_highpart(t) ((uint64_t) (t) >> (W_TYPE_SIZE / 2))
 
-# define umul_ppmm(w1, w0, u, v)                                        \
-  do {                                                                  \
-    uintmax_t __x0, __x1, __x2, __x3;                                   \
-    unsigned long int __ul, __vl, __uh, __vh;                           \
-    uintmax_t __u = (u), __v = (v);                                     \
-                                                                        \
-    __ul = __ll_lowpart (__u);                                          \
-    __uh = __ll_highpart (__u);                                         \
-    __vl = __ll_lowpart (__v);                                          \
-    __vh = __ll_highpart (__v);                                         \
-                                                                        \
-    __x0 = (uintmax_t) __ul * __vl;                                     \
-    __x1 = (uintmax_t) __ul * __vh;                                     \
-    __x2 = (uintmax_t) __uh * __vl;                                     \
-    __x3 = (uintmax_t) __uh * __vh;                                     \
-                                                                        \
-    __x1 += __ll_highpart (__x0);/* This can't give carry.  */    \
-    __x1 += __x2;   /* But this indeed can.  */   \
-    if (__x1 < __x2)    /* Did we get it?  */     \
-      __x3 += __ll_B;   /* Yes, add it in the proper pos.  */ \
-                                                                        \
-    (w1) = __x3 + __ll_highpart (__x1);                                 \
-    (w0) = (__x1 << W_TYPE_SIZE / 2) + __ll_lowpart (__x0);             \
-  } while (0)
+// returns w1, w0
+static inline std::pair<uint64_t, uint64_t> UMul128(uint64_t u, uint64_t v) {
+  uint32_t ul = ll_lowpart(u);
+  uint32_t uh = ll_highpart(u);
+  uint32_t vl = ll_lowpart(v);
+  uint32_t vh = ll_highpart(v);
+
+  uint64_t x0 = (uint64_t) ul * vl;
+  uint64_t x1 = (uint64_t) ul * vh;
+  uint64_t x2 = (uint64_t) uh * vl;
+  uint64_t x3 = (uint64_t) uh * vh;
+
+  // This can't give carry.
+  x1 += ll_highpart(x0);
+  // But this indeed can.
+  x1 += x2;
+  // If so, add in the proper position.
+  if (x1 < x2)
+    x3 += ll_B;
+
+  return std::make_pair(x3 + ll_highpart(x1),
+                        (x1 << W_TYPE_SIZE / 2) + ll_lowpart(x0));
+}
 
 
 /* Entry i contains (2i+1)^(-1) mod 2^8.  */
-static constexpr unsigned char binvert_table[128] =
-{
+static constexpr unsigned char binvert_table[128] = {
   0x01, 0xAB, 0xCD, 0xB7, 0x39, 0xA3, 0xC5, 0xEF,
   0xF1, 0x1B, 0x3D, 0xA7, 0x29, 0x13, 0x35, 0xDF,
   0xE1, 0x8B, 0xAD, 0x97, 0x19, 0x83, 0xA5, 0xCF,
@@ -330,44 +334,35 @@ static constexpr unsigned char binvert_table[128] =
   0x41, 0xEB, 0x0D, 0xF7, 0x79, 0xE3, 0x05, 0x2F,
   0x31, 0x5B, 0x7D, 0xE7, 0x69, 0x53, 0x75, 0x1F,
   0x21, 0xCB, 0xED, 0xD7, 0x59, 0xC3, 0xE5, 0x0F,
-  0x11, 0x3B, 0x5D, 0xC7, 0x49, 0x33, 0x55, 0xFF
+  0x11, 0x3B, 0x5D, 0xC7, 0x49, 0x33, 0x55, 0xFF,
 };
 
+static inline uint64_t Binv(uint64_t n) {
+  uint64_t inv = binvert_table[(n / 2) & 0x7F]; /*  8 */
+  if (W_TYPE_SIZE > 8)   inv = 2 * inv - inv * inv * n;
+  if (W_TYPE_SIZE > 16)  inv = 2 * inv - inv * inv * n;
+  if (W_TYPE_SIZE > 32)  inv = 2 * inv - inv * inv * n;
 
-#define binv(inv,n)                                                     \
-  do {                                                                  \
-    uintmax_t  __n = (n);                                               \
-    uintmax_t  __inv;                                                   \
-                                                                        \
-    __inv = binvert_table[(__n / 2) & 0x7F]; /*  8 */                   \
-    if (W_TYPE_SIZE > 8)   __inv = 2 * __inv - __inv * __inv * __n;     \
-    if (W_TYPE_SIZE > 16)  __inv = 2 * __inv - __inv * __inv * __n;     \
-    if (W_TYPE_SIZE > 32)  __inv = 2 * __inv - __inv * __inv * __n;     \
-                                                                        \
-    if (W_TYPE_SIZE > 64)                                               \
-      {                                                                 \
-        int  __invbits = 64;                                            \
-        do {                                                            \
-          __inv = 2 * __inv - __inv * __inv * __n;                      \
-          __invbits *= 2;                                               \
-        } while (__invbits < W_TYPE_SIZE);                              \
-      }                                                                 \
-                                                                        \
-    (inv) = __inv;                                                      \
-  } while (0)
+  if (W_TYPE_SIZE > 64) {
+    int invbits = 64;
+    do {
+      inv = 2 * inv - inv * inv * n;
+      invbits *= 2;
+    } while (invbits < W_TYPE_SIZE);
+  }
+
+  return inv;
+}
+
 
 /* Modular two-word multiplication, r = a * b mod m, with mi = m^(-1) mod B.
    Both a and b must be in redc form, the result will be in redc form too.  */
 static inline uint64_t
-mulredc (uint64_t a, uint64_t b, uint64_t m, uint64_t mi)
-{
-  uint64_t rh, rl, q, th, xh;
-  [[maybe_unused]] uint64_t tl;
-
-  umul_ppmm (rh, rl, a, b);
-  q = rl * mi;
-  umul_ppmm (th, tl, q, m);
-  xh = rh - th;
+MulRedc(uint64_t a, uint64_t b, uint64_t m, uint64_t mi) {
+  const auto &[rh, rl] = UMul128(a, b);
+  uint64_t q = rl * mi;
+  uint64_t th = UMul128(q, m).first;
+  uint64_t xh = rh - th;
   if (rh < th)
     xh += m;
 
@@ -375,31 +370,42 @@ mulredc (uint64_t a, uint64_t b, uint64_t m, uint64_t mi)
 }
 
 static uint64_t
-powm (uint64_t b, uint64_t e, uint64_t n, uint64_t ni, uint64_t one) {
+PowM(uint64_t b, uint64_t e, uint64_t n, uint64_t ni, uint64_t one) {
   uint64_t y = one;
 
   if (e & 1)
     y = b;
 
   while (e != 0) {
-    b = mulredc (b, b, n, ni);
+    b = MulRedc(b, b, n, ni);
     e >>= 1;
 
     if (e & 1)
-      y = mulredc (y, b, n, ni);
+      y = MulRedc(y, b, n, ni);
   }
 
   return y;
 }
 
-#define HIGHBIT_TO_MASK(x)                                              \
-  (((intmax_t)-1 >> 1) < 0                                              \
-   ? (uintmax_t)((intmax_t)(x) >> (W_TYPE_SIZE - 1))                    \
-   : ((x) & ((uintmax_t) 1 << (W_TYPE_SIZE - 1))                        \
-      ? UINTMAX_MAX : (uintmax_t) 0))
+static inline uint64_t HighBitToMask(uint64_t x) {
+  static_assert (((int64_t)-1 >> 1) < 0,
+                 "In c++20 and later, right shift on signed "
+                 "is an arithmetic shift.");
+  return (uint64_t)((int64_t)(x) >> (W_TYPE_SIZE - 1));
+#if 0
+  // I guess this is checking whether shifting a signed
+  // int down does sign extension. But that's now guaranteed.
+  if constexpr (((int64_t)-1 >> 1) < 0) {
+    return (uint64_t)((int64_t)(x) >> (W_TYPE_SIZE - 1));
+  } else {
+    return x & ((uint64_t) 1 << (W_TYPE_SIZE - 1))
+      ? UINTMAX_MAX : (uint64_t) 0;
+  }
+#endif
+}
 
 static uint64_t
-gcd_odd (uint64_t a, uint64_t b) {
+GCDOdd(uint64_t a, uint64_t b) {
   if ((b & 1) == 0) {
     uint64_t t = b;
     b = a;
@@ -412,18 +418,15 @@ gcd_odd (uint64_t a, uint64_t b) {
   b >>= 1;
 
   for (;;) {
-    uint64_t t;
-    uint64_t bgta;
-
     while ((a & 1) == 0)
       a >>= 1;
     a >>= 1;
 
-    t = a - b;
+    uint64_t t = a - b;
     if (t == 0)
       return (a << 1) + 1;
 
-    bgta = HIGHBIT_TO_MASK (t);
+    uint64_t bgta = HighBitToMask(t);
 
     /* b <-- min (a, b) */
     b += (bgta & t);
@@ -434,18 +437,18 @@ gcd_odd (uint64_t a, uint64_t b) {
 }
 
 static bool
-millerrabin (uintmax_t n, uintmax_t ni, uintmax_t b, uintmax_t q,
-             unsigned int k, uintmax_t one) {
-  uintmax_t y = powm (b, q, n, ni, one);
+MillerRabin(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
+            unsigned int k, uint64_t one) {
+  uint64_t y = PowM(b, q, n, ni, one);
 
   /* -1, but in redc representation.  */
-  uintmax_t nm1 = n - one;
+  uint64_t nm1 = n - one;
 
   if (y == one || y == nm1)
     return true;
 
   for (unsigned int i = 1; i < k; i++) {
-    y = mulredc (y, y, n, ni);
+    y = MulRedc(y, y, n, ni);
 
     if (y == nm1)
       return true;
@@ -457,10 +460,9 @@ millerrabin (uintmax_t n, uintmax_t ni, uintmax_t b, uintmax_t q,
 
 /* Lucas's prime test. The number of iterations vary greatly; up to a
    few dozen have been observed. The average seem to be about 2. */
-static bool prime_p (uint64_t n) {
+static bool IsPrime(uint64_t n) {
   // printf("prime_p(%llu)?\n", n);
   int k;
-  uint64_t a_prim, one, ni;
 
   if (n <= 1)
     return false;
@@ -474,12 +476,12 @@ static bool prime_p (uint64_t n) {
   for (k = 0; (q & 1) == 0; k++)
     q >>= 1;
 
-  binv (ni, n);                 /* ni <- 1/n mod B */
-  redcify (one, 1, n);
-  addmod (a_prim, one, one, n); /* i.e., redcify a = 2 */
+  uint64_t ni = Binv(n);                 /* ni <- 1/n mod B */
+  uint64_t one = Redcify(1, n);
+  uint64_t a_prim = AddMod(one, one, n); /* i.e., redcify a = 2 */
 
   /* Perform a Miller-Rabin test, which finds most composites quickly.  */
-  if (!millerrabin (n, ni, a_prim, q, k, one))
+  if (!MillerRabin(n, ni, a_prim, q, k, one))
     return false;
 
   std::vector<std::pair<uint64_t, int>> factors =
@@ -492,7 +494,7 @@ static bool prime_p (uint64_t n) {
   for (uint8_t delta : PRIME_DELTAS) {
     bool is_prime = true;
     for (const auto &[p, e_] : factors) {
-      is_prime = powm (a_prim, (n - 1) / p, n, ni, one) != one;
+      is_prime = PowM(a_prim, (n - 1) / p, n, ni, one) != one;
       if (!is_prime) break;
     }
 
@@ -502,21 +504,19 @@ static bool prime_p (uint64_t n) {
     // Establish new base.
     a += delta;
 
-    /* The following is equivalent to redcify (a_prim, a, n).  It runs faster
-       on most processors, since it avoids udiv_qrnnd.  If we go down the
+    /* The following is equivalent to a_prim = redcify (a, n).  It runs faster
+       on most processors, since it avoids udiv128.  If we go down the
        udiv_qrnnd_preinv path, this code should be replaced.  */
     {
-      uint64_t s1, s0;
-      umul_ppmm (s1, s0, one, a);
+      const auto &[s1, s0] = UMul128(one, a);
       if (s1 == 0) [[likely]] {
         a_prim = s0 % n;
       } else {
-        [[maybe_unused]] uint64_t dummy;
-        udiv_qrnnd (dummy, a_prim, s1, s0, n);
+        a_prim = UDiv128(s1, s0, n).second;
       }
     }
 
-    if (!millerrabin (n, ni, a_prim, q, k, one))
+    if (!MillerRabin(n, ni, a_prim, q, k, one))
       return false;
   }
 
@@ -528,36 +528,34 @@ static bool prime_p (uint64_t n) {
 }
 
 static void
-factor_using_pollard_rho (uint64_t n, unsigned long int a,
-                          std::vector<std::pair<uint64_t, int>> *factors) {
+FactorUsingPollardRho(uint64_t n, unsigned long int a,
+                      std::vector<std::pair<uint64_t, int>> *factors) {
   // printf("pr(%llu, %lu)\n", n, a);
-  uint64_t x, z, y, P, t, ni, g;
+  uint64_t z, y, t, g;
 
   unsigned long int k = 1;
   unsigned long int l = 1;
 
-  redcify (P, 1, n);
-  // i.e., redcify(2)
-  addmod (x, P, P, n);
+  uint64_t P = Redcify(1, n);
+  // i.e., Redcify(2)
+  uint64_t x = AddMod(P, P, n);
   y = z = x;
 
   while (n != 1) {
     assert (a < n);
 
-    // Mysterious "fixme" comment in factor.c:
-    // "when could we use old 'ni' value?"
-    binv (ni, n);
+    uint64_t ni = Binv(n);
 
     for (;;) {
       do {
-        x = mulredc (x, x, n, ni);
-        addmod (x, x, a, n);
+        x = MulRedc(x, x, n, ni);
+        x = AddMod(x, a, n);
 
-        submod (t, z, x, n);
-        P = mulredc (P, t, n, ni);
+        t = SubMod(z, x, n);
+        P = MulRedc(P, t, n, ni);
 
         if (k % 32 == 1) {
-          if (gcd_odd (P, n) != 1)
+          if (GCDOdd(P, n) != 1)
             goto factor_found;
           y = x;
         }
@@ -568,35 +566,35 @@ factor_using_pollard_rho (uint64_t n, unsigned long int a,
       k = l;
       l = 2 * l;
       for (unsigned long int i = 0; i < k; i++) {
-        x = mulredc (x, x, n, ni);
-        addmod (x, x, a, n);
+        x = MulRedc(x, x, n, ni);
+        x = AddMod(x, a, n);
       }
       y = x;
     }
 
   factor_found:
     do {
-      y = mulredc (y, y, n, ni);
-      addmod (y, y, a, n);
+      y = MulRedc(y, y, n, ni);
+      y = AddMod(y, a, n);
 
-      submod (t, z, y, n);
-      g = gcd_odd (t, n);
+      t = SubMod(z, y, n);
+      g = GCDOdd(t, n);
     } while (g == 1);
 
     if (n == g) {
       /* Found n itself as factor.  Restart with different params.  */
-      factor_using_pollard_rho (n, a + 1, factors);
+      FactorUsingPollardRho(n, a + 1, factors);
       return;
     }
 
     n = n / g;
 
-    if (!prime_p (g))
-      factor_using_pollard_rho (g, a + 1, factors);
+    if (!IsPrime(g))
+      FactorUsingPollardRho(g, a + 1, factors);
     else
       PushFactor(factors, g);
 
-    if (prime_p (n)) {
+    if (IsPrime(n)) {
       PushFactor(factors, n);
       break;
     }
