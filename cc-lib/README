@@ -56,6 +56,9 @@ are available under that license. See geom/marching.cc.
 geom/hilbert-curve.h is based on code from Wikipedia, which is
 cc-by-sa. See geom/hilbert-curve.h.
 
+factorize is based on GNU coreutils's factor.c, which is GPL.
+See COPYING.
+
 My own fresh code is licensed under the GPL, which can be found in
 COPYING.
 
@@ -124,4 +127,4 @@ stb_image_*   - Lower-level image reading and writing. I usually use the
                 higher-level image.h.
 tinyexr       - Lower-level reading and writing of the slighly exotic EXR
                 file format.
-
+factorize     - Factors integers.

@@ -96,41 +96,50 @@ static uint64_t Sqrt64Tglas(uint64_t n) {
 #define Sqrt64 Sqrt64Double
 
 static void TestSqrt() {
-   for (uint64_t x : std::initializer_list<uint64_t>{
-       0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
-         182734987, 298375827, 190238482, 19023904, 11111111,
-         923742, 27271917, 127, 1, 589589581, 55555555,
-         0x0FFFFFFFFFFFFFF, 0x0FFFFFFFFFFFFFE, 0x0FFFFFFFFFFFFFD,
-         65537, 10002331, 100004389, 1000004777, 10000007777,
-         65537ULL * 10002331ULL,
-         10002331ULL * 100004389ULL,
-         100004389ULL * 1000004777ULL,
-         1000004777ULL * 10000007777ULL,
-         10000055547037150728ULL,
-         10000055547037150727ULL,
-         10000055547037150726ULL,
-         10000055547037150725ULL,
-         10000055547037150724ULL,
-         18446744073709551557ULL,
-         29387401978, 2374287337, 9391919, 4474741071,
-         18374, 1927340972, 29292922, 131072, 7182818}) {
-     uint64_t root = Sqrt64(x);
-     // What we want is the floor.
-     CHECK(root * root <= x) << root << " " << x;
+  for (uint64_t x : std::initializer_list<uint64_t>{
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+        182734987, 298375827, 190238482, 19023904, 11111111,
+        923742, 27271917, 127, 1, 589589581, 55555555,
+        0x0FFFFFFFFFFFFFF, 0x0FFFFFFFFFFFFFE, 0x0FFFFFFFFFFFFFD,
+        65537, 10002331, 100004389, 1000004777, 10000007777,
+        65537ULL * 10002331ULL,
+        10002331ULL * 100004389ULL,
+        100004389ULL * 1000004777ULL,
+        1000004777ULL * 10000007777ULL,
+        10000055547037150728ULL,
+        10000055547037150727ULL,
+        10000055547037150726ULL,
+        10000055547037150725ULL,
+        10000055547037150724ULL,
+        18446744073709551557ULL,
+        29387401978, 2374287337, 9391919, 4474741071,
+        18374, 1927340972, 29292922, 131072, 7182818}) {
+    uint64_t root = Sqrt64(x);
+    // What we want is the floor.
+    CHECK(root * root <= x) << root << " " << x;
 
-     // Result should fit in 32 bits. But we can't actually square
-     // 2^32-1 because it would overflow. However, since that root+1
-     // squared would be larger than any 64-bit number, it's correct
-     // if we get it here and passed the previous check.
-     CHECK(root <= 4294967295);
-     if (root != 4294967295) {
-       CHECK((root + 1ULL) * (root + 1ULL) > x)
-         << root << " " << x << "(" << (root + 1ULL) << ")";
-     }
-   }
- }
+    // Result should fit in 32 bits. But we can't actually square
+    // 2^32-1 because it would overflow. However, since that root+1
+    // squared would be larger than any 64-bit number, it's correct
+    // if we get it here and passed the previous check.
+    CHECK(root <= 4294967295);
+    if (root != 4294967295) {
+      CHECK((root + 1ULL) * (root + 1ULL) > x)
+        << root << " " << x << "(" << (root + 1ULL) << ")";
+    }
+  }
+}
 
 static void TestPrimeFactors() {
+
+  {
+    std::vector<std::pair<uint64_t, int>> factors =
+      Factorize::PrimeFactorization(7);
+
+    CHECK(factors.size() == 1);
+    CHECK(factors[0].second == 1);
+    CHECK(factors[0].first == 7);
+  }
 
   {
     std::vector<std::pair<uint64_t, int>> factors =
@@ -163,6 +172,51 @@ static void TestPrimeFactors() {
     CHECK(factors[0].second == 2) << factors[0].second;
   }
 
+  for (int n = 2; n < 100000; n++) {
+    CHECK(Factorize::PrimeFactorization(n) ==
+          Factorize::ReferencePrimeFactorization(n)) << n;
+  }
+
+  // Verify that the output is valid, but we don't check primality
+  // of the factors.
+  auto TestOne = [](uint64_t n) {
+      if (n == 0) return;
+      auto factors = Factorize::PrimeFactorization(n);
+      uint64_t product = 1;
+      for (int i = 1; i < (int)factors.size(); i++) {
+        CHECK(factors[i - 1].first < factors[i].first &&
+              factors[i].second >= 1) << n << "\n" << FTOS(factors);
+      }
+
+      for (const auto &[b, e] : factors)
+        for (int i = 0; i < e; i++)
+          product *= b;
+
+      CHECK(n == product) << n << " != " << product << "\n"
+                          << FTOS(factors);
+    };
+
+  // Test a bunch of arbitrary 64-bit numbers.
+  {
+    uint32_t a = 0x12345678;
+    uint32_t b = 0xACABACAB;
+    for (int j = 0; j < 100000; j++) {
+      uint64_t input = ((uint64_t)a) << 32 | b;
+      TestOne(input);
+      a = LFSRNext32(LFSRNext32(a));
+      b = LFSRNext32(b);
+    }
+  }
+  printf("100k via LFSR OK\n");
+
+  // Carmichael numbers > 100k.
+  for (uint64_t n : {
+        101101, 115921, 126217, 162401, 172081, 188461, 252601, 278545,
+        294409, 314821, 334153, 340561, 399001, 410041, 449065,
+        488881, 512461}) {
+    TestOne(n);
+  }
+
   // Must all be distinct and prime. Careful about overflow!
   for (const auto &f : std::vector<std::vector<int>>{
       {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 37, 41, 43, 47, 419},
@@ -191,7 +245,8 @@ static void TestPrimeFactors() {
                                       << "\nBut wanted: " << Expected();
     for (int i = 0; i < (int)f.size(); i++) {
       CHECK(factors[i].second == 1);
-      CHECK((int)factors[i].first == f[i]);
+      CHECK((int)factors[i].first == f[i]) << x << " got: " << FTOS(factors)
+                                           << "\nBut wanted: " << Expected();
     }
   }
 
