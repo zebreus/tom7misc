@@ -13,6 +13,7 @@
 #include "clutil.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "base/port.h"
 #include "arcfour.h"
 #include "randutil.h"
 #include "threadutil.h"
@@ -32,14 +33,96 @@ static CL *cl = nullptr;
 
 using int64 = int64_t;
 
+// Everything takes a complete line.
+// Thread safe.
+struct StatusBar {
+  // Give the number of lines that the status bar uses.
+  explicit StatusBar(int num_lines) : num_lines(num_lines) {
+    CHECK(num_lines > 0);
+  }
+
+  // Print to the screen. Adds trailing newline if not present.
+  void Printf(const char* format, ...) PRINTF_ATTRIBUTE(1, 2) {
+    va_list ap;
+    va_start(ap, format);
+    string result;
+    StringAppendV(&result, format, ap);
+    va_end(ap);
+    Emit(result);
+  }
+
+  // Prints to the screen. Adds trailing newline if not present.
+  void Emit(const std::string &s) {
+    std::vector<std::string> lines = Util::SplitToLines(s);
+    MutexLock ml(&m);
+    MoveUp();
+    for (const string &line : lines) {
+      printf("%s\n", line.c_str());
+    }
+    // Maintain space for status.
+    for (int i = 0; i < num_lines; i++) {
+      printf("\n");
+    }
+  }
+
+  // Update the status bar. This should be done in one call that
+  // contains num_lines lines. Trailing newline not necessary.
+  void Statusf(const char* format, ...) PRINTF_ATTRIBUTE(1, 2) {
+    va_list ap;
+    va_start(ap, format);
+    string result;
+    StringAppendV(&result, format, ap);
+    va_end(ap);
+    EmitStatus(result);
+  }
+
+  // Prints the status to the screen.
+  void EmitStatus(const std::string &s) {
+    std::vector<std::string> lines = Util::SplitToLines(s);
+    MutexLock ml(&m);
+    MoveUp();
+    if (lines.size() != num_lines) {
+      printf(ARED("...wrong number of lines...") "\n");
+    }
+    for (const string &line : lines) {
+      printf("%s\n", line.c_str());
+    }
+  }
+
+private:
+  // The idea is that we keep the screen in a state where there are
+  // num_lines of status at the bottom, right before the cursor. This
+  // is always throw-away space. When we print something other than
+  // status, we just pad with the number of blank lines so that the
+  // next call will not overwrite what we wrote.
+  void MoveUp() {
+    if (!first) {
+      for (int i = 0; i < num_lines; i++) {
+        printf(
+            // Cursor to beginning of previous line
+            "\x1B[F"
+            // Clear line
+            "\x1B[2K"
+               );
+      }
+    }
+    first = false;
+  }
+
+  std::mutex m;
+  int num_lines = 0;
+  bool first = true;
+};
+
 // Tuned by sos-gpu_test.
 static constexpr int GPU_HEIGHT = 49912;
-static constexpr uint64_t EPOCH_SIZE = 1'000'000'000; /* ' */
-static constexpr int TRY_PARALLELISM = 4;
+static constexpr uint64_t EPOCH_SIZE = 2'000'000'000; /* ' */
 
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
 static const char *DONE_FILE = "sos-done.txt";
+
+static StatusBar status(4);
 
 static uint64_t GetDone() {
   MutexLock ml(&file_mutex);
@@ -55,7 +138,7 @@ static void SetDone(uint64 next) {
 
 static void Interesting(const std::string &s) {
   MutexLock ml(&file_mutex);
-  printf("%s\n", s.c_str());
+  status.Printf("%s\n", s.c_str());
   string raw = AnsiStripCodes(s);
   FILE *f = fopen(INTERESTING_FILE, "ab");
   CHECK(f != nullptr);
@@ -238,11 +321,12 @@ static void Try(int z,
             CHECK(gg + ii == bb + ee) << "Supposedly this is always "
               "the case (see sos.z3).";
 
-            printf("Success!!\n");
+            printf("\n\n\n\n" AGREEN("Success!!") "\n");
+
+            printf("%s\n", success.c_str());
 
             printf("Note: didn't completely check for uniqueness "
                    "or overflow!\n");
-
 
             CHECK(false) << "winner";
           });
@@ -393,7 +477,8 @@ struct TryMe {
 
 
 struct SOS {
-  std::unique_ptr<AutoParallelComp> comp;
+  std::unique_ptr<AutoParallelComp> factor_comp;
+  std::unique_ptr<AutoParallelComp> try_comp;
   std::unique_ptr<NWaysGPU> nways_gpu;
 
   // An element is a number and its expected number of ways.
@@ -406,8 +491,9 @@ struct SOS {
 
   SOS() : status_per(10.0) {
     // Cache is pretty workload-dependent, so just tune in-process.
-    comp.reset(new AutoParallelComp(16, 1000, false
-                                    /* , "cww.autoparallel" */));
+    factor_comp.reset(new AutoParallelComp(16, 1000, false));
+    try_comp.reset(new AutoParallelComp(8, 1000, false));
+
     nways_gpu.reset(new NWaysGPU(cl, GPU_HEIGHT));
 
     nways_queue.reset(
@@ -422,7 +508,7 @@ struct SOS {
 
       if (!batchopt.has_value()) {
         // Done!
-        printf("GPU thread done!\n");
+        status.Printf("GPU thread done!\n");
         fflush(stdout);
 
         try_queue->MarkDone();
@@ -488,23 +574,27 @@ struct SOS {
     double pct = (triples * 100.0)/(double)done;
     double sec = timer.Seconds();
     double nps = done / sec;
-    printf("%llu/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
-           triples, done, pct, AnsiTime(sec).c_str(), nps);
+    string line1 =
+      StringPrintf("%llu/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
+                   triples, done, pct, AnsiTime(sec).c_str(), nps);
+
     const int64_t rf = rejected_f.load();
     const int64_t rff = rejected_ff.load();
     const int64_t rhh = rejected_hh.load();
     const int64_t raa = rejected_aa.load();
-    printf("%lld " AGREY("rf")
-           " %lld " AGREY("rff") " %lld " AGREY("rhh")
-           " %lld " AGREY("raa")
-           " %llu " AGREY("not div 5") "\n",
-           rf, rff, rhh, raa, not_div_5);
-    printf(ARED("%llu") " too big\n", too_big);
+
+    string line2 =
+      StringPrintf("%lld " AGREY("rf")
+                   " %lld " AGREY("rff") " %lld " AGREY("rhh")
+                   " %lld " AGREY("raa")
+                   " %llu " AGREY("not div 5") "\n",
+                   rf, rff, rhh, raa, not_div_5);
+    string line3 = StringPrintf(ARED("%llu") " too big\n", too_big);
     string info = StringPrintf("%llu inel  %llu nw",
                                ineligible, done_nways);
-    string bar = AnsiProgressBar(done, EPOCH_SIZE, info, sec);
-    // XXX put in stable spot
-    printf("%s\n", bar.c_str());
+    string line4 = AnsiProgressBar(done, EPOCH_SIZE, info, sec);
+
+    status.EmitStatus(line1 + line2 + line3 + line4);
   }
 
   void TryThread() {
@@ -512,19 +602,19 @@ struct SOS {
       std::optional<std::vector<TryMe>> batchopt = try_queue->WaitGet();
       if (!batchopt.has_value()) {
         // Totally done!
-        printf("Try thread done!\n");
+        status.Printf("Try thread done!\n");
         fflush(stdout);
         return;
       }
 
       const auto &batch = batchopt.value();
 
+      try_comp->
       ParallelApp(
           batch,
           [](const TryMe &tryme) {
             Try(tryme.num, tryme.squareways);
-          },
-          TRY_PARALLELISM);
+          });
 
       {
         MutexLock ml(&m);
@@ -539,14 +629,15 @@ struct SOS {
   void RunEpoch(uint64_t start) {
     CHECK(cl != nullptr);
 
-    printf(AWHITE("==") " Start epoch " APURPLE("%llu") "+ " AWHITE("==") "\n",
-           start);
+    status.Printf(
+        AWHITE("==") " Start epoch " APURPLE("%s") "+ " AWHITE("==") "\n",
+        Util::UnsignedWithCommas(start).c_str());
 
     std::thread gpu_thread(&GPUThread, this);
     std::thread try_thread(&TryThread, this);
 
     ResetCounters();
-    comp->
+    factor_comp->
       ParallelComp(
         EPOCH_SIZE,
         [this, start](uint64_t idx) {
@@ -586,21 +677,23 @@ struct SOS {
 
     nways_queue->MarkDone();
 
-    printf("Waiting for GPU thread.\n");
+    status.Printf("Waiting for GPU thread.\n");
     gpu_thread.join();
-    printf("Waiting for Try thread.\n");
+    status.Printf("Waiting for Try thread.\n");
     try_thread.join();
 
-    printf(AGREEN("Done with epoch!") "\n");
+    status.Printf(AGREEN("Done with epoch!") "\n");
 
-    printf(AWHITE("Autoparallel histo") ":\n");
-    comp->PrintHisto();
+    status.Printf(AWHITE("Factor autoparallel histo") ":\n");
+    status.Emit(factor_comp->HistoString());
+    status.Printf(AWHITE("Try autoparallel histo") ":\n");
+    status.Emit(try_comp->HistoString());
 
     double sec = timer.Seconds();
-    printf("Total triples: %llu/%llu\n", triples, EPOCH_SIZE);
-    printf(AGREEN ("Done") " in %s. (%s/ea.)\n",
-           AnsiTime(sec).c_str(), AnsiTime(sec / EPOCH_SIZE).c_str());
-    printf("Did %llu-%llu\n", start, start + EPOCH_SIZE - 1);
+    status.Printf("Total triples: %llu/%llu\n", triples, EPOCH_SIZE);
+    status.Printf(AGREEN ("Done") " in %s. (%s/ea.)\n",
+                  AnsiTime(sec).c_str(), AnsiTime(sec / EPOCH_SIZE).c_str());
+    status.Printf("Did %llu-%llu\n", start, start + EPOCH_SIZE - 1);
     {
       const int64_t rf = rejected_f.load();
       const int64_t rff = rejected_ff.load();
