@@ -16,6 +16,14 @@ using namespace std;
                   << "\nValues:\n" << aa << "\n" << bb << "\n";      \
   } while (false)
 
+#define CHECK_SVEQ(a, b) do { \
+  auto aa = (a); \
+  auto bb = (b); \
+  CHECK(aa == bb) << "Expected equal vectors:\n" << #a << "\n" << #b \
+                  << "Values: " << Util::Join(aa, "|") << "\n" \
+                  << Util::Join(bb, "|") << "\n";              \
+  } while (false)
+
 static string SlowReadFile(const string &filename) {
   FILE *f = fopen(filename.c_str(), "rb");
   if (!f) return "";
@@ -100,18 +108,29 @@ static void TestJoin() {
 }
 
 static void TestSplit() {
-  CHECK_EQ((vector<string>{"hello", "world"}),
-           Util::Split("hello world", ' '));
+  CHECK_SVEQ((vector<string>{"hello", "world"}),
+             Util::Split("hello world", ' '));
 
   /*
   for (const string s : Util::Split("hello  world", ' '))
     printf("(%s)\n", s.c_str());
   */
 
-  CHECK_EQ((vector<string>{"hello", "", "world"}),
-           Util::Split("hello  world", ' '));
-  CHECK_EQ((vector<string>{"", ""}), Util::Split(" ", ' '));
-  CHECK_EQ(vector<string>{""}, Util::Split("", 'x'));
+  CHECK_SVEQ((vector<string>{"hello", "", "world"}),
+             Util::Split("hello  world", ' '));
+  CHECK_SVEQ((vector<string>{"", ""}), Util::Split(" ", ' '));
+  CHECK_SVEQ(vector<string>{""}, Util::Split("", 'x'));
+}
+
+static void TestSplitToLines() {
+  CHECK_SVEQ((vector<string>{"hello", "world"}),
+             Util::SplitToLines("hello\nworld"));
+  CHECK_SVEQ((vector<string>{"hello", "world"}),
+             Util::SplitToLines("hello\nworld\n"));
+  CHECK_SVEQ((vector<string>{"hello"}),
+             Util::SplitToLines("hello\n"));
+  CHECK_SVEQ((vector<string>{"hello"}),
+             Util::SplitToLines("hello"));
 }
 
 static void TestTokens() {
@@ -383,6 +402,7 @@ int main(int argc, char **argv) {
   TestPad();
   TestJoin();
   TestSplit();
+  TestSplitToLines();
   TestTokens();
   TestCdup();
   TestPrefixSuffix();

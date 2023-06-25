@@ -474,6 +474,7 @@ vector<string> Util::SplitToLines(const string &s) {
       line += s[i];
     }
   }
+  if (!line.empty()) v.push_back(std::move(line));
   return v;
 }
 

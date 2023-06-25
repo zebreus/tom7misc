@@ -48,6 +48,10 @@ struct Util {
   static bool WriteLinesToFile(const string &f,
                                const std::vector<string> &lines);
 
+  // Split the string to lines. Blank lines are preserved.
+  // If the file doesn't end with a newline, and the last line is
+  // not empty (i.e., the file is not empty), then that line is also
+  // returned.
   static std::vector<string> SplitToLines(const string &s);
 
   // Calls f on each line (without the newline), streamed from
