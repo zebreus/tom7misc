@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cassert>
 #include <tuple>
+#include <bit>
 
 #include "base/logging.h"
 
@@ -118,17 +119,29 @@ InternalFactorize(uint64_t x, bool use_pr) {
   // for cases that the number has factors close to its square
   // root too (this may be common?).
 
+  if (x <= 1) return {};
+
   // Factors in increasing order.
   std::vector<std::pair<uint64_t, int>> factors;
 
-  if (x <= 1) return {};
-
   uint64_t cur = x;
-  // Try the first 32 primes. This code used to have a much longer
-  // list, but it's counterproductive. With hard-coded constants,
-  // we can also take advantage of division-free compiler tricks.
+
+  const int twos = std::countr_zero<uint64_t>(x);
+  if (twos) {
+    factors.emplace_back(2, twos);
+    cur >>= twos;
+  }
+
+
+  // After 2, try the first 32 primes. This code used to have a much
+  // longer list, but it's counterproductive. With hard-coded
+  // constants, we can also take advantage of division-free compiler
+  // tricks.
+  //
+  // PERF: Probably can pipeline faster if we don't actually divide until
+  // the end of all the factors?
 #define TRY(p) while (cur % p == 0) { cur /= p; PushFactor(&factors, p); }
-  TRY(2);
+  // TRY(2);
   TRY(3);
   TRY(5);
   TRY(7);
