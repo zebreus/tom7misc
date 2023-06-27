@@ -1,5 +1,3 @@
-// Returns the lower bound on the square root of xx.
-// If xx = x^2, then this is x.
 
 // Careful! The builtin uint8 is a vector of 8 uints.
 typedef uchar uint8_t;
@@ -14,7 +12,7 @@ typedef ulong uint64_t;
 
 /* Return the square root if the input is a square, otherwise 0.  */
 inline static bool
-MaybeSquare (uint64_t x) {
+MaybeSquare(uint64_t x) {
   /* Uses the tests suggested by Cohen.  Excludes 99% of the non-squares before
      computing the square root.  */
   return (((MAGIC64 >> (x & 63)) & 1)
@@ -24,6 +22,8 @@ MaybeSquare (uint64_t x) {
           && ((MAGIC11 >> (x % 11) & 1)));
 }
 
+// Returns the lower bound on the square root of xx.
+// If xx = x^2, then this is x.
 // TODO: double version ok on GPU?
 // https://www.nuprl.org/MathLibrary/integer_sqrt/
 static uint64_t Sqrt64Nuprl(uint64_t xx) {
@@ -36,11 +36,9 @@ static uint64_t Sqrt64Nuprl(uint64_t xx) {
 }
 
 inline static uint64_t Sqrt64(uint64_t n) {
-  if (n == 0) return 0;
   uint64_t r = (uint64_t)sqrt((double)n);
-  return r - (r * r - 1 >= n);
+  return r - (r * r >= n + 1);
 }
-
 
 // Try to find b such that a^2 + b^2 = sum, with a <= b.
 // If successful, output (a,b) to out[out_size] and increment
@@ -60,24 +58,44 @@ __kernel void NWays(__global const uint64_t *restrict sums,
 
   const uint64_t aa = a * a;
 
-  // The limit is set for the largest sum, so we need to deal with
-  // this raggedness. I think the advantage of testing early could
-  // be that a batch of work units finish early (when we reach the
-  // padding part). The advantage of testing late is that threads
-  // would reach the most common bail-out with fewer instructions.
-  // This latter thing seems better?
-  if (aa * 2 > sum)
-    return;
-
-
   const uint64_t target = sum - aa;
   if (!MaybeSquare(target))
     return;
 
-
-  const uint64_t b = Sqrt64(target);
-  if (b * b != target)
+  // The limit is set for the largest sum, so we need to deal with
+  // this raggedness. I think the advantage of testing early could be
+  // that a batch of work units finish early (when we reach the
+  // padding part). The advantage of testing late is that threads
+  // would reach the most common bail-out (MaybeSquare) with fewer
+  // instructions. This latter thing seems better?
+  if (aa * 2 > sum)
     return;
+
+  // The following block is equivalent to this:
+  //
+  // const uint64_t b = Sqrt64(target);
+  // if (b * b != target)
+  //   return;
+  //
+  // but avoids some duplicate work. Speeds up the kernel by about 2%.
+
+  uint64_t r = (uint64_t)sqrt((double)target);
+  // now either r or r-1 is the square root.
+  const uint64_t rr = r * r;
+  if (rr == target) goto found;
+  // now test (r-1)^2, but without multiplying
+  // consider r^2 - 2r + 1 as (r-1)^?
+  if (rr - (r << 1) + 1 == target) {
+    r--;
+    goto found;
+  }
+
+  // Not square.
+  return;
+
+ found:;
+
+  const uint64_t b = r;
 
   // Insist that the result is smaller than the
   // input, even if it would work. We find it the

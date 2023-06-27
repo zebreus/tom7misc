@@ -115,7 +115,8 @@ private:
 };
 
 // Tuned by sos-gpu_test.
-static constexpr int GPU_HEIGHT = 49912;
+// static constexpr int GPU_HEIGHT = 49912;
+static constexpr int GPU_HEIGHT = 51504;
 static constexpr uint64_t EPOCH_SIZE = 2'000'000'000; /* ' */
 
 static std::mutex file_mutex;
@@ -173,7 +174,27 @@ static void ResetCounters() {
 // values were distinct, these residues are also distinct.
 //
 // The order of (B, C), (D, G), (E, I) matters, although there
-// are some symmetries. We can req
+// are some symmetries. A reflection like
+//
+//   I  [h]  G
+//
+//  [f]  E   D
+//
+//   C   B  [a]
+//
+// will just be found during some other call to Try (with
+// a different z) but flipping along the c-e-g diagonal
+// does give us a redundant form:
+//
+//  [a]  D   G
+//
+//   B   E  [h]
+//
+//   C  [f]  I
+//
+// which we do not need to search. To avoid computing each
+// square twice in here, we require that the smallest of B, C,
+// D, G appear on the top.
 template<class F>
 inline static void AllWays(
     const std::vector<std::pair<uint64_t, uint64_t>> &ways,
@@ -183,6 +204,11 @@ inline static void AllWays(
     for (int q = 0; q < ways.size(); q++) {
       if (p != q) {
         const auto &[d, g] = ways[q];
+        // require that the smallest of b,c,d,g appears on the
+        // top, to reduce symmetries.
+        if (std::min(b, c) > std::min(d, g))
+          continue;
+
         for (int r = 0; r < ways.size(); r++) {
           if (p != r && q != r) {
             const auto &[e, i] = ways[r];
@@ -343,14 +369,6 @@ struct BatchedWorkQueue {
     queue.push_back(std::vector<Item>{});
   }
 
-  std::mutex mutex;
-  std::condition_variable cond;
-  // Add at the end. This always consists of a series (maybe zero)
-  // of full vectors and an incomplete vector (maybe empty) at the
-  // end. (Unless "done", in which case it can be empty.)
-  std::deque<std::vector<Item>> queue;
-  bool done = false;
-
   // Consumers of the work queue call this in a loop. If the result
   // is nullopt, then the queue is done. The final work item can be
   // smaller than the batch size, but not empty.
@@ -369,6 +387,7 @@ struct BatchedWorkQueue {
       // Now holding lock with a full batch (or the last batch).
       // Take ownership.
       batch = std::move(queue.front());
+      size -= batch.size();
       // It's the responsibility of those that insert into the
       // queue to maintain the presence of an incomplete vector.
       // So we can just remove the full one.
@@ -379,12 +398,18 @@ struct BatchedWorkQueue {
     return {batch};
   }
 
+  int64_t Size() {
+    std::unique_lock ml(mutex);
+    return size;
+  }
+
   void WaitAdd(const Item &item) {
     {
       std::unique_lock ml(mutex);
       CHECK(!done);
       CHECK(!queue.empty() && queue.back().size() < batch_size);
       queue.back().push_back(item);
+      size++;
       if (queue.back().size() == batch_size) {
         // Finished batch, so add new empty batch.
         queue.push_back(std::vector<Item>());
@@ -403,6 +428,15 @@ struct BatchedWorkQueue {
   }
 
   // Might be useful to be able to add in batch.
+ private:
+  std::mutex mutex;
+  std::condition_variable cond;
+  // Add at the end. This always consists of a series (maybe zero)
+  // of full vectors and an incomplete vector (maybe empty) at the
+  // end. (Unless "done", in which case it can be empty.)
+  std::deque<std::vector<Item>> queue;
+  int64_t size = 0;
+  bool done = false;
 };
 
 // TODO: To threadutil?
@@ -413,12 +447,6 @@ struct WorkQueue {
   // TODO: Could support max queue size pretty easily.
   WorkQueue() {
   }
-
-  std::mutex mutex;
-  std::condition_variable cond;
-  // The items. Can be empty.
-  std::deque<Item> queue;
-  bool done = false;
 
   // Consumers of the work queue call this in a loop. If nullopt,
   // then the queue is done.
@@ -439,6 +467,11 @@ struct WorkQueue {
     cond.notify_all();
 
     return {item};
+  }
+
+  int64_t Size() {
+    std::unique_lock ml(mutex);
+    return queue.size();
   }
 
   void WaitAdd(const Item &item) {
@@ -468,6 +501,12 @@ struct WorkQueue {
     cond.notify_all();
   }
 
+private:
+  std::mutex mutex;
+  std::condition_variable cond;
+  // The items. Can be empty.
+  std::deque<Item> queue;
+  bool done = false;
 };
 
 struct TryMe {
@@ -510,8 +549,6 @@ struct SOS {
         // Done!
         status.Printf("GPU thread done!\n");
         fflush(stdout);
-
-        try_queue->MarkDone();
         return;
       }
 
@@ -561,16 +598,13 @@ struct SOS {
   uint64_t done_nways = 0;
   // Including ineligible. This eventually reaches EPOCH_SIZE.
   uint64_t done = 0;
-
-  uint64_t not_div_5 = 0;
+  // Work stolen by CPU in endgame.
+  uint64_t stolen = 0;
 
   Periodically status_per;
 
   // Must hold lock m.
   void PrintStats() {
-    // TODO "status bar" (maybe in ansi.h) that keeps track of
-    // whether anything but the status bar has been printed, so
-    // that we can overwrite it in place?
     double pct = (triples * 100.0)/(double)done;
     double sec = timer.Seconds();
     double nps = done / sec;
@@ -583,13 +617,21 @@ struct SOS {
     const int64_t rhh = rejected_hh.load();
     const int64_t raa = rejected_aa.load();
 
+    const int64_t gpu_size = nways_queue->Size();
+    const int64_t try_size = try_queue->Size();
+
     string line2 =
       StringPrintf("%lld " AGREY("rf")
                    " %lld " AGREY("rff") " %lld " AGREY("rhh")
                    " %lld " AGREY("raa")
-                   " %llu " AGREY("not div 5") "\n",
-                   rf, rff, rhh, raa, not_div_5);
-    string line3 = StringPrintf(ARED("%llu") " too big\n", too_big);
+                   "\n",
+                   rf, rff, rhh, raa);
+    string line3 = StringPrintf(ARED("%llu") " too big  "
+                                APURPLE("%lld") " gpu queue  "
+                                ACYAN("%lld") " try queue  ("
+                                AGREEN("%llu") " stolen)\n",
+                                too_big, gpu_size, try_size,
+                                stolen);
     string info = StringPrintf("%llu inel  %llu nw",
                                ineligible, done_nways);
     string line4 = AnsiProgressBar(done, EPOCH_SIZE, info, sec);
@@ -646,10 +688,6 @@ struct SOS {
           const int nways = ChaiWahWu(num);
 
           if (nways >= 3) {
-            if (num % 5 != 0) {
-              MutexLock ml(&m);
-              not_div_5++;
-            }
             if (nways > NWaysGPU::MAX_WAYS) {
               // Do on CPU.
               std::vector<std::pair<uint64_t, uint64_t>> ways =
@@ -678,7 +716,44 @@ struct SOS {
     nways_queue->MarkDone();
 
     status.Printf("Waiting for GPU thread.\n");
+
+    // Might as well do some work stealing while waiting for GPU.
+    for (;;) {
+      std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
+        nways_queue->WaitGet();
+
+      if (!batchopt.has_value()) {
+        // Done -- but let the GPU mark the queue as done.
+        status.Printf("No more work to steal!\n");
+        break;
+      }
+
+      static constexpr int WORK_STEALING_THREADS = 4;
+      std::vector<TryMe> output =
+        ParallelMap(
+            batchopt.value(),
+            [](const std::pair<uint64_t, uint32_t> &input) {
+              TryMe tryme;
+              tryme.num = input.first;
+              tryme.squareways = BruteGetNWays(input.first, input.second);
+              return tryme;
+            },
+            WORK_STEALING_THREADS);
+
+      try_queue->WaitAdd(std::move(output));
+      output.clear();
+      {
+        MutexLock ml(&m);
+        stolen += batchopt.value().size();
+      }
+    }
+
+    // Now actually wait for gpu thread, which should be done very shortly
+    // since there's no more work.
     gpu_thread.join();
+
+    try_queue->MarkDone();
+
     status.Printf("Waiting for Try thread.\n");
     try_thread.join();
 
@@ -690,6 +765,8 @@ struct SOS {
     status.Emit(try_comp->HistoString());
 
     double sec = timer.Seconds();
+    status.Printf("CPU stole " AGREEN("%lld")
+                  " work units from GPU\n", stolen);
     status.Printf("Total triples: %llu/%llu\n", triples, EPOCH_SIZE);
     status.Printf(AGREEN ("Done") " in %s. (%s/ea.)\n",
                   AnsiTime(sec).c_str(), AnsiTime(sec / EPOCH_SIZE).c_str());
@@ -702,11 +779,9 @@ struct SOS {
 
       Interesting(
           StringPrintf("EPOCH %llu %llu %llu "
-                       "%lld %lld %lld %lld %lld "
-                       "%llu\n",
+                       "%lld %lld %lld %lld\n",
                        start, EPOCH_SIZE, triples,
-                       rf, rff, rhh, raa,
-                       not_div_5));
+                       rf, rff, rhh, raa));
 
       FILE *f = fopen("sos.txt", "ab");
       CHECK(f != nullptr);
