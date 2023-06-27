@@ -124,13 +124,23 @@ InternalFactorize(uint64_t x, bool use_pr) {
   // Factors in increasing order.
   std::vector<std::pair<uint64_t, int>> factors;
 
-  uint64_t cur = x;
+  #if 0
+ // local storage
+ // 3^41 is the most factors possible for uint64.
+ uint8_t fs[42] = {};
+ int num_fs = 0;
+ auto PushLocalFactor = [&fs, &num_fs](uint8_t p) {
+     fs[num_fs++] = p;
+   };
+ #endif
 
-  const int twos = std::countr_zero<uint64_t>(x);
-  if (twos) {
-    factors.emplace_back(2, twos);
-    cur >>= twos;
-  }
+ uint64_t cur = x;
+
+ const int twos = std::countr_zero<uint64_t>(x);
+ if (twos) {
+   factors.emplace_back(2, twos);
+   cur >>= twos;
+ }
 
 
   // After 2, try the first 32 primes. This code used to have a much

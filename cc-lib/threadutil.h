@@ -239,7 +239,6 @@ inline void InParallel(Fs... fs) {
     }, v.size());
 }
 
-
 // Generate the vector containing {f(0), f(1), ..., f(num - 1)}.
 // The result type must be default-constructible.
 template<class F>

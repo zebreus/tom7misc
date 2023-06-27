@@ -58,7 +58,8 @@ struct Opt {
              double upper_bound,
              int iters,
              int depth = 1,
-             int attempts = 10);
+             int attempts = 10,
+             int random_seed = 1);
 
   inline static std::pair<std::tuple<double, double>, double>
   Minimize2D(const std::function<double(double, double)> &f,
@@ -66,7 +67,8 @@ struct Opt {
              std::tuple<double, double> upper_bound,
              int iters,
              int depth = 1,
-             int attempts = 10);
+             int attempts = 10,
+             int random_seed = 1);
 
   inline static std::pair<std::tuple<double, double, double>, double>
   Minimize3D(const std::function<double(double, double, double)> &f,
@@ -74,7 +76,8 @@ struct Opt {
              std::tuple<double, double, double> upper_bound,
              int iters,
              int depth = 1,
-             int attempts = 10);
+             int attempts = 10,
+             int random_seed = 1);
 
   inline static std::pair<std::tuple<double, double, double, double>, double>
   Minimize4D(const std::function<double(double, double, double, double)> &f,
@@ -82,7 +85,8 @@ struct Opt {
              std::tuple<double, double, double, double> upper_bound,
              int iters,
              int depth = 1,
-             int attempts = 10);
+             int attempts = 10,
+             int random_seed = 1);
 
   // TODO: 4, etc.
 
@@ -137,14 +141,15 @@ Opt::Minimize1D(const std::function<double(double)> &f,
                 double upper_bound,
                 int iters,
                 int depth,
-                int attempts) {
+                int attempts,
+                int random_seed) {
   const auto [aarg, best] =
     Minimize<1>([&f](const std::array<double, 1> &d) -> double {
         return f(std::get<0>(d));
       },
     std::array<double, 1>{lower_bound},
     std::array<double, 1>{upper_bound},
-    iters, depth, attempts, 1);
+    iters, depth, attempts, random_seed);
   return std::make_pair(std::get<0>(aarg), best);
 }
 
@@ -154,14 +159,15 @@ Opt::Minimize2D(const std::function<double(double, double)> &f,
                 std::tuple<double, double> upper_bound,
                 int iters,
                 int depth,
-                int attempts) {
+                int attempts,
+                int random_seed) {
   const auto [aarg, best] =
     Minimize<2>([&f](const std::array<double, 2> &d) -> double {
         return f(std::get<0>(d), std::get<1>(d));
       },
     std::array<double, 2>{std::get<0>(lower_bound), std::get<1>(lower_bound)},
     std::array<double, 2>{std::get<0>(upper_bound), std::get<1>(upper_bound)},
-    iters, depth, attempts, 1);
+    iters, depth, attempts, random_seed);
   return std::make_pair(
       std::make_tuple(std::get<0>(aarg), std::get<1>(aarg)), best);
 }
@@ -172,7 +178,8 @@ Opt::Minimize3D(const std::function<double(double, double, double)> &f,
                 std::tuple<double, double, double> upper_bound,
                 int iters,
                 int depth,
-                int attempts) {
+                int attempts,
+                int random_seed) {
   const auto [aarg, best] =
     Minimize<3>([&f](const std::array<double, 3> &d) -> double {
         return f(std::get<0>(d), std::get<1>(d), std::get<2>(d));
@@ -185,7 +192,7 @@ Opt::Minimize3D(const std::function<double(double, double, double)> &f,
         std::get<0>(upper_bound),
         std::get<1>(upper_bound),
         std::get<2>(upper_bound)},
-    iters, depth, attempts, 1);
+    iters, depth, attempts, random_seed);
   return std::make_pair(
       std::make_tuple(std::get<0>(aarg),
                       std::get<1>(aarg),
@@ -198,7 +205,8 @@ Opt::Minimize4D(const std::function<double(double, double, double, double)> &f,
                 std::tuple<double, double, double, double> upper_bound,
                 int iters,
                 int depth,
-                int attempts) {
+                int attempts,
+                int random_seed) {
   const auto [aarg, best] =
     Minimize<4>([&f](const std::array<double, 4> &d) -> double {
         return f(std::get<0>(d), std::get<1>(d),
@@ -214,7 +222,7 @@ Opt::Minimize4D(const std::function<double(double, double, double, double)> &f,
         std::get<1>(upper_bound),
         std::get<2>(upper_bound),
         std::get<3>(upper_bound)},
-    iters, depth, attempts, 1);
+    iters, depth, attempts, random_seed);
   return std::make_pair(
       std::make_tuple(std::get<0>(aarg),
                       std::get<1>(aarg),

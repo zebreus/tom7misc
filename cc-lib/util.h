@@ -150,6 +150,10 @@ struct Util {
   /* Is string s alphabetized under char k? */
   static bool library_matches(char k, const string & s);
 
+  // Print a number exactly using commas to separate triples,
+  // like 1,000,000.
+  static string UnsignedWithCommas(uint64_t u);
+
   /* open a new file. if it exists, return null */
   static FILE *open_new(string s);
   /* 0 on failure */

@@ -1,4 +1,8 @@
 
+// This standalone program is for trying out some tricks
+// for the initial division phase in factorize.cc; it can be ignored
+// and eventually deleted!
+
 #include <vector>
 #include <utility>
 #include <cstdint>
@@ -29,13 +33,23 @@ InternalFactorize(uint64_t x) {
   // Factors in increasing order.
   std::vector<std::pair<uint64_t, int>> factors;
 
-  #if 0
+#define USE_LOCAL 0
+
+  #if USE_LOCAL
+  // local storage
+  // 3^41 is the most factors possible for uint64, after eliminating 2.
+  uint8_t fs[42];
+  int num_fs = 0;
+  auto PushLocalFactor = [&fs, &num_fs](uint8_t p) {
+      fs[num_fs++] = p;
+  };
+  #endif
+
   int twos = std::countr_zero<uint64_t>(x);
   if (twos) {
     factors.emplace_back(2, twos);
     cur >>= twos;
   }
-#endif
 
   // Try the first 32 primes. This code used to have a much longer
   // list, but it's counterproductive. With hard-coded constants,
@@ -43,8 +57,22 @@ InternalFactorize(uint64_t x) {
   //
   // PERF: Probably can pipeline faster if we don't actually divide until
   // the end of all the factors?
-#define TRY(p) while (cur % p == 0) { cur /= p; PushFactor(&factors, p); }
-  TRY(2);
+#if USE_LOCAL
+  #define TRY(p) while (cur % p == 0) { cur /= p; PushLocalFactor(p); }
+#else
+  #define TRY(p) while (cur % p == 0) { cur /= p; PushFactor(&factors, p); }
+#endif
+  // #define TRY(p) if (cur % p == 0) { PushFactor(&factors, p); divi *= p; }
+  // #define TRY(p) uint8_t c ## p; while (cur % p == 0) { cur /= p; c ## p++; } if (c ## p) PushLocalFactor(p, c ## p)
+
+#if USE_LOCAL
+  if (cur % 9 == 0) { cur /= 9; PushLocalFactor(3); PushLocalFactor(3); }
+  if (cur % 15 == 0) { cur /= 15; PushLocalFactor(3); PushLocalFactor(5); }
+#else
+  if (cur % 9 == 0) { cur /= 9; PushFactor(&factors, 3); PushFactor(&factors, 3); }
+  if (cur % 15 == 0) { cur /= 15; PushFactor(&factors, 3); PushFactor(&factors, 5); }
+#endif
+
   TRY(3);
   TRY(5);
   TRY(7);
@@ -77,6 +105,10 @@ InternalFactorize(uint64_t x) {
   TRY(127);
   TRY(131);
 
+#if USE_LOCAL
+  for (int i = 0; i < num_fs; i++) PushFactor(&factors, fs[i]);
+#endif
+
   // if (cur == 1) return factors;
   return factors;
 }
@@ -94,13 +126,15 @@ static double Bench() {
     for (const auto &[x, y] : factors) sum += x + y;
   }
   double sec = timer.Seconds();
-  printf("%s\n",
+  printf("%llu %s\n",
+         sum,
          AnsiTime(sec).c_str());
   return sec;
 }
 
 int main(int argc, char **argv) {
   AnsiInit();
+  printf("Begin.\n");
   Bench();
 
   return 0;

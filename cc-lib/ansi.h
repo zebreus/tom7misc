@@ -37,7 +37,7 @@
 #define ANSI_INTERNAL_STR2(s) #s
 #define ANSI_INTERNAL_STR(s) ANSI_INTERNAL_STR2(s)
 
-// r, g, b must be numbers (numberic literals or #defined constants)
+// r, g, b must be numbers (numeric literals or #defined constants)
 // in [0,255].
 #define ANSI_FG(r, g, b) "\x1B[38;2;" \
   ANSI_INTERNAL_STR(r) ";" \
@@ -63,6 +63,14 @@
 std::string AnsiForegroundRGB(uint8_t r, uint8_t g, uint8_t b);
 std::string AnsiBackgroundRGB(uint8_t r, uint8_t g, uint8_t b);
 
+// Strip ANSI codes. Only CSI codes are supported (which is everything
+// in this file), and they are not validated. There are many nonstandard
+// codes that would be treated incorrectly here.
+std::string AnsiStripCodes(const std::string &s);
+
+// Return the number of characters after stripping ANSI codes. Same
+// caveats as above.
+int AnsiStringWidth(const std::string &s);
 
 // Call this in main for compatibility on windows.
 void AnsiInit();
@@ -91,5 +99,11 @@ inline std::string AnsiBackgroundRGB(uint8_t r, uint8_t g, uint8_t b) {
 // Return an ansi-colored representation of the duration, with arbitrary
 // but Tom 7-approved choices of color and significant figures.
 std::string AnsiTime(double seconds);
+
+// Print a color progress bar. [numer/denom  operation  ETA HH:MM:SS]
+// Doesn't update in place; you need to move the cursor for that.
+std::string AnsiProgressBar(uint64_t numer, uint64_t denom,
+                            const std::string &operation,
+                            double taken);
 
 #endif

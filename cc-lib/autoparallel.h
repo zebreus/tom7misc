@@ -272,6 +272,10 @@ struct AutoParallelComp {
   }
 
   void PrintHisto() {
+    printf("%s", HistoString().c_str());
+  }
+
+  std::string HistoString() {
     // Get min/max, including stdev
     double min_ms = std::numeric_limits<double>::infinity();
     double max_ms = -std::numeric_limits<double>::infinity();
@@ -281,15 +285,26 @@ struct AutoParallelComp {
     }
 
     if (max_ms <= min_ms) {
-      printf("(experiment samples are degenerate)\n");
-      return;
+      return "(experiment samples are degenerate)\n";
     }
 
     double width_ms = max_ms - min_ms;
 
+    const char *units = "ms";
+    double scale = 1.0;
+    // TODO: Other scales!
+    if (max_ms < 0.1) {
+      units = "us";
+      scale = 1000.0;
+    } else {
+      units = "ms";
+      scale = 1.0;
+    }
+
+    std::string out;
     //      123 12345 12345678
     //      12345678901234567890
-    printf("th |  # | avg ms |\n");
+    StringAppendF(&out, "th |  # | avg %s |\n", units);
     static constexpr int HW = 59;
     for (int i = 0; i < experiments.size(); i++) {
       const Experiment &expt = experiments[i];
@@ -299,10 +314,12 @@ struct AutoParallelComp {
       while (th.size() < 2) th = (string)" " + th;
       std::string sam = StringPrintf("%d", (int)expt.sample_ms.size());
       while (sam.size() < 3) sam = (string)" " + sam;
-      std::string avg = StringPrintf("%.2f", expt.current_mean);
+      std::string avg = StringPrintf("%.2f", expt.current_mean * scale);
       while (avg.size() < 8) avg = (string)" " + avg;
-      printf("%s |%s |%s| ", th.c_str(), sam.c_str(), avg.c_str());
+      StringAppendF(&out, "%s |%s |%s| ",
+                    th.c_str(), sam.c_str(), avg.c_str());
 
+      // No need to scale these, since they are already normalized.
       double emin = (expt.current_mean - expt.current_stdev);
       double emax = (expt.current_mean + expt.current_stdev);
       double minf = (emin - min_ms) / width_ms;
@@ -318,10 +335,11 @@ struct AutoParallelComp {
         else if (x == imax) c = '>';
         else if (x > imin && x < iavg) c = '-';
         else if (x > iavg && x < imax) c = '-';
-        printf("%c", c);
+        out.push_back(c);
       }
-      printf("\n");
+      StringAppendF(&out, "\n");
     }
+    return out;
   }
 
 private:

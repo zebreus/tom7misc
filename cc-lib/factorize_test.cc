@@ -226,6 +226,7 @@ static void TestPrimeFactors() {
     };
 
   // Test a bunch of arbitrary 64-bit numbers.
+  Timer lfsr_timer;
   {
     uint32_t a = 0x12345678;
     uint32_t b = 0xACABACAB;
@@ -236,7 +237,8 @@ static void TestPrimeFactors() {
       b = LFSRNext32(b);
     }
   }
-  printf("100k via LFSR OK\n");
+  double lfsr_sec = lfsr_timer.Seconds();
+  printf("100k via LFSR OK (%s)\n", AnsiTime(lfsr_sec).c_str());
 
   // Carmichael numbers > 100k.
   for (uint64_t n : {

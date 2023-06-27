@@ -376,7 +376,6 @@ static void TestHexString() {
   CHECK_SEQ(Util::HexString("hi", ", ", "0x"), "0x68, 0x69");
 }
 
-
 static void TestUnicode() {
   CHECK("*" == Util::EncodeUTF8('*'));
   // Katakana Letter Small Tu
@@ -391,6 +390,16 @@ static void TestReplace() {
   CHECK_SEQ(Util::Replace("abc", "z", "xxx"), "abc");
   CHECK_SEQ(Util::Replace("aaa", "a", "aba"), "abaabaaba");
   CHECK_SEQ(Util::Replace("unaffected", "", "z"), "unaffected");
+}
+
+static void TestCommas() {
+  CHECK_SEQ("1,000", Util::UnsignedWithCommas(1000));
+  CHECK_SEQ("999", Util::UnsignedWithCommas(999));
+  CHECK_SEQ("42", Util::UnsignedWithCommas(42));
+  CHECK_SEQ("0", Util::UnsignedWithCommas(0));
+  CHECK_SEQ("20,300,010", Util::UnsignedWithCommas(20300010));
+  CHECK_SEQ("7,111,222,333,444",
+            Util::UnsignedWithCommas(7'111'222'333'444ULL));
 }
 
 int main(int argc, char **argv) {
@@ -414,6 +423,7 @@ int main(int argc, char **argv) {
   TestHexString();
   TestUnicode();
   TestReplace();
+  TestCommas();
 
   printf("OK\n");
   return 0;

@@ -58,7 +58,9 @@ void CPrintf(const char* format, ...) {
 
 std::string AnsiTime(double seconds) {
   char result[64] = {};
-  if (seconds < 1.0) {
+  if (seconds < 0.001) {
+    sprintf(result, AYELLOW("%.2f") "us", seconds * 1000000.0);
+  } else if (seconds < 1.0) {
     sprintf(result, AYELLOW("%.2f") "ms", seconds * 1000.0);
   } else if (seconds < 60.0) {
     sprintf(result, AYELLOW("%.3f") "s", seconds);
@@ -80,4 +82,68 @@ std::string AnsiTime(double seconds) {
             ohour, omin, osec);
   }
   return (string)result;
+}
+
+std::string AnsiStripCodes(const std::string &s) {
+  std::string out;
+  out.reserve(s.size());
+  bool in_escape = false;
+  for (int i = 0; i < (int)s.size(); i++) {
+    if (in_escape) {
+      if (s[i] >= '@' && s[i] <= '~') {
+        in_escape = false;
+      }
+    } else {
+      // OK to access one past the end of the string.
+      if (s[i] == '\x1B' && s[i + 1] == '[') {
+        in_escape = true;
+        i++;
+      } else {
+        out += s[i];
+      }
+    }
+  }
+  return out;
+}
+
+int AnsiStringWidth(const std::string &s) {
+  // PERF could do this without copying.
+  return AnsiStripCodes(s).size();
+}
+
+std::string AnsiProgressBar(uint64_t numer, uint64_t denom,
+                            const std::string &operation,
+                            double seconds) {
+  // including [].
+  static constexpr int FULL_WIDTH = 76;
+
+  double frac = numer / (double)denom;
+
+  double spe = numer > 0 ? seconds / numer : 1.0;
+  double remaining_sec = (denom - numer) * spe;
+  string eta = AnsiTime(remaining_sec);
+  int eta_len = AnsiStringWidth(eta);
+
+  int bar_width = FULL_WIDTH - 2 - 1 - eta_len;
+  // Number of characters that get background color.
+  int filled_width = std::clamp((int)(bar_width * frac), 0, bar_width);
+  string bar_text = StringPrintf("%llu / %llu  (%.1f%%) %s", numer, denom,
+                                 frac * 100.0,
+                                 operation.c_str());
+  // could do "..."
+  if ((int)bar_text.size() > bar_width) bar_text.resize(bar_width);
+  bar_text.reserve(bar_width);
+  while ((int)bar_text.size() < bar_width) bar_text.push_back(' ');
+
+  // int unfilled_width = bar_width - filled_width;
+  string colored_bar =
+    StringPrintf(ANSI_FG(252, 252, 230)
+                 ANSI_BG(15, 21, 145) "%s"
+                 ANSI_BG(0, 3, 26) "%s"
+                 ANSI_RESET,
+                 bar_text.substr(0, filled_width).c_str(),
+                 bar_text.substr(filled_width).c_str());
+
+  string out = AWHITE("[") + colored_bar + AWHITE("]") " " + eta;
+  return out;
 }

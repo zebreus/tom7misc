@@ -14,6 +14,9 @@
 
 #include "util.h"
 
+// Note: It is a design goal for this to only depend on the standard
+// library (not even base/*)!
+
 #if defined(WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
    /* chdir */
 #  include <direct.h>
@@ -1097,6 +1100,25 @@ int Util::library_compare(const string &l, const string &r) {
 
   return natural_compare (l.substr(idxl, l.length() - idxl),
                           r.substr(idxr, r.length() - idxr));
+}
+
+string Util::UnsignedWithCommas(uint64_t u) {
+  // PERF: too much copying!
+  if (u == 0) return "0";
+  string out;
+  char buf[64];
+  while (u) {
+    int triple = u % 1000;
+    u /= 1000;
+    if (u) {
+      sprintf(buf, ",%03d%s", triple, out.c_str());
+    } else {
+      // no zero-padding, no comma
+      sprintf(buf, "%d%s", triple, out.c_str());
+    }
+    out = buf;
+  }
+  return out;
 }
 
 /* XXX impossible to specify a spec for just ^ */
