@@ -10,18 +10,13 @@
 
 #include "arcfour.h"
 
-using uint8 = uint8_t;
-using uint16 = uint16_t;
-using uint64 = uint64_t;
-using uint32 = uint32_t;
-
 // Creates another random stream, seeded by (and consuming some)
 // of the input. Supplying a different n yields a different stream,
 // which can be used to create fan-out in parallel.
 //
 // Caller owns new-ly allocated pointer.
-inline ArcFour *Substream(ArcFour *rc, uint32 n) {
-  std::vector<uint8> buf;
+inline ArcFour *Substream(ArcFour *rc, uint32_t n) {
+  std::vector<uint8_t> buf;
   buf.resize(64);
   for (int i = 0; i < 4; i++) {
     buf[i] = n & 255;
@@ -43,7 +38,7 @@ inline ArcFour *Substream(ArcFour *rc, uint32 n) {
 // RandDouble and then converting to float if precision
 // is important.
 inline float RandFloat(ArcFour *rc) {
-  uint32 uu = 0U;
+  uint32_t uu = 0U;
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
@@ -53,7 +48,7 @@ inline float RandFloat(ArcFour *rc) {
 };
 
 inline double RandDouble(ArcFour *rc) {
-  uint64 uu = 0U;
+  uint64_t uu = 0U;
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
@@ -76,8 +71,8 @@ inline double RandDoubleNot1(ArcFour *rc) {
   }
 }
 
-inline uint64 Rand64(ArcFour *rc) {
-  uint64 uu = 0ULL;
+inline uint64_t Rand64(ArcFour *rc) {
+  uint64_t uu = 0ULL;
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
@@ -89,8 +84,8 @@ inline uint64 Rand64(ArcFour *rc) {
   return uu;
 };
 
-inline uint32 Rand32(ArcFour *rc) {
-  uint32 uu = 0ULL;
+inline uint32_t Rand32(ArcFour *rc) {
+  uint32_t uu = 0ULL;
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
@@ -98,8 +93,8 @@ inline uint32 Rand32(ArcFour *rc) {
   return uu;
 };
 
-inline uint16 Rand16(ArcFour *rc) {
-  uint16 uu = 0ULL;
+inline uint16_t Rand16(ArcFour *rc) {
+  uint16_t uu = 0ULL;
   uu = rc->Byte() | (uu << 8);
   uu = rc->Byte() | (uu << 8);
   return uu;
@@ -107,7 +102,7 @@ inline uint16 Rand16(ArcFour *rc) {
 
 // Generate uniformly distributed numbers in [0, n - 1].
 // n must be greater than or equal to 2.
-inline uint64 RandTo(ArcFour *rc, uint64 n) {
+inline uint64_t RandTo(ArcFour *rc, uint64_t n) {
   // We use rejection sampling, as is standard, but with
   // a modulus that's the next largest power of two. This
   // means that we succeed half the time (worst case).
@@ -117,10 +112,12 @@ inline uint64 RandTo(ArcFour *rc, uint64 n) {
   // for. The input may not be a power of two, however. Make
   // sure any 1 bit is propagated to every position less
   // significant than it.
+  // (PERF: I think this can now be done faster with std::countl_zero.
+  // Benchmark it.)
   //
   // This ought to reduce to a constant if the argument is
   // a compile-time constant.
-  uint64 mask = n - 1;
+  uint64_t mask = n - 1;
   mask |= mask >> 1;
   mask |= mask >> 2;
   mask |= mask >> 4;
@@ -136,21 +133,21 @@ inline uint64 RandTo(ArcFour *rc, uint64 n) {
   // distinguish all 8 if we wanted, or just use a loop. Benchmark.
   if (mask & ~0xFFFF) {
     for (;;) {
-      const uint64 x = Rand64(rc) & mask;
+      const uint64_t x = Rand64(rc) & mask;
       if (x < n) return x;
     }
   } else {
     // 16-bit
     for (;;) {
-      const uint64 x = Rand16(rc) & mask;
+      const uint64_t x = Rand16(rc) & mask;
       if (x < n) return x;
     }
   }
 }
 
 // As above, but for 32-bit ints.
-inline uint32 RandTo32(ArcFour *rc, uint32 n) {
-  uint32 mask = n - 1;
+inline uint32_t RandTo32(ArcFour *rc, uint32_t n) {
+  uint32_t mask = n - 1;
   mask |= mask >> 1;
   mask |= mask >> 2;
   mask |= mask >> 4;
@@ -162,7 +159,7 @@ inline uint32 RandTo32(ArcFour *rc, uint32 n) {
 
   // PERF: If the number is small, we only need Rand16, etc.
   for (;;) {
-    const uint32 x = Rand32(rc) & mask;
+    const uint32_t x = Rand32(rc) & mask;
     if (x < n) return x;
   }
 }
@@ -177,8 +174,8 @@ template<class T>
 static void Shuffle(ArcFour *rc, std::vector<T> *v) {
   if (v->size() <= 1) return;
   // PERF: Use Rand32 for small vectors.
-  for (uint64 i = v->size() - 1; i >= 1; i--) {
-    uint64 j = RandTo(rc, i + 1);
+  for (uint64_t i = v->size() - 1; i >= 1; i--) {
+    uint64_t j = RandTo(rc, i + 1);
     if (i != j) {
       std::swap((*v)[i], (*v)[j]);
     }
@@ -190,8 +187,8 @@ template<class T, size_t N>
 static void Shuffle(ArcFour *rc, std::array<T, N> *v) {
   if constexpr (N <= 1) return;
   // PERF: Use Rand32 for small arrays.
-  for (uint64 i = N - 1; i >= 1; i--) {
-    uint64 j = RandTo(rc, i + 1);
+  for (uint64_t i = N - 1; i >= 1; i--) {
+    uint64_t j = RandTo(rc, i + 1);
     if (i != j) {
       std::swap((*v)[i], (*v)[j]);
     }
