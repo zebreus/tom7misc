@@ -4,19 +4,25 @@ default: acronymy.exe benchmark.exe chat.exe dump-tokens.exe generate.exe contin
 # Changes by tom7.
 # Also add -static to LFLAGS below
 # Also add /c/code/openblas/include to
-CC=x86_64-w64-mingw32-gcc
-CXX=x86_64-w64-mingw32-g++
-CUDA_PATH=../../cuda
-TOM7_INCLUDES=-I../../openblas/include -I../../cuda/include
-TOM7_LIBS=-L../../openblas/lib -L$(CUDA_PATH)/lib/x64 -static
-LLAMA_OPENBLAS=1
+
+
+# CC=x86_64-w64-mingw32-gcc
+# CXX=x86_64-w64-mingw32-g++
+# CUDA_PATH=../../cuda
+# TOM7_INCLUDES=-I../../openblas/include -I../../cuda/include
+# TOM7_LIBS=-L../../openblas/lib -L$(CUDA_PATH)/lib/x64 -static
+# PLATFORM_LDFLAGS=-Wl,--subsystem,console -lpsapi
+# LLAMA_OPENBLAS=1
+
 # LLAMA_CUBLAS=1
 
 CC_LIB=../cc-lib
 
 LLAMA_DIR=../llama
 
-CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o
+RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
+
+CC_LIB_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(RE2_OBJECTS)
 
 ifndef UNAME_S
 UNAME_S := $(shell uname -s)
@@ -53,7 +59,7 @@ endif
 # keep standard at C11 and C++11
 CFLAGS   = -I. -I$(LLAMA_DIR) -I$(CC_LIB) $(TOM7_INCLUDES) -O3 -std=c11   -fPIC
 CXXFLAGS = -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I./examples -O3 -std=c++20 -fPIC
-LDFLAGS  = $(TOM7_LIBS) -m64 -Wl,--subsystem,console -lpsapi
+LDFLAGS  = $(TOM7_LIBS) -m64 $(PLATFORM_LDFLAGS)
 
 ifndef LLAMA_DEBUG
 	CFLAGS   += -DNDEBUG
@@ -247,6 +253,9 @@ dump-tokens.exe : dump-tokens.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 nfa_test.exe : nfa_test.o $(CC_LIB_OBJECTS) $(OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+test-karate.exe : karate.o test-karate.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
