@@ -64,8 +64,10 @@ int main(int argc, char **argv) {
   for (;;) {
 
     string say1, say2;
-    printf("%s says: ", karate.Fighter1().c_str());
-    std::getline(cin, say1);
+    say1 = "hi";
+    printf("%s says: %s\n", karate.Fighter1().c_str(), say1.c_str());
+    // std::getline(cin, say1);
+
     say2 = StringPrintf("%08llx", Rand64(&rc));
     printf("%s says: %s\n", karate.Fighter2().c_str(), say2.c_str());
     string do1, do2;
@@ -74,7 +76,8 @@ int main(int argc, char **argv) {
     do2 = RandomAction(&rc);
     printf("%s: %s\n", karate.Fighter2().c_str(), do2.c_str());
 
-    karate.Process(say1, say2, do1, do2);
+    string message = karate.Process(say1, say2, do1, do2);
+    if (!message.empty()) printf(APURPLE("%s") "\n", message.c_str());
     printf(AGREY("%s") "\n", karate.GetStatus().c_str());
   }
 

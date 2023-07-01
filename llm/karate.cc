@@ -20,6 +20,13 @@ Karate::Karate(const std::string &fighter1, const std::string &fighter2) : fight
 
 }
 
+void Karate::Reset() {
+  x1 = 1;
+  x2 = 3;
+  y1 = y2 = 0;
+  parry1 = parry2 = false;
+}
+
 string PosString(int x, int y) {
   if (y > 0) {
     return StringPrintf("standing on the %dm marker", x);
@@ -85,7 +92,7 @@ std::optional<Aim> Karate::GetKick(const std::string &line) {
 
 std::optional<std::pair<Attack, Aim>> Karate::GetAttack(const std::string &line) {
   if (auto po = GetPunch(line)) return {make_pair(PUNCH, po.value())};
-  else if (auto ko = GetKick(line)) return {make_pair(KICK, po.value())};
+  else if (auto ko = GetKick(line)) return {make_pair(KICK, ko.value())};
   else return nullopt;
 }
 
@@ -115,6 +122,10 @@ static int DirValue(std::optional<Dir> od) {
 
 string Karate::Process(const std::string &say1, const std::string &say2,
                        const std::string &do1, const std::string &do2) {
+  bool prev_parry1 = parry1, prev_parry2 = parry2;
+  parry1 = parry2 = false;
+
+  printf("Process %s|%s|%s|%s\n", say1.c_str(), say2.c_str(), do1.c_str(), do2.c_str());
 
   // First, move players
   const auto mo1 = GetMove(do1);
@@ -123,7 +134,6 @@ string Karate::Process(const std::string &say1, const std::string &say2,
 
   // Process movement first, possibly ending due to ringout.
   if (mo1.has_value() || mo2.has_value()) {
-    parry1 = parry2 = false;
     // Simultaneous movement.
     // If the players walk into each other,
     // the action fails.
@@ -135,17 +145,18 @@ string Karate::Process(const std::string &say1, const std::string &say2,
       x2 = nx2;
     }
     if (x1 < 0 && x2 >= 5) {
-      x1 = 1;
-      x2 = 3;
+      Reset();
       return "Clash: Fighters stepped out of the ring simultaneously.";
     }
 
     if (x1 < 0) {
       score2++;
+      Reset();
       return "Fighter 1 stepped out of the ring.";
     }
     if (x2 >= 5) {
       score1++;
+      Reset();
       return "Fighter 2 stepped out of the ring.";
     }
 
@@ -157,6 +168,87 @@ string Karate::Process(const std::string &say1, const std::string &say2,
 
   // TODO: Mid-air blocking not allowed.
 
+  auto ao1 = GetAttack(do1);
+  auto ao2 = GetAttack(do2);
+
+  // If the players are not within striking distance, attacks do nothing.
+  if (std::abs(x1 - x2) <= 1) {
+    if (ao1.has_value() && ao2.has_value()) {
+      // Simultaneous attack.
+      auto [a1, aim1] = ao1.value();
+      auto [a2, aim2] = ao2.value();
+      // Punch wins.
+      if (a1 == PUNCH && a2 == KICK) {
+        score1++;
+        return "Fighter 1 lands a quick punch.";
+      }
+      if (a2 == PUNCH && a1 == KICK) {
+        score2++;
+        return "Fighter 2 lands a quick punch.";
+      }
+
+      CHECK(a1 == a2);
+      CHECK(!(prev_parry2 && prev_parry2));
+      if (prev_parry1) {
+        if (a1 == PUNCH) {
+          score1++;
+          return "Fighter 1 lands a parry-punch combo.";
+        } else {
+          score1 += 2;
+          return "Fighter 1 lands a parry-kick combo.";
+        }
+      }
+      if (prev_parry2) {
+        if (a2 == PUNCH) {
+          score2++;
+          return "Fighter 2 lands a parry-punch combo.";
+        } else {
+          score2 += 2;
+          return "Fighter 2 lands a parry-kick combo.";
+        }
+      }
+
+      return "Clash: Both fighters attacked simultaneously.";
+    }
+
+    // Now we have some asymmetric attack (if any).
+    if (ao1.has_value()) {
+      const auto &[a1, aim1] = ao1.value();
+      CHECK(!ao2.has_value());
+
+      if (bo2.has_value() && aim1 == bo2.value()) {
+        parry2 = true;
+        return "Fighter 2 successfully parried.";
+      }
+
+      if (a1 == PUNCH) {
+        score1++;
+        return "Fighter 1 lands a punch.";
+      } else {
+        score1 += 2;
+        return "Fighter 1 lands a kick.";
+      }
+    }
+
+    if (ao2.has_value()) {
+      const auto &[a2, aim2] = ao2.value();
+      CHECK(!ao1.has_value());
+
+      if (bo1.has_value() && aim2 == bo1.value()) {
+        parry1 = true;
+        return "Fighter 1 successfully parried.";
+      }
+
+      if (a2 == PUNCH) {
+        score2++;
+        return "Fighter 2 lands a punch.";
+      } else {
+        score2 += 2;
+        return "Fighter 2 lands a kick.";
+      }
+    }
+
+  }
 
   return "";
 }

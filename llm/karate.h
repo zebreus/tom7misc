@@ -87,6 +87,9 @@ struct Karate {
   const std::string &Fighter2() const { return fighter2; }
 
 private:
+  // Reset after clash, ringout, etc.
+  void Reset();
+
   // fighter names
   std::string fighter1, fighter2;
   int score1 = 0, score2 = 0;
