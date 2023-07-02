@@ -95,11 +95,10 @@ private:
   int score1 = 0, score2 = 0;
   // Starting marks.
   int x1 = 1, x2 = 3;
-  // On ground.
-  int y1 = 0, y2 = 0;
+  // If in the air, the direction of the jump.
+  std::optional<Dir> jump1, jump2;
   // True if the last action was a successful parry for that fighter.
   bool parry1 = false, parry2 = false;
-
 };
 
 
