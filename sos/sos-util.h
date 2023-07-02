@@ -38,6 +38,12 @@ ReferenceValidate3(uint64_t sum);
 std::vector<std::pair<uint64_t, uint64_t>>
 BruteGetNWays(uint64_t sum, int num_expected = -1);
 
+// Another algorithm for the above (based on some Maple code), which
+// basically amounts to brute force here as well. Avoid, since it
+// doesn't quite work.
+std::vector<std::pair<uint64_t, uint64_t>>
+NSoks2(uint64_t sum, int num_expected = -1);
+
 std::string WaysString(
     const std::vector<std::pair<uint64_t, uint64_t>> &v);
 

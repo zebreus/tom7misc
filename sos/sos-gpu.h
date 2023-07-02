@@ -16,8 +16,6 @@
 #include "timer.h"
 #include "ansi.h"
 
-
-
 // Runs many in batch. Even though there's a lot of paralellism for
 // a single number, it does not even come close to beating the CPU
 // unless we do a 2D workload.
@@ -77,7 +75,7 @@ struct NWaysGPU {
 # define TIMER_END(d) t_ ## d += d ## _timer.Seconds()
 
   void PrintTimers() {
-#define ONETIMER(d) printf(ACYAN( #d ) ": %s\n", AnsiTime(t_ ## d).c_str())
+#define ONETIMER(d) printf(ACYAN( #d ) ": %s\n", ANSI::Time(t_ ## d).c_str())
     ONETIMER(prep);
     ONETIMER(ml);
     ONETIMER(clear);

@@ -118,12 +118,15 @@ private:
 // static constexpr int GPU_HEIGHT = 49912;
 static constexpr int GPU_HEIGHT = 51504;
 static constexpr uint64_t EPOCH_SIZE = 2'000'000'000; /* ' */
+// PERF: Tune it
+static constexpr int STEADY_WORK_STEALING_THREADS = 2;
+static constexpr int ENDGAME_WORK_STEALING_THREADS = 8;
 
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
 static const char *DONE_FILE = "sos-done.txt";
 
-static StatusBar status(4);
+static StatusBar status(5);
 
 static uint64_t GetDone() {
   MutexLock ml(&file_mutex);
@@ -140,7 +143,7 @@ static void SetDone(uint64 next) {
 static void Interesting(const std::string &s) {
   MutexLock ml(&file_mutex);
   status.Printf("%s\n", s.c_str());
-  string raw = AnsiStripCodes(s);
+  string raw = ANSI::StripCodes(s);
   FILE *f = fopen(INTERESTING_FILE, "ab");
   CHECK(f != nullptr);
   fprintf(f, "%s\n", raw.c_str());
@@ -580,7 +583,6 @@ struct SOS {
       trybatch.clear();
       {
         MutexLock ml(&m);
-        triples += real_batch_size;
         done_nways += real_batch_size;
       }
     }
@@ -596,10 +598,14 @@ struct SOS {
   // These two should eventually reach the same value.
   uint64_t triples = 0;
   uint64_t done_nways = 0;
+  // Should eventually reach the value of triples.
+  uint64_t triples_done = 0;
   // Including ineligible. This eventually reaches EPOCH_SIZE.
   uint64_t done = 0;
   // Work stolen by CPU in endgame.
   uint64_t stolen = 0;
+
+  int work_stealing_threads = 2;
 
   Periodically status_per;
 
@@ -610,7 +616,7 @@ struct SOS {
     double nps = done / sec;
     string line1 =
       StringPrintf("%llu/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
-                   triples, done, pct, AnsiTime(sec).c_str(), nps);
+                   triples, done, pct, ANSI::Time(sec).c_str(), nps);
 
     const int64_t rf = rejected_f.load();
     const int64_t rff = rejected_ff.load();
@@ -634,9 +640,13 @@ struct SOS {
                                 stolen);
     string info = StringPrintf("%llu inel  %llu nw",
                                ineligible, done_nways);
-    string line4 = AnsiProgressBar(done, EPOCH_SIZE, info, sec);
-
-    status.EmitStatus(line1 + line2 + line3 + line4);
+    string line4 = ANSI::ProgressBar(done, EPOCH_SIZE, info, sec) + "\n";
+    string line5 = ANSI::ProgressBar(triples_done, triples, "", sec,
+                                     ANSI::ProgressBarOptions{
+                                       .bar_filled = 0x046204,
+                                       .bar_empty = 0x012701,
+                                     });
+    status.EmitStatus(line1 + line2 + line3 + line4 + line5);
   }
 
   void TryThread() {
@@ -661,9 +671,45 @@ struct SOS {
       {
         MutexLock ml(&m);
         done += batch.size();
+        triples_done += batch.size();
         if (status_per.ShouldRun()) {
           PrintStats();
         }
+      }
+    }
+  }
+
+  void StealThread() {
+    // GPU part is the bottleneck, so also run some of these on the
+    // CPU. When we reach the endgame, we'll increase the number of threads.
+    int num_threads = work_stealing_threads;
+    for (;;) {
+      std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
+        nways_queue->WaitGet();
+
+      if (!batchopt.has_value()) {
+        // Done -- but let the GPU mark the queue as done.
+        status.Printf("No more work to steal!\n");
+        return;
+      }
+
+      std::vector<TryMe> output =
+        ParallelMap(
+            batchopt.value(),
+            [](const std::pair<uint64_t, uint32_t> &input) {
+              TryMe tryme;
+              tryme.num = input.first;
+              tryme.squareways = BruteGetNWays(input.first, input.second);
+              return tryme;
+            },
+            num_threads);
+
+      try_queue->WaitAdd(std::move(output));
+      output.clear();
+      {
+        MutexLock ml(&m);
+        stolen += batchopt.value().size();
+        num_threads = work_stealing_threads;
       }
     }
   }
@@ -675,8 +721,11 @@ struct SOS {
         AWHITE("==") " Start epoch " APURPLE("%s") "+ " AWHITE("==") "\n",
         Util::UnsignedWithCommas(start).c_str());
 
+    work_stealing_threads = STEADY_WORK_STEALING_THREADS;
+
     std::thread gpu_thread(&GPUThread, this);
     std::thread try_thread(&TryThread, this);
+    std::thread steal_thread(&StealThread, this);
 
     ResetCounters();
     factor_comp->
@@ -704,6 +753,10 @@ struct SOS {
                 done_nways++;
               }
             } else {
+              {
+                MutexLock ml(&m);
+                triples++;
+              }
               nways_queue->WaitAdd(make_pair(num, nways));
             }
           } else {
@@ -715,38 +768,14 @@ struct SOS {
 
     nways_queue->MarkDone();
 
-    status.Printf("Waiting for GPU thread.\n");
-
-    // Might as well do some work stealing while waiting for GPU.
-    for (;;) {
-      std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
-        nways_queue->WaitGet();
-
-      if (!batchopt.has_value()) {
-        // Done -- but let the GPU mark the queue as done.
-        status.Printf("No more work to steal!\n");
-        break;
-      }
-
-      static constexpr int WORK_STEALING_THREADS = 4;
-      std::vector<TryMe> output =
-        ParallelMap(
-            batchopt.value(),
-            [](const std::pair<uint64_t, uint32_t> &input) {
-              TryMe tryme;
-              tryme.num = input.first;
-              tryme.squareways = BruteGetNWays(input.first, input.second);
-              return tryme;
-            },
-            WORK_STEALING_THREADS);
-
-      try_queue->WaitAdd(std::move(output));
-      output.clear();
-      {
-        MutexLock ml(&m);
-        stolen += batchopt.value().size();
-      }
+    {
+      MutexLock ml(&m);
+      work_stealing_threads = ENDGAME_WORK_STEALING_THREADS;
     }
+
+    status.Printf("Waiting for Steal/GPU threads.\n");
+
+    steal_thread.join();
 
     // Now actually wait for gpu thread, which should be done very shortly
     // since there's no more work.
@@ -769,7 +798,8 @@ struct SOS {
                   " work units from GPU\n", stolen);
     status.Printf("Total triples: %llu/%llu\n", triples, EPOCH_SIZE);
     status.Printf(AGREEN ("Done") " in %s. (%s/ea.)\n",
-                  AnsiTime(sec).c_str(), AnsiTime(sec / EPOCH_SIZE).c_str());
+                  ANSI::Time(sec).c_str(),
+                  ANSI::Time(sec / EPOCH_SIZE).c_str());
     status.Printf("Did %llu-%llu\n", start, start + EPOCH_SIZE - 1);
     {
       const int64_t rf = rejected_f.load();
@@ -786,8 +816,8 @@ struct SOS {
       FILE *f = fopen("sos.txt", "ab");
       CHECK(f != nullptr);
       fprintf(f, "Done in %s (%s/ea.)\n",
-              AnsiStripCodes(AnsiTime(sec)).c_str(),
-              AnsiStripCodes(AnsiTime(sec / EPOCH_SIZE)).c_str());
+              ANSI::StripCodes(ANSI::Time(sec)).c_str(),
+              ANSI::StripCodes(ANSI::Time(sec / EPOCH_SIZE)).c_str());
       fprintf(f,
               "%lld rf "
               " %lld rff %lld rhh"

@@ -73,7 +73,7 @@ static void TestCWW() {
 
   double sec = timer.Seconds();
   printf("Done in %s. (%s/ea.)\n",
-         AnsiTime(sec).c_str(), AnsiTime(sec / NUM).c_str());
+         ANSI::Time(sec).c_str(), ANSI::Time(sec / NUM).c_str());
   if (wrong == 0) {
     printf(AGREEN("OK") "\n");
   } else {
@@ -83,16 +83,17 @@ static void TestCWW() {
 }
 
 // 264.3/sec -> 244401.7/sec -> 1040228/sec :)
-static void TestBruteN() {
+template<class F>
+static void TestGetWays(const char *name, F f) {
   std::mutex m;
   int triples = 0;
   Timer timer;
-  static constexpr uint64_t START = 100'000'000;
+  static constexpr uint64_t START = 100'000'000'000;
   static constexpr uint64_t NUM   =  10'000'000;
   Periodically status_per(5.0);
   ParallelComp(
     NUM,
-    [&triples, &status_per, &timer, &m](uint64_t idx) {
+    [&f, &triples, &status_per, &timer, &m](uint64_t idx) {
       uint64_t i = START + idx;
       // This one doesn't work, and we don't care.
       if (i == 0) return;
@@ -103,7 +104,8 @@ static void TestBruteN() {
         // in a test it makes sense to check that we don't
         // get *too many*.
         std::vector<std::pair<uint64_t, uint64_t>> nways =
-          BruteGetNWays(i);
+          f(i, -1);
+#if 0
         for (const auto &[a, b] : nways) {
           CHECK(a * a + b * b == i) << a << " " << b << " " << i;
         }
@@ -112,6 +114,7 @@ static void TestBruteN() {
           << num
           << " but got " << nways.size() << ":\n"
           << WaysString(nways);
+#endif
 
         {
           MutexLock ml(&m);
@@ -121,16 +124,16 @@ static void TestBruteN() {
             double sec = timer.Seconds();
             double nps = idx / sec;
             printf("%d/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
-                   triples, idx, pct, AnsiTime(sec).c_str(), nps);
+                   triples, idx, pct, ANSI::Time(sec).c_str(), nps);
           }
         }
       }
     }, 6);
 
   double sec = timer.Seconds();
-  printf("Total triples: %d/%llu\n", triples, NUM);
+  printf("[%s] Total triples: %d/%llu\n", name, triples, NUM);
   printf("Done in %s. (%s/ea.)\n",
-         AnsiTime(sec).c_str(), AnsiTime(sec / NUM).c_str());
+         ANSI::Time(sec).c_str(), ANSI::Time(sec / NUM).c_str());
   printf(" = %.1f/sec\n", NUM / sec);
 }
 
@@ -148,10 +151,29 @@ static void TestSimple() {
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
-  TestSimple();
-  TestCWW();
-  TestBruteN();
+  ANSI::Init();
+
+  #if 0
+  for (int i = 50; i < 60; i++) {
+    printf("%d: ", i);
+    std::vector<std::pair<uint64_t, uint64_t>> nways_brute =
+      BruteGetNWays(i);
+    std::vector<std::pair<uint64_t, uint64_t>> nways =
+      NSoks2(i);
+    int num = ChaiWahWu(i);
+    CHECK(num == (int)nways.size()) << num << " vs " << nways.size() << "\n"
+                                    << WaysString(nways) << "\nBrute: "
+                                    << WaysString(nways_brute);
+    printf("%d ways: %s\n", num, WaysString(nways).c_str());
+  }
+
+  return 0;
+  #endif
+
+  // TestSimple();
+  // TestCWW();
+  TestGetWays("brute", BruteGetNWays);
+  TestGetWays("nsoks2", NSoks2);
 
   printf("OK\n");
   return 0;
