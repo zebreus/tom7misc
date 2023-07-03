@@ -9,6 +9,7 @@
 #include "opt/opt.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "threadutil.h"
 
 static CL *cl = nullptr;
 
@@ -47,7 +48,7 @@ static void MakeBatch() {
         }
       }, THREADS);
 
-  printf("Made batch in %s\n", AnsiTime(batch_timer.Seconds()).c_str());
+  printf("Made batch in %s\n", ANSI::Time(batch_timer.Seconds()).c_str());
 }
 
 
@@ -79,7 +80,7 @@ double OptimizeMe(double h) {
     best_height = height;
     best_sec_per = sec_per;
     printf(AGREEN("New best") ": %d (%s/ea.)\n", best_height,
-           AnsiTime(best_sec_per).c_str());
+           ANSI::Time(best_sec_per).c_str());
   }
   return sec_per;
 }
@@ -104,13 +105,13 @@ static void Optimize() {
 
   printf("Optimization finished. Best was " APURPLE("%.3f")
          " which took %s/ea.\n", height,
-         AnsiTime(sec_per).c_str());
+         ANSI::Time(sec_per).c_str());
   printf("\n");
 }
 
 static void TestNWays() {
   printf("Test...\n");
-  const int height = 512;
+  const int height = 16384;
   NWaysGPU nways_gpu(cl, height);
   std::map<int, int> too_big;
 
@@ -118,14 +119,10 @@ static void TestNWays() {
   double gpu_sec = 0.0;
   double cpu_sec = 0.0;
 
-  // old was 3.716 CPU, 15.259 GPU
-  // batchedx512 CPU: 17.405s
-  //             GPU: 5.006s
-
   Timer run_timer;
   Periodically bar_per(1.0);
-  uint64_t sum = 1000000000ULL;
-  static constexpr int NUM_BATCHES = 512;
+  uint64_t sum = 100'000'000'000ULL;
+  static constexpr int NUM_BATCHES = 8;
   for (int batch_idx = 0; batch_idx < NUM_BATCHES; batch_idx++) {
     // Make batch.
     Timer batch_timer;
@@ -145,12 +142,12 @@ static void TestNWays() {
     batch_sec += batch_timer.Seconds();
 
     Timer cpu_timer;
-    std::vector<std::vector<std::pair<uint64_t, uint64_t>>> outs_cpu;
-    outs_cpu.reserve(height);
-    // XXX not fair to cpu version. Use parallelism. Use expected!
-    for (const auto &[sum, expected] : batch) {
-      outs_cpu.push_back(BruteGetNWays(sum));
-    }
+    std::vector<std::vector<std::pair<uint64_t, uint64_t>>> outs_cpu =
+      ParallelMap(batch,
+                  [](const std::pair<uint64_t, uint32_t> &p) {
+                    return NSoks2(p.first, p.second);
+                  },
+                  6);
     cpu_sec += cpu_timer.Seconds();
 
     CHECK((int)outs_cpu.size() == height);
@@ -164,21 +161,35 @@ static void TestNWays() {
 
     if (CHECK_ANSWERS) {
       for (int row = 0; row < height; row++) {
-        const auto &out_cpu = outs_cpu[row];
-        const auto &out_gpu = outs_gpu[row];
-        CHECK(out_gpu == out_cpu) << "Sum: " << batch[row].first << "\n"
-          "CPU: " << WaysString(out_cpu) << "\n"
-          "GPU: " << WaysString(out_gpu) << "\n";
+        auto &out_cpu = outs_cpu[row];
+        NormalizeWays(&out_cpu);
+        auto &out_gpu = outs_gpu[row];
+        NormalizeWays(&out_gpu);
+
+        if (out_gpu != out_cpu) {
+          printf(ARED("FAIL") "\n"
+                 "Sum: %llu\n"
+                 "CPU: %s\n"
+                 "GPU: %s\n",
+                 batch[row].first,
+                 WaysString(out_cpu).c_str(),
+                 WaysString(out_gpu).c_str());
+
+          auto out_nsok = NSoks2(batch[row].first);
+          NormalizeWays(&out_nsok);
+          printf("nsoks: %s\n", WaysString(out_nsok).c_str());
+          CHECK(false);
+        }
       }
     }
 
     if (bar_per.ShouldRun()) {
       printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
              ANSI_BEGINNING_OF_LINE "%s\n",
-             AnsiProgressBar(batch_idx,
-                             NUM_BATCHES,
-                             "test",
-                             run_timer.Seconds()).c_str());
+             ANSI::ProgressBar(batch_idx,
+                               NUM_BATCHES,
+                               "test",
+                               run_timer.Seconds()).c_str());
     }
   }
 
@@ -197,15 +208,15 @@ static void TestNWays() {
          "CPU: %s\n"
          "GPU: %s\n",
          height,
-         AnsiTime(batch_sec).c_str(),
-         AnsiTime(cpu_sec).c_str(),
-         AnsiTime(gpu_sec).c_str());
+         ANSI::Time(batch_sec).c_str(),
+         ANSI::Time(cpu_sec).c_str(),
+         ANSI::Time(gpu_sec).c_str());
 
   nways_gpu.PrintTimers();
 }
 
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
   cl = new CL;
 
   Optimize();

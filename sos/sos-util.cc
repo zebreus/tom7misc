@@ -7,6 +7,7 @@
 #include <bit>
 #include <tuple>
 #include <optional>
+#include <algorithm>
 
 #include "factorize.h"
 #include "base/stringprintf.h"
@@ -16,6 +17,10 @@ using namespace std;
 
 int ChaiWahWu(uint64_t sum) {
   if (sum == 0) return 1;
+
+  // Don't factor if it's impossible.
+  if (!MaybeSumOfSquares(sum)) return 0;
+
   std::vector<std::pair<uint64_t, int>> collated =
     Factorize::PrimeFactorization(sum);
 
@@ -55,6 +60,19 @@ string WaysString(const std::vector<std::pair<uint64_t, uint64_t>> &v) {
   }
   return out;
 }
+
+void NormalizeWays(std::vector<std::pair<uint64_t, uint64_t>> *v) {
+  for (auto &p : *v)
+    if (p.first > p.second)
+      std::swap(p.first, p.second);
+
+  std::sort(v->begin(), v->end(),
+            [](const std::pair<uint64_t, uint64_t> &x,
+               const std::pair<uint64_t, uint64_t> &y) {
+              return x.first < y.first;
+            });
+}
+
 
 // Slow decomposition into sums of squares two ways, for reference.
 optional<tuple<uint64_t,uint64_t,uint64_t,uint64_t>>
@@ -209,22 +227,22 @@ static inline std::optional<uint64_t> NSoks1(uint64_t n) {
   else return nullopt;
 }
 
-// This is based on some Maple code by joer@k-online.com, 2006
+// This is based on some Maple code by Joe Riel, 2006
 //
-// It doesn't quite work for me. The only advantage over my
-// "brute force" version above is that it runs trials over a
-// smaller range (mints--maxts), but this also seems to be why
-// it doesn't find 1^2 + 7^2 = 50. Possibly I made a mistake, but
-// since it's also not really any faster than BruteGetNWays, I
-// stopped trying to fix it.
+// This runs trials over a smaller range; I don't quite understand
+// why the min side works (I guess it's like: The factors can't both
+// be tiny or both be large), but it passes the tests. About 45% faster
+// than BruteNWays above.
 std::vector<std::pair<uint64_t, uint64_t>>
 NSoks2(uint64_t n, int num_expected) {
   uint64_t maxts = Sqrt64(n - 2 + 1);
   uint64_t maxtsmaxts = maxts * maxts;
+  // Note: In maple, isqrt can be up to 1 off in either direction
+  // when the input is not a perfect square. Might be able to do
+  // better here since Sqrt64 never overestimates.
   if (maxtsmaxts > n - 2 + 1)
     maxts--;
 
-  // maxts = std::min(maxts, maxsq);
   uint64_t q = n / 2;
   uint64_t r = n % 2;
   uint64_t mints = Sqrt64(q + (r ? 1 : 0));
@@ -236,7 +254,17 @@ NSoks2(uint64_t n, int num_expected) {
 
   std::vector<std::pair<uint64_t, uint64_t>> res;
   if (num_expected >= 0) res.reserve(num_expected);
-  for (uint64_t trialsquare = mints; trialsquare < maxts; trialsquare++) {
+
+  // The original nsoks tries all K and then fills with zero. For
+  // K=2, this is just the case that the input is a perfect square.
+  auto sq = NSoks1(n);
+  if (sq.has_value()) {
+    res.emplace_back(sq.value(), 0);
+    if (num_expected == 1)
+      return res;
+  }
+
+  for (uint64_t trialsquare = mints; trialsquare <= maxts; trialsquare++) {
     auto vo = NSoks1(n - trialsquare * trialsquare);
     if (vo.has_value()) {
       res.emplace_back(vo.value(), trialsquare);
@@ -247,7 +275,7 @@ NSoks2(uint64_t n, int num_expected) {
   return res;
 }
 
-
+// This is a version of the above for arbitrary K; untested.
 // n: target number to represent
 // K is the number of squares in the sum
 template<size_t K>
@@ -275,8 +303,8 @@ NSoksK(uint64_t n, uint64_t maxsq,
 
     std::vector<std::vector<uint64_t>> res;
     if (num_expected >= 0) res.reserve(num_expected);
-    for (uint64_t trialsquare = mints; trialsquare < maxts; trialsquare++) {
-      auto val = NSoks<K - 1>(n - trialsquare * trialsquare, trialsquare);
+    for (uint64_t trialsquare = mints; trialsquare <= maxts; trialsquare++) {
+      auto val = NSoksK<K - 1>(n - trialsquare * trialsquare, trialsquare);
       for (auto &v : val) {
         v.push_back(trialsquare);
         res.push_back(std::move(v));
@@ -287,20 +315,6 @@ NSoksK(uint64_t n, uint64_t maxsq,
     return res;
   }
 }
-
-#if 0
-std::vector<std::pair<uint64_t, uint64_t>>
-NSoks2(uint64_t sum, int num_expected) {
-  auto vv = NSoks<2>(sum, (uint64_t)-1, num_expected);
-  std::vector<std::pair<uint64_t, uint64_t>> ret;
-  ret.reserve(vv.size());
-  for (const auto &v : vv) {
-    CHECK(v.size() == 2);
-    ret.emplace_back(v[0], v[1]);
-  }
-  return ret;
-}
-#endif
 
 #if 0
 // from factor.c, gpl

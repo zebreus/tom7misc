@@ -16,6 +16,19 @@ inline uint64_t Sqrt64(uint64_t n) {
   return r - (r * r - 1 >= n);
 }
 
+// Squares mod 8 have certain residues, so their sum
+// can't take on the values 3, 6, or 7. See filter.z3.
+inline bool MaybeSumOfSquares(uint64_t n) {
+  switch (n & 7) {
+  case 3:
+  case 6:
+  case 7:
+    return false;
+  default:
+    return true;
+  }
+}
+
 // Returns the number of ways that 'sum' can be written as
 // a^2 + b^2. Much faster than enumerating them.
 // From note on OEIS by Chai Wah Wu, Sep 08 2022.
@@ -39,12 +52,14 @@ std::vector<std::pair<uint64_t, uint64_t>>
 BruteGetNWays(uint64_t sum, int num_expected = -1);
 
 // Another algorithm for the above (based on some Maple code), which
-// basically amounts to brute force here as well. Avoid, since it
-// doesn't quite work.
+// still does an O(sqrt(n)) search, but with even smarter limits.
+// This is the fastest CPU method so far.
 std::vector<std::pair<uint64_t, uint64_t>>
 NSoks2(uint64_t sum, int num_expected = -1);
 
 std::string WaysString(
     const std::vector<std::pair<uint64_t, uint64_t>> &v);
+
+void NormalizeWays(std::vector<std::pair<uint64_t, uint64_t>> *v);
 
 #endif

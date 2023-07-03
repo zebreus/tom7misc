@@ -82,13 +82,14 @@ static void TestCWW() {
   }
 }
 
+static constexpr bool CHECK_RESULT = true;
 // 264.3/sec -> 244401.7/sec -> 1040228/sec :)
 template<class F>
 static void TestGetWays(const char *name, F f) {
   std::mutex m;
   int triples = 0;
   Timer timer;
-  static constexpr uint64_t START = 100'000'000'000;
+  static constexpr uint64_t START = 100'000'000'000; /* ' */
   static constexpr uint64_t NUM   =  10'000'000;
   Periodically status_per(5.0);
   ParallelComp(
@@ -105,16 +106,27 @@ static void TestGetWays(const char *name, F f) {
         // get *too many*.
         std::vector<std::pair<uint64_t, uint64_t>> nways =
           f(i, -1);
-#if 0
-        for (const auto &[a, b] : nways) {
-          CHECK(a * a + b * b == i) << a << " " << b << " " << i;
+
+        if (CHECK_RESULT) {
+          for (const auto &[a, b] : nways) {
+            CHECK(a * a + b * b == i) << a << " " << b << " " << i;
+          }
+          CHECK((int)nways.size() == num)
+            << "For sum " << i << ", CWW says "
+            << num
+            << " but got " << nways.size() << ":\n"
+            << WaysString(nways);
+          std::sort(nways.begin(), nways.end(),
+                    [](const std::pair<uint64_t, uint64_t> &x,
+                       const std::pair<uint64_t, uint64_t> &y) {
+                      return x.first < y.first;
+                    });
+          // Check uniqueness.
+          for (int x = 1; x < nways.size(); x++) {
+            CHECK(nways[x] != nways[x - 1]) << "Duplicates: " <<
+              nways[x].first << " " << nways[x].second;
+          }
         }
-        CHECK((int)nways.size() == num)
-          << "For sum " << i << ", CWW says "
-          << num
-          << " but got " << nways.size() << ":\n"
-          << WaysString(nways);
-#endif
 
         {
           MutexLock ml(&m);
@@ -137,41 +149,29 @@ static void TestGetWays(const char *name, F f) {
   printf(" = %.1f/sec\n", NUM / sec);
 }
 
-static void TestSimple() {
+template<class F>
+static void TestSimple(const char * name, F f) {
   for (int i = 2; i < 60; i++) {
     int num = ChaiWahWu(i);
     std::vector<std::pair<uint64_t, uint64_t>> nways_fast =
-      BruteGetNWays(i, num);
+      f(i, num);
     std::vector<std::pair<uint64_t, uint64_t>> nways =
-      BruteGetNWays(i);
+      f(i, -1);
     CHECK(nways_fast.size() == nways.size());
     CHECK(num == (int)nways.size());
-    printf("%d: %d ways: %s\n", i, num, WaysString(nways).c_str());
+    printf("[%s] %d: %d ways: %s\n",
+           name, i, num, WaysString(nways).c_str());
   }
 }
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  #if 0
-  for (int i = 50; i < 60; i++) {
-    printf("%d: ", i);
-    std::vector<std::pair<uint64_t, uint64_t>> nways_brute =
-      BruteGetNWays(i);
-    std::vector<std::pair<uint64_t, uint64_t>> nways =
-      NSoks2(i);
-    int num = ChaiWahWu(i);
-    CHECK(num == (int)nways.size()) << num << " vs " << nways.size() << "\n"
-                                    << WaysString(nways) << "\nBrute: "
-                                    << WaysString(nways_brute);
-    printf("%d ways: %s\n", num, WaysString(nways).c_str());
-  }
+  TestCWW();
 
-  return 0;
-  #endif
+  TestSimple("brute", BruteGetNWays);
+  TestSimple("nsoks2", NSoks2);
 
-  // TestSimple();
-  // TestCWW();
   TestGetWays("brute", BruteGetNWays);
   TestGetWays("nsoks2", NSoks2);
 

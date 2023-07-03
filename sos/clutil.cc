@@ -139,9 +139,10 @@ std::optional<std::string> CL::DecodeProgram(cl_program p) {
 // TODO: PERF: Enable fast-math style optimizations:
 // khronos.org/registry/OpenCL/sdk/2.0/docs/man/xhtml/clBuildProgram.html
 // which should be suitable for learning applications.
-pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
-                                               const string &function_name,
-                                               bool verbose) {
+pair<cl_program, std::map<std::string, cl_kernel>> CL::BuildKernels(
+    const string &kernel_src,
+    const std::set<string> &function_names,
+    bool verbose) {
   Timer gpu_compile;
   const char *sources[] = { kernel_src.c_str() };
   size_t source_size[] = { kernel_src.size() };
@@ -168,15 +169,32 @@ pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
     LOG(FATAL);
   }
 
-  cl_int kernel_error = 0;
-  cl_kernel kernel = clCreateKernel(program, function_name.c_str(),
-                                    &kernel_error);
-  CHECK_SUCCESS(kernel_error);
-  if (verbose) {
-    fprintf(stderr, "Compiled %s in %.1fms.\n",
-            function_name.c_str(), gpu_compile.MS());
+  std::map<string, cl_kernel> kernels;
+
+  for (const string &function_name : function_names) {
+    cl_int kernel_error = 0;
+    cl_kernel kernel = clCreateKernel(program, function_name.c_str(),
+                                      &kernel_error);
+    CHECK_SUCCESS(kernel_error);
+    if (verbose) {
+      fprintf(stderr, "Compiled %s in %.1fms.\n",
+              function_name.c_str(), gpu_compile.MS());
+    }
+    kernels[function_name] = kernel;
   }
-  return make_pair(program, kernel);
+
+  return make_pair(program, kernels);
+}
+
+pair<cl_program, cl_kernel> CL::BuildOneKernel(const string &kernel_src,
+                                               const string &function_name,
+                                               bool verbose) {
+  const auto &[prog, kernels] =
+    CL::BuildKernels(kernel_src, std::set<string>({function_name}), verbose);
+
+  auto it = kernels.find(function_name);
+  CHECK(it != kernels.end());
+  return make_pair(prog, it->second);
 }
 
 

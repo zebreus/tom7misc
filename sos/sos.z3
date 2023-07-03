@@ -38,3 +38,4 @@
 (check-sat)
 ;; or give me model
 (get-model)
+

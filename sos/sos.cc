@@ -116,7 +116,9 @@ private:
 
 // Tuned by sos-gpu_test.
 // static constexpr int GPU_HEIGHT = 49912;
-static constexpr int GPU_HEIGHT = 51504;
+// static constexpr int GPU_HEIGHT = 51504;
+static constexpr int GPU_HEIGHT = 56002;
+
 static constexpr uint64_t EPOCH_SIZE = 2'000'000'000; /* ' */
 // PERF: Tune it
 static constexpr int STEADY_WORK_STEALING_THREADS = 2;
@@ -197,7 +199,7 @@ static void ResetCounters() {
 //
 // which we do not need to search. To avoid computing each
 // square twice in here, we require that the smallest of B, C,
-// D, G appear on the top.
+// D, G appears on the top.
 template<class F>
 inline static void AllWays(
     const std::vector<std::pair<uint64_t, uint64_t>> &ways,
@@ -699,7 +701,7 @@ struct SOS {
             [](const std::pair<uint64_t, uint32_t> &input) {
               TryMe tryme;
               tryme.num = input.first;
-              tryme.squareways = BruteGetNWays(input.first, input.second);
+              tryme.squareways = NSoks2(input.first, input.second);
               return tryme;
             },
             num_threads);
@@ -737,10 +739,11 @@ struct SOS {
           const int nways = ChaiWahWu(num);
 
           if (nways >= 3) {
+
             if (nways > NWaysGPU::MAX_WAYS) {
               // Do on CPU.
               std::vector<std::pair<uint64_t, uint64_t>> ways =
-                BruteGetNWays(num, nways);
+                NSoks2(num, nways);
               TryMe tryme;
               tryme.num = num;
               tryme.squareways = std::move(ways);
@@ -795,12 +798,15 @@ struct SOS {
 
     double sec = timer.Seconds();
     status.Printf("CPU stole " AGREEN("%lld")
-                  " work units from GPU\n", stolen);
+                  " work units from GPU (" ACYAN("%.2f") "%%)\n",
+                  stolen, (100.0 * stolen) / triples);
     status.Printf("Total triples: %llu/%llu\n", triples, EPOCH_SIZE);
     status.Printf(AGREEN ("Done") " in %s. (%s/ea.)\n",
                   ANSI::Time(sec).c_str(),
                   ANSI::Time(sec / EPOCH_SIZE).c_str());
-    status.Printf("Did %llu-%llu\n", start, start + EPOCH_SIZE - 1);
+    status.Printf("Did %s-%s\n",
+                  Util::UnsignedWithCommas(start).c_str(),
+                  Util::UnsignedWithCommas(start + EPOCH_SIZE - 1).c_str());
     {
       const int64_t rf = rejected_f.load();
       const int64_t rff = rejected_ff.load();

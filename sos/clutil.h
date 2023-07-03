@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <map>
+#include <set>
 
 // Maybe make this not depend on base/logging?
 // We only need some basic asserts.
@@ -45,6 +47,11 @@ struct CL {
         nullptr);
   }
   */
+
+  std::pair<cl_program, std::map<std::string, cl_kernel>> BuildKernels(
+      const std::string &kernel_src,
+      const std::set<std::string> &function_names,
+      bool verbose = true);
 
   std::pair<cl_program, cl_kernel>
   BuildOneKernel(const std::string &kernel_src,
