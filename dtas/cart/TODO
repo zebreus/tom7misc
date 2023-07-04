@@ -1,0 +1,85 @@
+// Instructions remaining to add
+// coverage for:
+
+families done: ASR, CLV, SRE, SAX, RRA, SHY, ARR,
+TAS, SHX, ATX, SED, RLA, DCP, ALR, SLO, XAA, AXS, AHX
+
+We don't cover all the opcodes, but now at least we
+have all the instruction families.
+
+// Full old list
+01  ORA (d,x)   0
+03  SLO (d,x)   0
+07  SLO d   0
+0b  ANC #i  0
+0f  SLO a   0
+13  SLO (d),y   0
+17  SLO d,x 0
+1b  SLO a,y 0
+1f  SLO a,x 0
+21  AND (d,x)   0
+23  RLA (d,x)   0
+27  RLA d   0
+2b  ANC #i  0
+2f  RLA a   0
+33  RLA (d),y   0
+37  RLA d,x 0
+3b  RLA a,y 0
+3f  RLA a,x 0
+41  EOR (d,x)   0
+43  SRE (d,x)   0
+47  SRE d   0
+4b  ALR #i  0
+4f  SRE a   0
+53  SRE (d),y   0
+57  SRE d,x 0
+5b  SRE a,y 0
+5f  SRE a,x 0
+61  ADC (d,x)   0
+63  RRA (d,x)   0
+67  RRA d   0
+6b  ARR #i  0
+6f  RRA a   0
+73  RRA (d),y   0
+77  RRA d,x 0
+7b  RRA a,y 0
+7f  RRA a,x 0
+83  SAX (d,x)   0
+87  SAX d   0
+8b  XAA #i  0
+8f  SAX a   0
+93  AHX (d),y   0
+97  SAX d,y 0
+9b  TAS a,y 0
+9c  SHY a,x 0
+9e  SHX a,y 0
+9f  AHX a,y 0
+a3  LAX (d,x)   0
+a7  LAX d   0
+ab  LAX #i  0
+af  LAX a   0
+b3  LAX (d),y   0
+b6  LDX d,y 0
+b7  LAX d,y 0
+b8  CLV 0
+bb  LAS a,y 0
+bf  LAX a,y 0
+c1  CMP (d,x)   0
+c3  DCP (d,x)   0
+c7  DCP d   0
+cb  AXS #i  0
+cf  DCP a   0
+d3  DCP (d),y   0
+d7  DCP d,x 0
+db  DCP a,y 0
+df  DCP a,x 0
+e1  SBC (d,x)   0
+e3  ISC (d,x)   0
+e7  ISC d   0
+eb  SBC #i  0
+ef  ISC a   0
+f3  ISC (d),y   0
+f7  ISC d,x 0
+f8  SED 0
+fb  ISC a,y 0
+ff  ISC a,x 0
