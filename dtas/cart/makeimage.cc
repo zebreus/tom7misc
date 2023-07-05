@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cstdint>
 
 #include <vector>
 #include <string>
@@ -16,7 +17,9 @@ int main(int argc, char **argv) {
   std::vector<string> args;
 
   bool got_type = false;
-  bool mirror = false;
+  // If supplied, mirrors this many copies of the ROM to the
+  // output file.
+  int mirror = 1;
   bool dump_prg = false;
   for (int i = 1; i < argc; i++) {
     string arg = argv[i];
@@ -36,9 +39,21 @@ int main(int argc, char **argv) {
       dump_prg = false;
       got_type = true;
     } else if (arg == "-mirror") {
-      mirror = true;
+      if (i == argc - 1) {
+        fprintf(stderr, "Need argument to -mirror.\n");
+        return -1;
+      }
+      mirror = atoi(argv[i + 1]);
+      if (mirror == 0) {
+        fprintf(stderr, "Need numeric argument to -mirror; got: %s\n",
+                argv[i + 1]);
+        return -1;
+      }
+      i++;
+
     } else if (arg[0] == '-') {
       fprintf(stderr, "Unknown flag %s\n", arg.c_str());
+      return -1;
     } else {
       args.push_back(arg);
     }
@@ -66,7 +81,7 @@ int main(int argc, char **argv) {
   }
 
   // Read the header.
-  unsigned char header[16];
+  uint8_t header[16];
   if (16 != fread(&header, 1, 16, inf)) {
     fprintf(stderr, "Can't read header\n");
     return -1;
@@ -79,38 +94,41 @@ int main(int argc, char **argv) {
 
   int prg_bytes = header[4] * 16384;
   int chr_bytes = header[5] * 8192;
-  unsigned char *prg = (unsigned char *)malloc(prg_bytes);
+  fprintf(stderr,
+          "%d prg banks (%d bytes) x %d mirrors = %d\n"
+          "%d chr banks (%d bytes)\n",
+          header[4], prg_bytes, mirror, mirror * prg_bytes,
+          header[5], chr_bytes);
+  uint8_t *prg = (uint8_t *)malloc(prg_bytes);
   if (prg_bytes != fread(prg, 1, prg_bytes, inf)) {
     fprintf(stderr, "Couldn't read %d PRG bytes?\n", prg_bytes);
     return -1;
   }
 
-  unsigned char *chr = (unsigned char *)malloc(chr_bytes);
+  uint8_t *chr = (uint8_t *)malloc(chr_bytes);
   if (chr_bytes != fread(chr, 1, chr_bytes, inf)) {
     fprintf(stderr, "Couldn't read %d CHR bytes?\n", chr_bytes);
     return -1;
   }
 
-  int mult = mirror ? 2 : 1;
-
   if (dump_prg) {
-    for (int i = 0; i < mult; i++) {
+    for (int i = 0; i < mirror; i++) {
       if (prg_bytes != fwrite(prg, 1, prg_bytes, outf)) {
         fprintf(stderr, "Couldn't write %d rom bytes?\n", prg_bytes);
         return -1;
       }
     }
     fprintf(stderr, "Successfully wrote %d PRG Bytes to %s.\n",
-            mult * prg_bytes, outfile.c_str());
+            mirror * prg_bytes, outfile.c_str());
   } else {
-    for (int i = 0; i < mult; i++) {
+    for (int i = 0; i < mirror; i++) {
       if (chr_bytes != fwrite(chr, 1, chr_bytes, outf)) {
         fprintf(stderr, "Couldn't write %d rom bytes?\n", chr_bytes);
         return -1;
       }
     }
     fprintf(stderr, "Successfully wrote %d CHR Bytes to %s.\n",
-            mult * chr_bytes, outfile.c_str());
+            mirror * chr_bytes, outfile.c_str());
   }
 
   free(chr);

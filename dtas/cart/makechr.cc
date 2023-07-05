@@ -47,8 +47,11 @@ int main(int argc, char **argv) {
           hi |= (hi_bit << (7 - x));
           lo |= (lo_bit << (7 - x));
         }
-        chr[idx + y] = hi;
-        chr[idx + y + 8] = lo;
+        // XXX I swapped the order of lo/hi here because I wasn't getting
+        // the colors I expected. Not sure if the bug was here or elsewhere,
+        // though? 4 Jul 2023
+        chr[idx + y] = lo;
+        chr[idx + y + 8] = hi;
       }
     }
   }

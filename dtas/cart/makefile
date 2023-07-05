@@ -12,6 +12,7 @@ AFLAGS=-I $(CC65_DIR)/asminc
 LD64FLAGS=
 
 CXX=x86_64-w64-mingw32-g++
+CXXFLAGS=-I $(CC_LIB) -O2 -m64 -march=native --std=c++20
 
 cart.nes: cart.o reset.o input.o dma.o nes.cfg
 	$(LD65) -L $(CC65_DIR)/lib -C nes.cfg -o cart.nes reset.o input.o cart.o dma.o nes.lib -m cart.map -Ln cart.labels --dbgfile cart.dbg
@@ -35,16 +36,16 @@ cart.s: cart.c
 	$(CC65) $(CC65FLAGS) cart.c --add-source
 
 makeimage.exe : makeimage.cc
-	$(CXX) --std=c++20 $^ -O2 -static -o $@
+	$(CXX) $(CXXFLAGS) $^ -static -o $@
 
 dumpchr.exe : dumpchr.cc $(CC_LIB)/image.cc $(CC_LIB)/stb_image.cc $(CC_LIB)/stb_image_write.cc $(CC_LIB)/base/stringprintf.cc $(CC_LIB)/base/logging.cc $(CC_LIB)/util.cc
-	$(CXX) -I $(CC_LIB) --std=c++20 -O2 $^ -static -o $@
+	$(CXX) $(CXXFLAGS) $^ -static -o $@
 
 makechr.exe : makechr.cc $(CC_LIB)/image.cc $(CC_LIB)/stb_image.cc $(CC_LIB)/stb_image_write.cc $(CC_LIB)/base/stringprintf.cc $(CC_LIB)/base/logging.cc $(CC_LIB)/util.cc
-	$(CXX) -I $(CC_LIB) --std=c++20 -O2 $^ -static -o $@
+	$(CXX) $(CXXFLAGS) $^ -static -o $@
 
 spreadbyte.exe : spreadbyte.cc $(CC_LIB)/image.cc $(CC_LIB)/stb_image.cc $(CC_LIB)/stb_image_write.cc $(CC_LIB)/base/stringprintf.cc $(CC_LIB)/base/logging.cc $(CC_LIB)/util.cc
-	$(CXX) -I $(CC_LIB) --std=c++20 -O2 $^ -static -o $@
+	$(CXX) $(CXXFLAGS) $^ -static -o $@
 
 tiles-fill.png : tiles.png spreadbyte.exe
 	./spreadbyte.exe $< $@
@@ -53,10 +54,10 @@ tiles.chr : tiles-fill.png makechr.exe
 	./makechr.exe $< $@
 
 cart-prg.rom: cart.nes makeimage.exe
-	./makeimage.exe -mirror -prg $< $@
+	./makeimage.exe -mirror 16 -prg $< $@
 
 cart-chr.rom: cart.nes makeimage.exe
-	./makeimage.exe -mirror -chr $< $@
+	./makeimage.exe -mirror 2 -chr $< $@
 
 clean:
 	rm -f *.exe tiles.chr cart.nes *.o cart.s

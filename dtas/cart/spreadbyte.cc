@@ -40,7 +40,7 @@ int main(int argc, char **argv) {
       for (int x = 0; x < 4; x++) {
         const auto [r, g, b, a] = img->GetPixel(128 + yy * 8 + x + 4, y);
         int color = GetColor(r, g, b, a);
-        uint8 v = "\x00\x55\xAA\xff"[color ? 1 : 0];
+        uint8 v = "\x00\x55\xAA\xff"[color ? 2 : 0];
         img->SetPixel(128 + xx * 8 + x, yy * 8 + y,
                       v, v, v, 0xFF);
       }

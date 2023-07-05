@@ -78,16 +78,23 @@ unsigned char counter;
 
 unsigned char old_joy1, old_joy2;
 
+unsigned char switch_bank = 0;
+unsigned char music_on = 1;
+
 // input.s
 void GetInput();
 // dma.s
 void DoDMA();
 
 const unsigned char PALETTE[] = {
-  // Some nice red, green, blue, purple
-  0x1f, 0x03, 0x13, 0x23,
+  // purple
+  // 0x1f, 0x03, 0x13, 0x23,
+  0x1f, 0x04, 0x14, 0x24,
+  // red
   0x1f, 0x06, 0x16, 0x26,
+  // green
   0x1f, 0x0a, 0x1a, 0x2a,
+  // blue
   0x1f, 0x01, 0x11, 0x21,
   // sprite palette is just for debugging; these should
   // not be visible in normal operation
@@ -98,7 +105,6 @@ const unsigned char PALETTE[] = {
 };
 
 unsigned char jiggleframe;
-unsigned char debug_red_mode;
 
 void main() {
   // turn off the screen
@@ -112,8 +118,6 @@ void main() {
   joy1 = 0;
   joy2 = 0;
   jiggleframe = 0;
-  // This starts enabled.
-  debug_red_mode = 1;
 
   *APU_STATUS = 0x0f;
   *APU_PULSE1_ENV = 0x0f;
@@ -156,7 +160,10 @@ void main() {
     // Note that the whole ram doesn't fit on the screen, so we're
     // also blinking back and forth!
     #define CHUNK_SIZE 64
-    #define TOTAL_CHUNKS (2048 / CHUNK_SIZE)
+    // alternate screens
+    // #define TOTAL_CHUNKS (2048 / CHUNK_SIZE)
+    // one screen, switched with joystick
+    #define TOTAL_CHUNKS (1024 / CHUNK_SIZE)
     {
       #if CHUNK_SIZE <= 32
       // Number of chunks in one line
@@ -175,7 +182,7 @@ void main() {
       if (1 /* bank == 0 && sy < 30 */) {
         unsigned short screen_start = 0x2000U + (unsigned short)sy * 32 + sx;
         MEM_LINE = MEM + (unsigned short)chunk_num * CHUNK_SIZE;
-        // if (switch_bank) MEM_LINE += (unsigned short)1024;
+        if (switch_bank) MEM_LINE += (unsigned short)1024;
 
         SET_PPU_ADDRESS(screen_start);
         // PERF: Can get a better frame rate by optimizing
@@ -237,8 +244,7 @@ void main() {
 
     // Play sounds to assist in diagnosing problems if the
     // video isn't working.
-#if 0
-    if ((jiggleframe & 15) == 0) {
+    if (music_on && (jiggleframe & 15) == 0) {
       *APU_STATUS = 0x0f;
       *APU_PULSE1_ENV = 0x0f;
       *APU_PULSE1_TIMER = (jiggleframe * 0x51) ^ 0x5A;
@@ -248,12 +254,18 @@ void main() {
       *APU_PULSE2_TIMER = ((jiggleframe >> 4) * 3) ^ 0x17;
       *APU_PULSE2_LEN = 0x01;
     }
-#endif
 
     jiggleframe++;
     // jiggleframe &= 63;
 
     GetInput();
+
+    {
+      unsigned char joy_new = joy1 & ~old_joy1;
+      if (joy_new & SELECT) switch_bank = !switch_bank;
+      if (joy_new & START) music_on = !music_on;
+      old_joy1 = joy1;
+    }
   }
 };
 
