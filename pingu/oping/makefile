@@ -14,7 +14,7 @@ CCLIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/a
 
 # all
 CPPFLAGS=-Wall -Werror -O2 -I $(CC_LIB)
-CXXFLAGS=--std=c++20
+CXXFLAGS=--std=c++2a
 
 oping.exe : oping.o liboping.o $(CCLIB_OBJECTS) ../netutil.o
 	$(CXX) $(CXXFLAGS) $(LFLAGS) $^ -o $@
@@ -26,7 +26,7 @@ survey.exe : survey.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $(LFLAGS) $^ -o $@
 
 clean:
-	rm -f *.so *.o
+	rm -f *.so *.o *.exe
 
 veryclean: clean
 	rm -f *~
