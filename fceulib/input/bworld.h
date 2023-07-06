@@ -1,5 +1,5 @@
-#ifndef __BWORLD_H
-#define __BWORLD_H
+#ifndef _FCEULIB_BWORLD_H
+#define _FCEULIB_BWORLD_H
 
 #include "../input.h"
 

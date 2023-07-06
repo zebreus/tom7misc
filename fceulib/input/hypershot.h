@@ -1,6 +1,6 @@
 
-#ifndef __HYPERSHOT_H
-#define __HYPERSHOT_H
+#ifndef _FCEULIB_HYPERSHOT_H
+#define _FCEULIB_HYPERSHOT_H
 
 #include "../input.h"
 

@@ -1,5 +1,5 @@
-#ifndef __TRACE_H
-#define __TRACE_H
+#ifndef _FCEULIB_TRACE_H
+#define _FCEULIB_TRACE_H
 
 #include <string>
 #include <vector>
@@ -72,4 +72,4 @@ struct Traces {
   FILE *fp = nullptr;
 };
 
-#endif  // __TRACE_H
+#endif

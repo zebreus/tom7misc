@@ -1,5 +1,5 @@
-#ifndef _INPUT_H_
-#define _INPUT_H_
+#ifndef _FCEULIB_INPUT_H
+#define _FCEULIB_INPUT_H
 
 #include <ostream>
 
@@ -11,7 +11,7 @@
 
 // This used to have Log/Load code for different exotic inputs, but now
 // it's fairly committed to a pair of gamepads, since that's what the
-// external interface of emulator.h loads. 
+// external interface of emulator.h loads.
 // old state saving approach; we should get rid of that and expose it some
 // other way (right now the emulator client calls Step with the joypad inputs
 // for that step, which precludes zapper and other exotic inputs). -tom7
@@ -96,7 +96,7 @@ struct Input {
     void *ptr = nullptr;
     InputCFC *driver = nullptr;
   };
-  
+
   struct JOYPORT {
     explicit JOYPORT(int w) : w(w) {}
 
@@ -106,11 +106,11 @@ struct Input {
     void *ptr = nullptr;
     InputC *driver = nullptr;
   };
-  
+
   struct GPC;
   struct GPCVS;
   struct Fami4C;
-  
+
   // Joyports are where the emulator looks to find input during simulation.
   // They're set by FCEUI_SetInput. Each joyport knows its index (w), type,
   // and pointer to data. I think the data pointer for two gamepads is usually
@@ -122,7 +122,7 @@ struct Input {
   JOYPORT joyports[2] = {JOYPORT(0), JOYPORT(1)};
 
   FCPORT portFC;
-  
+
   const std::vector<SFORMAT> stateinfo;
 
   // This is used to strobe the microphone data on Famicom. Currently

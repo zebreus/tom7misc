@@ -27,9 +27,12 @@
 #include "../types.h"
 #include "endian.h"
 #include "../emufile.h"
+#include <bit>
 
 //OMG ! configure this correctly
 #define LOCAL_LE
+static_assert(std::endian::native == std::endian::little,
+              "Little-endian (e.g. x86) is hard-coded!");
 
 /* little endian to local endianess convert macros */
 #ifdef LOCAL_BE /* local arch is big endian */

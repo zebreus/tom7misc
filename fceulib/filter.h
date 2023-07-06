@@ -1,5 +1,5 @@
-#ifndef __FILTER_H
-#define __FILTER_H
+#ifndef _FCEULIB_FILTER_H
+#define _FCEULIB_FILTER_H
 
 #include "fcoeff-constants.h"
 

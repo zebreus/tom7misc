@@ -1,5 +1,5 @@
-#ifndef __QUIZ_H
-#define __QUIZ_H
+#ifndef _FCEULIB_QUIZ_H
+#define _FCEULIB_QUIZ_H
 
 #include "../input.h"
 

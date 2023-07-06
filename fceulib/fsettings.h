@@ -4,8 +4,8 @@
    to move these constants into the fceu object if they need to be set
    individually and differently for distinct instances. */
 
-#ifndef __FCEULIB_FSETTINGS_H
-#define __FCEULIB_FSETTINGS_H
+#ifndef _FCEULIB_FSETTINGS_H
+#define _FCEULIB_FSETTINGS_H
 
 // 0-150 scale.
 #define FCEUS_SOUNDVOLUME 150

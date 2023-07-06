@@ -1,5 +1,5 @@
-#ifndef __FKB_H
-#define __FKB_H
+#ifndef _FCEULIB_FKB_H
+#define _FCEULIB_FKB_H
 
 #include "../input.h"
 

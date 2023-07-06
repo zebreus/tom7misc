@@ -1,5 +1,5 @@
-#ifndef __SUBORKB_H
-#define __SUBORKB_H
+#ifndef _FCEULIB_SUBORKB_H
+#define _FCEULIB_SUBORKB_H
 
 #include "../input.h"
 

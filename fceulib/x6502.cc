@@ -654,7 +654,7 @@ void X6502::Run(int32 cycles) {
   #ifdef AOT_INSTRUMENTATION
   cycles_histo[std::max(0, std::min(cycles, 1023))]++;
   #endif
-  
+
   if (fc->fceu->PAL) {
     cycles *= 15;  // 15*4=60
   } else {
@@ -720,7 +720,7 @@ void X6502::RunLoop() {
     #ifdef AOT_INSTRUMENTATION
     pc_histo[reg_PC]++;
     #endif
-    
+
     const uint8 b1 = RdMem(reg_PC);
     // printf("Read %x -> opcode %02x\n", reg_PC, b1);
 
@@ -732,6 +732,17 @@ void X6502::RunLoop() {
     fc->sound->SoundCPUHook(temp);
     reg_PC++;
     TRACEN(b1);
+
+    // XXX DO NOT SUBMIT
+    /*
+    static int64 trace_cycles = 0;
+    if (trace_cycles++ < 100000) {
+      printf("%04x:%02x  %02x.%02x.%02x.%02x.%02x\n",
+             reg_PC, b1,
+             reg_A, reg_X, reg_Y, reg_S, reg_P);
+    }
+    */
+
     switch (b1) {
       case 0x00: /* BRK */
         reg_PC++;

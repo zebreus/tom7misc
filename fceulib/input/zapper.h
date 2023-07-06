@@ -1,5 +1,5 @@
-#ifndef _ZAPPER_H_
-#define _ZAPPER_H_
+#ifndef _FCEULIB_ZAPPER_H_
+#define _FCEULIB_ZAPPER_H_
 
 #include "../types.h"
 #include "../input.h"

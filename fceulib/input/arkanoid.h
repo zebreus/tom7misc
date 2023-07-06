@@ -1,5 +1,5 @@
-#ifndef __ARKANOID_H
-#define __ARKANOID_H
+#ifndef _FCEULIB_ARKANOID_H
+#define _FCEULIB_ARKANOID_H
 
 #include "../input.h"
 

@@ -2,8 +2,8 @@
    Assumes that the movie starts with hard power-on
    in the first frame. Ignores everything else. */
 
-#ifndef __SIMPLEFM2_H
-#define __SIMPLEFM2_H
+#ifndef _FCEULIB_SIMPLEFM2_H
+#define _FCEULIB_SIMPLEFM2_H
 
 #include <vector>
 #include <string>

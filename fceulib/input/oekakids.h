@@ -1,5 +1,5 @@
-#ifndef __OEAKAKIDS_H
-#define __OEAKAKIDS_H
+#ifndef _FCEULIB_OEAKAKIDS_H
+#define _FCEULIB_OEAKAKIDS_H
 
 #include "../input.h"
 

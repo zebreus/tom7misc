@@ -1,5 +1,5 @@
-#ifndef __STRINGPRINTF_H
-#define __STRINGPRINTF_H
+#ifndef _FCEULIB_STRINGPRINTF_H
+#define _FCEULIB_STRINGPRINTF_H
 
 #include <string>
 

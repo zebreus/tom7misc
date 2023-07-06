@@ -41,23 +41,21 @@ std::tuple<uint64, uint64, double> RunBenchmark(Emulator *emu,
 }
 
 int main(int argc, char **argv) {
-  string romdir = "roms/";
-
   Timer startup_timer;
   // TODO: This is not really fair since it counts all the IO.
   std::unique_ptr<Emulator> emu(Emulator::Create(ROMFILE));
   CHECK(emu.get() != nullptr);
   const double startup_seconds = startup_timer.Seconds();
   vector<uint8> start = emu->SaveUncompressed();
-  
+
   vector<uint8> movie = SimpleFM7::ReadInputs("mario-long.fm7");
   CHECK(!movie.empty());
 
   printf("Benchmarking %s. Startup in %0.4f sec...\n",
          ROMFILE, startup_seconds);
-  
+
   double exec_seconds = -1.0;
-  
+
   int executions = 0;
   double total_time = 0.0;
   vector<int> last_means;
@@ -87,9 +85,8 @@ int main(int argc, char **argv) {
     last_means.push_back(mtrunc);
     printf("Round %4d in %.4f, mean %.4f\n", executions, sec, mean);
     fflush(stdout);
-    break;
   }
-  
+
   const uint64 nes_checksum = emu->MachineChecksum();
   const uint64 img_checksum = emu->ImageChecksum();
   fprintf(stderr,
@@ -102,7 +99,7 @@ int main(int argc, char **argv) {
           "Startup time: %.4fs\n"
           "Exec time:    %.4fs\n",
           startup_seconds, exec_seconds);
-  
+
   int status = 0;
   if (nes_checksum != expected_nes) {
     fprintf(stderr, "*** NES checksum mismatch. "
@@ -116,6 +113,6 @@ int main(int argc, char **argv) {
             img_checksum, expected_img);
     status = -1;
   }
-  
+
   return status;
 }

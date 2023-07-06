@@ -1,5 +1,5 @@
-#ifndef __BOARDS_H
-#define __BOARDS_H
+#ifndef _FCEULIB_BOARDS_H
+#define _FCEULIB_BOARDS_H
 
 struct CartInfo;
 struct FC;

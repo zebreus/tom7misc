@@ -1,5 +1,5 @@
-#ifndef __VSUNI_H
-#define __VSUNI_H
+#ifndef _FCEULIB_VSUNI_H
+#define _FCEULIB_VSUNI_H
 
 #include "state.h"
 #include "types.h"

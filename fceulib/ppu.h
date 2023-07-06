@@ -1,5 +1,5 @@
-#ifndef __PPU_H
-#define __PPU_H
+#ifndef _FCEULIB_PPU_H
+#define _FCEULIB_PPU_H
 
 #include "state.h"
 #include <utility>
@@ -65,7 +65,7 @@ struct PPU {
 
     return (coarse_y << 3) | fine_y;
   }
-  
+
   // PPU values are:
   //  [0] 0x2000  PPU Control Register #1  (PPUCTRL)
   //  [1] 0x2001  PPU Control Register #2  (PPUMASK)
@@ -83,7 +83,7 @@ struct PPU {
   uint8 MMC50x5130 = 0;
   uint8 MMC5HackSPScroll = 0;
   uint8 MMC5HackSPPage = 0;
-  
+
   /* For cart.c and banksw.h, mostly */
   uint8 *vnapage[4] = { nullptr, nullptr, nullptr, nullptr };
   uint8 PPUNTARAM = 0;
@@ -171,7 +171,7 @@ struct PPU {
   // Information for the sprite 0 hit test.
   int32 sprite_hit_x = 0;
   uint8 sprite_hit_mask = 0;
-  
+
   int ppudead = 1;
   int cycle_parity = 0;
 
@@ -216,7 +216,7 @@ struct PPU {
   int firsttile = 0;
   int linestartts = 0;
   int tofix = 0;
-  // Temporary sprite data 
+  // Temporary sprite data
   uint8 sprlinebuf[256 + 8] = {};
 
   // Any sprites on this line? Then this will be set to 1.

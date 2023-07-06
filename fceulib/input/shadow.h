@@ -1,5 +1,5 @@
-#ifndef __SHADOW_H
-#define __SHADOW_H
+#ifndef _FCEULIB_SHADOW_H
+#define _FCEULIB_SHADOW_H
 
 #include "../input.h"
 

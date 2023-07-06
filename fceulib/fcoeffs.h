@@ -1,3 +1,6 @@
+#ifndef _FCEULIB_FCOEFFS_H
+#define _FCEULIB_FCOEFFS_H
+
 #include "fcoeff-constants.h"
 
 static constexpr int32 SQ2C44100NTSC[SQ2NCOEFFS/2]=
@@ -1581,3 +1584,5 @@ static constexpr int32 C44100PAL[NCOEFFS/2]=
 /*240*/,(int32)(65536 *16 * 0.02024878178965319)
 /*241*/,(int32)(65536 *16 * 0.020277449712345474)
 };
+
+#endif

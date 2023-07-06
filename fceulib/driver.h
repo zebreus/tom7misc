@@ -1,5 +1,5 @@
-#ifndef __DRIVER_H_
-#define __DRIVER_H_
+#ifndef _FCEULIB_DRIVER_H
+#define _FCEULIB_DRIVER_H
 
 #include <stdio.h>
 #include <string>

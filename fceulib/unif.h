@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef __UNIF_H
-#define __UNIF_H
+#ifndef _FCEULIB_UNIF_H
+#define _FCEULIB_UNIF_H
 
 #include "fceu.h"
 

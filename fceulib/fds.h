@@ -1,5 +1,5 @@
-#ifndef __FDS_H
-#define __FDS_H
+#ifndef _FCEULIB_FDS_H
+#define _FCEULIB_FDS_H
 
 // for GI enum.
 #include "fceu.h"

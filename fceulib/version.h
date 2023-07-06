@@ -19,8 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef __FCEU_VERSION
-#define __FCEU_VERSION
+#ifndef _FCEULIB_VERSION_H
+#define _FCEULIB_VERSION_H
 
 #include <string>
 

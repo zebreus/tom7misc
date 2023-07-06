@@ -1,5 +1,5 @@
-#ifndef __TOPRIDER_H
-#define __TOPRIDER_H
+#ifndef _FCEULIB_TOPRIDER_H
+#define _FCEULIB_TOPRIDER_H
 
 #include "../input.h"
 

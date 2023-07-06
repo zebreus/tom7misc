@@ -1,6 +1,6 @@
 
-#ifndef __CURSOR_H
-#define __CURSOR_H
+#ifndef _FCEULIB_CURSOR_H
+#define _FCEULIB_CURSOR_H
 
 #include "../types.h"
 

@@ -1,5 +1,5 @@
-#ifndef __FTRAINER_H
-#define __FTRAINER_H
+#ifndef _FCEULIB_FTRAINER_H
+#define _FCEULIB_FTRAINER_H
 
 #include "../input.h"
 

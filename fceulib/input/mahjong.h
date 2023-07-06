@@ -1,5 +1,5 @@
-#ifndef __MAHJONG_H
-#define __MAHJONG_H
+#ifndef _FCEULIB_MAHJONG_H
+#define _FCEULIB_MAHJONG_H
 
 #include "../input.h"
 

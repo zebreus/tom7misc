@@ -1,6 +1,6 @@
 
-#ifndef __POWERPAD_H
-#define __POWERPAD_H
+#ifndef _FCEULIB_POWERPAD_H
+#define _FCEULIB_POWERPAD_H
 
 // Two sides to the power pad, A and B.
 extern InputC *CreatePowerpadA(FC *fc, int which);

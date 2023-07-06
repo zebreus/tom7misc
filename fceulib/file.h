@@ -1,5 +1,5 @@
-#ifndef _FCEU_FILE_H_
-#define _FCEU_FILE_H_
+#ifndef _FCEULIB_FILE_H_
+#define _FCEULIB_FILE_H_
 
 #include <string>
 #include <iostream>

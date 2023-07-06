@@ -1,3 +1,6 @@
+#ifndef _FCEULIB_MMC5_H
+#define _FCEULIB_MMC5_H
+
 #include "../types.h"
 #include "../cart.h"
 
@@ -13,7 +16,7 @@ struct MMC5 final : public CartInterface {
 
   const uint8 *SPRVPagePtr(uint32 v) { return &MMC5SPRVPage[v >> 10][v]; }
   const uint8 *BGVPagePtr(uint32 v) { return &MMC5BGVPage[v >> 10][v]; }
-  
+
   void Power() final override;
 
   // Should just be used by internal mapper creators.
@@ -28,7 +31,7 @@ struct MMC5 final : public CartInterface {
   // subtracting A when initializing them). -tom7
   uint8 *MMC5SPRVPage[8] = {};
   uint8 *MMC5BGVPage[8] = {};
-  
+
   struct MMC5APU {
     uint16 wl[2] = {};
     uint8 env[2] = {};
@@ -182,3 +185,5 @@ struct MMC5 final : public CartInterface {
   void MMC5RunSound(int count);
   void Mapper5_ESI();
 };
+
+#endif

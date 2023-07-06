@@ -1,5 +1,5 @@
-#ifndef __EMU2413_H
-#define __EMU2413_H
+#ifndef _FCEULIB_EMU2413_H
+#define _FCEULIB_EMU2413_H
 
 #include "../types.h"
 

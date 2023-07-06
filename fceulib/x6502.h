@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef __X6502_H
-#define __X6502_H
+#ifndef _FCEULIB_X6502_H
+#define _FCEULIB_X6502_H
 
 #include "tracing.h"
 #include "fceu.h"
@@ -126,8 +126,8 @@ private:
 #define FCEU_IQEXT2     0x002
 /* ... */
 #define FCEU_IQRESET    0x020
-#define FCEU_IQNMI2  0x040  // Delayed NMI, gets converted to *_IQNMI
-#define FCEU_IQNMI  0x080
+#define FCEU_IQNMI2     0x040  // Delayed NMI, gets converted to *_IQNMI
+#define FCEU_IQNMI      0x080
 #define FCEU_IQDPCM     0x100
 #define FCEU_IQFCOUNT   0x200
 #define FCEU_IQTEMP     0x800

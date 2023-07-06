@@ -103,7 +103,7 @@ struct RomConfig {
   // This should also come from mapper metadata.
   int code_addr_start = 0;
   int code_addr_after_end = 0;
-  
+
   // This is an assertion today; should come from mapper metadata.
   bool effectless_read_8000_ffff = false;
 };
@@ -192,7 +192,7 @@ static Reg regs[] = {
   {"pc", LOCAL_PC, ID_PC, "uint16", "X->reg_PC"},
   {"a", LOCAL_A, ID_A, "uint8", "X->reg_A"},
   {"x", LOCAL_X, ID_X, "uint8", "X->reg_X"},
-  {"y", LOCAL_Y, ID_Y, "uint8", "X->reg_Y"},  
+  {"y", LOCAL_Y, ID_Y, "uint8", "X->reg_Y"},
   {"s", LOCAL_S, ID_S, "uint8", "X->reg_S"},
   {"p", LOCAL_P, ID_P, "uint8", "X->reg_P"},
   {"pi", LOCAL_PI, ID_PI, "uint8", "X->reg_PI"},
@@ -271,20 +271,20 @@ static bool CanGenInstruction(uint8 b1) {
   case 0x09: return true;
   case 0x0D: return true;
 
-  case 0x04: return true; 
-  case 0x14: return true; 
-  case 0x34: return true; 
-  case 0x44: return true; 
-  case 0x54: return true; 
-  case 0x64: return true; 
-  case 0x74: return true; 
+  case 0x04: return true;
+  case 0x14: return true;
+  case 0x34: return true;
+  case 0x44: return true;
+  case 0x54: return true;
+  case 0x64: return true;
+  case 0x74: return true;
 
-  case 0x80: return true; 
-  case 0x82: return true; 
-  case 0x89: return true; 
-  case 0xC2: return true; 
-  case 0xD4: return true; 
-  case 0xE2: return true; 
+  case 0x80: return true;
+  case 0x82: return true;
+  case 0x89: return true;
+  case 0xC2: return true;
+  case 0xD4: return true;
+  case 0xE2: return true;
   case 0xF4: return true;
 
   case 0x90: return true;
@@ -301,7 +301,7 @@ static bool CanGenInstruction(uint8 b1) {
   case 0xCA: return true;
   case 0x88: return true;
   case 0xE8: return true;
-  case 0xC8: return true;    
+  case 0xC8: return true;
 
   case 0x20: return true;
 
@@ -326,7 +326,7 @@ static bool CanGenInstruction(uint8 b1) {
 
   case 0x2D: return true;
   case 0xCD: return true;
-    
+
   case 0xEC: return true;
   case 0xCC: return true;
 
@@ -540,7 +540,7 @@ static bool CanGenInstruction(uint8 b1) {
 
   case 0x4B: return true;
   case 0x6B: return true;
-    
+
   default: return false;
   }
 }
@@ -666,18 +666,19 @@ struct AheadOfTime {
 
     // It's easy to assume no interrupts, because we exit anyway once
     // the interrupt flag is set.
-    // 
+    //
     // DMA only happens when sound does DMC (through soundhook, so we
     // have some visibility into when that might happen, but in any
     // case only 4 per call) or upon write to $4014, which does the
     // PPU DMA. Unfortunately this takes 512 cycles! We have to assume
     // that a write is to this address if it's either known to be 4014,
     // or if it's a dynamically computed address that we can't somehow
-    // bound. Hmm. :/
-    
+    // bound. Hmm. :/ (But you could dynamically check if it's 4014,
+    // mark [[unlikely]] and bail to that slow path if so?)
+
   }
   #endif
-  
+
   uint32 GenInstruction(const Code &code,
                         uint8 b1, uint32 pc_addr, FILE *f) {
 
@@ -707,7 +708,7 @@ struct AheadOfTime {
 
           // But the PC (and jammed bit) can't be modified in mappers.
           FlushLocals(f, ~PRIVATE_TO_X6502);
-          fprintf(f, 
+          fprintf(f,
                   I "const uint8 %s = fceu->ARead[0x%04x](fc, 0x%04x);\n",
                   val_sym.c_str(), addr.Value(), addr.Value());
           LoadLocals(f, ~PRIVATE_TO_X6502);
@@ -724,7 +725,7 @@ struct AheadOfTime {
         // Unknown address so very little hope that we can save locals.
         // But the PC (and jammed bit) can't be modified in mappers.
         FlushLocals(f, ~PRIVATE_TO_X6502);
-        fprintf(f, 
+        fprintf(f,
                 I "const uint8 %s = fceu->ARead[%s](fc, %s);\n",
                 val_sym.c_str(), addr_sym.c_str(), addr_sym.c_str());
         LoadLocals(f, ~PRIVATE_TO_X6502);
@@ -735,7 +736,7 @@ struct AheadOfTime {
       fprintf(f, I LOCAL_DB " = %s;\n", res.String().c_str());
       return res;
     };
-  
+
     // PERF: Look for places where I call this with an 8 bit argument
     // (there are some); those can just access RAM directly.
     auto WriteMem = [this, f](const Exp<uint16> &addr_exp,
@@ -773,7 +774,7 @@ struct AheadOfTime {
     auto X_ZNT = [f](const string &reg) {
       fprintf(f, I LOCAL_P " |= ZNTable[%s];\n", reg.c_str());
     };
-    
+
     auto LD_IM = [&code, &pc_addr, f, &ReadMem](
         std::function<void(Exp<uint8>)> op) {
       Exp<uint8> x = ReadMem(Exp<uint16>(pc_addr));
@@ -828,7 +829,7 @@ struct AheadOfTime {
               sym.c_str(), ab.String().c_str());
       // There was an & 0xFFFF in x6502's code, but I don't see how
       // that can do anything.
-      
+
       Exp<uint8> unused = ReadMem(
           Exp<uint16>(StringPrintf("(%s ^ 0x100)", sym.c_str())));
       fprintf(f, I "  (void) %s;  // Unused GetABIRD\n",
@@ -882,7 +883,7 @@ struct AheadOfTime {
       fprintf(f, I "(void) %s;  // Unused GetIYRD\n", unused.String().c_str());
       ADDCYC(f, 1);
       fprintf(f, "}\n");
-      
+
       return Exp<uint16>(sym);
     };
 
@@ -906,7 +907,7 @@ struct AheadOfTime {
       fprintf(f, I "(void) %s;  // Unused GetIYWR\n", unused.String().c_str());
       return Exp<uint16>(sym);
     };
-    
+
     // Absolute Indexed (for writes and rmws)
     auto GetABIWR = [this, f, &pc_addr, &GetAB, &ReadMem](Exp<uint8> idx) {
       const string sym = GenSym("abiwr");
@@ -920,7 +921,7 @@ struct AheadOfTime {
               unused.String().c_str());
       return Exp<uint16>(sym);
     };
-    
+
     // Same as LD_IM?
     auto GetZP = [&ReadMem, f, &pc_addr]() {
       Exp<uint8> x = ReadMem(Exp<uint16>(pc_addr));
@@ -1027,7 +1028,7 @@ struct AheadOfTime {
       fprintf(f, I "fceu->RAM[%s] = %s;\n",
               aa.String().c_str(), y.String().c_str());
     };
-    
+
     auto LD_IX = [&GetIX, &ReadMem](std::function<void(Exp<uint8>)> op) {
       Exp<uint16> aa = GetIX();
       Exp<uint8> x = ReadMem(aa);
@@ -1039,7 +1040,7 @@ struct AheadOfTime {
       Exp<uint8> x = ReadMem(aa);
       op(x);
     };
-    
+
     auto LD_AB = [&code, &pc_addr, f, &ReadMem, &GetAB](
         std::function<void(Exp<uint8>)> op) {
       Exp<uint16> aa = GetAB();
@@ -1135,7 +1136,7 @@ struct AheadOfTime {
       fprintf(f, I LOCAL_A " ^= %s;\n", val.String().c_str());
       X_ZN(LOCAL_A);
     };
-    
+
     auto ADC = [this, &code, f, &X_ZNT](Exp<uint8> val) {
       const string sym = GenSym("adc");
       fprintf(f, I "const uint32 %s = "
@@ -1164,12 +1165,12 @@ struct AheadOfTime {
               I "  (" LOCAL_P " & ~(Z_FLAG | C_FLAG | N_FLAG | V_FLAG)) |\n"
               I "  (((" LOCAL_A " ^ %s) & (" LOCAL_A " ^ %s) & 0x80) >> 1) |\n"
               I "  (((%s >> 8) & C_FLAG) ^ C_FLAG);\n",
-              sym.c_str(), val.String().c_str(), 
+              sym.c_str(), val.String().c_str(),
               sym.c_str());
       fprintf(f, I LOCAL_A " = %s;\n", sym.c_str());
       X_ZNT(LOCAL_A);
     };
-    
+
     auto ST_AB = [&code, f, &WriteMem, &GetAB](Exp<uint8> exp) {
       Exp<uint16> aa = GetAB();
       WriteMem(aa, exp);
@@ -1207,7 +1208,7 @@ struct AheadOfTime {
       Exp<uint16> aa = GetIYWR();
       WriteMem(aa, r(aa));
     };
-    
+
     auto ST_ZP = [&code, f, &WriteMem, &GetZP](Exp<uint8> exp) {
       Exp<uint8> aa = GetZP();
       WriteMem(Extend8to16(aa), exp);
@@ -1228,7 +1229,7 @@ struct AheadOfTime {
       fprintf(f, I "fceu->RAM[%s] = %s;\n",
               aa.String().c_str(), exp.String().c_str());
     };
-    
+
     auto PUSH = [&code, f](Exp<uint8> v) {
       fprintf(f, I "fceu->RAM[0x100 + " LOCAL_S "] = %s;\n",
               v.String().c_str());
@@ -1244,7 +1245,7 @@ struct AheadOfTime {
               sym.c_str());
       op(Exp<uint8>(sym));
     };
-    
+
     auto JR = [this, &code, &pc_addr, f, LD_IM](Exp<uint8> cond) {
       // PERF pretty much no way conditions are known, right?
       fprintf(f, I "if (%s) {\n", cond.String().c_str());
@@ -1291,7 +1292,7 @@ struct AheadOfTime {
       // conditional structure as the object language; we need to
       // restore changes to the pc made inside the above.
       pc_addr = pc_save;
-      
+
       fprintf(f, I "} else {\n");
       // False branch.
       pc_addr++; pc_addr &= 0xFFFF;
@@ -1326,7 +1327,7 @@ struct AheadOfTime {
               I "  (((%s >> 8) & C_FLAG) ^ C_FLAG);\n", sym.c_str());
       fprintf(f, LOCAL_X " = %s;\n", sym.c_str());
     };
-    
+
     // PERF many of these operations can have known results if the
     // arguments are known. But currently they are always a register
     // source.
@@ -1378,7 +1379,7 @@ struct AheadOfTime {
               I LOCAL_A " >>= 1;\n");
       X_ZNT(LOCAL_A);
     };
-    
+
     auto ROL = [this, f, &X_ZNT](Exp<uint8> x) {
       const string sym = GenSym("rol");
       const string xx = GenSym("xx");
@@ -1411,7 +1412,7 @@ struct AheadOfTime {
       X_ZNT(xx);
       return Exp<uint8>(xx);
     };
-    
+
     switch (b1) {
     case 0x00: { /* BRK */
       pc_addr++; pc_addr &= 0xFFFF;
@@ -1437,7 +1438,7 @@ struct AheadOfTime {
 
       return 0xFFFFFFFF;
     }
-      
+
     case 0x40: /* RTI */
       POP([&](Exp<uint8> flags) {
         fprintf(f, LOCAL_P " = %s;\n", flags.String().c_str());
@@ -1455,7 +1456,7 @@ struct AheadOfTime {
       });
       // Address from RAM.
       return pc_addr;
-      
+
     case 0x60: /* RTS */
       POP([&](Exp<uint8> pc_low) {
         // n.b. this used to set an intermediate value for the PC
@@ -1484,7 +1485,7 @@ struct AheadOfTime {
       PUSH(Exp<uint8>(sym));
       return pc_addr;
     }
-      
+
     case 0x68: /* PLA */
       POP([&](Exp<uint8> v) {
         fprintf(f, I LOCAL_A " = %s;\n", v.String().c_str());
@@ -1497,7 +1498,7 @@ struct AheadOfTime {
         fprintf(f, I LOCAL_P " = %s;\n", v.String().c_str());
       });
       return pc_addr;
-      
+
 
     case 0x4C: {
       /* JMP ABSOLUTE */
@@ -1517,7 +1518,7 @@ struct AheadOfTime {
       // PERF We often know the actual destination address, and
       // could jump to it directly...
       return pc_addr;
-    } 
+    }
 
     case 0x6C: {
       Exp<uint16> tmp = GetAB();
@@ -1528,13 +1529,13 @@ struct AheadOfTime {
         Exp<uint16>(StringPrintf("((((%s) + 1) & 0x00FF) | ((%s) & 0xFF00))",
                                  tmp.String().c_str(), tmp.String().c_str()));
       Exp<uint8> pc_high = ReadMem(tmp_plus_1);
-      
+
       if (pc_low.Known() && pc_high.Known()) {
         const uint16 new_pc = (uint16)pc_low.Value() |
           ((uint16)pc_high.Value() << 8);
         pc_addr = new_pc;
         fprintf(f, I LOCAL_PC " = 0x%04x;  // Known jmp 6c\n", pc_addr);
-        
+
       } else {
         // n.b. this does reorder the write to reg_PC with the RdMem calls.
         // Note that nothing accesses the PC except x6502.
@@ -1675,7 +1676,7 @@ struct AheadOfTime {
     case 0xDE:
       RMW_ABX(DEC);
       return pc_addr;
-      
+
     case 0xE6:
       RMW_ZP(INC);
       return pc_addr;
@@ -1683,7 +1684,7 @@ struct AheadOfTime {
     case 0xF6:
       RMW_ZPX(INC);
       return pc_addr;
-      
+
     case 0xEE:
       RMW_AB(INC);
       return pc_addr;
@@ -1758,7 +1759,7 @@ struct AheadOfTime {
     case 0x65:
       LD_ZP(ADC);
       return pc_addr;
-      
+
     case 0x75:
       LD_ZPX(ADC);
       return pc_addr;
@@ -1780,7 +1781,7 @@ struct AheadOfTime {
     case 0x71:
       LD_IY(ADC);
       return pc_addr;
-      
+
     case 0x29:
       LD_IM(AND);
       return pc_addr;
@@ -1979,7 +1980,7 @@ struct AheadOfTime {
     case 0x15:
       LD_ZPX(ORA);
       return pc_addr;
-      
+
     case 0x0D:
       LD_AB(ORA);
       return pc_addr;
@@ -2002,7 +2003,7 @@ struct AheadOfTime {
     case 0xE9:
       LD_IM(SBC);
       return pc_addr;
-      
+
     case 0xE5:
       LD_ZP(SBC);
       return pc_addr;
@@ -2063,13 +2064,13 @@ struct AheadOfTime {
       ST_ZP(Exp<uint8>(x));
       return pc_addr;
     }
-      
+
     case 0x96: {
       Exp<uint8> x = Read(f, REG_X);
       ST_ZPY(x);
       return pc_addr;
     }
-      
+
     case 0x8E: {
       Exp<uint8> x = Read(f, REG_X);
       ST_AB(x);
@@ -2152,7 +2153,7 @@ struct AheadOfTime {
       fprintf(f, I LOCAL_P " = (" LOCAL_P " & ~C_FLAG) | "
               "(" LOCAL_A " >> 7);\n");
       return pc_addr;
-      
+
       /* AAX */
     case 0x87: {
       Exp<uint8> a = Read(f, REG_A);
@@ -2161,7 +2162,7 @@ struct AheadOfTime {
                                     a.String().c_str(), x.String().c_str())));
       return pc_addr;
     }
-      
+
     case 0x97: {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
@@ -2169,7 +2170,7 @@ struct AheadOfTime {
                                     a.String().c_str(), x.String().c_str())));
       return pc_addr;
     }
-      
+
     case 0x8F: {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
@@ -2177,7 +2178,7 @@ struct AheadOfTime {
                                     a.String().c_str(), x.String().c_str())));
       return pc_addr;
     }
-      
+
     case 0x83: {
       Exp<uint8> a = Read(f, REG_A);
       Exp<uint8> x = Read(f, REG_X);
@@ -2201,13 +2202,13 @@ struct AheadOfTime {
         X_ZN(LOCAL_A);
       });
       return pc_addr;
-      
+
       /* ASR */
     case 0x4B:
       LD_IM(AND);
       LSRA();
       return pc_addr;
-      
+
       /* ATX(OAL) */
     case 0xAB:
       // Hmm, this instruction really doesn't make sense. At some
@@ -2339,20 +2340,20 @@ struct AheadOfTime {
       return pc_addr;
 
       /* DOP */
-    case 0x04: 
-    case 0x14: 
-    case 0x34: 
-    case 0x44: 
-    case 0x54: 
-    case 0x64: 
-    case 0x74: 
+    case 0x04:
+    case 0x14:
+    case 0x34:
+    case 0x44:
+    case 0x54:
+    case 0x64:
+    case 0x74:
 
-    case 0x80: 
-    case 0x82: 
-    case 0x89: 
-    case 0xC2: 
-    case 0xD4: 
-    case 0xE2: 
+    case 0x80:
+    case 0x82:
+    case 0x89:
+    case 0xC2:
+    case 0xD4:
+    case 0xE2:
     case 0xF4:
       pc_addr++; pc_addr &= 0xFFFF;
       fprintf(f, I LOCAL_PC " = 0x%04x;\n", pc_addr);
@@ -2534,7 +2535,7 @@ struct AheadOfTime {
       });
       return pc_addr;
 
-    case 0x7B: 
+    case 0x7B:
       RMW_ABY([&](Exp<uint8> x) {
         Exp<uint8> y = ROR(x);
         ADC(y);
@@ -2542,7 +2543,7 @@ struct AheadOfTime {
       });
       return pc_addr;
 
-    case 0x63: 
+    case 0x63:
       RMW_IX([&](Exp<uint8> x) {
         Exp<uint8> y = ROR(x);
         ADC(y);
@@ -2685,7 +2686,7 @@ struct AheadOfTime {
                          y.String().c_str()));
       });
       return pc_addr;
-      
+
     case 0x9F:
       ST_ABY([this, f](Exp<uint16> aa) {
         Exp<uint8> a = Read(f, REG_A);
@@ -2723,7 +2724,7 @@ struct AheadOfTime {
         return Exp<uint8>(
             StringPrintf(
                 "(%s & ((((uint16)(%s) - %s) >> 8) + 1))",
-                x.String().c_str(), 
+                x.String().c_str(),
                 aa.String().c_str(),
                 y.String().c_str()));
       });
@@ -2808,7 +2809,7 @@ struct AheadOfTime {
             );
 
     DeclLocals(f);
-    
+
     uint32 pc_addr = entry_addr;
     for (;;) {
       // We don't want to try reading outside the mapped region, of
@@ -2896,7 +2897,7 @@ struct AheadOfTime {
         //   - interrupt flag
         //   - DB
         // Since this is true for mario (and probably many games),
-        // let's do that latter case first. 
+        // let's do that latter case first.
 
         if (config.effectless_read_8000_ffff) {
           FlushLocals(f, ID_TCOUNT | ID_COUNT | ID_IRQLOW);
@@ -2918,7 +2919,7 @@ struct AheadOfTime {
         }
 
         fprintf(f, I "}\n");
-        
+
         pc_addr++;
         fprintf(f, I LOCAL_PC " = 0x%04x;\n", pc_addr & 0xFFFF);
 
@@ -2946,7 +2947,7 @@ struct AheadOfTime {
   }
 
   string GenSym() { return GenSym("sym"); }
-  
+
   int64 next_symbol = 0;
 };
 
@@ -2981,14 +2982,14 @@ static vector<string> GenerateCode(const CodeConfig &config,
 
   std::mutex ret_m;
   vector<string> ret;
-  
+
   auto F = [&config, &code, addr_start, addr_past_end, &symbol, &cart_name,
             &ret_m, &ret](int i) {
     AheadOfTime aot;
     string filebase = StringPrintf("%s_%d", symbol.c_str(), i);
     string filename = filebase + ".cc";
     FILE *f = fopen(filename.c_str(), "w");
-    
+
     // Prelude.
     fprintf(f,
             "// Generated code! Do not edit.\n"
@@ -3016,7 +3017,7 @@ static vector<string> GenerateCode(const CodeConfig &config,
     for (uint32 j = i;
          j < addr_past_end && j < i + config.entrypoints_per_file;
          j++) {
-      aot.GenerateEntry(config, code, j, addr_past_end, symbol, f);      
+      aot.GenerateEntry(config, code, j, addr_past_end, symbol, f);
     }
 
     fclose(f);
@@ -3026,7 +3027,7 @@ static vector<string> GenerateCode(const CodeConfig &config,
       fprintf(stderr, "Wrote %s.\n", filename.c_str());
     }
   };
-  
+
   ParallelApp(start_addrs, F, 16);
   return ret;
 }
@@ -3046,7 +3047,7 @@ static void GenerateDispatcher(const CodeConfig &config,
           "#include \"x6502.h\"\n"
           "#include \"fc.h\"\n"
           "#include \"fceu.h\"\n\n");
-  
+
   // Avoid needing a header file; just generate the externs here.
   for (int i = addr_start; i < addr_past_end; i++) {
     fprintf(f, "void %s_%04x(FC *);\n", symbol.c_str(), i);
@@ -3056,7 +3057,7 @@ static void GenerateDispatcher(const CodeConfig &config,
   // entry table.
   fprintf(f, "\n\nstatic void %s_any(FC *fc) { fc->X->RunLoop(); }\n\n",
           symbol.c_str());
-  
+
   fprintf(f, "static void (*entries[0x10000])(FC *fc) = {\n");
   for (int i = 0; i < 0x10000; i++) {
     if (i < addr_start || i >= addr_past_end)
@@ -3146,7 +3147,7 @@ int main(int argc, char **argv) {
            game.c_str());
     return -1;
   }
-  
+
   std::unique_ptr<Emulator> emu(Emulator::Create(romdir + "/" + rom.file));
 
   Timer compile_timer;
@@ -3195,12 +3196,12 @@ int main(int argc, char **argv) {
     fprintf(mf, "\n");
     fclose(mf);
   }
-    
+
   double compile_seconds = compile_timer.GetSeconds();
-  
+
   fprintf(stderr, "Finished.\n"
           "Compile time: %.4fs\n",
           compile_seconds);
-  
+
   return 0;
 }

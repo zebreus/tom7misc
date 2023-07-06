@@ -17,9 +17,14 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
+
+#ifndef _FCEULIB_XSTRING_H
+#define _FCEULIB_XSTRING_H
+
 #include <string>
 #include <vector>
 
 std::vector<std::string> TokenizeStr(const std::string &str,
-				     const std::string &delims);
+                                     const std::string &delims);
 
+#endif

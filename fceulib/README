@@ -22,9 +22,9 @@ that some piece of code accesses uninitialized memory and thus doesn't
 have repeatable behavior. This may not matter for your application, so
 go to town!
 
-Note that this port requires C++11 (maybe even C++20 now) and I have
-only tested 64-bit builds.
-On Windows I am using x86_64-w64-mingw32-g++ (GCC 11.2).
+Note that this port requires C++20 now and I have only tested 64-bit
+builds.
+On Windows I am using x86_64-w64-mingw32-g++ (GCC 11.4).
 
 The intention is that the library itself (emulator.h) has no external
 dependencies, other than zlib (courtesy of original FCEUX code), which

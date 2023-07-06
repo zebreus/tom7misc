@@ -1,18 +1,18 @@
-#ifndef __FCEU_GIT
-#define __FCEU_GIT
+#ifndef _FCEULIB_GIT_H
+#define _FCEULIB_GIT_H
 
 #include "utils/md5.h"
 
 enum EGIT {
-  GIT_CART = 0,  //Cart
-  GIT_VSUNI = 1,  //VS Unisystem
+  GIT_CART = 0,  // Cart
+  GIT_VSUNI = 1,  // VS Unisystem
   GIT_FDS = 2,  // Famicom Disk System
 };
 
 enum EGIV {
-  GIV_NTSC = 0,  //NTSC emulation.
-  GIV_PAL = 1,  //PAL emulation.
-  GIV_USER = 2,  //What was set by FCEUI_SetVidSys().
+  GIV_NTSC = 0,  // NTSC emulation.
+  GIV_PAL = 1,  // PAL emulation.
+  GIV_USER = 2,  // What was set by FCEUI_SetVidSys().
 };
 
 enum ESIS {

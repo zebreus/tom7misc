@@ -19,8 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef _INES_H_
-#define _INES_H_
+#ifndef _FCEULIB_INES_H
+#define _FCEULIB_INES_H
 
 #include <stdlib.h>
 #include <string.h>

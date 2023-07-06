@@ -1,6 +1,6 @@
 
-#ifndef __MMC3_H
-#define __MMC3_H
+#ifndef _FCEULIB_MMC3_H
+#define _FCEULIB_MMC3_H
 
 #include "../cart.h"
 

@@ -1,5 +1,5 @@
-#ifndef __CART_H
-#define __CART_H
+#ifndef _FCEULIB_CART_H
+#define _FCEULIB_CART_H
 
 #include "types.h"
 #include "fceu.h"
@@ -76,7 +76,7 @@ struct Cart {
   void SetVPage(uint32 A, uint8 *p) { VPage[A >> 10] = p - A; }
   // Ugh, even worse!
   void SetSpecificVPage(int num, uint32 A, uint8 *p) { VPage[num] = p - A; }
-  
+
   // Each page is a 2k chunk of memory, corresponding to the address
   // (A >> 11), but the pointer is offset such that it is still
   // indexed by A, not A & 2047. (TODO: verify, and maybe "fix" -tom7)
@@ -124,7 +124,7 @@ public:
   // which I think is like the bank number to select. (In UNROM, we
   // use latch & 7, but then also ~0! It gets anded with one of the
   // PRGmasks, though.)
-  //  
+  //
   // 2, 4, 8, 16, 32 seem to refer to 2k, 4k, 8k, 16k and 32k banks.
   //
   // I haven't figured it out beyond that.

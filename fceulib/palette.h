@@ -1,5 +1,5 @@
-#ifndef __PALETTE_H
-#define __PALETTE_H
+#ifndef _FCEULIB_PALETTE_H
+#define _FCEULIB_PALETTE_H
 
 #include "fc.h"
 

@@ -1,5 +1,5 @@
-#ifndef __TRACING_H
-#define __TRACING_H
+#ifndef _FCEULIB_TRACING_H
+#define _FCEULIB_TRACING_H
 
 #include "trace.h"
 #include "stringprintf.h"

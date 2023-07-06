@@ -1,5 +1,5 @@
-#ifndef __FCEU_ENDIAN
-#define __FCEU_ENDIAN
+#ifndef _FCEULIB_ENDIAN_H
+#define _FCEULIB_ENDIAN_H
 
 #include <stdlib.h>
 #include <iosfwd>

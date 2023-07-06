@@ -1,8 +1,9 @@
 // Templated array of fixed size.
 
-#ifndef _FIXEDARRAY_H_
-#define _FIXEDARRAY_H_
+#ifndef _FCEULIB_FIXEDARRAY_H
+#define _FCEULIB_FIXEDARRAY_H
 
+// TODO: Can just use std::array.
 template<typename T, int N>
 struct FixedArray {
   static constexpr int size = N;
@@ -28,7 +29,7 @@ struct FixedArray {
   const T *data() const {
     return &data_[0];
   }
-  
+
   bool operator!=(const FixedArray<T,N> &other) const {
     return !operator==(other);
   }

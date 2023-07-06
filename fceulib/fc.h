@@ -3,8 +3,8 @@
 // which can load a cartridge and emulate steps, but also save and restore
 // state.
 
-#ifndef __FC_H
-#define __FC_H
+#ifndef _FCEULIB_FC_H
+#define _FCEULIB_FC_H
 
 // These are deliberately forward-declared in this header so that
 // it can be safely included anywhere.

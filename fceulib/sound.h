@@ -18,8 +18,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#ifndef _SOUND_H_
-#define _SOUND_H_
+#ifndef _FCEULIB_SOUND_H
+#define _FCEULIB_SOUND_H
 
 #include <vector>
 #include "state.h"
@@ -84,7 +84,7 @@ struct Sound {
   // be made private / deleted.
   void SoundCPUHookNoDMA(int);
   void DMCDMA();
-  
+
   const std::vector<SFORMAT> &FCEUSND_STATEINFO() {
     return stateinfo;
   }

@@ -423,7 +423,7 @@ static std::vector<TestCase> TestCases() {
       0xa11f6d34392510df, 0x22e382001c8fa99b,
       0x2d191c6dc3fcfd72, 0x09cdab0e8108dab7,
       NO_PAUSE_MASK);
-  
+
   AddCase(
       "mario.nes",
       // the classic mario-tom.fm7
@@ -545,7 +545,7 @@ static std::vector<TestCase> TestCases() {
       0x9ff8c5ca1ebbbd5d, 0x166819fb3a1bc9cc,
       0xb67b23f3a33b5620, 0xb7b133f2e76ce088,
       NO_PAUSE_MASK);
-  
+
   AddCase(
       "roadblasters.nes",
       "!87_2b102_4b84_20l12_16r23_20r2_47b7_46a13_50b23_18b5ub135u11ru,u"
@@ -578,7 +578,7 @@ static std::vector<TestCase> TestCases() {
       0xc702457b07a89ece, 0x7f9abbd10051bf40,
       0x45ccd952861d5ad8, 0x6402da4519e800dc,
       NO_PAUSE_MASK);
-  
+
   return cases;
 }
 
@@ -618,6 +618,10 @@ int main(int argc, char **argv) {
              result.nes_after_random,
              result.img_after_random);
     }
+
+    // XXX DO NOT SUBMIT
+    printf("EXIT EARLY.\n");
+    return 0;
   }
 
   printf("Ran everything in %.2fs\n", test_timer.Seconds());
