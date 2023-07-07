@@ -53,6 +53,7 @@ int ChaiWahWu(uint64_t sum) {
   return first + ((m + b) >> 1);
 }
 
+
 string WaysString(const std::vector<std::pair<uint64_t, uint64_t>> &v) {
   string out;
   for (const auto &[a, b] : v) {

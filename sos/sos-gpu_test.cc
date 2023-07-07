@@ -15,9 +15,8 @@ static CL *cl = nullptr;
 
 static constexpr bool CHECK_ANSWERS = true;
 
-static constexpr int GLOBAL_BATCH_SIZE = 65536;
+static constexpr int GLOBAL_BATCH_SIZE = 131072;
 
-// XXX do
 static std::vector<std::pair<uint64_t, uint32_t>> global_batch;
 static void MakeBatch() {
   // Make batch and put it in the global.
@@ -26,7 +25,7 @@ static void MakeBatch() {
   global_batch.reserve(GLOBAL_BATCH_SIZE);
 
   std::mutex m;
-  static constexpr uint64_t START = 10'000'000'000ULL; /* ' */
+  static constexpr uint64_t START = 800'000'000'000ULL; /* ' */
   static constexpr int THREADS = 6;
   ParallelComp(
       THREADS,
@@ -51,6 +50,7 @@ static void MakeBatch() {
   printf("Made batch in %s\n", ANSI::Time(batch_timer.Seconds()).c_str());
 }
 
+static constexpr int NUM_PASSES = 10;
 
 static int best_height = 0;
 static double best_sec_per = 999999.0;
@@ -61,20 +61,25 @@ double OptimizeMe(double h) {
   int height = (int)std::round(h);
   if (height < 1 || height > GLOBAL_BATCH_SIZE) return 9999999.0;
 
-  // Create a batch of the target height
-  std::vector<std::pair<uint64_t, uint32_t>> batch =
-    global_batch;
-
-  Shuffle(rc, &batch);
-  batch.resize(height);
   NWaysGPU nways_gpu(cl, height);
 
-  Timer run_timer;
-  std::vector<std::vector<std::pair<uint64_t, uint64_t>>> res =
-    nways_gpu.GetNWays(batch);
-  double sec = run_timer.Seconds();
+  double sec = 0.0;
+  for (int p = 0; p < NUM_PASSES; p++) {
+    // Create a batch of the target height
+    std::vector<std::pair<uint64_t, uint32_t>> batch =
+      global_batch;
 
-  double sec_per = sec / height;
+    Shuffle(rc, &batch);
+    batch.resize(height);
+
+    Timer run_timer;
+    std::vector<std::vector<std::pair<uint64_t, uint64_t>>> res =
+      nways_gpu.GetNWays(batch);
+    sec += run_timer.Seconds();
+  }
+
+
+  double sec_per = sec / (height * NUM_PASSES);
 
   if (sec_per < best_sec_per) {
     best_height = height;
@@ -85,6 +90,8 @@ double OptimizeMe(double h) {
   return sec_per;
 }
 
+// Too slow now :(
+// Maybe better to just sample the 1D interval?
 static void Optimize() {
   rc = new ArcFour(StringPrintf("gpu.%lld", time(nullptr)));
   printf("Make batch...\n");
@@ -92,14 +99,28 @@ static void Optimize() {
   printf("... done.\n");
   CHECK((int)global_batch.size() == GLOBAL_BATCH_SIZE);
 
-  // Convenience versions for small N.
+  // The first execution(s) of the kernel take longer; perhaps because
+  // there is some internal JIT or branch predictors or whatever. Try
+  // to avoid sampling these during optimization.
+  //
+  // (Actually, the observed behavior seems to suggest that even after
+  // warm-up, you need to run the kernel several times with the same
+  // batch size in order to see its steady-state performance. So maybe
+  // the OptimizeMe function should run in a loop and take the min.)
+  Timer warm_timer;
+  printf("Warming kernels...\n");
+  while (warm_timer.Seconds() < 5.0) (void)OptimizeMe(GLOBAL_BATCH_SIZE * 0.5);
+  printf("... done.\n");
+  // reset best
+  best_sec_per = 999999.0;
+
   // Returns {best_arg, f(best_arg)}.
   const auto &[height, sec_per] =
     Opt::Minimize1D(
         OptimizeMe,
         // bounds
-        1.0, (double)GLOBAL_BATCH_SIZE,
-        100,
+        4096.0, (double)GLOBAL_BATCH_SIZE,
+        25,
         1, 10,
         Rand64(rc));
 
@@ -111,24 +132,28 @@ static void Optimize() {
 
 static void TestNWays() {
   printf("Test...\n");
-  const int height = 16384;
-  NWaysGPU nways_gpu(cl, height);
+  // const int height = 16384;
+  // static constexpr int GPU_HEIGHT = 56002;
+  static constexpr int GPU_HEIGHT = 65536 * 2;
+  static constexpr uint64_t SUM_START = 800'000'000'000ULL;
+  NWaysGPU nways_gpu(cl, GPU_HEIGHT);
   std::map<int, int> too_big;
 
   double batch_sec = 0.0;
   double gpu_sec = 0.0;
   double cpu_sec = 0.0;
+  double check_sec = 0.0;
 
   Timer run_timer;
   Periodically bar_per(1.0);
-  uint64_t sum = 100'000'000'000ULL;
+  uint64_t sum = SUM_START;
   static constexpr int NUM_BATCHES = 8;
   for (int batch_idx = 0; batch_idx < NUM_BATCHES; batch_idx++) {
     // Make batch.
     Timer batch_timer;
     std::vector<std::pair<uint64_t, uint32_t>> batch;
-    batch.reserve(height);
-    while (batch.size() < height) {
+    batch.reserve(GPU_HEIGHT);
+    while (batch.size() < GPU_HEIGHT) {
       int expected = ChaiWahWu(sum);
       if (expected >= 3) {
         if (expected > NWaysGPU::MAX_WAYS) {
@@ -150,17 +175,18 @@ static void TestNWays() {
                   6);
     cpu_sec += cpu_timer.Seconds();
 
-    CHECK((int)outs_cpu.size() == height);
+    CHECK((int)outs_cpu.size() == GPU_HEIGHT);
 
     Timer gpu_timer;
     std::vector<std::vector<std::pair<uint64_t, uint64_t>>> outs_gpu =
       nways_gpu.GetNWays(batch);
     gpu_sec += gpu_timer.Seconds();
 
-    CHECK((int)outs_gpu.size() == height);
+    CHECK((int)outs_gpu.size() == GPU_HEIGHT);
 
     if (CHECK_ANSWERS) {
-      for (int row = 0; row < height; row++) {
+      Timer check_timer;
+      for (int row = 0; row < GPU_HEIGHT; row++) {
         auto &out_cpu = outs_cpu[row];
         NormalizeWays(&out_cpu);
         auto &out_gpu = outs_gpu[row];
@@ -181,6 +207,7 @@ static void TestNWays() {
           CHECK(false);
         }
       }
+      check_sec += check_timer.Seconds();
     }
 
     if (bar_per.ShouldRun()) {
@@ -188,7 +215,8 @@ static void TestNWays() {
              ANSI_BEGINNING_OF_LINE "%s\n",
              ANSI::ProgressBar(batch_idx,
                                NUM_BATCHES,
-                               "test",
+                               StringPrintf("benchmark/test. batch size %d",
+                                            GPU_HEIGHT).c_str(),
                                run_timer.Seconds()).c_str());
     }
   }
@@ -202,15 +230,22 @@ static void TestNWays() {
     printf("  %d x%d\n", ways, count);
   }
 
-  printf("Height: " APURPLE("%d") "\n"
+  printf("\n"
+         ABGCOLOR(16, 220, 16, AWHITE(" == TIMING == ")) " \n"
+         "Sum start: " ABLUE("%s") "\n"
+         "Height: " APURPLE("%d") "\n"
          "Time:\n"
          "Batches: %s\n"
+         "Check: %s\n"
          "CPU: %s\n"
-         "GPU: %s\n",
-         height,
+         "GPU: %s (%s/ea)\n",
+         Util::UnsignedWithCommas(SUM_START).c_str(),
+         GPU_HEIGHT,
          ANSI::Time(batch_sec).c_str(),
+         ANSI::Time(check_sec).c_str(),
          ANSI::Time(cpu_sec).c_str(),
-         ANSI::Time(gpu_sec).c_str());
+         ANSI::Time(gpu_sec).c_str(),
+         ANSI::Time(gpu_sec / (GPU_HEIGHT * NUM_BATCHES)).c_str());
 
   nways_gpu.PrintTimers();
 }
@@ -219,7 +254,7 @@ int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
 
-  Optimize();
+  // Optimize();
 
   TestNWays();
 

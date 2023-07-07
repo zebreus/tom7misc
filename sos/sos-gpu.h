@@ -17,6 +17,9 @@
 #include "ansi.h"
 #include "map-util.h"
 
+// This is like 28% faster!
+#define TRANSPOSE 1
+
 // New version, based on nsoks.
 //
 // Runs many in batch. Even though there's a lot of paralellism for
@@ -36,8 +39,10 @@ struct NWaysGPU {
   int height = 0;
 
   NWaysGPU(CL *cl, int height) : cl(cl), height(height) {
-    std::string defines = StringPrintf("#define MAX_WAYS %d\n",
-                                       MAX_WAYS);
+    std::string defines = StringPrintf("#define MAX_WAYS %d\n"
+                                       "#define TRANSPOSE %d\n",
+                                       MAX_WAYS,
+                                       TRANSPOSE);
     std::string kernel_src = defines + Util::ReadFile("sos.cl");
     const auto &[prog, kernels] =
       cl->BuildKernels(kernel_src, {"PerfectSquares", "NWays"}, false);
@@ -146,13 +151,29 @@ struct NWaysGPU {
       maxmax = std::max(maxmax, mx);
     }
 
-    // We perform a rectangular calculation. global_idx(0) is the offset
-    //   of the trial square, which ranges from 0..width inclusive.
-    // global_idx(1) is the target sum.
+    // We perform a rectangular calculation. The "x" coordinate of the
+    // input is the offset of the trial square, which ranges from
+    // 0..width inclusive. The "y" coordinate is the target sum.
     CHECK(minmin <= maxmax) << " " << minmin << " " << maxmax;
     // Inclusive.
     uint64_t width = maxmax - minmin + 1;
     TIMER_END(prep);
+
+    // PERF ideas: I think we spend all the time computing sqrts, for
+    // which we need double precision because the numbers are large. (So
+    // a faster integer square root would be best here!)
+    //
+    // But we end up using the same trial squares for all of them, since
+    // the calculation is rectangular between minmin/maxmax. Is there
+    // some way that we could perform the necessary square roots in a
+    // pre-pass? What we actually call sqrt on is target = sum - trialsquare^2,
+    // which differs for each sum, so it's not even clear that we redo
+    // a lot of work, actually.
+    //
+    // Another possibility is to compute the minimum and maximum sqrt(target)
+    // for the rectangle beforehand, and then just loop over them and square?
+    // I think the thing about this is that we end up generating a lot of sums
+    // that aren't interesting to us.
 
     /*
     CHECK(!inputs.empty());
@@ -242,11 +263,17 @@ struct NWaysGPU {
         TIMER_END(args2);
 
         size_t global_work_offset[] = { (size_t)0, (size_t)0 };
-        // PERF try the transpose.
+
         //   Width: Nonnegative offsets from minmin that cover all of
         //     the (min-max) spans (inclusive) for the rectangle.
         //   Height: Number of sums.
+        // (Transpose seems much faster; not sure why.)
+
+        #if TRANSPOSE
+        size_t global_work_size[] = { (size_t)height, (size_t)width };
+        #else
         size_t global_work_size[] = { (size_t)width, (size_t)height };
+        #endif
 
         TIMER_START(kernel2);
         CHECK_SUCCESS(
@@ -279,19 +306,19 @@ struct NWaysGPU {
 
     // XXX verbose
     if (false) {
-    for (int y = 0; y < height; y++) {
-      printf(ABLUE("%llu") " " ACYAN("%d") " size: " APURPLE("%d") "\n",
-             inputs[y].first, (int)inputs[y].second, (int)output_sizes[y]);
-      for (int x = 0; x < MAX_WAYS; x ++) {
-        int rect_base = y * MAX_WAYS * 2;
-        CHECK(rect_base < output_rect.size()) <<
-          rect_base << " " << output_rect.size();
-        uint64_t a = output_rect[rect_base + x * 2 + 0];
-        uint64_t b = output_rect[rect_base + x * 2 + 1];
-        printf("  %llu^2 + %llu^2 " AGREY("= %llu") "\n",
-               a, b, a * a + b * b);
+      for (int y = 0; y < height; y++) {
+        printf(ABLUE("%llu") " " ACYAN("%d") " size: " APURPLE("%d") "\n",
+               inputs[y].first, (int)inputs[y].second, (int)output_sizes[y]);
+        for (int x = 0; x < MAX_WAYS; x ++) {
+          int rect_base = y * MAX_WAYS * 2;
+          CHECK(rect_base < output_rect.size()) <<
+            rect_base << " " << output_rect.size();
+          uint64_t a = output_rect[rect_base + x * 2 + 0];
+          uint64_t b = output_rect[rect_base + x * 2 + 1];
+          printf("  %llu^2 + %llu^2 " AGREY("= %llu") "\n",
+                 a, b, a * a + b * b);
+        }
       }
-    }
     }
 
     TIMER_START(ret);

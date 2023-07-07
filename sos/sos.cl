@@ -77,16 +77,21 @@ __kernel void NWays(uint64_t base_trialsquare,
                     __global const uint64_t *restrict sums,
                     __global atomic_uint32_t *restrict out_size,
                     __global uint64_t *restrict out) {
-
-  const uint64_t trialsquare = base_trialsquare + get_global_id(0);
-  const int sum_idx = get_global_id(1);
+  #if TRANSPOSE
+  #define IN_X 1
+  #define IN_Y 0
+  #else
+  #define IN_X 0
+  #define IN_Y 1
+  #endif
+  const int sum_idx = get_global_id(IN_Y);
   const uint64_t sum = sums[SUM_STRIDE * sum_idx + 0];
-  const uint64_t mn = sums[SUM_STRIDE * sum_idx + 1];
-  const uint64_t mx = sums[SUM_STRIDE * sum_idx + 2];
+
+  const uint64_t trialsquare = base_trialsquare + get_global_id(IN_X);
 
   const uint64_t aa = trialsquare * trialsquare;
-
   const uint64_t target = sum - aa;
+
   if (!MaybeSquare(target))
     return;
 
@@ -115,11 +120,14 @@ __kernel void NWays(uint64_t base_trialsquare,
 
   // Deal with raggedness. We would only have run this code if
   // mn <= trialsquare <= mx.
+  const uint64_t mn = sums[SUM_STRIDE * sum_idx + 1];
+  const uint64_t mx = sums[SUM_STRIDE * sum_idx + 2];
+
   if (trialsquare < mn || trialsquare > mx) return;
 
   // Get unique indices in this row's output array. This is very rare
   // so the synchronization overhead should not be too bad.
-  uint32_t row_idx = atomic_add(&out_size[sum_idx], 2);
+  const uint32_t row_idx = atomic_add(&out_size[sum_idx], 2);
   const uint32_t row_base = sum_idx * MAX_WAYS * 2;
   out[row_base + row_idx] = trialsquare;
   out[row_base + row_idx + 1] = r;

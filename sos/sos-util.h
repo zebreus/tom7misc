@@ -18,7 +18,9 @@ inline uint64_t Sqrt64(uint64_t n) {
 
 // Squares mod 8 have certain residues, so their sum
 // can't take on the values 3, 6, or 7. See filter.z3.
-inline bool MaybeSumOfSquares(uint64_t n) {
+// MaybeSumOfSquares below should be better in most cases
+// (fewer false positives).
+inline bool MaybeSumOfSquares8(uint64_t n) {
   switch (n & 7) {
   case 3:
   case 6:
@@ -27,6 +29,13 @@ inline bool MaybeSumOfSquares(uint64_t n) {
   default:
     return true;
   }
+}
+
+// See residue.cc.
+inline constexpr bool MaybeSumOfSquares(uint64_t sum) {
+  return !(((0x0000000001209048LLU >> (sum % 27)) & 1) |
+           ((0x0000040810204080LLU >> (sum % 49)) & 1) |
+           ((0xd9c9d8c8d9c8d8c8LLU >> (sum % 64)) & 1));
 }
 
 // Returns the number of ways that 'sum' can be written as

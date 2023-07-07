@@ -164,6 +164,36 @@ static void TestSimple(const char * name, F f) {
   }
 }
 
+static void TestMaybeSumOfSquares() {
+  Timer timer;
+  Periodically bar(1.0);
+  std::mutex m;
+  static constexpr int MAX_X = 100000;
+  ParallelComp(
+      MAX_X,
+      [&m, &bar, &timer](uint64_t x) {
+        uint64_t xx = x * x;
+        for (uint64_t y = 0; y < 100000; y++) {
+          uint64_t sum = xx + (y * y);
+          CHECK(MaybeSumOfSquares(sum));
+        }
+
+        {
+          MutexLock ml(&m);
+          if (bar.ShouldRun()) {
+            printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+                   ANSI_BEGINNING_OF_LINE "%s\n",
+                   ANSI::ProgressBar(x,
+                                     MAX_X,
+                                     "test",
+                                     timer.Seconds()).c_str());
+          }
+        }
+      },
+      6);
+  printf("MaybeSumOfSquares " AGREEN("OK") "\n");
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -174,6 +204,8 @@ int main(int argc, char **argv) {
 
   TestGetWays("brute", BruteGetNWays);
   TestGetWays("nsoks2", NSoks2);
+
+  TestMaybeSumOfSquares();
 
   printf("OK\n");
   return 0;

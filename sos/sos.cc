@@ -33,6 +33,8 @@ static CL *cl = nullptr;
 
 using int64 = int64_t;
 
+#define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
+
 // Everything takes a complete line.
 // Thread safe.
 struct StatusBar {
@@ -117,7 +119,7 @@ private:
 // Tuned by sos-gpu_test.
 // static constexpr int GPU_HEIGHT = 49912;
 // static constexpr int GPU_HEIGHT = 51504;
-static constexpr int GPU_HEIGHT = 56002;
+static constexpr int GPU_HEIGHT = 131072;
 
 static constexpr uint64_t EPOCH_SIZE = 2'000'000'000; /* ' */
 // PERF: Tune it
@@ -297,7 +299,7 @@ static void Try(int z,
                   StringPrintf(
                       // For easy parsing. Everything is its squared version.
                       "(!) %llu %llu %llu %llu %llu %llu %llu %llu %llu\n"
-                      ARED("sqrt(%llu)^2") " %llu^2 %llu^2\n"
+                      AORANGE("sqrt(%llu)^2?") " %llu^2 %llu^2\n"
                       "%llu^2 %llu^2 %llu^2\n"
                       "%llu^2 " ARED("sqrt(%llu)^2") " %llu^2\n"
                       ARED("but %llu * %llu != %llu") "\n"
@@ -336,7 +338,7 @@ static void Try(int z,
             }
 
             string success =
-              StringPrintf("(!!!!!)"
+              StringPrintf("(!!!!!) "
                            "%llu^2 %llu^2 %llu^2\n"
                            "%llu^2 %llu^2 %llu^2\n"
                            "%llu^2 %llu^2 %llu^2\n"
@@ -635,13 +637,16 @@ struct SOS {
                    "\n",
                    rf, rff, rhh, raa);
     string line3 = StringPrintf(ARED("%llu") " too big  "
-                                APURPLE("%lld") " gpu queue  "
+                                APURPLE("%s") " gpu queue  "
                                 ACYAN("%lld") " try queue  ("
-                                AGREEN("%llu") " stolen)\n",
-                                too_big, gpu_size, try_size,
-                                stolen);
-    string info = StringPrintf("%llu inel  %llu nw",
-                               ineligible, done_nways);
+                                AGREEN("%s") " stolen)\n",
+                                too_big,
+                                Util::UnsignedWithCommas(gpu_size).c_str(),
+                                try_size,
+                                Util::UnsignedWithCommas(stolen).c_str());
+    string info = StringPrintf("%s inel  %s nw",
+                               Util::UnsignedWithCommas(ineligible).c_str(),
+                               Util::UnsignedWithCommas(done_nways).c_str());
     string line4 = ANSI::ProgressBar(done, EPOCH_SIZE, info, sec) + "\n";
     string line5 = ANSI::ProgressBar(triples_done, triples, "", sec,
                                      ANSI::ProgressBarOptions{
