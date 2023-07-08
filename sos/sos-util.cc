@@ -24,15 +24,21 @@ int ChaiWahWu(uint64_t sum) {
   std::vector<std::pair<uint64_t, int>> collated =
     Factorize::PrimeFactorization(sum);
 
-  auto HasAnyOddPowers = [&collated]() {
+  auto AllEvenPowers = [&collated]() {
       for (const auto &[p, e] : collated) {
-        if (e & 1) return true;
+        if (e & 1) return false;
       }
-      return false;
+      return true;
     };
 
+  // If all of the powers are even, then it is itself a square.
+  // So we have e.g. x^2 * y^2 * z^4 = (xyz^2)^2 + 0^2
+  //
   // int(not any(e&1 for e in f.values()))
-  int first = HasAnyOddPowers() ? 0 : 1;
+  int first = AllEvenPowers() ? 1 : 0;
+  // PERF: For this form, we also know what the sum of squares is,
+  // so we could do this and skip kernel1. But that phase is only
+  // 0.38% of the time spent in the GPU.
 
   // (((m:=prod(1 if p==2 else (e+1 if p&3==1 else (e+1)&1)
   //   for p, e in f.items()))

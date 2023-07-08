@@ -13,6 +13,8 @@
 #include "timer.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 using namespace std;
 
@@ -194,11 +196,74 @@ static void TestMaybeSumOfSquares() {
   printf("MaybeSumOfSquares " AGREEN("OK") "\n");
 }
 
+static void MaybeSumOfSquaresRecall() {
+  Timer timer;
+  Periodically bar(1.0);
+  std::mutex m;
+  static constexpr int BATCHES = 10000;
+  int64_t no_ways = 0;
+  int64_t correctly_detected = 0;
+  int64_t total = 0;
+  ParallelComp(
+      BATCHES,
+      [&m, &bar, &timer, &no_ways, &correctly_detected,
+       &total](uint64_t batch) {
+        int64_t local_no_ways = 0, local_correctly_detected = 0,
+          local_total = 0;
+        ArcFour rc(StringPrintf("mss.%llu", batch));
+        for (int i = 0; i < 10000; i++) {
+          // numbers in the low trillions, at most
+          const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+          if (num == 0) continue;
+
+          const bool maybe = MaybeSumOfSquares(num);
+          const int ways = ChaiWahWu(num);
+          local_total++;
+
+          if (ways > 0) {
+            // This is supposed to be guaranteed.
+            CHECK(maybe) << num;
+          } else {
+            // Did we detect this case?
+            local_no_ways++;
+            if (!maybe) local_correctly_detected++;
+          }
+        }
+
+        {
+          MutexLock ml(&m);
+          no_ways += local_no_ways;
+          correctly_detected += local_correctly_detected;
+          total += local_total;
+
+          if (bar.ShouldRun()) {
+            printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+                   ANSI_BEGINNING_OF_LINE "%s\n",
+                   ANSI::ProgressBar(batch,
+                                     BATCHES,
+                                     "computing recall",
+                                     timer.Seconds()).c_str());
+          }
+        }
+      },
+      6);
+
+  printf("Total: %lld\n"
+         "0 ways: %lld (%.2f%%)\n"
+         "correctly detected by heuristic: %lld/%lld (%.2f%%)\n",
+         total,
+         no_ways, (no_ways * 100.0) / total,
+         correctly_detected, no_ways, (correctly_detected * 100.0) / no_ways);
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  TestCWW();
+  // TestCWW();
+  MaybeSumOfSquaresRecall();
 
+  /*
   TestSimple("brute", BruteGetNWays);
   TestSimple("nsoks2", NSoks2);
 
@@ -206,6 +271,7 @@ int main(int argc, char **argv) {
   TestGetWays("nsoks2", NSoks2);
 
   TestMaybeSumOfSquares();
+  */
 
   printf("OK\n");
   return 0;

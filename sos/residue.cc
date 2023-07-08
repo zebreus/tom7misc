@@ -3,12 +3,27 @@
 #include <vector>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
 #include "ansi.h"
 #include "timer.h"
 #include "periodically.h"
+#include "arcfour.h"
+#include "randutil.h"
+
+static std::string VecString(const std::vector<int> &v) {
+  string out;
+  for (int i : v) StringAppendF(&out, "%d, ", i);
+  return out;
+}
+
+inline constexpr bool OldMaybeSumOfSquares(uint64_t sum) {
+  return !(((0x0000000001209048LLU >> (sum % 27)) & 1) |
+           ((0x0000040810204080LLU >> (sum % 49)) & 1) |
+           ((0xd9c9d8c8d9c8d8c8LLU >> (sum % 64)) & 1));
+}
 
 // List from wikipedia. First entry is the modulus m, and second are the
 // possible residues for any x^2 mod m.
@@ -91,10 +106,12 @@ static std::vector<std::pair<int, std::vector<int>>> QUADRATIC_RESIDUES = {
 
 };
 
+static std::vector<std::pair<int, std::vector<int>>> computed_qres;
+
 // These residues are impossible to form with a^2 + b^2 mod m.
 // The three that are commented out will filter everything (at least up to 100 million) that the entire
 // set will filter, so that's what we use.
-static std::vector<std::pair<int, std::set<int>>> NON_QUADRATIC_RESIDUES = {
+static std::vector<std::pair<int, std::set<int>>> NON_QUADRATIC_SUM_RESIDUES = {
   // {4, {3, }}, // 25.0%
   // {8, {3, 6, 7, }}, // 37.5%
   // {9, {3, 6, }}, // 22.2%
@@ -126,8 +143,9 @@ static std::vector<std::pair<int, std::set<int>>> NON_QUADRATIC_RESIDUES = {
 // First rejection, from low to high.
 static std::unordered_map<int, int64_t> first_reject;
 // static std::unordered_map<int, int64_t> unique_reject;
-bool FindRejection(uint64_t sum) {
-  for (const auto &[m, nonresidues] : NON_QUADRATIC_RESIDUES) {
+bool FindRejection(const std::vector<std::pair<int, std::set<int>>> &nsres,
+                   uint64_t sum) {
+  for (const auto &[m, nonresidues] : nsres) {
     int r = sum % m;
     if (nonresidues.contains(r)) {
       first_reject[m]++;
@@ -137,9 +155,10 @@ bool FindRejection(uint64_t sum) {
   return false;
 }
 
-// Test that the residues pasted from wikipedia are inclusive of real residues.
-static void SelfTest() {
-  for (const auto &[m, residues] : QUADRATIC_RESIDUES) {
+// Test that the residues (e.g. pasted from wikipedia) are inclusive
+// of real residues.
+static void SelfTest(const std::vector<std::pair<int, std::vector<int>>> &qres) {
+  for (const auto &[m, residues] : qres) {
     // First test that they are correct.
     std::set<int> rs;
     for (int r : residues) rs.insert(r);
@@ -156,75 +175,105 @@ static void SelfTest() {
 
 }
 
-// Prints out the contents of NON_QUADRATIC_RESIDUES above. These are values
-// that cannot be the sum (mod m) of two quadratic residues, and so they
-// can't be x^2 + y^2 mod m for any x,y.
-[[maybe_unused]]
-static void PrintNonResidues() {
-  printf("\n");
-  // Which rows actually reject anything?
-  for (const auto &[m, residues] : QUADRATIC_RESIDUES) {
+static std::vector<std::pair<int, std::set<int>>>
+GetNonSumResidues(
+    const std::vector<std::pair<int, std::vector<int>>> &qres) {
+  std::vector<std::pair<int, std::set<int>>> ret;
+  for (const auto &[m, residues] : qres) {
     std::set<int> sums;
     for (int x : residues)
       for (int y : residues)
         sums.insert((x + y) % m);
 
-    int count = 0;
-    for (int i = 0; i < m; i++) {
-      if (sums.find(i) == sums.end()) {
-        if (!count) printf("{" ACYAN("%d") ", {", m);
-        printf("%d, ", i);
-        count++;
+    // If all residues are possible, skip.
+    if (sums.size() < m) {
+      std::set<int> non_res;
+      // non_res.reserve(m - sums.size());
+      for (int i = 0; i < m; i++) {
+        if (sums.find(i) == sums.end()) {
+          non_res.insert(i);
+        }
       }
+      ret.emplace_back(m, std::move(non_res));
     }
-    if (count > 0) {
-      if (count == m) {
-        printf("}}, // " ARED("%.1f%%") "\n", (100.0 * count) / m);
-      } else {
-        printf("}}, // " AGREEN("%.1f%%") "\n", (100.0 * count) / m);
-      }
-    }
+  }
+  return ret;
+}
+
+
+
+  // Prints out the contents of NON_QUADRATIC_SUM_RESIDUES above. These are values
+// that cannot be the sum (mod m) of two quadratic residues, and so they
+// can't be x^2 + y^2 mod m for any x,y.
+[[maybe_unused]]
+static void PrintNonSumResidues(
+    const std::vector<std::pair<int, std::set<int>>> &nsres) {
+  printf("\n");
+  // Which rows actually reject anything?
+  for (const auto &[m, nr] : nsres) {
+    printf("{" ACYAN("%d") ", {", m);
+    for (int r : nr) printf("%d, ", r);
+    printf("}}, // " AGREEN("%.1f%%") "\n", (100.0 * nr.size()) / m);
   }
 }
 
 // Compute and print rejection statistics; used to figure out which
 // moduli we actually use.
-static void RejectionStats() {
-  for (const auto &[m, _] : NON_QUADRATIC_RESIDUES)
+static void RejectionStats(
+    const std::vector<std::pair<int, std::set<int>>> &nsres) {
+  for (const auto &[m, _] : nsres)
     first_reject[m] = 0;
 
   Timer run_timer;
-  static constexpr uint64_t MAX_SUM = 100'000'000;
+  // static constexpr uint64_t MAX_SUM = 100'000'000;
+  static constexpr int64_t SAMPLES = 1000000;
   Periodically bar_per(1.0);
   int64_t num_rejected = 0;
-  for (uint64_t sum = 0; sum < MAX_SUM; sum++) {
-    if (FindRejection(sum)) num_rejected++;
+
+  ArcFour rc(StringPrintf("residue.0"));
+  for (int64_t i = 0; i < SAMPLES; i++) {
+    // numbers in the low trillions, at most
+    const uint64_t sum = Rand64(&rc) & 0xFFFFFFFFFF;
+    if (sum == 0) continue;
+    if (!OldMaybeSumOfSquares(sum)) continue;
+
+    if (FindRejection(nsres, sum)) num_rejected++;
 
     if ((sum % 65536) == 0 && bar_per.ShouldRun()) {
       printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
              ANSI_BEGINNING_OF_LINE "%s\n",
-             ANSI::ProgressBar(sum,
-                               MAX_SUM,
+             ANSI::ProgressBar(i,
+                               SAMPLES,
                                StringPrintf("rejected %lld", num_rejected),
                                run_timer.Seconds()).c_str());
     }
   }
 
-  printf("Rejected %lld/%lld (%.2f%%)\n", num_rejected, MAX_SUM, (100.0 * num_rejected) / MAX_SUM);
+  printf("Rejected %lld/%lld (%.2f%%)\n",
+         num_rejected, SAMPLES, (100.0 * num_rejected) / SAMPLES);
   printf("First rejected:\n");
+  std::vector<std::pair<int, int64_t>> sorted;
   for (const auto &[m, count] : first_reject) {
-    printf(ACYAN("%d") ": %lld\n", m, count);
+    if (count != 0) {
+      sorted.emplace_back(m, count);
+    }
+  }
+
+  std::sort(sorted.begin(), sorted.end());
+  for (const auto &[m, count] : sorted) {
+    printf(ACYAN("%d") ": %lld  " AGREY("(%.2f%%)") "\n", m, count,
+           (count * 100.0) / SAMPLES);
   }
 }
 
-// Prints out code that tests for NON_QUADRATIC_RESIDUES using a bitmask.
+// Prints out code that tests for NON_QUADRATIC_SUM_RESIDUES using a bitmask.
 static void MakeCode() {
   printf("\n"
          "inline constexpr bool MaybeSumOfSquares(uint64_t sum) {\n"
          "  return !(");
 
   bool first = true;
-  for (const auto &[m, non_residues] : NON_QUADRATIC_RESIDUES) {
+  for (const auto &[m, non_residues] : NON_QUADRATIC_SUM_RESIDUES) {
     if (!first) printf(" |\n           ");
     uint64_t mask = 0;
     for (int r : non_residues) {
@@ -238,12 +287,48 @@ static void MakeCode() {
          "}\n\n");
 }
 
+// Dunno why I didn't just compute these myself; it's easy.
+static void MakeResidues(int max_p) {
+  printf("Make residues...\n");
+  Timer timer;
+  for (int p = 1; p < max_p; p++) {
+    std::unordered_set<int> residues;
+    for (int i = 0; i < p; i++) {
+      int r = (i * i) % p;
+      residues.insert(r);
+    }
+    std::vector<int> rs;
+    rs.reserve(residues.size());
+    for (int r : residues) rs.push_back(r);
+    std::sort(rs.begin(), rs.end());
+    computed_qres.push_back(make_pair(p, std::move(rs)));
+  }
+  printf("Made %d residues in %s\n", max_p - 1, ANSI::Time(timer.Seconds()).c_str());
+
+  // Test against wikipedia list
+  for (int i = 0; i < std::min(QUADRATIC_RESIDUES.size(), computed_qres.size()); i++) {
+    const auto &[qn, qr] = QUADRATIC_RESIDUES[i];
+    const auto &[cqn, cqr] = computed_qres[i];
+    CHECK(qn == cqn) << qn << " " << cqn;
+    CHECK(qr == cqr) << "n: " << qn << "\n qr: " << VecString(qr) <<
+      "\ncqr:" << VecString(cqr);
+  }
+}
+
 int main(int argc, char ** argv) {
   ANSI::Init();
-  SelfTest();
+  MakeResidues(2048);
 
-  // PrintNonResidues();
-  // RejectionStats();
+  // SelfTest(QUADRATIC_RESIDUES);
+  // SelfTest(computed_qres);
+
+  std::vector<std::pair<int, std::set<int>>> nqsr =
+    GetNonSumResidues(computed_qres);
+
+  // PrintNonSumResidues(nqsr);
+
+  // PrintNonResidues(computed_qres);
+  RejectionStats(nqsr);
 
   MakeCode();
 
