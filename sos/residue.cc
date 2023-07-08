@@ -12,6 +12,7 @@
 #include "periodically.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "factorize.h"
 
 static std::string VecString(const std::vector<int> &v) {
   string out;
@@ -106,7 +107,6 @@ static std::vector<std::pair<int, std::vector<int>>> QUADRATIC_RESIDUES = {
 
 };
 
-static std::vector<std::pair<int, std::vector<int>>> computed_qres;
 
 // These residues are impossible to form with a^2 + b^2 mod m.
 // The three that are commented out will filter everything (at least up to 100 million) that the entire
@@ -288,7 +288,8 @@ static void MakeCode() {
 }
 
 // Dunno why I didn't just compute these myself; it's easy.
-static void MakeResidues(int max_p) {
+static std::vector<std::pair<int, std::vector<int>>> MakeAllResidues(int max_p) {
+  std::vector<std::pair<int, std::vector<int>>> ret;
   printf("Make residues...\n");
   Timer timer;
   for (int p = 1; p < max_p; p++) {
@@ -301,33 +302,34 @@ static void MakeResidues(int max_p) {
     rs.reserve(residues.size());
     for (int r : residues) rs.push_back(r);
     std::sort(rs.begin(), rs.end());
-    computed_qres.push_back(make_pair(p, std::move(rs)));
+    ret.push_back(make_pair(p, std::move(rs)));
   }
   printf("Made %d residues in %s\n", max_p - 1, ANSI::Time(timer.Seconds()).c_str());
 
   // Test against wikipedia list
-  for (int i = 0; i < std::min(QUADRATIC_RESIDUES.size(), computed_qres.size()); i++) {
+  for (int i = 0; i < std::min(QUADRATIC_RESIDUES.size(), ret.size()); i++) {
     const auto &[qn, qr] = QUADRATIC_RESIDUES[i];
-    const auto &[cqn, cqr] = computed_qres[i];
+    const auto &[cqn, cqr] = ret[i];
     CHECK(qn == cqn) << qn << " " << cqn;
     CHECK(qr == cqr) << "n: " << qn << "\n qr: " << VecString(qr) <<
       "\ncqr:" << VecString(cqr);
   }
+  return ret;
 }
 
 int main(int argc, char ** argv) {
   ANSI::Init();
-  MakeResidues(2048);
+  std::vector<std::pair<int, std::vector<int>>> all_qres =
+    MakeAllResidues(2048);
 
-  // SelfTest(QUADRATIC_RESIDUES);
-  // SelfTest(computed_qres);
+  SelfTest(QUADRATIC_RESIDUES);
+  SelfTest(all_qres);
 
   std::vector<std::pair<int, std::set<int>>> nqsr =
-    GetNonSumResidues(computed_qres);
+    GetNonSumResidues(all_qres);
 
   // PrintNonSumResidues(nqsr);
 
-  // PrintNonResidues(computed_qres);
   RejectionStats(nqsr);
 
   MakeCode();
