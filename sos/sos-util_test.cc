@@ -29,6 +29,45 @@ static uint64_t Sqrt64Nuprl(uint64_t xx) {
   return (xx < r3 * r3) ? r2 : r3;
 }
 
+static void BenchMSOSFancy() {
+  printf("Benchmark MaybeSumOfSquaresFancy3:\n");
+  ArcFour rc("bench");
+  int64_t res = 0;
+  static constexpr int NUM = 400000000;
+  Timer timer;
+  for (int i = 0; i < NUM; i++) {
+    // numbers in the low trillions, at most
+    const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+    if (num == 0) continue;
+    res += MaybeSumOfSquaresFancy3(num);
+  }
+  printf("Res: %llx\n", res);
+  double sec = timer.Seconds();
+  printf("Took %s (%s/ea)\n",
+         ANSI::Time(sec).c_str(),
+         ANSI::Time(sec / NUM).c_str());
+}
+
+static void BenchCWW() {
+  printf("Benchmark CWW:\n");
+  ArcFour rc("bench");
+  int64_t res = 0;
+  static constexpr int NUM = 20000000;
+  Timer timer;
+  for (int i = 0; i < NUM; i++) {
+    // numbers in the low trillions, at most
+    const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+    if (num == 0) continue;
+
+    const int ways = ChaiWahWu(num);
+    res += ways;
+  }
+  printf("Res: %llx\n", res);
+  double sec = timer.Seconds();
+  printf("Took %s (%s/ea)\n",
+         ANSI::Time(sec).c_str(),
+         ANSI::Time(sec / NUM).c_str());
+}
 
 static void TestCWW() {
   std::mutex m;
@@ -200,40 +239,45 @@ static void MaybeSumOfSquaresRecall() {
   Timer timer;
   Periodically bar(1.0);
   std::mutex m;
-  static constexpr int BATCHES = 10000;
+  static constexpr int BATCHES = 40000;
   int64_t no_ways = 0;
-  int64_t correctly_detected = 0;
+  int64_t detected = 0;
+  int64_t detected2 = 0;
   int64_t total = 0;
   ParallelComp(
       BATCHES,
-      [&m, &bar, &timer, &no_ways, &correctly_detected,
+      [&m, &bar, &timer, &no_ways, &detected, &detected2,
        &total](uint64_t batch) {
-        int64_t local_no_ways = 0, local_correctly_detected = 0,
-          local_total = 0;
+        int64_t local_no_ways = 0, local_detected = 0,
+          local_detected2 = 0, local_total = 0;
         ArcFour rc(StringPrintf("mss.%llu", batch));
         for (int i = 0; i < 10000; i++) {
           // numbers in the low trillions, at most
           const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
           if (num == 0) continue;
 
-          const bool maybe = MaybeSumOfSquares(num);
+          const bool maybe = MaybeSumOfSquaresFancy2(num);
+          const bool maybe2 = MaybeSumOfSquaresFancy3(num);
           const int ways = ChaiWahWu(num);
           local_total++;
 
           if (ways > 0) {
             // This is supposed to be guaranteed.
             CHECK(maybe) << num;
+            CHECK(maybe2) << num;
           } else {
             // Did we detect this case?
             local_no_ways++;
-            if (!maybe) local_correctly_detected++;
+            if (!maybe) local_detected++;
+            if (!maybe2) local_detected2++;
           }
         }
 
         {
           MutexLock ml(&m);
           no_ways += local_no_ways;
-          correctly_detected += local_correctly_detected;
+          detected += local_detected;
+          detected2 += local_detected2;
           total += local_total;
 
           if (bar.ShouldRun()) {
@@ -248,30 +292,39 @@ static void MaybeSumOfSquaresRecall() {
       },
       6);
 
-  printf("Total: %lld\n"
+  printf("Took: %s\n"
+         "Total: %lld\n"
          "0 ways: %lld (%.2f%%)\n"
-         "correctly detected by heuristic: %lld/%lld (%.2f%%)\n",
+         "correctly detected by sieve 1: %lld/%lld (%.2f%%)\n"
+         "correctly detected by sieve 2: %lld/%lld (%.2f%%)\n",
+         ANSI::Time(timer.Seconds()).c_str(),
          total,
          no_ways, (no_ways * 100.0) / total,
-         correctly_detected, no_ways, (correctly_detected * 100.0) / no_ways);
+         detected, no_ways, (detected * 100.0) / no_ways,
+         detected2, no_ways, (detected2 * 100.0) / no_ways);
+
+  printf("So full runs go from %lld to %lld (%.2f%%)\n",
+         (total - detected),
+         (total - detected2),
+         ((total - detected) * 100.0) / (total - detected2));
 }
 
 
 int main(int argc, char **argv) {
   ANSI::Init();
+  TestMaybeSumOfSquares();
 
-  // TestCWW();
+  // BenchCWW();
+  // BenchMSOSFancy();
   MaybeSumOfSquaresRecall();
+  return 0;
 
-  /*
   TestSimple("brute", BruteGetNWays);
   TestSimple("nsoks2", NSoks2);
 
   TestGetWays("brute", BruteGetNWays);
   TestGetWays("nsoks2", NSoks2);
-
-  TestMaybeSumOfSquares();
-  */
+  TestCWW();
 
   printf("OK\n");
   return 0;

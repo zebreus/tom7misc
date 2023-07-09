@@ -130,6 +130,7 @@ static void Optimize() {
   printf("\n");
 }
 
+template<bool USE_CPU, int NUM_BATCHES>
 static void TestNWays() {
   printf("Test...\n");
   // const int height = 16384;
@@ -147,35 +148,51 @@ static void TestNWays() {
   Timer run_timer;
   Periodically bar_per(1.0);
   uint64_t sum = SUM_START;
-  static constexpr int NUM_BATCHES = 8;
   for (int batch_idx = 0; batch_idx < NUM_BATCHES; batch_idx++) {
     // Make batch.
     Timer batch_timer;
     std::vector<std::pair<uint64_t, uint32_t>> batch;
     batch.reserve(GPU_HEIGHT);
-    while (batch.size() < GPU_HEIGHT) {
-      int expected = ChaiWahWu(sum);
-      if (expected >= 3) {
-        if (expected > NWaysGPU::MAX_WAYS) {
-          too_big[expected]++;
-        } else {
-          batch.emplace_back(sum, (uint32_t)expected);
-        }
-      }
-      sum++;
-    }
+    std::mutex m;
+    ParallelFan(6,
+                [&sum, &batch, &m, &too_big](int id) {
+                  for (;;) {
+                    uint64_t mine = 0;
+                    {
+                      MutexLock ml(&m);
+                      mine = sum;
+                      sum++;
+                      if (batch.size() == GPU_HEIGHT)
+                        return;
+                    }
+
+                    int expected = ChaiWahWu(mine);
+                    if (expected >= 3) {
+                      MutexLock ml(&m);
+                      if (expected > NWaysGPU::MAX_WAYS) {
+                        too_big[expected]++;
+                      } else {
+                        if (batch.size() < GPU_HEIGHT) {
+                          batch.emplace_back(mine, (uint32_t)expected);
+                        }
+                      }
+                    }
+                  }
+                });
     batch_sec += batch_timer.Seconds();
 
-    Timer cpu_timer;
-    std::vector<std::vector<std::pair<uint64_t, uint64_t>>> outs_cpu =
-      ParallelMap(batch,
-                  [](const std::pair<uint64_t, uint32_t> &p) {
-                    return NSoks2(p.first, p.second);
-                  },
-                  6);
-    cpu_sec += cpu_timer.Seconds();
-
-    CHECK((int)outs_cpu.size() == GPU_HEIGHT);
+    std::vector<std::vector<std::pair<uint64_t, uint64_t>>> outs_cpu;
+    if (USE_CPU) {
+      Timer cpu_timer;
+      outs_cpu =
+        ParallelMap(batch,
+                    [](const std::pair<uint64_t, uint32_t> &p) {
+                      return NSoks2(p.first, p.second);
+                    },
+                    6);
+      cpu_sec += cpu_timer.Seconds();
+      CHECK((int)outs_cpu.size() == GPU_HEIGHT);
+    }
 
     Timer gpu_timer;
     std::vector<std::vector<std::pair<uint64_t, uint64_t>>> outs_gpu =
@@ -184,7 +201,7 @@ static void TestNWays() {
 
     CHECK((int)outs_gpu.size() == GPU_HEIGHT);
 
-    if (CHECK_ANSWERS) {
+    if (USE_CPU && CHECK_ANSWERS) {
       Timer check_timer;
       for (int row = 0; row < GPU_HEIGHT; row++) {
         auto &out_cpu = outs_cpu[row];
@@ -256,7 +273,7 @@ int main(int argc, char **argv) {
 
   // Optimize();
 
-  TestNWays();
+  TestNWays<false, 16>();
 
   printf("OK\n");
   return 0;

@@ -1,5 +1,5 @@
 
-default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe
+default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe
 
 CC_LIB=../cc-lib
 
@@ -57,6 +57,10 @@ sos-gpu_test.exe : sos-gpu_test.o $(OBJECTS)
 	@echo -n "!"
 
 residue.exe : residue.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+compress.exe : compress.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

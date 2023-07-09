@@ -13,6 +13,7 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "factorize.h"
+#include "util.h"
 
 static std::string VecString(const std::vector<int> &v) {
   string out;
@@ -25,6 +26,26 @@ inline constexpr bool OldMaybeSumOfSquares(uint64_t sum) {
            ((0x0000040810204080LLU >> (sum % 49)) & 1) |
            ((0xd9c9d8c8d9c8d8c8LLU >> (sum % 64)) & 1));
 }
+
+inline constexpr bool OldMaybeSumOfSquaresFancy(uint64_t sum) {
+  if (!OldMaybeSumOfSquares(sum)) return false;
+  if ((41 * (sum % 121)) % 113 > 102) return false;
+  if ((73 * (sum % 361)) % 347 > 328) return false;
+  if ((177 * (sum % 529)) % 509 > 486) return false;
+  if ((272 * (sum % 961)) % 937 > 906) return false;
+  if ((1095 * (sum % 1849)) % 1811 > 1768) return false;
+  if ((1669 * (sum % 2209)) % 2179 > 2132) return false;
+  if ((2502 * (sum % 3481)) % 3433 > 3374) return false;
+  if ((66 * (sum % 4489)) % 4423 > 4356) return false;
+  if ((1681 * (sum % 5041)) % 4973 > 4902) return false;
+  if ((78 * (sum % 6241)) % 6163 > 6084) return false;
+  if ((3617 * (sum % 6889)) % 6823 > 6740) return false;
+  if ((6022 * (sum % 10609)) % 10513 > 10410) return false;
+  if ((1273 * (sum % 11449)) % 11351 > 11244) return false;
+  if ((6428 * (sum % 16129)) % 16007 > 15880) return false;
+  return true;
+}
+
 
 // List from wikipedia. First entry is the modulus m, and second are the
 // possible residues for any x^2 mod m.
@@ -142,17 +163,37 @@ static std::vector<std::pair<int, std::set<int>>> NON_QUADRATIC_SUM_RESIDUES = {
 // Compute stats used to determine which moduli we actually test with.
 // First rejection, from low to high.
 static std::unordered_map<int, int64_t> first_reject;
-// static std::unordered_map<int, int64_t> unique_reject;
+
+// a dominates b if a always detected anything that b detected.
+// non_dominating[a][b] is present if a is found to not dominate b, i.e. we found
+// some n that is detected by b but not a.
+static std::unordered_map<int, std::unordered_set<int>> non_dominating;
+
 bool FindRejection(const std::vector<std::pair<int, std::set<int>>> &nsres,
                    uint64_t sum) {
+  std::unordered_set<int> detected;
+  bool found = false;
   for (const auto &[m, nonresidues] : nsres) {
     int r = sum % m;
     if (nonresidues.contains(r)) {
-      first_reject[m]++;
-      return true;
+      detected.insert(m);
+      if (!found) first_reject[m]++;
+      found = true;
     }
   }
-  return false;
+
+  // compute non-dominating pairs.
+  for (int b : detected) {
+    for (const auto &[a, _] : nsres) {
+      if (!detected.contains(a)) {
+        // then we have m detecting sum, but m2 not detecting sum,
+        // so m2 cannot dominate m.
+        non_dominating[a].insert(b);
+      }
+    }
+  }
+
+  return found;
 }
 
 // Test that the residues (e.g. pasted from wikipedia) are inclusive
@@ -172,7 +213,7 @@ static void SelfTest(const std::vector<std::pair<int, std::vector<int>>> &qres) 
       CHECK(IsResidue(r)) << u << "^2 mod " << m << " got " << r;
     }
   }
-
+  printf("Self Test " AGREEN("OK") "\n");
 }
 
 static std::vector<std::pair<int, std::set<int>>>
@@ -180,13 +221,32 @@ GetNonSumResidues(
     const std::vector<std::pair<int, std::vector<int>>> &qres) {
   std::vector<std::pair<int, std::set<int>>> ret;
   for (const auto &[m, residues] : qres) {
-    std::set<int> sums;
-    for (int x : residues)
-      for (int y : residues)
-        sums.insert((x + y) % m);
+    printf("%d (%d res)... ", m, (int)residues.size());
+    if (residues.size() > 100000) {
+      printf(APURPLE("skip") "\n");
+      continue;
+    }
+
+    std::unordered_set<int> sums;
+    for (int i = 0; i < residues.size(); i++) {
+      for (int j = i; j < residues.size(); j++) {
+        // This is s % m, but since each residue is <m, we don't
+        // actually need to do division.
+        int s = residues[i] + residues[j];
+        if (s >= m) s -= m;
+
+        sums.insert(s);
+      }
+      // Stop early if we have already found every remainder.
+      if (sums.size() == m) break;
+    }
 
     // If all residues are possible, skip.
     if (sums.size() < m) {
+      // We could store the set or its negation.
+      printf(" " AGREEN("%d") " or " AYELLOW("%d") "\n",
+             (int)sums.size(),
+             m - (int)sums.size());
       std::set<int> non_res;
       // non_res.reserve(m - sums.size());
       for (int i = 0; i < m; i++) {
@@ -195,6 +255,8 @@ GetNonSumResidues(
         }
       }
       ret.emplace_back(m, std::move(non_res));
+    } else {
+      printf(ARED("full") ".\n");
     }
   }
   return ret;
@@ -202,7 +264,7 @@ GetNonSumResidues(
 
 
 
-  // Prints out the contents of NON_QUADRATIC_SUM_RESIDUES above. These are values
+// Prints out the contents of NON_QUADRATIC_SUM_RESIDUES above. These are values
 // that cannot be the sum (mod m) of two quadratic residues, and so they
 // can't be x^2 + y^2 mod m for any x,y.
 [[maybe_unused]]
@@ -226,7 +288,7 @@ static void RejectionStats(
 
   Timer run_timer;
   // static constexpr uint64_t MAX_SUM = 100'000'000;
-  static constexpr int64_t SAMPLES = 1000000;
+  static constexpr int64_t SAMPLES = 10000000;
   Periodically bar_per(1.0);
   int64_t num_rejected = 0;
 
@@ -235,7 +297,7 @@ static void RejectionStats(
     // numbers in the low trillions, at most
     const uint64_t sum = Rand64(&rc) & 0xFFFFFFFFFF;
     if (sum == 0) continue;
-    if (!OldMaybeSumOfSquares(sum)) continue;
+    if (!OldMaybeSumOfSquaresFancy(sum)) continue;
 
     if (FindRejection(nsres, sum)) num_rejected++;
 
@@ -249,8 +311,9 @@ static void RejectionStats(
     }
   }
 
-  printf("Rejected %lld/%lld (%.2f%%)\n",
-         num_rejected, SAMPLES, (100.0 * num_rejected) / SAMPLES);
+  printf("Rejected %lld/%lld (%.2f%%) in %s\n",
+         num_rejected, SAMPLES, (100.0 * num_rejected) / SAMPLES,
+         ANSI::Time(run_timer.Seconds()).c_str());
   printf("First rejected:\n");
   std::vector<std::pair<int, int64_t>> sorted;
   for (const auto &[m, count] : first_reject) {
@@ -259,10 +322,38 @@ static void RejectionStats(
     }
   }
 
-  std::sort(sorted.begin(), sorted.end());
+  // std::sort(sorted.begin(), sorted.end());
   for (const auto &[m, count] : sorted) {
     printf(ACYAN("%d") ": %lld  " AGREY("(%.2f%%)") "\n", m, count,
            (count * 100.0) / SAMPLES);
+  }
+
+  auto Get = [&nsres](int m) -> std::set<int> {
+      for (const auto &[mm, nr] : nsres)
+        if (mm == m) return nr;
+      CHECK(false);
+      return {};
+    };
+
+  string dump;
+  for (const auto &[m, count_] : sorted) {
+    const std::set<int> &nres = Get(m);
+    StringAppendF(&dump, "{%d, {", m);
+    for (int n : nres) StringAppendF(&dump, "%d, ", n);
+    StringAppendF(&dump, " }}\n");
+  }
+  Util::WriteFile("nonresidues.txt", dump);
+  printf("Wrote nonresidues.txt\n");
+
+  // Dominating pairs
+  printf("Dominating pairs...\n");
+  for (const auto &[a, ra_] : sorted) {
+    for (const auto &[b, rb_] : sorted) {
+      if (a == b) continue;
+      if (non_dominating[a].contains(b)) continue;
+      printf(AGREEN("%d") " dominates " ABLUE("%d") "\n",
+             a, b);
+    }
   }
 }
 
@@ -287,22 +378,30 @@ static void MakeCode() {
          "}\n\n");
 }
 
+static std::pair<int, std::vector<int>> GetResidues(uint64_t p) {
+  std::unordered_set<int> residues;
+  uint64_t r = 0;
+  for (uint64_t i = 0; i < p; i++) {
+    // r = (i * i) % p
+    r += 2 * i + 1;
+    if (r >= p) r -= p;
+    if (r >= p) r -= p;
+    residues.insert(r);
+  }
+  std::vector<int> rs;
+  rs.reserve(residues.size());
+  for (int r : residues) rs.push_back(r);
+  std::sort(rs.begin(), rs.end());
+  return make_pair(p, rs);
+}
+
 // Dunno why I didn't just compute these myself; it's easy.
 static std::vector<std::pair<int, std::vector<int>>> MakeAllResidues(int max_p) {
   std::vector<std::pair<int, std::vector<int>>> ret;
   printf("Make residues...\n");
   Timer timer;
   for (int p = 1; p < max_p; p++) {
-    std::unordered_set<int> residues;
-    for (int i = 0; i < p; i++) {
-      int r = (i * i) % p;
-      residues.insert(r);
-    }
-    std::vector<int> rs;
-    rs.reserve(residues.size());
-    for (int r : residues) rs.push_back(r);
-    std::sort(rs.begin(), rs.end());
-    ret.push_back(make_pair(p, std::move(rs)));
+    ret.push_back(GetResidues(p));
   }
   printf("Made %d residues in %s\n", max_p - 1, ANSI::Time(timer.Seconds()).c_str());
 
@@ -317,16 +416,59 @@ static std::vector<std::pair<int, std::vector<int>>> MakeAllResidues(int max_p) 
   return ret;
 }
 
+// max_b is the largest base to consider; e the largest exponent.
+static std::vector<std::pair<int, std::vector<int>>> MakeGoodResidues(
+    int max_b, int max_e) {
+  printf("Make \"good\" (%d, %d):\n", max_b, max_e);
+  Timer timer;
+  std::vector<std::pair<int, std::vector<int>>> ret;
+  Periodically bar_per(1.0);
+  // Don't know why this is the case, but empirically the best filters (ones
+  // that reject sums not covered by smaller moduli) appear to always be powers
+  // of (some?) primes. So rather than test them all, we generate these.
+  for (int p = 2; p <= max_b; p++) {
+    if (Factorize::IsPrime(p)) {
+      uint64_t product = 1;
+      for (int e = 1; e <= max_e; e++) {
+        product *= p;
+        ret.emplace_back(GetResidues(product));
+      }
+    }
+
+    if (bar_per.ShouldRun()) {
+      printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+             ANSI_BEGINNING_OF_LINE "%s\n",
+             ANSI::ProgressBar(p,
+                               max_b,
+                               StringPrintf("good: %d", (int)ret.size()),
+                               timer.Seconds()).c_str());
+    }
+  }
+
+  std::sort(ret.begin(), ret.end(),
+            [](const std::pair<int, std::vector<int>> &a,
+               const std::pair<int, std::vector<int>> &b) {
+              return a.first < b.first;
+            });
+
+  printf("Made %d \"good\" residues in %s\n",
+         (int)ret.size(), ANSI::Time(timer.Seconds()).c_str());
+  return ret;
+}
+
 int main(int argc, char ** argv) {
   ANSI::Init();
-  std::vector<std::pair<int, std::vector<int>>> all_qres =
-    MakeAllResidues(2048);
 
-  SelfTest(QUADRATIC_RESIDUES);
-  SelfTest(all_qres);
+  std::vector<std::pair<int, std::vector<int>>> qres =
+    MakeGoodResidues(333, 3);
+
+  // qres.emplace_back(GetResidues(131072));
+
+  // SelfTest(QUADRATIC_RESIDUES);
+  SelfTest(qres);
 
   std::vector<std::pair<int, std::set<int>>> nqsr =
-    GetNonSumResidues(all_qres);
+    GetNonSumResidues(qres);
 
   // PrintNonSumResidues(nqsr);
 

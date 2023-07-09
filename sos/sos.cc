@@ -123,7 +123,7 @@ static constexpr int GPU_HEIGHT = 131072;
 
 static constexpr uint64_t EPOCH_SIZE = 2'000'000'000; /* ' */
 // PERF: Tune it
-static constexpr int STEADY_WORK_STEALING_THREADS = 2;
+static constexpr int STEADY_WORK_STEALING_THREADS = 1;
 static constexpr int ENDGAME_WORK_STEALING_THREADS = 8;
 
 static std::mutex file_mutex;
@@ -536,8 +536,9 @@ struct SOS {
     > try_queue;
 
   SOS() : status_per(10.0) {
-    // Cache is pretty workload-dependent, so just tune in-process.
-    factor_comp.reset(new AutoParallelComp(16, 1000, false));
+    // Performance is pretty workload-dependent, so just tune in-process
+    // rather than saving to disk.
+    factor_comp.reset(new AutoParallelComp(20, 1000, false));
     try_comp.reset(new AutoParallelComp(8, 1000, false));
 
     nways_gpu.reset(new NWaysGPU(cl, GPU_HEIGHT));

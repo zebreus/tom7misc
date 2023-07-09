@@ -15,12 +15,8 @@
 
 using namespace std;
 
-int ChaiWahWu(uint64_t sum) {
+int ChaiWahWuNoFilter(uint64_t sum) {
   if (sum == 0) return 1;
-
-  // Don't factor if it's impossible.
-  if (!MaybeSumOfSquares(sum)) return 0;
-
   std::vector<std::pair<uint64_t, int>> collated =
     Factorize::PrimeFactorization(sum);
 
@@ -57,6 +53,14 @@ int ChaiWahWu(uint64_t sum) {
   }
 
   return first + ((m + b) >> 1);
+}
+
+int ChaiWahWu(uint64_t sum) {
+  if (sum == 0) return 1;
+
+  // Don't factor if it's impossible.
+  if (!MaybeSumOfSquaresFancy3(sum)) return 0;
+  return ChaiWahWuNoFilter(sum);
 }
 
 
