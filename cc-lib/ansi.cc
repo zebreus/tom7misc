@@ -1,6 +1,7 @@
 
 #include "ansi.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <string>
 #include <cmath>
