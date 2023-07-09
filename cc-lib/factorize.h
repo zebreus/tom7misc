@@ -12,6 +12,9 @@ struct Factorize {
   static std::vector<std::pair<uint64_t, int>> PrimeFactorization(
       uint64_t n);
 
+  // Exact primality test (Lucas).
+  static bool IsPrime(uint64_t n);
+
   // Simpler, slower reference version. Generally just useful for testing.
   static std::vector<std::pair<uint64_t, int>> ReferencePrimeFactorization(
       uint64_t n);

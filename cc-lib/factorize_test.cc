@@ -13,6 +13,8 @@
 #include "timer.h"
 #include "crypt/lfsr.h"
 #include "ansi.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 using namespace std;
 
@@ -44,7 +46,7 @@ static void OptimizeLimit() {
     }
     double sec = timer.Seconds();
     printf("%d: %s%s\n", limit,
-           AnsiTime(sec).c_str(), sec < best_sec ? APURPLE(" *") : "");
+           ANSI::Time(sec).c_str(), sec < best_sec ? APURPLE(" *") : "");
     if (sec < best_sec) best_sec = sec;
   }
 
@@ -238,7 +240,7 @@ static void TestPrimeFactors() {
     }
   }
   double lfsr_sec = lfsr_timer.Seconds();
-  printf("100k via LFSR OK (%s)\n", AnsiTime(lfsr_sec).c_str());
+  printf("100k via LFSR OK (%s)\n", ANSI::Time(lfsr_sec).c_str());
 
   // Carmichael numbers > 100k.
   for (uint64_t n : {
@@ -246,6 +248,7 @@ static void TestPrimeFactors() {
         294409, 314821, 334153, 340561, 399001, 410041, 449065,
         488881, 512461}) {
     TestOne(n);
+    CHECK(!Factorize::IsPrime(n));
   }
 
   // Must all be distinct and prime. Careful about overflow!
@@ -257,6 +260,10 @@ static void TestPrimeFactors() {
       {7919, 7927},
     }) {
 
+    for (int factor : f) {
+      CHECK(Factorize::IsPrime(factor)) << factor;
+    }
+
     auto Expected = [&f]() {
         string out;
         for (int factor : f) StringAppendF(&out, "%d, ", factor);
@@ -267,6 +274,10 @@ static void TestPrimeFactors() {
     for (int factor : f) {
       x *= factor;
       // printf("%llu\n", x);
+    }
+
+    if (f.size() > 1) {
+      CHECK(!Factorize::IsPrime(x));
     }
 
     std::vector<std::pair<uint64_t, int>> factors =
@@ -304,6 +315,8 @@ static void TestPrimeFactors() {
     CHECK(uint64_t::Eq(factors[1].first, p1));
   }
 #endif
+
+  printf("TestPrimeFactors " AGREEN("OK") "\n");
 }
 
 static void BenchSqrt() {
@@ -368,6 +381,13 @@ static void BenchFactorize() {
   double seconds = timer.Seconds();
   printf("Result %llx\n", result);
   printf("Factored the list in %.3f seconds.\n", seconds);
+}
+
+static void TestIsPrime() {
+  // 2^42 - 11
+  CHECK(Factorize::IsPrime(4398046511093ULL));
+  CHECK(!Factorize::IsPrime(2330708273ULL * 9868769ULL));
+  printf("TestIsPrime " AGREEN("OK") "\n");
 }
 
 [[maybe_unused]]
@@ -487,8 +507,23 @@ static void PrintGaps(const std::array<uint32_t, N> &primes) {
 }
 
 
+static void ProfileFactorize() {
+  ArcFour rc("profile");
+  Timer timer;
+  uint64_t result = 0;
+
+  static constexpr int TIMES = 1000000;
+  for (int i = 0; i < TIMES; i++) {
+    const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+    auto factors = Factorize::PrimeFactorization(num);
+    for (const auto &[p, e] : factors) result += p * e;
+  }
+
+  printf("Factored %d numbers, %.3fs\n", TIMES, timer.Seconds());
+}
+
 int main(int argc, char **argv) {
-  AnsiInit();
+  ANSI::Init();
 
   // PrintGaps(PRIMES);
   // return 0;
@@ -496,12 +531,17 @@ int main(int argc, char **argv) {
   // OptimizeLimit();
   // return 0;
 
+  /*
   TestSqrt();
   TestPrimeFactors();
+  TestIsPrime();
 
   BenchSqrt();
 
   BenchFactorize();
+  */
+
+  ProfileFactorize();
 
   printf("OK\n");
 }

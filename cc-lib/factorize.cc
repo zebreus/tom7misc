@@ -66,24 +66,24 @@ static constexpr std::array<uint8_t, 999> PRIME_DELTAS = {
 24,6,6,12,12,14,6,4,2,4,18,6,12,
 };
 
-static void
-FactorUsingPollardRho(uint64_t n, unsigned long int a,
-                      std::vector<std::pair<uint64_t, int>> *factors);
-static bool IsPrime(uint64_t n);
+static void FactorUsingPollardRho(
+    uint64_t n, unsigned long int a,
+    std::vector<std::pair<uint64_t, int>> *factors);
+static bool IsPrimeInternal(uint64_t n);
 
 // Add the factor, or increment its exponent if it is the
 // one already at the end. Normally we are inserting in ascending
 // order so this keeps the list compact. But NormalizeFactors below
 // can also fix it up they are added out-of-order (Pollard-Rho).
-auto PushFactor = [](std::vector<std::pair<uint64_t, int>> *factors,
-                     uint64_t b) {
-    if (!factors->empty() &&
-        factors->back().first == b) {
-      factors->back().second++;
-    } else {
-      factors->emplace_back(b, 1);
-    }
-  };
+static void PushFactor(std::vector<std::pair<uint64_t, int>> *factors,
+                       uint64_t b) {
+  if (!factors->empty() &&
+      factors->back().first == b) {
+    factors->back().second++;
+  } else {
+    factors->emplace_back(b, 1);
+  }
+}
 
 static void NormalizeFactors(std::vector<std::pair<uint64_t, int>> *factors) {
   if (factors->empty()) return;
@@ -111,7 +111,7 @@ static void NormalizeFactors(std::vector<std::pair<uint64_t, int>> *factors) {
 static constexpr int NEXT_PRIME = 137;
 
 static std::vector<std::pair<uint64_t, int>>
-InternalFactorize(uint64_t x, bool use_pr) {
+FactorizeInternal(uint64_t x, bool use_pr) {
   // TODO: Allow as argument
   uint64_t max_factor = x;
 
@@ -183,11 +183,12 @@ InternalFactorize(uint64_t x, bool use_pr) {
   TRY(113);
   TRY(127);
   TRY(131);
+#undef TRY
 
   if (cur == 1) return factors;
 
   if (use_pr) {
-    if (IsPrime(cur)) {
+    if (IsPrimeInternal(cur)) {
       PushFactor(&factors, cur);
     } else {
       FactorUsingPollardRho(cur, 1, &factors);
@@ -247,14 +248,61 @@ InternalFactorize(uint64_t x, bool use_pr) {
   return factors;
 }
 
+bool Factorize::IsPrime(uint64_t x) {
+  if (x <= 1) return false;
+
+  // Do the trial divisions so that IsPrimeInternal is correct,
+  // which also quickly rejects a lot of composites.
+
+#define TRY(p) do { \
+    if (x == p) return true; \
+    if (x % p == 0) return false; \
+} while (0)
+  TRY(2);
+  TRY(3);
+  TRY(5);
+  TRY(7);
+  TRY(11);
+  TRY(13);
+  TRY(17);
+  TRY(19);
+  TRY(23);
+  TRY(29);
+  TRY(31);
+  TRY(37);
+  TRY(41);
+  TRY(43);
+  TRY(47);
+  TRY(53);
+  TRY(59);
+  TRY(61);
+  TRY(67);
+  TRY(71);
+  TRY(73);
+  TRY(79);
+  TRY(83);
+  TRY(89);
+  TRY(97);
+  TRY(101);
+  TRY(103);
+  TRY(107);
+  TRY(109);
+  TRY(113);
+  TRY(127);
+  TRY(131);
+#undef TRY
+
+  return IsPrimeInternal(x);
+}
+
 /* This code derives from the GPL factor.c, which is part of GNU
    coreutils. Copyright (C) 1986-2023 Free Software Foundation, Inc.
 
    (This whole file is distributed under the terms of the GPL; see
    COPYING.)
 
-   Contributors: Paul Rubin, Jim Meyering, James Youngman, TorbjÃ¶rn
-   Granlund, Niels MÃ¶ller.
+   Contributors: Paul Rubin, Jim Meyering, James Youngman, Torbjörn
+   Granlund, Niels Möller.
 */
 
 // Assumptions from ported code.
@@ -262,7 +310,6 @@ static_assert(sizeof(uintmax_t) == sizeof(uint64_t));
 static constexpr int W_TYPE_SIZE = 8 * sizeof (uint64_t);
 static_assert(W_TYPE_SIZE == 64);
 
-// TODO: continue uintmax_t -> uint64_t.
 // XXX macros to templates etc.
 
 // Subtracts 128-bit words.
@@ -431,16 +478,6 @@ static inline uint64_t HighBitToMask(uint64_t x) {
                  "In c++20 and later, right shift on signed "
                  "is an arithmetic shift.");
   return (uint64_t)((int64_t)(x) >> (W_TYPE_SIZE - 1));
-#if 0
-  // I guess this is checking whether shifting a signed
-  // int down does sign extension. But that's now guaranteed.
-  if constexpr (((int64_t)-1 >> 1) < 0) {
-    return (uint64_t)((int64_t)(x) >> (W_TYPE_SIZE - 1));
-  } else {
-    return x & ((uint64_t) 1 << (W_TYPE_SIZE - 1))
-      ? UINTMAX_MAX : (uint64_t) 0;
-  }
-#endif
 }
 
 static uint64_t
@@ -480,7 +517,7 @@ MillerRabin(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
             unsigned int k, uint64_t one) {
   uint64_t y = PowM(b, q, n, ni, one);
 
-  /* -1, but in redc representation.  */
+  /* -1, but in redc representation. */
   uint64_t nm1 = n - one;
 
   if (y == one || y == nm1)
@@ -499,18 +536,18 @@ MillerRabin(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
 
 /* Lucas's prime test. The number of iterations vary greatly; up to a
    few dozen have been observed. The average seem to be about 2. */
-static bool IsPrime(uint64_t n) {
+bool IsPrimeInternal(uint64_t n) {
   // printf("prime_p(%llu)?\n", n);
   int k;
 
   if (n <= 1)
     return false;
 
-  /* We have already sieved out small primes.  */
+  /* We have already sieved out small primes. */
   if (n < (uint64_t) NEXT_PRIME * NEXT_PRIME)
     return true;
 
-  /* Precomputation for Miller-Rabin.  */
+  /* Precomputation for Miller-Rabin. */
   uint64_t q = n - 1;
   for (k = 0; (q & 1) == 0; k++)
     q >>= 1;
@@ -519,16 +556,16 @@ static bool IsPrime(uint64_t n) {
   uint64_t one = Redcify(1, n);
   uint64_t a_prim = AddMod(one, one, n); /* i.e., redcify a = 2 */
 
-  /* Perform a Miller-Rabin test, which finds most composites quickly.  */
+  /* Perform a Miller-Rabin test, which finds most composites quickly. */
   if (!MillerRabin(n, ni, a_prim, q, k, one))
     return false;
 
   std::vector<std::pair<uint64_t, int>> factors =
-    /* Factor n-1 for Lucas.  */
+    /* Factor n-1 for Lucas. */
     Factorize::PrimeFactorization(n - 1);
 
   /* Loop until Lucas proves our number prime, or Miller-Rabin proves our
-     number composite.  */
+     number composite. */
   uint64_t a = 2;
   for (uint8_t delta : PRIME_DELTAS) {
     bool is_prime = true;
@@ -545,7 +582,7 @@ static bool IsPrime(uint64_t n) {
 
     /* The following is equivalent to a_prim = redcify (a, n).  It runs faster
        on most processors, since it avoids udiv128.  If we go down the
-       udiv_qrnnd_preinv path, this code should be replaced.  */
+       udiv_qrnnd_preinv path, this code should be replaced. */
     {
       const auto &[s1, s0] = UMul128(one, a);
       if (s1 == 0) [[likely]] {
@@ -570,7 +607,7 @@ static void
 FactorUsingPollardRho(uint64_t n, unsigned long int a,
                       std::vector<std::pair<uint64_t, int>> *factors) {
   // printf("pr(%llu, %lu)\n", n, a);
-  uint64_t z, y, t, g;
+  uint64_t g;
 
   unsigned long int k = 1;
   unsigned long int l = 1;
@@ -578,7 +615,8 @@ FactorUsingPollardRho(uint64_t n, unsigned long int a,
   uint64_t P = Redcify(1, n);
   // i.e., Redcify(2)
   uint64_t x = AddMod(P, P, n);
-  y = z = x;
+  uint64_t z = x;
+  uint64_t y = x;
 
   while (n != 1) {
     assert (a < n);
@@ -590,7 +628,7 @@ FactorUsingPollardRho(uint64_t n, unsigned long int a,
         x = MulRedc(x, x, n, ni);
         x = AddMod(x, a, n);
 
-        t = SubMod(z, x, n);
+        uint64_t t = SubMod(z, x, n);
         P = MulRedc(P, t, n, ni);
 
         if (k % 32 == 1) {
@@ -598,8 +636,7 @@ FactorUsingPollardRho(uint64_t n, unsigned long int a,
             goto factor_found;
           y = x;
         }
-      }
-      while (--k != 0);
+      } while (--k != 0);
 
       z = x;
       k = l;
@@ -616,24 +653,24 @@ FactorUsingPollardRho(uint64_t n, unsigned long int a,
       y = MulRedc(y, y, n, ni);
       y = AddMod(y, a, n);
 
-      t = SubMod(z, y, n);
+      uint64_t t = SubMod(z, y, n);
       g = GCDOdd(t, n);
     } while (g == 1);
 
     if (n == g) {
-      /* Found n itself as factor.  Restart with different params.  */
+      /* Found n itself as factor.  Restart with different params. */
       FactorUsingPollardRho(n, a + 1, factors);
       return;
     }
 
     n = n / g;
 
-    if (!IsPrime(g))
-      FactorUsingPollardRho(g, a + 1, factors);
-    else
+    if (IsPrimeInternal(g))
       PushFactor(factors, g);
+    else
+      FactorUsingPollardRho(g, a + 1, factors);
 
-    if (IsPrime(n)) {
+    if (IsPrimeInternal(n)) {
       PushFactor(factors, n);
       break;
     }
@@ -646,10 +683,10 @@ FactorUsingPollardRho(uint64_t n, unsigned long int a,
 
 std::vector<std::pair<uint64_t, int>>
 Factorize::PrimeFactorization(uint64_t x) {
-  return InternalFactorize(x, true);
+  return FactorizeInternal(x, true);
 }
 
 std::vector<std::pair<uint64_t, int>>
 Factorize::ReferencePrimeFactorization(uint64_t x) {
-  return InternalFactorize(x, false);
+  return FactorizeInternal(x, false);
 }

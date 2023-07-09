@@ -6,8 +6,10 @@
 - thread-util with progress feedback (e.g. ansi console, sdl)
 - thread pools
 - clean up style (use uppercase function and class names, like in sdlutil?)
-- Good standalone flate/zlib compressor: https://github.com/google/zopfli
+- Good standalone flate/zlib compressor:
+    https://github.com/google/zopfli/tree/master/src/zopfli
 - Fast standalone compressor/decompressor: https://github.com/google/snappy
+    (zstd is probably better now)
 - Make a single-file (or otherwise embeddable) zstd
 - CHACHA2020 as a replacement for arcfour
 - Make randutil templated over prng, and provide good defaults
@@ -17,4 +19,5 @@
    variables to try for a round, then you tell it what the "error" was)
 - Update bigz in bignum (there is now 2.0.0, with bugfixes)
 - macro that uses __builtin_unreachable() for an unchecked assert() that
-  can be used for optimization assertions.
+  can be used for optimization assertions. (There may now be a standardized
+  version of this.)

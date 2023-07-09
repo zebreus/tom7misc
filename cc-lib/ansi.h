@@ -59,22 +59,6 @@
   ANSI_INTERNAL_STR(g) ";" \
   ANSI_INTERNAL_STR(b) "m" s ANSI_RESET
 
-// Without ANSI_RESET.
-std::string AnsiForegroundRGB(uint8_t r, uint8_t g, uint8_t b);
-std::string AnsiBackgroundRGB(uint8_t r, uint8_t g, uint8_t b);
-
-// Strip ANSI codes. Only CSI codes are supported (which is everything
-// in this file), and they are not validated. There are many nonstandard
-// codes that would be treated incorrectly here.
-std::string AnsiStripCodes(const std::string &s);
-
-// Return the number of characters after stripping ANSI codes. Same
-// caveats as above.
-int AnsiStringWidth(const std::string &s);
-
-// Call this in main for compatibility on windows.
-void AnsiInit();
-
 // Same as printf, but using WriteConsole on windows so that we
 // can communicate with pseudoterminal. Without this, ansi escape
 // codes will work (VirtualTerminalProcessing) but not mintty-
@@ -82,28 +66,63 @@ void AnsiInit();
 // hopefully support the ansi codes.
 void CPrintf(const char* format, ...);
 
+namespace internal {
+// This currently needs to be hoisted out due to a compiler bug.
+// After it's fixed, put it back in the struct below.
+struct ProgressBarOptions {
+  // including [], time.
+  int full_width = 76;
+  uint32_t fg = 0xfcfce6;
+  uint32_t bar_filled = 0x0f1591;
+  uint32_t bar_empty  = 0x00031a;
+};
+}
 
+struct ANSI {
+
+  // Call this in main for compatibility on windows.
+  static void Init();
+
+  // Without ANSI_RESET.
+  static std::string ForegroundRGB(uint8_t r, uint8_t g, uint8_t b);
+  static std::string BackgroundRGB(uint8_t r, uint8_t g, uint8_t b);
+
+  // Strip ANSI codes. Only CSI codes are supported (which is everything
+  // in this file), and they are not validated. There are many nonstandard
+  // codes that would be treated incorrectly here.
+  static std::string StripCodes(const std::string &s);
+
+  // Return the number of characters after stripping ANSI codes. Same
+  // caveats as above.
+  static int StringWidth(const std::string &s);
+
+  // Return an ansi-colored representation of the duration, with arbitrary
+  // but Tom 7-approved choices of color and significant figures.
+  static std::string Time(double seconds);
+
+  using ProgressBarOptions = internal::ProgressBarOptions;
+  // Print a color progress bar. [numer/denom  operation] ETA HH:MM:SS
+  // Doesn't update in place; you need to move the cursor for that.
+  static std::string ProgressBar(uint64_t numer, uint64_t denom,
+                                 // This currently can't have ANSI Codes,
+                                 // because we need to split it into pieces.
+                                 // TODO: Fix it!
+                                 const std::string &operation,
+                                 double taken,
+                                 ProgressBarOptions options =
+                                 ProgressBarOptions{});
+};
+
+// Deprecated. Use ANSI:: versions.
 inline std::string AnsiForegroundRGB(uint8_t r, uint8_t g, uint8_t b) {
-  char escape[24] = {};
-  sprintf(escape, "\x1B[38;2;%d;%d;%dm", r, g, b);
-  return escape;
+  return ANSI::ForegroundRGB(r, g, b);
 }
-
 inline std::string AnsiBackgroundRGB(uint8_t r, uint8_t g, uint8_t b) {
-  // Max size is 12.
-  char escape[24] = {};
-  sprintf(escape, "\x1B[48;2;%d;%d;%dm", r, g, b);
-  return escape;
+  return ANSI::BackgroundRGB(r, g, b);
 }
 
-// Return an ansi-colored representation of the duration, with arbitrary
-// but Tom 7-approved choices of color and significant figures.
-std::string AnsiTime(double seconds);
+// Deprecated. Use ANSI::Init.
+inline void AnsiInit() { return ANSI::Init(); }
 
-// Print a color progress bar. [numer/denom  operation  ETA HH:MM:SS]
-// Doesn't update in place; you need to move the cursor for that.
-std::string AnsiProgressBar(uint64_t numer, uint64_t denom,
-                            const std::string &operation,
-                            double taken);
 
 #endif

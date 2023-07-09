@@ -5,20 +5,22 @@ TESTCOMPILE=stb_image_write.o stb_image.o dr_wav.o bounds.o simpledxf.o bitbuffe
 
 BASE=base/logging.o base/stringprintf.o
 
-# TODO: use uname to toggle this?
-# for 64 bits on windows
-# CXX=x86_64-w64-mingw32-g++
-# CC=x86_64-w64-mingw32-g++
-# CXXFLAGS=-march=native -pipe -Wall -I. --std=c++20 -O3 -static -flto=auto
-# SOCK_LFLAGS= -lws2_32
-
-# Linux
-# no-psabi suppresses warnings all over STL in GCC 7.1 for ARM (e.g. pi)
-# it can probably be removed in a few years?
-CXX=g++
-CC=gcc
-CXXFLAGS=-Wall -I. --std=c++20 -O2 -Wno-psabi
-SOCK_LFLAGS=
+UNAME := $(shell uname -o)
+ifeq ($(UNAME),Cygwin)
+  # for 64 bits on windows (mingw).
+  CXX=x86_64-w64-mingw32-g++
+  CC=x86_64-w64-mingw32-g++
+  CXXFLAGS=-march=native -pipe -Wall -I. --std=c++20 -O3 -static -flto=auto
+  SOCK_LFLAGS= -lws2_32
+else
+  # Linux
+  CXX=g++
+  CC=gcc
+  # no-psabi suppresses warnings all over STL in GCC 7.1 for ARM (e.g. pi)
+  # it can probably be removed in a few years?
+  CXXFLAGS=-Wall -I. --std=c++20 -O2 -Wno-psabi
+  SOCK_LFLAGS=
+endif
 
 RE2_OBJECTS=re2/bitstate.o re2/compile.o re2/dfa.o re2/filtered_re2.o re2/mimics_pcre.o re2/nfa.o re2/onepass.o re2/parse.o re2/perl_groups.o re2/prefilter.o re2/prefilter_tree.o re2/prog.o re2/re2.o re2/regexp.o re2/set.o re2/simplify.o re2/stringpiece.o re2/tostring.o re2/unicode_casefold.o re2/unicode_groups.o re2/util/rune.o re2/util/strutil.o
 
@@ -27,8 +29,7 @@ RE2_OBJECTS=re2/bitstate.o re2/compile.o re2/dfa.o re2/filtered_re2.o re2/mimics
 	@echo -n "."
 
 ansi_test.exe : ansi_test.o ansi.o $(BASE)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
+	$(CXX) $(CXXFLAGS) $^ -o $@
 
 stb_truetype_test.exe : stb_truetype.o stb_truetype_test.o
 	$(CXX) $(CXXFLAGS) $^ -o $@
@@ -156,7 +157,7 @@ image-frgba_test.exe : image-frgba.o image-frgba_test.o tinyexr.o image.o stb_im
 vector-util_test.exe : vector-util_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-factorize_test.exe : factorize.o factorize_test.o ansi.o $(BASE)
+factorize_test.exe : factorize.o factorize_test.o ansi.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 divbench.exe : divbench.o ansi.o $(BASE)
