@@ -61,7 +61,7 @@ using uint64 = uint64_t;
 
 string Util::itos(int i) {
   char s[64];
-  sprintf(s, "%d", i);
+  snprintf(s, 62, "%d", i);
   return (string)s;
 }
 
@@ -71,7 +71,7 @@ int Util::stoi(const string &s) {
 
 string Util::dtos(double d) {
   char s[64];
-  sprintf(s, "%.2f", d);
+  snprintf(s, 62, "%.2f", d);
   return (string)s;
 }
 
@@ -261,7 +261,7 @@ bool Util::MakeDir(const string &d) {
 
 string Util::ptos(void *p) {
   char s[64];
-  sprintf(s, "%p", p);
+  snprintf(s, 62, "%p", p);
   return (string)s;
 }
 
@@ -953,13 +953,15 @@ string Util::NormalizeWhitespace(const string &s) {
 string Util::tempfile(const string &suffix) {
   static int tries = 0;
 
-  char *fname = new char[suffix.length() + 128];
+  size_t size = suffix.length() + 128;
+  char *fname = new char[size];
 
   do {
-    sprintf(fname,
-            "%d_%d_%d%s",
-            tries, getpid(), random(),
-            suffix.c_str());
+    snprintf(fname,
+             size - 2,
+             "%d_%d_%d%s",
+             tries, getpid(), random(),
+             suffix.c_str());
     tries++;
   } while (ExistsFile(fname));
 
@@ -1111,10 +1113,10 @@ string Util::UnsignedWithCommas(uint64_t u) {
     int triple = u % 1000;
     u /= 1000;
     if (u) {
-      sprintf(buf, ",%03d%s", triple, out.c_str());
+      snprintf(buf, 62, ",%03d%s", triple, out.c_str());
     } else {
       // no zero-padding, no comma
-      sprintf(buf, "%d%s", triple, out.c_str());
+      snprintf(buf, 62, "%d%s", triple, out.c_str());
     }
     out = buf;
   }
