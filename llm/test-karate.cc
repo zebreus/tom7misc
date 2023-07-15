@@ -76,8 +76,8 @@ int main(int argc, char **argv) {
     do2 = RandomAction(&rc);
     printf("%s: %s\n", karate.Fighter2().c_str(), do2.c_str());
 
-    string message = karate.Process(say1, say2, do1, do2);
-    if (!message.empty()) printf(APURPLE("%s") "\n", message.c_str());
+    Karate::ProcessResult res = karate.Process(say1, say2, do1, do2);
+    if (!res.message.empty()) printf(APURPLE("%s") "\n", res.message.c_str());
     printf(AGREY("%s") "\n", karate.GetStatus().c_str());
   }
 

@@ -52,7 +52,9 @@ struct Karate {
     LOW,
   };
 
+  // Maybe a misnomer since it includes blocks...
   enum Attack {
+    BLOCK,
     PUNCH,
     KICK,
   };
@@ -80,11 +82,39 @@ struct Karate {
 
   std::string GetStatus();
 
-  std::string Process(const std::string &say1, const std::string &say2,
-                      const std::string &do1, const std::string &do2);
+  struct FighterPic {
+    bool in_air = false;
+    int x = 0;
+  };
+
+  // This is purely presentational; the canonical state is in the Karate
+  // object itself.
+  struct ProcessResult {
+    FighterPic f1, f2;
+    // Plain text explanation of what happened, if interesting.
+    std::string message;
+    bool clash = false;
+    bool reset = false;
+  };
+
+  ProcessResult Process(const std::string &say1, const std::string &say2,
+                        const std::string &do1, const std::string &do2);
 
   const std::string &Fighter1() const { return fighter1; }
   const std::string &Fighter2() const { return fighter2; }
+
+
+  const std::string PlayerPicture() const {
+    //  o
+    // /|\
+    //  |
+    // / \
+    //
+    return "TODO";
+  }
+  const std::string Visualize() const {
+    return "TODO";
+  }
 
 private:
   // Reset after clash, ringout, etc.
