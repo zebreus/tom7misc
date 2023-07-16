@@ -1,4 +1,5 @@
 #include <cmath>
+#include <chrono>
 #include <memory>
 #include <vector>
 #include <functional>
@@ -120,10 +121,15 @@ private:
 // static constexpr int GPU_HEIGHT = 49912;
 // static constexpr int GPU_HEIGHT = 51504;
 static constexpr int GPU_HEIGHT = 131072;
+static constexpr int NUM_GPU_THREADS = 2;
 
 static constexpr uint64_t EPOCH_SIZE = 2'000'000'000; /* ' */
+static constexpr uint64_t UNROLL_SIZE = 100;
+static_assert(EPOCH_SIZE % UNROLL_SIZE == 0);
+static constexpr uint64_t EPOCH_INDICES = EPOCH_SIZE / UNROLL_SIZE;
+
 // PERF: Tune it
-static constexpr int STEADY_WORK_STEALING_THREADS = 1;
+static constexpr int STEADY_WORK_STEALING_THREADS = 0;
 static constexpr int ENDGAME_WORK_STEALING_THREADS = 8;
 
 static std::mutex file_mutex;
@@ -547,14 +553,14 @@ struct SOS {
     try_queue.reset(new WorkQueue<std::vector<TryMe>>());
   }
 
-  void GPUThread() {
+  void GPUThread(int thread_idx) {
     for (;;) {
       std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
         nways_queue->WaitGet();
 
       if (!batchopt.has_value()) {
         // Done!
-        status.Printf("GPU thread done!\n");
+        status.Printf("GPU thread " APURPLE("%d") " done!\n", thread_idx);
         fflush(stdout);
         return;
       }
@@ -609,7 +615,7 @@ struct SOS {
   // Work stolen by CPU in endgame.
   uint64_t stolen = 0;
 
-  int work_stealing_threads = 2;
+  int work_stealing_threads = STEADY_WORK_STEALING_THREADS;
 
   Periodically status_per;
 
@@ -691,32 +697,44 @@ struct SOS {
     // CPU. When we reach the endgame, we'll increase the number of threads.
     int num_threads = work_stealing_threads;
     for (;;) {
-      std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
-        nways_queue->WaitGet();
+      if (num_threads == 0) {
+        // When CPU is a bottleneck, don't do any stealing. Just wait for
+        // the endgame.
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(500ms);
 
-      if (!batchopt.has_value()) {
-        // Done -- but let the GPU mark the queue as done.
-        status.Printf("No more work to steal!\n");
-        return;
-      }
+        {
+          MutexLock ml(&m);
+          num_threads = work_stealing_threads;
+        }
+      } else {
+        std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
+          nways_queue->WaitGet();
 
-      std::vector<TryMe> output =
-        ParallelMap(
-            batchopt.value(),
-            [](const std::pair<uint64_t, uint32_t> &input) {
-              TryMe tryme;
-              tryme.num = input.first;
-              tryme.squareways = NSoks2(input.first, input.second);
-              return tryme;
-            },
-            num_threads);
+        if (!batchopt.has_value()) {
+          // Done -- but let the GPU mark the queue as done.
+          status.Printf("No more work to steal!\n");
+          return;
+        }
 
-      try_queue->WaitAdd(std::move(output));
-      output.clear();
-      {
-        MutexLock ml(&m);
-        stolen += batchopt.value().size();
-        num_threads = work_stealing_threads;
+        std::vector<TryMe> output =
+          ParallelMap(
+              batchopt.value(),
+              [](const std::pair<uint64_t, uint32_t> &input) {
+                TryMe tryme;
+                tryme.num = input.first;
+                tryme.squareways = NSoks2(input.first, input.second);
+                return tryme;
+              },
+              num_threads);
+
+        try_queue->WaitAdd(std::move(output));
+        output.clear();
+        {
+          MutexLock ml(&m);
+          stolen += batchopt.value().size();
+          num_threads = work_stealing_threads;
+        }
       }
     }
   }
@@ -730,47 +748,74 @@ struct SOS {
 
     work_stealing_threads = STEADY_WORK_STEALING_THREADS;
 
-    std::thread gpu_thread(&GPUThread, this);
+    std::vector<std::thread> gpu_threads;
+    for (int i = 0; i < NUM_GPU_THREADS; i++)
+      gpu_threads.emplace_back(&GPUThread, this, i + 1);
     std::thread try_thread(&TryThread, this);
     std::thread steal_thread(&StealThread, this);
 
     ResetCounters();
     factor_comp->
       ParallelComp(
-        EPOCH_SIZE,
-        [this, start](uint64_t idx) {
-          const uint64_t num = start + idx;
+        EPOCH_INDICES,
+        [this, start](uint64_t major_idx) {
+          const uint64_t unroll_start = start + (major_idx * UNROLL_SIZE);
 
-          const int nways = ChaiWahWu(num);
+          // Run unrolled inner loop without taking locks so often.
+          std::vector<std::pair<uint64_t, uint32_t>> todo_gpu;
+          todo_gpu.reserve(UNROLL_SIZE);
 
-          if (nways >= 3) {
+          int local_too_big = 0;
+          int local_triples = 0;
+          int local_done_nways = 0;
+          int local_ineligible = 0;
+          int local_done = 0;
 
-            if (nways > NWaysGPU::MAX_WAYS) {
-              // Do on CPU.
-              std::vector<std::pair<uint64_t, uint64_t>> ways =
-                NSoks2(num, nways);
-              TryMe tryme;
-              tryme.num = num;
-              tryme.squareways = std::move(ways);
-              try_queue->WaitAdd({std::move(tryme)});
+          for (uint64_t minor_idx = 0; minor_idx < UNROLL_SIZE; minor_idx++) {
+            const uint64_t num = unroll_start + minor_idx;
+            const int nways = ChaiWahWu(num);
 
-              {
-                MutexLock ml(&m);
-                too_big++;
-                triples++;
-                done_nways++;
+            if (nways >= 3) {
+
+              if (nways > NWaysGPU::MAX_WAYS) {
+                // Do on CPU.
+                std::vector<std::pair<uint64_t, uint64_t>> ways =
+                  NSoks2(num, nways);
+                TryMe tryme;
+                tryme.num = num;
+                tryme.squareways = std::move(ways);
+                try_queue->WaitAdd({std::move(tryme)});
+
+                local_too_big++;
+                local_triples++;
+                local_done_nways++;
+              } else {
+                todo_gpu.emplace_back(num, nways);
               }
             } else {
-              {
-                MutexLock ml(&m);
-                triples++;
-              }
-              nways_queue->WaitAdd(make_pair(num, nways));
+              local_ineligible++;
+              local_done++;
             }
-          } else {
+          }
+
+          for (const auto &p : todo_gpu) {
+            // PERF batch add
+            nways_queue->WaitAdd(p);
+          }
+
+          {
             MutexLock ml(&m);
-            ineligible++;
-            done++;
+            // Work done in this thread
+            too_big += local_too_big;
+            triples += local_triples;
+            done_nways += local_done_nways;
+
+            // Added to GPU in batch
+            triples += todo_gpu.size();
+
+            // Ineligible
+            ineligible += local_ineligible;
+            done += local_done;
           }
         });
 
@@ -787,7 +832,8 @@ struct SOS {
 
     // Now actually wait for gpu thread, which should be done very shortly
     // since there's no more work.
-    gpu_thread.join();
+    for (auto &gpu_thread : gpu_threads) gpu_thread.join();
+    gpu_threads.clear();
 
     try_queue->MarkDone();
 
@@ -806,7 +852,9 @@ struct SOS {
                   " work units from GPU (" ACYAN("%.2f") "%%)\n",
                   stolen, (100.0 * stolen) / triples);
     status.Printf("Total triples: %llu/%llu\n", triples, EPOCH_SIZE);
-    status.Printf(AGREEN ("Done") " in %s. (%s/ea.)\n",
+    status.Printf(ARED("%llu") " (%.2f%%) were too big.\n",
+                  too_big, (too_big * 100.0) / EPOCH_SIZE);
+    status.Printf(AGREEN("Done") " in %s. (%s/ea.)\n",
                   ANSI::Time(sec).c_str(),
                   ANSI::Time(sec / EPOCH_SIZE).c_str());
     status.Printf("Did %s-%s\n",

@@ -22,7 +22,7 @@
 
 // New version, based on nsoks.
 //
-// Runs many in batch. Even though there's a lot of paralellism for
+// Runs many in batch. Even though there's a lot of parallelism for
 // a single number, it does not even come close to beating the CPU
 // unless we do a 2D workload.
 struct NWaysGPU {
