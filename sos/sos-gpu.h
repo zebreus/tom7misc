@@ -33,7 +33,7 @@ struct NWaysGPU {
   static constexpr int MAX_WAYS = 32;
 
   // PERF: Can disable output checking, and timers.
-  static constexpr bool CHECK_OUTPUT = true;
+  static constexpr bool CHECK_OUTPUT = false;
 
   CL *cl = nullptr;
   int height = 0;

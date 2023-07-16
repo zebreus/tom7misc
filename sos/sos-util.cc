@@ -17,12 +17,15 @@ using namespace std;
 
 int ChaiWahWuNoFilter(uint64_t sum) {
   if (sum == 0) return 1;
-  std::vector<std::pair<uint64_t, int>> collated =
-    Factorize::PrimeFactorization(sum);
 
-  auto AllEvenPowers = [&collated]() {
-      for (const auto &[p, e] : collated) {
-        if (e & 1) return false;
+  uint64_t bases[20];
+  uint8_t exponents[20];
+  int num_factors =
+    Factorize::PrimeFactorizationPreallocated(sum, bases, exponents);
+
+  auto AllEvenPowers = [&exponents, num_factors]() {
+      for (int i = 0; i < num_factors; i++) {
+        if (exponents[i] & 1) return false;
       }
       return true;
     };
@@ -39,7 +42,10 @@ int ChaiWahWuNoFilter(uint64_t sum) {
   // (((m:=prod(1 if p==2 else (e+1 if p&3==1 else (e+1)&1)
   //   for p, e in f.items()))
   int m = 1;
-  for (const auto &[p, e] : collated) {
+  // for (const auto &[p, e] : collated) {
+  for (int i = 0; i < num_factors; i++) {
+    const uint64_t p = bases[i];
+    const int e = exponents[i];
     if (p != 2) {
       m *= (p % 4 == 1) ? e + 1 : ((e + 1) & 1);
     }

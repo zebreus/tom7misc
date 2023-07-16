@@ -109,7 +109,7 @@ static void Optimize() {
   // the OptimizeMe function should run in a loop and take the min.)
   Timer warm_timer;
   printf("Warming kernels...\n");
-  while (warm_timer.Seconds() < 5.0) (void)OptimizeMe(GLOBAL_BATCH_SIZE * 0.5);
+  while (warm_timer.Seconds() < 5.0) (void)OptimizeMe(GLOBAL_BATCH_SIZE);
   printf("... done.\n");
   // reset best
   best_sec_per = 999999.0;
@@ -271,9 +271,9 @@ int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
 
-  // Optimize();
+  Optimize();
 
-  TestNWays<false, 16>();
+  // TestNWays<false, 16>();
 
   printf("OK\n");
   return 0;

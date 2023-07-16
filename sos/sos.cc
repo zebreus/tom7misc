@@ -363,7 +363,6 @@ static void Try(int z,
 
             CHECK(false) << "winner";
           });
-
 }
 
 // TODO: To threadutil?
@@ -538,7 +537,7 @@ struct SOS {
   SOS() : status_per(10.0) {
     // Performance is pretty workload-dependent, so just tune in-process
     // rather than saving to disk.
-    factor_comp.reset(new AutoParallelComp(20, 1000, false));
+    factor_comp.reset(new AutoParallelComp(16, 1000, false));
     try_comp.reset(new AutoParallelComp(8, 1000, false));
 
     nways_gpu.reset(new NWaysGPU(cl, GPU_HEIGHT));

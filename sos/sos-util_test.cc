@@ -314,10 +314,10 @@ int main(int argc, char **argv) {
   ANSI::Init();
   TestMaybeSumOfSquares();
 
-  // BenchCWW();
+  BenchCWW();
   // BenchMSOSFancy();
   MaybeSumOfSquaresRecall();
-  return 0;
+  // return 0;
 
   TestSimple("brute", BruteGetNWays);
   TestSimple("nsoks2", NSoks2);
