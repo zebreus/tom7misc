@@ -204,8 +204,10 @@ static void TestPrimeFactors() {
   }
 
   for (int n = 2; n < 100000; n++) {
-    CHECK(Factorize::PrimeFactorization(n) ==
-          Factorize::ReferencePrimeFactorization(n)) << n;
+    auto v = Factorize::PrimeFactorization(n);
+    auto r = Factorize::ReferencePrimeFactorization(n);
+    CHECK(v == r) << "For " << n << ":\nGot:  " << FTOS(v) <<
+      "\nWant: " << FTOS(r);
   }
 
   // Verify that the output is valid, but we don't check primality
@@ -232,7 +234,7 @@ static void TestPrimeFactors() {
   {
     uint32_t a = 0x12345678;
     uint32_t b = 0xACABACAB;
-    for (int j = 0; j < 100000; j++) {
+    for (int j = 0; j < 500000; j++) {
       uint64_t input = ((uint64_t)a) << 32 | b;
       TestOne(input);
       a = LFSRNext32(LFSRNext32(a));
@@ -240,7 +242,7 @@ static void TestPrimeFactors() {
     }
   }
   double lfsr_sec = lfsr_timer.Seconds();
-  printf("100k via LFSR OK (%s)\n", ANSI::Time(lfsr_sec).c_str());
+  printf("500k via LFSR OK (%s)\n", ANSI::Time(lfsr_sec).c_str());
 
   // Carmichael numbers > 100k.
   for (uint64_t n : {
@@ -507,6 +509,7 @@ static void PrintGaps(const std::array<uint32_t, N> &primes) {
 }
 
 
+[[maybe_unused]]
 static void ProfileFactorize() {
   ArcFour rc("profile");
   Timer timer;
@@ -531,7 +534,6 @@ int main(int argc, char **argv) {
   // OptimizeLimit();
   // return 0;
 
-  /*
   TestSqrt();
   TestPrimeFactors();
   TestIsPrime();
@@ -539,9 +541,8 @@ int main(int argc, char **argv) {
   BenchSqrt();
 
   BenchFactorize();
-  */
 
-  ProfileFactorize();
+  // ProfileFactorize();
 
   printf("OK\n");
 }

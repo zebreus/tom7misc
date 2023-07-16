@@ -67,26 +67,40 @@ static constexpr std::array<uint8_t, 999> PRIME_DELTAS = {
 24,6,6,12,12,14,6,4,2,4,18,6,12,
 };
 
+struct Factors {
+  int num;
+  uint64_t *b;
+  uint8_t *e;
+};
+
 static void FactorUsingPollardRho(
     uint64_t n, unsigned long int a,
-    std::vector<std::pair<uint64_t, int>> *factors);
+    Factors *factors);
 static bool IsPrimeInternal(uint64_t n);
 
-// Add the factor, or increment its exponent if it is the
-// one already at the end. Normally we are inserting in ascending
-// order so this keeps the list compact. But NormalizeFactors below
-// can also fix it up they are added out-of-order (Pollard-Rho).
-static void PushFactor(std::vector<std::pair<uint64_t, int>> *factors,
-                       uint64_t b) {
-  if (!factors->empty() &&
-      factors->back().first == b) {
-    factors->back().second++;
-  } else {
-    factors->emplace_back(b, 1);
-  }
+static void InsertNewFactor(Factors *factors, uint64_t b, uint64_t e) {
+  factors->b[factors->num] = b;
+  factors->e[factors->num] = e;
+  factors->num++;
 }
 
-static void NormalizeFactors(std::vector<std::pair<uint64_t, int>> *factors) {
+// Add the factor by finding it if it already exists (and incrementing
+// its exponent), or adding it (with an exponent of 1).
+static void PushFactor(Factors *factors,
+                       uint64_t b) {
+  // PERF: We could stop once we get to the prefix we know has been
+  // trial factored...
+  for (int i = factors->num - 1; i >= 0; i--) {
+    if (factors->b[i] == b) {
+      factors->e[i]++;
+      return;
+    }
+  }
+  InsertNewFactor(factors, b, 1);
+}
+
+void Factorize::NormalizeFactors(
+    std::vector<std::pair<uint64_t, int>> *factors) {
   if (factors->empty()) return;
   // Sort by base.
   std::sort(factors->begin(), factors->end(),
@@ -111,10 +125,10 @@ static void NormalizeFactors(std::vector<std::pair<uint64_t, int>> *factors) {
 // First prime not in the list of trial divisions (TRY) below.
 static constexpr int NEXT_PRIME = 137;
 
-static std::vector<std::pair<uint64_t, int>>
-FactorizeInternal(uint64_t x, bool use_pr) {
-  // TODO: Allow as argument
-  uint64_t max_factor = x;
+int Factorize::PrimeFactorizationPreallocated(
+    uint64_t x,
+    uint64_t *bases,
+    uint8_t *exponents) {
 
   // It would not be hard to incorporate Fermat's method too,
   // for cases that the number has factors close to its square
@@ -122,36 +136,29 @@ FactorizeInternal(uint64_t x, bool use_pr) {
 
   if (x <= 1) return {};
 
-  // Factors in increasing order.
-  std::vector<std::pair<uint64_t, int>> factors;
+  Factors factors{.num = 0, .b = bases, .e = exponents};
 
-  #if 0
- // local storage
- // 3^41 is the most factors possible for uint64.
- uint8_t fs[42] = {};
- int num_fs = 0;
- auto PushLocalFactor = [&fs, &num_fs](uint8_t p) {
-     fs[num_fs++] = p;
-   };
- #endif
+  uint64_t cur = x;
 
- uint64_t cur = x;
-
- const int twos = std::countr_zero<uint64_t>(x);
- if (twos) {
-   factors.emplace_back(2, twos);
-   cur >>= twos;
- }
-
+  const int twos = std::countr_zero<uint64_t>(x);
+  if (twos) {
+    InsertNewFactor(&factors, 2, twos);
+    cur >>= twos;
+  }
 
   // After 2, try the first 32 primes. This code used to have a much
   // longer list, but it's counterproductive. With hard-coded
   // constants, we can also take advantage of division-free compiler
   // tricks.
   //
-  // PERF: Probably can pipeline faster if we don't actually divide until
+  // PERF: Probably can pipeline more if we don't actually divide until
   // the end of all the factors?
-#define TRY(p) while (cur % p == 0) { cur /= p; PushFactor(&factors, p); }
+  // #define TRY(p) while (cur % p == 0) { cur /= p; PushFactor(&factors, p); }
+#define TRY(p) do {                             \
+    int e = 0;                                  \
+    while (cur % p == 0) { cur /= p; e++; }     \
+    if (e) InsertNewFactor(&factors, p, e);     \
+  } while (0)
   // TRY(2);
   TRY(3);
   TRY(5);
@@ -186,67 +193,15 @@ FactorizeInternal(uint64_t x, bool use_pr) {
   TRY(131);
 #undef TRY
 
-  if (cur == 1) return factors;
+  if (cur == 1) return factors.num;
 
-  if (use_pr) {
-    if (IsPrimeInternal(cur)) {
-      PushFactor(&factors, cur);
-    } else {
-      FactorUsingPollardRho(cur, 1, &factors);
-      // Pollard-rho does not generate factors in ascending order.
-      NormalizeFactors(&factors);
-    }
-    return factors;
+  if (IsPrimeInternal(cur)) {
+    InsertNewFactor(&factors, cur, 1);
+  } else {
+    FactorUsingPollardRho(cur, 1, &factors);
   }
 
-  // Otherwise, use the much slower trial division algorithm.
-
-
-  // Once we exhausted the prime list, do the same
-  // but with odd numbers up to the square root. Note
-  // that the last prime is not actually tested above; it's
-  // the initial value for this loop.
-  uint64_t divisor = 137;
-  uint64_t sqrtcur = Sqrt64(cur) + 1;
-  for (;;) {
-    // skip if a multiple of 3.
-    if (divisor > max_factor)
-      break;
-
-    if (divisor > sqrtcur)
-      break;
-
-    const uint64_t rem = cur % divisor;
-    if (rem == 0) {
-      cur = cur / divisor;
-      sqrtcur = Sqrt64(cur) + 1;
-      PushFactor(&factors, divisor);
-      // But don't increment i, as it may appear as a
-      // factor many times.
-    } else {
-      do {
-        // Always skip even numbers; this is trivial.
-        divisor += 2;
-        // But also skip divisors with small factors. Modding by
-        // small constants can be compiled into multiplication
-        // tricks, so this is faster than doing another proper
-        // loop.
-      } while ((divisor % 3) == 0 ||
-               (divisor % 5) == 0 ||
-               (divisor % 7) == 0 ||
-               (divisor % 11) == 0 ||
-               (divisor % 13) == 0 ||
-               (divisor % 17) == 0);
-    }
-  }
-
-  // And the number itself, which we now know is prime
-  // (unless we reached the max factor).
-  if (cur != 1) {
-    PushFactor(&factors, cur);
-  }
-
-  return factors;
+  return factors.num;
 }
 
 bool Factorize::IsPrime(uint64_t x) {
@@ -561,16 +516,20 @@ bool IsPrimeInternal(uint64_t n) {
   if (!MillerRabin(n, ni, a_prim, q, k, one))
     return false;
 
-  std::vector<std::pair<uint64_t, int>> factors =
-    /* Factor n-1 for Lucas. */
-    Factorize::PrimeFactorization(n - 1);
+  uint64_t b[20];
+  uint8_t e[20];
+
+  /* Factor n-1 for Lucas. */
+  int num_factors =
+    Factorize::PrimeFactorizationPreallocated(n - 1, b, e);
 
   /* Loop until Lucas proves our number prime, or Miller-Rabin proves our
      number composite. */
   uint64_t a = 2;
   for (uint8_t delta : PRIME_DELTAS) {
     bool is_prime = true;
-    for (const auto &[p, e_] : factors) {
+    for (int i = 0; i < num_factors; i++) {
+      const uint64_t p = b[i];
       is_prime = PowM(a_prim, (n - 1) / p, n, ni, one) != one;
       if (!is_prime) break;
     }
@@ -606,7 +565,7 @@ bool IsPrimeInternal(uint64_t n) {
 
 static void
 FactorUsingPollardRho(uint64_t n, unsigned long int a,
-                      std::vector<std::pair<uint64_t, int>> *factors) {
+                      Factors *factors) {
   // printf("pr(%llu, %lu)\n", n, a);
   uint64_t g;
 
@@ -684,10 +643,129 @@ FactorUsingPollardRho(uint64_t n, unsigned long int a,
 
 std::vector<std::pair<uint64_t, int>>
 Factorize::PrimeFactorization(uint64_t x) {
-  return FactorizeInternal(x, true);
+  uint64_t b[20];
+  uint8_t e[20];
+  int num = PrimeFactorizationPreallocated(x, b, e);
+  std::vector<std::pair<uint64_t, int>> ret;
+  ret.resize(num);
+  for (int i = 0; i < num; i++) {
+    ret[i] = make_pair(b[i], e[i]);
+  }
+  NormalizeFactors(&ret);
+  return ret;
 }
 
 std::vector<std::pair<uint64_t, int>>
 Factorize::ReferencePrimeFactorization(uint64_t x) {
-  return FactorizeInternal(x, false);
+  uint64_t max_factor = x;
+
+  if (x <= 1) return {};
+
+  // Factors in increasing order.
+  std::vector<std::pair<uint64_t, int>> factors;
+  auto Push = [&factors](uint64_t n) {
+      factors.emplace_back(n, 1);
+    };
+
+  uint64_t cur = x;
+
+  const int twos = std::countr_zero<uint64_t>(x);
+  if (twos) {
+    factors.emplace_back(2, twos);
+    cur >>= twos;
+  }
+
+  // After 2, try the first 32 primes. This code used to have a much
+  // longer list, but it's counterproductive. With hard-coded
+  // constants, we can also take advantage of division-free compiler
+  // tricks.
+  //
+  // PERF: Probably can pipeline faster if we don't actually divide until
+  // the end of all the factors?
+#define TRY(p) while (cur % p == 0) { cur /= p; Push(p); }
+  // TRY(2);
+  TRY(3);
+  TRY(5);
+  TRY(7);
+  TRY(11);
+  TRY(13);
+  TRY(17);
+  TRY(19);
+  TRY(23);
+  TRY(29);
+  TRY(31);
+  TRY(37);
+  TRY(41);
+  TRY(43);
+  TRY(47);
+  TRY(53);
+  TRY(59);
+  TRY(61);
+  TRY(67);
+  TRY(71);
+  TRY(73);
+  TRY(79);
+  TRY(83);
+  TRY(89);
+  TRY(97);
+  TRY(101);
+  TRY(103);
+  TRY(107);
+  TRY(109);
+  TRY(113);
+  TRY(127);
+  TRY(131);
+#undef TRY
+
+  if (cur == 1) {
+    NormalizeFactors(&factors);
+    return factors;
+  }
+
+  // Once we exhausted the prime list, do the same
+  // but with odd numbers up to the square root. Note
+  // that the last prime is not actually tested above; it's
+  // the initial value for this loop.
+  uint64_t divisor = 137;
+  uint64_t sqrtcur = Sqrt64(cur) + 1;
+  for (;;) {
+    // skip if a multiple of 3.
+    if (divisor > max_factor)
+      break;
+
+    if (divisor > sqrtcur)
+      break;
+
+    const uint64_t rem = cur % divisor;
+    if (rem == 0) {
+      cur = cur / divisor;
+      sqrtcur = Sqrt64(cur) + 1;
+      Push(divisor);
+      // But don't increment i, as it may appear as a
+      // factor many times.
+    } else {
+      do {
+        // Always skip even numbers; this is trivial.
+        divisor += 2;
+        // But also skip divisors with small factors. Modding by
+        // small constants can be compiled into multiplication
+        // tricks, so this is faster than doing another proper
+        // loop.
+      } while ((divisor % 3) == 0 ||
+               (divisor % 5) == 0 ||
+               (divisor % 7) == 0 ||
+               (divisor % 11) == 0 ||
+               (divisor % 13) == 0 ||
+               (divisor % 17) == 0);
+    }
+  }
+
+  // And the number itself, which we now know is prime
+  // (unless we reached the max factor).
+  if (cur != 1) {
+    Push(cur);
+  }
+
+  NormalizeFactors(&factors);
+  return factors;
 }
