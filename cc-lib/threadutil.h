@@ -171,6 +171,9 @@ void ParallelComp(int64_t num,
         index_m.unlock();
         return;
       }
+      // PERF: Locking can be pretty expensive if there's a lot of
+      // contention (if f is fast, for example). Likely better to
+      // claim more than one index when we're far from the end.
       int64_t my_index = next_index++;
       index_m.unlock();
 
