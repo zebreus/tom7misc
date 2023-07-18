@@ -24,6 +24,7 @@
 #include "ansi.h"
 #include "autoparallel.h"
 #include "factorize.h"
+#include "atomic-util.h"
 
 #include "sos-util.h"
 #include "sos-gpu.h"
@@ -122,6 +123,10 @@ private:
 // static constexpr int GPU_HEIGHT = 51504;
 static constexpr int GPU_HEIGHT = 131072;
 static constexpr int NUM_GPU_THREADS = 2;
+static constexpr int TRY_ROLL_SIZE = 256;
+static_assert(GPU_HEIGHT % TRY_ROLL_SIZE == 0,
+              "this is not strictly required, but would hurt "
+              "performance!");
 
 static constexpr uint64_t EPOCH_SIZE = 2'000'000'000; /* ' */
 static constexpr uint64_t UNROLL_SIZE = 100;
@@ -130,7 +135,8 @@ static constexpr uint64_t EPOCH_INDICES = EPOCH_SIZE / UNROLL_SIZE;
 
 // PERF: Tune it
 static constexpr int STEADY_WORK_STEALING_THREADS = 0;
-static constexpr int ENDGAME_WORK_STEALING_THREADS = 8;
+// (As of 16 Jul 2023, in the endgame Try becomes the bottleneck.)
+static constexpr int ENDGAME_WORK_STEALING_THREADS = 4;
 
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
@@ -160,17 +166,28 @@ static void Interesting(const std::string &s) {
   fclose(f);
 }
 
-// These are not guaranteed to be accurate!
-static std::atomic<int64_t> rejected_f{0ULL};
-static std::atomic<int64_t> rejected_ff{0ULL};
-static std::atomic<int64_t> rejected_hh{0ULL};
-static std::atomic<int64_t> rejected_aa{0ULL};
-#define INCREMENT(rej) rej.fetch_add(1, std::memory_order_relaxed)
+
+// static std::atomic<uint64_t> rejected_f{0ULL};
+// static std::atomic<uint64_t> rejected_ff{0ULL};
+// static std::atomic<uint64_t> rejected_hh{0ULL};
+// static std::atomic<uint64_t> rejected_aa{0ULL};
+// #define INCREMENT(rej) rej.fetch_add(1, std::memory_order_relaxed)
+// #define READ(rej) rej.load()
+// #define RESET(rej) rej.store(0ULL)
+
+// This is much faster. XXX Probably can just clean up the atomic one.
+DECLARE_COUNTERS(rejected_f, rejected_ff, rejected_hh, rejected_aa,
+                 unused1_, unused2_, unused3_, unused4_);
+
+#define INCREMENT(rej) rej++
+#define READ(rej) rej.Read()
+#define RESET(rej) rej.Reset()
+
 static void ResetCounters() {
-  rejected_f.store(0ULL);
-  rejected_ff.store(0ULL);
-  rejected_hh.store(0ULL);
-  rejected_aa.store(0ULL);
+  RESET(rejected_f);
+  RESET(rejected_ff);
+  RESET(rejected_hh);
+  RESET(rejected_aa);
 }
 
 // So now take numbers that can be written as sums of squares
@@ -214,9 +231,14 @@ inline static void AllWays(
     const F &fn) {
   for (int p = 0; p < ways.size(); p++) {
     const auto &[b, c] = ways[p];
+    const uint64_t bb = b * b;
+    const uint64_t cc = c * c;
     for (int q = 0; q < ways.size(); q++) {
       if (p != q) {
         const auto &[d, g] = ways[q];
+        const uint64_t dd = d * d;
+        const uint64_t gg = g * g;
+
         // require that the smallest of b,c,d,g appears on the
         // top, to reduce symmetries.
         if (std::min(b, c) > std::min(d, g))
@@ -225,33 +247,35 @@ inline static void AllWays(
         for (int r = 0; r < ways.size(); r++) {
           if (p != r && q != r) {
             const auto &[e, i] = ways[r];
+            const uint64_t ee = e * e;
+            const uint64_t ii = i * i;
 
             // Now eight ways of ordering the pairs.
-            fn(/**/  b,    c,
-               d,    e,  /**/
-               g,  /**/    i);
-            fn(/**/  c,    b,
-               d,    e,  /**/
-               g,  /**/    i);
-            fn(/**/  b,    c,
-               g,    e,  /**/
-               d,  /**/    i);
-            fn(/**/  c,    b,
-               g,    e,  /**/
-               d,  /**/    i);
+            fn(/**/   b,bb,  c,cc,
+               d,dd,  e,ee,  /**/
+               g,gg,  /**/   i,ii);
+            fn(/**/   c,cc,  b,bb,
+               d,dd,  e,ee,  /**/
+               g,gg,  /**/   i,ii);
+            fn(/**/   b,bb,  c,cc,
+               g,gg,  e,ee,  /**/
+               d,dd,  /**/   i,ii);
+            fn(/**/   c,cc,  b,bb,
+               g,gg,  e,ee,  /**/
+               d,dd,  /**/   i,ii);
 
-            fn(/**/  b,    c,
-               d,    i,  /**/
-               g,  /**/    e);
-            fn(/**/  c,    b,
-               d,    i,  /**/
-               g,  /**/    e);
-            fn(/**/  b,    c,
-               g,    i,  /**/
-               d,  /**/    e);
-            fn(/**/  c,    b,
-               g,    i,  /**/
-               d,  /**/    e);
+            fn(/**/   b,bb,  c,cc,
+               d,dd,  i,ii,  /**/
+               g,gg,  /**/   e,ee);
+            fn(/**/   c,cc,  b,bb,
+               d,dd,  i,ii,  /**/
+               g,gg,  /**/   e,ee);
+            fn(/**/   b,bb,  c,cc,
+               g,gg,  i,ii,  /**/
+               d,dd,  /**/   e,ee);
+            fn(/**/   c,cc,  b,bb,
+               g,gg,  i,ii,  /**/
+               d,dd,  /**/   e,ee);
           }
         }
       }
@@ -262,24 +286,19 @@ inline static void AllWays(
 static void Try(int z,
                 const std::vector<std::pair<uint64_t, uint64_t>> &ways) {
 
-  AllWays(ways,
-          [z](/*     a */ uint64_t b, uint64_t c,
-              uint64_t d, uint64_t e, /*     f */
-              uint64_t g, /*     h */ uint64_t i) {
-
-            // We could factor these multiplications out, but since
-            // AllWays inlines, the compiler can probably do it.
-            const uint64_t bb = b * b;
-            const uint64_t cc = c * c;
-            const uint64_t dd = d * d;
-            const uint64_t ee = e * e;
-            const uint64_t gg = g * g;
-            const uint64_t ii = i * i;
+  // PERF we don't actually need the roots until we print it out,
+  // so we could just pass the squares and compute sqrts in the rare
+  // case that we get through filters.
+  AllWays(
+      ways,
+      [z](/*     a */ uint64_t b,  uint64_t bb, uint64_t c,  uint64_t cc,
+          uint64_t d, uint64_t dd, uint64_t e,  uint64_t ee, /*     f */
+          uint64_t g, uint64_t gg, /*     h */  uint64_t i,  uint64_t ii) {
 
             // f is specified two ways; they must have the
             // same sum then. This is by far the most common
             // rejection reason.
-            if (cc + ii != dd + ee) {
+            if (cc + ii != dd + ee) [[likely]] {
               INCREMENT(rejected_f);
               return;
             }
@@ -290,15 +309,17 @@ static void Try(int z,
             const uint64_t sum = cc + ee + gg;
 
             const uint64_t ff = sum - (dd + ee);
-            const uint64_t f = Sqrt64(ff);
-            if (f * f != ff) {
+            auto fo = Sqrt64Opt(ff);
+            if (!fo.has_value()) {
               INCREMENT(rejected_ff);
               return;
             }
+            const uint64_t f = fo.value();
 
             const uint64_t hh = sum - (bb + ee);
-            const uint64_t h = Sqrt64(hh);
-            if (h * h != hh) {
+            const auto ho = Sqrt64Opt(hh);
+            if (!ho.has_value()) {
+              uint64_t h = Sqrt64(hh);
               INCREMENT(rejected_hh);
               const uint64_t aa = sum - (bb + cc);
               Interesting(
@@ -319,6 +340,7 @@ static void Try(int z,
                       sum));
               return;
             }
+            const uint64_t h = ho.value();
 
             const uint64_t aa = sum - (bb + cc);
             const uint64_t a = Sqrt64(aa);
@@ -543,7 +565,7 @@ struct SOS {
   SOS() : status_per(10.0) {
     // Performance is pretty workload-dependent, so just tune in-process
     // rather than saving to disk.
-    factor_comp.reset(new AutoParallelComp(16, 1000, false));
+    factor_comp.reset(new AutoParallelComp(24, 1000, false));
     try_comp.reset(new AutoParallelComp(8, 1000, false));
 
     nways_gpu.reset(new NWaysGPU(cl, GPU_HEIGHT));
@@ -615,7 +637,12 @@ struct SOS {
   // Work stolen by CPU in endgame.
   uint64_t stolen = 0;
 
+  int64_t recent_try_size = 0;
+
   int work_stealing_threads = STEADY_WORK_STEALING_THREADS;
+  // Reset autoparallel when we get to the Try endgame, since at
+  // this point the other CPU threads are free.
+  bool try_endgame = false;
 
   Periodically status_per;
 
@@ -626,12 +653,12 @@ struct SOS {
     double nps = done / sec;
     string line1 =
       StringPrintf("%llu/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
-                   triples, done, pct, ANSI::Time(sec).c_str(), nps);
+                   triples, done_nways, pct, ANSI::Time(sec).c_str(), nps);
 
-    const int64_t rf = rejected_f.load();
-    const int64_t rff = rejected_ff.load();
-    const int64_t rhh = rejected_hh.load();
-    const int64_t raa = rejected_aa.load();
+    const int64_t rf = READ(rejected_f);
+    const int64_t rff = READ(rejected_ff);
+    const int64_t rhh = READ(rejected_hh);
+    const int64_t raa = READ(rejected_aa);
 
     const int64_t gpu_size = nways_queue->Size();
     const int64_t try_size = try_queue->Size();
@@ -642,13 +669,15 @@ struct SOS {
                    " %lld " AGREY("raa")
                    "\n",
                    rf, rff, rhh, raa);
-    string line3 = StringPrintf(ARED("%llu") " too big  "
-                                APURPLE("%s") " gpu queue  "
-                                ACYAN("%lld") " try queue  ("
-                                AGREEN("%s") " stolen)\n",
+    string line3 = StringPrintf(ARED("%llu") " big  "
+                                APURPLE("%s") " gpu q  "
+                                ACYAN("%lld") " try q  "
+                                ABLUE("%lld") " lts "
+                                "(" AGREEN("%s") " stolen)\n",
                                 too_big,
                                 Util::UnsignedWithCommas(gpu_size).c_str(),
                                 try_size,
+                                recent_try_size,
                                 Util::UnsignedWithCommas(stolen).c_str());
     string info = StringPrintf("%s inel  %s nw",
                                Util::UnsignedWithCommas(ineligible).c_str(),
@@ -672,19 +701,49 @@ struct SOS {
         return;
       }
 
-      const auto &batch = batchopt.value();
+      auto &batch = batchopt.value();
+      const size_t original_batch_size = batch.size();
 
-      try_comp->
-      ParallelApp(
-          batch,
-          [](const TryMe &tryme) {
-            Try(tryme.num, tryme.squareways);
-          });
+      // Get even batches. We only really expect this to happen for
+      // singletons (too big) so it doesn't need to be fast.
+      while (!batch.empty() && batch.size() % TRY_ROLL_SIZE != 0) {
+        TryMe tryme = std::move(batch.back());
+        batch.pop_back();
+        Try(tryme.num, tryme.squareways);
+      }
+
+      // Now in parallel, unrolled
+      if (!batch.empty()) {
+        const int rolls = batch.size() / TRY_ROLL_SIZE;
+        try_comp->
+          ParallelComp(
+              rolls,
+              [&batch](int major_idx) {
+                for (int minor_idx = 0;
+                     minor_idx < TRY_ROLL_SIZE;
+                     minor_idx++) {
+                  const TryMe &tryme =
+                    batch[major_idx * TRY_ROLL_SIZE + minor_idx];
+                  Try(tryme.num, tryme.squareways);
+                }
+              });
+      }
 
       {
         MutexLock ml(&m);
-        done += batch.size();
-        triples_done += batch.size();
+
+        if (try_endgame) {
+          status.Printf(ACYAN("Try Endgame") "\n");
+          status.Printf(AWHITE("Old autoparallel histo") ":\n");
+          status.Emit(try_comp->HistoString());
+
+          try_comp.reset(new AutoParallelComp(24, 1000, false));
+          try_endgame = false;
+        }
+
+        recent_try_size = original_batch_size;
+        done += original_batch_size;
+        triples_done += original_batch_size;
         if (status_per.ShouldRun()) {
           PrintStats();
         }
@@ -838,6 +897,10 @@ struct SOS {
     try_queue->MarkDone();
 
     status.Printf("Waiting for Try thread.\n");
+    {
+      MutexLock ml(&m);
+      try_endgame = true;
+    }
     try_thread.join();
 
     status.Printf(AGREEN("Done with epoch!") "\n");
@@ -861,10 +924,10 @@ struct SOS {
                   Util::UnsignedWithCommas(start).c_str(),
                   Util::UnsignedWithCommas(start + EPOCH_SIZE - 1).c_str());
     {
-      const int64_t rf = rejected_f.load();
-      const int64_t rff = rejected_ff.load();
-      const int64_t rhh = rejected_hh.load();
-      const int64_t raa = rejected_aa.load();
+      const int64_t rf = READ(rejected_f);
+      const int64_t rff = READ(rejected_ff);
+      const int64_t rhh = READ(rejected_hh);
+      const int64_t raa = READ(rejected_aa);
 
       Interesting(
           StringPrintf("EPOCH %llu %llu %llu "
