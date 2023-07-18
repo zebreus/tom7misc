@@ -271,7 +271,7 @@ int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
 
-  Optimize();
+  // Optimize();
 
   // TestNWays<false, 16>();
 

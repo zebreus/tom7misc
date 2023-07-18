@@ -67,16 +67,15 @@ static void Compress(const std::pair<int, C> &row) {
 
   fprintf(stderr, "\nWorking on " ACYAN("%lld") "...\n\n", m);
   Timer run_timer;
-  const int64_t LO = (m >> 1) - 1;
-  const int64_t HI = m + (m >> 1) + 1;
 
-  const int64_t MAX_P = HI - LO;
+  const int64_t MAX_DIST = m;
   Periodically bar_per(1.0);
-  const int64_t START = LO;
   ParallelComp(
-      MAX_P,
-      [m, &want, &run_timer, START, MAX_P, &bar_per, &mu,
+      MAX_DIST * 2,
+      [m, &want, &run_timer, MAX_DIST, &bar_per, &mu,
        &best, &best_p, &best_a, &best_lim, &status](int64_t off) {
+        if ((off >> 1) == 0) return;
+
         int64_t local_best = 0;
         {
           MutexLock ml(&mu);
@@ -84,14 +83,16 @@ static void Compress(const std::pair<int, C> &row) {
           local_best = best;
         }
 
-        const int64_t p = START + off;
+        // zig-zag out from m
+        const int64_t p = (off & 1) ? m - (off >> 1) : m + (off >> 1);
+        if (p < 2) return;
         if (Factorize::IsPrime(p)) {
           for (int64_t a = 1; a < p; a++) {
             // Compute r = a*n % p for all n.
 
             // the smallest r for n that is in the want set.
             int64_t min_r_in = m + 1;
-            // the larget r for n that is not in the want set.
+            // the largest r for n that is not in the want set.
             int64_t max_r_not = -1;
 
             int64_t r = 0;
@@ -139,17 +140,16 @@ static void Compress(const std::pair<int, C> &row) {
             }
           }
         }
-        {
-          MutexLock ml(&mu);
-          if (bar_per.ShouldRun()) {
-            fprintf(stderr,
-                    ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
-                    ANSI_BEGINNING_OF_LINE "%s\n",
-                    ANSI::ProgressBar(off,
-                                      MAX_P,
-                                      StringPrintf("%lld | %s", p, status.c_str()),
-                                      run_timer.Seconds()).c_str());
-          }
+
+        if (bar_per.ShouldRun()) {
+          fprintf(stderr,
+                  ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+                  ANSI_BEGINNING_OF_LINE "%s\n",
+                  ANSI::ProgressBar(
+                      off,
+                      MAX_DIST * 2,
+                      StringPrintf("%lld | %s", p, status.c_str()),
+                      run_timer.Seconds()).c_str());
         }
       },
       12);
@@ -238,11 +238,34 @@ int main(int argc, char **argv) {
   }
   */
 
-  // TODO: 729 (hard?)
-  for (int m : {80089, 63001, 27889, 109561,
-        19321, 22801, 57121, 73441, 1024, 117649 }) {
+  for (int m : {
+      121,
+    361,
+    529,
+    961,
+    1849,
+    2209,
+    3481,
+    4489,
+    5041,
+    6241,
+    6889,
+    10609,
+    11449,
+    16129,
+        }) {
     Compress(GetNonSumResidues(GetResidues(m)));
   }
+
+  // Only poor solutions known for these:
+
+  // 2/182
+  // if ((2 * (sum % 729)) % 487 > 484) return false;
+  // 257/511
+  // if ((258 * (sum % 1024)) % 1031 > 770) return false;
+  // 6/14706
+  // if ((6 * (sum % 117649)) % 117643 > 117636) return false;
+
 
   return 0;
 }

@@ -29,6 +29,39 @@ static uint64_t Sqrt64Nuprl(uint64_t xx) {
   return (xx < r3 * r3) ? r2 : r3;
 }
 
+#define CHECK_SQUARED(r) do {                                       \
+    uint64_t rr = r * r;                                            \
+    auto ro = Sqrt64Opt(rr);                                        \
+    CHECK(ro.has_value()) << r << " " << rr;                        \
+    CHECK(ro.value() == r) << r << " " << rr << " " << ro.value();  \
+  } while (0)
+
+static void TestSqrtOpt() {
+  CHECK_SQUARED(0);
+  CHECK_SQUARED(1);
+  CHECK_SQUARED(2);
+  CHECK_SQUARED(3);
+
+  CHECK_SQUARED(0xFFFFFFFEULL);
+  CHECK_SQUARED(0xFFFFFFFDULL);
+  CHECK_SQUARED(0xFFFFFFFCULL);
+  CHECK_SQUARED(0xF0000000ULL);
+  CHECK_SQUARED(0xF0000001ULL);
+  CHECK_SQUARED(0xEFFFFFFFULL);
+
+  ArcFour rc("sqrtopt");
+  for (int i = 0; i < 1000000; i++) {
+    // numbers in the low trillions, at most
+    const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+    auto no = Sqrt64Opt(num);
+    if (no.has_value()) {
+      CHECK(no.value() * no.value() == num) << num << " " << no.value();
+    }
+  }
+
+  printf("TestSqrtOpt " AGREEN("OK") "\n");
+}
+
 static void BenchMSOSFancy() {
   printf("Benchmark MaybeSumOfSquaresFancy3:\n");
   ArcFour rc("bench");
@@ -74,7 +107,7 @@ static void TestCWW() {
   int wrong = 0;
   Timer timer;
   static constexpr int START = 1000000;
-  static constexpr int NUM   =  100000;
+  static constexpr int NUM =    100000;
   ParallelComp(
       NUM,
       [&wrong, &m](int idx) {
@@ -123,76 +156,87 @@ static void TestCWW() {
   }
 }
 
-static constexpr bool CHECK_RESULT = true;
+static constexpr bool CHECK_RESULT = false;
 // 264.3/sec -> 244401.7/sec -> 1040228/sec :)
 template<class F>
 static void TestGetWays(const char *name, F f) {
+  printf(AWHITE(" == ") APURPLE("%s") AWHITE(" == ") "\n",
+         name);
   std::mutex m;
   int triples = 0;
   Timer timer;
   static constexpr uint64_t START = 100'000'000'000; /* ' */
-  static constexpr uint64_t NUM   =  10'000'000;
+  static constexpr uint64_t NUM   =   1'000;
+  static constexpr uint64_t ROLL  =  10'000;
   Periodically status_per(5.0);
   ParallelComp(
     NUM,
-    [&f, &triples, &status_per, &timer, &m](uint64_t idx) {
-      uint64_t i = START + idx;
-      // This one doesn't work, and we don't care.
-      if (i == 0) return;
+    [&f, &triples, &status_per, &timer, &m](uint64_t major_idx) {
+      uint64_t local_triples = 0;
+      for (int minor_idx = 0; minor_idx < ROLL; minor_idx++) {
+        uint64_t i = START + major_idx * ROLL + minor_idx;
 
-      int num = ChaiWahWu(i);
-      if (num > 3) {
-        // Note: We can pass num to make this faster, but
-        // in a test it makes sense to check that we don't
-        // get *too many*.
-        std::vector<std::pair<uint64_t, uint64_t>> nways =
-          f(i, -1);
+        // This one doesn't work, and we don't care.
+        if (i == 0) continue;
 
-        if (CHECK_RESULT) {
-          for (const auto &[a, b] : nways) {
-            CHECK(a * a + b * b == i) << a << " " << b << " " << i;
-          }
-          CHECK((int)nways.size() == num)
-            << "For sum " << i << ", CWW says "
-            << num
-            << " but got " << nways.size() << ":\n"
-            << WaysString(nways);
-          std::sort(nways.begin(), nways.end(),
-                    [](const std::pair<uint64_t, uint64_t> &x,
-                       const std::pair<uint64_t, uint64_t> &y) {
-                      return x.first < y.first;
-                    });
-          // Check uniqueness.
-          for (int x = 1; x < nways.size(); x++) {
-            CHECK(nways[x] != nways[x - 1]) << "Duplicates: " <<
-              nways[x].first << " " << nways[x].second;
-          }
-        }
+        int num = ChaiWahWu(i);
+        if (num > 3) {
+          local_triples++;
+          // Note: We can pass num to make this faster, but
+          // in a test it makes sense to check that we don't
+          // get *too many*.
+          std::vector<std::pair<uint64_t, uint64_t>> nways =
+            f(i, -1);
 
-        {
-          MutexLock ml(&m);
-          triples++;
-          if (status_per.ShouldRun()) {
-            double pct = (triples * 100.0)/(double)idx;
-            double sec = timer.Seconds();
-            double nps = idx / sec;
-            printf("%d/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
-                   triples, idx, pct, ANSI::Time(sec).c_str(), nps);
+          if (CHECK_RESULT) {
+            for (const auto &[a, b] : nways) {
+              CHECK(a * a + b * b == i) << a << " " << b << " " << i;
+            }
+            CHECK((int)nways.size() == num)
+              << "For sum " << i << ", CWW says "
+              << num
+              << " but got " << nways.size() << ":\n"
+              << WaysString(nways);
+            std::sort(nways.begin(), nways.end(),
+                      [](const std::pair<uint64_t, uint64_t> &x,
+                         const std::pair<uint64_t, uint64_t> &y) {
+                        return x.first < y.first;
+                      });
+            // Check uniqueness.
+            for (int x = 1; x < nways.size(); x++) {
+              CHECK(nways[x] != nways[x - 1]) << "Duplicates: " <<
+                nways[x].first << " " << nways[x].second;
+            }
           }
         }
+      }
+
+      {
+        MutexLock ml(&m);
+        triples += local_triples;
+      }
+
+      if (status_per.ShouldRun()) {
+        int64_t done = major_idx * ROLL;
+        double pct = (triples * 100.0)/(double)done;
+        double sec = timer.Seconds();
+        double nps = done / sec;
+        printf("%d/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
+               triples, done, pct, ANSI::Time(sec).c_str(), nps);
       }
     }, 6);
 
   double sec = timer.Seconds();
-  printf("[%s] Total triples: %d/%llu\n", name, triples, NUM);
+  constexpr int64_t TOTAL = NUM * ROLL;
+  printf("[%s] Total triples: %d/%llu\n", name, triples, TOTAL);
   printf("Done in %s. (%s/ea.)\n",
-         ANSI::Time(sec).c_str(), ANSI::Time(sec / NUM).c_str());
-  printf(" = %.1f/sec\n", NUM / sec);
+         ANSI::Time(sec).c_str(), ANSI::Time(sec / TOTAL).c_str());
+  printf(" = %.1f/sec\n", TOTAL / sec);
 }
 
 template<class F>
 static void TestSimple(const char * name, F f) {
-  for (int i = 2; i < 60; i++) {
+  for (int i = 2; i < 120; i++) {
     int num = ChaiWahWu(i);
     std::vector<std::pair<uint64_t, uint64_t>> nways_fast =
       f(i, num);
@@ -202,6 +246,9 @@ static void TestSimple(const char * name, F f) {
     CHECK(num == (int)nways.size());
     printf("[%s] %d: %d ways: %s\n",
            name, i, num, WaysString(nways).c_str());
+    for (const auto &[a, b] : nways_fast) {
+      CHECK(a * a + b * b == i);
+    }
   }
 }
 
@@ -210,25 +257,23 @@ static void TestMaybeSumOfSquares() {
   Periodically bar(1.0);
   std::mutex m;
   static constexpr int MAX_X = 100000;
+  printf("MaybeSumOfSquares...\n\n");
   ParallelComp(
       MAX_X,
       [&m, &bar, &timer](uint64_t x) {
         uint64_t xx = x * x;
         for (uint64_t y = 0; y < 100000; y++) {
           uint64_t sum = xx + (y * y);
-          CHECK(MaybeSumOfSquares(sum));
+          CHECK(MaybeSumOfSquaresFancy4(sum));
         }
 
-        {
-          MutexLock ml(&m);
-          if (bar.ShouldRun()) {
-            printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
-                   ANSI_BEGINNING_OF_LINE "%s\n",
-                   ANSI::ProgressBar(x,
-                                     MAX_X,
-                                     "test",
-                                     timer.Seconds()).c_str());
-          }
+        if (bar.ShouldRun()) {
+          printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+                 ANSI_BEGINNING_OF_LINE "%s\n",
+                 ANSI::ProgressBar(x,
+                                   MAX_X,
+                                   "test",
+                                   timer.Seconds()).c_str());
         }
       },
       6);
@@ -239,7 +284,7 @@ static void MaybeSumOfSquaresRecall() {
   Timer timer;
   Periodically bar(1.0);
   std::mutex m;
-  static constexpr int BATCHES = 40000;
+  static constexpr int BATCHES = 50000;
   int64_t no_ways = 0;
   int64_t detected = 0;
   int64_t detected2 = 0;
@@ -256,8 +301,8 @@ static void MaybeSumOfSquaresRecall() {
           const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
           if (num == 0) continue;
 
-          const bool maybe = MaybeSumOfSquaresFancy2(num);
-          const bool maybe2 = MaybeSumOfSquaresFancy3(num);
+          const bool maybe = MaybeSumOfSquaresFancy3(num);
+          const bool maybe2 = MaybeSumOfSquaresFancy4(num);
           const int ways = ChaiWahWu(num);
           local_total++;
 
@@ -292,8 +337,9 @@ static void MaybeSumOfSquaresRecall() {
       },
       6);
 
-  printf("Took: %s\n"
-         "Total: %lld\n"
+  printf("\n\n"
+         "Took: %s\n"
+         "Total:  %lld\n"
          "0 ways: %lld (%.2f%%)\n"
          "correctly detected by sieve 1: %lld/%lld (%.2f%%)\n"
          "correctly detected by sieve 2: %lld/%lld (%.2f%%)\n",
@@ -306,25 +352,66 @@ static void MaybeSumOfSquaresRecall() {
   printf("So full runs go from %lld to %lld (%.2f%%)\n",
          (total - detected),
          (total - detected2),
-         ((total - detected) * 100.0) / (total - detected2));
+         ((total - detected2) * 100.0) / (total - detected));
 }
 
+static void TestMaybe() {
+  Timer timer;
+  Periodically bar(1.0);
+  std::mutex m;
+  static constexpr int BATCHES = 50000;
+  ParallelComp(
+      BATCHES,
+      [&m, &bar, &timer](uint64_t batch) {
+        ArcFour rc(StringPrintf("testmaybe.%llu", batch));
+        for (int i = 0; i < 10000; i++) {
+          // numbers in the low trillions, at most
+          const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+          if (num == 0) continue;
+
+          const bool maybe = MaybeSumOfSquaresFancy4(num);
+          if (!maybe) {
+            const int ways = ChaiWahWuNoFilter(num);
+            CHECK(ways == 0) << num << ": " << ways;
+          }
+        }
+
+        if (bar.ShouldRun()) {
+          printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+                 ANSI_BEGINNING_OF_LINE "%s\n",
+                 ANSI::ProgressBar(batch,
+                                   BATCHES,
+                                   "computing recall",
+                                   timer.Seconds()).c_str());
+        }
+      },
+      6);
+  printf("TestMaybe " AGREEN("OK") "\n");
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
-  TestMaybeSumOfSquares();
 
-  BenchCWW();
+  // TestMaybeSumOfSquares();
+  // TestMaybe();
+
+  // TestSqrtOpt();
+
+  // BenchCWW();
   // BenchMSOSFancy();
-  MaybeSumOfSquaresRecall();
-  // return 0;
+  // MaybeSumOfSquaresRecall();
+
+  // TestCWW();
 
   TestSimple("brute", BruteGetNWays);
   TestSimple("nsoks2", NSoks2);
+  TestSimple("merge", GetWaysMerge);
 
   TestGetWays("brute", BruteGetNWays);
   TestGetWays("nsoks2", NSoks2);
-  TestCWW();
+  TestGetWays("merge", GetWaysMerge);
+
+
 
   printf("OK\n");
   return 0;

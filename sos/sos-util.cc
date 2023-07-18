@@ -12,6 +12,7 @@
 #include "factorize.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"
+#include "ansi.h"
 
 using namespace std;
 
@@ -65,7 +66,7 @@ int ChaiWahWu(uint64_t sum) {
   if (sum == 0) return 1;
 
   // Don't factor if it's impossible.
-  if (!MaybeSumOfSquaresFancy3(sum)) return 0;
+  if (!MaybeSumOfSquaresFancy4(sum)) return 0;
   return ChaiWahWuNoFilter(sum);
 }
 
@@ -163,24 +164,6 @@ ReferenceValidate3(uint64_t sum) {
 }
 
 // from factor.c; GPL
-
-/* MAGIC[N] has a bit i set iff i is a quadratic residue mod N.  */
-# define MAGIC64 0x0202021202030213ULL
-# define MAGIC63 0x0402483012450293ULL
-# define MAGIC65 0x218a019866014613ULL
-# define MAGIC11 0x23b
-
-/* Return the square root if the input is a square, otherwise 0.  */
-inline static bool
-MaybeSquare(uint64_t x) {
-  /* Uses the tests suggested by Cohen.  Excludes 99% of the non-squares before
-     computing the square root.  */
-  return (((MAGIC64 >> (x & 63)) & 1)
-          && ((MAGIC63 >> (x % 63)) & 1)
-          /* Both 0 and 64 are squares mod (65).  */
-          && ((MAGIC65 >> ((x % 65) & 63)) & 1)
-          && ((MAGIC11 >> (x % 11) & 1)));
-}
 
 
 std::vector<std::pair<uint64_t, uint64_t>>
@@ -333,6 +316,123 @@ NSoksK(uint64_t n, uint64_t maxsq,
   }
 }
 
+// Another attempt at this, which is O(sqrt(n)), but avoids square
+// roots in the inner loop.
+
+#if 0
+std::vector<std::pair<uint64_t, uint64_t>>
+GetWaysMerge(uint64_t sum, int num_expected) {
+  static constexpr bool VERBOSE = false;
+  uint64_t root = Sqrt64(sum);
+  std::vector<std::pair<uint64_t, uint64_t>> ways;
+
+  uint64_t a = 0;
+  uint64_t aa = 0;
+  uint64_t b = root + 1;
+  uint64_t bb = b * b;
+
+  while (b >= a) {
+    if (VERBOSE) {
+      printf("%llu^2 + %llu^2 == %llu?\n", a, b, sum);
+    }
+    // PERF: We compute this below.
+    if (aa + bb == sum) {
+      if (VERBOSE) {
+        printf("got " AGREEN("%llu^2 + %llu^2 == %llu") "\n",
+               a, b, sum);
+      }
+      ways.emplace_back(a, b);
+      if (num_expected >= 0 && ways.size() == num_expected)
+        break;
+    }
+
+    // PERF can compute these without squaring
+    uint64_t ap = a + 1;
+    uint64_t apap = ap * ap;
+
+    uint64_t bm = b - 1;
+    uint64_t bmbm = bm * bm;
+
+    // Either increase a or decrease b. Which one gets
+    // us closer to sum?
+    int64_t da = llabs((int64_t)(apap + bb) - (int64_t)sum);
+    int64_t db = llabs((int64_t)(aa + bmbm) - (int64_t)sum);
+
+    if (VERBOSE) {
+    printf(AGREY("da: %llu^2 (%llu) + %llu^2 (%llu) = %llu   (err %lld)") "\n"
+           AGREY("db: %llu^2 (%llu) + %llu^2 (%llu) = %llu   (err %lld)") "\n",
+           ap, apap, b, bb, (apap + bb), da,
+           a, aa, bm, bmbm, (aa + bmbm), db);
+    }
+
+    if (da < db) {
+      a = ap;
+      aa = apap;
+    } else {
+      b = bm;
+      bb = bmbm;
+    }
+  }
+  return ways;
+}
+#endif
+
+std::vector<std::pair<uint64_t, uint64_t>>
+GetWaysMerge(uint64_t sum, int num_expected) {
+  uint64_t root = Sqrt64(sum);
+  std::vector<std::pair<uint64_t, uint64_t>> ways;
+
+  uint64_t a = 0;
+  uint64_t aa = 0;
+  uint64_t b = root + 1;
+  uint64_t bb = b * b;
+
+  uint64_t aaplusbb = aa + bb;
+
+  while (b >= a) {
+    // PERF: We compute this below.
+    if (aaplusbb == sum) {
+      ways.emplace_back(a, b);
+      if (num_expected >= 0 && ways.size() == num_expected)
+        break;
+    }
+
+    // uint64_t ap = a + 1;
+    // (a + 1) * (a + 1) == a^2 + 2a + 1
+    // uint64_t apap = aa + a + ap;
+    // uint64_t apap = aa + (a << 1) + 1;
+    // this is the term that when added to a^2, gives us (a+1)^2
+    uint64_t ainc = (a << 1) + 1;
+
+    // uint64_t bm = b - 1;
+    // (b - 1) * (b - 1) == b^2 - 2b + 1
+    // uint64_t bmbm = bb - (b << 1) + 1;
+    // this is the term that when subtracted from b^2, gives (b-1)^2
+    uint64_t bdec = (b << 1) - 1;
+
+    // Either increase a or decrease b. Which one gets
+    // us closer to sum?
+    // uint64_t asum = apap + bb;
+    uint64_t asum = aaplusbb + ainc;
+    // uint64_t bsum = aa + bmbm;
+    uint64_t bsum = aaplusbb - bdec;
+
+    int64_t da = llabs((int64_t)asum - (int64_t)sum);
+    int64_t db = llabs((int64_t)bsum - (int64_t)sum);
+
+    if (da < db) {
+      a++;
+      aa += ainc;
+      aaplusbb = asum;
+    } else {
+      b--;
+      bb -= bdec;
+      aaplusbb = bsum;
+    }
+  }
+  return ways;
+}
+
 #if 0
 // from factor.c, gpl
 
@@ -358,32 +458,5 @@ isqrt (uintmax_t n)
 
       x = y;
     }
-}
-
-
-/* MAGIC[N] has a bit i set iff i is a quadratic residue mod N.  */
-# define MAGIC64 0x0202021202030213ULL
-# define MAGIC63 0x0402483012450293ULL
-# define MAGIC65 0x218a019866014613ULL
-# define MAGIC11 0x23b
-
-/* Return the square root if the input is a square, otherwise 0.  */
-ATTRIBUTE_CONST
-static uintmax_t
-is_square (uintmax_t x)
-{
-  /* Uses the tests suggested by Cohen.  Excludes 99% of the non-squares before
-     computing the square root.  */
-  if (((MAGIC64 >> (x & 63)) & 1)
-      && ((MAGIC63 >> (x % 63)) & 1)
-      /* Both 0 and 64 are squares mod (65).  */
-      && ((MAGIC65 >> ((x % 65) & 63)) & 1)
-      && ((MAGIC11 >> (x % 11) & 1)))
-    {
-      uintmax_t r = isqrt (x);
-      if (r * r == x)
-        return r;
-    }
-  return 0;
 }
 #endif
