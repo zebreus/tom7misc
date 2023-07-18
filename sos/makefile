@@ -16,7 +16,7 @@ AMD_ARCH=x86_64
 # AMDSDK=c:/Program Files (x86)/AMD APP SDK/3.0
 AMDSDK=c:/code/AMD_SDK/
 
-# XXX maybe only enable -ffast-math for network.o? or call intrinsics there?
+# XXX ffast math may be a mistake since we rely on sqrt<double>.
 CXXFLAGS=-march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 -ffast-math
 OPT=-O3
 
@@ -32,7 +32,7 @@ SOCK_LFLAGS= -lws2_32
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
-UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/factorize.o
+UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/factorize.o $(CC_LIB)/atomic-util.o
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
@@ -53,6 +53,10 @@ sos-util_test.exe : sos-util_test.o $(OBJECTS)
 	@echo -n "!"
 
 sos-gpu_test.exe : sos-gpu_test.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+sqrt_test.exe : sqrt_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
