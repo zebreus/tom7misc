@@ -37,52 +37,71 @@ int ChaiWahWuNoFilter(const uint64_t sum) {
       num_factors++;
     };
 
+  // We start factoring the number with trial division, but
+  // also check if we can bail early using the "sum of two squares
+  // theorem": The number can be written as the sum of two
+  // squares iff for all factors p^k, when p % 4 = 3, k is even.
+  //
+  // We definitely encounter this early return in many cases
+  // (even with the filters applied), but it's not a huge savings.
+  // The main thing is to avoid completing a hard factorization.
+#define TRY(p) do {                             \
+    int e = 0;                                  \
+    while (cur % p == 0) { cur /= p; e++; }     \
+    if (e) {                                    \
+      if constexpr ((p & 3) == 3) {             \
+          if ((e & 1)) return 0;                \
+        }                                       \
+      if (e) InsertNewFactor(p, e);             \
+    }                                           \
+  } while (0)
+
+  // We can trial divide in any order. Start with the ones that
+  // can cause us to fail fast.
+  TRY(3);
+  TRY(7);
+  TRY(11);
+  TRY(19);
+  TRY(23);
+  TRY(31);
+  TRY(43);
+  TRY(47);
+  TRY(59);
+  TRY(67);
+  TRY(71);
+  TRY(79);
+  TRY(83);
+  TRY(103);
+  TRY(107);
+  TRY(127);
+  TRY(131);
+
+  // And the rest.
+  // TRY(2);
+  TRY(5);
+  TRY(13);
+  TRY(17);
+  TRY(29);
+  TRY(37);
+  TRY(41);
+  TRY(53);
+  TRY(61);
+  TRY(73);
+  TRY(89);
+  TRY(97);
+  TRY(101);
+  TRY(109);
+  TRY(113);
+  static_assert(Factorization::NEXT_PRIME == 137, "The lists must "
+                "agree for correctness.");
+#undef TRY
+
+  // Get factors of two using CPU builtins.
   const int twos = std::countr_zero<uint64_t>(cur);
   if (twos) {
     InsertNewFactor(2, twos);
     cur >>= twos;
   }
-
-#define TRY(p) do {                             \
-    int e = 0;                                  \
-    while (cur % p == 0) { cur /= p; e++; }     \
-    if (e) InsertNewFactor(p, e);     \
-  } while (0)
-  // TRY(2);
-  TRY(3);
-  TRY(5);
-  TRY(7);
-  TRY(11);
-  TRY(13);
-  TRY(17);
-  TRY(19);
-  TRY(23);
-  TRY(29);
-  TRY(31);
-  TRY(37);
-  TRY(41);
-  TRY(43);
-  TRY(47);
-  TRY(53);
-  TRY(59);
-  TRY(61);
-  TRY(67);
-  TRY(71);
-  TRY(73);
-  TRY(79);
-  TRY(83);
-  TRY(89);
-  TRY(97);
-  TRY(101);
-  TRY(103);
-  TRY(107);
-  TRY(109);
-  TRY(113);
-  TRY(127);
-  TRY(131);
-  static_assert(Factorization::NEXT_PRIME == 137, "The lists must "
-                "agree for correctness.");
-#undef TRY
 
   // Now we'll need the full factorization. Append to the
   // already known factors.

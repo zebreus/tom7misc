@@ -264,9 +264,9 @@ GetNonSumResidues(
 
 
 
-// Prints out the contents of NON_QUADRATIC_SUM_RESIDUES above. These are values
-// that cannot be the sum (mod m) of two quadratic residues, and so they
-// can't be x^2 + y^2 mod m for any x,y.
+// Prints out the contents of NON_QUADRATIC_SUM_RESIDUES above. These
+// are values that cannot be the sum (mod m) of two quadratic
+// residues, and so they can't be x^2 + y^2 mod m for any x,y.
 [[maybe_unused]]
 static void PrintNonSumResidues(
     const std::vector<std::pair<int, std::set<int>>> &nsres) {
@@ -423,9 +423,12 @@ static std::vector<std::pair<int, std::vector<int>>> MakeGoodResidues(
   Timer timer;
   std::vector<std::pair<int, std::vector<int>>> ret;
   Periodically bar_per(1.0);
-  // Don't know why this is the case, but empirically the best filters (ones
-  // that reject sums not covered by smaller moduli) appear to always be powers
-  // of (some?) primes. So rather than test them all, we generate these.
+  // Don't know why this is the case, but empirically the best filters
+  // (ones that reject sums not covered by smaller moduli) appear to
+  // always be powers of (some?) primes. So rather than test them all,
+  // we generate these. (Maybe it is directly related to the sum of
+  // squares theorem, i.e. the primes that are congruent to 3 mod 4.
+  // Is this redundant with trial division?)
   for (int p = 2; p <= max_b; p++) {
     if (Factorize::IsPrime(p)) {
       uint64_t product = 1;
