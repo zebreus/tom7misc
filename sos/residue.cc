@@ -222,7 +222,7 @@ GetNonSumResidues(
   std::vector<std::pair<int, std::set<int>>> ret;
   for (const auto &[m, residues] : qres) {
     printf("%d (%d res)... ", m, (int)residues.size());
-    if (residues.size() > 100000) {
+    if (residues.size() > 500000) {
       printf(APURPLE("skip") "\n");
       continue;
     }
@@ -460,7 +460,7 @@ int main(int argc, char ** argv) {
   ANSI::Init();
 
   std::vector<std::pair<int, std::vector<int>>> qres =
-    MakeGoodResidues(333, 3);
+    MakeGoodResidues(7, 10);
 
   // qres.emplace_back(GetResidues(131072));
 

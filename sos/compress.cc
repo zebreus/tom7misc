@@ -238,22 +238,13 @@ int main(int argc, char **argv) {
   }
   */
 
+  // 5764801 ran for eight hours just in
+  // GetNonSumResidues! Would need to make
+  // this faster.
+
   for (int m : {
-      121,
-    361,
-    529,
-    961,
-    1849,
-    2209,
-    3481,
-    4489,
-    5041,
-    6241,
-    6889,
-    10609,
-    11449,
-    16129,
-        }) {
+      // put the numbers here!
+    }) {
     Compress(GetNonSumResidues(GetResidues(m)));
   }
 
@@ -263,8 +254,12 @@ int main(int argc, char **argv) {
   // if ((2 * (sum % 729)) % 487 > 484) return false;
   // 257/511
   // if ((258 * (sum % 1024)) % 1031 > 770) return false;
-  // 6/14706
+  // 6/14706  (17 hours!)
   // if ((6 * (sum % 117649)) % 117643 > 117636) return false;
+  // 10/1220
+  // if ((12 * (sum % 14641)) % 14653 > 14642) return false;
+  // 2/14762
+  // if ((2 * (sum % 59049)) % 59029 > 59026) return false;
 
 
   return 0;

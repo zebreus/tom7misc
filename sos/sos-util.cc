@@ -9,20 +9,102 @@
 #include <optional>
 #include <algorithm>
 
-#include "factorize.h"
+#include "factorization.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"
 #include "ansi.h"
 
 using namespace std;
 
-int ChaiWahWuNoFilter(uint64_t sum) {
-  if (sum == 0) return 1;
+static constexpr bool SELF_TEST = false; // PERF
 
-  uint64_t bases[20];
-  uint8_t exponents[20];
-  int num_factors =
-    Factorize::PrimeFactorizationPreallocated(sum, bases, exponents);
+int ChaiWahWuNoFilter(const uint64_t sum) {
+
+  // XXX shouldn't it be 0 for 0?
+  if (sum == 0) return 1;
+  if (sum == 1) return 1;
+
+  // Do the trial division here.
+  uint64_t cur = sum;
+  int num_factors = 0;
+  uint64_t bases[15];
+  uint8_t exponents[15];
+
+  auto InsertNewFactor =
+    [&num_factors, &bases, &exponents](uint64_t p, uint64_t e) {
+      bases[num_factors] = p;
+      exponents[num_factors] = e;
+      num_factors++;
+    };
+
+  const int twos = std::countr_zero<uint64_t>(cur);
+  if (twos) {
+    InsertNewFactor(2, twos);
+    cur >>= twos;
+  }
+
+#define TRY(p) do {                             \
+    int e = 0;                                  \
+    while (cur % p == 0) { cur /= p; e++; }     \
+    if (e) InsertNewFactor(p, e);     \
+  } while (0)
+  // TRY(2);
+  TRY(3);
+  TRY(5);
+  TRY(7);
+  TRY(11);
+  TRY(13);
+  TRY(17);
+  TRY(19);
+  TRY(23);
+  TRY(29);
+  TRY(31);
+  TRY(37);
+  TRY(41);
+  TRY(43);
+  TRY(47);
+  TRY(53);
+  TRY(59);
+  TRY(61);
+  TRY(67);
+  TRY(71);
+  TRY(73);
+  TRY(79);
+  TRY(83);
+  TRY(89);
+  TRY(97);
+  TRY(101);
+  TRY(103);
+  TRY(107);
+  TRY(109);
+  TRY(113);
+  TRY(127);
+  TRY(131);
+  static_assert(Factorization::NEXT_PRIME == 137, "The lists must "
+                "agree for correctness.");
+#undef TRY
+
+  // Now we'll need the full factorization. Append to the
+  // already known factors.
+  if (cur >= Factorization::NEXT_PRIME) {
+    num_factors +=
+      Factorization::FactorizePredivided(
+          cur,
+          // skip over already-known factors.
+          &bases[num_factors],
+          &exponents[num_factors]);
+  } else if constexpr (SELF_TEST) {
+    CHECK(cur == 1);
+  }
+
+  if constexpr (SELF_TEST) {
+    uint64_t product = 1;
+    for (int i = 0; i < num_factors; i++) {
+      for (int j = 0; j < exponents[i]; j++)
+        product *= bases[i];
+    }
+    CHECK(product == sum) << product << " " << sum;
+  }
 
   auto AllEvenPowers = [&exponents, num_factors]() {
       for (int i = 0; i < num_factors; i++) {
@@ -162,8 +244,6 @@ ReferenceValidate3(uint64_t sum) {
   }
   return nullopt;
 }
-
-// from factor.c; GPL
 
 
 std::vector<std::pair<uint64_t, uint64_t>>
@@ -316,82 +396,28 @@ NSoksK(uint64_t n, uint64_t maxsq,
   }
 }
 
-// Another attempt at this, which is O(sqrt(n)), but avoids square
-// roots in the inner loop.
-
-#if 0
+// Here we try to find a^2 + b^2 = sum, with a <= b. We either increase
+// a or decrease b on each round, choosing the one that minimize the
+// error. (TODO: Correctness argument!) A lot of stuff cancels, leaving
+// us with just shifts, adds, abs, and compares. It's not faster on CPU,
+// but maybe worth trying on GPU.
 std::vector<std::pair<uint64_t, uint64_t>>
 GetWaysMerge(uint64_t sum, int num_expected) {
-  static constexpr bool VERBOSE = false;
   uint64_t root = Sqrt64(sum);
   std::vector<std::pair<uint64_t, uint64_t>> ways;
+  if (num_expected >= 0) ways.reserve(num_expected);
 
   uint64_t a = 0;
   uint64_t aa = 0;
   uint64_t b = root + 1;
   uint64_t bb = b * b;
 
-  while (b >= a) {
-    if (VERBOSE) {
-      printf("%llu^2 + %llu^2 == %llu?\n", a, b, sum);
-    }
-    // PERF: We compute this below.
-    if (aa + bb == sum) {
-      if (VERBOSE) {
-        printf("got " AGREEN("%llu^2 + %llu^2 == %llu") "\n",
-               a, b, sum);
-      }
-      ways.emplace_back(a, b);
-      if (num_expected >= 0 && ways.size() == num_expected)
-        break;
-    }
-
-    // PERF can compute these without squaring
-    uint64_t ap = a + 1;
-    uint64_t apap = ap * ap;
-
-    uint64_t bm = b - 1;
-    uint64_t bmbm = bm * bm;
-
-    // Either increase a or decrease b. Which one gets
-    // us closer to sum?
-    int64_t da = llabs((int64_t)(apap + bb) - (int64_t)sum);
-    int64_t db = llabs((int64_t)(aa + bmbm) - (int64_t)sum);
-
-    if (VERBOSE) {
-    printf(AGREY("da: %llu^2 (%llu) + %llu^2 (%llu) = %llu   (err %lld)") "\n"
-           AGREY("db: %llu^2 (%llu) + %llu^2 (%llu) = %llu   (err %lld)") "\n",
-           ap, apap, b, bb, (apap + bb), da,
-           a, aa, bm, bmbm, (aa + bmbm), db);
-    }
-
-    if (da < db) {
-      a = ap;
-      aa = apap;
-    } else {
-      b = bm;
-      bb = bmbm;
-    }
-  }
-  return ways;
-}
-#endif
-
-std::vector<std::pair<uint64_t, uint64_t>>
-GetWaysMerge(uint64_t sum, int num_expected) {
-  uint64_t root = Sqrt64(sum);
-  std::vector<std::pair<uint64_t, uint64_t>> ways;
-
-  uint64_t a = 0;
-  uint64_t aa = 0;
-  uint64_t b = root + 1;
-  uint64_t bb = b * b;
-
-  uint64_t aaplusbb = aa + bb;
+  // uint64_t aaplusbb = aa + bb;
+  // We track the signed error vs the sum, rather than a^2 + b^2 itself.
+  int64_t aaplusbbminussum = (int64_t)(aa + bb) - (int64_t)sum;
 
   while (b >= a) {
-    // PERF: We compute this below.
-    if (aaplusbb == sum) {
+    if (aaplusbbminussum == 0) [[unlikely]] {
       ways.emplace_back(a, b);
       if (num_expected >= 0 && ways.size() == num_expected)
         break;
@@ -413,50 +439,22 @@ GetWaysMerge(uint64_t sum, int num_expected) {
     // Either increase a or decrease b. Which one gets
     // us closer to sum?
     // uint64_t asum = apap + bb;
-    uint64_t asum = aaplusbb + ainc;
+    // uint64_t asum = aaplusbb + ainc;
     // uint64_t bsum = aa + bmbm;
-    uint64_t bsum = aaplusbb - bdec;
+    // uint64_t bsum = aaplusbb - bdec;
 
-    int64_t da = llabs((int64_t)asum - (int64_t)sum);
-    int64_t db = llabs((int64_t)bsum - (int64_t)sum);
+    int64_t aerr = aaplusbbminussum + ainc;
+    int64_t berr = aaplusbbminussum - bdec;
 
-    if (da < db) {
+    if (llabs(aerr) < llabs(berr)) {
       a++;
-      aa += ainc;
-      aaplusbb = asum;
+      // aa += ainc;
+      aaplusbbminussum = aerr;
     } else {
       b--;
-      bb -= bdec;
-      aaplusbb = bsum;
+      // bb -= bdec;
+      aaplusbbminussum = berr;
     }
   }
   return ways;
 }
-
-#if 0
-// from factor.c, gpl
-
-// uintmax_t should be uint64
-static uintmax_t
-isqrt (uintmax_t n)
-{
-  uintmax_t x;
-  unsigned c;
-  if (n == 0)
-    return 0;
-
-  count_leading_zeros (c, n);
-
-  /* Make x > sqrt(n).  This will be invariant through the loop.  */
-  x = (uintmax_t) 1 << ((W_TYPE_SIZE + 1 - c) / 2);
-
-  for (;;)
-    {
-      uintmax_t y = (x + n / x) / 2;
-      if (y >= x)
-        return x;
-
-      x = y;
-    }
-}
-#endif

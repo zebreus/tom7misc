@@ -187,7 +187,8 @@ std::vector<std::pair<uint64_t, uint64_t>>
 NSoks2(uint64_t sum, int num_expected = -1);
 
 // Another attempt at this, which is O(sqrt(n)), but avoids square
-// roots in the inner loop.
+// roots in the inner loop. It works out nicely but nsoks2 is still
+// twice as fast.
 std::vector<std::pair<uint64_t, uint64_t>>
 GetWaysMerge(uint64_t sum, int num_expected = -1);
 

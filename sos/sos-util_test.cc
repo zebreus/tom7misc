@@ -102,6 +102,8 @@ static void BenchCWW() {
          ANSI::Time(sec / NUM).c_str());
 }
 
+// XXX this test is pretty weak, since we check against only
+// the 2-way and 3-way reference code. TestCWW2 is just superior?
 static void TestCWW() {
   std::mutex m;
   int wrong = 0;
@@ -155,6 +157,40 @@ static void TestCWW() {
     CHECK(false) << "Failed";
   }
 }
+
+static void TestCWWBrute() {
+  std::mutex m;
+  int wrong = 0;
+  Timer timer;
+  Periodically bar(1.0);
+  static constexpr int START = 10000000;
+  static constexpr int NUM =   10000000;
+  ParallelComp(
+      NUM,
+      [&timer, &bar, &wrong, &m](int idx) {
+        int sum = START + idx;
+        int num = ChaiWahWu(sum);
+        auto ways = BruteGetNWays(sum);
+
+        CHECK(ways.size() == num) <<
+          sum << " " << ways.size() << " " << num;
+
+        if (bar.ShouldRun()) {
+          printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+                 ANSI_BEGINNING_OF_LINE "%s\n",
+                 ANSI::ProgressBar(idx,
+                                   NUM,
+                                   "test cww vs brute",
+                                   timer.Seconds()).c_str());
+        }
+      }, 8);
+
+  double sec = timer.Seconds();
+  printf("Done in %s. (%s/ea.)\n",
+         ANSI::Time(sec).c_str(), ANSI::Time(sec / NUM).c_str());
+  printf("CWW Brute " AGREEN("OK") "\n");
+}
+
 
 static constexpr bool CHECK_RESULT = false;
 // 264.3/sec -> 244401.7/sec -> 1040228/sec :)
@@ -392,6 +428,9 @@ static void TestMaybe() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  TestCWWBrute();
+  TestCWW();
+
   // TestMaybeSumOfSquares();
   // TestMaybe();
 
@@ -403,6 +442,7 @@ int main(int argc, char **argv) {
 
   // TestCWW();
 
+  /*
   TestSimple("brute", BruteGetNWays);
   TestSimple("nsoks2", NSoks2);
   TestSimple("merge", GetWaysMerge);
@@ -410,7 +450,7 @@ int main(int argc, char **argv) {
   TestGetWays("brute", BruteGetNWays);
   TestGetWays("nsoks2", NSoks2);
   TestGetWays("merge", GetWaysMerge);
-
+  */
 
 
   printf("OK\n");

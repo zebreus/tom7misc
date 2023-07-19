@@ -23,7 +23,6 @@
 #include "timer.h"
 #include "ansi.h"
 #include "autoparallel.h"
-#include "factorize.h"
 #include "atomic-util.h"
 
 #include "sos-util.h"
