@@ -1,5 +1,5 @@
 
-#include "factorize.h"
+#include "factorization.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -99,7 +99,7 @@ static void PushFactor(Factors *factors,
   InsertNewFactor(factors, b, 1);
 }
 
-void Factorize::NormalizeFactors(
+void Factorization::NormalizeFactors(
     std::vector<std::pair<uint64_t, int>> *factors) {
   if (factors->empty()) return;
   // Sort by base.
@@ -122,10 +122,15 @@ void Factorize::NormalizeFactors(
   *factors = std::move(out);
 }
 
-// First prime not in the list of trial divisions (TRY) below.
-static constexpr int NEXT_PRIME = 137;
+static void FactorizePredividedInternal(uint64_t cur, Factors *factors) {
+  if (IsPrimeInternal(cur)) {
+    InsertNewFactor(factors, cur, 1);
+  } else {
+    FactorUsingPollardRho(cur, 1, factors);
+  }
+}
 
-int Factorize::PrimeFactorizationPreallocated(
+int Factorization::FactorizePreallocated(
     uint64_t x,
     uint64_t *bases,
     uint8_t *exponents) {
@@ -195,16 +200,26 @@ int Factorize::PrimeFactorizationPreallocated(
 
   if (cur == 1) return factors.num;
 
-  if (IsPrimeInternal(cur)) {
-    InsertNewFactor(&factors, cur, 1);
-  } else {
-    FactorUsingPollardRho(cur, 1, &factors);
-  }
-
+  FactorizePredividedInternal(cur, &factors);
   return factors.num;
 }
 
-bool Factorize::IsPrime(uint64_t x) {
+
+int Factorization::FactorizePredivided(
+    uint64_t x,
+    uint64_t *bases,
+    uint8_t *exponents) {
+
+  // It would not be hard to incorporate Fermat's method too,
+  // for cases that the number has factors close to its square
+  // root too (this may be common?).
+
+  Factors factors{.num = 0, .b = bases, .e = exponents};
+  FactorizePredividedInternal(x, &factors);
+  return factors.num;
+}
+
+bool Factorization::IsPrime(uint64_t x) {
   if (x <= 1) return false;
 
   // Do the trial divisions so that IsPrimeInternal is correct,
@@ -500,7 +515,7 @@ bool IsPrimeInternal(uint64_t n) {
     return false;
 
   /* We have already sieved out small primes. */
-  if (n < (uint64_t) NEXT_PRIME * NEXT_PRIME)
+  if (n < (uint64_t) Factorization::NEXT_PRIME * Factorization::NEXT_PRIME)
     return true;
 
   /* Precomputation for Miller-Rabin. */
@@ -516,12 +531,12 @@ bool IsPrimeInternal(uint64_t n) {
   if (!MillerRabin(n, ni, a_prim, q, k, one))
     return false;
 
-  uint64_t b[20];
-  uint8_t e[20];
+  uint64_t b[15];
+  uint8_t e[15];
 
   /* Factor n-1 for Lucas. */
   int num_factors =
-    Factorize::PrimeFactorizationPreallocated(n - 1, b, e);
+    Factorization::FactorizePreallocated(n - 1, b, e);
 
   /* Loop until Lucas proves our number prime, or Miller-Rabin proves our
      number composite. */
@@ -642,10 +657,10 @@ FactorUsingPollardRho(uint64_t n, unsigned long int a,
 }
 
 std::vector<std::pair<uint64_t, int>>
-Factorize::PrimeFactorization(uint64_t x) {
-  uint64_t b[20];
-  uint8_t e[20];
-  int num = PrimeFactorizationPreallocated(x, b, e);
+Factorization::Factorize(uint64_t x) {
+  uint64_t b[15];
+  uint8_t e[15];
+  int num = FactorizePreallocated(x, b, e);
   std::vector<std::pair<uint64_t, int>> ret;
   ret.resize(num);
   for (int i = 0; i < num; i++) {
@@ -656,7 +671,7 @@ Factorize::PrimeFactorization(uint64_t x) {
 }
 
 std::vector<std::pair<uint64_t, int>>
-Factorize::ReferencePrimeFactorization(uint64_t x) {
+Factorization::ReferenceFactorize(uint64_t x) {
   uint64_t max_factor = x;
 
   if (x <= 1) return {};

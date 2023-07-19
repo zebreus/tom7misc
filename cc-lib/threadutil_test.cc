@@ -6,6 +6,9 @@
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
+#include "periodically.h"
+#include "timer.h"
+#include "ansi.h"
 
 using namespace std;
 
@@ -123,7 +126,33 @@ static void TestInParallel() {
   CHECK(a == 1 && b == 7);
 }
 
+[[maybe_unused]]
+static void BenchParallelComp() {
+  Timer run_timer;
+  Periodically bar_per(1.0);
+  static constexpr int64_t ITERS = 100000000;
+
+  ParallelComp(
+      ITERS,
+      [&run_timer, &bar_per](int64_t idx) {
+        if (bar_per.ShouldRun()) {
+          printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+                 ANSI_BEGINNING_OF_LINE "%s\n",
+                 ANSI::ProgressBar(idx,
+                                   ITERS,
+                                   "bench parallelcomp",
+                                   run_timer.Seconds()).c_str());
+        }
+      },
+      16);
+
+  printf("\nFinished in %s\n", ANSI::Time(run_timer.Seconds()).c_str());
+}
+
 int main(int argc, char **argv) {
+  ANSI::Init();
+
+  BenchParallelComp();
 
   TestMap();
   TestMapi();

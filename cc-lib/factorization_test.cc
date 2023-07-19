@@ -1,4 +1,4 @@
-#include "factorize.h"
+#include "factorization.h"
 
 #include <bit>
 #include <cmath>
@@ -38,7 +38,7 @@ static void OptimizeLimit() {
       for (int j = 0; j < 100000; j++) {
         uint64_t input = ((uint64_t)a) << 32 | b;
         auto factors =
-          Factorize::PrimeFactorization(input, limit);
+          Factorization::Factorize(input, limit);
         a = LFSRNext32(LFSRNext32(a));
         b = LFSRNext32(b);
         for (const auto &[x, y] : factors) sum += x + y;
@@ -165,7 +165,7 @@ static void TestPrimeFactors() {
 
   {
     std::vector<std::pair<uint64_t, int>> factors =
-      Factorize::PrimeFactorization(7);
+      Factorization::Factorize(7);
 
     CHECK(factors.size() == 1);
     CHECK(factors[0].second == 1);
@@ -174,7 +174,7 @@ static void TestPrimeFactors() {
 
   {
     std::vector<std::pair<uint64_t, int>> factors =
-      Factorize::PrimeFactorization(31337);
+      Factorization::Factorize(31337);
 
     CHECK(factors.size() == 1);
     CHECK(factors[0].second == 1);
@@ -184,7 +184,7 @@ static void TestPrimeFactors() {
   {
     uint64_t x = 31337 * 71;
     std::vector<std::pair<uint64_t, int>> factors =
-      Factorize::PrimeFactorization(x);
+      Factorization::Factorize(x);
 
     CHECK(factors.size() == 2) << FTOS(factors);
     CHECK(factors[0].first == 71);
@@ -196,7 +196,7 @@ static void TestPrimeFactors() {
   {
     uint64_t sq31337 = 31337 * 31337;
     std::vector<std::pair<uint64_t, int>> factors =
-      Factorize::PrimeFactorization(sq31337);
+      Factorization::Factorize(sq31337);
 
     CHECK(factors.size() == 1) << FTOS(factors);
     CHECK(factors[0].first == 31337);
@@ -204,8 +204,8 @@ static void TestPrimeFactors() {
   }
 
   for (int n = 2; n < 100000; n++) {
-    auto v = Factorize::PrimeFactorization(n);
-    auto r = Factorize::ReferencePrimeFactorization(n);
+    auto v = Factorization::Factorize(n);
+    auto r = Factorization::ReferenceFactorize(n);
     CHECK(v == r) << "For " << n << ":\nGot:  " << FTOS(v) <<
       "\nWant: " << FTOS(r);
   }
@@ -214,7 +214,7 @@ static void TestPrimeFactors() {
   // of the factors.
   auto TestOne = [](uint64_t n) {
       if (n == 0) return;
-      auto factors = Factorize::PrimeFactorization(n);
+      auto factors = Factorization::Factorize(n);
       uint64_t product = 1;
       for (int i = 1; i < (int)factors.size(); i++) {
         CHECK(factors[i - 1].first < factors[i].first &&
@@ -250,7 +250,7 @@ static void TestPrimeFactors() {
         294409, 314821, 334153, 340561, 399001, 410041, 449065,
         488881, 512461}) {
     TestOne(n);
-    CHECK(!Factorize::IsPrime(n));
+    CHECK(!Factorization::IsPrime(n));
   }
 
   // Must all be distinct and prime. Careful about overflow!
@@ -260,10 +260,13 @@ static void TestPrimeFactors() {
       {7919, 31337},
       {7919},
       {7919, 7927},
+      // primorial(15), which has the most distinct factors without
+      // overflowing
+      {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47},
     }) {
 
     for (int factor : f) {
-      CHECK(Factorize::IsPrime(factor)) << factor;
+      CHECK(Factorization::IsPrime(factor)) << factor;
     }
 
     auto Expected = [&f]() {
@@ -273,17 +276,18 @@ static void TestPrimeFactors() {
       };
 
     uint64_t x = 1;
-    for (int factor : f) {
-      x *= factor;
-      // printf("%llu\n", x);
+    for (uint64_t factor : f) {
+      uint64_t xf = x * factor;
+      CHECK(xf / x == factor) << "overflow";
+      x = xf;
     }
 
     if (f.size() > 1) {
-      CHECK(!Factorize::IsPrime(x));
+      CHECK(!Factorization::IsPrime(x));
     }
 
     std::vector<std::pair<uint64_t, int>> factors =
-      Factorize::PrimeFactorization(x);
+      Factorization::Factorize(x);
 
     CHECK(factors.size() == f.size()) << x << " got: " << FTOS(factors)
                                       << "\nBut wanted: " << Expected();
@@ -299,8 +303,8 @@ static void TestPrimeFactors() {
   {
     // 100-digit prime; trial factoring will not succeed!
     uint64_t p1("207472224677348520782169522210760858748099647"
-              "472111729275299258991219668475054965831008441"
-              "6732550077");
+                "472111729275299258991219668475054965831008441"
+                "6732550077");
     uint64_t p2("31337");
 
     uint64_t x = uint64_t::Times(p1, p2);
@@ -308,7 +312,7 @@ static void TestPrimeFactors() {
     // Importantly, we set a max factor (greater than p2, and
     // greater than the largest value in the primes list).
     std::vector<std::pair<uint64_t, int>> factors =
-      Factorize::PrimeFactorization(x, 40000);
+      Factorization::Factorize(x, 40000);
 
     CHECK(factors.size() == 2);
     CHECK(factors[0].second == 1);
@@ -347,7 +351,7 @@ static void BenchFactorize() {
 
   for (int i = 0; i < 100; i++) {
     for (uint64_t n = 2; n < 100000; n++) {
-      auto factors = Factorize::PrimeFactorization(n);
+      auto factors = Factorization::Factorize(n);
       for (const auto &[p, e] : factors) result += p * e;
     }
   }
@@ -376,7 +380,7 @@ static void BenchFactorize() {
            18446744073709551557ULL,
            29387401978, 2374287337, 9391919, 4474741071,
            18374, 1927340972, 29292922, 131072, 7182818}) {
-    auto factors = Factorize::PrimeFactorization(num);
+    auto factors = Factorization::Factorize(num);
     printf("%llu: %s\n", num, FTOS(factors).c_str());
     for (const auto &[p, e] : factors) result += p * e;
   }
@@ -385,14 +389,6 @@ static void BenchFactorize() {
   printf("Factored the list in %.3f seconds.\n", seconds);
 }
 
-static void TestIsPrime() {
-  // 2^42 - 11
-  CHECK(Factorize::IsPrime(4398046511093ULL));
-  CHECK(!Factorize::IsPrime(2330708273ULL * 9868769ULL));
-  printf("TestIsPrime " AGREEN("OK") "\n");
-}
-
-[[maybe_unused]]
 static constexpr array<uint32_t, 1000> PRIMES = {
   2, 3, 5, 7, 11, 13, 17, 19, 23, 29,
   31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
@@ -495,6 +491,26 @@ static constexpr array<uint32_t, 1000> PRIMES = {
   7727, 7741, 7753, 7757, 7759, 7789, 7793, 7817, 7823, 7829,
   7841, 7853, 7867, 7873, 7877, 7879, 7883, 7901, 7907, 7919,
 };
+static constexpr int LAST_PRIME = PRIMES[PRIMES.size() - 1];
+
+static void TestIsPrime() {
+  // 2^42 - 11
+  CHECK(Factorization::IsPrime(4398046511093ULL));
+  CHECK(!Factorization::IsPrime(2330708273ULL * 9868769ULL));
+
+  int next_prime_index = 0;
+  for (int n = 0; n <= LAST_PRIME; n++) {
+    const int p = PRIMES[next_prime_index];
+    if (n == p) {
+      CHECK(Factorization::IsPrime(p)) << p;
+      next_prime_index++;
+    } else {
+      CHECK(!Factorization::IsPrime(n)) << n;
+    }
+  }
+
+  printf("TestIsPrime " AGREEN("OK") "\n");
+}
 
 template<size_t N>
 [[maybe_unused]]
@@ -518,7 +534,7 @@ static void ProfileFactorize() {
   static constexpr int TIMES = 1000000;
   for (int i = 0; i < TIMES; i++) {
     const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
-    auto factors = Factorize::PrimeFactorization(num);
+    auto factors = Factorization::Factorize(num);
     for (const auto &[p, e] : factors) result += p * e;
   }
 
@@ -541,6 +557,8 @@ int main(int argc, char **argv) {
   BenchSqrt();
 
   BenchFactorize();
+
+  //  TestPredivided();
 
   // ProfileFactorize();
 
