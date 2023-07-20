@@ -175,6 +175,14 @@ static void TestCWWBrute() {
         CHECK(ways.size() == num) <<
           sum << " " << ways.size() << " " << num;
 
+        if (false) {
+          if (ways.size() > 12) {
+            printf("%d (%d ways): %s\n",
+                   sum, num,
+                   WaysString(ways).c_str());
+          }
+        }
+
         if (bar.ShouldRun()) {
           printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
                  ANSI_BEGINNING_OF_LINE "%s\n",
@@ -432,18 +440,14 @@ int main(int argc, char **argv) {
   TestCWW();
   BenchCWW();
 
-  // TestMaybeSumOfSquares();
-  // TestMaybe();
+  TestMaybeSumOfSquares();
+  TestMaybe();
 
-  // TestSqrtOpt();
+  TestSqrtOpt();
 
+  BenchMSOSFancy();
+  MaybeSumOfSquaresRecall();
 
-  // BenchMSOSFancy();
-  // MaybeSumOfSquaresRecall();
-
-  // TestCWW();
-
-  /*
   TestSimple("brute", BruteGetNWays);
   TestSimple("nsoks2", NSoks2);
   TestSimple("merge", GetWaysMerge);
@@ -451,43 +455,6 @@ int main(int argc, char **argv) {
   TestGetWays("brute", BruteGetNWays);
   TestGetWays("nsoks2", NSoks2);
   TestGetWays("merge", GetWaysMerge);
-  */
-
-#if 0
-#define TRY(x) if ((x & 3) != 3) printf("TRY(%d);\n", x);
-  TRY(3);
-  TRY(5);
-  TRY(7);
-  TRY(11);
-  TRY(13);
-  TRY(17);
-  TRY(19);
-  TRY(23);
-  TRY(29);
-  TRY(31);
-  TRY(37);
-  TRY(41);
-  TRY(43);
-  TRY(47);
-  TRY(53);
-  TRY(59);
-  TRY(61);
-  TRY(67);
-  TRY(71);
-  TRY(73);
-  TRY(79);
-  TRY(83);
-  TRY(89);
-  TRY(97);
-  TRY(101);
-  TRY(103);
-  TRY(107);
-  TRY(109);
-  TRY(113);
-  TRY(127);
-  TRY(131);
-#endif
-
 
   printf("OK\n");
   return 0;

@@ -16,6 +16,11 @@ inline uint64_t Sqrt64(uint64_t n) {
   return r - (r * r - 1 >= n);
 }
 
+struct TryMe {
+  uint64_t num;
+  std::vector<std::pair<uint64_t, uint64_t>> squareways;
+};
+
 // From GNU coreutils's factor.c.
 // Return false if the input cannot be a square.
 inline static bool

@@ -7,6 +7,7 @@
 typedef uchar uint8_t;
 typedef uint uint32_t;
 typedef ulong uint64_t;
+typedef long int64_t;
 typedef atomic_uint atomic_uint32_t;
 
 /* MAGIC[N] has a bit i set iff i is a quadratic residue mod N.  */
@@ -127,8 +128,82 @@ __kernel void NWays(uint64_t base_trialsquare,
 
   // Get unique indices in this row's output array. This is very rare
   // so the synchronization overhead should not be too bad.
+  // XXX fix opencl warning; this wants "volatile int *"?
   const uint32_t row_idx = atomic_add(&out_size[sum_idx], 2);
   const uint32_t row_base = sum_idx * MAX_WAYS * 2;
   out[row_base + row_idx] = trialsquare;
   out[row_base + row_idx + 1] = r;
 }
+
+
+// Same output behavior as above; different approach.
+__kernel void NWaysMerge(__global const uint64_t *restrict sums,
+                         __global uint32_t *restrict out_size,
+                         __global uint64_t *restrict out) {
+  const int sum_idx = get_global_id(0);
+  const uint64_t sum = sums[sum_idx];
+  const uint32_t out_row_base = sum_idx * MAX_WAYS * 2;
+
+  // PERF: Or could track num_ways *2 ?
+  uint64_t num_ways = 0;
+
+  // PERF: Might be faster to do on CPU during prep?
+  uint64_t root = Sqrt64(sum);
+
+  uint64_t a = 0;
+  uint64_t aa = 0;
+  uint64_t b = root + 1;
+  uint64_t bb = b * b;
+
+  // uint64_t aaplusbb = aa + bb;
+  // We track the signed error vs the sum, rather than a^2 + b^2 itself.
+  int64_t aaplusbbminussum = (int64_t)(aa + bb) - (int64_t)sum;
+
+  while (b >= a) {
+    if (aaplusbbminussum == 0) {
+      // Don't need atomic operations in this one. We are the only
+      // writer to this region.
+      const uint32_t idx = out_row_base + (num_ways * 2);
+      out[idx] = a;
+      out[idx + 1] = b;
+      num_ways++;
+    }
+
+    // uint64_t ap = a + 1;
+    // (a + 1) * (a + 1) == a^2 + 2a + 1
+    // uint64_t apap = aa + a + ap;
+    // uint64_t apap = aa + (a << 1) + 1;
+    // this is the term that when added to a^2, gives us (a+1)^2
+    uint64_t ainc = (a << 1) + 1;
+
+    // uint64_t bm = b - 1;
+    // (b - 1) * (b - 1) == b^2 - 2b + 1
+    // uint64_t bmbm = bb - (b << 1) + 1;
+    // this is the term that when subtracted from b^2, gives (b-1)^2
+    uint64_t bdec = (b << 1) - 1;
+
+    // Either increase a or decrease b. Which one gets
+    // us closer to sum?
+    // uint64_t asum = apap + bb;
+    // uint64_t asum = aaplusbb + ainc;
+    // uint64_t bsum = aa + bmbm;
+    // uint64_t bsum = aaplusbb - bdec;
+
+    int64_t aerr = aaplusbbminussum + ainc;
+    int64_t berr = aaplusbbminussum - bdec;
+    // PERF: Maybe we could do this with abs_diff?
+
+    if (abs(aerr) < abs(berr)) {
+      a++;
+      // aa += ainc;
+      aaplusbbminussum = aerr;
+    } else {
+      b--;
+      // bb -= bdec;
+      aaplusbbminussum = berr;
+    }
+  }
+
+  out_size[sum_idx] = num_ways * 2;
+}
+

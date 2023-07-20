@@ -34,6 +34,13 @@ static CL *cl = nullptr;
 
 using int64 = int64_t;
 
+// 2x as fast!
+// Using this for epoch 2,264,000,000,000+
+// (Still need to prove correctness, but it passes lots of
+// tests)
+using GPUMethod = NWaysGPUMerge;
+
+
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
 
 // Everything takes a complete line.
@@ -122,7 +129,7 @@ private:
 // static constexpr int GPU_HEIGHT = 51504;
 static constexpr int GPU_HEIGHT = 131072;
 static constexpr int NUM_GPU_THREADS = 2;
-static constexpr int TRY_ROLL_SIZE = 256;
+static constexpr int TRY_ROLL_SIZE = 512;
 static_assert(GPU_HEIGHT % TRY_ROLL_SIZE == 0,
               "this is not strictly required, but would hurt "
               "performance!");
@@ -135,13 +142,13 @@ static constexpr uint64_t EPOCH_INDICES = EPOCH_SIZE / UNROLL_SIZE;
 // PERF: Tune it
 static constexpr int STEADY_WORK_STEALING_THREADS = 0;
 // (As of 16 Jul 2023, in the endgame Try becomes the bottleneck.)
-static constexpr int ENDGAME_WORK_STEALING_THREADS = 4;
+static constexpr int ENDGAME_WORK_STEALING_THREADS = 1;
 
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
 static const char *DONE_FILE = "sos-done.txt";
 
-static StatusBar status(5);
+static StatusBar status(6);
 
 static uint64_t GetDone() {
   MutexLock ml(&file_mutex);
@@ -165,20 +172,12 @@ static void Interesting(const std::string &s) {
   fclose(f);
 }
 
-
-// static std::atomic<uint64_t> rejected_f{0ULL};
-// static std::atomic<uint64_t> rejected_ff{0ULL};
-// static std::atomic<uint64_t> rejected_hh{0ULL};
-// static std::atomic<uint64_t> rejected_aa{0ULL};
-// #define INCREMENT(rej) rej.fetch_add(1, std::memory_order_relaxed)
-// #define READ(rej) rej.load()
-// #define RESET(rej) rej.store(0ULL)
-
-// This is much faster. XXX Probably can just clean up the atomic one.
+// Fast counters to avoid lock contention in tight loops.
 DECLARE_COUNTERS(rejected_f, rejected_ff, rejected_hh, rejected_aa,
                  unused1_, unused2_, unused3_, unused4_);
 
-#define INCREMENT(rej) rej++
+#define INCREMENT(rej) (rej)++
+#define INCREMENT_BY(rej, by) (rej) += (by)
 #define READ(rej) rej.Read()
 #define RESET(rej) rej.Reset()
 
@@ -228,15 +227,22 @@ template<class F>
 inline static void AllWays(
     const std::vector<std::pair<uint64_t, uint64_t>> &ways,
     const F &fn) {
+
+  // Just compute the squares once.
+  std::vector<std::pair<uint64_t, uint64_t>> ways_squared;
+  ways_squared.resize(ways.size());
+  for (int i = 0; i < ways.size(); i++) {
+    const auto &[a, b] = ways[i];
+    ways_squared[i] = make_pair(a * a, b * b);
+  }
+
   for (int p = 0; p < ways.size(); p++) {
     const auto &[b, c] = ways[p];
-    const uint64_t bb = b * b;
-    const uint64_t cc = c * c;
+    const auto &[bb, cc] = ways_squared[p];
     for (int q = 0; q < ways.size(); q++) {
       if (p != q) {
         const auto &[d, g] = ways[q];
-        const uint64_t dd = d * d;
-        const uint64_t gg = g * g;
+        const auto &[dd, gg] = ways_squared[q];
 
         // require that the smallest of b,c,d,g appears on the
         // top, to reduce symmetries.
@@ -246,8 +252,7 @@ inline static void AllWays(
         for (int r = 0; r < ways.size(); r++) {
           if (p != r && q != r) {
             const auto &[e, i] = ways[r];
-            const uint64_t ee = e * e;
-            const uint64_t ii = i * i;
+            const auto &[ee, ii] = ways_squared[r];
 
             // Now eight ways of ordering the pairs.
             fn(/**/   b,bb,  c,cc,
@@ -542,16 +547,12 @@ private:
   bool done = false;
 };
 
-struct TryMe {
-  uint64_t num;
-  std::vector<std::pair<uint64_t, uint64_t>> squareways;
-};
-
 
 struct SOS {
   std::unique_ptr<AutoParallelComp> factor_comp;
   std::unique_ptr<AutoParallelComp> try_comp;
-  std::unique_ptr<NWaysGPU> nways_gpu;
+  std::unique_ptr<GPUMethod> nways_gpu;
+  std::unique_ptr<TryFilterGPU> tryfilter_gpu;
 
   // An element is a number and its expected number of ways.
   std::unique_ptr<
@@ -564,10 +565,11 @@ struct SOS {
   SOS() : status_per(10.0) {
     // Performance is pretty workload-dependent, so just tune in-process
     // rather than saving to disk.
-    factor_comp.reset(new AutoParallelComp(24, 1000, false));
-    try_comp.reset(new AutoParallelComp(8, 1000, false));
+    factor_comp.reset(new AutoParallelComp(20, 1000, false));
+    try_comp.reset(new AutoParallelComp(12, 1000, false));
 
-    nways_gpu.reset(new NWaysGPU(cl, GPU_HEIGHT));
+    nways_gpu.reset(new GPUMethod(cl, GPU_HEIGHT));
+    tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_HEIGHT));
 
     nways_queue.reset(
         new BatchedWorkQueue<std::pair<uint64_t, uint32_t>>(GPU_HEIGHT));
@@ -593,7 +595,7 @@ struct SOS {
       CHECK(batch.size() <= GPU_HEIGHT);
       while (batch.size() < GPU_HEIGHT) {
         // Fill with dummy values.
-        batch.push_back(NWaysGPU::dummy);
+        batch.push_back(GPUMethod::dummy);
       }
       std::vector<std::vector<std::pair<uint64_t, uint64_t>>> res =
         nways_gpu->GetNWays(batch);
@@ -609,12 +611,37 @@ struct SOS {
                                     .squareways = std::move(res[i])});
       res.clear();
 
+      // PERF: We copy the output to CPU and back, but we could
+      // just do this in place. The main issue is making sure the
+      // tests can still work.
+
+      // TODO: Probably better in a separate thread so it can run
+      // concurrently?
+      uint64_t num_filtered = 0;
+      bool gone = false;
+      if (trybatch.size() == GPU_HEIGHT) {
+        uint64_t rej = 0;
+        trybatch = tryfilter_gpu->FilterWays(trybatch, &rej);
+        INCREMENT_BY(rejected_f, rej);
+        num_filtered = real_batch_size - trybatch.size();
+        if (trybatch.empty()) gone = true;
+      }
+
       // Add to CPU-side Try queue.
-      try_queue->WaitAdd(std::move(trybatch));
-      trybatch.clear();
+      if (!trybatch.empty()) {
+        try_queue->WaitAdd(std::move(trybatch));
+        trybatch.clear();
+      }
+
       {
         MutexLock ml(&m);
+        // Add the original (unpadded, unfiltered) batch size.
         done_nways += real_batch_size;
+        if (gone) batches_completely_filtered++;
+        try_filtered_gpu += num_filtered;
+        // If it was filtered, we're done with it.
+        triples_done += num_filtered;
+        done += num_filtered;
       }
     }
   }
@@ -635,6 +662,9 @@ struct SOS {
   uint64_t done = 0;
   // Work stolen by CPU in endgame.
   uint64_t stolen = 0;
+  // Number of rows filtered out by gpu pass.
+  uint64_t try_filtered_gpu = 0;
+  uint64_t batches_completely_filtered = 0;
 
   int64_t recent_try_size = 0;
 
@@ -678,16 +708,22 @@ struct SOS {
                                 try_size,
                                 recent_try_size,
                                 Util::UnsignedWithCommas(stolen).c_str());
+    string line4 =
+      StringPrintf(
+          ACYAN("%s") " try-filtered  "
+          AGREEN("%s") " complete batches\n",
+          Util::UnsignedWithCommas(try_filtered_gpu).c_str(),
+          Util::UnsignedWithCommas(batches_completely_filtered).c_str());
     string info = StringPrintf("%s inel  %s nw",
                                Util::UnsignedWithCommas(ineligible).c_str(),
                                Util::UnsignedWithCommas(done_nways).c_str());
-    string line4 = ANSI::ProgressBar(done, EPOCH_SIZE, info, sec) + "\n";
-    string line5 = ANSI::ProgressBar(triples_done, triples, "", sec,
+    string line5 = ANSI::ProgressBar(done, EPOCH_SIZE, info, sec) + "\n";
+    string line6 = ANSI::ProgressBar(triples_done, triples, "", sec,
                                      ANSI::ProgressBarOptions{
                                        .bar_filled = 0x046204,
                                        .bar_empty = 0x012701,
                                      });
-    status.EmitStatus(line1 + line2 + line3 + line4 + line5);
+    status.EmitStatus(line1 + line2 + line3 + line4 + line5 + line6);
   }
 
   void TryThread() {
@@ -703,6 +739,10 @@ struct SOS {
       auto &batch = batchopt.value();
       const size_t original_batch_size = batch.size();
 
+      // PERF: Since adding the GPU filter, this is almost always
+      // processing very small batches. So we may want to fuse
+      // batches or something like that.
+      //
       // Get even batches. We only really expect this to happen for
       // singletons (too big) so it doesn't need to be fast.
       while (!batch.empty() && batch.size() % TRY_ROLL_SIZE != 0) {
@@ -736,13 +776,15 @@ struct SOS {
           status.Printf(AWHITE("Old autoparallel histo") ":\n");
           status.Emit(try_comp->HistoString());
 
-          try_comp.reset(new AutoParallelComp(24, 1000, false));
+          try_comp.reset(new AutoParallelComp(30, 1000, false));
           try_endgame = false;
         }
 
         recent_try_size = original_batch_size;
         done += original_batch_size;
         triples_done += original_batch_size;
+        // XXX Since we can often skip the Try phase now, maybe this
+        // should be in its own thread.
         if (status_per.ShouldRun()) {
           PrintStats();
         }
@@ -835,7 +877,7 @@ struct SOS {
 
             if (nways >= 3) {
 
-              if (nways > NWaysGPU::MAX_WAYS) {
+              if (nways > GPUMethod::MAX_WAYS) {
                 // Do on CPU.
                 std::vector<std::pair<uint64_t, uint64_t>> ways =
                   NSoks2(num, nways);
