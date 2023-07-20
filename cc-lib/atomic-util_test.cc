@@ -20,9 +20,7 @@ static void TestCountersSimple() {
   CHECK(lines.Read() == 1);
   CHECK(errors.Read() == 0);
 
-  bytes++;
-  bytes++;
-  bytes++;
+  bytes += 3;
 
   CHECK(bytes.Read() == 3);
   CHECK(lines.Read() == 1);

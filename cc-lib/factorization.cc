@@ -78,6 +78,10 @@ static void FactorUsingPollardRho(
     Factors *factors);
 static bool IsPrimeInternal(uint64_t n);
 
+// Insert a factor that is known to not exist in the list. Note that
+// we use some statically-sized buffers with known limits on the
+// number of factors (that fit in 64 bits), so this can have undefined
+// behavior if it's not actually a prime factor, or is a duplicate.
 static void InsertNewFactor(Factors *factors, uint64_t b, uint64_t e) {
   factors->b[factors->num] = b;
   factors->e[factors->num] = e;
@@ -85,11 +89,12 @@ static void InsertNewFactor(Factors *factors, uint64_t b, uint64_t e) {
 }
 
 // Add the factor by finding it if it already exists (and incrementing
-// its exponent), or adding it (with an exponent of 1).
+// its exponent), or adding it (with an exponent of 1). See note above.
 static void PushFactor(Factors *factors,
                        uint64_t b) {
   // PERF: We could stop once we get to the prefix we know has been
-  // trial factored...
+  // trial factored. One clean way to do this would be to skip over
+  // this region when we call the second phase.
   for (int i = factors->num - 1; i >= 0; i--) {
     if (factors->b[i] == b) {
       factors->e[i]++;

@@ -54,6 +54,26 @@ static void OptimizeLimit() {
 }
 #endif
 
+// TODO: Benchmark this. From factor.c, gpl
+static uint64_t coreutils_isqrt (uint64_t n) {
+  if (n == 0)
+    return 0;
+
+  int c = std::countl_zero<uint64_t>(n);
+
+  /* Make x > sqrt(n).  This will be invariant through the loop.  */
+  uint64_t x = (uint64_t) 1 << ((W_TYPE_SIZE + 1 - c) / 2);
+
+  for (;;) {
+    uint64_t y = (x + n / x) / 2;
+    if (y >= x)
+      return x;
+
+    x = y;
+  }
+}
+
+
 // https://www.nuprl.org/MathLibrary/integer_sqrt/
 [[maybe_unused]]
 static uint64_t Sqrt64Nuprl(uint64_t xx) {

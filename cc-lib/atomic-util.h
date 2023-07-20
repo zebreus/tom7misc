@@ -42,19 +42,29 @@ public:
     }
   }
 
+  void Increment(size_t off) {
+    IncrementBy(off, 1);
+  }
+
   // Increment the logical counter value.
-  uint64_t Increment(size_t off) {
+  void IncrementBy(size_t off, uint64_t by) {
     // must be one of the 8 counters
     if (off != (off & 7)) __builtin_unreachable();
-
     for (;;) {
       std::atomic<uint64_t> &counter = buckets[idx].counters[off];
 
       // Try storing without a lock.
       uint64_t cur = counter.load();
-      if (counter.compare_exchange_strong(cur, cur + 1)) {
-        return cur;
+      if (counter.compare_exchange_strong(cur, cur + by)) {
+        // Success!
+        return;
       }
+
+      // compare-and-exchange approach requires that the increment
+      // be nonzero (or else we'd loop forever thinking there's
+      // contention). But since this is rare, only check it after one
+      // such failure.
+      if (by == 0) return;
 
       // CAS failure indicates contention,
       // so try again at a different index.
@@ -111,8 +121,16 @@ public:
 // Represents one of the 8 slots in an EightCounters instance.
 class AtomicCounter {
  public:
-  inline uint64_t operator++(int suffix_) {
+  // Note that these do not return the previous value, as that
+  // would be expensive. Use Read().
+  inline void operator++(int suffix_) {
     return ec->Increment(offset);
+  }
+
+  // Note that these do not return the previous value, as that
+  // would be expensive. Use Read().
+  inline void operator+=(uint64_t rhs) {
+    return ec->IncrementBy(offset, rhs);
   }
 
   inline uint64_t Read() const {
