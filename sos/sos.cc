@@ -129,6 +129,7 @@ private:
 // static constexpr int GPU_HEIGHT = 49912;
 // static constexpr int GPU_HEIGHT = 51504;
 static constexpr int GPU_HEIGHT = 131072;
+
 static constexpr int NUM_GPU_THREADS = 2;
 static constexpr int TRY_ROLL_SIZE = 512;
 static_assert(GPU_HEIGHT % TRY_ROLL_SIZE == 0,
@@ -136,9 +137,8 @@ static_assert(GPU_HEIGHT % TRY_ROLL_SIZE == 0,
               "performance!");
 
 static constexpr uint64_t EPOCH_SIZE = 2'000'000'000; /* ' */
-static constexpr uint64_t UNROLL_SIZE = 100;
-static_assert(EPOCH_SIZE % UNROLL_SIZE == 0);
-static constexpr uint64_t EPOCH_INDICES = EPOCH_SIZE / UNROLL_SIZE;
+// Each of these yields 8 sums. Should divide EPOCH_SIZE/8.
+static constexpr size_t EPOCH_GPU_CHUNK = 1000000;
 
 // PERF: Tune it
 static constexpr int STEADY_WORK_STEALING_THREADS = 0;
@@ -579,6 +579,7 @@ struct SOS {
     factor_comp.reset(new AutoParallelComp(20, 1000, false));
     try_comp.reset(new AutoParallelComp(12, 1000, false));
 
+    eligiblefilter_gpu.reset(new EligibleFilterGPU(cl, EPOCH_GPU_CHUNK));
     ways_gpu.reset(new GPUMethod(cl, GPU_HEIGHT));
     tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_HEIGHT));
 
@@ -840,7 +841,7 @@ struct SOS {
               "\n\n\n\n"
               AGREY("%d") " "
               AFGCOLOR(140, 10, 10, "%d") " "
-              ARED("%d") " " AGREEN("%d") " " ABLUE("%d")
+              ARED("%d") " " AGREEN("%d") " " ABLUE("%d") " "
               ACYAN("%d") " " AWHITE("%d") "\n\n\n\n",
               left, blood, red, green, blue, cyan, white);
 
@@ -998,7 +999,7 @@ struct SOS {
 
                 // PERF can skip some of the tests we know were already
                 // done on GPU.
-                const int nways = ChaiWahWu(sum);
+                const int nways = ChaiWahWuNoFilter(sum);
 
                 if (nways >= 3) {
                   if (nways > GPUMethod::MAX_WAYS) {
@@ -1064,13 +1065,18 @@ struct SOS {
 
     ResetCounters();
 
-    // XXX
-    constexpr size_t EPOCH_CHUNK = 1000000 * 8;
+    // How many sums we do with each GPU chunk.
+    constexpr size_t EPOCH_CHUNK = EPOCH_GPU_CHUNK * 8;
     static_assert(EPOCH_SIZE % EPOCH_CHUNK == 0);
-    for (uint64_t u = 0; u < EPOCH_SIZE; u += EPOCH_CHUNK) {
-      nways_queue->WaitAdd(
-          std::make_pair(start + u,
-                         std::vector<uint8_t>(EPOCH_CHUNK / 8, 0)));
+    {
+      Timer eligible_gpu_timer;
+      for (uint64_t u = 0; u < EPOCH_SIZE; u += EPOCH_CHUNK) {
+        uint64_t base = start + u;
+        std::vector<uint8_t> bitmask = eligiblefilter_gpu->Filter(base);
+        nways_queue->WaitAdd(std::make_pair(base, std::move(bitmask)));
+      }
+      status.Printf("Did GPU eligible in %s\n",
+                    ANSI::Time(eligible_gpu_timer.Seconds()).c_str());
     }
     nways_queue->MarkDone();
 

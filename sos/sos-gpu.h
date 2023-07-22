@@ -20,6 +20,66 @@
 // This is like 28% faster!
 #define TRANSPOSE 1
 
+namespace internal {
+// Process the rectangular output of the GPU 'ways' algorithm
+// into a CPU-friendly vector of pairs, and optionally check
+// that they sum to the right value.
+template<bool CHECK_OUTPUT, size_t MAX_WAYS>
+inline std::vector<std::vector<std::pair<uint64_t, uint64_t>>>
+ProcessGPUOutput(int height,
+                 const std::vector<std::pair<uint64_t, uint32_t>> &inputs,
+                 const std::vector<uint64_t> &output_rect,
+                 const std::vector<uint32_t> &output_sizes) {
+
+  // XXX verbose flag
+  if (false) {
+    for (int y = 0; y < height; y++) {
+      printf(ABLUE("%llu") " " ACYAN("%d") " size: " APURPLE("%d") "\n",
+             inputs[y].first, (int)inputs[y].second, (int)output_sizes[y]);
+      for (int x = 0; x < MAX_WAYS; x ++) {
+        int rect_base = y * MAX_WAYS * 2;
+        CHECK(rect_base < output_rect.size()) <<
+          rect_base << " " << output_rect.size();
+        uint64_t a = output_rect[rect_base + x * 2 + 0];
+        uint64_t b = output_rect[rect_base + x * 2 + 1];
+        printf("  %llu^2 + %llu^2 " AGREY("= %llu") "\n",
+               a, b, a * a + b * b);
+      }
+    }
+  }
+
+  CHECK((int)output_sizes.size() == height);
+  std::vector<std::vector<std::pair<uint64_t, uint64_t>>> ret;
+  ret.reserve(height);
+  for (int row = 0; row < height; row++) {
+    const uint64_t sum = inputs[row].first;
+    const int rect_base = row * MAX_WAYS * 2;
+    std::vector<std::pair<uint64_t, uint64_t>> one_ret;
+    const int size = output_sizes[row];
+    CHECK(size % 2 == 0) << "Size is supposed to be incremented by 2 each "
+      "time. " << size << " " << sum;
+    one_ret.reserve(size / 2);
+    for (int i = 0; i < size / 2; i++) {
+      uint64_t a = output_rect[rect_base + i * 2 + 0];
+      uint64_t b = output_rect[rect_base + i * 2 + 1];
+      one_ret.emplace_back(a, b);
+    }
+
+    if constexpr (CHECK_OUTPUT) {
+      for (const auto &[a, b] : one_ret) {
+        CHECK(a * a + b * b == sum) << a << "^2 + " << b << "^2 != "
+                                    << sum << "(out size " << size << ")"
+                                    << " with height " << height
+                                    << "\nWays: " << WaysString(one_ret);
+      }
+    }
+
+    ret.push_back(std::move(one_ret));
+  }
+  return ret;
+}
+}  // internal
+
 // New version, based on nsoks.
 //
 // Runs many in batch. Even though there's a lot of parallelism for
@@ -304,55 +364,10 @@ struct WaysGPU {
     }
     // Done with GPU.
 
-    // XXX verbose
-    if (false) {
-      for (int y = 0; y < height; y++) {
-        printf(ABLUE("%llu") " " ACYAN("%d") " size: " APURPLE("%d") "\n",
-               inputs[y].first, (int)inputs[y].second, (int)output_sizes[y]);
-        for (int x = 0; x < MAX_WAYS; x ++) {
-          int rect_base = y * MAX_WAYS * 2;
-          CHECK(rect_base < output_rect.size()) <<
-            rect_base << " " << output_rect.size();
-          uint64_t a = output_rect[rect_base + x * 2 + 0];
-          uint64_t b = output_rect[rect_base + x * 2 + 1];
-          printf("  %llu^2 + %llu^2 " AGREY("= %llu") "\n",
-                 a, b, a * a + b * b);
-        }
-      }
-    }
-
     TIMER_START(ret);
-    CHECK((int)output_sizes.size() == height);
-    std::vector<std::vector<std::pair<uint64_t, uint64_t>>> ret;
-    ret.reserve(height);
-    for (int row = 0; row < height; row++) {
-      const uint64_t sum = inputs[row].first;
-      const int rect_base = row * MAX_WAYS * 2;
-      std::vector<std::pair<uint64_t, uint64_t>> one_ret;
-      const int size = output_sizes[row];
-      CHECK(size % 2 == 0) << "Size is supposed to be incremented by 2 each "
-        "time. " << size << " " << sum;
-      one_ret.reserve(size / 2);
-      for (int i = 0; i < size / 2; i++) {
-        uint64_t a = output_rect[rect_base + i * 2 + 0];
-        uint64_t b = output_rect[rect_base + i * 2 + 1];
-        one_ret.emplace_back(a, b);
-      }
-
-      if (CHECK_OUTPUT) {
-        for (const auto &[a, b] : one_ret) {
-          CHECK(a * a + b * b == sum) << a << "^2 + " << b << "^2 != "
-                                      << sum << "(out size " << size << ")"
-                                      << "\nwith width " << width
-                                      << " and height " << height
-                                      << "\nWays: " << WaysString(one_ret);
-        }
-      }
-
-      ret.push_back(std::move(one_ret));
-    }
+    auto ret = internal::ProcessGPUOutput<CHECK_OUTPUT, MAX_WAYS>(
+        height, inputs, output_rect, output_sizes);
     TIMER_END(ret);
-
 
     TIMER_END(all);
     return ret;
@@ -489,36 +504,6 @@ struct WaysGPUMerge {
       CopyBufferToGPU(cl->queue, sums, sums_gpu);
       TIMER_END(input);
 
-      #if 0
-      // PERF: Actually, no clearing is necessary with this approach.
-      TIMER_START(clear);
-      uint32_t ZERO = 0;
-      CHECK_SUCCESS(
-          clEnqueueFillBuffer(cl->queue,
-                              output_size_gpu,
-                              // pattern and its size in bytes
-                              &ZERO, sizeof (uint32_t),
-                              // offset and size to fill (in BYTES)
-                              0, (size_t)(height * sizeof (uint32_t)),
-                              // no wait list or event
-                              0, nullptr, nullptr));
-
-      // PERF: Not actually necessary.
-      uint64_t SENTINEL = -1;
-      CHECK_SUCCESS(
-          clEnqueueFillBuffer(cl->queue,
-                              output_gpu,
-                              // pattern and its size in bytes
-                              &SENTINEL, sizeof (uint64_t),
-                              // offset and size to fill (in BYTES)
-                              0, (size_t)(MAX_WAYS * 2 * height *
-                                          sizeof (uint64_t)),
-                              // no wait list or event
-                              0, nullptr, nullptr));
-      clFinish(cl->queue);
-      TIMER_END(clear);
-      #endif
-
       // Run kernel.
       {
         TIMER_START(args2);
@@ -565,56 +550,10 @@ struct WaysGPUMerge {
     }
     // Done with GPU.
 
-    // Same output format as above. We could share this code...
-
-    // XXX verbose
-    if (false) {
-      for (int y = 0; y < height; y++) {
-        printf(ABLUE("%llu") " " ACYAN("%d") " size: " APURPLE("%d") "\n",
-               inputs[y].first, (int)inputs[y].second, (int)output_sizes[y]);
-        for (int x = 0; x < MAX_WAYS; x ++) {
-          int rect_base = y * MAX_WAYS * 2;
-          CHECK(rect_base < output_rect.size()) <<
-            rect_base << " " << output_rect.size();
-          uint64_t a = output_rect[rect_base + x * 2 + 0];
-          uint64_t b = output_rect[rect_base + x * 2 + 1];
-          printf("  %llu^2 + %llu^2 " AGREY("= %llu") "\n",
-                 a, b, a * a + b * b);
-        }
-      }
-    }
-
     TIMER_START(ret);
-    CHECK((int)output_sizes.size() == height);
-    std::vector<std::vector<std::pair<uint64_t, uint64_t>>> ret;
-    ret.reserve(height);
-    for (int row = 0; row < height; row++) {
-      const uint64_t sum = inputs[row].first;
-      const int rect_base = row * MAX_WAYS * 2;
-      std::vector<std::pair<uint64_t, uint64_t>> one_ret;
-      const int size = output_sizes[row];
-      CHECK(size % 2 == 0) << "Size is supposed to be incremented by 2 each "
-        "time. " << size << " " << sum;
-      one_ret.reserve(size / 2);
-      for (int i = 0; i < size / 2; i++) {
-        uint64_t a = output_rect[rect_base + i * 2 + 0];
-        uint64_t b = output_rect[rect_base + i * 2 + 1];
-        one_ret.emplace_back(a, b);
-      }
-
-      if (CHECK_OUTPUT) {
-        for (const auto &[a, b] : one_ret) {
-          CHECK(a * a + b * b == sum) << a << "^2 + " << b << "^2 != "
-                                      << sum << "(out size " << size << ")"
-                                      << " with height " << height
-                                      << "\nWays: " << WaysString(one_ret);
-        }
-      }
-
-      ret.push_back(std::move(one_ret));
-    }
+    auto ret = internal::ProcessGPUOutput<CHECK_OUTPUT, MAX_WAYS>(
+        height, inputs, output_rect, output_sizes);
     TIMER_END(ret);
-
 
     TIMER_END(all);
     return ret;
@@ -646,21 +585,30 @@ struct TryFilterGPU {
     std::string defines = StringPrintf("#define MAX_WAYS %d\n",
                                        MAX_WAYS);
     std::string kernel_src = defines + Util::ReadFile("try.cl");
-    const auto &[prog, kern] =
-      cl->BuildOneKernel(kernel_src, {"TryFilter"}, false);
+    const auto &[prog, kernels] =
+      cl->BuildKernels(kernel_src, {"SquareVec", "TryFilter"}, false);
     CHECK(prog != 0);
     program = prog;
-    CHECK(kern != 0);
-    kernel = kern;
+    kernel1 = FindOrDefault(kernels, "SquareVec", 0);
+    kernel2 = FindOrDefault(kernels, "TryFilter", 0);
+    CHECK(kernel1 != 0);
+    CHECK(kernel2 != 0);
 
-    // Same meaning as above.
-    sums_gpu =
-      CreateUninitializedGPUMemory<uint64_t>(cl->context, height);
+    /*
+      std::optional<std::string> ptx = cl->DecodeProgram(program);
+      CHECK(ptx.has_value());
+      Util::WriteFile("tryfilter.ptx", ptx.value());
+      printf("\n");
+      printf("Wrote tryfilter.ptx\n");
+    */
+
+    // Same meaning as above, but we square the elements in place.
     ways_gpu =
       CreateUninitializedGPUMemory<uint64_t>(cl->context,
                                              height * MAX_WAYS * 2);
     ways_size_gpu =
       CreateUninitializedGPUMemory<uint32_t>(cl->context, height);
+    // Output.
     rejected_gpu =
       CreateUninitializedGPUMemory<uint32_t>(cl->context, height);
   }
@@ -668,8 +616,7 @@ struct TryFilterGPU {
   // Synchronized access.
   std::mutex m;
   cl_program program = 0;
-  cl_kernel kernel = 0;
-  cl_mem sums_gpu = nullptr;
+  cl_kernel kernel1 = 0, kernel2 = 0;
   cl_mem ways_gpu = nullptr;
   cl_mem ways_size_gpu = nullptr;
   cl_mem rejected_gpu = nullptr;
@@ -682,9 +629,6 @@ struct TryFilterGPU {
     CHECK(input.size() == height) << input.size() << " " << height;
 
     // Make the input arrays.
-    // PERF: We don't actually use the sums.
-    std::vector<uint64_t> sums;
-    sums.reserve(height);
     std::vector<uint64_t> ways;
     ways.reserve(height * MAX_WAYS * 2);
     std::vector<uint32_t> ways_size;
@@ -692,12 +636,13 @@ struct TryFilterGPU {
 
     for (const TryMe &tryme : input) {
       CHECK(tryme.squareways.size() <= MAX_WAYS) << tryme.squareways.size();
-      sums.push_back(tryme.num);
       ways_size.push_back(tryme.squareways.size() * 2);
       for (int i = 0; i < MAX_WAYS; i++) {
         if (i < tryme.squareways.size()) {
-          ways.push_back(tryme.squareways[i].first);
-          ways.push_back(tryme.squareways[i].second);
+          const auto &[a, b] = tryme.squareways[i];
+          // PERF compare using kernel
+          ways.push_back(a * a);
+          ways.push_back(b * b);
         } else {
           ways.push_back(0);
           ways.push_back(0);
@@ -711,21 +656,17 @@ struct TryFilterGPU {
       // Only one GPU process at a time.
       MutexLock ml(&m);
 
-      CopyBufferToGPU(cl->queue, sums, sums_gpu);
       CopyBufferToGPU(cl->queue, ways, ways_gpu);
       CopyBufferToGPU(cl->queue, ways_size, ways_size_gpu);
 
       // Run kernel.
       {
-        CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
-                                     (void *)&sums_gpu));
-
-        CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
+        CHECK_SUCCESS(clSetKernelArg(kernel2, 0, sizeof (cl_mem),
                                      (void *)&ways_size_gpu));
 
-        CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
+        CHECK_SUCCESS(clSetKernelArg(kernel2, 1, sizeof (cl_mem),
                                      (void *)&ways_gpu));
-        CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
+        CHECK_SUCCESS(clSetKernelArg(kernel2, 2, sizeof (cl_mem),
                                      (void *)&rejected_gpu));
 
         // Simple 1D Kernel
@@ -735,7 +676,7 @@ struct TryFilterGPU {
         size_t global_work_size[] = { (size_t)height };
 
         CHECK_SUCCESS(
-            clEnqueueNDRangeKernel(cl->queue, kernel,
+            clEnqueueNDRangeKernel(cl->queue, kernel2,
                                    // 1D
                                    1,
                                    // It does its own indexing
@@ -775,10 +716,10 @@ struct TryFilterGPU {
   }
 
   ~TryFilterGPU() {
-    CHECK_SUCCESS(clReleaseKernel(kernel));
+    CHECK_SUCCESS(clReleaseKernel(kernel1));
+    CHECK_SUCCESS(clReleaseKernel(kernel2));
     CHECK_SUCCESS(clReleaseProgram(program));
 
-    CHECK_SUCCESS(clReleaseMemObject(sums_gpu));
     CHECK_SUCCESS(clReleaseMemObject(ways_size_gpu));
     CHECK_SUCCESS(clReleaseMemObject(ways_gpu));
     CHECK_SUCCESS(clReleaseMemObject(rejected_gpu));
@@ -799,9 +740,7 @@ struct EligibleFilterGPU {
     CHECK(kern != 0);
     kernel = kern;
 
-    // HERE!
-    out_gpu =
-      CreateUninitializedGPUMemory<uint8_t>(cl->context, height);
+    out_gpu = CreateUninitializedGPUMemory<uint8_t>(cl->context, height);
   }
 
   // Synchronized access.
