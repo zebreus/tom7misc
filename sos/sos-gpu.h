@@ -785,5 +785,76 @@ struct TryFilterGPU {
   }
 };
 
+struct EligibleFilterGPU {
+  CL *cl = nullptr;
+  // Number (times 8) to process in one call.
+  size_t height = 0;
+
+  EligibleFilterGPU(CL *cl, size_t height) : cl(cl), height(height) {
+    std::string kernel_src = Util::ReadFile("eligible.cl");
+    const auto &[prog, kern] =
+      cl->BuildOneKernel(kernel_src, "NotSumOfSquares", false);
+    CHECK(prog != 0);
+    program = prog;
+    CHECK(kern != 0);
+    kernel = kern;
+
+    // HERE!
+    out_gpu =
+      CreateUninitializedGPUMemory<uint8_t>(cl->context, height);
+  }
+
+  // Synchronized access.
+  std::mutex m;
+  cl_program program = 0;
+  cl_kernel kernel = 0;
+  cl_mem out_gpu = nullptr;
+
+  // Processes [start, start+height) sums and returns height/8 bytes
+  // with a bitmask labeling the sums that can be filtered out.
+  std::vector<uint8_t> Filter(uint64_t start) {
+    // Only one GPU process at a time.
+    MutexLock ml(&m);
+
+    // Run kernel.
+    {
+      CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (uint64_t),
+                                   (void *)&start));
+
+      CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
+                                   (void *)&out_gpu));
+
+      // Simple 1D Kernel
+      size_t global_work_offset[] = { (size_t)0 };
+      size_t global_work_size[] = { (size_t)height };
+
+      CHECK_SUCCESS(
+          clEnqueueNDRangeKernel(cl->queue, kernel,
+                                 // 1D
+                                 1,
+                                 // It does its own indexing
+                                 global_work_offset,
+                                 global_work_size,
+                                 // No local work
+                                 nullptr,
+                                 // No wait list
+                                 0, nullptr,
+                                 // no event
+                                 nullptr));
+
+      clFinish(cl->queue);
+    }
+
+    return CopyBufferFromGPU<uint8_t>(cl->queue, out_gpu, height);
+  }
+
+  ~EligibleFilterGPU() {
+    CHECK_SUCCESS(clReleaseKernel(kernel));
+    CHECK_SUCCESS(clReleaseProgram(program));
+
+    CHECK_SUCCESS(clReleaseMemObject(out_gpu));
+  }
+};
+
 
 #endif

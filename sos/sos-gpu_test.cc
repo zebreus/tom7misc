@@ -10,6 +10,7 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "threadutil.h"
+#include "atomic-util.h"
 
 static CL *cl = nullptr;
 
@@ -20,7 +21,7 @@ static constexpr bool CHECK_ANSWERS = true;
 
 static constexpr int GLOBAL_BATCH_SIZE = 131072;
 
-
+DECLARE_COUNTERS(ineligible, u1_, u2_, u3_, u4_, u5_, u6, u7_);
 
 static std::vector<std::pair<uint64_t, uint32_t>> global_batch;
 template<class GPUMethod>
@@ -295,7 +296,7 @@ static void TestTryFilter() {
   std::vector<TryMe> out = tryfilter.FilterWays(input, &rejected_f);
   // printf("rejected_f: %llu (should be about 16 * 15 * 14 * 4 = %d)\n",
   // rejected_f, 16 * 15 * 14 * 4);
-  CHECK(rejected_f = 16 * 15 * 14 * 4);
+  CHECK(rejected_f == 16 * 15 * 14 * 4);
   CHECK(out.size() == 1);
   CHECK(out[0].num == input[0].num);
   CHECK(out[0].squareways == input[0].squareways);
@@ -303,18 +304,49 @@ static void TestTryFilter() {
   printf("TryFilter GPU " AGREEN("OK") "\n");
 }
 
+static void TestEligibleFilter() {
+  static constexpr int HEIGHT = 8192 * 256;
+  EligibleFilterGPU filter(cl, HEIGHT);
+
+  static constexpr int START_NUM = 1000000;
+  vector<uint8_t> out = filter.Filter(START_NUM);
+  ineligible.Reset();
+  ParallelComp(
+      HEIGHT * 8,
+      [&out](int idx) {
+        const uint64_t sum = START_NUM + idx;
+
+        uint8_t byte = out[idx / 8];
+        uint8_t bit = !!(byte & (1 << (7 - (idx % 8))));
+        if (bit) {
+          ineligible++;
+          // This means it must not be eligible.
+          int numways = ChaiWahWu(sum);
+          // Currently we check that it cannot be the sum of two
+          // squares *at all*, though it would be useful for this
+          // filter to exclude ones that are not triples.
+          CHECK(numways == 0) << sum << ": " << numways;
+        } else {
+          // False negatives are allowed.
+        }
+      },
+      8);
+  printf("%llu/%llu were ineligible.\n", ineligible.Read(), HEIGHT * 8ULL);
+
+  printf("TestEligibleFilter " AGREEN("OK") "\n");
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
 
+  TestEligibleFilter();
   TestTryFilter();
 
   TestNWays<NWaysGPUMerge, TEST_AGAINST_CPU, 16>("merge");
   TestNWays<NWaysGPU, TEST_AGAINST_CPU, 16>("orig2d");
 
   // Optimize<NWaysGPU>();
-
-  // TestNWays<NWaysGPU, false, 16>();
 
   printf("OK\n");
   return 0;

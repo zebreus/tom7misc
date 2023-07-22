@@ -24,6 +24,7 @@
 #include "ansi.h"
 #include "autoparallel.h"
 #include "atomic-util.h"
+#include "image.h"
 
 #include "sos-util.h"
 #include "sos-gpu.h"
@@ -628,61 +629,72 @@ struct SOS {
       }
 
       // Add to CPU-side Try queue.
+      uint64_t local_pending_try = 0;
       if (!trybatch.empty()) {
+        local_pending_try = trybatch.size();
         try_queue->WaitAdd(std::move(trybatch));
         trybatch.clear();
       }
 
       {
         MutexLock ml(&m);
-        // Add the original (unpadded, unfiltered) batch size.
-        done_nways += real_batch_size;
+        triple_pending_ways -= real_batch_size;
+        pending_try += local_pending_try;
         if (gone) batches_completely_filtered++;
-        try_filtered_gpu += num_filtered;
-        // If it was filtered, we're done with it.
-        triples_done += num_filtered;
-        done += num_filtered;
+        done_gpu_filtered += num_filtered;
       }
     }
   }
 
   std::mutex m;
   Timer timer;
+  // Counters and stats.
   // These were too big to process on the GPU.
   uint64_t too_big = 0;
-  // Many are rejected because they can't be written as the sum of
-  // squares enough ways.
-  uint64_t ineligible = 0;
-  // These two should eventually reach the same value.
-  uint64_t triples = 0;
-  uint64_t done_nways = 0;
-  // Should eventually reach the value of triples.
-  uint64_t triples_done = 0;
-  // Including ineligible. This eventually reaches EPOCH_SIZE.
-  uint64_t done = 0;
   // Work stolen by CPU in endgame.
   uint64_t stolen = 0;
-  // Number of rows filtered out by gpu pass.
-  uint64_t try_filtered_gpu = 0;
-  uint64_t batches_completely_filtered = 0;
-
   int64_t recent_try_size = 0;
+  uint64_t batches_completely_filtered = 0;
+  uint64_t eligible_triples = 0;
+
+  // State of a number. These always sum to EPOCH_SIZE.
+  uint64_t pending = EPOCH_SIZE;
+  // Done. Many are rejected because they can't be written as the sum of
+  // squares enough ways.
+  uint64_t done_ineligible = 0;
+  // Waiting for nways calculation.
+  uint64_t triple_pending_ways = 0;
+  // Filtered out by GPU TryFilter.
+  uint64_t done_gpu_filtered = 0;
+  uint64_t pending_try = 0;
+  uint64_t done_full_try = 0;
+
+  // Must hold lock.
+  uint64_t NumDone() {
+    return done_ineligible + done_gpu_filtered + done_full_try;
+  }
 
   int work_stealing_threads = STEADY_WORK_STEALING_THREADS;
   // Reset autoparallel when we get to the Try endgame, since at
   // this point the other CPU threads are free.
   bool try_endgame = false;
+  // Signal that we're done and the status thread (and perhaps others
+  // in the future) should exit. (TODO: std::jthread?)
+  bool should_die = false;
 
   Periodically status_per;
 
-  // Must hold lock m.
   void PrintStats() {
-    double pct = (triples * 100.0)/(double)done;
+    MutexLock ml(&m);
+    uint64_t done = NumDone();
+    uint64_t tested = eligible_triples + done_ineligible;
+    double pct = (eligible_triples * 100.0)/(double)tested;
     double sec = timer.Seconds();
     double nps = done / sec;
+    // Do we actually care about the eligible fraction?
     string line1 =
-      StringPrintf("%llu/%llu (%.5f%%) are triples (%s) %.1f/sec\n",
-                   triples, done_nways, pct, ANSI::Time(sec).c_str(), nps);
+      StringPrintf("%llu/%llu (%.5f%%) are eligible. Took %s (%.1f/sec)\n",
+                   eligible_triples, tested, pct, ANSI::Time(sec).c_str(), nps);
 
     const int64_t rf = READ(rejected_f);
     const int64_t rff = READ(rejected_ff);
@@ -712,18 +724,108 @@ struct SOS {
       StringPrintf(
           ACYAN("%s") " try-filtered  "
           AGREEN("%s") " complete batches\n",
-          Util::UnsignedWithCommas(try_filtered_gpu).c_str(),
+          Util::UnsignedWithCommas(done_gpu_filtered).c_str(),
           Util::UnsignedWithCommas(batches_completely_filtered).c_str());
-    string info = StringPrintf("%s inel  %s nw",
-                               Util::UnsignedWithCommas(ineligible).c_str(),
-                               Util::UnsignedWithCommas(done_nways).c_str());
-    string line5 = ANSI::ProgressBar(done, EPOCH_SIZE, info, sec) + "\n";
-    string line6 = ANSI::ProgressBar(triples_done, triples, "", sec,
-                                     ANSI::ProgressBarOptions{
-                                       .bar_filled = 0x046204,
-                                       .bar_empty = 0x012701,
-                                     });
+    string info = StringPrintf(
+        "%s eligible",
+        Util::UnsignedWithCommas(eligible_triples).c_str());
+
+    // Get the fractions other than pending.
+    double red = (100.0 * done_ineligible) / EPOCH_SIZE;
+    double green = (100.0 * triple_pending_ways) / EPOCH_SIZE;
+    double blue = (100.0 * done_gpu_filtered) / EPOCH_SIZE;
+    double cyan = (100.0 * pending_try) / EPOCH_SIZE;
+    double white = (100.0 * done_full_try) / EPOCH_SIZE;
+    double black = (100.0 * pending) / EPOCH_SIZE;
+
+    string line5 =
+      StringPrintf(AGREY("%.1f%% left") " "
+                   ARED("%.1f%% inel") " "
+                   AGREEN("%.1f%% pend ways") " "
+                   ABLUE("%.1f%% filt gpu") " "
+                   ACYAN("%.1f%% pend try") " "
+                   AWHITE("%.1f%% full try") "\n",
+                   black, red, green, blue, cyan, white);
+
+    string line6 = ANSI::ProgressBar(done, EPOCH_SIZE, info, sec) + "\n";
+
     status.EmitStatus(line1 + line2 + line3 + line4 + line5 + line6);
+  }
+
+  void StatusThread(uint64_t start_idx) {
+    static constexpr int WIDTH = 1024 + 512, HEIGHT = 768;
+    ImageRGBA img(WIDTH, HEIGHT);
+    img.Clear32(0x000000FF);
+    int xpos = 0;
+    Periodically bar_per(0.5);
+    for (;;) {
+      // XXX would be nice to have an efficient Periodically::Await
+      using namespace std::chrono_literals;
+      std::this_thread::sleep_for(250ms);
+
+      if (bar_per.ShouldRun()) {
+        MutexLock ml(&m);
+
+        // Get the fractions other than pending.
+        // double HEIGHT_SCALE = HEIGHT / EPOCH_SIZE;
+        auto HeightOf = [](double ctr) {
+            return (int)std::round((ctr / EPOCH_SIZE) * HEIGHT);
+          };
+        int red = HeightOf(done_ineligible);
+        int green = HeightOf(triple_pending_ways);
+        int blue = HeightOf(done_gpu_filtered);
+        int cyan = HeightOf(pending_try);
+        int white = HeightOf(done_full_try);
+
+        int left = HEIGHT - (red + green + blue + cyan + white);
+
+        // Now draw the column.
+        int y = 0;
+        for (int u = 0; u < left; u++) img.SetPixel32(xpos, y++, 0x333333FF);
+        for (int u = 0; u < white; u++) img.SetPixel32(xpos, y++, 0xFFFFFFFF);
+        for (int u = 0; u < cyan; u++) img.SetPixel32(xpos, y++, 0x00AAAAFF);
+        for (int u = 0; u < blue; u++) img.SetPixel32(xpos, y++, 0x3333AAFF);
+        for (int u = 0; u < green; u++) img.SetPixel32(xpos, y++, 0x33AA33FF);
+        for (int u = 0; u < red; u++) img.SetPixel32(xpos, y++, 0x883333FF);
+        xpos++;
+      }
+
+      // XXX Since we can often skip the Try phase now, maybe this
+      // should be in its own thread.
+      if (status_per.ShouldRun()) {
+        PrintStats();
+      }
+
+      {
+        MutexLock ml(&m);
+        if (should_die) {
+          string filename = StringPrintf("progress.%llu.png", start_idx);
+          img.Save(filename);
+          status.Printf("Wrote %s\n", filename.c_str());
+
+          // Get the fractions other than pending.
+          // double HEIGHT_SCALE = HEIGHT / EPOCH_SIZE;
+          auto HeightOf = [](double ctr) {
+              return (int)std::round((ctr / EPOCH_SIZE) * HEIGHT);
+            };
+          int red = HeightOf(done_ineligible);
+          int green = HeightOf(triple_pending_ways);
+          int blue = HeightOf(done_gpu_filtered);
+          int cyan = HeightOf(pending_try);
+          int white = HeightOf(done_full_try);
+
+          int left = HEIGHT - (red + green + blue + cyan + white);
+
+          status.Printf(
+              "\n\n\n\n"
+              AGREY("%d") " " ARED("%d") " " AGREEN("%d") " " ABLUE("%d")
+              ACYAN("%d") " " AWHITE("%d") "\n\n\n\n",
+              left, red, green, blue, cyan, white);
+
+          return;
+        }
+      }
+    }
   }
 
   void TryThread() {
@@ -781,13 +883,9 @@ struct SOS {
         }
 
         recent_try_size = original_batch_size;
-        done += original_batch_size;
-        triples_done += original_batch_size;
-        // XXX Since we can often skip the Try phase now, maybe this
-        // should be in its own thread.
-        if (status_per.ShouldRun()) {
-          PrintStats();
-        }
+
+        done_full_try += original_batch_size;
+        pending_try -= original_batch_size;
       }
     }
   }
@@ -833,6 +931,8 @@ struct SOS {
         {
           MutexLock ml(&m);
           stolen += batchopt.value().size();
+          triple_pending_ways -= batchopt.value().size();
+          pending_try += batchopt.value().size();
           num_threads = work_stealing_threads;
         }
       }
@@ -853,6 +953,7 @@ struct SOS {
       gpu_threads.emplace_back(&GPUThread, this, i + 1);
     std::thread try_thread(&TryThread, this);
     std::thread steal_thread(&StealThread, this);
+    std::thread status_thread(&StatusThread, this, start);
 
     ResetCounters();
     factor_comp->
@@ -866,10 +967,9 @@ struct SOS {
           todo_gpu.reserve(UNROLL_SIZE);
 
           int local_too_big = 0;
-          int local_triples = 0;
-          int local_done_nways = 0;
-          int local_ineligible = 0;
-          int local_done = 0;
+          int local_eligible_triples = 0;
+          int local_pending_try = 0;
+          int local_done_ineligible = 0;
 
           for (uint64_t minor_idx = 0; minor_idx < UNROLL_SIZE; minor_idx++) {
             const uint64_t num = unroll_start + minor_idx;
@@ -887,14 +987,13 @@ struct SOS {
                 try_queue->WaitAdd({std::move(tryme)});
 
                 local_too_big++;
-                local_triples++;
-                local_done_nways++;
+                local_eligible_triples++;
+                local_pending_try++;
               } else {
                 todo_gpu.emplace_back(num, nways);
               }
             } else {
-              local_ineligible++;
-              local_done++;
+              local_done_ineligible++;
             }
           }
 
@@ -906,16 +1005,16 @@ struct SOS {
           {
             MutexLock ml(&m);
             // Work done in this thread
+            pending -= UNROLL_SIZE;
             too_big += local_too_big;
-            triples += local_triples;
-            done_nways += local_done_nways;
+            eligible_triples += local_eligible_triples;
+            pending_try += local_pending_try;
 
             // Added to GPU in batch
-            triples += todo_gpu.size();
+            triple_pending_ways += todo_gpu.size();
 
             // Ineligible
-            ineligible += local_ineligible;
-            done += local_done;
+            done_ineligible += local_done_ineligible;
           }
         });
 
@@ -944,6 +1043,13 @@ struct SOS {
     }
     try_thread.join();
 
+    {
+      MutexLock ml(&m);
+      should_die = true;
+    }
+    status.Printf("Done! Join status thread.\n");
+    status_thread.join();
+
     status.Printf(AGREEN("Done with epoch!") "\n");
 
     status.Printf(AWHITE("Factor autoparallel histo") ":\n");
@@ -954,8 +1060,9 @@ struct SOS {
     double sec = timer.Seconds();
     status.Printf("CPU stole " AGREEN("%lld")
                   " work units from GPU (" ACYAN("%.2f") "%%)\n",
-                  stolen, (100.0 * stolen) / triples);
-    status.Printf("Total triples: %llu/%llu\n", triples, EPOCH_SIZE);
+                  stolen, (100.0 * stolen) / eligible_triples);
+    status.Printf("Eligible triples: %llu/%llu\n",
+                  eligible_triples, EPOCH_SIZE);
     status.Printf(ARED("%llu") " (%.2f%%) were too big.\n",
                   too_big, (too_big * 100.0) / EPOCH_SIZE);
     status.Printf(AGREEN("Done") " in %s. (%s/ea.)\n",
@@ -973,7 +1080,7 @@ struct SOS {
       Interesting(
           StringPrintf("EPOCH %llu %llu %llu "
                        "%lld %lld %lld %lld\n",
-                       start, EPOCH_SIZE, triples,
+                       start, EPOCH_SIZE, eligible_triples,
                        rf, rff, rhh, raa));
 
       FILE *f = fopen("sos.txt", "ab");

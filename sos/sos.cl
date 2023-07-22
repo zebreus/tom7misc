@@ -206,4 +206,3 @@ __kernel void NWaysMerge(__global const uint64_t *restrict sums,
 
   out_size[sum_idx] = num_ways * 2;
 }
-

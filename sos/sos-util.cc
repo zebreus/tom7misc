@@ -139,7 +139,8 @@ int ChaiWahWuNoFilter(const uint64_t sum) {
   int first = AllEvenPowers() ? 1 : 0;
   // PERF: For this form, we also know what the sum of squares is,
   // so we could do this and skip kernel1. But that phase is only
-  // 0.38% of the time spent in the GPU.
+  // 0.38% of the time spent in the GPU. (And we don't even do it
+  // for the new "merge" kernel.)
 
   // (((m:=prod(1 if p==2 else (e+1 if p&3==1 else (e+1)&1)
   //   for p, e in f.items()))
