@@ -554,11 +554,21 @@ struct SOS {
   std::unique_ptr<AutoParallelComp> try_comp;
   std::unique_ptr<GPUMethod> ways_gpu;
   std::unique_ptr<TryFilterGPU> tryfilter_gpu;
+  std::unique_ptr<EligibleFilterGPU> eligiblefilter_gpu;
 
+  // Pre-filtered; ready to have the number of ways computed on CPU.
+  // Start number, then bitmask of numbers that can be skipped.
+  std::unique_ptr<
+    WorkQueue<std::pair<uint64_t, std::vector<uint8_t>>>
+    > nways_queue;
+
+  // Eligible. Ready to produce the actual ways on GPU.
   // An element is a number and its expected number of ways.
   std::unique_ptr<
     BatchedWorkQueue<std::pair<uint64_t, uint32_t>>
     > ways_queue;
+
+  // Candidate for full try.
   std::unique_ptr<
     WorkQueue<std::vector<TryMe>>
     > try_queue;
@@ -572,6 +582,8 @@ struct SOS {
     ways_gpu.reset(new GPUMethod(cl, GPU_HEIGHT));
     tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_HEIGHT));
 
+    nways_queue.reset(
+        new WorkQueue<std::pair<uint64_t, std::vector<uint8_t>>>);
     ways_queue.reset(
         new BatchedWorkQueue<std::pair<uint64_t, uint32_t>>(GPU_HEIGHT));
     try_queue.reset(new WorkQueue<std::vector<TryMe>>());
@@ -661,7 +673,8 @@ struct SOS {
   uint64_t pending = EPOCH_SIZE;
   // Done. Many are rejected because they can't be written as the sum of
   // squares enough ways.
-  uint64_t done_ineligible = 0;
+  uint64_t done_ineligible_gpu = 0;
+  uint64_t done_ineligible_cpu = 0;
   // Waiting for ways calculation.
   uint64_t triple_pending_ways = 0;
   // Filtered out by GPU TryFilter.
@@ -671,7 +684,8 @@ struct SOS {
 
   // Must hold lock.
   uint64_t NumDone() {
-    return done_ineligible + done_gpu_filtered + done_full_try;
+    return done_ineligible_cpu + done_ineligible_gpu + done_gpu_filtered +
+      done_full_try;
   }
 
   int work_stealing_threads = STEADY_WORK_STEALING_THREADS;
@@ -687,7 +701,8 @@ struct SOS {
   void PrintStats() {
     MutexLock ml(&m);
     uint64_t done = NumDone();
-    uint64_t tested = eligible_triples + done_ineligible;
+    uint64_t tested = eligible_triples + done_ineligible_cpu +
+      done_ineligible_gpu;
     double pct = (eligible_triples * 100.0)/(double)tested;
     double sec = timer.Seconds();
     double nps = done / sec;
@@ -731,7 +746,8 @@ struct SOS {
         Util::UnsignedWithCommas(eligible_triples).c_str());
 
     // Get the fractions other than pending.
-    double red = (100.0 * done_ineligible) / EPOCH_SIZE;
+    double blood = (100.0 * done_ineligible_gpu) / EPOCH_SIZE;
+    double red = (100.0 * done_ineligible_cpu) / EPOCH_SIZE;
     double green = (100.0 * triple_pending_ways) / EPOCH_SIZE;
     double blue = (100.0 * done_gpu_filtered) / EPOCH_SIZE;
     double cyan = (100.0 * pending_try) / EPOCH_SIZE;
@@ -740,12 +756,13 @@ struct SOS {
 
     string line5 =
       StringPrintf(AGREY("%.1f%% left") " "
-                   ARED("%.1f%% inel") " "
-                   AGREEN("%.1f%% pend ways") " "
+                   AFGCOLOR(140, 10, 10, "%.1f%% igpu") " "
+                   ARED("%.1f%% icpu") " "
+                   AGREEN("%.1f%% pways") " "
                    ABLUE("%.1f%% filt gpu") " "
-                   ACYAN("%.1f%% pend try") " "
-                   AWHITE("%.1f%% full try") "\n",
-                   black, red, green, blue, cyan, white);
+                   ACYAN("%.1f%% ptry") " "
+                   AWHITE("%.1f%% full") "\n",
+                   black, blood, red, green, blue, cyan, white);
 
     string line6 = ANSI::ProgressBar(done, EPOCH_SIZE, info, sec) + "\n";
 
@@ -771,13 +788,14 @@ struct SOS {
         auto HeightOf = [](double ctr) {
             return (int)std::round((ctr / EPOCH_SIZE) * HEIGHT);
           };
-        int red = HeightOf(done_ineligible);
+        int blood = HeightOf(done_ineligible_gpu);
+        int red = HeightOf(done_ineligible_cpu);
         int green = HeightOf(triple_pending_ways);
         int blue = HeightOf(done_gpu_filtered);
         int cyan = HeightOf(pending_try);
         int white = HeightOf(done_full_try);
 
-        int left = HEIGHT - (red + green + blue + cyan + white);
+        int left = HEIGHT - (blood + red + green + blue + cyan + white);
 
         // Now draw the column.
         int y = 0;
@@ -787,6 +805,7 @@ struct SOS {
         for (int u = 0; u < blue; u++) img.SetPixel32(xpos, y++, 0x3333AAFF);
         for (int u = 0; u < green; u++) img.SetPixel32(xpos, y++, 0x33AA33FF);
         for (int u = 0; u < red; u++) img.SetPixel32(xpos, y++, 0x883333FF);
+        for (int u = 0; u < blood; u++) img.SetPixel32(xpos, y++, 0x440000FF);
         xpos++;
       }
 
@@ -808,19 +827,22 @@ struct SOS {
           auto HeightOf = [](double ctr) {
               return (int)std::round((ctr / EPOCH_SIZE) * HEIGHT);
             };
-          int red = HeightOf(done_ineligible);
+          int blood = HeightOf(done_ineligible_gpu);
+          int red = HeightOf(done_ineligible_cpu);
           int green = HeightOf(triple_pending_ways);
           int blue = HeightOf(done_gpu_filtered);
           int cyan = HeightOf(pending_try);
           int white = HeightOf(done_full_try);
 
-          int left = HEIGHT - (red + green + blue + cyan + white);
+          int left = HEIGHT - (blood + red + green + blue + cyan + white);
 
           status.Printf(
               "\n\n\n\n"
-              AGREY("%d") " " ARED("%d") " " AGREEN("%d") " " ABLUE("%d")
+              AGREY("%d") " "
+              AFGCOLOR(140, 10, 10, "%d") " "
+              ARED("%d") " " AGREEN("%d") " " ABLUE("%d")
               ACYAN("%d") " " AWHITE("%d") "\n\n\n\n",
-              left, red, green, blue, cyan, white);
+              left, blood, red, green, blue, cyan, white);
 
           return;
         }
@@ -939,6 +961,90 @@ struct SOS {
     }
   }
 
+  void NWaysThread() {
+
+    for (;;) {
+      std::optional<std::pair<uint64_t, std::vector<uint8_t>>> batchopt =
+        nways_queue->WaitGet();
+
+      if (!batchopt.has_value()) {
+        status.Printf("NWays queue is done.\n");
+        return;
+      }
+
+      // Otherwise, rip over that thing.
+
+      const auto &[start, bitmask] = batchopt.value();
+      factor_comp->
+        ParallelComp(
+            bitmask.size(),
+            [this, start, &bitmask](int byte_idx) {
+              int local_too_big = 0;
+              int local_eligible_triples = 0;
+              int local_pending_try = 0;
+              int local_done_ineligible_cpu = 0;
+              std::vector<std::pair<uint64_t, uint32_t>> todo_gpu;
+
+              // Do the whole byte.
+              const uint64_t base_sum = start + byte_idx * 8;
+              const uint8_t byte = bitmask[byte_idx];
+
+              // PERF might want to do multiple bytes at a time...
+              for (int i = 0; i < 8; i++) {
+                // Skip ones that were filtered.
+                if (byte & (1 << (7 - i))) continue;
+
+                const uint64_t sum = base_sum + i;
+
+                // PERF can skip some of the tests we know were already
+                // done on GPU.
+                const int nways = ChaiWahWu(sum);
+
+                if (nways >= 3) {
+                  if (nways > GPUMethod::MAX_WAYS) {
+                    // Do on CPU.
+                    std::vector<std::pair<uint64_t, uint64_t>> ways =
+                      NSoks2(sum, nways);
+                    TryMe tryme;
+                    tryme.num = sum;
+                    tryme.squareways = std::move(ways);
+                    try_queue->WaitAdd({std::move(tryme)});
+
+                    local_too_big++;
+                    local_eligible_triples++;
+                    local_pending_try++;
+                  } else {
+                    todo_gpu.emplace_back(sum, nways);
+                  }
+                } else {
+                  local_done_ineligible_cpu++;
+                }
+              }
+
+              for (const auto &p : todo_gpu) {
+                // PERF batch add
+                ways_queue->WaitAdd(p);
+              }
+
+              {
+                MutexLock ml(&m);
+                // Work done in this thread
+                pending -= 8;
+                done_ineligible_gpu += std::popcount<uint8_t>(byte);
+                too_big += local_too_big;
+                eligible_triples += local_eligible_triples;
+                pending_try += local_pending_try;
+
+                // Added to GPU in batch
+                triple_pending_ways += todo_gpu.size();
+
+                // Ineligible
+                done_ineligible_cpu += local_done_ineligible_cpu;
+              }
+            });
+    }
+  }
+
   void RunEpoch(uint64_t start) {
     CHECK(cl != nullptr);
 
@@ -954,70 +1060,22 @@ struct SOS {
     std::thread try_thread(&TryThread, this);
     std::thread steal_thread(&StealThread, this);
     std::thread status_thread(&StatusThread, this, start);
+    std::thread nways_thread(&NWaysThread, this);
 
     ResetCounters();
-    factor_comp->
-      ParallelComp(
-        EPOCH_INDICES,
-        [this, start](uint64_t major_idx) {
-          const uint64_t unroll_start = start + (major_idx * UNROLL_SIZE);
 
-          // Run unrolled inner loop without taking locks so often.
-          std::vector<std::pair<uint64_t, uint32_t>> todo_gpu;
-          todo_gpu.reserve(UNROLL_SIZE);
+    // XXX
+    constexpr size_t EPOCH_CHUNK = 1000000 * 8;
+    static_assert(EPOCH_SIZE % EPOCH_CHUNK == 0);
+    for (uint64_t u = 0; u < EPOCH_SIZE; u += EPOCH_CHUNK) {
+      nways_queue->WaitAdd(
+          std::make_pair(start + u,
+                         std::vector<uint8_t>(EPOCH_CHUNK / 8, 0)));
+    }
+    nways_queue->MarkDone();
 
-          int local_too_big = 0;
-          int local_eligible_triples = 0;
-          int local_pending_try = 0;
-          int local_done_ineligible = 0;
-
-          for (uint64_t minor_idx = 0; minor_idx < UNROLL_SIZE; minor_idx++) {
-            const uint64_t num = unroll_start + minor_idx;
-            const int nways = ChaiWahWu(num);
-
-            if (nways >= 3) {
-
-              if (nways > GPUMethod::MAX_WAYS) {
-                // Do on CPU.
-                std::vector<std::pair<uint64_t, uint64_t>> ways =
-                  NSoks2(num, nways);
-                TryMe tryme;
-                tryme.num = num;
-                tryme.squareways = std::move(ways);
-                try_queue->WaitAdd({std::move(tryme)});
-
-                local_too_big++;
-                local_eligible_triples++;
-                local_pending_try++;
-              } else {
-                todo_gpu.emplace_back(num, nways);
-              }
-            } else {
-              local_done_ineligible++;
-            }
-          }
-
-          for (const auto &p : todo_gpu) {
-            // PERF batch add
-            ways_queue->WaitAdd(p);
-          }
-
-          {
-            MutexLock ml(&m);
-            // Work done in this thread
-            pending -= UNROLL_SIZE;
-            too_big += local_too_big;
-            eligible_triples += local_eligible_triples;
-            pending_try += local_pending_try;
-
-            // Added to GPU in batch
-            triple_pending_ways += todo_gpu.size();
-
-            // Ineligible
-            done_ineligible += local_done_ineligible;
-          }
-        });
-
+    nways_thread.join();
+    status.Printf("Nways thread done.\n");
     ways_queue->MarkDone();
 
     {
