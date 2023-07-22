@@ -74,10 +74,10 @@ __kernel void PerfectSquares(__global const uint64_t *restrict sums,
 // Try to find b such that a^2 + b^2 = sum, with a <= b.
 // If successful, output (a,b) to out[out_size] and increment
 // out_size by two.
-__kernel void NWays(uint64_t base_trialsquare,
-                    __global const uint64_t *restrict sums,
-                    __global atomic_uint32_t *restrict out_size,
-                    __global uint64_t *restrict out) {
+__kernel void Ways(uint64_t base_trialsquare,
+                   __global const uint64_t *restrict sums,
+                   __global atomic_uint32_t *restrict out_size,
+                   __global uint64_t *restrict out) {
   #if TRANSPOSE
   #define IN_X 1
   #define IN_Y 0
@@ -137,9 +137,9 @@ __kernel void NWays(uint64_t base_trialsquare,
 
 
 // Same output behavior as above; different approach.
-__kernel void NWaysMerge(__global const uint64_t *restrict sums,
-                         __global uint32_t *restrict out_size,
-                         __global uint64_t *restrict out) {
+__kernel void WaysMerge(__global const uint64_t *restrict sums,
+                        __global uint32_t *restrict out_size,
+                        __global uint64_t *restrict out) {
   const int sum_idx = get_global_id(0);
   const uint64_t sum = sums[sum_idx];
   const uint32_t out_row_base = sum_idx * MAX_WAYS * 2;

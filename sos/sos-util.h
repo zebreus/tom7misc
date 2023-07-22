@@ -183,7 +183,7 @@ ReferenceValidate3(uint64_t sum);
 // get that many.
 // Brute force, but with smarter limits on search.
 std::vector<std::pair<uint64_t, uint64_t>>
-BruteGetNWays(uint64_t sum, int num_expected = -1);
+BruteGetWays(uint64_t sum, int num_expected = -1);
 
 // Another algorithm for the above (based on some Maple code), which
 // still does an O(sqrt(n)) search, but with even smarter limits.

@@ -267,7 +267,7 @@ ReferenceValidate3(uint64_t sum) {
 
 
 std::vector<std::pair<uint64_t, uint64_t>>
-BruteGetNWays(uint64_t sum, int num_expected) {
+BruteGetWays(uint64_t sum, int num_expected) {
   if (num_expected == 0) return {};
   // We use 0 as a sentinel value below, so get that out of the way.
   // PERF: We could request this as a precondition.

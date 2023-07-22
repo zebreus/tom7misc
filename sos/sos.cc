@@ -39,7 +39,7 @@ using int64 = int64_t;
 // Using this for epoch 2,264,000,000,000+
 // (Still need to prove correctness, but it passes lots of
 // tests)
-using GPUMethod = NWaysGPUMerge;
+using GPUMethod = WaysGPUMerge;
 
 
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
@@ -552,13 +552,13 @@ private:
 struct SOS {
   std::unique_ptr<AutoParallelComp> factor_comp;
   std::unique_ptr<AutoParallelComp> try_comp;
-  std::unique_ptr<GPUMethod> nways_gpu;
+  std::unique_ptr<GPUMethod> ways_gpu;
   std::unique_ptr<TryFilterGPU> tryfilter_gpu;
 
   // An element is a number and its expected number of ways.
   std::unique_ptr<
     BatchedWorkQueue<std::pair<uint64_t, uint32_t>>
-    > nways_queue;
+    > ways_queue;
   std::unique_ptr<
     WorkQueue<std::vector<TryMe>>
     > try_queue;
@@ -569,10 +569,10 @@ struct SOS {
     factor_comp.reset(new AutoParallelComp(20, 1000, false));
     try_comp.reset(new AutoParallelComp(12, 1000, false));
 
-    nways_gpu.reset(new GPUMethod(cl, GPU_HEIGHT));
+    ways_gpu.reset(new GPUMethod(cl, GPU_HEIGHT));
     tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_HEIGHT));
 
-    nways_queue.reset(
+    ways_queue.reset(
         new BatchedWorkQueue<std::pair<uint64_t, uint32_t>>(GPU_HEIGHT));
     try_queue.reset(new WorkQueue<std::vector<TryMe>>());
   }
@@ -580,7 +580,7 @@ struct SOS {
   void GPUThread(int thread_idx) {
     for (;;) {
       std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
-        nways_queue->WaitGet();
+        ways_queue->WaitGet();
 
       if (!batchopt.has_value()) {
         // Done!
@@ -599,7 +599,7 @@ struct SOS {
         batch.push_back(GPUMethod::dummy);
       }
       std::vector<std::vector<std::pair<uint64_t, uint64_t>>> res =
-        nways_gpu->GetNWays(batch);
+        ways_gpu->GetWays(batch);
 
       // Rejoin with the number. PERF: We could avoid some copying here
       // if it's a bottleneck.
@@ -662,7 +662,7 @@ struct SOS {
   // Done. Many are rejected because they can't be written as the sum of
   // squares enough ways.
   uint64_t done_ineligible = 0;
-  // Waiting for nways calculation.
+  // Waiting for ways calculation.
   uint64_t triple_pending_ways = 0;
   // Filtered out by GPU TryFilter.
   uint64_t done_gpu_filtered = 0;
@@ -701,7 +701,7 @@ struct SOS {
     const int64_t rhh = READ(rejected_hh);
     const int64_t raa = READ(rejected_aa);
 
-    const int64_t gpu_size = nways_queue->Size();
+    const int64_t gpu_size = ways_queue->Size();
     const int64_t try_size = try_queue->Size();
 
     string line2 =
@@ -907,7 +907,7 @@ struct SOS {
         }
       } else {
         std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
-          nways_queue->WaitGet();
+          ways_queue->WaitGet();
 
         if (!batchopt.has_value()) {
           // Done -- but let the GPU mark the queue as done.
@@ -999,7 +999,7 @@ struct SOS {
 
           for (const auto &p : todo_gpu) {
             // PERF batch add
-            nways_queue->WaitAdd(p);
+            ways_queue->WaitAdd(p);
           }
 
           {
@@ -1018,7 +1018,7 @@ struct SOS {
           }
         });
 
-    nways_queue->MarkDone();
+    ways_queue->MarkDone();
 
     {
       MutexLock ml(&m);

@@ -25,7 +25,7 @@
 // Runs many in batch. Even though there's a lot of parallelism for
 // a single number, it does not even come close to beating the CPU
 // unless we do a 2D workload.
-struct NWaysGPU {
+struct WaysGPU {
   // This code needs to allocate a rectangular buffer in order to write
   // the ways for each input. This gives the width of that buffer, and
   // then also sets the maximum that we could output.
@@ -38,18 +38,18 @@ struct NWaysGPU {
   CL *cl = nullptr;
   int height = 0;
 
-  NWaysGPU(CL *cl, int height) : cl(cl), height(height) {
+  WaysGPU(CL *cl, int height) : cl(cl), height(height) {
     std::string defines = StringPrintf("#define MAX_WAYS %d\n"
                                        "#define TRANSPOSE %d\n",
                                        MAX_WAYS,
                                        TRANSPOSE);
     std::string kernel_src = defines + Util::ReadFile("sos.cl");
     const auto &[prog, kernels] =
-      cl->BuildKernels(kernel_src, {"PerfectSquares", "NWays"}, false);
+      cl->BuildKernels(kernel_src, {"PerfectSquares", "Ways"}, false);
     CHECK(prog != 0);
     program = prog;
     kernel1 = FindOrDefault(kernels, "PerfectSquares", 0);
-    kernel2 = FindOrDefault(kernels, "NWays", 0);
+    kernel2 = FindOrDefault(kernels, "Ways", 0);
     CHECK(kernel1 != 0);
     CHECK(kernel2 != 0);
 
@@ -115,7 +115,7 @@ struct NWaysGPU {
   // Ways should be > 0. Computation is proportional to the largest sum,
   // so this is intended for use with batches of sums that are of similar
   // magnitude.
-  GetNWays(const std::vector<std::pair<uint64_t, uint32_t>> &inputs) {
+  GetWays(const std::vector<std::pair<uint64_t, uint32_t>> &inputs) {
     TIMER_START(all);
     CHECK(inputs.size() == height) << inputs.size() << " " << height;
 
@@ -358,7 +358,7 @@ struct NWaysGPU {
     return ret;
   }
 
-  ~NWaysGPU() {
+  ~WaysGPU() {
     CHECK_SUCCESS(clReleaseKernel(kernel1));
     CHECK_SUCCESS(clReleaseKernel(kernel2));
     CHECK_SUCCESS(clReleaseProgram(program));
@@ -374,7 +374,7 @@ struct NWaysGPU {
 // Another attempt. This is a 1D kernel, which completely avoids
 // square roots, but has to do a loop. Slower on the CPU, but
 // it is significantly faster than the approach above on GPU.
-struct NWaysGPUMerge {
+struct WaysGPUMerge {
   // This code needs to allocate a rectangular buffer in order to write
   // the ways for each input. This gives the width of that buffer, and
   // then also sets the maximum that we could output.
@@ -387,12 +387,12 @@ struct NWaysGPUMerge {
   CL *cl = nullptr;
   int height = 0;
 
-  NWaysGPUMerge(CL *cl, int height) : cl(cl), height(height) {
+  WaysGPUMerge(CL *cl, int height) : cl(cl), height(height) {
     std::string defines = StringPrintf("#define MAX_WAYS %d\n",
                                        MAX_WAYS);
     std::string kernel_src = defines + Util::ReadFile("sos.cl");
     const auto &[prog, kern] =
-      cl->BuildOneKernel(kernel_src, {"NWaysMerge"}, false);
+      cl->BuildOneKernel(kernel_src, {"WaysMerge"}, false);
     CHECK(prog != 0);
     program = prog;
     CHECK(kern != 0);
@@ -460,7 +460,7 @@ struct NWaysGPUMerge {
   // Ways should be > 0. Computation is proportional to the largest sum,
   // so this is intended for use with batches of sums that are of similar
   // magnitude.
-  GetNWays(const std::vector<std::pair<uint64_t, uint32_t>> &inputs) {
+  GetWays(const std::vector<std::pair<uint64_t, uint32_t>> &inputs) {
     TIMER_START(all);
     CHECK(inputs.size() == height) << inputs.size() << " " << height;
 
@@ -620,7 +620,7 @@ struct NWaysGPUMerge {
     return ret;
   }
 
-  ~NWaysGPUMerge() {
+  ~WaysGPUMerge() {
     CHECK_SUCCESS(clReleaseKernel(kernel));
     CHECK_SUCCESS(clReleaseProgram(program));
 

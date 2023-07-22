@@ -69,7 +69,7 @@ double OptimizeMe(double h) {
   int height = (int)std::round(h);
   if (height < 1 || height > GLOBAL_BATCH_SIZE) return 9999999.0;
 
-  GPUMethod nways_gpu(cl, height);
+  GPUMethod ways_gpu(cl, height);
 
   double sec = 0.0;
   for (int p = 0; p < NUM_PASSES; p++) {
@@ -82,7 +82,7 @@ double OptimizeMe(double h) {
 
     Timer run_timer;
     std::vector<std::vector<std::pair<uint64_t, uint64_t>>> res =
-      nways_gpu.GetNWays(batch);
+      ways_gpu.GetWays(batch);
     sec += run_timer.Seconds();
   }
 
@@ -140,13 +140,13 @@ static void Optimize() {
 }
 
 template<class GPUMethod, bool USE_CPU, int NUM_BATCHES>
-static void TestNWays(const char * method) {
+static void TestWays(const char * method) {
   printf("Test...\n");
   // const int height = 16384;
   // static constexpr int GPU_HEIGHT = 56002;
   static constexpr int GPU_HEIGHT = 65536 * 2;
   static constexpr uint64_t SUM_START = 800'000'000'000ULL;
-  GPUMethod nways_gpu(cl, GPU_HEIGHT);
+  GPUMethod ways_gpu(cl, GPU_HEIGHT);
   std::map<int, int> too_big;
 
   double batch_sec = 0.0;
@@ -205,7 +205,7 @@ static void TestNWays(const char * method) {
 
     Timer gpu_timer;
     std::vector<std::vector<std::pair<uint64_t, uint64_t>>> outs_gpu =
-      nways_gpu.GetNWays(batch);
+      ways_gpu.GetWays(batch);
     gpu_sec += gpu_timer.Seconds();
 
     CHECK((int)outs_gpu.size() == GPU_HEIGHT);
@@ -276,7 +276,7 @@ static void TestNWays(const char * method) {
          ANSI::Time(gpu_sec).c_str(),
          ANSI::Time(gpu_sec / (GPU_HEIGHT * NUM_BATCHES)).c_str());
 
-  nways_gpu.PrintTimers();
+  ways_gpu.PrintTimers();
 }
 
 static void TestTryFilter() {
@@ -343,10 +343,10 @@ int main(int argc, char **argv) {
   TestEligibleFilter();
   TestTryFilter();
 
-  TestNWays<NWaysGPUMerge, TEST_AGAINST_CPU, 16>("merge");
-  TestNWays<NWaysGPU, TEST_AGAINST_CPU, 16>("orig2d");
+  TestWays<WaysGPUMerge, TEST_AGAINST_CPU, 16>("merge");
+  TestWays<WaysGPU, TEST_AGAINST_CPU, 16>("orig2d");
 
-  // Optimize<NWaysGPU>();
+  // Optimize<WaysGPU>();
 
   printf("OK\n");
   return 0;

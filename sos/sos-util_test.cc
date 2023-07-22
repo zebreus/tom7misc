@@ -170,7 +170,7 @@ static void TestCWWBrute() {
       [&timer, &bar, &wrong, &m](int idx) {
         int sum = START + idx;
         int num = ChaiWahWu(sum);
-        auto ways = BruteGetNWays(sum);
+        auto ways = BruteGetWays(sum);
 
         CHECK(ways.size() == num) <<
           sum << " " << ways.size() << " " << num;
@@ -448,11 +448,11 @@ int main(int argc, char **argv) {
   BenchMSOSFancy();
   MaybeSumOfSquaresRecall();
 
-  TestSimple("brute", BruteGetNWays);
+  TestSimple("brute", BruteGetWays);
   TestSimple("nsoks2", NSoks2);
   TestSimple("merge", GetWaysMerge);
 
-  TestGetWays("brute", BruteGetNWays);
+  TestGetWays("brute", BruteGetWays);
   TestGetWays("nsoks2", NSoks2);
   TestGetWays("merge", GetWaysMerge);
 
