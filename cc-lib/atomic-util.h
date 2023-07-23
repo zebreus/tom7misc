@@ -48,23 +48,20 @@ public:
 
   // Increment the logical counter value.
   void IncrementBy(size_t off, uint64_t by) {
-    // must be one of the 8 counters
+    // Must be one of the 8 counters.
     if (off != (off & 7)) __builtin_unreachable();
     for (;;) {
       std::atomic<uint64_t> &counter = buckets[idx].counters[off];
 
       // Try storing without a lock.
       uint64_t cur = counter.load();
+      // If the value in the cell is still cur (even if other
+      // concurrent writes changed it and then changed it back),
+      // we commit our increment.
       if (counter.compare_exchange_strong(cur, cur + by)) {
         // Success!
         return;
       }
-
-      // compare-and-exchange approach requires that the increment
-      // be nonzero (or else we'd loop forever thinking there's
-      // contention). But since this is rare, only check it after one
-      // such failure.
-      if (by == 0) return;
 
       // CAS failure indicates contention,
       // so try again at a different index.
@@ -76,7 +73,7 @@ public:
 
   // Get the counter's value. Has to sum up all the buckets.
   uint64_t Read(size_t off) const {
-    // must be one of the 8 counters
+    // Must be one of the 8 counters.
     if (off != (off & 7)) __builtin_unreachable();
 
     uint64_t sum = 0ULL;
@@ -88,7 +85,7 @@ public:
 
   // Reset the counter's value to zero.
   void Reset(size_t off) {
-    // must be one of the 8 counters
+    // Must be one of the 8 counters.
     if (off != (off & 7)) __builtin_unreachable();
 
     for (size_t i = 0; i < NUM_BUCKETS; i++) {

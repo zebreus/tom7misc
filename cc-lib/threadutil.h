@@ -9,6 +9,7 @@
 #include <thread>
 #include <type_traits>
 #include <vector>
+#include <cmath>
 
 #if __cplusplus >= 201703L
 // shared_mutex only available in C++17 and later.
@@ -162,7 +163,7 @@ void ParallelComp(int64_t num,
   // Thread applies f repeatedly until there are no more indices.
   // PERF: Can just start each thread knowing its start index, and avoid
   // the synchronization overhead at startup.
-  auto th = [&index_m, &next_index, num, &f]() {
+  auto th = [&index_m, &next_index, max_concurrency, num, &f]() {
     for (;;) {
       index_m.lock();
       if (next_index == num) {
@@ -171,14 +172,29 @@ void ParallelComp(int64_t num,
         index_m.unlock();
         return;
       }
-      // PERF: Locking can be pretty expensive if there's a lot of
+      // Locking can be pretty expensive if there's a lot of
       // contention (if f is fast, for example). Likely better to
       // claim more than one index when we're far from the end.
-      int64_t my_index = next_index++;
+      int64_t num_left = num - next_index;
+      size_t my_batch_size = 1;
+      // Only consider batching if there are more remaining items
+      // than threads; otherwise we would starve threads for sure.
+      if (num_left > max_concurrency) {
+        // If every item took the same amount of time,
+        // we'd want to claim num_left/max_concurrency items here.
+        // But we want to be robust against randomly distributed
+        // slow tasks. So we reduce our optimism as we get closer
+        // to the end. PERF: Tune!
+        my_batch_size = std::max((size_t)(sqrtf(num_left) / max_concurrency),
+                                 (size_t)1);
+      }
+      int64_t my_index = next_index;
+      next_index += my_batch_size;
       index_m.unlock();
 
       // Do work, not holding mutex.
-      (void)f(my_index);
+      for (size_t i = 0; i < my_batch_size; i++)
+        (void)f(my_index + i);
     }
   };
 

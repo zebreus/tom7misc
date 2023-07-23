@@ -104,7 +104,7 @@ struct AutoParallelComp {
   void ParallelComp(int64_t num, const F &f) {
     // Break into batches, so that large calls can still do some
     // autotuning.
-    const int64_t MAX_BATCH_SIZE = max_parallelism * (int64_t)1000;
+    const int64_t MAX_BATCH_SIZE = max_parallelism * (int64_t)10000;
     for (int64_t start = 0; start < num; start += MAX_BATCH_SIZE) {
       const int64_t THIS_BATCH = std::min(MAX_BATCH_SIZE, num - start);
       ParallelCompInternal(THIS_BATCH,

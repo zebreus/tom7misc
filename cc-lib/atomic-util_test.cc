@@ -27,6 +27,7 @@ static void TestCountersSimple() {
   CHECK(errors.Read() == 0);
 
   lines++;
+  lines += 0;
 
   CHECK(bytes.Read() == 3);
   CHECK(lines.Read() == 2);
