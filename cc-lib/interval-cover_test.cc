@@ -327,6 +327,41 @@ static void SetSpan() {
   OKPOINT(0, MAX64, "BYE", simple.GetPoint(1000));
 }
 
+static void SetSpan2() {
+  IntervalCover<bool> ic(false);
+  auto Print = [&ic]() {
+      printf("-----\n");
+      for (uint64_t pt = ic.First();
+           !ic.IsAfterLast(pt);
+           pt = ic.Next(pt)) {
+        auto span = ic.GetPoint(pt);
+        printf("%llu-%llu %s\n", span.start, span.end,
+               span.data ? "true" : "false");
+      }
+    };
+
+  ic.SetSpan(0, 100, true);
+  ic.SetSpan(100, 200, true);
+  ic.SetSpan(1000, 1100, true);
+  ic.SetSpan(600, 700, true);
+  Print();
+
+  CHECK(ic.GetPoint(1005).data);
+
+  CHECK(ic.GetPoint(0).data);
+  ic.SetSpan(0, 100, false);
+  CHECK(!ic.GetPoint(0).data);
+
+  CHECK(ic.GetPoint(100).data);
+  ic.SetSpan(100, 200, false);
+  CHECK(!ic.GetPoint(100).data);
+
+  ic.SetSpan(0, 100000, false);
+  CHECK(!ic.GetPoint(999).data);
+
+  Print();
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -337,6 +372,7 @@ int main(int argc, char **argv) {
   SimpleSplitting();
   SplitStress();
   SetSpan();
+  SetSpan2();
 
   printf("OK\n");
   return 0;

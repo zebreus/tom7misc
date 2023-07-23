@@ -41,4 +41,14 @@ static void FilterVector(std::vector<A> *vec, const F &f) {
   vec->resize(dst);
 }
 
+template<class A>
+static void ReverseVector(std::vector<A> *vec) {
+  std::vector<A> rev;
+  rev.reserve(vec->size());
+  for (size_t i = 0; i < vec->size(); i++) {
+    rev.push_back((*vec)[vec->size() - 1 - i]);
+  }
+  *vec = std::move(rev);
+}
+
 #endif

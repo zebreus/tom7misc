@@ -61,9 +61,18 @@ static void TestFilter() {
   CHECK(v[4] == "it");
 }
 
+static void TestReverse() {
+  std::vector<std::string> v = { "hello", "world", "yes" };
+  ReverseVector(&v);
+  CHECK(v[0] == "yes");
+  CHECK(v[1] == "world");
+  CHECK(v[2] == "hello");
+}
+
 int main(int argc, char **argv) {
   TestApp();
   TestFilter();
+  TestReverse();
   printf("OK\n");
   return 0;
 }

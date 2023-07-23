@@ -20,6 +20,7 @@
 #ifndef _CC_LIB_INTERVAL_COVER_H
 #define _CC_LIB_INTERVAL_COVER_H
 
+#include <optional>
 #include <vector>
 #include <map>
 #include <cstdint>
@@ -70,11 +71,11 @@ struct IntervalCover {
   void SetSpan(uint64_t start, uint64_t end, Data d);
 
   // Get the start of the very first span, which is always 0.
-  constexpr uint64_t First();
+  constexpr uint64_t First() const;
 
   // Returns true if this point starts after any interval.
   // This is just true for 2^64 - 1.
-  constexpr bool IsAfterLast(uint64_t pt);
+  constexpr bool IsAfterLast(uint64_t pt) const;
 
   // Get the start of the span that starts strictly after this
   // point. Should not be called for a point p where IsAfterLast(p)
@@ -89,6 +90,7 @@ struct IntervalCover {
   // map iterator.
   uint64_t Next(uint64_t pt) const;
 
+  // XXX should be like "IntersectsWith"
   template<class Other>
   static bool IntersectWith(const Span &mine,
                             const typename IntervalCover<Other>::Span &theirs,
@@ -110,6 +112,16 @@ struct IntervalCover {
   GetInterval(uint64_t pt);
   typename std::map<uint64_t, Data>::const_iterator
   GetInterval(uint64_t pt) const;
+
+  // Split at the point. Returns the span to the left, and the span to
+  // the right. If the split already exists; returns the existing spans.
+  // If 0, then the left component will be nullopt; if MAX64, the right
+  // will be nullopt. Caller must restore invariants, like these two spans
+  // may not have the same data!
+  std::pair<std::optional<typename std::map<uint64_t, D>::iterator>,
+            std::optional<typename std::map<uint64_t, D>::iterator>>
+  SplitAt(uint64_t pt);
+
 
   // Actual representation is an stl map with some invariants.
   std::map<uint64_t, Data> spans;
@@ -172,7 +184,7 @@ template<class D>
 IntervalCover<D>::IntervalCover(D d) : spans { { 0ULL, d } } {}
 
 template<class D>
-constexpr uint64_t IntervalCover<D>::First() {
+constexpr uint64_t IntervalCover<D>::First() const {
   return 0ULL;
 }
 
@@ -184,7 +196,7 @@ uint64_t IntervalCover<D>::Next(uint64_t pt) const {
 }
 
 template<class D>
-constexpr bool IntervalCover<D>::IsAfterLast(uint64_t pt) {
+constexpr bool IntervalCover<D>::IsAfterLast(uint64_t pt) const {
   return pt == MAX64;
 }
 
@@ -225,63 +237,96 @@ void IntervalCover<D>::SetSpan(uint64_t start, uint64_t end, D new_data) {
   // than some uint64_t.
   CHECK(!this->IsAfterLast(start));
 
-  // Save the data at the end point.
-  D end_data = GetInterval(end)->second;
+  // First, make sure that any overlapping at the ends is OK.
+  auto [lao, rao] = SplitAt(start);
+  auto [lbo, rbo] = SplitAt(end);
 
-  // printf("\nSetSpan %llu to %llu\n", start, end);
-  // DebugPrint();
+  if (rao.has_value()) rao.value()->second = new_data;
+  if (lbo.has_value()) lbo.value()->second = new_data;
 
-  // Make sure that starting from start, we have new_data.
-  SplitRight(start, new_data);
-
-  // printf("Split right at %llu:\n", start);
-  // DebugPrint();
-
-  // For any interval that overlaps this one, make sure it has
-  // new data. This will overshoot, but we fix that up with
-  // another SplitRight below. Intervals that are contained
-  // entirely within will get merged away.
-  for (uint64_t pos = Next(start); pos < end; pos = Next(pos)) {
+  // Now, for any intervals contained completely within this one,
+  // set them to the target data. This also restores invariants
+  // by merging intervals with the same data.
+  for (uint64_t pos = start; pos < end; pos = Next(pos)) {
     // This can't go off the end because pos is less than some
     // uint64_t, and only MAX64 is after last.
     CHECK(!this->IsAfterLast(pos));
 
     Span span = GetPoint(pos);
-    CHECK(span.start > start);
-    // Sets the data and merges if necessary.
-    SplitRight(span.start, new_data);
+    CHECK(span.start >= start);
+    if (span.end <= end) {
+      /*
+      printf("Set fully-contained interval [%llu,%llu).\n",
+             span.start, span.end);
+      */
+      SplitRight(span.start, new_data);
+    }
   }
-
-  // printf("Set data for covered intervals.\n");
-  // DebugPrint();
-
-  // Now make sure that the new span ends.
-  SplitRight(end, end_data);
-
-  // printf("Ended it:\n");
-  // DebugPrint();
 }
 
+template<class D>
+std::pair<std::optional<typename std::map<uint64_t, D>::iterator>,
+          std::optional<typename std::map<uint64_t, D>::iterator>>
+IntervalCover<D>::SplitAt(uint64_t pt) {
+  if (pt == 0) {
+    return std::make_pair(std::nullopt, std::make_optional(spans.begin()));
+  } else if (pt == MAX64) {
+    auto it = spans.end();
+    --it;
+    return std::make_pair(std::make_optional(it), std::nullopt);
+  }
 
+  auto it = spans.upper_bound(pt);
+  // Impossible; first interval starts at 0, the lowest uint64.
+  CHECK(it != spans.begin());
+  --it;
+
+  // Existing interval?
+  if (it->first == pt) {
+    // Impossible; we already checked!
+    CHECK(pt != 0 && it != spans.begin());
+    auto it2 = it;
+    --it;
+    return make_pair(it, it2);
+  }
+
+  // Not an existing interval. Create a new one with the same
+  // data (an illegal state!).
+  auto [it2, success] = spans.insert(make_pair(pt, it->second));
+  CHECK(success);
+  return make_pair(it, it2);
+}
+
+// XXX maybe can use SplitAt for this?
 template<class D>
 void IntervalCover<D>::SplitRight(uint64_t pt, D rhs) {
+  // printf("Splitright %llu\n", pt);
   // Find the interval in which pt lies.
   auto it = GetInterval(pt);
 
   // Avoid doing any work if we're splitting but would have to
   // merge back together immediately.
-  if (it->second == rhs)
-    return;
+  // if (it->second == rhs)
+  // return;
 
   // And if we're asking to split the interval exactly on
   // its start point, just replace the data.
   if (it->first == pt) {
-
+    // printf("it's update\n");
     // But do we need to merge left?
     if (it != spans.begin()) {
 
       auto prev = std::prev(it);
       if (prev->second == rhs) {
+        // printf("merge left\n");
+        // If merging left, we delete this interval, but then
+        // 'it' becomes the merged interval so we can continue
+        // merging right below.
+        spans.erase(it);
+        it = prev;
+      }
+
+      /*
         // If merging left, then just delete this interval.
         auto nextnext = spans.erase(it);
         // But now maybe prev and nextnext need to be merged?
@@ -295,19 +340,21 @@ void IntervalCover<D>::SplitRight(uint64_t pt, D rhs) {
         }
         // Anyway, we're done.
         return;
-      }
+      */
     }
 
     CHECK(it != spans.end());
 
     auto next = std::next(it);
-    if (next != spans.end() && next->second == rhs) {
+    // if (next != spans.end())
+    // printf("Next is %llu\n", next->first);
+    while (next != spans.end() && next->second == rhs) {
+      auto nextnext = std::next(next);
+      // printf("Delete %llu.\n", next->first);
       // Then just delete the next one, making it part of
       // this one.
       (void)spans.erase(next);
-      // We don't need to go on, because the one after that
-      // must be different from next. We already tested the
-      // case of merging left above.
+      next = nextnext;
     }
 
     // But do continue to set the data either way...
@@ -315,6 +362,7 @@ void IntervalCover<D>::SplitRight(uint64_t pt, D rhs) {
     return;
   }
 
+  // printf("(not update\n");
   // If there's a next interval and the new data is the same
   // as the next, then another simplification:
   auto next = std::next(it);
@@ -348,6 +396,8 @@ template<>
 void IntervalCover<std::string>::DebugPrint() const;
 template<>
 void IntervalCover<int>::DebugPrint() const;
+template<>
+void IntervalCover<bool>::DebugPrint() const;
 
 template<class D>
 void IntervalCover<D>::DebugPrint() const {
