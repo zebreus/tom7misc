@@ -41,6 +41,7 @@ using int64 = int64_t;
 // tests)
 using GPUMethod = WaysGPUMerge;
 
+static constexpr bool WRITE_IMAGE = false;
 
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
 
@@ -772,8 +773,11 @@ struct SOS {
 
   void StatusThread(uint64_t start_idx) {
     static constexpr int WIDTH = 1024 + 512, HEIGHT = 768;
-    ImageRGBA img(WIDTH, HEIGHT);
-    img.Clear32(0x000000FF);
+    std::unique_ptr<ImageRGBA> img;
+    if (WRITE_IMAGE) {
+      img.reset(new ImageRGBA(WIDTH, HEIGHT));
+      img->Clear32(0x000000FF);
+    }
     int xpos = 0;
     Periodically bar_per(0.5);
     for (;;) {
@@ -784,30 +788,39 @@ struct SOS {
       if (bar_per.ShouldRun()) {
         MutexLock ml(&m);
 
-        // Get the fractions other than pending.
-        // double HEIGHT_SCALE = HEIGHT / EPOCH_SIZE;
-        auto HeightOf = [](double ctr) {
-            return (int)std::round((ctr / EPOCH_SIZE) * HEIGHT);
-          };
-        int blood = HeightOf(done_ineligible_gpu);
-        int red = HeightOf(done_ineligible_cpu);
-        int green = HeightOf(triple_pending_ways);
-        int blue = HeightOf(done_gpu_filtered);
-        int cyan = HeightOf(pending_try);
-        int white = HeightOf(done_full_try);
+        if (img.get() != nullptr) {
+          // Get the fractions other than pending.
+          // double HEIGHT_SCALE = HEIGHT / EPOCH_SIZE;
+          auto HeightOf = [](double ctr) {
+              return (int)std::round((ctr / EPOCH_SIZE) * HEIGHT);
+            };
+          int blood = HeightOf(done_ineligible_gpu);
+          int red = HeightOf(done_ineligible_cpu);
+          int green = HeightOf(triple_pending_ways);
+          int blue = HeightOf(done_gpu_filtered);
+          int cyan = HeightOf(pending_try);
+          int white = HeightOf(done_full_try);
 
-        int left = HEIGHT - (blood + red + green + blue + cyan + white);
+          int left = HEIGHT - (blood + red + green + blue + cyan + white);
 
-        // Now draw the column.
-        int y = 0;
-        for (int u = 0; u < left; u++) img.SetPixel32(xpos, y++, 0x333333FF);
-        for (int u = 0; u < white; u++) img.SetPixel32(xpos, y++, 0xFFFFFFFF);
-        for (int u = 0; u < cyan; u++) img.SetPixel32(xpos, y++, 0x00AAAAFF);
-        for (int u = 0; u < blue; u++) img.SetPixel32(xpos, y++, 0x3333AAFF);
-        for (int u = 0; u < green; u++) img.SetPixel32(xpos, y++, 0x33AA33FF);
-        for (int u = 0; u < red; u++) img.SetPixel32(xpos, y++, 0x883333FF);
-        for (int u = 0; u < blood; u++) img.SetPixel32(xpos, y++, 0x440000FF);
-        xpos++;
+          // Now draw the column.
+          int y = 0;
+          for (int u = 0; u < left; u++)
+            img->SetPixel32(xpos, y++, 0x333333FF);
+          for (int u = 0; u < white; u++)
+            img->SetPixel32(xpos, y++, 0xFFFFFFFF);
+          for (int u = 0; u < cyan; u++)
+            img->SetPixel32(xpos, y++, 0x00AAAAFF);
+          for (int u = 0; u < blue; u++)
+            img->SetPixel32(xpos, y++, 0x3333AAFF);
+          for (int u = 0; u < green; u++)
+            img->SetPixel32(xpos, y++, 0x33AA33FF);
+          for (int u = 0; u < red; u++)
+            img->SetPixel32(xpos, y++, 0x883333FF);
+          for (int u = 0; u < blood; u++)
+            img->SetPixel32(xpos, y++, 0x440000FF);
+          xpos++;
+        }
       }
 
       // XXX Since we can often skip the Try phase now, maybe this
@@ -819,9 +832,11 @@ struct SOS {
       {
         MutexLock ml(&m);
         if (should_die) {
-          string filename = StringPrintf("progress.%llu.png", start_idx);
-          img.Save(filename);
-          status.Printf("Wrote %s\n", filename.c_str());
+          if (img.get() != nullptr) {
+            string filename = StringPrintf("progress.%llu.png", start_idx);
+            img->Save(filename);
+            status.Printf("Wrote %s\n", filename.c_str());
+          }
 
           // Get the fractions other than pending.
           // double HEIGHT_SCALE = HEIGHT / EPOCH_SIZE;

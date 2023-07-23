@@ -94,6 +94,30 @@ __kernel void NotSumOfSquares(const uint64_t start,
     // 270/270
     if ((1354 * (sum % 73441)) % 73387 > 73116) bit = 1;
 
+#define DIV_OLD(p) do {                                            \
+    int e_ ## p = 0;                                               \
+    uint64_t sum_ ## p = sum;                                      \
+    while (sum_ ## p % p == 0) { sum_ ## p /= p; e_ ## p ++; }     \
+    /* If odd, it can be filtered. */                              \
+    bit |= (e_ ## p & 1);                                          \
+    if (e_ ## p & 1) bit = 1;                                      \
+  } while (0)
+
+    // Check if the power of p in the prime factorization is 1 or 3.
+  // First we check if p^4 divides it; if so we don't try to figure
+  // out what k is. Otherwise, p^2
+#define DIV(p) do {                \
+    uint64_t pp = (p * p);         \
+    if (sum % (pp * pp) != 0) {    \
+      if (sum % (pp * p) == 0) bit = 1; \
+      else if (sum % pp != 0 && sum % p == 0) bit = 1; \
+    }                              \
+  } while (0)
+
+    DIV(3);
+    DIV(7);
+    DIV(11);
+
     byte |= bit << (7 - i);
   }
 
