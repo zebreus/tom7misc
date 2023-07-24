@@ -26,6 +26,7 @@
 #include "atomic-util.h"
 #include "image.h"
 
+#include "database.h"
 #include "sos-util.h"
 #include "sos-gpu.h"
 
@@ -34,6 +35,7 @@ using namespace std;
 static CL *cl = nullptr;
 
 using int64 = int64_t;
+using Square = Database::Square;
 
 // 2x as fast!
 // Using this for epoch 2,264,000,000,000+
@@ -137,7 +139,7 @@ static_assert(GPU_HEIGHT % TRY_ROLL_SIZE == 0,
               "this is not strictly required, but would hurt "
               "performance!");
 
-static constexpr uint64_t EPOCH_SIZE = 2'000'000'000; /* ' */
+static constexpr uint64_t MAX_EPOCH_SIZE = 2'000'000'000; /* ' */
 // Each of these yields 8 sums. Should divide EPOCH_SIZE/8.
 static constexpr size_t EPOCH_GPU_CHUNK = 1000000;
 
@@ -148,20 +150,14 @@ static constexpr int ENDGAME_WORK_STEALING_THREADS = 1;
 
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
-static const char *DONE_FILE = "sos-done.txt";
 
 static StatusBar status(6);
 
-static uint64_t GetDone() {
+static std::pair<uint64_t, uint64_t> GetNext(uint64_t max_size) {
   MutexLock ml(&file_mutex);
-  string s = Util::ReadFile(DONE_FILE);
-  if (s.empty()) return 0;
-  return stoull(s);
-}
-
-static void SetDone(uint64 next) {
-  MutexLock ml(&file_mutex);
-  Util::WriteFile(DONE_FILE, StringPrintf("%llu\n", next));
+  // PERF don't keep loading this
+  Database db = Database::FromInterestingFile(INTERESTING_FILE);
+  return db.NextToDo(max_size);
 }
 
 static void Interesting(const std::string &s) {
@@ -671,8 +667,8 @@ struct SOS {
   uint64_t batches_completely_filtered = 0;
   uint64_t eligible_triples = 0;
 
-  // State of a number. These always sum to EPOCH_SIZE.
-  uint64_t pending = EPOCH_SIZE;
+  // State of a number. These always sum to epoch_size.
+  uint64_t pending = 0;
   // Done. Many are rejected because they can't be written as the sum of
   // squares enough ways.
   uint64_t done_ineligible_gpu = 0;
@@ -700,7 +696,7 @@ struct SOS {
 
   Periodically status_per;
 
-  void PrintStats() {
+  void PrintStats(uint64_t epoch_size) {
     MutexLock ml(&m);
     uint64_t done = NumDone();
     uint64_t tested = eligible_triples + done_ineligible_cpu +
@@ -748,13 +744,13 @@ struct SOS {
         Util::UnsignedWithCommas(eligible_triples).c_str());
 
     // Get the fractions other than pending.
-    double blood = (100.0 * done_ineligible_gpu) / EPOCH_SIZE;
-    double red = (100.0 * done_ineligible_cpu) / EPOCH_SIZE;
-    double green = (100.0 * triple_pending_ways) / EPOCH_SIZE;
-    double blue = (100.0 * done_gpu_filtered) / EPOCH_SIZE;
-    double cyan = (100.0 * pending_try) / EPOCH_SIZE;
-    double white = (100.0 * done_full_try) / EPOCH_SIZE;
-    double black = (100.0 * pending) / EPOCH_SIZE;
+    double blood = (100.0 * done_ineligible_gpu) / epoch_size;
+    double red = (100.0 * done_ineligible_cpu) / epoch_size;
+    double green = (100.0 * triple_pending_ways) / epoch_size;
+    double blue = (100.0 * done_gpu_filtered) / epoch_size;
+    double cyan = (100.0 * pending_try) / epoch_size;
+    double white = (100.0 * done_full_try) / epoch_size;
+    double black = (100.0 * pending) / epoch_size;
 
     string line5 =
       StringPrintf(AGREY("%.1f%% left") " "
@@ -766,12 +762,12 @@ struct SOS {
                    AWHITE("%.1f%% full") "\n",
                    black, blood, red, green, blue, cyan, white);
 
-    string line6 = ANSI::ProgressBar(done, EPOCH_SIZE, info, sec) + "\n";
+    string line6 = ANSI::ProgressBar(done, epoch_size, info, sec) + "\n";
 
     status.EmitStatus(line1 + line2 + line3 + line4 + line5 + line6);
   }
 
-  void StatusThread(uint64_t start_idx) {
+  void StatusThread(uint64_t start_idx, uint64_t epoch_size) {
     static constexpr int WIDTH = 1024 + 512, HEIGHT = 768;
     std::unique_ptr<ImageRGBA> img;
     if (WRITE_IMAGE) {
@@ -791,8 +787,8 @@ struct SOS {
         if (img.get() != nullptr) {
           // Get the fractions other than pending.
           // double HEIGHT_SCALE = HEIGHT / EPOCH_SIZE;
-          auto HeightOf = [](double ctr) {
-              return (int)std::round((ctr / EPOCH_SIZE) * HEIGHT);
+          auto HeightOf = [epoch_size](double ctr) {
+              return (int)std::round((ctr / epoch_size) * HEIGHT);
             };
           int blood = HeightOf(done_ineligible_gpu);
           int red = HeightOf(done_ineligible_cpu);
@@ -826,7 +822,7 @@ struct SOS {
       // XXX Since we can often skip the Try phase now, maybe this
       // should be in its own thread.
       if (status_per.ShouldRun()) {
-        PrintStats();
+        PrintStats(epoch_size);
       }
 
       {
@@ -840,8 +836,8 @@ struct SOS {
 
           // Get the fractions other than pending.
           // double HEIGHT_SCALE = HEIGHT / EPOCH_SIZE;
-          auto HeightOf = [](double ctr) {
-              return (int)std::round((ctr / EPOCH_SIZE) * HEIGHT);
+          auto HeightOf = [epoch_size](double ctr) {
+              return (int)std::round((ctr / epoch_size) * HEIGHT);
             };
           int blood = HeightOf(done_ineligible_gpu);
           int red = HeightOf(done_ineligible_cpu);
@@ -1061,12 +1057,13 @@ struct SOS {
     }
   }
 
-  void RunEpoch(uint64_t start) {
+  void RunEpoch(uint64_t epoch_start, uint64 epoch_size) {
     CHECK(cl != nullptr);
 
     status.Printf(
         AWHITE("==") " Start epoch " APURPLE("%s") "+ " AWHITE("==") "\n",
-        Util::UnsignedWithCommas(start).c_str());
+        Util::UnsignedWithCommas(epoch_start).c_str());
+    pending = epoch_size;
 
     work_stealing_threads = STEADY_WORK_STEALING_THREADS;
 
@@ -1075,18 +1072,18 @@ struct SOS {
       gpu_threads.emplace_back(&GPUThread, this, i + 1);
     std::thread try_thread(&TryThread, this);
     std::thread steal_thread(&StealThread, this);
-    std::thread status_thread(&StatusThread, this, start);
+    std::thread status_thread(&StatusThread, this, epoch_start, epoch_size);
     std::thread nways_thread(&NWaysThread, this);
 
     ResetCounters();
 
     // How many sums we do with each GPU chunk.
     constexpr size_t EPOCH_CHUNK = EPOCH_GPU_CHUNK * 8;
-    static_assert(EPOCH_SIZE % EPOCH_CHUNK == 0);
+    CHECK(epoch_size % EPOCH_CHUNK == 0) << epoch_size << " % " << EPOCH_CHUNK;
     {
       Timer eligible_gpu_timer;
-      for (uint64_t u = 0; u < EPOCH_SIZE; u += EPOCH_CHUNK) {
-        uint64_t base = start + u;
+      for (uint64_t u = 0; u < epoch_size; u += EPOCH_CHUNK) {
+        uint64_t base = epoch_start + u;
         std::vector<uint8_t> bitmask = eligiblefilter_gpu->Filter(base);
         nways_queue->WaitAdd(std::make_pair(base, std::move(bitmask)));
       }
@@ -1141,15 +1138,16 @@ struct SOS {
                   " work units from GPU (" ACYAN("%.2f") "%%)\n",
                   stolen, (100.0 * stolen) / eligible_triples);
     status.Printf("Eligible triples: %llu/%llu\n",
-                  eligible_triples, EPOCH_SIZE);
+                  eligible_triples, epoch_size);
     status.Printf(ARED("%llu") " (%.2f%%) were too big.\n",
-                  too_big, (too_big * 100.0) / EPOCH_SIZE);
+                  too_big, (too_big * 100.0) / epoch_size);
     status.Printf(AGREEN("Done") " in %s. (%s/ea.)\n",
                   ANSI::Time(sec).c_str(),
-                  ANSI::Time(sec / EPOCH_SIZE).c_str());
-    status.Printf("Did %s-%s\n",
-                  Util::UnsignedWithCommas(start).c_str(),
-                  Util::UnsignedWithCommas(start + EPOCH_SIZE - 1).c_str());
+                  ANSI::Time(sec / epoch_size).c_str());
+    status.Printf(
+        "Did %s-%s\n",
+        Util::UnsignedWithCommas(epoch_start).c_str(),
+        Util::UnsignedWithCommas(epoch_start + epoch_size - 1).c_str());
     {
       const int64_t rf = READ(rejected_f);
       const int64_t rff = READ(rejected_ff);
@@ -1159,33 +1157,138 @@ struct SOS {
       Interesting(
           StringPrintf("EPOCH %llu %llu %llu "
                        "%lld %lld %lld %lld\n",
-                       start, EPOCH_SIZE, eligible_triples,
+                       epoch_start, epoch_size, eligible_triples,
                        rf, rff, rhh, raa));
 
       FILE *f = fopen("sos.txt", "ab");
       CHECK(f != nullptr);
       fprintf(f, "Done in %s (%s/ea.)\n",
               ANSI::StripCodes(ANSI::Time(sec)).c_str(),
-              ANSI::StripCodes(ANSI::Time(sec / EPOCH_SIZE)).c_str());
+              ANSI::StripCodes(ANSI::Time(sec / epoch_size)).c_str());
       fprintf(f,
               "%lld rf "
               " %lld rff %lld rhh"
               " %lld raa\n",
               rf, rff, rhh, raa);
-      fprintf(f, "Did %llu-%llu\n", start, start + EPOCH_SIZE - 1);
+      fprintf(f, "Did %llu-%llu\n",
+              epoch_start, epoch_start + epoch_size - 1);
       fclose(f);
     }
   }
 
 };
 
+static std::pair<uint64_t, uint64_t> PredictNext() {
+  MutexLock ml(&file_mutex);
+  // PERF don't keep loading this
+  Database db = Database::FromInterestingFile(INTERESTING_FILE);
+
+  // This uses the (as yet unexplained) observation that every fifth
+  // error on the h term follows a nice curve which is nearly linear.
+  // Use these to predict zeroes and explore regions near the predicted
+  // zeroes that haven't yet been explored.
+
+  // To predict zeroes, we need 6 *consecutive* almost2 squares.
+  // We should get smarter about this, as we'd always rather explore
+  // smaller numbers. But for now we just look at the last ones that
+  // were processed, since the database is dense as of starting this
+  // idea out.
+
+  // PERF not all of them!
+  printf("db ranges:\n%s\n", db.Epochs().c_str());
+
+  int TARGET = 10;
+  std::vector<std::pair<uint64_t, Square>> last =
+    db.LastN(TARGET);
+
+  for (const auto &[inner_sum, square] : last) {
+    printf("%llu: ...\n", inner_sum);
+  }
+
+  if (last.size() < TARGET) {
+    printf("Don't even have %d squares yet?\n", TARGET);
+    return db.NextToDo(MAX_EPOCH_SIZE);
+  }
+
+  CHECK(last.size() == TARGET);
+
+  uint64_t lo = last[0].first;
+  uint64_t hi = last[TARGET - 1].first;
+  CHECK(hi > lo);
+  if (!db.CompleteBetween(lo, hi)) {
+    // Expand the island.
+    printf("Haven't completed %d consecutive squares; "
+           "next: " ARED("%llu") "\n",
+           TARGET, hi);
+    return db.NextGapAfter(hi, MAX_EPOCH_SIZE);
+  }
+
+  // Now we should have some candidate vectors.
+
+
+  int64_t best_dist = 999999999999;
+  int64_t best_iceptx = 0;
+  for (int i = 0; i < TARGET - 5; i++) {
+    int64_t x0 = last[i].first;
+    int64_t y0 = Database::GetHerr(last[i].second);
+
+    int64_t x1 = last[i + 5].first;
+    int64_t y1 = Database::GetHerr(last[i + 5].second);
+
+    // The closer we are to the axis, the better the
+    // prediction will be. This also keeps us from going
+    // way out on the number line.
+    // (Another option would be to just order by x.)
+    int64_t dist = std::min(std::abs(y0), std::abs(y1));
+
+    // Predicted intercept.
+    double dx = x1 - x0;
+    double dy = y1 - y0;
+    double m = dy / dx;
+    int64_t iceptx = x0 + std::round(-y0 / m);
+    printf("(%lld, %lld) -> (%lld, %lld)\n"
+           "  slope %.8f icept " AWHITE("%lld") " score " ACYAN("%lld") " ",
+           x0, y0, x1, y1, m, iceptx, dist);
+    if (iceptx > 0) {
+      // Is this point already explored?
+      // XXX we should only consider it complete if it's in a complete
+      // interval and we also have enough squares here. (Like ideally
+      // we'd either have one above and below zero, or else TARGET
+      // so that we can get another vector.)
+      if (db.IsComplete(iceptx)) {
+        printf(AGREEN("DONE") "\n");
+      } else {
+        if (dist < best_dist) {
+          best_dist = dist;
+          best_iceptx = iceptx;
+          printf(APURPLE("BEST") "\n");
+        }
+      }
+    } else {
+      printf(ARED("INVALID") "\n");
+    }
+  }
+  if (best_iceptx == 0) {
+    printf("\n" ARED("No valid intercepts?") "\n");
+    return db.NextToDo(MAX_EPOCH_SIZE);
+
+  } else {
+    printf("\nNext guess: " APURPLE("%llu") "\n", best_iceptx);
+
+    // Try to keep the ranges clean.
+    best_iceptx /= MAX_EPOCH_SIZE;
+    best_iceptx *= MAX_EPOCH_SIZE;
+    return make_pair(best_iceptx, MAX_EPOCH_SIZE);
+  }
+}
+
 static void Run() {
-  uint64_t start = GetDone();
   for (;;) {
+    // const auto [epoch_start, epoch_size] = GetNext(MAX_EPOCH_SIZE);
+    const auto [epoch_start, epoch_size] = PredictNext();
+    printf("\n\n\n\n\n\n\n\n\n");
     SOS sos;
-    sos.RunEpoch(start);
-    start += EPOCH_SIZE;
-    SetDone(start);
+    sos.RunEpoch(epoch_start, epoch_size);
   }
 }
 

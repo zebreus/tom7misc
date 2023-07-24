@@ -14,10 +14,13 @@
 #include "util.h"
 #include "interval-cover.h"
 #include "re2/re2.h"
+#include "vector-util.h"
 
 using namespace std;
+using Square = Database::Square;
 
 void Database::AddEpoch(uint64_t start, uint64_t size) {
+  // printf("AddEpoch %llu, %llu\n", start, start + size);
   done.SetSpan(start, start + size, true);
 }
 
@@ -57,6 +60,13 @@ void Database::AddAlmost2(const std::array<uint64_t, 9> &square) {
   uint64_t inner_sum = bb + cc;
 
   // TODO: Do something with it.
+  // This could be possible? But usually this happens because a
+  // process was interrupted after finding squares, which are then
+  // re-found when it is started again.
+  CHECK(almost2.find(inner_sum) == almost2.end()) << "Unexpected: "
+    "two squares with the same inner sum (inner: " << inner_sum << ")"
+    " (full: " << sum << ")";
+  almost2[inner_sum] = square;
 }
 
 Database Database::FromInterestingFile(const std::string &filename) {
@@ -100,4 +110,68 @@ string Database::Epochs() const {
                   span.data ? AGREEN("DONE") : AGREY("NO"));
   }
   return ret;
+}
+
+std::pair<uint64_t, uint64_t> Database::NextGapAfter(uint64_t start,
+                                                     uint64_t max_size) const {
+  for (uint64_t pt = start;
+       !done.IsAfterLast(pt);
+       pt = done.Next(pt)) {
+    IntervalCover<bool>::Span span = done.GetPoint(pt);
+    printf("nga %llu: [%llu,%llu) %s\n", pt, span.start, span.end,
+           span.data ? "done" : "todo");
+    if (!span.data) {
+      uint64_t size = span.end - span.start;
+      return make_pair(span.start, std::min(max_size, size));
+    }
+  }
+
+  CHECK(false) << "Exhausted 64-bit ints?!";
+}
+
+std::pair<uint64_t, uint64_t> Database::NextToDo(uint64_t max_size) const {
+  return NextGapAfter(0, max_size);
+}
+
+std::vector<std::pair<uint64_t, Square>> Database::LastN(int n) const {
+  std::vector<std::pair<uint64_t, Square>> ret;
+  ret.reserve(n);
+
+  for (auto it = almost2.rbegin(); it != almost2.rend(); ++it) {
+    ret.emplace_back(it->first, it->second);
+    if (ret.size() == n) break;
+  }
+
+  ReverseVector(&ret);
+  return ret;
+}
+
+bool Database::CompleteBetween(uint64_t a, uint64_t b) const {
+  // It's only exhaustive if these are the same span (otherwise there
+  // would be some non-empty span between them that has not been
+  // completed) and it's completed.
+
+  IntervalCover<bool>::Span span_a = done.GetPoint(a);
+  IntervalCover<bool>::Span span_b = done.GetPoint(b);
+  return span_a.start == span_b.start &&
+    span_a.end == span_b.end &&
+    span_a.data;
+}
+
+bool Database::IsComplete(uint64_t a) const {
+  return done.GetPoint(a).data;
+}
+
+int64_t Database::GetHerr(const Square &square) {
+  const auto &[aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
+  uint64_t h = Sqrt64(hh);
+
+  // int64_t inner_sum = bb + cc;
+
+  // How close are we to a square? The computed sqrt is a lower bound, so
+  // it could actually be closer to the next square.
+  int64_t herr1 = h * h - (int64_t)hh;
+  int64_t herr2 = (h + 1) * (h + 1) - (int64_t)hh;
+  int64_t herr = std::abs(herr1) < std::abs(herr2) ? herr1 : herr2;
+  return herr;
 }
