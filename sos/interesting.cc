@@ -11,6 +11,8 @@
 #include "ansi.h"
 #include "re2/re2.h"
 #include "database.h"
+#include "image.h"
+#include "bounds.h"
 
 using namespace std;
 
@@ -21,7 +23,11 @@ static void Interesting() {
   RE2 almost2("\\(!\\) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+)");
 
   int64_t best_err = 99999999999;
+  int64_t best_herr = 99999999999;
+  int64_t best_aerr = 99999999999;
   std::array<uint64_t, 9> best_square = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+  std::array<uint64_t, 9> best_hsquare = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+  std::array<uint64_t, 9> best_asquare = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 
   string csv = "inner sum, dh, da, err\n";
   string intercept_csv = "intercept\n";
@@ -60,6 +66,12 @@ static void Interesting() {
               // bb + cc
               return r1[1] + r1[2] < r2[1] + r2[2];
             });
+
+  // Points for plot.
+  // h, a, abs sum
+  std::vector<std::tuple<int64_t, int64_t, int64_t, int64_t>> errors;
+  // Intercepts where we actually have the point before and after.
+  std::vector<int64_t> zeroes;
 
   for (int idx = 0; idx < rows.size(); idx++) {
     const auto &row = rows[idx];
@@ -114,34 +126,10 @@ static void Interesting() {
     int64_t herr = std::abs(herr1) < std::abs(herr2) ? herr1 : herr2;
     int64_t aerr = std::abs(aerr1) < std::abs(aerr2) ? aerr1 : aerr2;
 
-    #if 0
-    // Track an intercept.
-    // XXX can just do mod 5?
-    if (std::abs(aerr) < 10000) {
-      printf("Saw %s %lld\n",
-             Util::UnsignedWithCommas(inner_sum).c_str(),
-             aerr);
+    int64_t err = std::abs(herr) + std::abs(aerr);
 
-      if (prev_aerr.has_value()) {
-        const auto [prev_x, prev_y] = prev_aerr.value();
-        if (prev_y > 0 && aerr < 0) {
-          // approximate locally with a line to get
-          // zero-intercept.
-          double dx = inner_sum - prev_x;
-          double dy = aerr - prev_y;
+    errors.emplace_back(inner_sum, herr, aerr, err);
 
-          int64_t iceptx = prev_x + (int64_t)((dx / dy) * -prev_y);
-          printf("cross %s %lld -> %s %lld (icept at %s)\n",
-                 Util::UnsignedWithCommas(prev_x).c_str(), prev_y,
-                 Util::UnsignedWithCommas(inner_sum).c_str(), aerr,
-                 Util::UnsignedWithCommas(iceptx).c_str());
-          StringAppendF(&intercept_csv, "%lld\n", iceptx);
-        }
-      }
-
-      prev_aerr = {make_pair(inner_sum, aerr)};
-    }
-    #endif
     {
       const auto [prev_x, prev_y] = prev_h[idx % 5];
       const int64_t cur_x = inner_sum;
@@ -156,6 +144,12 @@ static void Interesting() {
                                 << m << " @ "
                                 << iceptx;
         CHECK(iceptx <= cur_x);
+
+        if (db.CompleteBetween(prev_x, cur_x) &&
+            prev_y > 0 && cur_y < 0) {
+          zeroes.push_back(iceptx);
+        }
+
         // if ((idx % 5) == 0) printf("intercept %lld\n", iceptx);
         StringAppendF(&intercept_csv, "%lld\n", iceptx);
       }
@@ -165,7 +159,6 @@ static void Interesting() {
       }
     }
 
-    int64_t err = std::abs(herr) + std::abs(aerr);
     StringAppendF(&csv, "%lld,%lld,%lld,%lld\n",
                   inner_sum, herr, aerr, err);
     if (err < best_err) {
@@ -173,6 +166,20 @@ static void Interesting() {
       best_square = std::array<uint64_t, 9>{aa, bb, cc,
                                             dd, ee, ff,
                                             gg, hh, ii};
+    }
+
+    if (std::abs(herr) < std::abs(best_herr)) {
+      best_herr = herr;
+      best_hsquare = std::array<uint64_t, 9>{aa, bb, cc,
+                                             dd, ee, ff,
+                                             gg, hh, ii};
+    }
+
+    if (std::abs(aerr) < std::abs(best_aerr)) {
+      best_aerr = aerr;
+      best_asquare = std::array<uint64_t, 9>{aa, bb, cc,
+                                             dd, ee, ff,
+                                             gg, hh, ii};
     }
 
     int col = idx % 5;
@@ -188,17 +195,93 @@ static void Interesting() {
   Util::WriteFile("intercept.csv", intercept_csv);
   Util::WriteFile("fives.csv", fives_csv);
 
+  // Prep bounds.
+  Bounds plot_bounds;
+  for (const auto &[x, herr, aerr, err] : errors) {
+    plot_bounds.Bound(x, herr);
+    plot_bounds.Bound(x, aerr);
+    plot_bounds.Bound(x, err);
+  }
+
+  int WIDTH = 3000;
+  int HEIGHT = 1800;
+  plot_bounds.AddMarginsFrac(0.01, 0.05, 0.01, 0.00);
+  Bounds::Scaler scaler = plot_bounds.Stretch(WIDTH, HEIGHT).FlipY();
+  ImageRGBA plot(WIDTH, HEIGHT);
+  plot.Clear32(0x000000FF);
+
+  // missing regions
   {
-    const auto [aa, bb, cc, dd, ee, ff, gg, hh, ii] = best_square;
-    printf("Best square (err: %lld):\n"
+    const IntervalCover<bool> done = db.Done();
+    for (uint64_t s = done.First();
+         !done.IsAfterLast(s);
+         s = done.Next(s)) {
+      const auto span = done.GetPoint(s);
+      if (!span.data) {
+       const double x0d = scaler.ScaleX(span.start);
+       const double x1d = scaler.ScaleX(span.end);
+       int x0 = (int)std::round(x0d);
+       int w = std::max((int)std::round(x1d) - x0, 1);
+       plot.BlendRect32(x0, 0, w, HEIGHT, 0x111111FF);
+      }
+    }
+  }
+
+
+  // x axis
+  {
+    const auto [x0, y0] = scaler.Scale(plot_bounds.MinX(), 0);
+    const auto [x1, y1] = scaler.Scale(plot_bounds.MaxX(), 0);
+    plot.BlendLine32(x0, y0, x1, y1, 0xFFFFFF33);
+  }
+
+  // vertical ticks every 1 trillion
+  for (int64_t x = 0; x < plot_bounds.MaxX(); x += 1'000'000'000'000LL) {
+    const auto [x0, y0] = scaler.Scale(x, plot_bounds.MinY());
+    const auto [x1, y1] = scaler.Scale(x, plot_bounds.MaxY());
+    plot.BlendLine32(x0, y0, x1, y1, 0xFFFFFF22);
+  }
+
+
+  for (const auto &[x, herr, aerr, err] : errors) {
+    const double xx = scaler.ScaleX(x);
+    const double hh = scaler.ScaleY(herr);
+    const double aa = scaler.ScaleY(aerr);
+    const double ee = scaler.ScaleY(err);
+
+    plot.BlendFilledCircle32(xx, aa, 3, 0xAA3333AA);
+    plot.BlendFilledCircle32(xx, ee, 3, 0xAAAA33AA);
+    plot.BlendFilledCircle32(xx, hh, 3, 0x3333AAAA);
+  }
+
+  for (const double x : zeroes) {
+    int xx = scaler.ScaleX(x);
+    int yy = scaler.ScaleY(0);
+    plot.BlendLine32(xx, yy - 5, xx, yy + 5, 0x00FF0055);
+  }
+
+  plot.Save("plot.png");
+  printf("Wrote plot.png\n");
+
+  auto PrintBest = [](const char *what,
+                      const Database::Square &square, int64_t err) {
+    const auto [aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
+    printf("Best %s (err: %lld):\n"
            "%llu %llu %llu\n"
            "%llu %llu %llu\n"
-           "%llu %llu %llu\n\n",
-           best_err,
+           "%llu %llu %llu\n"
+           AGREY("Inner sum: %llu") "\n",
+           what,
+           err,
            aa, bb, cc,
            dd, ee, ff,
-           gg, hh, ii);
-  }
+           gg, hh, ii,
+           bb + cc);
+  };
+
+  PrintBest(APURPLE("overall"), best_square, best_err);
+  PrintBest(ABLUE("a-err"), best_asquare, best_aerr);
+  PrintBest(ACYAN("h-err"), best_hsquare, best_herr);
 
   printf("%lld almost2, %lld almost1\n", num_almost2, num_almost1);
 }

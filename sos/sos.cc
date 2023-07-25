@@ -1197,88 +1197,115 @@ static std::pair<uint64_t, uint64_t> PredictNext() {
   // PERF not all of them!
   printf("db ranges:\n%s\n", db.Epochs().c_str());
 
-  int TARGET = 10;
-  std::vector<std::pair<uint64_t, Square>> last =
-    db.LastN(TARGET);
+  static constexpr int64_t INTERCEPT_LB = 4'000'000'000'000;
 
-  for (const auto &[inner_sum, square] : last) {
-    printf("%llu: ...\n", inner_sum);
-  }
+  const auto &almost2 = db.Almost2();
+  auto it = almost2.begin();
+  while (it->first < INTERCEPT_LB) ++it;
 
-  if (last.size() < TARGET) {
-    printf("Don't even have %d squares yet?\n", TARGET);
-    return db.NextToDo(MAX_EPOCH_SIZE);
-  }
-
-  CHECK(last.size() == TARGET);
-
-  uint64_t lo = last[0].first;
-  uint64_t hi = last[TARGET - 1].first;
-  CHECK(hi > lo);
-  if (!db.CompleteBetween(lo, hi)) {
-    // Expand the island.
-    printf("Haven't completed %d consecutive squares; "
-           "next: " ARED("%llu") "\n",
-           TARGET, hi);
-    return db.NextGapAfter(hi, MAX_EPOCH_SIZE);
-  }
-
-  // Now we should have some candidate vectors.
-
-
-  int64_t best_dist = 999999999999;
-  int64_t best_iceptx = 0;
-  for (int i = 0; i < TARGET - 5; i++) {
-    int64_t x0 = last[i].first;
-    int64_t y0 = Database::GetHerr(last[i].second);
-
-    int64_t x1 = last[i + 5].first;
-    int64_t y1 = Database::GetHerr(last[i + 5].second);
-
-    // The closer we are to the axis, the better the
-    // prediction will be. This also keeps us from going
-    // way out on the number line.
-    // (Another option would be to just order by x.)
-    int64_t dist = std::min(std::abs(y0), std::abs(y1));
-
-    // Predicted intercept.
-    double dx = x1 - x0;
-    double dy = y1 - y0;
-    double m = dy / dx;
-    int64_t iceptx = x0 + std::round(-y0 / m);
-    printf("(%lld, %lld) -> (%lld, %lld)\n"
-           "  slope %.8f icept " AWHITE("%lld") " score " ACYAN("%lld") " ",
-           x0, y0, x1, y1, m, iceptx, dist);
-    if (iceptx > 0) {
-      // Is this point already explored?
-      // XXX we should only consider it complete if it's in a complete
-      // interval and we also have enough squares here. (Like ideally
-      // we'd either have one above and below zero, or else TARGET
-      // so that we can get another vector.)
-      if (db.IsComplete(iceptx)) {
-        printf(AGREEN("DONE") "\n");
-      } else {
-        if (dist < best_dist) {
-          best_dist = dist;
-          best_iceptx = iceptx;
-          printf(APURPLE("BEST") "\n");
-        }
-      }
-    } else {
-      printf(ARED("INVALID") "\n");
+  // Iterator ahead by five.
+  auto it5 = it;
+  for (int i = 0; i < 5; i++) {
+    if (it5 == almost2.end()) {
+      printf("Don't even have 5 squares yet?\n");
+      return db.NextToDo(MAX_EPOCH_SIZE);
     }
+    it5 = std::next(it5);
   }
-  if (best_iceptx == 0) {
+
+  /*
+  db.ForEveryIntercept([]() {
+
+    };
+  */
+
+  int64_t best_dist = 99999999999999;
+  int64_t best_iceptx = 0;
+  while (it5 != almost2.end()) {
+    const int64_t x0 = it->first;
+    const int64_t x1 = it5->first;
+
+    // Must be dense here or else we don't know if these are on
+    // the same arc.
+    if (db.CompleteBetween(x0, x1)) {
+      const int64_t y0 = Database::GetHerr(it->second);
+      const int64_t y1 = Database::GetHerr(it5->second);
+
+      // The closer we are to the axis, the better the
+      // prediction will be. This also keeps us from going
+      // way out on the number line.
+      // (Another option would be to just prefer lower x.)
+      const int64_t dist = std::min(std::abs(y0), std::abs(y1));
+
+      // Predicted intercept.
+      double dx = x1 - x0;
+      double dy = y1 - y0;
+      double m = dy / dx;
+      int64_t iceptx = x0 + std::round(-y0 / m);
+
+      auto PrVec = [&](const char *msg) {
+          printf("(%lld, %lld) -> (%lld, %lld)\n"
+                 "  slope %.8f icept "
+                 AWHITE("%lld") " score " ACYAN("%lld") " %s\n",
+                 x0, y0, x1, y1, m, iceptx, dist, msg);
+        };
+
+      if (y0 > 0 && y1 < 0) {
+        CHECK(iceptx >= x0 && iceptx <= x1);
+        PrVec(AYELLOW("ZERO"));
+      } else {
+        // printntf("(%lld, %lld) -> (%lld, %lld)\n",
+        //  x0, y0, x1, y1);
+      }
+
+
+      if (iceptx > 0) {
+        // Is this point already explored?
+        // We currently require the epoch before and after it to be
+        // complete. It's usually an overestimate.
+        //
+        // XXX we should only consider it complete if it's in a complete
+        // interval and we also have enough squares here. (Like ideally
+        // we'd either have one above and below zero, or else TARGET
+        // so that we can get another vector.)
+        if (db.IsComplete(iceptx - MAX_EPOCH_SIZE) &&
+            db.IsComplete(iceptx)) {
+          PrVec(AGREEN("DONE"));
+        } else {
+          if (dist < best_dist) {
+            best_dist = dist;
+            best_iceptx = iceptx - MAX_EPOCH_SIZE;
+            PrVec(APURPLE("BEST"));
+            printf(APURPLE("BEST") "\n");
+          } else {
+            // printf("\n");
+          }
+        }
+      } else {
+        PrVec(ARED("INVALID"));
+        // printf(ARED("INVALID") "\n");
+      }
+    }
+
+    ++it;
+    ++it5;
+  }
+
+  if (best_iceptx <= 0) {
     printf("\n" ARED("No valid intercepts?") "\n");
     return db.NextToDo(MAX_EPOCH_SIZE);
 
   } else {
     printf("\nNext guess: " APURPLE("%llu") "\n", best_iceptx);
 
+    // We pass back the interval before the intercept, but also
+    // expect to do the one after/containing it, unless we find
+    // a better one first.
+    //
     // Try to keep the ranges clean.
     best_iceptx /= MAX_EPOCH_SIZE;
     best_iceptx *= MAX_EPOCH_SIZE;
-    return make_pair(best_iceptx, MAX_EPOCH_SIZE);
+    return db.NextGapAfter(best_iceptx, MAX_EPOCH_SIZE);
   }
 }
 

@@ -34,6 +34,9 @@ struct Database {
 
   static int64_t GetHerr(const Square &square);
 
+  const std::map<uint64_t, Square> Almost2() const { return almost2; }
+  const IntervalCover<bool> Done() const { return done; }
+
 private:
   // Set to true if done.
   IntervalCover<bool> done;

@@ -121,8 +121,15 @@ std::pair<uint64_t, uint64_t> Database::NextGapAfter(uint64_t start,
     printf("nga %llu: [%llu,%llu) %s\n", pt, span.start, span.end,
            span.data ? "done" : "todo");
     if (!span.data) {
-      uint64_t size = span.end - span.start;
-      return make_pair(span.start, std::min(max_size, size));
+      // If this is the first one, it may be inside the interval.
+      uint64_t actual_start = std::max(pt, span.start);
+      uint64_t actual_end = span.end;
+      CHECK(actual_end > actual_start);
+      uint64_t size = actual_end - actual_start;
+      uint64_t msize = std::min(max_size, size);
+      printf("So do: %llu +%llu\n", actual_start, msize);
+
+      return make_pair(actual_start, msize);
     }
   }
 
