@@ -304,9 +304,9 @@ static void Interesting() {
                               0.75f) :
       0xAA3333AA;
 
-    plot.BlendFilledCircle32(xx, aa, 3, acolor);
-    plot.BlendFilledCircle32(xx, ee, 3, 0xAAAA33AA);
-    plot.BlendFilledCircle32(xx, hh, 3, 0x3333AAAA);
+    plot.BlendFilledCircleAA32(xx, aa, 3, acolor);
+    plot.BlendFilledCircleAA32(xx, ee, 3, 0xAAAA33AA);
+    plot.BlendFilledCircleAA32(xx, hh, 3, 0x3333AAAA);
     idx++;
   }
 
