@@ -608,6 +608,74 @@ void ImageRGBA::BlendFilledCircle32(int x, int y, int r, uint32 color) {
   }
 }
 
+// PERF: With these grid filters, lots of points are shared between
+// adjacent pixels (use e.g. 2d marching cubes).
+// PERF: I think you can sample more efficiently and avoid certain
+// artifacts with a non-regular grid (like, say, a rotated triangle
+// inside the square).
+// PERF: Since it's a circle, presumably we could do something mathematical
+// to compute the amount of coverage.
+void ImageRGBA::BlendFilledCircleAA32(float x, float y, float r, uint32 color) {
+  const int xmin = std::max(0, (int)std::floor(x - r));
+  const int ymin = std::max(0, (int)std::floor(y - r));
+  const int xmax = std::min(width - 1, (int)std::ceil(x + r));
+  const int ymax = std::min(height - 1, (int)std::ceil(y + r));
+  const float rr = r * r;
+
+  const uint32_t rgb0 = color & 0xFFFFFF00;
+  const uint16_t a = color & 0xFF;
+
+  // alpha values for 0-4 hits
+#if 0
+  const std::array<uint8_t, 5> alpha = {
+    (uint8_t)0x00,
+    (uint8_t)(a >> 2),
+    (uint8_t)(a >> 1),
+    (uint8_t)((a * 3) >> 2),
+    a
+  };
+#endif
+
+  const std::array<uint8_t, 9> alpha = {
+    (uint8_t)0x00,
+    (uint8_t)((a * 1) >> 3),
+    (uint8_t)((a * 2) >> 3),
+    (uint8_t)((a * 3) >> 3),
+    (uint8_t)((a * 4) >> 3),
+    (uint8_t)((a * 5) >> 3),
+    (uint8_t)((a * 6) >> 3),
+    (uint8_t)((a * 7) >> 3),
+    a,
+  };
+
+  // integer grid
+  for (int yy = ymin; yy <= ymax; yy++) {
+    const float dy = yy - y;
+    for (int xx = xmin; xx <= xmax; xx++) {
+      const float dx = xx - x;
+      // Sample four corners. Here we treat the pixel as being
+      // the top-left corner.
+      auto Sample = [dx, dy, rr](float adx, float ady) {
+          const float dxs = dx + adx, dys = dy + ady;
+          const float dd = (dxs * dxs) + (dys * dys);
+          return dd <= rr ? 1 : 0;
+        };
+      int inside = 0;
+      inside += Sample(0.0f, 0.0f);
+      inside += Sample(0.0f, 1.0f);
+      inside += Sample(1.0f, 0.0f);
+      inside += Sample(1.0f, 1.0f);
+
+      inside += Sample(0.25f, 0.25f);
+      inside += Sample(0.25f, 0.75f);
+      inside += Sample(0.75f, 0.25f);
+      inside += Sample(0.75f, 0.75f);
+
+      BlendPixel32(xx, yy, rgb0 | alpha[inside]);
+    }
+  }
+}
+
 // TODO: Does not handle overlap correctly.
 void ImageRGBA::BlendImage(int x, int y, const ImageRGBA &other) {
   // PERF can factor out the pixel clipping here, supposing the

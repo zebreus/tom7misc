@@ -82,13 +82,24 @@ struct IntervalCover {
   // is true.
   // To iterate through spans,
   //
-  // for (uint64_t s = ic.First();
-  //      !ic.IsAfterLast(s);
-  //      s = ic.Next(s)) { ... }
+  //   for (uint64_t pt = ic.First();
+  //        !ic.IsAfterLast(pt);
+  //        pt = ic.Next(pt)) { ... }
+  //
   // TODO: Make iterator version, probably for ranges? It
   // can be more efficient, too, if we keep the underlying
   // map iterator.
   uint64_t Next(uint64_t pt) const;
+
+  // Get the start of the span that starts strictly before this
+  // point. Should not be called for a point in the first span
+  // (i.e. where GetPoint(pt).start = 0).
+  //
+  //   for (uint64_t pt = ic.GetPoint(x).start;
+  //        pt != 0;
+  //        pt = ic.Prev(pt)) { ... }
+  uint64_t Prev(uint64_t pt) const;
+
 
   // XXX should be like "IntersectsWith"
   template<class Other>
@@ -193,6 +204,20 @@ uint64_t IntervalCover<D>::Next(uint64_t pt) const {
   auto it = spans.upper_bound(pt);
   if (it == spans.end()) return MAX64;
   else return it->first;
+}
+
+template<class D>
+uint64_t IntervalCover<D>::Prev(uint64_t pt) const {
+  // Gets the first span that starts strictly after the point.
+  typename std::map<uint64_t, D>::const_iterator it = spans.upper_bound(pt);
+  // Should never happen, because the first interval starts
+  // at 0.
+  CHECK(it != spans.begin());
+  --it;
+  // Now we want the interval before that.
+  CHECK(it != spans.begin()) << "Prev() called on the first interval.";
+  --it;
+  return it->first;
 }
 
 template<class D>

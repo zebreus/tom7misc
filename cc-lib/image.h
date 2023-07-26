@@ -99,6 +99,8 @@ struct ImageRGBA {
                   uint32 color, std::optional<uint32> corner_color);
 
   // Embedded 9x9 pixel font.
+  static constexpr int TEXT_WIDTH  = 9;
+  static constexpr int TEXT_HEIGHT = 9;
   void BlendText(int x, int y,
                  uint8 r, uint8 g, uint8 b, uint8 a,
                  const std::string &s);
@@ -110,6 +112,8 @@ struct ImageRGBA {
                        uint32 color, const std::string &s);
 
   // Same font, but scaled to (crisp) 2x2 pixels.
+  static constexpr int TEXT2X_WIDTH  = TEXT_WIDTH * 2;
+  static constexpr int TEXT2X_HEIGHT = TEXT_HEIGHT * 2;
   void BlendText2x(int x, int y,
                    uint8 r, uint8 g, uint8 b, uint8 a,
                    const std::string &s);
@@ -134,6 +138,7 @@ struct ImageRGBA {
   void BlendLineAA32(float x1, float y1, float x2, float y2, uint32 color);
 
   void BlendFilledCircle32(int x, int y, int r, uint32 color);
+  void BlendFilledCircleAA32(float x, float y, float r, uint32 color);
 
   // Clipped, alpha blending.
   void BlendImage(int x, int y, const ImageRGBA &other);

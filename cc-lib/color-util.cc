@@ -39,6 +39,13 @@ void ColorUtil::HSVToRGB(float h, float s, float v,
   std::tie(*r, *g, *b) = HSVToRGB(h, s, v);
 }
 
+uint32_t ColorUtil::HSVAToRGBA32(
+    float hue, float saturation, float value, float alpha) {
+  const auto [r, g, b] = HSVToRGB(hue, saturation, value);
+  return FloatsTo32(r, g, b, alpha);
+}
+
+
 std::tuple<float, float, float>
 ColorUtil::RGBToHSV(float r, float g, float b) {
   // std::minmax is not better in 2022!

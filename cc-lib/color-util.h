@@ -27,6 +27,9 @@ struct ColorUtil {
                        float *r, float *g, float *b);
   static std::tuple<float, float, float>
   HSVToRGB(float hue, float saturation, float value);
+  static uint32_t HSVAToRGBA32(
+      float hue, float saturation, float value, float alpha);
+
 
   // For RGB values in [0, 1].
   static std::tuple<float, float, float>
