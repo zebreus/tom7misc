@@ -134,8 +134,9 @@ private:
 static constexpr int GPU_HEIGHT = 131072;
 
 static constexpr int NUM_GPU_THREADS = 2;
-static constexpr int TRY_ROLL_SIZE = 512;
-static_assert(GPU_HEIGHT % TRY_ROLL_SIZE == 0,
+static constexpr int TRY_BATCH_SIZE = 256;
+static constexpr int TRY_ROLL_SIZE = 32;
+static_assert(TRY_BATCH_SIZE % TRY_ROLL_SIZE == 0,
               "this is not strictly required, but would hurt "
               "performance!");
 
@@ -145,8 +146,10 @@ static constexpr size_t EPOCH_GPU_CHUNK = 1000000;
 
 // PERF: Tune it
 static constexpr int STEADY_WORK_STEALING_THREADS = 0;
-// (As of 16 Jul 2023, in the endgame Try becomes the bottleneck.)
-static constexpr int ENDGAME_WORK_STEALING_THREADS = 1;
+// Be careful not to set this too low, or everything will stall
+// on a stolen batch (size GPU_HEIGHT) that is processed by a
+// small number of threads.
+static constexpr int ENDGAME_WORK_STEALING_THREADS = 8;
 
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
@@ -439,6 +442,8 @@ struct BatchedWorkQueue {
     return size;
   }
 
+  // PERF: Versions that take rvalue reference.
+
   void WaitAdd(const Item &item) {
     {
       std::unique_lock ml(mutex);
@@ -449,6 +454,25 @@ struct BatchedWorkQueue {
       if (queue.back().size() == batch_size) {
         // Finished batch, so add new empty batch.
         queue.push_back(std::vector<Item>());
+      }
+    }
+    cond.notify_all();
+  }
+
+  void WaitAddVec(const std::vector<Item> &items) {
+    {
+      std::unique_lock ml(mutex);
+      CHECK(!done);
+      // PERF: This can be tighter, but the main thing is to avoid
+      // repeatedly taking the lock.
+      size += items.size();
+      for (const Item &item : items) {
+        CHECK(!queue.empty() && queue.back().size() < batch_size);
+        queue.back().push_back(item);
+        if (queue.back().size() == batch_size) {
+          // Finished batch, so add new empty batch.
+          queue.push_back(std::vector<Item>());
+        }
       }
     }
     cond.notify_all();
@@ -567,13 +591,13 @@ struct SOS {
 
   // Candidate for full try.
   std::unique_ptr<
-    WorkQueue<std::vector<TryMe>>
+    BatchedWorkQueue<TryMe>
     > try_queue;
 
   SOS() : status_per(10.0) {
     // Performance is pretty workload-dependent, so just tune in-process
     // rather than saving to disk.
-    factor_comp.reset(new AutoParallelComp(20, 1000, false));
+    factor_comp.reset(new AutoParallelComp(40, 1000, false));
     try_comp.reset(new AutoParallelComp(12, 1000, false));
 
     eligiblefilter_gpu.reset(new EligibleFilterGPU(cl, EPOCH_GPU_CHUNK));
@@ -584,7 +608,7 @@ struct SOS {
         new WorkQueue<std::pair<uint64_t, std::vector<uint8_t>>>);
     ways_queue.reset(
         new BatchedWorkQueue<std::pair<uint64_t, uint32_t>>(GPU_HEIGHT));
-    try_queue.reset(new WorkQueue<std::vector<TryMe>>());
+    try_queue.reset(new BatchedWorkQueue<TryMe>(TRY_BATCH_SIZE));
   }
 
   void GPUThread(int thread_idx) {
@@ -642,7 +666,7 @@ struct SOS {
       uint64_t local_pending_try = 0;
       if (!trybatch.empty()) {
         local_pending_try = trybatch.size();
-        try_queue->WaitAdd(std::move(trybatch));
+        try_queue->WaitAddVec(std::move(trybatch));
         trybatch.clear();
       }
 
@@ -665,6 +689,8 @@ struct SOS {
   uint64_t stolen = 0;
   int64_t recent_try_size = 0;
   uint64_t batches_completely_filtered = 0;
+  // Numbers that can be written as the sum of squares at least three
+  // different ways.
   uint64_t eligible_triples = 0;
 
   // State of a number. These always sum to epoch_size.
@@ -679,6 +705,8 @@ struct SOS {
   uint64_t done_gpu_filtered = 0;
   uint64_t pending_try = 0;
   uint64_t done_full_try = 0;
+
+  bool nways_is_done = false;
 
   // Must hold lock.
   uint64_t NumDone() {
@@ -739,9 +767,6 @@ struct SOS {
           AGREEN("%s") " complete batches\n",
           Util::UnsignedWithCommas(done_gpu_filtered).c_str(),
           Util::UnsignedWithCommas(batches_completely_filtered).c_str());
-    string info = StringPrintf(
-        "%s eligible",
-        Util::UnsignedWithCommas(eligible_triples).c_str());
 
     // Get the fractions other than pending.
     double blood = (100.0 * done_ineligible_gpu) / epoch_size;
@@ -762,7 +787,23 @@ struct SOS {
                    AWHITE("%.1f%% full") "\n",
                    black, blood, red, green, blue, cyan, white);
 
-    string line6 = ANSI::ProgressBar(done, epoch_size, info, sec) + "\n";
+    string line6;
+    if (!nways_is_done) {
+      string info = StringPrintf(
+          "%s eligible",
+          Util::UnsignedWithCommas(eligible_triples).c_str());
+      line6 = ANSI::ProgressBar(done, epoch_size, info, sec) + "\n";
+    } else {
+      string info = StringPrintf("%llu gpu filtered + %llu full",
+                                 done_gpu_filtered, done_full_try);
+      ANSI::ProgressBarOptions options;
+      options.bar_filled = 0x0f9115;
+      options.bar_empty  = 0x001a03;
+
+      line6 = ANSI::ProgressBar(done_gpu_filtered + done_full_try,
+                                eligible_triples,
+                                info, sec, options) + "\n";
+    }
 
     status.EmitStatus(line1 + line2 + line3 + line4 + line5 + line6);
   }
@@ -960,7 +1001,7 @@ struct SOS {
               },
               num_threads);
 
-        try_queue->WaitAdd(std::move(output));
+        try_queue->WaitAddVec(std::move(output));
         output.clear();
         {
           MutexLock ml(&m);
@@ -1020,7 +1061,7 @@ struct SOS {
                     TryMe tryme;
                     tryme.num = sum;
                     tryme.squareways = std::move(ways);
-                    try_queue->WaitAdd({std::move(tryme)});
+                    try_queue->WaitAdd(std::move(tryme));
 
                     local_too_big++;
                     local_eligible_triples++;
@@ -1033,10 +1074,7 @@ struct SOS {
                 }
               }
 
-              for (const auto &p : todo_gpu) {
-                // PERF batch add
-                ways_queue->WaitAdd(p);
-              }
+              ways_queue->WaitAddVec(todo_gpu);
 
               {
                 MutexLock ml(&m);
@@ -1047,7 +1085,8 @@ struct SOS {
                 eligible_triples += local_eligible_triples;
                 pending_try += local_pending_try;
 
-                // Added to GPU in batch
+                // Added to GPU in batch.
+                eligible_triples += todo_gpu.size();
                 triple_pending_ways += todo_gpu.size();
 
                 // Ineligible
@@ -1098,6 +1137,7 @@ struct SOS {
 
     {
       MutexLock ml(&m);
+      nways_is_done = true;
       work_stealing_threads = ENDGAME_WORK_STEALING_THREADS;
     }
 
@@ -1197,7 +1237,8 @@ static std::pair<uint64_t, uint64_t> PredictNext() {
   // PERF not all of them!
   printf("db ranges:\n%s\n", db.Epochs().c_str());
 
-  static constexpr int64_t INTERCEPT_LB = 4'000'000'000'000;
+  // XXX improve heuristics so I don't need to keep increasing this
+  static constexpr int64_t INTERCEPT_LB = 8'000'000'000'000;
 
   const auto &almost2 = db.Almost2();
   auto it = almost2.begin();
@@ -1219,8 +1260,20 @@ static std::pair<uint64_t, uint64_t> PredictNext() {
     };
   */
 
-  int64_t best_dist = 99999999999999;
-  int64_t best_iceptx = 0;
+  int64_t best_score = 99999999999999;
+  int64_t best_start = 0;
+  uint64_t best_size = 0;
+  auto Consider = [&best_score, &best_start, &best_size](
+      int64_t score, int64_t start, uint64_t size) {
+      printf("Consider score " ACYAN("%lld") " @" APURPLE("%lld") "\n",
+             score, start);
+      if (score < best_score) {
+        best_score = score;
+        best_start = start;
+        best_size = size;
+      }
+    };
+
   while (it5 != almost2.end()) {
     const int64_t x0 = it->first;
     const int64_t x1 = it5->first;
@@ -1244,12 +1297,15 @@ static std::pair<uint64_t, uint64_t> PredictNext() {
       int64_t iceptx = x0 + std::round(-y0 / m);
 
       auto PrVec = [&](const char *msg) {
-          printf("(%lld, %lld) -> (%lld, %lld)\n"
-                 "  slope %.8f icept "
-                 AWHITE("%lld") " score " ACYAN("%lld") " %s\n",
-                 x0, y0, x1, y1, m, iceptx, dist, msg);
+          if (dist < 200000) {
+            printf("(%lld, %lld) -> (%lld, %lld)\n"
+                   "  slope %.8f icept "
+                   AWHITE("%lld") " score " ACYAN("%lld") " %s\n",
+                   x0, y0, x1, y1, m, iceptx, dist, msg);
+          }
         };
 
+      #if 0
       if (y0 > 0 && y1 < 0) {
         CHECK(iceptx >= x0 && iceptx <= x1);
         PrVec(AYELLOW("ZERO"));
@@ -1257,55 +1313,91 @@ static std::pair<uint64_t, uint64_t> PredictNext() {
         // printntf("(%lld, %lld) -> (%lld, %lld)\n",
         //  x0, y0, x1, y1);
       }
-
+      #endif
 
       if (iceptx > 0) {
-        // Is this point already explored?
-        // We currently require the epoch before and after it to be
-        // complete. It's usually an overestimate.
-        //
-        // XXX we should only consider it complete if it's in a complete
-        // interval and we also have enough squares here. (Like ideally
-        // we'd either have one above and below zero, or else TARGET
-        // so that we can get another vector.)
-        if (db.IsComplete(iceptx - MAX_EPOCH_SIZE) &&
-            db.IsComplete(iceptx)) {
-          PrVec(AGREEN("DONE"));
+        // For valid points, see what completed span they're in.
+        if (!db.IsComplete(iceptx)) {
+          // If none, explore that point.
+
+          // Round to avoid fragmentation.
+          int64_t c = iceptx;
+          c /= MAX_EPOCH_SIZE;
+          c *= MAX_EPOCH_SIZE;
+
+          Consider(dist, c, MAX_EPOCH_SIZE);
+          PrVec("NEW");
         } else {
-          if (dist < best_dist) {
-            best_dist = dist;
-            best_iceptx = iceptx - MAX_EPOCH_SIZE;
-            PrVec(APURPLE("BEST"));
-            printf(APURPLE("BEST") "\n");
+          // Otherwise, look at all the vectors in there. If any
+          // vector crosses zero, we're truly done with this island.
+          // Otherwise, extend the span on one side.
+
+          bool really_done = false;
+          bool extend_right = true;
+          int64_t closest_dist = 999999999999;
+          db.ForEveryVec(iceptx,
+                         [&](int64_t x0, int64_t y0,
+                             int64_t x1, int64_t y1,
+                             int64_t iceptx) {
+                           if (y0 > 0 && y1 < 0) {
+                             really_done = true;
+                           } else {
+                             if (y1 > 0) {
+                               // above the axis, so we'd
+                               // extend to the right to find zero.
+                               if (y1 < closest_dist) {
+                                 extend_right = true;
+                                 closest_dist = y1;
+                               }
+                             } else {
+                               CHECK(y0 < 0);
+                               if (-y0 < closest_dist) {
+                                 extend_right = false;
+                                 closest_dist = -y0;
+                               }
+                             }
+                           }
+                         });
+
+          if (!really_done) {
+            if (extend_right) {
+              auto nga = db.NextGapAfter(iceptx, MAX_EPOCH_SIZE);
+              Consider(dist, nga.first, nga.second);
+              PrVec("AFTER");
+            } else {
+              auto go = db.NextGapBefore(iceptx, MAX_EPOCH_SIZE);
+              if (go.has_value()) {
+                Consider(dist, go.value().first, go.value().second);
+                PrVec("BEFORE");
+              }
+            }
           } else {
-            // printf("\n");
+            PrVec("REALLY DONE");
           }
         }
       } else {
-        PrVec(ARED("INVALID"));
-        // printf(ARED("INVALID") "\n");
+        // Otherwise, it's invalid.
       }
+
     }
 
     ++it;
     ++it5;
   }
 
-  if (best_iceptx <= 0) {
+  if (best_start <= 0 || best_size == 0) {
     printf("\n" ARED("No valid intercepts?") "\n");
     return db.NextToDo(MAX_EPOCH_SIZE);
 
   } else {
-    printf("\nNext guess: " APURPLE("%llu") "\n", best_iceptx);
+    printf("\nNext guess: " APURPLE("%llu") " +" ACYAN("%llu") "\n",
+           best_start, best_size);
 
-    // We pass back the interval before the intercept, but also
-    // expect to do the one after/containing it, unless we find
-    // a better one first.
-    //
-    // Try to keep the ranges clean.
-    best_iceptx /= MAX_EPOCH_SIZE;
-    best_iceptx *= MAX_EPOCH_SIZE;
-    return db.NextGapAfter(best_iceptx, MAX_EPOCH_SIZE);
+    CHECK(best_size <= MAX_EPOCH_SIZE);
+
+    // The above is supposed to produce an interval that still
+    // remains to be done, but skip to the next if not.
+    return db.NextGapAfter(best_start, best_size);
   }
 }
 

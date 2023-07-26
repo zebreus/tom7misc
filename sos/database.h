@@ -5,6 +5,7 @@
 #include <array>
 #include <string>
 #include <cstdint>
+#include <functional>
 
 #include "interval-cover.h"
 
@@ -22,6 +23,9 @@ struct Database {
   std::pair<uint64_t, uint64_t> NextToDo(uint64_t max_size) const;
   std::pair<uint64_t, uint64_t> NextGapAfter(uint64_t start,
                                              uint64_t max_size) const;
+  std::optional<std::pair<uint64_t, uint64_t>>
+  NextGapBefore(uint64_t start,
+                uint64_t max_size) const;
 
   std::string Epochs() const;
 
@@ -32,10 +36,18 @@ struct Database {
   bool CompleteBetween(uint64_t a, uint64_t b) const;
   bool IsComplete(uint64_t a) const;
 
+  // f(x0, y0, x1, y1, iceptx);
+  void ForEveryVec(uint64_t pt,
+                   const std::function<void(int64_t, int64_t,
+                                            int64_t, int64_t,
+                                            int64_t)> &f);
+
   static int64_t GetHerr(const Square &square);
 
   const std::map<uint64_t, Square> Almost2() const { return almost2; }
   const IntervalCover<bool> Done() const { return done; }
+
+  // void ForEveryIntercept(std::function<void> );
 
 private:
   // Set to true if done.

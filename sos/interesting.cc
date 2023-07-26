@@ -13,6 +13,7 @@
 #include "database.h"
 #include "image.h"
 #include "bounds.h"
+#include "color-util.h"
 
 using namespace std;
 
@@ -240,24 +241,79 @@ static void Interesting() {
     const auto [x0, y0] = scaler.Scale(x, plot_bounds.MinY());
     const auto [x1, y1] = scaler.Scale(x, plot_bounds.MaxY());
     plot.BlendLine32(x0, y0, x1, y1, 0xFFFFFF22);
+
+    int tx = x0 + 3;
+    int ty = HEIGHT - ImageRGBA::TEXT2X_HEIGHT - 2;
+    int d = x / 1'000'000'000'000LL;
+    plot.BlendText2x32(
+        tx, ty,
+        0xFFFFFF66,
+        StringPrintf("%lld", d).c_str());
+    plot.BlendText2x32(
+        tx + ImageRGBA::TEXT2X_WIDTH * (d > 9 ? 2 : 1), ty,
+        0xFFFFFF33, "T");
   }
 
 
+  static constexpr bool RAINBOW_A = false;
+  static constexpr int A_RADIX = 10;
+  {
+    int idx = 0;
+    std::array<std::pair<int64_t, int64_t>, A_RADIX> lasta;
+    std::fill(lasta.begin(), lasta.end(), std::make_pair(0.0, 0.0));
+    for (const auto &[x, herr_, y, err_] : errors) {
+      const auto &[lx, ly] = lasta[idx];
+      const double sx0 = scaler.ScaleX(lx);
+      const double sy0 = scaler.ScaleY(ly);
+      const double sx1 = scaler.ScaleX(x);
+      const double sy1 = scaler.ScaleY(y);
+      uint32_t acolor =
+        RAINBOW_A ?
+        ColorUtil::HSVAToRGBA32((idx % A_RADIX) / (float)A_RADIX,
+                                1.0f,
+                                0.8f,
+                                0.25f) :
+        0xAA333340;
+
+      // Don't draw the wrap-around.
+      if (ly < y) {
+        // And, must be in the same span.
+        if (db.CompleteBetween(lx, x)) {
+          plot.BlendLineAA32(sx0, sy0, sx1, sy1, acolor);
+        }
+      }
+      lasta[idx] = make_pair(x, y);
+      idx++;
+      idx %= A_RADIX;
+    }
+  }
+
+
+  int idx = 0;
   for (const auto &[x, herr, aerr, err] : errors) {
     const double xx = scaler.ScaleX(x);
     const double hh = scaler.ScaleY(herr);
     const double aa = scaler.ScaleY(aerr);
     const double ee = scaler.ScaleY(err);
 
-    plot.BlendFilledCircle32(xx, aa, 3, 0xAA3333AA);
+    uint32_t acolor =
+      RAINBOW_A ?
+      ColorUtil::HSVAToRGBA32((idx % A_RADIX) / (float)A_RADIX,
+                              1.0f,
+                              0.8f,
+                              0.75f) :
+      0xAA3333AA;
+
+    plot.BlendFilledCircle32(xx, aa, 3, acolor);
     plot.BlendFilledCircle32(xx, ee, 3, 0xAAAA33AA);
     plot.BlendFilledCircle32(xx, hh, 3, 0x3333AAAA);
+    idx++;
   }
 
   for (const double x : zeroes) {
     int xx = scaler.ScaleX(x);
     int yy = scaler.ScaleY(0);
-    plot.BlendLine32(xx, yy - 5, xx, yy + 5, 0x00FF0055);
+    plot.BlendLine32(xx, yy - 5, xx, yy + 5, 0x00FF0099);
   }
 
   plot.Save("plot.png");

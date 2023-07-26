@@ -118,8 +118,6 @@ std::pair<uint64_t, uint64_t> Database::NextGapAfter(uint64_t start,
        !done.IsAfterLast(pt);
        pt = done.Next(pt)) {
     IntervalCover<bool>::Span span = done.GetPoint(pt);
-    printf("nga %llu: [%llu,%llu) %s\n", pt, span.start, span.end,
-           span.data ? "done" : "todo");
     if (!span.data) {
       // If this is the first one, it may be inside the interval.
       uint64_t actual_start = std::max(pt, span.start);
@@ -127,7 +125,6 @@ std::pair<uint64_t, uint64_t> Database::NextGapAfter(uint64_t start,
       CHECK(actual_end > actual_start);
       uint64_t size = actual_end - actual_start;
       uint64_t msize = std::min(max_size, size);
-      printf("So do: %llu +%llu\n", actual_start, msize);
 
       return make_pair(actual_start, msize);
     }
@@ -135,6 +132,37 @@ std::pair<uint64_t, uint64_t> Database::NextGapAfter(uint64_t start,
 
   CHECK(false) << "Exhausted 64-bit ints?!";
 }
+
+std::optional<std::pair<uint64_t, uint64_t>>
+Database::NextGapBefore(uint64_t x,
+                        uint64_t max_size) const {
+
+  for (uint64_t pt = done.GetPoint(x).start;
+       pt != 0;
+       pt = done.Prev(pt)) {
+    IntervalCover<bool>::Span span = done.GetPoint(pt);
+    if (!span.data) {
+
+      // If the first one, this may be inside the interval.
+      uint64_t actual_end = std::min(x, span.end);
+      CHECK(span.start < actual_end);
+
+      uint64_t actual_size = actual_end - span.start;
+      if (actual_size < max_size) {
+        // Entire interval.
+        return {make_pair(span.start, actual_size)};
+      }
+
+      // Otherwise, take the end of the interval.
+      uint64_t start = actual_end - max_size;
+      CHECK(start >= span.start);
+      return {make_pair(start, max_size)};
+    }
+  }
+
+  return nullopt;
+}
+
 
 std::pair<uint64_t, uint64_t> Database::NextToDo(uint64_t max_size) const {
   return NextGapAfter(0, max_size);
@@ -181,4 +209,48 @@ int64_t Database::GetHerr(const Square &square) {
   int64_t herr2 = (h + 1) * (h + 1) - (int64_t)hh;
   int64_t herr = std::abs(herr1) < std::abs(herr2) ? herr1 : herr2;
   return herr;
+}
+
+// f(x0, y0, x1, y1, iceptx);
+void Database::ForEveryVec(uint64_t pt,
+                           const std::function<void(int64_t, int64_t,
+                                                    int64_t, int64_t,
+                                                    int64_t)> &f) {
+  // Look for all the squares in this span.
+  auto span = done.GetPoint(pt);
+  if (!span.data) return;
+
+  auto it = almost2.lower_bound(span.start);
+
+  auto it5 = it;
+  for (int i = 0; i < 5; i++) {
+    if (it5 == almost2.end()) {
+      // Not enough squares left!
+      return;
+    }
+    it5 = std::next(it5);
+  }
+
+  while (it5 != almost2.end()) {
+    // Also if we run off the span.
+    if (it5->first >= span.end)
+      return;
+
+    // So we have one vec. Compute and call.
+    const int64_t x0 = it->first;
+    const int64_t x1 = it5->first;
+    const int64_t y0 = Database::GetHerr(it->second);
+    const int64_t y1 = Database::GetHerr(it5->second);
+
+    // Predicted intercept.
+    const double dx = x1 - x0;
+    const double dy = y1 - y0;
+    const double m = dy / dx;
+    const int64_t iceptx = x0 + std::round(-y0 / m);
+
+    f(x0, y0, x1, y1, iceptx);
+
+    ++it;
+    ++it5;
+  }
 }
