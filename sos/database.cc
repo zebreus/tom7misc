@@ -19,6 +19,79 @@
 using namespace std;
 using Square = Database::Square;
 
+template<size_t RADIX>
+static void RecordZeroes(
+    const Database &db,
+    int idx,
+    int64_t inner_sum,
+    int64_t err,
+    bool positive_slope,
+    std::array<std::pair<int64_t, int64_t>, RADIX> *prev,
+    std::vector<int64_t> *zeroes) {
+  const auto [prev_x, prev_y] = (*prev)[idx % RADIX];
+  const int64_t cur_x = inner_sum;
+  const int64_t cur_y = err;
+  const bool correct_slope =
+    positive_slope ? (prev_y < 0 && cur_y > 0) : (prev_y > 0 && cur_y < 0);
+  if (prev_x != 0 && correct_slope) {
+    double dx = cur_x - prev_x;
+    double dy = cur_y - prev_y;
+    double m = dy / dx;
+    int64_t iceptx = prev_x + std::round(-prev_y / m);
+    CHECK(iceptx >= prev_x) << prev_x << "," << prev_y << " -> "
+                            << cur_x << "," << cur_y << " slope "
+                            << m << " @ "
+                            << iceptx;
+    CHECK(iceptx <= cur_x);
+
+    if (db.CompleteBetween(prev_x, cur_x)) {
+      zeroes->push_back(iceptx);
+    }
+
+  }
+  (*prev)[idx % RADIX] = std::make_pair(cur_x, cur_y);
+}
+
+std::pair<std::vector<int64_t>,
+          std::vector<int64_t>> Database::GetZeroes() {
+  // Intercepts where we actually have the point before and after.
+  std::vector<int64_t> azeroes;
+  std::vector<int64_t> hzeroes;
+
+  static constexpr size_t H_RADIX = 5;
+  std::array<std::pair<int64_t, int64_t>, H_RADIX> prev_h;
+  std::fill(prev_h.begin(), prev_h.end(), make_pair(0LL, 0LL));
+  static constexpr size_t A_RADIX = 10;
+  std::array<std::pair<int64_t, int64_t>, A_RADIX> prev_a;
+  std::fill(prev_a.begin(), prev_a.end(), make_pair(0LL, 0LL));
+
+  int idx = 0;
+  for (const auto &[inner_sum, square] : almost2) {
+    const auto [aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
+    uint64_t a = Sqrt64(aa);
+    uint64_t h = Sqrt64(hh);
+
+    CHECK(inner_sum == bb + cc);
+
+    int64_t herr1 = h * h - (int64_t)hh;
+    int64_t herr2 = (h + 1) * (h + 1) - (int64_t)hh;
+
+    int64_t aerr1 = a * a - (int64_t)aa;
+    int64_t aerr2 = (a + 1) * (a + 1) - (int64_t)aa;
+
+    int64_t herr = std::abs(herr1) < std::abs(herr2) ? herr1 : herr2;
+    int64_t aerr = std::abs(aerr1) < std::abs(aerr2) ? aerr1 : aerr2;
+
+    RecordZeroes<H_RADIX>(*this, idx, inner_sum, herr, false,
+                          &prev_h, &hzeroes);
+    RecordZeroes<A_RADIX>(*this, idx, inner_sum, aerr, true,
+                          &prev_a, &azeroes);
+    idx++;
+  }
+
+  return make_pair(azeroes, hzeroes);
+}
+
 void Database::AddEpoch(uint64_t start, uint64_t size) {
   // printf("AddEpoch %llu, %llu\n", start, start + size);
   done.SetSpan(start, start + size, true);

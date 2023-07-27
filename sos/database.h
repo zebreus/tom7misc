@@ -42,6 +42,13 @@ struct Database {
                                             int64_t, int64_t,
                                             int64_t)> &f);
 
+  // For all the places where we have a pair of aligned (mod the
+  // appropriate radix) points straddling the x-axis within a known
+  // region, get the (linear) intercept between them.
+  // Returns {azeroes, hzeroes}.
+  std::pair<std::vector<int64_t>,
+            std::vector<int64_t>> GetZeroes();
+
   static int64_t GetHerr(const Square &square);
 
   const std::map<uint64_t, Square> Almost2() const { return almost2; }
