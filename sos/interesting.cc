@@ -19,6 +19,42 @@ using namespace std;
 
 using re2::RE2;
 
+template<size_t RADIX>
+static void RecordZeroes(
+    const Database &db,
+    int idx,
+    int64_t inner_sum,
+    int64_t err,
+    bool positive_slope,
+    std::array<std::pair<int64_t, int64_t>, RADIX> *prev,
+    std::vector<int64_t> *zeroes,
+    std::string *zeroes_csv) {
+  const auto [prev_x, prev_y] = (*prev)[idx % RADIX];
+  const int64_t cur_x = inner_sum;
+  const int64_t cur_y = err;
+  const bool correct_slope =
+    positive_slope ? (prev_y < 0 && cur_y > 0) : (prev_y > 0 && cur_y < 0);
+  if (prev_x != 0 && correct_slope) {
+    double dx = cur_x - prev_x;
+    double dy = cur_y - prev_y;
+    double m = dy / dx;
+    int64_t iceptx = prev_x + std::round(-prev_y / m);
+    CHECK(iceptx >= prev_x) << prev_x << "," << prev_y << " -> "
+                            << cur_x << "," << cur_y << " slope "
+                            << m << " @ "
+                            << iceptx;
+    CHECK(iceptx <= cur_x);
+
+    if (db.CompleteBetween(prev_x, cur_x)) {
+      zeroes->push_back(iceptx);
+      StringAppendF(zeroes_csv, "%lld\n", iceptx);
+    }
+
+  }
+  (*prev)[idx % RADIX] = std::make_pair(cur_x, cur_y);
+}
+
+
 static void Interesting() {
   //     (!) 115147526400 274233600 165486240000 143974713600 93636000000 43297286400 21785760000 186997766400 72124473600
   RE2 almost2("\\(!\\) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+) (\\d+)");
@@ -33,6 +69,8 @@ static void Interesting() {
   string csv = "inner sum, dh, da, err\n";
   string intercept_csv = "intercept\n";
   string fives_csv = "inner sum, h0, h1, h2, h3, h4\n";
+  string hzeroes_csv = "hzero x\n";
+  string azeroes_csv = "azero x\n";
 
   int64_t num_almost2 = 0, num_almost1 = 0;
   std::vector<std::string> lines = Util::ReadFileToLines("interesting.txt");
@@ -42,13 +80,12 @@ static void Interesting() {
          "%s\n", db.Epochs().c_str());
 
   // std::optional<std::pair<int64_t, int64_t>> prev_aerr;
-  std::array<std::pair<int64_t, int64_t>, 5> prev_h = {
-    make_pair(0LL, 0LL),
-    make_pair(0LL, 0LL),
-    make_pair(0LL, 0LL),
-    make_pair(0LL, 0LL),
-    make_pair(0LL, 0LL),
-  };
+  static constexpr size_t H_RADIX = 5;
+  std::array<std::pair<int64_t, int64_t>, H_RADIX> prev_h;
+  std::fill(prev_h.begin(), prev_h.end(), make_pair(0LL, 0LL));
+  static constexpr size_t A_RADIX = 10;
+  std::array<std::pair<int64_t, int64_t>, A_RADIX> prev_a;
+  std::fill(prev_a.begin(), prev_a.end(), make_pair(0LL, 0LL));
 
   std::vector<std::array<uint64_t, 9>> rows;
 
@@ -72,7 +109,8 @@ static void Interesting() {
   // h, a, abs sum
   std::vector<std::tuple<int64_t, int64_t, int64_t, int64_t>> errors;
   // Intercepts where we actually have the point before and after.
-  std::vector<int64_t> zeroes;
+  std::vector<int64_t> hzeroes;
+  std::vector<int64_t> azeroes;
 
   for (int idx = 0; idx < rows.size(); idx++) {
     const auto &row = rows[idx];
@@ -131,34 +169,10 @@ static void Interesting() {
 
     errors.emplace_back(inner_sum, herr, aerr, err);
 
-    {
-      const auto [prev_x, prev_y] = prev_h[idx % 5];
-      const int64_t cur_x = inner_sum;
-      const int64_t cur_y = herr;
-      if (prev_x != 0 && prev_y > 0 && cur_y < 0) {
-        double dx = cur_x - prev_x;
-        double dy = cur_y - prev_y;
-        double m = dy / dx;
-        int64_t iceptx = prev_x + std::round(-prev_y / m);
-        CHECK(iceptx >= prev_x) << prev_x << "," << prev_y << " -> "
-                                << cur_x << "," << cur_y << " slope "
-                                << m << " @ "
-                                << iceptx;
-        CHECK(iceptx <= cur_x);
-
-        if (db.CompleteBetween(prev_x, cur_x) &&
-            prev_y > 0 && cur_y < 0) {
-          zeroes.push_back(iceptx);
-        }
-
-        // if ((idx % 5) == 0) printf("intercept %lld\n", iceptx);
-        StringAppendF(&intercept_csv, "%lld\n", iceptx);
-      }
-      prev_h[idx % 5] = std::make_pair(cur_x, cur_y);
-      if ((idx % 5) == 0) {
-        // printf("%lld,%lld\n", cur_x, cur_y);
-      }
-    }
+    RecordZeroes<H_RADIX>(db, idx, inner_sum, herr, false,
+                          &prev_h, &hzeroes, &hzeroes_csv);
+    RecordZeroes<A_RADIX>(db, idx, inner_sum, aerr, true,
+                          &prev_a, &azeroes, &azeroes_csv);
 
     StringAppendF(&csv, "%lld,%lld,%lld,%lld\n",
                   inner_sum, herr, aerr, err);
@@ -195,6 +209,8 @@ static void Interesting() {
   Util::WriteFile("density.csv", csv);
   Util::WriteFile("intercept.csv", intercept_csv);
   Util::WriteFile("fives.csv", fives_csv);
+  Util::WriteFile("hzeroes.csv", hzeroes_csv);
+  Util::WriteFile("azeroes.csv", azeroes_csv);
 
   // Prep bounds.
   Bounds plot_bounds;
@@ -256,7 +272,6 @@ static void Interesting() {
 
 
   static constexpr bool RAINBOW_A = false;
-  static constexpr int A_RADIX = 10;
   {
     int idx = 0;
     std::array<std::pair<int64_t, int64_t>, A_RADIX> lasta;
@@ -310,10 +325,16 @@ static void Interesting() {
     idx++;
   }
 
-  for (const double x : zeroes) {
+  for (const double x : hzeroes) {
     int xx = scaler.ScaleX(x);
     int yy = scaler.ScaleY(0);
     plot.BlendLine32(xx, yy - 5, xx, yy + 5, 0x00FF0099);
+  }
+
+  for (const double x : azeroes) {
+    int xx = scaler.ScaleX(x);
+    int yy = scaler.ScaleY(0);
+    plot.BlendLine32(xx, yy - 5, xx, yy + 5, 0xFF4400CC);
   }
 
   plot.Save("plot.png");
