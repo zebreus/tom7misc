@@ -12,7 +12,7 @@
 #include "periodically.h"
 #include "arcfour.h"
 #include "randutil.h"
-#include "factorize.h"
+#include "factorization.h"
 #include "util.h"
 
 static std::string VecString(const std::vector<int> &v) {
@@ -198,7 +198,8 @@ bool FindRejection(const std::vector<std::pair<int, std::set<int>>> &nsres,
 
 // Test that the residues (e.g. pasted from wikipedia) are inclusive
 // of real residues.
-static void SelfTest(const std::vector<std::pair<int, std::vector<int>>> &qres) {
+static void SelfTest(
+    const std::vector<std::pair<int, std::vector<int>>> &qres) {
   for (const auto &[m, residues] : qres) {
     // First test that they are correct.
     std::set<int> rs;
@@ -264,9 +265,10 @@ GetNonSumResidues(
 
 
 
-// Prints out the contents of NON_QUADRATIC_SUM_RESIDUES above. These
-// are values that cannot be the sum (mod m) of two quadratic
-// residues, and so they can't be x^2 + y^2 mod m for any x,y.
+// Prints out the contents of a vector of non-quadratic sum residues,
+// as computed above. These are values that cannot be the sum (mod m)
+// of two quadratic residues, and so they can't be x^2 + y^2 mod m for
+// any x,y.
 [[maybe_unused]]
 static void PrintNonSumResidues(
     const std::vector<std::pair<int, std::set<int>>> &nsres) {
@@ -277,6 +279,20 @@ static void PrintNonSumResidues(
     for (int r : nr) printf("%d, ", r);
     printf("}}, // " AGREEN("%.1f%%") "\n", (100.0 * nr.size()) / m);
   }
+}
+
+static void WriteNonSumReisudesSMTLIB(
+    const std::vector<std::pair<int, std::set<int>>> &nsres) {
+  string out;
+  for (const auto &[m, nr] : nsres) {
+    StringAppendF(&out,   "(assert (let ((m%d (mod isum %d)))\n"
+                          "        (not (or\n",
+                  m, m);
+    for (int r : nr)
+      StringAppendF(&out, "              (= m%d %d)\n", m, r);
+    StringAppendF(&out,   " ))))\n");
+  }
+  Util::WriteFile("nonresidues.z3", out);
 }
 
 // Compute and print rejection statistics; used to figure out which
@@ -403,7 +419,8 @@ static std::vector<std::pair<int, std::vector<int>>> MakeAllResidues(int max_p) 
   for (int p = 1; p < max_p; p++) {
     ret.push_back(GetResidues(p));
   }
-  printf("Made %d residues in %s\n", max_p - 1, ANSI::Time(timer.Seconds()).c_str());
+  printf("Made %d residues in %s\n", max_p - 1,
+         ANSI::Time(timer.Seconds()).c_str());
 
   // Test against wikipedia list
   for (int i = 0; i < std::min(QUADRATIC_RESIDUES.size(), ret.size()); i++) {
@@ -430,7 +447,7 @@ static std::vector<std::pair<int, std::vector<int>>> MakeGoodResidues(
   // squares theorem, i.e. the primes that are congruent to 3 mod 4.
   // Is this redundant with trial division?)
   for (int p = 2; p <= max_b; p++) {
-    if (Factorize::IsPrime(p)) {
+    if (Factorization::IsPrime(p)) {
       uint64_t product = 1;
       for (int e = 1; e <= max_e; e++) {
         product *= p;
@@ -463,7 +480,10 @@ int main(int argc, char ** argv) {
   ANSI::Init();
 
   std::vector<std::pair<int, std::vector<int>>> qres =
-    MakeGoodResidues(7, 10);
+    // MakeGoodResidues(7, 10);
+    MakeAllResidues(151);
+
+  printf("Have " AGREEN("%d") " residues\n", (int)qres.size());
 
   // qres.emplace_back(GetResidues(131072));
 
@@ -473,7 +493,8 @@ int main(int argc, char ** argv) {
   std::vector<std::pair<int, std::set<int>>> nqsr =
     GetNonSumResidues(qres);
 
-  // PrintNonSumResidues(nqsr);
+  WriteNonSumReisudesSMTLIB(nqsr);
+  PrintNonSumResidues(nqsr);
 
   RejectionStats(nqsr);
 

@@ -24,6 +24,7 @@ CLINCLUDES="-I$(AMDSDK)/include"
 CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
 
 #  -Wno-write-strings
+FLTO=-flto=auto
 CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 
 # without static, can't find lz or lstdcxx maybe?
@@ -38,7 +39,7 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=clutil.o sos-util.o database.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
+OBJECTS=clutil.o sos-util.o database.o predict.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
 
 sos.exe : sos.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)

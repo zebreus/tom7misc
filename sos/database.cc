@@ -19,44 +19,43 @@
 using namespace std;
 using Square = Database::Square;
 
-template<size_t RADIX>
-static void RecordZeroes(
-    const Database &db,
-    int idx,
-    int64_t inner_sum,
-    int64_t err,
-    bool positive_slope,
-    std::array<std::pair<int64_t, int64_t>, RADIX> *prev,
-    std::vector<int64_t> *zeroes) {
-  const auto [prev_x, prev_y] = (*prev)[idx % RADIX];
-  const int64_t cur_x = inner_sum;
-  const int64_t cur_y = err;
-  const bool correct_slope =
+using ZeroVecFn = std::function<void(int64_t, int64_t,
+                                     int64_t, int64_t,
+                                     int64_t)>;
+void Database::ForEveryZeroVec(
+    const ZeroVecFn &f_a,
+    const ZeroVecFn &f_h) const {
+
+  auto VisitZeroes =
+    [this]<size_t RADIX>(const ZeroVecFn &f,
+                         int idx,
+                         int64_t inner_sum,
+                         int64_t err,
+                         bool positive_slope,
+                         std::array<std::pair<int64_t, int64_t>, RADIX> *prev) {
+    const auto [prev_x, prev_y] = (*prev)[idx % RADIX];
+    const int64_t cur_x = inner_sum;
+    const int64_t cur_y = err;
+    const bool correct_slope =
     positive_slope ? (prev_y < 0 && cur_y > 0) : (prev_y > 0 && cur_y < 0);
-  if (prev_x != 0 && correct_slope) {
-    double dx = cur_x - prev_x;
-    double dy = cur_y - prev_y;
-    double m = dy / dx;
-    int64_t iceptx = prev_x + std::round(-prev_y / m);
-    CHECK(iceptx >= prev_x) << prev_x << "," << prev_y << " -> "
-                            << cur_x << "," << cur_y << " slope "
-                            << m << " @ "
-                            << iceptx;
-    CHECK(iceptx <= cur_x);
+    if (prev_x != 0 && correct_slope) {
+      double dx = cur_x - prev_x;
+      double dy = cur_y - prev_y;
+      double m = dy / dx;
+      int64_t iceptx = prev_x + std::round(-prev_y / m);
+      CHECK(iceptx >= prev_x) << prev_x << "," << prev_y << " -> "
+                              << cur_x << "," << cur_y << " slope "
+                              << m << " @ "
+                              << iceptx;
+      CHECK(iceptx <= cur_x);
 
-    if (db.CompleteBetween(prev_x, cur_x)) {
-      zeroes->push_back(iceptx);
+      if (CompleteBetween(prev_x, cur_x)) {
+        f(prev_x, prev_y, cur_x, cur_y, iceptx);
+      }
     }
+    (*prev)[idx % RADIX] = std::make_pair(cur_x, cur_y);
+  };
 
-  }
-  (*prev)[idx % RADIX] = std::make_pair(cur_x, cur_y);
-}
-
-std::pair<std::vector<int64_t>,
-          std::vector<int64_t>> Database::GetZeroes() {
-  // Intercepts where we actually have the point before and after.
-  std::vector<int64_t> azeroes;
-  std::vector<int64_t> hzeroes;
 
   static constexpr size_t H_RADIX = 5;
   std::array<std::pair<int64_t, int64_t>, H_RADIX> prev_h;
@@ -82,13 +81,25 @@ std::pair<std::vector<int64_t>,
     int64_t herr = std::abs(herr1) < std::abs(herr2) ? herr1 : herr2;
     int64_t aerr = std::abs(aerr1) < std::abs(aerr2) ? aerr1 : aerr2;
 
-    RecordZeroes<H_RADIX>(*this, idx, inner_sum, herr, false,
-                          &prev_h, &hzeroes);
-    RecordZeroes<A_RADIX>(*this, idx, inner_sum, aerr, true,
-                          &prev_a, &azeroes);
+    VisitZeroes.template operator()<A_RADIX>(
+        f_a, idx, inner_sum, aerr, true, &prev_a);
+    VisitZeroes.template operator()<H_RADIX>(
+        f_h, idx, inner_sum, herr, false, &prev_h);
     idx++;
   }
+}
 
+
+std::pair<std::vector<int64_t>,
+          std::vector<int64_t>> Database::GetZeroes() {
+  // Intercepts where we actually have the point before and after.
+  std::vector<int64_t> azeroes, hzeroes;
+  ForEveryZeroVec([&azeroes](int64_t x0_, int64_t y0_,
+                             int64_t x1_, int64_t y1_,
+                             int64_t z) { azeroes.push_back(z); },
+                  [&hzeroes](int64_t x0_, int64_t y0_,
+                             int64_t x1_, int64_t y1_,
+                             int64_t z) { hzeroes.push_back(z); });
   return make_pair(azeroes, hzeroes);
 }
 
@@ -284,11 +295,21 @@ int64_t Database::GetHerr(const Square &square) {
   return herr;
 }
 
+int64_t Database::GetAerr(const Square &square) {
+  const auto &[aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
+  uint64_t a = Sqrt64(aa);
+
+  int64_t aerr1 = a * a - (int64_t)aa;
+  int64_t aerr2 = (a + 1) * (a + 1) - (int64_t)aa;
+  int64_t aerr = std::abs(aerr1) < std::abs(aerr2) ? aerr1 : aerr2;
+  return aerr;
+}
+
 // f(x0, y0, x1, y1, iceptx);
-void Database::ForEveryVec(uint64_t pt,
-                           const std::function<void(int64_t, int64_t,
-                                                    int64_t, int64_t,
-                                                    int64_t)> &f) {
+void Database::ForEveryHVec(uint64_t pt,
+                            const std::function<void(int64_t, int64_t,
+                                                     int64_t, int64_t,
+                                                     int64_t)> &f) {
   // Look for all the squares in this span.
   auto span = done.GetPoint(pt);
   if (!span.data) return;
@@ -326,4 +347,131 @@ void Database::ForEveryVec(uint64_t pt,
     ++it;
     ++it5;
   }
+}
+
+// f(x0, y0, x1, y1, iceptx);
+void Database::ForEveryAVec(uint64_t pt,
+                            const std::function<void(int64_t, int64_t,
+                                                     int64_t, int64_t,
+                                                     int64_t)> &f) {
+  // Look for all the squares in this span.
+  auto span = done.GetPoint(pt);
+  if (!span.data) return;
+
+  auto it = almost2.lower_bound(span.start);
+
+  auto it10 = it;
+  for (int i = 0; i < 10; i++) {
+    if (it10 == almost2.end()) {
+      // Not enough squares left!
+      return;
+    }
+    it10 = std::next(it10);
+  }
+
+  while (it10 != almost2.end()) {
+    // Also if we run off the span.
+    if (it10->first >= span.end)
+      return;
+
+    // So we have one vec. Compute and call.
+    const int64_t x0 = it->first;
+    const int64_t x1 = it10->first;
+    const int64_t y0 = GetAerr(it->second);
+    const int64_t y1 = GetAerr(it10->second);
+
+    // Predicted intercept.
+    const double dx = x1 - x0;
+    const double dy = y1 - y0;
+    const double m = dy / dx;
+    const int64_t iceptx = x0 + std::round(-y0 / m);
+
+    f(x0, y0, x1, y1, iceptx);
+
+    ++it;
+    ++it10;
+  }
+}
+
+
+Database::IslandZero Database::IslandHZero(int64_t pt) {
+  if (!done.GetPoint(pt).data) return IslandZero::NONE;
+
+  bool really_done = false;
+  // Prefer extending to the left until we have some evidence, since
+  // this seems to usually be an overestimate.
+  bool extend_right = false;
+  int64_t closest_dist = std::numeric_limits<int64_t>::max();
+  bool has_points = false;
+
+  ForEveryHVec(pt,
+               [&](int64_t x0, int64_t y0,
+                   int64_t x1, int64_t y1,
+                   int64_t iceptx) {
+                 has_points = true;
+                 if (y0 > 0 && y1 < 0) {
+                   really_done = true;
+                 } else {
+                   if (y1 > 0) {
+                     // above the axis, so we'd
+                     // extend to the right to find zero.
+                     if (y1 < closest_dist) {
+                       extend_right = true;
+                       closest_dist = y1;
+                     }
+                   } else {
+                     CHECK(y0 < 0);
+                     if (-y0 < closest_dist) {
+                       extend_right = false;
+                       closest_dist = -y0;
+                     }
+                   }
+                 }
+               });
+
+  if (really_done) return IslandZero::HAS_ZERO;
+  else if (!has_points) return IslandZero::NO_POINTS;
+
+  return extend_right ? IslandZero::GO_RIGHT : IslandZero::GO_LEFT;
+}
+
+Database::IslandZero Database::IslandAZero(int64_t pt) {
+  if (!done.GetPoint(pt).data) return IslandZero::NONE;
+
+  bool really_done = false;
+  // Prefer extending to the left until we have some evidence, since
+  // this seems to usually be an overestimate.
+  bool extend_right = false;
+  int64_t closest_dist = std::numeric_limits<int64_t>::max();
+  bool has_points = false;
+
+  ForEveryAVec(pt,
+               [&](int64_t x0, int64_t y0,
+                   int64_t x1, int64_t y1,
+                   int64_t iceptx) {
+                 has_points = true;
+                 if (y0 < 0 && y1 > 0) {
+                   really_done = true;
+                 } else {
+                   if (y1 < 0) {
+                     // above the axis, so we'd
+                     // extend to the right to find zero.
+                     if (-y1 < closest_dist) {
+                       extend_right = true;
+                       closest_dist = -y1;
+                     }
+                   } else {
+                     CHECK(y0 > 0);
+                     if (y0 < closest_dist) {
+                       extend_right = false;
+                       closest_dist = y0;
+                     }
+                   }
+                 }
+               });
+
+  if (really_done) return IslandZero::HAS_ZERO;
+  else if (!has_points) return IslandZero::NO_POINTS;
+
+  return extend_right ? IslandZero::GO_RIGHT : IslandZero::GO_LEFT;
 }

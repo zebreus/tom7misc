@@ -2,6 +2,8 @@
 #include <array>
 #include <vector>
 #include <string>
+#include <unordered_set>
+#include <cstdint>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
@@ -14,10 +16,130 @@
 #include "image.h"
 #include "bounds.h"
 #include "color-util.h"
+#include "predict.h"
+#include "factorization.h"
+#include "set-util.h"
 
 using namespace std;
 
 using re2::RE2;
+
+static void PlotSquareValues(const Database &db) {
+  static constexpr std::array<uint32_t, 9> COLOR = {
+    0xAA3333FF, // a
+    0x0088FFFF, // b
+    0xFF8800FF, // c
+    0xFF0088FF, // d
+    0xAA33AAFF, // e
+    0x33AA33FF, // f
+    0x33AAAAFF, // g
+    0x3333AAFF, // h
+    0xAAAA33FF, // i
+  };
+
+  Bounds bounds;
+  bounds.Bound(0, 0);
+  for (const auto &[isum, square] : db.Almost2()) {
+    const int64_t sum = square[0] + square[1] + square[2];
+    bounds.Bound(isum, sum);
+    for (uint64_t ss : square) {
+      bounds.Bound(isum, ss);
+    }
+  }
+  int WIDTH = 3000;
+  int HEIGHT = 1800;
+  bounds.AddMarginsFrac(0.01, 0.05, 0.01, 0.00);
+  Bounds::Scaler scaler = bounds.Stretch(WIDTH, HEIGHT).FlipY();
+  ImageRGBA plot(WIDTH, HEIGHT);
+  plot.Clear32(0x000000FF);
+
+  for (const auto &[isum, square] : db.Almost2()) {
+    const int64_t sum = square[0] + square[1] + square[2];
+    {
+      const auto &[sx, sy] = scaler.Scale(isum, sum);
+      plot.BlendFilledCircleAA32(sx, sy, 2, 0xFFFFFF33);
+    }
+
+    for (int c = 0; c < 9; c++) {
+      const auto &[sx, sy] = scaler.Scale(isum, square[c]);
+      plot.BlendFilledCircleAA32(sx, sy, 2, COLOR[c] & 0xFFFFFF7A);
+    }
+  }
+
+  // legend
+  static constexpr int LEGEND_X = 10;
+  static constexpr int LEGEND_Y = 10;
+  static constexpr int SPACEW = ImageRGBA::TEXT2X_WIDTH + 4;
+  static constexpr int SPACEH = ImageRGBA::TEXT2X_HEIGHT + 4;
+  for (int y = 0; y < 3; y++) {
+    for (int x = 0; x < 3; x++) {
+      int c = y * 3 + x;
+      plot.BlendText2x32(LEGEND_X + x * SPACEW,
+                         LEGEND_Y + y * SPACEH,
+                         COLOR[c],
+                         StringPrintf("%c", 'a' + c));
+    }
+  }
+
+  plot.Save("squarevalues.png");
+}
+
+static void PrintFactors(const Database &db) {
+  // Prime factors always present. Really should have exponents, but
+  // we know that its at least a subset of this:
+  // This is the factors of 319754, isum for the smallest almost2 square.
+  std::unordered_set<uint64_t> always = {
+    2, 29, 37, 149
+  };
+
+  std::unordered_set<uint64_t> seen;
+
+  for (const auto &[isum, square] : db.Almost2()) {
+    printf(ACYAN("%llu") " Factors:", isum);
+    std::vector<std::pair<uint64_t, int>> factors =
+      Factorization::Factorize(isum);
+
+    std::unordered_set<uint64_t> unique_factors;
+    for (const auto &[b, e] : factors) unique_factors.insert(b);
+    for (const uint64_t f : unique_factors) seen.insert(f);
+
+    std::unordered_set<uint64_t> new_always;
+    for (const uint64_t a : always) {
+      if (unique_factors.contains(a)) new_always.insert(a);
+    }
+    always = std::move(new_always);
+
+    for (const auto &[b, e] : factors) {
+      if (e == 1) {
+        printf(" " AWHITE("%llu"), b);
+      } else {
+        printf(" " AWHITE("%llu") AGREY("^") AYELLOW("%d"), b, e);
+      }
+    }
+    printf("\n");
+  }
+
+  printf("All factors seen:");
+  std::vector<uint64_t> all = ToSortedVec(seen);
+  for (int p = 2; p < all[all.size() - 1]; p++) {
+    if (Factorization::IsPrime(p)) {
+      if (seen.contains(p)) {
+        printf(" " AGREEN("%d"), p);
+      } else {
+        printf(" " ARED("%d"), p);
+      }
+    }
+  }
+
+  // for (const uint64_t f : ToSortedVec(seen))
+  // printf(" " AWHITE("%llu"), f);
+  printf("\n");
+
+  printf("Factors always seen:");
+  for (const uint64_t f : ToSortedVec(always))
+    printf(" " AWHITE("%llu"), f);
+  printf("\n");
+}
 
 static void Interesting() {
   //     (!) 115147526400 274233600 165486240000 143974713600 93636000000 43297286400 21785760000 186997766400 72124473600
@@ -42,6 +164,9 @@ static void Interesting() {
   Database db = Database::FromInterestingFile("interesting.txt");
   printf("Database:\n"
          "%s\n", db.Epochs().c_str());
+  PlotSquareValues(db);
+
+  PrintFactors(db);
 
   const auto &[azeroes, hzeroes] = db.GetZeroes();
 
@@ -178,6 +303,15 @@ static void Interesting() {
     plot_bounds.Bound(x, err);
   }
 
+  printf("Get next hzero:\n");
+  const int64_t next_hzero = Predict::NextInDenseSeries(hzeroes);
+  printf("Next hzero: " APURPLE("%lld") "\n", next_hzero);
+  plot_bounds.Bound(next_hzero, 0.0);
+
+  const int64_t next_azero = Predict::NextInDensePrefixSeries(db, azeroes);
+  printf("Next azero: " APURPLE("%lld") "\n", next_azero);
+  plot_bounds.Bound(next_azero, 0.0);
+
   int WIDTH = 3000;
   int HEIGHT = 1800;
   plot_bounds.AddMarginsFrac(0.01, 0.05, 0.01, 0.00);
@@ -185,6 +319,7 @@ static void Interesting() {
   ImageRGBA plot(WIDTH, HEIGHT);
   plot.Clear32(0x000000FF);
 
+  // TODO: ensure slivers as much as possible, whether missing or done.
   // missing regions
   {
     const IntervalCover<bool> done = db.Done();
@@ -217,14 +352,14 @@ static void Interesting() {
     plot.BlendLine32(x0, y0, x1, y1, 0xFFFFFF22);
 
     int tx = x0 + 3;
-    int ty = HEIGHT - ImageRGBA::TEXT2X_HEIGHT - 2;
+    int ty = HEIGHT - ImageRGBA::TEXT_HEIGHT - 2;
     int d = x / 1'000'000'000'000LL;
-    plot.BlendText2x32(
+    plot.BlendText32(
         tx, ty,
         0xFFFFFF66,
         StringPrintf("%lld", d).c_str());
-    plot.BlendText2x32(
-        tx + ImageRGBA::TEXT2X_WIDTH * (d > 9 ? 2 : 1), ty,
+    plot.BlendText32(
+        tx + ImageRGBA::TEXT_WIDTH * (d > 9 ? 2 : 1), ty,
         0xFFFFFF33, "T");
   }
 
@@ -293,6 +428,20 @@ static void Interesting() {
     int xx = scaler.ScaleX(x);
     int yy = scaler.ScaleY(0);
     plot.BlendLine32(xx, yy - 5, xx, yy + 5, 0xFF4400CC);
+  }
+
+  {
+    int xx = scaler.ScaleX(next_hzero);
+    int yy = scaler.ScaleY(0);
+    plot.BlendLine32(xx, yy - 15, xx, yy - 10, 0x00FFFFCC);
+    plot.BlendLine32(xx, yy + 10, xx, yy + 15, 0x00FFFFCC);
+  }
+
+  {
+    int xx = scaler.ScaleX(next_azero);
+    int yy = scaler.ScaleY(0);
+    plot.BlendLine32(xx, yy - 15, xx, yy - 10, 0xFF8800CC);
+    plot.BlendLine32(xx, yy + 10, xx, yy + 15, 0xFF8800CC);
   }
 
   plot.Save("plot.png");

@@ -29,6 +29,7 @@
 #include "database.h"
 #include "sos-util.h"
 #include "sos-gpu.h"
+#include "predict.h"
 
 using namespace std;
 
@@ -44,6 +45,7 @@ using Square = Database::Square;
 using GPUMethod = WaysGPUMerge;
 
 static constexpr bool WRITE_IMAGE = false;
+
 
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
 
@@ -74,8 +76,12 @@ struct StatusBar {
       printf("%s\n", line.c_str());
     }
     // Maintain space for status.
-    for (int i = 0; i < num_lines; i++) {
-      printf("\n");
+    if (prev_status_lines.empty()) {
+      for (int i = 0; i < num_lines; i++) {
+        printf("\n");
+      }
+    } else {
+      EmitStatusLinesWithLock(prev_status_lines);
     }
   }
 
@@ -94,14 +100,11 @@ struct StatusBar {
   void EmitStatus(const std::string &s) {
     std::vector<std::string> lines = Util::SplitToLines(s);
     MutexLock ml(&m);
+    prev_status_lines = lines;
     MoveUp();
-    if (lines.size() != num_lines) {
-      printf(ARED("...wrong number of lines...") "\n");
-    }
-    for (const string &line : lines) {
-      printf("%s\n", line.c_str());
-    }
+    EmitStatusLinesWithLock(lines);
   }
+
 
 private:
   // The idea is that we keep the screen in a state where there are
@@ -123,9 +126,19 @@ private:
     first = false;
   }
 
+  void EmitStatusLinesWithLock(const std::vector<std::string> &lines) {
+    if (lines.size() != num_lines) {
+      printf(ARED("...wrong number of lines...") "\n");
+    }
+    for (const string &line : lines) {
+      printf("%s\n", line.c_str());
+    }
+  }
+
   std::mutex m;
   int num_lines = 0;
   bool first = true;
+  std::vector<std::string> prev_status_lines;
 };
 
 // Tuned by sos-gpu_test.
@@ -241,7 +254,7 @@ inline static void AllWays(
     const auto &[b, c] = ways[p];
     const auto &[bb, cc] = ways_squared[p];
     for (int q = 0; q < ways.size(); q++) {
-      if (p != q) {
+      if (q != p) {
         const auto &[d, g] = ways[q];
         const auto &[dd, gg] = ways_squared[q];
 
@@ -251,7 +264,7 @@ inline static void AllWays(
           continue;
 
         for (int r = 0; r < ways.size(); r++) {
-          if (p != r && q != r) {
+          if (r != p && r != q) {
             const auto &[e, i] = ways[r];
             const auto &[ee, ii] = ways_squared[r];
 
@@ -597,7 +610,7 @@ struct SOS {
   SOS() : status_per(10.0) {
     // Performance is pretty workload-dependent, so just tune in-process
     // rather than saving to disk.
-    factor_comp.reset(new AutoParallelComp(40, 1000, false));
+    factor_comp.reset(new AutoParallelComp(30, 1000, false));
     try_comp.reset(new AutoParallelComp(12, 1000, false));
 
     eligiblefilter_gpu.reset(new EligibleFilterGPU(cl, EPOCH_GPU_CHUNK));
@@ -706,6 +719,9 @@ struct SOS {
   uint64_t pending_try = 0;
   uint64_t done_full_try = 0;
 
+  // Test out a new (?) filter...
+  uint64_t non_multiple = 0;
+
   bool nways_is_done = false;
 
   // Must hold lock.
@@ -763,8 +779,10 @@ struct SOS {
                                 Util::UnsignedWithCommas(stolen).c_str());
     string line4 =
       StringPrintf(
+          AYELLOW("%s") " non-mult  "
           ACYAN("%s") " try-filtered  "
           AGREEN("%s") " complete batches\n",
+          Util::UnsignedWithCommas(non_multiple).c_str(),
           Util::UnsignedWithCommas(done_gpu_filtered).c_str(),
           Util::UnsignedWithCommas(batches_completely_filtered).c_str());
 
@@ -779,7 +797,7 @@ struct SOS {
 
     string line5 =
       StringPrintf(AGREY("%.1f%% left") " "
-                   AFGCOLOR(140, 10, 10, "%.1f%% igpu") " "
+                   AFGCOLOR(180, 40, 40, "%.1f%% igpu") " "
                    ARED("%.1f%% icpu") " "
                    AGREEN("%.1f%% pways") " "
                    ABLUE("%.1f%% filt gpu") " "
@@ -816,55 +834,54 @@ struct SOS {
       img->Clear32(0x000000FF);
     }
     int xpos = 0;
-    Periodically bar_per(0.5);
+    Periodically img_per(0.5);
     for (;;) {
       // XXX would be nice to have an efficient Periodically::Await
       using namespace std::chrono_literals;
       std::this_thread::sleep_for(250ms);
 
-      if (bar_per.ShouldRun()) {
-        MutexLock ml(&m);
+      if (img.get() != nullptr) {
+        img_per.RunIf([&](){
+            MutexLock ml(&m);
+            // Get the fractions other than pending.
+            // double HEIGHT_SCALE = HEIGHT / EPOCH_SIZE;
+            auto HeightOf = [epoch_size](double ctr) {
+                return (int)std::round((ctr / epoch_size) * HEIGHT);
+              };
+            int blood = HeightOf(done_ineligible_gpu);
+            int red = HeightOf(done_ineligible_cpu);
+            int green = HeightOf(triple_pending_ways);
+            int blue = HeightOf(done_gpu_filtered);
+            int cyan = HeightOf(pending_try);
+            int white = HeightOf(done_full_try);
 
-        if (img.get() != nullptr) {
-          // Get the fractions other than pending.
-          // double HEIGHT_SCALE = HEIGHT / EPOCH_SIZE;
-          auto HeightOf = [epoch_size](double ctr) {
-              return (int)std::round((ctr / epoch_size) * HEIGHT);
-            };
-          int blood = HeightOf(done_ineligible_gpu);
-          int red = HeightOf(done_ineligible_cpu);
-          int green = HeightOf(triple_pending_ways);
-          int blue = HeightOf(done_gpu_filtered);
-          int cyan = HeightOf(pending_try);
-          int white = HeightOf(done_full_try);
+            int left = HEIGHT - (blood + red + green + blue + cyan + white);
 
-          int left = HEIGHT - (blood + red + green + blue + cyan + white);
-
-          // Now draw the column.
-          int y = 0;
-          for (int u = 0; u < left; u++)
-            img->SetPixel32(xpos, y++, 0x333333FF);
-          for (int u = 0; u < white; u++)
-            img->SetPixel32(xpos, y++, 0xFFFFFFFF);
-          for (int u = 0; u < cyan; u++)
-            img->SetPixel32(xpos, y++, 0x00AAAAFF);
-          for (int u = 0; u < blue; u++)
-            img->SetPixel32(xpos, y++, 0x3333AAFF);
-          for (int u = 0; u < green; u++)
-            img->SetPixel32(xpos, y++, 0x33AA33FF);
-          for (int u = 0; u < red; u++)
-            img->SetPixel32(xpos, y++, 0x883333FF);
-          for (int u = 0; u < blood; u++)
-            img->SetPixel32(xpos, y++, 0x440000FF);
-          xpos++;
-        }
+            // Now draw the column.
+            int y = 0;
+            for (int u = 0; u < left; u++)
+              img->SetPixel32(xpos, y++, 0x333333FF);
+            for (int u = 0; u < white; u++)
+              img->SetPixel32(xpos, y++, 0xFFFFFFFF);
+            for (int u = 0; u < cyan; u++)
+              img->SetPixel32(xpos, y++, 0x00AAAAFF);
+            for (int u = 0; u < blue; u++)
+              img->SetPixel32(xpos, y++, 0x3333AAFF);
+            for (int u = 0; u < green; u++)
+              img->SetPixel32(xpos, y++, 0x33AA33FF);
+            for (int u = 0; u < red; u++)
+              img->SetPixel32(xpos, y++, 0x883333FF);
+            for (int u = 0; u < blood; u++)
+              img->SetPixel32(xpos, y++, 0x440000FF);
+            xpos++;
+          });
       }
 
       // XXX Since we can often skip the Try phase now, maybe this
       // should be in its own thread.
-      if (status_per.ShouldRun()) {
-        PrintStats(epoch_size);
-      }
+      status_per.RunIf([&](){
+          PrintStats(epoch_size);
+        });
 
       {
         MutexLock ml(&m);
@@ -1036,6 +1053,7 @@ struct SOS {
               int local_eligible_triples = 0;
               int local_pending_try = 0;
               int local_done_ineligible_cpu = 0;
+              int local_non_multiple = 0;
               std::vector<std::pair<uint64_t, uint32_t>> todo_gpu;
 
               // Do the whole byte.
@@ -1054,6 +1072,11 @@ struct SOS {
                 const int nways = ChaiWahWuNoFilter(sum);
 
                 if (nways >= 3) {
+
+                  if (sum % 319754 != 0) {
+                    local_non_multiple++;
+                  }
+
                   if (nways > GPUMethod::MAX_WAYS) {
                     // Do on CPU.
                     std::vector<std::pair<uint64_t, uint64_t>> ways =
@@ -1091,6 +1114,7 @@ struct SOS {
 
                 // Ineligible
                 done_ineligible_cpu += local_done_ineligible_cpu;
+                non_multiple += local_non_multiple;
               }
             });
     }
@@ -1218,7 +1242,27 @@ struct SOS {
 
 };
 
-static std::pair<uint64_t, uint64_t> PredictNext() {
+
+static void PrintGaps(const Database &db) {
+  int64_t max_agap = 0, max_hgap = 0;
+  db.ForEveryZeroVec(
+      [&max_agap](int64_t x0, int64_t y0,
+                  int64_t x1, int64_t y1,
+                  int64_t iceptx) {
+        max_agap = std::max(max_agap, x1 - x0);
+      },
+      [&max_hgap](int64_t x0, int64_t y0,
+                  int64_t x1, int64_t y1,
+                  int64_t iceptx) {
+        max_hgap = std::max(max_hgap, x1 - x0);
+      });
+
+  printf("Max agap: %lld.\n"
+         "Max hgap: %lld.\n",
+         max_agap, max_hgap);
+}
+
+static std::pair<uint64_t, uint64_t> PredictNextNewton() {
   MutexLock ml(&file_mutex);
   // PERF don't keep loading this
   Database db = Database::FromInterestingFile(INTERESTING_FILE);
@@ -1305,19 +1349,12 @@ static std::pair<uint64_t, uint64_t> PredictNext() {
           }
         };
 
-      #if 0
-      if (y0 > 0 && y1 < 0) {
-        CHECK(iceptx >= x0 && iceptx <= x1);
-        PrVec(AYELLOW("ZERO"));
-      } else {
-        // printntf("(%lld, %lld) -> (%lld, %lld)\n",
-        //  x0, y0, x1, y1);
-      }
-      #endif
-
+      // Consider the appropriate action on the island unless it's
+      // already done.
+      using enum Database::IslandZero;
       if (iceptx > 0) {
-        // For valid points, see what completed span they're in.
-        if (!db.IsComplete(iceptx)) {
+        switch (db.IslandHZero(iceptx)) {
+        case NONE: {
           // If none, explore that point.
 
           // Round to avoid fragmentation.
@@ -1327,58 +1364,30 @@ static std::pair<uint64_t, uint64_t> PredictNext() {
 
           Consider(dist, c, MAX_EPOCH_SIZE);
           PrVec("NEW");
-        } else {
-          // Otherwise, look at all the vectors in there. If any
-          // vector crosses zero, we're truly done with this island.
-          // Otherwise, extend the span on one side.
-
-          bool really_done = false;
-          bool extend_right = true;
-          int64_t closest_dist = 999999999999;
-          db.ForEveryVec(iceptx,
-                         [&](int64_t x0, int64_t y0,
-                             int64_t x1, int64_t y1,
-                             int64_t iceptx) {
-                           if (y0 > 0 && y1 < 0) {
-                             really_done = true;
-                           } else {
-                             if (y1 > 0) {
-                               // above the axis, so we'd
-                               // extend to the right to find zero.
-                               if (y1 < closest_dist) {
-                                 extend_right = true;
-                                 closest_dist = y1;
-                               }
-                             } else {
-                               CHECK(y0 < 0);
-                               if (-y0 < closest_dist) {
-                                 extend_right = false;
-                                 closest_dist = -y0;
-                               }
-                             }
-                           }
-                         });
-
-          if (!really_done) {
-            if (extend_right) {
-              auto nga = db.NextGapAfter(iceptx, MAX_EPOCH_SIZE);
-              Consider(dist, nga.first, nga.second);
-              PrVec("AFTER");
-            } else {
-              auto go = db.NextGapBefore(iceptx, MAX_EPOCH_SIZE);
-              if (go.has_value()) {
-                Consider(dist, go.value().first, go.value().second);
-                PrVec("BEFORE");
-              }
-            }
-          } else {
-            PrVec("REALLY DONE");
-          }
+          break;
         }
-      } else {
-        // Otherwise, it's invalid.
-      }
+        case HAS_ZERO:
+          PrVec("REALLY DONE");
+          break;
 
+        case NO_POINTS:
+        case GO_LEFT: {
+          auto go = db.NextGapBefore(iceptx, MAX_EPOCH_SIZE);
+          if (go.has_value()) {
+            Consider(dist, go.value().first, go.value().second);
+            PrVec("BEFORE");
+          }
+          break;
+        }
+
+        case GO_RIGHT: {
+          auto nga = db.NextGapAfter(iceptx, MAX_EPOCH_SIZE);
+          Consider(dist, nga.first, nga.second);
+          PrVec("AFTER");
+          break;
+        }
+        }
+      }
     }
 
     ++it;
@@ -1401,10 +1410,161 @@ static std::pair<uint64_t, uint64_t> PredictNext() {
   }
 }
 
+static std::pair<uint64_t, uint64_t> PredictNextRegression(bool predict_h) {
+  MutexLock ml(&file_mutex);
+  // PERF don't keep loading this
+  Database db = Database::FromInterestingFile(INTERESTING_FILE);
+  PrintGaps(db);
+
+  printf("Get zero for " AWHITE("%s") " using regression...\n",
+         predict_h ? "H" : "A");
+  const auto &[azeroes, hzeroes] = db.GetZeroes();
+  const int64_t iceptx = predict_h ?
+    Predict::NextInDenseSeries(hzeroes) :
+    Predict::NextInDensePrefixSeries(db, azeroes);
+  printf("Predict next zero at: " ABLUE("%lld") "\n", iceptx);
+
+  if (!db.IsComplete(iceptx)) {
+    // If none, explore that point.
+
+    // Round to avoid fragmentation.
+    int64_t c = iceptx;
+    c /= MAX_EPOCH_SIZE;
+    c *= MAX_EPOCH_SIZE;
+
+    printf("Haven't done it yet, so run " APURPLE("%lld") "+\n", c);
+    return make_pair(c, MAX_EPOCH_SIZE);
+  } else {
+
+    bool really_done = false;
+    // Prefer extending to the left until we have some evidence, since
+    // this seems to usually be an overestimate.
+    bool extend_right = false;
+    int64_t closest_dist = 999999999999;
+
+    // XXX this is wrong for predict_h = false. ForEverVec is specifically
+    // looping over h vecs.
+    // TODO: Use Island
+    db.ForEveryHVec(iceptx,
+                    [&](int64_t x0, int64_t y0,
+                        int64_t x1, int64_t y1,
+                        int64_t iceptx) {
+                      if (y0 > 0 && y1 < 0) {
+                        really_done = true;
+                      } else {
+                        if (y1 > 0) {
+                          // above the axis, so we'd
+                          // extend to the right to find zero.
+                          if (y1 < closest_dist) {
+                            extend_right = true;
+                            closest_dist = y1;
+                          }
+                        } else {
+                          CHECK(y0 < 0);
+                          if (-y0 < closest_dist) {
+                            extend_right = false;
+                            closest_dist = -y0;
+                          }
+                        }
+                      }
+                    });
+
+    // a has an upward slope, so we need to reverse the direction
+    // if we are looking for a zeroes.
+    // XXX clean this up
+    if (!predict_h) extend_right = !extend_right;
+
+    if (really_done) {
+      // ???
+      printf(ARED("Unexpected") ": We have a zero here but regression "
+             "predicted it elsewhere?");
+      return db.NextGapAfter(0, MAX_EPOCH_SIZE);
+    }
+
+    if (extend_right) {
+      printf("Extend " AGREEN("right") ". Closest %lld\n", closest_dist);
+      return db.NextGapAfter(iceptx, MAX_EPOCH_SIZE);
+    } else {
+      auto go = db.NextGapBefore(iceptx, MAX_EPOCH_SIZE);
+      if (go.has_value()) {
+        printf("Extend " AGREEN("left") ". Closest %lld\n", closest_dist);
+        return go.value();
+      } else {
+        printf("Extend " AORANGE("right") " (no space). "
+               "Closest %lld\n", closest_dist);
+        return db.NextGapAfter(iceptx, MAX_EPOCH_SIZE);
+      }
+    }
+  }
+}
+
+static std::pair<uint64_t, uint64_t> PredictNextClose() {
+  MutexLock ml(&file_mutex);
+  // PERF don't keep loading this
+  Database db = Database::FromInterestingFile(INTERESTING_FILE);
+  PrintGaps(db);
+
+  const auto &[azeroes, hzeroes] = db.GetZeroes();
+  printf("Get close calls...\n");
+  static constexpr int64_t MAX_INNER_SUM = 1'000'000'000'000'000LL;
+  std::vector<std::pair<int64_t, double>> close =
+    Predict::FutureCloseCalls(db, azeroes, hzeroes, MAX_INNER_SUM);
+
+  // Top close calls..
+  printf("Closest:\n");
+  for (int i = 0; i < close.size(); i++) {
+    const auto [iceptx, score] = close[i];
+
+    using enum Database::IslandZero;
+    if (iceptx > 0) {
+      printf("  %s (dist %f) ",
+             Util::UnsignedWithCommas(iceptx).c_str(), score);
+
+      switch (db.IslandHZero(iceptx)) {
+      case NONE: {
+        // If none, explore that point.
+
+        // Round to avoid fragmentation.
+        int64_t c = iceptx;
+        c /= MAX_EPOCH_SIZE;
+        c *= MAX_EPOCH_SIZE;
+
+        printf(AGREEN("NEW") "\n");
+        return make_pair(c, MAX_EPOCH_SIZE);
+      }
+      case HAS_ZERO:
+        printf(AGREY("DONE") "\n");
+        break;
+
+      case NO_POINTS:
+      case GO_LEFT: {
+        auto go = db.NextGapBefore(iceptx, MAX_EPOCH_SIZE);
+        if (go.has_value()) {
+          printf(ABLUE("BEFORE") "\n");
+          return go.value();
+        }
+        break;
+      }
+
+      case GO_RIGHT: {
+        printf(AYELLOW("AFTER") "\n");
+        return db.NextGapAfter(iceptx, MAX_EPOCH_SIZE);
+      }
+      }
+    }
+  }
+
+  printf(ARED("No candidates beneath %lld!") "\n", MAX_INNER_SUM);
+  return db.NextGapAfter(0, MAX_EPOCH_SIZE);
+}
+
+
+
 static void Run() {
   for (;;) {
     // const auto [epoch_start, epoch_size] = GetNext(MAX_EPOCH_SIZE);
-    const auto [epoch_start, epoch_size] = PredictNext();
+    // const auto [epoch_start, epoch_size] = PredictNextRegression(true);
+    const auto [epoch_start, epoch_size] = PredictNextClose();
     printf("\n\n\n\n\n\n\n\n\n");
     SOS sos;
     sos.RunEpoch(epoch_start, epoch_size);
