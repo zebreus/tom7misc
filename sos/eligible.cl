@@ -16,7 +16,7 @@ __kernel void NotSumOfSquares(const uint64_t start,
   uint8_t byte = 0;
   // force unroll?
   for (int i = 0; i < 8; i++) {
-    uint64_t sum = num_base + i;
+    uint64_t sum = (num_base + i) * STRIDE;
 
     uint8_t bit =
       // non-quadratic sum residues.
@@ -103,7 +103,7 @@ __kernel void NotSumOfSquares(const uint64_t start,
     if (e_ ## p & 1) bit = 1;                                      \
   } while (0)
 
-    // Check if the power of p in the prime factorization is 1 or 3.
+  // Check if the power of p in the prime factorization is 1 or 3.
   // First we check if p^4 divides it; if so we don't try to figure
   // out what k is. Otherwise, p^2
 #define DIV(p) do {                \

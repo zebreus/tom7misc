@@ -621,8 +621,8 @@ struct TryFilterGPU {
   cl_mem ways_size_gpu = nullptr;
   cl_mem rejected_gpu = nullptr;
 
-  // Sets *rejected_f to the squares (not rows) that were filtered.
-  // Returns the rows that were kept.
+  // Sets *rejected_f to the number of squares (not rows) that were
+  // filtered. Returns the rows that were kept.
   std::vector<TryMe> FilterWays(std::vector<TryMe> &input,
                                 uint64_t *rejected_f) {
 
@@ -726,13 +726,18 @@ struct TryFilterGPU {
   }
 };
 
+// Tests numbers of the form k * STRIDE, but represents them as the k term.
+// For the original version on dense ints, STRIDE=1.
+template<int STRIDE>
 struct EligibleFilterGPU {
   CL *cl = nullptr;
   // Number (times 8) to process in one call.
   size_t height = 0;
 
   EligibleFilterGPU(CL *cl, size_t height) : cl(cl), height(height) {
-    std::string kernel_src = Util::ReadFile("eligible.cl");
+    std::string defines = StringPrintf("#define STRIDE %d\n",
+                                       STRIDE);
+    std::string kernel_src = defines + Util::ReadFile("eligible.cl");
     const auto &[prog, kern] =
       cl->BuildOneKernel(kernel_src, "NotSumOfSquares", false);
     CHECK(prog != 0);
@@ -749,8 +754,9 @@ struct EligibleFilterGPU {
   cl_kernel kernel = 0;
   cl_mem out_gpu = nullptr;
 
-  // Processes [start, start+height) sums and returns height/8 bytes
+  // Processes k in [start, start+height) and returns height/8 bytes
   // with a bitmask labeling the sums that can be filtered out.
+  // Internally, we are evaluating k * STRIDE.
   std::vector<uint8_t> Filter(uint64_t start) {
     // Only one GPU process at a time.
     MutexLock ml(&m);

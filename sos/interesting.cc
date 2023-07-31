@@ -18,6 +18,7 @@
 #include "color-util.h"
 #include "predict.h"
 #include "factorization.h"
+#include "map-util.h"
 #include "set-util.h"
 
 using namespace std;
@@ -32,7 +33,7 @@ static void PlotSquareValues(const Database &db) {
     0xFF0088FF, // d
     0xAA33AAFF, // e
     0x33AA33FF, // f
-    0x33AAAAFF, // g
+    0x33FFFFFF, // g
     0x3333AAFF, // h
     0xAAAA33FF, // i
   };
@@ -84,9 +85,92 @@ static void PlotSquareValues(const Database &db) {
   plot.Save("squarevalues.png");
 }
 
+template<typename F>
+static void CellFactors(const Database &db,
+                        const std::string &what,
+                        const F &get) {
+  const auto &almost2 = db.Almost2();
+  if (almost2.empty()) return;
+
+  uint64_t first_n = get(almost2.begin()->second);
+
+  std::unordered_set<uint64_t> seen;
+  std::unordered_map<uint64_t, int> always;
+  for (const auto &[b, e] : Factorization::Factorize(first_n))
+    always[b] = e;
+
+  int num_left = 100;
+
+  for (const auto &[isum, square] : db.Almost2()) {
+    uint64_t n = get(square);
+
+    bool PRINT_EACH = num_left > 0;
+    if (PRINT_EACH) num_left--;
+
+    if (PRINT_EACH) printf(ACYAN("%llu") " Factors:", n);
+    std::vector<std::pair<uint64_t, int>> factors =
+      Factorization::Factorize(n);
+
+    std::unordered_map<uint64_t, int> mfactors;
+    for (const auto &[b, e] : factors) {
+      mfactors[b] = e;
+      seen.insert(b);
+    }
+
+    std::unordered_map<uint64_t, int> new_always;
+    for (const auto &[b, e] : always) {
+      if (mfactors.contains(b)) {
+        new_always[b] = std::min(mfactors[b], e);
+      }
+    }
+    always = std::move(new_always);
+
+    if (PRINT_EACH) {
+      for (const auto &[b, e] : factors) {
+        if (e == 1) {
+          printf(" " AWHITE("%llu"), b);
+        } else {
+          printf(" " AWHITE("%llu") AGREY("^") AYELLOW("%d"), b, e);
+        }
+      }
+      printf("\n");
+    }
+  }
+
+  printf("[" APURPLE("%s") "] All factors seen:", what.c_str());
+  /*
+  std::vector<uint64_t> all = SetToSortedVec(seen);
+  for (int p = 2; p < all[all.size() - 1]; p++) {
+    if (Factorization::IsPrime(p)) {
+      if (seen.contains(p)) {
+        printf(" " AGREEN("%d"), p);
+      } else {
+        printf(" " ARED("%d"), p);
+      }
+    }
+  }
+  */
+
+  for (const uint64_t f : SetToSortedVec(seen))
+    printf(" " AWHITE("%llu"), f);
+  printf("\n");
+
+  printf("[" APURPLE("%s") "] Factors always seen:", what.c_str());
+  for (const auto &[b, e] : MapToSortedVec(always)) {
+    if (e == 1) {
+      printf(" " AWHITE("%llu"), b);
+    } else {
+      printf(" " AWHITE("%llu") AGREY("^") AYELLOW("%d"), b, e);
+    }
+  }
+  printf("\n");
+}
+
 static void PrintFactors(const Database &db) {
+  if (db.Almost2().empty()) return;
+
   // Prime factors always present. Really should have exponents, but
-  // we know that its at least a subset of this:
+  // we know that it's at least a subset of this:
   // This is the factors of 319754, isum for the smallest almost2 square.
   std::unordered_set<uint64_t> always = {
     2, 29, 37, 149
@@ -94,8 +178,9 @@ static void PrintFactors(const Database &db) {
 
   std::unordered_set<uint64_t> seen;
 
+  static constexpr bool PRINT_EACH = false;
   for (const auto &[isum, square] : db.Almost2()) {
-    printf(ACYAN("%llu") " Factors:", isum);
+    if (PRINT_EACH) printf(ACYAN("%llu") " Factors:", isum);
     std::vector<std::pair<uint64_t, int>> factors =
       Factorization::Factorize(isum);
 
@@ -109,34 +194,38 @@ static void PrintFactors(const Database &db) {
     }
     always = std::move(new_always);
 
-    for (const auto &[b, e] : factors) {
-      if (e == 1) {
-        printf(" " AWHITE("%llu"), b);
-      } else {
-        printf(" " AWHITE("%llu") AGREY("^") AYELLOW("%d"), b, e);
+    if (PRINT_EACH) {
+      for (const auto &[b, e] : factors) {
+        if (e == 1) {
+          printf(" " AWHITE("%llu"), b);
+        } else {
+          printf(" " AWHITE("%llu") AGREY("^") AYELLOW("%d"), b, e);
+        }
+      }
+      printf("\n");
+    }
+  }
+
+  if (false) {
+    printf("All factors seen:");
+    std::vector<uint64_t> all = SetToSortedVec(seen);
+    for (int p = 2; p < all[all.size() - 1]; p++) {
+      if (Factorization::IsPrime(p)) {
+        if (seen.contains(p)) {
+          printf(" " AGREEN("%d"), p);
+        } else {
+          printf(" " ARED("%d"), p);
+        }
       }
     }
+
+    // for (const uint64_t f : SetToSortedVec(seen))
+    // printf(" " AWHITE("%llu"), f);
     printf("\n");
   }
 
-  printf("All factors seen:");
-  std::vector<uint64_t> all = ToSortedVec(seen);
-  for (int p = 2; p < all[all.size() - 1]; p++) {
-    if (Factorization::IsPrime(p)) {
-      if (seen.contains(p)) {
-        printf(" " AGREEN("%d"), p);
-      } else {
-        printf(" " ARED("%d"), p);
-      }
-    }
-  }
-
-  // for (const uint64_t f : ToSortedVec(seen))
-  // printf(" " AWHITE("%llu"), f);
-  printf("\n");
-
   printf("Factors always seen:");
-  for (const uint64_t f : ToSortedVec(always))
+  for (const uint64_t f : SetToSortedVec(always))
     printf(" " AWHITE("%llu"), f);
   printf("\n");
 }
@@ -168,6 +257,19 @@ static void Interesting() {
 
   PrintFactors(db);
 
+  /*
+  CellFactors(db, "ee", [](const Database::Square &square) {
+      const auto &[aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
+      return ee;
+    });
+  */
+
+  CellFactors(db, "hh", [](const Database::Square &square) {
+      const auto &[aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
+      return hh;
+    });
+
+
   const auto &[azeroes, hzeroes] = db.GetZeroes();
 
   // static constexpr size_t H_RADIX = 5;
@@ -194,6 +296,8 @@ static void Interesting() {
   // Points for plot.
   // h, a, abs sum
   std::vector<std::tuple<int64_t, int64_t, int64_t, int64_t>> errors;
+
+  static constexpr int64_t MAX_PLOT_ISUM = 140'000'000'000'000LL;
 
   for (int idx = 0; idx < rows.size(); idx++) {
     const auto &row = rows[idx];
@@ -236,6 +340,10 @@ static void Interesting() {
     if (a * a == aa) num_almost1++;
 
     int64_t inner_sum = bb + cc;
+
+    // XXX
+    if (inner_sum > MAX_PLOT_ISUM)
+      continue;
 
     // How close are we to a square? The computed sqrt is a lower bound, so
     // it could actually be closer to the next square.
@@ -304,13 +412,17 @@ static void Interesting() {
   }
 
   printf("Get next hzero:\n");
-  const int64_t next_hzero = Predict::NextInDenseSeries(hzeroes);
+  const int64_t next_hzero = Predict::NextInDensePrefixSeries(db, hzeroes);
   printf("Next hzero: " APURPLE("%lld") "\n", next_hzero);
-  plot_bounds.Bound(next_hzero, 0.0);
+  if (next_hzero < MAX_PLOT_ISUM) {
+    plot_bounds.Bound(next_hzero, 0.0);
+  }
 
   const int64_t next_azero = Predict::NextInDensePrefixSeries(db, azeroes);
   printf("Next azero: " APURPLE("%lld") "\n", next_azero);
-  plot_bounds.Bound(next_azero, 0.0);
+  if (next_hzero < MAX_PLOT_ISUM) {
+    plot_bounds.Bound(next_azero, 0.0);
+  }
 
   int WIDTH = 3000;
   int HEIGHT = 1800;
@@ -345,8 +457,10 @@ static void Interesting() {
     plot.BlendLine32(x0, y0, x1, y1, 0xFFFFFF33);
   }
 
-  // vertical ticks every 1 trillion
-  for (int64_t x = 0; x < plot_bounds.MaxX(); x += 1'000'000'000'000LL) {
+  // vertical ticks every 10 trillion
+  const int64_t TICK_EVERY = 10'000'000'000'000LL;
+  int xclearance = 0;
+  for (int64_t x = 0; x < plot_bounds.MaxX(); x += TICK_EVERY) {
     const auto [x0, y0] = scaler.Scale(x, plot_bounds.MinY());
     const auto [x1, y1] = scaler.Scale(x, plot_bounds.MaxY());
     plot.BlendLine32(x0, y0, x1, y1, 0xFFFFFF22);
@@ -354,13 +468,17 @@ static void Interesting() {
     int tx = x0 + 3;
     int ty = HEIGHT - ImageRGBA::TEXT_HEIGHT - 2;
     int d = x / 1'000'000'000'000LL;
-    plot.BlendText32(
-        tx, ty,
-        0xFFFFFF66,
-        StringPrintf("%lld", d).c_str());
-    plot.BlendText32(
-        tx + ImageRGBA::TEXT_WIDTH * (d > 9 ? 2 : 1), ty,
-        0xFFFFFF33, "T");
+    if (tx > xclearance) {
+      plot.BlendText32(
+          tx, ty,
+          0xFFFFFF66,
+          StringPrintf("%lld", d).c_str());
+      int w = (d > 9 ? 2 : 1);
+      plot.BlendText32(
+          tx + ImageRGBA::TEXT_WIDTH * w, ty,
+          0xFFFFFF33, "T");
+      xclearance = tx + ImageRGBA::TEXT_WIDTH * (w + 1);
+    }
   }
 
 
@@ -419,29 +537,37 @@ static void Interesting() {
   }
 
   for (const double x : hzeroes) {
-    int xx = scaler.ScaleX(x);
-    int yy = scaler.ScaleY(0);
-    plot.BlendLine32(xx, yy - 5, xx, yy + 5, 0x00FF0099);
+    if (x < MAX_PLOT_ISUM) {
+      int xx = scaler.ScaleX(x);
+      int yy = scaler.ScaleY(0);
+      plot.BlendLine32(xx, yy - 5, xx, yy + 5, 0x00FF0099);
+    }
   }
 
   for (const double x : azeroes) {
-    int xx = scaler.ScaleX(x);
-    int yy = scaler.ScaleY(0);
-    plot.BlendLine32(xx, yy - 5, xx, yy + 5, 0xFF4400CC);
+    if (x < MAX_PLOT_ISUM) {
+      int xx = scaler.ScaleX(x);
+      int yy = scaler.ScaleY(0);
+      plot.BlendLine32(xx, yy - 5, xx, yy + 5, 0xFF4400CC);
+    }
   }
 
   {
-    int xx = scaler.ScaleX(next_hzero);
-    int yy = scaler.ScaleY(0);
-    plot.BlendLine32(xx, yy - 15, xx, yy - 10, 0x00FFFFCC);
-    plot.BlendLine32(xx, yy + 10, xx, yy + 15, 0x00FFFFCC);
+    if (next_hzero < MAX_PLOT_ISUM) {
+      int xx = scaler.ScaleX(next_hzero);
+      int yy = scaler.ScaleY(0);
+      plot.BlendLine32(xx, yy - 15, xx, yy - 10, 0x00FFFFCC);
+      plot.BlendLine32(xx, yy + 10, xx, yy + 15, 0x00FFFFCC);
+    }
   }
 
   {
-    int xx = scaler.ScaleX(next_azero);
-    int yy = scaler.ScaleY(0);
-    plot.BlendLine32(xx, yy - 15, xx, yy - 10, 0xFF8800CC);
-    plot.BlendLine32(xx, yy + 10, xx, yy + 15, 0xFF8800CC);
+    if (next_azero < MAX_PLOT_ISUM) {
+      int xx = scaler.ScaleX(next_azero);
+      int yy = scaler.ScaleY(0);
+      plot.BlendLine32(xx, yy - 15, xx, yy - 10, 0xFF8800CC);
+      plot.BlendLine32(xx, yy + 10, xx, yy + 15, 0xFF8800CC);
+    }
   }
 
   plot.Save("plot.png");

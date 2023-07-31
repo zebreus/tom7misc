@@ -46,6 +46,9 @@ using GPUMethod = WaysGPUMerge;
 
 static constexpr bool WRITE_IMAGE = false;
 
+// Only test numbers of the form STRIDE * x.
+// This value is unproven!
+static constexpr int STRIDE = 319754;
 
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
 
@@ -153,9 +156,10 @@ static_assert(TRY_BATCH_SIZE % TRY_ROLL_SIZE == 0,
               "this is not strictly required, but would hurt "
               "performance!");
 
-static constexpr uint64_t MAX_EPOCH_SIZE = 2'000'000'000; /* ' */
-// Each of these yields 8 sums. Should divide EPOCH_SIZE/8.
-static constexpr size_t EPOCH_GPU_CHUNK = 1000000;
+static constexpr uint64_t MAX_EPOCH_SIZE = 400'000'000'000; /* ' */
+// Each of these yields 8 sums. If it's larger, we may run off the
+// end of the batch, although this is usually a trivial cost.
+static constexpr size_t EPOCH_GPU_CHUNK = 100000000;
 
 // PERF: Tune it
 static constexpr int STEADY_WORK_STEALING_THREADS = 0;
@@ -202,214 +206,6 @@ static void ResetCounters() {
   RESET(rejected_aa);
 }
 
-// So now take numbers that can be written as sums of squares
-// three ways: Z = B^2 + C^2 = D^2 + G^2 = E^2 + I^2
-//
-//  [a]  B   C
-//
-//   D   E  [f]
-//
-//   G  [h]  I
-//
-// This gives us the SUM = G + E + C, which then uniquely
-// determines a, f, h (if they exist). Since the starting
-// values were distinct, these residues are also distinct.
-//
-// The order of (B, C), (D, G), (E, I) matters, although there
-// are some symmetries. A reflection like
-//
-//   I  [h]  G
-//
-//  [f]  E   D
-//
-//   C   B  [a]
-//
-// will just be found during some other call to Try (with
-// a different z) but flipping along the c-e-g diagonal
-// does give us a redundant form:
-//
-//  [a]  D   G
-//
-//   B   E  [h]
-//
-//   C  [f]  I
-//
-// which we do not need to search. To avoid computing each
-// square twice in here, we require that the smallest of B, C,
-// D, G appears on the top.
-template<class F>
-inline static void AllWays(
-    const std::vector<std::pair<uint64_t, uint64_t>> &ways,
-    const F &fn) {
-
-  // Just compute the squares once.
-  std::vector<std::pair<uint64_t, uint64_t>> ways_squared;
-  ways_squared.resize(ways.size());
-  for (int i = 0; i < ways.size(); i++) {
-    const auto &[a, b] = ways[i];
-    ways_squared[i] = make_pair(a * a, b * b);
-  }
-
-  for (int p = 0; p < ways.size(); p++) {
-    const auto &[b, c] = ways[p];
-    const auto &[bb, cc] = ways_squared[p];
-    for (int q = 0; q < ways.size(); q++) {
-      if (q != p) {
-        const auto &[d, g] = ways[q];
-        const auto &[dd, gg] = ways_squared[q];
-
-        // require that the smallest of b,c,d,g appears on the
-        // top, to reduce symmetries.
-        if (std::min(b, c) > std::min(d, g))
-          continue;
-
-        for (int r = 0; r < ways.size(); r++) {
-          if (r != p && r != q) {
-            const auto &[e, i] = ways[r];
-            const auto &[ee, ii] = ways_squared[r];
-
-            // Now eight ways of ordering the pairs.
-            fn(/**/   b,bb,  c,cc,
-               d,dd,  e,ee,  /**/
-               g,gg,  /**/   i,ii);
-            fn(/**/   c,cc,  b,bb,
-               d,dd,  e,ee,  /**/
-               g,gg,  /**/   i,ii);
-            fn(/**/   b,bb,  c,cc,
-               g,gg,  e,ee,  /**/
-               d,dd,  /**/   i,ii);
-            fn(/**/   c,cc,  b,bb,
-               g,gg,  e,ee,  /**/
-               d,dd,  /**/   i,ii);
-
-            fn(/**/   b,bb,  c,cc,
-               d,dd,  i,ii,  /**/
-               g,gg,  /**/   e,ee);
-            fn(/**/   c,cc,  b,bb,
-               d,dd,  i,ii,  /**/
-               g,gg,  /**/   e,ee);
-            fn(/**/   b,bb,  c,cc,
-               g,gg,  i,ii,  /**/
-               d,dd,  /**/   e,ee);
-            fn(/**/   c,cc,  b,bb,
-               g,gg,  i,ii,  /**/
-               d,dd,  /**/   e,ee);
-          }
-        }
-      }
-    }
-  }
-}
-
-static void Try(int z,
-                const std::vector<std::pair<uint64_t, uint64_t>> &ways) {
-
-  // PERF we don't actually need the roots until we print it out,
-  // so we could just pass the squares and compute sqrts in the rare
-  // case that we get through filters.
-  AllWays(
-      ways,
-      [z](/*     a */ uint64_t b,  uint64_t bb, uint64_t c,  uint64_t cc,
-          uint64_t d, uint64_t dd, uint64_t e,  uint64_t ee, /*     f */
-          uint64_t g, uint64_t gg, /*     h */  uint64_t i,  uint64_t ii) {
-
-            // f is specified two ways; they must have the
-            // same sum then. This is by far the most common
-            // rejection reason.
-            if (cc + ii != dd + ee) [[likely]] {
-              INCREMENT(rejected_f);
-              return;
-            }
-
-            // Now we also know gg + ii == bb + ee. See sos.z3.
-
-            // Finally, check that a, f, h are integral.
-            const uint64_t sum = cc + ee + gg;
-
-            const uint64_t ff = sum - (dd + ee);
-            auto fo = Sqrt64Opt(ff);
-            if (!fo.has_value()) {
-              INCREMENT(rejected_ff);
-              return;
-            }
-            const uint64_t f = fo.value();
-
-            const uint64_t hh = sum - (bb + ee);
-            const auto ho = Sqrt64Opt(hh);
-            if (!ho.has_value()) {
-              uint64_t h = Sqrt64(hh);
-              INCREMENT(rejected_hh);
-              const uint64_t aa = sum - (bb + cc);
-              Interesting(
-                  StringPrintf(
-                      // For easy parsing. Everything is its squared version.
-                      "(!) %llu %llu %llu %llu %llu %llu %llu %llu %llu\n"
-                      AORANGE("sqrt(%llu)^2?") " %llu^2 %llu^2\n"
-                      "%llu^2 %llu^2 %llu^2\n"
-                      "%llu^2 " ARED("sqrt(%llu)^2") " %llu^2\n"
-                      ARED("but %llu * %llu != %llu") "\n"
-                      "Sum: %llu\n",
-                      aa, bb, cc, dd, ee, ff, gg, hh, ii,
-                      aa, b, c,
-                      d, e, f,
-                      g, hh, i,
-                      // error
-                      h, h, hh,
-                      sum));
-              return;
-            }
-            const uint64_t h = ho.value();
-
-            const uint64_t aa = sum - (bb + cc);
-            const uint64_t a = Sqrt64(aa);
-            if (a * a != aa) {
-              INCREMENT(rejected_aa);
-              Interesting(
-                  StringPrintf(
-                      // For easy parsing. Everything is its squared version.
-                      "(!!!) %llu %llu %llu %llu %llu %llu %llu %llu %llu\n"
-                      ARED("sqrt(%llu)^2") " %llu^2 %llu^2\n"
-                      "%llu^2 %llu^2 %llu^2\n"
-                      "%llu^2 %llu^2 %llu^2\n"
-                      ARED("but %llu * %llu != %llu") "\n"
-                      "Sum: %llu\n",
-                      aa, bb, cc, dd, ee, ff, gg, hh, ii,
-                      aa, b, c,
-                      d, e, f,
-                      g, h, i,
-                      // error
-                      a, a, aa,
-                      sum));
-              return;
-            }
-
-            string success =
-              StringPrintf("(!!!!!) "
-                           "%llu^2 %llu^2 %llu^2\n"
-                           "%llu^2 %llu^2 %llu^2\n"
-                           "%llu^2 %llu^2 %llu^2\n"
-                           "Sum: %llu\n"
-                           AGREEN("It works?!") "\n",
-                           a, b, c,
-                           d, e, f,
-                           g, h, i,
-                           sum);
-
-            Interesting(success);
-
-            CHECK(gg + ii == bb + ee) << "Supposedly this is always "
-              "the case (see sos.z3).";
-
-            printf("\n\n\n\n" AGREEN("Success!!") "\n");
-
-            printf("%s\n", success.c_str());
-
-            printf("Note: didn't completely check for uniqueness "
-                   "or overflow!\n");
-
-            CHECK(false) << "winner";
-          });
-}
 
 // TODO: To threadutil?
 template<class Item>
@@ -588,10 +384,14 @@ struct SOS {
   std::unique_ptr<AutoParallelComp> try_comp;
   std::unique_ptr<GPUMethod> ways_gpu;
   std::unique_ptr<TryFilterGPU> tryfilter_gpu;
-  std::unique_ptr<EligibleFilterGPU> eligiblefilter_gpu;
+  std::unique_ptr<EligibleFilterGPU<STRIDE>> eligiblefilter_gpu;
 
   // Pre-filtered; ready to have the number of ways computed on CPU.
-  // Start number, then bitmask of numbers that can be skipped.
+  // These are divided by stride. Because they come in chunks, they
+  // may exceed the epoch size (so the consumer should check).
+  // (base, bitmask)
+  // if bit b is CLEAR in the bitmask,
+  //  then (base + b) * STRIDE has passed the filter.
   std::unique_ptr<
     WorkQueue<std::pair<uint64_t, std::vector<uint8_t>>>
     > nways_queue;
@@ -607,13 +407,22 @@ struct SOS {
     BatchedWorkQueue<TryMe>
     > try_queue;
 
+  // We find so many almost2 squares now that it's a performance
+  // problem to lock / write them to disk / print them to screen.
+  // This is set up so that we could write them to disk occasionally,
+  // but right now we just flush them at the end of the epoch.
+  std::unique_ptr<
+    WorkQueue<Database::Square>
+    > almost2_queue;
+
   SOS() : status_per(10.0) {
     // Performance is pretty workload-dependent, so just tune in-process
     // rather than saving to disk.
     factor_comp.reset(new AutoParallelComp(30, 1000, false));
     try_comp.reset(new AutoParallelComp(12, 1000, false));
 
-    eligiblefilter_gpu.reset(new EligibleFilterGPU(cl, EPOCH_GPU_CHUNK));
+    eligiblefilter_gpu.reset(
+        new EligibleFilterGPU<STRIDE>(cl, EPOCH_GPU_CHUNK));
     ways_gpu.reset(new GPUMethod(cl, GPU_HEIGHT));
     tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_HEIGHT));
 
@@ -622,7 +431,208 @@ struct SOS {
     ways_queue.reset(
         new BatchedWorkQueue<std::pair<uint64_t, uint32_t>>(GPU_HEIGHT));
     try_queue.reset(new BatchedWorkQueue<TryMe>(TRY_BATCH_SIZE));
+    almost2_queue.reset(new WorkQueue<Database::Square>);
   }
+
+  // So now take numbers that can be written as sums of squares
+  // three ways: Z = B^2 + C^2 = D^2 + G^2 = E^2 + I^2
+  //
+  //  [a]  B   C
+  //
+  //   D   E  [f]
+  //
+  //   G  [h]  I
+  //
+  // This gives us the SUM = G + E + C, which then uniquely
+  // determines a, f, h (if they exist). Since the starting
+  // values were distinct, these residues are also distinct.
+  //
+  // The order of (B, C), (D, G), (E, I) matters, although there
+  // are some symmetries. A reflection like
+  //
+  //   I  [h]  G
+  //
+  //  [f]  E   D
+  //
+  //   C   B  [a]
+  //
+  // will just be found during some other call to Try (with
+  // a different z) but flipping along the c-e-g diagonal
+  // does give us a redundant form:
+  //
+  //  [a]  D   G
+  //
+  //   B   E  [h]
+  //
+  //   C  [f]  I
+  //
+  // which we do not need to search. To avoid computing each
+  // square twice in here, we require that the smallest of B, C,
+  // D, G appears on the top.
+  template<class F>
+  inline void AllWays(
+      const std::vector<std::pair<uint64_t, uint64_t>> &ways,
+      const F &fn) {
+
+    // Just compute the squares once.
+    std::vector<std::pair<uint64_t, uint64_t>> ways_squared;
+    ways_squared.resize(ways.size());
+    for (int i = 0; i < ways.size(); i++) {
+      const auto &[a, b] = ways[i];
+      ways_squared[i] = make_pair(a * a, b * b);
+    }
+
+    for (int p = 0; p < ways.size(); p++) {
+      const auto &[b, c] = ways[p];
+      const auto &[bb, cc] = ways_squared[p];
+      for (int q = 0; q < ways.size(); q++) {
+        if (q != p) {
+          const auto &[d, g] = ways[q];
+          const auto &[dd, gg] = ways_squared[q];
+
+          // require that the smallest of b,c,d,g appears on the
+          // top, to reduce symmetries.
+          if (std::min(b, c) > std::min(d, g))
+            continue;
+
+          for (int r = 0; r < ways.size(); r++) {
+            if (r != p && r != q) {
+              const auto &[e, i] = ways[r];
+              const auto &[ee, ii] = ways_squared[r];
+
+              // Now eight ways of ordering the pairs.
+              fn(/**/   b,bb,  c,cc,
+                 d,dd,  e,ee,  /**/
+                 g,gg,  /**/   i,ii);
+              fn(/**/   c,cc,  b,bb,
+                 d,dd,  e,ee,  /**/
+                 g,gg,  /**/   i,ii);
+              fn(/**/   b,bb,  c,cc,
+                 g,gg,  e,ee,  /**/
+                 d,dd,  /**/   i,ii);
+              fn(/**/   c,cc,  b,bb,
+                 g,gg,  e,ee,  /**/
+                 d,dd,  /**/   i,ii);
+
+              fn(/**/   b,bb,  c,cc,
+                 d,dd,  i,ii,  /**/
+                 g,gg,  /**/   e,ee);
+              fn(/**/   c,cc,  b,bb,
+                 d,dd,  i,ii,  /**/
+                 g,gg,  /**/   e,ee);
+              fn(/**/   b,bb,  c,cc,
+                 g,gg,  i,ii,  /**/
+                 d,dd,  /**/   e,ee);
+              fn(/**/   c,cc,  b,bb,
+                 g,gg,  i,ii,  /**/
+                 d,dd,  /**/   e,ee);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  void Try(int z,
+           const std::vector<std::pair<uint64_t, uint64_t>> &ways) {
+
+    // PERF we don't actually need the roots until we print it out,
+    // so we could just pass the squares and compute sqrts in the rare
+    // case that we get through filters.
+    AllWays(
+        ways,
+        [this, z](
+            /*     a */ uint64_t b,  uint64_t bb, uint64_t c,  uint64_t cc,
+            uint64_t d, uint64_t dd, uint64_t e,  uint64_t ee, /*     f */
+            uint64_t g, uint64_t gg, /*     h */  uint64_t i,  uint64_t ii) {
+
+              // f is specified two ways; they must have the
+              // same sum then. This is by far the most common
+              // rejection reason.
+              if (cc + ii != dd + ee) [[likely]] {
+                INCREMENT(rejected_f);
+                return;
+              }
+
+              // Now we also know gg + ii == bb + ee. See sos.z3.
+
+              // Finally, check that a, f, h are integral.
+              const uint64_t sum = cc + ee + gg;
+
+              const uint64_t ff = sum - (dd + ee);
+              auto fo = Sqrt64Opt(ff);
+              if (!fo.has_value()) {
+                INCREMENT(rejected_ff);
+                return;
+              }
+              const uint64_t f = fo.value();
+
+              const uint64_t hh = sum - (bb + ee);
+              const auto ho = Sqrt64Opt(hh);
+              if (!ho.has_value()) {
+                const uint64_t aa = sum - (bb + cc);
+                INCREMENT(rejected_hh);
+                Database::Square square = {
+                  aa, bb, cc,
+                  dd, ee, ff,
+                  gg, hh, ii
+                };
+                almost2_queue->WaitAdd(square);
+                return;
+              }
+              const uint64_t h = ho.value();
+
+              const uint64_t aa = sum - (bb + cc);
+              const uint64_t a = Sqrt64(aa);
+              if (a * a != aa) {
+                INCREMENT(rejected_aa);
+                Interesting(
+                    StringPrintf(
+                        // For easy parsing. Everything is its squared version.
+                        "(!!!) %llu %llu %llu %llu %llu %llu %llu %llu %llu\n"
+                        ARED("sqrt(%llu)^2") " %llu^2 %llu^2\n"
+                        "%llu^2 %llu^2 %llu^2\n"
+                        "%llu^2 %llu^2 %llu^2\n"
+                        ARED("but %llu * %llu != %llu") "\n"
+                        "sum: %llu\n",
+                        aa, bb, cc, dd, ee, ff, gg, hh, ii,
+                        aa, b, c,
+                        d, e, f,
+                        g, h, i,
+                        // error
+                        a, a, aa,
+                        sum));
+                return;
+              }
+
+              string success =
+                StringPrintf("(!!!!!) "
+                             "%llu^2 %llu^2 %llu^2\n"
+                             "%llu^2 %llu^2 %llu^2\n"
+                             "%llu^2 %llu^2 %llu^2\n"
+                             "sum: %llu\n"
+                             AGREEN("It works?!") "\n",
+                             a, b, c,
+                             d, e, f,
+                             g, h, i,
+                             sum);
+
+              Interesting(success);
+
+              CHECK(gg + ii == bb + ee) << "Supposedly this is always "
+                "the case (see sos.z3).";
+
+              printf("\n\n\n\n" AGREEN("Success!!") "\n");
+
+              printf("%s\n", success.c_str());
+
+              printf("Note: didn't completely check for uniqueness "
+                     "or overflow!\n");
+
+              CHECK(false) << "winner";
+            });
+  }
+
 
   void GPUThread(int thread_idx) {
     for (;;) {
@@ -720,14 +730,14 @@ struct SOS {
   uint64_t done_full_try = 0;
 
   // Test out a new (?) filter...
-  uint64_t non_multiple = 0;
+  uint64_t done_non_multiple = 0;
 
   bool nways_is_done = false;
 
   // Must hold lock.
   uint64_t NumDone() {
-    return done_ineligible_cpu + done_ineligible_gpu + done_gpu_filtered +
-      done_full_try;
+    return done_non_multiple + done_ineligible_cpu + done_ineligible_gpu +
+      done_gpu_filtered + done_full_try;
   }
 
   int work_stealing_threads = STEADY_WORK_STEALING_THREADS;
@@ -743,8 +753,8 @@ struct SOS {
   void PrintStats(uint64_t epoch_size) {
     MutexLock ml(&m);
     uint64_t done = NumDone();
-    uint64_t tested = eligible_triples + done_ineligible_cpu +
-      done_ineligible_gpu;
+    uint64_t tested = eligible_triples + done_non_multiple +
+      done_ineligible_cpu + done_ineligible_gpu;
     double pct = (eligible_triples * 100.0)/(double)tested;
     double sec = timer.Seconds();
     double nps = done / sec;
@@ -763,7 +773,8 @@ struct SOS {
 
     string line2 =
       StringPrintf("%lld " AGREY("rf")
-                   " %lld " AGREY("rff") " %lld " AGREY("rhh")
+                   " %lld " AGREY("rff") " "
+                   AORANGE("%lld") " " AGREY("almost2")
                    " %lld " AGREY("raa")
                    "\n",
                    rf, rff, rhh, raa);
@@ -782,7 +793,7 @@ struct SOS {
           AYELLOW("%s") " non-mult  "
           ACYAN("%s") " try-filtered  "
           AGREEN("%s") " complete batches\n",
-          Util::UnsignedWithCommas(non_multiple).c_str(),
+          Util::UnsignedWithCommas(done_non_multiple).c_str(),
           Util::UnsignedWithCommas(done_gpu_filtered).c_str(),
           Util::UnsignedWithCommas(batches_completely_filtered).c_str());
 
@@ -926,6 +937,7 @@ struct SOS {
       if (!batchopt.has_value()) {
         // Totally done!
         status.Printf("Try thread done!\n");
+        almost2_queue->MarkDone();
         fflush(stdout);
         return;
       }
@@ -951,7 +963,7 @@ struct SOS {
         try_comp->
           ParallelComp(
               rolls,
-              [&batch](int major_idx) {
+              [this, &batch](int major_idx) {
                 for (int minor_idx = 0;
                      minor_idx < TRY_ROLL_SIZE;
                      minor_idx++) {
@@ -1031,7 +1043,7 @@ struct SOS {
     }
   }
 
-  void NWaysThread() {
+  void NWaysThread(uint64_t epoch_start, uint64_t epoch_size) {
 
     for (;;) {
       std::optional<std::pair<uint64_t, std::vector<uint8_t>>> batchopt =
@@ -1048,12 +1060,12 @@ struct SOS {
       factor_comp->
         ParallelComp(
             bitmask.size(),
-            [this, start, &bitmask](int byte_idx) {
+            [this, epoch_start, epoch_size, start, &bitmask](int byte_idx) {
               int local_too_big = 0;
               int local_eligible_triples = 0;
               int local_pending_try = 0;
               int local_done_ineligible_cpu = 0;
-              int local_non_multiple = 0;
+              int local_tested = 0;
               std::vector<std::pair<uint64_t, uint32_t>> todo_gpu;
 
               // Do the whole byte.
@@ -1065,18 +1077,18 @@ struct SOS {
                 // Skip ones that were filtered.
                 if (byte & (1 << (7 - i))) continue;
 
-                const uint64_t sum = base_sum + i;
+                // These actually represent the multiple of STRIDE
+                // to check.
+                const uint64_t sum = (base_sum + i) * STRIDE;
+                // Batch might go over the end of the interval.
+                if (sum >= epoch_start + epoch_size) continue;
+                local_tested++;
 
                 // PERF can skip some of the tests we know were already
                 // done on GPU.
                 const int nways = ChaiWahWuNoFilter(sum);
 
                 if (nways >= 3) {
-
-                  if (sum % 319754 != 0) {
-                    local_non_multiple++;
-                  }
-
                   if (nways > GPUMethod::MAX_WAYS) {
                     // Do on CPU.
                     std::vector<std::pair<uint64_t, uint64_t>> ways =
@@ -1114,7 +1126,7 @@ struct SOS {
 
                 // Ineligible
                 done_ineligible_cpu += local_done_ineligible_cpu;
-                non_multiple += local_non_multiple;
+                done_non_multiple += local_tested * (STRIDE - 1);
               }
             });
     }
@@ -1136,7 +1148,7 @@ struct SOS {
     std::thread try_thread(&TryThread, this);
     std::thread steal_thread(&StealThread, this);
     std::thread status_thread(&StatusThread, this, epoch_start, epoch_size);
-    std::thread nways_thread(&NWaysThread, this);
+    std::thread nways_thread(&NWaysThread, this, epoch_start, epoch_size);
 
     ResetCounters();
 
@@ -1145,8 +1157,28 @@ struct SOS {
     CHECK(epoch_size % EPOCH_CHUNK == 0) << epoch_size << " % " << EPOCH_CHUNK;
     {
       Timer eligible_gpu_timer;
-      for (uint64_t u = 0; u < epoch_size; u += EPOCH_CHUNK) {
-        uint64_t base = epoch_start + u;
+      // We only need to run multiples of STRIDE. The eligible filter works
+      // on these natively.
+
+      // stride = 6
+      // epoch_start = 2000
+      // epoch_size  = 1000
+      // start with the first multiple of the stride >= epoch_start.
+      uint64_t start = (epoch_start / STRIDE) * STRIDE;
+      if (start < epoch_start) start += STRIDE;
+      CHECK(start % STRIDE == 0);
+      CHECK(start >= epoch_start);
+      CHECK(start == 0 || start - STRIDE < epoch_start);
+
+      uint64_t d = start / STRIDE;
+
+      status.Printf("start: %llu   d: %llu\n", start, d);
+      // Now we generate chunks of the given size, until we've covered
+      // the epoch.
+      for (uint64_t base = d;
+           base * STRIDE < epoch_start + epoch_size;
+           base += EPOCH_CHUNK) {
+        status.Printf("  base: %llu\n", base);
         std::vector<uint8_t> bitmask = eligiblefilter_gpu->Filter(base);
         nways_queue->WaitAdd(std::make_pair(base, std::move(bitmask)));
       }
@@ -1182,6 +1214,20 @@ struct SOS {
       try_endgame = true;
     }
     try_thread.join();
+
+    // Write squares.
+
+    {
+      string squares;
+      while (std::optional<Database::Square> so = almost2_queue->WaitGet()) {
+        const auto &[aa, bb, cc, dd, ee, ff, gg, hh, ii] = so.value();
+        StringAppendF(&squares,
+                      // For easy parsing. Everything is its squared version.
+                      "(!) %llu %llu %llu %llu %llu %llu %llu %llu %llu\n",
+                      aa, bb, cc, dd, ee, ff, gg, hh, ii);
+      }
+      Interesting(squares);
+    }
 
     {
       MutexLock ml(&m);
@@ -1506,7 +1552,7 @@ static std::pair<uint64_t, uint64_t> PredictNextClose() {
 
   const auto &[azeroes, hzeroes] = db.GetZeroes();
   printf("Get close calls...\n");
-  static constexpr int64_t MAX_INNER_SUM = 1'000'000'000'000'000LL;
+  static constexpr int64_t MAX_INNER_SUM = 10'000'000'000'000'000LL;
   std::vector<std::pair<int64_t, double>> close =
     Predict::FutureCloseCalls(db, azeroes, hzeroes, MAX_INNER_SUM);
 

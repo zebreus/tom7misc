@@ -12,6 +12,8 @@
 
 using namespace std;
 
+static constexpr bool VERBOSE_FIT = false;
+
 std::pair<double, double>
 Predict::SquaredModel(const std::vector<int64_t> &ys) {
   std::vector<double> yd;
@@ -49,15 +51,17 @@ Predict::SquaredModel(const std::vector<int64_t> &ys) {
     1,
     100);
 
-  printf("Fit:\n");
-  double prev = 0.0;
-  for (int x = 0; x < yd.size(); x++) {
-    double err = (c * x) - yd[x];
-    printf("f(%d) = %f (delta %f) (err %s%f" ANSI_RESET ")\n",
-           x, yd[x], yd[x] - prev,
-           err > 0.0 ? ANSI_FG(160, 200, 160) : ANSI_FG(200, 160, 160),
-           err);
-    prev = yd[x];
+  if (VERBOSE_FIT) {
+    printf("Fit:\n");
+    double prev = 0.0;
+    for (int x = 0; x < yd.size(); x++) {
+      double err = (c * x) - yd[x];
+      printf("f(%d) = %f (delta %f) (err %s%f" ANSI_RESET ")\n",
+             x, yd[x], yd[x] - prev,
+             err > 0.0 ? ANSI_FG(160, 200, 160) : ANSI_FG(200, 160, 160),
+             err);
+      prev = yd[x];
+    }
   }
 
   return make_pair(c, score);
@@ -150,7 +154,7 @@ Predict::FutureCloseCalls(
   printf("ya = (" ACYAN("%.9f") " * x)^2\n", ca);
   printf("(Error: %.9f)\n", scorea);
 
-  const auto &[ch, scoreh] = DenseZeroesModel(hzeroes);
+  const auto &[ch, scoreh] = DensePrefixZeroesModel(db, hzeroes);
   printf("yh = (" ACYAN("%.9f") " * x)^2\n", ch);
   printf("(Error: %.9f)\n", scoreh);
 
