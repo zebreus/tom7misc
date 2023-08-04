@@ -48,8 +48,12 @@ struct BigInt {
   // Returns Q (a div b), R (a mod b) such that a = b * q + r
   inline static std::pair<BigInt, BigInt> QuotRem(const BigInt &a,
                                                   const BigInt &b);
+  // Integer square root, rounding towards zero.
+  // Input must be non-negative.
+  static BigInt Sqrt(const BigInt &a);
   inline std::optional<int64_t> ToInt() const;
 
+  // Factors using trial division (slow!)
   // such that a0^b0 * a1^b1 * ... * an^bn = x,
   // where a0...an are primes in ascending order
   // and bi is >= 1

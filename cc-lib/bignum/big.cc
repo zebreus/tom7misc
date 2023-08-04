@@ -207,3 +207,46 @@ BigInt::PrimeFactorization(const BigInt &x, int64_t mf) {
 
   return factors;
 }
+
+BigInt BigInt::Sqrt(const BigInt &xx) {
+  BigInt zero(0);
+  BigInt one(1);
+  BigInt two(2);
+  BigInt four(4);
+
+  BigInt cur = xx;
+  std::vector<BigInt> stack;
+  while (BigInt::Greater(cur, one)) {
+    stack.push_back(cur);
+    // PERF: with shifts
+    cur = BigInt::Div(cur, four);
+  }
+
+  /*
+  for (const BigInt &s : stack) {
+    printf("Big Sqrt %s\n", s.ToString().c_str());
+  }
+  */
+
+  BigInt ret = cur;
+  while (!stack.empty()) {
+    // PERF shift
+    BigInt r2 = BigInt::Times(ret, two);
+    BigInt r3 = BigInt::Plus(r2, one);
+    /*
+    printf("r2 = %s, r3 = %s\n",
+           r2.ToString().c_str(),
+           r3.ToString().c_str());
+    */
+
+    BigInt top = std::move(stack.back());
+    stack.pop_back();
+
+    if (Less(top, Times(r3, r3)))
+      ret = std::move(r2);
+    else
+      ret = std::move(r3);
+  }
+
+  return ret;
+}

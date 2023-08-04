@@ -233,6 +233,33 @@ static void TestToInt() {
 # undef NOROUNDTRIP
 }
 
+static uint64_t Sqrt64Nuprl(uint64_t xx) {
+  // printf("SqrtNuprl(%llu)\n", xx);
+  if (xx <= 1) return xx;
+  // z = xx / 4
+  uint64_t z = xx >> 2;
+  uint64_t r2 = 2 * Sqrt64Nuprl(z);
+  uint64_t r3 = r2 + 1;
+  // printf("r2 = %llu, r3 = %llu\n", r2, r3);
+  return (xx < r3 * r3) ? r2 : r3;
+}
+
+static void TestSqrt() {
+  for (const uint64_t u : std::initializer_list<uint64_t>{
+        1234567, 0x7FFFFFFFFFFFFFFFULL, 121,
+        0, 1, 2, 3, 4, 5, 6, 9999999999999ULL, 31337 * 31337ULL}) {
+    BigInt ub(u);
+
+    // Sqare root of squares should be equal
+    BigInt uu = BigInt::Times(ub, ub);
+    CHECK(BigInt::Eq(BigInt::Sqrt(uu), ub)) << u;
+
+    uint64_t us64 = Sqrt64Nuprl(u);
+    BigInt usb = BigInt::Sqrt(ub);
+    CHECK(BigInt::Eq(usb, BigInt(us64))) << u << " " << us64;
+  }
+}
+
 int main(int argc, char **argv) {
   printf("Start.\n");
   fflush(stdout);
@@ -248,6 +275,8 @@ int main(int argc, char **argv) {
   TestPi();
 
   BenchDiv2();
+
+  TestSqrt();
 
   printf("OK\n");
 }
