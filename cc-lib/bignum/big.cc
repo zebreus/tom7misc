@@ -208,6 +208,9 @@ BigInt::PrimeFactorization(const BigInt &x, int64_t mf) {
   return factors;
 }
 
+// Oops, there is BzSqrt! Benchmark to compare (and make sure
+// it has the same rounding behavior.) Unless this is much
+// faster, we should probably just use the library routine.
 BigInt BigInt::Sqrt(const BigInt &xx) {
   BigInt zero(0);
   BigInt one(1);
@@ -250,3 +253,4 @@ BigInt BigInt::Sqrt(const BigInt &xx) {
 
   return ret;
 }
+

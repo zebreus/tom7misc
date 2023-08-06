@@ -1,6 +1,8 @@
 
 #include "big.h"
+#ifndef BIG_USE_GMP
 #include "bign.h"
+#endif
 
 #include <bit>
 #include <cstdint>
@@ -15,7 +17,10 @@
 using int64 = int64_t;
 using namespace std;
 
+#define BIGRAT_TESTS 1
+
 static void TestPow() {
+#ifdef BIGRAT_TESTS
   BigRat q(11,15);
 
   BigRat qqq = BigRat::Times(q, BigRat::Times(q, q));
@@ -23,16 +28,19 @@ static void TestPow() {
   printf("%s vs %s\n", qqq.ToString().c_str(),
          qcubed.ToString().c_str());
   CHECK(BigRat::Eq(qqq, qcubed));
+#endif
 }
 
 // TODO: Test/document behavior on negative inputs
 static void TestQuotRem() {
+#ifdef BIGRAT_TESTS
   BigInt a(37);
   BigInt b(5);
 
   const auto [q, r] = BigInt::QuotRem(a, b);
   CHECK(BigRat::Eq(q, BigInt(7)));
   CHECK(BigRat::Eq(r, BigInt(2)));
+#endif
 }
 
 static void TestPrimeFactors() {
@@ -151,6 +159,7 @@ static void BenchDiv2() {
 }
 
 static void TestPi() {
+#ifdef BIGRAT_TESTS
   printf("----\n");
   {
     BigInt i{1234567LL};
@@ -197,9 +206,13 @@ static void TestPi() {
   CHECK(BigRat::Compare(pi_lb, pi_ub) == -1);
   CHECK(BigRat::Compare(pi_lb, res) == -1);
   CHECK(BigRat::Compare(res, pi_ub) == -1);
+#endif
 }
 
 static void TestLeadingZero() {
+  // TODO: Test this through BigNum interface. Ideally
+  // the test should not care about the implementation.
+#ifndef BIG_USE_GMP
   CHECK(BnnNumLeadingZeroBitsInDigit(1ULL) == 63);
   CHECK(BnnNumLeadingZeroBitsInDigit(0b1000ULL) == 60);
   CHECK(BnnNumLeadingZeroBitsInDigit(~0ULL) == 0);
@@ -209,15 +222,27 @@ static void TestLeadingZero() {
   CHECK(std::countl_zero<BigNumDigit>(0b1000ULL) == 60);
   CHECK(std::countl_zero<BigNumDigit>(~0ULL) == 0);
   CHECK(std::countl_zero<BigNumDigit>(0ULL) == 64);
+#endif
 }
 
 static void TestToInt() {
-# define ROUNDTRIP(x) \
-  CHECK((x) == BigInt((x)).ToInt().value_or(0xBEEF)) << x
+# define ROUNDTRIP(x) do {                                              \
+  BigInt bi((x));                                                       \
+  std::optional<int64_t> io = bi.ToInt();                               \
+  CHECK(io.has_value()) << StringPrintf("%llx", x) << "("               \
+                        << bi.ToString(16) << ")";                      \
+  CHECK((x) == io.value()) << StringPrintf("%llx", x) << " vs "         \
+                           << bi.ToString(16);                          \
+} while (0)
 
   ROUNDTRIP(0);
   ROUNDTRIP(1);
   ROUNDTRIP(-1);
+  ROUNDTRIP(0x7FFFFFFEL);
+  ROUNDTRIP(0x7FFFFFFFL);
+  ROUNDTRIP(0x80000000LL);
+  ROUNDTRIP(0x80000000LL);
+  ROUNDTRIP(0x7FFFFFFFFFFFFFFELL);
   ROUNDTRIP(0x7FFFFFFFFFFFFFFFLL);
 
 # define NOROUNDTRIP(bi) do {                                     \
@@ -260,11 +285,17 @@ static void TestSqrt() {
   }
 }
 
+static void TestGCD() {
+  BigInt g = BigInt::GCD(BigInt(8), BigInt(12));
+  CHECK(BigInt::Eq(g, BigInt(4)));
+}
+
 int main(int argc, char **argv) {
   printf("Start.\n");
   fflush(stdout);
 
   TestToInt();
+  TestGCD();
 
   TestLeadingZero();
 
