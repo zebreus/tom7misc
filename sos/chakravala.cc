@@ -117,6 +117,7 @@ static std::string SolString(const Sol &a) {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+  printf("Start.\n");
 
   // two equations
   // 222121 x^2 + 1 = y_a^2
@@ -126,6 +127,9 @@ int main(int argc, char **argv) {
 
   const BigInt n_a = 222121_b;
   const BigInt n_h = 360721_b;
+
+  printf("n_a: %s\n", n_a.ToString().c_str());
+  printf("n_h: %s\n", n_h.ToString().c_str());
 
   /*
   const Sol sol_a0 =
@@ -145,6 +149,9 @@ int main(int argc, char **argv) {
   BigInt err1 = Error(n_h, sol_h0);
   CHECK(err1 == 1_b) << err1.ToString();
 
+  printf("sol_a0: %s\n", SolString(sol_a0).c_str());
+  printf("sol_h0: %s\n", SolString(sol_h0).c_str());
+
 
   // First let's try using Brahmagupta's identity
   // Sol sol_a = sol_a0;
@@ -160,6 +167,8 @@ int main(int argc, char **argv) {
   hsols.insert(sol_h0);
 
   static constexpr bool CHECK_INVARIANTS = false;
+
+  printf("Loop...\n");
 
   // As an invariant, anything in asols is a solution for a;
   // and bsols for h.

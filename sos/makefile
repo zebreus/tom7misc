@@ -3,6 +3,10 @@ default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe res
 
 CC_LIB=../cc-lib
 
+LIBGMP=../../gmp-6.3.0
+GMP_LFLAGS=$(LIBGMP)/.libs/libgmp.a
+GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
+
 # Normal people set this to g++ and gcc (or just comment it out)
 CXX=x86_64-w64-mingw32-g++
 CC=x86_64-w64-mingw32-gcc
@@ -17,7 +21,7 @@ AMD_ARCH=x86_64
 AMDSDK=c:/code/AMD_SDK/
 
 # XXX ffast math may be a mistake since we rely on sqrt<double>.
-CXXFLAGS=-march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 -ffast-math
+CXXFLAGS=$(GMP_CFLAGS) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 -ffast-math
 OPT=-O3
 
 CLINCLUDES="-I$(AMDSDK)/include"
@@ -28,7 +32,7 @@ FLTO=-flto=auto
 CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 
 # without static, can't find lz or lstdcxx maybe?
-LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -lpsapi -static
+LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -lpsapi $(GMP_LFLAGS) -static
 SOCK_LFLAGS= -lws2_32
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
