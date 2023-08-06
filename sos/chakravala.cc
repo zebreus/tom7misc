@@ -7,6 +7,7 @@
 #include "ansi.h"
 #include "bignum/big.h"
 #include "base/logging.h"
+#include "base/stringprintf.h"
 
 using namespace std;
 
@@ -108,6 +109,12 @@ struct EqSol {
   }
 };
 
+static std::string SolString(const Sol &a) {
+  return StringPrintf("(" ACYAN("%s") "," ABLUE("%s") ")",
+                      a.first.ToString().c_str(),
+                      a.second.ToString().c_str());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -143,63 +150,102 @@ int main(int argc, char **argv) {
   // Sol sol_a = sol_a0;
   // Sol sol_h = sol_h0;
 
-  std::unordered_set<Sol, HashSol, EqSol> asols, hsols;
+
+  // Solutions we've found so far. We can get infinitely many,
+  // so the goal is not to generate a large set here. We want
+  // to find some (ax, ay) and (hx, hy) such that ax = hx.
+  using SolSet = std::unordered_set<Sol, HashSol, EqSol>;
+  SolSet asols, hsols;
   asols.insert(sol_a0);
   hsols.insert(sol_h0);
 
-  std::unordered_set<Sol, HashSol, EqSol> aexpanded, hexpanded;
+  static constexpr bool CHECK_INVARIANTS = false;
 
   // As an invariant, anything in asols is a solution for a;
   // and bsols for h.
   // n_a * x_a^2 + 1 = y_a^2
   // n_h * x_h^2 + 1 = y_h^2
   for (;;) {
-    for (const Sol &sol_h : hsols) {
-      BigInt err1 = Error(n_h, sol_h);
-      CHECK(err1 == 1_b) << err1.ToString();
-    }
-    for (const Sol &sol_a : asols) {
-      BigInt err2 = Error(n_a, sol_a);
-      CHECK(err2 == 1_b) << err2.ToString();
-    }
-
-    // Find best.
-    BigInt best = -1_b;
-    const Sol *bhs = nullptr;
-    const Sol *bas = nullptr;
-    for (const Sol &sol_h : hsols) {
-      bool hsol_new = !hexpanded.contains(sol_h);
+    if (CHECK_INVARIANTS) {
+      for (const Sol &sol_h : hsols) {
+        BigInt err1 = Error(n_h, sol_h);
+        CHECK(err1 == 1_b) << err1.ToString();
+      }
       for (const Sol &sol_a : asols) {
-        if (hsol_new || !aexpanded.contains(sol_a)) {
-          BigInt diff = BigInt::Abs(sol_h.first - sol_a.first);
-          if (best < 0_b || diff < best) {
-            best = diff;
-            bhs = &sol_h;
-            bas = &sol_a;
-          }
-        }
+        BigInt err2 = Error(n_a, sol_a);
+        CHECK(err2 == 1_b) << err2.ToString();
       }
     }
-    printf("%dx%d sols. best diff %d digits\n",
-           (int)hsols.size(), (int)asols.size(),
-           (int)best.ToString().size());
-    if (bhs == nullptr || bas == nullptr) {
-      CHECK(false) << "Unexpected for this to saturate...\n";
-    }
 
-    // The defect here is that we need x_a = x_h. What we can do
-    // is find a new solution for a or h, with the hopes that
-    // they are closer together.
-    hexpanded.insert(*bhs);
-    aexpanded.insert(*bas);
+    // Note: CombineSelf always generates a larger x.
+    // We take one step for each set (symmetric).
 
-    Sol sol_h_self = CombineSelf(n_h, *bhs);
-    Sol sol_a_self = CombineSelf(n_a, *bas);
+    auto Step = [](const BigInt &n, SolSet *sols, SolSet *other) {
+        // We'll combine two solutions. The heuristic here
+        // is to take the step that brings us closest to
+        // any x in the other solution set.
 
-    CHECK(Error(n_h, sol_h_self) == 1_b);
-    CHECK(Error(n_a, sol_a_self) == 1_b);
-    hsols.insert(sol_h_self);
-    asols.insert(sol_a_self);
+        // PERF: Can do inner loop in log time.
+        auto Distance = [&other](const Sol &sol) {
+            // metric is the smallest absolute difference between
+            // the x coordinates of this solution anything in other.
+            std::optional<BigInt> best_diff = nullopt;
+            for (const Sol &osol : *other) {
+              BigInt diff = BigInt::Abs(sol.first - osol.first);
+              if (!best_diff.has_value() ||
+                  diff < best_diff.value()) {
+                if (diff == 0_b) {
+                  printf("%s and %s\n",
+                         SolString(sol).c_str(),
+                         SolString(osol).c_str());
+                }
+                best_diff = {diff};
+              }
+            }
+            CHECK(best_diff.has_value()) << "Because other is not empty";
+            return best_diff.value();
+          };
+
+        std::optional<std::pair<BigInt, Sol>> best;
+        auto Consider = [&sols, &other, &best, &Distance](const Sol &sol) {
+            // Don't allow degenerate solutions.
+            if (sol.first == 0_b)
+              return;
+
+            // And ignore solutions already present.
+            if (sols->contains(sol))
+              return;
+
+            BigInt score = Distance(sol);
+            if (!best.has_value() ||
+                score < best.value().first) {
+              best = {make_pair(score, sol)};
+              int digits = (int)score.ToString().size();
+              if (digits < 10) {
+                printf("  New best diff: %s\n", score.ToString().c_str());
+              } else {
+                printf("  New best with %d-digit diff\n", digits);
+              }
+            }
+          };
+
+        printf("Step %s (%d sols):\n", n.ToString().c_str(),
+               (int)sols->size());
+        for (const Sol &sol1 : *sols) {
+          for (const Sol &sol2 : *sols) {
+            const auto &[s0, s1] = Combine(n, sol1, sol2);
+            Consider(s0);
+            Consider(s1);
+          }
+        }
+
+        CHECK(best.has_value()) << "Because matrix is non-empty";
+        CHECK(Error(n, best.value().second) == 1_b);
+        sols->insert(best.value().second);
+      };
+
+    Step(n_a, &asols, &hsols);
+    Step(n_h, &hsols, &asols);
   }
 
   printf(AGREEN("OK") " :)\n");
