@@ -120,9 +120,9 @@ private:
       for (int i = 0; i < num_lines; i++) {
         printf(
             // Cursor to beginning of previous line
-            "\x1B[F"
+            ANSI_PREVLINE
             // Clear line
-            "\x1B[2K"
+            ANSI_CLEARLINE
                );
       }
     }

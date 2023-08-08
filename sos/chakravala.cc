@@ -5,11 +5,15 @@
 #include <unordered_set>
 
 #include "ansi.h"
+#include "timer.h"
+#include "periodically.h"
 #include "bignum/big.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
 using namespace std;
+
+static constexpr bool CHECK_INVARIANTS = true;
 
 // TODO: to big-overloads.h or whatever
 
@@ -109,10 +113,242 @@ struct EqSol {
   }
 };
 
+
+#define TERM_A AFGCOLOR(39, 179, 214, "%s")
+#define TERM_M AFGCOLOR(39, 214, 179, "%s")
+#define TERM_B AFGCOLOR(232, 237, 173, "%s")
+#define TERM_K AFGCOLOR(220, 173, 237, "%s")
+#define TERM_N AFGCOLOR(227, 198, 143, "%s")
+
 static std::string SolString(const Sol &a) {
-  return StringPrintf("(" ACYAN("%s") "," ABLUE("%s") ")",
+  return StringPrintf("(" TERM_A "," TERM_B ")",
                       a.first.ToString().c_str(),
                       a.second.ToString().c_str());
+}
+
+
+// Given sol=(x,y) such that nx^2 + k = y^2, find a solution
+// to the Pell equation nx^2 + 1 = y^2.
+Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
+  Periodically bar_per(1.0);
+  bool first_progress = true;
+  const int start_k_size = k.ToString().size();
+  Timer timer;
+  static constexpr bool VERBOSE = false;
+
+  BigInt sqrtn = BigInt::Sqrt(n);
+  if (VERBOSE) {
+    printf("Sqrt " TERM_N " = " AGREEN("%s") "\n",
+           n.ToString().c_str(),
+           sqrtn.ToString().c_str());
+  }
+
+  for (int iters = 0; true; iters ++) {
+    if (!VERBOSE)
+      bar_per.RunIf([&first_progress, start_k_size, &timer,
+                     &iters, &k, &sol]() {
+        if (first_progress) {
+          printf("\n");
+          first_progress = false;
+        }
+        int k_size = k.ToString().size();
+        printf(ANSI_PREVLINE
+               ANSI_CLEARLINE
+               "%s\n",
+               ANSI::ProgressBar(
+                   start_k_size - k_size, start_k_size,
+                   StringPrintf("%d iters, k: %d a: %d b: %d",
+                                iters, k_size,
+                                (int)sol.first.ToString().size(),
+                                (int)sol.second.ToString().size()),
+                   timer.Seconds()).c_str());
+      });
+
+    if (VERBOSE) {
+      printf(AWHITE(ABGCOLOR(80, 0, 0, "== %d iters =="))
+             " k %d dig, a %d dig, b %d dig\n",
+             iters,
+             (int)k.ToString().size(),
+             (int)sol.first.ToString().size(),
+             (int)sol.second.ToString().size());
+    }
+    // Then we have a solution to the Pell equation.
+    if (k == BigInt{1}) return sol;
+
+    BigInt a, b;
+    std::tie(a, b) = sol;
+    BigInt gcd = BigInt::GCD(a, b);
+    if (gcd != BigInt{1}) {
+      if (CHECK_INVARIANTS) {
+        CHECK(a % gcd == BigInt{0});
+        CHECK(b % gcd == BigInt{0});
+      }
+      a = a / gcd;
+      b = b / gcd;
+    }
+    if (CHECK_INVARIANTS) {
+      CHECK(Error(n, sol) == k);
+    }
+
+    // Now we need m such that am+b is divisible by k, and we
+    // want the one that minimizes m^2-n.
+    // For the latter condition, we'll work with sqrt(n),
+    // which we computed outside the loop.
+
+    // So now we're looking for m that's close to sqrtn,
+    // am + b must be divisible by k. That's the same as
+    // saying that am mod k  =  -b mod k.
+    BigInt negbmodk = -b % k;
+    // Now we can find the multiplicative inverse of a mod k,
+    // using the extended euclidean algorithm.
+    const auto [g, s, t] = BigInt::ExtendedGCD(a, k);
+    // now we have a*s + k*t = g.
+    CHECK(g == BigInt{1}) << "?? Don't know why this must be true, "
+      "but it's seemingly assumed by descriptions of this?";
+    // so if a*s + k*t = 1, then a*s mod k is 1 (because k*t is 0 mod k).
+    // In other words, s is the multiplicative inverse of a (mod k).
+    // so if am = -b (mod k), then a * (a^-1) * m = -b * (a^-1)  (mod k)
+    // and thus m = -b * (a^-1)  (mod k), which is -b * s.
+    BigInt m = (negbmodk * s) % k;
+    if (CHECK_INVARIANTS) {
+      CHECK((a * m + b) % k == BigInt{0}) <<
+        StringPrintf("Expect k | (am + b). But got remainder " ARED("%s") ".\n"
+                     TERM_K " | (" TERM_A " * " TERM_M " + " TERM_B ")\n",
+                     ((a * m + b) % k).ToString().c_str(),
+                     k.ToString().c_str(),
+                     a.ToString().c_str(),
+                     m.ToString().c_str(),
+                     b.ToString().c_str());
+    }
+
+    if (VERBOSE) {
+      printf("We have k | (am + b):\n"
+             TERM_K " | (" TERM_A " * " TERM_M " + " TERM_B ")\n",
+             k.ToString().c_str(),
+             a.ToString().c_str(),
+             m.ToString().c_str(),
+             b.ToString().c_str());
+    }
+
+    // Now it remains to find m that is closest to sqrtn.
+
+    if (VERBOSE) printf("Want " TERM_M " close to " AGREEN("%s") "\n",
+                        m.ToString().c_str(),
+                        sqrtn.ToString().c_str());
+
+    // Compare three cases. m + d, m + d - k, m + d + k.
+    // d is some multiple of k that is closest to sqrtn - m.
+    // (Only two of these are actually possible depending on signs,
+    // but addition is cheap.)
+
+    BigInt diff = sqrtn - m;
+    BigInt d = (diff / k) * k;
+
+    BigInt m1 = m + d;
+    BigInt m2 = m1 + k;
+    BigInt m3 = m1 - k;
+    BigInt err1 = BigInt::Abs(m1 - sqrtn);
+    BigInt err2 = BigInt::Abs(m2 - sqrtn);
+    BigInt err3 = BigInt::Abs(m3 - sqrtn);
+    if (err1 < err2) {
+      m = (err1 < err3) ? m1 : m3;
+    } else {
+      // err1 >= err2
+      m = (err2 < err3) ? m2 : m3;
+    }
+
+    #if 0
+    if (m < sqrtn) {
+      BigInt diff = sqrtn - m;
+      // Add some multiple of k.
+      BigInt r = diff / k;
+      if (BigInt::Abs(diff - r) < BigInt::Abs(diff - r + k)) {
+        if (VERBOSE) printf("Case i. " TERM_M " += " AYELLOW("%s") "\n",
+                            m.ToString().c_str(),
+                            r.ToString().c_str());
+        m = m + r;
+      } else {
+        if (VERBOSE) printf("Case ii. " TERM_M " += " AYELLOW("%s")
+                            " + " TERM_K "\n",
+                            m.ToString().c_str(),
+                            r.ToString().c_str(),
+                            k.ToString().c_str());
+        m = m + (r + k);
+      }
+    } else {
+      BigInt diff = m - sqrtn;
+      // Add some multiple of k.
+      BigInt r = diff / k;
+      if (BigInt::Abs(diff - r) < BigInt::Abs(diff - r - k)) {
+        if (VERBOSE) printf("Case iii. " TERM_M " -= " AYELLOW("%s") "\n",
+                            m.ToString().c_str(),
+                            r.ToString().c_str());
+        m = m - r;
+      } else {
+        if (VERBOSE) printf("Case iv. " TERM_M " += " AYELLOW("%s")
+                            " + " TERM_K "\n",
+                            m.ToString().c_str(),
+                            r.ToString().c_str(),
+                            k.ToString().c_str());
+        m = m - r - k;
+      }
+    }
+    #endif
+
+    if (CHECK_INVARIANTS) {
+      CHECK((a * m + b) % k == BigInt{0}) <<
+        StringPrintf("Expect k | (am + b). But got remainder " ARED("%s") ".\n"
+                     TERM_K " | (" TERM_A " * " TERM_M " + " TERM_B ")\n",
+                     ((a * m + b) % k).ToString().c_str(),
+                     k.ToString().c_str(),
+                     a.ToString().c_str(),
+                     m.ToString().c_str(),
+                     b.ToString().c_str());
+    }
+
+    if (VERBOSE) {
+      printf("And NOW We have k | (am + b):\n"
+             TERM_K " | (" TERM_A " * " TERM_M " + " TERM_B ")\n",
+             k.ToString().c_str(),
+             a.ToString().c_str(),
+             m.ToString().c_str(),
+             b.ToString().c_str());
+    }
+
+    if (CHECK_INVARIANTS) {
+      CHECK((m * m - n) % k == BigInt{0});
+      CHECK((a * m + b) % k == BigInt{0});
+      CHECK((b * m + n * a) % k == BigInt{0});
+    }
+
+    if (VERBOSE) {
+      printf("And have k | (m^2 - n):\n"
+             TERM_K " | (" TERM_M "^2 - " TERM_N ")\n",
+             k.ToString().c_str(),
+             m.ToString().c_str(),
+             n.ToString().c_str());
+    }
+
+    // PERF GMP has a faster version when we know the remainder is zero
+    BigInt new_a = (a * m + b) / k;
+    BigInt new_b = (b * m + n * a) / k;
+    BigInt new_k = (m * m - n) / k;
+
+    if (VERBOSE) {
+      printf("New triple (" TERM_A ", " TERM_B ", " TERM_K ")\n",
+             new_a.ToString().c_str(),
+             new_b.ToString().c_str(),
+             new_k.ToString().c_str());
+    }
+
+    Sol new_sol = make_pair(std::move(new_a), std::move(new_b));
+    if (CHECK_INVARIANTS) {
+      CHECK(Error(n, new_sol) == new_k);
+    }
+
+    sol = std::move(new_sol);
+    k = std::move(new_k);
+  }
 }
 
 int main(int argc, char **argv) {
@@ -149,9 +385,38 @@ int main(int argc, char **argv) {
   BigInt err1 = Error(n_h, sol_h0);
   CHECK(err1 == 1_b) << err1.ToString();
 
+  /*
   printf("sol_a0: %s\n", SolString(sol_a0).c_str());
   printf("sol_h0: %s\n", SolString(sol_h0).c_str());
+  */
 
+  // this method is basically trivial when k=1.
+  // Sol bb = Bhaskara(n_a, BigInt{1}, sol_a0);
+  // Sol bsol = Bhaskara(n_h, Error(n_h, sol_a0), sol_a0);
+  // Sol bsol = Bhaskara(n_a, Error(n_a, sol_h0), sol_h0);
+
+  {
+    BigInt n = 67_b;
+    Sol start_sol = make_pair(1_b, 8_b);
+    Sol bsol = Bhaskara(n, Error(n, start_sol), start_sol);
+
+    printf("Derived solution for n = " TERM_N "\n"
+           "a: " TERM_A "\n"
+           "b: " TERM_B "\n",
+           n.ToString().c_str(),
+           bsol.first.ToString().c_str(),
+           bsol.second.ToString().c_str());
+  }
+
+  Sol bsol = Bhaskara(n_a, Error(n_a, sol_h0), sol_h0);
+  printf("Derived solution for n_a = " TERM_N "\n"
+         "a: " TERM_A "\n"
+         "b: " TERM_B "\n",
+         n_a.ToString().c_str(),
+         bsol.first.ToString().c_str(),
+         bsol.second.ToString().c_str());
+
+  return 0;
 
   // First let's try using Brahmagupta's identity
   // Sol sol_a = sol_a0;
@@ -165,8 +430,6 @@ int main(int argc, char **argv) {
   SolSet asols, hsols;
   asols.insert(sol_a0);
   hsols.insert(sol_h0);
-
-  static constexpr bool CHECK_INVARIANTS = false;
 
   printf("Loop...\n");
 
