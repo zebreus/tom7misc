@@ -119,6 +119,7 @@ struct EqSol {
 #define TERM_B AFGCOLOR(232, 237, 173, "%s")
 #define TERM_K AFGCOLOR(220, 173, 237, "%s")
 #define TERM_N AFGCOLOR(227, 198, 143, "%s")
+#define TERM_SQRTN AFGCOLOR(210, 200, 180, "%s")
 
 static std::string SolString(const Sol &a) {
   return StringPrintf("(" TERM_A "," TERM_B ")",
@@ -134,11 +135,11 @@ Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
   bool first_progress = true;
   const int start_k_size = k.ToString().size();
   Timer timer;
-  static constexpr bool VERBOSE = false;
+  static constexpr bool VERBOSE = true;
 
   BigInt sqrtn = BigInt::Sqrt(n);
   if (VERBOSE) {
-    printf("Sqrt " TERM_N " = " AGREEN("%s") "\n",
+    printf("Sqrt " TERM_N " = " TERM_SQRTN "\n",
            n.ToString().c_str(),
            sqrtn.ToString().c_str());
   }
@@ -157,7 +158,7 @@ Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
                "%s\n",
                ANSI::ProgressBar(
                    start_k_size - k_size, start_k_size,
-                   StringPrintf("%d iters, k: %d a: %d b: %d",
+                   StringPrintf("%d iters, k: %d dig a: %d dig b: %d dig",
                                 iters, k_size,
                                 (int)sol.first.ToString().size(),
                                 (int)sol.second.ToString().size()),
@@ -173,7 +174,12 @@ Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
              (int)sol.second.ToString().size());
     }
     // Then we have a solution to the Pell equation.
-    if (k == BigInt{1}) return sol;
+    if (k == BigInt{1}) {
+      if (VERBOSE) {
+        printf("Done in " AWHITE("%d") " iterations.\n", iters);
+      }
+      return sol;
+    }
 
     BigInt a, b;
     std::tie(a, b) = sol;
@@ -241,21 +247,63 @@ Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
     // (Only two of these are actually possible depending on signs,
     // but addition is cheap.)
 
-    BigInt diff = sqrtn - m;
-    BigInt d = (diff / k) * k;
+    // XXX: don't pick m such that am + b is zero.
+    // XXX: Need to avoid cycles.
 
-    BigInt m1 = m + d;
-    BigInt m2 = m1 + k;
-    BigInt m3 = m1 - k;
-    BigInt err1 = BigInt::Abs(m1 - sqrtn);
-    BigInt err2 = BigInt::Abs(m2 - sqrtn);
-    BigInt err3 = BigInt::Abs(m3 - sqrtn);
-    if (err1 < err2) {
-      m = (err1 < err3) ? m1 : m3;
+    auto GetBest = [&n, &m, &k](const BigInt &sqrtn) {
+        BigInt diff = sqrtn - m;
+        BigInt d = (diff / k) * k;
+
+        BigInt m1 = m + d;
+        BigInt m2 = m1 + k;
+        BigInt m3 = m1 - k;
+        BigInt err1 = BigInt::Abs(m1 * m1 - n);
+        BigInt err2 = BigInt::Abs(m2 * m2 - n);
+        BigInt err3 = BigInt::Abs(m3 * m3 - n);
+        if (VERBOSE) {
+          #define TERM_E AFGCOLOR(200, 120, 140, "%s")
+          printf("for target " TERM_SQRTN " have:\n"
+                 "   " TERM_M "; err " TERM_E "\n"
+                 "   " TERM_M "; err " TERM_E "\n"
+                 "   " TERM_M "; err " TERM_E "\n",
+                 sqrtn.ToString().c_str(),
+                 m1.ToString().c_str(), err1.ToString().c_str(),
+                 m2.ToString().c_str(), err2.ToString().c_str(),
+                 m3.ToString().c_str(), err3.ToString().c_str());
+        }
+        if (err1 < err2) {
+          return (err1 < err3) ? m1 : m3;
+        } else {
+          // err1 >= err2
+          return (err2 < err3) ? m2 : m3;
+        }
+      };
+
+    auto mpos = GetBest(sqrtn);
+    // PERF don't need to keep copying
+    auto mneg = GetBest(-sqrtn);
+    if (BigInt::Abs(mpos * mpos - n) <
+        BigInt::Abs(mneg * mneg - n)) {
+      m = mpos;
     } else {
-      // err1 >= err2
-      m = (err2 < err3) ? m2 : m3;
+      m = mneg;
     }
+
+    if (VERBOSE) {
+      printf("So we take m = " TERM_M "\n",
+             m.ToString().c_str());
+    }
+
+    // 67 doesn't work if we consider negative... must be a bug?
+    // m = GetBest(sqrtn);
+
+    // TODO: Note, it is apparently possible for the
+    // choice of m to create a cycle of length 1. In this case
+    // we should take the second-best choice.
+    // ("New Light on Bhaskara's Chakravala or Cyclic Method
+    //  of solving Indeterminate Equations of the Second Degree
+    //  in two Variables." Ayyangar, AA Krishnaswami 1929, p.235)
+    // https://www.ms.uky.edu/~sohum/aak/pdf%20files/chakravala.pdf
 
     #if 0
     if (m < sqrtn) {
@@ -396,7 +444,7 @@ int main(int argc, char **argv) {
   // Sol bsol = Bhaskara(n_a, Error(n_a, sol_h0), sol_h0);
 
   {
-    BigInt n = 67_b;
+    BigInt n{67};
     Sol start_sol = make_pair(1_b, 8_b);
     Sol bsol = Bhaskara(n, Error(n, start_sol), start_sol);
 
@@ -407,7 +455,22 @@ int main(int argc, char **argv) {
            bsol.first.ToString().c_str(),
            bsol.second.ToString().c_str());
   }
+  return 0;
 
+  /*
+  for (int ni = 2; ni < 150; ni++) {
+    BigInt n{ni};
+    Sol start_sol = make_pair(1_b, 8_b);
+    Sol bsol = Bhaskara(n, Error(n, start_sol), start_sol);
+
+    printf("Derived solution for n = " TERM_N "\n"
+           "a: " TERM_A "\n"
+           "b: " TERM_B "\n",
+           n.ToString().c_str(),
+           bsol.first.ToString().c_str(),
+           bsol.second.ToString().c_str());
+  }
+  */
   Sol bsol = Bhaskara(n_a, Error(n_a, sol_h0), sol_h0);
   printf("Derived solution for n_a = " TERM_N "\n"
          "a: " TERM_A "\n"
