@@ -11,6 +11,8 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
+#include "sos-util.h"
+
 using namespace std;
 
 static constexpr bool CHECK_INVARIANTS = true;
@@ -103,7 +105,7 @@ static std::pair<Sol, Sol> Combine(
 
 struct HashSol {
   size_t operator ()(const Sol &sol) const {
-    return (size_t)BigInt::LowWord(sol.first + sol.second);
+    return (size_t)BigInt::LowWord(sol.first - sol.second);
   }
 };
 
@@ -113,6 +115,25 @@ struct EqSol {
   }
 };
 
+using Triple = std::pair<Sol, BigInt>;
+
+struct HashTriple {
+  size_t operator()(const Triple &tri) const {
+    const auto [sol, k] = tri;
+    size_t s = HashSol()(sol);
+    return (size_t)(BigInt::LowWord(k) * 0x314159 + s);
+  }
+};
+
+struct EqTriple {
+  bool operator()(const Triple &a, const Triple &b) const {
+    const auto [sol1, k1] = a;
+    const auto [sol2, k2] = b;
+    return k1 == k2 &&
+      sol1.first == sol2.first &&
+      sol1.second == sol2.second;
+  }
+};
 
 #define TERM_A AFGCOLOR(39, 179, 214, "%s")
 #define TERM_M AFGCOLOR(39, 214, 179, "%s")
@@ -120,6 +141,8 @@ struct EqSol {
 #define TERM_K AFGCOLOR(220, 173, 237, "%s")
 #define TERM_N AFGCOLOR(227, 198, 143, "%s")
 #define TERM_SQRTN AFGCOLOR(210, 200, 180, "%s")
+#define TERM_E AFGCOLOR(200, 120, 140, "%s")
+
 
 static std::string SolString(const Sol &a) {
   return StringPrintf("(" TERM_A "," TERM_B ")",
@@ -128,6 +151,8 @@ static std::string SolString(const Sol &a) {
 }
 
 
+using TripleSet = std::unordered_set<Triple, HashTriple, EqTriple>;
+
 // Given sol=(x,y) such that nx^2 + k = y^2, find a solution
 // to the Pell equation nx^2 + 1 = y^2.
 Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
@@ -135,7 +160,7 @@ Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
   bool first_progress = true;
   const int start_k_size = k.ToString().size();
   Timer timer;
-  static constexpr bool VERBOSE = true;
+  static constexpr bool VERBOSE = false;
 
   BigInt sqrtn = BigInt::Sqrt(n);
   if (VERBOSE) {
@@ -144,7 +169,15 @@ Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
            sqrtn.ToString().c_str());
   }
 
+  TripleSet seen;
+
   for (int iters = 0; true; iters ++) {
+    const Triple triple = make_pair(sol, k);
+    if (CHECK_INVARIANTS) {
+      CHECK(!seen.contains(triple));
+    }
+    seen.insert(triple);
+
     if (!VERBOSE)
       bar_per.RunIf([&first_progress, start_k_size, &timer,
                      &iters, &k, &sol]() {
@@ -247,101 +280,102 @@ Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
     // (Only two of these are actually possible depending on signs,
     // but addition is cheap.)
 
-    // XXX: don't pick m such that am + b is zero.
-    // XXX: Need to avoid cycles.
+    BigInt best_m;
+    std::optional<BigInt> best_err;
+    auto Consider = [&seen, &a, &b, &n, &k,
+                     &best_m, &best_err](const BigInt &m) {
+        BigInt new_a = (a * m + b) / BigInt::Abs(k);
+        BigInt new_b = (b * m + n * a) / BigInt::Abs(k);
+        BigInt new_k = (m * m - n) / k;
+        Triple new_triple = make_pair(make_pair(new_a, new_b), new_k);
 
-    auto GetBest = [&n, &m, &k](const BigInt &sqrtn) {
-        BigInt diff = sqrtn - m;
-        BigInt d = (diff / k) * k;
-
-        BigInt m1 = m + d;
-        BigInt m2 = m1 + k;
-        BigInt m3 = m1 - k;
-        BigInt err1 = BigInt::Abs(m1 * m1 - n);
-        BigInt err2 = BigInt::Abs(m2 * m2 - n);
-        BigInt err3 = BigInt::Abs(m3 * m3 - n);
-        if (VERBOSE) {
-          #define TERM_E AFGCOLOR(200, 120, 140, "%s")
-          printf("for target " TERM_SQRTN " have:\n"
-                 "   " TERM_M "; err " TERM_E "\n"
-                 "   " TERM_M "; err " TERM_E "\n"
-                 "   " TERM_M "; err " TERM_E "\n",
-                 sqrtn.ToString().c_str(),
-                 m1.ToString().c_str(), err1.ToString().c_str(),
-                 m2.ToString().c_str(), err2.ToString().c_str(),
-                 m3.ToString().c_str(), err3.ToString().c_str());
+        if (seen.contains(new_triple)) {
+          if (VERBOSE) {
+            printf("Ignored " TERM_M " which would repeat the triple "
+                   "(" TERM_A ", " TERM_B ", " TERM_K ")\n",
+                   m.ToString().c_str(),
+                   new_a.ToString().c_str(),
+                   new_b.ToString().c_str(),
+                   new_k.ToString().c_str());
+          }
+          return;
         }
-        if (err1 < err2) {
-          return (err1 < err3) ? m1 : m3;
-        } else {
-          // err1 >= err2
-          return (err2 < err3) ? m2 : m3;
+
+        // Don't allow trivial tuples.
+        if (new_a == BigInt{0}) {
+          if (VERBOSE) {
+            printf("Ignored " TERM_M " which would yield a=0\n",
+                   m.ToString().c_str());
+          }
+          return;
+        }
+
+        #if 0
+        // (This is now tested for *all* loops above.)
+        //
+        // Or self-loops.
+        // ("New Light on Bhaskara's Chakravala or Cyclic Method
+        //  of solving Indeterminate Equations of the Second Degree
+        //  in two Variables." Ayyangar, AA Krishnaswami 1929, p.235)
+        // https://www.ms.uky.edu/~sohum/aak/pdf%20files/chakravala.pdf
+        if (new_a == a) {
+          if (VERBOSE) {
+            printf("Ignored " TERM_M " which would yield a = " TERM_A
+                   " again; a cycle of length 1\n",
+                   m.ToString().c_str(),
+                   a.ToString().c_str());
+          }
+          return;
+        }
+        #endif
+
+        BigInt err = BigInt::Abs(m * m - n);
+        if (VERBOSE) {
+          printf("consider " TERM_M " (error " TERM_E "); yields triple"
+                 "(" TERM_A ", " TERM_B ", " TERM_K ")\n",
+                 m.ToString().c_str(), err.ToString().c_str(),
+                 new_a.ToString().c_str(),
+                 new_b.ToString().c_str(),
+                 new_k.ToString().c_str());
+        }
+
+        if (!best_err.has_value() ||
+            err < best_err.value()) {
+          best_m = m;
+          best_err.emplace(std::move(err));
         }
       };
 
-    auto mpos = GetBest(sqrtn);
-    // PERF don't need to keep copying
-    auto mneg = GetBest(-sqrtn);
-    if (BigInt::Abs(mpos * mpos - n) <
-        BigInt::Abs(mneg * mneg - n)) {
-      m = mpos;
-    } else {
-      m = mneg;
-    }
+    auto TryPoint = [&m, &k, &Consider](const BigInt &sqrtn) {
+        BigInt diff = sqrtn - m;
+        BigInt d = (diff / k) * k;
+        BigInt m1 = m + d;
+        if (VERBOSE) {
+          printf("For target " TERM_SQRTN " have diff = " AYELLOW("%s")
+                 " and d = " APURPLE("%s") " and m1 = " TERM_M " +/- k\n",
+                 sqrtn.ToString().c_str(),
+                 diff.ToString().c_str(),
+                 d.ToString().c_str(),
+                 m1.ToString().c_str());
+        }
+        Consider(m1);
+        Consider(m1 + k);
+        Consider(m1 - k);
+      };
+
+    TryPoint(sqrtn);
+    // PERF don't need to keep copying this
+    // Wikipedia ignores these solutions. The example of 67 doesn't
+    // terminate if we include them. They are valid; though?
+    // TryPoint(-sqrtn);
+
+    CHECK(best_err.has_value());
+    m = std::move(best_m);
 
     if (VERBOSE) {
       printf("So we take m = " TERM_M "\n",
              m.ToString().c_str());
     }
-
-    // 67 doesn't work if we consider negative... must be a bug?
-    // m = GetBest(sqrtn);
-
-    // TODO: Note, it is apparently possible for the
-    // choice of m to create a cycle of length 1. In this case
-    // we should take the second-best choice.
-    // ("New Light on Bhaskara's Chakravala or Cyclic Method
-    //  of solving Indeterminate Equations of the Second Degree
-    //  in two Variables." Ayyangar, AA Krishnaswami 1929, p.235)
-    // https://www.ms.uky.edu/~sohum/aak/pdf%20files/chakravala.pdf
-
-    #if 0
-    if (m < sqrtn) {
-      BigInt diff = sqrtn - m;
-      // Add some multiple of k.
-      BigInt r = diff / k;
-      if (BigInt::Abs(diff - r) < BigInt::Abs(diff - r + k)) {
-        if (VERBOSE) printf("Case i. " TERM_M " += " AYELLOW("%s") "\n",
-                            m.ToString().c_str(),
-                            r.ToString().c_str());
-        m = m + r;
-      } else {
-        if (VERBOSE) printf("Case ii. " TERM_M " += " AYELLOW("%s")
-                            " + " TERM_K "\n",
-                            m.ToString().c_str(),
-                            r.ToString().c_str(),
-                            k.ToString().c_str());
-        m = m + (r + k);
-      }
-    } else {
-      BigInt diff = m - sqrtn;
-      // Add some multiple of k.
-      BigInt r = diff / k;
-      if (BigInt::Abs(diff - r) < BigInt::Abs(diff - r - k)) {
-        if (VERBOSE) printf("Case iii. " TERM_M " -= " AYELLOW("%s") "\n",
-                            m.ToString().c_str(),
-                            r.ToString().c_str());
-        m = m - r;
-      } else {
-        if (VERBOSE) printf("Case iv. " TERM_M " += " AYELLOW("%s")
-                            " + " TERM_K "\n",
-                            m.ToString().c_str(),
-                            r.ToString().c_str(),
-                            k.ToString().c_str());
-        m = m - r - k;
-      }
-    }
-    #endif
 
     if (CHECK_INVARIANTS) {
       CHECK((a * m + b) % k == BigInt{0}) <<
@@ -378,9 +412,10 @@ Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
     }
 
     // PERF GMP has a faster version when we know the remainder is zero
-    BigInt new_a = (a * m + b) / k;
-    BigInt new_b = (b * m + n * a) / k;
+    BigInt new_a = (a * m + b) / BigInt::Abs(k);
+    BigInt new_b = (b * m + n * a) / BigInt::Abs(k);
     BigInt new_k = (m * m - n) / k;
+
 
     if (VERBOSE) {
       printf("New triple (" TERM_A ", " TERM_B ", " TERM_K ")\n",
@@ -396,6 +431,8 @@ Sol Bhaskara(BigInt n, BigInt k, Sol sol) {
 
     sol = std::move(new_sol);
     k = std::move(new_k);
+
+    // CHECK(iters < 3);
   }
 }
 
@@ -443,6 +480,24 @@ int main(int argc, char **argv) {
   // Sol bsol = Bhaskara(n_h, Error(n_h, sol_a0), sol_a0);
   // Sol bsol = Bhaskara(n_a, Error(n_a, sol_h0), sol_h0);
 
+#if 0
+  {
+    BigInt n{2};
+    Sol start_sol = make_pair(1_b, 8_b);
+    Sol bsol = Bhaskara(n, Error(n, start_sol), start_sol);
+
+    printf("Derived solution for n = " TERM_N "\n"
+           "a: " TERM_A "\n"
+           "b: " TERM_B "\n",
+           n.ToString().c_str(),
+           bsol.first.ToString().c_str(),
+           bsol.second.ToString().c_str());
+    CHECK(bsol.first != BigInt{0});
+    CHECK(Error(n, bsol) == BigInt{1});
+  }
+  return 0;
+
+
   {
     BigInt n{67};
     Sol start_sol = make_pair(1_b, 8_b);
@@ -454,11 +509,18 @@ int main(int argc, char **argv) {
            n.ToString().c_str(),
            bsol.first.ToString().c_str(),
            bsol.second.ToString().c_str());
+    CHECK(bsol.first != BigInt{0});
+    CHECK(Error(n, bsol) == BigInt{1});
   }
   return 0;
+#endif
 
-  /*
   for (int ni = 2; ni < 150; ni++) {
+    uint64_t s = Sqrt64(ni);
+    // This algorithm doesn't work for perfect squares.
+    if (s * s == ni)
+      continue;
+
     BigInt n{ni};
     Sol start_sol = make_pair(1_b, 8_b);
     Sol bsol = Bhaskara(n, Error(n, start_sol), start_sol);
@@ -469,15 +531,37 @@ int main(int argc, char **argv) {
            n.ToString().c_str(),
            bsol.first.ToString().c_str(),
            bsol.second.ToString().c_str());
+    CHECK(bsol.first != BigInt{0});
+    CHECK(Error(n, bsol) == BigInt{1});
+    printf(AGREEN("OK") "\n");
   }
-  */
-  Sol bsol = Bhaskara(n_a, Error(n_a, sol_h0), sol_h0);
-  printf("Derived solution for n_a = " TERM_N "\n"
-         "a: " TERM_A "\n"
-         "b: " TERM_B "\n",
-         n_a.ToString().c_str(),
-         bsol.first.ToString().c_str(),
-         bsol.second.ToString().c_str());
+
+  {
+    Sol bsol = Bhaskara(n_a, Error(n_a, sol_h0), sol_h0);
+    printf("Derived solution for n_a = " TERM_N "\n"
+           "a: " TERM_A "\n"
+           "b: " TERM_B "\n",
+           n_a.ToString().c_str(),
+           bsol.first.ToString().c_str(),
+           bsol.second.ToString().c_str());
+    CHECK(bsol.first != BigInt{0});
+    CHECK(Error(n_a, bsol) == BigInt{1});
+    printf(AGREEN("OK") "\n");
+  }
+
+  {
+    Sol bsol = Bhaskara(n_h, Error(n_h, sol_a0), sol_a0);
+    printf("Derived solution for n_h = " TERM_N "\n"
+           "a: " TERM_A "\n"
+           "b: " TERM_B "\n",
+           n_h.ToString().c_str(),
+           bsol.first.ToString().c_str(),
+           bsol.second.ToString().c_str());
+    CHECK(bsol.first != BigInt{0});
+    CHECK(Error(n_h, bsol) == BigInt{1});
+    printf(AGREEN("OK") "\n");
+  }
+
 
   return 0;
 
