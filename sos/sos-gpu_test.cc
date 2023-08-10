@@ -306,7 +306,7 @@ static void TestTryFilter() {
 
 static void TestEligibleFilter() {
   static constexpr int HEIGHT = 8192 * 256;
-  EligibleFilterGPU filter(cl, HEIGHT);
+  EligibleFilterGPU<1> filter(cl, HEIGHT);
 
   static constexpr int START_NUM = 1000000;
   vector<uint8_t> out = filter.Filter(START_NUM);

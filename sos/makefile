@@ -1,5 +1,5 @@
 
-default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe
+default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe
 
 CC_LIB=../cc-lib
 
@@ -82,6 +82,10 @@ bigcalc.exe : bigcalc.o $(OBJECTS)
 	@echo -n "!"
 
 chakravala.exe : chakravala.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+orbit.exe : orbit.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

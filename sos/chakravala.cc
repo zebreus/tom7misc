@@ -8,6 +8,7 @@
 #include "timer.h"
 #include "periodically.h"
 #include "bignum/big.h"
+#include "bignum/big-overloads.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
@@ -16,64 +17,6 @@
 using namespace std;
 
 static constexpr bool CHECK_INVARIANTS = true;
-
-// TODO: to big-overloads.h or whatever
-
-// TODO modifying operators
-// TODO spaceship
-// TODO << >> | & ^
-
-inline BigInt operator ""_b(const char *s) {
-  return BigInt(s);
-}
-
-inline BigInt operator *(const BigInt &a, const BigInt &b) {
-  return BigInt::Times(a, b);
-}
-
-inline BigInt operator +(const BigInt &a, const BigInt &b) {
-  return BigInt::Plus(a, b);
-}
-
-inline BigInt operator /(const BigInt &a, const BigInt &b) {
-  return BigInt::Div(a, b);
-}
-
-inline BigInt operator %(const BigInt &a, const BigInt &b) {
-  return BigInt::Mod(a, b);
-}
-
-inline BigInt operator -(const BigInt &a, const BigInt &b) {
-  return BigInt::Minus(a, b);
-}
-
-inline BigInt operator -(const BigInt &a) {
-  return BigInt::Negate(a);
-}
-
-inline BigInt operator +(const BigInt &a) {
-  return a;
-}
-
-inline bool operator <(const BigInt &a, const BigInt &b) {
-  return BigInt::Less(a, b);
-}
-
-inline bool operator <=(const BigInt &a, const BigInt &b) {
-  return BigInt::LessEq(a, b);
-}
-
-inline bool operator >(const BigInt &a, const BigInt &b) {
-  return BigInt::Greater(a, b);
-}
-
-inline bool operator >=(const BigInt &a, const BigInt &b) {
-  return BigInt::GreaterEq(a, b);
-}
-
-inline bool operator ==(const BigInt &a, const BigInt &b) {
-  return BigInt::Eq(a, b);
-}
 
 using Sol = std::pair<BigInt, BigInt>;
 

@@ -14,7 +14,7 @@
 #include "periodically.h"
 #include "arcfour.h"
 #include "randutil.h"
-#include "factorize.h"
+#include "factorization.h"
 #include "threadutil.h"
 
 static std::string VecString(const std::vector<int> &v) {
@@ -86,7 +86,7 @@ static void Compress(const std::pair<int, C> &row) {
         // zig-zag out from m
         const int64_t p = (off & 1) ? m - (off >> 1) : m + (off >> 1);
         if (p < 2) return;
-        if (Factorize::IsPrime(p)) {
+        if (Factorization::IsPrime(p)) {
           for (int64_t a = 1; a < p; a++) {
             // Compute r = a*n % p for all n.
 
@@ -242,7 +242,7 @@ int main(int argc, char **argv) {
   // GetNonSumResidues! Would need to make
   // this faster.
 
-  for (int m : {
+  for (int m : std::initializer_list<int>{
       // put the numbers here!
     }) {
     Compress(GetNonSumResidues(GetResidues(m)));
