@@ -21,7 +21,8 @@ AMD_ARCH=x86_64
 AMDSDK=c:/code/AMD_SDK/
 
 # XXX ffast math may be a mistake since we rely on sqrt<double>.
-CXXFLAGS=$(GMP_CFLAGS) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20 -ffast-math
+# Avoid -ffast-math, which assumes std::isnan is false, for example!
+CXXFLAGS=$(GMP_CFLAGS) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
 OPT=-O3
 
 CLINCLUDES="-I$(AMDSDK)/include"

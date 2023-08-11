@@ -16,6 +16,10 @@
 #include "base/stringprintf.h"
 #include "hashing.h"
 #include "opt/opt.h"
+#include "image.h"
+#include "bounds.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 #include "sos-util.h"
 
@@ -24,6 +28,7 @@ using namespace std;
 static constexpr bool CHECK_INVARIANTS = true;
 static constexpr bool VERBOSE = false;
 static constexpr bool VERY_VERBOSE = VERBOSE && false;
+static constexpr bool GENERATE_IMAGE = true;
 
 #define TERM_A AFGCOLOR(39, 179, 214, "%s")
 #define TERM_M AFGCOLOR(39, 214, 179, "%s")
@@ -33,6 +38,30 @@ static constexpr bool VERY_VERBOSE = VERBOSE && false;
 #define TERM_SQRTN AFGCOLOR(210, 200, 180, "%s")
 #define TERM_E AFGCOLOR(200, 120, 140, "%s")
 
+enum Method {
+  BLACK_BOX,
+  GREEDY_9,
+  RANDOM_WALK,
+  COMPASS_EXPONENTIAL,
+};
+
+static constexpr Method method = RANDOM_WALK;
+
+// Map a bigint to a reasonable range for plotting in graphics.
+// (or a.ToDouble(), or some hybrid?)
+static double MapBig(BigInt z) {
+  if (z == BigInt{0}) return 0.0;
+  double sign = 1.0;
+  if (z < BigInt{0}) {
+    sign = -1.0;
+    z = BigInt::Abs(z);
+  }
+
+  double d = sign * BigInt::NaturalLog(z);
+  CHECK(!std::isnan(d));
+  CHECK(std::isfinite(d));
+  return d;
+}
 
 struct Triple {
   Triple() : Triple(0, 0, 0) {}
@@ -92,46 +121,6 @@ static BigInt Error(const BigInt &n, const BigInt &x, const BigInt &y) {
   return y * y - n * x * x;
 }
 
-#if 0
-
-static Sol CombineSelf(const BigInt &n, const Sol &sol) {
-  const auto &[x, y] = sol;
-  return make_pair(
-      2_b * x * y,
-      y * y + n * x * x);
-  // and also the degenerate (0, y^2 - nx^2)
-}
-
-static std::pair<Sol, Sol> Combine(
-    const BigInt &n, const Sol &sol1, const Sol &sol2) {
-  const auto &[a, b] = sol1;
-  const auto &[c, d] = sol2;
-
-  return
-    make_pair(
-        make_pair(b * c + a * d, b * d + n * a * c),
-        make_pair(b * c - a * d, b * d - n * a * c));
-}
-
-struct HashSol {
-  size_t operator ()(const Sol &sol) const {
-    return (size_t)BigInt::LowWord(sol.first - sol.second);
-  }
-};
-
-struct EqSol {
-  bool operator ()(const Sol &a, const Sol &b) const {
-    return a.first == b.first && a.second == b.second;
-  }
-};
-
-static std::string SolString(const Sol &a) {
-  return StringPrintf("(" TERM_A "," TERM_B ")",
-                      a.first.ToString().c_str(),
-                      a.second.ToString().c_str());
-}
-#endif
-
 using TripleSet = std::unordered_set<Triple, HashTriple>;
 
 using TriplePairHash = Hashing<std::pair<Triple, Triple>>;
@@ -168,17 +157,49 @@ static BigInt Metric(const Triple &left, const Triple &right) {
   return res;
 }
 
+// PERF avoid copying
+struct BestPairFinder {
+  std::pair<Triple, Triple> best;
+  std::optional<BigInt> best_score;
+
+  void ObserveWithMetric(const Triple &left, const Triple &right,
+                         const BigInt &metric) {
+    if (left.a == BigInt{0} || right.a == BigInt{0})
+      return;
+
+    if (!best_score.has_value() || metric < best_score.value()) {
+      best = make_pair(left, right);
+      best_score = {metric};
+    }
+  }
+
+  void Observe(const Triple &left, const Triple &right) {
+    BigInt metric = Metric(left, right);
+    ObserveWithMetric(left, right, metric);
+  }
+
+  // Zeros if there were no valid observations.
+  std::pair<Triple, Triple> Best() {
+    return best;
+  }
+
+};
+
 // Given two equations of the form
 //     na^2 + k = b^2
 // where (a, b, k) is the "triple",
 // Try to find two triples t1, t2 where t1.a=t2.a and t1.k = t2.k = 1.
 static std::pair<Triple, Triple>
 DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
+  ArcFour rc("dualbhaskara");
 
   if (VERBOSE)
     printf(AWHITE(ABGCOLOR(0, 0, 50, "---------- on %s,%s ------------")) "\n",
            nleft.ToString().c_str(),
            nright.ToString().c_str());
+
+  Periodically image_per(10.0 * 60.0);
+  int image_idx = 0;
 
   Periodically bar_per(1.0);
   bool first_progress = true;
@@ -191,11 +212,17 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
   // exploring them a second time, as this would lead to a cycle.
   TriplePairSet seen;
 
+  std::vector<std::pair<Triple, Triple>> history;
+
+  int last_repeats = 0, last_attempts = 0;
   for (int iters = 0; true; iters ++) {
     if (CHECK_INVARIANTS) {
       CHECK(!seen.contains(std::make_pair(left, right)));
     }
     seen.insert(std::make_pair(left, right));
+    if (GENERATE_IMAGE) {
+      history.emplace_back(left, right);
+    }
 
     BigInt a_diff = left.a - right.a;
 
@@ -213,7 +240,7 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
     } else {
       // Only output progress bar when verbose mode is off.
       bar_per.RunIf([&first_progress, &start_metric, start_metric_size,
-                     &a_diff,
+                     &last_repeats, &last_attempts, &a_diff,
                      &timer, &iters, &left, &right]() {
         if (first_progress) {
           printf("\n");
@@ -237,12 +264,199 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
                "%s\n",
                ANSI::ProgressBar(
                    digits_done, digits_total,
-                   StringPrintf("%d its, digits: ks: %d diff: %d max-b: %d",
+                   StringPrintf("%d its, dig: ks: %d diff: %d max-b: %d"
+                                " rep: %d/%d",
                                 iters, k_digits,
                                 a_diff_digits,
-                                max_b_digits),
+                                max_b_digits,
+                                last_repeats, last_attempts),
                    timer.Seconds()).c_str());
       });
+    }
+
+    if (GENERATE_IMAGE && image_per.ShouldRun()) {
+      enum Shape {
+        DISC,
+        CIRCLE,
+        FILLSQUARE,
+      };
+
+      image_idx++;
+
+      // xy plot
+      {
+        printf("x/y plot\n");
+        Bounds bounds;
+        bounds.Bound(0, 0);
+
+        for (int x = 0; x < history.size(); x++) {
+          const auto &[t1, t2] = history[x];
+          bounds.Bound(MapBig(t1.a), MapBig(t2.a));
+          bounds.Bound(MapBig(t1.b), MapBig(t2.b));
+          bounds.Bound(MapBig(t1.k), MapBig(t2.k));
+        }
+        if (bounds.Empty()) {
+          printf("Bounds empty.\n");
+        } else {
+          printf("Bounds: %.3f,%.3f -- %.3f,%.3f\n",
+                 bounds.MinX(), bounds.MinY(),
+                 bounds.MaxX(), bounds.MaxY());
+        }
+
+
+        const int WIDTH = 1900;
+        const int HEIGHT = 1900;
+        ImageRGBA img(WIDTH, HEIGHT);
+        img.Clear32(0x000000FF);
+        Bounds::Scaler scaler = bounds.Stretch(WIDTH, HEIGHT).FlipY();
+
+        const auto [x0, y0] = scaler.Scale(0, 0);
+        img.BlendLine32(x0, 0, x0, HEIGHT - 1, 0xFFFFF22);
+        img.BlendLine32(0, y0, WIDTH - 1, y0, 0xFFFFF22);
+
+        for (int i = 0; i < history.size(); i++) {
+          const auto &[t1, t2] = history[i];
+
+          auto Plot = [&img, &scaler](const BigInt &x, const BigInt &y,
+                                      uint32_t color, Shape shape) {
+              auto [sx, sy] = scaler.Scale(MapBig(x), MapBig(y));
+
+              switch (shape) {
+              case DISC:
+                img.BlendFilledCircleAA32(sx, sy, 2.0f, color);
+                break;
+              case CIRCLE:
+                img.BlendCircle32(sx, sy, 3, color);
+                break;
+              case FILLSQUARE:
+                img.BlendRect32(sx, sy, 3, 3, color);
+                break;
+              }
+            };
+
+          Plot(t1.a, t2.a, 0xFF333355, DISC);
+          Plot(t1.b, t2.b, 0x77FF7755, CIRCLE);
+          Plot(t1.k, t2.k, 0x5555FF55, FILLSQUARE);
+        }
+
+        const int textx = 32;
+        int texty = 32;
+        img.BlendFilledCircleAA32(textx + 8, texty + 8, 6.0f, 0xFF3333AA);
+        img.BlendText2x32(textx + 18, texty, 0xFF3333AA, "a");
+        texty += ImageRGBA::TEXT2X_HEIGHT + 2;
+        img.BlendCircle32(textx + 7, texty + 7, 5, 0x77FF77AA);
+        img.BlendText2x32(textx + 18, texty, 0x77FF77AA, "b");
+        texty += ImageRGBA::TEXT2X_HEIGHT + 2;
+        img.BlendRect32(textx + 2, texty + 2, 11, 11, 0x5555FFAA);
+        img.BlendText2x32(textx + 18, texty, 0x5555FFAA, "k");
+
+        string filename = StringPrintf("xyplot-%d.png", image_idx);
+        img.Save(filename);
+        printf("Wrote " ACYAN("%s"), filename.c_str());
+      }
+
+      // seismograph
+      {
+        printf("seismograph\n");
+        Bounds bounds;
+        bounds.Bound(0, 0);
+
+        auto BoundFiniteY = [&bounds](double d) {
+            if (std::isfinite(d)) bounds.BoundY(d);
+          };
+        auto BoundTriple = [&BoundFiniteY](const Triple &triple) {
+            BoundFiniteY(MapBig(triple.a));
+            BoundFiniteY(MapBig(triple.b));
+            BoundFiniteY(MapBig(triple.k));
+          };
+
+        for (int x = 0; x < history.size(); x++) {
+          const auto &[t1, t2] = history[x];
+          BoundTriple(t1);
+          BoundTriple(t2);
+        }
+        bounds.BoundX(0);
+        bounds.BoundX(history.size() - 1);
+
+        const int WIDTH = 1024 * 3;
+        const int HEIGHT = 1024;
+        ImageRGBA img(WIDTH, HEIGHT);
+        img.Clear32(0x000000FF);
+        Bounds::Scaler scaler = bounds.Stretch(WIDTH, HEIGHT).FlipY();
+
+        BigInt max_a{0}, max_b{0}, max_k{0};
+        std::optional<BigInt> best_k = nullopt;
+
+        for (int x = 0; x < history.size(); x++) {
+          auto Plot = [x, &img, &scaler, WIDTH, HEIGHT](
+              const BigInt by, uint32_t rgb, Shape shape) {
+
+              uint32_t color = (rgb << 8) | 0x80;
+
+              double y = MapBig(by);
+              int sx = scaler.ScaleX(x);
+              int sy = 0;
+              if (!std::isfinite(y)) {
+                if (y > 0.0) sy = 0;
+                else sy = HEIGHT - 1;
+              } else {
+                sy = scaler.ScaleY(y);
+              }
+              switch (shape) {
+              case DISC:
+                img.BlendFilledCircleAA32(sx, sy, 2.0f, color);
+                break;
+              case CIRCLE:
+                img.BlendCircle32(sx, sy, 3, color);
+                break;
+              case FILLSQUARE:
+                img.BlendRect32(sx, sy, 3, 3, color);
+                break;
+              }
+            };
+
+          const auto &[t1, t2] = history[x];
+          if (t1.a > max_a) max_a = t1.a;
+          if (t1.b > max_a) max_b = t1.b;
+          if (BigInt::Abs(t1.k) > max_k) max_k = t1.k;
+          Plot(t1.a, 0xFF0000, CIRCLE);
+          Plot(t1.b, 0xFF3300, CIRCLE);
+          Plot(t1.k, 0xFF7700, CIRCLE);
+
+          if (t2.a > max_a) max_a = t2.a;
+          if (t2.b > max_a) max_b = t2.b;
+          if (BigInt::Abs(t2.k) > max_k) max_k = t2.k;
+          Plot(t2.a, 0x0000FF, DISC);
+          Plot(t2.b, 0x0033FF, DISC);
+          Plot(t2.k, 0x0077FF, DISC);
+
+          if (t1.a == t2.a) {
+            BigInt totalk = BigInt::Abs(t1.k) + BigInt::Abs(t2.k);
+            if (!best_k.has_value() ||
+                totalk < best_k.value()) best_k = {std::move(totalk)};
+          }
+        }
+        int texty = 0;
+        img.BlendText32(4, texty, 0xFF0000FF,
+                        StringPrintf("Max a: %s", max_a.ToString().c_str()));
+        texty += ImageRGBA::TEXT_HEIGHT + 1;
+        img.BlendText32(4, texty, 0xFFFF00FF,
+                        StringPrintf("Max b: %s", max_b.ToString().c_str()));
+        texty += ImageRGBA::TEXT_HEIGHT + 1;
+        img.BlendText32(4, texty, 0x77FF00FF,
+                        StringPrintf("Max k: %s", max_k.ToString().c_str()));
+        texty += ImageRGBA::TEXT_HEIGHT + 1;
+        img.BlendText32(4, texty, 0x77FF00FF,
+                        StringPrintf("Best k: %s",
+                                     best_k.has_value() ?
+                                     best_k.value().ToString().c_str() :
+                                     "(none)"));
+        texty += ImageRGBA::TEXT_HEIGHT + 1;
+
+        string filename = StringPrintf("seismograph-%d.png", image_idx);
+        img.Save(filename);
+        printf("Wrote " ACYAN("%s"), filename.c_str());
+      }
     }
 
     // Are we done?
@@ -380,54 +594,179 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
     // This may actually be a poor choice because we may need a larger
     // range than double can represent for x and y. (Could use log
     // space?)
-    const auto [xy, score] =
-      Opt::Minimize2D(
-          [&seen, &LeftTriple, &RightTriple](double xf, double yf) -> double {
-            int64_t xi = xf;
-            int64_t yi = yf;
+    last_repeats = 0;
+    last_attempts = 0;
 
-            BigInt x{xi};
-            BigInt y{yi};
+    // Generate new triples using the current method.
+    Triple new_left, new_right;
+    if (method == GREEDY_9) {
+      BestPairFinder finder;
 
-            if (VERY_VERBOSE)
-              printf("Try %.4f,%.4f\n", xf, yf);
-            Triple new_left = LeftTriple(x);
-            Triple new_right = RightTriple(y);
+      for (int dx : {-1, 0, 1}) {
+        for (int dy : {-1, 0, 1}) {
+          if (dx != 0 || dy != 0) {
 
-            // infeasible if a = 0 for either tuple.
-            if (new_left.a == BigInt{0} ||
-                new_right.a == BigInt{0})
-              return 1e200;
+            // walk until we find something new
+            for (int x = 0, y = 0; ; x += dx, y += dy) {
+              // This method is probably terrible, but in case we
+              // wanted to optimize it, we can probably "increment"
+              // triples in place.
+              Triple new_left = LeftTriple(BigInt{x});
+              Triple new_right = RightTriple(BigInt{y});
 
-            // infeasible if already attempted.
-            if (seen.contains(std::make_pair(new_left, new_right)))
-              return 1e200;
+              last_attempts++;
+              if (!seen.contains(std::make_pair(new_left, new_right))) {
+                finder.Observe(new_left, new_right);
+                break;
+              }
+              last_repeats++;
+            }
+          }
+        }
+      }
 
-            // should also skip degenerate solutions?
-            BigInt metric = Metric(new_left, new_right);
-            // Metric will be nonnegative, but avoid -oo.
-            double score = BigInt::NaturalLog(metric + BigInt{1});
-            if (VERY_VERBOSE)
-              printf("Score: %.4f\n", score);
-            return score;
-          },
-          std::make_tuple(-10.0, -10.0),
-          std::make_tuple(+10.0, +10.0),
-          // std::make_tuple(-1e53, 1e53),
-          // std::make_tuple(-1e53, 1e53),
-          1000);
+      std::tie(new_left, new_right) = finder.Best();
+    } else if (method == COMPASS_EXPONENTIAL) {
 
-    if (VERBOSE) {
-      printf("Opt: Got %.3f, %.3f with score %.3f\n",
-             std::get<0>(xy),
-             std::get<1>(xy),
-             score);
+      BestPairFinder finder;
+
+      // This one walks along compass directions, but greedily
+      // keeps going if doubling the distance reduces the metric.
+      for (int dx : {-1, 0, 1}) {
+        for (int dy : {-1, 0, 1}) {
+          if (dx != 0 || dy != 0) {
+
+            // walk until we find something new
+            for (int x = 0, y = 0; ; x += dx, y += dy) {
+              // This method is probably terrible, but in case we
+              // wanted to optimize it, we can probably "increment"
+              // triples in place.
+              BigInt xx{x}, yy{y};
+              Triple new_left = LeftTriple(xx);
+              Triple new_right = RightTriple(yy);
+
+              last_attempts++;
+              if (!seen.contains(std::make_pair(new_left, new_right))) {
+                BigInt prev_metric = Metric(new_left, new_right);
+                finder.ObserveWithMetric(new_left, new_right, prev_metric);
+                // Now greedily continue.
+                for (;;) {
+                  // PERF shift in place
+                  xx = xx * BigInt{2};
+                  yy = yy * BigInt{2};
+                  Triple more_left = LeftTriple(xx);
+                  Triple more_right = RightTriple(yy);
+
+                  last_attempts++;
+                  BigInt this_metric = Metric(more_left, more_right);
+                  if (!seen.contains(std::make_pair(more_left, more_right))) {
+                    // Only observe it if it hasn't been seen before,
+                    // but keep doubling while we're headed in the
+                    // right direction either way.
+                    finder.ObserveWithMetric(
+                        more_left, more_right, this_metric);
+                  } else {
+                    last_repeats++;
+                  }
+
+                  if (this_metric < prev_metric) {
+                    prev_metric = this_metric;
+                  } else {
+                    break;
+                  }
+                }
+
+                break;
+              }
+              last_repeats++;
+            }
+          }
+        }
+      }
+
+      std::tie(new_left, new_right) = finder.Best();
+
+
+
+    } else if (method == RANDOM_WALK) {
+
+      static constexpr int SAMPLES = 100;
+      static constexpr int MAGNITUDE = 10;
+      BestPairFinder finder;
+      int samples = 0;
+      while (samples < SAMPLES) {
+        RandomGaussian gauss(&rc);
+        int64_t x = (int)std::round(gauss.Next() * MAGNITUDE);
+        int64_t y = (int)std::round(gauss.Next() * MAGNITUDE);
+        Triple new_left = LeftTriple(BigInt{x});
+        Triple new_right = RightTriple(BigInt{y});
+        last_attempts++;
+        if (seen.contains(std::make_pair(new_left, new_right))) {
+          last_repeats++;
+        } else {
+          finder.Observe(new_left, new_right);
+          samples++;
+        }
+      }
+
+      std::tie(new_left, new_right) = finder.Best();
+
+    } else if (method == BLACK_BOX) {
+
+      const auto [xy, score] =
+        Opt::Minimize2D(
+            [&seen, &last_repeats, &last_attempts,
+             &LeftTriple, &RightTriple](double xf, double yf) -> double {
+              int64_t xi = xf;
+              int64_t yi = yf;
+
+              BigInt x{xi};
+              BigInt y{yi};
+
+              if (VERY_VERBOSE)
+                printf("Try %.4f,%.4f\n", xf, yf);
+              Triple new_left = LeftTriple(x);
+              Triple new_right = RightTriple(y);
+
+              // infeasible if a = 0 for either tuple.
+              if (new_left.a == BigInt{0} ||
+                  new_right.a == BigInt{0})
+                return 1e200;
+
+              // infeasible if already attempted.
+              last_attempts++;
+              if (seen.contains(std::make_pair(new_left, new_right))) {
+                last_repeats++;
+                return 1e200;
+              }
+
+              // should also skip degenerate solutions?
+              BigInt metric = Metric(new_left, new_right);
+              // Metric will be nonnegative, but avoid -oo.
+              double score = BigInt::NaturalLog(metric + BigInt{1});
+              if (VERY_VERBOSE)
+                printf("Score: %.4f\n", score);
+              return score;
+            },
+            std::make_tuple(-10000.0, -10000.0),
+            std::make_tuple(+10000.0, +10000.0),
+            // std::make_tuple(-1e53, 1e53),
+            // std::make_tuple(-1e53, 1e53),
+            1000);
+
+      if (VERBOSE) {
+        printf("Opt: Got %.3f, %.3f with score %.3f\n",
+               std::get<0>(xy),
+               std::get<1>(xy),
+               score);
+      }
+      // PERF with Optimizer wrapper, we don't have to recompute the triple.
+      // But there may be other costs with that.
+      new_left = LeftTriple(BigInt((int64_t)std::get<0>(xy)));
+      new_right = RightTriple(BigInt((int64_t)std::get<1>(xy)));
     }
 
-    // PERF with Optimizer, we don't have to recompute the triple.
-    // But there may be other costs with that.
-    Triple new_left = LeftTriple(BigInt((int64_t)std::get<0>(xy)));
-    Triple new_right = RightTriple(BigInt((int64_t)std::get<1>(xy)));
+
 
     if (VERBOSE) {
       printf("Metric: " AWHITE("%s") "\n",
@@ -463,99 +802,84 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
   }
 }
 
-#if 0
-int main(int argc, char **argv) {
-  ANSI::Init();
-  printf("Start.\n");
+static void DoPair(const BigInt &nleft,
+                   const BigInt &nright,
+                   const Triple &start_left,
+                   const Triple &start_right) {
+  const auto [left, right] =
+    DualBhaskara(nleft, nright, start_left, start_right);
 
+  CHECK(left.a == right.a);
+  // We allow +/- 1 for this version.
+  CHECK(BigInt::Abs(left.k) == BigInt{1});
+  printf("Derived solution for n = " TERM_N "\n"
+         "a: " TERM_A "\n"
+         "b: " TERM_B "\n",
+         nleft.ToString().c_str(),
+         left.a.ToString().c_str(),
+         left.b.ToString().c_str());
+  printf("And also simultaneously n = " TERM_N "\n"
+         "a: " TERM_A "\n"
+         "b: " TERM_B "\n",
+         nright.ToString().c_str(),
+         right.a.ToString().c_str(),
+         right.b.ToString().c_str());
+
+  CHECK(left.a != BigInt{0});
+  CHECK(right.a != BigInt{0});
+  CHECK(Error(nleft, left.a, left.b) == left.k);
+  CHECK(Error(nright, right.a, right.b) == right.k);
+  printf(AGREEN("OK") "\n");
+}
+
+
+static void RealProblem() {
   // two equations
   // 222121 x^2 + 1 = y_a^2
   // 360721 x^2 + 1 = y_h^2
   // (y_a is called a in the square; y_h is called h. but we are going
   // to use a,b,c for other coefficients here.)
 
-  const BigInt n_a = 222121_b;
-  const BigInt n_h = 360721_b;
+  const BigInt n_left = 222121_b;
+  const BigInt n_right = 360721_b;
 
-  printf("n_a: %s\n", n_a.ToString().c_str());
-  printf("n_h: %s\n", n_h.ToString().c_str());
+  const BigInt left_a =
+    96853990143729182446466254903787102920420186066745135266595909679523238492820905098594426380259780074224586852201498992449275127756378129855820172958584294747666448702649536007880590904630402994485054414777494200716316411350928848627022864018323664548200672490871343394924009459667481509707703598930232145417695483619768820532418380893489621163234820873999155059853985917579838562873820424199495555730452754055968329456327571681829182817764194271946670769735346243288252413916542521030793275016960_b;
+  const BigInt left_b =
+    45647009151151305718708252078329478619159688396560344940484846739545404737863346364814575382380658468268696696162077346578703916050375366743990587977745934350267627720790556553334680620537062793215771183142869525305229082597324857232212169256203590974623367552076861467765584622698250583658967988921977292909237331892140561912612147974391374706186555174904116425103638903793323393015436354152507544138006929555916470598773073491241252241089212693998884441309720519067489536318638130578697131025203199_b;
 
-  const Sol sol_a0 =
-    make_pair(96853990143729182446466254903787102920420186066745135266595909679523238492820905098594426380259780074224586852201498992449275127756378129855820172958584294747666448702649536007880590904630402994485054414777494200716316411350928848627022864018323664548200672490871343394924009459667481509707703598930232145417695483619768820532418380893489621163234820873999155059853985917579838562873820424199495555730452754055968329456327571681829182817764194271946670769735346243288252413916542521030793275016960_b,
-              45647009151151305718708252078329478619159688396560344940484846739545404737863346364814575382380658468268696696162077346578703916050375366743990587977745934350267627720790556553334680620537062793215771183142869525305229082597324857232212169256203590974623367552076861467765584622698250583658967988921977292909237331892140561912612147974391374706186555174904116425103638903793323393015436354152507544138006929555916470598773073491241252241089212693998884441309720519067489536318638130578697131025203199_b);
+  BigInt left_err = Error(n_left, left_a, left_b);
+  CHECK(left_err == 1_b);
 
-  CHECK(Error(n_a, sol_a0) == 1_b);
+  const BigInt right_a =
+    5254301467178253668063501573805488115701470062129148344048204657019748885380657942526435850589822056436907162208858662833748764291164063392849591565232182340896344102417561460498588341287763598974028219631368919894791141180699352614842162329575092178804714936187264001803984435149307802237910897195756701561689733829416441654000294332579338938600777476665373690729282455769460482322102437685615931720435571771362615173743048328285921760676802224631583102137529433447859249096920912083501391265263092551585295016322744236018859511648734714069848447775860243716078071973487185423849887186837594810420676451477817334917442425724234656945231269179119186700637627642532511974556138751986944397915640033290288664241890733655443663188699611507335767790934980909769231545567661414370796993132434555657909168192875390617801233376652983464964576564440125236085759750607806749224929539111304657072598148941302658707149037639442679980053501547520718161071834317467291327489266555022779213264638058690142715120_b;
+  const BigInt right_b =
+    3155736260680638626215586515224779475000982538318510234796596948969542279640527333764830931669758997548264003306978761631985610163542280769957617791837115815855505466192424155483747195334026528686100467671456903838445918904622247229490490143150205748045220079365084818251874000588893203069462517365771614948335859034465574562253629688393366532513342848079469578491642318761744360133449340864599791431253295837903633977372300833275627599528361343594279999123827422243803042839623732782710017503150424671269804820044584384922764477211533947638524985602275604505195848101327992205477251957539278637282982381170957580513664760124760363535719750512488336024599849383281905125902008900085015792063893406749523426160808130369628761209934170648229913920676290078798350463180533834821461892201220681643823782682294011883387286116223752801467866509139817280697848323355423553433987427070952556267278422608907045802820393525018738409778215962756148887404031077236716404130655643413294151356469733756144336771201_b;
 
-  const Sol sol_h0 =
-    make_pair(5254301467178253668063501573805488115701470062129148344048204657019748885380657942526435850589822056436907162208858662833748764291164063392849591565232182340896344102417561460498588341287763598974028219631368919894791141180699352614842162329575092178804714936187264001803984435149307802237910897195756701561689733829416441654000294332579338938600777476665373690729282455769460482322102437685615931720435571771362615173743048328285921760676802224631583102137529433447859249096920912083501391265263092551585295016322744236018859511648734714069848447775860243716078071973487185423849887186837594810420676451477817334917442425724234656945231269179119186700637627642532511974556138751986944397915640033290288664241890733655443663188699611507335767790934980909769231545567661414370796993132434555657909168192875390617801233376652983464964576564440125236085759750607806749224929539111304657072598148941302658707149037639442679980053501547520718161071834317467291327489266555022779213264638058690142715120_b,
-              3155736260680638626215586515224779475000982538318510234796596948969542279640527333764830931669758997548264003306978761631985610163542280769957617791837115815855505466192424155483747195334026528686100467671456903838445918904622247229490490143150205748045220079365084818251874000588893203069462517365771614948335859034465574562253629688393366532513342848079469578491642318761744360133449340864599791431253295837903633977372300833275627599528361343594279999123827422243803042839623732782710017503150424671269804820044584384922764477211533947638524985602275604505195848101327992205477251957539278637282982381170957580513664760124760363535719750512488336024599849383281905125902008900085015792063893406749523426160808130369628761209934170648229913920676290078798350463180533834821461892201220681643823782682294011883387286116223752801467866509139817280697848323355423553433987427070952556267278422608907045802820393525018738409778215962756148887404031077236716404130655643413294151356469733756144336771201_b);
+  BigInt right_err = Error(n_right, right_a, right_b);
+  CHECK(right_err == 1_b) << right_err.ToString();
 
-  BigInt err1 = Error(n_h, sol_h0);
-  CHECK(err1 == 1_b) << err1.ToString();
+  Triple start_left(left_a, left_b, left_err);
+  Triple start_right(right_a, right_b, right_err);
+  DoPair(n_left, n_right, start_left, start_right);
 
-  /*
-  printf("sol_a0: %s\n", SolString(sol_a0).c_str());
-  printf("sol_h0: %s\n", SolString(sol_h0).c_str());
-  */
-
-  for (int ni = 2; ni < 150; ni++) {
-    uint64_t s = Sqrt64(ni);
-    // This algorithm doesn't work for perfect squares.
-    if (s * s == ni)
-      continue;
-
-    BigInt n{ni};
-    Sol start_sol = make_pair(1_b, 8_b);
-    Sol bsol = Bhaskara(n, Error(n, start_sol), start_sol);
-
-    printf("Derived solution for n = " TERM_N "\n"
-           "a: " TERM_A "\n"
-           "b: " TERM_B "\n",
-           n.ToString().c_str(),
-           bsol.first.ToString().c_str(),
-           bsol.second.ToString().c_str());
-    CHECK(bsol.first != BigInt{0});
-    CHECK(Error(n, bsol) == BigInt{1});
-    printf(AGREEN("OK") "\n");
-  }
-
-  {
-    Sol bsol = Bhaskara(n_a, Error(n_a, sol_h0), sol_h0);
-    printf("Derived solution for n_a = " TERM_N "\n"
-           "a: " TERM_A "\n"
-           "b: " TERM_B "\n",
-           n_a.ToString().c_str(),
-           bsol.first.ToString().c_str(),
-           bsol.second.ToString().c_str());
-    CHECK(bsol.first != BigInt{0});
-    CHECK(Error(n_a, bsol) == BigInt{1});
-    printf(AGREEN("OK") "\n");
-  }
-
-  {
-    Sol bsol = Bhaskara(n_h, Error(n_h, sol_a0), sol_a0);
-    printf("Derived solution for n_h = " TERM_N "\n"
-           "a: " TERM_A "\n"
-           "b: " TERM_B "\n",
-           n_h.ToString().c_str(),
-           bsol.first.ToString().c_str(),
-           bsol.second.ToString().c_str());
-    CHECK(bsol.first != BigInt{0});
-    CHECK(Error(n_h, bsol) == BigInt{1});
-    printf(AGREEN("OK") "\n");
-  }
-
-
-  printf(AGREEN("OK") " :)\n");
-  return 0;
 }
-
-#endif
 
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("Start.\n");
 
+  /*
+  BigInt nleft{91};
+  BigInt nright{90};
+  Triple start_left(1_b, 8_b, Error(nleft, 1_b, 8_b));
+  Triple start_right(1_b, 7_b, Error(nright, 1_b, 7_b));
+  DoPair(nleft, nright, start_left, start_right);
+  */
+
+  RealProblem();
+
+  #if 0
   for (int ni = 2; ni < 150; ni++) {
     uint64_t s = Sqrt64(ni);
     // This algorithm doesn't work for perfect squares.
@@ -567,24 +891,9 @@ int main(int argc, char **argv) {
     Triple start_left(1_b, 8_b, Error(n, 1_b, 8_b));
     Triple start_right(1_b, 8_b, Error(n, 1_b, 8_b));
 
-    const auto [left, right] =
-      DualBhaskara(n, n, start_left, start_right);
-
-    // Not actually guaranteed??
-    CHECK(left == right);
-    // We allow +/- 1 for this version.
-    CHECK(BigInt::Abs(left.k) == BigInt{1});
-    printf("Derived solution for n = " TERM_N "\n"
-           "a: " TERM_A "\n"
-           "b: " TERM_B "\n",
-           n.ToString().c_str(),
-           left.a.ToString().c_str(),
-           left.b.ToString().c_str());
-    CHECK(left.a != BigInt{0});
-    CHECK(Error(n, left.a, left.b) == left.k);
-    printf(AGREEN("OK") "\n");
+    DoPair(n, n, start_left, start_right);
   }
-
+  #endif
 
   printf(AGREEN("OK") " :)\n");
   return 0;
