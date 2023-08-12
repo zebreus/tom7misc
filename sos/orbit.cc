@@ -40,6 +40,7 @@ static constexpr int MAX_ITERS = -1;
 #define TERM_E AFGCOLOR(200, 120, 140, "%s")
 
 enum Method {
+  SOLVE,
   BLACK_BOX,
   GREEDY_9,
   RANDOM_WALK,
@@ -635,6 +636,104 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
       }
 
       std::tie(new_left, new_right) = finder.Best();
+
+    } else if (method == SOLVE) {
+
+      // Looking for x,y, integers.
+
+      BigInt m = mleft + x * left.k;
+      BigInt new_a = BigInt::Abs((left.a * m + left.b) / left.k);
+      BigInt new_b = BigInt::Abs((left.b * m + nleft * left.a) / left.k);
+      BigInt new_k = (m * m - nleft) / left.k;
+
+      // m1' = m1 + x1 * k1
+      // m2' = m2 + x2 * k2
+
+      // a1' = |(a1 * m1' + b1) / k1|
+      // a2' = |(a2 * m2' + b2) / k2|
+      // which is
+      // a1' = |(a1 * (m1 + x1 * k1) + b1) / k1|
+      // a1' = |(a1 * m1 + a1 * x1 * k1 + b1) / k1|
+      // a1' = |(a1 * m1 + b1) / k1  +  a1 * x1 * k1 / k1|
+      //  so
+      // a1' = |(a1 * m1 + b1) / k1  +  a1 * x1|
+      // a2' = |(a2 * m2 + b2) / k2  +  a2 * x2|
+      //
+      // Note that only the second part depends on x1,x2.
+      //
+      // minimize |(a1 * m1 + b1) / k1  +  a1 * x1| -
+      //          |(a2 * m2 + b2) / k2  +  a2 * x2|
+      //
+      // for each component, only k and x can be negative, and we already
+      // know k. So we could expand those cases to get functions to minimize.
+
+      // when k and x have the same sign,
+      //   |(a * m + b) / k| + |a * x|
+      // which is just
+      //   (a * m + b) / |k| + a * |x|
+
+
+      // Actually instead of abs let's try minimizing squares.
+      //  (((a1 * m1 + b1) / k1  +  a1 * x1)^2 -
+      //   ((a2 * m2 + b2) / k2  +  a2 * x2)^2)^2
+      //
+      // ((a1 * m1 + b1) / k1  +  a1 * x1)^2  multiplied out...
+      //   (a * m + b)^2 / k^2 +
+      //   2 * (a * x)(a * m + b) / k +
+      //   a^2 * x^2
+      // which is
+      //   (a^2m^2 + 2abm + b^2)/k^2 +
+      //   2ax(am + b)/k +
+      //   a^2x^2
+      // so that term minus its sibling, squared
+      //  ( (a1^2m1^2 + 2a1b1m1 + b1^2)/k1^2 +
+      //    2a1x1(a1m1 + b1)/k1 +
+      //    a1^2x1^2  -
+      //    (a2^2m2^2 + 2a2b2m2 + b2^2)/k2^2 +
+      //    2a2x2(a2m2 + b2)/k2 +
+      //    a2^2x2^2 )^2
+      // u1 = (a1^2m1^2 + 2a1b1m1 + b1^2)/k1^2
+      // v1 = 2a1x1(a1m1 + b1)/k1
+      // w1 = a1^2x1^2
+      // t1 = (u1 + v1 + w1)
+      //
+      // (t1 - t2)^2 =
+      // t1^2 - 2t1t2 + t2^2
+      // (u1 + v1 + w1)^2 - 2(u1 + v1 + w1)(u2 + v2 + w2) + (u2 + v2 + w2)^2
+      //
+      // cripes...
+      // the squared terms (first and last) are the same.
+      //  u1^2 + u1v1 + u1w1 + v1^2 + v1u1 + v1w1 + w1^2 + w1u1 + w1u1
+      // which is just
+      //  u1^2 + v1^2 + w1^2 + 2u1v1 + 2u1w1 + 2v1w1
+      // and then the middle term
+      //  2(u1u2 + u1v2 + u1w2  +  v1u2 + v1v2 + v1w2  +  w1u2 + w1v2 + w1w2)
+      // so together that's
+      //
+      // u1^2 + v1^2 + w1^2 + 2u1v1 + 2u1w1 + 2v1w1 +
+      // u2^2 + v2^2 + w2^2 + 2u2v2 + 2u2w2 + 2v2w2 +
+      // -2(u1u2 + u1v2 + u1w2  +  v1u2 + v1v2 + v1w2  +  w1u2 + w1v2 + w1w2)
+      //
+      // Perhaps not too crazy? Starting to think I should build a little
+      // tool to multiply out polynomials though.
+
+      BigInt diff = sqrtn - m;
+        BigInt d = (diff / k) * k;
+        BigInt m1 = m + d;
+        if (VERBOSE) {
+          printf("For target " TERM_SQRTN " have diff = " AYELLOW("%s")
+                 " and d = " APURPLE("%s") " and m1 = " TERM_M " +/- k\n",
+                 sqrtn.ToString().c_str(),
+                 diff.ToString().c_str(),
+                 d.ToString().c_str(),
+                 m1.ToString().c_str());
+        }
+        Consider(m1);
+        Consider(m1 + k);
+        Consider(m1 - k);
+      };
+
+
     } else if (method == COMPASS_EXPONENTIAL) {
 
       BestPairFinder finder;
@@ -926,12 +1025,13 @@ static void ToyProblem2() {
 }
 
 // Solvable, but now we get into territory where brute-force search
-// would not be easy, at least.
+// would not be easy, at least. Solution is quite far off the diagonal
+// (about 10:1).
 static void NontrivialProblem() {
   BigInt nleft = 10000000040000000_b;
   BigInt nright = 100188184450263_b;
   // Solution
-  // BigInt left_a = 5_b, left_b = 500000001_b ;
+  // BigInt left_a  = 5_b, left_b  = 500000001_b ;
   // BigInt right_a = 5_b, right_b = 50047024_b;
 
   BigInt left_a = 1_b, left_b = 8_b;
