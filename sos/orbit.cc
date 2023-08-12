@@ -29,6 +29,7 @@ static constexpr bool CHECK_INVARIANTS = true;
 static constexpr bool VERBOSE = false;
 static constexpr bool VERY_VERBOSE = VERBOSE && false;
 static constexpr bool GENERATE_IMAGE = true;
+static constexpr int MAX_ITERS = -1;
 
 #define TERM_A AFGCOLOR(39, 179, 214, "%s")
 #define TERM_M AFGCOLOR(39, 214, 179, "%s")
@@ -199,6 +200,8 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
            nright.ToString().c_str());
 
   Periodically image_per(10.0 * 60.0);
+  // run after the first minute for quick feedback on experiments
+  image_per.SetPeriodOnce(60.0);
   int image_idx = 0;
 
   Periodically bar_per(1.0);
@@ -341,6 +344,9 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
 
         const int textx = 32;
         int texty = 32;
+        img.BlendText32(textx + 18, texty, 0x555555FF,
+                        StringPrintf("Iters: %d", iters));
+        texty += ImageRGBA::TEXT2X_HEIGHT + 2;
         img.BlendFilledCircleAA32(textx + 8, texty + 8, 6.0f, 0xFF3333AA);
         img.BlendText2x32(textx + 18, texty, 0xFF3333AA, "a");
         texty += ImageRGBA::TEXT2X_HEIGHT + 2;
@@ -418,14 +424,14 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
           const auto &[t1, t2] = history[x];
           if (t1.a > max_a) max_a = t1.a;
           if (t1.b > max_a) max_b = t1.b;
-          if (BigInt::Abs(t1.k) > max_k) max_k = t1.k;
+          if (BigInt::Abs(t1.k) > max_k) max_k = BigInt::Abs(t1.k);
           Plot(t1.a, 0xFF0000, CIRCLE);
           Plot(t1.b, 0xFF3300, CIRCLE);
           Plot(t1.k, 0xFF7700, CIRCLE);
 
           if (t2.a > max_a) max_a = t2.a;
           if (t2.b > max_a) max_b = t2.b;
-          if (BigInt::Abs(t2.k) > max_k) max_k = t2.k;
+          if (BigInt::Abs(t2.k) > max_k) max_k = BigInt::Abs(t2.k);
           Plot(t2.a, 0x0000FF, DISC);
           Plot(t2.b, 0x0033FF, DISC);
           Plot(t2.k, 0x0077FF, DISC);
@@ -437,6 +443,9 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
           }
         }
         int texty = 0;
+        img.BlendText32(4, texty, 0x555555FF,
+                        StringPrintf("Iters: %d", iters));
+        texty += ImageRGBA::TEXT_HEIGHT + 1;
         img.BlendText32(4, texty, 0xFF0000FF,
                         StringPrintf("Max a: %s", max_a.ToString().c_str()));
         texty += ImageRGBA::TEXT_HEIGHT + 1;
@@ -785,7 +794,7 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
         BigInt err = Error(n, triple.a, triple.b);
         CHECK(err == triple.k) <<
           StringPrintf("Invalid triple for n=" TERM_N ": ("
-                       TERM_A "," TERM_B "," TERM_K ") but acutal "
+                       TERM_A "," TERM_B "," TERM_K ") but actual "
                        "error is " ARED("%s") "\n",
                        n.ToString().c_str(),
                        triple.a.ToString().c_str(),
@@ -799,6 +808,8 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
 
     left = std::move(new_left);
     right = std::move(new_right);
+
+    if (MAX_ITERS > 0) { CHECK(iters < MAX_ITERS); }
   }
 }
 
@@ -806,8 +817,10 @@ static void DoPair(const BigInt &nleft,
                    const BigInt &nright,
                    const Triple &start_left,
                    const Triple &start_right) {
+  Timer dual_timer;
   const auto [left, right] =
     DualBhaskara(nleft, nright, start_left, start_right);
+  printf("Finished in %s\n", ANSI::Time(dual_timer.Seconds()).c_str());
 
   CHECK(left.a == right.a);
   // We allow +/- 1 for this version.
@@ -865,6 +878,70 @@ static void RealProblem() {
 
 }
 
+// unknown whether this is solvable
+static void SmallProblem() {
+  BigInt nleft{12345678};
+  BigInt nright{10001};
+  Triple start_left(1_b, 8_b, Error(nleft, 1_b, 8_b));
+  Triple start_right(1_b, 7_b, Error(nright, 1_b, 7_b));
+  DoPair(nleft, nright, start_left, start_right);
+}
+
+// 7x^2 + 1 = y^2
+// 11x^2 + 1 = z^2
+// this is solvable with x = 3, y = 8, z = 10
+static void ToyProblem() {
+  BigInt nleft{7};
+  BigInt nright{11};
+  // (This is a solution)
+  // BigInt left_a = 3_b, left_b = 8_b;
+  // BigInt right_a = 3_b, right_b = 10_b;
+
+  BigInt left_a = 1_b, left_b = 8_b;
+  BigInt right_a = 1_b, right_b = 7_b;
+  Triple start_left(left_a, left_b, Error(nleft, left_a, left_b));
+  Triple start_right(right_a, right_b, Error(nright, right_a, right_b));
+
+  DoPair(nleft, nright, start_left, start_right);
+}
+
+// This could easily be found with exhaustive search. 3108 and 5513 are
+// relatively prime.
+// 3108x^2 + 1 = y^2
+// 5513x^2 + 1 = z^2
+// solvable with x = 4,  y = 223,  z = 297
+static void ToyProblem2() {
+  BigInt nleft{3108};
+  BigInt nright{5513};
+  // (This is a solution)
+  // BigInt left_a = 4_b, left_b = 223_b;
+  // BigInt right_a = 4_b, right_b = 297_b;
+
+  BigInt left_a = 1_b, left_b = 8_b;
+  BigInt right_a = 1_b, right_b = 7_b;
+  Triple start_left(left_a, left_b, Error(nleft, left_a, left_b));
+  Triple start_right(right_a, right_b, Error(nright, right_a, right_b));
+
+  DoPair(nleft, nright, start_left, start_right);
+}
+
+// Solvable, but now we get into territory where brute-force search
+// would not be easy, at least.
+static void NontrivialProblem() {
+  BigInt nleft = 10000000040000000_b;
+  BigInt nright = 100188184450263_b;
+  // Solution
+  // BigInt left_a = 5_b, left_b = 500000001_b ;
+  // BigInt right_a = 5_b, right_b = 50047024_b;
+
+  BigInt left_a = 1_b, left_b = 8_b;
+  BigInt right_a = 1_b, right_b = 7_b;
+  Triple start_left(left_a, left_b, Error(nleft, left_a, left_b));
+  Triple start_right(right_a, right_b, Error(nright, right_a, right_b));
+
+  DoPair(nleft, nright, start_left, start_right);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("Start.\n");
@@ -877,7 +954,10 @@ int main(int argc, char **argv) {
   DoPair(nleft, nright, start_left, start_right);
   */
 
-  RealProblem();
+  // ToyProblem2();
+  NontrivialProblem();
+
+  // RealProblem();
 
   #if 0
   for (int ni = 2; ni < 150; ni++) {
