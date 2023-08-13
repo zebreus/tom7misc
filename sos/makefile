@@ -1,5 +1,5 @@
 
-default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe polynomial_test.exe
+default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe polynomial_test.exe algebra.exe
 
 CC_LIB=../cc-lib
 
@@ -44,7 +44,7 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=clutil.o sos-util.o database.o predict.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
+OBJECTS=clutil.o sos-util.o database.o predict.o polynomial.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
 
 sos.exe : sos.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -91,6 +91,10 @@ orbit.exe : orbit.o $(OBJECTS)
 	@echo -n "!"
 
 polynomial_test.exe : polynomial_test.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+algebra.exe : algebra.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

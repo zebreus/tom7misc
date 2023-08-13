@@ -55,6 +55,12 @@ struct Polynomial {
     sum = {{one, 1}};
   }
 
+  explicit Polynomial(const Term &t, int c) {
+    if (c != 0) {
+      sum = {{t, c}};
+    }
+  }
+
   std::string ToString() const {
     if (sum.empty()) return "0";
     // normally these would be sorted by descending power; we could
@@ -63,13 +69,45 @@ struct Polynomial {
     for (const auto &[t, c] : sum) {
       if (!ret.empty()) ret += " + ";
       if (c == 1) {
-        ret += t.ToString();
+        string ts = t.ToString();
+        // Term can be empty; need to explicitly represent the unit.
+        if (ts.empty()) ret += "1";
+        ret += ts;
       } else {
         StringAppendF(&ret, "%d%s", c, t.ToString().c_str());
       }
     }
     return ret;
   }
+
+  static Polynomial PartialDerivative(const Polynomial &p,
+                                      const std::string &x) {
+    Polynomial r;
+    for (const auto &[t, c] : p.sum) {
+      auto it = t.product.find(x);
+      if (it == t.product.end()) {
+        // a term that doesn't depend on x; so it is dropped from
+        // the derivative
+      } else {
+        int exponent = it->second;
+        Term rt = t;
+        // reduce its exponent
+        if (exponent == 1) {
+          rt.product.erase(x);
+        } else {
+          rt.product[x] = exponent - 1;
+        }
+        // e.g. 3x^7 yields (7 * 3)x^6
+        r.sum[rt] = c * exponent;
+      }
+    }
+
+    return r;
+  }
+
+  // This belongs in polynomial-util or needs to be made more
+  // general.
+  static std::string ToCode(const std::string &type, const Polynomial &p);
 
   // Each term mapped to its integer coefficient. The coefficient
   // may not be zero.
@@ -91,8 +129,12 @@ inline Polynomial operator +(const Polynomial &a, const Polynomial &b) {
 
   while (ait != a.sum.end() && bit != b.sum.end()) {
     if (ait->first == bit->first) {
-      // Polynomials share a term; add the coefficients.
-      r.sum[ait->first] = ait->second + bit->second;
+      // Polynomials share a term; add the coefficients. They could
+      // completely cancel.
+      int coeff = ait->second + bit->second;
+      if (coeff != 0) {
+        r.sum[ait->first] = coeff;
+      }
       ++ait;
       ++bit;
     } else if (ait->first < bit->first) {
@@ -118,7 +160,7 @@ inline Polynomial operator +(const Polynomial &a, const Polynomial &b) {
   return r;
 }
 
-inline Term operator*(const Term &a, const Term &b) {
+inline Term operator *(const Term &a, const Term &b) {
   // Same kind of thing as adding polynomials. Find common terms and
   // add their exponents.
   Term r;
@@ -128,8 +170,12 @@ inline Term operator*(const Term &a, const Term &b) {
 
   while (ait != a.product.end() && bit != b.product.end()) {
     if (ait->first == bit->first) {
-      // Terms share a variable. Add the exponents.
-      r.product[ait->first] = ait->second + bit->second;
+      // Terms share a variable. Add the exponents. They might
+      // completely cancel.
+      int new_e = ait->second + bit->second;
+      if (new_e != 0) {
+        r.product[ait->first] = ait->second + bit->second;
+      }
       ++ait;
       ++bit;
     } else if (ait->first < bit->first) {
@@ -162,11 +208,8 @@ inline Polynomial operator *(const Polynomial &a, const Polynomial &b) {
     for (const auto &[t2, c2] : b.sum) {
       Term rt = t1 * t2;
 
-      Polynomial rtp;
-      rtp.sum[rt] = c1 * c2;
-
       // PERF we could have an in-place addition of a single term.
-      r = r + rtp;
+      r = r + Polynomial(rt, c1 * c2);
     }
   }
 

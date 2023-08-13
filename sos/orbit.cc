@@ -716,6 +716,38 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
       //
       // Perhaps not too crazy? Starting to think I should build a little
       // tool to multiply out polynomials though.
+      //
+      // Yeah, glad I didn't try to do that by hand, because it's this:
+      // -8a1a2b1b2k1^-2k2^-2m1m2 + -8a1a2b1b2k1^-2k2^-1m1x2 +
+      // -8a1a2b1b2k1^-1k2^-2m2x1 + -8a1a2b1b2k1^-1k2^-1x1x2 +
+      // -4a1a2^2b1k1^-2k2^-2m1m2^2 + -8a1a2^2b1k1^-2k2^-1m1m2x2 +
+      // -4a1a2^2b1k1^-2m1x2^2 + -4a1a2^2b1k1^-1k2^-2m2^2x1 +
+      // -8a1a2^2b1k1^-1k2^-1m2x1x2 + -4a1a2^2b1k1^-1x1x2^2 +
+      // -4a1b1b2^2k1^-2k2^-2m1 + -4a1b1b2^2k1^-1k2^-2x1 +
+      // 4a1b1^3k1^-4m1 + 4a1b1^3k1^-3x1 + -4a1^2a2b2k1^-2k2^-2m1^2m2 +
+      // -4a1^2a2b2k1^-2k2^-1m1^2x2 + -8a1^2a2b2k1^-1k2^-2m1m2x1 +
+      // -8a1^2a2b2k1^-1k2^-1m1x1x2 + -4a1^2a2b2k2^-2m2x1^2 +
+      // -4a1^2a2b2k2^-1x1^2x2 + -2a1^2a2^2k1^-2k2^-2m1^2m2^2 +
+      // -4a1^2a2^2k1^-2k2^-1m1^2m2x2 + -2a1^2a2^2k1^-2m1^2x2^2 +
+      // -4a1^2a2^2k1^-1k2^-2m1m2^2x1 + -8a1^2a2^2k1^-1k2^-1m1m2x1x2 +
+      // -4a1^2a2^2k1^-1m1x1x2^2 + -2a1^2a2^2k2^-2m2^2x1^2 +
+      // -4a1^2a2^2k2^-1m2x1^2x2 + -2a1^2a2^2x1^2x2^2 +
+      // 6a1^2b1^2k1^-4m1^2 + 12a1^2b1^2k1^-3m1x1 + 6a1^2b1^2k1^-2x1^2 +
+      // -2a1^2b2^2k1^-2k2^-2m1^2 + -4a1^2b2^2k1^-1k2^-2m1x1 +
+      // -2a1^2b2^2k2^-2x1^2 + 4a1^3b1k1^-4m1^3 + 12a1^3b1k1^-3m1^2x1 +
+      // 12a1^3b1k1^-2m1x1^2 + 4a1^3b1k1^-1x1^3 + a1^4k1^-4m1^4 +
+      // 4a1^4k1^-3m1^3x1 + 6a1^4k1^-2m1^2x1^2 + 4a1^4k1^-1m1x1^3 +
+      // a1^4x1^4 + -4a2b1^2b2k1^-2k2^-2m2 + -4a2b1^2b2k1^-2k2^-1x2 +
+      // 4a2b2^3k2^-4m2 + 4a2b2^3k2^-3x2 + -2a2^2b1^2k1^-2k2^-2m2^2 +
+      // -4a2^2b1^2k1^-2k2^-1m2x2 + -2a2^2b1^2k1^-2x2^2 +
+      // 6a2^2b2^2k2^-4m2^2 + 12a2^2b2^2k2^-3m2x2 + 6a2^2b2^2k2^-2x2^2 +
+      // 4a2^3b2k2^-4m2^3 + 12a2^3b2k2^-3m2^2x2 + 12a2^3b2k2^-2m2x2^2 +
+      // 4a2^3b2k2^-1x2^3 + a2^4k2^-4m2^4 + 4a2^4k2^-3m2^3x2 +
+      // 6a2^4k2^-2m2^2x2^2 + 4a2^4k2^-1m2x2^3 + a2^4x2^4 +
+      // -2b1^2b2^2k1^-2k2^-2 + b1^4k1^-4 + b2^4k2^-4
+      //
+      // so what do we have there? only the terms that have an x matter,
+      // since only those are affected by the choice of x1,x2.
 
       BigInt diff = sqrtn - m;
         BigInt d = (diff / k) * k;
