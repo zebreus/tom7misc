@@ -31,6 +31,9 @@ static constexpr bool VERY_VERBOSE = VERBOSE && false;
 static constexpr bool GENERATE_IMAGE = true;
 static constexpr int MAX_ITERS = -1;
 
+static constexpr bool CLEAR_HISTORY = true;
+static constexpr int RESTART_MULTIPLIER = 2;
+
 #define TERM_A AFGCOLOR(39, 179, 214, "%s")
 #define TERM_M AFGCOLOR(39, 214, 179, "%s")
 #define TERM_B AFGCOLOR(232, 237, 173, "%s")
@@ -40,19 +43,21 @@ static constexpr int MAX_ITERS = -1;
 #define TERM_E AFGCOLOR(200, 120, 140, "%s")
 
 enum Method {
-  SOLVE,
+  GRADIENT_DESCENT,
   BLACK_BOX,
   GREEDY_9,
   RANDOM_WALK,
   COMPASS_EXPONENTIAL,
+  COMPASS25_EXPONENTIAL,
+  RESTARTING_COMPASS,
 };
 
-static constexpr Method method = RANDOM_WALK;
+static constexpr Method method = RESTARTING_COMPASS;
 
 // Map a bigint to a reasonable range for plotting in graphics.
 // (or a.ToDouble(), or some hybrid?)
 static double MapBig(BigInt z) {
-  if (z == BigInt{0}) return 0.0;
+  if (z == 0) return 0.0;
   double sign = 1.0;
   if (z < BigInt{0}) {
     sign = -1.0;
@@ -131,7 +136,7 @@ using TriplePairSet = std::unordered_set<std::pair<Triple, Triple>,
                                          TriplePairHash>;
 
 // This is the value we try to minimize on each step.
-static BigInt Metric(const Triple &left, const Triple &right) {
+static BigInt MetricAbs(const Triple &left, const Triple &right) {
   // k is a multiple of the quantity m^2-n which is minimized
   // in the original Chakravala algorithm.
 
@@ -159,33 +164,203 @@ static BigInt Metric(const Triple &left, const Triple &right) {
   return res;
 }
 
+// New metric uses squares instead of absolute value, which is
+// easier to differentiate.
+static BigInt Metric(const Triple &left, const Triple &right) {
+  BigInt lkk = left.k * left.k;
+  BigInt rkk = right.k * right.k;
+  BigInt adiff = left.a - right.a;
+  BigInt res =
+    // Try to get a k of +/- 1.
+    lkk + rkk +
+    // But also try to minimize the difference between the first
+    // components of the triple. bs are unconstrained.
+    (adiff * adiff);
+  return res;
+}
+
+inline static BigInt operator *(int x, const BigInt &y) {
+  // PERF
+  return BigInt{x} * y;
+}
+
+static std::pair<BigInt, BigInt> MetricDerivatives(
+    const BigInt &n1, const BigInt &n2,
+    const BigInt &m1, const BigInt &m2,
+    const Triple &left, const Triple &right,
+    const BigInt &x1, const BigInt &x2) {
+
+  const BigInt &a1 = left.a;
+  const BigInt &b1 = left.b;
+  const BigInt &k1 = left.k;
+
+  const BigInt &a2 = right.a;
+  const BigInt &b2 = right.b;
+  const BigInt &k2 = right.k;
+
+  // generated with algebra.cc (and wrapped by hand here).
+
+  // d/dx1:
+  const BigInt a1_e2 = a1 * a1;
+  const BigInt a1_e3 = a1 * a1_e2;
+  const BigInt a1_e4 = a1 * a1_e3;
+  const BigInt a2_e2 = a2 * a2;
+  const BigInt b1_e2 = b1 * b1;
+  const BigInt b1_e3 = b1 * b1_e2;
+  const BigInt b2_e2 = b2 * b2;
+  const BigInt k1_e2 = k1 * k1;
+  const BigInt k1_e3 = k1 * k1_e2;
+  const BigInt k2_e2 = k2 * k2;
+  const BigInt m1_e2 = m1 * m1;
+  const BigInt m1_e3 = m1 * m1_e2;
+  const BigInt m2_e2 = m2 * m2;
+  const BigInt x1_e2 = x1 * x1;
+  const BigInt x1_e3 = x1 * x1_e2;
+  const BigInt x2_e2 = x2 * x2;
+  // 34 summands
+  BigInt ps_0 = (-8 * a1 * a2 * b1 * b2 * m2) / (k1 * k2_e2);
+  BigInt ps_1 = (-8 * a1 * a2 * b1 * b2 * x2) / (k1 * k2);
+  BigInt ps_2 = (-4 * a1 * a2_e2 * b1 * m2_e2) / (k1 * k2_e2);
+  BigInt ps_3 = (-8 * a1 * a2_e2 * b1 * m2 * x2) / (k1 * k2);
+  BigInt ps_4 = (-4 * a1 * a2_e2 * b1 * x2_e2) / k1;
+  BigInt ps_5 = (-4 * a1 * b1 * b2_e2) / (k1 * k2_e2);
+  BigInt ps_6 = (4 * a1 * b1_e3) / k1_e3;
+  BigInt ps_7 = (-8 * a1_e2 * a2 * b2 * m1 * m2) / (k1 * k2_e2);
+  BigInt ps_8 = (-8 * a1_e2 * a2 * b2 * m1 * x2) / (k1 * k2);
+  BigInt ps_9 = (-8 * a1_e2 * a2 * b2 * m2 * x1) / k2_e2;
+  BigInt ps_10 = (-8 * a1_e2 * a2 * b2 * x1 * x2) / k2;
+  BigInt ps_11 = (-4 * a1_e2 * a2_e2 * m1 * m2_e2) / (k1 * k2_e2);
+  BigInt ps_12 = (-8 * a1_e2 * a2_e2 * m1 * m2 * x2) / (k1 * k2);
+  BigInt ps_13 = (-4 * a1_e2 * a2_e2 * m1 * x2_e2) / k1;
+  BigInt ps_14 = (-4 * a1_e2 * a2_e2 * m2_e2 * x1) / k2_e2;
+  BigInt ps_15 = (-8 * a1_e2 * a2_e2 * m2 * x1 * x2) / k2;
+  BigInt ps_16 = -4 * a1_e2 * a2_e2 * x1 * x2_e2;
+  BigInt ps_17 = (12 * a1_e2 * b1_e2 * m1) / k1_e3;
+  BigInt ps_18 = (12 * a1_e2 * b1_e2 * x1) / k1_e2;
+  BigInt ps_19 = (-4 * a1_e2 * b2_e2 * m1) / (k1 * k2_e2);
+  BigInt ps_20 = (-4 * a1_e2 * b2_e2 * x1) / k2_e2;
+  BigInt ps_21 = (12 * a1_e3 * b1 * m1_e2) / k1_e3;
+  BigInt ps_22 = (24 * a1_e3 * b1 * m1 * x1) / k1_e2;
+  BigInt ps_23 = (12 * a1_e3 * b1 * x1_e2) / k1;
+  BigInt ps_24 = (4 * a1_e4 * m1_e3) / k1_e3;
+  BigInt ps_25 = (12 * a1_e4 * m1_e2 * x1) / k1_e2;
+  BigInt ps_26 = (12 * a1_e4 * m1 * x1_e2) / k1;
+  BigInt ps_27 = 4 * a1_e4 * x1_e3;
+  BigInt ps_28 = (-4 * m1 * n1) / k1;
+  BigInt ps_29 = (4 * m1_e3) / k1;
+  BigInt ps_30 = 12 * k1 * m1 * x1_e2;
+  BigInt ps_31 = 4 * k1_e2 * x1_e3;
+  BigInt ps_32 = 12 * m1_e2 * x1;
+  BigInt ps_33 = -4 * n1 * x1;
+
+  BigInt dx1 = ps_0 + ps_1 + ps_2 + ps_3 + ps_4 + ps_5 + ps_6 + ps_7 + ps_8 + ps_9 + ps_10 + ps_11 + ps_12 + ps_13 + ps_14 + ps_15 + ps_16 + ps_17 + ps_18 + ps_19 + ps_20 + ps_21 + ps_22 + ps_23 + ps_24 + ps_25 + ps_26 + ps_27 + ps_28 + ps_29 + ps_30 + ps_31 + ps_32 + ps_33;
+
+  // d/dx2:
+  // const BigInt a1_e2 = a1 * a1;
+  // const BigInt a2_e2 = a2 * a2;
+  const BigInt a2_e3 = a2 * a2_e2;
+  const BigInt a2_e4 = a2 * a2_e3;
+  // const BigInt b1_e2 = b1 * b1;
+  // const BigInt b2_e2 = b2 * b2;
+  const BigInt b2_e3 = b2 * b2_e2;
+  // const BigInt k1_e2 = k1 * k1;
+  // const BigInt k2_e2 = k2 * k2;
+  const BigInt k2_e3 = k2 * k2_e2;
+  // const BigInt m1_e2 = m1 * m1;
+  // const BigInt m2_e2 = m2 * m2;
+  const BigInt m2_e3 = m2 * m2_e2;
+  // const BigInt x1_e2 = x1 * x1;
+  // const BigInt x2_e2 = x2 * x2;
+  const BigInt x2_e3 = x2 * x2_e2;
+  // 34 summands
+  BigInt ps2_0 = (-8 * a1 * a2 * b1 * b2 * m1) / (k1_e2 * k2);
+  BigInt ps2_1 = (-8 * a1 * a2 * b1 * b2 * x1) / (k1 * k2);
+  BigInt ps2_2 = (-8 * a1 * a2_e2 * b1 * m1 * m2) / (k1_e2 * k2);
+  BigInt ps2_3 = (-8 * a1 * a2_e2 * b1 * m1 * x2) / k1_e2;
+  BigInt ps2_4 = (-8 * a1 * a2_e2 * b1 * m2 * x1) / (k1 * k2);
+  BigInt ps2_5 = (-8 * a1 * a2_e2 * b1 * x1 * x2) / k1;
+  BigInt ps2_6 = (-4 * a1_e2 * a2 * b2 * m1_e2) / (k1_e2 * k2);
+  BigInt ps2_7 = (-8 * a1_e2 * a2 * b2 * m1 * x1) / (k1 * k2);
+  BigInt ps2_8 = (-4 * a1_e2 * a2 * b2 * x1_e2) / k2;
+  BigInt ps2_9 = (-4 * a1_e2 * a2_e2 * m1_e2 * m2) / (k1_e2 * k2);
+  BigInt ps2_10 = (-4 * a1_e2 * a2_e2 * m1_e2 * x2) / k1_e2;
+  BigInt ps2_11 = (-8 * a1_e2 * a2_e2 * m1 * m2 * x1) / (k1 * k2);
+  BigInt ps2_12 = (-8 * a1_e2 * a2_e2 * m1 * x1 * x2) / k1;
+  BigInt ps2_13 = (-4 * a1_e2 * a2_e2 * m2 * x1_e2) / k2;
+  BigInt ps2_14 = -4 * a1_e2 * a2_e2 * x1_e2 * x2;
+  BigInt ps2_15 = (-4 * a2 * b1_e2 * b2) / (k1_e2 * k2);
+  BigInt ps2_16 = (4 * a2 * b2_e3) / k2_e3;
+  BigInt ps2_17 = (-4 * a2_e2 * b1_e2 * m2) / (k1_e2 * k2);
+  BigInt ps2_18 = (-4 * a2_e2 * b1_e2 * x2) / k1_e2;
+  BigInt ps2_19 = (12 * a2_e2 * b2_e2 * m2) / k2_e3;
+  BigInt ps2_20 = (12 * a2_e2 * b2_e2 * x2) / k2_e2;
+  BigInt ps2_21 = (12 * a2_e3 * b2 * m2_e2) / k2_e3;
+  BigInt ps2_22 = (24 * a2_e3 * b2 * m2 * x2) / k2_e2;
+  BigInt ps2_23 = (12 * a2_e3 * b2 * x2_e2) / k2;
+  BigInt ps2_24 = (4 * a2_e4 * m2_e3) / k2_e3;
+  BigInt ps2_25 = (12 * a2_e4 * m2_e2 * x2) / k2_e2;
+  BigInt ps2_26 = (12 * a2_e4 * m2 * x2_e2) / k2;
+  BigInt ps2_27 = 4 * a2_e4 * x2_e3;
+  BigInt ps2_28 = (-4 * m2 * n2) / k2;
+  BigInt ps2_29 = (4 * m2_e3) / k2;
+  BigInt ps2_30 = 12 * k2 * m2 * x2_e2;
+  BigInt ps2_31 = 4 * k2_e2 * x2_e3;
+  BigInt ps2_32 = 12 * m2_e2 * x2;
+  BigInt ps2_33 = -4 * n2 * x2;
+
+  BigInt dx2 = ps2_0 + ps2_1 + ps2_2 + ps2_3 + ps2_4 + ps2_5 + ps2_6 + ps2_7 + ps2_8 + ps2_9 + ps2_10 + ps2_11 + ps2_12 + ps2_13 + ps2_14 + ps2_15 + ps2_16 + ps2_17 + ps2_18 + ps2_19 + ps2_20 + ps2_21 + ps2_22 + ps2_23 + ps2_24 + ps2_25 + ps2_26 + ps2_27 + ps2_28 + ps2_29 + ps2_30 + ps2_31 + ps2_32 + ps2_33;
+
+  return make_pair(dx1, dx2);
+}
+
 // PERF avoid copying
-struct BestPairFinder {
+template<typename Key>
+struct KeyedBestPairFinder {
   std::pair<Triple, Triple> best;
-  std::optional<BigInt> best_score;
+  std::optional<std::pair<Key, BigInt>> best_score;
 
   void ObserveWithMetric(const Triple &left, const Triple &right,
-                         const BigInt &metric) {
-    if (left.a == BigInt{0} || right.a == BigInt{0})
+                         const BigInt &metric, Key key = Key{}) {
+    bool forbidden = left.a == 0 || right.a == 0;
+    if (VERY_VERBOSE) {
+      printf("Observe (" TERM_A "," TERM_B "," TERM_K
+             ") and (" TERM_A "," TERM_B "," TERM_K "). Metric: "
+             TERM_M "%s\n",
+             left.a.ToString().c_str(),
+             left.b.ToString().c_str(),
+             left.k.ToString().c_str(),
+             right.a.ToString().c_str(),
+             right.b.ToString().c_str(),
+             right.k.ToString().c_str(),
+             metric.ToString().c_str(),
+             forbidden ? ARED(" NO") : "");
+    }
+
+    if (forbidden)
       return;
 
-    if (!best_score.has_value() || metric < best_score.value()) {
+    if (!best_score.has_value() || metric < best_score.value().second) {
       best = make_pair(left, right);
-      best_score = {metric};
+      best_score = {make_pair(key, metric)};
     }
   }
 
-  void Observe(const Triple &left, const Triple &right) {
+  void Observe(const Triple &left, const Triple &right, Key key = Key{}) {
     BigInt metric = Metric(left, right);
-    ObserveWithMetric(left, right, metric);
+    ObserveWithMetric(left, right, metric, key);
   }
 
   // Zeros if there were no valid observations.
-  std::pair<Triple, Triple> Best() {
+  const std::pair<Triple, Triple> &Best() {
     return best;
   }
 
+  const std::optional<std::pair<Key, BigInt>> &BestScore() {
+    return best_score;
+  }
 };
+
+using BestPairFinder = KeyedBestPairFinder<char>;
 
 // Given two equations of the form
 //     na^2 + k = b^2
@@ -194,6 +369,9 @@ struct BestPairFinder {
 static std::pair<Triple, Triple>
 DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
   ArcFour rc("dualbhaskara");
+
+  BigInt sqrtnleft = BigInt::Sqrt(nleft);
+  BigInt sqrtnright = BigInt::Sqrt(nright);
 
   if (VERBOSE)
     printf(AWHITE(ABGCOLOR(0, 0, 50, "---------- on %s,%s ------------")) "\n",
@@ -204,6 +382,10 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
   // run after the first minute for quick feedback on experiments
   image_per.SetPeriodOnce(60.0);
   int image_idx = 0;
+
+  int last_restart = 0;
+  int restarts = 0;
+  BigInt restart_multiplier{1};
 
   Periodically bar_per(1.0);
   bool first_progress = true;
@@ -217,6 +399,14 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
   TriplePairSet seen;
 
   std::vector<std::pair<Triple, Triple>> history;
+
+  std::optional<BigInt> recent_best_score;
+  int recent_best_iter = 0;
+
+  int64_t last_compass_count = 1;
+  std::pair<int, int> last_compass_dir = make_pair(-999, 999);
+
+  BigInt best_total_k{1000};
 
   int last_repeats = 0, last_attempts = 0;
   for (int iters = 0; true; iters ++) {
@@ -244,7 +434,9 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
     } else {
       // Only output progress bar when verbose mode is off.
       bar_per.RunIf([&first_progress, &start_metric, start_metric_size,
-                     &last_repeats, &last_attempts, &a_diff,
+                     &last_repeats, &last_attempts, &restarts,
+                     &recent_best_score, &recent_best_iter, &a_diff,
+                     &last_compass_dir, &last_compass_count, &last_restart,
                      &timer, &iters, &left, &right]() {
         if (first_progress) {
           printf("\n");
@@ -254,8 +446,8 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
         BigInt metric_diff = start_metric - cur_metric;
         if (metric_diff < BigInt{0}) metric_diff = BigInt{0};
 
-        int digits_total = start_metric_size;
-        int digits_done = metric_diff.ToString().size();
+        // int digits_total = start_metric_size;
+        // int digits_done = metric_diff.ToString().size();
 
         int max_b_digits = std::max(left.b.ToString().size(),
                                     right.b.ToString().size());
@@ -263,18 +455,31 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
         int k_digits =
           (BigInt::Abs(left.k) + BigInt::Abs(right.k)).ToString().size();
 
-        printf(ANSI_PREVLINE
-               ANSI_CLEARLINE
-               "%s\n",
-               ANSI::ProgressBar(
-                   digits_done, digits_total,
-                   StringPrintf("%d its, dig: ks: %d diff: %d max-b: %d"
-                                " rep: %d/%d",
-                                iters, k_digits,
-                                a_diff_digits,
-                                max_b_digits,
-                                last_repeats, last_attempts),
-                   timer.Seconds()).c_str());
+        static constexpr int NUM_LINES = 3;
+        for (int i = 0; i < NUM_LINES; i++) {
+          printf(ANSI_PREVLINE
+                 ANSI_CLEARLINE);
+        }
+        printf("%d its, dig: ks: %d diff: %d max-b: %d"
+               " rep: %d/%d restarts %d\n",
+               iters, k_digits,
+               a_diff_digits,
+               max_b_digits,
+               last_repeats, last_attempts,
+               restarts);
+        double ips = iters / timer.Seconds();
+        printf("Took %s (%.2fit/s)\n",
+               ANSI::Time(timer.Seconds()).c_str(),
+               ips);
+
+        printf("(%d,%d)" AGREY("x") "%lld " AGREEN("%d") " rbs_iter: %d score: %s\n",
+               last_compass_dir.first,
+               last_compass_dir.second,
+               last_compass_count,
+               iters - last_restart,
+               recent_best_iter,
+               recent_best_score.has_value() ?
+               recent_best_score.value().ToString().c_str() : "?");
       });
     }
 
@@ -333,7 +538,7 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
                 img.BlendCircle32(sx, sy, 3, color);
                 break;
               case FILLSQUARE:
-                img.BlendRect32(sx, sy, 3, 3, color);
+                img.BlendRect32(sx - 1, sy - 1, 3, 3, color);
                 break;
               }
             };
@@ -345,8 +550,8 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
 
         const int textx = 32;
         int texty = 32;
-        img.BlendText32(textx + 18, texty, 0x555555FF,
-                        StringPrintf("Iters: %d", iters));
+        img.BlendText2x32(textx + 18, texty, 0x555555FF,
+                          StringPrintf("Iters: %d", iters));
         texty += ImageRGBA::TEXT2X_HEIGHT + 2;
         img.BlendFilledCircleAA32(textx + 8, texty + 8, 6.0f, 0xFF3333AA);
         img.BlendText2x32(textx + 18, texty, 0xFF3333AA, "a");
@@ -417,21 +622,21 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
                 img.BlendCircle32(sx, sy, 3, color);
                 break;
               case FILLSQUARE:
-                img.BlendRect32(sx, sy, 3, 3, color);
+                img.BlendRect32(sx - 1, sy - 1, 3, 3, color);
                 break;
               }
             };
 
           const auto &[t1, t2] = history[x];
           if (t1.a > max_a) max_a = t1.a;
-          if (t1.b > max_a) max_b = t1.b;
+          if (t1.b > max_b) max_b = t1.b;
           if (BigInt::Abs(t1.k) > max_k) max_k = BigInt::Abs(t1.k);
           Plot(t1.a, 0xFF0000, CIRCLE);
           Plot(t1.b, 0xFF3300, CIRCLE);
           Plot(t1.k, 0xFF7700, CIRCLE);
 
           if (t2.a > max_a) max_a = t2.a;
-          if (t2.b > max_a) max_b = t2.b;
+          if (t2.b > max_b) max_b = t2.b;
           if (BigInt::Abs(t2.k) > max_k) max_k = BigInt::Abs(t2.k);
           Plot(t2.a, 0x0000FF, DISC);
           Plot(t2.b, 0x0033FF, DISC);
@@ -467,15 +672,43 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
         img.Save(filename);
         printf("Wrote " ACYAN("%s"), filename.c_str());
       }
+
+      if (CLEAR_HISTORY) {
+        history.clear();
+      }
     }
 
     // Are we done?
-    if (a_diff == BigInt{0} &&
-        BigInt::Abs(left.k) == BigInt{1} &&
-        BigInt::Abs(right.k) == BigInt{1}) {
-      printf(AGREEN("DONE!") " in " AWHITE("%d") " iters. Took %s.\n",
-             iters, ANSI::Time(timer.Seconds()).c_str());
-      return make_pair(left, right);
+    if (a_diff == 0) {
+      BigInt ak1 = BigInt::Abs(left.k);
+      BigInt ak2 = BigInt::Abs(right.k);
+      BigInt total_k = ak1 + ak2;
+      if (total_k < best_total_k) {
+        printf("\n\n\nNew best k1/k2: %s\n\n\n",
+               total_k.ToString().c_str());
+        FILE *f = fopen("bestk.txt", "ab");
+        fprintf(f,
+                "** after %d iters: %s\n"
+                "a = %s\n"
+                "b1 = %s\n"
+                "b2 = %s\n"
+                "k1 = %s\n"
+                "k2 = %s\n",
+                iters,
+                total_k.ToString().c_str(),
+                left.a.ToString().c_str(),
+                left.b.ToString().c_str(),
+                right.b.ToString().c_str(),
+                left.k.ToString().c_str(),
+                right.k.ToString().c_str());
+        fclose(f);
+        best_total_k = total_k;
+      }
+      if (ak1 == 1 && ak2 == 1) {
+        printf(AGREEN("DONE!") " in " AWHITE("%d") " iters. Took %s.\n",
+               iters, ANSI::Time(timer.Seconds()).c_str());
+        return make_pair(left, right);
+      }
     }
 
     // Prep each triple.
@@ -494,18 +727,20 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
         }
 
         BigInt gcd = BigInt::GCD(triple.a, triple.b);
-        if (gcd != BigInt{1}) {
+        if (gcd != 1) {
           if (CHECK_INVARIANTS) {
-            CHECK(triple.a % gcd == BigInt{0});
-            CHECK(triple.b % gcd == BigInt{0});
+            CHECK(triple.a % gcd == 0);
+            CHECK(triple.b % gcd == 0);
           }
           triple.a = triple.a / gcd;
           triple.b = triple.b / gcd;
-          CHECK(false) << "XXX not k??";
 
-          if (CHECK_INVARIANTS) {
-            CHECK(Error(n, triple.a, triple.b) == triple.k);
-          }
+          triple.k = Error(n, triple.a, triple.b);
+
+          // I just set it!
+          // if (CHECK_INVARIANTS) {
+          // CHECK(Error(n, triple.a, triple.b) == triple.k);
+          // }
         }
 
 
@@ -518,7 +753,7 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
         // using the extended euclidean algorithm.
         const auto [g, s, t] = BigInt::ExtendedGCD(triple.a, triple.k);
         // now we have a*s + k*t = g.
-        CHECK(g == BigInt{1}) << "?? Don't know why this must be true, "
+        CHECK(g == 1) << "?? Don't know why this must be true, "
           "but it's seemingly assumed by descriptions of this?";
 
         // so if a*s + k*t = 1, then a*s mod k is 1 (because k*t is 0 mod k).
@@ -529,7 +764,7 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
 
         if (CHECK_INVARIANTS) {
           BigInt r = ((triple.a * base_m + triple.b) % triple.k);
-          CHECK(r == BigInt{0}) <<
+          CHECK(r == 0) <<
             StringPrintf("Expect k | (am + b). "
                          "But got remainder " ARED("%s") ".\n"
                          TERM_K " | (" TERM_A " * " TERM_M " + " TERM_B ")\n",
@@ -565,9 +800,9 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
     auto LeftTriple = [&nleft, &mleft, &left](const BigInt &x) {
         BigInt m = mleft + x * left.k;
         if (CHECK_INVARIANTS) {
-          CHECK((left.a * m + left.b) % left.k == BigInt{0});
-          CHECK((left.b * m + nleft * left.a) % left.k == BigInt{0});
-          CHECK((m * m - nleft) % left.k == BigInt{0});
+          CHECK((left.a * m + left.b) % left.k == 0);
+          CHECK((left.b * m + nleft * left.a) % left.k == 0);
+          CHECK((m * m - nleft) % left.k == 0);
         }
 
         // PERF GMP has a faster version when we know the remainder is zero
@@ -580,9 +815,9 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
     auto RightTriple = [&nright, &mright, &right](const BigInt &y) {
         BigInt m = mright + y * right.k;
         if (CHECK_INVARIANTS) {
-          CHECK((right.a * m + right.b) % right.k == BigInt{0});
-          CHECK((right.b * m + nright * right.a) % right.k == BigInt{0});
-          CHECK((m * m - nright) % right.k == BigInt{0});
+          CHECK((right.a * m + right.b) % right.k == 0);
+          CHECK((right.b * m + nright * right.a) % right.k == 0);
+          CHECK((m * m - nright) % right.k == 0);
         }
 
         // PERF GMP has a faster version when we know the remainder is zero
@@ -606,6 +841,71 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
     // space?)
     last_repeats = 0;
     last_attempts = 0;
+
+    using CompassBestPairFinder = KeyedBestPairFinder<std::pair<int, int>>;
+    auto RunCompass = [&](CompassBestPairFinder *finder,
+                          const std::initializer_list<int> &dxs,
+                          const std::initializer_list<int> &dys) {
+      // This one walks along compass directions, but greedily
+      // keeps going if doubling the distance reduces the metric.
+      for (int dx : dxs) {
+        for (int dy : dys) {
+          if (dx != 0 || dy != 0) {
+
+            // walk until we find something new
+            for (int x = 0, y = 0; ; x += dx, y += dy) {
+              // only compute the center point once.
+              if (x == 0 && y == 0 &&
+                  dx != *dxs.begin() && dy != *dys.begin())
+                continue;
+
+              // This method is probably terrible, but in case we
+              // wanted to optimize it, we can probably "increment"
+              // triples in place.
+              BigInt xx{x}, yy{y};
+              Triple new_left = LeftTriple(xx);
+              Triple new_right = RightTriple(yy);
+
+              last_attempts++;
+              if (!seen.contains(std::make_pair(new_left, new_right))) {
+                BigInt prev_metric = Metric(new_left, new_right);
+                finder->ObserveWithMetric(new_left, new_right, prev_metric);
+                // Now greedily continue.
+                for (;;) {
+                  // PERF shift in place
+                  xx = xx * BigInt{2};
+                  yy = yy * BigInt{2};
+                  Triple more_left = LeftTriple(xx);
+                  Triple more_right = RightTriple(yy);
+
+                  last_attempts++;
+                  BigInt this_metric = Metric(more_left, more_right);
+                  if (!seen.contains(std::make_pair(more_left, more_right))) {
+                    // Only observe it if it hasn't been seen before,
+                    // but keep doubling while we're headed in the
+                    // right direction either way.
+                    finder->ObserveWithMetric(
+                        more_left, more_right, this_metric,
+                        make_pair(dx, dy));
+                  } else {
+                    last_repeats++;
+                  }
+
+                  if (this_metric < prev_metric) {
+                    prev_metric = this_metric;
+                  } else {
+                    break;
+                  }
+                }
+
+                break;
+              }
+              last_repeats++;
+            }
+          }
+        }
+      }
+    };
 
     // Generate new triples using the current method.
     Triple new_left, new_right;
@@ -637,196 +937,173 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
 
       std::tie(new_left, new_right) = finder.Best();
 
-    } else if (method == SOLVE) {
+    } else if (method == GRADIENT_DESCENT) {
 
       // Looking for x,y, integers.
 
-      BigInt m = mleft + x * left.k;
-      BigInt new_a = BigInt::Abs((left.a * m + left.b) / left.k);
-      BigInt new_b = BigInt::Abs((left.b * m + nleft * left.a) / left.k);
-      BigInt new_k = (m * m - nleft) / left.k;
+      #if 0
+      if (grad_image_per.ShouldRun()) {
+        ImageRGBA img(128, 128);
+        for (int sy = 0; sy < 128; sy++) {
+          BigInt y{-(sy - 64)};
+          for (int sx = 0; sx < 128; sx++) {
+            BigInt x{sx - 64};
+            const auto [dx, dy] =
+              MetricDerivatives(nleft, nright, m1, m2, left, right, x, y);
 
-      // m1' = m1 + x1 * k1
-      // m2' = m2 + x2 * k2
-
-      // a1' = |(a1 * m1' + b1) / k1|
-      // a2' = |(a2 * m2' + b2) / k2|
-      // which is
-      // a1' = |(a1 * (m1 + x1 * k1) + b1) / k1|
-      // a1' = |(a1 * m1 + a1 * x1 * k1 + b1) / k1|
-      // a1' = |(a1 * m1 + b1) / k1  +  a1 * x1 * k1 / k1|
-      //  so
-      // a1' = |(a1 * m1 + b1) / k1  +  a1 * x1|
-      // a2' = |(a2 * m2 + b2) / k2  +  a2 * x2|
-      //
-      // Note that only the second part depends on x1,x2.
-      //
-      // minimize |(a1 * m1 + b1) / k1  +  a1 * x1| -
-      //          |(a2 * m2 + b2) / k2  +  a2 * x2|
-      //
-      // for each component, only k and x can be negative, and we already
-      // know k. So we could expand those cases to get functions to minimize.
-
-      // when k and x have the same sign,
-      //   |(a * m + b) / k| + |a * x|
-      // which is just
-      //   (a * m + b) / |k| + a * |x|
-
-
-      // Actually instead of abs let's try minimizing squares.
-      //  (((a1 * m1 + b1) / k1  +  a1 * x1)^2 -
-      //   ((a2 * m2 + b2) / k2  +  a2 * x2)^2)^2
-      //
-      // ((a1 * m1 + b1) / k1  +  a1 * x1)^2  multiplied out...
-      //   (a * m + b)^2 / k^2 +
-      //   2 * (a * x)(a * m + b) / k +
-      //   a^2 * x^2
-      // which is
-      //   (a^2m^2 + 2abm + b^2)/k^2 +
-      //   2ax(am + b)/k +
-      //   a^2x^2
-      // so that term minus its sibling, squared
-      //  ( (a1^2m1^2 + 2a1b1m1 + b1^2)/k1^2 +
-      //    2a1x1(a1m1 + b1)/k1 +
-      //    a1^2x1^2  -
-      //    (a2^2m2^2 + 2a2b2m2 + b2^2)/k2^2 +
-      //    2a2x2(a2m2 + b2)/k2 +
-      //    a2^2x2^2 )^2
-      // u1 = (a1^2m1^2 + 2a1b1m1 + b1^2)/k1^2
-      // v1 = 2a1x1(a1m1 + b1)/k1
-      // w1 = a1^2x1^2
-      // t1 = (u1 + v1 + w1)
-      //
-      // (t1 - t2)^2 =
-      // t1^2 - 2t1t2 + t2^2
-      // (u1 + v1 + w1)^2 - 2(u1 + v1 + w1)(u2 + v2 + w2) + (u2 + v2 + w2)^2
-      //
-      // cripes...
-      // the squared terms (first and last) are the same.
-      //  u1^2 + u1v1 + u1w1 + v1^2 + v1u1 + v1w1 + w1^2 + w1u1 + w1u1
-      // which is just
-      //  u1^2 + v1^2 + w1^2 + 2u1v1 + 2u1w1 + 2v1w1
-      // and then the middle term
-      //  2(u1u2 + u1v2 + u1w2  +  v1u2 + v1v2 + v1w2  +  w1u2 + w1v2 + w1w2)
-      // so together that's
-      //
-      // u1^2 + v1^2 + w1^2 + 2u1v1 + 2u1w1 + 2v1w1 +
-      // u2^2 + v2^2 + w2^2 + 2u2v2 + 2u2w2 + 2v2w2 +
-      // -2(u1u2 + u1v2 + u1w2  +  v1u2 + v1v2 + v1w2  +  w1u2 + w1v2 + w1w2)
-      //
-      // Perhaps not too crazy? Starting to think I should build a little
-      // tool to multiply out polynomials though.
-      //
-      // Yeah, glad I didn't try to do that by hand, because it's this:
-      // -8a1a2b1b2k1^-2k2^-2m1m2 + -8a1a2b1b2k1^-2k2^-1m1x2 +
-      // -8a1a2b1b2k1^-1k2^-2m2x1 + -8a1a2b1b2k1^-1k2^-1x1x2 +
-      // -4a1a2^2b1k1^-2k2^-2m1m2^2 + -8a1a2^2b1k1^-2k2^-1m1m2x2 +
-      // -4a1a2^2b1k1^-2m1x2^2 + -4a1a2^2b1k1^-1k2^-2m2^2x1 +
-      // -8a1a2^2b1k1^-1k2^-1m2x1x2 + -4a1a2^2b1k1^-1x1x2^2 +
-      // -4a1b1b2^2k1^-2k2^-2m1 + -4a1b1b2^2k1^-1k2^-2x1 +
-      // 4a1b1^3k1^-4m1 + 4a1b1^3k1^-3x1 + -4a1^2a2b2k1^-2k2^-2m1^2m2 +
-      // -4a1^2a2b2k1^-2k2^-1m1^2x2 + -8a1^2a2b2k1^-1k2^-2m1m2x1 +
-      // -8a1^2a2b2k1^-1k2^-1m1x1x2 + -4a1^2a2b2k2^-2m2x1^2 +
-      // -4a1^2a2b2k2^-1x1^2x2 + -2a1^2a2^2k1^-2k2^-2m1^2m2^2 +
-      // -4a1^2a2^2k1^-2k2^-1m1^2m2x2 + -2a1^2a2^2k1^-2m1^2x2^2 +
-      // -4a1^2a2^2k1^-1k2^-2m1m2^2x1 + -8a1^2a2^2k1^-1k2^-1m1m2x1x2 +
-      // -4a1^2a2^2k1^-1m1x1x2^2 + -2a1^2a2^2k2^-2m2^2x1^2 +
-      // -4a1^2a2^2k2^-1m2x1^2x2 + -2a1^2a2^2x1^2x2^2 +
-      // 6a1^2b1^2k1^-4m1^2 + 12a1^2b1^2k1^-3m1x1 + 6a1^2b1^2k1^-2x1^2 +
-      // -2a1^2b2^2k1^-2k2^-2m1^2 + -4a1^2b2^2k1^-1k2^-2m1x1 +
-      // -2a1^2b2^2k2^-2x1^2 + 4a1^3b1k1^-4m1^3 + 12a1^3b1k1^-3m1^2x1 +
-      // 12a1^3b1k1^-2m1x1^2 + 4a1^3b1k1^-1x1^3 + a1^4k1^-4m1^4 +
-      // 4a1^4k1^-3m1^3x1 + 6a1^4k1^-2m1^2x1^2 + 4a1^4k1^-1m1x1^3 +
-      // a1^4x1^4 + -4a2b1^2b2k1^-2k2^-2m2 + -4a2b1^2b2k1^-2k2^-1x2 +
-      // 4a2b2^3k2^-4m2 + 4a2b2^3k2^-3x2 + -2a2^2b1^2k1^-2k2^-2m2^2 +
-      // -4a2^2b1^2k1^-2k2^-1m2x2 + -2a2^2b1^2k1^-2x2^2 +
-      // 6a2^2b2^2k2^-4m2^2 + 12a2^2b2^2k2^-3m2x2 + 6a2^2b2^2k2^-2x2^2 +
-      // 4a2^3b2k2^-4m2^3 + 12a2^3b2k2^-3m2^2x2 + 12a2^3b2k2^-2m2x2^2 +
-      // 4a2^3b2k2^-1x2^3 + a2^4k2^-4m2^4 + 4a2^4k2^-3m2^3x2 +
-      // 6a2^4k2^-2m2^2x2^2 + 4a2^4k2^-1m2x2^3 + a2^4x2^4 +
-      // -2b1^2b2^2k1^-2k2^-2 + b1^4k1^-4 + b2^4k2^-4
-      //
-      // so what do we have there? only the terms that have an x matter,
-      // since only those are affected by the choice of x1,x2.
-
-      BigInt diff = sqrtn - m;
-        BigInt d = (diff / k) * k;
-        BigInt m1 = m + d;
-        if (VERBOSE) {
-          printf("For target " TERM_SQRTN " have diff = " AYELLOW("%s")
-                 " and d = " APURPLE("%s") " and m1 = " TERM_M " +/- k\n",
-                 sqrtn.ToString().c_str(),
-                 diff.ToString().c_str(),
-                 d.ToString().c_str(),
-                 m1.ToString().c_str());
-        }
-        Consider(m1);
-        Consider(m1 + k);
-        Consider(m1 - k);
-      };
-
-
-    } else if (method == COMPASS_EXPONENTIAL) {
-
-      BestPairFinder finder;
-
-      // This one walks along compass directions, but greedily
-      // keeps going if doubling the distance reduces the metric.
-      for (int dx : {-1, 0, 1}) {
-        for (int dy : {-1, 0, 1}) {
-          if (dx != 0 || dy != 0) {
-
-            // walk until we find something new
-            for (int x = 0, y = 0; ; x += dx, y += dy) {
-              // This method is probably terrible, but in case we
-              // wanted to optimize it, we can probably "increment"
-              // triples in place.
-              BigInt xx{x}, yy{y};
-              Triple new_left = LeftTriple(xx);
-              Triple new_right = RightTriple(yy);
-
-              last_attempts++;
-              if (!seen.contains(std::make_pair(new_left, new_right))) {
-                BigInt prev_metric = Metric(new_left, new_right);
-                finder.ObserveWithMetric(new_left, new_right, prev_metric);
-                // Now greedily continue.
-                for (;;) {
-                  // PERF shift in place
-                  xx = xx * BigInt{2};
-                  yy = yy * BigInt{2};
-                  Triple more_left = LeftTriple(xx);
-                  Triple more_right = RightTriple(yy);
-
-                  last_attempts++;
-                  BigInt this_metric = Metric(more_left, more_right);
-                  if (!seen.contains(std::make_pair(more_left, more_right))) {
-                    // Only observe it if it hasn't been seen before,
-                    // but keep doubling while we're headed in the
-                    // right direction either way.
-                    finder.ObserveWithMetric(
-                        more_left, more_right, this_metric);
-                  } else {
-                    last_repeats++;
-                  }
-
-                  if (this_metric < prev_metric) {
-                    prev_metric = this_metric;
-                  } else {
-                    break;
-                  }
-                }
-
-                break;
-              }
-              last_repeats++;
-            }
           }
         }
+      }
+      #endif
+
+      // PERF: Since we actually evaluate the derivative at (0, 0),
+      // We could just bake these values into the function (and many
+      // terms drop out).
+      BigInt x{0}, y{0};
+      BigInt dx, dy;
+      std::tie(dx, dy) =
+        MetricDerivatives(nleft, nright, mleft, mright, left, right, x, y);
+
+      BestPairFinder finder;
+      while (dx != 0 || dy != 0) {
+        if (VERY_VERBOSE) {
+          printf("dx " AGREEN("%s") " dy " AYELLOW("%s") "\n",
+                 dx.ToString().c_str(), dy.ToString().c_str());
+        }
+        Triple tl = LeftTriple(-dx);
+        Triple tr = RightTriple(-dy);
+
+        if (!seen.contains(std::make_pair(tl, tr))) {
+          finder.Observe(tl, tr);
+        }
+
+        dx = dx / BigInt{2};
+        dy = dy / BigInt{2};
       }
 
       std::tie(new_left, new_right) = finder.Best();
 
+    } else if (method == COMPASS_EXPONENTIAL) {
 
+      CompassBestPairFinder finder;
+
+      RunCompass(&finder, {-1, 0, 1}, {-1, 0, 1});
+
+      std::tie(new_left, new_right) = finder.Best();
+
+    } else if (method == COMPASS25_EXPONENTIAL) {
+
+      CompassBestPairFinder finder;
+      if (iters & 1) {
+        RunCompass(&finder, {-3, -1, 0, 1, 2}, {-2, -1, 0, 1, 3});
+      } else {
+        RunCompass(&finder, {-2, -1, 0, 1, 3}, {-3, -1, 0, 1, 2});
+      }
+      std::tie(new_left, new_right) = finder.Best();
+
+    } else if (method == RESTARTING_COMPASS) {
+
+      static constexpr int RESTART_INTERVAL = 10000;
+
+      // If we haven't improved the score in some time, choose a
+      // new random point.
+      if (recent_best_score.has_value() &&
+          (iters - recent_best_iter) > RESTART_INTERVAL) {
+
+        // XXX random bignums
+
+        auto rr = [&rc]() -> uint64_t {
+            return Rand64(&rc);
+          };
+
+        BigInt a = BigInt::RandTo(rr, nleft * nright * restart_multiplier);
+        BigInt bl = BigInt::RandTo(rr, nleft * nleft * restart_multiplier);
+        BigInt br = BigInt::RandTo(rr, nright * nright * restart_multiplier);
+
+        restart_multiplier = restart_multiplier * BigInt{RESTART_MULTIPLIER};
+
+        BigInt kl = Error(nleft, a, bl);
+        BigInt kr = Error(nright, a, br);
+
+        new_left = Triple(a, bl, kl);
+        new_right = Triple(a, br, kr);
+
+        printf(
+            "Restart with\n"
+            "(" TERM_A "," TERM_B "," TERM_K ")\nand\n "
+            "(" TERM_A "," TERM_B "," TERM_K ")\n",
+            a.ToString().c_str(), bl.ToString().c_str(), kl.ToString().c_str(),
+            a.ToString().c_str(), br.ToString().c_str(), kr.ToString().c_str());
+        restarts++;
+        last_restart = iters;
+
+        if (CLEAR_HISTORY) {
+          seen.clear();
+        }
+
+        // reset the counter
+        recent_best_score = nullopt;
+      } else {
+
+        CompassBestPairFinder finder;
+
+        auto Consider = [&](const BigInt &x, const BigInt &y) {
+            Triple new_left = LeftTriple(x);
+            Triple new_right = RightTriple(y);
+
+            last_attempts++;
+            if (!seen.contains(std::make_pair(new_left, new_right))) {
+              finder.Observe(new_left, new_right);
+            } else {
+              last_repeats++;
+            }
+          };
+        auto TryPoint = [&](const BigInt &sqrtn1,
+                            const BigInt &sqrtn2) {
+
+            BigInt diff1 = sqrtnleft - mleft;
+            BigInt x1 = (diff1 / left.k) * left.k;
+            BigInt diff2 = sqrtnright - mright;
+            BigInt x2 = (diff2 / right.k) * right.k;
+
+            const BigInt &k1 = left.k;
+            const BigInt &k2 = right.k;
+            Consider(x1, x2);
+            Consider(x1 + k1, x2);
+            Consider(x1 - k1, x2);
+            Consider(x1, x2 - k2);
+            Consider(x1 + k1, x2 - k2);
+            Consider(x1 - k1, x2 - k2);
+            Consider(x1, x2 + k2);
+            Consider(x1 + k1, x2 + k2);
+            Consider(x1 - k1, x2 + k2);
+          };
+        TryPoint(sqrtnleft, sqrtnright);
+
+        if (iters & 1) {
+          RunCompass(&finder, {-3, -1, 0, 1, 2}, {-2, -1, 0, 1, 3});
+        } else {
+          RunCompass(&finder, {-2, -1, 0, 1, 3}, {-3, -1, 0, 1, 2});
+        }
+        std::tie(new_left, new_right) = finder.Best();
+        using CompassKey = std::pair<int, int>;
+        const std::optional<std::pair<CompassKey, BigInt>> &best_key_score =
+          finder.BestScore();
+
+        if (best_key_score.has_value()) {
+          if (!recent_best_score.has_value() ||
+              best_key_score.value().second < recent_best_score.value()) {
+            recent_best_iter = iters;
+            recent_best_score = {best_key_score.value().second};
+            if (last_compass_dir == best_key_score.value().first) {
+              last_compass_count++;
+            } else {
+              last_compass_count = 1;
+              last_compass_dir = best_key_score.value().first;
+            }
+          }
+        }
+      }
 
     } else if (method == RANDOM_WALK) {
 
@@ -869,8 +1146,8 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
               Triple new_right = RightTriple(y);
 
               // infeasible if a = 0 for either tuple.
-              if (new_left.a == BigInt{0} ||
-                  new_right.a == BigInt{0})
+              if (new_left.a == 0 ||
+                  new_right.a == 0)
                 return 1e200;
 
               // infeasible if already attempted.
@@ -955,7 +1232,7 @@ static void DoPair(const BigInt &nleft,
 
   CHECK(left.a == right.a);
   // We allow +/- 1 for this version.
-  CHECK(BigInt::Abs(left.k) == BigInt{1});
+  CHECK(BigInt::Abs(left.k) == 1);
   printf("Derived solution for n = " TERM_N "\n"
          "a: " TERM_A "\n"
          "b: " TERM_B "\n",
@@ -969,8 +1246,8 @@ static void DoPair(const BigInt &nleft,
          right.a.ToString().c_str(),
          right.b.ToString().c_str());
 
-  CHECK(left.a != BigInt{0});
-  CHECK(right.a != BigInt{0});
+  CHECK(left.a != 0);
+  CHECK(right.a != 0);
   CHECK(Error(nleft, left.a, left.b) == left.k);
   CHECK(Error(nright, right.a, right.b) == right.k);
   printf(AGREEN("OK") "\n");
@@ -1003,10 +1280,19 @@ static void RealProblem() {
   BigInt right_err = Error(n_right, right_a, right_b);
   CHECK(right_err == 1_b) << right_err.ToString();
 
-  Triple start_left(left_a, left_b, left_err);
-  Triple start_right(right_a, right_b, right_err);
-  DoPair(n_left, n_right, start_left, start_right);
+  // Triple start_left(left_a, left_b, left_err);
+  // Triple start_right(right_a, right_b, right_err);
+  // DoPair(n_left, n_right, start_left, start_right);
 
+
+  ArcFour rc("hi");
+  BigInt a(RandTo(&rc, (n_left * n_right).ToInt().value()));
+  BigInt bl(RandTo(&rc, (n_left * n_left).ToInt().value()));
+  BigInt br(RandTo(&rc, (n_right * n_right).ToInt().value()));
+
+  BigInt kl = Error(n_left, a, bl);
+  BigInt kr = Error(n_right, a, br);
+  DoPair(n_left, n_right, Triple(a, bl, kl), Triple(a, br, kr));
 }
 
 // unknown whether this is solvable
@@ -1066,10 +1352,19 @@ static void NontrivialProblem() {
   // BigInt left_a  = 5_b, left_b  = 500000001_b ;
   // BigInt right_a = 5_b, right_b = 50047024_b;
 
-  BigInt left_a = 1_b, left_b = 8_b;
-  BigInt right_a = 1_b, right_b = 7_b;
-  Triple start_left(left_a, left_b, Error(nleft, left_a, left_b));
-  Triple start_right(right_a, right_b, Error(nright, right_a, right_b));
+  // BigInt left_a = 31337_b, left_b = 8_b;
+  // BigInt right_a = 31337_b, right_b = 7_b;
+
+  // with n1*a^2 - b1^2 = 0,
+  // n1*a^2 = b1^2
+  // sqrt(n1)*a = sqrt(b)
+  BigInt a1 = 31337_b;
+  BigInt a2 = 31337_b;
+  BigInt b1 = BigInt::Sqrt(nleft); //  * a;
+  BigInt b2 = BigInt::Sqrt(nright); //  * a;
+
+  Triple start_left(a1, b1, Error(nleft, a1, b1));
+  Triple start_right(a2, b2, Error(nright, a2, b2));
 
   DoPair(nleft, nright, start_left, start_right);
 }
@@ -1087,9 +1382,9 @@ int main(int argc, char **argv) {
   */
 
   // ToyProblem2();
-  NontrivialProblem();
+  // NontrivialProblem();
 
-  // RealProblem();
+  RealProblem();
 
   #if 0
   for (int ni = 2; ni < 150; ni++) {
