@@ -362,13 +362,28 @@ struct KeyedBestPairFinder {
 
 using BestPairFinder = KeyedBestPairFinder<char>;
 
+static std::string LongNum(const BigInt &a) {
+  std::string num = a.ToString();
+  if (num.size() > 80) {
+    static constexpr int SHOW_SIDE = 8;
+    int skipped = num.size() - (SHOW_SIDE * 2);
+    return StringPrintf("%s…(%d)…%s",
+                        num.substr(0, SHOW_SIDE).c_str(),
+                        skipped,
+                        num.substr(num.size() - SHOW_SIDE,
+                                   string::npos).c_str());
+  } else {
+    return num;
+  }
+}
+
 // Given two equations of the form
 //     na^2 + k = b^2
 // where (a, b, k) is the "triple",
 // Try to find two triples t1, t2 where t1.a=t2.a and t1.k = t2.k = 1.
 static std::pair<Triple, Triple>
 DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
-  ArcFour rc("dualbhaskara");
+  ArcFour rc(StringPrintf("dualbhaskara.%llx", (uint64_t)time(nullptr)));
 
   BigInt sqrtnleft = BigInt::Sqrt(nleft);
   BigInt sqrtnright = BigInt::Sqrt(nright);
@@ -385,9 +400,9 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
 
   int last_restart = 0;
   int restarts = 0;
-  BigInt restart_multiplier{1};
+  BigInt restart_multiplier = BigInt::LeftShift(BigInt{1}, 300);
 
-  Periodically bar_per(1.0);
+  Periodically bar_per(5.0);
   bool first_progress = true;
   const BigInt start_metric = Metric(left, right);
   const int start_metric_size = start_metric.ToString().size();
@@ -405,6 +420,9 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
 
   int64_t last_compass_count = 1;
   std::pair<int, int> last_compass_dir = make_pair(-999, 999);
+
+  int valid_since_reset = 0;
+  std::optional<BigInt> best_valid_since_reset;
 
   BigInt best_total_k{1000};
 
@@ -437,6 +455,7 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
                      &last_repeats, &last_attempts, &restarts,
                      &recent_best_score, &recent_best_iter, &a_diff,
                      &last_compass_dir, &last_compass_count, &last_restart,
+                     &valid_since_reset, &best_valid_since_reset,
                      &timer, &iters, &left, &right]() {
         if (first_progress) {
           printf("\n");
@@ -455,7 +474,7 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
         int k_digits =
           (BigInt::Abs(left.k) + BigInt::Abs(right.k)).ToString().size();
 
-        static constexpr int NUM_LINES = 3;
+        static constexpr int NUM_LINES = 4;
         for (int i = 0; i < NUM_LINES; i++) {
           printf(ANSI_PREVLINE
                  ANSI_CLEARLINE);
@@ -472,14 +491,20 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
                ANSI::Time(timer.Seconds()).c_str(),
                ips);
 
-        printf("(%d,%d)" AGREY("x") "%lld " AGREEN("%d") " rbs_iter: %d score: %s\n",
+        printf("(%d,%d)" AGREY("x") "%lld " AGREEN("%d")
+               " rbs_iter: %d score: %s\n"
+               "valid: %d bvalid: %s\n",
                last_compass_dir.first,
                last_compass_dir.second,
                last_compass_count,
                iters - last_restart,
                recent_best_iter,
                recent_best_score.has_value() ?
-               recent_best_score.value().ToString().c_str() : "?");
+               LongNum(recent_best_score.value()).c_str() : "?",
+               valid_since_reset,
+               best_valid_since_reset.has_value() ?
+               LongNum(best_valid_since_reset.value()).c_str() : "?"
+               );
       });
     }
 
@@ -683,8 +708,15 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
       BigInt ak1 = BigInt::Abs(left.k);
       BigInt ak2 = BigInt::Abs(right.k);
       BigInt total_k = ak1 + ak2;
+
+      valid_since_reset++;
+      if (!best_valid_since_reset.has_value() ||
+          total_k < best_valid_since_reset.value()) {
+        best_valid_since_reset = {total_k};
+      }
+
       if (total_k < best_total_k) {
-        printf("\n\n\nNew best k1/k2: %s\n\n\n",
+        printf("\n\n\n" AGREEN("New best k1/k2") ": %s\n\n\n",
                total_k.ToString().c_str());
         FILE *f = fopen("bestk.txt", "ab");
         fprintf(f,
@@ -1016,24 +1048,65 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
             return Rand64(&rc);
           };
 
+        bool same_a = rc.Byte() < 200;
+
         BigInt a = BigInt::RandTo(rr, nleft * nright * restart_multiplier);
-        BigInt bl = BigInt::RandTo(rr, nleft * nleft * restart_multiplier);
-        BigInt br = BigInt::RandTo(rr, nright * nright * restart_multiplier);
+        BigInt al = a;
+        BigInt ar = same_a ? a :
+          BigInt::RandTo(rr, nleft * nright * restart_multiplier);
+
+        BigInt bl, br;
+        bool is_random = !!(rc.Byte() & 1);
+
+        if (is_random) {
+          // Start at random point
+          // bl = BigInt::RandTo(rr, nleft * nleft * restart_multiplier);
+          // br = BigInt::RandTo(rr, nright * nright * restart_multiplier);
+
+          bl = BigInt(RandTo(&rc, (nleft * nleft).ToInt().value()));
+          br = BigInt(RandTo(&rc, (nright * nright).ToInt().value()));
+
+        } else {
+          // Start with approximately the right value
+          // Error = b * b - n * a * a;
+          // so for 0 error,  n * a * a = b * b
+          // (These nonetheless have huge errors!)
+          bl = BigInt::Sqrt(BigInt::Sqrt(nleft * al * al));
+          br = BigInt::Sqrt(BigInt::Sqrt(nright * ar * ar));
+        }
 
         restart_multiplier = restart_multiplier * BigInt{RESTART_MULTIPLIER};
 
-        BigInt kl = Error(nleft, a, bl);
-        BigInt kr = Error(nright, a, br);
+        BigInt kl = Error(nleft, al, bl);
+        BigInt kr = Error(nright, ar, br);
 
-        new_left = Triple(a, bl, kl);
-        new_right = Triple(a, br, kr);
+        new_left = Triple(al, bl, kl);
+        new_right = Triple(ar, br, kr);
 
         printf(
-            "Restart with\n"
-            "(" TERM_A "," TERM_B "," TERM_K ")\nand\n "
-            "(" TERM_A "," TERM_B "," TERM_K ")\n",
-            a.ToString().c_str(), bl.ToString().c_str(), kl.ToString().c_str(),
-            a.ToString().c_str(), br.ToString().c_str(), kr.ToString().c_str());
+            "Num valid: %d Best: %s\n"
+            "Ended on\n"
+            "(" TERM_A "," TERM_B "," TERM_K ")\nand\n"
+            "(" TERM_A "," TERM_B "," TERM_K ")\n"
+            "Which has score " AWHITE("%s") ".\n"
+            "Restart (%s) with\n"
+            "(" TERM_A "," TERM_B "," TERM_K ")\nand\n"
+            "(" TERM_A "," TERM_B "," TERM_K ")\n"
+            "\n\n\n\n"
+            ,
+            valid_since_reset,
+            best_valid_since_reset.has_value() ?
+            LongNum(best_valid_since_reset.value()).c_str() : "?",
+            LongNum(left.a).c_str(),
+            LongNum(left.b).c_str(),
+            LongNum(left.k).c_str(),
+            LongNum(right.a).c_str(),
+            LongNum(right.b).c_str(),
+            LongNum(right.k).c_str(),
+            LongNum(Metric(left, right)).c_str(),
+            is_random ? ABLUE("random") : ACYAN("sqrt"),
+            LongNum(a).c_str(), LongNum(bl).c_str(), LongNum(kl).c_str(),
+            LongNum(a).c_str(), LongNum(br).c_str(), LongNum(kr).c_str());
         restarts++;
         last_restart = iters;
 
@@ -1043,6 +1116,8 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
 
         // reset the counter
         recent_best_score = nullopt;
+        valid_since_reset = 0;
+        best_valid_since_reset = nullopt;
       } else {
 
         CompassBestPairFinder finder;
@@ -1085,6 +1160,7 @@ DualBhaskara(BigInt nleft, BigInt nright, Triple left, Triple right) {
         } else {
           RunCompass(&finder, {-2, -1, 0, 1, 3}, {-3, -1, 0, 1, 2});
         }
+
         std::tie(new_left, new_right) = finder.Best();
         using CompassKey = std::pair<int, int>;
         const std::optional<std::pair<CompassKey, BigInt>> &best_key_score =
@@ -1292,6 +1368,19 @@ static void RealProblem() {
 
   BigInt kl = Error(n_left, a, bl);
   BigInt kr = Error(n_right, a, br);
+
+  printf(
+      "Start with:\n"
+      "(" TERM_A "," TERM_B "," TERM_K ")\nand\n"
+      "(" TERM_A "," TERM_B "," TERM_K ")\n"
+      "\n\n\n\n" ,
+      LongNum(a).c_str(),
+      LongNum(bl).c_str(),
+      LongNum(kl).c_str(),
+      LongNum(a).c_str(),
+      LongNum(br).c_str(),
+      LongNum(kr).c_str());
+
   DoPair(n_left, n_right, Triple(a, bl, kl), Triple(a, br, kr));
 }
 
