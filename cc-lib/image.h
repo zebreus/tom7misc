@@ -140,6 +140,8 @@ struct ImageRGBA {
   void BlendFilledCircle32(int x, int y, int r, uint32 color);
   void BlendFilledCircleAA32(float x, float y, float r, uint32 color);
 
+  void BlendCircle32(int x, int y, int r, uint32 color);
+
   // Clipped, alpha blending.
   void BlendImage(int x, int y, const ImageRGBA &other);
   void BlendImageRect(int destx, int desty, const ImageRGBA &other,

@@ -15,13 +15,35 @@
 #define _CC_LIB_HASHING_H
 
 #include <utility>
-#include <functional>
+#include <vector>
+#include <tuple>
+#include <array>
+
+template<class T>
+struct Hashing;
 
 namespace hashing_internal {
 static constexpr inline std::size_t RotateSizeT(size_t v, int bits) {
   return (v << bits) | (v >> (sizeof v * 8 - bits));
 }
-}
+
+template<size_t IDX, typename... Ts>
+struct HashTupleRec {
+  using tuple_type = std::tuple<Ts...>;
+  std::size_t operator()(size_t h, const tuple_type &t) const {
+    if constexpr (IDX == sizeof... (Ts)) {
+      return h;
+    } else {
+      const auto &elt = std::get<IDX>(t);
+      Hashing<std::remove_cvref_t<decltype(elt)>> hashing;
+      size_t hh = hashing(elt);
+      return HashTupleRec<IDX + 1, Ts...>()(
+          RotateSizeT(h, (IDX * 7 + 1) % 31) + hh,
+          t);
+    }
+  }
+};
+}  // namespace hashing_internal
 
 // Forward anything that already has std::hash overloaded for it.
 template<class T>
@@ -42,6 +64,7 @@ struct Hashing<std::pair<T, U>> {
     return th + 0x9e3779b9 + hashing_internal::RotateSizeT(uh, 15);
   }
 };
+
 
 // PERF: Probably should at least specialize for numeric types like
 // uint8_t.
@@ -68,5 +91,13 @@ struct Hashing<std::array<T, N>> {
     return h;
   }
 };
+
+template<typename... Ts>
+struct Hashing<std::tuple<Ts...>> {
+  std::size_t operator()(const std::tuple<Ts...> &t) const {
+    return hashing_internal::HashTupleRec<0, Ts...>()(0, t);
+  }
+};
+
 
 #endif

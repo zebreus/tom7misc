@@ -363,6 +363,12 @@ void ImageRGBA::BlendPixel(int x, int y,
   // so a + oma = 255.
   const word oma = 0xFF - a;
 
+  // PERF: This is the inner loop of almost everything (and
+  // usually the 32-bit version) so we should see if it's possible
+  // to perform the following with some 4-wide MMX (etc.) instruction.
+  // Those instructions were pretty much designed for this kind of
+  // thing.
+
   // we want (r * a/255) + (oldr * (1-a)/255),
   // which is (r * a)/255 + (oldr * (1-a))/255
   // which is (r * a + oldr * (1-a))/255
@@ -608,8 +614,6 @@ void ImageRGBA::BlendFilledCircle32(int x, int y, int r, uint32 color) {
   }
 }
 
-// PERF: With these grid filters, lots of points are shared between
-// adjacent pixels (use e.g. 2d marching cubes).
 // PERF: I think you can sample more efficiently and avoid certain
 // artifacts with a non-regular grid (like, say, a rotated triangle
 // inside the square).
@@ -625,27 +629,30 @@ void ImageRGBA::BlendFilledCircleAA32(float x, float y, float r, uint32 color) {
   const uint32_t rgb0 = color & 0xFFFFFF00;
   const uint16_t a = color & 0xFF;
 
+  // IMO, noticeably better
+  static constexpr bool SAMPLE_9 = true;
+
   // alpha values for 0-4 hits
-#if 0
-  const std::array<uint8_t, 5> alpha = {
+  const std::array<uint8_t, 5> alpha4 = {
     (uint8_t)0x00,
     (uint8_t)(a >> 2),
     (uint8_t)(a >> 1),
     (uint8_t)((a * 3) >> 2),
-    a
+    (uint8_t)a
   };
-#endif
 
-  const std::array<uint8_t, 9> alpha = {
+  // and for 0-9
+  const std::array<uint8_t, 10> alpha9 = {
     (uint8_t)0x00,
-    (uint8_t)((a * 1) >> 3),
-    (uint8_t)((a * 2) >> 3),
-    (uint8_t)((a * 3) >> 3),
-    (uint8_t)((a * 4) >> 3),
-    (uint8_t)((a * 5) >> 3),
-    (uint8_t)((a * 6) >> 3),
-    (uint8_t)((a * 7) >> 3),
-    a,
+    (uint8_t)((a * 1) / 9),
+    (uint8_t)((a * 2) / 9),
+    (uint8_t)((a * 3) / 9),
+    (uint8_t)((a * 4) / 9),
+    (uint8_t)((a * 5) / 9),
+    (uint8_t)((a * 6) / 9),
+    (uint8_t)((a * 7) / 9),
+    (uint8_t)((a * 8) / 9),
+    (uint8_t)a,
   };
 
   // integer grid
@@ -660,21 +667,67 @@ void ImageRGBA::BlendFilledCircleAA32(float x, float y, float r, uint32 color) {
           const float dd = (dxs * dxs) + (dys * dys);
           return dd <= rr ? 1 : 0;
         };
-      int inside = 0;
-      inside += Sample(0.0f, 0.0f);
-      inside += Sample(0.0f, 1.0f);
-      inside += Sample(1.0f, 0.0f);
-      inside += Sample(1.0f, 1.0f);
+      uint8_t aout;
+      if (SAMPLE_9) {
+        int inside = 0;
 
-      inside += Sample(0.25f, 0.25f);
-      inside += Sample(0.25f, 0.75f);
-      inside += Sample(0.75f, 0.25f);
-      inside += Sample(0.75f, 0.75f);
+        // spaced by thirds, but offset by one sixth.
+        for (int sy : {1, 3, 5}) {
+          for (int sx : {1, 3, 5}) {
+            inside += Sample(sx / 6.0f, sy / 6.0f);
+          }
+        }
 
-      BlendPixel32(xx, yy, rgb0 | alpha[inside]);
+        aout = alpha9[inside];
+      } else {
+        int inside = 0;
+        inside += Sample(0.25f, 0.25f);
+        inside += Sample(0.25f, 0.75f);
+        inside += Sample(0.75f, 0.25f);
+        inside += Sample(0.75f, 0.75f);
+        aout = alpha4[inside];
+      }
+
+      // PERF could compute the 32-bit color once
+      BlendPixel32(xx, yy, rgb0 | aout);
     }
   }
 }
+
+void ImageRGBA::BlendCircle32(int x0, int y0, int radius, uint32 color) {
+  BlendPixel32(x0, y0 + radius, color);
+  BlendPixel32(x0, y0 - radius, color);
+  BlendPixel32(x0 + radius, y0, color);
+  BlendPixel32(x0 - radius, y0, color);
+
+  int f = 1 - radius;
+  int ddF_x = 1;
+  int ddF_y = -2 * radius;
+  int x = 0;
+  int y = radius;
+
+  while (x < y) {
+    if (f >= 0) {
+      y--;
+      f += 2 + ddF_y;
+      ddF_y += 2;
+    }
+
+    x++;
+    ddF_x += 2;
+    f += ddF_x;
+
+    BlendPixel32(x0 + x, y0 + y, color);
+    BlendPixel32(x0 - x, y0 + y, color);
+    BlendPixel32(x0 + x, y0 - y, color);
+    BlendPixel32(x0 - x, y0 - y, color);
+    BlendPixel32(x0 + y, y0 + x, color);
+    BlendPixel32(x0 - y, y0 + x, color);
+    BlendPixel32(x0 + y, y0 - x, color);
+    BlendPixel32(x0 - y, y0 - x, color);
+  }
+}
+
 
 // TODO: Does not handle overlap correctly.
 void ImageRGBA::BlendImage(int x, int y, const ImageRGBA &other) {

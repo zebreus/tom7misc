@@ -13,6 +13,9 @@
 #define ANSI_BEGINNING_OF_LINE "\x1B[G"
 // Put the cursor at the beginning of the current line, and clear it.
 #define ANSI_RESTART_LINE ANSI_BEGINNING_OF_LINE ANSI_CLEARTOEOL
+// Move to the previous line and clear it.
+#define ANSI_UP ANSI_PREVLINE ANSI_CLEARLINE
+
 
 #define ANSI_RED "\x1B[1;31;40m"
 #define ANSI_GREY "\x1B[1;30;40m"

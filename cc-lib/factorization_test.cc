@@ -55,6 +55,7 @@ static void OptimizeLimit() {
 #endif
 
 // TODO: Benchmark this. From factor.c, gpl
+[[maybe_unused]]
 static uint64_t coreutils_isqrt (uint64_t n) {
   if (n == 0)
     return 0;
@@ -62,7 +63,7 @@ static uint64_t coreutils_isqrt (uint64_t n) {
   int c = std::countl_zero<uint64_t>(n);
 
   /* Make x > sqrt(n).  This will be invariant through the loop.  */
-  uint64_t x = (uint64_t) 1 << ((W_TYPE_SIZE + 1 - c) / 2);
+  uint64_t x = (uint64_t) 1 << ((64 + 1 - c) / 2);
 
   for (;;) {
     uint64_t y = (x + n / x) / 2;
@@ -272,6 +273,8 @@ static void TestPrimeFactors() {
     TestOne(n);
     CHECK(!Factorization::IsPrime(n));
   }
+
+  CHECK(Factorization::IsPrime(0x7FFFFFFF));
 
   // Must all be distinct and prime. Careful about overflow!
   for (const auto &f : std::vector<std::vector<int>>{
