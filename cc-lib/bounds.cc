@@ -4,29 +4,38 @@
 #include <limits>
 #include <tuple>
 #include <utility>
+#include <cmath>
 
 Bounds::Bounds() {}
 
 void Bounds::Bound(double x, double y) {
-  auto B = [](double p, double *min, double *max) {
-    if (p < *min) *min = p;
-    if (p > *max) *max = p;
-  };
-
-  B(x, &minx, &maxx);
-  B(y, &miny, &maxy);
-  is_empty = false;
+  BoundX(x);
+  BoundY(y);
 }
 void Bounds::Bound(std::pair<double, double> p) {
-  Bound(p.first, p.second);
+  BoundX(p.first);
+  BoundY(p.second);
+}
+void Bounds::BoundX(double x) {
+  if (std::isnan(x)) return;
+  if (x < minx) minx = x;
+  if (x > maxx) maxx = x;
+  is_empty_x = false;
+}
+void Bounds::BoundY(double y) {
+  if (std::isnan(y)) return;
+  if (y < miny) miny = y;
+  if (y > maxy) maxy = y;
+  is_empty_y = false;
 }
 
 bool Bounds::Contains(double x, double y) const {
+  if (std::isnan(x) || std::isnan(y)) return false;
   return x >= minx && x <= maxx &&
-    y >= miny && y <= maxy && !is_empty;
+    y >= miny && y <= maxy && !(is_empty_x || is_empty_y);
 }
 
-bool Bounds::Empty() const { return is_empty; }
+bool Bounds::Empty() const { return is_empty_x || is_empty_y; }
 
 double Bounds::MinX() const { return minx; }
 double Bounds::MinY() const { return miny; }

@@ -11,14 +11,19 @@ struct Bounds {
   Bounds();
 
   // Expand the bounding box to contain the point.
+  // Ignores NaN.
   void Bound(double x, double y);
   void Bound(std::pair<double, double> p);
+  void BoundX(double x);
+  void BoundY(double y);
 
   // The margins are included.
   bool Contains(double x, double y) const;
 
-  // Returns true if no points have been added. When the bounding box
-  // is empty, several functions below should not be called.
+  // Returns true if we don't have points on both the x and y axes
+  // (because Bound has not been called, or not both of BoundX and BoundY).
+  // When the bounding box is empty, several functions below should not
+  // be called.
   bool Empty() const;
 
   double MinX() const;
@@ -105,11 +110,11 @@ struct Bounds {
   // TODO: log scale?
 
  private:
-  bool is_empty = true;
   double minx = std::numeric_limits<double>::infinity();
   double miny = std::numeric_limits<double>::infinity();
   double maxx = -std::numeric_limits<double>::infinity();
   double maxy = -std::numeric_limits<double>::infinity();
+  bool is_empty_x = true, is_empty_y = true;
 };
 
 #endif
