@@ -362,18 +362,33 @@ struct ThreadJoiner {
 
 // Calls f(x, y) for each 0 <= x < num1 and 0 <= y < num2,
 // in up to max_concurrency parallel threads.
+// No guarantees about the order that these are run, of course,
+// but it attempts to treat x as the minor axis and y as the
+// major.
 template<class F>
 void ParallelComp2D(int64_t num1, int64_t num2,
                     const F &f,
                     int max_concurrency) {
   const int64_t total_num = num1 * num2;
   ParallelComp(total_num,
-               [&f, num2](int64_t x) {
-                 const int64_t x2 = x % num2;
-                 const int64_t x1 = x / num2;
+               [&f, num1](int64_t x) {
+                 const int64_t x1 = x % num1;
+                 const int64_t x2 = x / num1;
                  f(x1, x2);
                },
                max_concurrency);
+}
+
+template<class F>
+void UnParallelComp2D(int64_t num1, int64_t num2,
+                      const F &f,
+                      int max_concurrency_) {
+  printf("%lld x %lld\n", num1, num2);
+  for (int64_t y = 0; y < num2; y++) {
+    for (int64_t x = 0; x < num1; x++) {
+      (void)f(x, y);
+    }
+  }
 }
 
 template<class F>
@@ -383,6 +398,7 @@ void ParallelComp3D(int64_t num1, int64_t num2, int64_t num3,
   const int64_t total_num = num1 * num2 * num3;
   ParallelComp(total_num,
                [&f, num2, num3](int64_t x) {
+                 // TODO: Arrange this in row-major order as well.
                  const int64_t x3 = x % num3;
                  const int64_t xx = x / num3;
                  const int64_t x2 = xx % num2;
