@@ -254,3 +254,30 @@ BigInt BigInt::Sqrt(const BigInt &xx) {
   return ret;
 }
 
+BigInt BigInt::RandTo(const std::function<uint64_t()> &r,
+                      const BigInt &radix) {
+  if (BigInt::LessEq(radix, BigInt{1})) return BigInt{0};
+  // Generate mask of all 1-bits.
+  BigInt mask{1};
+  int bits = 0;
+  while (BigInt::Less(mask, radix)) {
+    // PERF shift in place!
+    mask = BigInt::Times(mask, BigInt{2});
+    bits++;
+  }
+  mask = BigInt::Minus(mask, BigInt{1});
+
+  int u64s = (bits + 63) / 64;
+
+  for (;;) {
+    // Generate a random bit string of the right length.
+    BigInt s{0};
+    for (int i = 0; i < u64s; i++) {
+      uint64_t w = r();
+      s = BigInt::Plus(BigInt::LeftShift(s, 64), BigInt::FromU64(w));
+    }
+
+    s = BigInt::BitwiseAnd(s, mask);
+    if (BigInt::LessEq(s, radix)) return s;
+  }
+}

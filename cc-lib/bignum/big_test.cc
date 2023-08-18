@@ -17,10 +17,53 @@
 using int64 = int64_t;
 using namespace std;
 
-#define BIGRAT_TESTS 1
+static void CopyAndAssign() {
+  BigInt a{1234};
+  BigInt b{5678};
+  BigInt c = a;
+  a = b;
+  CHECK(BigInt::Eq(a, b));
+  CHECK(!BigInt::Eq(a, c));
+  {
+    BigInt z{8888};
+    a = z;
+  }
+  CHECK(a.ToInt() == 8888);
+
+  string s = "190237849028374901872390876190872349817230948719023874190827349817239048712903847190283740918273490817230948798767676767676738347482712341";
+  BigInt big(s);
+  CHECK(big.ToString() == s);
+  big = a;
+  CHECK(big.ToInt() == 8888);
+}
+
+static void LowWord() {
+  BigInt a{1234};
+  BigInt b{5678};
+  // Technically this can be anything, but it would probably be a bug if
+  // small integers don't get different values.
+  CHECK(BigInt::LowWord(a) != BigInt::LowWord(b));
+
+  string s = "190237849028374901872390876190872349817230948719023874190827349817239048712903847190283740918273490817230948798767676767676738347482712341";
+  BigInt big(s);
+  CHECK(BigInt::LowWord(a) != BigInt::LowWord(big));
+}
+
+static void TestMod() {
+  CHECK(BigInt::Eq(BigInt::Mod(BigInt{3}, BigInt{5}), BigInt{3}));
+  CHECK(BigInt::Eq(BigInt::Mod(BigInt{7}, BigInt{5}), BigInt{2}));
+  CHECK(BigInt::Eq(BigInt::Mod(BigInt{10}, BigInt{5}), BigInt{0}));
+  CHECK(BigInt::Eq(BigInt::Mod(BigInt{-1}, BigInt{5}), BigInt{4}));
+}
+
+static void TestEq() {
+  BigInt a{1234};
+  BigInt b{5678};
+
+  CHECK(BigInt::Eq(BigInt::Times(a, b), 7006652));
+}
 
 static void TestPow() {
-#ifdef BIGRAT_TESTS
   BigRat q(11,15);
 
   BigRat qqq = BigRat::Times(q, BigRat::Times(q, q));
@@ -28,19 +71,16 @@ static void TestPow() {
   printf("%s vs %s\n", qqq.ToString().c_str(),
          qcubed.ToString().c_str());
   CHECK(BigRat::Eq(qqq, qcubed));
-#endif
 }
 
 // TODO: Test/document behavior on negative inputs
 static void TestQuotRem() {
-#ifdef BIGRAT_TESTS
   BigInt a(37);
   BigInt b(5);
 
   const auto [q, r] = BigInt::QuotRem(a, b);
   CHECK(BigRat::Eq(q, BigInt(7)));
   CHECK(BigRat::Eq(r, BigInt(2)));
-#endif
 }
 
 static void TestPrimeFactors() {
@@ -159,7 +199,6 @@ static void BenchDiv2() {
 }
 
 static void TestPi() {
-#ifdef BIGRAT_TESTS
   printf("----\n");
   {
     BigInt i{1234567LL};
@@ -206,7 +245,6 @@ static void TestPi() {
   CHECK(BigRat::Compare(pi_lb, pi_ub) == -1);
   CHECK(BigRat::Compare(pi_lb, res) == -1);
   CHECK(BigRat::Compare(res, pi_ub) == -1);
-#endif
 }
 
 static void TestLeadingZero() {
@@ -290,12 +328,27 @@ static void TestGCD() {
   CHECK(BigInt::Eq(g, BigInt(4)));
 }
 
+static void TestShift() {
+  BigInt a{"12398471982735675717171221"};
+  BigInt b = BigInt::LeftShift(a, 18);
+  BigInt c = BigInt::Times(a, BigInt{262144});
+  CHECK(BigInt::Eq(b, c));
+}
+
 int main(int argc, char **argv) {
   printf("Start.\n");
   fflush(stdout);
 
+  BenchNegate();
+
+  CopyAndAssign();
+  TestEq();
+  LowWord();
+  TestMod();
   TestToInt();
   TestGCD();
+
+  TestShift();
 
   TestLeadingZero();
 

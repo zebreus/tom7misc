@@ -13,12 +13,13 @@
 #endif
 
 #include <algorithm>
-#include <cstdint>
+#include <cassert>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
-#include <optional>
-#include <cassert>
 
 struct BigInt {
   BigInt() : BigInt(0LL) {}
@@ -32,6 +33,8 @@ struct BigInt {
 
   inline ~BigInt();
 
+  static inline BigInt FromU64(uint64_t u);
+
   // Aborts if the string is not valid.
   // Bases from [2, 62] are permitted.
   inline std::string ToString(int base = 10) const;
@@ -40,17 +43,21 @@ struct BigInt {
   inline bool IsOdd() const;
 
   inline static BigInt Negate(const BigInt &a);
+  inline static BigInt Negate(BigInt &&a);
   inline static BigInt Abs(const BigInt &a);
   inline static int Compare(const BigInt &a, const BigInt &b);
   inline static bool Less(const BigInt &a, const BigInt &b);
   inline static bool LessEq(const BigInt &a, const BigInt &b);
   inline static bool Eq(const BigInt &a, const BigInt &b);
+  inline static bool Eq(const BigInt &a, int64_t b);
   inline static bool Greater(const BigInt &a, const BigInt &b);
   inline static bool GreaterEq(const BigInt &a, const BigInt &b);
   inline static BigInt Plus(const BigInt &a, const BigInt &b);
   inline static BigInt Minus(const BigInt &a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, const BigInt &b);
+  inline static BigInt Times(const BigInt &a, int64_t b);
   inline static BigInt Div(const BigInt &a, const BigInt &b);
+  inline static BigInt Div(const BigInt &a, int64_t b);
   // Ignores sign of divisor. Result is always non-negative.
   // XXX need to test that bigz version matches this spec.
   inline static BigInt Mod(const BigInt &a, const BigInt &b);
@@ -62,7 +69,32 @@ struct BigInt {
   // Input must be non-negative.
   static BigInt Sqrt(const BigInt &a);
   inline static BigInt GCD(const BigInt &a, const BigInt &b);
+  inline static BigInt LeftShift(const BigInt &a, uint64_t bits);
+
+  // TODO: Implement with bigz too. There is a very straightforward
+  // implementation.
+  #ifdef BIG_USE_GMP
+  // Returns (g, s, t) where g is GCD(a, b) and as + bt = g.
+  inline static std::tuple<BigInt, BigInt, BigInt>
+  ExtendedGCD(const BigInt &a, const BigInt &b);
+
+  // Only when in about -1e300 to 1e300; readily returns +/- inf
+  // for large numbers.
+  inline double ToDouble() const;
+
+  // Returns the approximate logarithm, base e.
+  inline static double NaturalLog(const BigInt &a);
+
+  inline static BigInt BitwiseAnd(const BigInt &a, const BigInt &b);
+  #endif
+
+  // Generate a uniform random number in [0, radix).
+  // r should return uniformly random uint64s.
+  static BigInt RandTo(const std::function<uint64_t()> &r,
+                       const BigInt &radix);
+
   inline std::optional<int64_t> ToInt() const;
+
 
   // Factors using trial division (slow!)
   // such that a0^b0 * a1^b1 * ... * an^bn = x,
@@ -165,9 +197,23 @@ private:
 };
 
 // Implementations follow. These are all light wrappers around
-// bigz/bigq functions, so inline makes sense.
+// the functions in the underlying representation, so inline makes
+// sense.
+
+inline BigInt BigInt::FromU64(uint64_t u) {
+  uint32_t hi = (u >> 32) & 0xFFFFFFFF;
+  uint32_t lo = u         & 0xFFFFFFFF;
+  return BigInt::Plus(LeftShift(BigInt{hi}, 32), BigInt{lo});
+}
 
 #if BIG_USE_GMP
+
+namespace internal {
+inline bool FitsLongInt(int64_t x) {
+  return (std::numeric_limits<long int>::min() <= x &&
+          x <= std::numeric_limits<long int>::max());
+}
+}
 
 BigInt::BigInt(int64_t n) {
   mpz_init(rep);
@@ -215,19 +261,12 @@ void BigInt::Swap(BigInt *other) {
 }
 
 uint64_t BigInt::LowWord(const BigInt &a) {
-  uint64_t digit = 0;
-  size_t count = 0;
-  mpz_export(&digit, &count,
-             // get low word
-             -1,
-             // 8 bytes
-             8,
-             // native endianness
-             0,
-             // 0 "nails" (leading bits to skip)
-             0,
-             a.rep);
-  return digit;
+  size_t limbs = mpz_size(a.rep);
+  if (limbs == 0) return 0;
+  // limb 0 is the least significant.
+  // XXX if mp_limb_t is not 64 bits, we could get more
+  // limbs here.
+  return mpz_getlimbn(a.rep, 0);
 }
 
 std::string BigInt::ToString(int base) const {
@@ -251,6 +290,10 @@ std::string BigInt::ToString(int base) const {
   }
   assert(false);
   return s;
+}
+
+double BigInt::ToDouble() const {
+  return mpz_get_d(rep);
 }
 
 std::optional<int64_t> BigInt::ToInt() const {
@@ -281,6 +324,23 @@ std::optional<int64_t> BigInt::ToInt() const {
   }
 }
 
+
+double BigInt::NaturalLog(const BigInt &a) {
+  // d is the magnitude, with absolute value in [0.5,1].
+  //   a = di * 2^exponent
+  // taking the log of both sides,
+  //   log(a) = log(di) + log(2) * exponent
+  signed long int exponent = 0;
+  const double di = mpz_get_d_2exp(&exponent, a.rep);
+  return std::log(di) + std::log(2.0) * (double)exponent;
+}
+
+BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
+  BigInt ret;
+  mpz_and(ret.rep, a.rep, b.rep);
+  return ret;
+}
+
 bool BigInt::IsEven() const {
   return mpz_even_p(rep);
 }
@@ -293,6 +353,11 @@ BigInt BigInt::Negate(const BigInt &a) {
   mpz_neg(ret.rep, a.rep);
   return ret;
 }
+BigInt BigInt::Negate(BigInt &&a) {
+  mpz_neg(a.rep, a.rep);
+  return a;
+}
+
 BigInt BigInt::Abs(const BigInt &a) {
   BigInt ret;
   mpz_abs(ret.rep, a.rep);
@@ -313,6 +378,15 @@ bool BigInt::LessEq(const BigInt &a, const BigInt &b) {
 bool BigInt::Eq(const BigInt &a, const BigInt &b) {
   return mpz_cmp(a.rep, b.rep) == 0;
 }
+bool BigInt::Eq(const BigInt &a, int64_t b) {
+  if (internal::FitsLongInt(b)) {
+    signed long int sb = b;
+    return mpz_cmp_si(a.rep, sb) == 0;
+  } else {
+    return Eq(a, BigInt(b));
+  }
+}
+
 bool BigInt::Greater(const BigInt &a, const BigInt &b) {
   return mpz_cmp(a.rep, b.rep) > 0;
 }
@@ -335,12 +409,46 @@ BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
   mpz_mul(ret.rep, a.rep, b.rep);
   return ret;
 }
+
+BigInt BigInt::Times(const BigInt &a, int64_t b) {
+  if (internal::FitsLongInt(b)) {
+    signed long int sb = b;
+    BigInt ret;
+    mpz_mul_si(ret.rep, a.rep, sb);
+    return ret;
+  } else {
+    return Times(a, BigInt(b));
+  }
+}
+
 BigInt BigInt::Div(const BigInt &a, const BigInt &b) {
   // truncate (round towards zero) like C
   BigInt ret;
   mpz_tdiv_q(ret.rep, a.rep, b.rep);
   return ret;
 }
+
+BigInt BigInt::Div(const BigInt &a, int64_t b) {
+  if (internal::FitsLongInt(b)) {
+    // alas there is no _si version, so branch on
+    // the sign.
+    if (b >= 0) {
+      signed long int sb = b;
+      BigInt ret;
+      mpz_tdiv_q_ui(ret.rep, a.rep, sb);
+      return ret;
+    } else {
+      signed long int sb = -b;
+      BigInt ret;
+      mpz_tdiv_q_ui(ret.rep, a.rep, sb);
+      mpz_neg(ret.rep, ret.rep);
+      return ret;
+    }
+  } else {
+    return Div(a, BigInt(b));
+  }
+}
+
 
 BigInt BigInt::Mod(const BigInt &a, const BigInt &b) {
   BigInt ret;
@@ -362,12 +470,29 @@ BigInt BigInt::Pow(const BigInt &a, uint64_t exponent) {
   return ret;
 }
 
+BigInt BigInt::LeftShift(const BigInt &a, uint64_t shift) {
+  if (internal::FitsLongInt(shift)) {
+    mp_bitcnt_t sh = shift;
+    BigInt ret;
+    mpz_mul_2exp(ret.rep, a.rep, sh);
+    return ret;
+  } else {
+    return Times(a, Pow(BigInt{2}, shift));
+  }
+}
+
 BigInt BigInt::GCD(const BigInt &a, const BigInt &b) {
   BigInt ret;
   mpz_gcd(ret.rep, a.rep, b.rep);
   return ret;
 }
 
+std::tuple<BigInt, BigInt, BigInt>
+BigInt::ExtendedGCD(const BigInt &a, const BigInt &b) {
+  BigInt g, s, t;
+  mpz_gcdext(g.rep, s.rep, t.rep, a.rep, b.rep);
+  return std::make_tuple(g, s, t);
+}
 
 BigRat::BigRat(int64_t numer, int64_t denom) :
   BigRat(BigInt{numer}, BigInt{denom}) {}
@@ -491,7 +616,6 @@ double BigRat::ToDouble() const {
   return mpq_get_d(rep);
 }
 
-
 #else
 // No GMP. Using portable big*.h.
 
@@ -561,6 +685,11 @@ bool BigInt::IsOdd() const { return BzIsOdd(rep); }
 BigInt BigInt::Negate(const BigInt &a) {
   return BigInt{BzNegate(a.rep), nullptr};
 }
+BigInt BigInt::Negate(BigInt &&a) {
+  // PERF any way to negate in place?
+  return BigInt{BzNegate(a.rep), nullptr};
+}
+
 BigInt BigInt::Abs(const BigInt &a) {
   return BigInt{BzAbs(a.rep), nullptr};
 }
@@ -582,6 +711,10 @@ bool BigInt::LessEq(const BigInt &a, const BigInt &b) {
 bool BigInt::Eq(const BigInt &a, const BigInt &b) {
   return BzCompare(a.rep, b.rep) == BZ_EQ;
 }
+bool BigInt::Eq(const BigInt &a, int64_t b) {
+  return BzCompare(a.rep, BigInt{b, nullptr}) == BZ_EQ;
+}
+
 bool BigInt::Greater(const BigInt &a, const BigInt &b) {
   return BzCompare(a.rep, b.rep) == BZ_GT;
 }
@@ -599,10 +732,18 @@ BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
 BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
   return BigInt{BzMultiply(a.rep, b.rep), nullptr};
 }
+BigInt BigInt::Times(const BigInt &a, int64_t b) {
+  return BigInt{BzMultiply(a.rep, BigInt{b, nullptr}), nullptr};
+}
+
 // TODO: Quotrem via BzDivide
 BigInt BigInt::Div(const BigInt &a, const BigInt &b) {
   return BigInt{BzDiv(a.rep, b.rep), nullptr};
 }
+BigInt BigInt::Times(const BigInt &a, int64_t b) {
+  return BigInt{BzDiv(a.rep, BigInt{b, nullptr}), nullptr};
+}
+
 // TODO: truncate, floor, ceiling round. what are they?
 
 // TODO: Clarify mod vs rem?
@@ -620,6 +761,10 @@ std::pair<BigInt, BigInt> BigInt::QuotRem(const BigInt &a,
 
 BigInt BigInt::Pow(const BigInt &a, uint64_t exponent) {
   return BigInt{BzPow(a.rep, exponent), nullptr};
+}
+
+BigInt BigInt::LeftShift(const BigInt &a, uint64_t bits) {
+  return Times(a, Pow(BigInt{2, nullptr}, bits));
 }
 
 BigInt BigInt::GCD(const BigInt &a, const BigInt &b) {

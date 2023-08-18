@@ -1,7 +1,5 @@
 
-default : big_test.exe
-
-BASE=../base/logging.o ../base/stringprintf.o
+default : big_test.exe big-overloads_test.exe
 
 # on normal systems
 GMP_LFLAGS=-lgmp
@@ -18,12 +16,17 @@ CC=x86_64-w64-mingw32-g++
 # CXX=g++
 # CC=gcc
 CXXFLAGS=$(GMP_CFLAGS) -march=native -Wall -I. -I.. --std=c++20 -g -O2  # -static
-LFLAGS=$(GMP_LFLAGS) -static
+LFLAGS=-flto $(GMP_LFLAGS) -static
+
+CCLIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../ansi.o
 
 %.o : %.cc *.h makefile
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
-big_test.exe : bigz.o bign.o bigq.o big.o big_test.o $(BASE)
+big_test.exe : bigz.o bign.o bigq.o big.o big_test.o $(CCLIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
+
+big-overloads_test.exe : bigz.o bign.o bigq.o big.o big-overloads_test.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
 clean :
