@@ -32,14 +32,44 @@ struct Periodically {
     const tpoint now = std::chrono::steady_clock::now();
     if (now >= next_run.load()) {
       std::unique_lock ml(m);
+      if (paused) return false;
       // double-checked lock so that the previous can be cheap
       if (now >= next_run.load()) {
-        if (paused) return false;
         next_run.store(now + wait_period);
         return true;
       }
     }
     return false;
+  }
+
+  // Just like ShouldRun, but updates the next run time *after*
+  // the function runs. This can be used to prevent the function
+  // from running too often, even if it takes a long time. If
+  // a function is already in progress, the call will immediately
+  // return.
+  template<class F>
+  void RunIf(const F &f) {
+    const tpoint now = std::chrono::steady_clock::now();
+    if (now >= next_run.load()) {
+      std::unique_lock ml(m);
+      if (run_in_progress) return;
+      if (paused) return;
+      if (now >= next_run.load()) {
+        run_in_progress = true;
+        // Try to avoid lock contention by advancing the clock;
+        // its final value will be at least this.
+        next_run.store(now + wait_period);
+
+        // But don't hold the lock while running the function.
+        ml.unlock();
+        f();
+        ml.lock();
+
+        run_in_progress = false;
+        const tpoint now2 = std::chrono::steady_clock::now();
+        next_run.store(now2 + wait_period);
+      }
+    }
   }
 
   void Pause() {
@@ -62,6 +92,14 @@ struct Periodically {
     Reset();
   }
 
+  // Run in this many seconds, but then return to the current period.
+  void SetPeriodOnce(double seconds) {
+    std::unique_lock ml(m);
+    using namespace std::chrono_literals;
+    next_run = std::chrono::steady_clock::now() +
+      std::chrono::duration_cast<dur>(1s * seconds);
+  }
+
 private:
   using dur = std::chrono::steady_clock::duration;
   using tpoint = std::chrono::time_point<std::chrono::steady_clock>;
@@ -69,6 +107,7 @@ private:
   std::atomic<tpoint> next_run;
   dur wait_period = dur::zero();
   bool paused = false;
+  bool run_in_progress = false;
 };
 
 #endif
