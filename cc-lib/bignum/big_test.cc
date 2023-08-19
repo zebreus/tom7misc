@@ -335,11 +335,19 @@ static void TestShift() {
   CHECK(BigInt::Eq(b, c));
 }
 
+static void TestDivExact() {
+  BigInt a{"23984727341"};
+  BigInt b{"12737177354116809923874293874113"};
+  BigInt c = BigInt::Times(a, b);
+  BigInt d = BigInt::DivExact(c, a);
+  BigInt e = BigInt::DivExact(c, b);
+  CHECK(BigInt::Eq(b, d));
+  CHECK(BigInt::Eq(a, e));
+}
+
 int main(int argc, char **argv) {
   printf("Start.\n");
   fflush(stdout);
-
-  BenchNegate();
 
   CopyAndAssign();
   TestEq();
@@ -347,6 +355,8 @@ int main(int argc, char **argv) {
   TestMod();
   TestToInt();
   TestGCD();
+
+  TestDivExact();
 
   TestShift();
 

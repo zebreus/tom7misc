@@ -53,11 +53,14 @@ struct BigInt {
   inline static bool Greater(const BigInt &a, const BigInt &b);
   inline static bool GreaterEq(const BigInt &a, const BigInt &b);
   inline static BigInt Plus(const BigInt &a, const BigInt &b);
+  inline static BigInt Plus(const BigInt &a, int64_t b);
   inline static BigInt Minus(const BigInt &a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, int64_t b);
   inline static BigInt Div(const BigInt &a, const BigInt &b);
   inline static BigInt Div(const BigInt &a, int64_t b);
+  // Returns a/b, but requires that that a % b == 0 for correctness.
+  inline static BigInt DivExact(const BigInt &a, const BigInt &b);
   // Ignores sign of divisor. Result is always non-negative.
   // XXX need to test that bigz version matches this spec.
   inline static BigInt Mod(const BigInt &a, const BigInt &b);
@@ -399,11 +402,26 @@ BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
   mpz_add(ret.rep, a.rep, b.rep);
   return ret;
 }
+
+BigInt BigInt::Plus(const BigInt &a, int64_t b) {
+  // PERF could also support negative b. but GMP only has
+  // _ui version.
+  if (b >= 0 && internal::FitsLongInt(b)) {
+    signed long int sb = b;
+    BigInt ret;
+    mpz_add_ui(ret.rep, a.rep, sb);
+    return ret;
+  } else {
+    return Plus(a, BigInt(b));
+  }
+}
+
 BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
   BigInt ret;
   mpz_sub(ret.rep, a.rep, b.rep);
   return ret;
 }
+
 BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
   BigInt ret;
   mpz_mul(ret.rep, a.rep, b.rep);
@@ -447,6 +465,12 @@ BigInt BigInt::Div(const BigInt &a, int64_t b) {
   } else {
     return Div(a, BigInt(b));
   }
+}
+
+BigInt BigInt::DivExact(const BigInt &a, const BigInt &b) {
+  BigInt ret;
+  mpz_divexact(ret.rep, a.rep, b.rep);
+  return ret;
 }
 
 
@@ -726,6 +750,9 @@ bool BigInt::GreaterEq(const BigInt &a, const BigInt &b) {
 BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
   return BigInt{BzAdd(a.rep, b.rep), nullptr};
 }
+BigInt BigInt::Plus(const BigInt &a, int64_t b) {
+  return BigInt{BzAdd(a.rep, BigInt{b, nullptr}.rep), nullptr};
+}
 BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
   return BigInt{BzSubtract(a.rep, b.rep), nullptr};
 }
@@ -733,15 +760,19 @@ BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
   return BigInt{BzMultiply(a.rep, b.rep), nullptr};
 }
 BigInt BigInt::Times(const BigInt &a, int64_t b) {
-  return BigInt{BzMultiply(a.rep, BigInt{b, nullptr}), nullptr};
+  return BigInt{BzMultiply(a.rep, BigInt{b, nullptr}.rep), nullptr};
 }
 
 // TODO: Quotrem via BzDivide
 BigInt BigInt::Div(const BigInt &a, const BigInt &b) {
   return BigInt{BzDiv(a.rep, b.rep), nullptr};
 }
+BigInt BigInt::DivExact(const BigInt &a, const BigInt &b) {
+  // Not using the precondition here; same as division.
+  return BigInt{BzDiv(a.rep, b.rep), nullptr};
+}
 BigInt BigInt::Times(const BigInt &a, int64_t b) {
-  return BigInt{BzDiv(a.rep, BigInt{b, nullptr}), nullptr};
+  return BigInt{BzDiv(a.rep, BigInt{b, nullptr}.rep), nullptr};
 }
 
 // TODO: truncate, floor, ceiling round. what are they?
