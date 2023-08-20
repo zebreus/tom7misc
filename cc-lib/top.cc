@@ -1,12 +1,18 @@
 
 // XXX! Implement this on other platforms.
 
+#include "top.h"
+
+#include <vector>
+#include <string>
+
+#if defined(WIN32) || defined(__MINGW32__) || defined(__MINGW64__)
+
 #include <windows.h>
 #include <stdio.h>
 #include <tchar.h>
 #include <psapi.h>
 
-#include "top.h"
 
 
 using namespace std;
@@ -57,3 +63,14 @@ Top::Enumerate() {
 
   return out;
 }
+
+#else
+
+using namespace std;
+
+vector<string>
+Top::Enumerate() {
+  return {};
+}
+
+#endif

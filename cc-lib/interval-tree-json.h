@@ -1,6 +1,6 @@
 
-#ifndef _CC_LIB_INTERVAL_TREE_JSON
-#define _CC_LIB_INTERVAL_TREE_JSON
+#ifndef _CC_LIB_INTERVAL_TREE_JSON_H
+#define _CC_LIB_INTERVAL_TREE_JSON_H
 
 #include <map>
 #include <utility>
@@ -19,9 +19,9 @@ struct IntervalTreeJSON {
   IntervalTreeJSON(const IntervalTree<Idx, T, Bisect> &tree,
                    const std::function<string(const Idx &idx)> &idxjs,
                    const std::function<string(const T &t)> &tjs,
-                   int max_depth) : tree(tree), 
-                                    idxjs(idxjs), 
-                                    tjs(tjs), 
+                   int max_depth) : tree(tree),
+                                    idxjs(idxjs),
+                                    tjs(tjs),
                                     max_depth(max_depth) {}
 
   // A faithful representation of the interval tree as a JS expression
@@ -80,7 +80,7 @@ struct IntervalTreeJSON {
     Intervals("e", n->by_end);
 
     ret += "}";
-    
+
     if ((depth % max_depth) == (max_depth - 1)) {
       // PERF could use base 26 (etc.) but watch out for clashes
       // with keywords, builtins, etc.
@@ -114,7 +114,7 @@ struct IntervalTreeJSON {
   // where by_begin is an array of two-element arrays [start, end],
   // sorted by start position. The 't' data are not represented at
   // all.
-  string ToCompactJSONRec(std::vector<string> *decls, 
+  string ToCompactJSONRec(std::vector<string> *decls,
                           const std::function<Idx(const Idx &l,
                                                   const Idx &r)> minus,
                           int depth,
@@ -147,12 +147,12 @@ struct IntervalTreeJSON {
       return ret;
     }
   }
-  
+
  private:
   const IT &tree;
   const std::function<string(const Idx &idx)> idxjs;
   const std::function<string(const T &t)> tjs;
-  const int max_depth;  
+  const int max_depth;
 
   IntervalTreeJSON() = delete;
   IntervalTreeJSON(const IntervalTreeJSON &other) = delete;

@@ -561,7 +561,8 @@ static void ProfileFactorize() {
     for (const auto &[p, e] : factors) result += p * e;
   }
 
-  printf("Factored %d numbers, %.3fs\n", TIMES, timer.Seconds());
+  printf("[%llx], Factored %d numbers, %.3fs\n",
+         result, TIMES, timer.Seconds());
 }
 
 int main(int argc, char **argv) {

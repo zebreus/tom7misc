@@ -62,41 +62,41 @@ void CPrintf(const char* format, ...) {
 
 std::string ANSI::ForegroundRGB(uint8_t r, uint8_t g, uint8_t b) {
   char escape[24] = {};
-  sprintf(escape, "\x1B[38;2;%d;%d;%dm", r, g, b);
+  snprintf(escape, 24, "\x1B[38;2;%d;%d;%dm", r, g, b);
   return escape;
 }
 
 std::string ANSI::BackgroundRGB(uint8_t r, uint8_t g, uint8_t b) {
   // Max size is 12.
   char escape[24] = {};
-  sprintf(escape, "\x1B[48;2;%d;%d;%dm", r, g, b);
+  snprintf(escape, 24, "\x1B[48;2;%d;%d;%dm", r, g, b);
   return escape;
 }
 
 std::string ANSI::Time(double seconds) {
   char result[64] = {};
   if (seconds < 0.001) {
-    sprintf(result, AYELLOW("%.2f") "us", seconds * 1000000.0);
+    snprintf(result, 64, AYELLOW("%.2f") "us", seconds * 1000000.0);
   } else if (seconds < 1.0) {
-    sprintf(result, AYELLOW("%.2f") "ms", seconds * 1000.0);
+    snprintf(result, 64, AYELLOW("%.2f") "ms", seconds * 1000.0);
   } else if (seconds < 60.0) {
-    sprintf(result, AYELLOW("%.3f") "s", seconds);
+    snprintf(result, 64, AYELLOW("%.3f") "s", seconds);
   } else if (seconds < 60.0 * 60.0) {
     int sec = std::round(seconds);
     int omin = sec / 60;
     int osec = sec % 60;
-    sprintf(result, AYELLOW("%d") "m" AYELLOW("%02d") "s",
-            omin, osec);
+    snprintf(result, 64, AYELLOW("%d") "m" AYELLOW("%02d") "s",
+             omin, osec);
   } else {
     int sec = std::round(seconds);
     int ohour = sec / 3600;
     sec -= ohour * 3600;
     int omin = sec / 60;
     int osec = sec % 60;
-    sprintf(result, AYELLOW("%d") "h"
-            AYELLOW("%d") "m"
-            AYELLOW("%02d") "s",
-            ohour, omin, osec);
+    snprintf(result, 64, AYELLOW("%d") "h"
+             AYELLOW("%d") "m"
+             AYELLOW("%02d") "s",
+             ohour, omin, osec);
   }
   return (string)result;
 }

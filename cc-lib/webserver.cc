@@ -211,7 +211,7 @@ static constexpr bool OptionPrintWholeRequest = false;
 // Trying to avoid StringPrintf dependency in here, maybe unwisely...
 static string Itoa(int64 i) {
   char buf[32];
-  sprintf(buf, "%lld", i);
+  snprintf(buf, 32, "%lld", i);
   return buf;
 }
 

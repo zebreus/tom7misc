@@ -93,7 +93,7 @@ struct Bounds {
     Scaler Zoom(double xfactor, double yfactor) const;
 
    private:
-    friend class Bounds;
+    friend struct Bounds;
     double xoff = 0.0, yoff = 0.0;
     double xs = 1.0, ys = 1.0;
     // In original coordinate system.

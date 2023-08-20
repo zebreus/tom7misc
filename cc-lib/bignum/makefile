@@ -1,22 +1,28 @@
 
 default : big_test.exe big-overloads_test.exe
 
-# on normal systems
-GMP_LFLAGS=-lgmp
-GMP_CFLAGS=-DBIG_USE_GMP
 
-# For locally compiled libgmp; pick the right directory:
-LIBGMP=/c/code/gmp-6.3.0
-GMP_LFLAGS=$(LIBGMP)/.libs/libgmp.a
-GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
+UNAME := $(shell uname -o)
+ifeq ($(UNAME),Cygwin)
+  # for 64 bits on windows (mingw).
+  # For locally compiled libgmp; pick the right directory:
+  LIBGMP=/c/code/gmp-6.3.0
+  GMP_LFLAGS=$(LIBGMP)/.libs/libgmp.a
+  GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
 
-# for 64 bits on windows
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-g++
-# CXX=g++
-# CC=gcc
-CXXFLAGS=$(GMP_CFLAGS) -march=native -Wall -I. -I.. --std=c++20 -g -O2  # -static
-LFLAGS=-flto $(GMP_LFLAGS) -static
+  CXX=x86_64-w64-mingw32-g++
+  CC=x86_64-w64-mingw32-g++
+  LFLAGS=-flto=auto $(GMP_LFLAGS) -static
+else
+  # Linux
+  CXX=g++
+  CC=gcc
+  GMP_LFLAGS=-lgmp
+  GMP_CFLAGS=-DBIG_USE_GMP
+  LFLAGS=-flto=auto $(GMP_LFLAGS)
+endif
+
+CXXFLAGS=$(GMP_CFLAGS) -march=native -Wall -I.. --std=c++20 -O3
 
 CCLIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../ansi.o
 

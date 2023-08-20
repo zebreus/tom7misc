@@ -1,5 +1,5 @@
 /*
- * $Id: bigq.c,v 1.60 2021/02/07 11:29:21 tom7 Exp $
+ * $Id: bigq.c,v 1.61 2023/08/20 09:20:29 tom7 Exp $
  */
 
 /*
@@ -17,7 +17,7 @@
  * o Redistributions  in  binary form  must reproduce the above copyright
  *   notice, this list of conditions and  the following disclaimer in the
  *   documentation and/or other materials provided with the distribution.
- * 
+ *
  * THIS SOFTWARE  IS PROVIDED BY  THE COPYRIGHT HOLDERS  AND CONTRIBUTORS
  * "AS  IS" AND  ANY EXPRESS  OR IMPLIED  WARRANTIES, INCLUDING,  BUT NOT
  * LIMITED TO, THE IMPLIED  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -31,7 +31,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "bigq.h"
+#include "bignum/bigq.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -117,7 +117,7 @@ BqCreateInternal(const BigZ n, const BigZ d, BqCreateMode mode) {
 
         BqSetNumerator(q, cn);
         BqSetDenominator(q, cd);
-        
+
         if (BzLength(cd) != (BigNumLength)1) {
                 BqNormalize(q);
         }
@@ -182,13 +182,13 @@ BqAdd(const BigQ a, const BigQ b) {
     BigZ d;
     BigZ tmp1;
     BigZ tmp2;
-                
+
     /*
      * Compute numerator
      */
 
     // So somewhere in here the size gets huge?
-                
+
     tmp1 = BzMultiply(an, bd);
     tmp2 = BzMultiply(ad, bn);
     n = BzAdd(tmp1, tmp2);

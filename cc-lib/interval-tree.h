@@ -136,7 +136,7 @@ struct IntervalTree {
   }
 
  private:
-  friend class IntervalTreeJSON<Idx, T, Bisect>;
+  friend struct IntervalTreeJSON<Idx, T, Bisect>;
 
   struct Node {
     // Node in binary tree.
@@ -167,7 +167,7 @@ struct IntervalTree {
         // certainly end after the point. Return all the ones that
         // begin before the point (or on the point).
 
-        for (auto it = tree->by_begin.begin(); 
+        for (auto it = tree->by_begin.begin();
              it != tree->by_begin.end() && it->first <= point;
              ++it) {
           ret.push_back(it->second);

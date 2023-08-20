@@ -22,7 +22,7 @@ string TextSVG::HeaderEx(double x, double y,
   string yu = Rtos(y) + units;
   string wu = Rtos(width) + units;
   string hu = Rtos(height) + units;
-  
+
   out += "<!DOCTYPE svg PUBLIC \"-//W3C//DTD SVG 1.1//EN\" "
          "\"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd\" [\n"
          "<!ENTITY ns_flows \"http://ns.adobe.com/Flows/1.0/\">\n"
@@ -57,10 +57,10 @@ string TextSVG::Rtos(double d) {
   // -0 as == 0, but printf still prints the minus sign.
   const bool negative = std::signbit(d);
   if (negative) d = abs(d);
-  
+
   char out[16];
   // Make sure there is always room for a minus sign.
-  sprintf(out + 1, "%.5f", d);
+  sprintf(out + 1, 16, "%.5f", d);
 
   // Strip leading zeroes. We always have a nonzero character
   // (even the terminating \0) so this loop terminates.
@@ -80,7 +80,7 @@ string TextSVG::Rtos(double d) {
       e = f;
       continue;
     }
-    
+
     if (truncating) {
       if (e != nullptr) {
         // Have a run of zeroes. Stop?
@@ -102,14 +102,14 @@ string TextSVG::Rtos(double d) {
   // to zero still get rounded.
   if (*o == '\0')
     return "0";
-  
+
   if (negative) {
     // Okay even if we didn't strip zeroes, since we wrote to
     // out + 1 above.
     o--;
     *o = '-';
   }
-  
+
   return string{o};
 }
 
@@ -166,7 +166,7 @@ struct ColinearRemover {
   explicit ColinearRemover(double max_error) :
     max_error(max_error),
     sq_max_error(max_error * max_error) {}
-  
+
   enum State {
     EMPTY,
     ONE_POINT,
@@ -179,7 +179,7 @@ struct ColinearRemover {
     double dy = pt2.second - pt1.second;
     return dx * dx + dy * dy;
   }
-  
+
   void Push(pair<double, double> pt,
             vector<pair<double, double>> *out) {
     switch (state) {
@@ -223,7 +223,7 @@ struct ColinearRemover {
     }
     }
   }
-  
+
   void Flush(vector<pair<double, double>> *out) {
     switch (state) {
     case EMPTY: return;
@@ -250,10 +250,10 @@ vector<pair<double, double>> TextSVG::RemoveColinear(
   // Not reserving space, because we may make very dramatic reductions.
 
   ColinearRemover remover{max_error};
-  
+
   for (const auto &p : points)
     remover.Push(p, &out);
 
   remover.Flush(&out);
-  return out;  
+  return out;
 }

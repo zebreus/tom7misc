@@ -7,9 +7,9 @@
 #ifdef BIG_USE_GMP
 # include <gmp.h>
 #else
-# include "bigz.h"
-# include "bign.h"
-# include "bigq.h"
+# include "bignum/bigz.h"
+# include "bignum/bign.h"
+# include "bignum/bigq.h"
 #endif
 
 #include <algorithm>
@@ -119,7 +119,7 @@ struct BigInt {
   inline void Swap(BigInt *other);
 
 private:
-  friend class BigRat;
+  friend struct BigRat;
   #ifdef BIG_USE_GMP
   using Rep = mpz_t;
   void SetU64(uint64_t u) {

@@ -14,7 +14,7 @@
  * o Redistributions  in  binary form  must reproduce the above copyright
  *   notice, this list of conditions and  the following disclaimer in the
  *   documentation and/or other materials provided with the distribution.
- * 
+ *
  * THIS SOFTWARE  IS PROVIDED BY  THE COPYRIGHT HOLDERS  AND CONTRIBUTORS
  * "AS  IS" AND  ANY EXPRESS  OR IMPLIED  WARRANTIES, INCLUDING,  BUT NOT
  * LIMITED TO, THE IMPLIED  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -28,10 +28,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __BIGZ_H
-#define __BIGZ_H
+#ifndef _CC_LIB_BIGNUM_BIGZ_H
+#define _CC_LIB_BIGNUM_BIGZ_H
 
-#include "bign.h"
+#include "bignum/bign.h"
 
 #include <stdlib.h>
 #include <cstdint>
@@ -49,35 +49,35 @@
  * BigZ sign
  */
 
-typedef enum {
-        BZ_MINUS = -1,
-        BZ_ZERO  = 0,
-        BZ_PLUS  = 1
-} BzSign;
+enum BzSign {
+  BZ_MINUS = -1,
+  BZ_ZERO  = 0,
+  BZ_PLUS  = 1
+};
 
 /*
  * BigZ compare result
  */
 
-typedef enum {
-        BZ_LT    = BN_LT,
-        BZ_EQ    = BN_EQ,
-        BZ_GT    = BN_GT
-} BzCmp;
+enum BzCmp {
+  BZ_LT    = BN_LT,
+  BZ_EQ    = BN_EQ,
+  BZ_GT    = BN_GT
+};
 
-typedef enum {
-        BZ_UNTIL_END     = 0,
-        BZ_UNTIL_INVALID = 1
-} BzStrFlag;
+enum BzStrFlag {
+  BZ_UNTIL_END     = 0,
+  BZ_UNTIL_INVALID = 1
+};
 
 /*
  * BigZ number
  */
 
-typedef struct {
-        BigNumLength    Size = 0;
-        BzSign          Sign = BZ_ZERO;
-} BigZHeader;
+struct BigZHeader {
+  BigNumLength    Size = 0;
+  BzSign          Sign = BZ_ZERO;
+};
 
  /*
   * define a dummy positive value to declare a Digits vector.

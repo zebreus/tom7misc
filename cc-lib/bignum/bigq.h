@@ -13,7 +13,7 @@
  * o Redistributions  in  binary form  must reproduce the above copyright
  *   notice, this list of conditions and  the following disclaimer in the
  *   documentation and/or other materials provided with the distribution.
- * 
+ *
  * THIS SOFTWARE  IS PROVIDED BY  THE COPYRIGHT HOLDERS  AND CONTRIBUTORS
  * "AS  IS" AND  ANY EXPRESS  OR IMPLIED  WARRANTIES, INCLUDING,  BUT NOT
  * LIMITED TO, THE IMPLIED  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -27,10 +27,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __BIGQ_H
-#define __BIGQ_H
+#ifndef _CC_LIB_BIGNUM_BIGQ_H
+#define _CC_LIB_BIGNUM_BIGQ_H
 
-#include "bigz.h"
+#include "bignum/bigz.h"
 
 #define BQ_PURE_FUNCTION                BN_PURE_FUNCTION
 #define BQ_CONST_FUNCTION               BN_CONST_FUNCTION

@@ -31,7 +31,7 @@
 /*
  *      bign.c : the kernel written in pure C (it uses no C library)
  *
- *      $Id: bign.c,v 1.73 2022/08/03 22:51:42 tom7 Exp $
+ *      $Id: bign.c,v 1.74 2023/08/20 09:20:12 tom7 Exp $
  */
 
 /*
@@ -59,7 +59,7 @@
  *
  */
 
-#include "bign.h"
+#include "bignum/bign.h"
 
 #include <bit>
 #include <compare>

@@ -1,7 +1,7 @@
 
-#include "big.h"
+#include "bignum/big.h"
 #ifndef BIG_USE_GMP
-#include "bign.h"
+#include "bignum/bign.h"
 #endif
 
 #include <bit>
@@ -10,7 +10,7 @@
 #include <vector>
 #include <utility>
 
-#include "../base/logging.h"
+#include "base/logging.h"
 #include "base/stringprintf.h"
 #include "timer.h"
 

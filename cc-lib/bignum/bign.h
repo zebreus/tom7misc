@@ -1,5 +1,5 @@
 /*
- * $Id: bign.h,v 1.39 2019/06/28 00:00:38 tom7 Exp $
+ * $Id: bign.h,v 1.40 2023/08/20 09:21:09 tom7 Exp $
  */
 
 /*
@@ -18,7 +18,7 @@
  * o Redistributions  in  binary form  must reproduce the above copyright
  *   notice, this list of conditions and  the following disclaimer in the
  *   documentation and/or other materials provided with the distribution.
- * 
+ *
  * THIS SOFTWARE  IS PROVIDED BY  THE COPYRIGHT HOLDERS  AND CONTRIBUTORS
  * "AS  IS" AND  ANY EXPRESS  OR IMPLIED  WARRANTIES, INCLUDING,  BUT NOT
  * LIMITED TO, THE IMPLIED  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -36,8 +36,8 @@
  *      bign.h - Types and structures for clients of BigNum.
  */
 
-#ifndef __BIGN_H
-#define __BIGN_H
+#ifndef _CC_LIB_BIGNUM_BIGN_H
+#define _CC_LIB_BIGNUM_BIGN_H
 
 #include <cstdint>
 

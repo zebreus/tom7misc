@@ -14,7 +14,7 @@ static void TestToSortedVec() {
   s.insert(555);
   s.insert(666);
 
-  const auto v = ToSortedVec(s);
+  const auto v = SetToSortedVec(s);
   CHECK(v.size() == 4);
   CHECK(v[0] == 333);
   CHECK(v[1] == 444);

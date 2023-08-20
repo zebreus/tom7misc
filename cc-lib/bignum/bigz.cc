@@ -55,7 +55,7 @@
 #include <string.h>
 #include <ctype.h>
 
-#include "bigz.h"
+#include "bignum/bigz.h"
 
 #define MaxInt(a, b)            (((a) < (b)) ? (b) : (a))
 #define AbsInt(x)               (((x) >= 0) ? (x) : -(x))
@@ -2254,7 +2254,7 @@ BzSqrt(const BigZ z) {
 
         {
                 BigZ one = BzFromInteger((BzInt)1);
-                
+
                 x = BzAsh(one, (int)n);
                 BzFree(one);
         }
