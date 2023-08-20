@@ -138,8 +138,8 @@ void MakeImages(int64_t iters,
     bounds.BoundX(0);
     bounds.BoundX(history.size() - 1);
 
-    const int WIDTH = 1024 * 3;
-    const int HEIGHT = 1024;
+    constexpr int WIDTH = 1024 * 3;
+    constexpr int HEIGHT = 1024;
     ImageRGBA img(WIDTH, HEIGHT);
     img.Clear32(0x000000FF);
     Bounds::Scaler scaler = bounds.Stretch(WIDTH, HEIGHT).FlipY();
@@ -148,7 +148,7 @@ void MakeImages(int64_t iters,
     std::optional<BigInt> best_k = nullopt;
 
     for (int x = 0; x < history.size(); x++) {
-      auto Plot = [x, &img, &scaler, WIDTH, HEIGHT](
+      auto Plot = [x, &img, &scaler](
           const BigInt by, uint32_t rgb, Shape shape) {
 
           uint32_t color = (rgb << 8) | 0x80;

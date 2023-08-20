@@ -1,15 +1,9 @@
 
-default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe polynomial_test.exe algebra.exe orbit-grid.exe comet.cc
+default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe polynomial_test.exe algebra.exe orbit-grid.exe recurrence.exe
 
 CC_LIB=../cc-lib
 
-LIBGMP=../../gmp-6.3.0
-GMP_LFLAGS=$(LIBGMP)/.libs/libgmp.a
-GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
-
-# Normal people set this to g++ and gcc (or just comment it out)
-CXX=x86_64-w64-mingw32-g++
-CC=x86_64-w64-mingw32-gcc
+FLTO=-flto=auto
 
 # Note, this builds against AMD's distribution of OpenCL, since that's
 # the card I had when I started. It also works fine with an NVIDIA GPU,
@@ -20,21 +14,38 @@ AMD_ARCH=x86_64
 # AMDSDK=c:/Program Files (x86)/AMD APP SDK/3.0
 AMDSDK=c:/code/AMD_SDK/
 
-# XXX ffast math may be a mistake since we rely on sqrt<double>.
-# Avoid -ffast-math, which assumes std::isnan is false, for example!
-CXXFLAGS=$(GMP_CFLAGS) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
+UNAME := $(shell uname -o)
+ifeq ($(UNAME),Cygwin)
+  # for 64 bits on windows (mingw).
+  CXX=x86_64-w64-mingw32-g++
+  CC=x86_64-w64-mingw32-g++
+  # XXX necessary?
+  PLATFORM_CXXFLAGS=-D__MINGW32__
+  PLATFORM_LFLAGS=-lpsapi -Wl,--subsystem,console -static
+  CL_CFLAGS="-I$(AMDSDK)/include"
+  CL_LFLAGS='-L${AMDSDK}/lib/${AMD_ARCH}' -lOpenCL
+
+  LIBGMP=../../gmp-6.3.0
+  GMP_LFLAGS=$(LIBGMP)/.libs/libgmp.a
+  GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
+else
+  # Linux
+  CXX=g++
+  CC=gcc
+  GMP_LFLAGS=-lgmp
+  GMP_CFLAGS=-DBIG_USE_GMP
+endif
+
 OPT=-O3
 
-CLINCLUDES="-I$(AMDSDK)/include"
-CLLIBS='-L${AMDSDK}/lib/${AMD_ARCH}'
+# Avoid -ffast-math, which assumes std::isnan is false, for example!
+# We also rely on sqrt(double) producing exact values.
+CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
 
-#  -Wno-write-strings
-FLTO=-flto=auto
-CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF $(SDLINCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
+# CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -DHAVE_ALLOCA -DNOWINSTUFF $(FLTO) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 
 # without static, can't find lz or lstdcxx maybe?
-LFLAGS= -L. $(LINKSDL) -m64 -Wl,--subsystem,console $(CLLIBS) -lz -lOpenCL $(OPT) $(FLTO) $(PROFILE) -lpsapi $(GMP_LFLAGS) -static
-SOCK_LFLAGS= -lws2_32
+LFLAGS= -L. -m64 -lz $(CL_LFLAGS) -lz $(OPT) $(FLTO) $(PLATFORM_LFLAGS) $(GMP_LFLAGS)
 
 RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o $(CC_LIB)/re2/filtered_re2.o $(CC_LIB)/re2/mimics_pcre.o $(CC_LIB)/re2/nfa.o $(CC_LIB)/re2/onepass.o $(CC_LIB)/re2/parse.o $(CC_LIB)/re2/perl_groups.o $(CC_LIB)/re2/prefilter.o $(CC_LIB)/re2/prefilter_tree.o $(CC_LIB)/re2/prog.o $(CC_LIB)/re2/re2.o $(CC_LIB)/re2/regexp.o $(CC_LIB)/re2/set.o $(CC_LIB)/re2/simplify.o $(CC_LIB)/re2/stringpiece.o $(CC_LIB)/re2/tostring.o $(CC_LIB)/re2/unicode_casefold.o $(CC_LIB)/re2/unicode_groups.o $(CC_LIB)/re2/util/rune.o $(CC_LIB)/re2/util/strutil.o
 
@@ -44,13 +55,15 @@ UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o 
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=clutil.o sos-util.o database.o predict.o polynomial.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
+OBJECTS=sos-util.o database.o predict.o polynomial.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
 
-sos.exe : sos.o $(OBJECTS)
+CL_OBJECTS=$(OBJECTS) clutil.o
+
+sos.exe : sos.o $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-msos.exe : msos.o $(OBJECTS)
+msos.exe : msos.o $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
@@ -58,7 +71,7 @@ sos-util_test.exe : sos-util_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-sos-gpu_test.exe : sos-gpu_test.o $(OBJECTS)
+sos-gpu_test.exe : sos-gpu_test.o $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
@@ -103,6 +116,10 @@ polynomial_test.exe : polynomial_test.o $(OBJECTS)
 	@echo -n "!"
 
 algebra.exe : algebra.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+recurrence.exe : recurrence.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

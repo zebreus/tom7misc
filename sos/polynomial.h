@@ -27,11 +27,11 @@ struct Term {
   std::map<std::string, int> product;
 };
 
-static inline operator ==(const Term &a, const Term &b) {
+static inline bool operator ==(const Term &a, const Term &b) {
   return a.product == b.product;
 }
 
-static inline operator <(const Term &a, const Term &b) {
+static inline bool operator <(const Term &a, const Term &b) {
   return a.product < b.product;
 }
 

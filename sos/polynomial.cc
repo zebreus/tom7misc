@@ -57,7 +57,7 @@ static std::pair<int, int> ClosePowers(std::set<int> *es,
   }
 
   CHECK(ecs != 0) << "Impossible since set must contain 1.";
-  int ecs_other = e - ecs_other;
+  int ecs_other = e - ecs;
   CHECK(es->find(ecs_other) == es->end()) << "Otherwise we would "
     "have found it in the loop above.";
   es->insert(ecs_other);
