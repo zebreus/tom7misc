@@ -18,6 +18,7 @@ using namespace std;
 static string Id(string s) { return StringPrintf("%s1", s.c_str()); }
 static string Up(string s) { return StringPrintf("%s2", s.c_str()); }
 
+[[maybe_unused]]
 static void Minimize() {
 
   // (((a1 * m1 + b1) / k1  +  a1 * x1)^2 -
@@ -111,11 +112,120 @@ static void Minimize() {
          code2.c_str());
 }
 
+// With p,q,r,s unconstrained.
+[[maybe_unused]]
+static void Recur() {
+  // BigInt b2 = pb + qc;
+  // BigInt c2 = sc + rb;
+
+  Polynomial p = "p"_p;
+  Polynomial q = "q"_p;
+  Polynomial r = "r"_p;
+  Polynomial s = "s"_p;
+
+  Polynomial b1 = p * "b0"_p + q * "c0"_p;
+  Polynomial c1 = s * "c0"_p + r * "b0"_p;
+
+  // BigInt b3 = pb - qc;
+  // BigInt c3 = sc - rb;
+
+  Polynomial b2 = p * b1 - q * c1;
+  Polynomial c2 = s * c1 - r * b1;
+
+  printf("Unconstrained pqrs.\n");
+  printf("b2: %s\n"
+         "c2: %s\n",
+         b2.ToString().c_str(),
+         c2.ToString().c_str());
+}
+
+
+// With p == s.
+static void Recur2() {
+  // BigInt b2 = pb + qc;
+  // BigInt c2 = sc + rb;
+
+  Polynomial p = "s"_p;
+  Polynomial q = "q"_p;
+  Polynomial r = "r"_p;
+  Polynomial s = "s"_p;
+
+  {
+    Polynomial b1 = p * "b0"_p + q * "c0"_p;
+    Polynomial c1 = s * "c0"_p + r * "b0"_p;
+
+    // BigInt b3 = pb - qc;
+    // BigInt c3 = sc - rb;
+
+    Polynomial b2 = p * b1 - q * c1;
+    Polynomial c2 = s * c1 - r * b1;
+
+    printf("With p=s.\n");
+    printf("b2: %s\n"
+           "c2: %s\n",
+           b2.ToString().c_str(),
+           c2.ToString().c_str());
+  }
+
+  {
+    Polynomial b1 = p * "b0"_p - q * "c0"_p;
+    Polynomial c1 = s * "c0"_p - r * "b0"_p;
+
+    Polynomial b2 = p * b1 + q * c1;
+    Polynomial c2 = s * c1 + r * b1;
+
+    printf("And backwards:\n");
+    printf("b2: %s\n"
+           "c2: %s\n",
+           b2.ToString().c_str(),
+           c2.ToString().c_str());
+
+  }
+}
+
+static void Iter() {
+  Polynomial p = "s"_p;
+  Polynomial q = "q"_p;
+  Polynomial r = "r"_p;
+  Polynomial s = "s"_p;
+
+  Polynomial b = "b"_p;
+  Polynomial c = "c"_p;
+
+  static constexpr int MAX_ITERS = 32;
+  for (int i = 0; i < MAX_ITERS; i++) {
+    Polynomial b1 = p * b + q * c;
+    Polynomial c1 = s * c + r * b;
+
+    b1 = Polynomial::Subst(b1, "s"_t * "s"_t,
+                           q * r + Polynomial{1});
+    c1 = Polynomial::Subst(c1, "s"_t * "s"_t,
+                           q * r + Polynomial{1});
+
+    printf("f^%d(b, c) =\n"
+           "b': %s\n"
+           "c': %s\n",
+           i + 1,
+           b1.ToString().c_str(),
+           c1.ToString().c_str());
+
+    b = std::move(b1);
+    c = std::move(c1);
+  }
+
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  Minimize();
+  // (void)Minimize();
+
+  Recur();
+  Recur2();
+
+  printf("----\n");
+  Iter();
+
 
   return 0;
 }

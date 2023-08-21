@@ -59,10 +59,45 @@ static void Canceling() {
   }
 }
 
+static void DivideTerm() {
+  Term x = "x"_t;
+  Term y = "y"_t;
+  Term z = "z"_t;
+
+  {
+    const auto &[rem, pow] = Term::Divide(x, x);
+    CHECK(rem == Term());
+    CHECK(pow == 1);
+  }
+
+  {
+    const auto &[rem, pow] = Term::Divide(x * y, x);
+    CHECK(rem == y);
+    CHECK(pow == 1);
+  }
+}
+
+
+static void Subst() {
+  Polynomial x("x");
+  Polynomial y("y");
+  Polynomial z("z");
+
+  Polynomial p1 = Polynomial::Subst(x, "x"_t, y);
+  CHECK(p1 == y);
+
+  Polynomial p2 = 2 * x * x * x + 8 * x * x * y - 7 * y * y;
+  Polynomial p2s = Polynomial::Subst(p2, "x"_t * "x"_t, z * y);
+
+  CHECK(p2s == 2 * x * z * y + 8 * y * y * z - 7 * y * y) << p2s.ToString();
+}
+
 int main(int argc, char **argv) {
 
   Simple();
   Canceling();
+  DivideTerm();
+  Subst();
 
   printf("OK\n");
   return 0;

@@ -295,6 +295,21 @@ int main(int argc, char **argv) {
   BigInt r = BigFromFile("r.txt");
   BigInt s = BigFromFile("s.txt");
 
+  // Ah, p = s. So this recurrence is much
+  // simpler than it seems. That might actually
+  // be good news?
+  CHECK(p == s);
+
+  // We also have s^2 - qr = 1
+  // or s^2 = qr + 1
+  CHECK(s * s - q * r == 1);
+
+  printf("p^2 - qr = %s\n",
+         LongNum(p * p - q * r).c_str());
+  printf("pq - qs = %s\n",
+         LongNum(p * q - q * s).c_str());
+  return 0;
+
   // Recur(p, q, r, s, x2, y2, 8);
 
   // Greedy(p, q, r, s, x2, y2);
