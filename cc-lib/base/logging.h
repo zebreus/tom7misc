@@ -78,6 +78,7 @@ class DateLogger {
   DateLogger();
   const char* HumanDate();
  private:
+  [[maybe_unused]]
   char buffer_[9] = {'\0'};
 };
 }  // namespace google_base

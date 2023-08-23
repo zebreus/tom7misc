@@ -55,6 +55,8 @@ struct BigInt {
   inline static BigInt Plus(const BigInt &a, const BigInt &b);
   inline static BigInt Plus(const BigInt &a, int64_t b);
   inline static BigInt Minus(const BigInt &a, const BigInt &b);
+  inline static BigInt Minus(const BigInt &a, int64_t b);
+  inline static BigInt Minus(int64_t a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, int64_t b);
   inline static BigInt Div(const BigInt &a, const BigInt &b);
@@ -70,7 +72,7 @@ struct BigInt {
                                                   const BigInt &b);
   // Integer square root, rounding towards zero.
   // Input must be non-negative.
-  static BigInt Sqrt(const BigInt &a);
+  inline static BigInt Sqrt(const BigInt &a);
   inline static BigInt GCD(const BigInt &a, const BigInt &b);
   inline static BigInt LeftShift(const BigInt &a, uint64_t bits);
 
@@ -422,6 +424,32 @@ BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
   return ret;
 }
 
+BigInt BigInt::Minus(const BigInt &a, int64_t b) {
+  // PERF could also support negative b. but GMP only has
+  // _ui version.
+  if (b >= 0 && internal::FitsLongInt(b)) {
+    signed long int sb = b;
+    BigInt ret;
+    mpz_sub_ui(ret.rep, a.rep, sb);
+    return ret;
+  } else {
+    return Minus(a, BigInt(b));
+  }
+}
+
+BigInt BigInt::Minus(int64_t a, const BigInt &b) {
+  // PERF could also support negative b. but GMP only has
+  // _ui version.
+  if (a >= 0 && internal::FitsLongInt(a)) {
+    signed long int sa = a;
+    BigInt ret;
+    mpz_ui_sub(ret.rep, sa, b.rep);
+    return ret;
+  } else {
+    return Minus(BigInt(a), b);
+  }
+}
+
 BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
   BigInt ret;
   mpz_mul(ret.rep, a.rep, b.rep);
@@ -516,6 +544,12 @@ BigInt::ExtendedGCD(const BigInt &a, const BigInt &b) {
   BigInt g, s, t;
   mpz_gcdext(g.rep, s.rep, t.rep, a.rep, b.rep);
   return std::make_tuple(g, s, t);
+}
+
+BigInt BigInt::Sqrt(const BigInt &a) {
+  BigInt ret;
+  mpz_sqrt(ret.rep, a.rep);
+  return ret;
 }
 
 BigRat::BigRat(int64_t numer, int64_t denom) :
@@ -756,6 +790,13 @@ BigInt BigInt::Plus(const BigInt &a, int64_t b) {
 BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
   return BigInt{BzSubtract(a.rep, b.rep), nullptr};
 }
+BigInt BigInt::Minus(const BigInt &a, int64_t b) {
+  return BigInt{BzSubtract(a.rep, BigInt{b, nullptr}.rep), nullptr};
+}
+BigInt BigInt::Minus(int64_t a, const BigInt &b) {
+  return BigInt{BzSubtract(BigInt{a, nullptr}.rep, b.rep), nullptr};
+}
+
 BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
   return BigInt{BzMultiply(a.rep, b.rep), nullptr};
 }
@@ -801,6 +842,13 @@ BigInt BigInt::LeftShift(const BigInt &a, uint64_t bits) {
 BigInt BigInt::GCD(const BigInt &a, const BigInt &b) {
   return BigInt{BzGcd(a.rep, b.rep), nullptr};
 }
+
+BigInt SqrtInternal(const BigInt &a);
+BigInt BigInt::Sqrt(const BigInt &a) {
+  // PERF: Bench bignum's native sqrt.
+  return SqrtInternal(a);
+}
+
 
 BigRat::BigRat(int64_t numer, int64_t denom) {
   // PERF This could avoid creating intermediate BigZ with

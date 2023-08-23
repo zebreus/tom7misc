@@ -33,6 +33,10 @@ inline BigInt operator +(const BigInt &a, const BigInt &b) {
   return BigInt::Plus(a, b);
 }
 
+inline BigInt operator +(const BigInt &a, int64_t b) {
+  return BigInt::Plus(a, b);
+}
+
 inline BigInt operator /(const BigInt &a, const BigInt &b) {
   return BigInt::Div(a, b);
 }
@@ -46,6 +50,14 @@ inline BigInt operator %(const BigInt &a, const BigInt &b) {
 }
 
 inline BigInt operator -(const BigInt &a, const BigInt &b) {
+  return BigInt::Minus(a, b);
+}
+
+inline BigInt operator -(const BigInt &a, int64_t b) {
+  return BigInt::Minus(a, b);
+}
+
+inline BigInt operator -(int64_t a, const BigInt &b) {
   return BigInt::Minus(a, b);
 }
 

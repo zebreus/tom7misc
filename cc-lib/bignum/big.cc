@@ -211,7 +211,7 @@ BigInt::PrimeFactorization(const BigInt &x, int64_t mf) {
 // Oops, there is BzSqrt! Benchmark to compare (and make sure
 // it has the same rounding behavior.) Unless this is much
 // faster, we should probably just use the library routine.
-BigInt BigInt::Sqrt(const BigInt &xx) {
+BigInt SqrtInternal(const BigInt &xx) {
   BigInt zero(0);
   BigInt one(1);
   BigInt two(2);
@@ -245,7 +245,7 @@ BigInt BigInt::Sqrt(const BigInt &xx) {
     BigInt top = std::move(stack.back());
     stack.pop_back();
 
-    if (Less(top, Times(r3, r3)))
+    if (BigInt::Less(top, BigInt::Times(r3, r3)))
       ret = std::move(r2);
     else
       ret = std::move(r3);
