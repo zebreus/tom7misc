@@ -145,9 +145,11 @@ struct Polynomial {
   }
 
   explicit Polynomial(const std::string &x, int exponent = 1) {
-    Term one;
-    one.product = {{x, exponent}};
-    sum = {{one, 1}};
+    Term t;
+    if (exponent != 0) {
+      t.product = {{x, exponent}};
+    }
+    sum = {{t, 1}};
   }
 
   explicit Polynomial(const Term &t, int c) {
@@ -328,6 +330,10 @@ inline Polynomial operator +(const Polynomial &a, const Polynomial &b) {
   return Polynomial::Plus(a, b);
 }
 
+inline Polynomial operator +(const Polynomial &a, int b) {
+  return Polynomial::Plus(a, Polynomial(b));
+}
+
 inline Term operator *(const Term &a, const Term &b) {
   return Term::Times(a, b);
 }
@@ -346,6 +352,10 @@ inline Polynomial operator *(int s, const Polynomial &a) {
 
 inline Polynomial operator -(const Polynomial &a, const Polynomial &b) {
   return a + -b;
+}
+
+inline Polynomial operator -(const Polynomial &a, int b) {
+  return Polynomial::Plus(a, Polynomial(-b));
 }
 
 inline bool operator ==(const Polynomial &a, const Polynomial &b) {

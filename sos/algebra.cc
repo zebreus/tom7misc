@@ -18,6 +18,21 @@ using namespace std;
 static string Id(string s) { return StringPrintf("%s1", s.c_str()); }
 static string Up(string s) { return StringPrintf("%s2", s.c_str()); }
 
+// s^2 -> (qr + 1)
+static Polynomial SubstS2(const Polynomial &p) {
+  return Polynomial::Subst(
+      p,
+      "s"_t * "s"_t,
+      "q"_p * "r"_p + Polynomial{1});
+}
+
+// qr -> s^2 - 1
+static Polynomial SubstQR(const Polynomial &p) {
+  return Polynomial::Subst(p, "q"_t * "r"_t,
+                           "s"_p * "s"_p - Polynomial{1});
+}
+
+
 [[maybe_unused]]
 static void Minimize() {
 
@@ -183,7 +198,7 @@ static void Recur2() {
   }
 }
 
-static void Iter() {
+static void PrintIters() {
   Polynomial p = "s"_p;
   Polynomial q = "q"_p;
   Polynomial r = "r"_p;
@@ -197,10 +212,17 @@ static void Iter() {
     Polynomial b1 = p * b + q * c;
     Polynomial c1 = s * c + r * b;
 
+    /*
     b1 = Polynomial::Subst(b1, "s"_t * "s"_t,
                            q * r + Polynomial{1});
     c1 = Polynomial::Subst(c1, "s"_t * "s"_t,
                            q * r + Polynomial{1});
+    */
+
+    b1 = Polynomial::Subst(b1, "q"_t * "r"_t,
+                           s * s - Polynomial{1});
+    c1 = Polynomial::Subst(c1, "q"_t * "r"_t,
+                           s * s - Polynomial{1});
 
     printf("f^%d(b, c) =\n"
            "b': %s\n"
@@ -212,6 +234,161 @@ static void Iter() {
     b = std::move(b1);
     c = std::move(c1);
   }
+}
+
+template<int SUBST>
+static std::pair<Polynomial, Polynomial> GetIter(int n) {
+  Polynomial p = "s"_p;
+  Polynomial q = "q"_p;
+  Polynomial r = "r"_p;
+  Polynomial s = "s"_p;
+
+  Polynomial b = "b"_p;
+  Polynomial c = "c"_p;
+
+  for (int i = 0; i < n; i++) {
+    Polynomial b1 = p * b + q * c;
+    Polynomial c1 = s * c + r * b;
+
+
+    if constexpr (SUBST == 1) {
+      b1 = Polynomial::Subst(b1, "s"_t * "s"_t,
+                             q * r + Polynomial{1});
+      c1 = Polynomial::Subst(c1, "s"_t * "s"_t,
+                             q * r + Polynomial{1});
+    } else if (SUBST == 2) {
+      b1 = Polynomial::Subst(b1, "q"_t * "r"_t,
+                             s * s - Polynomial{1});
+      c1 = Polynomial::Subst(c1, "q"_t * "r"_t,
+                             s * s - Polynomial{1});
+    }
+
+    b = std::move(b1);
+    c = std::move(c1);
+  }
+
+  return make_pair(b, c);
+}
+
+static std::pair<Polynomial, Polynomial> Closed(int n) {
+  Polynomial p = "s"_p;
+  Polynomial q = "q"_p;
+  Polynomial r = "r"_p;
+  Polynomial s = "s"_p;
+
+  Polynomial b = "b"_p;
+  Polynomial c = "c"_p;
+
+  // Wrong.
+  #if 0
+  auto BN = [&](int n) {
+      Polynomial t1 = s * c + q * b;
+      Polynomial sp("s", n - 1);
+      Polynomial t2 = s * b + r * c;
+      Polynomial qp("q", n - 1);
+      return t1 * sp + t2 * qp;
+    };
+
+  auto CN = [&](int n) {
+      Polynomial t1 = s * b + r * c;
+      Polynomial sp("s", n - 1);
+      Polynomial t2 = s * c + q * b;
+      Polynomial qp("q", n - 1);
+      return t1 * sp + t2 * qp;
+    };
+  #endif
+
+  auto BN = [&](int n) {
+      // b(n) = b_0 * s^n + q * c_0 * (s^(n - 1))
+      return b * Polynomial("s", n) + q * c * Polynomial("s", n - 1);
+      // b(n) = b_0 * s^n + q * c_0 * (s^(n - 1)) + (b_0q + s^2) * (s^(n - 2))
+  };
+
+  auto CN = [&](int n) {
+      // c(n) = c_0 * s^n + r * b_0 * (s^(n - 1))
+      return c * Polynomial("s", n) + r * b * Polynomial("s", n - 1);
+    };
+
+  return make_pair(BN(n), CN(n));
+}
+
+static Polynomial ManualC(int n) {
+  // note s^2 = (qr + 1)
+  // c_n+2 = 2sc_n+1 - s^2c_n + qrc_n
+  // c_n = 2sc_n-1 - s^2c_n-2 + qrc_n-2
+  // c_n = 2sc_n-1 + (-s^2 + qr)c_n-2
+  // c_n = 2sc_n-1 - (-(qr+1) + qr)c_n-2     (because s^2 = qr+1)
+  // c_n = 2sc_n-1 + c_n-2
+  Polynomial s = "s"_p;
+  if (n == 0) return "c"_p;
+  if (n == 1) return "s"_p * "c"_p + "r"_p * "b"_p;
+  // PERF iterate or memoize!
+  Polynomial nm1 = ManualC(n - 1);
+  Polynomial nm2 = ManualC(n - 2);
+  return 2 * s * nm1 - (s * s * nm2) + ("q"_p * "r"_p * nm2);
+  // wrong?
+  // return 2 * "s"_p * nm1 + nm2;
+}
+
+static std::pair<Polynomial, Polynomial> Manual(int n) {
+  return std::make_pair("unimplemented"_p,
+                        ManualC(n));
+}
+
+static void Compare() {
+  const int n = 3;
+
+  const auto [bi, ci] = GetIter<1>(n);
+  const auto [bc, cc] = Manual(n);
+
+  Polynomial bs = SubstS2(bc);
+  Polynomial cs = SubstS2(cc);
+
+  Polynomial bq = SubstQR(bc);
+  Polynomial cq = SubstQR(cc);
+
+  // reference values
+  string sbi = bi.ToString();
+  string sci = ci.ToString();
+
+  auto GreenB = [&sbi](string s) {
+      if (s == sbi) return StringPrintf(AGREEN("%s"), s.c_str());
+      else return s;
+    };
+
+  auto GreenC = [&sci](string s) {
+      if (s == sci) return StringPrintf(AGREEN("%s"), s.c_str());
+      else return s;
+    };
+
+  string sbc = GreenB(bc.ToString());
+  string scc = GreenC(cc.ToString());
+  string sbs = GreenB(bs.ToString());
+  string scs = GreenC(cs.ToString());
+  string sbq = GreenB(bq.ToString());
+  string scq = GreenC(cq.ToString());
+
+
+  printf("Iter:\n"
+         "b(%d): " AGREEN("%s") "\n"
+         "c(%d): " AGREEN("%s") "\n"
+         "Closed:\n"
+         "b(%d): %s\n"
+         "c(%d): %s\n"
+         "Closed-subst (for s^2):\n"
+         "b(%d): %s\n"
+         "c(%d): %s\n"
+         "Closed-subst (for qr):\n"
+         "b(%d): %s\n"
+         "c(%d): %s\n" ,
+         n, sbi.c_str(),
+         n, sci.c_str(),
+         n, sbc.c_str(),
+         n, scc.c_str(),
+         n, sbs.c_str(),
+         n, scs.c_str(),
+         n, sbq.c_str(),
+         n, scq.c_str());
 
 }
 
@@ -224,8 +401,10 @@ int main(int argc, char **argv) {
   Recur2();
 
   printf("----\n");
-  Iter();
+  // Iter();
 
+  // Closed();
+  Compare();
 
   return 0;
 }
