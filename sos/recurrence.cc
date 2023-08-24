@@ -302,6 +302,7 @@ int main(int argc, char **argv) {
 
   // We also have s^2 - qr = 1
   // or s^2 = qr + 1
+  // (Probably more generally this was s * p - q * r == 1)
   CHECK(s * s - q * r == 1);
 
   printf("p^2 - qr = %s\n",

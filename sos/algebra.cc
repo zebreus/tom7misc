@@ -9,8 +9,31 @@
 #include "ansi.h"
 #include "base/logging.h"
 #include "util.h"
+#include "bignum/big.h"
+#include "bhaskara-util.h"
 
 using namespace std;
+
+template<class F>
+static BigInt BigEval(const Term &t, const F &f) {
+  BigInt result(1);
+  for (const auto &[x, e] : t.product) {
+    CHECK(e >= 1) << "Should use a BigRat version for polynomials "
+      "with negative powers.";
+    BigInt v = f(x);
+    result = BigInt::Times(result, BigInt::Pow(v, e));
+  }
+  return result;
+}
+
+template<class F>
+static BigInt BigEval(const Polynomial &p, const F &f) {
+  BigInt result(0);
+  for (const auto &[t, c] : p.sum) {
+    result = BigInt::Plus(result, BigInt::Times(BigEval(t, f), c));
+  }
+  return result;
+}
 
 // static string Id(string s) { return s; }
 // static string Up(string s) { return Util::ucase(s); }
@@ -330,13 +353,25 @@ static Polynomial ManualC(int n) {
   // return 2 * "s"_p * nm1 + nm2;
 }
 
+static Polynomial ManualB(int n) {
+  // b_n+2 = 2sb_n+1 - s^2b_n + qrb_n
+  // b_n = 2sb_n-1 - s^2b_n-2 + qrb_n-2
+  Polynomial s = "s"_p;
+  if (n == 0) return "b"_p;
+  if (n == 1) return "s"_p * "b"_p + "q"_p * "c"_p;
+  // PERF as above!
+  Polynomial nm1 = ManualB(n - 1);
+  Polynomial nm2 = ManualB(n - 2);
+  return 2 * s * nm1 - (s * s * nm2) + ("q"_p * "r"_p * nm2);
+}
+
 static std::pair<Polynomial, Polynomial> Manual(int n) {
-  return std::make_pair("unimplemented"_p,
+  return std::make_pair(ManualB(n),
                         ManualC(n));
 }
 
 static void Compare() {
-  const int n = 3;
+  const int n = 5;
 
   const auto [bi, ci] = GetIter<1>(n);
   const auto [bc, cc] = Manual(n);
@@ -392,6 +427,42 @@ static void Compare() {
 
 }
 
+void Eval() {
+  //
+  auto F = [](const std::string &x) {
+      if (x == "c") return BigInt{40};
+      if (x == "r") return BigInt{22};
+      if (x == "q") return BigInt{24};
+      if (x == "s") return BigInt{23};
+      if (x == "b") return BigInt{28};
+      if (x == "p") return BigInt{23};
+      CHECK(false) << "unbound " << x;
+    };
+
+  CHECK(BigInt::Eq(F("p"), F("s")));
+  CHECK(BigInt::Eq(BigInt::Times(F("s"), F("s")),
+                   BigInt::Plus(BigInt{1},
+                                BigInt::Times(F("q"), F("r")))));
+
+  for (int n = 0; n < 10; n++) {
+    const auto [bi, ci] = GetIter<0>(n);
+    const auto [bc, cc] = Manual(n);
+
+    BigInt x0 = BigEval(bi, F);
+    BigInt y0 = BigEval(ci, F);
+
+    BigInt x1 = BigEval(bc, F);
+    BigInt y1 = BigEval(cc, F);
+
+    printf("--- %d ---\n", n);
+    printf("%s vs %s\n", LongNum(x0).c_str(), LongNum(x1).c_str());
+    printf("%s vs %s\n", LongNum(y0).c_str(), LongNum(y1).c_str());
+
+    CHECK(BigInt::Eq(x0, x1));
+    CHECK(BigInt::Eq(y0, y1));
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -405,6 +476,8 @@ int main(int argc, char **argv) {
 
   // Closed();
   Compare();
+
+  Eval();
 
   return 0;
 }

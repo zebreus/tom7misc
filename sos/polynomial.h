@@ -4,6 +4,8 @@
 
 #include <string>
 #include <map>
+#include <utility>
+#include <optional>
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
