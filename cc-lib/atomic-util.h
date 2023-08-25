@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <atomic>
+#include <cstddef>
 
 // For performance reasons, eight counters are defined in
 // batch. Declare some counters (typically at file scope in
@@ -37,19 +38,20 @@ namespace internal {
 class EightCounters {
 public:
   EightCounters() {
-    for (size_t off = 0; off < 8; off++) {
+    for (uint8_t off = 0; off < 8; off++) {
       Reset(off);
     }
   }
 
-  void Increment(size_t off) {
+  void Increment(uint8_t off) {
     IncrementBy(off, 1);
   }
 
   // Increment the logical counter value.
-  void IncrementBy(size_t off, uint64_t by) {
+  void IncrementBy(uint8_t off, uint64_t by) {
     // Must be one of the 8 counters.
     if (off != (off & 7)) __builtin_unreachable();
+    if (idx >= NUM_BUCKETS) __builtin_unreachable();
     for (;;) {
       std::atomic<uint64_t> &counter = buckets[idx].counters[off];
 
@@ -72,7 +74,7 @@ public:
   }
 
   // Get the counter's value. Has to sum up all the buckets.
-  uint64_t Read(size_t off) const {
+  uint64_t Read(uint8_t off) const {
     // Must be one of the 8 counters.
     if (off != (off & 7)) __builtin_unreachable();
 
@@ -84,11 +86,11 @@ public:
   }
 
   // Reset the counter's value to zero.
-  void Reset(size_t off) {
+  void Reset(uint8_t off) {
     // Must be one of the 8 counters.
     if (off != (off & 7)) __builtin_unreachable();
 
-    for (size_t i = 0; i < NUM_BUCKETS; i++) {
+    for (uint8_t i = 0; i < NUM_BUCKETS; i++) {
       buckets[i].counters[off].store(0ULL);
     }
   }
@@ -99,7 +101,7 @@ public:
   // raise this, although it consumes nontrivial memory (since there
   // are 64 bytes per bucket). It's also okay to lower it; we
   // just get more contention when that happens.
-  static constexpr size_t NUM_BUCKETS = 32;
+  static constexpr uint8_t NUM_BUCKETS = 32;
 
   // Each bucket is a single cacheline, so that we don't get
   // false contention across threads. But we can use up the
@@ -110,7 +112,7 @@ public:
 
   // Each thread gets its own index; these start at zero but move
   // when contention is observed.
-  static thread_local size_t idx;
+  static thread_local uint8_t idx;
   Cacheline buckets[NUM_BUCKETS];
 };
 }  // namespace internal
@@ -139,13 +141,13 @@ class AtomicCounter {
   }
 
   // Use the macro.
-  AtomicCounter(internal::EightCounters *ec, size_t offset) :
+  AtomicCounter(internal::EightCounters *ec, uint8_t offset) :
     ec(ec), offset(offset) {}
 
  private:
   internal::EightCounters *ec = nullptr;
   // 0-7
-  size_t offset = 0;
+  uint8_t offset = 0;
 };
 
 #endif

@@ -87,6 +87,14 @@ static void TestWhitespace() {
   CHECK_EQ("", Util::NormalizeWhitespace(s));
 }
 
+static void TestNormalizeLines() {
+  std::vector<std::string> v = {"", "  ", " he  y ", "   yes"};
+  std::vector<std::string> vv = Util::NormalizeLines(v);
+  CHECK(vv.size() == 2);
+  CHECK(vv[0] == "he y");
+  CHECK(vv[1] == "yes");
+}
+
 static void TestPad() {
   CHECK_EQ("", Util::Pad(0, ""));
   CHECK_EQ("hello  ", Util::Pad(7, "hello"));
@@ -424,6 +432,7 @@ int main(int argc, char **argv) {
   TestUnicode();
   TestReplace();
   TestCommas();
+  TestNormalizeLines();
 
   printf("OK\n");
   return 0;

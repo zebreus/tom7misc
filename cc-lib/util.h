@@ -48,6 +48,11 @@ struct Util {
   static bool WriteLinesToFile(const string &f,
                                const std::vector<string> &lines);
 
+  // Frequently useful when reading a file as a vector of lines:
+  // NormalizeWhitespace. Remove blank lines.
+  static std::vector<string> NormalizeLines(
+      const std::vector<string> &lines);
+
   // Split the string to lines. Blank lines are preserved.
   // If the file doesn't end with a newline, and the last line is
   // not empty (i.e., the file is not empty), then that line is also

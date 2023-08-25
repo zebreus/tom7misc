@@ -440,6 +440,16 @@ vector<string> Util::ReadFileToLines(const string &f) {
   return SplitToLines(ReadFile(f));
 }
 
+vector<string> Util::NormalizeLines(const std::vector<string> &lines) {
+  std::vector<string> out;
+  out.reserve(lines.size());
+  for (const string &line : lines) {
+    string nl = NormalizeWhitespace(line);
+    if (!nl.empty()) out.push_back(std::move(nl));
+  }
+  return out;
+}
+
 bool Util::WriteLinesToFile(const string &fn,
                             const std::vector<string> &lines) {
   FILE *f = fopen(fn.c_str(), "wb");

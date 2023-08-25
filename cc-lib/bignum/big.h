@@ -24,6 +24,9 @@
 struct BigInt {
   BigInt() : BigInt(0LL) {}
   inline explicit BigInt(int64_t n);
+  inline explicit BigInt(uint64_t n);
+  inline explicit BigInt(uint32_t n);
+  inline explicit BigInt(int n);
   inline explicit BigInt(const std::string &digits);
 
   // Value semantics with linear-time copies (like std::vector).
@@ -63,6 +66,7 @@ struct BigInt {
   inline static BigInt Div(const BigInt &a, int64_t b);
   // Returns a/b, but requires that that a % b == 0 for correctness.
   inline static BigInt DivExact(const BigInt &a, const BigInt &b);
+  inline static BigInt DivExact(const BigInt &a, int64_t b);
   // Ignores sign of divisor. Result is always non-negative.
   // XXX need to test that bigz version matches this spec.
   inline static BigInt Mod(const BigInt &a, const BigInt &b);
@@ -73,6 +77,8 @@ struct BigInt {
   // Integer square root, rounding towards zero.
   // Input must be non-negative.
   inline static BigInt Sqrt(const BigInt &a);
+  // Returns a = floor(sqrt(aa)) and aa - a^2.
+  inline static std::pair<BigInt, BigInt> SqrtRem(const BigInt &aa);
   inline static BigInt GCD(const BigInt &a, const BigInt &b);
   inline static BigInt LeftShift(const BigInt &a, uint64_t bits);
 
@@ -228,6 +234,20 @@ BigInt::BigInt(int64_t n) {
   } else {
     SetU64((uint64_t)n);
   }
+}
+
+BigInt::BigInt(int n) : BigInt((int64_t)n) {
+  static_assert(sizeof (int) <= sizeof (int64_t));
+}
+
+BigInt::BigInt(uint64_t u) {
+  SetU64(u);
+}
+
+BigInt::BigInt(uint32_t u) {
+  // Need to be able to set 4 bytes at a time.
+  static_assert(sizeof (unsigned long int) >= 4);
+  mpz_set_ui(rep, u);
 }
 
 BigInt::BigInt(const BigInt &other) {
@@ -501,6 +521,24 @@ BigInt BigInt::DivExact(const BigInt &a, const BigInt &b) {
   return ret;
 }
 
+BigInt BigInt::DivExact(const BigInt &a, int64_t b) {
+  if (internal::FitsLongInt(b)) {
+    if (b >= 0) {
+      BigInt ret;
+      unsigned long int ub = b;
+      mpz_divexact_ui(ret.rep, a.rep, ub);
+      return ret;
+    } else {
+      unsigned long int ub = -b;
+      BigInt ret;
+      mpz_divexact_ui(ret.rep, a.rep, ub);
+      mpz_neg(ret.rep, ret.rep);
+      return ret;
+    }
+  } else {
+    return DivExact(a, b);
+  }
+}
 
 BigInt BigInt::Mod(const BigInt &a, const BigInt &b) {
   BigInt ret;
@@ -550,6 +588,12 @@ BigInt BigInt::Sqrt(const BigInt &a) {
   BigInt ret;
   mpz_sqrt(ret.rep, a.rep);
   return ret;
+}
+
+std::pair<BigInt, BigInt> BigInt::SqrtRem(const BigInt &aa) {
+  BigInt ret, rem;
+  mpz_sqrtrem(ret.rep, rem.rep, aa.rep);
+  return std::make_pair(ret, rem);
 }
 
 BigRat::BigRat(int64_t numer, int64_t denom) :
@@ -679,6 +723,12 @@ double BigRat::ToDouble() const {
 
 
 BigInt::BigInt(int64_t n) : rep(BzFromInteger(n)) { }
+BigInt::BigInt(uint64_t n) : rep(BzFromUnsignedInteger(n)) { }
+BigInt::BigInt(uint32_t n) : rep(BzFromUnsignedInteger(n)) { }
+
+BigInt::BigInt(int n) : BigInt((int64_t)n) {
+  static_assert(sizeof (int) <= sizeof (int64_t));
+}
 
 BigInt::BigInt(const BigInt &other) : rep(BzCopy(other.rep)) { }
 BigInt &BigInt::operator =(const BigInt &other) {
@@ -812,6 +862,11 @@ BigInt BigInt::DivExact(const BigInt &a, const BigInt &b) {
   // Not using the precondition here; same as division.
   return BigInt{BzDiv(a.rep, b.rep), nullptr};
 }
+BigInt BigInt::DivExact(const BigInt &a, int64_t b) {
+  // Not using the precondition here; same as division.
+  return BigInt{BzDiv(a.rep, BigInt{b, nullptr}.rep), nullptr};
+}
+
 BigInt BigInt::Times(const BigInt &a, int64_t b) {
   return BigInt{BzDiv(a.rep, BigInt{b, nullptr}.rep), nullptr};
 }
@@ -849,6 +904,11 @@ BigInt BigInt::Sqrt(const BigInt &a) {
   return SqrtInternal(a);
 }
 
+std::pair<BigInt, BigInt> BigInt::SqrtRem(const BigInt &aa) {
+  BigInt a = Sqrt(aa);
+  BigInt aa1 = a * a;
+  return make_pair(a, aa - aa1);
+}
 
 BigRat::BigRat(int64_t numer, int64_t denom) {
   // PERF This could avoid creating intermediate BigZ with

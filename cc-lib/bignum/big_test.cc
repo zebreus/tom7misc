@@ -265,7 +265,7 @@ static void TestLeadingZero() {
 
 static void TestToInt() {
 # define ROUNDTRIP(x) do {                                              \
-  BigInt bi((x));                                                       \
+  BigInt bi((int64_t)(x));                                              \
   std::optional<int64_t> io = bi.ToInt();                               \
   CHECK(io.has_value()) << StringPrintf("%llx", x) << "("               \
                         << bi.ToString(16) << ")";                      \
@@ -317,9 +317,19 @@ static void TestSqrt() {
     BigInt uu = BigInt::Times(ub, ub);
     CHECK(BigInt::Eq(BigInt::Sqrt(uu), ub)) << u;
 
+    {
+      const auto [v, vrem] = BigInt::SqrtRem(uu);
+      CHECK(BigInt::Eq(v, ub));
+      CHECK(BigInt::Eq(vrem, BigInt{0}));
+    }
+
     uint64_t us64 = Sqrt64Nuprl(u);
     BigInt usb = BigInt::Sqrt(ub);
     CHECK(BigInt::Eq(usb, BigInt(us64))) << u << " " << us64;
+    const auto [vsb, vrem] = BigInt::SqrtRem(ub);
+    CHECK(BigInt::Eq(vsb, BigInt(us64)));
+    BigInt back = BigInt::Plus(BigInt::Times(vsb, vsb), vrem);
+    CHECK(BigInt::Eq(back, ub));
   }
 }
 
