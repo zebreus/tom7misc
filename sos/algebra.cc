@@ -293,64 +293,23 @@ static std::pair<Polynomial, Polynomial> GetIter(int n) {
   return make_pair(b, c);
 }
 
-static std::pair<Polynomial, Polynomial> Closed(int n) {
-  Polynomial p = "s"_p;
-  Polynomial q = "q"_p;
-  Polynomial r = "r"_p;
-  Polynomial s = "s"_p;
-
-  Polynomial b = "b"_p;
-  Polynomial c = "c"_p;
-
-  // Wrong.
-  #if 0
-  auto BN = [&](int n) {
-      Polynomial t1 = s * c + q * b;
-      Polynomial sp("s", n - 1);
-      Polynomial t2 = s * b + r * c;
-      Polynomial qp("q", n - 1);
-      return t1 * sp + t2 * qp;
-    };
-
-  auto CN = [&](int n) {
-      Polynomial t1 = s * b + r * c;
-      Polynomial sp("s", n - 1);
-      Polynomial t2 = s * c + q * b;
-      Polynomial qp("q", n - 1);
-      return t1 * sp + t2 * qp;
-    };
-  #endif
-
-  auto BN = [&](int n) {
-      // b(n) = b_0 * s^n + q * c_0 * (s^(n - 1))
-      return b * Polynomial("s", n) + q * c * Polynomial("s", n - 1);
-      // b(n) = b_0 * s^n + q * c_0 * (s^(n - 1)) + (b_0q + s^2) * (s^(n - 2))
-  };
-
-  auto CN = [&](int n) {
-      // c(n) = c_0 * s^n + r * b_0 * (s^(n - 1))
-      return c * Polynomial("s", n) + r * b * Polynomial("s", n - 1);
-    };
-
-  return make_pair(BN(n), CN(n));
-}
-
 static Polynomial ManualC(int n) {
   // note s^2 = (qr + 1)
   // c_n+2 = 2sc_n+1 - s^2c_n + qrc_n
   // c_n = 2sc_n-1 - s^2c_n-2 + qrc_n-2
-  // c_n = 2sc_n-1 + (-s^2 + qr)c_n-2
-  // c_n = 2sc_n-1 - (-(qr+1) + qr)c_n-2     (because s^2 = qr+1)
-  // c_n = 2sc_n-1 + c_n-2
+  // c_n = 2sc_n-1 - (s^2c_n-2 - qrc_n-2)
+  // c_n = 2sc_n-1 - (s^2 - qr)c_n-2
+  // c_n = 2sc_n-1 - ((qr+1) - qr)c_n-2     (because s^2 = qr+1)
+  // c_n = 2sc_n-1 - (1)c_n-2     (because s^2 = qr+1)
+  // c_n = 2sc_n-1 - c_n-2
   Polynomial s = "s"_p;
   if (n == 0) return "c"_p;
   if (n == 1) return "s"_p * "c"_p + "r"_p * "b"_p;
   // PERF iterate or memoize!
   Polynomial nm1 = ManualC(n - 1);
   Polynomial nm2 = ManualC(n - 2);
-  return 2 * s * nm1 - (s * s * nm2) + ("q"_p * "r"_p * nm2);
-  // wrong?
-  // return 2 * "s"_p * nm1 + nm2;
+  // return 2 * s * nm1 - (s * s * nm2) + ("q"_p * "r"_p * nm2);
+  return 2 * s * nm1 - nm2;
 }
 
 static Polynomial ManualB(int n) {
@@ -362,7 +321,9 @@ static Polynomial ManualB(int n) {
   // PERF as above!
   Polynomial nm1 = ManualB(n - 1);
   Polynomial nm2 = ManualB(n - 2);
-  return 2 * s * nm1 - (s * s * nm2) + ("q"_p * "r"_p * nm2);
+  // return 2 * s * nm1 - (s * s * nm2) + ("q"_p * "r"_p * nm2);
+  // (as above)
+  return 2 * s * nm1 - nm2;
 }
 
 static std::pair<Polynomial, Polynomial> Manual(int n) {
@@ -463,21 +424,66 @@ void Eval() {
   }
 }
 
+static void Ellipse() {
+  BigInt a{3};
+  BigInt b{7};
+
+  BigInt aa = a * a;
+  BigInt ab = b * b;
+  BigInt bb = a * b;
+
+  BigInt x = -2 * ab;
+  BigInt y = 138600 * aa - bb;
+  BigInt z = 138600 * aa + bb;
+
+  // x = -2ab
+  // y = 138600 a^2 - b^2
+  // z = 138600 a^2 + b^2
+
+
+  printf("x: %s\n"
+         "y: %s\n"
+         "z: %s\n",
+         x.ToString().c_str(),
+         y.ToString().c_str(),
+         z.ToString().c_str());
+
+  BigInt xx = x * x;
+  BigInt yy = y * y;
+  BigInt zz = z * z;
+
+  printf("x^2: %s\n"
+         "138600 * x^2: %s\n"
+         "y^2: %s\n"
+         "z^2: %s\n"
+         "138600x^2 + y^2: %s\n",
+         xx.ToString().c_str(),
+         (138600 * xx).ToString().c_str(),
+         yy.ToString().c_str(),
+         zz.ToString().c_str(),
+         (138600 * xx + yy).ToString().c_str());
+
+  CHECK(138600 * xx + yy == zz) <<
+    ((138600 * xx + yy) - zz).ToString();
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  Ellipse();
+
   // (void)Minimize();
 
-  Recur();
-  Recur2();
+  // Recur();
+  // Recur2();
 
   printf("----\n");
   // Iter();
 
   // Closed();
-  Compare();
+  // Compare();
 
-  Eval();
+  // Eval();
 
   return 0;
 }

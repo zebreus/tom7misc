@@ -7,16 +7,35 @@
 #include <cstdint>
 
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "bignum/big-overloads.h"
 #include "ansi.h"
 #include "timer.h"
 #include "periodically.h"
 #include "util.h"
 #include "bhaskara-util.h"
+#include "bounds.h"
+#include "image.h"
 
 using namespace std;
 
-static constexpr bool CHECK_INVARIANTS = true;
+static constexpr bool CHECK_INVARIANTS = false;
+static constexpr bool DEDUP = false;
+static constexpr bool VERBOSE = false;
+
+static std::vector<std::pair<BigInt, BigInt>> ParseXY(
+    const string &f) {
+  std::vector<std::pair<BigInt, BigInt>> xys;
+  vector<string> lines = Util::NormalizeLines(Util::ReadFileToLines(f));
+  CHECK(lines.size() % 2 == 0);
+  for (int i = 0; i < lines.size(); i += 2) {
+    BigInt x(lines[i]);
+    BigInt y(lines[i + 1]);
+    CHECK(x != 0 && y != 0);
+    xys.emplace_back(std::move(x), std::move(y));
+  }
+  return xys;
+}
 
 static BigInt BigFromFile(const string &f) {
   string s = Util::NormalizeWhitespace(Util::ReadFile(f));
@@ -36,59 +55,6 @@ static BigInt SquareError(const BigInt &aa) {
   return std::min(BigInt::Abs(aa - aa1),
                   BigInt::Abs(aa - aa2));
 }
-
-#if 0
-// TODO: search more than one bit ahead
-static std::pair<BigInt, BigInt> Recur(
-    const BigInt &p,
-    const BigInt &q,
-    const BigInt &r,
-    const BigInt &s,
-    const BigInt &b,
-    const BigInt &c,
-    int depth) {
-  if (!depth) return;
-
-  if (CHECK_INVARIANTS) {
-    BigInt bb = b * b;
-    BigInt cc = c * c;
-
-    BigInt res = 360721_b * bb - 222121_b * cc;
-
-    CHECK(res == 138600_b);
-
-    // c^2 = 360721 a^2 + 1
-    // b^2 = 222121 a^2 + 1
-
-    CHECK((cc - 1_b) % 360721_b == 0_b);
-    CHECK((bb - 1_b) % 222121_b == 0_b);
-    // printf("divisible :)\n");
-
-    BigInt a1 = (cc - 1_b) / 360721_b;
-    BigInt a2 = (bb - 1_b) / 222121_b;
-
-    CHECK(a1 == a2);
-    const BigInt &aa = a1;
-
-    // const BigInt aa = a * a;
-    CHECK(360721_b * aa + 1_b == cc);
-    CHECK(222121_b * aa + 1_b == bb);
-  }
-
-  // x<sub>n+1</sub> = P * x<sub>n</sub> + Q * y<sub>n</sub>
-  // y<sub>n+1</sub> = R * x<sub>n</sub> + S * y<sub>n</sub>
-
-  BigInt b2 = p * b + q * c;
-  BigInt c2 = r * b + s * c;
-
-  Recur(p, q, r, s, b2, c2, depth - 1);
-
-  BigInt b3 = p * b - q * c;
-  BigInt c3 = -(r * b) + s * c;
-
-  Recur(p, q, r, s, b3, c3, depth - 1);
-}
-#endif
 
 struct BC {
   BC() : BC(0, 0) {}
@@ -139,6 +105,7 @@ static inline bool operator ==(const BC &x, const BC &y) {
 
 using BCSet = std::unordered_set<BC, HashBC>;
 
+#define TERM_A AFGCOLOR(183, 140, 237, "%s")
 #define TERM_B AFGCOLOR(232, 237, 173, "%s")
 #define TERM_C AFGCOLOR(160, 237, 237, "%s")
 
@@ -147,8 +114,7 @@ using BCSet = std::unordered_set<BC, HashBC>;
 #define TERM_SC AFGCOLOR(170, 130, 250, "%s")
 #define TERM_RB AFGCOLOR(120, 250, 200, "%s")
 
-static constexpr bool DEDUP = false;
-static constexpr bool VERBOSE = true;
+#define TERM_ERR AFGCOLOR(200, 170, 160, "%s")
 
 static void Greedy(
     const BigInt &p,
@@ -278,17 +244,209 @@ static void Greedy(
   }
 }
 
+static void Iterate(
+    const BigInt &p,
+    const BigInt &q,
+    const BigInt &r,
+    const BigInt &s,
+    const BigInt &b_orig,
+    const BigInt &c_orig) {
+
+  Timer timer;
+  Periodically status_per(5.0);
+  Periodically image_per(120.0);
+  image_per.SetPeriodOnce(30.0);
+
+  BigInt b = b_orig;
+  BigInt c = c_orig;
+
+  std::optional<BigInt> best_err;
+
+  std::vector<BigInt> history;
+
+  static constexpr int64_t MAX_ITERS = -1;
+  for (int64_t iters = 0; MAX_ITERS < 0 || iters < MAX_ITERS; iters++) {
+
+    if (VERBOSE) {
+      printf("Iter %lld.\n"
+             "b: " TERM_B "\n"
+             "c: " TERM_C "\n",
+             iters,
+             LongNum(b).c_str(),
+             LongNum(c).c_str());
+    }
+
+    if (CHECK_INVARIANTS) {
+      BigInt bb = b * b;
+      BigInt cc = c * c;
+
+      BigInt res = 360721 * bb - 222121 * cc;
+
+      CHECK(res == 138600);
+
+      // c^2 = 360721 a^2 + 1
+      // b^2 = 222121 a^2 + 1
+
+      CHECK((cc - 1_b) % 360721_b == 0_b);
+      CHECK((bb - 1_b) % 222121_b == 0_b);
+      // printf("divisible :)\n");
+
+      BigInt a1 = (cc - 1_b) / 360721_b;
+      BigInt a2 = (bb - 1_b) / 222121_b;
+
+      CHECK(a1 == a2);
+      const BigInt &aa = a1;
+
+      // const BigInt aa = a * a;
+      CHECK(360721 * aa + 1 == cc);
+      CHECK(222121 * aa + 1 == bb);
+    }
+
+    // Perf: could base this on the smaller of bb, cc?
+    BigInt cc = c * c;
+    BigInt a = BigInt::DivExact(cc - 1, 360721);
+    BigInt err = SquareError(a);
+    history.push_back(err);
+
+    // Not valid when b==c, e.g. for the initial solution b=c=1.
+    if (b != c) {
+      if (!best_err.has_value() || err < best_err.value()) {
+        printf("New best err on iter " AWHITE("%lld") ": "
+               TERM_ERR "\n",
+               iters, LongNum(err).c_str());
+        best_err = {err};
+      }
+    }
+
+    status_per.RunIf([&]() {
+        printf("Iter %lld.\n"
+               "a:   " TERM_A "\n"
+               "b:   " TERM_B "\n"
+               "c:   " TERM_C "\n"
+               "err: " TERM_ERR "\n",
+               iters,
+               LongNum(a).c_str(),
+               LongNum(b).c_str(),
+               LongNum(c).c_str(),
+               LongNum(err).c_str());
+
+        double sec = timer.Seconds();
+        double ips = iters / sec;
+        printf("%s (%.2f/sec). Best err: " TERM_ERR "\n",
+               ANSI::Time(sec).c_str(), ips,
+               best_err.has_value() ?
+               LongNum(best_err.value()).c_str() : "?");
+      });
+
+    image_per.RunIf([&]() {
+        constexpr int WIDTH = 2000, HEIGHT = 1000;
+        ImageRGBA plot(WIDTH, HEIGHT);
+        plot.Clear32(0x000000FF);
+        Bounds bounds;
+        for (int64_t x = 0; x < history.size(); x++) {
+          double y = BigInt::NaturalLog(history[x] + 1);
+          bounds.Bound((double)x, y);
+        }
+        Bounds::Scaler scaler = bounds.Stretch(WIDTH, HEIGHT).FlipY();
+
+        double prev_y = BigInt::NaturalLog(history[0] + 1);
+        for (int64_t x = 1; x < history.size(); x++) {
+          double y = BigInt::NaturalLog(history[x] + 1);
+          const auto &[sx0, sy0] = scaler.Scale(x - 1, prev_y);
+          const auto &[sx1, sy1] = scaler.Scale(x, y);
+          plot.BlendLine32(sx0, sy0, sx1, sy1, 0xFFFF77FF);
+          prev_y = y;
+        }
+
+        for (int64_t x = 0; x < history.size(); x++) {
+          double y = BigInt::NaturalLog(history[x] + 1);
+          const auto &[sx, sy] = scaler.Scale(x, y);
+          plot.BlendFilledCircleAA32(sx, sy, 4, 0xFF000044);
+        }
+
+        plot.BlendText2x32(
+            10, 10, 0xFFFFFFAA,
+            StringPrintf("Iters: %d. Best: %s",
+                         (int)history.size(),
+                         best_err.has_value() ?
+                         LongNum(best_err.value()).c_str() : "?"));
+
+        plot.Save("recurrence-error.png");
+        printf("Wrote " ABLUE("%s") "\n", "recurrence-error.png");
+      });
+
+    // Generate next.
+
+    BigInt pb = p * b;
+    BigInt qc = q * c;
+    BigInt rb = r * b;
+    BigInt sc = s * c;
+
+    // Next in sequence:
+    b = pb + qc;
+    c = sc + rb;
+  }
+}
+
+static void StartErr(
+    const BigInt &p,
+    const BigInt &q,
+    const BigInt &r,
+    const BigInt &s,
+    const BigInt &b,
+    const BigInt &c) {
+
+  if (CHECK_INVARIANTS) {
+    BigInt bb = b * b;
+    BigInt cc = c * c;
+
+    BigInt res = 360721 * bb - 222121 * cc;
+
+    CHECK(res == 138600);
+
+    // c^2 = 360721 a^2 + 1
+    // b^2 = 222121 a^2 + 1
+
+    CHECK((cc - 1_b) % 360721_b == 0_b);
+    CHECK((bb - 1_b) % 222121_b == 0_b);
+    // printf("divisible :)\n");
+
+    BigInt a1 = (cc - 1_b) / 360721_b;
+    BigInt a2 = (bb - 1_b) / 222121_b;
+
+    CHECK(a1 == a2);
+    const BigInt &aa = a1;
+
+    // const BigInt aa = a * a;
+    CHECK(360721 * aa + 1 == cc);
+    CHECK(222121 * aa + 1 == bb);
+  }
+
+  // Perf: could base this on the smaller of bb, cc?
+  BigInt cc = c * c;
+  BigInt a = BigInt::DivExact(cc - 1, 360721);
+  BigInt err = SquareError(a);
+
+  printf("---------\n"
+         "a:   " TERM_A "\n"
+         "b:   " TERM_B "\n"
+         "c:   " TERM_C "\n"
+         "err: " TERM_ERR "\n",
+         LongNum(a).c_str(),
+         LongNum(b).c_str(),
+         LongNum(c).c_str(),
+         LongNum(err).c_str());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   // For each (x,y), (-x,-y) is also a solution.
-  BigInt x1 = 1_b;
-  BigInt y1 = 1_b;
+  std::vector<std::pair<BigInt, BigInt>> xys =
+    ParseXY("xy.txt");
+  printf("There are %d (x,y)s\n", (int)xys.size());
 
-  BigInt x2 = BigFromFile("x2.txt");
-  BigInt y2 = BigFromFile("y2.txt");
-
-  // TODO: lots more, including some that are much smaller.
+  // TODO: lots more (x,y), including some that are much smaller.
 
   BigInt p = BigFromFile("p.txt");
   BigInt q = BigFromFile("q.txt");
@@ -305,16 +463,30 @@ int main(int argc, char **argv) {
   // (Probably more generally this was s * p - q * r == 1)
   CHECK(s * s - q * r == 1);
 
+  // Would be nice for the closed form if this were a square,
+  // but it isn't!
+  // (Actually it can't be, since it's big and one away from s^2).
+  // BigInt rootpr = BigInt::Sqrt(p * r);
+  // CHECK(rootpr * rootpr == p * r);
+
+  #if 0
   printf("p^2 - qr = %s\n",
          LongNum(p * p - q * r).c_str());
   printf("pq - qs = %s\n",
          LongNum(p * q - q * s).c_str());
   return 0;
+  #endif
+
+  for (const auto &[x, y] : xys) {
+    StartErr(p, q, r, s, x, y);
+  }
 
   // Recur(p, q, r, s, x2, y2, 8);
 
   // Greedy(p, q, r, s, x2, y2);
-  Greedy(p, q, r, s, x1, y1);
+  CHECK(xys.size() > 1);
+  const auto &[x, y] = xys[1];
+  Iterate(p, q, r, s, x, y);
 
   return 0;
 }

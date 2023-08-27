@@ -1,5 +1,5 @@
 
-default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe polynomial_test.exe algebra.exe orbit-grid.exe recurrence.exe
+default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe polynomial_test.exe algebra.exe orbit-grid.exe recurrence.exe bestsq.exe
 
 CC_LIB=../cc-lib
 
@@ -120,6 +120,10 @@ algebra.exe : algebra.o $(OBJECTS)
 	@echo -n "!"
 
 recurrence.exe : recurrence.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+bestsq.exe : bestsq.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

@@ -202,4 +202,13 @@ std::string WaysString(
 
 void NormalizeWays(std::vector<std::pair<uint64_t, uint64_t>> *v);
 
+inline uint64_t SqrtError(uint64_t aa) {
+  uint64_t a1 = Sqrt64(aa);
+  uint64_t a2 = a1 + 1ULL;
+  uint64_t aa1 = a1 * a1;
+  uint64_t aa2 = a2 * a2;
+  return std::min(std::max(aa, aa1) - std::min(aa, aa1),
+                  std::max(aa, aa2) - std::min(aa, aa2));
+}
+
 #endif
