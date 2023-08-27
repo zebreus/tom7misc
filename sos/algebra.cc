@@ -429,8 +429,8 @@ static void Ellipse() {
   BigInt b{7};
 
   BigInt aa = a * a;
-  BigInt ab = b * b;
-  BigInt bb = a * b;
+  BigInt ab = a * b;
+  BigInt bb = b * b;
 
   BigInt x = -2 * ab;
   BigInt y = 138600 * aa - bb;
@@ -467,9 +467,22 @@ static void Ellipse() {
     ((138600 * xx + yy) - zz).ToString();
 }
 
+static void EllipseP() {
+  Polynomial x = -2 * "a"_p * "b"_p;
+  Polynomial y = 138600 * Polynomial("a", 2) - Polynomial("b", 2);
+  Polynomial z = 138600 * Polynomial("a", 2) + Polynomial("b", 2);
+
+  Polynomial lhs = 138600 * x * x + y * y;
+  Polynomial rhs = z * z;
+
+  printf("%s =\n"
+         "%s\n", lhs.ToString().c_str(), rhs.ToString().c_str());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  EllipseP();
   Ellipse();
 
   // (void)Minimize();
