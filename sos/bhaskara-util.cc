@@ -14,17 +14,30 @@
 #include "image.h"
 
 std::string LongNum(const BigInt &a) {
-  std::string num = a.ToString();
+  std::string sign = BigInt::Less(a, 0) ? "-" : "";
+  std::string num = BigInt::Abs(a).ToString();
   if (num.size() > 80) {
     static constexpr int SHOW_SIDE = 8;
     int skipped = num.size() - (SHOW_SIDE * 2);
-    return StringPrintf("%s…(%d)…%s",
+    return StringPrintf("%s%s…(%d)…%s",
+                        sign.c_str(),
                         num.substr(0, SHOW_SIDE).c_str(),
                         skipped,
                         num.substr(num.size() - SHOW_SIDE,
                                    string::npos).c_str());
+  } else if (num.size() < 7) {
+    return sign + num;
   } else {
-    return num;
+    // with commas.
+    string out;
+    while (num.size() > 3) {
+      if (!out.empty()) out = "," + out;
+      out = num.substr(num.size() - 3, string::npos) + out;
+      num.resize(num.size() - 3);
+    }
+    CHECK(!num.empty());
+    CHECK(!out.empty());
+    return sign + num + "," + out;
   }
 }
 

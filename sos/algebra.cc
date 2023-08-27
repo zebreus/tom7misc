@@ -479,11 +479,32 @@ static void EllipseP() {
          "%s\n", lhs.ToString().c_str(), rhs.ToString().c_str());
 }
 
+static void FormulaK() {
+  Polynomial x = -2 * "a"_p * "b"_p;
+  Polynomial y = 138600 * Polynomial("a", 2) - Polynomial("b", 2);
+  Polynomial z = 138600 * Polynomial("a", 2) + Polynomial("b", 2);
+
+  Polynomial xx = x * x;
+
+  // k(a, b) = 222121 (-2ab)^2 - (138600 a^2 - b^2)^2
+  // k(a, b) = 360721 (-2ab)^2 - (138600 a^2 + b^2)^2
+
+  Polynomial k1 = 222121 * xx - y * y;
+  Polynomial k2 = 360721 * xx - z * z;
+
+  printf("k1: %s\n"
+         "k2: %s\n",
+         k1.ToString().c_str(),
+         k2.ToString().c_str());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   EllipseP();
   Ellipse();
+
+  FormulaK();
 
   // (void)Minimize();
 

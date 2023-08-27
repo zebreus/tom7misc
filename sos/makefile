@@ -1,5 +1,5 @@
 
-default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe polynomial_test.exe algebra.exe orbit-grid.exe recurrence.exe bestsq.exe
+default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe polynomial_test.exe algebra.exe orbit-grid.exe recurrence.exe bestsq.exe kgrid.exe bhaskara-util_test.exe
 
 CC_LIB=../cc-lib
 
@@ -124,6 +124,14 @@ recurrence.exe : recurrence.o $(OBJECTS)
 	@echo -n "!"
 
 bestsq.exe : bestsq.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+kgrid.exe : kgrid.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+bhaskara-util_test.exe : bhaskara-util_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
