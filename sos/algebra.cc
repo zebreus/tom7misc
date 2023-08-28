@@ -498,6 +498,27 @@ static void FormulaK() {
          k2.ToString().c_str());
 }
 
+static void EvaluateK(const BigInt &a, const BigInt &b) {
+
+  BigInt aa = a * a;
+  BigInt bb = b * b;
+  BigInt aaaa = aa * aa;
+  BigInt bbbb = bb * bb;
+
+  BigInt k = 1165684 * aa * bb +
+    -2030090816 * aaaa -
+    bbbb;
+
+#define TERM_A AFGCOLOR(183, 140, 237, "%s")
+#define TERM_B AFGCOLOR(232, 237, 173, "%s")
+#define TERM_K AFGCOLOR(140, 140, 237, "%s")
+
+  printf("With " TERM_A AGREY("/") TERM_B ": k= " TERM_K "\n",
+         LongNum(a).c_str(),
+         LongNum(b).c_str(),
+         LongNum(k).c_str());
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -505,6 +526,30 @@ int main(int argc, char **argv) {
   Ellipse();
 
   FormulaK();
+  printf("-----\n");
+  EvaluateK(1_b, 42_b);
+  EvaluateK(2_b, 83_b);
+  EvaluateK(2_b, 85_b);
+  EvaluateK(10_b, 417_b);
+  EvaluateK(10_b, 418_b);
+
+  EvaluateK(
+      100000000000000000000000_b,
+      4176307473298086404811185_b);
+  EvaluateK(
+      100000000000000000000000_b,
+      4176307473298086404811186_b);
+
+  EvaluateK(
+      99999999999999999999999_b,
+      4176307473298086404811185_b);
+  EvaluateK(
+      100000000000000000000000_b,
+      4176307473298086404811185_b);
+  EvaluateK(
+      100000000000000000000001_b,
+      4176307473298086404811185_b);
+
 
   // (void)Minimize();
 
@@ -521,3 +566,6 @@ int main(int argc, char **argv) {
 
   return 0;
 }
+
+// 41.76307473298086404811185 a
+// 1078.860438420487942275569 a
