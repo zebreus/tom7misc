@@ -50,7 +50,9 @@ struct BigInt {
   inline static BigInt Abs(const BigInt &a);
   inline static int Compare(const BigInt &a, const BigInt &b);
   inline static bool Less(const BigInt &a, const BigInt &b);
+  inline static bool Less(const BigInt &a, int64_t b);
   inline static bool LessEq(const BigInt &a, const BigInt &b);
+  inline static bool LessEq(const BigInt &a, int64_t b);
   inline static bool Eq(const BigInt &a, const BigInt &b);
   inline static bool Eq(const BigInt &a, int64_t b);
   inline static bool Greater(const BigInt &a, const BigInt &b);
@@ -169,8 +171,8 @@ struct BigRat {
 
   // In base 10.
   inline std::string ToString() const;
-  // Only works when the numerator and denominator are small;
-  // readily returns nan!
+  // The non-GMP version only works when the numerator and denominator
+  // are small; readily returns nan! XXX fix it...
   inline double ToDouble() const;
   // Get the numerator and denominator.
   inline std::pair<BigInt, BigInt> Parts() const;
@@ -299,20 +301,23 @@ std::string BigInt::ToString(int base) const {
   // We allocate the space directly in the string to avoid
   // copying.
   // May need space for a minus sign. This function also writes
-  // a nul terminating byte, but we don't need that for std::string.
+  // a nul terminating byte, but we don't want that for std::string.
   size_t min_size = mpz_sizeinbase(rep, base);
   s.resize(min_size + 2);
   mpz_get_str(s.data(), base, rep);
 
   // Now we have a nul-terminated string in the buffer, which is at
   // least one byte too large. We could just use strlen here but
-  // we know it's at least min_size.
-  for (size_t sz = min_size; sz < s.size(); sz++) {
+  // we know it's at least min_size - 1 (because mpz_sizeinbase
+  // can return a number 1 too large). min_size is always at least
+  // 1, so starting at min_size - 1 is safe.
+  for (size_t sz = min_size - 1; sz < s.size(); sz++) {
     if (s[sz] == 0) {
       s.resize(sz);
       return s;
     }
   }
+  // This would mean that mpz_get_str didn't nul-terminate the string.
   assert(false);
   return s;
 }
@@ -394,12 +399,31 @@ int BigInt::Compare(const BigInt &a, const BigInt &b) {
   else if (r > 0) return 1;
   else return 0;
 }
+
 bool BigInt::Less(const BigInt &a, const BigInt &b) {
   return mpz_cmp(a.rep, b.rep) < 0;
 }
+bool BigInt::Less(const BigInt &a, int64_t b) {
+  if (internal::FitsLongInt(b)) {
+    signed long int sb = b;
+    return mpz_cmp_si(a.rep, sb) < 0;
+  } else {
+    return Less(a, BigInt(b));
+  }
+}
+
 bool BigInt::LessEq(const BigInt &a, const BigInt &b) {
   return mpz_cmp(a.rep, b.rep) <= 0;
 }
+bool BigInt::LessEq(const BigInt &a, int64_t b) {
+  if (internal::FitsLongInt(b)) {
+    signed long int sb = b;
+    return mpz_cmp_si(a.rep, sb) <= 0;
+  } else {
+    return LessEq(a, BigInt(b));
+  }
+}
+
 bool BigInt::Eq(const BigInt &a, const BigInt &b) {
   return mpz_cmp(a.rep, b.rep) == 0;
 }
@@ -411,6 +435,7 @@ bool BigInt::Eq(const BigInt &a, int64_t b) {
     return Eq(a, BigInt(b));
   }
 }
+
 
 bool BigInt::Greater(const BigInt &a, const BigInt &b) {
   return mpz_cmp(a.rep, b.rep) > 0;
@@ -812,10 +837,19 @@ int BigInt::Compare(const BigInt &a, const BigInt &b) {
 bool BigInt::Less(const BigInt &a, const BigInt &b) {
   return BzCompare(a.rep, b.rep) == BZ_LT;
 }
+bool BigInt::Less(const BigInt &a, int64_t b) {
+  return BzCompare(a.rep, BigInt{b, nullptr}.rep) == BZ_LT;
+}
+
 bool BigInt::LessEq(const BigInt &a, const BigInt &b) {
   auto cmp = BzCompare(a.rep, b.rep);
   return cmp == BZ_LT || cmp == BZ_EQ;
 }
+bool BigInt::LessEq(const BigInt &a, int64_t b) {
+  auto cmp = BzCompare(a.rep, BigInt{b, nullptr}.rep);
+  return cmp == BZ_LT || cmp == BZ_EQ;
+}
+
 bool BigInt::Eq(const BigInt &a, const BigInt &b) {
   return BzCompare(a.rep, b.rep) == BZ_EQ;
 }
@@ -1005,6 +1039,8 @@ BigRat BigRat::ApproxDouble(double num, int64_t max_denom) {
 }
 
 double BigRat::ToDouble() const {
+  // TODO: Should be able to make this work as long as the ratio
+  // is representable. GMP does it.
   return BqToDouble(rep);
 }
 

@@ -17,6 +17,18 @@
 using int64 = int64_t;
 using namespace std;
 
+static void TestToString() {
+  for (int i = -100000; i < 100000; i++) {
+    BigInt bi(i);
+    string s = bi.ToString();
+    CHECK(!s.empty());
+    CHECK(BigInt::Eq(BigInt(s), bi));
+    // We do some resizing tricks in the GMP version, which
+    // can inadvertently leave nul bytes.
+    for (char c : s) CHECK(c != 0) << i;
+  }
+}
+
 static void CopyAndAssign() {
   BigInt a{1234};
   BigInt b{5678};
@@ -360,6 +372,8 @@ int main(int argc, char **argv) {
   fflush(stdout);
 
   CopyAndAssign();
+  TestToString();
+
   TestEq();
   LowWord();
   TestMod();

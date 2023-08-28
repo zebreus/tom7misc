@@ -96,6 +96,14 @@ struct ColorUtil {
     GradRGB(1.0f, 0xFFFFFF)
   };
 
+  // Red for negative, black for 0, green for positive.
+  // nominal range [-1, 1].
+  static constexpr Gradient NEG_POS{
+    GradRGB(-1.0f, 0xFF0000),
+    GradRGB( 0.0f, 0x000000),
+    GradRGB( 1.0f, 0x00FF00),
+  };
+
 };
 
 

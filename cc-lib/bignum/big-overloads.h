@@ -12,6 +12,7 @@
 // TODO << >> | & ^
 // TODO more operators that take int64 on one side
 // TODO bigq operators, maybe in a separate file?
+// TODO assignment from int
 
 inline BigInt operator ""_b(const char *s) {
   return BigInt(s);
@@ -35,6 +36,10 @@ inline BigInt operator +(const BigInt &a, const BigInt &b) {
 
 inline BigInt operator +(const BigInt &a, int64_t b) {
   return BigInt::Plus(a, b);
+}
+
+inline BigInt operator +(int64_t a, const BigInt &b) {
+  return BigInt::Plus(b, a);
 }
 
 inline BigInt operator /(const BigInt &a, const BigInt &b) {
@@ -81,7 +86,15 @@ inline bool operator <(const BigInt &a, const BigInt &b) {
   return BigInt::Less(a, b);
 }
 
+inline bool operator <(const BigInt &a, int64_t b) {
+  return BigInt::Less(a, b);
+}
+
 inline bool operator <=(const BigInt &a, const BigInt &b) {
+  return BigInt::LessEq(a, b);
+}
+
+inline bool operator <=(const BigInt &a, int64_t b) {
   return BigInt::LessEq(a, b);
 }
 
@@ -89,9 +102,21 @@ inline bool operator >(const BigInt &a, const BigInt &b) {
   return BigInt::Greater(a, b);
 }
 
+/*
+inline bool operator >(const BigInt &a, int64_t b) {
+  return BigInt::Greater(a, b);
+}
+*/
+
 inline bool operator >=(const BigInt &a, const BigInt &b) {
   return BigInt::GreaterEq(a, b);
 }
+
+/*
+inline bool operator >=(const BigInt &a, int64_t b) {
+  return BigInt::GreaterEq(b, a);
+}
+*/
 
 inline bool operator ==(const BigInt &a, const BigInt &b) {
   return BigInt::Eq(a, b);
@@ -104,5 +129,15 @@ inline bool operator ==(const BigInt &a, int64_t b) {
 inline bool operator ==(int64_t a, const BigInt &b) {
   return BigInt::Eq(b, a);
 }
+
+/*
+inline bool operator !=(const BigInt &a, int64_t b) {
+  return !BigInt::Eq(a, b);
+}
+
+inline bool operator !=(int64_t a, const BigInt &b) {
+  return !BigInt::Eq(b, a);
+}
+*/
 
 #endif

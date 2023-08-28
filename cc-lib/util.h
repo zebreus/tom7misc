@@ -164,7 +164,9 @@ struct Util {
   /* 0 on failure */
   static int changedir(string s);
   static int random();
-  /* random in 0.0 .. 1.0 */
+  /* random in 0.0 .. 1.0
+     Use randutil.h instead.
+   */
   static float randfrac();
   static int getpid();
   /* anything ending with \n. ignores \r.
