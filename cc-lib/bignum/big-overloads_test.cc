@@ -6,6 +6,7 @@
 
 #include "timer.h"
 #include "ansi.h"
+#include "base/logging.h"
 
 static void BenchNegate() {
   Timer timer;
@@ -19,6 +20,17 @@ static void BenchNegate() {
          ANSI::Time(took).c_str());
 }
 
+static void TestShift() {
+  int xi = -1000;
+
+  BigInt x(-1000);
+
+  for (int s = 0; s < 12; s++) {
+    int xis = xi >> s;
+    BigInt xs = x >> s;
+    CHECK(xs == xis);
+  }
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -26,6 +38,7 @@ int main(int argc, char **argv) {
   fflush(stdout);
 
   BenchNegate();
+  TestShift();
 
   printf("OK\n");
 }

@@ -83,6 +83,7 @@ struct BigInt {
   inline static std::pair<BigInt, BigInt> SqrtRem(const BigInt &aa);
   inline static BigInt GCD(const BigInt &a, const BigInt &b);
   inline static BigInt LeftShift(const BigInt &a, uint64_t bits);
+  inline static BigInt RightShift(const BigInt &a, uint64_t bits);
 
   // TODO: Implement with bigz too. There is a very straightforward
   // implementation.
@@ -596,6 +597,18 @@ BigInt BigInt::LeftShift(const BigInt &a, uint64_t shift) {
   }
 }
 
+BigInt BigInt::RightShift(const BigInt &a, uint64_t shift) {
+  if (internal::FitsLongInt(shift)) {
+    mp_bitcnt_t sh = shift;
+    BigInt ret;
+    mpz_fdiv_q_2exp(ret.rep, a.rep, sh);
+    return ret;
+  } else {
+    return Div(a, Pow(BigInt{2}, shift));
+  }
+}
+
+
 BigInt BigInt::GCD(const BigInt &a, const BigInt &b) {
   BigInt ret;
   mpz_gcd(ret.rep, a.rep, b.rep);
@@ -927,6 +940,11 @@ BigInt BigInt::Pow(const BigInt &a, uint64_t exponent) {
 BigInt BigInt::LeftShift(const BigInt &a, uint64_t bits) {
   return Times(a, Pow(BigInt{2, nullptr}, bits));
 }
+
+BigInt BigInt::RightShift(const BigInt &a, uint64_t bits) {
+  return Div(a, Pow(BigInt{2, nullptr}, bits));
+}
+
 
 BigInt BigInt::GCD(const BigInt &a, const BigInt &b) {
   return BigInt{BzGcd(a.rep, b.rep), nullptr};

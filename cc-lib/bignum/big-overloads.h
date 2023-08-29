@@ -82,6 +82,10 @@ inline BigInt operator <<(const BigInt &a, uint64_t bits) {
   return BigInt::LeftShift(a, bits);
 }
 
+inline BigInt operator >>(const BigInt &a, uint64_t bits) {
+  return BigInt::RightShift(a, bits);
+}
+
 inline bool operator <(const BigInt &a, const BigInt &b) {
   return BigInt::Less(a, b);
 }
