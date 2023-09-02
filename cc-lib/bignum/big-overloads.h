@@ -86,6 +86,34 @@ inline BigInt operator >>(const BigInt &a, uint64_t bits) {
   return BigInt::RightShift(a, bits);
 }
 
+// prefix increment
+inline BigInt &operator ++(BigInt &a) {
+  a = std::move(a) + 1;
+  return a;
+}
+
+// PERF: Use versions that modify a in place.
+// PERF: Versions with int64_t rhs.
+inline BigInt &operator+=(BigInt &a, const BigInt &b) {
+  a = a + b;
+  return a;
+}
+
+inline BigInt &operator-=(BigInt &a, const BigInt &b) {
+  a = a - b;
+  return a;
+}
+
+inline BigInt &operator*=(BigInt &a, const BigInt &b) {
+  a = a * b;
+  return a;
+}
+
+inline BigInt &operator/=(BigInt &a, const BigInt &b) {
+  a = a * b;
+  return a;
+}
+
 inline bool operator <(const BigInt &a, const BigInt &b) {
   return BigInt::Less(a, b);
 }
@@ -106,11 +134,9 @@ inline bool operator >(const BigInt &a, const BigInt &b) {
   return BigInt::Greater(a, b);
 }
 
-/*
 inline bool operator >(const BigInt &a, int64_t b) {
   return BigInt::Greater(a, b);
 }
-*/
 
 inline bool operator >=(const BigInt &a, const BigInt &b) {
   return BigInt::GreaterEq(a, b);

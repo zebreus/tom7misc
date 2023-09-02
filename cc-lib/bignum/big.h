@@ -56,7 +56,9 @@ struct BigInt {
   inline static bool Eq(const BigInt &a, const BigInt &b);
   inline static bool Eq(const BigInt &a, int64_t b);
   inline static bool Greater(const BigInt &a, const BigInt &b);
+  inline static bool Greater(const BigInt &a, int64_t b);
   inline static bool GreaterEq(const BigInt &a, const BigInt &b);
+  inline static bool GreaterEq(const BigInt &a, int64_t b);
   inline static BigInt Plus(const BigInt &a, const BigInt &b);
   inline static BigInt Plus(const BigInt &a, int64_t b);
   inline static BigInt Minus(const BigInt &a, const BigInt &b);
@@ -441,8 +443,26 @@ bool BigInt::Eq(const BigInt &a, int64_t b) {
 bool BigInt::Greater(const BigInt &a, const BigInt &b) {
   return mpz_cmp(a.rep, b.rep) > 0;
 }
+bool BigInt::Greater(const BigInt &a, int64_t b) {
+  if (internal::FitsLongInt(b)) {
+    signed long int sb = b;
+    return mpz_cmp_si(a.rep, sb) > 0;
+  } else {
+    return Greater(a, BigInt(b));
+  }
+}
+
+
 bool BigInt::GreaterEq(const BigInt &a, const BigInt &b) {
   return mpz_cmp(a.rep, b.rep) >= 0;
+}
+bool BigInt::GreaterEq(const BigInt &a, int64_t b) {
+  if (internal::FitsLongInt(b)) {
+    signed long int sb = b;
+    return mpz_cmp_si(a.rep, sb) >= 0;
+  } else {
+    return GreaterEq(a, BigInt(b));
+  }
 }
 
 BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
