@@ -21,16 +21,6 @@
 
 using namespace std;
 
-inline BigInt BigSqrtError(const BigInt &aa) {
-  const auto [a1, err1] = BigInt::SqrtRem(aa);
-  BigInt a2 = a1 + 1;
-  BigInt aa2 = a2 * a2;
-  // Abs is probably not necessary? (But cheap)
-  BigInt err2 = BigInt::Abs(aa2 - aa);
-  return std::min(err1, err2);
-}
-
-
 static constexpr int64_t CHUNK_SIZE = 1'000'000;
 
 struct Err {
