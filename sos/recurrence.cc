@@ -446,7 +446,44 @@ int main(int argc, char **argv) {
     ParseXY("xy.txt");
   printf("There are %d (x,y)s\n", (int)xys.size());
 
-  // TODO: lots more (x,y), including some that are much smaller.
+  std::optional<BigInt> best_err;
+  BigInt bestx, besty;
+  for (const auto &[x, y] : xys) {
+    BigInt ax = BigInt::Abs(x);
+    BigInt ay = BigInt::Abs(y);
+    if (ax != ay) {
+      BigInt cc = y * y;
+      BigInt aa = BigInt::DivExact(cc - 1, 360721);
+      BigInt err = SquareError(aa);
+
+      if (!best_err.has_value() ||
+          err < best_err.value()) {
+        best_err = err;
+        bestx = x;
+        besty = y;
+      }
+    }
+  }
+
+  {
+    BigInt cc = besty * besty;
+    BigInt aa = BigInt::DivExact(cc - 1, 360721);
+    BigInt err = SquareError(aa);
+
+    printf("Best:\n"
+           "a^2: " TERM_A "\n"
+           "b:   " TERM_B "\n"
+           "c:   " TERM_C "\n"
+           "err: " TERM_ERR "\n",
+           LongNum(aa).c_str(),
+           LongNum(bestx).c_str(),
+           LongNum(besty).c_str(),
+           LongNum(err).c_str());
+
+    Util::WriteFile("best-aa.txt", aa.ToString());
+  }
+  return 0;
+
 
   BigInt p = BigFromFile("p.txt");
   BigInt q = BigFromFile("q.txt");

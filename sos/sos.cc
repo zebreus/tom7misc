@@ -46,10 +46,6 @@ using GPUMethod = WaysGPUMerge;
 
 static constexpr bool WRITE_IMAGE = false;
 
-// Only test numbers of the form STRIDE * x.
-// This value is unproven!
-static constexpr int STRIDE = 319754;
-
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
 
 // Everything takes a complete line.
@@ -156,7 +152,7 @@ static_assert(TRY_BATCH_SIZE % TRY_ROLL_SIZE == 0,
               "this is not strictly required, but would hurt "
               "performance!");
 
-static constexpr uint64_t MAX_EPOCH_SIZE = 400'000'000'000; /* ' */
+static constexpr uint64_t MAX_EPOCH_SIZE = 800'000'000; /* ' */
 // Each of these yields 8 sums. If it's larger, we may run off the
 // end of the batch, although this is usually a trivial cost.
 static constexpr size_t EPOCH_GPU_CHUNK = 100000000;
@@ -192,7 +188,7 @@ static void Interesting(const std::string &s) {
 
 // Fast counters to avoid lock contention in tight loops.
 DECLARE_COUNTERS(rejected_f, rejected_ff, rejected_hh, rejected_aa,
-                 unused1_, unused2_, unused3_, unused4_);
+                 other_almost2, unused2_, unused3_, unused4_);
 
 #define INCREMENT(rej) (rej)++
 #define INCREMENT_BY(rej, by) (rej) += (by)
@@ -384,14 +380,14 @@ struct SOS {
   std::unique_ptr<AutoParallelComp> try_comp;
   std::unique_ptr<GPUMethod> ways_gpu;
   std::unique_ptr<TryFilterGPU> tryfilter_gpu;
-  std::unique_ptr<EligibleFilterGPU<STRIDE>> eligiblefilter_gpu;
+  std::unique_ptr<EligibleFilterGPU> eligiblefilter_gpu;
 
   // Pre-filtered; ready to have the number of ways computed on CPU.
   // These are divided by stride. Because they come in chunks, they
   // may exceed the epoch size (so the consumer should check).
   // (base, bitmask)
   // if bit b is CLEAR in the bitmask,
-  //  then (base + b) * STRIDE has passed the filter.
+  //  then (base + b) has passed the filter.
   std::unique_ptr<
     WorkQueue<std::pair<uint64_t, std::vector<uint8_t>>>
     > nways_queue;
@@ -422,7 +418,7 @@ struct SOS {
     try_comp.reset(new AutoParallelComp(12, 1000, false));
 
     eligiblefilter_gpu.reset(
-        new EligibleFilterGPU<STRIDE>(cl, EPOCH_GPU_CHUNK));
+        new EligibleFilterGPU(cl, EPOCH_GPU_CHUNK));
     ways_gpu.reset(new GPUMethod(cl, GPU_HEIGHT));
     tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_HEIGHT));
 
@@ -563,6 +559,42 @@ struct SOS {
               auto fo = Sqrt64Opt(ff);
               if (!fo.has_value()) {
                 INCREMENT(rejected_ff);
+
+                // but if hh or aa is a square, record it
+                const uint64_t aa = sum - (bb + cc);
+                const auto ao = Sqrt64Opt(aa);
+                const uint64_t hh = sum - (bb + ee);
+                const auto ho = Sqrt64Opt(hh);
+
+                if (ao.has_value() || ho.has_value()) {
+                  INCREMENT(other_almost2);
+                  if (ao.has_value() && ho.has_value()) {
+                    uint64_t f = Sqrt64(ff);
+                    Interesting(
+                        StringPrintf(
+                            // For easy parsing. Everything is its squared version.
+                            "(!!!) %llu %llu %llu %llu %llu %llu %llu %llu %llu\n"
+                            "%llu^2 %llu^2 %llu^2\n"
+                            "%llu^2 %llu^2 " ARED("sqrt(%llu)^2") "\n"
+                            "%llu^2 %llu^2 %llu^2\n"
+                            ARED("but %llu * %llu != %llu") "\n"
+                            "sum: %llu\n",
+                            aa, bb, cc, dd, ee, ff, gg, hh, ii,
+                            ao.value(), b, c,
+                            d, e, ff,
+                            g, ho.value(), i,
+                            // error
+                            f, f, ff,
+                            sum));
+                  } else {
+                    Database::Square square = {
+                      aa, bb, cc,
+                      dd, ee, ff,
+                      gg, hh, ii
+                    };
+                    almost2_queue->WaitAdd(square);
+                  }
+                }
                 return;
               }
               const uint64_t f = fo.value();
@@ -729,14 +761,11 @@ struct SOS {
   uint64_t pending_try = 0;
   uint64_t done_full_try = 0;
 
-  // Test out a new (?) filter...
-  uint64_t done_non_multiple = 0;
-
   bool nways_is_done = false;
 
   // Must hold lock.
   uint64_t NumDone() {
-    return done_non_multiple + done_ineligible_cpu + done_ineligible_gpu +
+    return done_ineligible_cpu + done_ineligible_gpu +
       done_gpu_filtered + done_full_try;
   }
 
@@ -753,7 +782,7 @@ struct SOS {
   void PrintStats(uint64_t epoch_size) {
     MutexLock ml(&m);
     uint64_t done = NumDone();
-    uint64_t tested = eligible_triples + done_non_multiple +
+    uint64_t tested = eligible_triples +
       done_ineligible_cpu + done_ineligible_gpu;
     double pct = (eligible_triples * 100.0)/(double)tested;
     double sec = timer.Seconds();
@@ -767,6 +796,7 @@ struct SOS {
     const int64_t rff = READ(rejected_ff);
     const int64_t rhh = READ(rejected_hh);
     const int64_t raa = READ(rejected_aa);
+    const int64_t other2 = READ(other_almost2);
 
     const int64_t gpu_size = ways_queue->Size();
     const int64_t try_size = try_queue->Size();
@@ -774,10 +804,11 @@ struct SOS {
     string line2 =
       StringPrintf("%lld " AGREY("rf")
                    " %lld " AGREY("rff") " "
-                   AORANGE("%lld") " " AGREY("almost2")
+                   AORANGE("%lld") " " AGREY("almost2") " "
+                   ACYAN("%lld") " " AGREY("other2")
                    " %lld " AGREY("raa")
                    "\n",
-                   rf, rff, rhh, raa);
+                   rf, rff, rhh, other2, raa);
     string line3 = StringPrintf(ARED("%llu") " big  "
                                 APURPLE("%s") " gpu q  "
                                 ACYAN("%lld") " try q  "
@@ -790,10 +821,8 @@ struct SOS {
                                 Util::UnsignedWithCommas(stolen).c_str());
     string line4 =
       StringPrintf(
-          AYELLOW("%s") " non-mult  "
           ACYAN("%s") " try-filtered  "
           AGREEN("%s") " complete batches\n",
-          Util::UnsignedWithCommas(done_non_multiple).c_str(),
           Util::UnsignedWithCommas(done_gpu_filtered).c_str(),
           Util::UnsignedWithCommas(batches_completely_filtered).c_str());
 
@@ -1077,9 +1106,7 @@ struct SOS {
                 // Skip ones that were filtered.
                 if (byte & (1 << (7 - i))) continue;
 
-                // These actually represent the multiple of STRIDE
-                // to check.
-                const uint64_t sum = (base_sum + i) * STRIDE;
+                const uint64_t sum = base_sum + i;
                 // Batch might go over the end of the interval.
                 if (sum >= epoch_start + epoch_size) continue;
                 local_tested++;
@@ -1126,7 +1153,6 @@ struct SOS {
 
                 // Ineligible
                 done_ineligible_cpu += local_done_ineligible_cpu;
-                done_non_multiple += local_tested * (STRIDE - 1);
               }
             });
     }
@@ -1136,8 +1162,9 @@ struct SOS {
     CHECK(cl != nullptr);
 
     status.Printf(
-        AWHITE("==") " Start epoch " APURPLE("%s") "+ " AWHITE("==") "\n",
-        Util::UnsignedWithCommas(epoch_start).c_str());
+        AWHITE("==") " Start epoch " APURPLE("%s") "+" ACYAN("%s") AWHITE("==") "\n",
+        Util::UnsignedWithCommas(epoch_start).c_str(),
+        Util::UnsignedWithCommas(epoch_size).c_str());
     pending = epoch_size;
 
     work_stealing_threads = STEADY_WORK_STEALING_THREADS;
@@ -1157,28 +1184,10 @@ struct SOS {
     CHECK(epoch_size % EPOCH_CHUNK == 0) << epoch_size << " % " << EPOCH_CHUNK;
     {
       Timer eligible_gpu_timer;
-      // We only need to run multiples of STRIDE. The eligible filter works
-      // on these natively.
-
-      // stride = 6
-      // epoch_start = 2000
-      // epoch_size  = 1000
-      // start with the first multiple of the stride >= epoch_start.
-      uint64_t start = (epoch_start / STRIDE) * STRIDE;
-      if (start < epoch_start) start += STRIDE;
-      CHECK(start % STRIDE == 0);
-      CHECK(start >= epoch_start);
-      CHECK(start == 0 || start - STRIDE < epoch_start);
-
-      uint64_t d = start / STRIDE;
-
-      status.Printf("start: %llu   d: %llu\n", start, d);
       // Now we generate chunks of the given size, until we've covered
       // the epoch.
-      for (uint64_t base = d;
-           base * STRIDE < epoch_start + epoch_size;
-           base += EPOCH_CHUNK) {
-        status.Printf("  base: %llu\n", base);
+      for (uint64_t u = 0; u < epoch_size; u += EPOCH_CHUNK) {
+        uint64_t base = epoch_start + u;
         std::vector<uint8_t> bitmask = eligiblefilter_gpu->Filter(base);
         nways_queue->WaitAdd(std::make_pair(base, std::move(bitmask)));
       }
@@ -1219,6 +1228,7 @@ struct SOS {
 
     {
       string squares;
+      // Maybe should filter out squares whose gcd isn't 1, or reduce them?
       while (std::optional<Database::Square> so = almost2_queue->WaitGet()) {
         const auto &[aa, bb, cc, dd, ee, ff, gg, hh, ii] = so.value();
         StringAppendF(&squares,
@@ -1608,9 +1618,9 @@ static std::pair<uint64_t, uint64_t> PredictNextClose() {
 
 static void Run() {
   for (;;) {
-    // const auto [epoch_start, epoch_size] = GetNext(MAX_EPOCH_SIZE);
+    const auto [epoch_start, epoch_size] = GetNext(MAX_EPOCH_SIZE);
     // const auto [epoch_start, epoch_size] = PredictNextRegression(true);
-    const auto [epoch_start, epoch_size] = PredictNextClose();
+    // const auto [epoch_start, epoch_size] = PredictNextClose();
     printf("\n\n\n\n\n\n\n\n\n");
     SOS sos;
     sos.RunEpoch(epoch_start, epoch_size);

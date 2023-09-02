@@ -21,11 +21,39 @@ struct Entry {
   std::array<BigInt, 9> square;
 };
 
+// Find the square s nearest to aa and return
+// the signed difference.
+// e.g. for an input of 10, return -1, since the
+// closest square is 9.
+inline BigInt SignedBigSqrtError(const BigInt &aa) {
+  // Always rounds down.
+  const auto a1 = BigInt::Sqrt(aa);
+  BigInt aa1 = a1 * a1;
+  BigInt a2 = a1 + 1;
+  BigInt aa2 = a2 * a2;
+  CHECK(aa1 <= aa && aa < aa2);
+  BigInt down = aa - aa1;
+  BigInt up = aa2 - aa;
+  if (down < up) {
+    // closer down
+    return -std::move(down);
+  } else {
+    return up;
+  }
+}
+
 static std::vector<Entry> Parse(const string &filename) {
   std::vector<string> lines =
     Util::NormalizeLines(Util::ReadFileToLines(filename));
 
   std::vector<Entry> entries;
+  auto GetEntryByName = [&entries](const string &name) {
+      for (const Entry &entry : entries) {
+        if (entry.name ==  name) return entry;
+      }
+      CHECK(false) << "Not found: " << name;
+      return Entry{};
+    };
   for (string &line : lines) {
     if (line.empty() || Util::StartsWith(line, "#"))
       continue;
@@ -37,6 +65,13 @@ static std::vector<Entry> Parse(const string &filename) {
         string xs = Util::chop(line);
         entry.square[i] = BigInt(xs);
       }
+      entry.name = Util::LoseWhiteL(line);
+      entries.push_back(std::move(entry));
+    } else if (Util::TryStripPrefix("SCALE ", &line)) {
+      string base = Util::chop(line);
+      Entry entry = GetEntryByName(base);
+      BigInt scale = BigInt(Util::chop(line));
+      for (BigInt &x : entry.square) x = x * scale;
       entry.name = Util::LoseWhiteL(line);
       entries.push_back(std::move(entry));
     } else {
@@ -55,6 +90,10 @@ struct ScoredEntry {
   BigInt total_error;
   BigInt min_error;
   BigInt max_error;
+  std::array<BigInt, 9> sqerror;
+  // the square <= the number, and the next square >.
+  std::array<BigInt, 9> prev_sq;
+  std::array<BigInt, 9> next_sq;
 };
 
 ScoredEntry Score(const Entry &entry) {
@@ -135,15 +174,37 @@ ScoredEntry Score(const Entry &entry) {
   for (int r = 0; r < 3; r++) {
     for (int c = 0; c < 3; c++) {
       const BigInt &nn = Cell(r, c);
-      BigInt err = BigInt::Abs(BigSqrtError(nn));
-      scored.total_error = scored.total_error + err;
+
+      const auto n1 = BigInt::Sqrt(nn);
+      BigInt nn1 = n1 * n1;
+      BigInt n2 = n1 + 1;
+      BigInt nn2 = n2 * n2;
+      CHECK(nn1 <= nn && nn < nn2);
+      scored.prev_sq[r * 3 + c] = nn1;
+      scored.next_sq[r * 3 + c] = nn2;
+
+      BigInt down = nn - nn1;
+      BigInt up = nn2 - nn;
+      BigInt err =
+        (down < up) ?
+        // closer down
+        -down :
+        up;
+
+      scored.sqerror[r * 3 + c] = err;
+      BigInt abs_err = BigInt::Abs(err);
+      scored.total_error = scored.total_error + abs_err;
       if (err == 0) scored.squares++;
       // XXX
       if (r == 0 && c == 0) scored.min_error = err;
-      if (err > 0) {
-        scored.min_error = std::min(scored.min_error, err);
+      if (abs_err > 0) {
+        if (abs_err < BigInt::Abs(scored.min_error)) {
+          scored.min_error = err;
+        }
       }
-      scored.max_error = std::max(scored.max_error, err);
+      if (abs_err > BigInt::Abs(scored.max_error)) {
+        scored.max_error = err;
+      }
     }
   }
 
@@ -167,7 +228,11 @@ static void PrintScored(const ScoredEntry &scored) {
       int spc = max_length - nums[idx].size();
       for (int i = 0; i < spc; i++) printf(" ");
       // XXX color from mask
-      printf("%s", nums[idx].c_str());
+      if (scored.sqerror[y * 3 + x] != 0) {
+        printf(AFGCOLOR(250, 110, 110, "%s"), nums[idx].c_str());
+      } else {
+        printf("%s", nums[idx].c_str());
+      }
     }
     printf("\n");
   }
@@ -207,6 +272,20 @@ static void PrintScored(const ScoredEntry &scored) {
            LongNum(scored.total_error).c_str(),
            LongNum(scored.min_error).c_str(),
            LongNum(scored.max_error).c_str());
+
+    for (int i = 0; i < 9; i++) {
+      if (scored.sqerror[i] != 0) {
+        BigInt down = scored.entry.square[i] - scored.prev_sq[i];
+        BigInt up = scored.next_sq[i] - scored.entry.square[i];
+
+        printf("%s (%s away) [%s] (%s away) %s\n",
+               LongNum(scored.prev_sq[i]).c_str(),
+               LongNum(down).c_str(),
+               LongNum(scored.entry.square[i]).c_str(),
+               LongNum(up).c_str(),
+               LongNum(scored.next_sq[i]).c_str());
+      }
+    }
   }
 }
 

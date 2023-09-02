@@ -20,6 +20,8 @@
 #include "factorization.h"
 #include "map-util.h"
 #include "set-util.h"
+#include "hashing.h"
+#include "bignum/big.h"
 
 using namespace std;
 
@@ -166,6 +168,48 @@ static void CellFactors(const Database &db,
   printf("\n");
 }
 
+static void PrintPrime(const Database &db) {
+  if (db.Almost2().empty()) return;
+
+  std::unordered_set<Database::Square, Hashing<Database::Square>> prime;
+
+  for (const auto &[isum, square] : db.Almost2()) {
+    BigInt big_gcd(square[0]);
+    for (uint64_t n : square) {
+      big_gcd = BigInt::GCD(big_gcd, BigInt{n});
+    }
+
+    auto gcdo = big_gcd.ToInt();
+    CHECK(gcdo.has_value());
+    const uint64_t gcd = gcdo.value();
+
+    Database::Square primed = square;
+    for (uint64_t &n : primed) {
+      CHECK(n % gcd == 0);
+      n /= gcd;
+    }
+
+    // (could use map, count them)
+    prime.insert(primed);
+  }
+
+  printf("===============\n"
+         "There are " AGREEN("%d") " actually different squares:\n",
+         (int)prime.size());
+
+  for (const Database::Square &square : prime) {
+    const auto [aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
+    printf("--------------\n"
+           "%llu %llu %llu\n"
+           "%llu %llu %llu\n"
+           "%llu %llu %llu\n",
+           aa, bb, cc,
+           dd, ee, ff,
+           gg, hh, ii);
+  };
+  printf("==============\n\n");
+}
+
 static void PrintFactors(const Database &db) {
   if (db.Almost2().empty()) return;
 
@@ -256,7 +300,6 @@ static void Interesting() {
   PlotSquareValues(db);
 
   PrintFactors(db);
-
   /*
   CellFactors(db, "ee", [](const Database::Square &square) {
       const auto &[aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
@@ -269,6 +312,7 @@ static void Interesting() {
       return hh;
     });
 
+  PrintPrime(db);
 
   const auto &[azeroes, hzeroes] = db.GetZeroes();
 

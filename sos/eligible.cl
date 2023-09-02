@@ -16,7 +16,7 @@ __kernel void NotSumOfSquares(const uint64_t start,
   uint8_t byte = 0;
   // force unroll?
   for (int i = 0; i < 8; i++) {
-    uint64_t sum = (num_base + i) * STRIDE;
+    uint64_t sum = num_base + i;
 
     uint8_t bit =
       // non-quadratic sum residues.
