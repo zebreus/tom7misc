@@ -20,9 +20,6 @@
 #define _FACTOR_H
 #define MAX_FACTORS 5000
 #include "showtime.h"
-#ifdef __EMSCRIPTEN__
-void getCunn(const char *url, char *factorsFromServer);
-#endif
 
 #define TYP_AURIF    100000000
 #define TYP_TABLE    150000000
@@ -47,9 +44,8 @@ struct sFactors
   int upperBound;
   int type;
 };
-#ifdef FACTORIZATION_APP
+
 extern int StepECM;
-#endif
 
 extern int64_t primeModMult;
 extern int64_t SIQSModMult;
@@ -79,9 +75,7 @@ void factor(const BigInteger *toFactor, const int *number, int *factors, struct 
 void factorExt(const BigInteger* toFactor, const int* number,
   int* factors, struct sFactors* pstFactors, char* pcKnownFactors);
 void FactoringSIQS(const limb *pNbrToFactor, limb *pFactor);
-#ifndef lang
-  extern bool lang;
-#endif
+
 extern int nbrToFactor[MAX_LEN];
 extern struct sFactors astFactorsMod[MAX_FACTORS];
 extern int factorsMod[20000];
@@ -94,10 +88,10 @@ void MaxFactor(BigInteger* result);
 void SumOfDivisors(BigInteger *result);
 void NumberOfDivisors(BigInteger *result);
 enum eEcmResult ecmCurve(int* pEC, int* pNextEC);
-#ifdef FACTORIZATION_APP
+
 char* ShowFactoredPart(const BigInteger* pNbr, const struct sFactors* pstFactors);
 void ShowLowerText(void);
 int BpswPrimalityTest(const BigInteger* pValue, const struct sFactors* pstFactors);
 void batchEcmCallback(char** pptrOutput, int type);
-#endif
+
 #endif

@@ -22,7 +22,6 @@
 #include <assert.h>
 #include "bignbr.h"
 #include "factor.h"
-#include "skiptest.h"
 #include "globals.h"
 
 enum eOper
@@ -287,14 +286,8 @@ enum eExprErr BigIntMultiply(const BigInteger *pFact1, const BigInteger *pFact2,
     multint(pProduct, pFactor1, factor2);
     return EXPR_OK;
   }
-#ifdef FACTORIZATION_APP
   // The maximum number that can be represented is 2^664380 ~ 10^200000
-  if ((pFactor1->nbrLimbs + pFactor2->nbrLimbs) > ((664380 / BITS_PER_GROUP) + 1))
-#else
-  // The maximum number that can be represented is 2^66438 ~ 10^20000
-  if ((pFactor1->nbrLimbs + pFactor2->nbrLimbs) > ((66438 / BITS_PER_GROUP) + 1))
-#endif
-  {
+  if ((pFactor1->nbrLimbs + pFactor2->nbrLimbs) > ((664380 / BITS_PER_GROUP) + 1)) {
     return EXPR_INTERM_TOO_HIGH;
   }
   multiplyWithBothLen(&pFactor1->limbs[0], &pFactor2->limbs[0], &pProduct->limbs[0],
@@ -516,11 +509,7 @@ enum eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent, BigIntege
     return EXPR_OK;
   }
   base = logBigNbr(pBase);
-#ifdef FACTORIZATION_APP
   if (base*(double)exponent > 460510)
-#else
-  if (base*(double)exponent > 46051)
-#endif
   {   // More than 20000 digits. 46051 = log(10^20000)
     return EXPR_INTERM_TOO_HIGH;
   }
@@ -1789,29 +1778,12 @@ void initializeSmallPrimes(int* pSmallPrimes)
   }
 }
 
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-static int Perform2SPRPtest(int nbrLimbs, const limb* limbs, const struct sFactors* pstFactors,
-  const BigInteger *pValue)
-#else
 static int Perform2SPRPtest(int nbrLimbs, const limb* limbs)
-#endif
+
 {
   int Mult3Len;
   int ctr;
   int lenBytes;
-#ifdef __EMSCRIPTEN__
-#ifdef FACTORIZATION_APP
-  char* ptrText;
-  StepECM = 3;   // Show progress (in percentage) of BPSW primality test.
-  ptrText = ShowFactoredPart(pValue, pstFactors);
-  (void)strcpy(ptrText, lang ? "<p>Paso 1 del algoritmo BPSW de primos probables: Miller-Rabin fuerte con base 2.</p>" :
-    "<p>Step 1 of BPSW probable prime algorithm: Strong Miller-Rabin with base 2.</p>");
-  ShowLowerText();
-#else
-  databack(lang ? "3<p>Paso 1 del algoritmo BPSW de primos probables: Miller-Rabin fuerte con base 2.</p>" :
-    "3<p>Step 1 of BPSW probable prime algorithm: Strong Miller-Rabin with base 2.</p>");
-#endif
-#endif
   // Perform 2-SPRP test
   lenBytes = nbrLimbs * (int)sizeof(limb);
   (void)memcpy(valueQ, limbs, lenBytes);
@@ -1852,9 +1824,6 @@ static int Perform2SPRPtest(int nbrLimbs, const limb* limbs)
       modmult(Mult1, Mult1, Mult4);
       if (checkOne(Mult4, nbrLimbs) != 0)
       {  // Current value is 1 but previous value is not 1 or -1: composite
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-        StepECM = 0;    // Do not show progress.
-#endif
         return 2;       // Composite. Not 2-strong probable prime.
       }
       if (checkMinusOne(Mult4, nbrLimbs) != 0)
@@ -1866,14 +1835,8 @@ static int Perform2SPRPtest(int nbrLimbs, const limb* limbs)
     }
     if (i == ctr)
     {
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-      StepECM = 0;      // Do not show progress.
-#endif
       return 1;         // Not 2-Fermat probable prime.
     }
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-    StepECM = 0;      // Do not show progress.
-#endif
     return 2;         // Composite. Not 2-strong probable prime.
   }
   return 0;
@@ -1891,12 +1854,7 @@ static int Perform2SPRPtest(int nbrLimbs, const limb* limbs)
 // Use the following temporary variables:
 // Mult1 for Q^n, Mult3 for U, Mult4 for V, Mult2 for temporary.
 
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-static int PerformStrongLucasTest(const BigInteger* pValue, int D, int absQ, int signD,
-  const struct sFactors* pstFactors)
-#else
 static int PerformStrongLucasTest(const BigInteger* pValue, int D, int absQ, int signD)
-#endif
 {
   int nbrLimbsBytes;
   int index;
@@ -1905,37 +1863,6 @@ static int PerformStrongLucasTest(const BigInteger* pValue, int D, int absQ, int
   int ctr;
   int nbrLimbs = pValue->nbrLimbs;
 
-#ifdef __EMSCRIPTEN__
-  char* ptrText;
-#ifdef FACTORIZATION_APP
-  StepECM = 3;   // Show progress (in percentage) of BPSW primality test.
-  ptrText = ShowFactoredPart(pValue, pstFactors);
-#else
-  char text[200];
-  ptrText = text;
-  *ptrText = '3';
-  ptrText++;
-#endif
-  copyStr(&ptrText, lang ? "<p>Paso 2 del algoritmo BPSW de primos probables: Lucas fuerte con P=1, D=" :
-    "<p>Step 2 of BPSW probable prime algorithm: Strong Lucas with P=1, D=");
-  if (signD < 0)
-  {
-    copyStr(&ptrText, "&minus;");
-  }
-  int2dec(&ptrText, D);
-  copyStr(&ptrText, ", Q=");
-  if (signD > 0)
-  {
-    copyStr(&ptrText, "&minus;");
-  }
-  int2dec(&ptrText, absQ);
-  copyStr(&ptrText, "</p>");
-#ifdef FACTORIZATION_APP
-  ShowLowerText();
-#else
-  databack(text);
-#endif
-#endif
   nbrLimbsBytes = (nbrLimbs + 1) * (int)sizeof(limb);
   (void)memcpy(Mult1, MontgomeryMultR1, nbrLimbsBytes); // Q^0 <- 1.
   signPowQ = 1;
@@ -2006,9 +1933,6 @@ static int PerformStrongLucasTest(const BigInteger* pValue, int D, int absQ, int
   // If U is zero, the number passes the BPSW primality test.
   if (BigNbrIsZero(Mult3))
   {
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-    StepECM = 0;      // Do not show progress.
-#endif
     return 0;         // Indicate number is probable prime.
   }
   for (index = 0; index < ctr; index++)
@@ -2016,9 +1940,6 @@ static int PerformStrongLucasTest(const BigInteger* pValue, int D, int absQ, int
     // If V is zero, the number passes the BPSW primality test.
     if (BigNbrIsZero(Mult4))
     {
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-      StepECM = 0;    // Do not show progress.
-#endif
       return 0;       // Indicate number is probable prime.
     }
     modmult(Mult4, Mult4, Mult4);          // V <- V * V
@@ -2035,9 +1956,6 @@ static int PerformStrongLucasTest(const BigInteger* pValue, int D, int absQ, int
     modmult(Mult1, Mult1, Mult1);          // Square power of Q.
     signPowQ = 1;                          // Indicate it is positive.
   }
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-  StepECM = 0;     // Do not show progress.
-#endif
   return 3;        // Number does not pass strong Lucas test.
 }
 
@@ -2053,15 +1971,8 @@ static int PerformStrongLucasTest(const BigInteger* pValue, int D, int absQ, int
 //         1 = composite: not 2-Fermat pseudoprime.
 //         2 = composite: does not pass 2-SPRP test.
 //         3 = composite: does not pass strong Lucas test.
-#if FACTORIZATION_APP
 int BpswPrimalityTest(const BigInteger* pValue, const struct sFactors* pstFactors)
-#else
-int BpswPrimalityTest(const BigInteger *pValue)
-#endif
 {
-#if !defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-  (void)pstFactors;    // Parameter is not used.
-#endif
   int D;
   int absQ;
   int signD;
@@ -2117,11 +2028,7 @@ int BpswPrimalityTest(const BigInteger *pValue)
       }
     }
   }
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-  retcode = Perform2SPRPtest(nbrLimbs, limbs, pstFactors, pValue);
-#else
   retcode = Perform2SPRPtest(nbrLimbs, limbs);
-#endif
   if (retcode != 0)
   {
     return retcode;
@@ -2132,9 +2039,6 @@ int BpswPrimalityTest(const BigInteger *pValue)
   (void)BigIntMultiply(&tmp, &tmp, &tmp);
   if (BigIntEqual(pValue, &tmp))
   {                  // Number is perfect square.
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-    StepECM = 0;     // Do not show progress.
-#endif
     return 3;        // Indicate number does not pass strong Lucas test.
   }
   // At this point, the number is not perfect square, so find value of D.
@@ -2155,11 +2059,7 @@ int BpswPrimalityTest(const BigInteger *pValue)
   {
     absQ = -absQ;
   }
-#if defined(__EMSCRIPTEN__) && defined(FACTORIZATION_APP)
-  return PerformStrongLucasTest(pValue, D, absQ, signD, pstFactors);
-#else
   return PerformStrongLucasTest(pValue, D, absQ, signD);
-#endif
 }
 
 bool BigNbrIsZero(const limb *value)

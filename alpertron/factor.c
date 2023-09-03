@@ -22,23 +22,12 @@
 #include "bignbr.h"
 #include "factor.h"
 #include "commonstruc.h"
-#include "skiptest.h"
 #include "globals.h"
 
 int yieldFreq;
 int maxIndexM;
 int indexM;
 static int oldNbrFactors;
-#ifdef __EMSCRIPTEN__
-char* ptrLowerText;
-char upperText[MAX_LEN*16];
-char lowerText[MAX_LEN*16];
-extern mmCback modmultCallback;
-extern int64_t lModularMult;
-extern char *ptrInputText;
-int nbrPrimes;
-int indexPrimes;
-#endif
 
 union uCommon common;
 int64_t primeModMult;
@@ -1389,100 +1378,6 @@ static void insertBigFactor(struct sFactors *pstFactors, const BigInteger *divis
   // Divide number by factor just found.
   SortFactors(pstFactors);
 }
-#ifdef __EMSCRIPTEN__
-static void showECMStatus(void)
-{
-  char status[200];
-  int elapsedTime;
-  char *ptrStatus;
-  if ((lModularMult % yieldFreq) != 0)
-  {
-    return;
-  }
-  elapsedTime = (int)(tenths() - originalTenthSecond);
-  if ((elapsedTime / 10) == (oldTimeElapsed / 10))
-  {
-    return;
-  }
-  oldTimeElapsed = elapsedTime;
-  ptrStatus = status;
-  copyStr(&ptrStatus, lang ? "4<p>Transcurrió " : "4<p>Time elapsed: ");
-  GetDHMS(&ptrStatus, elapsedTime / 10);
-  copyStr(&ptrStatus, "&nbsp;&nbsp;&nbsp;");  // Separate with three spaces.
-  switch (StepECM)
-  {
-  case 1:
-    copyStr(&ptrStatus, lang ? "Paso 1: " : "Step 1: ");
-    int2dec(&ptrStatus, indexPrimes / (nbrPrimes / 100));
-    *ptrStatus = '%';
-    ptrStatus++;
-    break;
-  case 2:
-    copyStr(&ptrStatus, lang ? "Paso 2: " : "Step 2: ");
-    int2dec(&ptrStatus, (maxIndexM == 0)? 0 : (indexM / (maxIndexM / 100)));
-    *ptrStatus = '%';
-    ptrStatus++;
-    break;
-  case 3:
-    copyStr(&ptrStatus, lang ? "Progreso: " : "Progress: ");
-    int2dec(&ptrStatus, percentageBPSW);
-    *ptrStatus = '%';
-    ptrStatus++;
-    break;
-  default:
-    break;
-  }
-  copyStr(&ptrStatus, "</p>");
-  databack(status);
-}
-
-// Save factors in Web Storage so factorization can continue the next time the application runs.
-static void SaveFactors(struct sFactors *pstFactors)
-{
-#ifdef FACTORIZATION_APP
-  struct sFactors *pstCurFactor = pstFactors + 1;
-  int factorNbr;
-  BigInteger bigint;
-  char *ptrText = common.saveFactors.text;
-  if (oldNbrFactors == pstFactors->multiplicity)
-  {
-    return;
-  }
-  oldNbrFactors = pstFactors->multiplicity;
-  *ptrText = '8';
-  ptrText++;
-  copyStr(&ptrText, ptrInputText);
-  *ptrText = '=';
-  ptrText++;
-  for (factorNbr = 1; factorNbr <= pstFactors->multiplicity; factorNbr++)
-  {
-    if (factorNbr > 1)
-    {
-      *ptrText = '*';
-      ptrText++;
-    }
-    NumberLength = *pstCurFactor->ptrFactor;
-    IntArray2BigInteger(pstCurFactor->ptrFactor, &bigint);
-    BigInteger2Dec(&ptrText, &bigint, -100000);   // Factors are saved in decimal.
-    *ptrText = '^';
-    ptrText++;
-    int2dec(&ptrText, pstCurFactor->multiplicity);
-    *ptrText = '(';
-    ptrText++;
-    int2dec(&ptrText, pstCurFactor->upperBound);
-    *ptrText = ',';
-    ptrText++;
-    int2dec(&ptrText, pstCurFactor->type);
-    *ptrText = ')';
-    ptrText++;
-    pstCurFactor++;
-  }
-  *ptrText = 0;
-  databack(common.saveFactors.text);
-#endif
-}
-
-#endif
 
 static char *findChar(char *str, char c)
 {
@@ -1526,15 +1421,6 @@ static bool getNextInteger(char **ppcFactors, int *result, char delimiter)
 static int factorCarmichael(BigInteger *pValue, struct sFactors *pstFactors)
 {
   int randomBase = 0;
-#ifdef __EMSCRIPTEN__
-  timePrimalityTests = 0;  // Reset to zero all timings.
-  timeSIQS = 0;
-  timeECM = 0;
-  nbrPrimalityTests = 0;   // Reset to zero all counters.
-  nbrSIQS = 0;
-  nbrECM = 0;
-  SIQSModMult = 0;
-#endif
   bool factorsFound = false;
   int nbrLimbsQ;
   int ctr;
@@ -1759,20 +1645,6 @@ void factorExt(const BigInteger *toFactor, const int *number,
   EC = 1;
   NumberLength = toFactor->nbrLimbs;
   GetYieldFrequency();
-#ifdef __EMSCRIPTEN__
-  oldTimeElapsed = 0;
-  lModularMult = 0;
-  SIQSModMult = 0;
-  primeModMult = 0;
-  nbrECM = 0;
-  nbrSIQS = 0;
-  nbrPrimalityTests = 0;
-  timeECM = 0;
-  timePrimalityTests = 0;
-  timeSIQS = 0;
-  originalTenthSecond = tenths();
-  modmultCallback = showECMStatus;   // Set callback.
-#endif
   pstCurFactor = pstFactors + 1;
   if (ptrKnownFactors == NULL)
   {   // No factors known.
@@ -1784,9 +1656,6 @@ void factorExt(const BigInteger *toFactor, const int *number,
     pstCurFactor->multiplicity = 1;
     pstCurFactor->ptrFactor = factors;
     pstCurFactor->upperBound = 2;
-#ifdef __EMSCRIPTEN__
-    SaveFactors(pstFactors);
-#endif
   }
   else if (*ptrKnownFactors == '!')
   {   // Force going to SIQS.
@@ -1799,9 +1668,6 @@ void factorExt(const BigInteger *toFactor, const int *number,
     pstCurFactor->multiplicity = 1;
     pstCurFactor->ptrFactor = factors;
     pstCurFactor->upperBound = 2;
-#ifdef __EMSCRIPTEN__
-    SaveFactors(pstFactors);
-#endif
   }
   else
   {   // Insert factors saved on Web Storage.
@@ -1869,9 +1735,6 @@ void factorExt(const BigInteger *toFactor, const int *number,
         {
           insertBigFactor(pstFactors, &prime, 0);
         }
-#ifdef __EMSCRIPTEN__
-        SaveFactors(pstFactors);
-#endif
         break;
       }
       if (*ptrKnownFactors == ',')
@@ -2039,23 +1902,9 @@ void factorExt(const BigInteger *toFactor, const int *number,
       }
       // No small factor. Check whether the number is prime or prime power.
 #ifdef __EMSCRIPTEN__
-#ifdef FACTORIZATION_APP
-      StepECM = 0;
-      copyStr(&ptrText, lang ? "<p>Verificando si el número es potencia perfecta.<p>" :
-        "<p>Testing whether the number is perfect power or not.</p>");
-      ShowLowerText();
-#else
-      databack(lang ? "3<p>Verificando si el número es potencia perfecta.</p>" :
-        "3<p>Testing whether the number is perfect power or not.</p>");
-#endif
-#endif
-#ifdef __EMSCRIPTEN__
     }
 #endif
-#ifdef __EMSCRIPTEN__
-    SaveFactors(pstFactors);
-#endif
-#ifdef FACTORIZATION_APP
+
     if (skipPrimality)
     {
       skipPrimality = false;
@@ -2063,26 +1912,8 @@ void factorExt(const BigInteger *toFactor, const int *number,
     }
     else
     {
-#ifdef __EMSCRIPTEN__
-      if (prime.nbrLimbs > (3322 / BITS_PER_GROUP))  // 3322 = 1000*log_2(10) -> 1000 digits
-      {
-        startSkipTest();
-      }
-      int64_t oldModularMult = lModularMult;
-#endif
       result = BpswPrimalityTest(&prime, pstFactors);
-#ifdef __EMSCRIPTEN__
-      nbrPrimalityTests++;
-      primeModMult += lModularMult - oldModularMult;
-      if (prime.nbrLimbs > (3322 / BITS_PER_GROUP))  // 3322 = 1000*log_2(10) -> 1000 digits
-      {
-        endSkipTest();
-      }
-#endif
     }
-#else
-    result = BpswPrimalityTest(&prime);
-#endif
 
     if (result == 0)
     {   // Number is prime power.
@@ -2097,14 +1928,7 @@ void factorExt(const BigInteger *toFactor, const int *number,
       pstCurFactor--;
       continue;
     }
-#ifdef __EMSCRIPTEN__
-    double originalTenths = tenths();
-#endif
     performFactorization(&prime, pstFactors);          // Factor number.
-#ifdef __EMSCRIPTEN__
-    nbrECM++;
-    timeECM += (int)(tenths() - originalTenths);
-#endif
     // Check whether GD is not one. In this case we found a proper factor.
     for (ctr = 1; ctr < NumberLength; ctr++)
     {
@@ -2138,16 +1962,10 @@ void factorExt(const BigInteger *toFactor, const int *number,
       {
         insertBigFactor(pstFactors, &Temp1, EC);
       }
-#ifdef __EMSCRIPTEN__
-      SaveFactors(pstFactors);
-#endif
       factorNbr = 0;
       pstCurFactor = pstFactors;
     }    // End if
   }      // End for
-#ifdef __EMSCRIPTEN__
-  SaveFactors(pstFactors);
-#endif
 }
 
 char *getFactorsAsciiPtr(void)

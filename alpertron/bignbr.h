@@ -26,12 +26,8 @@
 
 // Tom multiplied these constants by 1000
 #define MAX_LEN_MULT  25000000  // 200000 digits
-#ifdef FACTORIZATION_APP
 // well, not this one. it doesn't compile with 2500000
 #define MAX_LEN       25000  // 200000 digits
-#else
-#define MAX_LEN        2500000  // 20000 digits
-#endif
 #define BITS_PER_GROUP         31
 #define BITS_PER_GROUP_MINUS_1 30
 #define HALF_INT_RANGE        0x40000000
@@ -90,9 +86,6 @@ extern enum eNbrCached MontgomeryMultNCached;
 extern enum eNbrCached TestNbrCached;
 extern limb MontgomeryMultN[MAX_LEN];
 extern int smallPrimes[SMALL_PRIMES_ARRLEN+1];
-#ifdef __EMSCRIPTEN__
-extern int percentageBPSW;
-#endif
 
 void initializeSmallPrimes(int* pSmallPrimes);
 
@@ -175,9 +168,7 @@ void BigIntAnd(const BigInteger *firstArg, const BigInteger *secondArg, BigInteg
 void BigIntOr(const BigInteger *firstArg, const BigInteger *secondArg, BigInteger *result);
 void BigIntXor(const BigInteger *firstArg, const BigInteger *secondArg, BigInteger *result);
 void ConvertToTwosComplement(BigInteger *value);
-#ifndef FACTORIZATION_APP
 int BpswPrimalityTest(const BigInteger *pValue);
-#endif
 void IntArray2BigInteger(const int *ptrValues, /*@out@*/BigInteger *bigint);
 void BigInteger2IntArray(/*@out@*/int *ptrValues, const BigInteger *bigint);
 int IntArrayCompare(const int* ptrFirst, const int* ptrSecond);

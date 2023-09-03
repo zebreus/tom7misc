@@ -22,7 +22,6 @@
 #include "bignbr.h"
 #include "factor.h"
 #include "commonstruc.h"
-#include "skiptest.h"
 
 #if MAX_PRIME_SIEVE == 11
 #define MAX_SIEVE_PRIME    5000

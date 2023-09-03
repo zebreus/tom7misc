@@ -21,9 +21,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include "bignbr.h"
-#ifdef FACTORIZATION_APP
 #include "factor.h"
-#endif
 
 #define COMPUTE_NEXT_PRIME_SIEVE_SIZE 2000
 #define SQRT_MAX_VALUE_LIMB 46341
@@ -408,11 +406,7 @@ enum eExprErr ComputeFibLucas(int origValue, BigInteger* pArgument)
     return EXPR_INTERM_TOO_HIGH;
   }
   largeVal.x = pArgument->limbs[0].x;
-#ifdef FACTORIZATION_APP
   if (largeVal.x > 956620)
-#else
-  if (largeVal.x > 95662)
-#endif
   {
     return EXPR_INTERM_TOO_HIGH;
   }
@@ -527,11 +521,7 @@ enum eExprErr ComputeBack(BigInteger* pArgument)
     do
     {        // Loop that searches for previous probable prime.
       addbigint(pResult, -2);
-#ifdef FACTORIZATION_APP
       rc = BpswPrimalityTest(pResult, NULL);  // Continue loop if not probable prime.
-#else
-      rc = BpswPrimalityTest(pResult);        // Continue loop if not probable prime.
-#endif
     } while (rc != 0);
   }
   else
@@ -545,11 +535,7 @@ enum eExprErr ComputeBack(BigInteger* pArgument)
         if (sieve[ctr] == 0)
         {   // Number is not divisible by primes less than 1000.
           addbigint(pResult, ctr);
-#ifdef FACTORIZATION_APP
           if (BpswPrimalityTest(pResult, NULL) == 0)  // End loop if probable prime.
-#else
-          if (BpswPrimalityTest(pResult) == 0)        // End loop if probable prime.
-#endif
           {
             return EXPR_OK;
           }
@@ -590,11 +576,7 @@ enum eExprErr ComputeNext(BigInteger* pArgument)
   {
     for (;;)
     {        // Loop that searches for next probable prime.
-#ifdef FACTORIZATION_APP
       if (BpswPrimalityTest(pResult, NULL) == 0)  // Continue loop if not probable prime.
-#else
-      if (BpswPrimalityTest(pResult) == 0)        // Continue loop if not probable prime.
-#endif
       {
         return EXPR_OK;
       }
@@ -611,11 +593,7 @@ enum eExprErr ComputeNext(BigInteger* pArgument)
         if (sieve[ctr] == 0)
         {   // Number is not divisible by primes less than 1000.
           addbigint(pResult, ctr);
-#ifdef FACTORIZATION_APP
           if (BpswPrimalityTest(pResult, NULL) == 0)  // End loop if probable prime.
-#else
-          if (BpswPrimalityTest(pResult) == 0)        // End loop if probable prime.
-#endif
           {
             return EXPR_OK;
           }
