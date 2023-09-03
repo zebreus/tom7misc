@@ -70,12 +70,6 @@ typedef struct BigInteger
   limb limbs[MAX_LEN];
 } BigInteger;
 
-typedef struct BigRational
-{
-  BigInteger numerator;
-  BigInteger denominator;
-} BigRational;
-
 extern limb TestNbr[MAX_LEN];
 extern limb MontgomeryMultR2[MAX_LEN];
 extern limb MontgomeryMultR1[MAX_LEN];
@@ -168,6 +162,10 @@ void BigIntAnd(const BigInteger *firstArg, const BigInteger *secondArg, BigInteg
 void BigIntOr(const BigInteger *firstArg, const BigInteger *secondArg, BigInteger *result);
 void BigIntXor(const BigInteger *firstArg, const BigInteger *secondArg, BigInteger *result);
 void ConvertToTwosComplement(BigInteger *value);
+// Output: 0 = probable prime.
+//         1 = composite: not 2-Fermat pseudoprime.
+//         2 = composite: does not pass 2-SPRP test.
+//         3 = composite: does not pass strong Lucas test.
 int BpswPrimalityTest(const BigInteger *pValue);
 void IntArray2BigInteger(const int *ptrValues, /*@out@*/BigInteger *bigint);
 void BigInteger2IntArray(/*@out@*/int *ptrValues, const BigInteger *bigint);
@@ -237,29 +235,6 @@ void QuaternionGCD(BigInteger *scalarA, BigInteger *vecIA, BigInteger *vecJA, Bi
 void MultiplyQuaternionBy2(BigInteger *scalar, BigInteger *vecI, BigInteger *vecJ, BigInteger *vecK);
 void DivideQuaternionBy2(BigInteger *scalar, BigInteger *vecI, BigInteger *vecJ, BigInteger *vecK);
 
-double BigRational2double(const BigRational* value);
-void BigRationalAdd(const BigRational* pAddend1,
-  const BigRational* pAddend2, BigRational* pSum);
-void BigRationalSubt(const BigRational* pAddend1,
-  const BigRational* pAddend2, BigRational* pSum);
-void BigRationalNegate(BigRational* pSrc, const BigRational* pDest);
-void BigRationalMultiply(const BigRational* pFactor1,
-  const BigRational* pFactor2, BigRational* pProduct);
-void BigRationalDivide(const BigRational* pDividend,
-  const BigRational* pDivisor, BigRational* pQuotient);
-void BigRationalMultiplyByInt(const BigRational* pFactor1,
-  int factor2, BigRational* pProduct);
-void BigRationalDivideByInt(const BigRational* pDividend,
-  int divisor, BigRational* pQuotient);
-void MultiplyRationalBySqrtRational(BigRational* RatPart, BigRational* SqrPart);
-bool BigRationalSquareRoot(BigRational* RatArgum, BigRational* RatSqRoot);
-void ForceDenominatorPositive(BigRational* rat);
-void showRational(const BigRational* rat);
-void showRationalNoParen(const BigRational* rat);
-void showRationalOverStr(const BigRational* rat, const char* str, const char *ptrTimes);
-void ShowRationalAndSqrParts(const BigRational* RatPart, const BigRational* SqrPart,
-  int root, const char *ptrTimes);
-void showSquareRootOfRational(const BigRational* rat, int root, const char *ptrTimes);
 void copyStr(char** pptrString, const char* stringToCopy);
 void computeRoot(const BigInteger* argument, BigInteger* nthRoot, int Exponent);
 

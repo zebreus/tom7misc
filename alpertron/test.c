@@ -52,11 +52,16 @@ static bool ParseBigInteger(const char *str, BigInteger *big) {
   // enum eSign sign;
   //   limb limbs[MAX_LEN];
 
+  big->sign = SIGN_POSITIVE;
+  if (str[0] == '-') {
+    str++;
+    big->sign = SIGN_NEGATIVE;
+  }
+
   int nbrDigits = (int)strlen(str);
   Dec2Bin(str, big->limbs, nbrDigits, &big->nbrLimbs);
   fprintf(stderr, "Parsed [%s] to %d limbs.\n", str, big->nbrLimbs);
-  // XXX minus sign
-  big->sign = SIGN_POSITIVE;
+
   return true;
 }
 

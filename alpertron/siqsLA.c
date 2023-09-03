@@ -26,7 +26,8 @@
 #include "factor.h"
 #include "commonstruc.h"
 
-
+static int matrixRows;
+static int matrixCols;
 
 #define processCol(col) (*(RightMatr + col) & ((leftMatr << col) >> 31))
 

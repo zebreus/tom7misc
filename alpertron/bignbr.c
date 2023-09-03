@@ -951,13 +951,7 @@ void addbigint(BigInteger *pResult, int addend)
 
 void multint(BigInteger *pResult, const BigInteger *pMult, int factor)
 {
-#ifdef _USING64BITS_
   int64_t carry;
-#else
-  int carry;
-  double dFactor;
-  double dVal = 1.0 / (double)LIMB_RANGE;
-#endif
   int intMult = factor;
   bool factorPositive = true;
   int nbrLimbs = pMult->nbrLimbs;
@@ -974,36 +968,15 @@ void multint(BigInteger *pResult, const BigInteger *pMult, int factor)
     factorPositive = false;
     intMult = -intMult;
   }
-#ifndef _USING64BITS_
-  dFactor = (double)intMult;
-#endif
   carry = 0;
   for (int ctr = 0; ctr < nbrLimbs; ctr++)
   {
-#ifdef _USING64BITS_
+
     carry += (int64_t)pLimb->x * (int64_t)intMult;
     pResultLimb->x = UintToInt((unsigned int)carry & MAX_VALUE_LIMB);
     pResultLimb++;
     carry >>= BITS_PER_GROUP;
-#else
-    int low = ((pLimb->x * intMult) + carry) & MAX_INT_NBR;
-    double dCarry;
-    // Subtract or add 0x20000000 so the multiplication by dVal is not nearly an integer.
-    // In that case, there would be an error of +/- 1.
-    if (low < HALF_INT_RANGE)
-    {
-      dCarry = (((double)(pLimb->x) * dFactor) + (double)carry +
-        (double)FOURTH_INT_RANGE)*dVal;
-    }
-    else
-    {
-      dCarry = (((double)(pLimb->x) * dFactor) + (double)carry -
-        (double)FOURTH_INT_RANGE)*dVal;
-    }
-    carry = (int)dCarry;
-    pResultLimb->x = low;
-    pResultLimb++;
-#endif
+
     pLimb++;
   }
   if (carry != 0)
@@ -1962,8 +1935,7 @@ static int PerformStrongLucasTest(const BigInteger* pValue, int D, int absQ, int
 //         1 = composite: not 2-Fermat pseudoprime.
 //         2 = composite: does not pass 2-SPRP test.
 //         3 = composite: does not pass strong Lucas test.
-int BpswPrimalityTest(const BigInteger* pValue, const struct sFactors* pstFactors)
-{
+int BpswPrimalityTest(const BigInteger* pValue) {
   int D;
   int absQ;
   int signD;

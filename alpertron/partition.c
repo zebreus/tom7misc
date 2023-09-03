@@ -521,7 +521,7 @@ enum eExprErr ComputeBack(BigInteger* pArgument)
     do
     {        // Loop that searches for previous probable prime.
       addbigint(pResult, -2);
-      rc = BpswPrimalityTest(pResult, NULL);  // Continue loop if not probable prime.
+      rc = BpswPrimalityTest(pResult);  // Continue loop if not probable prime.
     } while (rc != 0);
   }
   else
@@ -535,7 +535,7 @@ enum eExprErr ComputeBack(BigInteger* pArgument)
         if (sieve[ctr] == 0)
         {   // Number is not divisible by primes less than 1000.
           addbigint(pResult, ctr);
-          if (BpswPrimalityTest(pResult, NULL) == 0)  // End loop if probable prime.
+          if (BpswPrimalityTest(pResult) == 0)  // End loop if probable prime.
           {
             return EXPR_OK;
           }
@@ -576,7 +576,7 @@ enum eExprErr ComputeNext(BigInteger* pArgument)
   {
     for (;;)
     {        // Loop that searches for next probable prime.
-      if (BpswPrimalityTest(pResult, NULL) == 0)  // Continue loop if not probable prime.
+      if (BpswPrimalityTest(pResult) == 0)  // Continue loop if not probable prime.
       {
         return EXPR_OK;
       }
@@ -593,7 +593,7 @@ enum eExprErr ComputeNext(BigInteger* pArgument)
         if (sieve[ctr] == 0)
         {   // Number is not divisible by primes less than 1000.
           addbigint(pResult, ctr);
-          if (BpswPrimalityTest(pResult, NULL) == 0)  // End loop if probable prime.
+          if (BpswPrimalityTest(pResult) == 0)  // End loop if probable prime.
           {
             return EXPR_OK;
           }

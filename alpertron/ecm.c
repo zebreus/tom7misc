@@ -29,7 +29,6 @@
 #define MAX_SIEVE_PRIME    (10 * SIEVE_SIZE)
 #endif
 
-extern int StepECM;
 extern int maxIndexM;
 extern int indexM;
 static int SmallPrime[670]; /* Primes < 5000 */
@@ -460,7 +459,6 @@ enum eEcmResult ecmStep1(void)
   for (int pass = 0; pass < 2; pass++)
   {
     /* For powers of 2 */
-    StepECM = 1;
     for (I = 1; I <= boundStep1; I *= 2)
     {
       duplicate(common.ecm.X, common.ecm.Z, common.ecm.X, common.ecm.Z);
@@ -610,7 +608,6 @@ enum eEcmResult ecmStep1(void)
 enum eEcmResult ecmStep2(void)
 {
   int j;
-  StepECM = 2;
   j = 0;
   for (int u = 1; u < SIEVE_SIZE; u += 2)
   {

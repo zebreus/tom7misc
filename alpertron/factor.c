@@ -23,6 +23,7 @@
 #include "factor.h"
 #include "commonstruc.h"
 #include "globals.h"
+#include "siqs.h"
 
 int yieldFreq;
 int maxIndexM;
@@ -30,15 +31,7 @@ int indexM;
 static int oldNbrFactors;
 
 union uCommon common;
-int64_t primeModMult;
-int StepECM;
 bool skipPrimality;
-int nbrECM;
-int nbrPrimalityTests;
-int nbrSIQS;
-int timeECM;
-int timePrimalityTests;
-int timeSIQS;
 static int DegreeAurif;
 static int NextEC;
 static BigInteger power;
@@ -51,7 +44,7 @@ static BigInteger Temp3;
 static BigInteger Temp4;
 BigInteger factorValue;
 BigInteger tofactor;
-bool prettyprint;
+
 bool cunningham;
 long long Gamma[386];
 long long Delta[386];
@@ -63,6 +56,9 @@ int factorsMod[20000];
 static void insertBigFactor(struct sFactors *pstFactors, const BigInteger *divisor,
   int type);
 static char *findChar(char *str, char c);
+
+static void factorExt(const BigInteger* toFactor, const int* number,
+  int* factors, struct sFactors* pstFactors, char* pcKnownFactors);
 
 static void GetYieldFrequency(void)
 {
@@ -888,185 +884,6 @@ static void performFactorization(const BigInteger *numToFactor, const struct sFa
     }
   } while ((memcmp(common.ecm.GD, TestNbr, NumberLengthBytes) == 0) ||
            isOne(common.ecm.GD, NumberLength));
-  StepECM = 0; /* do not show pass number on screen */
-}
-
-void SendFactorizationToOutput(const struct sFactors *pstFactors, char **pptrOutput,
-  bool doFactorization, bool onlyFactor)
-{
-  char *ptrOutput = *pptrOutput;
-  copyStr(&ptrOutput, tofactorDec);
-  if (!doFactorization)
-  {
-    return;
-  }
-  const struct sFactors *pstFactor;
-  pstFactor = pstFactors+1;
-  if (!onlyFactor && (tofactor.sign == SIGN_POSITIVE) && (pstFactors->multiplicity == 1) &&
-    (pstFactor->multiplicity == 1) &&
-    ((*pstFactor->ptrFactor > 1) || (*(pstFactor->ptrFactor + 1) > 1)))
-  {    // Do not show zero or one as prime.
-    copyStr(&ptrOutput, lang ? " es primo" : " is prime");
-    *pptrOutput = ptrOutput;
-    return;
-  }
-  int i = 0;
-  if (!onlyFactor)
-  {
-    copyStr(&ptrOutput, " = ");
-  }
-  if (tofactor.sign == SIGN_NEGATIVE)
-  {
-    *ptrOutput = '-';
-    ptrOutput++;
-    if ((tofactor.nbrLimbs > 1) || (tofactor.limbs[0].x > 1))
-    {
-      if (prettyprint)
-      {
-        copyStr(&ptrOutput, "1 &times; ");
-      }
-      else
-      {
-        copyStr(&ptrOutput, "1 * ");
-      }
-    }
-  }
-  for (;;)
-  {
-    NumberLength = *pstFactor->ptrFactor;
-    IntArray2BigInteger(pstFactor->ptrFactor, &factorValue);
-    if (hexadecimal)
-    {
-      Bin2Hex(&ptrOutput, factorValue.limbs, factorValue.nbrLimbs, groupLen);
-    }
-    else
-    {
-      Bin2Dec(&ptrOutput, factorValue.limbs, factorValue.nbrLimbs, groupLen);
-    }
-    if (pstFactor->multiplicity > 1)
-    {
-      if (prettyprint)
-      {
-        copyStr(&ptrOutput, "<sup>");
-        int2dec(&ptrOutput, pstFactor->multiplicity);
-        copyStr(&ptrOutput, "</sup>");
-      }
-      else
-      {
-        *ptrOutput = '^';
-        ptrOutput++;
-        int2dec(&ptrOutput, pstFactor->multiplicity);
-      }
-    }
-#ifdef ENABLE_VERBOSE
-    int type = pstFactor->type;
-    bool isPrime = (pstFactor->upperBound == 0) ? true : false;
-    if (type > 0)
-    {
-      int compositeType = type / 50000000 * 50000000;
-      copyStr(&ptrOutput, " <span class=\"verbose\">(");
-      if (compositeType == TYP_AURIF)
-      {
-        copyStr(&ptrOutput, "Aurifeuille");
-        if (!isPrime)
-        {
-          copyStr(&ptrOutput, lang ? " - Compuesto" : " - Composite");
-        }
-      }
-      else if (compositeType == TYP_TABLE)
-      {
-        copyStr(&ptrOutput, lang ? "Tabla" : "Table");
-        if (!isPrime)
-        {
-          copyStr(&ptrOutput, lang ? " - Compuesto" : " - Composite");
-        }
-      }
-      else if (compositeType == TYP_SIQS)
-      {
-        copyStr(&ptrOutput, lang ? "<abbr title=\"Criba cuadrática autoinicializada\">SIQS</abbr>" :
-          "<abbr title=\"Self-Initializing Quadratic Sieve\">SIQS</abbr>");
-        if (!isPrime)
-        {
-          copyStr(&ptrOutput, lang ? " - Compuesto" : " - Composite");
-        }
-      }
-      else if (compositeType == TYP_LEHMAN)
-      {
-        copyStr(&ptrOutput, "Lehman");
-        if (!isPrime)
-        {
-          copyStr(&ptrOutput, lang ? " - Compuesto" : " - Composite");
-        }
-      }
-      else if (compositeType == TYP_RABIN)
-      {
-        copyStr(&ptrOutput, lang ? "Miller y Rabin" : "Miller &amp; Rabin");
-        if (!isPrime)
-        {
-          copyStr(&ptrOutput, lang ? " - Compuesto" : " - Composite");
-        }
-      }
-      else if (compositeType == TYP_DIVISION)
-      {
-        copyStr(&ptrOutput, lang ? "División" : "Division");
-        if (!isPrime)
-        {
-          copyStr(&ptrOutput, lang ? " - Compuesto" : " - Composite");
-        }
-      }
-      else if (type > TYP_EC)
-      {
-        if (isPrime)
-        {
-          copyStr(&ptrOutput, lang ? "<abbr title=\"Método de curvas elípticas\">ECM</abbr>, curva " :
-            "<abbr title=\"Elliptic curve method\">ECM</abbr>, curve ");
-          int2dec(&ptrOutput, type - TYP_EC);
-          *ptrOutput = 0;     // Add string terminator.
-        }
-        else
-        {
-          copyStr(&ptrOutput, lang ? "Compuesto" : "Composite");
-        }
-      }
-      else if (!isPrime)
-      {
-        copyStr(&ptrOutput, lang ? "Compuesto" : "Composite");
-      }
-      else
-      {            // Nothing to do.
-      }
-      copyStr(&ptrOutput, ")</span>");
-    }
-    else if (!isPrime)
-    {
-      copyStr(&ptrOutput, "<span class=\"terse\"> (");
-      copyStr(&ptrOutput, lang ? "Compuesto" : "Composite");
-      copyStr(&ptrOutput, ")</span>");
-    }
-    else
-    {          // Nothing to do.
-    }
-    if (type < 0)
-    {
-      copyStr(&ptrOutput, " (Unknown)");
-    }
-#endif
-    i++;
-    if (i == pstFactors->multiplicity)
-    {
-      break;
-    }
-    if (prettyprint)
-    {
-      copyStr(&ptrOutput, " &times; ");
-    }
-    else
-    {
-      copyStr(&ptrOutput, " * ");
-    }
-    pstFactor++;
-  }
-  *pptrOutput = ptrOutput;
 }
 
 static void SortFactors(struct sFactors *pstFactors)
@@ -1519,7 +1336,7 @@ void factor(const BigInteger* toFactor, const int* number, int* factors, struct 
 
 // pstFactors -> ptrFactor points to end of factors.
 // pstFactors -> multiplicity indicates the number of different factors.
-void factorExt(const BigInteger *toFactor, const int *number,
+static void factorExt(const BigInteger *toFactor, const int *number,
   int *factors, struct sFactors *pstFactors, char *pcKnownFactors)
 {
   char* ptrKnownFactors = pcKnownFactors;
@@ -1801,7 +1618,7 @@ void factorExt(const BigInteger *toFactor, const int *number,
     }
     else
     {
-      result = BpswPrimalityTest(&prime, pstFactors);
+      result = BpswPrimalityTest(&prime);
     }
 
     if (result == 0)
@@ -1855,117 +1672,4 @@ void factorExt(const BigInteger *toFactor, const int *number,
       pstCurFactor = pstFactors;
     }    // End if
   }      // End for
-}
-
-char *getFactorsAsciiPtr(void)
-{
-  return common.saveFactors.text;
-}
-
-static void intArrayToBigInteger(const int *ptrValues, BigInteger *bigint)
-{
-  bigint->sign = SIGN_POSITIVE;
-  bigint->nbrLimbs = *ptrValues;
-  (void)memcpy(bigint->limbs, ptrValues + 1, *ptrValues * sizeof(int));
-}
-
-// Find Euler's Totient as the product of p^(e-1)*(p-1) where p=prime and e=exponent.
-void Totient(BigInteger *result)
-{
-  static BigInteger TempVar;
-  const struct sFactors *pstFactor;
-  intToBigInteger(result, 1);  // Set result to 1.
-  pstFactor = &astFactorsMod[1];
-  for (int factorNumber = 1; factorNumber <= astFactorsMod[0].multiplicity; factorNumber++)
-  {
-    intArrayToBigInteger(pstFactor->ptrFactor, &factorValue);
-    if ((factorValue.nbrLimbs == 1) && (factorValue.limbs[0].x == 1))
-    {   // If factor is 1 do not do anything.
-      continue;
-    }
-    (void)BigIntPowerIntExp(&factorValue, pstFactor->multiplicity - 1, &TempVar);   // p^(e-1)
-    (void)BigIntMultiply(result, &TempVar, result);
-    intArrayToBigInteger(pstFactor->ptrFactor, &TempVar);
-    addbigint(&TempVar, -1);   // p-1
-    (void)BigIntMultiply(result, &TempVar, result);
-    pstFactor++;
-  }
-}
-
-void NumFactors(BigInteger* result)
-{
-  intToBigInteger(result, astFactorsMod[0].multiplicity);
-}
-
-void MinFactor(BigInteger* result)
-{
-  const struct sFactors* pstFactor = &astFactorsMod[1];
-  intArrayToBigInteger(pstFactor->ptrFactor, result);
-  for (int factorNumber = 2; factorNumber <= astFactorsMod[0].multiplicity; factorNumber++)
-  {
-    pstFactor++;
-    intArrayToBigInteger(pstFactor->ptrFactor, &factorValue);
-    BigIntSubt(&factorValue, result, &factorValue);
-    if (factorValue.sign == SIGN_NEGATIVE)
-    {
-      intArrayToBigInteger(pstFactor->ptrFactor, result);
-    }
-  }
-}
-
-void MaxFactor(BigInteger* result)
-{
-  const struct sFactors* pstFactor = &astFactorsMod[1];
-  intArrayToBigInteger(pstFactor->ptrFactor, result);
-  for (int factorNumber = 2; factorNumber <= astFactorsMod[0].multiplicity; factorNumber++)
-  {
-    pstFactor++;
-    intArrayToBigInteger(pstFactor->ptrFactor, &factorValue);
-    BigIntSubt(&factorValue, result, &factorValue);
-    if (factorValue.sign == SIGN_POSITIVE)
-    {
-      intArrayToBigInteger(pstFactor->ptrFactor, result);
-    }
-  }
-}
-
-// Find sum of divisors as the product of (p^(e+1)-1)/(p-1) where p=prime and e=exponent.
-void SumOfDivisors(BigInteger *result)
-{
-  const struct sFactors *pstFactor;
-  intToBigInteger(result, 1);  // Set result to 1.
-  pstFactor = &astFactorsMod[1];
-  for (int factorNumber = 1; factorNumber <= astFactorsMod[0].multiplicity; factorNumber++)
-  {
-    intArrayToBigInteger(pstFactor->ptrFactor, &factorValue);
-    if ((factorValue.nbrLimbs == 1) && (factorValue.limbs[0].x == 1))
-    {   // If factor is 1 do not do anything.
-      continue;
-    }
-    (void)BigIntPowerIntExp(&factorValue, pstFactor->multiplicity + 1, &Temp1);   // p^(e+1)
-    addbigint(&Temp1, -1);                         // p^(e+1)-1
-    intArrayToBigInteger(pstFactor->ptrFactor, &Temp2);
-    addbigint(&Temp2, -1);                         // p-1
-    (void)BigIntDivide(&Temp1, &Temp2, &Temp3);    // (p^(e+1)-1) / (p-1)
-    (void)BigIntMultiply(result, &Temp3, result);  // Multiply result by this value.
-    pstFactor++;
-  }
-}
-
-// Find number of divisors as the product of e+1 where p=prime and e=exponent.
-void NumberOfDivisors(BigInteger *result)
-{
-  const struct sFactors *pstFactor;
-  intToBigInteger(result, 1);  // Set result to 1.
-  pstFactor = &astFactorsMod[1];
-  for (int factorNumber = 1; factorNumber <= astFactorsMod[0].multiplicity; factorNumber++)
-  {
-    intArrayToBigInteger(pstFactor->ptrFactor, &factorValue);
-    if ((factorValue.nbrLimbs == 1) && (factorValue.limbs[0].x == 1))
-    {   // If factor is 1 do not do anything.
-      continue;
-    }
-    multint(result, result, pstFactor->multiplicity + 1);
-    pstFactor++;
-  }
 }

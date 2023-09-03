@@ -29,17 +29,15 @@ static int checksum;
 
 #define QUEUE_LENGTH 100
 
-int matrixRows;
-int matrixCols;
-int smoothsFound;
-int totalPartials;
-int partialsFound;
-int trialDivisions;
-uint64_t ValuesSieved;
-int congruencesFound;
-int polynomialsSieved;
-int nbrPartials;
-int numberThreads = 1;
+static int smoothsFound;
+static int totalPartials;
+static int partialsFound;
+static int trialDivisions;
+static uint64_t ValuesSieved;
+static int congruencesFound;
+static int polynomialsSieved;
+static int nbrPartials;
+static int numberThreads = 1;
 extern int NumberLength;
 static bool InsertNewRelation(
   const int *rowMatrixB,
@@ -1198,71 +1196,6 @@ static int PerformTrialDivision(const PrimeSieveData *primeSieveData,
               nbrColumns++;
               expParity = 0;
             }
-#if 0
-            if (dDivid < (double)common.siqs.largePrimeUpperBound *
-              (double)upperBound)
-            {         // Use SQUFOF for finding factors.
-              int factor, bigfactor = 1;
-              while (!isProbablePrime(dDivid))
-              {
-                int factor = SQUFOF((double)dDivid, queue);
-                if (factor == 0)
-                {
-                  return 0;  // Go out if factor could not be found.
-                }
-                if (factor > upperBound)
-                {
-                  if ((factor > common.siqs.largePrimeUpperBound) || (bigfactor > 1))
-                  {
-                    return 0;   // Discard relation.
-                  }
-                  bigfactor = factor;
-                }
-                else
-                {
-                  index = getIndexFromDivisor(factor);
-                  if (rowMatrixBbeforeMerge[nbrColumns] == index)
-                  {
-                    nbrColumns--;
-                    rowSquares[nbrSquares] = factor;
-                    nbrSquares++;
-                  }
-                  else
-                  {
-                    rowMatrixBbeforeMerge[nbrColumns] = index;
-                    nbrColumns++;
-                  }
-                }
-                dDivid /= factor;
-              }
-              factor = (int)dDivid;
-              if (factor > upperBound)
-              {
-                if ((factor > common.siqs.largePrimeUpperBound) || (bigfactor > 1))
-                {
-                  return 0;   // Discard relation.
-                }
-                bigfactor = factor;
-              }
-              else
-              {
-                index = getIndexFromDivisor(factor);
-                if (rowMatrixBbeforeMerge[nbrColumns] == index)
-                {
-                  nbrColumns--;
-                  rowSquares[nbrSquares] = factor;
-                  nbrSquares++;
-                }
-                else
-                {
-                  rowMatrixBbeforeMerge[nbrColumns] = index;
-                  nbrColumns++;
-                }
-              }
-              rowMatrixBbeforeMerge[0] = nbrColumns;
-              return bigfactor;
-            }
-#endif
             if (Divisor > sqrtDivid)
             {                     // End of trial division.
               int dividend;
@@ -2191,7 +2124,7 @@ void FactoringSIQS(const limb *pNbrToFactor, limb *pFactor)
   rowPrimeTrialDivisionData->exp6 = 0;
 
   NbrMod = pNbrToFactor->x & 7;
-  for (j = 0; j<sizeof(arrmult)/sizeof(arrmult[0]); j++)
+  for (j = 0; (unsigned)j < sizeof(arrmult) / sizeof(arrmult[0]); j++)
   {
     int mod = (NbrMod * arrmult[j]) & 7;
     adjustment[j] = 0.34657359; /*  (ln 2)/2  */
@@ -2212,7 +2145,7 @@ void FactoringSIQS(const limb *pNbrToFactor, limb *pFactor)
     int jacobi = JacobiSymbol(NbrMod, currentPrime);
     double dp = (double)currentPrime;
     double logp = log(dp) / dp;
-    for (j = 0; j<sizeof(arrmult)/sizeof(arrmult[0]); j++)
+    for (j = 0; (unsigned)j<sizeof(arrmult)/sizeof(arrmult[0]); j++)
     {
       if (arrmult[j] == currentPrime)
       {
@@ -2239,7 +2172,7 @@ void FactoringSIQS(const limb *pNbrToFactor, limb *pFactor)
     } while ((Q * Q) <= currentPrime);
   }  /* end while */
   common.siqs.multiplier = 1;
-  for (j = 0; j<sizeof(arrmult)/sizeof(arrmult[0]); j++)
+  for (j = 0; (unsigned)j<sizeof(arrmult)/sizeof(arrmult[0]); j++)
   {
     if (adjustment[j] > bestadjust)
     { /* find biggest adjustment */
@@ -3303,7 +3236,7 @@ static int SQUFOF(double N, int queue[])
     return S;
   }
   N3 = 3 * N;
-#ifdef _USING64BITS_
+
   if ((N & 3) == 1)
   {
     N <<= 1;
@@ -3312,16 +3245,7 @@ static int SQUFOF(double N, int queue[])
   {
     N3 <<= 1;
   }
-#else
-  if (N - floor(N / 4) == 1)
-  {
-    N *= 2;
-  }
-  if (N3 - floor(N3 / 4) == 1)
-  {
-    N3 *= 2;
-  }
-#endif
+
   squareRoot = sqrt(N);
   S = (int)squareRoot;
   if ((double)(S + 1)*(double)(S + 1) <= N)
