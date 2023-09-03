@@ -83,10 +83,6 @@ extern int smallPrimes[SMALL_PRIMES_ARRLEN+1];
 
 void initializeSmallPrimes(int* pSmallPrimes);
 
-void multiply(const limb* factor1, const limb* factor2, limb* result,
-  int len, int* pResultLen);
-void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
-  int len1, int len2, int* pResultLen);
 void squareRoot(const limb *argument, limb *sqRoot, int len, int *pLenSqRoot);
 void Dec2Bin(const char *decimal, limb *binary, int digits, int *bitGroups);
 void Bin2Dec(char **ppDecimal, const limb *binary, int nbrLimbs, int groupLength);
@@ -222,8 +218,6 @@ int JacobiSymbol(int upper, int lower);
 int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower);
 void DivideBigNbrByMaxPowerOf4(int *pPower4, limb *value, int *pNbrLimbs);
 void smallmodmult(int factor1, int factor2, limb *product, int mod);
-void fftMultiplication(const limb *factor1, const limb *factor2, limb *result,
-  int len1, int len2, int *pResultLen);
 
 typedef void(*mmCback)(void);
 void GaussianGCD(BigInteger *realA, BigInteger *imagA, BigInteger *realB, BigInteger *imagB,

@@ -19,24 +19,13 @@
 #ifndef __FFT_H
 #define __FFT_H
 
-struct sComplex
-{
-  double real;
-  double imaginary;
-};
-
-struct sCosSin
-{
-  limb Cos[2];
-  limb Sin[2];
-};
-
 #define MAX_VALUE_FFT_LIMB (FFT_LIMB_RANGE - 1)
 #define QUARTER_CIRCLE (FULL_CIRCLE / 4)
 #define HALF_CIRCLE    (FULL_CIRCLE / 2)
 #define CIRCLE_MASK    (FULL_CIRCLE - 1)
 
-extern const struct sCosSin cossinPowerOneHalf[15];
+void fftMultiplication(const limb *factor1, const limb *factor2, limb *result,
+  int len1, int len2, int *pResultLen);
 
 #endif
 

@@ -28,6 +28,20 @@
 #define MAX_FFT_LEN     ((((size_t)MAX_LEN_MULT * BITS_PER_GROUP) / FFT_LIMB_SIZE) + 10)
 #define POWERS_2        17
 #define FULL_CIRCLE     0x00020000     // 2^17
+
+struct sComplex
+{
+  double real;
+  double imaginary;
+};
+
+struct sCosSin
+{
+  limb Cos[2];
+  limb Sin[2];
+};
+
+
 // In the next array, all numbers are represented by two elements,
 // first the least significant limb, then the most significant limb.
 const struct sCosSin cossinPowerOneHalf[] =

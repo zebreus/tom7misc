@@ -22,6 +22,7 @@
 #include <assert.h>
 #include "bignbr.h"
 #include <math.h>
+#include "karatsuba.h"
 
 extern limb approxInv[MAX_LEN];
 extern limb adjustedArgument[MAX_LEN];

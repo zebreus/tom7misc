@@ -19,8 +19,10 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "bignbr.h"
 #include <math.h>
+
+#include "bignbr.h"
+#include "karatsuba.h"
 
 static limb approxInvSqrt[MAX_LEN];
 limb approxInv[MAX_LEN];
@@ -192,7 +194,7 @@ void squareRoot(const limb *argument, /*@out@*/limb *sqRoot, int len, /*@out@*/i
   lenBytes = lenInvSqrt * (int)sizeof(limb);
   (void)memset(approxInvSqrt, 0, lenBytes);
   // Initialize approximate inverse square root.
-  invSqrt = (double)LIMB_RANGE / 
+  invSqrt = (double)LIMB_RANGE /
     sqrt(getMantissa(adjustedArgument+length, length)*(double)LIMB_RANGE+1.0);
   approxInvSqrt[lenInvSqrt - 1].x = 1;
   invSqrt = (invSqrt - 1.0) * (double)LIMB_RANGE;
@@ -226,7 +228,7 @@ void squareRoot(const limb *argument, /*@out@*/limb *sqRoot, int len, /*@out@*/i
     if (limbLength > lenInvSqrt)
     {
       limbLength = lenInvSqrt;
-    }     
+    }
     // Point to least significant limb for this cycle.
     ptrApproxInvSqrt = &approxInvSqrt[lenInvSqrt - limbLength];
     // Compute x(3-Nxx)/2. Start by squaring.

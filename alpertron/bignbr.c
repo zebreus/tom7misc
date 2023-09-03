@@ -23,6 +23,7 @@
 #include "bignbr.h"
 #include "factor.h"
 #include "globals.h"
+#include "karatsuba.h"
 
 enum eOper
 {

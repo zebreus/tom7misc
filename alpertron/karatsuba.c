@@ -19,11 +19,15 @@
 
 /* Perform Karatsuba multiplication in little endian order */
 
+#include "karatsuba.h"
+
 #include <string.h>
-#include "bignbr.h"
 #include <math.h>
 #include <stdint.h>
 #include <assert.h>
+
+#include "bignbr.h"
+#include "fft.h"
 
 #define KARATSUBA_CUTOFF 16
 #define FFT_THRESHOLD 100
@@ -52,11 +56,11 @@ static void Karatsuba(int idxFactor1, int nbrLen);
   Pr = ((uint64_t)factor2_iPlus1 * (uint64_t)factor1_##n) + (Pr >> BITS_PER_GROUP); \
   prod_iPlus##m = UintToInt((uint32_t)Pr & MAX_INT_NBR_U);              \
   prod_iPlus##n = Uint64ToInt(Pr >> BITS_PER_GROUP)
- 
+
 #define PROLOG_MULTIPLICATION_SINGLE(m)                                 \
   factor2_i = arr[idxFactor2 + m].x;                                    \
   Pr = prod_iPlus0 + ((uint64_t)factor2_i * (uint64_t)factor1_0);       \
-  arrayAux[m].x = (uint32_t)Pr & MAX_INT_NBR_U 
+  arrayAux[m].x = (uint32_t)Pr & MAX_INT_NBR_U
 
 #define MULT_MACRO_SINGLE(m, n)                                         \
   Pr = prod_iPlus##m + ((uint64_t)factor2_i * (uint64_t)factor1_##m) +  \
@@ -245,7 +249,6 @@ static int absSubtract(int idxMinuend, int idxSubtrahend,
 // and the second one at idxFactor2. The 2*nbrLen limb result is stored
 // starting at idxFactor1. Use arrayAux as temporary storage.
 // Accumulate products by result limb.
-#ifdef _USING64BITS_
 static void ClassicalMult2Limbs(int idxFactor1, int idxFactor2)
 {
   int i=0;
@@ -689,11 +692,11 @@ static void ClassicalMult16Limbs(int idxFactor1, int idxFactor2)
   arrayAux[31].x = prod_iPlus15;
 }
 
-#endif
+
 static void ClassicalMult(int idxFactor1, int idxFactor2, int nbrLen)
 {
   int lenBytes;
-#ifdef _USING64BITS_
+
   uint64_t product;
   switch (nbrLen)
   {
@@ -752,56 +755,7 @@ static void ClassicalMult(int idxFactor1, int idxFactor2, int nbrLen)
   default:
     break;
   }
-#else
-  const limb *ptrFactor1;
-  const limb *ptrFactor2;
-  int prodCol;
-  int fact1Col;
-  double dRangeLimb = (double)LIMB_RANGE;
-  double dInvRangeLimb = 1.0 / dRangeLimb;
-  int low = 0;              // Low limb of sums of multiplications.
-  double dAccumulator = 0;  // Approximation to the sum of multiplications.
-  int factor1;
-  int factor2;
-  for (prodCol = 0; prodCol < (2 * nbrLen) - 1; prodCol++)
-  {    // Process each limb of product (least to most significant limb).
-    if (prodCol < nbrLen)
-    {   // Processing first half (least significant) of product.
-      ptrFactor2 = &arr[idxFactor2 + prodCol];
-      ptrFactor1 = &arr[idxFactor1];
-      fact1Col = prodCol;
-    }
-    else
-    {  // Processing second half (most significant) of product.
-      ptrFactor2 = &arr[idxFactor2 + nbrLen - 1];
-      ptrFactor1 = &arr[idxFactor1 + prodCol - nbrLen + 1];
-      fact1Col = 2 * (nbrLen - 1) - prodCol;
-    }
-    for (; fact1Col>=0; fact1Col--)
-    {
-      factor1 = ptrFactor1->x;
-      ptrFactor1++;
-      factor2 = ptrFactor2->x;
-      ptrFactor2--;
-      low += factor1 * factor2;
-      dAccumulator += (double)factor1 * (double)factor2;
-    }
-    low &= MAX_VALUE_LIMB;    // Trim extra bits.
-    arrayAux[prodCol].x = low;
-    // Subtract or add 0x20000000 so the multiplication by dVal is not nearly an integer.
-    // In that case, there would be an error of +/- 1.
-    if (low < HALF_INT_RANGE)
-    {
-      dAccumulator = floor((dAccumulator * dInvRangeLimb) + 0.25);
-    }
-    else
-    {
-      dAccumulator = floor((dAccumulator * dInvRangeLimb) - 0.25);
-    }
-    low = (unsigned int)(dAccumulator - floor(dAccumulator * dInvRangeLimb) * dRangeLimb);
-  }
-  arrayAux[prodCol].x = low;
-#endif
+
   lenBytes = 2 * nbrLen * (int)sizeof(limb);
   (void)memcpy(&arr[idxFactor1], &arrayAux[0], lenBytes);
   return;
@@ -1034,7 +988,7 @@ static void Karatsuba(int indexFactor1, int numLen)
         ptrLimb->x = (ptrLimb + halfLength)->x;
         (ptrLimb + halfLength)->x = tmp.x;
       }
-      
+
       // At this moment the order is: xL, yL, xH, yH.
       // Get absolute values of (xH-xL) and (yL-yH) and the signs.
       sign = absSubtract(idxFactor1, idxFactor2, diffIndex, halfLength);

@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include "bignbr.h"
+#include "karatsuba.h"
 
 // Multiply two numbers in Montgomery notation.
 //
