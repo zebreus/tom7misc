@@ -31,7 +31,9 @@ targets = quad.exe
 .PHONY : all
 all: $(targets)
 
-quad.exe:  parseexpr.o partition.o errors.o copyStr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsLA.o quad.o quadmodLL.o bignbr.o showtime.o from_musl.o inputstr.o fft.o test_quad.o globals.o
+#   parseexpr.o
+
+quad.exe: partition.o errors.o copyStr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsLA.o quad.o quadmodLL.o bignbr.o showtime.o from_musl.o inputstr.o fft.o test_quad.o globals.o
 	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 %.o : %.c $(h_files)

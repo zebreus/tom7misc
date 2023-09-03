@@ -15,14 +15,17 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
-#ifndef _OUTPUT_H
-#define _OUTPUT_H
+
+#ifndef _GLOBALS_H
+#define _GLOBALS_H
+
 #include "bignbr.h"
 
 // extern char output[3000000];
 extern char *output;
 extern bool lang;
+
+extern bool hexadecimal;
 
 extern limb *Mult1;
 extern limb *Mult2;

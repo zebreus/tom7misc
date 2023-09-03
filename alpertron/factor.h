@@ -74,13 +74,12 @@ extern int nbrPartials;
 extern char tofactorDec[MAX_LEN*12];
 extern bool prettyprint;
 extern bool cunningham;
-extern bool hexadecimal;
 extern struct sFactors stFactors[MAX_FACTORS];
 void factor(const BigInteger *toFactor, const int *number, int *factors, struct sFactors *pstFactors);
 void factorExt(const BigInteger* toFactor, const int* number,
   int* factors, struct sFactors* pstFactors, char* pcKnownFactors);
 void FactoringSIQS(const limb *pNbrToFactor, limb *pFactor);
-#ifndef lang  
+#ifndef lang
   extern bool lang;
 #endif
 extern int nbrToFactor[MAX_LEN];

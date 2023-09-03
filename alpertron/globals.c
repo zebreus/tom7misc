@@ -13,3 +13,5 @@ limb *Mult2 = (limb*)malloc(sizeof (limb) * MAX_LEN);
 limb *Mult3 = (limb*)malloc(sizeof (limb) * MAX_LEN);
 limb *Mult4 = (limb*)malloc(sizeof (limb) * MAX_LEN);
 int *valueQ = (int*)malloc(sizeof (int) * MAX_LEN);
+
+bool hexadecimal;

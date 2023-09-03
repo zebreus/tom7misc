@@ -23,6 +23,7 @@
 #include "factor.h"
 #include "commonstruc.h"
 #include "skiptest.h"
+#include "globals.h"
 
 int yieldFreq;
 int maxIndexM;
@@ -67,7 +68,6 @@ long long Gamma[386];
 long long Delta[386];
 long long AurifQ[386];
 char tofactorDec[MAX_LEN*12];
-extern int valueQ[MAX_LEN];
 int nbrToFactor[MAX_LEN];
 struct sFactors astFactorsMod[5000];
 int factorsMod[20000];
