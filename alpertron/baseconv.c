@@ -21,7 +21,6 @@
 #include <math.h>
 #include <stdint.h>
 #include "bignbr.h"
-#include "expression.h"
 #include "globals.h"
 
 #define DIGITS_PER_LIMB 9

@@ -21,7 +21,6 @@
 #include <stdint.h>
 #include <assert.h>
 #include "bignbr.h"
-#include "expression.h"
 #include "factor.h"
 #include "commonstruc.h"
 #if (DEBUG_SIQS == 2) && !defined(__EMSCRIPTEN__)
@@ -187,7 +186,7 @@ static void MultiplyAByMatrix(const int *Matr, int *TempMatr, int *ProdMatr)
 // the same columns of secondHi:secondLo
 // col1 and col2 ranges from 0 to 63.
 // Bit zero is the most significant bit.
-static void colexchange(int* pFirstHi, int* pFirstLo, 
+static void colexchange(int* pFirstHi, int* pFirstLo,
   int* pSecondHi, int* pSecondLo, int col1, int col2)
 {
   int* pBlockA1;
@@ -427,7 +426,7 @@ static bool BlockLanczos(int seed)
       int2dec(&ptrText, stepNbr * 3200 / matrixRows);
       copyStr(&ptrText, "%</p>");
       databack(SIQSInfo);
-    }  
+    }
 #endif
 #if 0
     //if (getTerminateThread())

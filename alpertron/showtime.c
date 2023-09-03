@@ -20,7 +20,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include "bignbr.h"
-#include "expression.h"
 #include "showtime.h"
 #include "globals.h"
 

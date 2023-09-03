@@ -20,7 +20,6 @@
 #include <stdint.h>
 #include <math.h>
 #include "bignbr.h"
-#include "expression.h"
 #include "factor.h"
 #include "commonstruc.h"
 #include "skiptest.h"
@@ -655,7 +654,7 @@ enum eEcmResult ecmStep2(void)
     (void)memcpy(common.ecm.Zaux, common.ecm.Z, NumberSizeBytes);  //         from step 1)
     (void)memcpy(common.ecm.GcdAccumulated, MontgomeryMultR1, NumberSizeBytes);
     (void)memcpy(common.ecm.UX, common.ecm.X, NumberSizeBytes);
-    (void)memcpy(common.ecm.UZ, common.ecm.Z, NumberSizeBytes);  // (UX:UZ) -> Q 
+    (void)memcpy(common.ecm.UZ, common.ecm.Z, NumberSizeBytes);  // (UX:UZ) -> Q
     (void)ModInvBigNbr(common.ecm.Z, common.ecm.Aux1, TestNbr, NumberLength);
     modmult(common.ecm.Aux1, common.ecm.X, common.ecm.root[0]); // root[0] <- X/Z (Q)
     J = 0;
@@ -763,7 +762,7 @@ enum eEcmResult ecmStep2(void)
     for (indexM = 0; indexM <= maxIndexM; indexM++)
     {
       if (indexM >= Qaux)
-      { // If inside step 2 range... 
+      { // If inside step 2 range...
         if (indexM == 0)
         {
           bool rc = ModInvBigNbr(common.ecm.UZ, common.ecm.Aux3, TestNbr, NumberLength);
@@ -940,7 +939,7 @@ enum eEcmResult ecmCurve(int *pEC, int *pNextEC)
         (void)memcpy(common.ecm.GD, TestNbr, NumberSizeBytes);
         return CHANGE_TO_SIQS;
       }
-      if ((nbrDigits > 30) && (nbrDigits <= 90))  // If between 30 and 90 digits...         
+      if ((nbrDigits > 30) && (nbrDigits <= 90))  // If between 30 and 90 digits...
       {                             // Switch to SIQS.
         int limit = limits[(nbrDigits - 31) / 5];
         if ((EC % 50000000) >= limit)

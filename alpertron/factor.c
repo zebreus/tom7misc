@@ -20,7 +20,6 @@
 #include <stdint.h>
 #include <math.h>
 #include "bignbr.h"
-#include "expression.h"
 #include "factor.h"
 #include "commonstruc.h"
 #include "skiptest.h"
@@ -419,7 +418,7 @@ static void Cunningham(struct sFactors *pstFactors, const BigInteger *BigBase, i
       if (((Expon / k) % 2) != 0)
       { /* Only for odd exponent */
         (void)BigIntPowerIntExp(BigBase, k, &Nbr1);
-        addbigint(&Nbr1, increment); 
+        addbigint(&Nbr1, increment);
         BigIntGcd(&Nbr1, BigOriginal, &Nbr2);   // Nbr2 <- gcd(Base^k+incre, original)
         insertBigFactor(pstFactors, &Nbr2, TYP_TABLE);
         CopyBigInt(&Temp1, BigOriginal);
@@ -476,7 +475,7 @@ static bool ProcessExponent(struct sFactors *pstFactors, const BigInteger *numTo
   }
   for (int step = 0; step < 2; step++)
   {
-    int delta = ((step == 1) ? 1 : -1);  
+    int delta = ((step == 1) ? 1 : -1);
     if (((pwr - numToFactor->limbs[0].x + delta) & MAX_INT_NBR) == 0)
     {
       CopyBigInt(&NFp1, numToFactor);
@@ -1733,7 +1732,7 @@ void factor(const BigInteger* toFactor, const int* number, int* factors, struct 
 
 // pstFactors -> ptrFactor points to end of factors.
 // pstFactors -> multiplicity indicates the number of different factors.
-void factorExt(const BigInteger *toFactor, const int *number, 
+void factorExt(const BigInteger *toFactor, const int *number,
   int *factors, struct sFactors *pstFactors, char *pcKnownFactors)
 {
   char* ptrKnownFactors = pcKnownFactors;
@@ -2151,7 +2150,7 @@ void factorExt(const BigInteger *toFactor, const int *number,
 #endif
 }
 
-EXTERNALIZE char *getFactorsAsciiPtr(void)
+char *getFactorsAsciiPtr(void)
 {
   return common.saveFactors.text;
 }

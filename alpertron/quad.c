@@ -20,13 +20,10 @@
 #include <string.h>
 #include <math.h>
 #include "bignbr.h"
-// #include "expression.h"
 #include "globals.h"
 #include "factor.h"
 #include "commonstruc.h"
 #include "quadmodLL.h"
-
-int xyzzy;
 
 enum eLinearSolution
 {

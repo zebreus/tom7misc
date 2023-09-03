@@ -20,7 +20,6 @@
 #include <string.h>
 #include <stdbool.h>
 #include "bignbr.h"
-#include "expression.h"
 #include "globals.h"
 
 int expressionNbr;

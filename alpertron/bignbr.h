@@ -94,6 +94,8 @@ extern int smallPrimes[SMALL_PRIMES_ARRLEN+1];
 extern int percentageBPSW;
 #endif
 
+void initializeSmallPrimes(int* pSmallPrimes);
+
 void multiply(const limb* factor1, const limb* factor2, limb* result,
   int len, int* pResultLen);
 void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,

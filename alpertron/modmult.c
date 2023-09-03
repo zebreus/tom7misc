@@ -23,7 +23,6 @@
 #include <stdint.h>
 #include <assert.h>
 #include "bignbr.h"
-#include "expression.h"
 
 // Multiply two numbers in Montgomery notation.
 //
@@ -898,7 +897,7 @@ void BigIntModularDivisionPower2(const BigInteger* Num, const BigInteger* Den,
       Cy >>= BITS_PER_GROUP;
     }
   }
-  multiply(aux3, Num->limbs, quotient->limbs, 
+  multiply(aux3, Num->limbs, quotient->limbs,
     NumberLength, NULL);    // quotient <- Den * aux3
   quotient->limbs[NumberLength - 1].x &= mod->limbs[NumberLength - 1].x - 1;
   // Adjust number of length of quotient so the most significant limb is not zero.
@@ -931,7 +930,7 @@ void BigIntModularDivisionSaveTestNbr(const BigInteger* Num, const BigInteger* D
   (void)memcpy(TestNbr, U, NumberLengthBytes);
 }
 
-// On input: 
+// On input:
 // oddValue = odd modulus.
 // resultModOdd = result mod odd value
 // resultModPower2 = result mod 2^shRight
@@ -1295,7 +1294,7 @@ void AdjustModN(limb *Nbr, const limb *Modulus, int nbrLen)
   }
 }
 
-void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, 
+void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum,
   const limb *mod, int nbrLen)
 {
   unsigned int carry;
@@ -2012,7 +2011,7 @@ void modmult(const limb* factor1, const limb* factor2, limb* product)
        // Small numbers.
 #ifdef _USING64BITS_
   switch (NumberLength)
-#endif  
+#endif
   {
 #ifdef _USING64BITS_
   case 2:
@@ -2058,7 +2057,7 @@ void modmult(const limb* factor1, const limb* factor2, limb* product)
       {
         Pr = ((int64_t)Nbr * (int64_t)(factor2 + j)->x) + (int64_t)Prod[j] +
           (Pr >> BITS_PER_GROUP) -
-          ((int64_t)MontDig * (int64_t)TestNbr[j].x);             
+          ((int64_t)MontDig * (int64_t)TestNbr[j].x);
         Prod[j - 1] = (int)Pr & (int)MAX_INT_NBR_U;
       }
       Prod[NumberLength - 1] = (int)(Pr >> BITS_PER_GROUP);

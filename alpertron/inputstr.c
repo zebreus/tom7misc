@@ -19,13 +19,7 @@
 
 #include <math.h>
 #include "bignbr.h"
-#include "expression.h"
+#include "globals.h"
 
 char inputString[1000000];
 
-#ifdef __EMSCRIPTEN__
-EXTERNALIZE char *getInputStringPtr(void)
-{
-  return inputString;
-}
-#endif

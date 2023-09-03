@@ -24,14 +24,7 @@
 
 #include "bignbr.h"
 #include "enums.h"
-#ifdef __EMSCRIPTEN__
-int stamp(void);
-#endif
-#if defined _USING64BITS_ && defined __EMSCRIPTEN__ && !defined _MSC_VER
-#define EXTERNALIZE  __attribute__((visibility("default")))
-#else
-#define EXTERNALIZE
-#endif
+
 void databack(const char *data);
 
 #define STACK_OPER_SIZE             100

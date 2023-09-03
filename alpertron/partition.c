@@ -21,7 +21,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include "bignbr.h"
-#include "expression.h"
 #ifdef FACTORIZATION_APP
 #include "factor.h"
 #endif
@@ -256,7 +255,7 @@ static int numberofBitsSetToOne(int value)
   return bitsSet;
 }
 
-static enum eExprErr ProcessFactorsFactorial(double factorAccum, 
+static enum eExprErr ProcessFactorsFactorial(double factorAccum,
   int nbrGroupsAccumulated, BigInteger *result)
 {
   enum eExprErr rc;
@@ -267,7 +266,7 @@ static enum eExprErr ProcessFactorsFactorial(double factorAccum,
   prod.nbrLimbs = ((prod.limbs[1].x == 0) ? 1 : 2);
   prod.sign = SIGN_POSITIVE;
   if (((nbrGroupsAccumulated & 1) == 0) || (result != NULL))
-  {     // Even means that k multiplications have to be done, where k is the number of 
+  {     // Even means that k multiplications have to be done, where k is the number of
         // bits set to zero at the right.
     int nbrGroupsAccum = nbrGroupsAccumulated;
     index = numberofBitsSetToOne(nbrGroupsAccumulated - 1);

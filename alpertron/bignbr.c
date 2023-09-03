@@ -22,7 +22,6 @@
 #include <assert.h>
 #include "bignbr.h"
 #include "factor.h"
-#include "expression.h"
 #include "skiptest.h"
 #include "globals.h"
 

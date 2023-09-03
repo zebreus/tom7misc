@@ -21,7 +21,6 @@
 #include <string.h>
 #include <assert.h>
 #include "bignbr.h"
-#include "expression.h"
 #include <math.h>
 
 extern limb approxInv[MAX_LEN];
@@ -276,7 +275,7 @@ enum eExprErr BigIntDivide(const BigInteger *pDividend, const BigInteger *pDivis
     }
   }
   else
-  {        // Divisor has more than 64 limbs. Use Newton algorithm 
+  {        // Divisor has more than 64 limbs. Use Newton algorithm
            // to find the inverse and then multiply by dividend.
     int bitLength;
     int bitLengthNbrCycles;
@@ -307,7 +306,7 @@ enum eExprErr BigIntDivide(const BigInteger *pDividend, const BigInteger *pDivis
     }
     MultiplyBigNbrByMinPowerOf2(&power2, adjustedArgument, nbrLimbs, adjustedArgument);
     // Initialize approximate inverse.
-    inverse = LIMB_RANGE / ((double)adjustedArgument[nbrLimbs - 1].x + 
+    inverse = LIMB_RANGE / ((double)adjustedArgument[nbrLimbs - 1].x +
           ((double)adjustedArgument[nbrLimbs - 2].x) / LIMB_RANGE);
     approxInv[nbrLimbs-1].x = 1;
     if (inverse <= 1.0)
@@ -413,7 +412,7 @@ enum eExprErr BigIntDivide(const BigInteger *pDividend, const BigInteger *pDivis
     }
     ptrQuotient = &approxInv[(2 * nbrLimbs) - nbrLimbsQuotient];
     if (approxInv[(2 * nbrLimbs) - 1].x == 0)
-    {  // Most significant byte is zero, so it is not part of the quotient. 
+    {  // Most significant byte is zero, so it is not part of the quotient.
       ptrQuotient--;
     }
     ptrQuot = ptrQuotient;

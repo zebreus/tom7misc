@@ -20,7 +20,6 @@
 #include <string.h>
 #include <math.h>
 #include "bignbr.h"
-#include "expression.h"
 #include "factor.h"
 #include "quadmodLL.h"
 #include "commonstruc.h"
@@ -176,7 +175,7 @@ static void setNbrLimbs(BigInteger* pBigNbr)
 }
 
 // Solve Bx + C = 0 (mod N).
-static void SolveModularLinearEquation(BigInteger *pValA, const BigInteger *pValB, 
+static void SolveModularLinearEquation(BigInteger *pValA, const BigInteger *pValB,
   const BigInteger *pValC, BigInteger *pValN)
 {
   int NumberLengthBytes;
@@ -832,7 +831,7 @@ static void QuadraticTermMultipleOfP(int expon, int factorIndex,
     (void)BigIntRemainder(&Q, &V, &Q);
     (void)BigIntMultiply(&Q, ptrSolution, &Q);   // a*x_n^2 + b*x_n
     BigIntAdd(&Q, pValC, &Q);                    // a*x_n^2 + b*x_n + c
-    (void)BigIntRemainder(&Q, &V, &Q);           // Numerator. 
+    (void)BigIntRemainder(&Q, &V, &Q);           // Numerator.
     multint(&L, &L, 2);                          // 2*a*x_n
     BigIntAdd(&L, pValB, &L);                    // 2*a*x_n + b
     (void)BigIntRemainder(&L, &V, &L);           // Denominator
