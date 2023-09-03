@@ -26,7 +26,7 @@ CXX=x86_64-w64-mingw32-g++
 CXXFLAGS=-D_USING64BITS_ -DFACTORIZATION_APP=1 -DFACTORIZATION_FUNCTIONS=1 -g -O -march=native
 LFLAGS=-static
 
-h_files=batch.h bignbr.h commonstruc.h expression.h factor.h highlevel.h polynomial.h showtime.h skiptest.h
+h_files=batch.h bignbr.h enums.h commonstruc.h expression.h factor.h highlevel.h polynomial.h showtime.h skiptest.h
 targets = quad.exe
 .PHONY : all
 all: $(targets)

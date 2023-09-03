@@ -26,8 +26,7 @@
 #include "factor.h"
 #include "batch.h"
 #include "polynomial.h"
-#include "fromBlockly.h"
-#include "isprime.h"
+
 #ifndef DEBUG_CODE
 #define DEBUG_CODE 16
 #endif
