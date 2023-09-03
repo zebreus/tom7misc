@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
 //
+#include <cstdio>
 #include <string.h>
 #include <math.h>
 #include <assert.h>
@@ -63,7 +64,11 @@ void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc)
   if (pDest != pSrc)
   {
     int lenBytes;
-    assert(pSrc->nbrLimbs >= 1);
+    if (pSrc->nbrLimbs < 1) {
+      fprintf(stderr, "nbrlimbs: %d\n", pSrc->nbrLimbs);
+      assert(pSrc->nbrLimbs >= 1);
+    }
+
     pDest->sign = pSrc->sign;
     pDest->nbrLimbs = pSrc->nbrLimbs;
     lenBytes = (pSrc->nbrLimbs) * (int)sizeof(limb);

@@ -147,7 +147,7 @@ extern BigInteger prime;
 #define NBR_COEFF 6
 struct stValidateCoeff
 {
-  char *expression;
+  const char *expression;
   BigInteger *bigint;
   const char *textSpanish;
   const char *textEnglish;
@@ -3682,82 +3682,27 @@ void SolveQuadEquation(void)
   PositiveDiscriminant();
 }
 
-void quadText(char *coefAText, char *coefBText, char *coefCText,
-              char *coefDText, char *coefEText, char *coefFText)
-{
-  int coeffNbr;
-  struct stValidateCoeff *pstValidateCoeff = astValidateCoeff;
-  astValidateCoeff[0].expression = coefAText;
-  astValidateCoeff[1].expression = coefBText;
-  astValidateCoeff[2].expression = coefCText;
-  astValidateCoeff[3].expression = coefDText;
-  astValidateCoeff[4].expression = coefEText;
-  astValidateCoeff[5].expression = coefFText;
+void quadBigInt(BigInteger *a, BigInteger *b, BigInteger *c,
+                BigInteger *d, BigInteger *e, BigInteger *f) {
+
+  CopyBigInt(&ValA, a);
+  CopyBigInt(&ValB, b);
+  CopyBigInt(&ValC, c);
+  CopyBigInt(&ValD, d);
+  CopyBigInt(&ValE, e);
+  CopyBigInt(&ValF, f);
+
   ptrOutput = output;
   copyStr(&ptrOutput, "2<p>");
-  for (coeffNbr = 0; coeffNbr < NBR_COEFF; coeffNbr++)
-  {
-    enum eExprErr rc = ComputeExpression(pstValidateCoeff->expression,
-                           pstValidateCoeff->bigint);
-    if (rc != EXPR_OK)
-    {
-      copyStr(&ptrOutput, lang ? pstValidateCoeff->textSpanish : pstValidateCoeff->textEnglish);
-      textError(&ptrOutput, rc);
-      copyStr(&ptrOutput, "</p>");
-      break;
-    }
-    pstValidateCoeff++;
-  }
-  if (coeffNbr == NBR_COEFF)
-  {
-    const char* ptrBeginSol;
-    showText("<h2>");
-    ShowEq(&ValA, &ValB, &ValC, &ValD, &ValE, &ValF, "x", "y");
-    showText(" = 0</h2>");
-    SolNbr = 0;
-    ptrBeginSol = ptrOutput;
-    SolveQuadEquation();
-    if (ptrBeginSol == ptrOutput)
-    {
-      showText(lang ? "<p>La ecuación no tiene soluciones enteras.</p>" :
-        "<p>The equation does not have integer solutions.</p>");
-    }
-  }
-  showText("<p>");
-  showText(lang ? COPYRIGHT_SPANISH: COPYRIGHT_ENGLISH);
-  showText("</p>");
-}
 
-#if defined __EMSCRIPTEN__ && !defined _MSC_VER
-EXTERNALIZE void doWork(void)
-{
-  int flags;
-  char *ptrData = inputString;
-  char* ptrCoeffA;
-  char* ptrCoeffB;
-  char *ptrCoeffC;
-  char* ptrCoeffD;
-  char* ptrCoeffE;
-  char *ptrCoeffF;
-  groupLen = 0;
-  while (*ptrData != ',')
-  {
-    groupLen = (groupLen * 10) + (*ptrData - '0');
-    ptrData++;
+  const char* ptrBeginSol;
+  showText("<h2>");
+  ShowEq(&ValA, &ValB, &ValC, &ValD, &ValE, &ValF, "x", "y");
+  showText(" = 0</h2>");
+  SolNbr = 0;
+  ptrBeginSol = ptrOutput;
+  SolveQuadEquation();
+  if (ptrBeginSol == ptrOutput) {
+    showText("<p>The equation does not have integer solutions.</p>");
   }
-  ptrData++;                    // Skip comma.
-  flags = *ptrData;
-#ifndef lang
-  lang = ((flags & 1)? true: false);
-#endif
-  teach = ((flags & 2)? true: false);
-  ptrCoeffA = ptrData + 2;  // Skip flags and comma.
-  ptrCoeffB = ptrCoeffA + (int)strlen(ptrCoeffA) + 1;
-  ptrCoeffC = ptrCoeffB + (int)strlen(ptrCoeffB) + 1;
-  ptrCoeffD = ptrCoeffC + (int)strlen(ptrCoeffC) + 1;
-  ptrCoeffE = ptrCoeffD + (int)strlen(ptrCoeffD) + 1;
-  ptrCoeffF = ptrCoeffE + (int)strlen(ptrCoeffE) + 1;
-  quadText(ptrCoeffA, ptrCoeffB, ptrCoeffC, ptrCoeffD, ptrCoeffE, ptrCoeffF);
-  databack(output);
 }
-#endif
