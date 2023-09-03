@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
 //
-#include <cstdio>
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include <assert.h>
@@ -24,6 +24,7 @@
 #include "factor.h"
 #include "expression.h"
 #include "skiptest.h"
+#include "globals.h"
 
 enum eOper
 {
@@ -46,11 +47,6 @@ static BigInteger Power;
 static BigInteger expon;
 static bool ProcessExpon[(MAX_LEN*BITS_PER_GROUP) + 1000];
 static bool primes[(MAX_LEN*BITS_PER_GROUP) + 1000];
-extern limb Mult1[MAX_LEN];
-extern limb Mult2[MAX_LEN];
-extern limb Mult3[MAX_LEN];
-extern limb Mult4[MAX_LEN];
-extern int valueQ[MAX_LEN];
 extern limb TestNbr[MAX_LEN];
 extern limb MontgomeryMultR1[MAX_LEN];
 int groupLen = 0;

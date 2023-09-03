@@ -22,7 +22,7 @@
 #include "bignbr.h"
 #include "expression.h"
 #include "showtime.h"
-#include "output.h"
+#include "globals.h"
 
 #ifdef __EMSCRIPTEN__
 double originalTenthSecond;

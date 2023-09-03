@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include "bignbr.h"
 #include "expression.h"
+#include "globals.h"
 
 #define DIGITS_PER_LIMB 9
 #define MAX_LIMB_CONVERSION 1000000000
@@ -125,70 +126,7 @@ void int2dec(char **pOutput, int nbr)
   *pOutput = ptrOutput;
 }
 
-#ifdef __EMSCRIPTEN__
-void long2dec(char **pOutput, uint64_t nbr)
-{
-  char *ptrOutput = *pOutput;
-  bool significantZero = false;
-  uint64_t div = 1000000000000000000LL;
-  uint64_t value = nbr;
-  while (div > 0U)
-  {
-    int digit;
-    uint64_t digit64 = value / div;
-
-    digit = (int)digit64;
-    if ((digit > 0) || significantZero)
-    {
-      significantZero = true;
-      *ptrOutput = (char)(digit + '0');
-      ptrOutput++;
-    }
-    value %= div;
-    div /= 10;
-  }
-  if (significantZero == false)
-  {
-    *ptrOutput = '0';
-    ptrOutput++;
-  }
-  *pOutput = ptrOutput;
-}
-#endif
-
-#ifdef __EMSCRIPTEN__
-void int2hex(char **pOutput, int nbr)
-{
-  char *ptrOutput = *pOutput;
-  bool significantZero = false;
-  unsigned int div = 0x10000000;
-  unsigned int value = (unsigned int)nbr;
-  copyStr(&ptrOutput, "<span class=\"hex\">");
-  while (div > 0U)
-  {
-    int digit;
-
-    digit = value / div;
-    if ((digit > 0) || significantZero)
-    {
-      significantZero = true;
-      *ptrOutput = (char)((digit >= 10)? (digit + ('A'-10)): (digit + '0'));
-      ptrOutput++;
-    }
-    value %= div;
-    div /= 10;
-  }
-  if (!significantZero)
-  {
-    *ptrOutput = '0';
-    ptrOutput++;
-  }
-  copyStr(&ptrOutput, "</span>");
-  *pOutput = ptrOutput;
-}
-#endif
-
-static int Bin2HexLoop(char** ppDecimal, const limb* binary, 
+static int Bin2HexLoop(char** ppDecimal, const limb* binary,
   int currentGroupDigit, int nbrBits, int nbrLimbs, int mask, int grpLen)
 {
   int nbrHexDigits = (nbrBits + 3) / 4;

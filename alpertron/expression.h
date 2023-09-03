@@ -89,12 +89,7 @@ enum eParseExpr
   PARSE_EXPR_POLYNOMIAL,
 };
 
-#ifndef lang
-  extern bool lang;
-#endif
 extern char inputString[1000000];
-// extern char output[3000000];
-extern char *output;
 extern BigInteger valueX;
 extern int counterC;
 extern int expressionNbr;

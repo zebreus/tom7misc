@@ -26,13 +26,13 @@ CXX=x86_64-w64-mingw32-g++
 CXXFLAGS=-D_USING64BITS_ -DFACTORIZATION_APP=1 -DFACTORIZATION_FUNCTIONS=1 -g -O -march=native
 LFLAGS=-static
 
-h_files=batch.h bignbr.h enums.h commonstruc.h expression.h factor.h highlevel.h polynomial.h showtime.h skiptest.h
+h_files=batch.h bignbr.h enums.h commonstruc.h expression.h factor.h highlevel.h polynomial.h showtime.h skiptest.h globals.h
 targets = quad.exe
 .PHONY : all
 all: $(targets)
 
-quad.exe: expression.o parseexpr.o partition.o errors.o copyStr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsLA.o quad.o quadmodLL.o bignbr.o showtime.o from_musl.o inputstr.o fft.o test_quad.o
-	$(CXX) expression.o parseexpr.o partition.o errors.o copyStr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsLA.o quad.o quadmodLL.o bignbr.o showtime.o from_musl.o inputstr.o fft.o test_quad.o $(CXXFLAGS) $(LFLAGS) -lm -o $@
+quad.exe:  parseexpr.o partition.o errors.o copyStr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsLA.o quad.o quadmodLL.o bignbr.o showtime.o from_musl.o inputstr.o fft.o test_quad.o globals.o
+	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 %.o : %.c $(h_files)
 	$(CXX) $(CXXFLAGS) -o $@ -c $<

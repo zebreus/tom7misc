@@ -20,8 +20,18 @@
 #define _OUTPUT_H
 #include "bignbr.h"
 
-void showText(const char* text);
-void shownbr(const BigInteger* value);
+// extern char output[3000000];
+extern char *output;
+extern bool lang;
+
+extern limb *Mult1;
+extern limb *Mult2;
+extern limb *Mult3;
+extern limb *Mult4;
+extern int *valueQ;
+
+// void showText(const char* text);
+// void shownbr(const BigInteger* value);
 void beginLine(char** pptrOutput);
 void finishLine(char** pptrOutput);
 

@@ -21,11 +21,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "bignbr.h"
-#include "expression.h"
+#include "globals.h"
 #include "highlevel.h"
 #include "factor.h"
-// #include "batch.h"
-// #include "polynomial.h"
 
 extern bool teach;
 

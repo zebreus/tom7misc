@@ -21,6 +21,7 @@
 #include <stdbool.h>
 #include "bignbr.h"
 #include "expression.h"
+#include "globals.h"
 
 int expressionNbr;
 void textError(char **pptrOutput, enum eExprErr rc)

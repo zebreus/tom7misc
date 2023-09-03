@@ -27,6 +27,7 @@
 #include "showtime.h"
 #ifdef USING_BLOCKLY
 #include "batch.h"
+#include "output.h"
 #include "fromBlockly.h"
 extern bool doFactorization;
 extern char* ptrBlocklyOutput;
@@ -110,16 +111,7 @@ static int comprStackValues[COMPR_STACK_SIZE];
 static int comprStackOffset[PAREN_STACK_SIZE];
 extern limb MontgomeryR1[MAX_LEN];
 static int stackIndex;
-#ifndef lang
-  bool lang;
-#endif
-// char output[3000000];
-char *output = new char[2'000'000'000];
 
-limb Mult1[MAX_LEN];
-limb Mult3[MAX_LEN];
-limb Mult4[MAX_LEN];
-int valueQ[MAX_LEN];
 BigInteger valueX;
 int counterC;
 #ifdef FACTORIZATION_FUNCTIONS

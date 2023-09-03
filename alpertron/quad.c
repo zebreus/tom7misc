@@ -20,10 +20,13 @@
 #include <string.h>
 #include <math.h>
 #include "bignbr.h"
-#include "expression.h"
+// #include "expression.h"
+#include "globals.h"
 #include "factor.h"
 #include "commonstruc.h"
 #include "quadmodLL.h"
+
+int xyzzy;
 
 enum eLinearSolution
 {
@@ -144,23 +147,6 @@ static const char *varYnoTrans;
 static bool firstSolutionX;
 extern BigInteger LastModulus;
 extern BigInteger prime;
-#define NBR_COEFF 6
-struct stValidateCoeff
-{
-  const char *expression;
-  BigInteger *bigint;
-  const char *textSpanish;
-  const char *textEnglish;
-};
-static struct stValidateCoeff astValidateCoeff[NBR_COEFF] =
-{
-  { NULL, &ValA, "Coeficiente <var>a</var>: ", "Coefficient <var>a</var>: " },
-  { NULL, &ValB, "Coeficiente <var>b</var>: ", "Coefficient <var>b</var>: " },
-  { NULL, &ValC, "Coeficiente <var>c</var>: ", "Coefficient <var>c</var>: " },
-  { NULL, &ValD, "Coeficiente <var>d</var>: ", "Coefficient <var>d</var>: " },
-  { NULL, &ValE, "Coeficiente <var>e</var>: ", "Coefficient <var>e</var>: " },
-  { NULL, &ValF, "Coeficiente <var>f</var>: ", "Coefficient <var>f</var>: " },
-};
 
 static void showText(const char *text)
 {
