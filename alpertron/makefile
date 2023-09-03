@@ -9,7 +9,8 @@ LFLAGS=-static
 
 HEADERS=batch.h bignbr.h enums.h commonstruc.h factor.h highlevel.h polynomial.h showtime.h globals.h siqs.h ecm.h
 
-quad.exe: partition.o errors.o copyStr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsLA.o quad.o quadmodLL.o bignbr.o showtime.o inputstr.o fft.o test_quad.o globals.o
+# partition.o
+quad.exe:  errors.o copyStr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsLA.o quad.o quadmodLL.o bignbr.o showtime.o inputstr.o fft.o test_quad.o globals.o
 	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 %.o : %.c $(HEADERS)
