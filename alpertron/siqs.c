@@ -23,17 +23,8 @@
 #include "factor.h"
 #include "commonstruc.h"
 #if DEBUG_SIQS
-#ifndef __EMSCRIPTEN__
 #include <stdio.h>
-#endif
 static int checksum;
-#endif
-#ifdef __EMSCRIPTEN__
-extern char lowerText[MAX_LEN * 16];
-extern char *ptrLowerText;
-char *ptrSIQSStrings;
-int startSieveTenths;
-int64_t SIQSModMult;
 #endif
 
 #define QUEUE_LENGTH 100
@@ -55,81 +46,8 @@ static bool InsertNewRelation(
   limb *biT, limb *biU, limb *biR,
   int NumberLength);
 bool LinearAlgebraPhase(limb* biT, limb* biR, limb* biU, int nbrLength);
-#if 0
-static unsigned char isProbablePrime(double value);
-static int SQUFOF(double N, int queue[]);
-#endif
-void ShowSIQSStatus(void);
 static unsigned int getFactorsOfA(unsigned int seed, int *aindex);
 static void sieveThread(BigInteger *result);
-
-#ifdef __EMSCRIPTEN__
-static void InitSIQSStrings(int SieveLimit)
-{
-  char *ptrText = ptrLowerText;  // Point after number that is being factored.
-  copyStr(&ptrText, lang ? "<p>Parámetros de SIQS: " : "<p>SIQS parameters: ");
-  int2dec(&ptrText, common.siqs.nbrFactorBasePrimes);   // Show number of primes in factor base.
-  copyStr(&ptrText, lang ? " primos, límite de la criba: " : " primes, sieve limit: ");
-  int2dec(&ptrText, SieveLimit);  // Show sieve limit.
-  copyStr(&ptrText, "</p>");
-  ptrSIQSStrings = ptrText;
-  copyStr(&ptrText, lang ? "<p>Buscando el mejor multiplicador de Knuth-Schroeppel...</p>" :
-                         "<p>Searching for Knuth-Schroeppel multiplier...</p>");
-  databack(lowerText);
-}
-
-// Append multiplier and factor base to SIQS string.
-static void getMultAndFactorBase(int multiplier, int FactorBase)
-{
-  char *ptrText = ptrSIQSStrings;
-  copyStr(&ptrText, lang ? "<p>Multiplicador: " : "<p>Multiplier: ");
-  int2dec(&ptrText, multiplier);  // Show Knuth-Schroeppel multiplier.
-  copyStr(&ptrText, lang ? ", base de factores: " : ", factor base: ");
-  int2dec(&ptrText, FactorBase);  // Show factor base.
-  copyStr(&ptrText, "</p>");
-  ptrSIQSStrings = ptrText;
-}
-
-static void ShowSIQSInfo(int timeSieve, int nbrCongruencesFound, int matrixBLength,
-  int elapsedTime)
-{
-  char SIQSInfo[1000];
-  float fPercentage = (float)nbrCongruencesFound * 100.0f / (float)matrixBLength;
-  int percentage = (int)fPercentage;
-  int temp = matrixBLength - nbrCongruencesFound;
-  double dU = (double)timeSieve * (double)temp /
-    (double)nbrCongruencesFound;
-  int u = (int)dU;
-  char *ptrText = SIQSInfo;
-  copyStr(&ptrText, "4<p>");
-  int2dec(&ptrText, nbrCongruencesFound);  // Show number of congruences found.
-  copyStr(&ptrText, lang ? " congruencias halladas (" : " congruences found (");
-  int2dec(&ptrText, percentage);  // Show number of congruences found.
-  copyStr(&ptrText, lang ? "%) con " : "%) with ");
-  int2dec(&ptrText, common.siqs.nbrPrimesUsed);
-  copyStr(&ptrText, lang ? " primos diferentes." : " different primes.");
-  copyStr(&ptrText, lang ? "<br>Relaciones: " : "<br>Relations: ");
-  int2dec(&ptrText, smoothsFound);   // Show number of full congruences.
-  copyStr(&ptrText, lang ? " completas y " : " full and ");
-  int2dec(&ptrText, partialsFound);  // Show number of built congruences.
-  copyStr(&ptrText, lang ? " obtenidas de " : " found from ");
-  int2dec(&ptrText, totalPartials);  // Show number of partial congruences.
-  copyStr(&ptrText, lang ? " parciales." : " partials.");
-  copyStr(&ptrText, "<br><br><progress value=\"");
-  int2dec(&ptrText, percentage);
-  copyStr(&ptrText, "\" max=\"100\"></progress><br>");
-  GetDHMS(&ptrText, elapsedTime);
-  if ((timeSieve > 1) && (nbrCongruencesFound > 10))
-  {
-    copyStr(&ptrText, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;");
-    copyStr(&ptrText, lang ? " Fin de la criba en " : " End sieve in ");
-    GetDHMS(&ptrText, u / 2);
-  }
-  copyStr(&ptrText, "</p>");
-  databack(SIQSInfo);
-}
-
-#endif
 
 #if DEBUG_SIQS
 void ShowSquareModP(char* pOutput)
@@ -142,19 +60,12 @@ void ShowSquareModP(char* pOutput)
 #endif
   *ptrOutput = 0;
   ptrOutput = output;
-#ifdef __EMSCRIPTEN__
-  ptrOutput++;    // Skip character '9' (command to send data to console).
-#endif
   while (*ptrOutput != '\0')
   {
     checksum += (unsigned char)*ptrOutput;
     ptrOutput++;
   }
-#ifdef __EMSCRIPTEN__
-  databack(output);
-#else
   printf("%s\n", output);
-#endif
 }
 #endif
 
@@ -1749,7 +1660,6 @@ static void SmoothRelationFound(
   if (InsertNewRelation(rowMatrixB, biT, biU, biR, nbrLength))
   {
     smoothsFound++;
-    ShowSIQSStatus();
   }
   return;
 }
@@ -1988,7 +1898,6 @@ static void PartialRelationFound(
       if (InsertNewRelation(rowMatrixB, biT, biU, biR, nbrLength))
       {
         partialsFound++;
-        ShowSIQSStatus();
       }
       return;
     }
@@ -2261,10 +2170,6 @@ void FactoringSIQS(const limb *pNbrToFactor, limb *pFactor)
     (void)memcpy(common.siqs.TestNbr2, common.siqs.Modulus, nbrBytes);
   }
   (void)memset(common.siqs.matrixPartialHashIndex, 0xFF, sizeof(common.siqs.matrixPartialHashIndex));
-#ifdef __EMSCRIPTEN__
-  InitSIQSStrings(common.siqs.SieveLimit);
-  startSieveTenths = (int)(tenths() - originalTenthSecond);
-#endif
   /************************/
   /* Compute startup data */
   /************************/
@@ -2508,10 +2413,6 @@ void FactoringSIQS(const limb *pNbrToFactor, limb *pFactor)
   // Convert array of limbs to BigInteger and find its logarithm.
   dlogNumberToFactor = logLimbs(pNbrToFactor, origNumberLength);
   dNumberToFactor = exp(dlogNumberToFactor);
-#ifdef __EMSCRIPTEN__
-  getMultAndFactorBase(common.siqs.multiplier, FactorBase);
-  databack(lowerText);
-#endif
   common.siqs.firstLimit = 2;
   for (j = 2; j < common.siqs.nbrFactorBasePrimes; j++)
   {
@@ -2578,74 +2479,6 @@ void FactoringSIQS(const limb *pNbrToFactor, limb *pFactor)
     (void)memset(pFactor + common.siqs.TempResult.nbrLimbs, 0, nbrBytes);
   }
 
-#if 0
-  for (threadNumber = 0; threadNumber<numberThreads; threadNumber++)
-  {
-    //new Thread(this).start();                // Start new thread.
-    //synchronized(amodq)
-    {
-//      while ((threadArray[threadNumber] == null) &&
-//        (getTerminateThread() == FALSE))
-      {
-        //try
-        //{
-        //  amodq.wait();
-        //}
-        //catch (InterruptedException ie) {}
-      }
-    }
-  }
-  //synchronized(matrixB)
-  {
-    while ((common.siqs.factorSiqs == null) && (getTerminateThread() == FALSE))
-    {
-      try
-      {
-        matrixB.wait();
-      }
-      catch (InterruptedException ie) {}
-    }
-  }
-  if (/*getTerminateThread() ||*/ ((common.siqs.TempResult.nbrLimbs == 1) && (common.siqs.TempResult.limbs[0].x == 0)))
-  {
-    //throw new ArithmeticException();
-  }
-#endif
-#if 0
-  for (threadNumber = 0; threadNumber<numberThreads; threadNumber++)
-  {                 // Wake up all sieve threads so they can terminate.
-    if (threadArray[threadNumber].isAlive())
-    {
-      //try
-      {
-        threadArray[threadNumber].interrupt();
-      }
-      //catch (Exception e) {}
-    }
-  }
-#endif
-#if 0
-  synchronized(this)
-  {
-    saveSIQSStatistics(polynomialsSieved, trialDivisions,
-      smoothsFound, totalPartials,
-      partialsFound, ValuesSieved);
-  }
-  return common.siqs.factorSiqs;
-#endif
-}
-
-void ShowSIQSStatus(void)
-{
-#ifdef __EMSCRIPTEN__
-  int elapsedTime = (int)(tenths() - originalTenthSecond);
-  if ((elapsedTime / 10) != (oldTimeElapsed / 10))
-  {
-    oldTimeElapsed = elapsedTime;
-    ShowSIQSInfo((elapsedTime - startSieveTenths)/10, congruencesFound,
-      common.siqs.matrixBLength, elapsedTime / 10);
-  }
-#endif
 }
 
 static bool InsertNewRelation(
@@ -2667,10 +2500,6 @@ static bool InsertNewRelation(
   }
 #if DEBUG_SIQS == 1
   char* ptrOutput = output;
-#ifdef __EMSCRIPTEN__
-  *ptrOutput = '9';
-  ptrOutput++;
-#endif
   copyStr(&ptrOutput, "Mod(");
   for (int i = 1; i < *rowMatrixB; i++)
   {
@@ -2943,11 +2772,7 @@ static void sieveThread(BigInteger *result)
 #if DEBUG_SIQS == 5
           ptrOutput -= 3;
           *ptrOutput = 0;
-#ifdef __EMSCRIPTEN__
-          databack(output);
-#else
           printf("%s\n", out);
-#endif
 #endif
           // Compute the leading coefficient in biQuadrCoeff.
 

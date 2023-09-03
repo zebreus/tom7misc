@@ -49,9 +49,6 @@ extern limb TestNbr[MAX_LEN];
 extern limb MontgomeryMultR1[MAX_LEN];
 int groupLen = 0;
 int smallPrimes[SMALL_PRIMES_ARRLEN+1];
-#ifdef __EMSCRIPTEN__
-int percentageBPSW;
-#endif
 
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc)
 {
@@ -1803,9 +1800,6 @@ static int Perform2SPRPtest(int nbrLimbs, const limb* limbs)
   for (int index = Mult3Len - 1; index >= 0; index--)
   {
     int groupExp = Mult3[index].x;
-#ifdef __EMSCRIPTEN__
-    percentageBPSW = (Mult3Len - index) * 100 / Mult3Len;
-#endif
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1)
     {
       modmult(Mult1, Mult1, Mult1);
@@ -1877,9 +1871,6 @@ static int PerformStrongLucasTest(const BigInteger* pValue, int D, int absQ, int
   DivideBigNbrByMaxPowerOf2(&ctr, expon.limbs, &expon.nbrLimbs);
   for (index = expon.nbrLimbs - 1; index >= 0; index--)
   {
-#ifdef __EMSCRIPTEN__
-    percentageBPSW = (expon.nbrLimbs - index) * 100 / expon.nbrLimbs;
-#endif
     int groupExp = expon.limbs[index].x;
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1)
     {
@@ -2399,22 +2390,10 @@ static unsigned int nextRandom(void)
   if ((randomSeed.seed[0] == 0U) && (randomSeed.seed[1] == 0U) &&
     (randomSeed.seed[2] == 0U) && (randomSeed.seed[3] == 0U))
   {
-#ifdef __EMSCRIPTEN__
-    double tenth = tenths();
-    double dSeed = tenth - (738264237.0 * floor(tenth / 738264237.0));
-    randomSeed.seed[0] = (uint32_t)dSeed;
-    dSeed = tenth - (965457348.0 * floor(tenth / 965457348.0));
-    randomSeed.seed[1] = (uint32_t)dSeed;
-    dSeed = tenth - (432155666.0 * floor(tenth / 432155666.0));
-    randomSeed.seed[2] = (uint32_t)dSeed;
-    dSeed = tenth - (957884955.0 * floor(tenth / 957884955.0));
-    randomSeed.seed[3] = (uint32_t)dSeed;
-#else
     randomSeed.seed[0] = 178546887U;
     randomSeed.seed[1] = 7585185U;
     randomSeed.seed[2] = 430600459U;
     randomSeed.seed[3] = 136315866U;
-#endif
   }
   t = randomSeed.seed[3];
   s = randomSeed.seed[0];

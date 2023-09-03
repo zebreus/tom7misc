@@ -67,9 +67,6 @@ static limb resultModPower2[MAX_LEN];
 static int NumberLength2;
 int NumberLength;
 int NumberLengthR1;
-#ifdef __EMSCRIPTEN__
-int64_t lModularMult;
-#endif
 mmCback modmultCallback;
 static limb U[MAX_LEN];
 static limb V[MAX_LEN];
@@ -1971,13 +1968,6 @@ void modmult(const limb* factor1, const limb* factor2, limb* product)
 {
   int32_t Prod[MONTGOMERY_MULT_THRESHOLD + 1];
   int NumberLengthBytes;
-#ifdef __EMSCRIPTEN__
-  if (modmultCallback != NULL)
-  {
-    modmultCallback();
-    lModularMult++;
-  }
-#endif
   if (powerOf2Exponent != 0)
   {    // TestNbr is a power of 2.
     UncompressLimbsBigInteger(factor1, &tmpFact1);

@@ -19,75 +19,11 @@
 
 #include <string.h>
 #include <stdlib.h>
-#include "bignbr.h"
 #include "showtime.h"
-#include "globals.h"
+#include "bignbr.h"
 
-#ifdef __EMSCRIPTEN__
-double originalTenthSecond;
-int oldTimeElapsed;
-// Convert tenths of seconds to days, hours, minutes and seconds.
-void GetDHMS(char **pptrText, int seconds)
-{
-  char *ptrText = *pptrText;
-  int2dec(&ptrText, seconds / 86400);         // Show number of days.
-  *ptrText = 'd';
-  ptrText++;
-  *ptrText = ' ';
-  ptrText++;
-  int2dec(&ptrText, (seconds / 3600) % 24);   // Show number of hours.
-  *ptrText = 'h';
-  ptrText++;
-  *ptrText = ' ';
-  ptrText++;
-  int2dec(&ptrText, (seconds / 60) % 60);     // Show number of minutes.
-  *ptrText = 'm';
-  ptrText++;
-  *ptrText = ' ';
-  ptrText++;
-  int2dec(&ptrText, seconds % 60);            // Show number of seconds.
-  *ptrText = 's';
-  ptrText++;
-  *ptrText = ' ';
-  ptrText++;
-  *pptrText = ptrText;
-}
-
-void GetDHMSt(char **pptrText, int tenths)
-{
-  char *ptrText;
-  GetDHMS(pptrText, tenths / 10);
-  ptrText = *pptrText - 2;
-  *ptrText = '.';
-  ptrText++;
-  *ptrText = (char)((tenths % 10) + '0');
-  ptrText++;
-  *ptrText = 's';
-  ptrText++;
-  *ptrText = ' ';
-  ptrText++;
-  *pptrText = ptrText;
-}
-
-#endif
-
-void showElapsedTime(char **pptrOutput)
-{
+void showElapsedTime(char **pptrOutput) {
   char *ptrOutput = *pptrOutput;
-  copyStr(&ptrOutput, lang ? "Tiempo transcurrido: " : "Time elapsed: ");
-#ifdef __EMSCRIPTEN__
-  GetDHMSt(&ptrOutput, (int)(tenths() - originalTenthSecond));
-#endif
+  copyStr(&ptrOutput, "Time elapsed: ");
   *pptrOutput = ptrOutput;
 }
-
-#ifdef __EMSCRIPTEN__
-void showElapsedTimeSec(char **pptrOutput)
-{
-  char *ptrOutput = *pptrOutput;
-  copyStr(&ptrOutput, lang ? "<p>Tiempo transcurrido: " : "<p>Time elapsed: ");
-  GetDHMS(&ptrOutput, (int)(tenths() - originalTenthSecond) / 10);
-  copyStr(&ptrOutput, "</p>");
-  *pptrOutput = ptrOutput;
-}
-#endif

@@ -20,37 +20,16 @@
 #include <math.h>
 #include <stdint.h>
 #include <assert.h>
+#include <stdio.h>
+
 #include "bignbr.h"
 #include "factor.h"
 #include "commonstruc.h"
-#if (DEBUG_SIQS == 2) && !defined(__EMSCRIPTEN__)
-#include <stdio.h>
-#endif
-#ifndef __EMSCRIPTEN__
-#include <stdio.h>
-#endif
+
+
 
 #define processCol(col) (*(RightMatr + col) & ((leftMatr << col) >> 31))
-#ifdef __EMSCRIPTEN__
-extern char lowerText[MAX_LEN * 16];
-extern char* ptrLowerText;
-unsigned char SIQSInfoText[300];
-#endif
 
-#ifdef __EMSCRIPTEN__
-static void showMatrixSize(const char* SIQSInformationText, int rows, int cols)
-{
-  (void)SIQSInformationText;
-  char* ptrText = ptrLowerText;  // Point after number that is being factored.
-  copyStr(&ptrText, lang ? "<p>Resolviendo la matriz de congruencias de " : "<p>Solving ");
-  int2dec(&ptrText, rows);   // Show number of rows.
-  copyStr(&ptrText, " &times; ");
-  int2dec(&ptrText, cols);   // Show number of columns.
-  copyStr(&ptrText, lang ? " usando el algoritmo de Lanczos en bloques.</p>" :
-    " congruence matrix using Block Lanczos algorithm.</p>");
-  databack(lowerText);
-}
-#endif
 /* Multiply binary matrices of length m x 32 by 32 x 32 */
 /* The product matrix has size m x 32. Then add it to a m x 32 matrix. */
 static void MatrixMultAdd(const int *LeftMatr, const int *RightMatr, int *ProdMatr)
@@ -382,15 +361,8 @@ static bool BlockLanczos(int seed)
   }
   // Compute the matrix Vt(0) * V(0)
   MatrTranspMult(common.siqs.matrixBLength, common.siqs.matrixV, common.siqs.matrixV, matrixVtV0);
-#ifdef __EMSCRIPTEN__
-  showMatrixSize((char *)SIQSInfoText, matrixRows, matrixCols);
-#endif
 #if DEBUG_SIQS == 2
   char *ptrOutput = output;
-#ifdef __EMSCRIPTEN__
-  *ptrOutput = '9';
-  ptrOutput++;
-#endif
   copyStr(&ptrOutput, "MatrixBLength = ");
   int2dec(&ptrOutput, common.siqs.matrixBLength);
   copyStr(&ptrOutput, ", matrix = ");
@@ -398,11 +370,7 @@ static bool BlockLanczos(int seed)
   copyStr(&ptrOutput, " * ");
   int2dec(&ptrOutput, matrixCols);
   *ptrOutput = 0;
-#ifdef __EMSCRIPTEN__
-  databack(output);
-#else
   printf("%s\n", output);
-#endif
 #endif
   for (;;)
   {
@@ -412,28 +380,6 @@ static bool BlockLanczos(int seed)
     {
       return false;
     }
-#ifdef __EMSCRIPTEN__
-    int elapsedTime = (int)(tenths() - originalTenthSecond);
-    if ((elapsedTime / 10) != (oldTimeElapsed / 10))
-    {
-      char SIQSInfo[200];
-      char *ptrText = SIQSInfo;
-      oldTimeElapsed = elapsedTime;
-      copyStr(&ptrText, "4<p>");
-      GetDHMS(&ptrText, elapsedTime/10);
-      copyStr(&ptrText, "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;");
-      copyStr(&ptrText, lang? "Progreso del álgebra lineal: ": "Linear algebra progress: ");
-      int2dec(&ptrText, stepNbr * 3200 / matrixRows);
-      copyStr(&ptrText, "%</p>");
-      databack(SIQSInfo);
-    }
-#endif
-#if 0
-    //if (getTerminateThread())
-    //{
-    //  throw new ArithmeticException();
-    // }
-#endif
     oldDiagonalSSt = newDiagonalSSt;
     stepNbr++;
     // Compute the matrix A * V(i)
@@ -597,10 +543,6 @@ static bool BlockLanczos(int seed)
     {
       int sum;
       int ctr;
-#ifdef __EMSCRIPTEN__
-      * ptrOutput = '9';
-      ptrOutput++;
-#endif
       copyStr(&ptrOutput, "Step #");
       int2dec(&ptrOutput, stepNbr);
       copyStr(&ptrOutput, ": matrixWinv1[0] = ");
@@ -622,11 +564,7 @@ static bool BlockLanczos(int seed)
       copyStr(&ptrOutput, ", newDiagonalSSt = ");
       int2dec(&ptrOutput, newDiagonalSSt);
       *ptrOutput = 0;
-#ifdef __EMSCRIPTEN__
-      databack(output);
-#else
       printf("%s\n", output);
-#endif
     }
 #endif
     if (stepNbr >= 2)
@@ -935,11 +873,7 @@ static int EraseSingletons(int nbrFactorBasePrimes)
   } while (delta > 0);           // End loop if number of rows did not
                                  // change.
 #if DEBUG_SIQS == 5
-#ifdef __EMSCRIPTEN__
-  databack(output);
-#else
   printf("%s\n", out);
-#endif
 #endif
   common.siqs.primeTrialDivisionData[0].exp2 = nbrFactorBasePrimes;
   return matrixBlength;
@@ -948,18 +882,10 @@ static int EraseSingletons(int nbrFactorBasePrimes)
 #if DEBUG_SIQS == 2
 static void showRelations(void)
 {
-#ifdef __EMSCRIPTEN__
-  databack("9******* START LINEAR ALGEBRA *******\n");
-#else
   printf("******* START LINEAR ALGEBRA *******\n");
-#endif
   for (int j = 0; j < common.siqs.matrixBLength; j++)
   {
     char* ptrOutput = output;
-#ifdef __EMSCRIPTEN__
-    * ptrOutput = '9';
-    ptrOutput++;
-#endif
     copyStr(&ptrOutput, "Mod(");
     for (int i = 1; i < common.siqs.matrixB[j][LENGTH_OFFSET]; i++)
     {

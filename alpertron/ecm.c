@@ -29,12 +29,6 @@
 #define MAX_SIEVE_PRIME    (10 * SIEVE_SIZE)
 #endif
 
-#ifdef __EMSCRIPTEN__
-extern int nbrPrimes;
-extern int indexPrimes;
-extern char* ptrLowerText;
-extern char lowerText[MAX_LEN * 16];
-#endif
 extern int StepECM;
 extern int maxIndexM;
 extern int indexM;
@@ -466,9 +460,6 @@ enum eEcmResult ecmStep1(void)
   for (int pass = 0; pass < 2; pass++)
   {
     /* For powers of 2 */
-#ifdef __EMSCRIPTEN__
-    indexPrimes = 0;
-#endif
     StepECM = 1;
     for (I = 1; I <= boundStep1; I *= 2)
     {
@@ -517,9 +508,6 @@ enum eEcmResult ecmStep1(void)
     indexM = 1;
     do
     {
-#ifdef __EMSCRIPTEN__
-      indexPrimes++;
-#endif
       P = SmallPrime[indexM];
       for (long long IP = P; IP <= boundStep1; IP *= P)
       {
@@ -576,9 +564,6 @@ enum eEcmResult ecmStep1(void)
         {
           break;
         }
-#ifdef __EMSCRIPTEN__
-        indexPrimes++;
-#endif
         prac(P + (2 * i), common.ecm.X, common.ecm.Z);
         if (pass == 0)
         {
@@ -891,9 +876,6 @@ enum eEcmResult ecmCurve(int *pEC, int *pNextEC)
   int NextEC = *pNextEC;
   enum eEcmResult result;
   NumberSizeBytes = NumberLength * (int)sizeof(limb);
-#ifdef __EMSCRIPTEN__
-  char text[20];
-#endif
   if (SmallPrime[0] != 2)
   {    // Not initialized yet.
     initSmallPrimeArray();
@@ -901,9 +883,6 @@ enum eEcmResult ecmCurve(int *pEC, int *pNextEC)
   EC %= 50000000;   // Convert to curve number.
   do
   {
-#ifdef __EMSCRIPTEN__
-    char* ptrText;
-#endif
     int nbrDigits;
     if (NextEC > 0)
     {
@@ -922,13 +901,6 @@ enum eEcmResult ecmCurve(int *pEC, int *pNextEC)
     else
     {
       EC++;
-#ifdef __EMSCRIPTEN__
-      text[0] = '7';
-      ptrText = &text[1];
-      int2dec(&ptrText, EC);
-      *ptrText = 0;                 // Add string terminator.
-      databack(text);
-#endif
       nbrDigits = NumberLength * 9;          // Get number of digits.
       if ((NextEC == 0) && (nbrDigits >= 30) && (nbrDigits <= 110))
       {          // Force switch to SIQS and number not too large.
@@ -954,9 +926,6 @@ enum eEcmResult ecmCurve(int *pEC, int *pNextEC)
     boundStep1 = 2000;
     boundStep2 = 200000;
     sqrtBoundStep1 = 45;
-#ifdef __EMSCRIPTEN__
-    nbrPrimes = 303; /* Number of primes less than 2000 */
-#endif
     if (EC > 25)
     {
       if (EC < 326)
@@ -964,9 +933,6 @@ enum eEcmResult ecmCurve(int *pEC, int *pNextEC)
         boundStep1 = 50000;
         boundStep2 = 5000000;
         sqrtBoundStep1 = 224;
-#ifdef __EMSCRIPTEN__
-        nbrPrimes = 5133; /* Number of primes less than 50000 */
-#endif
       }
       else
       {
@@ -975,32 +941,15 @@ enum eEcmResult ecmCurve(int *pEC, int *pNextEC)
           boundStep1 = 1000000;
           boundStep2 = 100000000;
           sqrtBoundStep1 = 1001;
-#ifdef __EMSCRIPTEN__
-          nbrPrimes = 78498; /* Number of primes less than 1000000 */
-#endif
         }
         else
         {
           boundStep1 = 11000000;
           boundStep2 = 1100000000;
           sqrtBoundStep1 = 3316;
-#ifdef __EMSCRIPTEN__
-          nbrPrimes = 726517; /* Number of primes less than 11000000 */
-#endif
         }
       }
     }
-#ifdef __EMSCRIPTEN__
-    ptrText = ptrLowerText;  // Point after number that is being factored.
-    copyStr(&ptrText, lang ? "<p>Curva " : "<p>Curve ");
-    int2dec(&ptrText, EC);   // Show curve number.
-    copyStr(&ptrText, lang ? " usando límites B1=" : " using bounds B1=");
-    int2dec(&ptrText, boundStep1);   // Show first bound.
-    copyStr(&ptrText, lang ? " y B2=" : " and B2=");
-    int2dec(&ptrText, boundStep2);   // Show second bound.
-    copyStr(&ptrText, "</p>");
-    databack(lowerText);
-#endif
 
     //  Compute A0 <- 2 * (EC+1)*modinv(3 * (EC+1) ^ 2 - 1, N) mod N
                                                // Aux2 <- 1 in Montgomery notation.

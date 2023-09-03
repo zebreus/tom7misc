@@ -318,20 +318,9 @@ void InsertAurifFactors(struct sFactors *pstFactors, const BigInteger *BigBase,
   }
 }
 
-#ifdef __EMSCRIPTEN__
-void copyString(const char *textFromServer)
-{
-  (void)strcpy(common.saveFactors.text, textFromServer);
-}
-#endif
-
 static void Cunningham(struct sFactors *pstFactors, const BigInteger *BigBase, int Expon,
                 int increment, const BigInteger *BigOriginal)
 {
-#ifdef __EMSCRIPTEN__
-  char url[200];
-  char *ptrUrl;
-#endif
   int Expon2;
   int k;
   char *ptrFactorsAscii;
@@ -343,21 +332,6 @@ static void Cunningham(struct sFactors *pstFactors, const BigInteger *BigBase, i
   if (cunningham && (BigOriginal->nbrLimbs > 4))
   {   // Enter here on numbers of more than 40 digits if the user selected
       // get Cunningham factors from server.
-#ifdef __EMSCRIPTEN__
-    databack(lang ? "4<p>Obteniendo los factores primitivos conocidos del servidor Web.</p>":
-                    "4<p>Requesting known primitive factors from Web server.</p>");
-    // Format URL.
-    ptrUrl = url;
-    copyStr(&ptrUrl, "factors.pl?base=");
-    int2dec(&ptrUrl, BigBase->limbs[0].x);
-    copyStr(&ptrUrl, "&expon=");
-    int2dec(&ptrUrl, Expon);
-    copyStr(&ptrUrl, "&type=");
-    *ptrUrl = ((increment > 0)? 'p': 'm');
-    ptrUrl++;
-    *ptrUrl = 0;
-    getCunn(url, common.saveFactors.text);
-#endif
   }
   ptrFactorsAscii = common.saveFactors.text;
   while (*ptrFactorsAscii > ' ')
@@ -423,10 +397,6 @@ static void Cunningham(struct sFactors *pstFactors, const BigInteger *BigBase, i
 static bool ProcessExponent(struct sFactors *pstFactors, const BigInteger *numToFactor,
   int Exponent)
 {
-#ifdef __EMSCRIPTEN__
-  char status[200];
-  char *ptrStatus;
-#endif
   static BigInteger NFp1;
   static BigInteger nthRoot;
   static BigInteger rootN1;
@@ -435,21 +405,6 @@ static bool ProcessExponent(struct sFactors *pstFactors, const BigInteger *numTo
   static BigInteger dif;
   int base;
   int pwr;
-#ifdef __EMSCRIPTEN__
-  int elapsedTime = (int)(tenths() - originalTenthSecond);
-  if ((elapsedTime / 10) != (oldTimeElapsed / 10))
-  {
-    oldTimeElapsed = elapsedTime;
-    ptrStatus = status;
-    copyStr(&ptrStatus, lang ? "4<p>Transcurrió " : "4<p>Time elapsed: ");
-    GetDHMS(&ptrStatus, elapsedTime / 10);
-    copyStr(&ptrStatus, lang ? "&nbsp;&nbsp;&nbsp;Exponente potencia +/- 1: " :
-      "&nbsp;&nbsp;&nbsp;Power +/- 1 exponent: ");
-    int2dec(&ptrStatus, Exponent);
-    *ptrStatus = 0;                       // Add string terminator.
-    databack(status);
-}
-#endif
   computeRoot(numToFactor, &nthRoot, Exponent);
   // Test whether (nthroot ^ Exponent = NFp1) (mod 2^BITS_PER_GROUP)
   base = nthRoot.limbs[0].x;
@@ -840,46 +795,6 @@ static void Lehman(const BigInteger *nbr, int multiplier, BigInteger *factor)
   intToBigInteger(factor, 1);   // Factor not found.
 }
 
-#ifdef __EMSCRIPTEN__
-char *ShowFactoredPart(const BigInteger *pNbr, const struct sFactors* pstFactors)
-{
-  ptrLowerText = lowerText;
-  *ptrLowerText = '3';
-  ptrLowerText++;
-  if ((pstFactors != NULL) && (pstFactors->multiplicity > 1))
-  {    // Some factorization known.
-    int NumberLengthBak = NumberLength;
-    copyStr(&ptrLowerText, "<p class=\"blue\">");
-    SendFactorizationToOutput(pstFactors, &ptrLowerText, true, false);
-    copyStr(&ptrLowerText, "</p>");
-    NumberLength = NumberLengthBak;
-  }
-  if (StepECM == 3)
-  {
-    copyStr(&ptrLowerText, lang ? "<p>Comprobando si es primo " : "<p>Testing primality of ");
-  }
-  else
-  {
-    copyStr(&ptrLowerText, lang ? "<p>Factorizando " : "<p>Factoring ");
-  }
-  if (hexadecimal)
-  {
-    Bin2Hex(&ptrLowerText, pNbr->limbs, pNbr->nbrLimbs, groupLen);
-  }
-  else
-  {
-    Bin2Dec(&ptrLowerText, pNbr->limbs, pNbr->nbrLimbs, groupLen);
-  }
-  copyStr(&ptrLowerText, "</p>");
-  return ptrLowerText;
-}
-
-void ShowLowerText(void)
-{
-  databack(lowerText);
-}
-#endif
-
 static bool isOne(const limb* nbr, int length)
 {
   if (nbr->x != 1)
@@ -898,9 +813,7 @@ static bool isOne(const limb* nbr, int length)
 
 static void performFactorization(const BigInteger *numToFactor, const struct sFactors *pstFactors)
 {
-#ifndef __EMSCRIPTEN__
   (void)pstFactors;     // Ignore parameter.
-#endif
   int NumberLengthBytes;
   static BigInteger potentialFactor;
   common.ecm.fieldTX = common.ecm.TX;
@@ -922,9 +835,6 @@ static void performFactorization(const BigInteger *numToFactor, const struct sFa
   (void)memset(common.ecm.W3, 0, NumberLengthBytes);
   (void)memset(common.ecm.W4, 0, NumberLengthBytes);
   (void)memset(common.ecm.GD, 0, NumberLengthBytes);
-#ifdef __EMSCRIPTEN__
-  ptrLowerText = ShowFactoredPart(numToFactor, pstFactors);
-#endif
   EC--;
   foundByLehman = false;
   do
@@ -956,10 +866,6 @@ static void performFactorization(const BigInteger *numToFactor, const struct sFa
     ecmResp = ecmCurve(&EC, &NextEC);
     if (ecmResp == CHANGE_TO_SIQS)
     {    // Perform SIQS
-#ifdef __EMSCRIPTEN__
-      double originalTenths = tenths();
-      int64_t oldModularMult = lModularMult;
-#endif
       // If number is a perfect power, SIQS does not work.
       // So the next code detects whether the number is a perfect power.
       int expon = PowerCheck(numToFactor, &potentialFactor);
@@ -973,11 +879,6 @@ static void performFactorization(const BigInteger *numToFactor, const struct sFa
         break;
       }
       FactoringSIQS(TestNbr, common.ecm.GD);
-#ifdef __EMSCRIPTEN__
-      SIQSModMult += lModularMult - oldModularMult;
-      timeSIQS += (int)(tenths() - originalTenths);
-      nbrSIQS++;
-#endif
 
       break;
     }
@@ -1797,74 +1698,86 @@ void factorExt(const BigInteger *toFactor, const int *number,
     NumberLength = *pstCurFactor->ptrFactor;
     IntArray2BigInteger(pstCurFactor->ptrFactor, &power);
     NumberLength = power.nbrLimbs;
-#ifdef __EMSCRIPTEN__
-    char *ptrText = ShowFactoredPart(&prime, pstFactors);
-    if (!skipPrimality)
+
+    expon = PowerCheck(&power, &prime);
+    if (expon > 1)
     {
-#endif
-      expon = PowerCheck(&power, &prime);
-      if (expon > 1)
-      {
-        NumberLength = prime.nbrLimbs;
-        BigInteger2IntArray(pstCurFactor->ptrFactor, &prime);
-        pstCurFactor->multiplicity *= expon;
-        SortFactors(pstFactors);
-        factorNbr = 0;             // Factor order has been changed. Restart factorization.
-        pstCurFactor = pstFactors;
-        continue;
-      }
-#ifdef __EMSCRIPTEN__
-      copyStr(&ptrText, lang ? "<p>División por primos menores que 100000.</p>" :
-        "<p>Trial division by primes less than 100000.</p>");
-      ShowLowerText();
-#endif
-      while ((upperBound < 100000) && (nbrLimbs > 1))
-      {        // Number has at least 2 limbs: Trial division by small numbers.
-        if (pstCurFactor->upperBound != 0)
-        {            // Factor found.
-          ptrFactor = pstCurFactor->ptrFactor;
-          remainder = RemDivBigNbrByInt((const limb *)(ptrFactor + 1), upperBound, nbrLimbs);
-          if (remainder == 0)
-          {
-            // Small factor found. Find the exponent.
-            int deltaIndex = 1;
-            int exponent = 1;
-            int index = 0;
-            CopyBigInt(&common.trialDiv.cofactor, &prime);
-            subtractdivide(&common.trialDiv.cofactor, 0, upperBound);
-            intToBigInteger(&common.trialDiv.power[0], upperBound);
-            for (;;)
-            {      // Test whether the cofactor is multiple of power.
-              (void)BigIntDivide(&common.trialDiv.cofactor, &common.trialDiv.power[index], &common.trialDiv.quotient);
-              (void)BigIntMultiply(&common.trialDiv.quotient, &common.trialDiv.power[index], &common.trialDiv.temp);
-              if (!BigIntEqual(&common.trialDiv.temp, &common.trialDiv.cofactor))
-              {    // Not a multiple, so exit loop.
-                break;
-              }
-              CopyBigInt(&common.trialDiv.cofactor, &common.trialDiv.quotient);
-              (void)BigIntMultiply(&common.trialDiv.power[index], &common.trialDiv.power[index], &common.trialDiv.power[index + 1]);
-              exponent += deltaIndex;
-              deltaIndex <<= 1;
-              index++;
-            }
-            index--;
-            for (; index >= 0; index--)
-            {
-              deltaIndex >>= 1;
-              (void)BigIntDivide(&common.trialDiv.cofactor, &common.trialDiv.power[index], &common.trialDiv.quotient);
-              (void)BigIntMultiply(&common.trialDiv.quotient, &common.trialDiv.power[index], &common.trialDiv.temp);
-              if (BigIntEqual(&common.trialDiv.temp, &common.trialDiv.cofactor))
-              {    // It is a multiple.
-                CopyBigInt(&common.trialDiv.cofactor, &common.trialDiv.quotient);
-                exponent += deltaIndex;
-              }
-            }
-            insertIntFactor(pstFactors, pstCurFactor, upperBound, exponent, &common.trialDiv.cofactor);
-            restartFactoring = true;
-          }
-        }
-        if (restartFactoring)
+      NumberLength = prime.nbrLimbs;
+      BigInteger2IntArray(pstCurFactor->ptrFactor, &prime);
+      pstCurFactor->multiplicity *= expon;
+      SortFactors(pstFactors);
+      factorNbr = 0;             // Factor order has been changed. Restart factorization.
+      pstCurFactor = pstFactors;
+      continue;
+    }
+    while ((upperBound < 100000) && (nbrLimbs > 1))
+    {        // Number has at least 2 limbs: Trial division by small numbers.
+      if (pstCurFactor->upperBound != 0)
+      {            // Factor found.
+        ptrFactor = pstCurFactor->ptrFactor;
+        remainder = RemDivBigNbrByInt((const limb *)(ptrFactor + 1), upperBound, nbrLimbs);
+        if (remainder == 0)
         {
+          // Small factor found. Find the exponent.
+          int deltaIndex = 1;
+          int exponent = 1;
+          int index = 0;
+          CopyBigInt(&common.trialDiv.cofactor, &prime);
+          subtractdivide(&common.trialDiv.cofactor, 0, upperBound);
+          intToBigInteger(&common.trialDiv.power[0], upperBound);
+          for (;;)
+          {      // Test whether the cofactor is multiple of power.
+            (void)BigIntDivide(&common.trialDiv.cofactor, &common.trialDiv.power[index], &common.trialDiv.quotient);
+            (void)BigIntMultiply(&common.trialDiv.quotient, &common.trialDiv.power[index], &common.trialDiv.temp);
+            if (!BigIntEqual(&common.trialDiv.temp, &common.trialDiv.cofactor))
+            {    // Not a multiple, so exit loop.
+              break;
+            }
+            CopyBigInt(&common.trialDiv.cofactor, &common.trialDiv.quotient);
+            (void)BigIntMultiply(&common.trialDiv.power[index], &common.trialDiv.power[index], &common.trialDiv.power[index + 1]);
+            exponent += deltaIndex;
+            deltaIndex <<= 1;
+            index++;
+          }
+          index--;
+          for (; index >= 0; index--)
+          {
+            deltaIndex >>= 1;
+            (void)BigIntDivide(&common.trialDiv.cofactor, &common.trialDiv.power[index], &common.trialDiv.quotient);
+            (void)BigIntMultiply(&common.trialDiv.quotient, &common.trialDiv.power[index], &common.trialDiv.temp);
+            if (BigIntEqual(&common.trialDiv.temp, &common.trialDiv.cofactor))
+            {    // It is a multiple.
+              CopyBigInt(&common.trialDiv.cofactor, &common.trialDiv.quotient);
+              exponent += deltaIndex;
+            }
+          }
+          insertIntFactor(pstFactors, pstCurFactor, upperBound, exponent, &common.trialDiv.cofactor);
+          restartFactoring = true;
+        }
+      }
+      if (restartFactoring)
+      {
+        break;
+      }
+      upperBoundIndex++;
+      upperBound = smallPrimes[upperBoundIndex];
+    }
+    if (restartFactoring)
+    {
+      factorNbr = 0;
+      pstCurFactor = pstFactors;
+      continue;
+    }
+    if (nbrLimbs == 1)
+    {
+      dividend = *(ptrFactor + 1);
+      while ((upperBound < 65535) &&
+              (((unsigned int)upperBound * (unsigned int)upperBound) <= (unsigned int)dividend))
+      {              // Trial division by small numbers.
+        if ((dividend % upperBound) == 0)
+        {            // Factor found.
+          insertIntFactor(pstFactors, pstCurFactor, upperBound, 1, NULL);
+          restartFactoring = true;
           break;
         }
         upperBoundIndex++;
@@ -1876,34 +1789,10 @@ void factorExt(const BigInteger *toFactor, const int *number,
         pstCurFactor = pstFactors;
         continue;
       }
-      if (nbrLimbs == 1)
-      {
-        dividend = *(ptrFactor + 1);
-        while ((upperBound < 65535) &&
-                (((unsigned int)upperBound * (unsigned int)upperBound) <= (unsigned int)dividend))
-        {              // Trial division by small numbers.
-          if ((dividend % upperBound) == 0)
-          {            // Factor found.
-            insertIntFactor(pstFactors, pstCurFactor, upperBound, 1, NULL);
-            restartFactoring = true;
-            break;
-          }
-          upperBoundIndex++;
-          upperBound = smallPrimes[upperBoundIndex];
-        }
-        if (restartFactoring)
-        {
-          factorNbr = 0;
-          pstCurFactor = pstFactors;
-          continue;
-        }
-        pstCurFactor->upperBound = 0;   // Number is prime.
-        continue;
-      }
-      // No small factor. Check whether the number is prime or prime power.
-#ifdef __EMSCRIPTEN__
+      pstCurFactor->upperBound = 0;   // Number is prime.
+      continue;
     }
-#endif
+    // No small factor. Check whether the number is prime or prime power.
 
     if (skipPrimality)
     {
