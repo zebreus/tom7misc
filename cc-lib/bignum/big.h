@@ -144,6 +144,20 @@ private:
     mpz_mul_2exp(rep, rep, 32);
     mpz_add_ui(rep, rep, lo);
   }
+
+  // XXX figure out how to hide this stuff away
+  static void InsertFactor(std::vector<std::pair<BigInt, int>> *, mpz_t);
+  static void InsertFactorUI(
+      std::vector<std::pair<BigInt, int>> *, unsigned long);
+  static void FactorUsingDivision(
+      mpz_t, std::vector<std::pair<BigInt, int>> *);
+  static std::vector<std::pair<BigInt, int>>
+  PrimeFactorizationInternal(mpz_t x);
+  static void FactorUsingPollardRho(
+      mpz_t n, unsigned long a,
+      std::vector<std::pair<BigInt, int>> *factors);
+  static bool MpzIsPrime(mpz_t n);
+
   #else
   // BigZ is a pointer to a bigz struct, which is the
   // header followed by digits.

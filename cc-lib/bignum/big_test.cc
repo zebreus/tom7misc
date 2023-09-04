@@ -96,6 +96,7 @@ static void TestQuotRem() {
 }
 
 static void TestPrimeFactors() {
+  printf("Prime factors..\n");
   auto FTOS = [](const std::vector<std::pair<BigInt, int>> &fs) {
       string s;
       for (const auto &[b, i] : fs) {
@@ -157,6 +158,8 @@ static void TestPrimeFactors() {
     }
   }
 
+  #ifndef BIG_USE_GMP
+  // XXX max_factor is not supported in gmp factorer.
   {
     // 100-digit prime; trial factoring will not succeed!
     BigInt p1("207472224677348520782169522210760858748099647"
@@ -166,6 +169,7 @@ static void TestPrimeFactors() {
 
     BigInt x = BigInt::Times(p1, p2);
 
+    printf("100-digit:\n");
     // Importantly, we set a max factor (greater than p2, and
     // greater than the largest value in the primes list).
     std::vector<std::pair<BigInt, int>> factors =
@@ -177,6 +181,7 @@ static void TestPrimeFactors() {
     CHECK(BigInt::Eq(factors[0].first, p2));
     CHECK(BigInt::Eq(factors[1].first, p1));
   }
+  #endif
 
 }
 

@@ -117,8 +117,12 @@ static constexpr array<uint16_t, 1000> PRIMES = {
   7841,7853,7867,7873,7877,7879,7883,7901,7907,7919,
 };
 
+static constexpr int FIRST_OMITTED_PRIME = 7927;
+
+#ifndef BIG_USE_GMP
+
 std::vector<std::pair<BigInt, int>>
-BigInt::PrimeFactorization(const BigInt &x, int64_t mf) {
+BigInt::PrimeFactorization(const BigInt &x, int mf) {
   // Simple trial division.
   // It would not be hard to incorporate Fermat's method too,
   // for cases that the number has factors close to its square
@@ -208,6 +212,8 @@ BigInt::PrimeFactorization(const BigInt &x, int64_t mf) {
   return factors;
 }
 
+#endif
+
 // Oops, there is BzSqrt! Benchmark to compare (and make sure
 // it has the same rounding behavior.) Unless this is much
 // faster, we should probably just use the library routine.
@@ -281,3 +287,270 @@ BigInt BigInt::RandTo(const std::function<uint64_t()> &r,
     if (BigInt::LessEq(s, radix)) return s;
   }
 }
+
+#ifdef BIG_USE_GMP
+
+/* Factoring with Pollard's rho method.
+
+Copyright 1995, 1997-2003, 2005, 2009, 2012, 2015 Free Software
+Foundation, Inc.
+
+This program is free software; you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation; either version 3 of the License, or (at your option) any later
+version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program.  If not, see https://www.gnu.org/licenses/.  */
+
+// assuming sorted factors array
+void BigInt::InsertFactor(std::vector<std::pair<BigInt, int>> *factors, mpz_t prime) {
+  // PERF binary search
+  int i;
+  for (i = factors->size() - 1; i >= 0; i--) {
+    int cmp = mpz_cmp ((*factors)[i].first.rep, prime);
+    if (cmp == 0) {
+      // Increase exponent of existing factor.
+      (*factors)[i].second++;
+      return;
+    }
+    if (cmp < 0)
+      break;
+  }
+
+  // PERF: btree or something?
+  // Not found. Insert new factor.
+  BigInt b;
+  mpz_set(b.rep, prime);
+  factors->insert(factors->begin() + i + 1,
+                  std::make_pair(std::move(b), 1));
+}
+
+void BigInt::InsertFactorUI(std::vector<std::pair<BigInt, int>> *factors,
+                             unsigned long prime) {
+  // PERF can avoid allocation when it's already present
+  mpz_t pz;
+  mpz_init_set_ui(pz, prime);
+  InsertFactor(factors, pz);
+  mpz_clear(pz);
+}
+
+void BigInt::FactorUsingDivision(mpz_t t,
+                                 std::vector<std::pair<BigInt, int>> *factors) {
+  unsigned long int p = mpz_scan1(t, 0);
+  mpz_fdiv_q_2exp(t, t, p);
+  while (p) {
+    // PERF: insert multiple
+    InsertFactorUI(factors, 2);
+    --p;
+  }
+
+  for (int i = 1; i <= (int)PRIMES.size(); /* in loop */) {
+    unsigned long int p = PRIMES[i];
+    if (!mpz_divisible_ui_p(t, p)) {
+      i++;
+      if (mpz_cmp_ui(t, p * p) < 0)
+        break;
+    } else {
+      mpz_tdiv_q_ui(t, t, p);
+      InsertFactorUI(factors, p);
+    }
+  }
+}
+
+static int mp_millerrabin(mpz_srcptr n, mpz_srcptr nm1, mpz_ptr x, mpz_ptr y,
+                          mpz_srcptr q, unsigned long int k) {
+  unsigned long int i;
+
+  mpz_powm (y, x, q, n);
+
+  if (mpz_cmp_ui (y, 1) == 0 || mpz_cmp (y, nm1) == 0)
+    return 1;
+
+  for (i = 1; i < k; i++) {
+    mpz_powm_ui (y, y, 2, n);
+    if (mpz_cmp (y, nm1) == 0)
+      return 1;
+    if (mpz_cmp_ui (y, 1) == 0)
+      return 0;
+  }
+  return 0;
+}
+
+bool BigInt::MpzIsPrime(mpz_t n) {
+  int k;
+  bool is_prime;
+  mpz_t q, a, nm1, tmp;
+
+  if (mpz_cmp_ui (n, 1) <= 0)
+    return 0;
+
+  /* We have already factored out small primes. */
+  if (mpz_cmp_ui (n, (long) FIRST_OMITTED_PRIME * FIRST_OMITTED_PRIME) < 0)
+    return 1;
+
+  mpz_inits (q, a, nm1, tmp, NULL);
+
+  /* Precomputation for Miller-Rabin.  */
+  mpz_sub_ui (nm1, n, 1);
+
+  /* Find q and k, where q is odd and n = 1 + 2**k * q.  */
+  k = mpz_scan1 (nm1, 0);
+  mpz_tdiv_q_2exp (q, nm1, k);
+
+  mpz_set_ui (a, 2);
+
+  /* Perform a Miller-Rabin test, which finds most composites quickly.  */
+  if (!mp_millerrabin (n, nm1, a, tmp, q, k)) {
+    mpz_clears (q, a, nm1, tmp, NULL);
+    return false;
+  }
+
+  /* Factor n-1 for Lucas.  */
+  mpz_set (tmp, nm1);
+
+  std::vector<std::pair<BigInt, int>> factors =
+    PrimeFactorizationInternal(tmp);
+
+  /* Loop until Lucas proves our number prime, or Miller-Rabin proves our
+     number composite.  */
+  for (int r = 1; r < (int)PRIMES.size(); r++) {
+    is_prime = true;
+    for (const auto &[factor, exponent_] : factors) {
+      mpz_divexact(tmp, nm1, factor.rep);
+      mpz_powm(tmp, a, tmp, n);
+      is_prime = mpz_cmp_ui(tmp, 1) != 0;
+      if (!is_prime) break;
+    }
+
+    if (is_prime)
+      goto ret1;
+
+    mpz_set_ui (a, PRIMES[r]);
+
+    if (!mp_millerrabin (n, nm1, a, tmp, q, k)) {
+      is_prime = false;
+      goto ret1;
+    }
+  }
+
+  fprintf (stderr, "Lucas prime test failure.  This should not happen\n");
+  abort ();
+
+ ret1:
+  mpz_clears (q, a, nm1, tmp, NULL);
+
+  return is_prime;
+}
+
+void BigInt::FactorUsingPollardRho(mpz_t n, unsigned long a,
+                                   std::vector<std::pair<BigInt, int>> *factors) {
+  mpz_t x, z, y, P;
+  mpz_t t, t2;
+  unsigned long long k, l, i;
+
+  mpz_inits (t, t2, NULL);
+  mpz_init_set_si (y, 2);
+  mpz_init_set_si (x, 2);
+  mpz_init_set_si (z, 2);
+  mpz_init_set_ui (P, 1);
+  k = 1;
+  l = 1;
+
+  while (mpz_cmp_ui (n, 1) != 0) {
+    for (;;) {
+      do {
+        mpz_mul (t, x, x);
+        mpz_mod (x, t, n);
+        mpz_add_ui (x, x, a);
+
+        mpz_sub (t, z, x);
+        mpz_mul (t2, P, t);
+        mpz_mod (P, t2, n);
+
+        if (k % 32 == 1) {
+          mpz_gcd (t, P, n);
+          if (mpz_cmp_ui (t, 1) != 0)
+            goto factor_found;
+          mpz_set (y, x);
+        }
+      }
+      while (--k != 0);
+
+      mpz_set (z, x);
+      k = l;
+      l = 2 * l;
+      for (i = 0; i < k; i++) {
+        mpz_mul (t, x, x);
+        mpz_mod (x, t, n);
+        mpz_add_ui (x, x, a);
+      }
+      mpz_set (y, x);
+    }
+
+  factor_found:
+    do {
+      mpz_mul (t, y, y);
+      mpz_mod (y, t, n);
+      mpz_add_ui (y, y, a);
+
+      mpz_sub (t, z, y);
+      mpz_gcd (t, t, n);
+    } while (mpz_cmp_ui (t, 1) == 0);
+
+    mpz_divexact (n, n, t); /* divide by t, before t is overwritten */
+
+    if (!MpzIsPrime(t)) {
+      FactorUsingPollardRho (t, a + 1, factors);
+    } else {
+      InsertFactor(factors, t);
+    }
+
+    if (MpzIsPrime(n)) {
+      InsertFactor(factors, n);
+      break;
+    }
+
+    mpz_mod (x, x, n);
+    mpz_mod (z, z, n);
+    mpz_mod (y, y, n);
+  }
+
+  mpz_clears (P, t2, t, z, x, y, nullptr);
+}
+
+std::vector<std::pair<BigInt, int>>
+BigInt::PrimeFactorizationInternal(mpz_t x) {
+  // Factors in increasing order.
+  std::vector<std::pair<BigInt, int>> factors;
+
+  if (mpz_sgn(x) != 0) {
+    FactorUsingDivision(x, &factors);
+
+    if (mpz_cmp_ui(x, 1) != 0) {
+      if (MpzIsPrime(x))
+        InsertFactor(&factors, x);
+      else
+        FactorUsingPollardRho(x, 1, &factors);
+    }
+  }
+
+  return factors;
+}
+
+
+std::vector<std::pair<BigInt, int>>
+BigInt::PrimeFactorization(const BigInt &x, int64_t max_factor_ignored) {
+  mpz_t tmp;
+  mpz_init(tmp);
+  mpz_set(tmp, x.rep);
+  auto ret = PrimeFactorizationInternal(tmp);
+  mpz_clear(tmp);
+  return ret;
+}
+
+#endif

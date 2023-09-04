@@ -1,9 +1,12 @@
 See https://sourceforge.net/projects/bigz/ for the original source
 of this project. It was forked from version 1.6.2.
 
-C++ in big.* are new in this fork; since it is not much use without the
-license below, for simplicity we use the same license for everything in
-this directory.
+C++ in big.* is new in this fork.
+
+Some portions are derived from GMP source code, GPL. See ../COPYING.
+
+
+Original bigz license:
 
 /*
  * Simplified BSD License
@@ -21,7 +24,7 @@ this directory.
  * o Redistributions  in  binary form  must reproduce the above copyright
  *   notice, this list of conditions and  the following disclaimer in the
  *   documentation and/or other materials provided with the distribution.
- * 
+ *
  * THIS SOFTWARE  IS PROVIDED BY  THE COPYRIGHT HOLDERS  AND CONTRIBUTORS
  * "AS  IS" AND  ANY EXPRESS  OR IMPLIED  WARRANTIES, INCLUDING,  BUT NOT
  * LIMITED TO, THE IMPLIED  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
