@@ -30,12 +30,13 @@
 #define TYP_DIVISION 350000000
 #define TYP_EC       400000000
 
-// I think the first entry is the residual (maybe composite?). The
-// multiplicity is the number of distinct factors after that.
+// The first entry is a header. The ptrFactor appears to be bogus.
+// For the header, the multiplicity is the number of distinct factors
+// after that.
 struct sFactors
 {
-  // I think that this is a length followed by limbs. -tom7
-  // (See SortFactors)
+  // This is an "int array" representation: The length followed by
+  // the limbs.
   int *ptrFactor;
   int multiplicity;
   int upperBound;
