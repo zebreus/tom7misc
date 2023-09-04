@@ -780,7 +780,7 @@ void SolveQuadModEquation(void)
     char* ptrFactorDec = toFactorDec;
     Bin2Dec(&ptrFactorDec, modulus.limbs, modulus.nbrLimbs, groupLen);
 
-    std::unique_ptr<Factors> factors = Factor(&modulus);
+    std::unique_ptr<Factors> factors = BigFactor(&modulus);
     CopyBigInt(&LastModulus, &modulus);           // Do not factor again same modulus.
     if (teach) {
       showText("<p>To solve this quadratic modular equation we have to "
@@ -2635,7 +2635,7 @@ static void PerfectSquareDiscriminant(void) {
   char *ptrFactorDec = toFactorDec;
   Bin2Dec(&ptrFactorDec, ValZ.limbs, ValZ.nbrLimbs, groupLen);
 
-  std::unique_ptr<Factors> factors = Factor(&ValZ);
+  std::unique_ptr<Factors> factors = BigFactor(&ValZ);
   // factor(&ValZ, nbrToFactor, factorsMod, astFactorsMod);
 
   CopyBigInt(&LastModulus, &ValZ);           // Do not factor again same modulus.

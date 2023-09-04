@@ -21,15 +21,7 @@
 #include <memory>
 #include <vector>
 
-#define MAX_FACTORS 5000
-
-#define TYP_AURIF    100000000
-#define TYP_TABLE    150000000
-#define TYP_SIQS     200000000
-#define TYP_LEHMAN   250000000
-#define TYP_RABIN    300000000
-#define TYP_DIVISION 350000000
-#define TYP_EC       400000000
+#include "bignbr.h"
 
 struct sFactorz {
   int *array = nullptr;
@@ -51,5 +43,6 @@ private:
 
 std::unique_ptr<Factors> Factor(const BigInteger *toFactor);
 
+std::unique_ptr<Factors> BigFactor(const BigInteger *toFactor);
 
 #endif

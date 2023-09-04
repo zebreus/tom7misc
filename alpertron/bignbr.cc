@@ -1093,6 +1093,20 @@ int IntArrayCompare(const int* ptrFirst, const int* ptrSecond)
   return 0;            // Both numbers are equal.
 }
 
+int getNbrLimbs(const limb *bigNbr)
+{
+  const limb *ptrLimb = bigNbr + NumberLength;
+  while (ptrLimb > bigNbr)
+  {
+    ptrLimb--;
+    if (ptrLimb->x != 0)
+    {
+      return (int)(ptrLimb - bigNbr + 1);
+    }
+  }
+  return 1;
+}
+
 void BigInteger2IntArray(/*@out@*/int *ptrValues, const BigInteger *bigint)
 {
   int* pValues = ptrValues;

@@ -18,6 +18,16 @@
 #ifndef _COMMONSTRUCT_H
 #define _COMMONSTRUCT_H
 
+#define MAX_FACTORS 5000
+
+#define TYP_AURIF    100000000
+#define TYP_TABLE    150000000
+#define TYP_SIQS     200000000
+#define TYP_LEHMAN   250000000
+#define TYP_RABIN    300000000
+#define TYP_DIVISION 350000000
+#define TYP_EC       400000000
+
 // These defines are valid for factoring up to 10^110.
 #define BITS_SIQS_HASH          14
 #define MAX_NBR_FACTORS         13

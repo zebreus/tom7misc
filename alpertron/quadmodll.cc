@@ -948,7 +948,7 @@ void SolveEquation(BigInteger* pValA, const BigInteger* pValB,
   // mimicking original code, but now we aren't using the LastModulus
   // at all, I think
   CopyBigInt(&LastModulus, pValN);
-  std::unique_ptr<Factors> factors = Factor(pValN);
+  std::unique_ptr<Factors> factors = BigFactor(pValN);
 
 
   intToBigInteger(&Q, 0);

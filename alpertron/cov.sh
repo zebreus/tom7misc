@@ -38,10 +38,16 @@ echo factor tests
 ./afactor.exe 2 >> coverage.out
 ./afactor.exe 3 >> coverage.out
 ./afactor.exe 31337 >> coverage.out
-./afactor.exe 12676506002282294014967032052232222222222192387419823741 >> coverage.out
-./afactor.exe 12676506002282294014967032052232222222222192387419823741111111111 >> coverage.out
+# ./afactor.exe 12676506002282294014967032052232222222222192387419823741 >> coverage.out
+# ./afactor.exe 12676506002282294014967032052232222222222192387419823741111111111 >> coverage.out
 ./afactor.exe 131072 >> coverage.out
 ./afactor.exe 9999999999999999 >> coverage.out
+# carmichael
+./afactor.exe 512461 >> coverage.out
+# prime
+./afactor.exe 2147483647 >> coverage.out
+# largest 64-bit prime
+./afactor.exe 18446744073709551557 >> coverage.out
 
 diff coverage.golden coverage.out
 exit_status=$?

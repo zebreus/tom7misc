@@ -1068,20 +1068,6 @@ enum eExprErr BigIntGeneralModularPower(const BigInteger* base, const BigInteger
   return EXPR_OK;
 }
 
-int getNbrLimbs(const limb *bigNbr)
-{
-  const limb *ptrLimb = bigNbr + NumberLength;
-  while (ptrLimb > bigNbr)
-  {
-    ptrLimb--;
-    if (ptrLimb->x != 0)
-    {
-      return (int)(ptrLimb - bigNbr + 1);
-    }
-  }
-  return 1;
-}
-
 // Find the inverse of value mod 2^(NumberLength*BITS_PER_GROUP)
 void ComputeInversePower2(const limb *value, limb *result, limb *tmp)
 {

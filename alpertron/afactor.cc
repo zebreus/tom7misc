@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
   printf("\n");
   #endif
 
-  std::unique_ptr<Factors> factors = Factor(&num);
+  std::unique_ptr<Factors> factors = BigFactor(&num);
   for (int i = 0; i < (int)factors->product.size(); i++) {
     for (int m = 0; m < factors->product[i].multiplicity; m++) {
       printf(" ");

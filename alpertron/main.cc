@@ -23,21 +23,9 @@
 #include "globals.h"
 #include "highlevel.h"
 #include "baseconv.h"
+#include "bigconv.h"
 
 extern bool teach;
-
-static bool ParseBigInteger(const char *str, BigInteger *big) {
-  big->sign = SIGN_POSITIVE;
-  if (str[0] == '-') {
-    str++;
-    big->sign = SIGN_NEGATIVE;
-  }
-
-  int nbrDigits = (int)strlen(str);
-  Dec2Bin(str, big->limbs, nbrDigits, &big->nbrLimbs);
-
-  return true;
-}
 
 int main(int argc, char* argv[]) {
   if (argc != 8) {
