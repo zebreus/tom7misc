@@ -18,7 +18,6 @@
 #ifndef _FACTOR_H
 #define _FACTOR_H
 
-#include "showtime.h"
 #include <memory>
 #include <vector>
 
@@ -31,8 +30,6 @@
 #define TYP_RABIN    300000000
 #define TYP_DIVISION 350000000
 #define TYP_EC       400000000
-
-
 
 struct sFactorz {
   int *array = nullptr;

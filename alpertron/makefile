@@ -7,12 +7,12 @@ CXX=x86_64-w64-mingw32-g++
 CXXFLAGS=-D_USING64BITS_ -g -O -march=native -Wall -Wl,--stack,16777216
 LFLAGS=-static
 
-HEADERS=bignbr.h enums.h commonstruc.h factor.h highlevel.h showtime.h globals.h siqs.h ecm.h karatsuba.h modmult.h fft.h quadmodll.h siqsla.h baseconv.h
+HEADERS=bignbr.h enums.h commonstruc.h factor.h highlevel.h globals.h siqs.h ecm.h karatsuba.h modmult.h fft.h quadmodll.h siqsla.h baseconv.h
 
-quad.exe: errors.o copystr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsla.o quad.o quadmodll.o bignbr.o showtime.o fft.o globals.o main.o
+quad.exe: errors.o copystr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsla.o quad.o quadmodll.o bignbr.o fft.o globals.o main.o
 	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
-afactor.exe: errors.o copystr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsla.o bignbr.o showtime.o fft.o globals.o afactor.o
+afactor.exe: errors.o copystr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsla.o bignbr.o fft.o globals.o afactor.o
 	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 %.o : %.cc $(HEADERS)
