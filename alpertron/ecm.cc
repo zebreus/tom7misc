@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2015-2021 Dario Alejandro Alpern
@@ -15,7 +14,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
+#include "ecm.h"
+
 #include <string.h>
 #include <stdint.h>
 #include <math.h>

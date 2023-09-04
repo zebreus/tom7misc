@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2016-2021 Dario Alejandro Alpern
@@ -15,13 +14,18 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
+#include "siqs.h"
+
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
+
 #include "bignbr.h"
 #include "factor.h"
 #include "commonstruc.h"
+#include "siqsla.h"
+
 #if DEBUG_SIQS
 #include <stdio.h>
 static int checksum;
@@ -43,7 +47,7 @@ static bool InsertNewRelation(
   const int *rowMatrixB,
   limb *biT, limb *biU, limb *biR,
   int NumberLength);
-bool LinearAlgebraPhase(limb* biT, limb* biR, limb* biU, int nbrLength);
+
 static unsigned int getFactorsOfA(unsigned int seed, int *aindex);
 static void sieveThread(BigInteger *result);
 
@@ -2658,7 +2662,7 @@ static void sieveThread(BigInteger *result)
           }
           if (1/*common.siqs.factorSiqs == null*/)
           {
-            while (!LinearAlgebraPhase(biT, biR, biU, NumberLength))
+            while (!SIQSLinearAlgebraPhase(biT, biR, biU, NumberLength))
             {    // Nothing to do.
             }
             BigIntToBigNbr(result, biT, NumberLength);  // Factor found.

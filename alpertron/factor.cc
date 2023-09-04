@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2015-2021 Dario Alejandro Alpern
@@ -15,7 +14,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
@@ -25,12 +24,9 @@
 #include "globals.h"
 #include "siqs.h"
 #include "modmult.h"
-
-int yieldFreq;
-static int oldNbrFactors;
+#include "ecm.h"
 
 union uCommon common;
-bool skipPrimality;
 static int DegreeAurif;
 static int NextEC;
 static BigInteger power;
@@ -42,45 +38,19 @@ static BigInteger Temp3;
 static BigInteger Temp4;
 BigInteger tofactor;
 
-long long Gamma[386];
-long long Delta[386];
-long long AurifQ[386];
+static long long Gamma[386];
+static long long Delta[386];
+static long long AurifQ[386];
 
 struct sFactors astFactorsMod[5000];
 int factorsMod[20000];
 static void insertBigFactor(struct sFactors *pstFactors, const BigInteger *divisor,
   int type);
-static char *findChar(char *str, char c);
 
 static void factorExt(const BigInteger* toFactor, const int* number,
-  int* factors, struct sFactors* pstFactors, char* pcKnownFactors);
+  int* factors, struct sFactors* pstFactors);
 
-static void GetYieldFrequency(void)
-{
-  yieldFreq = 1000000 / (NumberLength * NumberLength) + 1;
-  if (yieldFreq > 100000)
-  {
-    yieldFreq = yieldFreq / 100000 * 100000;
-  }
-  else if (yieldFreq > 10000)
-  {
-    yieldFreq = yieldFreq / 10000 * 10000;
-  }
-  else if (yieldFreq > 1000)
-  {
-    yieldFreq = yieldFreq / 1000 * 1000;
-  }
-  else if (yieldFreq > 100)
-  {
-    yieldFreq = yieldFreq / 100 * 100;
-  }
-  else
-  {      // Nothing to do.
-  }
-}
-
-static int Cos(int N)
-{
+static int Cos(int N) {
   int NMod8 = N % 8;
   if (NMod8 == 0)
   {
@@ -328,7 +298,7 @@ static void Cunningham(struct sFactors *pstFactors, const BigInteger *BigBase, i
     (void)BigIntPowerIntExp(BigBase, Expon2, &Nbr1);
     addbigint(&Nbr1, increment);
     insertBigFactor(pstFactors, &Nbr1, TYP_TABLE);
-    InsertAurifFactors(pstFactors,BigBase, Expon2, 1);
+    InsertAurifFactors(pstFactors, BigBase, Expon2, 1);
   }
   k = 1;
   while ((k * k) <= Expon)
@@ -802,7 +772,6 @@ static void performFactorization(const BigInteger *numToFactor,
   NumberLength = numToFactor->nbrLimbs;
   NumberLengthBytes = NumberLength * (int)sizeof(limb);
   (void)memcpy(TestNbr, numToFactor->limbs, NumberLengthBytes);
-  GetYieldFrequency();
   GetMontgomeryParms(NumberLength);
   (void)memset(common.ecm.M, 0, NumberLengthBytes);
   (void)memset(common.ecm.DX, 0, NumberLengthBytes);
@@ -877,6 +846,9 @@ static void SortFactors(struct sFactors *pstFactors)
   struct sFactors stTempFactor;
   int *ptrNewFactor;
   struct sFactors *pstNewFactor;
+  // I think this starts at 1 because the 0th entry is the
+  // residual (maybe composite?) number. Its multiplicity is the
+  // count of factors in the array.
   for (factorNumber = 1; factorNumber < nbrFactors; factorNumber++)
   {
     pstNewFactor = pstCurFactor + 1;
@@ -942,8 +914,9 @@ static void SortFactors(struct sFactors *pstFactors)
 }
 
 // Insert new factor found into factor array. This factor array must be sorted.
-static void insertIntFactor(struct sFactors *pstFactors, struct sFactors *pstFactorDividend,
-  int divisor, int expon, const BigInteger *cofactor)
+static void insertIntFactor(struct sFactors *pstFactors,
+                            struct sFactors *pstFactorDividend,
+                            int divisor, int expon, const BigInteger *cofactor)
 {
   struct sFactors *pstCurFactor;
   int multiplicity;
@@ -1018,8 +991,9 @@ static void insertIntFactor(struct sFactors *pstFactors, struct sFactors *pstFac
 
 // Insert new factor found into factor array. This factor array must be sorted.
 // The divisor must be also sorted.
-static void insertBigFactor(struct sFactors *pstFactors, const BigInteger *divisor, int type)
-{
+static void insertBigFactor(struct sFactors *pstFactors,
+                            const BigInteger *divisor,
+                            int type) {
   int typeFactor = type;
   struct sFactors *pstCurFactor;
   int lastFactorNumber = pstFactors->multiplicity;
@@ -1077,42 +1051,6 @@ static void insertBigFactor(struct sFactors *pstFactors, const BigInteger *divis
   // Sort factors in ascending order. If two factors are equal, coalesce them.
   // Divide number by factor just found.
   SortFactors(pstFactors);
-}
-
-static char *findChar(char *str, char c)
-{
-  char* ptrStr = str;
-  while (*ptrStr != '\0')
-  {
-    if (*ptrStr == c)
-    {
-      return ptrStr;
-    }
-    ptrStr++;
-  }
-  return NULL;
-}
-
-static bool getNextInteger(char **ppcFactors, int *result, char delimiter)
-{
-  char *pcFactors = *ppcFactors;
-  char *ptrCharFound = findChar(pcFactors, delimiter);
-  size_t diffPtrs;
-  if (ptrCharFound == NULL)
-  {
-    return true;
-  }
-  *ptrCharFound = 0;
-  diffPtrs = ptrCharFound - pcFactors;
-  BigInteger tmp;
-  Dec2Bin(pcFactors, tmp.limbs, (int)diffPtrs, &tmp.nbrLimbs);
-  if (tmp.nbrLimbs != 1)
-  {   // Exponent is too large.
-    return true;
-  }
-  *result = tmp.limbs[0].x;
-  *ppcFactors = ptrCharFound+1;
-  return false;
 }
 
 // Return: 0 = No factors found.
@@ -1314,17 +1252,15 @@ static void factorSmallInt(int intToFactor, int* factors, struct sFactors* pstFa
   pstFactors->multiplicity = factorsFound;
 }
 
-void factor(const BigInteger* toFactor, const int* number, int* factors, struct sFactors* pstFactors)
-{
-  factorExt(toFactor, number, factors, pstFactors, NULL);
+void factor(const BigInteger* toFactor, const int* number, int* factors, struct
+            sFactors* pstFactors) {
+  factorExt(toFactor, number, factors, pstFactors);
 }
 
 // pstFactors -> ptrFactor points to end of factors.
 // pstFactors -> multiplicity indicates the number of different factors.
 static void factorExt(const BigInteger *toFactor, const int *number,
-  int *factors, struct sFactors *pstFactors, char *pcKnownFactors)
-{
-  char* ptrKnownFactors = pcKnownFactors;
+                      int *factors, struct sFactors *pstFactors) {
   struct sFactors *pstCurFactor;
   int expon;
   int remainder;
@@ -1332,7 +1268,6 @@ static void factorExt(const BigInteger *toFactor, const int *number,
   int ctr;
   const int *ptrFactor;
   int dividend;
-  char *ptrCharFound;
   int result;
   int factorNbr;
 
@@ -1343,14 +1278,13 @@ static void factorExt(const BigInteger *toFactor, const int *number,
     factorSmallInt(toFactor->limbs[0].x, factors, pstFactors);
     return;
   }
-  oldNbrFactors = 0;
   NextEC = -1;
   EC = 1;
   NumberLength = toFactor->nbrLimbs;
-  GetYieldFrequency();
   pstCurFactor = pstFactors + 1;
-  if (ptrKnownFactors == NULL)
-  {   // No factors known.
+
+  {
+    // No factors known.
     int lenBytes = (1 + *number) * (int)sizeof(int);
     (void)memcpy(factors, number, lenBytes);
     pstFactors->multiplicity = 1;
@@ -1360,100 +1294,9 @@ static void factorExt(const BigInteger *toFactor, const int *number,
     pstCurFactor->ptrFactor = factors;
     pstCurFactor->upperBound = 2;
   }
-  else if (*ptrKnownFactors == '!')
-  {   // Force going to SIQS.
-    NextEC = 0;
-    int lenBytes = (1 + *number) * (int)sizeof(int);
-    (void)memcpy(factors, number, lenBytes);
-    pstFactors->multiplicity = 1;
-    pstFactors->ptrFactor = factors + 1 + *factors;
-    pstFactors->upperBound = 0;
-    pstCurFactor->multiplicity = 1;
-    pstCurFactor->ptrFactor = factors;
-    pstCurFactor->upperBound = 2;
-  }
-  else
-  {   // Insert factors saved on Web Storage.
-    pstFactors->multiplicity = 0;
-    pstFactors->ptrFactor = factors;
-    while (*ptrKnownFactors != 0)
-    {
-      size_t diffPtrs;
-      ptrCharFound = findChar(ptrKnownFactors, '^');
-      if (ptrCharFound == NULL)
-      {
-        break;
-      }
-      *ptrCharFound = 0;
-      diffPtrs = ptrCharFound - ptrKnownFactors;
-      Dec2Bin(ptrKnownFactors, prime.limbs, (int)diffPtrs, &prime.nbrLimbs);
-      BigInteger2IntArray(pstFactors->ptrFactor, &prime);
-      ptrKnownFactors = ptrCharFound + 1;
-      if (getNextInteger(&ptrKnownFactors, &pstCurFactor->multiplicity, '('))
-      {     // Error on processing exponent.
-        break;
-      }
-      ptrCharFound = findChar(ptrKnownFactors, ',');
-      if (ptrCharFound != NULL)
-      {
-        if (getNextInteger(&ptrKnownFactors, &pstCurFactor->upperBound, ','))
-        {     // Error on processing upper bound.
-          break;
-        }
-        if (getNextInteger(&ptrKnownFactors, &pstCurFactor->type, ')'))
-        {     // Error on processing upper bound.
-          break;
-        }
-      }
-      else
-      {
-        if (getNextInteger(&ptrKnownFactors, &pstCurFactor->upperBound, ')'))
-        {     // Error on processing upper bound.
-          break;
-        }
-        pstCurFactor->type = 0;
-      }
-      pstFactors->multiplicity++;
-      pstCurFactor->ptrFactor = pstFactors->ptrFactor;
-      pstFactors->ptrFactor += *pstFactors->ptrFactor;
-      pstFactors->ptrFactor++;
-      pstCurFactor++;
-      if (*ptrKnownFactors == '*')
-      {
-        ptrKnownFactors++;  // Skip multiplication sign.
-      }
-      if (*ptrKnownFactors == ';')
-      {
-        ptrKnownFactors++;  // Skip separation between known factors and factor entered by user.
-        Dec2Bin(ptrKnownFactors, prime.limbs, (int)strlen(ptrKnownFactors), &prime.nbrLimbs);
-        if (foundByLehman)
-        {
-          insertBigFactor(pstFactors, &prime, TYP_LEHMAN);
-        }
-        else if (EC >= TYP_SIQS)
-        {
-          insertBigFactor(pstFactors, &prime, TYP_SIQS);
-        }
-        else
-        {
-          insertBigFactor(pstFactors, &prime, 0);
-        }
-        break;
-      }
-      if (*ptrKnownFactors == ',')
-      {
-        NextEC = 0;        // Curve number
-        ptrKnownFactors++;
-        while (*ptrKnownFactors != '\0')
-        {
-          NextEC = (NextEC * 10) + (*ptrKnownFactors & 0x0F);
-          ptrKnownFactors++;
-        }
-        oldNbrFactors = pstFactors->multiplicity;
-        break;
-      }
-    }
-  }
+
+  // (used to restore known factors here)
+
   if (toFactor->nbrLimbs > 1)
   {
     PowerPM1Check(pstFactors, toFactor);
@@ -1596,15 +1439,7 @@ static void factorExt(const BigInteger *toFactor, const int *number,
     }
     // No small factor. Check whether the number is prime or prime power.
 
-    if (skipPrimality)
-    {
-      skipPrimality = false;
-      result = 1;
-    }
-    else
-    {
-      result = BpswPrimalityTest(&prime);
-    }
+    result = BpswPrimalityTest(&prime);
 
     if (result == 0)
     {   // Number is prime power.

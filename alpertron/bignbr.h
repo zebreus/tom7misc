@@ -80,12 +80,6 @@ extern int smallPrimes[SMALL_PRIMES_ARRLEN+1];
 void initializeSmallPrimes(int* pSmallPrimes);
 
 void squareRoot(const limb *argument, limb *sqRoot, int len, int *pLenSqRoot);
-void Dec2Bin(const char *decimal, limb *binary, int digits, int *bitGroups);
-void Bin2Dec(char **ppDecimal, const limb *binary, int nbrLimbs, int groupLength);
-void Bin2Hex(char** ppDecimal, const limb *binary, int nbrLimbs, int groupLength);
-void long2dec(char **pOutput, uint64_t nbr);
-void int2dec(char **pOutput, int nbr);
-void int2hex(char **pOutput, int nbr);
 void GetMontgomeryParms(int len);
 void GetMontgomeryParmsPowerOf2(int powerOf2);
 void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr, int NumberLength);
@@ -118,7 +112,6 @@ void floordiv(const BigInteger *num, const BigInteger *den, BigInteger *result);
 enum eExprErr BigIntMultiplyPower2(BigInteger* pArg, int powerOf2);
 void BigIntMultiplyBy2(BigInteger *nbr);
 void BigIntDivideBy2(BigInteger *nbr);
-void BigInteger2Dec(char **ppDecimal, const BigInteger *pBigInt, int groupLength);
 void BigInteger2Hex(char** ppDecimal, const BigInteger *pBigInt, int groupLength);
 void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pResult);
 enum eExprErr BigIntLcm(const BigInteger* pArg1, const BigInteger* pArg2,

@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2015-2021 Dario Alejandro Alpern
@@ -15,12 +14,13 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
 #ifndef _FACTOR_H
 #define _FACTOR_H
-#define MAX_FACTORS 5000
+
 #include "showtime.h"
-#include "ecm.h"
+
+#define MAX_FACTORS 5000
 
 #define TYP_AURIF    100000000
 #define TYP_TABLE    150000000
@@ -30,8 +30,12 @@
 #define TYP_DIVISION 350000000
 #define TYP_EC       400000000
 
+// I think the first entry is the residual (maybe composite?). The
+// multiplicity is the number of distinct factors after that.
 struct sFactors
 {
+  // I think that this is a length followed by limbs. -tom7
+  // (See SortFactors)
   int *ptrFactor;
   int multiplicity;
   int upperBound;

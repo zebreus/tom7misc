@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2017-2021 Dario Alejandro Alpern
@@ -15,16 +14,18 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+
 #include "bignbr.h"
 #include "factor.h"
 #include "quadmodLL.h"
 #include "commonstruc.h"
 #include "globals.h"
 #include "modmult.h"
+#include "baseconv.h"
 
 static BigInteger Quadr;
 static BigInteger Linear;

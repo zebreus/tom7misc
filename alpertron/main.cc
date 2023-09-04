@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2015-2021 Dario Alejandro Alpern
@@ -15,13 +14,15 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "bignbr.h"
 #include "globals.h"
 #include "highlevel.h"
+#include "baseconv.h"
 
 extern bool teach;
 

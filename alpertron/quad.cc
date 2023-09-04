@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2017-2021 Dario Alejandro Alpern
@@ -15,16 +14,18 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+
 #include "bignbr.h"
 #include "globals.h"
 #include "factor.h"
 #include "commonstruc.h"
 #include "quadmodll.h"
 #include "modmult.h"
+#include "baseconv.h"
 
 enum eLinearSolution {
   SOLUTION_FOUND = 0,
@@ -780,11 +781,14 @@ void SolveQuadModEquation(void)
   }
   if (callbackQuadModType == CBACK_QMOD_PARABOLIC)
   {    // For elliptic case, the factorization is already done.
-    char toFactorDec[MAX_LEN * 12];
-    char* ptrFactorDec = toFactorDec;
     NumberLength = modulus.nbrLimbs;
     BigInteger2IntArray(nbrToFactor, &modulus);
+
+    // PERF: I think this is unnecessary?
+    char toFactorDec[MAX_LEN * 12];
+    char* ptrFactorDec = toFactorDec;
     Bin2Dec(&ptrFactorDec, modulus.limbs, modulus.nbrLimbs, groupLen);
+
     factor(&modulus, nbrToFactor, factorsMod, astFactorsMod);
     CopyBigInt(&LastModulus, &modulus);           // Do not factor again same modulus.
     if (teach)
@@ -1641,9 +1645,12 @@ static void NonSquareDiscriminant(void)
   ValK.sign = SIGN_POSITIVE;
   NumberLength = ValK.nbrLimbs;
   BigInteger2IntArray(nbrToFactor, &ValK);
+
+  // PERF unnecessary, right?
   char toFactorDec[MAX_LEN * 12];
   char *ptrFactorDec = toFactorDec;
   Bin2Dec(&ptrFactorDec, ValK.limbs, ValK.nbrLimbs, groupLen);
+
   factor(&ValK, nbrToFactor, factorsMod, astFactorsMod);
   CopyBigInt(&LastModulus, &ValK);           // Do not factor again same modulus.
   ValK.sign = ValKSignBak;
@@ -2676,9 +2683,13 @@ static void PerfectSquareDiscriminant(void)
   signTemp = ValZ.sign;
   ValZ.sign = SIGN_POSITIVE;  // Factor positive number.
   BigInteger2IntArray(nbrToFactor, &ValZ);
+
+  // PERF: probably unnecessary. This just converts it to a decimal
+  // number and throws it away?
   char toFactorDec[MAX_LEN * 12];
   char *ptrFactorDec = toFactorDec;
   Bin2Dec(&ptrFactorDec, ValZ.limbs, ValZ.nbrLimbs, groupLen);
+
   factor(&ValZ, nbrToFactor, factorsMod, astFactorsMod);
   CopyBigInt(&LastModulus, &ValZ);           // Do not factor again same modulus.
   ValZ.sign = signTemp;       // Restore sign of Z = 4ak/RS.

@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2016-2021 Dario Alejandro Alpern
@@ -15,7 +14,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
+#include "siqsla.h"
+
 #include <string.h>
 #include <math.h>
 #include <stdint.h>
@@ -904,7 +905,7 @@ static void showRelations(void)
       }
     }
     copyStr(&ptrOutput, " - ");
-    static BigInteger k1;
+    BigInteger k1;
     (void)memcpy(k1.limbs, common.siqs.vectLeftHandSide[j],
       NumberLength * sizeof(limb));
     k1.nbrLimbs = NumberLength;
@@ -918,8 +919,7 @@ static void showRelations(void)
 /************************/
 /* Linear algebra phase */
 /************************/
-bool LinearAlgebraPhase(limb* biT, limb* biR, limb* biU, int nbrLength)
-{
+bool SIQSLinearAlgebraPhase(limb* biT, limb* biR, limb* biU, int nbrLength) {
   int seed = 123456789;
   int mask;
   const int* rowMatrixB;
