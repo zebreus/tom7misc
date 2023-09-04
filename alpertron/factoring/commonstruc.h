@@ -218,12 +218,6 @@ struct stTrialDivision
   BigInteger temp;
 };
 
-struct stQuad
-{
-  BigInteger Solution1[400];
-  BigInteger Solution2[400];
-  BigInteger Increment[400];
-};
 
 // Sum of squares and divisors are used at the same time.
 struct stK
@@ -237,7 +231,6 @@ union uCommon
   struct stSiqs siqs;
   struct stEcm ecm;
   struct stTrialDivision trialDiv;
-  struct stQuad quad;
   struct stK k;
 };
 

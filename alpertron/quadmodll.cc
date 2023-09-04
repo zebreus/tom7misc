@@ -15,6 +15,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
 
+#include "quadmodll.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -22,11 +24,11 @@
 
 #include "bignbr.h"
 #include "factor.h"
-#include "quadmodLL.h"
-#include "commonstruc.h"
 #include "globals.h"
 #include "modmult.h"
 #include "baseconv.h"
+
+stQuad quad_info;
 
 static BigInteger Quadr;
 static BigInteger Linear;
@@ -66,11 +68,11 @@ static void PerformChineseRemainderTheorem(const Factors &factors) {
   int T1;
   int expon;
   do {
-    multint(&Aux[0], &common.quad.Increment[0], Exponents[0] / 2);
+    multint(&Aux[0], &quad_info.Increment[0], Exponents[0] / 2);
     if ((Exponents[0] & 1) != 0) {
-      BigIntAdd(&Aux[0], &common.quad.Solution2[0], &Aux[0]);
+      BigIntAdd(&Aux[0], &quad_info.Solution2[0], &Aux[0]);
     } else {
-      BigIntAdd(&Aux[0], &common.quad.Solution1[0], &Aux[0]);
+      BigIntAdd(&Aux[0], &quad_info.Solution1[0], &Aux[0]);
     }
     CopyBigInt(&currentSolution, &Aux[0]);
     const int nbrFactors = factors.product.size();
@@ -84,11 +86,11 @@ static void PerformChineseRemainderTheorem(const Factors &factors) {
         continue;
       }
       expon = Exponents[T1];
-      multint(&Aux[T1], &common.quad.Increment[T1], expon / 2);
+      multint(&Aux[T1], &quad_info.Increment[T1], expon / 2);
       if ((expon & 1) != 0) {
-        BigIntAdd(&Aux[T1], &common.quad.Solution2[T1], &Aux[T1]);
+        BigIntAdd(&Aux[T1], &quad_info.Solution2[T1], &Aux[T1]);
       } else {
-        BigIntAdd(&Aux[T1], &common.quad.Solution1[T1], &Aux[T1]);
+        BigIntAdd(&Aux[T1], &quad_info.Solution1[T1], &Aux[T1]);
       }
       NumberLength = *pstFactor->array;
       IntArray2BigInteger(pstFactor->array, &prime);
@@ -127,16 +129,16 @@ static void PerformChineseRemainderTheorem(const Factors &factors) {
     for (T1 = nbrFactors - 1; T1 >= 0; T1--) {
       IntArray2BigInteger(factors.product[T1].array, &bigBase);
       (void)BigIntPowerIntExp(&bigBase, factors.product[T1].multiplicity, &prime);
-      BigIntSubt(&common.quad.Solution1[T1], &common.quad.Solution2[T1], &K1);
+      BigIntSubt(&quad_info.Solution1[T1], &quad_info.Solution2[T1], &K1);
       if ((K1.nbrLimbs == 1) && (K1.limbs[0].x == 0)) {
-        // common.quad.Solution1[T1] == common.quad.Solution2[T1]
+        // quad_info.Solution1[T1] == quad_info.Solution2[T1]
         Exponents[T1] += 2;
       } else {
-        // common.quad.Solution1[T1] != common.quad.Solution2[T1]
+        // quad_info.Solution1[T1] != quad_info.Solution2[T1]
         Exponents[T1]++;
       }
-      // L <- Exponents[T1] * common.quad.Increment[T1]
-      multadd(&L, Exponents[T1], &common.quad.Increment[T1], 0);
+      // L <- Exponents[T1] * quad_info.Increment[T1]
+      multadd(&L, Exponents[T1], &quad_info.Increment[T1], 0);
       // K1 <- 2 * prime
       multadd(&K1, 2, &prime, 0);
       BigIntSubt(&L, &K1, &L);
@@ -176,8 +178,8 @@ static void SolveModularLinearEquation(BigInteger *pValA, const BigInteger *pVal
   int* ptrFactorsMod = factors->storage.data();
   // struct sFactors* pstFactor = &astFactorsMod[1];
 
-  BigInteger* ptrSolution1 = common.quad.Solution1;
-  BigInteger* ptrSolution2 = common.quad.Solution2;
+  BigInteger* ptrSolution1 = quad_info.Solution1;
+  BigInteger* ptrSolution2 = quad_info.Solution2;
   BigIntGcd(pValB, pValN, &Aux[0]);
   if ((Aux[0].nbrLimbs != 1) || (Aux[0].limbs[0].x != 1)) {
     // ValB and ValN are not coprime. Go out.
@@ -192,7 +194,7 @@ static void SolveModularLinearEquation(BigInteger *pValA, const BigInteger *pVal
   NumberLengthBytes = NumberLength * (int)sizeof(limb);
   if ((pValN->nbrLimbs != 1) || (pValN->limbs[0].x != 1)) {
     // ValN is not 1.
-    CopyBigInt(&common.quad.Increment[solutionNbr], pValN);
+    CopyBigInt(&quad_info.Increment[solutionNbr], pValN);
     Exponents[solutionNbr] = 1;
     (void)memcpy(TestNbr, pValN->limbs, NumberLengthBytes);
     TestNbr[NumberLength].x = 0;
@@ -220,7 +222,7 @@ static void SolveModularLinearEquation(BigInteger *pValA, const BigInteger *pVal
   // Perform division using power of 2.
   if (powerOf2 > 0) {
     BigIntPowerOf2(ptrSolution1, powerOf2);
-    CopyBigInt(&common.quad.Increment[solutionNbr], ptrSolution1);
+    CopyBigInt(&quad_info.Increment[solutionNbr], ptrSolution1);
     Exponents[solutionNbr] = 1;
     BigInteger2IntArray(ptrFactorsMod, ptrSolution1);
 
@@ -469,9 +471,9 @@ static bool SolveQuadraticEqModPowerOf2(
     BigIntChSign(&tmp1);                  // -b/2a
     BigIntAnd(&tmp1, &K1, &tmp1);         // -b/2a mod 2^expon
     BigIntAdd(&tmp1, &sqrRoot, &tmp2);
-    BigIntAnd(&tmp2, &K1, &common.quad.Solution1[factorIndex]);
+    BigIntAnd(&tmp2, &K1, &quad_info.Solution1[factorIndex]);
     BigIntSubt(&tmp1, &sqrRoot, &tmp2);
-    BigIntAnd(&tmp2, &K1, &common.quad.Solution2[factorIndex]);
+    BigIntAnd(&tmp2, &K1, &quad_info.Solution2[factorIndex]);
   }
   else if ((bitsAZero == 0) && (bitsBZero == 0))
   {
@@ -480,8 +482,8 @@ static bool SolveQuadraticEqModPowerOf2(
     CopyBigInt(&Linear, pValB);        // b
     CopyBigInt(&Const, pValC);
     BigIntDivideBy2(&Const);           // c/2
-    findQuadraticSolution(&common.quad.Solution1[factorIndex], expon - 1);
-    BigIntMultiplyBy2(&common.quad.Solution1[factorIndex]);
+    findQuadraticSolution(&quad_info.Solution1[factorIndex], expon - 1);
+    BigIntMultiplyBy2(&quad_info.Solution1[factorIndex]);
 
     CopyBigInt(&Quadr, pValA);
     BigIntMultiplyBy2(&Quadr);         // 2a
@@ -490,16 +492,16 @@ static bool SolveQuadraticEqModPowerOf2(
     BigIntAdd(&Const, pValB, &Const);
     BigIntAdd(&Const, pValC, &Const);
     BigIntDivideBy2(&Const);           // (a+b+c)/2
-    findQuadraticSolution(&common.quad.Solution2[factorIndex], expon - 1);
-    BigIntMultiplyBy2(&common.quad.Solution2[factorIndex]);
-    addbigint(&common.quad.Solution2[factorIndex], 1);
+    findQuadraticSolution(&quad_info.Solution2[factorIndex], expon - 1);
+    BigIntMultiplyBy2(&quad_info.Solution2[factorIndex]);
+    addbigint(&quad_info.Solution2[factorIndex], 1);
   }
   else
   {
     CopyBigInt(&Quadr, pValA);
     CopyBigInt(&Linear, pValB);
     CopyBigInt(&Const, pValC);
-    findQuadraticSolution(&common.quad.Solution1[factorIndex], expon);
+    findQuadraticSolution(&quad_info.Solution1[factorIndex], expon);
     sol2Invalid = true;
   }
   BigIntPowerOf2(&Q, expon);         // Store increment.
@@ -782,10 +784,10 @@ static bool SolveQuadraticEqModPowerOfP(int expon, int factorIndex,
     (void)BigIntDivide(&tmp1, &prime, &tmp1);
   }
   (void)BigIntMultiply(&tmp1, &ValAOdd, &tmp1);
-  (void)BigIntRemainder(&tmp1, &Q, &common.quad.Solution1[factorIndex]);
-  if (common.quad.Solution1[factorIndex].sign == SIGN_NEGATIVE)
+  (void)BigIntRemainder(&tmp1, &Q, &quad_info.Solution1[factorIndex]);
+  if (quad_info.Solution1[factorIndex].sign == SIGN_NEGATIVE)
   {
-    BigIntAdd(&common.quad.Solution1[factorIndex], &Q, &common.quad.Solution1[factorIndex]);
+    BigIntAdd(&quad_info.Solution1[factorIndex], &Q, &quad_info.Solution1[factorIndex]);
   }
   BigIntSubt(pValB, &sqrRoot, &tmp1);
   for (ctr = 0; ctr < bitsAZero; ctr++)
@@ -799,10 +801,10 @@ static bool SolveQuadraticEqModPowerOfP(int expon, int factorIndex,
     (void)BigIntDivide(&tmp1, &prime, &tmp1);
   }
   (void)BigIntMultiply(&tmp1, &ValAOdd, &tmp1);
-  (void)BigIntRemainder(&tmp1, &Q, &common.quad.Solution2[factorIndex]);
-  if (common.quad.Solution2[factorIndex].sign == SIGN_NEGATIVE)
+  (void)BigIntRemainder(&tmp1, &Q, &quad_info.Solution2[factorIndex]);
+  if (quad_info.Solution2[factorIndex].sign == SIGN_NEGATIVE)
   {
-    BigIntAdd(&common.quad.Solution2[factorIndex], &Q, &common.quad.Solution2[factorIndex]);
+    BigIntAdd(&quad_info.Solution2[factorIndex], &Q, &quad_info.Solution2[factorIndex]);
   }
   return true;
 }
@@ -812,7 +814,7 @@ static void QuadraticTermMultipleOfP(int expon, int factorIndex,
 {
   // Perform Newton approximation.
   // The next value of x in sequence x_{n+1} is x_n - (a*x_n^2 + b*x_n + c) / (2*a_x + b).
-  BigInteger* ptrSolution = &common.quad.Solution1[factorIndex];
+  BigInteger* ptrSolution = &quad_info.Solution1[factorIndex];
   int NumberLengthBytes;
   NumberLength = prime.nbrLimbs;
   NumberLengthBytes = NumberLength * (int)sizeof(limb);
@@ -853,7 +855,7 @@ static void QuadraticTermMultipleOfP(int expon, int factorIndex,
   }
   (void)BigIntPowerIntExp(&prime, expon, &Q);
   (void)BigIntRemainder(ptrSolution, &Q, ptrSolution);
-  CopyBigInt(&common.quad.Solution2[factorIndex], &common.quad.Solution1[factorIndex]);
+  CopyBigInt(&quad_info.Solution2[factorIndex], &quad_info.Solution1[factorIndex]);
 }
 
 static bool QuadraticTermNotMultipleOfP(int expon, int factorIndex,
@@ -885,22 +887,22 @@ static bool QuadraticTermNotMultipleOfP(int expon, int factorIndex,
     return false;
   }
   if (sol1Invalid)
-  {     // common.quad.Solution1 is invalid. Overwrite it with common.quad.Solution2.
-    CopyBigInt(&common.quad.Solution1[factorIndex], &common.quad.Solution2[factorIndex]);
+  {     // quad_info.Solution1 is invalid. Overwrite it with quad_info.Solution2.
+    CopyBigInt(&quad_info.Solution1[factorIndex], &quad_info.Solution2[factorIndex]);
   }
   else if (sol2Invalid)
-  {     // common.quad.Solution2 is invalid. Overwrite it with common.quad.Solution1.
-    CopyBigInt(&common.quad.Solution2[factorIndex], &common.quad.Solution1[factorIndex]);
+  {     // quad_info.Solution2 is invalid. Overwrite it with quad_info.Solution1.
+    CopyBigInt(&quad_info.Solution2[factorIndex], &quad_info.Solution1[factorIndex]);
   }
   else
   {              // Nothing to do.
   }
-  BigIntSubt(&common.quad.Solution2[factorIndex], &common.quad.Solution1[factorIndex], &Aux[0]);
+  BigIntSubt(&quad_info.Solution2[factorIndex], &quad_info.Solution1[factorIndex], &Aux[0]);
   if (Aux[0].sign == SIGN_NEGATIVE)
-  {     // common.quad.Solution2 is less than common.quad.Solution1, so exchange them.
-    CopyBigInt(&Aux[0], &common.quad.Solution1[factorIndex]);
-    CopyBigInt(&common.quad.Solution1[factorIndex], &common.quad.Solution2[factorIndex]);
-    CopyBigInt(&common.quad.Solution2[factorIndex], &Aux[0]);
+  {     // quad_info.Solution2 is less than quad_info.Solution1, so exchange them.
+    CopyBigInt(&Aux[0], &quad_info.Solution1[factorIndex]);
+    CopyBigInt(&quad_info.Solution1[factorIndex], &quad_info.Solution2[factorIndex]);
+    CopyBigInt(&quad_info.Solution2[factorIndex], &Aux[0]);
   }
   if (ShowSolutionsModPrime != NULL)
   {
@@ -957,9 +959,9 @@ void SolveEquation(BigInteger* pValA, const BigInteger* pValB,
   for (int factorIndex = 0; factorIndex < nbrFactors; factorIndex++) {
     int expon = pstFactor->multiplicity;
     if (expon == 0) {
-      intToBigInteger(&common.quad.Solution1[factorIndex], 0);
-      intToBigInteger(&common.quad.Solution2[factorIndex], 0);
-      intToBigInteger(&common.quad.Increment[factorIndex], 1);
+      intToBigInteger(&quad_info.Solution1[factorIndex], 0);
+      intToBigInteger(&quad_info.Solution2[factorIndex], 0);
+      intToBigInteger(&quad_info.Increment[factorIndex], 1);
       pstFactor++;
       continue;
     }
@@ -980,7 +982,7 @@ void SolveEquation(BigInteger* pValA, const BigInteger* pValB,
         return;
       }
     }
-    CopyBigInt(&common.quad.Increment[factorIndex], &Q);
+    CopyBigInt(&quad_info.Increment[factorIndex], &Q);
     Exponents[factorIndex] = 0;
     pstFactor++;
   }

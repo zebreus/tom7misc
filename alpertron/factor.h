@@ -41,8 +41,6 @@ private:
   Factors &operator =(const Factors&) = delete;
 };
 
-std::unique_ptr<Factors> Factor(const BigInteger *toFactor);
-
 std::unique_ptr<Factors> BigFactor(const BigInteger *toFactor);
 
 #endif

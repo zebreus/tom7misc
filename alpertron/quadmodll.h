@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2017-2021 Dario Alejandro Alpern
@@ -15,7 +14,10 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
+#ifndef _QUADMODLL_H
+#define _QUADMODLL_H
+
 #include "bignbr.h"
 
 typedef void (*pShowSolutionsModPrime)(int factorIndex, int expon,
@@ -24,7 +26,18 @@ typedef void (*pSolution)(BigInteger* value);
 typedef void (*pShowNoSolsModPrime)(int expon);
 
 void SolveEquation(BigInteger *pValA, const BigInteger* pValB,
-  const BigInteger* pValC, BigInteger* pValN, 
+  const BigInteger* pValC, BigInteger* pValN,
   BigInteger *GcdAll, BigInteger *pValNn);
 void SetCallbacksForSolveEquation(pSolution solutionCback,
   pShowSolutionsModPrime showSolutionsModPrime, pShowNoSolsModPrime showNoSolsModPrime);
+
+// XXX from "common." Just used externally in teach output.
+struct stQuad {
+  BigInteger Solution1[400];
+  BigInteger Solution2[400];
+  BigInteger Increment[400];
+};
+
+extern stQuad quad_info;
+
+#endif

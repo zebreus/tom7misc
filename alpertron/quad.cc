@@ -22,7 +22,6 @@
 #include "bignbr.h"
 #include "globals.h"
 #include "factor.h"
-#include "commonstruc.h"
 #include "quadmodll.h"
 #include "modmult.h"
 #include "baseconv.h"
@@ -620,7 +619,8 @@ static void NoSolsModPrime(int expon)
   }
 }
 
-static void ShowSolutionsModPrime(int factorIndex, int expon, const BigInteger *pIncrement)
+static void ShowSolutionsModPrime(int factorIndex, int expon,
+                                  const BigInteger *pIncrement)
 {
   bool last;
   static BigInteger primePower;
@@ -641,8 +641,8 @@ static void ShowSolutionsModPrime(int factorIndex, int expon, const BigInteger *
   showText(": ");
   do
   {
-    bool oneSolution = BigIntEqual(&common.quad.Solution1[factorIndex],
-      &common.quad.Solution2[factorIndex]);
+    bool oneSolution = BigIntEqual(&quad_info.Solution1[factorIndex],
+                                   &quad_info.Solution2[factorIndex]);
     BigIntAdd(&ValH, pIncrement, &ValI);   // Next value.
     last = BigIntEqual(&primePower, &ValI);
     if (!BigIntIsZero(&ValH))
@@ -656,7 +656,7 @@ static void ShowSolutionsModPrime(int factorIndex, int expon, const BigInteger *
         showText(", ");
       }
     }
-    BigIntAdd(&ValH, &common.quad.Solution1[factorIndex], &ValJ);
+    BigIntAdd(&ValH, &quad_info.Solution1[factorIndex], &ValJ);
     shownbr(&ValJ);
     if (!oneSolution)
     {
@@ -668,7 +668,7 @@ static void ShowSolutionsModPrime(int factorIndex, int expon, const BigInteger *
       {
         showText(", ");
       }
-      BigIntAdd(&ValH, &common.quad.Solution2[factorIndex], &ValJ);
+      BigIntAdd(&ValH, &quad_info.Solution2[factorIndex], &ValJ);
       shownbr(&ValJ);
     }
     CopyBigInt(&ValH, &ValI);
@@ -792,9 +792,8 @@ void SolveQuadModEquation(void)
   }
   SetCallbacksForSolveEquation(SolutionX, ShowSolutionsModPrime, NoSolsModPrime);
   SolveEquation(&coeffQuadr, &coeffLinear, &coeffIndep, &modulus,
-    &GcdAll, &ValNn);
-  if (teach && !firstSolutionX)
-  {
+                &GcdAll, &ValNn);
+  if (teach && !firstSolutionX) {
     showText("</ol>");
   }
 }
@@ -1637,7 +1636,7 @@ static void NonSquareDiscriminant(void)
   char *ptrFactorDec = toFactorDec;
   Bin2Dec(&ptrFactorDec, ValK.limbs, ValK.nbrLimbs, groupLen);
 
-  std::unique_ptr<Factors> factors = Factor(&ValK);
+  std::unique_ptr<Factors> factors = BigFactor(&ValK);
 
   CopyBigInt(&LastModulus, &ValK);           // Do not factor again same modulus.
   ValK.sign = ValKSignBak;
