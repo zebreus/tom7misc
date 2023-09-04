@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2015-2021 Dario Alejandro Alpern
@@ -15,9 +14,9 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
-#ifndef __FFT_H
-#define __FFT_H
+
+#ifndef _FFT_H
+#define _FFT_H
 
 #define MAX_VALUE_FFT_LIMB (FFT_LIMB_RANGE - 1)
 #define QUARTER_CIRCLE (FULL_CIRCLE / 4)

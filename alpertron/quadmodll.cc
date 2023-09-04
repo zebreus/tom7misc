@@ -940,9 +940,6 @@ void SolveEquation(BigInteger* pValA, const BigInteger* pValB,
     CopyBigInt(&LastModulus, pValN);
     NumberLength = pValN->nbrLimbs;
     BigInteger2IntArray(nbrToFactor, pValN);
-    char toFactorDec[MAX_LEN * 12];
-    char *ptrFactorDec = toFactorDec;
-    Bin2Dec(&ptrFactorDec, pValN->limbs, pValN->nbrLimbs, groupLen);
     factor(pValN, nbrToFactor, factorsMod, astFactorsMod);
   }
   #endif

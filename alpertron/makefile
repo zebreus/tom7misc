@@ -10,6 +10,7 @@ GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
 CC_LIB=../cc-lib
 
 # XXX: Opt flags, -g
+# Add this to see dead code: -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--print-gc-sections
 CXXFLAGS=-I $(CC_LIB) $(GMP_CFLAGS) -D_USING64BITS_ -g -O -march=native -Wall -Wl,--stack,16777216
 LFLAGS= $(GMP_LFLAGS) -static
 

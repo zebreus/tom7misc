@@ -157,7 +157,7 @@ static void showMinus(void)
 
 static void shownbr(const BigInteger* value)
 {
-  BigInteger2Dec(&ptrOutput, value, groupLen);
+  BigInteger2Dec(&ptrOutput, value, 0);
 }
 
 static void showInt(int value)
@@ -341,7 +341,7 @@ static void PrintQuad(const BigInteger *coeffT2, const BigInteger *coeffT, const
   {
     if (coeffT->sign == SIGN_NEGATIVE)
     {
-      Bin2Dec(&ptrOutput, coeffT->limbs, coeffT->nbrLimbs, groupLen);
+      Bin2Dec(&ptrOutput, coeffT->limbs, coeffT->nbrLimbs, 0);
     }
     else
     {
@@ -380,11 +380,11 @@ static void PrintQuad(const BigInteger *coeffT2, const BigInteger *coeffT, const
     }
     if (var2 == NULL)
     {
-      Bin2Dec(&ptrOutput, coeffInd->limbs, coeffInd->nbrLimbs, groupLen);
+      Bin2Dec(&ptrOutput, coeffInd->limbs, coeffInd->nbrLimbs, 0);
     }
     else if ((coeffInd->nbrLimbs > 1) || (coeffInd->limbs[0].x > 1))
     {
-      Bin2Dec(&ptrOutput, coeffInd->limbs, coeffInd->nbrLimbs, groupLen);
+      Bin2Dec(&ptrOutput, coeffInd->limbs, coeffInd->nbrLimbs, 0);
       showText("&nbsp;&#8290;");
       showText(var2);
       showSquare();
@@ -472,7 +472,7 @@ static eLinearSolution Show(const BigInteger *num, const char *str, enum eLinear
     {    // num is not 1 or -1.
       *ptrOutput = ' ';
       ptrOutput++;
-      Bin2Dec(&ptrOutput, num->limbs, num->nbrLimbs, groupLen);
+      Bin2Dec(&ptrOutput, num->limbs, num->nbrLimbs, 0);
       copyStr(&ptrOutput, "&nbsp;&#8290;");
     }
     else
@@ -495,7 +495,7 @@ static void Show1(const BigInteger *num, enum eLinearSolution t)
   ptrOutput++;
   if (((u & 1) == 0) || ((num->nbrLimbs == 1) && (num->limbs[0].x == 1)))
   {          // Show absolute value of num.
-    Bin2Dec(&ptrOutput, num->limbs, num->nbrLimbs, groupLen);
+    Bin2Dec(&ptrOutput, num->limbs, num->nbrLimbs, 0);
   }
 }
 
@@ -577,7 +577,7 @@ static void showValue(BigInteger* value)
       firstSolutionX = false;
     }
     showText("<li><var>T</var> = ");
-    BigInteger2Dec(&ptrOutput, value, groupLen);
+    BigInteger2Dec(&ptrOutput, value, 0);
     showText("</li>");
   }
 }
@@ -722,7 +722,7 @@ void SolveQuadModEquation(void)
     {
       showText("<p>All values of <var>x</var> between 0 and ");
       addbigint(&GcdAll, -1);
-      BigInteger2Dec(&ptrOutput, &GcdAll, groupLen);
+      BigInteger2Dec(&ptrOutput, &GcdAll, 0);
       showText(" are solutions.</p>");
     }
     else
@@ -775,11 +775,6 @@ void SolveQuadModEquation(void)
   if (callbackQuadModType == CBACK_QMOD_PARABOLIC) {
     // For elliptic case, the factorization is already done.
 
-    // PERF: I think this is unnecessary?
-    char toFactorDec[MAX_LEN * 12];
-    char* ptrFactorDec = toFactorDec;
-    Bin2Dec(&ptrFactorDec, modulus.limbs, modulus.nbrLimbs, groupLen);
-
     std::unique_ptr<Factors> factors = BigFactor(&modulus);
     CopyBigInt(&LastModulus, &modulus);           // Do not factor again same modulus.
     if (teach) {
@@ -811,7 +806,7 @@ static void paren(const BigInteger *num)
   }
   else
   {
-    BigInteger2Dec(&ptrOutput, num, groupLen);
+    BigInteger2Dec(&ptrOutput, num, 0);
   }
 }
 
@@ -1630,11 +1625,6 @@ static void NonSquareDiscriminant(void)
   // Factor independent term.
   ValKSignBak = ValK.sign;
   ValK.sign = SIGN_POSITIVE;
-
-  // PERF unnecessary, right?
-  char toFactorDec[MAX_LEN * 12];
-  char *ptrFactorDec = toFactorDec;
-  Bin2Dec(&ptrFactorDec, ValK.limbs, ValK.nbrLimbs, groupLen);
 
   std::unique_ptr<Factors> factors = BigFactor(&ValK);
 
@@ -2628,14 +2618,7 @@ static void PerfectSquareDiscriminant(void) {
   signTemp = ValZ.sign;
   ValZ.sign = SIGN_POSITIVE;  // Factor positive number.
 
-  // PERF: probably unnecessary. This just converts it to a decimal
-  // number and throws it away?
-  char toFactorDec[MAX_LEN * 12];
-  char *ptrFactorDec = toFactorDec;
-  Bin2Dec(&ptrFactorDec, ValZ.limbs, ValZ.nbrLimbs, groupLen);
-
   std::unique_ptr<Factors> factors = BigFactor(&ValZ);
-  // factor(&ValZ, nbrToFactor, factorsMod, astFactorsMod);
 
   CopyBigInt(&LastModulus, &ValZ);           // Do not factor again same modulus.
   ValZ.sign = signTemp;       // Restore sign of Z = 4ak/RS.
@@ -3563,7 +3546,7 @@ void SolveQuadEquation(void)
         (void)BigIntDivide(&ValC, &U1, &ValC);
         (void)BigIntDivide(&ValK, &U1, &ValK);
         showText(lang ? "<p>Dividiendo ambos miembros por " : "<p>Dividing both sides by ");
-        Bin2Dec(&ptrOutput, U1.limbs, U1.nbrLimbs, groupLen);
+        Bin2Dec(&ptrOutput, U1.limbs, U1.nbrLimbs, 0);
         showText(":</p>");
         PrintQuadEqConst(true);
         CopyBigInt(&ValA, &ValABak);
@@ -3581,8 +3564,8 @@ void SolveQuadEquation(void)
     {
       showText(lang ? "<p>El término derecho no es múltiplo de ": "<p>The right hand side is not multiple of ");
       shownbr(&U1);
-      showText(lang ? ", que es el máximo común divisor de los tres coeficientes, así que no hay soluciones" :
-        ", which is the greatest common divisor of all three coefficients, so there are no solutions");
+      showText(", which is the greatest common divisor of all three "
+               "coefficients, so there are no solutions");
     }
     return;     // There are no solutions.
   }

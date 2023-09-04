@@ -51,7 +51,6 @@
 
 enum eNbrCached MontgomeryMultNCached;
 enum eNbrCached TestNbrCached;
-limb MontgomeryR1[MAX_LEN];
 limb TestNbr[MAX_LEN];
 limb MontgomeryMultN[MAX_LEN];
 limb MontgomeryMultR1[MAX_LEN];

@@ -29,11 +29,7 @@ extern char *output;
 extern bool lang;
 extern int groupLen;
 
-extern bool hexadecimal;
-
 void beginLine(char** pptrOutput);
 void finishLine(char** pptrOutput);
-
-extern int nbrToFactor[MAX_LEN];
 
 #endif

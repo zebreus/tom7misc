@@ -45,8 +45,6 @@ static BigInteger Power;
 static BigInteger expon;
 static bool ProcessExpon[(MAX_LEN*BITS_PER_GROUP) + 1000];
 static bool primes[(MAX_LEN*BITS_PER_GROUP) + 1000];
-extern limb TestNbr[MAX_LEN];
-extern limb MontgomeryMultR1[MAX_LEN];
 
 int smallPrimes[SMALL_PRIMES_ARRLEN+1];
 

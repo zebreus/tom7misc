@@ -54,27 +54,6 @@ int main(int argc, char* argv[]) {
   printf(":");
   fflush(stdout);
 
-  // some functions take arguments by global variables, ugh
-  NumberLength = num.nbrLimbs;
-  // An "int array" representation uses a length (signed, to give the number's
-  // sign) followed by that many limbs.
-  BigInteger2IntArray(nbrToFactor, &num);
-
-  #if 0
-  factor(&num, nbrToFactor, factorsMod, astFactorsMod);
-
-  const sFactors *hdr = &astFactorsMod[0];
-  const int num_factors = hdr->multiplicity;
-
-  for (int i = 1; i <= num_factors; i++) {
-    for (int m = 0; m < astFactorsMod[i].multiplicity; m++) {
-      printf(" ");
-      PrintIntArray(astFactorsMod[i].ptrFactor);
-    }
-  }
-  printf("\n");
-  #endif
-
   std::unique_ptr<Factors> factors = BigFactor(&num);
   for (int i = 0; i < (int)factors->product.size(); i++) {
     for (int m = 0; m < factors->product[i].multiplicity; m++) {
