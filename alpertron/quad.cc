@@ -23,7 +23,7 @@
 #include "globals.h"
 #include "factor.h"
 #include "commonstruc.h"
-#include "quadmodLL.h"
+#include "quadmodll.h"
 #include "modmult.h"
 
 enum eLinearSolution {

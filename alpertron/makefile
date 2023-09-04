@@ -7,7 +7,7 @@ CXX=x86_64-w64-mingw32-g++
 CXXFLAGS=-D_USING64BITS_ -g -O -march=native -Wall
 LFLAGS=-static
 
-HEADERS=batch.h bignbr.h enums.h commonstruc.h factor.h highlevel.h polynomial.h showtime.h globals.h siqs.h ecm.h karatsuba.h modmult.h
+HEADERS=bignbr.h enums.h commonstruc.h factor.h highlevel.h showtime.h globals.h siqs.h ecm.h karatsuba.h modmult.h fft.h quadmodll.h
 
 quad.exe:  errors.o copystr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o factor.o ecm.o siqs.o siqsla.o quad.o quadmodll.o bignbr.o showtime.o fft.o globals.o main.o
 	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
