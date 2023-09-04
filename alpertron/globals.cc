@@ -9,3 +9,6 @@ bool lang = false;
 int groupLen = 0;
 
 bool hexadecimal;
+
+int nbrToFactor[MAX_LEN];
+

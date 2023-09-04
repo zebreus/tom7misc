@@ -41,7 +41,6 @@ struct sFactors
 void factor(const BigInteger *toFactor, const int *number, int *factors,
             struct sFactors *pstFactors);
 
-extern int nbrToFactor[MAX_LEN];
 extern struct sFactors astFactorsMod[MAX_FACTORS];
 extern int factorsMod[20000];
 

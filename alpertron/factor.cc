@@ -45,7 +45,7 @@ BigInteger tofactor;
 long long Gamma[386];
 long long Delta[386];
 long long AurifQ[386];
-int nbrToFactor[MAX_LEN];
+
 struct sFactors astFactorsMod[5000];
 int factorsMod[20000];
 static void insertBigFactor(struct sFactors *pstFactors, const BigInteger *divisor,
