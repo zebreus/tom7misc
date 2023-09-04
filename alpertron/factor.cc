@@ -18,6 +18,8 @@
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
+#include <cassert>
+
 #include "bignbr.h"
 #include "factor.h"
 #include "commonstruc.h"
@@ -25,6 +27,18 @@
 #include "siqs.h"
 #include "modmult.h"
 #include "ecm.h"
+
+// The first entry is a header. The ptrFactor appears to be bogus.
+// For the header, the multiplicity is the number of distinct factors
+// after that.
+struct sFactorsInternal {
+  // This is an "int array" representation: The length followed by
+  // the limbs.
+  int *ptrFactor;
+  int multiplicity;
+  int upperBound;
+  int type;
+};
 
 union uCommon common;
 static int DegreeAurif;
@@ -42,13 +56,11 @@ static long long Gamma[386];
 static long long Delta[386];
 static long long AurifQ[386];
 
-struct sFactors astFactorsMod[5000];
-int factorsMod[20000];
-static void insertBigFactor(struct sFactors *pstFactors, const BigInteger *divisor,
+static void insertBigFactor(struct sFactorsInternal *pstFactors, const BigInteger *divisor,
   int type);
 
 static void factorExt(const BigInteger* toFactor, const int* number,
-  int* factors, struct sFactors* pstFactors);
+  int* factors, struct sFactorsInternal* pstFactors);
 
 static int Cos(int N) {
   int NMod8 = N % 8;
@@ -154,7 +166,7 @@ int Moebius(int argument)
   return moebius;
 }
 
-void GetAurifeuilleFactor(struct sFactors *pstFactors, int L, const BigInteger *BigBase)
+void GetAurifeuilleFactor(struct sFactorsInternal *pstFactors, int L, const BigInteger *BigBase)
 {
   BigInteger x;
   BigInteger Csal;
@@ -186,7 +198,7 @@ void GetAurifeuilleFactor(struct sFactors *pstFactors, int L, const BigInteger *
 }
 
 // Get Aurifeuille factors.
-void InsertAurifFactors(struct sFactors *pstFactors, const BigInteger *BigBase,
+void InsertAurifFactors(struct sFactorsInternal *pstFactors, const BigInteger *BigBase,
   int exponent, int increment)
 {
   int Incre = increment;
@@ -279,7 +291,7 @@ void InsertAurifFactors(struct sFactors *pstFactors, const BigInteger *BigBase,
   }
 }
 
-static void Cunningham(struct sFactors *pstFactors, const BigInteger *BigBase, int Expon,
+static void Cunningham(struct sFactorsInternal *pstFactors, const BigInteger *BigBase, int Expon,
                        int increment, const BigInteger *BigOriginal)
 {
   int Expon2;
@@ -336,7 +348,7 @@ static void Cunningham(struct sFactors *pstFactors, const BigInteger *BigBase, i
   }
 }
 
-static bool ProcessExponent(struct sFactors *pstFactors, const BigInteger *numToFactor,
+static bool ProcessExponent(struct sFactorsInternal *pstFactors, const BigInteger *numToFactor,
   int Exponent)
 {
   static BigInteger NFp1;
@@ -528,7 +540,7 @@ static void initProcessExponVector(const BigInteger* numToFactor, int numPrimes,
   }
 }
 
-static void PowerPM1Check(struct sFactors *pstFactors, const BigInteger *numToFactor)
+static void PowerPM1Check(struct sFactorsInternal *pstFactors, const BigInteger *numToFactor)
 {
   unsigned int Exponent = 0U;
   int mod9 = getRemainder(numToFactor, 9);
@@ -756,7 +768,7 @@ static bool isOne(const limb* nbr, int length)
 }
 
 static void performFactorization(const BigInteger *numToFactor,
-                                 const struct sFactors *pstFactors)
+                                 const struct sFactorsInternal *pstFactors)
 {
   (void)pstFactors;     // Ignore parameter.
   int NumberLengthBytes;
@@ -837,15 +849,15 @@ static void performFactorization(const BigInteger *numToFactor,
            isOne(common.ecm.GD, NumberLength));
 }
 
-static void SortFactors(struct sFactors *pstFactors)
+static void SortFactors(struct sFactorsInternal *pstFactors)
 {
   int factorNumber;
   int ctr;
   int nbrFactors = pstFactors->multiplicity;
-  struct sFactors *pstCurFactor = pstFactors + 1;
-  struct sFactors stTempFactor;
+  struct sFactorsInternal *pstCurFactor = pstFactors + 1;
+  struct sFactorsInternal stTempFactor;
   int *ptrNewFactor;
-  struct sFactors *pstNewFactor;
+  struct sFactorsInternal *pstNewFactor;
   // I think this starts at 1 because the 0th entry is the
   // residual (maybe composite?) number. Its multiplicity is the
   // count of factors in the array.
@@ -881,7 +893,7 @@ static void SortFactors(struct sFactors *pstFactors)
           ctr = pstFactors->multiplicity - factorNumber2;
           if (ctr > 0)
           {
-            int lenBytes = ctr * (int)sizeof(struct sFactors);
+            int lenBytes = ctr * (int)sizeof(struct sFactorsInternal);
             (void)memmove(pstNewFactor, pstNewFactor + 1, lenBytes);
           }
           pstFactors->multiplicity--;   // Indicate one less known factor.
@@ -891,9 +903,9 @@ static void SortFactors(struct sFactors *pstFactors)
         }
       }
       // Exchange both factors.
-      (void)memcpy(&stTempFactor, pstCurFactor, sizeof(struct sFactors));
-      (void)memcpy(pstCurFactor, pstNewFactor, sizeof(struct sFactors));
-      (void)memcpy(pstNewFactor, &stTempFactor, sizeof(struct sFactors));
+      (void)memcpy(&stTempFactor, pstCurFactor, sizeof(struct sFactorsInternal));
+      (void)memcpy(pstCurFactor, pstNewFactor, sizeof(struct sFactorsInternal));
+      (void)memcpy(pstNewFactor, &stTempFactor, sizeof(struct sFactorsInternal));
       pstNewFactor++;
     }
     pstCurFactor++;
@@ -914,11 +926,11 @@ static void SortFactors(struct sFactors *pstFactors)
 }
 
 // Insert new factor found into factor array. This factor array must be sorted.
-static void insertIntFactor(struct sFactors *pstFactors,
-                            struct sFactors *pstFactorDividend,
+static void insertIntFactor(struct sFactorsInternal *pstFactors,
+                            struct sFactorsInternal *pstFactorDividend,
                             int divisor, int expon, const BigInteger *cofactor)
 {
-  struct sFactors *pstCurFactor;
+  struct sFactorsInternal *pstCurFactor;
   int multiplicity;
   int factorNumber;
   limb *ptrFactor = (limb *)pstFactorDividend->ptrFactor;
@@ -968,7 +980,7 @@ static void insertIntFactor(struct sFactors *pstFactors,
   ptrValue = pstFactorDividend->ptrFactor;
   if (pstFactors->multiplicity > factorNumber)
   {
-    int lenBytes = (pstFactors->multiplicity - factorNumber) * (int)sizeof(struct sFactors);
+    int lenBytes = (pstFactors->multiplicity - factorNumber) * (int)sizeof(struct sFactorsInternal);
     (void)memmove(pstCurFactor + 1, pstCurFactor, lenBytes);
   }
   if ((*ptrValue == 1) && (*(ptrValue + 1) == 1))
@@ -991,13 +1003,13 @@ static void insertIntFactor(struct sFactors *pstFactors,
 
 // Insert new factor found into factor array. This factor array must be sorted.
 // The divisor must be also sorted.
-static void insertBigFactor(struct sFactors *pstFactors,
+static void insertBigFactor(struct sFactorsInternal *pstFactors,
                             const BigInteger *divisor,
                             int type) {
   int typeFactor = type;
-  struct sFactors *pstCurFactor;
+  struct sFactorsInternal *pstCurFactor;
   int lastFactorNumber = pstFactors->multiplicity;
-  struct sFactors *pstNewFactor = pstFactors + lastFactorNumber + 1;
+  struct sFactorsInternal *pstNewFactor = pstFactors + lastFactorNumber + 1;
   int *ptrNewFactorLimbs = pstFactors->ptrFactor;
   pstCurFactor = pstFactors + 1;
   for (int factorNumber = 1; factorNumber <= lastFactorNumber; factorNumber++)
@@ -1057,7 +1069,7 @@ static void insertBigFactor(struct sFactors *pstFactors,
 //         1 = Factors found.
 // Use: Xaux for square root of -1.
 //      Zaux for square root of 1.
-static int factorCarmichael(BigInteger *pValue, struct sFactors *pstFactors)
+static int factorCarmichael(BigInteger *pValue, struct sFactorsInternal *pstFactors)
 {
   int randomBase = 0;
   bool factorsFound = false;
@@ -1167,13 +1179,13 @@ static int factorCarmichael(BigInteger *pValue, struct sFactors *pstFactors)
   return factorsFound;
 }
 
-static void factorSmallInt(int intToFactor, int* factors, struct sFactors* pstFactors)
+static void factorSmallInt(int intToFactor, int* factors, struct sFactorsInternal* pstFactors)
 {
   int toFactor = intToFactor;
   int factorsFound = 0;
   int primeFactor;
   int multiplicity;
-  struct sFactors* ptrFactor = pstFactors + 1;
+  struct sFactorsInternal* ptrFactor = pstFactors + 1;
   int* ptrFactorLimbs = factors;
   if (toFactor <= 3)
   {     // Only one factor.
@@ -1252,16 +1264,49 @@ static void factorSmallInt(int intToFactor, int* factors, struct sFactors* pstFa
   pstFactors->multiplicity = factorsFound;
 }
 
-void factor(const BigInteger* toFactor, const int* number, int* factors, struct
-            sFactors* pstFactors) {
+static void InternalFactor(
+    const BigInteger* toFactor, const int* number, int* factors, struct
+    sFactorsInternal* pstFactors) {
   factorExt(toFactor, number, factors, pstFactors);
 }
+
+std::unique_ptr<Factors> Factor(const BigInteger *toFactor) {
+  auto ret = std::make_unique<Factors>();
+
+  ret->storage.resize(20000);
+
+  NumberLength = toFactor->nbrLimbs;
+  BigInteger2IntArray(nbrToFactor, toFactor);
+
+  sFactorsInternal astFactorsMod[MAX_FACTORS];
+  InternalFactor(toFactor, nbrToFactor, ret->storage.data(), astFactorsMod);
+
+  sFactorsInternal *hdr = &astFactorsMod[0];
+  // convert astfactorsmod to factorz
+  int num_factors = hdr->multiplicity;
+  ret->product.resize(num_factors);
+
+  for (int i = 0; i < num_factors; i++) {
+    // header is in slot 0
+    int *ptr = astFactorsMod[i + 1].ptrFactor;
+    int mult = astFactorsMod[i + 1].multiplicity;
+    // expecting these to point into storage
+    assert(ptr >= ret->storage.data() &&
+           ptr < (ret->storage.data() + ret->storage.size()));
+    ret->product[i].array = ptr;
+    ret->product[i].multiplicity = mult;
+  }
+
+  return ret;
+}
+
+
 
 // pstFactors -> ptrFactor points to end of factors.
 // pstFactors -> multiplicity indicates the number of different factors.
 static void factorExt(const BigInteger *toFactor, const int *number,
-                      int *factors, struct sFactors *pstFactors) {
-  struct sFactors *pstCurFactor;
+                      int *factors, struct sFactorsInternal *pstFactors) {
+  struct sFactorsInternal *pstCurFactor;
   int expon;
   int remainder;
   int nbrLimbs;

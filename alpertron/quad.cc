@@ -129,6 +129,8 @@ static void callbackQuadModElliptic(BigInteger *value);
 static void callbackQuadModHyperbolic(BigInteger *value);
 static void recursiveSolution(void);
 static BigInteger Tmp[13];
+// Index of prime factors with even multiplicity
+// PORT NOTE: was 1-based in original code; now 0-based
 static int indexEvenMultiplicity[400];
 static int nbrPrimesEvenMultiplicity;
 static int equationNbr;
@@ -527,42 +529,33 @@ static void ShowEq(const BigInteger *coeffA, const BigInteger *coeffB, const Big
   Show1(coeffF, t);
 }
 
-static void showFactors(const BigInteger *value)
-{
-  const struct sFactors *pstFactor;
-  int numFactors = astFactorsMod[0].multiplicity;
+static void showFactors(const BigInteger *value, const Factors &factors) {
+  int numFactors = factors.product.size();
   bool factorShown = false;
   shownbr(value);
   showText(" = ");
-  if (value->sign == SIGN_NEGATIVE)
-  {
+  if (value->sign == SIGN_NEGATIVE) {
     showMinus();
   }
-  pstFactor = &astFactorsMod[1];
-  for (int index = 0; index < numFactors; index++)
-  {
-    IntArray2BigInteger(pstFactor->ptrFactor, &prime);
-    if (pstFactor->multiplicity == 0)
-    {
-      pstFactor++;
+  for (int index = 0; index < numFactors; index++) {
+    const sFactorz &fact = factors.product[index];
+    // XXX why not setting NumberLength here?
+    IntArray2BigInteger(fact.array, &prime);
+    if (fact.multiplicity == 0) {
       continue;
     }
-    if (factorShown)
-    {
+    if (factorShown) {
       showText(" &times; ");
     }
     shownbr(&prime);
-    if (pstFactor->multiplicity != 1)
-    {
+    if (fact.multiplicity != 1) {
       showText("<sup>");
-      showInt(pstFactor->multiplicity);
+      showInt(fact.multiplicity);
       showText("</sup>");
     }
     factorShown = true;
-    pstFactor++;
   }
-  if (!factorShown)
-  {      // No factor shown. Show 1.
+  if (!factorShown) {
     showText("1");
   }
 }
@@ -779,25 +772,22 @@ void SolveQuadModEquation(void)
     }
     return;
   }
-  if (callbackQuadModType == CBACK_QMOD_PARABOLIC)
-  {    // For elliptic case, the factorization is already done.
-    NumberLength = modulus.nbrLimbs;
-    BigInteger2IntArray(nbrToFactor, &modulus);
+  if (callbackQuadModType == CBACK_QMOD_PARABOLIC) {
+    // For elliptic case, the factorization is already done.
 
     // PERF: I think this is unnecessary?
     char toFactorDec[MAX_LEN * 12];
     char* ptrFactorDec = toFactorDec;
     Bin2Dec(&ptrFactorDec, modulus.limbs, modulus.nbrLimbs, groupLen);
 
-    factor(&modulus, nbrToFactor, factorsMod, astFactorsMod);
+    std::unique_ptr<Factors> factors = Factor(&modulus);
     CopyBigInt(&LastModulus, &modulus);           // Do not factor again same modulus.
-    if (teach)
-    {
+    if (teach) {
       showText("<p>To solve this quadratic modular equation we have to "
                "factor the modulus and find the solution modulo the powers "
                "of the prime factors. Then we combine them by using the "
                "Chinese Remainder Theorem.</p>");
-      showFactors(&modulus);
+      showFactors(&modulus, *factors);
     }
   }
   SetCallbacksForSolveEquation(SolutionX, ShowSolutionsModPrime, NoSolsModPrime);
@@ -1618,8 +1608,6 @@ static void ShowPoint(const BigInteger *X, const BigInteger *Y)
 static void NonSquareDiscriminant(void)
 {
   enum eSign ValKSignBak;
-  int numFactors;
-  struct sFactors *pstFactor;
 
   // Find GCD(a,b,c)
   BigIntGcd(&ValA, &ValB, &bigTmp);
@@ -1632,8 +1620,8 @@ static void NonSquareDiscriminant(void)
   // Divide discriminant by the square of GCD.
   (void)BigIntDivide(&discr, &ValGcdHomog, &discr);
   (void)BigIntDivide(&discr, &ValGcdHomog, &discr);
-  if (BigIntIsZero(&ValK))
-  {          // If k=0, the only solution is (X, Y) = (0, 0)
+  if (BigIntIsZero(&ValK)) {
+    // If k=0, the only solution is (X, Y) = (0, 0)
     ShowPoint(&ValK, &ValK);
     return;
   }
@@ -1643,30 +1631,30 @@ static void NonSquareDiscriminant(void)
   // Factor independent term.
   ValKSignBak = ValK.sign;
   ValK.sign = SIGN_POSITIVE;
-  NumberLength = ValK.nbrLimbs;
-  BigInteger2IntArray(nbrToFactor, &ValK);
 
   // PERF unnecessary, right?
   char toFactorDec[MAX_LEN * 12];
   char *ptrFactorDec = toFactorDec;
   Bin2Dec(&ptrFactorDec, ValK.limbs, ValK.nbrLimbs, groupLen);
 
-  factor(&ValK, nbrToFactor, factorsMod, astFactorsMod);
+  std::unique_ptr<Factors> factors = Factor(&ValK);
+
   CopyBigInt(&LastModulus, &ValK);           // Do not factor again same modulus.
   ValK.sign = ValKSignBak;
   // Find all indexes of prime factors with even multiplicity.
   nbrPrimesEvenMultiplicity = 0;
-  numFactors = astFactorsMod[0].multiplicity;
-  pstFactor = &astFactorsMod[1];
-  for (int factorNbr = 1; factorNbr <= numFactors; factorNbr++)
-  {
-    if (pstFactor->multiplicity > 1)
-    {      // At least prime is squared.
-      indexEvenMultiplicity[nbrPrimesEvenMultiplicity] = factorNbr;
-      originalMultiplicities[nbrPrimesEvenMultiplicity] = pstFactor->multiplicity & (~1); // Convert to even.
+  int numFactors = factors->product.size();
+  for (int i = 0; i < numFactors; i++) {
+    const sFactorz &fact = factors->product[i];
+    if (fact.multiplicity > 1) {
+      // At least prime is squared.
+      // Port note: The original code stored factorNbr, which was 1-based because
+      // of the factor header.
+      indexEvenMultiplicity[nbrPrimesEvenMultiplicity] = i;
+      // Convert to even.
+      originalMultiplicities[nbrPrimesEvenMultiplicity] = fact.multiplicity & ~1;
       nbrPrimesEvenMultiplicity++;
     }
-    pstFactor++;
   }
   (void)memset(counters, 0, sizeof(counters));
   (void)memset(isDescending, 0, sizeof(isDescending));
@@ -1677,39 +1665,38 @@ static void NonSquareDiscriminant(void)
   intToBigInteger(&ValM, 0);
   varXnoTrans = "<var>X</var>";
   varYnoTrans = "<var>Y</var>";
-  if ((bigTmp.nbrLimbs != 1) || (bigTmp.limbs[0].x != 1))
-  {                        // gcd(a, K) is not equal to 1.
-    if (teach)
-    {
-      showText(lang ? "<p>El algoritmo requiere que el coeficiente de <var>X</var>" :
-        "<p>The algorithm requires that the coefficient of <var>X</var>");
+  if ((bigTmp.nbrLimbs != 1) || (bigTmp.limbs[0].x != 1)) {
+    // gcd(a, K) is not equal to 1.
+    if (teach) {
+      showText("<p>The algorithm requires that the coefficient of <var>X</var>");
       showSquare();
-      showText(lang ? " y el término independiente sean primos entre sí. Como esto no ocurre, debemos hallar un valor de <var>m</var> tal que aplicando una de las transformaciones unimodulares siguientes</p>" :
-        " and the right hand side are coprime. This does not happen, so we have to find a value of <var>m</var> such that applying one of the unimodular transformations</p> ");
-      showText("<ul><li><var>X</var> = <var>m</var>&#8290;<var>U</var> + <var>(m&minus;1)</var>&#8290;<var>V</var>, ");
+      showText(" and the right hand side are coprime. This does not happen, "
+               "so we have to find a value of <var>m</var> such that applying "
+               "one of the unimodular transformations</p> ");
+      showText("<ul><li><var>X</var> = <var>m</var>&#8290;<var>U</var> + "
+               "<var>(m&minus;1)</var>&#8290;<var>V</var>, ");
       showText("<var>Y</var> = <var>U</var> + <var>V</var></li>");
       showText("<li><var>X</var> = <var>U</var> + <var>V</var>, ");
-      showText("<var>Y</var> = <var>(m&minus;1)</var>&#8290;<var>U</var> + <var>m</var>&#8290;<var>V</var></li></ul>");
-      showText(lang?"<p>el coeficiente de <var>U</var>": "<p>the coefficient of <var>U</var>");
+      showText("<var>Y</var> = <var>(m&minus;1)</var>&#8290;<var>U</var> + "
+               "<var>m</var>&#8290;<var>V</var></li></ul>");
+      showText("<p>the coefficient of <var>U</var>");
       showSquare();
-      showText(lang ? " y el término independiente sean primos entre sí. Este coeficiente es igual a ":
-        " and the right hand side are coprime. This coefficient equals ");
+      showText(" and the right hand side are coprime. This coefficient equals ");
       PrintQuad(&ValA, &ValB, &ValC, "<var>m</var>", NULL);
-      showText(lang ? " en el primer caso y " : " in the first case and ");
+      showText(" in the first case and ");
       PrintQuad(&ValC, &ValB, &ValA, "(<var>m</var> &minus; 1)", NULL);
-      showText(lang ? " en el segundo caso.</p>" : " in the second case.</p>");
+      showText(" in the second case.</p>");
     }
     intToBigInteger(&ValM, 0);
-    do
-    {                         // Compute U1 = cm^2 + bm + a and exit loop if this
-                              // value is not coprime to K.
+    do {
+      // Compute U1 = cm^2 + bm + a and exit loop if this
+      // value is not coprime to K.
       (void)BigIntMultiply(&ValC, &ValM, &U2);
       BigIntAdd(&U2, &ValB, &U1);
       (void)BigIntMultiply(&U1, &ValM, &U1);
       BigIntAdd(&U1, &ValA, &U1);
       BigIntGcd(&U1, &ValK, &bigTmp);
-      if ((bigTmp.nbrLimbs == 1) && (bigTmp.limbs[0].x == 1))
-      {
+      if ((bigTmp.nbrLimbs == 1) && (bigTmp.limbs[0].x == 1)) {
         addbigint(&ValM, 1);  // Increment M.
         BigIntChSign(&ValM);  // Change sign to indicate type.
         break;
@@ -1726,8 +1713,7 @@ static void NonSquareDiscriminant(void)
     // Compute 2am + b or 2cm + b as required.
     BigIntAdd(&U2, &U2, &U2);
     BigIntAdd(&U2, &ValB, &U2);
-    if (ValM.sign == SIGN_POSITIVE)
-    {
+    if (ValM.sign == SIGN_POSITIVE) {
       // Compute c.
       BigIntSubt(&U1, &U2, &ValB);
       BigIntAdd(&ValB, &ValA, &ValC);
@@ -1735,9 +1721,7 @@ static void NonSquareDiscriminant(void)
       BigIntAdd(&ValB, &U1, &ValB);
       // Compute a.
       CopyBigInt(&ValA, &U1);
-    }
-    else
-    {
+    } else {
       // Compute c.
       BigIntAdd(&U1, &U2, &ValB);
       BigIntAdd(&ValB, &ValC, &ValC);
@@ -1746,51 +1730,37 @@ static void NonSquareDiscriminant(void)
       // Compute a.
       CopyBigInt(&ValA, &U1);
     }
-    if (teach)
-    {
+    if (teach) {
       int m = ValM.limbs[0].x;
       showText(lang ? "<p>Usaremos la ":"<p>We will use the ");
-      if (ValM.sign == SIGN_POSITIVE)
-      {
-        showText(lang ? "primera" : "first");
+      if (ValM.sign == SIGN_POSITIVE) {
+        showText("first");
+      } else {
+        showText("second");
       }
-      else
-      {
-        showText(lang ? "segunda" : "second");
-      }
-      showText(lang? " transformación unimodular con <var>m</var> = ":
-          " unimodular transformation with <var>m</var> = ");
+      showText(" unimodular transformation with <var>m</var> = ");
       showInt(m);
       showText(": <var>X</var> = ");
-      if (ValM.sign == SIGN_POSITIVE)
-      {
-        if (m == 1)
-        {
+      if (ValM.sign == SIGN_POSITIVE) {
+        if (m == 1) {
           showText("<var>U</var>");
-        }
-        else
-        {
+        } else {
           showInt(m);
           showText(" &#8290;<var>U</var> + ");
-          if (m > 2)
-          {
+          if (m > 2) {
             showInt(m - 1);
             showText(" &#8290;");
           }
           showText("<var>V</var>");
         }
         showText(", <var>Y</var> = <var>U</var> + <var>V</var> ");
-      }
-      else
-      {
+      } else {
         showText("<var>X</var> = <var>U</var> + <var>V</var>, <var>Y</var> = ");
-        if (m > 2)
-        {
+        if (m > 2) {
           showInt(m - 1);
           showText("&#8290;");
         }
-        if (m > 1)
-        {
+        if (m > 1) {
           showText("<var>U</var> + ");
           showInt(m);
           showText("&#8290;");
@@ -1799,11 +1769,11 @@ static void NonSquareDiscriminant(void)
       }
       showEqNbr(2);
       showText("</p>");
-      showText(lang ? "<p>Mediante ": "<p>Using");
+      showText("<p>Using");
       showEqNbr(2);
-      showText(lang ? ", la ecuación " : ", the equation ");
+      showText(", the equation ");
       showEqNbr(1);
-      showText(lang ? " se convierte a:</p>" : " converts to:</p>");
+      showText(" converts to:</p>");
       PrintQuad(&ValA, &ValB, &ValC, "<var>U</var>", "<var>V</var>");
       showText(" = ");
       shownbr(&ValK);
@@ -1814,71 +1784,65 @@ static void NonSquareDiscriminant(void)
       varYnoTrans = "<var>V</var>";
     }
   }
-  if (teach)
-  {
+  if (teach) {
     enum eSign signK = ValK.sign;
-    showText(lang ? "<p>A continuación hay que resolver varias ecuaciones cuadráticas modulares. Para ello debemos factorizar el módulo y hallar las soluciones módulo las potencias de los factores primos. Luego debemos combinar estas soluciones usando el teorema chino del resto.</p><p>Los diferentes módulos son divisores del término independiente, por lo que basta con factorizar dicho valor.</p>" :
-      "<p>We will have to solve several quadratic modular equations. To do this we have to factor the modulus and find the solution modulo the powers of the prime factors. Then we combine them by using the Chinese Remainder Theorem.</p><p>The different moduli are divisors of the right hand side, so we only have to factor it once.</p>");
+    showText("<p>We will have to solve several quadratic modular "
+             "equations. To do this we have to factor the modulus and "
+             "find the solution modulo the powers of the prime factors. "
+             "Then we combine them by using the Chinese Remainder "
+             "Theorem.</p><p>The different moduli are divisors of the "
+             "right hand side, so we only have to factor it once.</p>");
     showText("<p>");
     ValK.sign = SIGN_POSITIVE;   // Make the number to factor positive.
-    showFactors(&ValK);
+    showFactors(&ValK, *factors);
     ValK.sign = signK;
   }
-  for (;;)
-  {
-    int index;
-    if (teach)
-    {
+  for (;;) {
+    if (teach) {
       showText("<p>");
-      if ((ValE.nbrLimbs > 1) || (ValE.limbs[0].x > 1))
-      {
-        if (BigIntIsZero(&ValM))
-        {       // No unimodular transforation.
+      if ((ValE.nbrLimbs > 1) || (ValE.limbs[0].x > 1)) {
+        if (BigIntIsZero(&ValM)) {
+          // No unimodular transforation.
           varX = "<var>X'</var>";
           varY = "<var>Y'</var>";
-        }
-        else
-        {       // Unimodular transforation.
+        } else {
+          // Unimodular transforation.
           varX = "<var>U'</var>";
           varY = "<var>V'</var>";
         }
-        showText(lang ? "Sea " : "Let ");
+        showText("Let ");
         shownbr(&ValE);
         showText("&#8290;");
         showText(varX);
         showText(" = ");
         showText(varXnoTrans);
-        showText(lang ? " y " : " and ");
+        showText(" and ");
         shownbr(&ValE);
         showText("&#8290;");
         showText(varY);
         showText(" = ");
         showText(varYnoTrans);
         showText(". ");
-      }
-      else
-      {
-        if (BigIntIsZero(&ValM))
-        {       // No unimodular transforation.
+      } else {
+        if (BigIntIsZero(&ValM)) {
+          // No unimodular transforation.
           varX = "<var>X</var>";
           varY = "<var>Y</var>";
-        }
-        else
-        {       // Unimodular transforation.
+        } else {
+          // Unimodular transforation.
           varX = "<var>U</var>";
           varY = "<var>V</var>";
         }
       }
-      showText(lang ? "Buscando soluciones " : "Searching for solutions ");
+      showText("Searching for solutions ");
       showText(varX);
-      showText(lang ? " e " : " and ");
+      showText(" and ");
       showText(varY);
-      showText(lang ? " primos entre sí.</p>" : " coprime.</p>");
-      if ((ValE.nbrLimbs > 1) || (ValE.limbs[0].x > 1))
-      {
-        showText(lang ? "<p>De la ecuación " : "<p>From equation ");
+      showText(" coprime.</p>");
+      if ((ValE.nbrLimbs > 1) || (ValE.limbs[0].x > 1)) {
+        showText("<p>From equation ");
         showEqNbr(BigIntIsZero(&ValM)? 1: 3);
-        showText(lang ? " obtenemos " : " we obtain ");
+        showText(" we obtain ");
         PrintQuad(&ValA, &ValB, &ValC, varX, varY);
         showText(" = ");
         (void)BigIntMultiply(&ValK, &ValE, &ValH);
@@ -1897,73 +1861,72 @@ static void NonSquareDiscriminant(void)
     CopyBigInt(&modulus, &ValK);
     modulus.sign = SIGN_POSITIVE;
     CopyBigInt(&LastModulus, &modulus);
-    if (teach)
-    {
-      showText(lang ? "<p>Debemos resolver " : "<p>We have to solve:");
+    if (teach) {
+      showText("<p>We have to solve:");
       PrintQuad(&coeffQuadr, &coeffLinear, &coeffIndep, "<var>T</var>", NULL);
       showText(" &equiv; 0 (mod ");
-      showFactors(&modulus);
+      showFactors(&modulus, *factors);
       showText(")<p>");
     }
     SolveQuadModEquation();
     // Adjust counters.
-    for (index = 0; index < nbrPrimesEvenMultiplicity; index++)
-    {            // Loop that increments counters.
-      if (isDescending[index] == 0)
-      {          // Ascending.
-        pstFactor = &astFactorsMod[indexEvenMultiplicity[index]];
-        if (counters[index] == originalMultiplicities[index])
-        {
-          isDescending[index] = 1;    // Next time it will be descending.
+    int index;
+    for (index = 0; index < nbrPrimesEvenMultiplicity; index++) {
+      // Loop that increments counters.
+      if (isDescending[index] == 0) {
+        // Ascending.
+        sFactorz *fact = &factors->product[indexEvenMultiplicity[index]];
+        if (counters[index] == originalMultiplicities[index]) {
+          // Next time it will be descending.
+          isDescending[index] = 1;
           continue;
-        }
-        else
-        {
-          NumberLength = *pstFactor->ptrFactor;
-          IntArray2BigInteger(pstFactor->ptrFactor, &bigTmp);
+        } else {
+          NumberLength = *fact->array;
+          IntArray2BigInteger(fact->array, &bigTmp);
           (void)BigIntMultiply(&bigTmp, &bigTmp, &U3);
-          pstFactor->multiplicity -= 2;
-          (void)BigIntDivide(&ValK, &U3, &ValK);       // Divide by square of prime.
-          (void)BigIntMultiply(&ValE, &bigTmp, &ValE); // Multiply multiplier by prime.counters[index]++
+          fact->multiplicity -= 2;
+          // Divide by square of prime.
+          (void)BigIntDivide(&ValK, &U3, &ValK);
+          // Multiply multiplier by prime.counters[index]++
+          (void)BigIntMultiply(&ValE, &bigTmp, &ValE);
           counters[index] += 2;
           break;
         }
-      }
-      else
-      {         // Descending.
-        if (counters[index] <= 1)
-        {
-          isDescending[index] = 0;    // Next time it will be ascending.
+      } else {
+        // Descending.
+        sFactorz *fact = &factors->product[indexEvenMultiplicity[index]];
+        if (counters[index] <= 1) {
+          // Next time it will be ascending.
+          isDescending[index] = 0;
           continue;
-        }
-        else
-        {
-          pstFactor = &astFactorsMod[indexEvenMultiplicity[index]];
-          NumberLength = *pstFactor->ptrFactor;
-          IntArray2BigInteger(pstFactor->ptrFactor, &bigTmp);
+        } else {
+          NumberLength = *fact->array;
+          IntArray2BigInteger(fact->array, &bigTmp);
           (void)BigIntMultiply(&bigTmp, &bigTmp, &U3);
-          pstFactor->multiplicity += 2;
-          (void)BigIntMultiply(&ValK, &U3, &ValK);     // Multiply by square of prime.
-          (void)BigIntDivide(&ValE, &bigTmp, &ValE);   // Divide multiplier by prime.counters[index]++
+          fact->multiplicity += 2;
+          // Multiply by square of prime.
+          (void)BigIntMultiply(&ValK, &U3, &ValK);
+          // Divide multiplier by prime.counters[index]++
+          (void)BigIntDivide(&ValE, &bigTmp, &ValE);
           counters[index] -= 2;
           break;
         }
       }
     }
-    CopyBigInt(&LastModulus, &ValK);                   // Do not try to factor the number again.
-    if (index == nbrPrimesEvenMultiplicity)
-    {               // All factors have been found. Exit loop.
+    // Do not try to factor the number again.
+    CopyBigInt(&LastModulus, &ValK);
+    if (index == nbrPrimesEvenMultiplicity) {
+      // All factors have been found. Exit loop.
       break;
     }
   }
-  if (showRecursiveSolution && (callbackQuadModType == CBACK_QMOD_HYPERBOLIC))
-  {   // Show recursive solution.
+  if (showRecursiveSolution && (callbackQuadModType == CBACK_QMOD_HYPERBOLIC)) {
+    // Show recursive solution.
     recursiveSolution();
   }
 }
 
-static void NegativeDiscriminant(void)
-{
+static void NegativeDiscriminant(void) {
   callbackQuadModType = CBACK_QMOD_ELLIPTIC;
   NonSquareDiscriminant();
 }
@@ -2521,9 +2484,7 @@ static void CheckSolutionSquareDiscr(void)
   }
 }
 
-static void PerfectSquareDiscriminant(void)
-{
-  int index;
+static void PerfectSquareDiscriminant(void) {
   enum eSign signTemp;
 
   if (BigIntIsZero(&ValA))
@@ -2539,9 +2500,7 @@ static void PerfectSquareDiscriminant(void)
       intToBigInteger(&ValI, 1);
       CopyBigInt(&ValL, &ValK);
     }
-  }
-  else
-  {
+  } else {
     // Multiplying by 4a we get (2aX + (b+g)Y)(2aX + (b-g)Y) = 4ak
     // Let R = gcd(2a, b+g)
     BigIntAdd(&ValA, &ValA, &V1);
@@ -2554,14 +2513,12 @@ static void PerfectSquareDiscriminant(void)
     // Let L = 4ak
     (void)BigIntMultiply(&ValA, &ValK, &ValL);
     multint(&ValL, &ValL, 4);
-    if (teach)
-    {
+    if (teach) {
       showText(lang ? "<p>Multiplicando por" : "<p>Multiplying by");
       showText(" 4&#8290;<var>a</var>:</p>");
     }
   }
-  if (teach)
-  {
+  if (teach) {
     intToBigInteger(&ValJ, 0);
     showText("<p>(");
     ShowLin(&V1, &V2, &ValJ, "X", "Y");
@@ -2571,15 +2528,13 @@ static void PerfectSquareDiscriminant(void)
     shownbr(&ValL);
     showText("</p><p>");
     (void)BigIntMultiply(&ValR, &ValS, &V3);
-    if ((V3.nbrLimbs > 1) || (V3.limbs[0].x > 1))
-    {
+    if ((V3.nbrLimbs > 1) || (V3.limbs[0].x > 1)) {
       (void)BigIntDivide(&V1, &ValR, &V1);
       (void)BigIntDivide(&V2, &ValR, &V2);
       (void)BigIntDivide(&ValH, &ValS, &ValH);
       (void)BigIntDivide(&ValI, &ValS, &ValI);
       (void)BigIntRemainder(&ValL, &V3, &bigTmp);
-      if (!BigIntIsZero(&bigTmp))
-      {
+      if (!BigIntIsZero(&bigTmp)) {
         shownbr(&V3);
         showText(" &#8290;");
       }
@@ -2588,24 +2543,22 @@ static void PerfectSquareDiscriminant(void)
       showText(") &#8290;(");
       ShowLin(&ValH, &ValI, &ValJ, "X", "Y");
       showText(") = ");
-      if (BigIntIsZero(&bigTmp))
-      {
+      if (BigIntIsZero(&bigTmp)) {
         (void)BigIntDivide(&ValL, &V3, &ValL);
       }
       shownbr(&ValL);
       showText("</p><p>");
-      if (!BigIntIsZero(&bigTmp))
-      {
-        showText(lang ? "El término derecho no es múltiplo del número que está a la izquierda del paréntesis, por lo que no hay soluciones.</p>" :
-          "The right hand side is not multiple of the number located at the left of the parentheses, so there are no solutions.</p>");
+      if (!BigIntIsZero(&bigTmp)) {
+        showText("The right hand side is not multiple of the number located "
+                 "at the left of the parentheses, so there are no solutions.</p>");
       }
     }
   }
-  if (BigIntIsZero(&ValK))
-  {      // k equals zero.
+  if (BigIntIsZero(&ValK)) {
+    // k equals zero.
     enum eLinearSolution ret;
-    if (BigIntIsZero(&ValA))
-    {    // Coefficient a does equals zero.
+    if (BigIntIsZero(&ValA)) {
+      // Coefficient a does equals zero.
       // Solve Dy + beta = 0
       intToBigInteger(&Aux[0], 0);
       ret = LinearEq(&Aux[0], &discr, &ValBeta);
@@ -2618,9 +2571,8 @@ static void PerfectSquareDiscriminant(void)
       (void)BigIntMultiply(&ValB, &ValAlpha, &Aux[2]);
       (void)BigIntMultiply(&ValC, &ValBeta, &bigTmp);
       BigIntAdd(&Aux[2], &bigTmp, &Aux[2]);
-    }
-    else
-    {    // Coefficient a does not equal zero.
+    } else {
+      // Coefficient a does not equal zero.
       // Solve 2aD x + (b+g)D y = 2a*alpha + (b+g)*beta
       (void)BigIntMultiply(&ValA, &discr, &Aux[0]);
       BigIntAdd(&Aux[0], &Aux[0], &Aux[0]);
@@ -2655,34 +2607,27 @@ static void PerfectSquareDiscriminant(void)
     return;
   }
   // k does not equal zero.
-  if (BigIntIsZero(&ValA))
-  { // If R does not divide k, there is no solution.
+  if (BigIntIsZero(&ValA)) {
+    // If R does not divide k, there is no solution.
     CopyBigInt(&U3, &ValK);
     CopyBigInt(&U1, &ValR);
-  }
-  else
-  {
+  } else {
     // If R*S does not divide 4ak, there is no solution.
     (void)BigIntMultiply(&ValR, &ValS, &U1);
     (void)BigIntMultiply(&ValA, &ValK, &U2);
     multadd(&U3, 4, &U2, 0);
   }
   (void)BigIntRemainder(&U3, &U1, &U2);
-  if (!BigIntIsZero(&U2))
-  {
+  if (!BigIntIsZero(&U2)) {
     return;
   }
   (void)BigIntDivide(&U3, &U1, &ValZ);
-  if (teach)
-  {
-    showText(lang ? "Tenemos que hallar todos los factores del término derecho.</p>" :
-      "We have to find all factors of the right hand side.</p>");
+  if (teach) {
+    showText("We have to find all factors of the right hand side.</p>");
   }
   // Compute all factors of Z = 4ak/RS
-  NumberLength = ValZ.nbrLimbs;
   signTemp = ValZ.sign;
   ValZ.sign = SIGN_POSITIVE;  // Factor positive number.
-  BigInteger2IntArray(nbrToFactor, &ValZ);
 
   // PERF: probably unnecessary. This just converts it to a decimal
   // number and throws it away?
@@ -2690,7 +2635,9 @@ static void PerfectSquareDiscriminant(void)
   char *ptrFactorDec = toFactorDec;
   Bin2Dec(&ptrFactorDec, ValZ.limbs, ValZ.nbrLimbs, groupLen);
 
-  factor(&ValZ, nbrToFactor, factorsMod, astFactorsMod);
+  std::unique_ptr<Factors> factors = Factor(&ValZ);
+  // factor(&ValZ, nbrToFactor, factorsMod, astFactorsMod);
+
   CopyBigInt(&LastModulus, &ValZ);           // Do not factor again same modulus.
   ValZ.sign = signTemp;       // Restore sign of Z = 4ak/RS.
   // x = (NI - JM) / D(IL - MH) and y = (JL - NH) / D(IL - MH)
@@ -2698,22 +2645,18 @@ static void PerfectSquareDiscriminant(void)
   // H = 2a/R, I = (b+g)/R, J = F + H * alpha + I * beta
   // L = 2a/S, M = (b-g)/S, N = Z/F + L * alpha + M * beta
   // F is any factor of Z (positive or negative).
-  nbrFactors = astFactorsMod[0].multiplicity;
-  if (teach)
-  {
+  nbrFactors = factors->product.size();
+  if (teach) {
     showText("<p>");
-    showFactors(&ValZ);
+    showFactors(&ValZ, *factors);
     showText("<ol>");
   }
-  if (BigIntIsZero(&ValA))
-  {
+  if (BigIntIsZero(&ValA)) {
     intToBigInteger(&ValH, 0);                    // H <- 0
     intToBigInteger(&ValI, 1);                    // I <- 1
     (void)BigIntDivide(&ValB, &ValR, &ValL);      // L <- b/R
     (void)BigIntDivide(&ValC, &ValR, &ValM);      // M <- c/R
-  }
-  else
-  {
+  } else {
     BigIntAdd(&ValA, &ValA, &U3);                 // 2a
     (void)BigIntDivide(&U3, &ValR, &ValH);        // H <- 2a/R
     (void)BigIntDivide(&U3, &ValS, &ValL);        // L <- 2a/S
@@ -2741,45 +2684,41 @@ static void PerfectSquareDiscriminant(void)
   (void)memset(counters, 0, sizeof(counters));
   (void)memset(isDescending, 0, sizeof(isDescending));
   intToBigInteger(&currentFactor, 1);
-  for (;;)
-  {
-    const struct sFactors* pstFactor;
+  for (;;) {
     CheckSolutionSquareDiscr();       // Process positive divisor.
     BigIntChSign(&currentFactor);
     CheckSolutionSquareDiscr();       // Process negative divisor.
     BigIntChSign(&currentFactor);
-    pstFactor = &astFactorsMod[1];
-    for (index = 0; index < nbrFactors; index++)
-    {            // Loop that increments counters.
-      if (isDescending[index] == 0)
-      {          // Ascending.
-        if (counters[index] == pstFactor->multiplicity)
-        {
+    sFactorz *pstFactor = &factors->product[0];
+    int index;
+    for (index = 0; index < nbrFactors; index++) {
+      // Loop that increments counters.
+      if (isDescending[index] == 0) {
+        // Ascending.
+        if (counters[index] == pstFactor->multiplicity) {
           isDescending[index] = 1;    // Next time it will be descending.
           pstFactor++;
           continue;
         }
-        IntArray2BigInteger(pstFactor->ptrFactor, &prime);
+        IntArray2BigInteger(pstFactor->array, &prime);
         (void)BigIntMultiply(&currentFactor, &prime, &currentFactor);
         counters[index]++;
         break;
       }
-               // Descending.
-      if (counters[index] == 0)
-      {
+      if (counters[index] == 0) {
+        // Descending.
         isDescending[index] = 0;    // Next time it will be ascending.
         pstFactor++;
         continue;
       }
-      IntArray2BigInteger(pstFactor->ptrFactor, &prime);
+      IntArray2BigInteger(pstFactor->array, &prime);
       (void)BigIntDivide(&currentFactor, &prime, &currentFactor);
       counters[index]--;
       break;
     }
-    if (index == nbrFactors)
-    {               // All factors have been found. Exit loop.
-      if (teach)
-      {
+    if (index == nbrFactors) {
+      // All factors have been found. Exit loop.
+      if (teach) {
         showText("</ol>");
       }
       break;

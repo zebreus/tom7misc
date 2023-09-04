@@ -60,6 +60,7 @@ int main(int argc, char* argv[]) {
   // sign) followed by that many limbs.
   BigInteger2IntArray(nbrToFactor, &num);
 
+  #if 0
   factor(&num, nbrToFactor, factorsMod, astFactorsMod);
 
   const sFactors *hdr = &astFactorsMod[0];
@@ -72,6 +73,17 @@ int main(int argc, char* argv[]) {
     }
   }
   printf("\n");
+  #endif
+
+  std::unique_ptr<Factors> factors = Factor(&num);
+  for (int i = 0; i < (int)factors->product.size(); i++) {
+    for (int m = 0; m < factors->product[i].multiplicity; m++) {
+      printf(" ");
+      PrintIntArray(factors->product[i].array);
+    }
+  }
+  printf("\n");
+
 
   return 0;
 }

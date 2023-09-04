@@ -19,6 +19,8 @@
 #define _FACTOR_H
 
 #include "showtime.h"
+#include <memory>
+#include <vector>
 
 #define MAX_FACTORS 5000
 
@@ -30,23 +32,27 @@
 #define TYP_DIVISION 350000000
 #define TYP_EC       400000000
 
-// The first entry is a header. The ptrFactor appears to be bogus.
-// For the header, the multiplicity is the number of distinct factors
-// after that.
-struct sFactors
-{
-  // This is an "int array" representation: The length followed by
-  // the limbs.
-  int *ptrFactor;
-  int multiplicity;
-  int upperBound;
-  int type;
+
+
+struct sFactorz {
+  int *array = nullptr;
+  int multiplicity = 0;
 };
 
-void factor(const BigInteger *toFactor, const int *number, int *factors,
-            struct sFactors *pstFactors);
+struct Factors {
+  Factors() {}
+  // int pointers point into storage.
+  std::vector<sFactorz> product;
 
-extern struct sFactors astFactorsMod[MAX_FACTORS];
-extern int factorsMod[20000];
+  // Private outside of factoring itself.
+  std::vector<int> storage;
+private:
+  // Not copyable, because of internal array pointers.
+  Factors(const Factors &) = delete;
+  Factors &operator =(const Factors&) = delete;
+};
+
+std::unique_ptr<Factors> Factor(const BigInteger *toFactor);
+
 
 #endif
