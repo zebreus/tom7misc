@@ -216,11 +216,6 @@ struct stQuad
   BigInteger Increment[400];
 };
 
-struct stSaveFactors
-{
-  char text[MAX_LEN * 36];
-};
-
 // Sum of squares and divisors are used at the same time.
 struct stK
 {
@@ -234,7 +229,6 @@ union uCommon
   struct stEcm ecm;
   struct stTrialDivision trialDiv;
   struct stQuad quad;
-  struct stSaveFactors saveFactors;
   struct stK k;
 };
 

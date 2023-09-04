@@ -145,21 +145,12 @@ enum eExprErr BigIntDivide(const BigInteger *pDividend, const BigInteger *pDivis
   {   // It is faster to perform classical division than
       // using Newton algorithm.
       // Use adjustedArgument to hold the remainder.
-#ifdef _USING64BITS_
     int64_t carry;
-#else
-    int carry;
-    double dVal = 1.0 / (double)LIMB_RANGE;
-    double dSquareLimb = (double)LIMB_RANGE * (double)LIMB_RANGE;
-#endif
     int i;
     int TrialQuotient;
     double dNbr;
     double dInvDivisor;
-#ifndef _USING64BITS_
-    double dTrialQuotient;
-    double dDelta;
-#endif
+
     limb* ptrDividend;
     const limb* ptrDivisor;
     limb* ptrQuotient;
@@ -172,10 +163,6 @@ enum eExprErr BigIntDivide(const BigInteger *pDividend, const BigInteger *pDivis
     dInvDivisor = 1/getMantissa(&pDivisor->limbs[nbrLimbsDivisor], nbrLimbsDivisor);
     for (; nbrLimbsDividend >= nbrLimbsDivisor; nbrLimbsDividend--)
     {
-#ifndef _USING64BITS_
-      int low;
-      double dAccumulator;
-#endif
       dNbr = getMantissa(&adjustedArgument[nbrLimbsDividend+1], nbrLimbsDividend+1)*LIMB_RANGE;
       TrialQuotient = (int)(unsigned int)floor((dNbr * dInvDivisor) + 0.5);
       if ((unsigned int)TrialQuotient >= LIMB_RANGE)
@@ -183,67 +170,23 @@ enum eExprErr BigIntDivide(const BigInteger *pDividend, const BigInteger *pDivis
         TrialQuotient = (int)MAX_VALUE_LIMB;
       }
       // Compute Nbr <- Nbr - TrialQuotient * Modulus
-#ifndef _USING64BITS_
-      dTrialQuotient = (double)TrialQuotient;
-      dDelta = 0.0;
-#endif
+
       carry = 0;
       ptrDividend = &adjustedArgument[nbrLimbsDividend - nbrLimbsDivisor];
       ptrDivisor = pDivisor->limbs;
       for (i = 0; i < nbrLimbsDivisor; i++)
       {
-#ifdef _USING64BITS_
         carry += (int64_t)ptrDividend->x - (ptrDivisor->x * (int64_t)TrialQuotient);
         ptrDividend->x = UintToInt((unsigned int)carry & MAX_VALUE_LIMB);
         carry >>= BITS_PER_GROUP;
-#else
-        low = (ptrDividend->x - (ptrDivisor->x * TrialQuotient) + carry) & MAX_INT_NBR;
-        // Subtract or add 0x20000000 so the multiplication by dVal is not nearly an integer.
-        // In that case, there would be an error of +/- 1.
-        dAccumulator = (double)ptrDividend->x - ((double)ptrDivisor->x * dTrialQuotient) +
-          (double)carry + dDelta;
-        dDelta = 0.0;
-        if (dAccumulator < 0.0)
-        {
-          dAccumulator += dSquareLimb;
-          dDelta = -(double)LIMB_RANGE;
-        }
-        if (low < HALF_INT_RANGE)
-        {
-          carry = (int)floor((dAccumulator + (double)FOURTH_INT_RANGE) * dVal);
-        }
-        else
-        {
-          carry = (int)floor((dAccumulator - (double)FOURTH_INT_RANGE) * dVal);
-        }
-        ptrDividend->x = low;
-#endif
         ptrDividend++;
         ptrDivisor++;
       }
-#ifdef _USING64BITS_
+
       carry += (int64_t)ptrDividend->x;
       ptrDividend->x = UintToInt((unsigned int)carry & MAX_VALUE_LIMB);
       carry >>= BITS_PER_GROUP;
-#else
-      low = (ptrDividend->x + carry) & MAX_INT_NBR;
-      // Subtract or add 0x20000000 so the multiplication by dVal is not nearly an integer.
-      // In that case, there would be an error of +/- 1.
-      dAccumulator = (double)ptrDividend->x + (double)carry + dDelta;
-      if (dAccumulator < 0.0)
-      {
-        dAccumulator += dSquareLimb;
-      }
-      if (low < HALF_INT_RANGE)
-      {
-        carry = (int)floor((dAccumulator + (double)FOURTH_INT_RANGE) * dVal);
-      }
-      else
-      {
-        carry = (int)floor((dAccumulator - (double)FOURTH_INT_RANGE) * dVal);
-      }
-      ptrDividend->x = low;
-#endif
+
       ptrDividend++;
       ptrDividend->x = carry & MAX_INT_NBR;
       if (((unsigned int)adjustedArgument[nbrLimbsDividend].x & MAX_VALUE_LIMB) != 0U)

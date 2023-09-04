@@ -23,7 +23,8 @@
 #include "factor.h"
 #include "quadmodLL.h"
 #include "commonstruc.h"
-
+#include "globals.h"
+#include "modmult.h"
 
 static BigInteger Quadr;
 static BigInteger Linear;
@@ -930,11 +931,11 @@ void SolveEquation(BigInteger* pValA, const BigInteger* pValB,
   }
   if ((LastModulus.nbrLimbs == 0) || !BigIntEqual(&LastModulus, pValN))
   {     // Last modulus is different from ValN.
-    char* ptrFactorDec;
     CopyBigInt(&LastModulus, pValN);
     NumberLength = pValN->nbrLimbs;
     BigInteger2IntArray(nbrToFactor, pValN);
-    ptrFactorDec = tofactorDec;
+    char toFactorDec[MAX_LEN * 12];
+    char *ptrFactorDec = toFactorDec;
     Bin2Dec(&ptrFactorDec, pValN->limbs, pValN->nbrLimbs, groupLen);
     factor(pValN, nbrToFactor, factorsMod, astFactorsMod);
   }

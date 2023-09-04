@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2015-2021 Dario Alejandro Alpern
@@ -15,7 +14,7 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
 
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +23,7 @@
 #include <assert.h>
 #include "bignbr.h"
 #include "karatsuba.h"
+#include "modmult.h"
 
 // Multiply two numbers in Montgomery notation.
 //
@@ -67,8 +67,7 @@ static limb resultModOdd[MAX_LEN];
 static limb resultModPower2[MAX_LEN];
 static int NumberLength2;
 int NumberLength;
-int NumberLengthR1;
-mmCback modmultCallback;
+static int NumberLengthR1;
 static limb U[MAX_LEN];
 static limb V[MAX_LEN];
 static limb R[MAX_LEN];
@@ -1354,18 +1353,7 @@ void smallmodmult(int factor1, int factor2, limb *product, int mod)
   }
   else
   {   // TestNbr has one limb but it is not small.
-#ifdef _USING64BITS_
     product->x = (int64_t)factor1 * factor2 % mod;
-#else
-      // Round up quotient.
-    int quotient = (int)floor((double)factor1 * (double)factor2 / (double)mod + 0.5);
-    int remainder = (factor1 * factor2) - (quotient * mod);
-    if (remainder < 0)
-    {    // Quotient was 1 more than expected. Adjust remainder.
-      remainder += mod;
-    }
-    product->x = remainder;
-#endif
   }
 }
 
@@ -1380,7 +1368,6 @@ void smallmodmult(int factor1, int factor2, limb *product, int mod)
 //   return t
 // end if
 
-#ifdef _USING64BITS_
 static void MontgomeryMult2(const limb *pNbr1, const limb *pNbr2, limb *pProd)
 {
   int32_t Prod0 = 0;
@@ -1934,10 +1921,9 @@ static void MontgomeryMult11(const limb *pNbr1, const limb *pNbr2, limb *pProd)
   (pProd + 9)->x = Prod9;
   (pProd + 10)->x = Prod10;
 }
-#endif
 
-void endBigModmult(const limb *prodNotAdjusted, limb *product)
-{
+
+static void endBigModmult(const limb *prodNotAdjusted, limb *product) {
   int count;
   unsigned int cy = 0;
   // Compute hi(T) - hi(mN)

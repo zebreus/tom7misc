@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2015-2021 Dario Alejandro Alpern
@@ -15,7 +14,6 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
 
 #include <string.h>
 #include <math.h>
@@ -27,13 +25,13 @@
 #define DIGITS_PER_LIMB 9
 #define MAX_LIMB_CONVERSION 1000000000
 
-static limb power10000[MAX_LEN*2];
-static limb temp[MAX_LEN];
 static void add(const limb *addend1, const limb *addend2, limb *sum, int length);
 
   // Convert number to little-endian.
-void Dec2Bin(const char *decimal, limb *binary, int digits, int *bitGroups)
-{
+void Dec2Bin(const char *decimal, limb *binary, int digits, int *bitGroups) {
+  limb power10000[MAX_LEN*2];
+  limb temp[MAX_LEN];
+
   // First step: separate in groups of DIGITS_PER_LIMB digits.
   const char *ptrSrc;
   limb *ptrDest;
@@ -98,8 +96,7 @@ void Dec2Bin(const char *decimal, limb *binary, int digits, int *bitGroups)
   }
 }
 
-void int2dec(char **pOutput, int nbr)
-{
+void int2dec(char **pOutput, int nbr) {
   char *ptrOutput = *pOutput;
   bool significantZero = false;
   unsigned int div = 1000000000U;
@@ -124,116 +121,6 @@ void int2dec(char **pOutput, int nbr)
     ptrOutput++;
   }
   *pOutput = ptrOutput;
-}
-
-static int Bin2HexLoop(char** ppDecimal, const limb* binary,
-  int currentGroupDigit, int nbrBits, int nbrLimbs, int mask, int grpLen)
-{
-  int nbrHexDigits = (nbrBits + 3) / 4;
-  char* ptrDecimal = *ppDecimal;
-  int numBits = nbrBits;
-  int numLimbs = nbrLimbs;
-  int digits = 0;
-  int value = (binary + numLimbs - 1)->x;
-  do
-  {  // Get 4 bits.
-    int digit = 0;
-    do
-    {
-      digit *= 2;
-      if ((value & mask) != 0)
-      {
-        digit++;
-      }
-      mask >>= 1;
-      if (mask == 0)
-      {
-        numLimbs--;
-        value = (binary + numLimbs - 1)->x;
-        mask = HALF_INT_RANGE;
-      }
-      numBits--;
-    } while ((numBits & 3) != 0);
-    if (digit < 10)
-    {        // Convert 0 - 9 to '0' - '9'.
-      *ptrDecimal = (char)(digit + '0');
-      ptrDecimal++;
-    }
-    else
-    {        // Convert 10 - 15 to 'A' - 'F'.
-      *ptrDecimal = (char)(digit + 'A' - 10);
-      ptrDecimal++;
-    }
-    digits++;
-    currentGroupDigit--;
-    if ((currentGroupDigit == 0) && (nbrHexDigits != 1))
-    {
-      *ptrDecimal = ' ';
-      ptrDecimal++;
-      currentGroupDigit = grpLen;
-    }
-    nbrHexDigits--;
-  } while (nbrHexDigits > 0);
-  *ppDecimal = ptrDecimal;
-  return digits;
-}
-
-// Convert little-endian number to a string with space every groupLen digits.
-void Bin2Hex(char **ppDecimal, const limb *binary, int nbrLimbs, int groupLength)
-{
-  int numLimbs = nbrLimbs;
-  int grpLen = groupLength;
-  char* ptrDecimal = *ppDecimal;
-  bool showDigitsText = true;
-  int nbrBits;
-  int mask;
-  int value;
-  int digits = 0;
-
-  if (grpLen <= 0)
-  {
-    grpLen = -grpLen;
-    showDigitsText = false;
-  }
-  copyStr(&ptrDecimal, "<span class=\"hex\">");
-  nbrBits = numLimbs * BITS_PER_GROUP;
-  mask = HALF_INT_RANGE;
-  value = (binary + numLimbs - 1)->x;
-  if (value == 0)
-  {
-    *ptrDecimal = '0';
-    ptrDecimal++;
-  }
-  else
-  {
-    int nbrHexDigits;
-    int currentGroupDigit = -1;
-    while ((value & mask) == 0)
-    {   // Loop that finds the most significant bit.
-      mask >>= 1;
-      nbrBits--;
-    }
-    nbrHexDigits = (nbrBits + 3)/4;
-    if (grpLen > 0)
-    {
-      currentGroupDigit = nbrHexDigits % grpLen;
-      if (currentGroupDigit == 0)
-      {
-        currentGroupDigit = grpLen;
-      }
-    }
-    digits = Bin2HexLoop(&ptrDecimal, binary, currentGroupDigit,
-      nbrBits, numLimbs, mask, grpLen);
-  }
-  if ((digits > 30) && showDigitsText)
-  {
-    *ptrDecimal = '(';
-    ptrDecimal++;
-    int2dec(&ptrDecimal, digits);
-    copyStr(&ptrDecimal, (lang?" dígitos)": " digits)"));
-  }
-  copyStr(&ptrDecimal, "</span>");
-  *ppDecimal = ptrDecimal;
 }
 
 static void Bin2DecLoop(char** ppDest, bool *pSignificantZero,
@@ -281,6 +168,8 @@ static void Bin2DecLoop(char** ppDest, bool *pSignificantZero,
   // In order to perform a faster conversion, use groups of DIGITS_PER_LIMB digits.
 void Bin2Dec(char **ppDecimal, const limb *binary, int nbrLimbs, int groupLength)
 {
+  limb power10000[MAX_LEN*2];
+
   int grpLen = groupLength;
   int len;
   int index;
@@ -424,17 +313,5 @@ void BigInteger2Dec(char **ppDecimal, const BigInteger *pBigInt, int groupLength
     ptrDecimal++;
   }
   Bin2Dec(&ptrDecimal, pBigInt->limbs, pBigInt->nbrLimbs, groupLength);
-  *ppDecimal = ptrDecimal;
-}
-
-void BigInteger2Hex(char** ppDecimal, const BigInteger* pBigInt, int groupLength)
-{
-  char* ptrDecimal = *ppDecimal;
-  if (pBigInt->sign == SIGN_NEGATIVE)
-  {
-    *ptrDecimal = '-';
-    ptrDecimal++;
-  }
-  Bin2Hex(&ptrDecimal, pBigInt->limbs, pBigInt->nbrLimbs, groupLength);
   *ppDecimal = ptrDecimal;
 }

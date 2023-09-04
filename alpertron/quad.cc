@@ -24,24 +24,22 @@
 #include "factor.h"
 #include "commonstruc.h"
 #include "quadmodLL.h"
+#include "modmult.h"
 
-enum eLinearSolution
-{
+enum eLinearSolution {
   SOLUTION_FOUND = 0,
   NO_SOLUTIONS,
   INFINITE_SOLUTIONS,
 };
 
-enum eShowSolution
-{
+enum eShowSolution {
   ONE_SOLUTION = 0,
   TWO_SOLUTIONS,
   FIRST_SOLUTION,
   SECOND_SOLUTION,
 };
 
-enum eCallbackQuadModType
-{
+enum eCallbackQuadModType {
   CBACK_QMOD_PARABOLIC = 0,
   CBACK_QMOD_ELLIPTIC,
   CBACK_QMOD_HYPERBOLIC,
@@ -782,17 +780,19 @@ void SolveQuadModEquation(void)
   }
   if (callbackQuadModType == CBACK_QMOD_PARABOLIC)
   {    // For elliptic case, the factorization is already done.
-    char* ptrFactorDec;
+    char toFactorDec[MAX_LEN * 12];
+    char* ptrFactorDec = toFactorDec;
     NumberLength = modulus.nbrLimbs;
     BigInteger2IntArray(nbrToFactor, &modulus);
-    ptrFactorDec = tofactorDec;
     Bin2Dec(&ptrFactorDec, modulus.limbs, modulus.nbrLimbs, groupLen);
     factor(&modulus, nbrToFactor, factorsMod, astFactorsMod);
     CopyBigInt(&LastModulus, &modulus);           // Do not factor again same modulus.
     if (teach)
     {
-      showText(lang ? "<p>Para resolver esta ecuación cuadrática modular debemos factorizar el módulo y hallar las soluciones módulo las potencias de los factores primos. Luego debemos combinar estas soluciones usando el teorema chino del resto.</p>" :
-        "<p>To solve this quadratic modular equation we have to factor the modulus and find the solution modulo the powers of the prime factors. Then we combine them by using the Chinese Remainder Theorem.</p>");
+      showText("<p>To solve this quadratic modular equation we have to "
+               "factor the modulus and find the solution modulo the powers "
+               "of the prime factors. Then we combine them by using the "
+               "Chinese Remainder Theorem.</p>");
       showFactors(&modulus);
     }
   }
@@ -1616,11 +1616,11 @@ static void NonSquareDiscriminant(void)
   enum eSign ValKSignBak;
   int numFactors;
   struct sFactors *pstFactor;
-  char* ptrFactorDec;
-             // Find GCD(a,b,c)
+
+  // Find GCD(a,b,c)
   BigIntGcd(&ValA, &ValB, &bigTmp);
   BigIntGcd(&ValC, &bigTmp, &ValGcdHomog);
-    // Divide A, B, C and K by this GCD.
+  // Divide A, B, C and K by this GCD.
   (void)BigIntDivide(&ValA, &ValGcdHomog, &ValA);
   (void)BigIntDivide(&ValB, &ValGcdHomog, &ValB);
   (void)BigIntDivide(&ValC, &ValGcdHomog, &ValC);
@@ -1641,7 +1641,8 @@ static void NonSquareDiscriminant(void)
   ValK.sign = SIGN_POSITIVE;
   NumberLength = ValK.nbrLimbs;
   BigInteger2IntArray(nbrToFactor, &ValK);
-  ptrFactorDec = tofactorDec;
+  char toFactorDec[MAX_LEN * 12];
+  char *ptrFactorDec = toFactorDec;
   Bin2Dec(&ptrFactorDec, ValK.limbs, ValK.nbrLimbs, groupLen);
   factor(&ValK, nbrToFactor, factorsMod, astFactorsMod);
   CopyBigInt(&LastModulus, &ValK);           // Do not factor again same modulus.
@@ -2517,7 +2518,6 @@ static void PerfectSquareDiscriminant(void)
 {
   int index;
   enum eSign signTemp;
-  char* ptrFactorDec;
 
   if (BigIntIsZero(&ValA))
   { // Let R = gcd(b, c)
@@ -2676,7 +2676,8 @@ static void PerfectSquareDiscriminant(void)
   signTemp = ValZ.sign;
   ValZ.sign = SIGN_POSITIVE;  // Factor positive number.
   BigInteger2IntArray(nbrToFactor, &ValZ);
-  ptrFactorDec = tofactorDec;
+  char toFactorDec[MAX_LEN * 12];
+  char *ptrFactorDec = toFactorDec;
   Bin2Dec(&ptrFactorDec, ValZ.limbs, ValZ.nbrLimbs, groupLen);
   factor(&ValZ, nbrToFactor, factorsMod, astFactorsMod);
   CopyBigInt(&LastModulus, &ValZ);           // Do not factor again same modulus.

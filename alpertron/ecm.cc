@@ -22,6 +22,7 @@
 #include "bignbr.h"
 #include "factor.h"
 #include "commonstruc.h"
+#include "modmult.h"
 
 #if MAX_PRIME_SIEVE == 11
 #define MAX_SIEVE_PRIME    5000
@@ -29,8 +30,7 @@
 #define MAX_SIEVE_PRIME    (10 * SIEVE_SIZE)
 #endif
 
-extern int maxIndexM;
-extern int indexM;
+static int indexM;
 static int SmallPrime[670]; /* Primes < 5000 */
 static int boundStep1;
 static int boundStep2;
@@ -739,7 +739,7 @@ enum eEcmResult ecmStep2(void)
     modmult(common.ecm.Aux1, common.ecm.Aux1, common.ecm.Aux2);
     modmult(common.ecm.Aux2, common.ecm.UX, common.ecm.Z); // (X:Z) -> 3*SIEVE_SIZE*Q
     Qaux = boundStep1 / (2 * SIEVE_SIZE);
-    maxIndexM = boundStep2 / (2 * SIEVE_SIZE);
+    const int maxIndexM = boundStep2 / (2 * SIEVE_SIZE);
     for (indexM = 0; indexM <= maxIndexM; indexM++)
     {
       if (indexM >= Qaux)

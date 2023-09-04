@@ -21,20 +21,16 @@
 
 #include "bignbr.h"
 
+// Stuff used from afar with "extern" moved here.
+// Probably we should get rid of as much of this as possible.
+
 // extern char output[3000000];
 extern char *output;
 extern bool lang;
+extern int groupLen;
 
 extern bool hexadecimal;
 
-extern limb *Mult1;
-extern limb *Mult2;
-extern limb *Mult3;
-extern limb *Mult4;
-extern int *valueQ;
-
-// void showText(const char* text);
-// void shownbr(const BigInteger* value);
 void beginLine(char** pptrOutput);
 void finishLine(char** pptrOutput);
 

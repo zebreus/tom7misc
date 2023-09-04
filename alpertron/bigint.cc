@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2015-2021 Dario Alejandro Alpern
@@ -15,23 +14,16 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
+
 #include <string.h>
 #include <math.h>
+
 #include "bignbr.h"
+#include "modmult.h"
 
 #define MAX_LIMBS_SIQS 15
-static BigInteger Numerator;
-static BigInteger Denominator;
-static BigInteger Modulus;
-static BigInteger Quotient;
-static BigInteger BigInt1;
-static BigInteger BigInt2;
-static BigInteger BigGcd;
 
-limb NbrBak[MAX_LIMBS_SIQS];
-void ChSignBigNbr(limb *nbr, int length)
-{
+void ChSignBigNbr(limb *nbr, int length) {
   int carry = 0;
   const limb *ptrEndNbr = nbr + length;
   for (limb *ptrNbr = nbr; ptrNbr < ptrEndNbr; ptrNbr++)
@@ -493,6 +485,8 @@ int BigNbrToBigInt(const BigInteger *pBigNbr, limb *pBigInt)
   return nbrLenBigNbr;
 }
 
+// XXX this sure looks like it converts a bignbr (limbs) to
+// BigInteger (struct) with the parameters having confusing names?
 void BigIntToBigNbr(BigInteger *pBigNbr, const limb *pBigInt, int nbrLenBigInt)
 {
   int nbrLimbs;
@@ -512,15 +506,16 @@ void BigIntToBigNbr(BigInteger *pBigNbr, const limb *pBigInt, int nbrLenBigInt)
   pBigNbr->nbrLimbs = nbrLimbs;
 }
 
-void GcdBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pGcd, int nbrLen)
-{
+void GcdBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pGcd, int nbrLen) {
   int lenBytes;
-  BigIntToBigNbr(&BigInt1, pNbr1, nbrLen);
-  BigIntToBigNbr(&BigInt2, pNbr2, nbrLen);
-  BigIntGcd(&BigInt1, &BigInt2, &BigGcd);
+  BigInteger big_int_1, big_int_2;
+  BigIntToBigNbr(&big_int_1, pNbr1, nbrLen);
+  BigIntToBigNbr(&big_int_2, pNbr2, nbrLen);
+  BigInteger big_gcd;
+  BigIntGcd(&big_int_1, &big_int_2, &big_gcd);
   lenBytes = NumberLength * (int)sizeof(int);
   (void)memset(pGcd, 0, lenBytes);
-  (void)BigNbrToBigInt(&BigGcd, pGcd);
+  (void)BigNbrToBigInt(&big_gcd, pGcd);
 }
 
 void AdjustBigIntModN(limb *Nbr, const limb *Mod, int nbrLen)
@@ -589,8 +584,7 @@ int intDoubleModPow(int NbrMod, int Expon, int currentPrime)
   return (int)dPower;
 }
 
-void ModInvBigInt(const limb *num, limb *inv, const limb *mod, int nbrLenBigInt)
-{
+void ModInvBigInt(const limb *num, limb *inv, const limb *mod, int nbrLenBigInt) {
   int NumberLengthBigInt;
   int NumberLengthBak = NumberLength;
   int lenBytes = nbrLenBigInt * (int)sizeof(limb);
@@ -608,13 +602,17 @@ void ModInvBigInt(const limb *num, limb *inv, const limb *mod, int nbrLenBigInt)
   (void)memcpy(TestNbr, mod, lenBytes);
   TestNbr[NumberLength].x = 0;
   GetMontgomeryParms(NumberLength);
-  BigIntToBigNbr(&Denominator, num, NumberLength);
-  BigIntToBigNbr(&Modulus, mod, NumberLength);
-  Numerator.sign = SIGN_POSITIVE;
-  Numerator.nbrLimbs = 1;
-  Numerator.limbs[0].x = 1;    // Numerator <- 1.
-  BigIntModularDivision(&Numerator, &Denominator, &Modulus, &Quotient);
-  NumberLengthBigInt = BigNbrToBigInt(&Quotient, inv);
+  BigInteger denominator;
+  BigIntToBigNbr(&denominator, num, NumberLength);
+  BigInteger modulus;
+  BigIntToBigNbr(&modulus, mod, NumberLength);
+  BigInteger numerator;
+  numerator.sign = SIGN_POSITIVE;
+  numerator.nbrLimbs = 1;
+  numerator.limbs[0].x = 1;    // numerator <- 1.
+  BigInteger quotient;
+  BigIntModularDivision(&numerator, &denominator, &modulus, &quotient);
+  NumberLengthBigInt = BigNbrToBigInt(&quotient, inv);
   NumberLength = NumberLengthBak;
   if (NumberLengthBigInt < NumberLength)
   {

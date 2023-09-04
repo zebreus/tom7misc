@@ -24,16 +24,15 @@
 #include "factor.h"
 #include "globals.h"
 #include "karatsuba.h"
+#include "modmult.h"
 
-enum eOper
-{
+enum eOper {
   OPERATION_AND = 0,
   OPERATION_OR,
   OPERATION_XOR,
 };
 
-static struct
-{
+static struct {
   unsigned int seed[4];
 } randomSeed;
 
@@ -48,7 +47,7 @@ static bool ProcessExpon[(MAX_LEN*BITS_PER_GROUP) + 1000];
 static bool primes[(MAX_LEN*BITS_PER_GROUP) + 1000];
 extern limb TestNbr[MAX_LEN];
 extern limb MontgomeryMultR1[MAX_LEN];
-int groupLen = 0;
+
 int smallPrimes[SMALL_PRIMES_ARRLEN+1];
 
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc)
@@ -1749,14 +1748,18 @@ void initializeSmallPrimes(int* pSmallPrimes)
   }
 }
 
-static int Perform2SPRPtest(int nbrLimbs, const limb* limbs)
-
-{
+static int Perform2SPRPtest(int nbrLimbs, const limb* limbs) {
   int Mult3Len;
   int ctr;
   int lenBytes;
+
+  limb Mult1[MAX_LEN];
+  limb Mult3[MAX_LEN];
+  limb Mult4[MAX_LEN];
+
   // Perform 2-SPRP test
   lenBytes = nbrLimbs * (int)sizeof(limb);
+  int valueQ[MAX_LEN];
   (void)memcpy(valueQ, limbs, lenBytes);
   valueQ[nbrLimbs] = 0;
   valueQ[0]--;                     // q = p - 1 (p is odd, so there is no carry).
@@ -1830,6 +1833,10 @@ static int PerformStrongLucasTest(const BigInteger* pValue, int D, int absQ, int
   bool insidePowering = false;
   int ctr;
   int nbrLimbs = pValue->nbrLimbs;
+
+  limb Mult1[MAX_LEN];
+  limb Mult3[MAX_LEN];
+  limb Mult4[MAX_LEN];
 
   nbrLimbsBytes = (nbrLimbs + 1) * (int)sizeof(limb);
   (void)memcpy(Mult1, MontgomeryMultR1, nbrLimbsBytes); // Q^0 <- 1.

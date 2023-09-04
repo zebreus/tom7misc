@@ -24,10 +24,9 @@
 #include "commonstruc.h"
 #include "globals.h"
 #include "siqs.h"
+#include "modmult.h"
 
 int yieldFreq;
-int maxIndexM;
-int indexM;
 static int oldNbrFactors;
 
 union uCommon common;
@@ -38,18 +37,14 @@ static BigInteger power;
 static BigInteger prime;
 static bool foundByLehman;
 static int EC;
-static BigInteger Temp1;
 static BigInteger Temp2;
 static BigInteger Temp3;
 static BigInteger Temp4;
-BigInteger factorValue;
 BigInteger tofactor;
 
-bool cunningham;
 long long Gamma[386];
 long long Delta[386];
 long long AurifQ[386];
-char tofactorDec[MAX_LEN*12];
 int nbrToFactor[MAX_LEN];
 struct sFactors astFactorsMod[5000];
 int factorsMod[20000];
@@ -191,10 +186,10 @@ int Moebius(int argument)
 
 void GetAurifeuilleFactor(struct sFactors *pstFactors, int L, const BigInteger *BigBase)
 {
-  static BigInteger x;
-  static BigInteger Csal;
-  static BigInteger Dsal;
-  static BigInteger Nbr1;
+  BigInteger x;
+  BigInteger Csal;
+  BigInteger Dsal;
+  BigInteger Nbr1;
   int k;
 
   (void)BigIntPowerIntExp(BigBase, L, &x);   // x <- BigBase^L.
@@ -315,43 +310,20 @@ void InsertAurifFactors(struct sFactors *pstFactors, const BigInteger *BigBase,
 }
 
 static void Cunningham(struct sFactors *pstFactors, const BigInteger *BigBase, int Expon,
-                int increment, const BigInteger *BigOriginal)
+                       int increment, const BigInteger *BigOriginal)
 {
   int Expon2;
   int k;
-  char *ptrFactorsAscii;
-  static BigInteger Nbr1;
-  static BigInteger Nbr2;
+  BigInteger Nbr1;
+  BigInteger Nbr2;
 
-  common.saveFactors.text[0] = 0;    // Indicate no new factor found in advance.
   Expon2 = Expon;
-  if (cunningham && (BigOriginal->nbrLimbs > 4))
-  {   // Enter here on numbers of more than 40 digits if the user selected
-      // get Cunningham factors from server.
-  }
-  ptrFactorsAscii = common.saveFactors.text;
-  while (*ptrFactorsAscii > ' ')
-  { // Loop through factors found in server.
-    int nbrDigits;
-    char *ptrEndFactor = findChar(ptrFactorsAscii, '*');
-    if (ptrEndFactor == NULL)
-    {
-      nbrDigits = (int)strlen(ptrFactorsAscii);
-      ptrEndFactor = ptrFactorsAscii + nbrDigits;
-    }
-    else
-    {
-      size_t diffPtrs = ptrEndFactor - ptrFactorsAscii;
-      nbrDigits = (int)diffPtrs;
-      ptrEndFactor++;
-    }
-    Dec2Bin(ptrFactorsAscii, Nbr1.limbs, nbrDigits, &Nbr1.nbrLimbs);
-    Nbr1.sign = SIGN_POSITIVE;
-    ptrFactorsAscii = ptrEndFactor;
-    insertBigFactor(pstFactors, &Nbr1, TYP_TABLE);
-  }
-  while (((Expon2 % 2) == 0) && (increment == -1))
-  {
+
+  // There used to be some code here that would consult a server
+  // for factors, but it was never enabled. Might be more dead stuff
+  // as a result? -tom7
+
+  while (((Expon2 % 2) == 0) && (increment == -1)) {
     Expon2 /= 2;
     (void)BigIntPowerIntExp(BigBase, Expon2, &Nbr1);
     addbigint(&Nbr1, increment);
@@ -369,8 +341,10 @@ static void Cunningham(struct sFactors *pstFactors, const BigInteger *BigBase, i
         addbigint(&Nbr1, increment);
         BigIntGcd(&Nbr1, BigOriginal, &Nbr2);   // Nbr2 <- gcd(Base^(Expon/k)+incre, original)
         insertBigFactor(pstFactors, &Nbr2, TYP_TABLE);
-        CopyBigInt(&Temp1, BigOriginal);
-        (void)BigIntDivide(&Temp1, &Nbr2, &Nbr1);
+        // PERF why does this copy to tmp?
+        BigInteger tmp;
+        CopyBigInt(&tmp, BigOriginal);
+        (void)BigIntDivide(&tmp, &Nbr2, &Nbr1);
         insertBigFactor(pstFactors, &Nbr1, TYP_TABLE);
         InsertAurifFactors(pstFactors, BigBase, Expon / k, increment);
       }
@@ -380,8 +354,10 @@ static void Cunningham(struct sFactors *pstFactors, const BigInteger *BigBase, i
         addbigint(&Nbr1, increment);
         BigIntGcd(&Nbr1, BigOriginal, &Nbr2);   // Nbr2 <- gcd(Base^k+incre, original)
         insertBigFactor(pstFactors, &Nbr2, TYP_TABLE);
-        CopyBigInt(&Temp1, BigOriginal);
-        (void)BigIntDivide(&Temp1, &Nbr2, &Nbr1);
+        // PERF why does this copy to tmp?
+        BigInteger tmp;
+        CopyBigInt(&tmp, BigOriginal);
+        (void)BigIntDivide(&tmp, &Nbr2, &Nbr1);
         insertBigFactor(pstFactors, &Nbr1, TYP_TABLE);
         InsertAurifFactors(pstFactors, BigBase, k, increment);
       }
@@ -431,9 +407,10 @@ static bool ProcessExponent(struct sFactors *pstFactors, const BigInteger *numTo
           return true;
         }
         addbigint(&dif, 1);                         // dif <- dif + 1
-        (void)BigIntDivide(&dif, &rootN1, &Temp1);  // Temp1 <- dif / rootN1
-        subtractdivide(&Temp1, 0, Exponent);        // Temp1 <- Temp1 / Exponent
-        BigIntAdd(&Temp1, &nthRoot, &nextroot);     // nextroot <- Temp1 + nthRoot
+        BigInteger tmp;
+        (void)BigIntDivide(&dif, &rootN1, &tmp);    // Temp1 <- dif / rootN1
+        subtractdivide(&tmp, 0, Exponent);        // Temp1 <- Temp1 / Exponent
+        BigIntAdd(&tmp, &nthRoot, &nextroot);     // nextroot <- Temp1 + nthRoot
         addbigint(&nextroot, -1);                   // nextroot <- nextroot - 1
         BigIntSubt(&nextroot, &nthRoot, &nthRoot);  // nthRoot <- nextroot - nthRoot
         if (nthRoot.sign == SIGN_POSITIVE)
@@ -538,9 +515,10 @@ static void initProcessExponVector(const BigInteger* numToFactor, int numPrimes,
     bool isPower;
     int rem = getRemainder(numToFactor, currentPrime);
     uint64_t iSquared = (uint64_t)currentPrime * (uint64_t)currentPrime;
-    longToBigInteger(&Temp1, iSquared);
+    BigInteger tmp;
+    longToBigInteger(&tmp, iSquared);
     // Compute Temp2 as the remainder of nbrToFactor divided by (i*i).
-    (void)BigIntRemainder(numToFactor, &Temp1, &Temp2);
+    (void)BigIntRemainder(numToFactor, &tmp, &Temp2);
     isPower = isPerfectPower(rem, currentPrime, &Temp2);
     if (!isPower)
     {
@@ -550,7 +528,7 @@ static void initProcessExponVector(const BigInteger* numToFactor, int numPrimes,
         rem = 0;
       }
       addbigint(&Temp2, 1);
-      if (BigIntEqual(&Temp1, &Temp2))
+      if (BigIntEqual(&tmp, &Temp2))
       {
         intToBigInteger(&Temp2, 0);
       }
@@ -566,7 +544,7 @@ static void initProcessExponVector(const BigInteger* numToFactor, int numPrimes,
       addbigint(&Temp2, -2);
       if (Temp2.sign == SIGN_NEGATIVE)
       {
-        BigIntAdd(&Temp2, &Temp1, &Temp2);
+        BigIntAdd(&Temp2, &tmp, &Temp2);
       }
       isPower = isPerfectPower(rem, currentPrime, &Temp2);
     }
@@ -634,7 +612,7 @@ static void Lehman(const BigInteger *nbr, int multiplier, BigInteger *factor)
 {
   // In the following arrays, the bit n is set if n is a square mod p.
   // Bits 31-0
-  const unsigned int bitsSqrLow[NBR_PRIMES_QUADR_SIEVE] =
+  static constexpr unsigned int bitsSqrLow[NBR_PRIMES_QUADR_SIEVE] =
   {
     0x00000003U, // squares mod 3
     0x00000013U, // squares mod 5
@@ -655,7 +633,7 @@ static void Lehman(const BigInteger *nbr, int multiplier, BigInteger *factor)
     0x0A59F23BU, // squares mod 61
   };
   // Bits 63-32
-  const unsigned int bitsSqrHigh[NBR_PRIMES_QUADR_SIEVE] =
+  static constexpr unsigned int bitsSqrHigh[NBR_PRIMES_QUADR_SIEVE] =
   {
     0x00000000U, // squares mod 3
     0x00000000U, // squares mod 5
@@ -675,7 +653,7 @@ static void Lehman(const BigInteger *nbr, int multiplier, BigInteger *factor)
     0x022B6218U, // squares mod 59
     0x1713E694U, // squares mod 61
   };
-  const int primes[NBR_PRIMES_QUADR_SIEVE] =
+  static constexpr int primes[NBR_PRIMES_QUADR_SIEVE] =
       { 3, 5, 7, 11, 13, 17, 19, 23, 29, 31,
         37, 41, 43, 47, 53, 59, 61 };
   int nbrs[NBR_PRIMES_QUADR_SIEVE];
@@ -685,12 +663,12 @@ static void Lehman(const BigInteger *nbr, int multiplier, BigInteger *factor)
   int r;
   int nbrLimbs;
   int nbrIterations;
-  static BigInteger sqrRoot;
-  static BigInteger nextroot;
-  static BigInteger a;
-  static BigInteger c;
-  static BigInteger sqr;
-  static BigInteger val;
+  BigInteger sqrRoot;
+  BigInteger nextroot;
+  BigInteger a;
+  BigInteger c;
+  BigInteger sqr;
+  BigInteger val;
   if ((nbr->limbs[0].x & 1) == 0)
   { // nbr is even
     r = 0;
@@ -807,7 +785,8 @@ static bool isOne(const limb* nbr, int length)
   return true;
 }
 
-static void performFactorization(const BigInteger *numToFactor, const struct sFactors *pstFactors)
+static void performFactorization(const BigInteger *numToFactor,
+                                 const struct sFactors *pstFactors)
 {
   (void)pstFactors;     // Ignore parameter.
   int NumberLengthBytes;
@@ -847,7 +826,10 @@ static void performFactorization(const BigInteger *numToFactor, const struct sFa
       foundByLehman = true;
       break;
     }
-    Lehman(&tofactor, EC % 50000000, &potentialFactor);
+    // XXX looks like just some stray code? -tom7
+    // tofactor is not initialized.
+    // Lehman(&tofactor, EC % 50000000, &potentialFactor);
+
     BigIntGcd(numToFactor, &potentialFactor, &potentialFactor);
     if ((potentialFactor.nbrLimbs > 1) &&
       !BigIntEqual(&potentialFactor, numToFactor))
@@ -1122,12 +1104,13 @@ static bool getNextInteger(char **ppcFactors, int *result, char delimiter)
   }
   *ptrCharFound = 0;
   diffPtrs = ptrCharFound - pcFactors;
-  Dec2Bin(pcFactors, Temp1.limbs, (int)diffPtrs, &Temp1.nbrLimbs);
-  if (Temp1.nbrLimbs != 1)
+  BigInteger tmp;
+  Dec2Bin(pcFactors, tmp.limbs, (int)diffPtrs, &tmp.nbrLimbs);
+  if (tmp.nbrLimbs != 1)
   {   // Exponent is too large.
     return true;
   }
-  *result = Temp1.limbs[0].x;
+  *result = tmp.limbs[0].x;
   *ppcFactors = ptrCharFound+1;
   return false;
 }
@@ -1150,6 +1133,8 @@ static int factorCarmichael(BigInteger *pValue, struct sFactors *pstFactors)
   limb *pValueLimbs = pValue->limbs;
   (pValueLimbs + nbrLimbs)->x = 0;
   lenBytes = (nbrLimbs + 1) * (int)sizeof(limb);
+
+  int valueQ[MAX_LEN];
   (void)memcpy(valueQ, pValueLimbs, lenBytes);
   nbrLimbsQ = nbrLimbs;
   valueQ[0]--;                     // q = p - 1 (p is odd, so there is no carry).
@@ -1647,7 +1632,8 @@ static void factorExt(const BigInteger *toFactor, const int *number,
     {
       int numLimbs;
       int lenBytes;
-      Temp1.sign = SIGN_POSITIVE;
+      BigInteger tmp;
+      tmp.sign = SIGN_POSITIVE;
       numLimbs = NumberLength;
       while (numLimbs > 1)
       {
@@ -1658,15 +1644,15 @@ static void factorExt(const BigInteger *toFactor, const int *number,
         numLimbs--;
       }
       lenBytes = numLimbs * (int)sizeof(limb);
-      (void)memcpy(Temp1.limbs, common.ecm.GD, lenBytes);
-      Temp1.nbrLimbs = numLimbs;
+      (void)memcpy(tmp.limbs, common.ecm.GD, lenBytes);
+      tmp.nbrLimbs = numLimbs;
       if (foundByLehman)
       {
-        insertBigFactor(pstFactors, &Temp1, TYP_LEHMAN + EC);
+        insertBigFactor(pstFactors, &tmp, TYP_LEHMAN + EC);
       }
       else
       {
-        insertBigFactor(pstFactors, &Temp1, EC);
+        insertBigFactor(pstFactors, &tmp, EC);
       }
       factorNbr = 0;
       pstCurFactor = pstFactors;

@@ -38,9 +38,6 @@ struct sFactors
   int type;
 };
 
-extern char tofactorDec[MAX_LEN*12];
-
-extern struct sFactors stFactors[MAX_FACTORS];
 void factor(const BigInteger *toFactor, const int *number, int *factors,
             struct sFactors *pstFactors);
 
