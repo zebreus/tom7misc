@@ -1,9 +1,10 @@
 #!/bin/bash
 
 make clean
-make -j quad.exe || exit -1
+make -j quad.exe afactor.exe || exit -1
 rm -f coverage.out
 
+echo quad tests
 # Ax^2 + Bxy + Cy^2 + Dx + Ey + F   (teach)
 ./quad.exe 0 0 0 0 0 0 0 >> coverage.out
 ./quad.exe 0 0 0 0 5 6 0 >> coverage.out
@@ -32,6 +33,15 @@ rm -f coverage.out
 ./quad.exe 0 0 0 313370000000000003333333337 131072000000000000009999999991 27272727 0 >> coverage.out
 ./quad.exe 0 11 0 31337000003333333337 131072000009999999991 2727272727272727 0 >> coverage.out
 ./quad.exe 11 2727 -11 0 0 2727 0 >> coverage.out
+echo factor tests
+./afactor.exe 1 >> coverage.out
+./afactor.exe 2 >> coverage.out
+./afactor.exe 3 >> coverage.out
+./afactor.exe 31337 >> coverage.out
+./afactor.exe 12676506002282294014967032052232222222222192387419823741 >> coverage.out
+./afactor.exe 12676506002282294014967032052232222222222192387419823741111111111 >> coverage.out
+./afactor.exe 131072 >> coverage.out
+./afactor.exe 9999999999999999 >> coverage.out
 
 diff coverage.golden coverage.out
 exit_status=$?
