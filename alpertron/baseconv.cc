@@ -272,7 +272,7 @@ void Bin2Dec(char **ppDecimal, const limb *binary, int nbrLimbs, int groupLength
       *ptrDest = '(';
       ptrDest++;
       int2dec(&ptrDest, digits);
-      copyStr(&ptrDest, (lang ? " dígitos)" : " digits)"));
+      copyStr(&ptrDest, " digits)");
     }
   }
   *ptrDest = '\0';             // Add terminator.

@@ -21,23 +21,25 @@
 #include "bignbr.h"
 
 typedef void (*pShowSolutionsModPrime)(int factorIndex, int expon,
-  const BigInteger* pIncrement);
+                                       const BigInteger* pIncrement);
 typedef void (*pSolution)(BigInteger* value);
 typedef void (*pShowNoSolsModPrime)(int expon);
 
-void SolveEquation(BigInteger *pValA, const BigInteger* pValB,
-  const BigInteger* pValC, BigInteger* pValN,
-  BigInteger *GcdAll, BigInteger *pValNn);
-void SetCallbacksForSolveEquation(pSolution solutionCback,
-  pShowSolutionsModPrime showSolutionsModPrime, pShowNoSolsModPrime showNoSolsModPrime);
-
-// XXX from "common." Just used externally in teach output.
-struct stQuad {
+struct QuadModLLResult {
   BigInteger Solution1[400];
   BigInteger Solution2[400];
   BigInteger Increment[400];
+
+  BigInteger prime;
 };
 
-extern stQuad quad_info;
+void SolveEquation(
+    pSolution solutionCback,
+    pShowSolutionsModPrime showSolutionsModPrime,
+    pShowNoSolsModPrime showNoSolsModPrime,
+    BigInteger *pValA, const BigInteger* pValB,
+    const BigInteger* pValC, BigInteger* pValN,
+    BigInteger *GcdAll, BigInteger *pValNn,
+    QuadModLLResult *result);
 
 #endif

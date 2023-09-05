@@ -9,9 +9,10 @@ GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
 
 CC_LIB=../cc-lib
 
+# PERF: gotta reduce this stack usage!
 # XXX: Opt flags, -g
 # Add this to see dead code: -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--print-gc-sections
-CXXFLAGS=-I $(CC_LIB) $(GMP_CFLAGS) -D_USING64BITS_ -g -O -march=native -Wall -Wl,--stack,16777216
+CXXFLAGS=-I $(CC_LIB) $(GMP_CFLAGS) -D_USING64BITS_ -g -O2 -march=native -Wall -Wl,--stack,167772160
 LFLAGS= $(GMP_LFLAGS) -static
 
 HEADERS=bignbr.h enums.h factor.h highlevel.h globals.h karatsuba.h modmult.h fft.h quadmodll.h baseconv.h bigconv.h
