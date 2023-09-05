@@ -86,9 +86,6 @@ void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *Te
 void SubtBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr, int NumberLength);
 #define SubtBigNbrMod(Nbr1, Nbr2, Sum) SubtBigNbrModN(Nbr1, Nbr2, Sum, TestNbr, NumberLength)
 #define AddBigNbrMod(Nbr1, Nbr2, Sum) AddBigNbrModN(Nbr1, Nbr2, Sum, TestNbr, NumberLength)
-void modPowBaseInt(int base, const limb *exp, int nbrGroupsExp, limb *power);
-void modPow(const limb *base, const limb *exp, int nbrGroupsExp, limb *power);
-void modPowLimb(const limb *base, const limb *exp, limb *power);
 void AdjustModN(limb *Nbr, const limb *TestNbr, int NumberLength);
 int fsquares(void);
 void AddBigInt(const limb *pAddend1, const limb *pAddend2, limb *pSum, int nbrLimbs);

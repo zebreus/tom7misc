@@ -27,7 +27,4 @@
 // extern char output[3000000];
 extern char *output;
 
-void beginLine(char** pptrOutput);
-void finishLine(char** pptrOutput);
-
 #endif

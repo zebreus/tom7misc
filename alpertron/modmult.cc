@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
 
+#include "modmult.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -23,7 +24,6 @@
 #include <assert.h>
 #include "bignbr.h"
 #include "karatsuba.h"
-#include "modmult.h"
 
 // Multiply two numbers in Montgomery notation.
 //
@@ -80,17 +80,9 @@ static BigInteger tmpFact1;
 static BigInteger tmpFact2;
 
 // Multiply big number in Montgomery notation by integer.
-void modmultIntExtended(limb* factorBig, int factorInt, limb* result, const limb* pTestNbr, int nbrLen)
-{
-#ifdef _USING64BITS_
+void modmultIntExtended(limb* factorBig, int factorInt, limb* result,
+                        const limb* pTestNbr, int nbrLen) {
   int64_t carry;
-#else
-  double dTrialQuotient;
-  double dAccumulator;
-  double dFactorInt;
-  double dInvLimbRange = 1.0 / (double)LIMB_RANGE;
-  int low;
-#endif
   int i;
   int TrialQuotient;
   limb* ptrFactorBig;
@@ -113,10 +105,9 @@ void modmultIntExtended(limb* factorBig, int factorInt, limb* result, const limb
   // Compute result as factorBig * factorInt - TrialQuotient * TestNbr
   ptrFactorBig = factorBig;
   ptrTestNbr = pTestNbr;
-#ifdef _USING64BITS_
+
   carry = 0;
-  for (i = 0; i <= nbrLen; i++)
-  {
+  for (i = 0; i <= nbrLen; i++) {
     carry += ((int64_t)ptrFactorBig->x * factorInt) -
       ((int64_t)TrialQuotient * ptrTestNbr->x);
     (result + i)->x = (int)carry & MAX_INT_NBR;
@@ -124,36 +115,8 @@ void modmultIntExtended(limb* factorBig, int factorInt, limb* result, const limb
     ptrFactorBig++;
     ptrTestNbr++;
   }
-#else
-  dFactorInt = (double)factorInt;
-  dTrialQuotient = (double)TrialQuotient;
-  low = 0;
-  dAccumulator = 0;
-  for (i = 0; i <= nbrLen; i++)
-  {
-    dAccumulator += ((double)ptrFactorBig->x * dFactorInt) -
-      (dTrialQuotient * (double)ptrTestNbr->x);
-    low += (ptrFactorBig->x * factorInt) - (TrialQuotient * ptrTestNbr->x);
-    low &= MAX_VALUE_LIMB;
-    // Subtract or add 0x20000000 so the multiplication by dVal is not nearly an integer.
-    // In that case, there would be an error of +/- 1.
-    (result + i)->x = low;
-    if (low < HALF_INT_RANGE)
-    {
-      dAccumulator = floor((dAccumulator * dInvLimbRange) + 0.25);
-    }
-    else
-    {
-      dAccumulator = floor((dAccumulator * dInvLimbRange) - 0.25);
-    }
-    low = (int)dAccumulator;
-    low = UintToInt((unsigned int)low & MAX_VALUE_LIMB);
-    ptrFactorBig++;
-    ptrTestNbr++;
-  }
-#endif
-  while (((unsigned int)(result + nbrLen)->x & MAX_VALUE_LIMB) != 0U)
-  {
+
+  while (((unsigned int)(result + nbrLen)->x & MAX_VALUE_LIMB) != 0U) {
     ptrFactorBig = result;
     ptrTestNbr = pTestNbr;
     unsigned int cy = 0;
@@ -168,16 +131,15 @@ void modmultIntExtended(limb* factorBig, int factorInt, limb* result, const limb
   }
 }
 
-void modmultInt(limb* factorBig, int factorInt, limb* result)
-{
+void modmultInt(limb* factorBig, int factorInt, limb* result) {
   modmultIntExtended(factorBig, factorInt, result, TestNbr, NumberLength);
 }
 
 // Compute power = base^exponent (mod modulus)
 // Assumes GetMontgomeryParms routine for modulus already called.
 // This works only for odd moduli.
-void BigIntModularPower(const BigInteger* base, const BigInteger* exponent, BigInteger* power)
-{
+void BigIntModularPower(const BigInteger* base, const BigInteger* exponent,
+                        BigInteger* power) {
   int lenBytes;
   CompressLimbsBigInteger(aux5, base);
   modmult(aux5, MontgomeryMultR2, aux6);   // Convert base to Montgomery notation.
@@ -193,18 +155,14 @@ void BigIntModularPower(const BigInteger* base, const BigInteger* exponent, BigI
 //        exp  = exponent.
 //        nbrGroupsExp = number of limbs of exponent.
 // Output: power = power in Montgomery notation.
-void modPow(const limb* base, const limb* exp, int nbrGroupsExp, limb* power)
-{
+void modPow(const limb* base, const limb* exp, int nbrGroupsExp, limb* power) {
   int lenBytes = (NumberLength + 1) * (int)sizeof(*power);
   (void)memcpy(power, MontgomeryMultR1, lenBytes);  // power <- 1
-  for (int index = nbrGroupsExp - 1; index >= 0; index--)
-  {
+  for (int index = nbrGroupsExp - 1; index >= 0; index--) {
     int groupExp = (exp + index)->x;
-    for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1)
-    {
+    for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
       modmult(power, power, power);
-      if (((unsigned int)groupExp & mask) != 0U)
-      {
+      if (((unsigned int)groupExp & mask) != 0U) {
         modmult(power, base, power);
       }
     }
@@ -214,34 +172,27 @@ void modPow(const limb* base, const limb* exp, int nbrGroupsExp, limb* power)
 // Input: base = base in Montgomery notation.
 //        exp  = exponent.
 // Output: power = power in Montgomery notation.
-void modPowLimb(const limb* base, const limb* exp, limb* power)
-{
+static void modPowLimb(const limb* base, const limb* exp, limb* power) {
   int groupExp;
   int lenBytes = (NumberLength + 1) * (int)sizeof(*power);
   (void)memcpy(power, MontgomeryMultR1, lenBytes);  // power <- 1
   groupExp = exp->x;
-  for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1)
-  {
+  for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
     modmult(power, power, power);
-    if (((unsigned int)groupExp & mask) != 0U)
-    {
+    if (((unsigned int)groupExp & mask) != 0U) {
       modmult(power, base, power);
     }
   }
 }
 
-void modPowBaseInt(int base, const limb* exp, int nbrGroupsExp, limb* power)
-{
+void modPowBaseInt(int base, const limb* exp, int nbrGroupsExp, limb* power) {
   int NumberLengthBytes = (NumberLength + 1) * (int)sizeof(limb);
   (void)memcpy(power, MontgomeryMultR1, NumberLengthBytes);  // power <- 1
-  for (int index = nbrGroupsExp - 1; index >= 0; index--)
-  {
+  for (int index = nbrGroupsExp - 1; index >= 0; index--) {
     int groupExp = (exp + index)->x;
-    for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1)
-    {
+    for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
       modmult(power, power, power);
-      if (((unsigned int)groupExp & mask) != 0U)
-      {
+      if (((unsigned int)groupExp & mask) != 0U) {
         modmultInt(power, base, power);
       }
     }
@@ -250,15 +201,14 @@ void modPowBaseInt(int base, const limb* exp, int nbrGroupsExp, limb* power)
 
 /* U' <- eU + fV, V' <- gU + hV                                        */
 /* U <- U', V <- V'                                                    */
-static void AddMult(limb* firstBig, int e, int f, limb* secondBig, int g, int h, int nbrLen)
-{
+static void AddMult(limb* firstBig, int e, int f, limb* secondBig,
+                    int g, int h, int nbrLen) {
   limb* ptrFirstBig = firstBig;
   limb* ptrSecondBig = secondBig;
-#ifdef _USING64BITS_
+
   int64_t carryU = 0;
   int64_t carryV = 0;
-  for (int ctr = 0; ctr <= nbrLen; ctr++)
-  {
+  for (int ctr = 0; ctr <= nbrLen; ctr++) {
     int u = ptrFirstBig->x;
     int v = ptrSecondBig->x;
     carryU += (u * (int64_t)e) + (v * (int64_t)f);
@@ -270,56 +220,11 @@ static void AddMult(limb* firstBig, int e, int f, limb* secondBig, int g, int h,
     carryU >>= BITS_PER_GROUP;
     carryV >>= BITS_PER_GROUP;
   }
-#else
-  double dVal = 1.0 / (double)LIMB_RANGE;
-  int carryU = 0;
-  int carryV = 0;
-  double dFactorE = (double)e;
-  double dFactorF = (double)f;
-  double dFactorG = (double)g;
-  double dFactorH = (double)h;
-  for (int ctr = 0; ctr <= nbrLen; ctr++)
-  {
-    int u = ptrFirstBig->x;
-    int v = ptrSecondBig->x;
-    int lowU = carryU + (u * e) + (v * f);
-    int lowV = carryV + (u * g) + (v * h);
-    lowU = UintToInt((unsigned int)lowU & MAX_VALUE_LIMB);
-    lowV = UintToInt((unsigned int)lowV & MAX_VALUE_LIMB);
-    // Subtract or add 0.25 so the multiplication by dVal is not nearly an integer.
-    // In that case, there would be an error of +/- 1.
-    double dCarry = ((double)carryU + (double)u * dFactorE +
-      (double)v * dFactorF) * dVal;
-    if (lowU < HALF_INT_RANGE)
-    {
-      carryU = (int)floor(dCarry + 0.25);
-    }
-    else
-    {
-      carryU = (int)floor(dCarry - 0.25);
-    }
-    dCarry = ((double)carryV + (double)u * dFactorG +
-      (double)v * dFactorH) * dVal;
-    if (lowV < HALF_INT_RANGE)
-    {
-      carryV = (int)floor(dCarry + 0.25);
-    }
-    else
-    {
-      carryV = (int)floor(dCarry - 0.25);
-    }
-    ptrFirstBig->x = lowU;
-    ptrSecondBig->x = lowV;
-    ptrFirstBig++;
-    ptrSecondBig++;
-  }
-#endif
 }
 
 // Perform first <- (first - second) / 2
 // first must be greater than second.
-static int HalveDifference(limb* first, const limb* second, int length)
-{
+static int HalveDifference(limb* first, const limb* second, int length) {
   int len = length;
   int i;
   int borrow;
@@ -1206,15 +1111,8 @@ void GetMontgomeryParms(int len)
 // Modulus has NumberLength limbs.
 void AdjustModN(limb *Nbr, const limb *Modulus, int nbrLen)
 {
-#ifdef _USING64BITS_
   int64_t carry;
-#else
-  int carry;
-  double dVal = 1.0 / (double)LIMB_RANGE;
-  double dSquareLimb = (double)LIMB_RANGE * (double)LIMB_RANGE;
-  double dDelta;
-  double dTrialQuotient;
-#endif
+
   int i;
   int TrialQuotient;
   double dNbr;
@@ -1227,47 +1125,19 @@ void AdjustModN(limb *Nbr, const limb *Modulus, int nbrLen)
   {   // Maximum value for limb.
     TrialQuotient = MAX_VALUE_LIMB;
   }
-#ifndef _USING64BITS_
-  dTrialQuotient = (double)TrialQuotient;
-  dDelta = 0;
-#endif
+
   // Compute Nbr <- Nbr - TrialQuotient * Modulus
   carry = 0;
-  for (i = 0; i <= nbrLen; i++)
-  {
-#ifdef _USING64BITS_
+  for (i = 0; i <= nbrLen; i++) {
     carry += (int64_t)(Nbr+i)->x - ((Modulus+i)->x * (int64_t)TrialQuotient);
     (Nbr + i)->x = UintToInt((unsigned int)carry & MAX_VALUE_LIMB);
     carry >>= BITS_PER_GROUP;
-#else
-    int low = ((Nbr + i)->x - ((Modulus + i)->x * TrialQuotient) + carry) & MAX_INT_NBR;
-    // Subtract or add 0x20000000 so the multiplication by dVal is not nearly an integer.
-    // In that case, there would be an error of +/- 1.
-    double dAccumulator = (double)Nbr[i].x - ((double)Modulus[i].x * dTrialQuotient) +
-      (double)carry + dDelta;
-    dDelta = 0.0;
-    if (dAccumulator < 0.0)
-    {
-      dAccumulator += dSquareLimb;
-      dDelta = -(double)LIMB_RANGE;
-    }
-    if (low < HALF_INT_RANGE)
-    {
-      carry = (int)floor((dAccumulator + (double)FOURTH_INT_RANGE)*dVal);
-    }
-    else
-    {
-      carry = (int)floor((dAccumulator - (double)FOURTH_INT_RANGE)*dVal);
-    }
-    (Nbr + i)->x = low;
-#endif
   }
+
   (Nbr + i)->x = carry & MAX_INT_NBR;
-  if (((unsigned int)Nbr[nbrLen].x & MAX_VALUE_LIMB) != 0U)
-  {
+  if (((unsigned int)Nbr[nbrLen].x & MAX_VALUE_LIMB) != 0U) {
     unsigned int cy = 0;
-    for (i = 0; i < nbrLen; i++)
-    {
+    for (i = 0; i < nbrLen; i++) {
       cy += (unsigned int)(Nbr + i)->x + (unsigned int)(Modulus+i)->x;
       (Nbr + i)->x = UintToInt(cy & MAX_VALUE_LIMB);
       cy >>= BITS_PER_GROUP;
@@ -1277,8 +1147,7 @@ void AdjustModN(limb *Nbr, const limb *Modulus, int nbrLen)
 }
 
 void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum,
-  const limb *mod, int nbrLen)
-{
+                   const limb *mod, int nbrLen) {
   unsigned int carry;
   unsigned int borrow;
   int i;
@@ -1970,12 +1839,9 @@ void modmult(const limb* factor1, const limb* factor2, limb* product)
     endBigModmult(aux2, product);
     return;
   }
-       // Small numbers.
-#ifdef _USING64BITS_
+  // Small numbers.
   switch (NumberLength)
-#endif
   {
-#ifdef _USING64BITS_
   case 2:
     MontgomeryMult2(factor1, factor2, product);
     return;
@@ -2009,8 +1875,7 @@ void modmult(const limb* factor1, const limb* factor2, limb* product)
   default:    // 12 or more limbs.
     NumberLengthBytes = (NumberLength + 1) * (int)sizeof(limb);
     (void)memset(Prod, 0, NumberLengthBytes);
-    for (int i = 0; i < NumberLength; i++)
-    {
+    for (int i = 0; i < NumberLength; i++) {
       int32_t Nbr = (factor1 + i)->x;
       int64_t Pr = ((int64_t)Nbr * (int64_t)factor2->x) + (int64_t)Prod[0];
       int32_t MontDig = ((int32_t)Pr * MontgomeryMultN[0].x) & MAX_INT_NBR;
@@ -2024,61 +1889,9 @@ void modmult(const limb* factor1, const limb* factor2, limb* product)
       }
       Prod[NumberLength - 1] = (int)(Pr >> BITS_PER_GROUP);
     }
-#else
-    double dLimbRange = (double)LIMB_RANGE;
-    double dInvLimbRange = 1.0 / dLimbRange;
-    NumberLengthBytes = NumberLength * (int)sizeof(limb);
-    (void)memset(Prod, 0, NumberLengthBytes);
-    for (int i = 0; i < NumberLength; i++)
-    {
-      int Nbr = (factor1 + i)->x;
-      double dNbr = (double)Nbr;
-      int low = (Nbr * factor2->x) + Prod[0];
-      double dAccum = dNbr * (double)factor2->x + (double)Prod[0];
-      int MontDig = (low * MontgomeryMultN[0].x) & MAX_INT_NBR;
-      double dMontDig = (double)MontDig;
-      dAccum -= dMontDig * (double)TestNbr[0].x;
-      // At this moment dAccum is multiple of LIMB_RANGE.
-      dAccum = floor((dAccum * dInvLimbRange) + 0.5);
-      low = ((int)dAccum - (MontDig * TestNbr[1].x) + (Nbr * (factor2 + 1)->x) + Prod[1]) &
-        MAX_INT_NBR;
-      dAccum += (dNbr * (double)(factor2 + 1)->x) - (dMontDig * (double)TestNbr[1].x) +
-        (double)Prod[1];
-      Prod[0] = low;
-      for (int j = 2; j < NumberLength; j++)
-      {
-        // Subtract or add 0x20000000 so the multiplication by dVal is not nearly an integer.
-        // In that case, there would be an error of +/- 1.
-        if (low < HALF_INT_RANGE)
-        {
-          dAccum = ((dAccum + (double)FOURTH_INT_RANGE) * dInvLimbRange);
-        }
-        else
-        {
-          dAccum = ((dAccum - (double)FOURTH_INT_RANGE) * dInvLimbRange);
-        }
-        low = (int)(dAccum - (floor(dAccum * dInvLimbRange) * dLimbRange));
-        dAccum += (dNbr * (double)(factor2 + j)->x) - (dMontDig * (double)TestNbr[j].x) +
-          (double)Prod[j];
-        low = (low - (MontDig * TestNbr[j].x) + (Nbr * (factor2 + j)->x) + Prod[j]) &
-          MAX_INT_NBR;
-        Prod[j - 1] = low;
-      }
-      // Casting from double to int truncates to nearest to zero,
-      // so the conversion is done on non-negative numbers.
-      if (low < HALF_INT_RANGE)
-      {
-        dAccum = (dAccum * dInvLimbRange) + 2147483648.25;
-      }
-      else
-      {
-        dAccum = (dAccum * dInvLimbRange) + 2147483647.75;
-      }
-      Prod[NumberLength - 1] = (unsigned int)dAccum ^ LIMB_RANGE;
-    }
-#endif
-    if (Prod[NumberLength - 1] < 0)
-    {        // Prod < 0, so perform Prod <- Prod + TestNbr.
+
+    if (Prod[NumberLength - 1] < 0) {
+      // Prod < 0, so perform Prod <- Prod + TestNbr.
       unsigned int carry = 0U;
       for (int idx = 0; idx < NumberLength; idx++)
       {

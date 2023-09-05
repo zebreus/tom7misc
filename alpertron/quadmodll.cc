@@ -510,22 +510,20 @@ struct QuadModLL {
     TestNbr[NumberLength].x = 0;
     GetMontgomeryParms(NumberLength);
     CopyBigInt(&Q, &prime);
-    if ((prime.limbs[0].x & 3) == 3)
-    {                 // prime mod 4 = 3
+    if ((prime.limbs[0].x & 3) == 3) {
+      // prime mod 4 = 3
       subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
       BigIntModularPower(&Aux[3], &Q, &SqrtDisc);
-    }
-    else
-    {
+    } else {
       limb* toConvert;
       // Convert discriminant to Montgomery notation.
       CompressLimbsBigInteger(Aux[5].limbs, &Aux[3]);
       modmult(Aux[5].limbs, MontgomeryMultR2, Aux[6].limbs);  // u
-      if ((prime.limbs[0].x & 7) == 5)
-      {              // prime mod 8 = 5: use Atkin's method for modular square roots.
-         // Step 1. v <- (2u)^((p-5)/8) mod p
-         // Step 2. i <- (2uv^2) mod p
-         // Step 3. square root of u <- uv (i-1)
+      if ((prime.limbs[0].x & 7) == 5) {
+        // prime mod 8 = 5: use Atkin's method for modular square roots.
+        // Step 1. v <- (2u)^((p-5)/8) mod p
+        // Step 2. i <- (2uv^2) mod p
+        // Step 3. square root of u <- uv (i-1)
         // Step 1.
         subtractdivide(&Q, 5, 8);   // Q <- (prime-5)/8.
         AddBigNbrMod(Aux[6].limbs, Aux[6].limbs, Aux[7].limbs); // 2u
@@ -541,9 +539,8 @@ struct QuadModLL {
         modmult(Aux[8].limbs, Aux[9].limbs, Aux[9].limbs);           // v*(i-1)
         modmult(Aux[6].limbs, Aux[9].limbs, Aux[9].limbs);           // u*v*(i-1)
         toConvert = Aux[9].limbs;
-      }
-      else
-      {          // prime = 1 (mod 8). Use Shanks' method for modular square roots.
+      } else {
+        // prime = 1 (mod 8). Use Shanks' method for modular square roots.
         // Step 1. Select e >= 3, q odd such that p = 2^e * q + 1.
         // Step 2. Choose x at random in the range 1 < x < p such that jacobi (x, p) = -1.
         // Step 3. Set z <- x^q (mod p).
