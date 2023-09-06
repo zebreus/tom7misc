@@ -35,8 +35,9 @@ int BigIntToArray(const BigInt &b, int *arr) {
   BigInteger tmp;
   BigIntToBigInteger(b, &tmp);
 
-  NumberLength = tmp.nbrLimbs;
-  BigInteger2IntArray(arr, &tmp);
+  const int number_length = tmp.nbrLimbs;
+  NumberLength = number_length;
+  BigInteger2IntArray(number_length, arr, &tmp);
   return 1 + *arr;
 }
 

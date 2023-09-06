@@ -32,10 +32,6 @@ enum eOper {
   OPERATION_XOR,
 };
 
-static struct {
-  unsigned int seed[4];
-} randomSeed;
-
 static BigInteger Temp;
 static BigInteger Temp2;
 static BigInteger Temp3;
@@ -44,8 +40,6 @@ static BigInteger Base;
 static BigInteger Power;
 static bool ProcessExpon[(MAX_LEN*BITS_PER_GROUP) + 1000];
 static bool primes[(MAX_LEN*BITS_PER_GROUP) + 1000];
-
-int smallPrimes[SMALL_PRIMES_ARRLEN+1];
 
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc)
 {
@@ -1092,11 +1086,12 @@ static int getNbrLimbs(int number_length, const limb *bigNbr) {
   return 1;
 }
 
-void BigInteger2IntArray(/*@out@*/int *ptrValues, const BigInteger *bigint) {
+void BigInteger2IntArray(int number_length,
+                         /*@out@*/int *ptrValues, const BigInteger *bigint) {
   int* pValues = ptrValues;
   const limb *srcLimb = bigint->limbs;
-  assert(NumberLength >= 1);
-  if (NumberLength == 1)
+  assert(number_length >= 1);
+  if (number_length == 1)
   {
     *pValues = ((bigint->sign == SIGN_POSITIVE)? 1: -1);
     *(pValues + 1) = srcLimb->x;
@@ -1104,7 +1099,7 @@ void BigInteger2IntArray(/*@out@*/int *ptrValues, const BigInteger *bigint) {
   else
   {
     int nbrLimbs;
-    nbrLimbs = getNbrLimbs(NumberLength, srcLimb);
+    nbrLimbs = getNbrLimbs(number_length, srcLimb);
     *pValues = ((bigint->sign == SIGN_POSITIVE)? nbrLimbs : -nbrLimbs);
     pValues++;
     for (int ctr = 0; ctr < nbrLimbs; ctr++)
@@ -1116,10 +1111,10 @@ void BigInteger2IntArray(/*@out@*/int *ptrValues, const BigInteger *bigint) {
   }
 }
 
-void UncompressLimbsBigInteger(const limb *ptrValues, /*@out@*/BigInteger *bigint)
-{
-  assert(NumberLength >= 1);
-  if (NumberLength == 1)
+void UncompressLimbsBigInteger(int number_length,
+                               const limb *ptrValues, /*@out@*/BigInteger *bigint) {
+  assert(number_length >= 1);
+  if (number_length == 1)
   {
     bigint->limbs[0].x = ptrValues->x;
     bigint->nbrLimbs = 1;
@@ -1128,10 +1123,10 @@ void UncompressLimbsBigInteger(const limb *ptrValues, /*@out@*/BigInteger *bigin
   {
     int nbrLimbs;
     const limb *ptrValue1;
-    int numberLengthBytes = NumberLength * (int)sizeof(limb);
+    int numberLengthBytes = number_length * (int)sizeof(limb);
     (void)memcpy(bigint->limbs, ptrValues, numberLengthBytes);
-    ptrValue1 = ptrValues + NumberLength;
-    for (nbrLimbs = NumberLength; nbrLimbs > 1; nbrLimbs--)
+    ptrValue1 = ptrValues + number_length;
+    for (nbrLimbs = number_length; nbrLimbs > 1; nbrLimbs--)
     {
       ptrValue1--;
       if (ptrValue1->x != 0)
@@ -1626,113 +1621,50 @@ void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs)
   *pShRight = power2;
 }
 
-// Calculate Jacobi symbol by following algorithm 2.3.5 of C&P book.
-int JacobiSymbol(int upper, int lower)
-{
-  int a = upper % lower;
-  int m = lower;
-  int t = 1;
-  while (a != 0)
-  {
-    int tmp;
-    while ((a & 1) == 0)
-    {     // a is even.
-      a >>= 1;
-      if (((m & 7) == 3) || ((m & 7) == 5))
-      {   // m = 3 or m = 5 (mod 8)
-        t = -t;
-      }
-    }
-    tmp = a; a = m; m = tmp;   // Exchange a and m.
-    if ((a & m & 3) == 3)
-    {   // a = 3 and m = 3 (mod 4)
-      t = -t;
-    }
-    a = a % m;
-  }
-  if ((m == 1) || (m == -1))
-  {
-    return t;
-  }
-  return 0;
-}
-
 int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower)
 {
   int t;
   int power2;
-  static BigInteger a;
-  static BigInteger m;
-  static BigInteger tmp;
+  BigInteger a;
+  BigInteger m;
+  BigInteger tmp;
   CopyBigInt(&m, lower);               // m <- lower
   DivideBigNbrByMaxPowerOf2(&power2, m.limbs, &m.nbrLimbs);
   (void)BigIntRemainder(upper, lower, &a);   // a <- upper % lower
   t = 1;
-  if (upper->sign == SIGN_NEGATIVE)
-  {
+  if (upper->sign == SIGN_NEGATIVE) {
     a.sign = SIGN_POSITIVE;
-    if ((m.limbs[0].x & 3) == 3)
-    {
+    if ((m.limbs[0].x & 3) == 3) {
       t = -1;
     }
   }
-  while (!BigIntIsZero(&a))             // a != 0
-  {
-    while ((a.limbs[0].x & 1) == 0)
-    {     // a is even.
+  while (!BigIntIsZero(&a)) {
+    // a != 0
+    while ((a.limbs[0].x & 1) == 0) {
+      // a is even.
       BigIntDivideBy2(&a);              // a <- a / 2
-      if (((m.limbs[0].x & 7) == 3) || ((m.limbs[0].x & 7) == 5))
-      {   // m = 3 or m = 5 (mod 8)
+      if (((m.limbs[0].x & 7) == 3) || ((m.limbs[0].x & 7) == 5)) {
+        // m = 3 or m = 5 (mod 8)
         t = -t;
       }
     }
     CopyBigInt(&tmp, &a);               // Exchange a and m.
     CopyBigInt(&a, &m);
     CopyBigInt(&m, &tmp);
-    if ((a.limbs[0].x & m.limbs[0].x & 3) == 3)
-    {   // a = 3 and m = 3 (mod 4)
+    if ((a.limbs[0].x & m.limbs[0].x & 3) == 3) {
+      // a = 3 and m = 3 (mod 4)
       t = -t;
     }
     (void)BigIntRemainder(&a, &m, &tmp);
-    CopyBigInt(&a, &tmp);              // a <- a % m
+    // a <- a % m
+    CopyBigInt(&a, &tmp);
   }
-  if ((m.nbrLimbs == 1) && (m.limbs[0].x == 1))
-  {              // Absolute value of m is 1.
+  if ((m.nbrLimbs == 1) && (m.limbs[0].x == 1)) {
+    // Absolute value of m is 1.
     return t;
   }
   return 0;
 }
-
-void initializeSmallPrimes(int* pSmallPrimes)
-{
-  int P;
-  int* ptrSmallPrimes = pSmallPrimes;
-  if (*ptrSmallPrimes != 0)
-  {    // Array already initialized.
-    return;
-  }
-  P = 3;
-  *ptrSmallPrimes = 2;
-  ptrSmallPrimes++;
-  for (int ctr = 1; ctr <= SMALL_PRIMES_ARRLEN; ctr++)
-  {     // Loop that fills the SmallPrime array.
-    int Q;
-    *ptrSmallPrimes = P; /* Store prime */
-    ptrSmallPrimes++;
-    do
-    {
-      P += 2;
-      for (Q = 3; (Q * Q) <= P; Q += 2)
-      { /* Check if P is prime */
-        if ((P % Q) == 0)
-        {
-          break;  /* Composite */
-        }
-      }
-    } while ((Q * Q) <= P);
-  }
-}
-
 
 bool BigIntIsZero(const BigInteger *value)
 {
@@ -1806,69 +1738,6 @@ void BigIntPowerOf2(BigInteger *pResult, int exponent)
   pResult->limbs[nbrLimbs].x = UintToInt(1U << power2);
   pResult->nbrLimbs = nbrLimbs + 1;
   pResult->sign = SIGN_POSITIVE;
-}
-
-// Find power of 4 that divides the number.
-// output: pNbrLimbs = pointer to number of limbs
-//         pPower4 = pointer to power of 4.
-void DivideBigNbrByMaxPowerOf4(int *pPower4, limb *value, int *pNbrLimbs)
-{
-  int powerOf4;
-  int powerOf2 = 0;
-  int numLimbs = *pNbrLimbs;
-  assert(numLimbs >= 1);
-  int index;
-  int power2gr;
-  unsigned int shRight;
-  unsigned int shLeft;
-  unsigned int prevLimb;
-  // Start from least significant limb (number zero).
-  for (index = 0; index < numLimbs; index++)
-  {
-    if ((value + index)->x != 0)
-    {
-      break;
-    }
-    powerOf2 += BITS_PER_GROUP;
-  }
-  for (int mask = 0x1; (unsigned int)mask <= MAX_VALUE_LIMB; mask *= 2)
-  {
-    if (((value + index)->x & mask) != 0)
-    {
-      break;
-    }
-    powerOf2++;
-  }
-  powerOf4 = powerOf2 / 2;
-  // Divide value by this power.
-  power2gr = powerOf2 % (2 * BITS_PER_GROUP);
-  shRight = UintToInt((power2gr & (-2)) % BITS_PER_GROUP); // Shift right bit counter
-  if (power2gr == BITS_PER_GROUP)
-  {
-    index--;
-  }
-  prevLimb = 0U;
-  shLeft = (unsigned int)BITS_PER_GROUP - shRight;
-  for (int index2 = numLimbs - 1; index2 >= index; index2--)
-  {
-    unsigned int currLimb = (unsigned int)(value + index2)->x;
-    (value + index2)->x = ((currLimb >> shRight) | (prevLimb << shLeft)) & MAX_VALUE_LIMB;
-    prevLimb = currLimb;
-  }
-  if (index != 0)
-  {
-    int lenBytes = (numLimbs - index) * (int)sizeof(limb);
-    (void)memmove(value, value + index, lenBytes);
-  }
-  if ((value + numLimbs - 1)->x != 0)
-  {
-    *pNbrLimbs = numLimbs - index;
-  }
-  else
-  {
-    *pNbrLimbs = numLimbs - index - 1;
-  }
-  *pPower4 = powerOf4;
 }
 
 static void InternalBigIntLogical(const BigInteger *firstArgum,
@@ -2049,199 +1918,3 @@ void ConvertToTwosComplement(BigInteger *value)
   }
 }
 
-// Use xorshift128 algorithm
-static unsigned int nextRandom(void)
-{
-  uint32_t s;
-  uint32_t t;
-  if ((randomSeed.seed[0] == 0U) && (randomSeed.seed[1] == 0U) &&
-    (randomSeed.seed[2] == 0U) && (randomSeed.seed[3] == 0U))
-  {
-    randomSeed.seed[0] = 178546887U;
-    randomSeed.seed[1] = 7585185U;
-    randomSeed.seed[2] = 430600459U;
-    randomSeed.seed[3] = 136315866U;
-  }
-  t = randomSeed.seed[3];
-  s = randomSeed.seed[0];
-  randomSeed.seed[3] = randomSeed.seed[2];
-  randomSeed.seed[2] = randomSeed.seed[1];
-  randomSeed.seed[1] = s;
-
-  t ^= t << 11;
-  t ^= t >> 8;
-  randomSeed.seed[0] = t ^ s ^ (s >> 19);
-  return randomSeed.seed[0];
-}
-
-void BigIntRandom(BigInteger* pUpperLimit, BigInteger* pLowerLimit, BigInteger* pRandom)
-{
-  int nbrLen;
-  int ctr;
-  BigIntSubt(pUpperLimit, pLowerLimit, &Temp2);  // Temp2 = difference.
-  if (Temp2.sign == SIGN_NEGATIVE)
-  {                                       // Lower limit < Upper limit
-    Temp2.sign = SIGN_POSITIVE;
-    CopyBigInt(&Temp, pLowerLimit);       // Force first argument to
-    CopyBigInt(pLowerLimit, pUpperLimit); // be greater than second.
-    CopyBigInt(pUpperLimit, &Temp);
-  }
-  // Generate random number between 0 and difference.
-  Temp.sign = SIGN_POSITIVE;
-  nbrLen = Temp2.nbrLimbs - 1;
-  for (ctr = 0; ctr < nbrLen; ctr++)
-  { // Set all limbs to random values except the most significant.
-    Temp.limbs[ctr].x = (int)(nextRandom() & 0x7FFFFFFFU);
-  }
-  do
-  { // Loop that sets the most significant limb.
-    Temp.limbs[nbrLen].x = (int)(((uint64_t)nextRandom() *
-      ((uint64_t)Temp2.limbs[nbrLen].x + 1)) >> 32);
-    // Check whether Temp is greater than difference.
-    // Subtract cannot be done because there could be
-    // some most significant limb equal to zero.
-    for (ctr = nbrLen; ctr >= 0; ctr--)
-    {
-      if (Temp.limbs[ctr].x != Temp2.limbs[ctr].x)
-      {
-        break;
-      }
-    }
-  } while ((ctr >= 0) && (Temp.limbs[ctr].x > Temp2.limbs[ctr].x));
-  while ((nbrLen > 0) && (Temp.limbs[nbrLen].x == 0))
-  { // Discard most significant limbs set to zero.
-    nbrLen--;
-  }
-  Temp.nbrLimbs = nbrLen + 1;
-  BigIntAdd(pLowerLimit, &Temp, pRandom);
-}
-
-int intRandom(int firstLimit, int secondLimit)
-{
-  int lowerLimit;
-  int upperLimit;
-  int difference;
-  if (firstLimit < secondLimit)
-  {
-    lowerLimit = firstLimit;
-    upperLimit = secondLimit;
-  }
-  else
-  {
-    lowerLimit = secondLimit;
-    upperLimit = firstLimit;
-  }
-  difference = upperLimit - lowerLimit + 1;
-  return lowerLimit + (int)(((uint64_t)nextRandom() * (uint64_t)difference) >> 32);
-}
-
-static void setNewNbrLimbs(BigInteger* pBigInt, int newNbrLimbs)
-{
-  assert(newNbrLimbs >= 1);
-  int oldNbrLimbs = pBigInt->nbrLimbs;
-  int newNbrBytes = newNbrLimbs * (int)sizeof(limb);
-  if (oldNbrLimbs > newNbrLimbs)
-  {     // Discard non-significant limbs.
-    (void)memmove(&pBigInt->limbs[0], &pBigInt->limbs[oldNbrLimbs - newNbrLimbs], newNbrBytes);
-    pBigInt->nbrLimbs = newNbrLimbs;
-  }
-  else
-  {     // Add requested number of limbs.
-    int bytesToClear = (newNbrLimbs - oldNbrLimbs) * (int)sizeof(limb);
-    (void)memmove(&pBigInt->limbs[newNbrLimbs - oldNbrLimbs], &pBigInt->limbs[0], newNbrBytes);
-    (void)memset(&pBigInt->limbs[0], 0, bytesToClear);
-    pBigInt->nbrLimbs = newNbrLimbs;
-  }
-}
-
-void computeRoot(const BigInteger* argument, BigInteger *nthRoot, int Exponent)
-{
-  static BigInteger NFp1;
-  static BigInteger nthRootSignificantLimbs;
-  static BigInteger rootN1;
-  bool smallBase;
-  int offset;
-  double logN = logBigNbr(argument) / Exponent;  // Find nth root of number to factor.
-  expBigNbr(nthRoot, logN);
-  nthRoot->sign = argument->sign;
-  smallBase = (nthRoot->nbrLimbs == 1) && (nthRoot->limbs[0].x < 1000000000);
-  if (smallBase)
-  {
-    return;
-  }
-    // Compute correct value of nthRoot using Newton's method.
-    // Let x be an approximation to nth root of y.
-    // The next approximation is: x <- (1/n) * ((n-1)*x + y/x^(n-1))
-    // Use up to nthRoot.nbrLimbs + 2 limbs. Discard lowest significant
-    // limbs at each step.
-  int nbrBytes;
-  int maxNbrLimbs = nthRoot->nbrLimbs + 2;
-  CopyBigInt(&nthRootSignificantLimbs, nthRoot);
-  for (int limbsOK = 1; limbsOK < maxNbrLimbs; limbsOK *= 2)
-  {   // Compute rootN1 = x^(n-1)
-    int exponMinus1 = Exponent - 1;
-    bool significantExponBit = false;
-    intToBigInteger(&rootN1, 1);
-    setNewNbrLimbs(&nthRootSignificantLimbs, maxNbrLimbs);
-    for (int mask = 0x100000; mask > 0; mask /= 2)
-    {
-      if (significantExponBit)
-      {
-        (void)BigIntMultiply(&rootN1, &rootN1, &rootN1);
-        setNewNbrLimbs(&rootN1, maxNbrLimbs);
-      }
-      if ((exponMinus1 & mask) != 0)
-      {
-        (void)BigIntMultiply(&rootN1, &nthRootSignificantLimbs, &rootN1);
-        setNewNbrLimbs(&rootN1, maxNbrLimbs);
-        significantExponBit = true;
-      }
-    }
-    // Compute y / x^(n-1)
-    CopyBigInt(&NFp1, argument);
-    setNewNbrLimbs(&NFp1, 2 * maxNbrLimbs);
-    (void)BigIntDivide(&NFp1, &rootN1, &NFp1);
-    setNewNbrLimbs(&NFp1, maxNbrLimbs);
-
-    // From Newton's method for nth root, compute (n-1)*x
-    multint(&nthRootSignificantLimbs, &nthRootSignificantLimbs, exponMinus1);
-
-    // From Newton's method for nth root, compute (n-1)*x + y/x^(n-1)
-    BigIntAdd(&nthRootSignificantLimbs, &NFp1, &nthRootSignificantLimbs);
-    // From Newton's method for nth root, compute (1/n) * ((n-1)*x + y/x^(n-1))
-    subtractdivide(&nthRootSignificantLimbs, 0, exponMinus1 + 1);
-  }
-  // Round nthRootSignificantLimbs and copy it to nthRoot.
-  nbrBytes = nthRoot->nbrLimbs * (int)sizeof(limb);
-  offset = nthRootSignificantLimbs.nbrLimbs - nthRoot->nbrLimbs;
-  (void)memcpy(nthRoot->limbs,
-    &nthRootSignificantLimbs.limbs[offset], nbrBytes);
-  if (nthRootSignificantLimbs.limbs[offset - 1].x >=
-    HALF_INT_RANGE)
-  {
-    addbigint(nthRoot, 1);
-  }
-}
-
-enum eExprErr BigIntRoot(const BigInteger* argument, BigInteger* nthRoot, int Exponent)
-{
-  enum eExprErr rc;
-  if ((argument->sign == SIGN_NEGATIVE) && ((Exponent % 2) == 0))
-  {
-    return EXPR_BASE_MUST_BE_POSITIVE;
-  }
-  computeRoot(argument, nthRoot, Exponent);
-  // At this moment nthRoot is rounded to the root of argument.
-  // Make it floor of root.
-  rc = BigIntPowerIntExp(nthRoot, Exponent, &Temp);
-  if (rc != EXPR_OK)
-  {
-    return rc;
-  }
-  BigIntSubt(argument, &Temp, &Temp);
-  if (Temp.sign == SIGN_NEGATIVE)
-  {
-    addbigint(nthRoot, -1);
-  }
-  return EXPR_OK;
-}

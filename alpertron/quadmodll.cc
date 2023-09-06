@@ -212,7 +212,7 @@ struct QuadModLL {
         BigIntSubt(pValN, ptrSolution1, ptrSolution1);
       }
       CopyBigInt(ptrSolution2, ptrSolution1);
-      BigInteger2IntArray(ptrFactorsMod, pValN);
+      BigInteger2IntArray(NumberLength, ptrFactorsMod, pValN);
       factors->product.push_back({.array = ptrFactorsMod,
                                   .multiplicity = 1});
       // in storage, skip the number of limbs we used
@@ -230,7 +230,7 @@ struct QuadModLL {
       BigIntPowerOf2(ptrSolution1, powerOf2);
       CopyBigInt(&Increment[solutionNbr], ptrSolution1);
       Exponents[solutionNbr] = 1;
-      BigInteger2IntArray(ptrFactorsMod, ptrSolution1);
+      BigInteger2IntArray(NumberLength, ptrFactorsMod, ptrSolution1);
 
       // Port note: Original code didn't advance the factor pointer nor
       // storage pointer (probably because this is not in a loop) but
@@ -605,7 +605,7 @@ struct QuadModLL {
       (void)memset(Aux[4].limbs, 0, NumberLengthBytes);
       Aux[4].limbs[0].x = 1;
       modmult(Aux[4].limbs, toConvert, toConvert);
-      UncompressLimbsBigInteger(toConvert, &SqrtDisc);
+      UncompressLimbsBigInteger(NumberLength, toConvert, &SqrtDisc);
     }
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
     intToBigInteger(&tmp2, 1);
@@ -929,7 +929,7 @@ struct QuadModLL {
     {     // Last modulus is different from ValN.
       CopyBigInt(&LastModulus, pValN);
       NumberLength = pValN->nbrLimbs;
-      BigInteger2IntArray(nbrToFactor, pValN);
+      BigInteger2IntArray(NumberLength, nbrToFactor, pValN);
       factor(pValN, nbrToFactor, factorsMod, astFactorsMod);
     }
     #endif

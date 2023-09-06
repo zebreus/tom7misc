@@ -506,18 +506,6 @@ void BigIntToBigNbr(BigInteger *pBigNbr, const limb *pBigInt, int nbrLenBigInt)
   pBigNbr->nbrLimbs = nbrLimbs;
 }
 
-void GcdBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pGcd, int nbrLen) {
-  int lenBytes;
-  BigInteger big_int_1, big_int_2;
-  BigIntToBigNbr(&big_int_1, pNbr1, nbrLen);
-  BigIntToBigNbr(&big_int_2, pNbr2, nbrLen);
-  BigInteger big_gcd;
-  BigIntGcd(&big_int_1, &big_int_2, &big_gcd);
-  lenBytes = NumberLength * (int)sizeof(int);
-  (void)memset(pGcd, 0, lenBytes);
-  (void)BigNbrToBigInt(&big_gcd, pGcd);
-}
-
 void AdjustBigIntModN(limb *Nbr, const limb *Mod, int nbrLen)
 {
   AdjustModN(Nbr, Mod, nbrLen);

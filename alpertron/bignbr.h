@@ -77,7 +77,6 @@ extern int NumberLength;
 extern enum eNbrCached MontgomeryMultNCached;
 extern enum eNbrCached TestNbrCached;
 extern limb MontgomeryMultN[MAX_LEN];
-extern int smallPrimes[SMALL_PRIMES_ARRLEN+1];
 
 void initializeSmallPrimes(int* pSmallPrimes);
 
@@ -104,17 +103,12 @@ enum eExprErr BigIntRemainder(const BigInteger* pDividend,
   const BigInteger* pDivisor, BigInteger* pRemainder);
 enum eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent, BigInteger *pPower);
 enum eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent, BigInteger *pPower);
-enum eExprErr BigIntRoot(const BigInteger* argument, BigInteger* nthRoot, int Exponent);
-void BigIntRandom(BigInteger* pLowerLimit, BigInteger* pUpperLimit, BigInteger* pRandom);
-int intRandom(int firstLimit, int secondLimit);
+
 void floordiv(const BigInteger *num, const BigInteger *den, BigInteger *result);
 enum eExprErr BigIntMultiplyPower2(BigInteger* pArg, int powerOf2);
 void BigIntMultiplyBy2(BigInteger *nbr);
 void BigIntDivideBy2(BigInteger *nbr);
-void BigInteger2Hex(char** ppDecimal, const BigInteger *pBigInt, int groupLength);
 void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pResult);
-enum eExprErr BigIntLcm(const BigInteger* pArg1, const BigInteger* pArg2,
-  BigInteger* pResult);
 void multint(BigInteger *pResult, const BigInteger *pMult, int factor);
 void multadd(BigInteger *pResult, int iMult, const BigInteger *pMult, int addend);
 void addmult(BigInteger* pResult, const BigInteger* pMult1, int iMult1,
@@ -125,8 +119,6 @@ void subtractdivide(BigInteger *pBigInt, int subt, int divisor);
 void addbigint(BigInteger *pResult, int addend);
 bool TestBigNbrEqual(const BigInteger *pNbr1, const BigInteger *pNbr2);
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc);
-bool ModInvBigNbr(limb *num, limb *inv, limb *mod, int NumberLength);
-int modInv(int NbrMod, int currentPrime);
 int getNbrLimbs(const limb *bigNbr);
 void BigIntDivide2(BigInteger *pArg);
 int PowerCheck(const BigInteger *pBigNbr, BigInteger *pBase);
@@ -136,9 +128,11 @@ void BigIntXor(const BigInteger *firstArg, const BigInteger *secondArg, BigInteg
 void ConvertToTwosComplement(BigInteger *value);
 void IntArray2BigInteger(
     int number_length, const int *ptrValues, /*@out@*/BigInteger *bigint);
-void BigInteger2IntArray(/*@out@*/int *ptrValues, const BigInteger *bigint);
+void BigInteger2IntArray(int number_length,
+                         /*@out@*/int *ptrValues, const BigInteger *bigint);
 int IntArrayCompare(const int* ptrFirst, const int* ptrSecond);
-void UncompressLimbsBigInteger(const limb *ptrValues, /*@out@*/BigInteger *bigint);
+void UncompressLimbsBigInteger(int number_length,
+                               const limb *ptrValues, /*@out@*/BigInteger *bigint);
 void CompressLimbsBigInteger(int number_length,
                              /*@out@*/limb *ptrValues, const BigInteger *bigint);
 void NbrToLimbs(int nbr, /*@out@*/limb *limbs, int len);
@@ -177,27 +171,20 @@ void MultBigNbrComplete(const limb *pFactor1, const limb *pFactor2, limb *pProd,
 void IntToBigNbr(int value, limb *bigNbr, int nbrLength);
 int BigNbrToBigInt(const BigInteger *pBigNbr, limb *pBigInt);
 void BigIntToBigNbr(BigInteger *pBigNbr, const limb *pBigInt, int nbrLenBigInt);
-void GcdBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pGcd, int nbrLen);
 void AdjustBigIntModN(limb *Nbr, const limb *Mod, int nbrLen);
 void MultBigNbrModN(const limb *Nbr1, limb *Nbr2, limb *Prod, const limb *Mod, int nbrLen);
 void MultBigNbrByIntModN(limb *Nbr1, int Nbr2, limb *Prod, const limb *Mod, int nbrLen);
 int intDoubleModPow(int NbrMod, int Expon, int currentPrime);
 void ModInvBigInt(const limb *num, limb *inv, const limb *mod, int nbrLenBigInt);
 void IntToBigNbr(int value, limb *bigNbr, int nbrLength);
-int JacobiSymbol(int upper, int lower);
 int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower);
-void DivideBigNbrByMaxPowerOf4(int *pPower4, limb *value, int *pNbrLimbs);
-
 
 void copyStr(char** pptrString, const char* stringToCopy);
-void computeRoot(const BigInteger* argument, BigInteger* nthRoot, int Exponent);
 
-static inline int UintToInt(unsigned int value)
-{
+static inline int UintToInt(unsigned int value) {
   return (int)value;
 }
-static inline int Uint64ToInt(uint64_t value)
-{
+static inline int Uint64ToInt(uint64_t value) {
   return (int)value;
 }
 #endif
