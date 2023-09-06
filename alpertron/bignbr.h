@@ -39,10 +39,6 @@
 #define LIMB_RANGE            0x80000000U
 #define MAX_VALUE_LIMB        0x7FFFFFFFU
 #define SMALL_NUMBER_BOUND    32768
-#define SMALL_PRIMES_ARRLEN    9592  // Number of primes less than 100000.
-#define LOG_2            0.69314718055994531
-#define LOG_3            1.09861228866810969
-
 
 struct mylimb {
   int x;
@@ -78,8 +74,6 @@ extern enum eNbrCached MontgomeryMultNCached;
 extern enum eNbrCached TestNbrCached;
 extern limb MontgomeryMultN[MAX_LEN];
 
-void initializeSmallPrimes(int* pSmallPrimes);
-
 void squareRoot(const limb *argument, limb *sqRoot, int len, int *pLenSqRoot);
 void GetMontgomeryParms(int len);
 void GetMontgomeryParmsPowerOf2(int powerOf2);
@@ -111,26 +105,17 @@ void BigIntDivideBy2(BigInteger *nbr);
 void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pResult);
 void multint(BigInteger *pResult, const BigInteger *pMult, int factor);
 void multadd(BigInteger *pResult, int iMult, const BigInteger *pMult, int addend);
-void addmult(BigInteger* pResult, const BigInteger* pMult1, int iMult1,
-  const BigInteger* pMult2, int iMult2);
 void BigIntPowerOf2(BigInteger *pResult, int expon);
-int getRemainder(const BigInteger *pBigInt, int divisor);
 void subtractdivide(BigInteger *pBigInt, int subt, int divisor);
 void addbigint(BigInteger *pResult, int addend);
-bool TestBigNbrEqual(const BigInteger *pNbr1, const BigInteger *pNbr2);
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc);
 int getNbrLimbs(const limb *bigNbr);
 void BigIntDivide2(BigInteger *pArg);
-int PowerCheck(const BigInteger *pBigNbr, BigInteger *pBase);
 void BigIntAnd(const BigInteger *firstArg, const BigInteger *secondArg, BigInteger *result);
-void BigIntOr(const BigInteger *firstArg, const BigInteger *secondArg, BigInteger *result);
-void BigIntXor(const BigInteger *firstArg, const BigInteger *secondArg, BigInteger *result);
-void ConvertToTwosComplement(BigInteger *value);
 void IntArray2BigInteger(
     int number_length, const int *ptrValues, /*@out@*/BigInteger *bigint);
 void BigInteger2IntArray(int number_length,
                          /*@out@*/int *ptrValues, const BigInteger *bigint);
-int IntArrayCompare(const int* ptrFirst, const int* ptrSecond);
 void UncompressLimbsBigInteger(int number_length,
                                const limb *ptrValues, /*@out@*/BigInteger *bigint);
 void CompressLimbsBigInteger(int number_length,
@@ -138,16 +123,7 @@ void CompressLimbsBigInteger(int number_length,
 void NbrToLimbs(int nbr, /*@out@*/limb *limbs, int len);
 void ComputeInversePower2(const limb *value, /*@out@*/limb *result, /*@out@*/limb *aux);
 void intToBigInteger(BigInteger *bigint, int value);
-void longToBigInteger(BigInteger *bigint, int64_t value);
-void expBigNbr(BigInteger *bignbr, double logar);
-double logBigNbr(const BigInteger *pBigNbr);
-double logLimbs(const limb *pBigNbr, int nbrLimbs);
 double getMantissa(const limb *ptrLimb, int nbrLimbs);
-double BigInt2double(const BigInteger* value);
-void LenAndLimbs2ArrLimbs(const int *ptrValues, /*@out@*/limb *bigint, int nbrLen);
-void ArrLimbs2LenAndLimbs(/*@out@*/int *ptrValues, const limb *bigint, int nbrLen);
-bool checkOne(const limb *value, int nbrLimbs);
-bool checkMinusOne(const limb *value, int nbrLimbs);
 void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs);
 void BigIntModularPower(const BigInteger *base, const BigInteger *exponent, BigInteger *power);
 
