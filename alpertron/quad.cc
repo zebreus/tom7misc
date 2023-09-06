@@ -26,6 +26,8 @@
 #include "modmult.h"
 #include "baseconv.h"
 
+#include "base/logging.h"
+
 enum eLinearSolution {
   SOLUTION_FOUND = 0,
   NO_SOLUTIONS,

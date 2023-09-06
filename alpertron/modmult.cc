@@ -25,6 +25,8 @@
 #include "bignbr.h"
 #include "karatsuba.h"
 
+#include "base/logging.h"
+
 // Multiply two numbers in Montgomery notation.
 //
 // For large numbers the REDC algorithm is:
@@ -751,8 +753,7 @@ static bool ModInvBigNbr(limb* num, limb* inv, limb* mod, int nbrLen) {
 
 // Compute modular division for odd moduli.
 void BigIntModularDivision(const BigInteger* Num, const BigInteger* Den,
-  const BigInteger* mod, BigInteger* quotient)
-{
+                           const BigInteger* mod, BigInteger* quotient) {
   NumberLength = mod->nbrLimbs;
   // Reduce Num modulo mod.
   (void)BigIntRemainder(Num, mod, &tmpNum);

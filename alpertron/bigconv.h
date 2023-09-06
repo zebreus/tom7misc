@@ -17,6 +17,7 @@ void BigIntToBigInteger(const BigInt &b, BigInteger *g);
 bool ParseBigInteger(const char *str, BigInteger *big);
 
 BigInt BigIntegerToBigInt(const BigInteger *g);
-
+BigInt ArrayToBigInt(int *arr);
+BigInt BigIntegerToBigInt(const BigInteger *g);
 
 #endif

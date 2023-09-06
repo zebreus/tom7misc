@@ -35,9 +35,9 @@ echo quad tests
 ./quad.exe 11 2727 -11 0 0 2727 0 >> coverage.out
 ./quad 999 999 999 777 777 777 0 >> coverage.out
 ./quad -998 997 996 -773 772 771 0 >> coverage.out
-./quad.exe 1 0 1 0 0 -523066703114 0 >> overage.out
-./quad.exe 1 0 1 3 0 -523066703114 0 >> overage.out
-./quad.exe 1 0 1 0 3 -523066703114 0 >> overage.out
+./quad.exe 1 0 1 0 0 -523066703114 0 >> coverage.out
+./quad.exe 1 0 1 3 0 -523066703114 0 >> coverage.out
+./quad.exe 1 0 1 0 3 -523066703114 0 >> coverage.out
 ./quad.exe 1001 -1010 -22211 -47 -131 96489720654166 0 >> coverage.out
 
 echo factor tests
