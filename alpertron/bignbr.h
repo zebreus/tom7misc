@@ -70,6 +70,8 @@ typedef struct BigInteger {
 extern limb TestNbr[MAX_LEN];
 extern limb MontgomeryMultR2[MAX_LEN];
 extern limb MontgomeryMultR1[MAX_LEN];
+
+// XXX!
 extern int NumberLength;
 
 extern enum eNbrCached MontgomeryMultNCached;
@@ -132,19 +134,15 @@ void BigIntAnd(const BigInteger *firstArg, const BigInteger *secondArg, BigInteg
 void BigIntOr(const BigInteger *firstArg, const BigInteger *secondArg, BigInteger *result);
 void BigIntXor(const BigInteger *firstArg, const BigInteger *secondArg, BigInteger *result);
 void ConvertToTwosComplement(BigInteger *value);
-// Output: 0 = probable prime.
-//         1 = composite: not 2-Fermat pseudoprime.
-//         2 = composite: does not pass 2-SPRP test.
-//         3 = composite: does not pass strong Lucas test.
-int BpswPrimalityTest(const BigInteger *pValue);
-void IntArray2BigInteger(const int *ptrValues, /*@out@*/BigInteger *bigint);
+void IntArray2BigInteger(
+    int number_length, const int *ptrValues, /*@out@*/BigInteger *bigint);
 void BigInteger2IntArray(/*@out@*/int *ptrValues, const BigInteger *bigint);
 int IntArrayCompare(const int* ptrFirst, const int* ptrSecond);
 void UncompressLimbsBigInteger(const limb *ptrValues, /*@out@*/BigInteger *bigint);
-void CompressLimbsBigInteger(/*@out@*/limb *ptrValues, const BigInteger *bigint);
+void CompressLimbsBigInteger(int number_length,
+                             /*@out@*/limb *ptrValues, const BigInteger *bigint);
 void NbrToLimbs(int nbr, /*@out@*/limb *limbs, int len);
 void ComputeInversePower2(const limb *value, /*@out@*/limb *result, /*@out@*/limb *aux);
-bool BigNbrIsZero(const limb *value);
 void intToBigInteger(BigInteger *bigint, int value);
 void longToBigInteger(BigInteger *bigint, int64_t value);
 void expBigNbr(BigInteger *bignbr, double logar);

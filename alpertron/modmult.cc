@@ -141,7 +141,7 @@ void modmultInt(limb* factorBig, int factorInt, limb* result) {
 void BigIntModularPower(const BigInteger* base, const BigInteger* exponent,
                         BigInteger* power) {
   int lenBytes;
-  CompressLimbsBigInteger(aux5, base);
+  CompressLimbsBigInteger(NumberLength, aux5, base);
   modmult(aux5, MontgomeryMultR2, aux6);   // Convert base to Montgomery notation.
   modPow(aux6, exponent->limbs, exponent->nbrLimbs, aux5);
   lenBytes = NumberLength * (int)sizeof(limb);
@@ -770,11 +770,11 @@ void BigIntModularDivision(const BigInteger* Num, const BigInteger* Den,
   {
     BigIntAdd(&tmpDen, mod, &tmpDen);
   }
-  CompressLimbsBigInteger(aux3, &tmpDen);
+  CompressLimbsBigInteger(NumberLength, aux3, &tmpDen);
   modmult(aux3, MontgomeryMultR2, aux3);      // aux3 <- Den in Montgomery notation
                                               // tmpDen.limbs <- 1 / Den in Montg notation.
   (void)ModInvBigNbr(aux3, tmpDen.limbs, TestNbr, NumberLength);
-  CompressLimbsBigInteger(aux4, &tmpNum);
+  CompressLimbsBigInteger(NumberLength, aux4, &tmpNum);
   modmult(tmpDen.limbs, aux4, aux3);          // aux3 <- Num / Den in standard notation.
   UncompressLimbsBigInteger(aux3, quotient);  // Get Num/Den
 }
@@ -896,10 +896,10 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
   (void)memcpy(TestNbr, oddValue.limbs, NumberLengthBytes);
   TestNbr[NumberLength].x = 0;
   GetMontgomeryParms(NumberLength);
-  CompressLimbsBigInteger(aux3, &tmpDen);
+  CompressLimbsBigInteger(NumberLength, aux3, &tmpDen);
   modmult(aux3, MontgomeryMultR2, aux3);      // aux3 <- Den in Montgomery notation
   (void)ModInvBigNbr(aux3, aux3, TestNbr, NumberLength); // aux3 <- 1 / Den in Montg notation.
-  CompressLimbsBigInteger(aux4, &tmpNum);
+  CompressLimbsBigInteger(NumberLength, aux4, &tmpNum);
   modmult(aux3, aux4, resultModOdd);          // resultModOdd <- Num / Dev in standard notation.
 
   // Compute inverse mod power of 2.
@@ -910,7 +910,7 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
     return;
   }
   NumberLength = (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
-  CompressLimbsBigInteger(aux3, Den);
+  CompressLimbsBigInteger(NumberLength, aux3, Den);
   ComputeInversePower2(aux3, aux4, aux);
   powerOf2Exponent = shRight;
   modmult(Num->limbs, aux4, resultModPower2); // resultModPower2 <- Num / Dev modulus 2^k.
@@ -958,8 +958,10 @@ enum eExprErr BigIntGeneralModularPower(const BigInteger* base, const BigInteger
       lenBytes = (NumberLength - 1) * (int)sizeof(limb);
       (void)memset(&MontgomeryMultR1[1], 0, lenBytes);
     }
-    NumberLength = (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
-    CompressLimbsBigInteger(aux3, base);
+    const int number_length =
+      (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
+    NumberLength = number_length;
+    CompressLimbsBigInteger(number_length, aux3, base);
     powerOf2Exponent = shRight;
     modPowLimb(aux3, exponent->limbs, resultModPower2);
     ChineseRemainderTheorem(shRight, power);
@@ -1814,8 +1816,9 @@ void modmult(const limb* factor1, const limb* factor2, limb* product)
     UncompressLimbsBigInteger(factor1, &tmpFact1);
     UncompressLimbsBigInteger(factor2, &tmpFact2);
     (void)BigIntMultiply(&tmpFact1, &tmpFact2, &tmpFact1);
-    CompressLimbsBigInteger(product, &tmpFact1);
-    (product + (powerOf2Exponent / BITS_PER_GROUP))->x &= (1 << (powerOf2Exponent % BITS_PER_GROUP)) - 1;
+    CompressLimbsBigInteger(NumberLength, product, &tmpFact1);
+    (product + (powerOf2Exponent / BITS_PER_GROUP))->x &=
+      (1 << (powerOf2Exponent % BITS_PER_GROUP)) - 1;
     return;
   }
   if (NumberLength <= 1)

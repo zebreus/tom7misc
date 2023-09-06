@@ -95,7 +95,7 @@ struct QuadModLL {
       CopyBigInt(&currentSolution, &Aux[0]);
       const int nbrFactors = factors.product.size();
       const sFactorz *pstFactor = &factors.product[0];
-      IntArray2BigInteger(pstFactor->array, &prime);
+      IntArray2BigInteger(NumberLength, pstFactor->array, &prime);
       (void)BigIntPowerIntExp(&prime, pstFactor->multiplicity, &Mult);
       for (T1 = 1; T1 < nbrFactors; T1++) {
         pstFactor++;
@@ -110,14 +110,15 @@ struct QuadModLL {
         } else {
           BigIntAdd(&Aux[T1], &Solution1[T1], &Aux[T1]);
         }
-        NumberLength = *pstFactor->array;
-        IntArray2BigInteger(pstFactor->array, &prime);
+        const int number_length = *pstFactor->array;
+        NumberLength = number_length;
+        IntArray2BigInteger(number_length, pstFactor->array, &prime);
         (void)BigIntPowerIntExp(&prime, pstFactor->multiplicity, &K1);
         CopyBigInt(&prime, &K1);
         for (int E = 0; E < T1; E++) {
           int NumberLengthBytes;
           BigIntSubt(&Aux[T1], &Aux[E], &Q);
-          IntArray2BigInteger(factors.product[E].array, &bigBase);
+          IntArray2BigInteger(NumberLength, factors.product[E].array, &bigBase);
           (void)BigIntPowerIntExp(&bigBase, factors.product[E].multiplicity, &L);
           NumberLength = prime.nbrLimbs;
           NumberLengthBytes = NumberLength * (int)sizeof(limb);
@@ -145,7 +146,7 @@ struct QuadModLL {
         BigIntSubt(&V, pGcdAll, &K1);
       }
       for (T1 = nbrFactors - 1; T1 >= 0; T1--) {
-        IntArray2BigInteger(factors.product[T1].array, &bigBase);
+        IntArray2BigInteger(NumberLength, factors.product[T1].array, &bigBase);
         (void)BigIntPowerIntExp(&bigBase, factors.product[T1].multiplicity, &prime);
         BigIntSubt(&Solution1[T1], &Solution2[T1], &K1);
         if ((K1.nbrLimbs == 1) && (K1.limbs[0].x == 0)) {
@@ -517,7 +518,7 @@ struct QuadModLL {
     } else {
       limb* toConvert;
       // Convert discriminant to Montgomery notation.
-      CompressLimbsBigInteger(Aux[5].limbs, &Aux[3]);
+      CompressLimbsBigInteger(NumberLength, Aux[5].limbs, &Aux[3]);
       modmult(Aux[5].limbs, MontgomeryMultR2, Aux[6].limbs);  // u
       if ((prime.limbs[0].x & 7) == 5) {
         // prime mod 8 = 5: use Atkin's method for modular square roots.
@@ -950,8 +951,9 @@ struct QuadModLL {
         pstFactor++;
         continue;
       }
-      NumberLength = *pstFactor->array;
-      IntArray2BigInteger(pstFactor->array, &prime);
+      const int number_length = *pstFactor->array;
+      NumberLength = number_length;
+      IntArray2BigInteger(number_length, pstFactor->array, &prime);
       (void)BigIntPowerIntExp(&prime, expon, &V);
       (void)BigIntRemainder(pValA, &prime, &L);
       if (BigIntIsZero(&L) && !((prime.nbrLimbs == 1) && (prime.limbs[0].x == 2))) {

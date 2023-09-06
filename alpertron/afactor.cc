@@ -35,8 +35,8 @@ static void PrintIntArray(const int *arr) {
   // fflush(stdout);
 
   BigInteger tmp;
-  NumberLength = *arr;
-  IntArray2BigInteger(arr, &tmp);
+  int number_length = *arr;
+  IntArray2BigInteger(number_length, arr, &tmp);
 
   PrintBigInteger(&tmp);
 }

@@ -539,7 +539,7 @@ static void showFactors(const BigInteger *value, const Factors &factors) {
   for (int index = 0; index < numFactors; index++) {
     const sFactorz &fact = factors.product[index];
     // XXX why not setting NumberLength here?
-    IntArray2BigInteger(fact.array, &qmllr.prime);
+    IntArray2BigInteger(NumberLength, fact.array, &qmllr.prime);
     if (fact.multiplicity == 0) {
       continue;
     }
@@ -1798,8 +1798,9 @@ static void NonSquareDiscriminant(void) {
           isDescending[index] = 1;
           continue;
         } else {
-          NumberLength = *fact->array;
-          IntArray2BigInteger(fact->array, &bigTmp);
+          const int number_length = *fact->array;
+          NumberLength = number_length;
+          IntArray2BigInteger(number_length, fact->array, &bigTmp);
           (void)BigIntMultiply(&bigTmp, &bigTmp, &U3);
           fact->multiplicity -= 2;
           // Divide by square of prime.
@@ -1817,8 +1818,9 @@ static void NonSquareDiscriminant(void) {
           isDescending[index] = 0;
           continue;
         } else {
-          NumberLength = *fact->array;
-          IntArray2BigInteger(fact->array, &bigTmp);
+          const int number_length = *fact->array;
+          NumberLength = number_length;
+          IntArray2BigInteger(number_length, fact->array, &bigTmp);
           (void)BigIntMultiply(&bigTmp, &bigTmp, &U3);
           fact->multiplicity += 2;
           // Multiply by square of prime.
@@ -2612,7 +2614,7 @@ static void PerfectSquareDiscriminant(void) {
           pstFactor++;
           continue;
         }
-        IntArray2BigInteger(pstFactor->array, &qmllr.prime);
+        IntArray2BigInteger(NumberLength, pstFactor->array, &qmllr.prime);
         (void)BigIntMultiply(&currentFactor, &qmllr.prime, &currentFactor);
         counters[index]++;
         break;
@@ -2623,7 +2625,7 @@ static void PerfectSquareDiscriminant(void) {
         pstFactor++;
         continue;
       }
-      IntArray2BigInteger(pstFactor->array, &qmllr.prime);
+      IntArray2BigInteger(NumberLength, pstFactor->array, &qmllr.prime);
       (void)BigIntDivide(&currentFactor, &qmllr.prime, &currentFactor);
       counters[index]--;
       break;
