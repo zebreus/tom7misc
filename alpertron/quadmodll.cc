@@ -29,6 +29,7 @@
 #include "modmult.h"
 #include "baseconv.h"
 
+extern int NumberLength;
 
 static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
   pBigNbr->nbrLimbs = numlen;
@@ -526,8 +527,10 @@ struct QuadModLL {
         // Step 2. i <- (2uv^2) mod p
         // Step 3. square root of u <- uv (i-1)
         // Step 1.
-        subtractdivide(&Q, 5, 8);   // Q <- (prime-5)/8.
-        AddBigNbrMod(Aux[6].limbs, Aux[6].limbs, Aux[7].limbs); // 2u
+        // Q <- (prime-5)/8.
+        subtractdivide(&Q, 5, 8);
+        // 2u
+        AddBigNbrModN(Aux[6].limbs, Aux[6].limbs, Aux[7].limbs, TestNbr, NumberLength);
         modPow(Aux[7].limbs, Q.limbs, Q.nbrLimbs, Aux[8].limbs);
         // At this moment Aux[7].limbs is v in Montgomery notation.
 
@@ -536,9 +539,12 @@ struct QuadModLL {
         modmult(Aux[7].limbs, Aux[9].limbs, Aux[9].limbs);  // i
 
         // Step 3.
-        SubtBigNbrMod(Aux[9].limbs, MontgomeryMultR1, Aux[9].limbs); // i-1
-        modmult(Aux[8].limbs, Aux[9].limbs, Aux[9].limbs);           // v*(i-1)
-        modmult(Aux[6].limbs, Aux[9].limbs, Aux[9].limbs);           // u*v*(i-1)
+        // i-1
+        SubtBigNbrModN(Aux[9].limbs, MontgomeryMultR1, Aux[9].limbs, TestNbr, NumberLength);
+        // v*(i-1)
+        modmult(Aux[8].limbs, Aux[9].limbs, Aux[9].limbs);
+        // u*v*(i-1)
+        modmult(Aux[6].limbs, Aux[9].limbs, Aux[9].limbs);
         toConvert = Aux[9].limbs;
       } else {
         // prime = 1 (mod 8). Use Shanks' method for modular square roots.

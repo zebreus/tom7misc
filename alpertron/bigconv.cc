@@ -11,6 +11,8 @@
 
 using namespace std;
 
+extern int NumberLength;
+
 bool ParseBigInteger(const char *str, BigInteger *big) {
   big->sign = SIGN_POSITIVE;
   if (str[0] == '-') {

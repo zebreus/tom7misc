@@ -67,9 +67,6 @@ extern limb TestNbr[MAX_LEN];
 extern limb MontgomeryMultR2[MAX_LEN];
 extern limb MontgomeryMultR1[MAX_LEN];
 
-// XXX!
-extern int NumberLength;
-
 extern enum eNbrCached MontgomeryMultNCached;
 extern enum eNbrCached TestNbrCached;
 extern limb MontgomeryMultN[MAX_LEN];
@@ -77,10 +74,8 @@ extern limb MontgomeryMultN[MAX_LEN];
 void squareRoot(const limb *argument, limb *sqRoot, int len, int *pLenSqRoot);
 void GetMontgomeryParms(int len);
 void GetMontgomeryParmsPowerOf2(int powerOf2);
-void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr, int NumberLength);
-void SubtBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr, int NumberLength);
-#define SubtBigNbrMod(Nbr1, Nbr2, Sum) SubtBigNbrModN(Nbr1, Nbr2, Sum, TestNbr, NumberLength)
-#define AddBigNbrMod(Nbr1, Nbr2, Sum) AddBigNbrModN(Nbr1, Nbr2, Sum, TestNbr, NumberLength)
+void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr, int number_length);
+void SubtBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr, int number_length);
 void AdjustModN(limb *Nbr, const limb *TestNbr, int NumberLength);
 int fsquares(void);
 void AddBigInt(const limb *pAddend1, const limb *pAddend2, limb *pSum, int nbrLimbs);
@@ -128,17 +123,8 @@ void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs);
 void BigIntModularPower(const BigInteger *base, const BigInteger *exponent, BigInteger *power);
 
 void ChSignBigNbr(limb *nbr, int length);
-void ChSignBigNbrB(limb *nbr, int length);
 void AddBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pSum, int nbrLen);
 void SubtractBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pDiff, int nbrLen);
-void AddBigNbrB(const limb *pNbr1, const limb *pNbr2, limb *pSum, int nbrLen);
-void SubtractBigNbrB(const limb *pNbr1, const limb *pNbr2, limb *pDiff, int nbrLen);
-void AddBigIntModN(const limb *pNbr1, const limb *pNbr2, limb *pSum, const limb *pMod,
-  int nbrLen);
-void SubtractBigNbrModN(const limb *pNbr1, const limb *pNbr2, limb *pDiff,
-  const limb *pMod, int nbrLen);
-void MultBigNbrByInt(const limb *bigFactor, int factor, limb *bigProd, int nbrLen);
-void MultBigNbrByIntB(const limb *bigFactor, int factor, limb *bigProd, int nbrLen);
 void DivBigNbrByInt(const limb *pDividend, int divisor, limb *pQuotient, int nbrLen);
 int RemDivBigNbrByInt(const limb *pDividend, int divisor, int nbrLen);
 void MultBigNbr(const limb *pFactor1, const limb *pFactor2, limb *pProd, int nbrLen);
@@ -148,10 +134,6 @@ void IntToBigNbr(int value, limb *bigNbr, int nbrLength);
 int BigNbrToBigInt(const BigInteger *pBigNbr, limb *pBigInt);
 void BigIntToBigNbr(BigInteger *pBigNbr, const limb *pBigInt, int nbrLenBigInt);
 void AdjustBigIntModN(limb *Nbr, const limb *Mod, int nbrLen);
-void MultBigNbrModN(const limb *Nbr1, limb *Nbr2, limb *Prod, const limb *Mod, int nbrLen);
-void MultBigNbrByIntModN(limb *Nbr1, int Nbr2, limb *Prod, const limb *Mod, int nbrLen);
-int intDoubleModPow(int NbrMod, int Expon, int currentPrime);
-void ModInvBigInt(const limb *num, limb *inv, const limb *mod, int nbrLenBigInt);
 void IntToBigNbr(int value, limb *bigNbr, int nbrLength);
 int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower);
 

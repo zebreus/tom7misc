@@ -45,6 +45,8 @@ enum eCallbackQuadModType {
   CBACK_QMOD_HYPERBOLIC,
 };
 
+extern int NumberLength;
+
 static enum eShowSolution showSolution;
 static enum eCallbackQuadModType callbackQuadModType;
 static int counters[400];
