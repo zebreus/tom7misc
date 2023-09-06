@@ -75,14 +75,13 @@ static void Karatsuba(int idxFactor1, int nbrLen);
   uint32_t prod_iPlus##n = 0
 
 void multiply(const limb* factor1, const limb* factor2, limb* result,
-  int len, int* pResultLen)
-{
+              int len, int* pResultLen) {
   multiplyWithBothLen(factor1, factor2, result, len, len, pResultLen);
 }
 
-static inline void multiplyWithBothLenLL(const limb *factor1, const limb *factor2,
-  limb *result, int len1, int len2, int *pResultLen)
-{
+static inline void multiplyWithBothLenLL(
+    const limb *factor1, const limb *factor2,
+    limb *result, int len1, int len2, int *pResultLen) {
   int length = len1;
   int lenBytes;
   // Compute the maximum length.
@@ -131,8 +130,7 @@ static inline void multiplyWithBothLenLL(const limb *factor1, const limb *factor
 }
 
 void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
-  int len1, int len2, int* pResultLen)
-{
+                         int len1, int len2, int* pResultLen) {
   const limb* minFact;
   const limb* maxFact;
   int minLen;

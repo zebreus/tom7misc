@@ -63,21 +63,10 @@ typedef struct BigInteger {
   limb limbs[MAX_LEN];
 } BigInteger;
 
-extern limb TestNbr[MAX_LEN];
 extern limb MontgomeryMultR2[MAX_LEN];
 extern limb MontgomeryMultR1[MAX_LEN];
 
-extern enum eNbrCached MontgomeryMultNCached;
-extern enum eNbrCached TestNbrCached;
-extern limb MontgomeryMultN[MAX_LEN];
-
 void squareRoot(const limb *argument, limb *sqRoot, int len, int *pLenSqRoot);
-void GetMontgomeryParms(int len);
-void GetMontgomeryParmsPowerOf2(int powerOf2);
-void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr, int number_length);
-void SubtBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr, int number_length);
-void AdjustModN(limb *Nbr, const limb *TestNbr, int NumberLength);
-int fsquares(void);
 void AddBigInt(const limb *pAddend1, const limb *pAddend2, limb *pSum, int nbrLimbs);
 bool BigIntIsZero(const BigInteger *value);
 bool BigIntIsOne(const BigInteger* value);
@@ -120,7 +109,6 @@ void ComputeInversePower2(const limb *value, /*@out@*/limb *result, /*@out@*/lim
 void intToBigInteger(BigInteger *bigint, int value);
 double getMantissa(const limb *ptrLimb, int nbrLimbs);
 void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs);
-void BigIntModularPower(const BigInteger *base, const BigInteger *exponent, BigInteger *power);
 
 void ChSignBigNbr(limb *nbr, int length);
 void AddBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pSum, int nbrLen);

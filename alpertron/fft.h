@@ -18,13 +18,10 @@
 #ifndef _FFT_H
 #define _FFT_H
 
-#define MAX_VALUE_FFT_LIMB (FFT_LIMB_RANGE - 1)
-#define QUARTER_CIRCLE (FULL_CIRCLE / 4)
-#define HALF_CIRCLE    (FULL_CIRCLE / 2)
-#define CIRCLE_MASK    (FULL_CIRCLE - 1)
+#include "bignbr.h"
 
 void fftMultiplication(const limb *factor1, const limb *factor2, limb *result,
-  int len1, int len2, int *pResultLen);
+                       int len1, int len2, int *pResultLen);
 
 #endif
 

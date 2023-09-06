@@ -813,6 +813,7 @@ void multadd(BigInteger *pResult, int iMult, const BigInteger *pMult, int addend
   addbigint(pResult, addend);
 }
 
+// number_length here is used to zero-pad the output -tom7
 void IntArray2BigInteger(int number_length, const int *ptrValues, BigInteger *bigint) {
   const int* piValues = ptrValues;
   limb *destLimb = bigint->limbs;

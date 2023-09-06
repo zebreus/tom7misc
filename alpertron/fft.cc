@@ -1,4 +1,3 @@
-//
 // This file is part of Alpertron Calculators.
 //
 // Copyright 2018-2021 Dario Alejandro Alpern
@@ -15,19 +14,27 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
-//
 
-#include "bignbr.h"
+#include "fft.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include "fft.h"
+
+#include "bignbr.h"
+// XXX. montgomery caching
+#include "modmult.h"
 
 #define FFT_LIMB_SIZE   18
 #define FFT_LIMB_RANGE  0x00040000     // 2^18
 #define MAX_FFT_LEN     ((((size_t)MAX_LEN_MULT * BITS_PER_GROUP) / FFT_LIMB_SIZE) + 10)
 #define POWERS_2        17
 #define FULL_CIRCLE     0x00020000     // 2^17
+
+#define MAX_VALUE_FFT_LIMB (FFT_LIMB_RANGE - 1)
+#define QUARTER_CIRCLE (FULL_CIRCLE / 4)
+#define HALF_CIRCLE    (FULL_CIRCLE / 2)
+
 
 struct sComplex
 {
@@ -41,10 +48,9 @@ struct sCosSin
   limb Sin[2];
 };
 
-
 // In the next array, all numbers are represented by two elements,
 // first the least significant limb, then the most significant limb.
-const struct sCosSin cossinPowerOneHalf[] =
+static constexpr struct sCosSin cossinPowerOneHalf[] =
 {  // cos(pi/2^n), then sin(pi/2^n)
   {{{2121767201}, {1518500249}}, {{2121767201}, {1518500249}}},  // n = 2
   {{{1696238673}, {1984016188}}, {{782852818}, {821806413}}},    // n = 3
@@ -423,8 +429,7 @@ static int ReduceLimbs(const limb *factor, struct sComplex *fftFactor, int len)
 #endif
 
 void fftMultiplication(const limb *factor1, const limb *factor2, limb *result,
-  int len1, int len2, int *pResultLen)
-{
+                       int len1, int len2, int *pResultLen) {
   static struct sComplex *firstFactor = (struct sComplex*)malloc(sizeof (struct sComplex) * MAX_FFT_LEN);
   static struct sComplex *secondFactor = (struct sComplex*)malloc(sizeof (struct sComplex) * MAX_FFT_LEN);
   static struct sComplex *transf = (struct sComplex*)malloc(sizeof (struct sComplex) * MAX_FFT_LEN);
