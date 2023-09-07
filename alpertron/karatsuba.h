@@ -3,10 +3,18 @@
 
 #include "bignbr.h"
 
-void multiply(const limb* factor1, const limb* factor2, limb* result,
+void multiplyKaratsuba(const limb* factor1, const limb* factor2, limb* result,
   int len, int* pResultLen);
 
-void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
+void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb* result,
   int len1, int len2, int* pResultLen);
+
+#include "bigmultiply.h"
+
+ #define multiply multiplyKaratsuba
+ #define multiplyWithBothLen multiplyWithBothLenKaratsuba
+
+// #define multiply BigMultiply
+// #define multiplyWithBothLen BigMultiplyWithBothLen
 
 #endif

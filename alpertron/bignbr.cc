@@ -27,10 +27,6 @@
 
 #define LOG_2            0.69314718055994531
 
-static BigInteger Temp2;
-static BigInteger Base;
-static BigInteger Power;
-
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc) {
   if (pDest != pSrc)
   {
@@ -66,9 +62,8 @@ void AddBigInt(const limb *pAddend1, const limb *pAddend2, limb *pSum, int nbrLi
 }
 
 // If address of num and result match, BigIntDivide will overwrite num, so it must be executed after processing num.
-void floordiv(const BigInteger *num, const BigInteger *den, BigInteger *result)
-{
-  static BigInteger rem;
+void floordiv(const BigInteger *num, const BigInteger *den, BigInteger *result) {
+  BigInteger rem;
   (void)BigIntRemainder(num, den, &rem);
   if ((((num->sign == SIGN_NEGATIVE) && (den->sign == SIGN_POSITIVE)) ||
     ((num->sign == SIGN_POSITIVE) && !BigIntIsZero(num) && (den->sign == SIGN_NEGATIVE))) && !BigIntIsZero(&rem))
@@ -304,6 +299,7 @@ enum eExprErr BigIntRemainder(const BigInteger *pDividend,
     CopyBigInt(pRemainder, pDividend);
     return EXPR_OK;
   }
+  BigInteger Temp2, Base;
   CopyBigInt(&Temp2, pDividend);
   rc = BigIntDivide(pDividend, pDivisor, &Base);   // Get quotient of division.
   if (rc != EXPR_OK)
@@ -375,6 +371,7 @@ enum eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent, BigIntege
   {   // More than 20000 digits. 46051 = log(10^20000)
     return EXPR_INTERM_TOO_HIGH;
   }
+  BigInteger Base;
   CopyBigInt(&Base, pBase);
   pPower->sign = SIGN_POSITIVE;
   pPower->nbrLimbs = 1;
@@ -553,6 +550,7 @@ void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pRe
     CopyBigInt(pResult, pArg1);
     return;
   }
+  BigInteger Base, Power;
   // Reuse Base and Power temporary variables.
   CopyBigInt(&Base, pArg1);
   CopyBigInt(&Power, pArg2);

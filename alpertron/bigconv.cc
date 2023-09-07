@@ -9,7 +9,7 @@
 #include "bignbr.h"
 #include "baseconv.h"
 
-static constexpr bool CHECK_INVARIANTS = true;
+static constexpr bool CHECK_INVARIANTS = false;
 
 using namespace std;
 
@@ -75,20 +75,7 @@ int BigIntToArray(const BigInt &b, int *arr) {
 }
 
 BigInt ArrayToBigInt(const int *arr) {
-  int len = *arr;
-  const int *data = arr + 1;
-  BigInt out;
-  mpz_import(out.GetRep(), len,
-             // words are little-endian
-             -1,
-             // word size
-             sizeof (int),
-             // native byte-order
-             0,
-             // "nails": high bits to skip in each word
-             1,
-             data);
-  return out;
+  return LimbsToBigInt((const limb *)(arr + 1), *arr);
 }
 
 BigInt BigIntegerToBigInt(const BigInteger *g) {
@@ -107,4 +94,34 @@ BigInt BigIntegerToBigInt(const BigInteger *g) {
     mpz_neg(out.GetRep(), out.GetRep());
   }
   return out;
+}
+
+BigInt LimbsToBigInt(const limb *limbs, int num_limbs) {
+  BigInt out;
+  mpz_import(out.GetRep(), num_limbs,
+             // words are little-endian
+             -1,
+             // word size
+             sizeof (int),
+             // native byte-order
+             0,
+             // "nails": high bits to skip in each word
+             1,
+             limbs);
+  return out;
+}
+
+int BigIntToLimbs(const BigInt &b, limb *limbs) {
+  size_t count = 0;
+  mpz_export(limbs, &count,
+             // words are little endian.
+             -1,
+             // word size
+             sizeof(int),
+             // native byte-order
+             0,
+             // 31 bits per word
+             1,
+             b.GetRep());
+  return count;
 }
