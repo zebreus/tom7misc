@@ -11,10 +11,12 @@ void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb
 
 #include "bigmultiply.h"
 
- #define multiply multiplyKaratsuba
- #define multiplyWithBothLen multiplyWithBothLenKaratsuba
-
-// #define multiply BigMultiply
-// #define multiplyWithBothLen BigMultiplyWithBothLen
+#if 1
+  #define multiply multiplyKaratsuba
+  #define multiplyWithBothLen multiplyWithBothLenKaratsuba
+#else
+  #define multiply BigMultiply
+  #define multiplyWithBothLen BigMultiplyWithBothLen
+#endif
 
 #endif

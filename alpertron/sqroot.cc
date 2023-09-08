@@ -42,7 +42,7 @@ int bitLengthCycle[20];
 // output: pNbrLimbs = pointer to number of limbs
 //         pPower4 = pointer to power of 4.
 static void MultiplyBigNbrByMinPowerOf4(int *pPower4, const limb *number,
-  int len, limb *dest)
+                                        int len, limb *dest)
 {
   int power4;
   unsigned int power2 = 0;

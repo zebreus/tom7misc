@@ -263,7 +263,7 @@ enum eExprErr BigIntMultiply(const BigInteger *pFact1, const BigInteger *pFact2,
     return EXPR_INTERM_TOO_HIGH;
   }
   multiplyWithBothLen(&pFactor1->limbs[0], &pFactor2->limbs[0], &pProduct->limbs[0],
-    nbrLimbsFactor1, nbrLimbsFactor2, &nbrLimbs);
+                      nbrLimbsFactor1, nbrLimbsFactor2, &nbrLimbs);
   nbrLimbs = nbrLimbsFactor1 + nbrLimbsFactor2;
   if (pProduct->limbs[nbrLimbs - 1].x == 0)
   {

@@ -1,4 +1,4 @@
-default: quad.exe afactor.exe
+default: quad.exe afactor.exe test.exe
 
 CC=x86_64-w64-mingw32-gcc
 CXX=x86_64-w64-mingw32-g++
@@ -19,10 +19,15 @@ HEADERS=bignbr.h enums.h factor.h highlevel.h globals.h karatsuba.h modmult.h ff
 
 CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/bignum/big.o
 
-quad.exe: copystr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o  quad.o quadmodll.o bignbr.o fft.o globals.o main.o bigconv.o bigfactor.o bigmultiply.o $(CC_LIB_OBJECTS)
+ALPERTRON_OBJECTS=copystr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o  quad.o quadmodll.o bignbr.o fft.o globals.o bigconv.o bigfactor.o bigmultiply.o
+
+quad.exe:  main.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
-afactor.exe: copystr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o bignbr.o fft.o globals.o afactor.o bigconv.o bigfactor.o bigmultiply.o $(CC_LIB_OBJECTS)
+afactor.exe:  afactor.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
+
+test.exe : test.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 %.o : %.cc $(HEADERS)

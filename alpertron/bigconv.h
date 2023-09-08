@@ -2,6 +2,8 @@
 #ifndef _BIGCONV_H
 #define _BIGCONV_H
 
+#include <string>
+
 #include "bignum/big.h"
 #include "bignbr.h"
 
@@ -23,5 +25,7 @@ BigInt BigIntegerToBigInt(const BigInteger *g);
 BigInt LimbsToBigInt(const limb *limbs, int num_limbs);
 // Writes to limbs (must be enough space). Returns num_limbs.
 int BigIntToLimbs(const BigInt &b, limb *limbs);
+
+std::string LongNum(const BigInt &a);
 
 #endif

@@ -4,6 +4,9 @@ make clean
 make -j quad.exe afactor.exe || exit -1
 rm -f coverage.out
 
+set -x
+set -e
+
 echo quad tests
 # Ax^2 + Bxy + Cy^2 + Dx + Ey + F   (teach)
 ./quad.exe 0 0 0 0 0 0 0 >> coverage.out

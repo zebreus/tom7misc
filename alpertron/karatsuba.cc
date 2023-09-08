@@ -29,6 +29,9 @@
 #include "bignbr.h"
 #include "fft.h"
 
+#include "bigconv.h"
+#include "base/logging.h"
+
 #define KARATSUBA_CUTOFF 16
 #define FFT_THRESHOLD 100
 static limb arr[MAX_LEN/*3* FFT_THRESHOLD*/];
@@ -129,7 +132,7 @@ static inline void multiplyWithBothLenLL(
   }
 }
 
-void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb* result,
+void multiplyWithBothLenKaratsubaInternal(const limb* factor1, const limb* factor2, limb* result,
                                   int len1, int len2, int* pResultLen) {
   const limb* minFact;
   const limb* maxFact;
@@ -140,6 +143,7 @@ void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb
   int offset;
   assert(len1 >= 1);
   assert(len2 >= 1);
+
   if (len1 < len2)
   {
     minFact = factor1;
@@ -197,6 +201,42 @@ void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb
     *pResultLen = lenProd;
   }
 }
+
+
+void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb* result,
+                                  int len1, int len2, int* pResultLen) {
+  // XXX
+  BigInt f1 = LimbsToBigInt(factor1, len1);
+  BigInt f2 = LimbsToBigInt(factor2, len2);
+  fprintf(stderr, "%skarat %s * %s ",
+          (pResultLen == NULL) ? "[NULL]" : "",
+          LongNum(f1).c_str(), LongNum(f2).c_str());
+
+  int result_len = 0;
+  multiplyWithBothLenKaratsubaInternal(factor1, factor2, result,
+                                       len1, len2, &result_len);
+
+  {
+    fprintf(stderr, " [%p,%d] ", result, result_len);
+    BigInt r = LimbsToBigInt(result, result_len);
+    fprintf(stderr, " = %s\n", LongNum(r).c_str());
+
+
+    BigInt ff1 = LimbsToBigInt(factor1, len1);
+    BigInt ff2 = LimbsToBigInt(factor2, len2);
+    CHECK(BigInt::Eq(f1, ff1) &&
+          BigInt::Eq(f2, ff2)) <<
+      "Multiplication modified its arguments?\n"
+      "f1:\n" <<
+      LongNum(f1) << " became\n" << LongNum(ff1) <<
+      "\nf2:\n" <<
+      LongNum(f2) << " became\n" << LongNum(ff2);
+    CHECK(BigInt::Eq(BigInt::Times(f1, f2), r));
+  }
+
+  if (pResultLen != nullptr) *pResultLen = result_len;
+}
+
 
 // The return value is the sign: true: negative.
 // In result the absolute value of the difference is computed.
