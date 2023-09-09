@@ -27,7 +27,7 @@ CC_LIB=../cc-lib
 # PERF: gotta reduce this stack usage!
 # XXX: Opt flags, -g
 # Add this to see dead code: -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--print-gc-sections
-CXXFLAGS=-I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -Wall $(PLATFORM_CFLAGS)
+CXXFLAGS=-I $(CC_LIB) $(GMP_CFLAGS) -g -O -march=native -Wall $(PLATFORM_CFLAGS)
 LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)
 
 HEADERS=bignbr.h enums.h factor.h highlevel.h globals.h karatsuba.h modmult.h fft.h quadmodll.h baseconv.h bigconv.h bigmultiply.h

@@ -36,8 +36,8 @@ echo quad tests
 ./quad.exe 0 0 0 313370000000000003333333337 131072000000000000009999999991 27272727 0 >> coverage.out
 ./quad.exe 0 11 0 31337000003333333337 131072000009999999991 2727272727272727 0 >> coverage.out
 ./quad.exe 11 2727 -11 0 0 2727 0 >> coverage.out
-./quad 999 999 999 777 777 777 0 >> coverage.out
-./quad -998 997 996 -773 772 771 0 >> coverage.out
+./quad.exe 999 999 999 777 777 777 0 >> coverage.out
+./quad.exe -998 997 996 -773 772 771 0 >> coverage.out
 ./quad.exe 1 0 1 0 0 -523066703114 0 >> coverage.out
 ./quad.exe 1 0 1 3 0 -523066703114 0 >> coverage.out
 ./quad.exe 1 0 1 0 3 -523066703114 0 >> coverage.out
@@ -59,6 +59,7 @@ echo factor tests
 # largest 64-bit prime
 ./afactor.exe 18446744073709551557 >> coverage.out
 
+dos2unix coverage.out
 diff coverage.golden coverage.out
 exit_status=$?
 if [ $exit_status -eq 0 ]; then

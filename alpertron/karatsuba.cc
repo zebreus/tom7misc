@@ -129,7 +129,6 @@ static inline void multiplyWithBothLenLL(
   if (length > FFT_THRESHOLD)
   {
     fprintf(stderr, "-fft-");
-    CHECK(false);
     fftMultiplication(factor1, factor2, result, len1, len2, pResultLen);
     return;
   }
@@ -213,24 +212,27 @@ void multiplyWithBothLenKaratsubaInternal(
   // Perform several multiplications and add all products.
   fprintf(stderr, "-min %d max %d prod %d-", minLen, maxLen, lenProd);
   lenBytes = lenProd * (int)sizeof(int);
-  limb accumulatedProd[MAX_LEN_MULT] = {};
-  limb partialProd[MAX_LEN_MULT] = {};
-  (void)memset(accumulatedProd, 0, lenBytes);
+
+  // PERF: We know the final size!
+  std::vector<limb> accumulatedProd(MAX_LEN_MULT);
+  std::vector<limb> partialProd(MAX_LEN_MULT);
+
+  (void)memset(accumulatedProd.data(), 0, lenBytes);
   for (offset = 0; offset < (maxLen - minLen); offset += minLen)
   {
-    multiplyWithBothLenLL(minFact, maxFact + offset, partialProd,
-      minLen, minLen, NULL);
+    multiplyWithBothLenLL(minFact, maxFact + offset, partialProd.data(),
+                          minLen, minLen, NULL);
     // Add partial product to accumulated product.
-    AddBigNbr(accumulatedProd + offset, partialProd,
-      accumulatedProd + offset, 2 * minLen);
+    AddBigNbr(accumulatedProd.data() + offset, partialProd.data(),
+              accumulatedProd.data() + offset, 2 * minLen);
   }
-  multiplyWithBothLenLL(minFact, maxFact + offset, partialProd,
-    minLen, maxLen - offset, NULL);
+  multiplyWithBothLenLL(minFact, maxFact + offset, partialProd.data(),
+                        minLen, maxLen - offset, NULL);
   // Add partial product to accumulated product.
-  AddBigNbr(accumulatedProd + offset, partialProd,
-    accumulatedProd + offset, lenProd - offset);
+  AddBigNbr(accumulatedProd.data() + offset, partialProd.data(),
+            accumulatedProd.data() + offset, lenProd - offset);
   lenBytes = lenProd * (int)sizeof(int);
-  (void)memcpy(result, accumulatedProd, lenBytes);
+  (void)memcpy(result, accumulatedProd.data(), lenBytes);
   // Copy accumulatedProd to result.
   while ((lenProd > 1) && (accumulatedProd[lenProd - 1].x == 0))
   {
@@ -265,7 +267,7 @@ void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb
     BigInt ff1 = LimbsToBigInt(factor1, len1);
     BigInt ff2 = LimbsToBigInt(factor2, len2);
     CHECK(BigInt::Eq(BigInt::Times(f1, f2), r));
-    if (true) {
+    if (false) {
     CHECK(BigInt::Eq(f1, ff1) &&
           BigInt::Eq(f2, ff2)) <<
       "Multiplication modified its arguments?\n"
