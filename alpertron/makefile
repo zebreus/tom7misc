@@ -1,19 +1,34 @@
 default: quad.exe afactor.exe test.exe
 
-CC=x86_64-w64-mingw32-gcc
-CXX=x86_64-w64-mingw32-g++
+UNAME := $(shell uname -o)
+ifeq ($(UNAME),Cygwin)
+  # for 64 bits on windows (mingw).
+  # For locally compiled libgmp; pick the right directory:
+  LIBGMP=../../gmp-6.3.0
 
-LIBGMP=../../gmp-6.3.0
-GMP_LFLAGS=$(LIBGMP)/.libs/libgmp.a
-GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
+  GMP_LFLAGS=$(LIBGMP)/.libs/libgmp.a
+  GMP_CFLAGS=-I$(LIBGMP)/ -DBIG_USE_GMP
+
+  CXX=x86_64-w64-mingw32-g++
+  CC=x86_64-w64-mingw32-g++
+  PLATFORM_CFLAGS=-Wl,--stack,167772160
+  PLATFORM_LFLAGS=-static
+else
+  # Linux
+  CXX=g++
+  CC=gcc
+  PLATFORM_CFLAGS=-Wl,-z,stack-size=167772160
+  GMP_LFLAGS=-lgmp
+  GMP_CFLAGS=-DBIG_USE_GMP
+endif
 
 CC_LIB=../cc-lib
 
 # PERF: gotta reduce this stack usage!
 # XXX: Opt flags, -g
 # Add this to see dead code: -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--print-gc-sections
-CXXFLAGS=-I $(CC_LIB) $(GMP_CFLAGS) -D_USING64BITS_ -g -O2 -march=native -Wall -Wl,--stack,167772160
-LFLAGS= $(GMP_LFLAGS) -static
+CXXFLAGS=-I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -Wall $(PLATFORM_CFLAGS)
+LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)
 
 HEADERS=bignbr.h enums.h factor.h highlevel.h globals.h karatsuba.h modmult.h fft.h quadmodll.h baseconv.h bigconv.h bigmultiply.h
 
