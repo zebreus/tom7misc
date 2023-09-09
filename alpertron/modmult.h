@@ -30,4 +30,7 @@ void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *Te
 void SubtBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr,
                     int number_length);
 
+void ComputeInversePower2(const limb *value, /*@out@*/limb *result, /*@out@*/limb *aux,
+                          int number_length);
+
 #endif

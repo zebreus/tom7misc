@@ -246,7 +246,7 @@ struct QuadModLL {
       GetMontgomeryParmsPowerOf2(powerOf2);
       // Use ValA (which is zero for linear equations) as a temporary area.
       // ptrSolution1 <- 1 / |ValB|
-      ComputeInversePower2(pValB->limbs, ptrSolution1->limbs, pValA->limbs);
+      ComputeInversePower2(pValB->limbs, ptrSolution1->limbs, pValA->limbs, NumberLength);
       // Compute ptrSolution1 as |ValC| / |ValB|
       modmult(ptrSolution1->limbs, pValC->limbs, ptrSolution1->limbs);
       NumberLengthBytes = NumberLength * (int)sizeof(int);
@@ -427,7 +427,7 @@ struct QuadModLL {
         int lenBytes = (NumberLength - tmp2.nbrLimbs) * (int)sizeof(int);
         (void)memset(&tmp2.limbs[tmp2.nbrLimbs], 0, lenBytes);
       }
-      ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, tmp1.limbs);
+      ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, tmp1.limbs, NumberLength);
       (void)BigIntMultiply(&ValCOdd, &tmp2, &ValCOdd);
       BigIntAnd(&ValCOdd, &K1, &ValCOdd);      // ((b/2) - a*c)/a mod 2^n
       (void)BigIntMultiply(&ValCOdd, &tmp2, &ValCOdd);
@@ -460,7 +460,7 @@ struct QuadModLL {
       BigIntPowerOf2(&K1, expon);
       addbigint(&K1, -1);
       NumberLength = K1.nbrLimbs;
-      ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, tmp1.limbs);
+      ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, tmp1.limbs, NumberLength);
       setNbrLimbs(&tmp2, NumberLength);
       CopyBigInt(&tmp1, pValB);
       BigIntDivideBy2(&tmp1);               // b/2

@@ -20,6 +20,8 @@ void BigMultiply(const limb* factor1, const limb* factor2, limb* result,
 
 void BigMultiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
                             int len1, int len2, int* pResultLen) {
+  // Note: Sometimes result is one of the factors.
+
   BigInt f1 = LimbsToBigInt(factor1, len1);
   BigInt f2 = LimbsToBigInt(factor2, len2);
   fprintf(stderr, "%s * %s\n", LongNum(f1).c_str(), LongNum(f2).c_str());

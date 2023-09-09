@@ -2,10 +2,13 @@
 #include "bignbr.h"
 #include "bigmultiply.h"
 #include "bigconv.h"
-#include "karatsuba.h"
+
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 #include "base/logging.h"
+
+#include "karatsuba.h"
+#include "bigmultiply.h"
 
 static void TestMult(const char *s1, const char *s2) {
   BigInteger a, b;

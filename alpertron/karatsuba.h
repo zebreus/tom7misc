@@ -9,14 +9,4 @@ void multiplyKaratsuba(const limb* factor1, const limb* factor2, limb* result,
 void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb* result,
   int len1, int len2, int* pResultLen);
 
-#include "bigmultiply.h"
-
-#if 1
-  #define multiply multiplyKaratsuba
-  #define multiplyWithBothLen multiplyWithBothLenKaratsuba
-#else
-  #define multiply BigMultiply
-  #define multiplyWithBothLen BigMultiplyWithBothLen
-#endif
-
 #endif

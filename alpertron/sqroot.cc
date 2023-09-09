@@ -22,7 +22,7 @@
 #include <math.h>
 
 #include "bignbr.h"
-#include "karatsuba.h"
+#include "multiply.h"
 
 static limb approxInvSqrt[MAX_LEN];
 limb approxInv[MAX_LEN];

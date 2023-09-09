@@ -23,7 +23,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include "bignbr.h"
-#include "karatsuba.h"
+#include "multiply.h"
 
 #include "base/logging.h"
 
@@ -389,7 +389,7 @@ static bool ModInvBigNbr(limb* num, limb* inv, limb* mod, int nbrLen) {
   if (powerOf2Exponent != 0)
   {    // TestNbr is a power of 2.
     unsigned int powerExp = (unsigned int)powerOf2Exponent % (unsigned int)BITS_PER_GROUP;
-    ComputeInversePower2(num, inv, aux);
+    ComputeInversePower2(num, inv, aux, NumberLength);
     (inv + (powerOf2Exponent / BITS_PER_GROUP))->x &= UintToInt((1U << powerExp) - 1U);
     return true;
   }
@@ -799,7 +799,7 @@ static void ChineseRemainderTheorem(int shRight, BigInteger* result)
     (void)memset(&oddValue.limbs[oddValue.nbrLimbs], 0, lenBytes);
   }
   SubtractBigNbr(resultModPower2, resultModOdd, aux3, NumberLength);
-  ComputeInversePower2(oddValue.limbs, aux4, aux);
+  ComputeInversePower2(oddValue.limbs, aux4, aux, NumberLength);
   modmult(aux4, aux3, aux5);
   (aux5 + (shRight / BITS_PER_GROUP))->x &= (1 << (shRight % BITS_PER_GROUP)) - 1;
   if (NumberLength < oddValue.nbrLimbs)
@@ -858,7 +858,7 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
   }
   NumberLength = (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
   CompressLimbsBigInteger(NumberLength, aux3, Den);
-  ComputeInversePower2(aux3, aux4, aux);
+  ComputeInversePower2(aux3, aux4, aux, NumberLength);
   powerOf2Exponent = shRight;
   modmult(Num->limbs, aux4, resultModPower2); // resultModPower2 <- Num / Dev modulus 2^k.
   ChineseRemainderTheorem(shRight, quotient);
@@ -866,8 +866,7 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
 }
 
 // Find the inverse of value mod 2^(NumberLength*BITS_PER_GROUP)
-void ComputeInversePower2(const limb *value, limb *result, limb *tmp)
-{
+void ComputeInversePower2(const limb *value, limb *result, limb *tmp, int number_length) {
   int N;
   int x;
   int j;
@@ -879,7 +878,7 @@ void ComputeInversePower2(const limb *value, limb *result, limb *tmp)
   x = x * (2 - (N * x));       // 16 least significant bits of inverse correct.
   x = x * (2 - (N * x));       // 32 least significant bits of inverse correct.
   result->x = UintToInt((unsigned int)x & MAX_VALUE_LIMB);
-  for (int currLen = 2; currLen < NumberLength; currLen <<= 1)
+  for (int currLen = 2; currLen < number_length; currLen <<= 1)
   {
     multiply(value, result, tmp, currLen, NULL);    // tmp <- N * x
     Cy = 2U - (unsigned int)tmp[0].x;
@@ -892,15 +891,15 @@ void ComputeInversePower2(const limb *value, limb *result, limb *tmp)
     multiply(result, tmp, result, currLen, NULL);      // tmp <- x * (2 - N * x)
   }
   // Perform last approximation to inverse.
-  multiply(value, result, tmp, NumberLength, NULL);    // tmp <- N * x
+  multiply(value, result, tmp, number_length, NULL);    // tmp <- N * x
   Cy = 2U - (unsigned int)tmp[0].x;
   tmp[0].x = UintToInt(Cy & MAX_VALUE_LIMB);
-  for (j = 1; j < NumberLength; j++)
+  for (j = 1; j < number_length; j++)
   {
     Cy = (unsigned int)(-tmp[j].x) - (Cy >> BITS_PER_GROUP);
     tmp[j].x = UintToInt(Cy & MAX_VALUE_LIMB);
   }                                                    // tmp <- 2 - N * x
-  multiply(result, tmp, result, NumberLength, NULL);   // tmp <- x * (2 - N * x)
+  multiply(result, tmp, result, number_length, NULL);   // tmp <- x * (2 - N * x)
 }
 
 void GetMontgomeryParmsPowerOf2(int powerOf2)
@@ -1004,7 +1003,7 @@ void GetMontgomeryParms(int len)
   // Compute MontgomeryMultN as 1/TestNbr (mod 2^k) using Newton method,
   // which doubles the precision for each iteration.
   // In the formula above: k = BITS_PER_GROUP * NumberLength.
-  ComputeInversePower2(TestNbr, MontgomeryMultN, aux);
+  ComputeInversePower2(TestNbr, MontgomeryMultN, aux, NumberLength);
   MontgomeryMultN[NumberLength].x = 0;
   // Compute MontgomeryMultR1 as 1 in Montgomery notation,
   // this is 2^(NumberLength*BITS_PER_GROUP) % TestNbr.

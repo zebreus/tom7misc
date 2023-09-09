@@ -23,7 +23,7 @@
 
 #include "bignbr.h"
 #include "globals.h"
-#include "karatsuba.h"
+#include "multiply.h"
 
 #define DIGITS_PER_LIMB 9
 #define MAX_LIMB_CONVERSION 1000000000

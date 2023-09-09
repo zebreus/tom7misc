@@ -33,9 +33,8 @@
 #include "bigconv.h"
 #include "base/logging.h"
 
-#define KARATSUBA_CUTOFF 16
-#define FFT_THRESHOLD 100
-
+static constexpr int KARATSUBA_CUTOFF = 16;
+static constexpr int FFT_THRESHOLD = 100;
 
 struct stKaratsubaStack {
   int idxFactor1;
@@ -129,6 +128,7 @@ static inline void multiplyWithBothLenLL(
   if (length > FFT_THRESHOLD)
   {
     fprintf(stderr, "-fft-");
+    // CHECK(false) << "Not considering this code right now";
     fftMultiplication(factor1, factor2, result, len1, len2, pResultLen);
     return;
   }
@@ -143,7 +143,6 @@ static inline void multiplyWithBothLenLL(
     length *= div;
   }
 
-  fprintf(stderr, "Creating Karat object..\n");
   std::unique_ptr<Karat> karat(new Karat);
 
   karat->karatLength = length;
@@ -153,9 +152,12 @@ static inline void multiplyWithBothLenLL(
   (void)memcpy(&karat->arr[0], factor1, lenBytes);
   lenBytes = len2 * (int)sizeof(limb);
   (void)memcpy(&karat->arr[length], factor2, lenBytes);
+
   karat->Karatsuba(0, length);
+
   lenBytes = 2 * length * (int)sizeof(limb);
   (void)memcpy(result, &karat->arr[2 * (karat->karatLength - length)], lenBytes);
+
   if (pResultLen != NULL) {
     if ((karat->karatLength > length) &&
         (karat->arr[2 * (karat->karatLength - length)-1].x == 0)) {
@@ -203,10 +205,14 @@ void multiplyWithBothLenKaratsubaInternal(
     }
     return;
   }
+
   if (minLen == maxLen)
   {
     fprintf(stderr, "-same len-");
+
+    // so it's getting modified in here...
     multiplyWithBothLenLL(minFact, maxFact, result, minLen, maxLen, pResultLen);
+
     return;
   }
   // Perform several multiplications and add all products.
@@ -247,41 +253,47 @@ void multiplyWithBothLenKaratsubaInternal(
 
 void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb* result,
                                   int len1, int len2, int* pResultLen) {
-  // XXX
+  int olen1 = len1, olen2 = len2;
+
   BigInt f1 = LimbsToBigInt(factor1, len1);
   BigInt f2 = LimbsToBigInt(factor2, len2);
-  fprintf(stderr, "%skarat %s * %s ",
-          (pResultLen == NULL) ? "[NULL]" : "",
-          LongNum(f1).c_str(), LongNum(f2).c_str());
+
+  if (false) {
+    // XXX
+    fprintf(stderr, "%skarat %s * %s ",
+            (pResultLen == NULL) ? "[NULL]" : "",
+            LongNum(f1).c_str(), LongNum(f2).c_str());
+  }
 
   int result_len = 0;
   multiplyWithBothLenKaratsubaInternal(factor1, factor2, result,
                                        len1, len2, &result_len);
 
   {
+    if (factor1 == result) fprintf(stderr, "FACTOR1 = RESULT\n");
+    if (factor2 == result) fprintf(stderr, "FACTOR2 = RESULT\n");
     fprintf(stderr, " [%p,%d] ", result, result_len);
     BigInt r = LimbsToBigInt(result, result_len);
     fprintf(stderr, " = %s\n", LongNum(r).c_str());
 
-
+    CHECK(olen1 == len1 && olen2 == len2);
     BigInt ff1 = LimbsToBigInt(factor1, len1);
     BigInt ff2 = LimbsToBigInt(factor2, len2);
     CHECK(BigInt::Eq(BigInt::Times(f1, f2), r));
-    if (false) {
-    CHECK(BigInt::Eq(f1, ff1) &&
-          BigInt::Eq(f2, ff2)) <<
-      "Multiplication modified its arguments?\n"
+
+    CHECK((factor1 == result || BigInt::Eq(f1, ff1)) &&
+          (factor2 == result || BigInt::Eq(f2, ff2))) <<
+      "Multiplication modified its (input) arguments?\n"
       "f1:\n" <<
       LongNum(f1) << " became\n" << LongNum(ff1) <<
       "\nf2:\n" <<
       LongNum(f2) << " became\n" << LongNum(ff2);
-    }
   }
 
   // Maybe the semantics are that factor1 and factor2 are
   // invalidated? No... they seem to be used.
   // memset((void*)factor1, 0, len1 * sizeof(int));
-  // memset((void*)factor2, 0, len1 * sizeof(int));
+  // memset((void*)factor2, 0, len2 * sizeof(int));
 
 
   if (pResultLen != nullptr) *pResultLen = result_len;
@@ -1012,10 +1024,8 @@ void Karat::Karatsuba(int indexFactor1, int numLen) {
   pstKaratsubaStack->sign = 0;
   pstKaratsubaStack->stage = -1;
   pstKaratsubaStack++;
-  do
-  {
-    switch (stage)
-    {
+  do {
+    switch (stage) {
     case 0:
       idxFactor2 = idxFactor1 + nbrLen;
       if (nbrLen <= KARATSUBA_CUTOFF)

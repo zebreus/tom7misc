@@ -22,7 +22,7 @@
 #include <assert.h>
 
 #include "bignbr.h"
-#include "karatsuba.h"
+#include "multiply.h"
 #include "modmult.h"
 
 #define LOG_2            0.69314718055994531

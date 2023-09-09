@@ -25,6 +25,7 @@
 #include "enums.h"
 
 // Tom multiplied these constants by 1000
+// (It should really be MAX_LEN^2, right?)
 #define MAX_LEN_MULT  25000000  // 200000 digits
 // well, not this one. it doesn't compile with 2500000
 #define MAX_LEN       25000  // 200000 digits
@@ -105,7 +106,7 @@ void UncompressLimbsBigInteger(int number_length,
 void CompressLimbsBigInteger(int number_length,
                              /*@out@*/limb *ptrValues, const BigInteger *bigint);
 void NbrToLimbs(int nbr, /*@out@*/limb *limbs, int len);
-void ComputeInversePower2(const limb *value, /*@out@*/limb *result, /*@out@*/limb *aux);
+
 void intToBigInteger(BigInteger *bigint, int value);
 double getMantissa(const limb *ptrLimb, int nbrLimbs);
 void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs);

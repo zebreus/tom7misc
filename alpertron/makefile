@@ -30,7 +30,7 @@ CC_LIB=../cc-lib
 CXXFLAGS=-I $(CC_LIB) $(GMP_CFLAGS) -g -O -march=native -Wall $(PLATFORM_CFLAGS)
 LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)
 
-HEADERS=bignbr.h enums.h factor.h highlevel.h globals.h karatsuba.h modmult.h fft.h quadmodll.h baseconv.h bigconv.h bigmultiply.h
+HEADERS=bignbr.h enums.h factor.h highlevel.h globals.h karatsuba.h modmult.h fft.h quadmodll.h baseconv.h bigconv.h bigmultiply.h multiply.h
 
 CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/bignum/big.o
 
