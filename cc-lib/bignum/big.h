@@ -20,9 +20,10 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <functional>
 
 struct BigInt {
-  BigInt() : BigInt(0LL) {}
+  BigInt() : BigInt(uint32_t{0}) {}
   inline explicit BigInt(int64_t n);
   inline explicit BigInt(uint64_t n);
   inline explicit BigInt(uint32_t n);

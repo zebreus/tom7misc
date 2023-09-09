@@ -218,8 +218,8 @@ static void BenchDiv2() {
 static void TestPi() {
   printf("----\n");
   {
-    BigInt i{1234567LL};
-    BigInt j{33LL};
+    BigInt i{int64_t{1234567}};
+    BigInt j{int64_t{33}};
     BigInt k = BigInt::Times(i, j);
     BigInt m("102030405060708090987654321");
 
@@ -305,9 +305,13 @@ static void TestToInt() {
     CHECK(!io.has_value()) << #bi << " =\n" << \
       bi.ToString() << " " << io.value();     \
   } while (false)
-  NOROUNDTRIP(BigInt::Plus(BigInt(0x7FFFFFFFFFFFFFFFLL), BigInt(1)));
-  NOROUNDTRIP(BigInt::Minus(BigInt::Negate(BigInt(0x7FFFFFFFFFFFFFFFLL)), BigInt(1)));
-  NOROUNDTRIP(BigInt::Times(BigInt(0x7FFFFFFFFFFFFFFFLL), BigInt(10000)));
+  NOROUNDTRIP(BigInt::Plus(BigInt(int64_t{0x7FFFFFFFFFFFFFFF}),
+                           BigInt(1)));
+  NOROUNDTRIP(BigInt::Minus(
+                  BigInt::Negate(BigInt(int64_t{0x7FFFFFFFFFFFFFFF})),
+                  BigInt(1)));
+  NOROUNDTRIP(BigInt::Times(BigInt(int64_t{0x7FFFFFFFFFFFFFFF}),
+                            BigInt(10000)));
 
 # undef ROUNDTRIP
 # undef NOROUNDTRIP
