@@ -131,6 +131,7 @@ struct BigInt {
 
   inline void Swap(BigInt *other);
 
+
 private:
   friend struct BigRat;
   #ifdef BIG_USE_GMP
@@ -145,7 +146,8 @@ private:
     mpz_add_ui(rep, rep, lo);
   }
 
-  // XXX figure out how to hide this stuff away
+  // XXX figure out how to hide this stuff away.
+  // Could also move this to a big-util or whatever.
   static void InsertFactor(std::vector<std::pair<BigInt, int>> *, mpz_t);
   static void InsertFactorUI(
       std::vector<std::pair<BigInt, int>> *, unsigned long);
@@ -168,6 +170,14 @@ private:
   explicit BigInt(Rep z, std::nullptr_t token) : rep(z) {}
   #endif
 
+public:
+  // Not recommended! And inherently not portable between
+  // representations. But for example you can use this to efficiently
+  // create BigInts from arrays of words using mpz_import.
+  Rep &GetRep() { return rep; }
+  const Rep &GetRep() const { return rep; }
+
+private:
   Rep rep{};
 };
 
