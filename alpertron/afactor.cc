@@ -17,7 +17,7 @@ static void PrintBigInteger(const BigInteger *big) {
 
   char buffer[20000];
   char *ptr = buffer;
-  BigInteger2Dec(&ptr, big, 0);
+  BigInteger2Dec(&ptr, big);
   *ptr = 0;
   printf("%s", buffer);
 }

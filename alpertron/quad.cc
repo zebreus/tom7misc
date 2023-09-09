@@ -161,7 +161,7 @@ static void showMinus(void)
 
 static void shownbr(const BigInteger* value)
 {
-  BigInteger2Dec(&ptrOutput, value, 0);
+  BigInteger2Dec(&ptrOutput, value);
 }
 
 static void showInt(int value)
@@ -581,7 +581,7 @@ static void showValue(BigInteger* value)
       firstSolutionX = false;
     }
     showText("<li><var>T</var> = ");
-    BigInteger2Dec(&ptrOutput, value, 0);
+    BigInteger2Dec(&ptrOutput, value);
     showText("</li>");
   }
 }
@@ -719,32 +719,29 @@ void SolveQuadModEquation(void)
   (void)BigIntDivide(&coeffIndep, &GcdAll, &coeffIndep);
   (void)BigIntDivide(&modulus, &GcdAll, &modulus);
   CopyBigInt(&ValNn, &modulus);
-  if ((ValNn.nbrLimbs == 1) && (ValNn.limbs[0].x == 1))
-  {     // All values from 0 to GcdAll - 1 are solutions.
-    if ((GcdAll.nbrLimbs > 1) || (GcdAll.limbs[0].x > 5))
-    {
+  if ((ValNn.nbrLimbs == 1) && (ValNn.limbs[0].x == 1)) {
+    // All values from 0 to GcdAll - 1 are solutions.
+    if ((GcdAll.nbrLimbs > 1) || (GcdAll.limbs[0].x > 5)) {
       showText("<p>All values of <var>x</var> between 0 and ");
       addbigint(&GcdAll, -1);
-      BigInteger2Dec(&ptrOutput, &GcdAll, 0);
+      BigInteger2Dec(&ptrOutput, &GcdAll);
       showText(" are solutions.</p>");
-    }
-    else
-    {
-      for (int ctr = 0; ctr < GcdAll.limbs[0].x; ctr++)
-      {
+    } else {
+      for (int ctr = 0; ctr < GcdAll.limbs[0].x; ctr++) {
         intToBigInteger(&Tmp[0], ctr);
         SolutionX(&Tmp[0]);
       }
-      if (teach && !firstSolutionX)
-      {
+
+      if (teach && !firstSolutionX) {
         showText("</ol>");
       }
     }
     return;
   }
+
   (void)BigIntRemainder(&coeffQuadr, &modulus, &Tmp[0]);
-  if (BigIntIsZero(&Tmp[0]))
-  {           // Linear equation.
+  if (BigIntIsZero(&Tmp[0])) {
+    // Linear equation.
     int lenBytes;
     BigIntGcd(&coeffLinear, &modulus, &Tmp[0]);
     if ((Tmp[0].nbrLimbs != 1) || (Tmp[0].limbs[0].x != 1))
@@ -808,7 +805,7 @@ static void paren(const BigInteger *num) {
     ptrOutput++;
     *ptrOutput = 0;
   } else {
-    BigInteger2Dec(&ptrOutput, num, 0);
+    BigInteger2Dec(&ptrOutput, num);
   }
 }
 

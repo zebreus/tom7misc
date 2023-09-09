@@ -7,7 +7,6 @@
 #include "base/logging.h"
 #include "bignum/big.h"
 #include "bignbr.h"
-#include "baseconv.h"
 #include "base/stringprintf.h"
 
 static constexpr bool CHECK_INVARIANTS = true;
@@ -16,46 +15,8 @@ static constexpr bool VERBOSE = false;
 using namespace std;
 
 bool ParseBigInteger(const char *str, BigInteger *big) {
-#if 0
   BigInt b(str);
   BigIntToBigInteger(b, big);
-#else
-  const char *snat = str;
-  big->sign = SIGN_POSITIVE;
-  if (snat[0] == '-') {
-    snat++;
-    big->sign = SIGN_NEGATIVE;
-  }
-
-  if (VERBOSE)
-  printf("parse [%s]\n", snat);
-
-  int nbrDigits = (int)strlen(snat);
-  Dec2Bin(snat, big->limbs, nbrDigits, &big->nbrLimbs);
-
-  if (VERBOSE)
-  printf("BigInteger:\n"
-         "sign: %d\n"
-         "nbr limbs: %d\n"
-         "limbs: %d %d %d %d %d ...\n",
-         big->sign,
-         big->nbrLimbs,
-         big->limbs[0].x,
-         big->limbs[1].x,
-         big->limbs[2].x,
-         big->limbs[3].x,
-         big->limbs[4].x);
-  if (CHECK_INVARIANTS) {
-    // XXX PERF!
-    BigInt test(str);
-
-    BigInt compare = BigIntegerToBigInt(big);
-    CHECK(BigInt::Eq(test, compare)) << "BigInt version:\n"
-                                     << test.ToString() << " vs Alpertron:\n"
-                                     << compare.ToString();
-  }
-#endif
-
   return true;
 }
 
