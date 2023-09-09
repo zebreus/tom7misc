@@ -10,14 +10,16 @@
 #include "baseconv.h"
 #include "base/stringprintf.h"
 
-static constexpr bool CHECK_INVARIANTS = false;
+static constexpr bool CHECK_INVARIANTS = true;
+static constexpr bool VERBOSE = false;
 
 using namespace std;
 
-extern int NumberLength;
-
 bool ParseBigInteger(const char *str, BigInteger *big) {
-
+#if 0
+  BigInt b(str);
+  BigIntToBigInteger(b, big);
+#else
   const char *snat = str;
   big->sign = SIGN_POSITIVE;
   if (snat[0] == '-') {
@@ -25,16 +27,34 @@ bool ParseBigInteger(const char *str, BigInteger *big) {
     big->sign = SIGN_NEGATIVE;
   }
 
+  if (VERBOSE)
+  printf("parse [%s]\n", snat);
+
   int nbrDigits = (int)strlen(snat);
   Dec2Bin(snat, big->limbs, nbrDigits, &big->nbrLimbs);
 
+  if (VERBOSE)
+  printf("BigInteger:\n"
+         "sign: %d\n"
+         "nbr limbs: %d\n"
+         "limbs: %d %d %d %d %d ...\n",
+         big->sign,
+         big->nbrLimbs,
+         big->limbs[0].x,
+         big->limbs[1].x,
+         big->limbs[2].x,
+         big->limbs[3].x,
+         big->limbs[4].x);
   if (CHECK_INVARIANTS) {
     // XXX PERF!
     BigInt test(str);
 
     BigInt compare = BigIntegerToBigInt(big);
-    CHECK(BigInt::Eq(test, compare)) << test.ToString() << " vs " << compare.ToString();
+    CHECK(BigInt::Eq(test, compare)) << "BigInt version:\n"
+                                     << test.ToString() << " vs Alpertron:\n"
+                                     << compare.ToString();
   }
+#endif
 
   return true;
 }
@@ -55,13 +75,21 @@ void BigIntToBigInteger(const BigInt &b, BigInteger *g) {
   // Already overwrote the end of the array in this case,
   // but maybe we could be more useful by aborting.
   CHECK(count < MAX_LEN) << count;
-  g->nbrLimbs = count;
+  if (count == 0) {
+    // BigInteger wants at least one limb always.
+    g->limbs[0].x = 0;
+    g->nbrLimbs = 1;
+  } else {
+    g->nbrLimbs = count;
+  }
+
   if (mpz_sgn(b.GetRep()) < 0) {
     g->sign = SIGN_NEGATIVE;
   } else {
     // 0 should also be "positive."
     g->sign = SIGN_POSITIVE;
   }
+  CHECK(g->nbrLimbs != 0);
 }
 
 int BigIntToArray(const BigInt &b, int *arr) {
@@ -70,7 +98,6 @@ int BigIntToArray(const BigInt &b, int *arr) {
   BigIntToBigInteger(b, &tmp);
 
   const int number_length = tmp.nbrLimbs;
-  NumberLength = number_length;
   BigInteger2IntArray(number_length, arr, &tmp);
   return 1 + *arr;
 }
@@ -124,6 +151,11 @@ int BigIntToLimbs(const BigInt &b, limb *limbs) {
              // 31 bits per word
              1,
              b.GetRep());
+  if (count == 0) {
+    // BigInteger wants one limb always.
+    limbs[0].x = 0;
+    return 1;
+  }
   return count;
 }
 

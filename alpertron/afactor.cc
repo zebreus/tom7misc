@@ -3,26 +3,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "bignum/big.h"
+
 #include "bignbr.h"
 #include "globals.h"
 #include "factor.h"
+#include "bigconv.h"
 
 #include "baseconv.h"
 
-static bool ParseBigInteger(const char *str, BigInteger *big) {
-  big->sign = SIGN_POSITIVE;
-  if (str[0] == '-') {
-    str++;
-    big->sign = SIGN_NEGATIVE;
-  }
-
-  int nbrDigits = (int)strlen(str);
-  Dec2Bin(str, big->limbs, nbrDigits, &big->nbrLimbs);
-
-  return true;
-}
-
 static void PrintBigInteger(const BigInteger *big) {
+  BigInt b = BigIntegerToBigInt(big);
+
   char buffer[20000];
   char *ptr = buffer;
   BigInteger2Dec(&ptr, big, 0);

@@ -28,37 +28,42 @@
 #define DIGITS_PER_LIMB 9
 #define MAX_LIMB_CONVERSION 1000000000
 
+static constexpr bool VERBOSE = false;
+
 static void add(const limb *addend1, const limb *addend2, limb *sum, int length);
 
-  // Convert number to little-endian.
+// Convert number to little-endian.
 void Dec2Bin(const char *decimal, limb *binary, int digits, int *bitGroups) {
-  limb power10000[MAX_LEN*2];
+  limb power10[MAX_LEN*2];
   limb temp[MAX_LEN];
+
+  if (VERBOSE) {
+    printf("Dec2Bin: [%s] strlen %d, digits %d\n", decimal, (int)strlen(decimal), digits);
+  }
 
   // First step: separate in groups of DIGITS_PER_LIMB digits.
   const char *ptrSrc;
-  limb *ptrDest;
-  limb *ptrBinary;
   int digit;
   int lenBytes;
   int multiplier;
   int nbrGroups = 1;
-  while ((nbrGroups * DIGITS_PER_LIMB) < digits)
-  {
+  while ((nbrGroups * DIGITS_PER_LIMB) < digits) {
     nbrGroups *= 2;
   }
   lenBytes = nbrGroups * (int)sizeof(limb);
   (void)memset(binary, 0, lenBytes);
-  (void)memset(power10000, 0, lenBytes);
-  power10000[0].x = MAX_LIMB_CONVERSION;
-  ptrDest = binary;
-  for (ptrSrc = decimal + digits - 1; ptrSrc >= (decimal + DIGITS_PER_LIMB-1); ptrSrc -= DIGITS_PER_LIMB)
-  {
+  (void)memset(power10, 0, lenBytes);
+  power10[0].x = MAX_LIMB_CONVERSION;
+  limb *ptrDest = binary;
+  for (ptrSrc = decimal + digits - 1;
+       ptrSrc >= (decimal + DIGITS_PER_LIMB-1);
+       ptrSrc -= DIGITS_PER_LIMB) {
     int limbContents = 0;
     for (digit = DIGITS_PER_LIMB-1; digit >= 0; digit--)
     {
       limbContents = (limbContents * 10) + *(ptrSrc - digit) - '0';
     }
+    if (VERBOSE) printf("Limb contents: %d\n", limbContents);
     ptrDest->x = limbContents;
     ptrDest++;
   }
@@ -69,30 +74,130 @@ void Dec2Bin(const char *decimal, limb *binary, int digits, int *bitGroups) {
     digit += multiplier * (*ptrSrc - '0');
     multiplier *= 10;
   }
+  if (VERBOSE) {
+    printf("Last limb: %d\n", digit);
+  }
   ptrDest->x = digit;
-  for (int outerGroup = 1; outerGroup < nbrGroups; outerGroup += outerGroup)
-  {
-    for (int innerGroup = 0; innerGroup < nbrGroups; innerGroup += 2*outerGroup)
-    {
-      ptrBinary = binary + innerGroup;
-      multiply(power10000, ptrBinary + outerGroup, temp, outerGroup, NULL);
+
+
+  if (VERBOSE) {
+    // seemingly the same to here.
+    printf("*** %d %d %d %d %d ...\n",
+           binary[0].x,
+           binary[1].x,
+           binary[2].x,
+           binary[3].x,
+           binary[4].x);
+  }
+
+  for (int outerGroup = 1; outerGroup < nbrGroups; outerGroup += outerGroup) {
+    for (int innerGroup = 0; innerGroup < nbrGroups; innerGroup += 2*outerGroup) {
+      limb *ptrBinary = binary + innerGroup;
+      // same to here...
+      if (VERBOSE)
+      printf("UP %d.%d\n"
+             "  power10 = %d %d %d %d %d ...\n"
+             "  pb+og = %d %d %d %d %d ...\n"
+             "  temp = %d %d %d %d %d ...\n",
+             outerGroup, innerGroup,
+             power10[0].x,
+             power10[1].x,
+             power10[2].x,
+             power10[3].x,
+             power10[4].x,
+
+             ptrBinary[outerGroup + 0].x,
+             ptrBinary[outerGroup + 1].x,
+             ptrBinary[outerGroup + 2].x,
+             ptrBinary[outerGroup + 3].x,
+             ptrBinary[outerGroup + 4].x,
+
+             temp[0].x,
+             temp[1].x,
+             temp[2].x,
+             temp[3].x,
+             temp[4].x);
+      multiply(power10, ptrBinary + outerGroup, temp, outerGroup, NULL);
+      if (VERBOSE)
+      printf("yielding:\n"
+             "  power10 = %d %d %d %d %d ...\n"
+             "  pb+og = %d %d %d %d %d ...\n"
+             "  temp = %d %d %d %d %d ...\n",
+             power10[0].x,
+             power10[1].x,
+             power10[2].x,
+             power10[3].x,
+             power10[4].x,
+
+             ptrBinary[outerGroup + 0].x,
+             ptrBinary[outerGroup + 1].x,
+             ptrBinary[outerGroup + 2].x,
+             ptrBinary[outerGroup + 3].x,
+             ptrBinary[outerGroup + 4].x,
+
+             temp[0].x,
+             temp[1].x,
+             temp[2].x,
+             temp[3].x,
+             temp[4].x);
+
       lenBytes = outerGroup * (int)sizeof(limb);
+      if (VERBOSE)
+      printf("memset +%d for %d\n", outerGroup, lenBytes);
       (void)memset(ptrBinary + outerGroup, 0, lenBytes);
       add(temp, ptrBinary, ptrBinary, 2*outerGroup);
     }
-    if ((outerGroup * 2) < nbrGroups)
-    {    // Square power10000.
-      multiply(power10000, power10000, temp, outerGroup, NULL);
+
+    if ((outerGroup * 2) < nbrGroups) {
+      // XXX this just looks wrong to me -- I would expect us to multiply by
+      // MAX_LIMB_CONVERSION, not square it?
+      // Square power10.
+      if (VERBOSE)
+      printf("SQ sz %d:\n"
+             "    pow = %d %d %d %d %d...\n"
+             "    temp = %d %d %d %d %d...\n",
+             outerGroup,
+             power10[0].x,
+             power10[1].x,
+             power10[2].x,
+             power10[3].x,
+             power10[4].x,
+
+             temp[0].x,
+             temp[1].x,
+             temp[2].x,
+             temp[3].x,
+             temp[4].x);
+      multiply(power10, power10, temp, outerGroup, NULL);
+      if (VERBOSE)
+      printf("...resulting in:\n"
+             "    pow = %d %d %d %d %d...\n"
+             "    temp = %d %d %d %d %d...\n",
+             power10[0].x,
+             power10[1].x,
+             power10[2].x,
+             power10[3].x,
+             power10[4].x,
+
+             temp[0].x,
+             temp[1].x,
+             temp[2].x,
+             temp[3].x,
+             temp[4].x);
+
       lenBytes = (outerGroup * 2) * (int)sizeof(limb);
-      (void)memcpy(power10000, temp, lenBytes);
+      (void)memcpy(power10, temp, lenBytes);
     }
   }
+
   // Determine first non-significant group.
   *bitGroups = 1;    // Initialize number of groups in advance.
   for (int groupNbr = nbrGroups-1; groupNbr > 0; groupNbr--)
   {
     if ((binary + groupNbr)->x != 0)
     {            // First non-significant group found.
+      if (VERBOSE)
+      printf("Significant: %d\n", groupNbr);
       *bitGroups = groupNbr + 1;
       break;
     }
@@ -168,7 +273,7 @@ static void Bin2DecLoop(char** ppDest, bool *pSignificantZero,
 }
 
 // Convert little-endian number to a string with space every groupLen digits.
-  // In order to perform a faster conversion, use groups of DIGITS_PER_LIMB digits.
+// In order to perform a faster conversion, use groups of DIGITS_PER_LIMB digits.
 void Bin2Dec(char **ppDecimal, const limb *binary, int nbrLimbs, int groupLength)
 {
   limb power10000[MAX_LEN*2];

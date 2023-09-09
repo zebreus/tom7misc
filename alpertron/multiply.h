@@ -5,7 +5,7 @@
 #include "karatsuba.h"
 #include "bigmultiply.h"
 
-#if 1
+#if 0
   #define multiply multiplyKaratsuba
   #define multiplyWithBothLen multiplyWithBothLenKaratsuba
 #else

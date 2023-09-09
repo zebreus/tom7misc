@@ -37,16 +37,20 @@ CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/
 ALPERTRON_OBJECTS=copystr.o bigint.o division.o baseconv.o karatsuba.o modmult.o sqroot.o  quad.o quadmodll.o bignbr.o fft.o globals.o bigconv.o bigfactor.o bigmultiply.o
 
 quad.exe:  main.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
-	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
+	@echo -n "@"
+	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 afactor.exe:  afactor.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
-	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
+	@echo -n "@"
+	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 test.exe : test.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
-	$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
+	@echo -n "@"
+	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 %.o : %.cc $(HEADERS)
-	$(CXX) $(CXXFLAGS) -o $@ -c $<
+	@echo -n "."
+	@$(CXX) $(CXXFLAGS) -o $@ -c $<
 
 clean:
 	rm -f *.o coverage.out *.exe

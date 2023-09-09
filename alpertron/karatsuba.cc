@@ -36,6 +36,8 @@
 static constexpr int KARATSUBA_CUTOFF = 16;
 static constexpr int FFT_THRESHOLD = 100;
 
+static constexpr bool VERBOSE = false;
+
 struct stKaratsubaStack {
   int idxFactor1;
   int sign;
@@ -208,7 +210,7 @@ void multiplyWithBothLenKaratsubaInternal(
 
   if (minLen == maxLen)
   {
-    fprintf(stderr, "-same len-");
+    if (VERBOSE) fprintf(stderr, "-same len-");
 
     // so it's getting modified in here...
     multiplyWithBothLenLL(minFact, maxFact, result, minLen, maxLen, pResultLen);
@@ -216,7 +218,7 @@ void multiplyWithBothLenKaratsubaInternal(
     return;
   }
   // Perform several multiplications and add all products.
-  fprintf(stderr, "-min %d max %d prod %d-", minLen, maxLen, lenProd);
+  if (VERBOSE) fprintf(stderr, "-min %d max %d prod %d-", minLen, maxLen, lenProd);
   lenBytes = lenProd * (int)sizeof(int);
 
   // PERF: We know the final size!
@@ -258,11 +260,11 @@ void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb
   BigInt f1 = LimbsToBigInt(factor1, len1);
   BigInt f2 = LimbsToBigInt(factor2, len2);
 
-  if (false) {
+  if (VERBOSE) {
     // XXX
-    fprintf(stderr, "%skarat %s * %s ",
+    fprintf(stderr, "%skarat %s [%d] * %s [%d] ",
             (pResultLen == NULL) ? "[NULL]" : "",
-            LongNum(f1).c_str(), LongNum(f2).c_str());
+            LongNum(f1).c_str(), len1, LongNum(f2).c_str(), len2);
   }
 
   int result_len = 0;
@@ -270,11 +272,11 @@ void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb
                                        len1, len2, &result_len);
 
   {
-    if (factor1 == result) fprintf(stderr, "FACTOR1 = RESULT\n");
-    if (factor2 == result) fprintf(stderr, "FACTOR2 = RESULT\n");
-    fprintf(stderr, " [%p,%d] ", result, result_len);
+    if (VERBOSE && factor1 == result) fprintf(stderr, "FACTOR1 = RESULT\n");
+    if (VERBOSE && factor2 == result) fprintf(stderr, "FACTOR2 = RESULT\n");
+    if (VERBOSE) fprintf(stderr, " [%p,%d] ", result, result_len);
     BigInt r = LimbsToBigInt(result, result_len);
-    fprintf(stderr, " = %s\n", LongNum(r).c_str());
+    if (VERBOSE) fprintf(stderr, " = %s\n", LongNum(r).c_str());
 
     CHECK(olen1 == len1 && olen2 == len2);
     BigInt ff1 = LimbsToBigInt(factor1, len1);
@@ -1008,7 +1010,10 @@ void Karat::belowKaratsubaCutoff(
 }
 
 void Karat::Karatsuba(int indexFactor1, int numLen) {
-  fprintf(stderr, "(Karatsuba %d.%d)", indexFactor1, numLen); fflush(stderr);
+  if (VERBOSE) {
+    fprintf(stderr, "(Karatsuba %d.%d)", indexFactor1, numLen);
+    fflush(stderr);
+  }
   int nbrLen = numLen;
   int idxFactor1 = indexFactor1;
   int idxFactor2;
