@@ -25,6 +25,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <assert.h>
+#include <memory>
 
 #include "bignbr.h"
 #include "fft.h"
@@ -34,12 +35,45 @@
 
 #define KARATSUBA_CUTOFF 16
 #define FFT_THRESHOLD 100
-static limb arr[MAX_LEN/*3* FFT_THRESHOLD*/];
-static limb arrayAux[MAX_LEN/*3* FFT_THRESHOLD*/];
-static limb accumulatedProd[MAX_LEN_MULT];
-static limb partialProd[MAX_LEN_MULT];
-static int karatLength;
-static void Karatsuba(int idxFactor1, int nbrLen);
+
+
+struct stKaratsubaStack {
+  int idxFactor1;
+  int sign;
+  int stage;
+};
+
+struct Karat {
+  limb arr[MAX_LEN/*3* FFT_THRESHOLD*/] = {};
+  limb arrayAux[MAX_LEN/*3* FFT_THRESHOLD*/] = {};
+  int karatLength = 0;
+  stKaratsubaStack astKaratsubaStack[16] = {};
+  void Karatsuba(int idxFactor1, int nbrLen);
+  void belowKaratsubaCutoff(
+      int nbrLen, int idxFactor1, int idxFactor2);
+  void computeFinalProduct(
+      int nbrLen, int idxFactor1, int sign, int diffIndex);
+  int absSubtract(int idxMinuend, int idxSubtrahend,
+                  int idxResult, int nbrLen);
+
+  void ClassicalMult(int idxFactor1, int idxFactor2, int nbrLen);
+
+  void ClassicalMult2Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult3Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult4Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult5Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult6Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult7Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult8Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult9Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult10Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult11Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult12Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult13Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult14Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult15Limbs(int idxFactor1, int idxFactor2);
+  void ClassicalMult16Limbs(int idxFactor1, int idxFactor2);
+};
 
 #define PROLOG_MULTIPLICATION_DOUBLE                                    \
   factor2_i = arr[idxFactor2 + i].x;                                    \
@@ -86,7 +120,7 @@ static inline void multiplyWithBothLenLL(
     const limb *factor1, const limb *factor2,
     limb *result, int len1, int len2, int *pResultLen) {
   int length = len1;
-  int lenBytes;
+
   // Compute the maximum length.
   if (length < len2)
   {
@@ -94,46 +128,48 @@ static inline void multiplyWithBothLenLL(
   }
   if (length > FFT_THRESHOLD)
   {
+    fprintf(stderr, "-fft-");
+    CHECK(false);
     fftMultiplication(factor1, factor2, result, len1, len2, pResultLen);
     return;
   }
-    // Compute length of numbers for each recursion.
-  if (length > KARATSUBA_CUTOFF)
-  {
+
+  // Compute length of numbers for each recursion.
+  if (length > KARATSUBA_CUTOFF) {
     int div = 1;
-    while (length > KARATSUBA_CUTOFF)
-    {
+    while (length > KARATSUBA_CUTOFF) {
       div *= 2;
       length = (length + 1) / 2;
     }
     length *= div;
   }
-  karatLength = length;
-  lenBytes = 2 * length * (int)sizeof(limb);
-  (void)memset(arr, 0, lenBytes);
+
+  fprintf(stderr, "Creating Karat object..\n");
+  std::unique_ptr<Karat> karat(new Karat);
+
+  karat->karatLength = length;
+  int lenBytes = 2 * length * (int)sizeof(limb);
+  (void)memset(karat->arr, 0, lenBytes);
   lenBytes = len1 * (int)sizeof(limb);
-  (void)memcpy(&arr[0], factor1, lenBytes);
+  (void)memcpy(&karat->arr[0], factor1, lenBytes);
   lenBytes = len2 * (int)sizeof(limb);
-  (void)memcpy(&arr[length], factor2, lenBytes);
-  Karatsuba(0, length);
+  (void)memcpy(&karat->arr[length], factor2, lenBytes);
+  karat->Karatsuba(0, length);
   lenBytes = 2 * length * (int)sizeof(limb);
-  (void)memcpy(result, &arr[2 * (karatLength - length)], lenBytes);
-  if (pResultLen != NULL)
-  {
-    (void)memcpy(result, &arr[2 * (karatLength - length)], lenBytes);
-    if ((karatLength > length) && (arr[2 * (karatLength - length)-1].x == 0))
-    {
+  (void)memcpy(result, &karat->arr[2 * (karat->karatLength - length)], lenBytes);
+  if (pResultLen != NULL) {
+    if ((karat->karatLength > length) &&
+        (karat->arr[2 * (karat->karatLength - length)-1].x == 0)) {
       *pResultLen = (length * 2) - 1;
-    }
-    else
-    {
+    } else {
       *pResultLen = length * 2;
     }
   }
 }
 
-void multiplyWithBothLenKaratsubaInternal(const limb* factor1, const limb* factor2, limb* result,
-                                  int len1, int len2, int* pResultLen) {
+void multiplyWithBothLenKaratsubaInternal(
+    const limb* factor1, const limb* factor2, limb* result,
+    int len1, int len2, int* pResultLen) {
   const limb* minFact;
   const limb* maxFact;
   int minLen;
@@ -170,11 +206,15 @@ void multiplyWithBothLenKaratsubaInternal(const limb* factor1, const limb* facto
   }
   if (minLen == maxLen)
   {
+    fprintf(stderr, "-same len-");
     multiplyWithBothLenLL(minFact, maxFact, result, minLen, maxLen, pResultLen);
     return;
   }
   // Perform several multiplications and add all products.
+  fprintf(stderr, "-min %d max %d prod %d-", minLen, maxLen, lenProd);
   lenBytes = lenProd * (int)sizeof(int);
+  limb accumulatedProd[MAX_LEN_MULT] = {};
+  limb partialProd[MAX_LEN_MULT] = {};
   (void)memset(accumulatedProd, 0, lenBytes);
   for (offset = 0; offset < (maxLen - minLen); offset += minLen)
   {
@@ -224,6 +264,8 @@ void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb
 
     BigInt ff1 = LimbsToBigInt(factor1, len1);
     BigInt ff2 = LimbsToBigInt(factor2, len2);
+    CHECK(BigInt::Eq(BigInt::Times(f1, f2), r));
+    if (true) {
     CHECK(BigInt::Eq(f1, ff1) &&
           BigInt::Eq(f2, ff2)) <<
       "Multiplication modified its arguments?\n"
@@ -231,8 +273,14 @@ void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb
       LongNum(f1) << " became\n" << LongNum(ff1) <<
       "\nf2:\n" <<
       LongNum(f2) << " became\n" << LongNum(ff2);
-    CHECK(BigInt::Eq(BigInt::Times(f1, f2), r));
+    }
   }
+
+  // Maybe the semantics are that factor1 and factor2 are
+  // invalidated? No... they seem to be used.
+  // memset((void*)factor1, 0, len1 * sizeof(int));
+  // memset((void*)factor2, 0, len1 * sizeof(int));
+
 
   if (pResultLen != nullptr) *pResultLen = result_len;
 }
@@ -240,9 +288,8 @@ void multiplyWithBothLenKaratsuba(const limb* factor1, const limb* factor2, limb
 
 // The return value is the sign: true: negative.
 // In result the absolute value of the difference is computed.
-static int absSubtract(int idxMinuend, int idxSubtrahend,
-                       int idxResult, int nbrLen)
-{
+int Karat::absSubtract(int idxMinuend, int idxSubtrahend,
+                       int idxResult, int nbrLen) {
   int indexMinuend = idxMinuend;
   int indexSubtrahend = idxSubtrahend;
   int sign = 0;
@@ -287,8 +334,7 @@ static int absSubtract(int idxMinuend, int idxSubtrahend,
 // and the second one at idxFactor2. The 2*nbrLen limb result is stored
 // starting at idxFactor1. Use arrayAux as temporary storage.
 // Accumulate products by result limb.
-static void ClassicalMult2Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult2Limbs(int idxFactor1, int idxFactor2) {
   int i=0;
   uint32_t factor2_i;
   uint32_t factor2_iPlus1;
@@ -300,8 +346,7 @@ static void ClassicalMult2Limbs(int idxFactor1, int idxFactor2)
   arrayAux[3].x = prod_iPlus1;
 }
 
-static void ClassicalMult3Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult3Limbs(int idxFactor1, int idxFactor2) {
   int i=0;
   uint32_t factor2_i;
   uint32_t factor2_iPlus1;
@@ -316,8 +361,7 @@ static void ClassicalMult3Limbs(int idxFactor1, int idxFactor2)
   EPILOG_MULTIPLICATION_SINGLE(5);
 }
 
-static void ClassicalMult4Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult4Limbs(int idxFactor1, int idxFactor2) {
   M(0); M(1); M(2); M(3);
   for (int i = 0; i < 4; i += 2)
   {
@@ -335,8 +379,7 @@ static void ClassicalMult4Limbs(int idxFactor1, int idxFactor2)
   arrayAux[7].x = prod_iPlus3;
 }
 
-static void ClassicalMult5Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult5Limbs(int idxFactor1, int idxFactor2) {
   uint32_t factor2_i;
   uint64_t Pr;
   M(0); M(1); M(2); M(3); M(4);
@@ -357,8 +400,7 @@ static void ClassicalMult5Limbs(int idxFactor1, int idxFactor2)
   EPILOG_MULTIPLICATION_SINGLE(9);
 }
 
-static void ClassicalMult6Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult6Limbs(int idxFactor1, int idxFactor2) {
   M(0); M(1); M(2); M(3); M(4); M(5);
   for (int i = 0; i < 6; i+=2)
   {
@@ -380,8 +422,7 @@ static void ClassicalMult6Limbs(int idxFactor1, int idxFactor2)
   arrayAux[11].x = prod_iPlus5;
 }
 
-static void ClassicalMult7Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult7Limbs(int idxFactor1, int idxFactor2) {
   uint32_t factor2_i;
   uint64_t Pr;
   M(0); M(1); M(2); M(3); M(4); M(5); M(6);
@@ -406,8 +447,7 @@ static void ClassicalMult7Limbs(int idxFactor1, int idxFactor2)
   EPILOG_MULTIPLICATION_SINGLE(13);
 }
 
-static void ClassicalMult8Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult8Limbs(int idxFactor1, int idxFactor2) {
   M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7);
   for (int i = 0; i < 8; i += 2)
   {
@@ -433,8 +473,7 @@ static void ClassicalMult8Limbs(int idxFactor1, int idxFactor2)
   arrayAux[15].x = prod_iPlus7;
 }
 
-static void ClassicalMult9Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult9Limbs(int idxFactor1, int idxFactor2) {
   uint32_t factor2_i;
   uint64_t Pr;
   M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7); M(8);
@@ -463,8 +502,7 @@ static void ClassicalMult9Limbs(int idxFactor1, int idxFactor2)
   EPILOG_MULTIPLICATION_SINGLE(17);
 }
 
-static void ClassicalMult10Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult10Limbs(int idxFactor1, int idxFactor2) {
   M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7); M(8); M(9);
   for (int i = 0; i < 10; i+=2)
   {
@@ -494,8 +532,7 @@ static void ClassicalMult10Limbs(int idxFactor1, int idxFactor2)
   arrayAux[19].x = prod_iPlus9;
 }
 
-static void ClassicalMult11Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult11Limbs(int idxFactor1, int idxFactor2) {
   uint32_t factor2_i;
   uint64_t Pr;
   M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7); M(8); M(9); M(10);
@@ -528,8 +565,7 @@ static void ClassicalMult11Limbs(int idxFactor1, int idxFactor2)
   EPILOG_MULTIPLICATION_SINGLE(21);
 }
 
-static void ClassicalMult12Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult12Limbs(int idxFactor1, int idxFactor2) {
   M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7); M(8); M(9);
   M(10); M(11);
   for (int i = 0; i < 12; i += 2)
@@ -564,8 +600,7 @@ static void ClassicalMult12Limbs(int idxFactor1, int idxFactor2)
   arrayAux[23].x = prod_iPlus11;
 }
 
-static void ClassicalMult13Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult13Limbs(int idxFactor1, int idxFactor2) {
   uint32_t factor2_i;
   uint64_t Pr;
   M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7); M(8); M(9);
@@ -603,8 +638,7 @@ static void ClassicalMult13Limbs(int idxFactor1, int idxFactor2)
   EPILOG_MULTIPLICATION_SINGLE(25);
 }
 
-static void ClassicalMult14Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult14Limbs(int idxFactor1, int idxFactor2) {
   M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7); M(8); M(9);
   M(10); M(11); M(12); M(13);
   for (int i = 0; i < 14; i += 2)
@@ -643,8 +677,7 @@ static void ClassicalMult14Limbs(int idxFactor1, int idxFactor2)
   arrayAux[27].x = prod_iPlus13;
 }
 
-static void ClassicalMult15Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult15Limbs(int idxFactor1, int idxFactor2) {
   uint32_t factor2_i;
   uint64_t Pr;
   M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7); M(8); M(9);
@@ -686,8 +719,7 @@ static void ClassicalMult15Limbs(int idxFactor1, int idxFactor2)
   EPILOG_MULTIPLICATION_SINGLE(29);
 }
 
-static void ClassicalMult16Limbs(int idxFactor1, int idxFactor2)
-{
+void Karat::ClassicalMult16Limbs(int idxFactor1, int idxFactor2) {
   M(0); M(1); M(2); M(3); M(4); M(5); M(6); M(7); M(8); M(9);
   M(10); M(11); M(12); M(13); M(14); M(15);
   for (int i = 0; i < 16; i += 2)
@@ -731,8 +763,7 @@ static void ClassicalMult16Limbs(int idxFactor1, int idxFactor2)
 }
 
 
-static void ClassicalMult(int idxFactor1, int idxFactor2, int nbrLen)
-{
+void Karat::ClassicalMult(int idxFactor1, int idxFactor2, int nbrLen) {
   int lenBytes;
 
   uint64_t product;
@@ -799,17 +830,7 @@ static void ClassicalMult(int idxFactor1, int idxFactor2, int nbrLen)
   return;
 }
 
-struct stKaratsubaStack
-{
-  int idxFactor1;
-  int sign;
-  int stage;
-};
-
-static struct stKaratsubaStack astKaratsubaStack[16];
-
-inline static void computeFinalProduct(int nbrLen, int idxFactor1, int sign, int diffIndex)
-{
+void Karat::computeFinalProduct(int nbrLen, int idxFactor1, int sign, int diffIndex) {
   int i;
   int halfLength = nbrLen / 2;
   // Process all carries at the end.
@@ -932,8 +953,8 @@ inline static void computeFinalProduct(int nbrLen, int idxFactor1, int sign, int
   }
 }
 
-inline static void belowKaratsubaCutoff(int nbrLen, int idxFactor1, int idxFactor2)
-{
+void Karat::belowKaratsubaCutoff(
+    int nbrLen, int idxFactor1, int idxFactor2) {
   const limb* ptrResult;
   int i;
   // Check if one of the factors is equal to zero.
@@ -972,8 +993,8 @@ inline static void belowKaratsubaCutoff(int nbrLen, int idxFactor1, int idxFacto
   }
 }
 
-static void Karatsuba(int indexFactor1, int numLen)
-{
+void Karat::Karatsuba(int indexFactor1, int numLen) {
+  fprintf(stderr, "(Karatsuba %d.%d)", indexFactor1, numLen); fflush(stderr);
   int nbrLen = numLen;
   int idxFactor1 = indexFactor1;
   int idxFactor2;
@@ -982,7 +1003,7 @@ static void Karatsuba(int indexFactor1, int numLen)
   int sign = 0;
   int halfLength;
   int diffIndex = 2 * nbrLen;
-  static struct stKaratsubaStack *pstKaratsubaStack = astKaratsubaStack;
+  stKaratsubaStack *pstKaratsubaStack = astKaratsubaStack;
   int stage = 0;
   // Save current parameters in stack.
   pstKaratsubaStack->idxFactor1 = idxFactor1;
