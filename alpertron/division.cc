@@ -24,6 +24,11 @@
 #include <math.h>
 #include "multiply.h"
 
+#include "bigconv.h"
+#include "base/logging.h"
+
+static constexpr bool VERBOSE = false;
+
 extern limb approxInv[MAX_LEN];
 extern limb adjustedArgument[MAX_LEN];
 extern limb arrAux[MAX_LEN];
@@ -85,7 +90,7 @@ static void MultiplyBigNbrByMinPowerOf2(int *pPower2, const limb *number, int le
 // After computing the number of limbs of the results, this routine finds the inverse
 // of the divisor and then multiplies it by the dividend using nbrLimbs+1 limbs.
 // After that, the quotient is adjusted.
-enum eExprErr BigIntDivide(const BigInteger *pDividend, const BigInteger *pDivisor, BigInteger *pQuotient)
+static enum eExprErr BigIntDivideInternal(const BigInteger *pDividend, const BigInteger *pDivisor, BigInteger *pQuotient)
 {
   double inverse;
   limb oldLimb;
@@ -448,3 +453,27 @@ enum eExprErr BigIntDivide(const BigInteger *pDividend, const BigInteger *pDivis
   }
   return EXPR_OK;
 }
+
+enum eExprErr BigIntDivide(const BigInteger *pDividend, const BigInteger *pDivisor, BigInteger *pQuotient) {
+  BigInt numer = BigIntegerToBigInt(pDividend);
+  BigInt denom = BigIntegerToBigInt(pDivisor);
+
+  const auto e = BigIntDivideInternal(pDividend, pDivisor, pQuotient);
+
+  BigInt quot = BigIntegerToBigInt(pQuotient);
+
+  BigInt bquot =
+    BigInt::Eq(denom, 0) ? BigInt(0) :
+    BigInt::Div(numer, denom);
+  if (VERBOSE) {
+    fprintf(stderr, "%s / %s = %s (bigint: %s)\n",
+            LongNum(numer).c_str(),
+            LongNum(denom).c_str(),
+            LongNum(quot).c_str(),
+            LongNum(bquot).c_str());
+  }
+  CHECK(BigInt::Eq(quot, bquot));
+
+  return e;
+}
+

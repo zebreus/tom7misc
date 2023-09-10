@@ -64,7 +64,11 @@ int BigIntToArray(const BigInt &b, int *arr) {
 }
 
 BigInt ArrayToBigInt(const int *arr) {
-  return LimbsToBigInt((const limb *)(arr + 1), *arr);
+  int length = *arr;
+  // XXX Code like BigInteger2IntArray suggests that a negative
+  // length represents a negative value.
+  CHECK(length > 0);
+  return LimbsToBigInt((const limb *)(arr + 1), length);
 }
 
 BigInt BigIntegerToBigInt(const BigInteger *g) {
