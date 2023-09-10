@@ -28,8 +28,6 @@
 #include "base/logging.h"
 #include "bigconv.h"
 
-#define LOG_2            0.69314718055994531
-
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc) {
   if (pDest != pSrc)
   {
@@ -168,35 +166,6 @@ enum eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent,
   return EXPR_OK;
 }
 
-enum eExprErr BigIntPowerInternal(const BigInteger *pBase, const BigInteger *pExponent,
-                                  BigInteger *pPower) {
-  assert(pBase->nbrLimbs >= 1);
-  assert(pExponent->nbrLimbs >= 1);
-  if (pExponent->sign == SIGN_NEGATIVE)
-  {     // Negative exponent not accepted.
-    return EXPR_INVALID_PARAM;
-  }
-  if (pExponent->nbrLimbs > 1)
-  {     // Exponent too high.
-    if ((pBase->nbrLimbs == 1) && (pBase->limbs[0].x < 2))
-    {   // If base equals -1, 0 or 1, set power to the value of base.
-      pPower->limbs[0].x = pBase->limbs[0].x;
-      pPower->nbrLimbs = 1;
-      if ((pBase->sign == SIGN_NEGATIVE) && ((pExponent->limbs[0].x & 1) != 0))
-      {   // Base negative and exponent odd means power negative.
-        pPower->sign = SIGN_NEGATIVE;
-      }
-      else
-      {
-        pPower->sign = SIGN_POSITIVE;
-      }
-      return EXPR_OK;
-    }
-    return EXPR_INTERM_TOO_HIGH;
-  }
-  return BigIntPowerIntExp(pBase, pExponent->limbs[0].x, pPower);
-}
-
 enum eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent,
                           BigInteger *pPower) {
   BigInt a = BigIntegerToBigInt(pBase);
@@ -228,18 +197,12 @@ enum eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent,
   const int64_t exponent = oexponent.value();
 
   BigInt r = BigInt::Pow(a, exponent);
-
-  CHECK(EXPR_OK == BigIntPowerInternal(pBase, pExponent, pPower));
-  BigInt rr = BigIntegerToBigInt(pPower);
-  CHECK(BigInt::Eq(r, rr));
-
-  // BigIntToBigInteger(r, pPower);
+  BigIntToBigInteger(r, pPower);
 
   return EXPR_OK;
 }
 
-void BigIntDivide2(BigInteger *pArg)
-{
+void BigIntDivide2(BigInteger *pArg) {
   int nbrLimbs = pArg->nbrLimbs;
   int ctr = nbrLimbs - 1;
   unsigned int carry;
@@ -851,8 +814,8 @@ static void ConvertToTwosComplement(BigInteger *value)
 }
 
 
-void BigIntAnd(const BigInteger* firstArgum,
-               const BigInteger* secondArgum, BigInteger* result) {
+void BigIntAndInternal(const BigInteger* firstArgum,
+                       const BigInteger* secondArgum, BigInteger* result) {
   const BigInteger* firstArg;
   const BigInteger* secondArg;
   int idx;
@@ -915,6 +878,15 @@ void BigIntAnd(const BigInteger* firstArgum,
   ConvertToTwosComplement(result);
 }
 
+void BigIntAnd(const BigInteger* arg1, const BigInteger* arg2,
+               BigInteger* result) {
+  BigInt a = BigIntegerToBigInt(arg1);
+  BigInt b = BigIntegerToBigInt(arg2);
+  BigInt r = BigInt::BitwiseAnd(a, b);
+
+  BigIntAndInternal(arg1, arg2, result);
+  CHECK(BigInt::Eq(r, BigIntegerToBigInt(result)));
+}
 
 int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower) {
   BigInt a = BigIntegerToBigInt(upper);
