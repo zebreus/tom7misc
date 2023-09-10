@@ -376,6 +376,16 @@ static void TestDivExact() {
   CHECK(BigInt::Eq(a, e));
 }
 
+static void TestJacobi() {
+  #ifdef BIG_USE_GMP
+  CHECK(BigInt::Jacobi(BigInt(11), BigInt(17)) == -1);
+  CHECK(BigInt::Jacobi(BigInt(1), BigInt(1)) == 1);
+  CHECK(BigInt::Jacobi(BigInt(6), BigInt(15)) == 0);
+
+  CHECK(BigInt::Jacobi(BigInt(30), BigInt(59)) == -1);
+  #endif
+}
+
 int main(int argc, char **argv) {
   printf("Start.\n");
   fflush(stdout);
@@ -404,6 +414,7 @@ int main(int argc, char **argv) {
   BenchDiv2();
 
   TestSqrt();
+  TestJacobi();
 
   printf("OK\n");
 }

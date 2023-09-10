@@ -102,6 +102,9 @@ struct BigInt {
   // Returns the approximate logarithm, base e.
   inline static double NaturalLog(const BigInt &a);
 
+  // Jacobi symbol (-1, 0, 1). b must be odd.
+  inline static int Jacobi(const BigInt &a, const BigInt &b);
+
   inline static BigInt BitwiseAnd(const BigInt &a, const BigInt &b);
   #endif
 
@@ -391,6 +394,10 @@ double BigInt::NaturalLog(const BigInt &a) {
   signed long int exponent = 0;
   const double di = mpz_get_d_2exp(&exponent, a.rep);
   return std::log(di) + std::log(2.0) * (double)exponent;
+}
+
+int BigInt::Jacobi(const BigInt &a, const BigInt &b) {
+  return mpz_jacobi(a.rep, b.rep);
 }
 
 BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
