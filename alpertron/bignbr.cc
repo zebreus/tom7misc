@@ -237,8 +237,8 @@ void BigIntSubt(const BigInteger *pMinuend, const BigInteger *pSubtrahend, BigIn
   }
 }
 
-enum eExprErr BigIntMultiply(const BigInteger *pFact1, const BigInteger *pFact2, BigInteger *pProduct)
-{
+enum eExprErr BigIntMultiplyInternal(const BigInteger *pFact1, const BigInteger *pFact2,
+                             BigInteger *pProduct) {
   const BigInteger* pFactor1 = pFact1;
   const BigInteger* pFactor2 = pFact2;
   int nbrLimbsFactor1 = pFactor1->nbrLimbs;
@@ -291,30 +291,23 @@ enum eExprErr BigIntMultiply(const BigInteger *pFact1, const BigInteger *pFact2,
   return EXPR_OK;
 }
 
-static enum eExprErr BigIntRemainderInternal(const BigInteger *pDividend,
-  const BigInteger *pDivisor, BigInteger *pRemainder)
-{
-  enum eExprErr rc;
-  assert(pDividend->nbrLimbs >= 1);
-  assert(pDivisor->nbrLimbs >= 1);
-  if (BigIntIsZero(pDivisor))
-  {   // If divisor = 0, then remainder is the dividend.
-    CopyBigInt(pRemainder, pDividend);
-    return EXPR_OK;
-  }
-  BigInteger Temp2, Base;
-  CopyBigInt(&Temp2, pDividend);
-  rc = BigIntDivide(pDividend, pDivisor, &Base);   // Get quotient of division.
-  if (rc != EXPR_OK)
-  {
-    return rc;
-  }
-  rc = BigIntMultiply(&Base, pDivisor, &Base);
-  if (rc != EXPR_OK)
-  {
-    return rc;
-  }
-  BigIntSubt(&Temp2, &Base, pRemainder);
+enum eExprErr BigIntMultiply(const BigInteger *pFact1, const BigInteger *pFact2,
+                             BigInteger *pProduct) {
+   BigInt f1 = BigIntegerToBigInt(pFact1);
+   BigInt f2 = BigIntegerToBigInt(pFact2);
+   BigInt r = BigInt::Times(f1, f2);
+
+   BigIntMultiplyInternal(pFact1, pFact2, pProduct);
+   BigInt rr = BigIntegerToBigInt(pProduct);
+   /*
+   fprintf(stderr, "%s * %s = %s\n",
+          f1.ToString().c_str(),
+          f2.ToString().c_str(),
+          rr.ToString().c_str());
+   */
+  CHECK(BigInt::Eq(r, rr));
+
+  // BigIntToBigInteger(r, pRemainder);
   return EXPR_OK;
 }
 
@@ -324,22 +317,11 @@ enum eExprErr BigIntRemainder(
   BigInt numer = BigIntegerToBigInt(pDividend);
   BigInt denom = BigIntegerToBigInt(pDivisor);
   if (BigInt::Eq(denom, 0)) return EXPR_DIVIDE_BY_ZERO;
-
   // PERF: This is called a lot. Can add a BigInt function that just
   // gets the remainder, or better, see if callers are getting both
   // quotient and remainder already.
   BigInt rem = BigInt::QuotRem(numer, denom).second;
-
-  CHECK(EXPR_OK == BigIntRemainderInternal(pDividend, pDivisor, pRemainder));
-  BigInt rr = BigIntegerToBigInt(pRemainder);
-  /*
-  fprintf(stderr, "%s rem %s = %s\n",
-          numer.ToString().c_str(),
-          denom.ToString().c_str(),
-          rem.ToString().c_str());
-  */
-  CHECK(BigInt::Eq(rem, rr));
-
+  BigIntToBigInteger(rem, pRemainder);
   return EXPR_OK;
 }
 
