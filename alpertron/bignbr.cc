@@ -96,131 +96,12 @@ void BigIntChSign(BigInteger *value)
   }
 }
 
-static void InternalBigIntAdd(const BigInteger *pAdd1, const BigInteger *pAdd2,
-  BigInteger *pSum, enum eSign addend2sign)
-{
-  const BigInteger* pAddend1 = pAdd1;
-  const BigInteger* pAddend2 = pAdd2;
-  int ctr;
-  int nbrLimbs;
-  const limb *ptrAddend1;
-  const limb *ptrAddend2;
-  limb *ptrSum;
-  const BigInteger *pTemp;
-  enum eSign addend1Sign = pAddend1->sign;
-  enum eSign addend2Sign = addend2sign;
-  enum eSign tmpSign;
-  assert(pAddend1->nbrLimbs >= 1);
-  assert(pAddend2->nbrLimbs >= 1);
-  if (pAddend1->nbrLimbs < pAddend2->nbrLimbs)
-  {
-    tmpSign = addend1Sign;
-    addend1Sign = addend2Sign;
-    addend2Sign = tmpSign;
-    pTemp = pAddend1;
-    pAddend1 = pAddend2;
-    pAddend2 = pTemp;
-  }           // At this moment, the absolute value of addend1 is greater than
-              // or equal than the absolute value of addend2.
-  else if (pAddend1->nbrLimbs == pAddend2->nbrLimbs)
-  {
-    for (ctr = pAddend1->nbrLimbs - 1; ctr >= 0; ctr--)
-    {
-      if (pAddend1->limbs[ctr].x != pAddend2->limbs[ctr].x)
-      {
-        break;
-      }
-    }
-    if ((ctr >= 0) && (pAddend1->limbs[ctr].x < pAddend2->limbs[ctr].x))
-    {
-      tmpSign = addend1Sign;
-      addend1Sign = addend2Sign;
-      addend2Sign = tmpSign;
-      pTemp = pAddend1;
-      pAddend1 = pAddend2;
-      pAddend2 = pTemp;
-    }           // At this moment, the absolute value of addend1 is greater than
-                // or equal than the absolute value of addend2.
-  }
-  else
-  {             // Nothing to do.
-  }
-  nbrLimbs = pAddend2->nbrLimbs;
-  ptrAddend1 = pAddend1->limbs;
-  ptrAddend2 = pAddend2->limbs;
-  ptrSum = pSum->limbs;
-  if (addend1Sign == addend2Sign)
-  {             // Both addends have the same sign. Sum their absolute values.
-    unsigned int carry = 0;
-    unsigned int limbValue;
-    for (ctr = 0; ctr < nbrLimbs; ctr++)
-    {
-      carry = (carry >> BITS_PER_GROUP) + (unsigned int)ptrAddend1->x +
-        (unsigned int)ptrAddend2->x;
-      ptrAddend1++;
-      ptrAddend2++;
-      limbValue = carry & MAX_INT_NBR_U;
-      ptrSum->x = (int)limbValue;
-      ptrSum++;
-    }
-    nbrLimbs = pAddend1->nbrLimbs;
-    for (; ctr < nbrLimbs; ctr++)
-    {
-      carry = (carry >> BITS_PER_GROUP) + (unsigned int)ptrAddend1->x;
-      ptrAddend1++;
-      limbValue = carry & MAX_INT_NBR_U;
-      ptrSum->x = (int)limbValue;
-      ptrSum++;
-    }
-    if (carry >= LIMB_RANGE)
-    {
-      ptrSum->x = 1;
-      nbrLimbs++;
-    }
-  }
-  else
-  {           // Both addends have different sign. Subtract their absolute values.
-    unsigned int borrow = 0U;
-    for (ctr = 0; ctr < nbrLimbs; ctr++)
-    {
-      borrow = (unsigned int)ptrAddend1->x - (unsigned int)ptrAddend2->x -
-        (borrow >> BITS_PER_GROUP);
-      ptrSum->x = UintToInt(borrow & MAX_VALUE_LIMB);
-      ptrAddend1++;
-      ptrAddend2++;
-      ptrSum++;
-    }
-    nbrLimbs = pAddend1->nbrLimbs;
-    for (; ctr < nbrLimbs; ctr++)
-    {
-      borrow = (unsigned int)ptrAddend1->x - (borrow >> BITS_PER_GROUP);
-      ptrSum->x = UintToInt(borrow & MAX_VALUE_LIMB);
-      ptrAddend1++;
-      ptrSum++;
-    }
-    while ((nbrLimbs > 1) && (pSum->limbs[nbrLimbs - 1].x == 0))
-    {     // Loop that deletes non-significant zeros.
-      nbrLimbs--;
-    }
-  }
-  pSum->nbrLimbs = nbrLimbs;
-  pSum->sign = addend1Sign;
-  if ((pSum->nbrLimbs == 1) && (pSum->limbs[0].x == 0))
-  {          // Result is zero.
-    pSum->sign = SIGN_POSITIVE;
-  }
-}
-
 void BigIntAdd(const BigInteger* pAddend1, const BigInteger* pAddend2, BigInteger* pSum)
 {
   BigInt a = BigIntegerToBigInt(pAddend1);
   BigInt b = BigIntegerToBigInt(pAddend2);
   BigInt s = BigInt::Plus(a, b);
-
-  InternalBigIntAdd(pAddend1, pAddend2, pSum, pAddend2->sign);
-
-  BigInt ss = BigIntegerToBigInt(pSum);
-  CHECK(BigInt::Eq(s, ss));
+  BigIntToBigInteger(s, pSum);
 }
 
 void BigIntNegate(const BigInteger *pSrc, BigInteger *pDest)
@@ -232,16 +113,12 @@ void BigIntNegate(const BigInteger *pSrc, BigInteger *pDest)
   BigIntChSign(pDest);
 }
 
-void BigIntSubt(const BigInteger *pMinuend, const BigInteger *pSubtrahend, BigInteger *pDifference)
-{
-  if (pSubtrahend->sign == SIGN_POSITIVE)
-  {
-    InternalBigIntAdd(pMinuend, pSubtrahend, pDifference, SIGN_NEGATIVE);
-  }
-  else
-  {
-    InternalBigIntAdd(pMinuend, pSubtrahend, pDifference, SIGN_POSITIVE);
-  }
+void BigIntSubt(const BigInteger *pMinuend, const BigInteger *pSubtrahend,
+                BigInteger *pDifference) {
+  BigInt a = BigIntegerToBigInt(pMinuend);
+  BigInt neg_b = BigInt::Negate(BigIntegerToBigInt(pSubtrahend));
+  BigInt s = BigInt::Plus(a, neg_b);
+  BigIntToBigInteger(s, pDifference);
 }
 
 enum eExprErr BigIntMultiply(const BigInteger *pFact1, const BigInteger *pFact2,
@@ -310,7 +187,8 @@ static double logBigNbr(const BigInteger *pBigNbr) {
   return logar;
 }
 
-enum eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent, BigInteger *pPower)
+enum eExprErr BigIntPowerIntExpInternal(
+    const BigInteger *pBase, int exponent, BigInteger *pPower)
 {
   double base;
   enum eExprErr rc;
@@ -355,6 +233,15 @@ enum eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent, BigIntege
       break;
     }
   }
+  return EXPR_OK;
+}
+
+enum eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent, BigInteger *pPower) {
+  BigInt a = BigIntegerToBigInt(pBase);
+  BigInt r = BigInt::Pow(a, exponent);
+  CHECK(EXPR_OK == BigIntPowerIntExpInternal(pBase, exponent, pPower));
+  BigInt rr = BigIntegerToBigInt(pPower);
+  CHECK(BigInt::Eq(r, rr));
   return EXPR_OK;
 }
 
