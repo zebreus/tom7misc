@@ -25,6 +25,9 @@
 #include "multiply.h"
 #include "modmult.h"
 
+#include "base/logging.h"
+#include "bigconv.h"
+
 #define LOG_2            0.69314718055994531
 
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc) {
@@ -1030,7 +1033,7 @@ void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs) {
   *pShRight = power2;
 }
 
-int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower)
+int BigIntJacobiSymbolInternal(const BigInteger *upper, const BigInteger *lower)
 {
   int t;
   int power2;
@@ -1251,3 +1254,19 @@ void BigIntAnd(const BigInteger* firstArgum,
 }
 
 
+int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower) {
+  BigInt a = BigIntegerToBigInt(upper);
+  BigInt b = BigIntegerToBigInt(lower);
+
+  int j = BigIntJacobiSymbolInternal(upper, lower);
+
+  int jj = BigInt::Jacobi(a, b);
+
+  fprintf(stderr, "Jacobi %s/%s = %d\n",
+          a.ToString().c_str(),
+          b.ToString().c_str(),
+          jj);
+  CHECK(j == jj);
+
+  return j;
+}
