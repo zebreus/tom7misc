@@ -213,7 +213,14 @@ static void InternalBigIntAdd(const BigInteger *pAdd1, const BigInteger *pAdd2,
 
 void BigIntAdd(const BigInteger* pAddend1, const BigInteger* pAddend2, BigInteger* pSum)
 {
+  BigInt a = BigIntegerToBigInt(pAddend1);
+  BigInt b = BigIntegerToBigInt(pAddend2);
+  BigInt s = BigInt::Plus(a, b);
+
   InternalBigIntAdd(pAddend1, pAddend2, pSum, pAddend2->sign);
+
+  BigInt ss = BigIntegerToBigInt(pSum);
+  CHECK(BigInt::Eq(s, ss));
 }
 
 void BigIntNegate(const BigInteger *pSrc, BigInteger *pDest)
@@ -237,77 +244,16 @@ void BigIntSubt(const BigInteger *pMinuend, const BigInteger *pSubtrahend, BigIn
   }
 }
 
-enum eExprErr BigIntMultiplyInternal(const BigInteger *pFact1, const BigInteger *pFact2,
-                             BigInteger *pProduct) {
-  const BigInteger* pFactor1 = pFact1;
-  const BigInteger* pFactor2 = pFact2;
-  int nbrLimbsFactor1 = pFactor1->nbrLimbs;
-  int nbrLimbsFactor2 = pFactor2->nbrLimbs;
-  int nbrLimbs;
-  const BigInteger *temp;
-  assert(pFactor1->nbrLimbs >= 1);
-  assert(pFactor2->nbrLimbs >= 1);
-  if ((pFactor1->nbrLimbs == 1) || (pFactor2->nbrLimbs == 1))
-  {       // At least one the factors has only one limb.
-    int factor2;
-    if (pFactor1->nbrLimbs == 1)
-    {     // Force the second factor to have only one limb.
-      temp = pFactor1;
-      pFactor1 = pFactor2;
-      pFactor2 = temp;
-    }
-      // Multiply BigInteger by integer.
-    factor2 = ((pFactor2->sign == SIGN_POSITIVE)? pFactor2->limbs[0].x : -pFactor2->limbs[0].x);
-    multint(pProduct, pFactor1, factor2);
-    return EXPR_OK;
-  }
-  // The maximum number that can be represented is 2^664380 ~ 10^200000
-  if ((pFactor1->nbrLimbs + pFactor2->nbrLimbs) > ((664380 / BITS_PER_GROUP) + 1)) {
-    return EXPR_INTERM_TOO_HIGH;
-  }
-  multiplyWithBothLen(&pFactor1->limbs[0], &pFactor2->limbs[0], &pProduct->limbs[0],
-                      nbrLimbsFactor1, nbrLimbsFactor2, &nbrLimbs);
-  nbrLimbs = nbrLimbsFactor1 + nbrLimbsFactor2;
-  if (pProduct->limbs[nbrLimbs - 1].x == 0)
-  {
-    nbrLimbs--;
-  }
-  pProduct->nbrLimbs = nbrLimbs;
-  if ((nbrLimbs == 1) && (pProduct->limbs[0].x == 0))
-  {
-    pProduct->sign = SIGN_POSITIVE;
-  }
-  else
-  {
-    if (pFactor1->sign == pFactor2->sign)
-    {
-      pProduct->sign = SIGN_POSITIVE;
-    }
-    else
-    {
-      pProduct->sign = SIGN_NEGATIVE;
-    }
-  }
-  return EXPR_OK;
-}
-
 enum eExprErr BigIntMultiply(const BigInteger *pFact1, const BigInteger *pFact2,
                              BigInteger *pProduct) {
-   BigInt f1 = BigIntegerToBigInt(pFact1);
-   BigInt f2 = BigIntegerToBigInt(pFact2);
-   BigInt r = BigInt::Times(f1, f2);
-
-   BigIntMultiplyInternal(pFact1, pFact2, pProduct);
-   BigInt rr = BigIntegerToBigInt(pProduct);
-   /*
-   fprintf(stderr, "%s * %s = %s\n",
-          f1.ToString().c_str(),
-          f2.ToString().c_str(),
-          rr.ToString().c_str());
-   */
-  CHECK(BigInt::Eq(r, rr));
-
-  // BigIntToBigInteger(r, pRemainder);
+  // Port note: This used to return EXP_INTERM_TOO_HIGH if the product is too
+  // big to fit, but this return value is never checked. So I think we should
+  // just abort if big int conversion fails. (And eventually just use native
+  // BigInt.)
+  BigInt f1 = BigIntegerToBigInt(pFact1);
+  BigInt f2 = BigIntegerToBigInt(pFact2);
+  BigInt r = BigInt::Times(f1, f2);
+  BigIntToBigInteger(r, pProduct);
   return EXPR_OK;
 }
 
