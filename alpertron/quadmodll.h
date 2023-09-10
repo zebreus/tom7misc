@@ -19,11 +19,12 @@
 #define _QUADMODLL_H
 
 #include "bignbr.h"
+#include <functional>
 
-typedef void (*pShowSolutionsModPrime)(int factorIndex, int expon,
-                                       const BigInteger* pIncrement);
-typedef void (*pSolution)(BigInteger* value);
-typedef void (*pShowNoSolsModPrime)(int expon);
+using ShowSolutionsModPrimeFn = std::function<void(int factorIndex, int expon,
+                                                   const BigInteger* pIncrement)>;
+using SolutionFn = std::function<void(BigInteger *value)>;
+using ShowNoSolsModPrimeFn = std::function<void(int expon)>;
 
 struct QuadModLLResult {
   BigInteger Solution1[400];
@@ -34,9 +35,9 @@ struct QuadModLLResult {
 };
 
 void SolveEquation(
-    pSolution solutionCback,
-    pShowSolutionsModPrime showSolutionsModPrime,
-    pShowNoSolsModPrime showNoSolsModPrime,
+    const SolutionFn &solutionCback,
+    const ShowSolutionsModPrimeFn &showSolutionsModPrime,
+    const ShowNoSolsModPrimeFn &showNoSolsModPrime,
     BigInteger *pValA, const BigInteger* pValB,
     const BigInteger* pValC, BigInteger* pValN,
     BigInteger *GcdAll, BigInteger *pValNn,

@@ -21,11 +21,9 @@
 
 #include "bignbr.h"
 #include "globals.h"
-#include "highlevel.h"
+#include "quad.h"
 #include "baseconv.h"
 #include "bigconv.h"
-
-extern bool teach;
 
 int main(int argc, char* argv[]) {
   if (argc != 8) {
@@ -34,7 +32,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  teach = argv[7][0] == '1';
+  bool teach = argv[7][0] == '1';
   // quadText(argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
 
   BigInteger a, b, c, d, e, f;
@@ -45,7 +43,7 @@ int main(int argc, char* argv[]) {
   if (!ParseBigInteger(argv[5], &e)) printf("can't parse e\n");
   if (!ParseBigInteger(argv[6], &f)) printf("can't parse f\n");
 
-  quadBigInt(&a, &b, &c, &d, &e, &f);
+  quadBigInt(teach, &a, &b, &c, &d, &e, &f);
   (void)printf("%s\n", output);
 
   return 0;

@@ -78,9 +78,9 @@ struct QuadModLL {
   BigInteger Aux2;
   BigInteger* pGcdAll;
   BigInteger* pValNn;
-  pSolution Solution;
-  pShowSolutionsModPrime ShowSolutionsModPrime;
-  pShowNoSolsModPrime ShowNoSolsModPrime;
+  SolutionFn Solution;
+  ShowSolutionsModPrimeFn ShowSolutionsModPrime;
+  ShowNoSolsModPrimeFn ShowNoSolsModPrime;
 
   // Use Chinese remainder theorem to obtain the solutions.
   void PerformChineseRemainderTheorem(const Factors &factors) {
@@ -909,13 +909,14 @@ struct QuadModLL {
 
   // Solve Ax^2 + Bx + C = 0 (mod N).
   void SolveEquation(
-      pSolution solutionCback,
-      pShowSolutionsModPrime showSolutionsModPrime,
-      pShowNoSolsModPrime showNoSolsModPrime,
+      const SolutionFn &solutionCback,
+      const ShowSolutionsModPrimeFn &showSolutionsModPrime,
+      const ShowNoSolsModPrimeFn &showNoSolsModPrime,
       BigInteger* pValA, const BigInteger* pValB,
       const BigInteger* pValC, BigInteger* pValN,
       BigInteger* pGcdAllParm, BigInteger* pValNnParm) {
 
+    // PERF: no need to copy
     Solution = solutionCback;
     ShowSolutionsModPrime = showSolutionsModPrime;
     ShowNoSolsModPrime = showNoSolsModPrime;
@@ -985,9 +986,9 @@ struct QuadModLL {
 };
 
 void SolveEquation(
-    pSolution solutionCback,
-    pShowSolutionsModPrime showSolutionsModPrime,
-    pShowNoSolsModPrime showNoSolsModPrime,
+    const SolutionFn &solutionCback,
+    const ShowSolutionsModPrimeFn &showSolutionsModPrime,
+    const ShowNoSolsModPrimeFn &showNoSolsModPrime,
     BigInteger *pValA, const BigInteger* pValB,
     const BigInteger* pValC, BigInteger* pValN,
     BigInteger *GcdAll, BigInteger *pValNn,
