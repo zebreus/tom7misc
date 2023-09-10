@@ -159,94 +159,17 @@ void intToBigInteger(BigInteger *bigint, int value) {
   bigint->nbrLimbs = 1;
 }
 
-static double logBigNbr(const BigInteger *pBigNbr) {
-  int nbrLimbs;
-  double logar;
-  nbrLimbs = pBigNbr->nbrLimbs;
-  assert(nbrLimbs >= 1);
-  if (nbrLimbs == 1)
-  {
-    logar = log((double)(pBigNbr->limbs[0].x));
-  }
-  else
-  {
-    int nbrBits;
-    double value = pBigNbr->limbs[nbrLimbs - 2].x +
-                  (double)pBigNbr->limbs[nbrLimbs - 1].x * LIMB_RANGE;
-    if (nbrLimbs == 2)
-    {
-      logar = log(value);
-    }
-    else
-    {
-      logar = log(value + (double)pBigNbr->limbs[nbrLimbs - 3].x / LIMB_RANGE);
-    }
-    nbrBits = (nbrLimbs - 2) * BITS_PER_GROUP;
-    logar += (double)nbrBits * LOG_2;
-  }
-  return logar;
-}
-
-enum eExprErr BigIntPowerIntExpInternal(
-    const BigInteger *pBase, int exponent, BigInteger *pPower)
-{
-  double base;
-  enum eExprErr rc;
-  assert(pBase->nbrLimbs >= 1);
-  if (BigIntIsZero(pBase))
-  {     // Base = 0 -> power = 0
-    pPower->limbs[0].x = 0;
-    pPower->nbrLimbs = 1;
-    pPower->sign = SIGN_POSITIVE;
-    return EXPR_OK;
-  }
-  base = logBigNbr(pBase);
-  if (base*(double)exponent > 460510)
-  {   // More than 20000 digits. 46051 = log(10^20000)
-    return EXPR_INTERM_TOO_HIGH;
-  }
-  BigInteger Base;
-  CopyBigInt(&Base, pBase);
-  pPower->sign = SIGN_POSITIVE;
-  pPower->nbrLimbs = 1;
-  pPower->limbs[0].x = 1;
-  for (unsigned int mask = HALF_INT_RANGE_U; mask != 0U; mask >>= 1)
-  {
-    if (((unsigned int)exponent & mask) != 0U)
-    {
-      for (unsigned int mask2 = mask; mask2 != 0U; mask2 >>= 1)
-      {
-        rc = BigIntMultiply(pPower, pPower, pPower);
-        if (rc != EXPR_OK)
-        {
-          return rc;
-        }
-        if (((unsigned int)exponent & mask2) != 0U)
-        {
-          rc = BigIntMultiply(pPower, &Base, pPower);
-          if (rc != EXPR_OK)
-          {
-            return rc;
-          }
-        }
-      }
-      break;
-    }
-  }
-  return EXPR_OK;
-}
-
-enum eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent, BigInteger *pPower) {
+enum eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent,
+                                BigInteger *pPower) {
+  CHECK(exponent >= 0);
   BigInt a = BigIntegerToBigInt(pBase);
   BigInt r = BigInt::Pow(a, exponent);
-  CHECK(EXPR_OK == BigIntPowerIntExpInternal(pBase, exponent, pPower));
-  BigInt rr = BigIntegerToBigInt(pPower);
-  CHECK(BigInt::Eq(r, rr));
+  BigIntToBigInteger(r, pPower);
   return EXPR_OK;
 }
 
-enum eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent, BigInteger *pPower)
-{
+enum eExprErr BigIntPowerInternal(const BigInteger *pBase, const BigInteger *pExponent,
+                                  BigInteger *pPower) {
   assert(pBase->nbrLimbs >= 1);
   assert(pExponent->nbrLimbs >= 1);
   if (pExponent->sign == SIGN_NEGATIVE)
@@ -272,6 +195,47 @@ enum eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent, 
     return EXPR_INTERM_TOO_HIGH;
   }
   return BigIntPowerIntExp(pBase, pExponent->limbs[0].x, pPower);
+}
+
+enum eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent,
+                          BigInteger *pPower) {
+  BigInt a = BigIntegerToBigInt(pBase);
+  BigInt e = BigIntegerToBigInt(pExponent);
+
+  if (BigInt::Less(e, 0)) {
+    return EXPR_INVALID_PARAM;
+  }
+
+  if (BigInt::Eq(a, 0) || BigInt::Eq(a, 1)) {
+    BigIntToBigInteger(a, pPower);
+    return EXPR_OK;
+  }
+
+  if (BigInt::Eq(a, -1)) {
+    if (e.IsOdd()) {
+      BigIntToBigInteger(a, pPower);
+      return EXPR_OK;
+    } else {
+      BigInt one(1);
+      BigIntToBigInteger(one, pPower);
+      return EXPR_OK;
+    }
+  }
+
+  // Otherwise, if the exponent is too big, we can return TOO_HIGH.
+  std::optional<int64_t> oexponent = e.ToInt();
+  if (!oexponent.has_value()) return EXPR_INTERM_TOO_HIGH;
+  const int64_t exponent = oexponent.value();
+
+  BigInt r = BigInt::Pow(a, exponent);
+
+  CHECK(EXPR_OK == BigIntPowerInternal(pBase, pExponent, pPower));
+  BigInt rr = BigIntegerToBigInt(pPower);
+  CHECK(BigInt::Eq(r, rr));
+
+  // BigIntToBigInteger(r, pPower);
+
+  return EXPR_OK;
 }
 
 void BigIntDivide2(BigInteger *pArg)
