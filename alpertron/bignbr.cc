@@ -540,17 +540,21 @@ static bool TestBigNbrEqual(const BigInteger *pNbr1, const BigInteger *pNbr2) {
   return true;
 }
 
-void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pResult)
+void BigIntGcdInternal(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pResult)
 {
   int power2;
   if (BigIntIsZero(pArg1))
   {               // First argument is zero, so the GCD is second argument.
     CopyBigInt(pResult, pArg2);
+    // XXX tom7. GCD should be non-negative.
+    pResult->sign = SIGN_POSITIVE;
     return;
   }
   if (BigIntIsZero(pArg2))
   {               // Second argument is zero, so the GCD is first argument.
     CopyBigInt(pResult, pArg1);
+    // XXX tom7
+    pResult->sign = SIGN_POSITIVE;
     return;
   }
   BigInteger Base, Power;
@@ -594,6 +598,24 @@ void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pRe
   CopyBigInt(pResult, &Base);
   (void)BigIntMultiplyPower2(pResult, power2);
   pResult->sign = SIGN_POSITIVE;
+}
+
+void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2,
+               BigInteger *pResult) {
+  BigInt a = BigIntegerToBigInt(pArg1);
+  BigInt b = BigIntegerToBigInt(pArg2);
+  BigInt g = BigInt::GCD(a, b);
+
+  BigIntGcdInternal(pArg1, pArg2, pResult);
+  BigInt gg = BigIntegerToBigInt(pResult);
+
+  fprintf(stderr, "gcd(%s, %s) = %s (vs %s)\n",
+          a.ToString().c_str(),
+          b.ToString().c_str(),
+          g.ToString().c_str(),
+          gg.ToString().c_str());
+
+  CHECK(BigInt::Eq(g, gg));
 }
 
 static void addToAbsValue(limb *pLimbs, int *pNbrLimbs, int addend)
@@ -1033,57 +1055,8 @@ void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs) {
   *pShRight = power2;
 }
 
-int BigIntJacobiSymbolInternal(const BigInteger *upper, const BigInteger *lower)
-{
-  int t;
-  int power2;
-  BigInteger a;
-  BigInteger m;
-  BigInteger tmp;
-  CopyBigInt(&m, lower);               // m <- lower
-  DivideBigNbrByMaxPowerOf2(&power2, m.limbs, &m.nbrLimbs);
-  (void)BigIntRemainder(upper, lower, &a);   // a <- upper % lower
-  t = 1;
-  if (upper->sign == SIGN_NEGATIVE) {
-    a.sign = SIGN_POSITIVE;
-    if ((m.limbs[0].x & 3) == 3) {
-      t = -1;
-    }
-  }
-  while (!BigIntIsZero(&a)) {
-    // a != 0
-    while ((a.limbs[0].x & 1) == 0) {
-      // a is even.
-      BigIntDivideBy2(&a);              // a <- a / 2
-      if (((m.limbs[0].x & 7) == 3) || ((m.limbs[0].x & 7) == 5)) {
-        // m = 3 or m = 5 (mod 8)
-        t = -t;
-      }
-    }
-    CopyBigInt(&tmp, &a);               // Exchange a and m.
-    CopyBigInt(&a, &m);
-    CopyBigInt(&m, &tmp);
-    if ((a.limbs[0].x & m.limbs[0].x & 3) == 3) {
-      // a = 3 and m = 3 (mod 4)
-      t = -t;
-    }
-    (void)BigIntRemainder(&a, &m, &tmp);
-    // a <- a % m
-    CopyBigInt(&a, &tmp);
-  }
-  if ((m.nbrLimbs == 1) && (m.limbs[0].x == 1)) {
-    // Absolute value of m is 1.
-    return t;
-  }
-  return 0;
-}
-
 bool BigIntIsZero(const BigInteger *value) {
-  if ((value->nbrLimbs == 1) && (value->limbs[0].x == 0))
-  {
-    return true;     // Number is zero.
-  }
-  return false;      // Number is not zero.
+  return value->nbrLimbs == 1 && value->limbs[0].x == 0;
 }
 
 bool BigIntIsOne(const BigInteger* value) {
@@ -1257,16 +1230,5 @@ void BigIntAnd(const BigInteger* firstArgum,
 int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower) {
   BigInt a = BigIntegerToBigInt(upper);
   BigInt b = BigIntegerToBigInt(lower);
-
-  int j = BigIntJacobiSymbolInternal(upper, lower);
-
-  int jj = BigInt::Jacobi(a, b);
-
-  fprintf(stderr, "Jacobi %s/%s = %d\n",
-          a.ToString().c_str(),
-          b.ToString().c_str(),
-          jj);
-  CHECK(j == jj);
-
-  return j;
+  return BigInt::Jacobi(a, b);
 }
