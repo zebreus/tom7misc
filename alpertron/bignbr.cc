@@ -291,7 +291,7 @@ enum eExprErr BigIntMultiply(const BigInteger *pFact1, const BigInteger *pFact2,
   return EXPR_OK;
 }
 
-enum eExprErr BigIntRemainder(const BigInteger *pDividend,
+static enum eExprErr BigIntRemainderInternal(const BigInteger *pDividend,
   const BigInteger *pDivisor, BigInteger *pRemainder)
 {
   enum eExprErr rc;
@@ -315,6 +315,31 @@ enum eExprErr BigIntRemainder(const BigInteger *pDividend,
     return rc;
   }
   BigIntSubt(&Temp2, &Base, pRemainder);
+  return EXPR_OK;
+}
+
+enum eExprErr BigIntRemainder(
+    const BigInteger *pDividend,
+    const BigInteger *pDivisor, BigInteger *pRemainder) {
+  BigInt numer = BigIntegerToBigInt(pDividend);
+  BigInt denom = BigIntegerToBigInt(pDivisor);
+  if (BigInt::Eq(denom, 0)) return EXPR_DIVIDE_BY_ZERO;
+
+  // PERF: This is called a lot. Can add a BigInt function that just
+  // gets the remainder, or better, see if callers are getting both
+  // quotient and remainder already.
+  BigInt rem = BigInt::QuotRem(numer, denom).second;
+
+  CHECK(EXPR_OK == BigIntRemainderInternal(pDividend, pDivisor, pRemainder));
+  BigInt rr = BigIntegerToBigInt(pRemainder);
+  /*
+  fprintf(stderr, "%s rem %s = %s\n",
+          numer.ToString().c_str(),
+          denom.ToString().c_str(),
+          rem.ToString().c_str());
+  */
+  CHECK(BigInt::Eq(rem, rr));
+
   return EXPR_OK;
 }
 
@@ -434,22 +459,6 @@ enum eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent, 
   return BigIntPowerIntExp(pBase, pExponent->limbs[0].x, pPower);
 }
 
-// GCD of two numbers:
-// Input: a, b positive integers
-// Output : g and d such that g is odd and gcd(a, b) = g×2d
-//   d : = 0
-//   while a and b are both even do
-//     a : = a / 2
-//     b : = b / 2
-//     d : = d + 1
-//   while a != b do
-//     if a is even then a : = a / 2
-//     else if b is even then b : = b / 2
-//     else if a > b then a : = (a – b) / 2
-//     else b : = (b – a) / 2
-//   g : = a
-//     output g, d
-
 void BigIntDivide2(BigInteger *pArg)
 {
   int nbrLimbs = pArg->nbrLimbs;
@@ -511,111 +520,12 @@ enum eExprErr BigIntMultiplyPower2(BigInteger *pArg, int powerOf2)
   return EXPR_OK;
 }
 
-static bool TestBigNbrEqual(const BigInteger *pNbr1, const BigInteger *pNbr2) {
-  const limb *ptrLimbs1 = pNbr1->limbs;
-  const limb *ptrLimbs2 = pNbr2->limbs;
-  assert(pNbr1->nbrLimbs >= 1);
-  assert(pNbr2->nbrLimbs >= 1);
-  if (pNbr1->nbrLimbs != pNbr2->nbrLimbs)
-  {        // Sizes of numbers are different.
-    return false;
-  }
-  if (pNbr1->sign != pNbr2->sign)
-  {        // Sign of numbers are different.
-    if ((pNbr1->nbrLimbs == 1) && (pNbr1->limbs[0].x == 0) && (pNbr2->limbs[0].x == 0))
-    {              // Both numbers are zero.
-      return true;
-    }
-    return false;
-  }
-
-           // Check whether both numbers are equal.
-  for (int ctr = pNbr1->nbrLimbs - 1; ctr >= 0; ctr--)
-  {
-    if ((ptrLimbs1 + ctr)->x != (ptrLimbs2 + ctr)->x)
-    {      // Numbers are different.
-      return false;
-    }
-  }        // Numbers are equal.
-  return true;
-}
-
-void BigIntGcdInternal(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pResult)
-{
-  int power2;
-  if (BigIntIsZero(pArg1))
-  {               // First argument is zero, so the GCD is second argument.
-    CopyBigInt(pResult, pArg2);
-    // XXX tom7. GCD should be non-negative.
-    pResult->sign = SIGN_POSITIVE;
-    return;
-  }
-  if (BigIntIsZero(pArg2))
-  {               // Second argument is zero, so the GCD is first argument.
-    CopyBigInt(pResult, pArg1);
-    // XXX tom7
-    pResult->sign = SIGN_POSITIVE;
-    return;
-  }
-  BigInteger Base, Power;
-  // Reuse Base and Power temporary variables.
-  CopyBigInt(&Base, pArg1);
-  CopyBigInt(&Power, pArg2);
-  Base.sign = SIGN_POSITIVE;
-  Power.sign = SIGN_POSITIVE;
-  power2 = 0;
-  while (((Base.limbs[0].x | Power.limbs[0].x) & 1) == 0)
-  {  // Both values are even
-    BigIntDivide2(&Base);
-    BigIntDivide2(&Power);
-    power2++;
-  }
-  while (TestBigNbrEqual(&Base, &Power) == 0)
-  {    // Main GCD loop.
-    if ((Base.limbs[0].x & 1) == 0)
-    {          // Number is even. Divide it by 2.
-      BigIntDivide2(&Base);
-      continue;
-    }
-    if ((Power.limbs[0].x & 1) == 0)
-    {          // Number is even. Divide it by 2.
-      BigIntDivide2(&Power);
-      continue;
-    }
-    BigIntSubt(&Base, &Power, pResult);
-    if (pResult->sign == SIGN_POSITIVE)
-    {
-      CopyBigInt(&Base, pResult);
-      BigIntDivide2(&Base);
-    }
-    else
-    {
-      CopyBigInt(&Power, pResult);
-      Power.sign = SIGN_POSITIVE;
-      BigIntDivide2(&Power);
-    }
-  }
-  CopyBigInt(pResult, &Base);
-  (void)BigIntMultiplyPower2(pResult, power2);
-  pResult->sign = SIGN_POSITIVE;
-}
-
 void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2,
                BigInteger *pResult) {
   BigInt a = BigIntegerToBigInt(pArg1);
   BigInt b = BigIntegerToBigInt(pArg2);
   BigInt g = BigInt::GCD(a, b);
-
-  BigIntGcdInternal(pArg1, pArg2, pResult);
-  BigInt gg = BigIntegerToBigInt(pResult);
-
-  fprintf(stderr, "gcd(%s, %s) = %s (vs %s)\n",
-          a.ToString().c_str(),
-          b.ToString().c_str(),
-          g.ToString().c_str(),
-          gg.ToString().c_str());
-
-  CHECK(BigInt::Eq(g, gg));
+  BigIntToBigInteger(g, pResult);
 }
 
 static void addToAbsValue(limb *pLimbs, int *pNbrLimbs, int addend)
