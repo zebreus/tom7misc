@@ -439,7 +439,7 @@ void addbigint(BigInteger *pResult, int addend)
   pResult->nbrLimbs = nbrLimbs;
 }
 
-void multint(BigInteger *pResult, const BigInteger *pMult, int factor)
+void multintInternal(BigInteger *pResult, const BigInteger *pMult, int factor)
 {
   int64_t carry;
   int intMult = factor;
@@ -482,10 +482,17 @@ void multint(BigInteger *pResult, const BigInteger *pMult, int factor)
   }
 }
 
-void multadd(BigInteger *pResult, int iMult, const BigInteger *pMult, int addend)
-{
-  multint(pResult, pMult, iMult);
-  addbigint(pResult, addend);
+void multint(BigInteger *pResult, const BigInteger *pMult, int factor) {
+  BigInt a = BigIntegerToBigInt(pMult);
+  BigInt r = BigInt::Times(a, factor);
+  multintInternal(pResult, pMult, factor);
+  CHECK(BigInt::Eq(r, BigIntegerToBigInt(pResult)));
+}
+
+void multadd(BigInteger *pResult, int factor, const BigInteger *pMult, int addend) {
+  BigInt a = BigIntegerToBigInt(pMult);
+  BigInt r = BigInt::Plus(BigInt::Times(a, factor), addend);
+  BigIntToBigInteger(r, pResult);
 }
 
 // number_length here is used to zero-pad the output -tom7
@@ -759,8 +766,7 @@ double getMantissa(const limb *ptrLimb, int nbrLimbs) {
   return dN;
 }
 
-void BigIntPowerOf2(BigInteger *pResult, int exponent)
-{
+void BigIntPowerOf2(BigInteger *pResult, int exponent) {
   unsigned int power2 = (unsigned int)exponent % (unsigned int)BITS_PER_GROUP;
   int nbrLimbs = exponent / BITS_PER_GROUP;
   if (nbrLimbs > 0)
@@ -773,119 +779,12 @@ void BigIntPowerOf2(BigInteger *pResult, int exponent)
   pResult->sign = SIGN_POSITIVE;
 }
 
-static void ConvertToTwosComplement(BigInteger *value)
-{
-  int idx;
-  int nbrLimbs;
-  limb *ptrLimb;
-  assert(value->nbrLimbs >= 1);
-  if (value->sign == SIGN_POSITIVE)
-  {    // If number is positive, no conversion is needed.
-    while (value->nbrLimbs > 1)
-    {
-      if (value->limbs[value->nbrLimbs - 1].x != 0)
-      {
-        break;
-      }
-      value->nbrLimbs--;
-    }
-    return;
-  }
-  nbrLimbs = value->nbrLimbs;
-  ptrLimb = &value->limbs[0];
-  for (idx = 0; idx < nbrLimbs; idx++)
-  {
-    if (ptrLimb->x != 0)
-    {
-      break;
-    }
-    ptrLimb++;
-  }
-  if (idx < nbrLimbs)
-  {
-    ptrLimb->x = UintToInt(LIMB_RANGE - (unsigned int)ptrLimb->x);
-    ptrLimb++;
-  }
-  for (; idx < nbrLimbs; idx++)
-  {
-    ptrLimb->x = MAX_INT_NBR - ptrLimb->x;
-    ptrLimb++;
-  }
-}
-
-
-void BigIntAndInternal(const BigInteger* firstArgum,
-                       const BigInteger* secondArgum, BigInteger* result) {
-  const BigInteger* firstArg;
-  const BigInteger* secondArg;
-  int idx;
-  int carryFirst = 0;
-  int carrySecond = 0;
-  int limbFirst;
-  int limbSecond;
-  assert(firstArgum->nbrLimbs >= 1);
-  assert(secondArgum->nbrLimbs >= 1);
-  if (firstArgum->nbrLimbs < secondArgum->nbrLimbs) {
-    // After the exchange, firstArg has not fewer limbs than secondArg.
-    firstArg = secondArgum;
-    secondArg = firstArgum;
-  } else {
-    firstArg = firstArgum;
-    secondArg = secondArgum;
-  }
-
-  for (idx = 0; idx < secondArg->nbrLimbs; idx++) {
-    limbFirst = firstArg->limbs[idx].x;
-    limbSecond = secondArg->limbs[idx].x;
-
-    if (firstArg->sign == SIGN_NEGATIVE) {
-      carryFirst -= limbFirst;
-      limbFirst = carryFirst & MAX_INT_NBR;
-      carryFirst >>= 31;
-    }
-
-    if (secondArg->sign == SIGN_NEGATIVE) {
-      carrySecond -= limbSecond;
-      limbSecond = carrySecond & MAX_INT_NBR;
-      carrySecond >>= 31;
-    }
-
-    result->limbs[idx].x = limbFirst & limbSecond;
-  }
-  if (secondArg->sign == SIGN_POSITIVE) {
-    limbSecond = 0;
-  } else {
-    limbSecond = -1;
-  }
-  for (; idx < firstArg->nbrLimbs; idx++) {
-    limbFirst = firstArg->limbs[idx].x;
-    if (firstArg->sign == SIGN_NEGATIVE) {
-      carryFirst -= limbFirst;
-      limbFirst = carryFirst & MAX_INT_NBR;
-      carryFirst >>= 31;
-    }
-
-    result->limbs[idx].x = limbFirst & limbSecond;
-  }
-  // Generate sign of result for "and" operation.
-  if ((firstArg->sign == SIGN_NEGATIVE) && (secondArg->sign == SIGN_NEGATIVE)) {
-    result->sign = SIGN_NEGATIVE;
-  } else {
-    result->sign = SIGN_POSITIVE;
-  }
-
-  result->nbrLimbs = firstArg->nbrLimbs;
-  ConvertToTwosComplement(result);
-}
-
 void BigIntAnd(const BigInteger* arg1, const BigInteger* arg2,
                BigInteger* result) {
   BigInt a = BigIntegerToBigInt(arg1);
   BigInt b = BigIntegerToBigInt(arg2);
   BigInt r = BigInt::BitwiseAnd(a, b);
-
-  BigIntAndInternal(arg1, arg2, result);
-  CHECK(BigInt::Eq(r, BigIntegerToBigInt(result)));
+  BigIntToBigInteger(r, result);
 }
 
 int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower) {
