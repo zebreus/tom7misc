@@ -1065,55 +1065,22 @@ void GetMontgomeryParams(int len) {
   TestNbrCached = NBR_READY_TO_BE_CACHED;
 }
 
-static void AddBigNbrModNInternal(const limb *Nbr1, const limb *Nbr2, limb *Sum,
-                                  const limb *mod, int nbrLen) {
-  unsigned int carry;
-  unsigned int borrow;
-  int i;
-
-  carry = 0U;
-  for (i = 0; i < nbrLen; i++)
-  {
-    carry = (carry >> BITS_PER_GROUP) +
-      (unsigned int)(Nbr1 + i)->x + (unsigned int)(Nbr2 + i)->x;
-    Sum[i].x = UintToInt(carry & MAX_VALUE_LIMB);
-  }
-  borrow = 0U;
-  for (i = 0; i < nbrLen; i++)
-  {
-    borrow = (unsigned int)Sum[i].x - (unsigned int)(mod + i)->x - (borrow >> BITS_PER_GROUP);
-    Sum[i].x = UintToInt(borrow & MAX_VALUE_LIMB);
-  }
-
-  if ((carry < LIMB_RANGE) && ((int)borrow < 0))
-  {
-    carry = 0U;
-    for (i = 0; i < nbrLen; i++)
-    {
-      carry = (carry >> BITS_PER_GROUP) +
-          (unsigned int)(Sum+i)->x + (unsigned int)(mod+i)->x;
-      Sum[i].x = UintToInt(carry & MAX_VALUE_LIMB);
-    }
-  }
-}
-
 void AddBigNbrModN(const limb *num1, const limb *num2, limb *sum,
                    const limb *modulus_array, int number_length) {
   BigInt f1 = LimbsToBigInt(num1, number_length);
   BigInt f2 = LimbsToBigInt(num2, number_length);
-
   BigInt modulus = LimbsToBigInt(modulus_array, number_length);
-  // Hmm, no BigInt modular multiplication :/
   BigInt r = BigInt::Mod(BigInt::Plus(f1, f2), modulus);
-
-  AddBigNbrModNInternal(num1, num2, sum, modulus_array, number_length);
-  BigInt rr = LimbsToBigInt(sum, number_length);
-  CHECK(BigInt::Eq(r, rr));
-
+  /*
+  fprintf(stderr, "%s + %s mod %s = %s\n",
+          f1.ToString().c_str(), f2.ToString().c_str(),
+          modulus.ToString().c_str(),
+          r.ToString().c_str());
+  */
   BigIntToFixedLimbs(r, number_length, sum);
 }
 
-void SubtBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Diff, const limb *mod, int nbrLen)
+void SubtBigNbrModNInternal(const limb *Nbr1, const limb *Nbr2, limb *Diff, const limb *mod, int nbrLen)
 {
   int i;
   unsigned int borrow = 0;
@@ -1133,6 +1100,26 @@ void SubtBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Diff, const limb *
     }
   }
 }
+
+void SubtBigNbrModN(const limb *num1, const limb *num2, limb *diff,
+                    const limb *modulus_array, int number_length) {
+  BigInt f1 = LimbsToBigInt(num1, number_length);
+  BigInt f2 = LimbsToBigInt(num2, number_length);
+  BigInt modulus = LimbsToBigInt(modulus_array, number_length);
+  BigInt r = BigInt::Mod(BigInt::Minus(f1, f2), modulus);
+
+  fprintf(stderr, "%s - %s mod %s = %s\n",
+          f1.ToString().c_str(), f2.ToString().c_str(),
+          modulus.ToString().c_str(),
+          r.ToString().c_str());
+
+  SubtBigNbrModNInternal(num1, num2, diff, modulus_array, number_length);
+  BigInt rr = LimbsToBigInt(diff, number_length);
+  CHECK(BigInt::Eq(r, rr));
+  BigIntToFixedLimbs(r, number_length, diff);
+}
+
+
 
 // PERF: Can use montgomery multiplication here; probably should add this
 // to BigInt or bigint utils.
