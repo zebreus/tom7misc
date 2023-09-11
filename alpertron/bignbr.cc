@@ -396,97 +396,15 @@ void subtractdivide(BigInteger *pBigInt, int subt, int divisor)
   pBigInt->nbrLimbs = nbrLimbs;
 }
 
-void addbigint(BigInteger *pResult, int addend)
-{
-  int intAddend = addend;
-  enum eSign sign;
-  int nbrLimbs = pResult->nbrLimbs;
-  assert(nbrLimbs >= 1);
-  limb *pResultLimbs = pResult->limbs;
-  sign = pResult->sign;
-  if (intAddend < 0)
-  {
-    intAddend = -intAddend;
-    if (sign == SIGN_POSITIVE)
-    {
-      sign = SIGN_NEGATIVE;
-    }
-    else
-    {
-      sign = SIGN_POSITIVE;
-    }
-  }
-  if (sign == SIGN_POSITIVE)
-  {   // Add addend to absolute value of pResult.
-    addToAbsValue(pResultLimbs, &nbrLimbs, intAddend);
-  }
-  else
-  {  // Subtract addend from absolute value of pResult.
-    if (nbrLimbs == 1)
-    {
-      pResultLimbs->x -= intAddend;
-      if (pResultLimbs->x < 0)
-      {
-        pResultLimbs->x = -pResultLimbs->x;
-        BigIntNegate(pResult, pResult);
-      }
-    }
-    else
-    {     // More than one limb.
-      subtFromAbsValue(pResultLimbs, &nbrLimbs, intAddend);
-    }
-  }
-  pResult->nbrLimbs = nbrLimbs;
-}
-
-void multintInternal(BigInteger *pResult, const BigInteger *pMult, int factor)
-{
-  int64_t carry;
-  int intMult = factor;
-  bool factorPositive = true;
-  int nbrLimbs = pMult->nbrLimbs;
-  assert(nbrLimbs >= 1);
-  const limb *pLimb = pMult->limbs;
-  limb *pResultLimb = pResult->limbs;
-  if (intMult == 0)
-  {   // Any number multiplied by zero is zero.
-    intToBigInteger(pResult, 0);
-    return;
-  }
-  if (intMult < 0)
-  {     // If factor is negative, indicate it and compute its absolute value.
-    factorPositive = false;
-    intMult = -intMult;
-  }
-  carry = 0;
-  for (int ctr = 0; ctr < nbrLimbs; ctr++)
-  {
-
-    carry += (int64_t)pLimb->x * (int64_t)intMult;
-    pResultLimb->x = UintToInt((unsigned int)carry & MAX_VALUE_LIMB);
-    pResultLimb++;
-    carry >>= BITS_PER_GROUP;
-
-    pLimb++;
-  }
-  if (carry != 0)
-  {
-    pResultLimb->x = (int)carry;
-    nbrLimbs++;
-  }
-  pResult->nbrLimbs = nbrLimbs;
-  pResult->sign = pMult->sign;
-  if (!factorPositive)
-  {
-    BigIntNegate(pResult, pResult);
-  }
+void addbigint(BigInteger *pResult, int addend) {
+  BigInt a = BigInt::Plus(BigIntegerToBigInt(pResult), addend);
+  BigIntToBigInteger(a, pResult);
 }
 
 void multint(BigInteger *pResult, const BigInteger *pMult, int factor) {
   BigInt a = BigIntegerToBigInt(pMult);
   BigInt r = BigInt::Times(a, factor);
-  multintInternal(pResult, pMult, factor);
-  CHECK(BigInt::Eq(r, BigIntegerToBigInt(pResult)));
+  BigIntToBigInteger(r, pResult);
 }
 
 void multadd(BigInteger *pResult, int factor, const BigInteger *pMult, int addend) {

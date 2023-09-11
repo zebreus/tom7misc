@@ -10,10 +10,13 @@ extern enum eNbrCached TestNbrCached;
 // NumberLength
 extern limb TestNbr[MAX_LEN];
 
-void GetMontgomeryParms(int len);
-void GetMontgomeryParmsPowerOf2(int powerOf2);
+void GetMontgomeryParams(int len);
+void GetMontgomeryParamsPowerOf2(int powerOf2);
 
-void modmult(const limb *factor1, const limb *factor2, limb *product);
+// product <- factor1 * factor2 mod modulus
+void modmult(const limb *factor1, const limb *factor2,
+             int modulus_length, const limb *modulus,
+             limb *product);
 
 void modPowBaseInt(int base, const limb *exp, int nbrGroupsExp, limb *power);
 void modPow(const limb *base, const limb *exp, int nbrGroupsExp, limb *power);

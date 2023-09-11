@@ -22,13 +22,8 @@
 #include <stdint.h>
 
 #include "bignbr.h"
-#include "globals.h"
-#include "multiply.h"
 #include "bigconv.h"
 #include "base/logging.h"
-
-#define DIGITS_PER_LIMB 9
-#define MAX_LIMB_CONVERSION 1000000000
 
 static constexpr bool VERBOSE = false;
 
@@ -59,8 +54,7 @@ void int2dec(char **pOutput, int nbr) {
   *pOutput = ptrOutput;
 }
 
-// Convert little-endian number to a string with space every groupLen digits.
-// In order to perform a faster conversion, use groups of DIGITS_PER_LIMB digits.
+// Converts using GMP.
 void Bin2Dec(char **ppDecimal, const limb *binary, int nbrLimbs, int groupLength) {
   BigInt b = LimbsToBigInt(binary, nbrLimbs);
   std::string s = b.ToString();

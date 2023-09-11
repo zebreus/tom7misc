@@ -715,23 +715,20 @@ struct Quad {
       lenBytes = NumberLength * (int)sizeof(limb);
       (void)memcpy(TestNbr, modulus.limbs, lenBytes);
       TestNbr[NumberLength].x = 0;
-      GetMontgomeryParms(NumberLength);
+      GetMontgomeryParams(NumberLength);
       BigIntModularDivision(&coeffIndep, &coeffLinear, &modulus, &z);
-      if (!BigIntIsZero(&z))
-        {
-          BigIntSubt(&ValN, &z, &z);
-        }
+      if (!BigIntIsZero(&z)) {
+        BigIntSubt(&ValN, &z, &z);
+      }
       (void)BigIntMultiply(&ValNn, &GcdAll, &Tmp[0]);
-      do
-        {
-          SolutionX(&z);
-          BigIntAdd(&z, &modulus, &z);
-          BigIntSubt(&z, &Tmp[0], &Tmp[1]);
-        } while (Tmp[1].sign == SIGN_NEGATIVE);
-      if (teach && !firstSolutionX)
-        {
-          showText("</ol>");
-        }
+      do {
+        SolutionX(&z);
+        BigIntAdd(&z, &modulus, &z);
+        BigIntSubt(&z, &Tmp[0], &Tmp[1]);
+      } while (Tmp[1].sign == SIGN_NEGATIVE);
+      if (teach && !firstSolutionX) {
+        showText("</ol>");
+      }
       return;
     }
     if (callbackQuadModType == CBACK_QMOD_PARABOLIC) {

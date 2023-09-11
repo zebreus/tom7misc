@@ -125,7 +125,7 @@ struct QuadModLL {
           NumberLengthBytes = NumberLength * (int)sizeof(limb);
           (void)memcpy(TestNbr, prime.limbs, NumberLengthBytes);
           TestNbr[NumberLength].x = 0;
-          GetMontgomeryParms(NumberLength);
+          GetMontgomeryParams(NumberLength);
           BigIntModularDivision(&Q, &L, &prime, &Aux[T1]);
         }
         (void)BigIntRemainder(&Aux[T1], &prime, &L);
@@ -205,7 +205,7 @@ struct QuadModLL {
       (void)memcpy(TestNbr, pValN->limbs, NumberLengthBytes);
       TestNbr[NumberLength].x = 0;
       // Perform division using odd modulus r.
-      GetMontgomeryParms(NumberLength);
+      GetMontgomeryParams(NumberLength);
       // Compute ptrSolution1 as ValC / |ValB|
       BigIntModularDivision(pValC, pValB, pValN, ptrSolution1);
       // Compute ptrSolution1 as -ValC / ValB
@@ -243,12 +243,14 @@ struct QuadModLL {
       // .. and length
       ptrFactorsMod++;
 
-      GetMontgomeryParmsPowerOf2(powerOf2);
+      GetMontgomeryParamsPowerOf2(powerOf2);
       // Use ValA (which is zero for linear equations) as a temporary area.
       // ptrSolution1 <- 1 / |ValB|
       ComputeInversePower2(pValB->limbs, ptrSolution1->limbs, pValA->limbs, NumberLength);
       // Compute ptrSolution1 as |ValC| / |ValB|
-      modmult(ptrSolution1->limbs, pValC->limbs, ptrSolution1->limbs);
+      modmult(ptrSolution1->limbs, pValC->limbs,
+              NumberLength, TestNbr,
+              ptrSolution1->limbs);
       NumberLengthBytes = NumberLength * (int)sizeof(int);
       // Compute ptrSolution1 as -ValC / ValB
       if (pValB->sign == pValC->sign)
@@ -510,7 +512,7 @@ struct QuadModLL {
     int NumberLengthBytes = NumberLength * (int)sizeof(limb);
     (void)memcpy(TestNbr, prime.limbs, NumberLengthBytes);
     TestNbr[NumberLength].x = 0;
-    GetMontgomeryParms(NumberLength);
+    GetMontgomeryParams(NumberLength);
     CopyBigInt(&Q, &prime);
     if ((prime.limbs[0].x & 3) == 3) {
       // prime mod 4 = 3
@@ -520,7 +522,9 @@ struct QuadModLL {
       limb* toConvert;
       // Convert discriminant to Montgomery notation.
       CompressLimbsBigInteger(NumberLength, Aux[5].limbs, &Aux[3]);
-      modmult(Aux[5].limbs, MontgomeryMultR2, Aux[6].limbs);  // u
+      modmult(Aux[5].limbs, MontgomeryMultR2,
+              NumberLength, TestNbr,
+              Aux[6].limbs);  // u
       if ((prime.limbs[0].x & 7) == 5) {
         // prime mod 8 = 5: use Atkin's method for modular square roots.
         // Step 1. v <- (2u)^((p-5)/8) mod p
@@ -535,16 +539,24 @@ struct QuadModLL {
         // At this moment Aux[7].limbs is v in Montgomery notation.
 
         // Step 2.
-        modmult(Aux[8].limbs, Aux[8].limbs, Aux[9].limbs);  // v^2
-        modmult(Aux[7].limbs, Aux[9].limbs, Aux[9].limbs);  // i
+        modmult(Aux[8].limbs, Aux[8].limbs,
+                NumberLength, TestNbr,
+                Aux[9].limbs);  // v^2
+        modmult(Aux[7].limbs, Aux[9].limbs,
+                NumberLength, TestNbr,
+                Aux[9].limbs);  // i
 
         // Step 3.
         // i-1
         SubtBigNbrModN(Aux[9].limbs, MontgomeryMultR1, Aux[9].limbs, TestNbr, NumberLength);
         // v*(i-1)
-        modmult(Aux[8].limbs, Aux[9].limbs, Aux[9].limbs);
+        modmult(Aux[8].limbs, Aux[9].limbs,
+                NumberLength, TestNbr,
+                Aux[9].limbs);
         // u*v*(i-1)
-        modmult(Aux[6].limbs, Aux[9].limbs, Aux[9].limbs);
+        modmult(Aux[6].limbs, Aux[9].limbs,
+                NumberLength, TestNbr,
+                Aux[9].limbs);
         toConvert = Aux[9].limbs;
       } else {
         // prime = 1 (mod 8). Use Shanks' method for modular square roots.
@@ -556,14 +568,13 @@ struct QuadModLL {
         // Step 6. Find the smallest value of k such that w^(2^k) = 1 (mod p)
         // Step 7. Set d <- y^(2^(r-k-1)) mod p, y <- d^2 mod p, r <- k, v <- dv mod p, w <- wy mod p.
         // Step 8. Go to step 5.
-        int x;
         int e;
         int r;
         // Step 1.
         subtractdivide(&Q, 1, 1);   // Q <- (prime-1).
         DivideBigNbrByMaxPowerOf2(&e, Q.limbs, &Q.nbrLimbs);
         // Step 2.
-        x = 1;
+        int x = 1;
         do
         {
           x++;
@@ -579,8 +590,12 @@ struct QuadModLL {
         CopyBigInt(&K1, &Q);
         subtractdivide(&K1, 1, 2);
         modPow(Aux[6].limbs, K1.limbs, K1.nbrLimbs, Aux[7].limbs); // x
-        modmult(Aux[6].limbs, Aux[7].limbs, Aux[8].limbs);         // v
-        modmult(Aux[8].limbs, Aux[7].limbs, Aux[9].limbs);         // w
+        modmult(Aux[6].limbs, Aux[7].limbs,
+                NumberLength, TestNbr,
+                Aux[8].limbs);         // v
+        modmult(Aux[8].limbs, Aux[7].limbs,
+                NumberLength, TestNbr,
+                Aux[9].limbs);         // w
         // Step 5
         while (memcmp(Aux[9].limbs, MontgomeryMultR1, NumberLengthBytes) != 0)
         {
@@ -590,18 +605,28 @@ struct QuadModLL {
           do
           {
             k++;
-            modmult(Aux[10].limbs, Aux[10].limbs, Aux[10].limbs);
+            modmult(Aux[10].limbs, Aux[10].limbs,
+                    NumberLength, TestNbr,
+                    Aux[10].limbs);
           } while (memcmp(Aux[10].limbs, MontgomeryMultR1, NumberLengthBytes) != 0);
           // Step 7
           (void)memcpy(Aux[11].limbs, Aux[5].limbs, NumberLengthBytes); // d
           for (int ctr = 0; ctr < (r - k - 1); ctr++)
           {
-            modmult(Aux[11].limbs, Aux[11].limbs, Aux[11].limbs);
+            modmult(Aux[11].limbs, Aux[11].limbs,
+                    NumberLength, TestNbr,
+                    Aux[11].limbs);
           }
-          modmult(Aux[11].limbs, Aux[11].limbs, Aux[5].limbs);   // y
+          modmult(Aux[11].limbs, Aux[11].limbs,
+                  NumberLength, TestNbr,
+                  Aux[5].limbs);   // y
           r = k;
-          modmult(Aux[8].limbs, Aux[11].limbs, Aux[8].limbs);    // v
-          modmult(Aux[9].limbs, Aux[5].limbs, Aux[9].limbs);     // w
+          modmult(Aux[8].limbs, Aux[11].limbs,
+                  NumberLength, TestNbr,
+                  Aux[8].limbs);    // v
+          modmult(Aux[9].limbs, Aux[5].limbs,
+                  NumberLength, TestNbr,
+                  Aux[9].limbs);     // w
         }
         toConvert = Aux[8].limbs;
       }
@@ -610,7 +635,9 @@ struct QuadModLL {
       // Convert power to standard notation.
       (void)memset(Aux[4].limbs, 0, NumberLengthBytes);
       Aux[4].limbs[0].x = 1;
-      modmult(Aux[4].limbs, toConvert, toConvert);
+      modmult(Aux[4].limbs, toConvert,
+              NumberLength, TestNbr,
+              toConvert);
       UncompressLimbsBigInteger(NumberLength, toConvert, &SqrtDisc);
     }
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
@@ -724,7 +751,7 @@ struct QuadModLL {
     NumberLengthBytes = NumberLength * (int)sizeof(limb);
     (void)memcpy(TestNbr, tmp1.limbs, NumberLengthBytes);
     TestNbr[NumberLength].x = 0;
-    GetMontgomeryParms(NumberLength);
+    GetMontgomeryParams(NumberLength);
     BigIntModularDivision(&tmp2, &ValAOdd, &tmp1, &Aux[0]);
     CopyBigInt(&ValAOdd, &Aux[0]);
     if (BigIntIsZero(&discriminant))
@@ -817,7 +844,7 @@ struct QuadModLL {
     int NumberLengthBytes = NumberLength * (int)sizeof(limb);
     (void)memcpy(TestNbr, prime.limbs, NumberLengthBytes);
     TestNbr[NumberLength].x = 0;
-    GetMontgomeryParms(NumberLength);
+    GetMontgomeryParams(NumberLength);
     BigIntModularDivision(pValC, pValB, &prime, ptrSolution);
     BigIntNegate(ptrSolution, ptrSolution);
     if (ptrSolution->sign == SIGN_NEGATIVE) {
@@ -840,7 +867,7 @@ struct QuadModLL {
       int NumberLengthBytes = NumberLength * (int)sizeof(limb);
       (void)memcpy(TestNbr, V.limbs, NumberLengthBytes);
       TestNbr[NumberLength].x = 0;
-      GetMontgomeryParms(NumberLength);
+      GetMontgomeryParams(NumberLength);
       BigIntModularDivision(&Q, &L, &V, &Aux1);
       BigIntSubt(ptrSolution, &Aux1, ptrSolution);
       (void)BigIntRemainder(ptrSolution, &V, ptrSolution);

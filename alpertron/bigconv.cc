@@ -124,6 +124,39 @@ int BigIntToLimbs(const BigInt &b, limb *limbs) {
   return count;
 }
 
+void BigIntToFixedLimbs(const BigInt &b, size_t num_limbs, limb *limbs) {
+  size_t count = 0;
+  mpz_export(limbs, &count,
+             // words are little endian.
+             -1,
+             // word size
+             sizeof(int),
+             // native byte-order
+             0,
+             // 31 bits per word
+             1,
+             b.GetRep());
+
+  while (count < num_limbs) {
+    limbs[count].x = 0;
+    count++;
+  }
+
+#if 0
+  // oops no, this would be for big-endian
+  if (count != num_limbs) {
+    // append this many zeroes
+    int skip = num_limbs - count;
+    for (int x = 0; x < count; x++) {
+      limbs[] = limbs[count - 1 - x];
+    }
+    for (int x = 0; x < skip; x++) {
+      limbs[x].x = 0;
+    }
+  }
+#endif
+}
+
 
 
 string LongNum(const BigInt &a) {
