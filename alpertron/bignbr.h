@@ -67,6 +67,12 @@ typedef struct BigInteger {
 extern limb MontgomeryMultR2[MAX_LEN];
 extern limb MontgomeryMultR1[MAX_LEN];
 
+void multiply(const limb* factor1, const limb* factor2, limb* result,
+              int len, int* pResultLen);
+
+void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
+                         int len1, int len2, int* pResultLen);
+
 void squareRoot(const limb *argument, limb *sqRoot, int len, int *pLenSqRoot);
 void AddBigInt(const limb *pAddend1, const limb *pAddend2, limb *pSum, int nbrLimbs);
 bool BigIntIsZero(const BigInteger *value);
@@ -117,8 +123,6 @@ void SubtractBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pDiff, int nbrLe
 void DivBigNbrByInt(const limb *pDividend, int divisor, limb *pQuotient, int nbrLen);
 int RemDivBigNbrByInt(const limb *pDividend, int divisor, int nbrLen);
 void MultBigNbr(const limb *pFactor1, const limb *pFactor2, limb *pProd, int nbrLen);
-void MultBigNbrComplete(const limb *pFactor1, const limb *pFactor2, limb *pProd,
-  int nbrLen);
 void IntToBigNbr(int value, limb *bigNbr, int nbrLength);
 int BigNbrToBigInt(const BigInteger *pBigNbr, limb *pBigInt);
 void BigIntToBigNbr(BigInteger *pBigNbr, const limb *pBigInt, int nbrLenBigInt);

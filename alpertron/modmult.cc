@@ -23,7 +23,6 @@
 #include <stdint.h>
 #include <assert.h>
 #include "bignbr.h"
-#include "multiply.h"
 
 #include "base/logging.h"
 #include "bigconv.h"
