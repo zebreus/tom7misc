@@ -24,6 +24,9 @@
 #include "bignbr.h"
 #include "multiply.h"
 
+#include "bigconv.h"
+#include "base/logging.h"
+
 static limb approxInvSqrt[MAX_LEN];
 limb approxInv[MAX_LEN];
 limb adjustedArgument[MAX_LEN];
@@ -101,7 +104,7 @@ static void MultiplyBigNbrByMinPowerOf4(int *pPower4, const limb *number,
   *pPower4 = power4;
 }
 
-void squareRoot(const limb *argument, /*@out@*/limb *sqRoot, int len, /*@out@*/int *pLenSqRoot)
+static void squareRootInternal(const limb *argument, /*@out@*/limb *sqRoot, int len, /*@out@*/int *pLenSqRoot)
 {
   int index;
   int length = len;
@@ -332,4 +335,22 @@ void squareRoot(const limb *argument, /*@out@*/limb *sqRoot, int len, /*@out@*/i
     prev.x = ptrSrc->x;
     ptrSrc--;
   }
+}
+
+void squareRoot(const limb *argument, limb *sqRoot, int len, int *pLenSqRoot) {
+  BigInt a = LimbsToBigInt(argument, len);
+  BigInt r = BigInt::Sqrt(a);
+
+  squareRootInternal(argument, sqRoot, len, pLenSqRoot);
+  BigInt rr = LimbsToBigInt(sqRoot, *pLenSqRoot);
+
+  fprintf(stderr,
+          "sqrt(%s) = %s (%s)\n",
+          a.ToString().c_str(),
+          r.ToString().c_str(),
+          rr.ToString().c_str());
+
+  CHECK(BigInt::Eq(r, rr));
+
+  *pLenSqRoot = BigIntToLimbs(r, sqRoot);
 }

@@ -38,25 +38,12 @@
 // else
 //   return t
 // end if
-#define MONTGOMERY_MULT_THRESHOLD 13
-#define MONTMULT_LIMB_START   \
-    int32_t Nbr = (pNbr1 + i)->x;   \
-    int64_t Pr = ((int64_t)Nbr * (int64_t)Nbr2_0) + (int64_t)Prod0; \
-    int32_t MontDig = ((int32_t)Pr * (int32_t)MontgomeryMultN[0].x) & MAX_INT_NBR_U; \
-    Pr -= (int64_t)MontDig * (int64_t)TestNbr0
-#define MONTMULT_LIMB(curr, next)  \
-    Pr = ((int64_t)Nbr * (int64_t)Nbr2_##next) + (int64_t)Prod##next + \
-         (Pr >> BITS_PER_GROUP) -  \
-         ((int64_t)MontDig * (int64_t)TestNbr##next); \
-    Prod##curr = (int32_t)Pr & MAX_INT_NBR_U
-#define MONTMULT_LIMB_END(curr)   \
-    Prod##curr = (int32_t)(Pr >> BITS_PER_GROUP)
 
 enum eNbrCached MontgomeryMultNCached;
 enum eNbrCached TestNbrCached;
 
 // These are globals that are regularly modified in secret in other
-// code as well.
+// code as well. I think they usually (always?) describe the modulus.
 // XXX Pass them as parameters!
 int NumberLength;
 limb TestNbr[MAX_LEN];
@@ -804,17 +791,15 @@ void BigIntModularDivision(const BigInteger* Num, const BigInteger* Den,
 // From Knuth's TAOCP Vol 2, section 4.3.2:
 // If c = result mod odd, d = result mod 2^k:
 // compute result = c + (((d-c)*modinv(odd,2^k))%2^k)*odd
-static void ChineseRemainderTheorem(int shRight, BigInteger* result)
-{
-  if (shRight == 0)
-  {
+static void ChineseRemainderTheorem(int shRight, BigInteger* result) {
+  if (shRight == 0) {
     const int number_length = oddValue.nbrLimbs;
     NumberLength = number_length;
     UncompressLimbsBigInteger(NumberLength, resultModOdd, result);
     return;
   }
-  if (NumberLength > oddValue.nbrLimbs)
-  {
+
+  if (NumberLength > oddValue.nbrLimbs) {
     int lenBytes = (NumberLength - oddValue.nbrLimbs) * (int)sizeof(limb);
     (void)memset(&oddValue.limbs[oddValue.nbrLimbs], 0, lenBytes);
   }
@@ -824,8 +809,8 @@ static void ChineseRemainderTheorem(int shRight, BigInteger* result)
           NumberLength, TestNbr,
           aux5);
   (aux5 + (shRight / BITS_PER_GROUP))->x &= (1 << (shRight % BITS_PER_GROUP)) - 1;
-  if (NumberLength < oddValue.nbrLimbs)
-  {
+
+  if (NumberLength < oddValue.nbrLimbs) {
     int lenBytes = (oddValue.nbrLimbs - NumberLength) * (int)sizeof(limb);
     (void)memset(&aux5[NumberLength], 0, lenBytes);
   }
@@ -898,12 +883,9 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
 
 // Find the inverse of value mod 2^(NumberLength*BITS_PER_GROUP)
 void ComputeInversePower2(const limb *value, limb *result, limb *tmp, int number_length) {
-  int N;
-  int x;
-  int j;
   unsigned int Cy;
-  N = value->x;                // 2 least significant bits of inverse correct.
-  x = N;
+  int N = value->x;            // 2 least significant bits of inverse correct.
+  int x = N;
   x = x * (2 - (N * x));       // 4 least significant bits of inverse correct.
   x = x * (2 - (N * x));       // 8 least significant bits of inverse correct.
   x = x * (2 - (N * x));       // 16 least significant bits of inverse correct.
@@ -914,19 +896,19 @@ void ComputeInversePower2(const limb *value, limb *result, limb *tmp, int number
     multiply(value, result, tmp, currLen, NULL);    // tmp <- N * x
     Cy = 2U - (unsigned int)tmp[0].x;
     tmp[0].x = UintToInt(Cy & MAX_VALUE_LIMB);
-    for (j = 1; j < currLen; j++)
+    for (int j = 1; j < currLen; j++)
     {
       Cy = (unsigned int)(-tmp[j].x) - (Cy >> BITS_PER_GROUP);
       tmp[j].x = UintToInt(Cy & MAX_VALUE_LIMB);
     }                                                  // tmp <- 2 - N * x
     multiply(result, tmp, result, currLen, NULL);      // tmp <- x * (2 - N * x)
   }
+
   // Perform last approximation to inverse.
   multiply(value, result, tmp, number_length, NULL);    // tmp <- N * x
   Cy = 2U - (unsigned int)tmp[0].x;
   tmp[0].x = UintToInt(Cy & MAX_VALUE_LIMB);
-  for (j = 1; j < number_length; j++)
-  {
+  for (int j = 1; j < number_length; j++) {
     Cy = (unsigned int)(-tmp[j].x) - (Cy >> BITS_PER_GROUP);
     tmp[j].x = UintToInt(Cy & MAX_VALUE_LIMB);
   }                                                    // tmp <- 2 - N * x
@@ -1080,42 +1062,12 @@ void AddBigNbrModN(const limb *num1, const limb *num2, limb *sum,
   BigIntToFixedLimbs(r, number_length, sum);
 }
 
-void SubtBigNbrModNInternal(const limb *Nbr1, const limb *Nbr2, limb *Diff, const limb *mod, int nbrLen)
-{
-  int i;
-  unsigned int borrow = 0;
-  for (i = 0; i < nbrLen; i++)
-  {
-    borrow = (unsigned int)(Nbr1 + i)->x - (unsigned int)(Nbr2 + i)->x - (borrow >> BITS_PER_GROUP);
-    Diff[i].x = UintToInt(borrow & MAX_VALUE_LIMB);
-  }
-  if ((int)borrow < 0)
-  {
-    unsigned int carry = 0;
-    for (i = 0; i < nbrLen; i++)
-    {
-      carry = (carry >> BITS_PER_GROUP) +
-          (unsigned int)(Diff + i)->x + (unsigned int)(mod + i)->x;
-      Diff[i].x = UintToInt(carry & MAX_VALUE_LIMB);
-    }
-  }
-}
-
 void SubtBigNbrModN(const limb *num1, const limb *num2, limb *diff,
                     const limb *modulus_array, int number_length) {
   BigInt f1 = LimbsToBigInt(num1, number_length);
   BigInt f2 = LimbsToBigInt(num2, number_length);
   BigInt modulus = LimbsToBigInt(modulus_array, number_length);
   BigInt r = BigInt::Mod(BigInt::Minus(f1, f2), modulus);
-
-  fprintf(stderr, "%s - %s mod %s = %s\n",
-          f1.ToString().c_str(), f2.ToString().c_str(),
-          modulus.ToString().c_str(),
-          r.ToString().c_str());
-
-  SubtBigNbrModNInternal(num1, num2, diff, modulus_array, number_length);
-  BigInt rr = LimbsToBigInt(diff, number_length);
-  CHECK(BigInt::Eq(r, rr));
   BigIntToFixedLimbs(r, number_length, diff);
 }
 
