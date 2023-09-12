@@ -323,7 +323,7 @@ static inline std::pair<uint64_t, uint64_t> UDiv128(uint64_t n1,
   uint64_t r1 = n1;
   uint64_t r0 = n0;
   uint64_t q = 0;
-  for (unsigned int i = W_TYPE_SIZE; i > 0; i--) {
+  for (unsigned int i = 64; i > 0; i--) {
     std::tie(d1, d0) = RightShift128(d1, d0, 1);
     q <<= 1;
     if (GreaterEq128(r1, r0, d1, d0)) {
@@ -350,9 +350,9 @@ static inline uint64_t AddMod(uint64_t a, uint64_t b, uint64_t n) {
   return SubMod(a, n - b, n);
 }
 
-#define ll_B ((uint64_t) 1 << (W_TYPE_SIZE / 2))
+#define ll_B ((uint64_t) 1 << (64 / 2))
 #define ll_lowpart(t)  ((uint64_t) (t) & (ll_B - 1))
-#define ll_highpart(t) ((uint64_t) (t) >> (W_TYPE_SIZE / 2))
+#define ll_highpart(t) ((uint64_t) (t) >> (64 / 2))
 
 // returns w1, w0
 static inline std::pair<uint64_t, uint64_t> UMul128(uint64_t u, uint64_t v) {
@@ -375,7 +375,7 @@ static inline std::pair<uint64_t, uint64_t> UMul128(uint64_t u, uint64_t v) {
     x3 += ll_B;
 
   return std::make_pair(x3 + ll_highpart(x1),
-                        (x1 << W_TYPE_SIZE / 2) + ll_lowpart(x0));
+                        (x1 << 64 / 2) + ll_lowpart(x0));
 }
 
 
@@ -401,24 +401,18 @@ static constexpr unsigned char binvert_table[128] = {
 
 static inline uint64_t Binv(uint64_t n) {
   uint64_t inv = binvert_table[(n / 2) & 0x7F]; /*  8 */
-  if (W_TYPE_SIZE > 8)   inv = 2 * inv - inv * inv * n;
-  if (W_TYPE_SIZE > 16)  inv = 2 * inv - inv * inv * n;
-  if (W_TYPE_SIZE > 32)  inv = 2 * inv - inv * inv * n;
-
-  if (W_TYPE_SIZE > 64) {
-    int invbits = 64;
-    do {
-      inv = 2 * inv - inv * inv * n;
-      invbits *= 2;
-    } while (invbits < W_TYPE_SIZE);
-  }
-
+  inv = 2 * inv - inv * inv * n;
+  inv = 2 * inv - inv * inv * n;
+  inv = 2 * inv - inv * inv * n;
   return inv;
 }
 
-
 /* Modular two-word multiplication, r = a * b mod m, with mi = m^(-1) mod B.
-   Both a and b must be in redc form, the result will be in redc form too.  */
+   Both a and b must be in redc form, the result will be in redc form too.
+
+   (Redc is "montgomery form". mi stands for modular inverse.
+    See https://en.wikipedia.org/wiki/Montgomery_modular_multiplication )
+*/
 static inline uint64_t
 MulRedc(uint64_t a, uint64_t b, uint64_t m, uint64_t mi) {
   const auto &[rh, rl] = UMul128(a, b);
@@ -511,7 +505,7 @@ MillerRabin(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
 }
 
 /* Lucas's prime test. The number of iterations vary greatly; up to a
-   few dozen have been observed. The average seem to be about 2. */
+   few dozen have been observed. The average seems to be about 2. */
 bool IsPrimeInternal(uint64_t n) {
   // printf("prime_p(%llu)?\n", n);
   int k;
@@ -536,12 +530,17 @@ bool IsPrimeInternal(uint64_t n) {
   if (!MillerRabin(n, ni, a_prim, q, k, one))
     return false;
 
-  uint64_t b[15];
-  uint8_t e[15];
+
+  // Could have as many as 20 distinct factors; 20! < 2^64 < 21!
+  uint64_t b[21];
+  uint8_t e[21];
 
   /* Factor n-1 for Lucas. */
   int num_factors =
     Factorization::FactorizePreallocated(n - 1, b, e);
+  // PERF: We don't actually need the exponents; we just need the unique
+  // factors. We could have a slightly faster version of factoring that
+  // just gives unique factors.
 
   /* Loop until Lucas proves our number prime, or Miller-Rabin proves our
      number composite. */
