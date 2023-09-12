@@ -299,18 +299,23 @@ static void Interesting() {
          "%s\n", db.Epochs().c_str());
   PlotSquareValues(db);
 
-  PrintFactors(db);
-  /*
-  CellFactors(db, "ee", [](const Database::Square &square) {
+  static constexpr bool PRINT_FACTORS = false;
+
+  if (PRINT_FACTORS) {
+    PrintFactors(db);
+
+    /*
+      CellFactors(db, "ee", [](const Database::Square &square) {
       const auto &[aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
       return ee;
-    });
-  */
+      });
+    */
 
-  CellFactors(db, "hh", [](const Database::Square &square) {
-      const auto &[aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
-      return hh;
-    });
+    CellFactors(db, "hh", [](const Database::Square &square) {
+        const auto &[aa, bb, cc, dd, ee, ff, gg, hh, ii] = square;
+        return hh;
+      });
+  }
 
   PrintPrime(db);
 

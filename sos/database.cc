@@ -132,6 +132,10 @@ void Database::AddAlmost2(const std::array<uint64_t, 9> &square) {
   uint64_t i = Sqrt64(ii);
 
   // Invariant for almost2-type squares.
+  // (Note: We now output other chiralities if we find them, like
+  // where h is a square but f is not. So these assertions fail,
+  // then we need to store those as another type, or allow and
+  // distinguish them here, or something like that.)
   CHECK(b * b == bb);
   CHECK(c * c == cc);
   CHECK(d * d == dd);

@@ -796,5 +796,108 @@ struct EligibleFilterGPU {
   }
 };
 
+struct FactorizeGPU {
+  CL *cl = nullptr;
+  size_t height = 0;
+
+  // PERF we could use 32-bit for all but the final factor.
+  // Maybe better would be to have an array of 8-bit factors,
+  // then 64-bit ones. This probably isn't memory-bound, though.
+  //
+  // output is an array of 64 64-bit integer factors. The
+  // most factors we could have is 64 (2^64).
+  static constexpr int MAX_FACTORS = 64;
+
+  FactorizeGPU(CL *cl, size_t height) : cl(cl), height(height) {
+    std::string defines = StringPrintf("#define MAX_FACTORS %d\n",
+                                       MAX_FACTORS);
+    std::string kernel_src = defines + Util::ReadFile("factorize.cl");
+    const auto &[prog, kern] =
+      cl->BuildOneKernel(kernel_src, "Factorize", false);
+    CHECK(prog != 0);
+    program = prog;
+    CHECK(kern != 0);
+    kernel = kern;
+
+    nums_gpu = CreateUninitializedGPUMemory<uint64_t>(
+        cl->context,
+        height);
+    out_gpu = CreateUninitializedGPUMemory<uint64_t>(
+        cl->context,
+        height * MAX_FACTORS);
+    // Number of factors in each row.
+    out_size_gpu = CreateUninitializedGPUMemory<uint8_t>(
+        cl->context,
+        height);
+  }
+
+  // Synchronized access.
+  std::mutex m;
+  cl_program program = 0;
+  cl_kernel kernel = 0;
+  cl_mem nums_gpu = nullptr;
+  cl_mem out_gpu = nullptr;
+  cl_mem out_size_gpu = nullptr;
+
+  // Processes a batch of numbers (size height).
+  // Returns a dense array of factors (MAX_FACTORS x height)
+  // with the count of factors per input.
+  std::pair<std::vector<uint64_t>,
+            std::vector<uint8>>
+  Factorize(const std::vector<uint64_t> &nums) {
+    // Only one GPU process at a time.
+    MutexLock ml(&m);
+
+    // Run kernel.
+    {
+
+      CopyBufferToGPU(cl->queue, nums, nums_gpu);
+
+      CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
+                                   (void *)&nums_gpu));
+
+      CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
+                                   (void *)&out_gpu));
+
+      CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
+                                   (void *)&out_size_gpu));
+
+
+      // Simple 1D Kernel
+      size_t global_work_offset[] = { (size_t)0 };
+      size_t global_work_size[] = { (size_t)height };
+
+      CHECK_SUCCESS(
+          clEnqueueNDRangeKernel(cl->queue, kernel,
+                                 // 1D
+                                 1,
+                                 // It does its own indexing
+                                 global_work_offset,
+                                 global_work_size,
+                                 // No local work
+                                 nullptr,
+                                 // No wait list
+                                 0, nullptr,
+                                 // no event
+                                 nullptr));
+
+      clFinish(cl->queue);
+    }
+
+    return make_pair(
+        CopyBufferFromGPU<uint64_t>(cl->queue, out_gpu, MAX_FACTORS * height),
+        CopyBufferFromGPU<uint8_t>(cl->queue, out_size_gpu, height));
+  }
+
+  ~FactorizeGPU() {
+    CHECK_SUCCESS(clReleaseKernel(kernel));
+    CHECK_SUCCESS(clReleaseProgram(program));
+
+    CHECK_SUCCESS(clReleaseMemObject(nums_gpu));
+    CHECK_SUCCESS(clReleaseMemObject(out_gpu));
+    CHECK_SUCCESS(clReleaseMemObject(out_size_gpu));
+  }
+};
+
 
 #endif

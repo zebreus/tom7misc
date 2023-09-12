@@ -241,8 +241,9 @@ static void TestWays(const char * method) {
              ANSI_BEGINNING_OF_LINE "%s\n",
              ANSI::ProgressBar(batch_idx,
                                NUM_BATCHES,
-                               StringPrintf("benchmark/test. batch size %d",
-                                            GPU_HEIGHT).c_str(),
+                               StringPrintf(
+                                   "TestWays benchmark/test. batch size %d",
+                                   GPU_HEIGHT).c_str(),
                                run_timer.Seconds()).c_str());
     }
   }
@@ -336,15 +337,54 @@ static void TestEligibleFilter() {
   printf("TestEligibleFilter " AGREEN("OK") "\n");
 }
 
+static void TestFactorize() {
+  ArcFour rc("factorize");
+  static constexpr int HEIGHT = 1;
+  FactorizeGPU factorize(cl, HEIGHT);
+
+  std::vector<uint64_t> nums = { 137 * 137 };
+  /*
+  for (int i = 0; i < HEIGHT; i++)
+    nums.push_back(Rand64(&rc) & 131071);
+  */
+
+  Timer ftimer;
+  printf("Factorize...\n");
+  const auto &[factors, num_factors] = factorize.Factorize(nums);
+  printf("Factorized %d numbers in %s\n",
+         HEIGHT,
+         ANSI::Time(ftimer.Seconds()).c_str());
+
+  for (int i = 0; i < HEIGHT; i++) {
+    uint64_t n = 1;
+    for (int j = 0; j < num_factors[i]; j++) {
+      n *= factors[i * FactorizeGPU::MAX_FACTORS + j];
+    }
+    if (nums[i] == 0) {
+      CHECK(n == 1) << "We arbitrarily define the prime factors of 0 "
+        "to be the empty product.";
+    } else {
+      CHECK(nums[i] == n) << "Target num is " << nums[i] << " but product "
+        "of factors is " << n;
+    }
+  }
+
+  printf("OK\n");
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
 
+  #if 0
   TestEligibleFilter();
   TestTryFilter();
 
   TestWays<WaysGPUMerge, TEST_AGAINST_CPU, 16>("merge");
   TestWays<WaysGPU, TEST_AGAINST_CPU, 16>("orig2d");
+  #endif
+
+  TestFactorize();
 
   // Optimize<WaysGPU>();
 
