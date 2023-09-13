@@ -209,6 +209,7 @@ MulRedc(uint64_t a, uint64_t b, uint64_t m, uint64_t mi) {
   return xh;
 }
 
+// computes b^e mod n. b in redc form. result in redc form.
 uint64_t
 PowM(uint64_t b, uint64_t e, uint64_t n, uint64_t ni, uint64_t one) {
   uint64_t y = one;
@@ -372,35 +373,81 @@ void GetDistinctFactors(uint64_t x,
   *failed = true;
 }
 
-
-bool MillerRabin(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
-                 unsigned int k, uint64_t one) {
+// One Miller-Rabin test. Returns true if definitely composite;
+// false if maybe prime.
+bool DefinitelyComposite(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
+                         unsigned int k, uint64_t one) {
   uint64_t y = PowM(b, q, n, ni, one);
 
   /* -1, but in redc representation. */
   uint64_t nm1 = n - one;
 
   if (y == one || y == nm1)
-    return true;
+    return false;
 
   for (unsigned int i = 1; i < k; i++) {
-    // printf("  mr %d/%d\n", i, k);
+    // y = y^2 mod n
     y = MulRedc(y, y, n, ni);
-    // printf("  now %llu vs %llu or 1\n", y, nm1, one);
 
     if (y == nm1)
-      return true;
-    if (y == one)
       return false;
+    if (y == one)
+      return true;
   }
-  // printf("so false.\n");
-  return false;
+  return true;
 }
 
+bool IsPrimeInternal(uint64_t n) {
+  if (n <= 1)
+    return false;
 
+  /* We have already sieved out small primes.
+     This also means that we don't need to check a = n as
+     we consider the bases below. */
+  if (n < (uint64_t)(NEXT_PRIME * NEXT_PRIME))
+    return true;
+
+  // Precomputation.
+  uint64_t q = n - 1;
+  // XXX can use ctz
+  int k;
+  for (k = 0; (q & 1) == 0; k++)
+    q >>= 1;
+
+  const uint64_t ni = Binv(n);                 /* ni <- 1/n mod B */
+  const uint64_t one = Redcify(1, n);
+  uint64_t a_prim = AddMod(one, one, n); /* i.e., redcify a = 2 */
+  int a = 2;
+
+  // Just need to check the first 12 prime bases for 64-bit ints.
+  for (int i = 0; i < 12; i++) {
+    if (DefinitelyComposite(n, ni, a_prim, q, k, one))
+      return false;
+
+    uint8_t delta = PRIME_DELTAS[i];
+
+    // Establish new base.
+    a += delta;
+
+    /* The following is equivalent to a_prim = redcify (a, n).  It runs faster
+       on most processors, since it avoids udiv128. */
+    {
+      ulong2 r = UMul128(one, a);
+      if (r.s0 == 0) {
+        a_prim = r.s1 % n;
+      } else {
+        a_prim = UDiv128(r.s0, r.s1, n).s1;
+      }
+    }
+  }
+
+  // The test above detects all 64-bit composite numbers, so this
+  // must be a prime.
+  return true;
+}
 
 // Requires no factors < NEXT_PRIME.
-bool IsPrimeInternal(uint64_t n, bool *failed) {
+bool OldIsPrimeInternal(uint64_t n, bool *failed) {
   // printf("IsPrime(%llu)\n", n);
 
   int k;
@@ -555,8 +602,8 @@ void FactorUsingPollardRho(uint64_t n,
 
     n = n / g;
 
-    bool n_prime = IsPrimeInternal(n, failed);
-    bool g_prime = IsPrimeInternal(g, failed);
+    bool n_prime = IsPrimeInternal(n);
+    bool g_prime = IsPrimeInternal(g);
 
     if (*failed) {
       // Could possibly continue if one of the above is prime?
@@ -589,48 +636,6 @@ void FactorUsingPollardRho(uint64_t n,
       *failed = true;
       return;
     }
-
-#if 0
-    if (IsPrimeInternal(g, failed)) {
-      if (*failed) return;
-      printf("Add factor (g) %llu leaving n=%llu\n", g, n);
-      // Add the factor.
-      factors[*num_factors] = g;
-      ++*num_factors;
-
-      // and continue with n...
-
-      x = x % n;
-      z = z % n;
-      y = y % n;
-
-    } else if (IsPrimeInternal(n, failed)) {
-      if (*failed) return;
-
-      printf("Add factor (n) %llu\n", n);
-
-      factors[*num_factors] = n;
-      ++*num_factors;
-
-      // But g is composite, so we have to keep
-      // factoring that.
-
-      printf("restart with g (%llu)\n", g);
-      n = g;
-      a++;
-      goto restart;
-
-    } else {
-      // If both are composite, we just fail...
-
-      // XXX. AH: We may not recurse.
-      // FactorUsingPollardRho(g, a + 1, factors, num_factors);
-      // Could use a simpler primality test, or a small explicit stack?
-      *failed = true;
-      return;
-    }
-#endif
-
   }
 }
 
@@ -703,7 +708,7 @@ void FactorizeInternal(uint64_t x,
 
   if (cur != 1) {
     // printf("Is %llu prime?\n", cur);
-    if (IsPrimeInternal(cur, failed)) {
+    if (IsPrimeInternal(cur)) {
       // printf("Write %llu @%d\n", cur, nf);
       factors[nf++] = cur;
     } else {

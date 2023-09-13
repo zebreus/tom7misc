@@ -11,6 +11,7 @@
 #include "randutil.h"
 #include "threadutil.h"
 #include "atomic-util.h"
+#include "factorization.h"
 
 static CL *cl = nullptr;
 
@@ -339,42 +340,47 @@ static void TestEligibleFilter() {
 
 static void TestFactorize() {
   ArcFour rc("factorize");
-  static constexpr int HEIGHT = 8192;
+  static constexpr int HEIGHT = 131072;
   FactorizeGPU factorize(cl, HEIGHT);
 
-  std::vector<uint64_t> nums; // = { 137 * 137 };
+  for (int i = 0; i < 100; i++) {
 
-  for (int i = 0; i < HEIGHT; i++)
-    nums.push_back(Rand64(&rc) & uint64_t{0xFFFFFFFFFFF});
+    std::vector<uint64_t> nums; // = { 137 * 137 };
 
-  Timer ftimer;
-  printf("Factorize...\n");
-  const auto &[factors, num_factors] = factorize.Factorize(nums);
-  printf("Factorized %d numbers in %s\n",
-         HEIGHT,
-         ANSI::Time(ftimer.Seconds()).c_str());
+    for (int i = 0; i < HEIGHT; i++)
+      nums.push_back(Rand64(&rc) & uint64_t{0xFFFFFFFFFFF});
 
-  int64_t num_failed = 0;
-  for (int i = 0; i < HEIGHT; i++) {
-    uint64_t n = 1;
-    if (num_factors[i] == 0xFF) {
-      num_failed++;
-    } else {
-      for (int j = 0; j < num_factors[i]; j++) {
-        n *= factors[i * FactorizeGPU::MAX_FACTORS + j];
-      }
-      if (nums[i] == 0) {
-        CHECK(n == 1) << "We arbitrarily define the prime factors of 0 "
-          "to be the empty product.";
+    Timer ftimer;
+    printf("Factorize...\n");
+    const auto &[factors, num_factors] = factorize.Factorize(nums);
+    printf("Factorized %d numbers in %s\n",
+           HEIGHT,
+           ANSI::Time(ftimer.Seconds()).c_str());
+
+    int64_t num_failed = 0;
+    for (int i = 0; i < HEIGHT; i++) {
+      uint64_t n = 1;
+      if (num_factors[i] == 0xFF) {
+        num_failed++;
       } else {
-        CHECK(nums[i] == n) << "Target num is " << nums[i] << " but product "
-          "of factors is " << n;
+        for (int j = 0; j < num_factors[i]; j++) {
+          uint64_t factor = factors[i * FactorizeGPU::MAX_FACTORS + j];
+          n *= factor;
+          CHECK(Factorization::IsPrime(factor)) << factor;
+        }
+        if (nums[i] == 0) {
+          CHECK(n == 1) << "We arbitrarily define the prime factors of 0 "
+            "to be the empty product.";
+        } else {
+          CHECK(nums[i] == n) << "Target num is " << nums[i] << " but product "
+            "of factors is " << n;
+        }
       }
     }
-  }
 
-  printf("%lld/%d failed (%.2f%%)\n", num_failed, HEIGHT,
-         (100.0 * num_failed) / HEIGHT);
+    printf("%lld/%d failed (%.2f%%)\n", num_failed, HEIGHT,
+           (100.0 * num_failed) / HEIGHT);
+  }
 
   printf("OK\n");
 }
