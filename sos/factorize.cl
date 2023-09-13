@@ -10,8 +10,9 @@ typedef atomic_uint atomic_uint32_t;
 // from gnu's factor utility.
 
 void FactorizeInternal(uint64_t x,
-                       uint64_t *restrict factors,
-                       int *restrict num_factors);
+                       uint64_t *factors,
+                       int *num_factors,
+                       bool *failed);
 
 // First prime not in the list of trial divisions.
 #define NEXT_PRIME 137
@@ -265,6 +266,113 @@ uint64_t GCDOdd(uint64_t a, uint64_t b) {
   }
 }
 
+// This is like FactorizeInternal, but used for the Lucas test. Two reasons
+// to separate it out:
+//   - For lucas we only need the distinct factors, so we can save
+//     some bookkeeping.
+//   - OpenCL does not support recursion, so we want to resort to different
+//     techniques if we need to do further primality tests.
+void GetDistinctFactors(uint64_t x,
+                        uint64_t *distinct_factors,
+                        int *num_factors,
+                        bool *failed) {
+  if (x <= 1) {
+    return;
+  }
+
+  int nf = *num_factors;
+
+  uint64_t cur = x;
+
+  // The product of the factors (with multiplicity) that we
+  // removed.
+  uint64_t a = 1;
+
+  const int twos = ctz(cur);
+  if (twos) {
+    distinct_factors[nf++] = 2;
+    cur >>= twos;
+    a <<= twos;
+  }
+
+  #if 0
+#define TRY(p) do {                             \
+    if (cur % p == 0) {                         \
+      distinct_factors[nf++] = p;               \
+      do {                                      \
+        cur /= p;                               \
+      } while (cur % p == 0);                   \
+    }                                           \
+  } while (0)
+  // TRY(2);
+  TRY(3);
+  TRY(5);
+  TRY(7);
+  TRY(11);
+  TRY(13);
+  TRY(17);
+  TRY(19);
+  TRY(23);
+  TRY(29);
+  TRY(31);
+  TRY(37);
+  TRY(41);
+  TRY(43);
+  TRY(47);
+  TRY(53);
+  TRY(59);
+  TRY(61);
+  TRY(67);
+  TRY(71);
+  TRY(73);
+  TRY(79);
+  TRY(83);
+  TRY(89);
+  TRY(97);
+  TRY(101);
+  TRY(103);
+  TRY(107);
+  TRY(109);
+  TRY(113);
+  TRY(127);
+  TRY(131);
+#undef TRY
+  #endif
+
+  // Using the whole prime table...
+  uint64_t p = 2;
+  for (int i = 0; i < NUM_PRIME_DELTAS; i++) {
+    p += PRIME_DELTAS[i];
+    if (cur % p == 0) {
+      distinct_factors[nf++] = p;
+      do {
+        cur /= p;
+        a *= p;
+      } while (cur % p == 0);
+    }
+  }
+
+  // printf("(GetDistinctFactors end w/ cur=%d)\n", cur);
+
+  *num_factors = nf;
+
+  if (cur == 1) {
+    printf("Factored! %llu = %llu\n", a, x);
+    return;
+  }
+
+  if (a * a > x) {
+    printf("Pocklington! %llu * %llu = %llu\n", a, cur, x);
+  } else {
+    printf("Sux! %llu * %llu = %llu\n", a, cur, x);
+  }
+
+  // we didn't completely factor it, so we have to
+  // just fail
+  *failed = true;
+}
+
+
 bool MillerRabin(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
                  unsigned int k, uint64_t one) {
   uint64_t y = PowM(b, q, n, ni, one);
@@ -276,23 +384,24 @@ bool MillerRabin(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
     return true;
 
   for (unsigned int i = 1; i < k; i++) {
-    printf("  mr %d/%d\n", i, k);
+    // printf("  mr %d/%d\n", i, k);
     y = MulRedc(y, y, n, ni);
-    printf("  now %llu vs %llu or 1\n", y, nm1, one);
+    // printf("  now %llu vs %llu or 1\n", y, nm1, one);
 
     if (y == nm1)
       return true;
     if (y == one)
       return false;
   }
-  printf("so false.\n");
+  // printf("so false.\n");
   return false;
 }
 
 
+
 // Requires no factors < NEXT_PRIME.
-bool IsPrimeInternal(uint64_t n) {
-  printf("IsPrime(%llu)\n", n);
+bool IsPrimeInternal(uint64_t n, bool *failed) {
+  // printf("IsPrime(%llu)\n", n);
 
   int k;
 
@@ -312,28 +421,22 @@ bool IsPrimeInternal(uint64_t n) {
   const uint64_t one = Redcify(1, n);
   uint64_t a_prim = AddMod(one, one, n); /* i.e., redcify a = 2 */
 
-  printf("Try m-r\n");
+  // printf("Try m-r\n");
 
   /* Perform a Miller-Rabin test, which finds most composites quickly. */
   if (!MillerRabin(n, ni, a_prim, q, k, one))
     return false;
 
-  printf("Not miller-rabin\n");
+  // printf("Not miller-rabin\n");
 
   int num_factors = 0;
-  // could be up to 64 factors!
-  uint64_t b[64];
+  // could be up to 20 factors (21! > 2^64)
+  uint64_t distinct_factors[21];
 
   /* Factor n-1 for Lucas. */
-  FactorizeInternal(n - 1, b, &num_factors);
-  // PERF: deduplicate the factors. It's ok to have duplicates but
-  // we waste work below (in a loop!)
-  // (Or, just remove consecutive duplicates, which would be the
-  // most common.)
-  // (As an alternative, we can have a version that does the
-  // predivision but only accumulates each factor once, and then
-  // live with the possibility of duplicates here. That allows
-  // the array above to be smaller.)
+  GetDistinctFactors(n - 1, distinct_factors, &num_factors, failed);
+  // prime is the fast path
+  if (*failed) return true;
 
   /* Loop until Lucas proves our number prime, or Miller-Rabin proves our
      number composite. */
@@ -342,7 +445,7 @@ bool IsPrimeInternal(uint64_t n) {
     uint8_t delta = PRIME_DELTAS[pd];
     bool is_prime = true;
     for (int i = 0; i < num_factors; i++) {
-      const uint64_t p = b[i];
+      const uint64_t p = distinct_factors[i];
       is_prime = PowM(a_prim, (n - 1) / p, n, ni, one) != one;
       if (!is_prime) break;
     }
@@ -376,11 +479,13 @@ bool IsPrimeInternal(uint64_t n) {
 }
 
 void FactorUsingPollardRho(uint64_t n,
-                           unsigned long int a,
-                           uint64_t *restrict factors,
-                           int *restrict num_factors) {
-  printf("rho :)\n");
-  printf("rho(%llu, %llu)\n", n, a);
+                           uint64_t a,
+                           uint64_t *factors,
+                           int *num_factors,
+                           bool *failed) {
+
+ restart:;
+  // printf("rho(%llu, %llu)\n", n, a);
 
   uint64_t g;
 
@@ -395,6 +500,11 @@ void FactorUsingPollardRho(uint64_t n,
 
   while (n != 1) {
     // assert (a < n);
+    if (a > 20) {
+      // XXX
+      *failed = true;
+      return;
+    }
 
     const uint64_t ni = Binv(n);
 
@@ -435,45 +545,101 @@ void FactorUsingPollardRho(uint64_t n,
     if (n == g) {
       /* Found n itself as factor.  Restart with different params. */
 
-      printf("recurse\n");
+      // printf("recurse\n");
       // return;
 
-      FactorUsingPollardRho(n, a + 1, factors, num_factors);
-      return;
+      a++;
+      // printf("restart w/ n == g\n");
+      goto restart;
     }
 
     n = n / g;
 
-    if (IsPrimeInternal(g)) {
-      printf("Add factor (g) %llu\n", g);
+    bool n_prime = IsPrimeInternal(n, failed);
+    bool g_prime = IsPrimeInternal(g, failed);
+
+    if (*failed) {
+      // Could possibly continue if one of the above is prime?
+      return;
+    }
+
+    if (n_prime && g_prime) {
+      factors[*num_factors] = n;
+      ++*num_factors;
+      factors[*num_factors] = g;
+      ++*num_factors;
+      return;
+    } else if (n_prime) {
+      // continue with g.
+      factors[*num_factors] = n;
+      ++*num_factors;
+      n = g;
+      a++;
+      goto restart;
+    } else if (g_prime) {
+      factors[*num_factors] = g;
+      ++*num_factors;
+
+      // Continue working on n.
+      x = x % n;
+      z = z % n;
+      y = y % n;
+    } else {
+      // would need some kind of stack or recursion.
+      *failed = true;
+      return;
+    }
+
+#if 0
+    if (IsPrimeInternal(g, failed)) {
+      if (*failed) return;
+      printf("Add factor (g) %llu leaving n=%llu\n", g, n);
       // Add the factor.
       factors[*num_factors] = g;
       ++*num_factors;
-    } else {
-      printf("recurse\n");
-      // return;
-      FactorUsingPollardRho(g, a + 1, factors, num_factors);
-    }
 
-    if (IsPrimeInternal(n)) {
+      // and continue with n...
+
+      x = x % n;
+      z = z % n;
+      y = y % n;
+
+    } else if (IsPrimeInternal(n, failed)) {
+      if (*failed) return;
+
       printf("Add factor (n) %llu\n", n);
 
       factors[*num_factors] = n;
       ++*num_factors;
-      break;
-    }
 
-    x = x % n;
-    z = z % n;
-    y = y % n;
+      // But g is composite, so we have to keep
+      // factoring that.
+
+      printf("restart with g (%llu)\n", g);
+      n = g;
+      a++;
+      goto restart;
+
+    } else {
+      // If both are composite, we just fail...
+
+      // XXX. AH: We may not recurse.
+      // FactorUsingPollardRho(g, a + 1, factors, num_factors);
+      // Could use a simpler primality test, or a small explicit stack?
+      *failed = true;
+      return;
+    }
+#endif
+
   }
 }
 
 // This is basically the same as the kernel, except that
 // the Lucas primality test calls it recursively.
 void FactorizeInternal(uint64_t x,
-                       uint64_t *restrict factors,
-                       int *restrict num_factors) {
+                       uint64_t *factors,
+                       int *num_factors,
+                       bool *failed) {
   if (x <= 1) {
     return;
   }
@@ -533,20 +699,20 @@ void FactorizeInternal(uint64_t x,
   TRY(131);
 #undef TRY
 
-  printf("End TRY\n");
+  // printf("End TRY\n");
 
   if (cur != 1) {
-    printf("Is %llu prime?\n", cur);
-    if (IsPrimeInternal(cur)) {
-      printf("Write %llu @%d\n", cur, nf);
+    // printf("Is %llu prime?\n", cur);
+    if (IsPrimeInternal(cur, failed)) {
+      // printf("Write %llu @%d\n", cur, nf);
       factors[nf++] = cur;
     } else {
-      printf("So, rho...\n");
-      FactorUsingPollardRho(cur, 1, factors, &nf);
+      // printf("So, rho...\n");
+      FactorUsingPollardRho(cur, 1, factors, &nf, failed);
     }
   }
 
-  printf("set num_factors to %d\n", nf);
+  // printf("set num_factors to %d\n", nf);
   *num_factors = nf;
 }
 
@@ -559,6 +725,11 @@ __kernel void Factorize(__global const uint64_t *restrict nums,
   uint64_t *out = &all_out[idx * MAX_FACTORS];
 
   int num_factors = 0;
-  FactorizeInternal(x, out, &num_factors);
-  all_out_size[idx] = num_factors;
+  bool failed = false;
+  FactorizeInternal(x, out, &num_factors, &failed);
+  if (failed) {
+    all_out_size[idx] = 0xFF;
+  } else {
+    all_out_size[idx] = num_factors;
+  }
 }

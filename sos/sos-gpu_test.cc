@@ -339,14 +339,13 @@ static void TestEligibleFilter() {
 
 static void TestFactorize() {
   ArcFour rc("factorize");
-  static constexpr int HEIGHT = 1;
+  static constexpr int HEIGHT = 8192;
   FactorizeGPU factorize(cl, HEIGHT);
 
-  std::vector<uint64_t> nums = { 137 * 137 };
-  /*
+  std::vector<uint64_t> nums; // = { 137 * 137 };
+
   for (int i = 0; i < HEIGHT; i++)
-    nums.push_back(Rand64(&rc) & 131071);
-  */
+    nums.push_back(Rand64(&rc) & uint64_t{0xFFFFFFFFFFF});
 
   Timer ftimer;
   printf("Factorize...\n");
@@ -355,19 +354,27 @@ static void TestFactorize() {
          HEIGHT,
          ANSI::Time(ftimer.Seconds()).c_str());
 
+  int64_t num_failed = 0;
   for (int i = 0; i < HEIGHT; i++) {
     uint64_t n = 1;
-    for (int j = 0; j < num_factors[i]; j++) {
-      n *= factors[i * FactorizeGPU::MAX_FACTORS + j];
-    }
-    if (nums[i] == 0) {
-      CHECK(n == 1) << "We arbitrarily define the prime factors of 0 "
-        "to be the empty product.";
+    if (num_factors[i] == 0xFF) {
+      num_failed++;
     } else {
-      CHECK(nums[i] == n) << "Target num is " << nums[i] << " but product "
-        "of factors is " << n;
+      for (int j = 0; j < num_factors[i]; j++) {
+        n *= factors[i * FactorizeGPU::MAX_FACTORS + j];
+      }
+      if (nums[i] == 0) {
+        CHECK(n == 1) << "We arbitrarily define the prime factors of 0 "
+          "to be the empty product.";
+      } else {
+        CHECK(nums[i] == n) << "Target num is " << nums[i] << " but product "
+          "of factors is " << n;
+      }
     }
   }
+
+  printf("%lld/%d failed (%.2f%%)\n", num_failed, HEIGHT,
+         (100.0 * num_failed) / HEIGHT);
 
   printf("OK\n");
 }
