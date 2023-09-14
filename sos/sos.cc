@@ -25,6 +25,7 @@
 #include "autoparallel.h"
 #include "atomic-util.h"
 #include "image.h"
+#include "factorization.h"
 
 #include "database.h"
 #include "sos-util.h"
@@ -143,7 +144,9 @@ private:
 // Tuned by sos-gpu_test.
 // static constexpr int GPU_HEIGHT = 49912;
 // static constexpr int GPU_HEIGHT = 51504;
-static constexpr int GPU_HEIGHT = 131072;
+static constexpr int GPU_WAYS_HEIGHT = 131072;
+// PERF: Tune!
+static constexpr int GPU_FACTOR_HEIGHT = 8192;
 
 static constexpr int NUM_GPU_THREADS = 2;
 static constexpr int TRY_BATCH_SIZE = 256;
@@ -160,7 +163,7 @@ static constexpr size_t EPOCH_GPU_CHUNK = 100000000;
 // PERF: Tune it
 static constexpr int STEADY_WORK_STEALING_THREADS = 0;
 // Be careful not to set this too low, or everything will stall
-// on a stolen batch (size GPU_HEIGHT) that is processed by a
+// on a stolen batch (size GPU_WAYS_HEIGHT) that is processed by a
 // small number of threads.
 static constexpr int ENDGAME_WORK_STEALING_THREADS = 8;
 
@@ -188,7 +191,7 @@ static void Interesting(const std::string &s) {
 
 // Fast counters to avoid lock contention in tight loops.
 DECLARE_COUNTERS(rejected_f, rejected_ff, rejected_hh, rejected_aa,
-                 other_almost2, unused2_, unused3_, unused4_);
+                 other_almost2, batches_factored, unused3_, unused4_);
 
 #define INCREMENT(rej) (rej)++
 #define INCREMENT_BY(rej, by) (rej) += (by)
@@ -232,9 +235,9 @@ struct BatchedWorkQueue {
       // Take ownership.
       batch = std::move(queue.front());
       size -= batch.size();
-      // It's the responsibility of those that insert into the
-      // queue to maintain the presence of an incomplete vector.
-      // So we can just remove the full one.
+      // It's the responsibility of the functions that insert into the
+      // queue to maintain the presence of an incomplete vector. So we
+      // can just remove the full one.
       queue.pop_front();
     }
     cond.notify_all();
@@ -300,6 +303,7 @@ struct BatchedWorkQueue {
   // of full vectors and an incomplete vector (maybe empty) at the
   // end. (Unless "done", in which case it can be empty.)
   std::deque<std::vector<Item>> queue;
+  // Size is the number of items, not batches.
   int64_t size = 0;
   bool done = false;
 };
@@ -374,9 +378,19 @@ private:
   bool done = false;
 };
 
+struct GPUFactored {
+  // The numbers.
+  std::vector<uint64_t> nums;
+  // Up to FactorizeGPU::MAX_FACTORS * |nums| factors.
+  std::vector<uint64_t> factors;
+  // Parallel to nums. Gives the number of factors. If 0xFF,
+  // then factoring on the GPU failed; need to fail back to
+  // a CPU method.
+  std::vector<uint8_t> num_factors;
+};
 
 struct SOS {
-  std::unique_ptr<AutoParallelComp> factor_comp;
+  std::unique_ptr<AutoParallelComp> nways_comp;
   std::unique_ptr<AutoParallelComp> try_comp;
   std::unique_ptr<GPUMethod> ways_gpu;
   std::unique_ptr<TryFilterGPU> tryfilter_gpu;
@@ -390,7 +404,20 @@ struct SOS {
   //  then (base + b) has passed the filter.
   std::unique_ptr<
     WorkQueue<std::pair<uint64_t, std::vector<uint8_t>>>
-    > nways_queue;
+    > prefiltered_queue;
+
+  // Prefiltered numbers grouped into batches for GPU factoring.
+  // We keep this limited in size so that we don't have to allocate
+  // gigabytes up front.
+  std::unique_ptr<
+    BatchedWorkQueue<uint64_t>
+    > factor_queue;
+
+  // Pre-filtered and factored by GPU. Ready to compute the
+  // eligible ones using the nways test.
+  std::unique_ptr<
+    WorkQueue<GPUFactored>
+    > factored_queue;
 
   // Eligible. Ready to produce the actual ways on GPU.
   // An element is a number and its expected number of ways.
@@ -414,18 +441,22 @@ struct SOS {
   SOS() : status_per(10.0) {
     // Performance is pretty workload-dependent, so just tune in-process
     // rather than saving to disk.
-    factor_comp.reset(new AutoParallelComp(30, 1000, false));
+    nways_comp.reset(new AutoParallelComp(30, 1000, false));
     try_comp.reset(new AutoParallelComp(12, 1000, false));
 
     eligiblefilter_gpu.reset(
         new EligibleFilterGPU(cl, EPOCH_GPU_CHUNK));
-    ways_gpu.reset(new GPUMethod(cl, GPU_HEIGHT));
-    tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_HEIGHT));
+    ways_gpu.reset(new GPUMethod(cl, GPU_WAYS_HEIGHT));
+    tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_WAYS_HEIGHT));
 
-    nways_queue.reset(
+    prefiltered_queue.reset(
         new WorkQueue<std::pair<uint64_t, std::vector<uint8_t>>>);
+    factor_queue.reset(
+        new BatchedWorkQueue<uint64_t>(GPU_FACTOR_HEIGHT));
+    factored_queue.reset(new WorkQueue<GPUFactored>);
+
     ways_queue.reset(
-        new BatchedWorkQueue<std::pair<uint64_t, uint32_t>>(GPU_HEIGHT));
+        new BatchedWorkQueue<std::pair<uint64_t, uint32_t>>(GPU_WAYS_HEIGHT));
     try_queue.reset(new BatchedWorkQueue<TryMe>(TRY_BATCH_SIZE));
     almost2_queue.reset(new WorkQueue<Database::Square>);
   }
@@ -666,14 +697,14 @@ struct SOS {
   }
 
 
-  void GPUThread(int thread_idx) {
+  void GPUWaysThread(int thread_idx) {
     for (;;) {
       std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
         ways_queue->WaitGet();
 
       if (!batchopt.has_value()) {
         // Done!
-        status.Printf("GPU thread " APURPLE("%d") " done!\n", thread_idx);
+        status.Printf("GPU ways thread " APURPLE("%d") " done!\n", thread_idx);
         fflush(stdout);
         return;
       }
@@ -682,8 +713,8 @@ struct SOS {
       const int real_batch_size = batch.size();
 
       // Last batch can be incomplete.
-      CHECK(batch.size() <= GPU_HEIGHT);
-      while (batch.size() < GPU_HEIGHT) {
+      CHECK(batch.size() <= GPU_WAYS_HEIGHT);
+      while (batch.size() < GPU_WAYS_HEIGHT) {
         // Fill with dummy values.
         batch.push_back(GPUMethod::dummy);
       }
@@ -693,7 +724,7 @@ struct SOS {
       // Rejoin with the number. PERF: We could avoid some copying here
       // if it's a bottleneck.
       std::vector<TryMe> trybatch;
-      trybatch.reserve(GPU_HEIGHT);
+      trybatch.reserve(GPU_WAYS_HEIGHT);
       // But only populate the real batch size, in case this is the
       // last batch and short.
       for (int i = 0; i < real_batch_size; i++)
@@ -709,7 +740,7 @@ struct SOS {
       // concurrently?
       uint64_t num_filtered = 0;
       bool gone = false;
-      if (trybatch.size() == GPU_HEIGHT) {
+      if (trybatch.size() == GPU_WAYS_HEIGHT) {
         uint64_t rej = 0;
         trybatch = tryfilter_gpu->FilterWays(trybatch, &rej);
         INCREMENT_BY(rejected_f, rej);
@@ -742,7 +773,7 @@ struct SOS {
   uint64_t too_big = 0;
   // Work stolen by CPU in endgame.
   uint64_t stolen = 0;
-  int64_t recent_try_size = 0;
+
   uint64_t batches_completely_filtered = 0;
   // Numbers that can be written as the sum of squares at least three
   // different ways.
@@ -798,8 +829,14 @@ struct SOS {
     const int64_t raa = READ(rejected_aa);
     const int64_t other2 = READ(other_almost2);
 
-    const int64_t gpu_size = ways_queue->Size();
+    const int64_t bfactored = READ(batches_factored);
+
+    const int64_t prefiltered_size = prefiltered_queue->Size();
+    const int64_t factor_size = factor_queue->Size();
+    const int64_t factored_size = factored_queue->Size();
+    const int64_t ways_size = ways_queue->Size();
     const int64_t try_size = try_queue->Size();
+
 
     string line2 =
       StringPrintf("%lld " AGREY("rf")
@@ -809,22 +846,33 @@ struct SOS {
                    " %lld " AGREY("raa")
                    "\n",
                    rf, rff, rhh, other2, raa);
-    string line3 = StringPrintf(ARED("%llu") " big  "
-                                APURPLE("%s") " gpu q  "
-                                ACYAN("%lld") " try q  "
-                                ABLUE("%lld") " lts "
-                                "(" AGREEN("%s") " stolen)\n",
-                                too_big,
-                                Util::UnsignedWithCommas(gpu_size).c_str(),
-                                try_size,
-                                recent_try_size,
-                                Util::UnsignedWithCommas(stolen).c_str());
+    #define ARROW AFGCOLOR(30, 30, 30, "\xE2\x86\x92") " "
+    string line3 = StringPrintf(
+        "qs: "
+        AFGCOLOR(200, 80,  80,  "%s") " pre " ARROW
+        AFGCOLOR(200, 80,  200, "%s") " fact " ARROW
+        AFGCOLOR(200, 200, 80,  "%s") " nways " ARROW
+        AFGCOLOR(80,  200, 80,  "%s") " ways " ARROW
+        AFGCOLOR(80,  200, 200, "%s") " try\n",
+        Util::UnsignedWithCommas(prefiltered_size).c_str(),
+        Util::UnsignedWithCommas(factor_size).c_str(),
+        Util::UnsignedWithCommas(factored_size).c_str(),
+        Util::UnsignedWithCommas(ways_size).c_str(),
+        Util::UnsignedWithCommas(try_size).c_str());
+
+    // other stuff
     string line4 =
       StringPrintf(
+          ARED("%llu") " big  "
+          AGREEN("%s") " stolen  "
           ACYAN("%s") " try-filtered  "
-          AGREEN("%s") " complete batches\n",
+          AGREEN("%s") " complete batches  "
+          AWHITE("%s") " batches factored\n",
+          too_big,
+          Util::UnsignedWithCommas(stolen).c_str(),
           Util::UnsignedWithCommas(done_gpu_filtered).c_str(),
-          Util::UnsignedWithCommas(batches_completely_filtered).c_str());
+          Util::UnsignedWithCommas(batches_completely_filtered).c_str(),
+          Util::UnsignedWithCommas(bfactored).c_str());
 
     // Get the fractions other than pending.
     double blood = (100.0 * done_ineligible_gpu) / epoch_size;
@@ -835,6 +883,7 @@ struct SOS {
     double white = (100.0 * done_full_try) / epoch_size;
     double black = (100.0 * pending) / epoch_size;
 
+    /*
     string line5 =
       StringPrintf(AGREY("%.1f%% left") " "
                    AFGCOLOR(180, 40, 40, "%.1f%% igpu") " "
@@ -844,6 +893,8 @@ struct SOS {
                    ACYAN("%.1f%% ptry") " "
                    AWHITE("%.1f%% full") "\n",
                    black, blood, red, green, blue, cyan, white);
+    */
+    string line5 = ARED("TODO THIS LINE") "\n";
 
     string line6;
     if (!nways_is_done) {
@@ -1015,8 +1066,6 @@ struct SOS {
           try_endgame = false;
         }
 
-        recent_try_size = original_batch_size;
-
         done_full_try += original_batch_size;
         pending_try -= original_batch_size;
       }
@@ -1072,87 +1121,215 @@ struct SOS {
     }
   }
 
-  void NWaysThread(uint64_t epoch_start, uint64_t epoch_size) {
-
+  void BatchFactorsThread(uint64_t epoch_start, uint64_t epoch_size) {
     for (;;) {
       std::optional<std::pair<uint64_t, std::vector<uint8_t>>> batchopt =
-        nways_queue->WaitGet();
+        prefiltered_queue->WaitGet();
 
       if (!batchopt.has_value()) {
-        status.Printf("NWays queue is done.\n");
+        status.Printf("Batch factors thread is done.\n");
         return;
       }
 
-      // Otherwise, rip over that thing.
+      int64_t local_ineligible = 0;
 
+      // Expand the bitmask and the start into a dense vector of factors.
+      std::vector<uint64_t> tofactor;
       const auto &[start, bitmask] = batchopt.value();
-      factor_comp->
+      for (int byte_idx = 0; byte_idx < bitmask.size(); byte_idx++) {
+        const uint64_t base_sum = start + byte_idx * 8;
+        const uint8_t byte = bitmask[byte_idx];
+        // PERF might want to do multiple bytes at a time...
+
+
+        // Note: This can overcount if we go past the epoch size.
+        local_ineligible += std::popcount<uint8_t>(byte);
+        for (int i = 0; i < 8; i++) {
+          // Skip ones that were filtered.
+          if (byte & (1 << (7 - i))) continue;
+          const uint64_t sum = base_sum + i;
+
+          if (sum >= epoch_start + epoch_size) continue;
+          tofactor.push_back(sum);
+        }
+      }
+
+      // XXX should have a target size and block here if we've
+      // exceeded it. No need to fill gigs of ram.
+      factor_queue->WaitAddVec(tofactor);
+      tofactor.clear();
+
+      {
+        MutexLock ml(&m);
+        // Work done in this thread
+        done_ineligible_gpu += local_ineligible;
+        // XXX count num prefiltered (bitmask.size() * 8)
+      }
+    }
+  }
+
+  void GPUFactorThread() {
+    FactorizeGPU factorize_gpu(cl, GPU_FACTOR_HEIGHT);
+
+    for (;;) {
+      std::optional<vector<uint64_t>> batchopt =
+        factor_queue->WaitGet();
+
+      if (!batchopt.has_value()) {
+        status.Printf("Factor queue is done.\n");
+        return;
+      }
+
+      vector<uint64_t> nums = std::move(batchopt.value());
+      batchopt.reset();
+
+      // Add padding if not full width.
+      int original_size = nums.size();
+      // Something easy to factor.
+      while (nums.size() < GPU_FACTOR_HEIGHT)
+        nums.push_back(2);
+
+      // Run on GPU.
+      std::pair<std::vector<uint64_t>, std::vector<uint8>> res =
+        factorize_gpu.Factorize(nums);
+
+      // Trim padding.
+      nums.resize(original_size);
+      res.first.resize(original_size * FactorizeGPU::MAX_FACTORS);
+      res.second.resize(original_size);
+
+      GPUFactored f{
+        .nums = std::move(nums),
+        .factors = std::move(res.first),
+        .num_factors = std::move(res.second),
+      };
+
+      factored_queue->WaitAdd(std::move(f));
+      // XXX counters etc.
+
+      batches_factored++;
+    }
+  }
+
+  // Takes factored numbes and computes the number of ways they
+  // can be written as a sum of squares. Filters out numbers
+  // with too few. Executes numbers with too many for GPU; but
+  // most get added to the ways_queue to be done on the GPU.
+  void NWaysThread() {
+    for (;;) {
+      std::optional<GPUFactored> batchopt =
+        factored_queue->WaitGet();
+
+      if (!batchopt.has_value()) {
+        status.Printf("Factored queue is done.\n");
+        return;
+      }
+
+      const GPUFactored &gpu_factored = batchopt.value();
+      nways_comp->
         ParallelComp(
-            bitmask.size(),
-            [this, epoch_start, epoch_size, start, &bitmask](int byte_idx) {
-              int local_too_big = 0;
+            // Three parallel arrays.
+            gpu_factored.nums.size(),
+            [&](int idx) {
+
+              // PERF run a few in a loop to avoid lock overhead
+              int local_triple_pending_ways = 0;
+              int local_cpu_factored = 0;
               int local_eligible_triples = 0;
+              int local_too_big = 0;
               int local_pending_try = 0;
               int local_done_ineligible_cpu = 0;
-              int local_tested = 0;
-              std::vector<std::pair<uint64_t, uint32_t>> todo_gpu;
 
-              // Do the whole byte.
-              const uint64_t base_sum = start + byte_idx * 8;
-              const uint8_t byte = bitmask[byte_idx];
+              const uint64_t num = gpu_factored.nums[idx];
+              const uint8_t num_factors_byte = gpu_factored.num_factors[idx];
 
-              // PERF might want to do multiple bytes at a time...
-              for (int i = 0; i < 8; i++) {
-                // Skip ones that were filtered.
-                if (byte & (1 << (7 - i))) continue;
+              uint64_t bases[15];
+              uint8_t exponents[15];
+              int nf = 0;
 
-                const uint64_t sum = base_sum + i;
-                // Batch might go over the end of the interval.
-                if (sum >= epoch_start + epoch_size) continue;
-                local_tested++;
-
-                // PERF can skip some of the tests we know were already
-                // done on GPU.
-                const int nways = ChaiWahWuNoFilter(sum);
-
-                if (nways >= 3) {
-                  if (nways > GPUMethod::MAX_WAYS) {
-                    // Do on CPU.
-                    std::vector<std::pair<uint64_t, uint64_t>> ways =
-                      NSoks2(sum, nways);
-                    TryMe tryme;
-                    tryme.num = sum;
-                    tryme.squareways = std::move(ways);
-                    try_queue->WaitAdd(std::move(tryme));
-
-                    local_too_big++;
-                    local_eligible_triples++;
-                    local_pending_try++;
-                  } else {
-                    todo_gpu.emplace_back(sum, nways);
+              if (num_factors_byte == 0xFF) {
+                // GPU factoring failed. Factor on CPU.
+                // PERF: Can use partial factoring here.
+                nf = Factorization::FactorizePreallocated(
+                    num, bases, exponents);
+                local_cpu_factored++;
+              } else {
+                // copy and collate factors.
+                for (int f = 0; f < num_factors_byte; f++) {
+                  uint64_t factor =
+                    gpu_factored.factors[idx * FactorizeGPU::MAX_FACTORS + f];
+                  // Search from the end because usually we have repeated
+                  // factors consecutively. My belief is that this array is
+                  // generally very small, so sorted data structures are
+                  // actually worse.
+                  for (int slot = nf - 1; slot >= 0; slot--) {
+                    if (bases[slot] == factor) {
+                      exponents[slot]++;
+                      goto next_factor;
+                    }
                   }
-                } else {
-                  local_done_ineligible_cpu++;
+
+                  // not found. insert at end.
+                  bases[nf] = factor;
+                  exponents[nf] = 1;
+                  nf++;
+
+                next_factor:;
                 }
               }
 
-              ways_queue->WaitAddVec(todo_gpu);
+              // Using the existing factoring, and skipping
+              // tests we know were already done on GPU.
+              const int nways = ChaiWahWuFromFactors(
+                  num, bases, exponents, nf);
+
+              #if 0
+              // PERF!!
+              const int reference_nways = ChaiWahWu(num);
+              if (reference_nways != nways) {
+                status.Printf("\n\n\n\n\n\n\n\n\n\n\n\n"
+                              "Num: %llu\n"
+                              "Expected: %d\n"
+                              "Got: %d\n", num, reference_nways, nways);
+                status.Printf("Factors byte: %d. nf: %d\n",
+                              num_factors_byte, nf);
+                uint64_t product = 1;
+                for (int i = 0; i < nf; i++) {
+                  status.Printf("%llu^%d ", bases[i], (int)exponents[i]);
+                  for (int j = 0; j < exponents[i]; j++) product *= bases[i];
+                }
+                status.Printf(" = %llu\n", product);
+                CHECK(false);
+              }
+              #endif
+
+              if (nways >= 3) {
+                local_eligible_triples++;
+                if (nways > GPUMethod::MAX_WAYS) {
+                  // Do on CPU.
+                  std::vector<std::pair<uint64_t, uint64_t>> ways =
+                    NSoks2(num, nways);
+                  TryMe tryme;
+                  tryme.num = num;
+                  tryme.squareways = std::move(ways);
+                  try_queue->WaitAdd(std::move(tryme));
+
+                  local_too_big++;
+                  local_pending_try++;
+                } else {
+                  ways_queue->WaitAdd(make_pair(num, nways));
+                }
+              } else {
+                local_done_ineligible_cpu++;
+              }
 
               {
                 MutexLock ml(&m);
-                // Work done in this thread
-                pending -= 8;
-                done_ineligible_gpu += std::popcount<uint8_t>(byte);
+                done_ineligible_cpu += local_done_ineligible_cpu;
                 too_big += local_too_big;
                 eligible_triples += local_eligible_triples;
                 pending_try += local_pending_try;
-
-                // Added to GPU in batch.
-                eligible_triples += todo_gpu.size();
-                triple_pending_ways += todo_gpu.size();
-
-                // Ineligible
-                done_ineligible_cpu += local_done_ineligible_cpu;
+                triple_pending_ways += local_triple_pending_ways;
               }
             });
     }
@@ -1171,11 +1348,15 @@ struct SOS {
 
     std::vector<std::thread> gpu_threads;
     for (int i = 0; i < NUM_GPU_THREADS; i++)
-      gpu_threads.emplace_back(&GPUThread, this, i + 1);
-    std::thread try_thread(&TryThread, this);
+      gpu_threads.emplace_back(&GPUWaysThread, this, i + 1);
     std::thread steal_thread(&StealThread, this);
     std::thread status_thread(&StatusThread, this, epoch_start, epoch_size);
-    std::thread nways_thread(&NWaysThread, this, epoch_start, epoch_size);
+
+    std::thread batch_factors_thread(&BatchFactorsThread,
+                                     this, epoch_start, epoch_size);
+    std::thread gpu_factor_thread(&GPUFactorThread, this);
+    std::thread nways_thread(&NWaysThread, this);
+    std::thread try_thread(&TryThread, this);
 
     ResetCounters();
 
@@ -1189,12 +1370,20 @@ struct SOS {
       for (uint64_t u = 0; u < epoch_size; u += EPOCH_CHUNK) {
         uint64_t base = epoch_start + u;
         std::vector<uint8_t> bitmask = eligiblefilter_gpu->Filter(base);
-        nways_queue->WaitAdd(std::make_pair(base, std::move(bitmask)));
+        prefiltered_queue->WaitAdd(std::make_pair(base, std::move(bitmask)));
       }
       status.Printf("Did GPU eligible in %s\n",
                     ANSI::Time(eligible_gpu_timer.Seconds()).c_str());
     }
-    nways_queue->MarkDone();
+    prefiltered_queue->MarkDone();
+
+    batch_factors_thread.join();
+    status.Printf("Batch factors thread done.\n");
+    factor_queue->MarkDone();
+
+    gpu_factor_thread.join();
+    status.Printf("GPU factoring thread done.\n");
+    factored_queue->MarkDone();
 
     nways_thread.join();
     status.Printf("Nways thread done.\n");
@@ -1248,8 +1437,8 @@ struct SOS {
 
     status.Printf(AGREEN("Done with epoch!") "\n");
 
-    status.Printf(AWHITE("Factor autoparallel histo") ":\n");
-    status.Emit(factor_comp->HistoString());
+    status.Printf(AWHITE("NWays autoparallel histo") ":\n");
+    status.Emit(nways_comp->HistoString());
     status.Printf(AWHITE("Try autoparallel histo") ":\n");
     status.Emit(try_comp->HistoString());
 

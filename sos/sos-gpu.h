@@ -806,6 +806,10 @@ struct FactorizeGPU {
   //
   // output is an array of 64 64-bit integer factors. The
   // most factors we could have is 64 (2^64).
+  //
+  // Since we have the option to fail, we also could reduce this
+  // and just bail if we see too many factors. Such numbers are
+  // easy to factor, anyway.
   static constexpr int MAX_FACTORS = 64;
 
   FactorizeGPU(CL *cl, size_t height) : cl(cl), height(height) {
@@ -847,6 +851,8 @@ struct FactorizeGPU {
   Factorize(const std::vector<uint64_t> &nums) {
     // Only one GPU process at a time.
     MutexLock ml(&m);
+
+    CHECK(nums.size() == height);
 
     // Run kernel.
     {

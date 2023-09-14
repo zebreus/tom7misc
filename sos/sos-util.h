@@ -168,6 +168,12 @@ int ChaiWahWu(uint64_t sum);
 // squares filters.
 int ChaiWahWuNoFilter(uint64_t sum);
 
+// No filter.
+int ChaiWahWuFromFactors(uint64_t sum,
+                         const uint64_t *factors,
+                         const uint8_t *exponents,
+                         int num_factors);
+
 // Slow decomposition into sums of squares two ways, for reference.
 std::optional<std::tuple<uint64_t, uint64_t, uint64_t, uint64_t>>
 ReferenceValidate2(uint64_t sum);

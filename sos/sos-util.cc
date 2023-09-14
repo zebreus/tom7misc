@@ -125,6 +125,13 @@ int ChaiWahWuNoFilter(const uint64_t sum) {
     CHECK(product == sum) << product << " " << sum;
   }
 
+  return ChaiWahWuFromFactors(sum, bases, exponents, num_factors);
+}
+
+int ChaiWahWuFromFactors(const uint64_t sum,
+                         const uint64_t *factors,
+                         const uint8_t *exponents,
+                         int num_factors) {
   auto AllEvenPowers = [&exponents, num_factors]() {
       for (int i = 0; i < num_factors; i++) {
         if (exponents[i] & 1) return false;
@@ -147,7 +154,7 @@ int ChaiWahWuNoFilter(const uint64_t sum) {
   int m = 1;
   // for (const auto &[p, e] : collated) {
   for (int i = 0; i < num_factors; i++) {
-    const uint64_t p = bases[i];
+    const uint64_t p = factors[i];
     const int e = exponents[i];
     if (p != 2) {
       m *= (p % 4 == 1) ? e + 1 : ((e + 1) & 1);
