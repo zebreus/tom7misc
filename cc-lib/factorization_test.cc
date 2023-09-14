@@ -283,6 +283,13 @@ static void TestPrimeFactors() {
       {7919, 31337},
       {7919},
       {7919, 7927},
+      // Miller-Rabin needs base of 11 to reject
+      {151, 751, 28351},
+      // Special cases for deterministic test
+      {193},
+      {407521},
+      {299210837},
+      {2, 3, 299210837},
       // primorial(15), which has the most distinct factors without
       // overflowing
       {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47},
@@ -567,6 +574,7 @@ static void ProfileFactorize() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+  printf("Test factorization...\n");
 
   // PrintGaps(PRIMES);
   // return 0;

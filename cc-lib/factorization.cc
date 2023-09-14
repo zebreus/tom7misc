@@ -229,6 +229,8 @@ bool Factorization::IsPrime(uint64_t x) {
 
   // Do the trial divisions so that IsPrimeInternal is correct,
   // which also quickly rejects a lot of composites.
+  // PERF: Should perhaps re-tune this list with the deterministic
+  // Miller-Rabin test.
 
 #define TRY(p) do { \
     if (x == p) return true; \
@@ -482,8 +484,88 @@ GCDOdd(uint64_t a, uint64_t b) {
   }
 }
 
+// One Miller-Rabin test. Returns true if definitely composite;
+// false if maybe prime.
+static bool DefinitelyComposite(
+    uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
+    unsigned int k, uint64_t one) {
+  uint64_t y = PowM(b, q, n, ni, one);
+
+  /* -1, but in redc representation. */
+  uint64_t nm1 = n - one;
+
+  if (y == one || y == nm1)
+    return false;
+
+  for (unsigned int i = 1; i < k; i++) {
+    // y = y^2 mod n
+    y = MulRedc(y, y, n, ni);
+
+    if (y == nm1)
+      return false;
+    if (y == one)
+      return true;
+  }
+  return true;
+}
+
+// Deterministic primality test. Requires that n have no factors
+// less than NEXT_PRIME.
+static bool IsPrimeInternal(uint64_t n) {
+  if (n <= 1)
+    return false;
+
+  /* We have already sieved out small primes.
+     This also means that we don't need to check a = n as
+     we consider the bases below. */
+  if (n < (uint64_t)(Factorization::NEXT_PRIME * Factorization::NEXT_PRIME))
+    return true;
+
+  // Precomputation.
+  uint64_t q = n - 1;
+  // PERF can use ctz. Doesn't look like gcc can detect this.
+  int k;
+  for (k = 0; (q & 1) == 0; k++)
+    q >>= 1;
+
+  // Compute modular inverse of n.
+  const uint64_t ni = Binv(n);
+  // Represention of 1 in redc form.
+  const uint64_t one = Redcify(1, n);
+  // Representation of 2 in redc form.
+  uint64_t a_prim = AddMod(one, one, n);
+  int a = 2;
+
+  // Just need to check the first 12 prime bases for 64-bit ints.
+  for (int i = 0; i < 12; i++) {
+    if (DefinitelyComposite(n, ni, a_prim, q, k, one))
+      return false;
+
+    uint8_t delta = PRIME_DELTAS[i];
+
+    // Establish new base.
+    a += delta;
+
+    /* The following is equivalent to a_prim = redcify (a, n).  It runs faster
+       on most processors, since it avoids udiv128. */
+    {
+      const auto &[s1, s0] = UMul128(one, a);
+      if (s1 == 0) [[likely]] {
+        a_prim = s0 % n;
+      } else {
+        a_prim = UDiv128(s1, s0, n).second;
+      }
+    }
+  }
+
+  // The test above detects all 64-bit composite numbers, so this
+  // must be a prime.
+  return true;
+}
+
+
 static bool
-MillerRabin(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
+MillerRabinOld(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
             unsigned int k, uint64_t one) {
   uint64_t y = PowM(b, q, n, ni, one);
 
@@ -504,9 +586,10 @@ MillerRabin(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
   return false;
 }
 
-/* Lucas's prime test. The number of iterations vary greatly; up to a
-   few dozen have been observed. The average seems to be about 2. */
-bool IsPrimeInternal(uint64_t n) {
+// This is a deterministic version of Miller-Rabin, which is known to
+// detect all primes in [0, 2^64).
+[[maybe_unused]]
+static bool IsPrimeInternalOld(uint64_t n) {
   // printf("prime_p(%llu)?\n", n);
   int k;
 
@@ -518,6 +601,7 @@ bool IsPrimeInternal(uint64_t n) {
     return true;
 
   /* Precomputation for Miller-Rabin. */
+  // PERF std::countr_zero.
   uint64_t q = n - 1;
   for (k = 0; (q & 1) == 0; k++)
     q >>= 1;
@@ -527,7 +611,7 @@ bool IsPrimeInternal(uint64_t n) {
   uint64_t a_prim = AddMod(one, one, n); /* i.e., redcify a = 2 */
 
   /* Perform a Miller-Rabin test, which finds most composites quickly. */
-  if (!MillerRabin(n, ni, a_prim, q, k, one))
+  if (!MillerRabinOld(n, ni, a_prim, q, k, one))
     return false;
 
 
@@ -540,7 +624,11 @@ bool IsPrimeInternal(uint64_t n) {
     Factorization::FactorizePreallocated(n - 1, b, e);
   // PERF: We don't actually need the exponents; we just need the unique
   // factors. We could have a slightly faster version of factoring that
-  // just gives unique factors.
+  // just gives unique factors. Also, we don't necessarily have to get
+  // a complete factoring here. If we know a factoring a*b such that
+  // gcd(a,b) = 1, and the prime factors of a are known, then the
+  // Pocklington-Lehmer primality test can apply. A natural place to
+  // check for this would be after the trial factoring.
 
   /* Loop until Lucas proves our number prime, or Miller-Rabin proves our
      number composite. */
@@ -571,7 +659,7 @@ bool IsPrimeInternal(uint64_t n) {
       }
     }
 
-    if (!MillerRabin(n, ni, a_prim, q, k, one))
+    if (!MillerRabinOld(n, ni, a_prim, q, k, one))
       return false;
   }
 
