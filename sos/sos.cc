@@ -203,6 +203,8 @@ static void ResetCounters() {
   RESET(rejected_ff);
   RESET(rejected_hh);
   RESET(rejected_aa);
+  RESET(other_almost2);
+  RESET(batches_factored);
 }
 
 
@@ -773,11 +775,14 @@ struct SOS {
   uint64_t too_big = 0;
   // Work stolen by CPU in endgame.
   uint64_t stolen = 0;
+  // Failed factoring on GPU.
+  uint64_t cpu_factored = 0;
 
   uint64_t batches_completely_filtered = 0;
   // Numbers that can be written as the sum of squares at least three
   // different ways.
   uint64_t eligible_triples = 0;
+
 
   // State of a number. These always sum to epoch_size.
   uint64_t pending = 0;
@@ -831,9 +836,15 @@ struct SOS {
 
     const int64_t bfactored = READ(batches_factored);
 
-    const int64_t prefiltered_size = prefiltered_queue->Size();
+    const int64_t prefiltered_size =
+      // Each item represents a chunk of this many bits = numbers.
+      EPOCH_GPU_CHUNK * 8 *
+      prefiltered_queue->Size();
     const int64_t factor_size = factor_queue->Size();
-    const int64_t factored_size = factored_queue->Size();
+    const int64_t factored_size =
+      // Each GPUFactored item is this many individual numbers.
+      GPU_FACTOR_HEIGHT *
+      factored_queue->Size();
     const int64_t ways_size = ways_queue->Size();
     const int64_t try_size = try_queue->Size();
 
@@ -846,19 +857,30 @@ struct SOS {
                    " %lld " AGREY("raa")
                    "\n",
                    rf, rff, rhh, other2, raa);
-    #define ARROW AFGCOLOR(30, 30, 30, "\xE2\x86\x92") " "
+    #define ARROW AFGCOLOR(50, 50, 50, "\xE2\x86\x92") " "
+
+    auto FormatNum = [](uint64_t n) {
+        if (n > 1'000'000) {
+          // TODO: Integer division. color decimal place and suffix.
+          return StringPrintf("%.2fM", n / 1000000.0);
+        } else {
+          return Util::UnsignedWithCommas(n);
+        }
+      };
     string line3 = StringPrintf(
-        "qs: "
+        "Q: "
         AFGCOLOR(200, 80,  80,  "%s") " pre " ARROW
         AFGCOLOR(200, 80,  200, "%s") " fact " ARROW
         AFGCOLOR(200, 200, 80,  "%s") " nways " ARROW
-        AFGCOLOR(80,  200, 80,  "%s") " ways " ARROW
-        AFGCOLOR(80,  200, 200, "%s") " try\n",
-        Util::UnsignedWithCommas(prefiltered_size).c_str(),
-        Util::UnsignedWithCommas(factor_size).c_str(),
-        Util::UnsignedWithCommas(factored_size).c_str(),
-        Util::UnsignedWithCommas(ways_size).c_str(),
-        Util::UnsignedWithCommas(try_size).c_str());
+        AFGCOLOR(80,  80,  200, "%s") " ways " ARROW
+        AFGCOLOR(80,  200, 200, "%s") " try " ARROW
+        AFGCOLOR(80,  200, 80,  "%s") " done\n",
+        FormatNum(prefiltered_size).c_str(),
+        FormatNum(factor_size).c_str(),
+        FormatNum(factored_size).c_str(),
+        FormatNum(ways_size).c_str(),
+        FormatNum(try_size).c_str(),
+        FormatNum(done).c_str());
 
     // other stuff
     string line4 =
@@ -866,15 +888,14 @@ struct SOS {
           ARED("%llu") " big  "
           AGREEN("%s") " stolen  "
           ACYAN("%s") " try-filtered  "
-          AGREEN("%s") " complete batches  "
-          AWHITE("%s") " batches factored\n",
+          AGREEN("%s") " complete batches\n",
           too_big,
-          Util::UnsignedWithCommas(stolen).c_str(),
-          Util::UnsignedWithCommas(done_gpu_filtered).c_str(),
-          Util::UnsignedWithCommas(batches_completely_filtered).c_str(),
-          Util::UnsignedWithCommas(bfactored).c_str());
+          FormatNum(stolen).c_str(),
+          FormatNum(done_gpu_filtered).c_str(),
+          FormatNum(batches_completely_filtered).c_str());
 
     // Get the fractions other than pending.
+    /*
     double blood = (100.0 * done_ineligible_gpu) / epoch_size;
     double red = (100.0 * done_ineligible_cpu) / epoch_size;
     double green = (100.0 * triple_pending_ways) / epoch_size;
@@ -882,6 +903,7 @@ struct SOS {
     double cyan = (100.0 * pending_try) / epoch_size;
     double white = (100.0 * done_full_try) / epoch_size;
     double black = (100.0 * pending) / epoch_size;
+    */
 
     /*
     string line5 =
@@ -894,7 +916,13 @@ struct SOS {
                    AWHITE("%.1f%% full") "\n",
                    black, blood, red, green, blue, cyan, white);
     */
-    string line5 = ARED("TODO THIS LINE") "\n";
+    double cpu_pct = (100.0 * cpu_factored) / (bfactored * GPU_FACTOR_HEIGHT);
+    string line5 =
+      StringPrintf(AWHITE("%s") " batches factored. "
+                   AORANGE("%s") " numbers on CPU (%.2f%%)\n",
+                   FormatNum(bfactored).c_str(),
+                   FormatNum(cpu_factored).c_str(),
+                   cpu_pct);
 
     string line6;
     if (!nways_is_done) {
@@ -925,45 +953,92 @@ struct SOS {
       img->Clear32(0x000000FF);
     }
     int xpos = 0;
-    Periodically img_per(0.5);
+    Periodically img_per(0.250);
     for (;;) {
       // XXX would be nice to have an efficient Periodically::Await
       using namespace std::chrono_literals;
-      std::this_thread::sleep_for(250ms);
+      std::this_thread::sleep_for(125ms);
 
       if (img.get() != nullptr) {
         img_per.RunIf([&](){
             MutexLock ml(&m);
+
+            // Size of each queue.
+            const int64_t prefiltered_size =
+              // Each item represents a chunk of this many bits = numbers.
+              EPOCH_GPU_CHUNK * 8 *
+              prefiltered_queue->Size();
+            const int64_t factor_size = factor_queue->Size();
+            const int64_t factored_size =
+              // Each GPUFactored item is this many individual numbers.
+              GPU_FACTOR_HEIGHT *
+              factored_queue->Size();
+            const int64_t ways_size = ways_queue->Size();
+            const int64_t try_size = try_queue->Size();
+            const int64_t done = NumDone();
+
+            struct Phase {
+              uint32_t color;
+              const char *name;
+              int64_t value;
+            };
+
+            // Same colors as status bar. TODO: Consolidate.
+            std::vector<Phase> phases = {
+              Phase{
+                .color = 0xC85050FF,
+                .name = "pre",
+                .value = prefiltered_size,
+              },
+              Phase{
+                .color = 0xC850C8FF,
+                .name = "fact",
+                .value = factor_size,
+              },
+              Phase{
+                .color = 0xC8C850FF,
+                .name = "nways",
+                .value = factored_size,
+              },
+              Phase{
+                .color = 0x5050C8FF,
+                .name = "ways",
+                .value = ways_size,
+              },
+              Phase{
+                .color = 0x50C8C8FF,
+                .name = "try",
+                .value = try_size,
+              },
+              Phase{
+                .color = 0x50C850FF,
+                .name = "done",
+                .value = done,
+              },
+            };
+
             // Get the fractions other than pending.
             // double HEIGHT_SCALE = HEIGHT / EPOCH_SIZE;
             auto HeightOf = [epoch_size](double ctr) {
                 return (int)std::round((ctr / epoch_size) * HEIGHT);
               };
-            int blood = HeightOf(done_ineligible_gpu);
-            int red = HeightOf(done_ineligible_cpu);
-            int green = HeightOf(triple_pending_ways);
-            int blue = HeightOf(done_gpu_filtered);
-            int cyan = HeightOf(pending_try);
-            int white = HeightOf(done_full_try);
 
-            int left = HEIGHT - (blood + red + green + blue + cyan + white);
+            int remain = HEIGHT;
+            for (const Phase &phase : phases) {
+              remain -= HeightOf(phase.value);
+            }
 
             // Now draw the column.
             int y = 0;
-            for (int u = 0; u < left; u++)
+            for (int u = 0; u < remain; u++)
               img->SetPixel32(xpos, y++, 0x333333FF);
-            for (int u = 0; u < white; u++)
-              img->SetPixel32(xpos, y++, 0xFFFFFFFF);
-            for (int u = 0; u < cyan; u++)
-              img->SetPixel32(xpos, y++, 0x00AAAAFF);
-            for (int u = 0; u < blue; u++)
-              img->SetPixel32(xpos, y++, 0x3333AAFF);
-            for (int u = 0; u < green; u++)
-              img->SetPixel32(xpos, y++, 0x33AA33FF);
-            for (int u = 0; u < red; u++)
-              img->SetPixel32(xpos, y++, 0x883333FF);
-            for (int u = 0; u < blood; u++)
-              img->SetPixel32(xpos, y++, 0x440000FF);
+            for (int p = phases.size() - 1; p >= 0; p--) {
+              int pheight = HeightOf(phases[p].value);
+              uint32_t pcolor = phases[p].color;
+              for (int u = 0; u < pheight; u++) {
+                img->SetPixel32(xpos, y++, pcolor);
+              }
+            }
             xpos++;
           });
       }
@@ -1325,6 +1400,7 @@ struct SOS {
 
               {
                 MutexLock ml(&m);
+                cpu_factored += local_cpu_factored;
                 done_ineligible_cpu += local_done_ineligible_cpu;
                 too_big += local_too_big;
                 eligible_triples += local_eligible_triples;

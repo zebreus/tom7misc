@@ -267,112 +267,6 @@ uint64_t GCDOdd(uint64_t a, uint64_t b) {
   }
 }
 
-// This is like FactorizeInternal, but used for the Lucas test. Two reasons
-// to separate it out:
-//   - For lucas we only need the distinct factors, so we can save
-//     some bookkeeping.
-//   - OpenCL does not support recursion, so we want to resort to different
-//     techniques if we need to do further primality tests.
-void GetDistinctFactors(uint64_t x,
-                        uint64_t *distinct_factors,
-                        int *num_factors,
-                        bool *failed) {
-  if (x <= 1) {
-    return;
-  }
-
-  int nf = *num_factors;
-
-  uint64_t cur = x;
-
-  // The product of the factors (with multiplicity) that we
-  // removed.
-  uint64_t a = 1;
-
-  const int twos = ctz(cur);
-  if (twos) {
-    distinct_factors[nf++] = 2;
-    cur >>= twos;
-    a <<= twos;
-  }
-
-  #if 0
-#define TRY(p) do {                             \
-    if (cur % p == 0) {                         \
-      distinct_factors[nf++] = p;               \
-      do {                                      \
-        cur /= p;                               \
-      } while (cur % p == 0);                   \
-    }                                           \
-  } while (0)
-  // TRY(2);
-  TRY(3);
-  TRY(5);
-  TRY(7);
-  TRY(11);
-  TRY(13);
-  TRY(17);
-  TRY(19);
-  TRY(23);
-  TRY(29);
-  TRY(31);
-  TRY(37);
-  TRY(41);
-  TRY(43);
-  TRY(47);
-  TRY(53);
-  TRY(59);
-  TRY(61);
-  TRY(67);
-  TRY(71);
-  TRY(73);
-  TRY(79);
-  TRY(83);
-  TRY(89);
-  TRY(97);
-  TRY(101);
-  TRY(103);
-  TRY(107);
-  TRY(109);
-  TRY(113);
-  TRY(127);
-  TRY(131);
-#undef TRY
-  #endif
-
-  // Using the whole prime table...
-  uint64_t p = 2;
-  for (int i = 0; i < NUM_PRIME_DELTAS; i++) {
-    p += PRIME_DELTAS[i];
-    if (cur % p == 0) {
-      distinct_factors[nf++] = p;
-      do {
-        cur /= p;
-        a *= p;
-      } while (cur % p == 0);
-    }
-  }
-
-  // printf("(GetDistinctFactors end w/ cur=%d)\n", cur);
-
-  *num_factors = nf;
-
-  if (cur == 1) {
-    printf("Factored! %llu = %llu\n", a, x);
-    return;
-  }
-
-  if (a * a > x) {
-    printf("Pocklington! %llu * %llu = %llu\n", a, cur, x);
-  } else {
-    printf("Sux! %llu * %llu = %llu\n", a, cur, x);
-  }
-
-  // we didn't completely factor it, so we have to
-  // just fail
-  *failed = true;
-}
-
 // One Miller-Rabin test. Returns true if definitely composite;
 // false if maybe prime.
 bool DefinitelyComposite(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
@@ -409,10 +303,14 @@ bool IsPrimeInternal(uint64_t n) {
 
   // Precomputation.
   uint64_t q = n - 1;
-  // XXX can use ctz
+  /*
   int k;
   for (k = 0; (q & 1) == 0; k++)
     q >>= 1;
+  */
+  // Count and remove trailing zeroes.
+  int k = ctz(q);
+  q >>= k;
 
   const uint64_t ni = Binv(n);                 /* ni <- 1/n mod B */
   const uint64_t one = Redcify(1, n);
@@ -446,85 +344,6 @@ bool IsPrimeInternal(uint64_t n) {
   return true;
 }
 
-// Requires no factors < NEXT_PRIME.
-bool OldIsPrimeInternal(uint64_t n, bool *failed) {
-  // printf("IsPrime(%llu)\n", n);
-
-  int k;
-
-  if (n <= 1)
-    return false;
-
-  /* We have already sieved out small primes. */
-  if (n < (uint64_t)(NEXT_PRIME * NEXT_PRIME))
-    return true;
-
-  /* Precomputation for Miller-Rabin. */
-  uint64_t q = n - 1;
-  for (k = 0; (q & 1) == 0; k++)
-    q >>= 1;
-
-  const uint64_t ni = Binv(n);                 /* ni <- 1/n mod B */
-  const uint64_t one = Redcify(1, n);
-  uint64_t a_prim = AddMod(one, one, n); /* i.e., redcify a = 2 */
-
-  // printf("Try m-r\n");
-
-  /* Perform a Miller-Rabin test, which finds most composites quickly. */
-  if (!MillerRabin(n, ni, a_prim, q, k, one))
-    return false;
-
-  // printf("Not miller-rabin\n");
-
-  int num_factors = 0;
-  // could be up to 20 factors (21! > 2^64)
-  uint64_t distinct_factors[21];
-
-  /* Factor n-1 for Lucas. */
-  GetDistinctFactors(n - 1, distinct_factors, &num_factors, failed);
-  // prime is the fast path
-  if (*failed) return true;
-
-  /* Loop until Lucas proves our number prime, or Miller-Rabin proves our
-     number composite. */
-  uint64_t a = 2;
-  for (int pd = 0; pd < NUM_PRIME_DELTAS; pd++) {
-    uint8_t delta = PRIME_DELTAS[pd];
-    bool is_prime = true;
-    for (int i = 0; i < num_factors; i++) {
-      const uint64_t p = distinct_factors[i];
-      is_prime = PowM(a_prim, (n - 1) / p, n, ni, one) != one;
-      if (!is_prime) break;
-    }
-
-    if (is_prime)
-      return true;
-
-    // Establish new base.
-    a += delta;
-
-    /* The following is equivalent to a_prim = redcify (a, n).  It runs faster
-       on most processors, since it avoids udiv128.  If we go down the
-       udiv_qrnnd_preinv path, this code should be replaced. */
-    {
-      ulong2 r = UMul128(one, a);
-      if (r.s0 == 0) {
-        a_prim = r.s1 % n;
-      } else {
-        a_prim = UDiv128(r.s0, r.s1, n).s1;
-      }
-    }
-
-    if (!MillerRabin(n, ni, a_prim, q, k, one))
-      return false;
-  }
-
-  // We exhausted the ptab table. Is this actually an error? Perhaps
-  // the gnu code knows that the table is enough for any 64-bit int?
-  // CHECK(false) << "Lucas prime test failure.  This should not happen";
-  return false;
-}
-
 void FactorUsingPollardRho(uint64_t n,
                            uint64_t a,
                            uint64_t *factors,
@@ -547,7 +366,10 @@ void FactorUsingPollardRho(uint64_t n,
 
   while (n != 1) {
     // assert (a < n);
-    if (a > 20) {
+    // Just bail if it's taking too many tests.
+    // This threshold is tunable (maybe it should even just be 1,
+    // i.e., no loop!)
+    if (a > 10) {
       // XXX
       *failed = true;
       return;
@@ -604,11 +426,6 @@ void FactorUsingPollardRho(uint64_t n,
 
     bool n_prime = IsPrimeInternal(n);
     bool g_prime = IsPrimeInternal(g);
-
-    if (*failed) {
-      // Could possibly continue if one of the above is prime?
-      return;
-    }
 
     if (n_prime && g_prime) {
       factors[*num_factors] = n;
