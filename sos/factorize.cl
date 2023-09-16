@@ -19,14 +19,47 @@ void FactorizeInternal(uint64_t x,
 
 // Subtracts 128-bit words.
 // returns high, low
+
+// The original code generates:
+//  setp.lt.u64   %p84, %rd2123, %rd139;
+//  selp.b64  %rd1080, -1, 0, %p84;
+//  sub.s64   %rd1081, %rd2122, %rd140;
+//  add.s64   %rd2122, %rd1081, %rd1080;
+//  sub.s64   %rd2123, %rd2123, %rd139;
+// but we can do better with inline PTX. The
+// sub.cc and subc instructions subtract with
+// carry, exactly for this kind of thing.
+
 inline ulong2
 Sub128(uint64_t ah, uint64_t al,
        uint64_t bh, uint64_t bl) {
-  uint64_t carry = al < bl;
+  // asm("/* Start Sub128 */");
+  // uint64_t carry = al < bl;
+  // ulong2 ret;
+  // ret.s0 = ah - bh - carry;
+  // ret.s1 = al - bl;
+
+  uint64_t rl, rh;
+  asm("/* 128-bit subtract */\n\t"
+      "sub.cc.u64 %0, %2, %3;\n\t"
+      "subc.u64 %1, %4, %5;"
+      :
+      // outputs %0, %1
+      "=l"(rl), // low word
+      "=l"(rh)  // high word
+      :
+      // inputs %2, %3
+      "l"(al),
+      "l"(bl),
+      // inputs %4, %5
+      "l"(ah),
+      "l"(bh));
 
   ulong2 ret;
-  ret.s0 = ah - bh - carry;
-  ret.s1 = al - bl;
+  ret.s0 = rh;
+  ret.s1 = rl;
+
+  // asm("/* End Sub128 */");
   return ret;
 }
 
@@ -34,51 +67,73 @@ Sub128(uint64_t ah, uint64_t al,
 // returns high, low
 inline ulong2
 RightShift128(uint64_t ah, uint64_t al, int count) {
+  asm("/* Right Shift 128 */");
   ulong2 ret;
   ret.s0 = ah >> count;
   ret.s1 = (ah << (64 - count)) | (al >> count);
+  asm("/* End Right Shift 128 */");
   return ret;
 }
 
+// This is maybe slightly shorter than the C code, but the
+// real benefit of doing this with subtraction is that we
+// immediately do the same 128-bit subtraction in UDiv128Rem,
+// so we end up reusing the calculation.
 inline bool GreaterEq128(uint64_t ah, uint64_t al,
                          uint64_t bh, uint64_t bl) {
-  return ah > bh || (ah == bh && al >= bl);
+  asm("/* geq 128 */");
+  // bool res = ah > bh || (ah == bh && al >= bl);
+
+  uint64_t rl, rh;
+  asm("/* 128-bit subtract */\n\t"
+      "sub.cc.u64 %0, %2, %3;\n\t"
+      "subc.u64 %1, %4, %5;"
+      :
+      // outputs %0, %1
+      "=l"(rl), // low word
+      "=l"(rh)  // high word
+      :
+      // inputs %2, %3
+      "l"(al),
+      "l"(bl),
+      // inputs %4, %5
+      "l"(ah),
+      "l"(bh));
+
+  // a >= b iff a - b >= 0. We only need the high word (bit!)
+  // to test this.
+  bool res = ((int64_t)rh) >= 0;
+
+  asm("/* end geq 128 */");
+  return res;
 }
 
-// Returns q, r.
-// PERF: Note we only ever use the second component, so maybe we should
-// just get rid of the quotient?
-inline ulong2 UDiv128(uint64_t n1,
-                      uint64_t n0,
-                      uint64_t d) {
+// Divides (n1*2^64 + n0)/d, with n1 < d. Returns remainder.
+inline uint64_t UDiv128Rem(uint64_t n1,
+                           uint64_t n0,
+                           uint64_t d) {
   // assert (n1 < d);
   uint64_t d1 = d;
   uint64_t d0 = 0;
   uint64_t r1 = n1;
   uint64_t r0 = n0;
-  uint64_t q = 0;
   for (unsigned int i = 64; i > 0; i--) {
     ulong2 dd = RightShift128(d1, d0, 1);
     d1 = dd.s0;
     d0 = dd.s1;
-    q <<= 1;
     if (GreaterEq128(r1, r0, d1, d0)) {
-      q++;
       ulong2 rr = Sub128(r1, r0, d1, d0);
       r1 = rr.s0;
       r0 = rr.s1;
     }
   }
-  ulong2 ret;
-  ret.s0 = q;
-  ret.s1 = r0;
-  return ret;
+  return r0;
 }
 
 
 /* x B (mod n).  */
 inline uint64_t Redcify(uint64_t r, uint64_t n) {
-  return UDiv128(r, 0, n).s1;
+  return UDiv128Rem(r, 0, n);
 }
 
 /* Requires that a < n and b <= n */
@@ -95,6 +150,7 @@ inline uint64_t AddMod(uint64_t a, uint64_t b, uint64_t n) {
 #define ll_lowpart(t)  ((uint64_t) (t) & (ll_B - 1))
 #define ll_highpart(t) ((uint64_t) (t) >> (64 / 2))
 
+// PERF: Can be done with madc, etc.
 // returns (w1, w0)
 inline ulong2 UMul128(uint64_t u, uint64_t v) {
   uint32_t ul = ll_lowpart(u);
@@ -122,43 +178,9 @@ inline ulong2 UMul128(uint64_t u, uint64_t v) {
 }
 
 
-#define NUM_PRIME_DELTAS 999
+#define NUM_PRIME_DELTAS 12
 const uint8_t PRIME_DELTAS[NUM_PRIME_DELTAS] = {
-1,2,2,4,2,4,2,4,6,2,6,4,2,4,6,6,2,6,4,2,6,4,6,8,4,2,4,2,4,
-14,4,6,2,10,2,6,6,4,6,6,2,10,2,4,2,12,12,4,2,4,6,2,10,6,6,6,2,6,
-4,2,10,14,4,2,4,14,6,10,2,4,6,8,6,6,4,6,8,4,8,10,2,10,2,6,4,6,8,
-4,2,4,12,8,4,8,4,6,12,2,18,6,10,6,6,2,6,10,6,6,2,6,6,4,2,12,10,2,
-4,6,6,2,12,4,6,8,10,8,10,8,6,6,4,8,6,4,8,4,14,10,12,2,10,2,4,2,10,
-14,4,2,4,14,4,2,4,20,4,8,10,8,4,6,6,14,4,6,6,8,6,12,4,6,2,10,2,6,
-10,2,10,2,6,18,4,2,4,6,6,8,6,6,22,2,10,8,10,6,6,8,12,4,6,6,2,6,12,
-10,18,2,4,6,2,6,4,2,4,12,2,6,34,6,6,8,18,10,14,4,2,4,6,8,4,2,6,12,
-10,2,4,2,4,6,12,12,8,12,6,4,6,8,4,8,4,14,4,6,2,4,6,2,6,10,20,6,4,
-2,24,4,2,10,12,2,10,8,6,6,6,18,6,4,2,12,10,12,8,16,14,6,4,2,4,2,10,12,
-6,6,18,2,16,2,22,6,8,6,4,2,4,8,6,10,2,10,14,10,6,12,2,4,2,10,12,2,16,
-2,6,4,2,10,8,18,24,4,6,8,16,2,4,8,16,2,4,8,6,6,4,12,2,22,6,2,6,4,
-6,14,6,4,2,6,4,6,12,6,6,14,4,6,12,8,6,4,26,18,10,8,4,6,2,6,22,12,2,
-16,8,4,12,14,10,2,4,8,6,6,4,2,4,6,8,4,2,6,10,2,10,8,4,14,10,12,2,6,
-4,2,16,14,4,6,8,6,4,18,8,10,6,6,8,10,12,14,4,6,6,2,28,2,10,8,4,14,4,
-8,12,6,12,4,6,20,10,2,16,26,4,2,12,6,4,12,6,8,4,8,22,2,4,2,12,28,2,6,
-6,6,4,6,2,12,4,12,2,10,2,16,2,16,6,20,16,8,4,2,4,2,22,8,12,6,10,2,4,
-6,2,6,10,2,12,10,2,10,14,6,4,6,8,6,6,16,12,2,4,14,6,4,8,10,8,6,6,22,
-6,2,10,14,4,6,18,2,10,14,4,2,10,14,4,8,18,4,6,2,4,6,2,12,4,20,22,12,2,
-4,6,6,2,6,22,2,6,16,6,12,2,6,12,16,2,4,6,14,4,2,18,24,10,6,2,10,2,10,
-2,10,6,2,10,2,10,6,8,30,10,2,10,8,6,10,18,6,12,12,2,18,6,4,6,6,18,2,10,
-14,6,4,2,4,24,2,12,6,16,8,6,6,18,16,2,4,6,2,6,6,10,6,12,12,18,2,6,4,
-18,8,24,4,2,4,6,2,12,4,14,30,10,6,12,14,6,10,12,2,4,6,8,6,10,2,4,14,6,
-6,4,6,2,10,2,16,12,8,18,4,6,12,2,6,6,6,28,6,14,4,8,10,8,12,18,4,2,4,
-24,12,6,2,16,6,6,14,10,14,4,30,6,6,6,8,6,4,2,12,6,4,2,6,22,6,2,4,18,
-2,4,12,2,6,4,26,6,6,4,8,10,32,16,2,6,4,2,4,2,10,14,6,4,8,10,6,20,4,
-2,6,30,4,8,10,6,6,8,6,12,4,6,2,6,4,6,2,10,2,16,6,20,4,12,14,28,6,20,
-4,18,8,6,4,6,14,6,6,10,2,10,12,8,10,2,10,8,12,10,24,2,4,8,6,4,8,18,10,
-6,6,2,6,10,12,2,10,6,6,6,8,6,10,6,2,6,6,6,10,8,24,6,22,2,18,4,8,10,
-30,8,18,4,2,10,6,2,6,4,18,8,12,18,16,6,2,12,6,10,2,10,2,6,10,14,4,24,2,
-16,2,10,2,10,20,4,2,4,8,16,6,6,2,12,16,8,4,6,30,2,10,2,6,4,6,6,8,6,
-4,12,6,8,12,4,14,12,10,24,6,12,6,2,22,8,18,10,6,14,4,2,6,10,8,6,4,6,30,
-14,10,2,12,10,2,16,2,18,24,18,6,16,18,6,2,18,4,6,2,10,8,10,6,6,8,4,6,2,
-10,2,12,4,6,6,2,12,4,14,18,4,6,20,4,8,6,4,8,4,14,6,4,14,12,4,2,30,4,
-24,6,6,12,12,14,6,4,2,4,18,6,12,
+  1,2,2,4,2,4,2,4,6,2,6,4,
 };
 
 /* Entry i contains (2i+1)^(-1) mod 2^8.  */
@@ -189,6 +211,7 @@ inline uint64_t Binv(uint64_t n) {
   return inv;
 }
 
+// PERF: This can be dune with PTX that uses carries.
 /* Modular two-word multiplication, r = a * b mod m, with mi = m^(-1) mod B.
    Both a and b must be in redc form, the result will be in redc form too.
 
@@ -217,6 +240,8 @@ PowM(uint64_t b, uint64_t e, uint64_t n, uint64_t ni, uint64_t one) {
   if (e & 1)
     y = b;
 
+  // PERF: for OpenCL, it we might want to just run this loop a fixed
+  // number (63 I think) of times?
   while (e != 0) {
     b = MulRedc(b, b, n, ni);
     e >>= 1;
@@ -334,7 +359,7 @@ bool IsPrimeInternal(uint64_t n) {
       if (r.s0 == 0) {
         a_prim = r.s1 % n;
       } else {
-        a_prim = UDiv128(r.s0, r.s1, n).s1;
+        a_prim = UDiv128Rem(r.s0, r.s1, n);
       }
     }
   }
@@ -450,6 +475,13 @@ void FactorUsingPollardRho(uint64_t n,
       y = y % n;
     } else {
       // would need some kind of stack or recursion.
+      // we do have room for it (for example we could
+      // store composite factors at the end of the
+      // factors array, and then just keep a count),
+      // but this routine already succeeds on 99.93% of
+      // random uint64s. So if anything we probably
+      // want to handle *fewer* cases if we can make
+      // it sufficiently faster.
       *failed = true;
       return;
     }
@@ -482,11 +514,28 @@ void FactorizeInternal(uint64_t x,
 
   // PERF experiment with different approaches!
 #define TRY(p) do {                             \
-    while (cur % p == 0) {                      \
-      cur /= p;                                 \
+    uint64_t q = cur / p;                       \
+    uint64_t qd = q * p;                        \
+    uint64_t rem = cur - qd;                    \
+    while (rem == 0) {                          \
+      cur = q;                                  \
       factors[nf++] = p;                        \
+      q = cur / p;                              \
+      qd = q * p;                               \
+      rem = cur - qd;                           \
     }                                           \
   } while (0)
+
+  // The % and / by p here don't get fused in the
+  // PTX code, so we get  although it's possible that some
+  // (invisible to me) peephole phase fixes it.
+#define OLD_TRY(p) do {                         \
+        while (cur % p == 0) {                  \
+          cur /= p;                             \
+          factors[nf++] = p;                    \
+        }                                       \
+      } while(0)
+
   // TRY(2);
   TRY(3);
   TRY(5);

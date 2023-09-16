@@ -343,7 +343,14 @@ static void TestFactorize() {
   static constexpr int HEIGHT = 131072;
   FactorizeGPU factorize(cl, HEIGHT);
 
-  for (int i = 0; i < 100; i++) {
+  std::optional<std::string> ptx =
+    CL::DecodeProgram(factorize.program);
+  if (ptx.has_value()) {
+    Util::WriteFile("factorize.ptx", ptx.value());
+    printf("Wrote to factorize.ptx\n");
+  }
+
+  for (int i = 0; i < 16; i++) {
 
     std::vector<uint64_t> nums; // = { 137 * 137 };
 
@@ -388,14 +395,13 @@ static void TestFactorize() {
 int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
-
-  #if 0
+  /*
   TestEligibleFilter();
   TestTryFilter();
 
   TestWays<WaysGPUMerge, TEST_AGAINST_CPU, 16>("merge");
   TestWays<WaysGPU, TEST_AGAINST_CPU, 16>("orig2d");
-  #endif
+  */
 
   TestFactorize();
 
