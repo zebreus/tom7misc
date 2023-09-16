@@ -20,7 +20,7 @@
 #include <string.h>
 
 #include "bignbr.h"
-#include "globals.h"
+#include "output.h"
 #include "quad.h"
 #include "baseconv.h"
 #include "bigconv.h"
@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
   if (!ParseBigInteger(argv[6], &f)) printf("can't parse f\n");
 
   quadBigInt(teach, &a, &b, &c, &d, &e, &f);
-  (void)printf("%s\n", output);
+  (void)printf("%s\n", output.c_str());
 
   return 0;
 }

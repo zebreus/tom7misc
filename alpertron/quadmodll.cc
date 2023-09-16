@@ -25,7 +25,7 @@
 
 #include "bignbr.h"
 #include "factor.h"
-#include "globals.h"
+#include "output.h"
 #include "modmult.h"
 #include "baseconv.h"
 

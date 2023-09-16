@@ -130,8 +130,6 @@ void AdjustBigIntModN(limb *Nbr, const limb *Mod, int nbrLen);
 void IntToBigNbr(int value, limb *bigNbr, int nbrLength);
 int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower);
 
-void copyStr(char** pptrString, const char* stringToCopy);
-
 static inline int UintToInt(unsigned int value) {
   return (int)value;
 }

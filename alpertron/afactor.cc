@@ -6,7 +6,6 @@
 #include "bignum/big.h"
 
 #include "bignbr.h"
-#include "globals.h"
 #include "factor.h"
 #include "bigconv.h"
 

@@ -16,15 +16,14 @@
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef _GLOBALS_H
-#define _GLOBALS_H
+#ifndef _OUTPUT_H
+#define _OUTPUT_H
 
-#include "bignbr.h"
+#include <string>
 
 // Stuff used from afar with "extern" moved here.
 // Probably we should get rid of as much of this as possible.
 
-// extern char output[3000000];
-extern char *output;
+extern std::string output;
 
 #endif
