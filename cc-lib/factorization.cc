@@ -29,6 +29,9 @@ static uint64_t Sqrt64(uint64_t n) {
 //
 // XXX coreutils has 5000 primes, and might depend on that for the
 // correctness of the Lucas primality test?
+//
+// XXX we only need 12 in the new version, which could just be
+// inlined.
 static constexpr std::array<uint8_t, 999> PRIME_DELTAS = {
 1,2,2,4,2,4,2,4,6,2,6,4,2,4,6,6,2,6,4,2,6,4,6,8,4,2,4,2,4,
 14,4,6,2,10,2,6,6,4,6,6,2,10,2,4,2,12,12,4,2,4,6,2,10,6,6,6,2,6,
@@ -523,10 +526,23 @@ static bool IsPrimeInternal(uint64_t n) {
 
   // Precomputation.
   uint64_t q = n - 1;
-  // PERF can use ctz. Doesn't look like gcc can detect this.
+
+  // Count and remove trailing zero bits.
+  const int k = std::countr_zero(q);
+  q >>= k;
+
+  /*
   int k;
   for (k = 0; (q & 1) == 0; k++)
     q >>= 1;
+
+  CHECK(k == kk && q == qq) <<
+    StringPrintf("%llu: %d vs %d, %llu vs %llu\n",
+                 n, k, kk, q, qq);
+  int k = kk;
+  q = qq;
+
+  */
 
   // Compute modular inverse of n.
   const uint64_t ni = Binv(n);

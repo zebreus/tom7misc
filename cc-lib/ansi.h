@@ -6,6 +6,8 @@
 
 #include <string>
 #include <cstdint>
+#include <vector>
+#include <utility>
 
 #define ANSI_PREVLINE "\x1B[F"
 #define ANSI_CLEARLINE "\x1B[2K"
@@ -75,6 +77,8 @@ namespace internal {
 struct ProgressBarOptions {
   // including [], time.
   int full_width = 76;
+  // TODO: Maybe switch to RGBA and ignore alpha since we're now
+  // using RGBA elsewhere.
   uint32_t fg = 0xfcfce6;
   uint32_t bar_filled = 0x0f1591;
   uint32_t bar_empty  = 0x00031a;
@@ -114,6 +118,23 @@ struct ANSI {
                                  double taken,
                                  ProgressBarOptions options =
                                  ProgressBarOptions{});
+
+  // Composites foreground and background text colors into an ansi
+  // string.
+  // Generates a fixed-width string using the fg/bgcolors arrays.
+  // The length is the maximum of these two, with the last element
+  // extended to fill. Text is truncated if it's too long.
+  static std::string Composite(
+      // ANSI codes are stripped.
+      const std::string &text,
+      // entries are RGBA and character width. Alpha is composited.
+      const std::vector<std::pair<uint32_t, int>> &fgcolors,
+      // entries are RGBA and character width. Alpha is ignored.
+      const std::vector<std::pair<uint32_t, int>> &bgcolors);
+
+  // TODO: A utility that strips the ansi codes and produces a
+  // fgcolors array for them.
+
 };
 
 // Deprecated. Use ANSI:: versions.

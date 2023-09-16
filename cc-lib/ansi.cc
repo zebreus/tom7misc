@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstdint>
 #include <tuple>
+#include <vector>
+#include <utility>
 
 #ifdef __MINGW32__
 #include <windows.h>
@@ -76,7 +78,7 @@ std::string ANSI::BackgroundRGB(uint8_t r, uint8_t g, uint8_t b) {
 std::string ANSI::Time(double seconds) {
   char result[64] = {};
   if (seconds < 0.001) {
-    snprintf(result, 64, AYELLOW("%.2f") "us", seconds * 1000000.0);
+    snprintf(result, 64, AYELLOW("%.3f") "us", seconds * 1000000.0);
   } else if (seconds < 1.0) {
     snprintf(result, 64, AYELLOW("%.2f") "ms", seconds * 1000.0);
   } else if (seconds < 60.0) {
@@ -136,6 +138,20 @@ Unpack24(uint32_t color) {
           (uint8_t)(color & 255)};
 }
 
+// and 0xRRGGBBAA
+inline static constexpr std::tuple<uint8, uint8, uint8, uint8>
+Unpack32(uint32 color) {
+  return {(uint8)((color >> 24) & 255),
+          (uint8)((color >> 16) & 255),
+          (uint8)((color >> 8) & 255),
+          (uint8)(color & 255)};
+}
+
+inline static constexpr uint32 Pack32(uint8 r, uint8 g, uint8 b, uint8 a) {
+  return
+    ((uint32)r << 24) | ((uint32)g << 16) | ((uint32)b << 8) | (uint32)a;
+}
+
 
 std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
                               const std::string &operation,
@@ -179,3 +195,90 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
   string out = AWHITE("[") + colored_bar + AWHITE("]") " " + eta;
   return out;
 }
+
+// From image.cc; see explanation there.
+static inline uint32_t CompositeRGBA(uint32_t fg, uint32_t bg) {
+  using word = uint16_t;
+  const auto &[r, g, b, a] = Unpack32(fg);
+  const auto &[old_r, old_g, old_b, old_a_] = Unpack32(bg);
+  // so a + oma = 255.
+  const word oma = 0xFF - a;
+  const word rr = (((word)r * (word)a) + (old_r * oma)) / 0xFF;
+  const word gg = (((word)g * (word)a) + (old_g * oma)) / 0xFF;
+  const word bb = (((word)b * (word)a) + (old_b * oma)) / 0xFF;
+  // Note that the components cannot be > 0xFF.
+  if (rr > 0xFF) __builtin_unreachable();
+  if (gg > 0xFF) __builtin_unreachable();
+  if (bb > 0xFF) __builtin_unreachable();
+
+  return Pack32(rr, gg, bb, 0xFF);
+}
+
+std::string ANSI::Composite(
+      // ANSI codes are stripped.
+      const std::string &text_raw,
+      // entries are RGBA and character width. Alpha is composited.
+      const std::vector<std::pair<uint32_t, int>> &fgcolors,
+      // entries are RGBA and character width. Alpha is ignored.
+      const std::vector<std::pair<uint32_t, int>> &bgcolors) {
+  auto Width = [](const std::vector<std::pair<uint32_t, int>> &cv) {
+      int w = 0;
+      for (const auto &[c_, cw] : cv) w += cw;
+      return w;
+    };
+
+  std::string text = StripCodes(text_raw);
+
+  int width = std::max(Width(fgcolors), Width(bgcolors));
+  if (width <= 0) return "";
+  if ((int)text.size() > width) text.resize(width);
+  while ((int)text.size() < width) text.push_back(' ');
+
+  // We could do this using the compact representation, but
+  // since we're creating a string of this width anyway, we
+  // would only be saving in constants.
+  auto Flatten = [width](const std::vector<std::pair<uint32_t, int>> &cv) {
+      std::vector<uint32_t> flat;
+      flat.reserve(width);
+      uint32_t last = 0;
+      for (const auto &[c, w] : cv) {
+        for (int i = 0; i < w; i++) flat.push_back(c);
+        last = c;
+      }
+
+      while ((int)flat.size() < width) flat.push_back(last);
+      return flat;
+    };
+
+  std::vector<uint32_t> fg = Flatten(fgcolors), bg = Flatten(bgcolors);
+
+  // Now generate output string. Here we generate a color code whenever
+  // the foreground or background actually changes.
+
+  // This string will generally be longer than width because of the
+  // ansi codes.
+  std::string out;
+  uint32_t last_fg = 0, last_bg = 0;
+  for (int i = 0; i < width; i++) {
+    uint32_t bgcolor = bg[i];
+    uint32_t fgcolor = CompositeRGBA(fg[i], bgcolor);
+
+    if (i == 0 || bgcolor != last_bg) {
+      const auto &[r, g, b, a_] = Unpack32(bgcolor);
+      StringAppendF(&out, "\x1B[48;2;%d;%d;%dm", r, g, b);
+      last_bg = bgcolor;
+    }
+
+    if (i == 0 || fgcolor != last_fg) {
+      const auto &[r, g, b, a_] = Unpack32(fgcolor);
+      StringAppendF(&out, "\x1B[38;2;%d;%d;%dm", r, g, b);
+      last_fg = fgcolor;
+    }
+
+    // And always add the text char.
+    out.push_back(text[i]);
+  }
+
+  return out + ANSI_RESET;
+}
+
