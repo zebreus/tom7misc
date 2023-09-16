@@ -3,35 +3,39 @@
 
 #include "bignbr.h"
 
-extern limb MontgomeryMultN[MAX_LEN];
-
 // NumberLength
 extern limb TestNbr[MAX_LEN];
 
-/*
+// These used to be globals. Now calling GetMontgomeryParams* creates them.
 struct MontgomeryParams {
+  // XXX can number length, testnbr, powerof2exponent be part of this struct?
+  // int NumberLength;
   limb MontgomeryMultN[MAX_LEN];
   limb MontgomeryMultR1[MAX_LEN];
   limb MontgomeryMultR2[MAX_LEN];
+  int NumberLengthR1;
 };
-*/
 
-void GetMontgomeryParams(int len);
-void GetMontgomeryParamsPowerOf2(int powerOf2);
+MontgomeryParams GetMontgomeryParams(int len);
+MontgomeryParams GetMontgomeryParamsPowerOf2(int powerOf2);
 
 // product <- factor1 * factor2 mod modulus
 void modmult(const limb *factor1, const limb *factor2,
              int modulus_length, const limb *modulus,
              limb *product);
 
-void modPowBaseInt(int base, const limb *exp, int nbrGroupsExp, limb *power);
-void modPow(const limb *base, const limb *exp, int nbrGroupsExp, limb *power);
+void modPowBaseInt(const MontgomeryParams &params,
+                   int base, const limb *exp, int nbrGroupsExp, limb *power);
+void modPow(const MontgomeryParams &params,
+            const limb *base, const limb *exp, int nbrGroupsExp, limb *power);
 
 void BigIntGeneralModularDivision(const BigInteger *Num, const BigInteger *Den,
                                   const BigInteger *mod, BigInteger *quotient);
-void BigIntModularDivision(const BigInteger* Num, const BigInteger* Den,
+void BigIntModularDivision(const MontgomeryParams &params,
+                           const BigInteger* Num, const BigInteger* Den,
                            const BigInteger* mod, BigInteger* quotient);
-void BigIntModularPower(const BigInteger* base, const BigInteger* exponent,
+void BigIntModularPower(const MontgomeryParams &params,
+                        const BigInteger* base, const BigInteger* exponent,
                         BigInteger* power);
 
 void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr,

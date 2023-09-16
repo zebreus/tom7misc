@@ -117,16 +117,15 @@ struct QuadModLL {
         (void)BigIntPowerIntExp(&prime, pstFactor->multiplicity, &K1);
         CopyBigInt(&prime, &K1);
         for (int E = 0; E < T1; E++) {
-          int NumberLengthBytes;
           BigIntSubt(&Aux[T1], &Aux[E], &Q);
           IntArray2BigInteger(NumberLength, factors.product[E].array, &bigBase);
           (void)BigIntPowerIntExp(&bigBase, factors.product[E].multiplicity, &L);
           NumberLength = prime.nbrLimbs;
-          NumberLengthBytes = NumberLength * (int)sizeof(limb);
+          int NumberLengthBytes = NumberLength * (int)sizeof(limb);
           (void)memcpy(TestNbr, prime.limbs, NumberLengthBytes);
           TestNbr[NumberLength].x = 0;
-          GetMontgomeryParams(NumberLength);
-          BigIntModularDivision(&Q, &L, &prime, &Aux[T1]);
+          MontgomeryParams params = GetMontgomeryParams(NumberLength);
+          BigIntModularDivision(params, &Q, &L, &prime, &Aux[T1]);
         }
         (void)BigIntRemainder(&Aux[T1], &prime, &L);
         CopyBigInt(&Aux[T1], &L);
@@ -173,11 +172,11 @@ struct QuadModLL {
   // Solve Bx + C = 0 (mod N).
   void SolveModularLinearEquation(BigInteger *pValA, const BigInteger *pValB,
                                   const BigInteger *pValC, BigInteger *pValN) {
-    int NumberLengthBytes;
     int powerOf2;
     int solutionNbr = 0;
 
-    // This thing generates its own factors for the Chinese Remainder Theorem call.
+    // This thing generates its own factors for the Chinese Remainder
+    // Theorem call.
     auto factors = std::make_unique<Factors>();
     factors->storage.resize(20000);
 
@@ -197,7 +196,7 @@ struct QuadModLL {
     // N = r*2^k (r = odd)
     DivideBigNbrByMaxPowerOf2(&powerOf2, pValN->limbs, &pValN->nbrLimbs);
     NumberLength = pValN->nbrLimbs;
-    NumberLengthBytes = NumberLength * (int)sizeof(limb);
+    int NumberLengthBytes = NumberLength * (int)sizeof(limb);
     if ((pValN->nbrLimbs != 1) || (pValN->limbs[0].x != 1)) {
       // ValN is not 1.
       CopyBigInt(&Increment[solutionNbr], pValN);
@@ -205,9 +204,9 @@ struct QuadModLL {
       (void)memcpy(TestNbr, pValN->limbs, NumberLengthBytes);
       TestNbr[NumberLength].x = 0;
       // Perform division using odd modulus r.
-      GetMontgomeryParams(NumberLength);
+      MontgomeryParams params = GetMontgomeryParams(NumberLength);
       // Compute ptrSolution1 as ValC / |ValB|
-      BigIntModularDivision(pValC, pValB, pValN, ptrSolution1);
+      BigIntModularDivision(params, pValC, pValB, pValN, ptrSolution1);
       // Compute ptrSolution1 as -ValC / ValB
       if (!BigIntIsZero(ptrSolution1)) {
         BigIntSubt(pValN, ptrSolution1, ptrSolution1);
@@ -512,17 +511,17 @@ struct QuadModLL {
     int NumberLengthBytes = NumberLength * (int)sizeof(limb);
     (void)memcpy(TestNbr, prime.limbs, NumberLengthBytes);
     TestNbr[NumberLength].x = 0;
-    GetMontgomeryParams(NumberLength);
+    MontgomeryParams params = GetMontgomeryParams(NumberLength);
     CopyBigInt(&Q, &prime);
     if ((prime.limbs[0].x & 3) == 3) {
       // prime mod 4 = 3
       subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
-      BigIntModularPower(&Aux[3], &Q, &SqrtDisc);
+      BigIntModularPower(params, &Aux[3], &Q, &SqrtDisc);
     } else {
       limb* toConvert;
       // Convert discriminant to Montgomery notation.
       CompressLimbsBigInteger(NumberLength, Aux[5].limbs, &Aux[3]);
-      modmult(Aux[5].limbs, MontgomeryMultR2,
+      modmult(Aux[5].limbs, params.MontgomeryMultR2,
               NumberLength, TestNbr,
               Aux[6].limbs);  // u
       if ((prime.limbs[0].x & 7) == 5) {
@@ -535,7 +534,7 @@ struct QuadModLL {
         subtractdivide(&Q, 5, 8);
         // 2u
         AddBigNbrModN(Aux[6].limbs, Aux[6].limbs, Aux[7].limbs, TestNbr, NumberLength);
-        modPow(Aux[7].limbs, Q.limbs, Q.nbrLimbs, Aux[8].limbs);
+        modPow(params, Aux[7].limbs, Q.limbs, Q.nbrLimbs, Aux[8].limbs);
         // At this moment Aux[7].limbs is v in Montgomery notation.
 
         // Step 2.
@@ -548,7 +547,8 @@ struct QuadModLL {
 
         // Step 3.
         // i-1
-        SubtBigNbrModN(Aux[9].limbs, MontgomeryMultR1, Aux[9].limbs, TestNbr, NumberLength);
+        SubtBigNbrModN(Aux[9].limbs, params.MontgomeryMultR1, Aux[9].limbs,
+                       TestNbr, NumberLength);
         // v*(i-1)
         modmult(Aux[8].limbs, Aux[9].limbs,
                 NumberLength, TestNbr,
@@ -575,21 +575,22 @@ struct QuadModLL {
         DivideBigNbrByMaxPowerOf2(&e, Q.limbs, &Q.nbrLimbs);
         // Step 2.
         int x = 1;
-        do
-        {
+
+        do {
           x++;
           intToBigInteger(&Aux[3], x);
         } while (BigIntJacobiSymbol(&Aux[3], &prime) >= 0);
+
         // Step 3.
         // Get z <- x^q (mod p) in Montgomery notation.
-        modPowBaseInt(x, Q.limbs, Q.nbrLimbs, Aux[4].limbs);  // z
+        modPowBaseInt(params, x, Q.limbs, Q.nbrLimbs, Aux[4].limbs);  // z
         // Step 4.
         NumberLengthBytes = NumberLength * (int)sizeof(limb);
         (void)memcpy(Aux[5].limbs, Aux[4].limbs, NumberLengthBytes); // y
         r = e;
         CopyBigInt(&K1, &Q);
         subtractdivide(&K1, 1, 2);
-        modPow(Aux[6].limbs, K1.limbs, K1.nbrLimbs, Aux[7].limbs); // x
+        modPow(params, Aux[6].limbs, K1.limbs, K1.nbrLimbs, Aux[7].limbs); // x
         modmult(Aux[6].limbs, Aux[7].limbs,
                 NumberLength, TestNbr,
                 Aux[8].limbs);         // v
@@ -597,22 +598,21 @@ struct QuadModLL {
                 NumberLength, TestNbr,
                 Aux[9].limbs);         // w
         // Step 5
-        while (memcmp(Aux[9].limbs, MontgomeryMultR1, NumberLengthBytes) != 0)
-        {
+        while (memcmp(Aux[9].limbs, params.MontgomeryMultR1,
+                      NumberLengthBytes) != 0) {
           // Step 6
           int k = 0;
           (void)memcpy(Aux[10].limbs, Aux[9].limbs, NumberLengthBytes);
-          do
-          {
+          do {
             k++;
             modmult(Aux[10].limbs, Aux[10].limbs,
                     NumberLength, TestNbr,
                     Aux[10].limbs);
-          } while (memcmp(Aux[10].limbs, MontgomeryMultR1, NumberLengthBytes) != 0);
+          } while (memcmp(Aux[10].limbs, params.MontgomeryMultR1,
+                          NumberLengthBytes) != 0);
           // Step 7
           (void)memcpy(Aux[11].limbs, Aux[5].limbs, NumberLengthBytes); // d
-          for (int ctr = 0; ctr < (r - k - 1); ctr++)
-          {
+          for (int ctr = 0; ctr < (r - k - 1); ctr++) {
             modmult(Aux[11].limbs, Aux[11].limbs,
                     NumberLength, TestNbr,
                     Aux[11].limbs);
@@ -630,6 +630,7 @@ struct QuadModLL {
         }
         toConvert = Aux[8].limbs;
       }
+
       // Convert from Montgomery to standard notation.
       NumberLengthBytes = NumberLength * (int)sizeof(limb);
       // Convert power to standard notation.
@@ -640,9 +641,10 @@ struct QuadModLL {
               toConvert);
       UncompressLimbsBigInteger(NumberLength, toConvert, &SqrtDisc);
     }
+
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
     intToBigInteger(&tmp2, 1);
-    BigIntModularDivision(&tmp2, &SqrtDisc, &prime, &sqrRoot);
+    BigIntModularDivision(params, &tmp2, &SqrtDisc, &prime, &sqrRoot);
     correctBits = 1;
     CopyBigInt(&Q, &prime);
     // Obtain nbrBitsSquareRoot correct digits of inverse square root.
@@ -690,8 +692,7 @@ struct QuadModLL {
     // Get maximum power of prime which divide ValA.
     CopyBigInt(&ValAOdd, pValA);
     bitsAZero = 0;
-    for (;;)
-    {
+    for (;;) {
       (void)BigIntRemainder(&ValAOdd, &prime, &tmp1);
       if (ValAOdd.sign == SIGN_NEGATIVE)
       {
@@ -751,8 +752,8 @@ struct QuadModLL {
     NumberLengthBytes = NumberLength * (int)sizeof(limb);
     (void)memcpy(TestNbr, tmp1.limbs, NumberLengthBytes);
     TestNbr[NumberLength].x = 0;
-    GetMontgomeryParams(NumberLength);
-    BigIntModularDivision(&tmp2, &ValAOdd, &tmp1, &Aux[0]);
+    MontgomeryParams params = GetMontgomeryParams(NumberLength);
+    BigIntModularDivision(params, &tmp2, &ValAOdd, &tmp1, &Aux[0]);
     CopyBigInt(&ValAOdd, &Aux[0]);
     if (BigIntIsZero(&discriminant))
     {     // Discriminant is zero.
@@ -844,8 +845,8 @@ struct QuadModLL {
     int NumberLengthBytes = NumberLength * (int)sizeof(limb);
     (void)memcpy(TestNbr, prime.limbs, NumberLengthBytes);
     TestNbr[NumberLength].x = 0;
-    GetMontgomeryParams(NumberLength);
-    BigIntModularDivision(pValC, pValB, &prime, ptrSolution);
+    MontgomeryParams params = GetMontgomeryParams(NumberLength);
+    BigIntModularDivision(params, pValC, pValB, &prime, ptrSolution);
     BigIntNegate(ptrSolution, ptrSolution);
     if (ptrSolution->sign == SIGN_NEGATIVE) {
       BigIntAdd(ptrSolution, &prime, ptrSolution);
@@ -867,8 +868,8 @@ struct QuadModLL {
       int NumberLengthBytes = NumberLength * (int)sizeof(limb);
       (void)memcpy(TestNbr, V.limbs, NumberLengthBytes);
       TestNbr[NumberLength].x = 0;
-      GetMontgomeryParams(NumberLength);
-      BigIntModularDivision(&Q, &L, &V, &Aux1);
+      MontgomeryParams params = GetMontgomeryParams(NumberLength);
+      BigIntModularDivision(params, &Q, &L, &V, &Aux1);
       BigIntSubt(ptrSolution, &Aux1, ptrSolution);
       (void)BigIntRemainder(ptrSolution, &V, ptrSolution);
       if (ptrSolution->sign == SIGN_NEGATIVE)

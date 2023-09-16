@@ -58,9 +58,6 @@ typedef struct BigInteger {
   limb limbs[MAX_LEN];
 } BigInteger;
 
-extern limb MontgomeryMultR2[MAX_LEN];
-extern limb MontgomeryMultR1[MAX_LEN];
-
 void multiply(const limb* factor1, const limb* factor2, limb* result,
               int len, int* pResultLen);
 
