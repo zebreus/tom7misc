@@ -774,7 +774,4 @@ void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
   int sz = BigIntToLimbs(r, result);
   if (pResultLen != nullptr)
     *pResultLen = sz;
-
-  // TODO: Compare against Karatsuba.
-  // Otherwise, this might be because of some of the "caching" that fft.cc does?
 }
