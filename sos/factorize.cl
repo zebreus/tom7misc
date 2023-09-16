@@ -17,6 +17,9 @@ void FactorizeInternal(uint64_t x,
 // First prime not in the list of trial divisions.
 #define NEXT_PRIME 137
 
+#define PTX_SUB128 0
+#define PTX_GEQ128 0
+
 // Subtracts 128-bit words.
 // returns high, low
 
@@ -33,12 +36,7 @@ void FactorizeInternal(uint64_t x,
 inline ulong2
 Sub128(uint64_t ah, uint64_t al,
        uint64_t bh, uint64_t bl) {
-  // asm("/* Start Sub128 */");
-  // uint64_t carry = al < bl;
-  // ulong2 ret;
-  // ret.s0 = ah - bh - carry;
-  // ret.s1 = al - bl;
-
+#if PTX_SUB128
   uint64_t rl, rh;
   asm("/* 128-bit subtract */\n\t"
       "sub.cc.u64 %0, %2, %3;\n\t"
@@ -61,6 +59,13 @@ Sub128(uint64_t ah, uint64_t al,
 
   // asm("/* End Sub128 */");
   return ret;
+#else
+  uint64_t carry = al < bl;
+  ulong2 ret;
+  ret.s0 = ah - bh - carry;
+  ret.s1 = al - bl;
+  return ret;
+#endif
 }
 
 // Right-shifts a 128-bit quantity by count.
@@ -81,8 +86,9 @@ RightShift128(uint64_t ah, uint64_t al, int count) {
 // so we end up reusing the calculation.
 inline bool GreaterEq128(uint64_t ah, uint64_t al,
                          uint64_t bh, uint64_t bl) {
+#if PTX_GEQ128
   asm("/* geq 128 */");
-  // bool res = ah > bh || (ah == bh && al >= bl);
+
 
   uint64_t rl, rh;
   asm("/* 128-bit subtract */\n\t"
@@ -103,9 +109,11 @@ inline bool GreaterEq128(uint64_t ah, uint64_t al,
   // a >= b iff a - b >= 0. We only need the high word (bit!)
   // to test this.
   bool res = ((int64_t)rh) >= 0;
-
   asm("/* end geq 128 */");
   return res;
+#else
+  return ah > bh || (ah == bh && al >= bl);
+#endif
 }
 
 // Divides (n1*2^64 + n0)/d, with n1 < d. Returns remainder.
@@ -394,7 +402,10 @@ void FactorUsingPollardRho(uint64_t n,
     // Just bail if it's taking too many tests.
     // This threshold is tunable (maybe it should even just be 1,
     // i.e., no loop!)
-    if (a > 10) {
+    // at 10: 2m43s
+    // at 2: 2m43s
+    // at 1: 2m53s
+    if (a > 2) {
       // XXX
       *failed = true;
       return;
@@ -513,7 +524,7 @@ void FactorizeInternal(uint64_t x,
   // PERF could do this as a 2D kernel to start?
 
   // PERF experiment with different approaches!
-#define TRY(p) do {                             \
+#define NEW_TRY(p) do {                             \
     uint64_t q = cur / p;                       \
     uint64_t qd = q * p;                        \
     uint64_t rem = cur - qd;                    \
@@ -529,7 +540,7 @@ void FactorizeInternal(uint64_t x,
   // The % and / by p here don't get fused in the
   // PTX code, so we get  although it's possible that some
   // (invisible to me) peephole phase fixes it.
-#define OLD_TRY(p) do {                         \
+#define TRY(p) do {                         \
         while (cur % p == 0) {                  \
           cur /= p;                             \
           factors[nf++] = p;                    \

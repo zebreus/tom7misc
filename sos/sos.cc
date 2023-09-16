@@ -443,8 +443,10 @@ struct SOS {
   SOS() : status_per(10.0) {
     // Performance is pretty workload-dependent, so just tune in-process
     // rather than saving to disk.
-    nways_comp.reset(new AutoParallelComp(30, 1000, false));
-    try_comp.reset(new AutoParallelComp(12, 1000, false));
+    // We're much less CPU bound now, so using lower max_parallelism here.
+    // was 30, 12
+    nways_comp.reset(new AutoParallelComp(8, 1000, false));
+    try_comp.reset(new AutoParallelComp(8, 1000, false));
 
     eligiblefilter_gpu.reset(
         new EligibleFilterGPU(cl, EPOCH_GPU_CHUNK));
@@ -924,6 +926,64 @@ struct SOS {
                    FormatNum(cpu_factored).c_str(),
                    cpu_pct);
 
+    // Since 80%+ are immediately rejected (prefilter) we don't show
+    // those in the fraction here.
+    uint64_t denom = epoch_size - done_ineligible_gpu;
+    uint64_t numer = done - done_ineligible_gpu;
+
+    string line6 = [&](){
+      double frac = numer / (double)denom;
+      double spe = numer > 0 ? sec / numer : 1.0;
+      double remaining_sec = (denom - numer) * spe;
+      string eta = ANSI::Time(remaining_sec);
+      int eta_len = ANSI::StringWidth(eta);
+
+      int bar_width = 70 - 2 - 1 - eta_len;
+      // Number of characters that get background color.
+      // int filled_width = std::clamp((int)(bar_width * frac), 0, bar_width);
+
+      string bar_info =
+        StringPrintf("%llu / %llu (%.2f%%) ", numer, denom, frac * 100.0);
+
+      int total_width = 0;
+      std::vector<pair<uint32_t, int>> bgcolors;
+      auto AddWidthOf = [&](uint32_t color, int64_t c) {
+          if (c == 0) return;
+          double f = std::clamp(c / (double)denom, 0.0, 1.0);
+          int w = std::max((int)std::round(f * bar_width), 1);
+          total_width += w;
+          bgcolors.emplace_back(color, w);
+        };
+
+      AddWidthOf(0x400000FF, prefiltered_size);
+      AddWidthOf(0x400040FF, factor_size);
+      AddWidthOf(0x404000FF, factored_size);
+      AddWidthOf(0x000040FF, ways_size);
+      AddWidthOf(0x005050FF, try_size);
+      AddWidthOf(0x008000FF, numer);
+      // Padding.
+      if (total_width < bar_width) {
+        AddWidthOf(0x202020FF, bar_width - total_width);
+      }
+
+      std::vector<pair<uint32_t, int>> fgcolors =
+        {{0xFFFFFFBB, bar_width}};
+
+      return StringPrintf(
+          AWHITE("[") "%s" AWHITE("]") " %s\n",
+          ANSI::Composite(bar_info, fgcolors, bgcolors).c_str(),
+          eta.c_str());
+      }();
+
+    // TODO: manually stack progress bar with queues!
+#if 0
+    string info = StringPrintf(
+        "%s gpu-ineligible",
+        Util::UnsignedWithCommas(done_ineligible_gpu).c_str());
+    string line6 = ANSI::ProgressBar(numer, denom, info, sec) + "\n";
+#endif
+
+    /*
     string line6;
     if (!nways_is_done) {
       string info = StringPrintf(
@@ -941,6 +1001,7 @@ struct SOS {
                                 eligible_triples,
                                 info, sec, options) + "\n";
     }
+    */
 
     status.EmitStatus(line1 + line2 + line3 + line4 + line5 + line6);
   }
@@ -1300,12 +1361,31 @@ struct SOS {
         return;
       }
 
+      // We have a short GPUFactored at the end, so this code has to
+      // handle anything. But ideally this should divide the common case of
+      // GPU_FACTOR_HEIGHT.
+      //
+      // Note that this code has two exceptional and slow conditions:
+      // Needing to factor on CPU, and/or needing to do nways on the CPU.
+      // As this gets larger, we increase the risk of straggler tasks.
+      //
+      // Batching to 8 didn't make a difference in the end-to-end speed
+      // here, but it did make the parallelism less broken-looking.
+      static constexpr int ROLL_SIZE = 32;
+
       const GPUFactored &gpu_factored = batchopt.value();
+
+      // Three parallel arrays.
+      const int batch_size = gpu_factored.nums.size();
+      const int num_rolls = (batch_size / ROLL_SIZE) +
+        ((batch_size % ROLL_SIZE == 0) ? 0 : 1);
+
+      // status.Printf("Batch size %d. num_rolls %d.\n", batch_size, num_rolls);
+
       nways_comp->
         ParallelComp(
-            // Three parallel arrays.
-            gpu_factored.nums.size(),
-            [&](int idx) {
+            num_rolls,
+            [&](int roll_idx) {
 
               // PERF run a few in a loop to avoid lock overhead
               int local_triple_pending_ways = 0;
@@ -1315,88 +1395,82 @@ struct SOS {
               int local_pending_try = 0;
               int local_done_ineligible_cpu = 0;
 
-              const uint64_t num = gpu_factored.nums[idx];
-              const uint8_t num_factors_byte = gpu_factored.num_factors[idx];
+              std::vector<std::pair<uint64_t, uint32_t>> ways_todo;
+              ways_todo.reserve(ROLL_SIZE);
 
-              uint64_t bases[15];
-              uint8_t exponents[15];
-              int nf = 0;
+              for (int r = 0; r < ROLL_SIZE; r++) {
+                const int idx = roll_idx * ROLL_SIZE + r;
+                // Batch might not be divisible by roll :(
+                if (idx >= batch_size) break;
 
-              if (num_factors_byte == 0xFF) {
-                // GPU factoring failed. Factor on CPU.
-                // PERF: Can use partial factoring here.
-                nf = Factorization::FactorizePreallocated(
-                    num, bases, exponents);
-                local_cpu_factored++;
-              } else {
-                // copy and collate factors.
-                for (int f = 0; f < num_factors_byte; f++) {
-                  uint64_t factor =
-                    gpu_factored.factors[idx * FactorizeGPU::MAX_FACTORS + f];
-                  // Search from the end because usually we have repeated
-                  // factors consecutively. My belief is that this array is
-                  // generally very small, so sorted data structures are
-                  // actually worse.
-                  for (int slot = nf - 1; slot >= 0; slot--) {
-                    if (bases[slot] == factor) {
-                      exponents[slot]++;
-                      goto next_factor;
-                    }
-                  }
+                const uint64_t num = gpu_factored.nums[idx];
+                const uint8_t num_factors_byte = gpu_factored.num_factors[idx];
 
-                  // not found. insert at end.
-                  bases[nf] = factor;
-                  exponents[nf] = 1;
-                  nf++;
+                uint64_t bases[15];
+                uint8_t exponents[15];
+                int nf = 0;
 
-                next_factor:;
-                }
-              }
-
-              // Using the existing factoring, and skipping
-              // tests we know were already done on GPU.
-              const int nways = ChaiWahWuFromFactors(
-                  num, bases, exponents, nf);
-
-              #if 0
-              // PERF!!
-              const int reference_nways = ChaiWahWu(num);
-              if (reference_nways != nways) {
-                status.Printf("\n\n\n\n\n\n\n\n\n\n\n\n"
-                              "Num: %llu\n"
-                              "Expected: %d\n"
-                              "Got: %d\n", num, reference_nways, nways);
-                status.Printf("Factors byte: %d. nf: %d\n",
-                              num_factors_byte, nf);
-                uint64_t product = 1;
-                for (int i = 0; i < nf; i++) {
-                  status.Printf("%llu^%d ", bases[i], (int)exponents[i]);
-                  for (int j = 0; j < exponents[i]; j++) product *= bases[i];
-                }
-                status.Printf(" = %llu\n", product);
-                CHECK(false);
-              }
-              #endif
-
-              if (nways >= 3) {
-                local_eligible_triples++;
-                if (nways > GPUMethod::MAX_WAYS) {
-                  // Do on CPU.
-                  std::vector<std::pair<uint64_t, uint64_t>> ways =
-                    NSoks2(num, nways);
-                  TryMe tryme;
-                  tryme.num = num;
-                  tryme.squareways = std::move(ways);
-                  try_queue->WaitAdd(std::move(tryme));
-
-                  local_too_big++;
-                  local_pending_try++;
+                if (num_factors_byte == 0xFF) {
+                  // GPU factoring failed. Factor on CPU.
+                  // PERF: Can make use of the partial factoring here.
+                  nf = Factorization::FactorizePreallocated(
+                      num, bases, exponents);
+                  local_cpu_factored++;
                 } else {
-                  ways_queue->WaitAdd(make_pair(num, nways));
+                  // copy and collate factors.
+                  for (int f = 0; f < num_factors_byte; f++) {
+                    uint64_t factor =
+                      gpu_factored.factors[idx * FactorizeGPU::MAX_FACTORS + f];
+                    // Search from the end because usually we have repeated
+                    // factors consecutively. My belief is that this array is
+                    // generally very small, so sorted data structures are
+                    // actually worse.
+                    for (int slot = nf - 1; slot >= 0; slot--) {
+                      if (bases[slot] == factor) {
+                        exponents[slot]++;
+                        goto next_factor;
+                      }
+                    }
+
+                    // not found. insert at end.
+                    bases[nf] = factor;
+                    exponents[nf] = 1;
+                    nf++;
+
+                  next_factor:;
+                  }
                 }
-              } else {
-                local_done_ineligible_cpu++;
+
+                // Using the existing factoring, and skipping
+                // tests we know were already done on GPU.
+                const int nways = ChaiWahWuFromFactors(
+                    num, bases, exponents, nf);
+
+                if (nways >= 3) {
+                  local_eligible_triples++;
+                  if (nways > GPUMethod::MAX_WAYS) {
+                    // Do on CPU.
+                    std::vector<std::pair<uint64_t, uint64_t>> ways =
+                      NSoks2(num, nways);
+                    TryMe tryme;
+                    tryme.num = num;
+                    tryme.squareways = std::move(ways);
+                    // This is rare, so we don't try to batch them
+                    // within the roll. (Could consider accumulating
+                    // them at the batch level?)
+                    try_queue->WaitAdd(std::move(tryme));
+
+                    local_too_big++;
+                    local_pending_try++;
+                  } else {
+                    ways_todo.emplace_back(num, nways);
+                  }
+                } else {
+                  local_done_ineligible_cpu++;
+                }
               }
+
+              ways_queue->WaitAddVec(std::move(ways_todo));
 
               {
                 MutexLock ml(&m);
