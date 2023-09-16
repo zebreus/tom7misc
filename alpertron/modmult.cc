@@ -38,9 +38,6 @@
 //   return t
 // end if
 
-enum eNbrCached MontgomeryMultNCached;
-enum eNbrCached TestNbrCached;
-
 // These are globals that are regularly modified in secret in other
 // code as well. I think they usually (always?) describe the modulus.
 // XXX Pass them as parameters!
@@ -966,8 +963,6 @@ static void AdjustModN(limb *Nbr, const limb *Modulus, int nbrLen) {
 void GetMontgomeryParams(int len) {
   int j;
   int NumberLengthBytes;
-  MontgomeryMultNCached = NBR_NOT_CACHED;
-  TestNbrCached = NBR_NOT_CACHED;
   TestNbr[len].x = 0;
   NumberLength = len;
   NumberLength2 = len + len;
@@ -1018,8 +1013,7 @@ void GetMontgomeryParams(int len) {
   // this is 2^(NumberLength*BITS_PER_GROUP) % TestNbr.
   j = NumberLength;
   MontgomeryMultR1[j].x = 1;
-  do
-  {
+  do {
     j--;
     MontgomeryMultR1[j].x = 0;
   } while (j > 0);
@@ -1027,23 +1021,19 @@ void GetMontgomeryParams(int len) {
   MontgomeryMultR1[NumberLength].x = 0;
   NumberLengthBytes = (NumberLength + 1) * (int)sizeof(limb);
   (void)memcpy(MontgomeryMultR2, MontgomeryMultR1, NumberLengthBytes);
-  for (NumberLengthR1 = NumberLength; NumberLengthR1 > 0; NumberLengthR1--)
-  {
-    if (MontgomeryMultR1[NumberLengthR1 - 1].x != 0)
-    {
+  for (NumberLengthR1 = NumberLength; NumberLengthR1 > 0; NumberLengthR1--) {
+    if (MontgomeryMultR1[NumberLengthR1 - 1].x != 0) {
       break;
     }
   }
+
   // Compute MontgomeryMultR2 as 2^(2*NumberLength*BITS_PER_GROUP) % TestNbr.
-  for (j = NumberLength; j > 0; j--)
-  {
+  for (j = NumberLength; j > 0; j--) {
     NumberLengthBytes = NumberLength * (int)sizeof(limb);
     (void)memmove(&MontgomeryMultR2[1], &MontgomeryMultR2[0], NumberLengthBytes);
     MontgomeryMultR2[0].x = 0;
     AdjustModN(MontgomeryMultR2, TestNbr, len);
   }
-  MontgomeryMultNCached = NBR_READY_TO_BE_CACHED;
-  TestNbrCached = NBR_READY_TO_BE_CACHED;
 }
 
 void AddBigNbrModN(const limb *num1, const limb *num2, limb *sum,

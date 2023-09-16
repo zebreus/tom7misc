@@ -4,11 +4,17 @@
 #include "bignbr.h"
 
 extern limb MontgomeryMultN[MAX_LEN];
-extern enum eNbrCached MontgomeryMultNCached;
-extern enum eNbrCached TestNbrCached;
 
 // NumberLength
 extern limb TestNbr[MAX_LEN];
+
+/*
+struct MontgomeryParams {
+  limb MontgomeryMultN[MAX_LEN];
+  limb MontgomeryMultR1[MAX_LEN];
+  limb MontgomeryMultR2[MAX_LEN];
+};
+*/
 
 void GetMontgomeryParams(int len);
 void GetMontgomeryParamsPowerOf2(int powerOf2);

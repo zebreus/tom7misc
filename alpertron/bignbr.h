@@ -52,12 +52,6 @@ enum eSign {
   SIGN_NEGATIVE,
 };
 
-enum eNbrCached {
-  NBR_NOT_CACHED = 0,
-  NBR_READY_TO_BE_CACHED,
-  NBR_CACHED,
-};
-
 typedef struct BigInteger {
   int nbrLimbs;
   enum eSign sign;
