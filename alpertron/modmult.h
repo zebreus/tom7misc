@@ -20,13 +20,13 @@ MontgomeryParams GetMontgomeryParams(int len);
 MontgomeryParams GetMontgomeryParamsPowerOf2(int powerOf2);
 
 // product <- factor1 * factor2 mod modulus
-void modmult(const limb *factor1, const limb *factor2,
+void ModMult(const limb *factor1, const limb *factor2,
              int modulus_length, const limb *modulus,
              limb *product);
 
-void modPowBaseInt(const MontgomeryParams &params,
+void ModPowBaseInt(const MontgomeryParams &params,
                    int base, const limb *exp, int nbrGroupsExp, limb *power);
-void modPow(const MontgomeryParams &params,
+void ModPow(const MontgomeryParams &params,
             const limb *base, const limb *exp, int nbrGroupsExp, limb *power);
 
 void BigIntGeneralModularDivision(const BigInteger *Num, const BigInteger *Den,
@@ -43,7 +43,7 @@ void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *Te
 void SubtBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr,
                     int number_length);
 
-void ComputeInversePower2(const limb *value, /*@out@*/limb *result, /*@out@*/limb *aux,
+void ComputeInversePower2(const limb *value, /*@out@*/limb *result,
                           int number_length);
 
 #endif
