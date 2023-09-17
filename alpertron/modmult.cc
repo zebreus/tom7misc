@@ -38,6 +38,21 @@
 //   return t
 // end if
 
+static double getMantissa(const limb *ptrLimb, int nbrLimbs) {
+  assert(nbrLimbs >= 1);
+  double dN = (double)(ptrLimb - 1)->x;
+  double dInvLimb = 1.0 / (double)LIMB_RANGE;
+  if (nbrLimbs > 1) {
+    dN += (double)(ptrLimb - 2)->x * dInvLimb;
+  }
+
+  if (nbrLimbs > 2) {
+    dN += (double)(ptrLimb - 3)->x * dInvLimb * dInvLimb;
+  }
+
+  return dN;
+}
+
 
 // Multiply big number in Montgomery notation by integer.
 static void ModMultInt(limb* factorBig, int factorInt, limb* result,

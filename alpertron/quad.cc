@@ -1077,7 +1077,7 @@ struct Quad {
       }
       // u equals zero but v does not.
       // v must be a perfect square, otherwise there are no solutions.
-      squareRoot(ValV.limbs, ValG.limbs, ValV.nbrLimbs, &ValG.nbrLimbs);
+      SquareRoot(ValV.limbs, ValG.limbs, ValV.nbrLimbs, &ValG.nbrLimbs);
       ValG.sign = SIGN_POSITIVE;          // g <- sqrt(v).
       (void)BigIntMultiply(&ValG, &ValG, &Aux3);
       if (!BigIntEqual(&ValV, &Aux3)) {
@@ -2187,7 +2187,7 @@ struct Quad {
     multint(&U1, &ValP, 4);
     (void)BigIntDivide(&U1, &discr, &U1);
     BigIntChSign(&U1);               // 4P/(-D)
-    squareRoot(U1.limbs, ValL.limbs, U1.nbrLimbs, &ValL.nbrLimbs);  // sqrt(4P/(-D))
+    SquareRoot(U1.limbs, ValL.limbs, U1.nbrLimbs, &ValL.nbrLimbs);  // sqrt(4P/(-D))
 
     intToBigInteger(&U1, 1);         // Initial value of last convergent: 1/0.
     intToBigInteger(&V1, 0);
@@ -2974,7 +2974,7 @@ struct Quad {
       return;
     }
 
-    squareRoot(ValH.limbs, ValG.limbs, ValH.nbrLimbs, &ValG.nbrLimbs);
+    SquareRoot(ValH.limbs, ValG.limbs, ValH.nbrLimbs, &ValG.nbrLimbs);
     ValG.sign = SIGN_POSITIVE;          // g <- sqrt(discr).
     intToBigInteger(&U1, 1);
     intToBigInteger(&U2, 0);
@@ -3119,7 +3119,7 @@ struct Quad {
     }
 
     // Set G to floor(sqrt(L))
-    squareRoot(ValL.limbs, ValG.limbs, ValL.nbrLimbs, &ValG.nbrLimbs);
+    SquareRoot(ValL.limbs, ValG.limbs, ValL.nbrLimbs, &ValG.nbrLimbs);
     ValG.sign = SIGN_POSITIVE;          // g <- sqrt(discr).
     Xplus.nbrLimbs = 0;                 // Invalidate solutions.
     Xminus.nbrLimbs = 0;
@@ -3337,7 +3337,7 @@ struct Quad {
       NegativeDiscriminant();
       return;
     }
-    squareRoot(discr.limbs, ValG.limbs, discr.nbrLimbs, &ValG.nbrLimbs);
+    SquareRoot(discr.limbs, ValG.limbs, discr.nbrLimbs, &ValG.nbrLimbs);
     ValG.sign = SIGN_POSITIVE;
     (void)BigIntMultiply(&ValG, &ValG, &bigTmp);
     if (BigIntEqual(&bigTmp, &discr)) {
