@@ -478,26 +478,27 @@ void BigInteger2IntArray(int number_length,
   }
 }
 
+// Copies a fixed-width array of limbs to the bigint. Removes
+// high limbs that are 0 (which are trailing in little-endian
+// representation). I think this is "Uncompress" in the sense
+// that BigInteger has a fixed buffer large enough for "any number",
+// but in a way it is actually compression since the fixed-width
+// represents zero high limbs, but this does not.
 void UncompressLimbsBigInteger(int number_length,
-                               const limb *ptrValues, /*@out@*/BigInteger *bigint) {
+                               const limb *ptrValues,
+                               /*@out@*/BigInteger *bigint) {
   assert(number_length >= 1);
-  if (number_length == 1)
-  {
+  if (number_length == 1) {
     bigint->limbs[0].x = ptrValues->x;
     bigint->nbrLimbs = 1;
-  }
-  else
-  {
+  } else {
     int nbrLimbs;
-    const limb *ptrValue1;
     int numberLengthBytes = number_length * (int)sizeof(limb);
     (void)memcpy(bigint->limbs, ptrValues, numberLengthBytes);
-    ptrValue1 = ptrValues + number_length;
-    for (nbrLimbs = number_length; nbrLimbs > 1; nbrLimbs--)
-    {
+    const limb *ptrValue1 = ptrValues + number_length;
+    for (nbrLimbs = number_length; nbrLimbs > 1; nbrLimbs--) {
       ptrValue1--;
-      if (ptrValue1->x != 0)
-      {
+      if (ptrValue1->x != 0) {
         break;
       }
     }
@@ -506,7 +507,8 @@ void UncompressLimbsBigInteger(int number_length,
 }
 
 void CompressLimbsBigInteger(int number_length,
-                             /*@out@*/limb *ptrValues, const BigInteger *bigint) {
+                             /*@out@*/limb *ptrValues,
+                             const BigInteger *bigint) {
   assert(number_length >= 1);
   if (number_length == 1) {
     ptrValues->x = bigint->limbs[0].x;

@@ -46,12 +46,9 @@ limb TestNbr[MAX_LEN];
 // indicates that TestNbr is a power of 2
 int powerOf2Exponent;
 
-static limb aux3[MAX_LEN];
 static limb aux4[MAX_LEN];
 static limb aux5[MAX_LEN];
 static limb aux6[MAX_LEN];
-static limb resultModOdd[MAX_LEN];
-static limb resultModPower2[MAX_LEN];
 
 static void SmallModMult(int factor1, int factor2, limb *product, int mod) {
   if (mod < SMALL_NUMBER_BOUND) {
@@ -731,19 +728,20 @@ void BigIntModularDivision(const MontgomeryParams &params,
     BigIntAdd(&tmpDen, mod, &tmpDen);
   }
 
-  CompressLimbsBigInteger(NumberLength, aux3, &tmpDen);
-  // aux3 <- Den in Montgomery notation
+  limb tmp3[MAX_LEN];
+  CompressLimbsBigInteger(NumberLength, tmp3, &tmpDen);
+  // tmp3 <- Den in Montgomery notation
   // tmpDen.limbs <- 1 / Den in Montg notation.
-  ModMult(aux3, params.MontgomeryMultR2,
+  ModMult(tmp3, params.MontgomeryMultR2,
           NumberLength, TestNbr,
-          aux3);
-  (void)ModInvBigNbr(params, aux3, tmpDen.limbs, TestNbr, NumberLength);
+          tmp3);
+  (void)ModInvBigNbr(params, tmp3, tmpDen.limbs, TestNbr, NumberLength);
   CompressLimbsBigInteger(NumberLength, aux4, &tmpNum);
-          // aux3 <- Num / Den in standard notation.
+  // tmp3 <- Num / Den in standard notation.
   ModMult(tmpDen.limbs, aux4,
           NumberLength, TestNbr,
-          aux3);
-  UncompressLimbsBigInteger(NumberLength, aux3, quotient);  // Get Num/Den
+          tmp3);
+  UncompressLimbsBigInteger(NumberLength, tmp3, quotient);  // Get Num/Den
 }
 
 // On input:
@@ -755,6 +753,8 @@ void BigIntModularDivision(const MontgomeryParams &params,
 // If c = result mod odd, d = result mod 2^k:
 // compute result = c + (((d-c)*modinv(odd,2^k))%2^k)*odd
 static void ChineseRemainderTheorem(BigInteger *oddValue,
+                                    limb *resultModOdd,
+                                    limb *resultModPower2,
                                     int shRight, BigInteger* result) {
   if (shRight == 0) {
     const int number_length = oddValue->nbrLimbs;
@@ -767,12 +767,15 @@ static void ChineseRemainderTheorem(BigInteger *oddValue,
     int lenBytes = (NumberLength - oddValue->nbrLimbs) * (int)sizeof(limb);
     (void)memset(&oddValue->limbs[oddValue->nbrLimbs], 0, lenBytes);
   }
-  SubtractBigNbr(resultModPower2, resultModOdd, aux3, NumberLength);
+
+  limb tmp3[MAX_LEN];
+  SubtractBigNbr(resultModPower2, resultModOdd, tmp3, NumberLength);
   ComputeInversePower2(oddValue->limbs, aux4, NumberLength);
-  ModMult(aux4, aux3,
+  ModMult(aux4, tmp3,
           NumberLength, TestNbr,
           aux5);
-  (aux5 + (shRight / BITS_PER_GROUP))->x &= (1 << (shRight % BITS_PER_GROUP)) - 1;
+  (aux5 + (shRight / BITS_PER_GROUP))->x &=
+    (1 << (shRight % BITS_PER_GROUP)) - 1;
 
   if (NumberLength < oddValue->nbrLimbs) {
     int lenBytes = (oddValue->nbrLimbs - NumberLength) * (int)sizeof(limb);
@@ -818,16 +821,19 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
   (void)memcpy(TestNbr, oddValue.limbs, NumberLengthBytes);
   TestNbr[NumberLength].x = 0;
   MontgomeryParams params = GetMontgomeryParams(NumberLength);
-  CompressLimbsBigInteger(NumberLength, aux3, &tmpDen);
-  // aux3 <- Den in Montgomery notation
-  ModMult(aux3, params.MontgomeryMultR2,
+  limb tmp3[MAX_LEN];
+  CompressLimbsBigInteger(NumberLength, tmp3, &tmpDen);
+  // tmp3 <- Den in Montgomery notation
+  ModMult(tmp3, params.MontgomeryMultR2,
           NumberLength, TestNbr,
-          aux3);
-  // aux3 <- 1 / Den in Montg notation.
-  (void)ModInvBigNbr(params, aux3, aux3, TestNbr, NumberLength);
+          tmp3);
+  // tmp3 <- 1 / Den in Montg notation.
+  (void)ModInvBigNbr(params, tmp3, tmp3, TestNbr, NumberLength);
   CompressLimbsBigInteger(NumberLength, aux4, &tmpNum);
   // resultModOdd <- Num / Dev in standard notation.
-  ModMult(aux3, aux4,
+  // PERF: can be smaller than MAX_LEN.
+  limb resultModOdd[MAX_LEN];
+  ModMult(tmp3, aux4,
           NumberLength, TestNbr,
           resultModOdd);
 
@@ -840,14 +846,18 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
     return;
   }
   NumberLength = (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
-  CompressLimbsBigInteger(NumberLength, aux3, Den);
-  ComputeInversePower2(aux3, aux4, NumberLength);
+  CompressLimbsBigInteger(NumberLength, tmp3, Den);
+  ComputeInversePower2(tmp3, aux4, NumberLength);
   powerOf2Exponent = shRight;
+
   // resultModPower2 <- Num / Dev modulus 2^k.
+  // PERF: here too
+  limb resultModPower2[MAX_LEN];
   ModMult(Num->limbs, aux4,
           NumberLength, TestNbr,
           resultModPower2);
-  ChineseRemainderTheorem(&oddValue, shRight, quotient);
+  ChineseRemainderTheorem(&oddValue, resultModOdd, resultModPower2,
+                          shRight, quotient);
   powerOf2Exponent = 0;
 }
 
@@ -862,28 +872,32 @@ void ComputeInversePower2(const limb *value, limb *result, int number_length) {
   x = x * (2 - (N * x));       // 16 least significant bits of inverse correct.
   x = x * (2 - (N * x));       // 32 least significant bits of inverse correct.
   result->x = UintToInt((unsigned int)x & MAX_VALUE_LIMB);
-  for (int currLen = 2; currLen < number_length; currLen <<= 1)
-  {
+
+  for (int currLen = 2; currLen < number_length; currLen <<= 1) {
     multiply(value, result, tmp, currLen, NULL);    // tmp <- N * x
     Cy = 2U - (unsigned int)tmp[0].x;
     tmp[0].x = UintToInt(Cy & MAX_VALUE_LIMB);
-    for (int j = 1; j < currLen; j++)
-    {
+
+    // tmp <- 2 - N * x
+    for (int j = 1; j < currLen; j++) {
       Cy = (unsigned int)(-tmp[j].x) - (Cy >> BITS_PER_GROUP);
       tmp[j].x = UintToInt(Cy & MAX_VALUE_LIMB);
-    }                                                  // tmp <- 2 - N * x
-    multiply(result, tmp, result, currLen, NULL);      // tmp <- x * (2 - N * x)
+    }
+    // tmp <- x * (2 - N * x)
+    multiply(result, tmp, result, currLen, NULL);
   }
 
   // Perform last approximation to inverse.
   multiply(value, result, tmp, number_length, NULL);    // tmp <- N * x
   Cy = 2U - (unsigned int)tmp[0].x;
   tmp[0].x = UintToInt(Cy & MAX_VALUE_LIMB);
+  // tmp <- 2 - N * x
   for (int j = 1; j < number_length; j++) {
     Cy = (unsigned int)(-tmp[j].x) - (Cy >> BITS_PER_GROUP);
     tmp[j].x = UintToInt(Cy & MAX_VALUE_LIMB);
-  }                                                    // tmp <- 2 - N * x
-  multiply(result, tmp, result, number_length, NULL);   // tmp <- x * (2 - N * x)
+  }
+  // tmp <- x * (2 - N * x)
+  multiply(result, tmp, result, number_length, NULL);
 }
 
 MontgomeryParams GetMontgomeryParamsPowerOf2(int powerOf2) {

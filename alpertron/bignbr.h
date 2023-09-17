@@ -99,7 +99,8 @@ void IntArray2BigInteger(
 void BigInteger2IntArray(int number_length,
                          /*@out@*/int *ptrValues, const BigInteger *bigint);
 void UncompressLimbsBigInteger(int number_length,
-                               const limb *ptrValues, /*@out@*/BigInteger *bigint);
+                               const limb *ptrValues,
+                               /*@out@*/BigInteger *bigint);
 void CompressLimbsBigInteger(int number_length,
                              /*@out@*/limb *ptrValues, const BigInteger *bigint);
 void NbrToLimbs(int nbr, /*@out@*/limb *limbs, int len);
