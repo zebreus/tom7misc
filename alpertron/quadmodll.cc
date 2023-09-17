@@ -129,7 +129,8 @@ struct QuadModLL {
           (void)memcpy(TestNbr, prime.limbs, NumberLengthBytes);
           TestNbr[NumberLength].x = 0;
           MontgomeryParams params = GetMontgomeryParams(NumberLength);
-          BigIntModularDivision(params, &Q, &L, &prime, &Aux[T1]);
+          BigIntModularDivision(params, NumberLength, TestNbr,
+                                &Q, &L, &prime, &Aux[T1]);
         }
 
         (void)BigIntRemainder(&Aux[T1], &prime, &L);
@@ -216,7 +217,8 @@ struct QuadModLL {
       // Perform division using odd modulus r.
       MontgomeryParams params = GetMontgomeryParams(NumberLength);
       // Compute ptrSolution1 as ValC / |ValB|
-      BigIntModularDivision(params, pValC, pValB, pValN, ptrSolution1);
+      BigIntModularDivision(params, NumberLength, TestNbr,
+                            pValC, pValB, pValN, ptrSolution1);
       // Compute ptrSolution1 as -ValC / ValB
       if (!BigIntIsZero(ptrSolution1)) {
         BigIntSubt(pValN, ptrSolution1, ptrSolution1);
@@ -664,7 +666,8 @@ struct QuadModLL {
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
     BigInteger tmp2;
     intToBigInteger(&tmp2, 1);
-    BigIntModularDivision(params, &tmp2, &SqrtDisc, &prime, &sqrRoot);
+    BigIntModularDivision(params, NumberLength, TestNbr,
+                          &tmp2, &SqrtDisc, &prime, &sqrRoot);
     correctBits = 1;
     CopyBigInt(&Q, &prime);
 
@@ -776,7 +779,8 @@ struct QuadModLL {
     (void)memcpy(TestNbr, tmp1.limbs, NumberLengthBytes);
     TestNbr[NumberLength].x = 0;
     MontgomeryParams params = GetMontgomeryParams(NumberLength);
-    BigIntModularDivision(params, &tmp2, &ValAOdd, &tmp1, &Aux[0]);
+    BigIntModularDivision(params, NumberLength, TestNbr,
+                          &tmp2, &ValAOdd, &tmp1, &Aux[0]);
     CopyBigInt(&ValAOdd, &Aux[0]);
     if (BigIntIsZero(&discriminant)) {
       // Discriminant is zero.
@@ -874,7 +878,8 @@ struct QuadModLL {
     (void)memcpy(TestNbr, prime.limbs, NumberLengthBytes);
     TestNbr[NumberLength].x = 0;
     MontgomeryParams params = GetMontgomeryParams(NumberLength);
-    BigIntModularDivision(params, pValC, pValB, &prime, ptrSolution);
+    BigIntModularDivision(params, NumberLength, TestNbr,
+                          pValC, pValB, &prime, ptrSolution);
     BigIntNegate(ptrSolution, ptrSolution);
     if (ptrSolution->sign == SIGN_NEGATIVE) {
       BigIntAdd(ptrSolution, &prime, ptrSolution);
@@ -897,7 +902,8 @@ struct QuadModLL {
       (void)memcpy(TestNbr, V.limbs, NumberLengthBytes);
       TestNbr[NumberLength].x = 0;
       MontgomeryParams params = GetMontgomeryParams(NumberLength);
-      BigIntModularDivision(params, &Q, &L, &V, &Aux1);
+      BigIntModularDivision(params, NumberLength, TestNbr,
+                            &Q, &L, &V, &Aux1);
       BigIntSubt(ptrSolution, &Aux1, ptrSolution);
       (void)BigIntRemainder(ptrSolution, &V, ptrSolution);
       if (ptrSolution->sign == SIGN_NEGATIVE)
