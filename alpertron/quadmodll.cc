@@ -254,7 +254,8 @@ struct QuadModLL {
       // .. and length
       ptrFactorsMod++;
 
-      GetMontgomeryParamsPowerOf2(powerOf2);
+      int modulus_length = 0;
+      GetMontgomeryParamsPowerOf2(powerOf2, &modulus_length);
       // ptrSolution1 <- 1 / |ValB|
       ComputeInversePower2(pValB->limbs, ptrSolution1->limbs, NumberLength);
       // Compute ptrSolution1 as |ValC| / |ValB|
