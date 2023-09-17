@@ -53,6 +53,7 @@ enum eCallbackQuadModType {
 extern int NumberLength;
 
 struct Quad {
+  // TODO: Lots of these could be local; dynamically sized.
   enum eShowSolution showSolution;
   enum eCallbackQuadModType callbackQuadModType;
   char isDescending[400];
@@ -104,7 +105,6 @@ struct Quad {
   bool ExchXY;
   const char *divgcd;
   const char *varT = "t";
-  const char *squareText = "&sup2;";
   BigInteger discr;
   BigInteger U1;
   BigInteger U2;
@@ -193,7 +193,8 @@ struct Quad {
     showText(")</span>");
   }
 
-  void ShowLin(const BigInteger *coeffX, const BigInteger *coeffY, const BigInteger *coeffInd,
+  void ShowLin(const BigInteger *coeffX, const BigInteger *coeffY,
+               const BigInteger *coeffInd,
                const char *x, const char *y) {
     enum eLinearSolution t;
     t = Show(coeffX, x, SOLUTION_FOUND);
@@ -377,7 +378,8 @@ struct Quad {
       BigIntSubt(&bigTmp, Y, &bigTmp);
       X->sign = signX;
       Y->sign = signY;
-      if (bigTmp.sign == SIGN_POSITIVE) {       // At this moment |x| + |y| <= |xbak| + |ybak|
+      if (bigTmp.sign == SIGN_POSITIVE) {
+        // At this moment |x| + |y| <= |xbak| + |ybak|
         CopyBigInt(Xbak, X);
         CopyBigInt(Ybak, Y);
       }
@@ -2060,82 +2062,75 @@ struct Quad {
                 return;
               }
           }
-        if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 3))
-          {      // Discriminant is equal to -3.
-            if (Plow == 1)
-              {
-                intToBigInteger(&ValH, 1);
-                intToBigInteger(&ValI, 0);
-                if (teach)
-                  {
-                    showFirstSolution("-3", "1");
-                    showText("1, 0)</p>");
-                  }
-                NonSquareDiscrSolution(value);   // (1, 0)
-                CopyBigInt(&ValG, &ValQ);
-                subtractdivide(&ValG, 1, 2);
-                CopyBigInt(&ValH, &ValG);
-                intToBigInteger(&ValI, -1);
-                if (teach)
-                  {
-                    showOtherSolution("second");
-                    showText("(<var>Q</var> &#8209; 1)/2 = ");
-                    ShowNumber(&ValH);
-                    showText(", -1)</p>");
-                  }
-                NonSquareDiscrSolution(value);   // ((Q-1)/2, -1)
-                intToBigInteger(&ValI, -1);
-                BigIntSubt(&ValG, &ValI, &ValH);
-                if (teach)
-                  {
-                    showOtherSolution("third");
-                    showText("(<var>Q</var> + 1)/2 = ");
-                    ShowNumber(&ValH);
-                    showText(", -1)</p>");
-                  }
-                NonSquareDiscrSolution(value);   // ((Q+1)/2, -1)
-                equationNbr += 2;
-                return;
-              }
-            if (Plow == 3)
-              {
-                intToBigInteger(&ValI, -1);
-                CopyBigInt(&ValH, &ValQ);
-                subtractdivide(&ValH, -3, 6);
-                if (teach)
-                  {
-                    showFirstSolution("-3", "3");
-                    showText("(<var>Q</var> + 3)/6 = ");
-                    ShowNumber(&ValH);
-                    showText(", -1)</p>");
-                  }
-                NonSquareDiscrSolution(value);   // ((Q+3)/6, -1)
-                intToBigInteger(&ValI, -2);
-                CopyBigInt(&ValH, &ValQ);
-                subtractdivide(&ValH, 0, 3);
-                if (teach)
-                  {
-                    showOtherSolution("second");
-                    showText("<var>Q</var>/3 = ");
-                    ShowNumber(&ValH);
-                    showText(", -2)</p>");
-                  }
-                NonSquareDiscrSolution(value);   // (Q/3, -2)
-                intToBigInteger(&ValI, -1);
-                CopyBigInt(&ValH, &ValQ);
-                subtractdivide(&ValH, 3, 6);
-                if (teach)
-                  {
-                    showOtherSolution("third");
-                    showText("(<var>Q</var> &minus; 3)/6 = ");
-                    ShowNumber(&ValH);
-                    showText(", -1)</p>");
-                  }
-                NonSquareDiscrSolution(value);   // ((Q-3)/6, -1)
-                equationNbr += 2;
-                return;
-              }
+        if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 3)) {
+          // Discriminant is equal to -3.
+          if (Plow == 1) {
+            intToBigInteger(&ValH, 1);
+            intToBigInteger(&ValI, 0);
+            if (teach) {
+              showFirstSolution("-3", "1");
+              showText("1, 0)</p>");
+            }
+            NonSquareDiscrSolution(value);   // (1, 0)
+            CopyBigInt(&ValG, &ValQ);
+            subtractdivide(&ValG, 1, 2);
+            CopyBigInt(&ValH, &ValG);
+            intToBigInteger(&ValI, -1);
+            if (teach) {
+              showOtherSolution("second");
+              showText("(<var>Q</var> &#8209; 1)/2 = ");
+              ShowNumber(&ValH);
+              showText(", -1)</p>");
+            }
+            NonSquareDiscrSolution(value);   // ((Q-1)/2, -1)
+            intToBigInteger(&ValI, -1);
+            BigIntSubt(&ValG, &ValI, &ValH);
+            if (teach) {
+              showOtherSolution("third");
+              showText("(<var>Q</var> + 1)/2 = ");
+              ShowNumber(&ValH);
+              showText(", -1)</p>");
+            }
+            NonSquareDiscrSolution(value);   // ((Q+1)/2, -1)
+            equationNbr += 2;
+            return;
           }
+
+          if (Plow == 3) {
+            intToBigInteger(&ValI, -1);
+            CopyBigInt(&ValH, &ValQ);
+            subtractdivide(&ValH, -3, 6);
+            if (teach) {
+              showFirstSolution("-3", "3");
+              showText("(<var>Q</var> + 3)/6 = ");
+              ShowNumber(&ValH);
+              showText(", -1)</p>");
+            }
+            NonSquareDiscrSolution(value);   // ((Q+3)/6, -1)
+            intToBigInteger(&ValI, -2);
+            CopyBigInt(&ValH, &ValQ);
+            subtractdivide(&ValH, 0, 3);
+            if (teach) {
+              showOtherSolution("second");
+              showText("<var>Q</var>/3 = ");
+              ShowNumber(&ValH);
+              showText(", -2)</p>");
+            }
+            NonSquareDiscrSolution(value);   // (Q/3, -2)
+            intToBigInteger(&ValI, -1);
+            CopyBigInt(&ValH, &ValQ);
+            subtractdivide(&ValH, 3, 6);
+            if (teach) {
+              showOtherSolution("third");
+              showText("(<var>Q</var> &minus; 3)/6 = ");
+              ShowNumber(&ValH);
+              showText(", -1)</p>");
+            }
+            NonSquareDiscrSolution(value);   // ((Q-3)/6, -1)
+            equationNbr += 2;
+            return;
+          }
+        }
       }
     if (teach)
       {

@@ -527,10 +527,11 @@ struct QuadModLL {
     TestNbr[NumberLength].x = 0;
     MontgomeryParams params = GetMontgomeryParams(NumberLength);
     CopyBigInt(&Q, &prime);
+
     if ((prime.limbs[0].x & 3) == 3) {
       // prime mod 4 = 3
       subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
-      BigIntModularPower(params, &Aux[3], &Q, &SqrtDisc);
+      BigIntModularPower(params, NumberLength, TestNbr, &Aux[3], &Q, &SqrtDisc);
     } else {
       limb* toConvert;
       // Convert discriminant to Montgomery notation.
@@ -549,7 +550,8 @@ struct QuadModLL {
         // 2u
         AddBigNbrModN(Aux[6].limbs, Aux[6].limbs, Aux[7].limbs,
                       TestNbr, NumberLength);
-        ModPow(params, Aux[7].limbs, Q.limbs, Q.nbrLimbs, Aux[8].limbs);
+        ModPow(params, NumberLength, TestNbr,
+               Aux[7].limbs, Q.limbs, Q.nbrLimbs, Aux[8].limbs);
         // At this moment Aux[7].limbs is v in Montgomery notation.
 
         // Step 2.
@@ -598,14 +600,16 @@ struct QuadModLL {
 
         // Step 3.
         // Get z <- x^q (mod p) in Montgomery notation.
-        ModPowBaseInt(params, x, Q.limbs, Q.nbrLimbs, Aux[4].limbs);  // z
+        ModPowBaseInt(params, NumberLength, TestNbr,
+                      x, Q.limbs, Q.nbrLimbs, Aux[4].limbs);  // z
         // Step 4.
         NumberLengthBytes = NumberLength * (int)sizeof(limb);
         (void)memcpy(Aux[5].limbs, Aux[4].limbs, NumberLengthBytes); // y
         r = e;
         CopyBigInt(&K1, &Q);
         subtractdivide(&K1, 1, 2);
-        ModPow(params, Aux[6].limbs, K1.limbs, K1.nbrLimbs, Aux[7].limbs); // x
+        ModPow(params, NumberLength, TestNbr,
+               Aux[6].limbs, K1.limbs, K1.nbrLimbs, Aux[7].limbs); // x
         ModMult(Aux[6].limbs, Aux[7].limbs,
                 NumberLength, TestNbr,
                 Aux[8].limbs);         // v

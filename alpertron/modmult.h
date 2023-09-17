@@ -25,8 +25,10 @@ void ModMult(const limb *factor1, const limb *factor2,
              limb *product);
 
 void ModPowBaseInt(const MontgomeryParams &params,
+                   int modulus_length, const limb *modulus,
                    int base, const limb *exp, int nbrGroupsExp, limb *power);
 void ModPow(const MontgomeryParams &params,
+            int modulus_length, const limb *modulus,
             const limb *base, const limb *exp, int nbrGroupsExp, limb *power);
 
 void BigIntGeneralModularDivision(const BigInteger *Num, const BigInteger *Den,
@@ -35,6 +37,7 @@ void BigIntModularDivision(const MontgomeryParams &params,
                            const BigInteger* Num, const BigInteger* Den,
                            const BigInteger* mod, BigInteger* quotient);
 void BigIntModularPower(const MontgomeryParams &params,
+                        int modulus_length, const limb *modulus,
                         const BigInteger* base, const BigInteger* exponent,
                         BigInteger* power);
 

@@ -104,23 +104,25 @@ static void ModMultInt(limb* factorBig, int factorInt, limb* result,
 // Assumes GetMontgomeryParams routine for modulus already called.
 // This works only for odd moduli.
 void BigIntModularPower(const MontgomeryParams &params,
+                        int modulus_length, const limb *modulus,
                         const BigInteger* base, const BigInteger* exponent,
                         BigInteger* power) {
   limb tmp5[MAX_LEN];
-  CompressLimbsBigInteger(NumberLength, tmp5, base);
+  CompressLimbsBigInteger(modulus_length, tmp5, base);
   limb tmp6[MAX_LEN];
   ModMult(tmp5, params.MontgomeryMultR2,
-          NumberLength, TestNbr,
+          modulus_length, modulus,
           tmp6);   // Convert base to Montgomery notation.
-  ModPow(params, tmp6, exponent->limbs, exponent->nbrLimbs, tmp5);
-  int lenBytes = NumberLength * (int)sizeof(limb);
+  ModPow(params, modulus_length, modulus,
+         tmp6, exponent->limbs, exponent->nbrLimbs, tmp5);
+  int lenBytes = modulus_length * (int)sizeof(limb);
   limb tmp4[MAX_LEN];
   (void)memset(tmp4, 0, lenBytes); // Convert power to standard notation.
   tmp4[0].x = 1;
   ModMult(tmp4, tmp5,
-          NumberLength, TestNbr,
+          modulus_length, modulus,
           tmp6);
-  UncompressLimbsBigInteger(NumberLength, tmp6, power);
+  UncompressLimbsBigInteger(modulus_length, tmp6, power);
 }
 
 // Input: base = base in Montgomery notation.
@@ -128,18 +130,19 @@ void BigIntModularPower(const MontgomeryParams &params,
 //        nbrGroupsExp = number of limbs of exponent.
 // Output: power = power in Montgomery notation.
 void ModPow(const MontgomeryParams &params,
+            int modulus_length, const limb *modulus,
             const limb* base, const limb* exp, int nbrGroupsExp, limb* power) {
-  int lenBytes = (NumberLength + 1) * (int)sizeof(*power);
+  int lenBytes = (modulus_length + 1) * (int)sizeof(*power);
   (void)memcpy(power, params.MontgomeryMultR1, lenBytes);  // power <- 1
   for (int index = nbrGroupsExp - 1; index >= 0; index--) {
     int groupExp = (exp + index)->x;
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
       ModMult(power, power,
-              NumberLength, TestNbr,
+              modulus_length, modulus,
               power);
       if (((unsigned int)groupExp & mask) != 0U) {
         ModMult(power, base,
-                NumberLength, TestNbr,
+                modulus_length, modulus,
                 power);
       }
     }
@@ -147,17 +150,18 @@ void ModPow(const MontgomeryParams &params,
 }
 
 void ModPowBaseInt(const MontgomeryParams &params,
+                   int modulus_length, const limb *modulus,
                    int base, const limb* exp, int nbrGroupsExp, limb* power) {
-  int NumberLengthBytes = (NumberLength + 1) * (int)sizeof(limb);
+  int NumberLengthBytes = (modulus_length + 1) * (int)sizeof(limb);
   (void)memcpy(power, params.MontgomeryMultR1, NumberLengthBytes);  // power <- 1
   for (int index = nbrGroupsExp - 1; index >= 0; index--) {
     int groupExp = (exp + index)->x;
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
       ModMult(power, power,
-              NumberLength, TestNbr,
+              modulus_length, modulus,
               power);
       if (((unsigned int)groupExp & mask) != 0U) {
-        ModMultInt(power, base, power, TestNbr, NumberLength);
+        ModMultInt(power, base, power, modulus, modulus_length);
       }
     }
   }
@@ -312,7 +316,8 @@ static void InitHighUandV(
 /* U' <- aU - bV, V' <- -cU + dV                                       */
 /***********************************************************************/
 static bool ModInvBigNbr(const MontgomeryParams &params,
-                         limb* num, limb* inv, limb* mod, int nbrLen) {
+                         int modulus_length, limb* modulus,
+                         limb* num, limb* inv) {
   int k;
   int steps;
   int a;
@@ -328,30 +333,30 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   int lowU;
   int lowV;
   unsigned int borrow;
-  assert(nbrLen >= 1);
-  if (nbrLen == 1) {
-    inv->x = modInv(num->x, mod->x);
+  assert(modulus_length >= 1);
+  if (modulus_length == 1) {
+    inv->x = modInv(num->x, modulus->x);
     return true;
   }
 
   if (powerOf2Exponent != 0) {
-    // TestNbr is a power of 2.
+    // modulus is a power of 2.
     unsigned int powerExp =
       (unsigned int)powerOf2Exponent % (unsigned int)BITS_PER_GROUP;
-    ComputeInversePower2(num, inv, NumberLength);
+    ComputeInversePower2(num, inv, modulus_length);
     (inv + (powerOf2Exponent / BITS_PER_GROUP))->x &=
       UintToInt((1U << powerExp) - 1U);
     return true;
   }
 
   //  1. U <- M, V <- X, R <- 0, S <- 1, k <- 0
-  size = (nbrLen + 1) * (int)sizeof(limb);
-  (mod + nbrLen)->x = 0;
-  (num + nbrLen)->x = 0;
+  size = (modulus_length + 1) * (int)sizeof(limb);
+  (modulus + modulus_length)->x = 0;
+  (num + modulus_length)->x = 0;
   // PERF can just be length size, probably?
   limb U[MAX_LEN];
   limb V[MAX_LEN];
-  (void)memcpy(U, mod, size);
+  (void)memcpy(U, modulus, size);
   (void)memcpy(V, num, size);
   // Maximum value of R and S can be up to 2*M, so one more limb is needed.
   limb R[MAX_LEN];
@@ -369,7 +374,7 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   c = 0;
 
   // Find length of U.
-  for (lenU = nbrLen - 1; lenU > 0; lenU--) {
+  for (lenU = modulus_length - 1; lenU > 0; lenU--) {
     if (U[lenU].x != 0) {
       break;
     }
@@ -377,7 +382,7 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   lenU++;
 
   // Find length of V.
-  for (lenV = nbrLen - 1; lenV > 0; lenV--) {
+  for (lenV = modulus_length - 1; lenV > 0; lenV--) {
     if (V[lenV].x != 0) {
       break;
     }
@@ -627,13 +632,13 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
       if (steps >= BITS_PER_GROUP_MINUS_1) {
         // compute now R and S and reset a, b, c and d.
         // R' <- aR + bS, S' <- cR + dS
-        AddMult(R, a, b, S, c, d, nbrLen + 1);
+        AddMult(R, a, b, S, c, d, modulus_length + 1);
         b = 0;     // R' = R, S' = S.
         c = 0;
         a = 1;
         d = 1;
         k += steps;
-        if (k > (nbrLen * 64)) {
+        if (k > (modulus_length * 64)) {
           return false;  // Could not compute inverse.
         }
         steps = 0;
@@ -641,20 +646,20 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
     }
   }
 
-  AddMult(R, a, b, S, c, d, nbrLen + 1);
+  AddMult(R, a, b, S, c, d, modulus_length + 1);
   k += steps;
   //  8. if R >= M then R <- R - M
-  for (i = nbrLen; i > 0; i--) {
-    if (R[i].x != (mod + i)->x) {
+  for (i = modulus_length; i > 0; i--) {
+    if (R[i].x != (modulus + i)->x) {
       break;
     }
   }
 
-  if ((unsigned int)R[i].x >= (unsigned int)(mod + i)->x) {
+  if ((unsigned int)R[i].x >= (unsigned int)(modulus + i)->x) {
     // R >= M.
     borrow = 0U;
-    for (i = 0; i <= nbrLen; i++) {
-      borrow = (unsigned int)R[i].x - (unsigned int)(mod + i)->x - borrow;
+    for (i = 0; i <= modulus_length; i++) {
+      borrow = (unsigned int)R[i].x - (unsigned int)(modulus + i)->x - borrow;
       R[i].x = UintToInt(borrow & MAX_VALUE_LIMB);
       borrow >>= BITS_PER_GROUP;
     }
@@ -662,41 +667,41 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
 
   //  9. R <- M - R
   borrow = 0U;
-  for (i = 0; i <= nbrLen; i++) {
-    borrow = (unsigned int)(mod + i)->x - (unsigned int)R[i].x - borrow;
+  for (i = 0; i <= modulus_length; i++) {
+    borrow = (unsigned int)(modulus + i)->x - (unsigned int)R[i].x - borrow;
     R[i].x = UintToInt(borrow & MAX_VALUE_LIMB);
     borrow >>= BITS_PER_GROUP;
   }
 
-  R[nbrLen].x = 0;
+  R[modulus_length].x = 0;
   // At this moment R = x^(-1)*2^k
   // 10. R <- MonPro(R, R2)
   ModMult(R, params.MontgomeryMultR2,
-          NumberLength, TestNbr,
+          modulus_length, modulus,
           R);
-  R[nbrLen].x = 0;
+  R[modulus_length].x = 0;
   // At this moment R = x^(-1)*2^(k+m)
   // 11. return MonPro(R, 2^(m-k))
   (void)memset(S, 0, size);
-  bitCount = (nbrLen * BITS_PER_GROUP) - k;
+  bitCount = (modulus_length * BITS_PER_GROUP) - k;
 
   if (bitCount < 0) {
     unsigned int shLeft;
-    bitCount += nbrLen * BITS_PER_GROUP;
+    bitCount += modulus_length * BITS_PER_GROUP;
     shLeft = (unsigned int)bitCount % (unsigned int)BITS_PER_GROUP;
     S[bitCount / BITS_PER_GROUP].x = UintToInt(1U << shLeft);
     ModMult(R, S,
-            NumberLength, TestNbr,
+            modulus_length, modulus,
             inv);
   } else {
     unsigned int shLeft;
     shLeft = (unsigned int)bitCount % (unsigned int)BITS_PER_GROUP;
     S[bitCount / BITS_PER_GROUP].x = UintToInt(1U << shLeft);
     ModMult(R, S,
-            NumberLength, TestNbr,
+            modulus_length, modulus,
             inv);
     ModMult(inv, params.MontgomeryMultR2,
-            NumberLength, TestNbr,
+            modulus_length, modulus,
             inv);
   }
 
@@ -730,7 +735,7 @@ void BigIntModularDivision(const MontgomeryParams &params,
   ModMult(tmp3, params.MontgomeryMultR2,
           NumberLength, TestNbr,
           tmp3);
-  (void)ModInvBigNbr(params, tmp3, tmpDen.limbs, TestNbr, NumberLength);
+  (void)ModInvBigNbr(params, NumberLength, TestNbr, tmp3, tmpDen.limbs);
   limb tmp4[MAX_LEN];
   CompressLimbsBigInteger(NumberLength, tmp4, &tmpNum);
   // tmp3 <- Num / Den in standard notation.
@@ -826,7 +831,7 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
           NumberLength, TestNbr,
           tmp3);
   // tmp3 <- 1 / Den in Montg notation.
-  (void)ModInvBigNbr(params, tmp3, tmp3, TestNbr, NumberLength);
+  (void)ModInvBigNbr(params, NumberLength, TestNbr, tmp3, tmp3);
   limb tmp4[MAX_LEN];
   CompressLimbsBigInteger(NumberLength, tmp4, &tmpNum);
   // resultModOdd <- Num / Dev in standard notation.
