@@ -30,11 +30,11 @@ CC_LIB=../cc-lib
 CXXFLAGS=-I $(CC_LIB) $(GMP_CFLAGS) -g -O -march=native -Wall $(PLATFORM_CFLAGS)
 LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)
 
-HEADERS=bignbr.h factor.h output.h modmult.h quadmodll.h baseconv.h bigconv.h quad.h
+HEADERS=bignbr.h factor.h modmult.h quadmodll.h baseconv.h bigconv.h quad.h
 
 CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/bignum/big.o
 
-ALPERTRON_OBJECTS=baseconv.o modmult.o quad.o quadmodll.o bignbr.o output.o bigconv.o factor.o
+ALPERTRON_OBJECTS=baseconv.o modmult.o quad.o quadmodll.o bignbr.o bigconv.o factor.o
 
 quad.exe:  main.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
 	@echo -n "@"

@@ -20,7 +20,6 @@
 #include <math.h>
 
 #include "bignbr.h"
-#include "output.h"
 #include "factor.h"
 #include "quadmodll.h"
 #include "modmult.h"
@@ -141,28 +140,43 @@ struct Quad {
   int modulus_length;
   limb TheModulus[MAX_LEN];
 
+  std::string *output = nullptr;
+
   QuadModLLResult qmllr;
 
   void showText(const char *text) {
-    output += text;
+    if (output != nullptr)
+      *output += text;
+  }
+
+  inline void ShowChar(char c) {
+    if (output != nullptr)
+      output->push_back(c);
   }
 
   void showLimbs(const limb *limbs, int num_limbs) {
-    BigInt b = LimbsToBigInt(limbs, num_limbs);
-    output += b.ToString();
+    if (output != nullptr) {
+      BigInt b = LimbsToBigInt(limbs, num_limbs);
+      *output += b.ToString();
+    }
   }
 
   void showMinus(void) {
-    output += "&minus;";
+    if (output != nullptr)
+      *output += "&minus;";
   }
 
   void ShowNumber(const BigInteger* value) {
-    BigInt b = BigIntegerToBigInt(value);
-    output += b.ToString();
+    if (output != nullptr) {
+      BigInt b = BigIntegerToBigInt(value);
+      *output += b.ToString();
+    }
   }
 
   void showInt(int value) {
-    StringAppendF(&output, "%d", value);
+    if (output != nullptr) {
+      StringAppendF(output, "%d", value);
+    }
   }
 
   void showSquare(void) {
@@ -177,13 +191,13 @@ struct Quad {
     }
   }
 
-  void startResultBox(enum eLinearSolution Ret) {
+  void startResultBox(eLinearSolution Ret) {
     if (teach && (Ret != NO_SOLUTIONS)) {
       showText("<div class=\"outerbox\"><div class=\"box\">");
     }
   }
 
-  void endResultBox(enum eLinearSolution Ret) {
+  void endResultBox(eLinearSolution Ret) {
     if (teach && (Ret != NO_SOLUTIONS)) {
       showText("</div></div>");
     }
@@ -198,7 +212,7 @@ struct Quad {
   void ShowLin(const BigInteger *coeffX, const BigInteger *coeffY,
                const BigInteger *coeffInd,
                const char *x, const char *y) {
-    enum eLinearSolution t;
+    eLinearSolution t;
     t = Show(coeffX, x, SOLUTION_FOUND);
     t = Show(coeffY, y, t);
     Show1(coeffInd, t);
@@ -212,16 +226,16 @@ struct Quad {
     if (!BigIntIsZero(ind)) {
       ShowNumber(ind);
     }
-    output.push_back(' ');
+    ShowChar(' ');
 
     if (lin->sign == SIGN_NEGATIVE) {
       showMinus();
     } else if (!BigIntIsZero(lin) && !BigIntIsZero(ind)) {
-      output.push_back('+');
+      ShowChar('+');
     } else {
       // Nothing to do.
     }
-    output.push_back(' ');
+    ShowChar(' ');
     if (!BigIntIsZero(lin)) {
       if ((lin->nbrLimbs != 1) || (lin->limbs[0].x != 1)) {
         // abs(lin) is not 1
@@ -229,12 +243,12 @@ struct Quad {
         Aux0.sign = SIGN_POSITIVE;   // Do not show negative sign twice.
         ShowNumber(&Aux0);
       }
-      output.push_back(' ');
+      ShowChar(' ');
       showText(var);
     }
   }
 
-  void PrintLinear(enum eLinearSolution Ret, const char *var) {
+  void PrintLinear(eLinearSolution Ret, const char *var) {
     if (Ret == NO_SOLUTIONS) {
       return;
     }
@@ -270,7 +284,7 @@ struct Quad {
       // abs(coeffT2) = 1
       if (coeffT2->sign == SIGN_POSITIVE) {
         // coeffT2 = 1
-        output.push_back(' ');
+        ShowChar(' ');
       } else {
         // coeffT2 = -1
         showMinus();
@@ -281,7 +295,7 @@ struct Quad {
     else if (!BigIntIsZero(coeffT2)) {
       // coeffT2 is not zero.
       ShowNumber(coeffT2);
-      output.push_back(' ');
+      ShowChar(' ');
       showText(var1);
       showSquare();
     } else {
@@ -393,28 +407,31 @@ struct Quad {
   }
 
   eLinearSolution Show(const BigInteger *num, const string &str,
-                       enum eLinearSolution t) {
-    enum eLinearSolution tOut = t;
+                       eLinearSolution t) {
+    eLinearSolution tOut = t;
     if (!BigIntIsZero(num)) {
       // num is not zero.
       if ((t == NO_SOLUTIONS) && (num->sign == SIGN_POSITIVE)) {
-        output += " +";
+        if (output != nullptr)
+          *output += " +";
       }
 
       if (num->sign == SIGN_NEGATIVE) {
-        output += " -";
+        if (output != nullptr)
+          *output += " -";
       }
 
       if ((num->nbrLimbs != 1) || (num->limbs[0].x != 1)) {
         // num is not 1 or -1.
-        output.push_back(' ');
+        ShowChar(' ');
         showLimbs(num->limbs, num->nbrLimbs);
         showText("&nbsp;&#8290;");
       } else {
         showText("&nbsp;");
       }
 
-      output += str;
+      if (output != nullptr)
+        *output += str;
 
       if (t == SOLUTION_FOUND) {
         tOut = NO_SOLUTIONS;
@@ -423,9 +440,9 @@ struct Quad {
     return tOut;
   }
 
-  void Show1(const BigInteger *num, enum eLinearSolution t) {
+  void Show1(const BigInteger *num, eLinearSolution t) {
     int u = Show(num, "", t);
-    output.push_back(' ');
+    ShowChar(' ');
     if (((u & 1) == 0) ||
         ((num->nbrLimbs == 1) && (num->limbs[0].x == 1))) {
       // Show absolute value of num.
@@ -439,7 +456,7 @@ struct Quad {
       const BigInteger *coeffE, const BigInteger *coeffF,
       const char *x, const char *y) {
 
-    enum eLinearSolution t;
+    eLinearSolution t;
     string vxx = StringPrintf("%s&sup2;", x);
     t = Show(coeffA, vxx, SOLUTION_FOUND);
 
@@ -523,7 +540,8 @@ struct Quad {
       showText("<p>There are no solutions modulo ");
       ShowNumber(&qmllr.prime);
       if (expon != 1) {
-        StringAppendF(&output, "<sup>%d</sup>", expon);
+        if (output != nullptr)
+          StringAppendF(output, "<sup>%d</sup>", expon);
       }
       showText(", so the modular equation does not have any solution.</p>");
     }
@@ -543,7 +561,8 @@ struct Quad {
     showText("<p>Solutions modulo ");
     ShowNumber(&qmllr.prime);
     if (expon != 1) {
-      StringAppendF(&output, "<sup>%d</sup>", expon);
+      if (output != nullptr)
+        StringAppendF(output, "<sup>%d</sup>", expon);
     }
     showText(": ");
     do {
@@ -699,9 +718,9 @@ struct Quad {
 
   void paren(const BigInteger *num) {
     if (num->sign == SIGN_NEGATIVE) {
-      output.push_back('(');
+      ShowChar('(');
       ShowNumber(num);
-      output.push_back(')');
+      ShowChar(')');
     } else {
       ShowNumber(num);
     }
@@ -1057,7 +1076,7 @@ struct Quad {
     }
     if (BigIntIsZero(&ValU)) {
       // u equals zero, so (t+d)^2 = v.
-      enum eLinearSolution ret;
+      eLinearSolution ret;
       if (ValV.sign == SIGN_NEGATIVE) {
         // There are no solutions when v is negative.
         if (teach) {
@@ -2369,7 +2388,7 @@ struct Quad {
     }
     if (BigIntIsZero(&ValK)) {
       // k equals zero.
-      enum eLinearSolution ret;
+      eLinearSolution ret;
       if (BigIntIsZero(&ValA)) {
         // Coefficient a does equals zero.
         // Solve Dy + beta = 0
@@ -2786,8 +2805,8 @@ struct Quad {
 
   void ShowRecSol(char variable, const BigInteger *coefX,
                   const BigInteger *coefY, const BigInteger *coefInd) {
-    enum eLinearSolution t;
-    output.push_back(variable);
+    eLinearSolution t;
+    ShowChar(variable);
     showText("<sub>n+1</sub> = ");
     t = Show(coefX, "x<sub>n</sub>", SOLUTION_FOUND);
     t = Show(coefY, "y<sub>n</sub>", t);
@@ -2823,7 +2842,7 @@ struct Quad {
       }
     } else {
       ShowRecSol('x', &ValP, &ValQ, &ValK);
-      output += "<br>";
+      showText("<br>");
       ShowRecSol('y', &ValR, &ValS, &ValL);
     }
 
@@ -3200,7 +3219,7 @@ struct Quad {
     (void)BigIntDivide(&ValF, &Aux1, &ValF);
     // Test whether the equation is linear. A = B = C = 0.
     if (BigIntIsZero(&ValA) && BigIntIsZero(&ValB) && BigIntIsZero(&ValC)) {
-      enum eLinearSolution ret = LinearEq(&ValD, &ValE, &ValF);
+      eLinearSolution ret = LinearEq(&ValD, &ValE, &ValF);
       startResultBox(ret);
       PrintLinear(ret, "t");
       endResultBox(ret);
@@ -3350,7 +3369,6 @@ struct Quad {
 
   void quadBigInt(BigInteger *a, BigInteger *b, BigInteger *c,
                   BigInteger *d, BigInteger *e, BigInteger *f) {
-
     CopyBigInt(&ValA, a);
     CopyBigInt(&ValB, b);
     CopyBigInt(&ValC, c);
@@ -3364,9 +3382,12 @@ struct Quad {
     ShowEq(&ValA, &ValB, &ValC, &ValD, &ValE, &ValF, "x", "y");
     showText(" = 0</h2>");
     SolNbr = 0;
-    size_t preamble_size = output.size();
+
+    size_t preamble_size = (output == nullptr) ? 0 : output->size();
+
     SolveQuadEquation();
-    if (output.size() == preamble_size) {
+
+    if (output != nullptr && output->size() == preamble_size) {
       showText("<p>The equation does not have integer solutions.</p>");
     }
   }
@@ -3376,8 +3397,10 @@ struct Quad {
 
 void quadBigInt(bool t,
                 BigInteger *a, BigInteger *b, BigInteger *c,
-                BigInteger *d, BigInteger *e, BigInteger *f) {
+                BigInteger *d, BigInteger *e, BigInteger *f,
+                std::string *output) {
   std::unique_ptr<Quad> quad(new Quad);
   quad->teach = t;
+  quad->output = output;
   quad->quadBigInt(a, b, c, d, e, f);
 }
