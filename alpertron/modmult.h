@@ -16,7 +16,7 @@ struct MontgomeryParams {
   int NumberLengthR1;
 };
 
-MontgomeryParams GetMontgomeryParams(int len);
+MontgomeryParams GetMontgomeryParams(int modulus_length, limb *modulus);
 MontgomeryParams GetMontgomeryParamsPowerOf2(int powerOf2);
 
 // product <- factor1 * factor2 mod modulus

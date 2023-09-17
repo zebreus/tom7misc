@@ -642,7 +642,7 @@ struct Quad {
       lenBytes = NumberLength * (int)sizeof(limb);
       (void)memcpy(TestNbr, modulus.limbs, lenBytes);
       TestNbr[NumberLength].x = 0;
-      MontgomeryParams params = GetMontgomeryParams(NumberLength);
+      MontgomeryParams params = GetMontgomeryParams(NumberLength, TestNbr);
       BigIntModularDivision(params, NumberLength, TestNbr,
                             &coeffIndep, &coeffLinear, &modulus, &z);
       if (!BigIntIsZero(&z)) {

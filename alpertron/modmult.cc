@@ -804,7 +804,6 @@ static void ChineseRemainderTheorem(BigInteger *oddValue,
 void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
                                   const BigInteger* mod, BigInteger* quotient) {
   int shRight;
-  int NumberLengthBytes;
   BigInteger oddValue;
   CopyBigInt(&oddValue, mod);
   DivideBigNbrByMaxPowerOf2(&shRight, oddValue.limbs, &oddValue.nbrLimbs);
@@ -823,46 +822,47 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
     BigIntAdd(&tmpDen, &oddValue, &tmpDen);
   }
 
-  NumberLength = oddValue.nbrLimbs;
-  NumberLengthBytes = NumberLength * (int)sizeof(limb);
-  (void)memcpy(TestNbr, oddValue.limbs, NumberLengthBytes);
-  TestNbr[NumberLength].x = 0;
-  MontgomeryParams params = GetMontgomeryParams(NumberLength);
+  int modulus_length = oddValue.nbrLimbs;
+  int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+  limb modulus[MAX_LEN];
+  (void)memcpy(modulus, oddValue.limbs, NumberLengthBytes);
+  modulus[modulus_length].x = 0;
+  MontgomeryParams params = GetMontgomeryParams(modulus_length, modulus);
   limb tmp3[MAX_LEN];
-  CompressLimbsBigInteger(NumberLength, tmp3, &tmpDen);
+  CompressLimbsBigInteger(modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
   ModMult(tmp3, params.MontgomeryMultR2,
-          NumberLength, TestNbr,
+          modulus_length, modulus,
           tmp3);
   // tmp3 <- 1 / Den in Montg notation.
-  (void)ModInvBigNbr(params, NumberLength, TestNbr, tmp3, tmp3);
+  (void)ModInvBigNbr(params, modulus_length, modulus, tmp3, tmp3);
   limb tmp4[MAX_LEN];
-  CompressLimbsBigInteger(NumberLength, tmp4, &tmpNum);
+  CompressLimbsBigInteger(modulus_length, tmp4, &tmpNum);
   // resultModOdd <- Num / Dev in standard notation.
   // PERF: can be smaller than MAX_LEN.
   limb resultModOdd[MAX_LEN];
   ModMult(tmp3, tmp4,
-          NumberLength, TestNbr,
+          modulus_length, modulus,
           resultModOdd);
 
   // Compute inverse mod power of 2.
   if (shRight == 0) {
     // Modulus is odd. Quotient already computed.
     const int number_length = oddValue.nbrLimbs;
-    NumberLength = number_length;
     UncompressLimbsBigInteger(number_length, resultModOdd, quotient);
     return;
   }
-  NumberLength = (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
-  CompressLimbsBigInteger(NumberLength, tmp3, Den);
-  ComputeInversePower2(tmp3, tmp4, NumberLength);
+
+  modulus_length = (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
+  CompressLimbsBigInteger(modulus_length, tmp3, Den);
+  ComputeInversePower2(tmp3, tmp4, modulus_length);
   powerOf2Exponent = shRight;
 
   // resultModPower2 <- Num / Dev modulus 2^k.
   // PERF: here too
   limb resultModPower2[MAX_LEN];
   ModMult(Num->limbs, tmp4,
-          NumberLength, TestNbr,
+          modulus_length, TestNbr,
           resultModPower2);
   ChineseRemainderTheorem(&oddValue, resultModOdd, resultModPower2,
                           shRight, quotient);
@@ -958,35 +958,34 @@ static void AdjustModN(limb *Nbr, const limb *Modulus, int nbrLen) {
 // N = M^(-1) mod R
 // This routine is only valid for odd or power of 2 moduli.
 
-MontgomeryParams GetMontgomeryParams(int len) {
+MontgomeryParams GetMontgomeryParams(int modulus_length, limb *modulus) {
   MontgomeryParams params;
   int j;
-  int NumberLengthBytes;
-  TestNbr[len].x = 0;
-  NumberLength = len;
+  modulus[modulus_length].x = 0;
+  NumberLength = modulus_length;
   powerOf2Exponent = 0;    // Indicate not power of 2 in advance.
   params.NumberLengthR1 = 1;
 
-  if ((NumberLength == 1) && ((TestNbr[0].x & 1) != 0)) {
+  if ((modulus_length == 1) && ((modulus[0].x & 1) != 0)) {
     params.MontgomeryMultR1[0].x = 1;
     params.MontgomeryMultR2[0].x = 1;
     return params;
   }
 
-  // Check whether TestNbr is a power of 2.
-  for (j = 0; j < (NumberLength-1); j++) {
-    if (TestNbr[j].x != 0) {
+  // Check whether modulus is a power of 2.
+  for (j = 0; j < (modulus_length-1); j++) {
+    if (modulus[j].x != 0) {
       break;
     }
   }
 
-  if (j == (NumberLength - 1)) {
-    // TestNbr is a power of 2.
-    int value = TestNbr[NumberLength - 1].x;
+  if (j == (modulus_length - 1)) {
+    // modulus is a power of 2.
+    int value = modulus[modulus_length - 1].x;
     for (j = 0; j < BITS_PER_GROUP; j++) {
       if (value == 1) {
-        NumberLengthBytes = NumberLength * (int)sizeof(limb);
-        powerOf2Exponent = ((NumberLength - 1)*BITS_PER_GROUP) + j;
+        int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+        powerOf2Exponent = ((modulus_length - 1)*BITS_PER_GROUP) + j;
         (void)memset(params.MontgomeryMultR1, 0, NumberLengthBytes);
         (void)memset(params.MontgomeryMultR2, 0, NumberLengthBytes);
         params.MontgomeryMultR1[0].x = 1;
@@ -997,25 +996,25 @@ MontgomeryParams GetMontgomeryParams(int len) {
     }
   }
 
-  // Compute MontgomeryMultN as 1/TestNbr (mod 2^k) using Newton method,
+  // Compute MontgomeryMultN as 1/modulus (mod 2^k) using Newton method,
   // which doubles the precision for each iteration.
-  // In the formula above: k = BITS_PER_GROUP * NumberLength.
-  ComputeInversePower2(TestNbr, params.MontgomeryMultN, NumberLength);
-  params.MontgomeryMultN[NumberLength].x = 0;
+  // In the formula above: k = BITS_PER_GROUP * modulus_length.
+  ComputeInversePower2(modulus, params.MontgomeryMultN, modulus_length);
+  params.MontgomeryMultN[modulus_length].x = 0;
   // Compute MontgomeryMultR1 as 1 in Montgomery notation,
-  // this is 2^(NumberLength*BITS_PER_GROUP) % TestNbr.
-  j = NumberLength;
+  // this is 2^(modulus_length*BITS_PER_GROUP) % modulus.
+  j = modulus_length;
   params.MontgomeryMultR1[j].x = 1;
   do {
     j--;
     params.MontgomeryMultR1[j].x = 0;
   } while (j > 0);
-  AdjustModN(params.MontgomeryMultR1, TestNbr, len);
-  params.MontgomeryMultR1[NumberLength].x = 0;
-  NumberLengthBytes = (NumberLength + 1) * (int)sizeof(limb);
+  AdjustModN(params.MontgomeryMultR1, modulus, modulus_length);
+  params.MontgomeryMultR1[modulus_length].x = 0;
+  int NumberLengthBytes = (modulus_length + 1) * (int)sizeof(limb);
   (void)memcpy(params.MontgomeryMultR2, params.MontgomeryMultR1,
                NumberLengthBytes);
-  for (params.NumberLengthR1 = NumberLength;
+  for (params.NumberLengthR1 = modulus_length;
        params.NumberLengthR1 > 0;
        params.NumberLengthR1--) {
     if (params.MontgomeryMultR1[params.NumberLengthR1 - 1].x != 0) {
@@ -1023,14 +1022,14 @@ MontgomeryParams GetMontgomeryParams(int len) {
     }
   }
 
-  // Compute MontgomeryMultR2 as 2^(2*NumberLength*BITS_PER_GROUP) % TestNbr.
-  for (j = NumberLength; j > 0; j--) {
-    NumberLengthBytes = NumberLength * (int)sizeof(limb);
+  // Compute MontgomeryMultR2 as 2^(2*modulus_length*BITS_PER_GROUP) % modulus.
+  for (j = modulus_length; j > 0; j--) {
+    int NumberLengthBytes = modulus_length * (int)sizeof(limb);
     (void)memmove(&params.MontgomeryMultR2[1],
                   &params.MontgomeryMultR2[0],
                   NumberLengthBytes);
     params.MontgomeryMultR2[0].x = 0;
-    AdjustModN(params.MontgomeryMultR2, TestNbr, len);
+    AdjustModN(params.MontgomeryMultR2, modulus, modulus_length);
   }
 
   return params;
