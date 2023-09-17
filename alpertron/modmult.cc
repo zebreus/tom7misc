@@ -65,32 +65,26 @@ static void SmallModMult(int factor1, int factor2, limb *product, int mod) {
 // Multiply big number in Montgomery notation by integer.
 static void ModMultInt(limb* factorBig, int factorInt, limb* result,
                        const limb* pTestNbr, int nbrLen) {
-  int64_t carry;
-  int i;
-  int TrialQuotient;
-  limb* ptrFactorBig;
-  const limb* ptrTestNbr;
-  double dTestNbr;
-  double dFactorBig;
   if (nbrLen == 1) {
     SmallModMult(factorBig->x, factorInt, result, pTestNbr->x);
     return;
   }
 
   (factorBig + nbrLen)->x = 0;
-  dTestNbr = getMantissa(pTestNbr + nbrLen, nbrLen);
-  dFactorBig = getMantissa(factorBig + nbrLen, nbrLen);
-  TrialQuotient = (int)(unsigned int)floor((dFactorBig * (double)factorInt / dTestNbr) + 0.5);
-  if ((unsigned int)TrialQuotient >= LIMB_RANGE)
-  {   // Maximum value for limb.
+  double dTestNbr = getMantissa(pTestNbr + nbrLen, nbrLen);
+  double dFactorBig = getMantissa(factorBig + nbrLen, nbrLen);
+  int TrialQuotient =
+    (int)(unsigned int)floor((dFactorBig * (double)factorInt / dTestNbr) + 0.5);
+  if ((unsigned int)TrialQuotient >= LIMB_RANGE) {
+    // Maximum value for limb.
     TrialQuotient = MAX_VALUE_LIMB;
   }
   // Compute result as factorBig * factorInt - TrialQuotient * TestNbr
-  ptrFactorBig = factorBig;
-  ptrTestNbr = pTestNbr;
+  limb *ptrFactorBig = factorBig;
+  const limb *ptrTestNbr = pTestNbr;
 
-  carry = 0;
-  for (i = 0; i <= nbrLen; i++) {
+  int64_t carry = 0;
+  for (int i = 0; i <= nbrLen; i++) {
     carry += ((int64_t)ptrFactorBig->x * factorInt) -
       ((int64_t)TrialQuotient * ptrTestNbr->x);
     (result + i)->x = (int)carry & MAX_INT_NBR;
@@ -103,8 +97,7 @@ static void ModMultInt(limb* factorBig, int factorInt, limb* result,
     ptrFactorBig = result;
     ptrTestNbr = pTestNbr;
     unsigned int cy = 0;
-    for (i = 0; i <= nbrLen; i++)
-    {
+    for (int i = 0; i <= nbrLen; i++) {
       cy += (unsigned int)ptrTestNbr->x + (unsigned int)ptrFactorBig->x;
       ptrFactorBig->x = UintToInt(cy & MAX_VALUE_LIMB);
       cy >>= BITS_PER_GROUP;
@@ -120,13 +113,12 @@ static void ModMultInt(limb* factorBig, int factorInt, limb* result,
 void BigIntModularPower(const MontgomeryParams &params,
                         const BigInteger* base, const BigInteger* exponent,
                         BigInteger* power) {
-  int lenBytes;
   CompressLimbsBigInteger(NumberLength, aux5, base);
   ModMult(aux5, params.MontgomeryMultR2,
           NumberLength, TestNbr,
           aux6);   // Convert base to Montgomery notation.
   ModPow(params, aux6, exponent->limbs, exponent->nbrLimbs, aux5);
-  lenBytes = NumberLength * (int)sizeof(limb);
+  int lenBytes = NumberLength * (int)sizeof(limb);
   (void)memset(aux4, 0, lenBytes); // Convert power to standard notation.
   aux4[0].x = 1;
   ModMult(aux4, aux5,
