@@ -3,17 +3,14 @@
 
 #include "bignbr.h"
 
-// NumberLength
-extern limb TestNbr[MAX_LEN];
-
 // These used to be globals. Now calling GetMontgomeryParams* creates them.
 struct MontgomeryParams {
-  // XXX can number length, testnbr, powerof2exponent be part of this struct?
-  // int NumberLength;
   limb MontgomeryMultN[MAX_LEN];
   limb MontgomeryMultR1[MAX_LEN];
   limb MontgomeryMultR2[MAX_LEN];
   int NumberLengthR1;
+  // Indicates that the modulus is a power of two.
+  int powerOf2Exponent;
 };
 
 MontgomeryParams GetMontgomeryParams(int modulus_length, const limb *modulus);

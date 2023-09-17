@@ -50,8 +50,6 @@ enum eCallbackQuadModType {
   CBACK_QMOD_HYPERBOLIC,
 };
 
-extern int NumberLength;
-
 struct Quad {
   // TODO: Lots of these could be local; dynamically sized.
   enum eShowSolution showSolution;
@@ -138,6 +136,10 @@ struct Quad {
   const char *varXnoTrans;
   const char *varYnoTrans;
   bool firstSolutionX;
+
+  // Were globals NumberLength and TestNbr
+  int modulus_length;
+  limb TheModulus[MAX_LEN];
 
   QuadModLLResult qmllr;
 
@@ -463,8 +465,8 @@ struct Quad {
     }
     for (int index = 0; index < numFactors; index++) {
       const sFactorz &fact = factors.product[index];
-      // XXX why not setting NumberLength here?
-      IntArray2BigInteger(NumberLength, fact.array, &qmllr.prime);
+      // XXX why not setting modulus_length here?
+      IntArray2BigInteger(modulus_length, fact.array, &qmllr.prime);
       if (fact.multiplicity == 0) {
         continue;
       }
@@ -638,12 +640,12 @@ struct Quad {
           return;
         }
       // Calculate z <- -ValC / ValB (mod ValN)
-      NumberLength = modulus.nbrLimbs;
-      lenBytes = NumberLength * (int)sizeof(limb);
-      (void)memcpy(TestNbr, modulus.limbs, lenBytes);
-      TestNbr[NumberLength].x = 0;
-      MontgomeryParams params = GetMontgomeryParams(NumberLength, TestNbr);
-      BigIntModularDivision(params, NumberLength, TestNbr,
+      modulus_length = modulus.nbrLimbs;
+      lenBytes = modulus_length * (int)sizeof(limb);
+      (void)memcpy(TheModulus, modulus.limbs, lenBytes);
+      TheModulus[modulus_length].x = 0;
+      MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
+      BigIntModularDivision(params, modulus_length, TheModulus,
                             &coeffIndep, &coeffLinear, &modulus, &z);
       if (!BigIntIsZero(&z)) {
         BigIntSubt(&ValN, &z, &z);
@@ -1706,7 +1708,7 @@ struct Quad {
             continue;
           } else {
             const int number_length = *fact->array;
-            NumberLength = number_length;
+            modulus_length = number_length;
             IntArray2BigInteger(number_length, fact->array, &bigTmp);
             (void)BigIntMultiply(&bigTmp, &bigTmp, &U3);
             fact->multiplicity -= 2;
@@ -1726,7 +1728,7 @@ struct Quad {
             continue;
           } else {
             const int number_length = *fact->array;
-            NumberLength = number_length;
+            modulus_length = number_length;
             IntArray2BigInteger(number_length, fact->array, &bigTmp);
             (void)BigIntMultiply(&bigTmp, &bigTmp, &U3);
             fact->multiplicity += 2;
@@ -2504,7 +2506,7 @@ struct Quad {
             pstFactor++;
             continue;
           }
-          IntArray2BigInteger(NumberLength, pstFactor->array, &qmllr.prime);
+          IntArray2BigInteger(modulus_length, pstFactor->array, &qmllr.prime);
           (void)BigIntMultiply(&currentFactor, &qmllr.prime, &currentFactor);
           counters[index]++;
           break;
@@ -2515,7 +2517,7 @@ struct Quad {
           pstFactor++;
           continue;
         }
-        IntArray2BigInteger(NumberLength, pstFactor->array, &qmllr.prime);
+        IntArray2BigInteger(modulus_length, pstFactor->array, &qmllr.prime);
         (void)BigIntDivide(&currentFactor, &qmllr.prime, &currentFactor);
         counters[index]--;
         break;

@@ -38,13 +38,6 @@
 //   return t
 // end if
 
-// These are globals that are regularly modified in secret in other
-// code as well. I think they usually (always?) describe the modulus.
-// XXX Pass them as parameters!
-int NumberLength;
-limb TestNbr[MAX_LEN];
-// indicates that TestNbr is a power of 2
-int powerOf2Exponent;
 
 // Multiply big number in Montgomery notation by integer.
 static void ModMultInt(limb* factorBig, int factorInt, limb* result,
@@ -339,12 +332,12 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
     return true;
   }
 
-  if (powerOf2Exponent != 0) {
+  if (params.powerOf2Exponent != 0) {
     // modulus is a power of 2.
     unsigned int powerExp =
-      (unsigned int)powerOf2Exponent % (unsigned int)BITS_PER_GROUP;
+      (unsigned int)params.powerOf2Exponent % (unsigned int)BITS_PER_GROUP;
     ComputeInversePower2(num, inv, modulus_length);
-    (inv + (powerOf2Exponent / BITS_PER_GROUP))->x &=
+    (inv + (params.powerOf2Exponent / BITS_PER_GROUP))->x &=
       UintToInt((1U << powerExp) - 1U);
     return true;
   }
@@ -855,7 +848,10 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
   modulus_length = (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
   CompressLimbsBigInteger(modulus_length, tmp3, Den);
   ComputeInversePower2(tmp3, tmp4, modulus_length);
-  powerOf2Exponent = shRight;
+
+  // Port note: This used to set powerOf2Exponent = shRight and then
+  // clear to zero at the end, but those are dead now that it's part
+  // of MontgomeryParams.
 
   // resultModPower2 <- Num / Dev modulus 2^k.
   // PERF: here too
@@ -867,7 +863,6 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
                           modulus_length, modulus,
                           resultModOdd, resultModPower2,
                           shRight, quotient);
-  powerOf2Exponent = 0;
 }
 
 // Find the inverse of value mod 2^(number_length*BITS_PER_GROUP)
@@ -915,7 +910,7 @@ MontgomeryParams GetMontgomeryParamsPowerOf2(int powerOf2,
   *modulus_length =
     (powerOf2 + BITS_PER_GROUP - 1) / BITS_PER_GROUP;
   int NumberLengthBytes = *modulus_length * (int)sizeof(limb);
-  powerOf2Exponent = powerOf2;
+  params.powerOf2Exponent = powerOf2;
   (void)memset(params.MontgomeryMultR1, 0, NumberLengthBytes);
   (void)memset(params.MontgomeryMultR2, 0, NumberLengthBytes);
   params.MontgomeryMultR1[0].x = 1;
@@ -965,8 +960,7 @@ MontgomeryParams GetMontgomeryParams(int modulus_length, const limb *modulus) {
   MontgomeryParams params;
   int j;
   CHECK(modulus[modulus_length].x == 0);
-  NumberLength = modulus_length;
-  powerOf2Exponent = 0;    // Indicate not power of 2 in advance.
+  params.powerOf2Exponent = 0;    // Indicate not power of 2 in advance.
   params.NumberLengthR1 = 1;
 
   if ((modulus_length == 1) && ((modulus[0].x & 1) != 0)) {
@@ -988,7 +982,7 @@ MontgomeryParams GetMontgomeryParams(int modulus_length, const limb *modulus) {
     for (j = 0; j < BITS_PER_GROUP; j++) {
       if (value == 1) {
         int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-        powerOf2Exponent = ((modulus_length - 1) * BITS_PER_GROUP) + j;
+        params.powerOf2Exponent = ((modulus_length - 1) * BITS_PER_GROUP) + j;
         (void)memset(params.MontgomeryMultR1, 0, NumberLengthBytes);
         (void)memset(params.MontgomeryMultR2, 0, NumberLengthBytes);
         params.MontgomeryMultR1[0].x = 1;
