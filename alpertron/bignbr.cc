@@ -395,7 +395,7 @@ void addbigint(BigInteger *pResult, int addend) {
   BigIntToBigInteger(a, pResult);
 }
 
-void multint(BigInteger *pResult, const BigInteger *pMult, int factor) {
+void MultInt(BigInteger *pResult, const BigInteger *pMult, int factor) {
   BigInt a = BigIntegerToBigInt(pMult);
   BigInt r = BigInt::Times(a, factor);
   BigIntToBigInteger(r, pResult);

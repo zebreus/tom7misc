@@ -26,7 +26,6 @@
 #include "bignbr.h"
 #include "factor.h"
 #include "modmult.h"
-#include "baseconv.h"
 
 static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
   pBigNbr->nbrLimbs = numlen;
@@ -44,6 +43,7 @@ struct QuadModLL {
   BigInteger Solution1[400];
   BigInteger Solution2[400];
   BigInteger Increment[400];
+  int Exponents[400];
 
   BigInteger Quadr;
   BigInteger Linear;
@@ -58,7 +58,6 @@ struct QuadModLL {
   BigInteger L;
   BigInteger Q;
   BigInteger V;
-  int Exponents[400];
   BigInteger Aux[400];
   bool sol1Invalid;
   bool sol2Invalid;
@@ -82,7 +81,7 @@ struct QuadModLL {
     int T1;
 
     do {
-      multint(&Aux[0], &Increment[0], Exponents[0] / 2);
+      MultInt(&Aux[0], &Increment[0], Exponents[0] / 2);
       if ((Exponents[0] & 1) != 0) {
         BigIntAdd(&Aux[0], &Solution2[0], &Aux[0]);
       } else {
@@ -106,7 +105,7 @@ struct QuadModLL {
         }
 
         int expon = Exponents[T1];
-        multint(&Aux[T1], &Increment[T1], expon / 2);
+        MultInt(&Aux[T1], &Increment[T1], expon / 2);
 
         if ((expon & 1) != 0) {
           BigIntAdd(&Aux[T1], &Solution2[T1], &Aux[T1]);
@@ -896,7 +895,7 @@ struct QuadModLL {
       (void)BigIntMultiply(&Q, ptrSolution, &Q);   // a*x_n^2 + b*x_n
       BigIntAdd(&Q, pValC, &Q);                    // a*x_n^2 + b*x_n + c
       (void)BigIntRemainder(&Q, &V, &Q);           // Numerator.
-      multint(&L, &L, 2);                          // 2*a*x_n
+      MultInt(&L, &L, 2);                          // 2*a*x_n
       BigIntAdd(&L, pValB, &L);                    // 2*a*x_n + b
       (void)BigIntRemainder(&L, &V, &L);           // Denominator
       modulus_length = V.nbrLimbs;
@@ -908,8 +907,8 @@ struct QuadModLL {
                             &Q, &L, &V, &Aux1);
       BigIntSubt(ptrSolution, &Aux1, ptrSolution);
       (void)BigIntRemainder(ptrSolution, &V, ptrSolution);
-      if (ptrSolution->sign == SIGN_NEGATIVE)
-      {
+
+      if (ptrSolution->sign == SIGN_NEGATIVE) {
         BigIntAdd(ptrSolution, &V, ptrSolution);
       }
     }
@@ -927,7 +926,7 @@ struct QuadModLL {
     // Compute discriminant = ValB^2 - 4*ValA*ValC.
     (void)BigIntMultiply(pValB, pValB, &Aux[0]);
     (void)BigIntMultiply(pValA, pValC, &discriminant);
-    multint(&discriminant, &discriminant, 4);
+    MultInt(&discriminant, &discriminant, 4);
     BigIntSubt(&Aux[0], &discriminant, &discriminant);
     if ((prime.nbrLimbs == 1) && (prime.limbs[0].x == 2)) {
       /* Prime p is 2 */

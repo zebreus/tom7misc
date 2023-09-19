@@ -1035,7 +1035,7 @@ MontgomeryParams GetMontgomeryParams(int modulus_length, const limb *modulus) {
   }
 
   // Compute MontgomeryMultR2 as 2^(2*modulus_length*BITS_PER_GROUP) % modulus.
-  for (j = modulus_length; j > 0; j--) {
+  for (int i = modulus_length; i > 0; i--) {
     int NumberLengthBytes = modulus_length * (int)sizeof(limb);
     (void)memmove(&params.MontgomeryMultR2[1],
                   &params.MontgomeryMultR2[0],
@@ -1053,12 +1053,6 @@ void AddBigNbrModN(const limb *num1, const limb *num2, limb *sum,
   BigInt f2 = LimbsToBigInt(num2, number_length);
   BigInt modulus = LimbsToBigInt(modulus_array, number_length);
   BigInt r = BigInt::Mod(BigInt::Plus(f1, f2), modulus);
-  /*
-  fprintf(stderr, "%s + %s mod %s = %s\n",
-          f1.ToString().c_str(), f2.ToString().c_str(),
-          modulus.ToString().c_str(),
-          r.ToString().c_str());
-  */
   BigIntToFixedLimbs(r, number_length, sum);
 }
 
@@ -1085,10 +1079,6 @@ void ModMult(const limb* factor1, const limb* factor2,
   BigInt modulus = LimbsToBigInt(modulus_array, number_length);
   // Hmm, no BigInt modular multiplication :/
   BigInt r = BigInt::Mod(BigInt::Times(f1, f2), modulus);
-
-  // ModMultInternal(factor1, factor2, product);
-  // BigInt rr = LimbsToBigInt(product, number_length);
-  // CHECK(BigInt::Eq(r, rr));
 
   BigIntToFixedLimbs(r, number_length, product);
 }

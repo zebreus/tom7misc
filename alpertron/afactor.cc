@@ -9,27 +9,14 @@
 #include "factor.h"
 #include "bigconv.h"
 
-#include "baseconv.h"
-
 static void PrintBigInteger(const BigInteger *big) {
   BigInt b = BigIntegerToBigInt(big);
-
-  char buffer[20000];
-  char *ptr = buffer;
-  BigInteger2Dec(&ptr, big);
-  *ptr = 0;
-  printf("%s", buffer);
+  printf("%s", b.ToString().c_str());
 }
 
 static void PrintIntArray(const int *arr) {
-  // printf("arr[0] = %d\n", arr[0]);
-  // fflush(stdout);
-
-  BigInteger tmp;
-  int number_length = *arr;
-  IntArray2BigInteger(number_length, arr, &tmp);
-
-  PrintBigInteger(&tmp);
+  BigInt b = ArrayToBigInt(arr);
+  printf("%s", b.ToString().c_str());
 }
 
 int main(int argc, char* argv[]) {

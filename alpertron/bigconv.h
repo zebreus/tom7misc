@@ -20,7 +20,7 @@ bool ParseBigInteger(const char *str, BigInteger *big);
 
 BigInt BigIntegerToBigInt(const BigInteger *g);
 // With length as first word.
-BigInt ArrayToBigInt(int *arr);
+BigInt ArrayToBigInt(const int *arr);
 BigInt BigIntegerToBigInt(const BigInteger *g);
 BigInt LimbsToBigInt(const limb *limbs, int num_limbs);
 // Writes to limbs (must be enough space). Returns num_limbs.

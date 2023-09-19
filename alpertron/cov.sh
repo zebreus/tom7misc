@@ -1,7 +1,7 @@
 #!/bin/bash
 
 make clean
-make -j quad.exe afactor.exe || exit -1
+make -j 4 quad.exe afactor.exe || exit -1
 rm -f coverage.out
 
 set -x

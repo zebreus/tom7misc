@@ -23,7 +23,6 @@
 #include "factor.h"
 #include "quadmodll.h"
 #include "modmult.h"
-#include "baseconv.h"
 #include "bigconv.h"
 
 #include "base/stringprintf.h"
@@ -506,7 +505,7 @@ struct Quad {
   void showValue(BigInteger* value) {
     SolNbr++;
     // If 2*value is greater than modulus, subtract modulus.
-    multint(&Tmp1, value, 2);
+    MultInt(&Tmp1, value, 2);
     BigIntSubt(&modulus, &Tmp1, &Tmp1);
     if (Tmp1.sign == SIGN_NEGATIVE) {
       BigIntSubt(value, &modulus, value);
@@ -1005,9 +1004,9 @@ struct Quad {
         (void)BigIntMultiply(&ValA, &ValE, &ValI);
       }
       (void)BigIntMultiply(&ValA, &ValF, &ValJ);
-      multint(&ValH, &ValH, 4);
-      multint(&ValI, &ValI, 4);
-      multint(&ValJ, &ValJ, 4);
+      MultInt(&ValH, &ValH, 4);
+      MultInt(&ValI, &ValI, 4);
+      MultInt(&ValJ, &ValJ, 4);
       if (BigIntIsZero(&ValH)) {
         if (BigIntIsZero(&ValI)) {
           if (ValJ.sign == SIGN_POSITIVE) {
@@ -1040,14 +1039,14 @@ struct Quad {
     }
     (void)BigIntMultiply(&ValB, &ValD, &Aux0);
     (void)BigIntMultiply(&ValA, &ValE, &Aux1);
-    multint(&Aux2, &Aux1, 2);
+    MultInt(&Aux2, &Aux1, 2);
     BigIntSubt(&Aux0, &Aux2, &Aux1);
-    multint(&ValU, &Aux1, 2);
+    MultInt(&ValU, &Aux1, 2);
 
     // Compute v <- d^2 - 4af
     (void)BigIntMultiply(&ValD, &ValD, &Aux2);
     (void)BigIntMultiply(&ValA, &ValF, &Aux1);
-    multint(&Aux3, &Aux1, 4);
+    MultInt(&Aux3, &Aux1, 4);
     BigIntSubt(&Aux2, &Aux3, &ValV);
     if (teach) {
       if (ExchXY) {
@@ -1087,7 +1086,7 @@ struct Quad {
       }
       if (BigIntIsZero(&ValV)) {
         // v equals zero, so (1) becomes 2ax + by + d = 0
-        multint(&Aux3, &ValA, 2);
+        MultInt(&Aux3, &ValA, 2);
         ret = LinearEq(&Aux3, &ValB, &ValD);
         startResultBox(ret);
         PrintLinear(ret, "<var>t</var>");
@@ -1109,7 +1108,7 @@ struct Quad {
         return;
       }
       // The original equation is now: 2ax + by + (d +/- g) = 0
-      multint(&Aux3, &ValA, 2);
+      MultInt(&Aux3, &ValA, 2);
       BigIntAdd(&ValD, &ValG, &Aux4);
       CopyBigInt(&Aux5, &ValB);
       if (teach) {
@@ -1130,7 +1129,7 @@ struct Quad {
       startResultBox(ret);
       PrintLinear(ret, "<var>t</var>");
       endResultBox(ret);
-      multint(&Aux3, &ValA, 2);
+      MultInt(&Aux3, &ValA, 2);
       BigIntSubt(&ValD, &ValG, &Aux4);
       CopyBigInt(&Aux5, &ValB);
       if (teach) {
@@ -2203,7 +2202,7 @@ struct Quad {
         showText("</p>");
       }
     // Compute bound L = sqrt(4P/(-D))
-    multint(&U1, &ValP, 4);
+    MultInt(&U1, &ValP, 4);
     (void)BigIntDivide(&U1, &discr, &U1);
     BigIntChSign(&U1);               // 4P/(-D)
     SquareRoot(U1.limbs, ValL.limbs, U1.nbrLimbs, &ValL.nbrLimbs);  // sqrt(4P/(-D))
@@ -2344,7 +2343,7 @@ struct Quad {
       BigIntGcd(&ValH, &ValI, &ValS);
       // Let L = 4ak
       (void)BigIntMultiply(&ValA, &ValK, &ValL);
-      multint(&ValL, &ValL, 4);
+      MultInt(&ValL, &ValL, 4);
       if (teach) {
         showText("<p>Multiplying by"
                  " 4&#8290;<var>a</var>:</p>");
@@ -3228,7 +3227,7 @@ struct Quad {
     // Compute discriminant: b^2 - 4ac.
     (void)BigIntMultiply(&ValB, &ValB, &Aux0);
     (void)BigIntMultiply(&ValA, &ValC, &Aux1);
-    multint(&Aux2, &Aux1, 4);
+    MultInt(&Aux2, &Aux1, 4);
     BigIntSubt(&Aux0, &Aux2, &discr);
     if (teach) {
       showText("<p>The discriminant is"

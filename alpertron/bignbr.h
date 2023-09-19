@@ -101,7 +101,7 @@ void floordiv(const BigInteger *num, const BigInteger *den, BigInteger *result);
 void BigIntMultiplyBy2(BigInteger *nbr);
 void BigIntDivideBy2(BigInteger *nbr);
 void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pResult);
-void multint(BigInteger *pResult, const BigInteger *pMult, int factor);
+void MultInt(BigInteger *pResult, const BigInteger *pMult, int factor);
 void multadd(BigInteger *pResult, int iMult, const BigInteger *pMult, int addend);
 void BigIntPowerOf2(BigInteger *pResult, int expon);
 void subtractdivide(BigInteger *pBigInt, int subt, int divisor);
