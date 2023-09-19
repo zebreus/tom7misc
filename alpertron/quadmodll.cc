@@ -27,6 +27,8 @@
 #include "factor.h"
 #include "modmult.h"
 
+#include "base/logging.h"
+
 static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
   pBigNbr->nbrLimbs = numlen;
   pBigNbr->sign = SIGN_POSITIVE;
@@ -58,7 +60,7 @@ struct QuadModLL {
   BigInteger L;
   BigInteger Q;
   BigInteger V;
-  BigInteger Aux[400];
+  BigInteger Aux[12];
   bool sol1Invalid;
   bool sol2Invalid;
   BigInteger prime;
@@ -80,17 +82,21 @@ struct QuadModLL {
   void PerformChineseRemainderTheorem(const Factors &factors) {
     int T1;
 
+    const int nbrFactors = factors.product.size();
+    CHECK(nbrFactors > 0);
+    // Dynamically allocate temporary space. We need one per factor.
+    std::unique_ptr<BigInteger []> Tmp(new BigInteger[nbrFactors]);
+
     do {
-      MultInt(&Aux[0], &Increment[0], Exponents[0] / 2);
+      MultInt(&Tmp[0], &Increment[0], Exponents[0] / 2);
       if ((Exponents[0] & 1) != 0) {
-        BigIntAdd(&Aux[0], &Solution2[0], &Aux[0]);
+        BigIntAdd(&Tmp[0], &Solution2[0], &Tmp[0]);
       } else {
-        BigIntAdd(&Aux[0], &Solution1[0], &Aux[0]);
+        BigIntAdd(&Tmp[0], &Solution1[0], &Tmp[0]);
       }
 
       BigInteger currentSolution;
-      CopyBigInt(&currentSolution, &Aux[0]);
-      const int nbrFactors = factors.product.size();
+      CopyBigInt(&currentSolution, &Tmp[0]);
       const sFactorz *pstFactor = &factors.product[0];
       IntArray2BigInteger(modulus_length, pstFactor->array, &prime);
       BigInteger Mult;
@@ -100,17 +106,17 @@ struct QuadModLL {
         pstFactor++;
 
         if (pstFactor->multiplicity == 0) {
-          intToBigInteger(&Aux[T1], 0);
+          intToBigInteger(&Tmp[T1], 0);
           continue;
         }
 
         int expon = Exponents[T1];
-        MultInt(&Aux[T1], &Increment[T1], expon / 2);
+        MultInt(&Tmp[T1], &Increment[T1], expon / 2);
 
         if ((expon & 1) != 0) {
-          BigIntAdd(&Aux[T1], &Solution2[T1], &Aux[T1]);
+          BigIntAdd(&Tmp[T1], &Solution2[T1], &Tmp[T1]);
         } else {
-          BigIntAdd(&Aux[T1], &Solution1[T1], &Aux[T1]);
+          BigIntAdd(&Tmp[T1], &Solution1[T1], &Tmp[T1]);
         }
 
         const int number_length = *pstFactor->array;
@@ -120,7 +126,7 @@ struct QuadModLL {
         CopyBigInt(&prime, &K1);
 
         for (int E = 0; E < T1; E++) {
-          BigIntSubt(&Aux[T1], &Aux[E], &Q);
+          BigIntSubt(&Tmp[T1], &Tmp[E], &Q);
           BigInteger bigBase;
           IntArray2BigInteger(modulus_length, factors.product[E].array, &bigBase);
           (void)BigIntPowerIntExp(&bigBase, factors.product[E].multiplicity, &L);
@@ -130,13 +136,13 @@ struct QuadModLL {
           TheModulus[modulus_length].x = 0;
           MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
           BigIntModularDivision(params, modulus_length, TheModulus,
-                                &Q, &L, &prime, &Aux[T1]);
+                                &Q, &L, &prime, &Tmp[T1]);
         }
 
-        (void)BigIntRemainder(&Aux[T1], &prime, &L);
-        CopyBigInt(&Aux[T1], &L);
-        // Compute currentSolution as Aux[T1] * Mult + currentSolution
-        (void)BigIntMultiply(&Aux[T1], &Mult, &L);
+        (void)BigIntRemainder(&Tmp[T1], &prime, &L);
+        CopyBigInt(&Tmp[T1], &L);
+        // Compute currentSolution as Tmp[T1] * Mult + currentSolution
+        (void)BigIntMultiply(&Tmp[T1], &Mult, &L);
         BigIntAdd(&currentSolution, &L, &currentSolution);
         (void)BigIntMultiply(&K1, &Mult, &Mult);
       }   /* end for */
@@ -196,8 +202,9 @@ struct QuadModLL {
 
     BigInteger* ptrSolution1 = Solution1;
     BigInteger* ptrSolution2 = Solution2;
-    BigIntGcd(pValB, pValN, &Aux[0]);
-    if ((Aux[0].nbrLimbs != 1) || (Aux[0].limbs[0].x != 1)) {
+    BigInteger Tmp;
+    BigIntGcd(pValB, pValN, &Tmp);
+    if ((Tmp.nbrLimbs != 1) || (Tmp.limbs[0].x != 1)) {
       // ValB and ValN are not coprime. Go out.
       return;
     }
@@ -522,7 +529,7 @@ struct QuadModLL {
     return true;
   }
 
-  void ComputeSquareRootModPowerOfP(int nbrBitsSquareRoot) {
+  void ComputeSquareRootModPowerOfP(const BigInteger *base, int nbrBitsSquareRoot) {
     int correctBits;
     modulus_length = prime.nbrLimbs;
     int NumberLengthBytes = modulus_length * (int)sizeof(limb);
@@ -534,11 +541,11 @@ struct QuadModLL {
     if ((prime.limbs[0].x & 3) == 3) {
       // prime mod 4 = 3
       subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
-      BigIntModularPower(params, modulus_length, TheModulus, &Aux[3], &Q, &SqrtDisc);
+      BigIntModularPower(params, modulus_length, TheModulus, base, &Q, &SqrtDisc);
     } else {
       limb* toConvert;
       // Convert discriminant to Montgomery notation.
-      CompressLimbsBigInteger(modulus_length, Aux[5].limbs, &Aux[3]);
+      CompressLimbsBigInteger(modulus_length, Aux[5].limbs, base);
       ModMult(Aux[5].limbs, params.MontgomeryMultR2,
               modulus_length, TheModulus,
               Aux[6].limbs);  // u
@@ -780,9 +787,14 @@ struct QuadModLL {
     (void)memcpy(TheModulus, tmp1.limbs, NumberLengthBytes);
     TheModulus[modulus_length].x = 0;
     MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
-    BigIntModularDivision(params, modulus_length, TheModulus,
-                          &tmp2, &ValAOdd, &tmp1, &Aux[0]);
-    CopyBigInt(&ValAOdd, &Aux[0]);
+
+    {
+      BigInteger Tmp;
+      BigIntModularDivision(params, modulus_length, TheModulus,
+                            &tmp2, &ValAOdd, &tmp1, &Tmp);
+      CopyBigInt(&ValAOdd, &Tmp);
+    }
+
     if (BigIntIsZero(&discriminant)) {
       // Discriminant is zero.
       int lenBytes = nbrLimbs * (int)sizeof(limb);
@@ -806,17 +818,23 @@ struct QuadModLL {
         (void)memset(&discriminant.limbs[nbrLimbs], 0, lenBytes);
       }
 
-      (void)BigIntRemainder(&discriminant, &prime, &Aux[3]);
-      if (Aux[3].sign == SIGN_NEGATIVE) {
-        BigIntAdd(&Aux[3], &prime, &Aux[3]);
-      }
+      {
+        BigInteger Tmp;
+        (void)BigIntRemainder(&discriminant, &prime, &Tmp);
+        if (Tmp.sign == SIGN_NEGATIVE) {
+          BigIntAdd(&Tmp, &prime, &Tmp);
+        }
 
-      if (BigIntJacobiSymbol(&Aux[3], &prime) != 1) {
-        return false;         // Not a quadratic residue, so go out.
-      }
+        if (BigIntJacobiSymbol(&Tmp, &prime) != 1) {
+          return false;         // Not a quadratic residue, so go out.
+        }
 
-      // Compute square root of discriminant.
-      ComputeSquareRootModPowerOfP(nbrBitsSquareRoot);
+        // Port note: This used to be passed in Aux[3]. This call might
+        // expect more state in Aux, ugh.
+
+        // Compute square root of discriminant.
+        ComputeSquareRootModPowerOfP(&Tmp, nbrBitsSquareRoot);
+      }
 
       // Multiply by square root of discriminant by prime^deltaZeros.
       for (ctr = 0; ctr < deltaZeros; ctr++) {
@@ -924,10 +942,13 @@ struct QuadModLL {
     sol1Invalid = false;
     sol2Invalid = false;
     // Compute discriminant = ValB^2 - 4*ValA*ValC.
-    (void)BigIntMultiply(pValB, pValB, &Aux[0]);
-    (void)BigIntMultiply(pValA, pValC, &discriminant);
-    MultInt(&discriminant, &discriminant, 4);
-    BigIntSubt(&Aux[0], &discriminant, &discriminant);
+    {
+      BigInteger Tmp;
+      (void)BigIntMultiply(pValB, pValB, &Tmp);
+      (void)BigIntMultiply(pValA, pValC, &discriminant);
+      MultInt(&discriminant, &discriminant, 4);
+      BigIntSubt(&Tmp, &discriminant, &discriminant);
+    }
     if ((prime.nbrLimbs == 1) && (prime.limbs[0].x == 2)) {
       /* Prime p is 2 */
       solutions = SolveQuadraticEqModPowerOf2(expon, factorIndex,
@@ -954,13 +975,16 @@ struct QuadModLL {
       // Nothing to do.
     }
 
-    BigIntSubt(&Solution2[factorIndex], &Solution1[factorIndex], &Aux[0]);
+    {
+      BigInteger Tmp;
+      BigIntSubt(&Solution2[factorIndex], &Solution1[factorIndex], &Tmp);
 
-    if (Aux[0].sign == SIGN_NEGATIVE) {
-      // Solution2 is less than Solution1, so exchange them.
-      CopyBigInt(&Aux[0], &Solution1[factorIndex]);
-      CopyBigInt(&Solution1[factorIndex], &Solution2[factorIndex]);
-      CopyBigInt(&Solution2[factorIndex], &Aux[0]);
+      if (Tmp.sign == SIGN_NEGATIVE) {
+        // Solution2 is less than Solution1, so exchange them.
+        CopyBigInt(&Tmp, &Solution1[factorIndex]);
+        CopyBigInt(&Solution1[factorIndex], &Solution2[factorIndex]);
+        CopyBigInt(&Solution2[factorIndex], &Tmp);
+      }
     }
 
     if (ShowSolutionsModPrime != NULL) {
@@ -986,11 +1010,14 @@ struct QuadModLL {
 
     pGcdAll = pGcdAllParm;
     pValNn = pValNnParm;
-    (void)BigIntRemainder(pValA, pValN, &Aux[0]);
-    if (BigIntIsZero(&Aux[0])) {
-      // Linear equation.
-      SolveModularLinearEquation(pValA, pValB, pValC, pValN);
-      return;
+    {
+      BigInteger Tmp;
+      (void)BigIntRemainder(pValA, pValN, &Tmp);
+      if (BigIntIsZero(&Tmp)) {
+        // Linear equation.
+        SolveModularLinearEquation(pValA, pValB, pValC, pValN);
+        return;
+      }
     }
 
     // PERF: This code will reuse factors. We might want to do that.
