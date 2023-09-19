@@ -123,7 +123,9 @@ struct Quad {
   BigInteger *Xbak;
   BigInteger *Ybak;
 
-  BigInteger Tmp[13];
+  BigInteger Temp0;
+  BigInteger Temp1;
+
   int equationNbr;
   int contfracEqNbr;
   char positiveDenominator;
@@ -612,16 +614,16 @@ struct Quad {
     if (coeffIndep.sign == SIGN_NEGATIVE) {
       BigIntAdd(&coeffIndep, &modulus, &coeffIndep);
     }
-    BigIntGcd(&coeffQuadr, &coeffLinear, &Tmp[0]);
-    BigIntGcd(&coeffIndep, &Tmp[0], &GcdAll);
-    (void)BigIntRemainder(&coeffIndep, &GcdAll, &Tmp[0]);
-    if (!BigIntIsZero(&Tmp[0])) {
+    BigIntGcd(&coeffQuadr, &coeffLinear, &Temp0);
+    BigIntGcd(&coeffIndep, &Temp0, &GcdAll);
+    (void)BigIntRemainder(&coeffIndep, &GcdAll, &Temp0);
+    if (!BigIntIsZero(&Temp0)) {
       // ValC must be multiple of gcd(ValA, ValB).
       // Otherwise go out because there are no solutions.
       return;
     }
-    BigIntGcd(&modulus, &GcdAll, &Tmp[0]);
-    CopyBigInt(&GcdAll, &Tmp[0]);
+    BigIntGcd(&modulus, &GcdAll, &Temp0);
+    CopyBigInt(&GcdAll, &Temp0);
     // Divide all coefficients by gcd(ValA, ValB).
     (void)BigIntDivide(&coeffQuadr, &GcdAll, &coeffQuadr);
     (void)BigIntDivide(&coeffLinear, &GcdAll, &coeffLinear);
@@ -637,8 +639,8 @@ struct Quad {
         showText(" are solutions.</p>");
       } else {
         for (int ctr = 0; ctr < GcdAll.limbs[0].x; ctr++) {
-          intToBigInteger(&Tmp[0], ctr);
-          SolutionX(&Tmp[0]);
+          intToBigInteger(&Temp0, ctr);
+          SolutionX(&Temp0);
         }
 
         if (teach && !firstSolutionX) {
@@ -648,12 +650,12 @@ struct Quad {
       return;
     }
 
-    (void)BigIntRemainder(&coeffQuadr, &modulus, &Tmp[0]);
-    if (BigIntIsZero(&Tmp[0])) {
+    (void)BigIntRemainder(&coeffQuadr, &modulus, &Temp0);
+    if (BigIntIsZero(&Temp0)) {
       // Linear equation.
       int lenBytes;
-      BigIntGcd(&coeffLinear, &modulus, &Tmp[0]);
-      if ((Tmp[0].nbrLimbs != 1) || (Tmp[0].limbs[0].x != 1)) {
+      BigIntGcd(&coeffLinear, &modulus, &Temp0);
+      if ((Temp0.nbrLimbs != 1) || (Temp0.limbs[0].x != 1)) {
         // ValB and ValN are not coprime. Go out.
           return;
         }
@@ -668,13 +670,13 @@ struct Quad {
       if (!BigIntIsZero(&z)) {
         BigIntSubt(&ValN, &z, &z);
       }
-      (void)BigIntMultiply(&ValNn, &GcdAll, &Tmp[0]);
+      (void)BigIntMultiply(&ValNn, &GcdAll, &Temp0);
 
       do {
         SolutionX(&z);
         BigIntAdd(&z, &modulus, &z);
-        BigIntSubt(&z, &Tmp[0], &Tmp[1]);
-      } while (Tmp[1].sign == SIGN_NEGATIVE);
+        BigIntSubt(&z, &Temp0, &Temp1);
+      } while (Temp1.sign == SIGN_NEGATIVE);
 
       if (teach && !firstSolutionX) {
         showText("</ol>");
@@ -1807,22 +1809,22 @@ struct Quad {
       // Perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
       showBeforeUnimodularSubstitution();
       ValM.sign = SIGN_POSITIVE;
-      BigIntAdd(&ValZ, &ValO, &Tmp[0]);     // x
-      (void)BigIntMultiply(&Tmp[0], &ValM, &Tmp[1]);
-      BigIntSubt(&Tmp[1], &ValZ, &Tmp[1]);  // y
+      BigIntAdd(&ValZ, &ValO, &Temp0);     // x
+      (void)BigIntMultiply(&Temp0, &ValM, &Temp1);
+      BigIntSubt(&Temp1, &ValZ, &Temp1);  // y
       ValM.sign = SIGN_NEGATIVE;
     }
     else if (BigIntIsZero(&ValM))
       {
-        CopyBigInt(&Tmp[0], &ValZ);           // x
-        CopyBigInt(&Tmp[1], &ValO);           // y
+        CopyBigInt(&Temp0, &ValZ);           // x
+        CopyBigInt(&Temp1, &ValO);           // y
       }
     else
       {     // Perform the substitution: x = mX + (m-1)Y, y = X + Y
         showBeforeUnimodularSubstitution();
-        BigIntAdd(&ValZ, &ValO, &Tmp[1]);     // y
-        (void)BigIntMultiply(&Tmp[1], &ValM, &Tmp[0]);
-        BigIntSubt(&Tmp[0], &ValO, &Tmp[0]);  // x
+        BigIntAdd(&ValZ, &ValO, &Temp1);     // y
+        (void)BigIntMultiply(&Temp1, &ValM, &Temp0);
+        BigIntSubt(&Temp0, &ValO, &Temp0);  // x
       }
   }
 
@@ -1832,7 +1834,8 @@ struct Quad {
   // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
   // Do not substitute if m equals zero.
   void NonSquareDiscrSolution(BigInteger *value) {
-    CopyBigInt(&Tmp[12], value);            // Back up value.
+    // Back up value.
+    BigInt Tmp12 = BigIntegerToBigInt(value);
     // Get value of tu - Kv
     (void)BigIntMultiply(value, &ValH, &ValZ);    // tu
     CopyBigInt(&bigTmp, &ValK);
@@ -1861,14 +1864,16 @@ struct Quad {
     Xbak = &Xplus;
     Ybak = &Yplus;
     UnimodularSubstitution();               // Undo unimodular substitution
-    ShowPoint(&Tmp[0], &Tmp[1]);
+    ShowPoint(&Temp0, &Temp1);
     BigIntChSign(&ValZ);                    // (-tu - Kv)*E
     BigIntChSign(&ValO);                    // -u*E
     Xbak = &Xminus;
     Ybak = &Yminus;
     UnimodularSubstitution();               // Undo unimodular substitution
-    ShowPoint(&Tmp[0], &Tmp[1]);
-    CopyBigInt(value, &Tmp[12]);            // Restore value.
+    ShowPoint(&Temp0, &Temp1);
+
+    // Restore value.
+    BigIntToBigInteger(Tmp12, value);
   }
 
   // Obtain next convergent of continued fraction of ValU/ValV
@@ -2664,7 +2669,8 @@ struct Quad {
     if (!BigIntIsZero(&bigTmp)) {
       return;
     }
-    CopyBigInt(&Tmp[11], value);   // Back up value.
+    // back up value
+    BigInt Tmp11 = BigIntegerToBigInt(value);
     if (teach) {
       CopyBigInt(&U1, &ValU);      // Back up numerator and denominator.
       CopyBigInt(&V1, &ValV);
@@ -2799,7 +2805,9 @@ struct Quad {
       index++;
       isIntegerPart = 0;
     }
-    CopyBigInt(value, &Tmp[11]);   // Restore value.
+
+    // Restore value.
+    BigIntToBigInteger(Tmp11, value);
   }
 
   void ShowRecSol(char variable, const BigInteger *coefX,
