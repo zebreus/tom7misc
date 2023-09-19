@@ -16,6 +16,11 @@ echo quad tests
 ./quad.exe 0 0 0 1 0 5 0 >> coverage.out
 ./quad.exe 0 0 0 1 1 5 0 >> coverage.out
 ./quad.exe 1 2 3 4 5 6 0 >> coverage.out
+./quad.exe 4 0 0 0 0 -16 0 >> coverage.out
+./quad.exe 0 4 0 0 0 -16 0 >> coverage.out
+./quad.exe 0 0 4 0 0 -16 0 >> coverage.out
+./quad.exe 0 0 0 4 0 -16 0 >> coverage.out
+./quad.exe 0 0 0 0 4 -16 0 >> coverage.out
 # nontrivial gcd
 ./quad.exe 100 200 300 400 500 600 0 >> coverage.out
 ./quad.exe 1 0 0 0 7 -12 0 >> coverage.out
