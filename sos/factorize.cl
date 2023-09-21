@@ -17,6 +17,9 @@ void FactorizeInternal(uint64_t x,
 // First prime not in the list of trial divisions.
 #define NEXT_PRIME 137
 
+// These produce better code (to my eye) but aren't faster
+// in benchmarks. Might be because they enable too much
+// inlining or something like that.
 #define PTX_SUB128 0
 #define PTX_GEQ128 0
 
@@ -248,7 +251,7 @@ PowM(uint64_t b, uint64_t e, uint64_t n, uint64_t ni, uint64_t one) {
   if (e & 1)
     y = b;
 
-  // PERF: for OpenCL, it we might want to just run this loop a fixed
+  // PERF: for OpenCL, we might want to just run this loop a fixed
   // number (63 I think) of times?
   while (e != 0) {
     b = MulRedc(b, b, n, ni);
@@ -302,16 +305,18 @@ uint64_t GCDOdd(uint64_t a, uint64_t b) {
 
 // One Miller-Rabin test. Returns true if definitely composite;
 // false if maybe prime.
+// one and nm1 are just 1 and n-1 those numbers in redc form.
 bool DefinitelyComposite(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
-                         unsigned int k, uint64_t one) {
+                         unsigned int k, uint64_t one, uint64_t nm1) {
+  asm("/* definitelycomposite */");
   uint64_t y = PowM(b, q, n, ni, one);
-
-  /* -1, but in redc representation. */
-  uint64_t nm1 = n - one;
 
   if (y == one || y == nm1)
     return false;
 
+  // PERF idea: Could do this simultaneously for all bases?
+  // No clear reason why it would be better, but it might be
+  // worth testing.
   for (unsigned int i = 1; i < k; i++) {
     // y = y^2 mod n
     y = MulRedc(y, y, n, ni);
@@ -324,7 +329,7 @@ bool DefinitelyComposite(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
   return true;
 }
 
-bool IsPrimeInternal(uint64_t n) {
+bool IsPrimeInternalOld(uint64_t n) {
   if (n <= 1)
     return false;
 
@@ -336,11 +341,6 @@ bool IsPrimeInternal(uint64_t n) {
 
   // Precomputation.
   uint64_t q = n - 1;
-  /*
-  int k;
-  for (k = 0; (q & 1) == 0; k++)
-    q >>= 1;
-  */
   // Count and remove trailing zeroes.
   int k = ctz(q);
   q >>= k;
@@ -350,9 +350,12 @@ bool IsPrimeInternal(uint64_t n) {
   uint64_t a_prim = AddMod(one, one, n); /* i.e., redcify a = 2 */
   int a = 2;
 
+  /* -1, but in redc representation. */
+  uint64_t nm1 = n - one;
+
   // Just need to check the first 12 prime bases for 64-bit ints.
   for (int i = 0; i < 12; i++) {
-    if (DefinitelyComposite(n, ni, a_prim, q, k, one))
+    if (DefinitelyComposite(n, ni, a_prim, q, k, one, nm1))
       return false;
 
     uint8_t delta = PRIME_DELTAS[i];
@@ -376,6 +379,177 @@ bool IsPrimeInternal(uint64_t n) {
   // must be a prime.
   return true;
 }
+
+bool IsPrimeInternalUnrolled(uint64_t n) {
+  asm("/* isprimeinternalunrolled */");
+
+  if (n <= 1)
+    return false;
+
+  /* We have already sieved out small primes.
+     This also means that we don't need to check a = n as
+     we consider the bases below. */
+  if (n < (uint64_t)(NEXT_PRIME * NEXT_PRIME))
+    return true;
+
+  // Precomputation.
+  uint64_t q = n - 1;
+  // Count and remove trailing zeroes.
+  int k = ctz(q);
+  q >>= k;
+
+  const uint64_t ni = Binv(n);                 /* ni <- 1/n mod B */
+  const uint64_t one = Redcify(1, n);
+  /* -1, but in redc representation. */
+  const uint64_t nm1 = n - one;
+
+  // We just need to check 12 small primes here, so this code is
+  // totally unrolled. For each prime, we need to compute its
+  // redc representation. Redcify requires UDiv128, but addition in
+  // this form is fast, so we construct them this way from other
+  // numbers that we've already computed.
+
+  // primes: 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37
+  // deltas:  1,2,2,4,2,4,2,4,6,2,6,4,
+  // We can build each one with a single addition, although
+  // we need to compute six to do that.
+
+  uint64_t two = AddMod(one, one, n);
+  if (DefinitelyComposite(n, ni, two, q, k, one, nm1))
+    return false;
+
+  uint64_t three = AddMod(two, one, n);
+  if (DefinitelyComposite(n, ni, three, q, k, one, nm1))
+    return false;
+
+  uint64_t five = AddMod(three, two, n);
+  if (DefinitelyComposite(n, ni, five, q, k, one, nm1))
+    return false;
+
+  uint64_t seven = AddMod(five, two, n);
+  if (DefinitelyComposite(n, ni, seven, q, k, one, nm1))
+    return false;
+
+  // Not prime, but needed to create numbers below.
+  uint64_t six = AddMod(three, three, n);
+
+  uint64_t eleven = AddMod(six, five, n);
+  if (DefinitelyComposite(n, ni, eleven, q, k, one, nm1))
+    return false;
+
+  uint64_t thirteen = AddMod(eleven, two, n);
+  if (DefinitelyComposite(n, ni, thirteen, q, k, one, nm1))
+    return false;
+
+  uint64_t seventeen = AddMod(eleven, six, n);
+  if (DefinitelyComposite(n, ni, seventeen, q, k, one, nm1))
+    return false;
+
+  uint64_t nineteen = AddMod(seventeen, two, n);
+  if (DefinitelyComposite(n, ni, nineteen, q, k, one, nm1))
+    return false;
+
+  uint64_t twenty_three = AddMod(seventeen, six, n);
+  if (DefinitelyComposite(n, ni, twenty_three, q, k, one, nm1))
+    return false;
+
+  uint64_t twenty_nine = AddMod(twenty_three, six, n);
+  if (DefinitelyComposite(n, ni, twenty_nine, q, k, one, nm1))
+    return false;
+
+  uint64_t thirty_one = AddMod(twenty_nine, two, n);
+  if (DefinitelyComposite(n, ni, thirty_one, q, k, one, nm1))
+    return false;
+
+  uint64_t thirty_seven = AddMod(thirty_one, six, n);
+  if (DefinitelyComposite(n, ni, thirty_seven, q, k, one, nm1))
+    return false;
+
+  // Test above is comprehensive for 64-bit numbers.
+  return true;
+};
+
+#define IsPrimeInternal IsPrimeInternalUnrolled
+
+static const uint32_t WITNESSES[7] =
+  { 2, 325, 9375, 28178, 450775, 9780504, 1795265022 };
+
+// No preconditions.
+bool IsPrimeInternalGeneral(uint64_t n) {
+  if (n <= 1)
+    return false;
+
+  // PERF: For this version, we might as well perform the
+  // smaller number of tests?
+#if 0
+  if (n == 2) return true;
+  if (n == 3) return true;
+  if (n == 5) return true;
+  if (n == 7) return true;
+  if (n == 11) return true;
+  if (n == 13) return true;
+  if (n == 17) return true;
+  if (n == 19) return true;
+  if (n == 23) return true;
+  if (n == 29) return true;
+  if (n == 31) return true;
+  if (n == 37) return true;
+#endif
+  if (n == 2) return true;
+  if (n == 3) return true;
+  if (n == 5) return true;
+  if (n == 13) return true;
+  if (n == 19) return true;
+  if (n == 73) return true;
+  if (n == 193) return true;
+  if (n == 407521) return true;
+  if (n == 299210837) return true;
+
+  // Precomputation.
+  uint64_t q = n - 1;
+  // Count and remove trailing zeroes.
+  int k = ctz(q);
+  q >>= k;
+
+  const uint64_t ni = Binv(n);                 /* ni <- 1/n mod B */
+  const uint64_t one = Redcify(1, n);
+
+  // This assumes WITNESSES[0] == 2.
+  uint64_t a_prim = AddMod(one, one, n); /* i.e., redcify a = 2 */
+  int a = 2;
+
+  /* -1, but in redc representation. */
+  const uint64_t nm1 = n - one;
+
+
+  if (DefinitelyComposite(n, ni, a_prim, q, k, one, nm1))
+    return false;
+
+  // Skipping index 0, which we just did.
+  for (int i = 1; i < 7; i++) {
+    // Establish new base.
+    a = WITNESSES[i];
+
+    // compute a_prim from a
+    {
+      ulong2 r = UMul128(one, a);
+      if (r.s0 == 0) {
+        a_prim = r.s1 % n;
+      } else {
+        a_prim = UDiv128Rem(r.s0, r.s1, n);
+      }
+    }
+
+    if (DefinitelyComposite(n, ni, a_prim, q, k, one, nm1)) {
+      return false;
+    }
+  }
+
+  // The test above detects all 64-bit composite numbers, so this
+  // must be a prime.
+  return true;
+}
+
 
 void FactorUsingPollardRho(uint64_t n,
                            uint64_t a,
@@ -499,8 +673,7 @@ void FactorUsingPollardRho(uint64_t n,
   }
 }
 
-// This is basically the same as the kernel, except that
-// the Lucas primality test calls it recursively.
+// Core of the kernel.
 void FactorizeInternal(uint64_t x,
                        uint64_t *factors,
                        int *num_factors,
@@ -537,10 +710,11 @@ void FactorizeInternal(uint64_t x,
     }                                           \
   } while (0)
 
-  // The % and / by p here don't get fused in the
-  // PTX code, so we get  although it's possible that some
-  // (invisible to me) peephole phase fixes it.
-#define TRY(p) do {                         \
+  // The % and / by p here don't get fused in the PTX code, so we get
+  // two divisions (although it's possible that some (invisible to
+  // me) peephole phase fixes it). NEW_TRY avoids that but also
+  // benchmarks slower.
+#define TRY(p) do {                             \
         while (cur % p == 0) {                  \
           cur /= p;                             \
           factors[nf++] = p;                    \
@@ -613,5 +787,111 @@ __kernel void Factorize(__global const uint64_t *restrict nums,
     all_out_size[idx] = 0xFF;
   } else {
     all_out_size[idx] = num_factors;
+  }
+}
+
+// PERF could do this as a 2D kernel?
+// The big disadvantage is that we get much cheaper division by
+// constants because they can be turned into weird multiply-shift-sub stuff.
+
+// Idea here is to make a quick first pass without loops, to keep the
+// threads as convergent as possible.
+__kernel void TrialDivide(__global const uint64_t *restrict num,
+                          // Just one "large factor" per num. This one
+                          // may be composite if we don't succeed in
+                          // completely factoring. It may be 1, in which
+                          // case it should be ignored as a factor, or
+                          // 0 (only for the input zero).
+                          __global uint64_t *restrict large_factor,
+                          // Up to MAX_FACTORS small factors.
+                          // With the current implementation
+                          // these could even be like uint_8, but then
+                          // we'd need to copy for the second pass.
+                          __global uint32_t *restrict small_factors,
+                          // Number of small factors. High bit is set
+                          // if we failed (and then target_out may be
+                          // composite).
+                          __global uint8_t *restrict num_factors) {
+
+  const int idx = get_global_id(0);
+  const uint64_t x = num[idx];
+  uint32_t *small = &small_factors[idx * MAX_FACTORS];
+
+  // Just a single prime factor.
+  // We arbitrarily say 0 and 1 are "prime"; caller has to check
+  // the large_factor if they want to treat these differently.
+  if (x <= 3) {
+    large_factor[idx] = x;
+    num_factors[idx] = 0;
+    return;
+  }
+
+  int nf = 0;
+  uint64_t cur = x;
+
+  // TODO PERF: If we're going to divide a lot of times (like for the
+  // 3 case), it is possible to do some binary search, or at least
+  // just first try dividing by 3^3 one time, or something like that.
+#define TRY(p)                  \
+        if (cur % p == 0) {     \
+          cur /= p;             \
+          small[nf++] = p;      \
+        }
+
+  // TODO: Empirically figure out how many times to run each of these.
+
+  TRY(3); TRY(3); TRY(3); TRY(3); TRY(3); TRY(3); TRY(3); TRY(3);
+  TRY(5); TRY(5); TRY(5); TRY(5); TRY(5); TRY(5); TRY(5); TRY(5);
+  TRY(7); TRY(7); TRY(7); TRY(7); TRY(7); TRY(7); TRY(7);
+  TRY(11); TRY(11); TRY(11); TRY(11); TRY(11); TRY(11); TRY(11);
+  TRY(13); TRY(13); TRY(13); TRY(13); TRY(13); TRY(13); TRY(13);
+  TRY(17); TRY(17); TRY(17); TRY(17); TRY(17); TRY(17);
+  TRY(19); TRY(19); TRY(19); TRY(19); TRY(19); TRY(19);
+  TRY(23); TRY(23); TRY(23); TRY(23); TRY(23);
+  TRY(29); TRY(29); TRY(29); TRY(29); TRY(29);
+  TRY(31); TRY(31); TRY(31); TRY(31);
+  TRY(37); TRY(37); TRY(37); TRY(37);
+  TRY(41); TRY(41); TRY(41);
+  TRY(43); TRY(43); TRY(43);
+  TRY(47); TRY(47);
+  TRY(53); TRY(53);
+  TRY(59);
+  TRY(61);
+  TRY(67);
+  TRY(71);
+  TRY(73);
+  TRY(79);
+  TRY(83);
+  TRY(89);
+  TRY(97);
+  TRY(101);
+  TRY(103);
+  TRY(107);
+  TRY(109);
+  TRY(113);
+  TRY(127);
+  TRY(131);
+#undef TRY
+
+  const int twos = ctz(cur);
+  if (twos) {
+    for (int i = 0; i < twos; i++) {
+      small[nf++] = 2;
+    }
+    cur >>= twos;
+  }
+
+  // Remaining number; at this point can be composite, prime, or 1.
+  large_factor[idx] = cur;
+
+  // TODO: Could consider a primality test here as another
+  // way to succeed. But the current version wants all factors
+  // less than 137 eliminated first.
+
+  if (cur == 1 || IsPrimeInternalGeneral(cur)) {
+    // Success!
+    num_factors[idx] = nf;
+  } else {
+    num_factors[idx] = 0x80 | nf;
   }
 }

@@ -136,7 +136,7 @@ std::optional<std::string> CL::DecodeProgram(cl_program p) {
 }
 
 
-// TODO: PERF: Enable fast-math style optimizations:
+// TODO: PERF: Option to enable/disable fast-math style optimizations:
 // khronos.org/registry/OpenCL/sdk/2.0/docs/man/xhtml/clBuildProgram.html
 // which should be suitable for learning applications.
 pair<cl_program, std::map<std::string, cl_kernel>> CL::BuildKernels(

@@ -905,5 +905,133 @@ struct FactorizeGPU {
   }
 };
 
+// Two-phase factorization.
+// First phase is trial factoring. This succeeds quickly for many
+// numbers.
+struct TrialDivideGPU {
+  CL *cl = nullptr;
+  size_t height = 0;
+
+  // Consider reducing this.
+  static constexpr int MAX_FACTORS = 64;
+
+  TrialDivideGPU(CL *cl, size_t height) : cl(cl), height(height) {
+    std::string defines = StringPrintf("#define MAX_FACTORS %d\n",
+                                       MAX_FACTORS);
+    std::string kernel_src = defines + Util::ReadFile("factorize.cl");
+    const auto &[prog, kern] =
+      cl->BuildOneKernel(kernel_src, "TrialDivide", false);
+    CHECK(prog != 0);
+    program = prog;
+    CHECK(kern != 0);
+    kernel = kern;
+
+    // Input numbers.
+    nums_gpu = CreateUninitializedGPUMemory<uint64_t>(
+        cl->context,
+        height);
+
+    // 1 factor can be >32 bits.
+    large_factors_gpu = CreateUninitializedGPUMemory<uint64_t>(
+        cl->context,
+        height);
+    // The rest must be small.
+    small_factors_gpu = CreateUninitializedGPUMemory<uint32_t>(
+        cl->context,
+        height * MAX_FACTORS);
+    // Number of factors in each row. High bit set if factoring
+    // was incomplete.
+    // XXX including the large factor?
+    num_factors_gpu = CreateUninitializedGPUMemory<uint8_t>(
+        cl->context,
+        height);
+  }
+
+  // Synchronized access.
+  std::mutex m;
+  cl_program program = 0;
+  cl_kernel kernel = 0;
+  cl_mem nums_gpu = nullptr;
+  cl_mem large_factors_gpu = nullptr;
+  cl_mem small_factors_gpu = nullptr;
+  cl_mem num_factors_gpu = nullptr;
+
+  // Processes a batch of numbers (size height).
+  // Returns three vectors, parallel to the input:
+  //   - The large factor, a 64-bit number
+  //   - A row of MAX_FACTORS small factors (and padding)
+  //   - The count of factors, with the high bit set to one if
+  //     factoring failed.
+  std::tuple<
+    // Large factors. Size height.
+    std::vector<uint64_t>,
+    // Small factors. height * MAX_FACTORS
+    std::vector<uint32_t>,
+    // Counts
+    std::vector<uint8>>
+  Factorize(const std::vector<uint64_t> &nums) {
+    // Only one GPU process at a time.
+    MutexLock ml(&m);
+
+    CHECK(nums.size() == height);
+
+    // Run kernel.
+    {
+
+      CopyBufferToGPU(cl->queue, nums, nums_gpu);
+
+      CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
+                                   (void *)&nums_gpu));
+
+      CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
+                                   (void *)&large_factors_gpu));
+
+      CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
+                                   (void *)&small_factors_gpu));
+
+      CHECK_SUCCESS(clSetKernelArg(kernel, 3, sizeof (cl_mem),
+                                   (void *)&num_factors_gpu));
+
+      // Simple 1D Kernel
+      size_t global_work_offset[] = { (size_t)0 };
+      size_t global_work_size[] = { (size_t)height };
+
+      CHECK_SUCCESS(
+          clEnqueueNDRangeKernel(cl->queue, kernel,
+                                 // 1D
+                                 1,
+                                 // It does its own indexing
+                                 global_work_offset,
+                                 global_work_size,
+                                 // No local work
+                                 nullptr,
+                                 // No wait list
+                                 0, nullptr,
+                                 // no event
+                                 nullptr));
+
+      clFinish(cl->queue);
+    }
+
+    return make_tuple(
+        CopyBufferFromGPU<uint64_t>(cl->queue, large_factors_gpu,
+                                    height),
+        CopyBufferFromGPU<uint32_t>(cl->queue, small_factors_gpu,
+                                    MAX_FACTORS * height),
+        CopyBufferFromGPU<uint8_t>(cl->queue, num_factors_gpu,
+                                   height));
+  }
+
+  ~TrialDivideGPU() {
+    CHECK_SUCCESS(clReleaseKernel(kernel));
+    CHECK_SUCCESS(clReleaseProgram(program));
+
+    CHECK_SUCCESS(clReleaseMemObject(nums_gpu));
+    CHECK_SUCCESS(clReleaseMemObject(large_factors_gpu));
+    CHECK_SUCCESS(clReleaseMemObject(small_factors_gpu));
+    CHECK_SUCCESS(clReleaseMemObject(num_factors_gpu));
+  }
+};
+
 
 #endif

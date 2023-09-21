@@ -22,6 +22,10 @@ static constexpr bool CHECK_ANSWERS = true;
 
 static constexpr int GLOBAL_BATCH_SIZE = 131072;
 
+// Bitmask of numbers we're around where we're currently searching.
+// Used for benchmarking / tuning.
+static constexpr uint64_t MASK_CURRENT_RANGE = 0xFFFFFFFFFFFULL;
+
 DECLARE_COUNTERS(ineligible, u1_, u2_, u3_, u4_, u5_, u6, u7_);
 
 static std::vector<std::pair<uint64_t, uint32_t>> global_batch;
@@ -340,7 +344,7 @@ static void TestEligibleFilter() {
 
 static void TestFactorize() {
   ArcFour rc("factorize");
-  static constexpr int HEIGHT = 131072;
+  static constexpr int HEIGHT = 131072 * 8;
   FactorizeGPU factorize(cl, HEIGHT);
 
   std::optional<std::string> ptx =
@@ -350,12 +354,19 @@ static void TestFactorize() {
     printf("Wrote to factorize.ptx\n");
   }
 
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 4; i++) {
 
     std::vector<uint64_t> nums; // = { 137 * 137 };
 
-    for (int i = 0; i < HEIGHT; i++)
-      nums.push_back(Rand64(&rc) & uint64_t{0xFFFFFFFFFFF});
+    if (i == 0) {
+      for (int i = 0; i < HEIGHT; i++) {
+        nums.push_back(i);
+      }
+    } else {
+      for (int i = 0; i < HEIGHT; i++) {
+        nums.push_back(Rand64(&rc) & uint64_t{0xFFFFFFFFFFF});
+      }
+    }
 
     Timer ftimer;
     printf("Factorize...\n");
@@ -392,6 +403,163 @@ static void TestFactorize() {
   printf("OK\n");
 }
 
+static void TestTrialDivide() {
+  ArcFour rc("trialdivide");
+  static constexpr int HEIGHT = 131072;
+  TrialDivideGPU trialdivide(cl, HEIGHT);
+
+  /*
+  std::optional<std::string> ptx =
+    CL::DecodeProgram(factorize.program);
+  if (ptx.has_value()) {
+    Util::WriteFile("trialdivide.ptx", ptx.value());
+    printf("Wrote to trialdivide.ptx\n");
+  }
+  */
+
+  for (int i = 0; i < 4; i++) {
+
+    std::vector<uint64_t> nums; // = { 137 * 137 };
+
+    if (i == 0) {
+      for (int i = 0; i < HEIGHT; i++) {
+        nums.push_back(i);
+      }
+    } else {
+      for (int i = 0; i < HEIGHT; i++) {
+        nums.push_back(Rand64(&rc) & uint64_t{0xFFFFFFFFFFF});
+      }
+    }
+
+    Timer ftimer;
+    printf("Trial Divide...\n");
+    const auto &[large, small, num_factors] = trialdivide.Factorize(nums);
+    printf("Trial divided %d numbers in %s\n",
+           HEIGHT,
+           ANSI::Time(ftimer.Seconds()).c_str());
+
+    int64_t num_failed = 0;
+    for (int i = 0; i < HEIGHT; i++) {
+      if (num_factors[i] & 0x80) {
+        num_failed++;
+
+        // For failed numbers, the partial factorization should still
+        // be correct.
+        CHECK(nums[i] >= 137) << "Small numbers should be completely "
+          "factored by this phase (especially 0, 1), but " << nums[i] <<
+          " failed.";
+
+      } else {
+        // If successful, the large factor should be prime (or 1).
+
+        uint64_t large_factor = large[i];
+        CHECK(large_factor <= 1 ||
+              Factorization::IsPrime(large_factor)) << large_factor;
+      }
+
+      uint64_t n = large[i];
+      // Small factors should always be prime, even if we failed.
+      for (int j = 0; j < (num_factors[i] & 0x7f); j++) {
+        uint64_t factor = small[i * FactorizeGPU::MAX_FACTORS + j];
+        n *= factor;
+        CHECK(Factorization::IsPrime(factor)) << factor;
+      }
+
+      // We require this, even for 0 and 1.
+      CHECK(nums[i] == n) << "Target num is " << nums[i] << " but product "
+        "of factors is " << n;
+    }
+
+    printf("%lld/%d failed (%.2f%%)\n",
+           num_failed, HEIGHT,
+           (100.0 * num_failed) / HEIGHT);
+  }
+
+  printf("OK\n");
+}
+
+static void BenchFactorize() {
+  printf("Benchmark factorize...\n");
+  ArcFour rc("factorize");
+  static constexpr int HEIGHT = 131072;
+  FactorizeGPU factorize(cl, HEIGHT);
+
+  static constexpr int REPS = 100;
+  double total_time = 0.0;
+
+  int64_t total_failed = 0;
+
+  for (int i = 0; i < REPS; i++) {
+    std::vector<uint64_t> nums; // = { 137 * 137 };
+
+    for (int i = 0; i < HEIGHT; i++)
+      nums.push_back(Rand64(&rc) & uint64_t{0xFFFFFFFFFFF});
+
+    Timer ftimer;
+    const auto &[factors, num_factors] = factorize.Factorize(nums);
+    total_time += ftimer.Seconds();
+
+    for (int i = 0; i < HEIGHT; i++) {
+      if (num_factors[i] & 0x80) {
+        total_failed++;
+      }
+    }
+  }
+
+  constexpr int64_t TOTAL = REPS * HEIGHT;
+  double sec_each = total_time / TOTAL;
+  printf(
+      "Full factorization of %d*%d nums in %s (%s/ea).\n"
+      "%lld/%lld failed (%.4f%%)\n",
+      HEIGHT, REPS, ANSI::Time(total_time).c_str(),
+      ANSI::Time(sec_each).c_str(),
+
+      total_failed, TOTAL,
+      (100.0 * total_failed) / TOTAL);
+}
+
+
+static void BenchTrialDivide() {
+  printf("Benchmark TrialDivide...\n");
+  ArcFour rc("trialdivide");
+  static constexpr int HEIGHT = 131072;
+  TrialDivideGPU trialdivide(cl, HEIGHT);
+
+  const int REPS = 100;
+  double total_time = 0.0;
+
+  int64_t total_failed = 0;
+  for (int i = 0; i < REPS; i++) {
+    std::vector<uint64_t> nums;
+    for (int i = 0; i < HEIGHT; i++)
+      nums.push_back(Rand64(&rc) & MASK_CURRENT_RANGE);
+
+    Timer ftimer;
+    const auto &[large, small, num_factors] = trialdivide.Factorize(nums);
+    total_time += ftimer.Seconds();
+
+
+    for (int i = 0; i < HEIGHT; i++) {
+      if (num_factors[i] & 0x80) {
+        total_failed++;
+      }
+    }
+  }
+
+  constexpr int64_t TOTAL = REPS * HEIGHT;
+  double sec_each = total_time / TOTAL;
+  printf(
+      "Trial divide %d*%d nums in %s (%s/ea).\n"
+      "%lld/%lld failed (%.4f%%)\n",
+      HEIGHT, REPS, ANSI::Time(total_time).c_str(),
+      ANSI::Time(sec_each).c_str(),
+
+      total_failed, TOTAL,
+      (100.0 * total_failed) / TOTAL);
+}
+
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
@@ -403,7 +571,12 @@ int main(int argc, char **argv) {
   TestWays<WaysGPU, TEST_AGAINST_CPU, 16>("orig2d");
   */
 
+
+  TestTrialDivide();
   TestFactorize();
+
+  BenchFactorize();
+  BenchTrialDivide();
 
   // Optimize<WaysGPU>();
 

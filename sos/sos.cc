@@ -144,11 +144,20 @@ private:
 // Tuned by sos-gpu_test.
 // static constexpr int GPU_HEIGHT = 49912;
 // static constexpr int GPU_HEIGHT = 51504;
+// 131072 0.205us/ea.
+// 131072x8 0.246us/ea.
 static constexpr int GPU_WAYS_HEIGHT = 131072;
 // PERF: Tune!
-static constexpr int GPU_FACTOR_HEIGHT = 8192;
+// static constexpr int GPU_FACTOR_HEIGHT = 8192;
+// 8192: 2m52s
+// 131072: 2m19s
+// 524288: 2m15s
+//  (then with larger numbers...)
+// 524288x2: 2m23s
+// 524288x4: 3m24s
+static constexpr int GPU_FACTOR_HEIGHT = 524288 * 2;
 
-static constexpr int NUM_GPU_THREADS = 2;
+static constexpr int NUM_GPU_WAYS_THREADS = 2;
 static constexpr int TRY_BATCH_SIZE = 256;
 static constexpr int TRY_ROLL_SIZE = 32;
 static_assert(TRY_BATCH_SIZE % TRY_ROLL_SIZE == 0,
@@ -445,7 +454,7 @@ struct SOS {
     // rather than saving to disk.
     // We're much less CPU bound now, so using lower max_parallelism here.
     // was 30, 12
-    nways_comp.reset(new AutoParallelComp(8, 1000, false));
+    nways_comp.reset(new AutoParallelComp(16, 1000, false));
     try_comp.reset(new AutoParallelComp(8, 1000, false));
 
     eligiblefilter_gpu.reset(
@@ -1198,7 +1207,7 @@ struct SOS {
           status.Printf(AWHITE("Old autoparallel histo") ":\n");
           status.Emit(try_comp->HistoString());
 
-          try_comp.reset(new AutoParallelComp(30, 1000, false));
+          try_comp.reset(new AutoParallelComp(12, 1000, false));
           try_endgame = false;
         }
 
@@ -1496,9 +1505,9 @@ struct SOS {
 
     work_stealing_threads = STEADY_WORK_STEALING_THREADS;
 
-    std::vector<std::thread> gpu_threads;
-    for (int i = 0; i < NUM_GPU_THREADS; i++)
-      gpu_threads.emplace_back(&GPUWaysThread, this, i + 1);
+    std::vector<std::thread> gpu_ways_threads;
+    for (int i = 0; i < NUM_GPU_WAYS_THREADS; i++)
+      gpu_ways_threads.emplace_back(&GPUWaysThread, this, i + 1);
     std::thread steal_thread(&StealThread, this);
     std::thread status_thread(&StatusThread, this, epoch_start, epoch_size);
 
@@ -1551,8 +1560,8 @@ struct SOS {
 
     // Now actually wait for gpu thread, which should be done very shortly
     // since there's no more work.
-    for (auto &gpu_thread : gpu_threads) gpu_thread.join();
-    gpu_threads.clear();
+    for (auto &gpu_thread : gpu_ways_threads) gpu_thread.join();
+    gpu_ways_threads.clear();
 
     try_queue->MarkDone();
 
@@ -1589,7 +1598,7 @@ struct SOS {
 
     status.Printf(AWHITE("NWays autoparallel histo") ":\n");
     status.Emit(nways_comp->HistoString());
-    status.Printf(AWHITE("Try autoparallel histo") ":\n");
+    status.Printf(AWHITE("Endgame Try autoparallel histo") ":\n");
     status.Emit(try_comp->HistoString());
 
     double sec = timer.Seconds();

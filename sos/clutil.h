@@ -19,6 +19,8 @@ using uchar = uint8_t;
 
 using uint64 = uint64_t;
 
+// TODO: Some profiling support via clGetEventProfilingInfo.
+
 // TODO: make CHECK_SUCCESS(exp) << stuff; work!
 #define CHECK_SUCCESS(e) do {                                           \
     const int ret = (e);                                                \

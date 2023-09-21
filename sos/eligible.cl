@@ -5,6 +5,8 @@ typedef ulong uint64_t;
 typedef long int64_t;
 typedef atomic_uint atomic_uint32_t;
 
+#define STATIC_ASSERT(cond) char unused_[0 - !(cond)];
+
 // Writes bitmask to out.
 __kernel void NotSumOfSquares(const uint64_t start,
                               __global uint8_t *restrict out) {
@@ -103,10 +105,15 @@ __kernel void NotSumOfSquares(const uint64_t start,
     if (e_ ## p & 1) bit = 1;                                      \
   } while (0)
 
+    // "Sum of two squares theorem": The number can be written as the
+    // sum of two squares iff for all factors p^k, when p % 4 = 3,
+    // k is even. So here we check some small p where p % 4 == 3.
+
   // Check if the power of p in the prime factorization is 1 or 3.
   // First we check if p^4 divides it; if so we don't try to figure
   // out what k is. Otherwise, p^2
 #define DIV(p) do {                \
+    STATIC_ASSERT((((p) & 3) == 3));          \
     uint64_t pp = (p * p);         \
     if (sum % (pp * pp) != 0) {    \
       if (sum % (pp * p) == 0) bit = 1; \
@@ -117,6 +124,20 @@ __kernel void NotSumOfSquares(const uint64_t start,
     DIV(3);
     DIV(7);
     DIV(11);
+    DIV(19);
+    DIV(23);
+    DIV(31);
+    DIV(43);
+    DIV(47);
+    DIV(59);
+    DIV(67);
+    DIV(71);
+    DIV(79);
+    DIV(83);
+    DIV(103);
+    DIV(107);
+    DIV(127);
+    DIV(131);
 
     byte |= bit << (7 - i);
   }
