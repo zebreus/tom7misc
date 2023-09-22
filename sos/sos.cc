@@ -164,10 +164,13 @@ static_assert(TRY_BATCH_SIZE % TRY_ROLL_SIZE == 0,
               "this is not strictly required, but would hurt "
               "performance!");
 
-static constexpr uint64_t MAX_EPOCH_SIZE = 800'000'000; /* ' */
+// PERF Probably better to increase this as the speed has improved.
+static constexpr uint64_t MAX_EPOCH_SIZE = 800'000'000 * 2; /* ' */
 // Each of these yields 8 sums. If it's larger, we may run off the
 // end of the batch, although this is usually a trivial cost.
-static constexpr size_t EPOCH_GPU_CHUNK = 100000000;
+// This phase is super fast, but large chunks cause us to allocate
+// memory for pending work.
+static constexpr size_t EPOCH_GPU_CHUNK = 12'500'000; // 100000000;
 
 // PERF: Tune it
 static constexpr int STEADY_WORK_STEALING_THREADS = 0;
@@ -221,10 +224,11 @@ static void ResetCounters() {
 template<class Item>
 struct BatchedWorkQueue {
   const int batch_size = 0;
-  BatchedWorkQueue(int batch_size) : batch_size(batch_size) {
+  explicit BatchedWorkQueue(int batch_size) : batch_size(batch_size) {
     CHECK(batch_size > 0);
     // Set up invariant.
     queue.push_back(std::vector<Item>{});
+    queue.back().reserve(batch_size);
   }
 
   // Consumers of the work queue call this in a loop. If the result
@@ -270,15 +274,25 @@ struct BatchedWorkQueue {
       CHECK(!queue.empty() && queue.back().size() < batch_size);
       queue.back().push_back(item);
       size++;
-      if (queue.back().size() == batch_size) {
-        // Finished batch, so add new empty batch.
-        queue.push_back(std::vector<Item>());
-      }
+      MaybeFinishBatch();
+    }
+    cond.notify_all();
+  }
+
+  void WaitAdd(Item &&item) {
+    {
+      std::unique_lock ml(mutex);
+      CHECK(!done);
+      CHECK(!queue.empty() && queue.back().size() < batch_size);
+      queue.back().emplace_back(item);
+      size++;
+      MaybeFinishBatch();
     }
     cond.notify_all();
   }
 
   void WaitAddVec(const std::vector<Item> &items) {
+    if (items.empty()) return;
     {
       std::unique_lock ml(mutex);
       CHECK(!done);
@@ -288,10 +302,7 @@ struct BatchedWorkQueue {
       for (const Item &item : items) {
         CHECK(!queue.empty() && queue.back().size() < batch_size);
         queue.back().push_back(item);
-        if (queue.back().size() == batch_size) {
-          // Finished batch, so add new empty batch.
-          queue.push_back(std::vector<Item>());
-        }
+        MaybeFinishBatch();
       }
     }
     cond.notify_all();
@@ -306,8 +317,34 @@ struct BatchedWorkQueue {
     cond.notify_all();
   }
 
-  // Might be useful to be able to add in batch.
+  // Wait until the number of pending batches is fewer than the
+  // argument. An incomplete batch counts, including an empty one, so
+  // there is always at least one pending batch. This can be used to
+  // efficiently throttle threads that add to the queue. Queue may
+  // not be done.
+  void WaitUntilFewer(int num_batches) {
+    CHECK(num_batches > 0) << "This would never return.";
+    {
+      std::unique_lock ml(mutex);
+      CHECK(!done);
+      cond.wait(ml, [this, num_batches] {
+          return queue.size() < num_batches;
+        });
+      status.Printf("Queue size %lld\n", queue.size());
+    }
+    // State hasn't changed, so no need to notify others.
+  }
+
  private:
+  // Must hold lock.
+  inline void MaybeFinishBatch() {
+    if (queue.back().size() == batch_size) {
+      // Finished batch, so add new empty batch.
+      queue.push_back(std::vector<Item>());
+      queue.back().reserve(batch_size);
+    }
+  }
+
   std::mutex mutex;
   std::condition_variable cond;
   // Add at the end. This always consists of a series (maybe zero)
@@ -872,8 +909,15 @@ struct SOS {
 
     auto FormatNum = [](uint64_t n) {
         if (n > 1'000'000) {
-          // TODO: Integer division. color decimal place and suffix.
-          return StringPrintf("%.2fM", n / 1000000.0);
+          double m = n / 1000000.0;
+          if (m >= 100.0) {
+            return StringPrintf("%dM", (int)std::round(m));
+          } else if (m > 10.0) {
+            return StringPrintf("%.1fM", m);
+          } else {
+            // TODO: Integer division. color decimal place and suffix.
+            return StringPrintf("%.2fM", m);
+          }
         } else {
           return Util::UnsignedWithCommas(n);
         }
@@ -905,28 +949,6 @@ struct SOS {
           FormatNum(done_gpu_filtered).c_str(),
           FormatNum(batches_completely_filtered).c_str());
 
-    // Get the fractions other than pending.
-    /*
-    double blood = (100.0 * done_ineligible_gpu) / epoch_size;
-    double red = (100.0 * done_ineligible_cpu) / epoch_size;
-    double green = (100.0 * triple_pending_ways) / epoch_size;
-    double blue = (100.0 * done_gpu_filtered) / epoch_size;
-    double cyan = (100.0 * pending_try) / epoch_size;
-    double white = (100.0 * done_full_try) / epoch_size;
-    double black = (100.0 * pending) / epoch_size;
-    */
-
-    /*
-    string line5 =
-      StringPrintf(AGREY("%.1f%% left") " "
-                   AFGCOLOR(180, 40, 40, "%.1f%% igpu") " "
-                   ARED("%.1f%% icpu") " "
-                   AGREEN("%.1f%% pways") " "
-                   ABLUE("%.1f%% filt gpu") " "
-                   ACYAN("%.1f%% ptry") " "
-                   AWHITE("%.1f%% full") "\n",
-                   black, blood, red, green, blue, cyan, white);
-    */
     double cpu_pct = (100.0 * cpu_factored) / (bfactored * GPU_FACTOR_HEIGHT);
     string line5 =
       StringPrintf(AWHITE("%s") " batches factored. "
@@ -965,7 +987,7 @@ struct SOS {
         };
 
       AddWidthOf(0x400000FF, prefiltered_size);
-      AddWidthOf(0x400040FF, factor_size);
+      AddWidthOf(0x400070FF, factor_size);
       AddWidthOf(0x404000FF, factored_size);
       AddWidthOf(0x000040FF, ways_size);
       AddWidthOf(0x005050FF, try_size);
@@ -983,34 +1005,6 @@ struct SOS {
           ANSI::Composite(bar_info, fgcolors, bgcolors).c_str(),
           eta.c_str());
       }();
-
-    // TODO: manually stack progress bar with queues!
-#if 0
-    string info = StringPrintf(
-        "%s gpu-ineligible",
-        Util::UnsignedWithCommas(done_ineligible_gpu).c_str());
-    string line6 = ANSI::ProgressBar(numer, denom, info, sec) + "\n";
-#endif
-
-    /*
-    string line6;
-    if (!nways_is_done) {
-      string info = StringPrintf(
-          "%s eligible",
-          Util::UnsignedWithCommas(eligible_triples).c_str());
-      line6 = ANSI::ProgressBar(done, epoch_size, info, sec) + "\n";
-    } else {
-      string info = StringPrintf("%llu gpu filtered + %llu full",
-                                 done_gpu_filtered, done_full_try);
-      ANSI::ProgressBarOptions options;
-      options.bar_filled = 0x0f9115;
-      options.bar_empty  = 0x001a03;
-
-      line6 = ANSI::ProgressBar(done_gpu_filtered + done_full_try,
-                                eligible_triples,
-                                info, sec, options) + "\n";
-    }
-    */
 
     status.EmitStatus(line1 + line2 + line3 + line4 + line5 + line6);
   }
@@ -1299,8 +1293,12 @@ struct SOS {
         }
       }
 
-      // XXX should have a target size and block here if we've
-      // exceeded it. No need to fill gigs of ram.
+      // The representation of the expanded factors is much larger
+      // than the input, and fast to produce. So don't eagerly fill
+      // the queue; that just results in higher peak memory usage.
+      static constexpr int TARGET_GPU_FACTOR_PENDING = 4;
+      factor_queue->WaitUntilFewer(TARGET_GPU_FACTOR_PENDING);
+
       factor_queue->WaitAddVec(tofactor);
       tofactor.clear();
 
@@ -1396,7 +1394,6 @@ struct SOS {
             num_rolls,
             [&](int roll_idx) {
 
-              // PERF run a few in a loop to avoid lock overhead
               int local_triple_pending_ways = 0;
               int local_cpu_factored = 0;
               int local_eligible_triples = 0;
@@ -1526,12 +1523,15 @@ struct SOS {
       Timer eligible_gpu_timer;
       // Now we generate chunks of the given size, until we've covered
       // the epoch.
+      int num_batches = 0;
       for (uint64_t u = 0; u < epoch_size; u += EPOCH_CHUNK) {
+        num_batches++;
         uint64_t base = epoch_start + u;
         std::vector<uint8_t> bitmask = eligiblefilter_gpu->Filter(base);
         prefiltered_queue->WaitAdd(std::make_pair(base, std::move(bitmask)));
       }
-      status.Printf("Did GPU eligible in %s\n",
+      status.Printf("Did GPU eligible (%d batches of %lld) in %s\n",
+                    num_batches, EPOCH_CHUNK,
                     ANSI::Time(eligible_gpu_timer.Seconds()).c_str());
     }
     prefiltered_queue->MarkDone();
