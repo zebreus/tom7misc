@@ -330,7 +330,6 @@ struct BatchedWorkQueue {
       cond.wait(ml, [this, num_batches] {
           return queue.size() < num_batches;
         });
-      status.Printf("Queue size %lld\n", queue.size());
     }
     // State hasn't changed, so no need to notify others.
   }

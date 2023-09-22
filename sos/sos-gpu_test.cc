@@ -369,7 +369,7 @@ static void TestFactorize() {
     }
 
     Timer ftimer;
-    printf("Factorize...\n");
+    printf(APURPLE("[TEST]") " Factorize...\n");
     const auto &[factors, num_factors] = factorize.Factorize(nums);
     printf("Factorized %d numbers in %s\n",
            HEIGHT,
@@ -400,7 +400,7 @@ static void TestFactorize() {
            (100.0 * num_failed) / HEIGHT);
   }
 
-  printf("OK\n");
+  printf(AGREEN("OK") "\n");
 }
 
 static void TestTrialDivide() {
@@ -432,7 +432,7 @@ static void TestTrialDivide() {
     }
 
     Timer ftimer;
-    printf("Trial Divide...\n");
+    printf(APURPLE("[TEST]") " Trial Divide...\n");
     const auto &[large, small, num_factors] = trialdivide.Factorize(nums);
     printf("Trial divided %d numbers in %s\n",
            HEIGHT,
@@ -475,11 +475,11 @@ static void TestTrialDivide() {
            (100.0 * num_failed) / HEIGHT);
   }
 
-  printf("OK\n");
+  printf(AGREEN("OK") "\n");
 }
 
 static void BenchFactorize() {
-  printf("Benchmark factorize...\n");
+  printf(ABLUE("[BENCH]") " Factorize...\n");
   ArcFour rc("factorize");
   static constexpr int HEIGHT = 131072;
   FactorizeGPU factorize(cl, HEIGHT);
@@ -520,7 +520,7 @@ static void BenchFactorize() {
 
 
 static void BenchTrialDivide() {
-  printf("Benchmark TrialDivide...\n");
+  printf(ABLUE("[BENCH]") " TrialDivide...\n");
   ArcFour rc("trialdivide");
   static constexpr int HEIGHT = 131072;
   TrialDivideGPU trialdivide(cl, HEIGHT);
@@ -570,7 +570,6 @@ int main(int argc, char **argv) {
   TestWays<WaysGPUMerge, TEST_AGAINST_CPU, 16>("merge");
   TestWays<WaysGPU, TEST_AGAINST_CPU, 16>("orig2d");
   */
-
 
   TestTrialDivide();
   TestFactorize();

@@ -469,8 +469,6 @@ bool IsPrimeInternalUnrolled(uint64_t n) {
   return true;
 };
 
-#define IsPrimeInternal IsPrimeInternalUnrolled
-
 static const uint32_t WITNESSES[7] =
   { 2, 325, 9375, 28178, 450775, 9780504, 1795265022 };
 
@@ -481,20 +479,6 @@ bool IsPrimeInternalGeneral(uint64_t n) {
 
   // PERF: For this version, we might as well perform the
   // smaller number of tests?
-#if 0
-  if (n == 2) return true;
-  if (n == 3) return true;
-  if (n == 5) return true;
-  if (n == 7) return true;
-  if (n == 11) return true;
-  if (n == 13) return true;
-  if (n == 17) return true;
-  if (n == 19) return true;
-  if (n == 23) return true;
-  if (n == 29) return true;
-  if (n == 31) return true;
-  if (n == 37) return true;
-#endif
   if (n == 2) return true;
   if (n == 3) return true;
   if (n == 5) return true;
@@ -550,6 +534,7 @@ bool IsPrimeInternalGeneral(uint64_t n) {
   return true;
 }
 
+#define IsPrimeInternal IsPrimeInternalUnrolled
 
 void FactorUsingPollardRho(uint64_t n,
                            uint64_t a,
