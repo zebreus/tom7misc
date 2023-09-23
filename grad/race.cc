@@ -13,6 +13,8 @@
 
 #include "grad-util.h"
 
+static constexpr bool DRAW_500 = false;
+
 // Show the paths of two numbers as we iterate "function1" on them.
 static void Race() {
   static constexpr uint16 SCALE_U = 0x3bffu;
@@ -139,7 +141,7 @@ static void Rainbow() {
       dvalues[i] *= DSCALE;
     }
 
-    if (y == 500) {
+    if (DRAW_500 && y == 500) {
       for (int i = 0; i < WIDTH; i++) {
         eimg.BlendPixel32(i, y, 0x000000AA);
       }

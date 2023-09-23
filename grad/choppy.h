@@ -308,7 +308,7 @@ struct ChoppyGrid {
         // Optional comments
         StringAppendF(&out, "//");
         for (int i : k) StringAppendF(&out, " %d", i);
-        string ser = Util::losewhitel(Exp::Serialize(v));
+        string ser = Util::LoseWhiteL(Exp::Serialize(v));
         StringAppendF(&out, "\n"
                       "%s\n",
                       ser.c_str());

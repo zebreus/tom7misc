@@ -1,4 +1,4 @@
-default: cart.nes
+default: cart.nes cart-chr.rom cart-prg.rom
 
 CC_LIB = ../../cc-lib
 CC65_DIR = ../../../cc65
@@ -48,8 +48,11 @@ tiles-fill.png : tiles.png spreadbyte.exe
 tiles.chr : tiles-fill.png makechr.exe
 	./makechr.exe $< $@
 
-cart.rom: cart.nes makeimage.exe
+cart-prg.rom: cart.nes makeimage.exe
 	./makeimage.exe -mirror -prg $< $@
+
+cart-chr.rom: cart.nes makeimage.exe
+	./makeimage.exe -mirror -chr $< $@
 
 clean:
 	rm -f makeimage.exe dumpchr.exe makechr.exe tiles.chr cart.nes *.o cart.s
