@@ -119,7 +119,9 @@ int main(int argc, char **argv) {
   image.Clear32(0x000000FF);
 
   double road_feet = 0.0;
+  int64 ways_inbounds = 0;
   for (const auto &[way_id, way] : osm.ways) {
+    bool way_is_inbounds = false;
     if (DrawRoad(way.highway)) {
       const uint32 color = WayColor(way.highway);
       for (int i = 0; i < way.points.size() - 1; i++) {
@@ -133,11 +135,13 @@ int main(int argc, char **argv) {
           const LatLon latlon0 = it0->second;
           const LatLon latlon1 = it1->second;
 
-            auto [x0, y0] = scaler.Scale(Project(latlon0));
-            auto [x1, y1] = scaler.Scale(Project(latlon1));
+          auto [x0, y0] = scaler.Scale(Project(latlon0));
+          auto [x1, y1] = scaler.Scale(Project(latlon1));
 
           if (-1 != pactom->InNeighborhood(latlon0) &&
               -1 != pactom->InNeighborhood(latlon1)) {
+
+            way_is_inbounds = true;
 
             road_feet += LatLon::DistFeet(latlon0, latlon1);
             PacTomUtil::DrawThickLine<RADIUS>(&image,
@@ -149,8 +153,10 @@ int main(int argc, char **argv) {
         }
       }
     }
+    if (way_is_inbounds) ways_inbounds++;
   }
-  printf("Total road miles: %.6f\n", road_feet / 5280.0);
+  printf("Total road miles in Pittsburgh: %.6f\n", road_feet / 5280.0);
+  printf("Total distinct OSM ways in Pittsburgh: %lld\n", ways_inbounds);
 
   for (const auto &[name, path] : pactom->hoods) {
     constexpr uint32 color = 0x909090FF;

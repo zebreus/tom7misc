@@ -7,6 +7,8 @@
 #include "yocto_matht.h"
 #include "yocto_geometryt.h"
 
+#include "pactom-util.h"
+
 struct ConvertUV {
   // uv coordinates here are given in terms of the earth
   // texture map image (already flipped horizontally).
@@ -131,13 +133,21 @@ struct Tile {
 
   LatLon::Projection proj;
 
-  // TODO: shift colors to match marble image
-  Tile() {
+  Tile(const PacTom *pactom) : pactom(pactom) {
+    ArcFour rc("tile");
+
     image.reset(ImageRGBA::Load("tile.png"));
     CHECK(image.get() != nullptr);
     proj = LatLon::Linear(LatLon::FromDegs(lat0, lon0),
                           LatLon::FromDegs(lat1, lon1));
     Recolor();
+
+    for (const auto &r : pactom->runs) {
+      uint32_t color =
+        PacTomUtil::RandomBrightColor(&rc) & 0xFFFFFFCC;
+      colors.emplace_back(color);
+    }
+
   }
 
   std::pair<double, double> ToXY(LatLon ll) {
@@ -193,12 +203,14 @@ struct Tile {
     }
   }
 
-  void DrawHoods(PacTom *pactom) {
+  void DrawHoods() {
+    if (pactom == nullptr)
+      return;
+
     static constexpr int RADIUS = 4;
-    CHECK(pactom != nullptr);
 
     for (const auto &[name, path] : pactom->hoods) {
-      constexpr uint32 color = 0xFFFFAA;
+      constexpr uint32 color = 0xFFFF99;
       for (int i = 0; i < path.size() - 1; i++) {
         const LatLon latlon0 = path[i];
         const LatLon latlon1 = path[i + 1];
@@ -214,13 +226,14 @@ struct Tile {
     return highway != OSM::NONE;
   }
 
-  void DrawStreets(const PacTom &pactom,
-                   const OSM &osm) {
+  void DrawStreets(const OSM &osm) {
+    if (pactom == nullptr) return;
+
     static constexpr int RADIUS = 2;
 
     for (const auto &[way_id, way] : osm.ways) {
       if (DrawRoad(way.highway)) {
-        const uint32 color = 0x55101077;
+        const uint32 color = 0x55101044;
         for (int i = 0; i < way.points.size() - 1; i++) {
           const uint64_t id0 = way.points[i];
           const uint64_t id1 = way.points[i + 1];
@@ -235,8 +248,8 @@ struct Tile {
             auto [x0, y0] = ToXY(latlon0);
             auto [x1, y1] = ToXY(latlon1);
 
-            if (-1 != pactom.InNeighborhood(latlon0) &&
-                -1 != pactom.InNeighborhood(latlon1)) {
+            if (-1 != pactom->InNeighborhood(latlon0) &&
+                -1 != pactom->InNeighborhood(latlon1)) {
 
               DrawThickLine<RADIUS>(x0, y0, x1, y1, color);
             }
@@ -246,7 +259,50 @@ struct Tile {
     }
   }
 
+  void SetBase() {
+    image_base.reset(image->Copy());
+  }
+
+  void SetRunFrac(double rf) {
+    CHECK(pactom != nullptr);
+    CHECK(image_base.get() != nullptr) << "Need to SetBase first";
+
+    static constexpr int RADIUS = 4;
+    static constexpr int DOT_RADIUS = 16;
+
+    // Common case is we're already at 0.0 or 1.0
+    if (current_run_frac == rf)
+      return;
+
+    current_run_frac = rf;
+    image.reset(image_base->Copy());
+
+    for (int idx = 0; idx < pactom->runs.size(); idx++) {
+      const uint32_t color = colors[idx];
+      const auto &p = pactom->runs[idx].path;
+      const int last_pt =
+        std::clamp((int)std::round(p.size() * rf), 0, (int)p.size());
+      for (int i = 0; i < last_pt - 1; i++) {
+        const auto &[latlon0, elev0] = p[i];
+        const auto &[latlon1, elev1] = p[i + 1];
+        auto [x0, y0] = ToXY(latlon0);
+        auto [x1, y1] = ToXY(latlon1);
+
+        DrawThickLine<RADIUS>(x0, y0, x1, y1, color);
+
+        if (i == last_pt - 2 && last_pt != p.size()) {
+          uint32_t dot_color = color | 0xAA;
+          image->BlendFilledCircle32(x1, y1, DOT_RADIUS, dot_color);
+        }
+      }
+    }
+  }
+
+  const PacTom *pactom = nullptr;
+  std::vector<uint32_t> colors;
+  double current_run_frac = 0.0;
   std::unique_ptr<ImageRGBA> image;
+  std::unique_ptr<ImageRGBA> image_base;
 };
 
 using mat3d = yocto::mat<double, 3>;

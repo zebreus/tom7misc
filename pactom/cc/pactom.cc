@@ -238,8 +238,8 @@ struct KmlRec {
   // Populated by Process.
   vector<PacTom::Run> runs;
 
-  // Due to the many different approaches I used to store these, there are multiple
-  // different representations.
+  // Due to the many different approaches I used to store these, there are
+  // multiple different representations.
   //
   // <folder>
   //   <name>Actual Name</name>
@@ -311,6 +311,7 @@ struct KmlRec {
         PacTom::Run run;
         CHECK(name_ctx != "") << filename << ": linestring with no name";
         run.name = name_ctx;
+        run.from_file = filename;
 
         if (auto ymdo = ParseDesc(name_ctx, desc_ctx)) {
           std::tie(run.year, run.month, run.day) = ymdo.value();
@@ -336,7 +337,10 @@ struct KmlRec {
 
 
 // This parses my "neighborhoods" file and also the KML
-// county file from the Allegheny GIS site.
+// county file from the Allegheny GIS site. Note that this
+// does not support MultiGeometry (used in O'hara -- I manually
+// split it apart) nor duplicate names (I manually qualified
+// as "borough" or "township"). Probably should add support?
 struct HoodRec {
   std::map<string, std::vector<LatLon>> polys;
 
@@ -649,6 +653,8 @@ PacTom::SpanningTree PacTom::MakeSpanningTree(LatLon home_pos,
         },
         num_threads);
   }
+
+  printf("Num nodes: %lld\n", graph.nodes.size());
 
   printf("Get shortest paths.\n");
   // Get node closest to home. We assume there's a node

@@ -25,6 +25,8 @@ struct PacTom {
   // Parallel to above.
   struct Run {
     std::string name;
+    // Always one of the entries in the files vector.
+    std::string from_file;
     // e.g. 2000, 1, 1, for 1 January 2000.
     // Note: Might not have a date :/
     int year = 0, month = 0, day = 0;

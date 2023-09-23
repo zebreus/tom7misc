@@ -25,10 +25,11 @@
 #include "image-frgba.h"
 #include "osm.h"
 #include "render.h"
+#include "pactom-util.h"
 
 static constexpr double PI = std::numbers::pi;
 
-static constexpr int THREADS = 24;
+static constexpr int THREADS = 16;
 
 static constexpr double EARTH_RADIUS = 2.8;
 static constexpr double MILES = 2.8 / 3963.19;
@@ -174,7 +175,7 @@ static Tile *tile = nullptr;
 
 
 // distance is distance from camera to surface
-uint32_t EarthColor(double ux, double uy, double distance) {
+static uint32_t EarthColor(double ux, double uy, double distance) {
 
   float r, g, b, a_;
   std::tie(r, g, b, a_) = bluemarble->SampleBilinear(
@@ -217,6 +218,9 @@ struct Shot {
 
   bool draw_atmosphere = true;
   bool draw_mouth = true;
+
+  double start_run_frac = 0.0;
+  double end_run_frac = 0.0;
 
   std::function<double(double)> easing = [](double f) { return f; };
 };
@@ -295,15 +299,24 @@ inline static float Illumination(const Scene &scene,
   return 1.0f;
 }
 
+// NOT thread safe: modifies tile
+// (Parallelized internally though.)
 static ImageRGBA RenderFrame(
     int frame_width,
     int frame_height,
     int oversample,
     Position pos,
     bool draw_atmosphere,
-    bool draw_mouth) {
+    bool draw_mouth,
+    double run_frac) {
 
   ImageRGBA img(frame_width * oversample, frame_height * oversample);
+
+  {
+    Timer srf;
+    tile->SetRunFrac(run_frac);
+    printf("SetRunFrac in %.3fs\n", srf.Seconds());
+  }
 
   // Right-handed:
   //
@@ -545,8 +558,7 @@ static ImageRGBA RenderFrame(
 
 int main(int argc, char **argv) {
 
-  auto pt = PacTom::FromFiles({"../pac.kml", "../pac2.kml"},
-                              "../neighborhoods.kml");
+  auto pt = PacTomUtil::Load(false);
   CHECK(pt.get() != nullptr);
   pactom = pt.release();
 
@@ -562,9 +574,10 @@ int main(int argc, char **argv) {
 
   InParallel(
       [&](){
-        tile = new Tile;
-        tile->DrawStreets(*pactom, osm);
-        tile->DrawHoods(pactom);
+        tile = new Tile(pactom);
+        tile->DrawStreets(osm);
+        tile->DrawHoods();
+        tile->SetBase();
       },
       [](){
         widetile = new WideTile;
@@ -644,7 +657,8 @@ int main(int argc, char **argv) {
     FRAME_VARIANTS,
   };
 
-  RenderMode mode = ONE_FRAME;
+  #if 0
+  RenderMode mode = FRAMES;
   const int target_shot = 1;
   const int target_frame = 239;
   // static constexpr int FRAME_WIDTH = 2880;
@@ -652,10 +666,20 @@ int main(int argc, char **argv) {
   static constexpr int FRAME_WIDTH = 1920;
   static constexpr int FRAME_HEIGHT = 1080;
   static constexpr int OVERSAMPLE = 4;
+  #else
+  RenderMode mode = ONE_FRAME;
+  const int target_shot = 1;
+  const int target_frame = 1559;
+  // static constexpr int FRAME_WIDTH = 2880;
+  // static constexpr int FRAME_HEIGHT = 1620;
+  static constexpr int FRAME_WIDTH = 1920 * 8;
+  static constexpr int FRAME_HEIGHT = 1080 * 8;
+  static constexpr int OVERSAMPLE = 2;
+  #endif
 
   Position pittsburgh;
   // pittsburgh.distance = 2.80000428964;
-  pittsburgh.distance = 2.81133246;
+  pittsburgh.distance = 2.8114; // 2.81133246;
   pittsburgh.a1 = 0.116977384;
   pittsburgh.a2 = 3.008537539;
   pittsburgh.a3 = 2.284259683;
@@ -665,6 +689,13 @@ int main(int argc, char **argv) {
   chainsaw.a1 = 0.11;
   chainsaw.a2 = 3.00;
   chainsaw.a3 = 2.27;
+
+  Position pittsburgh_out;
+  pittsburgh_out.distance = 2.814;
+  pittsburgh_out.a1 = 0.116977384;
+  pittsburgh_out.a2 = 3.008537539;
+  pittsburgh_out.a3 = 2.284259683;
+
 
   Position pacman;
   /*
@@ -679,25 +710,40 @@ int main(int argc, char **argv) {
   pacman.a2 = a2 + 0.002 - 3.141592653589;
   pacman.a3 = a3 - 0.8;
 
+  constexpr int FPS = 60;
   constexpr int SCENE_FRAMES = 240;
 
   Shot zoomin_shot;
   zoomin_shot.start = chainsaw;
   zoomin_shot.end = pittsburgh;
-  zoomin_shot.num_frames = SCENE_FRAMES;
+  zoomin_shot.num_frames = FPS * 14;
   zoomin_shot.draw_atmosphere = true;
   zoomin_shot.draw_mouth = false;
   zoomin_shot.easing = EaseOutQuart;
 
+  // then hold to 20 sec
+
+  Shot running_shot;
+  running_shot.start = pittsburgh;
+  running_shot.end = pittsburgh_out;
+  running_shot.num_frames = FPS * (46 - 20);
+  running_shot.draw_atmosphere = true;
+  running_shot.draw_mouth = false;
+  // running_shot.easing = EaseOutQuart;
+  running_shot.start_run_frac = 0.0;
+  running_shot.end_run_frac = 1.0;
+
   Shot zoomout_shot;
-  zoomout_shot.start = pittsburgh;
+  zoomout_shot.start = pittsburgh_out;
   zoomout_shot.end = pacman;
-  zoomout_shot.num_frames = SCENE_FRAMES;
+  zoomout_shot.num_frames = FPS * (54 - 46);
   zoomout_shot.draw_atmosphere = false;
   zoomout_shot.draw_mouth = true;
   zoomout_shot.easing = EaseInOutSin;
+  zoomout_shot.start_run_frac = 1.0;
+  zoomout_shot.end_run_frac = 1.0;
 
-  std::vector<Shot> shots = {zoomin_shot, zoomout_shot};
+  std::vector<Shot> shots = {zoomin_shot, running_shot, zoomout_shot};
   int total_frames = 0;
   for (const Shot &shot : shots) total_frames += shot.num_frames;
 
@@ -710,12 +756,16 @@ int main(int argc, char **argv) {
       for (int i = 0; i < shot.num_frames; i++) {
         double f = shot.easing(i / (double)(shot.num_frames - 1));
         Position pos = InterpolatePos(shot.start, shot.end, f);
+        double run_frac = std::lerp(shot.start_run_frac,
+                                    shot.end_run_frac,
+                                    f);
         ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
                                     pos,
                                     shot.draw_atmosphere,
-                                    shot.draw_mouth);
+                                    shot.draw_mouth,
+                                    run_frac);
         async.Run([s, i, img = std::move(img)]() {
-            img.Save(StringPrintf("sphere%d.%d.png", s, i));
+            img.Save(StringPrintf("sphere/sphere%d.%d.png", s, i));
             printf("%d.%d\n", s, i);
           });
       }
@@ -747,10 +797,14 @@ int main(int argc, char **argv) {
           if (global_idx < shot.num_frames) {
             double f = global_idx / (double)(shot.num_frames - 1);
             Position pos = InterpolatePos(shot.start, shot.end, f);
+            double run_frac = std::lerp(shot.start_run_frac,
+                                        shot.end_run_frac,
+                                        f);
             ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
                                         pos,
                                         shot.draw_atmosphere,
-                                        shot.draw_mouth);
+                                        shot.draw_mouth,
+                                        run_frac);
             mosaic.CopyImage(x * ONEW, y * ONEH, img);
             break;
           } else {
@@ -759,8 +813,8 @@ int main(int argc, char **argv) {
         }
       }
     }
-    mosaic.Save("mosaic.png");
-    printf("Wrote mosaic.png\n");
+    mosaic.Save("sphere-mosaic.png");
+    printf("Wrote sphere-mosaic.png\n");
     break;
   }
 
@@ -779,6 +833,9 @@ int main(int argc, char **argv) {
     ImageRGBA variants(ONEW * ACROSS, ONEH * DOWN);
     const Shot &shot = shots[target_shot];
     double f = shot.easing(target_frame / (double)(shot.num_frames - 1));
+    const double run_frac = std::lerp(shot.start_run_frac,
+                                      shot.end_run_frac,
+                                      f);
     const Position center_pos = InterpolatePos(shot.start, shot.end, f);
 
     for (int y = 0; y < DOWN; y++) {
@@ -796,14 +853,15 @@ int main(int argc, char **argv) {
         ImageRGBA img = RenderFrame(ONEW, ONEH, OVERSAMPLE,
                                     pos,
                                     shot.draw_atmosphere,
-                                    shot.draw_mouth);
+                                    shot.draw_mouth,
+                                    run_frac);
         CHECK(img.Width() == ONEW);
         CHECK(img.Height() == ONEH);
 
         variants.CopyImage(x * ONEW, y * ONEH, img);
       }
     }
-    string filename = StringPrintf("variants%d.%d.png",
+    string filename = StringPrintf("sphere-variants%d.%d.png",
                                    target_shot, target_frame);
     variants.Save(filename);
     printf("Wrote %s\n", filename.c_str());
@@ -815,12 +873,16 @@ int main(int argc, char **argv) {
     Timer run_timer;
     const Shot &shot = shots[target_shot];
     double f = shot.easing(target_frame / (double)(shot.num_frames - 1));
+    const double run_frac = std::lerp(shot.start_run_frac,
+                                      shot.end_run_frac,
+                                      f);
     Position pos = InterpolatePos(shot.start, shot.end, f);
     ImageRGBA img = RenderFrame(FRAME_WIDTH, FRAME_HEIGHT, OVERSAMPLE,
                                 pos,
                                 shot.draw_atmosphere,
-                                shot.draw_mouth);
-    img.Save(StringPrintf("frame%d.%d.png", target_shot, target_frame));
+                                shot.draw_mouth,
+                                run_frac);
+    img.Save(StringPrintf("sphere-frame%d.%d.png", target_shot, target_frame));
     double sec = run_timer.Seconds();
     printf("Wrote frame in %.1f sec.\n", sec);
 

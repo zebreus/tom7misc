@@ -18,6 +18,8 @@ int main(int argc, char **argv) {
 
   std::unique_ptr<PacTom> pactom = PacTomUtil::Load(true);
 
+  printf("Total runs: %d\n", (int)pactom->runs.size());
+
   double total_miles = 0.0;
   for (const PacTom::Run &run : pactom->runs) {
     total_miles += PacTom::RunMiles(run);

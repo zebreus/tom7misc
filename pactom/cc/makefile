@@ -1,5 +1,5 @@
 
-default : maptest.exe sphere.exe zoomout.exe colortile.exe datemerge.exe runstats.exe elevation.exe silence.exe animhood.exe
+default : maptest.exe sphere.exe zoomout.exe colortile.exe datemerge.exe runstats.exe elevation.exe silence.exe animhood.exe pac3pop.exe angletest.exe
 
 CC_LIB=../../cc-lib
 
@@ -60,6 +60,12 @@ silence.exe : silence.o $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 animhood.exe : animhood.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+pac3pop.exe : pac3pop.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@
+
+angletest.exe : angletest.o $(PACTOM_OBJECTS) $(UTIL_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :

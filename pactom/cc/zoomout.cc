@@ -39,8 +39,6 @@ int main(int argc, char **argv) {
   CHECK(pactom.get() != nullptr);
 
   std::vector<uint32_t> colors;
-  std::vector<std::pair<uint32_t,
-                        std::vector<std::pair<LatLon, double>>>> paths;
   for (const auto &r : pactom->runs) {
     uint32_t color =
       PacTomUtil::RandomBrightColor(&rc) & 0xFFFFFF77; // XXX
