@@ -1,5 +1,6 @@
-// Copy characters from a 1x font to 2x font, if they aren't already
-// present there.
+// Generate a clean font image (that can be used as an input) from a
+// font image/config. Might do this if the image has something wrong
+// with it (stray pixels, etc.).
 
 #include <cstdint>
 #include <string>

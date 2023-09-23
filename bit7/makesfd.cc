@@ -36,7 +36,7 @@ using Glyph = FontImage::Glyph;
 // is unclaimed. Should be fine to extend past this many
 // characters by increasing CHARS_DOWN too.
 constexpr int MAPPED_CHARS_ACROSS = 16;
-constexpr int MAPPED_CHARS_DOWN = 20;
+constexpr int MAPPED_CHARS_DOWN = 22;
 
 static constexpr array<int, MAPPED_CHARS_ACROSS * MAPPED_CHARS_DOWN>
 CODEPOINTS = {
@@ -77,8 +77,10 @@ CODEPOINTS = {
   // EMOJI: CLOUD
   0x2601,
 
-  // Left half block, right half block
-  0x258C, 0x2590,
+  // These used to be left and right half-blocks, but those are
+  // now moved to the block elements group
+  // Free to a good home:
+  -1, -1,
 
   // dagger, double-dagger
   0x2020, 0x2021,
@@ -127,18 +129,24 @@ CODEPOINTS = {
   0xF0, 0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF,
 
   // unclaimed
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
   // TODO: Greek; in progress
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
   // unclaimed - more greek / cyrillic here
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 
   // math
   // exists, forall
   0x2203, 0x2200,
   // rest of math, unclaimed
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+
+  // Block Elements, in unicode order
+  0x2580, 0x2581, 0x2582, 0x2583, 0x2584, 0x2585, 0x2586, 0x2587,
+  0x2588, 0x2589, 0x258A, 0x258B, 0x258C, 0x258D, 0x258E, 0x258F,
+  0x2590, 0x2591, 0x2592, 0x2593, 0x2594, 0x2595, 0x2596, 0x2597,
+  0x2598, 0x2599, 0x259A, 0x259B, 0x259C, 0x259D, 0x259E, 0x259F,
 };
 
 // e.g. use the glyph for hyphen (0x2D) to render U+2212 (minus).
