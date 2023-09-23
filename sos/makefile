@@ -75,6 +75,10 @@ sos-gpu_test.exe : sos-gpu_test.o $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
+tune-factorize.exe : tune-factorize.o $(CL_OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
 sqrt_test.exe : sqrt_test.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
@@ -140,6 +144,10 @@ leaderboard.exe : leaderboard.o $(OBJECTS)
 	@echo -n "!"
 
 bhaskara-util_test.exe : bhaskara-util_test.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+makebin.exe : makebin.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

@@ -812,9 +812,52 @@ struct FactorizeGPU {
   // easy to factor, anyway.
   static constexpr int MAX_FACTORS = 64;
 
-  FactorizeGPU(CL *cl, size_t height) : cl(cl), height(height) {
-    std::string defines = StringPrintf("#define MAX_FACTORS %d\n",
-                                       MAX_FACTORS);
+  // Advanced tuning
+  enum class IsPrimeRoutine {
+    OLD,
+    UNROLLED,
+    GENERAL,
+    FEW,
+  };
+
+  FactorizeGPU(CL *cl, size_t height,
+               IsPrimeRoutine is_prime = IsPrimeRoutine::FEW,
+               bool sub_128 = false,
+               bool geq_128 = false,
+               bool mul_128 = false,
+               bool fused_try = false,
+               int next_prime = 137)
+    : cl(cl), height(height) {
+
+    const char *is_prime_routine = [&]() {
+      switch (is_prime) {
+      default: LOG(FATAL) << "Invalid";
+      case IsPrimeRoutine::OLD: return "IsPrimeInternalOld";
+      case IsPrimeRoutine::UNROLLED: return "IsPrimeInternalUnrolled";
+      case IsPrimeRoutine::GENERAL: return "IsPrimeInternalGeneral";
+      case IsPrimeRoutine::FEW: return "IsPrimeInternalFew";
+      }
+    }();
+
+
+    std::string defines =
+      StringPrintf("#define MAX_FACTORS %d\n"
+                   "#define PTX_SUB128 %d\n"
+                   "#define PTX_GEQ128 %d\n"
+                   "#define PTX_MUL128 %d\n"
+                   "#define FUSED_TRY %d\n"
+                   "#define NEXT_PRIME %d\n"
+                   "#define IsPrimeInternal %s\n",
+                   MAX_FACTORS,
+                   sub_128 ? 1 : 0,
+                   geq_128 ? 1 : 0,
+                   mul_128 ? 1 : 0,
+                   fused_try ? 1 : 0,
+                   next_prime,
+                   is_prime_routine);
+
+    // printf("%s\n", defines.c_str());
+
     std::string kernel_src = defines + Util::ReadFile("factorize.cl");
     const auto &[prog, kern] =
       cl->BuildOneKernel(kernel_src, "Factorize", false);
@@ -918,7 +961,7 @@ struct TrialDivideGPU {
   TrialDivideGPU(CL *cl, size_t height) : cl(cl), height(height) {
     std::string defines = StringPrintf("#define MAX_FACTORS %d\n",
                                        MAX_FACTORS);
-    std::string kernel_src = defines + Util::ReadFile("factorize.cl");
+    std::string kernel_src = defines + Util::ReadFile("trialdivide.cl");
     const auto &[prog, kern] =
       cl->BuildOneKernel(kernel_src, "TrialDivide", false);
     CHECK(prog != 0);

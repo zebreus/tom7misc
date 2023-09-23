@@ -155,7 +155,16 @@ static constexpr int GPU_WAYS_HEIGHT = 131072;
 //  (then with larger numbers...)
 // 524288x2: 2m23s
 // 524288x4: 3m24s
-static constexpr int GPU_FACTOR_HEIGHT = 524288 * 2;
+// static constexpr int GPU_FACTOR_HEIGHT =  524288 * 2;
+
+// tuned
+// static constexpr int GPU_FACTOR_HEIGHT = 2875870;
+// #define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, false, false, false, true, 2243
+
+static constexpr int GPU_FACTOR_HEIGHT = 3552322;
+#define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, true, true, true, false, 2393
+
+// static constexpr int GPU_FACTOR_HEIGHT = 3058640;
 
 static constexpr int NUM_GPU_WAYS_THREADS = 2;
 static constexpr int TRY_BATCH_SIZE = 256;
@@ -177,7 +186,7 @@ static constexpr int STEADY_WORK_STEALING_THREADS = 0;
 // Be careful not to set this too low, or everything will stall
 // on a stolen batch (size GPU_WAYS_HEIGHT) that is processed by a
 // small number of threads.
-static constexpr int ENDGAME_WORK_STEALING_THREADS = 8;
+static constexpr int ENDGAME_WORK_STEALING_THREADS = 0;
 
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
@@ -259,6 +268,12 @@ struct BatchedWorkQueue {
 
     return {batch};
   }
+
+  bool IsDone() {
+    std::unique_lock ml(mutex);
+    return done;
+  }
+
 
   int64_t Size() {
     std::unique_lock ml(mutex);
@@ -1216,6 +1231,11 @@ struct SOS {
     int num_threads = work_stealing_threads;
     for (;;) {
       if (num_threads == 0) {
+        if (ways_queue->IsDone()) {
+          status.Printf("Steal thread finds queue empty while idle.\n");
+          return;
+        }
+
         // When CPU is a bottleneck, don't do any stealing. Just wait for
         // the endgame.
         using namespace std::chrono_literals;
@@ -1225,6 +1245,7 @@ struct SOS {
           MutexLock ml(&m);
           num_threads = work_stealing_threads;
         }
+
       } else {
         std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
           ways_queue->WaitGet();
@@ -1235,6 +1256,8 @@ struct SOS {
           return;
         }
 
+        status.Printf("Stealing %lld with %d threads\n",
+                      batchopt.value().size(), num_threads);
         std::vector<TryMe> output =
           ParallelMap(
               batchopt.value(),
@@ -1311,7 +1334,28 @@ struct SOS {
   }
 
   void GPUFactorThread() {
-    FactorizeGPU factorize_gpu(cl, GPU_FACTOR_HEIGHT);
+    /*
+    FactorizeGPU factorize_gpu(
+        cl, GPU_FACTOR_HEIGHT,
+        FactorizeGPU::IsPrimeRoutine::GENERAL,
+        false,
+        false,
+        true,
+        1063);
+    */
+    FactorizeGPU factorize_gpu(
+        cl, GPU_FACTOR_HEIGHT,
+        GPU_FACTOR_TUNING);
+
+    /*
+    FactorizeGPU factorize_gpu(
+        cl, GPU_FACTOR_HEIGHT,
+        FactorizeGPU::IsPrimeRoutine::GENERAL,
+        false,
+        true,
+        false,
+        2243);
+    */
 
     for (;;) {
       std::optional<vector<uint64_t>> batchopt =
@@ -1326,6 +1370,8 @@ struct SOS {
       batchopt.reset();
 
       // Add padding if not full width.
+      // PERF: It would actually be pretty easy for this kernel
+      // to support short calls.
       int original_size = nums.size();
       // Something easy to factor.
       while (nums.size() < GPU_FACTOR_HEIGHT)
@@ -1553,7 +1599,9 @@ struct SOS {
       work_stealing_threads = ENDGAME_WORK_STEALING_THREADS;
     }
 
-    status.Printf("Waiting for Steal/GPU threads.\n");
+    status.Printf("Set steal threads to " ABLUE("%d") ". "
+                  "Waiting for CPU/GPU Ways threads.\n",
+                  ENDGAME_WORK_STEALING_THREADS);
 
     steal_thread.join();
 
@@ -1563,6 +1611,10 @@ struct SOS {
     gpu_ways_threads.clear();
 
     try_queue->MarkDone();
+
+    const uint64_t num_stolen = ReadWithLock(&m, &stolen);
+    status.Printf(ABLUE("%llu") " nums were stolen by CPU.\n",
+                  num_stolen);
 
     status.Printf("Waiting for Try thread.\n");
     {
