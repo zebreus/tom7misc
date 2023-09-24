@@ -7,12 +7,25 @@
 #include "bignum/big.h"
 #include "bignbr.h"
 
-// Converts between BigInteger (alpertron), int array (alpertron)
-// and BigInt (cc-lib).
+// Converts between BigInteger (alpertron), int array (alpertron),
+// limbs (alpertron) and BigInt (cc-lib).
+//
+// For alpertron, limbs are always in little-endian order.
+//
+// The BigInteger representation is a struct with a fixed size array
+// of limbs, and a separate sign and size.
+//
+// The Int Array representation is a size (usually positive, but
+// negative may sometimes represent the negation of the number?)
+// followed by limbs.
+//
+// The limbs representation is just a pointer to limbs, where the
+// size is passed around separately (sometimes in some global state,
+// like when everything is being computed mod some number).
 
-// Writes the BigInt to the beginning of the array. Returns the
-// number of ints written, which is always at least 2 (size and
-// limb).
+// Writes the BigInt to the beginning of the array, with the size in
+// the first element. Returns the number of ints written, which is
+// always at least 2 (size and limb).
 int BigIntToArray(const BigInt &b, int *arr);
 void BigIntToBigInteger(const BigInt &b, BigInteger *g);
 

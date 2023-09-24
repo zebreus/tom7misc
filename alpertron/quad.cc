@@ -28,6 +28,7 @@
 #include "base/stringprintf.h"
 #include "base/logging.h"
 #include "bignum/big.h"
+#include "bignum/big-overloads.h"
 
 enum eLinearSolution {
   SOLUTION_FOUND = 0,
@@ -111,10 +112,12 @@ struct Quad {
   BigInteger bigTmp;
   BigInteger startPeriodU;
   BigInteger startPeriodV;
+
   BigInteger coeffQuadr;
   BigInteger coeffLinear;
   BigInteger coeffIndep;
   BigInteger modulus;
+
   BigInteger currentFactor;
   BigInteger Xplus;
   BigInteger Xminus;
@@ -162,7 +165,7 @@ struct Quad {
     }
   }
 
-  void showMinus(void) {
+  void showMinus() {
     if (output != nullptr)
       *output += "&minus;";
   }
@@ -174,17 +177,23 @@ struct Quad {
     }
   }
 
+  void ShowBigInt(const BigInt &value) {
+    if (output != nullptr) {
+      *output += value.ToString();
+    }
+  }
+
   void showInt(int value) {
     if (output != nullptr) {
       StringAppendF(output, "%d", value);
     }
   }
 
-  void showSquare(void) {
+  void showSquare() {
     showText("&sup2;");
   }
 
-  void showAlso(void) {
+  void showAlso() {
     if (also && !teach) {
       showText("and also:<br>");
     } else {
@@ -551,7 +560,7 @@ struct Quad {
   void ShowSolutionsModPrime(int factorIndex, int expon,
                              const BigInteger *pIncrement) {
     bool last;
-    static BigInteger primePower;
+    BigInteger primePower;
     if (!teach) {
       return;
     }
@@ -595,52 +604,66 @@ struct Quad {
   }
 
   // Solve congruence an^2 + bn + c = 0 (mod n) where n is different from zero.
-  void SolveQuadModEquation(void) {
-    static BigInteger GcdAll;
-    static BigInteger ValNn;
-    static BigInteger z;
+  void SolveQuadModEquation(const BigInt &coeffQuadr,
+                            const BigInt &coeffLinear,
+                            const BigInt &coeffIndep,
+                            const BigInt &modulus_in) {
+
+    BigInt modulus = BigInt::Abs(modulus_in);
 
     firstSolutionX = true;
-    modulus.sign = SIGN_POSITIVE;
-    (void)BigIntRemainder(&coeffQuadr, &modulus, &coeffQuadr);
-    if (coeffQuadr.sign == SIGN_NEGATIVE) {
-      BigIntAdd(&coeffQuadr, &modulus, &coeffQuadr);
-    }
-    (void)BigIntRemainder(&coeffLinear, &modulus, &coeffLinear);
-    if (coeffLinear.sign == SIGN_NEGATIVE) {
-      BigIntAdd(&coeffLinear, &modulus, &coeffLinear);
-    }
-    (void)BigIntRemainder(&coeffIndep, &modulus, &coeffIndep);
-    if (coeffIndep.sign == SIGN_NEGATIVE) {
-      BigIntAdd(&coeffIndep, &modulus, &coeffIndep);
-    }
-    BigIntGcd(&coeffQuadr, &coeffLinear, &Temp0);
-    BigIntGcd(&coeffIndep, &Temp0, &GcdAll);
-    (void)BigIntRemainder(&coeffIndep, &GcdAll, &Temp0);
-    if (!BigIntIsZero(&Temp0)) {
+
+    BigInt coeff_quadr = BigInt::CMod(coeffQuadr, modulus);
+    if (coeff_quadr < 0) coeff_quadr += modulus;
+
+    BigInt coeff_linear = BigInt::CMod(coeffLinear, modulus);
+    if (coeff_linear < 0) coeff_linear += modulus;
+
+    BigInt coeff_indep = BigInt::CMod(coeffIndep, modulus);
+    if (coeff_indep < 0) coeff_indep += modulus;
+
+    BigInt GcdAll = BigInt::GCD(coeff_indep,
+                                BigInt::GCD(coeff_quadr, coeff_linear));
+
+    // For a GCD of zero here, original code would cause and ignore
+    // a division by zero, then read 0 from the temporary.
+
+    if (GcdAll != 0 && BigInt::CMod(coeff_indep, GcdAll) != 0) {
       // ValC must be multiple of gcd(ValA, ValB).
       // Otherwise go out because there are no solutions.
       return;
     }
-    BigIntGcd(&modulus, &GcdAll, &Temp0);
-    CopyBigInt(&GcdAll, &Temp0);
+
+    GcdAll = BigInt::GCD(modulus, GcdAll);
+
+    // PERF: version of division where we know it's divisible.
     // Divide all coefficients by gcd(ValA, ValB).
-    (void)BigIntDivide(&coeffQuadr, &GcdAll, &coeffQuadr);
-    (void)BigIntDivide(&coeffLinear, &GcdAll, &coeffLinear);
-    (void)BigIntDivide(&coeffIndep, &GcdAll, &coeffIndep);
-    (void)BigIntDivide(&modulus, &GcdAll, &modulus);
-    CopyBigInt(&ValNn, &modulus);
-    if ((ValNn.nbrLimbs == 1) && (ValNn.limbs[0].x == 1)) {
+    if (GcdAll != 0) {
+      coeff_quadr /= GcdAll;
+      coeff_linear /= GcdAll;
+      coeff_indep /= GcdAll;
+      modulus /= GcdAll;
+    }
+
+    BigInt ValNn = modulus;
+
+    if (ValNn == 1) {
       // All values from 0 to GcdAll - 1 are solutions.
-      if ((GcdAll.nbrLimbs > 1) || (GcdAll.limbs[0].x > 5)) {
+      if (GcdAll > 5) {
         showText("<p>All values of <var>x</var> between 0 and ");
-        addbigint(&GcdAll, -1);
-        ShowNumber(&GcdAll);
+
+        // XXX Suspicious that this modifies GcdAll in place (I
+        // think just to display it?) but uses it again below.
+        GcdAll -= 1;
+        ShowBigInt(GcdAll);
         showText(" are solutions.</p>");
       } else {
-        for (int ctr = 0; ctr < GcdAll.limbs[0].x; ctr++) {
-          intToBigInteger(&Temp0, ctr);
-          SolutionX(&Temp0);
+        // must succeed; is < 5 and non-negative
+        const int n = GcdAll.ToInt().value();
+        for (int ctr = 0; ctr < n; ctr++) {
+          BigInteger sol;
+          intToBigInteger(&sol, ctr);
+          SolutionX(&sol);
         }
 
         if (teach && !firstSolutionX) {
@@ -650,74 +673,116 @@ struct Quad {
       return;
     }
 
-    (void)BigIntRemainder(&coeffQuadr, &modulus, &Temp0);
-    if (BigIntIsZero(&Temp0)) {
+    // PERF divisibility check
+    if (BigInt::CMod(coeff_quadr, modulus) == 0) {
       // Linear equation.
-      int lenBytes;
-      BigIntGcd(&coeffLinear, &modulus, &Temp0);
-      if ((Temp0.nbrLimbs != 1) || (Temp0.limbs[0].x != 1)) {
+      if (BigInt::GCD(coeff_linear, modulus) != 1) {
         // ValB and ValN are not coprime. Go out.
-          return;
-        }
-      // Calculate z <- -ValC / ValB (mod ValN)
-      modulus_length = modulus.nbrLimbs;
-      lenBytes = modulus_length * (int)sizeof(limb);
-      (void)memcpy(TheModulus, modulus.limbs, lenBytes);
-      TheModulus[modulus_length].x = 0;
-      MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
-      BigIntModularDivision(params, modulus_length, TheModulus,
-                            &coeffIndep, &coeffLinear, &modulus, &z);
-      if (!BigIntIsZero(&z)) {
-        BigIntSubt(&ValN, &z, &z);
+        return;
       }
-      (void)BigIntMultiply(&ValNn, &GcdAll, &Temp0);
 
-      do {
-        SolutionX(&z);
-        BigIntAdd(&z, &modulus, &z);
-        BigIntSubt(&z, &Temp0, &Temp1);
-      } while (Temp1.sign == SIGN_NEGATIVE);
+      // Calculate z <- -ValC / ValB (mod ValN)
+      /*
+        BigInteger big_modulus;
+        BigIntToBigInteger(&TheModulus, modulus);
+        modulus_length = modulus.nbrLimbs;
+        int lenBytes = modulus_length * (int)sizeof(limb);
+        (void)memcpy(TheModulus, modulus.limbs, lenBytes);
+      */
+
+      modulus_length = BigIntToLimbs(modulus, TheModulus);
+      TheModulus[modulus_length].x = 0;
+
+      MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
+
+      BigInt z;
+      {
+        // Yuck
+        BigInteger ind, lin, modu, zz;
+        BigIntToBigInteger(coeff_indep, &ind);
+        BigIntToBigInteger(coeff_linear, &lin);
+        BigIntToBigInteger(modulus, &modu);
+
+        BigIntModularDivision(params, modulus_length, TheModulus,
+                              &ind, &lin, &modu, &zz);
+        z = BigIntegerToBigInt(&zz);
+      }
+
+      if (z != 0) {
+        // not covered by cov.sh :(
+        fprintf(stderr, "z != 0\n");
+        // XXX is this a typo for ValNn in the original?
+        // ValN is only set in CheckSolutionSquareDiscr.
+        // Since it's static, it would usually be zero here.
+        // z = ValN - z;
+        z = 0 - z;
+      }
+      BigInt Temp0 = ValNn * GcdAll;
+
+      {
+        BigInteger zz;
+        BigIntToBigInteger(z, &zz);
+
+        for (;;) {
+          SolutionX(&zz);
+          z += modulus;
+          if (z < Temp0) break;
+        }
+      }
 
       if (teach && !firstSolutionX) {
         showText("</ol>");
       }
       return;
     }
+
     if (callbackQuadModType == CBACK_QMOD_PARABOLIC) {
       // For elliptic case, the factorization is already done.
-
-      std::unique_ptr<Factors> factors = BigFactor(&modulus);
       if (teach) {
+        BigInteger modu;
+        BigIntToBigInteger(modulus, &modu);
+        std::unique_ptr<Factors> factors = BigFactor(&modu);
+
         showText("<p>To solve this quadratic modular equation we have to "
                  "factor the modulus and find the solution modulo the powers "
                  "of the prime factors. Then we combine them by using the "
                  "Chinese Remainder Theorem.</p>");
-        showFactors(&modulus, *factors);
+        showFactors(&modu, *factors);
       }
     }
 
-    SolveEquation(
-        SolutionFn([this](BigInteger *value) {
-            this->SolutionX(value);
-          }),
-        ShowSolutionsModPrimeFn(
-            [this](int factorIndex, int expon,
-                   const BigInteger *pIncrement) {
-              this->ShowSolutionsModPrime(factorIndex, expon, pIncrement);
+    {
+      BigInteger quad, lin, ind, modu, gcd, valnn;
+      BigIntToBigInteger(coeff_quadr, &quad);
+      BigIntToBigInteger(coeff_linear, &lin);
+      BigIntToBigInteger(coeff_indep, &ind);
+      BigIntToBigInteger(modulus, &modu);
+      BigIntToBigInteger(GcdAll, &gcd);
+      BigIntToBigInteger(ValNn, &valnn);
+
+      SolveEquation(
+          SolutionFn([this](BigInteger *value) {
+              this->SolutionX(value);
             }),
-        ShowNoSolsModPrimeFn([this](int expon) {
-            this->NoSolsModPrime(expon);
-          }),
-        &coeffQuadr, &coeffLinear, &coeffIndep, &modulus,
-        &GcdAll, &ValNn,
-        &qmllr);
+          ShowSolutionsModPrimeFn(
+              [this](int factorIndex, int expon,
+                     const BigInteger *pIncrement) {
+                this->ShowSolutionsModPrime(factorIndex, expon, pIncrement);
+              }),
+          ShowNoSolsModPrimeFn([this](int expon) {
+              this->NoSolsModPrime(expon);
+            }),
+          &quad, &lin, &ind, &modu,
+          &gcd, &valnn,
+          &qmllr);
+    }
 
     if (teach && !firstSolutionX) {
       showText("</ol>");
     }
   }
 
-  void paren(const BigInteger *num) {
+  void Paren(const BigInteger *num) {
     if (num->sign == SIGN_NEGATIVE) {
       ShowChar('(');
       ShowNumber(num);
@@ -825,15 +890,15 @@ struct Quad {
         showText("Step ");
         showInt(stepNbr);
         showText(": ");
-        paren(&U1);    // U1
+        Paren(&U1);    // U1
         showText(" &times; ");
-        paren(coeffX);
+        Paren(coeffX);
         showText(" + ");
-        paren(&U2);    // U2
+        Paren(&U2);    // U2
         showText(" &times; ");
-        paren(coeffY);
+        Paren(coeffY);
         showText(" = ");
-        paren(&U3);    // U3
+        Paren(&U3);    // U3
         showText("<br>");
       }
       floordiv(&U3, &V3, &q);                 // q <- floor(U3 / V3).
@@ -867,51 +932,51 @@ struct Quad {
       showText("Step ");
       showInt(stepNbr);
       showText(": ");
-      paren(&U1);    // U1
+      Paren(&U1);    // U1
       showText(" &times; ");
-      paren(coeffX);
+      Paren(coeffX);
       showText(" + ");
-      paren(&U2);    // U2
+      Paren(&U2);    // U2
       showText(" &times; ");
-      paren(coeffY);
+      Paren(coeffY);
       showText(" = ");
-      paren(&U3);    // U3
+      Paren(&U3);    // U3
       CopyBigInt(&bigTmp, coeffInd);
       BigIntChSign(&bigTmp);
       if ((q.sign != SIGN_POSITIVE) ||
           (q.nbrLimbs != 1) || (q.limbs[0].x != 1)) {
         // Multiplier is not 1.
         showText("</p><p>Multiplying the last equation by ");
-        paren(&q);
+        Paren(&q);
         showText(" we obtain:<br>");
-        paren(&Xind);
+        Paren(&Xind);
         showText(" &times; ");
-        paren(coeffX);
+        Paren(coeffX);
         showText(" + ");
-        paren(&Yind);
+        Paren(&Yind);
         showText(" &times; ");
-        paren(coeffY);
+        Paren(coeffY);
         showText(" = ");
         ShowNumber(&bigTmp);
       }
       showText("</p><p>Adding and subtracting ");
-      paren(coeffX);
+      Paren(coeffX);
       showText(" &times; ");
-      paren(coeffY);
+      Paren(coeffY);
       showText(" t' ");
       showText("we obtain");
       showText(":</p><p>(");
       ShowNumber(&Xind);
       showText(" + ");
-      paren(coeffY);
+      Paren(coeffY);
       showText(" t') &times; ");
-      paren(coeffX);
+      Paren(coeffX);
       showText(" + (");
       ShowNumber(&Yind);
       showText(" - ");
-      paren(coeffX);
+      Paren(coeffX);
       showText(" t') &times; ");
-      paren(coeffY);
+      Paren(coeffY);
       showText(" = ");
       ShowNumber(&bigTmp);
       showText("</p><p>So, the solution is given by the set:</p>");
@@ -956,7 +1021,7 @@ struct Quad {
     return SOLUTION_FOUND;
   }
 
-  void EnsureCoeffAIsNotZero(void) {
+  void EnsureCoeffAIsNotZero() {
     ExchXY = false;
     if (BigIntIsZero(&ValA)) {
       // Next algorithm does not work if A = 0. In this case, exchange x and y.
@@ -970,7 +1035,7 @@ struct Quad {
     }
   }
 
-  void ShowTDiscrZero(void) {
+  void ShowTDiscrZero() {
     if (ExchXY) {
       // Show bx + 2cy
       CopyBigInt(&ValH, &ValB);
@@ -984,7 +1049,7 @@ struct Quad {
     ShowLin(&ValH, &ValI, &ValJ, "<var>x</var>", "<var>y</var>");
   }
 
-  void DiscriminantIsZero(void) {
+  void DiscriminantIsZero() {
     EnsureCoeffAIsNotZero();
     // ax^2 + bxy + cx^2 + dx + ey + f = 0 (1)
     // Multiplying by 4a:
@@ -1062,8 +1127,8 @@ struct Quad {
       if (!BigIntIsZero(&ValU) && !BigIntIsZero(&ValV)) {
         showEqNbr(2);
       }
-      showText("</p><p>");
-      showText("where the linear coefficient is ");
+      showText("</p><p>"
+               "where the linear coefficient is ");
       showText(ExchXY ? "2&#8290;(<var>b</var>&#8290;<var>e</var> "
                "&minus; 2&#8290;<var>c</var><var>d</var>)" :
                "2&#8290;(<var>b</var>&#8290;<var>d</var> "
@@ -1171,11 +1236,17 @@ struct Quad {
     BigIntChSign(&coeffIndep);
     CopyBigInt(&modulus, &ValU);
     equationNbr = 3;
-    SolveQuadModEquation();
+
+    SolveQuadModEquation(
+        // PERF just construct directly above.
+        BigIntegerToBigInt(&coeffQuadr),
+        BigIntegerToBigInt(&coeffLinear),
+        BigIntegerToBigInt(&coeffIndep),
+        BigIntegerToBigInt(&modulus));
   }
 
   // Compute coefficients of x: V1 + V2 * w + V3 * w^2
-  void ComputeXDiscrZero(void) {
+  void ComputeXDiscrZero() {
     // Let m = 2be - 4cd
     (void)BigIntMultiply(&ValB, &ValE, &U3);
     (void)BigIntMultiply(&ValC, &ValD, &bigTmp);
@@ -1204,7 +1275,7 @@ struct Quad {
   }
 
   // Compute coefficients of y: V1 + V2 * w + V3 * w^2
-  void ComputeYDiscrZero(void) {
+  void ComputeYDiscrZero() {
     // Compute V1 <- r + sx' + ux'^2
     (void)BigIntMultiply(&ValU, &U2, &V1);
     BigIntAdd(&V1, &ValS, &V1);
@@ -1453,9 +1524,7 @@ struct Quad {
   // i.e. solutions (x,y) where gcd(x,y) = 1, we need to solve
   //     ax'^2+bx'y'+cy'^2 = K/R^2 where R^2 is a divisor of K.
   // Then we get x = Rx', y = Ry'.
-  void NonSquareDiscriminant(void) {
-    enum eSign ValKSignBak;
-
+  void NonSquareDiscriminant() {
     // Find GCD(a,b,c)
     BigIntGcd(&ValA, &ValB, &bigTmp);
     BigIntGcd(&ValC, &bigTmp, &ValGcdHomog);
@@ -1476,7 +1545,7 @@ struct Quad {
     CopyBigInt(&ValBBak, &ValB);
     CopyBigInt(&ValCBak, &ValC);
     // Factor independent term.
-    ValKSignBak = ValK.sign;
+    eSign ValKSignBak = ValK.sign;
     ValK.sign = SIGN_POSITIVE;
 
     std::unique_ptr<Factors> factors = BigFactor(&ValK);
@@ -1712,7 +1781,14 @@ struct Quad {
         showFactors(&modulus, *factors);
         showText(")<p>");
       }
-      SolveQuadModEquation();
+
+      SolveQuadModEquation(
+          // PERF just construct directly above.
+          BigIntegerToBigInt(&coeffQuadr),
+          BigIntegerToBigInt(&coeffLinear),
+          BigIntegerToBigInt(&coeffIndep),
+          BigIntegerToBigInt(&modulus));
+
       // Adjust counters.
       int index;
       CHECK(indexEvenMultiplicity.size() ==
@@ -1782,12 +1858,12 @@ struct Quad {
     }
   }
 
-  void NegativeDiscriminant(void) {
+  void NegativeDiscriminant() {
     callbackQuadModType = CBACK_QMOD_ELLIPTIC;
     NonSquareDiscriminant();
   }
 
-  void showBeforeUnimodularSubstitution(void) {
+  void showBeforeUnimodularSubstitution() {
     if (teach) {
       showText("<p>");
       showText(varXnoTrans);
@@ -1804,7 +1880,7 @@ struct Quad {
     }
   }
 
-  void UnimodularSubstitution(void) {
+  void UnimodularSubstitution() {
     if (ValM.sign == SIGN_NEGATIVE) {
       // Perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
       showBeforeUnimodularSubstitution();
@@ -1878,7 +1954,7 @@ struct Quad {
 
   // Obtain next convergent of continued fraction of ValU/ValV
   // Previous convergents U1/V1, U2/V2, U3/V3.
-  void getNextConvergent(void) {
+  void getNextConvergent() {
     floordiv(&ValU, &ValV, &bigTmp);
     // Values of U3 and V3 are not used, so they can be overwritten now.
     // Compute new value of ValU and ValV.
@@ -1900,7 +1976,7 @@ struct Quad {
     CopyBigInt(&V1, &bigTmp);
   }
 
-  void ShowSolutionFromConvergent(void) {
+  void ShowSolutionFromConvergent() {
     if (teach)
       {
         showText("Solution of ");
@@ -2275,7 +2351,7 @@ struct Quad {
     equationNbr += 3;
   }
 
-  void CheckSolutionSquareDiscr(void) {
+  void CheckSolutionSquareDiscr() {
     int solutions = 0;
     (void)BigIntDivide(&ValZ, &currentFactor, &ValN);
     if (teach)
@@ -2320,7 +2396,7 @@ struct Quad {
     }
   }
 
-  void PerfectSquareDiscriminant(void) {
+  void PerfectSquareDiscriminant() {
     enum eSign signTemp;
 
     if (BigIntIsZero(&ValA))
@@ -2555,7 +2631,7 @@ struct Quad {
     }
   }
 
-  void PositiveDiscriminant(void) {
+  void PositiveDiscriminant() {
     callbackQuadModType = CBACK_QMOD_HYPERBOLIC;
     NonSquareDiscriminant();
   }
@@ -2565,7 +2641,7 @@ struct Quad {
   // Third check: |u-g| < |v|
   // On input ValG = floor(g), g > 0.
   // g is not an integer number.
-  void CheckStartOfContinuedFractionPeriod(void) {
+  void CheckStartOfContinuedFractionPeriod() {
     CopyBigInt(&bigTmp, &ValU);
     // Set bigTmp to |u|
     bigTmp.sign = SIGN_POSITIVE;
@@ -2608,7 +2684,7 @@ struct Quad {
       }
   }
 
-  void ShowArgumentContinuedFraction(void) {
+  void ShowArgumentContinuedFraction() {
     showText(" (");
     if (positiveDenominator == 0) {
       showText("&minus;");
@@ -2827,7 +2903,7 @@ struct Quad {
     showText("<br>");
   }
 
-  void ShowAllRecSols(void) {
+  void ShowAllRecSols() {
     if ((ValP.nbrLimbs > 2) || (ValQ.nbrLimbs > 2)) {
       if (BigIntIsZero(&ValAlpha) && BigIntIsZero(&ValBeta)) {
         showText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + Q&nbsp;&#8290;y<sub>n</sub><br>"
@@ -2971,7 +3047,7 @@ struct Quad {
   //        P = r - (b/2)s, Q = -cs, R = as, S = r + (b/2)s,
   // in any case:
   //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
-  void recursiveSolution(void) {
+  void recursiveSolution() {
     enum eSign sign = SIGN_POSITIVE;
     bool isBeven = ((ValB.limbs[0].x & 1) == 0);
     int periodNbr = 0;
@@ -3193,7 +3269,7 @@ struct Quad {
     showText("</p>");
   }
 
-  void SolveQuadEquation(void) {
+  void SolveQuadEquation() {
     also = 0;
     showSolution = ONE_SOLUTION;
     showRecursiveSolution = 0;    // Do not show recursive solution by default.

@@ -132,10 +132,13 @@ enum eExprErr BigIntRemainder(
   BigInt numer = BigIntegerToBigInt(pDividend);
   BigInt denom = BigIntegerToBigInt(pDivisor);
   if (BigInt::Eq(denom, 0)) return EXPR_DIVIDE_BY_ZERO;
+  // XXX: Some nearby code suggests that the original bignbr code might
+  // have had different behavior for negative numbers. Check.
+  //
   // PERF: This is called a lot. Can add a BigInt function that just
   // gets the remainder, or better, see if callers are getting both
   // quotient and remainder already.
-  BigInt rem = BigInt::QuotRem(numer, denom).second;
+  BigInt rem = BigInt::CMod(numer, denom);
   BigIntToBigInteger(rem, pRemainder);
   return EXPR_OK;
 }
