@@ -33,16 +33,15 @@ int main(int argc, char* argv[]) {
   bool teach = argv[7][0] == '1';
   // quadText(argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
 
-  BigInteger a, b, c, d, e, f;
-  if (!ParseBigInteger(argv[1], &a)) printf("can't parse a\n");
-  if (!ParseBigInteger(argv[2], &b)) printf("can't parse b\n");
-  if (!ParseBigInteger(argv[3], &c)) printf("can't parse c\n");
-  if (!ParseBigInteger(argv[4], &d)) printf("can't parse d\n");
-  if (!ParseBigInteger(argv[5], &e)) printf("can't parse e\n");
-  if (!ParseBigInteger(argv[6], &f)) printf("can't parse f\n");
+  BigInt a(argv[1]);
+  BigInt b(argv[2]);
+  BigInt c(argv[3]);
+  BigInt d(argv[4]);
+  BigInt e(argv[5]);
+  BigInt f(argv[6]);
 
   std::string output;
-  quadBigInt(teach, &a, &b, &c, &d, &e, &f, &output);
+  QuadBigInt(teach, a, b, c, d, e, f, &output);
   (void)printf("%s\n", output.c_str());
 
   return 0;

@@ -3,10 +3,12 @@
 
 #include <string>
 
+#include "bignum/big.h"
+
 // If output is non-null, writes readable HTML there.
-void quadBigInt(bool teach,
-                BigInteger *a, BigInteger *b, BigInteger *c,
-                BigInteger *d, BigInteger *e, BigInteger *f,
+void QuadBigInt(bool teach,
+                const BigInt &a, const BigInt &b, const BigInt &c,
+                const BigInt &d, const BigInt &e, const BigInt &f,
                 std::string *output);
 
 #endif
