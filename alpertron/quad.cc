@@ -30,6 +30,8 @@
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 
+static constexpr bool VERBOSE = false;
+
 enum eLinearSolution {
   SOLUTION_FOUND = 0,
   NO_SOLUTIONS,
@@ -219,13 +221,13 @@ struct Quad {
     showText(")</span>");
   }
 
-  void ShowLin(const BigInteger *coeffX, const BigInteger *coeffY,
-               const BigInteger *coeffInd,
+  void ShowLin(const BigInt &coeffX, const BigInt &coeffY,
+               const BigInt &coeffInd,
                const char *x, const char *y) {
     eLinearSolution t;
-    t = Show(BigIntegerToBigInt(coeffX), x, SOLUTION_FOUND);
-    t = Show(BigIntegerToBigInt(coeffY), y, t);
-    Show1(BigIntegerToBigInt(coeffInd), t);
+    t = Show(coeffX, x, SOLUTION_FOUND);
+    t = Show(coeffY, y, t);
+    Show1(coeffInd, t);
   }
 
   void ShowLinInd(const BigInteger *lin, const BigInteger *ind,
@@ -780,7 +782,7 @@ struct Quad {
     }
   }
 
-  void Paren(const BigInteger *num) {
+  void ParenA(const BigInteger *num) {
     if (num->sign == SIGN_NEGATIVE) {
       ShowChar('(');
       ShowNumber(num);
@@ -790,66 +792,86 @@ struct Quad {
     }
   }
 
+  void Paren(const BigInt &num) {
+    if (num < 0) {
+      ShowChar('(');
+      ShowBigInt(num);
+      ShowChar(')');
+    } else {
+      ShowBigInt(num);
+    }
+  }
+
   eLinearSolution LinearEq(
-      BigInteger *coeffX, BigInteger *coeffY, BigInteger *coeffInd) {
-    BigInteger q;
-    bool showSteps;
-    int stepNbr;
+      BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
+
+
     if (teach) {
       showText("<p>This is a linear equation ");
       ShowLin(coeffX, coeffY, coeffInd, "x", "y");
       showText(" = 0</p>");
     }
-    if (BigIntIsZero(coeffX)) {
-      if (BigIntIsZero(coeffY)) {
-        if (!BigIntIsZero(coeffInd)) {
+
+    if (coeffX == 0) {
+      if (coeffY == 0) {
+        if (coeffInd != 0) {
           return NO_SOLUTIONS;           // No solutions
         } else {
           return INFINITE_SOLUTIONS;     // Infinite number of solutions
         }
       }
-      (void)BigIntRemainder(coeffInd, coeffY, &Aux0);
-      if (!BigIntIsZero(&Aux0)) {
+
+      BigInt Aux0 = BigInt::CMod(coeffInd, coeffY);
+      if (Aux0 != 0) {
         return NO_SOLUTIONS;             // No solutions
       } else {
         intToBigInteger(&Xind, 0);
         intToBigInteger(&Xlin, 1);
-        (void)BigIntDivide(coeffInd, coeffY, &Yind);
+        // PERF QuotRem
+        BigInt yy = coeffInd / coeffY;
+        BigIntToBigInteger(yy, &Yind);
         BigIntNegate(&Yind, &Yind);
         intToBigInteger(&Ylin, 0);
         return SOLUTION_FOUND;           // Solution found
       }
     }
 
-    if (BigIntIsZero(coeffY)) {
-      (void)BigIntRemainder(coeffInd, coeffX, &Aux0);
-      if (!BigIntIsZero(&Aux0)) {
+    if (coeffY == 0) {
+
+      const auto [qq, rr] = BigInt::QuotRem(coeffInd, coeffX);
+
+      if (rr != 0) {
         return NO_SOLUTIONS;             // No solutions
       } else {
         intToBigInteger(&Yind, 0);
         intToBigInteger(&Ylin, 1);
-        (void)BigIntDivide(coeffInd, coeffX, &Xind);
+        BigIntToBigInteger(qq, &Xind);
         BigIntNegate(&Xind, &Xind);
         intToBigInteger(&Xlin, 0);
         return SOLUTION_FOUND;           // Solution found
       }
     }
-    BigIntGcd(coeffX, coeffY, &U1);
-    if ((U1.nbrLimbs > 1) || (U1.limbs[0].x != 1)) {
+
+    BigInt gcdxy = BigInt::GCD(coeffX, coeffY);
+
+    if (gcdxy != 1) {
       // GCD is not 1.
       if (teach) {
         showText(
             "<p>To solve it, we first find the greatest common divisor of the "
             "linear coefficients, that is: gcd(");
-        ShowNumber(coeffX);
+        ShowBigInt(coeffX);
         showText(", ");
-        ShowNumber(coeffY);
+        ShowBigInt(coeffY);
         showText(") = ");
-        ShowNumber(&U1);
+        ShowBigInt(gcdxy);
         showText(".</p>");
       }
-      (void)BigIntRemainder(coeffInd, &U1, &U2);
-      if (!BigIntIsZero(&U2)) {
+
+      // PERF divisibility test
+      BigInt r = BigInt::CMod(coeffInd, gcdxy);
+
+      if (r != 0) {
         if (teach) {
           showText("<p>The independent coefficient is not multiple of "
                    "gcd, so there are no solutions.</p>");
@@ -858,105 +880,160 @@ struct Quad {
       }
 
       // Divide all coefficients by the gcd.
-      (void)BigIntDivide(coeffX, &U1, coeffX);
-      (void)BigIntDivide(coeffY, &U1, coeffY);
-      (void)BigIntDivide(coeffInd, &U1, coeffInd);
+      if (gcdxy != 0) {
+        // PERF known divisible
+        coeffX /= gcdxy;
+        coeffY /= gcdxy;
+        coeffInd /= gcdxy;
+      }
     }
+
     if (teach) {
       showText(divgcd);
       ShowLin(coeffX, coeffY, coeffInd, "x", "y");
       showText(" = 0</p>");
       showText("<p>Now we must apply the Generalized Euclidean algorithm:</p>");
     }
-    intToBigInteger(&U1, 1);    // U1 <- 1
-    intToBigInteger(&U2, 0);    // U2 <- 0
-    CopyBigInt(&U3, coeffX);    // U3 <- coeffX
-    intToBigInteger(&V1, 0);    // V1 <- 0
-    intToBigInteger(&V2, 1);    // V2 <- 1
-    CopyBigInt(&V3, coeffY);    // V3 <- coeffY
-    showSteps = ((coeffX->nbrLimbs == 1) && (coeffY->nbrLimbs == 1));
-    stepNbr = 1;
+
+    BigInt U1(1);
+    BigInt U2(0);
+    BigInt U3 = coeffX;
+    BigInt V1(0);
+    BigInt V2(1);
+    BigInt V3 = coeffY;
+
+    // PERF this is just a display heuristic. base this on bounds instead
+    bool showSteps = true;
+    {
+      BigInteger coeff;
+      BigIntToBigInteger(coeffX, &coeff);
+      if (coeff.nbrLimbs != 1) showSteps = false;
+      BigIntToBigInteger(coeffY, &coeff);
+      if (coeff.nbrLimbs != 1) showSteps = false;
+    }
+
+    int stepNbr = 1;
+
     if (teach && showSteps) {
       showText("<p>");
     }
-    for (;;) {
-      if (BigIntIsZero(&V3)) {
-        // V3 equals zero, so go out of loop.
-        break;
-      }
+
+    BigInt q;
+
+    while (V3 != 0) {
+
+      if (VERBOSE)
+      printf("Step %d: %s %s %s %s %s %s\n",
+             stepNbr,
+             U1.ToString().c_str(),
+             U2.ToString().c_str(),
+             U3.ToString().c_str(),
+             V1.ToString().c_str(),
+             V2.ToString().c_str(),
+             V3.ToString().c_str());
+
       if (teach && showSteps) {
         showText("Step ");
         showInt(stepNbr);
         showText(": ");
-        Paren(&U1);    // U1
+        Paren(U1);
         showText(" &times; ");
         Paren(coeffX);
         showText(" + ");
-        Paren(&U2);    // U2
+        Paren(U2);    // U2
         showText(" &times; ");
         Paren(coeffY);
         showText(" = ");
-        Paren(&U3);    // U3
+        Paren(U3);
         showText("<br>");
       }
-      floordiv(&U3, &V3, &q);                 // q <- floor(U3 / V3).
-      (void)BigIntMultiply(&q, &V1, &bigTmp);
-      BigIntSubt(&U1, &bigTmp, &bigTmp);      // T <- U1 - q * V1
-      CopyBigInt(&U1, &V1);                   // U1 <- V1
-      CopyBigInt(&V1, &bigTmp);               // V1 <- T
-      (void)BigIntMultiply(&q, &V2, &bigTmp);
-      BigIntSubt(&U2, &bigTmp, &bigTmp);      // T <- U2 - q * V2
-      CopyBigInt(&U2, &V2);                   // U2 <- V2
-      CopyBigInt(&V2, &bigTmp);               // V2 <- T
-      (void)BigIntMultiply(&q, &V3, &bigTmp);
-      BigIntSubt(&U3, &bigTmp, &bigTmp);      // T <- U3 - q * V3
-      CopyBigInt(&U3, &V3);                   // U3 <- V3
-      CopyBigInt(&V3, &bigTmp);               // V3 <- T
+
+      // q <- floor(U3 / V3).
+      {
+        // XXX with BigInt
+        BigInteger uu3, vv3, qq;
+        BigIntToBigInteger(U3, &uu3);
+        BigIntToBigInteger(V3, &vv3);
+
+        floordiv(&uu3, &vv3, &qq);
+
+        q = BigIntegerToBigInt(&qq);
+      }
+
+      {
+        // T <- U1 - q * V1
+        BigInt T = U1 - q * V1;
+        U1 = V1;
+        V1 = T;
+      }
+
+      {
+        BigInt T = U2 - q * V2;
+        U2 = V2;
+        V2 = T;
+      }
+
+      {
+        BigInt T = U3 - q * V3;
+        U3 = V3;
+        V3 = T;
+      }
+
       stepNbr++;
     }
-    (void)BigIntDivide(coeffInd, &U3, &q);
+
+    CHECK(U3 != 0);
     // Compute q as -coeffInd / U3
-    BigIntChSign(&q);
+    q = -coeffInd / U3;
+
+
+    // XXX remove from state: Xind, Xlin, Yind, Ylin
+    // Can probably just move this to the end!
+
     // Compute Xind as -U1 * coeffInd / U3
-    (void)BigIntMultiply(&U1, &q, &Xind);
+    BigInt xind = U1 * q;
+    BigIntToBigInteger(xind, &Xind);
     // Set Xlin to coeffY
-    CopyBigInt(&Xlin, coeffY);
+    BigInt xlin = coeffY;
+    BigIntToBigInteger(xlin, &Xlin);
+
     // Compute Yind as -U2 * coeffInd / U3
-    (void)BigIntMultiply(&U2, &q, &Yind);
+    BigInt yind = U2 * q;
+    BigIntToBigInteger(yind, &Yind);
     // Set Ylin to -coeffX
-    CopyBigInt(&Ylin, coeffX);
-    BigIntChSign(&Ylin);
+    BigInt ylin = -coeffX;
+    BigIntToBigInteger(ylin, &Ylin);
+
     if (teach) {
       showText("Step ");
       showInt(stepNbr);
       showText(": ");
-      Paren(&U1);    // U1
+      Paren(U1);
       showText(" &times; ");
       Paren(coeffX);
       showText(" + ");
-      Paren(&U2);    // U2
+      Paren(U2);
       showText(" &times; ");
       Paren(coeffY);
       showText(" = ");
-      Paren(&U3);    // U3
-      CopyBigInt(&bigTmp, coeffInd);
-      BigIntChSign(&bigTmp);
-      if ((q.sign != SIGN_POSITIVE) ||
-          (q.nbrLimbs != 1) || (q.limbs[0].x != 1)) {
+      Paren(U3);    // U3
+
+      if (q != 1) {
         // Multiplier is not 1.
         showText("</p><p>Multiplying the last equation by ");
-        Paren(&q);
+        Paren(q);
         showText(" we obtain:<br>");
-        Paren(&Xind);
+        ParenA(&Xind);
         showText(" &times; ");
         Paren(coeffX);
         showText(" + ");
-        Paren(&Yind);
+        ParenA(&Yind);
         showText(" &times; ");
         Paren(coeffY);
         showText(" = ");
-        ShowNumber(&bigTmp);
+        ShowBigInt(-coeffInd);
       }
+
       showText("</p><p>Adding and subtracting ");
       Paren(coeffX);
       showText(" &times; ");
@@ -976,46 +1053,96 @@ struct Quad {
       showText(" t') &times; ");
       Paren(coeffY);
       showText(" = ");
-      ShowNumber(&bigTmp);
+      ShowBigInt(-coeffInd);
       showText("</p><p>So, the solution is given by the set:</p>");
       PrintLinear(SOLUTION_FOUND, "t'");
       showText("</p>");
     }
 
+    // HERE!
+
+    if (VERBOSE)
+    printf("Step: %s %s %s %s %s %s | %s %s %s %s\n",
+           U1.ToString().c_str(),
+           U2.ToString().c_str(),
+           U3.ToString().c_str(),
+           V1.ToString().c_str(),
+           V2.ToString().c_str(),
+           V3.ToString().c_str(),
+
+           coeffX.ToString().c_str(),
+           coeffY.ToString().c_str(),
+           xind.ToString().c_str(),
+           yind.ToString().c_str());
+
     // Substitute variables so the independent coefficients can be minimized.
     // Reuse variables U1, U2, U3, V1, V2, V3.
-    (void)BigIntMultiply(coeffX, coeffX, &U1);
-    (void)BigIntMultiply(coeffY, coeffY, &q);
-    BigIntAdd(&U1, &q, &U1);                  // U1 <- coeffX^2 + coeffY^2
-    CopyBigInt(&U2, &U1);
-    BigIntDivideBy2(&U2);                     // U2 <- (coeffX^2 + coeffY^2)/2
-    (void)BigIntMultiply(coeffX, &Yind, &q);
-    BigIntAdd(&U2, &q, &U2);
-    (void)BigIntMultiply(coeffY, &Xind, &q);
-    BigIntSubt(&U2, &q, &U2);
-    floordiv(&U2, &U1, &U1);                  // U1 <- delta to add to t'
+    U1 = coeffX * coeffX;
+    q = coeffY * coeffY;
+
+    // U1 <- coeffX^2 + coeffY^2
+    U1 += q;
+
+    // U2 <- (coeffX^2 + coeffY^2)/2
+    U2 = U1;
+    U2 /= 2;
+
+    q = coeffX * yind;
+    U2 += q;
+
+    q = coeffY * xind;
+    U2 -= q;
+
+    // U1 <- delta to add to t'
+    // XXX with BigInt
+    {
+      BigInteger uu2, uu1;
+      BigIntToBigInteger(U1, &uu1);
+      BigIntToBigInteger(U2, &uu2);
+      floordiv(&uu2, &uu1, &uu1);
+      U1 = BigIntegerToBigInt(&uu1);
+    }
+
+    if (VERBOSE)
+    printf("Step: %s %s %s %s %s %s\n",
+           U1.ToString().c_str(),
+           U2.ToString().c_str(),
+           U3.ToString().c_str(),
+           V1.ToString().c_str(),
+           V2.ToString().c_str(),
+           V3.ToString().c_str());
+
     if (teach) {
       showText("<p>By making the substitution ");
       showText("<var>t'</var> = ");
-      ShowNumber(&U1);
-      if ((Xlin.sign == SIGN_NEGATIVE) && (Ylin.sign == SIGN_NEGATIVE)) {
+      ShowBigInt(U1);
+      if (xlin < 0 && ylin < 0) {
         // If both coefficients are negative, change sign of transformation.
         showText(" &minus;");
       } else {
         showText(" +");
       }
-      showText(" <var>t</var> ");
-      showText("we finally obtain:</p>");
+      showText(" <var>t</var> "
+               "we finally obtain:</p>");
     }
-    (void)BigIntMultiply(&U1, coeffY, &q);
-    BigIntAdd(&Xind, &q, &Xind);        // Xind <- Xind + coeffY * delta
-    (void)BigIntMultiply(&U1, coeffX, &q);
-    BigIntSubt(&Yind, &q, &Yind);       // Yind <- Yind - coeffX * delta
-    if ((Xlin.sign == SIGN_NEGATIVE) && (Ylin.sign == SIGN_NEGATIVE)) {
+
+    // Xind <- Xind + coeffY * delta
+    q = U1 * coeffY;
+    xind += q;
+    BigIntToBigInteger(xind, &Xind);
+
+    // Yind <- Yind - coeffX * delta
+    q = U1 * coeffX;
+    yind -= q;
+    BigIntToBigInteger(yind, &Yind);
+
+
+    if (xlin < 0 && ylin < 0) {
       // If both coefficients are negative, make them positive.
       BigIntChSign(&Xlin);
       BigIntChSign(&Ylin);
     }
+
     return SOLUTION_FOUND;
   }
 
@@ -1044,7 +1171,9 @@ struct Quad {
       BigIntAdd(&ValA, &ValA, &ValH);
     }
     intToBigInteger(&ValJ, 0);
-    ShowLin(&ValH, &ValI, &ValJ, "<var>x</var>", "<var>y</var>");
+    ShowLin(BigIntegerToBigInt(&ValH),
+            BigIntegerToBigInt(&ValI),
+            BigIntegerToBigInt(&ValJ), "<var>x</var>", "<var>y</var>");
   }
 
   void DiscriminantIsZero() {
@@ -1085,7 +1214,9 @@ struct Quad {
       } else {
         // Nothing to do.
       }
-      ShowLin(&ValH, &ValI, &ValJ, "<var>x</var>", "<var>y</var>");
+      ShowLin(BigIntegerToBigInt(&ValH),
+              BigIntegerToBigInt(&ValI),
+              BigIntegerToBigInt(&ValJ), "<var>x</var>", "<var>y</var>");
       showText(" = 0</p><p>");
       showText("Let");
       showText(" <var>t</var> = ");
@@ -1097,7 +1228,9 @@ struct Quad {
       showText(ExchXY?"e</var>)": "d</var>)");
       showSquare();
       showText(" = (");
-      ShowLin(&ValJ, &ValH, &ValD, "", "<var>t</var>");
+      ShowLin(BigIntegerToBigInt(&ValJ),
+              BigIntegerToBigInt(&ValH),
+              BigIntegerToBigInt(&ValD), "", "<var>t</var>");
       showText(")");
       showSquare();
       showText(" = ");
@@ -1121,7 +1254,10 @@ struct Quad {
         ptrVarNameX = "<var>x</var>";
         ptrVarNameY = "<var>y</var>";
       }
-      ShowLin(&ValJ, &ValU, &ValV, ptrVarNameX, ptrVarNameY);
+      ShowLin(BigIntegerToBigInt(&ValJ),
+              BigIntegerToBigInt(&ValU),
+              BigIntegerToBigInt(&ValV),
+              ptrVarNameX, ptrVarNameY);
       if (!BigIntIsZero(&ValU) && !BigIntIsZero(&ValV)) {
         showEqNbr(2);
       }
@@ -1152,7 +1288,9 @@ struct Quad {
       if (BigIntIsZero(&ValV)) {
         // v equals zero, so (1) becomes 2ax + by + d = 0
         MultInt(&Aux3, &ValA, 2);
-        ret = LinearEq(&Aux3, &ValB, &ValD);
+        ret = LinearEq(BigIntegerToBigInt(&Aux3),
+                       BigIntegerToBigInt(&ValB),
+                       BigIntegerToBigInt(&ValD));
         startResultBox(ret);
         PrintLinear(ret, "<var>t</var>");
         endResultBox(ret);
@@ -1178,19 +1316,27 @@ struct Quad {
       CopyBigInt(&Aux5, &ValB);
       if (teach) {
         showText("<p>");
-        ShowLin(&ValJ, &ValH, &ValD, "", "<var>t</var>");
+        ShowLin(BigIntegerToBigInt(&ValJ),
+                BigIntegerToBigInt(&ValH),
+                BigIntegerToBigInt(&ValD), "", "<var>t</var>");
         showText(" = &pm;");
         ShowNumber(&ValG);
         showText("</p><p>This equation represents two parallel lines. "
                  "The first line is: </p><p>");
         if (ExchXY) {
-          ShowLin(&Aux5, &Aux3, &Aux4, "<var>x</var>", "<var>y</var>");
+          ShowLin(BigIntegerToBigInt(&Aux5),
+                  BigIntegerToBigInt(&Aux3),
+                  BigIntegerToBigInt(&Aux4), "<var>x</var>", "<var>y</var>");
         } else {
-          ShowLin(&Aux3, &Aux5, &Aux4, "<var>x</var>", "<var>y</var>");
+          ShowLin(BigIntegerToBigInt(&Aux3),
+                  BigIntegerToBigInt(&Aux5),
+                  BigIntegerToBigInt(&Aux4), "<var>x</var>", "<var>y</var>");
         }
         showText(" = 0</p>");
       }
-      ret = LinearEq(&Aux3, &Aux5, &Aux4);
+      ret = LinearEq(BigIntegerToBigInt(&Aux3),
+                     BigIntegerToBigInt(&Aux5),
+                     BigIntegerToBigInt(&Aux4));
       startResultBox(ret);
       PrintLinear(ret, "<var>t</var>");
       endResultBox(ret);
@@ -1200,13 +1346,19 @@ struct Quad {
       if (teach) {
         showText("<p>The second line is:</p><p>");
         if (ExchXY) {
-          ShowLin(&Aux5, &Aux3, &Aux4, "<var>x</var>", "<var>y</var>");
+          ShowLin(BigIntegerToBigInt(&Aux5),
+                  BigIntegerToBigInt(&Aux3),
+                  BigIntegerToBigInt(&Aux4), "<var>x</var>", "<var>y</var>");
         } else {
-          ShowLin(&Aux3, &Aux5, &Aux4, "<var>x</var>", "<var>y</var>");
+          ShowLin(BigIntegerToBigInt(&Aux3),
+                  BigIntegerToBigInt(&Aux5),
+                  BigIntegerToBigInt(&Aux4), "<var>x</var>", "<var>y</var>");
         }
         showText(" = 0</p>");
       }
-      ret = LinearEq(&Aux3, &Aux5, &Aux4);
+      ret = LinearEq(BigIntegerToBigInt(&Aux3),
+                     BigIntegerToBigInt(&Aux5),
+                     BigIntegerToBigInt(&Aux4));
       startResultBox(ret);
       PrintLinear(ret, "<var>t</var>");
       endResultBox(ret);
@@ -2046,7 +2198,10 @@ struct Quad {
         CopyBigInt(&ValI, &ValK);
         BigIntChSign(&ValI);
         intToBigInteger(&ValJ, 0);
-        ShowLin(&ValH, &ValI, &ValJ, varY, "<var>k</var>");
+        ShowLin(BigIntegerToBigInt(&ValH),
+                BigIntegerToBigInt(&ValI),
+                BigIntegerToBigInt(&ValJ),
+                varY, "<var>k</var>");
         showText(" ");
         showEqNbr(equationNbr);
         showText(" converts ");
@@ -2357,11 +2512,15 @@ struct Quad {
       {
         intToBigInteger(&ValJ, 0);
         showText("<li><p>");
-        ShowLin(&ValH, &ValI, &ValJ, "X", "Y");
+        ShowLin(BigIntegerToBigInt(&ValH),
+                BigIntegerToBigInt(&ValI),
+                BigIntegerToBigInt(&ValJ), "X", "Y");
         showText(" = ");
         ShowNumber(&currentFactor);
         showText(",");
-        ShowLin(&ValL, &ValM, &ValJ, "X", "Y");
+        ShowLin(BigIntegerToBigInt(&ValL),
+                BigIntegerToBigInt(&ValM),
+                BigIntegerToBigInt(&ValJ), "X", "Y");
         showText(" = ");
         ShowNumber(&ValN);
         showText("</p>");
@@ -2435,9 +2594,13 @@ struct Quad {
     if (teach) {
       intToBigInteger(&ValJ, 0);
       showText("<p>(");
-      ShowLin(&V1, &V2, &ValJ, "X", "Y");
+      ShowLin(BigIntegerToBigInt(&V1),
+              BigIntegerToBigInt(&V2),
+              BigIntegerToBigInt(&ValJ), "X", "Y");
       showText(") &#8290;(");
-      ShowLin(&ValH, &ValI, &ValJ, "X", "Y");
+      ShowLin(BigIntegerToBigInt(&ValH),
+              BigIntegerToBigInt(&ValI),
+              BigIntegerToBigInt(&ValJ), "X", "Y");
       showText(") = ");
       ShowNumber(&ValL);
       showText("</p><p>");
@@ -2456,9 +2619,13 @@ struct Quad {
         }
 
         showText("(");
-        ShowLin(&V1, &V2, &ValJ, "X", "Y");
+        ShowLin(BigIntegerToBigInt(&V1),
+                BigIntegerToBigInt(&V2),
+                BigIntegerToBigInt(&ValJ), "X", "Y");
         showText(") &#8290;(");
-        ShowLin(&ValH, &ValI, &ValJ, "X", "Y");
+        ShowLin(BigIntegerToBigInt(&ValH),
+                BigIntegerToBigInt(&ValI),
+                BigIntegerToBigInt(&ValJ), "X", "Y");
         showText(") = ");
 
         if (BigIntIsZero(&bigTmp)) {
@@ -2482,7 +2649,9 @@ struct Quad {
         // Coefficient a does equals zero.
         // Solve Dy + beta = 0
         intToBigInteger(&Aux0, 0);
-        ret = LinearEq(&Aux0, &discr, &ValBeta);
+        ret = LinearEq(BigIntegerToBigInt(&Aux0),
+                       BigIntegerToBigInt(&discr),
+                       BigIntegerToBigInt(&ValBeta));
         startResultBox(ret);
         PrintLinear(ret, "t");
         endResultBox(ret);
@@ -2505,7 +2674,9 @@ struct Quad {
         (void)BigIntMultiply(&bigTmp, &ValBeta, &bigTmp);
         BigIntAdd(&Aux2, &bigTmp, &Aux2);
         BigIntChSign(&Aux2);
-        ret = LinearEq(&Aux0, &Aux1, &Aux2);
+        ret = LinearEq(BigIntegerToBigInt(&Aux0),
+                       BigIntegerToBigInt(&Aux1),
+                       BigIntegerToBigInt(&Aux2));
         startResultBox(ret);
         PrintLinear(ret, "t");
         endResultBox(ret);
@@ -2522,7 +2693,9 @@ struct Quad {
         BigIntChSign(&Aux2);
       }
 
-      ret = LinearEq(&Aux0, &Aux1, &Aux2);
+      ret = LinearEq(BigIntegerToBigInt(&Aux0),
+                     BigIntegerToBigInt(&Aux1),
+                     BigIntegerToBigInt(&Aux2));
       startResultBox(ret);
       PrintLinear(ret, "t");
       endResultBox(ret);
@@ -3298,23 +3471,25 @@ struct Quad {
     showText("</p>");
   }
 
-  void SolveQuadEquation() {
+  // Copy intentional; we modify them in place (factor out gcd).
+  void SolveQuadEquation(BigInt a, BigInt b, BigInt c,
+                         BigInt d, BigInt e, BigInt f) {
     also = 0;
     showSolution = ONE_SOLUTION;
     showRecursiveSolution = 0;    // Do not show recursive solution by default.
     divgcd = "<p>Dividing the equation by the greatest common divisor "
       "we obtain:</p>";
-    // Get GCD of A, B, C, D and E.
-    BigIntGcd(&ValA, &ValB, &Aux0);
-    BigIntGcd(&Aux0, &ValC, &Aux1);
-    BigIntGcd(&Aux1, &ValD, &Aux0);
-    BigIntGcd(&Aux0, &ValE, &Aux1);
-    (void)BigIntRemainder(&ValF, &Aux1, &Aux0);
-    if (!BigIntIsZero(&Aux0)) {
+
+    BigInt gcd = BigInt::GCD(BigInt::GCD(a, b),
+                             BigInt::GCD(BigInt::GCD(c, d),
+                                         e));
+
+    // PERF divisibility check
+    if (gcd != 0 && BigInt::CMod(f, gcd) != 0) {
       // F is not multiple of GCD(A, B, C, D, E) so there are no solutions.
       if (teach) {
         showText("<p>The constant coefficient is not multiple of ");
-        ShowNumber(&Aux1);
+        ShowBigInt(gcd);
         showText(", which is the greatest common divisor of the other "
                  "coefficients, so there are no solutions.</p>");
       } else {
@@ -3322,26 +3497,52 @@ struct Quad {
       }
       return;
     }
-    // Divide all coefficients by GCD(A, B, C, D, E)
-    (void)BigIntDivide(&ValA, &Aux1, &ValA);
-    (void)BigIntDivide(&ValB, &Aux1, &ValB);
-    (void)BigIntDivide(&ValC, &Aux1, &ValC);
-    (void)BigIntDivide(&ValD, &Aux1, &ValD);
-    (void)BigIntDivide(&ValE, &Aux1, &ValE);
-    (void)BigIntDivide(&ValF, &Aux1, &ValF);
+
+    // Divide all coefficients by GCD(A, B, C, D, E).
+    // PERF: Known-divisible operation
+    if (gcd != 0) {
+      a /= gcd;
+      b /= gcd;
+      c /= gcd;
+      d /= gcd;
+      e /= gcd;
+      f /= gcd;
+    }
+
+    if (VERBOSE)
+    printf("After dividing: %s %s %s %s %s %s\n",
+           a.ToString().c_str(),
+           b.ToString().c_str(),
+           c.ToString().c_str(),
+           d.ToString().c_str(),
+           e.ToString().c_str(),
+           f.ToString().c_str());
+
+    // XXX remove this state
+    BigIntToBigInteger(a, &ValA);
+    BigIntToBigInteger(b, &ValB);
+    BigIntToBigInteger(c, &ValC);
+    BigIntToBigInteger(d, &ValD);
+    BigIntToBigInteger(e, &ValE);
+    BigIntToBigInteger(f, &ValF);
+
     // Test whether the equation is linear. A = B = C = 0.
-    if (BigIntIsZero(&ValA) && BigIntIsZero(&ValB) && BigIntIsZero(&ValC)) {
-      eLinearSolution ret = LinearEq(&ValD, &ValE, &ValF);
+    if (a == 0 && b == 0 && c == 0) {
+      eLinearSolution ret = LinearEq(BigIntegerToBigInt(&ValD),
+                                     BigIntegerToBigInt(&ValE),
+                                     BigIntegerToBigInt(&ValF));
       startResultBox(ret);
       PrintLinear(ret, "t");
       endResultBox(ret);
       return;
     }
+
     // Compute discriminant: b^2 - 4ac.
     (void)BigIntMultiply(&ValB, &ValB, &Aux0);
     (void)BigIntMultiply(&ValA, &ValC, &Aux1);
     MultInt(&Aux2, &Aux1, 4);
     BigIntSubt(&Aux0, &Aux2, &discr);
+
     if (teach) {
       showText("<p>The discriminant is"
                " <var>b</var>");
@@ -3350,6 +3551,7 @@ struct Quad {
       ShowNumber(&discr);
       showText("</p>");
     }
+
     if (BigIntIsZero(&discr)) {
       // Discriminant is zero.
       DiscriminantIsZero();
@@ -3441,6 +3643,7 @@ struct Quad {
         }
       }
     }
+
     // If k is not multiple of gcd(A, B, C), there are no solutions.
     (void)BigIntRemainder(&ValK, &U1, &bigTmp);
     if (!BigIntIsZero(&bigTmp)) {
@@ -3453,6 +3656,7 @@ struct Quad {
         }
       return;     // There are no solutions.
     }
+
     if (ValK.sign == SIGN_NEGATIVE) {
       BigIntChSign(&ValA);
       BigIntChSign(&ValB);
@@ -3464,10 +3668,12 @@ struct Quad {
         PrintQuadEqConst(true);
       }
     }
+
     if (discr.sign == SIGN_NEGATIVE) {
       NegativeDiscriminant();
       return;
     }
+
     SquareRoot(discr.limbs, ValG.limbs, discr.nbrLimbs, &ValG.nbrLimbs);
     ValG.sign = SIGN_POSITIVE;
     (void)BigIntMultiply(&ValG, &ValG, &bigTmp);
@@ -3490,15 +3696,7 @@ struct Quad {
 
     size_t preamble_size = (output == nullptr) ? 0 : output->size();
 
-    // XXX remove this state
-    BigIntToBigInteger(a, &ValA);
-    BigIntToBigInteger(b, &ValB);
-    BigIntToBigInteger(c, &ValC);
-    BigIntToBigInteger(d, &ValD);
-    BigIntToBigInteger(e, &ValE);
-    BigIntToBigInteger(f, &ValF);
-
-    SolveQuadEquation();
+    SolveQuadEquation(a, b, c, d, e, f);
 
     if (output != nullptr && output->size() == preamble_size) {
       showText("<p>The equation does not have integer solutions.</p>");
