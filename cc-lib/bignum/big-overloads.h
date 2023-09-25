@@ -50,8 +50,10 @@ inline BigInt operator /(const BigInt &a, int64_t b) {
   return BigInt::Div(a, b);
 }
 
+// Note: To avoid confusion, this is CMod (same semantics as % on
+// signed integers in C), not the number theoretic modulus oprator.
 inline BigInt operator %(const BigInt &a, const BigInt &b) {
-  return BigInt::Mod(a, b);
+  return BigInt::CMod(a, b);
 }
 
 inline BigInt operator -(const BigInt &a, const BigInt &b) {
@@ -99,7 +101,17 @@ inline BigInt &operator+=(BigInt &a, const BigInt &b) {
   return a;
 }
 
+inline BigInt &operator+=(BigInt &a, int64_t b) {
+  a = a + b;
+  return a;
+}
+
 inline BigInt &operator-=(BigInt &a, const BigInt &b) {
+  a = a - b;
+  return a;
+}
+
+inline BigInt &operator-=(BigInt &a, int64_t b) {
   a = a - b;
   return a;
 }
@@ -111,6 +123,16 @@ inline BigInt &operator*=(BigInt &a, const BigInt &b) {
 
 inline BigInt &operator/=(BigInt &a, const BigInt &b) {
   a = a * b;
+  return a;
+}
+
+inline BigInt &operator/=(BigInt &a, int64_t b) {
+  a = a * b;
+  return a;
+}
+
+inline BigInt &operator%=(BigInt &a, const BigInt &b) {
+  a = a % b;
   return a;
 }
 
@@ -142,11 +164,9 @@ inline bool operator >=(const BigInt &a, const BigInt &b) {
   return BigInt::GreaterEq(a, b);
 }
 
-/*
 inline bool operator >=(const BigInt &a, int64_t b) {
-  return BigInt::GreaterEq(b, a);
+  return BigInt::GreaterEq(a, b);
 }
-*/
 
 inline bool operator ==(const BigInt &a, const BigInt &b) {
   return BigInt::Eq(a, b);
@@ -160,7 +180,6 @@ inline bool operator ==(int64_t a, const BigInt &b) {
   return BigInt::Eq(b, a);
 }
 
-/*
 inline bool operator !=(const BigInt &a, int64_t b) {
   return !BigInt::Eq(a, b);
 }
@@ -168,6 +187,5 @@ inline bool operator !=(const BigInt &a, int64_t b) {
 inline bool operator !=(int64_t a, const BigInt &b) {
   return !BigInt::Eq(b, a);
 }
-*/
 
 #endif

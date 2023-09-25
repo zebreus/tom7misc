@@ -28,7 +28,7 @@ RE2_OBJECTS=re2/bitstate.o re2/compile.o re2/dfa.o re2/filtered_re2.o re2/mimics
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-ansi_test.exe : ansi_test.o ansi.o $(BASE)
+ansi_test.exe : ansi_test.o ansi.o util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 stb_truetype_test.exe : stb_truetype.o stb_truetype_test.o
@@ -103,7 +103,7 @@ lines_test.exe : lines_test.o arcfour.o $(BASE)
 image_test.exe : image_test.o arcfour.o image.o stb_image.o stb_image_write.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-util_test.exe : util_test.o util.o $(BASE)
+util_test.exe : util_test.o util.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 randutil_test.exe : randutil.h randutil_test.o arcfour.o $(BASE)

@@ -300,6 +300,19 @@ struct Util {
   // if the codepoint is out of range.
   static std::string EncodeUTF8(uint32_t codepoint);
 
+  static constexpr uint32_t REPLACEMENT_CODEPOINT = 0xFFFD;
+  // Decode the string as a vector of codepoints, assuming it is
+  // encoded correctly. This treats no codepoints specially. Invalid
+  // encodings are transformed to U+FFFD, the replacement character,
+  // but the algorithm for doing this is unspecified.
+  static std::vector<uint32_t> UTF8Codepoints(const std::string &utf8);
+
+  // Get the number of codepoints in the UTF-8 string, assuming it is
+  // encoded correctly. Doesn't handle stuff like combining
+  // characters, but it's better than strlen if the string is not pure
+  // ASCII.
+  static size_t UTF8Length(const std::string &utf8);
+
   // TODO: Migrate everyone to factorize.h, which is faster.
   // Prime factorization with trial division (not fast). Input must be > 1.
   // Output in sorted order.

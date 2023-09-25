@@ -38,7 +38,8 @@ static void TestComposite() {
   printf("Composited:\n");
   for (const char *s :
          {"", "##############",
-          "short", "long string that gets truncated"}) {
+          "short", "long string that gets truncated",
+             "Unic\xE2\x99\xA5" "de"}) {
     printf("%s\n", ANSI::Composite(s, fgs, bgs).c_str());
   }
 }

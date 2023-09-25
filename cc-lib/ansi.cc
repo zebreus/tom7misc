@@ -18,6 +18,8 @@
 // TODO: Would be good to avoid this dependency too.
 // We could use std::format in c++20, for example.
 #include "base/stringprintf.h"
+// For UTF8 decoding. Could easily duplicate it here.
+#include "util.h"
 
 void ANSI::Init() {
   #ifdef __MINGW32__
@@ -170,6 +172,9 @@ std::string ANSI::ProgressBar(uint64_t numer, uint64_t denom,
   string bar_text = StringPrintf("%llu / %llu  (%.1f%%) %s", numer, denom,
                                  frac * 100.0,
                                  operation.c_str());
+
+  // TODO: Use CompositeRGBA for this.
+
   // could do "..."
   if ((int)bar_text.size() > bar_width) bar_text.resize(bar_width);
   bar_text.reserve(bar_width);
@@ -229,10 +234,12 @@ std::string ANSI::Composite(
 
   std::string text = StripCodes(text_raw);
 
+  std::vector<uint32_t> codepoints = Util::UTF8Codepoints(text);
+
   int width = std::max(Width(fgcolors), Width(bgcolors));
   if (width <= 0) return "";
-  if ((int)text.size() > width) text.resize(width);
-  while ((int)text.size() < width) text.push_back(' ');
+  if ((int)codepoints.size() > width) codepoints.resize(width);
+  while ((int)codepoints.size() < width) codepoints.push_back(' ');
 
   // We could do this using the compact representation, but
   // since we're creating a string of this width anyway, we
@@ -275,8 +282,8 @@ std::string ANSI::Composite(
       last_fg = fgcolor;
     }
 
-    // And always add the text char.
-    out.push_back(text[i]);
+    // And always add the text codepoint.
+    out += Util::EncodeUTF8(codepoints[i]);
   }
 
   return out + ANSI_RESET;

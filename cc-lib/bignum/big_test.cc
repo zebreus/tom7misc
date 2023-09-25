@@ -386,12 +386,66 @@ static void TestJacobi() {
   #endif
 }
 
+static void TestModRem() {
+  BigInt neg1{-1};
+  BigInt four{4};
+
+  CHECK(BigInt::Eq(BigInt::Mod(neg1, four), 3));
+  const auto [q, r] = BigInt::QuotRem(neg1, four);
+  CHECK(BigInt::Eq(q, 0)) << q.ToString();
+  CHECK(BigInt::Eq(r, -1)) << r.ToString();
+}
+
+static void TestDiv() {
+  // Check that Div has the same rounding behavior as C++11.
+  for (int x = -14; x < 7; x++) {
+    for (int y = -7; y < 14; y++) {
+      if (y != 0) {
+        int z = x / y;
+        BigInt bz = BigInt::Div(BigInt(x), BigInt(y));
+        BigInt bq = BigInt::QuotRem(BigInt(x), BigInt(y)).first;
+
+        CHECK(BigInt::Eq(bz, z)) <<
+          StringPrintf("%d / %d = %d (got %s)\n",
+                       x, y, z, bz.ToString().c_str());
+        CHECK(BigInt::Eq(bq, z)) <<
+          StringPrintf("%d / %d = %d (got %s)\n",
+                       x, y, z, bq.ToString().c_str());
+      }
+    }
+  }
+}
+
+static void TestCMod() {
+  // Check that CMod has the same rounding behavior as C++11.
+  for (int x = -14; x < 7; x++) {
+    for (int y = -7; y < 14; y++) {
+      if (y != 0) {
+        int z = x % y;
+        BigInt bz = BigInt::CMod(BigInt(x), BigInt(y));
+        BigInt br = BigInt::QuotRem(BigInt(x), BigInt(y)).second;
+
+        CHECK(BigInt::Eq(bz, z)) <<
+          StringPrintf("%d %% %d = %d (got %s)\n",
+                       x, y, z, bz.ToString().c_str());
+        CHECK(BigInt::Eq(br, z)) <<
+          StringPrintf("%d %% %d = %d (got %s)\n",
+                       x, y, z, br.ToString().c_str());
+      }
+    }
+  }
+}
+
 int main(int argc, char **argv) {
   printf("Start.\n");
   fflush(stdout);
 
   CopyAndAssign();
   TestToString();
+
+  TestDiv();
+  TestCMod();
+  TestModRem();
 
   TestEq();
   LowWord();

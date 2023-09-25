@@ -155,6 +155,134 @@ std::string Util::EncodeUTF8(uint32_t codepoint) {
   return "";
 }
 
+size_t Util::UTF8Length(const std::string &utf8) {
+  size_t len = 0;
+  for (size_t i = 0; i < utf8.size(); i++) {
+    uint8_t c = utf8[i];
+    // valid sequences are
+    // 0xxxxxxx
+    // 110xxxxx 10xxxxxx
+    // 1110xxxx 10xxxxxx 10xxxxxx
+    // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+    if (c & 0x80) {
+      // high bit set.
+      if ((c & 0b11100000) == 0b11000000) {
+        // two-byte sequence.
+        // we just skip the next byte because we're not validating.
+        i++;
+      } else if ((c & 0b11110000) == 0b11100000) {
+        // three bytes
+        i += 2;
+      } else if ((c & 0b11111000) == 0b11110000) {
+        i += 3;
+      }
+    } else {
+      // ASCII
+    }
+    len++;
+  }
+  return len;
+}
+
+std::vector<uint32_t> Util::UTF8Codepoints(const std::string &utf8) {
+  std::vector<uint32_t> ret;
+  ret.reserve(utf8.size());
+  for (size_t i = 0; i < utf8.size(); i++) {
+    uint8_t c = utf8[i];
+    // valid sequences are
+    // 0xxxxxxx
+    // 110xxxxx 10xxxxxx
+    // 1110xxxx 10xxxxxx 10xxxxxx
+    // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+    if (c & 0x80) {
+      // high bit set.
+      if ((c & 0b11100000) == 0b11000000) {
+        // two-byte sequence.
+        if (i + 1 >= utf8.size()) {
+          ret.push_back(REPLACEMENT_CODEPOINT);
+          break;
+        }
+
+        uint8_t d = utf8[++i];
+
+        // 110xxxxx 10xxxxxx
+        if ((d & 0b11000000) == 0b10000000) {
+          uint32_t cp = c & 0b00011111;
+          cp <<= 6;
+          cp |= (d & 0b00111111);
+          ret.push_back(cp);
+        } else {
+          // second byte is invalid.
+          ret.push_back(REPLACEMENT_CODEPOINT);
+        }
+
+      } else if ((c & 0b11110000) == 0b11100000) {
+        // three bytes
+        if (i + 2 >= utf8.size()) {
+          ret.push_back(REPLACEMENT_CODEPOINT);
+          break;
+        }
+
+        uint8_t d = utf8[++i];
+        uint8_t e = utf8[++i];
+
+        // 1110xxxx 10xxxxxx 10xxxxxx
+        if ((d & 0b11000000) == 0b10000000 &&
+            (e & 0b11000000) == 0b10000000) {
+          uint32_t cp = c & 0b00001111;
+          cp <<= 6;
+          cp |= (d & 0b00111111);
+          cp <<= 6;
+          cp |= (e & 0b00111111);
+          ret.push_back(cp);
+        } else {
+          // second byte is invalid.
+          ret.push_back(REPLACEMENT_CODEPOINT);
+        }
+
+      } else if ((c & 0b11111000) == 0b11110000) {
+        // four bytes
+        if (i + 3 >= utf8.size()) {
+          ret.push_back(REPLACEMENT_CODEPOINT);
+          break;
+        }
+
+        uint8_t d = utf8[++i];
+        uint8_t e = utf8[++i];
+        uint8_t f = utf8[++i];
+
+        // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+        if ((d & 0b11000000) == 0b10000000 &&
+            (e & 0b11000000) == 0b10000000 &&
+            (f & 0b11000000) == 0b10000000) {
+          uint32_t cp = c & 0b00000111;
+          cp <<= 6;
+          cp |= (d & 0b00111111);
+          cp <<= 6;
+          cp |= (e & 0b00111111);
+          cp <<= 6;
+          cp |= (f & 0b00111111);
+          ret.push_back(cp);
+        } else {
+          // second byte is invalid.
+          ret.push_back(REPLACEMENT_CODEPOINT);
+        }
+
+      } else {
+        // If the broken encoding is multi-byte, there might be a
+        // better choice than inserting multiple replacement chars,
+        // but for now this is simplest.
+        ret.push_back(REPLACEMENT_CODEPOINT);
+      }
+    } else {
+      // ASCII
+      ret.push_back(c);
+    }
+  }
+
+  return ret;
+}
+
 namespace {
 struct LineReal : public line {
   int x0, y0, x1, y1;

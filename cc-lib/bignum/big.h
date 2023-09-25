@@ -67,18 +67,34 @@ struct BigInt {
   inline static BigInt Minus(int64_t a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, const BigInt &b);
   inline static BigInt Times(const BigInt &a, int64_t b);
+
+  // Truncates towards zero, like C.
   inline static BigInt Div(const BigInt &a, const BigInt &b);
   inline static BigInt Div(const BigInt &a, int64_t b);
   // Returns a/b, but requires that that a % b == 0 for correctness.
   inline static BigInt DivExact(const BigInt &a, const BigInt &b);
   inline static BigInt DivExact(const BigInt &a, int64_t b);
-  // Ignores sign of divisor. Result is always non-negative.
-  // XXX need to test that bigz version matches this spec.
+
+
+  // TODO: Check that the behavior on negative numbers is the
+  // same between the GMP and bignum implementations.
+
+  // Ignores sign of b. Result is always in [0, |b|).
+  // For the C % operator, use CMod.
   inline static BigInt Mod(const BigInt &a, const BigInt &b);
-  inline static BigInt Pow(const BigInt &a, uint64_t exponent);
+
+  // Modulus with C99/C++11 semantics: Division truncates towards
+  // zero; modulus has the same sign as a.
+  // cmod(a, b) = a - trunc(a / b) * b
+  inline static BigInt CMod(const BigInt &a, const BigInt &b);
+
   // Returns Q (a div b), R (a mod b) such that a = b * q + r
+  // This is Div(a, b) and CMod(a, b); a / b and a % b in C.
   inline static std::pair<BigInt, BigInt> QuotRem(const BigInt &a,
                                                   const BigInt &b);
+
+  inline static BigInt Pow(const BigInt &a, uint64_t exponent);
+
   // Integer square root, rounding towards zero.
   // Input must be non-negative.
   inline static BigInt Sqrt(const BigInt &a);
@@ -622,6 +638,12 @@ BigInt BigInt::Mod(const BigInt &a, const BigInt &b) {
   BigInt ret;
   mpz_mod(ret.rep, a.rep, b.rep);
   return ret;
+}
+
+BigInt BigInt::CMod(const BigInt &a, const BigInt &b) {
+  BigInt r;
+  mpz_tdiv_r(r.rep, a.rep, b.rep);
+  return r;
 }
 
 // Returns Q (a div b), R (a mod b) such that a = b * q + r

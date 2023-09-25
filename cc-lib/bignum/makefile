@@ -24,7 +24,7 @@ endif
 
 CXXFLAGS=$(GMP_CFLAGS) -march=native -Wall -I.. --std=c++20 -O3
 
-CCLIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../ansi.o
+CCLIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../util.o ../ansi.o
 
 %.o : %.cc *.h makefile
 	$(CXX) $(CXXFLAGS) $< -o $@ -c

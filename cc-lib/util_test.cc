@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <cmath>
 
+#include "arcfour.h"
+
 using namespace std;
 
 #define CHECK_SEQ(a, b) do { \
@@ -391,6 +393,72 @@ static void TestUnicode() {
   // Emoji Banana
   string banana = Util::EncodeUTF8(0x1F34C);
   CHECK("\xF0\x9F\x8D\x8C" == banana) << ToHex(banana);
+
+  CHECK(Util::UTF8Length("banana") == 6);
+  for (int i = 1; i < 0x1000; i++) {
+    // one possibly multibyte codepoint
+    string ss = Util::EncodeUTF8(i);
+    // and one ascii character
+    ss.push_back('c');
+    size_t len = Util::UTF8Length(ss);
+    CHECK(len == 2) << i;
+  }
+
+
+  ArcFour rc("utf8");
+  for (int rep = 0; rep < 0x1000; rep++) {
+    std::vector<uint32_t> expected;
+    uint8_t numc = 1 + (rc.Byte() & 7);
+
+    for (int j = 0; j < numc; j++) {
+      uint32_t a = rc.Byte();
+      a <<= 8;
+      a |= rc.Byte();
+      a <<= 8;
+      a |= rc.Byte();
+      switch (rc.Byte() & 3) {
+      default:
+      case 0:
+        expected.push_back(a & 0x7f);
+        break;
+      case 1:
+        expected.push_back(a & 0x7ff);
+        break;
+      case 2:
+        expected.push_back(a & 0xffff);
+        break;
+      case 3:
+        expected.push_back(a & 0x10ffff);
+        break;
+      }
+    }
+    expected.push_back(rep + 1);
+
+    string str;
+    for (uint32_t cp : expected)
+      str += Util::EncodeUTF8(cp);
+
+    // Now expect the expected.
+    std::vector<uint32_t> got = Util::UTF8Codepoints(str);
+
+    if (expected != got) {
+      printf("For codepoint sequence: ");
+      for (uint32_t cp : expected) {
+        printf("%04x ", cp);
+      }
+      printf("\n");
+      printf("Got string: %s\n",
+             Util::HexString(str, " ").c_str());
+      printf("Decoded to: ");
+      for (uint32_t cp : got) {
+        printf("%04x ", cp);
+      }
+      printf("\n");
+      LOG(FATAL) << "Wrong! Rep " << rep;
+    }
+  }
+
+  // TODO: Test invalid encodings too.
 }
 
 static void TestReplace() {
