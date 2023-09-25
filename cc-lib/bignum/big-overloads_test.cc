@@ -32,6 +32,24 @@ static void TestShift() {
   }
 }
 
+static void TestAssigningOps() {
+
+  // TODO more! I have screwed these up with copy-paste.
+
+  {
+    BigInt x(41);
+    x /= 2;
+    CHECK(BigInt == 20);
+  }
+
+  {
+    BigInt x(44);
+    x /= BigInt{2};
+    CHECK(BigInt == 22);
+  }
+
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("Start.\n");
@@ -39,6 +57,8 @@ int main(int argc, char **argv) {
 
   BenchNegate();
   TestShift();
+
+  TestOps();
 
   printf("OK\n");
 }

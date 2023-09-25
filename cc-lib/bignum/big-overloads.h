@@ -122,12 +122,12 @@ inline BigInt &operator*=(BigInt &a, const BigInt &b) {
 }
 
 inline BigInt &operator/=(BigInt &a, const BigInt &b) {
-  a = a * b;
+  a = a / b;
   return a;
 }
 
 inline BigInt &operator/=(BigInt &a, int64_t b) {
-  a = a * b;
+  a = a / b;
   return a;
 }
 
