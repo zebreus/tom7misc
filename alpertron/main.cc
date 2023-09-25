@@ -40,6 +40,14 @@ int main(int argc, char* argv[]) {
   BigInt e(argv[5]);
   BigInt f(argv[6]);
 
+  printf("\n** Quad %s %s %s %s %s %s\n",
+         a.ToString().c_str(),
+         b.ToString().c_str(),
+         c.ToString().c_str(),
+         d.ToString().c_str(),
+         e.ToString().c_str(),
+         f.ToString().c_str());
+
   std::string output;
   QuadBigInt(teach, a, b, c, d, e, f, &output);
   (void)printf("%s\n", output.c_str());
