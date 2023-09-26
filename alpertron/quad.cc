@@ -805,7 +805,6 @@ struct Quad {
   eLinearSolution LinearEq(
       BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
 
-
     if (teach) {
       showText("<p>This is a linear equation ");
       ShowLin(coeffX, coeffY, coeffInd, "x", "y");
@@ -1077,21 +1076,15 @@ struct Quad {
 
     // Substitute variables so the independent coefficients can be minimized.
     // Reuse variables U1, U2, U3, V1, V2, V3.
-    U1 = coeffX * coeffX;
-    q = coeffY * coeffY;
 
     // U1 <- coeffX^2 + coeffY^2
-    U1 += q;
+    U1 = coeffX * coeffX + coeffY * coeffY;
 
     // U2 <- (coeffX^2 + coeffY^2)/2
-    U2 = U1;
-    U2 /= 2;
+    U2 = U1 >> 1;
 
-    q = coeffX * yind;
-    U2 += q;
-
-    q = coeffY * xind;
-    U2 -= q;
+    U2 += coeffX * yind;
+    U2 -= coeffY * xind;
 
     // U1 <- delta to add to t'
     // XXX with BigInt
@@ -1466,6 +1459,7 @@ struct Quad {
       showText(" (");
       showText("where <var>k</var> is any integer).</p>");
     }
+
     (void)BigIntMultiply(value, value, &bigTmp);
     BigIntSubt(&bigTmp, &ValV, &bigTmp);
     (void)BigIntDivide(&bigTmp, &ValU, &ValR);
@@ -2003,9 +1997,11 @@ struct Quad {
         break;
       }
     }
-    if (showRecursiveSolution && (callbackQuadModType == CBACK_QMOD_HYPERBOLIC)) {
+
+    if (showRecursiveSolution &&
+        (callbackQuadModType == CBACK_QMOD_HYPERBOLIC)) {
       // Show recursive solution.
-      recursiveSolution();
+      RecursiveSolution();
     }
   }
 
@@ -3088,26 +3084,48 @@ struct Quad {
     BigIntToBigInteger(Tmp11, value);
   }
 
-  void ShowRecSol(char variable, const BigInteger *coefX,
-                  const BigInteger *coefY, const BigInteger *coefInd) {
+  void ShowRecSol(char variable,
+                  const BigInt &cx,
+                  const BigInt &cy,
+                  const BigInt &ci) {
     eLinearSolution t;
     ShowChar(variable);
     showText("<sub>n+1</sub> = ");
-    t = Show(BigIntegerToBigInt(coefX), "x<sub>n</sub>", SOLUTION_FOUND);
-    t = Show(BigIntegerToBigInt(coefY), "y<sub>n</sub>", t);
-    Show1(BigIntegerToBigInt(coefInd), t);
+    t = Show(cx, "x<sub>n</sub>", SOLUTION_FOUND);
+    t = Show(cy, "y<sub>n</sub>", t);
+    Show1(ci, t);
   }
 
-  void ShowResult(const char *text, const BigInteger *value) {
+  void ShowResultA(const char *text, const BigInteger *value) {
     showText(text);
     showText(" = ");
     ShowNumber(value);
     showText("<br>");
   }
 
-  void ShowAllRecSols() {
-    if ((ValP.nbrLimbs > 2) || (ValQ.nbrLimbs > 2)) {
-      if (BigIntIsZero(&ValAlpha) && BigIntIsZero(&ValBeta)) {
+  void ShowResult(const char *text, const BigInt &value) {
+    showText(text);
+    showText(" = ");
+    ShowBigInt(value);
+    showText("<br>");
+  }
+
+  // TODO: Test this heuristic without converting.
+  bool IsBig(const BigInt &bg, int num_limbs) {
+    BigInteger tmp;
+    BigIntToBigInteger(bg, &tmp);
+    return tmp.nbrLimbs > num_limbs;
+  }
+
+  void ShowAllRecSols(
+      // XXX original code modifies these; is that desired?
+      BigInt P, BigInt Q,
+      BigInt R, BigInt S,
+      BigInt K, BigInt L,
+      const BigInt &Alpha, const BigInt &Beta) {
+
+    if (IsBig(P, 2) || IsBig(Q, 2)) {
+      if (Alpha == 0 && Beta == 0) {
         showText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + Q&nbsp;&#8290;y<sub>n</sub><br>"
                  "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + S&nbsp;&#8290;y<sub>n</sub></p><p>");
       } else {
@@ -3115,61 +3133,60 @@ struct Quad {
                  "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + S&nbsp;&#8290;y<sub>n</sub> + L</p><p>");
       }
       showText("where:</p><p>");
-      ShowResult("P", &ValP);
-      ShowResult("Q", &ValQ);
-      if (!BigIntIsZero(&ValAlpha) || !BigIntIsZero(&ValBeta)) {
-        ShowResult("K", &ValK);
+      ShowResult("P", P);
+      ShowResult("Q", Q);
+      if (Alpha != 0 || Beta != 0) {
+        ShowResult("K", K);
       }
-      ShowResult("R", &ValR);
-      ShowResult("S", &ValS);
-      if (!BigIntIsZero(&ValAlpha) || !BigIntIsZero(&ValBeta)) {
-        ShowResult("L", &ValL);
+      ShowResult("R", R);
+      ShowResult("S", S);
+      if (Alpha != 0 || Beta != 0) {
+        ShowResult("L", L);
       }
     } else {
-      ShowRecSol('x', &ValP, &ValQ, &ValK);
+      ShowRecSol('x', P, Q, K);
       showText("<br>");
-      ShowRecSol('y', &ValR, &ValS, &ValL);
+      ShowRecSol('y', R, S, L);
     }
 
     // Compute x_{n-1} from x_n and y_n
     // Compute new value of K and L as: Knew <- L*Q - K*S and Lnew <- K*R - L*P
-    (void)BigIntMultiply(&ValL, &ValQ, &Tmp1);
-    (void)BigIntMultiply(&ValK, &ValS, &bigTmp);
-    BigIntSubt(&Tmp1, &bigTmp, &Tmp1);
-    (void)BigIntMultiply(&ValK, &ValR, &Tmp2);
-    (void)BigIntMultiply(&ValL, &ValP, &bigTmp);
-    BigIntSubt(&Tmp2, &bigTmp, &ValL);
-    CopyBigInt(&ValK, &Tmp1);
+    BigInt Tmp1 = L * Q - K * S;
+    L = K * R - L * P;
+    K = std::move(Tmp1);
 
     // Compute new values of P, Q, R and S as:
     // Pnew <- S, Qnew <- -Q, Rnew <- -R, Snew <- P
-    BigIntChSign(&ValQ);
-    BigIntChSign(&ValR);
-    CopyBigInt(&bigTmp, &ValP);
-    CopyBigInt(&ValP, &ValS);
-    CopyBigInt(&ValS, &bigTmp);
+    Q = -std::move(Q);
+    R = -std::move(R);
+
+    BigInt Tmp = P;
+    P = S;
+    S = std::move(Tmp);
+
     showText("<p>and also:</p>");
-    if ((ValP.nbrLimbs > 2) || (ValQ.nbrLimbs > 2)) {
+    if (IsBig(P, 2) || IsBig(Q, 2)) {
       showText("<p>");
-      ShowResult("P", &ValP);
-      ShowResult("Q", &ValQ);
-      if (!BigIntIsZero(&ValAlpha) || !BigIntIsZero(&ValBeta)) {
-        ShowResult("K", &ValK);
+      ShowResult("P", P);
+      ShowResult("Q", Q);
+      if (Alpha != 0 || Beta != 0) {
+        ShowResult("K", K);
       }
-      ShowResult("R", &ValR);
-      ShowResult("S", &ValS);
-      if (!BigIntIsZero(&ValAlpha) || !BigIntIsZero(&ValBeta)) {
-        ShowResult("L", &ValL);
+      ShowResult("R", R);
+      ShowResult("S", S);
+      if (Alpha != 0 || Beta != 0) {
+        ShowResult("L", L);
       }
     } else {
-      ShowRecSol('x', &ValP, &ValQ, &ValK);
+      ShowRecSol('x', P, Q, K);
       showText("<br>");
-      ShowRecSol('y', &ValR, &ValS, &ValL);
+      ShowRecSol('y', R, S, L);
     }
     showText("</p>");
   }
 
-  bool solutionFoundFromContFraction(bool isBeven, int limbValue) {
+  bool SolutionFoundFromContFraction(bool isBeven, int limbValue) {
+    // HERE next!
     if (isBeven) {
       CopyBigInt(&ValQ, &ValB);
       BigIntDivideBy2(&ValQ);
@@ -3185,13 +3202,16 @@ struct Quad {
         BigIntDivideBy2(&ValS);               // S <- (r + bs)/2
       }
     }
+
     (void)BigIntMultiply(&ValC, &V1, &ValQ);
     BigIntChSign(&ValQ);                      // Q <- -cs
     (void)BigIntMultiply(&ValA, &V1, &ValR);        // R <- as
+
     if (!isBeven && (limbValue == 1)) {
       BigIntAdd(&ValQ, &ValQ, &ValQ);         // Q <- -2cs
       BigIntAdd(&ValR, &ValR, &ValR);         // R <- 2as
     }
+
     (void)BigIntMultiply(&ValAlpha, &ValP, &ValK);
     (void)BigIntMultiply(&ValBeta, &ValQ, &bigTmp);
     BigIntAdd(&ValK, &bigTmp, &ValK);
@@ -3201,39 +3221,52 @@ struct Quad {
     // Check whether alpha - K and beta - L are multiple of discriminant.
     BigIntSubt(&ValAlpha, &ValK, &bigTmp);
     (void)BigIntRemainder(&bigTmp, &discr, &bigTmp);
-    if (BigIntIsZero(&bigTmp))
-      {
+
+    if (BigIntIsZero(&bigTmp)) {
         BigIntSubt(&ValBeta, &ValL, &bigTmp);
         (void)BigIntRemainder(&bigTmp, &discr, &bigTmp);
-        if (BigIntIsZero(&bigTmp))
-          {    // Solution found.
+        if (BigIntIsZero(&bigTmp)) {
+          // Solution found.
             BigIntSubt(&ValAlpha, &ValK, &ValK);
             (void)BigIntDivide(&ValK, &discr, &ValK);
             BigIntSubt(&ValBeta, &ValL, &ValL);
             (void)BigIntDivide(&ValL, &discr, &ValL);
-            ShowAllRecSols();
+            ShowAllRecSols(BigIntegerToBigInt(&ValP),
+                           BigIntegerToBigInt(&ValQ),
+                           BigIntegerToBigInt(&ValR),
+                           BigIntegerToBigInt(&ValS),
+                           BigIntegerToBigInt(&ValK),
+                           BigIntegerToBigInt(&ValL),
+                           BigIntegerToBigInt(&ValAlpha),
+                           BigIntegerToBigInt(&ValBeta));
             return true;
           }
       }
+
+    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    BigInt K = BigIntegerToBigInt(&ValK);
+    BigInt L = BigIntegerToBigInt(&ValL);
+    BigInt Discr = BigIntegerToBigInt(&discr);
+
     // Check whether alpha + K and beta + L are multiple of discriminant.
-    BigIntAdd(&ValAlpha, &ValK, &bigTmp);
-    (void)BigIntRemainder(&bigTmp, &discr, &bigTmp);
-    if (BigIntIsZero(&bigTmp)) {
-      BigIntAdd(&ValBeta, &ValL, &bigTmp);
-      (void)BigIntRemainder(&bigTmp, &discr, &bigTmp);
-      if (BigIntIsZero(&bigTmp)) {
-        // Solution found.
-        BigIntAdd(&ValAlpha, &ValK, &ValK);
-        (void)BigIntDivide(&ValK, &discr, &ValK);
-        BigIntAdd(&ValBeta, &ValL, &ValL);
-        (void)BigIntDivide(&ValL, &discr, &ValL);
-        BigIntChSign(&ValP);
-        BigIntChSign(&ValQ);
-        BigIntChSign(&ValR);
-        BigIntChSign(&ValS);
-        ShowAllRecSols();
-        return true;
-      }
+    // PERF divisibility checks
+    if (BigInt::CMod(Alpha + K, Discr) == 0 &&
+        BigInt::CMod(Beta + L, Discr) == 0) {
+      // Solution found.
+      // PERF: Use quotrem, or known-divisible test!
+      K = (Alpha + K) / Discr;
+      L = (Beta + L) / Discr;
+
+      ShowAllRecSols(-BigIntegerToBigInt(&ValP),
+                     -BigIntegerToBigInt(&ValQ),
+                     -BigIntegerToBigInt(&ValR),
+                     -BigIntegerToBigInt(&ValS),
+                     K,
+                     L,
+                     Alpha,
+                     Beta);
+      return true;
     }
     return false;
   }
@@ -3249,11 +3282,10 @@ struct Quad {
   //        P = r - (b/2)s, Q = -cs, R = as, S = r + (b/2)s,
   // in any case:
   //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
-  void recursiveSolution() {
+  void RecursiveSolution() {
     enum eSign sign = SIGN_POSITIVE;
-    bool isBeven = ((ValB.limbs[0].x & 1) == 0);
+    const bool isBeven = ((ValB.limbs[0].x & 1) == 0);
     int periodNbr = 0;
-    int periodLength;
     // Initialize variables.
     intToBigInteger(&ValU, 0);
     intToBigInteger(&ValV, 1);
@@ -3262,19 +3294,22 @@ struct Quad {
     if (isBeven) {
       subtractdivide(&ValH, 0, 4);
     }
+
     (void)BigIntMultiply(&discr, &ValGcdHomog, &discr);
-    (void)BigIntMultiply(&discr, &ValGcdHomog, &discr);  // Obtain original discriminant.
+    // Obtain original discriminant.
+    (void)BigIntMultiply(&discr, &ValGcdHomog, &discr);
+
     if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 5)) {
       // Discriminant is 5.
       // Do not use continued fraction because it does not work.
       intToBigInteger(&U1, 3);  // First solution to U1^2 - 5*V1^2 = 4
       intToBigInteger(&V1, 1);
-      if (solutionFoundFromContFraction(isBeven, 4)) {
+      if (SolutionFoundFromContFraction(isBeven, 4)) {
         return;
       }
       intToBigInteger(&U1, 9);  // First solution to U1^2 - 5*V1^2 = 1
       intToBigInteger(&V1, 4);
-      (void)solutionFoundFromContFraction(isBeven, 1);
+      (void)SolutionFoundFromContFraction(isBeven, 1);
       return;
     }
 
@@ -3284,7 +3319,7 @@ struct Quad {
     intToBigInteger(&U2, 0);
     intToBigInteger(&V1, 0);
     intToBigInteger(&V2, 1);
-    periodLength = 1;
+    int periodLength = 1;
     if (ValGcdHomog.limbs[0].x != 1) {
       periodLength = -1;
       do {
@@ -3316,6 +3351,7 @@ struct Quad {
     CopyBigInt(&ValA, &ValABak);
     CopyBigInt(&ValB, &ValBBak);
     CopyBigInt(&ValC, &ValCBak);
+
     for (;;) {
       int limbValue;
       BigIntAdd(&ValU, &ValG, &bigTmp);
@@ -3360,8 +3396,9 @@ struct Quad {
       if (((periodNbr*periodLength) % ValGcdHomog.limbs[0].x) != 0) {
         continue;
       }
+
       // Found solution from continued fraction.
-      if (solutionFoundFromContFraction(isBeven, limbValue)) {
+      if (SolutionFoundFromContFraction(isBeven, limbValue)) {
         return;
       }
     }
