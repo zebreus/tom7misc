@@ -3185,69 +3185,81 @@ struct Quad {
     showText("</p>");
   }
 
-  bool SolutionFoundFromContFraction(bool isBeven, int limbValue) {
-    // HERE next!
+  bool SolutionFoundFromContFraction(bool isBeven, int limbValue,
+                                     const BigInt &Alpha,
+                                     const BigInt &Beta,
+                                     const BigInt &A,
+                                     const BigInt &B,
+                                     const BigInt &C,
+                                     const BigInt &Discr,
+                                     const BigInt &U1,
+                                     const BigInt &V1) {
+    BigInt P, S;
     if (isBeven) {
-      CopyBigInt(&ValQ, &ValB);
-      BigIntDivideBy2(&ValQ);
-      (void)BigIntMultiply(&ValQ, &V1, &bigTmp);
-      BigIntSubt(&U1, &bigTmp, &ValP);   // P <- r - (b/2)s
-      BigIntAdd(&U1, &bigTmp, &ValS);            // S <- r + (b/2)s
+      // P <- r - (b/2)s
+      // S <- r + (b/2)s
+      BigInt tmp = (B >> 1) * V1;
+      P = U1 - tmp;
+      S = U1 + tmp;
     } else {
-      (void)BigIntMultiply(&ValB, &V1, &bigTmp);
-      BigIntSubt(&U1, &bigTmp, &ValP);   // P <- r - bs
-      BigIntAdd(&U1, &bigTmp, &ValS);            // S <- r + bs
+      // P <- r - bs
+      // S <- r + bs
+      BigInt tmp = B * V1;
+      P = U1 - tmp;
+      S = U1 + tmp;
       if (limbValue == 4) {
-        BigIntDivideBy2(&ValP);               // P <- (r - bs)/2
-        BigIntDivideBy2(&ValS);               // S <- (r + bs)/2
+        // P <- (r - bs)/2
+        // S <- (r + bs)/2
+        P >>= 1;
+        S >>= 1;
       }
     }
 
-    (void)BigIntMultiply(&ValC, &V1, &ValQ);
-    BigIntChSign(&ValQ);                      // Q <- -cs
-    (void)BigIntMultiply(&ValA, &V1, &ValR);        // R <- as
+    // Q <- -cs
+    BigInt Q = -(C * V1);
+    // R <- as
+    BigInt R = A * V1;
 
     if (!isBeven && (limbValue == 1)) {
-      BigIntAdd(&ValQ, &ValQ, &ValQ);         // Q <- -2cs
-      BigIntAdd(&ValR, &ValR, &ValR);         // R <- 2as
+      // Q <- -2cs
+      Q <<= 1;
+      // R <- 2as
+      R <<= 1;
     }
 
-    (void)BigIntMultiply(&ValAlpha, &ValP, &ValK);
-    (void)BigIntMultiply(&ValBeta, &ValQ, &bigTmp);
-    BigIntAdd(&ValK, &bigTmp, &ValK);
-    (void)BigIntMultiply(&ValAlpha, &ValR, &ValL);
-    (void)BigIntMultiply(&ValBeta, &ValS, &bigTmp);
-    BigIntAdd(&ValL, &bigTmp, &ValL);
+    BigInt K = (Alpha * P) + (Beta * Q);
+    BigInt L = (Alpha * R) + (Beta * S);
+
+    if (VERBOSE)
+    printf("contf: %s %s %s %s | %s %s %s %s | %s %s | %s %s\n",
+           A.ToString().c_str(),
+           B.ToString().c_str(),
+           C.ToString().c_str(),
+           Discr.ToString().c_str(),
+           P.ToString().c_str(),
+           Q.ToString().c_str(),
+           R.ToString().c_str(),
+           S.ToString().c_str(),
+           Alpha.ToString().c_str(),
+           Beta.ToString().c_str(),
+           K.ToString().c_str(),
+           L.ToString().c_str());
+
+    CHECK(Discr != 0) << "Original code may have had shenanigans "
+      "with dividing by zero";
+
     // Check whether alpha - K and beta - L are multiple of discriminant.
-    BigIntSubt(&ValAlpha, &ValK, &bigTmp);
-    (void)BigIntRemainder(&bigTmp, &discr, &bigTmp);
-
-    if (BigIntIsZero(&bigTmp)) {
-        BigIntSubt(&ValBeta, &ValL, &bigTmp);
-        (void)BigIntRemainder(&bigTmp, &discr, &bigTmp);
-        if (BigIntIsZero(&bigTmp)) {
-          // Solution found.
-            BigIntSubt(&ValAlpha, &ValK, &ValK);
-            (void)BigIntDivide(&ValK, &discr, &ValK);
-            BigIntSubt(&ValBeta, &ValL, &ValL);
-            (void)BigIntDivide(&ValL, &discr, &ValL);
-            ShowAllRecSols(BigIntegerToBigInt(&ValP),
-                           BigIntegerToBigInt(&ValQ),
-                           BigIntegerToBigInt(&ValR),
-                           BigIntegerToBigInt(&ValS),
-                           BigIntegerToBigInt(&ValK),
-                           BigIntegerToBigInt(&ValL),
-                           BigIntegerToBigInt(&ValAlpha),
-                           BigIntegerToBigInt(&ValBeta));
-            return true;
-          }
-      }
-
-    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    BigInt K = BigIntegerToBigInt(&ValK);
-    BigInt L = BigIntegerToBigInt(&ValL);
-    BigInt Discr = BigIntegerToBigInt(&discr);
+    // PERF divisibility checks
+    if (BigInt::CMod(Alpha - K, Discr) == 0 &&
+        BigInt::CMod(Beta - L, Discr) == 0) {
+      // Solution found.
+      // PERF as below, known-divisible tests or quotrem.
+      K = (Alpha - K) / Discr;
+      L = (Beta - L) / Discr;
+      ShowAllRecSols(P, Q, R, S,
+                     K, L, Alpha, Beta);
+      return true;
+    }
 
     // Check whether alpha + K and beta + L are multiple of discriminant.
     // PERF divisibility checks
@@ -3258,14 +3270,8 @@ struct Quad {
       K = (Alpha + K) / Discr;
       L = (Beta + L) / Discr;
 
-      ShowAllRecSols(-BigIntegerToBigInt(&ValP),
-                     -BigIntegerToBigInt(&ValQ),
-                     -BigIntegerToBigInt(&ValR),
-                     -BigIntegerToBigInt(&ValS),
-                     K,
-                     L,
-                     Alpha,
-                     Beta);
+      ShowAllRecSols(-P, -Q, -R, -S,
+                     K, L, Alpha, Beta);
       return true;
     }
     return false;
@@ -3304,12 +3310,29 @@ struct Quad {
       // Do not use continued fraction because it does not work.
       intToBigInteger(&U1, 3);  // First solution to U1^2 - 5*V1^2 = 4
       intToBigInteger(&V1, 1);
-      if (SolutionFoundFromContFraction(isBeven, 4)) {
+      if (SolutionFoundFromContFraction(isBeven, 4,
+                                        BigIntegerToBigInt(&ValAlpha),
+                                        BigIntegerToBigInt(&ValBeta),
+                                        BigIntegerToBigInt(&ValA),
+                                        BigIntegerToBigInt(&ValB),
+                                        BigIntegerToBigInt(&ValC),
+                                        BigIntegerToBigInt(&discr),
+                                        BigIntegerToBigInt(&U1),
+                                        BigIntegerToBigInt(&V1))) {
         return;
       }
       intToBigInteger(&U1, 9);  // First solution to U1^2 - 5*V1^2 = 1
       intToBigInteger(&V1, 4);
-      (void)SolutionFoundFromContFraction(isBeven, 1);
+      (void)SolutionFoundFromContFraction(isBeven, 1,
+                                          BigIntegerToBigInt(&ValAlpha),
+                                          BigIntegerToBigInt(&ValBeta),
+                                          BigIntegerToBigInt(&ValA),
+                                          BigIntegerToBigInt(&ValB),
+                                          BigIntegerToBigInt(&ValC),
+                                          BigIntegerToBigInt(&discr),
+                                          BigIntegerToBigInt(&U1),
+                                          BigIntegerToBigInt(&V1));
+
       return;
     }
 
@@ -3398,7 +3421,15 @@ struct Quad {
       }
 
       // Found solution from continued fraction.
-      if (SolutionFoundFromContFraction(isBeven, limbValue)) {
+      if (SolutionFoundFromContFraction(isBeven, limbValue,
+                                        BigIntegerToBigInt(&ValAlpha),
+                                        BigIntegerToBigInt(&ValBeta),
+                                        BigIntegerToBigInt(&ValA),
+                                        BigIntegerToBigInt(&ValB),
+                                        BigIntegerToBigInt(&ValC),
+                                        BigIntegerToBigInt(&discr),
+                                        BigIntegerToBigInt(&U1),
+                                        BigIntegerToBigInt(&V1))) {
         return;
       }
     }
