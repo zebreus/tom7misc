@@ -289,12 +289,12 @@ struct Quad {
     return;
   }
 
-  void PrintQuad(const BigInteger *coeffT2, const BigInteger *coeffT,
-                 const BigInteger *coeffInd,
+  void PrintQuad(const BigInt &T2, const BigInt &T,
+                 const BigInt &Ind,
                  const char *var1, const char *var2) {
-    if ((coeffT2->nbrLimbs == 1) && (coeffT2->limbs[0].x == 1)) {
+    if (BigInt::Abs(T2) == 1) {
       // abs(coeffT2) = 1
-      if (coeffT2->sign == SIGN_POSITIVE) {
+      if (T2 == 1) {
         // coeffT2 = 1
         ShowChar(' ');
       } else {
@@ -303,25 +303,25 @@ struct Quad {
       }
       showText(var1);
       showSquare();
-    }
-    else if (!BigIntIsZero(coeffT2)) {
+    } else if (T2 != 0) {
       // coeffT2 is not zero.
-      ShowNumber(coeffT2);
+      ShowBigInt(T2);
       ShowChar(' ');
       showText(var1);
       showSquare();
     } else {
       // Nothing to do.
     }
-    if (coeffT->sign == SIGN_NEGATIVE) {
+
+    if (T < 0) {
       showText(" &minus; ");
-    } else if (!BigIntIsZero(coeffT) && !BigIntIsZero(coeffT2)) {
+    } else if (T != 0 && T2 != 0) {
       showText(" + ");
     } else {
       // Nothing to do.
     }
 
-    if ((coeffT->nbrLimbs == 1) && (coeffT->limbs[0].x == 1)) {
+    if (BigInt::Abs(T) == 1) {
       // abs(coeffT) = 1
       showText(var1);
       showText("&#8290;");
@@ -329,12 +329,11 @@ struct Quad {
         showText(var2);
       }
       showText(" ");
-    } else if (!BigIntIsZero(coeffT)) {
-      if (coeffT->sign == SIGN_NEGATIVE) {
-        showLimbs(coeffT->limbs, coeffT->nbrLimbs);
-      } else {
-        ShowNumber(coeffT);
-      }
+    } else if (T != 0) {
+      // Port note: original called showlimbs if negative, which I
+      // think is just a way of printing the absolute value without
+      // any copying.
+      ShowBigInt(BigInt::Abs(T));
       showText(" ");
       showText(var1);
       if (var2 != NULL) {
@@ -345,23 +344,24 @@ struct Quad {
       // Nothing to do.
     }
 
-    if (!BigIntIsZero(coeffInd)) {
-      if (!BigIntIsZero(coeffT) || !BigIntIsZero(coeffT2)) {
-        if (coeffInd->sign == SIGN_NEGATIVE) {
+    if (Ind != 0) {
+      if (T != 0 || T2 != 0) {
+        if (Ind < 0) {
           showText(" &minus; ");
         } else {
           showText(" + ");
         }
-      } else if (coeffInd->sign == SIGN_NEGATIVE) {
+      } else if (Ind < 0) {
         showText(" &minus;");
       } else {
         // Nothing to do.
       }
 
       if (var2 == NULL) {
-        showLimbs(coeffInd->limbs, coeffInd->nbrLimbs);
-      } else if ((coeffInd->nbrLimbs > 1) || (coeffInd->limbs[0].x > 1)) {
-        showLimbs(coeffInd->limbs, coeffInd->nbrLimbs);
+        // Same trick for abs value.
+        ShowBigInt(BigInt::Abs(Ind));
+      } else if (BigInt::Abs(Ind) != 1) {
+        ShowBigInt(BigInt::Abs(Ind));
         showText("&nbsp;&#8290;");
         showText(var2);
         showSquare();
@@ -1178,7 +1178,19 @@ struct Quad {
     ShowLin(H, I, BigInt(0), "<var>x</var>", "<var>y</var>");
   }
 
-  void DiscriminantIsZero() {
+  void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,
+                          BigInt D, BigInt E, BigInt F) {
+
+    // XXX remove this state
+    BigIntToBigInteger(A, &ValA);
+    BigIntToBigInteger(B, &ValB);
+    BigIntToBigInteger(C, &ValC);
+    BigIntToBigInteger(D, &ValD);
+    BigIntToBigInteger(E, &ValE);
+    BigIntToBigInteger(F, &ValF);
+    // discriminant should be known zero on this code path.
+    // BigIntToBigInteger(Discr, &discr);
+
     EnsureCoeffAIsNotZero();
     // ax^2 + bxy + cx^2 + dx + ey + f = 0 (1)
     // Multiplying by 4a:
@@ -1483,7 +1495,10 @@ struct Quad {
       showText(":</p><p>");
       showText(ptrVarNameY);
       showText(" = ");
-      PrintQuad(&ValU, &ValS, &ValR, "<var>k</var>", NULL);
+      PrintQuad(BigIntegerToBigInt(&ValU),
+                BigIntegerToBigInt(&ValS),
+                BigIntegerToBigInt(&ValR),
+                "<var>k</var>", NULL);
       showEqNbr(equationNbr+1);
       showText("</p><p>"
                "From");
@@ -1513,7 +1528,10 @@ struct Quad {
         BigIntSubt(&ValU, &bigTmp, &ValI); // Linear coeff = U - bS.
         (void)BigIntMultiply(&ValB, &ValR, &bigTmp);
         BigIntSubt(&ValH, &bigTmp, &ValH); // Independent coeff = H - bR.
-        PrintQuad(&ValJ, &ValI, &ValH, "<var>k</var>", NULL);
+        PrintQuad(BigIntegerToBigInt(&ValJ),
+                  BigIntegerToBigInt(&ValI),
+                  BigIntegerToBigInt(&ValH),
+                  "<var>k</var>", NULL);
         showText("</p>");
       }
       // if independent coefficient is not multiple of GCD(I, K) then show that
@@ -1577,15 +1595,23 @@ struct Quad {
     showAlso();
     startResultBox(SOLUTION_FOUND);
     showText("<p><var>x</var> = ");
-    PrintQuad(&V3, &V2, &V1, "<var>k</var>", NULL);
+    PrintQuad(BigIntegerToBigInt(&V3),
+              BigIntegerToBigInt(&V2),
+              BigIntegerToBigInt(&V1),
+              "<var>k</var>", NULL);
     showText("<br>");
+
     if (ExchXY) {
       ComputeXDiscrZero();
     } else {
       ComputeYDiscrZero();
     }
+
     showText("<var>y</var> = ");
-    PrintQuad(&V3, &V2, &V1, "<var>k</var>", NULL);
+    PrintQuad(BigIntegerToBigInt(&V3),
+              BigIntegerToBigInt(&V2),
+              BigIntegerToBigInt(&V1),
+              "<var>k</var>", NULL);
 
     if (teach) {
       showText("<br>");
@@ -1768,9 +1794,14 @@ struct Quad {
         showText("<p>the coefficient of <var>U</var>");
         showSquare();
         showText(" and the right hand side are coprime. This coefficient equals ");
-        PrintQuad(&ValA, &ValB, &ValC, "<var>m</var>", NULL);
+        PrintQuad(BigIntegerToBigInt(&ValA),
+                  BigIntegerToBigInt(&ValB),
+                  BigIntegerToBigInt(&ValC), "<var>m</var>", NULL);
         showText(" in the first case and ");
-        PrintQuad(&ValC, &ValB, &ValA, "(<var>m</var> &minus; 1)", NULL);
+        PrintQuad(BigIntegerToBigInt(&ValC),
+                  BigIntegerToBigInt(&ValB),
+                  BigIntegerToBigInt(&ValA),
+                  "(<var>m</var> &minus; 1)", NULL);
         showText(" in the second case.</p>");
       }
       intToBigInteger(&ValM, 0);
@@ -1860,7 +1891,10 @@ struct Quad {
         showText(", the equation ");
         showEqNbr(1);
         showText(" converts to:</p>");
-        PrintQuad(&ValA, &ValB, &ValC, "<var>U</var>", "<var>V</var>");
+        PrintQuad(BigIntegerToBigInt(&ValA),
+                  BigIntegerToBigInt(&ValB),
+                  BigIntegerToBigInt(&ValC),
+                  "<var>U</var>", "<var>V</var>");
         showText(" = ");
         ShowNumber(&ValK);
         showText(" ");
@@ -1929,7 +1963,9 @@ struct Quad {
           showText("<p>From equation ");
           showEqNbr(BigIntIsZero(&ValM) ? 1: 3);
           showText(" we obtain ");
-          PrintQuad(&ValA, &ValB, &ValC, varX, varY);
+          PrintQuad(BigIntegerToBigInt(&ValA),
+                    BigIntegerToBigInt(&ValB),
+                    BigIntegerToBigInt(&ValC), varX, varY);
           showText(" = ");
           (void)BigIntMultiply(&ValK, &ValE, &ValH);
           (void)BigIntMultiply(&ValH, &ValE, &ValH);
@@ -1951,7 +1987,9 @@ struct Quad {
       // CopyBigInt(&LastModulus, &modulus);
       if (teach) {
         showText("<p>We have to solve:");
-        PrintQuad(&coeffQuadr, &coeffLinear, &coeffIndep, "<var>T</var>", NULL);
+        PrintQuad(BigIntegerToBigInt(&coeffQuadr),
+                  BigIntegerToBigInt(&coeffLinear),
+                  BigIntegerToBigInt(&coeffIndep), "<var>T</var>", NULL);
         showText(" &equiv; 0 (mod ");
         showFactors(&modulus, *factors);
         showText(")<p>");
@@ -2235,7 +2273,9 @@ struct Quad {
         showText(" ");
         showEqNbr(equationNbr);
         showText(" converts ");
-        PrintQuad(&ValA, &ValB, &ValC, varX, varY);
+        PrintQuad(BigIntegerToBigInt(&ValA),
+                  BigIntegerToBigInt(&ValB),
+                  BigIntegerToBigInt(&ValC), varX, varY);
         showText(" = ");
         ShowNumber(&ValK);
         showText(" to ");
@@ -3583,13 +3623,16 @@ struct Quad {
     equationNbr += 4;
   }
 
-  void PrintQuadEqConst(bool showEquationNbr) {
+  void PrintQuadEqConst(
+      const BigInt &A, const BigInt &B, const BigInt &C,
+      const BigInt &K,
+      bool showEquationNbr) {
     showText("<p>");
-    PrintQuad(&ValA, &ValB, &ValC, "<var>X</var>", "<var>Y</var>");
+    PrintQuad(A, B, C, "<var>X</var>", "<var>Y</var>");
     showText(" = ");
-    ShowNumber(&ValK);
+    ShowBigInt(K);
     showText(" ");
-    if (showEquationNbr && (ValK.sign == SIGN_POSITIVE)) {
+    if (showEquationNbr && K >= 0) {
       showEqNbr(1);
     }
     showText("</p>");
@@ -3642,19 +3685,9 @@ struct Quad {
              e.ToString().c_str(),
              f.ToString().c_str());
 
-    // XXX remove this state
-    BigIntToBigInteger(a, &ValA);
-    BigIntToBigInteger(b, &ValB);
-    BigIntToBigInteger(c, &ValC);
-    BigIntToBigInteger(d, &ValD);
-    BigIntToBigInteger(e, &ValE);
-    BigIntToBigInteger(f, &ValF);
-
     // Test whether the equation is linear. A = B = C = 0.
     if (a == 0 && b == 0 && c == 0) {
-      eLinearSolution ret = LinearEq(BigIntegerToBigInt(&ValD),
-                                     BigIntegerToBigInt(&ValE),
-                                     BigIntegerToBigInt(&ValF));
+      eLinearSolution ret = LinearEq(d, e, f);
       startResultBox(ret);
       PrintLinear(ret, "t");
       endResultBox(ret);
@@ -3662,25 +3695,31 @@ struct Quad {
     }
 
     // Compute discriminant: b^2 - 4ac.
-    (void)BigIntMultiply(&ValB, &ValB, &Aux0);
-    (void)BigIntMultiply(&ValA, &ValC, &Aux1);
-    MultInt(&Aux2, &Aux1, 4);
-    BigIntSubt(&Aux0, &Aux2, &discr);
+    BigInt Discr = b * b - ((a * c) << 2);
 
     if (teach) {
       showText("<p>The discriminant is"
                " <var>b</var>");
       showSquare();
       showText("&nbsp;&minus;&nbsp;4&#8290;<var>a</var>&#8290;<var>c</var> = ");
-      ShowNumber(&discr);
+      ShowBigInt(Discr);
       showText("</p>");
     }
 
-    if (BigIntIsZero(&discr)) {
+    if (Discr == 0) {
       // Discriminant is zero.
-      DiscriminantIsZero();
+      DiscriminantIsZero(a, b, c, d, e, f);
       return;
     }
+
+    // XXX remove this state
+    BigIntToBigInteger(a, &ValA);
+    BigIntToBigInteger(b, &ValB);
+    BigIntToBigInteger(c, &ValC);
+    BigIntToBigInteger(d, &ValD);
+    BigIntToBigInteger(e, &ValE);
+    BigIntToBigInteger(f, &ValF);
+    BigIntToBigInteger(Discr, &discr);
 
     // Compute gcd(a,b,c).
     BigIntGcd(&ValA, &ValB, &bigTmp);
@@ -3694,7 +3733,12 @@ struct Quad {
       intToBigInteger(&ValAlpha, 0);
       intToBigInteger(&ValBeta, 0);
       if (teach) {
-        PrintQuadEqConst(true);
+        PrintQuadEqConst(
+            BigIntegerToBigInt(&ValA),
+            BigIntegerToBigInt(&ValB),
+            BigIntegerToBigInt(&ValC),
+            BigIntegerToBigInt(&ValK),
+            true);
       }
     } else {
       CopyBigInt(&ValDiv, &discr);
@@ -3738,7 +3782,12 @@ struct Quad {
                  "<var>b</var>&#8290;<var>d</var> = ");
         ShowNumber(&ValBeta);
         showText("</p>");
-        PrintQuadEqConst(BigIntIsOne(&U1));
+        PrintQuadEqConst(
+            BigIntegerToBigInt(&ValA),
+            BigIntegerToBigInt(&ValB),
+            BigIntegerToBigInt(&ValC),
+            BigIntegerToBigInt(&ValK),
+            BigIntIsOne(&U1));
         showText("<p>"
                  "where the right hand side equals "
                  "&minus;<var>D</var> (<var>a</var>&#8290;<var>e</var>");
@@ -3759,7 +3808,12 @@ struct Quad {
           showText("<p>Dividing both sides by ");
           showLimbs(U1.limbs, U1.nbrLimbs);
           showText(":</p>");
-          PrintQuadEqConst(true);
+          PrintQuadEqConst(
+              BigIntegerToBigInt(&ValA),
+              BigIntegerToBigInt(&ValB),
+              BigIntegerToBigInt(&ValC),
+              BigIntegerToBigInt(&ValK),
+              true);
           CopyBigInt(&ValA, &ValABak);
           CopyBigInt(&ValB, &ValBBak);
           CopyBigInt(&ValC, &ValCBak);
@@ -3788,7 +3842,12 @@ struct Quad {
       if (teach) {
         showText("<p>The algorithm requires the constant coefficient "
                  "to be positive, so we multiply both RHS and LHS by &minus;1.</p>");
-        PrintQuadEqConst(true);
+        PrintQuadEqConst(
+            BigIntegerToBigInt(&ValA),
+            BigIntegerToBigInt(&ValB),
+            BigIntegerToBigInt(&ValC),
+            BigIntegerToBigInt(&ValK),
+            true);
       }
     }
 
