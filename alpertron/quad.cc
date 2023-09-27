@@ -380,7 +380,15 @@ struct Quad {
     showText("</p>");
   }
 
-  void ShowXY(BigInteger *X, BigInteger *Y) {
+  // HERE
+  void ShowXY(const BigInt &X, const BigInt &Y) {
+    BigInteger xx, yy;
+    BigIntToBigInteger(X, &xx);
+    BigIntToBigInteger(Y, &yy);
+    ShowXY_Old(&xx, &yy);
+  }
+
+  void ShowXY_Old(BigInteger *X, BigInteger *Y) {
     if (showSolution == TWO_SOLUTIONS) {
       enum eSign signX;
       enum eSign signY;
@@ -1154,19 +1162,20 @@ struct Quad {
   }
 
   void ShowTDiscrZero() {
+    const BigInt A = BigIntegerToBigInt(&ValA);
+    const BigInt B = BigIntegerToBigInt(&ValB);
+    BigInt H, I;
     if (ExchXY) {
       // Show bx + 2cy
-      CopyBigInt(&ValH, &ValB);
-      BigIntAdd(&ValA, &ValA, &ValI);
+      H = B;
+      I = A << 1;
     } else {
       // Show 2ax + by
-      CopyBigInt(&ValI, &ValB);
-      BigIntAdd(&ValA, &ValA, &ValH);
+      I = B;
+      H = A << 1;
     }
     intToBigInteger(&ValJ, 0);
-    ShowLin(BigIntegerToBigInt(&ValH),
-            BigIntegerToBigInt(&ValI),
-            BigIntegerToBigInt(&ValJ), "<var>x</var>", "<var>y</var>");
+    ShowLin(H, I, BigInt(0), "<var>x</var>", "<var>y</var>");
   }
 
   void DiscriminantIsZero() {
@@ -1590,57 +1599,74 @@ struct Quad {
     }
   }
 
-  void ShowPoint(const BigInteger *X, const BigInteger *Y) {
+  void ShowPoint(const BigInt &X, const BigInt &Y,
+                 const BigInt &Alpha, const BigInt &Beta,
+                 const BigInt &Div) {
     int solution = 0;
     if (teach) {
       showText("<p><var>X</var> = ");
-      ShowNumber(X);
+      ShowBigInt(X);
       showText(", <var>Y</var> = ");
-      ShowNumber(Y);
+      ShowBigInt(Y);
       showText("</p>");
     }
 
+    if (VERBOSE)
+    printf("ShowPoint %s %s %s %s %s\n",
+           X.ToString().c_str(),
+           Y.ToString().c_str(),
+           Alpha.ToString().c_str(),
+           Beta.ToString().c_str(),
+           Div.ToString().c_str());
+
     // Check first that (X+alpha) and (Y+beta) are multiple of D.
-    BigIntAdd(X, &ValAlpha, &Tmp1);
-    BigIntAdd(Y, &ValBeta, &Tmp2);
-    if (teach && !(BigIntIsZero(&ValAlpha) && BigIntIsZero(&ValBeta))) {
+    BigInt tmp1 = X + Alpha;
+    BigInt tmp2 = Y + Beta;
+    if (teach && !(Alpha == 0 && Beta == 0)) {
       showText("<p><var>X</var> + <var>&alpha;</var> = ");
-      ShowNumber(&Tmp1);
+      ShowBigInt(tmp1);
       showText(", <var>Y</var> + <var>&beta;</var> = ");
-      ShowNumber(&Tmp2);
+      ShowBigInt(tmp2);
       showText("</p>");
     }
-    (void)BigIntRemainder(&Tmp1, &ValDiv, &bigTmp);
-    if (BigIntIsZero(&bigTmp)) {
-      (void)BigIntRemainder(&Tmp2, &ValDiv, &bigTmp);
-      if (BigIntIsZero(&bigTmp)) {
-        if (teach && !BigIntIsOne(&ValDiv)) {
-          showText("<p>Dividing these numbers by");
-          showText(" <var>D</var> = ");
-          ShowNumber(&ValDiv);
-          showText(":</p>");
-        }
-        (void)BigIntDivide(&Tmp1, &ValDiv, &Tmp1);
-        (void)BigIntDivide(&Tmp2, &ValDiv, &Tmp2);
-        if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
-          if (teach) {
-            ShowSolutionXY(BigIntegerToBigInt(&Tmp1),
-                           BigIntegerToBigInt(&Tmp2));
-          }
-          ShowXY(&Tmp1, &Tmp2);
-        } else {
-          startResultBox(SOLUTION_FOUND);
-          ShowXY(&Tmp1, &Tmp2);
-          endResultBox(SOLUTION_FOUND);
-        }
-        solution = 1;
-        showRecursiveSolution = 1; // Show recursive solution if it exists.
+
+    CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
+
+    // PERF divisibility tests.
+    if (tmp1 % Div == 0 &&
+        tmp2 % Div == 0) {
+
+      if (teach && Div != 1) {
+        showText("<p>Dividing these numbers by");
+        showText(" <var>D</var> = ");
+        ShowBigInt(Div);
+        showText(":</p>");
       }
+
+      // PERF known divisible
+      if (Div != 0) {
+        tmp1 /= Div;
+        tmp2 /= Div;
+      }
+
+      if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
+        if (teach) {
+          ShowSolutionXY(tmp1, tmp2);
+        }
+        ShowXY(tmp1, tmp2);
+      } else {
+        startResultBox(SOLUTION_FOUND);
+        ShowXY(tmp1, tmp2);
+        endResultBox(SOLUTION_FOUND);
+      }
+      solution = 1;
+      showRecursiveSolution = 1; // Show recursive solution if it exists.
     }
-    if (teach && (solution == 0)) {
-      showText("<p>These numbers are not multiple of");
-      showText(" <var>D</var> = ");
-      ShowNumber(&ValDiv);
+
+    if (teach && solution == 0) {
+      showText("<p>These numbers are not multiple of"
+               " <var>D</var> = ");
+      ShowBigInt(Div);
       showText(".</p>");
     }
   }
@@ -1683,7 +1709,11 @@ struct Quad {
     (void)BigIntDivide(&discr, &ValGcdHomog, &discr);
     if (BigIntIsZero(&ValK)) {
       // If k=0, the only solution is (X, Y) = (0, 0)
-      ShowPoint(&ValK, &ValK);
+      ShowPoint(BigIntegerToBigInt(&ValK),
+                BigIntegerToBigInt(&ValK),
+                BigIntegerToBigInt(&ValAlpha),
+                BigIntegerToBigInt(&ValBeta),
+                BigIntegerToBigInt(&ValDiv));
       return;
     }
     CopyBigInt(&ValABak, &ValA);
@@ -2087,13 +2117,21 @@ struct Quad {
     Xbak = &Xplus;
     Ybak = &Yplus;
     UnimodularSubstitution();               // Undo unimodular substitution
-    ShowPoint(&Temp0, &Temp1);
+    ShowPoint(BigIntegerToBigInt(&Temp0),
+              BigIntegerToBigInt(&Temp1),
+              BigIntegerToBigInt(&ValAlpha),
+              BigIntegerToBigInt(&ValBeta),
+              BigIntegerToBigInt(&ValDiv));
     BigIntChSign(&ValZ);                    // (-tu - Kv)*E
     BigIntChSign(&ValO);                    // -u*E
     Xbak = &Xminus;
     Ybak = &Yminus;
     UnimodularSubstitution();               // Undo unimodular substitution
-    ShowPoint(&Temp0, &Temp1);
+    ShowPoint(BigIntegerToBigInt(&Temp0),
+              BigIntegerToBigInt(&Temp1),
+              BigIntegerToBigInt(&ValAlpha),
+              BigIntegerToBigInt(&ValBeta),
+              BigIntegerToBigInt(&ValDiv));
 
     // Restore value.
     BigIntToBigInteger(Tmp12, value);
@@ -2124,28 +2162,24 @@ struct Quad {
   }
 
   void ShowSolutionFromConvergent() {
-    if (teach)
-      {
-        showText("Solution of ");
-        showEqNbr(equationNbr + 1);
-        showText(" found using the convergent ");
-        showText(varY);
-        showText(" / ");
-        if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC)
-          {
-            showText("(&minus;<var>k</var>) = ");
-          }
-        else
-          {
-            showText("<var>k</var> = ");
-          }
-        ShowNumber(&ValH);
-        showText(" / ");
-        ShowNumber(&ValI);
-        showText(" of ");
-        showEqNbr(contfracEqNbr);
-        showText("</p>");
+    if (teach) {
+      showText("Solution of ");
+      showEqNbr(equationNbr + 1);
+      showText(" found using the convergent ");
+      showText(varY);
+      showText(" / ");
+      if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
+        showText("(&minus;<var>k</var>) = ");
+      } else {
+        showText("<var>k</var> = ");
       }
+      ShowNumber(&ValH);
+      showText(" / ");
+      ShowNumber(&ValI);
+      showText(" of ");
+      showEqNbr(contfracEqNbr);
+      showText("</p>");
+    }
   }
 
   void showFirstSolution(const char *discrim, const char *valueP) {
@@ -2502,49 +2536,73 @@ struct Quad {
   }
 
   void CheckSolutionSquareDiscr() {
-    int solutions = 0;
-    (void)BigIntDivide(&ValZ, &currentFactor, &ValN);
-    if (teach)
-      {
-        intToBigInteger(&ValJ, 0);
-        showText("<li><p>");
-        ShowLin(BigIntegerToBigInt(&ValH),
-                BigIntegerToBigInt(&ValI),
-                BigIntegerToBigInt(&ValJ), "X", "Y");
-        showText(" = ");
-        ShowNumber(&currentFactor);
-        showText(",");
-        ShowLin(BigIntegerToBigInt(&ValL),
-                BigIntegerToBigInt(&ValM),
-                BigIntegerToBigInt(&ValJ), "X", "Y");
-        showText(" = ");
-        ShowNumber(&ValN);
-        showText("</p>");
-      }
+    // XXX pass args
+    BigInt CurrentFactor = BigIntegerToBigInt(&currentFactor);
+    BigInt H = BigIntegerToBigInt(&ValH);
+    BigInt I = BigIntegerToBigInt(&ValI);
+    BigInt L = BigIntegerToBigInt(&ValL);
+    BigInt M = BigIntegerToBigInt(&ValM);
+    BigInt Z = BigIntegerToBigInt(&ValZ);
+
+    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    BigInt Div = BigIntegerToBigInt(&ValDiv);
+
+    CHECK(CurrentFactor != 0);
+    BigInt N = Z / CurrentFactor;
+
+    if (teach) {
+      BigInt J(0);
+      showText("<li><p>");
+      ShowLin(H, I, J, "X", "Y");
+      showText(" = ");
+      ShowBigInt(CurrentFactor);
+      showText(",");
+      ShowLin(L, M, J, "X", "Y");
+      showText(" = ");
+      ShowBigInt(N);
+      showText("</p>");
+    }
+
     // (IL - HM)X = NI - cM
     // (IL - HM)Y = cL - NH
-    (void)BigIntMultiply(&ValI, &ValL, &ValO);
-    (void)BigIntMultiply(&ValH, &ValM, &bigTmp);
-    BigIntSubt(&ValO, &bigTmp, &ValO);           // ValO = Denominator.
-    (void)BigIntMultiply(&ValN, &ValI, &ValP);
-    (void)BigIntMultiply(&currentFactor, &ValM, &bigTmp);
-    BigIntSubt(&ValP, &bigTmp, &ValP);           // ValP = Numerator of X.
-    (void)BigIntRemainder(&ValP, &ValO, &U2);
-    if (BigIntIsZero(&U2))
-      {
-        (void)BigIntDivide(&ValP, &ValO, &U1);     // X found.
-        (void)BigIntMultiply(&currentFactor, &ValL, &ValP);
-        (void)BigIntMultiply(&ValN, &ValH, &bigTmp);
-        BigIntSubt(&ValP, &bigTmp, &ValP);         // ValP = Numerator of Y.
-        (void)BigIntRemainder(&ValP, &ValO, &U3);
-        if (BigIntIsZero(&U3))
-          {
-            (void)BigIntDivide(&ValP, &ValO, &U2);   // Y found.
-            ShowPoint(&U1, &U2);                     // Show results.
-            solutions = 1;
-          }
+
+    // O = Denominator.
+    BigInt O = I * L - H * M;
+
+    // P = Numerator of X.
+    BigInt P = N * I - CurrentFactor * M;
+
+    if (VERBOSE)
+    printf("CheckSolutionSquareDiscr %s %s %s %s %s %s\n",
+           P.ToString().c_str(),
+           O.ToString().c_str(),
+           CurrentFactor.ToString().c_str(),
+           L.ToString().c_str(),
+           N.ToString().c_str(),
+           H.ToString().c_str());
+
+    CHECK(O != 0) << "Might have been shenanigans with O = 0?";
+    if (P % O == 0) {
+      // PERF divisibility test followed by divide
+      // X found.
+      BigInt U1 = P / O;
+      // ValP = Numerator of Y.
+      P = CurrentFactor * L - N * H;
+
+      CHECK(O != 0);
+      if (P % O == 0) {
+        // Y found.
+        BigInt U2 = P / O;
+        // Show results.
+
+        ShowPoint(U1, U2, Alpha, Beta, Div);
+        return;
       }
-    if (teach && (solutions == 0)) {
+    }
+
+    // No solution found.
+    if (teach) {
       showText("<p>The system of two equations does not have "
                "integer solutions <var>X</var>, <var>Y</var>.</p>");
     }
@@ -3096,13 +3154,6 @@ struct Quad {
     Show1(ci, t);
   }
 
-  void ShowResultA(const char *text, const BigInteger *value) {
-    showText(text);
-    showText(" = ");
-    ShowNumber(value);
-    showText("<br>");
-  }
-
   void ShowResult(const char *text, const BigInt &value) {
     showText(text);
     showText(" = ");
@@ -3118,7 +3169,7 @@ struct Quad {
   }
 
   void ShowAllRecSols(
-      // XXX original code modifies these; is that desired?
+      // XXX original code modifies these; was that just a bug?
       BigInt P, BigInt Q,
       BigInt R, BigInt S,
       BigInt K, BigInt L,
@@ -3126,11 +3177,15 @@ struct Quad {
 
     if (IsBig(P, 2) || IsBig(Q, 2)) {
       if (Alpha == 0 && Beta == 0) {
-        showText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + Q&nbsp;&#8290;y<sub>n</sub><br>"
-                 "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + S&nbsp;&#8290;y<sub>n</sub></p><p>");
+        showText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
+                 "Q&nbsp;&#8290;y<sub>n</sub><br>"
+                 "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
+                 "S&nbsp;&#8290;y<sub>n</sub></p><p>");
       } else {
-        showText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + Q&nbsp;&#8290;y<sub>n</sub> + K<br>"
-                 "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + S&nbsp;&#8290;y<sub>n</sub> + L</p><p>");
+        showText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
+                 "Q&nbsp;&#8290;y<sub>n</sub> + K<br>"
+                 "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
+                 "S&nbsp;&#8290;y<sub>n</sub> + L</p><p>");
       }
       showText("where:</p><p>");
       ShowResult("P", P);
@@ -3289,6 +3344,7 @@ struct Quad {
   // in any case:
   //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
   void RecursiveSolution() {
+    // HERE! YOUR NEXT!!!
     enum eSign sign = SIGN_POSITIVE;
     const bool isBeven = ((ValB.limbs[0].x & 1) == 0);
     int periodNbr = 0;
@@ -3305,34 +3361,34 @@ struct Quad {
     // Obtain original discriminant.
     (void)BigIntMultiply(&discr, &ValGcdHomog, &discr);
 
-    if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 5)) {
+    const BigInt Discr = BigIntegerToBigInt(&discr);
+    if (Discr == 5) {
       // Discriminant is 5.
       // Do not use continued fraction because it does not work.
-      intToBigInteger(&U1, 3);  // First solution to U1^2 - 5*V1^2 = 4
-      intToBigInteger(&V1, 1);
+
+      // 3,1 is first solution to U1^2 - 5*V1^2 = 4
       if (SolutionFoundFromContFraction(isBeven, 4,
                                         BigIntegerToBigInt(&ValAlpha),
                                         BigIntegerToBigInt(&ValBeta),
                                         BigIntegerToBigInt(&ValA),
                                         BigIntegerToBigInt(&ValB),
                                         BigIntegerToBigInt(&ValC),
-                                        BigIntegerToBigInt(&discr),
-                                        BigIntegerToBigInt(&U1),
-                                        BigIntegerToBigInt(&V1))) {
+                                        Discr,
+                                        BigInt(3),
+                                        BigInt(1))) {
         return;
       }
-      intToBigInteger(&U1, 9);  // First solution to U1^2 - 5*V1^2 = 1
-      intToBigInteger(&V1, 4);
+
+      // 9,4 is first solution to U1^2 - 5*V1^2 = 1
       (void)SolutionFoundFromContFraction(isBeven, 1,
                                           BigIntegerToBigInt(&ValAlpha),
                                           BigIntegerToBigInt(&ValBeta),
                                           BigIntegerToBigInt(&ValA),
                                           BigIntegerToBigInt(&ValB),
                                           BigIntegerToBigInt(&ValC),
-                                          BigIntegerToBigInt(&discr),
-                                          BigIntegerToBigInt(&U1),
-                                          BigIntegerToBigInt(&V1));
-
+                                          Discr,
+                                          BigInt(9),
+                                          BigInt(4));
       return;
     }
 
@@ -3427,7 +3483,7 @@ struct Quad {
                                         BigIntegerToBigInt(&ValA),
                                         BigIntegerToBigInt(&ValB),
                                         BigIntegerToBigInt(&ValC),
-                                        BigIntegerToBigInt(&discr),
+                                        Discr,
                                         BigIntegerToBigInt(&U1),
                                         BigIntegerToBigInt(&V1))) {
         return;
@@ -3515,13 +3571,13 @@ struct Quad {
 
     if (Xplus.nbrLimbs != 0) {
       startResultBox(SOLUTION_FOUND);
-      ShowXY(&Xplus, &Yplus);
+      ShowXY_Old(&Xplus, &Yplus);
       endResultBox(SOLUTION_FOUND);
     }
 
     if (Xminus.nbrLimbs != 0) {
       startResultBox(SOLUTION_FOUND);
-      ShowXY(&Xminus, &Yminus);
+      ShowXY_Old(&Xminus, &Yminus);
       endResultBox(SOLUTION_FOUND);
     }
     equationNbr += 4;
@@ -3578,13 +3634,13 @@ struct Quad {
     }
 
     if (VERBOSE)
-    printf("After dividing: %s %s %s %s %s %s\n",
-           a.ToString().c_str(),
-           b.ToString().c_str(),
-           c.ToString().c_str(),
-           d.ToString().c_str(),
-           e.ToString().c_str(),
-           f.ToString().c_str());
+      printf("After dividing: %s %s %s %s %s %s\n",
+             a.ToString().c_str(),
+             b.ToString().c_str(),
+             c.ToString().c_str(),
+             d.ToString().c_str(),
+             e.ToString().c_str(),
+             f.ToString().c_str());
 
     // XXX remove this state
     BigIntToBigInteger(a, &ValA);
@@ -3715,13 +3771,12 @@ struct Quad {
     // If k is not multiple of gcd(A, B, C), there are no solutions.
     (void)BigIntRemainder(&ValK, &U1, &bigTmp);
     if (!BigIntIsZero(&bigTmp)) {
-      if (teach)
-        {
-          showText("<p>The right hand side is not multiple of ");
-          ShowNumber(&U1);
-          showText(", which is the greatest common divisor of all three "
-                   "coefficients, so there are no solutions");
-        }
+      if (teach) {
+        showText("<p>The right hand side is not multiple of ");
+        ShowNumber(&U1);
+        showText(", which is the greatest common divisor of all three "
+                 "coefficients, so there are no solutions");
+      }
       return;     // There are no solutions.
     }
 
