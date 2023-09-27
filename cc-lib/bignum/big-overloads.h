@@ -96,6 +96,17 @@ inline BigInt &operator ++(BigInt &a) {
 
 // PERF: Use versions that modify a in place.
 // PERF: Versions with int64_t rhs.
+
+inline BigInt &operator<<=(BigInt &a, uint64_t bits) {
+  a = a << bits;
+  return a;
+}
+
+inline BigInt &operator>>=(BigInt &a, uint64_t bits) {
+  a = a >> bits;
+  return a;
+}
+
 inline BigInt &operator+=(BigInt &a, const BigInt &b) {
   a = a + b;
   return a;
