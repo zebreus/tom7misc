@@ -1147,23 +1147,8 @@ struct Quad {
     return SOLUTION_FOUND;
   }
 
-  void EnsureCoeffAIsNotZero() {
-    ExchXY = false;
-    if (BigIntIsZero(&ValA)) {
-      // Next algorithm does not work if A = 0. In this case, exchange x and y.
-      ExchXY = true;
-      CopyBigInt(&bigTmp, &ValA);   // Exchange coefficients of x^2 and y^2.
-      CopyBigInt(&ValA, &ValC);
-      CopyBigInt(&ValC, &bigTmp);
-      CopyBigInt(&bigTmp, &ValD);   // Exchange coefficients of x and y.
-      CopyBigInt(&ValD, &ValE);
-      CopyBigInt(&ValE, &bigTmp);
-    }
-  }
-
-  void ShowTDiscrZero() {
-    const BigInt A = BigIntegerToBigInt(&ValA);
-    const BigInt B = BigIntegerToBigInt(&ValB);
+  void ShowTDiscrZero(bool ExchXY,
+                      const BigInt &A, const BigInt &B) {
     BigInt H, I;
     if (ExchXY) {
       // Show bx + 2cy
@@ -1174,12 +1159,24 @@ struct Quad {
       I = B;
       H = A << 1;
     }
+    // XXX remove state
     intToBigInteger(&ValJ, 0);
     ShowLin(H, I, BigInt(0), "<var>x</var>", "<var>y</var>");
   }
 
   void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,
                           BigInt D, BigInt E, BigInt F) {
+
+    // Next algorithm does not work if A = 0. In this case, exchange x and y.
+    ExchXY = false;
+    if (A == 0) {
+      ExchXY = true;
+      // Exchange coefficients of x^2 and y^2.
+      std::swap(A, C);
+      // Exchange coefficients of x and y.
+      std::swap(D, E);
+    }
+
 
     // XXX remove this state
     BigIntToBigInteger(A, &ValA);
@@ -1191,7 +1188,6 @@ struct Quad {
     // discriminant should be known zero on this code path.
     // BigIntToBigInteger(Discr, &discr);
 
-    EnsureCoeffAIsNotZero();
     // ax^2 + bxy + cx^2 + dx + ey + f = 0 (1)
     // Multiplying by 4a:
     // (2ax + by)^2 + 4adx + 4aey + 4af = 0
@@ -1201,7 +1197,7 @@ struct Quad {
       showText("<p>Multiplying by");
       showText(ExchXY ? " 4&#8290;<var>c</var>" : " 4&#8290;<var>a</var>");
       showText("</p><p>(");
-      ShowTDiscrZero();
+      ShowTDiscrZero(ExchXY, A, B);
       showText(")");
       showSquare();
       if (ExchXY) {
@@ -1234,7 +1230,7 @@ struct Quad {
       showText(" = 0</p><p>");
       showText("Let");
       showText(" <var>t</var> = ");
-      ShowTDiscrZero();
+      ShowTDiscrZero(ExchXY, A, B);
       intToBigInteger(&ValJ, 0);
       intToBigInteger(&ValH, 1);
       showEqNbr(1);
@@ -1410,49 +1406,45 @@ struct Quad {
   }
 
   // Compute coefficients of x: V1 + V2 * w + V3 * w^2
-  void ComputeXDiscrZero() {
+  // Returns V1, V2, V3
+  std::tuple<BigInt, BigInt, BigInt> ComputeXDiscrZero(
+      const BigInt &A, const BigInt &B,
+      const BigInt &C, const BigInt &D,
+      const BigInt &E, const BigInt &Z,
+      const BigInt &J, const BigInt &K,
+      const BigInt &U2) {
     // Let m = 2be - 4cd
-    (void)BigIntMultiply(&ValB, &ValE, &U3);
-    (void)BigIntMultiply(&ValC, &ValD, &bigTmp);
-    BigIntAdd(&bigTmp, &bigTmp, &bigTmp);
-    BigIntSubt(&U3, &bigTmp, &U3);
     // U3 <- m
+    BigInt U3 = (B * E - ((C * D) << 1)) << 1;
     // Compute V1 <- (x'j - k)/2a + mx'^2
-    BigIntAdd(&U3, &U3, &U3);
-    (void)BigIntMultiply(&U2, &ValJ, &bigTmp);
-    BigIntSubt(&bigTmp, &ValK, &bigTmp);
-    (void)BigIntDivide(&bigTmp, &ValA, &V1);
-    BigIntDivideBy2(&V1);
-    (void)BigIntMultiply(&U3, &U2, &bigTmp);
-    (void)BigIntMultiply(&bigTmp, &U2, &bigTmp);
-    BigIntAdd(&V1, &bigTmp, &V1);
+    BigInt V1 = (((U2 * J) - K) / A) >> 1;
+    V1 += U3 * U2 * U2;
     // Compute V2 <- (j/2a + 2mx')z
-    (void)BigIntDivide(&ValJ, &ValA, &V2);
-    BigIntDivideBy2(&V2);
-    (void)BigIntMultiply(&U3, &U2, &bigTmp);
-    BigIntAdd(&bigTmp, &bigTmp, &bigTmp);
-    BigIntAdd(&V2, &bigTmp, &V2);
-    (void)BigIntMultiply(&V2, &ValZ, &V2);
+    BigInt V2 = (J / A) >> 1;
+    V2 += ((U3 * U2) << 1);
+    V2 *= Z;
     // Compute V3 as m*z^2
-    (void)BigIntMultiply(&U3, &ValZ, &V3);
-    (void)BigIntMultiply(&V3, &ValZ, &V3);
+    BigInt V3 = U3 * Z * Z;
+    return std::make_tuple(V1, V2, V3);
   }
 
   // Compute coefficients of y: V1 + V2 * w + V3 * w^2
-  void ComputeYDiscrZero() {
+  // Returns V1, V2, V3
+  std::tuple<BigInt, BigInt, BigInt> ComputeYDiscrZero(
+      const BigInt &U, const BigInt &U2,
+      const BigInt &S, const BigInt &R,
+      const BigInt &Z) {
+
     // Compute V1 <- r + sx' + ux'^2
-    (void)BigIntMultiply(&ValU, &U2, &V1);
-    BigIntAdd(&V1, &ValS, &V1);
-    (void)BigIntMultiply(&V1, &U2, &V1);
-    BigIntAdd(&V1, &ValR, &V1);
+    BigInt V1 = (U * U2 + S) * U2 + R;
+
     // Compute V2 <- (s + 2ux')z
-    (void)BigIntMultiply(&ValU, &U2, &V2);
-    BigIntAdd(&V2, &V2, &V2);
-    BigIntAdd(&V2, &ValS, &V2);
-    (void)BigIntMultiply(&V2, &ValZ, &V2);
+    BigInt V2 = (((U * U2) << 1) + S) * Z;
+
     // Compute V3 <- uz^2
-    (void)BigIntMultiply(&ValU, &ValZ, &V3);
-    (void)BigIntMultiply(&V3, &ValZ, &V3);
+    BigInt V3 = U * Z * Z;
+
+    return std::make_tuple(V1, V2, V3);
   }
 
   void callbackQuadModParabolic(const BigInteger *value) {
@@ -1506,7 +1498,8 @@ struct Quad {
       showText(" and");
       showEqNbr(equationNbr);
       showText(":</p><p>");
-      ShowTDiscrZero();
+      ShowTDiscrZero(ExchXY,
+                     BigIntegerToBigInt(&ValA), BigIntegerToBigInt(&ValB));
       showText(" = ");
       BigIntSubt(value, &ValD, &ValH);
       ShowLinInd(&ValU, &ValH, "<var>k</var>");
@@ -1571,14 +1564,17 @@ struct Quad {
     (void)BigIntDivide(&ValK, &U1, &U3);    // U3 <- K
     (void)BigIntDivide(&ValZ, &U1, &ValZ);
     ValZ.sign = SIGN_POSITIVE;        // Use positive sign for modulus.
+
     (void)BigIntRemainder(&U2, &ValZ, &U2);
     if (U2.sign == SIGN_NEGATIVE) {
       BigIntAdd(&U2, &ValZ, &U2);
     }
+
     (void)BigIntRemainder(&U3, &ValZ, &U3);
     if (U3.sign == SIGN_NEGATIVE) {
       BigIntAdd(&U3, &ValZ, &U3);
     }
+
     if (BigIntIsZero(&U2)) {
       // M and N equal zero.
       // In this case 0*k = 0 (mod z) means any k is valid.
@@ -1586,32 +1582,59 @@ struct Quad {
     } else {
       BigIntGeneralModularDivision(&U2, &U3, &ValZ, &U2);   // U2 <- x'
     }
-    if (ExchXY) {
-      ComputeYDiscrZero();
-    } else {
-      ComputeXDiscrZero();
+
+    {
+      const auto &[VV1, VV2, VV3] =
+        ExchXY ?
+        ComputeYDiscrZero(
+            BigIntegerToBigInt(&ValU),
+            BigIntegerToBigInt(&U2),
+            BigIntegerToBigInt(&ValS),
+            BigIntegerToBigInt(&ValR),
+            BigIntegerToBigInt(&ValZ)) :
+        ComputeXDiscrZero(
+            BigIntegerToBigInt(&ValA),
+            BigIntegerToBigInt(&ValB),
+            BigIntegerToBigInt(&ValC),
+            BigIntegerToBigInt(&ValD),
+            BigIntegerToBigInt(&ValE),
+            BigIntegerToBigInt(&ValZ),
+            BigIntegerToBigInt(&ValJ),
+            BigIntegerToBigInt(&ValK),
+            BigIntegerToBigInt(&U2));
+
+      showAlso();
+      startResultBox(SOLUTION_FOUND);
+      showText("<p><var>x</var> = ");
+      PrintQuad(VV3, VV2, VV1,
+                "<var>k</var>", NULL);
+      showText("<br>");
     }
 
-    showAlso();
-    startResultBox(SOLUTION_FOUND);
-    showText("<p><var>x</var> = ");
-    PrintQuad(BigIntegerToBigInt(&V3),
-              BigIntegerToBigInt(&V2),
-              BigIntegerToBigInt(&V1),
-              "<var>k</var>", NULL);
-    showText("<br>");
+    {
+      const auto &[VV1, VV2, VV3] =
+        ExchXY ?
+          ComputeXDiscrZero(
+              BigIntegerToBigInt(&ValA),
+              BigIntegerToBigInt(&ValB),
+              BigIntegerToBigInt(&ValC),
+              BigIntegerToBigInt(&ValD),
+              BigIntegerToBigInt(&ValE),
+              BigIntegerToBigInt(&ValZ),
+              BigIntegerToBigInt(&ValJ),
+              BigIntegerToBigInt(&ValK),
+              BigIntegerToBigInt(&U2)) :
+        ComputeYDiscrZero(
+            BigIntegerToBigInt(&ValU),
+            BigIntegerToBigInt(&U2),
+            BigIntegerToBigInt(&ValS),
+            BigIntegerToBigInt(&ValR),
+            BigIntegerToBigInt(&ValZ));
 
-    if (ExchXY) {
-      ComputeXDiscrZero();
-    } else {
-      ComputeYDiscrZero();
+      showText("<var>y</var> = ");
+      PrintQuad(VV3, VV2, VV1,
+                "<var>k</var>", NULL);
     }
-
-    showText("<var>y</var> = ");
-    PrintQuad(BigIntegerToBigInt(&V3),
-              BigIntegerToBigInt(&V2),
-              BigIntegerToBigInt(&V1),
-              "<var>k</var>", NULL);
 
     if (teach) {
       showText("<br>");
