@@ -128,9 +128,6 @@ struct Quad {
   BigInteger *Xbak;
   BigInteger *Ybak;
 
-  BigInteger Temp0;
-  BigInteger Temp1;
-
   int equationNbr;
   int contfracEqNbr;
   char positiveDenominator;
@@ -388,10 +385,9 @@ struct Quad {
     ShowXY_Old(&xx, &yy);
   }
 
+  // XXX need to take Xbak, Ybak too?
   void ShowXY_Old(BigInteger *X, BigInteger *Y) {
     if (showSolution == TWO_SOLUTIONS) {
-      enum eSign signX;
-      enum eSign signY;
       solFound = true;
       if (Xbak->nbrLimbs == 0) {
         CopyBigInt(Xbak, X);
@@ -399,8 +395,8 @@ struct Quad {
         return;
       }
       // Use the lowest of |X| + |Y| and |Xbak| + |Ybak|
-      signX = Xbak->sign;
-      signY = Ybak->sign;
+      eSign signX = Xbak->sign;
+      eSign signY = Ybak->sign;
       Xbak->sign = SIGN_POSITIVE;
       Ybak->sign = SIGN_POSITIVE;
       BigIntAdd(Xbak, Ybak, &bigTmp);
@@ -1827,7 +1823,9 @@ struct Quad {
                   "(<var>m</var> &minus; 1)", NULL);
         showText(" in the second case.</p>");
       }
+
       intToBigInteger(&ValM, 0);
+
       do {
         // Compute U1 = cm^2 + bm + a and exit loop if this
         // value is not coprime to K.
@@ -1870,6 +1868,7 @@ struct Quad {
         // Compute a.
         CopyBigInt(&ValA, &U1);
       }
+
       if (teach) {
         int m = ValM.limbs[0].x;
         showText("<p>We will use the ");
@@ -1927,6 +1926,7 @@ struct Quad {
         varYnoTrans = "<var>V</var>";
       }
     }
+
     if (teach) {
       enum eSign signK = ValK.sign;
       showText("<p>We will have to solve several quadratic modular "
@@ -1940,6 +1940,7 @@ struct Quad {
       showFactors(&ValK, *factors);
       ValK.sign = signK;
     }
+
     for (;;) {
       if (teach) {
         showText("<p>");
@@ -2090,7 +2091,7 @@ struct Quad {
     }
 
     if (showRecursiveSolution &&
-        (callbackQuadModType == CBACK_QMOD_HYPERBOLIC)) {
+        callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
       // Show recursive solution.
       RecursiveSolution();
     }
@@ -2101,16 +2102,17 @@ struct Quad {
     NonSquareDiscriminant();
   }
 
-  void showBeforeUnimodularSubstitution() {
+  void showBeforeUnimodularSubstitution(
+      const BigInt &Z, const BigInt &O) {
     if (teach) {
       showText("<p>");
       showText(varXnoTrans);
       showText(" = ");
-      ShowNumber(&ValZ);
+      ShowBigInt(Z);
       showText(", ");
       showText(varYnoTrans);
       showText(" = ");
-      ShowNumber(&ValO);
+      ShowBigInt(O);
       showText("</p>");
       showText("<p>From ");
       showEqNbr(2);
@@ -2118,28 +2120,27 @@ struct Quad {
     }
   }
 
-  void UnimodularSubstitution() {
-    if (ValM.sign == SIGN_NEGATIVE) {
+  // Returns Temp0, Temp1
+  std::pair<BigInt, BigInt>
+  UnimodularSubstitution(const BigInt &M,
+                         const BigInt &Z,
+                         const BigInt &O) {
+    BigInt Temp0, Temp1;
+    if (M < 0) {
       // Perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
-      showBeforeUnimodularSubstitution();
-      ValM.sign = SIGN_POSITIVE;
-      BigIntAdd(&ValZ, &ValO, &Temp0);     // x
-      (void)BigIntMultiply(&Temp0, &ValM, &Temp1);
-      BigIntSubt(&Temp1, &ValZ, &Temp1);  // y
-      ValM.sign = SIGN_NEGATIVE;
+      showBeforeUnimodularSubstitution(Z, O);
+      Temp0 = (Z + O);
+      Temp1 = Temp0 * -M - Z;
+    } else if (M == 0) {
+      Temp0 = Z;
+      Temp1 = O;
+    } else {
+      // Perform the substitution: x = mX + (m-1)Y, y = X + Y
+      showBeforeUnimodularSubstitution(Z, O);
+      Temp1 = Z + O;
+      Temp0 = Temp1 * M - O;
     }
-    else if (BigIntIsZero(&ValM))
-      {
-        CopyBigInt(&Temp0, &ValZ);           // x
-        CopyBigInt(&Temp1, &ValO);           // y
-      }
-    else
-      {     // Perform the substitution: x = mX + (m-1)Y, y = X + Y
-        showBeforeUnimodularSubstitution();
-        BigIntAdd(&ValZ, &ValO, &Temp1);     // y
-        (void)BigIntMultiply(&Temp1, &ValM, &Temp0);
-        BigIntSubt(&Temp0, &ValO, &Temp0);  // x
-      }
+    return std::make_pair(Temp0, Temp1);
   }
 
   // On input: ValH: value of u, ValI: value of v.
@@ -2175,24 +2176,40 @@ struct Quad {
       }
     (void)BigIntMultiply(&ValZ, &ValE, &ValZ);    // X = (tu - Kv)*E
     (void)BigIntMultiply(&ValH, &ValE, &ValO);    // Y = u*E
+
+    BigInt M = BigIntegerToBigInt(&ValM);
+    BigInt Z = BigIntegerToBigInt(&ValZ);
+    BigInt O = BigIntegerToBigInt(&ValO);
+
     Xbak = &Xplus;
     Ybak = &Yplus;
-    UnimodularSubstitution();               // Undo unimodular substitution
-    ShowPoint(BigIntegerToBigInt(&Temp0),
-              BigIntegerToBigInt(&Temp1),
-              BigIntegerToBigInt(&ValAlpha),
-              BigIntegerToBigInt(&ValBeta),
-              BigIntegerToBigInt(&ValDiv));
-    BigIntChSign(&ValZ);                    // (-tu - Kv)*E
-    BigIntChSign(&ValO);                    // -u*E
+    // Undo unimodular substitution
+    {
+      const auto &[Temp0, Temp1] =
+        UnimodularSubstitution(M, Z, O);
+      ShowPoint(Temp0,
+                Temp1,
+                BigIntegerToBigInt(&ValAlpha),
+                BigIntegerToBigInt(&ValBeta),
+                BigIntegerToBigInt(&ValDiv));
+    }
+
+    // Z: (-tu - Kv)*E
+    // O: -u*E
+
     Xbak = &Xminus;
     Ybak = &Yminus;
-    UnimodularSubstitution();               // Undo unimodular substitution
-    ShowPoint(BigIntegerToBigInt(&Temp0),
-              BigIntegerToBigInt(&Temp1),
-              BigIntegerToBigInt(&ValAlpha),
-              BigIntegerToBigInt(&ValBeta),
-              BigIntegerToBigInt(&ValDiv));
+
+    // Undo unimodular substitution
+    {
+      const auto &[Temp0, Temp1] =
+        UnimodularSubstitution(M, -Z, -O);
+      ShowPoint(Temp0,
+                Temp1,
+                BigIntegerToBigInt(&ValAlpha),
+                BigIntegerToBigInt(&ValBeta),
+                BigIntegerToBigInt(&ValDiv));
+    }
 
     // Restore value.
     BigIntToBigInteger(Tmp12, value);
@@ -3303,7 +3320,8 @@ struct Quad {
     showText("</p>");
   }
 
-  bool SolutionFoundFromContFraction(bool isBeven, int limbValue,
+  bool SolutionFoundFromContFraction(bool isBeven,
+                                     int V,
                                      const BigInt &Alpha,
                                      const BigInt &Beta,
                                      const BigInt &A,
@@ -3312,6 +3330,9 @@ struct Quad {
                                      const BigInt &Discr,
                                      const BigInt &U1,
                                      const BigInt &V1) {
+
+    // printf("SFF CF\n");
+
     BigInt P, S;
     if (isBeven) {
       // P <- r - (b/2)s
@@ -3325,7 +3346,7 @@ struct Quad {
       BigInt tmp = B * V1;
       P = U1 - tmp;
       S = U1 + tmp;
-      if (limbValue == 4) {
+      if (V == 4) {
         // P <- (r - bs)/2
         // S <- (r + bs)/2
         P >>= 1;
@@ -3338,7 +3359,7 @@ struct Quad {
     // R <- as
     BigInt R = A * V1;
 
-    if (!isBeven && (limbValue == 1)) {
+    if (!isBeven && V == 1) {
       // Q <- -2cs
       Q <<= 1;
       // R <- 2as
@@ -3495,7 +3516,6 @@ struct Quad {
     CopyBigInt(&ValC, &ValCBak);
 
     for (;;) {
-      int limbValue;
       BigIntAdd(&ValU, &ValG, &bigTmp);
       if (ValV.sign == SIGN_NEGATIVE) {
         // If denominator is negative, round square root upwards.
@@ -3519,36 +3539,59 @@ struct Quad {
       BigIntSubt(&ValH, &bigTmp, &bigTmp);
       (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
       CopyBigInt(&ValV, &Tmp1);
+
       if (sign == SIGN_POSITIVE) {
         sign = SIGN_NEGATIVE;
       } else {
         sign = SIGN_POSITIVE;
       }
 
-      // Expecting denominator to be 1 (B even or odd)
-      // or 4 (B odd) with correct sign.
-      if ((ValV.nbrLimbs != 1) || (ValV.sign != sign)) {
-        continue;
-      }
-      limbValue = ValV.limbs[0].x;
-      if ((limbValue != 1) && (isBeven || (limbValue != 4))) {
-        continue;
-      }
-      periodNbr++;
-      if (((periodNbr*periodLength) % ValGcdHomog.limbs[0].x) != 0) {
+      BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+      BigInt Beta = BigIntegerToBigInt(&ValBeta);
+      BigInt A = BigIntegerToBigInt(&ValA);
+      BigInt B = BigIntegerToBigInt(&ValB);
+      BigInt C = BigIntegerToBigInt(&ValC);
+      BigInt UU1 = BigIntegerToBigInt(&U1);
+      BigInt VV1 = BigIntegerToBigInt(&V1);
+      BigInt V = BigIntegerToBigInt(&ValV);
+      // BigInt GcdHomog = BigIntegerToBigInt(&ValGcdHomog);
+
+      if (VERBOSE)
+      printf("FS: %c %s %s %s %d\n",
+             isBeven ? 'e' : 'o',
+             V.ToString().c_str(),
+             Alpha.ToString().c_str(),
+             Beta.ToString().c_str(),
+             periodNbr);
+
+      // V must have the correct sign.
+      if ((sign == SIGN_NEGATIVE) ? V >= 0 : V < 0) {
+        // printf(" C1");
         continue;
       }
 
+      // Expecting denominator to be 1 (B even or odd)
+      // or 4 (B odd) with correct sign.
+      if (BigInt::Abs(V) != 1 &&
+          (isBeven || BigInt::Abs(V) != 4)) {
+        // printf(" C2");
+        continue;
+      }
+
+      periodNbr++;
+      if (((periodNbr*periodLength) % ValGcdHomog.limbs[0].x) != 0) {
+        // printf(" C3");
+        continue;
+      }
+
+
       // Found solution from continued fraction.
-      if (SolutionFoundFromContFraction(isBeven, limbValue,
-                                        BigIntegerToBigInt(&ValAlpha),
-                                        BigIntegerToBigInt(&ValBeta),
-                                        BigIntegerToBigInt(&ValA),
-                                        BigIntegerToBigInt(&ValB),
-                                        BigIntegerToBigInt(&ValC),
+      if (SolutionFoundFromContFraction(isBeven,
+                                        BigInt::Abs(V).ToInt().value(),
+                                        Alpha, Beta,
+                                        A, B, C,
                                         Discr,
-                                        BigIntegerToBigInt(&U1),
-                                        BigIntegerToBigInt(&V1))) {
+                                        UU1, VV1)) {
         return;
       }
     }
