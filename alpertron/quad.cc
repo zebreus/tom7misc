@@ -3430,22 +3430,30 @@ struct Quad {
   void RecursiveSolution() {
     // HERE! YOUR NEXT!!!
     enum eSign sign = SIGN_POSITIVE;
-    const bool isBeven = ((ValB.limbs[0].x & 1) == 0);
     int periodNbr = 0;
     // Initialize variables.
     intToBigInteger(&ValU, 0);
     intToBigInteger(&ValV, 1);
     CopyBigInt(&ValH, &discr);
 
+    const bool isBeven = ((ValB.limbs[0].x & 1) == 0);
     if (isBeven) {
       subtractdivide(&ValH, 0, 4);
     }
 
-    (void)BigIntMultiply(&discr, &ValGcdHomog, &discr);
-    // Obtain original discriminant.
-    (void)BigIntMultiply(&discr, &ValGcdHomog, &discr);
+    BigInt GcdHomog = BigIntegerToBigInt(&ValGcdHomog);
+    BigInt Discr = BigIntegerToBigInt(&discr);
 
-    const BigInt Discr = BigIntegerToBigInt(&discr);
+    // Obtain original discriminant.
+    Discr *= GcdHomog;
+    Discr *= GcdHomog;
+
+    std::optional<int64_t> gcdo = GcdHomog.ToInt();
+    CHECK(gcdo.has_value()) << "Original code seems to assume this, "
+      "accessing the first limb directly.";
+    const int64_t gcd_homog = gcdo.value();
+
+
     if (Discr == 5) {
       // Discriminant is 5.
       // Do not use continued fraction because it does not work.
@@ -3483,7 +3491,7 @@ struct Quad {
     intToBigInteger(&V1, 0);
     intToBigInteger(&V2, 1);
     int periodLength = 1;
-    if (ValGcdHomog.limbs[0].x != 1) {
+    if (gcd_homog != 1) {
       periodLength = -1;
       do {
         BigIntAdd(&ValU, &ValG, &bigTmp);
@@ -3511,50 +3519,75 @@ struct Quad {
     }
 
     showText("<p>Recursive solutions:</p><p>");
+
+    // XXX should not be necessary
     CopyBigInt(&ValA, &ValABak);
     CopyBigInt(&ValB, &ValBBak);
     CopyBigInt(&ValC, &ValCBak);
 
+    BigInt A = BigIntegerToBigInt(&ValA);
+    BigInt B = BigIntegerToBigInt(&ValB);
+    BigInt C = BigIntegerToBigInt(&ValC);
+    BigInt H = BigIntegerToBigInt(&ValH);
+    BigInt U = BigIntegerToBigInt(&ValU);
+    BigInt G = BigIntegerToBigInt(&ValG);
+    BigInt V = BigIntegerToBigInt(&ValV);
+
+    BigInt UU3 = BigIntegerToBigInt(&U3);
+    BigInt UU2 = BigIntegerToBigInt(&U2);
+    BigInt UU1 = BigIntegerToBigInt(&U1);
+
+    BigInt VV3 = BigIntegerToBigInt(&V3);
+    BigInt VV2 = BigIntegerToBigInt(&V2);
+    BigInt VV1 = BigIntegerToBigInt(&V1);
+
+    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    BigInt Beta = BigIntegerToBigInt(&ValBeta);
+
     for (;;) {
-      BigIntAdd(&ValU, &ValG, &bigTmp);
-      if (ValV.sign == SIGN_NEGATIVE) {
+      BigInt BigTmp = U + G;
+      // BigIntAdd(&ValU, &ValG, &bigTmp);
+      if (V < 0) {
         // If denominator is negative, round square root upwards.
-        addbigint(&bigTmp, 1);
+        // addbigint(&bigTmp, 1);
+        BigTmp += 1;
       }
       // Tmp1 = Term of continued fraction.
-      floordiv(&bigTmp, &ValV, &Tmp1);
+      BigInt Tmp1 = FloorDiv(BigTmp, V);
+
       // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
-      CopyBigInt(&U3, &U2);
-      CopyBigInt(&U2, &U1);
-      (void)BigIntMultiply(&Tmp1, &U2, &U1);
-      BigIntAdd(&U1, &U3, &U1);
+      UU3 = UU2;
+      UU2 = UU1;
+      UU1 = Tmp1 * UU2 + UU3;
+      // CopyBigInt(&U3, &U2);
+      // CopyBigInt(&U2, &U1);
+      // (void)BigIntMultiply(&Tmp1, &U2, &U1);
+      // BigIntAdd(&U1, &U3, &U1);
+
       // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
-      CopyBigInt(&V3, &V2);
-      CopyBigInt(&V2, &V1);
-      (void)BigIntMultiply(&Tmp1, &V2, &V1);
-      BigIntAdd(&V1, &V3, &V1);
-      (void)BigIntMultiply(&Tmp1, &ValV, &bigTmp); // U <- a*V - U
-      BigIntSubt(&bigTmp, &ValU, &ValU);
-      (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
-      BigIntSubt(&ValH, &bigTmp, &bigTmp);
-      (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
-      CopyBigInt(&ValV, &Tmp1);
+      VV3 = VV2;
+      VV2 = VV1;
+      VV1 = Tmp1 * VV2 + VV3;
+      // CopyBigInt(&V3, &V2);
+      // CopyBigInt(&V2, &V1);
+      // (void)BigIntMultiply(&Tmp1, &V2, &V1);
+      // BigIntAdd(&V1, &V3, &V1);
+
+      U = Tmp1 * V - U;
+      // (void)BigIntMultiply(&Tmp1, &ValV, &bigTmp); // U <- a*V - U
+      // BigIntSubt(&bigTmp, &ValU, &ValU);
+
+      V = (H - U * U) / V;
+      // (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
+      // BigIntSubt(&ValH, &bigTmp, &bigTmp);
+      // (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
+      // CopyBigInt(&ValV, &Tmp1);
 
       if (sign == SIGN_POSITIVE) {
         sign = SIGN_NEGATIVE;
       } else {
         sign = SIGN_POSITIVE;
       }
-
-      BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-      BigInt Beta = BigIntegerToBigInt(&ValBeta);
-      BigInt A = BigIntegerToBigInt(&ValA);
-      BigInt B = BigIntegerToBigInt(&ValB);
-      BigInt C = BigIntegerToBigInt(&ValC);
-      BigInt UU1 = BigIntegerToBigInt(&U1);
-      BigInt VV1 = BigIntegerToBigInt(&V1);
-      BigInt V = BigIntegerToBigInt(&ValV);
-      // BigInt GcdHomog = BigIntegerToBigInt(&ValGcdHomog);
 
       if (VERBOSE)
       printf("FS: %c %s %s %s %d\n",
@@ -3579,7 +3612,7 @@ struct Quad {
       }
 
       periodNbr++;
-      if (((periodNbr*periodLength) % ValGcdHomog.limbs[0].x) != 0) {
+      if (((periodNbr*periodLength) % gcd_homog) != 0) {
         // printf(" C3");
         continue;
       }

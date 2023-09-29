@@ -22,6 +22,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "bignum/big.h"
+
 // Tom multiplied these constants by 1000
 // (It should really be MAX_LEN^2, right?)
 #define MAX_LEN_MULT  25000000  // 200000 digits
@@ -98,6 +100,8 @@ eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent,
 eExprErr BigIntMultiplyPower2(BigInteger* pArg, int powerOf2);
 
 void floordiv(const BigInteger *num, const BigInteger *den, BigInteger *result);
+BigInt FloorDiv(const BigInt &num, const BigInt &den);
+
 void BigIntMultiplyBy2(BigInteger *nbr);
 void BigIntDivideBy2(BigInteger *nbr);
 void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pResult);

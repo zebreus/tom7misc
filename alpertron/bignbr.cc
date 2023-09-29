@@ -75,17 +75,23 @@ void floordiv(const BigInteger *num, const BigInteger *den, BigInteger *result) 
   }
 }
 
+// XXX do natively; swap implementations
+BigInt FloorDiv(const BigInt &num, const BigInt &den) {
+  BigInteger x, y, z;
+  BigIntToBigInteger(num, &x);
+  BigIntToBigInteger(den, &y);
+  floordiv(&x, &y, &z);
+  return BigIntegerToBigInt(&z);
+}
+
 void BigIntChSign(BigInteger *value) {
-  if ((value->nbrLimbs == 1) && (value->limbs[0].x == 0))
-  {    // Value is zero. Do not change sign.
+  if ((value->nbrLimbs == 1) && (value->limbs[0].x == 0)) {
+    // Value is zero. Do not change sign.
     return;
   }
-  if (value->sign == SIGN_POSITIVE)
-  {
+  if (value->sign == SIGN_POSITIVE) {
     value->sign = SIGN_NEGATIVE;
-  }
-  else
-  {
+  } else {
     value->sign = SIGN_POSITIVE;
   }
 }
