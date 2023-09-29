@@ -3430,19 +3430,32 @@ struct Quad {
   void RecursiveSolution() {
     // HERE! YOUR NEXT!!!
     enum eSign sign = SIGN_POSITIVE;
-    int periodNbr = 0;
     // Initialize variables.
-    intToBigInteger(&ValU, 0);
-    intToBigInteger(&ValV, 1);
-    CopyBigInt(&ValH, &discr);
+    // intToBigInteger(&ValU, 0);
+    // intToBigInteger(&ValV, 1);
+    // CopyBigInt(&ValH, &discr);
 
-    const bool isBeven = ((ValB.limbs[0].x & 1) == 0);
-    if (isBeven) {
-      subtractdivide(&ValH, 0, 4);
-    }
+    BigInt A = BigIntegerToBigInt(&ValA);
+    BigInt B = BigIntegerToBigInt(&ValB);
+    BigInt C = BigIntegerToBigInt(&ValC);
+    BigInt G = BigIntegerToBigInt(&ValG);
+    BigInt L = BigIntegerToBigInt(&ValL);
+    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    BigInt Beta = BigIntegerToBigInt(&ValBeta);
 
     BigInt GcdHomog = BigIntegerToBigInt(&ValGcdHomog);
     BigInt Discr = BigIntegerToBigInt(&discr);
+    BigInt H = Discr;
+
+    const bool isBeven = B.IsEven();
+    if (isBeven) {
+      BigInt OLD_H = H;
+      BigIntToBigInteger(H, &ValH);
+      // Is this just - 0 / 4 ?
+      subtractdivide(&ValH, 0, 4);
+      H = BigIntegerToBigInt(&ValH);
+      CHECK(H == (OLD_H >> 2));
+    }
 
     // Obtain original discriminant.
     Discr *= GcdHomog;
@@ -3460,11 +3473,8 @@ struct Quad {
 
       // 3,1 is first solution to U1^2 - 5*V1^2 = 4
       if (SolutionFoundFromContFraction(isBeven, 4,
-                                        BigIntegerToBigInt(&ValAlpha),
-                                        BigIntegerToBigInt(&ValBeta),
-                                        BigIntegerToBigInt(&ValA),
-                                        BigIntegerToBigInt(&ValB),
-                                        BigIntegerToBigInt(&ValC),
+                                        Alpha, Beta,
+                                        A, B, C,
                                         Discr,
                                         BigInt(3),
                                         BigInt(1))) {
@@ -3473,49 +3483,80 @@ struct Quad {
 
       // 9,4 is first solution to U1^2 - 5*V1^2 = 1
       (void)SolutionFoundFromContFraction(isBeven, 1,
-                                          BigIntegerToBigInt(&ValAlpha),
-                                          BigIntegerToBigInt(&ValBeta),
-                                          BigIntegerToBigInt(&ValA),
-                                          BigIntegerToBigInt(&ValB),
-                                          BigIntegerToBigInt(&ValC),
+                                          Alpha, Beta,
+                                          A, B, C,
                                           Discr,
                                           BigInt(9),
                                           BigInt(4));
       return;
     }
 
-    SquareRoot(ValH.limbs, ValG.limbs, ValH.nbrLimbs, &ValG.nbrLimbs);
-    ValG.sign = SIGN_POSITIVE;          // g <- sqrt(discr).
-    intToBigInteger(&U1, 1);
-    intToBigInteger(&U2, 0);
-    intToBigInteger(&V1, 0);
-    intToBigInteger(&V2, 1);
+    // SquareRoot(ValH.limbs, ValG.limbs, ValH.nbrLimbs, &ValG.nbrLimbs);
+
+    // g <- sqrt(discr).
+
+    G = BigInt::Sqrt(H);
+    // Port note: Was explicit SIGN_POSITIVE here in original, but I think that
+    // was just because it was manipulating the limbs directly? Sqrt
+    // is always non-negative...
+    CHECK(G >= 0);
+
+    // intToBigInteger(&U1, 1);
+    // intToBigInteger(&U2, 0);
+    // intToBigInteger(&V1, 0);
+    // intToBigInteger(&V2, 1);
     int periodLength = 1;
+
+    BigInt U(0); // BigIntegerToBigInt(&ValU);
+    BigInt V(1); // BigIntegerToBigInt(&ValV);
+
+    BigInt UU3 = BigIntegerToBigInt(&U3);
+    BigInt UU2(0);
+    BigInt UU1(1);
+
+    BigInt VV3 = BigIntegerToBigInt(&V3);
+    BigInt VV2(1);
+    BigInt VV1(0);
+
+    BigInt UBak, VBak;
+
     if (gcd_homog != 1) {
       periodLength = -1;
       do {
-        BigIntAdd(&ValU, &ValG, &bigTmp);
-        if (ValV.sign == SIGN_NEGATIVE) {
+        BigInt BigTmp = U + G;
+        // BigIntAdd(&ValU, &ValG, &bigTmp);
+        if (V < 0) {
           // If denominator is negative, round square root upwards.
-          addbigint(&bigTmp, 1);
+          BigTmp += 1;
         }
-        floordiv(&bigTmp, &ValV, &Tmp1);       // Tmp1 = Term of continued fraction.
-        (void)BigIntMultiply(&Tmp1, &ValV, &bigTmp); // U <- a*V - U
-        BigIntSubt(&bigTmp, &ValU, &ValU);
-        (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
-        BigIntSubt(&ValL, &bigTmp, &bigTmp);
-        (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
-        CopyBigInt(&ValV, &Tmp1);
+
+        // Tmp1 = Term of continued fraction.
+        BigInt Tmp1 = FloorDiv(BigTmp, V);
+        // floordiv(&bigTmp, &ValV, &Tmp1);
+
+        U = Tmp1 * V - U;
+        // (void)BigIntMultiply(&Tmp1, &ValV, &bigTmp); // U <- a*V - U
+        // BigIntSubt(&bigTmp, &ValU, &ValU);
+
+        V = (L - U * U) / V;
+        // (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
+        // BigIntSubt(&ValL, &bigTmp, &bigTmp);
+        // (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
+        // CopyBigInt(&ValV, &Tmp1);
+
         if (periodLength < 0) {
-          CopyBigInt(&ValUBak, &ValU);
-          CopyBigInt(&ValVBak, &ValV);
+          UBak = U;
+          VBak = V;
+          // CopyBigInt(&ValUBak, &ValU);
+          // CopyBigInt(&ValVBak, &ValV);
         }
         periodLength++;
-      } while ((periodLength == 1) ||
-               !BigIntEqual(&ValU, &ValUBak) ||
-               !BigIntEqual(&ValV, &ValVBak));
-      intToBigInteger(&ValU, 0);    // Reset values of U and V.
-      intToBigInteger(&ValV, 1);
+      } while (periodLength == 1 || U != UBak || V != VBak);
+      // Reset values of U and V.
+      U = BigInt{0};
+      V = BigInt{1};
+      // intToBigInteger(&ValU, 0);
+      // intToBigInteger(&ValV, 1);
     }
 
     showText("<p>Recursive solutions:</p><p>");
@@ -3525,31 +3566,16 @@ struct Quad {
     CopyBigInt(&ValB, &ValBBak);
     CopyBigInt(&ValC, &ValCBak);
 
-    BigInt A = BigIntegerToBigInt(&ValA);
-    BigInt B = BigIntegerToBigInt(&ValB);
-    BigInt C = BigIntegerToBigInt(&ValC);
-    BigInt H = BigIntegerToBigInt(&ValH);
-    BigInt U = BigIntegerToBigInt(&ValU);
-    BigInt G = BigIntegerToBigInt(&ValG);
-    BigInt V = BigIntegerToBigInt(&ValV);
+    A = BigIntegerToBigInt(&ValA);
+    B = BigIntegerToBigInt(&ValB);
+    C = BigIntegerToBigInt(&ValC);
 
-    BigInt UU3 = BigIntegerToBigInt(&U3);
-    BigInt UU2 = BigIntegerToBigInt(&U2);
-    BigInt UU1 = BigIntegerToBigInt(&U1);
 
-    BigInt VV3 = BigIntegerToBigInt(&V3);
-    BigInt VV2 = BigIntegerToBigInt(&V2);
-    BigInt VV1 = BigIntegerToBigInt(&V1);
-
-    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    BigInt Beta = BigIntegerToBigInt(&ValBeta);
-
+    int periodNbr = 0;
     for (;;) {
       BigInt BigTmp = U + G;
-      // BigIntAdd(&ValU, &ValG, &bigTmp);
       if (V < 0) {
         // If denominator is negative, round square root upwards.
-        // addbigint(&bigTmp, 1);
         BigTmp += 1;
       }
       // Tmp1 = Term of continued fraction.
@@ -3559,29 +3585,14 @@ struct Quad {
       UU3 = UU2;
       UU2 = UU1;
       UU1 = Tmp1 * UU2 + UU3;
-      // CopyBigInt(&U3, &U2);
-      // CopyBigInt(&U2, &U1);
-      // (void)BigIntMultiply(&Tmp1, &U2, &U1);
-      // BigIntAdd(&U1, &U3, &U1);
 
       // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
       VV3 = VV2;
       VV2 = VV1;
       VV1 = Tmp1 * VV2 + VV3;
-      // CopyBigInt(&V3, &V2);
-      // CopyBigInt(&V2, &V1);
-      // (void)BigIntMultiply(&Tmp1, &V2, &V1);
-      // BigIntAdd(&V1, &V3, &V1);
 
       U = Tmp1 * V - U;
-      // (void)BigIntMultiply(&Tmp1, &ValV, &bigTmp); // U <- a*V - U
-      // BigIntSubt(&bigTmp, &ValU, &ValU);
-
       V = (H - U * U) / V;
-      // (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
-      // BigIntSubt(&ValH, &bigTmp, &bigTmp);
-      // (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
-      // CopyBigInt(&ValV, &Tmp1);
 
       if (sign == SIGN_POSITIVE) {
         sign = SIGN_NEGATIVE;
@@ -3599,7 +3610,6 @@ struct Quad {
 
       // V must have the correct sign.
       if ((sign == SIGN_NEGATIVE) ? V >= 0 : V < 0) {
-        // printf(" C1");
         continue;
       }
 
@@ -3607,13 +3617,11 @@ struct Quad {
       // or 4 (B odd) with correct sign.
       if (BigInt::Abs(V) != 1 &&
           (isBeven || BigInt::Abs(V) != 4)) {
-        // printf(" C2");
         continue;
       }
 
       periodNbr++;
       if (((periodNbr*periodLength) % gcd_homog) != 0) {
-        // printf(" C3");
         continue;
       }
 
