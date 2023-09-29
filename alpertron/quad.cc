@@ -86,8 +86,6 @@ struct Quad {
   BigInteger ValABak;
   BigInteger ValBBak;
   BigInteger ValCBak;
-  BigInteger ValUBak;
-  BigInteger ValVBak;
   BigInteger ValGcdHomog;
   BigInteger Tmp1;
   BigInteger Tmp2;
@@ -952,16 +950,7 @@ struct Quad {
       }
 
       // q <- floor(U3 / V3).
-      {
-        // XXX with BigInt
-        BigInteger uu3, vv3, qq;
-        BigIntToBigInteger(U3, &uu3);
-        BigIntToBigInteger(V3, &vv3);
-
-        floordiv(&uu3, &vv3, &qq);
-
-        q = BigIntegerToBigInt(&qq);
-      }
+      q = FloorDiv(U3, V3);
 
       {
         // T <- U1 - q * V1
@@ -1091,14 +1080,7 @@ struct Quad {
     U2 -= coeffY * xind;
 
     // U1 <- delta to add to t'
-    // XXX with BigInt
-    {
-      BigInteger uu2, uu1;
-      BigIntToBigInteger(U1, &uu1);
-      BigIntToBigInteger(U2, &uu2);
-      floordiv(&uu2, &uu1, &uu1);
-      U1 = BigIntegerToBigInt(&uu1);
-    }
+    U1 = FloorDiv(U2, U1);
 
     if (VERBOSE)
     printf("Step: %s %s %s %s %s %s\n",
@@ -2090,10 +2072,23 @@ struct Quad {
       }
     }
 
+    BigInt A = BigIntegerToBigInt(&ValA);
+    BigInt B = BigIntegerToBigInt(&ValB);
+    BigInt C = BigIntegerToBigInt(&ValC);
+
+    BigInt G = BigIntegerToBigInt(&ValG);
+    BigInt L = BigIntegerToBigInt(&ValL);
+
+    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    BigInt GcdHomog = BigIntegerToBigInt(&ValGcdHomog);
+    BigInt Discr = BigIntegerToBigInt(&discr);
+
     if (showRecursiveSolution &&
         callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
       // Show recursive solution.
-      RecursiveSolution();
+      RecursiveSolution(A, B, C, G, L,
+                        Alpha, Beta, GcdHomog, Discr);
     }
   }
 
@@ -3427,34 +3422,17 @@ struct Quad {
   //        P = r - (b/2)s, Q = -cs, R = as, S = r + (b/2)s,
   // in any case:
   //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
-  void RecursiveSolution() {
-    // HERE! YOUR NEXT!!!
-    enum eSign sign = SIGN_POSITIVE;
-    // Initialize variables.
-    // intToBigInteger(&ValU, 0);
-    // intToBigInteger(&ValV, 1);
-    // CopyBigInt(&ValH, &discr);
+  void RecursiveSolution(
+      BigInt A, BigInt B, BigInt C,
+      BigInt G, BigInt L,
+      const BigInt &Alpha, const BigInt &Beta,
+      const BigInt &GcdHomog, BigInt Discr) {
 
-    BigInt A = BigIntegerToBigInt(&ValA);
-    BigInt B = BigIntegerToBigInt(&ValB);
-    BigInt C = BigIntegerToBigInt(&ValC);
-    BigInt G = BigIntegerToBigInt(&ValG);
-    BigInt L = BigIntegerToBigInt(&ValL);
-    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    BigInt Beta = BigIntegerToBigInt(&ValBeta);
-
-    BigInt GcdHomog = BigIntegerToBigInt(&ValGcdHomog);
-    BigInt Discr = BigIntegerToBigInt(&discr);
     BigInt H = Discr;
 
     const bool isBeven = B.IsEven();
     if (isBeven) {
-      BigInt OLD_H = H;
-      BigIntToBigInteger(H, &ValH);
-      // Is this just - 0 / 4 ?
-      subtractdivide(&ValH, 0, 4);
-      H = BigIntegerToBigInt(&ValH);
-      CHECK(H == (OLD_H >> 2));
+      H >>= 2;
     }
 
     // Obtain original discriminant.
@@ -3491,20 +3469,13 @@ struct Quad {
       return;
     }
 
-    // SquareRoot(ValH.limbs, ValG.limbs, ValH.nbrLimbs, &ValG.nbrLimbs);
-
     // g <- sqrt(discr).
-
     G = BigInt::Sqrt(H);
     // Port note: Was explicit SIGN_POSITIVE here in original, but I think that
     // was just because it was manipulating the limbs directly? Sqrt
     // is always non-negative...
     CHECK(G >= 0);
 
-    // intToBigInteger(&U1, 1);
-    // intToBigInteger(&U2, 0);
-    // intToBigInteger(&V1, 0);
-    // intToBigInteger(&V2, 1);
     int periodLength = 1;
 
     BigInt U(0); // BigIntegerToBigInt(&ValU);
@@ -3532,31 +3503,22 @@ struct Quad {
 
         // Tmp1 = Term of continued fraction.
         BigInt Tmp1 = FloorDiv(BigTmp, V);
-        // floordiv(&bigTmp, &ValV, &Tmp1);
 
+        // U <- a*V - U
         U = Tmp1 * V - U;
-        // (void)BigIntMultiply(&Tmp1, &ValV, &bigTmp); // U <- a*V - U
-        // BigIntSubt(&bigTmp, &ValU, &ValU);
 
+        // V <- (D - U^2)/V
         V = (L - U * U) / V;
-        // (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
-        // BigIntSubt(&ValL, &bigTmp, &bigTmp);
-        // (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
-        // CopyBigInt(&ValV, &Tmp1);
 
         if (periodLength < 0) {
           UBak = U;
           VBak = V;
-          // CopyBigInt(&ValUBak, &ValU);
-          // CopyBigInt(&ValVBak, &ValV);
         }
         periodLength++;
       } while (periodLength == 1 || U != UBak || V != VBak);
       // Reset values of U and V.
       U = BigInt{0};
       V = BigInt{1};
-      // intToBigInteger(&ValU, 0);
-      // intToBigInteger(&ValV, 1);
     }
 
     showText("<p>Recursive solutions:</p><p>");
@@ -3570,8 +3532,8 @@ struct Quad {
     B = BigIntegerToBigInt(&ValB);
     C = BigIntegerToBigInt(&ValC);
 
-
     int periodNbr = 0;
+    enum eSign sign = SIGN_POSITIVE;
     for (;;) {
       BigInt BigTmp = U + G;
       if (V < 0) {
@@ -3700,13 +3662,14 @@ struct Quad {
     Xminus.nbrLimbs = 0;
     Yplus.nbrLimbs = 0;
     Yminus.nbrLimbs = 0;
-    CopyBigInt(&ValUBak, &ValU);
-    CopyBigInt(&ValVBak, &ValV);
+
+    BigInt UBak = BigIntegerToBigInt(&ValU);
+    BigInt VBak = BigIntegerToBigInt(&ValV);
     contfracEqNbr = equationNbr + 2;
     ContFrac(value, FIRST_SOLUTION);    // Continued fraction of (U+G)/V
     positiveDenominator = 0;
-    CopyBigInt(&ValU, &ValUBak);
-    CopyBigInt(&ValV, &ValVBak);
+    BigIntToBigInteger(UBak, &ValU);
+    BigIntToBigInteger(VBak, &ValV);
     BigIntChSign(&ValU);
     BigIntChSign(&ValV);
     contfracEqNbr = equationNbr + 3;
