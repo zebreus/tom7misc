@@ -30,8 +30,12 @@ void ModPow(const MontgomeryParams &params,
             int modulus_length, const limb *modulus,
             const limb *base, const limb *exp, int nbrGroupsExp, limb *power);
 
-void BigIntGeneralModularDivision(const BigInteger *Num, const BigInteger *Den,
-                                  const BigInteger *mod, BigInteger *quotient);
+void BigIntegerGeneralModularDivision(
+    const BigInteger *Num, const BigInteger *Den,
+    const BigInteger *mod, BigInteger *quotient);
+
+BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
+                              const BigInt &modulus);
 
 // The interface to this is pretty bad: mod and modulus represent the
 // same number, and modulus is modified.

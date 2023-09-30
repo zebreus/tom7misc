@@ -77,7 +77,7 @@ struct Quad {
   BigInteger ValG;
   BigInteger ValR;
   BigInteger ValS;
-  BigInteger ValJ;
+  // BigInteger ValJ;
   BigInteger ValK;
   BigInteger ValZ;
   BigInteger ValAlpha;
@@ -122,7 +122,8 @@ struct Quad {
   BigInteger Yplus;
   BigInteger Yminus;
 
-  // At least use std::optional<BigInt>
+  // At least use std::optional<BigInt>? But I think
+  // it can be done with local state at one call site.
   BigInteger *Xbak;
   BigInteger *Ybak;
 
@@ -225,30 +226,31 @@ struct Quad {
     Show1(coeffInd, t);
   }
 
-  void ShowLinInd(const BigInteger *lin, const BigInteger *ind,
+  void ShowLinInd(const BigInt &lin, const BigInt &ind,
                   const char *var) {
-    if (BigIntIsZero(ind) && BigIntIsZero(lin)) {
+    if (ind == 0 && lin == 0) {
       showText("0");
     }
-    if (!BigIntIsZero(ind)) {
-      ShowNumber(ind);
+    if (ind != 0) {
+      ShowBigInt(ind);
     }
     ShowChar(' ');
 
-    if (lin->sign == SIGN_NEGATIVE) {
+    if (lin < 0) {
       showMinus();
-    } else if (!BigIntIsZero(lin) && !BigIntIsZero(ind)) {
+    } else if (lin != 0 && ind != 0) {
       ShowChar('+');
     } else {
       // Nothing to do.
     }
     ShowChar(' ');
-    if (!BigIntIsZero(lin)) {
-      if ((lin->nbrLimbs != 1) || (lin->limbs[0].x != 1)) {
+    if (lin != 0) {
+      if (BigInt::Abs(lin) != 1) {
         // abs(lin) is not 1
-        CopyBigInt(&Aux0, lin);
-        Aux0.sign = SIGN_POSITIVE;   // Do not show negative sign twice.
-        ShowNumber(&Aux0);
+        // CopyBigInt(&Aux0, lin);
+        // Do not show negative sign twice.
+        // Aux0.sign = SIGN_POSITIVE;
+        ShowBigInt(BigInt::Abs(lin));
       }
       ShowChar(' ');
       showText(var);
@@ -277,9 +279,11 @@ struct Quad {
       CopyBigInt(&Ylin, &bigTmp);
     }
     showText("<p>x = ");
-    ShowLinInd(&Xlin, &Xind, var);
+    ShowLinInd(BigIntegerToBigInt(&Xlin),
+               BigIntegerToBigInt(&Xind), var);
     showText("<br>y = ");
-    ShowLinInd(&Ylin, &Yind, var);
+    ShowLinInd(BigIntegerToBigInt(&Ylin),
+               BigIntegerToBigInt(&Yind), var);
     showText("</p>");
     return;
   }
@@ -580,16 +584,17 @@ struct Quad {
           showText(", ");
         }
       }
-      BigIntAdd(&ValH, &qmllr.Solution1[factorIndex], &ValJ);
-      ShowNumber(&ValJ);
+      BigInteger SolJ;
+      BigIntAdd(&ValH, &qmllr.Solution1[factorIndex], &SolJ);
+      ShowNumber(&SolJ);
       if (!oneSolution) {
         if (last) {
           showText(" and ");
         } else {
           showText(", ");
         }
-        BigIntAdd(&ValH, &qmllr.Solution2[factorIndex], &ValJ);
-        ShowNumber(&ValJ);
+        BigIntAdd(&ValH, &qmllr.Solution2[factorIndex], &SolJ);
+        ShowNumber(&SolJ);
       }
       CopyBigInt(&ValH, &ValI);
     } while (!last);
@@ -1129,7 +1134,7 @@ struct Quad {
       H = A << 1;
     }
     // XXX remove state
-    intToBigInteger(&ValJ, 0);
+    // intToBigInteger(&ValJ, 0);
     ShowLin(H, I, BigInt(0), "<var>x</var>", "<var>y</var>");
   }
 
@@ -1162,6 +1167,7 @@ struct Quad {
     // (2ax + by)^2 + 4adx + 4aey + 4af = 0
     // Let t = 2ax + by. So (1) becomes: (t + d)^2 = uy + v.
     // Compute u <- 2(bd - 2ae)
+    BigInteger TeachJ;
     if (teach) {
       showText("<p>Multiplying by");
       showText(ExchXY ? " 4&#8290;<var>c</var>" : " 4&#8290;<var>a</var>");
@@ -1176,13 +1182,13 @@ struct Quad {
         (void)BigIntMultiply(&ValA, &ValD, &ValH);
         (void)BigIntMultiply(&ValA, &ValE, &ValI);
       }
-      (void)BigIntMultiply(&ValA, &ValF, &ValJ);
+      (void)BigIntMultiply(&ValA, &ValF, &TeachJ);
       MultInt(&ValH, &ValH, 4);
       MultInt(&ValI, &ValI, 4);
-      MultInt(&ValJ, &ValJ, 4);
+      MultInt(&TeachJ, &TeachJ, 4);
       if (BigIntIsZero(&ValH)) {
         if (BigIntIsZero(&ValI)) {
-          if (ValJ.sign == SIGN_POSITIVE) {
+          if (TeachJ.sign == SIGN_POSITIVE) {
             showText(" + ");
           }
         } else if (ValI.sign == SIGN_POSITIVE) {
@@ -1195,25 +1201,26 @@ struct Quad {
       }
       ShowLin(BigIntegerToBigInt(&ValH),
               BigIntegerToBigInt(&ValI),
-              BigIntegerToBigInt(&ValJ), "<var>x</var>", "<var>y</var>");
+              BigIntegerToBigInt(&TeachJ), "<var>x</var>", "<var>y</var>");
       showText(" = 0</p><p>");
       showText("Let");
       showText(" <var>t</var> = ");
       ShowTDiscrZero(ExchXY, A, B);
-      intToBigInteger(&ValJ, 0);
+      intToBigInteger(&TeachJ, 0);
       intToBigInteger(&ValH, 1);
       showEqNbr(1);
       showText("</p><p>(<var>t</var> + <var>");
       showText(ExchXY?"e</var>)": "d</var>)");
       showSquare();
       showText(" = (");
-      ShowLin(BigIntegerToBigInt(&ValJ),
+      ShowLin(BigIntegerToBigInt(&TeachJ),
               BigIntegerToBigInt(&ValH),
               BigIntegerToBigInt(&ValD), "", "<var>t</var>");
       showText(")");
       showSquare();
       showText(" = ");
     }
+
     (void)BigIntMultiply(&ValB, &ValD, &Aux0);
     (void)BigIntMultiply(&ValA, &ValE, &Aux1);
     MultInt(&Aux2, &Aux1, 2);
@@ -1225,6 +1232,7 @@ struct Quad {
     (void)BigIntMultiply(&ValA, &ValF, &Aux1);
     MultInt(&Aux3, &Aux1, 4);
     BigIntSubt(&Aux2, &Aux3, &ValV);
+
     if (teach) {
       if (ExchXY) {
         ptrVarNameX = "<var>y</var>";
@@ -1233,7 +1241,7 @@ struct Quad {
         ptrVarNameX = "<var>x</var>";
         ptrVarNameY = "<var>y</var>";
       }
-      ShowLin(BigIntegerToBigInt(&ValJ),
+      ShowLin(BigIntegerToBigInt(&TeachJ),
               BigIntegerToBigInt(&ValU),
               BigIntegerToBigInt(&ValV),
               ptrVarNameX, ptrVarNameY);
@@ -1253,6 +1261,7 @@ struct Quad {
                "<var>d</var>&sup2; &minus; "
                "4&#8290;<var>a</var><var>f</var>.</p>");
     }
+
     if (BigIntIsZero(&ValU)) {
       // u equals zero, so (t+d)^2 = v.
       eLinearSolution ret;
@@ -1264,6 +1273,7 @@ struct Quad {
         }
         return;
       }
+
       if (BigIntIsZero(&ValV)) {
         // v equals zero, so (1) becomes 2ax + by + d = 0
         MultInt(&Aux3, &ValA, 2);
@@ -1275,6 +1285,7 @@ struct Quad {
         endResultBox(ret);
         return;
       }
+
       // u equals zero but v does not.
       // v must be a perfect square, otherwise there are no solutions.
       SquareRoot(ValV.limbs, ValG.limbs, ValV.nbrLimbs, &ValG.nbrLimbs);
@@ -1293,9 +1304,10 @@ struct Quad {
       MultInt(&Aux3, &ValA, 2);
       BigIntAdd(&ValD, &ValG, &Aux4);
       CopyBigInt(&Aux5, &ValB);
+
       if (teach) {
         showText("<p>");
-        ShowLin(BigIntegerToBigInt(&ValJ),
+        ShowLin(BigIntegerToBigInt(&TeachJ),
                 BigIntegerToBigInt(&ValH),
                 BigIntegerToBigInt(&ValD), "", "<var>t</var>");
         showText(" = &pm;");
@@ -1416,34 +1428,55 @@ struct Quad {
   void callbackQuadModParabolic(const BigInteger *value) {
     // The argument of this function is T. t = T - d + uk (k arbitrary).
     // Compute ValR <- (T^2 - v)/u
+    BigInt A = BigIntegerToBigInt(&ValA);
+    BigInt B = BigIntegerToBigInt(&ValB);
+    BigInt C = BigIntegerToBigInt(&ValC);
+    BigInt D = BigIntegerToBigInt(&ValD);
+    BigInt E = BigIntegerToBigInt(&ValE);
+    BigInt U = BigIntegerToBigInt(&ValU);
+    BigInt Value = BigIntegerToBigInt(value);
+
     if (teach) {
       showText("<p><var>t</var> = <var>T</var> &minus; <var>");
       showText(ExchXY ? "e" : "d");
       showText("</var> ");
-      CopyBigInt(&ValH, &ValU);
-      if (ValH.sign == SIGN_POSITIVE) {
+      BigInt H = U;
+
+      // CopyBigInt(&ValH, &ValU);
+      if (H >= 0) {
         showText("+ ");
       } else {
         showText("&minus; ");
       }
-      if ((ValU.nbrLimbs > 1) || (ValU.limbs[0].x > 1)) {
+
+      if (BigInt::Abs(U) != 1) {
         // Absolute value of U is not 1.
-        ValH.sign = SIGN_POSITIVE;
-        ShowNumber(&ValH);
+        // ValH.sign = SIGN_POSITIVE;
+        ShowBigInt(BigInt::Abs(H));
       }
+
       showText(" &#8290<var>k</var> = ");
-      BigIntSubt(value, &ValD, &ValH);
-      ShowLinInd(&ValU, &ValH, "<var>k</var>");
+      // BigIntSubt(value, &ValD, &ValH);
+      ShowLinInd(U, Value - D, "<var>k</var>");
       showEqNbr(equationNbr);
       showText(" (");
       showText("where <var>k</var> is any integer).</p>");
     }
 
-    (void)BigIntMultiply(value, value, &bigTmp);
-    BigIntSubt(&bigTmp, &ValV, &bigTmp);
-    (void)BigIntDivide(&bigTmp, &ValU, &ValR);
+
+    BigInt V = BigIntegerToBigInt(&ValV);
+    // BigInt R = BigIntegerToBigInt(&ValR);
+    BigInt I = BigIntegerToBigInt(&ValI);
+
+
+    BigInt R = ((Value * Value) - V) / U;
+    // (void)BigIntMultiply(value, value, &bigTmp);
+    // BigIntSubt(&bigTmp, &ValV, &bigTmp);
+    // (void)BigIntDivide(&bigTmp, &ValU, &ValR);
     // Compute ValS as 2*T
-    BigIntAdd(value, value, &ValS);
+    BigInt S = Value << 1;
+    // BigIntAdd(value, value, &ValS);
+
 
     if (teach) {
       showText("<p>Replacing <var>t</var> in equation");
@@ -1453,9 +1486,7 @@ struct Quad {
       showText(":</p><p>");
       showText(ptrVarNameY);
       showText(" = ");
-      PrintQuad(BigIntegerToBigInt(&ValU),
-                BigIntegerToBigInt(&ValS),
-                BigIntegerToBigInt(&ValR),
+      PrintQuad(U, S, R,
                 "<var>k</var>", NULL);
       showEqNbr(equationNbr+1);
       showText("</p><p>"
@@ -1464,110 +1495,121 @@ struct Quad {
       showText(" and");
       showEqNbr(equationNbr);
       showText(":</p><p>");
-      ShowTDiscrZero(ExchXY,
-                     BigIntegerToBigInt(&ValA), BigIntegerToBigInt(&ValB));
+      ShowTDiscrZero(ExchXY, A, B);
       showText(" = ");
-      BigIntSubt(value, &ValD, &ValH);
-      ShowLinInd(&ValU, &ValH, "<var>k</var>");
+      BigInt H = Value - D;
+      // BigIntSubt(value, &ValD, &ValH);
+      ShowLinInd(U, H, "<var>k</var>");
       showText("</p>");
-      BigIntAdd(&ValA, &ValA, &ValK);
+      BigInt K = A << 1;
 
-      if (!BigIntIsZero(&ValB)) {
+      if (B != 0) {
         showText("<p>Using");
         showEqNbr(equationNbr + 1);
         showText(" to substitute ");
         showText(ptrVarNameY);
         showText(":</p><p>");
-        intToBigInteger(&ValJ, 0);
-        ShowLinInd(&ValK, &ValJ, ptrVarNameX);
+        ShowLinInd(K, BigInt(0), ptrVarNameX);
         showText(" = ");
-        (void)BigIntMultiply(&ValB, &ValU, &ValJ);
-        BigIntChSign(&ValJ);               // Quadratic coeff = -bU.
-        (void)BigIntMultiply(&ValB, &ValS, &bigTmp);
-        BigIntSubt(&ValU, &bigTmp, &ValI); // Linear coeff = U - bS.
-        (void)BigIntMultiply(&ValB, &ValR, &bigTmp);
-        BigIntSubt(&ValH, &bigTmp, &ValH); // Independent coeff = H - bR.
-        PrintQuad(BigIntegerToBigInt(&ValJ),
-                  BigIntegerToBigInt(&ValI),
-                  BigIntegerToBigInt(&ValH),
-                  "<var>k</var>", NULL);
+               // Quadratic coeff = -bU.
+        BigInt J = -B * U;
+        // BigInteger TmpJ;
+        // (void)BigIntMultiply(&ValB, &ValU, &TmpJ);
+        // BigIntChSign(&TmpJ);
+        BigInt BigTmp = B * S;
+        // (void)BigIntMultiply(&ValB, &ValS, &bigTmp);
+        // Linear coeff = U - bS.
+        I = U - BigTmp;
+        // BigIntSubt(&ValU, &bigTmp, &ValI);
+        BigTmp = B * R;
+        // (void)BigIntMultiply(&ValB, &ValR, &bigTmp);
+        // Independent coeff = H - bR.
+        H -= BigTmp;
+        // BigIntSubt(&ValH, &bigTmp, &ValH);
+        PrintQuad(J, I, H, "<var>k</var>", nullptr);
         showText("</p>");
       }
+
       // if independent coefficient is not multiple of GCD(I, K) then show that
       // there are no solutions. Note that J is always multiple of K.
-      BigIntGcd(&ValI, &ValK, &ValJ);
-      (void)BigIntRemainder(&ValH, &ValJ, &bigTmp);
-      if (!BigIntIsZero(&bigTmp)) {
+      BigInt J = I * K;
+      // BigInteger TmpJ;
+      // BigIntGcd(&ValI, &ValK, &TmpJ);
+      // (void)BigIntRemainder(&ValH, &TmpJ, &bigTmp);
+      CHECK(J != 0);
+      if (H % J != 0) {
         showText("<p>The independent coefficient ");
-        ShowNumber(&ValH);
+        ShowBigInt(H);
         showText(" is not multiple of ");
-        ShowNumber(&ValJ);
+        ShowBigInt(J);
         showText(", which is the greatest common divisor of the other "
                  "three coefficients, so there is no solution.</p>");
       }
     }
+
     // Find k from the congruence
     //  jk = K (mod z) where j = u-bs, K = d+br-T, z = 2a
     // Compute j <- u-bs
-    (void)BigIntMultiply(&ValB, &ValS, &bigTmp);
-    BigIntSubt(&ValU, &bigTmp, &ValJ);
+    // (void)BigIntMultiply(&ValB, &ValS, &bigTmp);
+    BigInt J = U - B * S;
+    // BigInteger ValJ;
+    // BigIntSubt(&ValU, &bigTmp, &ValJ);
     // Compute K <- d+br-T
-    (void)BigIntMultiply(&ValB, &ValR, &bigTmp);
-    BigIntAdd(&ValD, &bigTmp, &bigTmp);
-    BigIntSubt(&bigTmp, value, &ValK);
+    // (void)BigIntMultiply(&ValB, &ValR, &bigTmp);
+    // BigIntAdd(&ValD, &bigTmp, &bigTmp);
+    BigInt K = (D - B * R) - Value;
+    // BigIntSubt(&bigTmp, value, &ValK);
     // Compute z <- 2a
-    BigIntAdd(&ValA, &ValA, &ValZ);
+    BigInt Z = A << 1;
+    // BigIntAdd(&ValA, &ValA, &ValZ);
     // If K is not multiple of gcd(j, z) there is no solution.
-    BigIntGcd(&ValJ, &ValZ, &bigTmp);
-    (void)BigIntRemainder(&ValK, &bigTmp, &U1);
-    if (!BigIntIsZero(&U1)) {
+    BigInt BigTmp = BigInt::GCD(J, Z);
+    // BigIntGcd(&ValJ, &ValZ, &bigTmp);
+    // (void)BigIntRemainder(&ValK, &bigTmp, &U1);
+    CHECK(BigTmp != 0);
+    if (K % BigTmp != 0) {
       return;
     }
 
+
     // Compute g = gcd(j, K, z), then recalculate j <- j/g, K <- K/g, z <- z/g
-    BigIntGcd(&bigTmp, &ValK, &U1);
-    (void)BigIntDivide(&ValJ, &U1, &U2);    // U2 <- j
-    (void)BigIntDivide(&ValK, &U1, &U3);    // U3 <- K
-    (void)BigIntDivide(&ValZ, &U1, &ValZ);
-    ValZ.sign = SIGN_POSITIVE;        // Use positive sign for modulus.
+    BigInt U1 = BigInt::GCD(BigTmp, K);
+    CHECK(U1 != 0);
+    // U2 <- j
+    BigInt U2 = J / U1;
+    // U3 <- K
+    BigInt U3 = K / U1;
+    if (U1 != 0) Z /= U1;
+    // Use positive sign for modulus.
+    Z = BigInt::Abs(Z);
+    // BigIntGcd(&bigTmp, &ValK, &U1);
+    // (void)BigIntDivide(&ValJ, &U1, &U2);
+    // (void)BigIntDivide(&ValK, &U1, &U3);
+    // (void)BigIntDivide(&ValZ, &U1, &ValZ);
+    // ValZ.sign = SIGN_POSITIVE;
 
-    (void)BigIntRemainder(&U2, &ValZ, &U2);
-    if (U2.sign == SIGN_NEGATIVE) {
-      BigIntAdd(&U2, &ValZ, &U2);
-    }
 
-    (void)BigIntRemainder(&U3, &ValZ, &U3);
-    if (U3.sign == SIGN_NEGATIVE) {
-      BigIntAdd(&U3, &ValZ, &U3);
-    }
+    // Can just use Mod?
+    if (Z != 0) U2 %= Z;
+    if (U2 < 0) U2 += Z;
 
-    if (BigIntIsZero(&U2)) {
+    if (Z != 0) U3 %= Z;
+    if (U3 < 0) U3 += Z;
+
+    if (U2 != 0) {
       // M and N equal zero.
       // In this case 0*k = 0 (mod z) means any k is valid.
-      intToBigInteger(&ValZ, 1);
+      Z = BigInt(1);
     } else {
-      BigIntGeneralModularDivision(&U2, &U3, &ValZ, &U2);   // U2 <- x'
+      // U2 <- x'
+      U2 = GeneralModularDivision(U2, U3, Z);
     }
 
     {
       const auto &[VV1, VV2, VV3] =
         ExchXY ?
-        ComputeYDiscrZero(
-            BigIntegerToBigInt(&ValU),
-            BigIntegerToBigInt(&U2),
-            BigIntegerToBigInt(&ValS),
-            BigIntegerToBigInt(&ValR),
-            BigIntegerToBigInt(&ValZ)) :
-        ComputeXDiscrZero(
-            BigIntegerToBigInt(&ValA),
-            BigIntegerToBigInt(&ValB),
-            BigIntegerToBigInt(&ValC),
-            BigIntegerToBigInt(&ValD),
-            BigIntegerToBigInt(&ValE),
-            BigIntegerToBigInt(&ValZ),
-            BigIntegerToBigInt(&ValJ),
-            BigIntegerToBigInt(&ValK),
-            BigIntegerToBigInt(&U2));
+        ComputeYDiscrZero(U, U2, S, R, Z) :
+        ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2);
 
       showAlso();
       startResultBox(SOLUTION_FOUND);
@@ -1580,22 +1622,8 @@ struct Quad {
     {
       const auto &[VV1, VV2, VV3] =
         ExchXY ?
-          ComputeXDiscrZero(
-              BigIntegerToBigInt(&ValA),
-              BigIntegerToBigInt(&ValB),
-              BigIntegerToBigInt(&ValC),
-              BigIntegerToBigInt(&ValD),
-              BigIntegerToBigInt(&ValE),
-              BigIntegerToBigInt(&ValZ),
-              BigIntegerToBigInt(&ValJ),
-              BigIntegerToBigInt(&ValK),
-              BigIntegerToBigInt(&U2)) :
-        ComputeYDiscrZero(
-            BigIntegerToBigInt(&ValU),
-            BigIntegerToBigInt(&U2),
-            BigIntegerToBigInt(&ValS),
-            BigIntegerToBigInt(&ValR),
-            BigIntegerToBigInt(&ValZ));
+        ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2) :
+        ComputeYDiscrZero(U, U2, S, R, Z);
 
       showText("<var>y</var> = ");
       PrintQuad(VV3, VV2, VV1,
@@ -2331,10 +2359,11 @@ struct Quad {
         CopyBigInt(&ValH, value);
         CopyBigInt(&ValI, &ValK);
         BigIntChSign(&ValI);
-        intToBigInteger(&ValJ, 0);
+        BigInteger TmpJ;
+        intToBigInteger(&TmpJ, 0);
         ShowLin(BigIntegerToBigInt(&ValH),
                 BigIntegerToBigInt(&ValI),
-                BigIntegerToBigInt(&ValJ),
+                BigIntegerToBigInt(&TmpJ),
                 varY, "<var>k</var>");
         showText(" ");
         showEqNbr(equationNbr);
@@ -2809,15 +2838,16 @@ struct Quad {
     }
 
     if (teach) {
-      intToBigInteger(&ValJ, 0);
+      BigInteger TeachJ;
+      intToBigInteger(&TeachJ, 0);
       showText("<p>(");
       ShowLin(BigIntegerToBigInt(&V1),
               BigIntegerToBigInt(&V2),
-              BigIntegerToBigInt(&ValJ), "X", "Y");
+              BigIntegerToBigInt(&TeachJ), "X", "Y");
       showText(") &#8290;(");
       ShowLin(BigIntegerToBigInt(&ValH),
               BigIntegerToBigInt(&ValI),
-              BigIntegerToBigInt(&ValJ), "X", "Y");
+              BigIntegerToBigInt(&TeachJ), "X", "Y");
       showText(") = ");
       ShowNumber(&ValL);
       showText("</p><p>");
@@ -2838,11 +2868,11 @@ struct Quad {
         showText("(");
         ShowLin(BigIntegerToBigInt(&V1),
                 BigIntegerToBigInt(&V2),
-                BigIntegerToBigInt(&ValJ), "X", "Y");
+                BigIntegerToBigInt(&TeachJ), "X", "Y");
         showText(") &#8290;(");
         ShowLin(BigIntegerToBigInt(&ValH),
                 BigIntegerToBigInt(&ValI),
-                BigIntegerToBigInt(&ValJ), "X", "Y");
+                BigIntegerToBigInt(&TeachJ), "X", "Y");
         showText(") = ");
 
         if (BigIntIsZero(&bigTmp)) {

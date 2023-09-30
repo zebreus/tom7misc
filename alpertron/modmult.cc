@@ -808,8 +808,9 @@ static void ChineseRemainderTheorem(BigInteger *oddValue,
 // so the division is done separately by calculating the division modulo
 // n/2^k (n odd) and 2^k and then merge the results using Chinese Remainder
 // Theorem.
-void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
-                                  const BigInteger* mod, BigInteger* quotient) {
+void BigIntegerGeneralModularDivision(
+    const BigInteger* Num, const BigInteger* Den,
+    const BigInteger* mod, BigInteger* quotient) {
   int shRight;
   BigInteger oddValue;
   CopyBigInt(&oddValue, mod);
@@ -878,6 +879,17 @@ void BigIntGeneralModularDivision(const BigInteger* Num, const BigInteger* Den,
                           modulus_length, modulus,
                           resultModOdd, resultModPower2,
                           shRight, quotient);
+}
+
+
+BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
+                              const BigInt &modulus) {
+  BigInteger n, d, m, result;
+  BigIntToBigInteger(num, &n);
+  BigIntToBigInteger(den, &d);
+  BigIntToBigInteger(modulus, &m);
+  BigIntegerGeneralModularDivision(&n, &d, &m, &result);
+  return BigIntegerToBigInt(&result);
 }
 
 // Find the inverse of value mod 2^(number_length*BITS_PER_GROUP)
