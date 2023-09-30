@@ -138,7 +138,6 @@ void IntToBigNbr(int value, limb *bigNbr, int nbrLength);
 int BigNbrToBigInt(const BigInteger *pBigNbr, limb *pBigInt);
 void BigIntToBigNbr(BigInteger *pBigNbr, const limb *pBigInt, int nbrLenBigInt);
 void AdjustBigIntModN(limb *Nbr, const limb *Mod, int nbrLen);
-void IntToBigNbr(int value, limb *bigNbr, int nbrLength);
 int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower);
 
 static inline int UintToInt(unsigned int value) {

@@ -57,7 +57,7 @@ struct Quad {
   // TODO: Lots of these could be local; dynamically sized.
   enum eCallbackQuadModType callbackQuadModType;
   char isDescending[400];
-  BigInteger Aux0, Aux1, Aux2, Aux3, Aux4, Aux5;
+  BigInteger Aux0, Aux1, Aux2, Aux3, Aux5;
   BigInteger ValA;
   BigInteger ValB;
   BigInteger ValC;
@@ -77,7 +77,6 @@ struct Quad {
   BigInteger ValG;
   BigInteger ValR;
   BigInteger ValS;
-  // BigInteger ValJ;
   BigInteger ValK;
   BigInteger ValZ;
   BigInteger ValAlpha;
@@ -145,6 +144,27 @@ struct Quad {
   std::string *output = nullptr;
 
   QuadModLLResult qmllr;
+
+  void MarkUninitialized() {
+    // Port note: There are various interleaved code paths where
+    // different state (e.g. callback type) results in these member
+    // variables being initialized or not. At least set them to
+    // valid state so that we can convert them to BigInt (and discard).
+    for (BigInteger *b : {
+          &Aux0, &Aux1, &Aux2, &Aux3, &Aux5,
+          &ValA, &ValB, &ValC, &ValD, &ValE, &ValF,
+          &ValH, &ValI, &ValL, &ValM, &ValN, &ValO, &ValP, &ValQ,
+          &ValU, &ValV, &ValG, &ValR, &ValS, &ValK, &ValZ,
+          &ValAlpha, &ValBeta, &ValDen, &ValDiv,
+          &ValABak, &ValBBak, &ValCBak,
+          &ValGcdHomog, &Tmp1, &Tmp2,
+          &Xind, &Yind, &Xlin, &Ylin, &discr,
+          &U1, &U2, &U3, &V1, &V2, &V3,
+          &bigTmp, &startPeriodU, &startPeriodV,
+          &modulus, &currentFactor, &Xplus, &Xminus, &Yplus, &Yminus}) {
+      intToBigInteger(b, 0xCAFE);
+    }
+  }
 
   void showText(const char *text) {
     if (output != nullptr)
@@ -510,35 +530,51 @@ struct Quad {
     }
   }
 
-  void showValue(BigInteger* value) {
-    SolNbr++;
-    // If 2*value is greater than modulus, subtract modulus.
-    MultInt(&Tmp1, value, 2);
-    BigIntSubt(&modulus, &Tmp1, &Tmp1);
-    if (Tmp1.sign == SIGN_NEGATIVE) {
-      BigIntSubt(value, &modulus, value);
-    }
+  void ShowValue(const BigInt &value) {
     if (teach) {
       if (firstSolutionX) {
         showText("<ol>");
         firstSolutionX = false;
       }
       showText("<li><var>T</var> = ");
-      ShowNumber(value);
+      ShowBigInt(value);
       showText("</li>");
     }
   }
 
-  void SolutionX(BigInteger *value) {
-    showValue(value);
-    if (callbackQuadModType == CBACK_QMOD_PARABOLIC) {
+  void SolutionX(BigInt value, const BigInt &Modulus) {
+    SolNbr++;
+    BigInt mm = BigIntegerToBigInt(&modulus);
+    CHECK(Modulus == mm) <<
+      Modulus.ToString() << " vs " << mm.ToString();
+
+
+    // If 2*value is greater than modulus, subtract modulus.
+    // BigInt Modulus = BigIntegerToBigInt(&modulus);
+    if ((value << 1) > Modulus) {
+      value -= Modulus;
+    }
+
+    ShowValue(value);
+
+    switch (callbackQuadModType) {
+    case CBACK_QMOD_PARABOLIC:
       callbackQuadModParabolic(value);
-    } else if (callbackQuadModType == CBACK_QMOD_ELLIPTIC) {
-      callbackQuadModElliptic(value);
-    } else if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
-      callbackQuadModHyperbolic(value);
-    } else {
-      // Nothing to do.
+      break;
+    case CBACK_QMOD_ELLIPTIC: {
+      BigInteger tmp;
+      BigIntToBigInteger(value, &tmp);
+      callbackQuadModElliptic(&tmp);
+      break;
+    }
+    case CBACK_QMOD_HYPERBOLIC: {
+      BigInteger tmp;
+      BigIntToBigInteger(value, &tmp);
+      callbackQuadModHyperbolic(&tmp);
+      break;
+    }
+    default:
+      break;
     }
   }
 
@@ -573,6 +609,15 @@ struct Quad {
     }
     showText(": ");
     do {
+
+      fprintf(stderr, "sol1[%d] (%d,%d) sol2[%d] (%d,%d)\n",
+              factorIndex,
+              qmllr.Solution1[factorIndex].nbrLimbs,
+              qmllr.Solution1[factorIndex].limbs[0].x,
+              factorIndex,
+              qmllr.Solution2[factorIndex].nbrLimbs,
+              qmllr.Solution2[factorIndex].limbs[0].x);
+
       bool oneSolution = BigIntEqual(&qmllr.Solution1[factorIndex],
                                      &qmllr.Solution2[factorIndex]);
       BigIntAdd(&ValH, pIncrement, &ValI);   // Next value.
@@ -659,9 +704,8 @@ struct Quad {
         // must succeed; is < 5 and non-negative
         const int n = GcdAll.ToInt().value();
         for (int ctr = 0; ctr < n; ctr++) {
-          BigInteger sol;
-          intToBigInteger(&sol, ctr);
-          SolutionX(&sol);
+          fprintf(stderr, "X %d\n", __LINE__);
+          SolutionX(BigInt(ctr), modulus);
         }
 
         if (teach && !firstSolutionX) {
@@ -718,11 +762,10 @@ struct Quad {
       BigInt Temp0 = ValNn * GcdAll;
 
       {
-        BigInteger zz;
-        BigIntToBigInteger(z, &zz);
-
         for (;;) {
-          SolutionX(&zz);
+          // also not covered :(
+          fprintf(stderr, "loop zz");
+          SolutionX(z, modulus);
           z += modulus;
           if (z < Temp0) break;
         }
@@ -758,13 +801,21 @@ struct Quad {
       BigIntToBigInteger(GcdAll, &gcd);
       BigIntToBigInteger(ValNn, &valnn);
 
+      // XXX two different moduli here
+      // CHECK(modulus == BigIntegerToBigInt(&this->modulus));
+
       SolveEquation(
           SolutionFn([this](BigInteger *value) {
-              this->SolutionX(value);
+              this->SolutionX(BigIntegerToBigInt(value),
+                              BigIntegerToBigInt(&this->modulus));
             }),
           ShowSolutionsModPrimeFn(
               [this](int factorIndex, int expon,
                      const BigInteger *pIncrement) {
+                fprintf(stderr,
+                        "ssmp %d %d %s\n",
+                        factorIndex, expon,
+                        BigIntegerToBigInt(pIncrement).ToString().c_str());
                 this->ShowSolutionsModPrime(factorIndex, expon, pIncrement);
               }),
           ShowNoSolsModPrimeFn([this](int expon) {
@@ -1302,6 +1353,7 @@ struct Quad {
       }
       // The original equation is now: 2ax + by + (d +/- g) = 0
       MultInt(&Aux3, &ValA, 2);
+      BigInteger Aux4;
       BigIntAdd(&ValD, &ValG, &Aux4);
       CopyBigInt(&Aux5, &ValB);
 
@@ -1371,16 +1423,20 @@ struct Quad {
       showText(")</p>");
     }
 
-    callbackQuadModType = CBACK_QMOD_PARABOLIC;
+    BigInt V = BigIntegerToBigInt(&ValV);
+    BigInt Modulus = BigIntegerToBigInt(&ValU);
+    // XXX eliminate this state
     CopyBigInt(&modulus, &ValU);
+
+    callbackQuadModType = CBACK_QMOD_PARABOLIC;
     equationNbr = 3;
 
     SolveQuadModEquation(
         // PERF just construct directly above.
         BigInt(1),
         BigInt(0),
-        -BigIntegerToBigInt(&ValV),
-        BigIntegerToBigInt(&modulus));
+        -V,
+        Modulus);
   }
 
   // Compute coefficients of x: V1 + V2 * w + V3 * w^2
@@ -1425,7 +1481,7 @@ struct Quad {
     return std::make_tuple(V1, V2, V3);
   }
 
-  void callbackQuadModParabolic(const BigInteger *value) {
+  void callbackQuadModParabolic(const BigInt &Value) {
     // The argument of this function is T. t = T - d + uk (k arbitrary).
     // Compute ValR <- (T^2 - v)/u
     BigInt A = BigIntegerToBigInt(&ValA);
@@ -1434,7 +1490,6 @@ struct Quad {
     BigInt D = BigIntegerToBigInt(&ValD);
     BigInt E = BigIntegerToBigInt(&ValE);
     BigInt U = BigIntegerToBigInt(&ValU);
-    BigInt Value = BigIntegerToBigInt(value);
 
     if (teach) {
       showText("<p><var>t</var> = <var>T</var> &minus; <var>");
@@ -2062,6 +2117,8 @@ struct Quad {
     BigInt B = BigIntegerToBigInt(&ValB);
     BigInt C = BigIntegerToBigInt(&ValC);
 
+    // Note: G not necessarily initialized by here if
+    // the condition below isn't true.
     BigInt G = BigIntegerToBigInt(&ValG);
     BigInt L = BigIntegerToBigInt(&ValL);
 
@@ -2072,6 +2129,7 @@ struct Quad {
 
     if (showRecursiveSolution &&
         callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
+
       // Show recursive solution.
       RecursiveSolution(A, B, C, G, L,
                         Alpha, Beta, GcdHomog, Discr);
@@ -3072,7 +3130,7 @@ struct Quad {
 
       if (bigTmp.sign == SIGN_POSITIVE) {
         // Second check |u+g| > |v| passed.
-        // Conpute Tmp2 as u - floor(g)
+        // Compute Tmp2 as u - floor(g)
         BigIntSubt(&ValU, &ValG, &Tmp2);
 
         if ((Tmp2.sign == SIGN_NEGATIVE) || (BigIntIsZero(&Tmp2))) {
@@ -3527,6 +3585,8 @@ struct Quad {
       const BigInt &Alpha, const BigInt &Beta,
       const BigInt &GcdHomog, BigInt Discr) {
 
+    BigIntToBigInteger(G, &ValG); // XXX
+
     BigInt H = Discr;
 
     const bool isBeven = B.IsEven();
@@ -3574,11 +3634,13 @@ struct Quad {
     // was just because it was manipulating the limbs directly? Sqrt
     // is always non-negative...
     CHECK(G >= 0);
+    // XXX should be unnecessary
+    BigIntToBigInteger(G, &ValG);
 
     int periodLength = 1;
 
-    BigInt U(0); // BigIntegerToBigInt(&ValU);
-    BigInt V(1); // BigIntegerToBigInt(&ValV);
+    BigInt U(0);
+    BigInt V(1);
 
     BigInt UU3 = BigIntegerToBigInt(&U3);
     BigInt UU2(0);
@@ -3594,7 +3656,6 @@ struct Quad {
       periodLength = -1;
       do {
         BigInt BigTmp = U + G;
-        // BigIntAdd(&ValU, &ValG, &bigTmp);
         if (V < 0) {
           // If denominator is negative, round square root upwards.
           BigTmp += 1;
@@ -4060,6 +4121,10 @@ struct Quad {
     if (output != nullptr && output->size() == preamble_size) {
       showText("<p>The equation does not have integer solutions.</p>");
     }
+  }
+
+  Quad() {
+    MarkUninitialized();
   }
 
 };

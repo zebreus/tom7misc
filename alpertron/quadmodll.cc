@@ -47,6 +47,17 @@ struct QuadModLL {
   BigInteger Increment[400];
   int Exponents[400];
 
+  QuadModLL() {
+    // PERF: probably unnecessary, but debugging invalid
+    // Solution bigint
+    for (int i = 0; i < 400; i++) {
+      Exponents[i] = 777;
+      intToBigInteger(&Solution1[i], 888);
+      intToBigInteger(&Solution2[i], 999);
+      intToBigInteger(&Increment[i], 101010);
+    }
+  }
+
   BigInteger Quadr;
   BigInteger Linear;
   BigInteger Const;
@@ -61,22 +72,22 @@ struct QuadModLL {
   BigInteger Q;
   BigInteger V;
   BigInteger Aux[12];
-  bool sol1Invalid;
-  bool sol2Invalid;
+  bool sol1Invalid = false;
+  bool sol2Invalid = false;
   BigInteger prime;
 
   BigInteger Aux0;
   BigInteger Aux1;
   BigInteger Aux2;
-  BigInteger* pGcdAll;
-  BigInteger* pValNn;
+  BigInteger* pGcdAll = nullptr;
+  BigInteger* pValNn = nullptr;
   SolutionFn Solution;
   ShowSolutionsModPrimeFn ShowSolutionsModPrime;
   ShowNoSolsModPrimeFn ShowNoSolsModPrime;
 
   // Were globals NumberLength and TestNbr
-  int modulus_length;
-  limb TheModulus[MAX_LEN];
+  int modulus_length = 0;
+  limb TheModulus[MAX_LEN] = {};
 
   // Use Chinese remainder theorem to obtain the solutions.
   void PerformChineseRemainderTheorem(const Factors &factors) {
@@ -226,6 +237,7 @@ struct QuadModLL {
       // Compute ptrSolution1 as ValC / |ValB|
       BigIntModularDivision(params, modulus_length, TheModulus,
                             pValC, pValB, pValN, ptrSolution1);
+      CHECK(ptrSolution1->nbrLimbs > 0);
       // Compute ptrSolution1 as -ValC / ValB
       if (!BigIntIsZero(ptrSolution1)) {
         BigIntSubt(pValN, ptrSolution1, ptrSolution1);
@@ -238,6 +250,9 @@ struct QuadModLL {
       ptrFactorsMod += *ptrFactorsMod;
       // .. and length
       ptrFactorsMod++;
+
+      CHECK(ptrSolution1->nbrLimbs > 0);
+      CHECK(ptrSolution2->nbrLimbs > 0);
 
       ptrSolution1++;
       ptrSolution2++;

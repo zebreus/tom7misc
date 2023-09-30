@@ -143,20 +143,6 @@ void BigIntToFixedLimbs(const BigInt &b, size_t num_limbs, limb *limbs) {
     limbs[count].x = 0;
     count++;
   }
-
-#if 0
-  // oops no, this would be for big-endian
-  if (count != num_limbs) {
-    // append this many zeroes
-    int skip = num_limbs - count;
-    for (int x = 0; x < count; x++) {
-      limbs[] = limbs[count - 1 - x];
-    }
-    for (int x = 0; x < skip; x++) {
-      limbs[x].x = 0;
-    }
-  }
-#endif
 }
 
 

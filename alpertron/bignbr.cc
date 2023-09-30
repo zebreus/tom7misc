@@ -81,6 +81,7 @@ BigInt FloorDiv(const BigInt &num, const BigInt &den) {
   BigIntToBigInteger(num, &x);
   BigIntToBigInteger(den, &y);
   floordiv(&x, &y, &z);
+  CHECK(z.nbrLimbs > 0);
   return BigIntegerToBigInt(&z);
 }
 
@@ -137,7 +138,13 @@ enum eExprErr BigIntRemainder(
     const BigInteger *pDivisor, BigInteger *pRemainder) {
   BigInt numer = BigIntegerToBigInt(pDividend);
   BigInt denom = BigIntegerToBigInt(pDivisor);
-  if (BigInt::Eq(denom, 0)) return EXPR_DIVIDE_BY_ZERO;
+  if (BigInt::Eq(denom, 0)) {
+    // Some code calls this with a 0 denominator. Not clear what it
+    // wants the result to be, but make sure it's at least a valid
+    // BigInteger. (?)
+    CHECK(pRemainder->nbrLimbs > 0);
+    return EXPR_DIVIDE_BY_ZERO;
+  }
   // XXX: Some nearby code suggests that the original bignbr code might
   // have had different behavior for negative numbers. Check.
   //
@@ -212,21 +219,21 @@ void BigIntDivide2(BigInteger *pArg) {
   assert(nbrLimbs >= 1);
   limb *ptrLimb = &pArg->limbs[ctr];
   carry = 0;
-  for (; ctr >= 0; ctr--)
-  {
+  for (; ctr >= 0; ctr--) {
     carry = (carry << BITS_PER_GROUP) + (unsigned int)ptrLimb->x;
     ptrLimb->x = (int)(carry >> 1);
     ptrLimb--;
     carry &= 1;
   }
-  if ((nbrLimbs > 1) && (pArg->limbs[nbrLimbs - 1].x == 0))
-  {     // Most significant limb is zero, so reduce size by one limb.
+  if ((nbrLimbs > 1) && (pArg->limbs[nbrLimbs - 1].x == 0)) {
+    // Most significant limb is zero, so reduce size by one limb.
     pArg->nbrLimbs--;
   }
+
+  CHECK(pArg->nbrLimbs > 0);
 }
 
-enum eExprErr BigIntMultiplyPower2(BigInteger *pArg, int powerOf2)
-{
+enum eExprErr BigIntMultiplyPower2(BigInteger *pArg, int powerOf2) {
   int ctr;
   int nbrLimbs = pArg->nbrLimbs;
   assert(nbrLimbs >= 1);
@@ -262,6 +269,7 @@ enum eExprErr BigIntMultiplyPower2(BigInteger *pArg, int powerOf2)
     (void)memset(pArg->limbs, 0, bytesToMove);
   }
   pArg->nbrLimbs = nbrLimbs;
+  CHECK(pArg->nbrLimbs > 0);
   return EXPR_OK;
 }
 
@@ -273,8 +281,7 @@ void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2,
   BigIntToBigInteger(g, pResult);
 }
 
-static void addToAbsValue(limb *pLimbs, int *pNbrLimbs, int addend)
-{
+static void addToAbsValue(limb *pLimbs, int *pNbrLimbs, int addend) {
   limb* ptrLimbs = pLimbs;
   int nbrLimbs = *pNbrLimbs;
   ptrLimbs->x += addend;
@@ -297,8 +304,7 @@ static void addToAbsValue(limb *pLimbs, int *pNbrLimbs, int addend)
   (ptrLimbs + 1)->x = 1;   // Most significant limb must be 1.
 }
 
-static void subtFromAbsValue(limb *pLimbs, int *pNbrLimbs, int subt)
-{
+static void subtFromAbsValue(limb *pLimbs, int *pNbrLimbs, int subt) {
   int nbrLimbs = *pNbrLimbs;
   limb* ptrLimb = pLimbs;
   pLimbs->x -= subt;
@@ -356,6 +362,7 @@ void subtractdivide(BigInteger *pBigInt, int subt, int divisor)
       subtFromAbsValue(pBigInt->limbs, &nbrLimbs, -subt);
     }
   }
+
   if (divisor == 2)
   {      // Use shifts for divisions by 2.
     limb* ptrDest = pBigInt->limbs;
@@ -369,9 +376,7 @@ void subtractdivide(BigInteger *pBigInt, int subt, int divisor)
       curLimb = nextLimb;
     }
     ptrDest->x = UintToInt((curLimb >> 1) & MAX_VALUE_LIMB);
-  }
-  else
-  {
+  } else {
     int remainder = 0;
     limb* pLimbs = pBigInt->limbs + nbrLimbs - 1;
     // Divide number by divisor.
@@ -392,11 +397,13 @@ void subtractdivide(BigInteger *pBigInt, int subt, int divisor)
       pLimbs--;
     }
   }
-  if ((nbrLimbs > 1) && (pBigInt->limbs[nbrLimbs - 1].x == 0))
-  {   // Most significant limb is now zero, so discard it.
+
+  if ((nbrLimbs > 1) && (pBigInt->limbs[nbrLimbs - 1].x == 0)) {
+    // Most significant limb is now zero, so discard it.
     nbrLimbs--;
   }
   pBigInt->nbrLimbs = nbrLimbs;
+  CHECK(pBigInt->nbrLimbs > 0);
 }
 
 void addbigint(BigInteger *pResult, int addend) {
@@ -444,6 +451,7 @@ void IntArray2BigInteger(int number_length, const int *ptrValues, BigInteger *bi
       destLimb++;
     }
   }
+  CHECK(bigint->nbrLimbs > 0);
 }
 
 static int getNbrLimbs(int number_length, const limb *bigNbr) {
@@ -508,6 +516,7 @@ void UncompressLimbsBigInteger(int number_length,
     }
     bigint->nbrLimbs = nbrLimbs;
   }
+  CHECK(bigint->nbrLimbs > 0);
 }
 
 void CompressLimbsBigInteger(int number_length,
@@ -545,14 +554,13 @@ void BigIntDivideBy2(BigInteger *nbr) {
     curLimb = nextLimb;
   }
   ptrDest->x = UintToInt((curLimb >> 1) & MAX_VALUE_LIMB);
-  if ((nbrLimbs > 1) && (nbr->limbs[nbrLimbs - 1].x == 0))
-  {
+  if ((nbrLimbs > 1) && (nbr->limbs[nbrLimbs - 1].x == 0)) {
     nbr->nbrLimbs--;
   }
+  CHECK(nbr->nbrLimbs > 0);
 }
 
-void BigIntMultiplyBy2(BigInteger *nbr)
-{
+void BigIntMultiplyBy2(BigInteger *nbr) {
   unsigned int prevLimb;
   limb *ptrDest = &nbr->limbs[0];
   int nbrLimbs = nbr->nbrLimbs;
@@ -685,6 +693,7 @@ void BigIntPowerOf2(BigInteger *pResult, int exponent) {
   pResult->limbs[nbrLimbs].x = UintToInt(1U << power2);
   pResult->nbrLimbs = nbrLimbs + 1;
   pResult->sign = SIGN_POSITIVE;
+  CHECK(pResult->nbrLimbs > 0);
 }
 
 void BigIntAnd(const BigInteger* arg1, const BigInteger* arg2,
@@ -757,8 +766,7 @@ void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
 void ChSignBigNbr(limb *nbr, int length) {
   int carry = 0;
   const limb *ptrEndNbr = nbr + length;
-  for (limb *ptrNbr = nbr; ptrNbr < ptrEndNbr; ptrNbr++)
-  {
+  for (limb *ptrNbr = nbr; ptrNbr < ptrEndNbr; ptrNbr++) {
     carry -= ptrNbr->x;
     ptrNbr->x = carry & MAX_INT_NBR;
     carry >>= BITS_PER_GROUP;
@@ -770,8 +778,7 @@ void AddBigNbr(const limb *pNbr1, const limb*pNbr2, limb*pSum, int nbrLen) {
   const limb*ptrNbr1 = pNbr1;
   const limb*ptrNbr2 = pNbr2;
   const limb*ptrEndSum = pSum + nbrLen;
-  for (limb*ptrSum = pSum; ptrSum < ptrEndSum; ptrSum++)
-  {
+  for (limb*ptrSum = pSum; ptrSum < ptrEndSum; ptrSum++) {
     unsigned int tmp;
     carry = (carry >> BITS_PER_GROUP) + (unsigned int)ptrNbr1->x +
       (unsigned int)ptrNbr2->x;
@@ -782,8 +789,8 @@ void AddBigNbr(const limb *pNbr1, const limb*pNbr2, limb*pSum, int nbrLen) {
   }
 }
 
-void SubtractBigNbr(const limb *pNbr1, const limb*pNbr2, limb*pDiff, int nbrLen)
-{
+void SubtractBigNbr(const limb *pNbr1, const limb*pNbr2,
+                    limb*pDiff, int nbrLen) {
   unsigned int borrow = 0U;
   const limb*ptrNbr1 = pNbr1;
   const limb*ptrNbr2 = pNbr2;
