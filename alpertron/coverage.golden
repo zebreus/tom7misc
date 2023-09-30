@@ -45,7 +45,7 @@
 2<p><h2> 4&nbsp;&#8290;x&sup2; + 4&nbsp;&#8290;x - 16&nbsp;&#8290;  = 0</h2><p>The equation does not have integer solutions.</p>
 
 ** Quad 4 0 0 0 4 -16
-2<p><h2> 4&nbsp;&#8290;x&sup2; + 4&nbsp;&#8290;y - 16&nbsp;&#8290;  = 0</h2><p><var>x</var> =  &minus; 2 <var>k</var> + 2<br><var>y</var> = -4 <var>k</var>&sup2; + 8 <var>k</var></p>and also:<br><p><var>x</var> =  &minus; 2 <var>k</var> + 3<br><var>y</var> = -4 <var>k</var>&sup2; + 12 <var>k</var> &minus; 5</p>
+2<p><h2> 4&nbsp;&#8290;x&sup2; + 4&nbsp;&#8290;y - 16&nbsp;&#8290;  = 0</h2><p><var>x</var> =  &minus; 2 <var>k</var><br><var>y</var> = -4 <var>k</var>&sup2; + 4</p>and also:<br><p><var>x</var> =  &minus; 2 <var>k</var> + 1<br><var>y</var> = -4 <var>k</var>&sup2; + 4 <var>k</var> + 3</p>
 
 ** Quad 4 4 4 0 0 -16
 2<p><h2> 4&nbsp;&#8290;x&sup2; + 4&nbsp;&#8290;x&#8290;y + 4&nbsp;&#8290;y&sup2; - 16&nbsp;&#8290;  = 0</h2><p>x = 0<BR>y = 2</p>and also:<br><p>x = 0<BR>y = -2</p>and also:<br><p>x = 2<BR>y = -2</p>and also:<br><p>x = -2<BR>y = 2</p>and also:<br><p>x = 2<BR>y = 0</p>and also:<br><p>x = -2<BR>y = 0</p>

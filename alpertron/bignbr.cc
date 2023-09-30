@@ -151,7 +151,11 @@ enum eExprErr BigIntRemainder(
   // PERF: This is called a lot. Can add a BigInt function that just
   // gets the remainder, or better, see if callers are getting both
   // quotient and remainder already.
+
+  // XXX PERF!
+  BigInt rem_ref = BigInt::QuotRem(numer, denom).second;
   BigInt rem = BigInt::CMod(numer, denom);
+  CHECK(BigInt::Eq(rem, rem_ref));
   BigIntToBigInteger(rem, pRemainder);
   return EXPR_OK;
 }

@@ -653,6 +653,12 @@ struct Quad {
                             const BigInt &coeffIndep,
                             const BigInt &modulus_in) {
 
+    fprintf(stderr, "[SQME] %s %s %s %s\n",
+            coeffQuadr.ToString().c_str(),
+            coeffLinear.ToString().c_str(),
+            coeffIndep.ToString().c_str(),
+            modulus_in.ToString().c_str());
+
     BigInt modulus = BigInt::Abs(modulus_in);
 
     firstSolutionX = true;
@@ -804,6 +810,15 @@ struct Quad {
 
       // XXX two different moduli here
       // CHECK(modulus == BigIntegerToBigInt(&this->modulus));
+      BigIntToBigInteger(modulus, &this->modulus);
+
+      fprintf(stderr, "[Call SolveEq] %s %s %s %s %s %s\n",
+              coeff_quadr.ToString().c_str(),
+              coeff_linear.ToString().c_str(),
+              coeff_indep.ToString().c_str(),
+              modulus.ToString().c_str(),
+              GcdAll.ToString().c_str(),
+              ValNn.ToString().c_str());
 
       SolveEquation(
           SolutionFn([this](BigInteger *value) {
