@@ -279,11 +279,13 @@ struct QuadModLL {
       ptrFactorsMod++;
 
       int modulus_length = 0;
-      GetMontgomeryParamsPowerOf2(powerOf2, &modulus_length);
+      MontgomeryParams params =
+        GetMontgomeryParamsPowerOf2(powerOf2, &modulus_length);
       // ptrSolution1 <- 1 / |ValB|
       ComputeInversePower2(pValB->limbs, ptrSolution1->limbs, modulus_length);
       // Compute ptrSolution1 as |ValC| / |ValB|
-      ModMult(ptrSolution1->limbs, pValC->limbs,
+      ModMult(params,
+              ptrSolution1->limbs, pValC->limbs,
               modulus_length, TheModulus,
               ptrSolution1->limbs);
       NumberLengthBytes = modulus_length * (int)sizeof(int);
@@ -570,7 +572,8 @@ struct QuadModLL {
       limb* toConvert;
       // Convert discriminant to Montgomery notation.
       CompressLimbsBigInteger(modulus_length, Aux[5].limbs, base);
-      ModMult(Aux[5].limbs, params.MontgomeryMultR2,
+      ModMult(params,
+              Aux[5].limbs, params.MontgomeryMultR2,
               modulus_length, TheModulus,
               Aux[6].limbs);  // u
       if ((res.prime.limbs[0].x & 7) == 5) {
@@ -589,10 +592,12 @@ struct QuadModLL {
         // At this moment Aux[7].limbs is v in Montgomery notation.
 
         // Step 2.
-        ModMult(Aux[8].limbs, Aux[8].limbs,
+        ModMult(params,
+                Aux[8].limbs, Aux[8].limbs,
                 modulus_length, TheModulus,
                 Aux[9].limbs);  // v^2
-        ModMult(Aux[7].limbs, Aux[9].limbs,
+        ModMult(params,
+                Aux[7].limbs, Aux[9].limbs,
                 modulus_length, TheModulus,
                 Aux[9].limbs);  // i
 
@@ -601,11 +606,13 @@ struct QuadModLL {
         SubtBigNbrModN(Aux[9].limbs, params.MontgomeryMultR1, Aux[9].limbs,
                        TheModulus, modulus_length);
         // v*(i-1)
-        ModMult(Aux[8].limbs, Aux[9].limbs,
+        ModMult(params,
+                Aux[8].limbs, Aux[9].limbs,
                 modulus_length, TheModulus,
                 Aux[9].limbs);
         // u*v*(i-1)
-        ModMult(Aux[6].limbs, Aux[9].limbs,
+        ModMult(params,
+                Aux[6].limbs, Aux[9].limbs,
                 modulus_length, TheModulus,
                 Aux[9].limbs);
         toConvert = Aux[9].limbs;
@@ -644,10 +651,12 @@ struct QuadModLL {
         subtractdivide(&K1, 1, 2);
         ModPow(params, modulus_length, TheModulus,
                Aux[6].limbs, K1.limbs, K1.nbrLimbs, Aux[7].limbs); // x
-        ModMult(Aux[6].limbs, Aux[7].limbs,
+        ModMult(params,
+                Aux[6].limbs, Aux[7].limbs,
                 modulus_length, TheModulus,
                 Aux[8].limbs);         // v
-        ModMult(Aux[8].limbs, Aux[7].limbs,
+        ModMult(params,
+                Aux[8].limbs, Aux[7].limbs,
                 modulus_length, TheModulus,
                 Aux[9].limbs);         // w
         // Step 5
@@ -658,7 +667,8 @@ struct QuadModLL {
           (void)memcpy(Aux[10].limbs, Aux[9].limbs, NumberLengthBytes);
           do {
             k++;
-            ModMult(Aux[10].limbs, Aux[10].limbs,
+            ModMult(params,
+                    Aux[10].limbs, Aux[10].limbs,
                     modulus_length, TheModulus,
                     Aux[10].limbs);
           } while (memcmp(Aux[10].limbs, params.MontgomeryMultR1,
@@ -666,18 +676,22 @@ struct QuadModLL {
           // Step 7
           (void)memcpy(Aux[11].limbs, Aux[5].limbs, NumberLengthBytes); // d
           for (int ctr = 0; ctr < (r - k - 1); ctr++) {
-            ModMult(Aux[11].limbs, Aux[11].limbs,
+            ModMult(params,
+                    Aux[11].limbs, Aux[11].limbs,
                     modulus_length, TheModulus,
                     Aux[11].limbs);
           }
-          ModMult(Aux[11].limbs, Aux[11].limbs,
+          ModMult(params,
+                  Aux[11].limbs, Aux[11].limbs,
                   modulus_length, TheModulus,
                   Aux[5].limbs);   // y
           r = k;
-          ModMult(Aux[8].limbs, Aux[11].limbs,
+          ModMult(params,
+                  Aux[8].limbs, Aux[11].limbs,
                   modulus_length, TheModulus,
                   Aux[8].limbs);    // v
-          ModMult(Aux[9].limbs, Aux[5].limbs,
+          ModMult(params,
+                  Aux[9].limbs, Aux[5].limbs,
                   modulus_length, TheModulus,
                   Aux[9].limbs);     // w
         }
@@ -689,7 +703,8 @@ struct QuadModLL {
       // Convert power to standard notation.
       (void)memset(Aux[4].limbs, 0, NumberLengthBytes);
       Aux[4].limbs[0].x = 1;
-      ModMult(Aux[4].limbs, toConvert,
+      ModMult(params,
+              Aux[4].limbs, toConvert,
               modulus_length, TheModulus,
               toConvert);
       UncompressLimbsBigInteger(modulus_length, toConvert, &SqrtDisc);

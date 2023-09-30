@@ -60,6 +60,9 @@ int BigIntToArray(const BigInt &b, int *arr) {
 
   const int number_length = tmp.nbrLimbs;
   BigInteger2IntArray(number_length, arr, &tmp);
+  // BigInteger2IntArray suggests this can be negative,
+  // meaning a negative number
+  CHECK(*arr >= 0);
   return 1 + *arr;
 }
 

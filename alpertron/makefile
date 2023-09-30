@@ -52,6 +52,10 @@ test.exe : test.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
 	@echo -n "."
 	@$(CXX) $(CXXFLAGS) -o $@ -c $<
 
+gentests.exe : gentests.o $(CC_LIB_OBJECTS) $(CC_LIB)/arcfour.o
+	@echo -n "@"
+	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
+
 clean:
 	rm -f *.o coverage.out *.exe
 

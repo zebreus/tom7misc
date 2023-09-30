@@ -118,7 +118,8 @@ void BigIntModularPower(const MontgomeryParams &params,
   limb tmp5[MAX_LEN];
   CompressLimbsBigInteger(modulus_length, tmp5, base);
   limb tmp6[MAX_LEN];
-  ModMult(tmp5, params.MontgomeryMultR2,
+  ModMult(params,
+          tmp5, params.MontgomeryMultR2,
           modulus_length, modulus,
           tmp6);   // Convert base to Montgomery notation.
   ModPow(params, modulus_length, modulus,
@@ -127,7 +128,8 @@ void BigIntModularPower(const MontgomeryParams &params,
   limb tmp4[MAX_LEN];
   (void)memset(tmp4, 0, lenBytes); // Convert power to standard notation.
   tmp4[0].x = 1;
-  ModMult(tmp4, tmp5,
+  ModMult(params,
+          tmp4, tmp5,
           modulus_length, modulus,
           tmp6);
   UncompressLimbsBigInteger(modulus_length, tmp6, power);
@@ -145,11 +147,13 @@ void ModPow(const MontgomeryParams &params,
   for (int index = nbrGroupsExp - 1; index >= 0; index--) {
     int groupExp = (exp + index)->x;
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
-      ModMult(power, power,
+      ModMult(params,
+              power, power,
               modulus_length, modulus,
               power);
       if (((unsigned int)groupExp & mask) != 0U) {
-        ModMult(power, base,
+        ModMult(params,
+                power, base,
                 modulus_length, modulus,
                 power);
       }
@@ -165,7 +169,8 @@ void ModPowBaseInt(const MontgomeryParams &params,
   for (int index = nbrGroupsExp - 1; index >= 0; index--) {
     int groupExp = (exp + index)->x;
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
-      ModMult(power, power,
+      ModMult(params,
+              power, power,
               modulus_length, modulus,
               power);
       if (((unsigned int)groupExp & mask) != 0U) {
@@ -684,7 +689,8 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   R[modulus_length].x = 0;
   // At this moment R = x^(-1)*2^k
   // 10. R <- MonPro(R, R2)
-  ModMult(R, params.MontgomeryMultR2,
+  ModMult(params,
+          R, params.MontgomeryMultR2,
           modulus_length, modulus,
           R);
   R[modulus_length].x = 0;
@@ -698,17 +704,20 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
     bitCount += modulus_length * BITS_PER_GROUP;
     shLeft = (unsigned int)bitCount % (unsigned int)BITS_PER_GROUP;
     S[bitCount / BITS_PER_GROUP].x = UintToInt(1U << shLeft);
-    ModMult(R, S,
+    ModMult(params,
+            R, S,
             modulus_length, modulus,
             inv);
   } else {
     unsigned int shLeft;
     shLeft = (unsigned int)bitCount % (unsigned int)BITS_PER_GROUP;
     S[bitCount / BITS_PER_GROUP].x = UintToInt(1U << shLeft);
-    ModMult(R, S,
+    ModMult(params,
+            R, S,
             modulus_length, modulus,
             inv);
-    ModMult(inv, params.MontgomeryMultR2,
+    ModMult(params,
+            inv, params.MontgomeryMultR2,
             modulus_length, modulus,
             inv);
   }
@@ -744,14 +753,16 @@ void BigIntModularDivision(const MontgomeryParams &params,
   CompressLimbsBigInteger(modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
   // tmpDen.limbs <- 1 / Den in Montg notation.
-  ModMult(tmp3, params.MontgomeryMultR2,
+  ModMult(params,
+          tmp3, params.MontgomeryMultR2,
           modulus_length, modulus,
           tmp3);
   (void)ModInvBigNbr(params, modulus_length, modulus, tmp3, tmpDen.limbs);
   limb tmp4[MAX_LEN];
   CompressLimbsBigInteger(modulus_length, tmp4, &tmpNum);
   // tmp3 <- Num / Den in standard notation.
-  ModMult(tmpDen.limbs, tmp4,
+  ModMult(params,
+          tmpDen.limbs, tmp4,
           modulus_length, modulus,
           tmp3);
   UncompressLimbsBigInteger(modulus_length, tmp3, quotient);  // Get Num/Den
@@ -765,7 +776,8 @@ void BigIntModularDivision(const MontgomeryParams &params,
 // From Knuth's TAOCP Vol 2, section 4.3.2:
 // If c = result mod odd, d = result mod 2^k:
 // compute result = c + (((d-c)*modinv(odd,2^k))%2^k)*odd
-static void ChineseRemainderTheorem(BigInteger *oddValue,
+static void ChineseRemainderTheorem(const MontgomeryParams &params,
+                                    BigInteger *oddValue,
                                     int modulus_length, const limb *modulus,
                                     limb *resultModOdd,
                                     limb *resultModPower2,
@@ -785,7 +797,8 @@ static void ChineseRemainderTheorem(BigInteger *oddValue,
   limb tmp4[MAX_LEN];
   ComputeInversePower2(oddValue->limbs, tmp4, modulus_length);
   limb tmp5[MAX_LEN];
-  ModMult(tmp4, tmp3,
+  ModMult(params,
+          tmp4, tmp3,
           modulus_length, modulus,
           tmp5);
   (tmp5 + (shRight / BITS_PER_GROUP))->x &=
@@ -839,7 +852,8 @@ void BigIntegerGeneralModularDivision(
   limb tmp3[MAX_LEN];
   CompressLimbsBigInteger(modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
-  ModMult(tmp3, params.MontgomeryMultR2,
+  ModMult(params,
+          tmp3, params.MontgomeryMultR2,
           modulus_length, modulus,
           tmp3);
   // tmp3 <- 1 / Den in Montg notation.
@@ -849,7 +863,8 @@ void BigIntegerGeneralModularDivision(
   // resultModOdd <- Num / Dev in standard notation.
   // PERF: can be smaller than MAX_LEN.
   limb resultModOdd[MAX_LEN];
-  ModMult(tmp3, tmp4,
+  ModMult(params,
+          tmp3, tmp4,
           modulus_length, modulus,
           resultModOdd);
 
@@ -872,10 +887,12 @@ void BigIntegerGeneralModularDivision(
   // resultModPower2 <- Num / Dev modulus 2^k.
   // PERF: here too
   limb resultModPower2[MAX_LEN];
-  ModMult(Num->limbs, tmp4,
+  ModMult(params,
+          Num->limbs, tmp4,
           modulus_length, modulus,
           resultModPower2);
-  ChineseRemainderTheorem(&oddValue,
+  ChineseRemainderTheorem(params,
+                          &oddValue,
                           modulus_length, modulus,
                           resultModOdd, resultModPower2,
                           shRight, quotient);
@@ -1079,19 +1096,53 @@ void SubtBigNbrModN(const limb *num1, const limb *num2, limb *diff,
 }
 
 
+static void endBigModmult(const limb *prodNotAdjusted, int number_length,
+                          const limb *modulus_array, limb *product) {
+  unsigned int cy = 0;
+  // Compute hi(T) - hi(mN)
+  // Where hi(number) is the high half of number.
+  int index = number_length;
+  for (int count = 0; count < number_length; count++) {
+    cy = (unsigned int)(product + index)->x - (unsigned int)(prodNotAdjusted+index)->x -
+      (cy >> BITS_PER_GROUP);
+    (product + count)->x = UintToInt(cy & MAX_VALUE_LIMB);
+    index++;
+  }
+
+  // Check whether this number is less than zero.
+  if ((int)cy < 0) {
+    // The number is less than zero. Add TestNbr.
+    cy = 0;
+    for (int count = 0; count < number_length; count++) {
+      cy = (unsigned int)(product + count)->x + (unsigned int)modulus_array[count].x +
+        (cy >> BITS_PER_GROUP);
+      (product + count)->x = UintToInt(cy & MAX_VALUE_LIMB);
+    }
+  }
+}
 
 // PERF: Can use montgomery multiplication here; probably should add this
 // to BigInt or bigint utils.
 //   https://en.wikipedia.org/wiki/Montgomery_modular_multiplication
-void ModMult(const limb* factor1, const limb* factor2,
+void ModMult(const MontgomeryParams &params,
+             const limb* factor1, const limb* factor2,
              int number_length, const limb *modulus_array,
              limb* product) {
-  BigInt f1 = LimbsToBigInt(factor1, number_length);
-  BigInt f2 = LimbsToBigInt(factor2, number_length);
+  if (number_length <= 1) {
+    BigInt f1 = LimbsToBigInt(factor1, number_length);
+    BigInt f2 = LimbsToBigInt(factor2, number_length);
 
-  BigInt modulus = LimbsToBigInt(modulus_array, number_length);
-  // Hmm, no BigInt modular multiplication :/
-  BigInt r = BigInt::Mod(BigInt::Times(f1, f2), modulus);
+    BigInt modulus = LimbsToBigInt(modulus_array, number_length);
+    // Hmm, no BigInt modular multiplication :/
+    BigInt r = BigInt::Mod(BigInt::Times(f1, f2), modulus);
+    BigIntToFixedLimbs(r, number_length, product);
+  } else {
+    // In Montgomery form.
+    limb aux[MAX_LEN], aux2[MAX_LEN];
+    multiply(factor1, factor2, product, number_length, nullptr);
+    multiply(product, params.MontgomeryMultN, aux, number_length, nullptr);
+    multiply(aux, modulus_array, aux2, number_length, nullptr);
+    endBigModmult(aux2, number_length, modulus_array, product);
+  }
 
-  BigIntToFixedLimbs(r, number_length, product);
 }

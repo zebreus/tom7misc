@@ -410,8 +410,55 @@ void subtractdivide(BigInteger *pBigInt, int subt, int divisor)
   CHECK(pBigInt->nbrLimbs > 0);
 }
 
+// XXXX delete
+static void reference_addbigint(BigInteger *pResult, int addend)
+{
+  int intAddend = addend;
+  enum eSign sign;
+  int nbrLimbs = pResult->nbrLimbs;
+  assert(nbrLimbs >= 1);
+  limb *pResultLimbs = pResult->limbs;
+  sign = pResult->sign;
+  if (intAddend < 0)
+  {
+    intAddend = -intAddend;
+    if (sign == SIGN_POSITIVE)
+    {
+      sign = SIGN_NEGATIVE;
+    }
+    else
+    {
+      sign = SIGN_POSITIVE;
+    }
+  }
+  if (sign == SIGN_POSITIVE)
+  {   // Add addend to absolute value of pResult.
+    addToAbsValue(pResultLimbs, &nbrLimbs, intAddend);
+  }
+  else
+  {  // Subtract addend from absolute value of pResult.
+    if (nbrLimbs == 1)
+    {
+      pResultLimbs->x -= intAddend;
+      if (pResultLimbs->x < 0)
+      {
+        pResultLimbs->x = -pResultLimbs->x;
+        BigIntNegate(pResult, pResult);
+      }
+    }
+    else
+    {     // More than one limb.
+      subtFromAbsValue(pResultLimbs, &nbrLimbs, intAddend);
+    }
+  }
+  pResult->nbrLimbs = nbrLimbs;
+}
+
+
 void addbigint(BigInteger *pResult, int addend) {
   BigInt a = BigInt::Plus(BigIntegerToBigInt(pResult), addend);
+  reference_addbigint(pResult, addend);
+  CHECK(BigInt::Eq(a, BigIntegerToBigInt(pResult)));
   BigIntToBigInteger(a, pResult);
 }
 
@@ -520,6 +567,12 @@ void UncompressLimbsBigInteger(int number_length,
     }
     bigint->nbrLimbs = nbrLimbs;
   }
+
+  // Port note: This didn't originally set the sign, but I think
+  // that's just a bug. Note that a static BigInteger has positive
+  // sign (0).
+  bigint->sign = SIGN_POSITIVE;
+
   CHECK(bigint->nbrLimbs > 0);
 }
 

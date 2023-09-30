@@ -653,6 +653,7 @@ struct Quad {
                             const BigInt &coeffIndep,
                             const BigInt &modulus_in) {
 
+    if (VERBOSE)
     fprintf(stderr, "[SQME] %s %s %s %s\n",
             coeffQuadr.ToString().c_str(),
             coeffLinear.ToString().c_str(),
@@ -711,7 +712,6 @@ struct Quad {
         // must succeed; is < 5 and non-negative
         const int n = GcdAll.ToInt().value();
         for (int ctr = 0; ctr < n; ctr++) {
-          fprintf(stderr, "X %d\n", __LINE__);
           SolutionX(BigInt(ctr), modulus);
         }
 
@@ -812,6 +812,7 @@ struct Quad {
       // CHECK(modulus == BigIntegerToBigInt(&this->modulus));
       BigIntToBigInteger(modulus, &this->modulus);
 
+      if (VERBOSE)
       fprintf(stderr, "[Call SolveEq] %s %s %s %s %s %s\n",
               coeff_quadr.ToString().c_str(),
               coeff_linear.ToString().c_str(),
@@ -829,6 +830,7 @@ struct Quad {
               [this](int factorIndex, int expon,
                      const BigInteger *pIncrement,
                      const QuadModLLResult *qmllr) {
+                if (VERBOSE)
                 fprintf(stderr,
                         "ssmp %d %d %s\n",
                         factorIndex, expon,
