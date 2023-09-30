@@ -188,7 +188,6 @@ static void TestPrimeFactors() {
 static void BenchDiv2() {
   double total_sec = 0.0;
   const int64 iters = 100;
-  const BigInt zero(0);
   const BigInt two(2);
   for (int i = 0; i < iters; i++) {
     BigInt x = BigInt::Pow(two, 30000);
@@ -196,14 +195,14 @@ static void BenchDiv2() {
 
     for (;;) {
       const auto [q, r] = BigInt::QuotRem(x, two);
-      if (BigInt::Eq(r, zero)) {
+      if (BigInt::Eq(r, 0)) {
         x = q;
       } else {
         break;
       }
     }
 
-    CHECK(BigInt::Eq(x, BigInt(1)));
+    CHECK(BigInt::Eq(x, 1));
 
     total_sec += t.Seconds();
     if (i % 10 == 0) {
@@ -436,6 +435,15 @@ static void TestCMod() {
   }
 }
 
+static void TestSwap() {
+  BigInt a("11223344556677889900");
+  BigInt b("55555555555555555555");
+
+  std::swap(a, b);
+  CHECK(a.ToString() == "55555555555555555555");
+  CHECK(b.ToString() == "11223344556677889900");
+}
+
 int main(int argc, char **argv) {
   printf("Start.\n");
   fflush(stdout);
@@ -469,6 +477,8 @@ int main(int argc, char **argv) {
 
   TestSqrt();
   TestJacobi();
+
+  TestSwap();
 
   printf("OK\n");
 }

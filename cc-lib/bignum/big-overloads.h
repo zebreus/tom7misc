@@ -183,6 +183,10 @@ inline bool operator ==(const BigInt &a, const BigInt &b) {
   return BigInt::Eq(a, b);
 }
 
+inline bool operator !=(const BigInt &a, const BigInt &b) {
+  return !BigInt::Eq(a, b);
+}
+
 inline bool operator ==(const BigInt &a, int64_t b) {
   return BigInt::Eq(a, b);
 }
