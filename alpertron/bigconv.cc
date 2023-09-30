@@ -72,6 +72,8 @@ BigInt ArrayToBigInt(const int *arr) {
 }
 
 BigInt BigIntegerToBigInt(const BigInteger *g) {
+  CHECK(g->nbrLimbs > 0) << g->nbrLimbs << " limbs [" <<
+    StringPrintf("%04x", g->limbs[0].x) << "]";
   BigInt out;
   mpz_import(out.GetRep(), g->nbrLimbs,
              // words are little-endian
@@ -185,4 +187,8 @@ string LongNum(const BigInt &a) {
     CHECK(!out.empty());
     return sign + num + "," + out;
   }
+}
+
+std::string BigIntegerToString(const BigInteger *g) {
+  return BigIntegerToBigInt(g).ToString();
 }

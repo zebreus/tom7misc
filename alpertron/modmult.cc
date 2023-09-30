@@ -889,6 +889,7 @@ BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
   BigIntToBigInteger(den, &d);
   BigIntToBigInteger(modulus, &m);
   BigIntegerGeneralModularDivision(&n, &d, &m, &result);
+  CHECK(result.nbrLimbs > 0);
   return BigIntegerToBigInt(&result);
 }
 

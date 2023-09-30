@@ -43,4 +43,6 @@ void BigIntToFixedLimbs(const BigInt &b, size_t num_limbs, limb *limbs);
 
 std::string LongNum(const BigInt &a);
 
+std::string BigIntegerToString(const BigInteger *g);
+
 #endif

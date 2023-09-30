@@ -58,6 +58,8 @@ enum eSign {
 };
 
 typedef struct BigInteger {
+  // PERF unnecessary
+  BigInteger() { nbrLimbs = 0; limbs[0].x = 0xDEAD; }
   int nbrLimbs;
   enum eSign sign;
   limb limbs[MAX_LEN];
