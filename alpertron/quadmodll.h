@@ -21,11 +21,6 @@
 #include "bignbr.h"
 #include <functional>
 
-using ShowSolutionsModPrimeFn = std::function<void(int factorIndex, int expon,
-                                                   const BigInteger* pIncrement)>;
-using SolutionFn = std::function<void(BigInteger *value)>;
-using ShowNoSolsModPrimeFn = std::function<void(int expon)>;
-
 struct QuadModLLResult {
   BigInteger Solution1[400];
   BigInteger Solution2[400];
@@ -33,6 +28,13 @@ struct QuadModLLResult {
 
   BigInteger prime;
 };
+
+using ShowSolutionsModPrimeFn =
+  std::function<void(int factorIndex, int expon,
+                     const BigInteger* pIncrement,
+                     const QuadModLLResult *)>;
+using SolutionFn = std::function<void(BigInteger *value)>;
+using ShowNoSolsModPrimeFn = std::function<void(int expon)>;
 
 void SolveEquation(
     const SolutionFn &solutionCback,

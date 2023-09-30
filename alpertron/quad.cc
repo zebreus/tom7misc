@@ -591,7 +591,8 @@ struct Quad {
   }
 
   void ShowSolutionsModPrime(int factorIndex, int expon,
-                             const BigInteger *pIncrement) {
+                             const BigInteger *pIncrement,
+                             const QuadModLLResult *qmllr) {
     bool last;
     BigInteger primePower;
     if (!teach) {
@@ -599,10 +600,10 @@ struct Quad {
     }
 
     // Get value of prime power.
-    (void)BigIntPowerIntExp(&qmllr.prime, expon, &primePower);
+    (void)BigIntPowerIntExp(&qmllr->prime, expon, &primePower);
     intToBigInteger(&ValH, 0);
     showText("<p>Solutions modulo ");
-    ShowNumber(&qmllr.prime);
+    ShowNumber(&qmllr->prime);
     if (expon != 1) {
       if (output != nullptr)
         StringAppendF(output, "<sup>%d</sup>", expon);
@@ -610,16 +611,16 @@ struct Quad {
     showText(": ");
     do {
 
-      fprintf(stderr, "sol1[%d] (%d,%d) sol2[%d] (%d,%d)\n",
+      fprintf(stderr, "sol1[%d] (%d,%08x) sol2[%d] (%d,%08x)\n",
               factorIndex,
-              qmllr.Solution1[factorIndex].nbrLimbs,
-              qmllr.Solution1[factorIndex].limbs[0].x,
+              qmllr->Solution1[factorIndex].nbrLimbs,
+              qmllr->Solution1[factorIndex].limbs[0].x,
               factorIndex,
-              qmllr.Solution2[factorIndex].nbrLimbs,
-              qmllr.Solution2[factorIndex].limbs[0].x);
+              qmllr->Solution2[factorIndex].nbrLimbs,
+              qmllr->Solution2[factorIndex].limbs[0].x);
 
-      bool oneSolution = BigIntEqual(&qmllr.Solution1[factorIndex],
-                                     &qmllr.Solution2[factorIndex]);
+      bool oneSolution = BigIntEqual(&qmllr->Solution1[factorIndex],
+                                     &qmllr->Solution2[factorIndex]);
       BigIntAdd(&ValH, pIncrement, &ValI);   // Next value.
       last = BigIntEqual(&primePower, &ValI);
       if (!BigIntIsZero(&ValH)) {
@@ -630,7 +631,7 @@ struct Quad {
         }
       }
       BigInteger SolJ;
-      BigIntAdd(&ValH, &qmllr.Solution1[factorIndex], &SolJ);
+      BigIntAdd(&ValH, &qmllr->Solution1[factorIndex], &SolJ);
       ShowNumber(&SolJ);
       if (!oneSolution) {
         if (last) {
@@ -638,7 +639,7 @@ struct Quad {
         } else {
           showText(", ");
         }
-        BigIntAdd(&ValH, &qmllr.Solution2[factorIndex], &SolJ);
+        BigIntAdd(&ValH, &qmllr->Solution2[factorIndex], &SolJ);
         ShowNumber(&SolJ);
       }
       CopyBigInt(&ValH, &ValI);
@@ -811,12 +812,14 @@ struct Quad {
             }),
           ShowSolutionsModPrimeFn(
               [this](int factorIndex, int expon,
-                     const BigInteger *pIncrement) {
+                     const BigInteger *pIncrement,
+                     const QuadModLLResult *qmllr) {
                 fprintf(stderr,
                         "ssmp %d %d %s\n",
                         factorIndex, expon,
                         BigIntegerToBigInt(pIncrement).ToString().c_str());
-                this->ShowSolutionsModPrime(factorIndex, expon, pIncrement);
+                this->ShowSolutionsModPrime(factorIndex, expon, pIncrement,
+                                            qmllr);
               }),
           ShowNoSolsModPrimeFn([this](int expon) {
               this->NoSolsModPrime(expon);
