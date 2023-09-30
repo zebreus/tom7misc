@@ -1440,10 +1440,8 @@ struct Quad {
       showText("<p><var>t</var> = <var>T</var> &minus; <var>");
       showText(ExchXY ? "e" : "d");
       showText("</var> ");
-      BigInt H = U;
 
-      // CopyBigInt(&ValH, &ValU);
-      if (H >= 0) {
+      if (U >= 0) {
         showText("+ ");
       } else {
         showText("&minus; ");
@@ -1451,12 +1449,10 @@ struct Quad {
 
       if (BigInt::Abs(U) != 1) {
         // Absolute value of U is not 1.
-        // ValH.sign = SIGN_POSITIVE;
-        ShowBigInt(BigInt::Abs(H));
+        ShowBigInt(BigInt::Abs(U));
       }
 
       showText(" &#8290<var>k</var> = ");
-      // BigIntSubt(value, &ValD, &ValH);
       ShowLinInd(U, Value - D, "<var>k</var>");
       showEqNbr(equationNbr);
       showText(" (");
@@ -1465,18 +1461,11 @@ struct Quad {
 
 
     BigInt V = BigIntegerToBigInt(&ValV);
-    // BigInt R = BigIntegerToBigInt(&ValR);
     BigInt I = BigIntegerToBigInt(&ValI);
 
-
     BigInt R = ((Value * Value) - V) / U;
-    // (void)BigIntMultiply(value, value, &bigTmp);
-    // BigIntSubt(&bigTmp, &ValV, &bigTmp);
-    // (void)BigIntDivide(&bigTmp, &ValU, &ValR);
     // Compute ValS as 2*T
     BigInt S = Value << 1;
-    // BigIntAdd(value, value, &ValS);
-
 
     if (teach) {
       showText("<p>Replacing <var>t</var> in equation");
@@ -1498,7 +1487,6 @@ struct Quad {
       ShowTDiscrZero(ExchXY, A, B);
       showText(" = ");
       BigInt H = Value - D;
-      // BigIntSubt(value, &ValD, &ValH);
       ShowLinInd(U, H, "<var>k</var>");
       showText("</p>");
       BigInt K = A << 1;
@@ -1511,21 +1499,14 @@ struct Quad {
         showText(":</p><p>");
         ShowLinInd(K, BigInt(0), ptrVarNameX);
         showText(" = ");
-               // Quadratic coeff = -bU.
+        // Quadratic coeff = -bU.
         BigInt J = -B * U;
-        // BigInteger TmpJ;
-        // (void)BigIntMultiply(&ValB, &ValU, &TmpJ);
-        // BigIntChSign(&TmpJ);
         BigInt BigTmp = B * S;
-        // (void)BigIntMultiply(&ValB, &ValS, &bigTmp);
         // Linear coeff = U - bS.
         I = U - BigTmp;
-        // BigIntSubt(&ValU, &bigTmp, &ValI);
         BigTmp = B * R;
-        // (void)BigIntMultiply(&ValB, &ValR, &bigTmp);
         // Independent coeff = H - bR.
         H -= BigTmp;
-        // BigIntSubt(&ValH, &bigTmp, &ValH);
         PrintQuad(J, I, H, "<var>k</var>", nullptr);
         showText("</p>");
       }
@@ -1533,9 +1514,6 @@ struct Quad {
       // if independent coefficient is not multiple of GCD(I, K) then show that
       // there are no solutions. Note that J is always multiple of K.
       BigInt J = I * K;
-      // BigInteger TmpJ;
-      // BigIntGcd(&ValI, &ValK, &TmpJ);
-      // (void)BigIntRemainder(&ValH, &TmpJ, &bigTmp);
       CHECK(J != 0);
       if (H % J != 0) {
         showText("<p>The independent coefficient ");
@@ -1550,27 +1528,17 @@ struct Quad {
     // Find k from the congruence
     //  jk = K (mod z) where j = u-bs, K = d+br-T, z = 2a
     // Compute j <- u-bs
-    // (void)BigIntMultiply(&ValB, &ValS, &bigTmp);
     BigInt J = U - B * S;
-    // BigInteger ValJ;
-    // BigIntSubt(&ValU, &bigTmp, &ValJ);
     // Compute K <- d+br-T
-    // (void)BigIntMultiply(&ValB, &ValR, &bigTmp);
-    // BigIntAdd(&ValD, &bigTmp, &bigTmp);
     BigInt K = (D - B * R) - Value;
-    // BigIntSubt(&bigTmp, value, &ValK);
     // Compute z <- 2a
     BigInt Z = A << 1;
-    // BigIntAdd(&ValA, &ValA, &ValZ);
     // If K is not multiple of gcd(j, z) there is no solution.
     BigInt BigTmp = BigInt::GCD(J, Z);
-    // BigIntGcd(&ValJ, &ValZ, &bigTmp);
-    // (void)BigIntRemainder(&ValK, &bigTmp, &U1);
     CHECK(BigTmp != 0);
     if (K % BigTmp != 0) {
       return;
     }
-
 
     // Compute g = gcd(j, K, z), then recalculate j <- j/g, K <- K/g, z <- z/g
     BigInt U1 = BigInt::GCD(BigTmp, K);
@@ -1582,15 +1550,9 @@ struct Quad {
     if (U1 != 0) Z /= U1;
     // Use positive sign for modulus.
     Z = BigInt::Abs(Z);
-    // BigIntGcd(&bigTmp, &ValK, &U1);
-    // (void)BigIntDivide(&ValJ, &U1, &U2);
-    // (void)BigIntDivide(&ValK, &U1, &U3);
-    // (void)BigIntDivide(&ValZ, &U1, &ValZ);
-    // ValZ.sign = SIGN_POSITIVE;
 
-
-    // Can just use Mod?
     if (Z != 0) U2 %= Z;
+    // PERF: Can just use Mod?
     if (U2 < 0) U2 += Z;
 
     if (Z != 0) U3 %= Z;
