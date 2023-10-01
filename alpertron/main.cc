@@ -24,14 +24,11 @@
 #include "bigconv.h"
 
 int main(int argc, char* argv[]) {
-  if (argc != 8) {
-    (void)printf("Enter 6 coefficients and teach flag (0 or 1):\n"
-      "   x^2, xy, y^2, x, y, const teach.\n");
+  if (argc != 7) {
+    (void)printf("Enter 6 coefficients:\n"
+                 "   Ax^2 + Bxy + Cy^2 + Dx + Ey + F = 0\n");
     return 1;
   }
-
-  bool teach = argv[7][0] == '1';
-  // quadText(argv[1], argv[2], argv[3], argv[4], argv[5], argv[6]);
 
   BigInt a(argv[1]);
   BigInt b(argv[2]);
@@ -49,7 +46,7 @@ int main(int argc, char* argv[]) {
          f.ToString().c_str());
 
   std::string output;
-  QuadBigInt(teach, a, b, c, d, e, f, &output);
+  QuadBigInt(a, b, c, d, e, f, &output);
   (void)printf("%s\n", output.c_str());
 
   return 0;

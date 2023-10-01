@@ -32,6 +32,8 @@
 
 static constexpr bool VERBOSE = false;
 
+static constexpr bool teach = false;
+
 enum eLinearSolution {
   SOLUTION_FOUND = 0,
   NO_SOLUTIONS,
@@ -97,7 +99,6 @@ struct Quad {
   BigInteger Ylin;
   int nbrFactors;
   bool solFound;
-  bool teach = true;
   char also;
   bool ExchXY;
   const char *divgcd;
@@ -4148,12 +4149,10 @@ struct Quad {
 };
 
 
-void QuadBigInt(bool t,
-                const BigInt &a, const BigInt &b, const BigInt &c,
+void QuadBigInt(const BigInt &a, const BigInt &b, const BigInt &c,
                 const BigInt &d, const BigInt &e, const BigInt &f,
                 std::string *output) {
   std::unique_ptr<Quad> quad(new Quad);
-  quad->teach = t;
   quad->output = output;
   quad->QuadBigInt(a, b, c, d, e, f);
 }

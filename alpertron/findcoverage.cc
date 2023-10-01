@@ -14,8 +14,9 @@
 #include "subprocess.h"
 #include "ansi.h"
 #include "timer.h"
+#include "periodically.h"
 
-#define MAGNITUDE 256
+#define MAGNITUDE 65536
 
 using namespace std;
 
@@ -50,6 +51,8 @@ int main(int argc, char **argv) {
       return r;
     };
 
+  Periodically stats_per(5.0);
+
   double total_sec = 0.0;
   for (int tries = 1; true; tries++) {
 
@@ -81,7 +84,7 @@ int main(int argc, char **argv) {
       printf(AGREY("(no solution known)") "\n");
     }
 
-    string cmd = StringPrintf("quad.exe %s %s %s %s %s %s 0",
+    string cmd = StringPrintf("quad.exe %s %s %s %s %s %s",
                               a.ToString().c_str(),
                               b.ToString().c_str(),
                               c.ToString().c_str(),
@@ -102,6 +105,16 @@ int main(int argc, char **argv) {
         printf("Ran %d in %.3f sec\n", tries, total_sec);
         return 0;
       }
+    }
+
+    if (stats_per.ShouldRun()) {
+      // Maybe some kind of histogram would be better here, since
+      // there can be a very wide range in performance depending
+      // on the arguments.
+      double spt = total_sec / tries;
+      printf(ABLUE("%d") " tries in %s (%s/ea)\n",
+             tries, ANSI::Time(total_sec).c_str(),
+             ANSI::Time(spt).c_str());
     }
   }
 
