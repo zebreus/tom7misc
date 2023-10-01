@@ -33,7 +33,7 @@
 #include "numeric-player.h"
 #include "letter-player.h"
 #include "eniac-player.h"
-#include "nneval-player.h"
+#include "grad-player.h"
 
 #define TESTING true
 
@@ -61,7 +61,8 @@ using Move = Position::Move;
 using namespace std;
 
 // static constexpr const char *TOURNAMENT_FILE = "tournament.db";
-static constexpr const char *TOURNAMENT_FILE = "eval-tournament.db";
+// static constexpr const char *TOURNAMENT_FILE = "eval-tournament.db";
+static constexpr const char *TOURNAMENT_FILE = "grad-tournament.db";
 
 // This used to be round-robin style, but since the work grows
 // quadratically, it got to the point that running even a single
@@ -76,12 +77,50 @@ static constexpr int SELFPLAY_TARGET = 5;
 
 typedef Player *(*Entrant)();
 
-static Player *NNEval1() { return NNEval(1); }
-static Player *NNEval2() { return NNEval(2); }
-static Player *NNEval3() { return NNEval(3); }
-static Player *NNEval4() { return NNEval(4); }
-static Player *NNEval5() { return NNEval(5); }
-static Player *NNEval6() { return NNEval(6); }
+static Player *GradSigmoid() {
+  return GradEval("sigmoid", "../grad/chess-sigmoid/chess.val");
+}
+static Player *GradTanh() {
+  return GradEval("tanh", "../grad/chess-sigmoid/chess.val");
+}
+static Player *GradLeaky() {
+  return GradEval("leaky", "../grad/chess-leaky/chess.val");
+}
+static Player *GradGrad1() {
+  return GradEval("grad1", "../grad/chess-grad1/chess.val");
+}
+static Player *GradIdent() {
+  return GradEval("identity", "../grad/chess-identity/chess.val");
+}
+static Player *GradDownshift() {
+  return GradEval("downshift2", "../grad/chess-downshift2/chess.val");
+}
+static Player *GradPlus64() {
+  return GradEval("plus64", "../grad/chess-plus64/chess.val");
+}
+
+static Player *GradSigmoidFix() {
+  return GradEvalFix("sigmoid", "../grad/chess-sigmoid/chess.val");
+}
+static Player *GradTanhFix() {
+  return GradEvalFix("tanh", "../grad/chess-sigmoid/chess.val");
+}
+static Player *GradLeakyFix() {
+  return GradEvalFix("leaky", "../grad/chess-leaky/chess.val");
+}
+static Player *GradGrad1Fix() {
+  return GradEvalFix("grad1", "../grad/chess-grad1/chess.val");
+}
+static Player *GradIdentFix() {
+  return GradEvalFix("identity", "../grad/chess-identity/chess.val");
+}
+static Player *GradDownshiftFix() {
+  return GradEvalFix("downshift2", "../grad/chess-downshift2/chess.val");
+}
+static Player *GradPlus64Fix() {
+  return GradEvalFix("plus64", "../grad/chess-plus64/chess.val");
+}
+
 
 [[maybe_unused]] static Player *Stockfish1M_64512() {
   return new BlendRandom<64512>(Stockfish1M());
@@ -101,6 +140,19 @@ static Player *NNEval6() { return NNEval(6); }
 [[maybe_unused]] static Player *Stockfish1M_32768() {
   return new BlendRandom<32768>(Stockfish1M());
 }
+
+// added for Grad, this is 62.5% stockfish (half-way
+// between 50 and 75)
+[[maybe_unused]] static Player *Stockfish1M_24576() {
+  return new BlendRandom<24576>(Stockfish1M());
+}
+
+// added for Grad, this is 37.5% stockfish (half-way
+// between 25 and 50)
+[[maybe_unused]] static Player *Stockfish1M_40960() {
+  return new BlendRandom<40960>(Stockfish1M());
+}
+
 [[maybe_unused]] static Player *Stockfish1M_16384() {
   return new BlendRandom<16384>(Stockfish1M());
 }
@@ -267,7 +319,7 @@ const vector<Entrant> &GetEntrants() {
   return *entrants;
 }
 #else
-// mini-tournament for nn-eval players
+// mini-tournament for grad paper players
 const vector<Entrant> &GetEntrants() {
   static vector<Entrant> *entrants =
     new vector<Entrant>{
@@ -277,12 +329,33 @@ const vector<Entrant> &GetEntrants() {
                         Random,
                         SinglePlayer,
 
+                        /*
+                          // NN evaluation functions from
+                          // pluginvert experiments
                         NNEval1,
                         NNEval2,
                         NNEval3,
                         NNEval4,
                         NNEval5,
                         NNEval6,
+                        */
+
+                        GradSigmoid,
+                        GradTanh,
+                        GradLeaky,
+                        GradGrad1,
+                        GradIdent,
+                        GradDownshift,
+                        GradPlus64,
+
+                        // "Fixed" versions wrt mate
+                        GradSigmoidFix,
+                        GradTanhFix,
+                        GradLeakyFix,
+                        GradGrad1Fix,
+                        GradIdentFix,
+                        GradDownshiftFix,
+                        GradPlus64Fix,
 
                         Chessmaster1,
 
@@ -292,7 +365,32 @@ const vector<Entrant> &GetEntrants() {
                         Stockfish1M_64512,
                         Stockfish1M_63488,
                         Stockfish1M_61440,
+                        Stockfish1M_57344,
+                        Stockfish1M_49152,
                         Stockfish1M_32768,
+
+                        // a bit more resolution...
+                        Stockfish1M_16384,
+                        Stockfish1M_24576,
+                        Stockfish1M_40960,
+
+                        /*
+                        Stockfish1M_64512,
+                        Stockfish1M_63488,
+                        Stockfish1M_61440,
+                        Stockfish1M_57344,
+                        Stockfish1M_49152,
+                        Stockfish1M_32768,
+                        Stockfish1M_16384,
+                        Stockfish1M_8192,
+                        Stockfish1M_4096,
+                        Stockfish1M_2048,
+                        Stockfish1M_1024,
+                        Stockfish1M_512,
+                        Stockfish1M_256,
+                        Stockfish1M_128,
+                        Stockfish1M_64,
+                        */
   };
   return *entrants;
 }

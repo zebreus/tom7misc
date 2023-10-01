@@ -26,7 +26,8 @@ using Move = Position::Move;
 using int64 = int64_t;
 
 // static constexpr const char *TOURNAMENT_FILE = "tournament.db";
-static constexpr const char *TOURNAMENT_FILE = "eval-tournament.db";
+// static constexpr const char *TOURNAMENT_FILE = "eval-tournament.db";
+static constexpr const char *TOURNAMENT_FILE = "grad-tournament.db";
 
 static constexpr double ELO_START = 1000.0;
 
@@ -375,10 +376,18 @@ static void MakeImage(
   const int HEIGHT = CELL * num_entrants + MARGIN_TOP;
   rgba.resize(WIDTH * HEIGHT * 4);
   for (int i = 0; i < WIDTH * HEIGHT; i++) {
-    rgba[i * 4 + 0] = 0x00;
-    rgba[i * 4 + 1] = 0x00;
-    rgba[i * 4 + 2] = 0x00;
-    rgba[i * 4 + 3] = 0xFF;
+    static constexpr bool BLACK_BG = true;
+    if (BLACK_BG) {
+      rgba[i * 4 + 0] = 0x00;
+      rgba[i * 4 + 1] = 0x00;
+      rgba[i * 4 + 2] = 0x00;
+      rgba[i * 4 + 3] = 0xFF;
+    } else {
+      rgba[i * 4 + 0] = 0xFF;
+      rgba[i * 4 + 1] = 0xFF;
+      rgba[i * 4 + 2] = 0xFF;
+      rgba[i * 4 + 3] = 0xFF;
+    }
   }
 
   auto BlendQuarter = [&rgba, WIDTH, HEIGHT](int x, int y,
@@ -712,8 +721,8 @@ int main(int argc, char **argv) {
     const int sample_n =
       GetMinMatchups(num_entrants, outcomes, &min_white, &min_black);
     ArcFour rc(StringPrintf("sample.%lld", (int64)time(nullptr)));
-    printf("Fewest matchups in %s vs %s.\n",
-           names[min_white].c_str(), names[min_black].c_str());
+    printf("Fewest matchups in %s vs %s (%d).\n",
+           names[min_white].c_str(), names[min_black].c_str(), sample_n);
     printf("Sample %d from each cell...\n", sample_n);
     for (int white = 0; white < num_entrants; white++) {
       for (int black = 0; black < num_entrants; black++) {
@@ -908,7 +917,9 @@ int main(int argc, char **argv) {
     {"stockfish1m_r4096", "stockfish 93.7%"},
     {"stockfish1m_r8192", "stockfish 87.5%"},
     {"stockfish1m_r16384", "stockfish 75%"},
+    {"stockfish1m_r24576", "stockfish 62.5%"},
     {"stockfish1m_r32768", "stockfish 50%"},
+    {"stockfish1m_r40960", "stockfish 37.5%"},
     {"stockfish1m_r49152", "stockfish 25%"},
     {"stockfish1m_r57344", "stockfish 12.5%"},
     {"stockfish1m_r61440", "stockfish 6.2%"},
@@ -926,7 +937,9 @@ int main(int argc, char **argv) {
     {"stockfish1m_r4096", "93.7%"},
     {"stockfish1m_r8192", "87.5%"},
     {"stockfish1m_r16384", "75%"},
+    {"stockfish1m_r24576", "62.5%"},
     {"stockfish1m_r32768", "50%"},
+    {"stockfish1m_r40960", "37.5%"},
     {"stockfish1m_r49152", "25%"},
     {"stockfish1m_r57344", "12.5%"},
     {"stockfish1m_r61440", "6.2%"},
@@ -1142,6 +1155,19 @@ int main(int argc, char **argv) {
 
   fprintf(f, "<div id=\"detail\"></div>\n");
   fclose(f);
+
+  #if 0
+  // Write tex for grad project.
+  string tex;
+  for (int i : by_elo) {
+    string name = names[i];
+    StringAppendF(&tex,
+                  "%s & %.1f \\\\\n",
+                  name.c_str(),
+                  elos[i].median,
+  }
+  Util::WriteFile("elo.tex", tex);
+  #endif
 
   return 0;
 }

@@ -1,6 +1,6 @@
 
 default: chess_test.exe tournament.exe longest.exe
-all: chess_test.exe rungames.exe tournament.exe elo.exe longest.exe pairs.exe chessmaster.exe makeperm.exe maketable.exe chessreduce.exe testplayer.exe elo.exe makecommonbook.exe packhisto.exe repack.exe validatepack.exe makealmanac.exe bigrat_test.exe
+all: chess_test.exe rungames.exe tournament.exe longest.exe pairs.exe chessmaster.exe makeperm.exe maketable.exe chessreduce.exe testplayer.exe elo.exe makecommonbook.exe packhisto.exe repack.exe validatepack.exe makealmanac.exe bigrat_test.exe
 
 # Over all games.
 ALL2013= stats-all/stats-2013-01.txt stats-all/stats-2013-02.txt stats-all/stats-2013-03.txt stats-all/stats-2013-04.txt stats-all/stats-2013-05.txt stats-all/stats-2013-06.txt stats-all/stats-2013-07.txt stats-all/stats-2013-08.txt stats-all/stats-2013-09.txt stats-all/stats-2013-10.txt stats-all/stats-2013-11.txt stats-all/stats-2013-12.txt
@@ -139,7 +139,7 @@ PLATFORMCFLAGS= -DPSS_STYLE=2 -D__MINGW32__ -DHAVE_ALLOCA -D_WIN32_WINNT=0x0602 
 PLATFORMLINK=-lwinpthread -lpsapi -L. -static libz.a -Wl,--subsystem,console -L.
 
 
-INCLUDES=-I "../cc-lib" -I "../cc-lib/city" -I "../cc-lib/re2" -I ../fceulib
+INCLUDES=-I. -I "../cc-lib" -I "../cc-lib/city" -I "../cc-lib/re2" -I ../fceulib
 CPPFLAGS=-m64 $(INCLUDES) $(PLATFORMCFLAGS) $(SYMBOLS)
 
 # without static, can't find lz or lstdcxx maybe?
@@ -196,7 +196,7 @@ maketable.exe : maketable.o chess.o $(CCLIB_OBJECTS)
 makeperm.exe : makeperm.o chess.o $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-tournament.exe : tournament-db.o tournament.o chess.o player.o almanac-player.o  packedgame.o pack.o common.o stockfish-player.o player-util.o uci-player.o stockfish.o subprocess.o chessmaster.o headless-graphics.o all-fate-data.o fate-player.o blind-player.o blind/unblinder.o blind/unblinder-mk0.o numeric-player.o letter-player.o eniac.o eniac-player.o nneval-player.o ../pluginvert/network.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
+tournament.exe : tournament-db.o tournament.o chess.o player.o almanac-player.o  packedgame.o pack.o common.o stockfish-player.o player-util.o uci-player.o stockfish.o subprocess.o chessmaster.o headless-graphics.o all-fate-data.o fate-player.o blind-player.o blind/unblinder.o blind/unblinder-mk0.o numeric-player.o letter-player.o eniac.o eniac-player.o grad-player.o grad-player.o ../grad/network.o $(CCLIB_OBJECTS) $(FCEULIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 elo.exe : elo.o tournament-db.o chess.o headless-graphics.o $(CCLIB_OBJECTS)
@@ -214,7 +214,7 @@ chessmaster.exe : chess.o player.o player-util.o chessmaster.o chessmaster-main.
 bigrat_test.exe : bigrat_test.o $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
-testplayer.exe : chess.o player.o player-util.o fate-player.o almanac-player.o pack.o packedgame.o common.o all-fate-data.o chessmaster.o testplayer.o headless-graphics.o blind-player.o stockfish.o subprocess.o blind/unblinder.o blind/unblinder-mk0.o numeric-player.o eniac-player.o eniac.o nneval-player.o ../pluginvert/network.o $(FCEULIB_OBJECTS) $(CCLIB_OBJECTS)
+testplayer.exe : chess.o player.o player-util.o fate-player.o almanac-player.o pack.o packedgame.o common.o all-fate-data.o chessmaster.o testplayer.o headless-graphics.o blind-player.o stockfish.o subprocess.o blind/unblinder.o blind/unblinder-mk0.o numeric-player.o eniac-player.o eniac.o grad-player.o ../grad/network.o $(FCEULIB_OBJECTS) $(CCLIB_OBJECTS)
 	$(CXX) $^ -o $@ $(LFLAGS)
 
 pairs.exe : chess.o pairs.o $(CCLIB_OBJECTS)

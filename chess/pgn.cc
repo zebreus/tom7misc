@@ -98,6 +98,7 @@ bool PGNParser::Parse(const string &s, PGN *pgn) const {
 
     // In the lichess database, typical annotations look like:
     // 29. Qxf8 { [%eval #12] [%clk 0:00:47] }
+    // Note that checkmate and stalemate do not receive evals!
     string post;
     while (RE2::Consume(&input, comment_re, &post)) {
       re2::StringPiece post_input(post);

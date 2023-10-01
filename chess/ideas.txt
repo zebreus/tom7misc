@@ -1,3 +1,7 @@
+Player ideas:
+ - "signfish" picks randomly from moves that have the
+   most favorable sign using a strong engine.
+
 Search for really interesting games in the lichess database
 e.g. largest comeback game
 longest king walk
@@ -24,7 +28,7 @@ find interesting games
  - longest consecutive series of checks (see "cross-check")
     cf this game: https://www.chessgames.com/perl/chessgame?gid=1063968
  - longest forced sequence (with literally just one legal move)
- - 
+ -
 
 find positions that are reached in two games but after long divergence
 (and have a minimum number of pieces or whatever)
@@ -56,7 +60,7 @@ ideas from Youtube:
   - prefer positions where your pieces attack a lot of empty space
   - prefer positions where your pieces attack/defend other pieces
 
- 
+
  Evan Warfel:
   - make some correspondence between chess moves and musical notes.
     only allow/prefer certain move sequences that appear in
@@ -85,6 +89,9 @@ some chess engine suggestions:
 * stubborn: picks a piece, then continues to make moves with that same piece until it either no longer can, or is forced to make a repeat move
 * equalizer v2: attempts to capture pieces using the bloodlust algorithm, only until there are the same number of pieces on the board between the two opponents
 * checkers: does not move pieces backwards, until they are able to touch the opposite side of the board
+
+From "derpnerpwerp":
+Atlas, but if the board state doesn't exist, find the most similar one using some distance function.
 
 Alexa Tandon
 A few more bad chess engines:

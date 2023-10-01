@@ -2,6 +2,8 @@
 # error Only implemented for Windows.
 #endif
 
+// TODO: Implement this for Posix (popen).
+
 #include "subprocess.h"
 
 #include <windows.h>
@@ -79,6 +81,8 @@ struct SubprocessImpl : Subprocess {
 
     // XXX What about the others?
 
+    // TODO: "The preferred way to shut down a process is by using ExitProcess"
+
     if (child_process_handle) {
       TerminateProcess(child_process_handle, 0);
       CloseHandle(child_process_handle);
@@ -148,6 +152,7 @@ Subprocess *Subprocess::Create(const string &filename) {
   // This structure specifies the STDIN and STDOUT handles for redirection.
   ZeroMemory(&siStartInfo, sizeof (STARTUPINFO));
   siStartInfo.cb = sizeof (STARTUPINFO);
+  // stderr and stdout both get the same stream
   siStartInfo.hStdError = sub->g_hChildStd_OUT_Wr;
   siStartInfo.hStdOutput = sub->g_hChildStd_OUT_Wr;
   siStartInfo.hStdInput = sub->g_hChildStd_IN_Rd;
@@ -159,26 +164,34 @@ Subprocess *Subprocess::Create(const string &filename) {
   // printf("CreateProcess...\n");
   // fflush(stdout);
 
-  if (!CreateProcess(nullptr,
-                     // command line
-                     &filename_copy[0],
-                     // process security attributes
-                     nullptr,
-                     // primary thread security attributes
-                     nullptr,
-                     // handles are inherited
-                     TRUE,
-                     // creation flags
-                     0,
-                     // use parent's environment
-                     nullptr,
-                     // use parent's current directory
-                     nullptr,
-                     // STARTUPINFO pointer
-                     &siStartInfo,
-                     // receives PROCESS_INFORMATION
-                     &piProcInfo))
+  if (!CreateProcess(
+          // application name. get it from the command line instead.
+          nullptr,
+          // command line
+          &filename_copy[0],
+          // process security attributes
+          nullptr,
+          // primary thread security attributes
+          nullptr,
+          // handles are inherited
+          TRUE,
+          // creation flags
+          0,
+          // use parent's environment
+          nullptr,
+          // use parent's current directory
+          nullptr,
+          // STARTUPINFO pointer
+          &siStartInfo,
+          // receives PROCESS_INFORMATION
+          &piProcInfo)) {
     return nullptr;
+  }
+
+  // Returns immediately for console applications, which is the typical
+  // use of this library. But for applications with a message queue,
+  // wait until it has actually started.
+  WaitForInputIdle(piProcInfo.hProcess, INFINITE);
 
   // printf("CreateProcess...\n");
   // fflush(stdout);

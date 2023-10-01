@@ -28,7 +28,8 @@
 #include "../stockfish-player.h"
 #include "../fate-player.h"
 #include "../letter-player.h"
-#include "../nneval-player.h"
+// #include "../nneval-player.h"
+#include "../grad-player.h"
 #include "timer.h"
 
 // #include "unblinder.h"
@@ -2083,7 +2084,11 @@ int main(int argc, char **argv) {
   // ui.async_player.reset(new AsyncPlayer(MinOpponentMoves()));
   // ui.async_player.reset(new AsyncPlayer(AlmanacPopular()));
   // ui.async_player.reset(new AsyncPlayer(BlindSpycheck()));
-  ui.async_player.reset(new AsyncPlayer(Chessmaster1()));
+  // ui.async_player.reset(new AsyncPlayer(Chessmaster1()));
+  ui.async_player.reset(
+      new AsyncPlayer(
+          GradEvalFix("leaky", "../../grad/chess-grad1/chess.val")));
+
   // ui.async_player.reset(new AsyncPlayer(BinaryE()));
   // ui.async_player.reset(new AsyncPlayer(BlindSingleKings()));
   // ui.async_player.reset(new AsyncPlayer(RationalPi()));

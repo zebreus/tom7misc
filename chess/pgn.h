@@ -65,6 +65,8 @@ struct PGN {
     // If present, the clock annotation (number of seconds remaining for
     // the side that made the move).
     std::optional<int> clock;
+    // Note that eval is typically not stored for checkmate nor stalemate,
+    // so you may want to detect this condition yourself.
     std::optional<Eval> eval;
   };
 

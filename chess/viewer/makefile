@@ -5,7 +5,7 @@ all: viewer.exe
 
 # -fno-strict-aliasing
 # -I/usr/local/include -I/usr/include
-CXXFLAGS=-Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare  -ISDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++17
+CXXFLAGS=-Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare  -ISDL/include -I. -I.. -I../../cc-lib -I../../cc-lib/re2 -std=c++17
 OPT=-g -O2
 
 # for 64 bits on windows
@@ -34,7 +34,7 @@ RE2_OBJECTS=../../cc-lib/re2/bitstate.o ../../cc-lib/re2/compile.o ../../cc-lib/
 
 UTIL_OBJECTS=../../cc-lib/util.o ../../cc-lib/arcfour.o ../../cc-lib/base/stringprintf.o ../../cc-lib/base/logging.o ../../cc-lib/stb_image.o ../../cc-lib/stb_image_write.o ../../cc-lib/stb_truetype.o ../../cc-lib/color-util.o ../../cc-lib/image.o ../../cc-lib/crypt/sha256.o
 
-CHESS_OBJECTS=../pgn.o ../chess.o ../stockfish.o ../subprocess.o ../player-util.o ../player.o ../pack.o ../packedgame.o ../common.o ../almanac-player.o ../blind-player.o ../blind/unblinder.o ../blind/unblinder-mk0.o ../chessmaster.o ../headless-graphics.o ../numeric-player.o ../letter-player.o ../stockfish-player.o ../fate-player.o ../all-fate-data.o ../nneval-player.o ../../pluginvert/network.o
+CHESS_OBJECTS=../pgn.o ../chess.o ../stockfish.o ../subprocess.o ../player-util.o ../player.o ../pack.o ../packedgame.o ../common.o ../almanac-player.o ../blind-player.o ../blind/unblinder.o ../blind/unblinder-mk0.o ../chessmaster.o ../headless-graphics.o ../numeric-player.o ../letter-player.o ../stockfish-player.o ../fate-player.o ../all-fate-data.o ../../grad/network.o ../grad-player.o
 
 # bad command line 2022
 # x86_64-w64-mingw32-g++ -Wall -Wno-format -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -ISDL/include -I. -I../../cc-lib -I../../cc-lib/re2 -std=c++17 -DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 -g -O2 -D__MINGW32__ -DHAVE_ALLOCA -DNOWINSTUFF -Ic:/code/SDL/include    -I / -I /re2 --std=c++20  -c -o ../../cc-lib/util.o ../../cc-lib/util.cc
