@@ -1,10 +1,8 @@
-#ifndef __MINGW32__
-# error Only implemented for Windows.
-#endif
+#include "subprocess.h"
+
+#ifdef __MINGW32__
 
 // TODO: Implement this for Posix (popen).
-
-#include "subprocess.h"
 
 #include <windows.h>
 #include <tchar.h>
@@ -45,7 +43,7 @@ struct SubprocessImpl : Subprocess {
       if (!ReadFile(g_hChildStd_OUT_Rd, &cbuf, BUFSIZE, &num_read, nullptr))
         return false;
 
-      for (int i = 0; i < num_read; i++) {
+      for (size_t i = 0; i < num_read; i++) {
         if (cbuf[i] == '\n') {
           // Then partial_line contains a line.
           lines.push_back(std::move(partial_line));
@@ -209,3 +207,17 @@ Subprocess *Subprocess::Create(const string &filename) {
 
   return sub.release();
 }
+
+#else
+
+#include <cstdio>
+
+#include "../cc-lib/base/logging.h"
+
+// Or better to just abort?
+Subprocess *Subprocess::Create(const std::string &command_line) {
+  fprintf(stderr, "Subprocess unimplemented on this platform.\n");
+  return nullptr;
+}
+
+#endif

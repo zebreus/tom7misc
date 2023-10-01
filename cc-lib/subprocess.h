@@ -1,9 +1,11 @@
 
-#ifndef _SUBPROCESS_H
-#define _SUBPROCESS_H
+#ifndef _CC_LIB_SUBPROCESS_H
+#define _CC_LIB_SUBPROCESS_H
 
 #include <string>
 
+// NOTE: Only implemented on windows. Always fails on other platforms.
+// (TODO: Implement it!)
 struct Subprocess {
   // The command line starts with the executable to execute. It
   // can optionally include arguments, which are unstructured.
