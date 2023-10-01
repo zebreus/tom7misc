@@ -1,6 +1,7 @@
 
 default : big_test.exe big-overloads_test.exe
 
+# TODO: For tests, we should compile both the GMP and bigz versions!
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)

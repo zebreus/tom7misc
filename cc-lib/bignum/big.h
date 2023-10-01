@@ -925,7 +925,7 @@ bool BigInt::Less(const BigInt &a, const BigInt &b) {
   return BzCompare(a.rep, b.rep) == BZ_LT;
 }
 bool BigInt::Less(const BigInt &a, int64_t b) {
-  return BzCompare(a.rep, BigInt{b, nullptr}.rep) == BZ_LT;
+  return BzCompare(a.rep, BigInt{b}.rep) == BZ_LT;
 }
 
 bool BigInt::LessEq(const BigInt &a, const BigInt &b) {
@@ -933,7 +933,7 @@ bool BigInt::LessEq(const BigInt &a, const BigInt &b) {
   return cmp == BZ_LT || cmp == BZ_EQ;
 }
 bool BigInt::LessEq(const BigInt &a, int64_t b) {
-  auto cmp = BzCompare(a.rep, BigInt{b, nullptr}.rep);
+  auto cmp = BzCompare(a.rep, BigInt{b}.rep);
   return cmp == BZ_LT || cmp == BZ_EQ;
 }
 
@@ -941,7 +941,7 @@ bool BigInt::Eq(const BigInt &a, const BigInt &b) {
   return BzCompare(a.rep, b.rep) == BZ_EQ;
 }
 bool BigInt::Eq(const BigInt &a, int64_t b) {
-  return BzCompare(a.rep, BigInt{b, nullptr}) == BZ_EQ;
+  return BzCompare(a.rep, BigInt{b}.rep) == BZ_EQ;
 }
 
 bool BigInt::Greater(const BigInt &a, const BigInt &b) {
@@ -956,23 +956,23 @@ BigInt BigInt::Plus(const BigInt &a, const BigInt &b) {
   return BigInt{BzAdd(a.rep, b.rep), nullptr};
 }
 BigInt BigInt::Plus(const BigInt &a, int64_t b) {
-  return BigInt{BzAdd(a.rep, BigInt{b, nullptr}.rep), nullptr};
+  return BigInt{BzAdd(a.rep, BigInt{b}.rep), nullptr};
 }
 BigInt BigInt::Minus(const BigInt &a, const BigInt &b) {
   return BigInt{BzSubtract(a.rep, b.rep), nullptr};
 }
 BigInt BigInt::Minus(const BigInt &a, int64_t b) {
-  return BigInt{BzSubtract(a.rep, BigInt{b, nullptr}.rep), nullptr};
+  return BigInt{BzSubtract(a.rep, BigInt{b}.rep), nullptr};
 }
 BigInt BigInt::Minus(int64_t a, const BigInt &b) {
-  return BigInt{BzSubtract(BigInt{a, nullptr}.rep, b.rep), nullptr};
+  return BigInt{BzSubtract(BigInt{a}.rep, b.rep), nullptr};
 }
 
 BigInt BigInt::Times(const BigInt &a, const BigInt &b) {
   return BigInt{BzMultiply(a.rep, b.rep), nullptr};
 }
 BigInt BigInt::Times(const BigInt &a, int64_t b) {
-  return BigInt{BzMultiply(a.rep, BigInt{b, nullptr}.rep), nullptr};
+  return BigInt{BzMultiply(a.rep, BigInt{b}.rep), nullptr};
 }
 
 // TODO: Quotrem via BzDivide
@@ -985,11 +985,7 @@ BigInt BigInt::DivExact(const BigInt &a, const BigInt &b) {
 }
 BigInt BigInt::DivExact(const BigInt &a, int64_t b) {
   // Not using the precondition here; same as division.
-  return BigInt{BzDiv(a.rep, BigInt{b, nullptr}.rep), nullptr};
-}
-
-BigInt BigInt::Times(const BigInt &a, int64_t b) {
-  return BigInt{BzDiv(a.rep, BigInt{b, nullptr}.rep), nullptr};
+  return BigInt{BzDiv(a.rep, BigInt{b}.rep), nullptr};
 }
 
 // TODO: truncate, floor, ceiling round. what are they?
@@ -1012,11 +1008,11 @@ BigInt BigInt::Pow(const BigInt &a, uint64_t exponent) {
 }
 
 BigInt BigInt::LeftShift(const BigInt &a, uint64_t bits) {
-  return Times(a, Pow(BigInt{2, nullptr}, bits));
+  return Times(a, Pow(BigInt{2}, bits));
 }
 
 BigInt BigInt::RightShift(const BigInt &a, uint64_t bits) {
-  return Div(a, Pow(BigInt{2, nullptr}, bits));
+  return Div(a, Pow(BigInt{2}, bits));
 }
 
 
@@ -1032,8 +1028,8 @@ BigInt BigInt::Sqrt(const BigInt &a) {
 
 std::pair<BigInt, BigInt> BigInt::SqrtRem(const BigInt &aa) {
   BigInt a = Sqrt(aa);
-  BigInt aa1 = a * a;
-  return make_pair(a, aa - aa1);
+  BigInt aa1 = Times(a, a);
+  return make_pair(a, Minus(aa, aa1));
 }
 
 BigRat::BigRat(int64_t numer, int64_t denom) {
