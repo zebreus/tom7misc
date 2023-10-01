@@ -611,6 +611,7 @@ struct Quad {
     showText(": ");
     do {
 
+      if (VERBOSE)
       fprintf(stderr, "sol1[%d] (%d,%08x) sol2[%d] (%d,%08x)\n",
               factorIndex,
               qmllr->Solution1[factorIndex].nbrLimbs,
@@ -759,7 +760,7 @@ struct Quad {
 
       if (z != 0) {
         // not covered by cov.sh :(
-        fprintf(stderr, "z != 0\n");
+        printf("new coverage z != 0\n");
         // XXX is this a typo for ValNn in the original?
         // ValN is only set in CheckSolutionSquareDiscr.
         // Since it was static, it would usually be zero here.
@@ -771,7 +772,7 @@ struct Quad {
       {
         for (;;) {
           // also not covered :(
-          fprintf(stderr, "loop zz");
+          printf("new coverage: loop zz");
           SolutionX(z, modulus);
           z += modulus;
           if (z < Temp0) break;
@@ -3502,9 +3503,6 @@ struct Quad {
                                      const BigInt &Discr,
                                      const BigInt &U1,
                                      const BigInt &V1) {
-
-    // printf("SFF CF\n");
-
     BigInt P, S;
     if (isBeven) {
       // P <- r - (b/2)s

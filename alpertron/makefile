@@ -34,6 +34,8 @@ HEADERS=bignbr.h factor.h modmult.h quadmodll.h bigconv.h quad.h
 
 CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/bignum/big.o
 
+TEST_CC_LIB_OBJECTS=$(CC_LIB_OBJECTS) $(CC_LIB)/ansi.o $(CC_LIB)/arcfour.o $(CC_LIB)/subprocess.o
+
 ALPERTRON_OBJECTS=modmult.o quad.o quadmodll.o bignbr.o bigconv.o factor.o
 
 quad.exe:  main.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
@@ -52,7 +54,11 @@ test.exe : test.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
 	@echo -n "."
 	@$(CXX) $(CXXFLAGS) -o $@ -c $<
 
-gentests.exe : gentests.o $(CC_LIB_OBJECTS) $(CC_LIB)/arcfour.o
+gentests.exe : gentests.o $(TEST_CC_LIB_OBJECTS)
+	@echo -n "@"
+	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
+
+findcoverage.exe : findcoverage.o $(TEST_CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
