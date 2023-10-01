@@ -60,7 +60,7 @@ string TextSVG::Rtos(double d) {
 
   char out[16];
   // Make sure there is always room for a minus sign.
-  sprintf(out + 1, 16, "%.5f", d);
+  snprintf(out + 1, 16, "%.5f", d);
 
   // Strip leading zeroes. We always have a nonzero character
   // (even the terminating \0) so this loop terminates.
