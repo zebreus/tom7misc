@@ -703,43 +703,24 @@ struct Quad {
       // CHECK(modulus == BigIntegerToBigInt(&this->modulus));
       BigIntToBigInteger(modulus, &this->modulus);
 
-      if (VERBOSE)
-      fprintf(stderr, "[Call SolveEq] %s %s %s %s %s %s\n",
-              coeff_quadr.ToString().c_str(),
-              coeff_linear.ToString().c_str(),
-              coeff_indep.ToString().c_str(),
-              modulus.ToString().c_str(),
-              GcdAll.ToString().c_str(),
-              ValNn.ToString().c_str());
+      if (VERBOSE) {
+        fprintf(stderr, "[Call SolveEq] %s %s %s %s %s %s\n",
+                coeff_quadr.ToString().c_str(),
+                coeff_linear.ToString().c_str(),
+                coeff_indep.ToString().c_str(),
+                modulus.ToString().c_str(),
+                GcdAll.ToString().c_str(),
+                ValNn.ToString().c_str());
+      }
 
       SolveEquation(
           SolutionFn([this](BigInteger *value) {
               this->SolutionX(BigIntegerToBigInt(value),
                               BigIntegerToBigInt(&this->modulus));
             }),
-          ShowSolutionsModPrimeFn(
-              [this](int factorIndex, int expon,
-                     const BigInteger *pIncrement,
-                     const QuadModLLResult *qmllr) {
-                // Teach-only callback.
-              }),
-          ShowNoSolsModPrimeFn([this](int expon) {
-              // No solutions mod p^expon, so the modular equation does not have
-              // solutions.
-            }),
           &quad, &lin, &ind, &modu,
           &gcd, &valnn,
           &qmllr);
-    }
-  }
-
-  void ParenA(const BigInteger *num) {
-    if (num->sign == SIGN_NEGATIVE) {
-      ShowChar('(');
-      ShowNumber(num);
-      ShowChar(')');
-    } else {
-      ShowNumber(num);
     }
   }
 
@@ -753,8 +734,7 @@ struct Quad {
     }
   }
 
-  eLinearSolution LinearEq(
-      BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
+  eLinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
 
     // A linear equation. X + Y + IND = 0.
 
@@ -767,8 +747,7 @@ struct Quad {
         }
       }
 
-      BigInt Aux0 = BigInt::CMod(coeffInd, coeffY);
-      if (Aux0 != 0) {
+      if (BigInt::CMod(coeffInd, coeffY) != 0) {
         return NO_SOLUTIONS;             // No solutions
       } else {
         intToBigInteger(&Xind, 0);
@@ -1535,7 +1514,7 @@ struct Quad {
   // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
   // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
   // Do not substitute if m equals zero.
-  void NonSquareDiscrSolution(bool two_solutions, BigInteger *value) {
+  void NonSquareDiscrSolution(bool two_solutions, const BigInt &Value) {
     if (two_solutions) {
       CHECK(showSolution == TWO_SOLUTIONS);
     } else {
@@ -1543,28 +1522,35 @@ struct Quad {
     }
 
     // Back up value.
-    BigInt Tmp12 = BigIntegerToBigInt(value);
-    // Get value of tu - Kv
-    (void)BigIntMultiply(value, &ValH, &ValZ);    // tu
-    CopyBigInt(&bigTmp, &ValK);
-    if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
-      BigIntChSign(&bigTmp);                // Get K
-      bigTmp.sign = SIGN_NEGATIVE;
-    }
-
-    (void)BigIntMultiply(&bigTmp, &ValI, &bigTmp);// Kv
-    BigIntSubt(&ValZ, &bigTmp, &ValZ);      // U = tu - Kv
-
-    (void)BigIntMultiply(&ValZ, &ValE, &ValZ);    // X = (tu - Kv)*E
-    (void)BigIntMultiply(&ValH, &ValE, &ValO);    // Y = u*E
+    // BigInt Tmp12 = BigIntegerToBigInt(value);
 
     BigInt M = BigIntegerToBigInt(&ValM);
-    BigInt Z = BigIntegerToBigInt(&ValZ);
-    BigInt O = BigIntegerToBigInt(&ValO);
+    BigInt H = BigIntegerToBigInt(&ValH);
+    BigInt E = BigIntegerToBigInt(&ValE);
+    BigInt K = BigIntegerToBigInt(&ValK);
+    BigInt I = BigIntegerToBigInt(&ValI);
 
     const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
     const BigInt Beta = BigIntegerToBigInt(&ValBeta);
     const BigInt Div = BigIntegerToBigInt(&ValDiv);
+
+    // Get value of tu - Kv
+    // tu
+    BigInt Z = Value * H;
+    if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
+      // Get K
+      K = -BigInt::Abs(K);
+      // Port note: This code used to flip the sign of BigTmp,
+      // then set it to negative. Certainly unnecessary; maybe
+      // a bug?
+      // BigIntChSign(&bigTmp);
+      // bigTmp.sign = SIGN_NEGATIVE;
+    }
+
+    // X = (tu - Kv)*E
+    Z = E * (Z - K * I);
+    // Y = u*E
+    BigInt O = H * E;
 
     // Only need this in the case that there are two solutions.
     // It may be known at the call site?
@@ -1598,7 +1584,7 @@ struct Quad {
     }
 
     // Restore value.
-    BigIntToBigInteger(Tmp12, value);
+    // BigIntToBigInteger(Tmp12, value);
   }
 
   // Obtain next convergent of continued fraction of ValU/ValV
@@ -1708,7 +1694,7 @@ struct Quad {
         // Discriminant is less than -4 and P equals 1.
         intToBigInteger(&ValH, 1);
         intToBigInteger(&ValI, 0);
-        NonSquareDiscrSolution(false, value);   // (1, 0)
+        NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // (1, 0)
         equationNbr += 2;
         return;
       }
@@ -1721,10 +1707,10 @@ struct Quad {
         if (Plow == 1) {
           intToBigInteger(&ValH, 1);
           intToBigInteger(&ValI, 0);
-          NonSquareDiscrSolution(false, value);   // (1, 0)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // (1, 0)
           CopyBigInt(&ValH, &ValG);
           intToBigInteger(&ValI, -1);
-          NonSquareDiscrSolution(false, value);   // (Q/2, -1)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // (Q/2, -1)
           equationNbr += 2;
           return;
         }
@@ -1734,12 +1720,12 @@ struct Quad {
           CopyBigInt(&ValH, &ValG);
           subtractdivide(&ValH, 1, 2);
 
-          NonSquareDiscrSolution(false, value);   // ((Q/2-1)/2, -1)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q/2-1)/2, -1)
           intToBigInteger(&ValI, -1);
           CopyBigInt(&ValH, &ValG);
           subtractdivide(&ValH, -1, 2);
 
-          NonSquareDiscrSolution(false, value);   // ((Q/2+1)/2, -1)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q/2+1)/2, -1)
           equationNbr += 2;
           return;
         }
@@ -1751,17 +1737,17 @@ struct Quad {
           intToBigInteger(&ValH, 1);
           intToBigInteger(&ValI, 0);
 
-          NonSquareDiscrSolution(false, value);   // (1, 0)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // (1, 0)
           CopyBigInt(&ValG, &ValQ);
           subtractdivide(&ValG, 1, 2);
           CopyBigInt(&ValH, &ValG);
           intToBigInteger(&ValI, -1);
 
-          NonSquareDiscrSolution(false, value);   // ((Q-1)/2, -1)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q-1)/2, -1)
           intToBigInteger(&ValI, -1);
           BigIntSubt(&ValG, &ValI, &ValH);
 
-          NonSquareDiscrSolution(false, value);   // ((Q+1)/2, -1)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q+1)/2, -1)
           equationNbr += 2;
           return;
         }
@@ -1771,17 +1757,17 @@ struct Quad {
           CopyBigInt(&ValH, &ValQ);
           subtractdivide(&ValH, -3, 6);
 
-          NonSquareDiscrSolution(false, value);   // ((Q+3)/6, -1)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q+3)/6, -1)
           intToBigInteger(&ValI, -2);
           CopyBigInt(&ValH, &ValQ);
           subtractdivide(&ValH, 0, 3);
 
-          NonSquareDiscrSolution(false, value);   // (Q/3, -2)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // (Q/3, -2)
           intToBigInteger(&ValI, -1);
           CopyBigInt(&ValH, &ValQ);
           subtractdivide(&ValH, 3, 6);
 
-          NonSquareDiscrSolution(false, value);   // ((Q-3)/6, -1)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q-3)/6, -1)
           equationNbr += 2;
           return;
         }
@@ -1803,6 +1789,7 @@ struct Quad {
     CopyBigInt(&ValU, &ValQ);
     BigIntChSign(&ValU);
     BigIntAdd(&ValP, &ValP, &ValV);
+
     while (!BigIntIsZero(&ValV)) {
       {
         const auto &[U, UU1, UU2, UU3,
@@ -1845,7 +1832,7 @@ struct Quad {
         CopyBigInt(&ValH, &U1);
         CopyBigInt(&ValI, &V1);
 
-        NonSquareDiscrSolution(false, value);        // (U1, V1)
+        NonSquareDiscrSolution(false, BigIntegerToBigInt(value));        // (U1, V1)
         D = discr.limbs[0].x;
 
         if ((discr.nbrLimbs > 1) || (D > 4)) {
@@ -1877,7 +1864,7 @@ struct Quad {
           CopyBigInt(&ValH, &U1);
           CopyBigInt(&ValI, &V1);
 
-          NonSquareDiscrSolution(false, value);      // (U1, V1)
+          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));      // (U1, V1)
           if (D == 3) {
 
             {
@@ -1902,7 +1889,7 @@ struct Quad {
             CopyBigInt(&ValH, &U1);
             CopyBigInt(&ValI, &V1);
 
-            NonSquareDiscrSolution(false, value);    // (U1, V1)
+            NonSquareDiscrSolution(false, BigIntegerToBigInt(value));    // (U1, V1)
           }
           break;
         }
@@ -2324,7 +2311,7 @@ struct Quad {
         // XXX replaced with two_solutions
         showSolution = TWO_SOLUTIONS;
         solFound = false;
-        NonSquareDiscrSolution(true, value);
+        NonSquareDiscrSolution(true, BigIntegerToBigInt(value));
         if (solFound) {
           break;                             // Solution found. Exit loop.
         }

@@ -29,17 +29,10 @@ struct QuadModLLResult {
   BigInteger prime;
 };
 
-using ShowSolutionsModPrimeFn =
-  std::function<void(int factorIndex, int expon,
-                     const BigInteger* pIncrement,
-                     const QuadModLLResult *)>;
 using SolutionFn = std::function<void(BigInteger *value)>;
-using ShowNoSolsModPrimeFn = std::function<void(int expon)>;
 
 void SolveEquation(
     const SolutionFn &solutionCback,
-    const ShowSolutionsModPrimeFn &showSolutionsModPrime,
-    const ShowNoSolsModPrimeFn &showNoSolsModPrime,
     BigInteger *pValA, const BigInteger* pValB,
     const BigInteger* pValC, BigInteger* pValN,
     BigInteger *GcdAll, BigInteger *pValNn,

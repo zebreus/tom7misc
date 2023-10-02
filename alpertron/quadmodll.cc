@@ -43,7 +43,7 @@ static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
 // PERF So big!
 struct QuadModLL {
   // We need to modify this in place because callbacks access
-  // it, ugh.
+  // it, ugh. (No longer! The callback is gone.)
   QuadModLLResult res;
   int Exponents[400];
 
@@ -82,8 +82,6 @@ struct QuadModLL {
   BigInteger* pGcdAll = nullptr;
   BigInteger* pValNn = nullptr;
   SolutionFn Solution;
-  ShowSolutionsModPrimeFn ShowSolutionsModPrime;
-  ShowNoSolsModPrimeFn ShowNoSolsModPrime;
 
   // Were globals NumberLength and TestNbr
   int modulus_length = 0;
@@ -1006,9 +1004,6 @@ struct QuadModLL {
     }
     if (!solutions || (sol1Invalid && sol2Invalid)) {
       // Both solutions are invalid. Go out.
-      if (ShowNoSolsModPrime != NULL) {
-        ShowNoSolsModPrime(expon);
-      }
       return false;
     }
 
@@ -1037,26 +1032,18 @@ struct QuadModLL {
     CHECK(res.Solution1[factorIndex].nbrLimbs > 0);
     CHECK(res.Solution2[factorIndex].nbrLimbs > 0);
 
-    if (ShowSolutionsModPrime != NULL) {
-      ShowSolutionsModPrime(factorIndex, expon, &Q, &res);
-    }
-
     return true;
   }
 
   // Solve Ax^2 + Bx + C = 0 (mod N).
   void SolveEquation(
       const SolutionFn &solutionCback,
-      const ShowSolutionsModPrimeFn &showSolutionsModPrime,
-      const ShowNoSolsModPrimeFn &showNoSolsModPrime,
       BigInteger* pValA, const BigInteger* pValB,
       const BigInteger* pValC, BigInteger* pValN,
       BigInteger* pGcdAllParm, BigInteger* pValNnParm) {
 
     // PERF: no need to copy
     Solution = solutionCback;
-    ShowSolutionsModPrime = showSolutionsModPrime;
-    ShowNoSolsModPrime = showNoSolsModPrime;
 
     pGcdAll = pGcdAllParm;
     pValNn = pValNnParm;
@@ -1127,16 +1114,12 @@ struct QuadModLL {
 
 void SolveEquation(
     const SolutionFn &solutionCback,
-    const ShowSolutionsModPrimeFn &showSolutionsModPrime,
-    const ShowNoSolsModPrimeFn &showNoSolsModPrime,
     BigInteger *pValA, const BigInteger* pValB,
     const BigInteger* pValC, BigInteger* pValN,
     BigInteger *GcdAll, BigInteger *pValNn,
     QuadModLLResult *result) {
   std::unique_ptr<QuadModLL> qmll = std::make_unique<QuadModLL>();
   qmll->SolveEquation(solutionCback,
-                      showSolutionsModPrime,
-                      showNoSolsModPrime,
                       pValA,
                       pValB,
                       pValC,
