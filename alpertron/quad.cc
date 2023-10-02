@@ -1514,7 +1514,11 @@ struct Quad {
   // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
   // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
   // Do not substitute if m equals zero.
-  void NonSquareDiscrSolution(bool two_solutions, const BigInt &Value) {
+  void NonSquareDiscrSolution(bool two_solutions,
+                              const BigInt &M, const BigInt &E, const BigInt &K,
+                              const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
+                              const BigInt &H, const BigInt &I,
+                              const BigInt &Value) {
     if (two_solutions) {
       CHECK(showSolution == TWO_SOLUTIONS);
     } else {
@@ -1524,31 +1528,32 @@ struct Quad {
     // Back up value.
     // BigInt Tmp12 = BigIntegerToBigInt(value);
 
-    BigInt M = BigIntegerToBigInt(&ValM);
-    BigInt H = BigIntegerToBigInt(&ValH);
-    BigInt E = BigIntegerToBigInt(&ValE);
-    BigInt K = BigIntegerToBigInt(&ValK);
-    BigInt I = BigIntegerToBigInt(&ValI);
+    /*
+    const BigInt M = BigIntegerToBigInt(&ValM);
+    const BigInt H = BigIntegerToBigInt(&ValH);
+    const BigInt E = BigIntegerToBigInt(&ValE);
+    const BigInt I = BigIntegerToBigInt(&ValI);
 
     const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
     const BigInt Beta = BigIntegerToBigInt(&ValBeta);
     const BigInt Div = BigIntegerToBigInt(&ValDiv);
+    */
 
-    // Get value of tu - Kv
-    // tu
-    BigInt Z = Value * H;
+    BigInt KK;
     if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
       // Get K
-      K = -BigInt::Abs(K);
+      KK = -BigInt::Abs(K);
       // Port note: This code used to flip the sign of BigTmp,
       // then set it to negative. Certainly unnecessary; maybe
       // a bug?
       // BigIntChSign(&bigTmp);
       // bigTmp.sign = SIGN_NEGATIVE;
+    } else {
+      KK = K;
     }
 
     // X = (tu - Kv)*E
-    Z = E * (Z - K * I);
+    const BigInt Z = (Value * H - KK * I) * E;
     // Y = u*E
     BigInt O = H * E;
 
@@ -1688,44 +1693,59 @@ struct Quad {
       // No solutions because gcd(P, Q, R) > 1.
       return;
     }
+
+    const BigInt M = BigIntegerToBigInt(&ValM);
+    const BigInt E = BigIntegerToBigInt(&ValE);
+    const BigInt K = BigIntegerToBigInt(&ValK);
+    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    const BigInt Div = BigIntegerToBigInt(&ValDiv);
+
     if ((ValP.sign == SIGN_POSITIVE) && (ValP.nbrLimbs == 1)) {
       int Plow = ValP.limbs[0].x;
       if (((discr.nbrLimbs > 1) || (discr.limbs[0].x > 4)) && (Plow == 1)) {
         // Discriminant is less than -4 and P equals 1.
-        intToBigInteger(&ValH, 1);
-        intToBigInteger(&ValI, 0);
-        NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // (1, 0)
+
+        NonSquareDiscrSolution(false,
+                               M, E, K,
+                               Alpha, Beta, Div,
+                               BigInt(1), BigInt(0),
+                               BigIntegerToBigInt(value));   // (1, 0)
         equationNbr += 2;
         return;
       }
 
+      BigInt Q = BigIntegerToBigInt(&ValQ);
       if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 4)) {
         // Discriminant is equal to -4.
-        CopyBigInt(&ValG, &ValQ);
-        BigIntDivideBy2(&ValG);
+        BigInt G = Q >> 1;
 
         if (Plow == 1) {
-          intToBigInteger(&ValH, 1);
-          intToBigInteger(&ValI, 0);
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // (1, 0)
-          CopyBigInt(&ValH, &ValG);
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 BigInt(1), BigInt(0),
+                                 BigIntegerToBigInt(value));
           intToBigInteger(&ValI, -1);
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // (Q/2, -1)
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 G, BigInt(-1),
+                                 BigIntegerToBigInt(value));   // (Q/2, -1)
           equationNbr += 2;
           return;
-        }
+        } if (Plow == 2) {
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 (G - 1) >> 1, BigInt(-1),
+                                 BigIntegerToBigInt(value));   // ((Q/2-1)/2, -1)
 
-        if (Plow == 2) {
-          intToBigInteger(&ValI, -1);
-          CopyBigInt(&ValH, &ValG);
-          subtractdivide(&ValH, 1, 2);
-
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q/2-1)/2, -1)
-          intToBigInteger(&ValI, -1);
-          CopyBigInt(&ValH, &ValG);
-          subtractdivide(&ValH, -1, 2);
-
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q/2+1)/2, -1)
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 (G + 1) >> 1, BigInt(-1),
+                                 BigIntegerToBigInt(value));   // ((Q/2+1)/2, -1)
           equationNbr += 2;
           return;
         }
@@ -1734,40 +1754,44 @@ struct Quad {
       if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 3)) {
         // Discriminant is equal to -3.
         if (Plow == 1) {
-          intToBigInteger(&ValH, 1);
-          intToBigInteger(&ValI, 0);
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 BigInt(1), BigInt(0),
+                                 BigIntegerToBigInt(value));   // (1, 0)
 
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // (1, 0)
-          CopyBigInt(&ValG, &ValQ);
-          subtractdivide(&ValG, 1, 2);
-          CopyBigInt(&ValH, &ValG);
-          intToBigInteger(&ValI, -1);
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 (Q - 1) >> 1, BigInt(-1),
+                                 BigIntegerToBigInt(value));   // ((Q-1)/2, -1)
 
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q-1)/2, -1)
-          intToBigInteger(&ValI, -1);
-          BigIntSubt(&ValG, &ValI, &ValH);
-
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q+1)/2, -1)
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 (Q + 1) >> 1, BigInt(-1),
+                                 BigIntegerToBigInt(value));   // ((Q+1)/2, -1)
           equationNbr += 2;
           return;
-        }
+        } else if (Plow == 3) {
 
-        if (Plow == 3) {
-          intToBigInteger(&ValI, -1);
-          CopyBigInt(&ValH, &ValQ);
-          subtractdivide(&ValH, -3, 6);
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 (Q + 3) / 6, BigInt(-1),
+                                 BigIntegerToBigInt(value));   // ((Q+3)/6, -1)
 
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q+3)/6, -1)
-          intToBigInteger(&ValI, -2);
-          CopyBigInt(&ValH, &ValQ);
-          subtractdivide(&ValH, 0, 3);
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 Q / 3, BigInt(-2),
+                                 BigIntegerToBigInt(value));   // (Q/3, -2)
 
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // (Q/3, -2)
-          intToBigInteger(&ValI, -1);
-          CopyBigInt(&ValH, &ValQ);
-          subtractdivide(&ValH, 3, 6);
-
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));   // ((Q-3)/6, -1)
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 (Q - 3) / 6, BigInt(-1),
+                                 BigIntegerToBigInt(value));   // ((Q-3)/6, -1)
           equationNbr += 2;
           return;
         }
@@ -1828,19 +1852,20 @@ struct Quad {
 
       if ((ValO.sign == SIGN_POSITIVE) && (ValO.nbrLimbs == 1) && (ValO.limbs[0].x == 1)) {
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
-        int D;
-        CopyBigInt(&ValH, &U1);
-        CopyBigInt(&ValI, &V1);
+        NonSquareDiscrSolution(false,
+                               M, E, K,
+                               Alpha, Beta, Div,
+                               BigIntegerToBigInt(&U1),
+                               BigIntegerToBigInt(&V1),
+                               BigIntegerToBigInt(value));        // (U1, V1)
+        int D = discr.limbs[0].x;
 
-        NonSquareDiscrSolution(false, BigIntegerToBigInt(value));        // (U1, V1)
-        D = discr.limbs[0].x;
-
-        if ((discr.nbrLimbs > 1) || (D > 4)) {
+        if (discr.nbrLimbs > 1 || D > 4) {
           // Discriminant is less than -4, go out.
           break;
         }
 
-        if ((D == 3) || (D == 4)) {
+        if (D == 3 || D == 4) {
           // Discriminant is equal to -3 or -4.
           {
             const auto &[U, UU1, UU2, UU3,
@@ -1864,7 +1889,12 @@ struct Quad {
           CopyBigInt(&ValH, &U1);
           CopyBigInt(&ValI, &V1);
 
-          NonSquareDiscrSolution(false, BigIntegerToBigInt(value));      // (U1, V1)
+          NonSquareDiscrSolution(false,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 BigIntegerToBigInt(&U1),
+                                 BigIntegerToBigInt(&V1),
+                                 BigIntegerToBigInt(value));      // (U1, V1)
           if (D == 3) {
 
             {
@@ -1886,10 +1916,12 @@ struct Quad {
               BigIntToBigInteger(VV3, &V3);
             }
 
-            CopyBigInt(&ValH, &U1);
-            CopyBigInt(&ValI, &V1);
-
-            NonSquareDiscrSolution(false, BigIntegerToBigInt(value));    // (U1, V1)
+            NonSquareDiscrSolution(false,
+                                   M, E, K,
+                                   Alpha, Beta, Div,
+                                   BigIntegerToBigInt(&U1),
+                                   BigIntegerToBigInt(&V1),
+                                   BigIntegerToBigInt(value));    // (U1, V1)
           }
           break;
         }
@@ -2296,22 +2328,44 @@ struct Quad {
       if ((ValV.nbrLimbs == 1) && (ValV.limbs[0].x == (isBeven ? 1 : 2)) &&
           ((index & 1) == ((ValK.sign == ValV.sign)? 0 : 1))) {
 
+        // XXX replaced with two_solutions
+        showSolution = TWO_SOLUTIONS;
+        solFound = false;
+
+        const BigInt M = BigIntegerToBigInt(&ValM);
+        const BigInt E = BigIntegerToBigInt(&ValE);
+        const BigInt K = BigIntegerToBigInt(&ValK);
+        const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+        const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+        const BigInt Div = BigIntegerToBigInt(&ValDiv);
+
         // Found solution.
         if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 5) && (ValA.sign != ValK.sign) &&
             (solutionNbr == FIRST_SOLUTION)) {
           // Determinant is 5 and aK < 0. Use exceptional solution (U1-U2)/(V1-V2).
           BigIntSubt(&V1, &V2, &ValH);
           BigIntSubt(&U1, &U2, &ValI);
+
+          // printf("aaaaaaa coverage\n");
+
+          NonSquareDiscrSolution(true,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 BigIntegerToBigInt(&V1) - BigIntegerToBigInt(&V2),
+                                 BigIntegerToBigInt(&U1) - BigIntegerToBigInt(&U2),
+                                 BigIntegerToBigInt(value));
+
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
-          CopyBigInt(&ValH, &V1);
-          CopyBigInt(&ValI, &U1);
+
+          NonSquareDiscrSolution(true,
+                                 M, E, K,
+                                 Alpha, Beta, Div,
+                                 BigIntegerToBigInt(&V1),
+                                 BigIntegerToBigInt(&U1),
+                                 BigIntegerToBigInt(value));
         }
 
-        // XXX replaced with two_solutions
-        showSolution = TWO_SOLUTIONS;
-        solFound = false;
-        NonSquareDiscrSolution(true, BigIntegerToBigInt(value));
         if (solFound) {
           break;                             // Solution found. Exit loop.
         }
