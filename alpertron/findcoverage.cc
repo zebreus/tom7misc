@@ -16,7 +16,7 @@
 #include "timer.h"
 #include "periodically.h"
 
-#define MAGNITUDE 65536
+#define MAGNITUDE 1024
 
 using namespace std;
 
@@ -27,7 +27,8 @@ static std::vector<std::string> RunCmd(const std::string &cmd) {
   for (;;) {
     std::string line;
     if (!proc->ReadLine(&line)) return ret;
-    printf("[%s]\n", line.c_str());
+    if (line.size() > 75) line.resize(75);
+    printf(AGREY("%s") "\n", line.c_str());
     ret.push_back(line);
   }
 }
@@ -75,13 +76,13 @@ int main(int argc, char **argv) {
 
       f = -negf;
 
-      printf(AGREY("x = %s  y = %s") "\n",
+      printf(AFGCOLOR(70, 55, 70, "x = %s  y = %s") "\n",
              x.ToString().c_str(),
              y.ToString().c_str());
     } else {
       // zero is actually boring here because then x=0, y=0 is always a solution
       f = BigInt((rc.Byte() < 200) ? RandInt() : (rc.Byte() & 1) ? 1 : -1);
-      printf(AGREY("(no solution known)") "\n");
+      printf(AFGCOLOR(70, 55, 70, "(no solution known)") "\n");
     }
 
     string cmd = StringPrintf("quad.exe %s %s %s %s %s %s",

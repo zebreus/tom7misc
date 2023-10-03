@@ -1735,6 +1735,7 @@ struct Quad {
           equationNbr += 2;
           return;
         } if (Plow == 2) {
+
           NonSquareDiscrSolution(false,
                                  M, E, K,
                                  Alpha, Beta, Div,
@@ -1754,6 +1755,8 @@ struct Quad {
       if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 3)) {
         // Discriminant is equal to -3.
         if (Plow == 1) {
+
+          // printf("plow1 coverage\n");
           NonSquareDiscrSolution(false,
                                  M, E, K,
                                  Alpha, Beta, Div,
@@ -1774,6 +1777,8 @@ struct Quad {
           equationNbr += 2;
           return;
         } else if (Plow == 3) {
+
+          // printf("plow3 coverage\n");
 
           NonSquareDiscrSolution(false,
                                  M, E, K,
@@ -1930,8 +1935,13 @@ struct Quad {
     equationNbr += 3;
   }
 
-  void CheckSolutionSquareDiscr() {
+  void CheckSolutionSquareDiscr(
+      const BigInt &CurrentFactor,
+      const BigInt &H, const BigInt &I, const BigInt &L,
+      const BigInt &M, const BigInt &Z,
+      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div) {
     // XXX pass args
+    /*
     BigInt CurrentFactor = BigIntegerToBigInt(&currentFactor);
     BigInt H = BigIntegerToBigInt(&ValH);
     BigInt I = BigIntegerToBigInt(&ValI);
@@ -1942,7 +1952,7 @@ struct Quad {
     BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
     BigInt Beta = BigIntegerToBigInt(&ValBeta);
     BigInt Div = BigIntegerToBigInt(&ValDiv);
-
+    */
     CHECK(CurrentFactor != 0);
     BigInt N = Z / CurrentFactor;
 
@@ -2139,11 +2149,30 @@ struct Quad {
     std::vector<int> counters(400, 0);
     (void)memset(isDescending, 0, sizeof(isDescending));
     intToBigInteger(&currentFactor, 1);
+
+    BigInt H = BigIntegerToBigInt(&ValH);
+    BigInt I = BigIntegerToBigInt(&ValI);
+    BigInt L = BigIntegerToBigInt(&ValL);
+    BigInt M = BigIntegerToBigInt(&ValM);
+    BigInt Z = BigIntegerToBigInt(&ValZ);
+
+    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    BigInt Div = BigIntegerToBigInt(&ValDiv);
+
     for (;;) {
-      CheckSolutionSquareDiscr();       // Process positive divisor.
-      BigIntChSign(&currentFactor);
-      CheckSolutionSquareDiscr();       // Process negative divisor.
-      BigIntChSign(&currentFactor);
+      {
+        BigInt CurrentFactor = BigIntegerToBigInt(&currentFactor);
+        // Process positive divisor.
+        CheckSolutionSquareDiscr(CurrentFactor,
+                                 H, I, L, M, Z,
+                                 Alpha, Beta, Div);
+        // Process negative divisor.
+        CheckSolutionSquareDiscr(-CurrentFactor,
+                                 H, I, L, M, Z,
+                                 Alpha, Beta, Div);
+      }
+
       sFactorz *pstFactor = &factors->product[0];
       int index;
       for (index = 0; index < nbrFactors; index++) {
@@ -2295,9 +2324,8 @@ struct Quad {
   //  Set V to (D - U^2)/V
   //  Inside period when: 0 <= G - U < V
   void ContFrac(BigInteger *value, enum eShowSolution solutionNbr) {
-    int index = 0;
     int periodIndex = 0;
-    char isIntegerPart;
+
     bool isBeven = ((ValB.limbs[0].x & 1) == 0);
     // If (D-U^2) is not multiple of V, exit routine.
     (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
@@ -2316,13 +2344,13 @@ struct Quad {
     intToBigInteger(&V2, 1);
     // Less than zero means outside period.
     intToBigInteger(&startPeriodU, -1);
-    index = 0;
+    int index = 0;
 
     if (solutionNbr == SECOND_SOLUTION) {
       index++;
     }
 
-    isIntegerPart = 1;
+    bool isIntegerPart = true;
 
     for (;;) {
       if ((ValV.nbrLimbs == 1) && (ValV.limbs[0].x == (isBeven ? 1 : 2)) &&
@@ -2343,8 +2371,8 @@ struct Quad {
         if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 5) && (ValA.sign != ValK.sign) &&
             (solutionNbr == FIRST_SOLUTION)) {
           // Determinant is 5 and aK < 0. Use exceptional solution (U1-U2)/(V1-V2).
-          BigIntSubt(&V1, &V2, &ValH);
-          BigIntSubt(&U1, &U2, &ValI);
+          // BigIntSubt(&V1, &V2, &ValH);
+          // BigIntSubt(&U1, &U2, &ValI);
 
           // printf("aaaaaaa coverage\n");
 
@@ -2415,7 +2443,7 @@ struct Quad {
       (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
       CopyBigInt(&ValV, &Tmp1);
       index++;
-      isIntegerPart = 0;
+      isIntegerPart = false;
     }
 
     // Restore value.

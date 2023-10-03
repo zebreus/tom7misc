@@ -51,6 +51,7 @@ echo quad tests
 ./quad.exe 100 200 300 400 500 600 >> coverage.out
 ./quad.exe 1 0 0 0 7 -12 >> coverage.out
 ./quad.exe 1 2 2 0 0 -89 >> coverage.out
+# plow3 coverage
 ./quad.exe 1 3 3 0 0 -76 >> coverage.out
 ./quad.exe 1 0 1 0 0 -425 >> coverage.out
 ./quad.exe 1 0 -5 0 0 4 >> coverage.out
@@ -210,6 +211,19 @@ echo quad tests
 ./quad.exe 3865 0 6368 0 0 -3328634517252 >> new.txt
 # x = -32053, y = -11980
 ./quad.exe 5966 0 0 0 -6930 -6129520451894 >> new.txt
+
+# new
+# ooooo coverage
+# x = 120  y = -80
+./quad.exe -118 -40 -96 0 0 1929600 >> new.txt
+
+# plow2 coverage
+# x = 120  y = 122
+./quad.exe 124 0 124 0 0 -3631216 >> new.txt
+
+# aaaaaaa coverage
+# x = -68  y = -101
+./quad.exe 35 -35 7 0 32 10365 >> new.txt
 
 
 echo factor tests
