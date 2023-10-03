@@ -1358,9 +1358,13 @@ bool Util::MatchesWildcard(string_view wildcard_, string_view s) {
 
   // Need to consume the entire wildcard, unless it
   // ends with a *.
-  return pos.contains(wildcard.size()) ||
+  auto Contains = [&pos](size_t p) {
+		    return pos.find(p) != pos.end();
+		  };
+  
+  return Contains(wildcard.size()) ||
     (!wildcard.empty() && wildcard[wildcard.size() - 1] == '*' &&
-     pos.contains(wildcard.size() - 1));
+     Contains(wildcard.size() - 1));
 }
 
 bool Util::library_matches(char k, const string &s) {

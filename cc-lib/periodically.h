@@ -13,7 +13,8 @@
 struct Periodically {
   // If start_ready is true, then the next call to ShouldRun will return
   // true. Otherwise, we wait for the period to elapse first.
-  explicit Periodically(double wait_period_seconds, bool start_ready = true) {
+  explicit Periodically(double wait_period_seconds, bool start_ready = true) :
+      next_run(std::chrono::steady_clock::now()) {
     using namespace std::chrono_literals;
     wait_period = std::chrono::duration_cast<dur>(1s * wait_period_seconds);
     // Immediately available.
