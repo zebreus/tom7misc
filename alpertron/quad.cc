@@ -76,7 +76,7 @@ struct Quad {
   BigInteger ValV;
   BigInteger ValG;
   BigInteger ValR;
-  BigInteger ValS;
+  // BigInteger ValS;
   BigInteger ValK;
   BigInteger ValZ;
   BigInteger ValAlpha;
@@ -95,7 +95,6 @@ struct Quad {
   BigInteger Yind;
   BigInteger Xlin;
   BigInteger Ylin;
-  int nbrFactors;
   bool solFound;
   char also;
   bool ExchXY;
@@ -153,7 +152,7 @@ struct Quad {
           &Aux0, &Aux1, &Aux2, &Aux3, &Aux5,
           &ValA, &ValB, &ValC, &ValD, &ValE, &ValF,
           &ValH, &ValI, &ValL, &ValM, &ValN, &ValO, &ValP, &ValQ,
-          &ValU, &ValV, &ValG, &ValR, &ValS, &ValK, &ValZ,
+          &ValU, &ValV, &ValG, &ValR, &ValK, &ValZ,
           &ValAlpha, &ValBeta, &ValDen, &ValDiv,
           &ValABak, &ValBBak, &ValCBak,
           &ValGcdHomog, &Tmp1, &Tmp2,
@@ -173,13 +172,6 @@ struct Quad {
   inline void ShowChar(char c) {
     if (output != nullptr)
       output->push_back(c);
-  }
-
-  void showLimbs(const limb *limbs, int num_limbs) {
-    if (output != nullptr) {
-      BigInt b = LimbsToBigInt(limbs, num_limbs);
-      *output += b.ToString();
-    }
   }
 
   void showMinus() {
@@ -216,12 +208,6 @@ struct Quad {
     } else {
       also = 1;
     }
-  }
-
-  void showEqNbr(int nbr) {
-    showText(" <span class=\"eq\">(");
-    showInt(nbr);
-    showText(")</span>");
   }
 
   void ShowLin(const BigInt &coeffX, const BigInt &coeffY,
@@ -486,37 +472,6 @@ struct Quad {
     Show1(coeffF, t);
   }
 
-  void showFactors(const BigInteger *value, const Factors &factors) {
-    int numFactors = factors.product.size();
-    bool factorShown = false;
-    ShowNumber(value);
-    showText(" = ");
-    if (value->sign == SIGN_NEGATIVE) {
-      showMinus();
-    }
-    for (int index = 0; index < numFactors; index++) {
-      const sFactorz &fact = factors.product[index];
-      // XXX why not setting modulus_length here?
-      IntArray2BigInteger(modulus_length, fact.array, &qmllr.prime);
-      if (fact.multiplicity == 0) {
-        continue;
-      }
-      if (factorShown) {
-        showText(" &times; ");
-      }
-      ShowNumber(&qmllr.prime);
-      if (fact.multiplicity != 1) {
-        showText("<sup>");
-        showInt(fact.multiplicity);
-        showText("</sup>");
-      }
-      factorShown = true;
-    }
-    if (!factorShown) {
-      showText("1");
-    }
-  }
-
   void SolutionX(BigInt value, const BigInt &Modulus) {
     SolNbr++;
     BigInt mm = BigIntegerToBigInt(&modulus);
@@ -724,16 +679,6 @@ struct Quad {
     }
   }
 
-  void Paren(const BigInt &num) {
-    if (num < 0) {
-      ShowChar('(');
-      ShowBigInt(num);
-      ShowChar(')');
-    } else {
-      ShowBigInt(num);
-    }
-  }
-
   eLinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
 
     // A linear equation. X + Y + IND = 0.
@@ -927,23 +872,6 @@ struct Quad {
     }
 
     return SOLUTION_FOUND;
-  }
-
-  void ShowTDiscrZero(bool ExchXY,
-                      const BigInt &A, const BigInt &B) {
-    BigInt H, I;
-    if (ExchXY) {
-      // Show bx + 2cy
-      H = B;
-      I = A << 1;
-    } else {
-      // Show 2ax + by
-      I = B;
-      H = A << 1;
-    }
-    // XXX remove state
-    // intToBigInteger(&ValJ, 0);
-    ShowLin(H, I, BigInt(0), "<var>x</var>", "<var>y</var>");
   }
 
   void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,
@@ -1638,27 +1566,6 @@ struct Quad {
                            V, V1, V2, V3);
   }
 
-  void showFirstSolution(const char *discrim, const char *valueP) {
-    showText("<p>When the discriminant equals ");
-    showText(discrim);
-    showText(" and");
-    showText(" <var>P</var> = ");
-    showText(valueP);
-    showText(", a solution is");
-    showText(" (");
-    showText(varY);
-    showText(", <var>k</var>) = (");
-  }
-
-  void showOtherSolution(const char *ordinal) {
-    showText("<p>The ");
-    showText(ordinal);
-    showText(" solution is");
-    showText(" (");
-    showText(varY);
-    showText(", <var>k</var>) = (");
-  }
-
   // Output:
   // false = There are no solutions because gcd(P, Q, R) > 1
   // true = gcd(P, Q, R) = 1.
@@ -1988,6 +1895,9 @@ struct Quad {
   void PerfectSquareDiscriminant() {
     enum eSign signTemp;
 
+    BigInteger ValS;
+    // only used on path where A != 0
+    intToBigInteger(&ValS, 0xCAFE);
     if (BigIntIsZero(&ValA)) {
       // Let R = gcd(b, c)
       // (bX + cY) Y = k
@@ -2105,33 +2015,42 @@ struct Quad {
     // H = 2a/R, I = (b+g)/R, J = F + H * alpha + I * beta
     // L = 2a/S, M = (b-g)/S, N = Z/F + L * alpha + M * beta
     // F is any factor of Z (positive or negative).
-    nbrFactors = factors->product.size();
+    const int nbrFactors = factors->product.size();
 
-    if (BigIntIsZero(&ValA)) {
-      intToBigInteger(&ValH, 0);                    // H <- 0
-      intToBigInteger(&ValI, 1);                    // I <- 1
-      (void)BigIntDivide(&ValB, &ValR, &ValL);      // L <- b/R
-      (void)BigIntDivide(&ValC, &ValR, &ValM);      // M <- c/R
+    const BigInt A = BigIntegerToBigInt(&ValA);
+    const BigInt B = BigIntegerToBigInt(&ValB);
+    const BigInt C = BigIntegerToBigInt(&ValC);
+    const BigInt G = BigIntegerToBigInt(&ValG);
+    const BigInt R = BigIntegerToBigInt(&ValR);
+    const BigInt S = BigIntegerToBigInt(&ValS);
+
+    const BigInt Z = BigIntegerToBigInt(&ValZ);
+    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    const BigInt Div = BigIntegerToBigInt(&ValDiv);
+    const BigInt Discr = BigIntegerToBigInt(&discr);
+
+    BigInt H, I, L, M;
+    if (A == 0) {
+      H = BigInt(0);
+      I = BigInt(1);
+      // L <- b/R
+      L = B / R;
+      // M <- c/R
+      M = C / R;
     } else {
-      BigIntAdd(&ValA, &ValA, &U3);                 // 2a
-      (void)BigIntDivide(&U3, &ValR, &ValH);        // H <- 2a/R
-      (void)BigIntDivide(&U3, &ValS, &ValL);        // L <- 2a/S
-      BigIntAdd(&ValB, &ValG, &ValI);
-      (void)BigIntDivide(&ValI, &ValR, &ValI);      // I <- (b+g)/R
-      BigIntSubt(&ValB, &ValG, &ValM);
-      (void)BigIntDivide(&ValM, &ValS, &ValM);      // M <- (b-g)/S
+      // 2a
+      BigInt UU3 = A << 1;
+      // H <- 2a/R
+      H = UU3 / R;
+      // L <- 2a/S
+      L = UU3 / S;
+      // I <- (b+g)/R
+      I = (B + G) / R;
+      // M <- (b-g)/S
+      M = (B - G) / S;
     }
 
-    BigInt H = BigIntegerToBigInt(&ValH);
-    BigInt I = BigIntegerToBigInt(&ValI);
-    BigInt L = BigIntegerToBigInt(&ValL);
-    BigInt M = BigIntegerToBigInt(&ValM);
-    BigInt Z = BigIntegerToBigInt(&ValZ);
-
-    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    BigInt Div = BigIntegerToBigInt(&ValDiv);
-    BigInt Discr = BigIntegerToBigInt(&discr);
 
     // Compute denominator: D(IL - MH)
     const BigInt Den = Discr * (I * L - M * H);
@@ -2141,6 +2060,7 @@ struct Quad {
     const BigInt K = H * Alpha + I * Beta;
 
     // Dead? Maybe just teach mode?
+    // I think some of these are used in PositiveDiscriminant
     BigIntToBigInteger(Den, &ValDen);
     BigIntToBigInteger(O, &ValO);
     BigIntToBigInteger(K, &ValK);
@@ -2263,49 +2183,6 @@ struct Quad {
           CopyBigInt(&startPeriodV, &ValV);
         }
       }
-    }
-  }
-
-  void ShowArgumentContinuedFraction(bool positive_denominator,
-                                     const BigInt &B,
-                                     const BigInt &L,
-                                     const BigInt &U,
-                                     const BigInt &V) {
-    showText(" (");
-    if (!positive_denominator) {
-      showText("&minus;");
-    }
-    showText("<var>Q</var> + "
-             "<span class = \"sqrtout\"><span class=\"sqrtin\"><var>D</var>");
-    if (B.IsEven()) {
-      showText(" / 4");
-    }
-    showText("</span></span>) / ");
-    if (B.IsOdd()) {
-      showText(positive_denominator ? "(" : "(&minus;");
-      showText("2<var>R</var>) = ");
-    } else {
-      showText(positive_denominator ?
-               "<var>R</var> = " : "(&minus;<var>R</var>) = ");
-    }
-    if (U != 0) {
-      showText("(");
-      ShowBigInt(U);
-      showText(" + ");
-    }
-    showText("<span class=\"sqrtout\"><span class=\"sqrtin\">");
-    ShowBigInt(L);
-    showText("</span></span>");
-    if (U != 0) {
-      showText(")");
-    }
-    showText(" / ");
-    if (V < 0) {
-      showText("(");
-    }
-    ShowBigInt(V);
-    if (V < 0) {
-      showText(")");
     }
   }
 
@@ -2906,21 +2783,6 @@ struct Quad {
                 BigIntegerToBigInt(&Yminus));
     }
     equationNbr += 4;
-  }
-
-  void PrintQuadEqConst(
-      const BigInt &A, const BigInt &B, const BigInt &C,
-      const BigInt &K,
-      bool showEquationNbr) {
-    showText("<p>");
-    PrintQuad(A, B, C, "<var>X</var>", "<var>Y</var>");
-    showText(" = ");
-    ShowBigInt(K);
-    showText(" ");
-    if (showEquationNbr && K >= 0) {
-      showEqNbr(1);
-    }
-    showText("</p>");
   }
 
   // Copy intentional; we modify them in place (factor out gcd).
