@@ -40,6 +40,17 @@ static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
   }
 }
 
+// This used to be exposed to the caller for teach mode, but is
+// now fully internal.
+namespace {
+struct QuadModLLResult {
+  BigInteger Solution1[400];
+  BigInteger Solution2[400];
+  BigInteger Increment[400];
+
+  BigInteger prime;
+};
+
 // PERF So big!
 struct QuadModLL {
   // We need to modify this in place because callbacks access
@@ -1111,13 +1122,13 @@ struct QuadModLL {
   }
 
 };
+}  // namespace
 
 void SolveEquation(
     const SolutionFn &solutionCback,
     BigInteger *pValA, const BigInteger* pValB,
     const BigInteger* pValC, BigInteger* pValN,
-    BigInteger *GcdAll, BigInteger *pValNn,
-    QuadModLLResult *result) {
+    BigInteger *GcdAll, BigInteger *pValNn) {
   std::unique_ptr<QuadModLL> qmll = std::make_unique<QuadModLL>();
   qmll->SolveEquation(solutionCback,
                       pValA,
@@ -1127,5 +1138,5 @@ void SolveEquation(
                       GcdAll,
                       pValNn);
 
-  memcpy(result, &qmll->res, sizeof (QuadModLLResult));
+  // memcpy(result, &qmll->res, sizeof (QuadModLLResult));
 }

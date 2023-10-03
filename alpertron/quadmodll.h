@@ -21,21 +21,12 @@
 #include "bignbr.h"
 #include <functional>
 
-struct QuadModLLResult {
-  BigInteger Solution1[400];
-  BigInteger Solution2[400];
-  BigInteger Increment[400];
-
-  BigInteger prime;
-};
-
 using SolutionFn = std::function<void(BigInteger *value)>;
 
 void SolveEquation(
     const SolutionFn &solutionCback,
     BigInteger *pValA, const BigInteger* pValB,
     const BigInteger* pValC, BigInteger* pValN,
-    BigInteger *GcdAll, BigInteger *pValNn,
-    QuadModLLResult *result);
+    BigInteger *GcdAll, BigInteger *pValNn);
 
 #endif

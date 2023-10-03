@@ -140,8 +140,6 @@ struct Quad {
 
   std::string *output = nullptr;
 
-  QuadModLLResult qmllr;
-
   void MarkUninitialized() {
     // Port note: There are various interleaved code paths where
     // different state (e.g. callback type) results in these member
@@ -673,8 +671,7 @@ struct Quad {
                               BigIntegerToBigInt(&this->modulus));
             }),
           &quad, &lin, &ind, &modu,
-          &gcd, &valnn,
-          &qmllr);
+          &gcd, &valnn);
     }
   }
 
@@ -2094,7 +2091,7 @@ struct Quad {
 
           const BigInt &p = factors[fidx].first;
           // XXX do we really need to write into qmllr?
-          BigIntToBigInteger(p, &qmllr.prime);
+          // BigIntToBigInteger(p, &qmllr.prime);
           CurrentFactor *= p;
           // (void)BigIntMultiply(&currentFactor, &qmllr.prime, &currentFactor);
           counters[index]++;
@@ -2112,7 +2109,7 @@ struct Quad {
         // XXX same
         const BigInt &p = factors[fidx].first;
         // XXX do we really need to write into qmllr?
-        BigIntToBigInteger(p, &qmllr.prime);
+        // BigIntToBigInteger(p, &qmllr.prime);
         CurrentFactor /= p;
 
         // (void)BigIntDivide(&currentFactor, &qmllr.prime, &currentFactor);
