@@ -1940,19 +1940,7 @@ struct Quad {
       const BigInt &H, const BigInt &I, const BigInt &L,
       const BigInt &M, const BigInt &Z,
       const BigInt &Alpha, const BigInt &Beta, const BigInt &Div) {
-    // XXX pass args
-    /*
-    BigInt CurrentFactor = BigIntegerToBigInt(&currentFactor);
-    BigInt H = BigIntegerToBigInt(&ValH);
-    BigInt I = BigIntegerToBigInt(&ValI);
-    BigInt L = BigIntegerToBigInt(&ValL);
-    BigInt M = BigIntegerToBigInt(&ValM);
-    BigInt Z = BigIntegerToBigInt(&ValZ);
 
-    BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    BigInt Div = BigIntegerToBigInt(&ValDiv);
-    */
     CHECK(CurrentFactor != 0);
     BigInt N = Z / CurrentFactor;
 
@@ -2024,6 +2012,7 @@ struct Quad {
       // k equals zero.
       eLinearSolution ret;
       if (BigIntIsZero(&ValA)) {
+        printf("kzeroazero coverage\n");
         // Coefficient a does equals zero.
         // Solve Dy + beta = 0
         intToBigInteger(&Aux0, 0);
@@ -2039,6 +2028,7 @@ struct Quad {
         (void)BigIntMultiply(&ValC, &ValBeta, &bigTmp);
         BigIntAdd(&Aux2, &bigTmp, &Aux2);
       } else {
+        printf("kzeroanzero coverage\n");
         // Coefficient a does not equal zero.
         // Solve 2aD x + (b+g)D y = 2a*alpha + (b+g)*beta
         (void)BigIntMultiply(&ValA, &discr, &Aux0);
@@ -2079,10 +2069,12 @@ struct Quad {
 
     // k does not equal zero.
     if (BigIntIsZero(&ValA)) {
+      // printf("knzaz coverage\n");
       // If R does not divide k, there is no solution.
       CopyBigInt(&U3, &ValK);
       CopyBigInt(&U1, &ValR);
     } else {
+      // printf("knzanz coverage\n");
       // If R*S does not divide 4ak, there is no solution.
       (void)BigIntMultiply(&ValR, &ValS, &U1);
       (void)BigIntMultiply(&ValA, &ValK, &U2);
@@ -2130,26 +2122,6 @@ struct Quad {
       (void)BigIntDivide(&ValM, &ValS, &ValM);      // M <- (b-g)/S
     }
 
-    (void)BigIntMultiply(&ValH, &ValAlpha, &ValK);  // H * alpha
-    (void)BigIntMultiply(&ValI, &ValBeta, &bigTmp); // I * beta
-    BigIntAdd(&ValK, &bigTmp, &ValK);         // K <- H * alpha + I * beta
-    (void)BigIntMultiply(&ValL, &ValAlpha, &ValO);  // L * alpha
-    (void)BigIntMultiply(&ValM, &ValBeta, &bigTmp); // M * beta
-    BigIntAdd(&ValO, &bigTmp, &ValO);         // O <- L * alpha + M * beta
-    // Compute denominator: D(IL - MH)
-    (void)BigIntMultiply(&ValI, &ValL, &ValDen);    // IL
-    (void)BigIntMultiply(&ValM, &ValH, &bigTmp);    // MH
-    BigIntSubt(&ValDen, &bigTmp, &ValDen);    // IL - MH
-    (void)BigIntMultiply(&ValDen, &discr, &ValDen); // D(IL - MH)
-
-    // Loop that finds all factors of Z.
-    // Use Gray code to use only one big number.
-    // Gray code: 0->000, 1->001, 2->011, 3->010, 4->110, 5->111, 6->101, 7->100.
-    // Change from zero to one means multiply, otherwise divide.
-    std::vector<int> counters(400, 0);
-    (void)memset(isDescending, 0, sizeof(isDescending));
-    intToBigInteger(&currentFactor, 1);
-
     BigInt H = BigIntegerToBigInt(&ValH);
     BigInt I = BigIntegerToBigInt(&ValI);
     BigInt L = BigIntegerToBigInt(&ValL);
@@ -2159,19 +2131,37 @@ struct Quad {
     BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
     BigInt Beta = BigIntegerToBigInt(&ValBeta);
     BigInt Div = BigIntegerToBigInt(&ValDiv);
+    BigInt Discr = BigIntegerToBigInt(&discr);
 
+    // Compute denominator: D(IL - MH)
+    const BigInt Den = Discr * (I * L - M * H);
+    // O <- L * alpha + M * beta
+    const BigInt O = L * Alpha + M * Beta;
+    // K <- H * alpha + I * beta
+    const BigInt K = H * Alpha + I * Beta;
+
+    // Dead? Maybe just teach mode?
+    BigIntToBigInteger(Den, &ValDen);
+    BigIntToBigInteger(O, &ValO);
+    BigIntToBigInteger(K, &ValK);
+
+    // Loop that finds all factors of Z.
+    // Use Gray code to use only one big number.
+    // Gray code: 0->000, 1->001, 2->011, 3->010, 4->110, 5->111, 6->101, 7->100.
+    // Change from zero to one means multiply, otherwise divide.
+    std::vector<int> counters(400, 0);
+    (void)memset(isDescending, 0, sizeof(isDescending));
+
+    BigInt CurrentFactor(1);
     for (;;) {
-      {
-        BigInt CurrentFactor = BigIntegerToBigInt(&currentFactor);
-        // Process positive divisor.
-        CheckSolutionSquareDiscr(CurrentFactor,
-                                 H, I, L, M, Z,
-                                 Alpha, Beta, Div);
-        // Process negative divisor.
-        CheckSolutionSquareDiscr(-CurrentFactor,
-                                 H, I, L, M, Z,
-                                 Alpha, Beta, Div);
-      }
+      // Process positive divisor.
+      CheckSolutionSquareDiscr(CurrentFactor,
+                               H, I, L, M, Z,
+                               Alpha, Beta, Div);
+      // Process negative divisor.
+      CheckSolutionSquareDiscr(-CurrentFactor,
+                               H, I, L, M, Z,
+                               Alpha, Beta, Div);
 
       sFactorz *pstFactor = &factors->product[0];
       int index;
@@ -2184,8 +2174,11 @@ struct Quad {
             pstFactor++;
             continue;
           }
+          // XXX do we really need to write into qmllr?
           IntArray2BigInteger(modulus_length, pstFactor->array, &qmllr.prime);
-          (void)BigIntMultiply(&currentFactor, &qmllr.prime, &currentFactor);
+          BigInt p = BigIntegerToBigInt(&qmllr.prime);
+          CurrentFactor *= p;
+          // (void)BigIntMultiply(&currentFactor, &qmllr.prime, &currentFactor);
           counters[index]++;
           break;
         }
@@ -2197,8 +2190,11 @@ struct Quad {
           continue;
         }
 
+        // XXX same
         IntArray2BigInteger(modulus_length, pstFactor->array, &qmllr.prime);
-        (void)BigIntDivide(&currentFactor, &qmllr.prime, &currentFactor);
+        BigInt p = BigIntegerToBigInt(&qmllr.prime);
+        CurrentFactor /= p;
+        // (void)BigIntDivide(&currentFactor, &qmllr.prime, &currentFactor);
         counters[index]--;
         break;
       }

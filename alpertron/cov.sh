@@ -8,7 +8,7 @@ set -x
 set -e
 
 echo quad tests
-# Ax^2 + Bxy + Cy^2 + Dx + Ey + F   (teach)
+# Ax^2 + Bxy + Cy^2 + Dx + Ey + F
 ./quad.exe 0 0 0 0 0 0 >> coverage.out
 ./quad.exe 0 0 0 0 5 6 >> coverage.out
 ./quad.exe 0 0 0 5 0 6 >> coverage.out
@@ -17,11 +17,13 @@ echo quad tests
 ./quad.exe 0 0 0 1 1 5 >> coverage.out
 ./quad.exe 1 2 3 4 5 6 >> coverage.out
 ./quad.exe 4 0 0 0 0 -16 >> coverage.out
+# knzaz coverage
 ./quad.exe 0 4 0 0 0 -16 >> coverage.out
 ./quad.exe 0 0 4 0 0 -16 >> coverage.out
 ./quad.exe 0 0 0 4 0 -16 >> coverage.out
 ./quad.exe 0 0 0 0 4 -16 >> coverage.out
 
+# knzanz coverage
 ./quad.exe 4 4 0 0 0 -16 >> coverage.out
 ./quad.exe 4 0 4 0 0 -16 >> coverage.out
 ./quad.exe 4 0 0 4 0 -16 >> coverage.out
@@ -36,10 +38,11 @@ echo quad tests
 
 ./quad.exe 4 4 4 4 4 -16 >> coverage.out
 
-./quad.exe 0 4 0 0 0 -16 >> coverage.out
-./quad.exe 0 0 4 0 0 -16 >> coverage.out
-./quad.exe 0 0 0 4 0 -16 >> coverage.out
-./quad.exe 0 0 0 0 4 -16 >> coverage.out
+
+./quad.exe 0 4 0 4 4 -16 >> coverage.out
+./quad.exe 4 0 4 0 4 -16 >> coverage.out
+./quad.exe 4 0 4 4 0 -16 >> coverage.out
+./quad.exe 4 0 0 4 4 -16 >> coverage.out
 ./quad.exe 0 4 4 0 0 -16 >> coverage.out
 ./quad.exe 0 4 0 4 0 -16 >> coverage.out
 ./quad.exe 0 4 0 0 4 -16 >> coverage.out
