@@ -113,7 +113,6 @@ struct Quad {
 
   BigInteger modulus;
 
-  BigInteger currentFactor;
   BigInteger Xplus;
   BigInteger Xminus;
   BigInteger Yplus;
@@ -159,7 +158,7 @@ struct Quad {
           &Xind, &Yind, &Xlin, &Ylin, &discr,
           &U1, &U2, &U3, &V1, &V2, &V3,
           &bigTmp, &startPeriodU, &startPeriodV,
-          &modulus, &currentFactor, &Xplus, &Xminus, &Yplus, &Yminus}) {
+          &modulus, &Xplus, &Xminus, &Yplus, &Yminus}) {
       intToBigInteger(b, 0xCAFE);
     }
   }
@@ -1893,8 +1892,6 @@ struct Quad {
   }
 
   void PerfectSquareDiscriminant() {
-    enum eSign signTemp;
-
     BigInteger ValS;
     // only used on path where A != 0
     intToBigInteger(&ValS, 0xCAFE);
@@ -2002,20 +1999,21 @@ struct Quad {
     // We have to find all factors of the right hand side.
 
     // Compute all factors of Z = 4ak/RS
-    signTemp = ValZ.sign;
-    ValZ.sign = SIGN_POSITIVE;  // Factor positive number.
+    const BigInt Z = BigIntegerToBigInt(&ValZ);
 
-    std::unique_ptr<Factors> factors = BigFactor(&ValZ);
+    // Factor positive number.
+    std::vector<std::pair<BigInt, int>> factors =
+      BigIntFactor(BigInt::Abs(Z));
 
     // Do not factor again same modulus.
     // CopyBigInt(&LastModulus, &ValZ);
-    ValZ.sign = signTemp;       // Restore sign of Z = 4ak/RS.
+
     // x = (NI - JM) / D(IL - MH) and y = (JL - NH) / D(IL - MH)
     // The denominator cannot be zero here.
     // H = 2a/R, I = (b+g)/R, J = F + H * alpha + I * beta
     // L = 2a/S, M = (b-g)/S, N = Z/F + L * alpha + M * beta
     // F is any factor of Z (positive or negative).
-    const int nbrFactors = factors->product.size();
+    const int nbrFactors = factors.size();
 
     const BigInt A = BigIntegerToBigInt(&ValA);
     const BigInt B = BigIntegerToBigInt(&ValB);
@@ -2024,7 +2022,6 @@ struct Quad {
     const BigInt R = BigIntegerToBigInt(&ValR);
     const BigInt S = BigIntegerToBigInt(&ValS);
 
-    const BigInt Z = BigIntegerToBigInt(&ValZ);
     const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
     const BigInt Beta = BigIntegerToBigInt(&ValBeta);
     const BigInt Div = BigIntegerToBigInt(&ValDiv);
@@ -2083,20 +2080,21 @@ struct Quad {
                                H, I, L, M, Z,
                                Alpha, Beta, Div);
 
-      sFactorz *pstFactor = &factors->product[0];
+      int fidx = 0;
       int index;
       for (index = 0; index < nbrFactors; index++) {
         // Loop that increments counters.
         if (isDescending[index] == 0) {
           // Ascending.
-          if (counters[index] == pstFactor->multiplicity) {
+          if (counters[index] == factors[fidx].second) {
             isDescending[index] = 1;    // Next time it will be descending.
-            pstFactor++;
+            fidx++;
             continue;
           }
+
+          const BigInt &p = factors[fidx].first;
           // XXX do we really need to write into qmllr?
-          IntArray2BigInteger(modulus_length, pstFactor->array, &qmllr.prime);
-          BigInt p = BigIntegerToBigInt(&qmllr.prime);
+          BigIntToBigInteger(p, &qmllr.prime);
           CurrentFactor *= p;
           // (void)BigIntMultiply(&currentFactor, &qmllr.prime, &currentFactor);
           counters[index]++;
@@ -2106,14 +2104,17 @@ struct Quad {
         if (counters[index] == 0) {
           // Descending.
           isDescending[index] = 0;    // Next time it will be ascending.
-          pstFactor++;
+          fidx++;
+          // pstFactor++;
           continue;
         }
 
         // XXX same
-        IntArray2BigInteger(modulus_length, pstFactor->array, &qmllr.prime);
-        BigInt p = BigIntegerToBigInt(&qmllr.prime);
+        const BigInt &p = factors[fidx].first;
+        // XXX do we really need to write into qmllr?
+        BigIntToBigInteger(p, &qmllr.prime);
         CurrentFactor /= p;
+
         // (void)BigIntDivide(&currentFactor, &qmllr.prime, &currentFactor);
         counters[index]--;
         break;

@@ -20,6 +20,7 @@
 
 #include <memory>
 #include <vector>
+#include <utility>
 
 #include "bignbr.h"
 
@@ -42,5 +43,9 @@ private:
 };
 
 std::unique_ptr<Factors> BigFactor(const BigInteger *toFactor);
+
+// Same as BigInt::PrimeFactorization, but with {1, 1} for 1.
+std::vector<std::pair<BigInt, int>>
+BigIntFactor(const BigInt &to_factor);
 
 #endif
