@@ -583,13 +583,6 @@ struct Quad {
       }
 
       // Calculate z <- -ValC / ValB (mod ValN)
-      /*
-        BigInteger big_modulus;
-        BigIntToBigInteger(&TheModulus, modulus);
-        modulus_length = modulus.nbrLimbs;
-        int lenBytes = modulus_length * (int)sizeof(limb);
-        (void)memcpy(TheModulus, modulus.limbs, lenBytes);
-      */
 
       modulus_length = BigIntToLimbs(modulus, TheModulus);
       TheModulus[modulus_length].x = 0;
@@ -884,13 +877,6 @@ struct Quad {
     }
 
 
-    // XXX remove this state
-    BigIntToBigInteger(A, &ValA);
-    BigIntToBigInteger(B, &ValB);
-    BigIntToBigInteger(C, &ValC);
-    BigIntToBigInteger(D, &ValD);
-    BigIntToBigInteger(E, &ValE);
-    BigIntToBigInteger(F, &ValF);
     // discriminant should be known zero on this code path.
     // BigIntToBigInteger(Discr, &discr);
 
@@ -900,19 +886,35 @@ struct Quad {
     // Let t = 2ax + by. So (1) becomes: (t + d)^2 = uy + v.
     // Compute u <- 2(bd - 2ae)
 
-    (void)BigIntMultiply(&ValB, &ValD, &Aux0);
-    (void)BigIntMultiply(&ValA, &ValE, &Aux1);
-    MultInt(&Aux2, &Aux1, 2);
-    BigIntSubt(&Aux0, &Aux2, &Aux1);
-    MultInt(&ValU, &Aux1, 2);
+    BigInt Aux0 = B * D;
+    BigInt Aux1 = A * E;
+    // (void)BigIntMultiply(&ValB, &ValD, &Aux0);
+    // (void)BigIntMultiply(&ValA, &ValE, &Aux1);
+    BigInt Aux2 = Aux1 << 1;
+    // MultInt(&Aux2, &Aux1, 2);
+    Aux1 = Aux0 - Aux2;
+    // BigIntSubt(&Aux0, &Aux2, &Aux1);
+    BigInt U = Aux1 << 1;
+    // MultInt(&ValU, &Aux1, 2);
 
     // Compute v <- d^2 - 4af
-    (void)BigIntMultiply(&ValD, &ValD, &Aux2);
-    (void)BigIntMultiply(&ValA, &ValF, &Aux1);
-    MultInt(&Aux3, &Aux1, 4);
-    BigIntSubt(&Aux2, &Aux3, &ValV);
+    BigInt V = D * D - ((A * F) << 2);
+    // (void)BigIntMultiply(&ValD, &ValD, &Aux2);
+    // (void)BigIntMultiply(&ValA, &ValF, &Aux1);
+    // MultInt(&Aux3, &Aux1, 4);
+    // BigIntSubt(&Aux2, &Aux3, &ValV);
 
-    if (BigIntIsZero(&ValU)) {
+    // XXX remove this state
+    BigIntToBigInteger(A, &ValA);
+    BigIntToBigInteger(B, &ValB);
+    BigIntToBigInteger(C, &ValC);
+    BigIntToBigInteger(D, &ValD);
+    BigIntToBigInteger(E, &ValE);
+    BigIntToBigInteger(F, &ValF);
+    BigIntToBigInteger(U, &ValU);
+    BigIntToBigInteger(V, &ValV);
+
+    if (U == 0) {
       // u equals zero, so (t+d)^2 = v.
       eLinearSolution ret;
       if (ValV.sign == SIGN_NEGATIVE) {
@@ -973,7 +975,7 @@ struct Quad {
     // We have to solve the congruence
     //     T^2 = v (mod u) where T = t+d and t = 2ax+by.
 
-    BigInt V = BigIntegerToBigInt(&ValV);
+    V = BigIntegerToBigInt(&ValV);
     BigInt Modulus = BigIntegerToBigInt(&ValU);
     // XXX eliminate this state
     CopyBigInt(&modulus, &ValU);
@@ -1916,7 +1918,7 @@ struct Quad {
       // k equals zero.
       eLinearSolution ret;
       if (BigIntIsZero(&ValA)) {
-        printf("kzeroazero coverage\n");
+        // printf("kzeroazero coverage\n");
         // Coefficient a does equals zero.
         // Solve Dy + beta = 0
         intToBigInteger(&Aux0, 0);
@@ -1932,7 +1934,7 @@ struct Quad {
         (void)BigIntMultiply(&ValC, &ValBeta, &bigTmp);
         BigIntAdd(&Aux2, &bigTmp, &Aux2);
       } else {
-        printf("kzeroanzero coverage\n");
+        // printf("kzeroanzero coverage\n");
         // Coefficient a does not equal zero.
         // Solve 2aD x + (b+g)D y = 2a*alpha + (b+g)*beta
         (void)BigIntMultiply(&ValA, &discr, &Aux0);
