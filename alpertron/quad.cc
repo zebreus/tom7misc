@@ -469,7 +469,7 @@ struct Quad {
     Show1(coeffF, t);
   }
 
-  void SolutionX(BigInt value, const BigInt &Modulus) {
+  void SolutionX(BigInt Value, const BigInt &Modulus) {
     SolNbr++;
     BigInt mm = BigIntegerToBigInt(&modulus);
     CHECK(Modulus == mm) <<
@@ -478,24 +478,20 @@ struct Quad {
 
     // If 2*value is greater than modulus, subtract modulus.
     // BigInt Modulus = BigIntegerToBigInt(&modulus);
-    if ((value << 1) > Modulus) {
-      value -= Modulus;
+    if ((Value << 1) > Modulus) {
+      Value -= Modulus;
     }
 
     switch (callbackQuadModType) {
     case CBACK_QMOD_PARABOLIC:
-      callbackQuadModParabolic(value);
+      callbackQuadModParabolic(Value);
       break;
     case CBACK_QMOD_ELLIPTIC: {
-      BigInteger tmp;
-      BigIntToBigInteger(value, &tmp);
-      callbackQuadModElliptic(&tmp);
+      callbackQuadModElliptic(Value);
       break;
     }
     case CBACK_QMOD_HYPERBOLIC: {
-      BigInteger tmp;
-      BigIntToBigInteger(value, &tmp);
-      callbackQuadModHyperbolic(&tmp);
+      callbackQuadModHyperbolic(Value);
       break;
     }
     default:
@@ -876,7 +872,6 @@ struct Quad {
       std::swap(D, E);
     }
 
-
     // discriminant should be known zero on this code path.
     // BigIntToBigInteger(Discr, &discr);
 
@@ -886,15 +881,11 @@ struct Quad {
     // Let t = 2ax + by. So (1) becomes: (t + d)^2 = uy + v.
     // Compute u <- 2(bd - 2ae)
 
-    BigInt Aux0 = B * D;
-    BigInt Aux1 = A * E;
     // (void)BigIntMultiply(&ValB, &ValD, &Aux0);
     // (void)BigIntMultiply(&ValA, &ValE, &Aux1);
-    BigInt Aux2 = Aux1 << 1;
     // MultInt(&Aux2, &Aux1, 2);
-    Aux1 = Aux0 - Aux2;
     // BigIntSubt(&Aux0, &Aux2, &Aux1);
-    BigInt U = Aux1 << 1;
+    BigInt U = (B * D - ((A * E) << 1)) << 1;
     // MultInt(&ValU, &Aux1, 2);
 
     // Compute v <- d^2 - 4af
@@ -916,19 +907,18 @@ struct Quad {
 
     if (U == 0) {
       // u equals zero, so (t+d)^2 = v.
-      eLinearSolution ret;
-      if (ValV.sign == SIGN_NEGATIVE) {
+
+      if (V < 0) {
         // There are no solutions when v is negative,
         // since a square cannot be equal to a negative number.
         return;
       }
 
-      if (BigIntIsZero(&ValV)) {
+      if (V == 0) {
+        // printf("disczero_vzero coverage\n");
         // v equals zero, so (1) becomes 2ax + by + d = 0
-        MultInt(&Aux3, &ValA, 2);
-        ret = LinearEq(BigIntegerToBigInt(&Aux3),
-                       BigIntegerToBigInt(&ValB),
-                       BigIntegerToBigInt(&ValD));
+        // MultInt(&Aux3, &ValA, 2);
+        eLinearSolution ret = LinearEq(A << 1, B, D);
         // Result box:
         PrintLinear(ret, "<var>t</var>");
         return;
@@ -936,35 +926,34 @@ struct Quad {
 
       // u equals zero but v does not.
       // v must be a perfect square, otherwise there are no solutions.
-      SquareRoot(ValV.limbs, ValG.limbs, ValV.nbrLimbs, &ValG.nbrLimbs);
-      ValG.sign = SIGN_POSITIVE;          // g <- sqrt(v).
-      (void)BigIntMultiply(&ValG, &ValG, &Aux3);
-      if (!BigIntEqual(&ValV, &Aux3)) {
+      BigInt G = BigInt::Sqrt(V);
+      // SquareRoot(ValV.limbs, ValG.limbs, ValV.nbrLimbs, &ValG.nbrLimbs);
+      // ValG.sign = SIGN_POSITIVE;          // g <- sqrt(v).
+      // (void)BigIntMultiply(&ValG, &ValG, &Aux3);
+      if (V != G * G) {
         // v is not perfect square, so there are no solutions.
         return;
       }
 
       // The original equation is now: 2ax + by + (d +/- g) = 0
-      MultInt(&Aux3, &ValA, 2);
-      BigInteger Aux4;
-      BigIntAdd(&ValD, &ValG, &Aux4);
-      CopyBigInt(&Aux5, &ValB);
+      // MultInt(&Aux3, &ValA, 2);
+      // BigInteger Aux4;
+      // BigIntAdd(&ValD, &ValG, &Aux4);
+      // CopyBigInt(&Aux5, &ValB);
+
+      BigInt A2 = A << 1;
 
       // This equation represents two parallel lines.
 
-      ret = LinearEq(BigIntegerToBigInt(&Aux3),
-                     BigIntegerToBigInt(&Aux5),
-                     BigIntegerToBigInt(&Aux4));
+      eLinearSolution ret = LinearEq(A2, B, D + G);
 
       // Result box:
       PrintLinear(ret, "<var>t</var>");
-      MultInt(&Aux3, &ValA, 2);
-      BigIntSubt(&ValD, &ValG, &Aux4);
-      CopyBigInt(&Aux5, &ValB);
+      // MultInt(&Aux3, &ValA, 2);
+      // BigIntSubt(&ValD, &ValG, &Aux4);
+      // CopyBigInt(&Aux5, &ValB);
 
-      ret = LinearEq(BigIntegerToBigInt(&Aux3),
-                     BigIntegerToBigInt(&Aux5),
-                     BigIntegerToBigInt(&Aux4));
+      ret = LinearEq(A2, B, D - G);
 
       // Result box:
       PrintLinear(ret, "<var>t</var>");
@@ -975,7 +964,6 @@ struct Quad {
     // We have to solve the congruence
     //     T^2 = v (mod u) where T = t+d and t = 2ax+by.
 
-    V = BigIntegerToBigInt(&ValV);
     BigInt Modulus = BigIntegerToBigInt(&ValU);
     // XXX eliminate this state
     CopyBigInt(&modulus, &ValU);
@@ -1567,11 +1555,14 @@ struct Quad {
   // Output:
   // false = There are no solutions because gcd(P, Q, R) > 1
   // true = gcd(P, Q, R) = 1.
-  bool PerformTransformation(const BigInteger *value) {
+  bool PerformTransformation(const BigInt &Value) {
+    BigInteger value;
+    BigIntToBigInteger(Value, &value);
+
     // Compute P as (at^2+bt+c)/K
-    (void)BigIntMultiply(&ValA, value, &ValQ);
+    (void)BigIntMultiply(&ValA, &value, &ValQ);
     BigIntAdd(&ValQ, &ValB, &ValP);
-    (void)BigIntMultiply(&ValP, value, &ValP);
+    (void)BigIntMultiply(&ValP, &value, &ValP);
     BigIntAdd(&ValP, &ValC, &ValP);
     (void)BigIntDivide(&ValP, &ValK, &ValP);
     // Compute Q <- -(2at + b).
@@ -1593,8 +1584,8 @@ struct Quad {
     return 0;
   }
 
-  void callbackQuadModElliptic(BigInteger *value) {
-    if (!PerformTransformation(value)) {
+  void callbackQuadModElliptic(const BigInt &Value) {
+    if (!PerformTransformation(Value)) {
       // No solutions because gcd(P, Q, R) > 1.
       return;
     }
@@ -1615,7 +1606,7 @@ struct Quad {
                                M, E, K,
                                Alpha, Beta, Div,
                                BigInt(1), BigInt(0),
-                               BigIntegerToBigInt(value));   // (1, 0)
+                               Value);   // (1, 0)
         equationNbr += 2;
         return;
       }
@@ -1630,13 +1621,13 @@ struct Quad {
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  BigInt(1), BigInt(0),
-                                 BigIntegerToBigInt(value));
+                                 Value);
           intToBigInteger(&ValI, -1);
           NonSquareDiscrSolution(false,
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  G, BigInt(-1),
-                                 BigIntegerToBigInt(value));   // (Q/2, -1)
+                                 Value);   // (Q/2, -1)
           equationNbr += 2;
           return;
         } if (Plow == 2) {
@@ -1645,13 +1636,13 @@ struct Quad {
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  (G - 1) >> 1, BigInt(-1),
-                                 BigIntegerToBigInt(value));   // ((Q/2-1)/2, -1)
+                                 Value);   // ((Q/2-1)/2, -1)
 
           NonSquareDiscrSolution(false,
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  (G + 1) >> 1, BigInt(-1),
-                                 BigIntegerToBigInt(value));   // ((Q/2+1)/2, -1)
+                                 Value);   // ((Q/2+1)/2, -1)
           equationNbr += 2;
           return;
         }
@@ -1666,19 +1657,19 @@ struct Quad {
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  BigInt(1), BigInt(0),
-                                 BigIntegerToBigInt(value));   // (1, 0)
+                                 Value);   // (1, 0)
 
           NonSquareDiscrSolution(false,
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  (Q - 1) >> 1, BigInt(-1),
-                                 BigIntegerToBigInt(value));   // ((Q-1)/2, -1)
+                                 Value);   // ((Q-1)/2, -1)
 
           NonSquareDiscrSolution(false,
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  (Q + 1) >> 1, BigInt(-1),
-                                 BigIntegerToBigInt(value));   // ((Q+1)/2, -1)
+                                 Value);   // ((Q+1)/2, -1)
           equationNbr += 2;
           return;
         } else if (Plow == 3) {
@@ -1689,19 +1680,19 @@ struct Quad {
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  (Q + 3) / 6, BigInt(-1),
-                                 BigIntegerToBigInt(value));   // ((Q+3)/6, -1)
+                                 Value);   // ((Q+3)/6, -1)
 
           NonSquareDiscrSolution(false,
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  Q / 3, BigInt(-2),
-                                 BigIntegerToBigInt(value));   // (Q/3, -2)
+                                 Value);   // (Q/3, -2)
 
           NonSquareDiscrSolution(false,
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  (Q - 3) / 6, BigInt(-1),
-                                 BigIntegerToBigInt(value));   // ((Q-3)/6, -1)
+                                 Value);   // ((Q-3)/6, -1)
           equationNbr += 2;
           return;
         }
@@ -1767,7 +1758,7 @@ struct Quad {
                                Alpha, Beta, Div,
                                BigIntegerToBigInt(&U1),
                                BigIntegerToBigInt(&V1),
-                               BigIntegerToBigInt(value));        // (U1, V1)
+                               Value);        // (U1, V1)
         int D = discr.limbs[0].x;
 
         if (discr.nbrLimbs > 1 || D > 4) {
@@ -1804,7 +1795,7 @@ struct Quad {
                                  Alpha, Beta, Div,
                                  BigIntegerToBigInt(&U1),
                                  BigIntegerToBigInt(&V1),
-                                 BigIntegerToBigInt(value));      // (U1, V1)
+                                 Value);      // (U1, V1)
           if (D == 3) {
 
             {
@@ -1831,7 +1822,7 @@ struct Quad {
                                    Alpha, Beta, Div,
                                    BigIntegerToBigInt(&U1),
                                    BigIntegerToBigInt(&V1),
-                                   BigIntegerToBigInt(value));    // (U1, V1)
+                                   Value);    // (U1, V1)
           }
           break;
         }
@@ -2706,16 +2697,20 @@ struct Quad {
     }
   }
 
-  void callbackQuadModHyperbolic(BigInteger *value) {
+  void callbackQuadModHyperbolic(const BigInt &Value) {
     bool isBeven = ((ValB.limbs[0].x & 1) == 0);
     positiveDenominator = 1;
-    if (!PerformTransformation(value)) {
+    if (!PerformTransformation(Value)) {
       // No solutions because gcd(P, Q, R) > 1.
       return;
     }
+
+    BigInteger value;
+    BigIntToBigInteger(Value, &value);
+
     // Compute P as floor((2*a*theta + b)/2)
     BigIntAdd(&ValA, &ValA, &ValP);
-    (void)BigIntMultiply(&ValP, value, &ValP);
+    (void)BigIntMultiply(&ValP, &value, &ValP);
     BigIntAdd(&ValP, &ValB, &ValP);
     subtractdivide(&ValP, ValP.limbs[0].x & 1, 2);
     // Compute Q = a*abs(K)
@@ -2758,7 +2753,7 @@ struct Quad {
     BigInt UBak = BigIntegerToBigInt(&ValU);
     BigInt VBak = BigIntegerToBigInt(&ValV);
     contfracEqNbr = equationNbr + 2;
-    ContFrac(value, FIRST_SOLUTION);    // Continued fraction of (U+G)/V
+    ContFrac(&value, FIRST_SOLUTION);    // Continued fraction of (U+G)/V
     positiveDenominator = 0;
     BigIntToBigInteger(UBak, &ValU);
     BigIntToBigInteger(VBak, &ValV);
@@ -2768,7 +2763,7 @@ struct Quad {
     if ((ValU.limbs[0].x == 3) && (ValV.limbs[0].x == 9)) {
       contfracEqNbr++;
     }
-    ContFrac(value, SECOND_SOLUTION);   // Continued fraction of (-U+G)/(-V)
+    ContFrac(&value, SECOND_SOLUTION);   // Continued fraction of (-U+G)/(-V)
     showSolution = ONE_SOLUTION;
 
     if (Xplus.nbrLimbs != 0) {

@@ -236,6 +236,8 @@ echo quad tests
 # x = 0  y = 333
 ./quad.exe 182 494 0 0 0 0 >> coverage.out
 
+# disczero_vzero coverage (trivial)
+./quad.exe 0 0 384 0 0 0 >> coverage.out
 
 echo factor tests
 ./afactor.exe 1 >> coverage.out

@@ -367,6 +367,9 @@
 
 ** Quad 182 494 0 0 0 0
 2<p><h2> 182&nbsp;&#8290;x&sup2; + 494&nbsp;&#8290;x&#8290;y  = 0</h2><p>x =   19 t<br>y =  &minus; 7 t</p>and also:<br><p>x = 0  <br>y =    t</p>
+
+** Quad 0 0 384 0 0 0
+2<p><h2> 384&nbsp;&#8290;y&sup2;  = 0</h2><p>x =    <var>t</var><br>y = 0  </p>
 1: 1
 2: 2
 3: 3
