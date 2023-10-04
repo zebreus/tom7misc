@@ -482,18 +482,30 @@ struct Quad {
       Value -= Modulus;
     }
 
+    BigInt A = BigIntegerToBigInt(&ValA);
+    BigInt B = BigIntegerToBigInt(&ValB);
+    BigInt C = BigIntegerToBigInt(&ValC);
+    BigInt D = BigIntegerToBigInt(&ValD);
+    BigInt E = BigIntegerToBigInt(&ValE);
+    BigInt U = BigIntegerToBigInt(&ValU);
+
+    BigInt V = BigIntegerToBigInt(&ValV);
+    BigInt I = BigIntegerToBigInt(&ValI);
+
     switch (callbackQuadModType) {
     case CBACK_QMOD_PARABOLIC:
-      callbackQuadModParabolic(Value);
+      CallbackQuadModParabolic(A, B, C, D, E,
+                               U, V, I, Value);
       break;
-    case CBACK_QMOD_ELLIPTIC: {
+
+    case CBACK_QMOD_ELLIPTIC:
       callbackQuadModElliptic(Value);
       break;
-    }
-    case CBACK_QMOD_HYPERBOLIC: {
+
+    case CBACK_QMOD_HYPERBOLIC:
       callbackQuadModHyperbolic(Value);
       break;
-    }
+
     default:
       break;
     }
@@ -879,21 +891,12 @@ struct Quad {
     // Multiplying by 4a:
     // (2ax + by)^2 + 4adx + 4aey + 4af = 0
     // Let t = 2ax + by. So (1) becomes: (t + d)^2 = uy + v.
-    // Compute u <- 2(bd - 2ae)
 
-    // (void)BigIntMultiply(&ValB, &ValD, &Aux0);
-    // (void)BigIntMultiply(&ValA, &ValE, &Aux1);
-    // MultInt(&Aux2, &Aux1, 2);
-    // BigIntSubt(&Aux0, &Aux2, &Aux1);
+    // Compute u <- 2(bd - 2ae)
     BigInt U = (B * D - ((A * E) << 1)) << 1;
-    // MultInt(&ValU, &Aux1, 2);
 
     // Compute v <- d^2 - 4af
     BigInt V = D * D - ((A * F) << 2);
-    // (void)BigIntMultiply(&ValD, &ValD, &Aux2);
-    // (void)BigIntMultiply(&ValA, &ValF, &Aux1);
-    // MultInt(&Aux3, &Aux1, 4);
-    // BigIntSubt(&Aux2, &Aux3, &ValV);
 
     // XXX remove this state
     BigIntToBigInteger(A, &ValA);
@@ -917,7 +920,6 @@ struct Quad {
       if (V == 0) {
         // printf("disczero_vzero coverage\n");
         // v equals zero, so (1) becomes 2ax + by + d = 0
-        // MultInt(&Aux3, &ValA, 2);
         eLinearSolution ret = LinearEq(A << 1, B, D);
         // Result box:
         PrintLinear(ret, "<var>t</var>");
@@ -927,31 +929,19 @@ struct Quad {
       // u equals zero but v does not.
       // v must be a perfect square, otherwise there are no solutions.
       BigInt G = BigInt::Sqrt(V);
-      // SquareRoot(ValV.limbs, ValG.limbs, ValV.nbrLimbs, &ValG.nbrLimbs);
-      // ValG.sign = SIGN_POSITIVE;          // g <- sqrt(v).
-      // (void)BigIntMultiply(&ValG, &ValG, &Aux3);
       if (V != G * G) {
         // v is not perfect square, so there are no solutions.
         return;
       }
 
       // The original equation is now: 2ax + by + (d +/- g) = 0
-      // MultInt(&Aux3, &ValA, 2);
-      // BigInteger Aux4;
-      // BigIntAdd(&ValD, &ValG, &Aux4);
-      // CopyBigInt(&Aux5, &ValB);
-
       BigInt A2 = A << 1;
 
       // This equation represents two parallel lines.
-
       eLinearSolution ret = LinearEq(A2, B, D + G);
 
       // Result box:
       PrintLinear(ret, "<var>t</var>");
-      // MultInt(&Aux3, &ValA, 2);
-      // BigIntSubt(&ValD, &ValG, &Aux4);
-      // CopyBigInt(&Aux5, &ValB);
 
       ret = LinearEq(A2, B, D - G);
 
@@ -1020,18 +1010,14 @@ struct Quad {
     return std::make_tuple(V1, V2, V3);
   }
 
-  void callbackQuadModParabolic(const BigInt &Value) {
+  void CallbackQuadModParabolic(
+      const BigInt &A, const BigInt &B, const BigInt &C,
+      const BigInt &D, const BigInt &E,
+      const BigInt &U, const BigInt &V,
+      const BigInt &I,
+      const BigInt &Value) {
     // The argument of this function is T. t = T - d + uk (k arbitrary).
     // Compute ValR <- (T^2 - v)/u
-    BigInt A = BigIntegerToBigInt(&ValA);
-    BigInt B = BigIntegerToBigInt(&ValB);
-    BigInt C = BigIntegerToBigInt(&ValC);
-    BigInt D = BigIntegerToBigInt(&ValD);
-    BigInt E = BigIntegerToBigInt(&ValE);
-    BigInt U = BigIntegerToBigInt(&ValU);
-
-    BigInt V = BigIntegerToBigInt(&ValV);
-    BigInt I = BigIntegerToBigInt(&ValI);
 
     BigInt R = ((Value * Value) - V) / U;
     // Compute ValS as 2*T
@@ -1596,10 +1582,15 @@ struct Quad {
     const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
     const BigInt Beta = BigIntegerToBigInt(&ValBeta);
     const BigInt Div = BigIntegerToBigInt(&ValDiv);
+    const BigInt P = BigIntegerToBigInt(&ValP);
+    const BigInt Discr = BigIntegerToBigInt(&discr);
 
-    if ((ValP.sign == SIGN_POSITIVE) && (ValP.nbrLimbs == 1)) {
-      int Plow = ValP.limbs[0].x;
-      if (((discr.nbrLimbs > 1) || (discr.limbs[0].x > 4)) && (Plow == 1)) {
+    CHECK(Discr <= 0);
+
+    std::optional<int64_t> plow_opt = P.ToInt();
+    if (plow_opt.has_value() && plow_opt.value() >= 0) {
+      int64_t plow = plow_opt.value();
+      if (Discr < -4 && plow == 1) {
         // Discriminant is less than -4 and P equals 1.
 
         NonSquareDiscrSolution(false,
@@ -1612,11 +1603,11 @@ struct Quad {
       }
 
       BigInt Q = BigIntegerToBigInt(&ValQ);
-      if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 4)) {
+      if (Discr == -4) {
         // Discriminant is equal to -4.
         BigInt G = Q >> 1;
 
-        if (Plow == 1) {
+        if (plow == 1) {
           NonSquareDiscrSolution(false,
                                  M, E, K,
                                  Alpha, Beta, Div,
@@ -1630,7 +1621,7 @@ struct Quad {
                                  Value);   // (Q/2, -1)
           equationNbr += 2;
           return;
-        } if (Plow == 2) {
+        } if (plow == 2) {
 
           NonSquareDiscrSolution(false,
                                  M, E, K,
@@ -1648,9 +1639,9 @@ struct Quad {
         }
       }
 
-      if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 3)) {
+      if (Discr == -3) {
         // Discriminant is equal to -3.
-        if (Plow == 1) {
+        if (plow == 1) {
 
           // printf("plow1 coverage\n");
           NonSquareDiscrSolution(false,
@@ -1672,7 +1663,7 @@ struct Quad {
                                  Value);   // ((Q+1)/2, -1)
           equationNbr += 2;
           return;
-        } else if (Plow == 3) {
+        } else if (plow == 3) {
 
           // printf("plow3 coverage\n");
 
@@ -1699,12 +1690,13 @@ struct Quad {
       }
     }
 
-
     // Compute bound L = sqrt(4P/(-D))
-    MultInt(&U1, &ValP, 4);
-    (void)BigIntDivide(&U1, &discr, &U1);
-    BigIntChSign(&U1);               // 4P/(-D)
-    SquareRoot(U1.limbs, ValL.limbs, U1.nbrLimbs, &ValL.nbrLimbs);  // sqrt(4P/(-D))
+    // MultInt(&U1, &ValP, 4);
+    // (void)BigIntDivide(&U1, &discr, &U1);
+    // BigIntChSign(&U1);               // 4P/(-D)
+    // SquareRoot(U1.limbs, ValL.limbs, U1.nbrLimbs, &ValL.nbrLimbs);  // sqrt(4P/(-D))
+    const BigInt L = BigInt::Sqrt((P << 2) / -Discr);
+    BigIntToBigInteger(L, &ValL);
 
     intToBigInteger(&U1, 1);         // Initial value of last convergent: 1/0.
     intToBigInteger(&V1, 0);
@@ -1905,91 +1897,123 @@ struct Quad {
       MultInt(&ValL, &ValL, 4);
     }
 
-    if (BigIntIsZero(&ValK)) {
+    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    const BigInt Div = BigIntegerToBigInt(&ValDiv);
+    const BigInt Discr = BigIntegerToBigInt(&discr);
+
+    const BigInt A = BigIntegerToBigInt(&ValA);
+    const BigInt B = BigIntegerToBigInt(&ValB);
+    const BigInt C = BigIntegerToBigInt(&ValC);
+    const BigInt G = BigIntegerToBigInt(&ValG);
+
+    const BigInt OldK = BigIntegerToBigInt(&ValK);
+
+    if (OldK == 0) {
+
+      BigInt Aux0, Aux1, Aux2;
       // k equals zero.
-      eLinearSolution ret;
-      if (BigIntIsZero(&ValA)) {
+      if (A == 0) {
         // printf("kzeroazero coverage\n");
         // Coefficient a does equals zero.
         // Solve Dy + beta = 0
-        intToBigInteger(&Aux0, 0);
-        ret = LinearEq(BigIntegerToBigInt(&Aux0),
-                       BigIntegerToBigInt(&discr),
-                       BigIntegerToBigInt(&ValBeta));
+        Aux0 = BigInt(0);
+        eLinearSolution ret = LinearEq(Aux0, Discr, Beta);
+
         // Result box:
         PrintLinear(ret, "t");
         // Solve bDx + cDy + b*alpha + c*beta = 0
-        (void)BigIntMultiply(&ValB, &discr, &Aux0);
-        (void)BigIntMultiply(&ValC, &discr, &Aux1);
-        (void)BigIntMultiply(&ValB, &ValAlpha, &Aux2);
-        (void)BigIntMultiply(&ValC, &ValBeta, &bigTmp);
-        BigIntAdd(&Aux2, &bigTmp, &Aux2);
+        Aux0 = B * Discr;
+        Aux1 = C * Discr;
+        Aux2 = B * Alpha + C * Beta;
+        // (void)BigIntMultiply(&ValB, &discr, &Aux0);
+        // (void)BigIntMultiply(&ValC, &discr, &Aux1);
+        // (void)BigIntMultiply(&ValB, &ValAlpha, &Aux2);
+        // (void)BigIntMultiply(&ValC, &ValBeta, &bigTmp);
+        // BigIntAdd(&Aux2, &bigTmp, &Aux2);
       } else {
         // printf("kzeroanzero coverage\n");
         // Coefficient a does not equal zero.
         // Solve 2aD x + (b+g)D y = 2a*alpha + (b+g)*beta
-        (void)BigIntMultiply(&ValA, &discr, &Aux0);
-        BigIntAdd(&Aux0, &Aux0, &Aux0);
-        BigIntAdd(&ValB, &ValG, &Aux1);
-        (void)BigIntMultiply(&Aux1, &discr, &Aux1);
-        (void)BigIntMultiply(&ValA, &ValAlpha, &Aux2);
-        BigIntAdd(&Aux2, &Aux2, &Aux2);
-        BigIntAdd(&ValB, &ValG, &bigTmp);
-        (void)BigIntMultiply(&bigTmp, &ValBeta, &bigTmp);
-        BigIntAdd(&Aux2, &bigTmp, &Aux2);
-        BigIntChSign(&Aux2);
-        ret = LinearEq(BigIntegerToBigInt(&Aux0),
-                       BigIntegerToBigInt(&Aux1),
-                       BigIntegerToBigInt(&Aux2));
+
+        Aux0 = (A * Discr) << 1;
+        // (void)BigIntMultiply(&ValA, &discr, &Aux0);
+        // BigIntAdd(&Aux0, &Aux0, &Aux0);
+        Aux1 = (B + G) * Discr;
+        // BigIntAdd(&ValB, &ValG, &Aux1);
+        // (void)BigIntMultiply(&Aux1, &discr, &Aux1);
+        Aux2 = -(((A * Alpha) << 1) + (B + G) * Beta);
+        // (void)BigIntMultiply(&ValA, &ValAlpha, &Aux2);
+        //  BigIntAdd(&Aux2, &Aux2, &Aux2);
+        // BigIntAdd(&ValB, &ValG, &bigTmp);
+        // (void)BigIntMultiply(&bigTmp, &ValBeta, &bigTmp);
+        // BigIntAdd(&Aux2, &bigTmp, &Aux2);
+        // BigIntChSign(&Aux2);
+        eLinearSolution ret = LinearEq(Aux0, Aux1, Aux2);
+
         // Result box:
         PrintLinear(ret, "t");
         // Solve the equation 2aD x + (b-g)D y = 2a*alpha + (b-g)*beta
-        (void)BigIntMultiply(&ValA, &discr, &Aux0);
-        BigIntAdd(&Aux0, &Aux0, &Aux0);
-        BigIntSubt(&ValB, &ValG, &Aux1);
-        (void)BigIntMultiply(&Aux1, &discr, &Aux1);
-        (void)BigIntMultiply(&ValA, &ValAlpha, &Aux2);
-        BigIntAdd(&Aux2, &Aux2, &Aux2);
-        BigIntSubt(&ValB, &ValG, &bigTmp);
-        (void)BigIntMultiply(&bigTmp, &ValBeta, &bigTmp);
-        BigIntAdd(&Aux2, &bigTmp, &Aux2);
-        BigIntChSign(&Aux2);
+        Aux0 = A << 1;
+        // (void)BigIntMultiply(&ValA, &discr, &Aux0);
+        // BigIntAdd(&Aux0, &Aux0, &Aux0);
+        Aux1 *= (B - G) * Discr;
+        // BigIntSubt(&ValB, &ValG, &Aux1);
+        // (void)BigIntMultiply(&Aux1, &discr, &Aux1);
+        Aux2 = -(((A * Alpha) << 1) + (B - G) * Beta);
+        // (void)BigIntMultiply(&ValA, &ValAlpha, &Aux2);
+        // BigIntAdd(&Aux2, &Aux2, &Aux2);
+        // BigIntSubt(&ValB, &ValG, &bigTmp);
+        // (void)BigIntMultiply(&bigTmp, &ValBeta, &bigTmp);
+        // BigIntAdd(&Aux2, &bigTmp, &Aux2);
+        // BigIntChSign(&Aux2);
       }
 
-      ret = LinearEq(BigIntegerToBigInt(&Aux0),
-                     BigIntegerToBigInt(&Aux1),
-                     BigIntegerToBigInt(&Aux2));
+      eLinearSolution ret = LinearEq(Aux0, Aux1, Aux2);
+
       // Result box:
       PrintLinear(ret, "t");
       return;
     }
 
+    const BigInt R = BigIntegerToBigInt(&ValR);
+    // K always overwritten below
+    // const BigInt OldK = BigIntegerToBigInt(&ValK);
+    const BigInt S = BigIntegerToBigInt(&ValS);
+
     // k does not equal zero.
-    if (BigIntIsZero(&ValA)) {
+    BigInt U1, U3;
+    if (A == 0) {
       // printf("knzaz coverage\n");
       // If R does not divide k, there is no solution.
-      CopyBigInt(&U3, &ValK);
-      CopyBigInt(&U1, &ValR);
+      U3 = OldK;
+      U1 = R;
+      // CopyBigInt(&U3, &ValK);
+      // CopyBigInt(&U1, &ValR);
     } else {
       // printf("knzanz coverage\n");
       // If R*S does not divide 4ak, there is no solution.
-      (void)BigIntMultiply(&ValR, &ValS, &U1);
-      (void)BigIntMultiply(&ValA, &ValK, &U2);
-      multadd(&U3, 4, &U2, 0);
+      U1 = R * S;
+      U3 = (A * OldK) << 2;
+      // (void)BigIntMultiply(&ValR, &ValS, &U1);
+      // (void)BigIntMultiply(&ValA, &ValK, &U2);
+      // multadd(&U3, 4, &U2, 0);
     }
 
-    (void)BigIntRemainder(&U3, &U1, &U2);
+    BigInt U2 = BigInt::CMod(U3, U1);
+    // (void)BigIntRemainder(&U3, &U1, &U2);
 
-    if (!BigIntIsZero(&U2)) {
+    if (U2 != 0) {
       return;
     }
 
-    (void)BigIntDivide(&U3, &U1, &ValZ);
+    // PERF: Known divisible
+    const BigInt Z = U3 / U1;
+    // (void)BigIntDivide(&U3, &U1, &ValZ);
 
     // We have to find all factors of the right hand side.
 
     // Compute all factors of Z = 4ak/RS
-    const BigInt Z = BigIntegerToBigInt(&ValZ);
 
     // Factor positive number.
     std::vector<std::pair<BigInt, int>> factors =
@@ -2004,18 +2028,6 @@ struct Quad {
     // L = 2a/S, M = (b-g)/S, N = Z/F + L * alpha + M * beta
     // F is any factor of Z (positive or negative).
     const int nbrFactors = factors.size();
-
-    const BigInt A = BigIntegerToBigInt(&ValA);
-    const BigInt B = BigIntegerToBigInt(&ValB);
-    const BigInt C = BigIntegerToBigInt(&ValC);
-    const BigInt G = BigIntegerToBigInt(&ValG);
-    const BigInt R = BigIntegerToBigInt(&ValR);
-    const BigInt S = BigIntegerToBigInt(&ValS);
-
-    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    const BigInt Div = BigIntegerToBigInt(&ValDiv);
-    const BigInt Discr = BigIntegerToBigInt(&discr);
 
     BigInt H, I, L, M;
     if (A == 0) {
