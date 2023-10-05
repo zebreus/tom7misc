@@ -649,56 +649,57 @@ void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs) {
   unsigned int shLeft;
   int nbrLimbs = *pNbrLimbs;
   assert(nbrLimbs >= 1);
+
   // Start from least significant limb (number zero).
-  for (index = 0; index < nbrLimbs; index++)
-  {
-    if (number[index].x != 0)
-    {
+  for (index = 0; index < nbrLimbs; index++) {
+    if (number[index].x != 0) {
       break;
     }
     power2 += BITS_PER_GROUP;
   }
-  if (index == nbrLimbs)
-  {   // Input number is zero.
+
+  if (index == nbrLimbs) {
+    // Input number is zero.
     *pShRight = power2;
     return;
   }
-  for (unsigned int mask = 1U; mask <= MAX_VALUE_LIMB; mask *= 2)
-  {
-    if (((unsigned int)number[index].x & mask) != 0U)
-    {
+
+  for (unsigned int mask = 1U; mask <= MAX_VALUE_LIMB; mask *= 2) {
+    if (((unsigned int)number[index].x & mask) != 0U) {
       break;
     }
     power2++;
   }
+
   // Divide number by this power.
   shRight = (unsigned int)power2 % (unsigned int)BITS_PER_GROUP; // Shift right bit counter
-  if (((unsigned int)number[nbrLimbs - 1].x & (0U - (1U << shRight))) != 0U)
-  {   // Most significant bits set.
+
+  if (((unsigned int)number[nbrLimbs - 1].x & (0U - (1U << shRight))) != 0U) {
+    // Most significant bits set.
     *pNbrLimbs = nbrLimbs - index;
-  }
-  else
-  {   // Most significant bits not set.
+  } else {
+    // Most significant bits not set.
     *pNbrLimbs = nbrLimbs - index - 1;
   }
       // Move number shRg bits to the right.
   shLeft = (unsigned int)BITS_PER_GROUP - shRight;
-  for (index2 = index; index2 < (nbrLimbs-1); index2++)
-  {
+  for (index2 = index; index2 < (nbrLimbs-1); index2++) {
     number[index2].x = UintToInt((((unsigned int)number[index2].x >> shRight) |
                         ((unsigned int)number[index2+1].x << shLeft)) &
                         MAX_VALUE_LIMB);
   }
-  if (index2 < nbrLimbs)
-  {
+
+  if (index2 < nbrLimbs) {
     number[index2].x = UintToInt(((unsigned int)number[index2].x >> shRight)
       & MAX_VALUE_LIMB);
   }
-  if (index > 0)
-  {   // Move limbs to final position.
+
+  if (index > 0) {
+    // Move limbs to final position.
     int lenBytes = (nbrLimbs - index) * (int)sizeof(limb);
     (void)memmove(number, &number[index], lenBytes);
   }
+
   *pShRight = power2;
 }
 

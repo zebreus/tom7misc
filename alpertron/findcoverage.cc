@@ -16,7 +16,7 @@
 #include "timer.h"
 #include "periodically.h"
 
-#define MAGNITUDE 1024
+#define MAGNITUDE 16384
 
 using namespace std;
 

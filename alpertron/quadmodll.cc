@@ -26,6 +26,7 @@
 #include "bignbr.h"
 #include "factor.h"
 #include "modmult.h"
+#include "bigconv.h"
 
 #include "base/logging.h"
 
@@ -1121,17 +1122,32 @@ struct QuadModLL {
 
 void SolveEquation(
     const SolutionFn &solutionCback,
+    const BigInt &A, const BigInt &B,
+    const BigInt &C, const BigInt &N,
+    const BigInt &GcdAll, const BigInt &Nn) {
+#if 0
     BigInteger *pValA, const BigInteger* pValB,
     const BigInteger* pValC, BigInteger* pValN,
     BigInteger *GcdAll, BigInteger *pValNn) {
+#endif
   std::unique_ptr<QuadModLL> qmll = std::make_unique<QuadModLL>();
+
+  BigInteger a, b, c, n, gcd, nn;
+  BigIntToBigInteger(A, &a);
+  BigIntToBigInteger(B, &b);
+  BigIntToBigInteger(C, &c);
+  BigIntToBigInteger(N, &n);
+  BigIntToBigInteger(GcdAll, &gcd);
+  BigIntToBigInteger(Nn, &nn);
   qmll->SolveEquation(solutionCback,
-                      pValA,
+                      &a, &b, &c, &n, &gcd, &nn);
+/*
+  pValA,
                       pValB,
                       pValC,
                       pValN,
                       GcdAll,
                       pValNn);
-
+ */
   // memcpy(result, &qmll->res, sizeof (QuadModLLResult));
 }
