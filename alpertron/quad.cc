@@ -1874,29 +1874,6 @@ struct Quad {
   }
 
   void PerfectSquareDiscriminant() {
-    BigInteger ValS;
-    // only used on path where A != 0
-    intToBigInteger(&ValS, 0xCAFE);
-    if (BigIntIsZero(&ValA)) {
-      // Let R = gcd(b, c)
-      // (bX + cY) Y = k
-      BigIntGcd(&ValB, &ValC, &ValR);
-
-    } else {
-      // Multiplying by 4a we get (2aX + (b+g)Y)(2aX + (b-g)Y) = 4ak
-      // Let R = gcd(2a, b+g)
-      BigIntAdd(&ValA, &ValA, &V1);
-      BigIntAdd(&ValB, &ValG, &V2);
-      BigIntGcd(&V1, &V2, &ValR);
-      // Let S = gcd(2a, b-g)
-      CopyBigInt(&ValH, &V1);
-      BigIntSubt(&ValB, &ValG, &ValI);
-      BigIntGcd(&ValH, &ValI, &ValS);
-      // Let L = 4ak
-      (void)BigIntMultiply(&ValA, &ValK, &ValL);
-      MultInt(&ValL, &ValL, 4);
-    }
-
     const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
     const BigInt Beta = BigIntegerToBigInt(&ValBeta);
     const BigInt Div = BigIntegerToBigInt(&ValDiv);
@@ -1908,6 +1885,35 @@ struct Quad {
     const BigInt G = BigIntegerToBigInt(&ValG);
 
     const BigInt OldK = BigIntegerToBigInt(&ValK);
+
+    // only used on path where A != 0
+    BigInt S(0xCAFE);
+    // BigInt L(0xC0DE);
+    BigInt R;
+    if (A == 0) {
+      // Let R = gcd(b, c)
+      // (bX + cY) Y = k
+      R = BigInt::GCD(B, C);
+      // BigIntGcd(&ValB, &ValC, &ValR);
+    } else {
+      // Multiplying by 4a we get (2aX + (b+g)Y)(2aX + (b-g)Y) = 4ak
+      // Let R = gcd(2a, b+g)
+      BigInt A2 = A << 1;
+      R = BigInt::GCD(A2, B + G);
+      // BigIntAdd(&ValA, &ValA, &V1);
+      // BigIntAdd(&ValB, &ValG, &V2);
+      // BigIntGcd(&V1, &V2, &ValR);
+      // Let S = gcd(2a, b-g)
+      S = BigInt::GCD(A2, B - G);
+      // CopyBigInt(&ValH, &V1);
+      // BigIntSubt(&ValB, &ValG, &ValI);
+      // BigIntGcd(&ValH, &ValI, &ValS);
+      // Let L = 4ak
+      // Port note: L is dead. It was only used in tech mode.
+      // L = (A * K) << 2;
+      // (void)BigIntMultiply(&ValA, &ValK, &ValL);
+      // MultInt(&ValL, &ValL, 4);
+    }
 
     if (OldK == 0) {
 
@@ -1976,10 +1982,10 @@ struct Quad {
       return;
     }
 
-    const BigInt R = BigIntegerToBigInt(&ValR);
+    // const BigInt R = BigIntegerToBigInt(&ValR);
     // K always overwritten below
     // const BigInt OldK = BigIntegerToBigInt(&ValK);
-    const BigInt S = BigIntegerToBigInt(&ValS);
+    // const BigInt S = BigIntegerToBigInt(&ValS);
 
     // k does not equal zero.
     BigInt U1, U3;
