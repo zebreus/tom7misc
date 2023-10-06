@@ -92,10 +92,6 @@ struct Quad {
   int SolNbr;
   int showRecursiveSolution;
   BigInt Xind, Yind, Xlin, Ylin;
-  // BigInteger Xind;
-  // BigInteger Yind;
-  // BigInteger Xlin;
-  // BigInteger Ylin;
   bool solFound;
   char also;
   bool ExchXY;
@@ -114,15 +110,14 @@ struct Quad {
 
   BigInteger modulus;
 
-  BigInteger Xplus;
-  BigInteger Xminus;
-  BigInteger Yplus;
-  BigInteger Yminus;
+  std::optional<BigInt> Xplus;
+  std::optional<BigInt> Xminus;
+  std::optional<BigInt> Yplus;
+  std::optional<BigInt> Yminus;
 
-  // At least use std::optional<BigInt>? But I think
-  // it can be done with local state at one call site.
-  BigInteger *Xbak;
-  BigInteger *Ybak;
+  // These will point to xplus/minus etc. above, and those
+  // get set through the pointers. Gross!
+  std::optional<BigInt> *Xbak = nullptr, *Ybak = nullptr;
 
   int equationNbr;
   int contfracEqNbr;
@@ -157,7 +152,7 @@ struct Quad {
           &discr,
           &U1, &U2, &U3, &V1, &V2, &V3,
           &bigTmp, &startPeriodU, &startPeriodV,
-          &modulus, &Xplus, &Xminus, &Yplus, &Yminus}) {
+          &modulus}) {
       intToBigInteger(b, 0xCAFE);
     }
   }
@@ -377,22 +372,27 @@ struct Quad {
     if (two_solutions) {
       solFound = true;
 
+      CHECK(Xbak != nullptr);
+      CHECK(Ybak != nullptr);
+
       // This is basically nullopt state.
-      if (Xbak->nbrLimbs == 0) {
-        BigIntToBigInteger(X, Xbak);
-        BigIntToBigInteger(Y, Ybak);
-        return;
-      }
+      if (!Xbak->has_value()) {
+        Xbak->emplace(X);
+        Ybak->emplace(Y);
+      } else {
+        CHECK(Xbak->has_value());
+        CHECK(Ybak->has_value());
 
-      // Use the lowest of |X| + |Y| and |Xbak| + |Ybak|
-      BigInt BX = BigIntegerToBigInt(Xbak);
-      BigInt BY = BigIntegerToBigInt(Ybak);
+        // Use the lowest of |X| + |Y| and |Xbak| + |Ybak|
+        BigInt BX = Xbak->value();
+        BigInt BY = Ybak->value();
 
-      if (BigInt::Abs(X) + BigInt::Abs(Y) <=
-          BigInt::Abs(BX) + BigInt::Abs(BY)) {
-        // At this moment |x| + |y| <= |xbak| + |ybak|
-        BigIntToBigInteger(X, Xbak);
-        BigIntToBigInteger(Y, Ybak);
+        if (BigInt::Abs(X) + BigInt::Abs(Y) <=
+            BigInt::Abs(BX) + BigInt::Abs(BY)) {
+          // At this moment |x| + |y| <= |xbak| + |ybak|
+          Xbak->emplace(X);
+          Ybak->emplace(Y);
+        }
       }
 
     } else {
@@ -1372,8 +1372,8 @@ struct Quad {
 
     if (VERBOSE)
       printf("second NSD %s %s %s\n",
-           A.ToString().c_str(),
-           B.ToString().c_str(),
+             A.ToString().c_str(),
+             B.ToString().c_str(),
              C.ToString().c_str());
 
     // We will have to solve several quadratic modular
@@ -1552,20 +1552,6 @@ struct Quad {
     } else {
       CHECK(showSolution == ONE_SOLUTION);
     }
-
-    // Back up value.
-    // BigInt Tmp12 = BigIntegerToBigInt(value);
-
-    /*
-    const BigInt M = BigIntegerToBigInt(&ValM);
-    const BigInt H = BigIntegerToBigInt(&ValH);
-    const BigInt E = BigIntegerToBigInt(&ValE);
-    const BigInt I = BigIntegerToBigInt(&ValI);
-
-    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    const BigInt Div = BigIntegerToBigInt(&ValDiv);
-    */
 
     BigInt KK;
     if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
@@ -2849,10 +2835,12 @@ struct Quad {
     // Set G to floor(sqrt(L))
     SquareRoot(ValL.limbs, ValG.limbs, ValL.nbrLimbs, &ValG.nbrLimbs);
     ValG.sign = SIGN_POSITIVE;          // g <- sqrt(discr).
-    Xplus.nbrLimbs = 0;                 // Invalidate solutions.
-    Xminus.nbrLimbs = 0;
-    Yplus.nbrLimbs = 0;
-    Yminus.nbrLimbs = 0;
+    // Invalidate solutions.
+    Xplus.reset();
+    Xminus.reset();
+    Yplus.reset();
+    Yminus.reset();
+    // Somewhere below these can get set. Can we return the values instead?
 
     BigInt UBak = BigIntegerToBigInt(&ValU);
     BigInt VBak = BigIntegerToBigInt(&ValV);
@@ -2870,16 +2858,16 @@ struct Quad {
     ContFrac(&value, SECOND_SOLUTION);   // Continued fraction of (-U+G)/(-V)
     showSolution = ONE_SOLUTION;
 
-    if (Xplus.nbrLimbs != 0) {
+    if (Xplus.has_value()) {
+      CHECK(Yplus.has_value());
       // Result box:
-      ShowXYOne(BigIntegerToBigInt(&Xplus),
-             BigIntegerToBigInt(&Yplus));
+      ShowXYOne(Xplus.value(), Yplus.value());
     }
 
-    if (Xminus.nbrLimbs != 0) {
+    if (Xminus.has_value()) {
+      CHECK(Yminus.has_value());
       // Result box:
-      ShowXYOne(BigIntegerToBigInt(&Xminus),
-                BigIntegerToBigInt(&Yminus));
+      ShowXYOne(Xminus.value(), Yminus.value());
     }
     equationNbr += 4;
   }
