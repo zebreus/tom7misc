@@ -572,6 +572,17 @@ static void ProfileFactorize() {
          result, TIMES, timer.Seconds());
 }
 
+static void TestNextPrime() {
+  CHECK(Factorization::NextPrime(2) == 3);
+  CHECK(Factorization::NextPrime(1) == 2);
+  CHECK(Factorization::NextPrime(0) == 2);
+  CHECK(Factorization::NextPrime(3) == 5);
+  CHECK(Factorization::NextPrime(4) == 5);
+  CHECK(Factorization::NextPrime(8) == 11);
+  CHECK(Factorization::NextPrime(2147483646) == 2147483647);
+  CHECK(Factorization::NextPrime(31333) == 31337);
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   printf("Test factorization...\n");
@@ -589,6 +600,8 @@ int main(int argc, char **argv) {
   BenchSqrt();
 
   BenchFactorize();
+
+  TestNextPrime();
 
   //  TestPredivided();
 

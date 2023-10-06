@@ -38,6 +38,11 @@ struct Factorization {
   // Exact primality test (Lucas).
   static bool IsPrime(uint64_t n);
 
+  // Return n or the next number larger than n that is prime.
+  // n must be < 18446744073709551557, the largest 64-bit prime.
+  // Not fast! Currently just running IsPrime on odd numbers.
+  static uint64_t NextPrime(uint64_t n);
+
   // Simpler, slower reference version. Generally just useful for testing.
   static std::vector<std::pair<uint64_t, int>> ReferenceFactorize(uint64_t n);
 };

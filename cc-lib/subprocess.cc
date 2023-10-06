@@ -23,6 +23,8 @@ namespace {
 struct SubprocessImpl : Subprocess {
 
   bool Write(const string &data) override {
+    // Check done?
+
     DWORD written;
     if (!WriteFile(g_hChildStd_IN_Wr, data.data(), data.size(), &written, nullptr))
       return false;
@@ -39,6 +41,19 @@ struct SubprocessImpl : Subprocess {
     }
 
     for (;;) {
+
+      if (IsDone()) {
+        if (partial_line.empty()) {
+          // Then we are totally done.
+          return false;
+        } else {
+          // One more (partial) line.
+          *line = std::move(partial_line);
+          partial_line.clear();
+          return true;
+        }
+      }
+
       DWORD num_read;
       if (!ReadFile(g_hChildStd_OUT_Rd, &cbuf, BUFSIZE, &num_read, nullptr))
         return false;
@@ -55,14 +70,37 @@ struct SubprocessImpl : Subprocess {
         }
       }
 
-      // If we have anylines, then we can return.
+      // If we have any lines, then we can return.
       if (!lines.empty()) {
         *line = std::move(lines.front());
         lines.pop_front();
         return true;
       }
+
       // Otherwise, keep reading.
     }
+  }
+
+  bool IsDone() {
+    // Once done, stay done.
+    if (is_done) return true;
+
+    CHECK(child_process_handle != nullptr);
+
+    DWORD exit_code = 0;
+    // Should always succeed with a valid handle.
+    CHECK(GetExitCodeProcess(child_process_handle, &exit_code));
+    if (exit_code != STILL_ACTIVE) {
+      is_done = true;
+
+      CloseHandle(child_process_handle);
+      child_process_handle = nullptr;
+
+      // XXX Clean up streams here?
+      return true;
+    }
+
+    return false;
   }
 
   virtual ~SubprocessImpl() {
@@ -81,9 +119,10 @@ struct SubprocessImpl : Subprocess {
 
     // TODO: "The preferred way to shut down a process is by using ExitProcess"
 
-    if (child_process_handle) {
+    if (!IsDone()) {
       TerminateProcess(child_process_handle, 0);
       CloseHandle(child_process_handle);
+      is_done = true;
       child_process_handle = nullptr;
     }
   }
@@ -102,6 +141,7 @@ struct SubprocessImpl : Subprocess {
   HANDLE g_hChildStd_OUT_Wr = nullptr;
 
   HANDLE child_process_handle = nullptr;
+  bool is_done = false;
 };
 }  // namespace
 
@@ -200,6 +240,8 @@ Subprocess *Subprocess::Create(const string &filename) {
   // of the child process, for example.
   // CloseHandle(piProcInfo.hProcess);
   sub->child_process_handle = piProcInfo.hProcess;
+  CHECK(sub->child_process_handle != nullptr);
+
   CloseHandle(piProcInfo.hThread);
 
   // printf("OK...\n");

@@ -22,7 +22,10 @@ struct Subprocess {
   // while another (only) reads.
   virtual bool Write(const std::string &data) = 0;
 
-  // Reads from both stdout and stderr.
+  // Reads from both stdout and stderr (but stderr might not work?)
+  // When the process terminates, this will return the final output
+  // (if non-empty) as a "line" even if it has no newline. Returns
+  // false once the process terminates or a read error occurs.
   virtual bool ReadLine(std::string *line) = 0;
 
   // Terminates the process if it is still running.

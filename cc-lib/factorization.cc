@@ -227,6 +227,29 @@ int Factorization::FactorizePredivided(
   return factors.num;
 }
 
+uint64_t Factorization::NextPrime(uint64_t n) {
+  CHECK(n < 18446744073709551557ULL) << "There are no larger representable primes.";
+
+  if (n < 2) return 2;
+  if (n == 2) return 3;
+
+  // Presumably there are better algorithms than this!
+  if (n & 1) {
+    // Already odd.
+    do {
+      n += 2;
+    } while (!IsPrime(n));
+
+  } else {
+    n++;
+    while (!IsPrime(n)) {
+      n += 1;
+    }
+  }
+
+  return n;
+}
+
 bool Factorization::IsPrime(uint64_t x) {
   if (x <= 1) return false;
 
