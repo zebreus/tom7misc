@@ -2788,7 +2788,7 @@ struct Quad {
   }
 
   void callbackQuadModHyperbolic(const BigInt &Value) {
-    bool isBeven = ((ValB.limbs[0].x & 1) == 0);
+    bool isBeven_XXX = ((ValB.limbs[0].x & 1) == 0);
     positiveDenominator = 1;
     if (!PerformTransformation(Value)) {
       // No solutions because gcd(P, Q, R) > 1.
@@ -2798,43 +2798,72 @@ struct Quad {
     BigInteger value;
     BigIntToBigInteger(Value, &value);
 
+    BigInt A = BigIntegerToBigInt(&ValA);
+    BigInt B = BigIntegerToBigInt(&ValB);
+    BigInt K = BigIntegerToBigInt(&ValK);
+    BigInt Discr = BigIntegerToBigInt(&discr);
+
+    // Expected to agree because PerformTransformation doesn't modify B?
+    const bool isBeven = B.IsEven();
+    CHECK(isBeven == isBeven_XXX);
+
     // Compute P as floor((2*a*theta + b)/2)
-    BigIntAdd(&ValA, &ValA, &ValP);
-    (void)BigIntMultiply(&ValP, &value, &ValP);
-    BigIntAdd(&ValP, &ValB, &ValP);
-    subtractdivide(&ValP, ValP.limbs[0].x & 1, 2);
+    BigInt P = (((A << 1) * Value) + B);
+    // BigIntAdd(&ValA, &ValA, &ValP);
+    // (void)BigIntMultiply(&ValP, &value, &ValP);
+    // BigIntAdd(&ValP, &ValB, &ValP);
+    if (P.IsOdd()) P -= 1;
+    P >>= 1;
+    // subtractdivide(&ValP, ValP.limbs[0].x & 1, 2);
+
     // Compute Q = a*abs(K)
-    CopyBigInt(&ValQ, &ValK);
-    ValQ.sign = SIGN_POSITIVE;
-    (void)BigIntMultiply(&ValQ, &ValA, &ValQ);
+    BigInt Q = BigInt::Abs(K) * A;
+    // CopyBigInt(&ValQ, &ValK);
+    // ValQ.sign = SIGN_POSITIVE;
+    // (void)BigIntMultiply(&ValQ, &ValA, &ValQ);
+
     // Find U, V, L so we can compute the continued fraction
     // expansion of (U+sqrt(L))/V.
-    CopyBigInt(&ValL, &discr);
+    BigInt L = Discr;
+    // CopyBigInt(&ValL, &discr);
 
+    BigInt U, V;
     if (isBeven) {
-      CopyBigInt(&ValU, &ValP);       // U <- P
-      subtractdivide(&ValL, 0, 4);    // Argument of square root is discriminant/4.
-      CopyBigInt(&ValV, &ValQ);
+      U = P;
+      // CopyBigInt(&ValU, &ValP);       // U <- P
+      // Argument of square root is discriminant/4.
+      L >>= 2;
+      // subtractdivide(&ValL, 0, 4);
+      V = Q;
+      // CopyBigInt(&ValV, &ValQ);
     } else {
-      BigIntAdd(&ValP, &ValP, &ValU);
-      addbigint(&ValU, 1);            // U <- 2P+1
-      BigIntAdd(&ValQ, &ValQ, &ValV); // V <- 2Q
+      // U <- 2P+1
+      U = (P << 1) + 1;
+      // BigIntAdd(&ValP, &ValP, &ValU);
+      // addbigint(&ValU, 1);
+      // V <- 2Q
+      V = (Q << 1);
+      // BigIntAdd(&ValQ, &ValQ, &ValV);
     }
-    BigIntChSign(&ValU);
-    // If L-U^2 is not multiple of V, there is no solution, so go out.
-    (void)BigIntMultiply(&ValU, &ValU, &bigTmp);
-    BigIntSubt(&ValL, &bigTmp, &bigTmp);
-    (void)BigIntRemainder(&bigTmp, &ValV, &bigTmp);
 
-    if (!BigIntIsZero(&bigTmp)) {
+    U = -U;
+    // BigIntChSign(&ValU);
+
+    // If L-U^2 is not multiple of V, there is no solution, so go out.
+    // (void)BigIntMultiply(&ValU, &ValU, &bigTmp);
+    // BigIntSubt(&ValL, &bigTmp, &bigTmp);
+    // (void)BigIntRemainder(&bigTmp, &ValV, &bigTmp);
+    // PERF divisibility check
+    if (BigInt::CMod(L - U * U, V) != 0) {
       // No solutions using continued fraction.
       equationNbr += 2;
       return;
     }
 
     // Set G to floor(sqrt(L))
-    SquareRoot(ValL.limbs, ValG.limbs, ValL.nbrLimbs, &ValG.nbrLimbs);
-    ValG.sign = SIGN_POSITIVE;          // g <- sqrt(discr).
+    BigInt G = BigInt::Sqrt(L);
+    // SquareRoot(ValL.limbs, ValG.limbs, ValL.nbrLimbs, &ValG.nbrLimbs);
+    // ValG.sign = SIGN_POSITIVE;          // g <- sqrt(discr).
     // Invalidate solutions.
     Xplus.reset();
     Xminus.reset();
@@ -2842,19 +2871,41 @@ struct Quad {
     Yminus.reset();
     // Somewhere below these can get set. Can we return the values instead?
 
-    BigInt UBak = BigIntegerToBigInt(&ValU);
-    BigInt VBak = BigIntegerToBigInt(&ValV);
+    BigInt UBak = U;
+    BigInt VBak = V;
     contfracEqNbr = equationNbr + 2;
+
+    // XXX pass args
+    BigIntToBigInteger(G, &ValG);
+    BigIntToBigInteger(P, &ValP);
+    BigIntToBigInteger(Q, &ValQ);
+    BigIntToBigInteger(L, &ValL);
+    BigIntToBigInteger(U, &ValU);
+    BigIntToBigInteger(V, &ValV);
+
     ContFrac(&value, FIRST_SOLUTION);    // Continued fraction of (U+G)/V
+
     positiveDenominator = 0;
-    BigIntToBigInteger(UBak, &ValU);
-    BigIntToBigInteger(VBak, &ValV);
-    BigIntChSign(&ValU);
-    BigIntChSign(&ValV);
+
+    // XXX should be no reason to do this, since we copied
+    U = UBak;
+    V = VBak;
+    //     BigIntToBigInteger(UBak, &ValU);
+    // BigIntToBigInteger(VBak, &ValV);
+
+    U = -U;
+    V = -V;
+    // BigIntChSign(&ValU);
+    // BigIntChSign(&ValV);
+
     contfracEqNbr = equationNbr + 3;
+    // XXX why don't we have a check on the number of limbs here?
+    BigIntToBigInteger(U, &ValU);
+    BigIntToBigInteger(V, &ValV);
     if ((ValU.limbs[0].x == 3) && (ValV.limbs[0].x == 9)) {
       contfracEqNbr++;
     }
+
     ContFrac(&value, SECOND_SOLUTION);   // Continued fraction of (-U+G)/(-V)
     showSolution = ONE_SOLUTION;
 
