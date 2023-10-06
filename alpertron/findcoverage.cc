@@ -15,6 +15,7 @@
 #include "ansi.h"
 #include "timer.h"
 #include "periodically.h"
+#include "factorization.h"
 
 #define MAGNITUDE 16384
 
@@ -52,24 +53,81 @@ int main(int argc, char **argv) {
       return r;
     };
 
+  auto RandNat = [&rc]() {
+      return RandTo(&rc, MAGNITUDE);
+    };
+
   Periodically stats_per(5.0);
 
   double total_sec = 0.0;
   for (int tries = 1; true; tries++) {
 
+    // TODO: Generate special types of numbers:
+    //  - 0,
+    //  - +/-1
+    //  - primes
+    //  - powers of two
+    //  - equal to other coefficients
+    std::vector<BigInt> already;
+    auto SpecialNat = [&]() {
+        switch (rc.Byte() & 7) {
+        default:
+        case 7:
+        case 6:
+        case 0:
+          return BigInt(0);
+        case 5:
+        case 1:
+          return BigInt(1);
+        case 2:
+          if (!already.empty()) {
+            return already[RandTo(&rc, already.size())];
+          } else {
+            return BigInt(0);
+          }
+        case 3: {
+          uint64_t r = Factorization::NextPrime(RandNat());
+          return BigInt(r);
+        }
+        case 4:
+          return BigInt(1 << RandTo(&rc, 18));
+        }
+      };
+    auto SpecialInt = [&]() {
+        BigInt n = SpecialNat();
+        if (rc.Byte() & 1) return -n;
+        else return n;
+      };
+
+    auto GetCoeff = [&](int specialness) {
+        if (rc.Byte() < specialness) {
+          BigInt a(RandInt());
+          already.push_back(a);
+          return a;
+        } else {
+          return SpecialInt();
+        }
+      };
+
     // ax^2 + bxy + cy^2 + dx + ey = -f
-    BigInt a((rc.Byte() < 200) ? RandInt() : 0);
-    BigInt b((rc.Byte() < 128) ? RandInt() : 0);
-    BigInt c((rc.Byte() < 200) ? RandInt() : 0);
-    BigInt d((rc.Byte() < 128) ? RandInt() : 0);
-    BigInt e((rc.Byte() < 128) ? RandInt() : 0);
+    BigInt a = GetCoeff(56);
+    BigInt b = GetCoeff(128);
+    BigInt c = GetCoeff(56);
+    BigInt d = GetCoeff(128);
+    BigInt e = GetCoeff(128);
 
     BigInt f;
 
     if (rc.Byte() < 200) {
       // the solution
-      BigInt x(RandInt());
-      BigInt y(RandInt());
+
+      // Avoid totally trivial solutions.
+      BigInt x, y;
+      do {
+        x = GetCoeff(56);
+        y = GetCoeff(56);
+      } while (BigInt::Abs(x) <= 1 && BigInt::Abs(y) <= 1);
+
 
       // now compute f
       BigInt negf = a * x * x + b * x * y + c * y * y + d * x + e * y;
@@ -81,7 +139,8 @@ int main(int argc, char **argv) {
              y.ToString().c_str());
     } else {
       // zero is actually boring here because then x=0, y=0 is always a solution
-      f = BigInt((rc.Byte() < 200) ? RandInt() : (rc.Byte() & 1) ? 1 : -1);
+      f = GetCoeff(56);
+      if (f == 0) f = BigInt((rc.Byte() & 1) ? 1 : -1);
       printf(AFGCOLOR(70, 55, 70, "(no solution known)") "\n");
     }
 

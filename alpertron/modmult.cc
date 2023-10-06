@@ -111,10 +111,10 @@ static void ModMultInt(limb* factorBig, int factorInt, limb* result,
 // Compute power = base^exponent (mod modulus)
 // Assumes GetMontgomeryParams routine for modulus already called.
 // This works only for odd moduli.
-void BigIntModularPower(const MontgomeryParams &params,
-                        int modulus_length, const limb *modulus,
-                        const BigInteger* base, const BigInteger* exponent,
-                        BigInteger* power) {
+void BigIntegerModularPower(const MontgomeryParams &params,
+                            int modulus_length, const limb *modulus,
+                            const BigInteger* base, const BigInteger* exponent,
+                            BigInteger* power) {
   limb tmp5[MAX_LEN];
   CompressLimbsBigInteger(modulus_length, tmp5, base);
   limb tmp6[MAX_LEN];
@@ -133,6 +133,26 @@ void BigIntModularPower(const MontgomeryParams &params,
           modulus_length, modulus,
           tmp6);
   UncompressLimbsBigInteger(modulus_length, tmp6, power);
+}
+
+BigInt BigIntModularDivision(const MontgomeryParams &params,
+                             const BigInt &num, const BigInt &den,
+                             const BigInt &mod) {
+  BigInteger n, d, m, z;
+  BigIntToBigInteger(num, &n);
+  BigIntToBigInteger(den, &d);
+  BigIntToBigInteger(mod, &m);
+
+  // PERF: Fewer conversions of the modulus please!
+  // PERF: Can dynamically size this, at least.
+  // (Or, modulus could be part of params)
+  limb TheModulus[MAX_LEN];
+  int modulus_length = BigIntToLimbs(mod, TheModulus);
+  TheModulus[modulus_length].x = 0;
+
+  BigIntegerModularDivision(params, modulus_length, TheModulus,
+                            &n, &d, &m, &z);
+  return BigIntegerToBigInt(&z);
 }
 
 // Input: base = base in Montgomery notation.
@@ -727,10 +747,10 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
 
 // Compute modular division for odd moduli.
 // mod and modulus should represent the same number.
-void BigIntModularDivision(const MontgomeryParams &params,
-                           int modulus_length, limb *modulus,
-                           const BigInteger* Num, const BigInteger* Den,
-                           const BigInteger* mod, BigInteger* quotient) {
+void BigIntegerModularDivision(const MontgomeryParams &params,
+                               int modulus_length, limb *modulus,
+                               const BigInteger* Num, const BigInteger* Den,
+                               const BigInteger* mod, BigInteger* quotient) {
   // NumberLength = mod->nbrLimbs;
   // ??
   CHECK(modulus_length == mod->nbrLimbs);
@@ -1121,9 +1141,10 @@ static void endBigModmult(const limb *prodNotAdjusted, int number_length,
   }
 }
 
-// PERF: Can use montgomery multiplication here; probably should add this
-// to BigInt or bigint utils.
-//   https://en.wikipedia.org/wiki/Montgomery_modular_multiplication
+// If modulus is bigger than one limb, this expects the arguments to
+// be in Montgomery form. It would be better if this were expressed
+// by the MontgomeryParams, not a shared secret.
+// https://en.wikipedia.org/wiki/Montgomery_modular_multiplication
 void ModMult(const MontgomeryParams &params,
              const limb* factor1, const limb* factor2,
              int number_length, const limb *modulus_array,

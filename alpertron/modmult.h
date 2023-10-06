@@ -44,14 +44,20 @@ BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
 
 // The interface to this is pretty bad: mod and modulus represent the
 // same number, and modulus is modified.
-void BigIntModularDivision(const MontgomeryParams &params,
-                           int modulus_length, limb *modulus,
-                           const BigInteger* Num, const BigInteger* Den,
-                           const BigInteger* mod, BigInteger* quotient);
-void BigIntModularPower(const MontgomeryParams &params,
-                        int modulus_length, const limb *modulus,
-                        const BigInteger* base, const BigInteger* exponent,
-                        BigInteger* power);
+void BigIntegerModularDivision(const MontgomeryParams &params,
+                               int modulus_length, limb *modulus,
+                               const BigInteger* Num, const BigInteger* Den,
+                               const BigInteger* mod, BigInteger* quotient);
+
+// Stateless version of above. The params must match the modulus!
+BigInt BigIntModularDivision(const MontgomeryParams &params,
+                             const BigInt &num, const BigInt &den,
+                             const BigInt &mod);
+
+void BigIntegerModularPower(const MontgomeryParams &params,
+                            int modulus_length, const limb *modulus,
+                            const BigInteger* base, const BigInteger* exponent,
+                            BigInteger* power);
 
 void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr,
                    int number_length);

@@ -151,8 +151,8 @@ struct QuadModLL {
           (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
           TheModulus[modulus_length].x = 0;
           MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
-          BigIntModularDivision(params, modulus_length, TheModulus,
-                                &Q, &L, &prime, &Tmp[T1]);
+          BigIntegerModularDivision(params, modulus_length, TheModulus,
+                                    &Q, &L, &prime, &Tmp[T1]);
         }
 
         (void)BigIntRemainder(&Tmp[T1], &prime, &L);
@@ -240,8 +240,8 @@ struct QuadModLL {
       // Perform division using odd modulus r.
       MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
       // Compute ptrSolution1 as ValC / |ValB|
-      BigIntModularDivision(params, modulus_length, TheModulus,
-                            pValC, pValB, pValN, ptrSolution1);
+      BigIntegerModularDivision(params, modulus_length, TheModulus,
+                                pValC, pValB, pValN, ptrSolution1);
       CHECK(ptrSolution1->nbrLimbs > 0);
       // Compute ptrSolution1 as -ValC / ValB
       if (!BigIntIsZero(ptrSolution1)) {
@@ -572,7 +572,7 @@ struct QuadModLL {
     if ((prime.limbs[0].x & 3) == 3) {
       // prime mod 4 = 3
       subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
-      BigIntModularPower(params, modulus_length, TheModulus, base, &Q, &SqrtDisc);
+      BigIntegerModularPower(params, modulus_length, TheModulus, base, &Q, &SqrtDisc);
     } else {
       limb* toConvert;
       // Convert discriminant to Montgomery notation.
@@ -718,8 +718,8 @@ struct QuadModLL {
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
     BigInteger tmp2;
     intToBigInteger(&tmp2, 1);
-    BigIntModularDivision(params, modulus_length, TheModulus,
-                          &tmp2, &SqrtDisc, &prime, &sqrRoot);
+    BigIntegerModularDivision(params, modulus_length, TheModulus,
+                              &tmp2, &SqrtDisc, &prime, &sqrRoot);
     correctBits = 1;
     CopyBigInt(&Q, &prime);
 
@@ -834,8 +834,8 @@ struct QuadModLL {
 
     {
       BigInteger Tmp;
-      BigIntModularDivision(params, modulus_length, TheModulus,
-                            &tmp2, &ValAOdd, &tmp1, &Tmp);
+      BigIntegerModularDivision(params, modulus_length, TheModulus,
+                                &tmp2, &ValAOdd, &tmp1, &Tmp);
       CopyBigInt(&ValAOdd, &Tmp);
     }
 
@@ -945,8 +945,8 @@ struct QuadModLL {
     (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
     TheModulus[modulus_length].x = 0;
     MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
-    BigIntModularDivision(params, modulus_length, TheModulus,
-                          pValC, pValB, &prime, ptrSolution);
+    BigIntegerModularDivision(params, modulus_length, TheModulus,
+                              pValC, pValB, &prime, ptrSolution);
     BigIntNegate(ptrSolution, ptrSolution);
     if (ptrSolution->sign == SIGN_NEGATIVE) {
       BigIntAdd(ptrSolution, &prime, ptrSolution);
@@ -971,8 +971,8 @@ struct QuadModLL {
       (void)memcpy(TheModulus, V.limbs, NumberLengthBytes);
       TheModulus[modulus_length].x = 0;
       MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
-      BigIntModularDivision(params, modulus_length, TheModulus,
-                            &Q, &L, &V, &Aux1);
+      BigIntegerModularDivision(params, modulus_length, TheModulus,
+                                &Q, &L, &V, &Aux1);
       BigIntSubt(ptrSolution, &Aux1, ptrSolution);
       (void)BigIntRemainder(ptrSolution, &V, ptrSolution);
 
@@ -1125,11 +1125,6 @@ void SolveEquation(
     const BigInt &A, const BigInt &B,
     const BigInt &C, const BigInt &N,
     const BigInt &GcdAll, const BigInt &Nn) {
-#if 0
-    BigInteger *pValA, const BigInteger* pValB,
-    const BigInteger* pValC, BigInteger* pValN,
-    BigInteger *GcdAll, BigInteger *pValNn) {
-#endif
   std::unique_ptr<QuadModLL> qmll = std::make_unique<QuadModLL>();
 
   BigInteger a, b, c, n, gcd, nn;
@@ -1141,13 +1136,4 @@ void SolveEquation(
   BigIntToBigInteger(Nn, &nn);
   qmll->SolveEquation(solutionCback,
                       &a, &b, &c, &n, &gcd, &nn);
-/*
-  pValA,
-                      pValB,
-                      pValC,
-                      pValN,
-                      GcdAll,
-                      pValNn);
- */
-  // memcpy(result, &qmll->res, sizeof (QuadModLLResult));
 }

@@ -135,8 +135,8 @@ struct Quad {
   bool positiveDenominator;
 
   // Were globals NumberLength and TestNbr
-  int modulus_length;
-  limb TheModulus[MAX_LEN];
+  // int modulus_length;
+  // limb TheModulus[MAX_LEN];
 
   std::string *output = nullptr;
 
@@ -600,6 +600,8 @@ struct Quad {
     // PERF divisibility check
     if (BigInt::CMod(coeff_quadr, modulus) == 0) {
       // Linear equation.
+      printf("linear-eq coverage\n");
+
       if (BigInt::GCD(coeff_linear, modulus) != 1) {
         // ValB and ValN are not coprime. Go out.
         return;
@@ -607,23 +609,16 @@ struct Quad {
 
       // Calculate z <- -ValC / ValB (mod ValN)
 
-      modulus_length = BigIntToLimbs(modulus, TheModulus);
+      // We only use this right here, so we could have a version of MGParams
+      // that just took a BigInt modulus, at least for this code.
+      limb TheModulus[MAX_LEN];
+      const int modulus_length = BigIntToLimbs(modulus, TheModulus);
       TheModulus[modulus_length].x = 0;
 
-      MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
+      // Is it worth it to convert to montgomery form for one division??
+      const MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
 
-      BigInt z;
-      {
-        // Yuck
-        BigInteger ind, lin, modu, zz;
-        BigIntToBigInteger(coeff_indep, &ind);
-        BigIntToBigInteger(coeff_linear, &lin);
-        BigIntToBigInteger(modulus, &modu);
-
-        BigIntModularDivision(params, modulus_length, TheModulus,
-                              &ind, &lin, &modu, &zz);
-        z = BigIntegerToBigInt(&zz);
-      }
+      BigInt z = BigIntModularDivision(params, coeff_indep, coeff_linear, modulus);
 
       if (z != 0) {
         // not covered by cov.sh :(
@@ -636,14 +631,12 @@ struct Quad {
       }
       BigInt Temp0 = ValNn * GcdAll;
 
-      {
-        for (;;) {
-          // also not covered :(
-          printf("new coverage: loop zz");
-          SolutionX(z, modulus);
-          z += modulus;
-          if (z < Temp0) break;
-        }
+      for (;;) {
+        // also not covered :(
+        printf("new coverage: loop zz");
+        SolutionX(z, modulus);
+        z += modulus;
+        if (z < Temp0) break;
       }
 
       return;
@@ -1360,25 +1353,13 @@ struct Quad {
         A = UU1;
         // CopyBigInt(&ValA, &U1);
       }
-
-      // debugging: probably unnecessary
-      BigIntToBigInteger(UU1, &U1);
-      BigIntToBigInteger(UU2, &U2);
     }
 
-    // debugging: probably unnecessary
-    BigIntToBigInteger(A, &ValA);
-    BigIntToBigInteger(B, &ValB);
-    BigIntToBigInteger(C, &ValC);
-    BigIntToBigInteger(M, &ValM);
-
     if (VERBOSE)
-    printf("second NSD %s %s %s | %s %s\n",
-           BigIntegerToBigInt(&ValA).ToString().c_str(),
-           BigIntegerToBigInt(&ValB).ToString().c_str(),
-           BigIntegerToBigInt(&ValC).ToString().c_str(),
-           BigIntegerToBigInt(&U1).ToString().c_str(),
-           BigIntegerToBigInt(&U2).ToString().c_str());
+      printf("second NSD %s %s %s\n",
+           A.ToString().c_str(),
+           B.ToString().c_str(),
+             C.ToString().c_str());
 
     // We will have to solve several quadratic modular
     // equations. To do this we have to factor the modulus and
@@ -1397,12 +1378,12 @@ struct Quad {
       // CopyBigInt(&LastModulus, &modulus);
 
       // Ugh, SQME depends on additional state (SolutionX);
-      BigIntToBigInteger(K, &ValK);
       BigIntToBigInteger(E, &ValE);
-    BigIntToBigInteger(A, &ValA);
-    BigIntToBigInteger(B, &ValB);
-    BigIntToBigInteger(C, &ValC);
-    BigIntToBigInteger(M, &ValM);
+      BigIntToBigInteger(A, &ValA);
+      BigIntToBigInteger(B, &ValB);
+      BigIntToBigInteger(C, &ValC);
+      BigIntToBigInteger(M, &ValM);
+      BigIntToBigInteger(K, &ValK);
 
       SolveQuadModEquation(
           // PERF just construct directly above.
