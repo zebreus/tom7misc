@@ -91,10 +91,11 @@ struct Quad {
   BigInteger Tmp2;
   int SolNbr;
   int showRecursiveSolution;
-  BigInteger Xind;
-  BigInteger Yind;
-  BigInteger Xlin;
-  BigInteger Ylin;
+  BigInt Xind, Yind, Xlin, Ylin;
+  // BigInteger Xind;
+  // BigInteger Yind;
+  // BigInteger Xlin;
+  // BigInteger Ylin;
   bool solFound;
   char also;
   bool ExchXY;
@@ -153,7 +154,7 @@ struct Quad {
           &ValAlpha, &ValBeta, &ValDen, &ValDiv,
           &ValABak, &ValBBak, &ValCBak,
           &ValGcdHomog, &Tmp1, &Tmp2,
-          &Xind, &Yind, &Xlin, &Ylin, &discr,
+          &discr,
           &U1, &U2, &U3, &V1, &V2, &V3,
           &bigTmp, &startPeriodU, &startPeriodV,
           &modulus, &Xplus, &Xminus, &Yplus, &Yminus}) {
@@ -260,20 +261,20 @@ struct Quad {
     }
     if (ExchXY) {
       // Exchange Xind and Yind
-      CopyBigInt(&bigTmp, &Xind);
-      CopyBigInt(&Xind, &Yind);
-      CopyBigInt(&Yind, &bigTmp);
+      std::swap(Xind, Yind);
+      // CopyBigInt(&bigTmp, &Xind);
+      // CopyBigInt(&Xind, &Yind);
+      // CopyBigInt(&Yind, &bigTmp);
       // Exchange Xlin and Ylin
-      CopyBigInt(&bigTmp, &Xlin);
-      CopyBigInt(&Xlin, &Ylin);
-      CopyBigInt(&Ylin, &bigTmp);
+      std::swap(Xlin, Ylin);
+      // CopyBigInt(&bigTmp, &Xlin);
+      // CopyBigInt(&Xlin, &Ylin);
+      // CopyBigInt(&Ylin, &bigTmp);
     }
     showText("<p>x = ");
-    ShowLinInd(BigIntegerToBigInt(&Xlin),
-               BigIntegerToBigInt(&Xind), var);
+    ShowLinInd(Xlin, Xind, var);
     showText("<br>y = ");
-    ShowLinInd(BigIntegerToBigInt(&Ylin),
-               BigIntegerToBigInt(&Yind), var);
+    ShowLinInd(Ylin, Yind, var);
     showText("</p>");
     return;
   }
@@ -694,13 +695,16 @@ struct Quad {
       if (BigInt::CMod(coeffInd, coeffY) != 0) {
         return NO_SOLUTIONS;             // No solutions
       } else {
-        intToBigInteger(&Xind, 0);
-        intToBigInteger(&Xlin, 1);
+        Xind = BigInt(0);
+        Xlin = BigInt(1);
+        // intToBigInteger(&Xind, 0);
+        // intToBigInteger(&Xlin, 1);
         // PERF QuotRem
-        BigInt yy = coeffInd / coeffY;
-        BigIntToBigInteger(yy, &Yind);
-        BigIntNegate(&Yind, &Yind);
-        intToBigInteger(&Ylin, 0);
+        Yind = -(coeffInd / coeffY);
+        // BigIntToBigInteger(yy, &Yind);
+        // BigIntNegate(&Yind, &Yind);
+        Ylin = BigInt(0);
+        // intToBigInteger(&Ylin, 0);
         return SOLUTION_FOUND;           // Solution found
       }
     }
@@ -712,11 +716,15 @@ struct Quad {
       if (rr != 0) {
         return NO_SOLUTIONS;             // No solutions
       } else {
-        intToBigInteger(&Yind, 0);
-        intToBigInteger(&Ylin, 1);
-        BigIntToBigInteger(qq, &Xind);
-        BigIntNegate(&Xind, &Xind);
-        intToBigInteger(&Xlin, 0);
+        Yind = BigInt(0);
+        Ylin = BigInt(1);
+        // intToBigInteger(&Yind, 0);
+        // intToBigInteger(&Ylin, 1);
+        Xind = -qq;
+        // BigIntToBigInteger(qq, &Xind);
+        // BigIntNegate(&Xind, &Xind);
+        Xlin = BigInt(0);
+        // intToBigInteger(&Xlin, 0);
         return SOLUTION_FOUND;           // Solution found
       }
     }
@@ -801,17 +809,21 @@ struct Quad {
 
     // Compute Xind as -U1 * coeffInd / U3
     BigInt xind = U1 * q;
-    BigIntToBigInteger(xind, &Xind);
+    Xind = xind;
+    // BigIntToBigInteger(xind, &Xind);
     // Set Xlin to coeffY
     BigInt xlin = coeffY;
-    BigIntToBigInteger(xlin, &Xlin);
+    Xlin = xlin;
+    // BigIntToBigInteger(xlin, &Xlin);
 
     // Compute Yind as -U2 * coeffInd / U3
     BigInt yind = U2 * q;
-    BigIntToBigInteger(yind, &Yind);
+    Yind = yind;
+    // BigIntToBigInteger(yind, &Yind);
     // Set Ylin to -coeffX
     BigInt ylin = -coeffX;
-    BigIntToBigInteger(ylin, &Ylin);
+    Ylin = ylin;
+    // BigIntToBigInteger(ylin, &Ylin);
 
     // HERE!
 
@@ -856,18 +868,21 @@ struct Quad {
     // Xind <- Xind + coeffY * delta
     q = U1 * coeffY;
     xind += q;
-    BigIntToBigInteger(xind, &Xind);
+    // BigIntToBigInteger(xind, &Xind);
+    Xind = xind;
 
     // Yind <- Yind - coeffX * delta
     q = U1 * coeffX;
     yind -= q;
-    BigIntToBigInteger(yind, &Yind);
-
+    // BigIntToBigInteger(yind, &Yind);
+    Yind = yind;
 
     if (xlin < 0 && ylin < 0) {
       // If both coefficients are negative, make them positive.
-      BigIntChSign(&Xlin);
-      BigIntChSign(&Ylin);
+      Xlin = -Xlin;
+      Ylin = -Ylin;
+      // BigIntChSign(&Xlin);
+      // BigIntChSign(&Ylin);
     }
 
     return SOLUTION_FOUND;
