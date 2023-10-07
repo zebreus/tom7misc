@@ -326,10 +326,10 @@ static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
   // Set bigTmp to |u|
   // bigTmp.sign = SIGN_POSITIVE;
   // Compute bigTmp as floor(g) - |u|
-  BigInt BigTmp = G - BigInt::Abs(U);
+  // BigInt BigTmp = G - BigInt::Abs(U);
   // BigIntSubt(&ValG, &bigTmp, &bigTmp);
 
-  if (BigTmp >= 0) {
+  if (G >= BigInt::Abs(U)) {
     BigInt Tmp1 = BigInt::Abs(V);
     // First check |u| < g passed.
     // CopyBigInt(&Tmp1, &ValV);
@@ -351,10 +351,10 @@ static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
     // Tmp2.sign = SIGN_POSITIVE;
 
     // Compute bigTmp as floor(|u+g|) - |v|
-    BigTmp = Tmp2 - Tmp1;
+    // BigTmp = Tmp2 - Tmp1;
     // BigIntSubt(&Tmp2, &Tmp1, &bigTmp);
 
-    if (BigTmp >= 0) {
+    if (Tmp2 >= Tmp1) {
       // Second check |u+g| > |v| passed.
       // Compute Tmp2 as u - floor(g)
       Tmp2 = U - G;
@@ -372,9 +372,9 @@ static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
       // Tmp2.sign = SIGN_POSITIVE;
       // Compute Tmp2 as |v| - floor(|u-g|)
       // BigIntSubt(&Tmp1, &Tmp2, &bigTmp);
-      BigTmp = Tmp1 - Tmp2;
+      // BigTmp = Tmp1 - Tmp2;
 
-      if (BigTmp >= 0) {
+      if (Tmp1 >= Tmp2) {
         // Third check |u-g| < |v| passed.
         // Save U and V to check period end.
         return true;
@@ -2120,6 +2120,8 @@ struct Quad {
     const BigInt L = BigInt::Sqrt((P << 2) / -Discr);
     BigIntToBigInteger(L, &ValL);
 
+    // HERE!
+
     intToBigInteger(&U1, 1);         // Initial value of last convergent: 1/0.
     intToBigInteger(&V1, 0);
     intToBigInteger(&U2, 0);         // Initial value of next to last convergent: 0/1.
@@ -2262,14 +2264,15 @@ struct Quad {
     // P = Numerator of X.
     BigInt P = N * I - CurrentFactor * M;
 
-    if (VERBOSE)
-    printf("CheckSolutionSquareDiscr %s %s %s %s %s %s\n",
-           P.ToString().c_str(),
-           O.ToString().c_str(),
-           CurrentFactor.ToString().c_str(),
-           L.ToString().c_str(),
-           N.ToString().c_str(),
-           H.ToString().c_str());
+    if (VERBOSE) {
+      printf("CheckSolutionSquareDiscr %s %s %s %s %s %s\n",
+             P.ToString().c_str(),
+             O.ToString().c_str(),
+             CurrentFactor.ToString().c_str(),
+             L.ToString().c_str(),
+             N.ToString().c_str(),
+             H.ToString().c_str());
+    }
 
     CHECK(O != 0) << "Might have been shenanigans with O = 0?";
     if (P % O == 0) {
@@ -2334,12 +2337,12 @@ struct Quad {
           clean.PrintLinear(sol, "t");
         }
 
-        // Solve bDx + cDy + b*alpha + c*beta = 0
-        BigInt Aux0 = B * Discr;
-        BigInt Aux1 = C * Discr;
-        BigInt Aux2 = B * Alpha + C * Beta;
-
         {
+          // Solve bDx + cDy + b*alpha + c*beta = 0
+          const BigInt Aux0 = B * Discr;
+          const BigInt Aux1 = C * Discr;
+          const BigInt Aux2 = B * Alpha + C * Beta;
+
           LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
           CHECK(!ExchXY);
           // Result box:
@@ -2352,33 +2355,30 @@ struct Quad {
 
         const BigInt AAlpha2 = (A * Alpha) << 1;
 
-        // Solve 2aD x + (b+g)D y = 2a*alpha + (b+g)*beta
-        BigInt Aux0 = (A * Discr) << 1;
-        // (void)BigIntMultiply(&ValA, &discr, &Aux0);
-        // BigIntAdd(&Aux0, &Aux0, &Aux0);
-        BigInt Aux1 = (B + G) * Discr;
-        // BigIntAdd(&ValB, &ValG, &Aux1);
-        // (void)BigIntMultiply(&Aux1, &discr, &Aux1);
-        BigInt Aux2 = -(AAlpha2 + (B + G) * Beta);
-        // (void)BigIntMultiply(&ValA, &ValAlpha, &Aux2);
-        //  BigIntAdd(&Aux2, &Aux2, &Aux2);
-        // BigIntAdd(&ValB, &ValG, &bigTmp);
-        // (void)BigIntMultiply(&bigTmp, &ValBeta, &bigTmp);
-        // BigIntAdd(&Aux2, &bigTmp, &Aux2);
-        // BigIntChSign(&Aux2);
         {
+          // Solve 2aD x + (b+g)D y = 2a*alpha + (b+g)*beta
+          const BigInt Aux0 = (A * Discr) << 1;
+          const BigInt Aux1 = (B + G) * Discr;
+          const BigInt Aux2 = -(AAlpha2 + (B + G) * Beta);
+
           LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
           // Result box:
           CHECK(!ExchXY);
           clean.PrintLinear(sol, "t");
         }
 
-        // Solve the equation 2aD x + (b-g)D y = 2a*alpha + (b-g)*beta
-        Aux0 = A << 1;
-        Aux1 *= (B - G) * Discr;
-        Aux2 = -(AAlpha2 + (B - G) * Beta);
         {
+          // Solve 2aD x + (b-g)D y = 2a*alpha + (b-g)*beta
+          const BigInt Aux0 = A << 1;
+          // Port note: At some point this was erroneously
+          // multiplied by the value of aux1 above.
+          const BigInt Aux1 = (B - G) * Discr;
+          const BigInt Aux2 = -(AAlpha2 + (B - G) * Beta);
+
           LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
+          if (sol.type == LinearSolutionType::SOLUTION_FOUND) {
+            printf("bminusg coverage\n");
+          }
           // Result box:
           CHECK(!ExchXY);
           clean.PrintLinear(sol, "t");
