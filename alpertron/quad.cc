@@ -32,10 +32,25 @@
 
 static constexpr bool VERBOSE = false;
 
-enum eLinearSolution {
-  SOLUTION_FOUND = 0,
+enum class LinearSolutionType {
+  SOLUTION_FOUND,
   NO_SOLUTIONS,
   INFINITE_SOLUTIONS,
+};
+
+struct LinearSolution {
+  LinearSolutionType type = LinearSolutionType::NO_SOLUTIONS;
+
+  LinearSolution(LinearSolutionType type) : type(type) {}
+
+  // Only meaningful when SOLUTION_FOUND.
+  BigInt Xlin, Xind;
+  BigInt Ylin, Yind;
+
+  void SwapXY() {
+    std::swap(Xlin, Ylin);
+    std::swap(Xind, Yind);
+  }
 };
 
 enum eShowSolution {
@@ -50,6 +65,215 @@ enum eCallbackQuadModType {
   CBACK_QMOD_ELLIPTIC,
   CBACK_QMOD_HYPERBOLIC,
 };
+
+static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
+  if (VERBOSE) {
+    printf("LinearEq %s %s %s\n",
+           coeffX.ToString().c_str(),
+           coeffY.ToString().c_str(),
+           coeffInd.ToString().c_str());
+  }
+  // A linear equation. X + Y + IND = 0.
+
+  if (coeffX == 0) {
+    if (coeffY == 0) {
+      if (coeffInd != 0) {
+        return LinearSolution(LinearSolutionType::NO_SOLUTIONS);
+      } else {
+        return LinearSolution(LinearSolutionType::INFINITE_SOLUTIONS);
+      }
+    }
+
+    if (BigInt::CMod(coeffInd, coeffY) != 0) {
+      return LinearSolution(LinearSolutionType::NO_SOLUTIONS);
+    } else {
+      LinearSolution sol(LinearSolutionType::SOLUTION_FOUND);
+      sol.Xind = BigInt(0);
+      sol.Xlin = BigInt(1);
+      // intToBigInteger(&Xind, 0);
+      // intToBigInteger(&Xlin, 1);
+      // PERF QuotRem
+      sol.Yind = -(coeffInd / coeffY);
+      // BigIntToBigInteger(yy, &Yind);
+      // BigIntNegate(&Yind, &Yind);
+      sol.Ylin = BigInt(0);
+      // intToBigInteger(&Ylin, 0);
+      return sol;
+    }
+  }
+
+  if (coeffY == 0) {
+
+    const auto [qq, rr] = BigInt::QuotRem(coeffInd, coeffX);
+
+    if (rr != 0) {
+      return LinearSolution(LinearSolutionType::NO_SOLUTIONS);
+    } else {
+      LinearSolution sol(LinearSolutionType::SOLUTION_FOUND);
+      sol.Yind = BigInt(0);
+      sol.Ylin = BigInt(1);
+      // intToBigInteger(&Yind, 0);
+      // intToBigInteger(&Ylin, 1);
+      sol.Xind = -qq;
+      // BigIntToBigInteger(qq, &Xind);
+      // BigIntNegate(&Xind, &Xind);
+      sol.Xlin = BigInt(0);
+      // intToBigInteger(&Xlin, 0);
+      return sol;
+    }
+  }
+
+  const BigInt gcdxy = BigInt::GCD(coeffX, coeffY);
+
+  if (gcdxy != 1) {
+    // GCD is not 1.
+    // To solve it, we first find the greatest common divisor of the
+    // linear coefficients, that is: gcd(coeffX, coeffY) = gcdxy.
+
+    // PERF divisibility test
+    BigInt r = BigInt::CMod(coeffInd, gcdxy);
+
+    if (r != 0) {
+      // The independent coefficient is not a multiple of
+      // the gcd, so there are no solutions.
+      return LinearSolution(LinearSolutionType::NO_SOLUTIONS);
+    }
+
+    // Divide all coefficients by the gcd.
+    if (gcdxy != 0) {
+      // PERF known divisible
+      coeffX /= gcdxy;
+      coeffY /= gcdxy;
+      coeffInd /= gcdxy;
+    }
+  }
+
+  // Now the generalized Euclidean algorithm.
+  // (BigInt may have an implementation of this?)
+
+  BigInt U1(1);
+  BigInt U2(0);
+  BigInt U3 = coeffX;
+  BigInt V1(0);
+  BigInt V2(1);
+  BigInt V3 = coeffY;
+
+  BigInt q;
+
+  while (V3 != 0) {
+
+    if (VERBOSE) {
+      printf("Euclid Step: %s %s %s %s %s %s\n",
+             U1.ToString().c_str(),
+             U2.ToString().c_str(),
+             U3.ToString().c_str(),
+             V1.ToString().c_str(),
+             V2.ToString().c_str(),
+             V3.ToString().c_str());
+    }
+
+    // q <- floor(U3 / V3).
+    q = FloorDiv(U3, V3);
+
+    {
+      // T <- U1 - q * V1
+      BigInt T = U1 - q * V1;
+      U1 = std::move(V1);
+      V1 = std::move(T);
+    }
+
+    {
+      BigInt T = U2 - q * V2;
+      U2 = std::move(V2);
+      V2 = std::move(T);
+    }
+
+    {
+      BigInt T = U3 - q * V3;
+      U3 = std::move(V3);
+      V3 = std::move(T);
+    }
+  }
+
+  CHECK(U3 != 0);
+  // Compute q as -coeffInd / U3
+  q = -coeffInd / U3;
+
+  // Compute Xind as -U1 * coeffInd / U3
+  BigInt xind = U1 * q;
+
+  BigInt xlin = coeffY;
+
+  // Compute Yind as -U2 * coeffInd / U3
+  BigInt yind = U2 * q;
+
+  BigInt ylin = -coeffX;
+
+  if (VERBOSE) {
+    printf("Step: %s %s %s %s %s %s | %s %s %s %s\n",
+           U1.ToString().c_str(),
+           U2.ToString().c_str(),
+           U3.ToString().c_str(),
+           V1.ToString().c_str(),
+           V2.ToString().c_str(),
+           V3.ToString().c_str(),
+
+           coeffX.ToString().c_str(),
+           coeffY.ToString().c_str(),
+           xind.ToString().c_str(),
+           yind.ToString().c_str());
+  }
+
+  // Substitute variables so the independent coefficients can be minimized.
+  // Reuse variables U1, U2, U3, V1, V2, V3.
+
+  // U1 <- coeffX^2 + coeffY^2
+  U1 = coeffX * coeffX + coeffY * coeffY;
+
+  // U2 <- (coeffX^2 + coeffY^2)/2
+  U2 = U1 >> 1;
+
+  U2 += coeffX * yind;
+  U2 -= coeffY * xind;
+
+  // U1 <- delta to add to t'
+  U1 = FloorDiv(U2, U1);
+
+  if (VERBOSE) {
+    printf("After subst: %s %s %s %s %s %s\n",
+           U1.ToString().c_str(),
+           U2.ToString().c_str(),
+           U3.ToString().c_str(),
+           V1.ToString().c_str(),
+           V2.ToString().c_str(),
+           V3.ToString().c_str());
+  }
+
+  // Xind <- Xind + coeffY * delta
+  q = U1 * coeffY;
+  xind += q;
+
+  // Yind <- Yind - coeffX * delta
+  q = U1 * coeffX;
+  yind -= q;
+
+  if (xlin < 0 && ylin < 0) {
+    // If both coefficients are negative, make them positive.
+    // printf("negate_coeff coverage\n");
+    xlin = -xlin;
+    ylin = -ylin;
+  }
+
+  LinearSolution sol(LinearSolutionType::SOLUTION_FOUND);
+
+  sol.Xlin = std::move(xlin);
+  sol.Xind = std::move(xind);
+  sol.Ylin = std::move(ylin);
+  sol.Yind = std::move(yind);
+
+  return sol;
+}
+
 
 struct Quad {
   // XXX can be retired for two_solutions arg
@@ -91,10 +315,11 @@ struct Quad {
   BigInteger Tmp2;
   int SolNbr;
   int showRecursiveSolution;
-  BigInt Xind, Yind, Xlin, Ylin;
+  // BigInt Xind, Yind, Xlin, Ylin;
   bool solFound;
 
-  bool ExchXY;
+  bool ExchXY = false;
+
   const char *divgcd;
   const char *varT = "t";
   BigInteger discr;
@@ -194,8 +419,8 @@ struct Quad {
     void ShowLin(const BigInt &coeffX, const BigInt &coeffY,
                  const BigInt &coeffInd,
                  const char *x, const char *y) {
-      eLinearSolution t;
-      t = Show(coeffX, x, SOLUTION_FOUND);
+      LinearSolutionType t;
+      t = Show(coeffX, x, LinearSolutionType::SOLUTION_FOUND);
       t = Show(coeffY, y, t);
       Show1(coeffInd, t);
     }
@@ -256,38 +481,23 @@ struct Quad {
     }
   }
 
-  void PrintLinear(const BigInt &Xlin, const BigInt &Xind,
-                   const BigInt &Ylin, const BigInt &Yind,
-                   eLinearSolution Ret, const string &var) {
-    if (Ret == NO_SOLUTIONS) {
+  void PrintLinear(const LinearSolution &sol, const string &var) {
+    if (sol.type == LinearSolutionType::NO_SOLUTIONS) {
       return;
     }
     if (var == "t") {
       showAlso();
     }
-    if (Ret == INFINITE_SOLUTIONS) {
+    if (sol.type == LinearSolutionType::INFINITE_SOLUTIONS) {
       ShowText("<p>x, y: any integer</p>");
       return;
     }
-    // Port note: This used to actually swap xind/yind xlin/ylin.
-    #if 0
-    if (ExchXY) {
-      // Exchange Xind and Yind
-      std::swap(Xind, Yind);
-      // CopyBigInt(&bigTmp, &Xind);
-      // CopyBigInt(&Xind, &Yind);
-      // CopyBigInt(&Yind, &bigTmp);
-      // Exchange Xlin and Ylin
-      std::swap(Xlin, Ylin);
-      // CopyBigInt(&bigTmp, &Xlin);
-      // CopyBigInt(&Xlin, &Ylin);
-      // CopyBigInt(&Ylin, &bigTmp);
-    }
-    #endif
+    // Port note: This used to actually have the effect of swapping
+    // xind/yind xlin/ylin.
     ShowText("<p>x = ");
-    ShowLinInd(Xlin, Xind, var);
+    ShowLinInd(sol.Xlin, sol.Xind, var);
     ShowText("<br>y = ");
-    ShowLinInd(Ylin, Yind, var);
+    ShowLinInd(sol.Ylin, sol.Yind, var);
     ShowText("</p>");
     return;
   }
@@ -377,16 +587,16 @@ struct Quad {
 
   void ShowSolutionXY(const BigInt &x, const BigInt &y) {
     ShowText("<p>x = ");
-    ShowBigInt(ExchXY ? y : x);
+    ShowBigInt(x);
     ShowText("<BR>y = ");
-    ShowBigInt(ExchXY ? x : y);
+    ShowBigInt(y);
     ShowText("</p>");
   }
 
   // This weird function either shows the solution or continues
   // to try to find the minimum, storing the state in Xbak, Ybak.
   // XXX need to take some kind of state to accumulate Xbak, Ybak...
-  void ShowXY(bool two_solutions, const BigInt &X, const BigInt &Y) {
+  void ShowXY(bool two_solutions, bool swap_xy, const BigInt &X, const BigInt &Y) {
     if (two_solutions) {
       solFound = true;
 
@@ -415,22 +625,26 @@ struct Quad {
 
     } else {
       // ONE_SOLUTION: Show it.
-      ShowXYOne(X, Y);
+      ShowXYOne(swap_xy, X, Y);
     }
   }
 
-  void ShowXYOne(const BigInt &X, const BigInt &Y) {
+  void ShowXYOne(bool swap_xy, const BigInt &X, const BigInt &Y) {
     CHECK(showSolution == ONE_SOLUTION);
     showAlso();
-    ShowSolutionXY(X, Y);
+    if (swap_xy)
+      ShowSolutionXY(Y, X);
+    else
+      ShowSolutionXY(X, Y);
   }
 
-  eLinearSolution Show(const BigInt &num, const string &str,
-                       eLinearSolution t) {
-    eLinearSolution tOut = t;
+  // XXX why does this take/return "linear solution type" ?
+  LinearSolutionType Show(const BigInt &num, const string &str,
+                          LinearSolutionType t) {
+    LinearSolutionType tOut = t;
     if (num != 0) {
       // num is not zero.
-      if (t == NO_SOLUTIONS && num >= 0) {
+      if (t == LinearSolutionType::NO_SOLUTIONS && num >= 0) {
         ShowText(" +");
       }
 
@@ -450,17 +664,18 @@ struct Quad {
       if (output != nullptr)
         *output += str;
 
-      if (t == SOLUTION_FOUND) {
-        tOut = NO_SOLUTIONS;
+      if (t == LinearSolutionType::SOLUTION_FOUND) {
+        tOut = LinearSolutionType::NO_SOLUTIONS;
       }
     }
     return tOut;
   }
 
-  void Show1(const BigInt &num, eLinearSolution t) {
-    int u = Show(num, "", t);
+  void Show1(const BigInt &num, LinearSolutionType t) {
+    const LinearSolutionType u = Show(num, "", t);
     ShowChar(' ');
-    if ((u & 1) == 0 || num == 1 || num == -1) {
+    // Port note: This used to test u & 1 as a "trick" for detecting NO_SOLUTIONS?
+    if (u != LinearSolutionType::NO_SOLUTIONS || num == 1 || num == -1) {
       // Show absolute value of num.
       ShowBigInt(BigInt::Abs(num));
     }
@@ -472,9 +687,9 @@ struct Quad {
       const BigInt &coeffE, const BigInt &coeffF,
       const char *x, const char *y) {
 
-    eLinearSolution t;
+    LinearSolutionType t;
     string vxx = StringPrintf("%s&sup2;", x);
-    t = Show(coeffA, vxx, SOLUTION_FOUND);
+    t = Show(coeffA, vxx, LinearSolutionType::SOLUTION_FOUND);
 
     string vxy = StringPrintf("%s&#8290;%s", x, y);
     t = Show(coeffB, vxy, t);
@@ -555,12 +770,13 @@ struct Quad {
                             const BigInt &coeffIndep,
                             const BigInt &modulus_in) {
 
-    if (VERBOSE)
-    fprintf(stderr, "[SQME] %s %s %s %s\n",
-            coeffQuadr.ToString().c_str(),
-            coeffLinear.ToString().c_str(),
-            coeffIndep.ToString().c_str(),
-            modulus_in.ToString().c_str());
+    if (VERBOSE) {
+      printf("[SQME] %s %s %s %s\n",
+             coeffQuadr.ToString().c_str(),
+             coeffLinear.ToString().c_str(),
+             coeffIndep.ToString().c_str(),
+             modulus_in.ToString().c_str());
+    }
 
     BigInt modulus = BigInt::Abs(modulus_in);
 
@@ -682,13 +898,13 @@ struct Quad {
       BigIntToBigInteger(modulus, &this->modulus);
 
       if (VERBOSE) {
-        fprintf(stderr, "[Call SolveEq] %s %s %s %s %s %s\n",
-                coeff_quadr.ToString().c_str(),
-                coeff_linear.ToString().c_str(),
-                coeff_indep.ToString().c_str(),
-                modulus.ToString().c_str(),
-                GcdAll.ToString().c_str(),
-                ValNn.ToString().c_str());
+        printf("[Call SolveEq] %s %s %s %s %s %s\n",
+               coeff_quadr.ToString().c_str(),
+               coeff_linear.ToString().c_str(),
+               coeff_indep.ToString().c_str(),
+               modulus.ToString().c_str(),
+               GcdAll.ToString().c_str(),
+               ValNn.ToString().c_str());
       }
 
       SolveEquation(
@@ -699,216 +915,6 @@ struct Quad {
           coeff_quadr, coeff_linear, coeff_indep,
           modulus, GcdAll, ValNn);
     }
-  }
-
-  // This should return the solution Xlin, Xind, Ylin, Yind.
-  eLinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
-
-    // A linear equation. X + Y + IND = 0.
-
-    if (coeffX == 0) {
-      if (coeffY == 0) {
-        if (coeffInd != 0) {
-          return NO_SOLUTIONS;           // No solutions
-        } else {
-          return INFINITE_SOLUTIONS;     // Infinite number of solutions
-        }
-      }
-
-      if (BigInt::CMod(coeffInd, coeffY) != 0) {
-        return NO_SOLUTIONS;             // No solutions
-      } else {
-        Xind = BigInt(0);
-        Xlin = BigInt(1);
-        // intToBigInteger(&Xind, 0);
-        // intToBigInteger(&Xlin, 1);
-        // PERF QuotRem
-        Yind = -(coeffInd / coeffY);
-        // BigIntToBigInteger(yy, &Yind);
-        // BigIntNegate(&Yind, &Yind);
-        Ylin = BigInt(0);
-        // intToBigInteger(&Ylin, 0);
-        return SOLUTION_FOUND;           // Solution found
-      }
-    }
-
-    if (coeffY == 0) {
-
-      const auto [qq, rr] = BigInt::QuotRem(coeffInd, coeffX);
-
-      if (rr != 0) {
-        return NO_SOLUTIONS;             // No solutions
-      } else {
-        Yind = BigInt(0);
-        Ylin = BigInt(1);
-        // intToBigInteger(&Yind, 0);
-        // intToBigInteger(&Ylin, 1);
-        Xind = -qq;
-        // BigIntToBigInteger(qq, &Xind);
-        // BigIntNegate(&Xind, &Xind);
-        Xlin = BigInt(0);
-        // intToBigInteger(&Xlin, 0);
-        return SOLUTION_FOUND;           // Solution found
-      }
-    }
-
-    BigInt gcdxy = BigInt::GCD(coeffX, coeffY);
-
-    if (gcdxy != 1) {
-      // GCD is not 1.
-      // To solve it, we first find the greatest common divisor of the
-      // linear coefficients, that is: gcd(coeffX, coeffY) = gcdxy.
-
-      // PERF divisibility test
-      BigInt r = BigInt::CMod(coeffInd, gcdxy);
-
-      if (r != 0) {
-        // The independent coefficient is not a multiple of
-        // the gcd, so there are no solutions.
-        return NO_SOLUTIONS;
-      }
-
-      // Divide all coefficients by the gcd.
-      if (gcdxy != 0) {
-        // PERF known divisible
-        coeffX /= gcdxy;
-        coeffY /= gcdxy;
-        coeffInd /= gcdxy;
-      }
-    }
-
-    // Now the generalized Euclidean algorithm:
-
-    BigInt U1(1);
-    BigInt U2(0);
-    BigInt U3 = coeffX;
-    BigInt V1(0);
-    BigInt V2(1);
-    BigInt V3 = coeffY;
-
-    BigInt q;
-
-    while (V3 != 0) {
-
-      if (VERBOSE)
-      printf("Step: %s %s %s %s %s %s\n",
-             U1.ToString().c_str(),
-             U2.ToString().c_str(),
-             U3.ToString().c_str(),
-             V1.ToString().c_str(),
-             V2.ToString().c_str(),
-             V3.ToString().c_str());
-
-      // q <- floor(U3 / V3).
-      q = FloorDiv(U3, V3);
-
-      {
-        // T <- U1 - q * V1
-        BigInt T = U1 - q * V1;
-        U1 = V1;
-        V1 = T;
-      }
-
-      {
-        BigInt T = U2 - q * V2;
-        U2 = V2;
-        V2 = T;
-      }
-
-      {
-        BigInt T = U3 - q * V3;
-        U3 = V3;
-        V3 = T;
-      }
-    }
-
-    CHECK(U3 != 0);
-    // Compute q as -coeffInd / U3
-    q = -coeffInd / U3;
-
-
-    // XXX remove from state: Xind, Xlin, Yind, Ylin
-    // Can probably just move this to the end!
-
-    // Compute Xind as -U1 * coeffInd / U3
-    BigInt xind = U1 * q;
-    Xind = xind;
-    // BigIntToBigInteger(xind, &Xind);
-    // Set Xlin to coeffY
-    BigInt xlin = coeffY;
-    Xlin = xlin;
-    // BigIntToBigInteger(xlin, &Xlin);
-
-    // Compute Yind as -U2 * coeffInd / U3
-    BigInt yind = U2 * q;
-    Yind = yind;
-    // BigIntToBigInteger(yind, &Yind);
-    // Set Ylin to -coeffX
-    BigInt ylin = -coeffX;
-    Ylin = ylin;
-    // BigIntToBigInteger(ylin, &Ylin);
-
-    // HERE!
-
-    if (VERBOSE)
-    printf("Step: %s %s %s %s %s %s | %s %s %s %s\n",
-           U1.ToString().c_str(),
-           U2.ToString().c_str(),
-           U3.ToString().c_str(),
-           V1.ToString().c_str(),
-           V2.ToString().c_str(),
-           V3.ToString().c_str(),
-
-           coeffX.ToString().c_str(),
-           coeffY.ToString().c_str(),
-           xind.ToString().c_str(),
-           yind.ToString().c_str());
-
-    // Substitute variables so the independent coefficients can be minimized.
-    // Reuse variables U1, U2, U3, V1, V2, V3.
-
-    // U1 <- coeffX^2 + coeffY^2
-    U1 = coeffX * coeffX + coeffY * coeffY;
-
-    // U2 <- (coeffX^2 + coeffY^2)/2
-    U2 = U1 >> 1;
-
-    U2 += coeffX * yind;
-    U2 -= coeffY * xind;
-
-    // U1 <- delta to add to t'
-    U1 = FloorDiv(U2, U1);
-
-    if (VERBOSE)
-    printf("Step: %s %s %s %s %s %s\n",
-           U1.ToString().c_str(),
-           U2.ToString().c_str(),
-           U3.ToString().c_str(),
-           V1.ToString().c_str(),
-           V2.ToString().c_str(),
-           V3.ToString().c_str());
-
-    // Xind <- Xind + coeffY * delta
-    q = U1 * coeffY;
-    xind += q;
-    // BigIntToBigInteger(xind, &Xind);
-    Xind = xind;
-
-    // Yind <- Yind - coeffX * delta
-    q = U1 * coeffX;
-    yind -= q;
-    // BigIntToBigInteger(yind, &Yind);
-    Yind = yind;
-
-    if (xlin < 0 && ylin < 0) {
-      // If both coefficients are negative, make them positive.
-      Xlin = -Xlin;
-      Ylin = -Ylin;
-      // BigIntChSign(&Xlin);
-      // BigIntChSign(&Ylin);
-    }
-
-    return SOLUTION_FOUND;
   }
 
   void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,
@@ -923,6 +929,8 @@ struct Quad {
       // Exchange coefficients of x and y.
       std::swap(D, E);
     }
+
+    const bool swap_xy = ExchXY;
 
     // discriminant should be known zero on this code path.
     // BigIntToBigInteger(Discr, &discr);
@@ -960,15 +968,10 @@ struct Quad {
       if (V == 0) {
         // printf("disczero_vzero coverage\n");
         // v equals zero, so (1) becomes 2ax + by + d = 0
-        eLinearSolution ret = LinearEq(A << 1, B, D);
+        LinearSolution sol = LinearEq(A << 1, B, D);
         // Result box:
-        if (ExchXY) {
-          PrintLinear(Ylin, Yind, Xlin, Xind,
-                      ret, "<var>t</var>");
-        } else {
-          PrintLinear(Xlin, Xind, Ylin, Yind,
-                      ret, "<var>t</var>");
-        }
+        if (swap_xy) sol.SwapXY();
+        PrintLinear(sol, "<var>t</var>");
         return;
       }
 
@@ -984,27 +987,17 @@ struct Quad {
       BigInt A2 = A << 1;
 
       // This equation represents two parallel lines.
-      eLinearSolution ret = LinearEq(A2, B, D + G);
-
-      // Result box:
-      if (ExchXY) {
-        PrintLinear(Ylin, Yind, Xlin, Xind,
-                    ret, "<var>t</var>");
-      } else {
-        PrintLinear(Xlin, Xind, Ylin, Yind,
-                    ret, "<var>t</var>");
+      {
+        LinearSolution sol = LinearEq(A2, B, D + G);
+        if (swap_xy) sol.SwapXY();
+        // Result box:
+        PrintLinear(sol, "<var>t</var>");
       }
-      // XXX that this used to actually swap the values of {X,Y}{lin,ind} ^
 
-      ret = LinearEq(A2, B, D - G);
-
-      // Result box:
-      if (ExchXY) {
-        PrintLinear(Ylin, Yind, Xlin, Xind,
-                    ret, "<var>t</var>");
-      } else {
-        PrintLinear(Xlin, Xind, Ylin, Yind,
-                    ret, "<var>t</var>");
+      {
+        LinearSolution sol = LinearEq(A2, B, D - G);
+        if (swap_xy) sol.SwapXY();
+        PrintLinear(sol, "<var>t</var>");
       }
 
       return;
@@ -1192,10 +1185,10 @@ struct Quad {
 
       // XXX is two_solutions statically known here?
       if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
-        ShowXY(two_solutions, tmp1, tmp2);
+        ShowXY(two_solutions, ExchXY, tmp1, tmp2);
       } else {
         // Result box:
-        ShowXY(two_solutions, tmp1, tmp2);
+        ShowXY(two_solutions, ExchXY, tmp1, tmp2);
       }
 
       // Show recursive solution if it exists.
@@ -2062,22 +2055,25 @@ struct Quad {
         // printf("kzeroazero coverage\n");
         // Coefficient a does equals zero.
         // Solve Dy + beta = 0
-        eLinearSolution ret = LinearEq(BigInt(0), Discr, Beta);
 
-        CHECK(!ExchXY);
-
-        // Result box:
-        PrintLinear(Xlin, Xind, Ylin, Yind, ret, "t");
+        {
+          LinearSolution sol = LinearEq(BigInt(0), Discr, Beta);
+          CHECK(!ExchXY);
+          // Result box:
+          PrintLinear(sol, "t");
+        }
 
         // Solve bDx + cDy + b*alpha + c*beta = 0
         BigInt Aux0 = B * Discr;
         BigInt Aux1 = C * Discr;
         BigInt Aux2 = B * Alpha + C * Beta;
 
-        ret = LinearEq(Aux0, Aux1, Aux2);
-        CHECK(!ExchXY);
-        // Result box:
-        PrintLinear(Xlin, Xind, Ylin, Yind, ret, "t");
+        {
+          LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
+          CHECK(!ExchXY);
+          // Result box:
+          PrintLinear(sol, "t");
+        }
 
       } else {
         // printf("kzeroanzero coverage\n");
@@ -2099,22 +2095,25 @@ struct Quad {
         // (void)BigIntMultiply(&bigTmp, &ValBeta, &bigTmp);
         // BigIntAdd(&Aux2, &bigTmp, &Aux2);
         // BigIntChSign(&Aux2);
-        eLinearSolution ret = LinearEq(Aux0, Aux1, Aux2);
+        {
+          LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
+          // Result box:
+          CHECK(!ExchXY);
+          PrintLinear(sol, "t");
+        }
 
-        // Result box:
-        CHECK(!ExchXY);
-        PrintLinear(Xlin, Xind, Ylin, Yind, ret, "t");
         // Solve the equation 2aD x + (b-g)D y = 2a*alpha + (b-g)*beta
         Aux0 = A << 1;
         Aux1 *= (B - G) * Discr;
         Aux2 = -(AAlpha2 + (B - G) * Beta);
-        ret = LinearEq(Aux0, Aux1, Aux2);
-        // Result box:
-        CHECK(!ExchXY);
-        PrintLinear(Xlin, Xind, Ylin, Yind, ret, "t");
+        {
+          LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
+          // Result box:
+          CHECK(!ExchXY);
+          PrintLinear(sol, "t");
+        }
       }
 
-      // eLinearSolution ret = LinearEq(Aux0, Aux1, Aux2);
       return;
     }
 
@@ -2457,10 +2456,10 @@ struct Quad {
                   const BigInt &cx,
                   const BigInt &cy,
                   const BigInt &ci) {
-    eLinearSolution t;
     ShowChar(variable);
     ShowText("<sub>n+1</sub> = ");
-    t = Show(cx, "x<sub>n</sub>", SOLUTION_FOUND);
+    LinearSolutionType t = Show(cx, "x<sub>n</sub>",
+                                LinearSolutionType::SOLUTION_FOUND);
     t = Show(cy, "y<sub>n</sub>", t);
     Show1(ci, t);
   }
@@ -2961,13 +2960,13 @@ struct Quad {
     if (Xplus.has_value()) {
       CHECK(Yplus.has_value());
       // Result box:
-      ShowXYOne(Xplus.value(), Yplus.value());
+      ShowXYOne(ExchXY, Xplus.value(), Yplus.value());
     }
 
     if (Xminus.has_value()) {
       CHECK(Yminus.has_value());
       // Result box:
-      ShowXYOne(Xminus.value(), Yminus.value());
+      ShowXYOne(ExchXY, Xminus.value(), Yminus.value());
     }
     equationNbr += 4;
   }
@@ -3014,10 +3013,10 @@ struct Quad {
 
     // Test whether the equation is linear. A = B = C = 0.
     if (A == 0 && B == 0 && C == 0) {
-      eLinearSolution ret = LinearEq(D, E, F);
+      LinearSolution sol = LinearEq(D, E, F);
       // Result box:
       CHECK(!ExchXY);
-      PrintLinear(Xlin, Xind, Ylin, Yind, ret, "t");
+      PrintLinear(sol, "t");
       return;
     }
 

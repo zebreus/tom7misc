@@ -228,7 +228,7 @@ echo quad tests
 # x = -68  y = -101
 ./quad.exe 35 -35 7 0 32 10365 >> coverage.out
 
-# kzeroazero coverage
+# kzeroazero coverage, negate_coeff coverage
 # x = 412  y = 0
 ./quad.exe 0 57 -408 0 342 0 >> coverage.out
 
