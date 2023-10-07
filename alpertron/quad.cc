@@ -93,7 +93,7 @@ struct Quad {
   int showRecursiveSolution;
   BigInt Xind, Yind, Xlin, Ylin;
   bool solFound;
-  char also;
+
   bool ExchXY;
   const char *divgcd;
   const char *varT = "t";
@@ -134,7 +134,106 @@ struct Quad {
   // int modulus_length;
   // limb TheModulus[MAX_LEN];
 
-  std::string *output = nullptr;
+  #if 0
+  Clean clean;
+
+  // Functions that have been expunged of state above.
+  struct Clean {
+  #endif
+
+    std::string *output = nullptr;
+    // presentational. Can probably remove it.
+    bool also = false;
+
+    void ShowText(const std::string &text) {
+      if (output != nullptr)
+        *output += text;
+    }
+
+    inline void ShowChar(char c) {
+      if (output != nullptr)
+        output->push_back(c);
+    }
+
+    void showMinus() {
+      if (output != nullptr)
+        *output += "&minus;";
+    }
+
+    void ShowNumber(const BigInteger* value) {
+      if (output != nullptr) {
+        BigInt b = BigIntegerToBigInt(value);
+        *output += b.ToString();
+      }
+    }
+
+    void ShowBigInt(const BigInt &value) {
+      if (output != nullptr) {
+        *output += value.ToString();
+      }
+    }
+
+    void showInt(int value) {
+      if (output != nullptr) {
+        StringAppendF(output, "%d", value);
+      }
+    }
+
+    void showSquare() {
+      ShowText("&sup2;");
+    }
+
+    void showAlso() {
+      if (also) {
+        ShowText("and also:<br>");
+      } else {
+        also = 1;
+      }
+    }
+
+    void ShowLin(const BigInt &coeffX, const BigInt &coeffY,
+                 const BigInt &coeffInd,
+                 const char *x, const char *y) {
+      eLinearSolution t;
+      t = Show(coeffX, x, SOLUTION_FOUND);
+      t = Show(coeffY, y, t);
+      Show1(coeffInd, t);
+    }
+
+    void ShowLinInd(const BigInt &lin, const BigInt &ind,
+                    const std::string &var) {
+      if (ind == 0 && lin == 0) {
+        ShowText("0");
+      }
+      if (ind != 0) {
+        ShowBigInt(ind);
+      }
+      ShowChar(' ');
+
+      if (lin < 0) {
+        showMinus();
+      } else if (lin != 0 && ind != 0) {
+        ShowChar('+');
+      } else {
+        // Nothing to do.
+      }
+      ShowChar(' ');
+      if (lin != 0) {
+        if (BigInt::Abs(lin) != 1) {
+          // abs(lin) is not 1
+          // CopyBigInt(&Aux0, lin);
+          // Do not show negative sign twice.
+          // Aux0.sign = SIGN_POSITIVE;
+          ShowBigInt(BigInt::Abs(lin));
+        }
+        ShowChar(' ');
+        ShowText(var);
+      }
+    }
+#if 0
+
+  };
+#endif
 
   void MarkUninitialized() {
     // Port note: There are various interleaved code paths where
@@ -157,103 +256,21 @@ struct Quad {
     }
   }
 
-  void showText(const char *text) {
-    if (output != nullptr)
-      *output += text;
-  }
-
-  inline void ShowChar(char c) {
-    if (output != nullptr)
-      output->push_back(c);
-  }
-
-  void showMinus() {
-    if (output != nullptr)
-      *output += "&minus;";
-  }
-
-  void ShowNumber(const BigInteger* value) {
-    if (output != nullptr) {
-      BigInt b = BigIntegerToBigInt(value);
-      *output += b.ToString();
-    }
-  }
-
-  void ShowBigInt(const BigInt &value) {
-    if (output != nullptr) {
-      *output += value.ToString();
-    }
-  }
-
-  void showInt(int value) {
-    if (output != nullptr) {
-      StringAppendF(output, "%d", value);
-    }
-  }
-
-  void showSquare() {
-    showText("&sup2;");
-  }
-
-  void showAlso() {
-    if (also) {
-      showText("and also:<br>");
-    } else {
-      also = 1;
-    }
-  }
-
-  void ShowLin(const BigInt &coeffX, const BigInt &coeffY,
-               const BigInt &coeffInd,
-               const char *x, const char *y) {
-    eLinearSolution t;
-    t = Show(coeffX, x, SOLUTION_FOUND);
-    t = Show(coeffY, y, t);
-    Show1(coeffInd, t);
-  }
-
-  void ShowLinInd(const BigInt &lin, const BigInt &ind,
-                  const char *var) {
-    if (ind == 0 && lin == 0) {
-      showText("0");
-    }
-    if (ind != 0) {
-      ShowBigInt(ind);
-    }
-    ShowChar(' ');
-
-    if (lin < 0) {
-      showMinus();
-    } else if (lin != 0 && ind != 0) {
-      ShowChar('+');
-    } else {
-      // Nothing to do.
-    }
-    ShowChar(' ');
-    if (lin != 0) {
-      if (BigInt::Abs(lin) != 1) {
-        // abs(lin) is not 1
-        // CopyBigInt(&Aux0, lin);
-        // Do not show negative sign twice.
-        // Aux0.sign = SIGN_POSITIVE;
-        ShowBigInt(BigInt::Abs(lin));
-      }
-      ShowChar(' ');
-      showText(var);
-    }
-  }
-
-  void PrintLinear(eLinearSolution Ret, const char *var) {
+  void PrintLinear(const BigInt &Xlin, const BigInt &Xind,
+                   const BigInt &Ylin, const BigInt &Yind,
+                   eLinearSolution Ret, const string &var) {
     if (Ret == NO_SOLUTIONS) {
       return;
     }
-    if (var == varT) {
+    if (var == "t") {
       showAlso();
     }
     if (Ret == INFINITE_SOLUTIONS) {
-      showText("<p>x, y: any integer</p>");
+      ShowText("<p>x, y: any integer</p>");
       return;
     }
+    // Port note: This used to actually swap xind/yind xlin/ylin.
+    #if 0
     if (ExchXY) {
       // Exchange Xind and Yind
       std::swap(Xind, Yind);
@@ -266,11 +283,12 @@ struct Quad {
       // CopyBigInt(&Xlin, &Ylin);
       // CopyBigInt(&Ylin, &bigTmp);
     }
-    showText("<p>x = ");
+    #endif
+    ShowText("<p>x = ");
     ShowLinInd(Xlin, Xind, var);
-    showText("<br>y = ");
+    ShowText("<br>y = ");
     ShowLinInd(Ylin, Yind, var);
-    showText("</p>");
+    ShowText("</p>");
     return;
   }
 
@@ -286,44 +304,44 @@ struct Quad {
         // coeffT2 = -1
         showMinus();
       }
-      showText(var1);
+      ShowText(var1);
       showSquare();
     } else if (T2 != 0) {
       // coeffT2 is not zero.
       ShowBigInt(T2);
       ShowChar(' ');
-      showText(var1);
+      ShowText(var1);
       showSquare();
     } else {
       // Nothing to do.
     }
 
     if (T < 0) {
-      showText(" &minus; ");
+      ShowText(" &minus; ");
     } else if (T != 0 && T2 != 0) {
-      showText(" + ");
+      ShowText(" + ");
     } else {
       // Nothing to do.
     }
 
     if (BigInt::Abs(T) == 1) {
       // abs(coeffT) = 1
-      showText(var1);
-      showText("&#8290;");
+      ShowText(var1);
+      ShowText("&#8290;");
       if (var2 != NULL) {
-        showText(var2);
+        ShowText(var2);
       }
-      showText(" ");
+      ShowText(" ");
     } else if (T != 0) {
       // Port note: original called showlimbs if negative, which I
       // think is just a way of printing the absolute value without
       // any copying.
       ShowBigInt(BigInt::Abs(T));
-      showText(" ");
-      showText(var1);
+      ShowText(" ");
+      ShowText(var1);
       if (var2 != NULL) {
-        showText("&#8290;");
-        showText(var2);
+        ShowText("&#8290;");
+        ShowText(var2);
       }
     } else {
       // Nothing to do.
@@ -332,12 +350,12 @@ struct Quad {
     if (Ind != 0) {
       if (T != 0 || T2 != 0) {
         if (Ind < 0) {
-          showText(" &minus; ");
+          ShowText(" &minus; ");
         } else {
-          showText(" + ");
+          ShowText(" + ");
         }
       } else if (Ind < 0) {
-        showText(" &minus;");
+        ShowText(" &minus;");
       } else {
         // Nothing to do.
       }
@@ -347,22 +365,22 @@ struct Quad {
         ShowBigInt(BigInt::Abs(Ind));
       } else if (BigInt::Abs(Ind) != 1) {
         ShowBigInt(BigInt::Abs(Ind));
-        showText("&nbsp;&#8290;");
-        showText(var2);
+        ShowText("&nbsp;&#8290;");
+        ShowText(var2);
         showSquare();
       } else {
-        showText(var2);
+        ShowText(var2);
         showSquare();
       }
     }
   }
 
   void ShowSolutionXY(const BigInt &x, const BigInt &y) {
-    showText("<p>x = ");
+    ShowText("<p>x = ");
     ShowBigInt(ExchXY ? y : x);
-    showText("<BR>y = ");
+    ShowText("<BR>y = ");
     ShowBigInt(ExchXY ? x : y);
-    showText("</p>");
+    ShowText("</p>");
   }
 
   // This weird function either shows the solution or continues
@@ -413,20 +431,20 @@ struct Quad {
     if (num != 0) {
       // num is not zero.
       if (t == NO_SOLUTIONS && num >= 0) {
-        showText(" +");
+        ShowText(" +");
       }
 
       if (num < 0) {
-        showText(" -");
+        ShowText(" -");
       }
 
       if (num != 1 && num != -1) {
         // num is not 1 or -1.
         ShowChar(' ');
         ShowBigInt(BigInt::Abs(num));
-        showText("&nbsp;&#8290;");
+        ShowText("&nbsp;&#8290;");
       } else {
-        showText("&nbsp;");
+        ShowText("&nbsp;");
       }
 
       if (output != nullptr)
@@ -470,16 +488,20 @@ struct Quad {
     Show1(coeffF, t);
   }
 
+  // TODO: Try to make this dispatch (callbackQuadModType) static.
   void SolutionX(BigInt Value, const BigInt &Modulus) {
-    if (VERBOSE)
-    printf("SolutionX(%s, %s)\n",
-           Value.ToString().c_str(),
-           Modulus.ToString().c_str());
+    if (VERBOSE) {
+      printf("SolutionX(%s, %s)\n",
+             Value.ToString().c_str(),
+             Modulus.ToString().c_str());
+    }
     SolNbr++;
-    BigInt mm = BigIntegerToBigInt(&modulus);
-    CHECK(Modulus == mm) <<
-      Modulus.ToString() << " vs " << mm.ToString();
 
+    {
+      BigInt mm = BigIntegerToBigInt(&modulus);
+      CHECK(Modulus == mm) <<
+        Modulus.ToString() << " vs " << mm.ToString();
+    }
 
     // If 2*value is greater than modulus, subtract modulus.
     // BigInt Modulus = BigIntegerToBigInt(&modulus);
@@ -581,13 +603,13 @@ struct Quad {
     if (ValNn == 1) {
       // All values from 0 to GcdAll - 1 are solutions.
       if (GcdAll > 5) {
-        showText("<p>All values of <var>x</var> between 0 and ");
+        ShowText("<p>All values of <var>x</var> between 0 and ");
 
         // XXX Suspicious that this modifies GcdAll in place (I
         // think just to display it?) but uses it again below.
         GcdAll -= 1;
         ShowBigInt(GcdAll);
-        showText(" are solutions.</p>");
+        ShowText(" are solutions.</p>");
       } else {
         // must succeed; is < 5 and non-negative
         const int n = GcdAll.ToInt().value();
@@ -679,6 +701,7 @@ struct Quad {
     }
   }
 
+  // This should return the solution Xlin, Xind, Ylin, Yind.
   eLinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
 
     // A linear equation. X + Y + IND = 0.
@@ -939,7 +962,13 @@ struct Quad {
         // v equals zero, so (1) becomes 2ax + by + d = 0
         eLinearSolution ret = LinearEq(A << 1, B, D);
         // Result box:
-        PrintLinear(ret, "<var>t</var>");
+        if (ExchXY) {
+          PrintLinear(Ylin, Yind, Xlin, Xind,
+                      ret, "<var>t</var>");
+        } else {
+          PrintLinear(Xlin, Xind, Ylin, Yind,
+                      ret, "<var>t</var>");
+        }
         return;
       }
 
@@ -958,12 +987,26 @@ struct Quad {
       eLinearSolution ret = LinearEq(A2, B, D + G);
 
       // Result box:
-      PrintLinear(ret, "<var>t</var>");
+      if (ExchXY) {
+        PrintLinear(Ylin, Yind, Xlin, Xind,
+                    ret, "<var>t</var>");
+      } else {
+        PrintLinear(Xlin, Xind, Ylin, Yind,
+                    ret, "<var>t</var>");
+      }
+      // XXX that this used to actually swap the values of {X,Y}{lin,ind} ^
 
       ret = LinearEq(A2, B, D - G);
 
       // Result box:
-      PrintLinear(ret, "<var>t</var>");
+      if (ExchXY) {
+        PrintLinear(Ylin, Yind, Xlin, Xind,
+                    ret, "<var>t</var>");
+      } else {
+        PrintLinear(Xlin, Xind, Ylin, Yind,
+                    ret, "<var>t</var>");
+      }
+
       return;
     }
 
@@ -1091,10 +1134,10 @@ struct Quad {
       showAlso();
 
       // Result box:
-      showText("<p><var>x</var> = ");
+      ShowText("<p><var>x</var> = ");
       PrintQuad(VV3, VV2, VV1,
                 "<var>k</var>", NULL);
-      showText("<br>");
+      ShowText("<br>");
     }
 
     {
@@ -1103,12 +1146,12 @@ struct Quad {
         ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2) :
         ComputeYDiscrZero(U, U2, S, R, Z);
 
-      showText("<var>y</var> = ");
+      ShowText("<var>y</var> = ");
       PrintQuad(VV3, VV2, VV1,
                 "<var>k</var>", NULL);
     }
 
-    showText("</p>");
+    ShowText("</p>");
   }
 
   void ShowPoint(bool two_solutions,
@@ -2021,16 +2064,20 @@ struct Quad {
         // Solve Dy + beta = 0
         eLinearSolution ret = LinearEq(BigInt(0), Discr, Beta);
 
+        CHECK(!ExchXY);
+
         // Result box:
-        PrintLinear(ret, "t");
+        PrintLinear(Xlin, Xind, Ylin, Yind, ret, "t");
+
         // Solve bDx + cDy + b*alpha + c*beta = 0
         BigInt Aux0 = B * Discr;
         BigInt Aux1 = C * Discr;
         BigInt Aux2 = B * Alpha + C * Beta;
 
         ret = LinearEq(Aux0, Aux1, Aux2);
+        CHECK(!ExchXY);
         // Result box:
-        PrintLinear(ret, "t");
+        PrintLinear(Xlin, Xind, Ylin, Yind, ret, "t");
 
       } else {
         // printf("kzeroanzero coverage\n");
@@ -2055,14 +2102,16 @@ struct Quad {
         eLinearSolution ret = LinearEq(Aux0, Aux1, Aux2);
 
         // Result box:
-        PrintLinear(ret, "t");
+        CHECK(!ExchXY);
+        PrintLinear(Xlin, Xind, Ylin, Yind, ret, "t");
         // Solve the equation 2aD x + (b-g)D y = 2a*alpha + (b-g)*beta
         Aux0 = A << 1;
         Aux1 *= (B - G) * Discr;
         Aux2 = -(AAlpha2 + (B - G) * Beta);
         ret = LinearEq(Aux0, Aux1, Aux2);
         // Result box:
-        PrintLinear(ret, "t");
+        CHECK(!ExchXY);
+        PrintLinear(Xlin, Xind, Ylin, Yind, ret, "t");
       }
 
       // eLinearSolution ret = LinearEq(Aux0, Aux1, Aux2);
@@ -2410,17 +2459,17 @@ struct Quad {
                   const BigInt &ci) {
     eLinearSolution t;
     ShowChar(variable);
-    showText("<sub>n+1</sub> = ");
+    ShowText("<sub>n+1</sub> = ");
     t = Show(cx, "x<sub>n</sub>", SOLUTION_FOUND);
     t = Show(cy, "y<sub>n</sub>", t);
     Show1(ci, t);
   }
 
   void ShowResult(const char *text, const BigInt &value) {
-    showText(text);
-    showText(" = ");
+    ShowText(text);
+    ShowText(" = ");
     ShowBigInt(value);
-    showText("<br>");
+    ShowText("<br>");
   }
 
   // TODO: Test this heuristic without converting.
@@ -2439,17 +2488,17 @@ struct Quad {
 
     if (IsBig(P, 2) || IsBig(Q, 2)) {
       if (Alpha == 0 && Beta == 0) {
-        showText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
+        ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
                  "Q&nbsp;&#8290;y<sub>n</sub><br>"
                  "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
                  "S&nbsp;&#8290;y<sub>n</sub></p><p>");
       } else {
-        showText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
+        ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
                  "Q&nbsp;&#8290;y<sub>n</sub> + K<br>"
                  "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
                  "S&nbsp;&#8290;y<sub>n</sub> + L</p><p>");
       }
-      showText("where:</p><p>");
+      ShowText("where:</p><p>");
       ShowResult("P", P);
       ShowResult("Q", Q);
       if (Alpha != 0 || Beta != 0) {
@@ -2462,7 +2511,7 @@ struct Quad {
       }
     } else {
       ShowRecSol('x', P, Q, K);
-      showText("<br>");
+      ShowText("<br>");
       ShowRecSol('y', R, S, L);
     }
 
@@ -2481,9 +2530,9 @@ struct Quad {
     P = S;
     S = std::move(Tmp);
 
-    showText("<p>and also:</p>");
+    ShowText("<p>and also:</p>");
     if (IsBig(P, 2) || IsBig(Q, 2)) {
-      showText("<p>");
+      ShowText("<p>");
       ShowResult("P", P);
       ShowResult("Q", Q);
       if (Alpha != 0 || Beta != 0) {
@@ -2496,10 +2545,10 @@ struct Quad {
       }
     } else {
       ShowRecSol('x', P, Q, K);
-      showText("<br>");
+      ShowText("<br>");
       ShowRecSol('y', R, S, L);
     }
-    showText("</p>");
+    ShowText("</p>");
   }
 
   bool SolutionFoundFromContFraction(bool isBeven,
@@ -2708,7 +2757,7 @@ struct Quad {
       V = BigInt{1};
     }
 
-    showText("<p>Recursive solutions:</p><p>");
+    ShowText("<p>Recursive solutions:</p><p>");
 
     // XXX should not be necessary
     CopyBigInt(&ValA, &ValABak);
@@ -2927,7 +2976,6 @@ struct Quad {
   // PS: This is where to understand the meaning of Alpha, Beta, K, Div.
   void SolveQuadEquation(BigInt A, BigInt B, BigInt C,
                          BigInt D, BigInt E, BigInt F) {
-    also = 0;
     showSolution = ONE_SOLUTION;
     showRecursiveSolution = 0;    // Do not show recursive solution by default.
     divgcd = "<p>Dividing the equation by the greatest common divisor "
@@ -2940,7 +2988,7 @@ struct Quad {
     // PERF divisibility check
     if (gcd != 0 && BigInt::CMod(F, gcd) != 0) {
       // F is not multiple of GCD(A, B, C, D, E) so there are no solutions.
-      showText("<p>There are no solutions.</p>");
+      ShowText("<p>There are no solutions.</p>");
       return;
     }
 
@@ -2968,7 +3016,8 @@ struct Quad {
     if (A == 0 && B == 0 && C == 0) {
       eLinearSolution ret = LinearEq(D, E, F);
       // Result box:
-      PrintLinear(ret, "t");
+      CHECK(!ExchXY);
+      PrintLinear(Xlin, Xind, Ylin, Yind, ret, "t");
       return;
     }
 
@@ -3103,11 +3152,11 @@ struct Quad {
 
   void QuadBigInt(const BigInt &A, const BigInt &B, const BigInt &C,
                   const BigInt &D, const BigInt &E, const BigInt &F) {
-    showText("2<p>");
+    ShowText("2<p>");
 
-    showText("<h2>");
+    ShowText("<h2>");
     ShowEq(A, B, C, D, E, F, "x", "y");
-    showText(" = 0</h2>");
+    ShowText(" = 0</h2>");
     SolNbr = 0;
 
     size_t preamble_size = (output == nullptr) ? 0 : output->size();
@@ -3115,7 +3164,7 @@ struct Quad {
     SolveQuadEquation(A, B, C, D, E, F);
 
     if (output != nullptr && output->size() == preamble_size) {
-      showText("<p>The equation does not have integer solutions.</p>");
+      ShowText("<p>The equation does not have integer solutions.</p>");
     }
   }
 
