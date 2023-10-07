@@ -772,6 +772,52 @@ struct Quad {
       ShowText("</p>");
     }
 
+    // Obtain next convergent of continued fraction of ValU/ValV
+    // Previous convergents U1/V1, U2/V2, U3/V3.
+    std::tuple<BigInt, BigInt, BigInt, BigInt,
+               BigInt, BigInt, BigInt, BigInt> GetNextConvergent(
+                   BigInt U, BigInt U1, BigInt U2,
+                   BigInt V, BigInt V1, BigInt V2) {
+      BigInt Tmp = FloorDiv(U, V);
+      // floordiv(&ValU, &ValV, &bigTmp);
+
+      // Values of U3 and V3 are not used, so they can be overwritten now.
+      // Compute new value of ValU and ValV.
+      BigInt Tmp2 = U - Tmp * V;
+      U = std::move(V);
+      V = Tmp2;
+      // (void)BigIntMultiply(&bigTmp, &ValV, &U3);
+      // BigIntSubt(&ValU, &U3, &U3);
+      // CopyBigInt(&ValU, &ValV);
+      // CopyBigInt(&ValV, &U3);
+
+      // Compute new convergents: h_n = a_n*h_{n-1} + h_{n-2}
+      // and also k_n = k_n*k_{n-1} + k_{n-2}
+      BigInt Tmp3 = Tmp * U1 + U2;
+      // (void)BigIntMultiply(&bigTmp, &U1, &V3);
+      // BigIntAdd(&V3, &U2, &V3);
+
+      BigInt U3 = std::move(U2);
+      U2 = std::move(U1);
+      U1 = Tmp3;
+      // CopyBigInt(&U3, &U2);
+      // CopyBigInt(&U2, &U1);
+      // CopyBigInt(&U1, &V3);
+
+      Tmp *= V1;
+      Tmp += V2;
+      // (void)BigIntMultiply(&bigTmp, &V1, &bigTmp);
+      // BigIntAdd(&bigTmp, &V2, &bigTmp);
+      BigInt V3 = std::move(V2);
+      V2 = std::move(V1);
+      V1 = Tmp;
+      // CopyBigInt(&V3, &V2);
+      // CopyBigInt(&V2, &V1);
+      // CopyBigInt(&V1, &bigTmp);
+      return std::make_tuple(U, U1, U2, U3,
+                             V, V1, V2, V3);
+    }
+
 
   };  // Clean
 
@@ -1657,89 +1703,68 @@ struct Quad {
     // BigIntToBigInteger(Tmp12, value);
   }
 
-  // Obtain next convergent of continued fraction of ValU/ValV
-  // Previous convergents U1/V1, U2/V2, U3/V3.
-  std::tuple<BigInt, BigInt, BigInt, BigInt,
-             BigInt, BigInt, BigInt, BigInt> GetNextConvergent(
-                 BigInt U, BigInt U1, BigInt U2,
-                 BigInt V, BigInt V1, BigInt V2) {
-    BigInt Tmp = FloorDiv(U, V);
-    // floordiv(&ValU, &ValV, &bigTmp);
-
-    // Values of U3 and V3 are not used, so they can be overwritten now.
-    // Compute new value of ValU and ValV.
-    BigInt Tmp2 = U - Tmp * V;
-    U = V;
-    V = Tmp2;
-    // (void)BigIntMultiply(&bigTmp, &ValV, &U3);
-    // BigIntSubt(&ValU, &U3, &U3);
-    // CopyBigInt(&ValU, &ValV);
-    // CopyBigInt(&ValV, &U3);
-
-    // Compute new convergents: h_n = a_n*h_{n-1} + h_{n-2}
-    // and also k_n = k_n*k_{n-1} + k_{n-2}
-    BigInt Tmp3 = Tmp * U1 + U2;
-    // (void)BigIntMultiply(&bigTmp, &U1, &V3);
-    // BigIntAdd(&V3, &U2, &V3);
-
-    BigInt U3 = U2;
-    U2 = U1;
-    U1 = Tmp3;
-    // CopyBigInt(&U3, &U2);
-    // CopyBigInt(&U2, &U1);
-    // CopyBigInt(&U1, &V3);
-
-    Tmp *= V1;
-    Tmp += V2;
-    // (void)BigIntMultiply(&bigTmp, &V1, &bigTmp);
-    // BigIntAdd(&bigTmp, &V2, &bigTmp);
-    BigInt V3 = V2;
-    V2 = V1;
-    V1 = Tmp;
-    // CopyBigInt(&V3, &V2);
-    // CopyBigInt(&V2, &V1);
-    // CopyBigInt(&V1, &bigTmp);
-    return std::make_tuple(U, U1, U2, U3,
-                           V, V1, V2, V3);
-  }
-
   // Output:
-  // false = There are no solutions because gcd(P, Q, R) > 1
-  // true = gcd(P, Q, R) = 1.
-  bool PerformTransformation(const BigInt &Value) {
-    BigInteger value;
-    BigIntToBigInteger(Value, &value);
+  // nullopt: There are no solutions because gcd(P, Q, R) > 1
+  // some(P, Q, R) with gcd(P, Q, R) = 1.
+  std::optional<std::tuple<BigInt, BigInt, BigInt>>
+  PerformTransformation(const BigInt &Value) {
+    BigInt A = BigIntegerToBigInt(&ValA);
+    BigInt B = BigIntegerToBigInt(&ValB);
+    BigInt C = BigIntegerToBigInt(&ValC);
+    BigInt K = BigIntegerToBigInt(&ValK);
+
+    // writes: P, Q, R, H, I
+
+    const BigInt VA = A * Value;
 
     // Compute P as (at^2+bt+c)/K
-    (void)BigIntMultiply(&ValA, &value, &ValQ);
-    BigIntAdd(&ValQ, &ValB, &ValP);
-    (void)BigIntMultiply(&ValP, &value, &ValP);
-    BigIntAdd(&ValP, &ValC, &ValP);
-    (void)BigIntDivide(&ValP, &ValK, &ValP);
+    const BigInt P = ((VA + B) * Value + C) / K;
+    // (void)BigIntMultiply(&ValA, &value, &ValQ);
+    // BigIntAdd(&ValQ, &ValB, &ValP);
+    // (void)BigIntMultiply(&ValP, &value, &ValP);
+    // BigIntAdd(&ValP, &ValC, &ValP);
+    // (void)BigIntDivide(&ValP, &ValK, &ValP);
+
     // Compute Q <- -(2at + b).
-    BigIntAdd(&ValQ, &ValQ, &ValQ);
-    BigIntAdd(&ValQ, &ValB, &ValQ);
-    BigIntChSign(&ValQ);
+    const BigInt Q = -((VA << 1) + B);
+    // BigIntAdd(&ValQ, &ValQ, &ValQ);
+    // BigIntAdd(&ValQ, &ValB, &ValQ);
+    // BigIntChSign(&ValQ);
+
     // Compute R <- aK
-    (void)BigIntMultiply(&ValA, &ValK, &ValR);
+    // (void)BigIntMultiply(&ValA, &ValK, &ValR);
+    const BigInt R = A * K;
 
     // Compute gcd of P, Q and R.
-    BigIntGcd(&ValP, &ValQ, &ValH);   // Use ValH and ValI as temporary variables.
-    BigIntGcd(&ValH, &ValR, &ValI);
-    if ((ValI.nbrLimbs == 1) && (ValI.limbs[0].x == 1)) {
+    // BigIntGcd(&ValP, &ValQ, &ValH);   // Use ValH and ValI as temporary variables.
+    // BigIntGcd(&ValH, &ValR, &ValI);
+
+    // Note: Used to write H and I as temporaries, but I think they're dead.
+    const BigInt I = BigInt::GCD(BigInt::GCD(P, Q), R);
+    if (I == 1) {
       // Gcd equals 1.
-      return 1;
+      return {std::make_tuple(P, Q, R)};
     }
 
     // No solutions because gcd(P, Q, R) > 1.
-    return 0;
+    return std::nullopt;
   }
 
   void callbackQuadModElliptic(const BigInt &Value) {
-    if (!PerformTransformation(Value)) {
+
+    auto pqro = PerformTransformation(Value);
+    if (!pqro.has_value()) {
       // No solutions because gcd(P, Q, R) > 1.
       return;
     }
+
+    const auto &[P, Q_, R_] = pqro.value();
+    BigIntToBigInteger(P, &ValP);
+    BigIntToBigInteger(Q_, &ValQ);
+    BigIntToBigInteger(R_, &ValR);
+
+    // XXX
+    // BigIntegerToBigInt(Value, &value);
 
     const BigInt M = BigIntegerToBigInt(&ValM);
     const BigInt E = BigIntegerToBigInt(&ValE);
@@ -1747,7 +1772,7 @@ struct Quad {
     const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
     const BigInt Beta = BigIntegerToBigInt(&ValBeta);
     const BigInt Div = BigIntegerToBigInt(&ValDiv);
-    const BigInt P = BigIntegerToBigInt(&ValP);
+    // const BigInt P = BigIntegerToBigInt(&ValP);
     const BigInt Discr = BigIntegerToBigInt(&discr);
 
     CHECK(Discr <= 0);
@@ -1876,12 +1901,12 @@ struct Quad {
       {
         const auto &[U, UU1, UU2, UU3,
                      V, VV1, VV2, VV3] =
-          GetNextConvergent(BigIntegerToBigInt(&ValU),
-                            BigIntegerToBigInt(&U1),
-                            BigIntegerToBigInt(&U2),
-                            BigIntegerToBigInt(&ValV),
-                            BigIntegerToBigInt(&V1),
-                            BigIntegerToBigInt(&V2));
+          clean.GetNextConvergent(BigIntegerToBigInt(&ValU),
+                                  BigIntegerToBigInt(&U1),
+                                  BigIntegerToBigInt(&U2),
+                                  BigIntegerToBigInt(&ValV),
+                                  BigIntegerToBigInt(&V1),
+                                  BigIntegerToBigInt(&V2));
         BigIntToBigInteger(U, &ValU);
         BigIntToBigInteger(UU1, &U1);
         BigIntToBigInteger(UU2, &U2);
@@ -1928,12 +1953,12 @@ struct Quad {
           {
             const auto &[U, UU1, UU2, UU3,
                          V, VV1, VV2, VV3] =
-              GetNextConvergent(BigIntegerToBigInt(&ValU),
-                                BigIntegerToBigInt(&U1),
-                                BigIntegerToBigInt(&U2),
-                                BigIntegerToBigInt(&ValV),
-                                BigIntegerToBigInt(&V1),
-                                BigIntegerToBigInt(&V2));
+              clean.GetNextConvergent(BigIntegerToBigInt(&ValU),
+                                      BigIntegerToBigInt(&U1),
+                                      BigIntegerToBigInt(&U2),
+                                      BigIntegerToBigInt(&ValV),
+                                      BigIntegerToBigInt(&V1),
+                                      BigIntegerToBigInt(&V2));
             BigIntToBigInteger(U, &ValU);
             BigIntToBigInteger(UU1, &U1);
             BigIntToBigInteger(UU2, &U2);
@@ -1958,12 +1983,12 @@ struct Quad {
             {
               const auto &[U, UU1, UU2, UU3,
                            V, VV1, VV2, VV3] =
-                GetNextConvergent(BigIntegerToBigInt(&ValU),
-                                  BigIntegerToBigInt(&U1),
-                                  BigIntegerToBigInt(&U2),
-                                  BigIntegerToBigInt(&ValV),
-                                  BigIntegerToBigInt(&V1),
-                                  BigIntegerToBigInt(&V2));
+                clean.GetNextConvergent(BigIntegerToBigInt(&ValU),
+                                        BigIntegerToBigInt(&U1),
+                                        BigIntegerToBigInt(&U2),
+                                        BigIntegerToBigInt(&ValV),
+                                        BigIntegerToBigInt(&V1),
+                                        BigIntegerToBigInt(&V2));
               BigIntToBigInteger(U, &ValU);
               BigIntToBigInteger(UU1, &U1);
               BigIntToBigInteger(UU2, &U2);
@@ -2834,10 +2859,18 @@ struct Quad {
   void callbackQuadModHyperbolic(const BigInt &Value) {
     bool isBeven_XXX = ((ValB.limbs[0].x & 1) == 0);
     positiveDenominator = 1;
-    if (!PerformTransformation(Value)) {
+
+    auto pqro = PerformTransformation(Value);
+    if (!pqro.has_value()) {
       // No solutions because gcd(P, Q, R) > 1.
       return;
     }
+
+    // XXX P and Q are always overwritten below.
+    const auto &[P_, Q_, R_] = pqro.value();
+    BigIntToBigInteger(P_, &ValP);
+    BigIntToBigInteger(Q_, &ValQ);
+    BigIntToBigInteger(R_, &ValR);
 
     BigInteger value;
     BigIntToBigInteger(Value, &value);
