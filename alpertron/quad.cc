@@ -644,7 +644,137 @@ struct Quad {
     }
 
 
+    // Compute coefficients of x: V1 + V2 * w + V3 * w^2
+    // Returns V1, V2, V3
+    std::tuple<BigInt, BigInt, BigInt> ComputeXDiscrZero(
+        const BigInt &A, const BigInt &B,
+        const BigInt &C, const BigInt &D,
+        const BigInt &E, const BigInt &Z,
+        const BigInt &J, const BigInt &K,
+        const BigInt &U2) {
+      // Let m = 2be - 4cd
+      // U3 <- m
+      BigInt U3 = (B * E - ((C * D) << 1)) << 1;
+      // Compute V1 <- (x'j - k)/2a + mx'^2
+      BigInt V1 = (((U2 * J) - K) / A) >> 1;
+      V1 += U3 * U2 * U2;
+      // Compute V2 <- (j/2a + 2mx')z
+      BigInt V2 = (J / A) >> 1;
+      V2 += ((U3 * U2) << 1);
+      V2 *= Z;
+      // Compute V3 as m*z^2
+      BigInt V3 = U3 * Z * Z;
+      return std::make_tuple(V1, V2, V3);
+    }
+
+    // Compute coefficients of y: V1 + V2 * w + V3 * w^2
+    // Returns V1, V2, V3
+    std::tuple<BigInt, BigInt, BigInt> ComputeYDiscrZero(
+        const BigInt &U, const BigInt &U2,
+        const BigInt &S, const BigInt &R,
+        const BigInt &Z) {
+
+      // Compute V1 <- r + sx' + ux'^2
+      BigInt V1 = (U * U2 + S) * U2 + R;
+
+      // Compute V2 <- (s + 2ux')z
+      BigInt V2 = (((U * U2) << 1) + S) * Z;
+
+      // Compute V3 <- uz^2
+      BigInt V3 = U * Z * Z;
+
+      return std::make_tuple(V1, V2, V3);
+    }
+
+
+    void CallbackQuadModParabolic(
+        bool swap_xy,
+        const BigInt &A, const BigInt &B, const BigInt &C,
+        const BigInt &D, const BigInt &E,
+        const BigInt &U, const BigInt &V,
+        const BigInt &I,
+        const BigInt &Value) {
+      // The argument of this function is T. t = T - d + uk (k arbitrary).
+      // Compute ValR <- (T^2 - v)/u
+
+      BigInt R = ((Value * Value) - V) / U;
+      // Compute ValS as 2*T
+      BigInt S = Value << 1;
+
+      // Find k from the congruence
+      //  jk = K (mod z) where j = u-bs, K = d+br-T, z = 2a
+      // Compute j <- u-bs
+      BigInt J = U - B * S;
+      // Compute K <- d+br-T
+      BigInt K = (D - B * R) - Value;
+      // Compute z <- 2a
+      BigInt Z = A << 1;
+      // If K is not multiple of gcd(j, z) there is no solution.
+      BigInt BigTmp = BigInt::GCD(J, Z);
+      CHECK(BigTmp != 0);
+      if (K % BigTmp != 0) {
+        return;
+      }
+
+      // Compute g = gcd(j, K, z), then recalculate j <- j/g, K <- K/g, z <- z/g
+      BigInt U1 = BigInt::GCD(BigTmp, K);
+      CHECK(U1 != 0);
+      // U2 <- j
+      BigInt U2 = J / U1;
+      // U3 <- K
+      BigInt U3 = K / U1;
+      if (U1 != 0) Z /= U1;
+      // Use positive sign for modulus.
+      Z = BigInt::Abs(Z);
+
+      if (Z != 0) U2 %= Z;
+      // PERF: Can just use Mod?
+      if (U2 < 0) U2 += Z;
+
+      if (Z != 0) U3 %= Z;
+      if (U3 < 0) U3 += Z;
+
+      if (U2 != 0) {
+        // M and N equal zero.
+        // In this case 0*k = 0 (mod z) means any k is valid.
+        Z = BigInt(1);
+      } else {
+        // U2 <- x'
+        U2 = GeneralModularDivision(U2, U3, Z);
+      }
+
+      {
+        const auto &[VV1, VV2, VV3] =
+          swap_xy ?
+          ComputeYDiscrZero(U, U2, S, R, Z) :
+          ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2);
+
+        showAlso();
+
+        // Result box:
+        ShowText("<p><var>x</var> = ");
+        PrintQuad(VV3, VV2, VV1,
+                        "<var>k</var>", NULL);
+        ShowText("<br>");
+      }
+
+      {
+        const auto &[VV1, VV2, VV3] =
+          swap_xy ?
+          ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2) :
+          ComputeYDiscrZero(U, U2, S, R, Z);
+
+        ShowText("<var>y</var> = ");
+        PrintQuad(VV3, VV2, VV1,
+                        "<var>k</var>", NULL);
+      }
+
+      ShowText("</p>");
+    }
+
+
   };  // Clean
+
 
   Clean clean;
 
@@ -759,8 +889,9 @@ struct Quad {
 
     switch (callbackQuadModType) {
     case CBACK_QMOD_PARABOLIC:
-      CallbackQuadModParabolic(A, B, C, D, E,
-                               U, V, I, Value);
+      clean.CallbackQuadModParabolic(ExchXY,
+                                     A, B, C, D, E,
+                                     U, V, I, Value);
       break;
 
     case CBACK_QMOD_ELLIPTIC:
@@ -1031,132 +1162,6 @@ struct Quad {
         BigInt(0),
         -V,
         Modulus);
-  }
-
-  // Compute coefficients of x: V1 + V2 * w + V3 * w^2
-  // Returns V1, V2, V3
-  std::tuple<BigInt, BigInt, BigInt> ComputeXDiscrZero(
-      const BigInt &A, const BigInt &B,
-      const BigInt &C, const BigInt &D,
-      const BigInt &E, const BigInt &Z,
-      const BigInt &J, const BigInt &K,
-      const BigInt &U2) {
-    // Let m = 2be - 4cd
-    // U3 <- m
-    BigInt U3 = (B * E - ((C * D) << 1)) << 1;
-    // Compute V1 <- (x'j - k)/2a + mx'^2
-    BigInt V1 = (((U2 * J) - K) / A) >> 1;
-    V1 += U3 * U2 * U2;
-    // Compute V2 <- (j/2a + 2mx')z
-    BigInt V2 = (J / A) >> 1;
-    V2 += ((U3 * U2) << 1);
-    V2 *= Z;
-    // Compute V3 as m*z^2
-    BigInt V3 = U3 * Z * Z;
-    return std::make_tuple(V1, V2, V3);
-  }
-
-  // Compute coefficients of y: V1 + V2 * w + V3 * w^2
-  // Returns V1, V2, V3
-  std::tuple<BigInt, BigInt, BigInt> ComputeYDiscrZero(
-      const BigInt &U, const BigInt &U2,
-      const BigInt &S, const BigInt &R,
-      const BigInt &Z) {
-
-    // Compute V1 <- r + sx' + ux'^2
-    BigInt V1 = (U * U2 + S) * U2 + R;
-
-    // Compute V2 <- (s + 2ux')z
-    BigInt V2 = (((U * U2) << 1) + S) * Z;
-
-    // Compute V3 <- uz^2
-    BigInt V3 = U * Z * Z;
-
-    return std::make_tuple(V1, V2, V3);
-  }
-
-  void CallbackQuadModParabolic(
-      const BigInt &A, const BigInt &B, const BigInt &C,
-      const BigInt &D, const BigInt &E,
-      const BigInt &U, const BigInt &V,
-      const BigInt &I,
-      const BigInt &Value) {
-    // The argument of this function is T. t = T - d + uk (k arbitrary).
-    // Compute ValR <- (T^2 - v)/u
-
-    BigInt R = ((Value * Value) - V) / U;
-    // Compute ValS as 2*T
-    BigInt S = Value << 1;
-
-    // Find k from the congruence
-    //  jk = K (mod z) where j = u-bs, K = d+br-T, z = 2a
-    // Compute j <- u-bs
-    BigInt J = U - B * S;
-    // Compute K <- d+br-T
-    BigInt K = (D - B * R) - Value;
-    // Compute z <- 2a
-    BigInt Z = A << 1;
-    // If K is not multiple of gcd(j, z) there is no solution.
-    BigInt BigTmp = BigInt::GCD(J, Z);
-    CHECK(BigTmp != 0);
-    if (K % BigTmp != 0) {
-      return;
-    }
-
-    // Compute g = gcd(j, K, z), then recalculate j <- j/g, K <- K/g, z <- z/g
-    BigInt U1 = BigInt::GCD(BigTmp, K);
-    CHECK(U1 != 0);
-    // U2 <- j
-    BigInt U2 = J / U1;
-    // U3 <- K
-    BigInt U3 = K / U1;
-    if (U1 != 0) Z /= U1;
-    // Use positive sign for modulus.
-    Z = BigInt::Abs(Z);
-
-    if (Z != 0) U2 %= Z;
-    // PERF: Can just use Mod?
-    if (U2 < 0) U2 += Z;
-
-    if (Z != 0) U3 %= Z;
-    if (U3 < 0) U3 += Z;
-
-    if (U2 != 0) {
-      // M and N equal zero.
-      // In this case 0*k = 0 (mod z) means any k is valid.
-      Z = BigInt(1);
-    } else {
-      // U2 <- x'
-      U2 = GeneralModularDivision(U2, U3, Z);
-    }
-
-    {
-      const auto &[VV1, VV2, VV3] =
-        ExchXY ?
-        ComputeYDiscrZero(U, U2, S, R, Z) :
-        ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2);
-
-      clean.showAlso();
-
-      // Result box:
-      clean.ShowText("<p><var>x</var> = ");
-      clean.PrintQuad(VV3, VV2, VV1,
-                      "<var>k</var>", NULL);
-      clean.ShowText("<br>");
-    }
-
-    {
-      const auto &[VV1, VV2, VV3] =
-        ExchXY ?
-        ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2) :
-        ComputeYDiscrZero(U, U2, S, R, Z);
-
-      clean.ShowText("<var>y</var> = ");
-      clean.PrintQuad(VV3, VV2, VV1,
-                      "<var>k</var>", NULL);
-    }
-
-    clean.ShowText("</p>");
   }
 
   void ShowPoint(bool two_solutions,
