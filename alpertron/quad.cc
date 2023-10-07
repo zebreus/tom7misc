@@ -281,7 +281,7 @@ struct Quad {
   // TODO: Lots of these could be local; dynamically sized.
   enum eCallbackQuadModType callbackQuadModType;
   char isDescending[400];
-  BigInteger Aux0, Aux1, Aux2, Aux3, Aux5;
+  BigInteger Aux0, Aux1, Aux2, Aux3;
   BigInteger ValA;
   BigInteger ValB;
   BigInteger ValC;
@@ -300,7 +300,6 @@ struct Quad {
   BigInteger ValV;
   BigInteger ValG;
   BigInteger ValR;
-  // BigInteger ValS;
   BigInteger ValK;
   BigInteger ValZ;
   BigInteger ValAlpha;
@@ -350,21 +349,11 @@ struct Quad {
   const char *ptrVarNameY;
   const char *varX;
   const char *varY;
-  const char *varXnoTrans;
-  const char *varYnoTrans;
   bool firstSolutionX;
   bool positiveDenominator;
 
-  // Were globals NumberLength and TestNbr
-  // int modulus_length;
-  // limb TheModulus[MAX_LEN];
-
-  #if 0
-  Clean clean;
-
   // Functions that have been expunged of state above.
   struct Clean {
-  #endif
 
     std::string *output = nullptr;
     // presentational. Can probably remove it.
@@ -455,10 +444,209 @@ struct Quad {
         ShowText(var);
       }
     }
-#if 0
 
-  };
-#endif
+
+    void PrintLinear(const LinearSolution &sol, const string &var) {
+      if (sol.type == LinearSolutionType::NO_SOLUTIONS) {
+        return;
+      }
+      if (var == "t") {
+        showAlso();
+      }
+      if (sol.type == LinearSolutionType::INFINITE_SOLUTIONS) {
+        ShowText("<p>x, y: any integer</p>");
+        return;
+      }
+      // Port note: This used to actually have the effect of swapping
+      // xind/yind xlin/ylin.
+      ShowText("<p>x = ");
+      ShowLinInd(sol.Xlin, sol.Xind, var);
+      ShowText("<br>y = ");
+      ShowLinInd(sol.Ylin, sol.Yind, var);
+      ShowText("</p>");
+      return;
+    }
+
+    void ShowSolutionXY(const BigInt &x, const BigInt &y) {
+      ShowText("<p>x = ");
+      ShowBigInt(x);
+      ShowText("<BR>y = ");
+      ShowBigInt(y);
+      ShowText("</p>");
+    }
+
+    void PrintQuad(const BigInt &T2, const BigInt &T,
+                   const BigInt &Ind,
+                   const char *var1, const char *var2) {
+      if (BigInt::Abs(T2) == 1) {
+        // abs(coeffT2) = 1
+        if (T2 == 1) {
+          // coeffT2 = 1
+          ShowChar(' ');
+        } else {
+          // coeffT2 = -1
+          showMinus();
+        }
+        ShowText(var1);
+        showSquare();
+      } else if (T2 != 0) {
+        // coeffT2 is not zero.
+        ShowBigInt(T2);
+        ShowChar(' ');
+        ShowText(var1);
+        showSquare();
+      } else {
+        // Nothing to do.
+      }
+
+      if (T < 0) {
+        ShowText(" &minus; ");
+      } else if (T != 0 && T2 != 0) {
+        ShowText(" + ");
+      } else {
+        // Nothing to do.
+      }
+
+      if (BigInt::Abs(T) == 1) {
+        // abs(coeffT) = 1
+        ShowText(var1);
+        ShowText("&#8290;");
+        if (var2 != NULL) {
+          ShowText(var2);
+        }
+        ShowText(" ");
+      } else if (T != 0) {
+        // Port note: original called showlimbs if negative, which I
+        // think is just a way of printing the absolute value without
+        // any copying.
+        ShowBigInt(BigInt::Abs(T));
+        ShowText(" ");
+        ShowText(var1);
+        if (var2 != NULL) {
+          ShowText("&#8290;");
+          ShowText(var2);
+        }
+      } else {
+        // Nothing to do.
+      }
+
+      if (Ind != 0) {
+        if (T != 0 || T2 != 0) {
+          if (Ind < 0) {
+            ShowText(" &minus; ");
+          } else {
+            ShowText(" + ");
+          }
+        } else if (Ind < 0) {
+          ShowText(" &minus;");
+        } else {
+          // Nothing to do.
+        }
+
+        if (var2 == NULL) {
+          // Same trick for abs value.
+          ShowBigInt(BigInt::Abs(Ind));
+        } else if (BigInt::Abs(Ind) != 1) {
+          ShowBigInt(BigInt::Abs(Ind));
+          ShowText("&nbsp;&#8290;");
+          ShowText(var2);
+          showSquare();
+        } else {
+          ShowText(var2);
+          showSquare();
+        }
+      }
+    }
+
+
+    // XXX why does this take/return "linear solution type" ?
+    LinearSolutionType Show(const BigInt &num, const string &str,
+                            LinearSolutionType t) {
+      LinearSolutionType tOut = t;
+      if (num != 0) {
+        // num is not zero.
+        if (t == LinearSolutionType::NO_SOLUTIONS && num >= 0) {
+          ShowText(" +");
+        }
+
+        if (num < 0) {
+          ShowText(" -");
+        }
+
+        if (num != 1 && num != -1) {
+          // num is not 1 or -1.
+          ShowChar(' ');
+          ShowBigInt(BigInt::Abs(num));
+          ShowText("&nbsp;&#8290;");
+        } else {
+          ShowText("&nbsp;");
+        }
+
+        if (output != nullptr)
+          *output += str;
+
+        if (t == LinearSolutionType::SOLUTION_FOUND) {
+          tOut = LinearSolutionType::NO_SOLUTIONS;
+        }
+      }
+      return tOut;
+    }
+
+    void Show1(const BigInt &num, LinearSolutionType t) {
+      const LinearSolutionType u = Show(num, "", t);
+      ShowChar(' ');
+      // Port note: This used to test u & 1 as a "trick" for detecting NO_SOLUTIONS?
+      if (u != LinearSolutionType::NO_SOLUTIONS || num == 1 || num == -1) {
+        // Show absolute value of num.
+        ShowBigInt(BigInt::Abs(num));
+      }
+    }
+
+    void ShowEq(
+        const BigInt &coeffA, const BigInt &coeffB,
+        const BigInt &coeffC, const BigInt &coeffD,
+        const BigInt &coeffE, const BigInt &coeffF,
+        const char *x, const char *y) {
+
+      LinearSolutionType t;
+      string vxx = StringPrintf("%s&sup2;", x);
+      t = Show(coeffA, vxx, LinearSolutionType::SOLUTION_FOUND);
+
+      string vxy = StringPrintf("%s&#8290;%s", x, y);
+      t = Show(coeffB, vxy, t);
+
+      string vyy = StringPrintf("%s&sup2;", y);
+      t = Show(coeffC, vyy, t);
+
+      t = Show(coeffD, x, t);
+
+      t = Show(coeffE, y, t);
+      Show1(coeffF, t);
+    }
+
+    void ShowRecSol(char variable,
+                    const BigInt &cx,
+                    const BigInt &cy,
+                    const BigInt &ci) {
+      ShowChar(variable);
+      ShowText("<sub>n+1</sub> = ");
+      LinearSolutionType t = Show(cx, "x<sub>n</sub>",
+                                  LinearSolutionType::SOLUTION_FOUND);
+      t = Show(cy, "y<sub>n</sub>", t);
+      Show1(ci, t);
+    }
+
+    void ShowResult(const char *text, const BigInt &value) {
+      ShowText(text);
+      ShowText(" = ");
+      ShowBigInt(value);
+      ShowText("<br>");
+    }
+
+
+  };  // Clean
+
+  Clean clean;
 
   void MarkUninitialized() {
     // Port note: There are various interleaved code paths where
@@ -466,7 +654,7 @@ struct Quad {
     // variables being initialized or not. At least set them to
     // valid state so that we can convert them to BigInt (and discard).
     for (BigInteger *b : {
-          &Aux0, &Aux1, &Aux2, &Aux3, &Aux5,
+          &Aux0, &Aux1, &Aux2, &Aux3,
           &ValA, &ValB, &ValC, &ValD, &ValE, &ValF,
           &ValH, &ValI, &ValL, &ValM, &ValN, &ValO, &ValP, &ValQ,
           &ValU, &ValV, &ValG, &ValR, &ValK, &ValZ,
@@ -479,118 +667,6 @@ struct Quad {
           &modulus}) {
       intToBigInteger(b, 0xCAFE);
     }
-  }
-
-  void PrintLinear(const LinearSolution &sol, const string &var) {
-    if (sol.type == LinearSolutionType::NO_SOLUTIONS) {
-      return;
-    }
-    if (var == "t") {
-      showAlso();
-    }
-    if (sol.type == LinearSolutionType::INFINITE_SOLUTIONS) {
-      ShowText("<p>x, y: any integer</p>");
-      return;
-    }
-    // Port note: This used to actually have the effect of swapping
-    // xind/yind xlin/ylin.
-    ShowText("<p>x = ");
-    ShowLinInd(sol.Xlin, sol.Xind, var);
-    ShowText("<br>y = ");
-    ShowLinInd(sol.Ylin, sol.Yind, var);
-    ShowText("</p>");
-    return;
-  }
-
-  void PrintQuad(const BigInt &T2, const BigInt &T,
-                 const BigInt &Ind,
-                 const char *var1, const char *var2) {
-    if (BigInt::Abs(T2) == 1) {
-      // abs(coeffT2) = 1
-      if (T2 == 1) {
-        // coeffT2 = 1
-        ShowChar(' ');
-      } else {
-        // coeffT2 = -1
-        showMinus();
-      }
-      ShowText(var1);
-      showSquare();
-    } else if (T2 != 0) {
-      // coeffT2 is not zero.
-      ShowBigInt(T2);
-      ShowChar(' ');
-      ShowText(var1);
-      showSquare();
-    } else {
-      // Nothing to do.
-    }
-
-    if (T < 0) {
-      ShowText(" &minus; ");
-    } else if (T != 0 && T2 != 0) {
-      ShowText(" + ");
-    } else {
-      // Nothing to do.
-    }
-
-    if (BigInt::Abs(T) == 1) {
-      // abs(coeffT) = 1
-      ShowText(var1);
-      ShowText("&#8290;");
-      if (var2 != NULL) {
-        ShowText(var2);
-      }
-      ShowText(" ");
-    } else if (T != 0) {
-      // Port note: original called showlimbs if negative, which I
-      // think is just a way of printing the absolute value without
-      // any copying.
-      ShowBigInt(BigInt::Abs(T));
-      ShowText(" ");
-      ShowText(var1);
-      if (var2 != NULL) {
-        ShowText("&#8290;");
-        ShowText(var2);
-      }
-    } else {
-      // Nothing to do.
-    }
-
-    if (Ind != 0) {
-      if (T != 0 || T2 != 0) {
-        if (Ind < 0) {
-          ShowText(" &minus; ");
-        } else {
-          ShowText(" + ");
-        }
-      } else if (Ind < 0) {
-        ShowText(" &minus;");
-      } else {
-        // Nothing to do.
-      }
-
-      if (var2 == NULL) {
-        // Same trick for abs value.
-        ShowBigInt(BigInt::Abs(Ind));
-      } else if (BigInt::Abs(Ind) != 1) {
-        ShowBigInt(BigInt::Abs(Ind));
-        ShowText("&nbsp;&#8290;");
-        ShowText(var2);
-        showSquare();
-      } else {
-        ShowText(var2);
-        showSquare();
-      }
-    }
-  }
-
-  void ShowSolutionXY(const BigInt &x, const BigInt &y) {
-    ShowText("<p>x = ");
-    ShowBigInt(x);
-    ShowText("<BR>y = ");
-    ShowBigInt(y);
-    ShowText("</p>");
   }
 
   // This weird function either shows the solution or continues
@@ -631,76 +707,11 @@ struct Quad {
 
   void ShowXYOne(bool swap_xy, const BigInt &X, const BigInt &Y) {
     CHECK(showSolution == ONE_SOLUTION);
-    showAlso();
+    clean.showAlso();
     if (swap_xy)
-      ShowSolutionXY(Y, X);
+      clean.ShowSolutionXY(Y, X);
     else
-      ShowSolutionXY(X, Y);
-  }
-
-  // XXX why does this take/return "linear solution type" ?
-  LinearSolutionType Show(const BigInt &num, const string &str,
-                          LinearSolutionType t) {
-    LinearSolutionType tOut = t;
-    if (num != 0) {
-      // num is not zero.
-      if (t == LinearSolutionType::NO_SOLUTIONS && num >= 0) {
-        ShowText(" +");
-      }
-
-      if (num < 0) {
-        ShowText(" -");
-      }
-
-      if (num != 1 && num != -1) {
-        // num is not 1 or -1.
-        ShowChar(' ');
-        ShowBigInt(BigInt::Abs(num));
-        ShowText("&nbsp;&#8290;");
-      } else {
-        ShowText("&nbsp;");
-      }
-
-      if (output != nullptr)
-        *output += str;
-
-      if (t == LinearSolutionType::SOLUTION_FOUND) {
-        tOut = LinearSolutionType::NO_SOLUTIONS;
-      }
-    }
-    return tOut;
-  }
-
-  void Show1(const BigInt &num, LinearSolutionType t) {
-    const LinearSolutionType u = Show(num, "", t);
-    ShowChar(' ');
-    // Port note: This used to test u & 1 as a "trick" for detecting NO_SOLUTIONS?
-    if (u != LinearSolutionType::NO_SOLUTIONS || num == 1 || num == -1) {
-      // Show absolute value of num.
-      ShowBigInt(BigInt::Abs(num));
-    }
-  }
-
-  void ShowEq(
-      const BigInt &coeffA, const BigInt &coeffB,
-      const BigInt &coeffC, const BigInt &coeffD,
-      const BigInt &coeffE, const BigInt &coeffF,
-      const char *x, const char *y) {
-
-    LinearSolutionType t;
-    string vxx = StringPrintf("%s&sup2;", x);
-    t = Show(coeffA, vxx, LinearSolutionType::SOLUTION_FOUND);
-
-    string vxy = StringPrintf("%s&#8290;%s", x, y);
-    t = Show(coeffB, vxy, t);
-
-    string vyy = StringPrintf("%s&sup2;", y);
-    t = Show(coeffC, vyy, t);
-
-    t = Show(coeffD, x, t);
-
-    t = Show(coeffE, y, t);
-    Show1(coeffF, t);
+      clean.ShowSolutionXY(X, Y);
   }
 
   // TODO: Try to make this dispatch (callbackQuadModType) static.
@@ -734,16 +745,17 @@ struct Quad {
     BigInt V = BigIntegerToBigInt(&ValV);
     BigInt I = BigIntegerToBigInt(&ValI);
 
-    if (VERBOSE)
-    printf("  with %s %s %s %s %s %s | %s %s\n",
-           A.ToString().c_str(),
-           B.ToString().c_str(),
-           C.ToString().c_str(),
-           D.ToString().c_str(),
-           E.ToString().c_str(),
-           U.ToString().c_str(),
-           V.ToString().c_str(),
-           I.ToString().c_str());
+    if (VERBOSE) {
+      printf("  with %s %s %s %s %s %s | %s %s\n",
+             A.ToString().c_str(),
+             B.ToString().c_str(),
+             C.ToString().c_str(),
+             D.ToString().c_str(),
+             E.ToString().c_str(),
+             U.ToString().c_str(),
+             V.ToString().c_str(),
+             I.ToString().c_str());
+    }
 
     switch (callbackQuadModType) {
     case CBACK_QMOD_PARABOLIC:
@@ -819,13 +831,13 @@ struct Quad {
     if (ValNn == 1) {
       // All values from 0 to GcdAll - 1 are solutions.
       if (GcdAll > 5) {
-        ShowText("<p>All values of <var>x</var> between 0 and ");
+        clean.ShowText("<p>All values of <var>x</var> between 0 and ");
 
         // XXX Suspicious that this modifies GcdAll in place (I
         // think just to display it?) but uses it again below.
         GcdAll -= 1;
-        ShowBigInt(GcdAll);
-        ShowText(" are solutions.</p>");
+        clean.ShowBigInt(GcdAll);
+        clean.ShowText(" are solutions.</p>");
       } else {
         // must succeed; is < 5 and non-negative
         const int n = GcdAll.ToInt().value();
@@ -971,7 +983,7 @@ struct Quad {
         LinearSolution sol = LinearEq(A << 1, B, D);
         // Result box:
         if (swap_xy) sol.SwapXY();
-        PrintLinear(sol, "<var>t</var>");
+        clean.PrintLinear(sol, "<var>t</var>");
         return;
       }
 
@@ -991,13 +1003,13 @@ struct Quad {
         LinearSolution sol = LinearEq(A2, B, D + G);
         if (swap_xy) sol.SwapXY();
         // Result box:
-        PrintLinear(sol, "<var>t</var>");
+        clean.PrintLinear(sol, "<var>t</var>");
       }
 
       {
         LinearSolution sol = LinearEq(A2, B, D - G);
         if (swap_xy) sol.SwapXY();
-        PrintLinear(sol, "<var>t</var>");
+        clean.PrintLinear(sol, "<var>t</var>");
       }
 
       return;
@@ -1124,13 +1136,13 @@ struct Quad {
         ComputeYDiscrZero(U, U2, S, R, Z) :
         ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2);
 
-      showAlso();
+      clean.showAlso();
 
       // Result box:
-      ShowText("<p><var>x</var> = ");
-      PrintQuad(VV3, VV2, VV1,
-                "<var>k</var>", NULL);
-      ShowText("<br>");
+      clean.ShowText("<p><var>x</var> = ");
+      clean.PrintQuad(VV3, VV2, VV1,
+                      "<var>k</var>", NULL);
+      clean.ShowText("<br>");
     }
 
     {
@@ -1139,12 +1151,12 @@ struct Quad {
         ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2) :
         ComputeYDiscrZero(U, U2, S, R, Z);
 
-      ShowText("<var>y</var> = ");
-      PrintQuad(VV3, VV2, VV1,
-                "<var>k</var>", NULL);
+      clean.ShowText("<var>y</var> = ");
+      clean.PrintQuad(VV3, VV2, VV1,
+                      "<var>k</var>", NULL);
     }
 
-    ShowText("</p>");
+    clean.ShowText("</p>");
   }
 
   void ShowPoint(bool two_solutions,
@@ -1312,8 +1324,6 @@ struct Quad {
     // BigIntGcd(&ValA, &ValK, &bigTmp);
     BigInt M(0);
     // intToBigInteger(&ValM, 0);
-    varXnoTrans = "<var>X</var>";
-    varYnoTrans = "<var>Y</var>";
     if (BigInt::GCD(A, K) != 1) {
       // gcd(a, K) is not equal to 1.
 
@@ -2060,7 +2070,7 @@ struct Quad {
           LinearSolution sol = LinearEq(BigInt(0), Discr, Beta);
           CHECK(!ExchXY);
           // Result box:
-          PrintLinear(sol, "t");
+          clean.PrintLinear(sol, "t");
         }
 
         // Solve bDx + cDy + b*alpha + c*beta = 0
@@ -2072,7 +2082,7 @@ struct Quad {
           LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
           CHECK(!ExchXY);
           // Result box:
-          PrintLinear(sol, "t");
+          clean.PrintLinear(sol, "t");
         }
 
       } else {
@@ -2099,7 +2109,7 @@ struct Quad {
           LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
           // Result box:
           CHECK(!ExchXY);
-          PrintLinear(sol, "t");
+          clean.PrintLinear(sol, "t");
         }
 
         // Solve the equation 2aD x + (b-g)D y = 2a*alpha + (b-g)*beta
@@ -2110,7 +2120,7 @@ struct Quad {
           LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
           // Result box:
           CHECK(!ExchXY);
-          PrintLinear(sol, "t");
+          clean.PrintLinear(sol, "t");
         }
       }
 
@@ -2452,25 +2462,6 @@ struct Quad {
     BigIntToBigInteger(Tmp11, value);
   }
 
-  void ShowRecSol(char variable,
-                  const BigInt &cx,
-                  const BigInt &cy,
-                  const BigInt &ci) {
-    ShowChar(variable);
-    ShowText("<sub>n+1</sub> = ");
-    LinearSolutionType t = Show(cx, "x<sub>n</sub>",
-                                LinearSolutionType::SOLUTION_FOUND);
-    t = Show(cy, "y<sub>n</sub>", t);
-    Show1(ci, t);
-  }
-
-  void ShowResult(const char *text, const BigInt &value) {
-    ShowText(text);
-    ShowText(" = ");
-    ShowBigInt(value);
-    ShowText("<br>");
-  }
-
   // TODO: Test this heuristic without converting.
   bool IsBig(const BigInt &bg, int num_limbs) {
     BigInteger tmp;
@@ -2487,31 +2478,31 @@ struct Quad {
 
     if (IsBig(P, 2) || IsBig(Q, 2)) {
       if (Alpha == 0 && Beta == 0) {
-        ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
+        clean.ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
                  "Q&nbsp;&#8290;y<sub>n</sub><br>"
                  "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
                  "S&nbsp;&#8290;y<sub>n</sub></p><p>");
       } else {
-        ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
+        clean.ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
                  "Q&nbsp;&#8290;y<sub>n</sub> + K<br>"
                  "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
                  "S&nbsp;&#8290;y<sub>n</sub> + L</p><p>");
       }
-      ShowText("where:</p><p>");
-      ShowResult("P", P);
-      ShowResult("Q", Q);
+      clean.ShowText("where:</p><p>");
+      clean.ShowResult("P", P);
+      clean.ShowResult("Q", Q);
       if (Alpha != 0 || Beta != 0) {
-        ShowResult("K", K);
+        clean.ShowResult("K", K);
       }
-      ShowResult("R", R);
-      ShowResult("S", S);
+      clean.ShowResult("R", R);
+      clean.ShowResult("S", S);
       if (Alpha != 0 || Beta != 0) {
-        ShowResult("L", L);
+        clean.ShowResult("L", L);
       }
     } else {
-      ShowRecSol('x', P, Q, K);
-      ShowText("<br>");
-      ShowRecSol('y', R, S, L);
+      clean.ShowRecSol('x', P, Q, K);
+      clean.ShowText("<br>");
+      clean.ShowRecSol('y', R, S, L);
     }
 
     // Compute x_{n-1} from x_n and y_n
@@ -2529,25 +2520,25 @@ struct Quad {
     P = S;
     S = std::move(Tmp);
 
-    ShowText("<p>and also:</p>");
+    clean.ShowText("<p>and also:</p>");
     if (IsBig(P, 2) || IsBig(Q, 2)) {
-      ShowText("<p>");
-      ShowResult("P", P);
-      ShowResult("Q", Q);
+      clean.ShowText("<p>");
+      clean.ShowResult("P", P);
+      clean.ShowResult("Q", Q);
       if (Alpha != 0 || Beta != 0) {
-        ShowResult("K", K);
+        clean.ShowResult("K", K);
       }
-      ShowResult("R", R);
-      ShowResult("S", S);
+      clean.ShowResult("R", R);
+      clean.ShowResult("S", S);
       if (Alpha != 0 || Beta != 0) {
-        ShowResult("L", L);
+        clean.ShowResult("L", L);
       }
     } else {
-      ShowRecSol('x', P, Q, K);
-      ShowText("<br>");
-      ShowRecSol('y', R, S, L);
+      clean.ShowRecSol('x', P, Q, K);
+      clean.ShowText("<br>");
+      clean.ShowRecSol('y', R, S, L);
     }
-    ShowText("</p>");
+    clean.ShowText("</p>");
   }
 
   bool SolutionFoundFromContFraction(bool isBeven,
@@ -2756,7 +2747,7 @@ struct Quad {
       V = BigInt{1};
     }
 
-    ShowText("<p>Recursive solutions:</p><p>");
+    clean.ShowText("<p>Recursive solutions:</p><p>");
 
     // XXX should not be necessary
     CopyBigInt(&ValA, &ValABak);
@@ -2987,7 +2978,7 @@ struct Quad {
     // PERF divisibility check
     if (gcd != 0 && BigInt::CMod(F, gcd) != 0) {
       // F is not multiple of GCD(A, B, C, D, E) so there are no solutions.
-      ShowText("<p>There are no solutions.</p>");
+      clean.ShowText("<p>There are no solutions.</p>");
       return;
     }
 
@@ -3016,7 +3007,7 @@ struct Quad {
       LinearSolution sol = LinearEq(D, E, F);
       // Result box:
       CHECK(!ExchXY);
-      PrintLinear(sol, "t");
+      clean.PrintLinear(sol, "t");
       return;
     }
 
@@ -3151,19 +3142,19 @@ struct Quad {
 
   void QuadBigInt(const BigInt &A, const BigInt &B, const BigInt &C,
                   const BigInt &D, const BigInt &E, const BigInt &F) {
-    ShowText("2<p>");
+    clean.ShowText("2<p>");
 
-    ShowText("<h2>");
-    ShowEq(A, B, C, D, E, F, "x", "y");
-    ShowText(" = 0</h2>");
+    clean.ShowText("<h2>");
+    clean.ShowEq(A, B, C, D, E, F, "x", "y");
+    clean.ShowText(" = 0</h2>");
     SolNbr = 0;
 
-    size_t preamble_size = (output == nullptr) ? 0 : output->size();
+    size_t preamble_size = (clean.output == nullptr) ? 0 : clean.output->size();
 
     SolveQuadEquation(A, B, C, D, E, F);
 
-    if (output != nullptr && output->size() == preamble_size) {
-      ShowText("<p>The equation does not have integer solutions.</p>");
+    if (clean.output != nullptr && clean.output->size() == preamble_size) {
+      clean.ShowText("<p>The equation does not have integer solutions.</p>");
     }
   }
 
@@ -3178,6 +3169,6 @@ void QuadBigInt(const BigInt &a, const BigInt &b, const BigInt &c,
                 const BigInt &d, const BigInt &e, const BigInt &f,
                 std::string *output) {
   std::unique_ptr<Quad> quad(new Quad);
-  quad->output = output;
+  quad->clean.output = output;
   quad->QuadBigInt(a, b, c, d, e, f);
 }
