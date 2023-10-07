@@ -239,6 +239,11 @@ echo quad tests
 # disczero_vzero coverage (trivial)
 ./quad.exe 0 0 384 0 0 0 >> coverage.out
 
+# a, f, x are powers of two
+# x = 131072  y = 0
+# no-contfrac coverage
+./quad.exe 8 -2022 436 0 0 -137438953472 >> coverage.out
+
 echo factor tests
 ./afactor.exe 1 >> coverage.out
 ./afactor.exe 2 >> coverage.out
