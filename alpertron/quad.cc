@@ -274,6 +274,51 @@ static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
   return sol;
 }
 
+// Output:
+// nullopt: There are no solutions because gcd(P, Q, R) > 1
+// some(P, Q, R) with gcd(P, Q, R) = 1.
+std::optional<std::tuple<BigInt, BigInt, BigInt>>
+PerformTransformation(
+    const BigInt &A, const BigInt &B, const BigInt &C, const BigInt &K,
+    const BigInt &Value) {
+  // writes: P, Q, R, H, I
+
+  const BigInt VA = A * Value;
+
+  // Compute P as (at^2+bt+c)/K
+  const BigInt P = ((VA + B) * Value + C) / K;
+  // (void)BigIntMultiply(&ValA, &value, &ValQ);
+  // BigIntAdd(&ValQ, &ValB, &ValP);
+  // (void)BigIntMultiply(&ValP, &value, &ValP);
+  // BigIntAdd(&ValP, &ValC, &ValP);
+  // (void)BigIntDivide(&ValP, &ValK, &ValP);
+
+  // Compute Q <- -(2at + b).
+  const BigInt Q = -((VA << 1) + B);
+  // BigIntAdd(&ValQ, &ValQ, &ValQ);
+  // BigIntAdd(&ValQ, &ValB, &ValQ);
+  // BigIntChSign(&ValQ);
+
+  // Compute R <- aK
+  // (void)BigIntMultiply(&ValA, &ValK, &ValR);
+  const BigInt R = A * K;
+
+  // Compute gcd of P, Q and R.
+  // BigIntGcd(&ValP, &ValQ, &ValH);   // Use ValH and ValI as temporary variables.
+  // BigIntGcd(&ValH, &ValR, &ValI);
+
+  // Note: Used to write H and I as temporaries, but I think they're dead.
+  const BigInt I = BigInt::GCD(BigInt::GCD(P, Q), R);
+  if (I == 1) {
+    // Gcd equals 1.
+    return {std::make_tuple(P, Q, R)};
+  }
+
+  // No solutions because gcd(P, Q, R) > 1.
+  return std::nullopt;
+}
+
+
 
 struct Quad {
   // XXX can be retired for two_solutions arg
@@ -1703,56 +1748,13 @@ struct Quad {
     // BigIntToBigInteger(Tmp12, value);
   }
 
-  // Output:
-  // nullopt: There are no solutions because gcd(P, Q, R) > 1
-  // some(P, Q, R) with gcd(P, Q, R) = 1.
-  std::optional<std::tuple<BigInt, BigInt, BigInt>>
-  PerformTransformation(const BigInt &Value) {
-    BigInt A = BigIntegerToBigInt(&ValA);
-    BigInt B = BigIntegerToBigInt(&ValB);
-    BigInt C = BigIntegerToBigInt(&ValC);
-    BigInt K = BigIntegerToBigInt(&ValK);
-
-    // writes: P, Q, R, H, I
-
-    const BigInt VA = A * Value;
-
-    // Compute P as (at^2+bt+c)/K
-    const BigInt P = ((VA + B) * Value + C) / K;
-    // (void)BigIntMultiply(&ValA, &value, &ValQ);
-    // BigIntAdd(&ValQ, &ValB, &ValP);
-    // (void)BigIntMultiply(&ValP, &value, &ValP);
-    // BigIntAdd(&ValP, &ValC, &ValP);
-    // (void)BigIntDivide(&ValP, &ValK, &ValP);
-
-    // Compute Q <- -(2at + b).
-    const BigInt Q = -((VA << 1) + B);
-    // BigIntAdd(&ValQ, &ValQ, &ValQ);
-    // BigIntAdd(&ValQ, &ValB, &ValQ);
-    // BigIntChSign(&ValQ);
-
-    // Compute R <- aK
-    // (void)BigIntMultiply(&ValA, &ValK, &ValR);
-    const BigInt R = A * K;
-
-    // Compute gcd of P, Q and R.
-    // BigIntGcd(&ValP, &ValQ, &ValH);   // Use ValH and ValI as temporary variables.
-    // BigIntGcd(&ValH, &ValR, &ValI);
-
-    // Note: Used to write H and I as temporaries, but I think they're dead.
-    const BigInt I = BigInt::GCD(BigInt::GCD(P, Q), R);
-    if (I == 1) {
-      // Gcd equals 1.
-      return {std::make_tuple(P, Q, R)};
-    }
-
-    // No solutions because gcd(P, Q, R) > 1.
-    return std::nullopt;
-  }
-
   void callbackQuadModElliptic(const BigInt &Value) {
+    const BigInt A = BigIntegerToBigInt(&ValA);
+    const BigInt B = BigIntegerToBigInt(&ValB);
+    const BigInt C = BigIntegerToBigInt(&ValC);
+    const BigInt K = BigIntegerToBigInt(&ValK);
 
-    auto pqro = PerformTransformation(Value);
+    auto pqro = PerformTransformation(A, B, C, K, Value);
     if (!pqro.has_value()) {
       // No solutions because gcd(P, Q, R) > 1.
       return;
@@ -1768,7 +1770,6 @@ struct Quad {
 
     const BigInt M = BigIntegerToBigInt(&ValM);
     const BigInt E = BigIntegerToBigInt(&ValE);
-    const BigInt K = BigIntegerToBigInt(&ValK);
     const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
     const BigInt Beta = BigIntegerToBigInt(&ValBeta);
     const BigInt Div = BigIntegerToBigInt(&ValDiv);
@@ -2860,24 +2861,25 @@ struct Quad {
     bool isBeven_XXX = ((ValB.limbs[0].x & 1) == 0);
     positiveDenominator = 1;
 
-    auto pqro = PerformTransformation(Value);
+    const BigInt A = BigIntegerToBigInt(&ValA);
+    const BigInt B = BigIntegerToBigInt(&ValB);
+    const BigInt C = BigIntegerToBigInt(&ValC);
+    const BigInt K = BigIntegerToBigInt(&ValK);
+
+    auto pqro = PerformTransformation(A, B, C, K, Value);
     if (!pqro.has_value()) {
       // No solutions because gcd(P, Q, R) > 1.
       return;
     }
 
-    // XXX P and Q are always overwritten below.
+    // P and Q are always overwritten below.
+    // R_ is likely dead too?
     const auto &[P_, Q_, R_] = pqro.value();
-    BigIntToBigInteger(P_, &ValP);
-    BigIntToBigInteger(Q_, &ValQ);
     BigIntToBigInteger(R_, &ValR);
 
     BigInteger value;
     BigIntToBigInteger(Value, &value);
 
-    BigInt A = BigIntegerToBigInt(&ValA);
-    BigInt B = BigIntegerToBigInt(&ValB);
-    BigInt K = BigIntegerToBigInt(&ValK);
     BigInt Discr = BigIntegerToBigInt(&discr);
 
     // Expected to agree because PerformTransformation doesn't modify B?
