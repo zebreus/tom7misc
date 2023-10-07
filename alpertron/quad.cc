@@ -2871,8 +2871,8 @@ struct Quad {
     Yminus.reset();
     // Somewhere below these can get set. Can we return the values instead?
 
-    BigInt UBak = U;
-    BigInt VBak = V;
+    // BigInt UBak = U;
+    // BigInt VBak = V;
     contfracEqNbr = equationNbr + 2;
 
     // XXX pass args
@@ -2887,10 +2887,10 @@ struct Quad {
 
     positiveDenominator = 0;
 
-    // XXX should be no reason to do this, since we copied
-    U = UBak;
-    V = VBak;
-    //     BigIntToBigInteger(UBak, &ValU);
+    // should be no reason to do this, since we copied
+    // U = UBak;
+    // V = VBak;
+    // BigIntToBigInteger(UBak, &ValU);
     // BigIntToBigInteger(VBak, &ValV);
 
     U = -U;
@@ -2924,20 +2924,21 @@ struct Quad {
   }
 
   // Copy intentional; we modify them in place (factor out gcd).
-  void SolveQuadEquation(BigInt a, BigInt b, BigInt c,
-                         BigInt d, BigInt e, BigInt f) {
+  // PS: This is where to understand the meaning of Alpha, Beta, K, Div.
+  void SolveQuadEquation(BigInt A, BigInt B, BigInt C,
+                         BigInt D, BigInt E, BigInt F) {
     also = 0;
     showSolution = ONE_SOLUTION;
     showRecursiveSolution = 0;    // Do not show recursive solution by default.
     divgcd = "<p>Dividing the equation by the greatest common divisor "
       "we obtain:</p>";
 
-    BigInt gcd = BigInt::GCD(BigInt::GCD(a, b),
-                             BigInt::GCD(BigInt::GCD(c, d),
-                                         e));
+    BigInt gcd = BigInt::GCD(BigInt::GCD(A, B),
+                             BigInt::GCD(BigInt::GCD(C, D),
+                                         E));
 
     // PERF divisibility check
-    if (gcd != 0 && BigInt::CMod(f, gcd) != 0) {
+    if (gcd != 0 && BigInt::CMod(F, gcd) != 0) {
       // F is not multiple of GCD(A, B, C, D, E) so there are no solutions.
       showText("<p>There are no solutions.</p>");
       return;
@@ -2946,99 +2947,119 @@ struct Quad {
     // Divide all coefficients by GCD(A, B, C, D, E).
     // PERF: Known-divisible operation
     if (gcd != 0) {
-      a /= gcd;
-      b /= gcd;
-      c /= gcd;
-      d /= gcd;
-      e /= gcd;
-      f /= gcd;
+      A /= gcd;
+      B /= gcd;
+      C /= gcd;
+      D /= gcd;
+      E /= gcd;
+      F /= gcd;
     }
 
     if (VERBOSE)
       printf("After dividing: %s %s %s %s %s %s\n",
-             a.ToString().c_str(),
-             b.ToString().c_str(),
-             c.ToString().c_str(),
-             d.ToString().c_str(),
-             e.ToString().c_str(),
-             f.ToString().c_str());
+             A.ToString().c_str(),
+             B.ToString().c_str(),
+             C.ToString().c_str(),
+             D.ToString().c_str(),
+             E.ToString().c_str(),
+             F.ToString().c_str());
 
     // Test whether the equation is linear. A = B = C = 0.
-    if (a == 0 && b == 0 && c == 0) {
-      eLinearSolution ret = LinearEq(d, e, f);
+    if (A == 0 && B == 0 && C == 0) {
+      eLinearSolution ret = LinearEq(D, E, F);
       // Result box:
       PrintLinear(ret, "t");
       return;
     }
 
     // Compute discriminant: b^2 - 4ac.
-    BigInt Discr = b * b - ((a * c) << 2);
+    const BigInt Discr = B * B - ((A * C) << 2);
 
     if (Discr == 0) {
       // Discriminant is zero.
-      DiscriminantIsZero(a, b, c, d, e, f);
+      DiscriminantIsZero(A, B, C, D, E, F);
       return;
     }
 
-    // XXX remove this state
-    BigIntToBigInteger(a, &ValA);
-    BigIntToBigInteger(b, &ValB);
-    BigIntToBigInteger(c, &ValC);
-    BigIntToBigInteger(d, &ValD);
-    BigIntToBigInteger(e, &ValE);
-    BigIntToBigInteger(f, &ValF);
-    BigIntToBigInteger(Discr, &discr);
-
     // Compute gcd(a,b,c).
-    BigIntGcd(&ValA, &ValB, &bigTmp);
-    BigIntGcd(&bigTmp, &ValC, &U1);
+    // BigIntGcd(&ValA, &ValB, &bigTmp);
+    // BigIntGcd(&bigTmp, &ValC, &U1);
+
+    BigInt UU1 = BigInt::GCD(BigInt::GCD(A, B), C);
+    BigInt Div, K, Alpha, Beta;
     // Discriminant is not zero.
-    if (BigIntIsZero(&ValD) && BigIntIsZero(&ValE)) {
+    if (D == 0 && E == 0) {
       // Do not translate origin.
-      intToBigInteger(&ValDiv, 1);
-      CopyBigInt(&ValK, &ValF);
-      BigIntChSign(&ValK);
-      intToBigInteger(&ValAlpha, 0);
-      intToBigInteger(&ValBeta, 0);
+      Div = BigInt(1);
+      // intToBigInteger(&ValDiv, 1);
+      K = -F;
+      // CopyBigInt(&ValK, &ValF);
+      // BigIntChSign(&ValK);
+      Alpha = BigInt(0);
+      Beta = BigInt(0);
+      // intToBigInteger(&ValAlpha, 0);
+      // intToBigInteger(&ValBeta, 0);
     } else {
-      CopyBigInt(&ValDiv, &discr);
+      Div = Discr;
+      // CopyBigInt(&ValDiv, &discr);
       // Translate the origin (x, y) by (alpha, beta).
       // Compute alpha = 2cd - be
-      (void)BigIntMultiply(&ValC, &ValD, &ValAlpha);
-      BigIntMultiplyBy2(&ValAlpha);
-      (void)BigIntMultiply(&ValB, &ValE, &bigTmp);
-      BigIntSubt(&ValAlpha, &bigTmp, &ValAlpha);
+      Alpha = ((C * D) << 1) - (B * E);
+      // (void)BigIntMultiply(&ValC, &ValD, &ValAlpha);
+      // BigIntMultiplyBy2(&ValAlpha);
+      // (void)BigIntMultiply(&ValB, &ValE, &bigTmp);
+      // BigIntSubt(&ValAlpha, &bigTmp, &ValAlpha);
+
       // Compute beta = 2ae - bd
-      (void)BigIntMultiply(&ValA, &ValE, &ValBeta);
-      BigIntMultiplyBy2(&ValBeta);
-      (void)BigIntMultiply(&ValB, &ValD, &bigTmp);
-      BigIntSubt(&ValBeta, &bigTmp, &ValBeta);
+      Beta = ((A * E) << 1) - (B * D);
+      // (void)BigIntMultiply(&ValA, &ValE, &ValBeta);
+      // BigIntMultiplyBy2(&ValBeta);
+      // (void)BigIntMultiply(&ValB, &ValD, &bigTmp);
+      // BigIntSubt(&ValBeta, &bigTmp, &ValBeta);
+
       // We get the equation ax^2 + bxy + cy^2 = k
       // where k = -D (ae^2 - bed + cd^2 + fD)
-      (void)BigIntMultiply(&ValA, &ValE, &ValK);     // ae
-      (void)BigIntMultiply(&ValK, &ValE, &ValK);     // ae^2
-      (void)BigIntMultiply(&ValB, &ValE, &bigTmp);   // be
-      (void)BigIntMultiply(&bigTmp, &ValD, &bigTmp); // bed
-      BigIntSubt(&ValK, &bigTmp, &ValK);        // ae^2 - bed
-      (void)BigIntMultiply(&ValC, &ValD, &bigTmp);   // cd
-      (void)BigIntMultiply(&bigTmp, &ValD, &bigTmp); // cd^2
-      BigIntAdd(&ValK, &bigTmp, &ValK);              // ae^2 - bed + cd^2
-      (void)BigIntMultiply(&ValF, &discr, &bigTmp);  // fD
-      BigIntAdd(&ValK, &bigTmp, &ValK);              // ae^2 - bed + cd^2 + fD
-      (void)BigIntMultiply(&ValK, &discr, &ValK);    // D (ae^2 - bed + cd^2 + fD)
-      BigIntChSign(&ValK);                           // k
+
+      // BigInt AE = A * E;
+      // BigInt AEE = AE * E;
+      // (void)BigIntMultiply(&ValA, &ValE, &ValK);     // ae
+      // (void)BigIntMultiply(&ValK, &ValE, &ValK);     // ae^2
+      K = (-Discr) * ((A * E * E) - (B * E * D) + (C * D * D) + (F * Discr));
+      // (void)BigIntMultiply(&ValB, &ValE, &bigTmp);   // be
+      // (void)BigIntMultiply(&bigTmp, &ValD, &bigTmp); // bed
+      // BigIntSubt(&ValK, &bigTmp, &ValK);        // ae^2 - bed
+      // (void)BigIntMultiply(&ValC, &ValD, &bigTmp);   // cd
+      // (void)BigIntMultiply(&bigTmp, &ValD, &bigTmp); // cd^2
+      // BigIntAdd(&ValK, &bigTmp, &ValK);              // ae^2 - bed + cd^2
+      // (void)BigIntMultiply(&ValF, &discr, &bigTmp);  // fD
+      // BigIntAdd(&ValK, &bigTmp, &ValK);              // ae^2 - bed + cd^2 + fD
+      // (void)BigIntMultiply(&ValK, &discr, &ValK);    // D (ae^2 - bed + cd^2 + fD)
+      // BigIntChSign(&ValK);                           // k
     }
 
-    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    const BigInt Div = BigIntegerToBigInt(&ValDiv);
+    // const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    // const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    // const BigInt Div = BigIntegerToBigInt(&ValDiv);
 
-    BigInt A = BigIntegerToBigInt(&ValA);
-    BigInt B = BigIntegerToBigInt(&ValB);
-    BigInt C = BigIntegerToBigInt(&ValC);
-    BigInt K = BigIntegerToBigInt(&ValK);
+    // A = BigIntegerToBigInt(&ValA);
+    // B = BigIntegerToBigInt(&ValB);
+    // C = BigIntegerToBigInt(&ValC);
+    // BigInt K = BigIntegerToBigInt(&ValK);
 
-    const BigInt UU1 = BigIntegerToBigInt(&U1);
+    // XXX remove this state
+    BigIntToBigInteger(A, &ValA);
+    BigIntToBigInteger(B, &ValB);
+    BigIntToBigInteger(C, &ValC);
+    BigIntToBigInteger(D, &ValD);
+    BigIntToBigInteger(E, &ValE);
+    BigIntToBigInteger(F, &ValF);
+    BigIntToBigInteger(Discr, &discr);
+    BigIntToBigInteger(Alpha, &ValAlpha);
+    BigIntToBigInteger(Beta, &ValBeta);
+    BigIntToBigInteger(Div, &ValDiv);
+    BigIntToBigInteger(K, &ValK);
+
+    // const BigInt UU1 = BigIntegerToBigInt(&U1);
 
     // If k is not multiple of gcd(A, B, C), there are no solutions.
     // (void)BigIntRemainder(&ValK, &U1, &bigTmp);
@@ -3080,18 +3101,18 @@ struct Quad {
     }
   }
 
-  void QuadBigInt(const BigInt &a, const BigInt &b, const BigInt &c,
-                  const BigInt &d, const BigInt &e, const BigInt &f) {
+  void QuadBigInt(const BigInt &A, const BigInt &B, const BigInt &C,
+                  const BigInt &D, const BigInt &E, const BigInt &F) {
     showText("2<p>");
 
     showText("<h2>");
-    ShowEq(a, b, c, d, e, f, "x", "y");
+    ShowEq(A, B, C, D, E, F, "x", "y");
     showText(" = 0</h2>");
     SolNbr = 0;
 
     size_t preamble_size = (output == nullptr) ? 0 : output->size();
 
-    SolveQuadEquation(a, b, c, d, e, f);
+    SolveQuadEquation(A, B, C, D, E, F);
 
     if (output != nullptr && output->size() == preamble_size) {
       showText("<p>The equation does not have integer solutions.</p>");
