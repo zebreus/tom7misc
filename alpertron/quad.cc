@@ -66,6 +66,13 @@ enum eCallbackQuadModType {
   CBACK_QMOD_HYPERBOLIC,
 };
 
+// TODO: Test this heuristic without converting.
+static bool IsBig(const BigInt &bg, int num_limbs) {
+  BigInteger tmp;
+  BigIntToBigInteger(bg, &tmp);
+  return tmp.nbrLimbs > num_limbs;
+}
+
 static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
   if (VERBOSE) {
     printf("LinearEq %s %s %s\n",
@@ -287,25 +294,14 @@ PerformTransformation(
 
   // Compute P as (at^2+bt+c)/K
   const BigInt P = ((VA + B) * Value + C) / K;
-  // (void)BigIntMultiply(&ValA, &value, &ValQ);
-  // BigIntAdd(&ValQ, &ValB, &ValP);
-  // (void)BigIntMultiply(&ValP, &value, &ValP);
-  // BigIntAdd(&ValP, &ValC, &ValP);
-  // (void)BigIntDivide(&ValP, &ValK, &ValP);
 
   // Compute Q <- -(2at + b).
   const BigInt Q = -((VA << 1) + B);
-  // BigIntAdd(&ValQ, &ValQ, &ValQ);
-  // BigIntAdd(&ValQ, &ValB, &ValQ);
-  // BigIntChSign(&ValQ);
 
   // Compute R <- aK
-  // (void)BigIntMultiply(&ValA, &ValK, &ValR);
   const BigInt R = A * K;
 
   // Compute gcd of P, Q and R.
-  // BigIntGcd(&ValP, &ValQ, &ValH);   // Use ValH and ValI as temporary variables.
-  // BigIntGcd(&ValH, &ValR, &ValI);
 
   // Note: Used to write H and I as temporaries, but I think they're dead.
   const BigInt I = BigInt::GCD(BigInt::GCD(P, Q), R);
@@ -333,7 +329,6 @@ struct Quad {
   BigInteger ValD;
   BigInteger ValE;
   BigInteger ValF;
-  BigInteger ValH;
   BigInteger ValI;
   BigInteger ValL;
   BigInteger ValM;
@@ -863,6 +858,172 @@ struct Quad {
                              V, V1, V2, V3);
     }
 
+    void ShowAllRecSols(
+        // XXX original code modifies these; was that just a bug?
+        BigInt P, BigInt Q,
+        BigInt R, BigInt S,
+        BigInt K, BigInt L,
+        const BigInt &Alpha, const BigInt &Beta) {
+
+      if (IsBig(P, 2) || IsBig(Q, 2)) {
+        if (Alpha == 0 && Beta == 0) {
+          ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
+                   "Q&nbsp;&#8290;y<sub>n</sub><br>"
+                   "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
+                   "S&nbsp;&#8290;y<sub>n</sub></p><p>");
+        } else {
+          ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
+                   "Q&nbsp;&#8290;y<sub>n</sub> + K<br>"
+                   "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
+                   "S&nbsp;&#8290;y<sub>n</sub> + L</p><p>");
+        }
+        ShowText("where:</p><p>");
+        ShowResult("P", P);
+        ShowResult("Q", Q);
+        if (Alpha != 0 || Beta != 0) {
+          ShowResult("K", K);
+        }
+        ShowResult("R", R);
+        ShowResult("S", S);
+        if (Alpha != 0 || Beta != 0) {
+          ShowResult("L", L);
+        }
+      } else {
+        ShowRecSol('x', P, Q, K);
+        ShowText("<br>");
+        ShowRecSol('y', R, S, L);
+      }
+
+      // Compute x_{n-1} from x_n and y_n
+      // Compute new value of K and L as: Knew <- L*Q - K*S and Lnew <- K*R - L*P
+      BigInt Tmp1 = L * Q - K * S;
+      L = K * R - L * P;
+      K = std::move(Tmp1);
+
+      // Compute new values of P, Q, R and S as:
+      // Pnew <- S, Qnew <- -Q, Rnew <- -R, Snew <- P
+      Q = -std::move(Q);
+      R = -std::move(R);
+
+      BigInt Tmp = P;
+      P = S;
+      S = std::move(Tmp);
+
+      ShowText("<p>and also:</p>");
+      if (IsBig(P, 2) || IsBig(Q, 2)) {
+        ShowText("<p>");
+        ShowResult("P", P);
+        ShowResult("Q", Q);
+        if (Alpha != 0 || Beta != 0) {
+          ShowResult("K", K);
+        }
+        ShowResult("R", R);
+        ShowResult("S", S);
+        if (Alpha != 0 || Beta != 0) {
+          ShowResult("L", L);
+        }
+      } else {
+        ShowRecSol('x', P, Q, K);
+        ShowText("<br>");
+        ShowRecSol('y', R, S, L);
+      }
+      ShowText("</p>");
+    }
+
+    bool SolutionFoundFromContFraction(bool isBeven,
+                                       int V,
+                                       const BigInt &Alpha,
+                                       const BigInt &Beta,
+                                       const BigInt &A,
+                                       const BigInt &B,
+                                       const BigInt &C,
+                                       const BigInt &Discr,
+                                       const BigInt &U1,
+                                       const BigInt &V1) {
+      BigInt P, S;
+      if (isBeven) {
+        // P <- r - (b/2)s
+        // S <- r + (b/2)s
+        BigInt tmp = (B >> 1) * V1;
+        P = U1 - tmp;
+        S = U1 + tmp;
+      } else {
+        // P <- r - bs
+        // S <- r + bs
+        BigInt tmp = B * V1;
+        P = U1 - tmp;
+        S = U1 + tmp;
+        if (V == 4) {
+          // P <- (r - bs)/2
+          // S <- (r + bs)/2
+          P >>= 1;
+          S >>= 1;
+        }
+      }
+
+      // Q <- -cs
+      BigInt Q = -(C * V1);
+      // R <- as
+      BigInt R = A * V1;
+
+      if (!isBeven && V == 1) {
+        // Q <- -2cs
+        Q <<= 1;
+        // R <- 2as
+        R <<= 1;
+      }
+
+      BigInt K = (Alpha * P) + (Beta * Q);
+      BigInt L = (Alpha * R) + (Beta * S);
+
+      if (VERBOSE) {
+        printf("contf: %s %s %s %s | %s %s %s %s | %s %s | %s %s\n",
+               A.ToString().c_str(),
+               B.ToString().c_str(),
+               C.ToString().c_str(),
+               Discr.ToString().c_str(),
+               P.ToString().c_str(),
+               Q.ToString().c_str(),
+               R.ToString().c_str(),
+               S.ToString().c_str(),
+               Alpha.ToString().c_str(),
+               Beta.ToString().c_str(),
+               K.ToString().c_str(),
+               L.ToString().c_str());
+      }
+
+      CHECK(Discr != 0) << "Original code may have had shenanigans "
+        "with dividing by zero";
+
+      // Check whether alpha - K and beta - L are multiple of discriminant.
+      // PERF divisibility checks
+      if (BigInt::CMod(Alpha - K, Discr) == 0 &&
+          BigInt::CMod(Beta - L, Discr) == 0) {
+        // Solution found.
+        // PERF as below, known-divisible tests or quotrem.
+        K = (Alpha - K) / Discr;
+        L = (Beta - L) / Discr;
+        ShowAllRecSols(P, Q, R, S,
+                       K, L, Alpha, Beta);
+        return true;
+      }
+
+      // Check whether alpha + K and beta + L are multiple of discriminant.
+      // PERF divisibility checks
+      if (BigInt::CMod(Alpha + K, Discr) == 0 &&
+          BigInt::CMod(Beta + L, Discr) == 0) {
+        // Solution found.
+        // PERF: Use quotrem, or known-divisible test!
+        K = (Alpha + K) / Discr;
+        L = (Beta + L) / Discr;
+
+        ShowAllRecSols(-P, -Q, -R, -S,
+                       K, L, Alpha, Beta);
+        return true;
+      }
+      return false;
+    }
+
 
   };  // Clean
 
@@ -877,7 +1038,7 @@ struct Quad {
     for (BigInteger *b : {
           &Aux0, &Aux1, &Aux2, &Aux3,
           &ValA, &ValB, &ValC, &ValD, &ValE, &ValF,
-          &ValH, &ValI, &ValL, &ValM, &ValN, &ValO, &ValP, &ValQ,
+          &ValI, &ValL, &ValM, &ValN, &ValO, &ValP, &ValQ,
           &ValU, &ValV, &ValG, &ValR, &ValK, &ValZ,
           &ValAlpha, &ValBeta, &ValDen, &ValDiv,
           &ValABak, &ValBBak, &ValCBak,
@@ -1679,7 +1840,7 @@ struct Quad {
     return std::make_pair(Temp0, Temp1);
   }
 
-  // On input: ValH: value of u, ValI: value of v.
+  // On input: H: value of u, I: value of v.
   // Output: ((tu - nv)*E, u*E) and ((-tu + nv)*E, -u*E)
   // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
   // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
@@ -1970,7 +2131,6 @@ struct Quad {
             BigIntToBigInteger(VV3, &V3);
           }
 
-          CopyBigInt(&ValH, &U1);
           CopyBigInt(&ValI, &V1);
 
           NonSquareDiscrSolution(false,
@@ -2414,7 +2574,6 @@ struct Quad {
         if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 5) && (ValA.sign != ValK.sign) &&
             (solutionNbr == FIRST_SOLUTION)) {
           // Determinant is 5 and aK < 0. Use exceptional solution (U1-U2)/(V1-V2).
-          // BigIntSubt(&V1, &V2, &ValH);
           // BigIntSubt(&U1, &U2, &ValI);
 
           // printf("aaaaaaa coverage\n");
@@ -2493,178 +2652,6 @@ struct Quad {
     BigIntToBigInteger(Tmp11, value);
   }
 
-  // TODO: Test this heuristic without converting.
-  bool IsBig(const BigInt &bg, int num_limbs) {
-    BigInteger tmp;
-    BigIntToBigInteger(bg, &tmp);
-    return tmp.nbrLimbs > num_limbs;
-  }
-
-  void ShowAllRecSols(
-      // XXX original code modifies these; was that just a bug?
-      BigInt P, BigInt Q,
-      BigInt R, BigInt S,
-      BigInt K, BigInt L,
-      const BigInt &Alpha, const BigInt &Beta) {
-
-    if (IsBig(P, 2) || IsBig(Q, 2)) {
-      if (Alpha == 0 && Beta == 0) {
-        clean.ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
-                 "Q&nbsp;&#8290;y<sub>n</sub><br>"
-                 "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
-                 "S&nbsp;&#8290;y<sub>n</sub></p><p>");
-      } else {
-        clean.ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
-                 "Q&nbsp;&#8290;y<sub>n</sub> + K<br>"
-                 "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
-                 "S&nbsp;&#8290;y<sub>n</sub> + L</p><p>");
-      }
-      clean.ShowText("where:</p><p>");
-      clean.ShowResult("P", P);
-      clean.ShowResult("Q", Q);
-      if (Alpha != 0 || Beta != 0) {
-        clean.ShowResult("K", K);
-      }
-      clean.ShowResult("R", R);
-      clean.ShowResult("S", S);
-      if (Alpha != 0 || Beta != 0) {
-        clean.ShowResult("L", L);
-      }
-    } else {
-      clean.ShowRecSol('x', P, Q, K);
-      clean.ShowText("<br>");
-      clean.ShowRecSol('y', R, S, L);
-    }
-
-    // Compute x_{n-1} from x_n and y_n
-    // Compute new value of K and L as: Knew <- L*Q - K*S and Lnew <- K*R - L*P
-    BigInt Tmp1 = L * Q - K * S;
-    L = K * R - L * P;
-    K = std::move(Tmp1);
-
-    // Compute new values of P, Q, R and S as:
-    // Pnew <- S, Qnew <- -Q, Rnew <- -R, Snew <- P
-    Q = -std::move(Q);
-    R = -std::move(R);
-
-    BigInt Tmp = P;
-    P = S;
-    S = std::move(Tmp);
-
-    clean.ShowText("<p>and also:</p>");
-    if (IsBig(P, 2) || IsBig(Q, 2)) {
-      clean.ShowText("<p>");
-      clean.ShowResult("P", P);
-      clean.ShowResult("Q", Q);
-      if (Alpha != 0 || Beta != 0) {
-        clean.ShowResult("K", K);
-      }
-      clean.ShowResult("R", R);
-      clean.ShowResult("S", S);
-      if (Alpha != 0 || Beta != 0) {
-        clean.ShowResult("L", L);
-      }
-    } else {
-      clean.ShowRecSol('x', P, Q, K);
-      clean.ShowText("<br>");
-      clean.ShowRecSol('y', R, S, L);
-    }
-    clean.ShowText("</p>");
-  }
-
-  bool SolutionFoundFromContFraction(bool isBeven,
-                                     int V,
-                                     const BigInt &Alpha,
-                                     const BigInt &Beta,
-                                     const BigInt &A,
-                                     const BigInt &B,
-                                     const BigInt &C,
-                                     const BigInt &Discr,
-                                     const BigInt &U1,
-                                     const BigInt &V1) {
-    BigInt P, S;
-    if (isBeven) {
-      // P <- r - (b/2)s
-      // S <- r + (b/2)s
-      BigInt tmp = (B >> 1) * V1;
-      P = U1 - tmp;
-      S = U1 + tmp;
-    } else {
-      // P <- r - bs
-      // S <- r + bs
-      BigInt tmp = B * V1;
-      P = U1 - tmp;
-      S = U1 + tmp;
-      if (V == 4) {
-        // P <- (r - bs)/2
-        // S <- (r + bs)/2
-        P >>= 1;
-        S >>= 1;
-      }
-    }
-
-    // Q <- -cs
-    BigInt Q = -(C * V1);
-    // R <- as
-    BigInt R = A * V1;
-
-    if (!isBeven && V == 1) {
-      // Q <- -2cs
-      Q <<= 1;
-      // R <- 2as
-      R <<= 1;
-    }
-
-    BigInt K = (Alpha * P) + (Beta * Q);
-    BigInt L = (Alpha * R) + (Beta * S);
-
-    if (VERBOSE)
-    printf("contf: %s %s %s %s | %s %s %s %s | %s %s | %s %s\n",
-           A.ToString().c_str(),
-           B.ToString().c_str(),
-           C.ToString().c_str(),
-           Discr.ToString().c_str(),
-           P.ToString().c_str(),
-           Q.ToString().c_str(),
-           R.ToString().c_str(),
-           S.ToString().c_str(),
-           Alpha.ToString().c_str(),
-           Beta.ToString().c_str(),
-           K.ToString().c_str(),
-           L.ToString().c_str());
-
-    CHECK(Discr != 0) << "Original code may have had shenanigans "
-      "with dividing by zero";
-
-    // Check whether alpha - K and beta - L are multiple of discriminant.
-    // PERF divisibility checks
-    if (BigInt::CMod(Alpha - K, Discr) == 0 &&
-        BigInt::CMod(Beta - L, Discr) == 0) {
-      // Solution found.
-      // PERF as below, known-divisible tests or quotrem.
-      K = (Alpha - K) / Discr;
-      L = (Beta - L) / Discr;
-      ShowAllRecSols(P, Q, R, S,
-                     K, L, Alpha, Beta);
-      return true;
-    }
-
-    // Check whether alpha + K and beta + L are multiple of discriminant.
-    // PERF divisibility checks
-    if (BigInt::CMod(Alpha + K, Discr) == 0 &&
-        BigInt::CMod(Beta + L, Discr) == 0) {
-      // Solution found.
-      // PERF: Use quotrem, or known-divisible test!
-      K = (Alpha + K) / Discr;
-      L = (Beta + L) / Discr;
-
-      ShowAllRecSols(-P, -Q, -R, -S,
-                     K, L, Alpha, Beta);
-      return true;
-    }
-    return false;
-  }
-
   // Use continued fraction of sqrt(B^2-4AC)
   // If the discriminant is 5, the method does not work: use 3, 1 and 7, 3.
   // If the convergent is r/s we get:
@@ -2706,22 +2693,22 @@ struct Quad {
       // Do not use continued fraction because it does not work.
 
       // 3,1 is first solution to U1^2 - 5*V1^2 = 4
-      if (SolutionFoundFromContFraction(isBeven, 4,
-                                        Alpha, Beta,
-                                        A, B, C,
-                                        Discr,
-                                        BigInt(3),
-                                        BigInt(1))) {
+      if (clean.SolutionFoundFromContFraction(isBeven, 4,
+                                              Alpha, Beta,
+                                              A, B, C,
+                                              Discr,
+                                              BigInt(3),
+                                              BigInt(1))) {
         return;
       }
 
       // 9,4 is first solution to U1^2 - 5*V1^2 = 1
-      (void)SolutionFoundFromContFraction(isBeven, 1,
-                                          Alpha, Beta,
-                                          A, B, C,
-                                          Discr,
-                                          BigInt(9),
-                                          BigInt(4));
+      (void)clean.SolutionFoundFromContFraction(isBeven, 1,
+                                                Alpha, Beta,
+                                                A, B, C,
+                                                Discr,
+                                                BigInt(9),
+                                                BigInt(4));
       return;
     }
 
@@ -2846,12 +2833,12 @@ struct Quad {
 
 
       // Found solution from continued fraction.
-      if (SolutionFoundFromContFraction(isBeven,
-                                        BigInt::Abs(V).ToInt().value(),
-                                        Alpha, Beta,
-                                        A, B, C,
-                                        Discr,
-                                        UU1, VV1)) {
+      if (clean.SolutionFoundFromContFraction(isBeven,
+                                              BigInt::Abs(V).ToInt().value(),
+                                              Alpha, Beta,
+                                              A, B, C,
+                                              Discr,
+                                              UU1, VV1)) {
         return;
       }
     }
