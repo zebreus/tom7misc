@@ -314,6 +314,76 @@ PerformTransformation(
   return std::nullopt;
 }
 
+// First check: |u| < g.
+// Second check: |u+g| > |v|
+// Third check: |u-g| < |v|
+// On input ValG = floor(g), g > 0.
+// g is not an integer number.
+static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
+                                                const BigInt &V,
+                                                const BigInt &G) {
+  // CopyBigInt(&bigTmp, &ValU);
+  // Set bigTmp to |u|
+  // bigTmp.sign = SIGN_POSITIVE;
+  // Compute bigTmp as floor(g) - |u|
+  BigInt BigTmp = G - BigInt::Abs(U);
+  // BigIntSubt(&ValG, &bigTmp, &bigTmp);
+
+  if (BigTmp >= 0) {
+    BigInt Tmp1 = BigInt::Abs(V);
+    // First check |u| < g passed.
+    // CopyBigInt(&Tmp1, &ValV);
+    // Set Tmp1 to |v|
+    // Tmp1.sign = SIGN_POSITIVE;
+    // Compute Tmp2 as u + floor(g) which equals floor(u+g)
+    BigInt Tmp2 = U + G;
+    // BigIntAdd(&ValU, &ValG, &Tmp2);
+
+    if (Tmp2 < 0) {
+      // Round to number nearer to zero.
+      Tmp2 += 1;
+      // addbigint(&Tmp2, 1);
+    }
+
+    Tmp2 = BigInt::Abs(Tmp2);
+
+    // Compute Tmp2 as floor(|u+g|)
+    // Tmp2.sign = SIGN_POSITIVE;
+
+    // Compute bigTmp as floor(|u+g|) - |v|
+    BigTmp = Tmp2 - Tmp1;
+    // BigIntSubt(&Tmp2, &Tmp1, &bigTmp);
+
+    if (BigTmp >= 0) {
+      // Second check |u+g| > |v| passed.
+      // Compute Tmp2 as u - floor(g)
+      Tmp2 = U - G;
+      // BigIntSubt(&ValU, &ValG, &Tmp2);
+
+      if (Tmp2 <= 0) {
+        // Round down number to integer.
+        Tmp2 -= 1;
+        // addbigint(&Tmp2, -1);
+      }
+
+      Tmp2 = BigInt::Abs(Tmp2);
+
+      // Compute Tmp2 as floor(|u-g|)
+      // Tmp2.sign = SIGN_POSITIVE;
+      // Compute Tmp2 as |v| - floor(|u-g|)
+      // BigIntSubt(&Tmp1, &Tmp2, &bigTmp);
+      BigTmp = Tmp1 - Tmp2;
+
+      if (BigTmp >= 0) {
+        // Third check |u-g| < |v| passed.
+        // Save U and V to check period end.
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 
 
 struct Quad {
@@ -2461,61 +2531,6 @@ struct Quad {
     NonSquareDiscriminant(A, B, C, K, Discr, Alpha, Beta, Div);
   }
 
-  // First check: |u| < g.
-  // Second check: |u+g| > |v|
-  // Third check: |u-g| < |v|
-  // On input ValG = floor(g), g > 0.
-  // g is not an integer number.
-  void CheckStartOfContinuedFractionPeriod() {
-    CopyBigInt(&bigTmp, &ValU);
-    // Set bigTmp to |u|
-    bigTmp.sign = SIGN_POSITIVE;
-    // Compute bigTmp as floor(g) - |u|
-    BigIntSubt(&ValG, &bigTmp, &bigTmp);
-
-    if (bigTmp.sign == SIGN_POSITIVE) {
-      // First check |u| < g passed.
-      CopyBigInt(&Tmp1, &ValV);
-      // Set Tmp1 to |v|
-      Tmp1.sign = SIGN_POSITIVE;
-      // Compute Tmp2 as u + floor(g) which equals floor(u+g)
-      BigIntAdd(&ValU, &ValG, &Tmp2);
-
-      if (Tmp2.sign == SIGN_NEGATIVE) {
-        // Round to number nearer to zero.
-        addbigint(&Tmp2, 1);
-      }
-
-      // Compute Tmp2 as floor(|u+g|)
-      Tmp2.sign = SIGN_POSITIVE;
-      // Compute bigTmp as floor(|u+g|) - |v|
-      BigIntSubt(&Tmp2, &Tmp1, &bigTmp);
-
-      if (bigTmp.sign == SIGN_POSITIVE) {
-        // Second check |u+g| > |v| passed.
-        // Compute Tmp2 as u - floor(g)
-        BigIntSubt(&ValU, &ValG, &Tmp2);
-
-        if ((Tmp2.sign == SIGN_NEGATIVE) || (BigIntIsZero(&Tmp2))) {
-          // Round down number to integer.
-          addbigint(&Tmp2, -1);
-        }
-
-        // Compute Tmp2 as floor(|u-g|)
-        Tmp2.sign = SIGN_POSITIVE;
-        // Compute Tmp2 as |v| - floor(|u-g|)
-        BigIntSubt(&Tmp1, &Tmp2, &bigTmp);
-
-        if (bigTmp.sign == SIGN_POSITIVE) {
-          // Third check |u-g| < |v| passed.
-          // Save U and V to check period end.
-          CopyBigInt(&startPeriodU, &ValU);
-          CopyBigInt(&startPeriodV, &ValV);
-        }
-      }
-    }
-  }
-
   //  PQa algorithm for (P+G)/Q where G = sqrt(discriminant):
   //  Set U1 to 1 and U2 to 0.
   //  Set V1 to 0 and V2 to 1.
@@ -2613,7 +2628,14 @@ struct Quad {
         }
       } else if (!isIntegerPart) {
         // Check if periodic part of continued fraction has started.
-        CheckStartOfContinuedFractionPeriod();
+        BigInt U = BigIntegerToBigInt(&ValU);
+        BigInt V = BigIntegerToBigInt(&ValV);
+        BigInt G = BigIntegerToBigInt(&ValG);
+
+        if (CheckStartOfContinuedFractionPeriod(U, V, G)) {
+          CopyBigInt(&startPeriodU, &ValU);
+          CopyBigInt(&startPeriodV, &ValV);
+        }
       }
 
       // Get continued fraction coefficient.
