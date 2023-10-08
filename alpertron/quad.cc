@@ -384,6 +384,26 @@ static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
   return false;
 }
 
+// Returns Temp0, Temp1
+static std::pair<BigInt, BigInt>
+UnimodularSubstitution(const BigInt &M,
+                       const BigInt &Z,
+                       const BigInt &O) {
+  BigInt Temp0, Temp1;
+  if (M < 0) {
+    // Perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
+    Temp0 = (Z + O);
+    Temp1 = Temp0 * -M - Z;
+  } else if (M == 0) {
+    Temp0 = Z;
+    Temp1 = O;
+  } else {
+    // Perform the substitution: x = mX + (m-1)Y, y = X + Y
+    Temp1 = Z + O;
+    Temp0 = Temp1 * M - O;
+  }
+  return std::make_pair(Temp0, Temp1);
+}
 
 
 struct Quad {
@@ -404,8 +424,6 @@ struct Quad {
   BigInteger ValM;
   BigInteger ValN;
   BigInteger ValO;
-  BigInteger ValP;
-  BigInteger ValQ;
   BigInteger ValU;
   BigInteger ValV;
   BigInteger ValG;
@@ -1094,6 +1112,14 @@ struct Quad {
       return false;
     }
 
+    void ShowXYOne(bool swap_xy, const BigInt &X, const BigInt &Y) {
+      showAlso();
+      if (swap_xy)
+        ShowSolutionXY(Y, X);
+      else
+        ShowSolutionXY(X, Y);
+    }
+
 
   };  // Clean
 
@@ -1108,7 +1134,7 @@ struct Quad {
     for (BigInteger *b : {
           &Aux0, &Aux1, &Aux2, &Aux3,
           &ValA, &ValB, &ValC, &ValD, &ValE, &ValF,
-          &ValI, &ValL, &ValM, &ValN, &ValO, &ValP, &ValQ,
+          &ValI, &ValL, &ValM, &ValN, &ValO,
           &ValU, &ValV, &ValG, &ValR, &ValK, &ValZ,
           &ValAlpha, &ValBeta, &ValDen, &ValDiv,
           &ValABak, &ValBBak, &ValCBak,
@@ -1153,17 +1179,9 @@ struct Quad {
 
     } else {
       // ONE_SOLUTION: Show it.
-      ShowXYOne(swap_xy, X, Y);
+      CHECK(showSolution == ONE_SOLUTION);
+      clean.ShowXYOne(swap_xy, X, Y);
     }
-  }
-
-  void ShowXYOne(bool swap_xy, const BigInt &X, const BigInt &Y) {
-    CHECK(showSolution == ONE_SOLUTION);
-    clean.showAlso();
-    if (swap_xy)
-      clean.ShowSolutionXY(Y, X);
-    else
-      clean.ShowSolutionXY(X, Y);
   }
 
   // TODO: Try to make this dispatch (callbackQuadModType) static.
@@ -1522,6 +1540,8 @@ struct Quad {
     BigInt tmp1 = X + Alpha;
     BigInt tmp2 = Y + Beta;
 
+    // (I think this should actually be impossible because Div comes from
+    // the GCD of the coefficients.)
     CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
 
     // PERF divisibility tests.
@@ -1901,27 +1921,6 @@ struct Quad {
     NonSquareDiscriminant(A, B, C, K, Discr, Alpha, Beta, Div);
   }
 
-  // Returns Temp0, Temp1
-  std::pair<BigInt, BigInt>
-  UnimodularSubstitution(const BigInt &M,
-                         const BigInt &Z,
-                         const BigInt &O) {
-    BigInt Temp0, Temp1;
-    if (M < 0) {
-      // Perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
-      Temp0 = (Z + O);
-      Temp1 = Temp0 * -M - Z;
-    } else if (M == 0) {
-      Temp0 = Z;
-      Temp1 = O;
-    } else {
-      // Perform the substitution: x = mX + (m-1)Y, y = X + Y
-      Temp1 = Z + O;
-      Temp0 = Temp1 * M - O;
-    }
-    return std::make_pair(Temp0, Temp1);
-  }
-
   // On input: H: value of u, I: value of v.
   // Output: ((tu - nv)*E, u*E) and ((-tu + nv)*E, -u*E)
   // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
@@ -1954,7 +1953,7 @@ struct Quad {
     // X = (tu - Kv)*E
     const BigInt Z = (Value * H - KK * I) * E;
     // Y = u*E
-    BigInt O = H * E;
+    const BigInt O = H * E;
 
     // Only need this in the case that there are two solutions.
     // It may be known at the call site?
@@ -2005,8 +2004,6 @@ struct Quad {
     }
 
     const auto &[P, Q, R] = pqro.value();
-    BigIntToBigInteger(P, &ValP);
-    BigIntToBigInteger(Q, &ValQ);
     BigIntToBigInteger(R, &ValR);
 
     // XXX
@@ -2029,7 +2026,6 @@ struct Quad {
         return;
       }
 
-      // BigInt Q = BigIntegerToBigInt(&ValQ);
       if (Discr == -4) {
         // Discriminant is equal to -4.
         BigInt G = Q >> 1;
@@ -2942,50 +2938,34 @@ struct Quad {
 
     // Compute P as floor((2*a*theta + b)/2)
     BigInt P = (((A << 1) * Value) + B);
-    // BigIntAdd(&ValA, &ValA, &ValP);
-    // (void)BigIntMultiply(&ValP, &value, &ValP);
-    // BigIntAdd(&ValP, &ValB, &ValP);
+
     if (P.IsOdd()) P -= 1;
     P >>= 1;
-    // subtractdivide(&ValP, ValP.limbs[0].x & 1, 2);
 
     // Compute Q = a*abs(K)
     BigInt Q = BigInt::Abs(K) * A;
-    // CopyBigInt(&ValQ, &ValK);
-    // ValQ.sign = SIGN_POSITIVE;
-    // (void)BigIntMultiply(&ValQ, &ValA, &ValQ);
 
     // Find U, V, L so we can compute the continued fraction
     // expansion of (U+sqrt(L))/V.
     BigInt L = Discr;
-    // CopyBigInt(&ValL, &discr);
 
     BigInt U, V;
     if (isBeven) {
       U = P;
-      // CopyBigInt(&ValU, &ValP);       // U <- P
       // Argument of square root is discriminant/4.
       L >>= 2;
-      // subtractdivide(&ValL, 0, 4);
       V = Q;
-      // CopyBigInt(&ValV, &ValQ);
     } else {
       // U <- 2P+1
       U = (P << 1) + 1;
-      // BigIntAdd(&ValP, &ValP, &ValU);
-      // addbigint(&ValU, 1);
       // V <- 2Q
       V = (Q << 1);
-      // BigIntAdd(&ValQ, &ValQ, &ValV);
     }
 
     U = -U;
     // BigIntChSign(&ValU);
 
     // If L-U^2 is not multiple of V, there is no solution, so go out.
-    // (void)BigIntMultiply(&ValU, &ValU, &bigTmp);
-    // BigIntSubt(&ValL, &bigTmp, &bigTmp);
-    // (void)BigIntRemainder(&bigTmp, &ValV, &bigTmp);
     // PERF divisibility check
     if (BigInt::CMod(L - U * U, V) != 0) {
       // No solutions using continued fraction.
@@ -2995,8 +2975,6 @@ struct Quad {
 
     // Set G to floor(sqrt(L))
     BigInt G = BigInt::Sqrt(L);
-    // SquareRoot(ValL.limbs, ValG.limbs, ValL.nbrLimbs, &ValG.nbrLimbs);
-    // ValG.sign = SIGN_POSITIVE;          // g <- sqrt(discr).
     // Invalidate solutions.
     Xplus.reset();
     Xminus.reset();
@@ -3004,32 +2982,21 @@ struct Quad {
     Yminus.reset();
     // Somewhere below these can get set. Can we return the values instead?
 
-    // BigInt UBak = U;
-    // BigInt VBak = V;
     contfracEqNbr = equationNbr + 2;
 
     // XXX pass args
     BigIntToBigInteger(G, &ValG);
-    BigIntToBigInteger(P, &ValP);
-    BigIntToBigInteger(Q, &ValQ);
     BigIntToBigInteger(L, &ValL);
     BigIntToBigInteger(U, &ValU);
     BigIntToBigInteger(V, &ValV);
 
-    ContFrac(&value, FIRST_SOLUTION);    // Continued fraction of (U+G)/V
+    // Continued fraction of (U+G)/V
+    ContFrac(&value, FIRST_SOLUTION);
 
     positiveDenominator = 0;
 
-    // should be no reason to do this, since we copied
-    // U = UBak;
-    // V = VBak;
-    // BigIntToBigInteger(UBak, &ValU);
-    // BigIntToBigInteger(VBak, &ValV);
-
     U = -U;
     V = -V;
-    // BigIntChSign(&ValU);
-    // BigIntChSign(&ValV);
 
     contfracEqNbr = equationNbr + 3;
     // XXX why don't we have a check on the number of limbs here?
@@ -3039,19 +3006,22 @@ struct Quad {
       contfracEqNbr++;
     }
 
-    ContFrac(&value, SECOND_SOLUTION);   // Continued fraction of (-U+G)/(-V)
+    // Continued fraction of (-U+G)/(-V)
+    ContFrac(&value, SECOND_SOLUTION);
     showSolution = ONE_SOLUTION;
 
     if (Xplus.has_value()) {
       CHECK(Yplus.has_value());
       // Result box:
-      ShowXYOne(ExchXY, Xplus.value(), Yplus.value());
+      CHECK(showSolution == ONE_SOLUTION);
+      clean.ShowXYOne(ExchXY, Xplus.value(), Yplus.value());
     }
 
     if (Xminus.has_value()) {
       CHECK(Yminus.has_value());
       // Result box:
-      ShowXYOne(ExchXY, Xminus.value(), Yminus.value());
+      CHECK(showSolution == ONE_SOLUTION);
+      clean.ShowXYOne(ExchXY, Xminus.value(), Yminus.value());
     }
     equationNbr += 4;
   }
