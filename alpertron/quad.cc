@@ -902,8 +902,8 @@ struct Quad {
 
     // Obtain next convergent of continued fraction of ValU/ValV
     // Previous convergents U1/V1, U2/V2, U3/V3.
-    std::tuple<BigInt, BigInt, BigInt, BigInt,
-               BigInt, BigInt, BigInt, BigInt> GetNextConvergent(
+    std::tuple<BigInt, BigInt, BigInt,
+               BigInt, BigInt, BigInt> GetNextConvergent(
                    BigInt U, BigInt U1, BigInt U2,
                    BigInt V, BigInt V1, BigInt V2) {
       BigInt Tmp = FloorDiv(U, V);
@@ -942,8 +942,8 @@ struct Quad {
       // CopyBigInt(&V3, &V2);
       // CopyBigInt(&V2, &V1);
       // CopyBigInt(&V1, &bigTmp);
-      return std::make_tuple(U, U1, U2, U3,
-                             V, V1, V2, V3);
+      return std::make_tuple(U, U1, U2,
+                             V, V1, V2);
     }
 
     void ShowAllRecSols(
@@ -2006,9 +2006,6 @@ struct Quad {
     const auto &[P, Q, R] = pqro.value();
     BigIntToBigInteger(R, &ValR);
 
-    // XXX
-    // BigIntegerToBigInt(Value, &value);
-
     CHECK(Discr <= 0);
 
     std::optional<int64_t> plow_opt = P.ToInt();
@@ -2114,10 +2111,6 @@ struct Quad {
     }
 
     // Compute bound L = sqrt(4P/(-D))
-    // MultInt(&U1, &ValP, 4);
-    // (void)BigIntDivide(&U1, &discr, &U1);
-    // BigIntChSign(&U1);               // 4P/(-D)
-    // SquareRoot(U1.limbs, ValL.limbs, U1.nbrLimbs, &ValL.nbrLimbs);  // sqrt(4P/(-D))
     const BigInt L = BigInt::Sqrt((P << 2) / -Discr);
     BigIntToBigInteger(L, &ValL);
 
@@ -2130,44 +2123,14 @@ struct Quad {
     BigInt U2(0);
     BigInt V2(1);
 
-    // intToBigInteger(&U1, 1);
-    // intToBigInteger(&V1, 0);
-    // intToBigInteger(&U2, 0);
-    // intToBigInteger(&V2, 1);
-
     // Compute continued fraction expansion of U/V = -Q/2P.
     BigInt U = -Q;
     BigInt V = P << 1;
-    // CopyBigInt(&ValU, &ValQ);
-    // BigIntChSign(&ValU);
-    // BigIntAdd(&ValP, &ValP, &ValV);
 
-    // XXX Maybe dead?
-    BigInt U3, V3;
     while (V != 0) {
-      {
-        std::tie(U, U1, U2, U3, V, V1, V2, V3) =
-          // const auto &[U, UU1, UU2, UU3,
-          // V, VV1, VV2, VV3] =
-          clean.GetNextConvergent(U, U1, U2,
-                                  V, V1, V2);
-        /*
-        BigIntegerToBigInt(&ValU),
-                                  BigIntegerToBigInt(&U1),
-                                  BigIntegerToBigInt(&U2),
-                                  BigIntegerToBigInt(&ValV),
-                                  BigIntegerToBigInt(&V1),
-                                  BigIntegerToBigInt(&V2));
-        BigIntToBigInteger(U, &ValU);
-        BigIntToBigInteger(UU1, &U1);
-        BigIntToBigInteger(UU2, &U2);
-        BigIntToBigInteger(UU3, &U3);
-        BigIntToBigInteger(V, &ValV);
-        BigIntToBigInteger(VV1, &V1);
-        BigIntToBigInteger(VV2, &V2);
-        BigIntToBigInteger(VV3, &V3);
-        */
-      }
+      std::tie(U, U1, U2, V, V1, V2) =
+        clean.GetNextConvergent(U, U1, U2,
+                                V, V1, V2);
 
       // Check whether the denominator of convergent exceeds bound.
       BigInt BigTmp = L - V1;
@@ -2179,13 +2142,6 @@ struct Quad {
 
       // Test whether P*U1^2 + Q*U1*V1 + R*V1^2 = 1.
       BigInt O = (P * U1 + Q * V1) * U1 + R * V1 * V1;
-      // (void)BigIntMultiply(&ValP, &U1, &ValO);      // P*U1
-      // (void)BigIntMultiply(&ValQ, &V1, &bigTmp);    // Q*V1
-      // BigIntAdd(&ValO, &bigTmp, &ValO);             // P*U1 + Q*V1
-      // (void)BigIntMultiply(&ValO, &U1, &ValO);      // P*U1^2 + Q*U1*V1
-      // (void)BigIntMultiply(&ValR, &V1, &bigTmp);    // R*V1
-      // (void)BigIntMultiply(&bigTmp, &V1, &bigTmp);  // R*V1^2
-      // BigIntAdd(&ValO, &bigTmp, &ValO);       // P*U1^2 + Q*U1*V1 + R*V1^2
 
       if (O == 1) {
 
@@ -2194,12 +2150,12 @@ struct Quad {
                                M, E, K,
                                Alpha, Beta, Div,
                                U1, V1,
-                               Value);        // (U1, V1)
+                               Value);
 
         std::optional<int64_t> dopt = Discr.ToInt();
         if (!dopt.has_value()) break;
         int64_t d = dopt.value();
-        CHECK(d < 0) << "Origincal code seemed to assume this.";
+        CHECK(d < 0) << "Original code seemed to assume this.";
 
         if (d < -4) {
           // Discriminant is less than -4, go out.
@@ -2208,29 +2164,9 @@ struct Quad {
 
         if (d == -3 || d == -4) {
           // Discriminant is equal to -3 or -4.
-          {
-            std::tie(U, U1, U2, U3, V, V1, V2, V3) =
-              // const auto &[U, UU1, UU2, UU3,
-              // V, VV1, VV2, VV3] =
-              clean.GetNextConvergent(U, U1, U2,
-                                      V, V1, V2);
-            /*
-            BigIntegerToBigInt(&ValU),
-                                      BigIntegerToBigInt(&U1),
-                                      BigIntegerToBigInt(&U2),
-                                      BigIntegerToBigInt(&ValV),
-                                      BigIntegerToBigInt(&V1),
-                                      BigIntegerToBigInt(&V2));
-            BigIntToBigInteger(U, &ValU);
-            BigIntToBigInteger(UU1, &U1);
-            BigIntToBigInteger(UU2, &U2);
-            BigIntToBigInteger(UU3, &U3);
-            BigIntToBigInteger(V, &ValV);
-            BigIntToBigInteger(VV1, &V1);
-            BigIntToBigInteger(VV2, &V2);
-            BigIntToBigInteger(VV3, &V3);
-            */
-          }
+          std::tie(U, U1, U2, V, V1, V2) =
+            clean.GetNextConvergent(U, U1, U2,
+                                    V, V1, V2);
 
           // XXX dead?
           BigInt I = V1;
@@ -2241,41 +2177,16 @@ struct Quad {
                                  M, E, K,
                                  Alpha, Beta, Div,
                                  U1, V1,
-                                 // BigIntegerToBigInt(&U1),
-                                 // BigIntegerToBigInt(&V1),
-                                 Value);      // (U1, V1)
+                                 Value);
           if (d == -3) {
-
-            {
-              std::tie(U, U1, U2, U3, V, V1, V2, V3) =
-                // const auto &[U, UU1, UU2, UU3,
-                // V, VV1, VV2, VV3] =
+            std::tie(U, U1, U2, V, V1, V2) =
                 clean.GetNextConvergent(U, U1, U2, V, V1, V2);
-              /*
-              BigIntegerToBigInt(&ValU),
-                                        BigIntegerToBigInt(&U1),
-                                        BigIntegerToBigInt(&U2),
-                                        BigIntegerToBigInt(&ValV),
-                                        BigIntegerToBigInt(&V1),
-                                        BigIntegerToBigInt(&V2));
-              BigIntToBigInteger(U, &ValU);
-              BigIntToBigInteger(UU1, &U1);
-              BigIntToBigInteger(UU2, &U2);
-              BigIntToBigInteger(UU3, &U3);
-              BigIntToBigInteger(V, &ValV);
-              BigIntToBigInteger(VV1, &V1);
-              BigIntToBigInteger(VV2, &V2);
-              BigIntToBigInteger(VV3, &V3);
-              */
-            }
 
             NonSquareDiscrSolution(false,
                                    M, E, K,
                                    Alpha, Beta, Div,
                                    U1, V1,
-                                   // BigIntegerToBigInt(&U1),
-                                   // BigIntegerToBigInt(&V1),
-                                   Value);    // (U1, V1)
+                                   Value);
           }
           break;
         }
@@ -2582,7 +2493,10 @@ struct Quad {
   //  Set U to a*V - U
   //  Set V to (D - U^2)/V
   //  Inside period when: 0 <= G - U < V
-  void ContFrac(BigInteger *value, enum eShowSolution solutionNbr) {
+  void ContFrac(const BigInt &Value, enum eShowSolution solutionNbr) {
+    BigInteger value;
+    BigIntToBigInteger(Value, &value);
+
     int periodIndex = 0;
 
     bool isBeven = ((ValB.limbs[0].x & 1) == 0);
@@ -2594,7 +2508,7 @@ struct Quad {
       return;
     }
     // back up value
-    BigInt Tmp11 = BigIntegerToBigInt(value);
+    BigInt Tmp11 = BigIntegerToBigInt(&value);
 
     // Initialize variables.
     intToBigInteger(&U1, 1);
@@ -2639,7 +2553,7 @@ struct Quad {
                                  Alpha, Beta, Div,
                                  BigIntegerToBigInt(&V1) - BigIntegerToBigInt(&V2),
                                  BigIntegerToBigInt(&U1) - BigIntegerToBigInt(&U2),
-                                 BigIntegerToBigInt(value));
+                                 BigIntegerToBigInt(&value));
 
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
@@ -2649,7 +2563,7 @@ struct Quad {
                                  Alpha, Beta, Div,
                                  BigIntegerToBigInt(&V1),
                                  BigIntegerToBigInt(&U1),
-                                 BigIntegerToBigInt(value));
+                                 BigIntegerToBigInt(&value));
         }
 
         if (solFound) {
@@ -2712,7 +2626,8 @@ struct Quad {
     }
 
     // Restore value.
-    BigIntToBigInteger(Tmp11, value);
+    // (XXX should be unnecessary; caller passes BigInt)
+    BigIntToBigInteger(Tmp11, &value);
   }
 
   // Use continued fraction of sqrt(B^2-4AC)
@@ -2927,8 +2842,8 @@ struct Quad {
     const auto &[P_, Q_, R_] = pqro.value();
     BigIntToBigInteger(R_, &ValR);
 
-    BigInteger value;
-    BigIntToBigInteger(Value, &value);
+    // BigInteger value;
+    // BigIntToBigInteger(Value, &value);
 
     BigInt Discr = BigIntegerToBigInt(&discr);
 
@@ -2991,7 +2906,7 @@ struct Quad {
     BigIntToBigInteger(V, &ValV);
 
     // Continued fraction of (U+G)/V
-    ContFrac(&value, FIRST_SOLUTION);
+    ContFrac(Value, FIRST_SOLUTION);
 
     positiveDenominator = 0;
 
@@ -3007,7 +2922,7 @@ struct Quad {
     }
 
     // Continued fraction of (-U+G)/(-V)
-    ContFrac(&value, SECOND_SOLUTION);
+    ContFrac(Value, SECOND_SOLUTION);
     showSolution = ONE_SOLUTION;
 
     if (Xplus.has_value()) {

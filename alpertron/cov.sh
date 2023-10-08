@@ -246,7 +246,7 @@ echo quad tests
 
 # bminusg coverage (trivial)
 # x = 0  y = -5091
-./quad.exe 1 65536 0 -3525 0 0
+./quad.exe 1 65536 0 -3525 0 0 >> coverage.out
 
 
 echo factor tests
