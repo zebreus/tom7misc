@@ -244,6 +244,11 @@ echo quad tests
 # no-contfrac coverage
 ./quad.exe 8 -2022 436 0 0 -137438953472 >> coverage.out
 
+# bminusg coverage (trivial)
+# x = 0  y = -5091
+./quad.exe 1 65536 0 -3525 0 0
+
+
 echo factor tests
 ./afactor.exe 1 >> coverage.out
 ./afactor.exe 2 >> coverage.out

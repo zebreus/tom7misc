@@ -1192,21 +1192,31 @@ struct Quad {
     BigInt C = BigIntegerToBigInt(&ValC);
     BigInt D = BigIntegerToBigInt(&ValD);
     BigInt E = BigIntegerToBigInt(&ValE);
-    BigInt U = BigIntegerToBigInt(&ValU);
 
-    BigInt V = BigIntegerToBigInt(&ValV);
+    BigInt M = BigIntegerToBigInt(&ValM);
+    BigInt K = BigIntegerToBigInt(&ValK);
     BigInt I = BigIntegerToBigInt(&ValI);
 
+    BigInt U = BigIntegerToBigInt(&ValU);
+    BigInt V = BigIntegerToBigInt(&ValV);
+
+    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    const BigInt Div = BigIntegerToBigInt(&ValDiv);
+    const BigInt Discr = BigIntegerToBigInt(&discr);
+
     if (VERBOSE) {
-      printf("  with %s %s %s %s %s %s | %s %s\n",
+      printf("  with %s %s %s %s %s | %s %s %s | %s %s\n",
              A.ToString().c_str(),
              B.ToString().c_str(),
              C.ToString().c_str(),
              D.ToString().c_str(),
              E.ToString().c_str(),
+             M.ToString().c_str(),
+             K.ToString().c_str(),
+             I.ToString().c_str(),
              U.ToString().c_str(),
-             V.ToString().c_str(),
-             I.ToString().c_str());
+             V.ToString().c_str());
     }
 
     switch (callbackQuadModType) {
@@ -1217,7 +1227,9 @@ struct Quad {
       break;
 
     case CBACK_QMOD_ELLIPTIC:
-      callbackQuadModElliptic(Value);
+      CallbackQuadModElliptic(A, B, C, E, M, K,
+                              Alpha, Beta, Div, Discr,
+                              Value);
       break;
 
     case CBACK_QMOD_HYPERBOLIC:
@@ -1979,11 +1991,12 @@ struct Quad {
     // BigIntToBigInteger(Tmp12, value);
   }
 
-  void callbackQuadModElliptic(const BigInt &Value) {
-    const BigInt A = BigIntegerToBigInt(&ValA);
-    const BigInt B = BigIntegerToBigInt(&ValB);
-    const BigInt C = BigIntegerToBigInt(&ValC);
-    const BigInt K = BigIntegerToBigInt(&ValK);
+  void CallbackQuadModElliptic(
+      const BigInt &A, const BigInt &B, const BigInt &C,
+      const BigInt &E, const BigInt &M, const BigInt &K,
+      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
+      const BigInt &Discr,
+      const BigInt &Value) {
 
     auto pqro = PerformTransformation(A, B, C, K, Value);
     if (!pqro.has_value()) {
@@ -1991,21 +2004,13 @@ struct Quad {
       return;
     }
 
-    const auto &[P, Q_, R_] = pqro.value();
+    const auto &[P, Q, R_] = pqro.value();
     BigIntToBigInteger(P, &ValP);
-    BigIntToBigInteger(Q_, &ValQ);
+    BigIntToBigInteger(Q, &ValQ);
     BigIntToBigInteger(R_, &ValR);
 
     // XXX
     // BigIntegerToBigInt(Value, &value);
-
-    const BigInt M = BigIntegerToBigInt(&ValM);
-    const BigInt E = BigIntegerToBigInt(&ValE);
-    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    const BigInt Div = BigIntegerToBigInt(&ValDiv);
-    // const BigInt P = BigIntegerToBigInt(&ValP);
-    const BigInt Discr = BigIntegerToBigInt(&discr);
 
     CHECK(Discr <= 0);
 
@@ -2024,7 +2029,7 @@ struct Quad {
         return;
       }
 
-      BigInt Q = BigIntegerToBigInt(&ValQ);
+      // BigInt Q = BigIntegerToBigInt(&ValQ);
       if (Discr == -4) {
         // Discriminant is equal to -4.
         BigInt G = Q >> 1;
@@ -2376,9 +2381,12 @@ struct Quad {
           const BigInt Aux2 = -(AAlpha2 + (B - G) * Beta);
 
           LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
+          /*
           if (sol.type == LinearSolutionType::SOLUTION_FOUND) {
             printf("bminusg coverage\n");
           }
+          */
+
           // Result box:
           CHECK(!ExchXY);
           clean.PrintLinear(sol, "t");
