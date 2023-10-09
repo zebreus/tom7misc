@@ -2497,26 +2497,43 @@ struct Quad {
     BigInteger value;
     BigIntToBigInteger(Value, &value);
 
+    const BigInt B = BigIntegerToBigInt(&ValB);
+    const BigInt L = BigIntegerToBigInt(&ValL);
+
+    BigInt U = BigIntegerToBigInt(&ValU);
+    BigInt V = BigIntegerToBigInt(&ValV);
+
     int periodIndex = 0;
 
-    bool isBeven = ((ValB.limbs[0].x & 1) == 0);
+    const bool isBeven = B.IsEven();
     // If (D-U^2) is not multiple of V, exit routine.
-    (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
-    BigIntSubt(&ValL, &bigTmp, &bigTmp);   // D - U^2
-    (void)BigIntRemainder(&bigTmp, &ValV, &bigTmp);
-    if (!BigIntIsZero(&bigTmp)) {
+    // (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
+    // BigIntSubt(&ValL, &bigTmp, &bigTmp);   // D - U^2
+    // (void)BigIntRemainder(&bigTmp, &ValV, &bigTmp);
+    if (((L - U * U) % V) != 0) {
       return;
     }
+
     // back up value
+    // XXX should be unnecessary
     BigInt Tmp11 = BigIntegerToBigInt(&value);
 
+    BigInt U1(1);
+    BigInt U2(0);
+    BigInt V1(0);
+    BigInt V2(1);
+
     // Initialize variables.
-    intToBigInteger(&U1, 1);
-    intToBigInteger(&U2, 0);
-    intToBigInteger(&V1, 0);
-    intToBigInteger(&V2, 1);
+    // intToBigInteger(&U1, 1);
+    // intToBigInteger(&U2, 0);
+    // intToBigInteger(&V1, 0);
+    // intToBigInteger(&V2, 1);
     // Less than zero means outside period.
-    intToBigInteger(&startPeriodU, -1);
+    // Port note: Original code left startperiodv uninitialized, though
+    // it was probably only accessed when startperiodu is non-negative.
+    BigInt StartPeriodU(-1);
+    BigInt StartPeriodV(-1);
+    // intToBigInteger(&startPeriodU, -1);
     int index = 0;
 
     if (solutionNbr == SECOND_SOLUTION) {
@@ -2525,23 +2542,36 @@ struct Quad {
 
     bool isIntegerPart = true;
 
+    const BigInt A = BigIntegerToBigInt(&ValA);
+    const BigInt M = BigIntegerToBigInt(&ValM);
+    const BigInt E = BigIntegerToBigInt(&ValE);
+    const BigInt K = BigIntegerToBigInt(&ValK);
+    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    const BigInt Div = BigIntegerToBigInt(&ValDiv);
+    const BigInt Discr = BigIntegerToBigInt(&discr);
+
+    const bool k_neg = K < 0;
+    const bool a_neg = A < 0;
+
+    BigInt G = BigIntegerToBigInt(&ValG);
+
     for (;;) {
-      if ((ValV.nbrLimbs == 1) && (ValV.limbs[0].x == (isBeven ? 1 : 2)) &&
-          ((index & 1) == ((ValK.sign == ValV.sign)? 0 : 1))) {
+
+      bool v_neg = V < 0;
+
+      if (V == (isBeven ? 1 : 2) &&
+          ((index & 1) == (k_neg == v_neg ? 0 : 1))) {
+        // (ValV.nbrLimbs == 1) && (ValV.limbs[0].x == (isBeven ? 1 : 2)) &&
+        // ((index & 1) == ((ValK.sign == ValV.sign)? 0 : 1)))
 
         // XXX replaced with two_solutions
         showSolution = TWO_SOLUTIONS;
         solFound = false;
 
-        const BigInt M = BigIntegerToBigInt(&ValM);
-        const BigInt E = BigIntegerToBigInt(&ValE);
-        const BigInt K = BigIntegerToBigInt(&ValK);
-        const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-        const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-        const BigInt Div = BigIntegerToBigInt(&ValDiv);
-
         // Found solution.
-        if ((discr.nbrLimbs == 1) && (discr.limbs[0].x == 5) && (ValA.sign != ValK.sign) &&
+        if (BigInt::Abs(Discr) == 5 && (a_neg != k_neg) &&
+            // (discr.nbrLimbs == 1) && (discr.limbs[0].x == 5) && (ValA.sign != ValK.sign) &&
             (solutionNbr == FIRST_SOLUTION)) {
           // Determinant is 5 and aK < 0. Use exceptional solution (U1-U2)/(V1-V2).
           // BigIntSubt(&U1, &U2, &ValI);
@@ -2551,9 +2581,12 @@ struct Quad {
           NonSquareDiscrSolution(true,
                                  M, E, K,
                                  Alpha, Beta, Div,
-                                 BigIntegerToBigInt(&V1) - BigIntegerToBigInt(&V2),
-                                 BigIntegerToBigInt(&U1) - BigIntegerToBigInt(&U2),
-                                 BigIntegerToBigInt(&value));
+                                 V1 - V2,
+                                 U1 - U2,
+                                 Value);
+          // BigIntegerToBigInt(&V1) - BigIntegerToBigInt(&V2),
+          // BigIntegerToBigInt(&U1) - BigIntegerToBigInt(&U2),
+          // BigIntegerToBigInt(&value));
 
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
@@ -2561,9 +2594,10 @@ struct Quad {
           NonSquareDiscrSolution(true,
                                  M, E, K,
                                  Alpha, Beta, Div,
-                                 BigIntegerToBigInt(&V1),
-                                 BigIntegerToBigInt(&U1),
-                                 BigIntegerToBigInt(&value));
+                                 V1, U1, Value);
+          // BigIntegerToBigInt(&V1),
+          // BigIntegerToBigInt(&U1),
+          // BigIntegerToBigInt(&value));
         }
 
         if (solFound) {
@@ -2571,56 +2605,69 @@ struct Quad {
         }
       }
 
-      if (startPeriodU.sign == SIGN_POSITIVE) {
+      if (StartPeriodU >= 0) {
         // Already inside period.
         periodIndex++;
-        if ((BigIntEqual(&ValU, &startPeriodU) &&
-             BigIntEqual(&ValV, &startPeriodV)) &&
+        if (U == StartPeriodU &&
+            V == StartPeriodV &&
+          // (BigIntEqual(&ValU, &startPeriodU) &&
+          // BigIntEqual(&ValV, &startPeriodV)) &&
             // New period started.
-            ((periodIndex & 1) == 0)) {
+            (periodIndex & 1) == 0) {
           // Two periods of period length is odd, one period if even.
           break;  // Go out in this case.
         }
+
       } else if (!isIntegerPart) {
         // Check if periodic part of continued fraction has started.
-        BigInt U = BigIntegerToBigInt(&ValU);
-        BigInt V = BigIntegerToBigInt(&ValV);
-        BigInt G = BigIntegerToBigInt(&ValG);
 
         if (CheckStartOfContinuedFractionPeriod(U, V, G)) {
-          CopyBigInt(&startPeriodU, &ValU);
-          CopyBigInt(&startPeriodV, &ValV);
+          StartPeriodU = U;
+          StartPeriodV = V;
         }
       }
 
       // Get continued fraction coefficient.
-      BigIntAdd(&ValU, &ValG, &bigTmp);
-      if (ValV.sign == SIGN_NEGATIVE) {
+      BigInt BigTmp = U + G;
+      // BigIntAdd(&ValU, &ValG, &bigTmp);
+      if (V < 0) {
         // If denominator is negative, round square root upwards.
-        addbigint(&bigTmp, 1);
+        BigTmp += 1;
+        // addbigint(&bigTmp, 1);
       }
 
       // Tmp1 = Term of continued fraction.
-      floordiv(&bigTmp, &ValV, &Tmp1);
+      BigInt Tmp1 = FloorDiv(BigTmp, V);
+      // floordiv(&bigTmp, &ValV, &Tmp1);
       // Update convergents.
       // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
-      CopyBigInt(&U3, &U2);
-      CopyBigInt(&U2, &U1);
-      (void)BigIntMultiply(&Tmp1, &U2, &U1);
-      BigIntAdd(&U1, &U3, &U1);
+      BigInt U3 = U2;
+      U2 = U1;
+      U1 = Tmp1 * U2 + U3;
+      // CopyBigInt(&U3, &U2);
+      // CopyBigInt(&U2, &U1);
+      // (void)BigIntMultiply(&Tmp1, &U2, &U1);
+      // BigIntAdd(&U1, &U3, &U1);
 
       // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
-      CopyBigInt(&V3, &V2);
-      CopyBigInt(&V2, &V1);
-      (void)BigIntMultiply(&Tmp1, &V2, &V1);
-      BigIntAdd(&V1, &V3, &V1);
+      BigInt V3 = V2;
+      V2 = V1;
+      V1 = Tmp1 * V2 + V3;
+      // CopyBigInt(&V3, &V2);
+      // CopyBigInt(&V2, &V1);
+      // (void)BigIntMultiply(&Tmp1, &V2, &V1);
+      // BigIntAdd(&V1, &V3, &V1);
+
       // Update numerator and denominator.
-      (void)BigIntMultiply(&Tmp1, &ValV, &bigTmp); // U <- a*V - U
-      BigIntSubt(&bigTmp, &ValU, &ValU);
-      (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
-      BigIntSubt(&ValL, &bigTmp, &bigTmp);
-      (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
-      CopyBigInt(&ValV, &Tmp1);
+      U = Tmp1 * V - U;
+      // (void)BigIntMultiply(&Tmp1, &ValV, &bigTmp); // U <- a*V - U
+      // BigIntSubt(&bigTmp, &ValU, &ValU);
+      V = (L - U * U) / V;
+      // (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
+      // BigIntSubt(&ValL, &bigTmp, &bigTmp);
+      // (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
+      // CopyBigInt(&ValV, &Tmp1);
+
       index++;
       isIntegerPart = false;
     }
