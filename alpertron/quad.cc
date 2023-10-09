@@ -1116,6 +1116,199 @@ struct Quad {
     }
 
 
+  // Use continued fraction of sqrt(B^2-4AC)
+  // If the discriminant is 5, the method does not work: use 3, 1 and 7, 3.
+  // If the convergent is r/s we get:
+  // x(n+1) = Px(n) + Qy(n) + K
+  // y(n+1) = Rx(n) + Sy(n) + L
+  // where if b is odd:
+  //        P = (r - bs)/2, Q = -cs, R = as, S = (r + bs)/2,
+  // if b is even:
+  //        P = r - (b/2)s, Q = -cs, R = as, S = r + (b/2)s,
+  // in any case:
+  //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
+  void RecursiveSolution(
+      BigInt A, BigInt B, BigInt C,
+      BigInt ABack, BigInt BBack, BigInt CBack,
+      // arg G may be dead?
+      BigInt G, BigInt L,
+      const BigInt &Alpha, const BigInt &Beta,
+      const BigInt &GcdHomog, BigInt Discr) {
+
+    // BigIntToBigInteger(G, &ValG); // XXX
+
+    BigInt H = Discr;
+
+    const bool isBeven = B.IsEven();
+    if (isBeven) {
+      H >>= 2;
+    }
+
+    // Obtain original discriminant.
+    Discr *= GcdHomog;
+    Discr *= GcdHomog;
+
+    std::optional<int64_t> gcdo = GcdHomog.ToInt();
+    CHECK(gcdo.has_value()) << "Original code seems to assume this, "
+      "accessing the first limb directly.";
+    const int64_t gcd_homog = gcdo.value();
+
+
+    if (Discr == 5) {
+      // Discriminant is 5.
+      // Do not use continued fraction because it does not work.
+
+      // 3,1 is first solution to U1^2 - 5*V1^2 = 4
+      if (SolutionFoundFromContFraction(isBeven, 4,
+                                        Alpha, Beta,
+                                        A, B, C,
+                                        Discr,
+                                        BigInt(3),
+                                        BigInt(1))) {
+        return;
+      }
+
+      // 9,4 is first solution to U1^2 - 5*V1^2 = 1
+      (void)SolutionFoundFromContFraction(isBeven, 1,
+                                          Alpha, Beta,
+                                          A, B, C,
+                                          Discr,
+                                          BigInt(9),
+                                          BigInt(4));
+      return;
+    }
+
+    // g <- sqrt(discr).
+    G = BigInt::Sqrt(H);
+    // Port note: Was explicit SIGN_POSITIVE here in original, but I think that
+    // was just because it was manipulating the limbs directly? Sqrt
+    // is always non-negative...
+    CHECK(G >= 0);
+    // XXX should be unnecessary
+    // BigIntToBigInteger(G, &ValG);
+
+    int periodLength = 1;
+
+    BigInt U(0);
+    BigInt V(1);
+
+    BigInt UU2(0);
+    BigInt UU1(1);
+
+    BigInt VV2(1);
+    BigInt VV1(0);
+
+    BigInt UBak, VBak;
+
+    if (gcd_homog != 1) {
+      periodLength = -1;
+      do {
+        BigInt BigTmp = U + G;
+        if (V < 0) {
+          // If denominator is negative, round square root upwards.
+          BigTmp += 1;
+        }
+
+        // Tmp1 = Term of continued fraction.
+        BigInt Tmp1 = FloorDiv(BigTmp, V);
+
+        // U <- a*V - U
+        U = Tmp1 * V - U;
+
+        // V <- (D - U^2)/V
+        V = (L - U * U) / V;
+
+        if (periodLength < 0) {
+          UBak = U;
+          VBak = V;
+        }
+        periodLength++;
+      } while (periodLength == 1 || U != UBak || V != VBak);
+      // Reset values of U and V.
+      U = BigInt{0};
+      V = BigInt{1};
+    }
+
+    ShowText("<p>Recursive solutions:</p><p>");
+
+    A = ABack;
+    B = BBack;
+    C = CBack;
+
+    // CopyBigInt(&ValA, &ValABak);
+    // CopyBigInt(&ValB, &ValBBak);
+    // CopyBigInt(&ValC, &ValCBak);
+
+
+    int periodNbr = 0;
+    enum eSign sign = SIGN_POSITIVE;
+    for (;;) {
+      BigInt BigTmp = U + G;
+      if (V < 0) {
+        // If denominator is negative, round square root upwards.
+        BigTmp += 1;
+      }
+      // Tmp1 = Term of continued fraction.
+      BigInt Tmp1 = FloorDiv(BigTmp, V);
+
+      // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
+      BigInt UU3 = UU2;
+      UU2 = UU1;
+      UU1 = Tmp1 * UU2 + UU3;
+
+      // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
+      BigInt VV3 = VV2;
+      VV2 = VV1;
+      VV1 = Tmp1 * VV2 + VV3;
+
+      U = Tmp1 * V - U;
+      V = (H - U * U) / V;
+
+      if (sign == SIGN_POSITIVE) {
+        sign = SIGN_NEGATIVE;
+      } else {
+        sign = SIGN_POSITIVE;
+      }
+
+      if (VERBOSE)
+      printf("FS: %c %s %s %s %d\n",
+             isBeven ? 'e' : 'o',
+             V.ToString().c_str(),
+             Alpha.ToString().c_str(),
+             Beta.ToString().c_str(),
+             periodNbr);
+
+      // V must have the correct sign.
+      if ((sign == SIGN_NEGATIVE) ? V >= 0 : V < 0) {
+        continue;
+      }
+
+      // Expecting denominator to be 1 (B even or odd)
+      // or 4 (B odd) with correct sign.
+      if (BigInt::Abs(V) != 1 &&
+          (isBeven || BigInt::Abs(V) != 4)) {
+        continue;
+      }
+
+      periodNbr++;
+      if (((periodNbr * periodLength) % gcd_homog) != 0) {
+        continue;
+      }
+
+
+      // Found solution from continued fraction.
+      if (SolutionFoundFromContFraction(isBeven,
+                                        BigInt::Abs(V).ToInt().value(),
+                                        Alpha, Beta,
+                                        A, B, C,
+                                        Discr,
+                                        UU1, VV1)) {
+        return;
+      }
+    }
+  }
+
+
   };  // Clean
 
 
@@ -1906,10 +2099,10 @@ struct Quad {
         callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
 
       // Show recursive solution.
-      RecursiveSolution(A, B, C,
-                        ABack, BBack, CBack,
-                        G, L,
-                        Alpha, Beta, GcdHomog, Discr);
+      clean.RecursiveSolution(A, B, C,
+                              ABack, BBack, CBack,
+                              G, L,
+                              Alpha, Beta, GcdHomog, Discr);
     }
   }
 
@@ -2674,214 +2867,6 @@ struct Quad {
     // Restore value.
     // (XXX should be unnecessary; caller passes BigInt)
     BigIntToBigInteger(Tmp11, &value);
-  }
-
-  // Use continued fraction of sqrt(B^2-4AC)
-  // If the discriminant is 5, the method does not work: use 3, 1 and 7, 3.
-  // If the convergent is r/s we get:
-  // x(n+1) = Px(n) + Qy(n) + K
-  // y(n+1) = Rx(n) + Sy(n) + L
-  // where if b is odd:
-  //        P = (r - bs)/2, Q = -cs, R = as, S = (r + bs)/2,
-  // if b is even:
-  //        P = r - (b/2)s, Q = -cs, R = as, S = r + (b/2)s,
-  // in any case:
-  //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
-  void RecursiveSolution(
-      BigInt A, BigInt B, BigInt C,
-      BigInt ABack, BigInt BBack, BigInt CBack,
-      // arg G may be dead?
-      BigInt G, BigInt L,
-      const BigInt &Alpha, const BigInt &Beta,
-      const BigInt &GcdHomog, BigInt Discr) {
-
-    auto Err = [&]() {
-        BigInt AA = BigIntegerToBigInt(&ValA);
-        BigInt BB = BigIntegerToBigInt(&ValB);
-        BigInt CC = BigIntegerToBigInt(&ValC);
-        return StringPrintf("A: %s vs %s\n"
-                            "B: %s vs %s\n"
-                            "C: %s vs %s\n",
-                            A.ToString().c_str(), AA.ToString().c_str(),
-                            B.ToString().c_str(), BB.ToString().c_str(),
-                            C.ToString().c_str(), CC.ToString().c_str());
-      };
-
-    CHECK(A == BigIntegerToBigInt(&ValA)) << Err();
-    CHECK(B == BigIntegerToBigInt(&ValB)) << Err();
-    CHECK(C == BigIntegerToBigInt(&ValC)) << Err();
-
-    // BigIntToBigInteger(G, &ValG); // XXX
-
-    BigInt H = Discr;
-
-    const bool isBeven = B.IsEven();
-    if (isBeven) {
-      H >>= 2;
-    }
-
-    // Obtain original discriminant.
-    Discr *= GcdHomog;
-    Discr *= GcdHomog;
-
-    std::optional<int64_t> gcdo = GcdHomog.ToInt();
-    CHECK(gcdo.has_value()) << "Original code seems to assume this, "
-      "accessing the first limb directly.";
-    const int64_t gcd_homog = gcdo.value();
-
-
-    if (Discr == 5) {
-      // Discriminant is 5.
-      // Do not use continued fraction because it does not work.
-
-      // 3,1 is first solution to U1^2 - 5*V1^2 = 4
-      if (clean.SolutionFoundFromContFraction(isBeven, 4,
-                                              Alpha, Beta,
-                                              A, B, C,
-                                              Discr,
-                                              BigInt(3),
-                                              BigInt(1))) {
-        return;
-      }
-
-      // 9,4 is first solution to U1^2 - 5*V1^2 = 1
-      (void)clean.SolutionFoundFromContFraction(isBeven, 1,
-                                                Alpha, Beta,
-                                                A, B, C,
-                                                Discr,
-                                                BigInt(9),
-                                                BigInt(4));
-      return;
-    }
-
-    // g <- sqrt(discr).
-    G = BigInt::Sqrt(H);
-    // Port note: Was explicit SIGN_POSITIVE here in original, but I think that
-    // was just because it was manipulating the limbs directly? Sqrt
-    // is always non-negative...
-    CHECK(G >= 0);
-    // XXX should be unnecessary
-    // BigIntToBigInteger(G, &ValG);
-
-    int periodLength = 1;
-
-    BigInt U(0);
-    BigInt V(1);
-
-    BigInt UU2(0);
-    BigInt UU1(1);
-
-    BigInt VV2(1);
-    BigInt VV1(0);
-
-    BigInt UBak, VBak;
-
-    if (gcd_homog != 1) {
-      periodLength = -1;
-      do {
-        BigInt BigTmp = U + G;
-        if (V < 0) {
-          // If denominator is negative, round square root upwards.
-          BigTmp += 1;
-        }
-
-        // Tmp1 = Term of continued fraction.
-        BigInt Tmp1 = FloorDiv(BigTmp, V);
-
-        // U <- a*V - U
-        U = Tmp1 * V - U;
-
-        // V <- (D - U^2)/V
-        V = (L - U * U) / V;
-
-        if (periodLength < 0) {
-          UBak = U;
-          VBak = V;
-        }
-        periodLength++;
-      } while (periodLength == 1 || U != UBak || V != VBak);
-      // Reset values of U and V.
-      U = BigInt{0};
-      V = BigInt{1};
-    }
-
-    clean.ShowText("<p>Recursive solutions:</p><p>");
-
-    A = ABack;
-    B = BBack;
-    C = CBack;
-
-    // CopyBigInt(&ValA, &ValABak);
-    // CopyBigInt(&ValB, &ValBBak);
-    // CopyBigInt(&ValC, &ValCBak);
-
-
-    int periodNbr = 0;
-    enum eSign sign = SIGN_POSITIVE;
-    for (;;) {
-      BigInt BigTmp = U + G;
-      if (V < 0) {
-        // If denominator is negative, round square root upwards.
-        BigTmp += 1;
-      }
-      // Tmp1 = Term of continued fraction.
-      BigInt Tmp1 = FloorDiv(BigTmp, V);
-
-      // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
-      BigInt UU3 = UU2;
-      UU2 = UU1;
-      UU1 = Tmp1 * UU2 + UU3;
-
-      // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
-      BigInt VV3 = VV2;
-      VV2 = VV1;
-      VV1 = Tmp1 * VV2 + VV3;
-
-      U = Tmp1 * V - U;
-      V = (H - U * U) / V;
-
-      if (sign == SIGN_POSITIVE) {
-        sign = SIGN_NEGATIVE;
-      } else {
-        sign = SIGN_POSITIVE;
-      }
-
-      if (VERBOSE)
-      printf("FS: %c %s %s %s %d\n",
-             isBeven ? 'e' : 'o',
-             V.ToString().c_str(),
-             Alpha.ToString().c_str(),
-             Beta.ToString().c_str(),
-             periodNbr);
-
-      // V must have the correct sign.
-      if ((sign == SIGN_NEGATIVE) ? V >= 0 : V < 0) {
-        continue;
-      }
-
-      // Expecting denominator to be 1 (B even or odd)
-      // or 4 (B odd) with correct sign.
-      if (BigInt::Abs(V) != 1 &&
-          (isBeven || BigInt::Abs(V) != 4)) {
-        continue;
-      }
-
-      periodNbr++;
-      if (((periodNbr * periodLength) % gcd_homog) != 0) {
-        continue;
-      }
-
-
-      // Found solution from continued fraction.
-      if (clean.SolutionFoundFromContFraction(isBeven,
-                                              BigInt::Abs(V).ToInt().value(),
-                                              Alpha, Beta,
-                                              A, B, C,
-                                              Discr,
-                                              UU1, VV1)) {
-        return;
-      }
-    }
   }
 
   void callbackQuadModHyperbolic(const BigInt &Value) {
