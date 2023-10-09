@@ -97,14 +97,9 @@ static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
       LinearSolution sol(LinearSolutionType::SOLUTION_FOUND);
       sol.Xind = BigInt(0);
       sol.Xlin = BigInt(1);
-      // intToBigInteger(&Xind, 0);
-      // intToBigInteger(&Xlin, 1);
       // PERF QuotRem
       sol.Yind = -(coeffInd / coeffY);
-      // BigIntToBigInteger(yy, &Yind);
-      // BigIntNegate(&Yind, &Yind);
       sol.Ylin = BigInt(0);
-      // intToBigInteger(&Ylin, 0);
       return sol;
     }
   }
@@ -322,13 +317,6 @@ PerformTransformation(
 static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
                                                 const BigInt &V,
                                                 const BigInt &G) {
-  // CopyBigInt(&bigTmp, &ValU);
-  // Set bigTmp to |u|
-  // bigTmp.sign = SIGN_POSITIVE;
-  // Compute bigTmp as floor(g) - |u|
-  // BigInt BigTmp = G - BigInt::Abs(U);
-  // BigIntSubt(&ValG, &bigTmp, &bigTmp);
-
   if (G >= BigInt::Abs(U)) {
     BigInt Tmp1 = BigInt::Abs(V);
     // First check |u| < g passed.
@@ -412,7 +400,7 @@ struct Quad {
   // TODO: Lots of these could be local; dynamically sized.
   enum eCallbackQuadModType callbackQuadModType;
   char isDescending[400];
-  BigInteger Aux0, Aux1, Aux2, Aux3;
+  // BigInteger Aux0, Aux1, Aux2, Aux3;
   BigInteger ValA;
   BigInteger ValB;
   BigInteger ValC;
@@ -1130,12 +1118,9 @@ struct Quad {
   void RecursiveSolution(
       BigInt A, BigInt B, BigInt C,
       BigInt ABack, BigInt BBack, BigInt CBack,
-      // arg G may be dead?
-      BigInt G, BigInt L,
+      BigInt L,
       const BigInt &Alpha, const BigInt &Beta,
       const BigInt &GcdHomog, BigInt Discr) {
-
-    // BigIntToBigInteger(G, &ValG); // XXX
 
     BigInt H = Discr;
 
@@ -1179,7 +1164,7 @@ struct Quad {
     }
 
     // g <- sqrt(discr).
-    G = BigInt::Sqrt(H);
+    BigInt G = BigInt::Sqrt(H);
     // Port note: Was explicit SIGN_POSITIVE here in original, but I think that
     // was just because it was manipulating the limbs directly? Sqrt
     // is always non-negative...
@@ -1320,7 +1305,7 @@ struct Quad {
     // variables being initialized or not. At least set them to
     // valid state so that we can convert them to BigInt (and discard).
     for (BigInteger *b : {
-          &Aux0, &Aux1, &Aux2, &Aux3,
+        // &Aux0, &Aux1, &Aux2, &Aux3,
           &ValA, &ValB, &ValC, &ValD, &ValE, &ValF,
           &ValI, &ValL, &ValM, &ValN, &ValO,
           &ValU, &ValV, &ValG, &ValR, &ValK, &ValZ,
@@ -1328,7 +1313,6 @@ struct Quad {
           &ValGcdHomog, &Tmp1, &Tmp2,
           &discr,
           &U1, &U2, &U3, &V1, &V2, &V3,
-            &bigTmp, // &startPeriodU, &startPeriodV,
           &modulus}) {
       intToBigInteger(b, 0xCAFE);
     }
@@ -2079,21 +2063,21 @@ struct Quad {
     if (VERBOSE) printf(".\n");
 
     // Note: G not necessarily initialized by here if
-    // the condition below isn't true.
-    BigInt G = BigIntegerToBigInt(&ValG);
+    // the condition below isn't true. (And actually it
+    // was just dead.)
+    // BigInt G = BigIntegerToBigInt(&ValG);
     BigInt L = BigIntegerToBigInt(&ValL);
 
-    if (VERBOSE)
-    printf("bottom %s %s # %s %s / %s %s %s %s\n",
-           K.ToString().c_str(),
-           E.ToString().c_str(),
-           BigIntegerToBigInt(&ValG).ToString().c_str(),
-           BigIntegerToBigInt(&ValL).ToString().c_str(),
-
-           Alpha.ToString().c_str(),
-           Beta.ToString().c_str(),
-           GcdHomog.ToString().c_str(),
-           Discr.ToString().c_str());
+    if (VERBOSE) {
+      printf("bottom %s %s / %s / %s %s %s %s\n",
+             K.ToString().c_str(),
+             E.ToString().c_str(),
+             L.ToString().c_str(),
+             Alpha.ToString().c_str(),
+             Beta.ToString().c_str(),
+             GcdHomog.ToString().c_str(),
+             Discr.ToString().c_str());
+    }
 
     if (showRecursiveSolution &&
         callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
@@ -2101,7 +2085,7 @@ struct Quad {
       // Show recursive solution.
       clean.RecursiveSolution(A, B, C,
                               ABack, BBack, CBack,
-                              G, L,
+                              L,
                               Alpha, Beta, GcdHomog, Discr);
     }
   }
@@ -2686,14 +2670,24 @@ struct Quad {
   //  Set V to (D - U^2)/V
   //  Inside period when: 0 <= G - U < V
   void ContFrac(const BigInt &Value, enum eShowSolution solutionNbr) {
-    BigInteger value;
-    BigIntToBigInteger(Value, &value);
+    // BigInteger value;
+    // BigIntToBigInteger(Value, &value);
+
+    const BigInt A = BigIntegerToBigInt(&ValA);
+    const BigInt M = BigIntegerToBigInt(&ValM);
+    const BigInt E = BigIntegerToBigInt(&ValE);
+    const BigInt K = BigIntegerToBigInt(&ValK);
+    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    const BigInt Div = BigIntegerToBigInt(&ValDiv);
+    const BigInt Discr = BigIntegerToBigInt(&discr);
 
     const BigInt B = BigIntegerToBigInt(&ValB);
     const BigInt L = BigIntegerToBigInt(&ValL);
 
     BigInt U = BigIntegerToBigInt(&ValU);
     BigInt V = BigIntegerToBigInt(&ValV);
+    BigInt G = BigIntegerToBigInt(&ValG);
 
     int periodIndex = 0;
 
@@ -2708,7 +2702,7 @@ struct Quad {
 
     // back up value
     // XXX should be unnecessary
-    BigInt Tmp11 = BigIntegerToBigInt(&value);
+    // BigInt Tmp11 = BigIntegerToBigInt(&value);
 
     BigInt U1(1);
     BigInt U2(0);
@@ -2716,16 +2710,11 @@ struct Quad {
     BigInt V2(1);
 
     // Initialize variables.
-    // intToBigInteger(&U1, 1);
-    // intToBigInteger(&U2, 0);
-    // intToBigInteger(&V1, 0);
-    // intToBigInteger(&V2, 1);
     // Less than zero means outside period.
     // Port note: Original code left startperiodv uninitialized, though
     // it was probably only accessed when startperiodu is non-negative.
     BigInt StartPeriodU(-1);
     BigInt StartPeriodV(-1);
-    // intToBigInteger(&startPeriodU, -1);
     int index = 0;
 
     if (solutionNbr == SECOND_SOLUTION) {
@@ -2734,19 +2723,10 @@ struct Quad {
 
     bool isIntegerPart = true;
 
-    const BigInt A = BigIntegerToBigInt(&ValA);
-    const BigInt M = BigIntegerToBigInt(&ValM);
-    const BigInt E = BigIntegerToBigInt(&ValE);
-    const BigInt K = BigIntegerToBigInt(&ValK);
-    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    const BigInt Div = BigIntegerToBigInt(&ValDiv);
-    const BigInt Discr = BigIntegerToBigInt(&discr);
 
     const bool k_neg = K < 0;
     const bool a_neg = A < 0;
 
-    BigInt G = BigIntegerToBigInt(&ValG);
 
     for (;;) {
 
@@ -2866,7 +2846,7 @@ struct Quad {
 
     // Restore value.
     // (XXX should be unnecessary; caller passes BigInt)
-    BigIntToBigInteger(Tmp11, &value);
+    // BigIntToBigInteger(Tmp11, &value);
   }
 
   void callbackQuadModHyperbolic(const BigInt &Value) {
