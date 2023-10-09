@@ -60,11 +60,20 @@ enum eShowSolution {
   SECOND_SOLUTION,
 };
 
-enum eCallbackQuadModType {
-  CBACK_QMOD_PARABOLIC = 0,
-  CBACK_QMOD_ELLIPTIC,
-  CBACK_QMOD_HYPERBOLIC,
+enum class QmodCallbackType {
+  PARABOLIC = 0,
+  ELLIPTIC,
+  HYPERBOLIC,
 };
+
+static std::string CallbackString(QmodCallbackType t) {
+  switch (t) {
+  case QmodCallbackType::PARABOLIC: return "PARABOLIC";
+  case QmodCallbackType::ELLIPTIC: return "ELLIPTIC";
+  case QmodCallbackType::HYPERBOLIC: return "HYPERBOLIC";
+  default: return "???";
+  }
+}
 
 // TODO: Test this heuristic without converting.
 static bool IsBig(const BigInt &bg, int num_limbs) {
@@ -398,7 +407,7 @@ struct Quad {
   // XXX can be retired for two_solutions arg
   enum eShowSolution showSolution;
   // TODO: Lots of these could be local; dynamically sized.
-  enum eCallbackQuadModType callbackQuadModType;
+  // enum QmodCallbackType callbackQuadModType;
   char isDescending[400];
   // BigInteger Aux0, Aux1, Aux2, Aux3;
   BigInteger ValA;
@@ -417,7 +426,6 @@ struct Quad {
   BigInteger ValG;
   BigInteger ValR;
   BigInteger ValK;
-  BigInteger ValZ;
   BigInteger ValAlpha;
   BigInteger ValBeta;
   BigInteger ValDen;
@@ -1104,194 +1112,194 @@ struct Quad {
     }
 
 
-  // Use continued fraction of sqrt(B^2-4AC)
-  // If the discriminant is 5, the method does not work: use 3, 1 and 7, 3.
-  // If the convergent is r/s we get:
-  // x(n+1) = Px(n) + Qy(n) + K
-  // y(n+1) = Rx(n) + Sy(n) + L
-  // where if b is odd:
-  //        P = (r - bs)/2, Q = -cs, R = as, S = (r + bs)/2,
-  // if b is even:
-  //        P = r - (b/2)s, Q = -cs, R = as, S = r + (b/2)s,
-  // in any case:
-  //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
-  void RecursiveSolution(
-      BigInt A, BigInt B, BigInt C,
-      BigInt ABack, BigInt BBack, BigInt CBack,
-      BigInt L,
-      const BigInt &Alpha, const BigInt &Beta,
-      const BigInt &GcdHomog, BigInt Discr) {
+    // Use continued fraction of sqrt(B^2-4AC)
+    // If the discriminant is 5, the method does not work: use 3, 1 and 7, 3.
+    // If the convergent is r/s we get:
+    // x(n+1) = Px(n) + Qy(n) + K
+    // y(n+1) = Rx(n) + Sy(n) + L
+    // where if b is odd:
+    //        P = (r - bs)/2, Q = -cs, R = as, S = (r + bs)/2,
+    // if b is even:
+    //        P = r - (b/2)s, Q = -cs, R = as, S = r + (b/2)s,
+    // in any case:
+    //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
+    void RecursiveSolution(
+        BigInt A, BigInt B, BigInt C,
+        BigInt ABack, BigInt BBack, BigInt CBack,
+        BigInt L,
+        const BigInt &Alpha, const BigInt &Beta,
+        const BigInt &GcdHomog, BigInt Discr) {
 
-    BigInt H = Discr;
+      BigInt H = Discr;
 
-    const bool isBeven = B.IsEven();
-    if (isBeven) {
-      H >>= 2;
-    }
-
-    // Obtain original discriminant.
-    Discr *= GcdHomog;
-    Discr *= GcdHomog;
-
-    std::optional<int64_t> gcdo = GcdHomog.ToInt();
-    CHECK(gcdo.has_value()) << "Original code seems to assume this, "
-      "accessing the first limb directly.";
-    const int64_t gcd_homog = gcdo.value();
-
-
-    if (Discr == 5) {
-      // Discriminant is 5.
-      // Do not use continued fraction because it does not work.
-
-      // 3,1 is first solution to U1^2 - 5*V1^2 = 4
-      if (SolutionFoundFromContFraction(isBeven, 4,
-                                        Alpha, Beta,
-                                        A, B, C,
-                                        Discr,
-                                        BigInt(3),
-                                        BigInt(1))) {
-        return;
+      const bool isBeven = B.IsEven();
+      if (isBeven) {
+        H >>= 2;
       }
 
-      // 9,4 is first solution to U1^2 - 5*V1^2 = 1
-      (void)SolutionFoundFromContFraction(isBeven, 1,
+      // Obtain original discriminant.
+      Discr *= GcdHomog;
+      Discr *= GcdHomog;
+
+      std::optional<int64_t> gcdo = GcdHomog.ToInt();
+      CHECK(gcdo.has_value()) << "Original code seems to assume this, "
+        "accessing the first limb directly.";
+      const int64_t gcd_homog = gcdo.value();
+
+
+      if (Discr == 5) {
+        // Discriminant is 5.
+        // Do not use continued fraction because it does not work.
+
+        // 3,1 is first solution to U1^2 - 5*V1^2 = 4
+        if (SolutionFoundFromContFraction(isBeven, 4,
                                           Alpha, Beta,
                                           A, B, C,
                                           Discr,
-                                          BigInt(9),
-                                          BigInt(4));
-      return;
-    }
+                                          BigInt(3),
+                                          BigInt(1))) {
+          return;
+        }
 
-    // g <- sqrt(discr).
-    BigInt G = BigInt::Sqrt(H);
-    // Port note: Was explicit SIGN_POSITIVE here in original, but I think that
-    // was just because it was manipulating the limbs directly? Sqrt
-    // is always non-negative...
-    CHECK(G >= 0);
-    // XXX should be unnecessary
-    // BigIntToBigInteger(G, &ValG);
+        // 9,4 is first solution to U1^2 - 5*V1^2 = 1
+        (void)SolutionFoundFromContFraction(isBeven, 1,
+                                            Alpha, Beta,
+                                            A, B, C,
+                                            Discr,
+                                            BigInt(9),
+                                            BigInt(4));
+        return;
+      }
 
-    int periodLength = 1;
+      // g <- sqrt(discr).
+      BigInt G = BigInt::Sqrt(H);
+      // Port note: Was explicit SIGN_POSITIVE here in original, but I think that
+      // was just because it was manipulating the limbs directly? Sqrt
+      // is always non-negative...
+      CHECK(G >= 0);
+      // XXX should be unnecessary
+      // BigIntToBigInteger(G, &ValG);
 
-    BigInt U(0);
-    BigInt V(1);
+      int periodLength = 1;
 
-    BigInt UU2(0);
-    BigInt UU1(1);
+      BigInt U(0);
+      BigInt V(1);
 
-    BigInt VV2(1);
-    BigInt VV1(0);
+      BigInt UU2(0);
+      BigInt UU1(1);
 
-    BigInt UBak, VBak;
+      BigInt VV2(1);
+      BigInt VV1(0);
 
-    if (gcd_homog != 1) {
-      periodLength = -1;
-      do {
+      BigInt UBak, VBak;
+
+      if (gcd_homog != 1) {
+        periodLength = -1;
+        do {
+          BigInt BigTmp = U + G;
+          if (V < 0) {
+            // If denominator is negative, round square root upwards.
+            BigTmp += 1;
+          }
+
+          // Tmp1 = Term of continued fraction.
+          BigInt Tmp1 = FloorDiv(BigTmp, V);
+
+          // U <- a*V - U
+          U = Tmp1 * V - U;
+
+          // V <- (D - U^2)/V
+          V = (L - U * U) / V;
+
+          if (periodLength < 0) {
+            UBak = U;
+            VBak = V;
+          }
+          periodLength++;
+        } while (periodLength == 1 || U != UBak || V != VBak);
+        // Reset values of U and V.
+        U = BigInt{0};
+        V = BigInt{1};
+      }
+
+      ShowText("<p>Recursive solutions:</p><p>");
+
+      A = ABack;
+      B = BBack;
+      C = CBack;
+
+      // CopyBigInt(&ValA, &ValABak);
+      // CopyBigInt(&ValB, &ValBBak);
+      // CopyBigInt(&ValC, &ValCBak);
+
+
+      int periodNbr = 0;
+      enum eSign sign = SIGN_POSITIVE;
+      for (;;) {
         BigInt BigTmp = U + G;
         if (V < 0) {
           // If denominator is negative, round square root upwards.
           BigTmp += 1;
         }
-
         // Tmp1 = Term of continued fraction.
         BigInt Tmp1 = FloorDiv(BigTmp, V);
 
-        // U <- a*V - U
+        // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
+        BigInt UU3 = UU2;
+        UU2 = UU1;
+        UU1 = Tmp1 * UU2 + UU3;
+
+        // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
+        BigInt VV3 = VV2;
+        VV2 = VV1;
+        VV1 = Tmp1 * VV2 + VV3;
+
         U = Tmp1 * V - U;
+        V = (H - U * U) / V;
 
-        // V <- (D - U^2)/V
-        V = (L - U * U) / V;
-
-        if (periodLength < 0) {
-          UBak = U;
-          VBak = V;
+        if (sign == SIGN_POSITIVE) {
+          sign = SIGN_NEGATIVE;
+        } else {
+          sign = SIGN_POSITIVE;
         }
-        periodLength++;
-      } while (periodLength == 1 || U != UBak || V != VBak);
-      // Reset values of U and V.
-      U = BigInt{0};
-      V = BigInt{1};
-    }
 
-    ShowText("<p>Recursive solutions:</p><p>");
+        if (VERBOSE)
+        printf("FS: %c %s %s %s %d\n",
+               isBeven ? 'e' : 'o',
+               V.ToString().c_str(),
+               Alpha.ToString().c_str(),
+               Beta.ToString().c_str(),
+               periodNbr);
 
-    A = ABack;
-    B = BBack;
-    C = CBack;
+        // V must have the correct sign.
+        if ((sign == SIGN_NEGATIVE) ? V >= 0 : V < 0) {
+          continue;
+        }
 
-    // CopyBigInt(&ValA, &ValABak);
-    // CopyBigInt(&ValB, &ValBBak);
-    // CopyBigInt(&ValC, &ValCBak);
+        // Expecting denominator to be 1 (B even or odd)
+        // or 4 (B odd) with correct sign.
+        if (BigInt::Abs(V) != 1 &&
+            (isBeven || BigInt::Abs(V) != 4)) {
+          continue;
+        }
 
-
-    int periodNbr = 0;
-    enum eSign sign = SIGN_POSITIVE;
-    for (;;) {
-      BigInt BigTmp = U + G;
-      if (V < 0) {
-        // If denominator is negative, round square root upwards.
-        BigTmp += 1;
-      }
-      // Tmp1 = Term of continued fraction.
-      BigInt Tmp1 = FloorDiv(BigTmp, V);
-
-      // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
-      BigInt UU3 = UU2;
-      UU2 = UU1;
-      UU1 = Tmp1 * UU2 + UU3;
-
-      // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
-      BigInt VV3 = VV2;
-      VV2 = VV1;
-      VV1 = Tmp1 * VV2 + VV3;
-
-      U = Tmp1 * V - U;
-      V = (H - U * U) / V;
-
-      if (sign == SIGN_POSITIVE) {
-        sign = SIGN_NEGATIVE;
-      } else {
-        sign = SIGN_POSITIVE;
-      }
-
-      if (VERBOSE)
-      printf("FS: %c %s %s %s %d\n",
-             isBeven ? 'e' : 'o',
-             V.ToString().c_str(),
-             Alpha.ToString().c_str(),
-             Beta.ToString().c_str(),
-             periodNbr);
-
-      // V must have the correct sign.
-      if ((sign == SIGN_NEGATIVE) ? V >= 0 : V < 0) {
-        continue;
-      }
-
-      // Expecting denominator to be 1 (B even or odd)
-      // or 4 (B odd) with correct sign.
-      if (BigInt::Abs(V) != 1 &&
-          (isBeven || BigInt::Abs(V) != 4)) {
-        continue;
-      }
-
-      periodNbr++;
-      if (((periodNbr * periodLength) % gcd_homog) != 0) {
-        continue;
-      }
+        periodNbr++;
+        if (((periodNbr * periodLength) % gcd_homog) != 0) {
+          continue;
+        }
 
 
-      // Found solution from continued fraction.
-      if (SolutionFoundFromContFraction(isBeven,
-                                        BigInt::Abs(V).ToInt().value(),
-                                        Alpha, Beta,
-                                        A, B, C,
-                                        Discr,
-                                        UU1, VV1)) {
-        return;
+        // Found solution from continued fraction.
+        if (SolutionFoundFromContFraction(isBeven,
+                                          BigInt::Abs(V).ToInt().value(),
+                                          Alpha, Beta,
+                                          A, B, C,
+                                          Discr,
+                                          UU1, VV1)) {
+          return;
+        }
       }
     }
-  }
 
 
   };  // Clean
@@ -1308,7 +1316,7 @@ struct Quad {
         // &Aux0, &Aux1, &Aux2, &Aux3,
           &ValA, &ValB, &ValC, &ValD, &ValE, &ValF,
           &ValI, &ValL, &ValM, &ValN, &ValO,
-          &ValU, &ValV, &ValG, &ValR, &ValK, &ValZ,
+          &ValU, &ValV, &ValG, &ValR, &ValK,
           &ValAlpha, &ValBeta, &ValDen, &ValDiv,
           &ValGcdHomog, &Tmp1, &Tmp2,
           &discr,
@@ -1317,6 +1325,10 @@ struct Quad {
       intToBigInteger(b, 0xCAFE);
     }
   }
+
+  struct Solution {
+
+  };
 
   // This weird function either shows the solution or continues
   // to try to find the minimum, storing the state in Xbak, Ybak.
@@ -1328,8 +1340,8 @@ struct Quad {
       CHECK(Xbak != nullptr);
       CHECK(Ybak != nullptr);
 
-      // This is basically nullopt state.
       if (!Xbak->has_value()) {
+        CHECK(!Ybak->has_value());
         Xbak->emplace(X);
         Ybak->emplace(Y);
       } else {
@@ -1356,6 +1368,7 @@ struct Quad {
   }
 
   // TODO: Try to make this dispatch (callbackQuadModType) static.
+  template<QmodCallbackType QMOD_CALLBACK>
   void SolutionX(BigInt Value, const BigInt &Modulus) {
     if (VERBOSE) {
       printf("SolutionX(%s, %s)\n",
@@ -1408,20 +1421,20 @@ struct Quad {
              V.ToString().c_str());
     }
 
-    switch (callbackQuadModType) {
-    case CBACK_QMOD_PARABOLIC:
+    switch (QMOD_CALLBACK) {
+    case QmodCallbackType::PARABOLIC:
       clean.CallbackQuadModParabolic(ExchXY,
                                      A, B, C, D, E,
                                      U, V, I, Value);
       break;
 
-    case CBACK_QMOD_ELLIPTIC:
+    case QmodCallbackType::ELLIPTIC:
       CallbackQuadModElliptic(A, B, C, E, M, K,
                               Alpha, Beta, Div, Discr,
                               Value);
       break;
 
-    case CBACK_QMOD_HYPERBOLIC:
+    case QmodCallbackType::HYPERBOLIC:
       callbackQuadModHyperbolic(Value);
       break;
 
@@ -1431,6 +1444,7 @@ struct Quad {
   }
 
   // Solve congruence an^2 + bn + c = 0 (mod n) where n is different from zero.
+  template<QmodCallbackType QMOD_CALLBACK>
   void SolveQuadModEquation(const BigInt &coeffQuadr,
                             const BigInt &coeffLinear,
                             const BigInt &coeffIndep,
@@ -1496,7 +1510,7 @@ struct Quad {
         // must succeed; is < 5 and non-negative
         const int n = GcdAll.ToInt().value();
         for (int ctr = 0; ctr < n; ctr++) {
-          SolutionX(BigInt(ctr), modulus);
+          SolutionX<QMOD_CALLBACK>(BigInt(ctr), modulus);
         }
       }
       return;
@@ -1539,7 +1553,7 @@ struct Quad {
       for (;;) {
         // also not covered :(
         printf("new coverage: loop zz");
-        SolutionX(z, modulus);
+        SolutionX<QMOD_CALLBACK>(z, modulus);
         z += modulus;
         if (z < Temp0) break;
       }
@@ -1547,7 +1561,7 @@ struct Quad {
       return;
     }
 
-    if (callbackQuadModType == CBACK_QMOD_PARABOLIC) {
+    if (QMOD_CALLBACK == QmodCallbackType::PARABOLIC) {
       // For elliptic case, the factorization is already done.
 
       // To solve this quadratic modular equation we have to
@@ -1575,8 +1589,9 @@ struct Quad {
 
       SolveEquation(
           SolutionFn([this](BigInteger *value) {
-              this->SolutionX(BigIntegerToBigInt(value),
-                              BigIntegerToBigInt(&this->modulus));
+              this->SolutionX<QMOD_CALLBACK>(
+                  BigIntegerToBigInt(value),
+                  BigIntegerToBigInt(&this->modulus));
             }),
           coeff_quadr, coeff_linear, coeff_indep,
           modulus, GcdAll, ValNn);
@@ -1677,10 +1692,9 @@ struct Quad {
     // XXX eliminate this state
     CopyBigInt(&modulus, &ValU);
 
-    callbackQuadModType = CBACK_QMOD_PARABOLIC;
     equationNbr = 3;
 
-    SolveQuadModEquation(
+    SolveQuadModEquation<QmodCallbackType::PARABOLIC>(
         BigInt(1),
         BigInt(0),
         -V,
@@ -1694,8 +1708,10 @@ struct Quad {
 
     if (two_solutions) {
       CHECK(showSolution == TWO_SOLUTIONS);
+      // CHECK(callbackQuadModType == QmodCallbackType::HYPERBOLIC);
     } else {
       CHECK(showSolution == ONE_SOLUTION);
+      // CHECK(callbackQuadModType != QmodCallbackType::HYPERBOLIC);
     }
 
     if (VERBOSE) {
@@ -1726,11 +1742,14 @@ struct Quad {
       }
 
       // XXX is two_solutions statically known here?
-      if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
+      if (two_solutions) {
+        // CHECK(callbackQuadModType == QmodCallbackType::HYPERBOLIC);
         ShowXY(two_solutions, ExchXY, tmp1, tmp2);
       } else {
+        // CHECK(callbackQuadModType != QmodCallbackType::HYPERBOLIC)
+        // fprintf(stderr, "Non-Hyperbolic: %s\n", two_solutions ? "two" : "one");
         // Result box:
-        ShowXY(two_solutions, ExchXY, tmp1, tmp2);
+        clean.ShowXYOne(ExchXY, tmp1, tmp2);
       }
 
       // Show recursive solution if it exists.
@@ -1762,9 +1781,12 @@ struct Quad {
   // i.e. solutions (x,y) where gcd(x,y) = 1, we need to solve
   //     ax'^2+bx'y'+cy'^2 = K/R^2 where R^2 is a divisor of K.
   // Then we get x = Rx', y = Ry'.
+  template<QmodCallbackType QMOD_CALLBACK>
   void NonSquareDiscriminant(BigInt A, BigInt B, BigInt C,
                              BigInt K, BigInt Discr,
                              BigInt Alpha, BigInt Beta, const BigInt &Div) {
+    // callbackQuadModType = QMOD_CALLBACK;
+
     // Find GCD(a,b,c)
     BigInt GcdHomog = BigInt::GCD(BigInt::GCD(A, B), C);
     // BigIntGcd(&ValA, &ValB, &bigTmp);
@@ -1803,19 +1825,17 @@ struct Quad {
     BigIntToBigInteger(Beta, &ValBeta);
     BigIntToBigInteger(Div, &ValDiv);
 
-    if (VERBOSE)
-    printf("start NSD %s %s %s | %s %s | %s %s %s\n",
-           A.ToString().c_str(), B.ToString().c_str(), C.ToString().c_str(),
-           K.ToString().c_str(), Discr.ToString().c_str(),
-           Alpha.ToString().c_str(), Beta.ToString().c_str(), Div.ToString().c_str());
+    if (VERBOSE) {
+      printf("start NSD %s %s %s | %s %s | %s %s %s\n",
+             A.ToString().c_str(), B.ToString().c_str(), C.ToString().c_str(),
+             K.ToString().c_str(), Discr.ToString().c_str(),
+             Alpha.ToString().c_str(), Beta.ToString().c_str(), Div.ToString().c_str());
+    }
 
     // ughhh
     BigInt ABack = A;
     BigInt BBack = B;
     BigInt CBack = C;
-    // CopyBigInt(&ValABak, &ValA);
-    // CopyBigInt(&ValBBak, &ValB);
-    // CopyBigInt(&ValCBak, &ValC);
 
     // Factor independent term.
 
@@ -1870,82 +1890,61 @@ struct Quad {
 
         UU2 = C * M;
         UU1 = (UU2 + B) * M + A;
-        // (void)BigIntMultiply(&ValC, &ValM, &U2);
-        // BigIntAdd(&U2, &ValB, &U1);
-        // (void)BigIntMultiply(&U1, &ValM, &U1);
-        // BigIntAdd(&U1, &ValA, &U1);
 
-        // BigIntGcd(&U1, &ValK, &bigTmp);
-        if (VERBOSE)
-        printf("%s GCD %s = %s\n",
-               UU1.ToString().c_str(),
-               K.ToString().c_str(),
-               BigInt::GCD(UU1, K).ToString().c_str());
+        if (VERBOSE) {
+          printf("%s GCD %s = %s\n",
+                 UU1.ToString().c_str(),
+                 K.ToString().c_str(),
+                 BigInt::GCD(UU1, K).ToString().c_str());
+        }
 
         if (BigInt::GCD(UU1, K) == 1) {
           // Increment M and change sign to indicate type.
           M = -(M + 1);
-          // addbigint(&ValM, 1);  // Increment M.
-          // BigIntChSign(&ValM);  // Change sign to indicate type.
           break;
         }
 
         M += 1;
-        // addbigint(&ValM, 1);    // Increment M.
 
         // Compute U1 = am^2 + bm + c and loop while this
         // value is not coprime to K.
 
         UU2 = A * M;
         UU1 = (UU2 + B) * M + C;
-        // (void)BigIntMultiply(&ValA, &ValM, &U2);
-        // BigIntAdd(&U2, &ValB, &U1);
-        // (void)BigIntMultiply(&U1, &ValM, &U1);
-        // BigIntAdd(&U1, &ValC, &U1);
-        // BigIntGcd(&U1, &ValK, &bigTmp);
 
-        if (VERBOSE)
-        printf("loopy %s | %s %s | %s %s %s | %s (%s)\n",
-               M.ToString().c_str(),
-               UU1.ToString().c_str(),
-               UU2.ToString().c_str(),
-               A.ToString().c_str(),
-               B.ToString().c_str(),
-               C.ToString().c_str(),
-               K.ToString().c_str(),
-               BigInt::GCD(UU1, K).ToString().c_str());
+        if (VERBOSE) {
+          printf("loopy %s | %s %s | %s %s %s | %s (%s)\n",
+                 M.ToString().c_str(),
+                 UU1.ToString().c_str(),
+                 UU2.ToString().c_str(),
+                 A.ToString().c_str(),
+                 B.ToString().c_str(),
+                 C.ToString().c_str(),
+                 K.ToString().c_str(),
+                 BigInt::GCD(UU1, K).ToString().c_str());
+        }
 
       } while (BigInt::GCD(UU1, K) != 1);
 
       // Compute 2am + b or 2cm + b as required.
       UU2 = (UU2 << 1) + B;
-      // BigIntAdd(&U2, &U2, &U2);
-      // BigIntAdd(&U2, &ValB, &U2);
 
       if (M >= 0) {
         // Compute c.
         B = (UU1 - UU2);
         C = B + A;
-        // BigIntSubt(&U1, &U2, &ValB);
-        // BigIntAdd(&ValB, &ValA, &ValC);
         // Compute b.
         B += UU1;
-        // BigIntAdd(&ValB, &U1, &ValB);
         // Compute a.
         A = UU1;
-        // CopyBigInt(&ValA, &U1);
       } else {
         // Compute c.
         B = UU1 + UU2;
         C += B;
-        // BigIntAdd(&U1, &U2, &ValB);
-        // BigIntAdd(&ValB, &ValC, &ValC);
         // Compute b.
         B += UU1;
-        // BigIntAdd(&ValB, &U1, &ValB);
         // Compute a.
         A = UU1;
-        // CopyBigInt(&ValA, &U1);
       }
     }
 
@@ -1979,7 +1978,7 @@ struct Quad {
       BigIntToBigInteger(M, &ValM);
       BigIntToBigInteger(K, &ValK);
 
-      SolveQuadModEquation(
+      SolveQuadModEquation<QMOD_CALLBACK>(
           // PERF just construct directly above.
           A, B, C,
           BigInt::Abs(K));
@@ -2080,7 +2079,7 @@ struct Quad {
     }
 
     if (showRecursiveSolution &&
-        callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
+        QMOD_CALLBACK == QmodCallbackType::HYPERBOLIC) {
 
       // Show recursive solution.
       clean.RecursiveSolution(A, B, C,
@@ -2093,8 +2092,8 @@ struct Quad {
   void NegativeDiscriminant(const BigInt &A, const BigInt &B, const BigInt &C,
                             const BigInt &K, const BigInt &Discr,
                             const BigInt &Alpha, const BigInt &Beta, const BigInt &Div) {
-    callbackQuadModType = CBACK_QMOD_ELLIPTIC;
-    NonSquareDiscriminant(A, B, C, K, Discr, Alpha, Beta, Div);
+    NonSquareDiscriminant<QmodCallbackType::ELLIPTIC>(
+        A, B, C, K, Discr, Alpha, Beta, Div);
   }
 
   // On input: H: value of u, I: value of v.
@@ -2102,6 +2101,7 @@ struct Quad {
   // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
   // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
   // Do not substitute if m equals zero.
+  template<QmodCallbackType QMOD_CALLBACK>
   void NonSquareDiscrSolution(bool two_solutions,
                               const BigInt &M, const BigInt &E, const BigInt &K,
                               const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
@@ -2113,8 +2113,13 @@ struct Quad {
       CHECK(showSolution == ONE_SOLUTION);
     }
 
+    // Only get here with ELLIPTIC and HYPERBOLIC.
+    // fprintf(stderr, "NSDS %s\n", CallbackString(QMOD_CALLBACK).c_str());
+
+    // XXX the "callback type" is statically known.
+    // we could simplify this by just having the caller pass -abs(k).
     BigInt KK;
-    if (callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
+    if (QMOD_CALLBACK == QmodCallbackType::HYPERBOLIC) {
       // Get K
       KK = -BigInt::Abs(K);
       // Port note: This code used to flip the sign of BigTmp,
@@ -2190,11 +2195,12 @@ struct Quad {
       if (Discr < -4 && plow == 1) {
         // Discriminant is less than -4 and P equals 1.
 
-        NonSquareDiscrSolution(false,
-                               M, E, K,
-                               Alpha, Beta, Div,
-                               BigInt(1), BigInt(0),
-                               Value);   // (1, 0)
+        NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+            false,
+            M, E, K,
+            Alpha, Beta, Div,
+            BigInt(1), BigInt(0),
+            Value);   // (1, 0)
         equationNbr += 2;
         return;
       }
@@ -2204,32 +2210,36 @@ struct Quad {
         BigInt G = Q >> 1;
 
         if (plow == 1) {
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 BigInt(1), BigInt(0),
-                                 Value);
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              BigInt(1), BigInt(0),
+              Value);
           intToBigInteger(&ValI, -1);
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 G, BigInt(-1),
-                                 Value);   // (Q/2, -1)
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              G, BigInt(-1),
+              Value);   // (Q/2, -1)
           equationNbr += 2;
           return;
         } if (plow == 2) {
 
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 (G - 1) >> 1, BigInt(-1),
-                                 Value);   // ((Q/2-1)/2, -1)
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              (G - 1) >> 1, BigInt(-1),
+              Value);   // ((Q/2-1)/2, -1)
 
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 (G + 1) >> 1, BigInt(-1),
-                                 Value);   // ((Q/2+1)/2, -1)
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              (G + 1) >> 1, BigInt(-1),
+              Value);   // ((Q/2+1)/2, -1)
           equationNbr += 2;
           return;
         }
@@ -2240,46 +2250,54 @@ struct Quad {
         if (plow == 1) {
 
           // printf("plow1 coverage\n");
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 BigInt(1), BigInt(0),
-                                 Value);   // (1, 0)
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              BigInt(1), BigInt(0),
+              Value);   // (1, 0)
 
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 (Q - 1) >> 1, BigInt(-1),
-                                 Value);   // ((Q-1)/2, -1)
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              (Q - 1) >> 1, BigInt(-1),
+              Value);   // ((Q-1)/2, -1)
 
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 (Q + 1) >> 1, BigInt(-1),
-                                 Value);   // ((Q+1)/2, -1)
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              (Q + 1) >> 1, BigInt(-1),
+              Value);   // ((Q+1)/2, -1)
+
           equationNbr += 2;
           return;
         } else if (plow == 3) {
 
           // printf("plow3 coverage\n");
 
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 (Q + 3) / 6, BigInt(-1),
-                                 Value);   // ((Q+3)/6, -1)
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              (Q + 3) / 6, BigInt(-1),
+              Value);   // ((Q+3)/6, -1)
 
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 Q / 3, BigInt(-2),
-                                 Value);   // (Q/3, -2)
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              Q / 3, BigInt(-2),
+              Value);   // (Q/3, -2)
 
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 (Q - 3) / 6, BigInt(-1),
-                                 Value);   // ((Q-3)/6, -1)
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              (Q - 3) / 6, BigInt(-1),
+              Value);   // ((Q-3)/6, -1)
+
           equationNbr += 2;
           return;
         }
@@ -2322,11 +2340,12 @@ struct Quad {
       if (O == 1) {
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
-        NonSquareDiscrSolution(false,
-                               M, E, K,
-                               Alpha, Beta, Div,
-                               U1, V1,
-                               Value);
+        NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+            false,
+            M, E, K,
+            Alpha, Beta, Div,
+            U1, V1,
+            Value);
 
         std::optional<int64_t> dopt = Discr.ToInt();
         if (!dopt.has_value()) break;
@@ -2349,20 +2368,23 @@ struct Quad {
           BigIntToBigInteger(I, &ValI);
           // CopyBigInt(&ValI, &V1);
 
-          NonSquareDiscrSolution(false,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 U1, V1,
-                                 Value);
+          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+              false,
+              M, E, K,
+              Alpha, Beta, Div,
+              U1, V1,
+              Value);
+
           if (d == -3) {
             std::tie(U, U1, U2, V, V1, V2) =
                 clean.GetNextConvergent(U, U1, U2, V, V1, V2);
 
-            NonSquareDiscrSolution(false,
-                                   M, E, K,
-                                   Alpha, Beta, Div,
-                                   U1, V1,
-                                   Value);
+            NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+                false,
+                M, E, K,
+                Alpha, Beta, Div,
+                U1, V1,
+                Value);
           }
           break;
         }
@@ -2538,7 +2560,6 @@ struct Quad {
 
     // PERF: Known divisible
     const BigInt Z = U3 / U1;
-    // (void)BigIntDivide(&U3, &U1, &ValZ);
 
     // We have to find all factors of the right hand side.
 
@@ -2549,7 +2570,6 @@ struct Quad {
       BigIntFactor(BigInt::Abs(Z));
 
     // Do not factor again same modulus.
-    // CopyBigInt(&LastModulus, &ValZ);
 
     // x = (NI - JM) / D(IL - MH) and y = (JL - NH) / D(IL - MH)
     // The denominator cannot be zero here.
@@ -2655,10 +2675,11 @@ struct Quad {
   void PositiveDiscriminant(const BigInt &A, const BigInt &B, const BigInt &C,
                             const BigInt &K, const BigInt &Discr,
                             const BigInt &Alpha, const BigInt &Beta, const BigInt &Div) {
-    callbackQuadModType = CBACK_QMOD_HYPERBOLIC;
-    NonSquareDiscriminant(A, B, C, K, Discr, Alpha, Beta, Div);
+    NonSquareDiscriminant<QmodCallbackType::HYPERBOLIC>(
+        A, B, C, K, Discr, Alpha, Beta, Div);
   }
 
+  // Used for hyperbolic curve.
   //  PQa algorithm for (P+G)/Q where G = sqrt(discriminant):
   //  Set U1 to 1 and U2 to 0.
   //  Set V1 to 0 and V2 to 1.
@@ -2670,9 +2691,6 @@ struct Quad {
   //  Set V to (D - U^2)/V
   //  Inside period when: 0 <= G - U < V
   void ContFrac(const BigInt &Value, enum eShowSolution solutionNbr) {
-    // BigInteger value;
-    // BigIntToBigInteger(Value, &value);
-
     const BigInt A = BigIntegerToBigInt(&ValA);
     const BigInt M = BigIntegerToBigInt(&ValM);
     const BigInt E = BigIntegerToBigInt(&ValE);
@@ -2750,26 +2768,24 @@ struct Quad {
 
           // printf("aaaaaaa coverage\n");
 
-          NonSquareDiscrSolution(true,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 V1 - V2,
-                                 U1 - U2,
-                                 Value);
-          // BigIntegerToBigInt(&V1) - BigIntegerToBigInt(&V2),
-          // BigIntegerToBigInt(&U1) - BigIntegerToBigInt(&U2),
-          // BigIntegerToBigInt(&value));
+          NonSquareDiscrSolution<QmodCallbackType::HYPERBOLIC>(
+              true,
+              M, E, K,
+              Alpha, Beta, Div,
+              V1 - V2,
+              U1 - U2,
+              Value);
+
 
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
 
-          NonSquareDiscrSolution(true,
-                                 M, E, K,
-                                 Alpha, Beta, Div,
-                                 V1, U1, Value);
-          // BigIntegerToBigInt(&V1),
-          // BigIntegerToBigInt(&U1),
-          // BigIntegerToBigInt(&value));
+          NonSquareDiscrSolution<QmodCallbackType::HYPERBOLIC>(
+              true,
+              M, E, K,
+              Alpha, Beta, Div,
+              V1, U1, Value);
+
         }
 
         if (solFound) {
@@ -2810,43 +2826,24 @@ struct Quad {
 
       // Tmp1 = Term of continued fraction.
       BigInt Tmp1 = FloorDiv(BigTmp, V);
-      // floordiv(&bigTmp, &ValV, &Tmp1);
       // Update convergents.
       // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
       BigInt U3 = U2;
       U2 = U1;
       U1 = Tmp1 * U2 + U3;
-      // CopyBigInt(&U3, &U2);
-      // CopyBigInt(&U2, &U1);
-      // (void)BigIntMultiply(&Tmp1, &U2, &U1);
-      // BigIntAdd(&U1, &U3, &U1);
 
       // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
       BigInt V3 = V2;
       V2 = V1;
       V1 = Tmp1 * V2 + V3;
-      // CopyBigInt(&V3, &V2);
-      // CopyBigInt(&V2, &V1);
-      // (void)BigIntMultiply(&Tmp1, &V2, &V1);
-      // BigIntAdd(&V1, &V3, &V1);
 
       // Update numerator and denominator.
       U = Tmp1 * V - U;
-      // (void)BigIntMultiply(&Tmp1, &ValV, &bigTmp); // U <- a*V - U
-      // BigIntSubt(&bigTmp, &ValU, &ValU);
       V = (L - U * U) / V;
-      // (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
-      // BigIntSubt(&ValL, &bigTmp, &bigTmp);
-      // (void)BigIntDivide(&bigTmp, &ValV, &Tmp1);
-      // CopyBigInt(&ValV, &Tmp1);
 
       index++;
       isIntegerPart = false;
     }
-
-    // Restore value.
-    // (XXX should be unnecessary; caller passes BigInt)
-    // BigIntToBigInteger(Tmp11, &value);
   }
 
   void callbackQuadModHyperbolic(const BigInt &Value) {
