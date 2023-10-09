@@ -434,9 +434,6 @@ struct Quad {
   BigInteger ValBeta;
   BigInteger ValDen;
   BigInteger ValDiv;
-  BigInteger ValABak;
-  BigInteger ValBBak;
-  BigInteger ValCBak;
   BigInteger ValGcdHomog;
   BigInteger Tmp1;
   BigInteger Tmp2;
@@ -457,8 +454,6 @@ struct Quad {
   BigInteger V2;
   BigInteger V3;
   BigInteger bigTmp;
-  BigInteger startPeriodU;
-  BigInteger startPeriodV;
 
   BigInteger modulus;
 
@@ -1137,11 +1132,10 @@ struct Quad {
           &ValI, &ValL, &ValM, &ValN, &ValO,
           &ValU, &ValV, &ValG, &ValR, &ValK, &ValZ,
           &ValAlpha, &ValBeta, &ValDen, &ValDiv,
-          &ValABak, &ValBBak, &ValCBak,
           &ValGcdHomog, &Tmp1, &Tmp2,
           &discr,
           &U1, &U2, &U3, &V1, &V2, &V3,
-          &bigTmp, &startPeriodU, &startPeriodV,
+            &bigTmp, // &startPeriodU, &startPeriodV,
           &modulus}) {
       intToBigInteger(b, 0xCAFE);
     }
@@ -1639,9 +1633,12 @@ struct Quad {
            Alpha.ToString().c_str(), Beta.ToString().c_str(), Div.ToString().c_str());
 
     // ughhh
-    CopyBigInt(&ValABak, &ValA);
-    CopyBigInt(&ValBBak, &ValB);
-    CopyBigInt(&ValCBak, &ValC);
+    BigInt ABack = A;
+    BigInt BBack = B;
+    BigInt CBack = C;
+    // CopyBigInt(&ValABak, &ValA);
+    // CopyBigInt(&ValBBak, &ValB);
+    // CopyBigInt(&ValCBak, &ValC);
 
     // Factor independent term.
 
@@ -1909,7 +1906,9 @@ struct Quad {
         callbackQuadModType == CBACK_QMOD_HYPERBOLIC) {
 
       // Show recursive solution.
-      RecursiveSolution(A, B, C, G, L,
+      RecursiveSolution(A, B, C,
+                        ABack, BBack, CBack,
+                        G, L,
                         Alpha, Beta, GcdHomog, Discr);
     }
   }
@@ -2690,11 +2689,29 @@ struct Quad {
   //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
   void RecursiveSolution(
       BigInt A, BigInt B, BigInt C,
+      BigInt ABack, BigInt BBack, BigInt CBack,
+      // arg G may be dead?
       BigInt G, BigInt L,
       const BigInt &Alpha, const BigInt &Beta,
       const BigInt &GcdHomog, BigInt Discr) {
 
-    BigIntToBigInteger(G, &ValG); // XXX
+    auto Err = [&]() {
+        BigInt AA = BigIntegerToBigInt(&ValA);
+        BigInt BB = BigIntegerToBigInt(&ValB);
+        BigInt CC = BigIntegerToBigInt(&ValC);
+        return StringPrintf("A: %s vs %s\n"
+                            "B: %s vs %s\n"
+                            "C: %s vs %s\n",
+                            A.ToString().c_str(), AA.ToString().c_str(),
+                            B.ToString().c_str(), BB.ToString().c_str(),
+                            C.ToString().c_str(), CC.ToString().c_str());
+      };
+
+    CHECK(A == BigIntegerToBigInt(&ValA)) << Err();
+    CHECK(B == BigIntegerToBigInt(&ValB)) << Err();
+    CHECK(C == BigIntegerToBigInt(&ValC)) << Err();
+
+    // BigIntToBigInteger(G, &ValG); // XXX
 
     BigInt H = Discr;
 
@@ -2744,18 +2761,16 @@ struct Quad {
     // is always non-negative...
     CHECK(G >= 0);
     // XXX should be unnecessary
-    BigIntToBigInteger(G, &ValG);
+    // BigIntToBigInteger(G, &ValG);
 
     int periodLength = 1;
 
     BigInt U(0);
     BigInt V(1);
 
-    BigInt UU3 = BigIntegerToBigInt(&U3);
     BigInt UU2(0);
     BigInt UU1(1);
 
-    BigInt VV3 = BigIntegerToBigInt(&V3);
     BigInt VV2(1);
     BigInt VV1(0);
 
@@ -2792,14 +2807,14 @@ struct Quad {
 
     clean.ShowText("<p>Recursive solutions:</p><p>");
 
-    // XXX should not be necessary
-    CopyBigInt(&ValA, &ValABak);
-    CopyBigInt(&ValB, &ValBBak);
-    CopyBigInt(&ValC, &ValCBak);
+    A = ABack;
+    B = BBack;
+    C = CBack;
 
-    A = BigIntegerToBigInt(&ValA);
-    B = BigIntegerToBigInt(&ValB);
-    C = BigIntegerToBigInt(&ValC);
+    // CopyBigInt(&ValA, &ValABak);
+    // CopyBigInt(&ValB, &ValBBak);
+    // CopyBigInt(&ValC, &ValCBak);
+
 
     int periodNbr = 0;
     enum eSign sign = SIGN_POSITIVE;
@@ -2813,12 +2828,12 @@ struct Quad {
       BigInt Tmp1 = FloorDiv(BigTmp, V);
 
       // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
-      UU3 = UU2;
+      BigInt UU3 = UU2;
       UU2 = UU1;
       UU1 = Tmp1 * UU2 + UU3;
 
       // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
-      VV3 = VV2;
+      BigInt VV3 = VV2;
       VV2 = VV1;
       VV1 = Tmp1 * VV2 + VV3;
 
@@ -2852,7 +2867,7 @@ struct Quad {
       }
 
       periodNbr++;
-      if (((periodNbr*periodLength) % gcd_homog) != 0) {
+      if (((periodNbr * periodLength) % gcd_homog) != 0) {
         continue;
       }
 
