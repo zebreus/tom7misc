@@ -328,11 +328,9 @@ static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
                                                 const BigInt &V,
                                                 const BigInt &G) {
   if (G >= BigInt::Abs(U)) {
-    BigInt Tmp1 = BigInt::Abs(V);
     // First check |u| < g passed.
-    // CopyBigInt(&Tmp1, &ValV);
     // Set Tmp1 to |v|
-    // Tmp1.sign = SIGN_POSITIVE;
+    BigInt Tmp1 = BigInt::Abs(V);
     // Compute Tmp2 as u + floor(g) which equals floor(u+g)
     BigInt Tmp2 = U + G;
     // BigIntAdd(&ValU, &ValG, &Tmp2);
@@ -346,32 +344,21 @@ static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
     Tmp2 = BigInt::Abs(Tmp2);
 
     // Compute Tmp2 as floor(|u+g|)
-    // Tmp2.sign = SIGN_POSITIVE;
-
     // Compute bigTmp as floor(|u+g|) - |v|
-    // BigTmp = Tmp2 - Tmp1;
-    // BigIntSubt(&Tmp2, &Tmp1, &bigTmp);
-
     if (Tmp2 >= Tmp1) {
       // Second check |u+g| > |v| passed.
       // Compute Tmp2 as u - floor(g)
       Tmp2 = U - G;
-      // BigIntSubt(&ValU, &ValG, &Tmp2);
 
       if (Tmp2 <= 0) {
         // Round down number to integer.
         Tmp2 -= 1;
-        // addbigint(&Tmp2, -1);
       }
 
       Tmp2 = BigInt::Abs(Tmp2);
 
       // Compute Tmp2 as floor(|u-g|)
-      // Tmp2.sign = SIGN_POSITIVE;
       // Compute Tmp2 as |v| - floor(|u-g|)
-      // BigIntSubt(&Tmp1, &Tmp2, &bigTmp);
-      // BigTmp = Tmp1 - Tmp2;
-
       if (Tmp1 >= Tmp2) {
         // Third check |u-g| < |v| passed.
         // Save U and V to check period end.
@@ -431,9 +418,8 @@ struct Quad {
   BigInteger ValBeta;
   BigInteger ValDen;
   BigInteger ValDiv;
-  BigInteger ValGcdHomog;
-  BigInteger Tmp1;
-  BigInteger Tmp2;
+  // BigInteger Tmp1;
+  // BigInteger Tmp2;
   int SolNbr;
   int showRecursiveSolution;
   // BigInt Xind, Yind, Xlin, Ylin;
@@ -470,7 +456,6 @@ struct Quad {
   const char *varX;
   const char *varY;
   bool firstSolutionX;
-  bool positiveDenominator;
 
   // Functions that have been expunged of state above.
   struct Clean {
@@ -1126,8 +1111,8 @@ struct Quad {
     //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
     void RecursiveSolution(
         BigInt A, BigInt B, BigInt C,
-        BigInt ABack, BigInt BBack, BigInt CBack,
-        BigInt L,
+        const BigInt &ABack, const BigInt &BBack, const BigInt &CBack,
+        const BigInt &L,
         const BigInt &Alpha, const BigInt &Beta,
         const BigInt &GcdHomog, BigInt Discr) {
 
@@ -1225,13 +1210,10 @@ struct Quad {
 
       ShowText("<p>Recursive solutions:</p><p>");
 
+      // XXX Rather than overwrite, substitute in below?
       A = ABack;
       B = BBack;
       C = CBack;
-
-      // CopyBigInt(&ValA, &ValABak);
-      // CopyBigInt(&ValB, &ValBBak);
-      // CopyBigInt(&ValC, &ValCBak);
 
 
       int periodNbr = 0;
@@ -1319,7 +1301,6 @@ struct Quad {
           &ValI, &ValL, &ValM, &ValN, &ValO,
           &ValU, &ValV, &ValG, &ValR, &ValK,
           &ValAlpha, &ValBeta, &ValDen, &ValDiv,
-          &ValGcdHomog, &Tmp1, &Tmp2,
           &discr,
           &U1, &U2, &U3, &V1, &V2, &V3,
           &modulus}) {
@@ -1418,7 +1399,7 @@ struct Quad {
       break;
 
     case QmodCallbackType::HYPERBOLIC:
-      callbackQuadModHyperbolic(Value);
+      CallbackQuadModHyperbolic(A, B, C, K, Discr, Value);
       break;
 
     default:
@@ -1800,27 +1781,17 @@ struct Quad {
   void NonSquareDiscriminant(BigInt A, BigInt B, BigInt C,
                              BigInt K, BigInt Discr,
                              BigInt Alpha, BigInt Beta, const BigInt &Div) {
-    // callbackQuadModType = QMOD_CALLBACK;
-
     // Find GCD(a,b,c)
     BigInt GcdHomog = BigInt::GCD(BigInt::GCD(A, B), C);
-    // BigIntGcd(&ValA, &ValB, &bigTmp);
-    // BigIntGcd(&ValC, &bigTmp, &ValGcdHomog);
     // Divide A, B, C and K by this GCD.
     if (GcdHomog != 0) {
       A /= GcdHomog;
       B /= GcdHomog;
       C /= GcdHomog;
       K /= GcdHomog;
-      // (void)BigIntDivide(&ValA, &ValGcdHomog, &ValA);
-      // (void)BigIntDivide(&ValB, &ValGcdHomog, &ValB);
-      // (void)BigIntDivide(&ValC, &ValGcdHomog, &ValC);
-      // (void)BigIntDivide(&ValK, &ValGcdHomog, &ValK);
       // Divide discriminant by the square of GCD.
       Discr /= GcdHomog;
       Discr /= GcdHomog;
-      // (void)BigIntDivide(&discr, &ValGcdHomog, &discr);
-      // (void)BigIntDivide(&discr, &ValGcdHomog, &discr);
     }
 
     if (K == 0) {
@@ -1854,7 +1825,6 @@ struct Quad {
 
     // Factor independent term.
 
-    // std::unique_ptr<Factors> factors = BigFactor(&ValK);
     // Note that we modify the factors (multiplicities) in place below.
     std::vector<std::pair<BigInt, int>> factors = BigIntFactor(BigInt::Abs(K));
 
@@ -1886,16 +1856,12 @@ struct Quad {
     (void)memset(isDescending, 0, sizeof(isDescending));
 
     BigInt E = BigInt(1);
-    // intToBigInteger(&ValE, 1);  // Initialize multiplier to 1.
     // Loop that cycles through all square divisors of the independent term.
     equationNbr = 2;
-    // BigIntGcd(&ValA, &ValK, &bigTmp);
     BigInt M(0);
-    // intToBigInteger(&ValM, 0);
     if (BigInt::GCD(A, K) != 1) {
       // gcd(a, K) is not equal to 1.
 
-      // printf("GCD != 1\n");
       BigInt UU1, UU2;
       do {
         // printf("uu1uu2 loop\n");
@@ -1976,25 +1942,24 @@ struct Quad {
     // Theorem. The different moduli are divisors of the
     // right hand side, so we only have to factor it once.
 
+    const BigInt L = BigIntegerToBigInt(&ValL);
+
+    BigIntToBigInteger(A, &ValA);
+    BigIntToBigInteger(B, &ValB);
+    BigIntToBigInteger(C, &ValC);
+    BigIntToBigInteger(M, &ValM);
+
     for (;;) {
       // printf("solve loop\n");
       BigIntToBigInteger(K, &modulus);
-      // CopyBigInt(&modulus, &ValK);
       modulus.sign = SIGN_POSITIVE;
 
-      // XXX We modified the modulus, but
-      // CopyBigInt(&LastModulus, &modulus);
-
-      // Ugh, SQME depends on additional state (SolutionX);
+      // Ugh, SQME depends on additional state (SolutionX).
+      // These two are modified in this loop.
       BigIntToBigInteger(E, &ValE);
-      BigIntToBigInteger(A, &ValA);
-      BigIntToBigInteger(B, &ValB);
-      BigIntToBigInteger(C, &ValC);
-      BigIntToBigInteger(M, &ValM);
       BigIntToBigInteger(K, &ValK);
 
       SolveQuadModEquation<QMOD_CALLBACK>(
-          // PERF just construct directly above.
           A, B, C,
           BigInt::Abs(K));
 
@@ -2017,18 +1982,12 @@ struct Quad {
             isDescending[index] = 1;
             continue;
           } else {
-            // const int number_length = *fact->array;
-            // modulus_length = number_length;
-            // IntArray2BigInteger(number_length, fact->array, &bigTmp);
-            // (void)BigIntMultiply(&bigTmp, &bigTmp, &U3);
             BigInt UU3 = factors[fidx].first * factors[fidx].first;
             factors[fidx].second -= 2;
             // Divide by square of prime.
             K /= UU3;
-            // (void)BigIntDivide(&ValK, &U3, &ValK);
             // Multiply multiplier by prime.counters[index]++
             E *= factors[fidx].first;
-            // (void)BigIntMultiply(&ValE, &bigTmp, &ValE);
             counters[index] += 2;
             break;
           }
@@ -2036,24 +1995,17 @@ struct Quad {
           // Descending.
           // auto &[fact, multiplicity] = factors[indexEvenMultiplicity[index]];
           const int fidx = indexEvenMultiplicity[index];
-          // sFactorz *fact = &factors->product[indexEvenMultiplicity[index]];
           if (counters[index] <= 1) {
             // Next time it will be ascending.
             isDescending[index] = 0;
             continue;
           } else {
-            // const int number_length = *fact->array;
-            // modulus_length = number_length;
-            // IntArray2BigInteger(number_length, fact->array, &bigTmp);
             BigInt UU3 = factors[fidx].first * factors[fidx].first;
-            // (void)BigIntMultiply(&bigTmp, &bigTmp, &U3);
             factors[fidx].second += 2;
             // Multiply by square of prime.
             K *= UU3;
-            // (void)BigIntMultiply(&ValK, &U3, &ValK);
             // Divide multiplier by prime.counters[index]++
             E /= factors[fidx].first;
-            // (void)BigIntDivide(&ValE, &bigTmp, &ValE);
             counters[index] -= 2;
             break;
           }
@@ -2075,12 +2027,6 @@ struct Quad {
       }
     }
     if (VERBOSE) printf(".\n");
-
-    // Note: G not necessarily initialized by here if
-    // the condition below isn't true. (And actually it
-    // was just dead.)
-    // BigInt G = BigIntegerToBigInt(&ValG);
-    BigInt L = BigIntegerToBigInt(&ValL);
 
     if (VERBOSE) {
       printf("bottom %s %s / %s / %s %s %s %s\n",
@@ -2168,7 +2114,6 @@ struct Quad {
     }
 
     // Restore value.
-    // BigIntToBigInteger(Tmp12, value);
   }
 
   void CallbackQuadModElliptic(
@@ -2718,10 +2663,6 @@ struct Quad {
       return;
     }
 
-    // back up value
-    // XXX should be unnecessary
-    // BigInt Tmp11 = BigIntegerToBigInt(&value);
-
     BigInt U1(1);
     BigInt U2(0);
     BigInt V1(0);
@@ -2798,8 +2739,6 @@ struct Quad {
         periodIndex++;
         if (U == StartPeriodU &&
             V == StartPeriodV &&
-          // (BigIntEqual(&ValU, &startPeriodU) &&
-          // BigIntEqual(&ValV, &startPeriodV)) &&
             // New period started.
             (periodIndex & 1) == 0) {
           // Two periods of period length is odd, one period if even.
@@ -2821,7 +2760,6 @@ struct Quad {
       if (V < 0) {
         // If denominator is negative, round square root upwards.
         BigTmp += 1;
-        // addbigint(&bigTmp, 1);
       }
 
       // Tmp1 = Term of continued fraction.
@@ -2846,15 +2784,12 @@ struct Quad {
     }
   }
 
-  void callbackQuadModHyperbolic(const BigInt &Value) {
-    bool isBeven_XXX = ((ValB.limbs[0].x & 1) == 0);
-    positiveDenominator = 1;
-
-    const BigInt A = BigIntegerToBigInt(&ValA);
-    const BigInt B = BigIntegerToBigInt(&ValB);
-    const BigInt C = BigIntegerToBigInt(&ValC);
-    const BigInt K = BigIntegerToBigInt(&ValK);
-
+  void CallbackQuadModHyperbolic(const BigInt &A,
+                                 const BigInt &B,
+                                 const BigInt &C,
+                                 const BigInt &K,
+                                 const BigInt &Discr,
+                                 const BigInt &Value) {
     auto pqro = PerformTransformation(A, B, C, K, Value);
     if (!pqro.has_value()) {
       // No solutions because gcd(P, Q, R) > 1.
@@ -2866,14 +2801,8 @@ struct Quad {
     const auto &[P_, Q_, R_] = pqro.value();
     BigIntToBigInteger(R_, &ValR);
 
-    // BigInteger value;
-    // BigIntToBigInteger(Value, &value);
-
-    BigInt Discr = BigIntegerToBigInt(&discr);
-
     // Expected to agree because PerformTransformation doesn't modify B?
     const bool isBeven = B.IsEven();
-    CHECK(isBeven == isBeven_XXX);
 
     // Compute P as floor((2*a*theta + b)/2)
     BigInt P = (((A << 1) * Value) + B);
@@ -2931,8 +2860,6 @@ struct Quad {
 
     // Continued fraction of (U+G)/V
     ContFrac(Value, FIRST_SOLUTION);
-
-    positiveDenominator = 0;
 
     U = -U;
     V = -V;
@@ -3033,60 +2960,23 @@ struct Quad {
     if (D == 0 && E == 0) {
       // Do not translate origin.
       Div = BigInt(1);
-      // intToBigInteger(&ValDiv, 1);
       K = -F;
-      // CopyBigInt(&ValK, &ValF);
-      // BigIntChSign(&ValK);
       Alpha = BigInt(0);
       Beta = BigInt(0);
-      // intToBigInteger(&ValAlpha, 0);
-      // intToBigInteger(&ValBeta, 0);
     } else {
       Div = Discr;
-      // CopyBigInt(&ValDiv, &discr);
       // Translate the origin (x, y) by (alpha, beta).
       // Compute alpha = 2cd - be
       Alpha = ((C * D) << 1) - (B * E);
-      // (void)BigIntMultiply(&ValC, &ValD, &ValAlpha);
-      // BigIntMultiplyBy2(&ValAlpha);
-      // (void)BigIntMultiply(&ValB, &ValE, &bigTmp);
-      // BigIntSubt(&ValAlpha, &bigTmp, &ValAlpha);
 
       // Compute beta = 2ae - bd
       Beta = ((A * E) << 1) - (B * D);
-      // (void)BigIntMultiply(&ValA, &ValE, &ValBeta);
-      // BigIntMultiplyBy2(&ValBeta);
-      // (void)BigIntMultiply(&ValB, &ValD, &bigTmp);
-      // BigIntSubt(&ValBeta, &bigTmp, &ValBeta);
 
       // We get the equation ax^2 + bxy + cy^2 = k
       // where k = -D (ae^2 - bed + cd^2 + fD)
 
-      // BigInt AE = A * E;
-      // BigInt AEE = AE * E;
-      // (void)BigIntMultiply(&ValA, &ValE, &ValK);     // ae
-      // (void)BigIntMultiply(&ValK, &ValE, &ValK);     // ae^2
       K = (-Discr) * ((A * E * E) - (B * E * D) + (C * D * D) + (F * Discr));
-      // (void)BigIntMultiply(&ValB, &ValE, &bigTmp);   // be
-      // (void)BigIntMultiply(&bigTmp, &ValD, &bigTmp); // bed
-      // BigIntSubt(&ValK, &bigTmp, &ValK);        // ae^2 - bed
-      // (void)BigIntMultiply(&ValC, &ValD, &bigTmp);   // cd
-      // (void)BigIntMultiply(&bigTmp, &ValD, &bigTmp); // cd^2
-      // BigIntAdd(&ValK, &bigTmp, &ValK);              // ae^2 - bed + cd^2
-      // (void)BigIntMultiply(&ValF, &discr, &bigTmp);  // fD
-      // BigIntAdd(&ValK, &bigTmp, &ValK);              // ae^2 - bed + cd^2 + fD
-      // (void)BigIntMultiply(&ValK, &discr, &ValK);    // D (ae^2 - bed + cd^2 + fD)
-      // BigIntChSign(&ValK);                           // k
     }
-
-    // const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    // const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    // const BigInt Div = BigIntegerToBigInt(&ValDiv);
-
-    // A = BigIntegerToBigInt(&ValA);
-    // B = BigIntegerToBigInt(&ValB);
-    // C = BigIntegerToBigInt(&ValC);
-    // BigInt K = BigIntegerToBigInt(&ValK);
 
     // XXX remove this state
     BigIntToBigInteger(A, &ValA);
@@ -3101,10 +2991,7 @@ struct Quad {
     BigIntToBigInteger(Div, &ValDiv);
     BigIntToBigInteger(K, &ValK);
 
-    // const BigInt UU1 = BigIntegerToBigInt(&U1);
-
     // If k is not multiple of gcd(A, B, C), there are no solutions.
-    // (void)BigIntRemainder(&ValK, &U1, &bigTmp);
     if (BigInt::CMod(K, UU1) != 0) {
       // There are no solutions.
       return;
@@ -3128,8 +3015,6 @@ struct Quad {
     const BigInt G = BigInt::Sqrt(Discr);
 
     // SquareRoot(discr.limbs, ValG.limbs, discr.nbrLimbs, &ValG.nbrLimbs);
-    // ValG.sign = SIGN_POSITIVE;
-    // (void)BigIntMultiply(&ValG, &ValG, &bigTmp);
     if (G * G == Discr) {
       // Discriminant is a perfect square.
 
