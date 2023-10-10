@@ -1363,7 +1363,14 @@ struct Quad {
 
   // TODO: Try to make this dispatch (callbackQuadModType) static.
   template<QmodCallbackType QMOD_CALLBACK>
-  void SolutionX(BigInt Value, const BigInt &Modulus) {
+  void SolutionX(BigInt Value, const BigInt &Modulus,
+                 const BigInt &A, const BigInt &B, const BigInt &C,
+                 const BigInt &D, const BigInt &E,
+                 const BigInt &M, const BigInt &K, const BigInt &I,
+                 const BigInt &U, const BigInt &V,
+                 const BigInt &Alpha, const BigInt &Beta,
+                 const BigInt &Div, const BigInt &Discr) {
+
     if (VERBOSE) {
       printf("SolutionX(%s, %s)\n",
              Value.ToString().c_str(),
@@ -1382,24 +1389,6 @@ struct Quad {
     if ((Value << 1) > Modulus) {
       Value -= Modulus;
     }
-
-    BigInt A = BigIntegerToBigInt(&ValA);
-    BigInt B = BigIntegerToBigInt(&ValB);
-    BigInt C = BigIntegerToBigInt(&ValC);
-    BigInt D = BigIntegerToBigInt(&ValD);
-    BigInt E = BigIntegerToBigInt(&ValE);
-
-    BigInt M = BigIntegerToBigInt(&ValM);
-    BigInt K = BigIntegerToBigInt(&ValK);
-    BigInt I = BigIntegerToBigInt(&ValI);
-
-    BigInt U = BigIntegerToBigInt(&ValU);
-    BigInt V = BigIntegerToBigInt(&ValV);
-
-    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    const BigInt Div = BigIntegerToBigInt(&ValDiv);
-    const BigInt Discr = BigIntegerToBigInt(&discr);
 
     if (VERBOSE) {
       printf("  with %s %s %s %s %s | %s %s %s | %s %s\n",
@@ -1443,6 +1432,25 @@ struct Quad {
                             const BigInt &coeffLinear,
                             const BigInt &coeffIndep,
                             const BigInt &modulus_in) {
+
+    const BigInt A = BigIntegerToBigInt(&ValA);
+    const BigInt B = BigIntegerToBigInt(&ValB);
+    const BigInt C = BigIntegerToBigInt(&ValC);
+    const BigInt D = BigIntegerToBigInt(&ValD);
+    const BigInt E = BigIntegerToBigInt(&ValE);
+
+    const BigInt M = BigIntegerToBigInt(&ValM);
+    const BigInt K = BigIntegerToBigInt(&ValK);
+    const BigInt I = BigIntegerToBigInt(&ValI);
+
+    const BigInt U = BigIntegerToBigInt(&ValU);
+    const BigInt V = BigIntegerToBigInt(&ValV);
+
+    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    const BigInt Div = BigIntegerToBigInt(&ValDiv);
+    const BigInt Discr = BigIntegerToBigInt(&discr);
+
 
     if (VERBOSE) {
       printf("[SQME] %s %s %s %s\n",
@@ -1502,9 +1510,14 @@ struct Quad {
         clean.ShowText(" are solutions.</p>");
       } else {
         // must succeed; is < 5 and non-negative
+
         const int n = GcdAll.ToInt().value();
         for (int ctr = 0; ctr < n; ctr++) {
-          SolutionX<QMOD_CALLBACK>(BigInt(ctr), modulus);
+          SolutionX<QMOD_CALLBACK>(BigInt(ctr), modulus,
+                                   A, B, C, D, E,
+                                   M, K, I,
+                                   U, V,
+                                   Alpha, Beta, Div, Discr);
         }
       }
       return;
@@ -1547,7 +1560,11 @@ struct Quad {
       for (;;) {
         // also not covered :(
         printf("new coverage: loop zz");
-        SolutionX<QMOD_CALLBACK>(z, modulus);
+        SolutionX<QMOD_CALLBACK>(z, modulus,
+                                 A, B, C, D, E,
+                                 M, K, I,
+                                 U, V,
+                                 Alpha, Beta, Div, Discr);
         z += modulus;
         if (z < Temp0) break;
       }
@@ -1582,10 +1599,14 @@ struct Quad {
       }
 
       SolveEquation(
-          SolutionFn([this](BigInteger *value) {
+          SolutionFn([&](const BigInt &Value) {
               this->SolutionX<QMOD_CALLBACK>(
-                  BigIntegerToBigInt(value),
-                  BigIntegerToBigInt(&this->modulus));
+                  Value,
+                  modulus,
+                  A, B, C, D, E,
+                  M, K, I,
+                  U, V,
+                  Alpha, Beta, Div, Discr);
             }),
           coeff_quadr, coeff_linear, coeff_indep,
           modulus, GcdAll, ValNn);

@@ -171,7 +171,7 @@ struct QuadModLL {
         // The solution is V*ValNn + currentSolution
         (void)BigIntMultiply(&V, pValNn, &K1);
         BigIntAdd(&K1, &currentSolution, &K1);
-        Solution(&K1);
+        Solution(BigIntegerToBigInt(&K1));
         addbigint(&V, 1);  // V <- V + 1
         BigIntSubt(&V, pGcdAll, &K1);
       }

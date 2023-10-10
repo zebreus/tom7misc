@@ -21,17 +21,12 @@
 #include "bignbr.h"
 #include <functional>
 
-using SolutionFn = std::function<void(BigInteger *value)>;
+using SolutionFn = std::function<void(const BigInt &value)>;
 
 void SolveEquation(
     const SolutionFn &solutionCback,
     const BigInt &A, const BigInt &B,
     const BigInt &C, const BigInt &N,
     const BigInt &GcdAll, const BigInt &Nn);
-#if 0
-    BigInteger *pValA, const BigInteger* pValB,
-    const BigInteger* pValC, BigInteger* pValN,
-    BigInteger *GcdAll, BigInteger *pValNn);
-#endif
 
 #endif
