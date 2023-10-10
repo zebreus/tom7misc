@@ -66,6 +66,7 @@ enum class QmodCallbackType {
   HYPERBOLIC,
 };
 
+[[maybe_unused]]
 static std::string CallbackString(QmodCallbackType t) {
   switch (t) {
   case QmodCallbackType::PARABOLIC: return "PARABOLIC";
@@ -1333,37 +1334,30 @@ struct Quad {
   // This weird function either shows the solution or continues
   // to try to find the minimum, storing the state in Xbak, Ybak.
   // XXX need to take some kind of state to accumulate Xbak, Ybak...
-  void ShowXY(bool two_solutions, bool swap_xy, const BigInt &X, const BigInt &Y) {
-    if (two_solutions) {
-      solFound = true;
+  void ShowXYTwo(bool swap_xy, const BigInt &X, const BigInt &Y) {
+    solFound = true;
 
-      CHECK(Xbak != nullptr);
-      CHECK(Ybak != nullptr);
+    CHECK(Xbak != nullptr);
+    CHECK(Ybak != nullptr);
 
-      if (!Xbak->has_value()) {
-        CHECK(!Ybak->has_value());
+    if (!Xbak->has_value()) {
+      CHECK(!Ybak->has_value());
+      Xbak->emplace(X);
+      Ybak->emplace(Y);
+    } else {
+      CHECK(Xbak->has_value());
+      CHECK(Ybak->has_value());
+
+      // Use the lowest of |X| + |Y| and |Xbak| + |Ybak|
+      BigInt BX = Xbak->value();
+      BigInt BY = Ybak->value();
+
+      if (BigInt::Abs(X) + BigInt::Abs(Y) <=
+          BigInt::Abs(BX) + BigInt::Abs(BY)) {
+        // At this moment |x| + |y| <= |xbak| + |ybak|
         Xbak->emplace(X);
         Ybak->emplace(Y);
-      } else {
-        CHECK(Xbak->has_value());
-        CHECK(Ybak->has_value());
-
-        // Use the lowest of |X| + |Y| and |Xbak| + |Ybak|
-        BigInt BX = Xbak->value();
-        BigInt BY = Ybak->value();
-
-        if (BigInt::Abs(X) + BigInt::Abs(Y) <=
-            BigInt::Abs(BX) + BigInt::Abs(BY)) {
-          // At this moment |x| + |y| <= |xbak| + |ybak|
-          Xbak->emplace(X);
-          Ybak->emplace(Y);
-        }
       }
-
-    } else {
-      // ONE_SOLUTION: Show it.
-      CHECK(showSolution == ONE_SOLUTION);
-      clean.ShowXYOne(swap_xy, X, Y);
     }
   }
 
@@ -1744,7 +1738,7 @@ struct Quad {
       // XXX is two_solutions statically known here?
       if (two_solutions) {
         // CHECK(callbackQuadModType == QmodCallbackType::HYPERBOLIC);
-        ShowXY(two_solutions, ExchXY, tmp1, tmp2);
+        ShowXYTwo(ExchXY, tmp1, tmp2);
       } else {
         // CHECK(callbackQuadModType != QmodCallbackType::HYPERBOLIC)
         // fprintf(stderr, "Non-Hyperbolic: %s\n", two_solutions ? "two" : "one");
@@ -2101,7 +2095,6 @@ struct Quad {
   // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
   // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
   // Do not substitute if m equals zero.
-  template<QmodCallbackType QMOD_CALLBACK>
   void NonSquareDiscrSolution(bool two_solutions,
                               const BigInt &M, const BigInt &E, const BigInt &K,
                               const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
@@ -2113,26 +2106,12 @@ struct Quad {
       CHECK(showSolution == ONE_SOLUTION);
     }
 
-    // Only get here with ELLIPTIC and HYPERBOLIC.
-    // fprintf(stderr, "NSDS %s\n", CallbackString(QMOD_CALLBACK).c_str());
-
-    // XXX the "callback type" is statically known.
-    // we could simplify this by just having the caller pass -abs(k).
-    BigInt KK;
-    if (QMOD_CALLBACK == QmodCallbackType::HYPERBOLIC) {
-      // Get K
-      KK = -BigInt::Abs(K);
-      // Port note: This code used to flip the sign of BigTmp,
-      // then set it to negative. Certainly unnecessary; maybe
-      // a bug?
-      // BigIntChSign(&bigTmp);
-      // bigTmp.sign = SIGN_NEGATIVE;
-    } else {
-      KK = K;
-    }
+    // Port note: This used to modify the value of K based on the callback
+    // type, but now we do that at the call site. (Also there was something
+    // suspicious in here where it flipped the sign and then set it negative.)
 
     // X = (tu - Kv)*E
-    const BigInt Z = (Value * H - KK * I) * E;
+    const BigInt Z = (Value * H - K * I) * E;
     // Y = u*E
     const BigInt O = H * E;
 
@@ -2195,7 +2174,7 @@ struct Quad {
       if (Discr < -4 && plow == 1) {
         // Discriminant is less than -4 and P equals 1.
 
-        NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+        NonSquareDiscrSolution(
             false,
             M, E, K,
             Alpha, Beta, Div,
@@ -2210,14 +2189,14 @@ struct Quad {
         BigInt G = Q >> 1;
 
         if (plow == 1) {
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
               BigInt(1), BigInt(0),
               Value);
           intToBigInteger(&ValI, -1);
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
@@ -2227,14 +2206,14 @@ struct Quad {
           return;
         } if (plow == 2) {
 
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
               (G - 1) >> 1, BigInt(-1),
               Value);   // ((Q/2-1)/2, -1)
 
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
@@ -2250,21 +2229,21 @@ struct Quad {
         if (plow == 1) {
 
           // printf("plow1 coverage\n");
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
               BigInt(1), BigInt(0),
               Value);   // (1, 0)
 
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
               (Q - 1) >> 1, BigInt(-1),
               Value);   // ((Q-1)/2, -1)
 
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
@@ -2277,21 +2256,21 @@ struct Quad {
 
           // printf("plow3 coverage\n");
 
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
               (Q + 3) / 6, BigInt(-1),
               Value);   // ((Q+3)/6, -1)
 
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
               Q / 3, BigInt(-2),
               Value);   // (Q/3, -2)
 
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
@@ -2340,7 +2319,7 @@ struct Quad {
       if (O == 1) {
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
-        NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+        NonSquareDiscrSolution(
             false,
             M, E, K,
             Alpha, Beta, Div,
@@ -2368,7 +2347,7 @@ struct Quad {
           BigIntToBigInteger(I, &ValI);
           // CopyBigInt(&ValI, &V1);
 
-          NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+          NonSquareDiscrSolution(
               false,
               M, E, K,
               Alpha, Beta, Div,
@@ -2379,7 +2358,7 @@ struct Quad {
             std::tie(U, U1, U2, V, V1, V2) =
                 clean.GetNextConvergent(U, U1, U2, V, V1, V2);
 
-            NonSquareDiscrSolution<QmodCallbackType::ELLIPTIC>(
+            NonSquareDiscrSolution(
                 false,
                 M, E, K,
                 Alpha, Beta, Div,
@@ -2768,9 +2747,9 @@ struct Quad {
 
           // printf("aaaaaaa coverage\n");
 
-          NonSquareDiscrSolution<QmodCallbackType::HYPERBOLIC>(
+          NonSquareDiscrSolution(
               true,
-              M, E, K,
+              M, E, -BigInt::Abs(K),
               Alpha, Beta, Div,
               V1 - V2,
               U1 - U2,
@@ -2780,9 +2759,9 @@ struct Quad {
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
 
-          NonSquareDiscrSolution<QmodCallbackType::HYPERBOLIC>(
+          NonSquareDiscrSolution(
               true,
-              M, E, K,
+              M, E, -BigInt::Abs(K),
               Alpha, Beta, Div,
               V1, U1, Value);
 
