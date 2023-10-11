@@ -449,8 +449,6 @@ struct Quad {
   // get set through the pointers. Gross!
   std::optional<BigInt> *Xbak = nullptr, *Ybak = nullptr;
 
-  int equationNbr;
-  int contfracEqNbr;
   const char *ptrVarNameX;
   const char *ptrVarNameY;
   const char *varX;
@@ -1666,8 +1664,6 @@ struct Quad {
 
     // BigInt Modulus = BigIntegerToBigInt(&ValU);
 
-    equationNbr = 3;
-
     const BigInt M = BigIntegerToBigInt(&ValM);
     const BigInt K = BigIntegerToBigInt(&ValK);
     const BigInt I = BigIntegerToBigInt(&ValI);
@@ -1845,7 +1841,6 @@ struct Quad {
 
     BigInt E = BigInt(1);
     // Loop that cycles through all square divisors of the independent term.
-    equationNbr = 2;
     BigInt M(0);
     if (BigInt::GCD(A, K) != 1) {
       // gcd(a, K) is not equal to 1.
@@ -2140,7 +2135,7 @@ struct Quad {
             Alpha, Beta, Div,
             BigInt(1), BigInt(0),
             Value);   // (1, 0)
-        equationNbr += 2;
+
         return;
       }
 
@@ -2162,7 +2157,7 @@ struct Quad {
               Alpha, Beta, Div,
               G, BigInt(-1),
               Value);   // (Q/2, -1)
-          equationNbr += 2;
+
           return;
         } if (plow == 2) {
 
@@ -2179,7 +2174,7 @@ struct Quad {
               Alpha, Beta, Div,
               (G + 1) >> 1, BigInt(-1),
               Value);   // ((Q/2+1)/2, -1)
-          equationNbr += 2;
+
           return;
         }
       }
@@ -2210,7 +2205,6 @@ struct Quad {
               (Q + 1) >> 1, BigInt(-1),
               Value);   // ((Q+1)/2, -1)
 
-          equationNbr += 2;
           return;
         } else if (plow == 3) {
 
@@ -2237,7 +2231,6 @@ struct Quad {
               (Q - 3) / 6, BigInt(-1),
               Value);   // ((Q-3)/6, -1)
 
-          equationNbr += 2;
           return;
         }
       }
@@ -2329,7 +2322,6 @@ struct Quad {
         }
       }
     }
-    equationNbr += 3;
   }
 
   void CheckSolutionSquareDiscr(
@@ -2635,7 +2627,7 @@ struct Quad {
                 BigInt U, BigInt V, BigInt G,
                 const BigInt &Alpha, const BigInt &Beta,
                 const BigInt &Div, const BigInt &Discr) {
-    int periodIndex = 0;
+
 
     const bool isBeven = B.IsEven();
     // If (D-U^2) is not multiple of V, exit routine.
@@ -2665,30 +2657,24 @@ struct Quad {
 
     bool isIntegerPart = true;
 
-
     const bool k_neg = K < 0;
     const bool a_neg = A < 0;
 
-
+    int periodIndex = 0;
     for (;;) {
 
-      bool v_neg = V < 0;
+      const bool v_neg = V < 0;
 
       if (V == (isBeven ? 1 : 2) &&
           ((index & 1) == (k_neg == v_neg ? 0 : 1))) {
-        // (ValV.nbrLimbs == 1) && (ValV.limbs[0].x == (isBeven ? 1 : 2)) &&
-        // ((index & 1) == ((ValK.sign == ValV.sign)? 0 : 1)))
-
         // XXX replaced with two_solutions
         showSolution = TWO_SOLUTIONS;
         solFound = false;
 
         // Found solution.
         if (BigInt::Abs(Discr) == 5 && (a_neg != k_neg) &&
-            // (discr.nbrLimbs == 1) && (discr.limbs[0].x == 5) && (ValA.sign != ValK.sign) &&
             (solutionNbr == FIRST_SOLUTION)) {
           // Determinant is 5 and aK < 0. Use exceptional solution (U1-U2)/(V1-V2).
-          // BigIntSubt(&U1, &U2, &ValI);
 
           // printf("aaaaaaa coverage\n");
 
@@ -2820,7 +2806,6 @@ struct Quad {
     // PERF divisibility check
     if (BigInt::CMod(L - U * U, V) != 0) {
       // No solutions using continued fraction.
-      equationNbr += 2;
       return;
     }
 
@@ -2833,24 +2818,14 @@ struct Quad {
     Yminus.reset();
     // Somewhere below these can get set. Can we return the values instead?
 
-    contfracEqNbr = equationNbr + 2;
-
     // XXX pass args
     BigIntToBigInteger(G, &ValG);
     BigIntToBigInteger(L, &ValL);
     BigIntToBigInteger(U, &ValU);
     BigIntToBigInteger(V, &ValV);
 
-    // const BigInt A = BigIntegerToBigInt(&ValA);
-    // const BigInt B = BigIntegerToBigInt(&ValB);
     const BigInt E = BigIntegerToBigInt(&ValE);
-    // const BigInt K = BigIntegerToBigInt(&ValK);
-    // const BigInt L = BigIntegerToBigInt(&ValL);
     const BigInt M = BigIntegerToBigInt(&ValM);
-
-    // BigInt U = BigIntegerToBigInt(&ValU);
-    // BigInt V = BigIntegerToBigInt(&ValV);
-    // BigInt G = BigIntegerToBigInt(&ValG);
 
     const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
     const BigInt Beta = BigIntegerToBigInt(&ValBeta);
@@ -2866,13 +2841,8 @@ struct Quad {
     U = -U;
     V = -V;
 
-    contfracEqNbr = equationNbr + 3;
-    // XXX why don't we have a check on the number of limbs here?
     BigIntToBigInteger(U, &ValU);
     BigIntToBigInteger(V, &ValV);
-    if ((ValU.limbs[0].x == 3) && (ValV.limbs[0].x == 9)) {
-      contfracEqNbr++;
-    }
 
     // Continued fraction of (-U+G)/(-V)
     ContFrac(Value, SECOND_SOLUTION,
@@ -2896,7 +2866,6 @@ struct Quad {
       CHECK(showSolution == ONE_SOLUTION);
       clean.ShowXYOne(ExchXY, Xminus.value(), Yminus.value());
     }
-    equationNbr += 4;
   }
 
   // Copy intentional; we modify them in place (factor out gcd).
