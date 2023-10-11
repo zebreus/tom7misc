@@ -1359,16 +1359,7 @@ struct Quad {
     }
     SolNbr++;
 
-    /*
-    {
-      BigInt mm = BigInt::Abs(BigIntegerToBigInt(&modulus));
-      CHECK(Modulus == mm) <<
-        Modulus.ToString() << " vs " << mm.ToString();
-    }
-    */
-
     // If 2*value is greater than modulus, subtract modulus.
-    // BigInt Modulus = BigIntegerToBigInt(&modulus);
     if ((Value << 1) > Modulus) {
       Value -= Modulus;
     }
@@ -1671,14 +1662,9 @@ struct Quad {
     // We have to solve the congruence
     //     T^2 = v (mod u) where T = t+d and t = 2ax+by.
 
-    BigInt Modulus = BigIntegerToBigInt(&ValU);
+    CHECK(BigIntegerToBigInt(&ValU) == U);
 
-    // CHECK(BigIntegerToBigInt(&modulus) == 0xCAFE);
-    // XXX eliminate this state
-    // CopyBigInt(&modulus, &ValU);
-    // fprintf(stderr, "Modulus now %s\n",
-    //         BigIntegerToBigInt(&modulus).ToString().c_str());
-
+    // BigInt Modulus = BigIntegerToBigInt(&ValU);
 
     equationNbr = 3;
 
@@ -1691,9 +1677,9 @@ struct Quad {
     const BigInt Discr = BigIntegerToBigInt(&discr);
 
     SolveQuadModEquation<QmodCallbackType::PARABOLIC>(
-        BigInt(1),
-        BigInt(0),
-        -V, BigInt::Abs(Modulus),
+        // Coefficients and modulus
+        BigInt(1), BigInt(0), -V, BigInt::Abs(U),
+        // Problem state
         A, B, C, D, E,
         M, K, I, U, V,
         Alpha, Beta, Div, Discr);
@@ -1955,17 +1941,8 @@ struct Quad {
     const BigInt U = BigIntegerToBigInt(&ValU);
     const BigInt V = BigIntegerToBigInt(&ValV);
 
-    // CHECK(BigIntegerToBigInt(&modulus) == 0xCAFE);
 
     for (;;) {
-      // printf("solve loop\n");
-      // BigIntToBigInteger(K, &modulus);
-      // modulus.sign = SIGN_POSITIVE;
-      /*
-      fprintf(stderr,
-              "[NSD] Now modulus is %s\n", BigIntegerToBigInt(&modulus).ToString().c_str());
-      */
-
       // Ugh, SQME depends on additional state (SolutionX).
       // These two are modified in this loop.
       BigIntToBigInteger(E, &ValE);
@@ -2652,23 +2629,12 @@ struct Quad {
   //  Set U to a*V - U
   //  Set V to (D - U^2)/V
   //  Inside period when: 0 <= G - U < V
-  void ContFrac(const BigInt &Value, enum eShowSolution solutionNbr) {
-    const BigInt A = BigIntegerToBigInt(&ValA);
-    const BigInt M = BigIntegerToBigInt(&ValM);
-    const BigInt E = BigIntegerToBigInt(&ValE);
-    const BigInt K = BigIntegerToBigInt(&ValK);
-    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    const BigInt Div = BigIntegerToBigInt(&ValDiv);
-    const BigInt Discr = BigIntegerToBigInt(&discr);
-
-    const BigInt B = BigIntegerToBigInt(&ValB);
-    const BigInt L = BigIntegerToBigInt(&ValL);
-
-    BigInt U = BigIntegerToBigInt(&ValU);
-    BigInt V = BigIntegerToBigInt(&ValV);
-    BigInt G = BigIntegerToBigInt(&ValG);
-
+  void ContFrac(const BigInt &Value, enum eShowSolution solutionNbr,
+                const BigInt &A, const BigInt &B, const BigInt &E,
+                const BigInt &K, const BigInt &L, const BigInt &M,
+                BigInt U, BigInt V, BigInt G,
+                const BigInt &Alpha, const BigInt &Beta,
+                const BigInt &Div, const BigInt &Discr) {
     int periodIndex = 0;
 
     const bool isBeven = B.IsEven();
@@ -2875,8 +2841,27 @@ struct Quad {
     BigIntToBigInteger(U, &ValU);
     BigIntToBigInteger(V, &ValV);
 
+    // const BigInt A = BigIntegerToBigInt(&ValA);
+    // const BigInt B = BigIntegerToBigInt(&ValB);
+    const BigInt E = BigIntegerToBigInt(&ValE);
+    // const BigInt K = BigIntegerToBigInt(&ValK);
+    // const BigInt L = BigIntegerToBigInt(&ValL);
+    const BigInt M = BigIntegerToBigInt(&ValM);
+
+    // BigInt U = BigIntegerToBigInt(&ValU);
+    // BigInt V = BigIntegerToBigInt(&ValV);
+    // BigInt G = BigIntegerToBigInt(&ValG);
+
+    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    const BigInt Div = BigIntegerToBigInt(&ValDiv);
+
     // Continued fraction of (U+G)/V
-    ContFrac(Value, FIRST_SOLUTION);
+    ContFrac(Value, FIRST_SOLUTION,
+             A, B, E,
+             K, L, M,
+             U, V, G,
+             Alpha, Beta, Div, Discr);
 
     U = -U;
     V = -V;
@@ -2890,7 +2875,12 @@ struct Quad {
     }
 
     // Continued fraction of (-U+G)/(-V)
-    ContFrac(Value, SECOND_SOLUTION);
+    ContFrac(Value, SECOND_SOLUTION,
+             A, B, E,
+             K, L, M,
+             U, V, G,
+             Alpha, Beta, Div, Discr);
+
     showSolution = ONE_SOLUTION;
 
     if (Xplus.has_value()) {
@@ -2960,9 +2950,6 @@ struct Quad {
 
     // Compute discriminant: b^2 - 4ac.
     const BigInt Discr = B * B - ((A * C) << 2);
-
-
-    // CHECK(BigIntegerToBigInt(&modulus) == 0xCAFE);
 
     if (Discr == 0) {
       // Discriminant is zero.
