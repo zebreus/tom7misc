@@ -53,11 +53,9 @@ struct LinearSolution {
   }
 };
 
-enum eShowSolution {
-  ONE_SOLUTION = 0,
-  TWO_SOLUTIONS,
-  FIRST_SOLUTION,
-  SECOND_SOLUTION,
+enum class SolutionNumber {
+  FIRST,
+  SECOND,
 };
 
 enum class QmodCallbackType {
@@ -392,12 +390,7 @@ UnimodularSubstitution(const BigInt &M,
 
 
 struct Quad {
-  // XXX can be retired for two_solutions arg
-  enum eShowSolution showSolution;
   // TODO: Lots of these could be local; dynamically sized.
-  // enum QmodCallbackType callbackQuadModType;
-  char isDescending[400];
-  // BigInteger Aux0, Aux1, Aux2, Aux3;
   BigInteger ValA;
   BigInteger ValB;
   BigInteger ValC;
@@ -407,8 +400,6 @@ struct Quad {
   BigInteger ValI;
   BigInteger ValL;
   BigInteger ValM;
-  BigInteger ValN;
-  BigInteger ValO;
   BigInteger ValU;
   BigInteger ValV;
   BigInteger ValG;
@@ -418,27 +409,14 @@ struct Quad {
   BigInteger ValBeta;
   BigInteger ValDen;
   BigInteger ValDiv;
-  // BigInteger Tmp1;
-  // BigInteger Tmp2;
-  int SolNbr;
-  int showRecursiveSolution;
+  int showRecursiveSolution = 0;
   // BigInt Xind, Yind, Xlin, Ylin;
-  bool solFound;
+  bool solFound = false;
 
   bool ExchXY = false;
 
-  const char *divgcd;
   const char *varT = "t";
   BigInteger discr;
-  BigInteger U1;
-  BigInteger U2;
-  BigInteger U3;
-  BigInteger V1;
-  BigInteger V2;
-  BigInteger V3;
-  BigInteger bigTmp;
-
-  // BigInteger modulus;
 
   std::optional<BigInt> Xplus;
   std::optional<BigInt> Xminus;
@@ -449,11 +427,10 @@ struct Quad {
   // get set through the pointers. Gross!
   std::optional<BigInt> *Xbak = nullptr, *Ybak = nullptr;
 
-  const char *ptrVarNameX;
-  const char *ptrVarNameY;
-  const char *varX;
-  const char *varY;
-  bool firstSolutionX;
+  const char *ptrVarNameX = nullptr;
+  const char *ptrVarNameY = nullptr;
+  const char *varX = nullptr;
+  const char *varY = nullptr;
 
   // Functions that have been expunged of state above.
   struct Clean {
@@ -1294,13 +1271,11 @@ struct Quad {
     // variables being initialized or not. At least set them to
     // valid state so that we can convert them to BigInt (and discard).
     for (BigInteger *b : {
-        // &Aux0, &Aux1, &Aux2, &Aux3,
           &ValA, &ValB, &ValC, &ValD, &ValE, &ValF,
-          &ValI, &ValL, &ValM, &ValN, &ValO,
+          &ValI, &ValL, &ValM,
           &ValU, &ValV, &ValG, &ValR, &ValK,
           &ValAlpha, &ValBeta, &ValDen, &ValDiv,
-          &discr,
-          &U1, &U2, &U3, &V1, &V2, &V3
+          &discr
             }) {
       intToBigInteger(b, 0xCAFE);
     }
@@ -1355,7 +1330,6 @@ struct Quad {
              Value.ToString().c_str(),
              Modulus.ToString().c_str());
     }
-    SolNbr++;
 
     // If 2*value is greater than modulus, subtract modulus.
     if ((Value << 1) > Modulus) {
@@ -1418,8 +1392,6 @@ struct Quad {
     }
 
     CHECK(Modulus > 0);
-
-    firstSolutionX = true;
 
     BigInt coeff_quadr = BigInt::CMod(coeffQuadr, Modulus);
     if (coeff_quadr < 0) coeff_quadr += Modulus;
@@ -1686,14 +1658,6 @@ struct Quad {
                  const BigInt &Alpha, const BigInt &Beta,
                  const BigInt &Div) {
 
-    if (two_solutions) {
-      CHECK(showSolution == TWO_SOLUTIONS);
-      // CHECK(callbackQuadModType == QmodCallbackType::HYPERBOLIC);
-    } else {
-      CHECK(showSolution == ONE_SOLUTION);
-      // CHECK(callbackQuadModType != QmodCallbackType::HYPERBOLIC);
-    }
-
     if (VERBOSE) {
       printf("ShowPoint %s %s %s %s %s\n",
              X.ToString().c_str(),
@@ -1837,7 +1801,7 @@ struct Quad {
     }
 
     std::vector<int> counters(400, 0);
-    (void)memset(isDescending, 0, sizeof(isDescending));
+    std::vector<bool> is_descending(400, false);
 
     BigInt E = BigInt(1);
     // Loop that cycles through all square divisors of the independent term.
@@ -1961,14 +1925,14 @@ struct Quad {
       for (index = 0; index < (int)indexEvenMultiplicity.size(); index++) {
         if (VERBOSE) printf("%d ", index);
         // Loop that increments counters.
-        if (isDescending[index] == 0) {
+        if (!is_descending[index]) {
           // Ascending.
 
           const int fidx = indexEvenMultiplicity[index];
           // const auto &[fact, multiplicity] = factors[fidx];
           if (counters[index] == originalMultiplicities[index]) {
             // Next time it will be descending.
-            isDescending[index] = 1;
+            is_descending[index] = true;
             continue;
           } else {
             BigInt UU3 = factors[fidx].first * factors[fidx].first;
@@ -1986,7 +1950,7 @@ struct Quad {
           const int fidx = indexEvenMultiplicity[index];
           if (counters[index] <= 1) {
             // Next time it will be ascending.
-            isDescending[index] = 0;
+            is_descending[index] = false;
             continue;
           } else {
             BigInt UU3 = factors[fidx].first * factors[fidx].first;
@@ -2056,11 +2020,6 @@ struct Quad {
                               const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
                               const BigInt &H, const BigInt &I,
                               const BigInt &Value) {
-    if (two_solutions) {
-      CHECK(showSolution == TWO_SOLUTIONS);
-    } else {
-      CHECK(showSolution == ONE_SOLUTION);
-    }
 
     // Port note: This used to modify the value of K based on the callback
     // type, but now we do that at the call site. (Also there was something
@@ -2150,7 +2109,9 @@ struct Quad {
               Alpha, Beta, Div,
               BigInt(1), BigInt(0),
               Value);
+
           intToBigInteger(&ValI, -1);
+
           NonSquareDiscrSolution(
               false,
               M, E, K,
@@ -2541,7 +2502,6 @@ struct Quad {
     // Dead? Maybe just teach mode?
     // I think some of these are used in PositiveDiscriminant
     BigIntToBigInteger(Den, &ValDen);
-    BigIntToBigInteger(O, &ValO);
     BigIntToBigInteger(NewK, &ValK);
 
     // Loop that finds all factors of Z.
@@ -2549,7 +2509,7 @@ struct Quad {
     // Gray code: 0->000, 1->001, 2->011, 3->010, 4->110, 5->111, 6->101, 7->100.
     // Change from zero to one means multiply, otherwise divide.
     std::vector<int> counters(400, 0);
-    (void)memset(isDescending, 0, sizeof(isDescending));
+    std::vector<bool> is_descending(400, false);
 
     BigInt CurrentFactor(1);
     for (;;) {
@@ -2566,10 +2526,11 @@ struct Quad {
       int index;
       for (index = 0; index < nbrFactors; index++) {
         // Loop that increments counters.
-        if (isDescending[index] == 0) {
+        if (!is_descending[index]) {
           // Ascending.
           if (counters[index] == factors[fidx].second) {
-            isDescending[index] = 1;    // Next time it will be descending.
+            // Next time it will be descending.
+            is_descending[index] = true;
             fidx++;
             continue;
           }
@@ -2582,7 +2543,8 @@ struct Quad {
 
         if (counters[index] == 0) {
           // Descending.
-          isDescending[index] = 0;    // Next time it will be ascending.
+          // Next time it will be ascending.
+          is_descending[index] = false;
           fidx++;
           // pstFactor++;
           continue;
@@ -2621,13 +2583,12 @@ struct Quad {
   //  Set U to a*V - U
   //  Set V to (D - U^2)/V
   //  Inside period when: 0 <= G - U < V
-  void ContFrac(const BigInt &Value, enum eShowSolution solutionNbr,
+  void ContFrac(const BigInt &Value, enum SolutionNumber solutionNbr,
                 const BigInt &A, const BigInt &B, const BigInt &E,
                 const BigInt &K, const BigInt &L, const BigInt &M,
                 BigInt U, BigInt V, BigInt G,
                 const BigInt &Alpha, const BigInt &Beta,
                 const BigInt &Div, const BigInt &Discr) {
-
 
     const bool isBeven = B.IsEven();
     // If (D-U^2) is not multiple of V, exit routine.
@@ -2651,7 +2612,7 @@ struct Quad {
     BigInt StartPeriodV(-1);
     int index = 0;
 
-    if (solutionNbr == SECOND_SOLUTION) {
+    if (solutionNbr == SolutionNumber::SECOND) {
       index++;
     }
 
@@ -2667,13 +2628,12 @@ struct Quad {
 
       if (V == (isBeven ? 1 : 2) &&
           ((index & 1) == (k_neg == v_neg ? 0 : 1))) {
-        // XXX replaced with two_solutions
-        showSolution = TWO_SOLUTIONS;
+        // Two solutions
         solFound = false;
 
         // Found solution.
         if (BigInt::Abs(Discr) == 5 && (a_neg != k_neg) &&
-            (solutionNbr == FIRST_SOLUTION)) {
+            (solutionNbr == SolutionNumber::FIRST)) {
           // Determinant is 5 and aK < 0. Use exceptional solution (U1-U2)/(V1-V2).
 
           // printf("aaaaaaa coverage\n");
@@ -2685,7 +2645,6 @@ struct Quad {
               V1 - V2,
               U1 - U2,
               Value);
-
 
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
@@ -2832,7 +2791,7 @@ struct Quad {
     const BigInt Div = BigIntegerToBigInt(&ValDiv);
 
     // Continued fraction of (U+G)/V
-    ContFrac(Value, FIRST_SOLUTION,
+    ContFrac(Value, SolutionNumber::FIRST,
              A, B, E,
              K, L, M,
              U, V, G,
@@ -2845,25 +2804,22 @@ struct Quad {
     BigIntToBigInteger(V, &ValV);
 
     // Continued fraction of (-U+G)/(-V)
-    ContFrac(Value, SECOND_SOLUTION,
+    ContFrac(Value, SolutionNumber::SECOND,
              A, B, E,
              K, L, M,
              U, V, G,
              Alpha, Beta, Div, Discr);
 
-    showSolution = ONE_SOLUTION;
 
     if (Xplus.has_value()) {
       CHECK(Yplus.has_value());
       // Result box:
-      CHECK(showSolution == ONE_SOLUTION);
       clean.ShowXYOne(ExchXY, Xplus.value(), Yplus.value());
     }
 
     if (Xminus.has_value()) {
       CHECK(Yminus.has_value());
       // Result box:
-      CHECK(showSolution == ONE_SOLUTION);
       clean.ShowXYOne(ExchXY, Xminus.value(), Yminus.value());
     }
   }
@@ -2872,10 +2828,8 @@ struct Quad {
   // PS: This is where to understand the meaning of Alpha, Beta, K, Div.
   void SolveQuadEquation(BigInt A, BigInt B, BigInt C,
                          BigInt D, BigInt E, BigInt F) {
-    showSolution = ONE_SOLUTION;
-    showRecursiveSolution = 0;    // Do not show recursive solution by default.
-    divgcd = "<p>Dividing the equation by the greatest common divisor "
-      "we obtain:</p>";
+    // Do not show recursive solution by default.
+    showRecursiveSolution = 0;
 
     BigInt gcd = BigInt::GCD(BigInt::GCD(A, B),
                              BigInt::GCD(BigInt::GCD(C, D),
@@ -3009,7 +2963,6 @@ struct Quad {
     clean.ShowText("<h2>");
     clean.ShowEq(A, B, C, D, E, F, "x", "y");
     clean.ShowText(" = 0</h2>");
-    SolNbr = 0;
 
     size_t preamble_size = (clean.output == nullptr) ? 0 : clean.output->size();
 
