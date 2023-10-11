@@ -438,7 +438,7 @@ struct Quad {
   BigInteger V3;
   BigInteger bigTmp;
 
-  BigInteger modulus;
+  // BigInteger modulus;
 
   std::optional<BigInt> Xplus;
   std::optional<BigInt> Xminus;
@@ -1302,8 +1302,8 @@ struct Quad {
           &ValU, &ValV, &ValG, &ValR, &ValK,
           &ValAlpha, &ValBeta, &ValDen, &ValDiv,
           &discr,
-          &U1, &U2, &U3, &V1, &V2, &V3,
-          &modulus}) {
+          &U1, &U2, &U3, &V1, &V2, &V3
+            }) {
       intToBigInteger(b, 0xCAFE);
     }
   }
@@ -1359,11 +1359,13 @@ struct Quad {
     }
     SolNbr++;
 
+    /*
     {
-      BigInt mm = BigIntegerToBigInt(&modulus);
+      BigInt mm = BigInt::Abs(BigIntegerToBigInt(&modulus));
       CHECK(Modulus == mm) <<
         Modulus.ToString() << " vs " << mm.ToString();
     }
+    */
 
     // If 2*value is greater than modulus, subtract modulus.
     // BigInt Modulus = BigIntegerToBigInt(&modulus);
@@ -1409,50 +1411,35 @@ struct Quad {
 
   // Solve congruence an^2 + bn + c = 0 (mod n) where n is different from zero.
   template<QmodCallbackType QMOD_CALLBACK>
-  void SolveQuadModEquation(const BigInt &coeffQuadr,
-                            const BigInt &coeffLinear,
-                            const BigInt &coeffIndep,
-                            const BigInt &modulus_in) {
-
-    const BigInt A = BigIntegerToBigInt(&ValA);
-    const BigInt B = BigIntegerToBigInt(&ValB);
-    const BigInt C = BigIntegerToBigInt(&ValC);
-    const BigInt D = BigIntegerToBigInt(&ValD);
-    const BigInt E = BigIntegerToBigInt(&ValE);
-
-    const BigInt M = BigIntegerToBigInt(&ValM);
-    const BigInt K = BigIntegerToBigInt(&ValK);
-    const BigInt I = BigIntegerToBigInt(&ValI);
-
-    const BigInt U = BigIntegerToBigInt(&ValU);
-    const BigInt V = BigIntegerToBigInt(&ValV);
-
-    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    const BigInt Div = BigIntegerToBigInt(&ValDiv);
-    const BigInt Discr = BigIntegerToBigInt(&discr);
-
+  void SolveQuadModEquation(
+      const BigInt &coeffQuadr,
+      const BigInt &coeffLinear,
+      const BigInt &coeffIndep,
+      BigInt Modulus,
+      const BigInt &A, const BigInt &B, const BigInt &C, const BigInt &D, const BigInt &E,
+      const BigInt &M, const BigInt &K, const BigInt &I, const BigInt &U, const BigInt &V,
+      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div, const BigInt &Discr) {
 
     if (VERBOSE) {
       printf("[SQME] %s %s %s %s\n",
              coeffQuadr.ToString().c_str(),
              coeffLinear.ToString().c_str(),
              coeffIndep.ToString().c_str(),
-             modulus_in.ToString().c_str());
+             Modulus.ToString().c_str());
     }
 
-    BigInt modulus = BigInt::Abs(modulus_in);
+    CHECK(Modulus > 0);
 
     firstSolutionX = true;
 
-    BigInt coeff_quadr = BigInt::CMod(coeffQuadr, modulus);
-    if (coeff_quadr < 0) coeff_quadr += modulus;
+    BigInt coeff_quadr = BigInt::CMod(coeffQuadr, Modulus);
+    if (coeff_quadr < 0) coeff_quadr += Modulus;
 
-    BigInt coeff_linear = BigInt::CMod(coeffLinear, modulus);
-    if (coeff_linear < 0) coeff_linear += modulus;
+    BigInt coeff_linear = BigInt::CMod(coeffLinear, Modulus);
+    if (coeff_linear < 0) coeff_linear += Modulus;
 
-    BigInt coeff_indep = BigInt::CMod(coeffIndep, modulus);
-    if (coeff_indep < 0) coeff_indep += modulus;
+    BigInt coeff_indep = BigInt::CMod(coeffIndep, Modulus);
+    if (coeff_indep < 0) coeff_indep += Modulus;
 
     BigInt GcdAll = BigInt::GCD(coeff_indep,
                                 BigInt::GCD(coeff_quadr, coeff_linear));
@@ -1466,7 +1453,7 @@ struct Quad {
       return;
     }
 
-    GcdAll = BigInt::GCD(modulus, GcdAll);
+    GcdAll = BigInt::GCD(Modulus, GcdAll);
 
     // PERF: version of division where we know it's divisible.
     // Divide all coefficients by gcd(ValA, ValB).
@@ -1474,10 +1461,10 @@ struct Quad {
       coeff_quadr /= GcdAll;
       coeff_linear /= GcdAll;
       coeff_indep /= GcdAll;
-      modulus /= GcdAll;
+      Modulus /= GcdAll;
     }
 
-    BigInt ValNn = modulus;
+    BigInt ValNn = Modulus;
 
     if (ValNn == 1) {
       // All values from 0 to GcdAll - 1 are solutions.
@@ -1494,7 +1481,7 @@ struct Quad {
 
         const int n = GcdAll.ToInt().value();
         for (int ctr = 0; ctr < n; ctr++) {
-          SolutionX<QMOD_CALLBACK>(BigInt(ctr), modulus,
+          SolutionX<QMOD_CALLBACK>(BigInt(ctr), Modulus,
                                    A, B, C, D, E,
                                    M, K, I,
                                    U, V,
@@ -1505,11 +1492,11 @@ struct Quad {
     }
 
     // PERF divisibility check
-    if (BigInt::CMod(coeff_quadr, modulus) == 0) {
+    if (BigInt::CMod(coeff_quadr, Modulus) == 0) {
       // Linear equation.
       printf("linear-eq coverage\n");
 
-      if (BigInt::GCD(coeff_linear, modulus) != 1) {
+      if (BigInt::GCD(coeff_linear, Modulus) != 1) {
         // ValB and ValN are not coprime. Go out.
         return;
       }
@@ -1519,13 +1506,13 @@ struct Quad {
       // We only use this right here, so we could have a version of MGParams
       // that just took a BigInt modulus, at least for this code.
       limb TheModulus[MAX_LEN];
-      const int modulus_length = BigIntToLimbs(modulus, TheModulus);
+      const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
       TheModulus[modulus_length].x = 0;
 
       // Is it worth it to convert to montgomery form for one division??
       const MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
 
-      BigInt z = BigIntModularDivision(params, coeff_indep, coeff_linear, modulus);
+      BigInt z = BigIntModularDivision(params, coeff_indep, coeff_linear, Modulus);
 
       if (z != 0) {
         // not covered by cov.sh :(
@@ -1541,12 +1528,12 @@ struct Quad {
       for (;;) {
         // also not covered :(
         printf("new coverage: loop zz");
-        SolutionX<QMOD_CALLBACK>(z, modulus,
+        SolutionX<QMOD_CALLBACK>(z, Modulus,
                                  A, B, C, D, E,
                                  M, K, I,
                                  U, V,
                                  Alpha, Beta, Div, Discr);
-        z += modulus;
+        z += Modulus;
         if (z < Temp0) break;
       }
 
@@ -1567,14 +1554,14 @@ struct Quad {
       // SolveEquation used to modify the modulus and Nn. Was that
       // why?
       // CHECK(modulus == BigIntegerToBigInt(&this->modulus));
-      BigIntToBigInteger(modulus, &this->modulus);
+      // BigIntToBigInteger(Modulus, &this->modulus);
 
       if (VERBOSE) {
         printf("[Call SolveEq] %s %s %s %s %s %s\n",
                coeff_quadr.ToString().c_str(),
                coeff_linear.ToString().c_str(),
                coeff_indep.ToString().c_str(),
-               modulus.ToString().c_str(),
+               Modulus.ToString().c_str(),
                GcdAll.ToString().c_str(),
                ValNn.ToString().c_str());
       }
@@ -1583,14 +1570,14 @@ struct Quad {
           SolutionFn([&](const BigInt &Value) {
               this->SolutionX<QMOD_CALLBACK>(
                   Value,
-                  modulus,
+                  Modulus,
                   A, B, C, D, E,
                   M, K, I,
                   U, V,
                   Alpha, Beta, Div, Discr);
             }),
           coeff_quadr, coeff_linear, coeff_indep,
-          modulus, GcdAll, ValNn);
+          Modulus, GcdAll, ValNn);
     }
   }
 
@@ -1685,16 +1672,31 @@ struct Quad {
     //     T^2 = v (mod u) where T = t+d and t = 2ax+by.
 
     BigInt Modulus = BigIntegerToBigInt(&ValU);
+
+    // CHECK(BigIntegerToBigInt(&modulus) == 0xCAFE);
     // XXX eliminate this state
-    CopyBigInt(&modulus, &ValU);
+    // CopyBigInt(&modulus, &ValU);
+    // fprintf(stderr, "Modulus now %s\n",
+    //         BigIntegerToBigInt(&modulus).ToString().c_str());
+
 
     equationNbr = 3;
+
+    const BigInt M = BigIntegerToBigInt(&ValM);
+    const BigInt K = BigIntegerToBigInt(&ValK);
+    const BigInt I = BigIntegerToBigInt(&ValI);
+    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+    const BigInt Div = BigIntegerToBigInt(&ValDiv);
+    const BigInt Discr = BigIntegerToBigInt(&discr);
 
     SolveQuadModEquation<QmodCallbackType::PARABOLIC>(
         BigInt(1),
         BigInt(0),
-        -V,
-        Modulus);
+        -V, BigInt::Abs(Modulus),
+        A, B, C, D, E,
+        M, K, I, U, V,
+        Alpha, Beta, Div, Discr);
   }
 
   void ShowPoint(bool two_solutions,
@@ -1948,20 +1950,35 @@ struct Quad {
     BigIntToBigInteger(B, &ValB);
     BigIntToBigInteger(C, &ValC);
     BigIntToBigInteger(M, &ValM);
+    const BigInt D = BigIntegerToBigInt(&ValD);
+    const BigInt I = BigIntegerToBigInt(&ValI);
+    const BigInt U = BigIntegerToBigInt(&ValU);
+    const BigInt V = BigIntegerToBigInt(&ValV);
+
+    // CHECK(BigIntegerToBigInt(&modulus) == 0xCAFE);
 
     for (;;) {
       // printf("solve loop\n");
-      BigIntToBigInteger(K, &modulus);
-      modulus.sign = SIGN_POSITIVE;
+      // BigIntToBigInteger(K, &modulus);
+      // modulus.sign = SIGN_POSITIVE;
+      /*
+      fprintf(stderr,
+              "[NSD] Now modulus is %s\n", BigIntegerToBigInt(&modulus).ToString().c_str());
+      */
 
       // Ugh, SQME depends on additional state (SolutionX).
       // These two are modified in this loop.
       BigIntToBigInteger(E, &ValE);
       BigIntToBigInteger(K, &ValK);
 
+
       SolveQuadModEquation<QMOD_CALLBACK>(
-          A, B, C,
-          BigInt::Abs(K));
+          // Coefficients and modulus
+          A, B, C, BigInt::Abs(K),
+          // Problem state
+          A, B, C, D, E,
+          M, K, I, U, V,
+          Alpha, Beta, Div, Discr);
 
       // Adjust counters.
       // This modifies the factors (multiplicities) in place.
@@ -2944,6 +2961,9 @@ struct Quad {
     // Compute discriminant: b^2 - 4ac.
     const BigInt Discr = B * B - ((A * C) << 2);
 
+
+    // CHECK(BigIntegerToBigInt(&modulus) == 0xCAFE);
+
     if (Discr == 0) {
       // Discriminant is zero.
       DiscriminantIsZero(A, B, C, D, E, F);
@@ -2951,8 +2971,6 @@ struct Quad {
     }
 
     // Compute gcd(a,b,c).
-    // BigIntGcd(&ValA, &ValB, &bigTmp);
-    // BigIntGcd(&bigTmp, &ValC, &U1);
 
     BigInt UU1 = BigInt::GCD(BigInt::GCD(A, B), C);
     BigInt Div, K, Alpha, Beta;
