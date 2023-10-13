@@ -1635,14 +1635,12 @@ struct Quad {
     // the GCD of the coefficients.)
     CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
 
-    // PERF divisibility tests.
-    if (tmp1 % Div == 0 &&
-        tmp2 % Div == 0) {
+    if (BigInt::DivisibleBy(tmp1, Div) &&
+        BigInt::DivisibleBy(tmp2, Div)) {
 
-      // PERF known divisible
       if (Div != 0) {
-        tmp1 /= Div;
-        tmp2 /= Div;
+        tmp1 = BigInt::DivExact(tmp1, Div);
+        tmp2 = BigInt::DivExact(tmp2, Div);
       }
 
       // HYPERBOLIC.
@@ -1665,14 +1663,12 @@ struct Quad {
     // the GCD of the coefficients.)
     CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
 
-    // PERF divisibility tests.
-    if (tmp1 % Div == 0 &&
-        tmp2 % Div == 0) {
+    if (BigInt::DivisibleBy(tmp1, Div) &&
+        BigInt::DivisibleBy(tmp2, Div)) {
 
-      // PERF known divisible
       if (Div != 0) {
-        tmp1 /= Div;
-        tmp2 /= Div;
+        tmp1 = BigInt::DivExact(tmp1, Div);
+        tmp2 = BigInt::DivExact(tmp2, Div);
       }
 
       // Not HYPERBOLIC.
@@ -1681,29 +1677,6 @@ struct Quad {
       // Show recursive solution if it exists.
       showRecursiveSolution = 1;
     }
-  }
-
-
-  void ShowPoint(bool two_solutions,
-                 const BigInt &X, const BigInt &Y,
-                 const BigInt &Alpha, const BigInt &Beta,
-                 const BigInt &Div,
-                 std::optional<BigInt> *Xdst,
-                 std::optional<BigInt> *Ydst) {
-
-    if (VERBOSE) {
-      printf("ShowPoint %s %s %s %s %s\n",
-             X.ToString().c_str(),
-             Y.ToString().c_str(),
-             Alpha.ToString().c_str(),
-             Beta.ToString().c_str(),
-             Div.ToString().c_str());
-    }
-
-    if (two_solutions)
-      ShowPointTwo(X, Y, Alpha, Beta, Div, Xdst, Ydst);
-    else
-      ShowPointOne(X, Y, Alpha, Beta, Div);
   }
 
   // Solve ax^2+bxy+cy^2 = K
@@ -1742,10 +1715,10 @@ struct Quad {
     BigInt GcdHomog = BigInt::GCD(BigInt::GCD(A, B), C);
     // Divide A, B, C and K by this GCD.
     if (GcdHomog != 0) {
-      A /= GcdHomog;
-      B /= GcdHomog;
-      C /= GcdHomog;
-      K /= GcdHomog;
+      A = BigInt::DivExact(A, GcdHomog);
+      B = BigInt::DivExact(B, GcdHomog);
+      C = BigInt::DivExact(C, GcdHomog);
+      K = BigInt::DivExact(K, GcdHomog);
       // Divide discriminant by the square of GCD.
       Discr /= GcdHomog;
       Discr /= GcdHomog;
@@ -1753,8 +1726,7 @@ struct Quad {
 
     if (K == 0) {
       // If k=0, the only solution is (X, Y) = (0, 0)
-      ShowPoint(false, BigInt(0), BigInt(0), Alpha, Beta, Div,
-                nullptr, nullptr);
+      ShowPointOne(BigInt(0), BigInt(0), Alpha, Beta, Div);
       return;
     }
 
@@ -2016,8 +1988,45 @@ struct Quad {
   // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
   // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
   // Do not substitute if m equals zero.
-  void NonSquareDiscrSolution(
-      bool two_solutions,
+  void NonSquareDiscrSolutionOne(
+      const BigInt &M, const BigInt &E, const BigInt &K,
+      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
+      const BigInt &H, const BigInt &I,
+      const BigInt &Value) {
+
+    // Port note: This used to modify the value of K based on the
+    // callback type, but now we do that at the call site. (Also there
+    // was something suspicious in here where it flipped the sign and
+    // then set it negative.)
+
+    // X = (tu - Kv)*E
+    const BigInt Z = (Value * H - K * I) * E;
+    // Y = u*E
+    const BigInt O = H * E;
+
+    // (we get here with both values for two_solutions)
+
+    // Undo unimodular substitution
+    {
+      const auto &[Temp0, Temp1] =
+        UnimodularSubstitution(M, Z, O);
+      ShowPointOne(Temp0, Temp1, Alpha, Beta, Div);
+    }
+
+    // Z: (-tu - Kv)*E
+    // O: -u*E
+
+    // Undo unimodular substitution
+    {
+      const auto &[Temp0, Temp1] =
+        UnimodularSubstitution(M, -Z, -O);
+      ShowPointOne(Temp0, Temp1, Alpha, Beta, Div);
+    }
+  }
+
+  // Same, when there are two solutions.
+  // XXX this should return them, rather than modifying xminus/yminus
+  void NonSquareDiscrSolutionTwo(
       const BigInt &M, const BigInt &E, const BigInt &K,
       const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
       const BigInt &H, const BigInt &I,
@@ -2032,14 +2041,14 @@ struct Quad {
     // Y = u*E
     const BigInt O = H * E;
 
+
     // Undo unimodular substitution
     {
       const auto &[Temp0, Temp1] =
         UnimodularSubstitution(M, Z, O);
-      ShowPoint(two_solutions,
-                Temp0,
-                Temp1,
-                Alpha, Beta, Div, &Xplus, &Yplus);
+      ShowPointTwo(Temp0,
+                   Temp1,
+                   Alpha, Beta, Div, &Xplus, &Yplus);
     }
 
     // Z: (-tu - Kv)*E
@@ -2049,14 +2058,12 @@ struct Quad {
     {
       const auto &[Temp0, Temp1] =
         UnimodularSubstitution(M, -Z, -O);
-      ShowPoint(two_solutions,
-                Temp0,
-                Temp1,
-                Alpha, Beta, Div, &Xminus, &Yminus);
+      ShowPointTwo(Temp0,
+                   Temp1,
+                   Alpha, Beta, Div, &Xminus, &Yminus);
     }
-
-    // Restore value.
   }
+
 
   void CallbackQuadModElliptic(
       const BigInt &A, const BigInt &B, const BigInt &C,
@@ -2081,8 +2088,7 @@ struct Quad {
       if (Discr < -4 && plow == 1) {
         // Discriminant is less than -4 and P equals 1.
 
-        NonSquareDiscrSolution(
-            false,
+        NonSquareDiscrSolutionOne(
             M, E, K,
             Alpha, Beta, Div,
             BigInt(1), BigInt(0),
@@ -2096,8 +2102,7 @@ struct Quad {
         BigInt G = Q >> 1;
 
         if (plow == 1) {
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               BigInt(1), BigInt(0),
@@ -2105,8 +2110,7 @@ struct Quad {
 
           intToBigInteger(&ValI, -1);
 
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               G, BigInt(-1),
@@ -2115,15 +2119,13 @@ struct Quad {
           return;
         } if (plow == 2) {
 
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               (G - 1) >> 1, BigInt(-1),
               Value);   // ((Q/2-1)/2, -1)
 
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               (G + 1) >> 1, BigInt(-1),
@@ -2138,22 +2140,19 @@ struct Quad {
         if (plow == 1) {
 
           // printf("plow1 coverage\n");
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               BigInt(1), BigInt(0),
               Value);   // (1, 0)
 
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               (Q - 1) >> 1, BigInt(-1),
               Value);   // ((Q-1)/2, -1)
 
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               (Q + 1) >> 1, BigInt(-1),
@@ -2164,22 +2163,19 @@ struct Quad {
 
           // printf("plow3 coverage\n");
 
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               (Q + 3) / 6, BigInt(-1),
               Value);   // ((Q+3)/6, -1)
 
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               Q / 3, BigInt(-2),
               Value);   // (Q/3, -2)
 
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               (Q - 3) / 6, BigInt(-1),
@@ -2224,8 +2220,7 @@ struct Quad {
       if (O == 1) {
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
-        NonSquareDiscrSolution(
-            false,
+        NonSquareDiscrSolutionOne(
             M, E, K,
             Alpha, Beta, Div,
             U1, V1,
@@ -2252,8 +2247,7 @@ struct Quad {
           BigIntToBigInteger(I, &ValI);
           // CopyBigInt(&ValI, &V1);
 
-          NonSquareDiscrSolution(
-              false,
+          NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               U1, V1,
@@ -2263,8 +2257,7 @@ struct Quad {
             std::tie(U, U1, U2, V, V1, V2) =
                 clean.GetNextConvergent(U, U1, U2, V, V1, V2);
 
-            NonSquareDiscrSolution(
-                false,
+            NonSquareDiscrSolutionOne(
                 M, E, K,
                 Alpha, Beta, Div,
                 U1, V1,
@@ -2318,7 +2311,7 @@ struct Quad {
         BigInt U2 = P / O;
         // Show results.
 
-        ShowPoint(false, U1, U2, Alpha, Beta, Div, nullptr, nullptr);
+        ShowPointOne(U1, U2, Alpha, Beta, Div);
         return;
       }
     }
@@ -2628,8 +2621,7 @@ struct Quad {
 
           // printf("aaaaaaa coverage\n");
 
-          NonSquareDiscrSolution(
-              true,
+          NonSquareDiscrSolutionTwo(
               M, E, -BigInt::Abs(K),
               Alpha, Beta, Div,
               V1 - V2,
@@ -2639,8 +2631,7 @@ struct Quad {
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
 
-          NonSquareDiscrSolution(
-              true,
+          NonSquareDiscrSolutionTwo(
               M, E, -BigInt::Abs(K),
               Alpha, Beta, Div,
               V1, U1, Value);
