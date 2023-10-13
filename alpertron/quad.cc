@@ -314,6 +314,69 @@ PerformTransformation(
   return std::nullopt;
 }
 
+// Accumulates the minimum solution in xdst, ydst. Would be cleaner
+// if we passed around some kind of explicit state.
+void ShowXYTwo(bool swap_xy, const BigInt &X, const BigInt &Y,
+               std::optional<BigInt> *Xdst,
+               std::optional<BigInt> *Ydst) {
+
+  CHECK(Xdst != nullptr);
+  CHECK(Ydst != nullptr);
+
+  if (!Xdst->has_value()) {
+    CHECK(!Ydst->has_value());
+    Xdst->emplace(X);
+    Ydst->emplace(Y);
+  } else {
+    CHECK(Xdst->has_value());
+    CHECK(Ydst->has_value());
+
+    // Use the lowest of |X| + |Y| and |Xdst| + |Ydst|
+    BigInt BX = Xdst->value();
+    BigInt BY = Ydst->value();
+
+    if (BigInt::Abs(X) + BigInt::Abs(Y) <=
+        BigInt::Abs(BX) + BigInt::Abs(BY)) {
+      // At this moment |x| + |y| <= |xdst| + |ydst|
+      Xdst->emplace(X);
+      Ydst->emplace(Y);
+    }
+  }
+}
+
+// Returns true if solution found.
+bool ShowPointTwo(
+    bool swap_xy,
+    const BigInt &X, const BigInt &Y,
+    const BigInt &Alpha, const BigInt &Beta,
+    const BigInt &Div,
+    std::optional<BigInt> *Xdst,
+    std::optional<BigInt> *Ydst) {
+
+  // Check first that (X+alpha) and (Y+beta) are multiple of D.
+  BigInt tmp1 = X + Alpha;
+  BigInt tmp2 = Y + Beta;
+
+  // (I think this should actually be impossible because Div comes from
+  // the GCD of the coefficients.)
+  CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
+
+  if (BigInt::DivisibleBy(tmp1, Div) &&
+      BigInt::DivisibleBy(tmp2, Div)) {
+
+    if (Div != 0) {
+      tmp1 = BigInt::DivExact(tmp1, Div);
+      tmp2 = BigInt::DivExact(tmp2, Div);
+    }
+
+    // HYPERBOLIC.
+    ShowXYTwo(swap_xy, tmp1, tmp2, Xdst, Ydst);
+    return true;
+  }
+  return false;
+}
+
+
 // First check: |u| < g.
 // Second check: |u+g| > |v|
 // Third check: |u-g| < |v|
@@ -399,7 +462,6 @@ struct Quad {
   BigInteger discr;
   int showRecursiveSolution = 0;
   // BigInt Xind, Yind, Xlin, Ylin;
-  bool solFound = false;
   bool ExchXY = false;
 
   std::optional<BigInt> Xplus;
@@ -1237,6 +1299,136 @@ struct Quad {
     }
 
 
+    // On input: H: value of u, I: value of v.
+    // Output: ((tu - nv)*E, u*E) and ((-tu + nv)*E, -u*E)
+    // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
+    // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
+    // Do not substitute if m equals zero.
+    // Returns true if solution found.
+    bool NonSquareDiscrSolutionOne(
+        bool swap_xy,
+        const BigInt &M, const BigInt &E, const BigInt &K,
+        const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
+        const BigInt &H, const BigInt &I,
+        const BigInt &Value) {
+
+      // Port note: This used to modify the value of K based on the
+      // callback type, but now we do that at the call site. (Also there
+      // was something suspicious in here where it flipped the sign and
+      // then set it negative.)
+
+      // X = (tu - Kv)*E
+      const BigInt Z = (Value * H - K * I) * E;
+      // Y = u*E
+      const BigInt O = H * E;
+
+      // (we get here with both values for two_solutions)
+
+      bool sol_found = false;
+      // Undo unimodular substitution
+      {
+        const auto &[Temp0, Temp1] =
+          UnimodularSubstitution(M, Z, O);
+        sol_found = ShowPointOne(swap_xy, Temp0, Temp1, Alpha, Beta, Div);
+      }
+
+      // Z: (-tu - Kv)*E
+      // O: -u*E
+
+      // Undo unimodular substitution
+      {
+        const auto &[Temp0, Temp1] =
+          UnimodularSubstitution(M, -Z, -O);
+        sol_found = ShowPointOne(swap_xy, Temp0, Temp1, Alpha, Beta, Div) ||
+          sol_found;
+      }
+      return sol_found;
+    }
+
+    // Same, when there are two solutions.
+    // Returns true if a solution found (solFound = true in original code).
+    // XXX this should return them, rather than modifying xminus/yminus
+    bool NonSquareDiscrSolutionTwo(
+        bool swap_xy,
+        const BigInt &M, const BigInt &E, const BigInt &K,
+        const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
+        const BigInt &H, const BigInt &I,
+        const BigInt &Value,
+        std::optional<BigInt> *Xplus, std::optional<BigInt> *Yplus,
+        std::optional<BigInt> *Xminus, std::optional<BigInt> *Yminus) {
+
+      // Port note: This used to modify the value of K based on the callback
+      // type, but now we do that at the call site. (Also there was something
+      // suspicious in here where it flipped the sign and then set it negative.)
+
+      // X = (tu - Kv)*E
+      const BigInt Z = (Value * H - K * I) * E;
+      // Y = u*E
+      const BigInt O = H * E;
+
+
+      bool sol_found = false;
+      // Undo unimodular substitution
+      {
+        const auto &[Temp0, Temp1] =
+          UnimodularSubstitution(M, Z, O);
+        sol_found = ShowPointTwo(swap_xy,
+                                 Temp0,
+                                 Temp1,
+                                 Alpha, Beta, Div,
+                                 Xplus, Yplus);
+      }
+
+      // Z: (-tu - Kv)*E
+      // O: -u*E
+
+      // Undo unimodular substitution
+      {
+        const auto &[Temp0, Temp1] =
+          UnimodularSubstitution(M, -Z, -O);
+        sol_found= ShowPointTwo(swap_xy,
+                                Temp0,
+                                Temp1,
+                                Alpha, Beta, Div,
+                                Xminus, Yminus) ||
+          sol_found;
+      }
+
+      return sol_found;
+    }
+
+
+    // Returns true if we found a solution (and so should show
+    // the recursive solution).
+    bool ShowPointOne(bool swap_xy,
+                      const BigInt &X, const BigInt &Y,
+                      const BigInt &Alpha, const BigInt &Beta,
+                      const BigInt &Div) {
+
+      // Check first that (X+alpha) and (Y+beta) are multiple of D.
+      BigInt tmp1 = X + Alpha;
+      BigInt tmp2 = Y + Beta;
+
+      // (I think this should actually be impossible because Div comes from
+      // the GCD of the coefficients.)
+      CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
+
+      if (BigInt::DivisibleBy(tmp1, Div) &&
+          BigInt::DivisibleBy(tmp2, Div)) {
+
+        if (Div != 0) {
+          tmp1 = BigInt::DivExact(tmp1, Div);
+          tmp2 = BigInt::DivExact(tmp2, Div);
+        }
+
+        // Not HYPERBOLIC.
+        // Result box:
+        ShowXYOne(swap_xy, tmp1, tmp2);
+        return true;
+      }
+      return false;
+    }
+
   };  // Clean
 
 
@@ -1261,36 +1453,6 @@ struct Quad {
   struct Solution {
 
   };
-
-  // Accumulates the minimum solution in xdst, ydst. Would be cleaner
-  // if we passed around some kind of explicit state.
-  void ShowXYTwo(bool swap_xy, const BigInt &X, const BigInt &Y,
-                 std::optional<BigInt> *Xdst,
-                 std::optional<BigInt> *Ydst) {
-
-    CHECK(Xdst != nullptr);
-    CHECK(Ydst != nullptr);
-
-    if (!Xdst->has_value()) {
-      CHECK(!Ydst->has_value());
-      Xdst->emplace(X);
-      Ydst->emplace(Y);
-    } else {
-      CHECK(Xdst->has_value());
-      CHECK(Ydst->has_value());
-
-      // Use the lowest of |X| + |Y| and |Xdst| + |Ydst|
-      BigInt BX = Xdst->value();
-      BigInt BY = Ydst->value();
-
-      if (BigInt::Abs(X) + BigInt::Abs(Y) <=
-          BigInt::Abs(BX) + BigInt::Abs(BY)) {
-        // At this moment |x| + |y| <= |xdst| + |ydst|
-        Xdst->emplace(X);
-        Ydst->emplace(Y);
-      }
-    }
-  }
 
   // TODO: Try to make this dispatch (callbackQuadModType) static.
   template<QmodCallbackType QMOD_CALLBACK>
@@ -1620,65 +1782,6 @@ struct Quad {
         Alpha, Beta, Div, Discr);
   }
 
-  void ShowPointTwo(
-      const BigInt &X, const BigInt &Y,
-      const BigInt &Alpha, const BigInt &Beta,
-      const BigInt &Div,
-      std::optional<BigInt> *Xdst,
-      std::optional<BigInt> *Ydst) {
-
-    // Check first that (X+alpha) and (Y+beta) are multiple of D.
-    BigInt tmp1 = X + Alpha;
-    BigInt tmp2 = Y + Beta;
-
-    // (I think this should actually be impossible because Div comes from
-    // the GCD of the coefficients.)
-    CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
-
-    if (BigInt::DivisibleBy(tmp1, Div) &&
-        BigInt::DivisibleBy(tmp2, Div)) {
-
-      if (Div != 0) {
-        tmp1 = BigInt::DivExact(tmp1, Div);
-        tmp2 = BigInt::DivExact(tmp2, Div);
-      }
-
-      // HYPERBOLIC.
-      solFound = true;
-      ShowXYTwo(ExchXY, tmp1, tmp2, Xdst, Ydst);
-      // Show recursive solution if it exists.
-      showRecursiveSolution = 1;
-    }
-  }
-
-  void ShowPointOne(const BigInt &X, const BigInt &Y,
-                    const BigInt &Alpha, const BigInt &Beta,
-                    const BigInt &Div) {
-
-    // Check first that (X+alpha) and (Y+beta) are multiple of D.
-    BigInt tmp1 = X + Alpha;
-    BigInt tmp2 = Y + Beta;
-
-    // (I think this should actually be impossible because Div comes from
-    // the GCD of the coefficients.)
-    CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
-
-    if (BigInt::DivisibleBy(tmp1, Div) &&
-        BigInt::DivisibleBy(tmp2, Div)) {
-
-      if (Div != 0) {
-        tmp1 = BigInt::DivExact(tmp1, Div);
-        tmp2 = BigInt::DivExact(tmp2, Div);
-      }
-
-      // Not HYPERBOLIC.
-      // Result box:
-      clean.ShowXYOne(ExchXY, tmp1, tmp2);
-      // Show recursive solution if it exists.
-      showRecursiveSolution = 1;
-    }
-  }
-
   // Solve ax^2+bxy+cy^2 = K
   // The quadratic modular equation algorithm requires that gcd(a, n) = 1.
   // At this point gcd(a, b, c) = 1
@@ -1726,7 +1829,10 @@ struct Quad {
 
     if (K == 0) {
       // If k=0, the only solution is (X, Y) = (0, 0)
-      ShowPointOne(BigInt(0), BigInt(0), Alpha, Beta, Div);
+      if (clean.ShowPointOne(ExchXY,
+                             BigInt(0), BigInt(0), Alpha, Beta, Div)) {
+        showRecursiveSolution = true;
+      }
       return;
     }
 
@@ -1983,86 +2089,6 @@ struct Quad {
         A, B, C, K, D, I, U, V, Discr, Alpha, Beta, Div);
   }
 
-  // On input: H: value of u, I: value of v.
-  // Output: ((tu - nv)*E, u*E) and ((-tu + nv)*E, -u*E)
-  // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
-  // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
-  // Do not substitute if m equals zero.
-  void NonSquareDiscrSolutionOne(
-      const BigInt &M, const BigInt &E, const BigInt &K,
-      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
-      const BigInt &H, const BigInt &I,
-      const BigInt &Value) {
-
-    // Port note: This used to modify the value of K based on the
-    // callback type, but now we do that at the call site. (Also there
-    // was something suspicious in here where it flipped the sign and
-    // then set it negative.)
-
-    // X = (tu - Kv)*E
-    const BigInt Z = (Value * H - K * I) * E;
-    // Y = u*E
-    const BigInt O = H * E;
-
-    // (we get here with both values for two_solutions)
-
-    // Undo unimodular substitution
-    {
-      const auto &[Temp0, Temp1] =
-        UnimodularSubstitution(M, Z, O);
-      ShowPointOne(Temp0, Temp1, Alpha, Beta, Div);
-    }
-
-    // Z: (-tu - Kv)*E
-    // O: -u*E
-
-    // Undo unimodular substitution
-    {
-      const auto &[Temp0, Temp1] =
-        UnimodularSubstitution(M, -Z, -O);
-      ShowPointOne(Temp0, Temp1, Alpha, Beta, Div);
-    }
-  }
-
-  // Same, when there are two solutions.
-  // XXX this should return them, rather than modifying xminus/yminus
-  void NonSquareDiscrSolutionTwo(
-      const BigInt &M, const BigInt &E, const BigInt &K,
-      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
-      const BigInt &H, const BigInt &I,
-      const BigInt &Value) {
-
-    // Port note: This used to modify the value of K based on the callback
-    // type, but now we do that at the call site. (Also there was something
-    // suspicious in here where it flipped the sign and then set it negative.)
-
-    // X = (tu - Kv)*E
-    const BigInt Z = (Value * H - K * I) * E;
-    // Y = u*E
-    const BigInt O = H * E;
-
-
-    // Undo unimodular substitution
-    {
-      const auto &[Temp0, Temp1] =
-        UnimodularSubstitution(M, Z, O);
-      ShowPointTwo(Temp0,
-                   Temp1,
-                   Alpha, Beta, Div, &Xplus, &Yplus);
-    }
-
-    // Z: (-tu - Kv)*E
-    // O: -u*E
-
-    // Undo unimodular substitution
-    {
-      const auto &[Temp0, Temp1] =
-        UnimodularSubstitution(M, -Z, -O);
-      ShowPointTwo(Temp0,
-                   Temp1,
-                   Alpha, Beta, Div, &Xminus, &Yminus);
-    }
-  }
 
 
   void CallbackQuadModElliptic(
@@ -2088,11 +2114,14 @@ struct Quad {
       if (Discr < -4 && plow == 1) {
         // Discriminant is less than -4 and P equals 1.
 
-        NonSquareDiscrSolutionOne(
-            M, E, K,
-            Alpha, Beta, Div,
-            BigInt(1), BigInt(0),
-            Value);   // (1, 0)
+        if (clean.NonSquareDiscrSolutionOne(
+                ExchXY,
+                M, E, K,
+                Alpha, Beta, Div,
+                BigInt(1), BigInt(0),
+                Value)) {
+          showRecursiveSolution = 1;
+        }
 
         return;
       }
@@ -2102,35 +2131,48 @@ struct Quad {
         BigInt G = Q >> 1;
 
         if (plow == 1) {
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              Alpha, Beta, Div,
-              BigInt(1), BigInt(0),
-              Value);
+          bool sol_found =
+          clean.NonSquareDiscrSolutionOne(
+                ExchXY,
+                  M, E, K,
+                  Alpha, Beta, Div,
+                  BigInt(1), BigInt(0),
+                  Value);
 
           intToBigInteger(&ValI, -1);
 
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              Alpha, Beta, Div,
-              G, BigInt(-1),
-              Value);   // (Q/2, -1)
+          sol_found =
+            clean.NonSquareDiscrSolutionOne(
+                ExchXY,
+                M, E, K,
+                Alpha, Beta, Div,
+                // (Q/2, -1)
+                G, BigInt(-1),
+                Value) || sol_found;
 
+          if (sol_found) showRecursiveSolution = 1;
           return;
         } if (plow == 2) {
 
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              Alpha, Beta, Div,
-              (G - 1) >> 1, BigInt(-1),
-              Value);   // ((Q/2-1)/2, -1)
+          bool sol_found =
+            clean.NonSquareDiscrSolutionOne(
+                ExchXY,
+                M, E, K,
+                Alpha, Beta, Div,
+                // ((Q/2-1)/2, -1)
+                (G - 1) >> 1, BigInt(-1),
+                Value);
 
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              Alpha, Beta, Div,
-              (G + 1) >> 1, BigInt(-1),
-              Value);   // ((Q/2+1)/2, -1)
+          sol_found =
+            clean.NonSquareDiscrSolutionOne(
+                ExchXY,
+                M, E, K,
+                Alpha, Beta, Div,
+                // ((Q/2+1)/2, -1)
+                (G + 1) >> 1, BigInt(-1),
+                Value) || sol_found;
 
+          if (sol_found) showRecursiveSolution = 1;
           return;
         }
       }
@@ -2140,47 +2182,66 @@ struct Quad {
         if (plow == 1) {
 
           // printf("plow1 coverage\n");
-          NonSquareDiscrSolutionOne(
+          bool sol_found =
+          clean.NonSquareDiscrSolutionOne(
+              ExchXY,
               M, E, K,
               Alpha, Beta, Div,
               BigInt(1), BigInt(0),
-              Value);   // (1, 0)
+              Value);
 
-          NonSquareDiscrSolutionOne(
+          sol_found =
+          clean.NonSquareDiscrSolutionOne(
+              ExchXY,
               M, E, K,
               Alpha, Beta, Div,
+              // ((Q-1)/2, -1)
               (Q - 1) >> 1, BigInt(-1),
-              Value);   // ((Q-1)/2, -1)
+              Value) || sol_found;
 
-          NonSquareDiscrSolutionOne(
+          sol_found =
+          clean.NonSquareDiscrSolutionOne(
+              ExchXY,
               M, E, K,
               Alpha, Beta, Div,
+              // ((Q+1)/2, -1)
               (Q + 1) >> 1, BigInt(-1),
-              Value);   // ((Q+1)/2, -1)
+              Value) || sol_found;
 
+          if (sol_found) showRecursiveSolution = 1;
           return;
         } else if (plow == 3) {
 
           // printf("plow3 coverage\n");
 
-          NonSquareDiscrSolutionOne(
+          bool sol_found =
+          clean.NonSquareDiscrSolutionOne(
+              ExchXY,
               M, E, K,
               Alpha, Beta, Div,
+              // ((Q+3)/6, -1)
               (Q + 3) / 6, BigInt(-1),
-              Value);   // ((Q+3)/6, -1)
+              Value);
 
-          NonSquareDiscrSolutionOne(
+          sol_found =
+          clean.NonSquareDiscrSolutionOne(
+              ExchXY,
               M, E, K,
               Alpha, Beta, Div,
+              // (Q/3, -2)
               Q / 3, BigInt(-2),
-              Value);   // (Q/3, -2)
+              Value) || sol_found;
 
-          NonSquareDiscrSolutionOne(
+          sol_found =
+          clean.NonSquareDiscrSolutionOne(
+              ExchXY,
               M, E, K,
               Alpha, Beta, Div,
+              // ((Q-3)/6, -1)
               (Q - 3) / 6, BigInt(-1),
-              Value);   // ((Q-3)/6, -1)
+              Value) || sol_found;
 
+          if (sol_found) showRecursiveSolution = 1;
           return;
         }
       }
@@ -2220,11 +2281,14 @@ struct Quad {
       if (O == 1) {
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
-        NonSquareDiscrSolutionOne(
+        bool sol_found =
+        clean.NonSquareDiscrSolutionOne(
+            ExchXY,
             M, E, K,
             Alpha, Beta, Div,
             U1, V1,
             Value);
+        if (sol_found) showRecursiveSolution = 1;
 
         std::optional<int64_t> dopt = Discr.ToInt();
         if (!dopt.has_value()) break;
@@ -2247,7 +2311,9 @@ struct Quad {
           BigIntToBigInteger(I, &ValI);
           // CopyBigInt(&ValI, &V1);
 
-          NonSquareDiscrSolutionOne(
+          bool sol_found =
+          clean.NonSquareDiscrSolutionOne(
+              ExchXY,
               M, E, K,
               Alpha, Beta, Div,
               U1, V1,
@@ -2257,12 +2323,16 @@ struct Quad {
             std::tie(U, U1, U2, V, V1, V2) =
                 clean.GetNextConvergent(U, U1, U2, V, V1, V2);
 
-            NonSquareDiscrSolutionOne(
+            sol_found =
+            clean.NonSquareDiscrSolutionOne(
+                ExchXY,
                 M, E, K,
                 Alpha, Beta, Div,
                 U1, V1,
-                Value);
+                Value) || sol_found;
           }
+
+          if (sol_found) showRecursiveSolution = 1;
           break;
         }
       }
@@ -2311,7 +2381,7 @@ struct Quad {
         BigInt U2 = P / O;
         // Show results.
 
-        ShowPointOne(U1, U2, Alpha, Beta, Div);
+        clean.ShowPointOne(ExchXY, U1, U2, Alpha, Beta, Div);
         return;
       }
     }
@@ -2612,7 +2682,7 @@ struct Quad {
       if (V == (isBeven ? 1 : 2) &&
           ((index & 1) == (k_neg == v_neg ? 0 : 1))) {
         // Two solutions
-        solFound = false;
+        bool solFound = false;
 
         // Found solution.
         if (BigInt::Abs(Discr) == 5 && (a_neg != k_neg) &&
@@ -2620,25 +2690,29 @@ struct Quad {
           // Determinant is 5 and aK < 0. Use exceptional solution (U1-U2)/(V1-V2).
 
           // printf("aaaaaaa coverage\n");
-
-          NonSquareDiscrSolutionTwo(
-              M, E, -BigInt::Abs(K),
-              Alpha, Beta, Div,
-              V1 - V2,
-              U1 - U2,
-              Value);
+          solFound =
+            clean.NonSquareDiscrSolutionTwo(
+                ExchXY,
+                M, E, -BigInt::Abs(K),
+                Alpha, Beta, Div,
+                V1 - V2, U1 - U2, Value,
+                &Xplus, &Yplus, &Xminus, &Yminus);
 
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
 
-          NonSquareDiscrSolutionTwo(
-              M, E, -BigInt::Abs(K),
-              Alpha, Beta, Div,
-              V1, U1, Value);
+          solFound =
+            clean.NonSquareDiscrSolutionTwo(
+                ExchXY,
+                M, E, -BigInt::Abs(K),
+                Alpha, Beta, Div,
+                V1, U1, Value,
+                &Xplus, &Yplus, &Xminus, &Yminus);
 
         }
 
         if (solFound) {
+          showRecursiveSolution = 1;
           break;                             // Solution found. Exit loop.
         }
       }
