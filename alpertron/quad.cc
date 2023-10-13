@@ -390,16 +390,11 @@ UnimodularSubstitution(const BigInt &M,
 
 struct Quad {
   // TODO: Lots of these could be local; dynamically sized.
-  BigInteger ValA;
-  BigInteger ValB;
-  BigInteger ValC;
-  BigInteger ValD;
   BigInteger ValE;
   BigInteger ValI;
   BigInteger ValM;
   BigInteger ValU;
   BigInteger ValV;
-  BigInteger ValR;
   BigInteger ValK;
   BigInteger ValAlpha;
   BigInteger ValBeta;
@@ -408,20 +403,15 @@ struct Quad {
   int showRecursiveSolution = 0;
   // BigInt Xind, Yind, Xlin, Ylin;
   bool solFound = false;
-
   bool ExchXY = false;
-
-  const char *varT = "t";
-
 
   std::optional<BigInt> Xplus;
   std::optional<BigInt> Xminus;
   std::optional<BigInt> Yplus;
   std::optional<BigInt> Yminus;
 
-  // These will point to xplus/minus etc. above, and those
-  // get set through the pointers. Gross!
-  std::optional<BigInt> *Xbak = nullptr, *Ybak = nullptr;
+
+  const char *varT = "t";
 
   // Functions that have been expunged of state above.
   struct Clean {
@@ -766,10 +756,10 @@ struct Quad {
         const BigInt &I,
         const BigInt &Value) {
       // The argument of this function is T. t = T - d + uk (k arbitrary).
-      // Compute ValR <- (T^2 - v)/u
+      // Compute R <- (T^2 - v)/u
 
       BigInt R = ((Value * Value) - V) / U;
-      // Compute ValS as 2*T
+      // Compute S as 2*T
       BigInt S = Value << 1;
 
       // Find k from the congruence
@@ -1262,9 +1252,9 @@ struct Quad {
     // variables being initialized or not. At least set them to
     // valid state so that we can convert them to BigInt (and discard).
     for (BigInteger *b : {
-          &ValA, &ValB, &ValC, &ValD, &ValE,
+          &ValE,
           &ValI, &ValM,
-          &ValU, &ValV, &ValR, &ValK,
+          &ValU, &ValV, &ValK,
           &ValAlpha, &ValBeta, &ValDiv,
           &discr
             }) {
@@ -1276,32 +1266,32 @@ struct Quad {
 
   };
 
-  // This weird function either shows the solution or continues
-  // to try to find the minimum, storing the state in Xbak, Ybak.
-  // XXX need to take some kind of state to accumulate Xbak, Ybak...
-  void ShowXYTwo(bool swap_xy, const BigInt &X, const BigInt &Y) {
-    solFound = true;
+  // Accumulates the minimum solution in xdst, ydst. Would be cleaner
+  // if we passed around some kind of explicit state.
+  void ShowXYTwo(bool swap_xy, const BigInt &X, const BigInt &Y,
+                 std::optional<BigInt> *Xdst,
+                 std::optional<BigInt> *Ydst) {
 
-    CHECK(Xbak != nullptr);
-    CHECK(Ybak != nullptr);
+    CHECK(Xdst != nullptr);
+    CHECK(Ydst != nullptr);
 
-    if (!Xbak->has_value()) {
-      CHECK(!Ybak->has_value());
-      Xbak->emplace(X);
-      Ybak->emplace(Y);
+    if (!Xdst->has_value()) {
+      CHECK(!Ydst->has_value());
+      Xdst->emplace(X);
+      Ydst->emplace(Y);
     } else {
-      CHECK(Xbak->has_value());
-      CHECK(Ybak->has_value());
+      CHECK(Xdst->has_value());
+      CHECK(Ydst->has_value());
 
-      // Use the lowest of |X| + |Y| and |Xbak| + |Ybak|
-      BigInt BX = Xbak->value();
-      BigInt BY = Ybak->value();
+      // Use the lowest of |X| + |Y| and |Xdst| + |Ydst|
+      BigInt BX = Xdst->value();
+      BigInt BY = Ydst->value();
 
       if (BigInt::Abs(X) + BigInt::Abs(Y) <=
           BigInt::Abs(BX) + BigInt::Abs(BY)) {
-        // At this moment |x| + |y| <= |xbak| + |ybak|
-        Xbak->emplace(X);
-        Ybak->emplace(Y);
+        // At this moment |x| + |y| <= |xdst| + |ydst|
+        Xdst->emplace(X);
+        Ydst->emplace(Y);
       }
     }
   }
@@ -1355,7 +1345,8 @@ struct Quad {
       break;
 
     case QmodCallbackType::HYPERBOLIC:
-      CallbackQuadModHyperbolic(A, B, C, K, Discr, Value);
+      CallbackQuadModHyperbolic(A, B, C, K, E, M, Alpha, Beta, Div,
+                                Discr, Value);
       break;
 
     default:
@@ -1400,7 +1391,7 @@ struct Quad {
     // a division by zero, then read 0 from the temporary.
 
     if (GcdAll != 0 && BigInt::CMod(coeff_indep, GcdAll) != 0) {
-      // ValC must be multiple of gcd(ValA, ValB).
+      // C must be multiple of gcd(A, B).
       // Otherwise go out because there are no solutions.
       return;
     }
@@ -1408,7 +1399,7 @@ struct Quad {
     GcdAll = BigInt::GCD(Modulus, GcdAll);
 
     // PERF: version of division where we know it's divisible.
-    // Divide all coefficients by gcd(ValA, ValB).
+    // Divide all coefficients by gcd(A, B).
     if (GcdAll != 0) {
       coeff_quadr /= GcdAll;
       coeff_linear /= GcdAll;
@@ -1449,11 +1440,11 @@ struct Quad {
       printf("linear-eq coverage\n");
 
       if (BigInt::GCD(coeff_linear, Modulus) != 1) {
-        // ValB and ValN are not coprime. Go out.
+        // B and N are not coprime. Go out.
         return;
       }
 
-      // Calculate z <- -ValC / ValB (mod ValN)
+      // Calculate z <- -C / B (mod N)
 
       // We only use this right here, so we could have a version of MGParams
       // that just took a BigInt modulus, at least for this code.
@@ -1534,7 +1525,12 @@ struct Quad {
   }
 
   void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,
-                          BigInt D, BigInt E, BigInt F) {
+                          BigInt D, BigInt E, BigInt F,
+                          const BigInt &M, const BigInt &K, const BigInt &I,
+                          const BigInt &Alpha, const BigInt &Beta,
+                          const BigInt &Div) {
+    // Precondition.
+    const BigInt Discr = BigInt(0);
 
     // Next algorithm does not work if A = 0. In this case, exchange x and y.
     ExchXY = false;
@@ -1548,9 +1544,6 @@ struct Quad {
 
     const bool swap_xy = ExchXY;
 
-    // discriminant should be known zero on this code path.
-    // BigIntToBigInteger(Discr, &discr);
-
     // ax^2 + bxy + cx^2 + dx + ey + f = 0 (1)
     // Multiplying by 4a:
     // (2ax + by)^2 + 4adx + 4aey + 4af = 0
@@ -1563,10 +1556,6 @@ struct Quad {
     BigInt V = D * D - ((A * F) << 2);
 
     // XXX remove this state
-    BigIntToBigInteger(A, &ValA);
-    BigIntToBigInteger(B, &ValB);
-    BigIntToBigInteger(C, &ValC);
-    BigIntToBigInteger(D, &ValD);
     BigIntToBigInteger(E, &ValE);
     BigIntToBigInteger(U, &ValU);
     BigIntToBigInteger(V, &ValV);
@@ -1624,16 +1613,6 @@ struct Quad {
 
     CHECK(BigIntegerToBigInt(&ValU) == U);
 
-    // BigInt Modulus = BigIntegerToBigInt(&ValU);
-
-    const BigInt M = BigIntegerToBigInt(&ValM);
-    const BigInt K = BigIntegerToBigInt(&ValK);
-    const BigInt I = BigIntegerToBigInt(&ValI);
-    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    const BigInt Div = BigIntegerToBigInt(&ValDiv);
-    const BigInt Discr = BigIntegerToBigInt(&discr);
-
     SolveQuadModEquation<QmodCallbackType::PARABOLIC>(
         // Coefficients and modulus
         BigInt(1), BigInt(0), -V, BigInt::Abs(U),
@@ -1646,7 +1625,9 @@ struct Quad {
   void ShowPoint(bool two_solutions,
                  const BigInt &X, const BigInt &Y,
                  const BigInt &Alpha, const BigInt &Beta,
-                 const BigInt &Div) {
+                 const BigInt &Div,
+                 std::optional<BigInt> *Xdst,
+                 std::optional<BigInt> *Ydst) {
 
     if (VERBOSE) {
       printf("ShowPoint %s %s %s %s %s\n",
@@ -1677,11 +1658,11 @@ struct Quad {
 
       // XXX is two_solutions statically known here?
       if (two_solutions) {
-        // CHECK(callbackQuadModType == QmodCallbackType::HYPERBOLIC);
-        ShowXYTwo(ExchXY, tmp1, tmp2);
+        // HYPERBOLIC.
+        solFound = true;
+        ShowXYTwo(ExchXY, tmp1, tmp2, Xdst, Ydst);
       } else {
-        // CHECK(callbackQuadModType != QmodCallbackType::HYPERBOLIC)
-        // fprintf(stderr, "Non-Hyperbolic: %s\n", two_solutions ? "two" : "one");
+        // Not HYPERBOLIC.
         // Result box:
         clean.ShowXYOne(ExchXY, tmp1, tmp2);
       }
@@ -1717,8 +1698,12 @@ struct Quad {
   // Then we get x = Rx', y = Ry'.
   template<QmodCallbackType QMOD_CALLBACK>
   void NonSquareDiscriminant(BigInt A, BigInt B, BigInt C,
-                             BigInt K, BigInt Discr,
+                             BigInt K,
+                             const BigInt &D, const BigInt &I,
+                             const BigInt &U, const BigInt &V,
+                             BigInt Discr,
                              BigInt Alpha, BigInt Beta, const BigInt &Div) {
+
     // Find GCD(a,b,c)
     BigInt GcdHomog = BigInt::GCD(BigInt::GCD(A, B), C);
     // Divide A, B, C and K by this GCD.
@@ -1734,14 +1719,12 @@ struct Quad {
 
     if (K == 0) {
       // If k=0, the only solution is (X, Y) = (0, 0)
-      ShowPoint(false, BigInt(0), BigInt(0), Alpha, Beta, Div);
+      ShowPoint(false, BigInt(0), BigInt(0), Alpha, Beta, Div,
+                nullptr, nullptr);
       return;
     }
 
     // XXX
-    BigIntToBigInteger(A, &ValA);
-    BigIntToBigInteger(B, &ValB);
-    BigIntToBigInteger(C, &ValC);
     BigIntToBigInteger(K, &ValK);
     BigIntToBigInteger(Discr, &discr);
 
@@ -1879,14 +1862,7 @@ struct Quad {
     // Theorem. The different moduli are divisors of the
     // right hand side, so we only have to factor it once.
 
-    BigIntToBigInteger(A, &ValA);
-    BigIntToBigInteger(B, &ValB);
-    BigIntToBigInteger(C, &ValC);
     BigIntToBigInteger(M, &ValM);
-    const BigInt D = BigIntegerToBigInt(&ValD);
-    const BigInt I = BigIntegerToBigInt(&ValI);
-    const BigInt U = BigIntegerToBigInt(&ValU);
-    const BigInt V = BigIntegerToBigInt(&ValV);
 
 
     for (;;) {
@@ -1990,10 +1966,15 @@ struct Quad {
   }
 
   void NegativeDiscriminant(const BigInt &A, const BigInt &B, const BigInt &C,
-                            const BigInt &K, const BigInt &Discr,
-                            const BigInt &Alpha, const BigInt &Beta, const BigInt &Div) {
+                            const BigInt &K,
+                            const BigInt &D, const BigInt &I,
+                            const BigInt &U, const BigInt &V,
+                            const BigInt &Discr,
+                            const BigInt &Alpha, const BigInt &Beta,
+                            const BigInt &Div) {
+
     NonSquareDiscriminant<QmodCallbackType::ELLIPTIC>(
-        A, B, C, K, Discr, Alpha, Beta, Div);
+        A, B, C, K, D, I, U, V, Discr, Alpha, Beta, Div);
   }
 
   // On input: H: value of u, I: value of v.
@@ -2001,11 +1982,12 @@ struct Quad {
   // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
   // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
   // Do not substitute if m equals zero.
-  void NonSquareDiscrSolution(bool two_solutions,
-                              const BigInt &M, const BigInt &E, const BigInt &K,
-                              const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
-                              const BigInt &H, const BigInt &I,
-                              const BigInt &Value) {
+  void NonSquareDiscrSolution(
+      bool two_solutions,
+      const BigInt &M, const BigInt &E, const BigInt &K,
+      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
+      const BigInt &H, const BigInt &I,
+      const BigInt &Value) {
 
     // Port note: This used to modify the value of K based on the callback
     // type, but now we do that at the call site. (Also there was something
@@ -2016,11 +1998,6 @@ struct Quad {
     // Y = u*E
     const BigInt O = H * E;
 
-    // Only need this in the case that there are two solutions.
-    // It may be known at the call site?
-    Xbak = &Xplus;
-    Ybak = &Yplus;
-
     // Undo unimodular substitution
     {
       const auto &[Temp0, Temp1] =
@@ -2028,14 +2005,11 @@ struct Quad {
       ShowPoint(two_solutions,
                 Temp0,
                 Temp1,
-                Alpha, Beta, Div);
+                Alpha, Beta, Div, &Xplus, &Yplus);
     }
 
     // Z: (-tu - Kv)*E
     // O: -u*E
-
-    Xbak = &Xminus;
-    Ybak = &Yminus;
 
     // Undo unimodular substitution
     {
@@ -2044,7 +2018,7 @@ struct Quad {
       ShowPoint(two_solutions,
                 Temp0,
                 Temp1,
-                Alpha, Beta, Div);
+                Alpha, Beta, Div, &Xminus, &Yminus);
     }
 
     // Restore value.
@@ -2064,7 +2038,6 @@ struct Quad {
     }
 
     const auto &[P, Q, R] = pqro.value();
-    BigIntToBigInteger(R, &ValR);
 
     CHECK(Discr <= 0);
 
@@ -2311,7 +2284,7 @@ struct Quad {
         BigInt U2 = P / O;
         // Show results.
 
-        ShowPoint(false, U1, U2, Alpha, Beta, Div);
+        ShowPoint(false, U1, U2, Alpha, Beta, Div, nullptr, nullptr);
         return;
       }
     }
@@ -2549,10 +2522,15 @@ struct Quad {
   }
 
   void PositiveDiscriminant(const BigInt &A, const BigInt &B, const BigInt &C,
-                            const BigInt &K, const BigInt &Discr,
-                            const BigInt &Alpha, const BigInt &Beta, const BigInt &Div) {
+                            const BigInt &K,
+                            const BigInt &D, const BigInt &I,
+                            const BigInt &U, const BigInt &V,
+                            const BigInt &Discr,
+                            const BigInt &Alpha, const BigInt &Beta,
+                            const BigInt &Div) {
+
     NonSquareDiscriminant<QmodCallbackType::HYPERBOLIC>(
-        A, B, C, K, Discr, Alpha, Beta, Div);
+        A, B, C, K, D, I, U, V, Discr, Alpha, Beta, Div);
   }
 
   // Used for hyperbolic curve.
@@ -2695,8 +2673,16 @@ struct Quad {
                                  const BigInt &B,
                                  const BigInt &C,
                                  const BigInt &K,
+
+                                 const BigInt &E,
+                                 const BigInt &M,
+                                 const BigInt &Alpha,
+                                 const BigInt &Beta,
+                                 const BigInt &Div,
+
                                  const BigInt &Discr,
                                  const BigInt &Value) {
+
     auto pqro = PerformTransformation(A, B, C, K, Value);
     if (!pqro.has_value()) {
       // No solutions because gcd(P, Q, R) > 1.
@@ -2704,9 +2690,8 @@ struct Quad {
     }
 
     // P and Q are always overwritten below.
-    // R_ is likely dead too?
-    const auto &[P_, Q_, R_] = pqro.value();
-    BigIntToBigInteger(R_, &ValR);
+    // R is just dead.
+    // const auto &[P_, Q_, R_] = pqro.value();
 
     // Expected to agree because PerformTransformation doesn't modify B?
     const bool isBeven = B.IsEven();
@@ -2747,7 +2732,7 @@ struct Quad {
     }
 
     // Set G to floor(sqrt(L))
-    BigInt G = BigInt::Sqrt(L);
+    const BigInt G = BigInt::Sqrt(L);
     // Invalidate solutions.
     Xplus.reset();
     Xminus.reset();
@@ -2758,13 +2743,6 @@ struct Quad {
     // XXX pass args
     BigIntToBigInteger(U, &ValU);
     BigIntToBigInteger(V, &ValV);
-
-    const BigInt E = BigIntegerToBigInt(&ValE);
-    const BigInt M = BigIntegerToBigInt(&ValM);
-
-    const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-    const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-    const BigInt Div = BigIntegerToBigInt(&ValDiv);
 
     // Continued fraction of (U+G)/V
     ContFrac(Value, SolutionNumber::FIRST,
@@ -2850,9 +2828,18 @@ struct Quad {
     // Compute discriminant: b^2 - 4ac.
     const BigInt Discr = B * B - ((A * C) << 2);
 
+
     if (Discr == 0) {
+      const BigInt M = BigIntegerToBigInt(&ValM);
+      const BigInt K = BigIntegerToBigInt(&ValK);
+      const BigInt I = BigIntegerToBigInt(&ValI);
+      const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
+      const BigInt Beta = BigIntegerToBigInt(&ValBeta);
+      const BigInt Div = BigIntegerToBigInt(&ValDiv);
+
       // Discriminant is zero.
-      DiscriminantIsZero(A, B, C, D, E, F);
+      DiscriminantIsZero(A, B, C, D, E, F,
+                         M, K, I, Alpha, Beta, Div);
       return;
     }
 
@@ -2883,10 +2870,6 @@ struct Quad {
     }
 
     // XXX remove this state
-    BigIntToBigInteger(A, &ValA);
-    BigIntToBigInteger(B, &ValB);
-    BigIntToBigInteger(C, &ValC);
-    BigIntToBigInteger(D, &ValD);
     BigIntToBigInteger(E, &ValE);
     BigIntToBigInteger(Discr, &discr);
     BigIntToBigInteger(Alpha, &ValAlpha);
@@ -2909,8 +2892,13 @@ struct Quad {
       K = -K;
     }
 
+    const BigInt I = BigIntegerToBigInt(&ValI);
+    const BigInt U = BigIntegerToBigInt(&ValU);
+    const BigInt V = BigIntegerToBigInt(&ValV);
+
     if (Discr < 0) {
-      NegativeDiscriminant(A, B, C, K, Discr, Alpha, Beta, Div);
+      NegativeDiscriminant(A, B, C, K, D, I, U, V,
+                           Discr, Alpha, Beta, Div);
       return;
     }
 
@@ -2926,7 +2914,8 @@ struct Quad {
 
       return;
     } else {
-      PositiveDiscriminant(A, B, C, K, Discr, Alpha, Beta, Div);
+      PositiveDiscriminant(A, B, C, K, D, I, U, V,
+                           Discr, Alpha, Beta, Div);
     }
   }
 
