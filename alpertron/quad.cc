@@ -810,7 +810,6 @@ struct Quad {
         const BigInt &A, const BigInt &B, const BigInt &C,
         const BigInt &D, const BigInt &E,
         const BigInt &U, const BigInt &V,
-        const BigInt &I,
         const BigInt &Value) {
       // The argument of this function is T. t = T - d + uk (k arbitrary).
       // Compute R <- (T^2 - v)/u
@@ -830,7 +829,7 @@ struct Quad {
       // If K is not multiple of gcd(j, z) there is no solution.
       BigInt BigTmp = BigInt::GCD(J, Z);
       CHECK(BigTmp != 0);
-      if (K % BigTmp != 0) {
+      if (!BigInt::DivisibleBy(K, BigTmp)) {
         return;
       }
 
@@ -1154,9 +1153,9 @@ struct Quad {
 
       // g <- sqrt(discr).
       BigInt G = BigInt::Sqrt(H);
-      // Port note: Was explicit SIGN_POSITIVE here in original, but I think that
-      // was just because it was manipulating the limbs directly? Sqrt
-      // is always non-negative...
+      // Port note: Was explicit SIGN_POSITIVE here in original, but I
+      // think that was just because it was manipulating the limbs
+      // directly? Sqrt is always non-negative...
       CHECK(G >= 0);
 
       int periodLength = 1;
@@ -1210,10 +1209,6 @@ struct Quad {
         U = BigInt{0};
         V = BigInt{1};
       }
-      /*
-      printf("U=%s V=%s period=%d\n", U.ToString().c_str(), V.ToString().c_str(),
-             periodLength);
-      */
 
       if (periodLength > 1) {
         // quad.exe 6301 1575 2 7199 -1 -114995928
@@ -1299,8 +1294,10 @@ struct Quad {
 
     // On input: H: value of u, I: value of v.
     // Output: ((tu - nv)*E, u*E) and ((-tu + nv)*E, -u*E)
-    // If m is greater than zero, perform the substitution: x = mX + (m-1)Y, y = X + Y
-    // If m is less than zero, perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
+    // If m is greater than zero, perform the substitution:
+    //    x = mX + (m-1)Y, y = X + Y
+    // If m is less than zero, perform the substitution:
+    //    x = X + Y, y = (|m|-1)X + |m|Y
     // Do not substitute if m equals zero.
     // Returns true if solution found.
     bool NonSquareDiscrSolutionOne(
@@ -1510,7 +1507,7 @@ struct Quad {
   void SolutionX(BigInt Value, const BigInt &Modulus,
                  const BigInt &A, const BigInt &B, const BigInt &C,
                  const BigInt &D, const BigInt &E,
-                 const BigInt &M, const BigInt &K, const BigInt &I,
+                 const BigInt &M, const BigInt &K,
                  const BigInt &U, const BigInt &V,
                  const BigInt &Alpha, const BigInt &Beta,
                  const BigInt &Div, const BigInt &Discr) {
@@ -1527,7 +1524,7 @@ struct Quad {
     }
 
     if (VERBOSE) {
-      printf("  with %s %s %s %s %s | %s %s %s | %s %s\n",
+      printf("  with %s %s %s %s %s | %s %s | %s %s\n",
              A.ToString().c_str(),
              B.ToString().c_str(),
              C.ToString().c_str(),
@@ -1535,7 +1532,6 @@ struct Quad {
              E.ToString().c_str(),
              M.ToString().c_str(),
              K.ToString().c_str(),
-             I.ToString().c_str(),
              U.ToString().c_str(),
              V.ToString().c_str());
     }
@@ -1544,7 +1540,7 @@ struct Quad {
     case QmodCallbackType::PARABOLIC:
       clean.CallbackQuadModParabolic(ExchXY,
                                      A, B, C, D, E,
-                                     U, V, I, Value);
+                                     U, V, Value);
       break;
 
     case QmodCallbackType::ELLIPTIC:
@@ -1635,7 +1631,7 @@ struct Quad {
         for (int ctr = 0; ctr < n; ctr++) {
           SolutionX<QMOD_CALLBACK>(BigInt(ctr), Modulus,
                                    A, B, C, D, E,
-                                   M, K, I,
+                                   M, K,
                                    U, V,
                                    Alpha, Beta, Div, Discr);
         }
@@ -1684,7 +1680,7 @@ struct Quad {
         printf("new coverage: loop zz");
         SolutionX<QMOD_CALLBACK>(z, Modulus,
                                  A, B, C, D, E,
-                                 M, K, I,
+                                 M, K,
                                  U, V,
                                  Alpha, Beta, Div, Discr);
         z += Modulus;
@@ -1719,7 +1715,7 @@ struct Quad {
                 Value,
                 Modulus,
                 A, B, C, D, E,
-                M, K, I,
+                M, K,
                 U, V,
                 Alpha, Beta, Div, Discr);
           }),
@@ -1857,10 +1853,14 @@ struct Quad {
   template<QmodCallbackType QMOD_CALLBACK>
   void NonSquareDiscriminant(BigInt A, BigInt B, BigInt C,
                              BigInt K,
-                             const BigInt &D, const BigInt &I,
-                             const BigInt &U, const BigInt &V,
+                             const BigInt &D,
                              BigInt Discr,
                              BigInt Alpha, BigInt Beta, const BigInt &Div) {
+
+    // These were actually uninitialized, and probably unused?
+    const BigInt I(0);
+    const BigInt U(0);
+    const BigInt V(0);
 
     // Find GCD(a,b,c)
     BigInt GcdHomog = BigInt::GCD(BigInt::GCD(A, B), C);
@@ -2125,7 +2125,7 @@ struct Quad {
                             const BigInt &Div) {
 
     NonSquareDiscriminant<QmodCallbackType::ELLIPTIC>(
-        A, B, C, K, D, I, U, V, Discr, Alpha, Beta, Div);
+        A, B, C, K, D, Discr, Alpha, Beta, Div);
   }
 
 
@@ -2611,7 +2611,7 @@ struct Quad {
                             const BigInt &Div) {
 
     NonSquareDiscriminant<QmodCallbackType::HYPERBOLIC>(
-        A, B, C, K, D, I, U, V, Discr, Alpha, Beta, Div);
+        A, B, C, K, D, Discr, Alpha, Beta, Div);
   }
 
   // Used for hyperbolic curve.
