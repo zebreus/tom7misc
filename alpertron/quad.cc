@@ -320,7 +320,7 @@ PerformTransformation(
 // First check: |u| < g.
 // Second check: |u+g| > |v|
 // Third check: |u-g| < |v|
-// On input ValG = floor(g), g > 0.
+// On input G = floor(g), g > 0.
 // g is not an integer number.
 static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
                                                 const BigInt &V,
@@ -331,7 +331,6 @@ static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
     BigInt Tmp1 = BigInt::Abs(V);
     // Compute Tmp2 as u + floor(g) which equals floor(u+g)
     BigInt Tmp2 = U + G;
-    // BigIntAdd(&ValU, &ValG, &Tmp2);
 
     if (Tmp2 < 0) {
       // Round to number nearer to zero.
@@ -397,11 +396,9 @@ struct Quad {
   BigInteger ValD;
   BigInteger ValE;
   BigInteger ValI;
-  BigInteger ValL;
   BigInteger ValM;
   BigInteger ValU;
   BigInteger ValV;
-  BigInteger ValG;
   BigInteger ValR;
   BigInteger ValK;
   BigInteger ValAlpha;
@@ -853,41 +850,25 @@ struct Quad {
                    BigInt U, BigInt U1, BigInt U2,
                    BigInt V, BigInt V1, BigInt V2) {
       BigInt Tmp = FloorDiv(U, V);
-      // floordiv(&ValU, &ValV, &bigTmp);
 
-      // Values of U3 and V3 are not used, so they can be overwritten now.
-      // Compute new value of ValU and ValV.
+      // Compute new value of U and V.
       BigInt Tmp2 = U - Tmp * V;
       U = std::move(V);
       V = Tmp2;
-      // (void)BigIntMultiply(&bigTmp, &ValV, &U3);
-      // BigIntSubt(&ValU, &U3, &U3);
-      // CopyBigInt(&ValU, &ValV);
-      // CopyBigInt(&ValV, &U3);
 
       // Compute new convergents: h_n = a_n*h_{n-1} + h_{n-2}
       // and also k_n = k_n*k_{n-1} + k_{n-2}
       BigInt Tmp3 = Tmp * U1 + U2;
-      // (void)BigIntMultiply(&bigTmp, &U1, &V3);
-      // BigIntAdd(&V3, &U2, &V3);
 
       BigInt U3 = std::move(U2);
       U2 = std::move(U1);
       U1 = Tmp3;
-      // CopyBigInt(&U3, &U2);
-      // CopyBigInt(&U2, &U1);
-      // CopyBigInt(&U1, &V3);
 
       Tmp *= V1;
       Tmp += V2;
-      // (void)BigIntMultiply(&bigTmp, &V1, &bigTmp);
-      // BigIntAdd(&bigTmp, &V2, &bigTmp);
       BigInt V3 = std::move(V2);
       V2 = std::move(V1);
       V1 = Tmp;
-      // CopyBigInt(&V3, &V2);
-      // CopyBigInt(&V2, &V1);
-      // CopyBigInt(&V1, &bigTmp);
       return std::make_tuple(U, U1, U2,
                              V, V1, V2);
     }
@@ -1081,8 +1062,6 @@ struct Quad {
     void RecursiveSolution(
         BigInt A, BigInt B, BigInt C,
         const BigInt &ABack, const BigInt &BBack, const BigInt &CBack,
-        // XXX should be dead now!
-        const BigInt &L,
         const BigInt &Alpha, const BigInt &Beta,
         const BigInt &GcdHomog, BigInt Discr) {
 
@@ -1133,8 +1112,6 @@ struct Quad {
       // was just because it was manipulating the limbs directly? Sqrt
       // is always non-negative...
       CHECK(G >= 0);
-      // XXX should be unnecessary
-      // BigIntToBigInteger(G, &ValG);
 
       int periodLength = 1;
 
@@ -1286,8 +1263,8 @@ struct Quad {
     // valid state so that we can convert them to BigInt (and discard).
     for (BigInteger *b : {
           &ValA, &ValB, &ValC, &ValD, &ValE,
-          &ValI, &ValL, &ValM,
-          &ValU, &ValV, &ValG, &ValR, &ValK,
+          &ValI, &ValM,
+          &ValU, &ValV, &ValR, &ValK,
           &ValAlpha, &ValBeta, &ValDiv,
           &discr
             }) {
@@ -1805,8 +1782,8 @@ struct Quad {
       const auto &[fact, multiplicity] = factors[i];
       if (multiplicity > 1) {
         // At least prime is squared.
-        // Port note: The original code stored factorNbr, which was 1-based because
-        // of the factor header.
+        // Port note: The original code stored factorNbr, which was 1-based
+        // because of the factor header.
         indexEvenMultiplicity.push_back(i);
         // Convert to even.
         originalMultiplicities.push_back(multiplicity & ~1);
@@ -1902,9 +1879,6 @@ struct Quad {
     // Theorem. The different moduli are divisors of the
     // right hand side, so we only have to factor it once.
 
-    const BigInt L = BigIntegerToBigInt(&ValL);
-    // fprintf(stderr, "Read L = %s at %d\n", L.ToString().c_str(), __LINE__);
-
     BigIntToBigInteger(A, &ValA);
     BigIntToBigInteger(B, &ValB);
     BigIntToBigInteger(C, &ValC);
@@ -1996,10 +1970,9 @@ struct Quad {
     if (VERBOSE) printf(".\n");
 
     if (VERBOSE) {
-      printf("bottom %s %s / %s / %s %s %s %s\n",
+      printf("bottom %s %s / %s %s %s %s\n",
              K.ToString().c_str(),
              E.ToString().c_str(),
-             L.ToString().c_str(),
              Alpha.ToString().c_str(),
              Beta.ToString().c_str(),
              GcdHomog.ToString().c_str(),
@@ -2009,15 +1982,9 @@ struct Quad {
     if (showRecursiveSolution &&
         QMOD_CALLBACK == QmodCallbackType::HYPERBOLIC) {
 
-      // fprintf(stderr, "RecSol with L=%s\n",
-      //               L.ToString().c_str());
-
-      CHECK(L == 0xCAFE);
-
       // Show recursive solution.
       clean.RecursiveSolution(A, B, C,
                               ABack, BBack, CBack,
-                              L,
                               Alpha, Beta, GcdHomog, Discr);
     }
   }
@@ -2218,8 +2185,6 @@ struct Quad {
 
     // Compute bound L = sqrt(4P/(-D))
     const BigInt L = BigInt::Sqrt((P << 2) / -Discr);
-    BigIntToBigInteger(L, &ValL);
-    // fprintf(stderr, "Write L = %s at %d\n", L.ToString().c_str(), __LINE__);
 
     // HERE!
 
@@ -2699,7 +2664,6 @@ struct Quad {
 
       // Get continued fraction coefficient.
       BigInt BigTmp = U + G;
-      // BigIntAdd(&ValU, &ValG, &bigTmp);
       if (V < 0) {
         // If denominator is negative, round square root upwards.
         BigTmp += 1;
@@ -2774,7 +2738,6 @@ struct Quad {
     }
 
     U = -U;
-    // BigIntChSign(&ValU);
 
     // If L-U^2 is not multiple of V, there is no solution, so go out.
     // PERF divisibility check
@@ -2793,9 +2756,6 @@ struct Quad {
     // Somewhere below these can get set. Can we return the values instead?
 
     // XXX pass args
-    // fprintf(stderr, "Write L = %s at %d\n", L.ToString().c_str(), __LINE__);
-    BigIntToBigInteger(G, &ValG);
-    BigIntToBigInteger(L, &ValL);
     BigIntToBigInteger(U, &ValU);
     BigIntToBigInteger(V, &ValV);
 
@@ -2957,7 +2917,6 @@ struct Quad {
     // const BigInt Discr = BigIntegerToBigInt(&discr);
     const BigInt G = BigInt::Sqrt(Discr);
 
-    // SquareRoot(discr.limbs, ValG.limbs, discr.nbrLimbs, &ValG.nbrLimbs);
     if (G * G == Discr) {
       // Discriminant is a perfect square.
 
