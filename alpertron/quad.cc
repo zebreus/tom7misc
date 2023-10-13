@@ -396,7 +396,6 @@ struct Quad {
   BigInteger ValC;
   BigInteger ValD;
   BigInteger ValE;
-  BigInteger ValF;
   BigInteger ValI;
   BigInteger ValL;
   BigInteger ValM;
@@ -407,8 +406,8 @@ struct Quad {
   BigInteger ValK;
   BigInteger ValAlpha;
   BigInteger ValBeta;
-  BigInteger ValDen;
   BigInteger ValDiv;
+  BigInteger discr;
   int showRecursiveSolution = 0;
   // BigInt Xind, Yind, Xlin, Ylin;
   bool solFound = false;
@@ -416,7 +415,7 @@ struct Quad {
   bool ExchXY = false;
 
   const char *varT = "t";
-  BigInteger discr;
+
 
   std::optional<BigInt> Xplus;
   std::optional<BigInt> Xminus;
@@ -426,11 +425,6 @@ struct Quad {
   // These will point to xplus/minus etc. above, and those
   // get set through the pointers. Gross!
   std::optional<BigInt> *Xbak = nullptr, *Ybak = nullptr;
-
-  const char *ptrVarNameX = nullptr;
-  const char *ptrVarNameY = nullptr;
-  const char *varX = nullptr;
-  const char *varY = nullptr;
 
   // Functions that have been expunged of state above.
   struct Clean {
@@ -1087,6 +1081,7 @@ struct Quad {
     void RecursiveSolution(
         BigInt A, BigInt B, BigInt C,
         const BigInt &ABack, const BigInt &BBack, const BigInt &CBack,
+        // XXX should be dead now!
         const BigInt &L,
         const BigInt &Alpha, const BigInt &Beta,
         const BigInt &GcdHomog, BigInt Discr) {
@@ -1157,6 +1152,8 @@ struct Quad {
       if (gcd_homog != 1) {
         periodLength = -1;
         do {
+          // fprintf(stderr, "rec_gcdhomognotone coverage H=%s\n",
+          // H.ToString().c_str());
           BigInt BigTmp = U + G;
           if (V < 0) {
             // If denominator is negative, round square root upwards.
@@ -1169,8 +1166,16 @@ struct Quad {
           // U <- a*V - U
           U = Tmp1 * V - U;
 
+          // Port note: In alpertron, this uses L, which is used as
+          // the discriminant (or discriminant/4) in ContFrac and may
+          // have the same value here. But I think this was a bug; H
+          // is discr (or discr/4) in this one. Passing around L
+          // rather than setting a global results it in being
+          // uninitialized here. Unfortunately, not good coverage of
+          // this loop.
+
           // V <- (D - U^2)/V
-          V = (L - U * U) / V;
+          V = (H - U * U) / V;
 
           if (periodLength < 0) {
             UBak = U;
@@ -1181,6 +1186,15 @@ struct Quad {
         // Reset values of U and V.
         U = BigInt{0};
         V = BigInt{1};
+      }
+      /*
+      printf("U=%s V=%s period=%d\n", U.ToString().c_str(), V.ToString().c_str(),
+             periodLength);
+      */
+
+      if (periodLength > 1) {
+        // quad.exe 6301 1575 2 7199 -1 -114995928
+        printf("nonzeroperiod coverage (%d)\n", periodLength);
       }
 
       ShowText("<p>Recursive solutions:</p><p>");
@@ -1271,10 +1285,10 @@ struct Quad {
     // variables being initialized or not. At least set them to
     // valid state so that we can convert them to BigInt (and discard).
     for (BigInteger *b : {
-          &ValA, &ValB, &ValC, &ValD, &ValE, &ValF,
+          &ValA, &ValB, &ValC, &ValD, &ValE,
           &ValI, &ValL, &ValM,
           &ValU, &ValV, &ValG, &ValR, &ValK,
-          &ValAlpha, &ValBeta, &ValDen, &ValDiv,
+          &ValAlpha, &ValBeta, &ValDiv,
           &discr
             }) {
       intToBigInteger(b, 0xCAFE);
@@ -1577,7 +1591,6 @@ struct Quad {
     BigIntToBigInteger(C, &ValC);
     BigIntToBigInteger(D, &ValD);
     BigIntToBigInteger(E, &ValE);
-    BigIntToBigInteger(F, &ValF);
     BigIntToBigInteger(U, &ValU);
     BigIntToBigInteger(V, &ValV);
 
@@ -1890,6 +1903,7 @@ struct Quad {
     // right hand side, so we only have to factor it once.
 
     const BigInt L = BigIntegerToBigInt(&ValL);
+    // fprintf(stderr, "Read L = %s at %d\n", L.ToString().c_str(), __LINE__);
 
     BigIntToBigInteger(A, &ValA);
     BigIntToBigInteger(B, &ValB);
@@ -1994,6 +2008,11 @@ struct Quad {
 
     if (showRecursiveSolution &&
         QMOD_CALLBACK == QmodCallbackType::HYPERBOLIC) {
+
+      // fprintf(stderr, "RecSol with L=%s\n",
+      //               L.ToString().c_str());
+
+      CHECK(L == 0xCAFE);
 
       // Show recursive solution.
       clean.RecursiveSolution(A, B, C,
@@ -2200,6 +2219,7 @@ struct Quad {
     // Compute bound L = sqrt(4P/(-D))
     const BigInt L = BigInt::Sqrt((P << 2) / -Discr);
     BigIntToBigInteger(L, &ValL);
+    // fprintf(stderr, "Write L = %s at %d\n", L.ToString().c_str(), __LINE__);
 
     // HERE!
 
@@ -2221,7 +2241,6 @@ struct Quad {
 
       // Check whether the denominator of convergent exceeds bound.
       BigInt BigTmp = L - V1;
-      // BigIntSubt(&ValL, &V1, &bigTmp);
       if (BigTmp < 0) {
         // Bound exceeded, so go out.
         break;
@@ -2501,7 +2520,6 @@ struct Quad {
 
     // Dead? Maybe just teach mode?
     // I think some of these are used in PositiveDiscriminant
-    BigIntToBigInteger(Den, &ValDen);
     BigIntToBigInteger(NewK, &ValK);
 
     // Loop that finds all factors of Z.
@@ -2592,9 +2610,6 @@ struct Quad {
 
     const bool isBeven = B.IsEven();
     // If (D-U^2) is not multiple of V, exit routine.
-    // (void)BigIntMultiply(&ValU, &ValU, &bigTmp); // V <- (D - U^2)/V
-    // BigIntSubt(&ValL, &bigTmp, &bigTmp);   // D - U^2
-    // (void)BigIntRemainder(&bigTmp, &ValV, &bigTmp);
     if (((L - U * U) % V) != 0) {
       return;
     }
@@ -2778,6 +2793,7 @@ struct Quad {
     // Somewhere below these can get set. Can we return the values instead?
 
     // XXX pass args
+    // fprintf(stderr, "Write L = %s at %d\n", L.ToString().c_str(), __LINE__);
     BigIntToBigInteger(G, &ValG);
     BigIntToBigInteger(L, &ValL);
     BigIntToBigInteger(U, &ValU);
@@ -2912,7 +2928,6 @@ struct Quad {
     BigIntToBigInteger(C, &ValC);
     BigIntToBigInteger(D, &ValD);
     BigIntToBigInteger(E, &ValE);
-    BigIntToBigInteger(F, &ValF);
     BigIntToBigInteger(Discr, &discr);
     BigIntToBigInteger(Alpha, &ValAlpha);
     BigIntToBigInteger(Beta, &ValBeta);
