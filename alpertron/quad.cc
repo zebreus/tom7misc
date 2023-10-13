@@ -1429,6 +1429,60 @@ struct Quad {
       return false;
     }
 
+
+    void CheckSolutionSquareDiscr(
+        bool swap_xy,
+        const BigInt &CurrentFactor,
+        const BigInt &H, const BigInt &I, const BigInt &L,
+        const BigInt &M, const BigInt &Z,
+        const BigInt &Alpha, const BigInt &Beta, const BigInt &Div) {
+
+      CHECK(CurrentFactor != 0);
+      BigInt N = Z / CurrentFactor;
+
+      // (IL - HM)X = NI - cM
+      // (IL - HM)Y = cL - NH
+
+      // O = Denominator.
+      BigInt O = I * L - H * M;
+
+      // P = Numerator of X.
+      BigInt P = N * I - CurrentFactor * M;
+
+      if (VERBOSE) {
+        printf("CheckSolutionSquareDiscr %s %s %s %s %s %s\n",
+               P.ToString().c_str(),
+               O.ToString().c_str(),
+               CurrentFactor.ToString().c_str(),
+               L.ToString().c_str(),
+               N.ToString().c_str(),
+               H.ToString().c_str());
+      }
+
+      CHECK(O != 0) << "Might have been shenanigans with O = 0?";
+      if (BigInt::DivisibleBy(P, O)) {
+        // PERF divisibility test followed by divide
+        // X found.
+        BigInt U1 = P / O;
+        // ValP = Numerator of Y.
+        P = CurrentFactor * L - N * H;
+
+        CHECK(O != 0);
+        if (P % O == 0) {
+          // Y found.
+          BigInt U2 = P / O;
+          // Show results.
+
+          ShowPointOne(swap_xy, U1, U2, Alpha, Beta, Div);
+          return;
+        }
+      }
+
+      // The system of two equations does not have integer solutions.
+      // No solution found.
+    }
+
+
   };  // Clean
 
 
@@ -1686,12 +1740,8 @@ struct Quad {
 
   void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,
                           BigInt D, BigInt E, BigInt F,
-                          const BigInt &M, const BigInt &K, const BigInt &I,
-                          const BigInt &Alpha, const BigInt &Beta,
-                          const BigInt &Div) {
-    // Precondition.
-    const BigInt Discr = BigInt(0);
-
+                          const BigInt &M, const BigInt &K, const BigInt &I) {
+    // fprintf(stderr, "disciszero coverage\n");
     // Next algorithm does not work if A = 0. In this case, exchange x and y.
     ExchXY = false;
     if (A == 0) {
@@ -1779,7 +1829,11 @@ struct Quad {
         // Problem state
         A, B, C, D, E,
         M, K, I, U, V,
-        Alpha, Beta, Div, Discr);
+        // I think these end up unused in this case, but anyway,
+        // don't translate the origin.
+        BigInt(0), BigInt(0), BigInt(1),
+        // Discriminant is known to be zero in this function.
+        BigInt(0));
   }
 
   // Solve ax^2+bxy+cy^2 = K
@@ -2005,7 +2059,6 @@ struct Quad {
           // Ascending.
 
           const int fidx = indexEvenMultiplicity[index];
-          // const auto &[fact, multiplicity] = factors[fidx];
           if (counters[index] == originalMultiplicities[index]) {
             // Next time it will be descending.
             is_descending[index] = true;
@@ -2022,7 +2075,6 @@ struct Quad {
           }
         } else {
           // Descending.
-          // auto &[fact, multiplicity] = factors[indexEvenMultiplicity[index]];
           const int fidx = indexEvenMultiplicity[index];
           if (counters[index] <= 1) {
             // Next time it will be ascending.
@@ -2339,57 +2391,6 @@ struct Quad {
     }
   }
 
-  void CheckSolutionSquareDiscr(
-      const BigInt &CurrentFactor,
-      const BigInt &H, const BigInt &I, const BigInt &L,
-      const BigInt &M, const BigInt &Z,
-      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div) {
-
-    CHECK(CurrentFactor != 0);
-    BigInt N = Z / CurrentFactor;
-
-    // (IL - HM)X = NI - cM
-    // (IL - HM)Y = cL - NH
-
-    // O = Denominator.
-    BigInt O = I * L - H * M;
-
-    // P = Numerator of X.
-    BigInt P = N * I - CurrentFactor * M;
-
-    if (VERBOSE) {
-      printf("CheckSolutionSquareDiscr %s %s %s %s %s %s\n",
-             P.ToString().c_str(),
-             O.ToString().c_str(),
-             CurrentFactor.ToString().c_str(),
-             L.ToString().c_str(),
-             N.ToString().c_str(),
-             H.ToString().c_str());
-    }
-
-    CHECK(O != 0) << "Might have been shenanigans with O = 0?";
-    if (BigInt::DivisibleBy(P, O)) {
-      // PERF divisibility test followed by divide
-      // X found.
-      BigInt U1 = P / O;
-      // ValP = Numerator of Y.
-      P = CurrentFactor * L - N * H;
-
-      CHECK(O != 0);
-      if (P % O == 0) {
-        // Y found.
-        BigInt U2 = P / O;
-        // Show results.
-
-        clean.ShowPointOne(ExchXY, U1, U2, Alpha, Beta, Div);
-        return;
-      }
-    }
-
-    // The system of two equations does not have integer solutions.
-    // No solution found.
-  }
-
   // Discr = G^2
   void PerfectSquareDiscriminant(
       const BigInt &A, const BigInt &B, const BigInt &C,
@@ -2565,13 +2566,15 @@ struct Quad {
     BigInt CurrentFactor(1);
     for (;;) {
       // Process positive divisor.
-      CheckSolutionSquareDiscr(CurrentFactor,
-                               H, I, L, M, Z,
-                               Alpha, Beta, Div);
+      clean.CheckSolutionSquareDiscr(ExchXY,
+                                     CurrentFactor,
+                                     H, I, L, M, Z,
+                                     Alpha, Beta, Div);
       // Process negative divisor.
-      CheckSolutionSquareDiscr(-CurrentFactor,
-                               H, I, L, M, Z,
-                               Alpha, Beta, Div);
+      clean.CheckSolutionSquareDiscr(ExchXY,
+                                     -CurrentFactor,
+                                     H, I, L, M, Z,
+                                     Alpha, Beta, Div);
 
       int fidx = 0;
       int index;
@@ -2926,6 +2929,10 @@ struct Quad {
 
 
     if (Discr == 0) {
+      // Port note: This code depended on uninitialized values M, K,
+      // I, Alpha, Beta, Div, but I think they end up unused inside
+      // SolveQuadModEquation (or callbacks) when the discriminant is
+      // zero.
       const BigInt M = BigIntegerToBigInt(&ValM);
       const BigInt K = BigIntegerToBigInt(&ValK);
       const BigInt I = BigIntegerToBigInt(&ValI);
@@ -2933,9 +2940,18 @@ struct Quad {
       const BigInt Beta = BigIntegerToBigInt(&ValBeta);
       const BigInt Div = BigIntegerToBigInt(&ValDiv);
 
+      CHECK(M == 0xCAFE);
+      CHECK(K == 0xCAFE);
+      CHECK(I == 0xCAFE);
+
+      // ???
+      CHECK(Alpha == 0xCAFE);
+      CHECK(Beta == 0xCAFE);
+      CHECK(Div == 0xCAFE);
+
       // Discriminant is zero.
       DiscriminantIsZero(A, B, C, D, E, F,
-                         M, K, I, Alpha, Beta, Div);
+                         M, K, I);
       return;
     }
 
