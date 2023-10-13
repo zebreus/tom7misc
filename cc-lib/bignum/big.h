@@ -71,6 +71,10 @@ struct BigInt {
   // Truncates towards zero, like C.
   inline static BigInt Div(const BigInt &a, const BigInt &b);
   inline static BigInt Div(const BigInt &a, int64_t b);
+
+  // Equivalent to num % den == 0; maybe faster.
+  inline static bool DivisibleBy(const BigInt &num, const BigInt &den);
+  inline static bool DivisibleBy(const BigInt &num, int64_t den);
   // Returns a/b, but requires that that a % b == 0 for correctness.
   inline static BigInt DivExact(const BigInt &a, const BigInt &b);
   inline static BigInt DivExact(const BigInt &a, int64_t b);
@@ -609,6 +613,19 @@ BigInt BigInt::Div(const BigInt &a, int64_t b) {
   }
 }
 
+bool BigInt::DivisibleBy(const BigInt &num, const BigInt &den) {
+  return mpz_divisible_p(num.rep, den.rep);
+}
+
+bool BigInt::DivisibleBy(const BigInt &num, int64_t den) {
+  if (internal::FitsLongInt(den)) {
+    unsigned long int uden = std::abs(den);
+    return mpz_divisible_ui_p(num.rep, uden);
+  } else {
+    return DivisibleBy(num, BigInt(den));
+  }
+}
+
 BigInt BigInt::DivExact(const BigInt &a, const BigInt &b) {
   BigInt ret;
   mpz_divexact(ret.rep, a.rep, b.rep);
@@ -630,7 +647,7 @@ BigInt BigInt::DivExact(const BigInt &a, int64_t b) {
       return ret;
     }
   } else {
-    return DivExact(a, b);
+    return DivExact(a, BigInt(b));
   }
 }
 
@@ -987,6 +1004,14 @@ BigInt BigInt::DivExact(const BigInt &a, int64_t b) {
   // Not using the precondition here; same as division.
   return BigInt{BzDiv(a.rep, BigInt{b}.rep), nullptr};
 }
+
+bool BigInt::DivisibleBy(const BigInt &num, const BigInt &den) {
+  return BzCompare(CMod(num, den), BigInt{0}.rep) == BZ_EQ;
+}
+bool BigInt::DivisibleBy(const BigInt &num, int64_t den) {
+  return BzCompare(CMod(num, BigInt{den}), BigInt{0}.rep) == BZ_EQ;
+}
+
 
 // TODO: truncate, floor, ceiling round. what are they?
 

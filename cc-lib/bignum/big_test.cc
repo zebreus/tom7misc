@@ -444,6 +444,23 @@ static void TestSwap() {
   CHECK(b.ToString() == "11223344556677889900");
 }
 
+static void TestDivisibleBy() {
+  BigInt threes("3333333333333333333333333333333333333333333333");
+  CHECK(BigInt::DivisibleBy(threes, 3));
+  CHECK(BigInt::DivisibleBy(threes, BigInt(3)));
+
+  BigInt p(31337);
+  BigInt xp = BigInt::Times(threes, p);
+  CHECK(!BigInt::DivisibleBy(p, 3));
+  CHECK(!BigInt::DivisibleBy(p, BigInt(3)));
+  CHECK(BigInt::DivisibleBy(xp, 3));
+  CHECK(BigInt::DivisibleBy(xp, BigInt(3)));
+
+  CHECK(BigInt::DivisibleBy(xp, xp));
+  CHECK(BigInt::DivisibleBy(xp, threes));
+  CHECK(BigInt::DivisibleBy(p, 1));
+}
+
 int main(int argc, char **argv) {
   printf("Start.\n");
   fflush(stdout);
@@ -461,6 +478,7 @@ int main(int argc, char **argv) {
   TestToInt();
   TestGCD();
 
+  TestDivisibleBy();
   TestDivExact();
 
   TestShift();
