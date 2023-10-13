@@ -99,7 +99,7 @@ static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
       }
     }
 
-    if (BigInt::CMod(coeffInd, coeffY) != 0) {
+    if (!BigInt::DivisibleBy(coeffInd, coeffY)) {
       return LinearSolution(LinearSolutionType::NO_SOLUTIONS);
     } else {
       LinearSolution sol(LinearSolutionType::SOLUTION_FOUND);
@@ -140,10 +140,7 @@ static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
     // To solve it, we first find the greatest common divisor of the
     // linear coefficients, that is: gcd(coeffX, coeffY) = gcdxy.
 
-    // PERF divisibility test
-    BigInt r = BigInt::CMod(coeffInd, gcdxy);
-
-    if (r != 0) {
+    if (!BigInt::DivisibleBy(coeffInd, gcdxy)) {
       // The independent coefficient is not a multiple of
       // the gcd, so there are no solutions.
       return LinearSolution(LinearSolutionType::NO_SOLUTIONS);
@@ -1001,9 +998,8 @@ struct Quad {
         "with dividing by zero";
 
       // Check whether alpha - K and beta - L are multiple of discriminant.
-      // PERF divisibility checks
-      if (BigInt::CMod(Alpha - K, Discr) == 0 &&
-          BigInt::CMod(Beta - L, Discr) == 0) {
+      if (BigInt::DivisibleBy(Alpha - K, Discr) &&
+          BigInt::DivisibleBy(Beta - L, Discr)) {
         // Solution found.
         // PERF as below, known-divisible tests or quotrem.
         K = (Alpha - K) / Discr;
@@ -1015,8 +1011,8 @@ struct Quad {
 
       // Check whether alpha + K and beta + L are multiple of discriminant.
       // PERF divisibility checks
-      if (BigInt::CMod(Alpha + K, Discr) == 0 &&
-          BigInt::CMod(Beta + L, Discr) == 0) {
+      if (BigInt::DivisibleBy(Alpha + K, Discr) &&
+          BigInt::DivisibleBy(Beta + L, Discr)) {
         // Solution found.
         // PERF: Use quotrem, or known-divisible test!
         K = (Alpha + K) / Discr;
@@ -1390,7 +1386,7 @@ struct Quad {
     // For a GCD of zero here, original code would cause and ignore
     // a division by zero, then read 0 from the temporary.
 
-    if (GcdAll != 0 && BigInt::CMod(coeff_indep, GcdAll) != 0) {
+    if (GcdAll != 0 && !BigInt::DivisibleBy(coeff_indep, GcdAll)) {
       // C must be multiple of gcd(A, B).
       // Otherwise go out because there are no solutions.
       return;
@@ -1435,7 +1431,7 @@ struct Quad {
     }
 
     // PERF divisibility check
-    if (BigInt::CMod(coeff_quadr, Modulus) == 0) {
+    if (BigInt::DivisibleBy(coeff_quadr, Modulus)) {
       // Linear equation.
       printf("linear-eq coverage\n");
 
@@ -1453,9 +1449,11 @@ struct Quad {
       TheModulus[modulus_length].x = 0;
 
       // Is it worth it to convert to montgomery form for one division??
-      const MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
+      const MontgomeryParams params =
+        GetMontgomeryParams(modulus_length, TheModulus);
 
-      BigInt z = BigIntModularDivision(params, coeff_indep, coeff_linear, Modulus);
+      BigInt z =
+        BigIntModularDivision(params, coeff_indep, coeff_linear, Modulus);
 
       if (z != 0) {
         // not covered by cov.sh :(
@@ -1622,21 +1620,12 @@ struct Quad {
         Alpha, Beta, Div, Discr);
   }
 
-  void ShowPoint(bool two_solutions,
-                 const BigInt &X, const BigInt &Y,
-                 const BigInt &Alpha, const BigInt &Beta,
-                 const BigInt &Div,
-                 std::optional<BigInt> *Xdst,
-                 std::optional<BigInt> *Ydst) {
-
-    if (VERBOSE) {
-      printf("ShowPoint %s %s %s %s %s\n",
-             X.ToString().c_str(),
-             Y.ToString().c_str(),
-             Alpha.ToString().c_str(),
-             Beta.ToString().c_str(),
-             Div.ToString().c_str());
-    }
+  void ShowPointTwo(
+      const BigInt &X, const BigInt &Y,
+      const BigInt &Alpha, const BigInt &Beta,
+      const BigInt &Div,
+      std::optional<BigInt> *Xdst,
+      std::optional<BigInt> *Ydst) {
 
     // Check first that (X+alpha) and (Y+beta) are multiple of D.
     BigInt tmp1 = X + Alpha;
@@ -1656,20 +1645,65 @@ struct Quad {
         tmp2 /= Div;
       }
 
-      // XXX is two_solutions statically known here?
-      if (two_solutions) {
-        // HYPERBOLIC.
-        solFound = true;
-        ShowXYTwo(ExchXY, tmp1, tmp2, Xdst, Ydst);
-      } else {
-        // Not HYPERBOLIC.
-        // Result box:
-        clean.ShowXYOne(ExchXY, tmp1, tmp2);
-      }
-
+      // HYPERBOLIC.
+      solFound = true;
+      ShowXYTwo(ExchXY, tmp1, tmp2, Xdst, Ydst);
       // Show recursive solution if it exists.
       showRecursiveSolution = 1;
     }
+  }
+
+  void ShowPointOne(const BigInt &X, const BigInt &Y,
+                    const BigInt &Alpha, const BigInt &Beta,
+                    const BigInt &Div) {
+
+    // Check first that (X+alpha) and (Y+beta) are multiple of D.
+    BigInt tmp1 = X + Alpha;
+    BigInt tmp2 = Y + Beta;
+
+    // (I think this should actually be impossible because Div comes from
+    // the GCD of the coefficients.)
+    CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
+
+    // PERF divisibility tests.
+    if (tmp1 % Div == 0 &&
+        tmp2 % Div == 0) {
+
+      // PERF known divisible
+      if (Div != 0) {
+        tmp1 /= Div;
+        tmp2 /= Div;
+      }
+
+      // Not HYPERBOLIC.
+      // Result box:
+      clean.ShowXYOne(ExchXY, tmp1, tmp2);
+      // Show recursive solution if it exists.
+      showRecursiveSolution = 1;
+    }
+  }
+
+
+  void ShowPoint(bool two_solutions,
+                 const BigInt &X, const BigInt &Y,
+                 const BigInt &Alpha, const BigInt &Beta,
+                 const BigInt &Div,
+                 std::optional<BigInt> *Xdst,
+                 std::optional<BigInt> *Ydst) {
+
+    if (VERBOSE) {
+      printf("ShowPoint %s %s %s %s %s\n",
+             X.ToString().c_str(),
+             Y.ToString().c_str(),
+             Alpha.ToString().c_str(),
+             Beta.ToString().c_str(),
+             Div.ToString().c_str());
+    }
+
+    if (two_solutions)
+      ShowPointTwo(X, Y, Alpha, Beta, Div, Xdst, Ydst);
+    else
+      ShowPointOne(X, Y, Alpha, Beta, Div);
   }
 
   // Solve ax^2+bxy+cy^2 = K
@@ -2271,7 +2305,7 @@ struct Quad {
     }
 
     CHECK(O != 0) << "Might have been shenanigans with O = 0?";
-    if (P % O == 0) {
+    if (BigInt::DivisibleBy(P, O)) {
       // PERF divisibility test followed by divide
       // X found.
       BigInt U1 = P / O;
@@ -2401,9 +2435,7 @@ struct Quad {
       U3 = (A * K) << 2;
     }
 
-    BigInt U2 = BigInt::CMod(U3, U1);
-
-    if (U2 != 0) {
+    if (!BigInt::DivisibleBy(U3, U1)) {
       return;
     }
 
@@ -2725,8 +2757,7 @@ struct Quad {
     U = -U;
 
     // If L-U^2 is not multiple of V, there is no solution, so go out.
-    // PERF divisibility check
-    if (BigInt::CMod(L - U * U, V) != 0) {
+    if (!BigInt::DivisibleBy(L - U * U, V)) {
       // No solutions using continued fraction.
       return;
     }
@@ -2790,7 +2821,7 @@ struct Quad {
                                          E));
 
     // PERF divisibility check
-    if (gcd != 0 && BigInt::CMod(F, gcd) != 0) {
+    if (gcd != 0 && !BigInt::DivisibleBy(F, gcd)) {
       // F is not multiple of GCD(A, B, C, D, E) so there are no solutions.
       clean.ShowText("<p>There are no solutions.</p>");
       return;
@@ -2878,7 +2909,7 @@ struct Quad {
     BigIntToBigInteger(K, &ValK);
 
     // If k is not multiple of gcd(A, B, C), there are no solutions.
-    if (BigInt::CMod(K, UU1) != 0) {
+    if (!BigInt::DivisibleBy(K, UU1)) {
       // There are no solutions.
       return;
     }
