@@ -450,14 +450,6 @@ UnimodularSubstitution(const BigInt &M,
 
 struct Quad {
   // TODO: Lots of these could be local; dynamically sized.
-  BigInteger ValI;
-  BigInteger ValM;
-  BigInteger ValU;
-  BigInteger ValV;
-  BigInteger ValAlpha;
-  BigInteger ValBeta;
-  BigInteger ValDiv;
-  BigInteger discr;
   int showRecursiveSolution = 0;
   // BigInt Xind, Yind, Xlin, Ylin;
   bool ExchXY = false;
@@ -490,13 +482,6 @@ struct Quad {
     void showMinus() {
       if (output != nullptr)
         *output += "&minus;";
-    }
-
-    void ShowNumber(const BigInteger* value) {
-      if (output != nullptr) {
-        BigInt b = BigIntegerToBigInt(value);
-        *output += b.ToString();
-      }
     }
 
     void ShowBigInt(const BigInt &value) {
@@ -889,7 +874,7 @@ struct Quad {
       ShowText("</p>");
     }
 
-    // Obtain next convergent of continued fraction of ValU/ValV
+    // Obtain next convergent of continued fraction of U/V
     // Previous convergents U1/V1, U2/V2, U3/V3.
     std::tuple<BigInt, BigInt, BigInt,
                BigInt, BigInt, BigInt> GetNextConvergent(
@@ -1483,25 +1468,6 @@ struct Quad {
 
   Clean clean;
 
-  void MarkUninitialized() {
-    // Port note: There are various interleaved code paths where
-    // different state (e.g. callback type) results in these member
-    // variables being initialized or not. At least set them to
-    // valid state so that we can convert them to BigInt (and discard).
-    for (BigInteger *b : {
-          &ValI, &ValM,
-          &ValU, &ValV,
-          &ValAlpha, &ValBeta, &ValDiv,
-          &discr
-            }) {
-      intToBigInteger(b, 0xCAFE);
-    }
-  }
-
-  struct Solution {
-
-  };
-
   // TODO: Try to make this dispatch (callbackQuadModType) static.
   template<QmodCallbackType QMOD_CALLBACK>
   void SolutionX(BigInt Value, const BigInt &Modulus,
@@ -1567,7 +1533,7 @@ struct Quad {
       const BigInt &coeffIndep,
       BigInt Modulus,
       const BigInt &A, const BigInt &B, const BigInt &C, const BigInt &D, const BigInt &E,
-      const BigInt &M, const BigInt &K, const BigInt &I, const BigInt &U, const BigInt &V,
+      const BigInt &M, const BigInt &K, const BigInt &U, const BigInt &V,
       const BigInt &Alpha, const BigInt &Beta, const BigInt &Div, const BigInt &Discr) {
 
     if (VERBOSE) {
@@ -1750,10 +1716,6 @@ struct Quad {
     // Compute v <- d^2 - 4af
     BigInt V = D * D - ((A * F) << 2);
 
-    // XXX remove this state
-    BigIntToBigInteger(U, &ValU);
-    BigIntToBigInteger(V, &ValV);
-
     if (U == 0) {
       // u equals zero, so (t+d)^2 = v.
 
@@ -1805,20 +1767,17 @@ struct Quad {
     // We have to solve the congruence
     //     T^2 = v (mod u) where T = t+d and t = 2ax+by.
 
-    CHECK(BigIntegerToBigInt(&ValU) == U);
-
     // These were actually uninitialized on this code path,
     // and are probably unused.
     const BigInt M(0);
     const BigInt K(0);
-    const BigInt I(0);
 
     SolveQuadModEquation<QmodCallbackType::PARABOLIC>(
         // Coefficients and modulus
         BigInt(1), BigInt(0), -V, BigInt::Abs(U),
         // Problem state
         A, B, C, D, E,
-        M, K, I, U, V,
+        M, K, U, V,
         // I think these end up unused in this case, but anyway,
         // don't translate the origin.
         BigInt(0), BigInt(0), BigInt(1),
@@ -1858,7 +1817,6 @@ struct Quad {
                              BigInt Alpha, BigInt Beta, const BigInt &Div) {
 
     // These were actually uninitialized, and probably unused?
-    const BigInt I(0);
     const BigInt U(0);
     const BigInt V(0);
 
@@ -1883,13 +1841,6 @@ struct Quad {
       }
       return;
     }
-
-    // XXX
-    BigIntToBigInteger(Discr, &discr);
-
-    BigIntToBigInteger(Alpha, &ValAlpha);
-    BigIntToBigInteger(Beta, &ValBeta);
-    BigIntToBigInteger(Div, &ValDiv);
 
     if (VERBOSE) {
       printf("start NSD %s %s %s | %s %s | %s %s %s\n",
@@ -2021,9 +1972,6 @@ struct Quad {
     // Theorem. The different moduli are divisors of the
     // right hand side, so we only have to factor it once.
 
-    BigIntToBigInteger(M, &ValM);
-
-
     for (;;) {
 
       SolveQuadModEquation<QMOD_CALLBACK>(
@@ -2031,7 +1979,7 @@ struct Quad {
           A, B, C, BigInt::Abs(K),
           // Problem state
           A, B, C, D, E,
-          M, K, I, U, V,
+          M, K, U, V,
           Alpha, Beta, Div, Discr);
 
       // Adjust counters.
@@ -2118,8 +2066,7 @@ struct Quad {
 
   void NegativeDiscriminant(const BigInt &A, const BigInt &B, const BigInt &C,
                             const BigInt &K,
-                            const BigInt &D, const BigInt &I,
-                            const BigInt &U, const BigInt &V,
+                            const BigInt &D,
                             const BigInt &Discr,
                             const BigInt &Alpha, const BigInt &Beta,
                             const BigInt &Div) {
@@ -2128,7 +2075,16 @@ struct Quad {
         A, B, C, K, D, Discr, Alpha, Beta, Div);
   }
 
+  void PositiveDiscriminant(const BigInt &A, const BigInt &B, const BigInt &C,
+                            const BigInt &K,
+                            const BigInt &D,
+                            const BigInt &Discr,
+                            const BigInt &Alpha, const BigInt &Beta,
+                            const BigInt &Div) {
 
+    NonSquareDiscriminant<QmodCallbackType::HYPERBOLIC>(
+        A, B, C, K, D, Discr, Alpha, Beta, Div);
+  }
 
   void CallbackQuadModElliptic(
       const BigInt &A, const BigInt &B, const BigInt &C,
@@ -2177,8 +2133,6 @@ struct Quad {
                   Alpha, Beta, Div,
                   BigInt(1), BigInt(0),
                   Value);
-
-          intToBigInteger(&ValI, -1);
 
           sol_found =
             clean.NonSquareDiscrSolutionOne(
@@ -2344,11 +2298,6 @@ struct Quad {
           std::tie(U, U1, U2, V, V1, V2) =
             clean.GetNextConvergent(U, U1, U2,
                                     V, V1, V2);
-
-          // XXX dead?
-          BigInt I = V1;
-          BigIntToBigInteger(I, &ValI);
-          // CopyBigInt(&ValI, &V1);
 
           bool sol_found =
           clean.NonSquareDiscrSolutionOne(
@@ -2602,18 +2551,6 @@ struct Quad {
     }
   }
 
-  void PositiveDiscriminant(const BigInt &A, const BigInt &B, const BigInt &C,
-                            const BigInt &K,
-                            const BigInt &D, const BigInt &I,
-                            const BigInt &U, const BigInt &V,
-                            const BigInt &Discr,
-                            const BigInt &Alpha, const BigInt &Beta,
-                            const BigInt &Div) {
-
-    NonSquareDiscriminant<QmodCallbackType::HYPERBOLIC>(
-        A, B, C, K, D, Discr, Alpha, Beta, Div);
-  }
-
   // Used for hyperbolic curve.
   //  PQa algorithm for (P+G)/Q where G = sqrt(discriminant):
   //  Set U1 to 1 and U2 to 0.
@@ -2822,10 +2759,6 @@ struct Quad {
     Yminus.reset();
     // Somewhere below these can get set. Can we return the values instead?
 
-    // XXX pass args
-    BigIntToBigInteger(U, &ValU);
-    BigIntToBigInteger(V, &ValV);
-
     // Continued fraction of (U+G)/V
     ContFrac(Value, SolutionNumber::FIRST,
              A, B, E,
@@ -2833,17 +2766,11 @@ struct Quad {
              U, V, G,
              Alpha, Beta, Div, Discr);
 
-    U = -U;
-    V = -V;
-
-    BigIntToBigInteger(U, &ValU);
-    BigIntToBigInteger(V, &ValV);
-
     // Continued fraction of (-U+G)/(-V)
     ContFrac(Value, SolutionNumber::SECOND,
              A, B, E,
              K, L, M,
-             U, V, G,
+             -U, -V, G,
              Alpha, Beta, Div, Discr);
 
 
@@ -2864,15 +2791,6 @@ struct Quad {
   // PS: This is where to understand the meaning of Alpha, Beta, K, Div.
   void SolveQuadEquation(BigInt A, BigInt B, BigInt C,
                          BigInt D, BigInt E, BigInt F) {
-
-    const BigInt I = BigIntegerToBigInt(&ValI);
-    const BigInt U = BigIntegerToBigInt(&ValU);
-    const BigInt V = BigIntegerToBigInt(&ValV);
-
-    CHECK(I == 0xCAFE);
-    CHECK(U == 0xCAFE);
-    CHECK(V == 0xCAFE);
-
     // Do not show recursive solution by default.
     showRecursiveSolution = 0;
 
@@ -2956,12 +2874,6 @@ struct Quad {
       K = (-Discr) * ((A * E * E) - (B * E * D) + (C * D * D) + (F * Discr));
     }
 
-    // XXX remove this state
-    BigIntToBigInteger(Discr, &discr);
-    BigIntToBigInteger(Alpha, &ValAlpha);
-    BigIntToBigInteger(Beta, &ValBeta);
-    BigIntToBigInteger(Div, &ValDiv);
-
     // If k is not multiple of gcd(A, B, C), there are no solutions.
     if (!BigInt::DivisibleBy(K, UU1)) {
       // There are no solutions.
@@ -2978,7 +2890,7 @@ struct Quad {
     }
 
     if (Discr < 0) {
-      NegativeDiscriminant(A, B, C, K, D, I, U, V,
+      NegativeDiscriminant(A, B, C, K, D,
                            Discr, Alpha, Beta, Div);
       return;
     }
@@ -2995,7 +2907,7 @@ struct Quad {
 
       return;
     } else {
-      PositiveDiscriminant(A, B, C, K, D, I, U, V,
+      PositiveDiscriminant(A, B, C, K, D,
                            Discr, Alpha, Beta, Div);
     }
   }
@@ -3017,9 +2929,7 @@ struct Quad {
     }
   }
 
-  Quad() {
-    MarkUninitialized();
-  }
+  Quad() {}
 
 };
 
