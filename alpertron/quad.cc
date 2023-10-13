@@ -454,12 +454,6 @@ struct Quad {
   // BigInt Xind, Yind, Xlin, Ylin;
   bool ExchXY = false;
 
-  std::optional<BigInt> Xplus;
-  std::optional<BigInt> Xminus;
-  std::optional<BigInt> Yplus;
-  std::optional<BigInt> Yminus;
-
-
   const char *varT = "t";
 
   // Functions that have been expunged of state above.
@@ -2562,12 +2556,15 @@ struct Quad {
   //  Set U to a*V - U
   //  Set V to (D - U^2)/V
   //  Inside period when: 0 <= G - U < V
-  void ContFrac(const BigInt &Value, enum SolutionNumber solutionNbr,
-                const BigInt &A, const BigInt &B, const BigInt &E,
-                const BigInt &K, const BigInt &L, const BigInt &M,
-                BigInt U, BigInt V, BigInt G,
-                const BigInt &Alpha, const BigInt &Beta,
-                const BigInt &Div, const BigInt &Discr) {
+  void ContFrac(
+      const BigInt &Value, enum SolutionNumber solutionNbr,
+      const BigInt &A, const BigInt &B, const BigInt &E,
+      const BigInt &K, const BigInt &L, const BigInt &M,
+      BigInt U, BigInt V, BigInt G,
+      const BigInt &Alpha, const BigInt &Beta,
+      const BigInt &Div, const BigInt &Discr,
+      std::optional<BigInt> *Xplus, std::optional<BigInt> *Yplus,
+      std::optional<BigInt> *Xminus, std::optional<BigInt> *Yminus) {
 
     const bool isBeven = B.IsEven();
     // If (D-U^2) is not multiple of V, exit routine.
@@ -2610,7 +2607,8 @@ struct Quad {
         // Found solution.
         if (BigInt::Abs(Discr) == 5 && (a_neg != k_neg) &&
             (solutionNbr == SolutionNumber::FIRST)) {
-          // Determinant is 5 and aK < 0. Use exceptional solution (U1-U2)/(V1-V2).
+          // Determinant is 5 and aK < 0.
+          // Use exceptional solution (U1-U2)/(V1-V2).
 
           // printf("aaaaaaa coverage\n");
           solFound =
@@ -2619,7 +2617,7 @@ struct Quad {
                 M, E, -BigInt::Abs(K),
                 Alpha, Beta, Div,
                 V1 - V2, U1 - U2, Value,
-                &Xplus, &Yplus, &Xminus, &Yminus);
+                Xplus, Yplus, Xminus, Yminus);
 
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
@@ -2630,7 +2628,7 @@ struct Quad {
                 M, E, -BigInt::Abs(K),
                 Alpha, Beta, Div,
                 V1, U1, Value,
-                &Xplus, &Yplus, &Xminus, &Yminus);
+                Xplus, Yplus, Xminus, Yminus);
 
         }
 
@@ -2752,27 +2750,28 @@ struct Quad {
 
     // Set G to floor(sqrt(L))
     const BigInt G = BigInt::Sqrt(L);
+
     // Invalidate solutions.
-    Xplus.reset();
-    Xminus.reset();
-    Yplus.reset();
-    Yminus.reset();
-    // Somewhere below these can get set. Can we return the values instead?
+    std::optional<BigInt> Xplus;
+    std::optional<BigInt> Xminus;
+    std::optional<BigInt> Yplus;
+    std::optional<BigInt> Yminus;
 
     // Continued fraction of (U+G)/V
     ContFrac(Value, SolutionNumber::FIRST,
              A, B, E,
              K, L, M,
              U, V, G,
-             Alpha, Beta, Div, Discr);
+             Alpha, Beta, Div, Discr,
+             &Xplus, &Yplus, &Xminus, &Yminus);
 
     // Continued fraction of (-U+G)/(-V)
     ContFrac(Value, SolutionNumber::SECOND,
              A, B, E,
              K, L, M,
              -U, -V, G,
-             Alpha, Beta, Div, Discr);
-
+             Alpha, Beta, Div, Discr,
+             &Xplus, &Yplus, &Xminus, &Yminus);
 
     if (Xplus.has_value()) {
       CHECK(Yplus.has_value());
