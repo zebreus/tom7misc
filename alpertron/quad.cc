@@ -450,12 +450,10 @@ UnimodularSubstitution(const BigInt &M,
 
 struct Quad {
   // TODO: Lots of these could be local; dynamically sized.
-  BigInteger ValE;
   BigInteger ValI;
   BigInteger ValM;
   BigInteger ValU;
   BigInteger ValV;
-  BigInteger ValK;
   BigInteger ValAlpha;
   BigInteger ValBeta;
   BigInteger ValDiv;
@@ -1494,9 +1492,8 @@ struct Quad {
     // variables being initialized or not. At least set them to
     // valid state so that we can convert them to BigInt (and discard).
     for (BigInteger *b : {
-          &ValE,
           &ValI, &ValM,
-          &ValU, &ValV, &ValK,
+          &ValU, &ValV,
           &ValAlpha, &ValBeta, &ValDiv,
           &discr
             }) {
@@ -1706,41 +1703,33 @@ struct Quad {
       // Chinese Remainder Theorem.
     }
 
-    {
-      // XXX two different moduli here
-      // SolveEquation used to modify the modulus and Nn. Was that
-      // why?
-      // CHECK(modulus == BigIntegerToBigInt(&this->modulus));
-      // BigIntToBigInteger(Modulus, &this->modulus);
-
-      if (VERBOSE) {
-        printf("[Call SolveEq] %s %s %s %s %s %s\n",
-               coeff_quadr.ToString().c_str(),
-               coeff_linear.ToString().c_str(),
-               coeff_indep.ToString().c_str(),
-               Modulus.ToString().c_str(),
-               GcdAll.ToString().c_str(),
-               ValNn.ToString().c_str());
-      }
-
-      SolveEquation(
-          SolutionFn([&](const BigInt &Value) {
-              this->SolutionX<QMOD_CALLBACK>(
-                  Value,
-                  Modulus,
-                  A, B, C, D, E,
-                  M, K, I,
-                  U, V,
-                  Alpha, Beta, Div, Discr);
-            }),
-          coeff_quadr, coeff_linear, coeff_indep,
-          Modulus, GcdAll, ValNn);
+    if (VERBOSE) {
+      printf("[Call SolveEq] %s %s %s %s %s %s\n",
+             coeff_quadr.ToString().c_str(),
+             coeff_linear.ToString().c_str(),
+             coeff_indep.ToString().c_str(),
+             Modulus.ToString().c_str(),
+             GcdAll.ToString().c_str(),
+             ValNn.ToString().c_str());
     }
+
+    SolveEquation(
+        SolutionFn([&](const BigInt &Value) {
+            this->SolutionX<QMOD_CALLBACK>(
+                Value,
+                Modulus,
+                A, B, C, D, E,
+                M, K, I,
+                U, V,
+                Alpha, Beta, Div, Discr);
+          }),
+        coeff_quadr, coeff_linear, coeff_indep,
+        Modulus, GcdAll, ValNn);
+
   }
 
   void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,
-                          BigInt D, BigInt E, BigInt F,
-                          const BigInt &M, const BigInt &K, const BigInt &I) {
+                          BigInt D, BigInt E, BigInt F) {
     // fprintf(stderr, "disciszero coverage\n");
     // Next algorithm does not work if A = 0. In this case, exchange x and y.
     ExchXY = false;
@@ -1766,7 +1755,6 @@ struct Quad {
     BigInt V = D * D - ((A * F) << 2);
 
     // XXX remove this state
-    BigIntToBigInteger(E, &ValE);
     BigIntToBigInteger(U, &ValU);
     BigIntToBigInteger(V, &ValV);
 
@@ -1822,6 +1810,12 @@ struct Quad {
     //     T^2 = v (mod u) where T = t+d and t = 2ax+by.
 
     CHECK(BigIntegerToBigInt(&ValU) == U);
+
+    // These were actually uninitialized on this code path,
+    // and are probably unused.
+    const BigInt M(0);
+    const BigInt K(0);
+    const BigInt I(0);
 
     SolveQuadModEquation<QmodCallbackType::PARABOLIC>(
         // Coefficients and modulus
@@ -1891,7 +1885,6 @@ struct Quad {
     }
 
     // XXX
-    BigIntToBigInteger(K, &ValK);
     BigIntToBigInteger(Discr, &discr);
 
     BigIntToBigInteger(Alpha, &ValAlpha);
@@ -2032,11 +2025,6 @@ struct Quad {
 
 
     for (;;) {
-      // Ugh, SQME depends on additional state (SolutionX).
-      // These two are modified in this loop.
-      BigIntToBigInteger(E, &ValE);
-      BigIntToBigInteger(K, &ValK);
-
 
       SolveQuadModEquation<QMOD_CALLBACK>(
           // Coefficients and modulus
@@ -2100,7 +2088,6 @@ struct Quad {
       // in a loop within this code.
       //
       // Do not try to factor the number again.
-      // CopyBigInt(&LastModulus, &ValK);
 
       if (index == (int)indexEvenMultiplicity.size()) {
         // All factors have been found. Exit loop.
@@ -2552,10 +2539,6 @@ struct Quad {
     // K <- H * alpha + I * beta
     const BigInt NewK = H * Alpha + I * Beta;
 
-    // Dead? Maybe just teach mode?
-    // I think some of these are used in PositiveDiscriminant
-    BigIntToBigInteger(NewK, &ValK);
-
     // Loop that finds all factors of Z.
     // Use Gray code to use only one big number.
     // Gray code: 0->000, 1->001, 2->011, 3->010, 4->110, 5->111, 6->101, 7->100.
@@ -2881,6 +2864,15 @@ struct Quad {
   // PS: This is where to understand the meaning of Alpha, Beta, K, Div.
   void SolveQuadEquation(BigInt A, BigInt B, BigInt C,
                          BigInt D, BigInt E, BigInt F) {
+
+    const BigInt I = BigIntegerToBigInt(&ValI);
+    const BigInt U = BigIntegerToBigInt(&ValU);
+    const BigInt V = BigIntegerToBigInt(&ValV);
+
+    CHECK(I == 0xCAFE);
+    CHECK(U == 0xCAFE);
+    CHECK(V == 0xCAFE);
+
     // Do not show recursive solution by default.
     showRecursiveSolution = 0;
 
@@ -2933,25 +2925,8 @@ struct Quad {
       // I, Alpha, Beta, Div, but I think they end up unused inside
       // SolveQuadModEquation (or callbacks) when the discriminant is
       // zero.
-      const BigInt M = BigIntegerToBigInt(&ValM);
-      const BigInt K = BigIntegerToBigInt(&ValK);
-      const BigInt I = BigIntegerToBigInt(&ValI);
-      const BigInt Alpha = BigIntegerToBigInt(&ValAlpha);
-      const BigInt Beta = BigIntegerToBigInt(&ValBeta);
-      const BigInt Div = BigIntegerToBigInt(&ValDiv);
-
-      CHECK(M == 0xCAFE);
-      CHECK(K == 0xCAFE);
-      CHECK(I == 0xCAFE);
-
-      // ???
-      CHECK(Alpha == 0xCAFE);
-      CHECK(Beta == 0xCAFE);
-      CHECK(Div == 0xCAFE);
-
       // Discriminant is zero.
-      DiscriminantIsZero(A, B, C, D, E, F,
-                         M, K, I);
+      DiscriminantIsZero(A, B, C, D, E, F);
       return;
     }
 
@@ -2982,12 +2957,10 @@ struct Quad {
     }
 
     // XXX remove this state
-    BigIntToBigInteger(E, &ValE);
     BigIntToBigInteger(Discr, &discr);
     BigIntToBigInteger(Alpha, &ValAlpha);
     BigIntToBigInteger(Beta, &ValBeta);
     BigIntToBigInteger(Div, &ValDiv);
-    BigIntToBigInteger(K, &ValK);
 
     // If k is not multiple of gcd(A, B, C), there are no solutions.
     if (!BigInt::DivisibleBy(K, UU1)) {
@@ -3003,10 +2976,6 @@ struct Quad {
       C = -C;
       K = -K;
     }
-
-    const BigInt I = BigIntegerToBigInt(&ValI);
-    const BigInt U = BigIntegerToBigInt(&ValU);
-    const BigInt V = BigIntegerToBigInt(&ValV);
 
     if (Discr < 0) {
       NegativeDiscriminant(A, B, C, K, D, I, U, V,
