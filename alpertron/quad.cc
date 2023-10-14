@@ -30,6 +30,8 @@
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 
+using namespace std;
+
 static constexpr bool VERBOSE = false;
 
 enum class LinearSolutionType {
@@ -314,42 +316,32 @@ PerformTransformation(
 
 // Accumulates the minimum solution in xdst, ydst. Would be cleaner
 // if we passed around some kind of explicit state.
-void ShowXYTwo(bool swap_xy, const BigInt &X, const BigInt &Y,
-               std::optional<BigInt> *Xdst,
-               std::optional<BigInt> *Ydst) {
+void AccumulateXY(const BigInt &X, const BigInt &Y,
+                  std::optional<std::pair<BigInt, BigInt>> *sol) {
 
-  CHECK(Xdst != nullptr);
-  CHECK(Ydst != nullptr);
+  CHECK(sol != nullptr);
 
-  if (!Xdst->has_value()) {
-    CHECK(!Ydst->has_value());
-    Xdst->emplace(X);
-    Ydst->emplace(Y);
+  if (!sol->has_value()) {
+    sol->emplace(X, Y);
   } else {
-    CHECK(Xdst->has_value());
-    CHECK(Ydst->has_value());
-
-    // Use the lowest of |X| + |Y| and |Xdst| + |Ydst|
-    BigInt BX = Xdst->value();
-    BigInt BY = Ydst->value();
+    const auto &[BX, BY] = sol->value();
+    // Take the smallest by the sum of absolute values.
 
     if (BigInt::Abs(X) + BigInt::Abs(Y) <=
         BigInt::Abs(BX) + BigInt::Abs(BY)) {
-      // At this moment |x| + |y| <= |xdst| + |ydst|
-      Xdst->emplace(X);
-      Ydst->emplace(Y);
+      sol->emplace(X, Y);
     }
   }
 }
 
 // Returns true if solution found.
-bool ShowPointTwo(
-    bool swap_xy,
+bool AccumulatePoint(
     const BigInt &X, const BigInt &Y,
     const BigInt &Alpha, const BigInt &Beta,
     const BigInt &Div,
-    std::optional<BigInt> *Xdst,
-    std::optional<BigInt> *Ydst) {
+    std::optional<std::pair<BigInt, BigInt>> *sol) {
+
+  CHECK(sol != nullptr);
 
   // Check first that (X+alpha) and (Y+beta) are multiple of D.
   BigInt tmp1 = X + Alpha;
@@ -368,7 +360,7 @@ bool ShowPointTwo(
     }
 
     // HYPERBOLIC.
-    ShowXYTwo(swap_xy, tmp1, tmp2, Xdst, Ydst);
+    AccumulateXY(tmp1, tmp2, sol);
     return true;
   }
   return false;
@@ -1315,8 +1307,11 @@ struct Quad {
         const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
         const BigInt &H, const BigInt &I,
         const BigInt &Value,
-        std::optional<BigInt> *Xplus, std::optional<BigInt> *Yplus,
-        std::optional<BigInt> *Xminus, std::optional<BigInt> *Yminus) {
+        std::optional<std::pair<BigInt, BigInt>> *sol_plus,
+        std::optional<std::pair<BigInt, BigInt>> *sol_minus) {
+
+      CHECK(sol_plus != nullptr);
+      CHECK(sol_minus != nullptr);
 
       // Port note: This used to modify the value of K based on the callback
       // type, but now we do that at the call site. (Also there was something
@@ -1333,11 +1328,9 @@ struct Quad {
       {
         const auto &[Temp0, Temp1] =
           UnimodularSubstitution(M, Z, O);
-        sol_found = ShowPointTwo(swap_xy,
-                                 Temp0,
-                                 Temp1,
-                                 Alpha, Beta, Div,
-                                 Xplus, Yplus);
+        sol_found = AccumulatePoint(Temp0, Temp1,
+                                    Alpha, Beta, Div,
+                                    sol_plus);
       }
 
       // Z: (-tu - Kv)*E
@@ -1347,12 +1340,9 @@ struct Quad {
       {
         const auto &[Temp0, Temp1] =
           UnimodularSubstitution(M, -Z, -O);
-        sol_found = ShowPointTwo(swap_xy,
-                                 Temp0,
-                                 Temp1,
-                                 Alpha, Beta, Div,
-                                 Xminus, Yminus) ||
-          sol_found;
+        sol_found = AccumulatePoint(Temp0, Temp1,
+                                    Alpha, Beta, Div,
+                                    sol_minus) || sol_found;
       }
 
       return sol_found;
@@ -2545,8 +2535,8 @@ struct Quad {
       BigInt U, BigInt V, BigInt G,
       const BigInt &Alpha, const BigInt &Beta,
       const BigInt &Div, const BigInt &Discr,
-      std::optional<BigInt> *Xplus, std::optional<BigInt> *Yplus,
-      std::optional<BigInt> *Xminus, std::optional<BigInt> *Yminus) {
+      std::optional<std::pair<BigInt, BigInt>> *sol_plus,
+      std::optional<std::pair<BigInt, BigInt>> *sol_minus) {
 
     const bool isBeven = B.IsEven();
     // If (D-U^2) is not multiple of V, exit routine.
@@ -2599,7 +2589,7 @@ struct Quad {
                 M, E, -BigInt::Abs(K),
                 Alpha, Beta, Div,
                 V1 - V2, U1 - U2, Value,
-                Xplus, Yplus, Xminus, Yminus);
+                sol_plus, sol_minus);
 
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
@@ -2610,7 +2600,7 @@ struct Quad {
                 M, E, -BigInt::Abs(K),
                 Alpha, Beta, Div,
                 V1, U1, Value,
-                Xplus, Yplus, Xminus, Yminus);
+                sol_plus, sol_minus);
 
         }
 
@@ -2733,11 +2723,7 @@ struct Quad {
     // Set G to floor(sqrt(L))
     const BigInt G = BigInt::Sqrt(L);
 
-    // Invalidate solutions.
-    std::optional<BigInt> Xplus;
-    std::optional<BigInt> Xminus;
-    std::optional<BigInt> Yplus;
-    std::optional<BigInt> Yminus;
+    std::optional<std::pair<BigInt, BigInt>> sol_plus, sol_minus;
 
     // Continued fraction of (U+G)/V
     ContFrac(Value, SolutionNumber::FIRST,
@@ -2745,7 +2731,7 @@ struct Quad {
              K, L, M,
              U, V, G,
              Alpha, Beta, Div, Discr,
-             &Xplus, &Yplus, &Xminus, &Yminus);
+             &sol_plus, &sol_minus);
 
     // Continued fraction of (-U+G)/(-V)
     ContFrac(Value, SolutionNumber::SECOND,
@@ -2753,18 +2739,18 @@ struct Quad {
              K, L, M,
              -U, -V, G,
              Alpha, Beta, Div, Discr,
-             &Xplus, &Yplus, &Xminus, &Yminus);
+             &sol_plus, &sol_minus);
 
-    if (Xplus.has_value()) {
-      CHECK(Yplus.has_value());
+    if (sol_plus.has_value()) {
+      const auto &[X, Y] = sol_plus.value();
       // Result box:
-      clean.ShowXYOne(ExchXY, Xplus.value(), Yplus.value());
+      clean.ShowXYOne(ExchXY, X, Y);
     }
 
-    if (Xminus.has_value()) {
-      CHECK(Yminus.has_value());
+    if (sol_minus.has_value()) {
+      const auto &[X, Y] = sol_minus.value();
       // Result box:
-      clean.ShowXYOne(ExchXY, Xminus.value(), Yminus.value());
+      clean.ShowXYOne(ExchXY, X, Y);
     }
   }
 
