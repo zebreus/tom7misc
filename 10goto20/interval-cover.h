@@ -1,4 +1,7 @@
 
+// Note! I moved this to cc-lib and updated the interface.
+// If I come back to 10goto20, I'll probably want to use that one?
+
 // Defines an interval cover, which is a sparse set of non-overlapping
 // spans:
 //

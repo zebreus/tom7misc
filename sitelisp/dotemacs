@@ -83,10 +83,11 @@
          ;; looks amazing, chunky
          ;; "FixederSys 1x-24:antialias=none"
 
-         ;; hand tweaked to use full resolution; not sure about this
-         ;; yet.
+         ;; hand tweaked to use full resolution; superior!
          "FixederSys 2x-24:antialias=none"
 
+         ;; huge!
+         ; "FixederSys 2x-48:antialias=none"
          )
 
          (modify-frame-parameters nil

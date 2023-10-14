@@ -24,7 +24,7 @@ inline RNGState GetRNG(const Emulator &emu) {
   RNGState state;
 
   state.rng1 = emu.ReadRAM(MEM_RNG1);
-  state.rng2 = emu.ReadRAM(MEM_RNG2);  
+  state.rng2 = emu.ReadRAM(MEM_RNG2);
   state.last_drop = emu.ReadRAM(MEM_LAST_DROP);
   state.drop_count = emu.ReadRAM(MEM_DROP_COUNT);
 
@@ -40,7 +40,7 @@ inline std::vector<uint8_t> GetBoard(const Emulator &emu) {
   return ret;
 }
 
-inline void SaveScreenshot(const string &filename, Emulator *emu) {
+inline void SaveScreenshot(const std::string &filename, Emulator *emu) {
   std::vector<uint8_t> save = emu->SaveUncompressed();
   emu->StepFull(0, 0);
 

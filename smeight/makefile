@@ -6,7 +6,8 @@ all: smeight.exe
 SDL=/c/code/SDL
 
 #  -I GLEW/include
-CXXFLAGS=--std=c++17 -march=native -Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I $(SDL)/include
+# -I/usr/local/include
+CXXFLAGS=--std=c++20 -march=native -Wall -Wno-deprecated -Wno-sign-compare  -I $(SDL)/include
 OPT=-O2
 SYMBOLS=-g
 
@@ -33,16 +34,16 @@ SDLARCH=x64
 
 #  GLEW_LIB=GLEW/lib/Release/x64/glew32.lib
 #  GLEW_DLL=GLEW/bin/Release/x64/glew32.dll
-#  
+#
 #  # make sure this uses TDM-GCC's dlltool!
 #  libglew32.a : $(GLEW_LIB) $(GLEW_DLL) makefile
 #  	dlltool --export-all-symbols -d glew32.def -D $(GLEW_DLL) -mi386:x86-64 -k -a -l $@
-#  
+#
 
 # -L. -lglew32
 LINKGL=-lopengl32
 
-# -mno-cygwin 
+# -mno-cygwin
 LINKSDL=-lm -luser32 -lgdi32 -lwinmm -ldxguid
 
 SDLOPATH=$(SDL)/build
@@ -82,7 +83,7 @@ LFLAGS=$(LINKGL) -m64 -Wl,--subsystem,console -lz $(OPT) $(SYMBOLS) $(FLTO) $(PR
 
 SMEIGHT_OBJECTS=autocamera.o wave.o autotiles.o
 
-# libglew32.a 
+# libglew32.a
 smeight.exe : $(FCEULIB_OBJECTS) $(SDL_OBJECTS) $(CCLIB_OBJECTS) $(SMEIGHT_OBJECTS) smeight.o sdl-win32-main.o
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@bash -c "echo -n '!'"

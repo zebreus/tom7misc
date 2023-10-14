@@ -18,15 +18,17 @@
 #include "nes-tetris.h"
 #include "encoding.h"
 
+using namespace std;
+
 // For any starting LFSR+last_drop state, what's the largest number of
 // iterations we need before seeing all values of rng1 & 7?
 void AllFirstRolls() {
 
   constexpr int BUCKETS = 100;
-  
+
   std::vector<int> counts;
   for (int i = 0; i < BUCKETS; i++) counts.push_back(0);
-  
+
   int max_count = 0;
 
   // Loop over the whole period.
@@ -38,9 +40,9 @@ void AllFirstRolls() {
     for (int c = 0; c < 256; c++) {
       RNGState state = outer_state;
       state.drop_count = c;
-      
+
       RNGState start_state = state;
-        
+
       uint8 got = 0;
 
       for (int count = 0; count < 32768; count++) {
@@ -80,7 +82,7 @@ void AllFirstRolls() {
 
   int max_bucket = 0;
   for (int v : counts) max_bucket = std::max(max_bucket, v);
-  
+
   for (int b = 0; b < BUCKETS; b++) {
     double f = counts[b] / (double)max_bucket;
     double height = std::max(0.01, 24.0 * f);
@@ -99,7 +101,7 @@ void AllFirstRolls() {
                         {{"#000", StringPrintf("%d", b + 1)}}).c_str());
     }
   }
-  
+
   svg += TextSVG::Footer();
   Util::WriteFile("rollhisto.svg", svg);
 }

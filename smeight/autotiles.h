@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <cstdint>
 
 #include "../fceulib/emulator.h"
 #include "autocamera.h"
@@ -17,7 +18,7 @@ struct AutoTiles {
 
   // Like autocamera, we keep a bunch of emulators around so that we
   // can do stuff in parallel.
-  explicit AutoTiles(const string &game) {
+  explicit AutoTiles(const std::string &game) {
     printf("Creating %d emulators for AutoTiles...\n", NUM_EMULATORS);
     for (int i = 0; i < NUM_EMULATORS; i++) {
       emus.push_back(Emulator::Create(game));
@@ -30,16 +31,16 @@ struct AutoTiles {
 
   // Here we try to compute a simple mapping from tile id to bool,
   // where true indicates solid.
-  static uint64 TilesCRC(const Emulator *emu);
+  static uint64_t TilesCRC(const Emulator *emu);
 
   struct Tileset {
-    std::unordered_map<uint32, bool> is_solid;
+    std::unordered_map<uint32_t, bool> is_solid;
   };
 
   enum Solidity { SOLID, OPEN, UNKNOWN, };
 
   struct Tile {
-    uint32 fourtiles = 0;
+    uint32_t fourtiles = 0;
     Solidity solidity = UNKNOWN;
   };
 
@@ -56,7 +57,7 @@ struct AutoTiles {
       const std::vector<AutoCamera::XYSprite> &cams);
 
   // All of the tilesets we've seen, keyed by CRC.
-  std::unordered_map<uint64, Tileset*> tilesets;
+  std::unordered_map<uint64_t, Tileset*> tilesets;
 
  private:
   std::vector<Emulator *> emus;

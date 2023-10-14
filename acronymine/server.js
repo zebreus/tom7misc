@@ -1,4 +1,6 @@
 
+let DO_PREDICT = false;
+
 function makeElement(what, cssclass, elt) {
   var e = document.createElement(what);
   if (cssclass) e.setAttribute('class', cssclass);
@@ -75,6 +77,8 @@ function Predict(idx) {
 */
 
 function Predict(idx) {
+  if (!DO_PREDICT) return;
+
   let phrase = '';
   for (let i = 0; i < WORD.length; i++) {
     if (i != 0) phrase += ' ';

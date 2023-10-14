@@ -21,7 +21,7 @@
 
 using namespace std;
 
-
+using uint32 = uint32_t;
 using int64 = int64_t;
 
 static constexpr double METERS_TO_FEET = 3.28084;

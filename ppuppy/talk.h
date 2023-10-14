@@ -35,10 +35,10 @@ struct Talk {
   };
 
   static Talk Load(const string &filename);
-  
+
   void Save(const string &meta_file,
-	    const string &slide_data_file);
-  
+            const string &slide_data_file);
+
   vector<Slide> slides;
 };
 
@@ -55,7 +55,7 @@ struct CompiledTalk {
     // screen idx and duration (> 0)
     vector<std::pair<int, int>> screens;
   };
-  
+
   int NumSlides() {
     return (int)slides.size();
   }
@@ -63,10 +63,10 @@ struct CompiledTalk {
   Slide *GetSlide(int n) {
     return &slides[n];
   }
-  
+
   CompiledTalk(const string &meta_file,
-	       const string &slide_data_file);
-  
+               const string &slide_data_file);
+
 private:
   vector<Screen> screen_data;
   vector<Slide> slides;

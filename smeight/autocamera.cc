@@ -12,6 +12,11 @@
 #include "../cc-lib/threadutil.h"
 #include "../fceulib/ppu.h"
 
+using namespace std;
+
+using uint8 = uint8_t;
+using uint16 = uint16_t;
+
 // Could also be done with a macro; maybe template parameter packs??
 inline static void StepPlayer(Emulator *emu, bool is_p1, uint8 input) {
   if (is_p1) emu->Step(input, 0);
@@ -310,7 +315,7 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
   for (const XYSprite &sprite : sprites) {
     int s = sprite.sprite_idx;
     XYSprite newsprite;
-    for (const pair<uint16, int> xaddr : sprite.xmems) {
+    for (const pair<uint16, int> &xaddr : sprite.xmems) {
       // Check every science.
       for (const Science &science : sciences) {
         int mem_x = (int)science.mem[xaddr.first] + xaddr.second;
@@ -450,7 +455,7 @@ vector<AutoCamera::XYSprite> AutoCamera::FindYCoordinates(
         return false;
       };
 
-      for (const auto addr : addrs)
+      for (const auto &addr : addrs)
         if (OK(addr))
           out->push_back(addr);
     };
@@ -600,10 +605,10 @@ vector<AutoCamera::XYSprite> AutoCamera::FilterForConsequentiality(
         !newsprite.ymems.empty()) {
       printf("Sprite %d survived consequentiality.\n"
              "   x:", newsprite.sprite_idx);
-      for (const auto addr : newsprite.xmems)
+      for (const auto &addr : newsprite.xmems)
         printf(" %s", AddrOffset(addr).c_str());
       printf("\n   y:");
-      for (const auto addr : newsprite.ymems)
+      for (const auto &addr : newsprite.ymems)
         printf(" %s", AddrOffset(addr).c_str());
       printf("\n");
 
@@ -661,9 +666,9 @@ bool AutoCamera::DetectViewType(const vector<uint8> &uncompressed_state,
           // Set ALL the memory locations.
           // Since mem[addr] + offset = loc,
           // subtract the offset from the desired location.
-          for (const auto xaddr : sprite.xmems)
+          for (const auto &xaddr : sprite.xmems)
             ram[xaddr.first] = x - xaddr.second;
-          for (const auto yaddr : sprite.ymems)
+          for (const auto &yaddr : sprite.ymems)
             ram[yaddr.first] = y - yaddr.second;
 
           // Let the location soak in.

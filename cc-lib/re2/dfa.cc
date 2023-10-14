@@ -53,14 +53,24 @@
 namespace re2 {
 
 #if !defined(__linux__)  /* only Linux seems to have memrchr */
-static void* memrchr(const void* s, int c, size_t n) {
-  const unsigned char* p = (const unsigned char*)s;
+static void* memrchr(void* s, int c, size_t n) {
+  unsigned char* p = (unsigned char*)s;
   for (p += n; n > 0; n--)
     if (*--p == c)
       return (void*)p;
 
-  return NULL;
+  return nullptr;
 }
+
+static const void* memrchr(const void* s, int c, size_t n) {
+  const unsigned char* p = (const unsigned char*)s;
+  for (p += n; n > 0; n--)
+    if (*--p == c)
+      return (const void*)p;
+
+  return nullptr;
+}
+
 #endif
 
 // Controls whether the DFA should bail out early if the NFA would be faster.

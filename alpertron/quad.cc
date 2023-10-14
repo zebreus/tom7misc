@@ -1189,12 +1189,6 @@ struct Quad {
 
       ShowText("\nRecursive solutions:\n");
 
-      // XXX Rather than overwrite, substitute in below?
-      A = ABack;
-      B = BBack;
-      C = CBack;
-
-
       int periodNbr = 0;
       enum eSign sign = SIGN_POSITIVE;
       for (;;) {
@@ -1255,7 +1249,7 @@ struct Quad {
         if (SolutionFoundFromContFraction(isBeven,
                                           BigInt::Abs(V).ToInt().value(),
                                           Alpha, Beta,
-                                          A, B, C,
+                                          ABack, BBack, CBack,
                                           Discr,
                                           UU1, VV1)) {
           return;
@@ -1353,11 +1347,11 @@ struct Quad {
       {
         const auto &[Temp0, Temp1] =
           UnimodularSubstitution(M, -Z, -O);
-        sol_found= ShowPointTwo(swap_xy,
-                                Temp0,
-                                Temp1,
-                                Alpha, Beta, Div,
-                                Xminus, Yminus) ||
+        sol_found = ShowPointTwo(swap_xy,
+                                 Temp0,
+                                 Temp1,
+                                 Alpha, Beta, Div,
+                                 Xminus, Yminus) ||
           sol_found;
       }
 

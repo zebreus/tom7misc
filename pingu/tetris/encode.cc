@@ -67,7 +67,7 @@ static void CPrintf(const char* format, ...) {
   // Do formatting.
   va_list ap;
   va_start(ap, format);
-  string result;
+  std::string result;
   StringAppendV(&result, format, ap);
   va_end(ap);
 

@@ -3,20 +3,29 @@ default: spans.exe
 
 all: particles.exe join.exe grid.exe portmantout.exe validate.exe scroll.exe spans.exe makeparticles_test.exe
 
-# -fno-strict-aliasing
-CXXFLAGS=-Wall -Wno-deprecated -Wno-sign-compare -I/usr/local/include -I/usr/include -ISDL/include -std=c++17
-OPT=-O2
+UNAME := $(shell uname -o)
+ifeq ($(UNAME),Cygwin)
+  # for 64 bits on windows (mingw).
+  CXX=x86_64-w64-mingw32-g++
+  CC=x86_64-w64-mingw32-g++
+  CXXFLAGS=-march=native -pipe -Wall -I. --std=c++20 -O3 -static -flto=auto
+  SOCK_LFLAGS= -lws2_32
+else
+  # Linux
+  CXX=g++
+  CC=gcc
+  # no-psabi suppresses warnings all over STL in GCC 7.1 for ARM (e.g. pi)
+  # it can probably be removed in a few years?
+  CXXFLAGS=-march=native -Wall -I. --std=c++20 -O3 -Wno-psabi
+  SOCK_LFLAGS=
+endif
 
-# for 64 bits on windows
-# CXX=x86_64-w64-mingw32-g++
-# CC=x86_64-w64-mingw32-g++
-CXX=g++
-CC=g++
+# -fno-strict-aliasing
 
 UTILOBJECTS=util.o arcfour.o stringprintf.o logging.o textsvg.o color-util.o stb_image_write.o stb_image.o
 
 #  -D__MINGW32__
-CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++11
+CPPFLAGS= -DPSS_STYLE=1 -DDUMMY_UI -DHAVE_ASPRINTF -Wno-write-strings -m64 $(OPT) -DHAVE_ALLOCA $(INCLUDES) $(PROFILE) $(FLTO) $(CLINCLUDES) -I ../cc-lib/ --std=c++20
 
 ALLDEPS=makefile ../cc-lib/interval-tree.h ../cc-lib/interval-tree-json.h
 

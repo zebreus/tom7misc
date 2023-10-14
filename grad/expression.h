@@ -509,7 +509,7 @@ struct Exp {
     s = Util::NormalizeWhitespace(s);
 
     for (;;) {
-      string tok = Util::chop(s);
+      std::string tok = Util::chop(s);
       if (tok.empty()) {
         if (stack.size() != 1) {
           if (err != nullptr) {

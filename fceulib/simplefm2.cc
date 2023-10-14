@@ -25,7 +25,7 @@ vector<pair<uint8, uint8>> SimpleFM2::ReadInputsEx(
       string rest = line.substr(9, string::npos);
       string framenum = Util::chop(rest);
       subtitles->emplace_back(atoi(framenum.c_str()),
-                              Util::losewhitel(rest));
+                              Util::LoseWhiteL(rest));
       continue;
     }
 

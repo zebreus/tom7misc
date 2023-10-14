@@ -25,13 +25,13 @@ int main(int argc, char **argv) {
   fprintf(stderr, "Loaded %lld traces from %s.\n", right.size(), argv[2]);
 
   bool same = true;
-  for (int i = 0; i < max(left.size(), right.size()); i++) {
-    if (i >= left.size()) {
+  for (int i = 0; i < (int)max(left.size(), right.size()); i++) {
+    if (i >= (int)left.size()) {
       printf("The right trace is longer (%lld vs. %lld) but they\n"
              "are the same up to that point.\n", left.size(), right.size());
       same = false;
       break;
-    } else if (i >= right.size()) {
+    } else if (i >= (int)right.size()) {
       printf("The left trace is longer (%lld vs. %lld) but they\n"
              "are the same up to that point.\n", left.size(), right.size());
       same = false;

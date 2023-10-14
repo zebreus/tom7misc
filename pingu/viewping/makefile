@@ -1,5 +1,5 @@
 
-default: viewping.exe chainsaw.exe legend.exe
+default: viewping.exe chainsaw.exe
 
 CC_LIB=../../cc-lib
 
@@ -38,14 +38,6 @@ viewping.exe : viewping.o image64.o $(SDLOBJECTS) $(UTIL_OBJECTS)
 chainsaw.exe : chainsaw.o $(SDLOBJECTS) $(UTIL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
-
-legend.exe : legend.o $(UTIL_OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
-	@echo -n "!"
-
-legend.svg : legend.exe
-	./legend.exe > $@
-	./dos2unix $@
 
 clean :
 	rm -f *.o $(UTIL_OBJECTS) $(SDLUTILOBJECTS) $(FCEULIBOBJECTS) $(OBJECTS) *.exe

@@ -9,6 +9,8 @@
 #include "util.h"
 #include "edit-distance.h"
 
+using std::string;
+
 std::pair<string, string> ColorDiff(const Exp *a, const Exp *b) {
   std::vector<string> v1 = Util::Split(Exp::Serialize(a), ' ');
   std::vector<string> v2 = Util::Split(Exp::Serialize(b), ' ');

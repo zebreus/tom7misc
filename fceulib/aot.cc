@@ -128,7 +128,7 @@ struct Code {
   vector<uint8> code;
 
   uint8 Get(int addr) const {
-    CHECK(addr >= 0 && addr < code.size() && known[addr]) << "Unmapped "
+    CHECK(addr >= 0 && addr < (int)code.size() && known[addr]) << "Unmapped "
       "read from code: " << addr;
     return code[addr];
   }

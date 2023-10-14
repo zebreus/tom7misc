@@ -12,6 +12,8 @@ using uint8 = uint8_t;
 using uint32 = uint32_t;
 using uint64 = uint64_t;
 
+using namespace std;
+
 int main(int argc, char **argv) {
   CHECK(argc == 2) << "./makegrid.exe config.cfg\n";
 

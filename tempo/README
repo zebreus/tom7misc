@@ -56,6 +56,13 @@ network={
   psk="PASSWORD-HERE"
 }
 
+On new raspberry pi os, you also need to add a user here.
+Add a file called "userconf.txt" with a single line like
+pi:ENCRYPTED-PASSWORD-HERE
+
+You can get the encrypted password like so:
+echo 'PLAINTEXT-PASSWORD' | openssl passwd -6 -stdin
+
 Boot. Check the router to find what IP address is assigned by DHCP (or
 scan, I guess). Raspberry pi starts with user "pi" and password
 "raspberry". Change it!

@@ -11,7 +11,7 @@
 #include "deconversion.h"
 
 static void Save(const ImageRGBA &img,
-		 const string &outfile) {
+                 const string &outfile) {
   img.Save(outfile);
   fprintf(stderr, "Wrote %s\n", outfile.c_str());
 }
@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
   string infile = argv[argi++];
   CHECK(argi < argc) << USAGE;
   string base = argv[argi++];
-  
+
   CHECK(Util::EndsWith(base, ".png")) << base;
   base.resize(base.size() - 4);
 

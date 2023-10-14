@@ -328,7 +328,7 @@ struct GradUtil {
     std::vector<Step> steps;
   };
 
-  static string StepString(const Step &step) {
+  static std::string StepString(const Step &step) {
     return StringPrintf("%c %.9g (%04x)",
                         step.mult ? '*' : '+',
                         (float)GetHalf(step.value), step.value);

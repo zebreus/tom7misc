@@ -13,6 +13,7 @@
 #include "util.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "threadutil.h"
 
 // Assumes the workload has constant cost over time. (Typical usage is
 // for training a neural network, where the values change each round,
@@ -137,7 +138,7 @@ struct AutoParallelComp {
 
     for (int i = 0; i < max_parallelism; i++) {
       const double ms = [this, i, verbose_round, &gauss]() {
-          if (experiments[i].sample_ms.size() >= max_samples) {
+          if ((int)experiments[i].sample_ms.size() >= max_samples) {
             // Once we have enough samples, just used the computed
             // mean without randomness.
             const double ms = experiments[i].current_mean;
@@ -178,7 +179,7 @@ struct AutoParallelComp {
         int diff = bsamples - nsamples;
         if (diff <= 0) return false;
         // The bigger the difference, the more likely we are to do this.
-        if (RandTo(rc.get(), bsamples) >= diff) return false;
+        if ((int)RandTo(rc.get(), bsamples) >= diff) return false;
         best_i = neighbor;
         return true;
       };
@@ -231,7 +232,7 @@ struct AutoParallelComp {
     // If we're still taking samples, add it and update the
     // model parameters.
     int best_i = threads - 1;
-    if (experiments[best_i].sample_ms.size() < max_samples) {
+    if ((int)experiments[best_i].sample_ms.size() < max_samples) {
       experiments[best_i].sample_ms.push_back(actual_ms);
       UpdateStatistics(&experiments[best_i]);
       if (verbose_round) {
@@ -251,7 +252,7 @@ struct AutoParallelComp {
 
     std::vector<std::string> lines;
     int total_samples = 0;
-    for (int i = 0; i < experiments.size(); i++) {
+    for (int i = 0; i < (int)experiments.size(); i++) {
       if (!experiments[i].sample_ms.empty()) {
         std::string line = StringPrintf("%d", i);
         for (double s : experiments[i].sample_ms) {
@@ -306,16 +307,16 @@ struct AutoParallelComp {
     //      12345678901234567890
     StringAppendF(&out, "th |  # | avg %s |\n", units);
     static constexpr int HW = 59;
-    for (int i = 0; i < experiments.size(); i++) {
+    for (int i = 0; i < (int)experiments.size(); i++) {
       const Experiment &expt = experiments[i];
       // '% 2d' doesn't really work; the space is allocated
       // to the missing '+' sign.
       std::string th = StringPrintf("%d", i + 1);
-      while (th.size() < 2) th = (string)" " + th;
+      while (th.size() < 2) th = (std::string)" " + th;
       std::string sam = StringPrintf("%d", (int)expt.sample_ms.size());
-      while (sam.size() < 3) sam = (string)" " + sam;
+      while (sam.size() < 3) sam = (std::string)" " + sam;
       std::string avg = StringPrintf("%.2f", expt.current_mean * scale);
-      while (avg.size() < 8) avg = (string)" " + avg;
+      while (avg.size() < 8) avg = (std::string)" " + avg;
       StringAppendF(&out, "%s |%s |%s| ",
                     th.c_str(), sam.c_str(), avg.c_str());
 
@@ -371,13 +372,13 @@ private:
   void ReadCache() {
     CHECK(!cachefile.empty());
     std::vector<std::string> lines = Util::ReadFileToLines(cachefile);
-    for (int i = 0; i < lines.size(); i++) {
+    for (int i = 0; i < (int)lines.size(); i++) {
       std::string line = Util::NormalizeWhitespace(lines[i]);
       if (line.empty()) continue;
       std::string bucket_s = Util::chop(line);
       const int bucket = atoi(bucket_s.c_str());
       CHECK(bucket >= 0);
-      if (bucket < experiments.size()) {
+      if (bucket < (int)experiments.size()) {
         experiments[bucket].sample_ms.clear();
         for (;;) {
           const std::string s = Util::chop(line);
@@ -394,7 +395,7 @@ private:
     if (verbose) {
       printf("From %s:\n", cachefile.c_str());
     }
-    for (int i = 0; i < experiments.size(); i++) {
+    for (int i = 0; i < (int)experiments.size(); i++) {
       UpdateStatistics(&experiments[i]);
       if (verbose) {
         printf("  threads=%d with %d samples: %.5f +/- %.5f\n",

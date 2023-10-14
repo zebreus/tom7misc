@@ -50,6 +50,9 @@ console.exe : console.o $(CC_LIB)/base/stringprintf.o
 qr.exe : qr.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o
 	$(CXX) $^ -o $@ $(LFLAGS)
 
+curve.exe : curve.o $(CC_LIB)/opt/opt.o
+	$(CXX) $^ -o $@ $(LFLAGS)
+
 clean :
 	rm -f *.exe *.o core *.s
 

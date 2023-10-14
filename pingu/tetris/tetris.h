@@ -142,7 +142,7 @@ static inline bool RowBit(uint16_t row, int x) {
   return !!(row & (1 << (9 - x)));
 }
 
-static inline string RowString(uint16_t row) {
+static inline std::string RowString(uint16_t row) {
   std::string ret;
   ret.resize(10);
   for (int x = 0; x < 10; x++) {
@@ -456,8 +456,8 @@ struct TetrisDepth {
   void SetLastPiece(Piece p) { last_piece = p; }
   Piece GetLastPiece() const { return last_piece; }
 
-  string BoardString() const {
-    string ret;
+  std::string BoardString() const {
+    std::string ret;
     for (int row = 0; row < MAX_DEPTH; row++) {
       StringAppendF(&ret, "|%s|\n", RowString(rows[row]).c_str());
     }

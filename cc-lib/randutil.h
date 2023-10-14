@@ -246,13 +246,14 @@ struct RandomGamma {
         const double u = RandDoubleNot1(rc);
         const double v = Exponential();
         if (u < 1.0 - shape) {
-          const double x = pow(u, one_over_shape);
+          const double x = std::pow(u, one_over_shape);
           if (x <= v) {
             return x;
           }
         } else {
           const double y = -log((1.0 - u) / shape);
-          const double x = pow(1.0 - shape + shape * y, one_over_shape);
+          const double x = std::pow(1.0 - shape + shape * y,
+                                    one_over_shape);
           if (x <= v + y) {
             return x;
           }
@@ -295,8 +296,8 @@ inline double RandomBeta(ArcFour *rc, double a, double b) {
     for (;;) {
       const double u = RandDoubleNot1(rc);
       const double v = RandDoubleNot1(rc);
-      const double x = pow(u, 1.0 / a);
-      const double y = pow(v, 1.0 / b);
+      const double x = std::pow(u, 1.0 / a);
+      const double y = std::pow(v, 1.0 / b);
       const double x_plus_y = x + y;
       if (x_plus_y <= 1.0) {
         if (x_plus_y > 0.0) {

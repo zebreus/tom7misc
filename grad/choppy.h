@@ -226,12 +226,12 @@ struct ChoppyGrid {
     };
 
     void LoadFile(const std::string &filename) {
-      std::vector<string> lines =
+      std::vector<std::string> lines =
         Util::ReadFileToLines(filename);
-      for (const string &line : lines) {
+      for (const std::string &line : lines) {
         if (line.empty()) continue;
         if (line[0] == '/') continue;
-        string error;
+        std::string error;
         const Exp *e = Exp::Deserialize(&alloc, line, &error);
         CHECK(e != nullptr) << error << "\n" << line;
         // Can be rejected by new stricter criteria (e.g. outside_grid)
@@ -308,7 +308,7 @@ struct ChoppyGrid {
         // Optional comments
         StringAppendF(&out, "//");
         for (int i : k) StringAppendF(&out, " %d", i);
-        string ser = Util::LoseWhiteL(Exp::Serialize(v));
+        std::string ser = Util::LoseWhiteL(Exp::Serialize(v));
         StringAppendF(&out, "\n"
                       "%s\n",
                       ser.c_str());
@@ -343,7 +343,7 @@ struct ChoppyGrid {
 
     using key_type = std::array<int, GRID>;
     static std::string KeyString(const key_type &k) {
-      string out;
+      std::string out;
       for (int i = 0; i < GRID; i++) {
         if (i != 0) StringAppendF(&out, " ");
         StringAppendF(&out, " %d", k[i]);

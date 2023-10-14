@@ -242,7 +242,7 @@ static void TestSolidity(Emulator *emu,
   // location?
   // spram[sprite.sprite_idx * 4 + 3] = next_column;
   // spram[sprite.sprite_idx * 4 + 3] = tile_py;
-  for (const pair<uint16, int> xaddr : sprite.xmems) {
+  for (const pair<uint16, int> &xaddr : sprite.xmems) {
     int offset_val = next_column - xaddr.second;
     // Can't do the experiment if the offset memory can't
     // place us in this location.
@@ -251,7 +251,7 @@ static void TestSolidity(Emulator *emu,
     ram[xaddr.first] = offset_val;
   }
 
-  for (const pair<uint16, int> yaddr : sprite.ymems) {
+  for (const pair<uint16, int> &yaddr : sprite.ymems) {
     int offset_val = tile_py; // - yaddr.second;
     if (offset_val < 0 || offset_val > 255)
       return;

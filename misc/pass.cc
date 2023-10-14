@@ -39,8 +39,8 @@ static void DisableEchoExcursion(F f) {
   // then it's actually the wrapping shell that is echoing, so
   // we need to tell it to stop with stty. We do both, here.
   system("stty -echo");
-  
-  HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE); 
+
+  HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
   DWORD old_mode;
   GetConsoleMode(hStdin, &old_mode);
 
@@ -51,7 +51,7 @@ static void DisableEchoExcursion(F f) {
 
   SetConsoleMode(hStdin, old_mode);
   system("stty echo");
-  
+
 #else
   struct termios old_tty, new_tty;
   tcgetattr(STDIN_FILENO, &old_tty);
@@ -86,7 +86,7 @@ static std::vector<uint8> CryptRandom(int bytes) {
 }
 
 static bool WipeFile(const string &filename) {
-  // Careful on the mode here; some modes will 
+  // Careful on the mode here; some modes will
   FILE *f = fopen(filename.c_str(), "rb+");
   if (!f) return false;
   struct OnReturn {
@@ -105,7 +105,7 @@ static bool WipeFile(const string &filename) {
   if (-1 == fseek(f, 0, SEEK_END)) return false;
   int64 sz = ftell(f);
   // fprintf(stderr, "Wiping %lld...\n", sz);
-  
+
   if (-1 == fseek(f, 0, SEEK_SET)) return false;
   for (int i = 0; i < sz; i++)
     if (EOF == fputc(0xAA, f)) return false;
@@ -124,7 +124,7 @@ static bool WipeFile(const string &filename) {
 // This is basically SHA256(key :: SHA256(key :: passphrase)), with
 // the two keys being modified by flipping some of their bits.
 static std::vector<uint8> HMAC_SHA256(const string &passphrase,
-				      const std::vector<uint8> &key) {
+                                      const std::vector<uint8> &key) {
   // It's good for this code to be efficient, since we run it hundreds
   // of thousands of times. We should assume an attacker has the
   // fastest possible implementation of this.
@@ -142,7 +142,7 @@ static std::vector<uint8> HMAC_SHA256(const string &passphrase,
     lkey[32 + i] = 0x5c;
     rkey[32 + i] = 0x36;
   }
-  
+
   SHA256::Ctx ctx;
   // Inner hash SHA256(rkey :: passphrase)
   SHA256::Init(&ctx);
@@ -173,17 +173,17 @@ static void XorInto(vector<uint8> &dest, const vector<uint8> &src) {
 // Get 32-byte AES-256 key from passphrase and file-specific salt.
 // This is like PBKDF2 (NIST 800-132).
 static std::vector<uint8> GetKey(const string &passphrase,
-				 const std::vector<uint8> &salt) {
+                                 const std::vector<uint8> &salt) {
   // PBKDF2 would create a series of chunks to fill the
   // key's width, but here SHA-256 produces a 32-byte key, which
   // is exactly the width we need. So we just have one chunk.
 
   // Takes about 500ms on high-end desktop in 2019.
   static constexpr int C = 300000;
-  
+
   // T starts as 0, and we keep XOR-ing into it.
   std::vector<uint8> key(32, 0);
-  
+
   CHECK(salt.size() == 32);
   std::vector<uint8> u = salt;
   for (int i = 0; i < C; i++) {
@@ -209,7 +209,7 @@ static bool IsBase64String(const string &s) {
 }
 
 static string Encrypt(const string &passphrase,
-		      const string &contents) {
+          const string &contents) {
   std::vector<string> lines = Util::SplitToLines(contents);
   CHECK(lines.size() > 0);
   string saltspec = lines[0];
@@ -223,11 +223,11 @@ static string Encrypt(const string &passphrase,
   CHECK(salt.size() == 32) << "Invalid base64 salt? " << salt.size();
   string result = StringPrintf("salt %s\n", salt_str.c_str());
   fflush(stdout);
-  
+
   std::unordered_set<std::vector<uint8>, HashHash> seen_ivs;
 
   std::vector<uint8> key = GetKey(passphrase, salt);
-  
+
   // Now, each line may start with some base64-encoded salt. We recognize this
   // by finding a | separator in the appropriate column.
   for (int lineno = 1; lineno < lines.size(); lineno++) {
@@ -235,11 +235,11 @@ static string Encrypt(const string &passphrase,
 
     std::vector<uint8> iv;
     if (line.size() >= LINE_IV_BASE64_LENGTH + 1 &&
-	line[LINE_IV_BASE64_LENGTH] == '|') {
+        line[LINE_IV_BASE64_LENGTH] == '|') {
       string iv_base64 = line.substr(0, LINE_IV_BASE64_LENGTH);
       iv_base64 += "==";
       CHECK(IsBase64String(iv_base64)) << "Found apparent IV but it is not "
-	"base64: " << iv_base64;
+        "base64: " << iv_base64;
       line = line.substr(LINE_IV_BASE64_LENGTH + 1, string::npos);
       iv = Base64::DecodeV(iv_base64);
     } else {
@@ -250,7 +250,7 @@ static string Encrypt(const string &passphrase,
     CHECK(seen_ivs.find(iv) == seen_ivs.end()) << "Found a duplicate IV (" <<
       Base64::EncodeV(iv) << ")!\nThis weakens security. Just delete the IV "
       "from the line and fresh one will be generated.";
-    
+
     // To encrypt, we need a multiple of the block in bytes.
     // To avoid leaking information, we actually use a fixed size for each line.
     // We only really need to support lines (including iv) up to 80 characters,
@@ -258,7 +258,7 @@ static string Encrypt(const string &passphrase,
 
     // To simplify matters, we strip any trailing whitespace.
     line = Util::LoseWhiteR(line);
-    
+
     CHECK(line.size() <= 64) << "An input line must be at most 64 characters, "
       "not including the iv| prefix. But found one of length " << line.size();
 
@@ -271,7 +271,7 @@ static string Encrypt(const string &passphrase,
     AES256::EncryptCBC(&ctx, data.data(), data.size());
     string iv64 = Base64::EncodeV(iv);
     CHECK(iv64.length() == LINE_IV_BASE64_LENGTH + 2) << iv64.size()
-						      << "\n" << iv64;
+                                                      << "\n" << iv64;
     CHECK(iv64[iv64.length() - 1] == '=');
     CHECK(iv64[iv64.length() - 2] == '=');
     iv64.resize(LINE_IV_BASE64_LENGTH);
@@ -280,7 +280,7 @@ static string Encrypt(const string &passphrase,
     CHECK(enc[enc.length() - 1] == '=');
     CHECK(enc[enc.length() - 2] == '=');
     enc.resize(LINE_PAYLOAD_BASE64_LENGTH);
-    
+
     string outline = iv64 + "|" + enc;
     StringAppendF(&result, "%s\n", outline.c_str());
   }
@@ -305,12 +305,12 @@ static string HumanOnly(const std::vector<std::pair<string, string>> &lines) {
   }
   return result;
 }
-  
+
 // Decrypts, returning false (or aborting) if something is wrong with
 // the file.
 static bool Decrypt(const string &passphrase, const string &contents,
-		    string *header,
-		    std::vector<std::pair<string, string>> *lines_out) {
+                    string *header,
+                    std::vector<std::pair<string, string>> *lines_out) {
   std::vector<string> lines = Util::SplitToLines(contents);
   CHECK(lines.size() > 0);
   string saltspec = lines[0];
@@ -324,7 +324,7 @@ static bool Decrypt(const string &passphrase, const string &contents,
 
   std::vector<uint8> key = GetKey(passphrase, salt);
   *header = StringPrintf("salt %s\n", salt_str.c_str());
-  
+
   // Decrypting is simpler because every line must have exactly the
   // same format, which is LINE_IV_BASE64_LENGTH characters of
   // base64-encoded IV, then |, then LINE_PAYLOAD_BASE64_LENGTH
@@ -333,10 +333,10 @@ static bool Decrypt(const string &passphrase, const string &contents,
     string &line = lines[lineno];
     // Allow and ignore totally blank lines.
     if (line.empty()) continue;
-    
+
     CHECK(line.size() ==
-	  LINE_IV_BASE64_LENGTH + 1 + LINE_PAYLOAD_BASE64_LENGTH &&
-	  line[LINE_IV_BASE64_LENGTH] == '|') << "Invalid line: " << line;
+    LINE_IV_BASE64_LENGTH + 1 + LINE_PAYLOAD_BASE64_LENGTH &&
+    line[LINE_IV_BASE64_LENGTH] == '|') << "Invalid line: " << line;
 
     string iv_base64 = line.substr(0, LINE_IV_BASE64_LENGTH) + "==";
 
@@ -351,12 +351,12 @@ static bool Decrypt(const string &passphrase, const string &contents,
 
     std::vector<uint8> payload = Base64::DecodeV(payload_base64);
     CHECK(payload.size() == 64);
-    
+
     // Decrypt the line with the IV.
     AES256::Ctx ctx;
     AES256::InitCtxIV(&ctx, key.data(), iv.data());
     AES256::DecryptCBC(&ctx, payload.data(), payload.size());
-    
+
     // Strip trailing whitespace.
     int sz = payload.size();
     while (sz > 0 && payload[sz - 1] == ' ') sz--;
@@ -376,28 +376,28 @@ static bool Decrypt(const string &passphrase, const string &contents,
     // attacker too) but admits no "known plaintext."
     if (lineno == 1) {
       if (!IsBase64String(decoded)) {
-	fprintf(stderr, "Preimage not base64.\n");
-	return false;
+  fprintf(stderr, "Preimage not base64.\n");
+  return false;
       }
-      
+
       std::vector<uint8> preimage = Base64::DecodeV(decoded);
       std::vector<uint8> image = SHA256::HashVector(preimage);
       if (image != salt) {
-	fprintf(stderr, "Preimage does not hash to salt.\n");
-	return false;
+  fprintf(stderr, "Preimage does not hash to salt.\n");
+  return false;
       }
     }
   }
   return true;
 }
 
-// Read passphrase from console. 
+// Read passphrase from console.
 static string ReadPass() {
   fprintf(stderr, "Password: ");
   fflush(stderr);
   string pass;
   DisableEchoExcursion([&]() {
-      // HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE); 
+      // HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
       getline(cin, pass);
     });
   fprintf(stderr, "\n");
@@ -405,8 +405,8 @@ static string ReadPass() {
 }
 
 static void OpenWithEditor(const string &pass,
-			   const string &file,
-			   const string &cmd) {
+                           const string &file,
+                           const string &cmd) {
   CryptRand cr;
   const string tmpname = StringPrintf("deleteme-%llx.txt", cr.Word64());
   const string enctext = Util::ReadFile(file);
@@ -422,7 +422,7 @@ static void OpenWithEditor(const string &pass,
   Util::WriteFile(tmpname, plaintext);
 
   std::system(StringPrintf(
-		  "%s %s", cmd.c_str(), tmpname.c_str()).c_str());
+      "%s %s", cmd.c_str(), tmpname.c_str()).c_str());
 
   string newplain = Util::ReadFile(tmpname);
   // Note we can use a version that merges IVs from old, and checks
@@ -432,7 +432,7 @@ static void OpenWithEditor(const string &pass,
   Util::WriteFile(file, newenc);
   if (!WipeFile(tmpname))
     fprintf(stderr, "Warning: Couldn't wipe %s\n", tmpname.c_str());
-    
+
   CHECK(Util::remove(tmpname));
 }
 
@@ -448,28 +448,28 @@ static string RandomChunks(int chunks,
 
   auto CharFrom = [&cr](const string &s) -> char {
     auto RandTo8 = [&cr](int n) -> uint8 {
-	CHECK(n > 0) << "Must be non-empty!";
-	CHECK(n <= 256) << "Only implemented for one-byte stream";
+  CHECK(n > 0) << "Must be non-empty!";
+  CHECK(n <= 256) << "Only implemented for one-byte stream";
         // e.g. for seps = ".", avoid possibly expensive
         // rand generation
         if (n == 1) return 0;
-	uint8 mask = (uint8)(n - 1);
-	mask |= mask >> 1;
-	mask |= mask >> 2;
-	mask |= mask >> 4;
-	mask |= mask >> 8;
+  uint8 mask = (uint8)(n - 1);
+  mask |= mask >> 1;
+  mask |= mask >> 2;
+  mask |= mask >> 4;
+  mask |= mask >> 8;
 
-	for (;;) {
-	  const uint32 x = cr.Byte() & mask;
-	  if (x < n) return x;
-	}
+  for (;;) {
+    const uint32 x = cr.Byte() & mask;
+    if (x < n) return x;
+  }
       };
 
     int idx = RandTo8(s.size());
     CHECK(idx >= 0 && idx < s.size()) << idx;
     return s[idx];
   };
-  
+
   string out;
   out.reserve((chunk_len + 1) * chunks);
   for (int chunk = 0; chunk < chunks; chunk++) {
@@ -522,7 +522,7 @@ int main(int argc, char **argv) {
   }
 
   CHECK(argc >= 3);
-  
+
   const string file = argv[2];
   if (cmd == "enc") {
     const string pass = ReadPass();
@@ -530,10 +530,10 @@ int main(int argc, char **argv) {
     string plaintext = Util::ReadFile(file);
     string enctext = Encrypt(pass, plaintext);
     printf("%s", enctext.c_str());
-    
+
   } else if (cmd == "dec") {
     const string pass = ReadPass();
-	
+
     string enctext = Util::ReadFile(file);
     string header;
     std::vector<std::pair<string, string>> lines;
@@ -546,36 +546,36 @@ int main(int argc, char **argv) {
   } else if (cmd == "cat") {
 
     const string pass = ReadPass();
-	
+
     string enctext = Util::ReadFile(file);
     string header;
     std::vector<std::pair<string, string>> lines;
     CHECK(Decrypt(pass, enctext, &header, &lines)) <<
       "Failed to decrypt: " << file;
     string plaintext = HumanOnly(lines);
-    
+
     printf("%s", plaintext.c_str());
-    
+
   } else if (cmd == "emacs") {
     const string pass = ReadPass();
     OpenWithEditor(pass, file,
-		   "emacs -nw "
-		   // Disable some default emacs behavior that can make
-		   // temporary of permanent copies of the plaintext
-		   // file! Good chance of emacs leaking data via some
-		   // other means, so perhaps better to avoid complex
-		   // editors like this.
-		   "--execute=\"(setq create-lockfiles nil)\" "
-		   "--execute=\"(setq auto-save-default nil)\" "
-		   "--execute=\"(setq make-backup-files nil)\" ");
+       "emacs -nw "
+       // Disable some default emacs behavior that can make
+       // temporary of permanent copies of the plaintext
+       // file! Good chance of emacs leaking data via some
+       // other means, so perhaps better to avoid complex
+       // editors like this.
+       "--execute=\"(setq create-lockfiles nil)\" "
+       "--execute=\"(setq auto-save-default nil)\" "
+       "--execute=\"(setq make-backup-files nil)\" ");
 
   } else if (cmd == "notepad") {
     const string pass = ReadPass();
     OpenWithEditor(pass, file, "notepad");
-    
+
   } else if (cmd == "new") {
     const string pass = ReadPass();
-    
+
     // Generate a random salt preimage, and then a random salt from it.
     std::vector<uint8> preimage = CryptRandom(32);
     std::vector<uint8> salt = SHA256::HashVector(preimage);
@@ -584,18 +584,18 @@ int main(int argc, char **argv) {
     string salt64 = Base64::EncodeV(salt);
     string preimage64 = Base64::EncodeV(preimage);
     string contents = StringPrintf("salt %s\n"
-				   "%s\n",
-				   salt64.c_str(), preimage64.c_str());
+                                   "%s\n",
+                                   salt64.c_str(), preimage64.c_str());
     string enc = Encrypt(pass, contents);
     Util::WriteFile(file, enc);
-    
+
   } else if (cmd == "wipe") {
 
     CHECK(WipeFile(file)) << file;
-    
+
   } else {
     LOG(FATAL) << "Unknown command " << cmd;
   }
-  
+
   return 0;
 }

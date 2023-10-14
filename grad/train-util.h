@@ -356,7 +356,8 @@ struct TrainingImages {
   }
 
 private:
-  string FilenameFor(const std::string &basename, int layer, int chunk) const {
+  std::string FilenameFor(const std::string &basename,
+                          int layer, int chunk) const {
     return StringPrintf("%s-%d.%d.png",
                         basename.c_str(), layer, chunk);
   }

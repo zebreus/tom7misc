@@ -27,6 +27,8 @@
 #include "render.h"
 #include "pactom-util.h"
 
+using namespace std;
+
 static constexpr double PI = std::numbers::pi;
 
 static constexpr int THREADS = 16;
