@@ -71,7 +71,7 @@ struct SamplerParams {
 
   // A single NFA that the output must conform to.
   // NFA nfa = Top();
-  string regex = ".*";
+  std::string regex = ".*";
 };
 
 struct Context;
@@ -120,6 +120,9 @@ struct Context {
   Context(const Context &other) = delete;
   Context &operator =(Context other) = delete;
 
+  int NumLast() const { return num_last; }
+  int ContextSize() const { return llama_n_ctx(lctx); }
+
   // add_bos should be passed for the very first text ("beginning of stream"
   // token).
   std::vector<llama_token> Tokenize(const std::string &text, bool add_bos) {
@@ -135,7 +138,29 @@ struct Context {
   // Accept the batch of tokens together. Some processing happens
   // in parallel (e.g. embeddings). Processing in batch increases
   // memory requirements.
+  // XXX tune
+  static constexpr int MAX_TOKENS_PER_BATCH = 512;
   void TakeTokenBatch(const std::vector<llama_token> &batch) {
+    if (batch.size() < MAX_TOKENS_PER_BATCH) return TakeTokenSmallBatch(batch);
+
+    // PERF
+    for (int start_idx = 0;
+         start_idx < (int)batch.size();
+         start_idx += MAX_TOKENS_PER_BATCH) {
+      std::vector<llama_token> small_batch;
+      small_batch.reserve(MAX_TOKENS_PER_BATCH);
+      for (int i = 0;
+           start_idx + i < (int)batch.size() && i < MAX_TOKENS_PER_BATCH;
+           i++) {
+        small_batch.push_back(batch[start_idx + i]);
+      }
+      fprintf(stderr, "Batch of size %d.\n", (int)small_batch.size());
+      TakeTokenSmallBatch(small_batch);
+    }
+  }
+
+  void TakeTokenSmallBatch(const std::vector<llama_token> &batch) {
+    CHECK(batch.size() <= MAX_TOKENS_PER_BATCH);
     const int ctx_size = llama_n_ctx(lctx);
     CHECK(num_last + (int)batch.size() <= ctx_size)
       << num_last << " + " << batch.size() << " would exceed " << ctx_size;
@@ -559,7 +584,7 @@ struct LLM {
     sampler.ObserveBatch(batch);
   }
 
-  void InsertString(const string &s) {
+  void InsertString(const std::string &s) {
     TakeTokenBatch(context.Tokenize(s, false));
   }
 
@@ -570,7 +595,7 @@ struct LLM {
   // delimiter before accumulating that many characters. (Note: The returned
   // string can actually exceed max_length if the delimiter is a substring
   // of some token.)
-  std::string GenerateUntil(const string &delimiter,
+  std::string GenerateUntil(const std::string &delimiter,
                             int max_length = -1) {
     const auto &[got, success] =
       GenerateUntilEx(delimiter, max_length);
@@ -584,7 +609,7 @@ struct LLM {
   // length, we insert the delimiter string into the Context state
   // (but still return false for success).
   std::pair<std::string, bool> GenerateUntilEx(
-      const string &delimiter,
+      const std::string &delimiter,
       int max_length = -1,
       bool force_delimiter = false) {
     std::string got;
@@ -599,7 +624,7 @@ struct LLM {
 
       // PERF don't need to search the whole string each time.
       auto pos = got.find(delimiter);
-      if (pos != string::npos) {
+      if (pos != std::string::npos) {
         return make_pair(got.substr(0, pos), true);
       }
       if (max_length >= 0 && (int)got.size() > max_length) {
@@ -660,12 +685,12 @@ struct LLM {
         return true;
       };
 
-    std::vector<std::pair<string, float>> toks;
+    std::vector<std::pair<std::string, float>> toks;
     for (const llama_token_data &tok : candidates) {
       if (tok.id == llama_token_nl()) {
         toks.emplace_back("\\n", tok.logit);
       } else {
-        string s = context.TokenString(tok.id);
+        std::string s = context.TokenString(tok.id);
         if (IsAscii(s)) {
           toks.emplace_back(s, tok.logit);
         } else {
@@ -675,8 +700,8 @@ struct LLM {
     }
 
     std::sort(toks.begin(), toks.end(),
-              [](const std::pair<string, float> &a,
-                 const std::pair<string, float> &b) {
+              [](const std::pair<std::string, float> &a,
+                 const std::pair<std::string, float> &b) {
                 return a.second > b.second;
               });
     for (int i = 0;

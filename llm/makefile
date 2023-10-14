@@ -6,12 +6,12 @@ default: acronymy.exe benchmark.exe chat.exe dump-tokens.exe generate.exe contin
 # Also add /c/code/openblas/include to
 
 
-# CC=x86_64-w64-mingw32-gcc
-# CXX=x86_64-w64-mingw32-g++
+CC=x86_64-w64-mingw32-gcc
+CXX=x86_64-w64-mingw32-g++
 # CUDA_PATH=../../cuda
 # TOM7_INCLUDES=-I../../openblas/include -I../../cuda/include
 # TOM7_LIBS=-L../../openblas/lib -L$(CUDA_PATH)/lib/x64 -static
-# PLATFORM_LDFLAGS=-Wl,--subsystem,console -lpsapi
+PLATFORM_LDFLAGS=-Wl,--subsystem,console -lpsapi -static
 # LLAMA_OPENBLAS=1
 
 # LLAMA_CUBLAS=1
@@ -148,7 +148,9 @@ endif
 ifdef LLAMA_CUBLAS
 	CFLAGS    += -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I$(CUDA_PATH)/targets/x86_64-linux/include
 	CXXFLAGS  += -DGGML_USE_CUBLAS -I/usr/local/cuda/include -I/opt/cuda/include -I$(CUDA_PATH)/targets/x86_64-linux/include
-	LDFLAGS   += -lcublas -lculibos -lcudart -lcublasLt -lpthread -ldl -lrt -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L$(CUDA_PATH)/targets/x86_64-linux/lib
+# tom7 removed -ldl, which is deprecated and not found
+# tom7 removed -lrt, which is deprecated and not found
+	LDFLAGS   += -lcublas -lculibos -lcudart -lcublasLt -lpthread -L/usr/local/cuda/lib64 -L/opt/cuda/lib64 -L$(CUDA_PATH)/targets/x86_64-linux/lib
 	OBJS      += ggml-cuda.o
 	NVCC      = nvcc
 	NVCCFLAGS = --forward-unknown-to-host-compiler -arch=native

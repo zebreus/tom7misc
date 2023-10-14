@@ -28,13 +28,18 @@
 
 using namespace std;
 
-static void Continue(LLM *llm, const string &prompt) {
+static void Continue(LLM *llm, const string &prompt, FILE *outfile) {
   printf("Loaded prompt of %d chars\n", (int)prompt.size());
 
   Timer startup_timer;
   llm->Reset();
-  printf("%s", prompt.c_str());
-  fflush(stdout);
+  if (outfile == nullptr) {
+    printf("%s", prompt.c_str());
+    fflush(stdout);
+  } else {
+    fprintf(outfile, "%s", prompt.c_str());
+  }
+
   llm->DoPrompt(prompt);
   // Reset regex, since the prompt may not have followed it.
   llm->sampler.ResetRegEx();
@@ -43,15 +48,31 @@ static void Continue(LLM *llm, const string &prompt) {
 
   // llm->sampler.SetRegEx("You can only output this.\n");
 
+  Timer inference_timer;
   int tokens = 0;
   for (;;) {
     // Get and commit a token.
     int id = llm->Sample();
     llm->TakeTokenBatch({id});
     string tok = llm->context.TokenString(id);
-    printf("%s", tok.c_str());
+    if (outfile == nullptr) {
+      printf("%s", tok.c_str());
+    } else {
+      fprintf(outfile, "%s", tok.c_str());
+    }
+
     tokens++;
-    if (tokens % 3 == 0) fflush(stdout);
+    if (outfile == nullptr) {
+      if (tokens % 3 == 0) fflush(stdout);
+    } else {
+      if (tokens % 3 == 0) fflush(outfile);
+      printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+             ANSI_BEGINNING_OF_LINE "%s\n",
+             ANSI::ProgressBar(llm->context.NumLast(),
+                               llm->context.ContextSize(),
+                               "inference",
+                               inference_timer.Seconds()).c_str());
+    }
     if (llm->sampler.Stuck()) {
       printf("\n(STUCK.)\n");
       return;
@@ -60,7 +81,7 @@ static void Continue(LLM *llm, const string &prompt) {
 }
 
 int main(int argc, char ** argv) {
-  CHECK(argc == 2) << "Usage: ./continue.exe prompt.txt\n"
+  CHECK(argc >= 2) << "Usage: ./continue.exe prompt.txt [out.txt]\n"
     "First line of the prompt file is a regex; use .* for anything.";
 
   string prompt = Util::ReadFile(argv[1]);
@@ -80,14 +101,20 @@ int main(int argc, char ** argv) {
   // AnsiInit();
   Timer model_timer;
 
+  FILE *file = nullptr;
+  if (argc >= 3) {
+    file = fopen(argv[2], "wb");
+    CHECK(file != nullptr);
+    printf("Writing to " ACYAN("%s") "...\n", argv[2]);
+  }
 
   ContextParams cparams;
   // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/7B/ggml-model-f16.bin";
   // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
-  cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-f16.bin";
+  // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
+  cparams.model = "../llama/models/65B/ggml-model-f16.bin";
 
   SamplerParams sparams;
   // cparams.mirostat = 2;
@@ -95,9 +122,10 @@ int main(int argc, char ** argv) {
   sparams.regex = regex;
 
   LLM llm(cparams, sparams);
-  printf("Loaded model.\n");
+  printf(AGREEN("Loaded model") ".\n");
 
-  Continue(&llm, prompt);
+  Continue(&llm, prompt, file);
+  if (file != nullptr) fclose(file);
 
   return 0;
 }

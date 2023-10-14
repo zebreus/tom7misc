@@ -279,19 +279,19 @@ struct RegEx {
     // Maps a coded string set to a node index that matches only
     // that set.
     std::map<int, int> hits;
-    std::unordered_map<string, int> match_suffix;
+    std::unordered_map<std::string, int> match_suffix;
     // Return the index of a node that matches exactly the words
     // in the set. Might create a new node or reuse an existing one.
     // Recursive.
-    std::function<int(const std::set<string> &s)> GetOrAddSuffix =
+    std::function<int(const std::set<std::string> &s)> GetOrAddSuffix =
       [&out, &hits, &match_suffix, &GetOrAddSuffix](
-          const std::set<string> &s) {
+          const std::set<std::string> &s) {
         auto Code = [](const std::set<std::string> &ss) {
-            string out;
+            std::string out;
             bool first = true;
             for (const auto &s : ss) {
               // Need some separator char.
-              string es = Util::Replace(s, "\\", "\\\\");
+              std::string es = Util::Replace(s, "\\", "\\\\");
               es = Util::Replace(es, ".", "\\.");
               if (!first) out.push_back('.');
               out += es;
@@ -301,7 +301,7 @@ struct RegEx {
           };
         if (s.size() < MAX_HASHTABLE)  {
           // Try looking it up.
-          string code = Code(s);
+          std::string code = Code(s);
           auto it = match_suffix.find(code);
           if (it != match_suffix.end()) {
             hits[s.size()]++;
@@ -320,8 +320,8 @@ struct RegEx {
         }
 
         // Group by first character.
-        std::map<char, std::set<string>> next;
-        for (const string &str : s) {
+        std::map<char, std::set<std::string>> next;
+        for (const std::string &str : s) {
           // Empty string is handled above.
           if (!str.empty()) {
             next[str[0]].insert(str.substr(1));
@@ -691,7 +691,7 @@ static NFA<257> Parse(const std::string &s) {
           // As an optimization, we defer creating literals until
           // we know we have to, since this saves us a bunch of
           // allocations and epsilon transitions.
-          string cur_literal;
+          std::string cur_literal;
           auto EmitLiteral = [&nfas, &cur_literal]() {
               if (!cur_literal.empty()) {
                 nfas.push_back(RE::LiteralString(cur_literal));
@@ -726,7 +726,7 @@ static NFA<257> Parse(const std::string &s) {
               std::string_view inner = s.substr(i + 1, len - 1);
               nfas.push_back(ParseRec(inner));
               if (VERBOSE_PARSE)
-                printf(" parens got {%s}\n", ((string)inner).c_str());
+                printf(" parens got {%s}\n", ((std::string)inner).c_str());
               // and skip over it
               i += len;
               break;
@@ -739,12 +739,12 @@ static NFA<257> Parse(const std::string &s) {
               EmitLiteral();
               if (VERBOSE_PARSE)
                 printf("GetToMatchingBracket \"%s\", at %d.\n",
-                       ((string)s).c_str(), i);
+                       ((std::string)s).c_str(), i);
               const int len = GetToMatchingBracket(s.substr(i));
               CHECK(len >= 1);
               std::string_view inner = s.substr(i + 1, len - 1);
               if (VERBOSE_PARSE)
-                printf(" got {%s}\n", ((string)inner).c_str());
+                printf(" got {%s}\n", ((std::string)inner).c_str());
 
               nfas.push_back(CharacterClass(inner));
               // skip over it

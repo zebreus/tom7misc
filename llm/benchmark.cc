@@ -454,6 +454,7 @@ int main(int argc, char ** argv) {
   // waste a huge amount of time!
 
   problems.emplace_back(LoadCodeProblem("code.txt"));
+  problems.emplace_back(LoadFreeformProblem("blank.txt"));
   problems.emplace_back(LoadFreeformProblem("classical-logic.txt"));
   problems.emplace_back(LoadMultipleChoiceProblem("multiple.txt"));
   problems.emplace_back(LoadFreeformProblem("trivia.txt"));
@@ -462,7 +463,7 @@ int main(int argc, char ** argv) {
   // Would prefer for this to parse and validate PGN, as well as
   // prompt a different way (no need for Question and Answer).
   problems.emplace_back(LoadFreeformProblem("chess.txt"));
-  //   problems.emplace_back(LoadFreeformProblem("code.txt"));
+
   problems.emplace_back(LoadFreeformProblem("trivia-personal.txt"));
   printf("Loaded " APURPLE("%d") " problems.\n", (int)problems.size());
 
