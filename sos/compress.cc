@@ -17,6 +17,8 @@
 #include "factorization.h"
 #include "threadutil.h"
 
+using namespace std;
+
 static std::string VecString(const std::vector<int> &v) {
   string out;
   for (int i : v) StringAppendF(&out, "%d, ", i);

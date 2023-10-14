@@ -49,6 +49,34 @@ static constexpr bool WRITE_IMAGE = false;
 
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
 
+static string FilledBar(int chars, float f) {
+  if (chars <= 0) return "";
+  // integer number of pixels
+  f = std::clamp(f, 0.0f, 1.0f);
+  int px = (int)std::round(f * (chars * 8));
+  int full = px / 8;
+
+  string ret;
+  for (int i = 0; i < full; i++) {
+    ret += Util::EncodeUTF8(0x2588);
+  }
+
+  int remain = chars - full;
+  if (remain > 0) {
+    int partial = px % 8;
+    if (partial) {
+      // partial
+      ret += Util::EncodeUTF8(0x2590 - partial);
+      remain--;
+    }
+
+    for (int i = 0; i < remain; i++) {
+      ret.push_back(' ');
+    }
+  }
+  return ret;
+}
+
 // Everything takes a complete line.
 // Thread safe.
 struct StatusBar {
@@ -158,11 +186,14 @@ static constexpr int GPU_WAYS_HEIGHT = 131072;
 // static constexpr int GPU_FACTOR_HEIGHT =  524288 * 2;
 
 // tuned
-// static constexpr int GPU_FACTOR_HEIGHT = 2875870;
-// #define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, false, false, false, true, 2243
+static constexpr int GPU_FACTOR_HEIGHT = 2875870;
+#define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, false, false, false, true, 2243
+// #define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, false, false, true, true, 2243
 
-static constexpr int GPU_FACTOR_HEIGHT = 3552322;
-#define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, true, true, true, false, 2393
+// tuning winner, 23 Sep 2023, but a few percent slower than
+// the above in sos.exe
+// static constexpr int GPU_FACTOR_HEIGHT = 3552322;
+// #define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, true, true, true, false, 2393
 
 // static constexpr int GPU_FACTOR_HEIGHT = 3058640;
 
@@ -174,7 +205,7 @@ static_assert(TRY_BATCH_SIZE % TRY_ROLL_SIZE == 0,
               "performance!");
 
 // PERF Probably better to increase this as the speed has improved.
-static constexpr uint64_t MAX_EPOCH_SIZE = 800'000'000 * 2; /* ' */
+static constexpr uint64_t MAX_EPOCH_SIZE = 800'000'000LL * 6; /* ' */
 // Each of these yields 8 sums. If it's larger, we may run off the
 // end of the batch, although this is usually a trivial cost.
 // This phase is super fast, but large chunks cause us to allocate
@@ -859,7 +890,14 @@ struct SOS {
   uint64_t pending_try = 0;
   uint64_t done_full_try = 0;
 
-  bool nways_is_done = false;
+  // This gets populated when we've finished everything except for
+  // the Ways + Try phases.
+  struct Endgame {
+    // number of ways tasks enqueued when the endgame started.
+    int64_t ways_size = 0;
+    Timer endgame_start;
+  };
+  std::optional<Endgame> endgame = nullopt;
 
   // Must hold lock.
   uint64_t NumDone() {
@@ -975,50 +1013,71 @@ struct SOS {
     // those in the fraction here.
     uint64_t denom = epoch_size - done_ineligible_gpu;
     uint64_t numer = done - done_ineligible_gpu;
+    double frac = numer / (double)denom;
+
+    double remaining_sec = 0.0;
+    string bar_info;
+    if (!endgame.has_value()) {
+      double spe = numer > 0 ? sec / numer : 1.0;
+      remaining_sec = (denom - numer) * spe;
+      bar_info =
+        StringPrintf("%llu / %llu (%.2f%%) ", numer, denom, frac * 100.0);
+    } else {
+      const Endgame &g = endgame.value();
+      double sec = g.endgame_start.Seconds();
+
+      uint64_t num_done = g.ways_size - ways_size;
+      uint64_t egd = g.ways_size;
+      double egf = num_done / (double)egd;
+      // Number of seconds taken per element done.
+      double spe = num_done > 0 ? sec / num_done : 1.0;
+      remaining_sec = ways_size * spe;
+      bar_info =
+        StringPrintf("(%.2f%% done) | endgame: %lld [%s] (%.2f%%)",
+                     frac * 100.0,
+                     // egn, egd,
+                     done,
+                     FilledBar(8, (float)egf).c_str(),
+                     egf * 100.0);
+    }
+
+    string eta = ANSI::Time(remaining_sec);
+    int eta_len = ANSI::StringWidth(eta);
+
+    int bar_width = 70 - 2 - 1 - eta_len;
+    // Number of characters that get background color.
+    // int filled_width = std::clamp((int)(bar_width * frac), 0, bar_width);
 
     string line6 = [&](){
-      double frac = numer / (double)denom;
-      double spe = numer > 0 ? sec / numer : 1.0;
-      double remaining_sec = (denom - numer) * spe;
-      string eta = ANSI::Time(remaining_sec);
-      int eta_len = ANSI::StringWidth(eta);
+        int total_width = 0;
+        std::vector<pair<uint32_t, int>> bgcolors;
+        auto AddWidthOf = [&](uint32_t color, int64_t c) {
+            if (c == 0) return;
+            double f = std::clamp(c / (double)denom, 0.0, 1.0);
+            int w = std::max((int)std::round(f * bar_width), 1);
+            total_width += w;
+            bgcolors.emplace_back(color, w);
+          };
 
-      int bar_width = 70 - 2 - 1 - eta_len;
-      // Number of characters that get background color.
-      // int filled_width = std::clamp((int)(bar_width * frac), 0, bar_width);
+        AddWidthOf(0x400000FF, prefiltered_size);
+        AddWidthOf(0x400070FF, factor_size);
+        AddWidthOf(0x404000FF, factored_size);
+        AddWidthOf(0x000040FF, ways_size);
+        AddWidthOf(0x005050FF, try_size);
+        AddWidthOf(0x008000FF, numer);
+        // Padding.
+        if (total_width < bar_width) {
+          AddWidthOf(0x202020FF, bar_width - total_width);
+        }
 
-      string bar_info =
-        StringPrintf("%llu / %llu (%.2f%%) ", numer, denom, frac * 100.0);
+        std::vector<pair<uint32_t, int>> fgcolors =
+          {{0xFFFFFFBB, bar_width}};
 
-      int total_width = 0;
-      std::vector<pair<uint32_t, int>> bgcolors;
-      auto AddWidthOf = [&](uint32_t color, int64_t c) {
-          if (c == 0) return;
-          double f = std::clamp(c / (double)denom, 0.0, 1.0);
-          int w = std::max((int)std::round(f * bar_width), 1);
-          total_width += w;
-          bgcolors.emplace_back(color, w);
-        };
-
-      AddWidthOf(0x400000FF, prefiltered_size);
-      AddWidthOf(0x400070FF, factor_size);
-      AddWidthOf(0x404000FF, factored_size);
-      AddWidthOf(0x000040FF, ways_size);
-      AddWidthOf(0x005050FF, try_size);
-      AddWidthOf(0x008000FF, numer);
-      // Padding.
-      if (total_width < bar_width) {
-        AddWidthOf(0x202020FF, bar_width - total_width);
-      }
-
-      std::vector<pair<uint32_t, int>> fgcolors =
-        {{0xFFFFFFBB, bar_width}};
-
-      return StringPrintf(
-          AWHITE("[") "%s" AWHITE("]") " %s\n",
-          ANSI::Composite(bar_info, fgcolors, bgcolors).c_str(),
-          eta.c_str());
-      }();
+        return StringPrintf(
+            AWHITE("[") "%s" AWHITE("]") " %s\n",
+            ANSI::Composite(bar_info, fgcolors, bgcolors).c_str(),
+            eta.c_str());
+        }();
 
     status.EmitStatus(line1 + line2 + line3 + line4 + line5 + line6);
   }
@@ -1595,7 +1654,9 @@ struct SOS {
 
     {
       MutexLock ml(&m);
-      nways_is_done = true;
+      endgame.emplace(
+          Endgame{.ways_size = ways_queue->Size(),
+                  .endgame_start = Timer()});
       work_stealing_threads = ENDGAME_WORK_STEALING_THREADS;
     }
 

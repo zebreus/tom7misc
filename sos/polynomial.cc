@@ -4,6 +4,7 @@
 #include <map>
 #include <cmath>
 #include <set>
+#include <vector>
 
 #include "base/logging.h"
 

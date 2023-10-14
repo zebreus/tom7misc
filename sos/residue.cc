@@ -15,6 +15,8 @@
 #include "factorization.h"
 #include "util.h"
 
+using namespace std;
+
 static std::string VecString(const std::vector<int> &v) {
   string out;
   for (int i : v) StringAppendF(&out, "%d, ", i);

@@ -13,6 +13,8 @@
 #include "atomic-util.h"
 #include "factorization.h"
 
+using namespace std;
+
 static CL *cl = nullptr;
 
 // Enable this to actually test (as opposed to benchmark) the GPU code.
@@ -21,10 +23,6 @@ static constexpr bool TEST_AGAINST_CPU = false;
 static constexpr bool CHECK_ANSWERS = true;
 
 static constexpr int GLOBAL_BATCH_SIZE = 131072;
-
-// Bitmask of numbers we're around where we're currently searching.
-// Used for benchmarking / tuning.
-static constexpr uint64_t MASK_CURRENT_RANGE = 0xFFFFFFFFFFFULL;
 
 DECLARE_COUNTERS(ineligible, u1_, u2_, u3_, u4_, u5_, u6, u7_);
 

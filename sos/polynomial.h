@@ -19,7 +19,7 @@ struct Term {
   Term() {}
   // returns "" for the unit term.
   std::string ToString() const {
-    string ret;
+    std::string ret;
     for (const auto &[x, e] : product) {
       if (e == 1) ret += x;
       else StringAppendF(&ret, "%s^%d", x.c_str(), e);
@@ -202,7 +202,7 @@ struct Polynomial {
     for (const auto &[t, c] : sum) {
       if (!ret.empty()) ret += " + ";
       if (c == 1) {
-        string ts = t.ToString();
+        std::string ts = t.ToString();
         // Term can be empty; need to explicitly represent the unit.
         if (ts.empty()) ret += "1";
         ret += ts;

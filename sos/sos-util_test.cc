@@ -51,8 +51,8 @@ static void TestSqrtOpt() {
 
   ArcFour rc("sqrtopt");
   for (int i = 0; i < 1000000; i++) {
-    // numbers in the low trillions, at most
-    const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+    // check numbers in the current range
+    const uint64_t num = Rand64(&rc) & MASK_CURRENT_RANGE;
     auto no = Sqrt64Opt(num);
     if (no.has_value()) {
       CHECK(no.value() * no.value() == num) << num << " " << no.value();
@@ -69,8 +69,8 @@ static void BenchMSOSFancy() {
   static constexpr int NUM = 400000000;
   Timer timer;
   for (int i = 0; i < NUM; i++) {
-    // numbers in the low trillions, at most
-    const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+    // check numbers in the current range
+    const uint64_t num = Rand64(&rc) & MASK_CURRENT_RANGE;
     if (num == 0) continue;
     res += MaybeSumOfSquaresFancy3(num);
   }
@@ -88,8 +88,8 @@ static void BenchCWW() {
   static constexpr int NUM = 20000000;
   Timer timer;
   for (int i = 0; i < NUM; i++) {
-    // numbers in the low trillions, at most
-    const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+    // check numbers in the current range
+    const uint64_t num = Rand64(&rc) & MASK_CURRENT_RANGE;
     if (num == 0) continue;
 
     const int ways = ChaiWahWu(num);
@@ -341,8 +341,8 @@ static void MaybeSumOfSquaresRecall() {
           local_detected2 = 0, local_total = 0;
         ArcFour rc(StringPrintf("mss.%llu", batch));
         for (int i = 0; i < 10000; i++) {
-          // numbers in the low trillions, at most
-          const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+          // check numbers in the current range
+          const uint64_t num = Rand64(&rc) & MASK_CURRENT_RANGE;
           if (num == 0) continue;
 
           const bool maybe = MaybeSumOfSquaresFancy3(num);
@@ -409,8 +409,8 @@ static void TestMaybe() {
       [&m, &bar, &timer](uint64_t batch) {
         ArcFour rc(StringPrintf("testmaybe.%llu", batch));
         for (int i = 0; i < 10000; i++) {
-          // numbers in the low trillions, at most
-          const uint64_t num = Rand64(&rc) & 0xFFFFFFFFFF;
+          // check numbers in the current range
+          const uint64_t num = Rand64(&rc) & MASK_CURRENT_RANGE;
           if (num == 0) continue;
 
           const bool maybe = MaybeSumOfSquaresFancy4(num);
@@ -433,8 +433,26 @@ static void TestMaybe() {
   printf("TestMaybe " AGREEN("OK") "\n");
 }
 
+static void GetNWaysExamples(int num_examples) {
+  ArcFour rc("bench");
+  Timer timer;
+  for (int ex = 0; ex < num_examples; /* in loop */) {
+    // check numbers in the current range
+    const uint64_t num = Rand64(&rc) & MASK_CURRENT_RANGE;
+    if (num == 0) continue;
+
+    const int ways = ChaiWahWu(num);
+    if (ways >= 3) {
+      printf("%lld x %d\n", num, ways);
+      ex++;
+    }
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  GetNWaysExamples(10);
 
   TestCWWBrute();
   TestCWW();

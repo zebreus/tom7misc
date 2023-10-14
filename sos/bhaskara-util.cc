@@ -13,6 +13,8 @@
 #include "color-util.h"
 #include "image.h"
 
+using namespace std;
+
 std::string LongNum(const BigInt &a) {
   std::string sign = BigInt::Less(a, 0) ? "-" : "";
   std::string num = BigInt::Abs(a).ToString();
@@ -41,8 +43,6 @@ std::string LongNum(const BigInt &a) {
   }
 }
 
-
-using namespace std;
 void MakeImages(int64_t iters,
                 const string &base, int image_idx,
                 const std::vector<std::pair<Triple, Triple>> &history) {
