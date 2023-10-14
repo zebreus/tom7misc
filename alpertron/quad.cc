@@ -454,8 +454,6 @@ struct Quad {
   // BigInt Xind, Yind, Xlin, Ylin;
   bool ExchXY = false;
 
-  const char *varT = "t";
-
   // Functions that have been expunged of state above.
   struct Clean {
 
@@ -475,7 +473,7 @@ struct Quad {
 
     void showMinus() {
       if (output != nullptr)
-        *output += "&minus;";
+        *output += " - ";
     }
 
     void ShowBigInt(const BigInt &value) {
@@ -491,12 +489,12 @@ struct Quad {
     }
 
     void showSquare() {
-      ShowText("&sup2;");
+      ShowText("^2");
     }
 
     void showAlso() {
       if (also) {
-        ShowText("and also:<br>");
+        ShowText("\nand also:");
       } else {
         also = 1;
       }
@@ -551,25 +549,23 @@ struct Quad {
         showAlso();
       }
       if (sol.type == LinearSolutionType::INFINITE_SOLUTIONS) {
-        ShowText("<p>x, y: any integer</p>");
+        ShowText("\nx, y: any integer");
         return;
       }
       // Port note: This used to actually have the effect of swapping
       // xind/yind xlin/ylin.
-      ShowText("<p>x = ");
+      ShowText("\nx = ");
       ShowLinInd(sol.Xlin, sol.Xind, var);
-      ShowText("<br>y = ");
+      ShowText("\ny = ");
       ShowLinInd(sol.Ylin, sol.Yind, var);
-      ShowText("</p>");
       return;
     }
 
     void ShowSolutionXY(const BigInt &x, const BigInt &y) {
-      ShowText("<p>x = ");
+      ShowText("\nx = ");
       ShowBigInt(x);
-      ShowText("<BR>y = ");
+      ShowText("\ny = ");
       ShowBigInt(y);
-      ShowText("</p>");
     }
 
     void PrintQuad(const BigInt &T2, const BigInt &T,
@@ -597,7 +593,7 @@ struct Quad {
       }
 
       if (T < 0) {
-        ShowText(" &minus; ");
+        ShowText(" - ");
       } else if (T != 0 && T2 != 0) {
         ShowText(" + ");
       } else {
@@ -607,7 +603,7 @@ struct Quad {
       if (BigInt::Abs(T) == 1) {
         // abs(coeffT) = 1
         ShowText(var1);
-        ShowText("&#8290;");
+        ShowText(" * ");
         if (var2 != NULL) {
           ShowText(var2);
         }
@@ -620,7 +616,7 @@ struct Quad {
         ShowText(" ");
         ShowText(var1);
         if (var2 != NULL) {
-          ShowText("&#8290;");
+          ShowText(" * ");
           ShowText(var2);
         }
       } else {
@@ -630,12 +626,12 @@ struct Quad {
       if (Ind != 0) {
         if (T != 0 || T2 != 0) {
           if (Ind < 0) {
-            ShowText(" &minus; ");
+            ShowText(" - ");
           } else {
             ShowText(" + ");
           }
         } else if (Ind < 0) {
-          ShowText(" &minus;");
+          ShowText(" -");
         } else {
           // Nothing to do.
         }
@@ -645,7 +641,7 @@ struct Quad {
           ShowBigInt(BigInt::Abs(Ind));
         } else if (BigInt::Abs(Ind) != 1) {
           ShowBigInt(BigInt::Abs(Ind));
-          ShowText("&nbsp;&#8290;");
+          ShowText(" * ");
           ShowText(var2);
           showSquare();
         } else {
@@ -674,9 +670,9 @@ struct Quad {
           // num is not 1 or -1.
           ShowChar(' ');
           ShowBigInt(BigInt::Abs(num));
-          ShowText("&nbsp;&#8290;");
+          ShowText(" * ");
         } else {
-          ShowText("&nbsp;");
+          ShowText(" ");
         }
 
         if (output != nullptr)
@@ -706,19 +702,26 @@ struct Quad {
         const char *x, const char *y) {
 
       LinearSolutionType t;
-      string vxx = StringPrintf("%s&sup2;", x);
+      string vxx = StringPrintf("%s^2", x);
       t = Show(coeffA, vxx, LinearSolutionType::SOLUTION_FOUND);
 
-      string vxy = StringPrintf("%s&#8290;%s", x, y);
+      string vxy = StringPrintf("%s * %s", x, y);
       t = Show(coeffB, vxy, t);
 
-      string vyy = StringPrintf("%s&sup2;", y);
+      string vyy = StringPrintf("%s^2", y);
       t = Show(coeffC, vyy, t);
 
       t = Show(coeffD, x, t);
 
       t = Show(coeffE, y, t);
-      Show1(coeffF, t);
+
+      if (coeffF < 0) {
+        ShowText(" - ");
+        ShowBigInt(BigInt::Abs(coeffF));
+      } else {
+        ShowText(" + ");
+        ShowBigInt(coeffF);
+      }
     }
 
     void ShowRecSol(char variable,
@@ -726,10 +729,10 @@ struct Quad {
                     const BigInt &cy,
                     const BigInt &ci) {
       ShowChar(variable);
-      ShowText("<sub>n+1</sub> = ");
-      LinearSolutionType t = Show(cx, "x<sub>n</sub>",
+      ShowText("_n+1 = ");
+      LinearSolutionType t = Show(cx, "x_n",
                                   LinearSolutionType::SOLUTION_FOUND);
-      t = Show(cy, "y<sub>n</sub>", t);
+      t = Show(cy, "y_n", t);
       Show1(ci, t);
     }
 
@@ -737,7 +740,7 @@ struct Quad {
       ShowText(text);
       ShowText(" = ");
       ShowBigInt(value);
-      ShowText("<br>");
+      ShowText("\n");
     }
 
 
@@ -848,10 +851,9 @@ struct Quad {
         showAlso();
 
         // Result box:
-        ShowText("<p><var>x</var> = ");
+        ShowText("\nx = ");
         PrintQuad(VV3, VV2, VV1,
-                        "<var>k</var>", NULL);
-        ShowText("<br>");
+                  "k", NULL);
       }
 
       {
@@ -860,12 +862,10 @@ struct Quad {
           ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2) :
           ComputeYDiscrZero(U, U2, S, R, Z);
 
-        ShowText("<var>y</var> = ");
+        ShowText("y = ");
         PrintQuad(VV3, VV2, VV1,
-                        "<var>k</var>", NULL);
+                  "k", NULL);
       }
-
-      ShowText("</p>");
     }
 
     // Obtain next convergent of continued fraction of U/V
@@ -907,17 +907,13 @@ struct Quad {
 
       if (IsBig(P, 2) || IsBig(Q, 2)) {
         if (Alpha == 0 && Beta == 0) {
-          ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
-                   "Q&nbsp;&#8290;y<sub>n</sub><br>"
-                   "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
-                   "S&nbsp;&#8290;y<sub>n</sub></p><p>");
+          ShowText("x_n+1 = P * x_n + Q * y_n\n"
+                   "y_n+1 = R * x_n + S * y_n\n");
         } else {
-          ShowText("x<sub>n+1</sub> = P&nbsp;&#8290;x<sub>n</sub> + "
-                   "Q&nbsp;&#8290;y<sub>n</sub> + K<br>"
-                   "y<sub>n+1</sub> = R&nbsp;&#8290;x<sub>n</sub> + "
-                   "S&nbsp;&#8290;y<sub>n</sub> + L</p><p>");
+          ShowText("x_n+1 = P * x_n + Q * y_n + K\n"
+                   "y_n+1 = R * x_n + S * y_n + L\n");
         }
-        ShowText("where:</p><p>");
+        ShowText("where:\n");
         ShowResult("P", P);
         ShowResult("Q", Q);
         if (Alpha != 0 || Beta != 0) {
@@ -930,12 +926,13 @@ struct Quad {
         }
       } else {
         ShowRecSol('x', P, Q, K);
-        ShowText("<br>");
+        ShowText("\n");
         ShowRecSol('y', R, S, L);
       }
 
       // Compute x_{n-1} from x_n and y_n
-      // Compute new value of K and L as: Knew <- L*Q - K*S and Lnew <- K*R - L*P
+      // Compute new value of K and L as:
+      //   Knew <- L*Q - K*S and Lnew <- K*R - L*P
       BigInt Tmp1 = L * Q - K * S;
       L = K * R - L * P;
       K = std::move(Tmp1);
@@ -949,9 +946,8 @@ struct Quad {
       P = S;
       S = std::move(Tmp);
 
-      ShowText("<p>and also:</p>");
+      ShowText("\nand also:\n");
       if (IsBig(P, 2) || IsBig(Q, 2)) {
-        ShowText("<p>");
         ShowResult("P", P);
         ShowResult("Q", Q);
         if (Alpha != 0 || Beta != 0) {
@@ -964,10 +960,9 @@ struct Quad {
         }
       } else {
         ShowRecSol('x', P, Q, K);
-        ShowText("<br>");
+        ShowText("\n");
         ShowRecSol('y', R, S, L);
       }
-      ShowText("</p>");
     }
 
     bool SolutionFoundFromContFraction(bool isBeven,
@@ -1194,7 +1189,7 @@ struct Quad {
         printf("nonzeroperiod coverage (%d)\n", periodLength);
       }
 
-      ShowText("<p>Recursive solutions:</p><p>");
+      ShowText("\nRecursive solutions:\n");
 
       // XXX Rather than overwrite, substitute in below?
       A = ABack;
@@ -1577,13 +1572,13 @@ struct Quad {
     if (ValNn == 1) {
       // All values from 0 to GcdAll - 1 are solutions.
       if (GcdAll > 5) {
-        clean.ShowText("<p>All values of <var>x</var> between 0 and ");
+        clean.ShowText("\nAll values of x between 0 and ");
 
         // XXX Suspicious that this modifies GcdAll in place (I
         // think just to display it?) but uses it again below.
         GcdAll -= 1;
         clean.ShowBigInt(GcdAll);
-        clean.ShowText(" are solutions.</p>");
+        clean.ShowText(" are solutions.");
       } else {
         // must succeed; is < 5 and non-negative
 
@@ -1725,7 +1720,7 @@ struct Quad {
         LinearSolution sol = LinearEq(A << 1, B, D);
         // Result box:
         if (swap_xy) sol.SwapXY();
-        clean.PrintLinear(sol, "<var>t</var>");
+        clean.PrintLinear(sol, "t");
         return;
       }
 
@@ -1745,13 +1740,13 @@ struct Quad {
         LinearSolution sol = LinearEq(A2, B, D + G);
         if (swap_xy) sol.SwapXY();
         // Result box:
-        clean.PrintLinear(sol, "<var>t</var>");
+        clean.PrintLinear(sol, "t");
       }
 
       {
         LinearSolution sol = LinearEq(A2, B, D - G);
         if (swap_xy) sol.SwapXY();
-        clean.PrintLinear(sol, "<var>t</var>");
+        clean.PrintLinear(sol, "t");
       }
 
       return;
@@ -2800,7 +2795,7 @@ struct Quad {
     // PERF divisibility check
     if (gcd != 0 && !BigInt::DivisibleBy(F, gcd)) {
       // F is not multiple of GCD(A, B, C, D, E) so there are no solutions.
-      clean.ShowText("<p>There are no solutions.</p>");
+      clean.ShowText("There are no solutions.");
       return;
     }
 
@@ -2913,18 +2908,15 @@ struct Quad {
 
   void QuadBigInt(const BigInt &A, const BigInt &B, const BigInt &C,
                   const BigInt &D, const BigInt &E, const BigInt &F) {
-    clean.ShowText("2<p>");
-
-    clean.ShowText("<h2>");
     clean.ShowEq(A, B, C, D, E, F, "x", "y");
-    clean.ShowText(" = 0</h2>");
+    clean.ShowText(" = 0\n");
 
     size_t preamble_size = (clean.output == nullptr) ? 0 : clean.output->size();
 
     SolveQuadEquation(A, B, C, D, E, F);
 
     if (clean.output != nullptr && clean.output->size() == preamble_size) {
-      clean.ShowText("<p>The equation does not have integer solutions.</p>");
+      clean.ShowText("The equation does not have integer solutions.");
     }
   }
 
