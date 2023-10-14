@@ -3,7 +3,7 @@ default : cleandb.exe chords.exe
 all: cleandb.exe chords.exe guitarchive_test.exe chord-parser_test.exe
 
 OPT=-O2
-CXXFLAGS=--std=c++17 -Wall $(OPT)
+CXXFLAGS=--std=c++20 -Wall $(OPT)
 SYMBOLS=-g
 
 CXX=x86_64-w64-mingw32-g++
@@ -16,7 +16,8 @@ CCLIB=../cc-lib
 # PLATFORMLINK=-lwinpthread -lpsapi -L. -static libz.a -Wl,--subsystem,console -L.
 PLATFORMLINK=-static
 
-INCLUDES=-I "$(CCLIB)" -I "$(CCLIB)/re2" -I/usr/include
+#  -I/usr/include
+INCLUDES=-I "$(CCLIB)" -I "$(CCLIB)/re2"
 CPPFLAGS=$(INCLUDES) $(PLATFORMCFLAGS) $(SYMBOLS)
 
 # without static, can't find lz or lstdcxx maybe?
