@@ -105,8 +105,7 @@ static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
       LinearSolution sol(LinearSolutionType::SOLUTION_FOUND);
       sol.Xind = BigInt(0);
       sol.Xlin = BigInt(1);
-      // PERF QuotRem
-      sol.Yind = -(coeffInd / coeffY);
+      sol.Yind = -BigInt::DivExact(coeffInd, coeffY);
       sol.Ylin = BigInt(0);
       return sol;
     }
@@ -148,10 +147,9 @@ static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
 
     // Divide all coefficients by the gcd.
     if (gcdxy != 0) {
-      // PERF known divisible
-      coeffX /= gcdxy;
-      coeffY /= gcdxy;
-      coeffInd /= gcdxy;
+      coeffX = BigInt::DivExact(coeffX, gcdxy);
+      coeffY = BigInt::DivExact(coeffY, gcdxy);
+      coeffInd = BigInt::DivExact(coeffInd, gcdxy);
     }
   }
 
@@ -818,13 +816,14 @@ struct Quad {
       // Compute g = gcd(j, K, z), then recalculate j <- j/g, K <- K/g, z <- z/g
       BigInt U1 = BigInt::GCD(BigTmp, K);
       CHECK(U1 != 0);
+
+      // Divide by J, K, Z by their GCD.
       // U2 <- j
-      BigInt U2 = J / U1;
+      BigInt U2 = BigInt::DivExact(J, U1);
       // U3 <- K
-      BigInt U3 = K / U1;
-      if (U1 != 0) Z /= U1;
+      BigInt U3 = BigInt::DivExact(K, U1);
       // Use positive sign for modulus.
-      Z = BigInt::Abs(Z);
+      Z = BigInt::Abs(BigInt::DivExact(Z, U1));
 
       if (Z != 0) U2 %= Z;
       // PERF: Can just use Mod?
@@ -1043,7 +1042,6 @@ struct Quad {
       }
 
       // Check whether alpha + K and beta + L are multiple of discriminant.
-      // PERF divisibility checks
       if (BigInt::DivisibleBy(Alpha + K, Discr) &&
           BigInt::DivisibleBy(Beta + L, Discr)) {
         // Solution found.
@@ -1248,7 +1246,7 @@ struct Quad {
         }
 
         periodNbr++;
-        if (((periodNbr * periodLength) % gcd_homog) != 0) {
+        if ((periodNbr * periodLength) % gcd_homog != 0) {
           continue;
         }
 
@@ -1430,16 +1428,15 @@ struct Quad {
 
       CHECK(O != 0) << "Might have been shenanigans with O = 0?";
       if (BigInt::DivisibleBy(P, O)) {
-        // PERF divisibility test followed by divide
         // X found.
-        BigInt U1 = P / O;
+        BigInt U1 = BigInt::DivExact(P, O);
         // ValP = Numerator of Y.
         P = CurrentFactor * L - N * H;
 
         CHECK(O != 0);
-        if (P % O == 0) {
+        if (BigInt::DivisibleBy(P, O)) {
           // Y found.
-          BigInt U2 = P / O;
+          BigInt U2 = BigInt::DivExact(P, O);
           // Show results.
 
           ShowPointOne(swap_xy, U1, U2, Alpha, Beta, Div);
@@ -1594,7 +1591,6 @@ struct Quad {
       return;
     }
 
-    // PERF divisibility check
     if (BigInt::DivisibleBy(coeff_quadr, Modulus)) {
       // Linear equation.
       printf("linear-eq coverage\n");
@@ -2232,8 +2228,6 @@ struct Quad {
     // Compute bound L = sqrt(4P/(-D))
     const BigInt L = BigInt::Sqrt((P << 2) / -Discr);
 
-    // HERE!
-
     // Initial value of last convergent: 1/0.
     BigInt U1(1);
     BigInt V1(0);
@@ -2428,8 +2422,7 @@ struct Quad {
       return;
     }
 
-    // PERF: Known divisible
-    const BigInt Z = U3 / U1;
+    const BigInt Z = BigInt::DivExact(U3, U1);
 
     // We have to find all factors of the right hand side.
 
@@ -2563,7 +2556,7 @@ struct Quad {
 
     const bool isBeven = B.IsEven();
     // If (D-U^2) is not multiple of V, exit routine.
-    if (((L - U * U) % V) != 0) {
+    if (!BigInt::DivisibleBy(L - U * U, V)) {
       return;
     }
 
@@ -2792,7 +2785,6 @@ struct Quad {
                              BigInt::GCD(BigInt::GCD(C, D),
                                          E));
 
-    // PERF divisibility check
     if (gcd != 0 && !BigInt::DivisibleBy(F, gcd)) {
       // F is not multiple of GCD(A, B, C, D, E) so there are no solutions.
       clean.ShowText("There are no solutions.");
@@ -2800,14 +2792,14 @@ struct Quad {
     }
 
     // Divide all coefficients by GCD(A, B, C, D, E).
-    // PERF: Known-divisible operation
+    // By definition, they are known to be divisible.
     if (gcd != 0) {
-      A /= gcd;
-      B /= gcd;
-      C /= gcd;
-      D /= gcd;
-      E /= gcd;
-      F /= gcd;
+      A = BigInt::DivExact(A, gcd);
+      B = BigInt::DivExact(B, gcd);
+      C = BigInt::DivExact(C, gcd);
+      D = BigInt::DivExact(D, gcd);
+      E = BigInt::DivExact(E, gcd);
+      F = BigInt::DivExact(F, gcd);
     }
 
     if (VERBOSE)
