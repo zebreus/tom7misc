@@ -122,7 +122,7 @@ static constexpr int FIRST_OMITTED_PRIME = 7927;
 #ifndef BIG_USE_GMP
 
 std::vector<std::pair<BigInt, int>>
-BigInt::PrimeFactorization(const BigInt &x, int mf) {
+BigInt::PrimeFactorization(const BigInt &x, int64_t mf) {
   // Simple trial division.
   // It would not be hard to incorporate Fermat's method too,
   // for cases that the number has factors close to its square

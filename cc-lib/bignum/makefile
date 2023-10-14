@@ -1,5 +1,5 @@
 
-default : big_test.exe big-overloads_test.exe
+default : big_test.exe big-overloads_test.exe big-nogmp_test.exe big-overloads-nogmp_test.exe
 
 # TODO: For tests, we should compile both the GMP and bigz versions!
 
@@ -13,27 +13,41 @@ ifeq ($(UNAME),Cygwin)
 
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
-  LFLAGS=-flto=auto $(GMP_LFLAGS) -static
+  LFLAGS=-flto=auto -static
 else
   # Linux
   CXX=g++
   CC=gcc
   GMP_LFLAGS=-lgmp
   GMP_CFLAGS=-DBIG_USE_GMP
-  LFLAGS=-flto=auto $(GMP_LFLAGS)
+  LFLAGS=-flto=auto
 endif
 
-CXXFLAGS=$(GMP_CFLAGS) -march=native -Wall -I.. --std=c++20 -O3
+CXXFLAGS= -march=native -Wall -I.. --std=c++20 -O3
 
+# this assumes that cc-lib doesn't depend on GMP flags
 CCLIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../util.o ../ansi.o
 
 %.o : %.cc *.h makefile
+	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $< -o $@ -c
+
+# with GMP; don't need bigz.o bign.o bigq.o
+big_test.exe :  big.o big_test.o $(CCLIB_OBJECTS)
+	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
+
+# bigz.o bign.o bigq.o
+big-overloads_test.exe : big.o big-overloads_test.o $(CCLIB_OBJECTS)
+	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
+
+# Without GMP
+
+%-nogmp.o : %.cc *.h makefile
 	$(CXX) $(CXXFLAGS) $< -o $@ -c
 
-big_test.exe : bigz.o bign.o bigq.o big.o big_test.o $(CCLIB_OBJECTS)
+big-nogmp_test.exe : bigz-nogmp.o bign-nogmp.o bigq-nogmp.o big-nogmp.o big_test-nogmp.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
-big-overloads_test.exe : bigz.o bign.o bigq.o big.o big-overloads_test.o $(CCLIB_OBJECTS)
+big-overloads-nogmp_test.exe : bigz-nogmp.o bign-nogmp.o bigq-nogmp.o big-nogmp.o big-overloads_test-nogmp.o $(CCLIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LFLAGS)
 
 clean :

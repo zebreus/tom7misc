@@ -359,10 +359,35 @@ static void TestGCD() {
 }
 
 static void TestShift() {
-  BigInt a{"12398471982735675717171221"};
-  BigInt b = BigInt::LeftShift(a, 18);
-  BigInt c = BigInt::Times(a, BigInt{262144});
-  CHECK(BigInt::Eq(b, c));
+  {
+    BigInt a{"12398471982735675717171221"};
+    BigInt b = BigInt::LeftShift(a, 18);
+    BigInt c = BigInt::Times(a, BigInt{262144});
+    CHECK(BigInt::Eq(b, c));
+  }
+
+  {
+    BigInt a{"1293472907097860173485720741"};
+    BigInt c = BigInt::RightShift(a, 51);
+    CHECK(BigInt::Eq(c, BigInt("574417361275"))) << c.ToString();
+  }
+}
+
+static void TestAnd() {
+  {
+    BigInt a{"19827348723"};
+    BigInt b{"123908472983749187767123045885812"};
+    BigInt c = BigInt::BitwiseAnd(a, b);
+    CHECK(BigInt::Eq(c, BigInt("227083376"))) << c.ToString();
+  }
+
+  {
+    BigInt a{"-19827348723"};
+    BigInt b{"123908472983749187767123045885812"};
+    BigInt c = BigInt::BitwiseAnd(a, b);
+    CHECK(BigInt::Eq(c, BigInt("123908472983749187767122818802436")))
+      << c.ToString();
+  }
 }
 
 static void TestDivExact() {
@@ -407,6 +432,7 @@ static void TestDiv() {
         CHECK(BigInt::Eq(bz, z)) <<
           StringPrintf("%d / %d = %d (got %s)\n",
                        x, y, z, bz.ToString().c_str());
+
         CHECK(BigInt::Eq(bq, z)) <<
           StringPrintf("%d / %d = %d (got %s)\n",
                        x, y, z, bq.ToString().c_str());
@@ -482,6 +508,7 @@ int main(int argc, char **argv) {
   TestDivExact();
 
   TestShift();
+  TestAnd();
 
   TestLeadingZero();
 

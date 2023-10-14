@@ -10,14 +10,15 @@
 
 static void BenchNegate() {
   Timer timer;
-  BigInt x = BigInt{1} << 40000000;
-  for (int i = 0; i < 1000; i++) {
+  BigInt x = BigInt{1} << 4000000;
+  for (int i = 0; i < 10000; i++) {
     x = 2 * -std::move(x) * BigInt{i + 1};
+    // if (i % 1000 == 0) printf("%d/%d\n", i, 10000);
   }
   double took = timer.Seconds();
-  printf("BenchNegate: %d digits %s\n",
-         (int)x.ToString().size(),
+  printf("BenchNegate: done in %s\n",
          ANSI::Time(took).c_str());
+  fflush(stdout);
 }
 
 static void TestShift() {
@@ -28,7 +29,8 @@ static void TestShift() {
   for (int s = 0; s < 12; s++) {
     int xis = xi >> s;
     BigInt xs = x >> s;
-    CHECK(xs == xis);
+    CHECK(xs == xis) << "at " << s << " want " << xis
+                     << " got " << xs.ToString();
   }
 }
 
@@ -39,13 +41,13 @@ static void TestAssigningOps() {
   {
     BigInt x(41);
     x /= 2;
-    CHECK(BigInt == 20);
+    CHECK(x == 20);
   }
 
   {
     BigInt x(44);
     x /= BigInt{2};
-    CHECK(BigInt == 22);
+    CHECK(x == 22);
   }
 
 }
@@ -58,7 +60,7 @@ int main(int argc, char **argv) {
   BenchNegate();
   TestShift();
 
-  TestOps();
+  TestAssigningOps();
 
   printf("OK\n");
 }

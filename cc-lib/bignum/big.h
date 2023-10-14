@@ -107,6 +107,7 @@ struct BigInt {
   inline static BigInt GCD(const BigInt &a, const BigInt &b);
   inline static BigInt LeftShift(const BigInt &a, uint64_t bits);
   inline static BigInt RightShift(const BigInt &a, uint64_t bits);
+  inline static BigInt BitwiseAnd(const BigInt &a, const BigInt &b);
 
   // TODO: Implement with bigz too. There is a very straightforward
   // implementation.
@@ -125,8 +126,8 @@ struct BigInt {
   // Jacobi symbol (-1, 0, 1). b must be odd.
   inline static int Jacobi(const BigInt &a, const BigInt &b);
 
-  inline static BigInt BitwiseAnd(const BigInt &a, const BigInt &b);
   #endif
+
 
   // Generate a uniform random number in [0, radix).
   // r should return uniformly random uint64s.
@@ -966,8 +967,16 @@ bool BigInt::Eq(const BigInt &a, int64_t b) {
 bool BigInt::Greater(const BigInt &a, const BigInt &b) {
   return BzCompare(a.rep, b.rep) == BZ_GT;
 }
+bool BigInt::Greater(const BigInt &a, int64_t b) {
+  return BzCompare(a.rep, BigInt{b}.rep) == BZ_GT;
+}
+
 bool BigInt::GreaterEq(const BigInt &a, const BigInt &b) {
   auto cmp = BzCompare(a.rep, b.rep);
+  return cmp == BZ_GT || cmp == BZ_EQ;
+}
+bool BigInt::GreaterEq(const BigInt &a, int64_t b) {
+  auto cmp = BzCompare(a.rep, BigInt{b}.rep);
   return cmp == BZ_GT || cmp == BZ_EQ;
 }
 
@@ -994,28 +1003,29 @@ BigInt BigInt::Times(const BigInt &a, int64_t b) {
   return BigInt{BzMultiply(a.rep, BigInt{b}.rep), nullptr};
 }
 
-// TODO: Quotrem via BzDivide
 BigInt BigInt::Div(const BigInt &a, const BigInt &b) {
-  return BigInt{BzDiv(a.rep, b.rep), nullptr};
+  // In BzTruncate is truncating division, like C.
+  return BigInt{BzTruncate(a.rep, b.rep), nullptr};
 }
+BigInt BigInt::Div(const BigInt &a, int64_t b) {
+  return BigInt{BzTruncate(a.rep, BigInt{b}.rep), nullptr};
+}
+
 BigInt BigInt::DivExact(const BigInt &a, const BigInt &b) {
   // Not using the precondition here; same as division.
-  return BigInt{BzDiv(a.rep, b.rep), nullptr};
+  return BigInt{BzTruncate(a.rep, b.rep), nullptr};
 }
 BigInt BigInt::DivExact(const BigInt &a, int64_t b) {
   // Not using the precondition here; same as division.
-  return BigInt{BzDiv(a.rep, BigInt{b}.rep), nullptr};
+  return BigInt{BzTruncate(a.rep, BigInt{b}.rep), nullptr};
 }
 
 bool BigInt::DivisibleBy(const BigInt &num, const BigInt &den) {
-  return BzCompare(CMod(num, den), BigInt{0}.rep) == BZ_EQ;
+  return BzCompare(CMod(num, den).rep, BigInt{0}.rep) == BZ_EQ;
 }
 bool BigInt::DivisibleBy(const BigInt &num, int64_t den) {
-  return BzCompare(CMod(num, BigInt{den}), BigInt{0}.rep) == BZ_EQ;
+  return BzCompare(CMod(num, BigInt{den}).rep, BigInt{0}.rep) == BZ_EQ;
 }
-
-
-// TODO: truncate, floor, ceiling round. what are they?
 
 // TODO: Clarify mod vs rem?
 BigInt BigInt::Mod(const BigInt &a, const BigInt &b) {
@@ -1025,10 +1035,15 @@ BigInt BigInt::Mod(const BigInt &a, const BigInt &b) {
 // Returns Q (a div b), R (a mod b) such that a = b * q + r
 std::pair<BigInt, BigInt> BigInt::QuotRem(const BigInt &a,
                                           const BigInt &b) {
-  BigZ r;
-  BigZ q = BzDivide(a.rep, b.rep, &r);
+  BigZ r = BzRem(a.rep, b.rep);
+  BigZ q = BzTruncate(a.rep, b.rep);
   return std::make_pair(BigInt{q, nullptr}, BigInt{r, nullptr});
 }
+
+BigInt BigInt::CMod(const BigInt &a, const BigInt &b) {
+  return BigInt{BzRem(a.rep, b.rep), nullptr};
+}
+
 
 BigInt BigInt::Pow(const BigInt &a, uint64_t exponent) {
   return BigInt{BzPow(a.rep, exponent), nullptr};
@@ -1039,9 +1054,13 @@ BigInt BigInt::LeftShift(const BigInt &a, uint64_t bits) {
 }
 
 BigInt BigInt::RightShift(const BigInt &a, uint64_t bits) {
-  return Div(a, Pow(BigInt{2}, bits));
+  // There is BzAsh which I assume is Arithmetic Shift?
+  return BigInt{BzFloor(a.rep, Pow(BigInt{2}, bits).rep), nullptr};
 }
 
+BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
+  return BigInt{BzAnd(a.rep, b.rep), nullptr};
+}
 
 BigInt BigInt::GCD(const BigInt &a, const BigInt &b) {
   return BigInt{BzGcd(a.rep, b.rep), nullptr};
@@ -1056,7 +1075,7 @@ BigInt BigInt::Sqrt(const BigInt &a) {
 std::pair<BigInt, BigInt> BigInt::SqrtRem(const BigInt &aa) {
   BigInt a = Sqrt(aa);
   BigInt aa1 = Times(a, a);
-  return make_pair(a, Minus(aa, aa1));
+  return std::make_pair(a, Minus(aa, aa1));
 }
 
 BigRat::BigRat(int64_t numer, int64_t denom) {
