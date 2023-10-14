@@ -77,7 +77,7 @@ struct Database final {
   // we get about 1 read per second).
   std::vector<std::pair<Probe, std::vector<std::pair<int64_t, int32_t>>>>
   SmartReadingsIn(int64_t time_start, int64_t time_end,
-		  const std::set<int> &probes_included);
+      const std::set<int> &probes_included);
 
   // Get all the readings (collated by probe) in the given interval.
   std::vector<std::pair<Probe, std::pair<int64_t, int32_t>>> LastReading();
@@ -99,6 +99,7 @@ private:
   // Mark this device as recently alive in the database.
   void UpdateLastSeen();
   void UpdatePackages();
+  void UpdateIPAddress();
   // Ping the server, and try to reconnect if it fails.
   // Automatically called every few minutes by the periodic thread.
   void Ping();

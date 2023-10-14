@@ -28,8 +28,9 @@ using int64 = int64_t;
 
 static constexpr double SECONDS_BETWEEN_WRITES = 20.0;
 static constexpr double SECONDS_BETWEEN_UPDATE_SEENS = 61.0;
+static constexpr double SECONDS_BETWEEN_UPDATE_IP = 5.0 * 59.0;
 static constexpr double SECONDS_BETWEEN_PINGS = 32.0;
-static constexpr double SECONDS_BETWEEN_PACKAGE_CHECKS = 3600 * 8.0;
+static constexpr double SECONDS_BETWEEN_PACKAGE_CHECKS = 3600.5 * 8.0;
 
 #ifndef SVN_REVISION
 // Makefile is supposed to define this, but it's not essential.
@@ -39,6 +40,14 @@ static constexpr double SECONDS_BETWEEN_PACKAGE_CHECKS = 3600 * 8.0;
 static string Escape(string s) {
   mysqlpp::DBDriver::escape_string_no_conn(&s, nullptr, 0);
   return s;
+}
+
+static string MACToKey(NetUtil::mac mac) {
+  const auto [a, b, c, d, e, f] = mac;
+  // The key is human readable as a compromise for usability, but
+  // since it's used as the primary key we drop the colons.
+  return StringPrintf("%02x%02x%02x" "%02x%02x%02x",
+                      a, b, c,  d, e, f);
 }
 
 // TODO: It's possible that this program is using mysql++ incorrectly
@@ -72,13 +81,7 @@ Database::Database() {
       ipaddress = StringPrintf("%d.%d.%d.%d", a, b, c, d);
     }
 
-    {
-      const auto [a, b, c, d, e, f] = mac;
-      // The key is human readable as a compromise for usability, but
-      // since it's used as the primary key we drop the colons.
-      mac_key = StringPrintf("%02x%02x%02x" "%02x%02x%02x",
-                             a, b, c,  d, e, f);
-    }
+    mac_key = MACToKey(mac);
 
     printf("MAC %s. IP %s.\n", mac_key.c_str(), ipaddress.c_str());
   }
@@ -219,6 +222,7 @@ void Database::PeriodicThread() {
   // Wouldn't be too hard to support ms-level events here, though.
   Periodically write_p(SECONDS_BETWEEN_WRITES);
   Periodically update_seen_p(SECONDS_BETWEEN_UPDATE_SEENS);
+  Periodically update_ip_p(SECONDS_BETWEEN_UPDATE_IP);
   Periodically ping_p(SECONDS_BETWEEN_PINGS);
   Periodically update_packages_p(SECONDS_BETWEEN_PACKAGE_CHECKS);
   for (;;) {
@@ -240,7 +244,11 @@ void Database::PeriodicThread() {
       }
 
       if (update_seen_p.ShouldRun()) {
-        UpdateLastSeen();
+        if (update_ip_p.ShouldRun()) {
+          UpdateIPAddress();
+        } else {
+          UpdateLastSeen();
+        }
       }
 
       if (should_die) return;
@@ -266,14 +274,47 @@ void Database::UpdatePackages() {
       StringPrintf("update tempo.device "
                    "set packages = \"%s\" "
                    "where mac = \"%s\"",
-                   // XXX should sqlescape, though we don't
-                   // expect wc -l to output anything escapable.
-                   res.c_str(),
+                   Escape(res).c_str(),
                    mac_key.c_str());
     Query q = conn.query(qs);
     if (!q.exec())
       failed->Increment();
   }
+}
+
+// Must hold lock.
+void Database::UpdateIPAddress() {
+  const auto iface = NetUtil::BestGuessIPWithMAC();
+  // Might be possible if we're currently disconnected?
+  if (!iface.has_value()) return;
+
+  // MAC address is used used as the primary key in the device table.
+  // We assume the mac address doesn't change.
+  const auto [ip, mac] = *iface;
+  string new_mac_key = MACToKey(mac);
+  CHECK(mac_key == new_mac_key) << "MAC key changed from " << mac_key
+                                << " to " << new_mac_key <<
+    "In this situation we'd better just restart?";
+
+  {
+    const auto [a, b, c, d] = ip;
+    ipaddress = StringPrintf("%d.%d.%d.%d", a, b, c, d);
+  }
+
+  int64 now = time(nullptr);
+  string qs =
+    StringPrintf("update tempo.device "
+                 "set "
+                 "lastseen = %llu, "
+                 "ipaddress = \"%s\" "
+                 "where mac = \"%s\"",
+                 now,
+                 ipaddress.c_str(),
+                 mac_key.c_str());
+
+  Query q = conn.query(qs);
+  if (!q.exec())
+    failed->Increment();
 }
 
 // Must hold lock.
