@@ -26,12 +26,12 @@ struct VectorLoadFonts {
       // If this returns true (e.g. because the startup process is
       // aborted), just stop loading.
       std::function<bool()> ExitEarly,
-      const vector<int> &row_max_points,
+      const std::vector<int> &row_max_points,
       int max_parallelism,
       int64 max_fonts);
 
   ~VectorLoadFonts();
-  
+
   // Call once. Waits for font vector to be complete. After this
   // returns, safe to access the vector (from a single thread) without
   // taking the mutex.
@@ -49,7 +49,7 @@ private:
   const int64 max_fonts;
   const std::function<bool()> ExitEarly;
   const std::vector<int> row_max_points;
-  
+
   std::unique_ptr<FontDB> font_db;
   std::unique_ptr<std::thread> init_thread;
 };
@@ -74,7 +74,7 @@ struct SDFLoadFonts {
   struct Font {
     TTF *ttf = nullptr;
     // 52 entries. a-z then A-Z.
-    vector<ImageA> sdfs;
+    std::vector<ImageA> sdfs;
   };
   std::shared_mutex fonts_m;
   // Protected by fonts_m.
@@ -85,7 +85,7 @@ struct SDFLoadFonts {
   int64 NumFailed() const {
     return num_failed;
   }
-  
+
   void Init();
 
 private:
@@ -95,7 +95,7 @@ private:
   const FontProblem::SDFConfig config;
 
   int64 num_failed = 0;
-  
+
   std::unique_ptr<FontDB> font_db;
   std::unique_ptr<std::thread> init_thread;
 };

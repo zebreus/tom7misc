@@ -14,12 +14,12 @@ FontDB::FontDB() {
         Type::UNKNOWN}) {
     string_type[TypeString(t)] = t;
   }
-    
+
   for (string line : Util::ReadFileToLines(DATABASE_FILENAME)) {
     const string flagstring = Util::chop(line);
     const double diffscore = Util::ParseDouble(Util::chop(line), -1.0);
     const string typestring = Util::chop(line);
-    const string filename = Util::losewhitel(line);
+    const string filename = Util::LoseWhiteL(line);
 
     auto it = string_type.find(typestring);
     CHECK(it != string_type.end()) << "Unknown type " << typestring;
@@ -38,7 +38,7 @@ FontDB::FontDB() {
     }
     files[filename] = info;
   }
-    
+
   printf("Total in FontDB: %lld\n", files.size());
 }
 
@@ -58,7 +58,7 @@ void FontDB::Save() {
            (int64)lines.size(),
            DATABASE_FILENAME);
   }
-      
+
   {
     // Temporary? P/R curve export
     struct Labeled {
@@ -83,7 +83,7 @@ void FontDB::Save() {
               [](const Labeled &a, const Labeled &b) {
                 return a.score < b.score;
               });
-      
+
     // "Positive" here means same case (this is a low score).
     //
     // As we go, assuming the threshold is set to the current value,

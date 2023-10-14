@@ -1547,11 +1547,11 @@ static ImageRGBA RenderLayer(
   }
 
   case RENDERSTYLE_SDF26: {
-    int alphabet_width = 26 * EmbeddedFont::CHAR_WIDTH;
+    int alphabet_width = 26 * EmbeddedFont::WIDTH;
     // 2xSDF, aa letter, 2x error for sdf part
     int images_width = 3 * SDF_SIZE * 2;
     int width = std::max(alphabet_width, images_width);
-    int height = SDF_SIZE * 2 + 1 + EmbeddedFont::CHAR_HEIGHT;
+    int height = SDF_SIZE * 2 + 1 + EmbeddedFont::HEIGHT;
     ImageRGBA out(width, height);
     auto [sdf, letter] = MakeSDF(values);
     out.BlendImage(0, 0, sdf);
@@ -1569,7 +1569,7 @@ static ImageRGBA RenderLayer(
       const uint8 v = FloatByte(values[SDF_SIZE * SDF_SIZE + i]);
       string s = "A";
       s[0] += i;
-      out.BlendText(EmbeddedFont::CHAR_HEIGHT * i, SDF_SIZE * 2 + 1,
+      out.BlendText(EmbeddedFont::HEIGHT * i, SDF_SIZE * 2 + 1,
                     v, v, 0xFF, 0xFF,
                     s);
     }
