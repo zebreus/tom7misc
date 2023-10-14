@@ -21,6 +21,8 @@
 // For UTF8 decoding. Could easily duplicate it here.
 #include "util.h"
 
+using std::string;
+
 void ANSI::Init() {
   #ifdef __MINGW32__
   // Turn on ANSI support in Windows 10+. (Otherwise, use ANSICON etc.)

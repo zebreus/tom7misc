@@ -11,7 +11,9 @@
 #include "arcfour.h"
 #include "randutil.h"
 
-typedef uint8_t uint8;
+using uint8 = uint8_t;
+
+using namespace std;
 
 static string ShowVector(const vector<uint8> &v) {
   string s = "{";
@@ -23,7 +25,7 @@ static string ShowVector(const vector<uint8> &v) {
 
 static void CheckSameVector(const vector<uint8> &a,
                             const vector<uint8> &b) {
-  CHECK_EQ(a.size(), b.size()) << "\n" 
+  CHECK_EQ(a.size(), b.size()) << "\n"
                                << ShowVector(a) << "\n" << ShowVector(b);
   for (int i = 0; i < (int)a.size(); i++) {
     CHECK_EQ(a[i], b[i]) << "\n" << ShowVector(a) << "\n" << ShowVector(b);

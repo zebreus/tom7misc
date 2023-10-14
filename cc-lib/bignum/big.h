@@ -614,6 +614,8 @@ BigInt BigInt::Div(const BigInt &a, int64_t b) {
 }
 
 bool BigInt::DivisibleBy(const BigInt &num, const BigInt &den) {
+  // (Note that GMP accepts 0 % 0, but I consider that an instance
+  // of undefined behavior in this library.)
   return mpz_divisible_p(num.rep, den.rep);
 }
 

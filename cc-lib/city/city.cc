@@ -30,8 +30,12 @@
 // #include "config.h"
 #include "city/city.h"
 
+#include <cstdint>
+#include <utility>
 #include <algorithm>
 #include <string.h>  // for memcpy and memset
+
+using uint128 = city_uint128;
 
 using namespace std;
 

@@ -55,46 +55,84 @@
 // of a+b is easily derived from the hashes of a and b.  This property
 // doesn't hold for any hash functions in this file.
 
-#ifndef CITY_HASH_H_
-#define CITY_HASH_H_
+#ifndef _CC_LIB_CITY_CITY_HASH_H_
+#define _CC_LIB_CITY_CITY_HASH_H_
 
 #include <stdlib.h>  // for size_t.
 #include <stdint.h>
 #include <utility>
+#include <cstdint>
+#include <string_view>
 
-typedef uint8_t uint8;
-typedef uint32_t uint32;
-typedef uint64_t uint64;
-typedef std::pair<uint64, uint64> uint128;
+using uint8 = uint8_t;
+using uint32 = uint32_t;
+using uint64 = uint64_t;
+using city_uint128 = std::pair<uint64, uint64>;
 
-inline uint64 Uint128Low64(const uint128& x) { return x.first; }
-inline uint64 Uint128High64(const uint128& x) { return x.second; }
+inline uint64 Uint128Low64(const city_uint128& x) { return x.first; }
+inline uint64 Uint128High64(const city_uint128& x) { return x.second; }
 
 // Hash function for a byte array.
 uint64 CityHash64(const char *buf, size_t len);
+inline uint64 CityHash64(std::string_view buf);
 
 // Hash function for a byte array.  For convenience, a 64-bit seed is also
 // hashed into the result.
 uint64 CityHash64WithSeed(const char *buf, size_t len, uint64 seed);
+inline uint64 CityHash64WithSeed(std::string_view buf, uint64 seed);
 
 // Hash function for a byte array.  For convenience, two seeds are also
 // hashed into the result.
 uint64 CityHash64WithSeeds(const char *buf, size_t len,
                            uint64 seed0, uint64 seed1);
+inline uint64 CityHash64WithSeeds(std::string_view buf,
+                                  uint64 seed0, uint64 seed1);
 
 // Hash function for a byte array.
-uint128 CityHash128(const char *s, size_t len);
+city_uint128 CityHash128(const char *s, size_t len);
+inline city_uint128 CityHash128(std::string_view buf);
 
 // Hash function for a byte array.  For convenience, a 128-bit seed is also
 // hashed into the result.
-uint128 CityHash128WithSeed(const char *s, size_t len, uint128 seed);
+city_uint128 CityHash128WithSeed(const char *s, size_t len, city_uint128 seed);
+inline city_uint128 CityHash128WithSeed(std::string_view buf,
+                                        city_uint128 seed);
 
 // Hash function for a byte array.  Most useful in 32-bit binaries.
 uint32 CityHash32(const char *buf, size_t len);
+inline uint32 CityHash32(std::string_view buf);
 
 // Hash 128 input bits down to 64 bits of output.
 // This is intended to be a reasonably good hash function.
-inline uint64 Hash128to64(const uint128& x) {
+inline uint64 Hash128to64(const city_uint128& x);
+
+
+
+// Implementations follow.
+
+inline uint64 CityHash64(std::string_view buf) {
+  return CityHash64(buf.data(), buf.size());
+}
+
+inline uint64 CityHash64WithSeed(std::string_view buf, uint64 seed) {
+  return CityHash64WithSeed(buf.data(), buf.size(), seed);
+}
+
+inline uint64 CityHash64WithSeeds(std::string_view buf,
+                                  uint64 seed0, uint64 seed1) {
+  return CityHash64WithSeeds(buf.data(), buf.size(), seed0, seed1);
+}
+
+inline city_uint128 CityHash128WithSeed(std::string_view buf,
+                                        city_uint128 seed) {
+  return CityHash128WithSeed(buf.data(), buf.size(), seed);
+}
+
+inline uint32 CityHash32(std::string_view buf) {
+  return CityHash32(buf.data(), buf.size());
+}
+
+inline uint64 Hash128to64(const city_uint128& x) {
   // Murmur-inspired hashing.
   const uint64 kMul = 0x9ddfea08eb382d69ULL;
   uint64 a = (Uint128Low64(x) ^ Uint128High64(x)) * kMul;
@@ -105,4 +143,4 @@ inline uint64 Hash128to64(const uint128& x) {
   return b;
 }
 
-#endif  // CITY_HASH_H_
+#endif

@@ -1,8 +1,12 @@
 
 #include "rapidjson/document.h"
 
+#include <string>
+
 #include "base/stringprintf.h"
 #include "base/logging.h"
+
+using std::string;
 
 // Test of rapidjson library, and a simple example.
 static void TestRapid() {

@@ -1,6 +1,7 @@
 #include "list-util.h"
 
 #include <list>
+#include <vector>
 
 #include "base/logging.h"
 #include "base/stringprintf.h"

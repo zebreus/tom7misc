@@ -1,12 +1,15 @@
 // Copyright 2002 and onwards Google Inc.
 
+#include "base/stringprintf.h"
+
 #include <stdarg.h> // For va_list and related operations
 #include <stdio.h> // MSVC requires this for _vsnprintf
 #include <vector>
-using std::vector;
 
-#include "base/stringprintf.h"
 #include "base/logging.h"
+
+using std::string;
+using std::vector;
 
 void StringAppendV(string* dst, const char* format, va_list ap) {
   // First try with a small fixed size buffer

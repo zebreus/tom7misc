@@ -11,14 +11,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef BASE_LOGGING_H
-#define BASE_LOGGING_H
+#ifndef _CC_LIB_BASE_LOGGING_H
+#define _CC_LIB_BASE_LOGGING_H
 
 #include <stdlib.h>
 #include <iostream>
-using std::ostream;
-using std::cout;
-using std::endl;
+#include <utility>
 
 #include "base/macros.h"
 
@@ -106,6 +104,9 @@ class LogMessageFatal : public LogMessage {
   ~LogMessageFatal() {
     std::cerr << "\n" << std::flush;
     abort();
+    #if __cpp_lib_unreachable
+    std::unreachable();
+    #endif
   }
  private:
   DISALLOW_COPY_AND_ASSIGN(LogMessageFatal);
