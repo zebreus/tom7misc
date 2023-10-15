@@ -721,8 +721,8 @@ struct Quad {
   }
 
 
-  // Compute coefficients of x: V1 + V2 * w + V3 * w^2
-  // Returns V1, V2, V3
+  // Compute coefficients of x: V3 * w^2 + V2 * w + V1
+  // Returns V3, V2, V1
   std::tuple<BigInt, BigInt, BigInt> ComputeXDiscrZero(
       const BigInt &A, const BigInt &B,
       const BigInt &C, const BigInt &D,
@@ -741,11 +741,11 @@ struct Quad {
     V2 *= Z;
     // Compute V3 as m*z^2
     BigInt V3 = U3 * Z * Z;
-    return std::make_tuple(V1, V2, V3);
+    return std::make_tuple(V3, V2, V1);
   }
 
-  // Compute coefficients of y: V1 + V2 * w + V3 * w^2
-  // Returns V1, V2, V3
+  // Compute coefficients of y: V3 * w^2 + V2 * w + V1
+  // Returns V3, V2, V1
   std::tuple<BigInt, BigInt, BigInt> ComputeYDiscrZero(
       const BigInt &U, const BigInt &U2,
       const BigInt &S, const BigInt &R,
@@ -760,7 +760,7 @@ struct Quad {
     // Compute V3 <- uz^2
     BigInt V3 = U * Z * Z;
 
-    return std::make_tuple(V1, V2, V3);
+    return std::make_tuple(V3, V2, V1);
   }
 
 
@@ -821,28 +821,32 @@ struct Quad {
       U2 = GeneralModularDivision(U2, U3, Z);
     }
 
-    {
-      const auto &[VV1, VV2, VV3] =
-        swap_xy ?
-        ComputeYDiscrZero(U, U2, S, R, Z) :
-        ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2);
 
-      SolutionHeader();
-
-      // Result box:
-      ShowText("\nx = ");
-      PrintQuad(VV3, VV2, VV1);
-    }
+    QuadraticSolution qsol;
 
     {
-      const auto &[VV1, VV2, VV3] =
-        swap_xy ?
-        ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2) :
-        ComputeYDiscrZero(U, U2, S, R, Z);
+      auto coeff_x = ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2);
+      auto coeff_y = ComputeYDiscrZero(U, U2, S, R, Z);
 
-      ShowText("\ny = ");
-      PrintQuad(VV3, VV2, VV1);
+      if (swap_xy) {
+        std::tie(qsol.VX, qsol.MX, qsol.BX) = std::move(coeff_y);
+        std::tie(qsol.VY, qsol.MY, qsol.BY) = std::move(coeff_x);
+      } else {
+        std::tie(qsol.VX, qsol.MX, qsol.BX) = std::move(coeff_x);
+        std::tie(qsol.VY, qsol.MY, qsol.BY) = std::move(coeff_y);
+      }
     }
+
+    SolutionHeader();
+
+    // Result box:
+    ShowText("\nx = ");
+    PrintQuad(qsol.VX, qsol.MX, qsol.BX);
+
+    ShowText("\ny = ");
+    PrintQuad(qsol.VY, qsol.MY, qsol.BY);
+
+    solutions.quadratic.emplace_back(std::move(qsol));
   }
 
   // Obtain next convergent of continued fraction of U/V
