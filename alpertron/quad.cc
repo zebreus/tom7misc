@@ -2485,7 +2485,9 @@ struct Quad {
   //  Set U to a*V - U
   //  Set V to (D - U^2)/V
   //  Inside period when: 0 <= G - U < V
-  void ContFrac(
+  //
+  // Returns true if a solution was found.
+  bool ContFrac(
       const BigInt &Value, enum SolutionNumber solutionNbr,
       const BigInt &A, const BigInt &B, const BigInt &E,
       const BigInt &K, const BigInt &L, const BigInt &M,
@@ -2498,7 +2500,7 @@ struct Quad {
     const bool isBeven = B.IsEven();
     // If (D-U^2) is not multiple of V, exit routine.
     if (!BigInt::DivisibleBy(L - U * U, V)) {
-      return;
+      return false;
     }
 
     BigInt U1(1);
@@ -2612,10 +2614,7 @@ struct Quad {
       isIntegerPart = false;
     }
 
-    // XXX return value
-    if (sol_found) {
-      hyperbolic_recursive_solution = true;
-    }
+    return sol_found;
   }
 
   void CallbackQuadModHyperbolic(const BigInt &A,
@@ -2685,20 +2684,22 @@ struct Quad {
     std::optional<std::pair<BigInt, BigInt>> sol_plus, sol_minus;
 
     // Continued fraction of (U+G)/V
-    ContFrac(Value, SolutionNumber::FIRST,
-             A, B, E,
-             K, L, M,
-             U, V, G,
-             Alpha, Beta, Div, Discr,
-             &sol_plus, &sol_minus);
+    if (ContFrac(Value, SolutionNumber::FIRST,
+                 A, B, E,
+                 K, L, M,
+                 U, V, G,
+                 Alpha, Beta, Div, Discr,
+                 &sol_plus, &sol_minus))
+      hyperbolic_recursive_solution = true;
 
     // Continued fraction of (-U+G)/(-V)
-    ContFrac(Value, SolutionNumber::SECOND,
-             A, B, E,
-             K, L, M,
-             -U, -V, G,
-             Alpha, Beta, Div, Discr,
-             &sol_plus, &sol_minus);
+    if (ContFrac(Value, SolutionNumber::SECOND,
+                 A, B, E,
+                 K, L, M,
+                 -U, -V, G,
+                 Alpha, Beta, Div, Discr,
+                 &sol_plus, &sol_minus))
+      hyperbolic_recursive_solution = true;
 
     if (sol_plus.has_value()) {
       const auto &[X, Y] = sol_plus.value();
