@@ -2,6 +2,7 @@
 ** Quad 0 0 0 0 0 0
  + 0 = 0
 
+Solution:
 x, y: any integer
 
 ** Quad 0 0 0 0 5 6
@@ -15,18 +16,21 @@ There are no solutions.
 ** Quad 0 0 0 0 1 5
  y + 5 = 0
 
+Solution:
 x =    t
 y = -5  
 
 ** Quad 0 0 0 1 0 5
  x + 5 = 0
 
+Solution:
 x = -5  
 y =    t
 
 ** Quad 0 0 0 1 1 5
  x + y + 5 = 0
 
+Solution:
 x = -2 +  t
 y = -3  -   t
 
@@ -37,87 +41,94 @@ The equation does not have integer solutions.
 ** Quad 4 0 0 0 0 -16
  4 * x^2 - 16 = 0
 
+Solution:
 x = -2  
 y =    t
-and also:
+Solution:
 x = 2  
 y =    t
 
 ** Quad 0 4 0 0 0 -16
  4 * x * y - 16 = 0
 
+Solution:
 x = 4
 y = 1
-and also:
+Solution:
 x = -4
 y = -1
-and also:
+Solution:
 x = 2
 y = 2
-and also:
+Solution:
 x = -2
 y = -2
-and also:
+Solution:
 x = 1
 y = 4
-and also:
+Solution:
 x = -1
 y = -4
 
 ** Quad 0 0 4 0 0 -16
  4 * y^2 - 16 = 0
 
+Solution:
 x =    t
 y = -2  
-and also:
+Solution:
 x =    t
 y = 2  
 
 ** Quad 0 0 0 4 0 -16
  4 * x - 16 = 0
 
+Solution:
 x = 4  
 y =    t
 
 ** Quad 0 0 0 0 4 -16
  4 * y - 16 = 0
 
+Solution:
 x =    t
 y = 4  
 
 ** Quad 4 4 0 0 0 -16
  4 * x^2 + 4 * x * y - 16 = 0
 
+Solution:
 x = 4
 y = -3
-and also:
+Solution:
 x = -4
 y = 3
-and also:
+Solution:
 x = 2
 y = 0
-and also:
+Solution:
 x = -2
 y = 0
-and also:
+Solution:
 x = 1
 y = 3
-and also:
+Solution:
 x = -1
 y = -3
 
 ** Quad 4 0 4 0 0 -16
  4 * x^2 + 4 * y^2 - 16 = 0
 
+Solution:
 x = 0
 y = 2
-and also:
+Solution:
 x = 0
 y = -2
-and also:
+Solution:
 x = 2
 y = 0
-and also:
+Solution:
 x = -2
 y = 0
 
@@ -128,299 +139,316 @@ The equation does not have integer solutions.
 ** Quad 4 0 0 0 4 -16
  4 * x^2 + 4 * y - 16 = 0
 
+Solution:
 x =  - 2 ky = -4 k^2 + 4
-and also:
+Solution:
 x =  - 2 k + 1y = -4 k^2 + 4 k + 3
 
 ** Quad 4 4 4 0 0 -16
  4 * x^2 + 4 * x * y + 4 * y^2 - 16 = 0
 
+Solution:
 x = 0
 y = 2
-and also:
+Solution:
 x = 0
 y = -2
-and also:
+Solution:
 x = 2
 y = -2
-and also:
+Solution:
 x = -2
 y = 2
-and also:
+Solution:
 x = 2
 y = 0
-and also:
+Solution:
 x = -2
 y = 0
 
 ** Quad 4 4 0 4 0 -16
  4 * x^2 + 4 * x * y + 4 * x - 16 = 0
 
+Solution:
 x = 4
 y = -4
-and also:
+Solution:
 x = -4
 y = 2
-and also:
+Solution:
 x = 2
 y = -1
-and also:
+Solution:
 x = -2
 y = -1
-and also:
+Solution:
 x = 1
 y = 2
-and also:
+Solution:
 x = -1
 y = -4
 
 ** Quad 4 4 0 0 4 -16
  4 * x^2 + 4 * x * y + 4 * y - 16 = 0
 
+Solution:
 x = 2
 y = 0
-and also:
+Solution:
 x = -4
 y = 4
-and also:
+Solution:
 x = 0
 y = 4
-and also:
+Solution:
 x = -2
 y = 0
 
 ** Quad 4 4 4 4 0 -16
  4 * x^2 + 4 * x * y + 4 * y^2 + 4 * x - 16 = 0
 
+Solution:
 x = -3
 y = 1
-and also:
+Solution:
 x = 0
 y = 2
-and also:
+Solution:
 x = 1
 y = -2
-and also:
+Solution:
 x = 1
 y = 1
-and also:
+Solution:
 x = -3
 y = 2
-and also:
+Solution:
 x = 0
 y = -2
 
 ** Quad 4 4 4 0 4 -16
  4 * x^2 + 4 * x * y + 4 * y^2 + 4 * y - 16 = 0
 
+Solution:
 x = -2
 y = 0
-and also:
+Solution:
 x = 1
 y = 1
-and also:
+Solution:
 x = 2
 y = -3
-and also:
+Solution:
 x = 2
 y = 0
-and also:
+Solution:
 x = -2
 y = 1
-and also:
+Solution:
 x = 1
 y = -3
 
 ** Quad 4 4 4 4 4 -16
  4 * x^2 + 4 * x * y + 4 * y^2 + 4 * x + 4 * y - 16 = 0
 
+Solution:
 x = 2
 y = -1
-and also:
+Solution:
 x = -1
 y = -2
-and also:
+Solution:
 x = -2
 y = 2
-and also:
+Solution:
 x = -2
 y = -1
-and also:
+Solution:
 x = 2
 y = -2
-and also:
+Solution:
 x = -1
 y = 2
 
 ** Quad 0 4 0 4 4 -16
  4 * x * y + 4 * x + 4 * y - 16 = 0
 
+Solution:
 x = 4
 y = 0
-and also:
+Solution:
 x = -6
 y = -2
-and also:
+Solution:
 x = 0
 y = 4
-and also:
+Solution:
 x = -2
 y = -6
 
 ** Quad 4 0 4 0 4 -16
  4 * x^2 + 4 * y^2 + 4 * y - 16 = 0
 
+Solution:
 x = -2
 y = -1
-and also:
+Solution:
 x = 2
 y = 0
-and also:
+Solution:
 x = 2
 y = -1
-and also:
+Solution:
 x = -2
 y = 0
 
 ** Quad 4 0 4 4 0 -16
  4 * x^2 + 4 * y^2 + 4 * x - 16 = 0
 
+Solution:
 x = -1
 y = 2
-and also:
+Solution:
 x = 0
 y = -2
-and also:
+Solution:
 x = -1
 y = -2
-and also:
+Solution:
 x = 0
 y = 2
 
 ** Quad 4 0 0 4 4 -16
  4 * x^2 + 4 * x + 4 * y - 16 = 0
 
+Solution:
 x =  - 2 ky = -4 k^2 + 2 k + 4
-and also:
+Solution:
 x =  - 2 k - 1y = -4 k^2 - 2 k + 4
 
 ** Quad 0 4 4 0 0 -16
  4 * x * y + 4 * y^2 - 16 = 0
 
+Solution:
 x = 3
 y = 1
-and also:
+Solution:
 x = -3
 y = -1
-and also:
+Solution:
 x = 0
 y = 2
-and also:
+Solution:
 x = 0
 y = -2
-and also:
+Solution:
 x = -3
 y = 4
-and also:
+Solution:
 x = 3
 y = -4
 
 ** Quad 0 4 0 4 0 -16
  4 * x * y + 4 * x - 16 = 0
 
+Solution:
 x = 4
 y = 0
-and also:
+Solution:
 x = -4
 y = -2
-and also:
+Solution:
 x = 2
 y = 1
-and also:
+Solution:
 x = -2
 y = -3
-and also:
+Solution:
 x = 1
 y = 3
-and also:
+Solution:
 x = -1
 y = -5
 
 ** Quad 0 4 0 0 4 -16
  4 * x * y + 4 * y - 16 = 0
 
+Solution:
 x = 3
 y = 1
-and also:
+Solution:
 x = -5
 y = -1
-and also:
+Solution:
 x = 1
 y = 2
-and also:
+Solution:
 x = -3
 y = -2
-and also:
+Solution:
 x = 0
 y = 4
-and also:
+Solution:
 x = -2
 y = -4
 
 ** Quad 0 4 4 4 0 -16
  4 * x * y + 4 * y^2 + 4 * x - 16 = 0
 
+Solution:
 x = 4
 y = 0
-and also:
+Solution:
 x = 0
 y = -2
-and also:
+Solution:
 x = 0
 y = 2
-and also:
+Solution:
 x = 4
 y = -4
 
 ** Quad 0 4 4 0 4 -16
  4 * x * y + 4 * y^2 + 4 * y - 16 = 0
 
+Solution:
 x = 2
 y = 1
-and also:
+Solution:
 x = -4
 y = -1
-and also:
+Solution:
 x = -1
 y = 2
-and also:
+Solution:
 x = -1
 y = -2
-and also:
+Solution:
 x = -4
 y = 4
-and also:
+Solution:
 x = 2
 y = -4
 
 ** Quad 0 4 4 4 4 -16
  4 * x * y + 4 * y^2 + 4 * x + 4 * y - 16 = 0
 
+Solution:
 x = 4
 y = 0
-and also:
+Solution:
 x = -2
 y = -2
-and also:
+Solution:
 x = 1
 y = 1
-and also:
+Solution:
 x = 1
 y = -3
-and also:
+Solution:
 x = -2
 y = 3
-and also:
+Solution:
 x = 4
 y = -5
 
@@ -435,177 +463,183 @@ The equation does not have integer solutions.
 ** Quad 1 2 2 0 0 -89
  x^2 + 2 * x * y + 2 * y^2 - 89 = 0
 
+Solution:
 x = -13
 y = 5
-and also:
+Solution:
 x = 13
 y = -5
-and also:
+Solution:
 x = -3
 y = 8
-and also:
+Solution:
 x = 3
 y = -8
-and also:
+Solution:
 x = -3
 y = -5
-and also:
+Solution:
 x = 3
 y = 5
-and also:
+Solution:
 x = 13
 y = -8
-and also:
+Solution:
 x = -13
 y = 8
 
 ** Quad 1 3 3 0 0 -76
  x^2 + 3 * x * y + 3 * y^2 - 76 = 0
 
+Solution:
 x = 14
 y = -4
-and also:
+Solution:
 x = -14
 y = 4
-and also:
+Solution:
 x = 16
 y = -10
-and also:
+Solution:
 x = -16
 y = 10
-and also:
+Solution:
 x = 2
 y = -6
-and also:
+Solution:
 x = -2
 y = 6
-and also:
+Solution:
 x = -16
 y = 6
-and also:
+Solution:
 x = 16
 y = -6
-and also:
+Solution:
 x = -14
 y = 10
-and also:
+Solution:
 x = 14
 y = -10
-and also:
+Solution:
 x = 2
 y = 4
-and also:
+Solution:
 x = -2
 y = -4
 
 ** Quad 1 0 1 0 0 -425
  x^2 + y^2 - 425 = 0
 
+Solution:
 x = -19
 y = 8
-and also:
+Solution:
 x = 19
 y = -8
-and also:
+Solution:
 x = 8
 y = 19
-and also:
+Solution:
 x = -8
 y = -19
-and also:
+Solution:
 x = 16
 y = 13
-and also:
+Solution:
 x = -16
 y = -13
-and also:
+Solution:
 x = -13
 y = 16
-and also:
+Solution:
 x = 13
 y = -16
-and also:
+Solution:
 x = 16
 y = -13
-and also:
+Solution:
 x = -16
 y = 13
-and also:
+Solution:
 x = -13
 y = -16
-and also:
+Solution:
 x = 13
 y = 16
-and also:
+Solution:
 x = -19
 y = -8
-and also:
+Solution:
 x = 19
 y = 8
-and also:
+Solution:
 x = 8
 y = -19
-and also:
+Solution:
 x = -8
 y = 19
-and also:
+Solution:
 x = 20
 y = 5
-and also:
+Solution:
 x = -20
 y = -5
-and also:
+Solution:
 x = 5
 y = -20
-and also:
+Solution:
 x = -5
 y = 20
-and also:
+Solution:
 x = -20
 y = 5
-and also:
+Solution:
 x = 20
 y = -5
-and also:
+Solution:
 x = 5
 y = 20
-and also:
+Solution:
 x = -5
 y = -20
 
 ** Quad 1 0 -5 0 0 4
  x^2 - 5 * y^2 + 4 = 0
 
+Solution:
 x = 1
 y = 1
-and also:
+Solution:
 x = -1
 y = -1
-and also:
+Solution:
 x = -1
 y = 1
-and also:
+Solution:
 x = 1
 y = -1
-and also:
+Solution:
 x = 4
 y = 2
-and also:
+Solution:
 x = -4
 y = -2
 Recursive solutions:
+
 x_n+1 =  9 * x_n - 20 * y_n 
 y_n+1 =  - 4 * x_n + 9 * y_n 
-and also:
+... and also:
 x_n+1 =  9 * x_n + 20 * y_n 
 y_n+1 =  4 * x_n + 9 * y_n 
 
 ** Quad 1 0 -991 0 0 -1
  x^2 - 991 * y^2 - 1 = 0
 
+Solution:
 x = 1
 y = 0
-and also:
+Solution:
 x = -1
 y = 0
 Recursive solutions:
@@ -617,7 +651,7 @@ Q = 11947234168218377212415555918097
 R = 12055735790331359447442538767
 S = 379516400906811930638014896080
 
-and also:
+... and also:
 P = 379516400906811930638014896080
 Q = -11947234168218377212415555918097
 R = -12055735790331359447442538767
@@ -631,48 +665,50 @@ The equation does not have integer solutions.
 ** Quad 2 3 7 0 0 -12
  2 * x^2 + 3 * x * y + 7 * y^2 - 12 = 0
 
+Solution:
 x = 1
 y = 1
-and also:
+Solution:
 x = -1
 y = -1
 
 ** Quad 2 -33 7 0 0 -12
  2 * x^2 - 33 * x * y + 7 * y^2 - 12 = 0
 
+Solution:
 x = 1
 y = 5
-and also:
+Solution:
 x = -1
 y = -5
-and also:
+Solution:
 x = -1321493700201781
 y = -81147513783145
-and also:
+Solution:
 x = 1321493700201781
 y = 81147513783145
-and also:
+Solution:
 x = 689053051
 y = 3206081030
-and also:
+Solution:
 x = -689053051
 y = -3206081030
-and also:
+Solution:
 x = -2062831
 y = -126670
-and also:
+Solution:
 x = 2062831
 y = 126670
-and also:
+Solution:
 x = 27224
 y = 126670
-and also:
+Solution:
 x = -27224
 y = -126670
-and also:
+Solution:
 x = -52211283944
 y = -3206081030
-and also:
+Solution:
 x = 52211283944
 y = 3206081030
 Recursive solutions:
@@ -684,7 +720,7 @@ Q = -30418813368857281792634997945318384
 R = 8691089533959223369324285127233824
 S = -1867894698808897844118280347186215
 
-and also:
+... and also:
 P = -1867894698808897844118280347186215
 Q = 30418813368857281792634997945318384
 R = -8691089533959223369324285127233824
@@ -694,56 +730,64 @@ S = 141535082611518287749732424252171881
 ** Quad 1 0 0 0 -6 3
  x^2 - 6 * y + 3 = 0
 
+Solution:
 x = 12 k - 3y = 24 k^2 - 12 k + 2
-and also:
+Solution:
 x = 12 k + 3y = 24 k^2 + 12 k + 2
 
 ** Quad 1 -3 1 0 0 1
  x^2 - 3 * x * y + y^2 + 1 = 0
 
+Solution:
 x = 1
 y = 1
-and also:
+Solution:
 x = -1
-y = -1x_n+1 =  y_n 
+y = -1
+Recursive solutions (discr 5):
+
+x_n+1 =  y_n 
 y_n+1 =  - x_n + 3 * y_n 
-and also:
+... and also:
 x_n+1 =  3 * x_n - y_n 
 y_n+1 =  x_n 
 
 ** Quad 2 -6 2 0 3 -11
  2 * x^2 - 6 * x * y + 2 * y^2 + 3 * y - 11 = 0
 
+Solution:
 x = 3
 y = 7
-and also:
+Solution:
 x = 1
 y = 3
 Recursive solutions:
+
 x_n+1 =  - 21 * x_n + 8 * y_n + 15 *  
 y_n+1 =  - 8 * x_n + 3 * y_n + 6 *  
-and also:
+... and also:
 x_n+1 =  3 * x_n - 8 * y_n + 3 *  
 y_n+1 =  8 * x_n - 21 * y_n + 6 *  
 
 ** Quad 1 -1 1 -1 -1 0
  x^2 - x * y + y^2 - x - y + 0 = 0
 
+Solution:
 x = 1
 y = 0
-and also:
+Solution:
 x = 1
 y = 2
-and also:
+Solution:
 x = 0
 y = 1
-and also:
+Solution:
 x = 2
 y = 1
-and also:
+Solution:
 x = 0
 y = 0
-and also:
+Solution:
 x = 2
 y = 2
 
@@ -754,1224 +798,1230 @@ The equation does not have integer solutions.
 ** Quad 1 0 -1 0 0 -138600
  x^2 - y^2 - 138600 = 0
 
+Solution:
 x = 34651
 y = -34649
-and also:
+Solution:
 x = -34651
 y = 34649
-and also:
+Solution:
 x = 17327
 y = -17323
-and also:
+Solution:
 x = -17327
 y = 17323
-and also:
+Solution:
 x = 5781
 y = -5769
-and also:
+Solution:
 x = -5781
 y = 5769
-and also:
+Solution:
 x = 11553
 y = -11547
-and also:
+Solution:
 x = -11553
 y = 11547
-and also:
+Solution:
 x = 3859
 y = -3841
-and also:
+Solution:
 x = -3859
 y = 3841
-and also:
+Solution:
 x = 1943
 y = -1907
-and also:
+Solution:
 x = -1943
 y = 1907
-and also:
+Solution:
 x = 475
 y = -295
-and also:
+Solution:
 x = -475
 y = 295
-and also:
+Solution:
 x = 815
 y = -725
-and also:
+Solution:
 x = -815
 y = 725
-and also:
+Solution:
 x = 2325
 y = -2295
-and also:
+Solution:
 x = -2325
 y = 2295
-and also:
+Solution:
 x = 1185
 y = -1125
-and also:
+Solution:
 x = -1185
 y = 1125
-and also:
+Solution:
 x = 3475
 y = -3455
-and also:
+Solution:
 x = -3475
 y = 3455
-and also:
+Solution:
 x = 6935
 y = -6925
-and also:
+Solution:
 x = -6935
 y = 6925
-and also:
+Solution:
 x = 1411
 y = -1361
-and also:
+Solution:
 x = -1411
 y = 1361
-and also:
+Solution:
 x = 743
 y = -643
-and also:
+Solution:
 x = -743
 y = 643
-and also:
+Solution:
 x = 381
 y = -81
-and also:
+Solution:
 x = -381
 y = 81
-and also:
+Solution:
 x = 537
 y = -387
-and also:
+Solution:
 x = -537
 y = 387
-and also:
+Solution:
 x = 379
 y = 71
-and also:
+Solution:
 x = -379
 y = -71
-and also:
+Solution:
 x = 527
 y = 373
-and also:
+Solution:
 x = -527
 y = -373
-and also:
+Solution:
 x = 3161
 y = 3139
-and also:
+Solution:
 x = -3161
 y = -3139
-and also:
+Solution:
 x = 1597
 y = 1553
-and also:
+Solution:
 x = -1597
 y = -1553
-and also:
+Solution:
 x = 591
 y = 459
-and also:
+Solution:
 x = -591
 y = -459
-and also:
+Solution:
 x = 1083
 y = 1017
-and also:
+Solution:
 x = -1083
 y = -1017
-and also:
+Solution:
 x = 449
 y = 251
-and also:
+Solution:
 x = -449
 y = -251
-and also:
+Solution:
 x = 373
 y = -23
-and also:
+Solution:
 x = -373
 y = 23
-and also:
+Solution:
 x = 1025
 y = -955
-and also:
+Solution:
 x = -1025
 y = 955
-and also:
+Solution:
 x = 565
 y = -425
-and also:
+Solution:
 x = -565
 y = 425
-and also:
+Solution:
 x = 375
 y = 45
-and also:
+Solution:
 x = -375
 y = -45
-and also:
+Solution:
 x = 435
 y = -225
-and also:
+Solution:
 x = -435
 y = 225
-and also:
+Solution:
 x = 425
 y = 205
-and also:
+Solution:
 x = -425
 y = -205
-and also:
+Solution:
 x = 685
 y = 575
-and also:
+Solution:
 x = -685
 y = -575
-and also:
+Solution:
 x = 401
 y = -149
-and also:
+Solution:
 x = -401
 y = 149
-and also:
+Solution:
 x = 613
 y = -487
-and also:
+Solution:
 x = -613
 y = 487
-and also:
+Solution:
 x = 1671
 y = -1629
-and also:
+Solution:
 x = -1671
 y = 1629
-and also:
+Solution:
 x = 867
 y = -783
-and also:
+Solution:
 x = -867
 y = 783
-and also:
+Solution:
 x = 2489
 y = -2461
-and also:
+Solution:
 x = -2489
 y = 2461
-and also:
+Solution:
 x = 4957
 y = -4943
-and also:
+Solution:
 x = -4957
 y = 4943
-and also:
+Solution:
 x = 527
 y = -373
-and also:
+Solution:
 x = -527
 y = 373
-and also:
+Solution:
 x = 379
 y = -71
-and also:
+Solution:
 x = -379
 y = 71
-and also:
+Solution:
 x = 537
 y = 387
-and also:
+Solution:
 x = -537
 y = -387
-and also:
+Solution:
 x = 381
 y = 81
-and also:
+Solution:
 x = -381
 y = -81
-and also:
+Solution:
 x = 743
 y = 643
-and also:
+Solution:
 x = -743
 y = -643
-and also:
+Solution:
 x = 1411
 y = 1361
-and also:
+Solution:
 x = -1411
 y = -1361
-and also:
+Solution:
 x = 6935
 y = 6925
-and also:
+Solution:
 x = -6935
 y = -6925
-and also:
+Solution:
 x = 3475
 y = 3455
-and also:
+Solution:
 x = -3475
 y = -3455
-and also:
+Solution:
 x = 1185
 y = 1125
-and also:
+Solution:
 x = -1185
 y = -1125
-and also:
+Solution:
 x = 2325
 y = 2295
-and also:
+Solution:
 x = -2325
 y = -2295
-and also:
+Solution:
 x = 815
 y = 725
-and also:
+Solution:
 x = -815
 y = -725
-and also:
+Solution:
 x = 475
 y = 295
-and also:
+Solution:
 x = -475
 y = -295
-and also:
+Solution:
 x = 1943
 y = 1907
-and also:
+Solution:
 x = -1943
 y = -1907
-and also:
+Solution:
 x = 3859
 y = 3841
-and also:
+Solution:
 x = -3859
 y = -3841
-and also:
+Solution:
 x = 11553
 y = 11547
-and also:
+Solution:
 x = -11553
 y = -11547
-and also:
+Solution:
 x = 5781
 y = 5769
-and also:
+Solution:
 x = -5781
 y = -5769
-and also:
+Solution:
 x = 17327
 y = 17323
-and also:
+Solution:
 x = -17327
 y = -17323
-and also:
+Solution:
 x = 34651
 y = 34649
-and also:
+Solution:
 x = -34651
 y = -34649
-and also:
+Solution:
 x = 4957
 y = 4943
-and also:
+Solution:
 x = -4957
 y = -4943
-and also:
+Solution:
 x = 2489
 y = 2461
-and also:
+Solution:
 x = -2489
 y = -2461
-and also:
+Solution:
 x = 867
 y = 783
-and also:
+Solution:
 x = -867
 y = -783
-and also:
+Solution:
 x = 1671
 y = 1629
-and also:
+Solution:
 x = -1671
 y = -1629
-and also:
+Solution:
 x = 613
 y = 487
-and also:
+Solution:
 x = -613
 y = -487
-and also:
+Solution:
 x = 401
 y = 149
-and also:
+Solution:
 x = -401
 y = -149
-and also:
+Solution:
 x = 685
 y = -575
-and also:
+Solution:
 x = -685
 y = 575
-and also:
+Solution:
 x = 425
 y = -205
-and also:
+Solution:
 x = -425
 y = 205
-and also:
+Solution:
 x = 435
 y = 225
-and also:
+Solution:
 x = -435
 y = -225
-and also:
+Solution:
 x = 375
 y = -45
-and also:
+Solution:
 x = -375
 y = 45
-and also:
+Solution:
 x = 565
 y = 425
-and also:
+Solution:
 x = -565
 y = -425
-and also:
+Solution:
 x = 1025
 y = 955
-and also:
+Solution:
 x = -1025
 y = -955
-and also:
+Solution:
 x = 373
 y = 23
-and also:
+Solution:
 x = -373
 y = -23
-and also:
+Solution:
 x = 449
 y = -251
-and also:
+Solution:
 x = -449
 y = 251
-and also:
+Solution:
 x = 1083
 y = -1017
-and also:
+Solution:
 x = -1083
 y = 1017
-and also:
+Solution:
 x = 591
 y = -459
-and also:
+Solution:
 x = -591
 y = 459
-and also:
+Solution:
 x = 1597
 y = -1553
-and also:
+Solution:
 x = -1597
 y = 1553
-and also:
+Solution:
 x = 3161
 y = -3139
-and also:
+Solution:
 x = -3161
 y = 3139
 
 ** Quad 1 0 1 0 0 -9792466250
  x^2 + y^2 - 9792466250 = 0
 
+Solution:
 x = -91525
 y = 37625
-and also:
+Solution:
 x = 91525
 y = -37625
-and also:
+Solution:
 x = 37625
 y = 91525
-and also:
+Solution:
 x = -37625
 y = -91525
-and also:
+Solution:
 x = 98875
 y = -4025
-and also:
+Solution:
 x = -98875
 y = 4025
-and also:
+Solution:
 x = -4025
 y = -98875
-and also:
+Solution:
 x = 4025
 y = 98875
-and also:
+Solution:
 x = -74375
 y = 65275
-and also:
+Solution:
 x = 74375
 y = -65275
-and also:
+Solution:
 x = 65275
 y = 74375
-and also:
+Solution:
 x = -65275
 y = -74375
-and also:
+Solution:
 x = 92225
 y = -35875
-and also:
+Solution:
 x = -92225
 y = 35875
-and also:
+Solution:
 x = -35875
 y = -92225
-and also:
+Solution:
 x = 35875
 y = 92225
-and also:
+Solution:
 x = 92225
 y = 35875
-and also:
+Solution:
 x = -92225
 y = -35875
-and also:
+Solution:
 x = -35875
 y = 92225
-and also:
+Solution:
 x = 35875
 y = -92225
-and also:
+Solution:
 x = -74375
 y = -65275
-and also:
+Solution:
 x = 74375
 y = 65275
-and also:
+Solution:
 x = 65275
 y = -74375
-and also:
+Solution:
 x = -65275
 y = 74375
-and also:
+Solution:
 x = 98875
 y = 4025
-and also:
+Solution:
 x = -98875
 y = -4025
-and also:
+Solution:
 x = -4025
 y = 98875
-and also:
+Solution:
 x = 4025
 y = -98875
-and also:
+Solution:
 x = -91525
 y = -37625
-and also:
+Solution:
 x = 91525
 y = 37625
-and also:
+Solution:
 x = 37625
 y = -91525
-and also:
+Solution:
 x = -37625
 y = 91525
-and also:
+Solution:
 x = 85015
 y = 50645
-and also:
+Solution:
 x = -85015
 y = -50645
-and also:
+Solution:
 x = -50645
 y = 85015
-and also:
+Solution:
 x = 50645
 y = -85015
-and also:
+Solution:
 x = -76685
 y = 62545
-and also:
+Solution:
 x = 76685
 y = -62545
-and also:
+Solution:
 x = 62545
 y = 76685
-and also:
+Solution:
 x = -62545
 y = -76685
-and also:
+Solution:
 x = 96845
 y = 20335
-and also:
+Solution:
 x = -96845
 y = -20335
-and also:
+Solution:
 x = -20335
 y = 96845
-and also:
+Solution:
 x = 20335
 y = -96845
-and also:
+Solution:
 x = 84035
 y = 52255
-and also:
+Solution:
 x = -84035
 y = -52255
-and also:
+Solution:
 x = -52255
 y = 84035
-and also:
+Solution:
 x = 52255
 y = -84035
-and also:
+Solution:
 x = -95305
 y = 26635
-and also:
+Solution:
 x = 95305
 y = -26635
-and also:
+Solution:
 x = 26635
 y = 95305
-and also:
+Solution:
 x = -26635
 y = -95305
-and also:
+Solution:
 x = -98665
 y = -7595
-and also:
+Solution:
 x = 98665
 y = 7595
-and also:
+Solution:
 x = 7595
 y = -98665
-and also:
+Solution:
 x = -7595
 y = 98665
-and also:
+Solution:
 x = -81515
 y = 56105
-and also:
+Solution:
 x = 81515
 y = -56105
-and also:
+Solution:
 x = 56105
 y = 81515
-and also:
+Solution:
 x = -56105
 y = -81515
-and also:
+Solution:
 x = -95795
 y = 24815
-and also:
+Solution:
 x = 95795
 y = -24815
-and also:
+Solution:
 x = 24815
 y = 95795
-and also:
+Solution:
 x = -24815
 y = -95795
-and also:
+Solution:
 x = -95795
 y = -24815
-and also:
+Solution:
 x = 95795
 y = 24815
-and also:
+Solution:
 x = 24815
 y = -95795
-and also:
+Solution:
 x = -24815
 y = 95795
-and also:
+Solution:
 x = -81515
 y = -56105
-and also:
+Solution:
 x = 81515
 y = 56105
-and also:
+Solution:
 x = 56105
 y = -81515
-and also:
+Solution:
 x = -56105
 y = 81515
-and also:
+Solution:
 x = -98665
 y = 7595
-and also:
+Solution:
 x = 98665
 y = -7595
-and also:
+Solution:
 x = 7595
 y = 98665
-and also:
+Solution:
 x = -7595
 y = -98665
-and also:
+Solution:
 x = -95305
 y = -26635
-and also:
+Solution:
 x = 95305
 y = 26635
-and also:
+Solution:
 x = 26635
 y = -95305
-and also:
+Solution:
 x = -26635
 y = 95305
-and also:
+Solution:
 x = 84035
 y = -52255
-and also:
+Solution:
 x = -84035
 y = 52255
-and also:
+Solution:
 x = -52255
 y = -84035
-and also:
+Solution:
 x = 52255
 y = 84035
-and also:
+Solution:
 x = 96845
 y = -20335
-and also:
+Solution:
 x = -96845
 y = 20335
-and also:
+Solution:
 x = -20335
 y = -96845
-and also:
+Solution:
 x = 20335
 y = 96845
-and also:
+Solution:
 x = -76685
 y = -62545
-and also:
+Solution:
 x = 76685
 y = 62545
-and also:
+Solution:
 x = 62545
 y = -76685
-and also:
+Solution:
 x = -62545
 y = 76685
-and also:
+Solution:
 x = 85015
 y = -50645
-and also:
+Solution:
 x = -85015
 y = 50645
-and also:
+Solution:
 x = -50645
 y = -85015
-and also:
+Solution:
 x = 50645
 y = 85015
-and also:
+Solution:
 x = 98399
 y = -10493
-and also:
+Solution:
 x = -98399
 y = 10493
-and also:
+Solution:
 x = -10493
 y = -98399
-and also:
+Solution:
 x = 10493
 y = 98399
-and also:
+Solution:
 x = 96047
 y = 23821
-and also:
+Solution:
 x = -96047
 y = -23821
-and also:
+Solution:
 x = -23821
 y = 96047
-and also:
+Solution:
 x = 23821
 y = -96047
-and also:
+Solution:
 x = -89677
 y = 41839
-and also:
+Solution:
 x = 89677
 y = -41839
-and also:
+Solution:
 x = 41839
 y = 89677
-and also:
+Solution:
 x = -41839
 y = -89677
-and also:
+Solution:
 x = 98581
 y = -8617
-and also:
+Solution:
 x = -98581
 y = 8617
-and also:
+Solution:
 x = -8617
 y = -98581
-and also:
+Solution:
 x = 8617
 y = 98581
-and also:
+Solution:
 x = -78491
 y = -60263
-and also:
+Solution:
 x = 78491
 y = 60263
-and also:
+Solution:
 x = 60263
 y = -78491
-and also:
+Solution:
 x = -60263
 y = 78491
-and also:
+Solution:
 x = 83489
 y = -53123
-and also:
+Solution:
 x = -83489
 y = 53123
-and also:
+Solution:
 x = -53123
 y = -83489
-and also:
+Solution:
 x = 53123
 y = 83489
-and also:
+Solution:
 x = 93793
 y = 31549
-and also:
+Solution:
 x = -93793
 y = -31549
-and also:
+Solution:
 x = -31549
 y = 93793
-and also:
+Solution:
 x = 31549
 y = -93793
-and also:
+Solution:
 x = 77329
 y = 61747
-and also:
+Solution:
 x = -77329
 y = -61747
-and also:
+Solution:
 x = -61747
 y = 77329
-and also:
+Solution:
 x = 61747
 y = -77329
-and also:
+Solution:
 x = 77329
 y = -61747
-and also:
+Solution:
 x = -77329
 y = 61747
-and also:
+Solution:
 x = -61747
 y = -77329
-and also:
+Solution:
 x = 61747
 y = 77329
-and also:
+Solution:
 x = 93793
 y = -31549
-and also:
+Solution:
 x = -93793
 y = 31549
-and also:
+Solution:
 x = -31549
 y = -93793
-and also:
+Solution:
 x = 31549
 y = 93793
-and also:
+Solution:
 x = 83489
 y = 53123
-and also:
+Solution:
 x = -83489
 y = -53123
-and also:
+Solution:
 x = -53123
 y = 83489
-and also:
+Solution:
 x = 53123
 y = -83489
-and also:
+Solution:
 x = -78491
 y = 60263
-and also:
+Solution:
 x = 78491
 y = -60263
-and also:
+Solution:
 x = 60263
 y = 78491
-and also:
+Solution:
 x = -60263
 y = -78491
-and also:
+Solution:
 x = 98581
 y = 8617
-and also:
+Solution:
 x = -98581
 y = -8617
-and also:
+Solution:
 x = -8617
 y = 98581
-and also:
+Solution:
 x = 8617
 y = -98581
-and also:
+Solution:
 x = -89677
 y = -41839
-and also:
+Solution:
 x = 89677
 y = 41839
-and also:
+Solution:
 x = 41839
 y = -89677
-and also:
+Solution:
 x = -41839
 y = 89677
-and also:
+Solution:
 x = 96047
 y = -23821
-and also:
+Solution:
 x = -96047
 y = 23821
-and also:
+Solution:
 x = -23821
 y = -96047
-and also:
+Solution:
 x = 23821
 y = 96047
-and also:
+Solution:
 x = 98399
 y = 10493
-and also:
+Solution:
 x = -98399
 y = -10493
-and also:
+Solution:
 x = -10493
 y = 98399
-and also:
+Solution:
 x = 10493
 y = -98399
 
 ** Quad 3 2 1 -5 -7 2
  3 * x^2 + 2 * x * y + y^2 - 5 * x - 7 * y + 2 = 0
 
+Solution:
 x = 1
 y = 0
-and also:
+Solution:
 x = -2
 y = 8
-and also:
+Solution:
 x = 1
 y = 5
-and also:
+Solution:
 x = -2
 y = 3
 
 ** Quad 0 0 0 313370000000000003333333337 131072000000000000009999999991 27272727
  313370000000000003333333337 * x + 131072000000000000009999999991 * y + 27272727 = 0
 
+Solution:
 x = 21197027108539030654357448792 + 43690666666666666669999999997 t
 y = -50678347663901337480972041  -  104456666666666667777777779 t
 
 ** Quad 0 11 0 31337000003333333337 131072000009999999991 2727272727272727
  11 * x * y + 31337000003333333337 * x + 131072000009999999991 * y + 2727272727272727 = 0
 
+Solution:
 x = -74680059359095939410070806061636363635
 y = -2848818182121212122
-and also:
+Solution:
 x = 62233382799246616153213671716363636364
 y = -2848818182121212121
-and also:
+Solution:
 x = 21964723340910570399306472369893048129
 y = -2848818182121212120
-and also:
+Solution:
 x = 488104963131345997222632718442067737
 y = -2848818182121212052
-and also:
+Solution:
 x = -2196472334091057053037847237989304812
 y = -2848818182121212137
-and also:
+Solution:
 x = -9697449598636025342224492022027835
 y = -2848818182121215622
-and also:
+Solution:
 x = 8081207998863332606520408351689864
 y = -2848818182121207921
-and also:
+Solution:
 x = -1236424823826091723805622617808549066
 y = -2848818182121212149
-and also:
+Solution:
 x = 274761071961353701837693913957455349
 y = -2848818182121211998
-and also:
+Solution:
 x = -27476107196135383290969392395745534
 y = -2848818182121213357
-and also:
+Solution:
 x = 7575877288578433768661830665
 y = -2848818177640479372
-and also:
+Solution:
 x = -6313231095660694808884858886
 y = -2848818187498091421
-and also:
+Solution:
 x = -2228199217943304050782891371
 y = -2848818197355703470
-and also:
+Solution:
 x = 222819908687130404078289138
 y = -2848818029776298637
-and also:
+Solution:
 x = -11215269348921563718607219904
 y = -2848818185147932257
-and also:
+Solution:
 x = 112152693358143637176072199049
 y = -2848818181818540108
-and also:
+Solution:
 x = -504687120177182367297324895716
 y = -2848818182188472569
-and also:
+Solution:
 x = -17159362085630984488079046454371
 y = -2848818182123190370
-and also:
+Solution:
 x = -381319157470117166402645476763
 y = -2848818182210233302
-and also:
+Solution:
 x = 1715936208549991248806904645438
 y = -2848818182101429637
-and also:
+Solution:
 x = -13197425551812858495
 y = -29331707774308231672
-and also:
+Solution:
 x = -10847478708489284586
 y = 28930649328503211339
-and also:
+Solution:
 x = -11538639544760923971
 y = 87193006431314654350
-and also:
+Solution:
 x = -11907258657439131643
 y = 4049033289422492779098
-and also:
+Solution:
 x = -11953336046523907602
 y = -903267064316479876837
-and also:
+Solution:
 x = -11915802809057500695
 y = -203947581567614358770172
-and also:
+Solution:
 x = -11915497660785416086
 y = 244730830481136563857539
-and also:
+Solution:
 x = -11936858039831338716
 y = -1602415349550217192969
-and also:
+Solution:
 x = -11910920436704146951
 y = 7195200572974310701692
-and also:
+Solution:
 x = -11916107957329585304
 y = -71983342729746440350257
-and also:
+Solution:
 x = -92371757578129369848612
 y = -2849185717197206137
-and also:
+Solution:
 x = 20512493684027637744137
 y = -2847164274279239052
-and also:
+Solution:
 x = 923586503781283698486129
 y = -2848781428613612720
-and also:
+Solution:
 x = 27152743758272167602534
 y = -2847568562862832469
-and also:
+Solution:
 x = -6048506612950481689451
 y = -2854441468783920558
-and also:
+Solution:
 x = 591743461294048168946
 y = -2792585315494127757
-and also:
+Solution:
 x = 1640733511799692923193005
 y = -2848797493060642922
-and also:
+Solution:
 x = -1367299771833079102660836
 y = -2848843008993895161
-and also:
+Solution:
 x = -46487799026324659490468451
 y = -2848818912323349858
-and also:
+Solution:
 x = 4648766795432464949046846
 y = -2848810880099834757
-and also:
+Solution:
 x = -11915636410248928590
 y = -742733071524707410867024397
-and also:
+Solution:
 x = -11915636354389126979
 y = 3342298806192683347234943118
-and also:
+Solution:
 x = -11915635907510714091
 y = 74273304018770740753369106
-and also:
+Solution:
 x = -11915636351103256296
 y = 2525292430649205195614549615
-and also:
+Solution:
 x = -11915636367532609711
 y = -11363815953589923381932139936
-and also:
+Solution:
 x = -11915636364246739028
 y = 113638159504562233815988066023
-and also:
+Solution:
 x = -11915636364551389290
 y = -5719787361875871768753621545397
-and also:
+Solution:
 x = -11915636364486107091
 y = 571978736184453476875028821206
-and also:
+Solution:
 x = -11915636364377303426
 y = 201874848063257874190990564347
-and also:
+Solution:
 x = -11915636364747235887
 y = -168229040057937728493047692512
-and also:
+Solution:
 x = -11915636364545454540
 y = 7321574446970190134225218062691622103
-and also:
+Solution:
 x = -11915636364545454591
 y = -732157444697019016556221806602495544
-and also:
+Solution:
 x = -11915636364545454546
 y = -24893353119698646468900541414484848485
-and also:
+Solution:
 x = -11915636364545454543
 y = 20744460933082205385527617844848484848
-and also:
+Solution:
 x = -11915636364545454627
 y = -412141607942030573478813599875576962
-and also:
+Solution:
 x = -11915636364545454476
 y = 494569929530436681907176319184025687
-and also:
+Solution:
 x = -11915636364545465046
 y = -3232483199545340657680891280069885
-and also:
+Solution:
 x = -11915636364545452211
 y = 14546174397954017291064009093647814
-and also:
+Solution:
 x = -11915636364545454778
 y = -145461743979540204247640094269811477
-and also:
+Solution:
 x = -11911887506770315587
 y = 9052037646696783140238
-and also:
+Solution:
 x = -11918760412691403676
 y = -10868712576036806434953
-and also:
+Solution:
 x = -11916738969773436591
 y = -30789462798770396010144
-and also:
+Solution:
 x = -11915526104022656340
 y = 307863290987700626768103
-and also:
+Solution:
 x = -11915638555151867754
 y = -15495931885714280436216757
-and also:
+Solution:
 x = -11915635877744029387
 y = 69731677817214260296308738
-and also:
+Solution:
 x = -11915614458481322451
 y = 1549590054871427710288342
-and also:
+Solution:
 x = -11915574297363746946
 y = 546912293660503701670395
-and also:
+Solution:
 x = -11915710845163503663
 y = -455765467550420306947552
-and also:
+Solution:
 x = 258209837475762144870
 y = -2723152575526368597
-and also:
+Solution:
 x = -2713170374767621448691
 y = -2861384742780696474
-and also:
+Solution:
 x = -91364305141106513196
 y = -3276081244543680105
-and also:
+Solution:
 x = 83422766167327815837
 y = -2492765630102488802
-and also:
+Solution:
 x = -4810615230468833397087
 y = -2855892073883173512
-and also:
+Solution:
 x = 3987000692055694497574
 y = -2840329512006858453
-and also:
+Solution:
 x = -611846113884661258128696
 y = -2848873663625227505
-and also:
+Solution:
 x = 135951239529923612917489
 y = -2848568515353142896
-and also:
+Solution:
 x = -13608231152993361291748
 y = -2851314849801904377
 
 ** Quad 11 2727 -11 0 0 2727
  11 * x^2 + 2727 * x * y - 11 * y^2 + 2727 = 0
 
+Solution:
 x = -12325646479153417777844567285451193306160285920245641397565252838066281482598558036967465589365504841738582501531460930516099760413727752582342481428556548503166595636020920543103559812909832093336927173731212284134511729395383325373191809015253499
 y = 49717603696966463394731783297349420463753372549711536157478280796818225925713722201087405167480713733823421330049485042131543216142269936986651488986278331047617858270517982996017773052150546992642161986443553811974130271798732534824359767277283
-and also:
+Solution:
 x = 12325646479153417777844567285451193306160285920245641397565252838066281482598558036967465589365504841738582501531460930516099760413727752582342481428556548503166595636020920543103559812909832093336927173731212284134511729395383325373191809015253499
 y = -49717603696966463394731783297349420463753372549711536157478280796818225925713722201087405167480713733823421330049485042131543216142269936986651488986278331047617858270517982996017773052150546992642161986443553811974130271798732534824359767277283
-and also:
+Solution:
 x = -2525491
 y = 10187
-and also:
+Solution:
 x = 2525491
 y = -10187
-and also:
+Solution:
 x = -4900101696159697896548684406066098594522713210488347193757765516862136545044235605742538748408244827087155118438466917053862635962430266165914739073166313393027568106158086695269149445103145929768840617351896085844602466259905649513883226009
 y = 19765398481657091063663432636234518923901455377097380213814264987299817803095610702176133964751042234166647808791866197575465836462863424654228027187676150351181928158044564405426985274715128274298239029983332749085358789307864096368552649
-and also:
+Solution:
 x = 4900101696159697896548684406066098594522713210488347193757765516862136545044235605742538748408244827087155118438466917053862635962430266165914739073166313393027568106158086695269149445103145929768840617351896085844602466259905649513883226009
 y = -19765398481657091063663432636234518923901455377097380213814264987299817803095610702176133964751042234166647808791866197575465836462863424654228027187676150351181928158044564405426985274715128274298239029983332749085358789307864096368552649
-and also:
+Solution:
 x = -1
 y = 1
-and also:
+Solution:
 x = 1
 y = -1
-and also:
+Solution:
 x = 12739936674422996882831101104916920948855025534249939118557202680565027357560998156
 y = 3158397507909666774913319197626068507729971470628471211320281055453356911912715558993
-and also:
+Solution:
 x = -12739936674422996882831101104916920948855025534249939118557202680565027357560998156
 y = -3158397507909666774913319197626068507729971470628471211320281055453356911912715558993
-and also:
+Solution:
 x = -9935560341581960689815769393996917052489442713277724086236730970406339027249406423168668145077600737801639224907268182897342262917188757154417325773222172308236936340332
 y = 40076782374501216274916551317304017503477540952343713283150699133357309527578973946364463497682465002613777014113023695701061119527000170604753063457068391982562234053
-and also:
+Solution:
 x = 9935560341581960689815769393996917052489442713277724086236730970406339027249406423168668145077600737801639224907268182897342262917188757154417325773222172308236936340332
 y = -40076782374501216274916551317304017503477540952343713283150699133357309527578973946364463497682465002613777014113023695701061119527000170604753063457068391982562234053
-and also:
+Solution:
 x = -1245542506640914843805257597843442459704457396718914666335586985345520135195293
 y = 5024108783067461853762686356949620069365838536640090624908370035230470271802
-and also:
+Solution:
 x = 1245542506640914843805257597843442459704457396718914666335586985345520135195293
 y = -5024108783067461853762686356949620069365838536640090624908370035230470271802
-and also:
+Solution:
 x = 15804640122666397521895810772439891352478600794615254994739314968264694656695483812640425491102299086482800788471552005247393318989140304999143733886190147254443
 y = 3918177715675300316235257734062514651532219862521420835532951359506488047384591626867292068578126159894543852106985532516791287952291738363560015233690401310962618
-and also:
+Solution:
 x = -15804640122666397521895810772439891352478600794615254994739314968264694656695483812640425491102299086482800788471552005247393318989140304999143733886190147254443
 y = -3918177715675300316235257734062514651532219862521420835532951359506488047384591626867292068578126159894543852106985532516791287952291738363560015233690401310962618
 Recursive solutions:
@@ -1983,7 +2033,7 @@ Q = -617785412167011574852419939668342495720819152388739411437587876573147751475
 R = -617785412167011574852419939668342495720819152388739411437587876573147751475328072929042609173239194931112775346976810941024970970788105948218436711038743260769817621965159396351958930579348439546532711246068471662116563887747885757837863515976232555447210174628384443917843825344109509789508217427505292662661972646933386536401581928211874060268198402988626067996267249776951482438628449932139614428891349691607519899365940030918346043675472710356968482005028855148797296302409815161468234968
 S = 2491943148283139773920783718390353013093599225526101968629257038437711239158774750712475295200805673380524037698485289946578608172558840017749868712320236110150359538625078332134390709049077647703032670087996570838524311419390145544650828406737133769108004265089437048407766755453872729456443814451528513786454914870601882034074950121081606948015286437066877083500539172195621724472889467741228676531786806404403398775716923138205484477300764851596240596023571516064109891574235665684548525
 
-and also:
+... and also:
 P = 2491943148283139773920783718390353013093599225526101968629257038437711239158774750712475295200805673380524037698485289946578608172558840017749868712320236110150359538625078332134390709049077647703032670087996570838524311419390145544650828406737133769108004265089437048407766755453872729456443814451528513786454914870601882034074950121081606948015286437066877083500539172195621724472889467741228676531786806404403398775716923138205484477300764851596240596023571516064109891574235665684548525
 Q = 617785412167011574852419939668342495720819152388739411437587876573147751475328072929042609173239194931112775346976810941024970970788105948218436711038743260769817621965159396351958930579348439546532711246068471662116563887747885757837863515976232555447210174628384443917843825344109509789508217427505292662661972646933386536401581928211874060268198402988626067996267249776951482438628449932139614428891349691607519899365940030918346043675472710356968482005028855148797296302409815161468234968
 R = 617785412167011574852419939668342495720819152388739411437587876573147751475328072929042609173239194931112775346976810941024970970788105948218436711038743260769817621965159396351958930579348439546532711246068471662116563887747885757837863515976232555447210174628384443917843825344109509789508217427505292662661972646933386536401581928211874060268198402988626067996267249776951482438628449932139614428891349691607519899365940030918346043675472710356968482005028855148797296302409815161468234968
@@ -1997,15 +2047,16 @@ The equation does not have integer solutions.
 ** Quad -998 997 996 -773 772 771
  - 998 * x^2 + 997 * x * y + 996 * y^2 - 773 * x + 772 * y + 771 = 0
 
+Solution:
 x = -24210462086135196901997054990384014631435810744201396650093290151633298553206670108483174547880626315370835783124596180566004756984916225626819654343169816159068960022668536578480831704648763176436304098332590969595406077918939939057728777228985478583786499868719313015993526311138020940576948357590902883136373715516758025710799032794962097553143194770048790766800049901532963624199617608429529845619880165799027587391901639139517370087177034985604043222931511787031661267670407769437
 y = -14977900529503066443979975820720091399055308016249156729561299145379645163925777159995922638538910908727958607415300619306252751233343190945337041366488373473869003630959406818395141346665821880837018112699462290291666369759860944676481193618913835906356410037172866079924543677440292324037225912226088135497403715805576101092987745854797855517956028440783808232498309875669025719920461827675648034859097674526241959738217872723766713482345242496642724724717057117441848158040357461178
-and also:
+Solution:
 x = -20047459562273301049527905785165773008738716785463700535967683889190232189261856150144761818097213209691983709730482964259171821803635207073746475327511954935283943028581856917070081170162557852146609347515766822013057678828208598646868282943502948303147884193520970631098609062311030432337
 y = -12402442139463418445993236324460001750646918338364514844926201349606748505868995534976884036263880139025323569385193248008329965315621705805607036917945616420013753715710109856226372555420926836219567714528384499297272331950316377527493152455216442136883159781866094305092737893627449119070
-and also:
+Solution:
 x = -356373116558604802300003628915463269931569425904142252206311763773895215496842746727406022313695206684771621502456159070452512553561406883878987902574991471945322613977425073280423743215674547
 y = 577202594345629034801843965649802773298871289357332785461726235769340642908655936776190655622066101608678000934255981701844610227824463756926262783174502878498116428942512419095612418824071812
-and also:
+Solution:
 x = -430376617055092106104835146625190515624929990690386979490359929320235436046782523452764181252876726584087763949825049891173047134380487691232162485341394727470085495077229091011996046333486112326745848105949797857387579868528475606508342840218255875639660915964732753755866748646596222648510467928478994132263358789854783133267252178304537734290694144518988164009287344806947819004890527
 y = 697062961170482179950341936066465624304945054267392102987721382073793603758716192795980396555895487887655024811337783158375529031226876478041055338269851322754267766179373398024060967946150469805128448427790815751368386764685553030071482185081153983698534120625692264053625758148628108922867559714565890090018976482379174155972157633312978788518022694132152738468450050008830312120001800
 Recursive solutions:
@@ -2019,7 +2070,7 @@ R = -133012905340233542175385193085193724336164020035134403824723472632003582402
 S = -82124065419964578015364648222690677937882172147315228956172823538656225379424160870059184018129577413618582643445966222550561580445842230554224468569886643678871038259977782833777729596552590983966844447794233999503774648292548797452090819550718576938535619516633238939684479406662113985406176821974920960290246856127781350114357951110783404206678000936449103379647625382600951256939635820706152488529172971467285815427222412598092978386223970408815448444153176182705217102481825650668671632244514928249726459828423522076583588470683706846569119080298004177564401811617083230225550312723542640405413595064495951972880013625816622615659057238409761897382841311996525411686260363406291331248000310193276354199032341177543825888065438733588493920044674049120374833315064660347387133548740192295649126669287407771688838784210929989235170882721831895497150933254039868279408596083151895227131074998162686655422084453546742697297853333403909163704994460824451360696646024209893902947137579557861248868790450351722043410445869304694344920371079114763589547258466314409889788779464044704686516487246433109890364970365894204238441
 L = -74536166988512590246922395971273913014629804383171418856975387142805259894199055118921594632852845926978462197906120966717803682323578937132558185605580743395355449916098155260352269080855196279935999193944668884187256551371925903373438267971432103393941855597965308813423225154992230978850534045850756631113111322116522620375847522092386782891124204728388348664891480073227898179875801771861079678136366549385644186614982196789277627569681516340317410796020555856113320167523278312244963062680522564338527883050049797550543732224066670322876797268939442224202729895271693788626840307137881451874375789711525278398661508058246742134260291579319308435846113512921168498990001448018965924028600819360173795019011647330745170047783725249708831776445815705082438395303944771695875623635880355571168757143316943051926193775365275296218803196752585454497454984680041082050798084322034330234676500726320698032521007128667340587026642325296524909328484105876601357678404685315611562768590437524308792303557808205316282732034930772662385686969603718061806581632591246624835648408499651423970030369256771378102327743884176709391222
 
-and also:
+... and also:
 P = -82124065419964578015364648222690677937882172147315228956172823538656225379424160870059184018129577413618582643445966222550561580445842230554224468569886643678871038259977782833777729596552590983966844447794233999503774648292548797452090819550718576938535619516633238939684479406662113985406176821974920960290246856127781350114357951110783404206678000936449103379647625382600951256939635820706152488529172971467285815427222412598092978386223970408815448444153176182705217102481825650668671632244514928249726459828423522076583588470683706846569119080298004177564401811617083230225550312723542640405413595064495951972880013625816622615659057238409761897382841311996525411686260363406291331248000310193276354199032341177543825888065438733588493920044674049120374833315064660347387133548740192295649126669287407771688838784210929989235170882721831895497150933254039868279408596083151895227131074998162686655422084453546742697297853333403909163704994460824451360696646024209893902947137579557861248868790450351722043410445869304694344920371079114763589547258466314409889788779464044704686516487246433109890364970365894204238441
 Q = 132746346411696000006697046405664277994808981918831529267960499740957483039413875332474375537049360104996969595241362710092987456572837362490476882620628392086976887691159634810820647721370578568127810631779663946386157197339570935147642901389972116955619055995221861978188102753335767020313346542232568489012129864887689375477954694096370291340414599336013017648993661791253129700918763323529100287669247560646732550788454863869326299666825847811140259470002290524187110521296873497188780894828111429706331377598999116988335422108650415620555237624897824289612451361776914768649310175784547016311514614382001880572300148952898293723597957836154070079544539922398889173777806662306579336937519337033646148518649228478037696498578050889328873204120548765508887187360273497428054892615311884781163170837872024149183092518746523063198567712087179543371956439662963833265728228847613683583728904693195036467694647114097899247895245502004297592553771816400834839433068928847314334149137806514379214442907281384400460344817606229485265059467712457387882638883548480592139795969783652546105598203230073011451168611103027262727360
 K = -17589427923105900161653874147159534135295696679745900215851469291007685730328846566496054005508846577668110932430156803419305826325400441750194598069590165656743750741325697871433347972010538097445026216374170973793779831186017657956121409898205053001515398395186022682283607845062362882212158038491180756442456574556387191318009080026062739954439805607549829399494723223808054618711139190697967426946045869585221355599043908016525551492292582711840185018580817776195918016421346256420437022001298607431730630728054242481868301904727969585827460836819165988303214794223399541580116063676399107189592296089989943866918416858268107699281356839915115297955892412373812737376082914803272431806605671846290490038814061704857165741025247083612380535987570388299981829190835853642813497300491321053472510147319561592402543688941095174999186354035600586751647461232645923752178107428190827179630936589358602614575692293912155498074118389615308218698075224601937689913932677573032939154906303215507424897077635142107259937005655586231365978988529789146645636638312143375613207214300602099909044778025681257279115574411063585409240
@@ -2031,348 +2082,352 @@ L = 2848885889124745795104629566685709791909242756788959733191363524651214411128
 ** Quad 1 0 1 0 0 -523066703114
  x^2 + y^2 - 523066703114 = 0
 
+Solution:
 x = -668917
 y = 274985
-and also:
+Solution:
 x = 668917
 y = -274985
-and also:
+Solution:
 x = 274985
 y = 668917
-and also:
+Solution:
 x = -274985
 y = -668917
-and also:
+Solution:
 x = 722635
 y = -29417
-and also:
+Solution:
 x = -722635
 y = 29417
-and also:
+Solution:
 x = -29417
 y = -722635
-and also:
+Solution:
 x = 29417
 y = 722635
-and also:
+Solution:
 x = -543575
 y = 477067
-and also:
+Solution:
 x = 543575
 y = -477067
-and also:
+Solution:
 x = 477067
 y = 543575
-and also:
+Solution:
 x = -477067
 y = -543575
-and also:
+Solution:
 x = 674033
 y = -262195
-and also:
+Solution:
 x = -674033
 y = 262195
-and also:
+Solution:
 x = -262195
 y = -674033
-and also:
+Solution:
 x = 262195
 y = 674033
-and also:
+Solution:
 x = 674033
 y = 262195
-and also:
+Solution:
 x = -674033
 y = -262195
-and also:
+Solution:
 x = -262195
 y = 674033
-and also:
+Solution:
 x = 262195
 y = -674033
-and also:
+Solution:
 x = -543575
 y = -477067
-and also:
+Solution:
 x = 543575
 y = 477067
-and also:
+Solution:
 x = 477067
 y = -543575
-and also:
+Solution:
 x = -477067
 y = 543575
-and also:
+Solution:
 x = 722635
 y = 29417
-and also:
+Solution:
 x = -722635
 y = -29417
-and also:
+Solution:
 x = -29417
 y = 722635
-and also:
+Solution:
 x = 29417
 y = -722635
-and also:
+Solution:
 x = -668917
 y = -274985
-and also:
+Solution:
 x = 668917
 y = 274985
-and also:
+Solution:
 x = 274985
 y = -668917
-and also:
+Solution:
 x = -274985
 y = 668917
 
 ** Quad 1 0 1 3 0 -523066703114
  x^2 + y^2 + 3 * x - 523066703114 = 0
 
+Solution:
 x = 426902
 y = 583798
-and also:
+Solution:
 x = -426905
 y = -583798
-and also:
+Solution:
 x = 315154
 y = -650956
-and also:
+Solution:
 x = -315157
 y = 650956
-and also:
+Solution:
 x = -554218
 y = -464662
-and also:
+Solution:
 x = 554215
 y = 464662
-and also:
+Solution:
 x = 150203
 y = -707464
-and also:
+Solution:
 x = -150206
 y = 707464
-and also:
+Solution:
 x = 475847
 y = -544642
-and also:
+Solution:
 x = -475850
 y = 544642
-and also:
+Solution:
 x = -704261
 y = -164576
-and also:
+Solution:
 x = 704258
 y = 164576
-and also:
+Solution:
 x = 331670
 y = -642698
-and also:
+Solution:
 x = -331673
 y = 642698
-and also:
+Solution:
 x = 723179
 y = -8756
-and also:
+Solution:
 x = -723182
 y = 8756
-and also:
+Solution:
 x = 723179
 y = 8756
-and also:
+Solution:
 x = -723182
 y = -8756
-and also:
+Solution:
 x = 331670
 y = 642698
-and also:
+Solution:
 x = -331673
 y = -642698
-and also:
+Solution:
 x = -704261
 y = 164576
-and also:
+Solution:
 x = 704258
 y = -164576
-and also:
+Solution:
 x = 475847
 y = 544642
-and also:
+Solution:
 x = -475850
 y = -544642
-and also:
+Solution:
 x = 150203
 y = 707464
-and also:
+Solution:
 x = -150206
 y = -707464
-and also:
+Solution:
 x = -554218
 y = 464662
-and also:
+Solution:
 x = 554215
 y = -464662
-and also:
+Solution:
 x = 315154
 y = 650956
-and also:
+Solution:
 x = -315157
 y = -650956
-and also:
+Solution:
 x = 426902
 y = -583798
-and also:
+Solution:
 x = -426905
 y = 583798
 
 ** Quad 1 0 1 0 3 -523066703114
  x^2 + y^2 + 3 * y - 523066703114 = 0
 
+Solution:
 x = -583798
 y = 426902
-and also:
+Solution:
 x = 583798
 y = -426905
-and also:
+Solution:
 x = -650956
 y = -315157
-and also:
+Solution:
 x = 650956
 y = 315154
-and also:
+Solution:
 x = 464662
 y = -554218
-and also:
+Solution:
 x = -464662
 y = 554215
-and also:
+Solution:
 x = -707464
 y = -150206
-and also:
+Solution:
 x = 707464
 y = 150203
-and also:
+Solution:
 x = -544642
 y = -475850
-and also:
+Solution:
 x = 544642
 y = 475847
-and also:
+Solution:
 x = 164576
 y = -704261
-and also:
+Solution:
 x = -164576
 y = 704258
-and also:
+Solution:
 x = -642698
 y = -331673
-and also:
+Solution:
 x = 642698
 y = 331670
-and also:
+Solution:
 x = -8756
 y = -723182
-and also:
+Solution:
 x = 8756
 y = 723179
-and also:
+Solution:
 x = -8756
 y = 723179
-and also:
+Solution:
 x = 8756
 y = -723182
-and also:
+Solution:
 x = -642698
 y = 331670
-and also:
+Solution:
 x = 642698
 y = -331673
-and also:
+Solution:
 x = 164576
 y = 704258
-and also:
+Solution:
 x = -164576
 y = -704261
-and also:
+Solution:
 x = -544642
 y = 475847
-and also:
+Solution:
 x = 544642
 y = -475850
-and also:
+Solution:
 x = -707464
 y = 150203
-and also:
+Solution:
 x = 707464
 y = -150206
-and also:
+Solution:
 x = 464662
 y = 554215
-and also:
+Solution:
 x = -464662
 y = -554218
-and also:
+Solution:
 x = -650956
 y = 315154
-and also:
+Solution:
 x = 650956
 y = -315157
-and also:
+Solution:
 x = -583798
 y = -426905
-and also:
+Solution:
 x = 583798
 y = 426902
 
 ** Quad 1001 -1010 -22211 -47 -131 96489720654166
  1001 * x^2 - 1010 * x * y - 22211 * y^2 - 47 * x - 131 * y + 96489720654166 = 0
 
+Solution:
 x = -1453581584597645002678989531110598599009284181490113733938141395164638827270854548460662137126473036150413976080837431649999315701769889649026346079127377703911678520659870530846383766252101880784506768190891677542386747252516094137524582179291583366357016009265812358256578157826720880256371048640767942468344598547376673933490497113629175508242299067890566810147232147500846193338524661859902990487011633370905893721310447222301809745355936777158916714832785545463387996752490357215231591980736277522801030104826016689560776146919779948056183878726175862048252198066234475672099427496648164277877851176953210941123892920674888810214340959008390403472484235132715098794252710085052750595915808892459522444403641126703628940974882879374174927630359658279585727388084917825086401133397880881618027621293247998948968777691882199019040902745231930700826695896181690476990644013847524066490475254720740947090449742758004317283741049045362172041303171905947609795052545049648403392793656384171083775004121949234035124297515716280293434045228899150603561451654200695600892687474505050954848089803534666128568938485841418340368384772955342704167029062386548352813668755474203971942554307114734629238628050050281956383745025684924512311204996435535104203616262620886479344557863274002082696169055960902656714753632119951738215829464980001805981648566221273538689166561564065112840130276511013947734661317646178392190211665500540829670672173210476928897036941025642000448889481599677837725629390977635403645151694
 y = 343397363089386988132056606485300365709358145048199882287059148578709386350178767618723073776821314620190292419760994891270354679422034779167581893077714477890011584745414468441307844936067080106303821711212703515512038507536955101203586084857504899706448118747377239263629085633282293476728686735181148524761610290462589414846356854141204429006400657403793625523388118533853708893300566905342967615770918002953395282287615588528934931694961450755393822409493294316080166010746533452410040587540692680973385111847651003732045194079355845840293144841580457794840663808825235056547172691556595934182114681916035538437430346296158522968271490633573141064220310093324634393763287409451018522074792622387444416733434563594738219614702447950500226387154635399994422286822750120767510412589432400093494092250054176969212202123237954153896911506038296003595604275258896227455939874116389294330501578481070816831285282192513012711176818676306315495999523928037391982377249561740044728324362325081655419942779347342436258202293996908726688906190002953283432617772239700442923959067090817150049777668793409240422741433029398634245050097957144896980481889803819171459197448277979989990403542710924156579782677899197595154202564266145590292650499899122389584001334824052691096109298774315967738220809979185321919769283577079256605573689048952561735512297977139588467888165711223390401378342542150532155364815487604196796608664011270282982789686379411815658161028172371003100037823121488726500979818884562972185502095
-and also:
+Solution:
 x = 14101618054152852667407161176914186202440993972537929194563110346782121637771238945336765155835971740615929520078576027398911621849553004964729071672419979049286131781782277466136585831827671835305481713551270367827085225097844432574245682310002248750976224835696825114461568532010713777248891971003901780513386048142154625688437919006178841641669056926724882010981095239658513192928665871532896250293933411199274150191111900776189215105320457461155494922405502499770856503089855559527079636985387742756287449479199232396337493585003770865232389812434253088731459628140870743032702878691895094594740956514053078137145543551048250766050622976570107009711645869943187691577192570357288402472056681219588439953121926370282366862572960356204878075310219344906542676299453926026112162263438432197072895338878855359236555382088289325068193934228624215024102137421557812176608984309075847219348606742488557774925023828095002827573880559057863992692584879616217543853466580858932594051801576404278604116019364246632751120384813153375720442439082706706764108579808396831397057059721155597282391992327567532786
 y = 2690155405928592630394492885246937554426772722696684535472646730053023001157623579106246116475936568625314544038864935319565499389940913748862915065782340862330277094893493246784166424496994273391467097447190475160166449329306990608392168921850930743849326593918630631053934154630024610470328432180391223108682315498642789588713578462444387639050918040633095506607838458292344042830135329014737660742353028606833492176252685977757429077732950917359067319428195002867489180460666656576780906141797359955257035824311365098783428735568336232466218684717487218721195033702119370240228307150919926933668946465275506768422349976519085009842640121126988493835440560003842175422227409215750251654414802011386278700672837368141145607418928420068096671608832028316855539581307214568243028027437483946563663276902584634480508296182160295725134737992783477327944478371534120293812871168059204283390359813974497925302159076022859210338560342962191890902712490544439336881110814883006528532982474486750861670251978002276325307430410377581470650617440998534439720170934071151944779395191130801699201790712538901199
-and also:
+Solution:
 x = 940090663091938054054928792932352211473536435787295175216580768522974087425612047205000355126923812630594388916371719129342646041202912691704046650679819832905618599826297321294105642078484769518304550063857313182725844372189559343390719497396424519531395578654419123889218980239638828888850045535477260296296379582533528380312957233518246831745079103364709772287379217788058048223381582020848247652988982760271484575209809976233805377666487509488195116523836744491603605330854396959990870675272259852697804450011920505267984213342009567050926717305788516147930020298777517151262235734223093423440488863573251276399402457851919057344971498145005383349804165574611375095223248317084043127424072784960457728998949165049013844183344768730951765070682246425247178282171358222159623939207054675772658380234449199739037840289828222166136451977275971111946309824028136532186333041482149255411577862035973730359716397807648258727403813908893456852542175689609499936677313948085470389425273574641366839054942287211312521552592544879356991253283133372633094059404341237676944539145469806657143823713097711450910466261111640594512233657247095434606594578903217644991081788805721125459440840849874239842295632087602396379937061623458745373268426544216585396199963765217396502312
 y = 179340411126437942699105361832956437122159193834747019108709468918202171393271378460329820192977957448626832708006462226328314273823684545893576087871856374106978059891990397412491196385905386093665547303912013757892233893694722621578896869518749841981300420442974286758167750882760968204427195169194411528390536609053905453253574607587204906453033486693985888013965675062604470769666562448473404222928781120645556052211371729035811271849661493583022296835693188387433134693246175437039581810376078452585802661758187105161341162687069296520665418985788122602347205594004955814991898056666188079887129544792401922148427445324283550240061047921924512878340437280572725331146128420122012861738526280303149002450403517916281795099247765619013025670355231325028942795623637588565929956020426579980379684836200094359453363159868666041465063454189643349508789540590292239489660944808887790497734386331332238702343223927871057461609038227709063419461256001145111938777561623292600274079053306564079766985712429812676479646926655350236815120524831982757150365557106428913010251758623878454026806873208343923034463658527686301926108481233228479518810220941008410449241908471401120263817127399022503663471365834831458881277506947204731403870507830477821450293788068642681316777
-and also:
+Solution:
 x = -25257210942237650202787064745068938106404957215552404379872905811597699231183933525918640289866660360101839342276342363062271452333595096447141887467477637650308241874337031996258534473874030698258544140592444691795065605336479010556790006104274911650612900845838535006221688755448419313003433103822562517670898405397141994151117782585598314781926310849329282398596076251980668302785248817630664577330782500913209592643540113402212090729098350912509872259902463689845808827665778419619050635658858007794121613410102824585475464402011986846766765794414210641761275290839957546773488334629988005822723650542537364755825218105640712854445182335706847554378768249534731445015045229633340534438315824026931501677670352990812206707098961101824499692041369708543115710410795163538926744853043271782258837901860702618728049778554269969423911116724123136794021313348655108606690919723415260261670465411690457723094459957221229210602722041966642184719894620734706783860491959469255797096145962035879036410958825652728169670142829655522054636267996221210487301915838189075814603531510704162793543618547451684788715368071638127212856646828624731984988734412034460805633691309508775519076523533156428765173887758178199893291569572226404449421176149461980709573867152264377473063489769755811682198685769631020899705198748249830954202992449119628968181893499242996259102516629521731821436570
 y = 5966819976573657714152581384293205012272813951684798568246559012679452482860815923247759174157561134073799050824238475811391660473580381423604231357476949514482654497043632521429893627789735610093577797512861764700131857997373074775290091536604959007343883444320113288427484698843752994524278929146577183133720285791201660956505222143118681384209312597926185810231005125847212302053816783076771705231587894950686878782906589425629046988509129236595994183153566927058036388174376748430580318093448584702065002247500110763223733828220097340451816373622563200972815969530266628164289126363580780964325732709625774180239865633161074528872755699352310939486942159474022287937381344360237103779853696507380053242196124229955919416057243363903269069549399892214027503346827343679369869157200154202187127415190720342938185874915117346942130394421551769327583665856915742887717509400050864864193446037778669162964262849095915685516547460995263023839010199436367853396653704480394296364932650395361135596435448402602023242661288776213160298155908828419307324980989814794924577981206267486267759560896528547446936118065464643039572552951896876442328374825276347030509773047422388999410471208582006378272395416940077287209707265722293982189241779308122889571458392697035927585108691086821409136532594397001266774913007253596517032380131326873572281731243316767038788493126257248055850107
-and also:
+Solution:
 x = 22175962308427378568369029838812468442095934989038799819455854962171858056744865958581390073182194823947034023551160054404861572832507994344778270935573995064355477669504304815949983717071380874320469570440112970640053043690739311857069237844939230784982927487026139881419194318351495120773531572410629485813102953674636902999762100410366571082363983713092345930939070326397024242448089701200182757024858563172956343486604932409321077477142448054555906272196786105646643217971143048007683298778939633817139048229743322744849915747432081559342239840633225638017796509526148244072909827442420001836657669370552903609108466921708877376379743467382316717725720561447004016582328436638145790573249638935452316101564626201006948311317581315322620355213708511627691568828294274982628452217115813087546631039645293655146922682853574060103476480926482754794181987627981416171128874066319789354737205698259531820655307356060612769860283459928919949018783435435952052001036517952861600392324212595120327694442454849871209858359727758789604624119403335799583198144385383840749352359827873494273982386747163749475472145360710999180388983778075980839052730623258392165381138548172480176348878125327938426500137303455485328228288052292201819816345644963374452487714328043577597662528632144261763470246505636
 y = -5238898911058710278298582607062575133537510732652123588538764004583643840632259029155252958448295306389391115213349929685713040846158770985020025157023852222694986892549372238875479060604932277691443803342555626257427387225643368165524464881246085934647509246337077707843282281880556508685240499367728926982704291380572187858297306347253210759936236461990069849824127305707716484077873239245347490723455287318617874698539368188182058244236449896358709467967105200260517648121124583343945295191748811578083233766627291466656796527714777073593705498018426316578808479759339654272864081849721673852436545857880993768793291468044316950695738378432005918497277405730696537256920806179341701746141441327203345062036495820355378208855430026188465959347862241728683598124832640080662577866399297154803300471392288685417337687945710935301147461496708604062486530491363406163860792502355284284585635441102071971370699258920518211033618287341031964020445107342787463950821768475775145957411659475108259710146647245386563817184728580298445854158664543061698048295494908323577960967574515768138139457018804495629515343349239082269028883748607359253332301403787716669035285054408523491088987005680734103785122373335930168153390150567277011130542825991421910001422967954581062663816128794166045923694381555
-and also:
+Solution:
 x = -924327523264079726472625900867972757735345816273423640673331379974711407741311673110539954527943930990696767192559286409542274881655951934317480512627833646389075747061634328616441372600850254904650412310074061717864825937942146254700408947149710587815915160506720307199454364279092197543553866615766661733331337662296623422349601141733758126695346598551989372895891524254399684317529155776187553467303251484787257907590814380274858505635134835873965912021425832324698273320385142633616118985448342109266686614367632693445051269426922376761027777777694753584318389910683752630416257414009628746380607993368603213024528772964639798152197953506541311147661704464370282329478931190182690048071935484349904931990464220919998690300141628781991190571795779765091493865248999597419940510065697913696895865092215445863662706722935950674089846650344995982560321428262498989390228972598427905896474190419255807036617898474891655326660187774942211429929249652285888731470708137374493936330326143500041527775472296338665509670718430460103160997655266662066521681515609348456207879015019672062501367443605021793218890190132961922305623058532021662981093050990321237833646722767612226592055440904795262469990973338952579386859174504561728572146247443502322591781653889331974858098887658620740211817384219634906467773293862044
 y = -176333288421832193754516889993384976900745114518607829786474246358779874990201734247925032462478961140173661793495589133294958796361752384418340966834836077313466768002756833772799506200253978607643050307687566499809607075663724643418747148288396091185258596669141270037914639447158395344809487307657357323775556828544073794045256338501627146509584267013973234039345800644427010334468008876966282464182405857195517612338970659527145539672292317211349753592178231270054661002126963317466055118846025788031100095753870629939945161265188209959411636952640608873338117882420206034295353315115900664424153212979838333696234944921002928267006789901403341291512663290993415117396466286768779746965791898790397836446655474269751338663971288125843867111987590533236324419697755968428224074082584582029813709171562972936533002841356672123003669990231222465273889438462685743820140492397140310112129019964012410402322421842660570516882285843288590065133186555573862328280643499833293124621880511932862672764184526371261914122157751864963683434661970944403901236297961192104786948160028974942920340880647646888708958285708271812350979515684240732679440505223496876712820858225776032057541928137656273294317605040688581237570249321390793167255514236508239250453167214891489387355093167047681519361861072235144215663179305651
-and also:
+Solution:
 x = -61620706994227218523645187663111567676913830381027592010725685860518120435068705961453718277923383975663315531272975334734043369192936478336646264089063042423095866214701242381956135382116750032334035582476063586689632190460857400260347766387337660788206065516898339650746818048231472392320403587831726154899520054190573783382124184188041831480102886056093548963107185154709351437506779457817873865876264280151919364459063522149997644314076395349295943561900748444606706619104742064250164501417960702443686196050702584077313798951025221964443901779750011308909726584806040251312889770676294683456026892837425810511855835246643502166742882054767481787853536980680979450966499804453383856409086473842457509699062778755134751104799244478182996676601657752984732481569581313773694238401390121262264143754047246192972165401342503767352087609803973851778527785039510558092841187718359041335007233090983891618153566804258373943589141098526893906680619817963970225555583792741393034717636920583057782662103909369709953766804687711705440622710405916206518347379201717906772572581366616336771061535913215807942175233419873170847882126171865406569707058290844512813926926314616525051969979431987997249191200833291009098063623470627530545115682167670291170864454553470310431708821130604661033339030441257687785127729793313787309926546513544737128048002434640832589066483489663203888785235663178557349549502674034087563505790277939078097416456036103906009354463738477546011370546964035318038
 y = -11755337394693086716259178940745623247545833604697891537142759586867368920314282985624581376719826931899694476109792266820682051639052405227776022533620421901012379575127796206680190890461766049826313757074498324452577692207091847596841361936200482408828605114341789828375174265152380665872124661544037543294923459748992870790462673254168496046497825627523349298417259467231302821554252577441592083219885470975874125648062382869105452097731836888578244630542523623301741449766736110515734508351861545290014366784706810757359668091434425189430746461296077192475545567475962449686577397292907315355124764285567984353269787262418172110448187704936280033315799211735621499567114609407321099085943437327450092171278965131034472547239455019407328293588944356849247353013213616035708441366037452348329699864595510292516134425415536748208473197170127087014135531811253867562399028446773924218023516937164654389623521940252014531549361169151424367213580664640788967971088492457176173992901586657668024147421362487343864239959890751044549007840928927030612827177331798522893717592813234983756502611340672292069866978386968123668174830254936334774592964701348219491983202867940837084566034797893883030539542864529220260913570914605430116886298430294101381549100264706248218778078594703937480886481187611633831941409306976910455593775755951892623071741354752848668305293782049672289218262319921689084914677422387586238782931198808131069850314145125785996930056857315523708451487052281572713
-and also:
+Solution:
 x = 385326123972669603067186251148547756096921757494072963974193686959635229569142625855391371010734106521861201130208255639083623363915750798639887758020502283423026754814831444570836942196244904693903388937392674606560450976634495836877737989492186240074577548431292513997304687895464694464151207897269283329306588260271841434188272698171304186020942917907452220464971424197013915375843719937903775102027625621226429448266672924801916987375821929858937245926455902825785819513976201344954742274078910488190424315716556683591706170019795901169896060248212713756187822277526219797974890424337533566378001514045398822561282046277398546588984150198308076747409192262358434954632604259413070721958900767378211936052677330368342039351652122790048249900391826138127698777874476566880607760811470036727718713210372947878018699908061371381544312392162740351520164445375642841696664759403351683378605132648372022704174134081133493097095697135482731560504989208382301009205147404653494360919102084775569848135741792411191962650225390318155038037034664796264542478767977330329622744505642137866605449674726031260464609928711553660878262974837505333526614040026458823259625082680
 y = -91030304940396906262725545056883392200577854725790942363174587581233302268197016781798337747742938737636036328683958905280052014185152396502579935206444559306520475688883757958820730053141238966023933477520516809896652955501426526819324472793288854007268557531826112123227435625988671254574622948014233479767588467089993942744223957883108488906840646177444497722823497694486853806916262366812672422772625165621828968584559573036922875002432381974379796513909732228209515333013568661766439586792462209473774467040264725508594372264885488801261265441674305192236694448070608555329006297297893817995577079389622551711279441727084818531165114912394457727139842966343128855399556032096994913250947016319414426641289764590538450102068293542493530368494037374776942229056370515927337278496748007430842351811945218642754927837788969253510226435348923351211394158309233708534509162710001225410834355246288219188762741113762354897450869172866877367019468730860165710161905194448325761644924254858988537501259324181294797834044619713713784167491480738642295025637514915396317880485164494619490289911608800848565043242755852846620890884365410488590720149403143648339805436903
-and also:
+Solution:
 x = -2597115808709710297671716485264681123939430269603603927609207311703041727994839790309999617050269276201381218415556804324454989416280030475175476487927542761551521760457100343520260611448036750703298342105708382747164780424088046657007427704906482028679645967534750257658659523272982601348272828034768988224558163854799539855949887449951695429518766270185922555216414130435284789417254383802282230751012581309745438062909179023550640391207340148247364504849120045590915200969752608432161948558758522434035308923437625197272593728476221320000774188134366721364899384214151297678611640510417778214782081051932441130900200359239368823564622072839888373755895529467033789310105773124425492821381355123845629571881166780189239530213198263716687529039016823460908033015895412805741973386344295370159359399231767484424551635445831183034308128720720929761058183916583014058719866243971156823891999287518377156030642765882530993056368918562045735020093173278795571419511201538095300886717296305947903641369849828058926016561002791251610761707456432788493677384333705585512793025038284188854441168725445411631627960817859430420331727187693428744134662833442721765201716257979253650848182944643179551840405360916146731030824061803164291159959917639633593545585792357576281804993980976601669209815292458787125231225013358500860399374143388474743388935816677546014002323623679794601043421733193162630107731575684276196813994453538052238971864688587373906276831165198910946007686148660724040395059183080404812995304323790277458993858691113241430166825585206258784928281491690931282936954510097765667168495730411822116501190527922089114098515213341428644578237007958399631855905353829132678104752802551287768458101043495322448800139142584262028108269788058438534976734089922492739006461114784388420762006208880220026197204475279214172814191068308803155108896947465333208876000529873573178891889757130385380541887252379808264883183583316801252461992473311236666850547838815784411860792054177169369521406588787209492872394165009728798257966245316082957127447401158555408590136310877666428614310487183234461510052578944891815456161739151085173097676357285284539884757597383631323296755063658889612119336506311232534134505488586431308548133154643171118577380604622692770938643607098637016680910061882094520497049732528723705369651112045675011368011765697595867694163307477961245830444176759296955566443339459239094312530528139686240283867319495
 y = -495449891338214583872104302562849330603570274798949263474559861756625046600992224659731833404445148068900006443033419545252228659546579807665267165361845880288897848763763237361848653890714236876597003765852234743262363517774351764917435671889138229451774720355675129426757495332160297981322072909385172814040871670705439069618193757422856328162252252367015747771391661164092398772663505102401618355070392272307292089000022421932960115404719702301310513922240939895977994788960773727575933945357590408840670252613574922294228954350501859185414713790340419565972269190181864195187911531883584622255493036859371592554480390636410586793570017232930471114962884424309943456976294514436529306553811418590778021017255780790664601652557385851710282312857945354376083906343860703871761644276100485810098456292460472165433760061374091351748019365925216129854651846560504351455704966997165359868710368925571706394182041013146031620186693098724927577264399781304658386518818047357604587057621874780264694141569483274562309812396394097474988614243879087858263599734629205860543310185379603728437878966529719663535797638422333994565869643617157613365823932543644914851741901255576571651457285652268014053403015934950782567035353636334428156033447957195731112507091061510780328394607358937084113326148094088584850798069432543205821172359098514198069272695970068511714486419269191549108220087925965338378751747354091125888398252614273227186348781742689002984768664142661805607541913230117449756664992295965421767717427035538100265897535316464902821259152613029444642246666805812745034732908258487702146531664566060879115175820234255878430064190832702713980121204838577297426723802439536841884007967880950012938647724391064775866820800354097196320010122555224846045701236095144538039637151096034544298452185963871736008314360779330571233554705780282827872501300100449090177197323262146261437197668586485925400932441254374019308572614347600919492389064735995089802857643561120773580054385026588634905302720782143798304856641538383743401221463031653554931633248660914338176797394814602760689672795768331224741367375701638272284077525848607460344500865078711414701264904486721993946516204258696292150290489119135651694579280814090607146109231092201005907414908705796405459515279963485400724862602681770277515208341710560881500314224730067396593290199577407599435099087353029890762807807944636479800720979439813370587160120575401937027838631823
-and also:
+Solution:
 x = 9142475704361288518246035142823040540957127303884579663688662679320830649307403941797194960352309936381941536186888428508687348731020057901845754978280054976621186763852492219441995863010916738975509226755488135069187
 y = -2159838898795263987930754404262721435119503439157654982477960601344819919820872427075138977540190489296992404039526937667273718950208901364906942050634706646869601664184897549632383360200071220928651820704183175307473
-and also:
+Solution:
 x = 137139645689329234777495765449998879093075003631221
 y = -32398176479212926017885538288290756218241472628955
-and also:
+Solution:
 x = -149467006521085027517010735851690241829214796443416949427093603271156130932886868240626277195825109994783822809832965039982036748891986765511590154781984804873353803875822941818840941410216219783759019692233746785446482852933491647072238929791684838186306226307611206277162478530206982292298218309484984189935551511437579846179543659969178621584731048513360307017299861143655925200801875165396298983471432041988285574347347371567137248041847715897002169644095638312618357359030387207678616909462282626539557126972131135544410730225002419089160021852832287171969505642962101986542373535701048244043027739098784869789830467179167427949638965455409413504656266440003870219849288304875006965322031596491837042024057579169960655615191728766046192587913700919441444767924560394125809770984465597146727869672863979020596742248701240614255741151703616553592589415565896423715957156292215212829452834227933242970287599034660939613748854976934363898870887727656302642659368167032593578892823560709217087285538228610817531960986722856015199758964280179021857869726238308889864946067668299451849280700503253402860535066054223380854666313998540459113794868443732835170250874392273521277852693091294644212780483083430406965707029803253683021426935503312185486798686895212471844830764426401849445170301908258319356862768690443880577127001927563592601175327951537746190236821407654308424496729132767663370205655542987683424100793904683236330130590359031787769649259061456364280799738379318971114503845157058877197352083867797238047670708659729748480767008356231651499758357866583696748321438831304797515685913765696860060680058238208925435777737959798479487171235097534261571246258347836427042318045331288150352057582792304562047836505681211648103517553967738284944683104784869117398546815631851070469927354614026261782731129690289850329347206979272751657659761075405559852600966401882993785654562881044601899356081130183882135931000419434966961062281790608742940382954893737312689299944695894946330743115755874380749102347321705190183155538748166256779759771952379521499604100846668719588950562461555933069651874017569627963094618718406142019402780614183265619658951174487125796763789117117535643425602483579667597924009270219961316231823162573228390221612706412930197249138123721476383596732847662830232282855681939973961248511823869163265373239694665692107855231987002249482830999090388068557705017915718664183717791756396268722913895179129675463685756839189936182303618261299535481965557934102420126028395342513351241359524955205784701328687217511002757220402946379
 y = -28513711976637166764150738793226210184921651958347656729890592903707884084048135638274932176879746428739891683913092711337973511877224978485367713348558791998269720155245356261284861781220533497284836196482690806803283978586819265066622332484237441906318219202089679545349541248790522239819853233729806142530960270344843551099915982069623081294526675311400032576423145494450614880286295943594111084270019668786612047763653542134637112419596774164611900335143123777537528227494024321611270768857311297295954393881468711974829067766289784665840426964764123016868827525625864306151495963297166478969202381966044094946474735548274283292376614027107854940018178101842782297924545727980765445234354642651659603116172768208254832740682018147921516343038829490657604962259225310704944618426857512869653610097326981637768071511584912440519623384777244539697571972371126217199700076156483277312155479252300869878757735609765890710506300503462540891666936497346702012299694716092030488172158018508857766015875798791651542092668998333649277808242114773220489136462533873904247635790738414941314550570491216927709606366263035090160149759822137190478489127054166920918285212418800752812007264350936746886672371360858483927513467885174345923593751064834975278277826915879629699182755182846579714955924758520750691042460093503527446039999800315854038212256091687541491731159126346778508368412456283317121865095848204748881932697858236182566930232533373841184732983852856947272402648001889230310205163549522428418939204054757276488362573852358415335223379479934630489431173563667516461470332120193054520377072156596581148037055217580488525071551073136981961707964766286729591333494433728440186820148647972658810484684682569331347690440415056628112020469244972297843436250506321518408490649387953248841470680372686676248266910853561140667829500797210680891643252372528693954669183778489103391848996633419856106249427751322191188572058178682518168532063371267143942913137559299989311629499498293362545489539983518771964037424803077938589339804106671169622637680910176549734120653677013822950480927703696907713713217402914842176210373727140069115876907875489750769989156890670876984195170177196287824894993742131746063675626224041558974768908555937168688880123948154050236961539110240154507483437651773796648833318979638804673065168744936156925795198797641494385668787415395601822980799051356863009182615365465749645249653901732497364161522144355517820202325486692545066405804313325773752922005654912000526837515513311669666195834804319032289005712411657586279283486644251
-and also:
+Solution:
 x = -120000058455185582301027804698628308196637179512424891112104535583651752095196187333028111253114325621805868330094175302297089955021684115408601319244682385197304564937871734518910299931045194463811619555611000574404793308238160381973756893340862608089706687306792649791148999015429201935042491972328799407772996082408618989131496885545238208452292076686194550834903983943195895021535029659703091139175160913822881018520027936855307167098996978221000227549745024271829507505862922928127615369935075503257141444199941277943112770663681662844461255255760263055288228105521338839102757537442892092554512605779043862827443068019217695002150626115884379489731469879183185459082079223682639977925160978307594755082119503478657414053370060180464986834745804166796086215462929282631686104917987709353485304165125622565961339670064761429150212606032613977538975311665537546520243734601954004967969247420989822204148245888643580496124712280336557484563182050853863959651715960153615972513574425755208052592955295569602046743148092760589115247647461277978728211745747277919416885989217533350854918406171574181291028185108127061732476248539000348316112708223262408398274047797751440213167609151436888926647988221344495864739138118670708889373576128868017966528789941033685886028064844465506730213042207495372756517218013759414551258333933149182359219635506374582536605452681814833467132141937475616145826795094905003952375540807164073466440204072264533492158925604408034268831315619712078765395953699152803512418848641269084106230112240156999782346292196024463472399443433459404281848316063306924354095117259461884723871942454042520908143796858727989718357249669105752602897818185316186597978420076078270726290218486889811542584666870279216420296066053184333773048466353422809698167395900504435980993426596016884881729391538959812458091255753938792552304250980575245607174521174023215109588672490064900546226797899430909484996384757786112998384904877175222864996935182570158273948281704055734092710120635752829705156081132233944768140116387427356687234324595010427366466747242477112585369371920232816612460337047148850351216557477401976204438311201216848880777659897580067535147322965040483247028945913521741221315244106131519833858034563340893067600577954465154790749310019662386298397972121888130414420675186407407699624617649782307853155708885702280676051108139008541125988781603219824696877535359823791832684679620513115856770347394594033205192370241134826329565621885521594297517054620813091622509195020398760344133013673427236899052819603464874733913905001455403820654770816583114311503840130865141684695
 y = 28349082074735709644399206779227728881955002010846096655167455962432397975525506007614263847965160911652036784565365935014226371478579272835941416322877493268598767273486383187306882878185158844295729682213629522891794640111405650876428688163670648621108890509124578393467000875589799076842723785753786778369981811168827996481961586887100401887960207381325240013379248908133697912406505298470272616482185432623662829316968246044511866790045695432815242881452118916747288258853499474515447560288660061077006493238364025823452191340476221471550732983137085389180441126472802801944824035133092468120926832675494575949178603843364618240897332524485299949845090069631967286589455767163098772589972416351994631560026474860297681565837112694325999681891912654842120466375385658942032069967463101776533650961921635677272715942221116257923747972786848376510666093599430118220648908703720602460789286317770461440838675502234894367553988721800988169032213891053369655287609212043224243590473737663137136379518807866973138115915137518145952723417117661228454444186996523658483933042948599383376440493843608538900497502835908537836493968605323276092145265712454838222484413594144833908276025266997642309944560413456016090713567823031742874119971760642293718349838092884553347327518470015397961643475487091798230804921237721768901209183961783606116877466613583501459327237533629749048312826965861183085534071071256738895041290425019557002698581775991811493875431449178741440789391948048686865807112334937180257338756163034400535128524558923342125825065458398662478636500000014675585878088351191435356478744537496168314907581973335911877319360253943788974194413239905529999993675005845962939069281754997637750078186908019231913425252652119917188171116171082446344315668563752858062440539380992833592915312936808451790379170822567744892242580450802537016777498208396345507954758413910044501875158923245008307661332340336159414298804943030836299683405976548207355263059108861495409766047712021623623894487675840821485656902609259392261028902735650905122352308190760579337741201390780169825339134207970917628884963965042214579178656690595173748252374382988638400785190470796214690059600624140653666907193610333199866709008566778623490943545072889794777900798917544759130854494248662775109359357026714265998390709815285495186973175649711143690021793712339928447975946148144076494588219921012162664911242557275170312405884324482938889833366655162929155655854855707842043170857628513866590760738321971543303985437365701518738092716038852050131222349448210256964133530036131212722191058909077773581119011816442121857857
-and also:
+Solution:
 x = 31337
 y = 65537
-and also:
+Solution:
 x = 11387481750543925816614614128429154530688398884269093956622346564505505490816795891659368822205788523749370257932152103909021240225976639416606548604752966967242632047827051
 y = 2172381600004926713752895538843079804608833392627919002245847780284420612200444840953869805610306073375646063499736163077091851567483966555287645512763468329072536386824295
-and also:
+Solution:
 x = -2085102633109116065555512491474066101378548034045081548431268253798847348525383191893057843774924856474110699541459553777264662121473845108260231149614068469996383471283113490009713691922741225716646611082443658319813315215160945103178716034857524651073526905062487576522381404026744631385605764006467436731568427396999614945317541286869734093138267780826678547545101458340681132303993158926748884596944319590486067294426514841232950347747612690827786801756265651721466079350911403634758725240704588374752747149257666531295224575675139411848241593813014619180595205114109130870295926659769642563103517085844055857360824286793707228679719448784584662702665874298933360836040404296835720956146177307748399219554198387670435990932056975301121064121566123165635037494715426222315554105123720753966825155617081893231602357033797438736856356586860301952167385392763598465489401178952000403363777495954997284283422275215486054808596105739480762549315900629099507540199372756007270634170000742665743105793886431254364967801532973440701507456209928630563140480331819824201447497787673286941424821195740722180171198916063736258518883190960819032188289358708460721157701940092567985031462653664039557477385044446148744841000029552134588013718113166523632951635946479792719075701852050115253816455216239338687012632190133286182367117935500874612016948863587378341666291300756893318926747643530083746637531476048642085269562013714843626818092300983190980163638164757039664586081309351582464493150397855649926404222295121065186735943173113894175646195180864354812603858039864935121704838943388332949144509547604342517990590283144617366349582755717787226847559551592236546502435841876848059088684531374863345791747929905826091842791840047324912579984319742086696516688160779664571541134494527666370444744819833026744697490934004936300673426435044552991673156591392041396682906047297675332250391614969300305073761479986559498599380379183661547785453962216006060418653034350089854640378512032797435603499100705069822923440058391459706457167319167273173371451742800377903517414779606763189784934756923421902283176010845174248172835993734907186211415934172064845930136065808903917349400371548189443472370425700005245549442449349310686105337068275132626669402364342147164582966709899175796016302685088898403787214401392414004350306158459677880424518127475694482613660953009316811805868060591847309990514130034142056857031971074379949394323614485520845360840777814573943952572155533865646939
 y = 492589307382154103131849785082362701128698536768163445449905718048041927696167341255700501383431223568508536508614441853327780248202082067676898818491584473268648134430809666154308955385758013208894918757508305881199511305835774315532747947981829701965477492021285142929379377611858810356649470415311982880255004768022048905073757453015995979876024743779432213136313585586141519568665717955450775199521243394976187841033431932073696631293158677080936456230094958474272046463759221677346821634213714334109479903552989907882112650927395668324818574795410546693704284042281292433644850364945692172245579834643378115449930984748551717516217857664698131675333037052027807416832025635184034774731832313902384427491268027433616426200894839311077693691523450969191063011857657228313984407101899505237122979190645880709385306345895084951652762656377542823036700336427877184812705840966420553689617894021003254396461359849346432111127889892655212074651164056346283741765575485895073663993169288588474838059756827508153793257684440648839398319040220660426273957613731901839836877193362208714742240438739778490112899025196729442851589636685765349324564755530376493557682014465834956674269103948957414427056558104493901450990325806509075806105341928002023868647308907368261773196883866977010591359423216187458353476006617378644343349144421943507656823756929901516003908769577279599797914727186149366427852008198026807266480262570210631875224131574277221462607328071330128669030353431335876625346499993654848292408021585422469816748338179187351685531456902267986618441196811009136184840399994614645154002689956207685108573574669568386697503860714270271367598079455989604203929261152557358300658286033734371448553471399113291613437571417041113440524856631041794178233028847705301721837940281501033245770685837991438008857581874437168985490446721766920603034536518505312490974201747239416940270401728057869456690124034509174580010311814995406873122924258059506686091889884574108228907173319566178177417338747243034792062897566149490434704536223222142293999115656587852608655700253857524288545384153051368544047996882240850043386783745389152686644670160728834454454781579673314235846775709058699249670930528604693266913207030550704236890587708266987115783173105040361508709993287263685383591991956135151577636657191858055725772380554033255086803720257156724368046159756107648212069726539972430288820105777107789533001707883650735979485986825153919080432309186200885292940568833868160949
 Recursive solutions:
@@ -2386,7 +2441,7 @@ R = -904945277466188203299170677097171422722746556706721943518822447246045188690
 S = 474366374322253366202746537299186283683904621014196895849993308074491136900395476456313519058766414167867084310596962002108168252044658024636340713572527119595129764291039721989121277984359760992681735178008602594954798179334293318769752733952460836492111936856040901507171543478173395243720929670588254763968067894338541323557927352541696638113534806445299700036868383783053075907562344625373345084462373153280532849646980164461412201469208056370942264446149932661866040356741368638682112807708402982853237363348545141261389475162144025034279346481372924111652737694062760857321320188924530587834991797598413389251343400704381142288536550161667685771344031701825824055445006506530942929362858296636391897325745822193558443292294008924929031018976471043139171921549421233436572579292496971828936299253620599163196202625217218340992053351956064905951221683568190896862149034505109856406819947781099584542765879273844935694167401571459074664524999846026697139612773099390761769551151876434248457341165414898410520329181675521329041188530907362580374657301276794605560160247644213185806015131927807223894234502474838430618286703777047138198629198357984005724859758002380322336324941889888450277984454343342125502393243283579923313234305426225326476562241648359063908468972369491300764722405198667316184640060642135135449145662995173715616073801369340201625189645947363039019835953396523279607524572945546495274267986381446863431986469312210190674493291561564834338152444417793166252109880841658884789001436685943407677434765697610860080375785796399675702916079006387069793075711383601052577441478916429524793079219334894517529161725537219029436955451657058894592387122552984655143336457385725963700746447081206195783401411069435851038852599598837252620203492577493475227609746905059313407869954837806869748206048461937288435207210382821418737450665129349438360421112991767358724759763987298421693675288694893002512993801823342844386496124133791266939896752394139404514309689017372227733380820917865571796945845620360283573945734053919092326692541343658696028615722066698164356397593762955622811284534299655464881061566471670617181790246261211951649172393824453729214593026055808014300113820385529187577919054734736411632925293742555381028107976499957779164390448916796453747876707642679922474580557140276215916710231756082754207833108123515299736058659560337530561997909457337156162739402755357830796305651808017282399589071342374159029541042505848144832913050020889841556447223920273707331315789073276475970265920125005089356767577098784374225905334606107511164396066244621191358722955059502094546484496739626417304355800209030692660500486337302126821175855814634824451696353663184790961014978103072007273121164207554438188977620988168092617037787301185720328400705214004270241492711818164487547461851077094311496503715313300083063238902516207934500401789087131308902634894607328558687349517358646167477781110766766276829249093355089108524738338092790642924367222726005213349746740902014669783919759624858540176484669261461141391369253803752967516398667241080931686119838048800915196019291188282605805491974554802243407683576747160881072290617107135439241083223871321627396045699217615229662010265363848753969155509089671756454733040253912204087062982453822180244186233060793756811350718374440890190217044873741880002417134283604882201174040980763715653394777355284144666577072006142370668179073494447851472674909064516723394613949845022549516816486145142875141020948076227584373016542464335005234659224438102776303575978765678470446320781103913695522530874967421849062095450148193736915238765173108779852036966870202898371872914810693418239757560138017272909351505752126230633325910485303966595631939410628745045258005625357003676568172695824621417887664471963217548551476950083232415214821748002254946227436468982134620891478686836981955674204119465014568463274182887253617703568973888929737338964366553362693729300377746837322664316911555211407445103771055928336932089943051321977941786900424365389255069116108883672152819788368019283359103196312860444794134193399918230308172424629642371210442139846514868100334696254434918746895056948227837231042900370447665408937930606063345892009135045151136235177529196519214084225731441001077667169659802202588464784707888801420372536465607965599626512342781454301094733336041578626134294193315979071268828224225271050219843131908320310198297834852971132199821168543123964172662873949002603419550769447759577776168514759657606908656911870227735749919694170199509003146487788071161500791409142683623064823488552329068659544242610486875862005880390920834150777003664423077962985569550311672785164656248727168446454070393965512965763463238413100237340897385126868145642684595481417291231568074241517773244817169611772799882876311772082804519073088480841722186875003384169784601581667549853818468381406801758712234730128591245204092742116139819161800913411055733187655218410184734315848699570001658871855382133295911605345844142543409002377807208854514677083015755360126062480701122273471110613262663907688753125682134645910547857373062730973193417412875033302573843953522325102275079318322086767432814295066964301093056062867801398708173560037290528713100103565339220771355030594372501
 L = 3600667775017560310505788831177426176766718939534706114045364674549904847709445958862462159511667394341719024301055134450273362601391654330093884212989425637818497071387678643358726529955448160976903699090251531942039967171688516502649998656898822804207385403587861062707954766576667668442593710952133912471012235042464034941466122888589740714513852280658360636610872270123959215547304633365887144846301111086819219158071977837960096512914551276656833335931630453148878970748578935742650371134358378561211245168609435116441652768877568064511887489636841260287548915447043223780267644347101963913794610856680951384868877390568196509461530959971502596178216524936495287340413987949131111929498105653120968699393111809979827624471321831899264815595522385192435727092104695769031536970457819578566972679883960201641826693999854870661521206054201621304734579442812327106544467295582412152429837098623208012393932763517531143413249208732567870236197804663580523704615326028335827382854650203608287722208526978655306789548228878856788261747400665672165508709312888421002951915207705226413993267022091257159990902166315767158219563468581470345840683657821190248288559002710228804246973921273631838805470978805821276857133444269772027411324214551649034914971277737354743636350229096030317951305828392356436908005190850492226638955308122261409866954985307535531607949743949924240761168187992791090326029825621950342660044520027361087356300230602735491705651335584428727724713961664552272004423004338137313920938166788156650534825679778363291450364787510882967661329004751290642089109247500972827832772564675494969530893106430959512430183088098669582692218283760586779736476362675723235281738970608507284825456981543539191986120567722989077182769771377333156031878926467782913771869798752560429353129305847690476688563247388136722130932259734081184274779450688632538684886007226523773388491690360187044852063574778840022104341935468057900176523913043058318273296044359129762472620858002838907578686608240362325916694372783751427542709775178055385362768544313000584511609917159945324668054131238849255240932419548098787131405484104686932152905043010798388255125457717955510610479784939236994500258609088356419560138250030951978585104343996061340233291128264839377441552852022053831776490425932069679167718768612997644006970223792299821221824044590322392390801802999811110714665272329000886838278091133669008823845643191227451264815207968849970834092385201946389886758851636555335003325922512586284516727603100231587428895414340248499565037716809031629268559303124229849552949024693412594342277176224805717696512117496596469928745339245433086754837124353701098736536373908716516870371487614024958248964227294983494203156200990461960530634391845890741909307186908350226271729173288615651418476440877157051403638876975833012990623126327155913959984225119349967713687885713286574715953390614152655259036082896099103076154796033679611801104283745833059563562758882366552179820766375438418976277049377834447353768828834099368920294577025407951373381802999986594752878159009273141716043265649504620113622095537879504248316845531895965779444080239019699157092139932615082606139592798285618175868916554611244705270899099225029591538826408642045643664276653631685242465933698653520706179324502908386020815716515773198856421336293407674823965363301566053963124017694614396797790289985728952603324340730069139071278661972899294327598677713726832419116738325984696384992516320468044835418816683957640027903044638364255403096466304993253097250803606342908686788927845040421161759733366924378210739929184433972968416884875142749310389812329020333232408652055400950593767869377470274640757097908881847393917428182229054410641862342261925205626923312115457517164988564288022792861875234559988373835538577220920131759383550768882368471340558247117240794983050584470039059903691366305907819299772426121206355543847835353374715100286949548197785102585068345228425905783359203684478531833338620794521128268531388008729003187419308138465700808871407629716196458688051074248074305345148242965078930002732892311214434221921383001481898878806421997100421979712746802010980583755742764009987159755463346262517533890193405382327447223490492808125849515239527994770651917490828477905348316783191960958590700665027310299502384015091470810558699327531948710286787349723945501627438894394883036356630189247639027865965279342014178638177585597833957025926387347656304092935205907040468576191095782330950182193428470250247737527564480385885938230011525027666041917819467860064616432901113990768811221756719643920879188059000414323136752347188804034818682118141861706958400754868480132190450942304239898164322582469162197172062160529355232369468102162588249893678693889760029810441883648376277227458284980852885128016699359868919824501951091780208111680759765268859740862108570047101909916167409580440375818559618990208345161613900898342537661392679763062100359150080781380885191335364102178820785790934844418308595101358397933613738501500635356920828301560373141546674828989558407615512782583472359405075462886364618347302432081336652357357202640582631962672367490674191792055844499101382447485724773358205206902507475225107566824822205604802991391557510541551899390
 
-and also:
+... and also:
 P = 474366374322253366202746537299186283683904621014196895849993308074491136900395476456313519058766414167867084310596962002108168252044658024636340713572527119595129764291039721989121277984359760992681735178008602594954798179334293318769752733952460836492111936856040901507171543478173395243720929670588254763968067894338541323557927352541696638113534806445299700036868383783053075907562344625373345084462373153280532849646980164461412201469208056370942264446149932661866040356741368638682112807708402982853237363348545141261389475162144025034279346481372924111652737694062760857321320188924530587834991797598413389251343400704381142288536550161667685771344031701825824055445006506530942929362858296636391897325745822193558443292294008924929031018976471043139171921549421233436572579292496971828936299253620599163196202625217218340992053351956064905951221683568190896862149034505109856406819947781099584542765879273844935694167401571459074664524999846026697139612773099390761769551151876434248457341165414898410520329181675521329041188530907362580374657301276794605560160247644213185806015131927807223894234502474838430618286703777047138198629198357984005724859758002380322336324941889888450277984454343342125502393243283579923313234305426225326476562241648359063908468972369491300764722405198667316184640060642135135449145662995173715616073801369340201625189645947363039019835953396523279607524572945546495274267986381446863431986469312210190674493291561564834338152444417793166252109880841658884789001436685943407677434765697610860080375785796399675702916079006387069793075711383601052577441478916429524793079219334894517529161725537219029436955451657058894592387122552984655143336457385725963700746447081206195783401411069435851038852599598837252620203492577493475227609746905059313407869954837806869748206048461937288435207210382821418737450665129349438360421112991767358724759763987298421693675288694893002512993801823342844386496124133791266939896752394139404514309689017372227733380820917865571796945845620360283573945734053919092326692541343658696028615722066698164356397593762955622811284534299655464881061566471670617181790246261211951649172393824453729214593026055808014300113820385529187577919054734736411632925293742555381028107976499957779164390448916796453747876707642679922474580557140276215916710231756082754207833108123515299736058659560337530561997909457337156162739402755357830796305651808017282399589071342374159029541042505848144832913050020889841556447223920273707331315789073276475970265920125005089356767577098784374225905334606107511164396066244621191358722955059502094546484496739626417304355800209030692660500486337302126821175855814634824451696353663184790961014978103072007273121164207554438188977620988168092617037787301185720328400705214004270241492711818164487547461851077094311496503715313300083063238902516207934500401789087131308902634894607328558687349517358646167477781110766766276829249093355089108524738338092790642924367222726005213349746740902014669783919759624858540176484669261461141391369253803752967516398667241080931686119838048800915196019291188282605805491974554802243407683576747160881072290617107135439241083223871321627396045699217615229662010265363848753969155509089671756454733040253912204087062982453822180244186233060793756811350718374440890190217044873741880002417134283604882201174040980763715653394777355284144666577072006142370668179073494447851472674909064516723394613949845022549516816486145142875141020948076227584373016542464335005234659224438102776303575978765678470446320781103913695522530874967421849062095450148193736915238765173108779852036966870202898371872914810693418239757560138017272909351505752126230633325910485303966595631939410628745045258005625357003676568172695824621417887664471963217548551476950083232415214821748002254946227436468982134620891478686836981955674204119465014568463274182887253617703568973888929737338964366553362693729300377746837322664316911555211407445103771055928336932089943051321977941786900424365389255069116108883672152819788368019283359103196312860444794134193399918230308172424629642371210442139846514868100334696254434918746895056948227837231042900370447665408937930606063345892009135045151136235177529196519214084225731441001077667169659802202588464784707888801420372536465607965599626512342781454301094733336041578626134294193315979071268828224225271050219843131908320310198297834852971132199821168543123964172662873949002603419550769447759577776168514759657606908656911870227735749919694170199509003146487788071161500791409142683623064823488552329068659544242610486875862005880390920834150777003664423077962985569550311672785164656248727168446454070393965512965763463238413100237340897385126868145642684595481417291231568074241517773244817169611772799882876311772082804519073088480841722186875003384169784601581667549853818468381406801758712234730128591245204092742116139819161800913411055733187655218410184734315848699570001658871855382133295911605345844142543409002377807208854514677083015755360126062480701122273471110613262663907688753125682134645910547857373062730973193417412875033302573843953522325102275079318322086767432814295066964301093056062867801398708173560037290528713100103565339220771355030594372501
 Q = 2007965989790360258089698292607919527482010366734565543206450087490700268332397215299159393772871482810622000377683866790120780796416612642310872536894825355257710006071682342950706404300352179549851130336771531126412108248322354278001732373987736489021493103257622620453153061662526274157641108348786331832850705332774141949630305950883502055277760138327150810067214875734893392574885965125042434476041929409553836193190165076413718492752475717663825706054635004997110515912723199934130554385241860832917434147851037374741418623828057179471609932578691605448437322762388717006252934018110439325399334373272352652500205805493070401647728042375499366969040254937209496641276378955097612245838323018975376175305140737523308698657787036233809101273740092488133281699389517115427409466947287319986937953252816813605852342301888549128201888267553523574613997557783072059353462311188173995820908900330916605028937985050186185721652078706420696254769453569591474524458929250733884740286938106625813947365884466741150058220651460900031046268658406778084919665364773136536463820077728319930876699919924869073344027265389056990554562238284829959369269029034071062172529230529305688011003815526924601397877661496865247148512486260430914701022193158016239491903913250491654638235790797416701252282045579564935361086004449952783865112422800733359608575300297116112305355424696721939055224696031097226396981263880682980272804458000280607675351105469724835058020735945634522356165926718669692238112276805653903236524045952754420409354825646673031111337172252418359748395147515434174697783799968894550050465259298363448155503471804548504187163563361377336328186236814036002959278261962038060423864767158998323392888011207614989231539539695535756728825459126687238102439572977300231099124424066173047083380601361103984053347540626410156025228841593836242039437593405297994789666338767904747519911791312726328111886511821168181909754942981191117057850085238294515824462848654688495281924781757830612730082124072035671847355684277840178599199251127829826720844271119436149587985801431534665638631665775103006932485447019227088630153196678396839577973555709092816887861511370643602707437331711597587229853492496624197167608980939316964018866288701244675091316823353332305593107079394490872052190829200778333421021703483039376947834571561399590489298706302849200185407546032537600183435717312287894436872584106863465757633616079528506949636904349424969285928830941986388693857316164563204821721099707660614923811566791446014690898329934806409964125877699192999971416323650579710046479923448734353605149926828695808180203612700243032814792772744307376010551823308978352161289815089657122289001624594218659546945235245612242801671175900660327293115637389294719729757136731983588721317238302405626807779797871052507696937351184195764625815288360529521404719106576886113404894420774234140249543744064324473072667228156997202893936083275899766690210466761577470046264046222931092446177425740959437693350790993586633457983061364566732086018481026226972137362360868880530808501161143387629053641359750452799031424635211759713153046916812435264326434463380266327617825482451063169309419164749678446842743326238744052011500160458449546628449553366725445744641820601661403882370937391150187571969056215344946166456652398682004418252925026457034862143728268650454960395469263179888634225394491229220776325175362975641296576050921112993635839761673201072754219132009442914717230403194390255728013243481472250585498083103931742436003158021346312980419704945045971571900865268479408575758680190166806021258910608535987238854540750494234355151922079243176910958586474804043925137581838212418225485262659473838307997836873674080934929373661211466963347022661732352968824451191734668508325937619419321300795443153801977741245045076741313939076835237518540994982406916790893034774328635770030818432685810392398646121491908578490225328166279801073816448454791028722248959589425623547785477695317111346349306916658251852949320234497229259687112686777453172590885398082617295017884675040822019861664955888171579298484160016042116572867793729477177918680092733815399508106178809513699741201704278350192224926994024581354375103233733847802550664433619963136063348270655169414018328755193484247401850114184566993102675152542151902913772845229687253912789543541101180528395004412355259354236387876827450929480970433590923710702006054689726595897286570425222350474266643674000751843596128708784681150741822042849553776036976143227956450215170139567885868489253203548302825947035414547252903095927178158351064146126988709555939651617579672763465162388274185354981276585959329709800347905607223651908130063378264688726483846286873740914940179403453903825809355278529923182000600552891533866636592572639082297779070881378486021042020425957803394131457663892435095355022323935874277645288681605700356979405650851013723845640836778554748824310250330840648873259540002475239676743959835130476059027255208551244748665803144952730337039223816252279027121254405067379352722982912344487782671587883075332564744066313650446184340327607961491141800547476047360780158242116982851300071845736578238781725849613304325346581249886360775739697849269147854810461251879299996909022550895740
 K = -3398482520265288129220331999800004623846728854085486248585061488153090692450031534406664896835573310255465777289235070433857995078801062609365229502335070612969215344245729699032932173874492156467035333504717474305793834194855647778019020407488635687152113680129052345420891630781466836851805889777894742142084614116439381337718067408362976068521346401678561803504267869630271166467385065919342694974105337990003216887308157803934296777086715541442183783902377798228570399962637420780714804568613507470527161715158570915329111616752251333753272123157825692861816944786200708083236092660058698691516398461671775999217438706309095867384774496066486380037400332416796396863945058842733618644781416407653121559828213318784393887186685687598426549537221130123647630981379514303603646007760053435767644931384743908395507691850827379040244829364835951398466893312249307374617895107275587764714942693230713183268183899745872423613642619064572699609346119965621184225325803986189850887606222297413419562433610056732878520611886238594737220810434046951401904461866863294307870733922830300663976266471610131469110747261969797757791549512025636147087901087362048056840461272479796415528048330174683456733087337803670993815821917784742630380304128268388519251204476178838892878645870318726163363382460970581443731204390785229808175551458816704655248680459389425439442371233557470669206477860009551034870354906455036799894635570963075794267167729562488897487968163684828805890569139162733378973076533253156831208016712302426302053856668647325742619831243184576994252454223762099553657083369008349720763091032613354183464646204149625710947247144711556968997825053344929305707882788241781083155137206305037784408840534387308757326242221390439340859912532397933834838423974224847999107203390607263488489958095684672443502009720317571635942943293908361522172919541085794508050022266340190034736826331827721032958652717029449092038026830087299926031286136111127130158543002097664394983890841889415169379870435274563128362152960865465714804948187017993443473762986969627479990835130751982570990621330213003665552089047531787383084187092301881771403038061464908854750602432993397859383655448331533957002438925819116861500438681659981742482748633425526942444775129385749892373741834536899888861821809036383933693396128957966673703332730563288221873951830076123406580553095964480641508570173079385048790214010262758401037674078467922791194572592196301995132198329605341871115542866265367545546798128750696404931249086258719340781519853971238488740234261671266349621559721195255487248178707717706513304834701499843783619230112506262552484015161975407097823638942902523804871049882021740952138953997014586218550594769159948925777412853344192500157760047357709482143275538598193780713218566910159015554816543095103769286027917092968672885302236354179824380519811400868827915614962725158578275598369582770128176984531731681070539234579202420214214981510145130557443022190533813280068864254453414779564226586732344857554877742056690094074223187265935448696003211620179029172845145731792955353694310909002761912708640956391543570373421142902259510392672898158670741067845397936338025079129611310435759926812337005130726427302548969111899838661130297926747188768284200003924888067254279474196985920775249219511157415122639818835275491209988922963157969112233958076741277406593285295179096154510103699004147570916433023571981282329909718521361690130857009185263143684360793414777067101806919413894177977183104883247735385518102816235451158300235540442653390492413044317327880467658899293025161008657243926946886149584725947498130727284310144117556674573912610978607102363019375257166467691937826519349318307928107003443195108978400097677914136881569651093844220122072117076953336541690821519013410785134641298330555798582670413999484978669978636019771918716839848236878618669551253152576360181627762570239453775768221021217590136413595888901380299376950887888128087416181292850638680384166655820483855908060445935974925016013301821993097605072076142197798939224963227352189263784676715554683315968203310022434867864912992413468620468840573115832917354503367926015120920656526055574869923741042206025236804471514602684720890141749143451587599756384069596128877107665081114835182931848624877519242022819117556087833635861382647175214944735748130846690478011167683532874893645032442234290618814211445779305479801940250403275996417898948663238625940443781782593060724942953314972451637702737029172594997027389278480101121730800883457650749241182356544535630671380721005848341929022133072814240183028220645705039435652183094617435848151589890457579036308510224507759697725643605387181060741144423381376025117488180359743506111032576790918192340452156458302243125149037533104357604046400963198652647262267154582755567942408929352740991355535457444582455484885702619435589929421581861967921395979367612512761087688971118133706864944696858951047459908750131928201873167822826689423412990475322875411757112289341490514276346719241434726794284970426634005808486816185106970900489006990725744374987035999602088326345086098510684216492856230267065671526480511509143436478929716255116675621843682574737264628099999835591648052260437054625061966169056268360149227530
@@ -2398,234 +2453,254 @@ L = -648326035263243441248559003344757326526896261785566747631424038793164469818
 ** Quad -25181 -50370 -48724 -44057 0 2344559199328
  - 25181 * x^2 - 50370 * x * y - 48724 * y^2 - 44057 * x + 2344559199328 = 0
 
+Solution:
 x = -121
 y = -6874
 
 ** Quad -46603 -36554 -48418 -37056 0 80954246495715
  - 46603 * x^2 - 36554 * x * y - 48418 * y^2 - 37056 * x + 80954246495715 = 0
 
+Solution:
 x = -40133
 y = -3592
 
 ** Quad -57212 -43536 0 -51337 0 33932873661354
  - 57212 * x^2 - 43536 * x * y - 51337 * x + 33932873661354 = 0
 
+Solution:
 x = -23318
 y = -2784
 
 ** Quad -1947 0 0 0 0 725162877747
  - 1947 * x^2 + 725162877747 = 0
 
+Solution:
 x = 19299  
 y =    t
-and also:
+Solution:
 x = -19299  
 y =    t
 
 ** Quad -27542 0 -42548 0 0 208346891389178
  - 27542 * x^2 - 42548 * y^2 + 208346891389178 = 0
 
+Solution:
 x = 34835
 y = 64119
-and also:
+Solution:
 x = -34835
 y = -64119
-and also:
+Solution:
 x = 34835
 y = -64119
-and also:
+Solution:
 x = -34835
 y = 64119
 
 ** Quad -11280 0 0 0 0 13356062568000
  - 11280 * x^2 + 13356062568000 = 0
 
+Solution:
 x = 34410  
 y =    t
-and also:
+Solution:
 x = -34410  
 y =    t
 
 ** Quad 0 0 -8247 0 0 716046797628
  - 8247 * y^2 + 716046797628 = 0
 
+Solution:
 x =    t
 y = 9318  
-and also:
+Solution:
 x =    t
 y = -9318  
 
 ** Quad -29941 0 -61669 -28329 0 254331640546750
  - 29941 * x^2 - 61669 * y^2 - 28329 * x + 254331640546750 = 0
 
+Solution:
 x = -5850
 y = 64090
-and also:
+Solution:
 x = -5850
 y = -64090
 
 ** Quad -4423 -16696 -16555 -39331 -17762 44070486497276
  - 4423 * x^2 - 16696 * x * y - 16555 * y^2 - 39331 * x - 17762 * y + 44070486497276 = 0
 
+Solution:
 x = -45689
 y = -28296
 
 ** Quad -41592 0 0 0 0 148019204070912
  - 41592 * x^2 + 148019204070912 = 0
 
+Solution:
 x = 59656  
 y =    t
-and also:
+Solution:
 x = -59656  
 y =    t
 
 ** Quad -59152 0 -742 -17640 -59032 40217618836760
  - 59152 * x^2 - 742 * y^2 - 17640 * x - 59032 * y + 40217618836760 = 0
 
+Solution:
 x = -26043
 y = -11588
 
 ** Quad -6970 0 -35051 0 0 138650313182859
  - 6970 * x^2 - 35051 * y^2 + 138650313182859 = 0
 
+Solution:
 x = -5460
 y = 62847
-and also:
+Solution:
 x = 5460
 y = -62847
-and also:
+Solution:
 x = -5460
 y = -62847
-and also:
+Solution:
 x = 5460
 y = 62847
 
 ** Quad -18446 0 -51165 0 -56239 203786464312386
  - 18446 * x^2 - 51165 * y^2 - 56239 * y + 203786464312386 = 0
 
+Solution:
 x = 11815
 y = -62711
-and also:
+Solution:
 x = -11815
 y = -62711
 
 ** Quad -52740 0 -55243 0 -60623 269765867354528
  - 52740 * x^2 - 55243 * y^2 - 60623 * y + 269765867354528 = 0
 
+Solution:
 x = 40093
 y = -57868
-and also:
+Solution:
 x = -40093
 y = -57868
 
 ** Quad 0 -52146 -5651 0 0 115391386330448
  - 52146 * x * y - 5651 * y^2 + 115391386330448 = 0
 
+Solution:
 x = 46077
 y = 43562
-and also:
+Solution:
 x = -46077
 y = -43562
 
 ** Quad -9418 -6755 -44372 0 0 23993780392084
  - 9418 * x^2 - 6755 * x * y - 44372 * y^2 + 23993780392084 = 0
 
+Solution:
 x = -11882
 y = -21714
-and also:
+Solution:
 x = 11882
 y = 21714
 
 ** Quad -56426 0 -52998 -32675 -37611 169542758244355
  - 56426 * x^2 - 52998 * y^2 - 32675 * x - 37611 * y + 169542758244355 = 0
 
+Solution:
 x = -31964
 y = -45949
 
 ** Quad -23137 -64910 -65261 -15695 0 185581878870529
  - 23137 * x^2 - 64910 * x * y - 65261 * y^2 - 15695 * x + 185581878870529 = 0
 
+Solution:
 x = -42452
 y = -30371
 
 ** Quad -19972 -26878 -14079 0 -24939 63384054421702
  - 19972 * x^2 - 26878 * x * y - 14079 * y^2 - 24939 * y + 63384054421702 = 0
 
+Solution:
 x = -28468
 y = -36786
 
 ** Quad -45015 -43602 -9228 0 0 179513262169116
  - 45015 * x^2 - 43602 * x * y - 9228 * y^2 + 179513262169116 = 0
 
+Solution:
 x = -3760673732062580952921968519980185916919605609619778116616335853571199360107174589221671011963250233902876820399899572461418912879796499007015586771566287810781459631504885669876216
 y = 12038211507544463446607130598494078030074288119613614972670538196806853746132488073822889445282271869184918122231609464772118563730635437126529016682111783665271692660790435096468923
-and also:
+Solution:
 x = 3760673732062580952921968519980185916919605609619778116616335853571199360107174589221671011963250233902876820399899572461418912879796499007015586771566287810781459631504885669876216
 y = -12038211507544463446607130598494078030074288119613614972670538196806853746132488073822889445282271869184918122231609464772118563730635437126529016682111783665271692660790435096468923
-and also:
+Solution:
 x = -32789771826842491399070506508402834380332847063679492995652460030323085479892148909432373244528064771964732116241640700081045170526260647249895739669801778609624
 y = 49967975084369620154060974806554636240454004647258386852936883131224731471911278644824049123060388268360495229556254864780454687690804515347678582354155343694099
-and also:
+Solution:
 x = 32789771826842491399070506508402834380332847063679492995652460030323085479892148909432373244528064771964732116241640700081045170526260647249895739669801778609624
 y = -49967975084369620154060974806554636240454004647258386852936883131224731471911278644824049123060388268360495229556254864780454687690804515347678582354155343694099
-and also:
+Solution:
 x = 37576
 y = 54217
-and also:
+Solution:
 x = -37576
 y = -54217
-and also:
+Solution:
 x = -622494722649403610327493819354257122854419700296
 y = 948612907578510285663782660033864890064357101653
-and also:
+Solution:
 x = 622494722649403610327493819354257122854419700296
 y = -948612907578510285663782660033864890064357101653
-and also:
+Solution:
 x = -251162245858732413254
 y = 803990043746499046897
-and also:
+Solution:
 x = 251162245858732413254
 y = -803990043746499046897
-and also:
+Solution:
 x = -47283429657638581611218500853222527644590512031717691936710427183876113508611951980160514085119675067480402571160531437164357729085786193080321102502774017253569305565186
 y = 151357966038858118343963316890339746252801841298659933743208911261754810564079017546688012737586090859901462818541188031822648496262813886373140361984562112498027440013331
-and also:
+Solution:
 x = 47283429657638581611218500853222527644590512031717691936710427183876113508611951980160514085119675067480402571160531437164357729085786193080321102502774017253569305565186
 y = -151357966038858118343963316890339746252801841298659933743208911261754810564079017546688012737586090859901462818541188031822648496262813886373140361984562112498027440013331
-and also:
+Solution:
 x = -1557852857246282609027104084412432903930713733934817432032711107916523840992208537606938672275307610807825255022369714537832134069849893487673603291704877570999093694
 y = 2373994950836234030251169031666296856785124088392278285177034766873514881457294969857934322441958017937909920959977254262266992646599642394537386394967600809512143437
-and also:
+Solution:
 x = 1557852857246282609027104084412432903930713733934817432032711107916523840992208537606938672275307610807825255022369714537832134069849893487673603291704877570999093694
 y = -2373994950836234030251169031666296856785124088392278285177034766873514881457294969857934322441958017937909920959977254262266992646599642394537386394967600809512143437
-and also:
+Solution:
 x = -9320666582715230181375003574396609424109592683153489934483717629680515207209280596293956423941201904247426920389806060453639347390026506654215866835179791084885726869896665073145775566300579903611754102970074
 y = 14203661984423126675628241549555188890661989419522120390542847071313338665840424661883876437375804856168095495596638401222710413440443024647782909363848207040244672260402555501265536080700205405362631272870367
-and also:
+Solution:
 x = 9320666582715230181375003574396609424109592683153489934483717629680515207209280596293956423941201904247426920389806060453639347390026506654215866835179791084885726869896665073145775566300579903611754102970074
 y = -14203661984423126675628241549555188890661989419522120390542847071313338665840424661883876437375804856168095495596638401222710413440443024647782909363848207040244672260402555501265536080700205405362631272870367
-and also:
+Solution:
 x = -412269976107229613782763080436904154870652316926682507032546766399192097242844745448725707924307235705014809544437526858421252640632615341203397378374
 y = 628253712863467170023909347730706245739901558452967578514183932188776279944058878427176367026120530009370097341276694498221004395259630513838936928792
-and also:
+Solution:
 x = 412269976107229613782763080436904154870652316926682507032546766399192097242844745448725707924307235705014809544437526858421252640632615341203397378374
 y = -628253712863467170023909347730706245739901558452967578514183932188776279944058878427176367026120530009370097341276694498221004395259630513838936928792
-and also:
+Solution:
 x = -3157894894
 y = 10108669184
-and also:
+Solution:
 x = 3157894894
 y = -10108669184
-and also:
+Solution:
 x = -995224203911717612432346320049292467435429867964439467024667878515522756533638065750669193205803768955368386917822421367854952719784938265800605872500033649905737446
 y = 3185790716693166924129654812762645192038072921725149855563480364287664226680051923036329104928419849791078273579315145304332482354297951881025791256502331032790791928
-and also:
+Solution:
 x = 995224203911717612432346320049292467435429867964439467024667878515522756533638065750669193205803768955368386917822421367854952719784938265800605872500033649905737446
 y = -3185790716693166924129654812762645192038072921725149855563480364287664226680051923036329104928419849791078273579315145304332482354297951881025791256502331032790791928
-and also:
+Solution:
 x = -166341415166561085262892588960291315141684060419451397273226453656125906635658008820945317680176571651260991826540827131266
 y = 532471913520947846664441835630218373826248911297360798160098851731700008360765049755996357029364336937493468777125658768848
-and also:
+Solution:
 x = 166341415166561085262892588960291315141684060419451397273226453656125906635658008820945317680176571651260991826540827131266
 y = -532471913520947846664441835630218373826248911297360798160098851731700008360765049755996357029364336937493468777125658768848
 Recursive solutions:
@@ -2637,7 +2712,7 @@ Q = -200148252821355305968416664600795045932357013368354878374885106095314575182
 R = 9763408756776451125019805111622008011102135843927714401869801745644327700300845041936473488871461457540959762829785702061555646699030010375848565222000063840532701156337748541285543381435407518362132591179913555498079823251960127121344962438674486790642288007322734509431041078753951566441264918933702872520697087839948692099226296681030902999433662276308721894899903748835151601060802277001288515287941406405199362605642953937533940605921565457535821474669203793772898438942384700
 S = 6406902517989728816822054618999543195659758751552129832122036633819779777151171790791493253113792080688184157211043633126231725599809398303314461404856510053025607467716236314931263170565794615768902317325733614785422556895553421169000035988300756159003585812857324183950535782786333042936645189943865502824747481727124727136943142101903108060330267016211561161724460084531018896894298940728594298258406584762774253715825938068628410430914034562590992465499988550492225940875478029
 
-and also:
+... and also:
 P = 6406902517989728816822054618999543195659758751552129832122036633819779777151171790791493253113792080688184157211043633126231725599809398303314461404856510053025607467716236314931263170565794615768902317325733614785422556895553421169000035988300756159003585812857324183950535782786333042936645189943865502824747481727124727136943142101903108060330267016211561161724460084531018896894298940728594298258406584762774253715825938068628410430914034562590992465499988550492225940875478029
 Q = 2001482528213553059684166646007950459323570133683548783748851060953145751824418483771848880491077337114028139317855436157370554431603886165685450624649929781638026574934682739952971105717781641218388527188897973789543054736623082374225731720184120051183983866079622215995327048200410197825613521535492838112206880519538965471324231162335958522243115305693144188517967606225719848374743605735152514030370394275401082264242434276031616214849365901191615251988168668420222299112747440
 R = -9763408756776451125019805111622008011102135843927714401869801745644327700300845041936473488871461457540959762829785702061555646699030010375848565222000063840532701156337748541285543381435407518362132591179913555498079823251960127121344962438674486790642288007322734509431041078753951566441264918933702872520697087839948692099226296681030902999433662276308721894899903748835151601060802277001288515287941406405199362605642953937533940605921565457535821474669203793772898438942384700
@@ -2647,90 +2722,100 @@ S = -305003736011683170640605917588977799283463927281610749655345144156806819327
 ** Quad -19500 0 -20974 0 0 68306854466650
  - 19500 * x^2 - 20974 * y^2 + 68306854466650 = 0
 
+Solution:
 x = 15273
 y = 55135
-and also:
+Solution:
 x = -15273
 y = -55135
-and also:
+Solution:
 x = 15273
 y = -55135
-and also:
+Solution:
 x = -15273
 y = 55135
 
 ** Quad -38757 -5071 0 0 0 2002194500535
  - 38757 * x^2 - 5071 * x * y + 2002194500535 = 0
 
+Solution:
 x = 5295
 y = 34098
-and also:
+Solution:
 x = -5295
 y = -34098
 
 ** Quad 0 -25266 -30257 0 0 65206232579565
  - 25266 * x * y - 30257 * y^2 + 65206232579565 = 0
 
+Solution:
 x = 25946
 y = 36837
-and also:
+Solution:
 x = -25946
 y = -36837
 
 ** Quad -35272 -22957 -62479 -39908 0 175287547700452
  - 35272 * x^2 - 22957 * x * y - 62479 * y^2 - 39908 * x + 175287547700452 = 0
 
+Solution:
 x = -60412
 y = -18370
 
 ** Quad 0 0 -60666 0 -13060 253097543490686
  - 60666 * y^2 - 13060 * y + 253097543490686 = 0
 
+Solution:
 x =    t
 y = -64591  
 
 ** Quad -47230 -54661 -48959 -4750 0 128619085667550
  - 47230 * x^2 - 54661 * x * y - 48959 * y^2 - 4750 * x + 128619085667550 = 0
 
+Solution:
 x = -46785
 y = -8490
 
 ** Quad 0 -17277 -1948 -43676 -18545 6876203897656
  - 17277 * x * y - 1948 * y^2 - 43676 * x - 18545 * y + 6876203897656 = 0
 
+Solution:
 x = -18349
 y = -19385
 
 ** Quad 0 0 -53535 0 -9825 19757573313660
  - 53535 * y^2 - 9825 * y + 19757573313660 = 0
 
+Solution:
 x =    t
 y = -19211  
 
 ** Quad -17439 0 -59315 -29851 -20189 147649839275760
  - 17439 * x^2 - 59315 * y^2 - 29851 * x - 20189 * y + 147649839275760 = 0
 
+Solution:
 x = -433
 y = -49892
 
 ** Quad -180 -5709 16688 0 0 -488721090195
  - 180 * x^2 - 5709 * x * y + 16688 * y^2 - 488721090195 = 0
 
+Solution:
 x = -54630092306148754138569526919602033836592241303660732238621254257128039225495479855662030918478959139736653421022199
 y = -20276650700343248366927341768182540177108768212668578136335050410301879034132079790770886807450651560687429270457307
-and also:
+Solution:
 x = 54630092306148754138569526919602033836592241303660732238621254257128039225495479855662030918478959139736653421022199
 y = 20276650700343248366927341768182540177108768212668578136335050410301879034132079790770886807450651560687429270457307
-and also:
+Solution:
 x = -30097
 y = -13245
-and also:
+Solution:
 x = 30097
 y = 13245
-and also:
+Solution:
 x = -1927978375306604177770742353137906157637275572535737318120879477901495763366780391685052704636381723620017
 y = 56028124756513845873909062790004889024460533732235086664398199925911767964275944007233223018394448630755
-and also:
+Solution:
 x = 1927978375306604177770742353137906157637275572535737318120879477901495763366780391685052704636381723620017
 y = -56028124756513845873909062790004889024460533732235086664398199925911767964275944007233223018394448630755
 Recursive solutions:
@@ -2742,7 +2827,7 @@ Q = -204212472381372060465220082088851271852047904795953048457019522395539008084
 R = -220267527736379259849829906375798351710022907857571600684704662219541116102882975001151156098494881284919877160545582056312295859189662830353370882135295742368021832124605442018416309199511798385576741661519423561740328886331200
 S = 593452811813830683469824506084097926397305798610071844326641275131078194982556606288163952749189653975076837592536408680908857282772605021291540792794717097016482241957876463586962051086188966264495641309104774206781075845828921
 
-and also:
+... and also:
 P = 593452811813830683469824506084097926397305798610071844326641275131078194982556606288163952749189653975076837592536408680908857282772605021291540792794717097016482241957876463586962051086188966264495641309104774206781075845828921
 Q = 20421247238137206046522008208885127185204790479595304845701952239553900808471728260106724960953792104904127278084359296420775518323094962849650296005965640825764157413863420091129618710674738285880581471374645224435125602528305920
 R = 220267527736379259849829906375798351710022907857571600684704662219541116102882975001151156098494881284919877160545582056312295859189662830353370882135295742368021832124605442018416309199511798385576741661519423561740328886331200
@@ -2752,92 +2837,101 @@ S = 7579604566519326208373596369969835648133532359492717779376524145194190594045
 ** Quad 15 0 3823 0 29181 -3618067838767
  15 * x^2 + 3823 * y^2 + 29181 * y - 3618067838767 = 0
 
+Solution:
 x = -29545
 y = 30704
-and also:
+Solution:
 x = 29545
 y = 30704
 
 ** Quad -25054 0 -25131 0 -25489 12112346450486
  - 25054 * x^2 - 25131 * y^2 - 25489 * y + 12112346450486 = 0
 
+Solution:
 x = 18932
 y = -11165
-and also:
+Solution:
 x = -18932
 y = -11165
 
 ** Quad 0 0 -25578 -18918 -6368 17963527811578
  - 25578 * y^2 - 18918 * x - 6368 * y + 17963527811578 = 0
 
+Solution:
 x = -483884604 k^2 + 452314984 k + 843845619y = 18918 k - 8842
-and also:
+Solution:
 x = -483884604 k^2 + 95962288 k + 944789151y = 18918 k - 1876
-and also:
+Solution:
 x = -483884604 k^2 - 31569620 k + 949031960y = 18918 k + 617
-and also:
+Solution:
 x = -483884604 k^2 - 387922316 k + 871799144y = 18918 k + 7583
 
 ** Quad 0 0 27346 0 8059 -20046357318675
  27346 * y^2 + 8059 * y - 20046357318675 = 0
 
+Solution:
 x =    t
 y = 27075  
 
 ** Quad -15756 0 0 20969 17142 14299050102918
  - 15756 * x^2 + 20969 * x + 17142 * y + 14299050102918 = 0
 
+Solution:
 x =  - 34284 k + 12984y = 1080357408 k^2 - 818261678 k - 679215309
-and also:
+Solution:
 x =  - 34284 k - 9600y = 1080357408 k^2 + 605072338 k - 749432729
-and also:
+Solution:
 x =  - 34284 k - 4158y = 1080357408 k^2 + 262095730 k - 818256796
-and also:
+Solution:
 x =  - 34284 k + 7542y = 1080357408 k^2 - 475285070 k - 781879546
 
 ** Quad 2828 0 4055 -27448 29586 -1699342613772
  2828 * x^2 + 4055 * y^2 - 27448 * x + 29586 * y - 1699342613772 = 0
 
+Solution:
 x = 19711
 y = 12172
 
 ** Quad 0 -28636 28957 0 -26948 2689658700288
  - 28636 * x * y + 28957 * y^2 - 26948 * y + 2689658700288 = 0
 
+Solution:
 x = 27635
 y = 23352
 
 ** Quad 0 0 -6854 29877 30226 2088232903765
  - 6854 * y^2 + 29877 * x + 30226 * y + 2088232903765 = 0
 
+Solution:
 x = 819107832 k^2 + 340457508 k - 34517025y =  - 59754 k - 12416
-and also:
+Solution:
 x = 819107832 k^2 - 478650324 k + 31179y =  - 59754 k + 17461
 
 ** Quad -29226 -1042 2620 0 0 1858893112974
  - 29226 * x^2 - 1042 * x * y + 2620 * y^2 + 1858893112974 = 0
 
+Solution:
 x = -210410832190932743279663812266862003615352759392285867209764496123640423353658311692265560756006855277607093372251822613777451728333456104452010150079342902911602445466609298541884007820243736909865936027531706264503255786521772527198723980755100944930907187097
 y = 662155333061437371803900889169414939763739218188471570877749622548200793111485580883074706149971676806014594569464387253040076791816083540483036770031292432252399819770395551134523363920444314480258192119144696877508326481921086507933786738157872841357610598790
-and also:
+Solution:
 x = 210410832190932743279663812266862003615352759392285867209764496123640423353658311692265560756006855277607093372251822613777451728333456104452010150079342902911602445466609298541884007820243736909865936027531706264503255786521772527198723980755100944930907187097
 y = -662155333061437371803900889169414939763739218188471570877749622548200793111485580883074706149971676806014594569464387253040076791816083540483036770031292432252399819770395551134523363920444314480258192119144696877508326481921086507933786738157872841357610598790
-and also:
+Solution:
 x = -764162163386177482858994263143848475392666163645195858189834043165104390534565577562848998322015157064703468792865503559344585404724611330716096064700345983425360608587027053163880721669685597580452166422109619552515672150159598266607182201692854202240559098729505312212185162770699303
 y = 2404790887147718481589287476289019529522298246696845639529171209721007918793173484481015373994732408544401232487602274539126272533375976913844471899017553392444185839226044840915973524340461753861295251309609843523851573975769555381353773417118808928596214600954353746877651911114591610
-and also:
+Solution:
 x = 764162163386177482858994263143848475392666163645195858189834043165104390534565577562848998322015157064703468792865503559344585404724611330716096064700345983425360608587027053163880721669685597580452166422109619552515672150159598266607182201692854202240559098729505312212185162770699303
 y = -2404790887147718481589287476289019529522298246696845639529171209721007918793173484481015373994732408544401232487602274539126272533375976913844471899017553392444185839226044840915973524340461753861295251309609843523851573975769555381353773417118808928596214600954353746877651911114591610
-and also:
+Solution:
 x = 9013
 y = 15930
-and also:
+Solution:
 x = -9013
 y = -15930
-and also:
+Solution:
 x = -8693552128370965042848776587
 y = 27358296362921323004205385530
-and also:
+Solution:
 x = 8693552128370965042848776587
 y = -27358296362921323004205385530
 Recursive solutions:
@@ -2849,7 +2943,7 @@ Q = 3908792740129427322957141654346737681781298445685101798016481687063455515108
 R = 436024338255811614277654282404342578197481787685468645606220205290521186582305366048590457190480506408899537176053514432839416099906226428705399348202966421171543363107390835068332448564916312560581491342276415257115161640928508628603060774545740908635132104573131829651986919268860525831532866024640532438140096338433573868741557565125638405323999177048955816869712498679580649120848316947032244163673340937335993901303273990094834295648879888250661258022207118723343252248691291034037582281171293743186569515375349842403508294179425580987762506362115329757789492448575782226594398101456731838635612988060710642016376986613981780577461811305725419100473426951838610014193225598613365777808750485327671912432004294846379416603562990512133924021387817422994652667866198175775768150941763576219933646592146781024363476897189431859522256593347800146238661100092781498662742103651942818895062452709949231896047516094389357851422896566222830049185792762737281449928064793728
 S = 138553960509132805623123931456023773627846800767435394719205072959609768971765708349730360055891111152733667271515349952824592457185397942667977366905099026155685022567912843108706709419411180073652057669558107865254878167032754919610622794046566324441292041974688831870927505244442112672779358704425282228200848766857197035898130534002242671789156829389784882910354484491982711496710679253515983653356309283135311513554440131644268680683821791179455352002575593910385006880068495165637678058829732835503272198415127820693673842381727343546869743854485549925131634470793345189943111692014639644703513046195002203962036366367112854064534637484948011412608004510584866495282735079882809527880807326749575569581886505858863628485102342784590300786261193958145137899231394767941315359077644661422473014755753069001408492080179813137459512587334924780288495005190626822941680082139913220058105679496022365826497901696749615643697636858235676756755449788405803604602405943103
 
-and also:
+... and also:
 P = 138553960509132805623123931456023773627846800767435394719205072959609768971765708349730360055891111152733667271515349952824592457185397942667977366905099026155685022567912843108706709419411180073652057669558107865254878167032754919610622794046566324441292041974688831870927505244442112672779358704425282228200848766857197035898130534002242671789156829389784882910354484491982711496710679253515983653356309283135311513554440131644268680683821791179455352002575593910385006880068495165637678058829732835503272198415127820693673842381727343546869743854485549925131634470793345189943111692014639644703513046195002203962036366367112854064534637484948011412608004510584866495282735079882809527880807326749575569581886505858863628485102342784590300786261193958145137899231394767941315359077644661422473014755753069001408492080179813137459512587334924780288495005190626822941680082139913220058105679496022365826497901696749615643697636858235676756755449788405803604602405943103
 Q = -39087927401294273229571416543467376817812984456851017980164816870634555151086021318254533560496096858664093184194217744954467603563755328926577235758973928128017642213828919040547150319581220109105710918933970025786687316062160152156984165787649393711901940531773263316506046961076253256641897932818661294324473154270032284134088853097556033051012038728127839601678188822983004882523184506987767046767404135215914049867055972560338939800180158325351827003975318245916626322164209351576625798147840607922699381724608793098514737930270821261477375168300217750133732642690363013538538391357580148402973586146549711971631687707131741090568327708923581675331567050359856232025807536726442836442172253184099788221852160832735032898834429451234889513995623131740436255040355820862674076352132367402183882641190192509540556677979754720863214681262274563167908440506504055515513046998155415914085527478959385053296533640159451090492300999230268073936453056811458201560649071360
 R = -436024338255811614277654282404342578197481787685468645606220205290521186582305366048590457190480506408899537176053514432839416099906226428705399348202966421171543363107390835068332448564916312560581491342276415257115161640928508628603060774545740908635132104573131829651986919268860525831532866024640532438140096338433573868741557565125638405323999177048955816869712498679580649120848316947032244163673340937335993901303273990094834295648879888250661258022207118723343252248691291034037582281171293743186569515375349842403508294179425580987762506362115329757789492448575782226594398101456731838635612988060710642016376986613981780577461811305725419100473426951838610014193225598613365777808750485327671912432004294846379416603562990512133924021387817422994652667866198175775768150941763576219933646592146781024363476897189431859522256593347800146238661100092781498662742103651942818895062452709949231896047516094389357851422896566222830049185792762737281449928064793728
@@ -2859,82 +2953,90 @@ S = 1230083038861753122241875131207974352140448428269625852782387602957925145948
 ** Quad 0 -23968 -13417 0 -16814 8684991853047
  - 23968 * x * y - 13417 * y^2 - 16814 * y + 8684991853047 = 0
 
+Solution:
 x = -6983
 y = -19959
 
 ** Quad -9178 -25014 0 0 -27167 1787024022587
  - 9178 * x^2 - 25014 * x * y - 27167 * y + 1787024022587 = 0
 
+Solution:
 x = 5937
 y = 9853
 
 ** Quad 29776 0 2795 0 0 -1888265839995
  29776 * x^2 + 2795 * y^2 - 1888265839995 = 0
 
+Solution:
 x = 7940
 y = 1991
-and also:
+Solution:
 x = -7940
 y = -1991
-and also:
+Solution:
 x = 7940
 y = -1991
-and also:
+Solution:
 x = -7940
 y = 1991
 
 ** Quad 8593 -9669 3342 0 17018 -4892247633320
  8593 * x^2 - 9669 * x * y + 3342 * y^2 + 17018 * y - 4892247633320 = 0
 
+Solution:
 x = 4185
 y = -32099
 
 ** Quad 12116 0 0 -2944 10643 -403761944347
  12116 * x^2 - 2944 * x + 10643 * y - 403761944347 = 0
 
+Solution:
 x =  - 21286 k + 7608y = -515802352 k^2 + 368708224 k - 27953575
-and also:
+Solution:
 x =  - 21286 k + 10450y = -515802352 k^2 + 506442912 k - 86376471
-and also:
+Solution:
 x =  - 21286 k - 4870y = -515802352 k^2 - 236025568 k + 10936169
-and also:
+Solution:
 x =  - 21286 k - 2028y = -515802352 k^2 - 98290880 k + 33254297
-and also:
+Solution:
 x =  - 21286 k - 3035y = -515802352 k^2 - 147094128 k + 27449949
-and also:
+Solution:
 x =  - 21286 k - 193y = -515802352 k^2 - 9359440 k + 37894397
-and also:
+Solution:
 x =  - 21286 k + 5773y = -515802352 k^2 + 279776784 k - 1635
-and also:
+Solution:
 x =  - 21286 k + 8615y = -515802352 k^2 + 417511472 k - 46550851
 
 ** Quad 28302 -15249 0 0 -23805 -32328380224608
  28302 * x^2 - 15249 * x * y - 23805 * y - 32328380224608 = 0
 
+Solution:
 x = -31211
 y = 9999
 
 ** Quad 24827 -5752 29032 0 0 -20070614909700
  24827 * x^2 - 5752 * x * y + 29032 * y^2 - 20070614909700 = 0
 
+Solution:
 x = 25050
 y = 15165
-and also:
+Solution:
 x = -25050
 y = -15165
 
 ** Quad 14619 0 -25845 7287 0 14521330684365
  14619 * x^2 - 25845 * y^2 + 7287 * x + 14521330684365 = 0
 
+Solution:
 x = 19432
 y = 27847
-and also:
+Solution:
 x = -30262285518379280888
 y = 22760001651211301911
-and also:
+Solution:
 x = -30262285518379280888
 y = -22760001651211301911
-and also:
+Solution:
 x = 19432
 y = -27847
 Recursive solutions:
@@ -2948,7 +3050,7 @@ R = -379221589231120754209824082016314549586917100768856
 S = 504222810872905002696732783008022583920627473877791
 L = -94513568668417023596928246995447162009708766444444
 
-and also:
+... and also:
 P = 504222810872905002696732783008022583920627473877791
 Q = 670427660830310957832471673829376122448448763210280
 K = 125667679828677021501166009637439652815842821059835
@@ -2960,15 +3062,16 @@ L = 94513568668417023596928246995447162009708766444444
 ** Quad 16643 15940 -27875 0 0 2627610849968
  16643 * x^2 + 15940 * x * y - 27875 * y^2 + 2627610849968 = 0
 
+Solution:
 x = -19542
 y = 13214
-and also:
+Solution:
 x = 19542
 y = -13214
-and also:
+Solution:
 x = -4173481288329708376551642089341905392522951808517568949718739472
 y = 2245244662270843549225071697235311780022246101604229284691433556
-and also:
+Solution:
 x = 4173481288329708376551642089341905392522951808517568949718739472
 y = -2245244662270843549225071697235311780022246101604229284691433556
 Recursive solutions:
@@ -2980,7 +3083,7 @@ Q = -327185136153254026334432992745713023156455646618370313335476024015645760386
 R = -195348599856452260458617696798812622220372783019534964119904124401520803232950410053852813315284819094910042399172431462681188297063396371227441485983500440806584812972787846931222244375202227832090636562270800418057399182781015733050289236802054020330780701594681115449916042796282070187988938454916876120041823415139690816327576373159577291593298532812048074024093412302403815796203019452884022167361906415607404320909538381520414105901179207980460101395965047863772954128158964358474334696409324784655792937719117036307862813720507415564256486406024898246254755668192102104127300175739333841221898227159721133080555243465464327535070239217443429822239907875639294067411150963242549329790975661845850034504
 S = 176018683149878295518243735924749571637464521974052128400254656737358963721692787106806473802466532293395607339294654601582714075778749433000806187407833438588570176032012078296708098230627394384448973831745519430821647205581745130319362730133581749024877529235245399107049915029608954452840379243083201754459095657762623752608410375188592381624514673232451918543514294314769775476873697529966810671880686775045380119270225849651437056828493610622802481282307583430109555691137659388005849980521283493385132337576108542705624644030390407729998176601773800784687050667414733896401206488478248908917281640265518333473004592301802374392398646366667566134116214805891525082391912578659723737023900995020957689391
 
-and also:
+... and also:
 P = 176018683149878295518243735924749571637464521974052128400254656737358963721692787106806473802466532293395607339294654601582714075778749433000806187407833438588570176032012078296708098230627394384448973831745519430821647205581745130319362730133581749024877529235245399107049915029608954452840379243083201754459095657762623752608410375188592381624514673232451918543514294314769775476873697529966810671880686775045380119270225849651437056828493610622802481282307583430109555691137659388005849980521283493385132337576108542705624644030390407729998176601773800784687050667414733896401206488478248908917281640265518333473004592301802374392398646366667566134116214805891525082391912578659723737023900995020957689391
 Q = 327185136153254026334432992745713023156455646618370313335476024015645760386858900453713102875897634577336864259864899779020496531913848095173041604385632084809442508058430645509092114520144330999190440075304846581346512180497555342112408368434612498751457793483851234342751288406318734993101703985507896523833793648802432344236687580473665625377828312331661362940671986296311143743264986315516560590951940235237420864348577923744609938232011681935668168383856618951070786295886026046534403632903318414485382932098803544257746556057149805254680619994468787995815136348666397052968124280402206983359995979215119064148319258042409309021215100533932320272483172026284042668334184528052999012673403026735148093000
 R = 195348599856452260458617696798812622220372783019534964119904124401520803232950410053852813315284819094910042399172431462681188297063396371227441485983500440806584812972787846931222244375202227832090636562270800418057399182781015733050289236802054020330780701594681115449916042796282070187988938454916876120041823415139690816327576373159577291593298532812048074024093412302403815796203019452884022167361906415607404320909538381520414105901179207980460101395965047863772954128158964358474334696409324784655792937719117036307862813720507415564256486406024898246254755668192102104127300175739333841221898227159721133080555243465464327535070239217443429822239907875639294067411150963242549329790975661845850034504
@@ -2990,51 +3093,52 @@ S = 3631157619044206876176468535701904896325821186412027219273394216811937052666
 ** Quad 28598 0 -28192 0 0 -3610274863352
  28598 * x^2 - 28192 * y^2 - 3610274863352 = 0
 
+Solution:
 x = 204657408988328777892717439281857942998768374436671917521978235492131235773377203999013429662300899410958064278741282688844873483981625839545390826721702876799030462261645084480136293813547606189982706983435226172451009304965511741524795818
 y = 206125802322227792620324288402223579150527389536763678651849893056437575112500277790052750653500983741181959067768427518487594853276861096685539441997070762987067005554439261630370838995288791011036648825667994035094451066484847370818183755
-and also:
+Solution:
 x = -204657408988328777892717439281857942998768374436671917521978235492131235773377203999013429662300899410958064278741282688844873483981625839545390826721702876799030462261645084480136293813547606189982706983435226172451009304965511741524795818
 y = -206125802322227792620324288402223579150527389536763678651849893056437575112500277790052750653500983741181959067768427518487594853276861096685539441997070762987067005554439261630370838995288791011036648825667994035094451066484847370818183755
-and also:
+Solution:
 x = 113093158710795785035957104296209107498191987879211486822935570733956686529934409594292149258000827665847880331331391739860459957462415332759247176184889487503808927909047932704564990539920592811826988691892745607882538028145104790
 y = 113904589096734005359086318655932208634369673599352367632310781264217486858083633942552340685062655614761824731991823511144437034926679984008467871801326611268350908454500150072127467003292315924378480658732257651635275346371625763
-and also:
+Solution:
 x = -113093158710795785035957104296209107498191987879211486822935570733956686529934409594292149258000827665847880331331391739860459957462415332759247176184889487503808927909047932704564990539920592811826988691892745607882538028145104790
 y = -113904589096734005359086318655932208634369673599352367632310781264217486858083633942552340685062655614761824731991823511144437034926679984008467871801326611268350908454500150072127467003292315924378480658732257651635275346371625763
-and also:
+Solution:
 x = -16010
 y = 11487
-and also:
+Solution:
 x = 16010
 y = -11487
-and also:
+Solution:
 x = -24805733452182
 y = 24983711732195
-and also:
+Solution:
 x = 24805733452182
 y = -24983711732195
-and also:
+Solution:
 x = 24805733452182
 y = 24983711732195
-and also:
+Solution:
 x = -24805733452182
 y = -24983711732195
-and also:
+Solution:
 x = 16010
 y = 11487
-and also:
+Solution:
 x = -16010
 y = -11487
-and also:
+Solution:
 x = -113093158710795785035957104296209107498191987879211486822935570733956686529934409594292149258000827665847880331331391739860459957462415332759247176184889487503808927909047932704564990539920592811826988691892745607882538028145104790
 y = 113904589096734005359086318655932208634369673599352367632310781264217486858083633942552340685062655614761824731991823511144437034926679984008467871801326611268350908454500150072127467003292315924378480658732257651635275346371625763
-and also:
+Solution:
 x = 113093158710795785035957104296209107498191987879211486822935570733956686529934409594292149258000827665847880331331391739860459957462415332759247176184889487503808927909047932704564990539920592811826988691892745607882538028145104790
 y = -113904589096734005359086318655932208634369673599352367632310781264217486858083633942552340685062655614761824731991823511144437034926679984008467871801326611268350908454500150072127467003292315924378480658732257651635275346371625763
-and also:
+Solution:
 x = -204657408988328777892717439281857942998768374436671917521978235492131235773377203999013429662300899410958064278741282688844873483981625839545390826721702876799030462261645084480136293813547606189982706983435226172451009304965511741524795818
 y = 206125802322227792620324288402223579150527389536763678651849893056437575112500277790052750653500983741181959067768427518487594853276861096685539441997070762987067005554439261630370838995288791011036648825667994035094451066484847370818183755
-and also:
+Solution:
 x = 204657408988328777892717439281857942998768374436671917521978235492131235773377203999013429662300899410958064278741282688844873483981625839545390826721702876799030462261645084480136293813547606189982706983435226172451009304965511741524795818
 y = -206125802322227792620324288402223579150527389536763678651849893056437575112500277790052750653500983741181959067768427518487594853276861096685539441997070762987067005554439261630370838995288791011036648825667994035094451066484847370818183755
 Recursive solutions:
@@ -3046,7 +3150,7 @@ Q = 4481730590763793293063891900730704495214203948798699676009642895938545721200
 R = 4546273107075161769120359696974201445592217811001178112036172231060248671072844005834737153741286098614728404776685934540184803878007302515778554082419298764281571742871967485154806250405702258900291409009158369410807012054651163978092814805023022007652880403472073719005845917014219682931442810425327161352774010824743152010238384159786546939944463620559943833506902673329442073894385730268272611304178229160774196620581633765000002424247134332228573311365456207553942078017348098651962910704435481370179391185244805024411950315690459223433595319749686895011215687889990119881107467962887333933812367533810450913549074164270791386430553880648097959435678615888267509542245960458050441069555510551992266854053756401894599510377659375
 S = 4513886491477772066805137206773108856609243179985936592905801937227680741913908943012484718804911296009130360462937377215817576434754314054738961535245778987528027769001837223895693196115213218338708665809689813727741043547146751761247338828588468350500484618386986316193813746167523546425122133201438029408768241209019612503584850533722954492146369341539384811714520594928553709200196777037607844574723198214091409780526415243385441728422351212951304086770509895916671013725425833870472735346335530709513895018640025042593086973196346152947793604391634770044381765963944916187941767842730568453639383597623704786959184576111298582013748559821943595036834094575085602335134347036484065845889692620913159801553100694955474365703124999
 
-and also:
+... and also:
 P = 4513886491477772066805137206773108856609243179985936592905801937227680741913908943012484718804911296009130360462937377215817576434754314054738961535245778987528027769001837223895693196115213218338708665809689813727741043547146751761247338828588468350500484618386986316193813746167523546425122133201438029408768241209019612503584850533722954492146369341539384811714520594928553709200196777037607844574723198214091409780526415243385441728422351212951304086770509895916671013725425833870472735346335530709513895018640025042593086973196346152947793604391634770044381765963944916187941767842730568453639383597623704786959184576111298582013748559821943595036834094575085602335134347036484065845889692620913159801553100694955474365703124999
 Q = -4481730590763793293063891900730704495214203948798699676009642895938545721200280376686932996652714794466271179364442613698751310963311485856522449006628605873229808747990996130550538422667234005277187754485844910498268105596360780994139192775131444032441079947362917067145003430046327760724639335321030258509595248379997165587546000637551658554126663346766415013435436050300847295168561525551547012304615449909103648895987041719801387102048227536687458521365652891928132563936816476578646701817590219273658906087643245795098318179591070229632838633973815404719078001013868153706139650912991108408351572330693902795817032619033574052949513077950597163172622265162670033884012802197124205700850022850610741560580582575082612399348450000
 R = -4546273107075161769120359696974201445592217811001178112036172231060248671072844005834737153741286098614728404776685934540184803878007302515778554082419298764281571742871967485154806250405702258900291409009158369410807012054651163978092814805023022007652880403472073719005845917014219682931442810425327161352774010824743152010238384159786546939944463620559943833506902673329442073894385730268272611304178229160774196620581633765000002424247134332228573311365456207553942078017348098651962910704435481370179391185244805024411950315690459223433595319749686895011215687889990119881107467962887333933812367533810450913549074164270791386430553880648097959435678615888267509542245960458050441069555510551992266854053756401894599510377659375
@@ -3056,15 +3160,16 @@ S = 4513886491477772066805137206773108856609243179985936592905801937227680741913
 ** Quad 22242 0 -29005 28414 0 -15566314564815
  22242 * x^2 - 29005 * y^2 + 28414 * x - 15566314564815 = 0
 
+Solution:
 x = -26597
 y = 2399
-and also:
+Solution:
 x = 164741405453002527497857173781655123348529748780083581727847094352767677345677273808711565955128241383249753726170665729166413564078043728485807159896565165306778739728197835046080602411093758015056885829663490771720660958220888063361319369278990243025098007505025410
 y = 144262432241334622151117014353050434150357490472083441447563723601782680956470920237282158746344591683794713002153009842615075069184524911591208909916008442369660994855636195537422440831012831764573534918598274563353002129545759540094401312300874244466436626591351555
-and also:
+Solution:
 x = 164741405453002527497857173781655123348529748780083581727847094352767677345677273808711565955128241383249753726170665729166413564078043728485807159896565165306778739728197835046080602411093758015056885829663490771720660958220888063361319369278990243025098007505025410
 y = -144262432241334622151117014353050434150357490472083441447563723601782680956470920237282158746344591683794713002153009842615075069184524911591208909916008442369660994855636195537422440831012831764573534918598274563353002129545759540094401312300874244466436626591351555
-and also:
+Solution:
 x = -26597
 y = -2399
 Recursive solutions:
@@ -3078,7 +3183,7 @@ R = 6967019508916585254991696069773196558311253937685670543215514938744573613079
 S = 79560324048698947146848959659304965687788314836204530430469293216344265475441284065211970680755735975242465018508875098785031351746158443424221743395525361379143026871742369465919726506939120092217914959804007435506978779236499946152959580462238955532460595120086997730170951065047736962409539174991961484184629734744075092050587193341944518083842644942262760407785083122770215001754042262649823659178807404503715007884246393756938863671364641171522968244832333863865661094209089295496955291242794079117300772536703150097306738998191079330193568148040846324408575734920815659763946628001157613931570731345882762489002353107181422854994499749842838690957871469657985391411906749399304711718205506756927393422331524278794276376198262992261322069145762947909246294908952473597526213717105601371481858425436162665003675258934919078159765239289443354239217849247838289128768972201094372775610844255853606250910246190414185153292939301201940758678416801243272155941334936502989771031701507162164674942709324513931889160727539326967778659438464698536366629984658506043657842709799693813900283664359733740503943134246833003369448519370946335314863958614460783020309023993899862870058747419335304283393441963762456404078999055933964122948963167963677350093750602685745249245815534242684355112103602001
 L = 44501594354454602426790318345143334009499138878113623508435761502897292204396588837445554331422877586684782870277307036314141065712911275913620370358774900455956989899413308126067831137005406542107138325138625874416154020628818620004484478901034725564165219036919085476968473475218908411324806088766573786849162776401783219167576402416875343340843049152038454876795207229594509988823314565344656283121272376243205505174995006445342250754306281362422586276876910077435029444674367287797127541848661075518539674301602193903368699824762534154969741174677342055468832860384121917878160241844989431599009062274020853805810400570867719713542219630644344028115351792229359643729673377170447465794694878670381453939865560793496051762583197968785924744842374749596679604478729845526841739743885180160728645907057892698450341281090262200267759546319789257304734356912486083399422510395943261740337885085980859412685857871727998809374302816512098657464329313154743784601935945872109740054890011183864822726237346903925909673994529465367794206740175704981321674372100844864603331884386953709025038563458194171085637660918040400364722019507100812751293390659132652203022204716287035492163992315362530780527114694141884790116258534403548649385975071898538776794112158921546764200481143770671329209599163260
 
-and also:
+... and also:
 P = 79560324048698947146848959659304965687788314836204530430469293216344265475441284065211970680755735975242465018508875098785031351746158443424221743395525361379143026871742369465919726506939120092217914959804007435506978779236499946152959580462238955532460595120086997730170951065047736962409539174991961484184629734744075092050587193341944518083842644942262760407785083122770215001754042262649823659178807404503715007884246393756938863671364641171522968244832333863865661094209089295496955291242794079117300772536703150097306738998191079330193568148040846324408575734920815659763946628001157613931570731345882762489002353107181422854994499749842838690957871469657985391411906749399304711718205506756927393422331524278794276376198262992261322069145762947909246294908952473597526213717105601371481858425436162665003675258934919078159765239289443354239217849247838289128768972201094372775610844255853606250910246190414185153292939301201940758678416801243272155941334936502989771031701507162164674942709324513931889160727539326967778659438464698536366629984658506043657842709799693813900283664359733740503943134246833003369448519370946335314863958614460783020309023993899862870058747419335304283393441963762456404078999055933964122948963167963677350093750602685745249245815534242684355112103602001
 Q = -90854419951499665192444089786786964379919935465593415208149451847084955331070814333082867838595098500865216242161842091102390484338916840844271052456976559986276658832440557626282638285974647480384144937048345427425955329650093902529040072536391371506202025632845644700462488431669208029174069163417644308267752961887359912152850957422500832941588839350663432371467937333313772240854525161386763953820828132113336783106970518895414372008774103675446407753981472288027242137170410585102814412002563137567061536785948591128824462477457401503828911295242929986547018872065985516157952967883009675760488340343350099573275896991484353508220741915030562295733496074724612970111858682679582511816366928685465902127528724629784823071283568458128791949331532315904250857176431278208351141076327841948471484094757104083800390572113961787764226482790560104745816852414067632082793687198869170604525963040675359137393771209225776410635718532620076128651571178155370132496596896601713451840084801463222297682446276268626100520462541503694859644294981088405943208641006898380926278687030590014096659641944458501607582202782273654718009585120254738780267811365393297469462873780242518790048328085246019940113251334101877126580001322613847298897741040361590569501880986099772217613497260158254515641896510900
 K = 50818879766202047572847908006462802244690611854957187475302457005871908084236773793474798465133384632689043274793435326339310332445718595707576580722067656196092302075660634969981186695624677598693459123906821942102672759491635407562049130457109470427554521844756585592686750372319629485880420963002913263457019811235908408990319766918847485316839873064235547033243533671666057212926880605407159640587776135050097973069485141448827912785679231054933315792389756640766992499120067063264330717682149783383665680938267316492781082679044180561283159009046682120801755033990649585390989557774141094376666908561773060277010000476293789879548010877889452804713536551093921340517442639543023201123124972326934065207762969401530001100469774405676495038052057108216287299333310304487009033282929560232202264304027136182973977807916931721221822891582821766643133170769896527904523909183569272278711593577147387105776542920025821799875586217614242080682684448128008610712100775240444909497679314461508566536780477176936891885012865354654762674878260406982562751200073887031842773643472900369304978420086266399214977075274020163603531836826860650382981398257155127433213303834247610457464464732780175701563287023611780331478749194661173828555701813113027790341781980593309178852409913451390011378367767000
@@ -3090,388 +3195,405 @@ L = -445015943544546024267903183451433340094991388781136235084357615028972922043
 ** Quad 12708 0 0 0 0 -12116453833872
  12708 * x^2 - 12116453833872 = 0
 
+Solution:
 x = -30878  
 y =    t
-and also:
+Solution:
 x = 30878  
 y =    t
 
 ** Quad 0 13228 0 0 21478 -3834904791018
  13228 * x * y + 21478 * y - 3834904791018 = 0
 
+Solution:
 x = 15786
 y = 18363
 
 ** Quad -3842 22070 0 10710 -18061 1300026134591
  - 3842 * x^2 + 22070 * x * y + 10710 * x - 18061 * y + 1300026134591 = 0
 
+Solution:
 x = -26023
 y = -2267
 
 ** Quad 0 0 -21673 -23549 -15131 10104906303292
  - 21673 * y^2 - 23549 * x - 15131 * y + 10104906303292 = 0
 
+Solution:
 x = -2041509908 k^2 + 542488274 k + 393062582y = 47098 k - 6258
-and also:
+Solution:
 x = -2041509908 k^2 + 169539290 k + 425581400y = 47098 k - 1956
-and also:
+Solution:
 x = -2041509908 k^2 - 1499021634 k + 153929242y = 47098 k + 17291
-and also:
+Solution:
 x = -2041509908 k^2 - 1871970618 k - 26432y = 47098 k + 21593
 
 ** Quad 0 6664 0 -9785 0 -3905194619938
  6664 * x * y - 9785 * x - 3905194619938 = 0
 
+Solution:
 x = -26674
 y = -21968
 
 ** Quad 10323 0 24990 3789 11876 -7161058756792
  10323 * x^2 + 24990 * y^2 + 3789 * x + 11876 * y - 7161058756792 = 0
 
+Solution:
 x = -25126
 y = -5077
 
 ** Quad -7394 18444 -17004 13667 -21547 10359824379595
  - 7394 * x^2 + 18444 * x * y - 17004 * y^2 + 13667 * x - 21547 * y + 10359824379595 = 0
 
+Solution:
 x = -24100
 y = 9897
 
 ** Quad 3865 0 6368 0 0 -3328634517252
  3865 * x^2 + 6368 * y^2 - 3328634517252 = 0
 
+Solution:
 x = -262
 y = 22862
-and also:
+Solution:
 x = 262
 y = -22862
-and also:
+Solution:
 x = -262
 y = -22862
-and also:
+Solution:
 x = 262
 y = 22862
 
 ** Quad 5966 0 0 0 -6930 -6129520451894
  5966 * x^2 - 6930 * y - 6129520451894 = 0
 
+Solution:
 x = 6930 k - 868y = 41344380 k^2 - 10356976 k - 883842067
-and also:
+Solution:
 x = 6930 k + 1022y = 41344380 k^2 + 12194504 k - 883591495
-and also:
+Solution:
 x = 6930 k + 518y = 41344380 k^2 + 6180776 k - 884259687
-and also:
+Solution:
 x = 6930 k + 2408y = 41344380 k^2 + 28732256 k - 879498819
-and also:
+Solution:
 x = 6930 k - 2408y = 41344380 k^2 - 28732256 k - 879498819
-and also:
+Solution:
 x = 6930 k - 518y = 41344380 k^2 - 6180776 k - 884259687
-and also:
+Solution:
 x = 6930 k - 1022y = 41344380 k^2 - 12194504 k - 883591495
-and also:
+Solution:
 x = 6930 k + 868y = 41344380 k^2 + 10356976 k - 883842067
-and also:
+Solution:
 x = 6930 k + 2597y = 41344380 k^2 + 30987404 k - 878684460
-and also:
+Solution:
 x = 6930 k - 2443y = 41344380 k^2 - 29149876 k - 879352652
-and also:
+Solution:
 x = 6930 k - 2947y = 41344380 k^2 - 35163604 k - 877013980
-and also:
+Solution:
 x = 6930 k - 1057y = 41344380 k^2 - 12612124 k - 883528852
-and also:
+Solution:
 x = 6930 k + 1057y = 41344380 k^2 + 12612124 k - 883528852
-and also:
+Solution:
 x = 6930 k + 2947y = 41344380 k^2 + 35163604 k - 877013980
-and also:
+Solution:
 x = 6930 k + 2443y = 41344380 k^2 + 29149876 k - 879352652
-and also:
+Solution:
 x = 6930 k - 2597y = 41344380 k^2 - 30987404 k - 878684460
 
 ** Quad -118 -40 -96 0 0 1929600
  - 118 * x^2 - 40 * x * y - 96 * y^2 + 1929600 = 0
 
+Solution:
 x = 120
 y = 30
-and also:
+Solution:
 x = -120
 y = -30
-and also:
+Solution:
 x = -120
 y = 80
-and also:
+Solution:
 x = 120
 y = -80
 
 ** Quad 124 0 124 0 0 -3631216
  124 * x^2 + 124 * y^2 - 3631216 = 0
 
+Solution:
 x = -120
 y = -122
-and also:
+Solution:
 x = 120
 y = 122
-and also:
+Solution:
 x = 122
 y = -120
-and also:
+Solution:
 x = -122
 y = 120
-and also:
+Solution:
 x = 122
 y = 120
-and also:
+Solution:
 x = -122
 y = -120
-and also:
+Solution:
 x = -120
 y = 122
-and also:
+Solution:
 x = 120
 y = -122
 
 ** Quad 35 -35 7 0 32 10365
  35 * x^2 - 35 * x * y + 7 * y^2 + 32 * y + 10365 = 0
 
+Solution:
 x = 139
 y = 200
-and also:
+Solution:
 x = -33
 y = -101
-and also:
+Solution:
 x = -68
 y = -101
-and also:
+Solution:
 x = -276
 y = -381
 Recursive solutions:
+
 x_n+1 =  64079 * x_n - 46368 * y_n + 131008 *  
 y_n+1 =  231840 * x_n - 167761 * y_n + 473984 *  
-and also:
+... and also:
 x_n+1 =  - 167761 * x_n + 46368 * y_n + 342976 *  
 y_n+1 =  - 231840 * x_n + 64079 * y_n + 473984 *  
 
 ** Quad 0 57 -408 0 342 0
  57 * x * y - 408 * y^2 + 342 * y + 0 = 0
 
+Solution:
 x =    t
 y = 0  
-and also:
+Solution:
 x = 6 + 136 t
 y =   19 t
 
 ** Quad 182 494 0 0 0 0
  182 * x^2 + 494 * x * y + 0 = 0
 
+Solution:
 x =   19 t
 y =   -  7 t
-and also:
+Solution:
 x = 0  
 y =    t
 
 ** Quad 0 0 384 0 0 0
  384 * y^2 + 0 = 0
 
+Solution:
 x =    t
 y = 0  
 
 ** Quad 8 -2022 436 0 0 -137438953472
  8 * x^2 - 2022 * x * y + 436 * y^2 - 137438953472 = 0
 
+Solution:
 x = 772142906374807153538755794868541285594533988
 y = 3577843699088753061811358804077287781769231280
-and also:
+Solution:
 x = -772142906374807153538755794868541285594533988
 y = -3577843699088753061811358804077287781769231280
-and also:
+Solution:
 x = 6296293257415878281460279084472
 y = 29174849594131294272661239677700
-and also:
+Solution:
 x = -6296293257415878281460279084472
 y = -29174849594131294272661239677700
-and also:
+Solution:
 x = 1218234516496895054663726689768603352
 y = 5644878238051323653887679550424849440
-and also:
+Solution:
 x = -1218234516496895054663726689768603352
 y = -5644878238051323653887679550424849440
-and also:
+Solution:
 x = 3990724371485651499738907932153361119568
 y = 18491639215278970439082129101286248186520
-and also:
+Solution:
 x = -3990724371485651499738907932153361119568
 y = -18491639215278970439082129101286248186520
-and also:
+Solution:
 x = 1922047492674920100079547408
 y = 8906104626801074840193051840
-and also:
+Solution:
 x = -1922047492674920100079547408
 y = -8906104626801074840193051840
-and also:
+Solution:
 x = -903527852038307529219282181935665945556578672032
 y = -3577843699088753061811358804077287781769231280
-and also:
+Solution:
 x = 903527852038307529219282181935665945556578672032
 y = 3577843699088753061811358804077287781769231280
-and also:
+Solution:
 x = -1425524740150975158465447279680112092608
 y = -5644878238051323653887679550424849440
-and also:
+Solution:
 x = 1425524740150975158465447279680112092608
 y = 5644878238051323653887679550424849440
-and also:
+Solution:
 x = 3032475696650779232
 y = 14051445625319498880
-and also:
+Solution:
 x = -3032475696650779232
 y = -14051445625319498880
-and also:
+Solution:
 x = -2249095896931296745758714305152
 y = -8906104626801074840193051840
-and also:
+Solution:
 x = 2249095896931296745758714305152
 y = 8906104626801074840193051840
-and also:
+Solution:
 x = 4784433728
 y = 22169414400
-and also:
+Solution:
 x = -4784433728
 y = -22169414400
-and also:
+Solution:
 x = -3548470406102852562688
 y = -14051445625319498880
-and also:
+Solution:
 x = 3548470406102852562688
 y = 14051445625319498880
-and also:
+Solution:
 x = -1948288
 y = -7680
-and also:
+Solution:
 x = 1948288
 y = 7680
-and also:
+Solution:
 x = -5598535055872
 y = -22169414400
-and also:
+Solution:
 x = 5598535055872
 y = 22169414400
-and also:
+Solution:
 x = -1234871091703552
 y = -4889916503040
-and also:
+Solution:
 x = 1234871091703552
 y = 4889916503040
-and also:
+Solution:
 x = -782687521026779126430208
 y = -3099332919448652298240
-and also:
+Solution:
 x = 782687521026779126430208
 y = 3099332919448652298240
-and also:
+Solution:
 x = -7168
 y = 7680
-and also:
+Solution:
 x = 7168
 y = -7680
-and also:
+Solution:
 x = -496083971587625373264734047378432
 y = -1964423020230766773590474772480
-and also:
+Solution:
 x = 496083971587625373264734047378432
 y = 1964423020230766773590474772480
-and also:
+Solution:
 x = 1055304439808
 y = 4889916503040
-and also:
+Solution:
 x = -1055304439808
 y = -4889916503040
-and also:
+Solution:
 x = -314428555783415609811114881461534179862528
 y = -1245093025727306088450130571876202700800
-and also:
+Solution:
 x = 314428555783415609811114881461534179862528
 y = 1245093025727306088450130571876202700800
-and also:
+Solution:
 x = 668874363867741949952
 y = 3099332919448652298240
-and also:
+Solution:
 x = -668874363867741949952
 y = -3099332919448652298240
-and also:
+Solution:
 x = 423946775700928760258451365888
 y = 1964423020230766773590474772480
-and also:
+Solution:
 x = -423946775700928760258451365888
 y = -1964423020230766773590474772480
-and also:
+Solution:
 x = 11467567283962120813204407826020868514041679872
 y = 53136748407663497973260124032390903173021286400
-and also:
+Solution:
 x = -11467567283962120813204407826020868514041679872
 y = -53136748407663497973260124032390903173021286400
-and also:
+Solution:
 x = 268706469161004044655620580176052764672
 y = 1245093025727306088450130571876202700800
-and also:
+Solution:
 x = -268706469161004044655620580176052764672
 y = -1245093025727306088450130571876202700800
-and also:
+Solution:
 x = 18092747042335600069603399242691698688
 y = 83835544521864632453656784019170426880
-and also:
+Solution:
 x = -18092747042335600069603399242691698688
 y = -83835544521864632453656784019170426880
-and also:
+Solution:
 x = 170311866270470231580175832445483810559146426368
 y = 789166399878914429103711018972129575279018065920
-and also:
+Solution:
 x = -170311866270470231580175832445483810559146426368
 y = -789166399878914429103711018972129575279018065920
-and also:
+Solution:
 x = 28545504676981748293980209152
 y = 132270015307596352477122723840
-and also:
+Solution:
 x = -28545504676981748293980209152
 y = -132270015307596352477122723840
-and also:
+Solution:
 x = -21171341130858950252592148761602633695232
 y = -83835544521864632453656784019170426880
-and also:
+Solution:
 x = 21171341130858950252592148761602633695232
 y = 83835544521864632453656784019170426880
-and also:
+Solution:
 x = 45037154134577348608
 y = 208686626290223677440
-and also:
+Solution:
 x = -45037154134577348608
 y = -208686626290223677440
-and also:
+Solution:
 x = 71056556032
 y = 329251553280
-and also:
+Solution:
 x = -71056556032
 y = -329251553280
-and also:
+Solution:
 x = -33402700864317996340298788241408
 y = -132270015307596352477122723840
-and also:
+Solution:
 x = 33402700864317996340298788241408
 y = 132270015307596352477122723840
-and also:
+Solution:
 x = -52700507640719457124352
 y = -208686626290223677440
-and also:
+Solution:
 x = 52700507640719457124352
 y = 208686626290223677440
-and also:
+Solution:
 x = -131072
 y = 0
-and also:
+Solution:
 x = 131072
 y = 0
-and also:
+Solution:
 x = -83147273535488
 y = -329251553280
-and also:
+Solution:
 x = 83147273535488
 y = 329251553280
 Recursive solutions:
@@ -3483,7 +3605,7 @@ Q = -335651884976274273498192438996469959732945604828306679280702756638706099033
 R = 615875018305090410088426493571504513271459825373039778496702305759093759694439813655840
 S = -132913443569054465649625507978644681160567147726175831867444699524623420566858441552131
 
-and also:
+... and also:
 P = -132913443569054465649625507978644681160567147726175831867444699524623420566858441552131
 Q = 33565188497627427349819243899646995973294560482830667928070275663870609903346969844243280
 R = -615875018305090410088426493571504513271459825373039778496702305759093759694439813655840
@@ -3493,9 +3615,10 @@ S = 1555294974330425466842001707422191210482009037153096281831740630810863243422
 ** Quad 1 65536 0 -3525 0 0
  x^2 + 65536 * x * y - 3525 * x + 0 = 0
 
+Solution:
 x = 3525 + 65536 t
 y =   -   t
-and also:
+Solution:
 x = 0  
 y =    t
 1: 1

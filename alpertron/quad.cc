@@ -15,6 +15,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
 
+#include "quad.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -34,16 +36,20 @@ using namespace std;
 
 static constexpr bool VERBOSE = false;
 
-enum class LinearSolutionType {
+enum class LinSolType {
+  // Solutions of the form (Xlin * t + Xind, Ylin * t + Yind).
   SOLUTION_FOUND,
   NO_SOLUTIONS,
+  // (x, y) for any x,y.
   INFINITE_SOLUTIONS,
 };
 
-struct LinearSolution {
-  LinearSolutionType type = LinearSolutionType::NO_SOLUTIONS;
+// Result of the linear equation solver; might not actually be
+// a solution.
+struct LinSol {
+  LinSolType type = LinSolType::NO_SOLUTIONS;
 
-  LinearSolution(LinearSolutionType type) : type(type) {}
+  LinSol(LinSolType type) : type(type) {}
 
   // Only meaningful when SOLUTION_FOUND.
   BigInt Xlin, Xind;
@@ -83,7 +89,7 @@ static bool IsBig(const BigInt &bg, int num_limbs) {
   return tmp.nbrLimbs > num_limbs;
 }
 
-static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
+static LinSol LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
   if (VERBOSE) {
     printf("LinearEq %s %s %s\n",
            coeffX.ToString().c_str(),
@@ -95,16 +101,16 @@ static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
   if (coeffX == 0) {
     if (coeffY == 0) {
       if (coeffInd != 0) {
-        return LinearSolution(LinearSolutionType::NO_SOLUTIONS);
+        return LinSol(LinSolType::NO_SOLUTIONS);
       } else {
-        return LinearSolution(LinearSolutionType::INFINITE_SOLUTIONS);
+        return LinSol(LinSolType::INFINITE_SOLUTIONS);
       }
     }
 
     if (!BigInt::DivisibleBy(coeffInd, coeffY)) {
-      return LinearSolution(LinearSolutionType::NO_SOLUTIONS);
+      return LinSol(LinSolType::NO_SOLUTIONS);
     } else {
-      LinearSolution sol(LinearSolutionType::SOLUTION_FOUND);
+      LinSol sol(LinSolType::SOLUTION_FOUND);
       sol.Xind = BigInt(0);
       sol.Xlin = BigInt(1);
       sol.Yind = -BigInt::DivExact(coeffInd, coeffY);
@@ -118,18 +124,13 @@ static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
     const auto [qq, rr] = BigInt::QuotRem(coeffInd, coeffX);
 
     if (rr != 0) {
-      return LinearSolution(LinearSolutionType::NO_SOLUTIONS);
+      return LinSol(LinSolType::NO_SOLUTIONS);
     } else {
-      LinearSolution sol(LinearSolutionType::SOLUTION_FOUND);
+      LinSol sol(LinSolType::SOLUTION_FOUND);
       sol.Yind = BigInt(0);
       sol.Ylin = BigInt(1);
-      // intToBigInteger(&Yind, 0);
-      // intToBigInteger(&Ylin, 1);
       sol.Xind = -qq;
-      // BigIntToBigInteger(qq, &Xind);
-      // BigIntNegate(&Xind, &Xind);
       sol.Xlin = BigInt(0);
-      // intToBigInteger(&Xlin, 0);
       return sol;
     }
   }
@@ -144,7 +145,7 @@ static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
     if (!BigInt::DivisibleBy(coeffInd, gcdxy)) {
       // The independent coefficient is not a multiple of
       // the gcd, so there are no solutions.
-      return LinearSolution(LinearSolutionType::NO_SOLUTIONS);
+      return LinSol(LinSolType::NO_SOLUTIONS);
     }
 
     // Divide all coefficients by the gcd.
@@ -271,7 +272,7 @@ static LinearSolution LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
     ylin = -ylin;
   }
 
-  LinearSolution sol(LinearSolutionType::SOLUTION_FOUND);
+  LinSol sol(LinSolType::SOLUTION_FOUND);
 
   sol.Xlin = std::move(xlin);
   sol.Xind = std::move(xind);
@@ -442,6 +443,9 @@ struct Quad {
   // TODO: Lots of these could be local; dynamically sized.
   bool hyperbolic_recursive_solution = false;
 
+  // Solutions accumulated here.
+  Solutions solutions;
+
   std::string *output = nullptr;
   // presentational. Can probably remove it.
   bool also = false;
@@ -484,14 +488,13 @@ struct Quad {
   void ShowLin(const BigInt &coeffX, const BigInt &coeffY,
                const BigInt &coeffInd,
                const char *x, const char *y) {
-    LinearSolutionType t;
-    t = Show(coeffX, x, LinearSolutionType::SOLUTION_FOUND);
+    LinSolType t;
+    t = Show(coeffX, x, LinSolType::SOLUTION_FOUND);
     t = Show(coeffY, y, t);
     Show1(coeffInd, t);
   }
 
-  void ShowLinInd(const BigInt &lin, const BigInt &ind,
-                  const std::string &var) {
+  void ShowLinInd(const BigInt &lin, const BigInt &ind) {
     if (ind == 0 && lin == 0) {
       ShowText("0");
     }
@@ -516,30 +519,39 @@ struct Quad {
         // Aux0.sign = SIGN_POSITIVE;
         ShowBigInt(BigInt::Abs(lin));
       }
-      ShowChar(' ');
-      ShowText(var);
+      ShowText(" t");
     }
   }
 
 
-  void PrintLinear(const LinearSolution &sol, const string &var) {
-    if (sol.type == LinearSolutionType::NO_SOLUTIONS) {
+  void PrintLinear(const LinSol &sol) {
+    switch (sol.type) {
+    default:
+    case LinSolType::NO_SOLUTIONS:
       return;
-    }
-    if (var == "t") {
+
+    case LinSolType::INFINITE_SOLUTIONS:
       SolutionHeader();
-    }
-    if (sol.type == LinearSolutionType::INFINITE_SOLUTIONS) {
+      solutions.any_integers = true;
       ShowText("\nx, y: any integer");
       return;
+
+    case LinSolType::SOLUTION_FOUND:
+      // Port note: This used to actually have the effect of swapping
+      // xind/yind xlin/ylin.
+      SolutionHeader();
+      ShowText("\nx = ");
+      ShowLinInd(sol.Xlin, sol.Xind);
+      ShowText("\ny = ");
+      ShowLinInd(sol.Ylin, sol.Yind);
+      LinearSolution s;
+      s.MX = sol.Xlin;
+      s.BX = sol.Xind;
+      s.MY = sol.Ylin;
+      s.BY = sol.Yind;
+      solutions.linear.emplace_back(std::move(s));
+      return;
     }
-    // Port note: This used to actually have the effect of swapping
-    // xind/yind xlin/ylin.
-    ShowText("\nx = ");
-    ShowLinInd(sol.Xlin, sol.Xind, var);
-    ShowText("\ny = ");
-    ShowLinInd(sol.Ylin, sol.Yind, var);
-    return;
   }
 
   void ShowSolutionXY(const BigInt &x, const BigInt &y) {
@@ -547,11 +559,12 @@ struct Quad {
     ShowBigInt(x);
     ShowText("\ny = ");
     ShowBigInt(y);
+    solutions.points.emplace_back(PointSolution{.X = x, .Y = y});
   }
 
   void PrintQuad(const BigInt &T2, const BigInt &T,
-                 const BigInt &Ind,
-                 const char *var1, const char *var2) {
+                 const BigInt &Ind) {
+    const char *var1 = "k";
     if (BigInt::Abs(T2) == 1) {
       // abs(coeffT2) = 1
       if (T2 == 1) {
@@ -585,10 +598,6 @@ struct Quad {
       // abs(coeffT) = 1
       ShowText(var1);
       ShowText(" * ");
-      if (var2 != NULL) {
-        ShowText(var2);
-      }
-      ShowText(" ");
     } else if (T != 0) {
       // Port note: original called showlimbs if negative, which I
       // think is just a way of printing the absolute value without
@@ -596,10 +605,6 @@ struct Quad {
       ShowBigInt(BigInt::Abs(T));
       ShowText(" ");
       ShowText(var1);
-      if (var2 != NULL) {
-        ShowText(" * ");
-        ShowText(var2);
-      }
     } else {
       // Nothing to do.
     }
@@ -617,29 +622,19 @@ struct Quad {
         // Nothing to do.
       }
 
-      if (var2 == NULL) {
-        // Same trick for abs value.
-        ShowBigInt(BigInt::Abs(Ind));
-      } else if (BigInt::Abs(Ind) != 1) {
-        ShowBigInt(BigInt::Abs(Ind));
-        ShowText(" * ");
-        ShowText(var2);
-        showSquare();
-      } else {
-        ShowText(var2);
-        showSquare();
-      }
+      // Same trick for abs value.
+      ShowBigInt(BigInt::Abs(Ind));
     }
   }
 
 
   // XXX why does this take/return "linear solution type" ?
-  LinearSolutionType Show(const BigInt &num, const string &str,
-                          LinearSolutionType t) {
-    LinearSolutionType tOut = t;
+  LinSolType Show(const BigInt &num, const string &str,
+                  LinSolType t) {
+    LinSolType tOut = t;
     if (num != 0) {
       // num is not zero.
-      if (t == LinearSolutionType::NO_SOLUTIONS && num >= 0) {
+      if (t == LinSolType::NO_SOLUTIONS && num >= 0) {
         ShowText(" +");
       }
 
@@ -659,32 +654,33 @@ struct Quad {
       if (output != nullptr)
         *output += str;
 
-      if (t == LinearSolutionType::SOLUTION_FOUND) {
-        tOut = LinearSolutionType::NO_SOLUTIONS;
+      if (t == LinSolType::SOLUTION_FOUND) {
+        tOut = LinSolType::NO_SOLUTIONS;
       }
     }
     return tOut;
   }
 
-  void Show1(const BigInt &num, LinearSolutionType t) {
-    const LinearSolutionType u = Show(num, "", t);
+  void Show1(const BigInt &num, LinSolType t) {
+    const LinSolType u = Show(num, "", t);
     ShowChar(' ');
     // Port note: This used to test u & 1 as a "trick" for detecting NO_SOLUTIONS?
-    if (u != LinearSolutionType::NO_SOLUTIONS || num == 1 || num == -1) {
+    if (u != LinSolType::NO_SOLUTIONS || num == 1 || num == -1) {
       // Show absolute value of num.
       ShowBigInt(BigInt::Abs(num));
     }
   }
 
+  // Print the original quadratic equation.
   void ShowEq(
       const BigInt &coeffA, const BigInt &coeffB,
       const BigInt &coeffC, const BigInt &coeffD,
       const BigInt &coeffE, const BigInt &coeffF,
       const char *x, const char *y) {
 
-    LinearSolutionType t;
+    LinSolType t;
     string vxx = StringPrintf("%s^2", x);
-    t = Show(coeffA, vxx, LinearSolutionType::SOLUTION_FOUND);
+    t = Show(coeffA, vxx, LinSolType::SOLUTION_FOUND);
 
     string vxy = StringPrintf("%s * %s", x, y);
     t = Show(coeffB, vxy, t);
@@ -711,8 +707,8 @@ struct Quad {
                   const BigInt &ci) {
     ShowChar(variable);
     ShowText("_n+1 = ");
-    LinearSolutionType t = Show(cx, "x_n",
-                                LinearSolutionType::SOLUTION_FOUND);
+    LinSolType t = Show(cx, "x_n",
+                        LinSolType::SOLUTION_FOUND);
     t = Show(cy, "y_n", t);
     Show1(ci, t);
   }
@@ -835,8 +831,7 @@ struct Quad {
 
       // Result box:
       ShowText("\nx = ");
-      PrintQuad(VV3, VV2, VV1,
-                "k", NULL);
+      PrintQuad(VV3, VV2, VV1);
     }
 
     {
@@ -845,9 +840,8 @@ struct Quad {
         ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2) :
         ComputeYDiscrZero(U, U2, S, R, Z);
 
-      ShowText("y = ");
-      PrintQuad(VV3, VV2, VV1,
-                "k", NULL);
+      ShowText("\ny = ");
+      PrintQuad(VV3, VV2, VV1);
     }
   }
 
@@ -1682,10 +1676,10 @@ struct Quad {
       if (V == 0) {
         // printf("disczero_vzero coverage\n");
         // v equals zero, so (1) becomes 2ax + by + d = 0
-        LinearSolution sol = LinearEq(A << 1, B, D);
+        LinSol sol = LinearEq(A << 1, B, D);
         // Result box:
         if (swap_xy) sol.SwapXY();
-        PrintLinear(sol, "t");
+        PrintLinear(sol);
         return;
       }
 
@@ -1702,16 +1696,16 @@ struct Quad {
 
       // This equation represents two parallel lines.
       {
-        LinearSolution sol = LinearEq(A2, B, D + G);
+        LinSol sol = LinearEq(A2, B, D + G);
         if (swap_xy) sol.SwapXY();
         // Result box:
-        PrintLinear(sol, "t");
+        PrintLinear(sol);
       }
 
       {
-        LinearSolution sol = LinearEq(A2, B, D - G);
+        LinSol sol = LinearEq(A2, B, D - G);
         if (swap_xy) sol.SwapXY();
-        PrintLinear(sol, "t");
+        PrintLinear(sol);
       }
 
       return;
@@ -2280,9 +2274,9 @@ struct Quad {
         // Solve Dy + beta = 0
 
         {
-          LinearSolution sol = LinearEq(BigInt(0), Discr, Beta);
+          LinSol sol = LinearEq(BigInt(0), Discr, Beta);
           // Result box:
-          PrintLinear(sol, "t");
+          PrintLinear(sol);
         }
 
         {
@@ -2291,9 +2285,9 @@ struct Quad {
           const BigInt Aux1 = C * Discr;
           const BigInt Aux2 = B * Alpha + C * Beta;
 
-          LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
+          LinSol sol = LinearEq(Aux0, Aux1, Aux2);
           // Result box:
-          PrintLinear(sol, "t");
+          PrintLinear(sol);
         }
 
       } else {
@@ -2308,9 +2302,9 @@ struct Quad {
           const BigInt Aux1 = (B + G) * Discr;
           const BigInt Aux2 = -(AAlpha2 + (B + G) * Beta);
 
-          LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
+          LinSol sol = LinearEq(Aux0, Aux1, Aux2);
           // Result box:
-          PrintLinear(sol, "t");
+          PrintLinear(sol);
         }
 
         {
@@ -2321,15 +2315,15 @@ struct Quad {
           const BigInt Aux1 = (B - G) * Discr;
           const BigInt Aux2 = -(AAlpha2 + (B - G) * Beta);
 
-          LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
+          LinSol sol = LinearEq(Aux0, Aux1, Aux2);
           /*
-          if (sol.type == LinearSolutionType::SOLUTION_FOUND) {
+          if (sol.type == LinSolType::SOLUTION_FOUND) {
             printf("bminusg coverage\n");
           }
           */
 
           // Result box:
-          PrintLinear(sol, "t");
+          PrintLinear(sol);
         }
       }
 
@@ -2739,9 +2733,9 @@ struct Quad {
 
     // Test whether the equation is linear. A = B = C = 0.
     if (A == 0 && B == 0 && C == 0) {
-      LinearSolution sol = LinearEq(D, E, F);
+      LinSol sol = LinearEq(D, E, F);
       // Result box:
-      PrintLinear(sol, "t");
+      PrintLinear(sol);
       return;
     }
 
