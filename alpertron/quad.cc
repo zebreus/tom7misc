@@ -441,8 +441,6 @@ UnimodularSubstitution(const BigInt &M,
 struct Quad {
   // TODO: Lots of these could be local; dynamically sized.
   int showRecursiveSolution = 0;
-  // BigInt Xind, Yind, Xlin, Ylin;
-  bool ExchXY = false;
 
   // Functions that have been expunged of state above.
   struct Clean {
@@ -777,6 +775,7 @@ struct Quad {
     }
 
 
+    // Only the parabolic mode will swap x and y.
     void CallbackQuadModParabolic(
         bool swap_xy,
         const BigInt &A, const BigInt &B, const BigInt &C,
@@ -1048,12 +1047,9 @@ struct Quad {
       return false;
     }
 
-    void ShowXYOne(bool swap_xy, const BigInt &X, const BigInt &Y) {
+    void ShowXYOne(const BigInt &X, const BigInt &Y) {
       showAlso();
-      if (swap_xy)
-        ShowSolutionXY(Y, X);
-      else
-        ShowSolutionXY(X, Y);
+      ShowSolutionXY(X, Y);
     }
 
 
@@ -1259,7 +1255,6 @@ struct Quad {
     // Do not substitute if m equals zero.
     // Returns true if solution found.
     bool NonSquareDiscrSolutionOne(
-        bool swap_xy,
         const BigInt &M, const BigInt &E, const BigInt &K,
         const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
         const BigInt &H, const BigInt &I,
@@ -1282,7 +1277,7 @@ struct Quad {
       {
         const auto &[Temp0, Temp1] =
           UnimodularSubstitution(M, Z, O);
-        sol_found = ShowPointOne(swap_xy, Temp0, Temp1, Alpha, Beta, Div);
+        sol_found = ShowPointOne(Temp0, Temp1, Alpha, Beta, Div);
       }
 
       // Z: (-tu - Kv)*E
@@ -1292,7 +1287,7 @@ struct Quad {
       {
         const auto &[Temp0, Temp1] =
           UnimodularSubstitution(M, -Z, -O);
-        sol_found = ShowPointOne(swap_xy, Temp0, Temp1, Alpha, Beta, Div) ||
+        sol_found = ShowPointOne(Temp0, Temp1, Alpha, Beta, Div) ||
           sol_found;
       }
       return sol_found;
@@ -1302,7 +1297,6 @@ struct Quad {
     // Returns true if a solution found (solFound = true in original code).
     // XXX this should return them, rather than modifying xminus/yminus
     bool NonSquareDiscrSolutionTwo(
-        bool swap_xy,
         const BigInt &M, const BigInt &E, const BigInt &K,
         const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
         const BigInt &H, const BigInt &I,
@@ -1351,8 +1345,7 @@ struct Quad {
 
     // Returns true if we found a solution (and so should show
     // the recursive solution).
-    bool ShowPointOne(bool swap_xy,
-                      const BigInt &X, const BigInt &Y,
+    bool ShowPointOne(const BigInt &X, const BigInt &Y,
                       const BigInt &Alpha, const BigInt &Beta,
                       const BigInt &Div) {
 
@@ -1374,7 +1367,7 @@ struct Quad {
 
         // Not HYPERBOLIC.
         // Result box:
-        ShowXYOne(swap_xy, tmp1, tmp2);
+        ShowXYOne(tmp1, tmp2);
         return true;
       }
       return false;
@@ -1382,7 +1375,6 @@ struct Quad {
 
 
     void CheckSolutionSquareDiscr(
-        bool swap_xy,
         const BigInt &CurrentFactor,
         const BigInt &H, const BigInt &I, const BigInt &L,
         const BigInt &M, const BigInt &Z,
@@ -1423,7 +1415,7 @@ struct Quad {
           BigInt U2 = BigInt::DivExact(P, O);
           // Show results.
 
-          ShowPointOne(swap_xy, U1, U2, Alpha, Beta, Div);
+          ShowPointOne(U1, U2, Alpha, Beta, Div);
           return;
         }
       }
@@ -1475,20 +1467,20 @@ struct Quad {
 
     switch (QMOD_CALLBACK) {
     case QmodCallbackType::PARABOLIC:
+      // Real uses of swap_xy
       clean.CallbackQuadModParabolic(swap_xy,
                                      A, B, C, D, E,
                                      U, V, Value);
       break;
 
     case QmodCallbackType::ELLIPTIC:
-      CallbackQuadModElliptic(swap_xy, A, B, C, E, M, K,
+      CallbackQuadModElliptic(A, B, C, E, M, K,
                               Alpha, Beta, Div, Discr,
                               Value);
       break;
 
     case QmodCallbackType::HYPERBOLIC:
-      CallbackQuadModHyperbolic(swap_xy,
-                                A, B, C, K, E, M, Alpha, Beta, Div,
+      CallbackQuadModHyperbolic(A, B, C, K, E, M, Alpha, Beta, Div,
                                 Discr, Value);
       break;
 
@@ -1556,6 +1548,7 @@ struct Quad {
     if (ValNn == 1) {
       // All values from 0 to GcdAll - 1 are solutions.
       if (GcdAll > 5) {
+        printf("allvalues coverage\n");
         clean.ShowText("\nAll values of x between 0 and ");
 
         // XXX Suspicious that this modifies GcdAll in place (I
@@ -1669,16 +1662,14 @@ struct Quad {
                           BigInt D, BigInt E, BigInt F) {
     // fprintf(stderr, "disciszero coverage\n");
     // Next algorithm does not work if A = 0. In this case, exchange x and y.
-    ExchXY = false;
+    bool swap_xy = false;
     if (A == 0) {
-      ExchXY = true;
+      swap_xy = true;
       // Exchange coefficients of x^2 and y^2.
       std::swap(A, C);
       // Exchange coefficients of x and y.
       std::swap(D, E);
     }
-
-    const bool swap_xy = ExchXY;
 
     // ax^2 + bxy + cx^2 + dx + ey + f = 0 (1)
     // Multiplying by 4a:
@@ -1811,8 +1802,7 @@ struct Quad {
 
     if (K == 0) {
       // If k=0, the only solution is (X, Y) = (0, 0)
-      if (clean.ShowPointOne(ExchXY,
-                             BigInt(0), BigInt(0), Alpha, Beta, Div)) {
+      if (clean.ShowPointOne(BigInt(0), BigInt(0), Alpha, Beta, Div)) {
         showRecursiveSolution = true;
       }
       return;
@@ -1822,7 +1812,8 @@ struct Quad {
       printf("start NSD %s %s %s | %s %s | %s %s %s\n",
              A.ToString().c_str(), B.ToString().c_str(), C.ToString().c_str(),
              K.ToString().c_str(), Discr.ToString().c_str(),
-             Alpha.ToString().c_str(), Beta.ToString().c_str(), Div.ToString().c_str());
+             Alpha.ToString().c_str(), Beta.ToString().c_str(),
+             Div.ToString().c_str());
     }
 
     // ughhh
@@ -1952,7 +1943,7 @@ struct Quad {
 
       SolveQuadModEquation<QMOD_CALLBACK>(
           // Or maybe it's always false?
-          ExchXY,
+          false,
           // Coefficients and modulus
           A, B, C, BigInt::Abs(K),
           // Problem state
@@ -2065,7 +2056,6 @@ struct Quad {
   }
 
   void CallbackQuadModElliptic(
-      bool swap_xy,
       const BigInt &A, const BigInt &B, const BigInt &C,
       const BigInt &E, const BigInt &M, const BigInt &K,
       const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
@@ -2089,7 +2079,6 @@ struct Quad {
         // Discriminant is less than -4 and P equals 1.
 
         if (clean.NonSquareDiscrSolutionOne(
-                swap_xy,
                 M, E, K,
                 Alpha, Beta, Div,
                 BigInt(1), BigInt(0),
@@ -2107,7 +2096,6 @@ struct Quad {
         if (plow == 1) {
           bool sol_found =
           clean.NonSquareDiscrSolutionOne(
-                swap_xy,
                   M, E, K,
                   Alpha, Beta, Div,
                   BigInt(1), BigInt(0),
@@ -2115,7 +2103,6 @@ struct Quad {
 
           sol_found =
             clean.NonSquareDiscrSolutionOne(
-                swap_xy,
                 M, E, K,
                 Alpha, Beta, Div,
                 // (Q/2, -1)
@@ -2128,7 +2115,6 @@ struct Quad {
 
           bool sol_found =
             clean.NonSquareDiscrSolutionOne(
-                swap_xy,
                 M, E, K,
                 Alpha, Beta, Div,
                 // ((Q/2-1)/2, -1)
@@ -2137,7 +2123,6 @@ struct Quad {
 
           sol_found =
             clean.NonSquareDiscrSolutionOne(
-                swap_xy,
                 M, E, K,
                 Alpha, Beta, Div,
                 // ((Q/2+1)/2, -1)
@@ -2156,7 +2141,6 @@ struct Quad {
           // printf("plow1 coverage\n");
           bool sol_found =
           clean.NonSquareDiscrSolutionOne(
-              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               BigInt(1), BigInt(0),
@@ -2164,7 +2148,6 @@ struct Quad {
 
           sol_found =
           clean.NonSquareDiscrSolutionOne(
-              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               // ((Q-1)/2, -1)
@@ -2173,7 +2156,6 @@ struct Quad {
 
           sol_found =
           clean.NonSquareDiscrSolutionOne(
-              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               // ((Q+1)/2, -1)
@@ -2188,7 +2170,6 @@ struct Quad {
 
           bool sol_found =
           clean.NonSquareDiscrSolutionOne(
-              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               // ((Q+3)/6, -1)
@@ -2197,7 +2178,6 @@ struct Quad {
 
           sol_found =
           clean.NonSquareDiscrSolutionOne(
-              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               // (Q/3, -2)
@@ -2206,7 +2186,6 @@ struct Quad {
 
           sol_found =
           clean.NonSquareDiscrSolutionOne(
-              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               // ((Q-3)/6, -1)
@@ -2253,7 +2232,6 @@ struct Quad {
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         bool sol_found =
         clean.NonSquareDiscrSolutionOne(
-            swap_xy,
             M, E, K,
             Alpha, Beta, Div,
             U1, V1,
@@ -2278,7 +2256,6 @@ struct Quad {
 
           bool sol_found =
           clean.NonSquareDiscrSolutionOne(
-              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               U1, V1,
@@ -2290,7 +2267,6 @@ struct Quad {
 
             sol_found =
             clean.NonSquareDiscrSolutionOne(
-                swap_xy,
                 M, E, K,
                 Alpha, Beta, Div,
                 U1, V1,
@@ -2339,7 +2315,6 @@ struct Quad {
 
         {
           LinearSolution sol = LinearEq(BigInt(0), Discr, Beta);
-          CHECK(!ExchXY);
           // Result box:
           clean.PrintLinear(sol, "t");
         }
@@ -2351,7 +2326,6 @@ struct Quad {
           const BigInt Aux2 = B * Alpha + C * Beta;
 
           LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
-          CHECK(!ExchXY);
           // Result box:
           clean.PrintLinear(sol, "t");
         }
@@ -2370,7 +2344,6 @@ struct Quad {
 
           LinearSolution sol = LinearEq(Aux0, Aux1, Aux2);
           // Result box:
-          CHECK(!ExchXY);
           clean.PrintLinear(sol, "t");
         }
 
@@ -2390,7 +2363,6 @@ struct Quad {
           */
 
           // Result box:
-          CHECK(!ExchXY);
           clean.PrintLinear(sol, "t");
         }
       }
@@ -2474,13 +2446,11 @@ struct Quad {
     BigInt CurrentFactor(1);
     for (;;) {
       // Process positive divisor.
-      clean.CheckSolutionSquareDiscr(ExchXY,
-                                     CurrentFactor,
+      clean.CheckSolutionSquareDiscr(CurrentFactor,
                                      H, I, L, M, Z,
                                      Alpha, Beta, Div);
       // Process negative divisor.
-      clean.CheckSolutionSquareDiscr(ExchXY,
-                                     -CurrentFactor,
+      clean.CheckSolutionSquareDiscr(-CurrentFactor,
                                      H, I, L, M, Z,
                                      Alpha, Beta, Div);
 
@@ -2595,7 +2565,6 @@ struct Quad {
           // printf("aaaaaaa coverage\n");
           solFound =
             clean.NonSquareDiscrSolutionTwo(
-                ExchXY,
                 M, E, -BigInt::Abs(K),
                 Alpha, Beta, Div,
                 V1 - V2, U1 - U2, Value,
@@ -2606,7 +2575,6 @@ struct Quad {
 
           solFound =
             clean.NonSquareDiscrSolutionTwo(
-                ExchXY,
                 M, E, -BigInt::Abs(K),
                 Alpha, Beta, Div,
                 V1, U1, Value,
@@ -2669,9 +2637,7 @@ struct Quad {
     }
   }
 
-  void CallbackQuadModHyperbolic(bool swap_xy,
-
-                                 const BigInt &A,
+  void CallbackQuadModHyperbolic(const BigInt &A,
                                  const BigInt &B,
                                  const BigInt &C,
                                  const BigInt &K,
@@ -2756,13 +2722,13 @@ struct Quad {
     if (sol_plus.has_value()) {
       const auto &[X, Y] = sol_plus.value();
       // Result box:
-      clean.ShowXYOne(ExchXY, X, Y);
+      clean.ShowXYOne(X, Y);
     }
 
     if (sol_minus.has_value()) {
       const auto &[X, Y] = sol_minus.value();
       // Result box:
-      clean.ShowXYOne(ExchXY, X, Y);
+      clean.ShowXYOne(X, Y);
     }
   }
 
@@ -2807,7 +2773,6 @@ struct Quad {
     if (A == 0 && B == 0 && C == 0) {
       LinearSolution sol = LinearEq(D, E, F);
       // Result box:
-      CHECK(!ExchXY);
       clean.PrintLinear(sol, "t");
       return;
     }
