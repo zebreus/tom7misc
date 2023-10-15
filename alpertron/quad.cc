@@ -1440,7 +1440,8 @@ struct Quad {
 
   // TODO: Try to make this dispatch (callbackQuadModType) static.
   template<QmodCallbackType QMOD_CALLBACK>
-  void SolutionX(BigInt Value, const BigInt &Modulus,
+  void SolutionX(bool swap_xy,
+                 BigInt Value, const BigInt &Modulus,
                  const BigInt &A, const BigInt &B, const BigInt &C,
                  const BigInt &D, const BigInt &E,
                  const BigInt &M, const BigInt &K,
@@ -1474,19 +1475,20 @@ struct Quad {
 
     switch (QMOD_CALLBACK) {
     case QmodCallbackType::PARABOLIC:
-      clean.CallbackQuadModParabolic(ExchXY,
+      clean.CallbackQuadModParabolic(swap_xy,
                                      A, B, C, D, E,
                                      U, V, Value);
       break;
 
     case QmodCallbackType::ELLIPTIC:
-      CallbackQuadModElliptic(A, B, C, E, M, K,
+      CallbackQuadModElliptic(swap_xy, A, B, C, E, M, K,
                               Alpha, Beta, Div, Discr,
                               Value);
       break;
 
     case QmodCallbackType::HYPERBOLIC:
-      CallbackQuadModHyperbolic(A, B, C, K, E, M, Alpha, Beta, Div,
+      CallbackQuadModHyperbolic(swap_xy,
+                                A, B, C, K, E, M, Alpha, Beta, Div,
                                 Discr, Value);
       break;
 
@@ -1498,6 +1500,7 @@ struct Quad {
   // Solve congruence an^2 + bn + c = 0 (mod n) where n is different from zero.
   template<QmodCallbackType QMOD_CALLBACK>
   void SolveQuadModEquation(
+      bool swap_xy,
       const BigInt &coeffQuadr,
       const BigInt &coeffLinear,
       const BigInt &coeffIndep,
@@ -1565,7 +1568,8 @@ struct Quad {
 
         const int n = GcdAll.ToInt().value();
         for (int ctr = 0; ctr < n; ctr++) {
-          SolutionX<QMOD_CALLBACK>(BigInt(ctr), Modulus,
+          SolutionX<QMOD_CALLBACK>(swap_xy,
+                                   BigInt(ctr), Modulus,
                                    A, B, C, D, E,
                                    M, K,
                                    U, V,
@@ -1613,7 +1617,8 @@ struct Quad {
       for (;;) {
         // also not covered :(
         printf("new coverage: loop zz");
-        SolutionX<QMOD_CALLBACK>(z, Modulus,
+        SolutionX<QMOD_CALLBACK>(swap_xy,
+                                 z, Modulus,
                                  A, B, C, D, E,
                                  M, K,
                                  U, V,
@@ -1647,6 +1652,7 @@ struct Quad {
     SolveEquation(
         SolutionFn([&](const BigInt &Value) {
             this->SolutionX<QMOD_CALLBACK>(
+                swap_xy,
                 Value,
                 Modulus,
                 A, B, C, D, E,
@@ -1742,6 +1748,7 @@ struct Quad {
     const BigInt K(0);
 
     SolveQuadModEquation<QmodCallbackType::PARABOLIC>(
+        swap_xy,
         // Coefficients and modulus
         BigInt(1), BigInt(0), -V, BigInt::Abs(U),
         // Problem state
@@ -1944,6 +1951,8 @@ struct Quad {
     for (;;) {
 
       SolveQuadModEquation<QMOD_CALLBACK>(
+          // Or maybe it's always false?
+          ExchXY,
           // Coefficients and modulus
           A, B, C, BigInt::Abs(K),
           // Problem state
@@ -2056,6 +2065,7 @@ struct Quad {
   }
 
   void CallbackQuadModElliptic(
+      bool swap_xy,
       const BigInt &A, const BigInt &B, const BigInt &C,
       const BigInt &E, const BigInt &M, const BigInt &K,
       const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
@@ -2079,7 +2089,7 @@ struct Quad {
         // Discriminant is less than -4 and P equals 1.
 
         if (clean.NonSquareDiscrSolutionOne(
-                ExchXY,
+                swap_xy,
                 M, E, K,
                 Alpha, Beta, Div,
                 BigInt(1), BigInt(0),
@@ -2097,7 +2107,7 @@ struct Quad {
         if (plow == 1) {
           bool sol_found =
           clean.NonSquareDiscrSolutionOne(
-                ExchXY,
+                swap_xy,
                   M, E, K,
                   Alpha, Beta, Div,
                   BigInt(1), BigInt(0),
@@ -2105,7 +2115,7 @@ struct Quad {
 
           sol_found =
             clean.NonSquareDiscrSolutionOne(
-                ExchXY,
+                swap_xy,
                 M, E, K,
                 Alpha, Beta, Div,
                 // (Q/2, -1)
@@ -2118,7 +2128,7 @@ struct Quad {
 
           bool sol_found =
             clean.NonSquareDiscrSolutionOne(
-                ExchXY,
+                swap_xy,
                 M, E, K,
                 Alpha, Beta, Div,
                 // ((Q/2-1)/2, -1)
@@ -2127,7 +2137,7 @@ struct Quad {
 
           sol_found =
             clean.NonSquareDiscrSolutionOne(
-                ExchXY,
+                swap_xy,
                 M, E, K,
                 Alpha, Beta, Div,
                 // ((Q/2+1)/2, -1)
@@ -2146,7 +2156,7 @@ struct Quad {
           // printf("plow1 coverage\n");
           bool sol_found =
           clean.NonSquareDiscrSolutionOne(
-              ExchXY,
+              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               BigInt(1), BigInt(0),
@@ -2154,7 +2164,7 @@ struct Quad {
 
           sol_found =
           clean.NonSquareDiscrSolutionOne(
-              ExchXY,
+              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               // ((Q-1)/2, -1)
@@ -2163,7 +2173,7 @@ struct Quad {
 
           sol_found =
           clean.NonSquareDiscrSolutionOne(
-              ExchXY,
+              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               // ((Q+1)/2, -1)
@@ -2178,7 +2188,7 @@ struct Quad {
 
           bool sol_found =
           clean.NonSquareDiscrSolutionOne(
-              ExchXY,
+              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               // ((Q+3)/6, -1)
@@ -2187,7 +2197,7 @@ struct Quad {
 
           sol_found =
           clean.NonSquareDiscrSolutionOne(
-              ExchXY,
+              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               // (Q/3, -2)
@@ -2196,7 +2206,7 @@ struct Quad {
 
           sol_found =
           clean.NonSquareDiscrSolutionOne(
-              ExchXY,
+              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               // ((Q-3)/6, -1)
@@ -2243,7 +2253,7 @@ struct Quad {
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         bool sol_found =
         clean.NonSquareDiscrSolutionOne(
-            ExchXY,
+            swap_xy,
             M, E, K,
             Alpha, Beta, Div,
             U1, V1,
@@ -2268,7 +2278,7 @@ struct Quad {
 
           bool sol_found =
           clean.NonSquareDiscrSolutionOne(
-              ExchXY,
+              swap_xy,
               M, E, K,
               Alpha, Beta, Div,
               U1, V1,
@@ -2280,7 +2290,7 @@ struct Quad {
 
             sol_found =
             clean.NonSquareDiscrSolutionOne(
-                ExchXY,
+                swap_xy,
                 M, E, K,
                 Alpha, Beta, Div,
                 U1, V1,
@@ -2659,7 +2669,9 @@ struct Quad {
     }
   }
 
-  void CallbackQuadModHyperbolic(const BigInt &A,
+  void CallbackQuadModHyperbolic(bool swap_xy,
+
+                                 const BigInt &A,
                                  const BigInt &B,
                                  const BigInt &C,
                                  const BigInt &K,
