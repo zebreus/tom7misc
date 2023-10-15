@@ -440,7 +440,7 @@ UnimodularSubstitution(const BigInt &M,
 
 struct Quad {
   // TODO: Lots of these could be local; dynamically sized.
-  int showRecursiveSolution = 0;
+  bool hyperbolic_recursive_solution = false;
 
   // Functions that have been expunged of state above.
   struct Clean {
@@ -1655,7 +1655,6 @@ struct Quad {
           }),
         coeff_quadr, coeff_linear, coeff_indep,
         Modulus, GcdAll, ValNn);
-
   }
 
   void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,
@@ -1802,9 +1801,7 @@ struct Quad {
 
     if (K == 0) {
       // If k=0, the only solution is (X, Y) = (0, 0)
-      if (clean.ShowPointOne(BigInt(0), BigInt(0), Alpha, Beta, Div)) {
-        showRecursiveSolution = true;
-      }
+      (void)clean.ShowPointOne(BigInt(0), BigInt(0), Alpha, Beta, Div);
       return;
     }
 
@@ -1939,6 +1936,8 @@ struct Quad {
     // Theorem. The different moduli are divisors of the
     // right hand side, so we only have to factor it once.
 
+    CHECK(!hyperbolic_recursive_solution) << "Only set in SQME below.";
+
     for (;;) {
 
       SolveQuadModEquation<QMOD_CALLBACK>(
@@ -2023,7 +2022,7 @@ struct Quad {
              Discr.ToString().c_str());
     }
 
-    if (showRecursiveSolution &&
+    if (hyperbolic_recursive_solution &&
         QMOD_CALLBACK == QmodCallbackType::HYPERBOLIC) {
 
       // Show recursive solution.
@@ -2078,13 +2077,11 @@ struct Quad {
       if (Discr < -4 && plow == 1) {
         // Discriminant is less than -4 and P equals 1.
 
-        if (clean.NonSquareDiscrSolutionOne(
-                M, E, K,
-                Alpha, Beta, Div,
-                BigInt(1), BigInt(0),
-                Value)) {
-          showRecursiveSolution = 1;
-        }
+        clean.NonSquareDiscrSolutionOne(
+            M, E, K,
+            Alpha, Beta, Div,
+            BigInt(1), BigInt(0),
+            Value);
 
         return;
       }
@@ -2094,42 +2091,36 @@ struct Quad {
         BigInt G = Q >> 1;
 
         if (plow == 1) {
-          bool sol_found =
           clean.NonSquareDiscrSolutionOne(
-                  M, E, K,
-                  Alpha, Beta, Div,
-                  BigInt(1), BigInt(0),
-                  Value);
+              M, E, K,
+              Alpha, Beta, Div,
+              BigInt(1), BigInt(0),
+              Value);
 
-          sol_found =
-            clean.NonSquareDiscrSolutionOne(
-                M, E, K,
-                Alpha, Beta, Div,
-                // (Q/2, -1)
-                G, BigInt(-1),
-                Value) || sol_found;
+          clean.NonSquareDiscrSolutionOne(
+              M, E, K,
+              Alpha, Beta, Div,
+              // (Q/2, -1)
+              G, BigInt(-1),
+              Value);
 
-          if (sol_found) showRecursiveSolution = 1;
           return;
         } if (plow == 2) {
 
-          bool sol_found =
-            clean.NonSquareDiscrSolutionOne(
-                M, E, K,
-                Alpha, Beta, Div,
-                // ((Q/2-1)/2, -1)
-                (G - 1) >> 1, BigInt(-1),
-                Value);
+          clean.NonSquareDiscrSolutionOne(
+              M, E, K,
+              Alpha, Beta, Div,
+              // ((Q/2-1)/2, -1)
+              (G - 1) >> 1, BigInt(-1),
+              Value);
 
-          sol_found =
-            clean.NonSquareDiscrSolutionOne(
-                M, E, K,
-                Alpha, Beta, Div,
-                // ((Q/2+1)/2, -1)
-                (G + 1) >> 1, BigInt(-1),
-                Value) || sol_found;
+          clean.NonSquareDiscrSolutionOne(
+              M, E, K,
+              Alpha, Beta, Div,
+              // ((Q/2+1)/2, -1)
+              (G + 1) >> 1, BigInt(-1),
+              Value);
 
-          if (sol_found) showRecursiveSolution = 1;
           return;
         }
       }
@@ -2138,37 +2129,31 @@ struct Quad {
         // Discriminant is equal to -3.
         if (plow == 1) {
 
-          // printf("plow1 coverage\n");
-          bool sol_found =
           clean.NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               BigInt(1), BigInt(0),
               Value);
 
-          sol_found =
           clean.NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               // ((Q-1)/2, -1)
               (Q - 1) >> 1, BigInt(-1),
-              Value) || sol_found;
+              Value);
 
-          sol_found =
           clean.NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               // ((Q+1)/2, -1)
               (Q + 1) >> 1, BigInt(-1),
-              Value) || sol_found;
+              Value);
 
-          if (sol_found) showRecursiveSolution = 1;
           return;
         } else if (plow == 3) {
 
           // printf("plow3 coverage\n");
 
-          bool sol_found =
           clean.NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
@@ -2176,23 +2161,20 @@ struct Quad {
               (Q + 3) / 6, BigInt(-1),
               Value);
 
-          sol_found =
           clean.NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               // (Q/3, -2)
               Q / 3, BigInt(-2),
-              Value) || sol_found;
+              Value);
 
-          sol_found =
           clean.NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
               // ((Q-3)/6, -1)
               (Q - 3) / 6, BigInt(-1),
-              Value) || sol_found;
+              Value);
 
-          if (sol_found) showRecursiveSolution = 1;
           return;
         }
       }
@@ -2230,13 +2212,11 @@ struct Quad {
       if (O == 1) {
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
-        bool sol_found =
         clean.NonSquareDiscrSolutionOne(
             M, E, K,
             Alpha, Beta, Div,
             U1, V1,
             Value);
-        if (sol_found) showRecursiveSolution = 1;
 
         std::optional<int64_t> dopt = Discr.ToInt();
         if (!dopt.has_value()) break;
@@ -2254,7 +2234,6 @@ struct Quad {
             clean.GetNextConvergent(U, U1, U2,
                                     V, V1, V2);
 
-          bool sol_found =
           clean.NonSquareDiscrSolutionOne(
               M, E, K,
               Alpha, Beta, Div,
@@ -2265,15 +2244,13 @@ struct Quad {
             std::tie(U, U1, U2, V, V1, V2) =
                 clean.GetNextConvergent(U, U1, U2, V, V1, V2);
 
-            sol_found =
             clean.NonSquareDiscrSolutionOne(
                 M, E, K,
                 Alpha, Beta, Div,
                 U1, V1,
-                Value) || sol_found;
+                Value);
           }
 
-          if (sol_found) showRecursiveSolution = 1;
           break;
         }
       }
@@ -2547,6 +2524,9 @@ struct Quad {
     const bool a_neg = A < 0;
 
     int periodIndex = 0;
+
+    bool sol_found = false;
+
     for (;;) {
 
       const bool v_neg = V < 0;
@@ -2554,7 +2534,6 @@ struct Quad {
       if (V == (isBeven ? 1 : 2) &&
           ((index & 1) == (k_neg == v_neg ? 0 : 1))) {
         // Two solutions
-        bool solFound = false;
 
         // Found solution.
         if (BigInt::Abs(Discr) == 5 && (a_neg != k_neg) &&
@@ -2563,7 +2542,7 @@ struct Quad {
           // Use exceptional solution (U1-U2)/(V1-V2).
 
           // printf("aaaaaaa coverage\n");
-          solFound =
+          sol_found =
             clean.NonSquareDiscrSolutionTwo(
                 M, E, -BigInt::Abs(K),
                 Alpha, Beta, Div,
@@ -2573,7 +2552,7 @@ struct Quad {
         } else {
           // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
 
-          solFound =
+          sol_found =
             clean.NonSquareDiscrSolutionTwo(
                 M, E, -BigInt::Abs(K),
                 Alpha, Beta, Div,
@@ -2582,10 +2561,7 @@ struct Quad {
 
         }
 
-        if (solFound) {
-          showRecursiveSolution = 1;
-          break;                             // Solution found. Exit loop.
-        }
+        if (sol_found) break;
       }
 
       if (StartPeriodU >= 0) {
@@ -2634,6 +2610,11 @@ struct Quad {
 
       index++;
       isIntegerPart = false;
+    }
+
+    // XXX return value
+    if (sol_found) {
+      hyperbolic_recursive_solution = true;
     }
   }
 
@@ -2736,9 +2717,6 @@ struct Quad {
   // PS: This is where to understand the meaning of Alpha, Beta, K, Div.
   void SolveQuadEquation(BigInt A, BigInt B, BigInt C,
                          BigInt D, BigInt E, BigInt F) {
-    // Do not show recursive solution by default.
-    showRecursiveSolution = 0;
-
     BigInt gcd = BigInt::GCD(BigInt::GCD(A, B),
                              BigInt::GCD(BigInt::GCD(C, D),
                                          E));
