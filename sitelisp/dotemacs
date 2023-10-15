@@ -27,6 +27,7 @@
 
 (add-to-list 'load-path "/Users/twm/tom7misc/sitelisp")
 
+
 (defun frame-settings (f)
   (progn
     (if (null f) () (select-frame f))
@@ -119,11 +120,42 @@
 
     ))
 
-
-
 (add-hook 'after-make-frame-functions 'frame-settings)
 
 (frame-settings nil)
+
+(defvar zoom-settings-list
+  (list
+   (list "FixederSys 2x-24:antialias=none" 80 64)
+   (list "FixederSys 1x-12:antialias=none" 80 128)
+   )
+  "*List of font, width, height for zoom toggle. Experimental."
+  )
+
+;; XXX this should be frame local
+(defvar toggle-zoom-pos 0
+  "*Current index for toggling zoom. Experimental.")
+(defun toggle-zoom ()
+  "*Go to the next zoom. Experimental."
+  (interactive "")
+  (progn
+    (message "toggle zoom")
+    (let ((nz (list-length zoom-settings-list)))
+      (progn
+        (message (format "%d" nz))
+        (setq toggle-zoom-pos (mod (+ 1 toggle-zoom-pos) nz))
+        (let* ((record (nth toggle-zoom-pos zoom-settings-list))
+               (font (nth 0 record))
+               (width (nth 1 record))
+               (height (nth 2 record)))
+          (set-frame-font font)
+          (modify-frame-parameters nil (list (cons 'width width)))
+          (modify-frame-parameters nil (list (cons 'height height)))
+          )
+        )
+      )
+    )
+  )
 
 ;; Here's how to programmatically set the window size.
 ;; (frame-parameters)
@@ -174,6 +206,10 @@
 (global-set-key "\C-]" 'cycle-recent-forward)
 (global-set-key "\C-p" 'cycle-recent-backward)
 (global-set-key "\C-xm" 'shell-make)
+;; this is 2^26 + 61, which is the non-ascii \C-=
+;; there's probably a nicer way to represent this, but
+;; the elisp manual does not really explain it?
+(global-set-key [67108925] 'toggle-zoom)
 ;; aquamacs redefines these??
 (global-set-key [C-right] 'forward-word)
 (global-set-key [C-left] 'backward-word)
