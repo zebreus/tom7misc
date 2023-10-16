@@ -36,6 +36,8 @@ using namespace std;
 
 static constexpr bool VERBOSE = false;
 
+namespace {
+
 enum class LinSolType {
   // Solutions of the form (Xlin * t + Xind, Ylin * t + Yind).
   SOLUTION_FOUND,
@@ -440,15 +442,13 @@ UnimodularSubstitution(const BigInt &M,
 
 
 struct Quad {
-  // TODO: Lots of these could be local; dynamically sized.
-  bool hyperbolic_recursive_solution = false;
-
   // Solutions accumulated here.
   Solutions solutions;
-
+  // True if we had a solution on a hyperbolic curve and so we should
+  // print recursive solutions as well.
+  bool hyperbolic_recursive_solution = false;
+  // This is essentially debugging output now.
   std::string *output = nullptr;
-  // presentational. Can probably remove it.
-  bool also = false;
 
   void ShowText(const std::string &text) {
     if (output != nullptr)
@@ -475,10 +475,6 @@ struct Quad {
     if (output != nullptr) {
       StringAppendF(output, "%d", value);
     }
-  }
-
-  void showSquare() {
-    ShowText("^2");
   }
 
   void SolutionHeader() {
@@ -575,13 +571,13 @@ struct Quad {
         showMinus();
       }
       ShowText(var1);
-      showSquare();
+      ShowText("^2");
     } else if (T2 != 0) {
       // coeffT2 is not zero.
       ShowBigInt(T2);
       ShowChar(' ');
       ShowText(var1);
-      showSquare();
+      ShowText("^2");
     } else {
       // Nothing to do.
     }
@@ -664,7 +660,8 @@ struct Quad {
   void Show1(const BigInt &num, LinSolType t) {
     const LinSolType u = Show(num, "", t);
     ShowChar(' ');
-    // Port note: This used to test u & 1 as a "trick" for detecting NO_SOLUTIONS?
+    // Port note: This used to test u & 1 as a "trick" for detecting
+    // NO_SOLUTIONS?
     if (u != LinSolType::NO_SOLUTIONS || num == 1 || num == -1) {
       // Show absolute value of num.
       ShowBigInt(BigInt::Abs(num));
@@ -880,11 +877,18 @@ struct Quad {
   }
 
   void ShowAllRecSols(
-      // XXX original code modifies these; was that just a bug?
       BigInt P, BigInt Q,
       BigInt R, BigInt S,
       BigInt K, BigInt L,
       const BigInt &Alpha, const BigInt &Beta) {
+
+    RecursiveSolution rsol1;
+    rsol1.P = P;
+    rsol1.Q = Q;
+    rsol1.R = R;
+    rsol1.S = S;
+    rsol1.K = K;
+    rsol1.L = L;
 
     if (IsBig(P, 2) || IsBig(Q, 2)) {
       if (Alpha == 0 && Beta == 0) {
@@ -911,6 +915,9 @@ struct Quad {
       ShowText("\n");
       ShowRecSol('y', R, S, L);
     }
+
+    // Compute the related solution. Port note: The original
+    // code made these modifications in place.
 
     // Compute x_{n-1} from x_n and y_n
     // Compute new value of K and L as:
@@ -945,6 +952,17 @@ struct Quad {
       ShowText("\n");
       ShowRecSol('y', R, S, L);
     }
+
+    RecursiveSolution rsol2;
+    rsol2.P = std::move(P);
+    rsol2.Q = std::move(Q);
+    rsol2.R = std::move(R);
+    rsol2.S = std::move(S);
+    rsol2.K = std::move(K);
+    rsol2.L = std::move(L);
+
+    solutions.recursive.emplace_back(std::move(rsol1),
+                                     std::move(rsol2));
   }
 
   bool SolutionFoundFromContFraction(bool isBeven,
@@ -1056,7 +1074,7 @@ struct Quad {
   //        P = r - (b/2)s, Q = -cs, R = as, S = r + (b/2)s,
   // in any case:
   //        K = (alpha*(1-P) - beta*Q) / D, L = (-alpha*R + beta*(1-S)) / D.
-  void RecursiveSolution(
+  void GetRecursiveSolution(
       BigInt A, BigInt B, BigInt C,
       const BigInt &ABack, const BigInt &BBack, const BigInt &CBack,
       const BigInt &Alpha, const BigInt &Beta,
@@ -1166,6 +1184,7 @@ struct Quad {
     if (periodLength > 1) {
       // quad.exe 6301 1575 2 7199 -1 -114995928
       printf("nonzeroperiod coverage (%d)\n", periodLength);
+      solutions.interesting_coverage = true;
     }
 
     ShowText("\nRecursive solutions:\n");
@@ -1536,6 +1555,12 @@ struct Quad {
       // All values from 0 to GcdAll - 1 are solutions.
       if (GcdAll > 5) {
         printf("allvalues coverage\n");
+        solutions.interesting_coverage = true;
+
+        // XXX should we call SolutionX here?
+        // Seems like we would want to do so until we find
+        // a solution, at least?
+
         ShowText("\nAll values of x between 0 and ");
 
         // XXX Suspicious that this modifies GcdAll in place (I
@@ -1562,6 +1587,7 @@ struct Quad {
     if (BigInt::DivisibleBy(coeff_quadr, Modulus)) {
       // Linear equation.
       printf("linear-eq coverage\n");
+      solutions.interesting_coverage = true;
 
       if (BigInt::GCD(coeff_linear, Modulus) != 1) {
         // B and N are not coprime. Go out.
@@ -1586,6 +1612,8 @@ struct Quad {
       if (z != 0) {
         // not covered by cov.sh :(
         printf("new coverage z != 0\n");
+        solutions.interesting_coverage = true;
+
         // XXX is this a typo for ValNn in the original?
         // ValN is only set in CheckSolutionSquareDiscr.
         // Since it was static, it would usually be zero here.
@@ -1597,6 +1625,7 @@ struct Quad {
       for (;;) {
         // also not covered :(
         printf("new coverage: loop zz");
+        solutions.interesting_coverage = true;
         SolutionX<QMOD_CALLBACK>(swap_xy,
                                  z, Modulus,
                                  A, B, C, D, E,
@@ -2013,9 +2042,9 @@ struct Quad {
         QMOD_CALLBACK == QmodCallbackType::HYPERBOLIC) {
 
       // Show recursive solution.
-      RecursiveSolution(A, B, C,
-                              ABack, BBack, CBack,
-                              Alpha, Beta, GcdHomog, Discr);
+      GetRecursiveSolution(A, B, C,
+                           ABack, BBack, CBack,
+                           Alpha, Beta, GcdHomog, Discr);
     }
   }
 
@@ -2711,7 +2740,6 @@ struct Quad {
 
     if (gcd != 0 && !BigInt::DivisibleBy(F, gcd)) {
       // F is not multiple of GCD(A, B, C, D, E) so there are no solutions.
-      ShowText("There are no solutions.");
       return;
     }
 
@@ -2823,27 +2851,35 @@ struct Quad {
 
   void QuadBigInt(const BigInt &A, const BigInt &B, const BigInt &C,
                   const BigInt &D, const BigInt &E, const BigInt &F) {
-    ShowEq(A, B, C, D, E, F, "x", "y");
-    ShowText(" = 0\n");
+    if (output != nullptr) {
+      ShowEq(A, B, C, D, E, F, "x", "y");
+      ShowText(" = 0\n");
+    }
 
-    size_t preamble_size = (output == nullptr) ? 0 : output->size();
+    // size_t preamble_size = (output == nullptr) ? 0 : output->size();
 
     SolveQuadEquation(A, B, C, D, E, F);
 
-    if (output != nullptr && output->size() == preamble_size) {
+    if (output != nullptr &&
+        !solutions.any_integers &&
+        solutions.quadratic.empty() &&
+        solutions.linear.empty() &&
+        solutions.points.empty() &&
+        solutions.recursive.empty()) {
       ShowText("The equation does not have integer solutions.");
     }
   }
 
   Quad() {}
-
 };
 
+}  // namespace
 
-void QuadBigInt(const BigInt &a, const BigInt &b, const BigInt &c,
-                const BigInt &d, const BigInt &e, const BigInt &f,
-                std::string *output) {
+Solutions QuadBigInt(const BigInt &a, const BigInt &b, const BigInt &c,
+                     const BigInt &d, const BigInt &e, const BigInt &f,
+                     std::string *output) {
   std::unique_ptr<Quad> quad(new Quad);
   quad->output = output;
   quad->QuadBigInt(a, b, c, d, e, f);
+  return std::move(quad->solutions);
 }

@@ -62,6 +62,10 @@ findcoverage.exe : findcoverage.o $(TEST_CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
+grid.exe : grid.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
+	@echo -n "@"
+	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
+
 clean:
 	rm -f *.o coverage.out *.exe
 
