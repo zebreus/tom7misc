@@ -251,6 +251,8 @@ echo quad tests
 # regression (introduced in r5160)
 ./quad.exe -6 -6 0 -5 -6 1 >> coverage.out
 
+# regression (introduced in r5133)
+./quad.exe -4 -4 -1 -6 -1 0 >> coverage.out
 
 echo factor tests
 ./afactor.exe 1 >> coverage.out

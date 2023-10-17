@@ -780,7 +780,7 @@ struct Quad {
     // Compute j <- u-bs
     BigInt J = U - B * S;
     // Compute K <- d+br-T
-    BigInt K = (D - B * R) - Value;
+    BigInt K = (D + B * R) - Value;
     // Compute z <- 2a
     BigInt Z = A << 1;
     // If K is not multiple of gcd(j, z) there is no solution.
