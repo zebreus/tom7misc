@@ -1,4 +1,4 @@
-default: quad.exe afactor.exe test.exe
+default: quad.exe afactor.exe test.exe findcoverage.exe grid.exe eval.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -34,7 +34,7 @@ HEADERS=bignbr.h factor.h modmult.h quadmodll.h bigconv.h quad.h
 
 CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/bignum/big.o
 
-TEST_CC_LIB_OBJECTS=$(CC_LIB_OBJECTS) $(CC_LIB)/ansi.o $(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/subprocess.o $(CC_LIB)/factorization.o
+TEST_CC_LIB_OBJECTS=$(CC_LIB_OBJECTS) $(CC_LIB)/ansi.o $(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/subprocess.o $(CC_LIB)/factorization.o $(CC_LIB)/atomic-util.o
 
 ALPERTRON_OBJECTS=modmult.o quad.o quadmodll.o bignbr.o bigconv.o factor.o
 
@@ -63,6 +63,10 @@ findcoverage.exe : findcoverage.o $(TEST_CC_LIB_OBJECTS)
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 grid.exe : grid.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
+	@echo -n "@"
+	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
+
+eval.exe : eval.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 

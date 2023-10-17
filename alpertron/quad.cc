@@ -2352,7 +2352,7 @@ struct Quad {
 
         {
           // Solve 2aD x + (b-g)D y = 2a*alpha + (b-g)*beta
-          const BigInt Aux0 = A << 1;
+          const BigInt Aux0 = (A * Discr) << 1;
           // Port note: At some point this was erroneously
           // multiplied by the value of aux1 above.
           const BigInt Aux1 = (B - G) * Discr;
