@@ -2196,8 +2196,18 @@ struct Quad {
       }
     }
 
-    // Compute bound L = sqrt(4P/(-D))
-    const BigInt L = BigInt::Sqrt((P << 2) / -Discr);
+    const BigInt LL = (P << 2) / Discr;
+    /*
+    fprintf(stderr, "P = %s, Discr = %s, LL = %s\n",
+            P.ToString().c_str(), Discr.ToString().c_str(),
+            LL.ToString().c_str());
+    */
+
+    // Compute bound L = sqrt(|4P/(-D)|)
+    // Port note: Original code flips the sign, but on the input
+    // -10 -10 -10 -10 -8 -8, that results in sqrt(-1). Alpertron's
+    // sqrt function ignores the sign.
+    const BigInt L = BigInt::Sqrt(BigInt::Abs(LL));
 
     // Initial value of last convergent: 1/0.
     BigInt U1(1);
