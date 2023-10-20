@@ -97,7 +97,7 @@ eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent,
                           BigInteger *pPower);
 
 eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent,
-                                BigInteger *pPower);
+                           BigInteger *pPower);
 
 eExprErr BigIntMultiplyPower2(BigInteger* pArg, int powerOf2);
 

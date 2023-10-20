@@ -16,7 +16,7 @@
 #include "ansi.h"
 #include "atomic-util.h"
 
-static constexpr int MAX_COEFF = 6;
+static constexpr int MAX_COEFF = 7;
 // Positive and negative, zero
 static constexpr int RADIX = MAX_COEFF * 2 + 1;
 
@@ -31,7 +31,7 @@ DECLARE_COUNTERS(count_any,
                  count_recursive,
                  count_interesting,
                  count_none,
-                 u2_);
+                 count_done);
 
 static string CounterString() {
   return StringPrintf(ABLUE("%lld") " any "
@@ -50,6 +50,18 @@ static string CounterString() {
                       count_interesting.Read());
 }
 
+/*
+// TODO: For cc-lib.
+// Take one parameter, like "max amount of memory to use."
+// Keep exact samples until we reach the memory budget;
+// then use those samples to produce a bucketing. From then
+// on, just accumulate into buckets.
+struct AutoHisto {
+
+
+};
+*/
+
 static void RunGrid() {
   Periodically stats_per(5.0);
   Timer start_time;
@@ -64,12 +76,22 @@ static void RunGrid() {
       [&](const std::array<int64_t, 6> &arg,
           int64_t idx, int64_t total) {
         // Center on 0.
-        int64_t a = arg[0] - MAX_COEFF;
+        // ... except a, ince we already ran -10 to 0
+        int64_t a = arg[0] + 1; // - MAX_COEFF;
         int64_t b = arg[1] - MAX_COEFF;
         int64_t c = arg[2] - MAX_COEFF;
         int64_t d = arg[3] - MAX_COEFF;
         int64_t e = arg[4] - MAX_COEFF;
         int64_t f = arg[5] - MAX_COEFF;
+
+        // Known bad solutions.
+        if (a == 0 && b == -6 && c == -6 &&
+            d == -5 && e == 1 && f == 5)
+          return;
+
+        // Generalized version of above.
+        if (a == 0 && b == c)
+          return;
 
         /*
         printf("do %lld %lld %lld %lld %lld %lld\n",
@@ -179,17 +201,28 @@ static void RunGrid() {
           count_none++;
         }
 
+        count_done++;
+
         stats_per.RunIf([&]() {
+            int64_t done = count_done.Read();
+            double sec = start_time.Seconds();
+            double qps = done / sec;
+            double spq = sec / done;
+            std::string timing = StringPrintf("%.3f solved/sec (%s ea.)",
+                                              qps,
+                                              ANSI::Time(spq).c_str());
             std::string counters = CounterString();
             std::string bar =
               ANSI::ProgressBar(
-                  idx, total,
+                  done, total,
                   StringPrintf("%lld %lld %lld %lld %lld %lld ",
                                a, b, c, d, e, f),
-                  start_time.Seconds());
+                  sec);
             printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
                    ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
-                   "%s\n%s\n",
+                   ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
+                   "%s\n%s\n%s\n",
+                   timing.c_str(),
                    counters.c_str(),
                    bar.c_str());
           });
