@@ -150,6 +150,8 @@ struct BigInt {
   static std::vector<std::pair<BigInt, int>>
   PrimeFactorization(const BigInt &x, int64_t max_factor = -1);
 
+  static bool IsPrime(const BigInt &x);
+
   // Get 64 (or so) bits of the number. Will be equal for equal a, but
   // no particular value is guaranteed. Intended for hash functions.
   inline static uint64_t LowWord(const BigInt &a);
@@ -173,9 +175,11 @@ private:
 
   // XXX figure out how to hide this stuff away.
   // Could also move this to a big-util or whatever.
-  static void InsertFactor(std::vector<std::pair<BigInt, int>> *, mpz_t);
+  static void InsertFactor(std::vector<std::pair<BigInt, int>> *, mpz_t,
+                           unsigned int exponent = 1);
   static void InsertFactorUI(
-      std::vector<std::pair<BigInt, int>> *, unsigned long);
+      std::vector<std::pair<BigInt, int>> *, unsigned long,
+      unsigned int exponent = 1);
   static void FactorUsingDivision(
       mpz_t, std::vector<std::pair<BigInt, int>> *);
   static std::vector<std::pair<BigInt, int>>
@@ -183,7 +187,7 @@ private:
   static void FactorUsingPollardRho(
       mpz_t n, unsigned long a,
       std::vector<std::pair<BigInt, int>> *factors);
-  static bool MpzIsPrime(mpz_t n);
+  static bool MpzIsPrime(const mpz_t n);
 
   #else
   // BigZ is a pointer to a bigz struct, which is the
@@ -398,7 +402,7 @@ std::optional<int64_t> BigInt::ToInt() const {
                rep);
 
     assert(count <= 1);
-    assert (!(digit & 0x8000000000000000ULL));
+    assert(!(digit & 0x8000000000000000ULL));
     if (mpz_sgn(rep) == -1) {
       return {-(int64_t)digit};
     }

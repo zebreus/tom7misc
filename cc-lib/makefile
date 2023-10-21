@@ -88,8 +88,8 @@ interval-tree_test.exe : interval-tree_test.o $(BASE) arcfour.o
 simpledxf.o : simpledxf.cc simpledxf.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-threadutil_test.exe : threadutil.h threadutil_test.o ansi.o $(BASE)
-	$(CXX) $(CXXFLAGS) threadutil_test.o ansi.o $(BASE) -o $@ -lpthread
+threadutil_test.exe : threadutil.h threadutil_test.o ansi.o util.o $(BASE)
+	$(CXX) $(CXXFLAGS) threadutil_test.o ansi.o util.o $(BASE) -o $@ -lpthread
 
 color-util_test.exe : color-util.o color-util_test.o stb_image.o image.o stb_image_write.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
@@ -157,16 +157,16 @@ image-frgba_test.exe : image-frgba.o image-frgba_test.o tinyexr.o image.o stb_im
 vector-util_test.exe : vector-util_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-atomic-util_test.exe : atomic-util_test.o atomic-util.o ansi.o $(BASE)
+atomic-util_test.exe : atomic-util_test.o atomic-util.o ansi.o util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-interval-cover_test.exe : interval-cover.o interval-cover_test.o ansi.o arcfour.o $(BASE)
+interval-cover_test.exe : interval-cover.o interval-cover_test.o ansi.o util.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-factorization_test.exe : factorization.o factorization_test.o ansi.o arcfour.o $(BASE)
+factorization_test.exe : factorization.o factorization_test.o ansi.o util.o arcfour.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-set-util_test.exe : set-util_test.o ansi.o $(BASE)
+set-util_test.exe : set-util_test.o ansi.o util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 hashing_test.exe : hashing_test.o $(BASE)
@@ -178,7 +178,7 @@ city_test.exe : city_test.o city/city.o $(BASE)
 autoparallel_test.exe : autoparallel_test.o arcfour.o util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-divbench.exe : divbench.o ansi.o $(BASE)
+divbench.exe : divbench.o ansi.o util.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 # Note: Only implemented on windows.

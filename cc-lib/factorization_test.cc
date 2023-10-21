@@ -182,6 +182,51 @@ static void TestSqrt() {
   }
 }
 
+static void TestFactorials() {
+  uint64_t fact = 1;
+  for (uint64_t n = 2; n < 20; n++) {
+    CHECK(fact * n > fact);
+    fact *= n;
+
+    std::vector<std::pair<uint64_t, int>> factors =
+      Factorization::Factorize(fact);
+
+    uint64_t product = 1;
+    for (const auto &[p, e] : factors) {
+      for (int r = 0; r < e; r++) product *= p;
+    }
+
+    CHECK(product == fact) << n;
+  }
+}
+
+// 614889782588491410 has 15 distinct factors; the
+// maximum for a 64-bit number:
+// 2 * 3 * 5 * 7 * 11 * 13 * 17 * 19 * 23 * 29 *
+//   31 * 37 * 41 * 43 * 47
+static void TestPrimorials() {
+  uint64_t prim = 1;
+  for (uint64_t n = 2; n <= 47; n++) {
+    if (!Factorization::IsPrime(n))
+      continue;
+
+    CHECK(prim * n > prim) << n;
+    prim *= n;
+
+    std::vector<std::pair<uint64_t, int>> factors =
+      Factorization::Factorize(prim);
+
+    uint64_t product = 1;
+    for (const auto &[p, e] : factors) {
+      CHECK(e == 1) << n;
+      for (int r = 0; r < e; r++) product *= p;
+    }
+
+    CHECK(product == prim) << n;
+  }
+}
+
+
 static void TestPrimeFactors() {
 
   {
@@ -603,7 +648,8 @@ int main(int argc, char **argv) {
 
   TestNextPrime();
 
-  //  TestPredivided();
+  TestFactorials();
+  TestPrimorials();
 
   // ProfileFactorize();
 

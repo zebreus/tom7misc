@@ -602,113 +602,6 @@ static bool IsPrimeInternal(uint64_t n) {
   return true;
 }
 
-
-static bool
-MillerRabinOld(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
-            unsigned int k, uint64_t one) {
-  uint64_t y = PowM(b, q, n, ni, one);
-
-  /* -1, but in redc representation. */
-  uint64_t nm1 = n - one;
-
-  if (y == one || y == nm1)
-    return true;
-
-  for (unsigned int i = 1; i < k; i++) {
-    y = MulRedc(y, y, n, ni);
-
-    if (y == nm1)
-      return true;
-    if (y == one)
-      return false;
-  }
-  return false;
-}
-
-// This is a deterministic version of Miller-Rabin, which is known to
-// detect all primes in [0, 2^64).
-[[maybe_unused]]
-static bool IsPrimeInternalOld(uint64_t n) {
-  // printf("prime_p(%llu)?\n", n);
-  int k;
-
-  if (n <= 1)
-    return false;
-
-  /* We have already sieved out small primes. */
-  if (n < (uint64_t) Factorization::NEXT_PRIME * Factorization::NEXT_PRIME)
-    return true;
-
-  /* Precomputation for Miller-Rabin. */
-  // PERF std::countr_zero.
-  uint64_t q = n - 1;
-  for (k = 0; (q & 1) == 0; k++)
-    q >>= 1;
-
-  uint64_t ni = Binv(n);                 /* ni <- 1/n mod B */
-  uint64_t one = Redcify(1, n);
-  uint64_t a_prim = AddMod(one, one, n); /* i.e., redcify a = 2 */
-
-  /* Perform a Miller-Rabin test, which finds most composites quickly. */
-  if (!MillerRabinOld(n, ni, a_prim, q, k, one))
-    return false;
-
-
-  // Could have as many as 20 distinct factors; 20! < 2^64 < 21!
-  uint64_t b[21];
-  uint8_t e[21];
-
-  /* Factor n-1 for Lucas. */
-  int num_factors =
-    Factorization::FactorizePreallocated(n - 1, b, e);
-  // PERF: We don't actually need the exponents; we just need the unique
-  // factors. We could have a slightly faster version of factoring that
-  // just gives unique factors. Also, we don't necessarily have to get
-  // a complete factoring here. If we know a factoring a*b such that
-  // gcd(a,b) = 1, and the prime factors of a are known, then the
-  // Pocklington-Lehmer primality test can apply. A natural place to
-  // check for this would be after the trial factoring.
-
-  /* Loop until Lucas proves our number prime, or Miller-Rabin proves our
-     number composite. */
-  uint64_t a = 2;
-  for (uint8_t delta : PRIME_DELTAS) {
-    bool is_prime = true;
-    for (int i = 0; i < num_factors; i++) {
-      const uint64_t p = b[i];
-      is_prime = PowM(a_prim, (n - 1) / p, n, ni, one) != one;
-      if (!is_prime) break;
-    }
-
-    if (is_prime)
-      return true;
-
-    // Establish new base.
-    a += delta;
-
-    /* The following is equivalent to a_prim = redcify (a, n).  It runs faster
-       on most processors, since it avoids udiv128.  If we go down the
-       udiv_qrnnd_preinv path, this code should be replaced. */
-    {
-      const auto &[s1, s0] = UMul128(one, a);
-      if (s1 == 0) [[likely]] {
-        a_prim = s0 % n;
-      } else {
-        a_prim = UDiv128(s1, s0, n).second;
-      }
-    }
-
-    if (!MillerRabinOld(n, ni, a_prim, q, k, one))
-      return false;
-  }
-
-  // We exhausted the ptab table. Is this actually an error? Perhaps
-  // the gnu code knows that the table is enough for any 64-bit int?
-
-  CHECK(false) << "Lucas prime test failure.  This should not happen";
-  return false;
-}
-
 static void
 FactorUsingPollardRho(uint64_t n, unsigned long int a,
                       Factors *factors) {
@@ -789,6 +682,7 @@ FactorUsingPollardRho(uint64_t n, unsigned long int a,
 
 std::vector<std::pair<uint64_t, int>>
 Factorization::Factorize(uint64_t x) {
+  // At most 15 factors; 16 primorial is greater than 2^64.
   uint64_t b[15];
   uint8_t e[15];
   int num = FactorizePreallocated(x, b, e);

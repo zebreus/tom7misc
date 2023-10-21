@@ -137,12 +137,29 @@ static void TestPrimeFactors() {
     CHECK(factors[0].second == 2) << factors[0].second;
   }
 
+  // This will never finish without a better algorithm
+  // in the non-gmp case.
+  #ifdef BIG_USE_GMP
+  {
+    // Largest 64-bit prime.
+    BigInt p(18446744073709551557ULL);
+    std::vector<std::pair<BigInt, int>> factors =
+      BigInt::PrimeFactorization(p);
+
+    CHECK(BigInt::IsPrime(p));
+
+    CHECK(factors.size() == 1) << FTOS(factors);
+    CHECK(BigInt::Eq(factors[0].first, p)) << factors[0].first.ToString();
+    CHECK(factors[0].second == 1) << factors[0].second;
+  }
+  #endif
+
   {
     BigInt x(1);
     // Must all be distinct and prime
     const array f = {
       2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 37, 41, 43, 47, 419,
-      541, 547,
+      541, 547, 31337,
     };
     for (int factor : f) {
       x = BigInt::Times(x, BigInt(factor));
@@ -154,6 +171,7 @@ static void TestPrimeFactors() {
     CHECK(factors.size() == f.size());
     for (int i = 0; i < (int)f.size(); i++) {
       CHECK(factors[i].second == 1);
+      CHECK(BigInt::IsPrime(factors[i].first));
       CHECK(BigInt::Eq(factors[i].first, BigInt(f[i])));
     }
   }
@@ -183,7 +201,33 @@ static void TestPrimeFactors() {
   }
   #endif
 
+  // Primorials
+  {
+    BigInt prim(1);
+    for (uint64_t n = 2; n <= 128; n++) {
+      if (!BigInt::IsPrime(BigInt(n)))
+        continue;
+
+      prim = BigInt::Times(prim, n);
+
+      std::vector<std::pair<BigInt, int>> factors =
+        BigInt::PrimeFactorization(prim);
+
+      BigInt product(1);
+      for (const auto &[p, e] : factors) {
+        CHECK(e == 1) << n;
+        for (int r = 0; r < e; r++) {
+          product = BigInt::Times(product, p);
+        }
+      }
+
+      CHECK(BigInt::Eq(product, prim)) << n;
+    }
+  }
+
+  printf("Prime factorization OK.\n");
 }
+
 
 static void BenchDiv2() {
   double total_sec = 0.0;

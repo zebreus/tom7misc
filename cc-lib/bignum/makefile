@@ -1,8 +1,6 @@
 
 default : big_test.exe big-overloads_test.exe big-nogmp_test.exe big-overloads-nogmp_test.exe
 
-# TODO: For tests, we should compile both the GMP and bigz versions!
-
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
   # for 64 bits on windows (mingw).
@@ -25,6 +23,7 @@ endif
 
 CXXFLAGS= -march=native -Wall -I.. --std=c++20 -O3
 
+# Just used for testing; bignum itself should not depend on cc-lib.
 # this assumes that cc-lib doesn't depend on GMP flags
 CCLIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../util.o ../ansi.o
 
@@ -32,7 +31,7 @@ CCLIB_OBJECTS=../base/logging.o ../base/stringprintf.o ../util.o ../ansi.o
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $< -o $@ -c
 
 # with GMP; don't need bigz.o bign.o bigq.o
-big_test.exe :  big.o big_test.o $(CCLIB_OBJECTS)
+big_test.exe : big.o big_test.o $(CCLIB_OBJECTS)
 	$(CXX) $(GMP_CFLAGS) $(CXXFLAGS) $^ -o $@ $(GMP_LFLAGS) $(LFLAGS)
 
 # bigz.o bign.o bigq.o

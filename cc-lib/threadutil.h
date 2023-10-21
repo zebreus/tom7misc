@@ -360,6 +360,26 @@ struct ThreadJoiner {
   std::thread *t;
 };
 
+
+namespace internal {
+
+// number of arguments that f takes, at compile time.
+template <typename T>
+struct get_arity : get_arity<decltype(&T::operator())> {};
+
+template <typename R, typename... Args>
+struct get_arity<R(*)(Args...)> :
+  std::integral_constant<unsigned, sizeof...(Args)> {};
+
+template <typename R, typename C, typename... Args>
+struct get_arity<R(C::*)(Args...)> :
+  std::integral_constant<unsigned, sizeof...(Args)> {};
+template <typename R, typename C, typename... Args>
+struct get_arity<R(C::*)(Args...) const> :
+  std::integral_constant<unsigned, sizeof...(Args)> {};
+
+}
+
 // Calls f(x, y) for each 0 <= x < num1 and 0 <= y < num2,
 // in up to max_concurrency parallel threads.
 // No guarantees about the order that these are run, of course,
@@ -391,6 +411,45 @@ void UnParallelComp2D(int64_t num1, int64_t num2,
   }
 }
 
+// An n-dimensional parallel comprehension. Argument gives the radix
+// of each dimension, and f is called on an array of size N.
+//
+// If f takes three arguments, then additionally the current index
+// and the total indices are passed: f(args, num, den);
+template<size_t N, typename F>
+void ParallelCompND(
+    const std::array<int64_t, N> &dims,
+    const F &f,
+    int max_concurrency) {
+  static constexpr size_t NUM_ARGS =
+    internal::get_arity<F>{};
+
+  static_assert(NUM_ARGS == 1 || NUM_ARGS == 3,
+                "The function passed to ParallelCompND "
+                "should take 1 or 3 arguments.");
+
+  int64_t total_num = 1;
+  for (int64_t d : dims) total_num *= d;
+  for (int64_t d : dims) {
+    assert(d != 0);
+  }
+  ParallelComp(total_num,
+               [&f, &dims, total_num](const int64_t idx) {
+                 std::array<int64_t, N> arg;
+                 int64_t x = idx;
+                 for (int i = N - 1; i >= 0; i--) {
+                   arg[i] = x % dims[i];
+                   x /= dims[i];
+                 }
+                 if constexpr (NUM_ARGS == 1) {
+                   f(std::move(arg));
+                 } else if constexpr (NUM_ARGS == 3) {
+                   f(std::move(arg), idx, total_num);
+                 }
+               },
+               max_concurrency);
+}
+
 template<class F>
 void ParallelComp3D(int64_t num1, int64_t num2, int64_t num3,
                     const F &f,
@@ -407,6 +466,7 @@ void ParallelComp3D(int64_t num1, int64_t num2, int64_t num3,
                },
                max_concurrency);
 }
+
 
 // Run exactly num_threads copies of f, each getting its thread id.
 template<class F>
