@@ -93,14 +93,15 @@ struct QuadModLL {
   SolutionFn Solution;
 
   // Were globals NumberLength and TestNbr
-  int modulus_length = 0;
+  // int modulus_length = 0;
   limb TheModulus[MAX_LEN] = {};
 
   // Use Chinese remainder theorem to obtain the solutions.
-  void PerformChineseRemainderTheorem(const Factors &factors) {
+  void PerformChineseRemainderTheorem(
+      const std::vector<std::pair<BigInt, int>> &factors) {
     int T1;
 
-    const int nbrFactors = factors.product.size();
+    const int nbrFactors = factors.size();
     CHECK((int)Solution1.size() == nbrFactors);
     CHECK((int)Solution2.size() == nbrFactors);
     CHECK((int)Increment.size() == nbrFactors);
@@ -129,19 +130,21 @@ struct QuadModLL {
       BigInteger currentSolution;
       BigIntToBigInteger(Tmp[0], &currentSolution);
 
-      const sFactorz *pstFactor = &factors.product[0];
-      IntArray2BigInteger(modulus_length, pstFactor->array, &prime);
+      // const sFactorz *pstFactor = &factors.product[0];
+      const BigInt &Prime = factors[0].first;
+      // IntArray2BigInteger(modulus_length, pstFactor->array, &prime);
+      BigIntToBigInteger(Prime, &prime);
+
       BigInt BigMult =
-        BigInt::Pow(BigIntegerToBigInt(&prime), pstFactor->multiplicity);
+        BigInt::Pow(BigIntegerToBigInt(&prime), factors[0].second);
       // PERF directly
       BigInteger Mult;
       BigIntToBigInteger(BigMult, &Mult);
       // (void)BigIntPowerIntExp(&prime, pstFactor->multiplicity, &Mult);
 
       for (T1 = 1; T1 < nbrFactors; T1++) {
-        pstFactor++;
 
-        if (pstFactor->multiplicity == 0) {
+        if (factors[T1].second == 0) {
           Tmp[T1] = BigInt(0);
           // intToBigInteger(&Tmp[T1], 0);
           continue;
@@ -164,12 +167,14 @@ struct QuadModLL {
           // BigIntAdd(&Tmp[T1], &Solution1[T1], &Tmp[T1]);
         }
 
-        const int number_length = *pstFactor->array;
-        modulus_length = number_length;
-        IntArray2BigInteger(number_length, pstFactor->array, &prime);
+        // const int number_length = *pstFactor->array;
+        // modulus_length = number_length;
+        // IntArray2BigInteger(number_length, pstFactor->array, &prime);
+        const BigInt &Prime = factors[T1].first;
+        BigIntToBigInteger(Prime, &prime);
 
         BigInteger K;
-        (void)BigIntPowerIntExp(&prime, pstFactor->multiplicity, &K);
+        (void)BigIntPowerIntExp(&prime, factors[T1].second, &K);
         CopyBigInt(&prime, &K);
 
         for (int E = 0; E < T1; E++) {
@@ -177,14 +182,19 @@ struct QuadModLL {
           BigInt QQ = Tmp[T1] - Tmp[E];
           BigIntToBigInteger(QQ, &Q);
           // BigIntSubt(&Tmp[T1], &Tmp[E], &Q);
+
+          // XXX directly L = pow(base, exp)
           BigInteger bigBase;
-          IntArray2BigInteger(modulus_length, factors.product[E].array, &bigBase);
-          (void)BigIntPowerIntExp(&bigBase, factors.product[E].multiplicity, &L);
-          modulus_length = prime.nbrLimbs;
+          BigIntToBigInteger(factors[E].first, &bigBase);
+          // IntArray2BigInteger(modulus_length, factors.product[E].array, &bigBase);
+          (void)BigIntPowerIntExp(&bigBase, factors[E].second, &L);
+          // (void)BigIntPowerIntExp(&bigBase, factors.product[E].multiplicity, &L);
+          int modulus_length = prime.nbrLimbs;
           int NumberLengthBytes = modulus_length * (int)sizeof(limb);
           (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
           TheModulus[modulus_length].x = 0;
-          MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
+          MontgomeryParams params =
+            GetMontgomeryParams(modulus_length, TheModulus);
           BigInteger tmp_out;
           BigIntegerModularDivision(params, modulus_length, TheModulus,
                                     &Q, &L, &prime, &tmp_out);
@@ -221,10 +231,15 @@ struct QuadModLL {
       }
 
       for (T1 = nbrFactors - 1; T1 >= 0; T1--) {
+        // XXX directly prime = pow(base, exp)
         BigInteger bigBase;
-        IntArray2BigInteger(modulus_length, factors.product[T1].array, &bigBase);
-        (void)BigIntPowerIntExp(&bigBase, factors.product[T1].multiplicity,
-                                &prime);
+        BigIntToBigInteger(factors[T1].first, &bigBase);
+        // IntArray2BigInteger(modulus_length, factors.product[T1].array, &bigBase);
+
+        (void)BigIntPowerIntExp(&bigBase, factors[T1].second, &prime);
+
+        // (void)BigIntPowerIntExp(&bigBase, factors.product[T1].multiplicity,
+        // &prime);
 
         CHECK(T1 < (int)Solution1.size());
         CHECK(T1 < (int)Solution2.size());
@@ -268,12 +283,13 @@ struct QuadModLL {
 
     // This thing generates its own factors for the Chinese Remainder
     // Theorem call.
-    auto factors = std::make_unique<Factors>();
-    factors->storage.resize(20000);
+    // auto factors = std::make_unique<Factors>();
+    // factors->storage.resize(20000);
 
-    int* ptrFactorsMod = factors->storage.data();
+    std::vector<std::pair<BigInt, int>> factors;
+
+    // int* ptrFactorsMod = factors->storage.data();
     // struct sFactors* pstFactor = &astFactorsMod[1];
-
 
 
     int solutionNbr = 0;
@@ -289,7 +305,7 @@ struct QuadModLL {
     // N = r*2^k (r = odd)
     int powerOf2;
     DivideBigNbrByMaxPowerOf2(&powerOf2, pValN->limbs, &pValN->nbrLimbs);
-    modulus_length = pValN->nbrLimbs;
+    int modulus_length = pValN->nbrLimbs;
     int NumberLengthBytes = modulus_length * (int)sizeof(limb);
     if ((pValN->nbrLimbs != 1) || (pValN->limbs[0].x != 1)) {
 
@@ -320,17 +336,20 @@ struct QuadModLL {
 
       // CopyBigInt(ptrSolution2, ptrSolution1);
 
-      BigInteger2IntArray(modulus_length, ptrFactorsMod, pValN);
-      factors->product.push_back({.array = ptrFactorsMod,
-                                  .multiplicity = 1});
+      factors.push_back(std::make_pair(BigIntegerToBigInt(pValN), 1));
+
+      // BigInteger2IntArray(modulus_length, ptrFactorsMod, pValN);
+      // factors->product.push_back({.array = ptrFactorsMod,
+      // .multiplicity = 1});
       // in storage, skip the number of limbs we used
-      ptrFactorsMod += *ptrFactorsMod;
+      // ptrFactorsMod += *ptrFactorsMod;
       // .. and length
-      ptrFactorsMod++;
+      // ptrFactorsMod++;
 
       solutionNbr++;
     }
 
+    CHECK((int)factors.size() == solutionNbr);
     CHECK((int)Solution1.size() == solutionNbr);
     CHECK((int)Solution2.size() == solutionNbr);
     CHECK((int)Increment.size() == solutionNbr);
@@ -346,19 +365,21 @@ struct QuadModLL {
       Increment.push_back(BigIntegerToBigInt(&pow2));
       // CopyBigInt(&Increment[solutionNbr], ptrSolution1);
       Exponents[solutionNbr] = 1;
-      BigInteger2IntArray(modulus_length, ptrFactorsMod, &pow2);
+
+      factors.push_back(std::make_pair(BigIntegerToBigInt(&pow2), 1));
+      // BigInteger2IntArray(modulus_length, ptrFactorsMod, &pow2);
       // BigInteger2IntArray(modulus_length, ptrFactorsMod, ptrSolution1);
       // CHECK(ptrSolution1->nbrLimbs > 0);
 
       // Port note: Original code didn't advance the factor pointer nor
       // storage pointer (probably because this is not in a loop) but
       // that just seems wrong.
-      factors->product.push_back({.array = ptrFactorsMod,
-                                  .multiplicity = 1});
+      // factors->product.push_back({.array = ptrFactorsMod,
+      // .multiplicity = 1});
       // in storage, skip the number of limbs we used
-      ptrFactorsMod += *ptrFactorsMod;
+      // ptrFactorsMod += *ptrFactorsMod;
       // .. and length
-      ptrFactorsMod++;
+      // ptrFactorsMod++;
 
       int modulus_length = 0;
       MontgomeryParams params =
@@ -404,21 +425,23 @@ struct QuadModLL {
       solutionNbr++;
     }
 
+    CHECK((int)factors.size() == solutionNbr);
     CHECK((int)Solution1.size() == solutionNbr);
     CHECK((int)Solution2.size() == solutionNbr);
     CHECK((int)Increment.size() == solutionNbr);
 
     // astFactorsMod[0].multiplicity = solutionNbr;
-    assert((int)factors->product.size() == solutionNbr);
+    // assert((int)factors->product.size() == solutionNbr);
 
-    PerformChineseRemainderTheorem(*factors);
+    PerformChineseRemainderTheorem(factors);
   }
 
   // Compute sqrRoot <- sqrt(ValCOdd) mod 2^expon.
   // To compute the square root, compute the inverse of sqrt,
   // so only multiplications are used.
   // f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
-  void ComputeSquareRootModPowerOf2(int expon, int bitsCZero) {
+  void ComputeSquareRootModPowerOf2(int expon, int bitsCZero,
+                                    int modulus_length) {
     // First approximation to inverse of square root.
     // If value is ...0001b, the inverse of square root is ...01b.
     // If value is ...1001b, the inverse of square root is ...11b.
@@ -447,6 +470,7 @@ struct QuadModLL {
     // Get square root of ValCOdd from its inverse by multiplying by ValCOdd.
     MultBigNbr(ValCOdd.limbs, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
     int lenBytes = nbrLimbs * (int)sizeof(limb);
+
     (void)memcpy(sqrRoot.limbs, tmp1.limbs, lenBytes);
     setNbrLimbs(&sqrRoot, modulus_length);
 
@@ -515,7 +539,8 @@ struct QuadModLL {
         ptrSolution++;
       }
     }
-    modulus_length = Aux0.nbrLimbs;
+
+    int modulus_length = Aux0.nbrLimbs;
     setNbrLimbs(pSolution, modulus_length);
   }
 
@@ -574,7 +599,8 @@ struct QuadModLL {
       BigIntPowerOf2(&K1, expon);
       addbigint(&K1, -1);
       BigIntAnd(&tmp1, &K1, &ValCOdd);      // (b/2) - a*c mod 2^n
-      modulus_length = K1.nbrLimbs;
+
+      int modulus_length = K1.nbrLimbs;
 
       if (modulus_length > ValAOdd.nbrLimbs) {
         int lenBytes = (modulus_length - ValAOdd.nbrLimbs) * (int)sizeof(int);
@@ -608,7 +634,7 @@ struct QuadModLL {
         } else {
           // Compute sqrRoot as the square root of ValCOdd.
           expon -= bitsCZero / 2;
-          ComputeSquareRootModPowerOf2(expon, bitsCZero);
+          ComputeSquareRootModPowerOf2(expon, bitsCZero, modulus_length);
           expon--;
           if (expon == (bitsCZero / 2)) {
             expon++;
@@ -677,7 +703,7 @@ struct QuadModLL {
   void ComputeSquareRootModPowerOfP(const BigInteger *base,
                                     int nbrBitsSquareRoot) {
     int correctBits;
-    modulus_length = prime.nbrLimbs;
+    int modulus_length = prime.nbrLimbs;
     int NumberLengthBytes = modulus_length * (int)sizeof(limb);
     (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
     TheModulus[modulus_length].x = 0;
@@ -949,7 +975,7 @@ struct QuadModLL {
 
     BigInteger tmp2;
     intToBigInteger(&tmp2, 1);
-    modulus_length = tmp1.nbrLimbs;
+    int modulus_length = tmp1.nbrLimbs;
     NumberLengthBytes = modulus_length * (int)sizeof(limb);
     (void)memcpy(TheModulus, tmp1.limbs, NumberLengthBytes);
     TheModulus[modulus_length].x = 0;
@@ -1077,7 +1103,7 @@ struct QuadModLL {
     // this replaced doing it in place on ptrSolution.
     BigInteger tmpSolution;
     // BigInteger* ptrSolution = &Solution1[factorIndex];
-    modulus_length = prime.nbrLimbs;
+    int modulus_length = prime.nbrLimbs;
     int NumberLengthBytes = modulus_length * (int)sizeof(limb);
     (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
     TheModulus[modulus_length].x = 0;
@@ -1103,7 +1129,7 @@ struct QuadModLL {
       MultInt(&L, &L, 2);                          // 2*a*x_n
       BigIntAdd(&L, pValB, &L);                    // 2*a*x_n + b
       (void)BigIntRemainder(&L, &V, &L);           // Denominator
-      modulus_length = V.nbrLimbs;
+      int modulus_length = V.nbrLimbs;
       int NumberLengthBytes = modulus_length * (int)sizeof(limb);
       (void)memcpy(TheModulus, V.limbs, NumberLengthBytes);
       TheModulus[modulus_length].x = 0;
@@ -1222,7 +1248,7 @@ struct QuadModLL {
     if ((LastModulus.nbrLimbs == 0) || !BigIntEqual(&LastModulus, pValN))
     {     // Last modulus is different from ValN.
       CopyBigInt(&LastModulus, pValN);
-      modulus_length = pValN->nbrLimbs;
+      int modulus_length = pValN->nbrLimbs;
       BigInteger2IntArray(modulus_length, nbrToFactor, pValN);
       factor(pValN, nbrToFactor, factorsMod, astFactorsMod);
     }
@@ -1231,18 +1257,20 @@ struct QuadModLL {
     // mimicking original code, but now we aren't using the LastModulus
     // at all, I think
     // CopyBigInt(&LastModulus, pValN);
-    std::unique_ptr<Factors> factors = BigFactor(pValN);
+    // std::unique_ptr<Factors> factors = BigFactor(pValN);
+    std::vector<std::pair<BigInt, int>> factors =
+      BigIntFactor(BigIntegerToBigInt(pValN));
 
     intToBigInteger(&Q, 0);
-    const int nbrFactors = factors->product.size();
-    const sFactorz *pstFactor = &factors->product[0];
+    const int nbrFactors = factors.size();
+    // const sFactorz *pstFactor = &factors->product[0];
 
     Solution1.resize(nbrFactors);
     Solution2.resize(nbrFactors);
     Increment.resize(nbrFactors);
 
     for (int factorIndex = 0; factorIndex < nbrFactors; factorIndex++) {
-      int expon = pstFactor->multiplicity;
+      int expon = factors[factorIndex].second;
       if (expon == 0) {
         Solution1[factorIndex] = BigInt(0);
         Solution2[factorIndex] = BigInt(0);
@@ -1250,13 +1278,16 @@ struct QuadModLL {
         // intToBigInteger(&Solution1[factorIndex], 0);
         // intToBigInteger(&Solution2[factorIndex], 0);
         // intToBigInteger(&Increment[factorIndex], 1);
-        pstFactor++;
         continue;
       }
 
-      const int number_length = *pstFactor->array;
-      modulus_length = number_length;
-      IntArray2BigInteger(number_length, pstFactor->array, &prime);
+      // const int number_length = *pstFactor->array;
+      // int modulus_length = number_length;
+      // IntArray2BigInteger(number_length, pstFactor->array, &prime);
+
+      const BigInt &Prime = factors[factorIndex].first;
+      BigIntToBigInteger(Prime, &prime);
+
       (void)BigIntPowerIntExp(&prime, expon, &V);
       (void)BigIntRemainder(pValA, &prime, &L);
 
@@ -1281,10 +1312,9 @@ struct QuadModLL {
       Increment[factorIndex] = BigIntegerToBigInt(&Q);
       // CopyBigInt(&Increment[factorIndex], &Q);
       Exponents[factorIndex] = 0;
-      pstFactor++;
     }
 
-    PerformChineseRemainderTheorem(*factors);
+    PerformChineseRemainderTheorem(factors);
   }
 
 };
