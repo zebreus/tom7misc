@@ -49,9 +49,9 @@ namespace {
 
 // PERF So big!
 struct QuadModLL {
-  BigInt Solution1[400];
-  BigInt Solution2[400];
-  BigInt Increment[400];
+  std::vector<BigInt> Solution1;
+  std::vector<BigInt> Solution2;
+  std::vector<BigInt> Increment;
   BigInteger prime;
 
   int Exponents[400];
@@ -61,11 +61,13 @@ struct QuadModLL {
     // Solution bigint
     for (int i = 0; i < 400; i++) {
       Exponents[i] = 777;
-      Solution1[i] = BigInt(888);
-      Solution2[i] = BigInt(999);
-      Increment[i] = BigInt(101010);
     }
     intToBigInteger(&prime, 121212);
+
+    // XXX do this dynamically.
+    Solution1.resize(400);
+    Solution2.resize(400);
+    Increment.resize(400);
   }
 
   BigInteger Quadr;
