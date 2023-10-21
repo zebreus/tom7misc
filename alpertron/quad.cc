@@ -17,6 +17,11 @@
 
 #include "quad.h"
 
+#include <memory>
+#include <vector>
+#include <optional>
+#include <utility>
+
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>

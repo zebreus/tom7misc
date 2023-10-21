@@ -48,7 +48,6 @@ static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
 // now fully internal.
 namespace {
 
-// PERF So big!
 struct QuadModLL {
   std::vector<BigInt> Solution1;
   std::vector<BigInt> Solution2;

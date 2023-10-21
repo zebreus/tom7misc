@@ -14,11 +14,6 @@ static void PrintBigInteger(const BigInteger *big) {
   printf("%s", b.ToString().c_str());
 }
 
-static void PrintIntArray(const int *arr) {
-  BigInt b = ArrayToBigInt(arr);
-  printf("%s", b.ToString().c_str());
-}
-
 int main(int argc, char* argv[]) {
   if (argc != 2) {
     fprintf(stderr, "afactor number\n");
@@ -32,11 +27,11 @@ int main(int argc, char* argv[]) {
   printf(":");
   fflush(stdout);
 
-  std::unique_ptr<Factors> factors = BigFactor(&num);
-  for (int i = 0; i < (int)factors->product.size(); i++) {
-    for (int m = 0; m < factors->product[i].multiplicity; m++) {
-      printf(" ");
-      PrintIntArray(factors->product[i].array);
+  std::vector<std::pair<BigInt, int>> factors =
+    BigIntFactor(BigIntegerToBigInt(&num));
+  for (const auto &[p, e] : factors) {
+    for (int m = 0; m < e; m++) {
+      printf(" %s", p.ToString().c_str());
     }
   }
   printf("\n");

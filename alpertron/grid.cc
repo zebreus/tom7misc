@@ -271,7 +271,7 @@ static void RunGrid() {
           int64_t idx, int64_t total) {
         // Center on 0.
         // ... except a, since we already ran -10 to 0
-        int64_t a = arg[0] + 21; // - MAX_COEFF;
+        int64_t a = arg[0] + 23; // - MAX_COEFF;
         int64_t b = arg[1] - MAX_COEFF;
         int64_t c = arg[2] - MAX_COEFF;
         int64_t d = arg[3] - MAX_COEFF;

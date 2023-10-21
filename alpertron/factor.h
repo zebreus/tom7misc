@@ -15,34 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef _FACTOR_H
-#define _FACTOR_H
+#ifndef _ALPERTRON_FACTOR_H
+#define _ALPERTRON_FACTOR_H
 
-#include <memory>
 #include <vector>
 #include <utility>
 
-#include "bignbr.h"
-
-struct sFactorz {
-  int *array = nullptr;
-  int multiplicity = 0;
-};
-
-struct Factors {
-  Factors() {}
-  // int pointers point into storage.
-  std::vector<sFactorz> product;
-
-  // Private outside of factoring itself.
-  std::vector<int> storage;
-private:
-  // Not copyable, because of internal array pointers.
-  Factors(const Factors &) = delete;
-  Factors &operator =(const Factors&) = delete;
-};
-
-std::unique_ptr<Factors> BigFactor(const BigInteger *toFactor);
+#include "bignum/big.h"
 
 // Same as BigInt::PrimeFactorization, but with {1, 1} for 1.
 std::vector<std::pair<BigInt, int>>
