@@ -256,9 +256,9 @@ static void RunGrid() {
   Periodically stats_per(5.0);
   Timer start_time;
 
-  std::array<int64_t, 6> dims = {
+  std::array<int64_t, 5> dims = {
     RADIX, RADIX, RADIX,
-    RADIX, RADIX, RADIX,
+    RADIX, RADIX, /* f in loop */
   };
 
   // Microseconds.
@@ -267,141 +267,144 @@ static void RunGrid() {
 
   ParallelCompND(
       dims,
-      [&](const std::array<int64_t, 6> &arg,
+      [&](const std::array<int64_t, 5> &arg,
           int64_t idx, int64_t total) {
         // Center on 0.
         // ... except a, since we already ran -10 to 0
-        int64_t a = arg[0] + 18; // - MAX_COEFF;
+        int64_t a = arg[0] + 21; // - MAX_COEFF;
         int64_t b = arg[1] - MAX_COEFF;
         int64_t c = arg[2] - MAX_COEFF;
         int64_t d = arg[3] - MAX_COEFF;
         int64_t e = arg[4] - MAX_COEFF;
-        int64_t f = arg[5] - MAX_COEFF;
 
-        // Known bad solutions.
-        if (a == 0 && b == -6 && c == -6 &&
-            d == -5 && e == 1 && f == 5)
-          return;
-
-        // Generalized version of above.
+        // Generalized version of known bad solution below.
         if (a == 0 && b == c)
           return;
-
-        /*
-        printf("do %lld %lld %lld %lld %lld %lld\n",
-               a, b, c, d, e, f);
-        */
 
         BigInt A(a);
         BigInt B(b);
         BigInt C(c);
         BigInt D(d);
         BigInt E(e);
-        BigInt F(f);
 
-        auto Assert = [&](const char *type,
-                          const BigInt &x, const BigInt &y) {
-            BigInt r =
-              A * (x * x) +
-              B * (x * y) +
-              C * (y * y) +
-              D * x +
-              E * y +
-              F;
-            CHECK(r == 0) << "\n\n\nInvalid solution (" << x.ToString()
-                          << ", " << y.ToString() << ") of type " << type
-                          << ".\nWant 0; result was: " << r.ToString()
-                          << "\nProblem: "
-                          << A.ToString() << " "
-                          << B.ToString() << " "
-                          << C.ToString() << " "
-                          << D.ToString() << " "
-                          << E.ToString() << " "
-                          << F.ToString() << "\n\n\n\n";
+        std::vector<double> local_timing;
+
+        for (int64 f = -MAX_COEFF; f <= MAX_COEFF; f++) {
+
+          // Known bad solutions.
+          if (a == 0 && b == -6 && c == -6 &&
+              d == -5 && e == 1 && f == 5)
+            continue;
+
+          BigInt F(f);
+
+          auto Assert = [&](const char *type,
+                            const BigInt &x, const BigInt &y) {
+              BigInt r =
+                A * (x * x) +
+                B * (x * y) +
+                C * (y * y) +
+                D * x +
+                E * y +
+                F;
+              CHECK(r == 0) << "\n\n\nInvalid solution (" << x.ToString()
+                            << ", " << y.ToString() << ") of type " << type
+                            << ".\nWant 0; result was: " << r.ToString()
+                            << "\nProblem: "
+                            << A.ToString() << " "
+                            << B.ToString() << " "
+                            << C.ToString() << " "
+                            << D.ToString() << " "
+                            << E.ToString() << " "
+                            << F.ToString() << "\n\n\n\n";
+            };
+
+          Timer sol_timer;
+          Solutions sols =
+            QuadBigInt(A, B, C, D, E, F, nullptr);
+          const double sol_usec = sol_timer.Seconds() * 1000000.0;
+          local_timing.push_back(sol_usec);
+
+          if (sols.interesting_coverage) {
+            count_interesting++;
+            printf("\n\n" APURPLE("Coverage!")
+                   " %lld %lld %lld %lld %lld %lld\n\n",
+                   a, b, c, d, e, f);
+            MutexLock ml(&file_mutex);
+            FILE *file = fopen("interesting-coverage.txt\n", "ab");
+            CHECK(file != nullptr);
+            fprintf(file, "%lld %lld %lld %lld %lld %lld\n",
+                    a, b, c, d, e, f);
+            fclose(file);
+          }
+
+          // Check solutions.
+          if (sols.any_integers) {
+            count_any++;
+            Assert("any", BigInt(3), BigInt(7));
+            Assert("any", BigInt(-31337), BigInt(27));
+          }
+
+          for (const LinearSolution &linear : sols.linear) {
+            count_linear++;
+
+            Assert("linear",
+                   linear.MX * BigInt(0) + linear.BX,
+                   linear.MY * BigInt(0) + linear.BY);
+
+            Assert("linear",
+                   linear.MX * BigInt(11) + linear.BX,
+                   linear.MY * BigInt(11) + linear.BY);
+
+            Assert("linear",
+                   linear.MX * BigInt(-27) + linear.BX,
+                   linear.MY * BigInt(-27) + linear.BY);
+          }
+
+          for (const PointSolution &point : sols.points) {
+            count_point++;
+            Assert("point", point.X, point.Y);
+          }
+
+          for (const QuadraticSolution &quad : sols.quadratic) {
+            count_quad++;
+
+            Assert("quad",
+                   quad.VX * BigInt(0) + quad.MX * BigInt(0) + quad.BX,
+                   quad.VY * BigInt(0) + quad.MY * BigInt(0) + quad.BY);
+
+            Assert("quad",
+                   quad.VX * BigInt(9) + quad.MX * BigInt(-3) + quad.BX,
+                   quad.VY * BigInt(9) + quad.MY * BigInt(-3) + quad.BY);
+
+            Assert("quad",
+                   quad.VX * BigInt(100) + quad.MX * BigInt(10) + quad.BX,
+                   quad.VY * BigInt(100) + quad.MY * BigInt(10) + quad.BY);
           };
 
-        Timer sol_timer;
-        Solutions sols =
-          QuadBigInt(A, B, C, D, E, F, nullptr);
-        const double sol_usec = sol_timer.Seconds() * 1000000.0;
+          // TODO: Test recursive!
+          for (const std::pair<RecursiveSolution,
+                 RecursiveSolution> &rec : sols.recursive) {
+            count_recursive++;
+            (void)rec;
+          }
 
-        if (sols.interesting_coverage) {
-          count_interesting++;
-          printf("\n\n" APURPLE("Coverage!")
-                 " %lld %lld %lld %lld %lld %lld\n\n",
-                 a, b, c, d, e, f);
-          MutexLock ml(&file_mutex);
-          FILE *file = fopen("interesting-coverage.txt\n", "ab");
-          CHECK(file != nullptr);
-          fprintf(file, "%lld %lld %lld %lld %lld %lld\n",
-                  a, b, c, d, e, f);
-          fclose(file);
+          if (!sols.any_integers &&
+              sols.linear.empty() &&
+              sols.points.empty() &&
+              sols.quadratic.empty() &&
+              sols.recursive.empty()) {
+            count_none++;
+          }
+
+          count_done++;
         }
-
-        // Check solutions.
-        if (sols.any_integers) {
-          count_any++;
-          Assert("any", BigInt(3), BigInt(7));
-          Assert("any", BigInt(-31337), BigInt(27));
-        }
-
-        for (const LinearSolution &linear : sols.linear) {
-          count_linear++;
-
-          Assert("linear",
-                 linear.MX * BigInt(0) + linear.BX,
-                 linear.MY * BigInt(0) + linear.BY);
-
-          Assert("linear",
-                 linear.MX * BigInt(11) + linear.BX,
-                 linear.MY * BigInt(11) + linear.BY);
-
-          Assert("linear",
-                 linear.MX * BigInt(-27) + linear.BX,
-                 linear.MY * BigInt(-27) + linear.BY);
-        }
-
-        for (const PointSolution &point : sols.points) {
-          count_point++;
-          Assert("point", point.X, point.Y);
-        }
-
-        for (const QuadraticSolution &quad : sols.quadratic) {
-          count_quad++;
-
-          Assert("quad",
-                 quad.VX * BigInt(0) + quad.MX * BigInt(0) + quad.BX,
-                 quad.VY * BigInt(0) + quad.MY * BigInt(0) + quad.BY);
-
-          Assert("quad",
-                 quad.VX * BigInt(9) + quad.MX * BigInt(-3) + quad.BX,
-                 quad.VY * BigInt(9) + quad.MY * BigInt(-3) + quad.BY);
-
-          Assert("quad",
-                 quad.VX * BigInt(100) + quad.MX * BigInt(10) + quad.BX,
-                 quad.VY * BigInt(100) + quad.MY * BigInt(10) + quad.BY);
-        };
-
-        // TODO: Test recursive!
-        for (const std::pair<RecursiveSolution,
-               RecursiveSolution> &rec : sols.recursive) {
-          count_recursive++;
-          (void)rec;
-        }
-
-        if (!sols.any_integers &&
-            sols.linear.empty() &&
-            sols.points.empty() &&
-            sols.quadratic.empty() &&
-            sols.recursive.empty()) {
-          count_none++;
-        }
-
-        count_done++;
 
         {
           MutexLock ml(&histo_mutex);
-          auto_histo.Observe(sol_usec);
+          for (double d : local_timing) {
+            auto_histo.Observe(d);
+          }
         }
 
         stats_per.RunIf([&]() {
@@ -416,8 +419,8 @@ static void RunGrid() {
             std::string bar =
               ANSI::ProgressBar(
                   done, total,
-                  StringPrintf("%lld %lld %lld %lld %lld %lld ",
-                               a, b, c, d, e, f),
+                  StringPrintf("%lld %lld %lld %lld %lld * ",
+                               a, b, c, d, e),
                   sec);
 
             static constexpr int STATUS_LINES = 3;

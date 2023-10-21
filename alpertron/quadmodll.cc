@@ -22,6 +22,7 @@
 #include <math.h>
 #include <cassert>
 #include <memory>
+#include <cstdio>
 
 #include "bignbr.h"
 #include "factor.h"
@@ -54,6 +55,7 @@ struct QuadModLL {
   std::vector<BigInt> Increment;
   BigInteger prime;
 
+  // probably should do this the same way as sol1,sol2,increment
   int Exponents[400];
 
   QuadModLL() {
@@ -63,11 +65,6 @@ struct QuadModLL {
       Exponents[i] = 777;
     }
     intToBigInteger(&prime, 121212);
-
-    // XXX do this dynamically.
-    Solution1.resize(400);
-    Solution2.resize(400);
-    Increment.resize(400);
   }
 
   BigInteger Quadr;
@@ -86,6 +83,7 @@ struct QuadModLL {
   BigInteger Aux[12];
   bool sol1Invalid = false;
   bool sol2Invalid = false;
+  bool interesting_coverage = false;
 
   BigInteger Aux0;
   BigInteger Aux1;
@@ -103,12 +101,18 @@ struct QuadModLL {
     int T1;
 
     const int nbrFactors = factors.product.size();
+    CHECK((int)Solution1.size() == nbrFactors);
+    CHECK((int)Solution2.size() == nbrFactors);
+    CHECK((int)Increment.size() == nbrFactors);
     CHECK(nbrFactors > 0);
     // Dynamically allocate temporary space. We need one per factor.
     std::vector<BigInt> Tmp(nbrFactors);
 
     do {
       // XXX Why can't this just be iteration 0 of the loop below?
+      CHECK(!Solution1.empty());
+      CHECK(!Solution2.empty());
+      CHECK(!Increment.empty());
 
       Tmp[0] = Increment[0] * (Exponents[0] >> 1);
       // MultInt(&Tmp[0], &Increment[0], Exponents[0] / 2);
@@ -142,6 +146,11 @@ struct QuadModLL {
           // intToBigInteger(&Tmp[T1], 0);
           continue;
         }
+
+        CHECK(T1 < (int)Solution1.size());
+        CHECK(T1 < (int)Solution2.size());
+        CHECK(T1 < (int)Increment.size());
+
 
         int expon = Exponents[T1];
         Tmp[T1] = Increment[T1] * (expon >> 1);
@@ -216,6 +225,11 @@ struct QuadModLL {
         IntArray2BigInteger(modulus_length, factors.product[T1].array, &bigBase);
         (void)BigIntPowerIntExp(&bigBase, factors.product[T1].multiplicity,
                                 &prime);
+
+        CHECK(T1 < (int)Solution1.size());
+        CHECK(T1 < (int)Solution2.size());
+        CHECK(T1 < (int)Increment.size());
+
         // BigIntSubt(&Solution1[T1], &Solution2[T1], &K1);
         // if ((K1.nbrLimbs == 1) && (K1.limbs[0].x == 0)) {
         if (Solution1[T1] == Solution2[T1]) {
@@ -244,9 +258,14 @@ struct QuadModLL {
 
   // Solve Bx + C = 0 (mod N).
   // Port note: This writes 0, 1, or 2 solutions at the beginning of the
-  // Solution array. Both Solution1 and Solution2 are the same.
+  // Solution array. Both Solution1 and Solution2 are the same. This path
+  // is disjoint from the general quadratic solver.
   void SolveModularLinearEquation(BigInteger *pValA, const BigInteger *pValB,
                                   const BigInteger *pValC, BigInteger *pValN) {
+    // No coverage for this entire function!
+    printf("smodlineq coverage\n");
+    interesting_coverage = true;
+
     // This thing generates its own factors for the Chinese Remainder
     // Theorem call.
     auto factors = std::make_unique<Factors>();
@@ -255,12 +274,9 @@ struct QuadModLL {
     int* ptrFactorsMod = factors->storage.data();
     // struct sFactors* pstFactor = &astFactorsMod[1];
 
-    // XXX HERE! Solution1 and Solution2 are arrays of BigInts now,
-    // not BigInteger. Ideally we would make the array be dynamic
-    // rather than fixed at 400.
+
+
     int solutionNbr = 0;
-    BigInt* ptrSolution1 = &Solution1[0];
-    BigInt* ptrSolution2 = &Solution2[0];
     BigInteger Tmp;
     BigIntGcd(pValB, pValN, &Tmp);
     if ((Tmp.nbrLimbs != 1) || (Tmp.limbs[0].x != 1)) {
@@ -276,12 +292,9 @@ struct QuadModLL {
     modulus_length = pValN->nbrLimbs;
     int NumberLengthBytes = modulus_length * (int)sizeof(limb);
     if ((pValN->nbrLimbs != 1) || (pValN->limbs[0].x != 1)) {
-      // XXX just use indices, not pointers
-      CHECK(ptrSolution1 == &Solution1[solutionNbr]);
-      CHECK(ptrSolution2 == &Solution2[solutionNbr]);
 
       // ValN is not 1.
-      Increment[solutionNbr] = BigIntegerToBigInt(pValN);
+      Increment.push_back(BigIntegerToBigInt(pValN));
       // CopyBigInt(&Increment[solutionNbr], pValN);
       Exponents[solutionNbr] = 1;
       (void)memcpy(TheModulus, pValN->limbs, NumberLengthBytes);
@@ -293,15 +306,18 @@ struct QuadModLL {
       BigInteger quotient;
       BigIntegerModularDivision(params, modulus_length, TheModulus,
                                 pValC, pValB, pValN, &quotient);
-      *ptrSolution1 = BigIntegerToBigInt(&quotient);
+
+      BigInt sol1 = BigIntegerToBigInt(&quotient);
 
       // Compute ptrSolution1 as -ValC / ValB
-      if (*ptrSolution1 != 0) {
-        *ptrSolution1 = BigIntegerToBigInt(pValN) - *ptrSolution1;
+      if (sol1 != 0) {
+        sol1 = BigIntegerToBigInt(pValN) - sol1;
         // BigIntSubt(pValN, ptrSolution1, ptrSolution1);
       }
 
-      *ptrSolution2 = *ptrSolution1;
+      Solution1.push_back(sol1);
+      Solution2.push_back(sol1);
+
       // CopyBigInt(ptrSolution2, ptrSolution1);
 
       BigInteger2IntArray(modulus_length, ptrFactorsMod, pValN);
@@ -312,25 +328,22 @@ struct QuadModLL {
       // .. and length
       ptrFactorsMod++;
 
-      // CHECK(ptrSolution1->nbrLimbs > 0);
-      // CHECK(ptrSolution2->nbrLimbs > 0);
-
-      ptrSolution1++;
-      ptrSolution2++;
       solutionNbr++;
     }
 
-    CHECK(ptrSolution1 == &Solution1[solutionNbr]);
-    CHECK(ptrSolution2 == &Solution2[solutionNbr]);
+    CHECK((int)Solution1.size() == solutionNbr);
+    CHECK((int)Solution2.size() == solutionNbr);
+    CHECK((int)Increment.size() == solutionNbr);
 
     // Perform division using power of 2.
     if (powerOf2 > 0) {
+
       // Port note: This used to set ptrSolution1 to the power of 2,
       // I think just as a temporary?
       BigInteger pow2;
       BigIntPowerOf2(&pow2, powerOf2);
       // BigIntPowerOf2(ptrSolution1, powerOf2);
-      Increment[solutionNbr] = BigIntegerToBigInt(&pow2);
+      Increment.push_back(BigIntegerToBigInt(&pow2));
       // CopyBigInt(&Increment[solutionNbr], ptrSolution1);
       Exponents[solutionNbr] = 1;
       BigInteger2IntArray(modulus_length, ptrFactorsMod, &pow2);
@@ -355,7 +368,8 @@ struct QuadModLL {
       // ptrSolution1 <- 1 / |ValB|
       BigInteger inv;
       ComputeInversePower2(pValB->limbs, inv.limbs, modulus_length);
-      // ComputeInversePower2(pValB->limbs, ptrSolution1->limbs, modulus_length);
+      // ComputeInversePower2(pValB->limbs, ptrSolution1->limbs,
+      //  modulus_length);
       // Compute ptrSolution1 as |ValC| / |ValB|
       ModMult(params,
               inv.limbs, pValC->limbs,
@@ -382,16 +396,18 @@ struct QuadModLL {
       inv.nbrLimbs = modulus_length;
       inv.sign = SIGN_POSITIVE;
 
-      *ptrSolution1 = BigIntegerToBigInt(&inv);
-      *ptrSolution2 = *ptrSolution1;
+      BigInt sol1 = BigIntegerToBigInt(&inv);
+      Solution1.push_back(sol1);
+      Solution2.push_back(sol1);
       // CopyBigInt(ptrSolution2, ptrSolution1);
 
       solutionNbr++;
-      // Port note: Not necessary. But this would maintain
-      // the invariant on solutionNbr.
-      ptrSolution1++;
-      ptrSolution2++;
     }
+
+    CHECK((int)Solution1.size() == solutionNbr);
+    CHECK((int)Solution2.size() == solutionNbr);
+    CHECK((int)Increment.size() == solutionNbr);
+
     // astFactorsMod[0].multiplicity = solutionNbr;
     assert((int)factors->product.size() == solutionNbr);
 
@@ -439,7 +455,7 @@ struct QuadModLL {
     }
   }
 
-  // XXX rewrite FQS to work directly on BigInt
+  // PERF? rewrite FQS to work directly on BigInt
   void FindQuadraticSolution(BigInt* pSolution, int exponent) {
     BigInteger sol;
     FindQuadraticSolutionInternal(&sol, exponent);
@@ -504,11 +520,13 @@ struct QuadModLL {
   }
 
   // Solve Ax^2 + Bx + C = 0 (mod 2^expon).
+  // If a solution is found, writes to Solution(1,2)[factorIndex]
+  // and returns true.
   bool SolveQuadraticEqModPowerOf2(
       int exponent, int factorIndex,
       const BigInteger *pValA,
-      const BigInteger* pValB,
-      const BigInteger* pValC) {
+      const BigInteger *pValB,
+      const BigInteger *pValC) {
     int expon = exponent;
     int bitsAZero;
     int bitsBZero;
@@ -629,7 +647,6 @@ struct QuadModLL {
       Solution1[factorIndex] <<= 1;
       // BigIntMultiplyBy2(&Solution1[factorIndex]);
 
-
       CopyBigInt(&Quadr, pValA);
       BigIntMultiplyBy2(&Quadr);         // 2a
       BigIntAdd(&Quadr, pValB, &Linear); // 2a+b
@@ -651,14 +668,14 @@ struct QuadModLL {
       CopyBigInt(&Const, pValC);
       FindQuadraticSolution(&Solution1[factorIndex], expon);
       sol2Invalid = true;
-
     }
 
     BigIntPowerOf2(&Q, expon);         // Store increment.
     return true;
   }
 
-  void ComputeSquareRootModPowerOfP(const BigInteger *base, int nbrBitsSquareRoot) {
+  void ComputeSquareRootModPowerOfP(const BigInteger *base,
+                                    int nbrBitsSquareRoot) {
     int correctBits;
     modulus_length = prime.nbrLimbs;
     int NumberLengthBytes = modulus_length * (int)sizeof(limb);
@@ -670,7 +687,8 @@ struct QuadModLL {
     if ((prime.limbs[0].x & 3) == 3) {
       // prime mod 4 = 3
       subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
-      BigIntegerModularPower(params, modulus_length, TheModulus, base, &Q, &SqrtDisc);
+      BigIntegerModularPower(params, modulus_length, TheModulus, base,
+                             &Q, &SqrtDisc);
     } else {
       limb* toConvert;
       // Convert discriminant to Montgomery notation.
@@ -722,17 +740,20 @@ struct QuadModLL {
       } else {
         // prime = 1 (mod 8). Use Shanks' method for modular square roots.
         // Step 1. Select e >= 3, q odd such that p = 2^e * q + 1.
-        // Step 2. Choose x at random in the range 1 < x < p such that jacobi (x, p) = -1.
+        // Step 2. Choose x at random in the range 1 < x < p such that
+        //           jacobi (x, p) = -1.
         // Step 3. Set z <- x^q (mod p).
-        // Step 4. Set y <- z, r <- e, x <- a^((q-1)/2) mod p, v <- ax mod p, w <- vx mod p.
+        // Step 4. Set y <- z, r <- e, x <- a^((q-1)/2) mod p,
+        //           v <- ax mod p, w <- vx mod p.
         // Step 5. If w = 1, the computation ends with +/-v as the square root.
         // Step 6. Find the smallest value of k such that w^(2^k) = 1 (mod p)
-        // Step 7. Set d <- y^(2^(r-k-1)) mod p, y <- d^2 mod p, r <- k, v <- dv mod p, w <- wy mod p.
+        // Step 7. Set d <- y^(2^(r-k-1)) mod p, y <- d^2 mod p,
+        //           r <- k, v <- dv mod p, w <- wy mod p.
         // Step 8. Go to step 5.
-        int e;
-        int r;
+
         // Step 1.
         subtractdivide(&Q, 1, 1);   // Q <- (prime-1).
+        int e;
         DivideBigNbrByMaxPowerOf2(&e, Q.limbs, &Q.nbrLimbs);
         // Step 2.
         int x = 1;
@@ -749,7 +770,7 @@ struct QuadModLL {
         // Step 4.
         NumberLengthBytes = modulus_length * (int)sizeof(limb);
         (void)memcpy(Aux[5].limbs, Aux[4].limbs, NumberLengthBytes); // y
-        r = e;
+        int r = e;
         CopyBigInt(&K1, &Q);
         subtractdivide(&K1, 1, 2);
         ModPow(params, modulus_length, TheModulus,
@@ -762,6 +783,7 @@ struct QuadModLL {
                 Aux[8].limbs, Aux[7].limbs,
                 modulus_length, TheModulus,
                 Aux[9].limbs);         // w
+
         // Step 5
         while (memcmp(Aux[9].limbs, params.MontgomeryMultR1,
                       NumberLengthBytes) != 0) {
@@ -1047,6 +1069,10 @@ struct QuadModLL {
     // The next value of x in sequence x_{n+1} is
     //   x_n - (a*x_n^2 + b*x_n + c) / (2*a_x + b).
 
+    // No coverage!
+    printf("qtermmultp coverage\n");
+    interesting_coverage = true;
+
     BigInt sol;
     // this replaced doing it in place on ptrSolution.
     BigInteger tmpSolution;
@@ -1099,20 +1125,28 @@ struct QuadModLL {
     // CopyBigInt(&Solution2[factorIndex], &Solution1[factorIndex]);
   }
 
+  // If solutions found, writes normalized solutions at factorIndex
+  // and returns true.
   bool QuadraticTermNotMultipleOfP(
       int expon, int factorIndex,
       const BigInteger *pValA,
-      const BigInteger* pValB,
-      const BigInteger* pValC) {
+      const BigInteger *pValB,
+      const BigInteger *pValC) {
+
+    const BigInt A = BigIntegerToBigInt(pValA);
+    const BigInt B = BigIntegerToBigInt(pValB);
+    const BigInt C = BigIntegerToBigInt(pValC);
+
     sol1Invalid = false;
     sol2Invalid = false;
     // Compute discriminant = ValB^2 - 4*ValA*ValC.
     {
-      BigInteger Tmp;
-      (void)BigIntMultiply(pValB, pValB, &Tmp);
-      (void)BigIntMultiply(pValA, pValC, &discriminant);
-      MultInt(&discriminant, &discriminant, 4);
-      BigIntSubt(&Tmp, &discriminant, &discriminant);
+      BigInt Disc = B * B - ((A * C) << 2);
+      BigIntToBigInteger(Disc, &discriminant);
+      // (void)BigIntMultiply(pValB, pValB, &Tmp);
+      // (void)BigIntMultiply(pValA, pValC, &discriminant);
+      // MultInt(&discriminant, &discriminant, 4);
+      // BigIntSubt(&Tmp, &discriminant, &discriminant);
     }
 
     bool solutions = false;
@@ -1122,8 +1156,10 @@ struct QuadModLL {
                                               pValA, pValB, pValC);
     } else {
       // Prime is not 2
-      solutions = SolveQuadraticEqModPowerOfP(expon, factorIndex, pValA, pValB);
+      solutions = SolveQuadraticEqModPowerOfP(expon, factorIndex,
+                                              pValA, pValB);
     }
+
     if (!solutions || (sol1Invalid && sol2Invalid)) {
       // Both solutions are invalid. Go out.
       return false;
@@ -1164,19 +1200,21 @@ struct QuadModLL {
       const BigInteger* pValC, BigInteger* pValN,
       BigInteger* pGcdAllParm, BigInteger* pValNnParm) {
 
+    const BigInt &A = BigIntegerToBigInt(pValA);
+    const BigInt &B = BigIntegerToBigInt(pValB);
+    const BigInt &C = BigIntegerToBigInt(pValC);
+    const BigInt &N = BigIntegerToBigInt(pValN);
+
     // PERF: no need to copy
     Solution = solutionCback;
 
     pGcdAll = pGcdAllParm;
     pValNn = pValNnParm;
-    {
-      BigInteger Tmp;
-      (void)BigIntRemainder(pValA, pValN, &Tmp);
-      if (BigIntIsZero(&Tmp)) {
-        // Linear equation.
-        SolveModularLinearEquation(pValA, pValB, pValC, pValN);
-        return;
-      }
+
+    if (BigInt::CMod(A, N) == 0) {
+      // Linear equation.
+      SolveModularLinearEquation(pValA, pValB, pValC, pValN);
+      return;
     }
 
     // PERF: This code will reuse factors. We might want to do that.
@@ -1198,6 +1236,11 @@ struct QuadModLL {
     intToBigInteger(&Q, 0);
     const int nbrFactors = factors->product.size();
     const sFactorz *pstFactor = &factors->product[0];
+
+    Solution1.resize(nbrFactors);
+    Solution2.resize(nbrFactors);
+    Increment.resize(nbrFactors);
+
     for (int factorIndex = 0; factorIndex < nbrFactors; factorIndex++) {
       int expon = pstFactor->multiplicity;
       if (expon == 0) {
@@ -1221,11 +1264,12 @@ struct QuadModLL {
           !((prime.nbrLimbs == 1) && (prime.limbs[0].x == 2))) {
         // ValA multiple of prime, means linear equation mod prime.
         // Also prime is not 2.
-        if ((BigIntIsZero(pValB)) && !(BigIntIsZero(pValC))) {
+        if (B == 0 && C != 0) {
           // There are no solutions: ValB=0 and ValC!=0
           return;
         }
         QuadraticTermMultipleOfP(expon, factorIndex, pValA, pValB, pValC);
+
       } else {
         // If quadratic equation mod p
         if (!QuadraticTermNotMultipleOfP(expon, factorIndex,
@@ -1250,7 +1294,8 @@ void SolveEquation(
     const SolutionFn &solutionCback,
     const BigInt &A, const BigInt &B,
     const BigInt &C, const BigInt &N,
-    const BigInt &GcdAll, const BigInt &Nn) {
+    const BigInt &GcdAll, const BigInt &Nn,
+    bool *interesting_coverage) {
   std::unique_ptr<QuadModLL> qmll = std::make_unique<QuadModLL>();
 
   BigInteger a, b, c, n, gcd, nn;
@@ -1262,4 +1307,8 @@ void SolveEquation(
   BigIntToBigInteger(Nn, &nn);
   qmll->SolveEquation(solutionCback,
                       &a, &b, &c, &n, &gcd, &nn);
+  if (interesting_coverage != nullptr &&
+      qmll->interesting_coverage) {
+    *interesting_coverage = true;
+  }
 }

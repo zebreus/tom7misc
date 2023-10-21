@@ -1658,6 +1658,7 @@ struct Quad {
              ValNn.ToString().c_str());
     }
 
+    bool interesting = false;
     SolveEquation(
         SolutionFn([&](const BigInt &Value) {
             this->SolutionX<QMOD_CALLBACK>(
@@ -1670,7 +1671,11 @@ struct Quad {
                 Alpha, Beta, Div, Discr);
           }),
         coeff_quadr, coeff_linear, coeff_indep,
-        Modulus, GcdAll, ValNn);
+        Modulus, GcdAll, ValNn,
+        &interesting);
+    if (interesting) {
+      solutions.interesting_coverage = true;
+    }
   }
 
   void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,

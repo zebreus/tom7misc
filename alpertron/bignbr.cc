@@ -152,10 +152,9 @@ enum eExprErr BigIntRemainder(
   // gets the remainder, or better, see if callers are getting both
   // quotient and remainder already.
 
-  // XXX PERF!
-  BigInt rem_ref = BigInt::QuotRem(numer, denom).second;
+  // BigInt rem_ref = BigInt::QuotRem(numer, denom).second;
   BigInt rem = BigInt::CMod(numer, denom);
-  CHECK(BigInt::Eq(rem, rem_ref));
+  // CHECK(BigInt::Eq(rem, rem_ref));
   BigIntToBigInteger(rem, pRemainder);
   return EXPR_OK;
 }
@@ -410,6 +409,7 @@ void subtractdivide(BigInteger *pBigInt, int subt, int divisor)
   CHECK(pBigInt->nbrLimbs > 0);
 }
 
+#if 0
 // XXXX delete
 static void reference_addbigint(BigInteger *pResult, int addend)
 {
@@ -453,12 +453,12 @@ static void reference_addbigint(BigInteger *pResult, int addend)
   }
   pResult->nbrLimbs = nbrLimbs;
 }
-
+#endif
 
 void addbigint(BigInteger *pResult, int addend) {
   BigInt a = BigInt::Plus(BigIntegerToBigInt(pResult), addend);
-  reference_addbigint(pResult, addend);
-  CHECK(BigInt::Eq(a, BigIntegerToBigInt(pResult)));
+  // reference_addbigint(pResult, addend);
+  // CHECK(BigInt::Eq(a, BigIntegerToBigInt(pResult)));
   BigIntToBigInteger(a, pResult);
 }
 
