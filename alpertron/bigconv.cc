@@ -14,6 +14,10 @@ static constexpr bool VERBOSE = false;
 
 using namespace std;
 
+#ifndef BIG_USE_GMP
+# error This program requires GMP mode for bignum.
+#endif
+
 bool ParseBigInteger(const char *str, BigInteger *big) {
   BigInt b(str);
   BigIntToBigInteger(b, big);

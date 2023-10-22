@@ -13,6 +13,14 @@ ifeq ($(UNAME),Cygwin)
   CC=x86_64-w64-mingw32-g++
   PLATFORM_CFLAGS=-Wl,--stack,167772160
   PLATFORM_LFLAGS=-static
+else ifeq ($(UNAME),Darwin)
+  # Mac OS X
+  CXX=g++
+  CC=gcc
+# ??? -stack-size is documented but doesn't work?
+#  PLATFORM_CFLAGS=-v -Wl,-stack-size,0x1000000
+  GMP_LFLAGS=-lgmp
+  GMP_CFLAGS=-DBIG_USE_GMP
 else
   # Linux
   CXX=g++
