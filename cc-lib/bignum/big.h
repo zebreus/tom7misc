@@ -72,6 +72,10 @@ struct BigInt {
   inline static BigInt Div(const BigInt &a, const BigInt &b);
   inline static BigInt Div(const BigInt &a, int64_t b);
 
+  // Rounds towards negative infinity.
+  inline static BigInt DivFloor(const BigInt &a, const BigInt &b);
+  inline static BigInt DivFloor(const BigInt &a, int64_t b);
+
   // Equivalent to num % den == 0; maybe faster.
   inline static bool DivisibleBy(const BigInt &num, const BigInt &den);
   inline static bool DivisibleBy(const BigInt &num, int64_t den);
@@ -618,6 +622,21 @@ BigInt BigInt::Div(const BigInt &a, int64_t b) {
   }
 }
 
+BigInt BigInt::DivFloor(const BigInt &a, const BigInt &b) {
+  // truncate (round towards zero) like C
+  BigInt ret;
+  mpz_fdiv_q(ret.rep, a.rep, b.rep);
+  return ret;
+}
+
+BigInt BigInt::DivFloor(const BigInt &a, int64_t b) {
+  // PERF: There is mpz_fdiv_q_ui, but we can't just flip the
+  // sign if it's negative, since rounding depends on the sign.
+  // Maybe just handle the positive case here?
+  return DivFloor(a, BigInt(b));
+}
+
+
 bool BigInt::DivisibleBy(const BigInt &num, const BigInt &den) {
   // (Note that GMP accepts 0 % 0, but I consider that an instance
   // of undefined behavior in this library.)
@@ -1014,6 +1033,16 @@ BigInt BigInt::Div(const BigInt &a, const BigInt &b) {
 BigInt BigInt::Div(const BigInt &a, int64_t b) {
   return BigInt{BzTruncate(a.rep, BigInt{b}.rep), nullptr};
 }
+
+BigInt BigInt::DivFloor(const BigInt &a, const BigInt &b) {
+  // TODO
+  abort();
+}
+BigInt BigInt::DivFloor(const BigInt &a, int64_t b) {
+  // TODO
+  abort();
+}
+
 
 BigInt BigInt::DivExact(const BigInt &a, const BigInt &b) {
   // Not using the precondition here; same as division.

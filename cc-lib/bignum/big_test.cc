@@ -444,6 +444,37 @@ static void TestDivExact() {
   CHECK(BigInt::Eq(a, e));
 }
 
+static void TestDivFloor() {
+  // No rounding.
+  CHECK(BigInt::Eq(
+            BigInt::DivFloor(BigInt(-4), BigInt(-2)),
+            2));
+  CHECK(BigInt::Eq(
+            BigInt::DivFloor(BigInt(40), BigInt(-20)),
+            -2));
+  CHECK(BigInt::Eq(
+            BigInt::DivFloor(BigInt(-400), 200),
+            -2));
+  CHECK(BigInt::Eq(
+            BigInt::DivFloor(BigInt(-4000), -2000),
+            2));
+
+  // Round towards negative infinity.
+  // This is the same for positive numbers.
+  CHECK(BigInt::Eq(
+            BigInt::Div(BigInt(1234567), 175),
+            BigInt::DivFloor(BigInt(1234567), 175)));
+
+  CHECK(BigInt::Eq(
+            BigInt::DivFloor(BigInt(10), -3),
+            -4));
+
+  CHECK(BigInt::Eq(
+            BigInt::DivFloor(BigInt(-10001),
+                             BigInt(10)),
+            -1001));
+}
+
 static void TestJacobi() {
   #ifdef BIG_USE_GMP
   CHECK(BigInt::Jacobi(BigInt(11), BigInt(17)) == -1);
@@ -550,6 +581,7 @@ int main(int argc, char **argv) {
 
   TestDivisibleBy();
   TestDivExact();
+  TestDivFloor();
 
   TestShift();
   TestAnd();
