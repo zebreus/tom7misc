@@ -183,21 +183,21 @@ struct QuadModLL {
           // BigIntSubt(&Tmp[T1], &Tmp[E], &Q);
 
           // XXX directly L = pow(base, exp)
-          BigInteger bigBase;
-          BigIntToBigInteger(factors[E].first, &bigBase);
+          BigInt LL = BigInt::Pow(factors[E].first, factors[E].second);
+          BigIntToBigInteger(LL, &L);
+          // BigIntToBigInteger(factors[E].first, &bigBase);
           // IntArray2BigInteger(modulus_length, factors.product[E].array, &bigBase);
-          (void)BigIntPowerIntExp(&bigBase, factors[E].second, &L);
+          // (void)BigIntPowerIntExp(&bigBase, factors[E].second, &L);
           // (void)BigIntPowerIntExp(&bigBase, factors.product[E].multiplicity, &L);
+
           int modulus_length = prime.nbrLimbs;
           int NumberLengthBytes = modulus_length * (int)sizeof(limb);
           (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
           TheModulus[modulus_length].x = 0;
           MontgomeryParams params =
             GetMontgomeryParams(modulus_length, TheModulus);
-          BigInteger tmp_out;
-          BigIntegerModularDivision(params, modulus_length, TheModulus,
-                                    &Q, &L, &prime, &tmp_out);
-          Tmp[T1] = BigIntegerToBigInt(&tmp_out);
+          Tmp[T1] = BigIntModularDivision(params, QQ, LL,
+                                          BigIntegerToBigInt(&prime));
         }
 
         // PERF directly
@@ -901,12 +901,6 @@ struct QuadModLL {
   bool SolveQuadraticEqModPowerOfP(
       int expon, int factorIndex,
       const BigInteger* pValA, const BigInteger* pValB) {
-    int correctBits;
-    int nbrLimbs;
-    int ctr;
-    int deltaZeros;
-    int NumberLengthBytes;
-
     // Number of bits of square root of discriminant to compute:
     //   expon + bits_a + 1,
     // where bits_a is the number of least significant bits of
@@ -933,6 +927,7 @@ struct QuadModLL {
     (void)BigIntRemainder(&discriminant, &V, &discriminant);
 
     // Get maximum power of prime which divides discriminant.
+    int deltaZeros;
     if (BigIntIsZero(&discriminant)) {
       // Discriminant is zero.
       deltaZeros = expon;
@@ -962,7 +957,7 @@ struct QuadModLL {
     BigInteger tmp1;
     (void)BigIntPowerIntExp(&prime, expon - deltaZeros, &tmp1);
     (void)BigIntRemainder(&ValAOdd, &tmp1, &ValAOdd);
-    nbrLimbs = tmp1.nbrLimbs;
+    int nbrLimbs = tmp1.nbrLimbs;
 
     if (ValAOdd.sign == SIGN_NEGATIVE) {
       ValAOdd.sign = SIGN_POSITIVE;           // Negate 2*A
@@ -975,7 +970,7 @@ struct QuadModLL {
     BigInteger tmp2;
     intToBigInteger(&tmp2, 1);
     int modulus_length = tmp1.nbrLimbs;
-    NumberLengthBytes = modulus_length * (int)sizeof(limb);
+    int NumberLengthBytes = modulus_length * (int)sizeof(limb);
     (void)memcpy(TheModulus, tmp1.limbs, NumberLengthBytes);
     TheModulus[modulus_length].x = 0;
     MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
@@ -1029,19 +1024,19 @@ struct QuadModLL {
       }
 
       // Multiply by square root of discriminant by prime^deltaZeros.
-      for (ctr = 0; ctr < deltaZeros; ctr++) {
+      for (int ctr = 0; ctr < deltaZeros; ctr++) {
         (void)BigIntMultiply(&sqrRoot, &prime, &sqrRoot);
       }
     }
 
-    correctBits = expon - deltaZeros;
+    int correctBits = expon - deltaZeros;
     // Store increment.
     (void)BigIntPowerIntExp(&prime, correctBits, &Q);
     // Compute x = (b + sqrt(discriminant)) / (-2a) and
     //   x = (b - sqrt(discriminant)) / (-2a)
     BigIntAdd(pValB, &sqrRoot, &tmp1);
 
-    for (ctr = 0; ctr < bitsAZero; ctr++) {
+    for (int ctr = 0; ctr < bitsAZero; ctr++) {
       (void)BigIntRemainder(&tmp1, &prime, &tmp2);
       if (!BigIntIsZero(&tmp2)) {
         // Cannot divide by prime, so go out.
@@ -1062,7 +1057,7 @@ struct QuadModLL {
     }
 
     BigIntSubt(pValB, &sqrRoot, &tmp1);
-    for (ctr = 0; ctr < bitsAZero; ctr++) {
+    for (int ctr = 0; ctr < bitsAZero; ctr++) {
       (void)BigIntRemainder(&tmp1, &prime, &tmp2);
       if (!BigIntIsZero(&tmp2)) {
         // Cannot divide by prime, so go out.
