@@ -76,10 +76,8 @@ static void RunGrid() {
         // Center on 0.
         // ... except a, since we already ran -10 to 0
         // int64_t a = arg[0] + 29; // - MAX_COEFF;
-        int64_t a = arg[0] - 1;
-        int64_t b = arg[1] + 9;
-        // int64_t a = arg[0] - MAX_COEFF;
-        // int64_t b = arg[1] - MAX_COEFF;
+        int64_t a = arg[0] - MAX_COEFF;
+        int64_t b = arg[1] - MAX_COEFF;
         int64_t c = arg[2] - MAX_COEFF;
         int64_t d = arg[3] - MAX_COEFF;
         int64_t e = arg[4] - MAX_COEFF;
