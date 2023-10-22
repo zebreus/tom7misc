@@ -49,20 +49,15 @@ static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
 namespace {
 
 struct QuadModLL {
+  // Parallel arrays (same size as number of factors)
   std::vector<BigInt> Solution1;
   std::vector<BigInt> Solution2;
   std::vector<BigInt> Increment;
+  std::vector<int> Exponents;
   BigInteger prime;
 
-  // probably should do this the same way as sol1,sol2,increment
-  int Exponents[400];
-
   QuadModLL() {
-    // PERF: probably unnecessary, but debugging invalid
-    // Solution bigint
-    for (int i = 0; i < 400; i++) {
-      Exponents[i] = 777;
-    }
+    // debugging if uninitialized
     intToBigInteger(&prime, 121212);
   }
 
@@ -90,7 +85,6 @@ struct QuadModLL {
   BigInteger Aux3, Aux4, Aux5, Aux6;
   BigInteger Aux7, Aux8, Aux9, Aux10, Aux11;
 
-  BigInteger* pGcdAll = nullptr;
   BigInteger* pValNn = nullptr;
   SolutionFn Solution;
 
@@ -100,6 +94,7 @@ struct QuadModLL {
 
   // Use Chinese remainder theorem to obtain the solutions.
   void PerformChineseRemainderTheorem(
+      const BigInt &GcdAll,
       const std::vector<std::pair<BigInt, int>> &factors) {
     int T1;
 
@@ -107,6 +102,7 @@ struct QuadModLL {
     CHECK((int)Solution1.size() == nbrFactors);
     CHECK((int)Solution2.size() == nbrFactors);
     CHECK((int)Increment.size() == nbrFactors);
+    CHECK((int)Exponents.size() == nbrFactors);
     CHECK(nbrFactors > 0);
     // Dynamically allocate temporary space. We need one per factor.
     std::vector<BigInt> Tmp(nbrFactors);
@@ -116,6 +112,7 @@ struct QuadModLL {
       CHECK(!Solution1.empty());
       CHECK(!Solution2.empty());
       CHECK(!Increment.empty());
+      CHECK(!Exponents.empty());
 
       Tmp[0] = Increment[0] * (Exponents[0] >> 1);
       // MultInt(&Tmp[0], &Increment[0], Exponents[0] / 2);
@@ -155,6 +152,7 @@ struct QuadModLL {
         CHECK(T1 < (int)Solution1.size());
         CHECK(T1 < (int)Solution2.size());
         CHECK(T1 < (int)Increment.size());
+        CHECK(T1 < (int)Exponents.size());
 
 
         int expon = Exponents[T1];
@@ -219,23 +217,31 @@ struct QuadModLL {
 
       }   /* end for */
 
-      intToBigInteger(&V, 0);
-      BigInteger K1;
-      BigIntSubt(&V, pGcdAll, &K1);
+      BigInt VV(0);
+      BigInt KK1 = 0 - GcdAll;
 
-      // XXX
-      BigInteger currentSolution;
-      BigIntToBigInteger(CurrentSolution, &currentSolution);
+      BigInt NN = BigIntegerToBigInt(pValNn);
+
+      // BigIntSubt(&V, pGcdAll, &K1);
 
       // Perform loop while V < GcdAll.
-      while (K1.sign == SIGN_NEGATIVE) {
+      while (KK1 < 0) {
         // The solution is V*ValNn + currentSolution
-        (void)BigIntMultiply(&V, pValNn, &K1);
-        BigIntAdd(&K1, &currentSolution, &K1);
-        Solution(BigIntegerToBigInt(&K1));
-        addbigint(&V, 1);  // V <- V + 1
-        BigIntSubt(&V, pGcdAll, &K1);
+        // KK1 = VV * NN + CurrentSolution;
+        // (void)BigIntMultiply(&V, pValNn, &K1);
+        // BigIntAdd(&K1, &currentSolution, &K1);
+        Solution(VV * NN + CurrentSolution);
+
+        VV += 1;
+        // addbigint(&V, 1);  // V <- V + 1
+        KK1 = VV - GcdAll;
+        // BigIntSubt(&V, pGcdAll, &K1);
       }
+
+      // Maybe dead?
+      BigInteger K1;
+      BigIntToBigInteger(KK1, &K1);
+      BigIntToBigInteger(VV, &V);
 
       for (T1 = nbrFactors - 1; T1 >= 0; T1--) {
         // XXX directly prime = pow(base, exp)
@@ -251,6 +257,7 @@ struct QuadModLL {
         CHECK(T1 < (int)Solution1.size());
         CHECK(T1 < (int)Solution2.size());
         CHECK(T1 < (int)Increment.size());
+        CHECK(T1 < (int)Exponents.size());
 
         // BigIntSubt(&Solution1[T1], &Solution2[T1], &K1);
         // if ((K1.nbrLimbs == 1) && (K1.limbs[0].x == 0)) {
@@ -283,7 +290,8 @@ struct QuadModLL {
   // Port note: This writes 0, 1, or 2 solutions at the beginning of the
   // Solution array. Both Solution1 and Solution2 are the same. This path
   // is disjoint from the general quadratic solver.
-  void SolveModularLinearEquation(BigInteger *pValA, const BigInteger *pValB,
+  void SolveModularLinearEquation(const BigInt &GcdAll,
+                                  BigInteger *pValA, const BigInteger *pValB,
                                   const BigInteger *pValC, BigInteger *pValN) {
     // No coverage for this entire function!
     printf("smodlineq coverage\n");
@@ -320,7 +328,8 @@ struct QuadModLL {
       // ValN is not 1.
       Increment.push_back(BigIntegerToBigInt(pValN));
       // CopyBigInt(&Increment[solutionNbr], pValN);
-      Exponents[solutionNbr] = 1;
+      Exponents.push_back(1);
+
       (void)memcpy(TheModulus, pValN->limbs, NumberLengthBytes);
       TheModulus[modulus_length].x = 0;
       // Perform division using odd modulus r.
@@ -372,7 +381,8 @@ struct QuadModLL {
       // BigIntPowerOf2(ptrSolution1, powerOf2);
       Increment.push_back(BigIntegerToBigInt(&pow2));
       // CopyBigInt(&Increment[solutionNbr], ptrSolution1);
-      Exponents[solutionNbr] = 1;
+      Exponents.push_back(1);
+      // Exponents[solutionNbr] = 1;
 
       factors.push_back(std::make_pair(BigIntegerToBigInt(&pow2), 1));
       // BigInteger2IntArray(modulus_length, ptrFactorsMod, &pow2);
@@ -437,11 +447,12 @@ struct QuadModLL {
     CHECK((int)Solution1.size() == solutionNbr);
     CHECK((int)Solution2.size() == solutionNbr);
     CHECK((int)Increment.size() == solutionNbr);
+    CHECK((int)Exponents.size() == solutionNbr);
 
     // astFactorsMod[0].multiplicity = solutionNbr;
     // assert((int)factors->product.size() == solutionNbr);
 
-    PerformChineseRemainderTheorem(factors);
+    PerformChineseRemainderTheorem(GcdAll, factors);
   }
 
   // Compute sqrRoot <- sqrt(ValCOdd) mod 2^expon.
@@ -1162,6 +1173,7 @@ struct QuadModLL {
   // If solutions found, writes normalized solutions at factorIndex
   // and returns true.
   bool QuadraticTermNotMultipleOfP(
+      const BigInt &GcdAll,
       int expon, int factorIndex,
       const BigInteger *pValA,
       const BigInteger *pValB,
@@ -1232,7 +1244,7 @@ struct QuadModLL {
       const SolutionFn &solutionCback,
       BigInteger* pValA, const BigInteger* pValB,
       const BigInteger* pValC, BigInteger* pValN,
-      BigInteger* pGcdAllParm, BigInteger* pValNnParm) {
+      const BigInt &GcdAll, BigInteger* pValNnParm) {
 
     const BigInt &A = BigIntegerToBigInt(pValA);
     const BigInt &B = BigIntegerToBigInt(pValB);
@@ -1242,12 +1254,11 @@ struct QuadModLL {
     // PERF: no need to copy
     Solution = solutionCback;
 
-    pGcdAll = pGcdAllParm;
     pValNn = pValNnParm;
 
     if (BigInt::CMod(A, N) == 0) {
       // Linear equation.
-      SolveModularLinearEquation(pValA, pValB, pValC, pValN);
+      SolveModularLinearEquation(GcdAll, pValA, pValB, pValC, pValN);
       return;
     }
 
@@ -1276,6 +1287,7 @@ struct QuadModLL {
     Solution1.resize(nbrFactors);
     Solution2.resize(nbrFactors);
     Increment.resize(nbrFactors);
+    Exponents.resize(nbrFactors);
 
     for (int factorIndex = 0; factorIndex < nbrFactors; factorIndex++) {
       int expon = factors[factorIndex].second;
@@ -1283,6 +1295,8 @@ struct QuadModLL {
         Solution1[factorIndex] = BigInt(0);
         Solution2[factorIndex] = BigInt(0);
         Increment[factorIndex] = BigInt(1);
+        // Port note: Was uninitialized.
+        Exponents[factorIndex] = 0;
         // intToBigInteger(&Solution1[factorIndex], 0);
         // intToBigInteger(&Solution2[factorIndex], 0);
         // intToBigInteger(&Increment[factorIndex], 1);
@@ -1310,7 +1324,8 @@ struct QuadModLL {
 
       } else {
         // If quadratic equation mod p
-        if (!QuadraticTermNotMultipleOfP(expon, factorIndex,
+        if (!QuadraticTermNotMultipleOfP(GcdAll,
+                                         expon, factorIndex,
                                          pValA, pValB, pValC)) {
           return;
         }
@@ -1321,7 +1336,7 @@ struct QuadModLL {
       Exponents[factorIndex] = 0;
     }
 
-    PerformChineseRemainderTheorem(factors);
+    PerformChineseRemainderTheorem(GcdAll, factors);
   }
 
 };
@@ -1335,15 +1350,14 @@ void SolveEquation(
     bool *interesting_coverage) {
   std::unique_ptr<QuadModLL> qmll = std::make_unique<QuadModLL>();
 
-  BigInteger a, b, c, n, gcd, nn;
+  BigInteger a, b, c, n, nn;
   BigIntToBigInteger(A, &a);
   BigIntToBigInteger(B, &b);
   BigIntToBigInteger(C, &c);
   BigIntToBigInteger(N, &n);
-  BigIntToBigInteger(GcdAll, &gcd);
   BigIntToBigInteger(Nn, &nn);
   qmll->SolveEquation(solutionCback,
-                      &a, &b, &c, &n, &gcd, &nn);
+                      &a, &b, &c, &n, GcdAll, &nn);
   if (interesting_coverage != nullptr &&
       qmll->interesting_coverage) {
     *interesting_coverage = true;

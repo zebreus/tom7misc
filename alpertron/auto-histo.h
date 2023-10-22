@@ -156,7 +156,15 @@ struct AutoHisto {
       // int on = std::clamp((int)std::round(f * BAR_CHARS), 0, BAR_CHARS);
       // std::string bar(on, '*');
       std::string bar = FilledBar(BAR_CHARS, f);
-      printf("%s | %s\n", label.c_str(), bar.c_str());
+      printf("%s " AFGCOLOR(32, 32, 23, "|"), label.c_str());
+
+      if (bidx & 1) {
+        printf(AFGCOLOR(200, 200, 128, "%s") "\n",
+               bar.c_str());
+      } else {
+        printf(AFGCOLOR(190, 190, 118, "%s") "\n",
+               bar.c_str());
+      }
     }
 
   }
