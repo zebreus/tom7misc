@@ -257,6 +257,8 @@ echo quad tests
 # bug found and fixed upstream (1be07b2)
 ./quad.exe 0 -6 -6 -5 1 5 >> coverage.out
 ./quad.exe -6 -6 0 1 -5 5 >> coverage.out
+# same bug but fix was incomplete
+./quad.exe 0 9 -12 9 -12 0 >> coverage.out
 
 echo factor tests
 ./afactor.exe 1 >> coverage.out

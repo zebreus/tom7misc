@@ -2327,7 +2327,7 @@ struct Quad {
         // Solve Dy - beta = 0
 
         {
-          LinSol sol = LinearEq(BigInt(0), Discr, Beta);
+          LinSol sol = LinearEq(BigInt(0), Discr, -Beta);
           // Result box:
           PrintLinear(sol);
         }
