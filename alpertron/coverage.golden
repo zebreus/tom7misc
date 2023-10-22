@@ -3419,7 +3419,7 @@ Solution:
 x =    t
 y = 0  
 Solution:
-x = 6 + 136 t
+x = -6 + 136 t
 y =   19 t
 
 ** Quad 182 494 0 0 0 0
@@ -3688,6 +3688,20 @@ y = 32 k^2 - 12 k
 Solution:
 x = -16 k^2 - 2 k
 y = 32 k^2 - 4 k - 1
+
+** Quad 0 -6 -6 -5 1 5
+ - 6 * x * y - 6 * y^2 - 5 * x + y + 5 = 0
+
+Solution:
+x =   -   t
+y = 1 +  t
+
+** Quad -6 -6 0 1 -5 5
+ - 6 * x^2 - 6 * x * y + x - 5 * y + 5 = 0
+
+Solution:
+x =   -   t
+y = 1 +  t
 1: 1
 2: 2
 3: 3

@@ -2324,7 +2324,7 @@ struct Quad {
       if (A == 0) {
         // printf("kzeroazero coverage\n");
         // Coefficient a does equals zero.
-        // Solve Dy + beta = 0
+        // Solve Dy - beta = 0
 
         {
           LinSol sol = LinearEq(BigInt(0), Discr, Beta);
@@ -2333,10 +2333,10 @@ struct Quad {
         }
 
         {
-          // Solve bDx + cDy + b*alpha + c*beta = 0
+          // Solve bDx + cDy - b*alpha - c*beta = 0
           const BigInt Aux0 = B * Discr;
           const BigInt Aux1 = C * Discr;
-          const BigInt Aux2 = B * Alpha + C * Beta;
+          const BigInt Aux2 = -(B * Alpha + C * Beta);
 
           LinSol sol = LinearEq(Aux0, Aux1, Aux2);
           // Result box:

@@ -254,6 +254,10 @@ echo quad tests
 # regression (introduced in r5133)
 ./quad.exe -4 -4 -1 -6 -1 0 >> coverage.out
 
+# bug found and fixed upstream (1be07b2)
+./quad.exe 0 -6 -6 -5 1 5 >> coverage.out
+./quad.exe -6 -6 0 1 -5 5 >> coverage.out
+
 echo factor tests
 ./afactor.exe 1 >> coverage.out
 ./afactor.exe 2 >> coverage.out
