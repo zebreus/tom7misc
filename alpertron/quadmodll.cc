@@ -224,10 +224,11 @@ struct QuadModLL {
 
       for (T1 = nbrFactors - 1; T1 >= 0; T1--) {
         // XXX directly prime = pow(base, exp)
-        BigInteger bigBase;
-        BigIntToBigInteger(factors[T1].first, &bigBase);
-
-        (void)BigIntPowerIntExp(&bigBase, factors[T1].second, &prime);
+        const BigInt Prime = BigInt::Pow(factors[T1].first,
+                                         factors[T1].second);
+        // BigInteger bigBase;
+        // BigIntToBigInteger(factors[T1].first, &bigBase);
+        // (void)BigIntPowerIntExp(&bigBase, factors[T1].second, &prime);
 
         CHECK(T1 < (int)Solution1.size());
         CHECK(T1 < (int)Solution2.size());
@@ -245,22 +246,29 @@ struct QuadModLL {
         }
 
         // L <- Exponents[T1] * quad_info.Increment[T1]
-        // PERF directly
-        BigInteger inc;
-        BigIntToBigInteger(Increment[T1], &inc);
-        multadd(&L, Exponents[T1], &inc, 0);
+        BigInt L1 = Increment[T1] * Exponents[T1];
+
+        // PERF probably unnecessary? not used in this function
+        BigIntToBigInteger(L1, &L);
+        // BigInteger inc;
+        // BigIntToBigInteger(Increment[T1], &inc);
+        // multadd(&L, Exponents[T1], &inc, 0);
         // multadd(&L, Exponents[T1], &Increment[T1], 0);
-        BigInteger K1;
+
         // K1 <- 2 * prime
-        multadd(&K1, 2, &prime, 0);
-        BigIntSubt(&L, &K1, &L);
-        if (L.sign == SIGN_NEGATIVE) {
+        BigInt K1 = Prime << 1;
+        // BigInteger K1;
+        // multadd(&K1, 2, &prime, 0);
+        // BigIntSubt(&L1, &K1, &L1);
+        if (L1 < K1) {
           break;
         }
 
         Exponents[T1] = 0;
       }   /* end for */
     } while (T1 >= 0);
+
+
   }
 
   // Solve Bx + C = 0 (mod N).
@@ -1298,6 +1306,7 @@ struct QuadModLL {
     Exponents.resize(nbrFactors);
 
     for (int factorIndex = 0; factorIndex < nbrFactors; factorIndex++) {
+      // XXX we never return a 0 exponent, right?
       int expon = factors[factorIndex].second;
       if (expon == 0) {
         Solution1[factorIndex] = BigInt(0);
@@ -1309,18 +1318,22 @@ struct QuadModLL {
       }
 
       const BigInt &Prime = factors[factorIndex].first;
+      // Used, but not on all paths.
       BigIntToBigInteger(Prime, &prime);
 
+      // Just used in SolveQuadraticEqModPowerOfP.
       (void)BigIntPowerIntExp(&prime, expon, &V);
-      (void)BigIntRemainder(pValA, &prime, &L);
+      // (void)BigIntRemainder(pValA, &prime, &L);
 
-      if (BigIntIsZero(&L) && Prime != 2) {
-        // ValA multiple of prime, means linear equation mod prime.
+      if (Prime != 2 &&
+          BigInt::DivisibleBy(A, Prime)) {
+        // ValA multiple of prime means a linear equation mod prime.
         // Also prime is not 2.
         if (B == 0 && C != 0) {
           // There are no solutions: ValB=0 and ValC!=0
           return;
         }
+
         QuadraticTermMultipleOfP(expon, factorIndex, pValA, pValB, pValC);
 
       } else {
