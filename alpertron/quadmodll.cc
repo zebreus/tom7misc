@@ -136,18 +136,13 @@ struct QuadModLL {
       // IntArray2BigInteger(modulus_length, pstFactor->array, &prime);
       BigIntToBigInteger(Prime, &prime);
 
-      BigInt BigMult =
+      BigInt Mult =
         BigInt::Pow(BigIntegerToBigInt(&prime), factors[0].second);
-      // PERF directly
-      BigInteger Mult;
-      BigIntToBigInteger(BigMult, &Mult);
-      // (void)BigIntPowerIntExp(&prime, pstFactor->multiplicity, &Mult);
 
       for (T1 = 1; T1 < nbrFactors; T1++) {
 
         if (factors[T1].second == 0) {
           Tmp[T1] = BigInt(0);
-          // intToBigInteger(&Tmp[T1], 0);
           continue;
         }
 
@@ -156,27 +151,26 @@ struct QuadModLL {
         CHECK(T1 < (int)Increment.size());
         CHECK(T1 < (int)Exponents.size());
 
-
         int expon = Exponents[T1];
         Tmp[T1] = Increment[T1] * (expon >> 1);
-        // MultInt(&Tmp[T1], &Increment[T1], expon / 2);
 
         if ((expon & 1) != 0) {
           Tmp[T1] += Solution2[T1];
-          // BigIntAdd(&Tmp[T1], &Solution2[T1], &Tmp[T1]);
         } else {
           Tmp[T1] += Solution1[T1];
-          // BigIntAdd(&Tmp[T1], &Solution1[T1], &Tmp[T1]);
         }
 
-        // const int number_length = *pstFactor->array;
-        // modulus_length = number_length;
-        // IntArray2BigInteger(number_length, pstFactor->array, &prime);
+        const BigInt Prime = BigInt::Pow(factors[T1].first, factors[T1].second);
 
-        const BigInt K = BigInt::Pow(factors[T1].first, factors[T1].second);
-        // PERF I don't think we need the copy?
-        const BigInt Prime = K;
+        // Computing montgomery form needs BigInteger. But do it outside
+        // the inner loop at least.
         BigIntToBigInteger(Prime, &prime);
+        const int modulus_length = prime.nbrLimbs;
+        const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+        (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
+        TheModulus[modulus_length].x = 0;
+        MontgomeryParams params =
+          GetMontgomeryParams(modulus_length, TheModulus);
 
         if (VERBOSE) {
           printf("T1 %d [exp %d]. Prime: %s\n", T1,
@@ -190,12 +184,6 @@ struct QuadModLL {
           // L is overwritten before use below.
           const BigInt L1 = BigInt::Pow(factors[E].first, factors[E].second);
 
-          int modulus_length = prime.nbrLimbs;
-          int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-          (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
-          TheModulus[modulus_length].x = 0;
-          MontgomeryParams params =
-            GetMontgomeryParams(modulus_length, TheModulus);
           Tmp[T1] = BigIntModularDivision(params, Q1, L1, Prime);
 
           if (VERBOSE) {
@@ -205,27 +193,13 @@ struct QuadModLL {
           }
         }
 
-        // PERF directly
-        // BigInteger tmp_t1;
-        // BigIntToBigInteger(Tmp[T1], &tmp_t1);
-
         Tmp[T1] = BigInt::CMod(Tmp[T1], Prime);
-        // (void)BigIntRemainder(&tmp_t1, &prime, &L);
-        // (void)BigIntRemainder(&Tmp[T1], &prime, &L);
-        // CopyBigInt(&tmp_t1, &L);
-        // CopyBigInt(&Tmp[T1], &L);
 
         // Compute currentSolution as Tmp[T1] * Mult + currentSolution
-        BigInt L2 = Tmp[T1] * BigMult;
-        // (void)BigIntMultiply(&tmp_t1, &Mult, &L);
-        // (void)BigIntMultiply(&Tmp[T1], &Mult, &L);
-        // CurrentSolution += BigIntegerToBigInt(&L);
+        BigInt L2 = Tmp[T1] * Mult;
         CurrentSolution += L2;
-        // BigIntAdd(&currentSolution, &L, &currentSolution);
-        BigMult *= K;
-        // (void)BigIntMultiply(&K, &Mult, &Mult);
-        // Tmp[T1] = BigIntegerToBigInt(&tmp_t1);
-      }   /* end for */
+        Mult *= Prime;
+      }
 
       BigInt VV(0);
       BigInt KK1 = 0 - GcdAll;
@@ -237,32 +211,23 @@ struct QuadModLL {
       // Perform loop while V < GcdAll.
       while (KK1 < 0) {
         // The solution is V*ValNn + currentSolution
-        // KK1 = VV * NN + CurrentSolution;
-        // (void)BigIntMultiply(&V, pValNn, &K1);
-        // BigIntAdd(&K1, &currentSolution, &K1);
         Solution(VV * NN + CurrentSolution);
 
         VV += 1;
-        // addbigint(&V, 1);  // V <- V + 1
         KK1 = VV - GcdAll;
-        // BigIntSubt(&V, pGcdAll, &K1);
       }
 
       // Maybe dead?
-      BigInteger K1;
-      BigIntToBigInteger(KK1, &K1);
+      // BigInteger K1;
+      // BigIntToBigInteger(KK1, &K1);
       BigIntToBigInteger(VV, &V);
 
       for (T1 = nbrFactors - 1; T1 >= 0; T1--) {
         // XXX directly prime = pow(base, exp)
         BigInteger bigBase;
         BigIntToBigInteger(factors[T1].first, &bigBase);
-        // IntArray2BigInteger(modulus_length, factors.product[T1].array, &bigBase);
 
         (void)BigIntPowerIntExp(&bigBase, factors[T1].second, &prime);
-
-        // (void)BigIntPowerIntExp(&bigBase, factors.product[T1].multiplicity,
-        // &prime);
 
         CHECK(T1 < (int)Solution1.size());
         CHECK(T1 < (int)Solution2.size());

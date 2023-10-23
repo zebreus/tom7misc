@@ -77,15 +77,11 @@ static void RunGrid() {
         // ... except a, since we already ran -10 to 0
         // int64_t a = arg[0] + 29; // - MAX_COEFF;
         // int64_t a = arg[0] - MAX_COEFF;
-        int64_t a = 3 + arg[0];
+        int64_t a = 5 + arg[0];
         int64_t b = arg[1] - MAX_COEFF;
         int64_t c = arg[2] - MAX_COEFF;
         int64_t d = arg[3] - MAX_COEFF;
         int64_t e = arg[4] - MAX_COEFF;
-
-        // Generalized version of known bad solution below.
-        // if (a == 0 && b == c)
-        // return;
 
         BigInt A(a);
         BigInt B(b);
@@ -96,14 +92,6 @@ static void RunGrid() {
         std::vector<double> local_timing;
 
         for (int64 f = -MAX_COEFF; f <= MAX_COEFF; f++) {
-
-          // Known bad solutions.
-          /*
-            fixed!
-          if (a == 0 && b == -6 && c == -6 &&
-              d == -5 && e == 1 && f == 5)
-            continue;
-          */
 
           BigInt F(f);
 
