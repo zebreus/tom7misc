@@ -188,7 +188,7 @@ static LinSol LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
     }
 
     // q <- floor(U3 / V3).
-    q = FloorDiv(U3, V3);
+    q = BigInt::DivFloor(U3, V3);
 
     {
       // T <- U1 - q * V1
@@ -252,7 +252,7 @@ static LinSol LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
   U2 -= coeffY * xind;
 
   // U1 <- delta to add to t'
-  U1 = FloorDiv(U2, U1);
+  U1 = BigInt::DivFloor(U2, U1);
 
   if (VERBOSE) {
     printf("After subst: %s %s %s %s %s %s\n",
@@ -857,7 +857,7 @@ struct Quad {
              BigInt, BigInt, BigInt> GetNextConvergent(
                  BigInt U, BigInt U1, BigInt U2,
                  BigInt V, BigInt V1, BigInt V2) {
-    BigInt Tmp = FloorDiv(U, V);
+    BigInt Tmp = BigInt::DivFloor(U, V);
 
     // Compute new value of U and V.
     BigInt Tmp2 = U - Tmp * V;
@@ -1159,7 +1159,7 @@ struct Quad {
         }
 
         // Tmp1 = Term of continued fraction.
-        BigInt Tmp1 = FloorDiv(BigTmp, V);
+        BigInt Tmp1 = BigInt::DivFloor(BigTmp, V);
 
         // U <- a*V - U
         U = Tmp1 * V - U;
@@ -1203,7 +1203,7 @@ struct Quad {
         BigTmp += 1;
       }
       // Tmp1 = Term of continued fraction.
-      BigInt Tmp1 = FloorDiv(BigTmp, V);
+      BigInt Tmp1 = BigInt::DivFloor(BigTmp, V);
 
       // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
       BigInt UU3 = UU2;
@@ -2630,7 +2630,7 @@ struct Quad {
       }
 
       // Tmp1 = Term of continued fraction.
-      BigInt Tmp1 = FloorDiv(BigTmp, V);
+      BigInt Tmp1 = BigInt::DivFloor(BigTmp, V);
       // Update convergents.
       // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
       BigInt U3 = U2;

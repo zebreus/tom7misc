@@ -59,38 +59,6 @@ void AddBigInt(const limb *pAddend1, const limb *pAddend2,
   }
 }
 
-// If address of num and result match, BigIntDivide will overwrite
-// num, so it must be executed after processing num.
-static void floordiv(const BigInteger *num, const BigInteger *den, BigInteger *result) {
-  BigInteger rem;
-  (void)BigIntRemainder(num, den, &rem);
-  if ((((num->sign == SIGN_NEGATIVE) && (den->sign == SIGN_POSITIVE)) ||
-       ((num->sign == SIGN_POSITIVE) &&
-        !BigIntIsZero(num) && (den->sign == SIGN_NEGATIVE))) &&
-      !BigIntIsZero(&rem)) {
-    (void)BigIntDivide(num, den, result);
-    addbigint(result, -1);
-  } else {
-    (void)BigIntDivide(num, den, result);
-  }
-}
-
-// XXX do natively; swap implementations
-BigInt FloorDiv(const BigInt &num, const BigInt &den) {
-  BigInteger x, y, z;
-  BigIntToBigInteger(num, &x);
-  BigIntToBigInteger(den, &y);
-  floordiv(&x, &y, &z);
-  CHECK(z.nbrLimbs > 0);
-  fprintf(stderr, "FloorDiv(%s,%s)\n",
-          num.ToString().c_str(),
-          den.ToString().c_str());
-  BigInt r = BigIntegerToBigInt(&z);
-  CHECK(BigInt::Eq(r, BigInt::DivFloor(num, den)));
-
-  return r;
-}
-
 void BigIntChSign(BigInteger *value) {
   if ((value->nbrLimbs == 1) && (value->limbs[0].x == 0)) {
     // Value is zero. Do not change sign.

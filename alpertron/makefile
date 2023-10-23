@@ -25,7 +25,9 @@ else
   # Linux
   CXX=g++
   CC=gcc
-  PLATFORM_CFLAGS=-Wl,-z,stack-size=167772160
+  # PLATFORM_CFLAGS=-Wl,-z,stack-size=167772160
+  # to profile:  -pg
+  PLATFORM_CFLAGS=
   GMP_LFLAGS=-lgmp
   GMP_CFLAGS=-DBIG_USE_GMP
 endif
@@ -79,7 +81,7 @@ eval.exe : eval.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 clean:
-	rm -f *.o coverage.out *.exe
+	rm -f *.o $(CC_LIB_OBJECTS) coverage.out *.exe
 
 
 #    This file is part of Alpertron Calculators.

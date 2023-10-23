@@ -101,8 +101,6 @@ eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent,
 
 eExprErr BigIntMultiplyPower2(BigInteger* pArg, int powerOf2);
 
-BigInt FloorDiv(const BigInt &num, const BigInt &den);
-
 void BigIntMultiplyBy2(BigInteger *nbr);
 void BigIntDivideBy2(BigInteger *nbr);
 void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pResult);
