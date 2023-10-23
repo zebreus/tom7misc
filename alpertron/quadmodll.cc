@@ -33,6 +33,8 @@
 
 #include "base/logging.h"
 
+static constexpr bool VERBOSE = false;
+
 static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
   pBigNbr->nbrLimbs = numlen;
   pBigNbr->sign = SIGN_POSITIVE;
@@ -61,9 +63,9 @@ struct QuadModLL {
     intToBigInteger(&prime, 121212);
   }
 
-  BigInteger Quadr;
-  BigInteger Linear;
-  BigInteger Const;
+  // BigInteger Quadr;
+  // BigInteger Linear;
+  // BigInteger Const;
   BigInteger sqrRoot;
   BigInteger ValAOdd;
   BigInteger ValBOdd;
@@ -170,25 +172,23 @@ struct QuadModLL {
         // const int number_length = *pstFactor->array;
         // modulus_length = number_length;
         // IntArray2BigInteger(number_length, pstFactor->array, &prime);
-        const BigInt &Prime = factors[T1].first;
+
+        const BigInt K = BigInt::Pow(factors[T1].first, factors[T1].second);
+        // PERF I don't think we need the copy?
+        const BigInt Prime = K;
         BigIntToBigInteger(Prime, &prime);
 
-        BigInteger K;
-        (void)BigIntPowerIntExp(&prime, factors[T1].second, &K);
-        CopyBigInt(&prime, &K);
+        if (VERBOSE) {
+          printf("T1 %d [exp %d]. Prime: %s\n", T1,
+                 factors[T1].second,
+                 Prime.ToString().c_str());
+        }
 
         for (int E = 0; E < T1; E++) {
-          BigInt Q1 = Tmp[T1] - Tmp[E];
-          // BigIntToBigInteger(Q1, &Q);
-          // BigIntSubt(&Tmp[T1], &Tmp[E], &Q);
+          const BigInt Q1 = Tmp[T1] - Tmp[E];
 
           // L is overwritten before use below.
-          BigInt L1 = BigInt::Pow(factors[E].first, factors[E].second);
-          // BigIntToBigInteger(L1, &L);
-          // BigIntToBigInteger(factors[E].first, &bigBase);
-          // IntArray2BigInteger(modulus_length, factors.product[E].array, &bigBase);
-          // (void)BigIntPowerIntExp(&bigBase, factors[E].second, &L);
-          // (void)BigIntPowerIntExp(&bigBase, factors.product[E].multiplicity, &L);
+          const BigInt L1 = BigInt::Pow(factors[E].first, factors[E].second);
 
           int modulus_length = prime.nbrLimbs;
           int NumberLengthBytes = modulus_length * (int)sizeof(limb);
@@ -196,25 +196,35 @@ struct QuadModLL {
           TheModulus[modulus_length].x = 0;
           MontgomeryParams params =
             GetMontgomeryParams(modulus_length, TheModulus);
-          Tmp[T1] = BigIntModularDivision(params, Q1, L1,
-                                          BigIntegerToBigInt(&prime));
+          Tmp[T1] = BigIntModularDivision(params, Q1, L1, Prime);
+
+          if (VERBOSE) {
+            printf("T1 %d E %d. %s %s %s -> %s\n", T1, E,
+                   Q1.ToString().c_str(), L1.ToString().c_str(),
+                   Prime.ToString().c_str(), Tmp[T1].ToString().c_str());
+          }
         }
 
         // PERF directly
-        BigInteger tmp_t1;
-        BigIntToBigInteger(Tmp[T1], &tmp_t1);
-        (void)BigIntRemainder(&tmp_t1, &prime, &L);
-        // (void)BigIntRemainder(&Tmp[T1], &prime, &L);
-        CopyBigInt(&tmp_t1, &L);
-        // CopyBigInt(&Tmp[T1], &L);
-        // Compute currentSolution as Tmp[T1] * Mult + currentSolution
-        (void)BigIntMultiply(&tmp_t1, &Mult, &L);
-        // (void)BigIntMultiply(&Tmp[T1], &Mult, &L);
-        CurrentSolution += BigIntegerToBigInt(&L);
-        // BigIntAdd(&currentSolution, &L, &currentSolution);
-        (void)BigIntMultiply(&K, &Mult, &Mult);
-        Tmp[T1] = BigIntegerToBigInt(&tmp_t1);
+        // BigInteger tmp_t1;
+        // BigIntToBigInteger(Tmp[T1], &tmp_t1);
 
+        Tmp[T1] = BigInt::CMod(Tmp[T1], Prime);
+        // (void)BigIntRemainder(&tmp_t1, &prime, &L);
+        // (void)BigIntRemainder(&Tmp[T1], &prime, &L);
+        // CopyBigInt(&tmp_t1, &L);
+        // CopyBigInt(&Tmp[T1], &L);
+
+        // Compute currentSolution as Tmp[T1] * Mult + currentSolution
+        BigInt L2 = Tmp[T1] * BigMult;
+        // (void)BigIntMultiply(&tmp_t1, &Mult, &L);
+        // (void)BigIntMultiply(&Tmp[T1], &Mult, &L);
+        // CurrentSolution += BigIntegerToBigInt(&L);
+        CurrentSolution += L2;
+        // BigIntAdd(&currentSolution, &L, &currentSolution);
+        BigMult *= K;
+        // (void)BigIntMultiply(&K, &Mult, &Mult);
+        // Tmp[T1] = BigIntegerToBigInt(&tmp_t1);
       }   /* end for */
 
       BigInt VV(0);
@@ -268,6 +278,7 @@ struct QuadModLL {
           // quad_info.Solution1[T1] != quad_info.Solution2[T1]
           Exponents[T1]++;
         }
+
         // L <- Exponents[T1] * quad_info.Increment[T1]
         // PERF directly
         BigInteger inc;
@@ -281,6 +292,7 @@ struct QuadModLL {
         if (L.sign == SIGN_NEGATIVE) {
           break;
         }
+
         Exponents[T1] = 0;
       }   /* end for */
     } while (T1 >= 0);
@@ -499,17 +511,30 @@ struct QuadModLL {
   }
 
   // PERF? rewrite FQS to work directly on BigInt
-  void FindQuadraticSolution(BigInt* pSolution, int exponent) {
+  void FindQuadraticSolution(BigInt* pSolution,
+                             const BigInt &Quadr,
+                             const BigInt &Linear,
+                             const BigInt &Const,
+                             int exponent) {
     BigInteger sol;
-    FindQuadraticSolutionInternal(&sol, exponent);
+    BigInteger qq, ll, cc;
+    BigIntToBigInteger(Quadr, &qq);
+    BigIntToBigInteger(Linear, &ll);
+    BigIntToBigInteger(Const, &cc);
+    FindQuadraticSolutionInternal(&sol, &qq, &ll, &cc, exponent);
     *pSolution = BigIntegerToBigInt(&sol);
   }
 
+  // Quadr, Linear, Const are arguments.
   // Find quadratic solution of
   //   Quadr*x^2 + Linear*x + Const = 0 (mod 2^expon)
   // when Quadr is even and Linear is odd. In this case there is a
   // unique solution.
-  void FindQuadraticSolutionInternal(BigInteger* pSolution, int exponent) {
+  void FindQuadraticSolutionInternal(BigInteger* pSolution,
+                                     BigInteger* Quadr_,
+                                     BigInteger* Linear_,
+                                     BigInteger* Const_,
+                                     int exponent) {
     int expon = exponent;
     int bitMask = 1;
     limb* ptrSolution = pSolution->limbs;
@@ -521,37 +546,37 @@ struct QuadModLL {
       BigIntPowerOf2(&Aux2, expon);
       addbigint(&Aux2, -1);              // Aux2 <- 2^expon -1
 
-      if ((Const.limbs[0].x & 1) != 0) {
+      if ((Const_->limbs[0].x & 1) != 0) {
         // Const is odd.
         ptrSolution->x |= bitMask;
         // Compute Const as Quadr/2 + floor(Linear/2) + floor(Const/2) + 1
-        if (Const.sign == SIGN_NEGATIVE) {
-          addbigint(&Const, -1);
+        if (Const_->sign == SIGN_NEGATIVE) {
+          addbigint(Const_, -1);
         }
-        BigIntDivideBy2(&Const);          // floor(Const/2)
-        addbigint(&Const, 1);             // floor(Const/2) + 1
-        CopyBigInt(&Aux1, &Linear);
+        BigIntDivideBy2(Const_);          // floor(Const/2)
+        addbigint(Const_, 1);             // floor(Const/2) + 1
+        CopyBigInt(&Aux1, Linear_);
         if (Aux1.sign == SIGN_NEGATIVE) {
           addbigint(&Aux1, -1);
         }
         BigIntDivideBy2(&Aux1);           // floor(Linear/2)
-        BigIntAdd(&Const, &Aux1, &Const);
-        CopyBigInt(&Aux1, &Quadr);
+        BigIntAdd(Const_, &Aux1, Const_);
+        CopyBigInt(&Aux1, Quadr_);
         BigIntDivideBy2(&Aux1);            // Quadr/2
-        BigIntAdd(&Const, &Aux1, &Const);
+        BigIntAdd(Const_, &Aux1, Const_);
 
         // Linear <- 2*Quadr + Linear and Quadr <- 2*Quadr.
-        BigIntMultiplyBy2(&Quadr);         // Quadr*2
-        BigIntAdd(&Linear, &Quadr, &Linear);
-        BigIntAnd(&Linear, &Aux2, &Linear);   // Reduce mod 2^expon
+        BigIntMultiplyBy2(Quadr_);         // Quadr*2
+        BigIntAdd(Linear_, Quadr_, Linear_);
+        BigIntAnd(Linear_, &Aux2, Linear_);   // Reduce mod 2^expon
       } else {
         // Const is even.
-        BigIntDivideBy2(&Const);           // Const/2
-        BigIntMultiplyBy2(&Quadr);         // Quadr*2
+        BigIntDivideBy2(Const_);           // Const/2
+        BigIntMultiplyBy2(Quadr_);         // Quadr*2
       }
 
-      BigIntAnd(&Const, &Aux2, &Const);    // Reduce mod 2^expon
-      BigIntAnd(&Quadr, &Aux2, &Quadr);    // Reduce mod 2^expon
+      BigIntAnd(Const_, &Aux2, Const_);    // Reduce mod 2^expon
+      BigIntAnd(Quadr_, &Aux2, Quadr_);    // Reduce mod 2^expon
       bitMask *= 2;
       if (bitMask < 0) {
         bitMask = 1;
@@ -686,24 +711,37 @@ struct QuadModLL {
       }
 
     } else if ((bitsAZero == 0) && (bitsBZero == 0)) {
-      CopyBigInt(&Quadr, pValA);
-      BigIntMultiplyBy2(&Quadr);         // 2a
-      CopyBigInt(&Linear, pValB);        // b
+      BigInt A2 = BigIntegerToBigInt(pValA) << 1;
+      BigInt B = BigIntegerToBigInt(pValB);
+
+      BigInteger Linear, Const;
+
+      // CopyBigInt(&Quadr, pValA);
+      // BigIntMultiplyBy2(&Quadr);         // 2a
+      // CopyBigInt(&Linear, pValB);        // b
       CopyBigInt(&Const, pValC);
       BigIntDivideBy2(&Const);           // c/2
-      FindQuadraticSolution(&Solution1[factorIndex], expon - 1);
+      FindQuadraticSolution(&Solution1[factorIndex],
+                            A2,
+                            B,
+                            BigIntegerToBigInt(&Const),
+                            expon - 1);
 
       Solution1[factorIndex] <<= 1;
       // BigIntMultiplyBy2(&Solution1[factorIndex]);
 
-      CopyBigInt(&Quadr, pValA);
-      BigIntMultiplyBy2(&Quadr);         // 2a
-      BigIntAdd(&Quadr, pValB, &Linear); // 2a+b
+      // CopyBigInt(&Quadr, pValA);
+      // BigIntMultiplyBy2(&Quadr);         // 2a
+      // BigIntAdd(&Quadr, pValB, &Linear); // 2a+b
       CopyBigInt(&Const, pValA);
       BigIntAdd(&Const, pValB, &Const);
       BigIntAdd(&Const, pValC, &Const);
       BigIntDivideBy2(&Const);           // (a+b+c)/2
-      FindQuadraticSolution(&Solution2[factorIndex], expon - 1);
+      FindQuadraticSolution(&Solution2[factorIndex],
+                            A2,
+                            A2 + B,
+                            BigIntegerToBigInt(&Const),
+                            expon - 1);
 
       Solution2[factorIndex] <<= 1;
       Solution2[factorIndex] += 1;
@@ -712,10 +750,15 @@ struct QuadModLL {
       // addbigint(&Solution2[factorIndex], 1);
 
     } else {
-      CopyBigInt(&Quadr, pValA);
-      CopyBigInt(&Linear, pValB);
-      CopyBigInt(&Const, pValC);
-      FindQuadraticSolution(&Solution1[factorIndex], expon);
+
+      // CopyBigInt(&Quadr, pValA);
+      // CopyBigInt(&Linear, pValB);
+      // CopyBigInt(&Const, pValC);
+      FindQuadraticSolution(&Solution1[factorIndex],
+                            BigIntegerToBigInt(pValA),
+                            BigIntegerToBigInt(pValB),
+                            BigIntegerToBigInt(pValC),
+                            expon);
       sol2Invalid = true;
     }
 
@@ -1297,15 +1340,8 @@ struct QuadModLL {
         Increment[factorIndex] = BigInt(1);
         // Port note: Was uninitialized.
         Exponents[factorIndex] = 0;
-        // intToBigInteger(&Solution1[factorIndex], 0);
-        // intToBigInteger(&Solution2[factorIndex], 0);
-        // intToBigInteger(&Increment[factorIndex], 1);
         continue;
       }
-
-      // const int number_length = *pstFactor->array;
-      // int modulus_length = number_length;
-      // IntArray2BigInteger(number_length, pstFactor->array, &prime);
 
       const BigInt &Prime = factors[factorIndex].first;
       BigIntToBigInteger(Prime, &prime);

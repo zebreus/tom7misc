@@ -1141,6 +1141,12 @@ static void endBigModmult(const limb *prodNotAdjusted, int number_length,
   }
 }
 
+// PERF: This is about 25% of the program's execution, and implicated
+// in other expensive stuff (ModPowBaseInt, ModularDivision). It'd be
+// good to port this directly to BigInt, or restore the tricks that
+// used to be here for fixed size multiplications.
+//
+//
 // If modulus is bigger than one limb, this expects the arguments to
 // be in Montgomery form. It would be better if this were expressed
 // by the MontgomeryParams, not a shared secret.
