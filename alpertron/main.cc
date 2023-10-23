@@ -30,8 +30,6 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  static constexpr int TIMES = 10000;
-  for (int i = 0; i < TIMES; i++) {
   BigInt a(argv[1]);
   BigInt b(argv[2]);
   BigInt c(argv[3]);
@@ -39,7 +37,6 @@ int main(int argc, char* argv[]) {
   BigInt e(argv[5]);
   BigInt f(argv[6]);
 
-  if (i == 0)
   printf("\n** Quad %s %s %s %s %s %s\n",
          a.ToString().c_str(),
          b.ToString().c_str(),
@@ -50,9 +47,7 @@ int main(int argc, char* argv[]) {
 
   std::string output;
   QuadBigInt(a, b, c, d, e, f, &output);
-  if (i == 99)
   (void)printf("%s\n", output.c_str());
-  }
 
   return 0;
 }
