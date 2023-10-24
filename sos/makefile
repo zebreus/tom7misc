@@ -2,6 +2,7 @@
 default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe residue.exe compress.exe chakravala.exe bigcalc.exe orbit.exe polynomial_test.exe algebra.exe orbit-grid.exe recurrence.exe bestsq.exe kgrid.exe bhaskara-util_test.exe kline.exe leaderboard.exe
 
 CC_LIB=../cc-lib
+ALPERTRON=../alpertron
 
 FLTO=-flto=auto
 
@@ -20,7 +21,7 @@ ifeq ($(UNAME),Cygwin)
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
   # XXX necessary?
-  PLATFORM_CXXFLAGS=-D__MINGW32__
+  PLATFORM_CXXFLAGS=-D__MINGW32__ -Wl,--stack,167772160
   PLATFORM_LFLAGS=-lpsapi -Wl,--subsystem,console -static
   CL_CFLAGS="-I$(AMDSDK)/include"
   CL_LFLAGS='-L${AMDSDK}/lib/${AMD_ARCH}' -lOpenCL
@@ -40,7 +41,7 @@ OPT=-O3
 
 # Avoid -ffast-math, which assumes std::isnan is false, for example!
 # We also rely on sqrt(double) producing exact values.
-CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -std=c++20
+CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -I$(ALPERTRON) -std=c++20
 
 # CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -DHAVE_ALLOCA -DNOWINSTUFF $(FLTO) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 
@@ -51,11 +52,13 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 
 UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/factorization.o $(CC_LIB)/atomic-util.o $(CC_LIB)/interval-cover.o $(CC_LIB)/bounds.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o
 
+ALPERTRON_OBJECTS=../alpertron/bigconv.o ../alpertron/bignbr.o ../alpertron/factor.o ../alpertron/modmult.o ../alpertron/quadmodll.o ../alpertron/quad.o
+
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=sos-util.o database.o predict.o polynomial.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS)
+OBJECTS=sos-util.o database.o predict.o polynomial.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS) $(ALPERTRON_OBJECTS)
 
 CL_OBJECTS=$(OBJECTS) clutil.o
 

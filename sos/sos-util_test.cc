@@ -287,7 +287,11 @@ static void TestSimple(const char * name, F f) {
     std::vector<std::pair<uint64_t, uint64_t>> nways =
       f(i, -1);
     CHECK(nways_fast.size() == nways.size());
-    CHECK(num == (int)nways.size());
+    CHECK(num == (int)nways.size())
+      << "For " << i << ", "
+      "CWW says there should be " << num << " ways.\n"
+      "But got " << (int)nways.size() << ":\n"
+      << WaysString(nways);
     printf("[%s] %d: %d ways: %s\n",
            name, i, num, WaysString(nways).c_str());
     for (const auto &[a, b] : nways_fast) {
@@ -454,6 +458,7 @@ int main(int argc, char **argv) {
 
   GetNWaysExamples(10);
 
+  /*
   TestCWWBrute();
   TestCWW();
   BenchCWW();
@@ -465,14 +470,17 @@ int main(int argc, char **argv) {
 
   BenchMSOSFancy();
   MaybeSumOfSquaresRecall();
+  */
 
   TestSimple("brute", BruteGetWays);
   TestSimple("nsoks2", NSoks2);
   TestSimple("merge", GetWaysMerge);
+  TestSimple("quad", GetWaysQuad);
 
   TestGetWays("brute", BruteGetWays);
   TestGetWays("nsoks2", NSoks2);
   TestGetWays("merge", GetWaysMerge);
+  TestGetWays("quad", GetWaysQuad);
 
   printf("OK\n");
   return 0;

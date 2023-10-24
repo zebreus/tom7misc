@@ -207,6 +207,10 @@ NSoks2(uint64_t sum, int num_expected = -1);
 std::vector<std::pair<uint64_t, uint64_t>>
 GetWaysMerge(uint64_t sum, int num_expected = -1);
 
+// Using Quadratic equation solver.
+std::vector<std::pair<uint64_t, uint64_t>>
+GetWaysQuad(uint64_t sum, int num_expected_ignored = -1);
+
 std::string WaysString(
     const std::vector<std::pair<uint64_t, uint64_t>> &v);
 
