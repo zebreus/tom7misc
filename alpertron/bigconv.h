@@ -41,8 +41,6 @@ int BigIntToLimbs(const BigInt &b, limb *limbs);
 // Zero-padded. Must be enough space.
 void BigIntToFixedLimbs(const BigInt &b, size_t num_limbs, limb *limbs);
 
-std::string LongNum(const BigInt &a);
-
 std::string BigIntegerToString(const BigInteger *g);
 
 #endif

@@ -25,7 +25,37 @@
 #include "modmult.h"
 
 #include "base/logging.h"
+#include "base/stringprintf.h"
 #include "bigconv.h"
+
+// XXX to bignum-util or something
+static std::string LongNum(const BigInt &a) {
+  std::string sign = BigInt::Less(a, 0) ? "-" : "";
+  std::string num = BigInt::Abs(a).ToString();
+  if (num.size() > 80) {
+    static constexpr int SHOW_SIDE = 8;
+    int skipped = num.size() - (SHOW_SIDE * 2);
+    return StringPrintf("%s%s…(%d)…%s",
+                        sign.c_str(),
+                        num.substr(0, SHOW_SIDE).c_str(),
+                        skipped,
+                        num.substr(num.size() - SHOW_SIDE,
+                                   std::string::npos).c_str());
+  } else if (num.size() < 7) {
+    return sign + num;
+  } else {
+    // with commas.
+    std::string out;
+    while (num.size() > 3) {
+      if (!out.empty()) out = "," + out;
+      out = num.substr(num.size() - 3, std::string::npos) + out;
+      num.resize(num.size() - 3);
+    }
+    CHECK(!num.empty());
+    CHECK(!out.empty());
+    return sign + num + "," + out;
+  }
+}
 
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc) {
   if (pDest != pSrc) {
@@ -733,7 +763,8 @@ void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
 
   if (VERBOSE) {
     fprintf(stderr, "%s [%d] * %s [%d] = %s\n",
-            LongNum(f1).c_str(), len1, LongNum(f2).c_str(), len2,
+            LongNum(f1).c_str(), len1,
+            LongNum(f2).c_str(), len2,
             LongNum(r).c_str());
   }
   int sz = BigIntToLimbs(r, result);
