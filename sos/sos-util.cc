@@ -518,8 +518,12 @@ GetWaysQuad(uint64_t sum, int num_expected_ignored) {
     // bit (they're uint32s, even).
     CHECK(xo.has_value() && yo.has_value()) << sum;
 
+    int64_t x = xo.value();
+    int64_t y = yo.value();
+
     // Skip negative solutions.
-    if (xo.value() >= 0 && yo.value() >= 0) {
+    // Normalize solutions so that we don't take duplicates.
+    if (x >= 0 && y >= 0 && x <= y) {
       ret.emplace_back((uint64_t)xo.value(),
                        (uint64_t)yo.value());
     }
