@@ -54,10 +54,9 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
                              const BigInt &num, const BigInt &den,
                              const BigInt &mod);
 
-void BigIntegerModularPower(const MontgomeryParams &params,
-                            int modulus_length, const limb *modulus,
-                            const BigInteger* base, const BigInteger* exponent,
-                            BigInteger* power);
+BigInt BigIntModularPower(const MontgomeryParams &params,
+                          int modulus_length, const limb *modulus,
+                          const BigInt &base, const BigInt &exponent);
 
 void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr,
                    int number_length);

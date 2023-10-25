@@ -24,10 +24,7 @@
 
 #include "bignum/big.h"
 
-// Tom multiplied these constants by 1000
-// (It should really be MAX_LEN^2, right?)
-#define MAX_LEN_MULT  25000000  // 200000 digits
-// well, not this one. it doesn't compile with 2500000
+// Tom increased this constant by a factor of 10!
 #define MAX_LEN       25000  // 200000 digits
 #define BITS_PER_GROUP         31
 #define BITS_PER_GROUP_MINUS_1 30
@@ -65,13 +62,10 @@ typedef struct BigInteger {
   limb limbs[MAX_LEN];
 } BigInteger;
 
-void multiply(const limb* factor1, const limb* factor2, limb* result,
-              int len, int* pResultLen);
+// Multiply two limb arrays of the same size, writing to the result.
+void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
+                   int len);
 
-void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
-                         int len1, int len2, int* pResultLen);
-
-void SquareRoot(const limb *argument, limb *sqRoot, int len, int *pLenSqRoot);
 void AddBigInt(const limb *pAddend1, const limb *pAddend2, limb *pSum, int nbrLimbs);
 bool BigIntIsZero(const BigInteger *value);
 bool BigIntIsOne(const BigInteger* value);
@@ -135,7 +129,6 @@ void IntToBigNbr(int value, limb *bigNbr, int nbrLength);
 int BigNbrToBigInt(const BigInteger *pBigNbr, limb *pBigInt);
 void BigIntToBigNbr(BigInteger *pBigNbr, const limb *pBigInt, int nbrLenBigInt);
 void AdjustBigIntModN(limb *Nbr, const limb *Mod, int nbrLen);
-int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower);
 
 static inline int UintToInt(unsigned int value) {
   return (int)value;

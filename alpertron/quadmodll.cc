@@ -84,7 +84,7 @@ struct QuadModLL {
   BigInteger Aux0;
   BigInteger Aux1;
   BigInteger Aux2;
-  BigInteger Aux3, Aux4, Aux5, Aux6;
+  BigInteger Aux4, Aux5, Aux6;
   BigInteger Aux7, Aux8, Aux9, Aux10, Aux11;
 
   BigInteger* pValNn = nullptr;
@@ -739,25 +739,38 @@ struct QuadModLL {
     return true;
   }
 
-  void ComputeSquareRootModPowerOfP(const BigInteger *base,
+  void ComputeSquareRootModPowerOfP(const BigInt &Base,
                                     int nbrBitsSquareRoot) {
+    // XXX native
+    BigInteger base;
+    BigIntToBigInteger(Base, &base);
+
     int correctBits;
     int modulus_length = prime.nbrLimbs;
     int NumberLengthBytes = modulus_length * (int)sizeof(limb);
     (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
     TheModulus[modulus_length].x = 0;
     MontgomeryParams params = GetMontgomeryParams(modulus_length, TheModulus);
-    CopyBigInt(&Q, &prime);
+    const BigInt Prime = BigIntegerToBigInt(&prime);
 
+    // This could be a function that returns SqrtDiscr ?
     if ((prime.limbs[0].x & 3) == 3) {
       // prime mod 4 = 3
-      subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
-      BigIntegerModularPower(params, modulus_length, TheModulus, base,
-                             &Q, &SqrtDisc);
+      // subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
+
+      BigInt SD =
+        BigIntModularPower(params, modulus_length, TheModulus,
+                           Base,
+                           (Prime + 1) >> 2);
+      BigIntToBigInteger(SD, &SqrtDisc);
+
     } else {
-      limb* toConvert;
+      CopyBigInt(&Q, &prime);
+
+      limb* toConvert = nullptr;
       // Convert discriminant to Montgomery notation.
-      CompressLimbsBigInteger(modulus_length, Aux5.limbs, base);
+      // XXX can convert fixed limbs from Base
+      CompressLimbsBigInteger(modulus_length, Aux5.limbs, &base);
       ModMult(params,
               Aux5.limbs, params.MontgomeryMultR2,
               modulus_length, TheModulus,
@@ -823,10 +836,12 @@ struct QuadModLL {
         // Step 2.
         int x = 1;
 
-        do {
-          x++;
-          intToBigInteger(&Aux3, x);
-        } while (BigIntJacobiSymbol(&Aux3, &prime) >= 0);
+        {
+          const BigInt Prime = BigIntegerToBigInt(&prime);
+          do {
+            x++;
+          } while (BigInt::Jacobi(BigInt(x), Prime) >= 0);
+        }
 
         // Step 3.
         // Get z <- x^q (mod p) in Montgomery notation.
@@ -1053,15 +1068,19 @@ struct QuadModLL {
           BigIntAdd(&Tmp, &prime, &Tmp);
         }
 
-        if (BigIntJacobiSymbol(&Tmp, &prime) != 1) {
-          return false;         // Not a quadratic residue, so go out.
+        if (BigInt::Jacobi(BigIntegerToBigInt(&Tmp),
+                           BigIntegerToBigInt(&prime)) != 1) {
+          // Not a quadratic residue, so go out.
+          return false;
         }
 
         // Port note: This used to be passed in Aux3. This call might
         // expect more state in Aux, ugh.
 
         // Compute square root of discriminant.
-        ComputeSquareRootModPowerOfP(&Tmp, nbrBitsSquareRoot);
+        ComputeSquareRootModPowerOfP(
+            // PERF easy to use native BigInt here
+            BigIntegerToBigInt(&Tmp), nbrBitsSquareRoot);
       }
 
       // Multiply by square root of discriminant by prime^deltaZeros.

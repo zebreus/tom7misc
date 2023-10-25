@@ -665,18 +665,15 @@ bool BigIntIsOne(const BigInteger* value) {
 }
 
 bool BigIntEqual(const BigInteger *value1, const BigInteger *value2) {
-  int nbrLimbs;
-  const limb *ptrValue1;
-  const limb *ptrValue2;
   assert(value1->nbrLimbs >= 1);
   assert(value2->nbrLimbs >= 1);
   if ((value1->nbrLimbs != value2->nbrLimbs) ||
       (value1->sign != value2->sign)) {
     return false;    // Numbers are not equal.
   }
-  nbrLimbs = value1->nbrLimbs;
-  ptrValue1 = value1->limbs;
-  ptrValue2 = value2->limbs;
+  const int nbrLimbs = value1->nbrLimbs;
+  const limb *ptrValue1 = value1->limbs;
+  const limb *ptrValue2 = value2->limbs;
 
   for (int index = 0; index < nbrLimbs; index++) {
     if (ptrValue1->x != ptrValue2->x) {
@@ -685,7 +682,8 @@ bool BigIntEqual(const BigInteger *value1, const BigInteger *value2) {
     ptrValue1++;
     ptrValue2++;
   }
-  return true;       // Numbers are equal.
+  // Numbers are equal.
+  return true;
 }
 
 void BigIntPowerOf2(BigInteger *pResult, int exponent) {
@@ -711,19 +709,6 @@ void BigIntAnd(const BigInteger* arg1, const BigInteger* arg2,
   BigIntToBigInteger(r, result);
 }
 
-int BigIntJacobiSymbol(const BigInteger *upper, const BigInteger *lower) {
-  BigInt a = BigIntegerToBigInt(upper);
-  BigInt b = BigIntegerToBigInt(lower);
-  return BigInt::Jacobi(a, b);
-}
-
-void SquareRoot(const limb *argument, limb *sqRoot, int len, int *pLenSqRoot) {
-  BigInt a = LimbsToBigInt(argument, len);
-  BigInt r = BigInt::Sqrt(a);
-
-  *pLenSqRoot = BigIntToLimbs(r, sqRoot);
-}
-
 enum eExprErr BigIntDivide(const BigInteger *pDividend,
                            const BigInteger *pDivisor,
                            BigInteger *pQuotient) {
@@ -742,15 +727,14 @@ enum eExprErr BigIntDivide(const BigInteger *pDividend,
 
 static constexpr bool VERBOSE = false;
 
-void multiply(const limb* factor1, const limb* factor2, limb* result,
-              int len, int* pResultLen) {
-  multiplyWithBothLen(factor1, factor2, result, len, len, pResultLen);
-}
+void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
+                   int len) {
+  // From a version that allowed these to differ. Clean up.
+  const int len1 = len;
+  const int len2 = len;
 
-void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
-                         int len1, int len2, int* pResultLen) {
-  // Note: Sometimes result is one of the factors.
-
+  // Note: Sometimes result is one of the factors. It works fine when
+  // we copy into BigInt.
   BigInt f1 = LimbsToBigInt(factor1, len1);
   BigInt f2 = LimbsToBigInt(factor2, len2);
   BigInt r = BigInt::Times(f1, f2);
@@ -767,9 +751,8 @@ void multiplyWithBothLen(const limb* factor1, const limb* factor2, limb* result,
             LongNum(f2).c_str(), len2,
             LongNum(r).c_str());
   }
-  int sz = BigIntToLimbs(r, result);
-  if (pResultLen != nullptr)
-    *pResultLen = sz;
+
+  (void)BigIntToLimbs(r, result);
 }
 
 void ChSignBigNbr(limb *nbr, int length) {
