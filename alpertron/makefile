@@ -11,7 +11,7 @@ ifeq ($(UNAME),Cygwin)
 
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
-  PLATFORM_CFLAGS=-Wl,--stack,167772160
+  PLATFORM_CFLAGS=-Wl,--stack,0x1000000
   PLATFORM_LFLAGS=-static
 else ifeq ($(UNAME),Darwin)
   # Mac OS X
@@ -25,7 +25,7 @@ else
   # Linux
   CXX=g++
   CC=gcc
-  PLATFORM_CFLAGS=-Wl,-z,stack-size=167772160
+  PLATFORM_CFLAGS=-Wl,-z,stack-size=0x1000000
   GMP_LFLAGS=-lgmp
   GMP_CFLAGS=-DBIG_USE_GMP
 endif

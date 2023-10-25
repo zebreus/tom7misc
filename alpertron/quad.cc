@@ -89,11 +89,13 @@ static std::string CallbackString(QmodCallbackType t) {
   }
 }
 
-// TODO: Test this heuristic without converting.
-static bool IsBig(const BigInt &bg, int num_limbs) {
-  BigInteger tmp;
-  BigIntToBigInteger(bg, &tmp);
-  return tmp.nbrLimbs > num_limbs;
+// This is just a display heuristic. Tests whether the
+// BigInteger representation would be more than two limbs.
+static bool IsBig(const BigInt &bg) {
+  size_t s = 1 + (mpz_sizeinbase(bg.GetRep(), 2) / BITS_PER_GROUP);
+  // fprintf(stderr, "%s has size %d in %d groups\n",
+  // bg.ToString().c_str(), (int)s, BITS_PER_GROUP);
+  return s > 2;
 }
 
 static LinSol LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
@@ -895,7 +897,7 @@ struct Quad {
     rsol1.K = K;
     rsol1.L = L;
 
-    if (IsBig(P, 2) || IsBig(Q, 2)) {
+    if (IsBig(P) || IsBig(Q)) {
       if (Alpha == 0 && Beta == 0) {
         ShowText("x_n+1 = P * x_n + Q * y_n\n"
                  "y_n+1 = R * x_n + S * y_n\n");
@@ -941,7 +943,7 @@ struct Quad {
     S = std::move(Tmp);
 
     ShowText("\n... and also:\n");
-    if (IsBig(P, 2) || IsBig(Q, 2)) {
+    if (IsBig(P) || IsBig(Q)) {
       ShowResult("P", P);
       ShowResult("Q", Q);
       if (Alpha != 0 || Beta != 0) {
