@@ -1,22 +1,28 @@
 #ifndef _MODMULT_H
 #define _MODMULT_H
 
+#include <memory>
+
 #include "bignbr.h"
 
 // These used to be globals. Now calling GetMontgomeryParams* creates them.
 struct MontgomeryParams {
+  // PERF: We can dynamically allocate these to the necessary length.
   limb MontgomeryMultN[MAX_LEN];
   limb MontgomeryMultR1[MAX_LEN];
   limb MontgomeryMultR2[MAX_LEN];
-  int NumberLengthR1;
+  int NumberLengthR1 = 0;
   // Indicates that the modulus is a power of two.
-  int powerOf2Exponent;
+  int powerOf2Exponent = 0;
 };
 
-MontgomeryParams GetMontgomeryParams(int modulus_length, const limb *modulus);
-MontgomeryParams GetMontgomeryParamsPowerOf2(int powerOf2,
-                                             // computed from the power of 2
-                                             int *modulus_length);
+std::unique_ptr<MontgomeryParams>
+GetMontgomeryParams(int modulus_length, const limb *modulus);
+// No coverage of this function, and it's probably broken right now.
+std::unique_ptr<MontgomeryParams>
+GetMontgomeryParamsPowerOf2(int powerOf2,
+                            // computed from the power of 2
+                            int *modulus_length);
 
 // If modulus_length > 1, then everything is in montgomery form; otherwise
 // they are just regular numbers. (IMO it would be better if params determined
@@ -34,10 +40,6 @@ void ModPowBaseInt(const MontgomeryParams &params,
 void ModPow(const MontgomeryParams &params,
             int modulus_length, const limb *modulus,
             const limb *base, const limb *exp, int nbrGroupsExp, limb *power);
-
-void BigIntegerGeneralModularDivision(
-    const BigInteger *Num, const BigInteger *Den,
-    const BigInteger *mod, BigInteger *quotient);
 
 BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
                               const BigInt &modulus);

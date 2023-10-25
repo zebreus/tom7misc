@@ -1610,11 +1610,11 @@ struct Quad {
       TheModulus[modulus_length].x = 0;
 
       // Is it worth it to convert to montgomery form for one division??
-      const MontgomeryParams params =
+      const std::unique_ptr<MontgomeryParams> params =
         GetMontgomeryParams(modulus_length, TheModulus);
 
       BigInt z =
-        BigIntModularDivision(params, coeff_indep, coeff_linear, Modulus);
+        BigIntModularDivision(*params, coeff_indep, coeff_linear, Modulus);
 
       if (z != 0) {
         // not covered by cov.sh :(
