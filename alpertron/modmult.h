@@ -42,14 +42,10 @@ void BigIntegerGeneralModularDivision(
 BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
                               const BigInt &modulus);
 
-// The interface to this is pretty bad: mod and modulus represent the
-// same number, and modulus is modified.
-void BigIntegerModularDivision(const MontgomeryParams &params,
-                               int modulus_length, limb *modulus,
-                               const BigInteger* Num, const BigInteger* Den,
-                               const BigInteger* mod, BigInteger* quotient);
-
-// Stateless version of above. The params must match the modulus!
+// The params must match the modulus.
+// TODO: It's very common for us to derive the params immediately
+// before calling this, so we could offer a version that just takes
+// num,den,mod.
 BigInt BigIntModularDivision(const MontgomeryParams &params,
                              const BigInt &num, const BigInt &den,
                              const BigInt &mod);

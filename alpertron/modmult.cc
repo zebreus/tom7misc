@@ -151,26 +151,6 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
   return BigIntegerToBigInt(&power);
 }
 
-BigInt BigIntModularDivision(const MontgomeryParams &params,
-                             const BigInt &num, const BigInt &den,
-                             const BigInt &mod) {
-  BigInteger n, d, m, z;
-  BigIntToBigInteger(num, &n);
-  BigIntToBigInteger(den, &d);
-  BigIntToBigInteger(mod, &m);
-
-  // PERF: Fewer conversions of the modulus please!
-  // PERF: Can dynamically size this, at least.
-  // (Or, modulus could be part of params)
-  limb TheModulus[MAX_LEN];
-  int modulus_length = BigIntToLimbs(mod, TheModulus);
-  TheModulus[modulus_length].x = 0;
-
-  BigIntegerModularDivision(params, modulus_length, TheModulus,
-                            &n, &d, &m, &z);
-  return BigIntegerToBigInt(&z);
-}
-
 // Input: base = base in Montgomery notation.
 //        exp  = exponent.
 //        nbrGroupsExp = number of limbs of exponent.
@@ -762,27 +742,39 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
 }
 
 // Compute modular division for odd moduli.
-// mod and modulus should represent the same number.
-void BigIntegerModularDivision(const MontgomeryParams &params,
-                               int modulus_length, limb *modulus,
-                               const BigInteger* Num, const BigInteger* Den,
-                               const BigInteger* mod, BigInteger* quotient) {
+// params and modulus should match.
+BigInt BigIntModularDivision(const MontgomeryParams &params,
+                             const BigInt &Num, const BigInt &Den,
+                             const BigInt &Mod) {
+  BigInteger num, den, mod, z;
+  BigIntToBigInteger(Num, &num);
+  BigIntToBigInteger(Den, &den);
+  BigIntToBigInteger(Mod, &mod);
+
+  // PERF: Fewer conversions of the modulus please!
+  // PERF: Can dynamically size this, at least.
+  // (Or, modulus could be part of params)
+  limb TheModulus[MAX_LEN];
+  int modulus_length = BigIntToLimbs(Mod, TheModulus);
+  TheModulus[modulus_length].x = 0;
+
+
   // NumberLength = mod->nbrLimbs;
   // ??
-  CHECK(modulus_length == mod->nbrLimbs);
+  CHECK(modulus_length == mod.nbrLimbs);
 
   // Reduce Num modulo mod.
   BigInteger tmpNum;
-  (void)BigIntRemainder(Num, mod, &tmpNum);
+  (void)BigIntRemainder(&num, &mod, &tmpNum);
   if (tmpNum.sign == SIGN_NEGATIVE) {
-    BigIntAdd(&tmpNum, mod, &tmpNum);
+    BigIntAdd(&tmpNum, &mod, &tmpNum);
   }
 
   // Reduce Den modulo mod.
   BigInteger tmpDen;
-  (void)BigIntRemainder(Den, mod, &tmpDen);
+  (void)BigIntRemainder(&den, &mod, &tmpDen);
   if (tmpDen.sign == SIGN_NEGATIVE) {
-    BigIntAdd(&tmpDen, mod, &tmpDen);
+    BigIntAdd(&tmpDen, &mod, &tmpDen);
   }
 
   limb tmp3[MAX_LEN];
@@ -791,17 +783,20 @@ void BigIntegerModularDivision(const MontgomeryParams &params,
   // tmpDen.limbs <- 1 / Den in Montg notation.
   ModMult(params,
           tmp3, params.MontgomeryMultR2,
-          modulus_length, modulus,
+          modulus_length, TheModulus,
           tmp3);
-  (void)ModInvBigNbr(params, modulus_length, modulus, tmp3, tmpDen.limbs);
+  (void)ModInvBigNbr(params, modulus_length, TheModulus, tmp3, tmpDen.limbs);
   limb tmp4[MAX_LEN];
   CompressLimbsBigInteger(modulus_length, tmp4, &tmpNum);
   // tmp3 <- Num / Den in standard notation.
   ModMult(params,
           tmpDen.limbs, tmp4,
-          modulus_length, modulus,
+          modulus_length, TheModulus,
           tmp3);
-  UncompressLimbsBigInteger(modulus_length, tmp3, quotient);  // Get Num/Den
+  // Get Num/Den
+  UncompressLimbsBigInteger(modulus_length, tmp3, &z);
+
+  return BigIntegerToBigInt(&z);
 }
 
 // On input:
