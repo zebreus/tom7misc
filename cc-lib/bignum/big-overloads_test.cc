@@ -50,6 +50,12 @@ static void TestAssigningOps() {
     CHECK(x == 22);
   }
 
+  {
+    BigInt x(42);
+    x &= BigInt{3};
+    CHECK(x == 2);
+  }
+
 }
 
 int main(int argc, char **argv) {
