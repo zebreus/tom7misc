@@ -63,6 +63,10 @@ struct QuadModLL {
     intToBigInteger(&prime, 121212);
   }
 
+  BigInt Discriminant;
+  // Only used in CRT; could easily pass
+  BigInt NN;
+
   // BigInteger Quadr;
   // BigInteger Linear;
   // BigInteger Const;
@@ -70,10 +74,9 @@ struct QuadModLL {
   BigInteger ValAOdd;
   BigInteger ValBOdd;
   BigInteger ValCOdd;
-  BigInteger discriminant;
   BigInteger SqrtDisc;
   // BigInteger K1;
-  BigInteger L;
+  // BigInteger L;
   BigInteger Q;
   BigInteger V;
   bool sol1Invalid = false;
@@ -87,7 +90,6 @@ struct QuadModLL {
   BigInteger Aux4, Aux5, Aux6;
   BigInteger Aux7, Aux8, Aux9, Aux10, Aux11;
 
-  BigInteger* pValNn = nullptr;
   SolutionFn Solution;
 
   // Were globals NumberLength and TestNbr
@@ -204,8 +206,6 @@ struct QuadModLL {
       BigInt VV(0);
       BigInt KK1 = 0 - GcdAll;
 
-      BigInt NN = BigIntegerToBigInt(pValNn);
-
       // BigIntSubt(&V, pGcdAll, &K1);
 
       // Perform loop while V < GcdAll.
@@ -249,7 +249,7 @@ struct QuadModLL {
         BigInt L1 = Increment[T1] * Exponents[T1];
 
         // PERF probably unnecessary? not used in this function
-        BigIntToBigInteger(L1, &L);
+        // BigIntToBigInteger(L1, &L);
         // BigInteger inc;
         // BigIntToBigInteger(Increment[T1], &inc);
         // multadd(&L, Exponents[T1], &inc, 0);
@@ -734,6 +734,9 @@ struct QuadModLL {
       sol2Invalid = true;
     }
 
+    // XXX how is this used? It looks to me like all
+    // all other code paths write Q before using it.
+    // BigIntToBigInteger(BigInt(0x0DDBALL), &Q);
     BigIntPowerOf2(&Q, expon);         // Store increment.
     return true;
   }
@@ -923,6 +926,8 @@ struct QuadModLL {
       BigIntModularDivision(*params,
                             BigInt(1), BigIntegerToBigInt(&SqrtDisc),
                             BigIntegerToBigInt(&prime));
+
+    // PERF good place to do this natively
     BigIntToBigInteger(SqrRoot, &sqrRoot);
     correctBits = 1;
     CopyBigInt(&Q, &prime);
@@ -935,7 +940,11 @@ struct QuadModLL {
       (void)BigIntMultiply(&Q, &Q, &Q);           // Square Q.
       (void)BigIntMultiply(&sqrRoot, &sqrRoot, &tmp1);
       (void)BigIntRemainder(&tmp1, &Q, &tmp2);
-      (void)BigIntMultiply(&tmp2, &discriminant, &tmp1);
+
+      BigIntToBigInteger(Discriminant * BigIntegerToBigInt(&tmp2),
+                         &tmp1);
+      // (void)BigIntMultiply(&tmp2, &discriminant, &tmp1);
+
       (void)BigIntRemainder(&tmp1, &Q, &tmp2);
       intToBigInteger(&tmp1, 3);
       BigIntSubt(&tmp1, &tmp2, &tmp2);
@@ -952,7 +961,11 @@ struct QuadModLL {
     if (sqrRoot.sign == SIGN_NEGATIVE) {
       BigIntAdd(&sqrRoot, &Q, &sqrRoot);
     }
-    (void)BigIntMultiply(&sqrRoot, &discriminant, &sqrRoot);
+
+
+    BigIntToBigInteger(Discriminant * BigIntegerToBigInt(&sqrRoot),
+                       &sqrRoot);
+    // (void)BigIntMultiply(&sqrRoot, &discriminant, &sqrRoot);
     (void)BigIntRemainder(&sqrRoot, &Q, &sqrRoot);
   }
 
@@ -983,23 +996,24 @@ struct QuadModLL {
       (void)BigIntDivide(&ValAOdd, &prime, &ValAOdd);
       bitsAZero++;
     }
-    (void)BigIntRemainder(&discriminant, &V, &discriminant);
+    Discriminant %= BigIntegerToBigInt(&V);
+    // (void)BigIntRemainder(&discriminant, &V, &discriminant);
 
     // Get maximum power of prime which divides discriminant.
     int deltaZeros;
-    if (BigIntIsZero(&discriminant)) {
+    if (Discriminant == 0) {
       // Discriminant is zero.
       deltaZeros = expon;
     } else {
       // Discriminant is not zero.
       deltaZeros = 0;
+      const BigInt Prime = BigIntegerToBigInt(&prime);
       for (;;) {
-        BigInteger tmp1;
-        (void)BigIntRemainder(&discriminant, &prime, &tmp1);
-        if (!BigIntIsZero(&tmp1)) {
+        // (void)BigIntRemainder(&discriminant, &prime, &tmp1);
+        if (!BigInt::DivisibleBy(Discriminant, Prime)) {
           break;
         }
-        (void)BigIntDivide(&discriminant, &prime, &discriminant);
+        Discriminant = BigInt::DivExact(Discriminant, Prime);
         deltaZeros++;
       }
     }
@@ -1041,7 +1055,7 @@ struct QuadModLL {
       BigIntToBigInteger(Tmp, &ValAOdd);
     }
 
-    if (BigIntIsZero(&discriminant)) {
+    if (Discriminant == 0) {
       // Discriminant is zero.
       int lenBytes = nbrLimbs * (int)sizeof(limb);
       (void)memset(sqrRoot.limbs, 0, lenBytes);
@@ -1053,26 +1067,30 @@ struct QuadModLL {
       int nbrBitsSquareRoot = expon + bitsAZero - deltaZeros;
       (void)BigIntPowerIntExp(&prime, nbrBitsSquareRoot, &tmp1);
       nbrLimbs = tmp1.nbrLimbs;
-      (void)BigIntRemainder(&discriminant, &tmp1, &discriminant);
+      const BigInt Tmp1 = BigIntegerToBigInt(&tmp1);
+      Discriminant %= Tmp1;
+      // (void)BigIntRemainder(&discriminant, &tmp1, &discriminant);
 
-      if (discriminant.sign == SIGN_NEGATIVE) {
-        BigIntAdd(&discriminant, &tmp1, &discriminant);
+      if (Discriminant < 0) {
+        Discriminant += Tmp1;
       }
 
-      if (nbrLimbs > discriminant.nbrLimbs) {
-        int lenBytes = (nbrLimbs - discriminant.nbrLimbs) * (int)sizeof(limb);
-        (void)memset(&discriminant.limbs[nbrLimbs], 0, lenBytes);
-      }
+      // Port note: Not clear why the original code did this?
+      // It doesn't seem to use the limbs directly.
+      // if (nbrLimbs > discriminant.nbrLimbs) {
+      // int lenBytes = (nbrLimbs - discriminant.nbrLimbs) * (int)sizeof(limb);
+      // (void)memset(&discriminant.limbs[nbrLimbs], 0, lenBytes);
+      // }
 
       {
-        BigInteger Tmp;
-        (void)BigIntRemainder(&discriminant, &prime, &Tmp);
-        if (Tmp.sign == SIGN_NEGATIVE) {
-          BigIntAdd(&Tmp, &prime, &Tmp);
+        const BigInt Prime = BigIntegerToBigInt(&prime);
+        BigInt Tmp = Discriminant % Prime;
+        // (void)BigIntRemainder(&discriminant, &prime, &Tmp);
+        if (Tmp < 0) {
+          Tmp += Prime;
         }
 
-        if (BigInt::Jacobi(BigIntegerToBigInt(&Tmp),
-                           BigIntegerToBigInt(&prime)) != 1) {
+        if (BigInt::Jacobi(Tmp, Prime) != 1) {
           // Not a quadratic residue, so go out.
           return false;
         }
@@ -1081,9 +1099,7 @@ struct QuadModLL {
         // expect more state in Aux, ugh.
 
         // Compute square root of discriminant.
-        ComputeSquareRootModPowerOfP(
-            // PERF easy to use native BigInt here
-            BigIntegerToBigInt(&Tmp), nbrBitsSquareRoot);
+        ComputeSquareRootModPowerOfP(Tmp, nbrBitsSquareRoot);
       }
 
       // Multiply by square root of discriminant by prime^deltaZeros.
@@ -1093,7 +1109,9 @@ struct QuadModLL {
     }
 
     int correctBits = expon - deltaZeros;
+
     // Store increment.
+    // Q <- prime^correctBits
     (void)BigIntPowerIntExp(&prime, correctBits, &Q);
     // Compute x = (b + sqrt(discriminant)) / (-2a) and
     //   x = (b - sqrt(discriminant)) / (-2a)
@@ -1185,17 +1203,21 @@ struct QuadModLL {
 
     for (int currentExpon = 2; currentExpon < (2 * expon); currentExpon *= 2) {
       (void)BigIntPowerIntExp(&prime, currentExpon, &V);
-      // a*x_n
+      // Q <- a*x_n
       (void)BigIntMultiply(pValA, &tmpSolution, &Q);
-      CopyBigInt(&L, &Q);
+      BigInt L = BigIntegerToBigInt(&Q);
+      // CopyBigInt(&L, &Q);
       BigIntAdd(&Q, pValB, &Q);                    // a*x_n + b
       (void)BigIntRemainder(&Q, &V, &Q);
       (void)BigIntMultiply(&Q, &tmpSolution, &Q);   // a*x_n^2 + b*x_n
       BigIntAdd(&Q, pValC, &Q);                    // a*x_n^2 + b*x_n + c
       (void)BigIntRemainder(&Q, &V, &Q);           // Numerator.
-      MultInt(&L, &L, 2);                          // 2*a*x_n
-      BigIntAdd(&L, pValB, &L);                    // 2*a*x_n + b
-      (void)BigIntRemainder(&L, &V, &L);           // Denominator
+      L <<= 1;
+      // MultInt(&L, &L, 2);                          // 2*a*x_n
+      L += BigIntegerToBigInt(pValB);
+      // BigIntAdd(&L, pValB, &L);                    // 2*a*x_n + b
+      L %= BigIntegerToBigInt(&V);
+      // (void)BigIntRemainder(&L, &V, &L);           // Denominator
       int modulus_length = V.nbrLimbs;
       int NumberLengthBytes = modulus_length * (int)sizeof(limb);
       (void)memcpy(TheModulus, V.limbs, NumberLengthBytes);
@@ -1205,7 +1227,7 @@ struct QuadModLL {
       BigInt Aux =
         BigIntModularDivision(*params,
                               BigIntegerToBigInt(&Q),
-                              BigIntegerToBigInt(&L),
+                              L,
                               BigIntegerToBigInt(&V));
       BigIntToBigInteger(Aux, &Aux1);
       BigIntSubt(&tmpSolution, &Aux1, &tmpSolution);
@@ -1215,6 +1237,7 @@ struct QuadModLL {
         BigIntAdd(&tmpSolution, &V, &tmpSolution);
       }
     }
+    // Q <- prime^expon
     (void)BigIntPowerIntExp(&prime, expon, &Q);
     (void)BigIntRemainder(&tmpSolution, &Q, &tmpSolution);
 
@@ -1239,14 +1262,7 @@ struct QuadModLL {
     sol1Invalid = false;
     sol2Invalid = false;
     // Compute discriminant = ValB^2 - 4*ValA*ValC.
-    {
-      BigInt Disc = B * B - ((A * C) << 2);
-      BigIntToBigInteger(Disc, &discriminant);
-      // (void)BigIntMultiply(pValB, pValB, &Tmp);
-      // (void)BigIntMultiply(pValA, pValC, &discriminant);
-      // MultInt(&discriminant, &discriminant, 4);
-      // BigIntSubt(&Tmp, &discriminant, &discriminant);
-    }
+    Discriminant = B * B - ((A * C) << 2);
 
     bool solutions = false;
     if ((prime.nbrLimbs == 1) && (prime.limbs[0].x == 2)) {
@@ -1295,23 +1311,24 @@ struct QuadModLL {
   // Solve Ax^2 + Bx + C = 0 (mod N).
   void SolveEquation(
       const SolutionFn &solutionCback,
-      BigInteger* pValA, const BigInteger* pValB,
-      const BigInteger* pValC, BigInteger* pValN,
-      const BigInt &GcdAll, BigInteger* pValNnParm) {
+      const BigInt &A, const BigInt &B,
+      const BigInt &C, const BigInt &N,
+      const BigInt &GcdAll, const BigInt &NN_arg) {
 
-    const BigInt &A = BigIntegerToBigInt(pValA);
-    const BigInt &B = BigIntegerToBigInt(pValB);
-    const BigInt &C = BigIntegerToBigInt(pValC);
-    const BigInt &N = BigIntegerToBigInt(pValN);
+    BigInteger valA, valB, valC, valN;
+    BigIntToBigInteger(A, &valA);
+    BigIntToBigInteger(B, &valB);
+    BigIntToBigInteger(C, &valC);
+    BigIntToBigInteger(N, &valN);
+
+    NN = NN_arg;
 
     // PERF: no need to copy
     Solution = solutionCback;
 
-    pValNn = pValNnParm;
-
     if (BigInt::CMod(A, N) == 0) {
       // Linear equation.
-      SolveModularLinearEquation(GcdAll, pValA, pValB, pValC, pValN);
+      SolveModularLinearEquation(GcdAll, &valA, &valB, &valC, &valN);
       return;
     }
 
@@ -1330,10 +1347,10 @@ struct QuadModLL {
     // at all, I think
     // CopyBigInt(&LastModulus, pValN);
     // std::unique_ptr<Factors> factors = BigFactor(pValN);
-    std::vector<std::pair<BigInt, int>> factors =
-      BigIntFactor(BigIntegerToBigInt(pValN));
+    std::vector<std::pair<BigInt, int>> factors = BigIntFactor(N);
 
     intToBigInteger(&Q, 0);
+    // intToBigInteger(&Q, 0xCAFE);
     const int nbrFactors = factors.size();
     // const sFactorz *pstFactor = &factors->product[0];
 
@@ -1371,13 +1388,13 @@ struct QuadModLL {
           return;
         }
 
-        QuadraticTermMultipleOfP(expon, factorIndex, pValA, pValB, pValC);
+        QuadraticTermMultipleOfP(expon, factorIndex, &valA, &valB, &valC);
 
       } else {
         // If quadratic equation mod p
         if (!QuadraticTermNotMultipleOfP(GcdAll,
                                          expon, factorIndex,
-                                         pValA, pValB, pValC)) {
+                                         &valA, &valB, &valC)) {
           return;
         }
       }
@@ -1401,14 +1418,7 @@ void SolveEquation(
     bool *interesting_coverage) {
   std::unique_ptr<QuadModLL> qmll = std::make_unique<QuadModLL>();
 
-  BigInteger a, b, c, n, nn;
-  BigIntToBigInteger(A, &a);
-  BigIntToBigInteger(B, &b);
-  BigIntToBigInteger(C, &c);
-  BigIntToBigInteger(N, &n);
-  BigIntToBigInteger(Nn, &nn);
-  qmll->SolveEquation(solutionCback,
-                      &a, &b, &c, &n, GcdAll, &nn);
+  qmll->SolveEquation(solutionCback, A, B, C, N, GcdAll, Nn);
   if (interesting_coverage != nullptr &&
       qmll->interesting_coverage) {
     *interesting_coverage = true;
