@@ -1,6 +1,7 @@
 
 #include "quad.h"
 
+#include <bit>
 #include <array>
 #include <string>
 #include <cstdio>
@@ -17,10 +18,13 @@
 #include "atomic-util.h"
 #include "util.h"
 #include "auto-histo.h"
+#include "crypt/lfsr.h"
 
 static constexpr int MAX_COEFF = 12;
 // Positive and negative, zero
 static constexpr int RADIX = MAX_COEFF * 2 + 1;
+
+static constexpr bool COMPUTE_F = true;
 
 using namespace std;
 
@@ -89,11 +93,47 @@ static void RunGrid() {
         BigInt D(d);
         BigInt E(e);
 
+        const uint64_t hash64 = (uint64_t)a ^
+          std::rotl((uint64_t)b, 51) ^
+          std::rotl((uint64_t)c, 17) ^
+          (std::rotl((uint64_t)d, 33) +
+           std::rotl((uint64_t)e, 23));
+
+        uint32_t hash_hi = (uint32_t)(hash64 >> 32);
+        if (!hash_hi) hash_hi++;
+        uint32_t hash_lo = (uint32_t)hash64;
+        if (!hash_lo) hash_lo--;
+
         std::vector<double> local_timing;
 
         for (int64 f = -MAX_COEFF; f <= MAX_COEFF; f++) {
+          int sol_x = -1, sol_y = -1;
 
-          BigInt F(f);
+          BigInt F;
+
+          if (COMPUTE_F) {
+            // Pick x and y "randomly"
+            hash_hi = LFSRNext32((uint32_t)(hash_hi));
+            hash_lo = LFSRNext32((uint32_t)(hash_lo));
+
+            sol_x = (int)(hash_hi & 65535) - 32768;
+            sol_y = (int)(hash_lo & 65535) - 32768;
+
+            // TODO: Insist that we find *this* solution below.
+            BigInt X(sol_x), Y(sol_y);
+
+            BigInt NegF =
+              A * (X * X) +
+              B * (X * Y) +
+              C * (Y * Y) +
+              D * X +
+              E * Y;
+
+            F = -NegF;
+
+          } else {
+            F = BigInt(f);
+          }
 
           auto Assert = [&](const char *type,
                             const BigInt &x, const BigInt &y) {
@@ -107,7 +147,12 @@ static void RunGrid() {
               if (r != 0) {
                 std::string problem =
                   StringPrintf(" %lld %lld %lld %lld %lld %lld\n\n",
-                               a, b, c, d, e, f);
+                               A.ToString().c_str(),
+                               B.ToString().c_str(),
+                               C.ToString().c_str(),
+                               D.ToString().c_str(),
+                               E.ToString().c_str(),
+                               F.ToString().c_str());
 
                 printf("\n\n\n\n\n"
                        "Invalid solution on problem: %s\n\n\n",
@@ -205,6 +250,30 @@ static void RunGrid() {
               sols.quadratic.empty() &&
               sols.recursive.empty()) {
             count_none++;
+
+            if (COMPUTE_F) {
+              std::string problem =
+                StringPrintf(" %lld %lld %lld %lld %lld %lld\n\n",
+                             A.ToString().c_str(),
+                             B.ToString().c_str(),
+                             C.ToString().c_str(),
+                             D.ToString().c_str(),
+                             E.ToString().c_str(),
+                             F.ToString().c_str());
+
+              printf("\n\n\n\n\n"
+                     "Did not solve problem: %s\n\n\n",
+                     problem.c_str());
+              fflush(stdout);
+
+              printf("Even though it should have a solution (%d, %d)\n\n\n",
+                     sol_x, sol_y);
+
+              printf("\n\n" ARED("Problem") ": %s\n\n\n",
+                     problem.c_str());
+              abort();
+
+            }
           }
 
           // Full batches
