@@ -81,11 +81,21 @@ static void RunGrid() {
         // ... except a, since we already ran -10 to 0
         // int64_t a = arg[0] + 29; // - MAX_COEFF;
         // int64_t a = arg[0] - MAX_COEFF;
-        int64_t a = 24 + arg[0];
+        // int64_t a = 24 + arg[0];
+        // int64_t b = arg[1] - MAX_COEFF;
+        // int64_t c = arg[2] - MAX_COEFF;
+        // int64_t d = arg[3] - MAX_COEFF;
+        // int64_t e = arg[4] - MAX_COEFF;
+
+        int64_t a = 32 + arg[0];
         int64_t b = arg[1] - MAX_COEFF;
         int64_t c = arg[2] - MAX_COEFF;
         int64_t d = arg[3] - MAX_COEFF;
         int64_t e = arg[4] - MAX_COEFF;
+
+        // Known bad problems.
+        if (a == 24 && b == -6 && c == -12 && d == -4 && e == 5)
+          return;
 
         BigInt A(a);
         BigInt B(b);
@@ -146,7 +156,7 @@ static void RunGrid() {
                 F;
               if (r != 0) {
                 std::string problem =
-                  StringPrintf(" %lld %lld %lld %lld %lld %lld\n\n",
+                  StringPrintf(" %s %s %s %s %s %s\n\n",
                                A.ToString().c_str(),
                                B.ToString().c_str(),
                                C.ToString().c_str(),
@@ -253,7 +263,7 @@ static void RunGrid() {
 
             if (COMPUTE_F) {
               std::string problem =
-                StringPrintf(" %lld %lld %lld %lld %lld %lld\n\n",
+                StringPrintf(" %s %s %s %s %s %s\n\n",
                              A.ToString().c_str(),
                              B.ToString().c_str(),
                              C.ToString().c_str(),

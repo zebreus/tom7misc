@@ -260,6 +260,10 @@ echo quad tests
 # same bug but fix was incomplete
 ./quad.exe 0 9 -12 9 -12 0 >> coverage.out
 
+# recall bug upstream, not yet fixed.
+# has solution (-1690, 2850)
+./quad.exe 24 -6 -12 -4 5 3590 >> coverage.out
+
 echo factor tests
 ./afactor.exe 1 >> coverage.out
 ./afactor.exe 2 >> coverage.out
