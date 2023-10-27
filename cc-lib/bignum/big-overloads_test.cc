@@ -56,6 +56,12 @@ static void TestAssigningOps() {
     CHECK(x == 2);
   }
 
+  {
+    BigInt x(13310);
+    CHECK((x & 717) == 716);
+    CHECK((717 & x) == 716);
+  }
+
 }
 
 int main(int argc, char **argv) {

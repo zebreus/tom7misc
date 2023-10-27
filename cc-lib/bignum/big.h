@@ -112,6 +112,7 @@ struct BigInt {
   inline static BigInt LeftShift(const BigInt &a, uint64_t bits);
   inline static BigInt RightShift(const BigInt &a, uint64_t bits);
   inline static BigInt BitwiseAnd(const BigInt &a, const BigInt &b);
+  inline static BigInt BitwiseAnd(const BigInt &a, uint64_t b);
 
   // TODO: Implement with bigz too. There is a very straightforward
   // implementation.
@@ -433,6 +434,12 @@ BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
   BigInt ret;
   mpz_and(ret.rep, a.rep, b.rep);
   return ret;
+}
+
+BigInt BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
+  // PERF There is no mpz_and_ui, but we could perhaps extract
+  // the low word and AND natively.
+  return BitwiseAnd(a, BigInt(b));
 }
 
 bool BigInt::IsEven() const {
@@ -1093,6 +1100,10 @@ BigInt BigInt::RightShift(const BigInt &a, uint64_t bits) {
 
 BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
   return BigInt{BzAnd(a.rep, b.rep), nullptr};
+}
+
+BigInt BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
+  return BigInt{BzAnd(a.rep, BigInt{b}.rep), nullptr};
 }
 
 BigInt BigInt::GCD(const BigInt &a, const BigInt &b) {

@@ -60,6 +60,14 @@ inline BigInt operator &(const BigInt &a, const BigInt &b) {
   return BigInt::BitwiseAnd(a, b);
 }
 
+inline BigInt operator &(uint64_t a, const BigInt &b) {
+  return BigInt::BitwiseAnd(b, a);
+}
+
+inline BigInt operator &(const BigInt &a, uint64_t b) {
+  return BigInt::BitwiseAnd(a, b);
+}
+
 inline BigInt operator -(const BigInt &a, const BigInt &b) {
   return BigInt::Minus(a, b);
 }
