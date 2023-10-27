@@ -780,8 +780,6 @@ struct QuadModLL {
     BigInteger base;
     BigIntToBigInteger(Base, &base);
 
-    BigInteger Q;
-
     BigInteger Aux4;
     BigInteger Aux5;
     BigInteger Aux6;
@@ -798,7 +796,7 @@ struct QuadModLL {
                                 (Prime + 1) >> 2);
 
     } else {
-      intToBigInteger(&Q, 0xBEEF);
+      BigInteger Q;
       BigIntToBigInteger(Prime, &Q);
 
       limb* toConvert = nullptr;
@@ -970,12 +968,10 @@ struct QuadModLL {
                                         modulus_length, TheModulus);
 
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
-    BigInteger tmp2;
-    intToBigInteger(&tmp2, 1);
     BigInt SqrRoot =
       BigIntModularDivision(*params,
                             BigInt(1), SqrtDisc,
-                            BigIntegerToBigInt(&prime));
+                            Prime);
 
     // PERF good place to do this natively
     BigIntToBigInteger(SqrRoot, &sqrRoot);
@@ -986,39 +982,51 @@ struct QuadModLL {
 
     // Obtain nbrBitsSquareRoot correct digits of inverse square root.
     while (correctBits < nbrBitsSquareRoot) {
-      BigInteger tmp1;
       // Compute f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
       correctBits *= 2;
       (void)BigIntMultiply(&Q, &Q, &Q);           // Square Q.
-      (void)BigIntMultiply(&sqrRoot, &sqrRoot, &tmp1);
-      (void)BigIntRemainder(&tmp1, &Q, &tmp2);
 
-      BigIntToBigInteger(Discriminant * BigIntegerToBigInt(&tmp2),
-                         &tmp1);
+      BigInt Tmp1 = SqrRoot * SqrRoot;
+      // (void)BigIntMultiply(&sqrRoot, &sqrRoot, &tmp1);
+      BigInt Tmp2 = Tmp1 % BigIntegerToBigInt(&Q);
+      // (void)BigIntRemainder(&tmp1, &Q, &tmp2);
+
+      Tmp1 = Discriminant * Tmp2;
+      // BigIntToBigInteger(Discriminant * Tmp2, &tmp1);
       // (void)BigIntMultiply(&tmp2, &discriminant, &tmp1);
 
-      (void)BigIntRemainder(&tmp1, &Q, &tmp2);
-      intToBigInteger(&tmp1, 3);
-      BigIntSubt(&tmp1, &tmp2, &tmp2);
-      (void)BigIntMultiply(&tmp2, &sqrRoot, &tmp1);
-      if ((tmp1.limbs[0].x & 1) != 0) {
-        BigIntAdd(&tmp1, &Q, &tmp1);
+      Tmp2 = Tmp1 % BigIntegerToBigInt(&Q);
+      // (void)BigIntRemainder(&tmp1, &Q, &tmp2);
+      Tmp2 = 3 - Tmp2;
+      // intToBigInteger(&tmp1, 3);
+      // BigIntSubt(&tmp1, &tmp2, &tmp2);
+      Tmp1 = Tmp2 * SqrRoot;
+      // (void)BigIntMultiply(&tmp2, &sqrRoot, &tmp1);
+      if (Tmp1.IsOdd()) {
+        Tmp1 += BigIntegerToBigInt(&Q);
+        // BigIntAdd(&tmp1, &Q, &tmp1);
       }
-      BigIntDivide2(&tmp1);
-      (void)BigIntRemainder(&tmp1, &Q, &sqrRoot);
+
+      Tmp1 >>= 1;
+      // BigIntDivide2(&tmp1);
+      SqrRoot = Tmp1 % BigIntegerToBigInt(&Q);
+      // (void)BigIntRemainder(&tmp1, &Q, &sqrRoot);
+    }
+
+    if (SqrRoot < 0) {
+      SqrRoot += BigIntegerToBigInt(&Q);
+      // BigIntAdd(&sqrRoot, &Q, &sqrRoot);
     }
 
     // Get square root of discriminant from its inverse by multiplying
     // by discriminant.
-    if (sqrRoot.sign == SIGN_NEGATIVE) {
-      BigIntAdd(&sqrRoot, &Q, &sqrRoot);
-    }
-
-
-    BigIntToBigInteger(Discriminant * BigIntegerToBigInt(&sqrRoot),
-                       &sqrRoot);
+    SqrRoot *= Discriminant;
+    // BigIntToBigInteger(Discriminant * SqrRoot, &sqrRoot);
     // (void)BigIntMultiply(&sqrRoot, &discriminant, &sqrRoot);
-    (void)BigIntRemainder(&sqrRoot, &Q, &sqrRoot);
+    // (void)BigIntRemainder(&sqrRoot, &Q, &sqrRoot);
+    SqrRoot %= BigIntegerToBigInt(&Q);
+    // XXX return sqrroot, instead
+    BigIntToBigInteger(SqrRoot, &sqrRoot);
   }
 
   // Solve Ax^2 + Bx + C = 0 (mod p^expon).
