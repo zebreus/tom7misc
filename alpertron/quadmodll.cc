@@ -71,8 +71,8 @@ struct QuadModLL {
   // BigInteger Linear;
   // BigInteger Const;
   // BigInteger sqrRoot;
-  BigInteger ValBOdd;
-  BigInteger ValCOdd;
+  // BigInteger ValBOdd;
+  // BigInteger ValCOdd;
   BigInteger SqrtDisc;
   // BigInteger K1;
   // BigInteger L;
@@ -273,8 +273,10 @@ struct QuadModLL {
   // Solution array. Both Solution1 and Solution2 are the same. This path
   // is disjoint from the general quadratic solver.
   void SolveModularLinearEquation(const BigInt &GcdAll,
-                                  BigInteger *pValA, const BigInteger *pValB,
-                                  const BigInteger *pValC, BigInteger *pValN) {
+                                  const BigInt &A,
+                                  const BigInt &B,
+                                  const BigInt &C,
+                                  BigInt N) {
     // No coverage for this entire function!
     printf("smodlineq coverage\n");
     interesting_coverage = true;
@@ -291,44 +293,41 @@ struct QuadModLL {
 
 
     int solutionNbr = 0;
-    BigInteger Tmp;
-    BigIntGcd(pValB, pValN, &Tmp);
-    if ((Tmp.nbrLimbs != 1) || (Tmp.limbs[0].x != 1)) {
+    BigInt Tmp = BigInt::GCD(B, N);
+    if (Tmp != 1) {
       // ValB and ValN are not coprime. Go out.
       return;
     }
+
     // Calculate z <- -ValC / ValB (mod ValN)
     // Modular division routines used work for power of 2 or odd numbers.
     // This requires to compute the quotient in two steps.
     // N = r*2^k (r = odd)
 
     // XXX DivideBigNbrByMaxPowerOf2 is almost dead. Use BigInt::BitwiseCtz.
-    int powerOf2;
-    DivideBigNbrByMaxPowerOf2(&powerOf2, pValN->limbs, &pValN->nbrLimbs);
+    int powerOf2 = BigInt::BitwiseCtz(N);
+    N >>= powerOf2;
+    // DivideBigNbrByMaxPowerOf2(&powerOf2, pValN->limbs, &pValN->nbrLimbs);
 
-    int modulus_length = pValN->nbrLimbs;
-    int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-    if ((pValN->nbrLimbs != 1) || (pValN->limbs[0].x != 1)) {
+    if (BigInt::Abs(N) != 1) {
 
       // ValN is not 1.
-      Increment.push_back(BigIntegerToBigInt(pValN));
+      Increment.push_back(N);
       // CopyBigInt(&Increment[solutionNbr], pValN);
       Exponents.push_back(1);
 
-      (void)memcpy(TheModulus, pValN->limbs, NumberLengthBytes);
+      BigInteger ValN;
+      BigIntToBigInteger(N, &ValN);
+      int modulus_length = ValN.nbrLimbs;
+      int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+      (void)memcpy(TheModulus, ValN.limbs, NumberLengthBytes);
       TheModulus[modulus_length].x = 0;
       // Perform division using odd modulus r.
       const std::unique_ptr<MontgomeryParams> params =
         GetMontgomeryParams(modulus_length, TheModulus);
 
-      const BigInt N = BigIntegerToBigInt(pValN);
-
       // Compute ptrSolution1 as ValC / |ValB|
-      BigInt sol1 =
-        BigIntModularDivision(*params,
-                              BigIntegerToBigInt(pValC),
-                              BigIntegerToBigInt(pValB),
-                              N);
+      BigInt sol1 = BigIntModularDivision(*params, C, B, N);
 
       // Compute ptrSolution1 as -ValC / ValB
       if (sol1 != 0) {
@@ -359,20 +358,28 @@ struct QuadModLL {
     CHECK((int)Solution2.size() == solutionNbr);
     CHECK((int)Increment.size() == solutionNbr);
 
+
+    BigInteger ValA, ValB, ValC, ValN;
+    BigIntToBigInteger(A, &ValA);
+    BigIntToBigInteger(B, &ValB);
+    BigIntToBigInteger(C, &ValC);
+    BigIntToBigInteger(N, &ValN);
+
     // Perform division using power of 2.
     if (powerOf2 > 0) {
 
       // Port note: This used to set ptrSolution1 to the power of 2,
       // I think just as a temporary?
-      BigInteger pow2;
-      BigIntPowerOf2(&pow2, powerOf2);
+      BigInt Pow2 = BigInt(1) << powerOf2;
+      // BigInteger pow2;
+      // BigIntPowerOf2(&pow2, powerOf2);
       // BigIntPowerOf2(ptrSolution1, powerOf2);
-      Increment.push_back(BigIntegerToBigInt(&pow2));
+      Increment.push_back(Pow2);
       // CopyBigInt(&Increment[solutionNbr], ptrSolution1);
       Exponents.push_back(1);
       // Exponents[solutionNbr] = 1;
 
-      factors.push_back(std::make_pair(BigIntegerToBigInt(&pow2), 1));
+      factors.push_back(std::make_pair(Pow2, 1));
       // BigInteger2IntArray(modulus_length, ptrFactorsMod, &pow2);
       // BigInteger2IntArray(modulus_length, ptrFactorsMod, ptrSolution1);
       // CHECK(ptrSolution1->nbrLimbs > 0);
@@ -394,20 +401,20 @@ struct QuadModLL {
       // Port note: This used to do this on ptrSolution1 in place.
       // ptrSolution1 <- 1 / |ValB|
       BigInteger inv;
-      ComputeInversePower2(pValB->limbs, inv.limbs, modulus_length);
+      ComputeInversePower2(ValB.limbs, inv.limbs, modulus_length);
       // ComputeInversePower2(pValB->limbs, ptrSolution1->limbs,
       //  modulus_length);
       // Compute ptrSolution1 as |ValC| / |ValB|
       ModMult(*params,
-              inv.limbs, pValC->limbs,
+              inv.limbs, ValC.limbs,
               modulus_length, TheModulus,
               inv.limbs);
 
-      NumberLengthBytes = modulus_length * (int)sizeof(int);
+      int NumberLengthBytes = modulus_length * (int)sizeof(int);
       // Compute ptrSolution1 as -ValC / ValB
-      if (pValB->sign == pValC->sign) {
-        (void)memset(pValA->limbs, 0, NumberLengthBytes);
-        SubtractBigNbr(pValA->limbs, inv.limbs,
+      if (ValB.sign == ValC.sign) {
+        (void)memset(ValA.limbs, 0, NumberLengthBytes);
+        SubtractBigNbr(ValA.limbs, inv.limbs,
                        inv.limbs, modulus_length);
         // SubtractBigNbr(pValA->limbs, ptrSolution1->limbs,
         // ptrSolution1->limbs, modulus_length);
@@ -443,8 +450,12 @@ struct QuadModLL {
   // To compute the square root, compute the inverse of sqrt,
   // so only multiplications are used.
   // f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
-  BigInt ComputeSquareRootModPowerOf2(int expon, int bitsCZero,
-                                      int modulus_length) {
+  static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
+                                             int expon, int bitsCZero,
+                                             int modulus_length) {
+    BigInteger ValCOdd;
+    BigIntToBigInteger(COdd, &ValCOdd);
+
     BigInteger sqrRoot;
     // First approximation to inverse of square root.
     // If value is ...0001b, the inverse of square root is ...01b.
@@ -604,24 +615,63 @@ struct QuadModLL {
   // and returns true.
   bool SolveQuadraticEqModPowerOf2(
       int exponent, int factorIndex,
-      const BigInteger *pValA,
-      const BigInteger *pValB,
-      const BigInteger *pValC) {
+      const BigInt &A, const BigInt &B, const BigInt &C) {
+
+    BigInteger ValA, ValB, ValC;
+    BigIntToBigInteger(A, &ValA);
+    BigIntToBigInteger(B, &ValB);
+    BigIntToBigInteger(C, &ValC);
+
     int expon = exponent;
+#if 0
     int bitsAZero;
     int bitsBZero;
     int bitsCZero;
+    BigInteger ValAOdd, ValBOdd, ValCOdd;
+    CopyBigInt(&ValAOdd, &ValA);
+    DivideBigNbrByMaxPowerOf2(&bitsAZero, ValAOdd.limbs, &ValAOdd.nbrLimbs);
+    CopyBigInt(&ValBOdd, &ValB);
+    DivideBigNbrByMaxPowerOf2(&bitsBZero, ValBOdd.limbs, &ValBOdd.nbrLimbs);
+    CopyBigInt(&ValCOdd, &ValC);
+    DivideBigNbrByMaxPowerOf2(&bitsCZero, ValCOdd.limbs, &ValCOdd.nbrLimbs);
+
+    CHECK(bitsAZero == BigInt::BitwiseCtz(A))
+      << A.ToString() << " " << bitsAZero;
+    CHECK(bitsBZero == BigInt::BitwiseCtz(B))
+      << B.ToString() << " " << bitsBZero;
+    CHECK(bitsCZero == BigInt::BitwiseCtz(C))
+      << C.ToString() << " " << bitsCZero;
+#endif
+
     // ax^2 + bx + c = 0 (mod 2^expon)
     // This follows the paper Complete solving the quadratic equation mod 2^n
     // of Dehnavi, Shamsabad and Rishakani.
     // Get odd part of A, B and C and number of bits to zero.
-    BigInteger ValAOdd;
-    CopyBigInt(&ValAOdd, pValA);
-    DivideBigNbrByMaxPowerOf2(&bitsAZero, ValAOdd.limbs, &ValAOdd.nbrLimbs);
-    CopyBigInt(&ValBOdd, pValB);
-    DivideBigNbrByMaxPowerOf2(&bitsBZero, ValBOdd.limbs, &ValBOdd.nbrLimbs);
-    CopyBigInt(&ValCOdd, pValC);
-    DivideBigNbrByMaxPowerOf2(&bitsCZero, ValCOdd.limbs, &ValCOdd.nbrLimbs);
+    //
+    // Port note: The original code's DivideBigNbrByMaxPowerOf2 gives
+    // the "power" as 31 (the number of bits in a limb) when the input
+    // is zero. This matches e.g. std::countr_zero but doesn't really
+    // make mathematical sense. The code below does apparently rely
+    // on the result being nonzero, though.
+    BigInt AOdd = A;
+    int bitsAZero = BigInt::BitwiseCtz(AOdd);
+    AOdd >>= bitsAZero;
+    if (A == 0) bitsAZero = BITS_PER_GROUP;
+
+    BigInt BOdd = B;
+    int bitsBZero = BigInt::BitwiseCtz(BOdd);
+    BOdd >>= bitsBZero;
+    if (B == 0) bitsBZero = BITS_PER_GROUP;
+
+    BigInt COdd = C;
+    int bitsCZero = BigInt::BitwiseCtz(COdd);
+    COdd >>= bitsCZero;
+    if (C == 0) bitsCZero = BITS_PER_GROUP;
+
+    BigInteger ValAOdd, ValBOdd, ValCOdd;
+    BigIntToBigInteger(AOdd, &ValAOdd);
+    BigIntToBigInteger(BOdd, &ValBOdd);
+    BigIntToBigInteger(COdd, &ValCOdd);
 
     if ((bitsAZero > 0) && (bitsBZero > 0) && (bitsCZero > 0)) {
       int minExpon = bitsAZero;
@@ -647,10 +697,10 @@ struct QuadModLL {
       // The solution in this case requires square root.
       // compute s = ((b/2)^2 - a*c)/a^2, q = odd part of s,
       // r = maximum exponent of power of 2 that divides s.
-      CopyBigInt(&tmp1, pValB);
+      CopyBigInt(&tmp1, &ValB);
       BigIntDivideBy2(&tmp1);
       (void)BigIntMultiply(&tmp1, &tmp1, &tmp1);  // (b/2)^2
-      (void)BigIntMultiply(pValA, pValC, &tmp2);  // a*c
+      (void)BigIntMultiply(&ValA, &ValC, &tmp2);  // a*c
       BigIntSubt(&tmp1, &tmp2, &tmp1);      // (b/2)^2 - a*c
       BigInteger K1;
       BigIntPowerOf2(&K1, expon);
@@ -694,7 +744,8 @@ struct QuadModLL {
           // Compute sqrRoot as the square root of ValCOdd.
           expon -= bitsCZero / 2;
           BigInt SqrRoot =
-            ComputeSquareRootModPowerOf2(expon, bitsCZero, modulus_length);
+            ComputeSquareRootModPowerOf2(BigIntegerToBigInt(&ValCOdd),
+                                         expon, bitsCZero, modulus_length);
           BigIntToBigInteger(SqrRoot, &sqrRoot);
           expon--;
           if (expon == (bitsCZero / 2)) {
@@ -711,7 +762,7 @@ struct QuadModLL {
         modulus_length = K1.nbrLimbs;
         ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, modulus_length);
         setNbrLimbs(&tmp2, modulus_length);
-        CopyBigInt(&tmp1, pValB);
+        CopyBigInt(&tmp1, &ValB);
         BigIntDivideBy2(&tmp1);               // b/2
         (void)BigIntMultiply(&tmp1, &tmp2, &tmp1);  // b/2a
         BigIntChSign(&tmp1);                  // -b/2a
@@ -727,15 +778,15 @@ struct QuadModLL {
       }
 
     } else if ((bitsAZero == 0) && (bitsBZero == 0)) {
-      BigInt A2 = BigIntegerToBigInt(pValA) << 1;
-      BigInt B = BigIntegerToBigInt(pValB);
+      BigInt A2 = BigIntegerToBigInt(&ValA) << 1;
+      BigInt B = BigIntegerToBigInt(&ValB);
 
       BigInteger Linear, Const;
 
-      // CopyBigInt(&Quadr, pValA);
+      // CopyBigInt(&Quadr, &ValA);
       // BigIntMultiplyBy2(&Quadr);         // 2a
-      // CopyBigInt(&Linear, pValB);        // b
-      CopyBigInt(&Const, pValC);
+      // CopyBigInt(&Linear, &ValB);        // b
+      CopyBigInt(&Const, &ValC);
       BigIntDivideBy2(&Const);           // c/2
       FindQuadraticSolution(&Solution1[factorIndex],
                             A2,
@@ -746,12 +797,12 @@ struct QuadModLL {
       Solution1[factorIndex] <<= 1;
       // BigIntMultiplyBy2(&Solution1[factorIndex]);
 
-      // CopyBigInt(&Quadr, pValA);
+      // CopyBigInt(&Quadr, &ValA);
       // BigIntMultiplyBy2(&Quadr);         // 2a
-      // BigIntAdd(&Quadr, pValB, &Linear); // 2a+b
-      CopyBigInt(&Const, pValA);
-      BigIntAdd(&Const, pValB, &Const);
-      BigIntAdd(&Const, pValC, &Const);
+      // BigIntAdd(&Quadr, &ValB, &Linear); // 2a+b
+      CopyBigInt(&Const, &ValA);
+      BigIntAdd(&Const, &ValB, &Const);
+      BigIntAdd(&Const, &ValC, &Const);
       BigIntDivideBy2(&Const);           // (a+b+c)/2
       FindQuadraticSolution(&Solution2[factorIndex],
                             A2,
@@ -767,13 +818,13 @@ struct QuadModLL {
 
     } else {
 
-      // CopyBigInt(&Quadr, pValA);
-      // CopyBigInt(&Linear, pValB);
-      // CopyBigInt(&Const, pValC);
+      // CopyBigInt(&Quadr, &ValA);
+      // CopyBigInt(&Linear, &ValB);
+      // CopyBigInt(&Const, &ValC);
       FindQuadraticSolution(&Solution1[factorIndex],
-                            BigIntegerToBigInt(pValA),
-                            BigIntegerToBigInt(pValB),
-                            BigIntegerToBigInt(pValC),
+                            BigIntegerToBigInt(&ValA),
+                            BigIntegerToBigInt(&ValB),
+                            BigIntegerToBigInt(&ValC),
                             expon);
       sol2Invalid = true;
     }
@@ -1391,6 +1442,7 @@ struct QuadModLL {
   // If solutions found, writes normalized solutions at factorIndex
   // and returns true.
   bool QuadraticTermNotMultipleOfP(
+      const BigInt &Prime,
       const BigInt &GcdAll,
       int expon, int factorIndex,
       const BigInteger *pValA,
@@ -1407,10 +1459,11 @@ struct QuadModLL {
     Discriminant = B * B - ((A * C) << 2);
 
     bool solutions = false;
-    if ((prime.nbrLimbs == 1) && (prime.limbs[0].x == 2)) {
-      /* Prime p is 2 */
+    CHECK(Prime > 0);
+    if (Prime == 2) {
+      // Prime p is 2
       solutions = SolveQuadraticEqModPowerOf2(expon, factorIndex,
-                                              pValA, pValB, pValC);
+                                              A, B, C);
     } else {
       // Prime is not 2
       solutions = SolveQuadraticEqModPowerOfP(expon, factorIndex,
@@ -1470,7 +1523,7 @@ struct QuadModLL {
 
     if (BigInt::CMod(A, N) == 0) {
       // Linear equation.
-      SolveModularLinearEquation(GcdAll, &valA, &valB, &valC, &valN);
+      SolveModularLinearEquation(GcdAll, A, B, C, N);
       return;
     }
 
@@ -1534,7 +1587,7 @@ struct QuadModLL {
 
       } else {
         // If quadratic equation mod p
-        if (!QuadraticTermNotMultipleOfP(GcdAll,
+        if (!QuadraticTermNotMultipleOfP(Prime, GcdAll,
                                          expon, factorIndex,
                                          &valA, &valB, &valC)) {
           return;
