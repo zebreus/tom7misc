@@ -83,10 +83,6 @@ eExprErr BigIntMultiply(
     const BigInteger *pFactor1, const BigInteger *pFactor2,
     BigInteger *pProduct);
 
-eExprErr BigIntRemainder(
-    const BigInteger* pDividend,
-    const BigInteger* pDivisor, BigInteger* pRemainder);
-
 eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent,
                           BigInteger *pPower);
 
@@ -102,7 +98,6 @@ void subtractdivide(BigInteger *pBigInt, int subt, int divisor);
 void addbigint(BigInteger *pResult, int addend);
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc);
 int getNbrLimbs(const limb *bigNbr);
-void BigIntDivide2(BigInteger *pArg);
 void BigIntAnd(const BigInteger *firstArg, const BigInteger *secondArg, BigInteger *result);
 void IntArray2BigInteger(
     int number_length, const int *ptrValues, /*@out@*/BigInteger *bigint);

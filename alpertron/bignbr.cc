@@ -134,28 +134,6 @@ enum eExprErr BigIntMultiply(const BigInteger *pFact1, const BigInteger *pFact2,
   return EXPR_OK;
 }
 
-enum eExprErr BigIntRemainder(
-    const BigInteger *pDividend,
-    const BigInteger *pDivisor, BigInteger *pRemainder) {
-  BigInt numer = BigIntegerToBigInt(pDividend);
-  BigInt denom = BigIntegerToBigInt(pDivisor);
-  if (BigInt::Eq(denom, 0)) {
-    // Some code calls this with a 0 denominator. Not clear what it
-    // wants the result to be, but make sure it's at least a valid
-    // BigInteger. (?)
-    CHECK(pRemainder->nbrLimbs > 0);
-    return EXPR_DIVIDE_BY_ZERO;
-  }
-  // XXX: Some nearby code suggests that the original bignbr code might
-  // have had different behavior for negative numbers. Check.
-
-  // BigInt rem_ref = BigInt::QuotRem(numer, denom).second;
-  BigInt rem = BigInt::CMod(numer, denom);
-  // CHECK(BigInt::Eq(rem, rem_ref));
-  BigIntToBigInteger(rem, pRemainder);
-  return EXPR_OK;
-}
-
 void intToBigInteger(BigInteger *bigint, int value) {
   if (value >= 0) {
     bigint->limbs[0].x = value;
@@ -209,27 +187,6 @@ enum eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent,
   BigIntToBigInteger(r, pPower);
 
   return EXPR_OK;
-}
-
-void BigIntDivide2(BigInteger *pArg) {
-  int nbrLimbs = pArg->nbrLimbs;
-  int ctr = nbrLimbs - 1;
-  unsigned int carry;
-  assert(nbrLimbs >= 1);
-  limb *ptrLimb = &pArg->limbs[ctr];
-  carry = 0;
-  for (; ctr >= 0; ctr--) {
-    carry = (carry << BITS_PER_GROUP) + (unsigned int)ptrLimb->x;
-    ptrLimb->x = (int)(carry >> 1);
-    ptrLimb--;
-    carry &= 1;
-  }
-  if ((nbrLimbs > 1) && (pArg->limbs[nbrLimbs - 1].x == 0)) {
-    // Most significant limb is zero, so reduce size by one limb.
-    pArg->nbrLimbs--;
-  }
-
-  CHECK(pArg->nbrLimbs > 0);
 }
 
 void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2,

@@ -764,7 +764,7 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
 
 
   // NumberLength = mod->nbrLimbs;
-  // ??
+  // PERF: Expensive conversion for defensive check
   {
     BigInteger mod;
     BigIntToBigInteger(Mod, &mod);
@@ -870,26 +870,40 @@ static void ChineseRemainderTheorem(const MontgomeryParams &params,
 // n/2^k (n odd) and 2^k and then merge the results using Chinese Remainder
 // Theorem.
 static void BigIntegerGeneralModularDivision(
-    const BigInteger* Num, const BigInteger* Den,
-    const BigInteger* mod, BigInteger* quotient) {
-  int shRight;
-  BigInteger oddValue;
-  CopyBigInt(&oddValue, mod);
-  DivideBigNbrByMaxPowerOf2(&shRight, oddValue.limbs, &oddValue.nbrLimbs);
+    const BigInt &Num, const BigInt &Den,
+    const BigInt &Mod, BigInteger* quotient) {
+
+  int shRight = BigInt::BitwiseCtz(Mod);
+  BigInt OddMod = Mod >> shRight;
+  // BigInteger oddValue;
+  // CopyBigInt(&oddValue, mod);
+  // DivideBigNbrByMaxPowerOf2(&shRight, oddValue.limbs, &oddValue.nbrLimbs);
 
   // Reduce Num modulo oddValue.
-  BigInteger tmpNum;
-  (void)BigIntRemainder(Num, &oddValue, &tmpNum);
-  if (tmpNum.sign == SIGN_NEGATIVE) {
-    BigIntAdd(&tmpNum, &oddValue, &tmpNum);
-  }
+  BigInt TmpNum = Num % OddMod;
+  if (TmpNum < 0) TmpNum += OddMod;
+  // BigInteger tmpNum;
+  // (void)BigIntRemainder(Num, &oddValue, &tmpNum);
+  // if (tmpNum.sign == SIGN_NEGATIVE) {
+  // BigIntAdd(&tmpNum, &oddValue, &tmpNum);
+  // }
 
   // Reduce Den modulo oddValue.
-  BigInteger tmpDen;
-  (void)BigIntRemainder(Den, &oddValue, &tmpDen);
-  if (tmpDen.sign == SIGN_NEGATIVE) {
-    BigIntAdd(&tmpDen, &oddValue, &tmpDen);
-  }
+  BigInt TmpDen = Den % OddMod;
+  if (TmpDen < 0) TmpDen += OddMod;
+  // BigInteger tmpDen;
+  // (void)BigIntRemainder(Den, &oddValue, &tmpDen);
+  // if (tmpDen.sign == SIGN_NEGATIVE) {
+  // BigIntAdd(&tmpDen, &oddValue, &tmpDen);
+  // }
+
+  // XXX convert directly to fixed limbs
+  BigInteger oddValue;
+  BigIntToBigInteger(OddMod, &oddValue);
+
+  BigInteger tmpNum, tmpDen;
+  BigIntToBigInteger(TmpNum, &tmpNum);
+  BigIntToBigInteger(TmpDen, &tmpDen);
 
   int modulus_length = oddValue.nbrLimbs;
   int NumberLengthBytes = modulus_length * (int)sizeof(limb);
@@ -925,19 +939,25 @@ static void BigIntegerGeneralModularDivision(
     return;
   }
 
+  BigInteger den;
+  BigIntToBigInteger(Den, &den);
+
   modulus_length = (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
-  CompressLimbsBigInteger(modulus_length, tmp3, Den);
+  CompressLimbsBigInteger(modulus_length, tmp3, &den);
   ComputeInversePower2(tmp3, tmp4, modulus_length);
 
   // Port note: This used to set powerOf2Exponent = shRight and then
   // clear to zero at the end, but those are dead now that it's part
   // of MontgomeryParams.
 
+  BigInteger num;
+  BigIntToBigInteger(Num, &num);
+
   // resultModPower2 <- Num / Dev modulus 2^k.
   // PERF: here too
   limb resultModPower2[MAX_LEN];
   ModMult(*params,
-          Num->limbs, tmp4,
+          num.limbs, tmp4,
           modulus_length, modulus,
           resultModPower2);
   ChineseRemainderTheorem(*params,
@@ -950,11 +970,8 @@ static void BigIntegerGeneralModularDivision(
 
 BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
                               const BigInt &modulus) {
-  BigInteger n, d, m, result;
-  BigIntToBigInteger(num, &n);
-  BigIntToBigInteger(den, &d);
-  BigIntToBigInteger(modulus, &m);
-  BigIntegerGeneralModularDivision(&n, &d, &m, &result);
+  BigInteger result;
+  BigIntegerGeneralModularDivision(num, den, modulus, &result);
   CHECK(result.nbrLimbs > 0);
   return BigIntegerToBigInt(&result);
 }
