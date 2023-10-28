@@ -460,13 +460,16 @@ struct QuadModLL {
       nbrLimbs = (correctBits / BITS_PER_GROUP) + 1;
       MultBigNbr(sqrRoot.limbs, sqrRoot.limbs, tmp2.limbs, nbrLimbs);
       MultBigNbr(tmp2.limbs, ValCOdd.limbs, tmp1.limbs, nbrLimbs);
-      ChSignBigNbr(tmp1.limbs, nbrLimbs);
+      ChSignLimbs(tmp1.limbs, nbrLimbs);
       int lenBytes = nbrLimbs * (int)sizeof(limb);
       (void)memset(tmp2.limbs, 0, lenBytes);
       tmp2.limbs[0].x = 3;
       AddBigNbr(tmp2.limbs, tmp1.limbs, tmp2.limbs, nbrLimbs);
       MultBigNbr(tmp2.limbs, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
       (void)memcpy(sqrRoot.limbs, tmp1.limbs, lenBytes);
+
+      // XXX Too much work to divide by 2!
+      // Also, the only use of this function.
       DivBigNbrByInt(tmp1.limbs, 2, sqrRoot.limbs, nbrLimbs);
       correctBits--;
     }

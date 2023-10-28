@@ -196,56 +196,6 @@ void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2,
   BigIntToBigInteger(g, pResult);
 }
 
-static void addToAbsValue(limb *pLimbs, int *pNbrLimbs, int addend) {
-  limb* ptrLimbs = pLimbs;
-  int nbrLimbs = *pNbrLimbs;
-  ptrLimbs->x += addend;
-  if ((unsigned int)ptrLimbs->x < LIMB_RANGE)
-  {     // No overflow. Go out of routine.
-    return;
-  }
-  ptrLimbs->x -= (int)LIMB_RANGE;
-  for (int ctr = 1; ctr < nbrLimbs; ctr++)
-  {
-    ptrLimbs++;        // Point to next most significant limb.
-    if (ptrLimbs->x != MAX_INT_NBR)
-    {   // No overflow. Go out of routine.
-      (ptrLimbs->x)++;   // Add carry.
-      return;
-    }
-    ptrLimbs->x = 0;
-  }
-  (*pNbrLimbs)++;        // Result has an extra limb.
-  (ptrLimbs + 1)->x = 1;   // Most significant limb must be 1.
-}
-
-static void subtFromAbsValue(limb *pLimbs, int *pNbrLimbs, int subt) {
-  int nbrLimbs = *pNbrLimbs;
-  limb* ptrLimb = pLimbs;
-  pLimbs->x -= subt;
-  if (pLimbs->x < 0)
-  {
-    int ctr = 0;
-    do
-    {      // Loop that adjust number if there is borrow.
-      unsigned int tempLimb = (unsigned int)ptrLimb->x & MAX_VALUE_LIMB;
-      ptrLimb->x = (int)tempLimb;
-      ctr++;
-      if (ctr == nbrLimbs)
-      {    // All limbs processed. Exit loop.
-        break;
-      }
-      ptrLimb++;                // Point to next most significant limb.
-      ptrLimb->x--;
-    } while (ptrLimb->x < 0);   // Continue loop if there is borrow.
-    if ((nbrLimbs > 1) && ((pLimbs + nbrLimbs - 1)->x == 0))
-    {
-      nbrLimbs--;
-    }
-  }
-  *pNbrLimbs = nbrLimbs;
-}
-
 void addbigint(BigInteger *pResult, int addend) {
   BigInt a = BigInt::Plus(BigIntegerToBigInt(pResult), addend);
   // reference_addbigint(pResult, addend);
@@ -479,36 +429,6 @@ bool BigIntIsZero(const BigInteger *value) {
   return value->nbrLimbs == 1 && value->limbs[0].x == 0;
 }
 
-bool BigIntIsOne(const BigInteger* value) {
-  if ((value->nbrLimbs == 1) && (value->limbs[0].x == 1) && (value->sign == SIGN_POSITIVE))
-  {
-    return true;     // Number is zero.
-  }
-  return false;      // Number is not zero.
-}
-
-bool BigIntEqual(const BigInteger *value1, const BigInteger *value2) {
-  assert(value1->nbrLimbs >= 1);
-  assert(value2->nbrLimbs >= 1);
-  if ((value1->nbrLimbs != value2->nbrLimbs) ||
-      (value1->sign != value2->sign)) {
-    return false;    // Numbers are not equal.
-  }
-  const int nbrLimbs = value1->nbrLimbs;
-  const limb *ptrValue1 = value1->limbs;
-  const limb *ptrValue2 = value2->limbs;
-
-  for (int index = 0; index < nbrLimbs; index++) {
-    if (ptrValue1->x != ptrValue2->x) {
-      return false;  // Numbers are not equal.
-    }
-    ptrValue1++;
-    ptrValue2++;
-  }
-  // Numbers are equal.
-  return true;
-}
-
 void BigIntPowerOf2(BigInteger *pResult, int exponent) {
   unsigned int power2 = (unsigned int)exponent % (unsigned int)BITS_PER_GROUP;
   int nbrLimbs = exponent / BITS_PER_GROUP;
@@ -530,22 +450,6 @@ void BigIntAnd(const BigInteger* arg1, const BigInteger* arg2,
   BigInt b = BigIntegerToBigInt(arg2);
   BigInt r = BigInt::BitwiseAnd(a, b);
   BigIntToBigInteger(r, result);
-}
-
-enum eExprErr BigIntDivide(const BigInteger *pDividend,
-                           const BigInteger *pDivisor,
-                           BigInteger *pQuotient) {
-  BigInt denom = BigIntegerToBigInt(pDivisor);
-  if (BigInt::Eq(denom, 0)) {
-    return EXPR_DIVIDE_BY_ZERO;
-  }
-
-  BigInt numer = BigIntegerToBigInt(pDividend);
-
-  BigInt quot = BigInt::Div(numer, denom);
-  BigIntToBigInteger(quot, pQuotient);
-
-  return EXPR_OK;
 }
 
 static constexpr bool VERBOSE = false;
@@ -578,7 +482,7 @@ void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
   (void)BigIntToLimbs(r, result);
 }
 
-void ChSignBigNbr(limb *nbr, int length) {
+void ChSignLimbs(limb *nbr, int length) {
   int carry = 0;
   const limb *ptrEndNbr = nbr + length;
   for (limb *ptrNbr = nbr; ptrNbr < ptrEndNbr; ptrNbr++) {
@@ -622,6 +526,7 @@ void SubtractBigNbr(const limb *pNbr1, const limb*pNbr2,
   }
 }
 
+// only called with constant divisor=2
 void DivBigNbrByInt(const limb *pDividend, int divisor, limb *pQuotient, int nbrLen) {
   const limb* ptrDividend = pDividend;
   limb* ptrQuotient = pQuotient;

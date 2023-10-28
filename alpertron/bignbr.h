@@ -68,16 +68,10 @@ void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
 
 void AddBigInt(const limb *pAddend1, const limb *pAddend2, limb *pSum, int nbrLimbs);
 bool BigIntIsZero(const BigInteger *value);
-bool BigIntIsOne(const BigInteger* value);
-bool BigIntEqual(const BigInteger *value1, const BigInteger *value2);
 void BigIntChSign(BigInteger *value);
 void BigIntAdd(const BigInteger *pAddend1, const BigInteger *pAddend2, BigInteger *pSum);
 void BigIntSubt(const BigInteger* pMinuend, const BigInteger* pSubtrahend, BigInteger* pDifference);
 void BigIntNegate(const BigInteger *pSrc, BigInteger *pDest);
-
-eExprErr BigIntDivide(
-    const BigInteger *pDividend, const BigInteger *pDivisor,
-    BigInteger *pQuotient);
 
 eExprErr BigIntMultiply(
     const BigInteger *pFactor1, const BigInteger *pFactor2,
@@ -94,7 +88,7 @@ void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pRe
 void MultInt(BigInteger *pResult, const BigInteger *pMult, int factor);
 void multadd(BigInteger *pResult, int iMult, const BigInteger *pMult, int addend);
 void BigIntPowerOf2(BigInteger *pResult, int expon);
-void subtractdivide(BigInteger *pBigInt, int subt, int divisor);
+
 void addbigint(BigInteger *pResult, int addend);
 void CopyBigInt(BigInteger *pDest, const BigInteger *pSrc);
 int getNbrLimbs(const limb *bigNbr);
@@ -112,7 +106,7 @@ void CompressLimbsBigInteger(int number_length,
 void intToBigInteger(BigInteger *bigint, int value);
 void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs);
 
-void ChSignBigNbr(limb *nbr, int length);
+void ChSignLimbs(limb *nbr, int length);
 void AddBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pSum, int nbrLen);
 void SubtractBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pDiff, int nbrLen);
 void DivBigNbrByInt(const limb *pDividend, int divisor, limb *pQuotient, int nbrLen);
