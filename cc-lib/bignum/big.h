@@ -113,6 +113,10 @@ struct BigInt {
   inline static BigInt RightShift(const BigInt &a, uint64_t bits);
   inline static BigInt BitwiseAnd(const BigInt &a, const BigInt &b);
   inline static BigInt BitwiseAnd(const BigInt &a, uint64_t b);
+  // Return the number of trailing zeroes. For an input of zero,
+  // this is zero (this differs from std::countr_zero<T>, which returns
+  // the finite size of T in bits for zero).
+  inline static uint64_t BitwiseCtz(const BigInt &a);
 
   // TODO: Implement with bigz too. There is a very straightforward
   // implementation.
@@ -440,6 +444,12 @@ BigInt BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
   // PERF There is no mpz_and_ui, but we could perhaps extract
   // the low word and AND natively.
   return BitwiseAnd(a, BigInt(b));
+}
+
+uint64_t BigInt::BitwiseCtz(const BigInt &a) {
+  if (mpz_sgn(a.rep) == 0) return 0;
+  mp_bitcnt_t zeroes = mpz_scan1(a.rep, 0);
+  return zeroes;
 }
 
 bool BigInt::IsEven() const {
@@ -1104,6 +1114,14 @@ BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
 
 BigInt BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
   return BigInt{BzAnd(a.rep, BigInt{b}.rep), nullptr};
+}
+
+uint64_t BigInt::BitwiseCtz(const BigInt &a) {
+  if (BzGetSign(a.rep) == BZ_ZERO) return 0;
+  // PERF: This could be faster by testing a limb at a time first.
+  uint64_t bit = 0;
+  while (BzTestBit(bit, a.rep)) bit++;
+  return bit;
 }
 
 BigInt BigInt::GCD(const BigInt &a, const BigInt &b) {

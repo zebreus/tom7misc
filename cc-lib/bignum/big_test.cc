@@ -545,6 +545,18 @@ static void TestSwap() {
   CHECK(b.ToString() == "11223344556677889900");
 }
 
+static void TestCtz() {
+  CHECK(BigInt::BitwiseCtz(BigInt(0)) == 0);
+  CHECK(BigInt::BitwiseCtz(BigInt(-1)) == 0);
+  CHECK(BigInt::BitwiseCtz(BigInt(1)) == 0);
+  CHECK(BigInt::BitwiseCtz(BigInt(2)) == 1);
+  CHECK(BigInt::BitwiseCtz(BigInt(-2)) == 1);
+
+  CHECK(BigInt::BitwiseCtz(
+            BigInt::Times(BigInt::Pow(BigInt{2}, 389),
+                          33)) == 389);
+}
+
 static void TestDivisibleBy() {
   BigInt threes("3333333333333333333333333333333333333333333333");
   CHECK(BigInt::DivisibleBy(threes, 3));
@@ -585,6 +597,7 @@ int main(int argc, char **argv) {
 
   TestShift();
   TestAnd();
+  TestCtz();
 
   TestLeadingZero();
 
