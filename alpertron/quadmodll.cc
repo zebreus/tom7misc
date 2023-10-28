@@ -978,6 +978,8 @@ struct QuadModLL {
     int correctBits = 1;
 
     intToBigInteger(&Q, 0xCAFE);
+
+    // XXX just use bigint
     CopyBigInt(&Q, &prime);
 
     // Obtain nbrBitsSquareRoot correct digits of inverse square root.

@@ -260,7 +260,7 @@ echo quad tests
 # same bug but fix was incomplete
 ./quad.exe 0 9 -12 9 -12 0 >> coverage.out
 
-# recall bug upstream, not yet fixed.
+# recall bug fixed upstream (a6076acda8c3f4e60d6c6f8f4575626df72c7f24)
 # has solution (-1690, 2850)
 ./quad.exe 24 -6 -12 -4 5 3590 >> coverage.out
 

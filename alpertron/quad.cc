@@ -1445,7 +1445,7 @@ struct Quad {
 
   // TODO: Try to make this dispatch (callbackQuadModType) static.
   template<QmodCallbackType QMOD_CALLBACK>
-  void SolutionX(bool swap_xy,
+  void SolutionX(bool origin_translated, bool swap_xy,
                  BigInt Value, const BigInt &Modulus,
                  const BigInt &A, const BigInt &B, const BigInt &C,
                  const BigInt &D, const BigInt &E,
@@ -1493,7 +1493,8 @@ struct Quad {
       break;
 
     case QmodCallbackType::HYPERBOLIC:
-      CallbackQuadModHyperbolic(A, B, C, K, E, M, Alpha, Beta, Div,
+      CallbackQuadModHyperbolic(origin_translated,
+                                A, B, C, K, E, M, Alpha, Beta, Div,
                                 Discr, Value);
       break;
 
@@ -1505,6 +1506,7 @@ struct Quad {
   // Solve congruence an^2 + bn + c = 0 (mod n) where n is different from zero.
   template<QmodCallbackType QMOD_CALLBACK>
   void SolveQuadModEquation(
+      bool origin_translated,
       bool swap_xy,
       const BigInt &coeffQuadr,
       const BigInt &coeffLinear,
@@ -1580,7 +1582,8 @@ struct Quad {
 
         const int n = GcdAll.ToInt().value();
         for (int ctr = 0; ctr < n; ctr++) {
-          SolutionX<QMOD_CALLBACK>(swap_xy,
+          SolutionX<QMOD_CALLBACK>(origin_translated,
+                                   swap_xy,
                                    BigInt(ctr), Modulus,
                                    A, B, C, D, E,
                                    M, K,
@@ -1633,7 +1636,8 @@ struct Quad {
         // also not covered :(
         printf("new coverage: loop zz");
         solutions.interesting_coverage = true;
-        SolutionX<QMOD_CALLBACK>(swap_xy,
+        SolutionX<QMOD_CALLBACK>(origin_translated,
+                                 swap_xy,
                                  z, Modulus,
                                  A, B, C, D, E,
                                  M, K,
@@ -1669,6 +1673,7 @@ struct Quad {
     SolveEquation(
         SolutionFn([&](const BigInt &Value) {
             this->SolutionX<QMOD_CALLBACK>(
+                origin_translated,
                 swap_xy,
                 Value,
                 Modulus,
@@ -1766,6 +1771,8 @@ struct Quad {
     const BigInt K(0);
 
     SolveQuadModEquation<QmodCallbackType::PARABOLIC>(
+        // Origin never translated on this path.
+        false,
         swap_xy,
         // Coefficients and modulus
         BigInt(1), BigInt(0), -V, BigInt::Abs(U),
@@ -1804,7 +1811,8 @@ struct Quad {
   //     ax'^2+bx'y'+cy'^2 = K/R^2 where R^2 is a divisor of K.
   // Then we get x = Rx', y = Ry'.
   template<QmodCallbackType QMOD_CALLBACK>
-  void NonSquareDiscriminant(BigInt A, BigInt B, BigInt C,
+  void NonSquareDiscriminant(bool origin_translated,
+                             BigInt A, BigInt B, BigInt C,
                              BigInt K,
                              const BigInt &D,
                              BigInt Discr,
@@ -1969,7 +1977,8 @@ struct Quad {
     for (;;) {
 
       SolveQuadModEquation<QMOD_CALLBACK>(
-          // Or maybe it's always false?
+          origin_translated,
+          // Never swapping x,y on this path.
           false,
           // Coefficients and modulus
           A, B, C, BigInt::Abs(K),
@@ -2060,25 +2069,31 @@ struct Quad {
     }
   }
 
-  void NegativeDiscriminant(const BigInt &A, const BigInt &B, const BigInt &C,
-                            const BigInt &K,
-                            const BigInt &D,
-                            const BigInt &Discr,
-                            const BigInt &Alpha, const BigInt &Beta,
-                            const BigInt &Div) {
+  void NegativeDiscriminant(
+      bool origin_translated,
+      const BigInt &A, const BigInt &B, const BigInt &C,
+      const BigInt &K,
+      const BigInt &D,
+      const BigInt &Discr,
+      const BigInt &Alpha, const BigInt &Beta,
+      const BigInt &Div) {
 
     NonSquareDiscriminant<QmodCallbackType::ELLIPTIC>(
+        origin_translated,
         A, B, C, K, D, Discr, Alpha, Beta, Div);
   }
 
-  void PositiveDiscriminant(const BigInt &A, const BigInt &B, const BigInt &C,
-                            const BigInt &K,
-                            const BigInt &D,
-                            const BigInt &Discr,
-                            const BigInt &Alpha, const BigInt &Beta,
-                            const BigInt &Div) {
+  void PositiveDiscriminant(
+      bool origin_translated,
+      const BigInt &A, const BigInt &B, const BigInt &C,
+      const BigInt &K,
+      const BigInt &D,
+      const BigInt &Discr,
+      const BigInt &Alpha, const BigInt &Beta,
+      const BigInt &Div) {
 
     NonSquareDiscriminant<QmodCallbackType::HYPERBOLIC>(
+        origin_translated,
         A, B, C, K, D, Discr, Alpha, Beta, Div);
   }
 
@@ -2526,6 +2541,7 @@ struct Quad {
   //
   // Returns true if a solution was found.
   bool ContFrac(
+      bool origin_translated,
       const BigInt &Value, enum SolutionNumber solutionNbr,
       const BigInt &A, const BigInt &B, const BigInt &E,
       const BigInt &K, const BigInt &L, const BigInt &M,
@@ -2540,6 +2556,8 @@ struct Quad {
     if (!BigInt::DivisibleBy(L - U * U, V)) {
       return false;
     }
+
+    int periods_to_compute = origin_translated ? 2 : 1;
 
     BigInt U1(1);
     BigInt U2(0);
@@ -2578,7 +2596,7 @@ struct Quad {
         // Found solution.
         if (BigInt::Abs(Discr) == 5 && (a_neg != k_neg) &&
             (solutionNbr == SolutionNumber::FIRST)) {
-          // Determinant is 5 and aK < 0.
+          // Discriminant is 5 and aK < 0.
           // Use exceptional solution (U1-U2)/(V1-V2).
 
           // printf("aaaaaaa coverage\n");
@@ -2590,7 +2608,8 @@ struct Quad {
                 sol_plus, sol_minus);
 
         } else {
-          // Determinant is not 5 or aK > 0. Use convergent U1/V1 as solution.
+          // Discriminant is not 5 or aK > 0.
+          // Use convergent U1/V1 as solution.
 
           sol_found =
             NonSquareDiscrSolutionTwo(
@@ -2611,8 +2630,12 @@ struct Quad {
             V == StartPeriodV &&
             // New period started.
             (periodIndex & 1) == 0) {
-          // Two periods of period length is odd, one period if even.
-          break;  // Go out in this case.
+          // Two periods if period length is odd, one period if even.
+          periods_to_compute--;
+          if (periods_to_compute == 0) {
+            // Go out in this case.
+            break;
+          }
         }
 
       } else if (!isIntegerPart) {
@@ -2655,7 +2678,8 @@ struct Quad {
     return sol_found;
   }
 
-  void CallbackQuadModHyperbolic(const BigInt &A,
+  void CallbackQuadModHyperbolic(bool origin_translated,
+                                 const BigInt &A,
                                  const BigInt &B,
                                  const BigInt &C,
                                  const BigInt &K,
@@ -2722,7 +2746,8 @@ struct Quad {
     std::optional<std::pair<BigInt, BigInt>> sol_plus, sol_minus;
 
     // Continued fraction of (U+G)/V
-    if (ContFrac(Value, SolutionNumber::FIRST,
+    if (ContFrac(origin_translated,
+                 Value, SolutionNumber::FIRST,
                  A, B, E,
                  K, L, M,
                  U, V, G,
@@ -2731,7 +2756,8 @@ struct Quad {
       hyperbolic_recursive_solution = true;
 
     // Continued fraction of (-U+G)/(-V)
-    if (ContFrac(Value, SolutionNumber::SECOND,
+    if (ContFrac(origin_translated,
+                 Value, SolutionNumber::SECOND,
                  A, B, E,
                  K, L, M,
                  -U, -V, G,
@@ -2811,6 +2837,8 @@ struct Quad {
 
     BigInt UU1 = BigInt::GCD(BigInt::GCD(A, B), C);
     BigInt Div, K, Alpha, Beta;
+
+    bool origin_translated = false;
     // Discriminant is not zero.
     if (D == 0 && E == 0) {
       // Do not translate origin.
@@ -2819,6 +2847,8 @@ struct Quad {
       Alpha = BigInt(0);
       Beta = BigInt(0);
     } else {
+      origin_translated = true;
+
       Div = Discr;
       // Translate the origin (x, y) by (alpha, beta).
       // Compute alpha = 2cd - be
@@ -2849,7 +2879,8 @@ struct Quad {
     }
 
     if (Discr < 0) {
-      NegativeDiscriminant(A, B, C, K, D,
+      NegativeDiscriminant(origin_translated,
+                           A, B, C, K, D,
                            Discr, Alpha, Beta, Div);
       return;
     }
@@ -2866,7 +2897,8 @@ struct Quad {
 
       return;
     } else {
-      PositiveDiscriminant(A, B, C, K, D,
+      PositiveDiscriminant(origin_translated,
+                           A, B, C, K, D,
                            Discr, Alpha, Beta, Div);
     }
   }

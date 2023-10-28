@@ -87,7 +87,7 @@ static void RunGrid() {
         // int64_t d = arg[3] - MAX_COEFF;
         // int64_t e = arg[4] - MAX_COEFF;
 
-        int64_t a = 32 + arg[0];
+        int64_t a = 33 + arg[0];
         int64_t b = arg[1] - MAX_COEFF;
         int64_t c = arg[2] - MAX_COEFF;
         int64_t d = arg[3] - MAX_COEFF;
@@ -96,6 +96,12 @@ static void RunGrid() {
         // Known bad problems.
         if (a == 24 && b == -6 && c == -12 && d == -4 && e == 5)
           return;
+
+        if (a == 32 && b == 0 && c == -4 && d == 7 && e == 11)
+          return;
+
+        // with -15047, -28180
+        //  33 -12 -3 10 9 -568087
 
         BigInt A(a);
         BigInt B(b);
