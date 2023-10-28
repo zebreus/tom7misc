@@ -70,7 +70,7 @@ struct QuadModLL {
   // BigInteger Quadr;
   // BigInteger Linear;
   // BigInteger Const;
-  BigInteger sqrRoot;
+  // BigInteger sqrRoot;
   BigInteger ValBOdd;
   BigInteger ValCOdd;
   BigInteger SqrtDisc;
@@ -440,8 +440,9 @@ struct QuadModLL {
   // To compute the square root, compute the inverse of sqrt,
   // so only multiplications are used.
   // f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
-  void ComputeSquareRootModPowerOf2(int expon, int bitsCZero,
-                                    int modulus_length) {
+  BigInt ComputeSquareRootModPowerOf2(int expon, int bitsCZero,
+                                      int modulus_length) {
+    BigInteger sqrRoot;
     // First approximation to inverse of square root.
     // If value is ...0001b, the inverse of square root is ...01b.
     // If value is ...1001b, the inverse of square root is ...11b.
@@ -474,9 +475,13 @@ struct QuadModLL {
     (void)memcpy(sqrRoot.limbs, tmp1.limbs, lenBytes);
     setNbrLimbs(&sqrRoot, modulus_length);
 
-    for (int ctr = 0; ctr < (bitsCZero / 2); ctr++) {
-      BigIntMultiplyBy2(&sqrRoot);
-    }
+    BigInt SqrRoot = BigIntegerToBigInt(&sqrRoot) << (bitsCZero / 2);
+
+    // for (int ctr = 0; ctr < (bitsCZero / 2); ctr++) {
+    // BigIntMultiplyBy2(&sqrRoot);
+    // }
+
+    return SqrRoot;
   }
 
   // PERF? rewrite FQS to work directly on BigInt
@@ -663,6 +668,8 @@ struct QuadModLL {
       BigIntAnd(&ValCOdd, &K1, &ValCOdd);      // ((b/2) - a*c)/a mod 2^n
       (void)BigIntMultiply(&ValCOdd, &tmp2, &ValCOdd);
       BigIntAnd(&ValCOdd, &K1, &ValCOdd);      // s = ((b/2) - a*c)/a^2 mod 2^n
+
+      BigInteger sqrRoot;
       if (BigIntIsZero(&ValCOdd)) {
         // s = 0, so its square root is also zero.
         intToBigInteger(&sqrRoot, 0);
@@ -680,7 +687,9 @@ struct QuadModLL {
         } else {
           // Compute sqrRoot as the square root of ValCOdd.
           expon -= bitsCZero / 2;
-          ComputeSquareRootModPowerOf2(expon, bitsCZero, modulus_length);
+          BigInt SqrRoot =
+            ComputeSquareRootModPowerOf2(expon, bitsCZero, modulus_length);
+          BigIntToBigInteger(SqrRoot, &sqrRoot);
           expon--;
           if (expon == (bitsCZero / 2)) {
             expon++;
@@ -954,8 +963,8 @@ struct QuadModLL {
     }
   }
 
-  void ComputeSquareRootModPowerOfP(const BigInt &Base,
-                                    int nbrBitsSquareRoot) {
+  BigInt ComputeSquareRootModPowerOfP(const BigInt &Base,
+                                      int nbrBitsSquareRoot) {
     const int modulus_length = prime.nbrLimbs;
     const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
     (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
@@ -973,8 +982,6 @@ struct QuadModLL {
                             BigInt(1), SqrtDisc,
                             Prime);
 
-    // PERF good place to do this natively
-    BigIntToBigInteger(SqrRoot, &sqrRoot);
     int correctBits = 1;
 
     intToBigInteger(&Q, 0xCAFE);
@@ -1028,7 +1035,8 @@ struct QuadModLL {
     // (void)BigIntRemainder(&sqrRoot, &Q, &sqrRoot);
     SqrRoot %= BigIntegerToBigInt(&Q);
     // XXX return sqrroot, instead
-    BigIntToBigInteger(SqrRoot, &sqrRoot);
+    // BigIntToBigInteger(SqrRoot, &sqrRoot);
+    return SqrRoot;
   }
 
   // Solve Ax^2 + Bx + C = 0 (mod p^expon).
@@ -1133,6 +1141,7 @@ struct QuadModLL {
       // BigIntToBigInteger(Tmp, &ValAOdd);
     }
 
+    BigInt SqrRoot;
     if (Discriminant == 0) {
       // Discriminant is zero.
 
@@ -1142,7 +1151,8 @@ struct QuadModLL {
       // sqrRoot.nbrLimbs = 1;
       // sqrRoot.sign = SIGN_POSITIVE;
 
-      intToBigInteger(&sqrRoot, 0);
+      SqrRoot = BigInt{0};
+      // intToBigInteger(&sqrRoot, 0);
 
     } else {
       // Discriminant is not zero.
@@ -1165,29 +1175,27 @@ struct QuadModLL {
       // (void)memset(&discriminant.limbs[nbrLimbs], 0, lenBytes);
       // }
 
-      {
-        CHECK(Prime == BigIntegerToBigInt(&prime));
-        BigInt Tmp = Discriminant % Prime;
-        // (void)BigIntRemainder(&discriminant, &prime, &Tmp);
-        if (Tmp < 0) {
-          Tmp += Prime;
-        }
-
-        if (BigInt::Jacobi(Tmp, Prime) != 1) {
-          // Not a quadratic residue, so go out.
-          return false;
-        }
-
-        // Port note: This used to be passed in Aux3. This call might
-        // expect more state in Aux, ugh.
-
-        // Compute square root of discriminant.
-        ComputeSquareRootModPowerOfP(Tmp, nbrBitsSquareRoot);
+      CHECK(Prime == BigIntegerToBigInt(&prime));
+      BigInt Tmp = Discriminant % Prime;
+      // (void)BigIntRemainder(&discriminant, &prime, &Tmp);
+      if (Tmp < 0) {
+        Tmp += Prime;
       }
+
+      if (BigInt::Jacobi(Tmp, Prime) != 1) {
+        // Not a quadratic residue, so go out.
+        return false;
+      }
+
+      // Port note: This used to be passed in Aux3. This call might
+      // expect more state in Aux, ugh.
+
+      // Compute square root of discriminant.
+      SqrRoot = ComputeSquareRootModPowerOfP(Tmp, nbrBitsSquareRoot);
 
       // Multiply by square root of discriminant by prime^deltaZeros.
       for (int ctr = 0; ctr < deltaZeros; ctr++) {
-        (void)BigIntMultiply(&sqrRoot, &prime, &sqrRoot);
+        SqrRoot *= Prime;
       }
     }
 
@@ -1200,8 +1208,7 @@ struct QuadModLL {
     // Compute x = (b + sqrt(discriminant)) / (-2a) and
     //   x = (b - sqrt(discriminant)) / (-2a)
 
-    Tmp1 = BigIntegerToBigInt(pValB) +
-      BigIntegerToBigInt(&sqrRoot);
+    Tmp1 = BigIntegerToBigInt(pValB) + SqrRoot;
     // BigIntAdd(pValB, &sqrRoot, &tmp1);
 
     for (int ctr = 0; ctr < bitsAZero; ctr++) {
@@ -1227,7 +1234,7 @@ struct QuadModLL {
       // BigIntAdd(&Solution1[factorIndex], &Q, &Solution1[factorIndex]);
     }
 
-    Tmp1 = BigIntegerToBigInt(pValB) - BigIntegerToBigInt(&sqrRoot);
+    Tmp1 = BigIntegerToBigInt(pValB) - SqrRoot;
     // BigIntSubt(pValB, &sqrRoot, &tmp1);
     for (int ctr = 0; ctr < bitsAZero; ctr++) {
       BigInt Tmp2 = Tmp1 % Prime;

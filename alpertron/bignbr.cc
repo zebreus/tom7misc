@@ -232,46 +232,6 @@ void BigIntDivide2(BigInteger *pArg) {
   CHECK(pArg->nbrLimbs > 0);
 }
 
-enum eExprErr BigIntMultiplyPower2(BigInteger *pArg, int powerOf2) {
-  int ctr;
-  int nbrLimbs = pArg->nbrLimbs;
-  assert(nbrLimbs >= 1);
-  limb *ptrLimbs = pArg->limbs;
-  int limbsToShiftLeft = powerOf2 / BITS_PER_GROUP;
-  int bitsToShiftLeft = powerOf2 % BITS_PER_GROUP;
-  if ((nbrLimbs + limbsToShiftLeft) >= MAX_LEN) {
-    return EXPR_INTERM_TOO_HIGH;
-  }
-
-  for (; bitsToShiftLeft > 0; bitsToShiftLeft--) {
-    unsigned int carry = 0U;
-    for (ctr = 0; ctr < nbrLimbs; ctr++) {
-      carry += (unsigned int)(ptrLimbs + ctr)->x << 1;
-      (ptrLimbs + ctr)->x = UintToInt(carry & MAX_VALUE_LIMB);
-      carry >>= BITS_PER_GROUP;
-    }
-
-    if (carry != 0U) {
-      (ptrLimbs + ctr)->x = (int)carry;
-      nbrLimbs++;
-    }
-  }
-
-  nbrLimbs += limbsToShiftLeft;
-
-  // Shift left entire limbs.
-  if (limbsToShiftLeft > 0) {
-    int bytesToMove = (nbrLimbs - limbsToShiftLeft) * (int)sizeof(limb);
-    (void)memmove(&pArg->limbs[limbsToShiftLeft], pArg->limbs, bytesToMove);
-    bytesToMove = limbsToShiftLeft * (int)sizeof(limb);
-    (void)memset(pArg->limbs, 0, bytesToMove);
-  }
-
-  pArg->nbrLimbs = nbrLimbs;
-  CHECK(pArg->nbrLimbs > 0);
-  return EXPR_OK;
-}
-
 void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2,
                BigInteger *pResult) {
   BigInt g = BigInt::GCD(BigIntegerToBigInt(pArg1),
@@ -565,28 +525,6 @@ void BigIntDivideBy2(BigInteger *nbr) {
   CHECK(nbr->nbrLimbs > 0);
 }
 
-void BigIntMultiplyBy2(BigInteger *nbr) {
-  unsigned int prevLimb;
-  limb *ptrDest = &nbr->limbs[0];
-  int nbrLimbs = nbr->nbrLimbs;
-  assert(nbrLimbs >= 1);
-  prevLimb = 0U;
-  for (int ctr = 0; ctr < nbrLimbs; ctr++) {
-    // Process starting from least significant limb.
-    unsigned int curLimb = (unsigned int)ptrDest->x;
-    ptrDest->x = UintToInt(((curLimb << 1) |
-                            (prevLimb >> BITS_PER_GROUP_MINUS_1)) &
-                           MAX_VALUE_LIMB);
-    ptrDest++;
-    prevLimb = curLimb;
-  }
-
-  if ((prevLimb & HALF_INT_RANGE_U) != 0U) {
-    ptrDest->x = 1;
-    nbr->nbrLimbs++;
-  }
-}
-
 // Find power of 2 that divides the number.
 // output: pNbrLimbs = pointer to number of limbs
 //         pShRight = pointer to power of 2.
@@ -630,7 +568,8 @@ void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs) {
     // Most significant bits not set.
     *pNbrLimbs = nbrLimbs - index - 1;
   }
-      // Move number shRg bits to the right.
+
+  // Move number shRg bits to the right.
   shLeft = (unsigned int)BITS_PER_GROUP - shRight;
   for (index2 = index; index2 < (nbrLimbs-1); index2++) {
     number[index2].x = UintToInt((((unsigned int)number[index2].x >> shRight) |

@@ -26,7 +26,8 @@
 #include <memory>
 
 #include "bignbr.h"
-
+#include "bignum/big.h"
+#include "bignum/big-overloads.h"
 #include "base/logging.h"
 #include "bigconv.h"
 
@@ -747,12 +748,12 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
 // Compute modular division for odd moduli.
 // params and modulus should match.
 BigInt BigIntModularDivision(const MontgomeryParams &params,
-                             const BigInt &Num, const BigInt &Den,
+                             BigInt Num, BigInt Den,
                              const BigInt &Mod) {
-  BigInteger num, den, mod, z;
-  BigIntToBigInteger(Num, &num);
-  BigIntToBigInteger(Den, &den);
-  BigIntToBigInteger(Mod, &mod);
+  // BigInteger num, den, mod, z;
+  // BigIntToBigInteger(Num, &num);
+  // BigIntToBigInteger(Den, &den);
+  // BigIntToBigInteger(Mod, &mod);
 
   // PERF: Fewer conversions of the modulus please!
   // PERF: Can dynamically size this, at least.
@@ -764,21 +765,31 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
 
   // NumberLength = mod->nbrLimbs;
   // ??
-  CHECK(modulus_length == mod.nbrLimbs);
+  {
+    BigInteger mod;
+    BigIntToBigInteger(Mod, &mod);
+    CHECK(modulus_length == mod.nbrLimbs);
+  }
 
   // Reduce Num modulo mod.
-  BigInteger tmpNum;
-  (void)BigIntRemainder(&num, &mod, &tmpNum);
-  if (tmpNum.sign == SIGN_NEGATIVE) {
-    BigIntAdd(&tmpNum, &mod, &tmpNum);
-  }
+  Num %= Mod;
+  // BigInteger tmpNum;
+  // (void)BigIntRemainder(&num, &mod, &tmpNum);
+  if (Num < 0) Num += Mod;
 
   // Reduce Den modulo mod.
-  BigInteger tmpDen;
-  (void)BigIntRemainder(&den, &mod, &tmpDen);
-  if (tmpDen.sign == SIGN_NEGATIVE) {
-    BigIntAdd(&tmpDen, &mod, &tmpDen);
-  }
+  Den %= Mod;
+  // BigInteger tmpDen;
+  // (void)BigIntRemainder(&den, &mod, &tmpDen);
+  if (Den < 0) Den += Mod;
+  // if (tmpDen.sign == SIGN_NEGATIVE) {
+  // BigIntAdd(&tmpDen, &mod, &tmpDen);
+  // }
+
+  // PERF can convert to limbs directly
+  BigInteger tmpNum, tmpDen;
+  BigIntToBigInteger(Num, &tmpNum);
+  BigIntToBigInteger(Den, &tmpDen);
 
   limb tmp3[MAX_LEN];
   CompressLimbsBigInteger(modulus_length, tmp3, &tmpDen);
@@ -796,7 +807,10 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
           tmpDen.limbs, tmp4,
           modulus_length, TheModulus,
           tmp3);
+
   // Get Num/Den
+  // PERF can just convert to BigInt
+  BigInteger z;
   UncompressLimbsBigInteger(modulus_length, tmp3, &z);
 
   return BigIntegerToBigInt(&z);

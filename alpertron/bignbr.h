@@ -93,9 +93,6 @@ eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent,
 eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent,
                            BigInteger *pPower);
 
-eExprErr BigIntMultiplyPower2(BigInteger* pArg, int powerOf2);
-
-void BigIntMultiplyBy2(BigInteger *nbr);
 void BigIntDivideBy2(BigInteger *nbr);
 void BigIntGcd(const BigInteger *pArg1, const BigInteger *pArg2, BigInteger *pResult);
 void MultInt(BigInteger *pResult, const BigInteger *pMult, int factor);

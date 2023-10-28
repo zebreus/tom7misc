@@ -41,6 +41,8 @@ void ModPow(const MontgomeryParams &params,
             int modulus_length, const limb *modulus,
             const limb *base, const limb *exp, int nbrGroupsExp, limb *power);
 
+
+
 BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
                               const BigInt &modulus);
 
@@ -49,7 +51,7 @@ BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
 // before calling this, so we could offer a version that just takes
 // num,den,mod.
 BigInt BigIntModularDivision(const MontgomeryParams &params,
-                             const BigInt &num, const BigInt &den,
+                             BigInt num, BigInt den,
                              const BigInt &mod);
 
 BigInt BigIntModularPower(const MontgomeryParams &params,
