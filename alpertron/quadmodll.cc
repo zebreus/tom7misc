@@ -301,8 +301,11 @@ struct QuadModLL {
     // Modular division routines used work for power of 2 or odd numbers.
     // This requires to compute the quotient in two steps.
     // N = r*2^k (r = odd)
+
+    // XXX DivideBigNbrByMaxPowerOf2 is almost dead. Use BigInt::BitwiseCtz.
     int powerOf2;
     DivideBigNbrByMaxPowerOf2(&powerOf2, pValN->limbs, &pValN->nbrLimbs);
+
     int modulus_length = pValN->nbrLimbs;
     int NumberLengthBytes = modulus_length * (int)sizeof(limb);
     if ((pValN->nbrLimbs != 1) || (pValN->limbs[0].x != 1)) {
@@ -805,8 +808,8 @@ struct QuadModLL {
                                 (Prime + 1) >> 2);
 
     } else {
-      BigInteger Q;
-      BigIntToBigInteger(Prime, &Q);
+      // BigInteger Q;
+      // BigIntToBigInteger(Prime, &Q);
 
       limb* toConvert = nullptr;
       // Convert discriminant to Montgomery notation.
@@ -823,7 +826,10 @@ struct QuadModLL {
         // Step 3. square root of u <- uv (i-1)
         // Step 1.
         // Q <- (prime-5)/8.
-        subtractdivide(&Q, 5, 8);
+        BigInteger Q;
+        BigIntToBigInteger((Prime - 5) >> 3, &Q);
+
+        // subtractdivide(&Q, 5, 8);
         // 2u
         AddBigNbrModN(Aux6.limbs, Aux6.limbs, Aux7.limbs,
                       TheModulus, modulus_length);
@@ -871,9 +877,18 @@ struct QuadModLL {
         // Step 8. Go to step 5.
 
         // Step 1.
-        subtractdivide(&Q, 1, 1);   // Q <- (prime-1).
-        int e;
-        DivideBigNbrByMaxPowerOf2(&e, Q.limbs, &Q.nbrLimbs);
+        BigInteger Q;
+
+        BigInt QQ = Prime - 1;
+        int e = BigInt::BitwiseCtz(QQ);
+        QQ >>= e;
+
+        // subtractdivide(&Q, 1, 1);   // Q <- (prime-1).
+        // int e;
+        // DivideBigNbrByMaxPowerOf2(&e, Q.limbs, &Q.nbrLimbs);
+
+        BigIntToBigInteger(QQ, &Q);
+
         // Step 2.
         int x = 1;
 
@@ -891,9 +906,14 @@ struct QuadModLL {
         const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
         (void)memcpy(Aux5.limbs, Aux4.limbs, NumberLengthBytes); // y
         int r = e;
+
+
+        BigInt KK1 = (QQ - 1) >> 1;
         BigInteger K1;
-        CopyBigInt(&K1, &Q);
-        subtractdivide(&K1, 1, 2);
+        BigIntToBigInteger(KK1, &K1);
+        // CopyBigInt(&K1, &Q);
+        // subtractdivide(&K1, 1, 2);
+
         ModPow(params, modulus_length, TheModulus,
                Aux6.limbs, K1.limbs, K1.nbrLimbs, Aux7.limbs); // x
         ModMult(params,
