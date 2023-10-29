@@ -104,7 +104,6 @@ void CompressLimbsBigInteger(int number_length,
                              /*@out@*/limb *ptrValues, const BigInteger *bigint);
 
 void intToBigInteger(BigInteger *bigint, int value);
-void DivideBigNbrByMaxPowerOf2(int *pShRight, limb *number, int *pNbrLimbs);
 
 void ChSignLimbs(limb *nbr, int length);
 void AddBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pSum, int nbrLen);

@@ -363,7 +363,6 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   int b;
   int c;
   int d;  // Coefficients used to update variables R, S, U, V.
-  int size;
   int i;
   int bitCount;
   int lenRS;
@@ -389,7 +388,7 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   }
 
   //  1. U <- M, V <- X, R <- 0, S <- 1, k <- 0
-  size = (modulus_length + 1) * (int)sizeof(limb);
+  const int size = (modulus_length + 1) * (int)sizeof(limb);
   (modulus + modulus_length)->x = 0;
   (num + modulus_length)->x = 0;
   // PERF can just be length size, probably?
@@ -756,11 +755,6 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
 BigInt BigIntModularDivision(const MontgomeryParams &params,
                              BigInt Num, BigInt Den,
                              const BigInt &Mod) {
-  // BigInteger num, den, mod, z;
-  // BigIntToBigInteger(Num, &num);
-  // BigIntToBigInteger(Den, &den);
-  // BigIntToBigInteger(Mod, &mod);
-
   // PERF: Fewer conversions of the modulus please!
   // PERF: Can dynamically size this, at least.
   // (Or, modulus could be part of params)
@@ -779,18 +773,11 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
 
   // Reduce Num modulo mod.
   Num %= Mod;
-  // BigInteger tmpNum;
-  // (void)BigIntRemainder(&num, &mod, &tmpNum);
   if (Num < 0) Num += Mod;
 
   // Reduce Den modulo mod.
   Den %= Mod;
-  // BigInteger tmpDen;
-  // (void)BigIntRemainder(&den, &mod, &tmpDen);
   if (Den < 0) Den += Mod;
-  // if (tmpDen.sign == SIGN_NEGATIVE) {
-  // BigIntAdd(&tmpDen, &mod, &tmpDen);
-  // }
 
   // PERF can convert to limbs directly
   BigInteger tmpNum, tmpDen;

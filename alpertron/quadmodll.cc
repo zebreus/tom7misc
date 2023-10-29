@@ -652,7 +652,6 @@ struct QuadModLL {
     BigInteger ValAOdd, ValBOdd;
     BigIntToBigInteger(AOdd, &ValAOdd);
     BigIntToBigInteger(BOdd, &ValBOdd);
-    // BigIntToBigInteger(COdd, &ValCOdd);
 
     if ((bitsAZero > 0) && (bitsBZero > 0) && (bitsCZero > 0)) {
       int minExpon = bitsAZero;
@@ -691,7 +690,6 @@ struct QuadModLL {
       // Port note: Original code overwrote valcodd.
       // (b/2) - a*c mod 2^n
       BigInt C2 = BigIntegerToBigInt(&tmp1) & BigIntegerToBigInt(&mask);
-      // BigIntAnd(&tmp1, &mask, &ValCOdd);
 
       int modulus_length = mask.nbrLimbs;
 
@@ -709,15 +707,11 @@ struct QuadModLL {
 
       // ((b/2) - a*c)/a mod 2^n
       C2 *= BigIntegerToBigInt(&tmp2);
-      // (void)BigIntMultiply(&ValCOdd, &tmp2, &ValCOdd);
       C2 &= BigIntegerToBigInt(&mask);
-      // BigIntAnd(&ValCOdd, &mask, &ValCOdd);
 
       // s = ((b/2) - a*c)/a^2 mod 2^n
       C2 *= BigIntegerToBigInt(&tmp2);
       C2 &= BigIntegerToBigInt(&mask);
-      // (void)BigIntMultiply(&ValCOdd, &tmp2, &ValCOdd);
-      // BigIntAnd(&ValCOdd, &mask, &ValCOdd);
 
       BigInteger sqrRoot;
       if (C2 == 0) {
@@ -728,11 +722,9 @@ struct QuadModLL {
 
         bitsCZero = BigInt::BitwiseCtz(C2);
         C2 >>= bitsCZero;
-        // DivideBigNbrByMaxPowerOf2(&bitsCZero, ValCOdd.limbs, &ValCOdd.nbrLimbs);
 
         // At this moment, bitsCZero = r and ValCOdd = q.
         if ((C2 & 7) != 1 || (bitsCZero & 1)) {
-          // ((ValCOdd.limbs[0].x & 7) != 1) || (bitsCZero & 1))
           // q != 1 or p2(r) == 0, so go out.
           return false;
         }
@@ -1125,19 +1117,15 @@ struct QuadModLL {
     //   f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
     // Get maximum power of prime which divides ValA.
     BigInt AOdd = BigIntegerToBigInt(pValA);
-    // CopyBigInt(&ValAOdd, pValA);
     int bitsAZero = 0;
 
     const BigInt Prime = BigIntegerToBigInt(&prime);
     const BigInt VV = BigInt::Pow(Prime, expon);
-    // BigIntPowerIntExp(&prime, expon, &V)
 
     for (;;) {
       BigInt Tmp1 = AOdd % Prime;
-      // (void)BigIntRemainder(&ValAOdd, &prime, &tmp1);
       if (AOdd < 0) {
         AOdd += Prime;
-        // BigIntAdd(&ValAOdd, &prime, &ValAOdd);
       }
       if (Tmp1 != 0) {
         break;
@@ -1145,11 +1133,9 @@ struct QuadModLL {
 
       // PERF: I think this can be divexact?
       AOdd /= Prime;
-      // (void)BigIntDivide(&ValAOdd, &prime, &ValAOdd);
       bitsAZero++;
     }
     Discriminant %= VV;
-    // (void)BigIntRemainder(&discriminant, &V, &discriminant);
 
     CHECK(Prime == BigIntegerToBigInt(&prime));
 
@@ -1162,7 +1148,6 @@ struct QuadModLL {
       // Discriminant is not zero.
       deltaZeros = 0;
       for (;;) {
-        // (void)BigIntRemainder(&discriminant, &prime, &tmp1);
         if (!BigInt::DivisibleBy(Discriminant, Prime)) {
           break;
         }
@@ -1180,15 +1165,11 @@ struct QuadModLL {
     deltaZeros >>= 1;
     // Compute inverse of -2*A (mod prime^(expon - deltaZeros)).
     AOdd = BigIntegerToBigInt(pValA) << 1;
-    // BigIntAdd(pValA, pValA, &ValAOdd);
 
     BigInt Tmp1 = BigInt::Pow(Prime, expon - deltaZeros);
-    // BigInteger tmp1;
-    // (void)BigIntPowerIntExp(&prime, expon - deltaZeros, &tmp1);
 
 
     AOdd %= Tmp1;
-    // (void)BigIntRemainder(&ValAOdd, &tmp1, &ValAOdd);
 
     if (AOdd < 0) {
       // Negate 2*A
@@ -1211,32 +1192,22 @@ struct QuadModLL {
         GetMontgomeryParams(modulus_length, TheModulus);
 
       AOdd = BigIntModularDivision(*params, BigInt(1), AOdd, Tmp1);
-      // BigIntToBigInteger(Tmp, &ValAOdd);
     }
 
     BigInt SqrRoot;
     if (Discriminant == 0) {
       // Discriminant is zero.
 
-      // Port note: Original code zeroed the buffer, but why?
-      // int lenBytes = nbrLimbs * (int)sizeof(limb);
-      // (void)memset(sqrRoot.limbs, 0, lenBytes);
-      // sqrRoot.nbrLimbs = 1;
-      // sqrRoot.sign = SIGN_POSITIVE;
-
+      // Port note: Original code explicitly zeroed the buffer, but why?
       SqrRoot = BigInt{0};
-      // intToBigInteger(&sqrRoot, 0);
 
     } else {
       // Discriminant is not zero.
       // Find number of digits of square root to compute.
       int nbrBitsSquareRoot = expon + bitsAZero - deltaZeros;
       const BigInt Tmp1 = BigInt::Pow(Prime, nbrBitsSquareRoot);
-      // (void)BigIntPowerIntExp(&prime, nbrBitsSquareRoot, &tmp1);
-      // nbrLimbs = tmp1.nbrLimbs;
-      Discriminant %= Tmp1;
-      // (void)BigIntRemainder(&discriminant, &tmp1, &discriminant);
 
+      Discriminant %= Tmp1;
       if (Discriminant < 0) {
         Discriminant += Tmp1;
       }
@@ -1286,50 +1257,38 @@ struct QuadModLL {
 
     for (int ctr = 0; ctr < bitsAZero; ctr++) {
       BigInt Tmp2 = Tmp1 % Prime;
-      // BigInteger tmp2;
-      // (void)BigIntRemainder(&tmp1, &prime, &tmp2);
       if (Tmp2 != 0) {
         // Cannot divide by prime, so go out.
         sol1Invalid = true;
         break;
       }
       Tmp1 = BigInt::DivExact(Tmp1, Prime);
-      // (void)BigIntDivide(&tmp1, &prime, &tmp1);
     }
 
-    // (void)BigIntMultiply(&tmp1, &ValAOdd, &tmp1);
     Solution1[factorIndex] = BigInt::CMod(Tmp1 * AOdd,
                                           BigIntegerToBigInt(&Q));
-    // (void)BigIntRemainder(&tmp1, &Q, &Solution1[factorIndex]);
 
     if (Solution1[factorIndex] < 0) {
       Solution1[factorIndex] += BigIntegerToBigInt(&Q);
-      // BigIntAdd(&Solution1[factorIndex], &Q, &Solution1[factorIndex]);
     }
 
     Tmp1 = BigIntegerToBigInt(pValB) - SqrRoot;
-    // BigIntSubt(pValB, &sqrRoot, &tmp1);
     for (int ctr = 0; ctr < bitsAZero; ctr++) {
       BigInt Tmp2 = Tmp1 % Prime;
-      // BigInteger tmp2;
-      // (void)BigIntRemainder(&tmp1, &prime, &tmp2);
+
       if (Tmp2 != 0) {
         // Cannot divide by prime, so go out.
         sol2Invalid = true;
         break;
       }
       Tmp1 = BigInt::DivExact(Tmp1, Prime);
-      // (void)BigIntDivide(&tmp1, &prime, &tmp1);
     }
 
-    // (void)BigIntMultiply(&tmp1, &ValAOdd, &tmp1);
     Solution2[factorIndex] = BigInt::CMod(Tmp1 * AOdd,
                                           BigIntegerToBigInt(&Q));
-    // (void)BigIntRemainder(&tmp1, &Q, &Solution2[factorIndex]);
 
     if (Solution2[factorIndex] < 0) {
       Solution2[factorIndex] += BigIntegerToBigInt(&Q);
-      // BigIntAdd(&Solution2[factorIndex], &Q, &Solution2[factorIndex]);
     }
 
     return true;
