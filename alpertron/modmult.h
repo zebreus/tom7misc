@@ -36,7 +36,8 @@ void ModMult(const MontgomeryParams &params,
 
 void ModPowBaseInt(const MontgomeryParams &params,
                    int modulus_length, const limb *modulus,
-                   int base, const limb *exp, int nbrGroupsExp, limb *power);
+                   int base, const BigInt &exp,
+                   limb *power);
 void ModPow(const MontgomeryParams &params,
             int modulus_length, const limb *modulus,
             const limb *base, const limb *exp, int nbrGroupsExp, limb *power);

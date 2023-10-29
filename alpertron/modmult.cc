@@ -183,11 +183,17 @@ void ModPow(const MontgomeryParams &params,
 
 void ModPowBaseInt(const MontgomeryParams &params,
                    int modulus_length, const limb *modulus,
-                   int base, const limb* exp, int nbrGroupsExp, limb* power) {
+                   int base, const BigInt &Exp,
+                   limb* power) {
+
+  BigInteger exp;
+  BigIntToBigInteger(Exp, &exp);
+
   int NumberLengthBytes = (modulus_length + 1) * (int)sizeof(limb);
-  (void)memcpy(power, params.MontgomeryMultR1, NumberLengthBytes);  // power <- 1
-  for (int index = nbrGroupsExp - 1; index >= 0; index--) {
-    int groupExp = (exp + index)->x;
+  // power <- 1
+  (void)memcpy(power, params.MontgomeryMultR1, NumberLengthBytes);
+  for (int index = exp.nbrLimbs - 1; index >= 0; index--) {
+    int groupExp = exp.limbs[index].x;
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
       ModMult(params,
               power, power,

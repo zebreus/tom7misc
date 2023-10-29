@@ -304,7 +304,7 @@ struct QuadModLL {
     // This requires to compute the quotient in two steps.
     // N = r*2^k (r = odd)
 
-    // XXX DivideBigNbrByMaxPowerOf2 is almost dead. Use BigInt::BitwiseCtz.
+    CHECK(N != 0);
     int powerOf2 = BigInt::BitwiseCtz(N);
     N >>= powerOf2;
     // DivideBigNbrByMaxPowerOf2(&powerOf2, pValN->limbs, &pValN->nbrLimbs);
@@ -623,25 +623,6 @@ struct QuadModLL {
     BigIntToBigInteger(C, &ValC);
 
     int expon = exponent;
-#if 0
-    int bitsAZero;
-    int bitsBZero;
-    int bitsCZero;
-    BigInteger ValAOdd, ValBOdd, ValCOdd;
-    CopyBigInt(&ValAOdd, &ValA);
-    DivideBigNbrByMaxPowerOf2(&bitsAZero, ValAOdd.limbs, &ValAOdd.nbrLimbs);
-    CopyBigInt(&ValBOdd, &ValB);
-    DivideBigNbrByMaxPowerOf2(&bitsBZero, ValBOdd.limbs, &ValBOdd.nbrLimbs);
-    CopyBigInt(&ValCOdd, &ValC);
-    DivideBigNbrByMaxPowerOf2(&bitsCZero, ValCOdd.limbs, &ValCOdd.nbrLimbs);
-
-    CHECK(bitsAZero == BigInt::BitwiseCtz(A))
-      << A.ToString() << " " << bitsAZero;
-    CHECK(bitsBZero == BigInt::BitwiseCtz(B))
-      << B.ToString() << " " << bitsBZero;
-    CHECK(bitsCZero == BigInt::BitwiseCtz(C))
-      << C.ToString() << " " << bitsCZero;
-#endif
 
     // ax^2 + bx + c = 0 (mod 2^expon)
     // This follows the paper Complete solving the quadratic equation mod 2^n
@@ -931,9 +912,8 @@ struct QuadModLL {
         // Step 8. Go to step 5.
 
         // Step 1.
-        BigInteger Q;
-
         BigInt QQ = Prime - 1;
+        CHECK(QQ != 0);
         int e = BigInt::BitwiseCtz(QQ);
         QQ >>= e;
 
@@ -941,7 +921,7 @@ struct QuadModLL {
         // int e;
         // DivideBigNbrByMaxPowerOf2(&e, Q.limbs, &Q.nbrLimbs);
 
-        BigIntToBigInteger(QQ, &Q);
+        // BigIntToBigInteger(QQ, &Q);
 
         // Step 2.
         int x = 1;
@@ -955,7 +935,8 @@ struct QuadModLL {
         // Step 3.
         // Get z <- x^q (mod p) in Montgomery notation.
         ModPowBaseInt(params, modulus_length, TheModulus,
-                      x, Q.limbs, Q.nbrLimbs, Aux4.limbs);  // z
+                      x, QQ, Aux4.limbs);  // z
+
         // Step 4.
         const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
         (void)memcpy(Aux5.limbs, Aux4.limbs, NumberLengthBytes); // y
