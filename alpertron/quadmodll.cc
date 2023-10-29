@@ -649,10 +649,10 @@ struct QuadModLL {
     COdd >>= bitsCZero;
     if (C == 0) bitsCZero = BITS_PER_GROUP;
 
-    BigInteger ValAOdd, ValBOdd, ValCOdd;
+    BigInteger ValAOdd, ValBOdd;
     BigIntToBigInteger(AOdd, &ValAOdd);
     BigIntToBigInteger(BOdd, &ValBOdd);
-    BigIntToBigInteger(COdd, &ValCOdd);
+    // BigIntToBigInteger(COdd, &ValCOdd);
 
     if ((bitsAZero > 0) && (bitsBZero > 0) && (bitsCZero > 0)) {
       int minExpon = bitsAZero;
@@ -668,13 +668,13 @@ struct QuadModLL {
       expon -= minExpon;
     }
 
-    if (((bitsAZero == 0) && (bitsBZero == 0) && (bitsCZero == 0)) ||
-      ((bitsAZero > 0) && (bitsBZero > 0) && (bitsCZero == 0))) {
+    if ((bitsAZero == 0 && bitsBZero == 0 && bitsCZero == 0) ||
+        (bitsAZero > 0 && bitsBZero > 0 && bitsCZero == 0)) {
       return false;   // No solutions, so go out.
     }
 
     BigInteger tmp1, tmp2;
-    if ((bitsAZero == 0) && (bitsBZero > 0)) {
+    if (bitsAZero == 0 && bitsBZero > 0) {
       // The solution in this case requires square root.
       // compute s = ((b/2)^2 - a*c)/a^2, q = odd part of s,
       // r = maximum exponent of power of 2 that divides s.
@@ -683,12 +683,17 @@ struct QuadModLL {
       (void)BigIntMultiply(&tmp1, &tmp1, &tmp1);  // (b/2)^2
       (void)BigIntMultiply(&ValA, &ValC, &tmp2);  // a*c
       BigIntSubt(&tmp1, &tmp2, &tmp1);      // (b/2)^2 - a*c
-      BigInteger K1;
-      BigIntPowerOf2(&K1, expon);
-      addbigint(&K1, -1);
-      BigIntAnd(&tmp1, &K1, &ValCOdd);      // (b/2) - a*c mod 2^n
 
-      int modulus_length = K1.nbrLimbs;
+      BigInteger mask;
+      BigIntPowerOf2(&mask, expon);
+      addbigint(&mask, -1);
+
+      // Port note: Original code overwrote valcodd.
+      // (b/2) - a*c mod 2^n
+      BigInt C2 = BigIntegerToBigInt(&tmp1) & BigIntegerToBigInt(&mask);
+      // BigIntAnd(&tmp1, &mask, &ValCOdd);
+
+      int modulus_length = mask.nbrLimbs;
 
       if (modulus_length > ValAOdd.nbrLimbs) {
         int lenBytes = (modulus_length - ValAOdd.nbrLimbs) * (int)sizeof(int);
@@ -701,23 +706,37 @@ struct QuadModLL {
       }
 
       ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, modulus_length);
-      (void)BigIntMultiply(&ValCOdd, &tmp2, &ValCOdd);
-      BigIntAnd(&ValCOdd, &K1, &ValCOdd);      // ((b/2) - a*c)/a mod 2^n
-      (void)BigIntMultiply(&ValCOdd, &tmp2, &ValCOdd);
-      BigIntAnd(&ValCOdd, &K1, &ValCOdd);      // s = ((b/2) - a*c)/a^2 mod 2^n
+
+      // ((b/2) - a*c)/a mod 2^n
+      C2 *= BigIntegerToBigInt(&tmp2);
+      // (void)BigIntMultiply(&ValCOdd, &tmp2, &ValCOdd);
+      C2 &= BigIntegerToBigInt(&mask);
+      // BigIntAnd(&ValCOdd, &mask, &ValCOdd);
+
+      // s = ((b/2) - a*c)/a^2 mod 2^n
+      C2 *= BigIntegerToBigInt(&tmp2);
+      C2 &= BigIntegerToBigInt(&mask);
+      // (void)BigIntMultiply(&ValCOdd, &tmp2, &ValCOdd);
+      // BigIntAnd(&ValCOdd, &mask, &ValCOdd);
 
       BigInteger sqrRoot;
-      if (BigIntIsZero(&ValCOdd)) {
+      if (C2 == 0) {
         // s = 0, so its square root is also zero.
         intToBigInteger(&sqrRoot, 0);
         expon -= expon / 2;
       } else {
-        DivideBigNbrByMaxPowerOf2(&bitsCZero, ValCOdd.limbs, &ValCOdd.nbrLimbs);
+
+        bitsCZero = BigInt::BitwiseCtz(C2);
+        C2 >>= bitsCZero;
+        // DivideBigNbrByMaxPowerOf2(&bitsCZero, ValCOdd.limbs, &ValCOdd.nbrLimbs);
+
         // At this moment, bitsCZero = r and ValCOdd = q.
-        if (((ValCOdd.limbs[0].x & 7) != 1) || (bitsCZero & 1)) {
+        if ((C2 & 7) != 1 || (bitsCZero & 1)) {
+          // ((ValCOdd.limbs[0].x & 7) != 1) || (bitsCZero & 1))
           // q != 1 or p2(r) == 0, so go out.
           return false;
         }
+
         if (expon < 2) {
           // Modulus is 2.
           intToBigInteger(&sqrRoot, (bitsCZero > 0) ? 0 : 1);
@@ -725,8 +744,7 @@ struct QuadModLL {
           // Compute sqrRoot as the square root of ValCOdd.
           expon -= bitsCZero / 2;
           BigInt SqrRoot =
-            ComputeSquareRootModPowerOf2(BigIntegerToBigInt(&ValCOdd),
-                                         expon, bitsCZero, modulus_length);
+            ComputeSquareRootModPowerOf2(C2, expon, bitsCZero, modulus_length);
           BigIntToBigInteger(SqrRoot, &sqrRoot);
           expon--;
           if (expon == (bitsCZero / 2)) {
@@ -737,24 +755,24 @@ struct QuadModLL {
 
       // x = sqrRoot - b/2a.
       {
-        BigInteger K1;
-        BigIntPowerOf2(&K1, expon);
-        addbigint(&K1, -1);
-        modulus_length = K1.nbrLimbs;
+        BigInteger Mask;
+        BigIntPowerOf2(&Mask, expon);
+        addbigint(&Mask, -1);
+        modulus_length = Mask.nbrLimbs;
         ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, modulus_length);
         setNbrLimbs(&tmp2, modulus_length);
         CopyBigInt(&tmp1, &ValB);
         BigIntDivideBy2(&tmp1);               // b/2
         (void)BigIntMultiply(&tmp1, &tmp2, &tmp1);  // b/2a
         BigIntChSign(&tmp1);                  // -b/2a
-        BigIntAnd(&tmp1, &K1, &tmp1);         // -b/2a mod 2^expon
+        BigIntAnd(&tmp1, &Mask, &tmp1);         // -b/2a mod 2^expon
         BigIntAdd(&tmp1, &sqrRoot, &tmp2);
 
         BigInteger sol;
-        BigIntAnd(&tmp2, &K1, &sol);
+        BigIntAnd(&tmp2, &Mask, &sol);
         Solution1[factorIndex] = BigIntegerToBigInt(&sol);
         BigIntSubt(&tmp1, &sqrRoot, &tmp2);
-        BigIntAnd(&tmp2, &K1, &sol);
+        BigIntAnd(&tmp2, &Mask, &sol);
         Solution2[factorIndex] = BigIntegerToBigInt(&sol);
       }
 
