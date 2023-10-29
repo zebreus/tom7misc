@@ -57,6 +57,13 @@ static void TestAssigningOps() {
   }
 
   {
+    BigInt x(12345);
+    const BigInt five(5);
+    x %= five;
+    CHECK(x == 0);
+  }
+
+  {
     BigInt x(13310);
     CHECK((x & 717) == 716);
     CHECK((717 & x) == 716);

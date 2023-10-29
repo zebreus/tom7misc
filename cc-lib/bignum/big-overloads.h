@@ -60,11 +60,11 @@ inline BigInt operator &(const BigInt &a, const BigInt &b) {
   return BigInt::BitwiseAnd(a, b);
 }
 
-inline BigInt operator &(uint64_t a, const BigInt &b) {
+inline uint64_t operator &(uint64_t a, const BigInt &b) {
   return BigInt::BitwiseAnd(b, a);
 }
 
-inline BigInt operator &(const BigInt &a, uint64_t b) {
+inline uint64_t operator &(const BigInt &a, uint64_t b) {
   return BigInt::BitwiseAnd(a, b);
 }
 
@@ -161,6 +161,13 @@ inline BigInt &operator%=(BigInt &a, const BigInt &b) {
 
 inline BigInt &operator&=(BigInt &a, const BigInt &b) {
   a = a & b;
+  return a;
+}
+
+inline BigInt &operator&=(BigInt &a, uint64_t b) {
+  // Can't make use of the fact that a & b returns uint64_t
+  // in the assignment operator.
+  a = BigInt(a & b);
   return a;
 }
 

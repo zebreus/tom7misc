@@ -112,7 +112,7 @@ struct BigInt {
   inline static BigInt LeftShift(const BigInt &a, uint64_t bits);
   inline static BigInt RightShift(const BigInt &a, uint64_t bits);
   inline static BigInt BitwiseAnd(const BigInt &a, const BigInt &b);
-  inline static BigInt BitwiseAnd(const BigInt &a, uint64_t b);
+  inline static uint64_t BitwiseAnd(const BigInt &a, uint64_t b);
   // Return the number of trailing zeroes. For an input of zero,
   // this is zero (this differs from std::countr_zero<T>, which returns
   // the finite size of T in bits for zero).
@@ -353,6 +353,7 @@ void BigInt::Swap(BigInt *other) {
 }
 
 uint64_t BigInt::LowWord(const BigInt &a) {
+  // Zero is represented with no limbs.
   size_t limbs = mpz_size(a.rep);
   if (limbs == 0) return 0;
   // limb 0 is the least significant.
@@ -440,10 +441,18 @@ BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
   return ret;
 }
 
-BigInt BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
+uint64_t BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
+  // Zero is represented without limbs.
+  if (mpz_size(a.rep) == 0) return 0;
+  static_assert(sizeof (mp_limb_t) == 8,
+                "This code assumes 64-bit limbs, although we "
+                "could easily add branches for 32-bit.");
+
+  uint64_t aa = mpz_getlimbn(a.rep, 0);
+  return aa & b;
   // PERF There is no mpz_and_ui, but we could perhaps extract
   // the low word and AND natively.
-  return BitwiseAnd(a, BigInt(b));
+  // return BitwiseAnd(a, BigInt(b));
 }
 
 uint64_t BigInt::BitwiseCtz(const BigInt &a) {
@@ -1112,8 +1121,9 @@ BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
   return BigInt{BzAnd(a.rep, b.rep), nullptr};
 }
 
-BigInt BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
-  return BigInt{BzAnd(a.rep, BigInt{b}.rep), nullptr};
+uint64_t BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
+  // TODO
+  // return BigInt{BzAnd(a.rep, BigInt{b}.rep), nullptr};
 }
 
 uint64_t BigInt::BitwiseCtz(const BigInt &a) {

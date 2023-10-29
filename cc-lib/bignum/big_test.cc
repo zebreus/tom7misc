@@ -432,6 +432,19 @@ static void TestAnd() {
     CHECK(BigInt::Eq(c, BigInt("123908472983749187767122818802436")))
       << c.ToString();
   }
+
+  {
+    BigInt a("11122233344487293847298734827");
+    uint64_t b = 0xFEFFFFFFFFFEDCBAULL;
+    uint64_t c = BigInt::BitwiseAnd(a, b);
+    CHECK(c == 0xbecb0d895d7858aa) << c;
+  }
+
+  {
+    BigInt z(0);
+    CHECK(0 == BigInt::BitwiseAnd(z, 1234));
+  }
+
 }
 
 static void TestDivExact() {
