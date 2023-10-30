@@ -1,11 +1,13 @@
 #!/bin/bash
 
 make clean
-make -j quad.exe afactor.exe || exit -1
+make -j quad.exe afactor.exe test.exe || exit -1
 rm -f coverage.out
 
 set -x
 set -e
+
+./test.exe || exit -1
 
 echo quad tests
 # Ax^2 + Bxy + Cy^2 + Dx + Ey + F
@@ -280,7 +282,7 @@ echo factor tests
 # largest 64-bit prime
 ./afactor.exe 18446744073709551557 >> coverage.out
 
-dos2unix coverage.out
+dos2unix -q coverage.out
 diff coverage.golden coverage.out
 exit_status=$?
 if [ $exit_status -eq 0 ]; then

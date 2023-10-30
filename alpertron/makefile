@@ -54,7 +54,7 @@ afactor.exe:  afactor.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
-test.exe : test.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
+test.exe : test.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
@@ -82,19 +82,20 @@ clean:
 	rm -f *.o $(TEST_CC_LIB_OBJECTS) coverage.out *.exe
 
 
-#    This file is part of Alpertron Calculators.
+# This file is part of Alpertron Calculators.
 #
-#    Copyright 2018 Dario Alejandro Alpern
+# Copyright 2018 Dario Alejandro Alpern
 #
-#    Alpertron Calculators is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
+# Alpertron Calculators is free software: you can redistribute it
+# and/or modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation, either version 3 of
+# the License, or (at your option) any later version.
 #
-#    Alpertron Calculators is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
+# Alpertron Calculators is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
 #
-#    You should have received a copy of the GNU General Public License
-#    along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
+# You should have received a copy of the GNU General Public License
+# along with Alpertron Calculators. If not, see
+# <http://www.gnu.org/licenses/>.

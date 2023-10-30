@@ -353,26 +353,25 @@ bool AccumulatePoint(
 
   CHECK(sol != nullptr);
 
-  // Check first that (X+alpha) and (Y+beta) are multiple of D.
-  BigInt tmp1 = X + Alpha;
-  BigInt tmp2 = Y + Beta;
-
   // (I think this should actually be impossible because Div comes from
   // the GCD of the coefficients.)
   CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
 
-  if (BigInt::DivisibleBy(tmp1, Div) &&
-      BigInt::DivisibleBy(tmp2, Div)) {
+  // Check first that (X+alpha) and (Y+beta) are multiple of D.
+  BigInt tmp1 = X + Alpha;
+  if (BigInt::DivisibleBy(tmp1, Div)) {
+    BigInt tmp2 = Y + Beta;
+    if (BigInt::DivisibleBy(tmp2, Div)) {
 
-    if (Div != 0) {
       tmp1 = BigInt::DivExact(tmp1, Div);
       tmp2 = BigInt::DivExact(tmp2, Div);
-    }
 
-    // HYPERBOLIC.
-    AccumulateXY(tmp1, tmp2, sol);
-    return true;
+      // HYPERBOLIC.
+      AccumulateXY(tmp1, tmp2, sol);
+      return true;
+    }
   }
+
   return false;
 }
 
@@ -816,12 +815,17 @@ struct Quad {
     if (Z != 0) U3 %= Z;
     if (U3 < 0) U3 += Z;
 
-    if (U2 != 0) {
+    if (U2 == 0) {
       // M and N equal zero.
       // In this case 0*k = 0 (mod z) means any k is valid.
       Z = BigInt(1);
     } else {
       // U2 <- x'
+      printf("GeneralModularDivision(%s,%s,%s) coverage\n",
+              U2.ToString().c_str(), U3.ToString().c_str(),
+              Z.ToString().c_str());
+      solutions.interesting_coverage = true;
+      // XXX This might be wrong for some inputs? See test.
       U2 = GeneralModularDivision(U2, U3, Z);
     }
 

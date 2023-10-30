@@ -25,6 +25,11 @@ static constexpr int MAX_COEFF = 12;
 static constexpr int RADIX = MAX_COEFF * 2 + 1;
 
 static constexpr bool COMPUTE_F = true;
+// When computing F, number of bits we allow X and Y to be.
+static constexpr int XY_BITS = 30;
+static_assert(XY_BITS < 32);
+
+static constexpr uint64_t SEED = 0xCAFEBABE;
 
 using namespace std;
 
@@ -56,6 +61,16 @@ static string CounterString() {
                       count_interesting.Read());
 }
 
+static inline int64_t PosNeg(int64_t center, int64_t n) {
+  if (n & 1) {
+    // Negative numbers. But skip 0, since that is also covered
+    // on the positive side.
+    return center - 1 - (n >> 1);
+  } else {
+    return center + (n >> 1);
+  }
+}
+
 static void RunGrid() {
   for (int i = 0; i < 80; i++)
     printf("\n");
@@ -77,34 +92,22 @@ static void RunGrid() {
       dims,
       [&](const std::array<int64_t, 5> &arg,
           int64_t idx, int64_t batches_total) {
-        // Center on 0.
-        // ... except a, since we already ran -10 to 0
-        // int64_t a = arg[0] + 29; // - MAX_COEFF;
-        // int64_t a = arg[0] - MAX_COEFF;
-        // int64_t a = 24 + arg[0];
-        // int64_t b = arg[1] - MAX_COEFF;
-        // int64_t c = arg[2] - MAX_COEFF;
-        // int64_t d = arg[3] - MAX_COEFF;
-        // int64_t e = arg[4] - MAX_COEFF;
 
+        // Next!
         /*
-        int64_t a = 33 + arg[0];
-        int64_t b = arg[1] - MAX_COEFF;
-        int64_t c = arg[2] - MAX_COEFF;
-        int64_t d = arg[3] - MAX_COEFF;
-        int64_t e = arg[4] - MAX_COEFF;
-        */
-
-        int64_t a = 36 + arg[0];
+        int64_t a = 37 + arg[0];
         int64_t b =  0 + arg[1];
         int64_t c =  0 + arg[2];
         int64_t d =  0 + arg[3];
         int64_t e =  0 + arg[4];
-
-        /*
-        if (a == 32 && b == 0 && c == -4 && d == 7 && e == 11)
-          return;
         */
+
+        int64_t a = PosNeg(0, arg[0]);
+        int64_t b = PosNeg(0, arg[1]);
+        int64_t c = PosNeg(0, arg[2]);
+        int64_t d = PosNeg(0, arg[3]);
+        int64_t e = PosNeg(0, arg[4]);
+
 
         BigInt A(a);
         BigInt B(b);
@@ -112,7 +115,10 @@ static void RunGrid() {
         BigInt D(d);
         BigInt E(e);
 
-        const uint64_t hash64 = (uint64_t)a ^
+        BigInt F_example;
+
+        const uint64_t hash64 = SEED ^
+          (uint64_t)a ^
           std::rotl((uint64_t)b, 51) ^
           std::rotl((uint64_t)c, 17) ^
           (std::rotl((uint64_t)d, 33) +
@@ -135,8 +141,11 @@ static void RunGrid() {
             hash_hi = LFSRNext32((uint32_t)(hash_hi));
             hash_lo = LFSRNext32((uint32_t)(hash_lo));
 
-            sol_x = (int)(hash_hi & 65535) - 32768;
-            sol_y = (int)(hash_lo & 65535) - 32768;
+            static constexpr uint32_t XY_MASK = (1ULL << XY_BITS) - 1;
+            static constexpr uint32_t XY_OFF = (1ULL << (XY_BITS - 1));
+
+            sol_x = (int)(hash_hi & XY_MASK) - XY_OFF;
+            sol_y = (int)(hash_lo & XY_MASK) - XY_OFF;
 
             // TODO: Insist that we find *this* solution below.
             BigInt X(sol_x), Y(sol_y);
@@ -154,6 +163,17 @@ static void RunGrid() {
             F = BigInt(f);
           }
 
+          auto ProblemString = [&]() {
+              return StringPrintf(" %s %s %s %s %s %s\n\n",
+                                  A.ToString().c_str(),
+                                  B.ToString().c_str(),
+                                  C.ToString().c_str(),
+                                  D.ToString().c_str(),
+                                  E.ToString().c_str(),
+                                  F.ToString().c_str());
+            };
+
+
           auto Assert = [&](const char *type,
                             const BigInt &x, const BigInt &y) {
               BigInt r =
@@ -164,14 +184,7 @@ static void RunGrid() {
                 E * y +
                 F;
               if (r != 0) {
-                std::string problem =
-                  StringPrintf(" %s %s %s %s %s %s\n\n",
-                               A.ToString().c_str(),
-                               B.ToString().c_str(),
-                               C.ToString().c_str(),
-                               D.ToString().c_str(),
-                               E.ToString().c_str(),
-                               F.ToString().c_str());
+                std::string problem = ProblemString();
 
                 printf("\n\n\n\n\n"
                        "Invalid solution on problem: %s\n\n\n",
@@ -201,14 +214,13 @@ static void RunGrid() {
 
           if (sols.interesting_coverage) {
             count_interesting++;
-            printf("\n\n" APURPLE("Coverage!")
-                   " %lld %lld %lld %lld %lld %lld\n\n",
-                   a, b, c, d, e, f);
+            std::string problem = ProblemString();
+            printf("\n\n" APURPLE("Coverage!") " %s\n\n",
+                   problem.c_str());
             MutexLock ml(&file_mutex);
             FILE *file = fopen("interesting-coverage.txt\n", "ab");
             CHECK(file != nullptr);
-            fprintf(file, "%lld %lld %lld %lld %lld %lld\n",
-                    a, b, c, d, e, f);
+            fprintf(file, "%s\n", problem.c_str());
             fclose(file);
           }
 
@@ -271,14 +283,7 @@ static void RunGrid() {
             count_none++;
 
             if (COMPUTE_F) {
-              std::string problem =
-                StringPrintf(" %s %s %s %s %s %s\n\n",
-                             A.ToString().c_str(),
-                             B.ToString().c_str(),
-                             C.ToString().c_str(),
-                             D.ToString().c_str(),
-                             E.ToString().c_str(),
-                             F.ToString().c_str());
+              std::string problem = ProblemString();
 
               printf("\n\n\n\n\n"
                      "Did not solve problem: %s\n\n\n",
@@ -294,6 +299,9 @@ static void RunGrid() {
 
             }
           }
+
+          // Save this for printing below.
+          F_example = std::move(F);
 
           // Full batches
           count_done++;
@@ -319,8 +327,8 @@ static void RunGrid() {
             std::string bar =
               ANSI::ProgressBar(
                   batches_done, batches_total,
-                  StringPrintf("%lld %lld %lld %lld %lld * ",
-                               a, b, c, d, e),
+                  StringPrintf("%lld %lld %lld %lld %lld %s ",
+                               a, b, c, d, e, F_example.ToString().c_str()),
                   sec);
 
             static constexpr int STATUS_LINES = 3;

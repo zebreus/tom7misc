@@ -11,6 +11,9 @@ struct MontgomeryParams {
   limb MontgomeryMultN[MAX_LEN];
   limb MontgomeryMultR1[MAX_LEN];
   limb MontgomeryMultR2[MAX_LEN];
+  int modulus_length = 0;
+  // modulus_length + 1 limbs, with a zero at the end.
+  std::vector<limb> modulus;
   int NumberLengthR1 = 0;
   // Indicates that the modulus is a power of two.
   int powerOf2Exponent = 0;

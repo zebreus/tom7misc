@@ -750,11 +750,21 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   return true;  // Inverse computed.
 }
 
+// PERF: This function is slow and used in inner loops.
 // Compute modular division for odd moduli.
 // params and modulus should match.
 BigInt BigIntModularDivision(const MontgomeryParams &params,
                              BigInt Num, BigInt Den,
                              const BigInt &Mod) {
+
+  const bool verbose = false && (Num > Mod || Den > Mod);
+
+  if (verbose)
+  printf("With (params), %s / %s mod %s",
+         Num.ToString().c_str(),
+         Den.ToString().c_str(),
+         Mod.ToString().c_str());
+
   // PERF: Fewer conversions of the modulus please!
   // PERF: Can dynamically size this, at least.
   // (Or, modulus could be part of params)
@@ -806,7 +816,14 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
   BigInteger z;
   UncompressLimbsBigInteger(modulus_length, tmp3, &z);
 
-  return BigIntegerToBigInt(&z);
+
+  BigInt ret = BigIntegerToBigInt(&z);
+
+  if (verbose)
+    printf("  = %s\n",
+           ret.ToString().c_str());
+
+  return ret;
 }
 
 // On input:
@@ -1013,9 +1030,23 @@ std::unique_ptr<MontgomeryParams> GetMontgomeryParamsPowerOf2(
     int *modulus_length) {
   std::unique_ptr<MontgomeryParams> params =
     std::make_unique<MontgomeryParams>();
+
   *modulus_length =
     (powerOf2 + BITS_PER_GROUP - 1) / BITS_PER_GROUP;
   int NumberLengthBytes = *modulus_length * (int)sizeof(limb);
+
+  // Would be better to just generate this directly into
+  // params->modulus...
+  BigInteger pow2;
+  BigIntPowerOf2(&pow2, powerOf2);
+
+  params->modulus_length = *modulus_length;
+  params->modulus.resize(*modulus_length + 1);
+  CHECK(pow2.nbrLimbs == *modulus_length);
+  memcpy(params->modulus.data(), pow2.limbs,
+         *modulus_length * sizeof (limb));
+  params->modulus[*modulus_length].x = 0;
+
   params->powerOf2Exponent = powerOf2;
   (void)memset(params->MontgomeryMultR1, 0, NumberLengthBytes);
   (void)memset(params->MontgomeryMultR2, 0, NumberLengthBytes);
@@ -1071,7 +1102,12 @@ GetMontgomeryParams(int modulus_length, const limb *modulus) {
   params->powerOf2Exponent = 0;    // Indicate not power of 2 in advance.
   params->NumberLengthR1 = 1;
 
-  if ((modulus_length == 1) && ((modulus[0].x & 1) != 0)) {
+  params->modulus_length = modulus_length;
+  params->modulus.resize(modulus_length + 1);
+  memcpy(params->modulus.data(), modulus,
+         (modulus_length + 1) * sizeof (limb));
+
+  if (modulus_length == 1 && (modulus[0].x & 1) != 0) {
     params->MontgomeryMultR1[0].x = 1;
     params->MontgomeryMultR2[0].x = 1;
     return params;
