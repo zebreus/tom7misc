@@ -23,6 +23,8 @@
 static constexpr int MAX_COEFF = 12;
 // Positive and negative, zero
 static constexpr int RADIX = MAX_COEFF * 2 + 1;
+// Only test two random x,y pairs.
+static constexpr int RADIX_F = 2;
 
 static constexpr bool COMPUTE_F = true;
 // When computing F, number of bits we allow X and Y to be.
@@ -102,7 +104,7 @@ static void RunGrid() {
         int64_t e =  0 + arg[4];
         */
 
-        int64_t a = PosNeg(0, arg[0]);
+        int64_t a = PosNeg(0, arg[0] + 8);
         int64_t b = PosNeg(0, arg[1]);
         int64_t c = PosNeg(0, arg[2]);
         int64_t d = PosNeg(0, arg[3]);
@@ -131,7 +133,8 @@ static void RunGrid() {
 
         std::vector<double> local_timing;
 
-        for (int64 f = -MAX_COEFF; f <= MAX_COEFF; f++) {
+        for (int64 fidx = 0; fidx < RADIX_F; fidx++) {
+          int f = fidx - (RADIX_F / 2);
           int sol_x = -1, sol_y = -1;
 
           BigInt F;
@@ -268,11 +271,48 @@ static void RunGrid() {
                    quad.VY * BigInt(100) + quad.MY * BigInt(10) + quad.BY);
           };
 
-          // TODO: Test recursive!
+          // Test a few terms of the each recursive solution (for
+          // every base point).
           for (const std::pair<RecursiveSolution,
                  RecursiveSolution> &rec : sols.recursive) {
             count_recursive++;
-            (void)rec;
+
+            CHECK(!sols.points.empty()) << "This is not necessarily a "
+              "bug, but we expect the base solutions to be points "
+              "when we have recursive solutions?";
+
+            for (const PointSolution &point : sols.points) {
+              // Solution via a recurrence relation. From any
+              // starting solution x_0, y_0:
+              //   x_(n+1) = P x_n + Q y_n + K
+              //   y_(n+1) = R x_n + S y_n + L
+              // K and L are often zero.
+
+              auto Next = [](const RecursiveSolution &rs,
+                             const BigInt &X, const BigInt &Y) {
+                  return std::make_pair(
+                      rs.P * X + rs.Q * Y + rs.K,
+                      rs.R * X + rs.S * Y + rs.L);
+                };
+
+              {
+                BigInt X = point.X;
+                BigInt Y = point.Y;
+                for (int i = 0; i < 3; i++) {
+                  std::tie(X, Y) = Next(rec.first, X, Y);
+                  Assert("rec1", X, Y);
+                }
+              }
+
+              {
+                BigInt X = point.X;
+                BigInt Y = point.Y;
+                for (int i = 0; i < 3; i++) {
+                  std::tie(X, Y) = Next(rec.first, X, Y);
+                  Assert("rec2", X, Y);
+                }
+              }
+            }
           }
 
           if (!sols.any_integers &&

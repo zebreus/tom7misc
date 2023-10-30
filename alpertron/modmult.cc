@@ -31,6 +31,8 @@
 #include "base/logging.h"
 #include "bigconv.h"
 
+static constexpr bool SELF_CHECK = true;
+
 // Multiply two numbers in Montgomery notation.
 //
 // For large numbers the REDC algorithm is:
@@ -355,7 +357,7 @@ static void InitHighUandV(
 /* U' <- aU - bV, V' <- -cU + dV                                       */
 /***********************************************************************/
 static bool ModInvBigNbr(const MontgomeryParams &params,
-                         int modulus_length, limb* modulus,
+                         int modulus_length, const limb* modulus,
                          limb* num, limb* inv) {
   int k;
   int steps;
@@ -389,7 +391,9 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
 
   //  1. U <- M, V <- X, R <- 0, S <- 1, k <- 0
   const int size = (modulus_length + 1) * (int)sizeof(limb);
-  (modulus + modulus_length)->x = 0;
+  CHECK(modulus[modulus_length].x == 0);
+  // (modulus + modulus_length)->x = 0;
+
   (num + modulus_length)->x = 0;
   // PERF can just be length size, probably?
   limb U[MAX_LEN];
@@ -768,14 +772,15 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
   // PERF: Fewer conversions of the modulus please!
   // PERF: Can dynamically size this, at least.
   // (Or, modulus could be part of params)
-  limb TheModulus[MAX_LEN];
-  int modulus_length = BigIntToLimbs(Mod, TheModulus);
-  TheModulus[modulus_length].x = 0;
 
+  if (SELF_CHECK) {
+    limb TheModulus[MAX_LEN];
+    int modulus_length = BigIntToLimbs(Mod, TheModulus);
+    TheModulus[modulus_length].x = 0;
 
-  // NumberLength = mod->nbrLimbs;
-  // PERF: Expensive conversion for defensive check
-  {
+    CHECK(0 == memcmp(params.modulus.data(), TheModulus,
+                      (modulus_length + 1) * sizeof (limb)));
+
     BigInteger mod;
     BigIntToBigInteger(Mod, &mod);
     CHECK(modulus_length == mod.nbrLimbs);
@@ -795,27 +800,28 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
   BigIntToBigInteger(Den, &tmpDen);
 
   limb tmp3[MAX_LEN];
-  CompressLimbsBigInteger(modulus_length, tmp3, &tmpDen);
+  CompressLimbsBigInteger(params.modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
   // tmpDen.limbs <- 1 / Den in Montg notation.
   ModMult(params,
           tmp3, params.MontgomeryMultR2,
-          modulus_length, TheModulus,
+          params.modulus_length, params.modulus.data(),
           tmp3);
-  (void)ModInvBigNbr(params, modulus_length, TheModulus, tmp3, tmpDen.limbs);
+  (void)ModInvBigNbr(params,
+                     params.modulus_length,
+                     params.modulus.data(), tmp3, tmpDen.limbs);
   limb tmp4[MAX_LEN];
-  CompressLimbsBigInteger(modulus_length, tmp4, &tmpNum);
+  CompressLimbsBigInteger(params.modulus_length, tmp4, &tmpNum);
   // tmp3 <- Num / Den in standard notation.
   ModMult(params,
           tmpDen.limbs, tmp4,
-          modulus_length, TheModulus,
+          params.modulus_length, params.modulus.data(),
           tmp3);
 
   // Get Num/Den
   // PERF can just convert to BigInt
   BigInteger z;
-  UncompressLimbsBigInteger(modulus_length, tmp3, &z);
-
+  UncompressLimbsBigInteger(params.modulus_length, tmp3, &z);
 
   BigInt ret = BigIntegerToBigInt(&z);
 
@@ -1236,6 +1242,16 @@ void ModMult(const MontgomeryParams &params,
              const limb* factor1, const limb* factor2,
              int number_length, const limb *modulus_array,
              limb* product) {
+
+  // These args are not necessary any more; they are part of the
+  // Montgomery params now.
+  if (SELF_CHECK) {
+    CHECK(number_length == params.modulus_length);
+    CHECK(0 == memcmp(params.modulus.data(),
+                      modulus_array,
+                      (params.modulus_length + 1) * sizeof (limb)));
+  }
+
   if (number_length <= 1) {
     BigInt f1 = LimbsToBigInt(factor1, number_length);
     BigInt f2 = LimbsToBigInt(factor2, number_length);
