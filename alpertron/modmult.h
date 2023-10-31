@@ -8,7 +8,14 @@
 // These used to be globals. Now calling GetMontgomeryParams* creates them.
 struct MontgomeryParams {
   // PERF: We can dynamically allocate these to the necessary length.
+
+
+  // R is the power of 2 for Montgomery multiplication and reduction.
+
+  // XXX perhaps rename these. N is Ninv. Don't need to say "MontgomeryMult"
+  // This is the inverse of the modulus mod R.
   limb MontgomeryMultN[MAX_LEN];
+  // This is the representation of 1 in Montgomery form.
   limb MontgomeryMultR1[MAX_LEN];
   limb MontgomeryMultR2[MAX_LEN];
   int modulus_length = 0;

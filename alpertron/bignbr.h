@@ -63,6 +63,7 @@ typedef struct BigInteger {
 } BigInteger;
 
 // Multiply two limb arrays of the same size, writing to the result.
+// Writes 2 * len limbs to the output, including zero padding if necessary.
 void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
                    int len);
 
@@ -78,7 +79,7 @@ eExprErr BigIntMultiply(
     BigInteger *pProduct);
 
 eExprErr BigIntPower(const BigInteger *pBase, const BigInteger *pExponent,
-                          BigInteger *pPower);
+                     BigInteger *pPower);
 
 eExprErr BigIntPowerIntExp(const BigInteger *pBase, int exponent,
                            BigInteger *pPower);
@@ -97,11 +98,24 @@ void IntArray2BigInteger(
     int number_length, const int *ptrValues, /*@out@*/BigInteger *bigint);
 void BigInteger2IntArray(int number_length,
                          /*@out@*/int *ptrValues, const BigInteger *bigint);
+
+// Copies a fixed-width array of limbs to the bigint. Removes
+// high limbs that are 0 (which are trailing in little-endian
+// representation). I think this is "Uncompress" in the sense
+// that BigInteger has a fixed buffer large enough for "any number",
+// but in a way it is actually compression since the fixed-width
+// represents zero high limbs, but this does not.
 void UncompressLimbsBigInteger(int number_length,
                                const limb *ptrValues,
                                /*@out@*/BigInteger *bigint);
+
+// Copies the BigInteger's limbs into a fixed number of limbs in ptrValues.
+// If the bigint has more limbs than number_length, it's just truncated
+// (so we get the result mod 2^(number_length*bits_per_limb)). Pads the
+// array with zeroes.
 void CompressLimbsBigInteger(int number_length,
-                             /*@out@*/limb *ptrValues, const BigInteger *bigint);
+                             /*@out@*/limb *ptrValues,
+                             const BigInteger *bigint);
 
 void intToBigInteger(BigInteger *bigint, int value);
 

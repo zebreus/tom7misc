@@ -282,12 +282,6 @@ void BigInteger2IntArray(int number_length,
   }
 }
 
-// Copies a fixed-width array of limbs to the bigint. Removes
-// high limbs that are 0 (which are trailing in little-endian
-// representation). I think this is "Uncompress" in the sense
-// that BigInteger has a fixed buffer large enough for "any number",
-// but in a way it is actually compression since the fixed-width
-// represents zero high limbs, but this does not.
 void UncompressLimbsBigInteger(int number_length,
                                const limb *ptrValues,
                                /*@out@*/BigInteger *bigint) {
@@ -323,9 +317,10 @@ void CompressLimbsBigInteger(int number_length,
   assert(number_length >= 1);
   if (number_length == 1) {
     ptrValues->x = bigint->limbs[0].x;
+    // In this case, we never need any padding.
   } else {
-    int numberLengthBytes = number_length * (int)sizeof(limb);
-    int nbrLimbs = bigint->nbrLimbs;
+    const int numberLengthBytes = number_length * (int)sizeof(limb);
+    const int nbrLimbs = bigint->nbrLimbs;
     assert(nbrLimbs >= 1);
     if (nbrLimbs > number_length) {
       (void)memcpy(ptrValues, bigint->limbs, numberLengthBytes);
@@ -404,6 +399,8 @@ void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
   // zero yields zero, which is stored in one limb. But Alpertron appears to
   // assume in some cases that the full possible width is zeroed.
   const int zerolen = len1 + len2;
+  // PERF can use the return value from BigIntToLibs and just zero the
+  // rest.
   memset(result, 0, zerolen * sizeof(int));
 
   if (VERBOSE) {

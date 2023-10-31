@@ -1143,7 +1143,7 @@ GetMontgomeryParams(int modulus_length, const limb *modulus) {
     }
   }
 
-  // Compute MontgomeryMultN as 1/modulus (mod 2^k) using Newton method,
+  // Compute Ninv as 1/modulus (mod 2^k) using Newton method,
   // which doubles the precision for each iteration.
   // In the formula above: k = BITS_PER_GROUP * modulus_length.
   ComputeInversePower2(modulus, params->MontgomeryMultN, modulus_length);
@@ -1272,6 +1272,8 @@ void ModMult(const MontgomeryParams &params,
     MultiplyLimbs(factor1, factor2, product, number_length);
     MultiplyLimbs(product, params.MontgomeryMultN, aux, number_length);
     MultiplyLimbs(aux, modulus_array, aux2, number_length);
+    // This is likely the last step of REDC, the conditional
+    // subtraction.
     endBigModmult(aux2, number_length, modulus_array, product);
   }
 }

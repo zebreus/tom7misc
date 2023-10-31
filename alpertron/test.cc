@@ -27,6 +27,85 @@ static void TestSubModN() {
   CHECK(d == 175);
 }
 
+static void WrapModMult(const BigInt &A,
+                        const BigInt &B,
+                        const BigInt &Modulus,
+                        const BigInt &Expected) {
+
+  limb TheModulus[MAX_LEN];
+  const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
+  TheModulus[modulus_length].x = 0;
+  const std::unique_ptr<MontgomeryParams> params =
+    GetMontgomeryParams(modulus_length, TheModulus);
+
+  limb out[modulus_length + 1];
+  out[modulus_length].x = 0xCAFE;
+
+  limb alimbs[modulus_length], blimbs[modulus_length];
+  BigIntToFixedLimbs(A, modulus_length, alimbs);
+  BigIntToFixedLimbs(B, modulus_length, blimbs);
+
+  // These could fail if a, b are larger than the modulus to start!
+  CHECK(LimbsToBigInt(alimbs, modulus_length) == A);
+  CHECK(LimbsToBigInt(blimbs, modulus_length) == B);
+
+  ModMult(*params, alimbs, blimbs, modulus_length, TheModulus, out);
+
+  // XXX check properties! We would need to convert back to
+  // standard form though; the arguments and result are in
+  // montgomery form.
+
+  BigInt Q = LimbsToBigInt(out, modulus_length);
+
+  CHECK(Q < Modulus);
+
+  auto Problem = [&]() {
+      return StringPrintf("%s * %s mod %s = %s\n",
+                          A.ToString().c_str(),
+                          B.ToString().c_str(),
+                          Modulus.ToString().c_str(),
+                          Q.ToString().c_str());
+    };
+
+  CHECK(Q == Expected) << Problem();
+}
+
+static void TestModMult() {
+
+  // When modulus_length = 1, we don't use montgomery multiplication.
+  WrapModMult(BigInt(0),
+              BigInt(0),
+              BigInt(7),
+              BigInt(0));
+
+  WrapModMult(BigInt(1),
+              BigInt(2),
+              BigInt(7),
+              BigInt(2));
+
+  WrapModMult(BigInt("3"),
+              BigInt("15"),
+              BigInt("9817329874928374987171"),
+              BigInt("999295037051484147276"));
+
+  WrapModMult(BigInt("99999999999999999997"),
+              BigInt("48"),
+              BigInt("99999999999999999999"),
+              BigInt("61740692676699804096"));
+
+  WrapModMult(
+      BigInt("27"),
+      BigInt("777777777777777777777777777771111111111111111111111112"),
+      BigInt("911111111111111111111111111111111111111111111111111177"),
+      BigInt("609106670332766614883443718117542104223785225502515346"));
+
+  WrapModMult(BigInt("82547317664115340789"),
+              BigInt("17619819104174798134"),
+              BigInt("88888888833117981921"),
+              BigInt("54076733533037296511"));
+  // TODO
+}
+
 static void WrapDivide(const BigInt &Num,
                        const BigInt &Den,
                        const BigInt &Modulus,
@@ -73,7 +152,6 @@ static void WrapDivide(const BigInt &Num,
   const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
   TheModulus[modulus_length].x = 0;
 
-  // Is it worth it to convert to montgomery form for one division??
   const std::unique_ptr<MontgomeryParams> params =
     GetMontgomeryParams(modulus_length, TheModulus);
 
@@ -150,6 +228,7 @@ int main(int argc, char **argv) {
   ANSI::Init();
 
   TestSubModN();
+  TestModMult();
   TestBIMDivision();
 
   printf("Explicit tests " AGREEN("OK") "\n");

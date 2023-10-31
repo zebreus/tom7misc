@@ -146,6 +146,7 @@ void BigIntToFixedLimbs(const BigInt &b, size_t num_limbs, limb *limbs) {
              1,
              b.GetRep());
 
+  // This also handles the case where there were no limbs.
   while (count < num_limbs) {
     limbs[count].x = 0;
     count++;
