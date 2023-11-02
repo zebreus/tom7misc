@@ -45,9 +45,15 @@ int main(int argc, char* argv[]) {
          e.ToString().c_str(),
          f.ToString().c_str());
 
-  std::string output;
-  QuadBigInt(a, b, c, d, e, f, &output);
-  (void)printf("%s\n", output.c_str());
+  static constexpr int TIMES = 1;
+  if (TIMES > 1)
+  fprintf(stderr, "Running %d times!\n", TIMES);
+  for (int i = 0; i < TIMES; i++) {
+    std::string output;
+    QuadBigInt(a, b, c, d, e, f, &output);
+    if (i == TIMES- - 1)
+      (void)printf("%s\n", output.c_str());
+  }
 
   return 0;
 }
