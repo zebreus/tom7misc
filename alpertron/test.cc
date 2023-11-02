@@ -11,6 +11,42 @@
 #include "modmult.h"
 #include "bigconv.h"
 
+static void Montgomery() {
+  // Test from original alpertron code.
+
+  BigInt Modulus("1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
+
+  limb TheModulus[MAX_LEN];
+  const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
+  TheModulus[modulus_length].x = 0;
+  const std::unique_ptr<MontgomeryParams> params =
+    GetMontgomeryParams(modulus_length, TheModulus);
+
+  BigInt N = LimbsToBigInt(params->MontgomeryMultN, modulus_length);
+  BigInt R1 = LimbsToBigInt(params->MontgomeryMultR1, modulus_length);
+  BigInt R2 = LimbsToBigInt(params->MontgomeryMultR2, modulus_length);
+
+  CHECK(R1 == BigInt("24695268717247353376024094994637646342633788102645274852325180976134729557037162826241102651487225375781959289009"));
+  CHECK(R2 == BigInt("190098254628648626850155858417461866966631571241684111915135769130076389371840963052220660360120514221998874973069"));
+  CHECK(N == BigInt("5146057778955676958024459434755086258061417362313348376976792088453485271799426894988203925673894606468119708364663947265"));
+
+  // R1 is the identity.
+  BigInt FirstFactor = R1;
+  BigInt SecondFactor(32);
+
+  limb f1[MAX_LEN], f2[MAX_LEN];
+  BigIntToFixedLimbs(FirstFactor, modulus_length, f1);
+  BigIntToFixedLimbs(SecondFactor, modulus_length, f2);
+  limb product[MAX_LEN];
+  ModMult(*params, f1, f2, modulus_length, TheModulus, product);
+
+  BigInt Product = LimbsToBigInt(product, modulus_length);
+
+  CHECK(Product == 32);
+
+  printf("Montgomery tests " AGREEN("OK") "\n");
+}
+
 static void TestSubModN() {
   BigInt a(100);
   BigInt b(125);
@@ -25,6 +61,17 @@ static void TestSubModN() {
 
   BigInt d = LimbsToBigInt(diff, 8);
   CHECK(d == 175);
+}
+
+static std::string BigBytes(const BigInt &X) {
+  limb x[MAX_LEN];
+  int n = BigIntToLimbs(X, x);
+  std::string ret;
+  for (int i = 0; i < n; i++) {
+    if (i != 0) ret.push_back(':');
+    StringAppendF(&ret, "%08x", x[i].x);
+  }
+  return ret;
 }
 
 static void WrapModMult(const BigInt &A,
@@ -67,7 +114,10 @@ static void WrapModMult(const BigInt &A,
                           Q.ToString().c_str());
     };
 
-  CHECK(Q == Expected) << Problem();
+  CHECK(Q == Expected) << Problem() <<
+    "\nwanted: " << Expected.ToString() <<
+    "\nQ bytes:  " << BigBytes(Q) <<
+    "\nExpected: " << BigBytes(Expected);
 }
 
 static void TestModMult() {
@@ -83,6 +133,7 @@ static void TestModMult() {
               BigInt(7),
               BigInt(2));
 
+  // This is the result I get from alpertron (tomtest.c).
   WrapModMult(BigInt("3"),
               BigInt("15"),
               BigInt("9817329874928374987171"),
@@ -176,6 +227,8 @@ static void WrapDivide(const BigInt &Num,
 }
 
 static void TestBIMDivision() {
+  printf("---division---\n");
+
   WrapDivide(BigInt("9999123456789123454747111927"),
              BigInt("373717173837173"),
              BigInt("88888888833117981921"),
@@ -226,6 +279,8 @@ static void TestBIMDivision() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  Montgomery();
 
   TestSubModN();
   TestModMult();

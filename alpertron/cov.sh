@@ -266,6 +266,10 @@ echo quad tests
 # has solution (-1690, 2850)
 ./quad.exe 24 -6 -12 -4 5 3590 >> coverage.out
 
+# bug (mine)
+# has solution (536870874, 65989369)
+./quad.exe 65536 0 -3 5 -5 -18889450193678288090578 >> coverage.out
+
 echo factor tests
 ./afactor.exe 1 >> coverage.out
 ./afactor.exe 2 >> coverage.out

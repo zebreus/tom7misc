@@ -44,6 +44,7 @@ static constexpr bool SELF_CHECK = true;
 //   return t
 // end if
 
+// Note this reads *before* the limb pointer.
 static double getMantissa(const limb *ptrLimb, int nbrLimbs) {
   assert(nbrLimbs >= 1);
   double dN = (double)(ptrLimb - 1)->x;
@@ -63,6 +64,7 @@ static double getMantissa(const limb *ptrLimb, int nbrLimbs) {
 // Multiply big number in Montgomery notation by integer.
 static void ModMultInt(limb* factorBig, int factorInt, limb* result,
                        const limb* pTestNbr, int nbrLen) {
+
   if (nbrLen == 1) {
     // "small" modular multiplication
     int factor1 = factorBig->x;
@@ -939,7 +941,7 @@ static void BigIntegerGeneralModularDivision(
   (void)ModInvBigNbr(*params, modulus_length, modulus, tmp3, tmp3);
   limb tmp4[MAX_LEN];
   CompressLimbsBigInteger(modulus_length, tmp4, &tmpNum);
-  // resultModOdd <- Num / Dev in standard notation.
+  // resultModOdd <- Num / Den in standard notation.
   // PERF: can be smaller than MAX_LEN.
   limb resultModOdd[MAX_LEN];
   ModMult(*params,
@@ -1143,7 +1145,7 @@ GetMontgomeryParams(int modulus_length, const limb *modulus) {
     }
   }
 
-  // Compute Ninv as 1/modulus (mod 2^k) using Newton method,
+  // Compute MontgomeryMultN as 1/modulus (mod 2^k) using Newton method,
   // which doubles the precision for each iteration.
   // In the formula above: k = BITS_PER_GROUP * modulus_length.
   ComputeInversePower2(modulus, params->MontgomeryMultN, modulus_length);
@@ -1260,6 +1262,7 @@ void ModMult(const MontgomeryParams &params,
     // Hmm, no BigInt modular multiplication :/
     BigInt r = BigInt::Mod(BigInt::Times(f1, f2), modulus);
     BigIntToFixedLimbs(r, number_length, product);
+
   } else {
     // Note that we have no coverage for number_length > 3!
     // if (number_length > 3)
@@ -1269,8 +1272,24 @@ void ModMult(const MontgomeryParams &params,
     // All MultiplyLimbs does is multiply using BigInt, so we can
     // probably just do the first several steps without converting.
     limb aux[number_length * 2], aux2[number_length * 2];
-    MultiplyLimbs(factor1, factor2, product, number_length);
-    MultiplyLimbs(product, params.MontgomeryMultN, aux, number_length);
+    // limb aux3[number_length * 2];
+
+    // Couple problems here:
+    //   Sometimes 'product' is one of the factors. In that case
+    //   we get the wrong result when we use it as an intermediate,
+    //   right? I guess the two factors are dead after that first
+    //   call?
+    //   Need to be careful about the size of the buffer, too.
+    limb *dest = product;
+    // memset(dest, 0, number_length * sizeof (limb));
+
+    // Port note: This used to use product as a temporary, but
+    // product may only have space for number_length limbs.
+    // Compute T
+    MultiplyLimbs(factor1, factor2, dest, number_length);
+    // Compute m
+    MultiplyLimbs(dest, params.MontgomeryMultN, aux, number_length);
+    // Compute mN
     MultiplyLimbs(aux, modulus_array, aux2, number_length);
     // This is likely the last step of REDC, the conditional
     // subtraction.

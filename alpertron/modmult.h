@@ -18,6 +18,7 @@ struct MontgomeryParams {
   // This is the representation of 1 in Montgomery form.
   limb MontgomeryMultR1[MAX_LEN];
   limb MontgomeryMultR2[MAX_LEN];
+
   int modulus_length = 0;
   // modulus_length + 1 limbs, with a zero at the end.
   std::vector<limb> modulus;

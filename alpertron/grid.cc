@@ -104,7 +104,7 @@ static void RunGrid() {
         int64_t e =  0 + arg[4];
         */
 
-        int64_t a = PosNeg(0, arg[0] + 8);
+        int64_t a = PosNeg(0, arg[0] + 131072);
         int64_t b = PosNeg(0, arg[1]);
         int64_t c = PosNeg(0, arg[2]);
         int64_t d = PosNeg(0, arg[3]);
@@ -273,8 +273,8 @@ static void RunGrid() {
 
           // Test a few terms of the each recursive solution (for
           // every base point).
-          for (const std::pair<RecursiveSolution,
-                 RecursiveSolution> &rec : sols.recursive) {
+          for (const std::pair<RecursiveSolution, RecursiveSolution> &rec :
+                 sols.recursive) {
             count_recursive++;
 
             CHECK(!sols.points.empty()) << "This is not necessarily a "
