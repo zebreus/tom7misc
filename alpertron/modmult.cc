@@ -34,10 +34,11 @@
 
 static constexpr bool SELF_CHECK = true;
 
+[[maybe_unused]]
 static std::string LimbString(limb *limbs, size_t num) {
-  string out;
+  std::string out;
   for (size_t i = 0; i < num; i++) {
-    if (i != 0) out.push_back(":");
+    if (i != 0) out.push_back(':');
     StringAppendF(&out, "%04x", limbs[i].x);
   }
   return out;
