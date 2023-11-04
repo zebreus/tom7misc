@@ -18,10 +18,11 @@ else
   CC=gcc
   GMP_LFLAGS=-lgmp
   GMP_CFLAGS=-DBIG_USE_GMP
+  PLATFORM_CXXFLAGS=-fsanitize=address
   LFLAGS=-flto=auto
 endif
 
-CXXFLAGS= -march=native -Wall -I.. --std=c++20 -O3
+CXXFLAGS= $(PLATFORM_CXXFLAGS) -march=native -Wall -I.. --std=c++20 -g -O3
 
 # Just used for testing; bignum itself should not depend on cc-lib.
 # this assumes that cc-lib doesn't depend on GMP flags

@@ -142,7 +142,7 @@ static void TestPrimeFactors() {
   #ifdef BIG_USE_GMP
   {
     // Largest 64-bit prime.
-    BigInt p(18446744073709551557ULL);
+    BigInt p("18446744073709551557");
     std::vector<std::pair<BigInt, int>> factors =
       BigInt::PrimeFactorization(p);
 
@@ -152,7 +152,24 @@ static void TestPrimeFactors() {
     CHECK(BigInt::Eq(factors[0].first, p)) << factors[0].first.ToString();
     CHECK(factors[0].second == 1) << factors[0].second;
   }
-  #endif
+
+  {
+    BigInt x("11682658198262752314377738154934272");
+    std::vector<std::pair<BigInt, int>> factors =
+      BigInt::PrimeFactorization(x);
+
+    CHECK(factors.size() == 3) << FTOS(factors);
+    CHECK(BigInt::Eq(factors[0].first, 2));
+    CHECK(factors[0].second == 18);
+
+    CHECK(BigInt::Eq(factors[1].first, 3));
+    CHECK(factors[1].second == 1);
+
+    CHECK(BigInt::Eq(factors[2].first,
+                     BigInt("14855268094714803459647799371")));
+    CHECK(factors[2].second == 1);
+  }
+#endif
 
   {
     BigInt x(1);
@@ -231,7 +248,7 @@ static void TestPrimeFactors() {
 
 static void BenchDiv2() {
   double total_sec = 0.0;
-  const int64 iters = 100;
+  const int iters = 100;
   const BigInt two(2);
   for (int i = 0; i < iters; i++) {
     BigInt x = BigInt::Pow(two, 30000);
@@ -250,11 +267,11 @@ static void BenchDiv2() {
 
     total_sec += t.Seconds();
     if (i % 10 == 0) {
-      printf("%d/%lld\n", i, iters);
+      printf("%d/%d\n", i, iters);
     }
   }
 
-  printf("%lld iters in %.5fs = %.3f/s\n",
+  printf("%d iters in %.5fs = %.3f/s\n",
          iters, total_sec, iters / total_sec);
 }
 

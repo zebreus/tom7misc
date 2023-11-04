@@ -963,7 +963,7 @@ void BigInt::FactorUsingDivision(mpz_t t,
     InsertFactorUI(factors, 2, e);
   }
 
-  for (int i = 1; i <= (int)PRIMES.size(); /* in loop */) {
+  for (int i = 1; i < (int)PRIMES.size(); /* in loop */) {
     unsigned long int p = PRIMES[i];
     if (!mpz_divisible_ui_p(t, p)) {
       i++;
@@ -1213,6 +1213,10 @@ BigInt::PrimeFactorizationInternal(mpz_t x) {
 
 std::vector<std::pair<BigInt, int>>
 BigInt::PrimeFactorization(const BigInt &x, int64_t max_factor_ignored) {
+
+  // XXXX
+  printf("Factoring [%s]\n", x.ToString().c_str());
+
   mpz_t tmp;
   mpz_init(tmp);
   mpz_set(tmp, x.rep);
