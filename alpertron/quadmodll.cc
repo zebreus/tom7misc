@@ -938,8 +938,7 @@ struct QuadModLL {
 
         // Step 3.
         // Get z <- x^q (mod p) in Montgomery notation.
-        ModPowBaseInt(params, modulus_length, TheModulus,
-                      x, QQ, Aux4.limbs);  // z
+        ModPowBaseInt(params, x, QQ, Aux4.limbs);  // z
 
         // Step 4.
         const int NumberLengthBytes = modulus_length * (int)sizeof(limb);

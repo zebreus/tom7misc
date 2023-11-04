@@ -49,9 +49,9 @@ void ModMult(const MontgomeryParams &params,
              limb *product);
 
 void ModPowBaseInt(const MontgomeryParams &params,
-                   int modulus_length, const limb *modulus,
                    int base, const BigInt &Exp,
                    limb *power);
+
 void ModPow(const MontgomeryParams &params,
             int modulus_length, const limb *modulus,
             const limb *base, const limb *exp, int nbrGroupsExp, limb *power);

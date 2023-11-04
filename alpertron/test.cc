@@ -310,10 +310,7 @@ static void WrapPowBaseInt(const BigInt &Modulus,
     GetMontgomeryParams(modulus_length, TheModulus);
 
   limb modpow[params->modulus_length];
-  ModPowBaseInt(*params, params->modulus_length,
-                params->modulus.data(),
-                base, Exp,
-                modpow);
+  ModPowBaseInt(*params, base, Exp, modpow);
 
   BigInt Result = LimbsToBigInt(modpow, params->modulus_length);
   CHECK(Result == Expected) <<
@@ -335,6 +332,60 @@ static void TestModPowBaseInt() {
 
 }
 
+static void WrapModPow(const BigInt &Modulus,
+                       const BigInt &Base,
+                       const BigInt &Exp,
+                       const BigInt &Expected) {
+
+  limb TheModulus[MAX_LEN];
+  const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
+  TheModulus[modulus_length].x = 0;
+
+  const std::unique_ptr<MontgomeryParams> params =
+    GetMontgomeryParams(modulus_length, TheModulus);
+
+  limb base[params->modulus_length];
+  BigIntToFixedLimbs(Base, params->modulus_length, base);
+
+  limb modpow[params->modulus_length];
+  BigInteger e;
+  BigIntToBigInteger(Exp, &e);
+  ModPow(*params, params->modulus_length, params->modulus.data(),
+         base, e.limbs, e.nbrLimbs, modpow);
+
+  BigInt Result = LimbsToBigInt(modpow, params->modulus_length);
+  CHECK(Result == Expected) <<
+    "\nWanted  " << Expected.ToString() <<
+    "\nBut got " << Result.ToString();
+}
+
+
+static void TestModPow() {
+  // From BaseInt test cases.
+
+  WrapModPow(BigInt(333), BigInt(2), BigInt(1234), BigInt(25));
+
+  // Weird that it returns a different answer than the base int version.
+  // Bug? Or is the interface different because it assumes montgomery
+  // form for some args? In any case, this is what alpertron does.
+  WrapModPow(BigInt("1290387419827141"),
+             BigInt(8181), BigInt("128374817123451"),
+             BigInt("786025986329866"));
+
+  // (Power of two exponent, so this matches the BaseInt behavior.)
+  WrapModPow(
+      // 2^256
+      BigInt("115792089237316195423570985008687907853269984665640564039457584007913129639936"),
+      BigInt(1234567),
+      BigInt("12837481712345111111111111171881"),
+      BigInt("49719668333916770713555620214875638068519952572946181164707416399712219000519"));
+
+  WrapModPow(BigInt("917234897192387489127349817"),
+             BigInt("120374190872938741"),
+             BigInt("128374817123451"),
+             BigInt("11477246917995840350430635"));
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
@@ -344,6 +395,7 @@ int main(int argc, char **argv) {
   TestModMult();
   TestBIMDivision();
   TestModPowBaseInt();
+  TestModPow();
 
   printf("Explicit tests " AGREEN("OK") "\n");
   return 0;

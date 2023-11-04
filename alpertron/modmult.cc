@@ -215,7 +215,6 @@ void ModPow(const MontgomeryParams &params,
 }
 
 void ModPowBaseInt(const MontgomeryParams &params,
-                   int modulus_length, const limb *modulus,
                    int base, const BigInt &Exp,
                    limb* power) {
   BigInteger exp;
