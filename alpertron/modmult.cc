@@ -218,7 +218,6 @@ void ModPowBaseInt(const MontgomeryParams &params,
                    int modulus_length, const limb *modulus,
                    int base, const BigInt &Exp,
                    limb* power) {
-
   BigInteger exp;
   BigIntToBigInteger(Exp, &exp);
 
@@ -226,7 +225,7 @@ void ModPowBaseInt(const MontgomeryParams &params,
   // Port note: Original code copied 1 additional limb here. Just
   // seems wrong to me (power limbs should not need to exceed modulus
   // size); might be related to some superstitious zero padding?
-  int NumberLengthBytes = (modulus_length + 1) * (int)sizeof(limb);
+  int NumberLengthBytes = (params.modulus_length + 1) * (int)sizeof(limb);
   // power <- 1
   (void)memcpy(power, params.MontgomeryMultR1, NumberLengthBytes);
   for (int index = exp.nbrLimbs - 1; index >= 0; index--) {
@@ -236,7 +235,9 @@ void ModPowBaseInt(const MontgomeryParams &params,
               power, power,
               power);
       if (((unsigned int)groupExp & mask) != 0U) {
-        ModMultInt(power, base, power, modulus, modulus_length);
+        ModMultInt(power, base, power,
+                   params.modulus.data(),
+                   params.modulus_length);
       }
     }
   }

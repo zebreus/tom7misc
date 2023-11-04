@@ -293,7 +293,45 @@ static void TestBIMDivision() {
              BigInt("111111111111111111111111111111111"),
              BigInt("99"),
              BigInt("7"));
-#endif
+  #endif
+
+}
+
+static void WrapPowBaseInt(const BigInt &Modulus,
+                           int base,
+                           const BigInt &Exp,
+                           const BigInt &Expected) {
+
+  limb TheModulus[MAX_LEN];
+  const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
+  TheModulus[modulus_length].x = 0;
+
+  const std::unique_ptr<MontgomeryParams> params =
+    GetMontgomeryParams(modulus_length, TheModulus);
+
+  limb modpow[params->modulus_length];
+  ModPowBaseInt(*params, params->modulus_length,
+                params->modulus.data(),
+                base, Exp,
+                modpow);
+
+  BigInt Result = LimbsToBigInt(modpow, params->modulus_length);
+  CHECK(Result == Expected) <<
+    "\nWanted  " << Expected.ToString() <<
+    "\nBut got " << Result.ToString();
+}
+
+static void TestModPowBaseInt() {
+  WrapPowBaseInt(BigInt(333), 2, BigInt(1234), BigInt(25));
+  WrapPowBaseInt(BigInt("1290387419827141"),
+                 8181, BigInt("128374817123451"),
+                 BigInt("521768828887416"));
+  WrapPowBaseInt(
+      // 2^256
+      BigInt("115792089237316195423570985008687907853269984665640564039457584007913129639936"),
+      1234567,
+      BigInt("12837481712345111111111111171881"),
+      BigInt("49719668333916770713555620214875638068519952572946181164707416399712219000519"));
 
 }
 
@@ -305,6 +343,7 @@ int main(int argc, char **argv) {
   TestSubModN();
   TestModMult();
   TestBIMDivision();
+  TestModPowBaseInt();
 
   printf("Explicit tests " AGREEN("OK") "\n");
   return 0;
