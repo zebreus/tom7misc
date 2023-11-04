@@ -19,6 +19,8 @@
 #include "util.h"
 #include "auto-histo.h"
 #include "crypt/lfsr.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 static constexpr int MAX_COEFF = 12;
 // Positive and negative, zero
@@ -74,6 +76,9 @@ static inline int64_t PosNeg(int64_t center, int64_t n) {
 }
 
 static void RunGrid() {
+  std::string seed = StringPrintf("grid.%lld", time(nullptr));
+  ArcFour rc(seed);
+
   for (int i = 0; i < 80; i++)
     printf("\n");
 
@@ -104,15 +109,32 @@ static void RunGrid() {
         int64_t e =  0 + arg[4];
         */
 
-        int64_t a = PosNeg(0, arg[0] + 131072);
+        // int64_t a = PosNeg(0, arg[0] + 131072);
+        int64_t a = PosNeg(0, arg[0]);
         int64_t b = PosNeg(0, arg[1]);
         int64_t c = PosNeg(0, arg[2]);
         int64_t d = PosNeg(0, arg[3]);
         int64_t e = PosNeg(0, arg[4]);
 
-        // Known bad.
-        if (a == 65536 && b == 0 && c == -3 && d == 5 && e == -5)
-          return;
+        switch (rc.Byte() & 31) {
+        case 0:
+          a += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+          break;
+        case 1:
+          b += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+          break;
+        case 2:
+          c += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+          break;
+        case 3:
+          d += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+          break;
+        case 4:
+          e += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+          break;
+        default:
+          break;
+        }
 
         BigInt A(a);
         BigInt B(b);
@@ -121,18 +143,6 @@ static void RunGrid() {
         BigInt E(e);
 
         BigInt F_example;
-
-        const uint64_t hash64 = SEED ^
-          (uint64_t)a ^
-          std::rotl((uint64_t)b, 51) ^
-          std::rotl((uint64_t)c, 17) ^
-          (std::rotl((uint64_t)d, 33) +
-           std::rotl((uint64_t)e, 23));
-
-        uint32_t hash_hi = (uint32_t)(hash64 >> 32);
-        if (!hash_hi) hash_hi++;
-        uint32_t hash_lo = (uint32_t)hash64;
-        if (!hash_lo) hash_lo--;
 
         std::vector<double> local_timing;
 
@@ -144,8 +154,8 @@ static void RunGrid() {
 
           if (COMPUTE_F) {
             // Pick x and y "randomly"
-            hash_hi = LFSRNext32((uint32_t)(hash_hi));
-            hash_lo = LFSRNext32((uint32_t)(hash_lo));
+            const uint32_t hash_hi = Rand32(&rc);
+            const uint32_t hash_lo = Rand32(&rc);
 
             static constexpr uint32_t XY_MASK = (1ULL << XY_BITS) - 1;
             static constexpr uint32_t XY_OFF = (1ULL << (XY_BITS - 1));
@@ -363,9 +373,12 @@ static void RunGrid() {
             double sec = start_time.Seconds();
             double qps = done / sec;
             double spq = sec / done;
-            std::string timing = StringPrintf("%.3f solved/sec (%s ea.)",
+            std::string timing = StringPrintf(AWHITE("%.3f")
+                                              " solved/sec (%s ea.) "
+                                              AGREY(" Seed: [%s]"),
                                               qps,
-                                              ANSI::Time(spq).c_str());
+                                              ANSI::Time(spq).c_str(),
+                                              seed.c_str());
             std::string counters = CounterString();
             std::string bar =
               ANSI::ProgressBar(

@@ -1143,7 +1143,10 @@ std::unique_ptr<MontgomeryParams>
 GetMontgomeryParams(int modulus_length, const limb *modulus) {
   std::unique_ptr<MontgomeryParams> params =
     std::make_unique<MontgomeryParams>();
-  int j;
+  BigInt m = LimbsToBigInt(modulus, modulus_length);
+  // printf("GMP %s\n", m.ToString().c_str());
+
+
   CHECK(modulus[modulus_length].x == 0);
   params->powerOf2Exponent = 0;    // Indicate not power of 2 in advance.
   params->NumberLengthR1 = 1;
@@ -1159,27 +1162,37 @@ GetMontgomeryParams(int modulus_length, const limb *modulus) {
     return params;
   }
 
-  // Check whether modulus is a power of 2.
-  for (j = 0; j < modulus_length - 1; j++) {
-    if (modulus[j].x != 0) {
-      break;
-    }
-  }
+  // PERF: Faster way to do this would be to check popcount
+  // of modulus[modulus_length - 1] == 1. If so, then check
+  // zeroes for the other words, and countr_zero for the
+  // power size.
 
-  if (j == modulus_length - 1) {
-    // modulus is a power of 2.
-    int value = modulus[modulus_length - 1].x;
-    for (j = 0; j < BITS_PER_GROUP; j++) {
-      if (value == 1) {
-        const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-        params->powerOf2Exponent = ((modulus_length - 1) * BITS_PER_GROUP) + j;
-        (void)memset(params->MontgomeryMultR1, 0, NumberLengthBytes);
-        (void)memset(params->MontgomeryMultR2, 0, NumberLengthBytes);
-        params->MontgomeryMultR1[0].x = 1;
-        params->MontgomeryMultR2[0].x = 1;
-        return params;
+  // Check whether modulus is a power of 2.
+  {
+    int j;
+    for (j = 0; j < modulus_length - 1; j++) {
+      if (modulus[j].x != 0) {
+        break;
       }
-      value >>= 1;
+    }
+
+    if (j == modulus_length - 1) {
+      // Only the last word modulus is a power of 2.
+      int value = modulus[modulus_length - 1].x;
+      for (int j = 0; j < BITS_PER_GROUP; j++) {
+        if (value == 1) {
+          const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+          params->powerOf2Exponent = ((modulus_length - 1) * BITS_PER_GROUP) + j;
+          (void)memset(params->MontgomeryMultR1, 0, NumberLengthBytes);
+          (void)memset(params->MontgomeryMultR2, 0, NumberLengthBytes);
+          params->MontgomeryMultR1[0].x = 1;
+          params->MontgomeryMultR2[0].x = 1;
+
+          printf("powerof2 exponent: %d\n", params->powerOf2Exponent);
+          return params;
+        }
+        value >>= 1;
+      }
     }
   }
 
@@ -1190,7 +1203,7 @@ GetMontgomeryParams(int modulus_length, const limb *modulus) {
   params->MontgomeryMultN[modulus_length].x = 0;
   // Compute MontgomeryMultR1 as 1 in Montgomery notation,
   // this is 2^(modulus_length*BITS_PER_GROUP) % modulus.
-  j = modulus_length;
+  int j = modulus_length;
   params->MontgomeryMultR1[j].x = 1;
   do {
     j--;
@@ -1416,10 +1429,10 @@ void ModMultInternal(const MontgomeryParams &params,
   }
   // if (true || modulus_length > MONTGOMERY_MULT_THRESHOLD)
   {
-    limb aux[MAX_LEN], aux2[MAX_LEN];
+    limb aux[2 * modulus_length], aux2[2 * modulus_length];
     // Port note: Original code uses product instead of temporary,
     // but then we'd require the product to be 2*modulus_length.
-    limb aux3[MAX_LEN];
+    limb aux3[2 * modulus_length];
     // Compute T
     MultiplyLimbs(factor1, factor2, aux3, modulus_length);
     // Compute m
@@ -1441,8 +1454,3 @@ void ModMultInternal(const MontgomeryParams &params,
     return;
   }
 }
-
-/*
-void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
-                   int len);
-*/
