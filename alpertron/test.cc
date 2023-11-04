@@ -38,7 +38,7 @@ static void Montgomery() {
   BigIntToFixedLimbs(FirstFactor, modulus_length, f1);
   BigIntToFixedLimbs(SecondFactor, modulus_length, f2);
   limb product[MAX_LEN];
-  ModMult(*params, f1, f2, modulus_length, TheModulus, product);
+  ModMult(*params, f1, f2, product);
 
   BigInt Product = LimbsToBigInt(product, modulus_length);
 
@@ -96,7 +96,7 @@ static void WrapModMult(const BigInt &A,
   CHECK(LimbsToBigInt(alimbs, modulus_length) == A);
   CHECK(LimbsToBigInt(blimbs, modulus_length) == B);
 
-  ModMult(*params, alimbs, blimbs, modulus_length, TheModulus, out);
+  ModMult(*params, alimbs, blimbs, out);
 
   // XXX check properties! We would need to convert back to
   // standard form though; the arguments and result are in

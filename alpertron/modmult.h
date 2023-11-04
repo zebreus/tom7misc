@@ -38,13 +38,14 @@ GetMontgomeryParamsPowerOf2(int powerOf2,
                             // computed from the power of 2
                             int *modulus_length);
 
-// If modulus_length > 1, then everything is in montgomery form; otherwise
-// they are just regular numbers. (IMO it would be better if params determined
-// the form.)
+// The form of the numbers is determined by the params, so to use this you
+// must be consistently using params. If modulus_length == 1,
+// we assume regular numbers. If a power of 2, same (but this uses a fast
+// method, as mod by power of 2 is easy). Otherwise, everything is in
+// montgomery form.
 // product <- factor1 * factor2 mod modulus
 void ModMult(const MontgomeryParams &params,
              const limb *factor1, const limb *factor2,
-             int modulus_length, const limb *modulus,
              limb *product);
 
 void ModPowBaseInt(const MontgomeryParams &params,
