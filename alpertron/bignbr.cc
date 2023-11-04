@@ -325,10 +325,10 @@ void CompressLimbsBigInteger(int number_length,
     if (nbrLimbs > number_length) {
       (void)memcpy(ptrValues, bigint->limbs, numberLengthBytes);
     } else {
-      int nbrLimbsBytes = nbrLimbs * (int)sizeof(limb);
+      const int nbrLimbsBytes = nbrLimbs * (int)sizeof(limb);
       (void)memcpy(ptrValues, bigint->limbs, nbrLimbsBytes);
-      nbrLimbsBytes = numberLengthBytes - nbrLimbsBytes;
-      (void)memset(ptrValues + nbrLimbs, 0, nbrLimbsBytes);
+      // Padding.
+      (void)memset(ptrValues + nbrLimbs, 0, numberLengthBytes - nbrLimbsBytes);
     }
   }
 }

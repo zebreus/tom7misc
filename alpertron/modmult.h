@@ -22,6 +22,8 @@ struct MontgomeryParams {
   int modulus_length = 0;
   // modulus_length + 1 limbs, with a zero at the end.
   std::vector<limb> modulus;
+  // XXX this is just used during initialization. Maybe we can
+  // get rid of it.
   int NumberLengthR1 = 0;
   // Indicates that the modulus is a power of two.
   int powerOf2Exponent = 0;
@@ -40,10 +42,12 @@ GetMontgomeryParamsPowerOf2(int powerOf2,
 // the form.)
 // XXX this is probably wrong for power of 2 modulus
 // product <- factor1 * factor2 mod modulus
-void ModMult(const MontgomeryParams &params,
+void ModMultInternal(const MontgomeryParams &params,
              const limb *factor1, const limb *factor2,
              int modulus_length, const limb *modulus,
-             limb *product);
+                     limb *product, const char *caller, int line);
+
+#define ModMult(a, b, c, d, e, f) ModMultInternal(a, b, c, d, e, f, __FILE__, __LINE__)
 
 void ModPowBaseInt(const MontgomeryParams &params,
                    int modulus_length, const limb *modulus,

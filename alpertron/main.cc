@@ -37,6 +37,7 @@ int main(int argc, char* argv[]) {
   BigInt e(argv[5]);
   BigInt f(argv[6]);
 
+  /*
   printf("\n** Quad %s %s %s %s %s %s\n",
          a.ToString().c_str(),
          b.ToString().c_str(),
@@ -44,6 +45,7 @@ int main(int argc, char* argv[]) {
          d.ToString().c_str(),
          e.ToString().c_str(),
          f.ToString().c_str());
+  */
 
   static constexpr int TIMES = 1;
   if (TIMES > 1)
