@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <vector>
 #include <cmath>
+#include <cassert>
 
 #if __cplusplus >= 201703L
 // shared_mutex only available in C++17 and later.
