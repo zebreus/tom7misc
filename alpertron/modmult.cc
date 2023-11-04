@@ -33,6 +33,7 @@
 #include "base/stringprintf.h"
 
 static constexpr bool SELF_CHECK = true;
+static constexpr bool VERBOSE = false;
 
 [[maybe_unused]]
 static std::string LimbString(limb *limbs, size_t num) {
@@ -134,7 +135,7 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
                           int modulus_length, const limb *modulus,
                           const BigInt &base_, const BigInt &exponent_) {
 
-  {
+  if (VERBOSE) {
     // BigInt Base = BigIntegerToBigInt(base);
     // BigInt Exp = BigIntegerToBigInt(exponent);
     BigInt Modulus = LimbsToBigInt(modulus, modulus_length);
@@ -170,8 +171,10 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
   // (This appears to compute tmp6 <- 1 * tmp5 % modulus ?
   // I guess 1 is not literally the identity because we do
   // the multiplication in montgomery form. -tom7)
-  printf("memset %d bytes (modulus_length = %d)\n", lenBytes, modulus_length);
-  fflush(stdout);
+  if (VERBOSE) {
+    printf("memset %d bytes (modulus_length = %d)\n", lenBytes, modulus_length);
+    fflush(stdout);
+  }
   (void)memset(tmp4, 0, lenBytes);
   tmp4[0].x = 1;
   ModMult(params,
@@ -192,8 +195,10 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
 void ModPow(const MontgomeryParams &params,
             int modulus_length, const limb *modulus,
             const limb* base, const limb* exp, int nbrGroupsExp, limb* power) {
-  // Why plus 1??
-  int lenBytes = (modulus_length + 1) * (int)sizeof(limb);
+  // Port note: Original code copied 1 additional limb here. Just
+  // seems wrong to me (power limbs should not need to exceed modulus
+  // size); might be related to some superstitious zero padding?
+  int lenBytes = modulus_length * (int)sizeof(limb);
   (void)memcpy(power, params.MontgomeryMultR1, lenBytes);  // power <- 1
   for (int index = nbrGroupsExp - 1; index >= 0; index--) {
     int groupExp = (exp + index)->x;
@@ -220,6 +225,10 @@ void ModPowBaseInt(const MontgomeryParams &params,
   BigInteger exp;
   BigIntToBigInteger(Exp, &exp);
 
+  // XXX switch to modulus_length?
+  // Port note: Original code copied 1 additional limb here. Just
+  // seems wrong to me (power limbs should not need to exceed modulus
+  // size); might be related to some superstitious zero padding?
   int NumberLengthBytes = (modulus_length + 1) * (int)sizeof(limb);
   // power <- 1
   (void)memcpy(power, params.MontgomeryMultR1, NumberLengthBytes);
@@ -790,13 +799,14 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
                              BigInt Num, BigInt Den,
                              const BigInt &Mod) {
 
-  const bool verbose = false && (Num > Mod || Den > Mod);
+  const bool verbose = VERBOSE && (Num > Mod || Den > Mod);
 
-  if (verbose)
-  printf("With (params), %s / %s mod %s",
-         Num.ToString().c_str(),
-         Den.ToString().c_str(),
-         Mod.ToString().c_str());
+  if (verbose) {
+    printf("With (params), %s / %s mod %s",
+           Num.ToString().c_str(),
+           Den.ToString().c_str(),
+           Mod.ToString().c_str());
+  }
 
   // PERF: Fewer conversions of the modulus please!
   // PERF: Can dynamically size this, at least.
@@ -854,9 +864,10 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
 
   BigInt ret = BigIntegerToBigInt(&z);
 
-  if (verbose)
+  if (verbose) {
     printf("  = %s\n",
            ret.ToString().c_str());
+  }
 
   return ret;
 }
@@ -1354,14 +1365,16 @@ void ModMultInternal(const MontgomeryParams &params,
                       (params.modulus_length + 1) * sizeof (limb)));
   }
 
-  const BigInt f1 = LimbsToBigInt(factor1, modulus_length);
-  const BigInt f2 = LimbsToBigInt(factor2, modulus_length);
-  const BigInt modulus = LimbsToBigInt(modulus_array, modulus_length);
+  if (VERBOSE) {
+    const BigInt f1 = LimbsToBigInt(factor1, modulus_length);
+    const BigInt f2 = LimbsToBigInt(factor2, modulus_length);
+    const BigInt modulus = LimbsToBigInt(modulus_array, modulus_length);
 
-  printf("[%d] %s * %s mod %s = ",
-         modulus_length,
-         f1.ToString().c_str(), f2.ToString().c_str(),
-         modulus.ToString().c_str());
+    printf("[%d] %s * %s mod %s = ",
+           modulus_length,
+           f1.ToString().c_str(), f2.ToString().c_str(),
+           modulus.ToString().c_str());
+  }
 
   if (params.powerOf2Exponent != 0) {
     BigInteger tmpFact1, tmpFact2;
@@ -1373,11 +1386,12 @@ void ModMultInternal(const MontgomeryParams &params,
     (product + (params.powerOf2Exponent / BITS_PER_GROUP))->x &=
       (1 << (params.powerOf2Exponent % BITS_PER_GROUP)) - 1;
 
-    const BigInt ret = LimbsToBigInt(product, modulus_length);
-
-    printf("(A) %s (%s:%d)\n",
-           ret.ToString().c_str(),
-           caller, line);
+    if (VERBOSE) {
+      const BigInt ret = LimbsToBigInt(product, modulus_length);
+      printf("(A) %s (%s:%d)\n",
+             ret.ToString().c_str(),
+             caller, line);
+    }
 
     return;
   }
@@ -1391,30 +1405,38 @@ void ModMultInternal(const MontgomeryParams &params,
     BigInt r = BigInt::Mod(BigInt::Times(f1, f2), modulus);
     BigIntToFixedLimbs(r, modulus_length, product);
 
-    const BigInt ret = LimbsToBigInt(product, modulus_length);
-
-    printf("(B) %s (%s:%d)\n",
-           ret.ToString().c_str(),
-           caller, line);
+    if (VERBOSE) {
+      const BigInt ret = LimbsToBigInt(product, modulus_length);
+      printf("(B) %s (%s:%d)\n",
+             ret.ToString().c_str(),
+             caller, line);
+    }
 
     return;
   }
   // if (true || modulus_length > MONTGOMERY_MULT_THRESHOLD)
   {
     limb aux[MAX_LEN], aux2[MAX_LEN];
+    // Port note: Original code uses product instead of temporary,
+    // but then we'd require the product to be 2*modulus_length.
+    limb aux3[MAX_LEN];
     // Compute T
-    MultiplyLimbs(factor1, factor2, product, modulus_length);
+    MultiplyLimbs(factor1, factor2, aux3, modulus_length);
     // Compute m
-    MultiplyLimbs(product, params.MontgomeryMultN, aux, modulus_length);
+    MultiplyLimbs(aux3, params.MontgomeryMultN, aux, modulus_length);
     // Compute mN
     MultiplyLimbs(aux, modulus_array, aux2, modulus_length);
-    endBigModmult(aux2, product, modulus_length, modulus_array);
+    endBigModmult(aux2, aux3, modulus_length, modulus_array);
 
-    const BigInt ret = LimbsToBigInt(product, modulus_length);
+    // Copy back to product.
+    memcpy(product, aux3, modulus_length * sizeof(limb));
 
-    printf("(C) %s (%s:%d)\n",
-           ret.ToString().c_str(),
-           caller, line);
+    if (VERBOSE) {
+      const BigInt ret = LimbsToBigInt(product, modulus_length);
+      printf("(C) %s (%s:%d)\n",
+             ret.ToString().c_str(),
+             caller, line);
+    }
 
     return;
   }

@@ -37,7 +37,6 @@ int main(int argc, char* argv[]) {
   BigInt e(argv[5]);
   BigInt f(argv[6]);
 
-  /*
   printf("\n** Quad %s %s %s %s %s %s\n",
          a.ToString().c_str(),
          b.ToString().c_str(),
@@ -45,7 +44,6 @@ int main(int argc, char* argv[]) {
          d.ToString().c_str(),
          e.ToString().c_str(),
          f.ToString().c_str());
-  */
 
   static constexpr int TIMES = 1;
   if (TIMES > 1)
@@ -53,7 +51,7 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < TIMES; i++) {
     std::string output;
     QuadBigInt(a, b, c, d, e, f, &output);
-    if (i == TIMES- - 1)
+    if (i == TIMES - 1)
       (void)printf("%s\n", output.c_str());
   }
 
