@@ -29,9 +29,10 @@ struct MontgomeryParams {
   int powerOf2Exponent = 0;
 };
 
+// modulus must have a 0 limb after its limbs (not sure why).
 std::unique_ptr<MontgomeryParams>
 GetMontgomeryParams(int modulus_length, const limb *modulus);
-// No coverage of this function, and it's probably broken right now.
+// No coverage of this function; it may be broken.
 std::unique_ptr<MontgomeryParams>
 GetMontgomeryParamsPowerOf2(int powerOf2,
                             // computed from the power of 2
@@ -40,14 +41,11 @@ GetMontgomeryParamsPowerOf2(int powerOf2,
 // If modulus_length > 1, then everything is in montgomery form; otherwise
 // they are just regular numbers. (IMO it would be better if params determined
 // the form.)
-// XXX this is probably wrong for power of 2 modulus
 // product <- factor1 * factor2 mod modulus
-void ModMultInternal(const MontgomeryParams &params,
+void ModMult(const MontgomeryParams &params,
              const limb *factor1, const limb *factor2,
              int modulus_length, const limb *modulus,
-                     limb *product, const char *caller, int line);
-
-#define ModMult(a, b, c, d, e, f) ModMultInternal(a, b, c, d, e, f, __FILE__, __LINE__)
+             limb *product);
 
 void ModPowBaseInt(const MontgomeryParams &params,
                    int modulus_length, const limb *modulus,

@@ -23,6 +23,7 @@
 #include <stdint.h>
 #include <assert.h>
 
+#include <bit>
 #include <memory>
 
 #include "bignbr.h"
@@ -1144,8 +1145,6 @@ GetMontgomeryParams(int modulus_length, const limb *modulus) {
   std::unique_ptr<MontgomeryParams> params =
     std::make_unique<MontgomeryParams>();
   BigInt m = LimbsToBigInt(modulus, modulus_length);
-  // printf("GMP %s\n", m.ToString().c_str());
-
 
   CHECK(modulus[modulus_length].x == 0);
   params->powerOf2Exponent = 0;    // Indicate not power of 2 in advance.
@@ -1166,6 +1165,40 @@ GetMontgomeryParams(int modulus_length, const limb *modulus) {
   // of modulus[modulus_length - 1] == 1. If so, then check
   // zeroes for the other words, and countr_zero for the
   // power size.
+
+  {
+    static_assert(sizeof (limb) == 4);
+    const uint32_t value = modulus[modulus_length - 1].x;
+    if (std::popcount<uint32_t>(value) == 1) {
+      // Single bit in most significant word. Are the other words
+      // zero?
+      const bool all_zero = [&]() {
+          for (int j = 0; j < modulus_length - 1; j++)
+            if (modulus[j].x != 0)
+              return false;
+          return true;
+        }();
+
+      if (all_zero) {
+        // Modulus is a power of 2 then.
+
+        int msw_zero_bits = std::countr_zero<uint32_t>(value);
+
+        params->powerOf2Exponent =
+          (modulus_length - 1) * BITS_PER_GROUP +
+          msw_zero_bits;
+
+        const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+        (void)memset(params->MontgomeryMultR1, 0, NumberLengthBytes);
+        (void)memset(params->MontgomeryMultR2, 0, NumberLengthBytes);
+        params->MontgomeryMultR1[0].x = 1;
+        params->MontgomeryMultR2[0].x = 1;
+
+        printf("powerof2 exponent: %d\n", params->powerOf2Exponent);
+        return params;
+      }
+    }
+  }
 
   // Check whether modulus is a power of 2.
   {
@@ -1253,81 +1286,6 @@ void SubtBigNbrModN(const limb *num1, const limb *num2, limb *diff,
   BigIntToFixedLimbs(r, number_length, diff);
 }
 
-#if 0
-static void endBigModmult(const limb *prodNotAdjusted, int number_length,
-                          const limb *modulus_array, limb *product) {
-  unsigned int cy = 0;
-  // Compute hi(T) - hi(mN)
-  // Where hi(number) is the high half of number.
-  int index = number_length;
-  for (int count = 0; count < number_length; count++) {
-    cy = (unsigned int)(product + index)->x -
-      (unsigned int)(prodNotAdjusted+index)->x -
-      (cy >> BITS_PER_GROUP);
-    (product + count)->x = UintToInt(cy & MAX_VALUE_LIMB);
-    index++;
-  }
-
-  // Check whether this number is less than zero.
-  if ((int)cy < 0) {
-    // The number is less than zero. Add TestNbr.
-    cy = 0;
-    for (int count = 0; count < number_length; count++) {
-      cy = (unsigned int)(product + count)->x +
-        (unsigned int)modulus_array[count].x +
-        (cy >> BITS_PER_GROUP);
-      (product + count)->x = UintToInt(cy & MAX_VALUE_LIMB);
-    }
-  }
-}
-
-
-
-  if (number_length <= 1) {
-    BigInt f1 = LimbsToBigInt(factor1, number_length);
-    BigInt f2 = LimbsToBigInt(factor2, number_length);
-
-    BigInt modulus = LimbsToBigInt(modulus_array, number_length);
-    // Hmm, no BigInt modular multiplication :/
-    BigInt r = BigInt::Mod(BigInt::Times(f1, f2), modulus);
-    BigIntToFixedLimbs(r, number_length, product);
-
-  } else {
-    // Note that we have no coverage for number_length > 3!
-    // if (number_length > 3)
-    //   fprintf(stderr, "montgomery coverage %d\n", number_length);
-
-    // In Montgomery form.
-    // All MultiplyLimbs does is multiply using BigInt, so we can
-    // probably just do the first several steps without converting.
-    limb aux[number_length * 2], aux2[number_length * 2];
-    // limb aux3[number_length * 2];
-
-    // Couple problems here:
-    //   Sometimes 'product' is one of the factors. In that case
-    //   we get the wrong result when we use it as an intermediate,
-    //   right? I guess the two factors are dead after that first
-    //   call?
-    //   Need to be careful about the size of the buffer, too.
-    limb *dest = product;
-    // memset(dest, 0, number_length * sizeof (limb));
-
-    // Port note: This used to use product as a temporary, but
-    // product may only have space for number_length limbs.
-    // Compute T
-    MultiplyLimbs(factor1, factor2, dest, number_length);
-    // Compute m
-    MultiplyLimbs(dest, params.MontgomeryMultN, aux, number_length);
-    // Compute mN
-    MultiplyLimbs(aux, modulus_array, aux2, number_length);
-    // This is likely the last step of REDC, the conditional
-    // subtraction.
-    endBigModmult(aux2, number_length, modulus_array, product);
-  }
-}
-#endif
-
-
 static void endBigModmult(const limb *prodNotAdjusted, limb *product,
                           int modulus_length, const limb *modulus_array) {
   unsigned int cy = 0;
@@ -1336,7 +1294,8 @@ static void endBigModmult(const limb *prodNotAdjusted, limb *product,
   int index = modulus_length;
   int count;
   for (count = 0; count < modulus_length; count++) {
-    cy = (unsigned int)(product + index)->x - (unsigned int)(prodNotAdjusted+index)->x -
+    cy = (unsigned int)(product + index)->x -
+      (unsigned int)(prodNotAdjusted+index)->x -
       (cy >> BITS_PER_GROUP);
     (product + count)->x = UintToInt(cy & MAX_VALUE_LIMB);
     index++;
@@ -1346,7 +1305,8 @@ static void endBigModmult(const limb *prodNotAdjusted, limb *product,
     // The number is less than zero. Add TestNbr.
     cy = 0;
     for (count = 0; count < modulus_length; count++) {
-      cy = (unsigned int)(product + count)->x + (unsigned int)modulus_array[count].x +
+      cy = (unsigned int)(product + count)->x +
+        (unsigned int)modulus_array[count].x +
         (cy >> BITS_PER_GROUP);
       (product + count)->x = UintToInt(cy & MAX_VALUE_LIMB);
     }
@@ -1364,27 +1324,28 @@ static void endBigModmult(const limb *prodNotAdjusted, limb *product,
 // be in Montgomery form. It would be better if this were expressed
 // by the MontgomeryParams, not a shared secret.
 // https://en.wikipedia.org/wiki/Montgomery_modular_multiplication
-void ModMultInternal(const MontgomeryParams &params,
+void ModMult(const MontgomeryParams &params,
              const limb* factor1, const limb* factor2,
-             int modulus_length, const limb *modulus_array,
-             limb* product, const char *caller, int line) {
+             int modulus_length_, const limb *modulus_array_,
+             limb* product) {
 
   // These args are not necessary any more; they are part of the
   // Montgomery params now.
   if (SELF_CHECK) {
-    CHECK(modulus_length == params.modulus_length);
+    CHECK(modulus_length_ == params.modulus_length);
     CHECK(0 == memcmp(params.modulus.data(),
-                      modulus_array,
+                      modulus_array_,
                       (params.modulus_length + 1) * sizeof (limb)));
   }
 
   if (VERBOSE) {
-    const BigInt f1 = LimbsToBigInt(factor1, modulus_length);
-    const BigInt f2 = LimbsToBigInt(factor2, modulus_length);
-    const BigInt modulus = LimbsToBigInt(modulus_array, modulus_length);
+    const BigInt f1 = LimbsToBigInt(factor1, params.modulus_length);
+    const BigInt f2 = LimbsToBigInt(factor2, params.modulus_length);
+    const BigInt modulus = LimbsToBigInt(params.modulus.data(),
+                                         params.modulus_length);
 
     printf("[%d] %s * %s mod %s = ",
-           modulus_length,
+           params.modulus_length,
            f1.ToString().c_str(), f2.ToString().c_str(),
            modulus.ToString().c_str());
   }
@@ -1392,63 +1353,68 @@ void ModMultInternal(const MontgomeryParams &params,
   if (params.powerOf2Exponent != 0) {
     BigInteger tmpFact1, tmpFact2;
     // TestNbr is a power of 2.
-    UncompressLimbsBigInteger(modulus_length, factor1, &tmpFact1);
-    UncompressLimbsBigInteger(modulus_length, factor2, &tmpFact2);
+    UncompressLimbsBigInteger(params.modulus_length, factor1, &tmpFact1);
+    UncompressLimbsBigInteger(params.modulus_length, factor2, &tmpFact2);
     (void)BigIntMultiply(&tmpFact1, &tmpFact2, &tmpFact1);
-    CompressLimbsBigInteger(modulus_length, product, &tmpFact1);
+    CompressLimbsBigInteger(params.modulus_length, product, &tmpFact1);
     (product + (params.powerOf2Exponent / BITS_PER_GROUP))->x &=
       (1 << (params.powerOf2Exponent % BITS_PER_GROUP)) - 1;
 
     if (VERBOSE) {
-      const BigInt ret = LimbsToBigInt(product, modulus_length);
-      printf("(A) %s (%s:%d)\n",
-             ret.ToString().c_str(),
-             caller, line);
+      const BigInt ret = LimbsToBigInt(product, params.modulus_length);
+      printf("(A) %s\n",
+             ret.ToString().c_str());
     }
 
     return;
   }
 
-  if (modulus_length <= 1) {
-    BigInt f1 = LimbsToBigInt(factor1, modulus_length);
-    BigInt f2 = LimbsToBigInt(factor2, modulus_length);
+  if (params.modulus_length <= 1) {
+    // PERF hot path. modulus_length of 0 should be impossible, so we
+    // could just be reading the ints and doing this native.
+    BigInt f1 = LimbsToBigInt(factor1, params.modulus_length);
+    BigInt f2 = LimbsToBigInt(factor2, params.modulus_length);
 
-    BigInt modulus = LimbsToBigInt(modulus_array, modulus_length);
+    BigInt modulus = LimbsToBigInt(params.modulus.data(),
+                                   params.modulus_length);
     // Hmm, no BigInt modular multiplication :/
     BigInt r = BigInt::Mod(BigInt::Times(f1, f2), modulus);
-    BigIntToFixedLimbs(r, modulus_length, product);
+    BigIntToFixedLimbs(r, params.modulus_length, product);
 
     if (VERBOSE) {
-      const BigInt ret = LimbsToBigInt(product, modulus_length);
-      printf("(B) %s (%s:%d)\n",
-             ret.ToString().c_str(),
-             caller, line);
+      const BigInt ret = LimbsToBigInt(product, params.modulus_length);
+      printf("(B) %s\n",
+             ret.ToString().c_str());
     }
 
     return;
   }
-  // if (true || modulus_length > MONTGOMERY_MULT_THRESHOLD)
+
   {
-    limb aux[2 * modulus_length], aux2[2 * modulus_length];
+    // PERF: All MultiplyLimbs does is multiply using BigInt, so we can
+    // probably just do the first several steps without converting.
+
+    limb aux[2 * params.modulus_length], aux2[2 * params.modulus_length];
     // Port note: Original code uses product instead of temporary,
     // but then we'd require the product to be 2*modulus_length.
-    limb aux3[2 * modulus_length];
+    limb aux3[2 * params.modulus_length];
     // Compute T
-    MultiplyLimbs(factor1, factor2, aux3, modulus_length);
+    MultiplyLimbs(factor1, factor2, aux3, params.modulus_length);
     // Compute m
-    MultiplyLimbs(aux3, params.MontgomeryMultN, aux, modulus_length);
+    MultiplyLimbs(aux3, params.MontgomeryMultN, aux, params.modulus_length);
     // Compute mN
-    MultiplyLimbs(aux, modulus_array, aux2, modulus_length);
-    endBigModmult(aux2, aux3, modulus_length, modulus_array);
+    MultiplyLimbs(aux, params.modulus.data(), aux2, params.modulus_length);
+    // This is likely the last step of REDC, the conditional
+    // subtraction.
+    endBigModmult(aux2, aux3, params.modulus_length, params.modulus.data());
 
     // Copy back to product.
-    memcpy(product, aux3, modulus_length * sizeof(limb));
+    memcpy(product, aux3, params.modulus_length * sizeof(limb));
 
     if (VERBOSE) {
-      const BigInt ret = LimbsToBigInt(product, modulus_length);
-      printf("(C) %s (%s:%d)\n",
-             ret.ToString().c_str(),
-             caller, line);
+      const BigInt ret = LimbsToBigInt(product, params.modulus_length);
+      printf("(C) %s\n",
+             ret.ToString().c_str());
     }
 
     return;
