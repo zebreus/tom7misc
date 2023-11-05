@@ -832,11 +832,13 @@ struct QuadModLL {
                      const BigInt &Base,
                      const BigInt &Prime) {
 
+    const int NumberLengthBytes =
+      params.modulus_length * (int)sizeof(limb);
+
     // XXX native
     BigInteger base;
     BigIntToBigInteger(Base, &base);
 
-    limb aux4[params.modulus_length];
     limb aux5[params.modulus_length];
     limb aux6[params.modulus_length];
     limb aux7[params.modulus_length];
@@ -847,10 +849,7 @@ struct QuadModLL {
       // prime mod 4 = 3
       // subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
 
-      return BigIntModularPower(params,
-                                params.modulus_length, params.modulus.data(),
-                                Base,
-                                (Prime + 1) >> 2);
+      return BigIntModularPower(params, Base, (Prime + 1) >> 2);
 
     } else {
       // BigInteger Q;
@@ -934,9 +933,6 @@ struct QuadModLL {
         // z
         BigInt Z = ModPowBaseInt(params, x, QQ);
 
-        const int NumberLengthBytes =
-          params.modulus_length * (int)sizeof(limb);
-
         // PERF We don't use aux4 (now Z) again, so this could just
         // be a substitution?
         // Step 4.
@@ -990,13 +986,13 @@ struct QuadModLL {
         toConvert = aux8;
       }
 
+      CHECK(toConvert == aux8 || toConvert == aux9);
+
       // Convert from Montgomery to standard notation.
-      const int NumberLengthBytes =
-        params.modulus_length * (int)sizeof(limb);
       // Convert power to standard notation.
-      (void)memset(aux4, 0, NumberLengthBytes);
-      aux4[0].x = 1;
-      ModMult(params, aux4, toConvert, toConvert);
+      (void)memset(aux7, 0, NumberLengthBytes);
+      aux7[0].x = 1;
+      ModMult(params, aux7, toConvert, toConvert);
 
       return LimbsToBigInt(toConvert, params.modulus_length);
     }

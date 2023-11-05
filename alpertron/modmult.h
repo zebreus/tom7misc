@@ -26,13 +26,19 @@ struct MontgomeryParams {
   // get rid of it. Other code behaves as though R1 is the same
   // length as modulus, which would make sense.
   int NumberLengthR1 = 0;
-  // Indicates that the modulus is a power of two.
+  // If nonzero, the modulus is this power of two.
   int powerOf2Exponent = 0;
 };
 
 // modulus must have a 0 limb after its limbs (not sure why).
 std::unique_ptr<MontgomeryParams>
 GetMontgomeryParams(int modulus_length, const limb *modulus);
+
+// Same, but just using a bigint for the modulus. The returned
+// parameters have the fixed modulus limbs and length.
+std::unique_ptr<MontgomeryParams>
+GetMontgomeryParams(const BigInt &Modulus);
+
 // No coverage of this function; it may be broken.
 std::unique_ptr<MontgomeryParams>
 GetMontgomeryParamsPowerOf2(int powerOf2,
@@ -68,7 +74,6 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
                              const BigInt &mod);
 
 BigInt BigIntModularPower(const MontgomeryParams &params,
-                          int modulus_length, const limb *modulus,
                           const BigInt &base, const BigInt &exponent);
 
 void AddBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *TestNbr,

@@ -133,15 +133,15 @@ static void ModMultInt(limb* factorBig, int factorInt, limb* result,
 // Assumes GetMontgomeryParams routine for modulus already called.
 // This works only for odd moduli.
 BigInt BigIntModularPower(const MontgomeryParams &params,
-                          int modulus_length, const limb *modulus,
                           const BigInt &base_, const BigInt &exponent_) {
 
   if (VERBOSE) {
     // BigInt Base = BigIntegerToBigInt(base);
     // BigInt Exp = BigIntegerToBigInt(exponent);
-    BigInt Modulus = LimbsToBigInt(modulus, modulus_length);
+    BigInt Modulus = LimbsToBigInt(params.modulus.data(),
+                                   params.modulus_length);
     printf("[%d] BIMP %s^%s mod %s\n",
-           modulus_length,
+           params.modulus_length,
            base_.ToString().c_str(),
            exponent_.ToString().c_str(),
            Modulus.ToString().c_str());
@@ -155,21 +155,22 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
   // Note we don't have any coverage with modulus_length > 3.
   // if (modulus_length > 3)
   //   fprintf(stderr, "BIMP coverage %d\n", modulus_length);
-  limb tmp5[modulus_length];
-  CompressLimbsBigInteger(modulus_length, tmp5, &base);
-  limb tmp6[modulus_length];
+  limb tmp5[params.modulus_length];
+  CompressLimbsBigInteger(params.modulus_length, tmp5, &base);
+  limb tmp6[params.modulus_length];
   // Convert base to Montgomery notation.
   ModMult(params, tmp5, params.MontgomeryMultR2, tmp6);
   ModPow(params, tmp6, exponent.limbs, exponent.nbrLimbs, tmp5);
 
-  const int lenBytes = modulus_length * (int)sizeof(limb);
-  limb tmp4[modulus_length];
+  const int lenBytes = params.modulus_length * (int)sizeof(limb);
+  limb tmp4[params.modulus_length];
   // Convert power to standard notation.
   // (This appears to compute tmp6 <- 1 * tmp5 % modulus ?
   // I guess 1 is not literally the identity because we do
   // the multiplication in montgomery form. -tom7)
   if (VERBOSE) {
-    printf("memset %d bytes (modulus_length = %d)\n", lenBytes, modulus_length);
+    printf("memset %d bytes (modulus_length = %d)\n",
+           lenBytes, params.modulus_length);
     fflush(stdout);
   }
   (void)memset(tmp4, 0, lenBytes);
@@ -178,7 +179,7 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
 
   // XXX PERF no, convert directly
   BigInteger power;
-  UncompressLimbsBigInteger(modulus_length, tmp6, &power);
+  UncompressLimbsBigInteger(params.modulus_length, tmp6, &power);
   return BigIntegerToBigInt(&power);
 }
 
@@ -1109,6 +1110,110 @@ static void AdjustModN(limb *Nbr, const limb *Modulus, int nbrLen) {
   }
 }
 
+// With modulus length and modulus filled in. Other fields in unspecified
+// state.
+static void InitMontgomeryParams(MontgomeryParams *params) {
+  CHECK((int)params->modulus.size() == params->modulus_length + 1);
+
+  // Unless we detect a power of two below (and it is more than one
+  // limb, etc.).
+  params->powerOf2Exponent = 0;
+  // This is probably dead.
+  params->NumberLengthR1 = 1;
+
+  // We don't bother with montgomery form for single-word numbers.
+  if (params->modulus_length == 1 && (params->modulus[0].x & 1) != 0) {
+    params->MontgomeryMultR1[0].x = 1;
+    params->MontgomeryMultR2[0].x = 1;
+    return;
+  }
+
+  // Check if the modulus is a power of two. First we do a quick check if
+  // the most significant word has a single bit set, then loop to check
+  // the less-significant words for zero.
+  {
+    static_assert(sizeof (limb) == 4);
+    const uint32_t value = params->modulus[params->modulus_length - 1].x;
+    if (std::popcount<uint32_t>(value) == 1) {
+      // Single bit in most significant word. Are the other words
+      // zero?
+      const bool all_zero = [&]() {
+          for (int j = 0; j < params->modulus_length - 1; j++)
+            if (params->modulus[j].x != 0)
+              return false;
+          return true;
+        }();
+
+      if (all_zero) {
+        // Modulus is a power of 2 then.
+
+        const int msw_zero_bits = std::countr_zero<uint32_t>(value);
+
+        params->powerOf2Exponent =
+          (params->modulus_length - 1) * BITS_PER_GROUP +
+          msw_zero_bits;
+
+        const int NumberLengthBytes =
+          params->modulus_length * (int)sizeof(limb);
+        (void)memset(params->MontgomeryMultR1, 0, NumberLengthBytes);
+        (void)memset(params->MontgomeryMultR2, 0, NumberLengthBytes);
+        params->MontgomeryMultR1[0].x = 1;
+        params->MontgomeryMultR2[0].x = 1;
+
+        return;
+      }
+    }
+  }
+
+  // Compute MontgomeryMultN as 1/modulus (mod 2^k) using Newton method,
+  // which doubles the precision for each iteration.
+  // In the formula above: k = BITS_PER_GROUP * modulus_length.
+  ComputeInversePower2(params->modulus.data(),
+                       params->MontgomeryMultN,
+                       params->modulus_length);
+
+  params->MontgomeryMultN[params->modulus_length].x = 0;
+
+  // Compute MontgomeryMultR1 as 1 in Montgomery notation,
+  // this is 2^(modulus_length*BITS_PER_GROUP) % modulus.
+  int j = params->modulus_length;
+  params->MontgomeryMultR1[j].x = 1;
+  do {
+    j--;
+    params->MontgomeryMultR1[j].x = 0;
+  } while (j > 0);
+  AdjustModN(params->MontgomeryMultR1,
+             params->modulus.data(),
+             params->modulus_length);
+
+  params->MontgomeryMultR1[params->modulus_length].x = 0;
+
+  const int PaddedNumberLengthBytes =
+    (params->modulus_length + 1) * (int)sizeof(limb);
+  (void)memcpy(params->MontgomeryMultR2, params->MontgomeryMultR1,
+               PaddedNumberLengthBytes);
+  for (params->NumberLengthR1 = params->modulus_length;
+       params->NumberLengthR1 > 0;
+       params->NumberLengthR1--) {
+    if (params->MontgomeryMultR1[params->NumberLengthR1 - 1].x != 0) {
+      break;
+    }
+  }
+
+  // Compute MontgomeryMultR2 as 2^(2*modulus_length*BITS_PER_GROUP) % modulus.
+  for (int i = params->modulus_length; i > 0; i--) {
+    const int NumberLengthBytes =
+      params->modulus_length * (int)sizeof(limb);
+    (void)memmove(&params->MontgomeryMultR2[1],
+                  &params->MontgomeryMultR2[0],
+                  NumberLengthBytes);
+    params->MontgomeryMultR2[0].x = 0;
+    AdjustModN(params->MontgomeryMultR2,
+               params->modulus.data(),
+               params->modulus_length);
+  }
+}
+
 // Let R be a power of 2 of at least len limbs.
 // Compute R1 = MontgomeryR1 and N = MontgomeryN using the formulas:
 // R1 = R mod M
@@ -1119,127 +1224,16 @@ std::unique_ptr<MontgomeryParams>
 GetMontgomeryParams(int modulus_length, const limb *modulus) {
   std::unique_ptr<MontgomeryParams> params =
     std::make_unique<MontgomeryParams>();
-  BigInt m = LimbsToBigInt(modulus, modulus_length);
+  // BigInt m = LimbsToBigInt(modulus, modulus_length);
 
   CHECK(modulus[modulus_length].x == 0);
-  params->powerOf2Exponent = 0;    // Indicate not power of 2 in advance.
-  params->NumberLengthR1 = 1;
 
   params->modulus_length = modulus_length;
   params->modulus.resize(modulus_length + 1);
   memcpy(params->modulus.data(), modulus,
          (modulus_length + 1) * sizeof (limb));
 
-  if (modulus_length == 1 && (modulus[0].x & 1) != 0) {
-    params->MontgomeryMultR1[0].x = 1;
-    params->MontgomeryMultR2[0].x = 1;
-    return params;
-  }
-
-  // PERF: Faster way to do this would be to check popcount
-  // of modulus[modulus_length - 1] == 1. If so, then check
-  // zeroes for the other words, and countr_zero for the
-  // power size.
-
-  {
-    static_assert(sizeof (limb) == 4);
-    const uint32_t value = modulus[modulus_length - 1].x;
-    if (std::popcount<uint32_t>(value) == 1) {
-      // Single bit in most significant word. Are the other words
-      // zero?
-      const bool all_zero = [&]() {
-          for (int j = 0; j < modulus_length - 1; j++)
-            if (modulus[j].x != 0)
-              return false;
-          return true;
-        }();
-
-      if (all_zero) {
-        // Modulus is a power of 2 then.
-
-        int msw_zero_bits = std::countr_zero<uint32_t>(value);
-
-        params->powerOf2Exponent =
-          (modulus_length - 1) * BITS_PER_GROUP +
-          msw_zero_bits;
-
-        const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-        (void)memset(params->MontgomeryMultR1, 0, NumberLengthBytes);
-        (void)memset(params->MontgomeryMultR2, 0, NumberLengthBytes);
-        params->MontgomeryMultR1[0].x = 1;
-        params->MontgomeryMultR2[0].x = 1;
-
-        printf("powerof2 exponent: %d\n", params->powerOf2Exponent);
-        return params;
-      }
-    }
-  }
-
-  // Check whether modulus is a power of 2.
-  {
-    int j;
-    for (j = 0; j < modulus_length - 1; j++) {
-      if (modulus[j].x != 0) {
-        break;
-      }
-    }
-
-    if (j == modulus_length - 1) {
-      // Only the last word modulus is a power of 2.
-      int value = modulus[modulus_length - 1].x;
-      for (int j = 0; j < BITS_PER_GROUP; j++) {
-        if (value == 1) {
-          const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-          params->powerOf2Exponent = ((modulus_length - 1) * BITS_PER_GROUP) + j;
-          (void)memset(params->MontgomeryMultR1, 0, NumberLengthBytes);
-          (void)memset(params->MontgomeryMultR2, 0, NumberLengthBytes);
-          params->MontgomeryMultR1[0].x = 1;
-          params->MontgomeryMultR2[0].x = 1;
-
-          printf("powerof2 exponent: %d\n", params->powerOf2Exponent);
-          return params;
-        }
-        value >>= 1;
-      }
-    }
-  }
-
-  // Compute MontgomeryMultN as 1/modulus (mod 2^k) using Newton method,
-  // which doubles the precision for each iteration.
-  // In the formula above: k = BITS_PER_GROUP * modulus_length.
-  ComputeInversePower2(modulus, params->MontgomeryMultN, modulus_length);
-  params->MontgomeryMultN[modulus_length].x = 0;
-  // Compute MontgomeryMultR1 as 1 in Montgomery notation,
-  // this is 2^(modulus_length*BITS_PER_GROUP) % modulus.
-  int j = modulus_length;
-  params->MontgomeryMultR1[j].x = 1;
-  do {
-    j--;
-    params->MontgomeryMultR1[j].x = 0;
-  } while (j > 0);
-  AdjustModN(params->MontgomeryMultR1, modulus, modulus_length);
-  params->MontgomeryMultR1[modulus_length].x = 0;
-  int NumberLengthBytes = (modulus_length + 1) * (int)sizeof(limb);
-  (void)memcpy(params->MontgomeryMultR2, params->MontgomeryMultR1,
-               NumberLengthBytes);
-  for (params->NumberLengthR1 = modulus_length;
-       params->NumberLengthR1 > 0;
-       params->NumberLengthR1--) {
-    if (params->MontgomeryMultR1[params->NumberLengthR1 - 1].x != 0) {
-      break;
-    }
-  }
-
-  // Compute MontgomeryMultR2 as 2^(2*modulus_length*BITS_PER_GROUP) % modulus.
-  for (int i = modulus_length; i > 0; i--) {
-    const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-    (void)memmove(&params->MontgomeryMultR2[1],
-                  &params->MontgomeryMultR2[0],
-                  NumberLengthBytes);
-    params->MontgomeryMultR2[0].x = 0;
-    AdjustModN(params->MontgomeryMultR2, modulus, modulus_length);
-  }
-
+  InitMontgomeryParams(params.get());
   return params;
 }
 
