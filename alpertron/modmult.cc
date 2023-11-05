@@ -986,6 +986,7 @@ BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
 // Find the inverse of value mod 2^(number_length*BITS_PER_GROUP)
 void ComputeInversePower2(const limb *value, limb *result, int number_length) {
   limb tmp[number_length * 2];
+  limb tmp2[number_length * 2];
   unsigned int Cy;
   int N = value->x;            // 2 least significant bits of inverse correct.
   int x = N;
@@ -993,10 +994,10 @@ void ComputeInversePower2(const limb *value, limb *result, int number_length) {
   x = x * (2 - (N * x));       // 8 least significant bits of inverse correct.
   x = x * (2 - (N * x));       // 16 least significant bits of inverse correct.
   x = x * (2 - (N * x));       // 32 least significant bits of inverse correct.
-  result->x = UintToInt((unsigned int)x & MAX_VALUE_LIMB);
+  tmp2->x = UintToInt((unsigned int)x & MAX_VALUE_LIMB);
 
   for (int currLen = 2; currLen < number_length; currLen <<= 1) {
-    MultiplyLimbs(value, result, tmp, currLen);    // tmp <- N * x
+    MultiplyLimbs(value, tmp2, tmp, currLen);    // tmp <- N * x
     Cy = 2U - (unsigned int)tmp[0].x;
     tmp[0].x = UintToInt(Cy & MAX_VALUE_LIMB);
 
@@ -1006,11 +1007,11 @@ void ComputeInversePower2(const limb *value, limb *result, int number_length) {
       tmp[j].x = UintToInt(Cy & MAX_VALUE_LIMB);
     }
     // tmp <- x * (2 - N * x)
-    MultiplyLimbs(result, tmp, result, currLen);
+    MultiplyLimbs(tmp2, tmp, tmp2, currLen);
   }
 
   // Perform last approximation to inverse.
-  MultiplyLimbs(value, result, tmp, number_length);    // tmp <- N * x
+  MultiplyLimbs(value, tmp2, tmp, number_length);    // tmp <- N * x
   Cy = 2U - (unsigned int)tmp[0].x;
   tmp[0].x = UintToInt(Cy & MAX_VALUE_LIMB);
   // tmp <- 2 - N * x
@@ -1019,7 +1020,8 @@ void ComputeInversePower2(const limb *value, limb *result, int number_length) {
     tmp[j].x = UintToInt(Cy & MAX_VALUE_LIMB);
   }
   // tmp <- x * (2 - N * x)
-  MultiplyLimbs(result, tmp, result, number_length);
+  MultiplyLimbs(tmp2, tmp, tmp2, number_length);
+  memcpy(result, tmp2, number_length * sizeof(limb));
 }
 
 std::unique_ptr<MontgomeryParams>
