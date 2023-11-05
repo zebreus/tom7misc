@@ -408,9 +408,7 @@ static void WrapModPow(const BigInt &Modulus,
   BigIntToFixedLimbs(Base, params->modulus_length, base);
 
   limb modpow[params->modulus_length];
-  BigInteger e;
-  BigIntToBigInteger(Exp, &e);
-  ModPow(*params, base, e.limbs, e.nbrLimbs, modpow);
+  ModPow(*params, base, Exp, modpow);
 
   BigInt Result = LimbsToBigInt(modpow, params->modulus_length);
   CHECK(Result == Expected) <<

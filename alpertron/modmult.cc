@@ -133,7 +133,7 @@ static void ModMultInt(limb* factorBig, int factorInt, limb* result,
 // Assumes GetMontgomeryParams routine for modulus already called.
 // This works only for odd moduli.
 BigInt BigIntModularPower(const MontgomeryParams &params,
-                          const BigInt &base_, const BigInt &exponent_) {
+                          const BigInt &Base, const BigInt &Exponent) {
 
   if (VERBOSE) {
     // BigInt Base = BigIntegerToBigInt(base);
@@ -142,25 +142,21 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
                                    params.modulus_length);
     printf("[%d] BIMP %s^%s mod %s\n",
            params.modulus_length,
-           base_.ToString().c_str(),
-           exponent_.ToString().c_str(),
+           Base.ToString().c_str(),
+           Exponent.ToString().c_str(),
            Modulus.ToString().c_str());
   }
-
-  // XXX PERF no, directly convert to limbs
-  BigInteger base, exponent;
-  BigIntToBigInteger(base_, &base);
-  BigIntToBigInteger(exponent_, &exponent);
 
   // Note we don't have any coverage with modulus_length > 3.
   // if (modulus_length > 3)
   //   fprintf(stderr, "BIMP coverage %d\n", modulus_length);
   limb tmp5[params.modulus_length];
-  CompressLimbsBigInteger(params.modulus_length, tmp5, &base);
+  BigIntToFixedLimbs(Base, params.modulus_length, tmp5);
+
   limb tmp6[params.modulus_length];
   // Convert base to Montgomery notation.
   ModMult(params, tmp5, params.MontgomeryMultR2, tmp6);
-  ModPow(params, tmp6, exponent.limbs, exponent.nbrLimbs, tmp5);
+  ModPow(params, tmp6, Exponent, tmp5);
 
   const int lenBytes = params.modulus_length * (int)sizeof(limb);
   limb tmp4[params.modulus_length];
@@ -188,7 +184,12 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
 //        nbrGroupsExp = number of limbs of exponent.
 // Output: power = power in Montgomery notation.
 void ModPow(const MontgomeryParams &params,
-            const limb* base, const limb* exp, int nbrGroupsExp, limb* power) {
+            const limb* base, const BigInt &Exp, limb* power) {
+  // We could probably extract bits directly?
+  const int nbrGroupsExp = BigIntNumLimbs(Exp);
+  limb exp[nbrGroupsExp];
+  BigIntToFixedLimbs(Exp, nbrGroupsExp, exp);
+
   // Port note: Original code copied 1 additional limb here. Just
   // seems wrong to me (power limbs should not need to exceed modulus
   // size); might be related to some superstitious zero padding?

@@ -870,14 +870,15 @@ struct QuadModLL {
         // Step 3. square root of u <- uv (i-1)
         // Step 1.
         // Q <- (prime-5)/8.
-        BigInteger Q;
-        BigIntToBigInteger((Prime - 5) >> 3, &Q);
+        const BigInt Q = (Prime - 5) >> 3;
+        // BigInteger Q;
+        // BigIntToBigInteger((Prime - 5) >> 3, &Q);
 
         // subtractdivide(&Q, 5, 8);
         // 2u
         AddBigNbrModN(aux6, aux6, aux7,
                       params.modulus.data(), params.modulus_length);
-        ModPow(params, aux7, Q.limbs, Q.nbrLimbs, aux8);
+        ModPow(params, aux7, Q, aux8);
         // At this moment aux7 is v in Montgomery notation.
 
         // Step 2.
@@ -945,14 +946,14 @@ struct QuadModLL {
         int r = e;
 
 
-        BigInt KK1 = (QQ - 1) >> 1;
-        BigInteger K1;
-        BigIntToBigInteger(KK1, &K1);
+        const BigInt KK1 = (QQ - 1) >> 1;
+        // BigInteger K1;
+        // BigIntToBigInteger(KK1, &K1);
         // CopyBigInt(&K1, &Q);
         // subtractdivide(&K1, 1, 2);
 
         // x
-        ModPow(params, aux6, K1.limbs, K1.nbrLimbs, aux7);
+        ModPow(params, aux6, KK1, aux7);
         // v
         ModMult(params, aux6, aux7, aux8);
         // w
@@ -1267,9 +1268,9 @@ struct QuadModLL {
 
   void QuadraticTermMultipleOfP(
       int expon, int factorIndex,
-      const BigInteger *pValA,
-      const BigInteger *pValB,
-      const BigInteger *pValC) {
+      const BigInt &A,
+      const BigInt &B,
+      const BigInt &C) {
     // Perform Newton approximation.
     // The next value of x in sequence x_{n+1} is
     //   x_n - (a*x_n^2 + b*x_n + c) / (2*a_x + b).
@@ -1281,34 +1282,21 @@ struct QuadModLL {
     BigInt sol;
 
     const BigInt Prime = BigIntegerToBigInt(&prime);
-    // int modulus_length = prime.nbrLimbs;
-    // int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-    // (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
-    // TheModulus[modulus_length].x = 0;
     const std::unique_ptr<MontgomeryParams> params =
       GetMontgomeryParams(Prime);
 
     BigInt TmpSolution =
-      -BigIntModularDivision(*params,
-                             BigIntegerToBigInt(pValC),
-                             BigIntegerToBigInt(pValB),
-                             Prime);
-    // PERF chsign?
-    // BigIntNegate(&tmpSolution, &tmpSolution);
+      -BigIntModularDivision(*params, C, B, Prime);
+
     if (TmpSolution < 0) {
       TmpSolution += Prime;
     }
-
-    // PERF: Directly?
-    // BigInteger tmpSolution;
-    // BigIntToBigInteger(TmpSolution, &tmpSolution);
 
     for (int currentExpon = 2; currentExpon < (2 * expon); currentExpon *= 2) {
       BigInt VV = BigInt::Pow(Prime, currentExpon);
       // (void)BigIntPowerIntExp(&prime, currentExpon, &V);
       // Q <- a*x_n + b
-      BigInt QQ = BigIntegerToBigInt(pValA) * TmpSolution +
-        BigIntegerToBigInt(pValB);
+      BigInt QQ = A * TmpSolution + B;
         // intToBigInteger(&Q, 0xDADA);
       // (void)BigIntMultiply(pValA, &tmpSolution, &Q);
       BigInt L = BigIntegerToBigInt(&Q);
@@ -1320,7 +1308,7 @@ struct QuadModLL {
       QQ *= TmpSolution;
       // (void)BigIntMultiply(&Q, &tmpSolution, &Q);
       // a*x_n^2 + b*x_n + c
-      QQ += BigIntegerToBigInt(pValC);
+      QQ += C;
       // BigIntAdd(&Q, pValC, &Q);
       // Numerator.
       QQ %= VV;
@@ -1329,18 +1317,12 @@ struct QuadModLL {
       L <<= 1;
       // MultInt(&L, &L, 2);
       // 2*a*x_n + b
-      L += BigIntegerToBigInt(pValB);
+      L += B;
       // BigIntAdd(&L, pValB, &L);
       // Denominator
       L %= VV;
       // (void)BigIntRemainder(&L, &V, &L);
 
-      // BigInteger Vtmp;
-      // BigIntToBigInteger(VV, &Vtmp);
-      // int modulus_length = Vtmp.nbrLimbs;
-      // int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-      // (void)memcpy(TheModulus, Vtmp.limbs, NumberLengthBytes);
-      // TheModulus[modulus_length].x = 0;
       const std::unique_ptr<MontgomeryParams> params =
         GetMontgomeryParams(VV);
       BigInt Aux =
@@ -1503,6 +1485,8 @@ struct QuadModLL {
       // (void)BigIntPowerIntExp(&prime, expon, &V);
       // (void)BigIntRemainder(pValA, &prime, &L);
 
+
+
       if (Prime != 2 &&
           BigInt::DivisibleBy(A, Prime)) {
         // ValA multiple of prime means a linear equation mod prime.
@@ -1512,7 +1496,10 @@ struct QuadModLL {
           return;
         }
 
-        QuadraticTermMultipleOfP(expon, factorIndex, &valA, &valB, &valC);
+        QuadraticTermMultipleOfP(expon, factorIndex,
+                                 BigIntegerToBigInt(&valA),
+                                 BigIntegerToBigInt(&valB),
+                                 BigIntegerToBigInt(&valC));
 
       } else {
         // If quadratic equation mod p
