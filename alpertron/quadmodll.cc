@@ -931,12 +931,19 @@ struct QuadModLL {
 
         // Step 3.
         // Get z <- x^q (mod p) in Montgomery notation.
-        ModPowBaseInt(params, x, QQ, aux4);  // z
+        // z
+        BigInt Z = ModPowBaseInt(params, x, QQ);
 
-        // Step 4.
         const int NumberLengthBytes =
           params.modulus_length * (int)sizeof(limb);
-        (void)memcpy(aux5, aux4, NumberLengthBytes); // y
+
+        // PERF We don't use aux4 (now Z) again, so this could just
+        // be a substitution?
+        // Step 4.
+        // y
+        BigIntToFixedLimbs(Z, params.modulus_length, aux5);
+        // (void)memcpy(aux5, aux4, NumberLengthBytes); // y
+
         int r = e;
 
 

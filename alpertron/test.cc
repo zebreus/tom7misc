@@ -309,10 +309,10 @@ static void WrapPowBaseInt(const BigInt &Modulus,
   const std::unique_ptr<MontgomeryParams> params =
     GetMontgomeryParams(modulus_length, TheModulus);
 
-  limb modpow[params->modulus_length];
-  ModPowBaseInt(*params, base, Exp, modpow);
+  // limb modpow[params->modulus_length];
+  BigInt Result = ModPowBaseInt(*params, base, Exp);
+  // BigInt Result = LimbsToBigInt(modpow, params->modulus_length);
 
-  BigInt Result = LimbsToBigInt(modpow, params->modulus_length);
   CHECK(Result == Expected) <<
     "\nWanted  " << Expected.ToString() <<
     "\nBut got " << Result.ToString();

@@ -204,25 +204,22 @@ void ModPow(const MontgomeryParams &params,
   }
 }
 
-void ModPowBaseInt(const MontgomeryParams &params,
-                   int base, const BigInt &Exp,
-                   limb* power) {
+BigInt ModPowBaseInt(const MontgomeryParams &params,
+                     int base, const BigInt &Exp) {
   BigInteger exp;
   BigIntToBigInteger(Exp, &exp);
 
-  // XXX switch to modulus_length?
-  // Port note: Original code copied 1 additional limb here. Just
-  // seems wrong to me (power limbs should not need to exceed modulus
-  // size); might be related to some superstitious zero padding?
+  // XXX switch to modulus_length? ModMultInt does write an extra zero
+  // explicitly.
+  limb power[params.modulus_length + 1];
+
   int NumberLengthBytes = (params.modulus_length + 1) * (int)sizeof(limb);
   // power <- 1
   (void)memcpy(power, params.MontgomeryMultR1, NumberLengthBytes);
   for (int index = exp.nbrLimbs - 1; index >= 0; index--) {
     int groupExp = exp.limbs[index].x;
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
-      ModMult(params,
-              power, power,
-              power);
+      ModMult(params, power, power, power);
       if (((unsigned int)groupExp & mask) != 0U) {
         ModMultInt(power, base, power,
                    params.modulus.data(),
@@ -230,6 +227,8 @@ void ModPowBaseInt(const MontgomeryParams &params,
       }
     }
   }
+
+  return LimbsToBigInt(power, params.modulus_length);
 }
 
 /* U' <- eU + fV, V' <- gU + hV                                        */

@@ -23,7 +23,8 @@ struct MontgomeryParams {
   // modulus_length + 1 limbs, with a zero at the end.
   std::vector<limb> modulus;
   // XXX this is just used during initialization. Maybe we can
-  // get rid of it.
+  // get rid of it. Other code behaves as though R1 is the same
+  // length as modulus, which would make sense.
   int NumberLengthR1 = 0;
   // Indicates that the modulus is a power of two.
   int powerOf2Exponent = 0;
@@ -48,9 +49,9 @@ void ModMult(const MontgomeryParams &params,
              const limb *factor1, const limb *factor2,
              limb *product);
 
-void ModPowBaseInt(const MontgomeryParams &params,
-                   int base, const BigInt &Exp,
-                   limb *power);
+// Returns base^exp mod n (which comes from MontgomeryParams).
+BigInt ModPowBaseInt(const MontgomeryParams &params,
+                     int base, const BigInt &Exp);
 
 void ModPow(const MontgomeryParams &params,
             const limb *base, const limb *exp, int nbrGroupsExp, limb *power);
