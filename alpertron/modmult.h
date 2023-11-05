@@ -37,9 +37,7 @@ GetMontgomeryParams(const BigInt &Modulus);
 
 // No coverage of this function; it may be broken.
 std::unique_ptr<MontgomeryParams>
-GetMontgomeryParamsPowerOf2(int powerOf2,
-                            // computed from the power of 2
-                            int *modulus_length);
+GetMontgomeryParamsPowerOf2(int powerOf2);
 
 // The form of the numbers is determined by the params, so to use this you
 // must be consistently using params. If modulus_length == 1,

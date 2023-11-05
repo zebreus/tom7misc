@@ -394,9 +394,9 @@ struct QuadModLL {
       // .. and length
       // ptrFactorsMod++;
 
-      int modulus_length = 0;
       const std::unique_ptr<MontgomeryParams> params =
-        GetMontgomeryParamsPowerOf2(powerOf2, &modulus_length);
+        GetMontgomeryParamsPowerOf2(powerOf2);
+      const int modulus_length = params->modulus_length;
 
       // Port note: This used to do this on ptrSolution1 in place.
       // ptrSolution1 <- 1 / |ValB|
