@@ -159,11 +159,8 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
   CompressLimbsBigInteger(modulus_length, tmp5, &base);
   limb tmp6[modulus_length];
   // Convert base to Montgomery notation.
-  ModMult(params,
-          tmp5, params.MontgomeryMultR2,
-          tmp6);
-  ModPow(params, modulus_length, modulus,
-         tmp6, exponent.limbs, exponent.nbrLimbs, tmp5);
+  ModMult(params, tmp5, params.MontgomeryMultR2, tmp6);
+  ModPow(params, tmp6, exponent.limbs, exponent.nbrLimbs, tmp5);
 
   const int lenBytes = modulus_length * (int)sizeof(limb);
   limb tmp4[modulus_length];
@@ -177,9 +174,7 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
   }
   (void)memset(tmp4, 0, lenBytes);
   tmp4[0].x = 1;
-  ModMult(params,
-          tmp4, tmp5,
-          tmp6);
+  ModMult(params, tmp4, tmp5, tmp6);
 
   // XXX PERF no, convert directly
   BigInteger power;
@@ -192,23 +187,18 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
 //        nbrGroupsExp = number of limbs of exponent.
 // Output: power = power in Montgomery notation.
 void ModPow(const MontgomeryParams &params,
-            int modulus_length, const limb *modulus,
             const limb* base, const limb* exp, int nbrGroupsExp, limb* power) {
   // Port note: Original code copied 1 additional limb here. Just
   // seems wrong to me (power limbs should not need to exceed modulus
   // size); might be related to some superstitious zero padding?
-  int lenBytes = modulus_length * (int)sizeof(limb);
+  int lenBytes = params.modulus_length * (int)sizeof(limb);
   (void)memcpy(power, params.MontgomeryMultR1, lenBytes);  // power <- 1
   for (int index = nbrGroupsExp - 1; index >= 0; index--) {
     int groupExp = (exp + index)->x;
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
-      ModMult(params,
-              power, power,
-              power);
+      ModMult(params, power, power, power);
       if (((unsigned int)groupExp & mask) != 0U) {
-        ModMult(params,
-                power, base,
-                power);
+        ModMult(params, power, base, power);
       }
     }
   }

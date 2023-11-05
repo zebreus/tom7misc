@@ -350,8 +350,7 @@ static void WrapModPow(const BigInt &Modulus,
   limb modpow[params->modulus_length];
   BigInteger e;
   BigIntToBigInteger(Exp, &e);
-  ModPow(*params, params->modulus_length, params->modulus.data(),
-         base, e.limbs, e.nbrLimbs, modpow);
+  ModPow(*params, base, e.limbs, e.nbrLimbs, modpow);
 
   BigInt Result = LimbsToBigInt(modpow, params->modulus_length);
   CHECK(Result == Expected) <<

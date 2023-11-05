@@ -53,10 +53,7 @@ void ModPowBaseInt(const MontgomeryParams &params,
                    limb *power);
 
 void ModPow(const MontgomeryParams &params,
-            int modulus_length, const limb *modulus,
             const limb *base, const limb *exp, int nbrGroupsExp, limb *power);
-
-
 
 BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
                               const BigInt &modulus);
