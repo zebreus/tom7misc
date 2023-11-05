@@ -1219,7 +1219,6 @@ static void InitMontgomeryParams(MontgomeryParams *params) {
 // R1 = R mod M
 // N = M^(-1) mod R
 // This routine is only valid for odd or power of 2 moduli.
-
 std::unique_ptr<MontgomeryParams>
 GetMontgomeryParams(int modulus_length, const limb *modulus) {
   std::unique_ptr<MontgomeryParams> params =
@@ -1236,6 +1235,22 @@ GetMontgomeryParams(int modulus_length, const limb *modulus) {
   InitMontgomeryParams(params.get());
   return params;
 }
+
+std::unique_ptr<MontgomeryParams>
+GetMontgomeryParams(const BigInt &Modulus) {
+  std::unique_ptr<MontgomeryParams> params =
+    std::make_unique<MontgomeryParams>();
+
+  params->modulus_length = BigIntNumLimbs(Modulus);
+  // With space for required padding.
+  params->modulus.resize(params->modulus_length + 1);
+  BigIntToFixedLimbs(Modulus, params->modulus_length, params->modulus.data());
+  params->modulus[params->modulus_length].x = 0;
+
+  InitMontgomeryParams(params.get());
+  return params;
+}
+
 
 void AddBigNbrModN(const limb *num1, const limb *num2, limb *sum,
                    const limb *modulus_array, int number_length) {

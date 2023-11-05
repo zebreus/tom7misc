@@ -113,6 +113,16 @@ BigInt LimbsToBigInt(const limb *limbs, int num_limbs) {
   return out;
 }
 
+int BigIntNumLimbs(const BigInt &b) {
+  static constexpr int bits_per_limb = 31;
+
+  // Number of bits in b.
+  const size_t num_bits = mpz_sizeinbase(b.GetRep(), 2);
+
+  // Round up if needed.
+  return (num_bits + bits_per_limb - 1) / bits_per_limb;
+}
+
 int BigIntToLimbs(const BigInt &b, limb *limbs) {
   size_t count = 0;
   mpz_export(limbs, &count,

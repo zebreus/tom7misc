@@ -11,40 +11,79 @@
 #include "modmult.h"
 #include "bigconv.h"
 
+static void TestNumLimbs() {
+  for (const std::string bs : {"0", "1", "-1", "2", "-2", "3", "4", "5",
+      "2147483647", "2147483648", "2147483649",
+      "4294967295", "4294967296", "4294967297",
+      "18446744073709551615", "18446744073709551616", "18446744073709551617",
+      "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+      "115792089237316195423570985008687907853269984665640564039457584007913129639936",
+      "115792089237316195423570985008687907853269984665640564039457584007913129639937"
+      "1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"}) {
+    BigInt B(bs);
+    BigInteger b;
+    BigIntToBigInteger(B, &b);
+
+    const int num_limbs = BigIntNumLimbs(B);
+    CHECK(num_limbs == b.nbrLimbs) << B.ToString();
+
+    std::vector<limb> limbs;
+    limbs.resize(num_limbs);
+    BigIntToFixedLimbs(B, num_limbs, limbs.data());
+
+    for (int i = 0; i < num_limbs; i++) {
+      CHECK(b.limbs[i].x == limbs[i].x) << B.ToString() << " @ " << i;
+    }
+  }
+
+  printf("NumLimbs " AGREEN("OK") "\n");
+}
+
+
+
 static void Montgomery() {
   // Test from original alpertron code.
 
-  BigInt Modulus("1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
 
-  limb TheModulus[MAX_LEN];
-  const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
-  TheModulus[modulus_length].x = 0;
-  const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(modulus_length, TheModulus);
+  const BigInt Modulus("1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
 
-  BigInt N = LimbsToBigInt(params->MontgomeryMultN, modulus_length);
-  BigInt R1 = LimbsToBigInt(params->MontgomeryMultR1, modulus_length);
-  BigInt R2 = LimbsToBigInt(params->MontgomeryMultR2, modulus_length);
+  for (const bool with_array : {true, false}) {
 
-  CHECK(R1 == BigInt("24695268717247353376024094994637646342633788102645274852325180976134729557037162826241102651487225375781959289009"));
-  CHECK(R2 == BigInt("190098254628648626850155858417461866966631571241684111915135769130076389371840963052220660360120514221998874973069"));
-  CHECK(N == BigInt("5146057778955676958024459434755086258061417362313348376976792088453485271799426894988203925673894606468119708364663947265"));
+    const std::unique_ptr<MontgomeryParams> params = [&]() {
+        if (with_array) {
+          limb TheModulus[MAX_LEN];
+          const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
+          TheModulus[modulus_length].x = 0;
+          return GetMontgomeryParams(modulus_length, TheModulus);
+        } else {
+          return GetMontgomeryParams(Modulus);
+        }
+      }();
 
-  // R1 is the identity.
-  BigInt FirstFactor = R1;
-  BigInt SecondFactor(32);
+    BigInt N = LimbsToBigInt(params->MontgomeryMultN, params->modulus_length);
+    BigInt R1 = LimbsToBigInt(params->MontgomeryMultR1, params->modulus_length);
+    BigInt R2 = LimbsToBigInt(params->MontgomeryMultR2, params->modulus_length);
 
-  limb f1[MAX_LEN], f2[MAX_LEN];
-  BigIntToFixedLimbs(FirstFactor, modulus_length, f1);
-  BigIntToFixedLimbs(SecondFactor, modulus_length, f2);
-  limb product[MAX_LEN];
-  ModMult(*params, f1, f2, product);
+    CHECK(R1 == BigInt("24695268717247353376024094994637646342633788102645274852325180976134729557037162826241102651487225375781959289009"));
+    CHECK(R2 == BigInt("190098254628648626850155858417461866966631571241684111915135769130076389371840963052220660360120514221998874973069"));
+    CHECK(N == BigInt("5146057778955676958024459434755086258061417362313348376976792088453485271799426894988203925673894606468119708364663947265"));
 
-  BigInt Product = LimbsToBigInt(product, modulus_length);
+    // R1 is the identity.
+    BigInt FirstFactor = R1;
+    BigInt SecondFactor(32);
 
-  CHECK(Product == 32);
+    limb f1[MAX_LEN], f2[MAX_LEN];
+    BigIntToFixedLimbs(FirstFactor, params->modulus_length, f1);
+    BigIntToFixedLimbs(SecondFactor, params->modulus_length, f2);
+    limb product[MAX_LEN];
+    ModMult(*params, f1, f2, product);
 
-  printf("Montgomery tests " AGREEN("OK") "\n");
+    BigInt Product = LimbsToBigInt(product, params->modulus_length);
+
+    CHECK(Product == 32);
+
+    printf("Montgomery tests " AGREEN("OK") "\n");
+  }
 }
 
 static void TestSubModN() {
@@ -79,11 +118,9 @@ static void WrapModMult(const BigInt &A,
                         const BigInt &Modulus,
                         const BigInt &Expected) {
 
-  limb TheModulus[MAX_LEN];
-  const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
-  TheModulus[modulus_length].x = 0;
   const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(modulus_length, TheModulus);
+    GetMontgomeryParams(Modulus);
+  const int modulus_length = params->modulus_length;
 
   limb out[modulus_length + 1];
   out[modulus_length].x = 0xCAFE;
@@ -387,6 +424,8 @@ static void TestModPow() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  TestNumLimbs();
 
   Montgomery();
 

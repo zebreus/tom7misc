@@ -43,6 +43,10 @@ int BigIntToLimbs(const BigInt &b, limb *limbs);
 // ignore the zero padding.
 void BigIntToFixedLimbs(const BigInt &b, size_t num_limbs, limb *limbs);
 
+// Return the number of limbs needed to represent the BigInt in alpertron's
+// format. Always at least one.
+int BigIntNumLimbs(const BigInt &b);
+
 std::string BigIntegerToString(const BigInteger *g);
 
 #endif
