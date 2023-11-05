@@ -232,10 +232,13 @@ static void WrapDivide(const BigInt &Num,
   {
     // I think that the quotient * the denominator should give us back
     // the numerator (mod the modulus), unless there's some undocumented
-    // assumption here?
+    // assumption here? (Or perhaps it's assuming Montgomery form for
+    // some of these.)
     //
     // It's possible that GeneralModularDivision is just broken (perhaps
     // by me); it's only called in one place and that code isn't covered.
+    // It does do some funny business when the modulus is a multiple
+    // of 2, where I might have conflated two different modulus_lengths.
 
     BigInt Quot = GeneralModularDivision(Num, Den, Modulus);
 
@@ -331,6 +334,26 @@ static void TestBIMDivision() {
              BigInt("99"),
              BigInt("7"));
   #endif
+
+  auto GeneralDivide = [](const BigInt &Num,
+                          const BigInt &Den,
+                          const BigInt &Mod,
+                          const BigInt &Expected) {
+      const BigInt Res = GeneralModularDivision(Num, Den, Mod);
+      CHECK(Res == Expected) << Res.ToString() <<
+        "\nbut wanted\n" << Expected.ToString();
+    };
+
+  GeneralDivide(BigInt(1), BigInt(2), BigInt(8),
+                BigInt(0));
+  GeneralDivide(BigInt("928374917"), BigInt("28341"),
+                BigInt("1000000000000000044444"),
+                BigInt("250000000000992952250"));
+
+  GeneralDivide(BigInt("928374917"), BigInt("28341"),
+                BigInt("10000000000000000444441"),
+                BigInt("3189725133199254303619"));
+
 
 }
 
