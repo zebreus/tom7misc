@@ -381,7 +381,6 @@ static void InitHighUandV(
 /* U' <- aU - bV, V' <- -cU + dV                                       */
 /***********************************************************************/
 static bool ModInvBigNbr(const MontgomeryParams &params,
-                         int modulus_length, const limb* modulus,
                          limb* num, limb* inv) {
   int k;
   int steps;
@@ -397,6 +396,11 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   int lowU;
   int lowV;
   unsigned int borrow;
+
+  // Or inline 'em...
+  const int modulus_length = params.modulus_length;
+  const limb *modulus = params.modulus.data();
+
   assert(modulus_length >= 1);
   if (modulus_length == 1) {
     inv->x = modInv(num->x, modulus->x);
@@ -824,18 +828,13 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
   CompressLimbsBigInteger(params.modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
   // tmpDen.limbs <- 1 / Den in Montg notation.
-  ModMult(params,
-          tmp3, params.MontgomeryMultR2,
-          tmp3);
-  (void)ModInvBigNbr(params,
-                     params.modulus_length,
-                     params.modulus.data(), tmp3, tmpDen.limbs);
+  ModMult(params, tmp3, params.MontgomeryMultR2, tmp3);
+  (void)ModInvBigNbr(params, tmp3, tmpDen.limbs);
+
   limb tmp4[MAX_LEN];
   CompressLimbsBigInteger(params.modulus_length, tmp4, &tmpNum);
   // tmp3 <- Num / Den in standard notation.
-  ModMult(params,
-          tmpDen.limbs, tmp4,
-          tmp3);
+  ModMult(params, tmpDen.limbs, tmp4, tmp3);
 
   // Get Num/Den
   // PERF can just convert to BigInt
@@ -909,7 +908,7 @@ static void BigIntegerGeneralModularDivision(
     const BigInt &Num, const BigInt &Den,
     const BigInt &Mod, BigInteger* quotient) {
 
-  int shRight = BigInt::BitwiseCtz(Mod);
+  const int shRight = BigInt::BitwiseCtz(Mod);
   BigInt OddMod = Mod >> shRight;
   // BigInteger oddValue;
   // CopyBigInt(&oddValue, mod);
@@ -951,19 +950,17 @@ static void BigIntegerGeneralModularDivision(
   limb tmp3[MAX_LEN];
   CompressLimbsBigInteger(modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
-  ModMult(*params,
-          tmp3, params->MontgomeryMultR2,
-          tmp3);
+  ModMult(*params, tmp3, params->MontgomeryMultR2, tmp3);
+
   // tmp3 <- 1 / Den in Montg notation.
-  (void)ModInvBigNbr(*params, modulus_length, modulus, tmp3, tmp3);
+  (void)ModInvBigNbr(*params, tmp3, tmp3);
   limb tmp4[MAX_LEN];
   CompressLimbsBigInteger(modulus_length, tmp4, &tmpNum);
+
   // resultModOdd <- Num / Den in standard notation.
   // PERF: can be smaller than MAX_LEN.
   limb resultModOdd[MAX_LEN];
-  ModMult(*params,
-          tmp3, tmp4,
-          resultModOdd);
+  ModMult(*params, tmp3, tmp4, resultModOdd);
 
   // Compute inverse mod power of 2.
   if (shRight == 0) {
@@ -1118,8 +1115,6 @@ static void InitMontgomeryParams(MontgomeryParams *params) {
   // Unless we detect a power of two below (and it is more than one
   // limb, etc.).
   params->powerOf2Exponent = 0;
-  // This is probably dead.
-  params->NumberLengthR1 = 1;
 
   // We don't bother with montgomery form for single-word numbers.
   if (params->modulus_length == 1 && (params->modulus[0].x & 1) != 0) {
@@ -1192,10 +1187,15 @@ static void InitMontgomeryParams(MontgomeryParams *params) {
     (params->modulus_length + 1) * (int)sizeof(limb);
   (void)memcpy(params->MontgomeryMultR2, params->MontgomeryMultR1,
                PaddedNumberLengthBytes);
-  for (params->NumberLengthR1 = params->modulus_length;
-       params->NumberLengthR1 > 0;
-       params->NumberLengthR1--) {
-    if (params->MontgomeryMultR1[params->NumberLengthR1 - 1].x != 0) {
+
+  // Port note: NumberLengthR1 used to be a member of the struct (I
+  // guess before that a global variable), but it's only used during
+  // initialization. Other code assumes R1 is modulus_length size,
+  // which seems right.
+  for (int NumberLengthR1 = params->modulus_length;
+       NumberLengthR1 > 0;
+       NumberLengthR1--) {
+    if (params->MontgomeryMultR1[NumberLengthR1 - 1].x != 0) {
       break;
     }
   }

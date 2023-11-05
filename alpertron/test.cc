@@ -458,6 +458,6 @@ int main(int argc, char **argv) {
   TestModPowBaseInt();
   TestModPow();
 
-  printf("Explicit tests " AGREEN("OK") "\n");
+  printf("All explicit tests " AGREEN("OK") "\n");
   return 0;
 }

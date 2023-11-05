@@ -22,10 +22,6 @@ struct MontgomeryParams {
   int modulus_length = 0;
   // modulus_length + 1 limbs, with a zero at the end.
   std::vector<limb> modulus;
-  // XXX this is just used during initialization. Maybe we can
-  // get rid of it. Other code behaves as though R1 is the same
-  // length as modulus, which would make sense.
-  int NumberLengthR1 = 0;
   // If nonzero, the modulus is this power of two.
   int powerOf2Exponent = 0;
 };
