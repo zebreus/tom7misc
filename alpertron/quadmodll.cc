@@ -91,7 +91,7 @@ struct QuadModLL {
 
   // Were globals NumberLength and TestNbr
   // int modulus_length = 0;
-  limb TheModulus[MAX_LEN] = {};
+  // limb TheModulus[MAX_LEN] = {};
 
   // Use Chinese remainder theorem to obtain the solutions.
   void PerformChineseRemainderTheorem(
@@ -163,13 +163,14 @@ struct QuadModLL {
 
         // Computing montgomery form needs BigInteger. But do it outside
         // the inner loop at least.
+        // XXX not necessary now
         BigIntToBigInteger(Prime, &prime);
-        const int modulus_length = prime.nbrLimbs;
-        const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-        (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
-        TheModulus[modulus_length].x = 0;
+        // const int modulus_length = prime.nbrLimbs;
+        // const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+        // (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
+        // TheModulus[modulus_length].x = 0;
         std::unique_ptr<MontgomeryParams> params =
-          GetMontgomeryParams(modulus_length, TheModulus);
+          GetMontgomeryParams(Prime);
 
         if (VERBOSE) {
           printf("T1 %d [exp %d]. Prime: %s\n", T1,
@@ -316,15 +317,16 @@ struct QuadModLL {
       // CopyBigInt(&Increment[solutionNbr], pValN);
       Exponents.push_back(1);
 
-      BigInteger ValN;
-      BigIntToBigInteger(N, &ValN);
-      int modulus_length = ValN.nbrLimbs;
-      int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-      (void)memcpy(TheModulus, ValN.limbs, NumberLengthBytes);
-      TheModulus[modulus_length].x = 0;
+      // BigInteger ValN;
+      // XXX unnecessary?
+      // BigIntToBigInteger(N, &ValN);
+      // int modulus_length = ValN.nbrLimbs;
+      // int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+      // (void)memcpy(TheModulus, ValN.limbs, NumberLengthBytes);
+      // TheModulus[modulus_length].x = 0;
       // Perform division using odd modulus r.
       const std::unique_ptr<MontgomeryParams> params =
-        GetMontgomeryParams(modulus_length, TheModulus);
+        GetMontgomeryParams(N);
 
       // Compute ptrSolution1 as ValC / |ValB|
       BigInt sol1 = BigIntModularDivision(*params, C, B, N);
@@ -1000,13 +1002,13 @@ struct QuadModLL {
 
   BigInt ComputeSquareRootModPowerOfP(const BigInt &Base,
                                       int nbrBitsSquareRoot) {
-    const int modulus_length = prime.nbrLimbs;
-    const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-    (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
-    TheModulus[modulus_length].x = 0;
-    const std::unique_ptr<MontgomeryParams> params =
-      GetMontgomeryParams(modulus_length, TheModulus);
+    // const int modulus_length = prime.nbrLimbs;
+    // const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+    // (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
+    // TheModulus[modulus_length].x = 0;
     const BigInt Prime = BigIntegerToBigInt(&prime);
+    const std::unique_ptr<MontgomeryParams> params =
+      GetMontgomeryParams(Prime);
 
     const BigInt SqrtDisc = GetSqrtDisc(*params, Base, Prime);
 
@@ -1151,14 +1153,14 @@ struct QuadModLL {
     }
 
     {
-      BigInteger tmp1;
-      BigIntToBigInteger(Tmp1, &tmp1);
-      int modulus_length = tmp1.nbrLimbs;
-      int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-      (void)memcpy(TheModulus, tmp1.limbs, NumberLengthBytes);
-      TheModulus[modulus_length].x = 0;
+      // BigInteger tmp1;
+      // BigIntToBigInteger(Tmp1, &tmp1);
+      // int modulus_length = tmp1.nbrLimbs;
+      // int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+      // (void)memcpy(TheModulus, tmp1.limbs, NumberLengthBytes);
+      // TheModulus[modulus_length].x = 0;
       const std::unique_ptr<MontgomeryParams> params =
-        GetMontgomeryParams(modulus_length, TheModulus);
+        GetMontgomeryParams(Tmp1);
 
       AOdd = BigIntModularDivision(*params, BigInt(1), AOdd, Tmp1);
     }
@@ -1278,14 +1280,14 @@ struct QuadModLL {
 
     BigInt sol;
 
-    int modulus_length = prime.nbrLimbs;
-    int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-    (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
-    TheModulus[modulus_length].x = 0;
-    const std::unique_ptr<MontgomeryParams> params =
-      GetMontgomeryParams(modulus_length, TheModulus);
-
     const BigInt Prime = BigIntegerToBigInt(&prime);
+    // int modulus_length = prime.nbrLimbs;
+    // int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+    // (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
+    // TheModulus[modulus_length].x = 0;
+    const std::unique_ptr<MontgomeryParams> params =
+      GetMontgomeryParams(Prime);
+
     BigInt TmpSolution =
       -BigIntModularDivision(*params,
                              BigIntegerToBigInt(pValC),
@@ -1333,14 +1335,14 @@ struct QuadModLL {
       L %= VV;
       // (void)BigIntRemainder(&L, &V, &L);
 
-      BigInteger Vtmp;
-      BigIntToBigInteger(VV, &Vtmp);
-      int modulus_length = Vtmp.nbrLimbs;
-      int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-      (void)memcpy(TheModulus, Vtmp.limbs, NumberLengthBytes);
-      TheModulus[modulus_length].x = 0;
+      // BigInteger Vtmp;
+      // BigIntToBigInteger(VV, &Vtmp);
+      // int modulus_length = Vtmp.nbrLimbs;
+      // int NumberLengthBytes = modulus_length * (int)sizeof(limb);
+      // (void)memcpy(TheModulus, Vtmp.limbs, NumberLengthBytes);
+      // TheModulus[modulus_length].x = 0;
       const std::unique_ptr<MontgomeryParams> params =
-        GetMontgomeryParams(modulus_length, TheModulus);
+        GetMontgomeryParams(VV);
       BigInt Aux =
         BigIntModularDivision(*params, QQ, L, VV);
       TmpSolution -= Aux;

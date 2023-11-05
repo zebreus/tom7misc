@@ -422,12 +422,14 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   // (modulus + modulus_length)->x = 0;
 
   (num + modulus_length)->x = 0;
-  // PERF can just be length size, probably?
-  limb U[MAX_LEN];
-  limb V[MAX_LEN];
+
+  limb U[modulus_length + 1];
+  limb V[modulus_length + 1];
   (void)memcpy(U, modulus, size);
   (void)memcpy(V, num, size);
+
   // Maximum value of R and S can be up to 2*M, so one more limb is needed.
+  // Note modulus_length+1 here does not work...
   limb R[MAX_LEN];
   limb S[MAX_LEN];
   (void)memset(R, 0, size);   // R <- 0
@@ -523,8 +525,8 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
         (void)memset(&V[lenV].x, 0, lenBytes);
         lenBytes = (len + 1) * (int)sizeof(limb);
         // PERF: only need (len+1)
-        limb Ubak[MAX_LEN];
-        limb Vbak[MAX_LEN];
+        limb Ubak[len + 1];
+        limb Vbak[len + 1];
         (void)memcpy(Ubak, U, lenBytes);
         (void)memcpy(Vbak, V, lenBytes);
         AddMult(U, a, -b, V, -c, d, len);
@@ -816,14 +818,15 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
   BigIntToBigInteger(Num, &tmpNum);
   BigIntToBigInteger(Den, &tmpDen);
 
-  limb tmp3[MAX_LEN];
+  // ModInvBigNbr needs 1 padding word
+  limb tmp3[params.modulus_length + 1];
   CompressLimbsBigInteger(params.modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
   // tmpDen.limbs <- 1 / Den in Montg notation.
   ModMult(params, tmp3, params.MontgomeryMultR2, tmp3);
   (void)ModInvBigNbr(params, tmp3, tmpDen.limbs);
 
-  limb tmp4[MAX_LEN];
+  limb tmp4[params.modulus_length];
   CompressLimbsBigInteger(params.modulus_length, tmp4, &tmpNum);
   // tmp3 <- Num / Den in standard notation.
   ModMult(params, tmpDen.limbs, tmp4, tmp3);
@@ -901,27 +904,14 @@ static void BigIntegerGeneralModularDivision(
 
   const int shRight = BigInt::BitwiseCtz(Mod);
   BigInt OddMod = Mod >> shRight;
-  // BigInteger oddValue;
-  // CopyBigInt(&oddValue, mod);
-  // DivideBigNbrByMaxPowerOf2(&shRight, oddValue.limbs, &oddValue.nbrLimbs);
 
   // Reduce Num modulo oddValue.
   BigInt TmpNum = Num % OddMod;
   if (TmpNum < 0) TmpNum += OddMod;
-  // BigInteger tmpNum;
-  // (void)BigIntRemainder(Num, &oddValue, &tmpNum);
-  // if (tmpNum.sign == SIGN_NEGATIVE) {
-  // BigIntAdd(&tmpNum, &oddValue, &tmpNum);
-  // }
 
   // Reduce Den modulo oddValue.
   BigInt TmpDen = Den % OddMod;
   if (TmpDen < 0) TmpDen += OddMod;
-  // BigInteger tmpDen;
-  // (void)BigIntRemainder(Den, &oddValue, &tmpDen);
-  // if (tmpDen.sign == SIGN_NEGATIVE) {
-  // BigIntAdd(&tmpDen, &oddValue, &tmpDen);
-  // }
 
   // XXX convert directly to fixed limbs
   BigInteger oddValue;
@@ -931,33 +921,23 @@ static void BigIntegerGeneralModularDivision(
   BigIntToBigInteger(TmpNum, &tmpNum);
   BigIntToBigInteger(TmpDen, &tmpDen);
 
-  /*
-  int modulus_length = oddValue.nbrLimbs;
-  int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-  limb modulus[MAX_LEN];
-  (void)memcpy(modulus, oddValue.limbs, NumberLengthBytes);
-  modulus[modulus_length].x = 0;
-  const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(modulus_length, modulus);
-  */
   const std::unique_ptr<MontgomeryParams> params =
     GetMontgomeryParams(OddMod);
   // This is the modulus length for the right-shifted value.
   const int modulus_length = params->modulus_length;
 
-  limb tmp3[MAX_LEN];
+  limb tmp3[modulus_length + 1];
   CompressLimbsBigInteger(modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
   ModMult(*params, tmp3, params->MontgomeryMultR2, tmp3);
 
   // tmp3 <- 1 / Den in Montg notation.
   (void)ModInvBigNbr(*params, tmp3, tmp3);
-  limb tmp4[MAX_LEN];
+  limb tmp4[modulus_length];
   CompressLimbsBigInteger(modulus_length, tmp4, &tmpNum);
 
   // resultModOdd <- Num / Den in standard notation.
-  // PERF: can be smaller than MAX_LEN.
-  limb resultModOdd[MAX_LEN];
+  limb resultModOdd[modulus_length];
   ModMult(*params, tmp3, tmp4, resultModOdd);
 
   // Compute inverse mod power of 2.
@@ -983,7 +963,7 @@ static void BigIntegerGeneralModularDivision(
   BigInteger num;
   BigIntToBigInteger(Num, &num);
 
-  // resultModPower2 <- Num / Dev modulus 2^k.
+  // resultModPower2 <- Num / Dev mod 2^k.
   // PERF: here too
   limb resultModPower2[MAX_LEN];
   ModMult(*params, num.limbs, tmp4, resultModPower2);
@@ -1005,7 +985,7 @@ BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
 
 // Find the inverse of value mod 2^(number_length*BITS_PER_GROUP)
 void ComputeInversePower2(const limb *value, limb *result, int number_length) {
-  limb tmp[MAX_LEN];
+  limb tmp[number_length * 2];
   unsigned int Cy;
   int N = value->x;            // 2 least significant bits of inverse correct.
   int x = N;
