@@ -347,7 +347,7 @@ void Database::Write() {
     "values ";
 
   bool first = true;
-  for (const auto [t, id, millidegs_c, sample_key] : batch) {
+  for (const auto &[t, id, millidegs_c, sample_key] : batch) {
     if (!first) qs.push_back(',');
     StringAppendF(&qs, " row(%llu, %d, %d, %u)",
                   t, id, millidegs_c, sample_key);

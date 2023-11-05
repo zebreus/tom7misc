@@ -446,7 +446,7 @@ WebServer::Response Server::Devices(const WebServer::Request &request) {
                 "<tr><th>MAC</th><th>IP</th><th>seen</th>"
                 "<th>svn rev</th><th>packages</th><th>location</th>\n");
   const int64 now = time(nullptr);
-  for (const Database::Device device : devices) {
+  for (const Database::Device &device : devices) {
     // Also target devices page; this makes it easier to click around.
     const string url =
       StringPrintf("http://%s:8080/devices", device.ipaddress.c_str());
