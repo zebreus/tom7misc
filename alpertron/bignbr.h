@@ -120,10 +120,8 @@ void CompressLimbsBigInteger(int number_length,
 void intToBigInteger(BigInteger *bigint, int value);
 
 void ChSignLimbs(limb *nbr, int length);
-void AddBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pSum, int nbrLen);
 void SubtractBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pDiff, int nbrLen);
 void DivBigNbrByInt(const limb *pDividend, int divisor, limb *pQuotient, int nbrLen);
-void MultBigNbr(const limb *pFactor1, const limb *pFactor2, limb *pProd, int nbrLen);
 void IntToBigNbr(int value, limb *bigNbr, int nbrLength);
 int BigNbrToBigInt(const BigInteger *pBigNbr, limb *pBigInt);
 void BigIntToBigNbr(BigInteger *pBigNbr, const limb *pBigInt, int nbrLenBigInt);

@@ -415,10 +415,10 @@ struct QuadModLL {
       // Compute ptrSolution1 as -ValC / ValB
       if (ValB.sign == ValC.sign) {
         (void)memset(ValA.limbs, 0, NumberLengthBytes);
+        // Beware: SubtractBigNbr is mod modulus_length words; it
+        // drops the carry past that.
         SubtractBigNbr(ValA.limbs, inv.limbs,
                        inv.limbs, modulus_length);
-        // SubtractBigNbr(pValA->limbs, ptrSolution1->limbs,
-        // ptrSolution1->limbs, modulus_length);
       }
 
       // Discard bits outside number in most significant limb.
@@ -430,7 +430,6 @@ struct QuadModLL {
       BigInt sol1 = BigIntegerToBigInt(&inv);
       Solution1.push_back(sol1);
       Solution2.push_back(sol1);
-      // CopyBigInt(ptrSolution2, ptrSolution1);
 
       solutionNbr++;
     }
@@ -445,6 +444,65 @@ struct QuadModLL {
     // assert((int)factors->product.size() == solutionNbr);
 
     PerformChineseRemainderTheorem(GcdAll, factors);
+  }
+
+  // How does this differ from MultiplyLimbs?
+  // I think it may be implicitly mod a power of 2, as it
+  // only fills in limbs up to nbrLen+1, and is only
+  // used in ComputeSquareRootModPowerOf2. AddBigNbr and SubtractBigNbr
+  // had similar behavior. It may also be approximate (double math)!
+  static void MultBigNbrInternal(
+      const limb *pFactor1, const limb *pFactor2,
+      limb *pProd, int nbrLen) {
+    limb* ptrProd = pProd;
+    static constexpr double dRangeLimb = (double)(1U << BITS_PER_GROUP);
+    static constexpr double dInvRangeLimb = 1.0 / dRangeLimb;
+    int low = 0;
+    double dAccumulator = 0.0;
+    for (int i = 0; i < nbrLen; i++) {
+      for (int j = 0; j <= i; j++) {
+        int factor1 = (pFactor1 + j)->x;
+        int factor2 = (pFactor2 + i - j)->x;
+        low += factor1*factor2;
+        dAccumulator += (double)factor1 * (double)factor2;
+      }
+      low &= MAX_INT_NBR;    // Trim extra bits.
+      ptrProd->x = low;
+      ptrProd++;
+
+      // Subtract or add 0x20000000 so the multiplication by dVal is not
+      // nearly an integer. In that case, there would be an error of +/- 1.
+      if (low < HALF_INT_RANGE) {
+        dAccumulator =
+          floor((dAccumulator + (double)FOURTH_INT_RANGE)*dInvRangeLimb);
+      } else {
+        dAccumulator =
+          floor((dAccumulator - (double)FOURTH_INT_RANGE)*dInvRangeLimb);
+      }
+      low = (int)(dAccumulator - floor(dAccumulator * dInvRangeLimb) *
+                  dRangeLimb);
+    }
+    ptrProd->x = low;
+    (ptrProd+1)->x = (int)floor(dAccumulator/dRangeLimb);
+  }
+
+  // Also appears to be addition modulo nbrLen words, since it drops
+  // the carry when it gets to the end.
+  static void AddBigNbr(const limb *pNbr1, const limb *pNbr2,
+                        limb *pSum, int nbrLen) {
+    unsigned int carry = 0U;
+    const limb *ptrNbr1 = pNbr1;
+    const limb *ptrNbr2 = pNbr2;
+    const limb *ptrEndSum = pSum + nbrLen;
+    for (limb *ptrSum = pSum; ptrSum < ptrEndSum; ptrSum++) {
+      carry = (carry >> BITS_PER_GROUP) +
+        (unsigned int)ptrNbr1->x +
+        (unsigned int)ptrNbr2->x;
+      const unsigned int tmp = carry & MAX_INT_NBR_U;
+      ptrSum->x = (int)tmp;
+      ptrNbr1++;
+      ptrNbr2++;
+    }
   }
 
   // Compute sqrRoot <- sqrt(ValCOdd) mod 2^expon.
@@ -470,14 +528,14 @@ struct QuadModLL {
       // Compute f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
       correctBits *= 2;
       nbrLimbs = (correctBits / BITS_PER_GROUP) + 1;
-      MultBigNbr(sqrRoot.limbs, sqrRoot.limbs, tmp2.limbs, nbrLimbs);
-      MultBigNbr(tmp2.limbs, ValCOdd.limbs, tmp1.limbs, nbrLimbs);
+      MultBigNbrInternal(sqrRoot.limbs, sqrRoot.limbs, tmp2.limbs, nbrLimbs);
+      MultBigNbrInternal(tmp2.limbs, ValCOdd.limbs, tmp1.limbs, nbrLimbs);
       ChSignLimbs(tmp1.limbs, nbrLimbs);
       int lenBytes = nbrLimbs * (int)sizeof(limb);
       (void)memset(tmp2.limbs, 0, lenBytes);
       tmp2.limbs[0].x = 3;
       AddBigNbr(tmp2.limbs, tmp1.limbs, tmp2.limbs, nbrLimbs);
-      MultBigNbr(tmp2.limbs, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
+      MultBigNbrInternal(tmp2.limbs, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
       (void)memcpy(sqrRoot.limbs, tmp1.limbs, lenBytes);
 
       // XXX Too much work to divide by 2!
@@ -487,9 +545,10 @@ struct QuadModLL {
     }
 
     // Get square root of ValCOdd from its inverse by multiplying by ValCOdd.
-    MultBigNbr(ValCOdd.limbs, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
+    MultBigNbrInternal(ValCOdd.limbs, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
     int lenBytes = nbrLimbs * (int)sizeof(limb);
 
+    // PERF avoid copy here
     (void)memcpy(sqrRoot.limbs, tmp1.limbs, lenBytes);
     setNbrLimbs(&sqrRoot, modulus_length);
 
@@ -1024,24 +1083,26 @@ struct QuadModLL {
     intToBigInteger(&Q, 0xCAFE);
 
     // XXX just use bigint
-    CopyBigInt(&Q, &prime);
+    BigInt Q = Prime;
+    // CopyBigInt(&Q, &prime);
 
     // Obtain nbrBitsSquareRoot correct digits of inverse square root.
     while (correctBits < nbrBitsSquareRoot) {
       // Compute f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
       correctBits *= 2;
-      (void)BigIntMultiply(&Q, &Q, &Q);           // Square Q.
+      Q = Q * Q;
+      // (void)BigIntMultiply(&Q, &Q, &Q);           // Square Q.
 
       BigInt Tmp1 = SqrRoot * SqrRoot;
       // (void)BigIntMultiply(&sqrRoot, &sqrRoot, &tmp1);
-      BigInt Tmp2 = Tmp1 % BigIntegerToBigInt(&Q);
+      BigInt Tmp2 = Tmp1 % Q;
       // (void)BigIntRemainder(&tmp1, &Q, &tmp2);
 
       Tmp1 = Discriminant * Tmp2;
       // BigIntToBigInteger(Discriminant * Tmp2, &tmp1);
       // (void)BigIntMultiply(&tmp2, &discriminant, &tmp1);
 
-      Tmp2 = Tmp1 % BigIntegerToBigInt(&Q);
+      Tmp2 = Tmp1 % Q;
       // (void)BigIntRemainder(&tmp1, &Q, &tmp2);
       Tmp2 = 3 - Tmp2;
       // intToBigInteger(&tmp1, 3);
@@ -1049,18 +1110,18 @@ struct QuadModLL {
       Tmp1 = Tmp2 * SqrRoot;
       // (void)BigIntMultiply(&tmp2, &sqrRoot, &tmp1);
       if (Tmp1.IsOdd()) {
-        Tmp1 += BigIntegerToBigInt(&Q);
+        Tmp1 += Q;
         // BigIntAdd(&tmp1, &Q, &tmp1);
       }
 
       Tmp1 >>= 1;
       // BigIntDivide2(&tmp1);
-      SqrRoot = Tmp1 % BigIntegerToBigInt(&Q);
+      SqrRoot = Tmp1 % Q;
       // (void)BigIntRemainder(&tmp1, &Q, &sqrRoot);
     }
 
     if (SqrRoot < 0) {
-      SqrRoot += BigIntegerToBigInt(&Q);
+      SqrRoot += Q;
       // BigIntAdd(&sqrRoot, &Q, &sqrRoot);
     }
 
@@ -1070,8 +1131,7 @@ struct QuadModLL {
     // BigIntToBigInteger(Discriminant * SqrRoot, &sqrRoot);
     // (void)BigIntMultiply(&sqrRoot, &discriminant, &sqrRoot);
     // (void)BigIntRemainder(&sqrRoot, &Q, &sqrRoot);
-    SqrRoot %= BigIntegerToBigInt(&Q);
-    // XXX return sqrroot, instead
+    SqrRoot %= Q;
     // BigIntToBigInteger(SqrRoot, &sqrRoot);
     return SqrRoot;
   }
@@ -1079,7 +1139,8 @@ struct QuadModLL {
   // Solve Ax^2 + Bx + C = 0 (mod p^expon).
   bool SolveQuadraticEqModPowerOfP(
       int expon, int factorIndex,
-      const BigInteger* pValA, const BigInteger* pValB) {
+      const BigInt &A, const BigInt &B) {
+
     // Number of bits of square root of discriminant to compute:
     //   expon + bits_a + 1,
     // where bits_a is the number of least significant bits of
@@ -1088,7 +1149,7 @@ struct QuadModLL {
     // so only multiplications are used.
     //   f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
     // Get maximum power of prime which divides ValA.
-    BigInt AOdd = BigIntegerToBigInt(pValA);
+    BigInt AOdd = A;
     int bitsAZero = 0;
 
     const BigInt Prime = BigIntegerToBigInt(&prime);
@@ -1136,7 +1197,7 @@ struct QuadModLL {
 
     deltaZeros >>= 1;
     // Compute inverse of -2*A (mod prime^(expon - deltaZeros)).
-    AOdd = BigIntegerToBigInt(pValA) << 1;
+    AOdd = A << 1;
 
     BigInt Tmp1 = BigInt::Pow(Prime, expon - deltaZeros);
 
@@ -1224,7 +1285,7 @@ struct QuadModLL {
     // Compute x = (b + sqrt(discriminant)) / (-2a) and
     //   x = (b - sqrt(discriminant)) / (-2a)
 
-    Tmp1 = BigIntegerToBigInt(pValB) + SqrRoot;
+    Tmp1 = B + SqrRoot;
     // BigIntAdd(pValB, &sqrRoot, &tmp1);
 
     for (int ctr = 0; ctr < bitsAZero; ctr++) {
@@ -1244,7 +1305,7 @@ struct QuadModLL {
       Solution1[factorIndex] += BigIntegerToBigInt(&Q);
     }
 
-    Tmp1 = BigIntegerToBigInt(pValB) - SqrRoot;
+    Tmp1 = B - SqrRoot;
     for (int ctr = 0; ctr < bitsAZero; ctr++) {
       BigInt Tmp2 = Tmp1 % Prime;
 
@@ -1378,7 +1439,7 @@ struct QuadModLL {
     } else {
       // Prime is not 2
       solutions = SolveQuadraticEqModPowerOfP(expon, factorIndex,
-                                              pValA, pValB);
+                                              A, B);
     }
 
     if (!solutions || (sol1Invalid && sol2Invalid)) {
@@ -1481,12 +1542,6 @@ struct QuadModLL {
       // Used, but not on all paths.
       BigIntToBigInteger(Prime, &prime);
 
-      // Just used in SolveQuadraticEqModPowerOfP.
-      // (void)BigIntPowerIntExp(&prime, expon, &V);
-      // (void)BigIntRemainder(pValA, &prime, &L);
-
-
-
       if (Prime != 2 &&
           BigInt::DivisibleBy(A, Prime)) {
         // ValA multiple of prime means a linear equation mod prime.
@@ -1511,7 +1566,6 @@ struct QuadModLL {
       }
 
       Increment[factorIndex] = BigIntegerToBigInt(&Q);
-      // CopyBigInt(&Increment[factorIndex], &Q);
       Exponents[factorIndex] = 0;
     }
 
