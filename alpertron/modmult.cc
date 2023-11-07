@@ -1006,8 +1006,8 @@ BigInt GeneralModularDivision(
 
   BigInteger tmpNum;
   BigIntToBigInteger(TmpNum, &tmpNum);
-  // BigInteger tmpDen;
-  // BigIntToBigInteger(TmpDen, &tmpDen);
+  BigInteger tmpDen;
+  BigIntToBigInteger(TmpDen, &tmpDen);
 
   const std::unique_ptr<MontgomeryParams> params =
     GetMontgomeryParams(OddMod);
@@ -1038,9 +1038,9 @@ BigInt GeneralModularDivision(
     // return;
   }
 
-  // XXX directly
   BigInteger den;
   BigIntToBigInteger(Den, &den);
+
 
   const int new_modulus_length =
     (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
