@@ -77,5 +77,6 @@ void SubtBigNbrModN(const limb *Nbr1, const limb *Nbr2, limb *Sum, const limb *T
 
 void ComputeInversePower2(const limb *value, /*@out@*/limb *result,
                           int number_length);
+BigInt GetInversePower2(const BigInt &Value, int number_length);
 
 #endif

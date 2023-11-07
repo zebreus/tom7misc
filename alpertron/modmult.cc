@@ -1019,9 +1019,24 @@ void ComputeInversePower2(const limb *value, limb *result, int number_length) {
     Cy = (unsigned int)(-tmp[j].x) - (Cy >> BITS_PER_GROUP);
     tmp[j].x = UintToInt(Cy & MAX_VALUE_LIMB);
   }
+
   // tmp <- x * (2 - N * x)
   MultiplyLimbs(tmp2, tmp, tmp2, number_length);
   memcpy(result, tmp2, number_length * sizeof(limb));
+}
+
+// PERF can avoid some copying if we repeat guts of above
+// (or factor into an internal version that takes a buffer of the
+// appropriate 2x length)
+BigInt GetInversePower2(const BigInt &Value, int number_length) {
+  // PERF might not need to convert the entire value?
+  const int value_length = BigIntNumLimbs(Value);
+  limb value[value_length];
+  BigIntToFixedLimbs(Value, std::max(value_length, number_length), value);
+
+  limb result[number_length];
+  ComputeInversePower2(value, result, number_length);
+  return LimbsToBigInt(result, number_length);
 }
 
 std::unique_ptr<MontgomeryParams>

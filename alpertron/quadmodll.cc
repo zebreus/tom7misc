@@ -737,6 +737,7 @@ struct QuadModLL {
       // The solution in this case requires square root.
       // compute s = ((b/2)^2 - a*c)/a^2, q = odd part of s,
       // r = maximum exponent of power of 2 that divides s.
+
       CopyBigInt(&tmp1, &ValB);
       BigIntDivideBy2(&tmp1);
       (void)BigIntMultiply(&tmp1, &tmp1, &tmp1);  // (b/2)^2
@@ -807,28 +808,50 @@ struct QuadModLL {
 
       // x = sqrRoot - b/2a.
       {
-        BigInteger Mask;
-        BigIntPowerOf2(&Mask, expon);
-        addbigint(&Mask, -1);
-        modulus_length = Mask.nbrLimbs;
-        ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, modulus_length);
-        setNbrLimbs(&tmp2, modulus_length);
-        CopyBigInt(&tmp1, &ValB);
-        BigIntDivideBy2(&tmp1);               // b/2
-        (void)BigIntMultiply(&tmp1, &tmp2, &tmp1);  // b/2a
-        BigIntChSign(&tmp1);                  // -b/2a
-        BigIntAnd(&tmp1, &Mask, &tmp1);         // -b/2a mod 2^expon
-        BigIntAdd(&tmp1, &sqrRoot, &tmp2);
+        BigInt Mask = (BigInt(1) << expon) - 1;
+        const int modulus_length = BigIntNumLimbs(Mask);
+        // BigInteger mask;
+        // BigIntPowerOf2(&mask, expon);
+        // addbigint(&mask, -1);
+        // modaulus_length = mask.nbrLimbs;
 
-        BigInteger sol;
-        BigIntAnd(&tmp2, &Mask, &sol);
-        Solution1[factorIndex] = BigIntegerToBigInt(&sol);
-        BigIntSubt(&tmp1, &sqrRoot, &tmp2);
-        BigIntAnd(&tmp2, &Mask, &sol);
-        Solution2[factorIndex] = BigIntegerToBigInt(&sol);
+
+        BigInt Tmp2 = GetInversePower2(
+            BigIntegerToBigInt(&ValAOdd), modulus_length);
+        // ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, modulus_length);
+        // setNbrLimbs(&tmp2, modulus_length);
+
+        BigInt SqrRoot = BigIntegerToBigInt(&sqrRoot);
+
+        // b/2
+        BigInt Tmp1 = BigIntegerToBigInt(&ValB) >> 1;
+        // BigIntDivideBy2(&tmp1);
+
+        // b/2a
+        Tmp1 *= Tmp2;
+        // (void)BigIntMultiply(&tmp1, &tmp2, &tmp1);
+
+        // -b/2a
+        Tmp1 = -std::move(Tmp1);
+        // BigIntChSign(&tmp1);
+
+
+        // -b/2a mod 2^expon
+        Tmp1 &= Mask;
+        Tmp2 = Tmp1 + SqrRoot;
+        // BigIntAnd(&tmp1, &mask, &tmp1);
+        // BigIntAdd(&tmp1, &sqrRoot, &tmp2);
+
+        // BigInteger sol;
+        // BigIntAnd(&tmp2, &mask, &sol);
+        Solution1[factorIndex] = Tmp2 & Mask;
+
+        // BigIntSubt(&tmp1, &sqrRoot, &tmp2);
+        // BigIntAnd(&tmp2, &mask, &sol);
+        Solution2[factorIndex] = (Tmp1 - SqrRoot) & Mask;
       }
 
-    } else if ((bitsAZero == 0) && (bitsBZero == 0)) {
+    } else if (bitsAZero == 0 && bitsBZero == 0) {
       BigInt A2 = BigIntegerToBigInt(&ValA) << 1;
       BigInt B = BigIntegerToBigInt(&ValB);
 
@@ -1417,13 +1440,9 @@ struct QuadModLL {
       const BigInt &Prime,
       const BigInt &GcdAll,
       int expon, int factorIndex,
-      const BigInteger *pValA,
-      const BigInteger *pValB,
-      const BigInteger *pValC) {
-
-    const BigInt A = BigIntegerToBigInt(pValA);
-    const BigInt B = BigIntegerToBigInt(pValB);
-    const BigInt C = BigIntegerToBigInt(pValC);
+      const BigInt &A,
+      const BigInt &B,
+      const BigInt &C) {
 
     sol1Invalid = false;
     sol2Invalid = false;
@@ -1450,11 +1469,9 @@ struct QuadModLL {
     if (sol1Invalid) {
       // Solution1 is invalid. Overwrite it with Solution2.
       Solution1[factorIndex] = Solution2[factorIndex];
-      // CopyBigInt(&Solution1[factorIndex], &Solution2[factorIndex]);
     } else if (sol2Invalid) {
       // Solution2 is invalid. Overwrite it with Solution1.
       Solution2[factorIndex] = Solution1[factorIndex];
-      // CopyBigInt(&Solution2[factorIndex], &Solution1[factorIndex]);
     } else {
       // Nothing to do.
     }
@@ -1462,15 +1479,6 @@ struct QuadModLL {
     if (Solution2[factorIndex] < Solution1[factorIndex]) {
       std::swap(Solution1[factorIndex], Solution2[factorIndex]);
     }
-
-    // BigInteger Tmp;
-    // BigIntSubt(&Solution2[factorIndex], &Solution1[factorIndex], &Tmp);
-    // if (Tmp < 0) {
-    //   // Solution2 is less than Solution1, so exchange them.
-    //   CopyBigInt(&Tmp, &Solution1[factorIndex]);
-    //   CopyBigInt(&Solution1[factorIndex], &Solution2[factorIndex]);
-    //   CopyBigInt(&Solution2[factorIndex], &Tmp);
-    // }
 
     return true;
   }
@@ -1499,27 +1507,14 @@ struct QuadModLL {
       return;
     }
 
-    // PERF: This code will reuse factors. We might want to do that.
-    #if 0
-    if ((LastModulus.nbrLimbs == 0) || !BigIntEqual(&LastModulus, pValN))
-    {     // Last modulus is different from ValN.
-      CopyBigInt(&LastModulus, pValN);
-      int modulus_length = pValN->nbrLimbs;
-      BigInteger2IntArray(modulus_length, nbrToFactor, pValN);
-      factor(pValN, nbrToFactor, factorsMod, astFactorsMod);
-    }
-    #endif
+    // PERF: Original code would cache factorization of N. It might
+    // be good to do that here too.
 
-    // mimicking original code, but now we aren't using the LastModulus
-    // at all, I think
-    // CopyBigInt(&LastModulus, pValN);
-    // std::unique_ptr<Factors> factors = BigFactor(pValN);
     std::vector<std::pair<BigInt, int>> factors = BigIntFactor(N);
 
     // intToBigInteger(&Q, 0);
     intToBigInteger(&Q, 0xFACADE);
     const int nbrFactors = factors.size();
-    // const sFactorz *pstFactor = &factors->product[0];
 
     Solution1.resize(nbrFactors);
     Solution2.resize(nbrFactors);
@@ -1560,7 +1555,9 @@ struct QuadModLL {
         // If quadratic equation mod p
         if (!QuadraticTermNotMultipleOfP(Prime, GcdAll,
                                          expon, factorIndex,
-                                         &valA, &valB, &valC)) {
+                                         BigIntegerToBigInt(&valA),
+                                         BigIntegerToBigInt(&valB),
+                                         BigIntegerToBigInt(&valC))) {
           return;
         }
       }
