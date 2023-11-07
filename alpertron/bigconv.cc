@@ -57,27 +57,6 @@ void BigIntToBigInteger(const BigInt &b, BigInteger *g) {
   CHECK(g->nbrLimbs != 0);
 }
 
-int BigIntToArray(const BigInt &b, int *arr) {
-  // PERF: Directly...
-  BigInteger tmp;
-  BigIntToBigInteger(b, &tmp);
-
-  const int number_length = tmp.nbrLimbs;
-  BigInteger2IntArray(number_length, arr, &tmp);
-  // BigInteger2IntArray suggests this can be negative,
-  // meaning a negative number
-  CHECK(*arr >= 0);
-  return 1 + *arr;
-}
-
-BigInt ArrayToBigInt(const int *arr) {
-  int length = *arr;
-  // XXX Code like BigInteger2IntArray suggests that a negative
-  // length represents a negative value.
-  CHECK(length > 0);
-  return LimbsToBigInt((const limb *)(arr + 1), length);
-}
-
 BigInt BigIntegerToBigInt(const BigInteger *g) {
   CHECK(g->nbrLimbs > 0) << g->nbrLimbs << " limbs [" <<
     StringPrintf("%04x", g->limbs[0].x) << "]";

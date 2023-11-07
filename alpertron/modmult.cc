@@ -46,6 +46,88 @@ static std::string LimbString(limb *limbs, size_t num) {
   return out;
 }
 
+static void BigIntAdd(const BigInteger* pAddend1, const BigInteger* pAddend2,
+                      BigInteger* pSum) {
+  BigInt r = BigInt::Plus(BigIntegerToBigInt(pAddend1),
+                          BigIntegerToBigInt(pAddend2));
+  BigIntToBigInteger(r, pSum);
+}
+
+static void BigIntMultiply(
+    const BigInteger *pFact1, const BigInteger *pFact2,
+    BigInteger *pProduct) {
+  // Port note: This used to return EXP_INTERM_TOO_HIGH if the product is too
+  // big to fit, but this return value is never checked. So I think we should
+  // just abort if big int conversion fails. (And eventually just use native
+  // BigInt.)
+  BigInt r = BigInt::Times(BigIntegerToBigInt(pFact1),
+                           BigIntegerToBigInt(pFact2));
+  BigIntToBigInteger(r, pProduct);
+}
+
+// Copies a fixed-width array of limbs to the bigint. Removes
+// high limbs that are 0 (which are trailing in little-endian
+// representation). I think this is "Uncompress" in the sense
+// that BigInteger has a fixed buffer large enough for "any number",
+// but in a way it is actually compression since the fixed-width
+// represents zero high limbs, but this does not.
+static void UncompressLimbsBigInteger(int number_length,
+                                      const limb *ptrValues,
+                                      /*@out@*/BigInteger *bigint) {
+  assert(number_length >= 1);
+  if (number_length == 1) {
+    bigint->limbs[0].x = ptrValues->x;
+    bigint->nbrLimbs = 1;
+  } else {
+    int nbrLimbs;
+    int numberLengthBytes = number_length * (int)sizeof(limb);
+    (void)memcpy(bigint->limbs, ptrValues, numberLengthBytes);
+    const limb *ptrValue1 = ptrValues + number_length;
+    for (nbrLimbs = number_length; nbrLimbs > 1; nbrLimbs--) {
+      ptrValue1--;
+      if (ptrValue1->x != 0) {
+        break;
+      }
+    }
+    bigint->nbrLimbs = nbrLimbs;
+  }
+
+  // Port note: This didn't originally set the sign, but I think
+  // that's just a bug. Note that a static BigInteger has positive
+  // sign (0).
+  bigint->sign = SIGN_POSITIVE;
+
+  CHECK(bigint->nbrLimbs > 0);
+}
+
+
+// Copies the BigInteger's limbs into a fixed number of limbs in ptrValues.
+// If the bigint has more limbs than number_length, it's just truncated
+// (so we get the result mod 2^(number_length*bits_per_limb)). Pads the
+// array with zeroes.
+static void CompressLimbsBigInteger(int number_length,
+                                    /*@out@*/limb *ptrValues,
+                                    const BigInteger *bigint) {
+  assert(number_length >= 1);
+  if (number_length == 1) {
+    ptrValues->x = bigint->limbs[0].x;
+    // In this case, we never need any padding.
+  } else {
+    const int numberLengthBytes = number_length * (int)sizeof(limb);
+    const int nbrLimbs = bigint->nbrLimbs;
+    assert(nbrLimbs >= 1);
+    if (nbrLimbs > number_length) {
+      (void)memcpy(ptrValues, bigint->limbs, numberLengthBytes);
+    } else {
+      const int nbrLimbsBytes = nbrLimbs * (int)sizeof(limb);
+      (void)memcpy(ptrValues, bigint->limbs, nbrLimbsBytes);
+      // Padding.
+      (void)memset(ptrValues + nbrLimbs, 0, numberLengthBytes - nbrLimbsBytes);
+    }
+  }
+}
+
+
 // Multiply two numbers in Montgomery notation.
 //
 // For large numbers the REDC algorithm is:
@@ -891,7 +973,7 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
     (void)memset(&tmp5[modulus_length], 0, lenBytes);
   }
   UncompressLimbsBigInteger(modulus_length, tmp5, &result);
-  (void)BigIntMultiply(&result, oddValue, &result);
+  BigIntMultiply(&result, oddValue, &result);
   // NumberLength = oddValue->nbrLimbs;
 
   BigInteger tmp;
@@ -1322,7 +1404,7 @@ void ModMult(const MontgomeryParams &params,
     // TestNbr is a power of 2.
     UncompressLimbsBigInteger(params.modulus_length, factor1, &tmpFact1);
     UncompressLimbsBigInteger(params.modulus_length, factor2, &tmpFact2);
-    (void)BigIntMultiply(&tmpFact1, &tmpFact2, &tmpFact1);
+    BigIntMultiply(&tmpFact1, &tmpFact2, &tmpFact1);
     CompressLimbsBigInteger(params.modulus_length, product, &tmpFact1);
     (product + (params.powerOf2Exponent / BITS_PER_GROUP))->x &=
       (1 << (params.powerOf2Exponent % BITS_PER_GROUP)) - 1;

@@ -35,6 +35,18 @@
 
 static constexpr bool VERBOSE = false;
 
+// XXX just used in debugging sentinels. delete.
+static void intToBigInteger(BigInteger *bigint, int value) {
+  if (value >= 0) {
+    bigint->limbs[0].x = value;
+    bigint->sign = SIGN_POSITIVE;
+  } else {
+    bigint->limbs[0].x = -value;
+    bigint->sign = SIGN_NEGATIVE;
+  }
+  bigint->nbrLimbs = 1;
+}
+
 static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
   pBigNbr->nbrLimbs = numlen;
   pBigNbr->sign = SIGN_POSITIVE;
@@ -214,8 +226,6 @@ struct QuadModLL {
         Exponents[T1] = 0;
       }   /* end for */
     } while (T1 >= 0);
-
-
   }
 
   // Solve Bx + C = 0 (mod N).
@@ -454,6 +464,48 @@ struct QuadModLL {
     }
   }
 
+  // I think this is a fixed-width operation like the ones above, but
+  // it seems like overkill especially given that we only divide by
+  // 2?
+  static void DivBigNbrBy2(const limb *pDividend, limb *pQuotient, int nbrLen) {
+    // Was only called with this value. Could simplify...
+    static constexpr int divisor = 2;
+    const limb* ptrDividend = pDividend;
+    limb* ptrQuotient = pQuotient;
+    unsigned int remainder = 0U;
+    constexpr double dDivisor = (double)divisor;
+    constexpr double dLimb = 2147483648.0;
+    int nbrLenMinus1 = nbrLen - 1;
+    ptrDividend += nbrLenMinus1;
+    ptrQuotient += nbrLenMinus1;
+    for (int ctr = nbrLenMinus1; ctr >= 0; ctr--) {
+      unsigned int dividend = (remainder << BITS_PER_GROUP) +
+        (unsigned int)ptrDividend->x;
+      double dDividend = ((double)remainder * dLimb) + (double)ptrDividend->x;
+      // quotient has correct value or 1 more.
+      unsigned int quotient = (unsigned int)((dDividend / dDivisor) + 0.5);
+      remainder = dividend - (quotient * (unsigned int)divisor);
+      if (remainder >= (unsigned int)divisor) {
+        // remainder not in range 0 <= remainder < divisor. Adjust.
+        quotient--;
+        remainder += (unsigned int)divisor;
+      }
+      ptrQuotient->x = (int)quotient;
+      ptrQuotient--;
+      ptrDividend--;
+    }
+  }
+
+  static void ChSignLimbs(limb *nbr, int length) {
+    int carry = 0;
+    const limb *ptrEndNbr = nbr + length;
+    for (limb *ptrNbr = nbr; ptrNbr < ptrEndNbr; ptrNbr++) {
+      carry -= ptrNbr->x;
+      ptrNbr->x = carry & MAX_INT_NBR;
+      carry >>= BITS_PER_GROUP;
+    }
+  }
+
   // Compute sqrRoot <- sqrt(ValCOdd) mod 2^expon.
   // To compute the square root, compute the inverse of sqrt,
   // so only multiplications are used.
@@ -461,14 +513,18 @@ struct QuadModLL {
   static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
                                              int expon, int bitsCZero,
                                              int modulus_length) {
-    BigInteger ValCOdd;
-    BigIntToBigInteger(COdd, &ValCOdd);
+    // Number of limbs to represent 2^expon - 1.
+    const int expon_limbs = (expon + BITS_PER_GROUP - 1) / BITS_PER_GROUP;
+    const int codd_limbs = std::max(expon_limbs, BigIntNumLimbs(COdd));
+    limb codd[codd_limbs];
+    BigIntToFixedLimbs(COdd, codd_limbs, codd);
 
+    // PERF use limbs
     BigInteger sqrRoot;
     // First approximation to inverse of square root.
     // If value is ...0001b, the inverse of square root is ...01b.
     // If value is ...1001b, the inverse of square root is ...11b.
-    sqrRoot.limbs[0].x = (((ValCOdd.limbs[0].x & 15) == 1) ? 1 : 3);
+    sqrRoot.limbs[0].x = (((codd[0].x & 15) == 1) ? 1 : 3);
     int correctBits = 2;
     int nbrLimbs = 1;
     BigInteger tmp1, tmp2;
@@ -477,8 +533,9 @@ struct QuadModLL {
       // Compute f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
       correctBits *= 2;
       nbrLimbs = (correctBits / BITS_PER_GROUP) + 1;
+      CHECK(nbrLimbs <= codd_limbs);
       MultBigNbrInternal(sqrRoot.limbs, sqrRoot.limbs, tmp2.limbs, nbrLimbs);
-      MultBigNbrInternal(tmp2.limbs, ValCOdd.limbs, tmp1.limbs, nbrLimbs);
+      MultBigNbrInternal(tmp2.limbs, codd, tmp1.limbs, nbrLimbs);
       ChSignLimbs(tmp1.limbs, nbrLimbs);
       int lenBytes = nbrLimbs * (int)sizeof(limb);
       (void)memset(tmp2.limbs, 0, lenBytes);
@@ -487,14 +544,13 @@ struct QuadModLL {
       MultBigNbrInternal(tmp2.limbs, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
       (void)memcpy(sqrRoot.limbs, tmp1.limbs, lenBytes);
 
-      // XXX Too much work to divide by 2!
-      // Also, the only use of this function.
-      DivBigNbrByInt(tmp1.limbs, 2, sqrRoot.limbs, nbrLimbs);
+      // PERF Too much work to divide by 2!
+      DivBigNbrBy2(tmp1.limbs, sqrRoot.limbs, nbrLimbs);
       correctBits--;
     }
 
     // Get square root of ValCOdd from its inverse by multiplying by ValCOdd.
-    MultBigNbrInternal(ValCOdd.limbs, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
+    MultBigNbrInternal(codd, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
     int lenBytes = nbrLimbs * (int)sizeof(limb);
 
     // PERF avoid copy here
@@ -626,11 +682,6 @@ struct QuadModLL {
       int exponent, int factorIndex,
       const BigInt &A, const BigInt &B, const BigInt &C) {
 
-    // BigInteger /* ValA, */ ValB, ValC;
-    // BigIntToBigInteger(A, &ValA);
-    // BigIntToBigInteger(B, &ValB);
-    // BigIntToBigInteger(C, &ValC);
-
     int expon = exponent;
 
     // ax^2 + bx + c = 0 (mod 2^expon)
@@ -654,12 +705,6 @@ struct QuadModLL {
     int bitsCZero = BigInt::BitwiseCtz(C);
     const BigInt COdd = C >> bitsCZero;
     if (C == 0) bitsCZero = BITS_PER_GROUP;
-
-    #if 0
-    BigInteger /* ValAOdd, */ ValBOdd;
-    // BigIntToBigInteger(AOdd, &ValAOdd);
-    BigIntToBigInteger(BOdd, &ValBOdd);
-    #endif
 
     if (bitsAZero > 0 && bitsBZero > 0 && bitsCZero > 0) {
       int minExpon = bitsAZero;
@@ -688,22 +733,12 @@ struct QuadModLL {
 
       BigInt Tmp1 = B >> 1;
 
-      // CopyBigInt(&tmp1, &ValB);
-      // BigIntDivideBy2(&tmp1);
-
       // (b/2)^2
       Tmp1 *= Tmp1;
-      // (void)BigIntMultiply(&tmp1, &tmp1, &tmp1);
-
 
       // (b/2)^2 - a*c
       Tmp1 -= A * C;
-      // (void)BigIntMultiply(&ValA, &ValC, &tmp2);
-      // BigIntSubt(&tmp1, &tmp2, &tmp1);
 
-      // BigInteger mask;
-      // BigIntPowerOf2(&mask, expon);
-      // addbigint(&mask, -1);
       const BigInt Mask = (BigInt(1) << expon) - 1;
 
       // Port note: Original code overwrote valcodd.
@@ -712,27 +747,10 @@ struct QuadModLL {
 
       int modulus_length = BigIntNumLimbs(Mask);
 
-
-      #if 0
-      // I think this just pads out AOdd and tmp2 to modulus_length,
-      // which we could do with BigIntToFixedLimbs, or ComputeInversePower2
-      // does it for us. I don't understand why we do it for tmp2, since
-      // that parameter is just an output?
-      if (modulus_length > ValAOdd.nbrLimbs) {
-        int lenBytes = (modulus_length - ValAOdd.nbrLimbs) * (int)sizeof(int);
-        (void)memset(&ValAOdd.limbs[ValAOdd.nbrLimbs], 0, lenBytes);
-      }
-
-      if (modulus_length > tmp2.nbrLimbs) {
-        int lenBytes = (modulus_length - tmp2.nbrLimbs) * (int)sizeof(int);
-        (void)memset(&tmp2.limbs[tmp2.nbrLimbs], 0, lenBytes);
-      }
-      #endif
       // Port note: The code used to explicitly pad out AOdd (and the
       // output?) if smaller than modulus_length, but the BigInt version
       // does its own padding internally.
       BigInt Tmp2 = GetInversePower2(AOdd, modulus_length);
-      // ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, modulus_length);
 
       // ((b/2) - a*c)/a mod 2^n
       C2 *= Tmp2;
@@ -778,19 +796,10 @@ struct QuadModLL {
         // New mask for exponent, which was modified above.
         const BigInt Mask = (BigInt(1) << expon) - 1;
         const int modulus_length = BigIntNumLimbs(Mask);
-        // BigInteger mask;
-        // BigIntPowerOf2(&mask, expon);
-        // addbigint(&mask, -1);
-        // modulus_length = mask.nbrLimbs;
 
         BigInt Tmp2 = GetInversePower2(
             AOdd,
-            // BigIntegerToBigInt(&ValAOdd),
             modulus_length);
-        // ComputeInversePower2(ValAOdd.limbs, tmp2.limbs, modulus_length);
-        // setNbrLimbs(&tmp2, modulus_length);
-
-
 
         // b/2
         BigInt Tmp1 = B >> 1;
@@ -798,73 +807,39 @@ struct QuadModLL {
 
         // b/2a
         Tmp1 *= Tmp2;
-        // (void)BigIntMultiply(&tmp1, &tmp2, &tmp1);
 
         // -b/2a
         Tmp1 = -std::move(Tmp1);
-        // BigIntChSign(&tmp1);
-
 
         // -b/2a mod 2^expon
         Tmp1 &= Mask;
         Tmp2 = Tmp1 + SqrRoot;
-        // BigIntAnd(&tmp1, &mask, &tmp1);
-        // BigIntAdd(&tmp1, &sqrRoot, &tmp2);
 
-        // BigInteger sol;
-        // BigIntAnd(&tmp2, &mask, &sol);
         Solution1[factorIndex] = Tmp2 & Mask;
-
-        // BigIntSubt(&tmp1, &sqrRoot, &tmp2);
-        // BigIntAnd(&tmp2, &mask, &sol);
         Solution2[factorIndex] = (Tmp1 - SqrRoot) & Mask;
       }
 
     } else if (bitsAZero == 0 && bitsBZero == 0) {
       BigInt A2 = A << 1;
-
-      // BigInteger Linear, Const;
-
-      // CopyBigInt(&Quadr, &ValA);
-      // BigIntMultiplyBy2(&Quadr);         // 2a
-      // CopyBigInt(&Linear, &ValB);        // b
-      // CopyBigInt(&Const, &ValC);
-      // BigIntDivideBy2(&Const);           // c/2
       FindQuadraticSolution(&Solution1[factorIndex],
                             A2,
                             B,
                             C >> 1,
-                            // BigIntegerToBigInt(&Const),
                             expon - 1);
 
       Solution1[factorIndex] <<= 1;
-      // BigIntMultiplyBy2(&Solution1[factorIndex]);
 
-      // CopyBigInt(&Quadr, &ValA);
-      // BigIntMultiplyBy2(&Quadr);         // 2a
-      // BigIntAdd(&Quadr, &ValB, &Linear); // 2a+b
-      // CopyBigInt(&Const, &ValA);
-      // BigIntAdd(&Const, &ValB, &Const);
-      // BigIntAdd(&Const, &ValC, &Const);
-      // BigIntDivideBy2(&Const);           // (a+b+c)/2
       FindQuadraticSolution(&Solution2[factorIndex],
                             A2,
                             A2 + B,
                             (A + B + C) >> 1,
-                            // BigIntegerToBigInt(&Const),
                             expon - 1);
 
       Solution2[factorIndex] <<= 1;
       Solution2[factorIndex] += 1;
 
-      // BigIntMultiplyBy2(&Solution2[factorIndex]);
-      // addbigint(&Solution2[factorIndex], 1);
-
     } else {
 
-      // CopyBigInt(&Quadr, &ValA);
-      // CopyBigInt(&Linear, &ValB);
-      // CopyBigInt(&Const, &ValC);
       FindQuadraticSolution(&Solution1[factorIndex],
                             A,
                             B,
@@ -873,10 +848,8 @@ struct QuadModLL {
       sol2Invalid = true;
     }
 
-    // XXX how is this used? It looks to me like all
-    // all other code paths write Q before using it.
-    // memory corruption??
     intToBigInteger(&Q, 0x0DDBALL);
+    // XXX Can we just write the increment here? Or return Q?
     BigIntPowerOf2(&Q, expon);         // Store increment.
     return true;
   }
@@ -888,10 +861,6 @@ struct QuadModLL {
 
     const int NumberLengthBytes =
       params.modulus_length * (int)sizeof(limb);
-
-    // XXX native
-    BigInteger base;
-    BigIntToBigInteger(Base, &base);
 
     limb aux5[params.modulus_length];
     limb aux6[params.modulus_length];
@@ -911,8 +880,8 @@ struct QuadModLL {
 
       limb* toConvert = nullptr;
       // Convert discriminant to Montgomery notation.
-      // XXX can convert fixed limbs from Base
-      CompressLimbsBigInteger(params.modulus_length, aux5, &base);
+      BigIntToFixedLimbs(Base, params.modulus_length, aux5);
+      // CompressLimbsBigInteger(params.modulus_length, aux5, &base);
       // u
       ModMult(params, aux5, params.MontgomeryMultR2, aux6);
       if ((Prime & 7) == 5) {
@@ -923,8 +892,6 @@ struct QuadModLL {
         // Step 1.
         // Q <- (prime-5)/8.
         const BigInt Q = (Prime - 5) >> 3;
-        // BigInteger Q;
-        // BigIntToBigInteger((Prime - 5) >> 3, &Q);
 
         // subtractdivide(&Q, 5, 8);
         // 2u
@@ -968,12 +935,6 @@ struct QuadModLL {
         int e = BigInt::BitwiseCtz(QQ);
         QQ >>= e;
 
-        // subtractdivide(&Q, 1, 1);   // Q <- (prime-1).
-        // int e;
-        // DivideBigNbrByMaxPowerOf2(&e, Q.limbs, &Q.nbrLimbs);
-
-        // BigIntToBigInteger(QQ, &Q);
-
         // Step 2.
         int x = 1;
 
@@ -993,16 +954,10 @@ struct QuadModLL {
         // Step 4.
         // y
         BigIntToFixedLimbs(Z, params.modulus_length, aux5);
-        // (void)memcpy(aux5, aux4, NumberLengthBytes); // y
 
         int r = e;
 
-
         const BigInt KK1 = (QQ - 1) >> 1;
-        // BigInteger K1;
-        // BigIntToBigInteger(KK1, &K1);
-        // CopyBigInt(&K1, &Q);
-        // subtractdivide(&K1, 1, 2);
 
         // x
         ModPow(params, aux6, KK1, aux7);
@@ -1054,12 +1009,8 @@ struct QuadModLL {
   }
 
   BigInt ComputeSquareRootModPowerOfP(const BigInt &Base,
+                                      const BigInt &Prime,
                                       int nbrBitsSquareRoot) {
-    // const int modulus_length = prime.nbrLimbs;
-    // const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-    // (void)memcpy(TheModulus, prime.limbs, NumberLengthBytes);
-    // TheModulus[modulus_length].x = 0;
-    const BigInt Prime = BigIntegerToBigInt(&prime);
     const std::unique_ptr<MontgomeryParams> params =
       GetMontgomeryParams(Prime);
 
@@ -1075,57 +1026,40 @@ struct QuadModLL {
 
     intToBigInteger(&Q, 0xCAFE);
 
-    // XXX just use bigint
     BigInt Q = Prime;
-    // CopyBigInt(&Q, &prime);
 
     // Obtain nbrBitsSquareRoot correct digits of inverse square root.
     while (correctBits < nbrBitsSquareRoot) {
       // Compute f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
       correctBits *= 2;
+      // Square Q.
       Q = Q * Q;
-      // (void)BigIntMultiply(&Q, &Q, &Q);           // Square Q.
 
       BigInt Tmp1 = SqrRoot * SqrRoot;
-      // (void)BigIntMultiply(&sqrRoot, &sqrRoot, &tmp1);
       BigInt Tmp2 = Tmp1 % Q;
-      // (void)BigIntRemainder(&tmp1, &Q, &tmp2);
 
       Tmp1 = Discriminant * Tmp2;
-      // BigIntToBigInteger(Discriminant * Tmp2, &tmp1);
-      // (void)BigIntMultiply(&tmp2, &discriminant, &tmp1);
 
       Tmp2 = Tmp1 % Q;
-      // (void)BigIntRemainder(&tmp1, &Q, &tmp2);
       Tmp2 = 3 - Tmp2;
-      // intToBigInteger(&tmp1, 3);
-      // BigIntSubt(&tmp1, &tmp2, &tmp2);
       Tmp1 = Tmp2 * SqrRoot;
-      // (void)BigIntMultiply(&tmp2, &sqrRoot, &tmp1);
+
       if (Tmp1.IsOdd()) {
         Tmp1 += Q;
-        // BigIntAdd(&tmp1, &Q, &tmp1);
       }
 
       Tmp1 >>= 1;
-      // BigIntDivide2(&tmp1);
       SqrRoot = Tmp1 % Q;
-      // (void)BigIntRemainder(&tmp1, &Q, &sqrRoot);
     }
 
     if (SqrRoot < 0) {
       SqrRoot += Q;
-      // BigIntAdd(&sqrRoot, &Q, &sqrRoot);
     }
 
     // Get square root of discriminant from its inverse by multiplying
     // by discriminant.
     SqrRoot *= Discriminant;
-    // BigIntToBigInteger(Discriminant * SqrRoot, &sqrRoot);
-    // (void)BigIntMultiply(&sqrRoot, &discriminant, &sqrRoot);
-    // (void)BigIntRemainder(&sqrRoot, &Q, &sqrRoot);
     SqrRoot %= Q;
-    // BigIntToBigInteger(SqrRoot, &sqrRoot);
     return SqrRoot;
   }
 
@@ -1162,8 +1096,6 @@ struct QuadModLL {
       bitsAZero++;
     }
     Discriminant %= VV;
-
-    CHECK(Prime == BigIntegerToBigInt(&prime));
 
     // Get maximum power of prime which divides discriminant.
     int deltaZeros;
@@ -1208,12 +1140,6 @@ struct QuadModLL {
     }
 
     {
-      // BigInteger tmp1;
-      // BigIntToBigInteger(Tmp1, &tmp1);
-      // int modulus_length = tmp1.nbrLimbs;
-      // int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-      // (void)memcpy(TheModulus, tmp1.limbs, NumberLengthBytes);
-      // TheModulus[modulus_length].x = 0;
       const std::unique_ptr<MontgomeryParams> params =
         GetMontgomeryParams(Tmp1);
 
@@ -1245,7 +1171,6 @@ struct QuadModLL {
       // (void)memset(&discriminant.limbs[nbrLimbs], 0, lenBytes);
       // }
 
-      CHECK(Prime == BigIntegerToBigInt(&prime));
       BigInt Tmp = Discriminant % Prime;
       // (void)BigIntRemainder(&discriminant, &prime, &Tmp);
       if (Tmp < 0) {
@@ -1261,7 +1186,8 @@ struct QuadModLL {
       // expect more state in Aux, ugh.
 
       // Compute square root of discriminant.
-      SqrRoot = ComputeSquareRootModPowerOfP(Tmp, nbrBitsSquareRoot);
+      SqrRoot = ComputeSquareRootModPowerOfP(
+          Tmp, Prime, nbrBitsSquareRoot);
 
       // Multiply by square root of discriminant by prime^deltaZeros.
       for (int ctr = 0; ctr < deltaZeros; ctr++) {
@@ -1274,7 +1200,10 @@ struct QuadModLL {
     // Store increment.
     intToBigInteger(&Q, 0xBABE);
     // Q <- prime^correctBits
-    (void)BigIntPowerIntExp(&prime, correctBits, &Q);
+    BigInt QQ = BigInt::Pow(Prime, correctBits);
+    BigIntToBigInteger(QQ, &Q);
+
+    // (void)BigIntPowerIntExp(&prime, correctBits, &Q);
     // Compute x = (b + sqrt(discriminant)) / (-2a) and
     //   x = (b - sqrt(discriminant)) / (-2a)
 
@@ -1291,11 +1220,10 @@ struct QuadModLL {
       Tmp1 = BigInt::DivExact(Tmp1, Prime);
     }
 
-    Solution1[factorIndex] = BigInt::CMod(Tmp1 * AOdd,
-                                          BigIntegerToBigInt(&Q));
+    Solution1[factorIndex] = BigInt::CMod(Tmp1 * AOdd, QQ);
 
     if (Solution1[factorIndex] < 0) {
-      Solution1[factorIndex] += BigIntegerToBigInt(&Q);
+      Solution1[factorIndex] += QQ;
     }
 
     Tmp1 = B - SqrRoot;
@@ -1310,11 +1238,10 @@ struct QuadModLL {
       Tmp1 = BigInt::DivExact(Tmp1, Prime);
     }
 
-    Solution2[factorIndex] = BigInt::CMod(Tmp1 * AOdd,
-                                          BigIntegerToBigInt(&Q));
+    Solution2[factorIndex] = BigInt::CMod(Tmp1 * AOdd, QQ);
 
     if (Solution2[factorIndex] < 0) {
-      Solution2[factorIndex] += BigIntegerToBigInt(&Q);
+      Solution2[factorIndex] += QQ;
     }
 
     return true;
@@ -1351,9 +1278,8 @@ struct QuadModLL {
       // (void)BigIntPowerIntExp(&prime, currentExpon, &V);
       // Q <- a*x_n + b
       BigInt QQ = A * TmpSolution + B;
-        // intToBigInteger(&Q, 0xDADA);
       // (void)BigIntMultiply(pValA, &tmpSolution, &Q);
-      BigInt L = BigIntegerToBigInt(&Q);
+      BigInt L = QQ;
       // CopyBigInt(&L, &Q);
       // BigIntAdd(&Q, pValB, &Q);
       QQ %= VV;
@@ -1416,7 +1342,7 @@ struct QuadModLL {
 
     sol1Invalid = false;
     sol2Invalid = false;
-    // Compute discriminant = ValB^2 - 4*ValA*ValC.
+    // Compute discriminant = B^2 - 4*A*C.
     Discriminant = B * B - ((A * C) << 2);
 
     bool solutions = false;
@@ -1460,18 +1386,12 @@ struct QuadModLL {
       const BigInt &C, const BigInt &N,
       const BigInt &GcdAll, const BigInt &NN_arg) {
 
-    BigInteger valA, valB, valC, valN;
-    BigIntToBigInteger(A, &valA);
-    BigIntToBigInteger(B, &valB);
-    BigIntToBigInteger(C, &valC);
-    BigIntToBigInteger(N, &valN);
-
     NN = NN_arg;
 
     // PERF: no need to copy
     Solution = solutionCback;
 
-    if (BigInt::CMod(A, N) == 0) {
+    if (BigInt::DivisibleBy(A, N)) {
       // Linear equation.
       SolveModularLinearEquation(GcdAll, A, B, C, N);
       return;
@@ -1517,21 +1437,19 @@ struct QuadModLL {
         }
 
         QuadraticTermMultipleOfP(expon, factorIndex,
-                                 BigIntegerToBigInt(&valA),
-                                 BigIntegerToBigInt(&valB),
-                                 BigIntegerToBigInt(&valC));
+                                 A, B, C);
 
       } else {
         // If quadratic equation mod p
         if (!QuadraticTermNotMultipleOfP(Prime, GcdAll,
                                          expon, factorIndex,
-                                         BigIntegerToBigInt(&valA),
-                                         BigIntegerToBigInt(&valB),
-                                         BigIntegerToBigInt(&valC))) {
+                                         A, B, C)) {
           return;
         }
       }
 
+      // XXX needs to be returned from functions above,
+      // or the functions themselves should set it.
       Increment[factorIndex] = BigIntegerToBigInt(&Q);
       Exponents[factorIndex] = 0;
     }
