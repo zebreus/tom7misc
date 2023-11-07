@@ -33,7 +33,7 @@
 #include "bigconv.h"
 #include "base/stringprintf.h"
 
-static constexpr bool SELF_CHECK = true;
+static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 
 [[maybe_unused]]
@@ -44,13 +44,6 @@ static std::string LimbString(limb *limbs, size_t num) {
     StringAppendF(&out, "%04x", limbs[i].x);
   }
   return out;
-}
-
-static void BigIntAdd(const BigInteger* pAddend1, const BigInteger* pAddend2,
-                      BigInteger* pSum) {
-  BigInt r = BigInt::Plus(BigIntegerToBigInt(pAddend1),
-                          BigIntegerToBigInt(pAddend2));
-  BigIntToBigInteger(r, pSum);
 }
 
 static void BigIntMultiply(
@@ -972,14 +965,20 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
     int lenBytes = (oddValue->nbrLimbs - modulus_length) * (int)sizeof(limb);
     (void)memset(&tmp5[modulus_length], 0, lenBytes);
   }
-  UncompressLimbsBigInteger(modulus_length, tmp5, &result);
-  BigIntMultiply(&result, oddValue, &result);
-  // NumberLength = oddValue->nbrLimbs;
 
-  BigInteger tmp;
-  UncompressLimbsBigInteger(modulus_length, resultModOdd, &tmp);
-  BigIntAdd(&result, &tmp, &result);
-  return BigIntegerToBigInt(&result);
+  BigInt Result = LimbsToBigInt(tmp5, modulus_length);
+  // UncompressLimbsBigInteger(modulus_length, tmp5, &result);
+
+  Result *= BigIntegerToBigInt(oddValue);
+  // BigIntMultiply(&result, oddValue, &result);
+
+  Result += LimbsToBigInt(resultModOdd, modulus_length);
+  return Result;
+
+  // BigInteger tmp;
+  // UncompressLimbsBigInteger(modulus_length, resultModOdd, &tmp);
+  // BigIntAdd(&result, &tmp, &result);
+  // return BigIntegerToBigInt(&result);
 }
 
 // Compute modular division. ModInvBigNbr does not support even moduli,
@@ -990,7 +989,7 @@ BigInt GeneralModularDivision(
     const BigInt &Num, const BigInt &Den, const BigInt &Mod) {
 
   const int shRight = BigInt::BitwiseCtz(Mod);
-  BigInt OddMod = Mod >> shRight;
+  const BigInt OddMod = Mod >> shRight;
 
   // Reduce Num modulo oddValue.
   BigInt TmpNum = Num % OddMod;
@@ -1001,12 +1000,14 @@ BigInt GeneralModularDivision(
   if (TmpDen < 0) TmpDen += OddMod;
 
   // XXX convert directly to fixed limbs
+  // Why doesn't it work to pass this to ChineseRemainderTheorem?
   BigInteger oddValue;
   BigIntToBigInteger(OddMod, &oddValue);
 
-  BigInteger tmpNum, tmpDen;
+  BigInteger tmpNum;
   BigIntToBigInteger(TmpNum, &tmpNum);
-  BigIntToBigInteger(TmpDen, &tmpDen);
+  // BigInteger tmpDen;
+  // BigIntToBigInteger(TmpDen, &tmpDen);
 
   const std::unique_ptr<MontgomeryParams> params =
     GetMontgomeryParams(OddMod);
@@ -1014,7 +1015,8 @@ BigInt GeneralModularDivision(
   const int modulus_length = params->modulus_length;
 
   limb tmp3[modulus_length + 1];
-  CompressLimbsBigInteger(modulus_length, tmp3, &tmpDen);
+  BigIntToFixedLimbs(TmpDen, modulus_length, tmp3);
+  // CompressLimbsBigInteger(modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
   ModMult(*params, tmp3, params->MontgomeryMultR2, tmp3);
 
@@ -1036,9 +1038,9 @@ BigInt GeneralModularDivision(
     // return;
   }
 
+  // XXX directly
   BigInteger den;
   BigIntToBigInteger(Den, &den);
-
 
   const int new_modulus_length =
     (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
