@@ -59,7 +59,7 @@ static std::string LongNum(const BigInt &a) {
 }
 
 void BigIntChSign(BigInteger *value) {
-  if ((value->nbrLimbs == 1) && (value->limbs[0].x == 0)) {
+  if ((value->nbrLimbs == 1) && (value->Limbs[0].x == 0)) {
     // Value is zero. Do not change sign.
     return;
   }
@@ -76,10 +76,10 @@ void BigIntPowerOf2(BigInteger *pResult, int exponent) {
 
   if (nbrLimbs > 0) {
     int nbrLimbsBytes = nbrLimbs * (int)sizeof(limb);
-    (void)memset(pResult->limbs, 0, nbrLimbsBytes);
+    (void)memset(pResult->Limbs.data(), 0, nbrLimbsBytes);
   }
 
-  pResult->limbs[nbrLimbs].x = UintToInt(1U << power2);
+  pResult->Limbs[nbrLimbs].x = UintToInt(1U << power2);
   pResult->nbrLimbs = nbrLimbs + 1;
   pResult->sign = SIGN_POSITIVE;
   CHECK(pResult->nbrLimbs > 0);

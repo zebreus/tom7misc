@@ -27,7 +27,7 @@ bool ParseBigInteger(const char *str, BigInteger *big) {
 void BigIntToBigInteger(const BigInt &b, BigInteger *g) {
   // XXX could check up front that output has enough space...
   size_t count = 0;
-  mpz_export(g->limbs, &count,
+  mpz_export(g->Limbs.data(), &count,
              // words are little endian.
              -1,
              // word size
@@ -42,7 +42,7 @@ void BigIntToBigInteger(const BigInt &b, BigInteger *g) {
   CHECK(count < MAX_LEN) << count;
   if (count == 0) {
     // BigInteger wants at least one limb always.
-    g->limbs[0].x = 0;
+    g->Limbs[0].x = 0;
     g->nbrLimbs = 1;
   } else {
     g->nbrLimbs = count;
@@ -59,7 +59,7 @@ void BigIntToBigInteger(const BigInt &b, BigInteger *g) {
 
 BigInt BigIntegerToBigInt(const BigInteger *g) {
   CHECK(g->nbrLimbs > 0) << g->nbrLimbs << " limbs [" <<
-    StringPrintf("%04x", g->limbs[0].x) << "]";
+    StringPrintf("%04x", g->Limbs[0].x) << "]";
   BigInt out;
   mpz_import(out.GetRep(), g->nbrLimbs,
              // words are little-endian
@@ -70,7 +70,7 @@ BigInt BigIntegerToBigInt(const BigInteger *g) {
              0,
              // "nails": high bits to skip in each word
              1,
-             g->limbs);
+             g->Limbs.data());
   if (g->sign == SIGN_NEGATIVE) {
     mpz_neg(out.GetRep(), out.GetRep());
   }

@@ -69,12 +69,12 @@ static void UncompressLimbsBigInteger(int number_length,
                                       /*@out@*/BigInteger *bigint) {
   assert(number_length >= 1);
   if (number_length == 1) {
-    bigint->limbs[0].x = ptrValues->x;
+    bigint->Limbs[0].x = ptrValues->x;
     bigint->nbrLimbs = 1;
   } else {
     int nbrLimbs;
     int numberLengthBytes = number_length * (int)sizeof(limb);
-    (void)memcpy(bigint->limbs, ptrValues, numberLengthBytes);
+    (void)memcpy(bigint->Limbs.data(), ptrValues, numberLengthBytes);
     const limb *ptrValue1 = ptrValues + number_length;
     for (nbrLimbs = number_length; nbrLimbs > 1; nbrLimbs--) {
       ptrValue1--;
@@ -103,17 +103,17 @@ static void CompressLimbsBigInteger(int number_length,
                                     const BigInteger *bigint) {
   assert(number_length >= 1);
   if (number_length == 1) {
-    ptrValues->x = bigint->limbs[0].x;
+    ptrValues->x = bigint->Limbs[0].x;
     // In this case, we never need any padding.
   } else {
     const int numberLengthBytes = number_length * (int)sizeof(limb);
     const int nbrLimbs = bigint->nbrLimbs;
     assert(nbrLimbs >= 1);
     if (nbrLimbs > number_length) {
-      (void)memcpy(ptrValues, bigint->limbs, numberLengthBytes);
+      (void)memcpy(ptrValues, bigint->Limbs.data(), numberLengthBytes);
     } else {
       const int nbrLimbsBytes = nbrLimbs * (int)sizeof(limb);
-      (void)memcpy(ptrValues, bigint->limbs, nbrLimbsBytes);
+      (void)memcpy(ptrValues, bigint->Limbs.data(), nbrLimbsBytes);
       // Padding.
       (void)memset(ptrValues + nbrLimbs, 0, numberLengthBytes - nbrLimbsBytes);
     }
@@ -948,13 +948,13 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
 
   if (modulus_length > oddValue->nbrLimbs) {
     int lenBytes = (modulus_length - oddValue->nbrLimbs) * (int)sizeof(limb);
-    (void)memset(&oddValue->limbs[oddValue->nbrLimbs], 0, lenBytes);
+    (void)memset(&oddValue->Limbs[oddValue->nbrLimbs], 0, lenBytes);
   }
 
   limb tmp3[MAX_LEN];
   SubtractBigNbr(resultModPower2, resultModOdd, tmp3, modulus_length);
   limb tmp4[MAX_LEN];
-  ComputeInversePower2(oddValue->limbs, tmp4, modulus_length);
+  ComputeInversePower2(oddValue->Limbs.data(), tmp4, modulus_length);
   limb tmp5[MAX_LEN];
   ModMult(params, tmp4, tmp3, tmp5);
 
@@ -1006,6 +1006,8 @@ BigInt GeneralModularDivision(
 
   BigInteger tmpNum;
   BigIntToBigInteger(TmpNum, &tmpNum);
+
+  // XXXXX Deleting this dead code causes tests to fail?!
   BigInteger tmpDen;
   BigIntToBigInteger(TmpDen, &tmpDen);
 
@@ -1140,7 +1142,7 @@ GetMontgomeryParamsPowerOf2(int powerOf2) {
   params->modulus_length = modulus_length;
   params->modulus.resize(modulus_length + 1);
   CHECK(pow2.nbrLimbs == modulus_length);
-  memcpy(params->modulus.data(), pow2.limbs,
+  memcpy(params->modulus.data(), pow2.Limbs.data(),
          modulus_length * sizeof (limb));
   params->modulus[modulus_length].x = 0;
 

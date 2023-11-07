@@ -38,10 +38,10 @@ static constexpr bool VERBOSE = false;
 // XXX just used in debugging sentinels. delete.
 static void intToBigInteger(BigInteger *bigint, int value) {
   if (value >= 0) {
-    bigint->limbs[0].x = value;
+    bigint->Limbs[0].x = value;
     bigint->sign = SIGN_POSITIVE;
   } else {
-    bigint->limbs[0].x = -value;
+    bigint->Limbs[0].x = -value;
     bigint->sign = SIGN_NEGATIVE;
   }
   bigint->nbrLimbs = 1;
@@ -51,7 +51,7 @@ static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
   pBigNbr->nbrLimbs = numlen;
   pBigNbr->sign = SIGN_POSITIVE;
   while (pBigNbr->nbrLimbs > 1) {
-    if (pBigNbr->limbs[pBigNbr->nbrLimbs - 1].x != 0) {
+    if (pBigNbr->Limbs[pBigNbr->nbrLimbs - 1].x != 0) {
       break;
     }
     pBigNbr->nbrLimbs--;
@@ -362,26 +362,27 @@ struct QuadModLL {
       // Port note: This used to do this on ptrSolution1 in place.
       // ptrSolution1 <- 1 / |ValB|
       BigInteger inv;
-      ComputeInversePower2(ValB.limbs, inv.limbs, modulus_length);
+      ComputeInversePower2(ValB.Limbs.data(), inv.Limbs.data(),
+                           modulus_length);
       // ComputeInversePower2(pValB->limbs, ptrSolution1->limbs,
       //  modulus_length);
       // Compute ptrSolution1 as |ValC| / |ValB|
       ModMult(*params,
-              inv.limbs, ValC.limbs,
-              inv.limbs);
+              inv.Limbs.data(), ValC.Limbs.data(),
+              inv.Limbs.data());
 
       int NumberLengthBytes = modulus_length * (int)sizeof(int);
       // Compute ptrSolution1 as -ValC / ValB
       if (ValB.sign == ValC.sign) {
-        (void)memset(ValA.limbs, 0, NumberLengthBytes);
+        (void)memset(ValA.Limbs.data(), 0, NumberLengthBytes);
         // Beware: SubtractBigNbr is mod modulus_length words; it
         // drops the carry past that.
-        SubtractBigNbr(ValA.limbs, inv.limbs,
-                       inv.limbs, modulus_length);
+        SubtractBigNbr(ValA.Limbs.data(), inv.Limbs.data(),
+                       inv.Limbs.data(), modulus_length);
       }
 
       // Discard bits outside number in most significant limb.
-      inv.limbs[modulus_length - 1].x &=
+      inv.Limbs[modulus_length - 1].x &=
         (1 << (powerOf2 % BITS_PER_GROUP)) - 1;
       inv.nbrLimbs = modulus_length;
       inv.sign = SIGN_POSITIVE;
@@ -524,7 +525,7 @@ struct QuadModLL {
     // First approximation to inverse of square root.
     // If value is ...0001b, the inverse of square root is ...01b.
     // If value is ...1001b, the inverse of square root is ...11b.
-    sqrRoot.limbs[0].x = (((codd[0].x & 15) == 1) ? 1 : 3);
+    sqrRoot.Limbs[0].x = (((codd[0].x & 15) == 1) ? 1 : 3);
     int correctBits = 2;
     int nbrLimbs = 1;
     BigInteger tmp1, tmp2;
@@ -534,27 +535,32 @@ struct QuadModLL {
       correctBits *= 2;
       nbrLimbs = (correctBits / BITS_PER_GROUP) + 1;
       CHECK(nbrLimbs <= codd_limbs);
-      MultBigNbrInternal(sqrRoot.limbs, sqrRoot.limbs, tmp2.limbs, nbrLimbs);
-      MultBigNbrInternal(tmp2.limbs, codd, tmp1.limbs, nbrLimbs);
-      ChSignLimbs(tmp1.limbs, nbrLimbs);
+      MultBigNbrInternal(sqrRoot.Limbs.data(), sqrRoot.Limbs.data(),
+                         tmp2.Limbs.data(), nbrLimbs);
+      MultBigNbrInternal(tmp2.Limbs.data(), codd,
+                         tmp1.Limbs.data(), nbrLimbs);
+      ChSignLimbs(tmp1.Limbs.data(), nbrLimbs);
       int lenBytes = nbrLimbs * (int)sizeof(limb);
-      (void)memset(tmp2.limbs, 0, lenBytes);
-      tmp2.limbs[0].x = 3;
-      AddBigNbr(tmp2.limbs, tmp1.limbs, tmp2.limbs, nbrLimbs);
-      MultBigNbrInternal(tmp2.limbs, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
-      (void)memcpy(sqrRoot.limbs, tmp1.limbs, lenBytes);
+      (void)memset(tmp2.Limbs.data(), 0, lenBytes);
+      tmp2.Limbs[0].x = 3;
+      AddBigNbr(tmp2.Limbs.data(), tmp1.Limbs.data(),
+                tmp2.Limbs.data(), nbrLimbs);
+      MultBigNbrInternal(tmp2.Limbs.data(),
+                         sqrRoot.Limbs.data(),
+                         tmp1.Limbs.data(), nbrLimbs);
+      (void)memcpy(sqrRoot.Limbs.data(), tmp1.Limbs.data(), lenBytes);
 
       // PERF Too much work to divide by 2!
-      DivBigNbrBy2(tmp1.limbs, sqrRoot.limbs, nbrLimbs);
+      DivBigNbrBy2(tmp1.Limbs.data(), sqrRoot.Limbs.data(), nbrLimbs);
       correctBits--;
     }
 
     // Get square root of ValCOdd from its inverse by multiplying by ValCOdd.
-    MultBigNbrInternal(codd, sqrRoot.limbs, tmp1.limbs, nbrLimbs);
+    MultBigNbrInternal(codd, sqrRoot.Limbs.data(), tmp1.Limbs.data(), nbrLimbs);
     int lenBytes = nbrLimbs * (int)sizeof(limb);
 
     // PERF avoid copy here
-    (void)memcpy(sqrRoot.limbs, tmp1.limbs, lenBytes);
+    (void)memcpy(sqrRoot.Limbs.data(), tmp1.Limbs.data(), lenBytes);
     setNbrLimbs(&sqrRoot, modulus_length);
 
     BigInt SqrRoot = BigIntegerToBigInt(&sqrRoot) << (bitsCZero / 2);
@@ -592,7 +598,7 @@ struct QuadModLL {
     BigInteger Aux0;
     int expon = exponent;
     int bitMask = 1;
-    limb* ptrSolution = pSolution->limbs;
+    limb* ptrSolution = pSolution->Limbs.data();
     BigIntPowerOf2(&Aux0, expon);
     int bytesLen = Aux0.nbrLimbs * (int)sizeof(limb);
     (void)memset(ptrSolution, 0, bytesLen);

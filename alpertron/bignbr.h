@@ -49,10 +49,13 @@ enum eSign {
 
 typedef struct BigInteger {
   // PERF unnecessary
-  BigInteger() { nbrLimbs = 0; limbs[0].x = 0xDEAD; }
+  BigInteger() : Limbs(MAX_LEN, limb{.x = 0xDEAD}) { nbrLimbs = 0; }
   int nbrLimbs;
   enum eSign sign;
-  limb limbs[MAX_LEN];
+  // XXX trying to eliminate BigInteger, but this gets better
+  // asan instrumentation than a bare array.
+  std::vector<limb> Limbs;
+  // limb limbs[MAX_LEN];
 } BigInteger;
 
 // Multiply two limb arrays of the same size, writing to the result.

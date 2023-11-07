@@ -32,7 +32,7 @@ static void TestNumLimbs() {
     BigIntToFixedLimbs(B, num_limbs, limbs.data());
 
     for (int i = 0; i < num_limbs; i++) {
-      CHECK(b.limbs[i].x == limbs[i].x) << B.ToString() << " @ " << i;
+      CHECK(b.Limbs[i].x == limbs[i].x) << B.ToString() << " @ " << i;
     }
   }
 
@@ -230,6 +230,8 @@ static void WrapDivide(const BigInt &Num,
     };
 
   {
+    const BigInt Quot = GeneralModularDivision(Num, Den, Modulus);
+
     // I think that the quotient * the denominator should give us back
     // the numerator (mod the modulus), unless there's some undocumented
     // assumption here? (Or perhaps it's assuming Montgomery form for
@@ -240,10 +242,8 @@ static void WrapDivide(const BigInt &Num,
     // It does do some funny business when the modulus is a multiple
     // of 2, where I might have conflated two different modulus_lengths.
 
-    BigInt Quot = GeneralModularDivision(Num, Den, Modulus);
-
+    const BigInt Prod = (Quot * Den) % Modulus;
     /*
-    BigInt Prod = (Quot * Den) % Modulus;
     CHECK(Prod == NMod) << Problem() << "\n"
       "General Division (definitional)\n"
       "Got Quot: " << Quot.ToString() << "\n"
@@ -255,7 +255,10 @@ static void WrapDivide(const BigInt &Num,
     CHECK(Quot == Expected) << Problem() << "\n"
       "General Division (particular choice)\n"
       "Got:  " << Quot.ToString() << "\n"
-      "Want: " << Expected.ToString() << "\n";
+      "Want: " << Expected.ToString() << "\n"
+      "---- also ---\n"
+      "Prod: " << Prod.ToString() << "\n"
+      "NMod: " << NMod.ToString();
   }
 
 
@@ -339,9 +342,18 @@ static void TestBIMDivision() {
                           const BigInt &Den,
                           const BigInt &Mod,
                           const BigInt &Expected) {
+      BigInt NMod = Num % Mod;
+      if (NMod < 0) NMod += Mod;
       const BigInt Res = GeneralModularDivision(Num, Den, Mod);
+      const BigInt Prod = (Res * Den) % Mod;
       CHECK(Res == Expected) << Res.ToString() <<
-        "\nbut wanted\n" << Expected.ToString();
+        "\nbut wanted\n" << Expected.ToString() <<
+        "\nNum:  " << Num.ToString() <<
+        "\nDen:  " << Den.ToString() <<
+        "\nMod:  " << Mod.ToString() <<
+        "\n--- also ----"
+        "\nN%M:  " << NMod.ToString() <<
+        "\nProd: " << Prod.ToString();
     };
 
   GeneralDivide(BigInt(1), BigInt(2), BigInt(8),
