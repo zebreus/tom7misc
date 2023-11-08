@@ -927,7 +927,7 @@ void BigInt::InsertFactor(std::vector<std::pair<BigInt, int>> *factors,
   // PERF binary search
   int i;
   for (i = factors->size() - 1; i >= 0; i--) {
-    int cmp = mpz_cmp ((*factors)[i].first.rep, prime);
+    int cmp = mpz_cmp((*factors)[i].first.rep, prime);
     if (cmp == 0) {
       // Increase exponent of existing factor.
       (*factors)[i].second += exponent;
@@ -941,7 +941,9 @@ void BigInt::InsertFactor(std::vector<std::pair<BigInt, int>> *factors,
   // Not found. Insert new factor.
   BigInt b;
   mpz_set(b.rep, prime);
-  factors->insert(factors->begin() + i + 1,
+  // Note that we have to first add 1 to i, because adding -1 to
+  // the iterator would cause undefined behavior!
+  factors->insert(factors->begin() + (i + 1),
                   std::make_pair(std::move(b), exponent));
 }
 
