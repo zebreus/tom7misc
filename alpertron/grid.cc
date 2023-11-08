@@ -116,6 +116,8 @@ static void RunGrid() {
         int64_t d = PosNeg(0, arg[3]);
         int64_t e = PosNeg(0, arg[4]);
 
+        // TODO: Generate "special" numbers, especially powers
+        // of two, to increase coverage.
         switch (rc.Byte() & 31) {
         case 0:
           a += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
@@ -234,7 +236,7 @@ static void RunGrid() {
             printf("\n\n" APURPLE("Coverage!") " %s\n\n",
                    problem.c_str());
             MutexLock ml(&file_mutex);
-            FILE *file = fopen("interesting-coverage.txt\n", "ab");
+            FILE *file = fopen("interesting-coverage.txt", "ab");
             CHECK(file != nullptr);
             fprintf(file, "%s\n", problem.c_str());
             fclose(file);

@@ -244,6 +244,7 @@ echo quad tests
 # a, f, x are powers of two
 # x = 131072  y = 0
 # no-contfrac coverage
+# bitmaskoverflow coverage
 ./quad.exe 8 -2022 436 0 0 -137438953472 >> coverage.out
 
 # bminusg coverage (trivial)

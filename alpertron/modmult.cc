@@ -365,7 +365,8 @@ static int modInv(int NbrMod, int currentPrime) {
   int U1 = 0;
   int U3 = currentPrime;
   while (V3 != 0) {
-    if (U3 < (V3 + V3)) {
+    // Port note: U3 < V3 + V3 here used to possibly overflow
+    if ((U3 >> 1) < V3) {
       // QQ = 1
       T1 = U1 - V1;
       T3 = U3 - V3;
@@ -466,8 +467,6 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   int lenRS;
   int lenU;
   int lenV;
-  int lowU;
-  int lowV;
   unsigned int borrow;
 
   // Or inline 'em...
@@ -534,8 +533,8 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   }
   lenV++;
 
-  lowU = U[0].x;
-  lowV = V[0].x;
+  uint32_t lowU = U[0].x;
+  uint32_t lowV = V[0].x;
 
   // Initialize highU and highV.
   if ((lenU > 1) || (lenV > 1)) {
@@ -1074,8 +1073,9 @@ void ComputeInversePower2(const limb *value, limb *result, int number_length) {
   limb tmp[number_length * 2];
   limb tmp2[number_length * 2];
   unsigned int Cy;
-  int N = value->x;            // 2 least significant bits of inverse correct.
-  int x = N;
+  // 2 least significant bits of inverse correct.
+  const uint32_t N = value->x;
+  uint32_t x = N;
   x = x * (2 - (N * x));       // 4 least significant bits of inverse correct.
   x = x * (2 - (N * x));       // 8 least significant bits of inverse correct.
   x = x * (2 - (N * x));       // 16 least significant bits of inverse correct.

@@ -1689,6 +1689,7 @@ struct Quad {
         Modulus, GcdAll, ValNn,
         &interesting);
     if (interesting) {
+      printf("INTERESTING!\n");
       solutions.interesting_coverage = true;
     }
   }

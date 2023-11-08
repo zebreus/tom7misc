@@ -27,7 +27,8 @@ else
   CC=gcc
   # Note! asan is enabled on linux, since I'm usually just using linux
   # for improved debugging tools.
-  PLATFORM_CFLAGS=-Wl,-z,stack-size=0x1000000 -fsanitize=address
+# -fsanitize=address
+  PLATFORM_CFLAGS=-Wl,-z,stack-size=0x1000000 -fsanitize=undefined -fsanitize=address
   GMP_LFLAGS=-lgmp
   GMP_CFLAGS=-DBIG_USE_GMP
 endif

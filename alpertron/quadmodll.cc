@@ -421,9 +421,11 @@ struct QuadModLL {
     double dAccumulator = 0.0;
     for (int i = 0; i < nbrLen; i++) {
       for (int j = 0; j <= i; j++) {
-        int factor1 = (pFactor1 + j)->x;
-        int factor2 = (pFactor2 + i - j)->x;
-        low += factor1*factor2;
+        // Port note: This used to do signed multiplication, but would
+        // overflow.
+        uint32_t factor1 = (pFactor1 + j)->x;
+        uint32_t factor2 = (pFactor2 + i - j)->x;
+        low += factor1 * factor2;
         dAccumulator += (double)factor1 * (double)factor2;
       }
       low &= MAX_INT_NBR;    // Trim extra bits.
@@ -593,11 +595,12 @@ struct QuadModLL {
                                      BigInt Linear,
                                      BigInt Const,
                                      int exponent) {
+
     // PERF we could just allocate the necessary size here, then
     // convert to BigInt and return
     BigInteger Aux0;
     int expon = exponent;
-    int bitMask = 1;
+    uint32_t bitMask = 1;
     limb* ptrSolution = pSolution->Limbs.data();
     BigIntPowerOf2(&Aux0, expon);
     int bytesLen = Aux0.nbrLimbs * (int)sizeof(limb);
@@ -664,13 +667,12 @@ struct QuadModLL {
       Quadr &= Mask;
       // BigIntAnd(Quadr_, &Mask, Quadr_);
 
-      // XXX this seems to assume two things that aren't guaranteed:
-      //   int is 32 bits
-      //   signed multiplication is twos complement
-      static_assert(sizeof (int) == 4);
-      bitMask *= 2;
-      if (bitMask < 0) {
-        printf("bitmaskoverflow coverage\n");
+      // Port note: This used to use signed int, but that's
+      // undefined behavior.
+      static_assert(sizeof (limb) == 4);
+      bitMask <<= 1;
+      if (bitMask & 0x80000000) {
+        // printf("bitmaskoverflow coverage\n");
         interesting_coverage = true;
         bitMask = 1;
         ptrSolution++;
@@ -1475,6 +1477,7 @@ void SolveEquation(
   std::unique_ptr<QuadModLL> qmll = std::make_unique<QuadModLL>();
 
   qmll->SolveEquation(solutionCback, A, B, C, N, GcdAll, Nn);
+
   if (interesting_coverage != nullptr &&
       qmll->interesting_coverage) {
     *interesting_coverage = true;
