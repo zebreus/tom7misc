@@ -63,9 +63,12 @@ struct AutoHisto {
         // Sort data ascending so that it's easy to compute quantiles.
         std::sort(data.begin(), data.end());
 
+        // Skip 1% of data, shrinking both sides this amount.
+        int64_t skip = max_samples * 0.005;
+
         // XXX compute bounds, number of actual buckets
-        min = data[1];
-        double max = data[data.size() - 2];
+        min = data[skip];
+        double max = data[data.size() - (1 + skip)];
         // XXX do something when samples are degenerate.
         CHECK(min < max);
         width = max - min;

@@ -516,8 +516,10 @@ struct QuadModLL {
   static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
                                              int expon, int bitsCZero,
                                              int modulus_length) {
-    // Number of limbs to represent 2^expon - 1.
-    const int expon_limbs = (expon + BITS_PER_GROUP - 1) / BITS_PER_GROUP;
+    // Number of limbs to represent 2^expon.
+    // (Not sure why we need 1+ here, but we would read outside
+    // the bounds of this array if not.)
+    const int expon_limbs = 1 + ((expon + BITS_PER_GROUP - 1) / BITS_PER_GROUP);
     const int codd_limbs = std::max(expon_limbs, BigIntNumLimbs(COdd));
     limb codd[codd_limbs];
     BigIntToFixedLimbs(COdd, codd_limbs, codd);
@@ -536,7 +538,14 @@ struct QuadModLL {
       // Compute f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
       correctBits *= 2;
       nbrLimbs = (correctBits / BITS_PER_GROUP) + 1;
-      CHECK(nbrLimbs <= codd_limbs);
+      CHECK(nbrLimbs <= codd_limbs) << "COdd: " << COdd.ToString() <<
+        "\nexpon: " << expon <<
+        "\nbitsCZero: " << bitsCZero <<
+        "\nmodulus_length: " << modulus_length <<
+        "\ncorrectBits: " << correctBits <<
+        "\nnbrLimbs: " << nbrLimbs <<
+        "\nexpon_limbs: " << expon_limbs <<
+        "\ncodd_limbs: " << codd_limbs;
       MultBigNbrInternal(sqrRoot.Limbs.data(), sqrRoot.Limbs.data(),
                          tmp2.Limbs.data(), nbrLimbs);
       MultBigNbrInternal(tmp2.Limbs.data(), codd,
@@ -673,7 +682,6 @@ struct QuadModLL {
       bitMask <<= 1;
       if (bitMask & 0x80000000) {
         // printf("bitmaskoverflow coverage\n");
-        interesting_coverage = true;
         bitMask = 1;
         ptrSolution++;
       }

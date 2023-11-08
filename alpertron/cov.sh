@@ -247,6 +247,13 @@ echo quad tests
 # bitmaskoverflow coverage
 ./quad.exe 8 -2022 436 0 0 -137438953472 >> coverage.out
 
+# all powers of two, no solutions
+./quad.exe -4 2 4096 0 0 8589934592 >> coverage.out
+
+# powers of two
+# lots of bitmaskoverflow coverage
+./quad.exe 16 2 -4096 0 0 340282366920938463463374607431768211456 >> coverage.out
+
 # bminusg coverage (trivial)
 # x = 0  y = -5091
 ./quad.exe 1 65536 0 -3525 0 0 >> coverage.out

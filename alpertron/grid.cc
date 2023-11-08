@@ -116,26 +116,51 @@ static void RunGrid() {
         int64_t d = PosNeg(0, arg[3]);
         int64_t e = PosNeg(0, arg[4]);
 
-        // TODO: Generate "special" numbers, especially powers
-        // of two, to increase coverage.
-        switch (rc.Byte() & 31) {
+        auto PowerOf2 = [&]() -> int64_t {
+            int64_t a = 1ULL << RandTo(&rc, 30);
+            return rc.Byte() & 1 ? a : -a;
+          };
+
+        auto SparsePowerOf2 = [&]() -> int64_t {
+            if (rc.Byte() < 64) {
+              return PowerOf2();
+            } else {
+              return 0;
+            }
+          };
+
+        switch (rc.Byte() & 7) {
         case 0:
-          a += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+          // everything a power of two.
+          a = SparsePowerOf2();
+          b = SparsePowerOf2();
+          c = SparsePowerOf2();
+          d = SparsePowerOf2();
+          e = SparsePowerOf2();
           break;
-        case 1:
-          b += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
-          break;
-        case 2:
-          c += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
-          break;
-        case 3:
-          d += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
-          break;
-        case 4:
-          e += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
-          break;
+
+          // TODO: Other "special" numbers.
+
         default:
-          break;
+          switch (rc.Byte() & 31) {
+          case 0:
+            a += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+            break;
+          case 1:
+            b += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+            break;
+          case 2:
+            c += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+            break;
+          case 3:
+            d += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+            break;
+          case 4:
+            e += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+            break;
+          default:
+            break;
+          }
         }
 
         BigInt A(a);
@@ -164,6 +189,13 @@ static void RunGrid() {
 
             sol_x = (int)(hash_hi & XY_MASK) - XY_OFF;
             sol_y = (int)(hash_lo & XY_MASK) - XY_OFF;
+
+            if ((rc.Byte() & 7) == 0) {
+              sol_x = PowerOf2();
+              sol_y = PowerOf2();
+
+              if ((rc.Byte() & 3) == 0) sol_y--;
+            }
 
             // TODO: Insist that we find *this* solution below.
             BigInt X(sol_x), Y(sol_y);
@@ -227,8 +259,8 @@ static void RunGrid() {
           Timer sol_timer;
           Solutions sols =
             QuadBigInt(A, B, C, D, E, F, nullptr);
-          const double sol_usec = sol_timer.Seconds() * 1000000.0;
-          local_timing.push_back(sol_usec);
+          const double sol_ms = sol_timer.Seconds() * 1000.0;
+          local_timing.push_back(sol_ms);
 
           if (sols.interesting_coverage) {
             count_interesting++;
