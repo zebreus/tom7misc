@@ -178,6 +178,9 @@ static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
 
   limb sqrRoot[codd_limbs];
   limb tmp1[codd_limbs], tmp2[codd_limbs];
+  memset(sqrRoot, 0, codd_limbs * sizeof(limb)));
+  memset(tmp1, 0, codd_limbs * sizeof(limb)));
+  memset(tmp2, 0, codd_limbs * sizeof(limb)));
   // BigInteger sqrRoot;
   // First approximation to inverse of square root.
   // If value is ...0001b, the inverse of square root is ...01b.
