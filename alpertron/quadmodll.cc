@@ -58,6 +58,179 @@ static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
   }
 }
 
+// How does this differ from MultiplyLimbs?
+// I think it may be implicitly mod a power of 2, as it
+// only fills in limbs up to nbrLen+1, and is only
+// used in ComputeSquareRootModPowerOf2. AddBigNbr and SubtractBigNbr
+// had similar behavior. It may also be approximate (double math)!
+static void MultBigNbrInternal(
+    const limb *pFactor1, const limb *pFactor2,
+    limb *pProd, int nbrLen) {
+  limb* ptrProd = pProd;
+  static constexpr double dRangeLimb = (double)(1U << BITS_PER_GROUP);
+  static constexpr double dInvRangeLimb = 1.0 / dRangeLimb;
+  int low = 0;
+  double dAccumulator = 0.0;
+  for (int i = 0; i < nbrLen; i++) {
+    for (int j = 0; j <= i; j++) {
+      // Port note: This used to do signed multiplication, but would
+      // overflow.
+      uint32_t factor1 = (pFactor1 + j)->x;
+      uint32_t factor2 = (pFactor2 + i - j)->x;
+      low += factor1 * factor2;
+      dAccumulator += (double)factor1 * (double)factor2;
+    }
+    low &= MAX_INT_NBR;    // Trim extra bits.
+    ptrProd->x = low;
+    ptrProd++;
+
+    // Subtract or add 0x20000000 so the multiplication by dVal is not
+    // nearly an integer. In that case, there would be an error of +/- 1.
+    if (low < HALF_INT_RANGE) {
+      dAccumulator =
+        floor((dAccumulator + (double)FOURTH_INT_RANGE)*dInvRangeLimb);
+    } else {
+      dAccumulator =
+        floor((dAccumulator - (double)FOURTH_INT_RANGE)*dInvRangeLimb);
+    }
+    low = (int)(dAccumulator - floor(dAccumulator * dInvRangeLimb) *
+                dRangeLimb);
+  }
+  ptrProd->x = low;
+  (ptrProd+1)->x = (int)floor(dAccumulator/dRangeLimb);
+}
+
+// Also appears to be addition modulo nbrLen words, since it drops
+// the carry when it gets to the end.
+static void AddBigNbr(const limb *pNbr1, const limb *pNbr2,
+                      limb *pSum, int nbrLen) {
+  unsigned int carry = 0U;
+  const limb *ptrNbr1 = pNbr1;
+  const limb *ptrNbr2 = pNbr2;
+  const limb *ptrEndSum = pSum + nbrLen;
+  for (limb *ptrSum = pSum; ptrSum < ptrEndSum; ptrSum++) {
+    carry = (carry >> BITS_PER_GROUP) +
+      (unsigned int)ptrNbr1->x +
+      (unsigned int)ptrNbr2->x;
+    const unsigned int tmp = carry & MAX_INT_NBR_U;
+    ptrSum->x = (int)tmp;
+    ptrNbr1++;
+    ptrNbr2++;
+  }
+}
+
+// I think this is a fixed-width operation like the ones above, but
+// it seems like overkill especially given that we only divide by
+// 2?
+static void DivBigNbrBy2(const limb *pDividend, limb *pQuotient, int nbrLen) {
+  // Was only called with this value. Could simplify...
+  static constexpr int divisor = 2;
+  const limb* ptrDividend = pDividend;
+  limb* ptrQuotient = pQuotient;
+  unsigned int remainder = 0U;
+  constexpr double dDivisor = (double)divisor;
+  constexpr double dLimb = 2147483648.0;
+  int nbrLenMinus1 = nbrLen - 1;
+  ptrDividend += nbrLenMinus1;
+  ptrQuotient += nbrLenMinus1;
+  for (int ctr = nbrLenMinus1; ctr >= 0; ctr--) {
+    unsigned int dividend = (remainder << BITS_PER_GROUP) +
+      (unsigned int)ptrDividend->x;
+    double dDividend = ((double)remainder * dLimb) + (double)ptrDividend->x;
+    // quotient has correct value or 1 more.
+    unsigned int quotient = (unsigned int)((dDividend / dDivisor) + 0.5);
+    remainder = dividend - (quotient * (unsigned int)divisor);
+    if (remainder >= (unsigned int)divisor) {
+      // remainder not in range 0 <= remainder < divisor. Adjust.
+      quotient--;
+      remainder += (unsigned int)divisor;
+    }
+    ptrQuotient->x = (int)quotient;
+    ptrQuotient--;
+    ptrDividend--;
+  }
+}
+
+static void ChSignLimbs(limb *nbr, int length) {
+  int carry = 0;
+  const limb *ptrEndNbr = nbr + length;
+  for (limb *ptrNbr = nbr; ptrNbr < ptrEndNbr; ptrNbr++) {
+    carry -= ptrNbr->x;
+    ptrNbr->x = carry & MAX_INT_NBR;
+    carry >>= BITS_PER_GROUP;
+  }
+}
+
+// Compute sqrRoot <- sqrt(ValCOdd) mod 2^expon.
+// To compute the square root, compute the inverse of sqrt,
+// so only multiplications are used.
+// f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
+static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
+                                           int expon, int bitsCZero,
+                                           int modulus_length) {
+  // Number of limbs to represent 2^expon.
+  // (Not sure why we need 1+ here, but we would read outside
+  // the bounds of this array if not.)
+  const int expon_limbs = 1 + ((expon + BITS_PER_GROUP - 1) / BITS_PER_GROUP);
+  const int codd_limbs = std::max(expon_limbs, BigIntNumLimbs(COdd));
+  limb codd[codd_limbs];
+  BigIntToFixedLimbs(COdd, codd_limbs, codd);
+
+  limb sqrRoot[codd_limbs];
+  limb tmp1[codd_limbs], tmp2[codd_limbs];
+  // BigInteger sqrRoot;
+  // First approximation to inverse of square root.
+  // If value is ...0001b, the inverse of square root is ...01b.
+  // If value is ...1001b, the inverse of square root is ...11b.
+  sqrRoot[0].x = (((codd[0].x & 15) == 1) ? 1 : 3);
+  int correctBits = 2;
+  int nbrLimbs = 1;
+
+  while (correctBits < expon) {
+    // Compute f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
+    correctBits *= 2;
+    nbrLimbs = (correctBits / BITS_PER_GROUP) + 1;
+    CHECK(nbrLimbs <= codd_limbs) << "COdd: " << COdd.ToString() <<
+      "\nexpon: " << expon <<
+      "\nbitsCZero: " << bitsCZero <<
+      "\nmodulus_length: " << modulus_length <<
+      "\ncorrectBits: " << correctBits <<
+      "\nnbrLimbs: " << nbrLimbs <<
+      "\nexpon_limbs: " << expon_limbs <<
+      "\ncodd_limbs: " << codd_limbs;
+    MultBigNbrInternal(sqrRoot, sqrRoot, tmp2, nbrLimbs);
+    MultBigNbrInternal(tmp2, codd, tmp1, nbrLimbs);
+    ChSignLimbs(tmp1, nbrLimbs);
+    int lenBytes = nbrLimbs * (int)sizeof(limb);
+    (void)memset(tmp2, 0, lenBytes);
+    tmp2[0].x = 3;
+    AddBigNbr(tmp2, tmp1, tmp2, nbrLimbs);
+    MultBigNbrInternal(tmp2, sqrRoot, tmp1, nbrLimbs);
+    (void)memcpy(sqrRoot, tmp1, lenBytes);
+
+    // PERF Too much work to divide by 2!
+    DivBigNbrBy2(tmp1, sqrRoot, nbrLimbs);
+    correctBits--;
+  }
+
+  // Get square root of ValCOdd from its inverse by multiplying by ValCOdd.
+  MultBigNbrInternal(codd, sqrRoot, tmp1, nbrLimbs);
+  int lenBytes = nbrLimbs * (int)sizeof(limb);
+
+  // PERF avoid copy here
+  (void)memcpy(sqrRoot, tmp1, lenBytes);
+  // setNbrLimbs(&sqrRoot, modulus_length);
+
+  BigInt SqrRoot = LimbsToBigInt(sqrRoot, modulus_length) << (bitsCZero / 2);
+
+  // for (int ctr = 0; ctr < (bitsCZero / 2); ctr++) {
+  // BigIntMultiplyBy2(&sqrRoot);
+  // }
+
+  return SqrRoot;
+}
+
+
 // This used to be exposed to the caller for teach mode, but is
 // now fully internal.
 namespace {
@@ -404,183 +577,6 @@ struct QuadModLL {
     // assert((int)factors->product.size() == solutionNbr);
 
     PerformChineseRemainderTheorem(GcdAll, factors);
-  }
-
-  // How does this differ from MultiplyLimbs?
-  // I think it may be implicitly mod a power of 2, as it
-  // only fills in limbs up to nbrLen+1, and is only
-  // used in ComputeSquareRootModPowerOf2. AddBigNbr and SubtractBigNbr
-  // had similar behavior. It may also be approximate (double math)!
-  static void MultBigNbrInternal(
-      const limb *pFactor1, const limb *pFactor2,
-      limb *pProd, int nbrLen) {
-    limb* ptrProd = pProd;
-    static constexpr double dRangeLimb = (double)(1U << BITS_PER_GROUP);
-    static constexpr double dInvRangeLimb = 1.0 / dRangeLimb;
-    int low = 0;
-    double dAccumulator = 0.0;
-    for (int i = 0; i < nbrLen; i++) {
-      for (int j = 0; j <= i; j++) {
-        // Port note: This used to do signed multiplication, but would
-        // overflow.
-        uint32_t factor1 = (pFactor1 + j)->x;
-        uint32_t factor2 = (pFactor2 + i - j)->x;
-        low += factor1 * factor2;
-        dAccumulator += (double)factor1 * (double)factor2;
-      }
-      low &= MAX_INT_NBR;    // Trim extra bits.
-      ptrProd->x = low;
-      ptrProd++;
-
-      // Subtract or add 0x20000000 so the multiplication by dVal is not
-      // nearly an integer. In that case, there would be an error of +/- 1.
-      if (low < HALF_INT_RANGE) {
-        dAccumulator =
-          floor((dAccumulator + (double)FOURTH_INT_RANGE)*dInvRangeLimb);
-      } else {
-        dAccumulator =
-          floor((dAccumulator - (double)FOURTH_INT_RANGE)*dInvRangeLimb);
-      }
-      low = (int)(dAccumulator - floor(dAccumulator * dInvRangeLimb) *
-                  dRangeLimb);
-    }
-    ptrProd->x = low;
-    (ptrProd+1)->x = (int)floor(dAccumulator/dRangeLimb);
-  }
-
-  // Also appears to be addition modulo nbrLen words, since it drops
-  // the carry when it gets to the end.
-  static void AddBigNbr(const limb *pNbr1, const limb *pNbr2,
-                        limb *pSum, int nbrLen) {
-    unsigned int carry = 0U;
-    const limb *ptrNbr1 = pNbr1;
-    const limb *ptrNbr2 = pNbr2;
-    const limb *ptrEndSum = pSum + nbrLen;
-    for (limb *ptrSum = pSum; ptrSum < ptrEndSum; ptrSum++) {
-      carry = (carry >> BITS_PER_GROUP) +
-        (unsigned int)ptrNbr1->x +
-        (unsigned int)ptrNbr2->x;
-      const unsigned int tmp = carry & MAX_INT_NBR_U;
-      ptrSum->x = (int)tmp;
-      ptrNbr1++;
-      ptrNbr2++;
-    }
-  }
-
-  // I think this is a fixed-width operation like the ones above, but
-  // it seems like overkill especially given that we only divide by
-  // 2?
-  static void DivBigNbrBy2(const limb *pDividend, limb *pQuotient, int nbrLen) {
-    // Was only called with this value. Could simplify...
-    static constexpr int divisor = 2;
-    const limb* ptrDividend = pDividend;
-    limb* ptrQuotient = pQuotient;
-    unsigned int remainder = 0U;
-    constexpr double dDivisor = (double)divisor;
-    constexpr double dLimb = 2147483648.0;
-    int nbrLenMinus1 = nbrLen - 1;
-    ptrDividend += nbrLenMinus1;
-    ptrQuotient += nbrLenMinus1;
-    for (int ctr = nbrLenMinus1; ctr >= 0; ctr--) {
-      unsigned int dividend = (remainder << BITS_PER_GROUP) +
-        (unsigned int)ptrDividend->x;
-      double dDividend = ((double)remainder * dLimb) + (double)ptrDividend->x;
-      // quotient has correct value or 1 more.
-      unsigned int quotient = (unsigned int)((dDividend / dDivisor) + 0.5);
-      remainder = dividend - (quotient * (unsigned int)divisor);
-      if (remainder >= (unsigned int)divisor) {
-        // remainder not in range 0 <= remainder < divisor. Adjust.
-        quotient--;
-        remainder += (unsigned int)divisor;
-      }
-      ptrQuotient->x = (int)quotient;
-      ptrQuotient--;
-      ptrDividend--;
-    }
-  }
-
-  static void ChSignLimbs(limb *nbr, int length) {
-    int carry = 0;
-    const limb *ptrEndNbr = nbr + length;
-    for (limb *ptrNbr = nbr; ptrNbr < ptrEndNbr; ptrNbr++) {
-      carry -= ptrNbr->x;
-      ptrNbr->x = carry & MAX_INT_NBR;
-      carry >>= BITS_PER_GROUP;
-    }
-  }
-
-  // Compute sqrRoot <- sqrt(ValCOdd) mod 2^expon.
-  // To compute the square root, compute the inverse of sqrt,
-  // so only multiplications are used.
-  // f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
-  static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
-                                             int expon, int bitsCZero,
-                                             int modulus_length) {
-    // Number of limbs to represent 2^expon.
-    // (Not sure why we need 1+ here, but we would read outside
-    // the bounds of this array if not.)
-    const int expon_limbs = 1 + ((expon + BITS_PER_GROUP - 1) / BITS_PER_GROUP);
-    const int codd_limbs = std::max(expon_limbs, BigIntNumLimbs(COdd));
-    limb codd[codd_limbs];
-    BigIntToFixedLimbs(COdd, codd_limbs, codd);
-
-    // PERF use limbs
-    BigInteger sqrRoot;
-    // First approximation to inverse of square root.
-    // If value is ...0001b, the inverse of square root is ...01b.
-    // If value is ...1001b, the inverse of square root is ...11b.
-    sqrRoot.Limbs[0].x = (((codd[0].x & 15) == 1) ? 1 : 3);
-    int correctBits = 2;
-    int nbrLimbs = 1;
-    BigInteger tmp1, tmp2;
-
-    while (correctBits < expon) {
-      // Compute f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
-      correctBits *= 2;
-      nbrLimbs = (correctBits / BITS_PER_GROUP) + 1;
-      CHECK(nbrLimbs <= codd_limbs) << "COdd: " << COdd.ToString() <<
-        "\nexpon: " << expon <<
-        "\nbitsCZero: " << bitsCZero <<
-        "\nmodulus_length: " << modulus_length <<
-        "\ncorrectBits: " << correctBits <<
-        "\nnbrLimbs: " << nbrLimbs <<
-        "\nexpon_limbs: " << expon_limbs <<
-        "\ncodd_limbs: " << codd_limbs;
-      MultBigNbrInternal(sqrRoot.Limbs.data(), sqrRoot.Limbs.data(),
-                         tmp2.Limbs.data(), nbrLimbs);
-      MultBigNbrInternal(tmp2.Limbs.data(), codd,
-                         tmp1.Limbs.data(), nbrLimbs);
-      ChSignLimbs(tmp1.Limbs.data(), nbrLimbs);
-      int lenBytes = nbrLimbs * (int)sizeof(limb);
-      (void)memset(tmp2.Limbs.data(), 0, lenBytes);
-      tmp2.Limbs[0].x = 3;
-      AddBigNbr(tmp2.Limbs.data(), tmp1.Limbs.data(),
-                tmp2.Limbs.data(), nbrLimbs);
-      MultBigNbrInternal(tmp2.Limbs.data(),
-                         sqrRoot.Limbs.data(),
-                         tmp1.Limbs.data(), nbrLimbs);
-      (void)memcpy(sqrRoot.Limbs.data(), tmp1.Limbs.data(), lenBytes);
-
-      // PERF Too much work to divide by 2!
-      DivBigNbrBy2(tmp1.Limbs.data(), sqrRoot.Limbs.data(), nbrLimbs);
-      correctBits--;
-    }
-
-    // Get square root of ValCOdd from its inverse by multiplying by ValCOdd.
-    MultBigNbrInternal(codd, sqrRoot.Limbs.data(), tmp1.Limbs.data(), nbrLimbs);
-    int lenBytes = nbrLimbs * (int)sizeof(limb);
-
-    // PERF avoid copy here
-    (void)memcpy(sqrRoot.Limbs.data(), tmp1.Limbs.data(), lenBytes);
-    setNbrLimbs(&sqrRoot, modulus_length);
-
-    BigInt SqrRoot = BigIntegerToBigInt(&sqrRoot) << (bitsCZero / 2);
-
-    // for (int ctr = 0; ctr < (bitsCZero / 2); ctr++) {
-    // BigIntMultiplyBy2(&sqrRoot);
-    // }
-
-    return SqrRoot;
   }
 
   // PERF? rewrite FQS to work directly on BigInt
