@@ -178,9 +178,13 @@ static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
 
   limb sqrRoot[codd_limbs];
   limb tmp1[codd_limbs], tmp2[codd_limbs];
-  memset(sqrRoot, 0, codd_limbs * sizeof(limb)));
-  memset(tmp1, 0, codd_limbs * sizeof(limb)));
-  memset(tmp2, 0, codd_limbs * sizeof(limb)));
+  // Code below appears to read the n+1th limb (or more, as
+  // correctBits is doubling) before writing it in each pass, at least
+  // for sqrRoot.
+  memset(sqrRoot, 0, codd_limbs * sizeof(limb));
+  memset(tmp1, 0, codd_limbs * sizeof(limb));
+  memset(tmp2, 0, codd_limbs * sizeof(limb));
+
   // BigInteger sqrRoot;
   // First approximation to inverse of square root.
   // If value is ...0001b, the inverse of square root is ...01b.
@@ -224,7 +228,9 @@ static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
   (void)memcpy(sqrRoot, tmp1, lenBytes);
   // setNbrLimbs(&sqrRoot, modulus_length);
 
-  BigInt SqrRoot = LimbsToBigInt(sqrRoot, modulus_length) << (bitsCZero / 2);
+  BigInt SqrRoot =
+    LimbsToBigInt(tmp1, std::min(modulus_length, lenBytes)) <<
+    (bitsCZero / 2);
 
   // for (int ctr = 0; ctr < (bitsCZero / 2); ctr++) {
   // BigIntMultiplyBy2(&sqrRoot);
@@ -244,12 +250,8 @@ struct QuadModLL {
   std::vector<BigInt> Solution2;
   std::vector<BigInt> Increment;
   std::vector<int> Exponents;
-  BigInteger prime;
 
-  QuadModLL() {
-    // debugging if uninitialized
-    intToBigInteger(&prime, 121212);
-  }
+  QuadModLL() {}
 
   BigInt Discriminant;
   // Only used in CRT; could easily pass
@@ -295,8 +297,6 @@ struct QuadModLL {
       BigInt CurrentSolution = Tmp[0];
 
       const BigInt &Prime = factors[0].first;
-      // IntArray2BigInteger(modulus_length, pstFactor->array, &prime);
-      BigIntToBigInteger(Prime, &prime);
 
       BigInt Mult = BigInt::Pow(Prime, factors[0].second);
 
@@ -322,11 +322,6 @@ struct QuadModLL {
         }
 
         const BigInt Term = BigInt::Pow(factors[T1].first, factors[T1].second);
-
-        // Computing montgomery form needs BigInteger. But do it outside
-        // the inner loop at least.
-        // XXX probably not necessary now
-        BigIntToBigInteger(Term, &prime);
 
         std::unique_ptr<MontgomeryParams> params =
           GetMontgomeryParams(Term);
@@ -1081,6 +1076,7 @@ struct QuadModLL {
   // Solve Ax^2 + Bx + C = 0 (mod p^expon).
   bool SolveQuadraticEqModPowerOfP(
       int expon, int factorIndex,
+      const BigInt &Prime,
       const BigInt &A, const BigInt &B) {
 
     // Number of bits of square root of discriminant to compute:
@@ -1094,7 +1090,6 @@ struct QuadModLL {
     BigInt AOdd = A;
     int bitsAZero = 0;
 
-    const BigInt Prime = BigIntegerToBigInt(&prime);
     const BigInt VV = BigInt::Pow(Prime, expon);
 
     for (;;) {
@@ -1187,7 +1182,6 @@ struct QuadModLL {
       // }
 
       BigInt Tmp = Discriminant % Prime;
-      // (void)BigIntRemainder(&discriminant, &prime, &Tmp);
       if (Tmp < 0) {
         Tmp += Prime;
       }
@@ -1217,10 +1211,6 @@ struct QuadModLL {
     // Q <- prime^correctBits
     BigInt QQ = BigInt::Pow(Prime, correctBits);
     BigIntToBigInteger(QQ, &Q);
-
-    // (void)BigIntPowerIntExp(&prime, correctBits, &Q);
-    // Compute x = (b + sqrt(discriminant)) / (-2a) and
-    //   x = (b - sqrt(discriminant)) / (-2a)
 
     Tmp1 = B + SqrRoot;
     // BigIntAdd(pValB, &sqrRoot, &tmp1);
@@ -1264,6 +1254,7 @@ struct QuadModLL {
 
   void QuadraticTermMultipleOfP(
       int expon, int factorIndex,
+      const BigInt &Prime,
       const BigInt &A,
       const BigInt &B,
       const BigInt &C) {
@@ -1277,7 +1268,6 @@ struct QuadModLL {
 
     BigInt sol;
 
-    const BigInt Prime = BigIntegerToBigInt(&prime);
     const std::unique_ptr<MontgomeryParams> params =
       GetMontgomeryParams(Prime);
 
@@ -1290,7 +1280,6 @@ struct QuadModLL {
 
     for (int currentExpon = 2; currentExpon < (2 * expon); currentExpon *= 2) {
       BigInt VV = BigInt::Pow(Prime, currentExpon);
-      // (void)BigIntPowerIntExp(&prime, currentExpon, &V);
       // Q <- a*x_n + b
       BigInt QQ = A * TmpSolution + B;
       // (void)BigIntMultiply(pValA, &tmpSolution, &Q);
@@ -1337,12 +1326,9 @@ struct QuadModLL {
     intToBigInteger(&Q, 0xDEFACED);
 
     BigInt TmpSol1 = TmpSolution % BigInt::Pow(Prime, expon);
-    // (void)BigIntPowerIntExp(&prime, expon, &Q);
-    // (void)BigIntRemainder(&tmpSolution, &Q, &tmpSolution);
 
     Solution1[factorIndex] = TmpSol1;
     Solution2[factorIndex] = Solution1[factorIndex];
-    // CopyBigInt(&Solution2[factorIndex], &Solution1[factorIndex]);
   }
 
   // If solutions found, writes normalized solutions at factorIndex
@@ -1369,7 +1355,7 @@ struct QuadModLL {
     } else {
       // Prime is not 2
       solutions = SolveQuadraticEqModPowerOfP(expon, factorIndex,
-                                              A, B);
+                                              Prime, A, B);
     }
 
     if (!solutions || (sol1Invalid && sol2Invalid)) {
@@ -1439,8 +1425,6 @@ struct QuadModLL {
       }
 
       const BigInt &Prime = factors[factorIndex].first;
-      // Used, but not on all paths.
-      BigIntToBigInteger(Prime, &prime);
 
       if (Prime != 2 &&
           BigInt::DivisibleBy(A, Prime)) {
@@ -1452,7 +1436,7 @@ struct QuadModLL {
         }
 
         QuadraticTermMultipleOfP(expon, factorIndex,
-                                 A, B, C);
+                                 Prime, A, B, C);
 
       } else {
         // If quadratic equation mod p
