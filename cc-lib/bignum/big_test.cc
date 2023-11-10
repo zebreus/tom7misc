@@ -29,6 +29,13 @@ static void TestToString() {
   }
 }
 
+static void TestSign() {
+  CHECK(BigInt::Sign(BigInt(-3)) == -1);
+  CHECK(BigInt::Sign(BigInt(0)) == 0);
+  CHECK(BigInt::Sign(BigInt("19823749283749817")) == 1);
+  CHECK(BigInt::Sign(BigInt("-999999999999999999999")) == -1);
+}
+
 static void CopyAndAssign() {
   BigInt a{1234};
   BigInt b{5678};
@@ -610,6 +617,7 @@ int main(int argc, char **argv) {
 
   CopyAndAssign();
   TestToString();
+  TestSign();
 
   TestDiv();
   TestCMod();

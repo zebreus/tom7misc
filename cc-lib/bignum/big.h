@@ -46,6 +46,9 @@ struct BigInt {
   inline bool IsEven() const;
   inline bool IsOdd() const;
 
+  // Returns -1, 0, or 1.
+  inline static int Sign(const BigInt &a);
+
   inline static BigInt Negate(const BigInt &a);
   inline static BigInt Negate(BigInt &&a);
   inline static BigInt Abs(const BigInt &a);
@@ -390,6 +393,10 @@ std::string BigInt::ToString(int base) const {
 
 double BigInt::ToDouble() const {
   return mpz_get_d(rep);
+}
+
+int BigInt::Sign(const BigInt &a) {
+  return mpz_sgn(a.rep);
 }
 
 std::optional<int64_t> BigInt::ToInt() const {
@@ -946,6 +953,15 @@ std::string BigInt::ToString(int base) const {
   std::string ret{buf};
   BzFreeString(buf);
   return ret;
+}
+
+int BigInt::Sign(const BigInt &a) {
+  switch (BzGetSign(a.rep)) {
+  case BZ_MINUS: return -1;
+  default:
+  case BZ_ZERO: return 0;
+  case BZ_PLUS: return 1;
+  }
 }
 
 std::optional<int64_t> BigInt::ToInt() const {
