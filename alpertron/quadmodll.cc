@@ -175,7 +175,6 @@ static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
   memset(tmp1, 0, tmp_limbs * sizeof(limb));
   memset(tmp2, 0, tmp_limbs * sizeof(limb));
 
-  // BigInteger sqrRoot;
   // First approximation to inverse of square root.
   // If value is ...0001b, the inverse of square root is ...01b.
   // If value is ...1001b, the inverse of square root is ...11b.
@@ -247,7 +246,6 @@ struct QuadModLL {
   // Only used in CRT; could easily pass
   BigInt NN;
 
-  BigInteger SqrtDisc;
   BigInteger Q;
   bool sol1Invalid = false;
   bool sol2Invalid = false;
@@ -428,22 +426,13 @@ struct QuadModLL {
     CHECK(N != 0);
     int powerOf2 = BigInt::BitwiseCtz(N);
     N >>= powerOf2;
-    // DivideBigNbrByMaxPowerOf2(&powerOf2, pValN->limbs, &pValN->nbrLimbs);
 
     if (BigInt::Abs(N) != 1) {
 
       // ValN is not 1.
       Increment.push_back(N);
-      // CopyBigInt(&Increment[solutionNbr], pValN);
       Exponents.push_back(1);
 
-      // BigInteger ValN;
-      // XXX unnecessary?
-      // BigIntToBigInteger(N, &ValN);
-      // int modulus_length = ValN.nbrLimbs;
-      // int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-      // (void)memcpy(TheModulus, ValN.limbs, NumberLengthBytes);
-      // TheModulus[modulus_length].x = 0;
       // Perform division using odd modulus r.
       const std::unique_ptr<MontgomeryParams> params =
         GetMontgomeryParams(N);
@@ -454,24 +443,12 @@ struct QuadModLL {
       // Compute ptrSolution1 as -ValC / ValB
       if (sol1 != 0) {
         sol1 = N - sol1;
-        // BigIntSubt(pValN, ptrSolution1, ptrSolution1);
       }
 
       Solution1.push_back(sol1);
       Solution2.push_back(sol1);
 
-      // CopyBigInt(ptrSolution2, ptrSolution1);
-
       factors.push_back(std::make_pair(N, 1));
-
-      // BigInteger2IntArray(modulus_length, ptrFactorsMod, pValN);
-      // factors->product.push_back({.array = ptrFactorsMod,
-      // .multiplicity = 1});
-      // in storage, skip the number of limbs we used
-      // ptrFactorsMod += *ptrFactorsMod;
-      // .. and length
-      // ptrFactorsMod++;
-
       solutionNbr++;
     }
 
@@ -480,69 +457,50 @@ struct QuadModLL {
     CHECK((int)Solution2.size() == solutionNbr);
     CHECK((int)Increment.size() == solutionNbr);
 
-
-    BigInteger ValA, ValB, ValC, ValN;
-    BigIntToBigInteger(A, &ValA);
-    BigIntToBigInteger(B, &ValB);
-    BigIntToBigInteger(C, &ValC);
-    BigIntToBigInteger(N, &ValN);
-
     // Perform division using power of 2.
     if (powerOf2 > 0) {
 
       // Port note: This used to set ptrSolution1 to the power of 2,
       // I think just as a temporary?
       BigInt Pow2 = BigInt(1) << powerOf2;
-      // BigInteger pow2;
-      // BigIntPowerOf2(&pow2, powerOf2);
-      // BigIntPowerOf2(ptrSolution1, powerOf2);
       Increment.push_back(Pow2);
-      // CopyBigInt(&Increment[solutionNbr], ptrSolution1);
       Exponents.push_back(1);
-      // Exponents[solutionNbr] = 1;
 
       factors.push_back(std::make_pair(Pow2, 1));
-      // BigInteger2IntArray(modulus_length, ptrFactorsMod, &pow2);
-      // BigInteger2IntArray(modulus_length, ptrFactorsMod, ptrSolution1);
-      // CHECK(ptrSolution1->nbrLimbs > 0);
 
       // Port note: Original code didn't advance the factor pointer nor
       // storage pointer (probably because this is not in a loop) but
       // that just seems wrong.
-      // factors->product.push_back({.array = ptrFactorsMod,
-      // .multiplicity = 1});
-      // in storage, skip the number of limbs we used
-      // ptrFactorsMod += *ptrFactorsMod;
-      // .. and length
-      // ptrFactorsMod++;
 
       const std::unique_ptr<MontgomeryParams> params =
         GetMontgomeryParamsPowerOf2(powerOf2);
       const int modulus_length = params->modulus_length;
 
+      limb valb[modulus_length], valc[modulus_length];
+      limb valn[modulus_length];
+      BigIntToFixedLimbs(B, modulus_length, valb);
+      BigIntToFixedLimbs(C, modulus_length, valc);
+      BigIntToFixedLimbs(N, modulus_length, valn);
+
       // Port note: This used to do this on ptrSolution1 in place.
       // ptrSolution1 <- 1 / |ValB|
       limb inv[modulus_length];
-      ComputeInversePower2(ValB.Limbs.data(), inv,
-                           modulus_length);
-      // ComputeInversePower2(pValB->limbs, ptrSolution1->limbs,
-      //  modulus_length);
+      ComputeInversePower2(valb, inv, modulus_length);
       // Compute ptrSolution1 as |ValC| / |ValB|
-      ModMult(*params, inv, ValC.Limbs.data(), inv);
+      ModMult(*params, inv, valc, inv);
 
-      int NumberLengthBytes = modulus_length * (int)sizeof(int);
       // Compute ptrSolution1 as -ValC / ValB
-      if (ValB.sign == ValC.sign) {
-        (void)memset(ValA.Limbs.data(), 0, NumberLengthBytes);
+      if (BigInt::Sign(B) == BigInt::Sign(C)) {
+        limb vala[modulus_length];
+        BigIntToFixedLimbs(A, modulus_length, vala);
         // Beware: SubtractBigNbr is mod modulus_length words; it
         // drops the carry past that.
-        SubtractBigNbr(ValA.Limbs.data(), inv, inv, modulus_length);
+        SubtractBigNbr(vala, inv, inv, modulus_length);
       }
 
       // Discard bits outside number in most significant limb.
       inv[modulus_length - 1].x &=
         (1 << (powerOf2 % BITS_PER_GROUP)) - 1;
-      // inv.nbrLimbs = modulus_length;
 
       BigInt sol1 = LimbsToBigInt(inv, modulus_length);
       Solution1.push_back(sol1);
@@ -985,9 +943,7 @@ struct QuadModLL {
 
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
     BigInt SqrRoot =
-      BigIntModularDivision(*params,
-                            BigInt(1), SqrtDisc,
-                            Prime);
+      BigIntModularDivision(*params, BigInt(1), SqrtDisc, Prime);
 
     int correctBits = 1;
 
