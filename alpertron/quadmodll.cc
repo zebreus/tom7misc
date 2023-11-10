@@ -47,17 +47,6 @@ static void intToBigInteger(BigInteger *bigint, int value) {
   bigint->nbrLimbs = 1;
 }
 
-static void setNbrLimbs(BigInteger* pBigNbr, int numlen) {
-  pBigNbr->nbrLimbs = numlen;
-  pBigNbr->sign = SIGN_POSITIVE;
-  while (pBigNbr->nbrLimbs > 1) {
-    if (pBigNbr->Limbs[pBigNbr->nbrLimbs - 1].x != 0) {
-      break;
-    }
-    pBigNbr->nbrLimbs--;
-  }
-}
-
 // How does this differ from MultiplyLimbs?
 // I think it may be implicitly mod a power of 2, as it
 // only fills in limbs up to nbrLen+1, and is only
@@ -533,15 +522,13 @@ struct QuadModLL {
 
       // Port note: This used to do this on ptrSolution1 in place.
       // ptrSolution1 <- 1 / |ValB|
-      BigInteger inv;
-      ComputeInversePower2(ValB.Limbs.data(), inv.Limbs.data(),
+      limb inv[modulus_length];
+      ComputeInversePower2(ValB.Limbs.data(), inv,
                            modulus_length);
       // ComputeInversePower2(pValB->limbs, ptrSolution1->limbs,
       //  modulus_length);
       // Compute ptrSolution1 as |ValC| / |ValB|
-      ModMult(*params,
-              inv.Limbs.data(), ValC.Limbs.data(),
-              inv.Limbs.data());
+      ModMult(*params, inv, ValC.Limbs.data(), inv);
 
       int NumberLengthBytes = modulus_length * (int)sizeof(int);
       // Compute ptrSolution1 as -ValC / ValB
@@ -549,17 +536,15 @@ struct QuadModLL {
         (void)memset(ValA.Limbs.data(), 0, NumberLengthBytes);
         // Beware: SubtractBigNbr is mod modulus_length words; it
         // drops the carry past that.
-        SubtractBigNbr(ValA.Limbs.data(), inv.Limbs.data(),
-                       inv.Limbs.data(), modulus_length);
+        SubtractBigNbr(ValA.Limbs.data(), inv, inv, modulus_length);
       }
 
       // Discard bits outside number in most significant limb.
-      inv.Limbs[modulus_length - 1].x &=
+      inv[modulus_length - 1].x &=
         (1 << (powerOf2 % BITS_PER_GROUP)) - 1;
-      inv.nbrLimbs = modulus_length;
-      inv.sign = SIGN_POSITIVE;
+      // inv.nbrLimbs = modulus_length;
 
-      BigInt sol1 = BigIntegerToBigInt(&inv);
+      BigInt sol1 = LimbsToBigInt(inv, modulus_length);
       Solution1.push_back(sol1);
       Solution2.push_back(sol1);
 
@@ -578,57 +563,48 @@ struct QuadModLL {
     PerformChineseRemainderTheorem(GcdAll, factors);
   }
 
-  // PERF? rewrite FQS to work directly on BigInt
-  void FindQuadraticSolution(BigInt* pSolution,
-                             const BigInt &Quadr,
-                             const BigInt &Linear,
-                             const BigInt &Const,
-                             int exponent) {
-    BigInteger sol;
-    FindQuadraticSolutionInternal(&sol, Quadr, Linear, Const, exponent);
-    *pSolution = BigIntegerToBigInt(&sol);
-  }
-
   // Quadr, Linear, Const are arguments.
   // Find quadratic solution of
   //   Quadr*x^2 + Linear*x + Const = 0 (mod 2^expon)
   // when Quadr is even and Linear is odd. In this case there is a
   // unique solution.
-  void FindQuadraticSolutionInternal(BigInteger* pSolution,
-                                     BigInt Quadr,
-                                     BigInt Linear,
-                                     BigInt Const,
-                                     int exponent) {
+  BigInt FindQuadraticSolution(BigInt Quadr,
+                               BigInt Linear,
+                               BigInt Const,
+                               int exponent) {
 
     // PERF we could just allocate the necessary size here, then
     // convert to BigInt and return
     BigInteger Aux0;
     int expon = exponent;
-    uint32_t bitMask = 1;
-    limb* ptrSolution = pSolution->Limbs.data();
+    // limb* ptrSolution = pSolution->Limbs.data();
     BigIntPowerOf2(&Aux0, expon);
-    int bytesLen = Aux0.nbrLimbs * (int)sizeof(limb);
-    (void)memset(ptrSolution, 0, bytesLen);
+    // (void)memset(ptrSolution, 0, bytesLen);
+    const int num_limbs = Aux0.nbrLimbs;
+
+    // Enough to store numbers up to 2^expon.
+    limb solution[num_limbs];
+    memset(solution, 0, num_limbs * sizeof(limb));
+
+    // Together, bitmask and limb_idx basically indicate the bit that
+    // we're working on.
+    uint32_t bitMask = 1;
+    int limb_idx = 0;
     while (expon > 0) {
       expon--;
 
       // Bitmask: Mask <- 2^expon -1
       BigInt Mask = (BigInt(1) << expon) - 1;
-      // BigIntPowerOf2(&Mask, expon);
-      // addbigint(&Mask, -1);
 
       if (Const.IsOdd()) {
         // Const is odd.
-        ptrSolution->x |= bitMask;
+        solution[limb_idx].x |= bitMask;
         // Compute Const as Quadr/2 + floor(Linear/2) + floor(Const/2) + 1
         if (Const < 0) {
           Const -= 1;
-          // addbigint(Const_, -1);
         }
         // floor(Const/2) + 1
         Const = (Const >> 1) + 1;
-        // BigIntDivideBy2(Const_);
-        // addbigint(Const_, 1);
 
         BigInt Aux1 = Linear;
         if (Aux1 < 0) {
@@ -643,33 +619,23 @@ struct QuadModLL {
         // BigIntAdd(Const_, &Aux1, Const_);
 
         Const += (Quadr >> 1);
-        // CopyBigInt(&Aux1, Quadr_);
-        // BigIntDivideBy2(&Aux1);            // Quadr/2
-        // BigIntAdd(Const_, &Aux1, Const_);
 
         // Linear <- 2*Quadr + Linear and Quadr <- 2*Quadr.
         Quadr <<= 1;
-        // BigIntMultiplyBy2(Quadr_);         // Quadr*2
 
         Linear += Quadr;
         // Reduce mod 2^expon
         Linear &= Mask;
-        // BigIntAdd(Linear_, Quadr_, Linear_);
-        // BigIntAnd(Linear_, &Mask, Linear_);
       } else {
         // Const is even.
         // Const/2
         Const >>= 1;
-        // BigIntDivideBy2(Const_);
-        // Quadr*2
         Quadr <<= 1;
       }
 
       // Reduce mod 2^expon
       Const &= Mask;
-      // BigIntAnd(Const_, &Mask, Const_);
       Quadr &= Mask;
-      // BigIntAnd(Quadr_, &Mask, Quadr_);
 
       // Port note: This used to use signed int, but that's
       // undefined behavior.
@@ -678,12 +644,11 @@ struct QuadModLL {
       if (bitMask & 0x80000000) {
         // printf("bitmaskoverflow coverage\n");
         bitMask = 1;
-        ptrSolution++;
+        limb_idx++;
       }
     }
 
-    int modulus_length = Aux0.nbrLimbs;
-    setNbrLimbs(pSolution, modulus_length);
+    return LimbsToBigInt(solution, num_limbs);
   }
 
   // Solve Ax^2 + Bx + C = 0 (mod 2^expon).
@@ -736,7 +701,6 @@ struct QuadModLL {
       return false;   // No solutions, so go out.
     }
 
-    BigInteger tmp2;
     if (bitsAZero == 0 && bitsBZero > 0) {
       // The solution in this case requires square root.
       // compute s = ((b/2)^2 - a*c)/a^2, q = odd part of s,
@@ -832,30 +796,25 @@ struct QuadModLL {
 
     } else if (bitsAZero == 0 && bitsBZero == 0) {
       BigInt A2 = A << 1;
-      FindQuadraticSolution(&Solution1[factorIndex],
-                            A2,
-                            B,
-                            C >> 1,
-                            expon - 1);
+      Solution1[factorIndex] =
+        FindQuadraticSolution(A2,
+                              B,
+                              C >> 1,
+                              expon - 1) << 1;
 
-      Solution1[factorIndex] <<= 1;
-
-      FindQuadraticSolution(&Solution2[factorIndex],
-                            A2,
-                            A2 + B,
-                            (A + B + C) >> 1,
-                            expon - 1);
-
-      Solution2[factorIndex] <<= 1;
-      Solution2[factorIndex] += 1;
+      Solution2[factorIndex] =
+        (FindQuadraticSolution(A2,
+                               A2 + B,
+                               (A + B + C) >> 1,
+                               expon - 1) << 1) + 1;
 
     } else {
 
-      FindQuadraticSolution(&Solution1[factorIndex],
-                            A,
-                            B,
-                            C,
-                            expon);
+      Solution1[factorIndex] =
+        FindQuadraticSolution(A,
+                              B,
+                              C,
+                              expon);
       sol2Invalid = true;
     }
 
@@ -886,13 +845,10 @@ struct QuadModLL {
       return BigIntModularPower(params, Base, (Prime + 1) >> 2);
 
     } else {
-      // BigInteger Q;
-      // BigIntToBigInteger(Prime, &Q);
 
       limb* toConvert = nullptr;
       // Convert discriminant to Montgomery notation.
       BigIntToFixedLimbs(Base, params.modulus_length, aux5);
-      // CompressLimbsBigInteger(params.modulus_length, aux5, &base);
       // u
       ModMult(params, aux5, params.MontgomeryMultR2, aux6);
       if ((Prime & 7) == 5) {
@@ -1404,7 +1360,6 @@ struct QuadModLL {
 
     std::vector<std::pair<BigInt, int>> factors = BigIntFactor(N);
 
-    // intToBigInteger(&Q, 0);
     intToBigInteger(&Q, 0xFACADE);
     const int nbrFactors = factors.size();
 
