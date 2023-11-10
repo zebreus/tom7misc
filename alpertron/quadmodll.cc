@@ -49,7 +49,7 @@ static void intToBigInteger(BigInteger *bigint, int value) {
 
 // How does this differ from MultiplyLimbs?
 // I think it may be implicitly mod a power of 2, as it
-// only fills in limbs up to nbrLen+1, and is only
+// only fills in limbs up to nbrLen+2, and is only
 // used in ComputeSquareRootModPowerOf2. AddBigNbr and SubtractBigNbr
 // had similar behavior. It may also be approximate (double math)!
 static void MultBigNbrInternal(
@@ -85,6 +85,7 @@ static void MultBigNbrInternal(
     low = (int)(dAccumulator - floor(dAccumulator * dInvRangeLimb) *
                 dRangeLimb);
   }
+  // Note this writes at nbrLen and nbrLen+1.
   ptrProd->x = low;
   (ptrProd+1)->x = (int)floor(dAccumulator/dRangeLimb);
 }
@@ -166,7 +167,8 @@ static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
   BigIntToFixedLimbs(COdd, codd_limbs, codd);
 
   limb sqrRoot[codd_limbs];
-  const int tmp_limbs = codd_limbs + 1;
+  // MultBigNbrInternal writes 2 past nbrLimbs.
+  const int tmp_limbs = codd_limbs + 2;
   limb tmp1[tmp_limbs], tmp2[tmp_limbs];
   // Code below appears to read the n+1th limb (or more, as
   // correctBits is doubling) before writing it in each pass, at least
@@ -194,6 +196,9 @@ static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
       "\nnbrLimbs: " << nbrLimbs <<
       "\nexpon_limbs: " << expon_limbs <<
       "\ncodd_limbs: " << codd_limbs;
+    CHECK(nbrLimbs + 2 <= tmp_limbs) <<
+      "nbrLimbs: " << nbrLimbs <<
+      "\ntmp_limbs: " << tmp_limbs;
     MultBigNbrInternal(sqrRoot, sqrRoot, tmp2, nbrLimbs);
     MultBigNbrInternal(tmp2, codd, tmp1, nbrLimbs);
     ChSignLimbs(tmp1, nbrLimbs);

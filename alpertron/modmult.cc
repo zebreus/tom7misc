@@ -1115,10 +1115,17 @@ void ComputeInversePower2(const limb *value, limb *result, int number_length) {
 // (or factor into an internal version that takes a buffer of the
 // appropriate 2x length)
 BigInt GetInversePower2(const BigInt &Value, int number_length) {
-  // PERF might not need to convert the entire value?
   const int value_length = BigIntNumLimbs(Value);
-  limb value[value_length];
-  BigIntToFixedLimbs(Value, std::max(value_length, number_length), value);
+  // PERF might not need to convert the entire value? Below we
+  // truncate to number_length. Or this may have a secret precondition
+  // that value_length <= number_length.
+  const int storage_length = std::max(value_length, number_length);
+  if (VERBOSE) {
+    printf("Value %s. number_len %d. value_len %d\n",
+           Value.ToString().c_str(), number_length, value_length);
+  }
+  limb value[storage_length];
+  BigIntToFixedLimbs(Value, storage_length, value);
 
   limb result[number_length];
   ComputeInversePower2(value, result, number_length);
