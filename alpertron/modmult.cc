@@ -244,9 +244,6 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
   ModMult(params, tmp4, tmp5, tmp6);
 
   return LimbsToBigInt(tmp6, params.modulus_length);
-  // BigInteger power;
-  // UncompressLimbsBigInteger(params.modulus_length, tmp6, &power);
-  // return BigIntegerToBigInt(&power);
 }
 
 // Input: base = base in Montgomery notation.
@@ -886,16 +883,11 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
   Den %= Mod;
   if (Den < 0) Den += Mod;
 
-  // PERF can convert to limbs directly
-  // BigInteger tmpNum, tmpDen;
-  // BigIntToBigInteger(Num, &tmpNum);
-
   limb tmpDen[params.modulus_length];
   BigIntToFixedLimbs(Den, params.modulus_length, tmpDen);
 
   // ModInvBigNbr needs 1 padding word
   limb tmp3[params.modulus_length + 1];
-  // CompressLimbsBigInteger(params.modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
   // tmpDen <- 1 / Den in Montg notation.
   ModMult(params, tmpDen, params.MontgomeryMultR2, tmp3);
@@ -904,16 +896,10 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
 
   limb tmp4[params.modulus_length];
   BigIntToFixedLimbs(Num, params.modulus_length, tmp4);
-  // CompressLimbsBigInteger(params.modulus_length, tmp4, &tmpNum);
   // tmp3 <- Num / Den in standard notation.
   ModMult(params, tmpDen, tmp4, tmp3);
 
   // Get Num/Den
-  // PERF can just convert to BigInt
-  // BigInteger z;
-  // UncompressLimbsBigInteger(params.modulus_length, tmp3, &z);
-  // BigInt ret = BigIntegerToBigInt(&z);
-
   BigInt ret = LimbsToBigInt(tmp3, params.modulus_length);
 
   if (verbose) {
@@ -966,18 +952,9 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
   }
 
   BigInt Result = LimbsToBigInt(tmp5, modulus_length);
-  // UncompressLimbsBigInteger(modulus_length, tmp5, &result);
-
   Result *= BigIntegerToBigInt(oddValue);
-  // BigIntMultiply(&result, oddValue, &result);
-
   Result += LimbsToBigInt(resultModOdd, modulus_length);
   return Result;
-
-  // BigInteger tmp;
-  // UncompressLimbsBigInteger(modulus_length, resultModOdd, &tmp);
-  // BigIntAdd(&result, &tmp, &result);
-  // return BigIntegerToBigInt(&result);
 }
 
 // Compute modular division. ModInvBigNbr does not support even moduli,
@@ -1054,8 +1031,6 @@ BigInt GeneralModularDivision(
 
   limb num[params->modulus_length];
   BigIntToFixedLimbs(Num, params->modulus_length, num);
-  // BigInteger num;
-  // BigIntToBigInteger(Num, &num);
 
   // resultModPower2 <- Num / Dev mod 2^k.
   limb resultModPower2[params->modulus_length];
@@ -1411,6 +1386,8 @@ void ModMult(const MontgomeryParams &params,
   }
 
   if (params.powerOf2Exponent != 0) {
+    // fprintf(stderr, "powerof2 exponent %d\n", params.powerOf2Exponent);
+    // TODO: Just do this with BigInt.
     BigInteger tmpFact1, tmpFact2;
     // TestNbr is a power of 2.
     UncompressLimbsBigInteger(params.modulus_length, factor1, &tmpFact1);

@@ -35,18 +35,6 @@
 
 static constexpr bool VERBOSE = false;
 
-// XXX just used in debugging sentinels. delete.
-static void intToBigInteger(BigInteger *bigint, int value) {
-  if (value >= 0) {
-    bigint->Limbs[0].x = value;
-    bigint->sign = SIGN_POSITIVE;
-  } else {
-    bigint->Limbs[0].x = -value;
-    bigint->sign = SIGN_NEGATIVE;
-  }
-  bigint->nbrLimbs = 1;
-}
-
 // How does this differ from MultiplyLimbs?
 // I think it may be implicitly mod a power of 2, as it
 // only fills in limbs up to nbrLen+2, and is only
@@ -251,7 +239,6 @@ struct QuadModLL {
   // Only used in CRT; could easily pass
   BigInt NN;
 
-  BigInteger Q;
   bool sol1Invalid = false;
   bool sol2Invalid = false;
   bool interesting_coverage = false;
@@ -776,9 +763,7 @@ struct QuadModLL {
       sol2Invalid = true;
     }
 
-    intToBigInteger(&Q, 0x0DDBALL);
-    // XXX Can we just write the increment here? Or return Q?
-    BigIntPowerOf2(&Q, expon);         // Store increment.
+    // Store increment.
     Increment[factorIndex] = BigInt(1) << expon;
     return true;
   }
@@ -947,8 +932,6 @@ struct QuadModLL {
       BigIntModularDivision(*params, BigInt(1), SqrtDisc, Prime);
 
     int correctBits = 1;
-
-    intToBigInteger(&Q, 0xCAFE);
 
     BigInt Q = Prime;
 
@@ -1120,10 +1103,9 @@ struct QuadModLL {
 
     int correctBits = expon - deltaZeros;
 
-    // Store increment.
-    intToBigInteger(&Q, 0xBABE);
+    // Compute increment.
     // Q <- prime^correctBits
-    BigInt QQ = BigInt::Pow(Prime, correctBits);
+    BigInt Q = BigInt::Pow(Prime, correctBits);
 
     Tmp1 = B + SqrRoot;
 
@@ -1137,10 +1119,10 @@ struct QuadModLL {
       Tmp1 = BigInt::DivExact(Tmp1, Prime);
     }
 
-    Solution1[factorIndex] = BigInt::CMod(Tmp1 * AOdd, QQ);
+    Solution1[factorIndex] = BigInt::CMod(Tmp1 * AOdd, Q);
 
     if (Solution1[factorIndex] < 0) {
-      Solution1[factorIndex] += QQ;
+      Solution1[factorIndex] += Q;
     }
 
     Tmp1 = B - SqrRoot;
@@ -1155,14 +1137,13 @@ struct QuadModLL {
       Tmp1 = BigInt::DivExact(Tmp1, Prime);
     }
 
-    Solution2[factorIndex] = BigInt::CMod(Tmp1 * AOdd, QQ);
+    Solution2[factorIndex] = BigInt::CMod(Tmp1 * AOdd, Q);
 
     if (Solution2[factorIndex] < 0) {
-      Solution2[factorIndex] += QQ;
+      Solution2[factorIndex] += Q;
     }
 
-    BigIntToBigInteger(QQ, &Q);
-    Increment[factorIndex] = QQ;
+    Increment[factorIndex] = Q;
     return true;
   }
 
@@ -1192,19 +1173,20 @@ struct QuadModLL {
       TmpSolution += Prime;
     }
 
+    BigInt Q;
     for (int currentExpon = 2; currentExpon < (2 * expon); currentExpon *= 2) {
       BigInt VV = BigInt::Pow(Prime, currentExpon);
       // Q <- a*x_n + b
-      BigInt QQ = A * TmpSolution + B;
-      // (void)BigIntMultiply(pValA, &tmpSolution, &Q);
-      BigInt L = QQ;
-      QQ %= VV;
+      Q = A * TmpSolution + B;
+
+      BigInt L = Q;
+      Q %= VV;
       // a*x_n^2 + b*x_n
-      QQ *= TmpSolution;
+      Q *= TmpSolution;
       // a*x_n^2 + b*x_n + c
-      QQ += C;
+      Q += C;
       // Numerator.
-      QQ %= VV;
+      Q %= VV;
       // 2*a*x_n
       L <<= 1;
       // 2*a*x_n + b
@@ -1215,7 +1197,7 @@ struct QuadModLL {
       const std::unique_ptr<MontgomeryParams> params =
         GetMontgomeryParams(VV);
       BigInt Aux =
-        BigIntModularDivision(*params, QQ, L, VV);
+        BigIntModularDivision(*params, Q, L, VV);
       TmpSolution -= Aux;
       TmpSolution %= VV;
 
@@ -1224,13 +1206,11 @@ struct QuadModLL {
       }
     }
 
-    // XXX
-    intToBigInteger(&Q, 0xDEFACED);
-
     BigInt TmpSol1 = TmpSolution % BigInt::Pow(Prime, expon);
 
     Solution1[factorIndex] = TmpSol1;
     Solution2[factorIndex] = Solution1[factorIndex];
+    Increment[factorIndex] = Q;
   }
 
   // If solutions found, writes normalized solutions at factorIndex
@@ -1305,7 +1285,6 @@ struct QuadModLL {
     // sos "ways" usage.
     std::vector<std::pair<BigInt, int>> factors = BigIntFactor(N);
 
-    intToBigInteger(&Q, 0xFACADE);
     const int nbrFactors = factors.size();
 
     Solution1.resize(nbrFactors);
@@ -1327,8 +1306,6 @@ struct QuadModLL {
 
       const BigInt &Prime = factors[factorIndex].first;
 
-      // XXX
-      Increment[factorIndex] = BigInt(99999);
 
       if (Prime != 2 &&
           BigInt::DivisibleBy(A, Prime)) {
@@ -1351,10 +1328,10 @@ struct QuadModLL {
         }
       }
 
-      // XXX needs to be returned from functions above,
-      // or the functions themselves should set it.
-      CHECK(Increment[factorIndex] == BigIntegerToBigInt(&Q));
-      // Increment[factorIndex] = BigIntegerToBigInt(&Q);
+      // Port note: This used to set the increment via the value
+      // residing in Q, but now we set that in each branch explicitly
+      // along with the solution. Probably could be setting Exponents
+      // there too?
       Exponents[factorIndex] = 0;
     }
 

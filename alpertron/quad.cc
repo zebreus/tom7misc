@@ -91,10 +91,11 @@ static std::string CallbackString(QmodCallbackType t) {
 // This is just a display heuristic. Tests whether the
 // BigInteger representation would be more than two limbs.
 static bool IsBig(const BigInt &bg) {
-  size_t s = 1 + (mpz_sizeinbase(bg.GetRep(), 2) / BITS_PER_GROUP);
+  return BigIntNumLimbs(bg) > 2;
+  // size_t s = 1 + (mpz_sizeinbase(bg.GetRep(), 2) / BITS_PER_GROUP);
   // fprintf(stderr, "%s has size %d in %d groups\n",
   // bg.ToString().c_str(), (int)s, BITS_PER_GROUP);
-  return s > 2;
+  // return s > 2;
 }
 
 static LinSol LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
@@ -1041,24 +1042,26 @@ struct Quad {
       "with dividing by zero";
 
     // Check whether alpha - K and beta - L are multiple of discriminant.
-    if (BigInt::DivisibleBy(Alpha - K, Discr) &&
-        BigInt::DivisibleBy(Beta - L, Discr)) {
+    const BigInt AlphaMinusK = Alpha - K;
+    const BigInt BetaMinusL = Beta - L;
+    if (BigInt::DivisibleBy(AlphaMinusK, Discr) &&
+        BigInt::DivisibleBy(BetaMinusL, Discr)) {
       // Solution found.
-      // PERF as below, known-divisible tests or quotrem.
-      K = (Alpha - K) / Discr;
-      L = (Beta - L) / Discr;
+      K = BigInt::DivExact(AlphaMinusK, Discr);
+      L = BigInt::DivExact(BetaMinusL, Discr);
       ShowAllRecSols(P, Q, R, S,
                      K, L, Alpha, Beta);
       return true;
     }
 
     // Check whether alpha + K and beta + L are multiple of discriminant.
-    if (BigInt::DivisibleBy(Alpha + K, Discr) &&
-        BigInt::DivisibleBy(Beta + L, Discr)) {
+    const BigInt AlphaPlusK = Alpha + K;
+    const BigInt BetaPlusL = Beta + L;
+    if (BigInt::DivisibleBy(AlphaPlusK, Discr) &&
+        BigInt::DivisibleBy(BetaPlusL, Discr)) {
       // Solution found.
-      // PERF: Use quotrem, or known-divisible test!
-      K = (Alpha + K) / Discr;
-      L = (Beta + L) / Discr;
+      K = BigInt::DivExact(AlphaPlusK, Discr);
+      L = BigInt::DivExact(BetaPlusL, Discr);
 
       ShowAllRecSols(-P, -Q, -R, -S,
                      K, L, Alpha, Beta);
@@ -1552,13 +1555,12 @@ struct Quad {
 
     GcdAll = BigInt::GCD(Modulus, GcdAll);
 
-    // PERF: version of division where we know it's divisible.
     // Divide all coefficients by gcd(A, B).
     if (GcdAll != 0) {
-      coeff_quadr /= GcdAll;
-      coeff_linear /= GcdAll;
-      coeff_indep /= GcdAll;
-      Modulus /= GcdAll;
+      coeff_quadr = BigInt::DivExact(coeff_quadr, GcdAll);
+      coeff_linear = BigInt::DivExact(coeff_linear, GcdAll);
+      coeff_indep = BigInt::DivExact(coeff_indep, GcdAll);
+      Modulus = BigInt::DivExact(Modulus, GcdAll);
     }
 
     BigInt ValNn = Modulus;
@@ -1609,15 +1611,9 @@ struct Quad {
 
       // Calculate z <- -C / B (mod N)
 
-      // We only use this right here, so we could have a version of MGParams
-      // that just took a BigInt modulus, at least for this code.
-      limb TheModulus[MAX_LEN];
-      const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
-      TheModulus[modulus_length].x = 0;
-
       // Is it worth it to convert to montgomery form for one division??
       const std::unique_ptr<MontgomeryParams> params =
-        GetMontgomeryParams(modulus_length, TheModulus);
+        GetMontgomeryParams(Modulus);
 
       BigInt z =
         BigIntModularDivision(*params, coeff_indep, coeff_linear, Modulus);
@@ -2889,7 +2885,6 @@ struct Quad {
       return;
     }
 
-    // const BigInt Discr = BigIntegerToBigInt(&discr);
     const BigInt G = BigInt::Sqrt(Discr);
 
     if (G * G == Discr) {
