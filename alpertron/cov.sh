@@ -279,7 +279,21 @@ echo quad tests
 ./quad.exe 65536 0 -3 5 -5 -18889450193678288090578 >> coverage.out
 # related. has solution (536870874, 133098234)
 
+# bug (mine) around r5318. buffer was too short for
+# ComputeSquareRootModPowerOf2
+# has solution:  -58547096 -30887538
+# and in fact parametric (quadratic) solutions
+./quad.exe  0 0 -16777216 131072 16 1600613531845809328424784 >> coverage.out
+
+# probably related
+# solution 261064310 -209645261
+./quad.exe 8388608 0 0 -32 -268435456 -571722060598227919384896 >> coverage.out
+
 echo factor tests
+echo "" >> coverage.out
+echo "FACTORING" >> coverage.out
+echo "" >> coverage.out
+
 ./afactor.exe 1 >> coverage.out
 ./afactor.exe 2 >> coverage.out
 ./afactor.exe 3 >> coverage.out

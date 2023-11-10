@@ -144,19 +144,19 @@ static void RunGrid() {
         default:
           switch (rc.Byte() & 31) {
           case 0:
-            a += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+            a += RandTo(&rc, 1'000'000'000ULL) - 500'000'000;
             break;
           case 1:
-            b += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+            b += RandTo(&rc, 1'000'000'000ULL) - 500'000'000;
             break;
           case 2:
-            c += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+            c += RandTo(&rc, 1'000'000'000ULL) - 500'000'000;
             break;
           case 3:
-            d += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+            d += RandTo(&rc, 1'000'000'000ULL) - 500'000'000;
             break;
           case 4:
-            e += RandTo(&rc, 10'000'000'000ULL) - 5'000'000'000;
+            e += RandTo(&rc, 1'000'000'000ULL) - 500'000'000;
             break;
           default:
             break;
