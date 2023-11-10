@@ -245,7 +245,7 @@ struct QuadModLL {
   std::vector<BigInt> Increment;
   std::vector<int> Exponents;
 
-  QuadModLL() {}
+  explicit QuadModLL(const SolutionFn &f) : SolutionCallback(f) {}
 
   BigInt Discriminant;
   // Only used in CRT; could easily pass
@@ -256,7 +256,7 @@ struct QuadModLL {
   bool sol2Invalid = false;
   bool interesting_coverage = false;
 
-  SolutionFn Solution;
+  const SolutionFn &SolutionCallback;
 
   // Use Chinese remainder theorem to obtain the solutions.
   void PerformChineseRemainderTheorem(
@@ -354,7 +354,7 @@ struct QuadModLL {
       // Perform loop while V < GcdAll.
       while (KK1 < 0) {
         // The solution is V*ValNn + currentSolution
-        Solution(VV * NN + CurrentSolution);
+        SolutionCallback(VV * NN + CurrentSolution);
 
         VV += 1;
         KK1 = VV - GcdAll;
@@ -536,14 +536,9 @@ struct QuadModLL {
                                BigInt Const,
                                int exponent) {
 
-    // PERF we could just allocate the necessary size here, then
-    // convert to BigInt and return
-    BigInteger Aux0;
+    // Same calculation from BigIntPowerOf2.
+    const int num_limbs = (exponent / BITS_PER_GROUP) + 1;
     int expon = exponent;
-    // limb* ptrSolution = pSolution->Limbs.data();
-    BigIntPowerOf2(&Aux0, expon);
-    // (void)memset(ptrSolution, 0, bytesLen);
-    const int num_limbs = Aux0.nbrLimbs;
 
     // Enough to store numbers up to 2^expon.
     limb solution[num_limbs];
@@ -784,6 +779,7 @@ struct QuadModLL {
     intToBigInteger(&Q, 0x0DDBALL);
     // XXX Can we just write the increment here? Or return Q?
     BigIntPowerOf2(&Q, expon);         // Store increment.
+    Increment[factorIndex] = BigInt(1) << expon;
     return true;
   }
 
@@ -1128,10 +1124,8 @@ struct QuadModLL {
     intToBigInteger(&Q, 0xBABE);
     // Q <- prime^correctBits
     BigInt QQ = BigInt::Pow(Prime, correctBits);
-    BigIntToBigInteger(QQ, &Q);
 
     Tmp1 = B + SqrRoot;
-    // BigIntAdd(pValB, &sqrRoot, &tmp1);
 
     for (int ctr = 0; ctr < bitsAZero; ctr++) {
       BigInt Tmp2 = Tmp1 % Prime;
@@ -1167,6 +1161,8 @@ struct QuadModLL {
       Solution2[factorIndex] += QQ;
     }
 
+    BigIntToBigInteger(QQ, &Q);
+    Increment[factorIndex] = QQ;
     return true;
   }
 
@@ -1202,28 +1198,19 @@ struct QuadModLL {
       BigInt QQ = A * TmpSolution + B;
       // (void)BigIntMultiply(pValA, &tmpSolution, &Q);
       BigInt L = QQ;
-      // CopyBigInt(&L, &Q);
-      // BigIntAdd(&Q, pValB, &Q);
       QQ %= VV;
-      // (void)BigIntRemainder(&Q, &V, &Q);
       // a*x_n^2 + b*x_n
       QQ *= TmpSolution;
-      // (void)BigIntMultiply(&Q, &tmpSolution, &Q);
       // a*x_n^2 + b*x_n + c
       QQ += C;
-      // BigIntAdd(&Q, pValC, &Q);
       // Numerator.
       QQ %= VV;
-      // (void)BigIntRemainder(&Q, &V, &Q);
       // 2*a*x_n
       L <<= 1;
-      // MultInt(&L, &L, 2);
       // 2*a*x_n + b
       L += B;
-      // BigIntAdd(&L, pValB, &L);
       // Denominator
       L %= VV;
-      // (void)BigIntRemainder(&L, &V, &L);
 
       const std::unique_ptr<MontgomeryParams> params =
         GetMontgomeryParams(VV);
@@ -1231,12 +1218,9 @@ struct QuadModLL {
         BigIntModularDivision(*params, QQ, L, VV);
       TmpSolution -= Aux;
       TmpSolution %= VV;
-      // BigIntSubt(&tmpSolution, &Aux1, &tmpSolution);
-      // (void)BigIntRemainder(&tmpSolution, &V, &tmpSolution);
 
       if (TmpSolution < 0) {
         TmpSolution += VV;
-        // BigIntAdd(&tmpSolution, &V, &tmpSolution);
       }
     }
 
@@ -1300,15 +1284,11 @@ struct QuadModLL {
 
   // Solve Ax^2 + Bx + C = 0 (mod N).
   void SolveEquation(
-      const SolutionFn &solutionCback,
       const BigInt &A, const BigInt &B,
       const BigInt &C, const BigInt &N,
       const BigInt &GcdAll, const BigInt &NN_arg) {
 
     NN = NN_arg;
-
-    // PERF: no need to copy
-    Solution = solutionCback;
 
     if (BigInt::DivisibleBy(A, N)) {
       // Linear equation.
@@ -1316,9 +1296,13 @@ struct QuadModLL {
       return;
     }
 
-    // PERF: Original code would cache factorization of N. It might
-    // be good to do that here too.
-
+    // PERF: Original code would cache factorization of N. We seem
+    // to have the factorization for the first call, so maybe we
+    // could pass it from quad.
+    //
+    // For the x^2 + y^2 = z case, it needs the factors of z. So
+    // being able to pass these explicitly would be useful for the
+    // sos "ways" usage.
     std::vector<std::pair<BigInt, int>> factors = BigIntFactor(N);
 
     intToBigInteger(&Q, 0xFACADE);
@@ -1343,6 +1327,9 @@ struct QuadModLL {
 
       const BigInt &Prime = factors[factorIndex].first;
 
+      // XXX
+      Increment[factorIndex] = BigInt(99999);
+
       if (Prime != 2 &&
           BigInt::DivisibleBy(A, Prime)) {
         // ValA multiple of prime means a linear equation mod prime.
@@ -1366,7 +1353,8 @@ struct QuadModLL {
 
       // XXX needs to be returned from functions above,
       // or the functions themselves should set it.
-      Increment[factorIndex] = BigIntegerToBigInt(&Q);
+      CHECK(Increment[factorIndex] == BigIntegerToBigInt(&Q));
+      // Increment[factorIndex] = BigIntegerToBigInt(&Q);
       Exponents[factorIndex] = 0;
     }
 
@@ -1382,9 +1370,10 @@ void SolveEquation(
     const BigInt &C, const BigInt &N,
     const BigInt &GcdAll, const BigInt &Nn,
     bool *interesting_coverage) {
-  std::unique_ptr<QuadModLL> qmll = std::make_unique<QuadModLL>();
+  std::unique_ptr<QuadModLL> qmll =
+    std::make_unique<QuadModLL>(solutionCback);
 
-  qmll->SolveEquation(solutionCback, A, B, C, N, GcdAll, Nn);
+  qmll->SolveEquation(A, B, C, N, GcdAll, Nn);
 
   if (interesting_coverage != nullptr &&
       qmll->interesting_coverage) {
