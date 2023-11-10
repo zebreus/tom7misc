@@ -177,13 +177,14 @@ static BigInt ComputeSquareRootModPowerOf2(const BigInt &COdd,
   BigIntToFixedLimbs(COdd, codd_limbs, codd);
 
   limb sqrRoot[codd_limbs];
-  limb tmp1[codd_limbs], tmp2[codd_limbs];
+  const int tmp_limbs = codd_limbs + 1;
+  limb tmp1[tmp_limbs], tmp2[tmp_limbs];
   // Code below appears to read the n+1th limb (or more, as
   // correctBits is doubling) before writing it in each pass, at least
   // for sqrRoot.
   memset(sqrRoot, 0, codd_limbs * sizeof(limb));
-  memset(tmp1, 0, codd_limbs * sizeof(limb));
-  memset(tmp2, 0, codd_limbs * sizeof(limb));
+  memset(tmp1, 0, tmp_limbs * sizeof(limb));
+  memset(tmp2, 0, tmp_limbs * sizeof(limb));
 
   // BigInteger sqrRoot;
   // First approximation to inverse of square root.
