@@ -118,9 +118,19 @@ static void WrapModMult(const BigInt &A,
                         const BigInt &Modulus,
                         const BigInt &Expected) {
 
+  auto ProblemIn = [&]() {
+      return StringPrintf("%s * %s mod %s\n",
+                          A.ToString().c_str(),
+                          B.ToString().c_str(),
+                          Modulus.ToString().c_str());
+    };
+
   const std::unique_ptr<MontgomeryParams> params =
     GetMontgomeryParams(Modulus);
   const int modulus_length = params->modulus_length;
+
+  CHECK(BigIntNumLimbs(A) <= modulus_length) << ProblemIn();
+  CHECK(BigIntNumLimbs(B) <= modulus_length) << ProblemIn();
 
   limb out[modulus_length + 1];
   out[modulus_length].x = 0xCAFE;
@@ -171,6 +181,7 @@ static void TestModMult() {
               BigInt(7),
               BigInt(2));
 
+  // Special behavior for powers of two moduli.
   WrapModMult(BigInt("111111111222222222223"),
               BigInt("387492873491872371"),
               // 2^256
@@ -189,6 +200,23 @@ static void TestModMult() {
               BigInt("60708402882054033466233184588234965832575213720379360039119137804340758912662765568"),
               BigInt("51153539926300668965516258108723933397314872108214048858850678752661169302105362369"));
 
+  WrapModMult(BigInt("15232"),
+              BigInt("90210"),
+              // 2^77
+              BigInt("151115727451828646838272"),
+              BigInt("1374078720"));
+
+  WrapModMult(BigInt("15232"),
+              BigInt("9021000000000000000000000000"),
+              // 2^77
+              BigInt("151115727451828646838272"),
+              BigInt("127623905056672907788288"));
+
+  WrapModMult(BigInt("152320000000000000000"),
+              BigInt("90210"),
+              // 2^77
+              BigInt("151115727451828646838272"),
+              BigInt("140371729335421784555520"));
 
   // This is the result I get from alpertron (tomtest.c).
   WrapModMult(BigInt("3"),
@@ -211,7 +239,8 @@ static void TestModMult() {
               BigInt("17619819104174798134"),
               BigInt("88888888833117981921"),
               BigInt("54076733533037296511"));
-  // TODO
+
+  printf("ModMult " AGREEN("OK") "\n");
 }
 
 static void WrapDivide(const BigInt &Num,

@@ -46,18 +46,6 @@ static std::string LimbString(limb *limbs, size_t num) {
   return out;
 }
 
-static void BigIntMultiply(
-    const BigInteger *pFact1, const BigInteger *pFact2,
-    BigInteger *pProduct) {
-  // Port note: This used to return EXP_INTERM_TOO_HIGH if the product is too
-  // big to fit, but this return value is never checked. So I think we should
-  // just abort if big int conversion fails. (And eventually just use native
-  // BigInt.)
-  BigInt r = BigInt::Times(BigIntegerToBigInt(pFact1),
-                           BigIntegerToBigInt(pFact2));
-  BigIntToBigInteger(r, pProduct);
-}
-
 // Copies a fixed-width array of limbs to the bigint. Removes
 // high limbs that are 0 (which are trailing in little-endian
 // representation). I think this is "Uncompress" in the sense
@@ -1386,16 +1374,14 @@ void ModMult(const MontgomeryParams &params,
   }
 
   if (params.powerOf2Exponent != 0) {
-    // fprintf(stderr, "powerof2 exponent %d\n", params.powerOf2Exponent);
-    // TODO: Just do this with BigInt.
-    BigInteger tmpFact1, tmpFact2;
-    // TestNbr is a power of 2.
-    UncompressLimbsBigInteger(params.modulus_length, factor1, &tmpFact1);
-    UncompressLimbsBigInteger(params.modulus_length, factor2, &tmpFact2);
-    BigIntMultiply(&tmpFact1, &tmpFact2, &tmpFact1);
-    CompressLimbsBigInteger(params.modulus_length, product, &tmpFact1);
-    (product + (params.powerOf2Exponent / BITS_PER_GROUP))->x &=
-      (1 << (params.powerOf2Exponent % BITS_PER_GROUP)) - 1;
+    // PERF: We could store the mask instead of the power?
+    const BigInt Mask = (BigInt(1) << params.powerOf2Exponent) - 1;
+
+    const BigInt f1 = LimbsToBigInt(factor1, params.modulus_length);
+    const BigInt f2 = LimbsToBigInt(factor2, params.modulus_length);
+
+    const BigInt Product = (f1 * f2) & Mask;
+    BigIntToFixedLimbs(Product, params.modulus_length, product);
 
     if (VERBOSE) {
       const BigInt ret = LimbsToBigInt(product, params.modulus_length);
@@ -1407,6 +1393,20 @@ void ModMult(const MontgomeryParams &params,
   }
 
   if (params.modulus_length <= 1) {
+    CHECK(params.modulus_length == 1);
+
+    const uint64_t f1 = factor1[0].x;
+    const uint64_t f2 = factor2[0].x;
+    const uint32_t m = params.modulus[0].x;
+
+    uint32_t r = (f1 * f2) % m;
+
+    // because m must be less than this
+    CHECK(r <= MAX_INT_NBR_U);
+
+    product[0].x = r;
+
+#if 0
     // PERF hot path. modulus_length of 0 should be impossible, so we
     // could just be reading the ints and doing this native.
     BigInt f1 = LimbsToBigInt(factor1, params.modulus_length);
@@ -1417,6 +1417,7 @@ void ModMult(const MontgomeryParams &params,
     // Hmm, no BigInt modular multiplication :/
     BigInt r = BigInt::Mod(BigInt::Times(f1, f2), modulus);
     BigIntToFixedLimbs(r, params.modulus_length, product);
+#endif
 
     if (VERBOSE) {
       const BigInt ret = LimbsToBigInt(product, params.modulus_length);
