@@ -58,9 +58,9 @@ static void Montgomery() {
         }
       }();
 
-    BigInt N = LimbsToBigInt(params->MontgomeryMultN, params->modulus_length);
-    BigInt R1 = LimbsToBigInt(params->MontgomeryMultR1, params->modulus_length);
-    BigInt R2 = LimbsToBigInt(params->MontgomeryMultR2, params->modulus_length);
+    BigInt N = LimbsToBigInt(params->Ninv.data(), params->modulus_length);
+    BigInt R1 = LimbsToBigInt(params->R1.data(), params->modulus_length);
+    BigInt R2 = LimbsToBigInt(params->R2.data(), params->modulus_length);
 
     CHECK(R1 == BigInt("24695268717247353376024094994637646342633788102645274852325180976134729557037162826241102651487225375781959289009"));
     CHECK(R2 == BigInt("190098254628648626850155858417461866966631571241684111915135769130076389371840963052220660360120514221998874973069"));

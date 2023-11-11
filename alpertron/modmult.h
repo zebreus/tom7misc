@@ -13,15 +13,20 @@ struct MontgomeryParams {
   // R is the power of 2 for Montgomery multiplication and reduction.
 
   // XXX perhaps rename these. N is Ninv. Don't need to say "MontgomeryMult"
-  // This is the inverse of the modulus mod R.
-  limb MontgomeryMultN[MAX_LEN];
-  // This is the representation of 1 in Montgomery form.
-  limb MontgomeryMultR1[MAX_LEN];
-  limb MontgomeryMultR2[MAX_LEN];
+  // limb MontgomeryMultN[MAX_LEN];
+  // limb MontgomeryMultR1[MAX_LEN];
+  // limb MontgomeryMultR2[MAX_LEN];
 
-  int modulus_length = 0;
+  // This is the inverse of the modulus mod R.
+  // It's not computed (empty) when we aren't using montgomery form.
+  std::vector<limb> Ninv;
+  // This is the representation of 1 in Montgomery form.
+  std::vector<limb> R1;
+  std::vector<limb> R2;
   // modulus_length + 1 limbs, with a zero at the end.
   std::vector<limb> modulus;
+
+  int modulus_length = 0;
   // If nonzero, the modulus is this power of two.
   int powerOf2Exponent = 0;
 };

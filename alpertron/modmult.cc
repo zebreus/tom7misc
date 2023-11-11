@@ -138,7 +138,7 @@ BigInt BigIntModularPower(const MontgomeryParams &params,
 
   limb tmp6[params.modulus_length];
   // Convert base to Montgomery notation.
-  ModMult(params, tmp5, params.MontgomeryMultR2, tmp6);
+  ModMult(params, tmp5, params.R2.data(), tmp6);
   ModPow(params, tmp6, Exponent, tmp5);
 
   const int lenBytes = params.modulus_length * (int)sizeof(limb);
@@ -174,7 +174,7 @@ void ModPow(const MontgomeryParams &params,
   // seems wrong to me (power limbs should not need to exceed modulus
   // size); might be related to some superstitious zero padding?
   int lenBytes = params.modulus_length * (int)sizeof(limb);
-  (void)memcpy(power, params.MontgomeryMultR1, lenBytes);  // power <- 1
+  (void)memcpy(power, params.R1.data(), lenBytes);  // power <- 1
   for (int index = nbrGroupsExp - 1; index >= 0; index--) {
     int groupExp = (exp + index)->x;
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
@@ -198,7 +198,7 @@ BigInt ModPowBaseInt(const MontgomeryParams &params,
 
   int NumberLengthBytes = (params.modulus_length + 1) * (int)sizeof(limb);
   // power <- 1
-  (void)memcpy(power, params.MontgomeryMultR1, NumberLengthBytes);
+  (void)memcpy(power, params.R1.data(), NumberLengthBytes);
   for (int index = nbrGroupsExp - 1; index >= 0; index--) {
     int groupExp = exp[index].x;
     for (unsigned int mask = HALF_INT_RANGE_U; mask > 0U; mask >>= 1) {
@@ -743,7 +743,7 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   R[modulus_length].x = 0;
   // At this moment R = x^(-1)*2^k
   // 10. R <- MonPro(R, R2)
-  ModMult(params, R, params.MontgomeryMultR2, R);
+  ModMult(params, R, params.R2.data(), R);
 
   R[modulus_length].x = 0;
   // At this moment R = x^(-1)*2^(k+m)
@@ -762,7 +762,7 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
     shLeft = (unsigned int)bitCount % (unsigned int)BITS_PER_GROUP;
     S[bitCount / BITS_PER_GROUP].x = UintToInt(1U << shLeft);
     ModMult(params, R, S, inv);
-    ModMult(params, inv, params.MontgomeryMultR2, inv);
+    ModMult(params, inv, params.R2.data(), inv);
   }
 
   return true;  // Inverse computed.
@@ -814,7 +814,7 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
   limb tmp3[params.modulus_length + 1];
   // tmp3 <- Den in Montgomery notation
   // tmpDen <- 1 / Den in Montg notation.
-  ModMult(params, tmpDen, params.MontgomeryMultR2, tmp3);
+  ModMult(params, tmpDen, params.R2.data(), tmp3);
   tmp3[params.modulus_length].x = 0;
   (void)ModInvBigNbr(params, tmp3, tmpDen);
 
@@ -994,7 +994,7 @@ BigInt GeneralModularDivision(
   limb tmp3[modulus_length + 1];
   BigIntToFixedLimbs(TmpDen, modulus_length, tmp3);
   // tmp3 <- Den in Montgomery notation
-  ModMult(*params, tmp3, params->MontgomeryMultR2, tmp3);
+  ModMult(*params, tmp3, params->R2.data(), tmp3);
 
   if (VERBOSE) {
     printf("[tmp3 <- Den] tmp3:\n");
@@ -1223,23 +1223,33 @@ GetMontgomeryParamsPowerOf2(int powerOf2) {
   const int modulus_length = BigIntNumLimbs(Pow2);
   params->modulus_length = modulus_length;
   params->modulus.resize(modulus_length + 1);
+
   BigIntToFixedLimbs(Pow2, modulus_length, params->modulus.data());
   params->modulus[modulus_length].x = 0;
   params->powerOf2Exponent = powerOf2;
 
+  // Original code didn't set this at all?
+  // params->Ninv.resize(modulus_length + 1);
+  // (void)memset(params->Ninv.data(), 0,
+  // (modulus_length + 1) * sizeof (limb));
+
   // XXX check what size we guarantee for R1, R2. We just need to store
   // a padded "1" here for both.
-  (void)memset(params->MontgomeryMultR1, 0,
+  params->R1.resize(modulus_length + 1);
+  params->R2.resize(modulus_length + 1);
+
+  (void)memset(params->R1.data(), 0,
                (modulus_length + 1) * sizeof (limb));
-  (void)memset(params->MontgomeryMultR2, 0,
+  (void)memset(params->R2.data(), 0,
                (modulus_length + 1) * sizeof (limb));
-  params->MontgomeryMultR1[0].x = 1;
-  params->MontgomeryMultR2[0].x = 1;
+  params->R1[0].x = 1;
+  params->R2[0].x = 1;
   return params;
 }
 
 // Compute Nbr <- Nbr mod Modulus.
 // Modulus has NumberLength limbs.
+// This writes one past the end of Nbr.
 static void AdjustModN(limb *Nbr, const limb *Modulus, int nbrLen) {
   double dInvModulus = 1/getMantissa(Modulus+nbrLen, nbrLen);
   double dNbr = getMantissa(Nbr + nbrLen + 1, nbrLen + 1) * LIMB_RANGE;
@@ -1258,7 +1268,12 @@ static void AdjustModN(limb *Nbr, const limb *Modulus, int nbrLen) {
     carry >>= BITS_PER_GROUP;
   }
 
-  (Nbr + i)->x = carry & MAX_INT_NBR;
+  // Port note: The original code would continue writing the carry
+  // to Nbr[nbrLen + 1], i.e. two past the end. This isn't used below
+  // and doesn't seem to be used elsewhere either; I removed it
+  // because it seems surprising and likely a mistake.
+  // (Nbr + i)->x = carry & MAX_INT_NBR;
+
   if (((unsigned int)Nbr[nbrLen].x & MAX_VALUE_LIMB) != 0U) {
     unsigned int cy = 0;
     for (i = 0; i < nbrLen; i++) {
@@ -1279,10 +1294,16 @@ static void InitMontgomeryParams(MontgomeryParams *params) {
   // limb, etc.).
   params->powerOf2Exponent = 0;
 
-  // We don't bother with montgomery form for single-word numbers.
+  // We don't bother with montgomery form for (odd) single-word numbers.
   if (params->modulus_length == 1 && (params->modulus[0].x & 1) != 0) {
-    params->MontgomeryMultR1[0].x = 1;
-    params->MontgomeryMultR2[0].x = 1;
+    // Original code doesn't set Ninv?
+    // params->Ninv.resize(2);
+    // params->N[0].x = 1;
+
+    params->R1.resize(2);
+    params->R2.resize(2);
+    params->R1[0].x = 1;
+    params->R2[0].x = 1;
     return;
   }
 
@@ -1312,43 +1333,50 @@ static void InitMontgomeryParams(MontgomeryParams *params) {
           msw_zero_bits;
 
         const int NumberLengthBytes =
-          params->modulus_length * (int)sizeof(limb);
-        (void)memset(params->MontgomeryMultR1, 0, NumberLengthBytes);
-        (void)memset(params->MontgomeryMultR2, 0, NumberLengthBytes);
-        params->MontgomeryMultR1[0].x = 1;
-        params->MontgomeryMultR2[0].x = 1;
+          (params->modulus_length + 1) * (int)sizeof(limb);
+        params->R1.resize(params->modulus_length + 1);
+        params->R2.resize(params->modulus_length + 1);
+        (void)memset(params->R1.data(), 0, NumberLengthBytes);
+        (void)memset(params->R2.data(), 0, NumberLengthBytes);
+        params->R1[0].x = 1;
+        params->R2[0].x = 1;
 
         return;
       }
     }
   }
 
-  // Compute MontgomeryMultN as 1/modulus (mod 2^k) using Newton method,
+  // Compute Ninv as 1/modulus (mod 2^k) using Newton method,
   // which doubles the precision for each iteration.
   // In the formula above: k = BITS_PER_GROUP * modulus_length.
+  params->Ninv.resize(params->modulus_length + 1);
+  memset(params->Ninv.data(), 0,
+         (params->modulus_length + 1) * sizeof (limb));
   ComputeInversePower2(params->modulus.data(),
-                       params->MontgomeryMultN,
+                       params->Ninv.data(),
                        params->modulus_length);
+  params->Ninv[params->modulus_length].x = 0;
 
-  params->MontgomeryMultN[params->modulus_length].x = 0;
+  params->R1.resize(params->modulus_length + 1);
+  params->R2.resize(params->modulus_length + 1);
 
-  // Compute MontgomeryMultR1 as 1 in Montgomery notation,
-  // this is 2^(modulus_length*BITS_PER_GROUP) % modulus.
+  // Compute R1 as 1 in Montgomery notation.
+  // This is 2^(modulus_length*BITS_PER_GROUP) % modulus.
   int j = params->modulus_length;
-  params->MontgomeryMultR1[j].x = 1;
+  params->R1[j].x = 1;
   do {
     j--;
-    params->MontgomeryMultR1[j].x = 0;
+    params->R1[j].x = 0;
   } while (j > 0);
-  AdjustModN(params->MontgomeryMultR1,
+
+  AdjustModN(params->R1.data(),
              params->modulus.data(),
              params->modulus_length);
-
-  params->MontgomeryMultR1[params->modulus_length].x = 0;
+  params->R1[params->modulus_length].x = 0;
 
   const int PaddedNumberLengthBytes =
     (params->modulus_length + 1) * (int)sizeof(limb);
-  (void)memcpy(params->MontgomeryMultR2, params->MontgomeryMultR1,
+  (void)memcpy(params->R2.data(), params->R1.data(),
                PaddedNumberLengthBytes);
 
   // Port note: NumberLengthR1 used to be a member of the struct (I
@@ -1358,20 +1386,20 @@ static void InitMontgomeryParams(MontgomeryParams *params) {
   for (int NumberLengthR1 = params->modulus_length;
        NumberLengthR1 > 0;
        NumberLengthR1--) {
-    if (params->MontgomeryMultR1[NumberLengthR1 - 1].x != 0) {
+    if (params->R1[NumberLengthR1 - 1].x != 0) {
       break;
     }
   }
 
-  // Compute MontgomeryMultR2 as 2^(2*modulus_length*BITS_PER_GROUP) % modulus.
+  // Compute R2 as 2^(2*modulus_length*BITS_PER_GROUP) % modulus.
   for (int i = params->modulus_length; i > 0; i--) {
     const int NumberLengthBytes =
       params->modulus_length * (int)sizeof(limb);
-    (void)memmove(&params->MontgomeryMultR2[1],
-                  &params->MontgomeryMultR2[0],
+    (void)memmove(&params->R2[1],
+                  &params->R2[0],
                   NumberLengthBytes);
-    params->MontgomeryMultR2[0].x = 0;
-    AdjustModN(params->MontgomeryMultR2,
+    params->R2[0].x = 0;
+    AdjustModN(params->R2.data(),
                params->modulus.data(),
                params->modulus_length);
   }
@@ -1577,7 +1605,7 @@ void ModMult(const MontgomeryParams &params,
     // Compute T
     MultiplyLimbs(factor1, factor2, aux3, params.modulus_length);
     // Compute m
-    MultiplyLimbs(aux3, params.MontgomeryMultN, aux, params.modulus_length);
+    MultiplyLimbs(aux3, params.Ninv.data(), aux, params.modulus_length);
     // Compute mN
     MultiplyLimbs(aux, params.modulus.data(), aux2, params.modulus_length);
     // This is likely the last step of REDC, the conditional

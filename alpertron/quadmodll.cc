@@ -794,7 +794,7 @@ struct QuadModLL {
       // Convert discriminant to Montgomery notation.
       BigIntToFixedLimbs(Base, params.modulus_length, aux5);
       // u
-      ModMult(params, aux5, params.MontgomeryMultR2, aux6);
+      ModMult(params, aux5, params.R2.data(), aux6);
       if ((Prime & 7) == 5) {
         // prime mod 8 = 5: use Atkin's method for modular square roots.
         // Step 1. v <- (2u)^((p-5)/8) mod p
@@ -819,7 +819,7 @@ struct QuadModLL {
 
         // Step 3.
         // i-1
-        SubtBigNbrModN(aux9, params.MontgomeryMultR1, aux9,
+        SubtBigNbrModN(aux9, params.R1.data(), aux9,
                        params.modulus.data(), params.modulus_length);
         // v*(i-1)
         ModMult(params, aux8, aux9, aux9);
@@ -878,7 +878,7 @@ struct QuadModLL {
         ModMult(params, aux8, aux7, aux9);
 
         // Step 5
-        while (memcmp(aux9, params.MontgomeryMultR1,
+        while (memcmp(aux9, params.R1.data(),
                       NumberLengthBytes) != 0) {
 
           limb aux10[params.modulus_length];
@@ -888,7 +888,7 @@ struct QuadModLL {
           do {
             k++;
             ModMult(params, aux10, aux10, aux10);
-          } while (memcmp(aux10, params.MontgomeryMultR1,
+          } while (memcmp(aux10, params.R1.data(),
                           NumberLengthBytes) != 0);
 
           // Step 7
