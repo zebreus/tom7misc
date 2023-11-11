@@ -7,14 +7,6 @@
 
 #include "bignum/big.h"
 
-struct QuadraticSolution {
-  // Solutions of the form
-  //   x = V_x k^2 + M_x k + B_x
-  //   y = V_y k^2 + V_y k + B_y
-  BigInt VX, MX, BX;
-  BigInt VY, MY, BY;
-};
-
 struct LinearSolution {
   // Solutions of the form
   //   x = M_x t + B_x
@@ -41,7 +33,6 @@ struct Solutions {
   // Any (x,y).
   bool any_integers = false;
   bool interesting_coverage = false;
-  std::vector<QuadraticSolution> quadratic;
   std::vector<LinearSolution> linear;
   std::vector<PointSolution> points;
   // Recursive solutions always come in related pairs.

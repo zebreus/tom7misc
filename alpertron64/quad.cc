@@ -569,71 +569,6 @@ struct Quad {
     }
   }
 
-  void PrintQuad(const BigInt &T2, const BigInt &T,
-                 const BigInt &Ind) {
-    const char *var1 = "k";
-    if (BigInt::Abs(T2) == 1) {
-      // abs(coeffT2) = 1
-      if (T2 == 1) {
-        // coeffT2 = 1
-        ShowChar(' ');
-      } else {
-        // coeffT2 = -1
-        showMinus();
-      }
-      ShowText(var1);
-      ShowText("^2");
-    } else if (T2 != 0) {
-      // coeffT2 is not zero.
-      ShowBigInt(T2);
-      ShowChar(' ');
-      ShowText(var1);
-      ShowText("^2");
-    } else {
-      // Nothing to do.
-    }
-
-    if (T < 0) {
-      ShowText(" - ");
-    } else if (T != 0 && T2 != 0) {
-      ShowText(" + ");
-    } else {
-      // Nothing to do.
-    }
-
-    if (BigInt::Abs(T) == 1) {
-      // abs(coeffT) = 1
-      ShowText(var1);
-      ShowText(" * ");
-    } else if (T != 0) {
-      // Port note: original called showlimbs if negative, which I
-      // think is just a way of printing the absolute value without
-      // any copying.
-      ShowBigInt(BigInt::Abs(T));
-      ShowText(" ");
-      ShowText(var1);
-    } else {
-      // Nothing to do.
-    }
-
-    if (Ind != 0) {
-      if (T != 0 || T2 != 0) {
-        if (Ind < 0) {
-          ShowText(" - ");
-        } else {
-          ShowText(" + ");
-        }
-      } else if (Ind < 0) {
-        ShowText(" -");
-      } else {
-        // Nothing to do.
-      }
-
-      // Same trick for abs value.
-      ShowBigInt(BigInt::Abs(Ind));
-    }
-  }
-
 
   // XXX why does this take/return "linear solution type" ?
   LinSolType Show(const BigInt &num, const string &str,
@@ -676,36 +611,6 @@ struct Quad {
     if (u != LinSolType::NO_SOLUTIONS || num == 1 || num == -1) {
       // Show absolute value of num.
       ShowBigInt(BigInt::Abs(num));
-    }
-  }
-
-  // Print the original quadratic equation.
-  void ShowEq(
-      const BigInt &coeffA, const BigInt &coeffB,
-      const BigInt &coeffC, const BigInt &coeffD,
-      const BigInt &coeffE, const BigInt &coeffF,
-      const char *x, const char *y) {
-
-    LinSolType t;
-    string vxx = StringPrintf("%s^2", x);
-    t = Show(coeffA, vxx, LinSolType::SOLUTION_FOUND);
-
-    string vxy = StringPrintf("%s * %s", x, y);
-    t = Show(coeffB, vxy, t);
-
-    string vyy = StringPrintf("%s^2", y);
-    t = Show(coeffC, vyy, t);
-
-    t = Show(coeffD, x, t);
-
-    t = Show(coeffE, y, t);
-
-    if (coeffF < 0) {
-      ShowText(" - ");
-      ShowBigInt(BigInt::Abs(coeffF));
-    } else {
-      ShowText(" + ");
-      ShowBigInt(coeffF);
     }
   }
 
@@ -779,87 +684,8 @@ struct Quad {
       const BigInt &D, const BigInt &E,
       const BigInt &U, const BigInt &V,
       const BigInt &Value) {
-    // The argument of this function is T. t = T - d + uk (k arbitrary).
-    // Compute R <- (T^2 - v)/u
 
-    BigInt R = ((Value * Value) - V) / U;
-    // Compute S as 2*T
-    BigInt S = Value << 1;
-
-    // Find k from the congruence
-    //  jk = K (mod z) where j = u-bs, K = d+br-T, z = 2a
-    // Compute j <- u-bs
-    BigInt J = U - B * S;
-    // Compute K <- d+br-T
-    BigInt K = (D + B * R) - Value;
-    // Compute z <- 2a
-    BigInt Z = A << 1;
-    // If K is not multiple of gcd(j, z) there is no solution.
-    BigInt BigTmp = BigInt::GCD(J, Z);
-    CHECK(BigTmp != 0);
-    if (!BigInt::DivisibleBy(K, BigTmp)) {
-      return;
-    }
-
-    // Compute g = gcd(j, K, z), then recalculate j <- j/g, K <- K/g, z <- z/g
-    BigInt U1 = BigInt::GCD(BigTmp, K);
-    CHECK(U1 != 0);
-
-    // Divide by J, K, Z by their GCD.
-    // U2 <- j
-    BigInt U2 = BigInt::DivExact(J, U1);
-    // U3 <- K
-    BigInt U3 = BigInt::DivExact(K, U1);
-    // Use positive sign for modulus.
-    Z = BigInt::Abs(BigInt::DivExact(Z, U1));
-
-    if (Z != 0) U2 %= Z;
-    // PERF: Can just use Mod?
-    if (U2 < 0) U2 += Z;
-
-    if (Z != 0) U3 %= Z;
-    if (U3 < 0) U3 += Z;
-
-    if (U2 == 0) {
-      // M and N equal zero.
-      // In this case 0*k = 0 (mod z) means any k is valid.
-      Z = BigInt(1);
-    } else {
-      // U2 <- x'
-      printf("GeneralModularDivision(%s,%s,%s) coverage\n",
-              U2.ToString().c_str(), U3.ToString().c_str(),
-              Z.ToString().c_str());
-      solutions.interesting_coverage = true;
-      // XXX This might be wrong for some inputs? See test.
-      U2 = GeneralModularDivision(U2, U3, Z);
-    }
-
-
-    QuadraticSolution qsol;
-
-    {
-      auto coeff_x = ComputeXDiscrZero(A, B, C, D, E, Z, J, K, U2);
-      auto coeff_y = ComputeYDiscrZero(U, U2, S, R, Z);
-
-      if (swap_xy) {
-        std::tie(qsol.VX, qsol.MX, qsol.BX) = std::move(coeff_y);
-        std::tie(qsol.VY, qsol.MY, qsol.BY) = std::move(coeff_x);
-      } else {
-        std::tie(qsol.VX, qsol.MX, qsol.BX) = std::move(coeff_x);
-        std::tie(qsol.VY, qsol.MY, qsol.BY) = std::move(coeff_y);
-      }
-    }
-
-    SolutionHeader();
-
-    // Result box:
-    ShowText("\nx = ");
-    PrintQuad(qsol.VX, qsol.MX, qsol.BX);
-
-    ShowText("\ny = ");
-    PrintQuad(qsol.VY, qsol.MY, qsol.BY);
-
-    solutions.quadratic.emplace_back(std::move(qsol));
+    CHECK(false) << "Not expecting Parabolic form.";
   }
 
   // Obtain next convergent of continued fraction of U/V
@@ -1096,6 +922,9 @@ struct Quad {
       const BigInt &ABack, const BigInt &BBack, const BigInt &CBack,
       const BigInt &Alpha, const BigInt &Beta,
       const BigInt &GcdHomog, BigInt Discr) {
+
+    CHECK(false) << "Not expecting GetRecursiveSolution; there need "
+      "to be finite solutions.";
 
     BigInt H = Discr;
 
@@ -2914,8 +2743,9 @@ struct Quad {
     const BigInt D(0);
     const BigInt E(0);
     if (output != nullptr) {
-      ShowEq(A, B, C, D, E, F, "x", "y");
-      ShowText(" = 0\n");
+      ShowText("Solve for: ");
+      ShowBigInt(F);
+      ShowText("\n");
     }
 
     // size_t preamble_size = (output == nullptr) ? 0 : output->size();
@@ -2924,7 +2754,6 @@ struct Quad {
 
     if (output != nullptr &&
         !solutions.any_integers &&
-        solutions.quadratic.empty() &&
         solutions.linear.empty() &&
         solutions.points.empty() &&
         solutions.recursive.empty()) {
