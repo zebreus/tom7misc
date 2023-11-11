@@ -48,8 +48,9 @@ static void Montgomery() {
 
     const std::unique_ptr<MontgomeryParams> params = [&]() {
         if (with_array) {
-          limb TheModulus[MAX_LEN];
-          const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
+          const int modulus_length = BigIntNumLimbs(Modulus);
+          limb TheModulus[modulus_length + 1];
+          CHECK(modulus_length == BigIntToLimbs(Modulus, TheModulus));
           TheModulus[modulus_length].x = 0;
           return GetMontgomeryParams(modulus_length, TheModulus);
         } else {
@@ -69,10 +70,10 @@ static void Montgomery() {
     BigInt FirstFactor = R1;
     BigInt SecondFactor(32);
 
-    limb f1[MAX_LEN], f2[MAX_LEN];
+    limb f1[params->modulus_length], f2[params->modulus_length];
     BigIntToFixedLimbs(FirstFactor, params->modulus_length, f1);
     BigIntToFixedLimbs(SecondFactor, params->modulus_length, f2);
-    limb product[MAX_LEN];
+    limb product[params->modulus_length];
     ModMult(*params, f1, f2, product);
 
     BigInt Product = LimbsToBigInt(product, params->modulus_length);
@@ -100,10 +101,11 @@ static void TestSubModN() {
 }
 
 static std::string BigBytes(const BigInt &X) {
-  limb x[MAX_LEN];
-  int n = BigIntToLimbs(X, x);
+  const int num_limbs = BigIntNumLimbs(X);
+  limb x[num_limbs];
+  CHECK(num_limbs == BigIntToLimbs(X, x));
   std::string ret;
-  for (int i = 0; i < n; i++) {
+  for (int i = 0; i < num_limbs; i++) {
     if (i != 0) ret.push_back(':');
     StringAppendF(&ret, "%08x", x[i].x);
   }
@@ -285,13 +287,8 @@ static void WrapDivide(const BigInt &Num,
       "NMod: " << NMod.ToString();
   }
 
-
-  limb TheModulus[MAX_LEN];
-  const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
-  TheModulus[modulus_length].x = 0;
-
   const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(modulus_length, TheModulus);
+    GetMontgomeryParams(Modulus);
 
   BigInt quot =
     BigIntModularDivision(*params, Num, Den, Modulus);
@@ -437,12 +434,8 @@ static void WrapPowBaseInt(const BigInt &Modulus,
                            const BigInt &Exp,
                            const BigInt &Expected) {
 
-  limb TheModulus[MAX_LEN];
-  const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
-  TheModulus[modulus_length].x = 0;
-
   const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(modulus_length, TheModulus);
+    GetMontgomeryParams(Modulus);
 
   // limb modpow[params->modulus_length];
   BigInt Result = ModPowBaseInt(*params, base, Exp);
@@ -473,12 +466,8 @@ static void WrapModPow(const BigInt &Modulus,
                        const BigInt &Exp,
                        const BigInt &Expected) {
 
-  limb TheModulus[MAX_LEN];
-  const int modulus_length = BigIntToLimbs(Modulus, TheModulus);
-  TheModulus[modulus_length].x = 0;
-
   const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(modulus_length, TheModulus);
+    GetMontgomeryParams(Modulus);
 
   limb base[params->modulus_length];
   BigIntToFixedLimbs(Base, params->modulus_length, base);
