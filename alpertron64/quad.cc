@@ -88,16 +88,6 @@ static std::string CallbackString(QmodCallbackType t) {
   }
 }
 
-// This is just a display heuristic. Tests whether the
-// BigInteger representation would be more than two limbs.
-static bool IsBig(const BigInt &bg) {
-  return BigIntNumLimbs(bg) > 2;
-  // size_t s = 1 + (mpz_sizeinbase(bg.GetRep(), 2) / BITS_PER_GROUP);
-  // fprintf(stderr, "%s has size %d in %d groups\n",
-  // bg.ToString().c_str(), (int)s, BITS_PER_GROUP);
-  // return s > 2;
-}
-
 static LinSol LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
   if (VERBOSE) {
     printf("LinearEq %s %s %s\n",
@@ -718,189 +708,6 @@ struct Quad {
                            V, V1, V2);
   }
 
-  void ShowAllRecSols(
-      BigInt P, BigInt Q,
-      BigInt R, BigInt S,
-      BigInt K, BigInt L,
-      const BigInt &Alpha, const BigInt &Beta) {
-
-    RecursiveSolution rsol1;
-    rsol1.P = P;
-    rsol1.Q = Q;
-    rsol1.R = R;
-    rsol1.S = S;
-    rsol1.K = K;
-    rsol1.L = L;
-
-    if (IsBig(P) || IsBig(Q)) {
-      if (Alpha == 0 && Beta == 0) {
-        ShowText("x_n+1 = P * x_n + Q * y_n\n"
-                 "y_n+1 = R * x_n + S * y_n\n");
-      } else {
-        ShowText("x_n+1 = P * x_n + Q * y_n + K\n"
-                 "y_n+1 = R * x_n + S * y_n + L\n");
-      }
-      ShowText("where:\n");
-      ShowResult("P", P);
-      ShowResult("Q", Q);
-      if (Alpha != 0 || Beta != 0) {
-        ShowResult("K", K);
-      }
-      ShowResult("R", R);
-      ShowResult("S", S);
-      if (Alpha != 0 || Beta != 0) {
-        ShowResult("L", L);
-      }
-    } else {
-      ShowText("\n");
-      ShowRecSol('x', P, Q, K);
-      ShowText("\n");
-      ShowRecSol('y', R, S, L);
-    }
-
-    // Compute the related solution. Port note: The original
-    // code made these modifications in place.
-
-    // Compute x_{n-1} from x_n and y_n
-    // Compute new value of K and L as:
-    //   Knew <- L*Q - K*S and Lnew <- K*R - L*P
-    BigInt Tmp1 = L * Q - K * S;
-    L = K * R - L * P;
-    K = std::move(Tmp1);
-
-    // Compute new values of P, Q, R and S as:
-    // Pnew <- S, Qnew <- -Q, Rnew <- -R, Snew <- P
-    Q = -std::move(Q);
-    R = -std::move(R);
-
-    BigInt Tmp = P;
-    P = S;
-    S = std::move(Tmp);
-
-    ShowText("\n... and also:\n");
-    if (IsBig(P) || IsBig(Q)) {
-      ShowResult("P", P);
-      ShowResult("Q", Q);
-      if (Alpha != 0 || Beta != 0) {
-        ShowResult("K", K);
-      }
-      ShowResult("R", R);
-      ShowResult("S", S);
-      if (Alpha != 0 || Beta != 0) {
-        ShowResult("L", L);
-      }
-    } else {
-      ShowRecSol('x', P, Q, K);
-      ShowText("\n");
-      ShowRecSol('y', R, S, L);
-    }
-
-    RecursiveSolution rsol2;
-    rsol2.P = std::move(P);
-    rsol2.Q = std::move(Q);
-    rsol2.R = std::move(R);
-    rsol2.S = std::move(S);
-    rsol2.K = std::move(K);
-    rsol2.L = std::move(L);
-
-    solutions.recursive.emplace_back(std::move(rsol1),
-                                     std::move(rsol2));
-  }
-
-  bool SolutionFoundFromContFraction(bool isBeven,
-                                     int V,
-                                     const BigInt &Alpha,
-                                     const BigInt &Beta,
-                                     const BigInt &A,
-                                     const BigInt &B,
-                                     const BigInt &C,
-                                     const BigInt &Discr,
-                                     const BigInt &U1,
-                                     const BigInt &V1) {
-    BigInt P, S;
-    if (isBeven) {
-      // P <- r - (b/2)s
-      // S <- r + (b/2)s
-      BigInt tmp = (B >> 1) * V1;
-      P = U1 - tmp;
-      S = U1 + tmp;
-    } else {
-      // P <- r - bs
-      // S <- r + bs
-      BigInt tmp = B * V1;
-      P = U1 - tmp;
-      S = U1 + tmp;
-      if (V == 4) {
-        // P <- (r - bs)/2
-        // S <- (r + bs)/2
-        P >>= 1;
-        S >>= 1;
-      }
-    }
-
-    // Q <- -cs
-    BigInt Q = -(C * V1);
-    // R <- as
-    BigInt R = A * V1;
-
-    if (!isBeven && V == 1) {
-      // Q <- -2cs
-      Q <<= 1;
-      // R <- 2as
-      R <<= 1;
-    }
-
-    BigInt K = (Alpha * P) + (Beta * Q);
-    BigInt L = (Alpha * R) + (Beta * S);
-
-    if (VERBOSE) {
-      printf("contf: %s %s %s %s | %s %s %s %s | %s %s | %s %s\n",
-             A.ToString().c_str(),
-             B.ToString().c_str(),
-             C.ToString().c_str(),
-             Discr.ToString().c_str(),
-             P.ToString().c_str(),
-             Q.ToString().c_str(),
-             R.ToString().c_str(),
-             S.ToString().c_str(),
-             Alpha.ToString().c_str(),
-             Beta.ToString().c_str(),
-             K.ToString().c_str(),
-             L.ToString().c_str());
-    }
-
-    CHECK(Discr != 0) << "Original code may have had shenanigans "
-      "with dividing by zero";
-
-    // Check whether alpha - K and beta - L are multiple of discriminant.
-    const BigInt AlphaMinusK = Alpha - K;
-    const BigInt BetaMinusL = Beta - L;
-    if (BigInt::DivisibleBy(AlphaMinusK, Discr) &&
-        BigInt::DivisibleBy(BetaMinusL, Discr)) {
-      // Solution found.
-      K = BigInt::DivExact(AlphaMinusK, Discr);
-      L = BigInt::DivExact(BetaMinusL, Discr);
-      ShowAllRecSols(P, Q, R, S,
-                     K, L, Alpha, Beta);
-      return true;
-    }
-
-    // Check whether alpha + K and beta + L are multiple of discriminant.
-    const BigInt AlphaPlusK = Alpha + K;
-    const BigInt BetaPlusL = Beta + L;
-    if (BigInt::DivisibleBy(AlphaPlusK, Discr) &&
-        BigInt::DivisibleBy(BetaPlusL, Discr)) {
-      // Solution found.
-      K = BigInt::DivExact(AlphaPlusK, Discr);
-      L = BigInt::DivExact(BetaPlusL, Discr);
-
-      ShowAllRecSols(-P, -Q, -R, -S,
-                     K, L, Alpha, Beta);
-      return true;
-    }
-    return false;
-  }
-
   void ShowXYOne(const BigInt &X, const BigInt &Y) {
     ShowSolutionXY(X, Y);
   }
@@ -925,182 +732,6 @@ struct Quad {
 
     CHECK(false) << "Not expecting GetRecursiveSolution; there need "
       "to be finite solutions.";
-
-    BigInt H = Discr;
-
-    const bool isBeven = B.IsEven();
-    if (isBeven) {
-      H >>= 2;
-    }
-
-    // Obtain original discriminant.
-    Discr *= GcdHomog;
-    Discr *= GcdHomog;
-
-    std::optional<int64_t> gcdo = GcdHomog.ToInt();
-    CHECK(gcdo.has_value()) << "Original code seems to assume this, "
-      "accessing the first limb directly.";
-    const int64_t gcd_homog = gcdo.value();
-
-
-    if (Discr == 5) {
-      // Discriminant is 5.
-      // Do not use continued fraction because it does not work.
-      ShowText("\nRecursive solutions (discr 5):\n");
-
-      // 3,1 is first solution to U1^2 - 5*V1^2 = 4
-      if (SolutionFoundFromContFraction(isBeven, 4,
-                                        Alpha, Beta,
-                                        A, B, C,
-                                        Discr,
-                                        BigInt(3),
-                                        BigInt(1))) {
-        return;
-      }
-
-      // 9,4 is first solution to U1^2 - 5*V1^2 = 1
-      (void)SolutionFoundFromContFraction(isBeven, 1,
-                                          Alpha, Beta,
-                                          A, B, C,
-                                          Discr,
-                                          BigInt(9),
-                                          BigInt(4));
-      return;
-    }
-
-    // g <- sqrt(discr).
-    BigInt G = BigInt::Sqrt(H);
-    // Port note: Was explicit SIGN_POSITIVE here in original, but I
-    // think that was just because it was manipulating the limbs
-    // directly? Sqrt is always non-negative...
-    CHECK(G >= 0);
-
-    int periodLength = 1;
-
-    BigInt U(0);
-    BigInt V(1);
-
-    BigInt UU2(0);
-    BigInt UU1(1);
-
-    BigInt VV2(1);
-    BigInt VV1(0);
-
-    BigInt UBak, VBak;
-
-    if (gcd_homog != 1) {
-      periodLength = -1;
-      do {
-        // fprintf(stderr, "rec_gcdhomognotone coverage H=%s\n",
-        // H.ToString().c_str());
-        BigInt BigTmp = U + G;
-        if (V < 0) {
-          // If denominator is negative, round square root upwards.
-          BigTmp += 1;
-        }
-
-        // Tmp1 = Term of continued fraction.
-        BigInt Tmp1 = BigInt::DivFloor(BigTmp, V);
-
-        // U <- a*V - U
-        U = Tmp1 * V - U;
-
-        // Port note: In alpertron, this uses L, which is used as
-        // the discriminant (or discriminant/4) in ContFrac and may
-        // have the same value here. But I think this was a bug; H
-        // is discr (or discr/4) in this one. Passing around L
-        // rather than setting a global results it in being
-        // uninitialized here. Unfortunately, not good coverage of
-        // this loop.
-
-        // V <- (D - U^2)/V
-        V = (H - U * U) / V;
-
-        if (periodLength < 0) {
-          UBak = U;
-          VBak = V;
-        }
-        periodLength++;
-      } while (periodLength == 1 || U != UBak || V != VBak);
-      // Reset values of U and V.
-      U = BigInt{0};
-      V = BigInt{1};
-    }
-
-    if (periodLength > 1) {
-      // quad.exe 6301 1575 2 7199 -1 -114995928
-      printf("nonzeroperiod coverage (%d)\n", periodLength);
-      solutions.interesting_coverage = true;
-    }
-
-    ShowText("\nRecursive solutions:\n");
-
-    int periodNbr = 0;
-    enum eSign sign = SIGN_POSITIVE;
-    for (;;) {
-      BigInt BigTmp = U + G;
-      if (V < 0) {
-        // If denominator is negative, round square root upwards.
-        BigTmp += 1;
-      }
-      // Tmp1 = Term of continued fraction.
-      BigInt Tmp1 = BigInt::DivFloor(BigTmp, V);
-
-      // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
-      BigInt UU3 = UU2;
-      UU2 = UU1;
-      UU1 = Tmp1 * UU2 + UU3;
-
-      // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
-      BigInt VV3 = VV2;
-      VV2 = VV1;
-      VV1 = Tmp1 * VV2 + VV3;
-
-      U = Tmp1 * V - U;
-      V = (H - U * U) / V;
-
-      if (sign == SIGN_POSITIVE) {
-        sign = SIGN_NEGATIVE;
-      } else {
-        sign = SIGN_POSITIVE;
-      }
-
-      if (VERBOSE)
-      printf("FS: %c %s %s %s %d\n",
-             isBeven ? 'e' : 'o',
-             V.ToString().c_str(),
-             Alpha.ToString().c_str(),
-             Beta.ToString().c_str(),
-             periodNbr);
-
-      // V must have the correct sign.
-      if ((sign == SIGN_NEGATIVE) ? V >= 0 : V < 0) {
-        continue;
-      }
-
-      // Expecting denominator to be 1 (B even or odd)
-      // or 4 (B odd) with correct sign.
-      if (BigInt::Abs(V) != 1 &&
-          (isBeven || BigInt::Abs(V) != 4)) {
-        continue;
-      }
-
-      periodNbr++;
-      if ((periodNbr * periodLength) % gcd_homog != 0) {
-        continue;
-      }
-
-
-      // Found solution from continued fraction.
-      if (SolutionFoundFromContFraction(isBeven,
-                                        BigInt::Abs(V).ToInt().value(),
-                                        Alpha, Beta,
-                                        ABack, BBack, CBack,
-                                        Discr,
-                                        UU1, VV1)) {
-        return;
-      }
-    }
   }
 
 
@@ -2736,29 +2367,17 @@ struct Quad {
   }
 
   void QuadBigInt(const BigInt &F) {
-
     const BigInt A(1);
     const BigInt B(0);
     const BigInt C(1);
     const BigInt D(0);
     const BigInt E(0);
-    if (output != nullptr) {
-      ShowText("Solve for: ");
-      ShowBigInt(F);
-      ShowText("\n");
-    }
+
+    CHECK(F <= 0);
 
     // size_t preamble_size = (output == nullptr) ? 0 : output->size();
 
     SolveQuadEquation(A, B, C, D, E, F);
-
-    if (output != nullptr &&
-        !solutions.any_integers &&
-        solutions.linear.empty() &&
-        solutions.points.empty() &&
-        solutions.recursive.empty()) {
-      ShowText("The equation does not have integer solutions.");
-    }
   }
 
   Quad() {}
@@ -2766,19 +2385,8 @@ struct Quad {
 
 }  // namespace
 
-Solutions QuadBigInt(const BigInt &a, const BigInt &b, const BigInt &c,
-                     const BigInt &d, const BigInt &e, const BigInt &f,
-                     std::string *output) {
-
-  CHECK(a == 1 &&
-        b == 0 &&
-        c == 1 &&
-        d == 0 &&
-        e == 0 &&
-        f < 0);
-
+Solutions QuadBigInt(const BigInt &f) {
   std::unique_ptr<Quad> quad(new Quad);
-  quad->output = output;
   quad->QuadBigInt(f);
   return std::move(quad->solutions);
 }

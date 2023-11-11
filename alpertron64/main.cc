@@ -19,40 +19,39 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "bignbr.h"
 #include "quad.h"
-#include "bigconv.h"
+#include "bignum/big.h"
+#include "bignum/big-overloads.h"
+
+#include "base/logging.h"
 
 int main(int argc, char* argv[]) {
-  if (argc != 7) {
-    (void)printf("Enter 6 coefficients:\n"
-                 "   Ax^2 + Bxy + Cy^2 + Dx + Ey + F = 0\n");
+  if (argc != 2) {
+    printf("Enter 1 coefficient:\n"
+           "   x^2 + y^2 = F\n");
     return 1;
   }
 
-  BigInt a(argv[1]);
-  BigInt b(argv[2]);
-  BigInt c(argv[3]);
-  BigInt d(argv[4]);
-  BigInt e(argv[5]);
-  BigInt f(argv[6]);
+  BigInt F(argv[1]);
 
-  printf("\n** Quad %s %s %s %s %s %s\n",
-         a.ToString().c_str(),
-         b.ToString().c_str(),
-         c.ToString().c_str(),
-         d.ToString().c_str(),
-         e.ToString().c_str(),
-         f.ToString().c_str());
+  printf("\n** Solve x^2 + y^2 = %s\n",
+         F.ToString().c_str());
 
-  static constexpr int TIMES = 1;
-  if (TIMES > 1)
-  fprintf(stderr, "Running %d times!\n", TIMES);
-  for (int i = 0; i < TIMES; i++) {
-    std::string output;
-    QuadBigInt(a, b, c, d, e, f, &output);
-    if (i == TIMES - 1)
-      (void)printf("%s\n", output.c_str());
+  Solutions solutions = QuadBigInt(-F);
+  CHECK(!solutions.any_integers);
+  CHECK(!solutions.interesting_coverage);
+  CHECK(solutions.linear.empty());
+
+  if (solutions.points.empty()) {
+    printf("The equation does not have integer solutions.\n");
+  } else {
+    for (const PointSolution &point : solutions.points) {
+      printf("Solution:\n"
+             "x = %s\n"
+             "y = %s\n",
+             point.X.ToString().c_str(),
+             point.Y.ToString().c_str());
+    }
   }
 
   return 0;

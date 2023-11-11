@@ -19,29 +19,15 @@ struct PointSolution {
   BigInt X, Y;
 };
 
-struct RecursiveSolution {
-  // Solution via a recurrence relation. From any
-  // starting solution x_0, y_0:
-  //   x_(n+1) = P x_n + Q y_n + K
-  //   y_(n+1) = R x_n + S y_n + L
-  // K and L are often zero.
-  BigInt P, Q, K;
-  BigInt R, S, L;
-};
-
 struct Solutions {
   // Any (x,y).
   bool any_integers = false;
   bool interesting_coverage = false;
   std::vector<LinearSolution> linear;
   std::vector<PointSolution> points;
-  // Recursive solutions always come in related pairs.
-  std::vector<std::pair<RecursiveSolution, RecursiveSolution>> recursive;
 };
 
 // If output is non-null, writes readable HTML there.
-Solutions QuadBigInt(const BigInt &a, const BigInt &b, const BigInt &c,
-                     const BigInt &d, const BigInt &e, const BigInt &f,
-                     std::string *output);
+Solutions QuadBigInt(const BigInt &f);
 
 #endif
