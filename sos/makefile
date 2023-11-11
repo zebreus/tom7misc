@@ -21,7 +21,7 @@ ifeq ($(UNAME),Cygwin)
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
   # XXX necessary?
-  PLATFORM_CXXFLAGS=-D__MINGW32__ -Wl,--stack,167772160
+  PLATFORM_CXXFLAGS=-D__MINGW32__
   PLATFORM_LFLAGS=-lpsapi -Wl,--subsystem,console -static
   CL_CFLAGS="-I$(AMDSDK)/include"
   CL_LFLAGS='-L${AMDSDK}/lib/${AMD_ARCH}' -lOpenCL
@@ -71,7 +71,7 @@ msos.exe : msos.o $(CL_OBJECTS)
 	@echo -n "!"
 
 sos-util_test.exe : sos-util_test.o $(OBJECTS)
-	@$(CXX) $^ -o $@ $(LFLAGS)
+	$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
 sos-gpu_test.exe : sos-gpu_test.o $(CL_OBJECTS)

@@ -11,7 +11,7 @@ ifeq ($(UNAME),Cygwin)
 
   CXX=x86_64-w64-mingw32-g++
   CC=x86_64-w64-mingw32-g++
-  PLATFORM_CFLAGS=-Wl,--stack,0x1000000
+  PLATFORM_CFLAGS=
   PLATFORM_LFLAGS=-static
 else ifeq ($(UNAME),Darwin)
   # Mac OS X
@@ -28,7 +28,7 @@ else
   # Note! asan is enabled on linux, since I'm usually just using linux
   # for improved debugging tools.
 # -fsanitize=address
-  PLATFORM_CFLAGS=-Wl,-z,stack-size=0x1000000 -fsanitize=undefined -fsanitize=address
+  PLATFORM_CFLAGS=-fsanitize=undefined -fsanitize=address
   GMP_LFLAGS=-lgmp
   GMP_CFLAGS=-DBIG_USE_GMP
 endif
