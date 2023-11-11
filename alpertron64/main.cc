@@ -40,7 +40,6 @@ int main(int argc, char* argv[]) {
   Solutions solutions = QuadBigInt(-F);
   CHECK(!solutions.any_integers);
   CHECK(!solutions.interesting_coverage);
-  CHECK(solutions.linear.empty());
 
   if (solutions.points.empty()) {
     printf("The equation does not have integer solutions.\n");

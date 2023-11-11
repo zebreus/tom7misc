@@ -73,213 +73,8 @@ enum class SolutionNumber {
 };
 
 enum class QmodCallbackType {
-  PARABOLIC = 0,
   ELLIPTIC,
-  HYPERBOLIC,
 };
-
-[[maybe_unused]]
-static std::string CallbackString(QmodCallbackType t) {
-  switch (t) {
-  case QmodCallbackType::PARABOLIC: return "PARABOLIC";
-  case QmodCallbackType::ELLIPTIC: return "ELLIPTIC";
-  case QmodCallbackType::HYPERBOLIC: return "HYPERBOLIC";
-  default: return "???";
-  }
-}
-
-static LinSol LinearEq(BigInt coeffX, BigInt coeffY, BigInt coeffInd) {
-  if (VERBOSE) {
-    printf("LinearEq %s %s %s\n",
-           coeffX.ToString().c_str(),
-           coeffY.ToString().c_str(),
-           coeffInd.ToString().c_str());
-  }
-  // A linear equation. X + Y + IND = 0.
-
-  if (coeffX == 0) {
-    if (coeffY == 0) {
-      if (coeffInd != 0) {
-        return LinSol(LinSolType::NO_SOLUTIONS);
-      } else {
-        return LinSol(LinSolType::INFINITE_SOLUTIONS);
-      }
-    }
-
-    if (!BigInt::DivisibleBy(coeffInd, coeffY)) {
-      return LinSol(LinSolType::NO_SOLUTIONS);
-    } else {
-      LinSol sol(LinSolType::SOLUTION_FOUND);
-      sol.Xind = BigInt(0);
-      sol.Xlin = BigInt(1);
-      sol.Yind = -BigInt::DivExact(coeffInd, coeffY);
-      sol.Ylin = BigInt(0);
-      return sol;
-    }
-  }
-
-  if (coeffY == 0) {
-
-    const auto [qq, rr] = BigInt::QuotRem(coeffInd, coeffX);
-
-    if (rr != 0) {
-      return LinSol(LinSolType::NO_SOLUTIONS);
-    } else {
-      LinSol sol(LinSolType::SOLUTION_FOUND);
-      sol.Yind = BigInt(0);
-      sol.Ylin = BigInt(1);
-      sol.Xind = -qq;
-      sol.Xlin = BigInt(0);
-      return sol;
-    }
-  }
-
-  const BigInt gcdxy = BigInt::GCD(coeffX, coeffY);
-
-  if (gcdxy != 1) {
-    // GCD is not 1.
-    // To solve it, we first find the greatest common divisor of the
-    // linear coefficients, that is: gcd(coeffX, coeffY) = gcdxy.
-
-    if (!BigInt::DivisibleBy(coeffInd, gcdxy)) {
-      // The independent coefficient is not a multiple of
-      // the gcd, so there are no solutions.
-      return LinSol(LinSolType::NO_SOLUTIONS);
-    }
-
-    // Divide all coefficients by the gcd.
-    if (gcdxy != 0) {
-      coeffX = BigInt::DivExact(coeffX, gcdxy);
-      coeffY = BigInt::DivExact(coeffY, gcdxy);
-      coeffInd = BigInt::DivExact(coeffInd, gcdxy);
-    }
-  }
-
-  // Now the generalized Euclidean algorithm.
-  // (BigInt may have an implementation of this?)
-
-  BigInt U1(1);
-  BigInt U2(0);
-  BigInt U3 = coeffX;
-  BigInt V1(0);
-  BigInt V2(1);
-  BigInt V3 = coeffY;
-
-  BigInt q;
-
-  while (V3 != 0) {
-
-    if (VERBOSE) {
-      printf("Euclid Step: %s %s %s %s %s %s\n",
-             U1.ToString().c_str(),
-             U2.ToString().c_str(),
-             U3.ToString().c_str(),
-             V1.ToString().c_str(),
-             V2.ToString().c_str(),
-             V3.ToString().c_str());
-    }
-
-    // q <- floor(U3 / V3).
-    q = BigInt::DivFloor(U3, V3);
-
-    {
-      // T <- U1 - q * V1
-      BigInt T = U1 - q * V1;
-      U1 = std::move(V1);
-      V1 = std::move(T);
-    }
-
-    {
-      BigInt T = U2 - q * V2;
-      U2 = std::move(V2);
-      V2 = std::move(T);
-    }
-
-    {
-      BigInt T = U3 - q * V3;
-      U3 = std::move(V3);
-      V3 = std::move(T);
-    }
-  }
-
-  CHECK(U3 != 0);
-  // Compute q as -coeffInd / U3
-  q = -coeffInd / U3;
-
-  // Compute Xind as -U1 * coeffInd / U3
-  BigInt xind = U1 * q;
-
-  BigInt xlin = coeffY;
-
-  // Compute Yind as -U2 * coeffInd / U3
-  BigInt yind = U2 * q;
-
-  BigInt ylin = -coeffX;
-
-  if (VERBOSE) {
-    printf("Step: %s %s %s %s %s %s | %s %s %s %s\n",
-           U1.ToString().c_str(),
-           U2.ToString().c_str(),
-           U3.ToString().c_str(),
-           V1.ToString().c_str(),
-           V2.ToString().c_str(),
-           V3.ToString().c_str(),
-
-           coeffX.ToString().c_str(),
-           coeffY.ToString().c_str(),
-           xind.ToString().c_str(),
-           yind.ToString().c_str());
-  }
-
-  // Substitute variables so the independent coefficients can be minimized.
-  // Reuse variables U1, U2, U3, V1, V2, V3.
-
-  // U1 <- coeffX^2 + coeffY^2
-  U1 = coeffX * coeffX + coeffY * coeffY;
-
-  // U2 <- (coeffX^2 + coeffY^2)/2
-  U2 = U1 >> 1;
-
-  U2 += coeffX * yind;
-  U2 -= coeffY * xind;
-
-  // U1 <- delta to add to t'
-  U1 = BigInt::DivFloor(U2, U1);
-
-  if (VERBOSE) {
-    printf("After subst: %s %s %s %s %s %s\n",
-           U1.ToString().c_str(),
-           U2.ToString().c_str(),
-           U3.ToString().c_str(),
-           V1.ToString().c_str(),
-           V2.ToString().c_str(),
-           V3.ToString().c_str());
-  }
-
-  // Xind <- Xind + coeffY * delta
-  q = U1 * coeffY;
-  xind += q;
-
-  // Yind <- Yind - coeffX * delta
-  q = U1 * coeffX;
-  yind -= q;
-
-  if (xlin < 0 && ylin < 0) {
-    // If both coefficients are negative, make them positive.
-    // printf("negate_coeff coverage\n");
-    xlin = -xlin;
-    ylin = -ylin;
-  }
-
-  LinSol sol(LinSolType::SOLUTION_FOUND);
-
-  sol.Xlin = std::move(xlin);
-  sol.Xind = std::move(xind);
-  sol.Ylin = std::move(ylin);
-  sol.Yind = std::move(yind);
-
-  return sol;
-}
 
 // Output:
 // nullopt: There are no solutions because gcd(P, Q, R) > 1
@@ -312,107 +107,6 @@ PerformTransformation(
 
   // No solutions because gcd(P, Q, R) > 1.
   return std::nullopt;
-}
-
-// Accumulates the minimum solution in xdst, ydst. Would be cleaner
-// if we passed around some kind of explicit state.
-void AccumulateXY(const BigInt &X, const BigInt &Y,
-                  std::optional<std::pair<BigInt, BigInt>> *sol) {
-
-  CHECK(sol != nullptr);
-
-  if (!sol->has_value()) {
-    sol->emplace(X, Y);
-  } else {
-    const auto &[BX, BY] = sol->value();
-    // Take the smallest by the sum of absolute values.
-
-    if (BigInt::Abs(X) + BigInt::Abs(Y) <=
-        BigInt::Abs(BX) + BigInt::Abs(BY)) {
-      sol->emplace(X, Y);
-    }
-  }
-}
-
-// Returns true if solution found.
-bool AccumulatePoint(
-    const BigInt &X, const BigInt &Y,
-    const BigInt &Alpha, const BigInt &Beta,
-    const BigInt &Div,
-    std::optional<std::pair<BigInt, BigInt>> *sol) {
-
-  CHECK(sol != nullptr);
-
-  // (I think this should actually be impossible because Div comes from
-  // the GCD of the coefficients.)
-  CHECK(Div != 0) << "Might be shenanigans with divisibility by zero";
-
-  // Check first that (X+alpha) and (Y+beta) are multiple of D.
-  BigInt tmp1 = X + Alpha;
-  if (BigInt::DivisibleBy(tmp1, Div)) {
-    BigInt tmp2 = Y + Beta;
-    if (BigInt::DivisibleBy(tmp2, Div)) {
-
-      tmp1 = BigInt::DivExact(tmp1, Div);
-      tmp2 = BigInt::DivExact(tmp2, Div);
-
-      // HYPERBOLIC.
-      AccumulateXY(tmp1, tmp2, sol);
-      return true;
-    }
-  }
-
-  return false;
-}
-
-
-// First check: |u| < g.
-// Second check: |u+g| > |v|
-// Third check: |u-g| < |v|
-// On input G = floor(g), g > 0.
-// g is not an integer number.
-static bool CheckStartOfContinuedFractionPeriod(const BigInt &U,
-                                                const BigInt &V,
-                                                const BigInt &G) {
-  if (G >= BigInt::Abs(U)) {
-    // First check |u| < g passed.
-    // Set Tmp1 to |v|
-    BigInt Tmp1 = BigInt::Abs(V);
-    // Compute Tmp2 as u + floor(g) which equals floor(u+g)
-    BigInt Tmp2 = U + G;
-
-    if (Tmp2 < 0) {
-      // Round to number nearer to zero.
-      Tmp2 += 1;
-      // addbigint(&Tmp2, 1);
-    }
-
-    Tmp2 = BigInt::Abs(Tmp2);
-
-    // Compute Tmp2 as floor(|u+g|)
-    // Compute bigTmp as floor(|u+g|) - |v|
-    if (Tmp2 >= Tmp1) {
-      // Second check |u+g| > |v| passed.
-      // Compute Tmp2 as u - floor(g)
-      Tmp2 = U - G;
-
-      if (Tmp2 <= 0) {
-        // Round down number to integer.
-        Tmp2 -= 1;
-      }
-
-      Tmp2 = BigInt::Abs(Tmp2);
-
-      // Compute Tmp2 as floor(|u-g|)
-      // Compute Tmp2 as |v| - floor(|u-g|)
-      if (Tmp1 >= Tmp2) {
-        // Third check |u-g| < |v| passed.
-        // Save U and V to check period end.
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 // Returns Temp0, Temp1
@@ -459,13 +153,6 @@ struct Quad {
       // Port note: This used to actually have the effect of swapping
       // xind/yind xlin/ylin.
       CHECK(false) << "Can't have infinite solutions.";
-
-      LinearSolution s;
-      s.MX = sol.Xlin;
-      s.BX = sol.Xind;
-      s.MY = sol.Ylin;
-      s.BY = sol.Yind;
-      solutions.linear.emplace_back(std::move(s));
       return;
     }
   }
@@ -632,56 +319,6 @@ struct Quad {
     return sol_found;
   }
 
-  // Same, when there are two solutions.
-  // Returns true if a solution found (solFound = true in original code).
-  // XXX this should return them, rather than modifying xminus/yminus
-  bool NonSquareDiscrSolutionTwo(
-      const BigInt &M, const BigInt &E, const BigInt &K,
-      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
-      const BigInt &H, const BigInt &I,
-      const BigInt &Value,
-      std::optional<std::pair<BigInt, BigInt>> *sol_plus,
-      std::optional<std::pair<BigInt, BigInt>> *sol_minus) {
-
-    CHECK(sol_plus != nullptr);
-    CHECK(sol_minus != nullptr);
-
-    // Port note: This used to modify the value of K based on the callback
-    // type, but now we do that at the call site. (Also there was something
-    // suspicious in here where it flipped the sign and then set it negative.)
-
-    // X = (tu - Kv)*E
-    const BigInt Z = (Value * H - K * I) * E;
-    // Y = u*E
-    const BigInt O = H * E;
-
-
-    bool sol_found = false;
-    // Undo unimodular substitution
-    {
-      const auto &[Temp0, Temp1] =
-        UnimodularSubstitution(M, Z, O);
-      sol_found = AccumulatePoint(Temp0, Temp1,
-                                  Alpha, Beta, Div,
-                                  sol_plus);
-    }
-
-    // Z: (-tu - Kv)*E
-    // O: -u*E
-
-    // Undo unimodular substitution
-    {
-      const auto &[Temp0, Temp1] =
-        UnimodularSubstitution(M, -Z, -O);
-      sol_found = AccumulatePoint(Temp0, Temp1,
-                                  Alpha, Beta, Div,
-                                  sol_minus) || sol_found;
-    }
-
-    return sol_found;
-  }
-
-
   // Returns true if we found a solution (and so should show
   // the recursive solution).
   bool ShowPointOne(const BigInt &X, const BigInt &Y,
@@ -763,9 +400,7 @@ struct Quad {
     // No solution found.
   }
 
-  // TODO: Try to make this dispatch (callbackQuadModType) static.
-  template<QmodCallbackType QMOD_CALLBACK>
-  void SolutionX(bool origin_translated, bool swap_xy,
+  void SolutionX(bool swap_xy,
                  BigInt Value, const BigInt &Modulus,
                  const BigInt &A, const BigInt &B, const BigInt &C,
                  const BigInt &D, const BigInt &E,
@@ -798,35 +433,13 @@ struct Quad {
              V.ToString().c_str());
     }
 
-    switch (QMOD_CALLBACK) {
-    case QmodCallbackType::PARABOLIC:
-      // Real uses of swap_xy
-      CallbackQuadModParabolic(swap_xy,
-                               A, B, C, D, E,
-                               U, V, Value);
-      break;
-
-    case QmodCallbackType::ELLIPTIC:
-      CallbackQuadModElliptic(A, B, C, E, M, K,
-                              Alpha, Beta, Div, Discr,
-                              Value);
-      break;
-
-    case QmodCallbackType::HYPERBOLIC:
-      CallbackQuadModHyperbolic(origin_translated,
-                                A, B, C, K, E, M, Alpha, Beta, Div,
-                                Discr, Value);
-      break;
-
-    default:
-      break;
-    }
+    CallbackQuadModElliptic(A, B, C, E, M, K,
+                            Alpha, Beta, Div, Discr,
+                            Value);
   }
 
   // Solve congruence an^2 + bn + c = 0 (mod n) where n is different from zero.
-  template<QmodCallbackType QMOD_CALLBACK>
   void SolveQuadModEquation(
-      bool origin_translated,
       bool swap_xy,
       const BigInt &coeffQuadr,
       const BigInt &coeffLinear,
@@ -902,13 +515,12 @@ struct Quad {
 
         const int n = GcdAll.ToInt().value();
         for (int ctr = 0; ctr < n; ctr++) {
-          SolutionX<QMOD_CALLBACK>(origin_translated,
-                                   swap_xy,
-                                   BigInt(ctr), Modulus,
-                                   A, B, C, D, E,
-                                   M, K,
-                                   U, V,
-                                   Alpha, Beta, Div, Discr);
+          SolutionX(swap_xy,
+                    BigInt(ctr), Modulus,
+                    A, B, C, D, E,
+                    M, K,
+                    U, V,
+                    Alpha, Beta, Div, Discr);
         }
       }
       return;
@@ -950,27 +562,17 @@ struct Quad {
         // also not covered :(
         printf("new coverage: loop zz");
         solutions.interesting_coverage = true;
-        SolutionX<QMOD_CALLBACK>(origin_translated,
-                                 swap_xy,
-                                 z, Modulus,
-                                 A, B, C, D, E,
-                                 M, K,
-                                 U, V,
-                                 Alpha, Beta, Div, Discr);
+        SolutionX(swap_xy,
+                  z, Modulus,
+                  A, B, C, D, E,
+                  M, K,
+                  U, V,
+                  Alpha, Beta, Div, Discr);
         z += Modulus;
         if (z < Temp0) break;
       }
 
       return;
-    }
-
-    if (QMOD_CALLBACK == QmodCallbackType::PARABOLIC) {
-      // For elliptic case, the factorization is already done.
-
-      // To solve this quadratic modular equation we have to
-      // factor the modulus and find the solution modulo the powers
-      // of the prime factors. Then we combine them by using the
-      // Chinese Remainder Theorem.
     }
 
     if (VERBOSE) {
@@ -986,8 +588,7 @@ struct Quad {
     bool interesting = false;
     SolveEquation(
         SolutionFn([&](const BigInt &Value) {
-            this->SolutionX<QMOD_CALLBACK>(
-                origin_translated,
+            this->SolutionX(
                 swap_xy,
                 Value,
                 Modulus,
@@ -1003,105 +604,6 @@ struct Quad {
       printf("INTERESTING!\n");
       solutions.interesting_coverage = true;
     }
-  }
-
-  void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,
-                          BigInt D, BigInt E, BigInt F) {
-
-    CHECK(false) << "Not expecting DiscriminantIsZero";
-
-    // fprintf(stderr, "disciszero coverage\n");
-    // Next algorithm does not work if A = 0. In this case, exchange x and y.
-    bool swap_xy = false;
-    if (A == 0) {
-      swap_xy = true;
-      // Exchange coefficients of x^2 and y^2.
-      std::swap(A, C);
-      // Exchange coefficients of x and y.
-      std::swap(D, E);
-    }
-
-    // ax^2 + bxy + cx^2 + dx + ey + f = 0 (1)
-    // Multiplying by 4a:
-    // (2ax + by)^2 + 4adx + 4aey + 4af = 0
-    // Let t = 2ax + by. So (1) becomes: (t + d)^2 = uy + v.
-
-    // Compute u <- 2(bd - 2ae)
-    BigInt U = (B * D - ((A * E) << 1)) << 1;
-
-    // Compute v <- d^2 - 4af
-    BigInt V = D * D - ((A * F) << 2);
-
-    if (U == 0) {
-      // u equals zero, so (t+d)^2 = v.
-
-      if (V < 0) {
-        // There are no solutions when v is negative,
-        // since a square cannot be equal to a negative number.
-        return;
-      }
-
-      if (V == 0) {
-        // printf("disczero_vzero coverage\n");
-        // v equals zero, so (1) becomes 2ax + by + d = 0
-        LinSol sol = LinearEq(A << 1, B, D);
-        // Result box:
-        if (swap_xy) sol.SwapXY();
-        PrintLinear(sol);
-        return;
-      }
-
-      // u equals zero but v does not.
-      // v must be a perfect square, otherwise there are no solutions.
-      BigInt G = BigInt::Sqrt(V);
-      if (V != G * G) {
-        // v is not perfect square, so there are no solutions.
-        return;
-      }
-
-      // The original equation is now: 2ax + by + (d +/- g) = 0
-      BigInt A2 = A << 1;
-
-      // This equation represents two parallel lines.
-      {
-        LinSol sol = LinearEq(A2, B, D + G);
-        if (swap_xy) sol.SwapXY();
-        // Result box:
-        PrintLinear(sol);
-      }
-
-      {
-        LinSol sol = LinearEq(A2, B, D - G);
-        if (swap_xy) sol.SwapXY();
-        PrintLinear(sol);
-      }
-
-      return;
-    }
-
-    // At this moment u does not equal zero.
-    // We have to solve the congruence
-    //     T^2 = v (mod u) where T = t+d and t = 2ax+by.
-
-    // These were actually uninitialized on this code path,
-    // and are probably unused.
-    const BigInt M(0);
-    const BigInt K(0);
-
-    SolveQuadModEquation<QmodCallbackType::PARABOLIC>(
-        // Origin never translated on this path.
-        false,
-        swap_xy,
-        // Coefficients and modulus
-        BigInt(1), BigInt(0), -V, BigInt::Abs(U),
-        // Problem state
-        A, B, C, D, E,
-        M, K, U, V,
-        // I think these end up unused in this case, but anyway,
-        // don't translate the origin.
-        BigInt(0), BigInt(0), BigInt(1),
-        // Discriminant is known to be zero in this function.
-        BigInt(0));
   }
 
   // Solve ax^2+bxy+cy^2 = K
@@ -1128,9 +630,7 @@ struct Quad {
   // i.e. solutions (x,y) where gcd(x,y) = 1, we need to solve
   //     ax'^2+bx'y'+cy'^2 = K/R^2 where R^2 is a divisor of K.
   // Then we get x = Rx', y = Ry'.
-  template<QmodCallbackType QMOD_CALLBACK>
-  void NonSquareDiscriminant(bool origin_translated,
-                             BigInt A, BigInt B, BigInt C,
+  void NonSquareDiscriminant(BigInt A, BigInt B, BigInt C,
                              BigInt K,
                              const BigInt &D,
                              BigInt Discr,
@@ -1294,8 +794,7 @@ struct Quad {
 
     for (;;) {
 
-      SolveQuadModEquation<QMOD_CALLBACK>(
-          origin_translated,
+      SolveQuadModEquation(
           // Never swapping x,y on this path.
           false,
           // Coefficients and modulus
@@ -1376,21 +875,9 @@ struct Quad {
              GcdHomog.ToString().c_str(),
              Discr.ToString().c_str());
     }
-
-    if (hyperbolic_recursive_solution &&
-        QMOD_CALLBACK == QmodCallbackType::HYPERBOLIC) {
-
-      CHECK(false) << "Not expecting HYPERBOLIC.";
-
-      // Show recursive solution.
-      GetRecursiveSolution(A, B, C,
-                           ABack, BBack, CBack,
-                           Alpha, Beta, GcdHomog, Discr);
-    }
   }
 
   void NegativeDiscriminant(
-      bool origin_translated,
       const BigInt &A, const BigInt &B, const BigInt &C,
       const BigInt &K,
       const BigInt &D,
@@ -1398,24 +885,7 @@ struct Quad {
       const BigInt &Alpha, const BigInt &Beta,
       const BigInt &Div) {
 
-    NonSquareDiscriminant<QmodCallbackType::ELLIPTIC>(
-        origin_translated,
-        A, B, C, K, D, Discr, Alpha, Beta, Div);
-  }
-
-  void PositiveDiscriminant(
-      bool origin_translated,
-      const BigInt &A, const BigInt &B, const BigInt &C,
-      const BigInt &K,
-      const BigInt &D,
-      const BigInt &Discr,
-      const BigInt &Alpha, const BigInt &Beta,
-      const BigInt &Div) {
-
-    CHECK(false) << "Not expecting HYPERBOLIC.";
-
-    NonSquareDiscriminant<QmodCallbackType::HYPERBOLIC>(
-        origin_translated,
+    NonSquareDiscriminant(
         A, B, C, K, D, Discr, Alpha, Beta, Div);
   }
 
@@ -1632,492 +1102,8 @@ struct Quad {
     }
   }
 
-  // Discr = G^2
-  void PerfectSquareDiscriminant(
-      const BigInt &A, const BigInt &B, const BigInt &C,
-      const BigInt &G, const BigInt &K,
-      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
-      const BigInt &Discr) {
-
-    solutions.interesting_coverage = true;
-    printf("PerfectSquareDiscriminant?\n");
-    CHECK(false) << "Not expecting PerfectSquareDiscriminant";
-
-    // only used on path where A != 0
-    BigInt S(0xCAFE);
-    BigInt R;
-    if (A == 0) {
-      // Let R = gcd(b, c)
-      // (bX + cY) Y = k
-      R = BigInt::GCD(B, C);
-    } else {
-      // Multiplying by 4a we get (2aX + (b+g)Y)(2aX + (b-g)Y) = 4ak
-      // Let R = gcd(2a, b+g)
-      BigInt A2 = A << 1;
-      R = BigInt::GCD(A2, B + G);
-      // Let S = gcd(2a, b-g)
-      S = BigInt::GCD(A2, B - G);
-      // Let L = 4ak
-      // Port note: L is dead. It was only used in teach mode.
-      // L = (A * K) << 2;
-    }
-
-    if (K == 0) {
-
-      // k equals zero.
-      if (A == 0) {
-        // printf("kzeroazero coverage\n");
-        // Coefficient a does equals zero.
-        // Solve Dy - beta = 0
-
-        {
-          LinSol sol = LinearEq(BigInt(0), Discr, -Beta);
-          // Result box:
-          PrintLinear(sol);
-        }
-
-        {
-          // Solve bDx + cDy - b*alpha - c*beta = 0
-          const BigInt Aux0 = B * Discr;
-          const BigInt Aux1 = C * Discr;
-          const BigInt Aux2 = -(B * Alpha + C * Beta);
-
-          LinSol sol = LinearEq(Aux0, Aux1, Aux2);
-          // Result box:
-          PrintLinear(sol);
-        }
-
-      } else {
-        // printf("kzeroanzero coverage\n");
-        // Coefficient a does not equal zero.
-
-        const BigInt AAlpha2 = (A * Alpha) << 1;
-
-        {
-          // Solve 2aD x + (b+g)D y = 2a*alpha + (b+g)*beta
-          const BigInt Aux0 = (A * Discr) << 1;
-          const BigInt Aux1 = (B + G) * Discr;
-          const BigInt Aux2 = -(AAlpha2 + (B + G) * Beta);
-
-          LinSol sol = LinearEq(Aux0, Aux1, Aux2);
-          // Result box:
-          PrintLinear(sol);
-        }
-
-        {
-          // Solve 2aD x + (b-g)D y = 2a*alpha + (b-g)*beta
-          const BigInt Aux0 = (A * Discr) << 1;
-          // Port note: At some point this was erroneously
-          // multiplied by the value of aux1 above.
-          const BigInt Aux1 = (B - G) * Discr;
-          const BigInt Aux2 = -(AAlpha2 + (B - G) * Beta);
-
-          LinSol sol = LinearEq(Aux0, Aux1, Aux2);
-          /*
-          if (sol.type == LinSolType::SOLUTION_FOUND) {
-            printf("bminusg coverage\n");
-          }
-          */
-
-          // Result box:
-          PrintLinear(sol);
-        }
-      }
-
-      return;
-    }
-
-    // k does not equal zero.
-    BigInt U1, U3;
-    if (A == 0) {
-      // printf("knzaz coverage\n");
-      // If R does not divide k, there is no solution.
-      U3 = K;
-      U1 = R;
-    } else {
-      // printf("knzanz coverage\n");
-      // If R*S does not divide 4ak, there is no solution.
-      U1 = R * S;
-      U3 = (A * K) << 2;
-    }
-
-    if (!BigInt::DivisibleBy(U3, U1)) {
-      return;
-    }
-
-    const BigInt Z = BigInt::DivExact(U3, U1);
-
-    // We have to find all factors of the right hand side.
-
-    // Compute all factors of Z = 4ak/RS
-
-    // Factor positive number.
-    std::vector<std::pair<BigInt, int>> factors =
-      BigIntFactor(BigInt::Abs(Z));
-
-    // Do not factor again same modulus.
-
-    // x = (NI - JM) / D(IL - MH) and y = (JL - NH) / D(IL - MH)
-    // The denominator cannot be zero here.
-    // H = 2a/R, I = (b+g)/R, J = F + H * alpha + I * beta
-    // L = 2a/S, M = (b-g)/S, N = Z/F + L * alpha + M * beta
-    // F is any factor of Z (positive or negative).
-    const int nbrFactors = factors.size();
-
-    BigInt H, I, L, M;
-    if (A == 0) {
-      H = BigInt(0);
-      I = BigInt(1);
-      // L <- b/R
-      L = B / R;
-      // M <- c/R
-      M = C / R;
-    } else {
-      // 2a
-      BigInt UU3 = A << 1;
-      // H <- 2a/R
-      H = UU3 / R;
-      // L <- 2a/S
-      L = UU3 / S;
-      // I <- (b+g)/R
-      I = (B + G) / R;
-      // M <- (b-g)/S
-      M = (B - G) / S;
-    }
-
-
-    // Compute denominator: D(IL - MH)
-    const BigInt Den = Discr * (I * L - M * H);
-    // O <- L * alpha + M * beta
-    const BigInt O = L * Alpha + M * Beta;
-    // K <- H * alpha + I * beta
-    const BigInt NewK = H * Alpha + I * Beta;
-
-    // Loop that finds all factors of Z.
-    // Use Gray code to use only one big number.
-    // Gray code: 0->000, 1->001, 2->011, 3->010, 4->110, 5->111, 6->101, 7->100.
-    // Change from zero to one means multiply, otherwise divide.
-    std::vector<int> counters(400, 0);
-    std::vector<bool> is_descending(400, false);
-
-    BigInt CurrentFactor(1);
-    for (;;) {
-      // Process positive divisor.
-      CheckSolutionSquareDiscr(CurrentFactor,
-                                     H, I, L, M, Z,
-                                     Alpha, Beta, Div);
-      // Process negative divisor.
-      CheckSolutionSquareDiscr(-CurrentFactor,
-                                     H, I, L, M, Z,
-                                     Alpha, Beta, Div);
-
-      int fidx = 0;
-      int index;
-      for (index = 0; index < nbrFactors; index++) {
-        // Loop that increments counters.
-        if (!is_descending[index]) {
-          // Ascending.
-          if (counters[index] == factors[fidx].second) {
-            // Next time it will be descending.
-            is_descending[index] = true;
-            fidx++;
-            continue;
-          }
-
-          const BigInt &p = factors[fidx].first;
-          CurrentFactor *= p;
-          counters[index]++;
-          break;
-        }
-
-        if (counters[index] == 0) {
-          // Descending.
-          // Next time it will be ascending.
-          is_descending[index] = false;
-          fidx++;
-          // pstFactor++;
-          continue;
-        }
-
-        // XXX same
-        const BigInt &p = factors[fidx].first;
-        CurrentFactor /= p;
-
-        counters[index]--;
-        break;
-      }
-
-      if (index == nbrFactors) {
-        // All factors have been found. Exit loop.
-        break;
-      }
-    }
-  }
-
-  // Used for hyperbolic curve.
-  //  PQa algorithm for (P+G)/Q where G = sqrt(discriminant):
-  //  Set U1 to 1 and U2 to 0.
-  //  Set V1 to 0 and V2 to 1.
-  //  Perform loop:
-  //  Compute a as floor((U + G)/V)
-  //  Set U3 to U2, U2 to U1 and U1 to a*U2 + U3
-  //  Set V3 to V2, V2 to V1 and V1 <- a*V2 + V3
-  //  Set U to a*V - U
-  //  Set V to (D - U^2)/V
-  //  Inside period when: 0 <= G - U < V
-  //
-  // Returns true if a solution was found.
-  bool ContFrac(
-      bool origin_translated,
-      const BigInt &Value, enum SolutionNumber solutionNbr,
-      const BigInt &A, const BigInt &B, const BigInt &E,
-      const BigInt &K, const BigInt &L, const BigInt &M,
-      BigInt U, BigInt V, BigInt G,
-      const BigInt &Alpha, const BigInt &Beta,
-      const BigInt &Div, const BigInt &Discr,
-      std::optional<std::pair<BigInt, BigInt>> *sol_plus,
-      std::optional<std::pair<BigInt, BigInt>> *sol_minus) {
-
-    printf("Not expecting ContFrac.\n");
-    solutions.interesting_coverage = true;
-    return false;
-
-    const bool isBeven = B.IsEven();
-    // If (D-U^2) is not multiple of V, exit routine.
-    if (!BigInt::DivisibleBy(L - U * U, V)) {
-      return false;
-    }
-
-    int periods_to_compute = origin_translated ? 2 : 1;
-
-    BigInt U1(1);
-    BigInt U2(0);
-    BigInt V1(0);
-    BigInt V2(1);
-
-    // Initialize variables.
-    // Less than zero means outside period.
-    // Port note: Original code left startperiodv uninitialized, though
-    // it was probably only accessed when startperiodu is non-negative.
-    BigInt StartPeriodU(-1);
-    BigInt StartPeriodV(-1);
-    int index = 0;
-
-    if (solutionNbr == SolutionNumber::SECOND) {
-      index++;
-    }
-
-    bool isIntegerPart = true;
-
-    const bool k_neg = K < 0;
-    const bool a_neg = A < 0;
-
-    int periodIndex = 0;
-
-    bool sol_found = false;
-
-    for (;;) {
-
-      const bool v_neg = V < 0;
-
-      if (V == (isBeven ? 1 : 2) &&
-          ((index & 1) == (k_neg == v_neg ? 0 : 1))) {
-        // Two solutions
-
-        // Found solution.
-        if (BigInt::Abs(Discr) == 5 && (a_neg != k_neg) &&
-            (solutionNbr == SolutionNumber::FIRST)) {
-          // Discriminant is 5 and aK < 0.
-          // Use exceptional solution (U1-U2)/(V1-V2).
-
-          // printf("aaaaaaa coverage\n");
-          sol_found =
-            NonSquareDiscrSolutionTwo(
-                M, E, -BigInt::Abs(K),
-                Alpha, Beta, Div,
-                V1 - V2, U1 - U2, Value,
-                sol_plus, sol_minus);
-
-        } else {
-          // Discriminant is not 5 or aK > 0.
-          // Use convergent U1/V1 as solution.
-
-          sol_found =
-            NonSquareDiscrSolutionTwo(
-                M, E, -BigInt::Abs(K),
-                Alpha, Beta, Div,
-                V1, U1, Value,
-                sol_plus, sol_minus);
-
-        }
-
-        if (sol_found) break;
-      }
-
-      if (StartPeriodU >= 0) {
-        // Already inside period.
-        periodIndex++;
-        if (U == StartPeriodU &&
-            V == StartPeriodV &&
-            // New period started.
-            (periodIndex & 1) == 0) {
-          // Two periods if period length is odd, one period if even.
-          periods_to_compute--;
-          if (periods_to_compute == 0) {
-            // Go out in this case.
-            break;
-          }
-        }
-
-      } else if (!isIntegerPart) {
-        // Check if periodic part of continued fraction has started.
-
-        if (CheckStartOfContinuedFractionPeriod(U, V, G)) {
-          StartPeriodU = U;
-          StartPeriodV = V;
-        }
-      }
-
-      // Get continued fraction coefficient.
-      BigInt BigTmp = U + G;
-      if (V < 0) {
-        // If denominator is negative, round square root upwards.
-        BigTmp += 1;
-      }
-
-      // Tmp1 = Term of continued fraction.
-      BigInt Tmp1 = BigInt::DivFloor(BigTmp, V);
-      // Update convergents.
-      // U3 <- U2, U2 <- U1, U1 <- a*U2 + U3
-      BigInt U3 = U2;
-      U2 = U1;
-      U1 = Tmp1 * U2 + U3;
-
-      // V3 <- V2, V2 <- V1, V1 <- a*V2 + V3
-      BigInt V3 = V2;
-      V2 = V1;
-      V1 = Tmp1 * V2 + V3;
-
-      // Update numerator and denominator.
-      U = Tmp1 * V - U;
-      V = (L - U * U) / V;
-
-      index++;
-      isIntegerPart = false;
-    }
-
-    return sol_found;
-  }
-
-  void CallbackQuadModHyperbolic(bool origin_translated,
-                                 const BigInt &A,
-                                 const BigInt &B,
-                                 const BigInt &C,
-                                 const BigInt &K,
-
-                                 const BigInt &E,
-                                 const BigInt &M,
-                                 const BigInt &Alpha,
-                                 const BigInt &Beta,
-                                 const BigInt &Div,
-
-                                 const BigInt &Discr,
-                                 const BigInt &Value) {
-
-    printf("Not expecting Hyperbolic.\n");
-    solutions.interesting_coverage = true;
-    return;
-
-
-    auto pqro = PerformTransformation(A, B, C, K, Value);
-    if (!pqro.has_value()) {
-      // No solutions because gcd(P, Q, R) > 1.
-      return;
-    }
-
-    // P and Q are always overwritten below.
-    // R is just dead.
-    // const auto &[P_, Q_, R_] = pqro.value();
-
-    // Expected to agree because PerformTransformation doesn't modify B?
-    const bool isBeven = B.IsEven();
-
-    // Compute P as floor((2*a*theta + b)/2)
-    BigInt P = (((A << 1) * Value) + B);
-
-    if (P.IsOdd()) P -= 1;
-    P >>= 1;
-
-    // Compute Q = a*abs(K)
-    BigInt Q = BigInt::Abs(K) * A;
-
-    // Find U, V, L so we can compute the continued fraction
-    // expansion of (U+sqrt(L))/V.
-    BigInt L = Discr;
-
-    BigInt U, V;
-    if (isBeven) {
-      U = P;
-      // Argument of square root is discriminant/4.
-      L >>= 2;
-      V = Q;
-    } else {
-      // U <- 2P+1
-      U = (P << 1) + 1;
-      // V <- 2Q
-      V = (Q << 1);
-    }
-
-    U = -U;
-
-    // If L-U^2 is not multiple of V, there is no solution, so go out.
-    if (!BigInt::DivisibleBy(L - U * U, V)) {
-      // No solutions using continued fraction.
-      return;
-    }
-
-    // Set G to floor(sqrt(L))
-    const BigInt G = BigInt::Sqrt(L);
-
-    std::optional<std::pair<BigInt, BigInt>> sol_plus, sol_minus;
-
-    // Continued fraction of (U+G)/V
-    if (ContFrac(origin_translated,
-                 Value, SolutionNumber::FIRST,
-                 A, B, E,
-                 K, L, M,
-                 U, V, G,
-                 Alpha, Beta, Div, Discr,
-                 &sol_plus, &sol_minus))
-      hyperbolic_recursive_solution = true;
-
-    // Continued fraction of (-U+G)/(-V)
-    if (ContFrac(origin_translated,
-                 Value, SolutionNumber::SECOND,
-                 A, B, E,
-                 K, L, M,
-                 -U, -V, G,
-                 Alpha, Beta, Div, Discr,
-                 &sol_plus, &sol_minus))
-      hyperbolic_recursive_solution = true;
-
-    if (sol_plus.has_value()) {
-      const auto &[X, Y] = sol_plus.value();
-      // Result box:
-      RecordSolutionXY(X, Y);
-    }
-
-    if (sol_minus.has_value()) {
-      const auto &[X, Y] = sol_minus.value();
-      // Result box:
-      RecordSolutionXY(X, Y);
-    }
-  }
-
-  // Copy intentional; we modify them in place (factor out gcd).
   // PS: This is where to understand the meaning of Alpha, Beta, K, Div.
-  void SolveQuadEquation(BigInt F) {
-
+  void SolveQuadEquation(const BigInt &F) {
     BigInt A(1);
     BigInt B(0);
     BigInt C(1);
@@ -2130,37 +1116,12 @@ struct Quad {
 
     CHECK(gcd == 1) << "Expecting GCD to always be 1: " << gcd.ToString();
 
-    if (gcd != 0 && !BigInt::DivisibleBy(F, gcd)) {
-      // F is not multiple of GCD(A, B, C, D, E) so there are no solutions.
-      return;
-    }
-
-    // Divide all coefficients by GCD(A, B, C, D, E).
-    // By definition, they are known to be divisible.
-    if (gcd != 0) {
-      A = BigInt::DivExact(A, gcd);
-      B = BigInt::DivExact(B, gcd);
-      C = BigInt::DivExact(C, gcd);
-      D = BigInt::DivExact(D, gcd);
-      E = BigInt::DivExact(E, gcd);
-      F = BigInt::DivExact(F, gcd);
-    }
-
-    if (VERBOSE)
-      printf("After dividing: %s %s %s %s %s %s\n",
-             A.ToString().c_str(),
-             B.ToString().c_str(),
-             C.ToString().c_str(),
-             D.ToString().c_str(),
-             E.ToString().c_str(),
-             F.ToString().c_str());
+    // F is always divisible by gcd of 1.
+    // No need to reduce coefficients by GCD of 1.
 
     // Test whether the equation is linear. A = B = C = 0.
     if (A == 0 && B == 0 && C == 0) {
       CHECK(false) << "Not expecting linear!\n";
-      LinSol sol = LinearEq(D, E, F);
-      // Result box:
-      PrintLinear(sol);
       return;
     }
 
@@ -2171,12 +1132,7 @@ struct Quad {
     CHECK(Discr == -4) << "Expecting discriminant of exactly -4.";
 
     if (Discr == 0) {
-      // Port note: This code depended on uninitialized values M, K,
-      // I, Alpha, Beta, Div, but I think they end up unused inside
-      // SolveQuadModEquation (or callbacks) when the discriminant is
-      // zero.
-      // Discriminant is zero.
-      DiscriminantIsZero(A, B, C, D, E, F);
+      CHECK(false) << "Impossible";
       return;
     }
 
@@ -2185,7 +1141,6 @@ struct Quad {
     BigInt UU1 = BigInt::GCD(BigInt::GCD(A, B), C);
     BigInt Div, K, Alpha, Beta;
 
-    bool origin_translated = false;
     // Discriminant is not zero.
     if (D == 0 && E == 0) {
       // Do not translate origin.
@@ -2195,21 +1150,6 @@ struct Quad {
       Beta = BigInt(0);
     } else {
       CHECK(false) << "Not expecting to translate origin.";
-
-      origin_translated = true;
-
-      Div = Discr;
-      // Translate the origin (x, y) by (alpha, beta).
-      // Compute alpha = 2cd - be
-      Alpha = ((C * D) << 1) - (B * E);
-
-      // Compute beta = 2ae - bd
-      Beta = ((A * E) << 1) - (B * D);
-
-      // We get the equation ax^2 + bxy + cy^2 = k
-      // where k = -D (ae^2 - bed + cd^2 + fD)
-
-      K = (-Discr) * ((A * E * E) - (B * E * D) + (C * D * D) + (F * Discr));
     }
 
     // If k is not multiple of gcd(A, B, C), there are no solutions.
@@ -2229,28 +1169,11 @@ struct Quad {
 
     if (Discr < 0) {
 
-      NegativeDiscriminant(origin_translated,
-                           A, B, C, K, D,
+      NegativeDiscriminant(A, B, C, K, D,
                            Discr, Alpha, Beta, Div);
-      return;
-    }
-
-    CHECK(false) << "Not expecting non-negative discriminant.";
-
-    const BigInt G = BigInt::Sqrt(Discr);
-
-    if (G * G == Discr) {
-      // Discriminant is a perfect square.
-
-      PerfectSquareDiscriminant(
-          A, B, C, G, K,
-          Alpha, Beta, Div, Discr);
-
       return;
     } else {
-      PositiveDiscriminant(origin_translated,
-                           A, B, C, K, D,
-                           Discr, Alpha, Beta, Div);
+      CHECK(false) << "Not expecting non-negative discriminant.";
     }
   }
 

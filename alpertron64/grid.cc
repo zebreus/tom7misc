@@ -82,16 +82,22 @@ static void RunGrid() {
   AutoHisto auto_histo(100000);
   int64_t batches_done = 0;
 
+  static constexpr int64_t START_NUM = 688727594 + 37378173;
   static constexpr int64_t MAX_NUM = 2'000'000'000;
   static constexpr int64_t BATCH_SIZE = 32;
 
+  static constexpr int64_t RANGE = MAX_NUM - START_NUM;
+
   ParallelComp(
-      MAX_NUM / BATCH_SIZE,
+      RANGE / BATCH_SIZE,
       [&](int64_t batch_idx) {
 
         std::vector<double> local_timing;
         for (int off = 0; off < BATCH_SIZE; off++) {
-          const uint64_t f = (uint64_t)batch_idx * BATCH_SIZE + off;
+          const uint64_t f =
+            START_NUM +
+            (uint64_t)batch_idx * BATCH_SIZE +
+            off;
           BigInt F(f);
 
           auto Assert = [&](const char *type,
@@ -140,8 +146,6 @@ static void RunGrid() {
           // Check solutions.
           CHECK(!sols.any_integers) << F.ToString();
 
-          CHECK(sols.linear.empty()) << F.ToString();
-
           for (const PointSolution &point : sols.points) {
             count_point++;
             Assert("point", point.X, point.Y);
@@ -184,7 +188,7 @@ static void RunGrid() {
             std::string bar =
               ANSI::ProgressBar(
                   done, MAX_NUM,
-                  StringPrintf("%lld ", batch_idx * BATCH_SIZE),
+                  StringPrintf("%lld ", START_NUM + batch_idx * BATCH_SIZE),
                   sec);
 
             static constexpr int STATUS_LINES = 3;
