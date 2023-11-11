@@ -24,8 +24,6 @@
 
 #include "bignum/big.h"
 
-// Tom increased this constant by a factor of 10!
-#define MAX_LEN       25000  // 200000 digits
 #define BITS_PER_GROUP         31
 #define BITS_PER_GROUP_MINUS_1 30
 #define HALF_INT_RANGE        0x40000000

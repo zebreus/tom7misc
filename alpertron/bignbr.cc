@@ -90,18 +90,13 @@ void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
 
 void SubtractBigNbr(const limb *pNbr1, const limb *pNbr2,
                     limb *pDiff, int nbrLen) {
-  unsigned int borrow = 0U;
-  const limb *ptrNbr1 = pNbr1;
-  const limb *ptrNbr2 = pNbr2;
-  const limb *ptrEndDiff = pDiff + nbrLen;
-  for (limb *ptrDiff = pDiff; ptrDiff < ptrEndDiff; ptrDiff++) {
-    borrow = (unsigned int)ptrNbr1->x -
-      (unsigned int)ptrNbr2->x -
+  uint32_t borrow = 0U;
+  for (int idx = 0; idx < nbrLen; idx++) {
+    borrow = (uint32_t)pNbr1[idx].x -
+      (uint32_t)pNbr2[idx].x -
       (borrow >> BITS_PER_GROUP);
-    unsigned int tmp = borrow & MAX_INT_NBR_U;
-    ptrDiff->x = (int)tmp;
-    ptrNbr1++;
-    ptrNbr2++;
+    uint32_t tmp = borrow & MAX_INT_NBR_U;
+    pDiff[idx].x = tmp;
   }
 }
 

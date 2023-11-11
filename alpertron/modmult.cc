@@ -36,16 +36,6 @@
 static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 
-[[maybe_unused]]
-static std::string LimbString(limb *limbs, size_t num) {
-  std::string out;
-  for (size_t i = 0; i < num; i++) {
-    if (i != 0) out.push_back(':');
-    StringAppendF(&out, "%04x", limbs[i].x);
-  }
-  return out;
-}
-
 // Note this reads *before* the limb pointer.
 static double getMantissa(const limb *ptrLimb, int nbrLimbs) {
   assert(nbrLimbs >= 1);
@@ -783,13 +773,10 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
            Mod.ToString().c_str());
   }
 
-  // PERF: Fewer conversions of the modulus please!
-  // PERF: Can dynamically size this, at least.
-  // (Or, modulus could be part of params)
-
   if (SELF_CHECK) {
-    limb TheModulus[MAX_LEN];
-    int modulus_length = BigIntToLimbs(Mod, TheModulus);
+    int modulus_length = BigIntNumLimbs(Mod);
+    limb TheModulus[modulus_length + 1];
+    CHECK(modulus_length == BigIntToLimbs(Mod, TheModulus));
     TheModulus[modulus_length].x = 0;
 
     CHECK(0 == memcmp(params.modulus.data(), TheModulus,
@@ -869,12 +856,12 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
 
   // Port note: Original code explicitly pads out to modulus_length
   // if necessary.
-  const int oddvalue_limbs =
+  const int max_limbs =
     std::max(orig_oddvalue_limbs, params.modulus_length);
-  limb oddValue[oddvalue_limbs];
-  BigIntToFixedLimbs(OddMod, oddvalue_limbs, oddValue);
+  limb oddValue[max_limbs];
+  BigIntToFixedLimbs(OddMod, max_limbs, oddValue);
 
-  limb tmp3[MAX_LEN];
+  limb tmp3[modulus_length];
   SubtractBigNbr(resultModPower2, resultModOdd, tmp3, modulus_length);
 
   if (VERBOSE) {
@@ -884,7 +871,7 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
              i < modulus_length ? '*' : ' ');
   }
 
-  limb tmp4[MAX_LEN];
+  limb tmp4[modulus_length];
   ComputeInversePower2(oddValue, tmp4, modulus_length);
 
   if (VERBOSE) {
@@ -894,7 +881,7 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
              i < modulus_length ? '*' : ' ');
   }
 
-  limb tmp5[MAX_LEN];
+  limb tmp5[max_limbs];
   ModMult(params, tmp4, tmp3, tmp5);
 
   (tmp5 + (shRight / BITS_PER_GROUP))->x &=
