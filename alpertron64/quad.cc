@@ -282,7 +282,6 @@ struct Quad {
   // Returns true if solution found.
   bool NonSquareDiscrSolutionOne(
       const BigInt &M, const BigInt &E, const BigInt &K,
-      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
       const BigInt &H, const BigInt &I,
       const BigInt &Value) {
 
@@ -303,7 +302,7 @@ struct Quad {
     {
       const auto &[Temp0, Temp1] =
         UnimodularSubstitution(M, Z, O);
-      sol_found = ShowPointOne(Temp0, Temp1, Alpha, Beta, Div);
+      sol_found = ShowPointOne(Temp0, Temp1, BigInt(0), BigInt(0), BigInt(1));
     }
 
     // Z: (-tu - Kv)*E
@@ -313,7 +312,7 @@ struct Quad {
     {
       const auto &[Temp0, Temp1] =
         UnimodularSubstitution(M, -Z, -O);
-      sol_found = ShowPointOne(Temp0, Temp1, Alpha, Beta, Div) ||
+      sol_found = ShowPointOne(Temp0, Temp1, BigInt(0), BigInt(0), BigInt(1)) ||
         sol_found;
     }
     return sol_found;
@@ -324,6 +323,10 @@ struct Quad {
   bool ShowPointOne(const BigInt &X, const BigInt &Y,
                     const BigInt &Alpha, const BigInt &Beta,
                     const BigInt &Div) {
+
+    // Not expecting any shift.
+    CHECK(Alpha == 0);
+    CHECK(Beta == 0);
 
     // Check first that (X+alpha) and (Y+beta) are multiple of D.
     BigInt tmp1 = X + Alpha;
@@ -447,7 +450,7 @@ struct Quad {
       BigInt Modulus,
       const BigInt &A, const BigInt &B, const BigInt &C, const BigInt &D, const BigInt &E,
       const BigInt &M, const BigInt &K, const BigInt &U, const BigInt &V,
-      const BigInt &Alpha, const BigInt &Beta, const BigInt &Div, const BigInt &Discr) {
+      const BigInt &Discr) {
 
     if (VERBOSE) {
       printf("[SQME] %s %s %s %s\n",
@@ -520,7 +523,7 @@ struct Quad {
                     A, B, C, D, E,
                     M, K,
                     U, V,
-                    Alpha, Beta, Div, Discr);
+                    BigInt(0), BigInt(0), BigInt(1), Discr);
         }
       }
       return;
@@ -567,7 +570,7 @@ struct Quad {
                   A, B, C, D, E,
                   M, K,
                   U, V,
-                  Alpha, Beta, Div, Discr);
+                  BigInt(0), BigInt(0), BigInt(1), Discr);
         z += Modulus;
         if (z < Temp0) break;
       }
@@ -595,7 +598,7 @@ struct Quad {
                 A, B, C, D, E,
                 M, K,
                 U, V,
-                Alpha, Beta, Div, Discr);
+                BigInt(0), BigInt(0), BigInt(1), Discr);
           }),
         coeff_quadr, coeff_linear, coeff_indep,
         Modulus, GcdAll, ValNn,
@@ -633,8 +636,15 @@ struct Quad {
   void NonSquareDiscriminant(BigInt A, BigInt B, BigInt C,
                              BigInt K,
                              const BigInt &D,
-                             BigInt Discr,
-                             BigInt Alpha, BigInt Beta, const BigInt &Div) {
+                             BigInt Discr) {
+
+    CHECK(A == 1);
+    CHECK(B == 0);
+    CHECK(C == 1);
+
+    BigInt Alpha(0);
+    BigInt Beta(0);
+    BigInt Div(1);
 
     // These were actually uninitialized, and probably unused?
     const BigInt U(0);
@@ -642,6 +652,11 @@ struct Quad {
 
     // Find GCD(a,b,c)
     BigInt GcdHomog = BigInt::GCD(BigInt::GCD(A, B), C);
+
+    CHECK(GcdHomog == 1);
+
+    // No need to divide by gcd of 1.
+    #if 0
     // Divide A, B, C and K by this GCD.
     if (GcdHomog != 0) {
       A = BigInt::DivExact(A, GcdHomog);
@@ -652,10 +667,13 @@ struct Quad {
       Discr /= GcdHomog;
       Discr /= GcdHomog;
     }
+    #endif
 
     if (K == 0) {
       // If k=0, the only solution is (X, Y) = (0, 0)
-      (void)ShowPointOne(BigInt(0), BigInt(0), Alpha, Beta, Div);
+      (void)ShowPointOne(BigInt(0), BigInt(0),
+                         // alpha, beta, div
+                         BigInt(0), BigInt(0), BigInt(1));
       return;
     }
 
@@ -675,7 +693,8 @@ struct Quad {
     // Factor independent term.
 
     // Note that we modify the factors (multiplicities) in place below.
-    std::vector<std::pair<BigInt, int>> factors = BigIntFactor(BigInt::Abs(K));
+    std::vector<std::pair<BigInt, int>> factors =
+      BigIntFactor(BigInt::Abs(K));
 
     if (VERBOSE) {
       for (const auto &[f, m] : factors) {
@@ -683,6 +702,7 @@ struct Quad {
       }
       printf("\n");
     }
+
     // Find all indices of prime factors with even multiplicity.
     // (XXX parallel. could be pair)
     // Index of prime factors with even multiplicity
@@ -701,6 +721,7 @@ struct Quad {
       }
     }
 
+    // XXX base this on size of factors.
     std::vector<int> counters(400, 0);
     std::vector<bool> is_descending(400, false);
 
@@ -708,6 +729,9 @@ struct Quad {
     // Loop that cycles through all square divisors of the independent term.
     BigInt M(0);
     if (BigInt::GCD(A, K) != 1) {
+      CHECK(false) << "Expecting GCD(A, K) == 1 because A is 1: " <<
+        A.ToString();
+
       // gcd(a, K) is not equal to 1.
 
       BigInt UU1, UU2;
@@ -802,7 +826,7 @@ struct Quad {
           // Problem state
           A, B, C, D, E,
           M, K, U, V,
-          Alpha, Beta, Div, Discr);
+          Discr);
 
       // Adjust counters.
       // This modifies the factors (multiplicities) in place.
@@ -877,18 +901,6 @@ struct Quad {
     }
   }
 
-  void NegativeDiscriminant(
-      const BigInt &A, const BigInt &B, const BigInt &C,
-      const BigInt &K,
-      const BigInt &D,
-      const BigInt &Discr,
-      const BigInt &Alpha, const BigInt &Beta,
-      const BigInt &Div) {
-
-    NonSquareDiscriminant(
-        A, B, C, K, D, Discr, Alpha, Beta, Div);
-  }
-
   void CallbackQuadModElliptic(
       const BigInt &A, const BigInt &B, const BigInt &C,
       const BigInt &E, const BigInt &M, const BigInt &K,
@@ -914,7 +926,6 @@ struct Quad {
 
         NonSquareDiscrSolutionOne(
             M, E, K,
-            Alpha, Beta, Div,
             BigInt(1), BigInt(0),
             Value);
 
@@ -928,13 +939,11 @@ struct Quad {
         if (plow == 1) {
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               BigInt(1), BigInt(0),
               Value);
 
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               // (Q/2, -1)
               G, BigInt(-1),
               Value);
@@ -944,14 +953,12 @@ struct Quad {
 
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               // ((Q/2-1)/2, -1)
               (G - 1) >> 1, BigInt(-1),
               Value);
 
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               // ((Q/2+1)/2, -1)
               (G + 1) >> 1, BigInt(-1),
               Value);
@@ -966,20 +973,17 @@ struct Quad {
 
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               BigInt(1), BigInt(0),
               Value);
 
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               // ((Q-1)/2, -1)
               (Q - 1) >> 1, BigInt(-1),
               Value);
 
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               // ((Q+1)/2, -1)
               (Q + 1) >> 1, BigInt(-1),
               Value);
@@ -991,21 +995,18 @@ struct Quad {
 
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               // ((Q+3)/6, -1)
               (Q + 3) / 6, BigInt(-1),
               Value);
 
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               // (Q/3, -2)
               Q / 3, BigInt(-2),
               Value);
 
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               // ((Q-3)/6, -1)
               (Q - 3) / 6, BigInt(-1),
               Value);
@@ -1059,7 +1060,6 @@ struct Quad {
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         NonSquareDiscrSolutionOne(
             M, E, K,
-            Alpha, Beta, Div,
             U1, V1,
             Value);
 
@@ -1081,7 +1081,6 @@ struct Quad {
 
           NonSquareDiscrSolutionOne(
               M, E, K,
-              Alpha, Beta, Div,
               U1, V1,
               Value);
 
@@ -1091,7 +1090,6 @@ struct Quad {
 
             NonSquareDiscrSolutionOne(
                 M, E, K,
-                Alpha, Beta, Div,
                 U1, V1,
                 Value);
           }
@@ -1139,21 +1137,20 @@ struct Quad {
     // Compute gcd(a,b,c).
 
     BigInt UU1 = BigInt::GCD(BigInt::GCD(A, B), C);
-    BigInt Div, K, Alpha, Beta;
+    CHECK(UU1 == 1);
+    BigInt K;
 
     // Discriminant is not zero.
     if (D == 0 && E == 0) {
       // Do not translate origin.
-      Div = BigInt(1);
       K = -F;
-      Alpha = BigInt(0);
-      Beta = BigInt(0);
     } else {
       CHECK(false) << "Not expecting to translate origin.";
     }
 
     // If k is not multiple of gcd(A, B, C), there are no solutions.
     if (!BigInt::DivisibleBy(K, UU1)) {
+      CHECK("Impossible since UU1 is 1.\n");
       // There are no solutions.
       return;
     }
@@ -1168,9 +1165,7 @@ struct Quad {
     }
 
     if (Discr < 0) {
-
-      NegativeDiscriminant(A, B, C, K, D,
-                           Discr, Alpha, Beta, Div);
+      NonSquareDiscriminant(A, B, C, K, D, Discr);
       return;
     } else {
       CHECK(false) << "Not expecting non-negative discriminant.";
@@ -1178,16 +1173,7 @@ struct Quad {
   }
 
   void QuadBigInt(const BigInt &F) {
-    const BigInt A(1);
-    const BigInt B(0);
-    const BigInt C(1);
-    const BigInt D(0);
-    const BigInt E(0);
-
     CHECK(F <= 0);
-
-    // size_t preamble_size = (output == nullptr) ? 0 : output->size();
-
     SolveQuadEquation(F);
   }
 
