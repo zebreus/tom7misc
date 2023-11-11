@@ -557,11 +557,16 @@ struct Quad {
   }
 
   void ShowSolutionXY(const BigInt &x, const BigInt &y) {
-    ShowText("\nx = ");
-    ShowBigInt(x);
-    ShowText("\ny = ");
-    ShowBigInt(y);
-    solutions.points.emplace_back(PointSolution{.X = x, .Y = y});
+    // Negative values are obvious, since x and y appear only under
+    // squares. x and y are also interchangeable.
+    if (x >= 0 && y >= 0 && x <= y) {
+      SolutionHeader();
+      ShowText("\nx = ");
+      ShowBigInt(x);
+      ShowText("\ny = ");
+      ShowBigInt(y);
+      solutions.points.emplace_back(PointSolution{.X = x, .Y = y});
+    }
   }
 
   void PrintQuad(const BigInt &T2, const BigInt &T,
@@ -1071,7 +1076,6 @@ struct Quad {
   }
 
   void ShowXYOne(const BigInt &X, const BigInt &Y) {
-    SolutionHeader();
     ShowSolutionXY(X, Y);
   }
 
@@ -2902,8 +2906,13 @@ struct Quad {
     }
   }
 
-  void QuadBigInt(const BigInt &A, const BigInt &B, const BigInt &C,
-                  const BigInt &D, const BigInt &E, const BigInt &F) {
+  void QuadBigInt(const BigInt &F) {
+
+    const BigInt A(1);
+    const BigInt B(0);
+    const BigInt C(1);
+    const BigInt D(0);
+    const BigInt E(0);
     if (output != nullptr) {
       ShowEq(A, B, C, D, E, F, "x", "y");
       ShowText(" = 0\n");
@@ -2931,8 +2940,16 @@ struct Quad {
 Solutions QuadBigInt(const BigInt &a, const BigInt &b, const BigInt &c,
                      const BigInt &d, const BigInt &e, const BigInt &f,
                      std::string *output) {
+
+  CHECK(a == 1 &&
+        b == 0 &&
+        c == 1 &&
+        d == 0 &&
+        e == 0 &&
+        f < 0);
+
   std::unique_ptr<Quad> quad(new Quad);
   quad->output = output;
-  quad->QuadBigInt(a, b, c, d, e, f);
+  quad->QuadBigInt(f);
   return std::move(quad->solutions);
 }

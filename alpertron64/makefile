@@ -1,4 +1,4 @@
-default: quad.exe afactor.exe test.exe findcoverage.exe grid.exe eval.exe
+default: quad.exe afactor.exe test.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
