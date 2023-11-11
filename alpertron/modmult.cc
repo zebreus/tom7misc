@@ -1024,10 +1024,18 @@ BigInt GeneralModularDivision(
   limb tmp4[modulus_length];
   BigIntToFixedLimbs(TmpNum, modulus_length, tmp4);
 
+  printf("[tmp4 <- num] tmp4:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", tmp4[i].x, i < modulus_length ? '*' : ' ');
 
   // resultModOdd <- Num / Den in standard notation.
   limb resultModOdd[modulus_length];
   ModMult(*params, tmp3, tmp4, resultModOdd);
+
+  printf("[modmult] resultModOdd:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", resultModOdd[i].x,
+           i < modulus_length ? '*' : ' ');
 
   // Compute inverse mod power of 2.
   if (shRight == 0) {
@@ -1045,6 +1053,12 @@ BigInt GeneralModularDivision(
     (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
   BigIntToFixedLimbs(Den, new_modulus_length, tmp3);
   // CompressLimbsBigInteger(new_modulus_length, tmp3, &den);
+
+  printf("[Compute Inverse Power 2] tmp3:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", tmp3[i].x,
+           i < new_modulus_length ? '*' : ' ');
+
   ComputeInversePower2(tmp3, tmp4, new_modulus_length);
 
   // Port note: Original code just set powerOf2Exponent and number length
@@ -1055,6 +1069,15 @@ BigInt GeneralModularDivision(
 
   limb num[crt_params->modulus_length];
   BigIntToFixedLimbs(Num, crt_params->modulus_length, num);
+
+  printf("[Get resultModPower2] num:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", num[i].x,
+           i < crt_params->modulus_length ? '*' : ' ');
+  printf("[Get resultModPower2] tmp4:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", tmp4[i].x,
+           i < crt_params->modulus_length ? '*' : ' ');
 
   // resultModPower2 <- Num / Dev mod 2^k.
   // XXX
@@ -1119,6 +1142,15 @@ void ComputeInversePower2(const limb *value, limb *result, int number_length) {
     Cy = (unsigned int)(-tmp[j].x) - (Cy >> BITS_PER_GROUP);
     tmp[j].x = UintToInt(Cy & MAX_VALUE_LIMB);
   }
+
+  printf("[CIP2 final multiply] tmp2:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", tmp2[i].x,
+           i < number_length ? '*' : ' ');
+  printf("[CIP2 final multiply] tmp:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", tmp[i].x,
+           i < number_length ? '*' : ' ');
 
   // tmp <- x * (2 - N * x)
   MultiplyLimbs(tmp2, tmp, tmp2, number_length);
@@ -1427,13 +1459,22 @@ void ModMult(const MontgomeryParams &params,
   }
 
   if (params.powerOf2Exponent != 0) {
+    printf("pow2 exponent = %d\n", params.powerOf2Exponent);
+
     // PERF: We could store the mask instead of the power?
     const BigInt Mask = (BigInt(1) << params.powerOf2Exponent) - 1;
 
     const BigInt f1 = LimbsToBigInt(factor1, params.modulus_length);
     const BigInt f2 = LimbsToBigInt(factor2, params.modulus_length);
 
-    const BigInt Product = (f1 * f2) & Mask;
+    printf("pow2 factor1 %s\n", f1.ToString().c_str());
+    printf("pow2 factor2 %s\n", f2.ToString().c_str());
+
+    BigInt Product = (f1 * f2);
+
+    printf("pow2 product %s\n", Product.ToString().c_str());
+
+    Product &= Mask;
     BigIntToFixedLimbs(Product, params.modulus_length, product);
 
     if (VERBOSE) {
