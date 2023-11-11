@@ -47,25 +47,10 @@ enum eSign {
   SIGN_NEGATIVE,
 };
 
-typedef struct BigInteger {
-  // PERF unnecessary
-  BigInteger() : Limbs(MAX_LEN, limb{.x = 0xDEAD}) { nbrLimbs = 0; }
-  int nbrLimbs;
-  enum eSign sign;
-  // XXX trying to eliminate BigInteger, but this gets better
-  // asan instrumentation than a bare array.
-  std::vector<limb> Limbs;
-  // limb limbs[MAX_LEN];
-} BigInteger;
-
 // Multiply two limb arrays of the same size, writing to the result.
 // Writes 2 * len limbs to the output, including zero padding if necessary.
 void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
                    int len);
-
-void BigIntChSign(BigInteger *value);
-
-void BigIntPowerOf2(BigInteger *pResult, int expon);
 
 // Modular. Perhaps should be in modmult.
 void SubtractBigNbr(const limb *pNbr1, const limb *pNbr2, limb *pDiff, int nbrLen);

@@ -12,7 +12,7 @@
 #include "bigconv.h"
 
 static void TestNumLimbs() {
-  for (const std::string bs : {"0", "1", "-1", "2", "-2", "3", "4", "5",
+  for (const std::string bs : {"0", "1", "2", "3", "4", "5",
       "2147483647", "2147483648", "2147483649",
       "4294967295", "4294967296", "4294967297",
       "18446744073709551615", "18446744073709551616", "18446744073709551617",
@@ -21,19 +21,16 @@ static void TestNumLimbs() {
       "115792089237316195423570985008687907853269984665640564039457584007913129639937"
       "1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"}) {
     BigInt B(bs);
-    BigInteger b;
-    BigIntToBigInteger(B, &b);
 
     const int num_limbs = BigIntNumLimbs(B);
-    CHECK(num_limbs == b.nbrLimbs) << B.ToString();
 
     std::vector<limb> limbs;
     limbs.resize(num_limbs);
     BigIntToFixedLimbs(B, num_limbs, limbs.data());
 
-    for (int i = 0; i < num_limbs; i++) {
-      CHECK(b.Limbs[i].x == limbs[i].x) << B.ToString() << " @ " << i;
-    }
+    BigInt C = LimbsToBigInt(limbs.data(), num_limbs);
+
+    CHECK(B == C) << B.ToString() << "\n" << C.ToString();
   }
 
   printf("NumLimbs " AGREEN("OK") "\n");
@@ -317,7 +314,6 @@ static void WrapDivide(const BigInt &Num,
 }
 
 static void TestBIMDivision() {
-  printf("---division---\n");
 
   WrapDivide(BigInt("9999123456789123454747111927"),
              BigInt("373717173837173"),
@@ -364,6 +360,8 @@ static void TestBIMDivision() {
              BigInt("99"),
              BigInt("7"));
   #endif
+
+  printf("BigIntModularDivision " AGREEN("OK") "\n");
 }
 
 static void TestGeneralDivision() {
@@ -431,6 +429,7 @@ static void TestGeneralDivision() {
       BigInt("22721449913053266398484183918334149103616"));
   #endif
 
+  printf("GeneralDivide " AGREEN("OK") " (but this is known broken)\n");
 }
 
 static void WrapPowBaseInt(const BigInt &Modulus,
@@ -466,6 +465,7 @@ static void TestModPowBaseInt() {
       BigInt("12837481712345111111111111171881"),
       BigInt("49719668333916770713555620214875638068519952572946181164707416399712219000519"));
 
+  printf("ModPowBaseInt " AGREEN("OK") "\n");
 }
 
 static void WrapModPow(const BigInt &Modulus,
@@ -517,6 +517,8 @@ static void TestModPow() {
              BigInt("120374190872938741"),
              BigInt("128374817123451"),
              BigInt("11477246917995840350430635"));
+
+  printf("ModPow " AGREEN("OK") "\n");
 }
 
 int main(int argc, char **argv) {

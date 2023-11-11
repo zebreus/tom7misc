@@ -796,9 +796,7 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
     CHECK(0 == memcmp(params.modulus.data(), TheModulus,
                       (modulus_length + 1) * sizeof (limb)));
 
-    BigInteger mod;
-    BigIntToBigInteger(Mod, &mod);
-    CHECK(modulus_length == mod.nbrLimbs);
+    CHECK(BigIntNumLimbs(Mod) == modulus_length);
   }
 
   // Reduce Num modulo mod.
@@ -869,8 +867,6 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
   }
 
   const int orig_oddvalue_limbs = BigIntNumLimbs(OddMod);
-  // BigInteger oddValue;
-  // BigIntToBigInteger(OddMod, &oddValue);
 
   // Port note: Original code explicitly pads out to modulus_length
   // if necessary.
@@ -878,8 +874,6 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
     std::max(orig_oddvalue_limbs, params.modulus_length);
   limb oddValue[oddvalue_limbs];
   BigIntToFixedLimbs(OddMod, oddvalue_limbs, oddValue);
-
-  BigInteger result;
 
   limb tmp3[MAX_LEN];
   SubtractBigNbr(resultModPower2, resultModOdd, tmp3, modulus_length);
@@ -1047,15 +1041,9 @@ BigInt GeneralModularDivision(
     if (VERBOSE)
       printf("return modulus odd. numberlength: %d\n", modulus_length);
     return LimbsToBigInt(resultModOdd, modulus_length);
-    // UncompressLimbsBigInteger(modulus_length, resultModOdd, quotient);
-    // return;
   }
 
-  // BigInteger den;
-  // BigIntToBigInteger(Den, &den);
-
   BigIntToFixedLimbs(Den, crt_params->modulus_length, tmp3);
-  // CompressLimbsBigInteger(new_modulus_length, tmp3, &den);
 
   if (VERBOSE) {
     printf("[Compute Inverse Power 2] tmp3:\n");

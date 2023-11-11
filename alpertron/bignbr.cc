@@ -58,33 +58,6 @@ static std::string LongNum(const BigInt &a) {
   }
 }
 
-void BigIntChSign(BigInteger *value) {
-  if ((value->nbrLimbs == 1) && (value->Limbs[0].x == 0)) {
-    // Value is zero. Do not change sign.
-    return;
-  }
-  if (value->sign == SIGN_POSITIVE) {
-    value->sign = SIGN_NEGATIVE;
-  } else {
-    value->sign = SIGN_POSITIVE;
-  }
-}
-
-void BigIntPowerOf2(BigInteger *pResult, int exponent) {
-  unsigned int power2 = (unsigned int)exponent % (unsigned int)BITS_PER_GROUP;
-  int nbrLimbs = exponent / BITS_PER_GROUP;
-
-  if (nbrLimbs > 0) {
-    int nbrLimbsBytes = nbrLimbs * (int)sizeof(limb);
-    (void)memset(pResult->Limbs.data(), 0, nbrLimbsBytes);
-  }
-
-  pResult->Limbs[nbrLimbs].x = UintToInt(1U << power2);
-  pResult->nbrLimbs = nbrLimbs + 1;
-  pResult->sign = SIGN_POSITIVE;
-  CHECK(pResult->nbrLimbs > 0);
-}
-
 void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,
                    int len) {
   // From a version that allowed these to differ. Clean up.
