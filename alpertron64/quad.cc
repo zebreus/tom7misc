@@ -443,78 +443,6 @@ struct Quad {
   // True if we had a solution on a hyperbolic curve and so we should
   // print recursive solutions as well.
   bool hyperbolic_recursive_solution = false;
-  // This is essentially debugging output now.
-  std::string *output = nullptr;
-
-  void ShowText(const std::string &text) {
-    if (output != nullptr)
-      *output += text;
-  }
-
-  inline void ShowChar(char c) {
-    if (output != nullptr)
-      output->push_back(c);
-  }
-
-  void showMinus() {
-    if (output != nullptr)
-      *output += " - ";
-  }
-
-  void ShowBigInt(const BigInt &value) {
-    if (output != nullptr) {
-      *output += value.ToString();
-    }
-  }
-
-  void showInt(int value) {
-    if (output != nullptr) {
-      StringAppendF(output, "%d", value);
-    }
-  }
-
-  void SolutionHeader() {
-    ShowText("\nSolution:");
-  }
-
-  void ShowLin(const BigInt &coeffX, const BigInt &coeffY,
-               const BigInt &coeffInd,
-               const char *x, const char *y) {
-    LinSolType t;
-    t = Show(coeffX, x, LinSolType::SOLUTION_FOUND);
-    t = Show(coeffY, y, t);
-    Show1(coeffInd, t);
-  }
-
-  void ShowLinInd(const BigInt &lin, const BigInt &ind) {
-    if (ind == 0 && lin == 0) {
-      ShowText("0");
-    }
-    if (ind != 0) {
-      ShowBigInt(ind);
-    }
-    ShowChar(' ');
-
-    if (lin < 0) {
-      showMinus();
-    } else if (lin != 0 && ind != 0) {
-      ShowChar('+');
-    } else {
-      // Nothing to do.
-    }
-    ShowChar(' ');
-    if (lin != 0) {
-      if (BigInt::Abs(lin) != 1) {
-        // abs(lin) is not 1
-        // CopyBigInt(&Aux0, lin);
-        // Do not show negative sign twice.
-        // Aux0.sign = SIGN_POSITIVE;
-        ShowBigInt(BigInt::Abs(lin));
-      }
-      ShowText(" t");
-    }
-  }
-
 
   void PrintLinear(const LinSol &sol) {
     switch (sol.type) {
@@ -523,19 +451,15 @@ struct Quad {
       return;
 
     case LinSolType::INFINITE_SOLUTIONS:
-      SolutionHeader();
       solutions.any_integers = true;
-      ShowText("\nx, y: any integer");
+      CHECK(false) << "Can't have infinite solutions.";
       return;
 
     case LinSolType::SOLUTION_FOUND:
       // Port note: This used to actually have the effect of swapping
       // xind/yind xlin/ylin.
-      SolutionHeader();
-      ShowText("\nx = ");
-      ShowLinInd(sol.Xlin, sol.Xind);
-      ShowText("\ny = ");
-      ShowLinInd(sol.Ylin, sol.Yind);
+      CHECK(false) << "Can't have infinite solutions.";
+
       LinearSolution s;
       s.MX = sol.Xlin;
       s.BX = sol.Xind;
@@ -546,81 +470,12 @@ struct Quad {
     }
   }
 
-  void ShowSolutionXY(const BigInt &x, const BigInt &y) {
+  void RecordSolutionXY(const BigInt &x, const BigInt &y) {
     // Negative values are obvious, since x and y appear only under
     // squares. x and y are also interchangeable.
     if (x >= 0 && y >= 0 && x <= y) {
-      SolutionHeader();
-      ShowText("\nx = ");
-      ShowBigInt(x);
-      ShowText("\ny = ");
-      ShowBigInt(y);
       solutions.points.emplace_back(PointSolution{.X = x, .Y = y});
     }
-  }
-
-
-  // XXX why does this take/return "linear solution type" ?
-  LinSolType Show(const BigInt &num, const string &str,
-                  LinSolType t) {
-    LinSolType tOut = t;
-    if (num != 0) {
-      // num is not zero.
-      if (t == LinSolType::NO_SOLUTIONS && num >= 0) {
-        ShowText(" +");
-      }
-
-      if (num < 0) {
-        ShowText(" -");
-      }
-
-      if (num != 1 && num != -1) {
-        // num is not 1 or -1.
-        ShowChar(' ');
-        ShowBigInt(BigInt::Abs(num));
-        ShowText(" * ");
-      } else {
-        ShowText(" ");
-      }
-
-      if (output != nullptr)
-        *output += str;
-
-      if (t == LinSolType::SOLUTION_FOUND) {
-        tOut = LinSolType::NO_SOLUTIONS;
-      }
-    }
-    return tOut;
-  }
-
-  void Show1(const BigInt &num, LinSolType t) {
-    const LinSolType u = Show(num, "", t);
-    ShowChar(' ');
-    // Port note: This used to test u & 1 as a "trick" for detecting
-    // NO_SOLUTIONS?
-    if (u != LinSolType::NO_SOLUTIONS || num == 1 || num == -1) {
-      // Show absolute value of num.
-      ShowBigInt(BigInt::Abs(num));
-    }
-  }
-
-  void ShowRecSol(char variable,
-                  const BigInt &cx,
-                  const BigInt &cy,
-                  const BigInt &ci) {
-    ShowChar(variable);
-    ShowText("_n+1 = ");
-    LinSolType t = Show(cx, "x_n",
-                        LinSolType::SOLUTION_FOUND);
-    t = Show(cy, "y_n", t);
-    Show1(ci, t);
-  }
-
-  void ShowResult(const char *text, const BigInt &value) {
-    ShowText(text);
-    ShowText(" = ");
-    ShowBigInt(value);
-    ShowText("\n");
   }
 
 
@@ -707,11 +562,6 @@ struct Quad {
     return std::make_tuple(U, U1, U2,
                            V, V1, V2);
   }
-
-  void ShowXYOne(const BigInt &X, const BigInt &Y) {
-    ShowSolutionXY(X, Y);
-  }
-
 
   // Use continued fraction of sqrt(B^2-4AC)
   // If the discriminant is 5, the method does not work: use 3, 1 and 7, 3.
@@ -856,7 +706,7 @@ struct Quad {
 
       // Not HYPERBOLIC.
       // Result box:
-      ShowXYOne(tmp1, tmp2);
+      RecordSolutionXY(tmp1, tmp2);
       return true;
     }
     return false;
@@ -1039,13 +889,14 @@ struct Quad {
         // Seems like we would want to do so until we find
         // a solution, at least?
 
-        ShowText("\nAll values of x between 0 and ");
+        CHECK(false) << "Might be possible? but unsupported";
+        // ShowText("\nAll values of x between 0 and ");
 
         // XXX Suspicious that this modifies GcdAll in place (I
         // think just to display it?) but uses it again below.
         GcdAll -= 1;
-        ShowBigInt(GcdAll);
-        ShowText(" are solutions.");
+        // ShowBigInt(GcdAll);
+        // ShowText(" are solutions.");
       } else {
         // must succeed; is < 5 and non-negative
 
@@ -1156,6 +1007,9 @@ struct Quad {
 
   void DiscriminantIsZero(BigInt A, BigInt B, BigInt C,
                           BigInt D, BigInt E, BigInt F) {
+
+    CHECK(false) << "Not expecting DiscriminantIsZero";
+
     // fprintf(stderr, "disciszero coverage\n");
     // Next algorithm does not work if A = 0. In this case, exchange x and y.
     bool swap_xy = false;
@@ -1526,6 +1380,8 @@ struct Quad {
     if (hyperbolic_recursive_solution &&
         QMOD_CALLBACK == QmodCallbackType::HYPERBOLIC) {
 
+      CHECK(false) << "Not expecting HYPERBOLIC.";
+
       // Show recursive solution.
       GetRecursiveSolution(A, B, C,
                            ABack, BBack, CBack,
@@ -1555,6 +1411,8 @@ struct Quad {
       const BigInt &Discr,
       const BigInt &Alpha, const BigInt &Beta,
       const BigInt &Div) {
+
+    CHECK(false) << "Not expecting HYPERBOLIC.";
 
     NonSquareDiscriminant<QmodCallbackType::HYPERBOLIC>(
         origin_translated,
@@ -1780,6 +1638,11 @@ struct Quad {
       const BigInt &G, const BigInt &K,
       const BigInt &Alpha, const BigInt &Beta, const BigInt &Div,
       const BigInt &Discr) {
+
+    solutions.interesting_coverage = true;
+    printf("PerfectSquareDiscriminant?\n");
+    CHECK(false) << "Not expecting PerfectSquareDiscriminant";
+
     // only used on path where A != 0
     BigInt S(0xCAFE);
     BigInt R;
@@ -2015,6 +1878,10 @@ struct Quad {
       std::optional<std::pair<BigInt, BigInt>> *sol_plus,
       std::optional<std::pair<BigInt, BigInt>> *sol_minus) {
 
+    printf("Not expecting ContFrac.\n");
+    solutions.interesting_coverage = true;
+    return false;
+
     const bool isBeven = B.IsEven();
     // If (D-U^2) is not multiple of V, exit routine.
     if (!BigInt::DivisibleBy(L - U * U, V)) {
@@ -2157,6 +2024,11 @@ struct Quad {
                                  const BigInt &Discr,
                                  const BigInt &Value) {
 
+    printf("Not expecting Hyperbolic.\n");
+    solutions.interesting_coverage = true;
+    return;
+
+
     auto pqro = PerformTransformation(A, B, C, K, Value);
     if (!pqro.has_value()) {
       // No solutions because gcd(P, Q, R) > 1.
@@ -2232,23 +2104,31 @@ struct Quad {
     if (sol_plus.has_value()) {
       const auto &[X, Y] = sol_plus.value();
       // Result box:
-      ShowXYOne(X, Y);
+      RecordSolutionXY(X, Y);
     }
 
     if (sol_minus.has_value()) {
       const auto &[X, Y] = sol_minus.value();
       // Result box:
-      ShowXYOne(X, Y);
+      RecordSolutionXY(X, Y);
     }
   }
 
   // Copy intentional; we modify them in place (factor out gcd).
   // PS: This is where to understand the meaning of Alpha, Beta, K, Div.
-  void SolveQuadEquation(BigInt A, BigInt B, BigInt C,
-                         BigInt D, BigInt E, BigInt F) {
+  void SolveQuadEquation(BigInt F) {
+
+    BigInt A(1);
+    BigInt B(0);
+    BigInt C(1);
+    BigInt D(0);
+    BigInt E(0);
+
     BigInt gcd = BigInt::GCD(BigInt::GCD(A, B),
                              BigInt::GCD(BigInt::GCD(C, D),
                                          E));
+
+    CHECK(gcd == 1) << "Expecting GCD to always be 1: " << gcd.ToString();
 
     if (gcd != 0 && !BigInt::DivisibleBy(F, gcd)) {
       // F is not multiple of GCD(A, B, C, D, E) so there are no solutions.
@@ -2277,6 +2157,7 @@ struct Quad {
 
     // Test whether the equation is linear. A = B = C = 0.
     if (A == 0 && B == 0 && C == 0) {
+      CHECK(false) << "Not expecting linear!\n";
       LinSol sol = LinearEq(D, E, F);
       // Result box:
       PrintLinear(sol);
@@ -2285,7 +2166,9 @@ struct Quad {
 
     // Compute discriminant: b^2 - 4ac.
     const BigInt Discr = B * B - ((A * C) << 2);
+    // 0 - (1 * 4)
 
+    CHECK(Discr == -4) << "Expecting discriminant of exactly -4.";
 
     if (Discr == 0) {
       // Port note: This code depended on uninitialized values M, K,
@@ -2311,6 +2194,8 @@ struct Quad {
       Alpha = BigInt(0);
       Beta = BigInt(0);
     } else {
+      CHECK(false) << "Not expecting to translate origin.";
+
       origin_translated = true;
 
       Div = Discr;
@@ -2343,11 +2228,14 @@ struct Quad {
     }
 
     if (Discr < 0) {
+
       NegativeDiscriminant(origin_translated,
                            A, B, C, K, D,
                            Discr, Alpha, Beta, Div);
       return;
     }
+
+    CHECK(false) << "Not expecting non-negative discriminant.";
 
     const BigInt G = BigInt::Sqrt(Discr);
 
@@ -2377,7 +2265,7 @@ struct Quad {
 
     // size_t preamble_size = (output == nullptr) ? 0 : output->size();
 
-    SolveQuadEquation(A, B, C, D, E, F);
+    SolveQuadEquation(F);
   }
 
   Quad() {}

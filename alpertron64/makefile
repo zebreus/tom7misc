@@ -34,11 +34,12 @@ else
 endif
 
 CC_LIB=../cc-lib
+SOS=../sos
 
 # PERF: gotta reduce this stack usage!
 # XXX: Opt flags, -g
 # Add this to see dead code: -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--print-gc-sections
-CXXFLAGS=-std=c++20 -I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -Wall $(PLATFORM_CFLAGS)
+CXXFLAGS=-std=c++20 -I $(SOS) -I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -Wall $(PLATFORM_CFLAGS)
 LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)
 
 HEADERS=bignbr.h factor.h modmult.h quadmodll.h bigconv.h quad.h
@@ -47,17 +48,11 @@ CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/
 
 TEST_CC_LIB_OBJECTS=$(CC_LIB_OBJECTS) $(CC_LIB)/ansi.o $(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/subprocess.o $(CC_LIB)/factorization.o $(CC_LIB)/atomic-util.o
 
+SOS_OBJECTS=$(SOS)/sos-util.o
+
 ALPERTRON_OBJECTS=modmult.o quad.o quadmodll.o bignbr.o bigconv.o factor.o
 
 quad.exe:  main.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
-	@echo -n "@"
-	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
-
-afactor.exe:  afactor.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
-	@echo -n "@"
-	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
-
-test.exe : test.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
@@ -65,19 +60,7 @@ test.exe : test.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@echo -n "."
 	@$(CXX) $(CXXFLAGS) -o $@ -c $<
 
-gentests.exe : gentests.o $(TEST_CC_LIB_OBJECTS)
-	@echo -n "@"
-	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
-
-findcoverage.exe : findcoverage.o $(TEST_CC_LIB_OBJECTS)
-	@echo -n "@"
-	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
-
-grid.exe : grid.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
-	@echo -n "@"
-	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
-
-eval.exe : eval.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
+grid.exe : grid.o $(ALPERTRON_OBJECTS) $(SOS_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
