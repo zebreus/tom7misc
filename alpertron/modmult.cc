@@ -81,34 +81,6 @@ static void UncompressLimbsBigInteger(int number_length,
   CHECK(bigint->nbrLimbs > 0);
 }
 
-
-// Copies the BigInteger's limbs into a fixed number of limbs in ptrValues.
-// If the bigint has more limbs than number_length, it's just truncated
-// (so we get the result mod 2^(number_length*bits_per_limb)). Pads the
-// array with zeroes.
-static void CompressLimbsBigInteger(int number_length,
-                                    /*@out@*/limb *ptrValues,
-                                    const BigInteger *bigint) {
-  assert(number_length >= 1);
-  if (number_length == 1) {
-    ptrValues->x = bigint->Limbs[0].x;
-    // In this case, we never need any padding.
-  } else {
-    const int numberLengthBytes = number_length * (int)sizeof(limb);
-    const int nbrLimbs = bigint->nbrLimbs;
-    assert(nbrLimbs >= 1);
-    if (nbrLimbs > number_length) {
-      (void)memcpy(ptrValues, bigint->Limbs.data(), numberLengthBytes);
-    } else {
-      const int nbrLimbsBytes = nbrLimbs * (int)sizeof(limb);
-      (void)memcpy(ptrValues, bigint->Limbs.data(), nbrLimbsBytes);
-      // Padding.
-      (void)memset(ptrValues + nbrLimbs, 0, numberLengthBytes - nbrLimbsBytes);
-    }
-  }
-}
-
-
 // Multiply two numbers in Montgomery notation.
 //
 // For large numbers the REDC algorithm is:
@@ -907,40 +879,43 @@ BigInt BigIntModularDivision(const MontgomeryParams &params,
 // If c = result mod odd, d = result mod 2^k:
 // compute result = c + (((d-c)*modinv(odd,2^k))%2^k)*odd
 static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
-                                      BigInteger *oddValue,
+                                      const BigInt &OddMod,
                                       int modulus_length,
                                       limb *resultModOdd,
                                       limb *resultModPower2,
                                       int shRight) {
 
+  BigInteger oddValue;
+  BigIntToBigInteger(OddMod, &oddValue);
+
   BigInteger result;
   if (shRight == 0) {
-    UncompressLimbsBigInteger(oddValue->nbrLimbs, resultModOdd, &result);
+    UncompressLimbsBigInteger(oddValue.nbrLimbs, resultModOdd, &result);
     return BigIntegerToBigInt(&result);
   }
 
-  if (modulus_length > oddValue->nbrLimbs) {
-    int lenBytes = (modulus_length - oddValue->nbrLimbs) * (int)sizeof(limb);
-    (void)memset(&oddValue->Limbs[oddValue->nbrLimbs], 0, lenBytes);
+  if (modulus_length > oddValue.nbrLimbs) {
+    int lenBytes = (modulus_length - oddValue.nbrLimbs) * (int)sizeof(limb);
+    (void)memset(&oddValue.Limbs[oddValue.nbrLimbs], 0, lenBytes);
   }
 
   limb tmp3[MAX_LEN];
   SubtractBigNbr(resultModPower2, resultModOdd, tmp3, modulus_length);
   limb tmp4[MAX_LEN];
-  ComputeInversePower2(oddValue->Limbs.data(), tmp4, modulus_length);
+  ComputeInversePower2(oddValue.Limbs.data(), tmp4, modulus_length);
   limb tmp5[MAX_LEN];
   ModMult(params, tmp4, tmp3, tmp5);
 
   (tmp5 + (shRight / BITS_PER_GROUP))->x &=
     (1 << (shRight % BITS_PER_GROUP)) - 1;
 
-  if (modulus_length < oddValue->nbrLimbs) {
-    int lenBytes = (oddValue->nbrLimbs - modulus_length) * (int)sizeof(limb);
+  if (modulus_length < oddValue.nbrLimbs) {
+    int lenBytes = (oddValue.nbrLimbs - modulus_length) * (int)sizeof(limb);
     (void)memset(&tmp5[modulus_length], 0, lenBytes);
   }
 
   BigInt Result = LimbsToBigInt(tmp5, modulus_length);
-  Result *= BigIntegerToBigInt(oddValue);
+  Result *= BigIntegerToBigInt(&oddValue);
   Result += LimbsToBigInt(resultModOdd, modulus_length);
   return Result;
 }
@@ -963,18 +938,6 @@ BigInt GeneralModularDivision(
   BigInt TmpDen = Den % OddMod;
   if (TmpDen < 0) TmpDen += OddMod;
 
-  // XXX convert directly to fixed limbs
-  // Why doesn't it work to pass this to ChineseRemainderTheorem?
-  BigInteger oddValue;
-  BigIntToBigInteger(OddMod, &oddValue);
-
-  BigInteger tmpNum;
-  BigIntToBigInteger(TmpNum, &tmpNum);
-
-  // XXXXX Deleting this dead code causes tests to fail?!
-  BigInteger tmpDen;
-  BigIntToBigInteger(TmpDen, &tmpDen);
-
   const std::unique_ptr<MontgomeryParams> params =
     GetMontgomeryParams(OddMod);
   // This is the modulus length for the right-shifted value.
@@ -982,7 +945,6 @@ BigInt GeneralModularDivision(
 
   limb tmp3[modulus_length + 1];
   BigIntToFixedLimbs(TmpDen, modulus_length, tmp3);
-  // CompressLimbsBigInteger(modulus_length, tmp3, &tmpDen);
   // tmp3 <- Den in Montgomery notation
   ModMult(*params, tmp3, params->MontgomeryMultR2, tmp3);
 
@@ -990,7 +952,7 @@ BigInt GeneralModularDivision(
   // tmp3 <- 1 / Den in Montg notation.
   (void)ModInvBigNbr(*params, tmp3, tmp3);
   limb tmp4[modulus_length];
-  CompressLimbsBigInteger(modulus_length, tmp4, &tmpNum);
+  BigIntToFixedLimbs(TmpNum, modulus_length, tmp4);
 
   // resultModOdd <- Num / Den in standard notation.
   limb resultModOdd[modulus_length];
@@ -1004,13 +966,13 @@ BigInt GeneralModularDivision(
     // return;
   }
 
-  BigInteger den;
-  BigIntToBigInteger(Den, &den);
-
+  // BigInteger den;
+  // BigIntToBigInteger(Den, &den);
 
   const int new_modulus_length =
     (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
-  CompressLimbsBigInteger(new_modulus_length, tmp3, &den);
+  BigIntToFixedLimbs(Den, new_modulus_length, tmp3);
+  // CompressLimbsBigInteger(new_modulus_length, tmp3, &den);
   ComputeInversePower2(tmp3, tmp4, new_modulus_length);
 
   // Port note: This used to set powerOf2Exponent = shRight and then
@@ -1025,7 +987,7 @@ BigInt GeneralModularDivision(
   ModMult(*params, num, tmp4, resultModPower2);
 
   return ChineseRemainderTheorem(*params,
-                                 &oddValue,
+                                 OddMod,
                                  new_modulus_length,
                                  resultModOdd, resultModPower2,
                                  shRight);
@@ -1095,30 +1057,29 @@ BigInt GetInversePower2(const BigInt &Value, int number_length) {
   return LimbsToBigInt(result, number_length);
 }
 
+// No coverage :(
 std::unique_ptr<MontgomeryParams>
 GetMontgomeryParamsPowerOf2(int powerOf2) {
   std::unique_ptr<MontgomeryParams> params =
     std::make_unique<MontgomeryParams>();
 
-  const int modulus_length =
-    (powerOf2 + BITS_PER_GROUP - 1) / BITS_PER_GROUP;
-  const int NumberLengthBytes = modulus_length * (int)sizeof(limb);
-
   // Would be better to just generate this directly into
   // params->modulus...
-  BigInteger pow2;
-  BigIntPowerOf2(&pow2, powerOf2);
+  BigInt Pow2 = BigInt(1) << powerOf2;
 
+  const int modulus_length = BigIntNumLimbs(Pow2);
   params->modulus_length = modulus_length;
   params->modulus.resize(modulus_length + 1);
-  CHECK(pow2.nbrLimbs == modulus_length);
-  memcpy(params->modulus.data(), pow2.Limbs.data(),
-         modulus_length * sizeof (limb));
+  BigIntToFixedLimbs(Pow2, modulus_length, params->modulus.data());
   params->modulus[modulus_length].x = 0;
-
   params->powerOf2Exponent = powerOf2;
-  (void)memset(params->MontgomeryMultR1, 0, NumberLengthBytes);
-  (void)memset(params->MontgomeryMultR2, 0, NumberLengthBytes);
+
+  // XXX check what size we guarantee for R1, R2. We just need to store
+  // a padded "1" here for both.
+  (void)memset(params->MontgomeryMultR1, 0,
+               (modulus_length + 1) * sizeof (limb));
+  (void)memset(params->MontgomeryMultR2, 0,
+               (modulus_length + 1) * sizeof (limb));
   params->MontgomeryMultR1[0].x = 1;
   params->MontgomeryMultR2[0].x = 1;
   return params;
