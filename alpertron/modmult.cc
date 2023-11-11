@@ -438,7 +438,7 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   for (i = 0; i < 6; i++)
     printf("  %08x %c\n", inv[i].x, i < modulus_length ? '*' : ' ' );
   printf("mod:\n");
-  for (i = 0; i < 6; i++)
+  for (i = 0; i < 6 && i < (int)params.modulus.size(); i++)
     printf("  %08x %c\n", modulus[i].x, i < modulus_length ? '*' : ' ' );
 
 
@@ -951,12 +951,12 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
   }
 
   printf("CRT oddValue:\n");
-  for (int i = 0; i < 6; i++)
+  for (int i = 0; i < 6 && i < modulus_length; i++)
     printf("  %08x %c\n", oddValue.Limbs[i].x,
            i < modulus_length ? '*' : ' ');
 
   printf("CRT resultModOdd:\n");
-  for (int i = 0; i < 6; i++)
+  for (int i = 0; i < 6 && i < modulus_length; i++)
     printf("  %08x %c\n", resultModOdd[i].x,
            i < modulus_length ? '*' : ' ');
 
@@ -1002,6 +1002,13 @@ BigInt GeneralModularDivision(
   // This is the modulus length for the right-shifted value.
   const int modulus_length = params->modulus_length;
 
+  // should be called pow2modlength or something
+  const int new_modulus_length =
+    (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
+
+  const int storage_length =
+    std::max(modulus_length, new_modulus_length);
+
   // XXX
   // limb tmp3[modulus_length + 1];
   limb tmp3[100] = {};
@@ -1021,19 +1028,20 @@ BigInt GeneralModularDivision(
   for (int i = 0; i < 6; i++)
     printf("  %08x %c\n", tmp3[i].x, i < modulus_length ? '*' : ' ');
 
-  limb tmp4[modulus_length];
+  limb tmp4[storage_length];
   BigIntToFixedLimbs(TmpNum, modulus_length, tmp4);
 
   printf("[tmp4 <- num] tmp4:\n");
-  for (int i = 0; i < 6; i++)
+  for (int i = 0; i < 6 && i < modulus_length; i++)
     printf("  %08x %c\n", tmp4[i].x, i < modulus_length ? '*' : ' ');
 
   // resultModOdd <- Num / Den in standard notation.
-  limb resultModOdd[modulus_length];
+  // limb resultModOdd[modulus_length];
+  limb resultModOdd[storage_length];
   ModMult(*params, tmp3, tmp4, resultModOdd);
 
   printf("[modmult] resultModOdd:\n");
-  for (int i = 0; i < 6; i++)
+  for (int i = 0; i < 6 && i < modulus_length; i++)
     printf("  %08x %c\n", resultModOdd[i].x,
            i < modulus_length ? '*' : ' ');
 
@@ -1049,8 +1057,6 @@ BigInt GeneralModularDivision(
   // BigInteger den;
   // BigIntToBigInteger(Den, &den);
 
-  const int new_modulus_length =
-    (shRight + BITS_PER_GROUP_MINUS_1) / BITS_PER_GROUP;
   BigIntToFixedLimbs(Den, new_modulus_length, tmp3);
   // CompressLimbsBigInteger(new_modulus_length, tmp3, &den);
 
@@ -1067,15 +1073,18 @@ BigInt GeneralModularDivision(
   std::unique_ptr<MontgomeryParams> crt_params =
     GetMontgomeryParamsPowerOf2(shRight);
 
+  CHECK(crt_params->modulus_length <= storage_length) <<
+    crt_params->modulus_length << " < " <<  storage_length;
+
   limb num[crt_params->modulus_length];
   BigIntToFixedLimbs(Num, crt_params->modulus_length, num);
 
   printf("[Get resultModPower2] num:\n");
-  for (int i = 0; i < 6; i++)
+  for (int i = 0; i < 6 && i < crt_params->modulus_length; i++)
     printf("  %08x %c\n", num[i].x,
            i < crt_params->modulus_length ? '*' : ' ');
   printf("[Get resultModPower2] tmp4:\n");
-  for (int i = 0; i < 6; i++)
+  for (int i = 0; i < 6 && i < crt_params->modulus_length; i++)
     printf("  %08x %c\n", tmp4[i].x,
            i < crt_params->modulus_length ? '*' : ' ');
 
@@ -1086,12 +1095,12 @@ BigInt GeneralModularDivision(
   ModMult(*crt_params, num, tmp4, resultModPower2);
 
   printf("[before CRT] resultModOdd:\n");
-  for (int i = 0; i < 6; i++)
+  for (int i = 0; i < 6 && i < modulus_length; i++)
     printf("  %08x %c\n", resultModOdd[i].x,
            i < new_modulus_length ? '*' : ' ');
 
   printf("[before CRT] resultModPower2:\n");
-  for (int i = 0; i < 6; i++)
+  for (int i = 0; i < 6 && i < new_modulus_length; i++)
     printf("  %08x %c\n", resultModPower2[i].x,
            i < new_modulus_length ? '*' : ' ');
 
@@ -1106,6 +1115,7 @@ BigInt GeneralModularDivision(
 }
 
 // Find the inverse of value mod 2^(number_length*BITS_PER_GROUP)
+// Writes number_length limbs to result.
 void ComputeInversePower2(const limb *value, limb *result, int number_length) {
   limb tmp[number_length * 2];
   limb tmp2[number_length * 2];
