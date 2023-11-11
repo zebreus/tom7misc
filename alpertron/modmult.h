@@ -56,6 +56,9 @@ BigInt ModPowBaseInt(const MontgomeryParams &params,
 void ModPow(const MontgomeryParams &params,
             const limb *base, const BigInt &Exp, limb *power);
 
+// Note: This function doesn't work, and I think it's due to bugs in
+// the original Alpertron (reading uninitialized data). No coverage
+// outside of artificial tests.
 BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
                               const BigInt &modulus);
 
