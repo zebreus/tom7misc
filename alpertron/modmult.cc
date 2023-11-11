@@ -216,22 +216,18 @@ BigInt ModPowBaseInt(const MontgomeryParams &params,
 
 /* U' <- eU + fV, V' <- gU + hV                                        */
 /* U <- U', V <- V'                                                    */
+// Reads/writes to one past number length.
 static void AddMult(limb* firstBig, int e, int f, limb* secondBig,
                     int g, int h, int nbrLen) {
-  limb* ptrFirstBig = firstBig;
-  limb* ptrSecondBig = secondBig;
-
   int64_t carryU = 0;
   int64_t carryV = 0;
   for (int ctr = 0; ctr <= nbrLen; ctr++) {
-    int u = ptrFirstBig->x;
-    int v = ptrSecondBig->x;
+    const int u = firstBig[ctr].x;
+    const int v = secondBig[ctr].x;
     carryU += (u * (int64_t)e) + (v * (int64_t)f);
     carryV += (u * (int64_t)g) + (v * (int64_t)h);
-    ptrFirstBig->x = (int)(carryU & MAX_INT_NBR);
-    ptrSecondBig->x = (int)(carryV & MAX_INT_NBR);
-    ptrFirstBig++;
-    ptrSecondBig++;
+    firstBig[ctr].x = (int)(carryU & MAX_INT_NBR);
+    secondBig[ctr].x = (int)(carryV & MAX_INT_NBR);
     carryU >>= BITS_PER_GROUP;
     carryV >>= BITS_PER_GROUP;
   }
@@ -425,11 +421,12 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   (void)memcpy(V, num, size);
 
   // Maximum value of R and S can be up to 2*M, so one more limb is needed.
-  // Note modulus_length+1 here does not work...
-  limb R[MAX_LEN];
-  limb S[MAX_LEN];
-  (void)memset(R, 0, size);   // R <- 0
-  (void)memset(S, 0, size);   // S <- 1
+  // We call AddMult with modulus_length + 1 below, and that uses one
+  // more limb than is passed.
+  limb R[modulus_length + 2];
+  limb S[modulus_length + 2];
+  (void)memset(R, 0, (modulus_length + 2) * sizeof(limb));   // R <- 0
+  (void)memset(S, 0, (modulus_length + 2) * sizeof(limb));   // S <- 1
   S[0].x = 1;
   lenRS = 1;
   k = 0;
@@ -643,13 +640,15 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
         if ((R[lenRS].x != 0) || (S[lenRS].x != 0)) {
           lenRS++;
         }
+        CHECK(lenRS < modulus_length + 2);
+
         lowU = U[0].x;
         lowV = V[0].x;
         b = 0;
         c = 0;  // U' = U, V' = V.
         a = 1;
         d = 1;
-        if ((lenU == 0) || (lenV == 0) || ((lenV == 1) && (lenU == 1))) {
+        if (lenU == 0 || lenV == 0 || (lenV == 1 && lenU == 1)) {
           break;
         }
         InitHighUandV(U, V, lenU, lenV, &highU, &highV);
