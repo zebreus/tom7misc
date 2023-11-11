@@ -272,14 +272,12 @@ static void WrapDivide(const BigInt &Num,
     // of 2, where I might have conflated two different modulus_lengths.
 
     const BigInt Prod = (Quot * Den) % Modulus;
-    /*
     CHECK(Prod == NMod) << Problem() << "\n"
       "General Division (definitional)\n"
       "Got Quot: " << Quot.ToString() << "\n"
       "Q * D:    " << (Quot * Den).ToString() << "\n"
       "So  Prod: " << Prod.ToString() << "\n"
       "But want: " << NMod.ToString() << "\n";
-    */
 
     CHECK(Quot == Expected) << Problem() << "\n"
       "General Division (particular choice)\n"
@@ -366,7 +364,9 @@ static void TestBIMDivision() {
              BigInt("99"),
              BigInt("7"));
   #endif
+}
 
+static void TestGeneralDivision() {
   auto GeneralDivide = [](const BigInt &Num,
                           const BigInt &Den,
                           const BigInt &Mod,
@@ -374,6 +374,14 @@ static void TestBIMDivision() {
       BigInt NMod = Num % Mod;
       if (NMod < 0) NMod += Mod;
       const BigInt Res = GeneralModularDivision(Num, Den, Mod);
+
+      printf("%s / %s mod %s =\n"
+             "%s\n",
+             Num.ToString().c_str(),
+             Den.ToString().c_str(),
+             Mod.ToString().c_str(),
+             Res.ToString().c_str());
+
       const BigInt Prod = (Res * Den) % Mod;
       CHECK(Res == Expected) << Res.ToString() <<
         "\nbut wanted\n" << Expected.ToString() <<
@@ -385,30 +393,30 @@ static void TestBIMDivision() {
         "\nProd: " << Prod.ToString();
     };
 
+  // Reference values come from original alpertron via
+  // tomtest.c.
   GeneralDivide(BigInt(1), BigInt(2), BigInt(8),
                 BigInt(0));
 
-  /*
-    XXX fix nondeterminism here!!
-
-
-    */
-
-  // From original alpertron
-  // 928374917 / 28341 mod 1000000000000000044444 =
-  // 526816273243710647073
-
-  if (false)
   GeneralDivide(BigInt("928374917"), BigInt("28341"),
                 BigInt("1000000000000000044444"),
                 BigInt("526816273243710647073"));
 
-  /*
   GeneralDivide(BigInt("928374917"), BigInt("28341"),
                 BigInt("10000000000000000444441"),
                 BigInt("3189725133199254303619"));
-  */
 
+  GeneralDivide(BigInt("9283749173472394717727"),
+                BigInt("3371717283747271128341"),
+                BigInt("10900090090099900444441"),
+                BigInt("1881438153010669145071"));
+
+  GeneralDivide(
+      BigInt("11872398472983741987239487198273948719238"),
+      BigInt("61875555555555541987239487192222248990000"),
+      // 17 * 13 * 2^128
+      BigInt("75202403089527400425405788242420774731776"),
+      BigInt("22721449913053266398484183918334149103616"));
 }
 
 static void WrapPowBaseInt(const BigInt &Modulus,
@@ -500,6 +508,9 @@ static void TestModPow() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  TestGeneralDivision();
+
+  /*
   TestNumLimbs();
 
   Montgomery();
@@ -507,8 +518,10 @@ int main(int argc, char **argv) {
   TestSubModN();
   TestModMult();
   TestBIMDivision();
+
   TestModPowBaseInt();
   TestModPow();
+  */
 
   printf("All explicit tests " AGREEN("OK") "\n");
   return 0;

@@ -430,6 +430,18 @@ static bool ModInvBigNbr(const MontgomeryParams &params,
   const int modulus_length = params.modulus_length;
   const limb *modulus = params.modulus.data();
 
+  printf("ModInvBigNbr len=%d\n", modulus_length);
+  printf("num:\n");
+  for (i = 0; i < 6; i++)
+    printf("  %08x %c\n", num[i].x, i < modulus_length ? '*' : ' ' );
+  printf("inv:\n");
+  for (i = 0; i < 6; i++)
+    printf("  %08x %c\n", inv[i].x, i < modulus_length ? '*' : ' ' );
+  printf("mod:\n");
+  for (i = 0; i < 6; i++)
+    printf("  %08x %c\n", modulus[i].x, i < modulus_length ? '*' : ' ' );
+
+
   assert(modulus_length >= 1);
   if (modulus_length == 1) {
     inv->x = modInv(num->x, modulus->x);
@@ -885,6 +897,13 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
                                       limb *resultModPower2,
                                       int shRight) {
 
+  printf("CRT shright: %d mod:\n", shRight);
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", params.modulus[i].x,
+           i < params.modulus_length ? '*' : ' ');
+
+  CHECK(modulus_length == params.modulus_length);
+
   BigInteger oddValue;
   BigIntToBigInteger(OddMod, &oddValue);
 
@@ -903,20 +922,51 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
   SubtractBigNbr(resultModPower2, resultModOdd, tmp3, modulus_length);
   limb tmp4[MAX_LEN];
   ComputeInversePower2(oddValue.Limbs.data(), tmp4, modulus_length);
+
+  printf("CRT tmp4:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", tmp4[i].x,
+           i < modulus_length ? '*' : ' ');
+
   limb tmp5[MAX_LEN];
   ModMult(params, tmp4, tmp3, tmp5);
 
   (tmp5 + (shRight / BITS_PER_GROUP))->x &=
     (1 << (shRight % BITS_PER_GROUP)) - 1;
 
+  printf("CRT tmp5:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", tmp5[i].x,
+           i < modulus_length ? '*' : ' ');
+
   if (modulus_length < oddValue.nbrLimbs) {
+    printf("CRT pad0\n");
     int lenBytes = (oddValue.nbrLimbs - modulus_length) * (int)sizeof(limb);
     (void)memset(&tmp5[modulus_length], 0, lenBytes);
+
+    printf("CRT tmp5 padded:\n");
+    for (int i = 0; i < 6; i++)
+      printf("  %08x %c\n", tmp5[i].x,
+             i < modulus_length ? '*' : ' ');
   }
 
+  printf("CRT oddValue:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", oddValue.Limbs[i].x,
+           i < modulus_length ? '*' : ' ');
+
+  printf("CRT resultModOdd:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", resultModOdd[i].x,
+           i < modulus_length ? '*' : ' ');
+
+  printf("modulus_length %d. oddValue.nbrLimbs %d\n",
+         modulus_length, oddValue.nbrLimbs);
+
+  const int odd_length = oddValue.nbrLimbs;
   BigInt Result = LimbsToBigInt(tmp5, modulus_length);
   Result *= BigIntegerToBigInt(&oddValue);
-  Result += LimbsToBigInt(resultModOdd, modulus_length);
+  Result += LimbsToBigInt(resultModOdd, odd_length);
   return Result;
 }
 
@@ -926,6 +976,15 @@ static BigInt ChineseRemainderTheorem(const MontgomeryParams &params,
 // Theorem.
 BigInt GeneralModularDivision(
     const BigInt &Num, const BigInt &Den, const BigInt &Mod) {
+
+  printf("--------\n");
+  printf("GMD:\n"
+         "  num: %s\n"
+         "  den: %s\n"
+         "  mod: %s\n",
+         Num.ToString().c_str(),
+         Den.ToString().c_str(),
+         Mod.ToString().c_str());
 
   const int shRight = BigInt::BitwiseCtz(Mod);
   const BigInt OddMod = Mod >> shRight;
@@ -943,16 +1002,28 @@ BigInt GeneralModularDivision(
   // This is the modulus length for the right-shifted value.
   const int modulus_length = params->modulus_length;
 
-  limb tmp3[modulus_length + 1];
+  // XXX
+  // limb tmp3[modulus_length + 1];
+  limb tmp3[100] = {};
   BigIntToFixedLimbs(TmpDen, modulus_length, tmp3);
   // tmp3 <- Den in Montgomery notation
   ModMult(*params, tmp3, params->MontgomeryMultR2, tmp3);
 
+  printf("[tmp3 <- Den] tmp3:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", tmp3[i].x, i < modulus_length ? '*' : ' ');
+
   tmp3[modulus_length].x = 0;
   // tmp3 <- 1 / Den in Montg notation.
   (void)ModInvBigNbr(*params, tmp3, tmp3);
+
+  printf("[tmp3 <- 1 / Den] tmp3:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", tmp3[i].x, i < modulus_length ? '*' : ' ');
+
   limb tmp4[modulus_length];
   BigIntToFixedLimbs(TmpNum, modulus_length, tmp4);
+
 
   // resultModOdd <- Num / Den in standard notation.
   limb resultModOdd[modulus_length];
@@ -961,6 +1032,7 @@ BigInt GeneralModularDivision(
   // Compute inverse mod power of 2.
   if (shRight == 0) {
     // Original modulus is odd. Quotient already computed.
+    printf("return modulus odd. numberlength: %d\n", modulus_length);
     return LimbsToBigInt(resultModOdd, modulus_length);
     // UncompressLimbsBigInteger(modulus_length, resultModOdd, quotient);
     // return;
@@ -975,22 +1047,39 @@ BigInt GeneralModularDivision(
   // CompressLimbsBigInteger(new_modulus_length, tmp3, &den);
   ComputeInversePower2(tmp3, tmp4, new_modulus_length);
 
-  // Port note: This used to set powerOf2Exponent = shRight and then
-  // clear to zero at the end, but those are dead now that it's part
-  // of MontgomeryParams.
+  // Port note: Original code just set powerOf2Exponent and number length
+  // here, I think relying on the fact that modmult doesn't use the modulus
+  // (now stale) in the case of a power of 2.
+  std::unique_ptr<MontgomeryParams> crt_params =
+    GetMontgomeryParamsPowerOf2(shRight);
 
-  limb num[params->modulus_length];
-  BigIntToFixedLimbs(Num, params->modulus_length, num);
+  limb num[crt_params->modulus_length];
+  BigIntToFixedLimbs(Num, crt_params->modulus_length, num);
 
   // resultModPower2 <- Num / Dev mod 2^k.
-  limb resultModPower2[params->modulus_length];
-  ModMult(*params, num, tmp4, resultModPower2);
+  // XXX
+  limb resultModPower2[100] = {};
+  // limb resultModPower2[crt_params->modulus_length];
+  ModMult(*crt_params, num, tmp4, resultModPower2);
 
-  return ChineseRemainderTheorem(*params,
-                                 OddMod,
-                                 new_modulus_length,
-                                 resultModOdd, resultModPower2,
-                                 shRight);
+  printf("[before CRT] resultModOdd:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", resultModOdd[i].x,
+           i < new_modulus_length ? '*' : ' ');
+
+  printf("[before CRT] resultModPower2:\n");
+  for (int i = 0; i < 6; i++)
+    printf("  %08x %c\n", resultModPower2[i].x,
+           i < new_modulus_length ? '*' : ' ');
+
+  BigInt ret = ChineseRemainderTheorem(*crt_params,
+                                       OddMod,
+                                       new_modulus_length,
+                                       resultModOdd, resultModPower2,
+                                       shRight);
+
+  printf("CRT ret: %s\n", ret.ToString().c_str());
+  return ret;
 }
 
 // Find the inverse of value mod 2^(number_length*BITS_PER_GROUP)
@@ -1321,6 +1410,9 @@ static void endBigModmult(const limb *prodNotAdjusted, limb *product,
 void ModMult(const MontgomeryParams &params,
              const limb* factor1, const limb* factor2,
              limb* product) {
+
+  printf("ModMult params modulus_length: %d, pow2: %d\n",
+         params.modulus_length, params.powerOf2Exponent);
 
   if (VERBOSE) {
     const BigInt f1 = LimbsToBigInt(factor1, params.modulus_length);
