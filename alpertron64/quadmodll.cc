@@ -197,11 +197,12 @@ struct QuadModLL {
   // If a solution is found, writes to Solution(1,2)[factorIndex]
   // and returns true.
   bool SolveQuadraticEqModPowerOf2(int exponent, int factorIndex) {
-    const BigInt A(1);
-    const BigInt B(0);
-    const BigInt C(1);
+    static constexpr int64_t A = 1;
+    static constexpr int64_t B = 0;
+    static constexpr int64_t C = 1;
 
     CHECK(exponent > 0);
+    CHECK(exponent < 64);
     int expon = exponent;
 
     if (expon != 1)
@@ -211,152 +212,130 @@ struct QuadModLL {
     // This follows the paper Complete solving the quadratic equation mod 2^n
     // of Dehnavi, Shamsabad and Rishakani.
 
-    // These numbers are already odd (or zero). Can simplify.
+    // These numbers are already odd (or zero).
+    static constexpr int bitsCZero = 0;
 
-    // const BigInt &AOdd = A;
-    static constexpr int bitsAZero = 0;
+    // The solution in this case requires square root.
+    // compute s = ((b/2)^2 - a*c)/a^2, q = odd part of s,
+    // r = maximum exponent of power of 2 that divides s.
 
-    const BigInt BOdd = B;
-    int bitsBZero = BITS_PER_GROUP;
+    CHECK((B >> 1) == 0);
+    // BigInt Tmp1 = B >> 1;
 
-    // const BigInt &COdd = C;
-    int bitsCZero = 0;
+    // (b/2)^2
+    // Tmp1 *= Tmp1;
 
-    if (bitsAZero > 0 && bitsBZero > 0 && bitsCZero > 0) {
-      CHECK(false) << "Impossible!";
-    }
+    CHECK(A * C == 1);
+    // Tmp1 -= A * C;
 
-    if ((bitsAZero == 0 && bitsBZero == 0 && bitsCZero == 0) ||
-        (bitsAZero > 0 && bitsBZero > 0 && bitsCZero == 0)) {
-      CHECK(false) << "Impossible! 2";
-      return false;   // No solutions, so go out.
-    }
+    // (b/2)^2 - a*c = -1
+    static constexpr int64_t Tmp1 = -1;
 
-    if (bitsAZero == 0 && bitsBZero > 0) {
-      // The solution in this case requires square root.
-      // compute s = ((b/2)^2 - a*c)/a^2, q = odd part of s,
-      // r = maximum exponent of power of 2 that divides s.
+    const uint64_t Mask = (uint64_t{1} << expon) - 1;
 
-      CHECK((B >> 1) == 0);
-      // BigInt Tmp1 = B >> 1;
+    // Port note: Original code overwrote valcodd.
+    // (b/2) - a*c mod 2^n
+    int64_t C2 = Tmp1 & (int64_t)Mask;
+    // It's all 1s, so it should be the same.
+    CHECK(C2 == (int64_t)Mask);
 
-      // (b/2)^2
-      // Tmp1 *= Tmp1;
+    // int modulus_length = BigIntNumLimbs(Mask);
 
-      CHECK(A * C == 1);
-      // Tmp1 -= A * C;
+    // Port note: The code used to explicitly pad out AOdd (and the
+    // output?) if smaller than modulus_length, but the BigInt version
+    // does its own padding internally.
+    // BigInt Tmp2 = GetInversePower2(AOdd, modulus_length);
+    int64_t Tmp2 = 1;
 
-      // (b/2)^2 - a*c = -1
-      const BigInt Tmp1(-1);
+    // Modular inverse of 1 is always 1.
+    CHECK(Tmp2 == 1);
 
-      const BigInt Mask = (BigInt(1) << expon) - 1;
+    // ((b/2) - a*c)/a mod 2^n
+    // C2 *= Tmp2;
+    // C2 &= Mask;
 
-      // Port note: Original code overwrote valcodd.
-      // (b/2) - a*c mod 2^n
-      BigInt C2 = Tmp1 & Mask;
-      // It's all 1s, so it should be the same.
-      CHECK(C2 == Mask);
-
-      // int modulus_length = BigIntNumLimbs(Mask);
-
-      // Port note: The code used to explicitly pad out AOdd (and the
-      // output?) if smaller than modulus_length, but the BigInt version
-      // does its own padding internally.
-      // BigInt Tmp2 = GetInversePower2(AOdd, modulus_length);
-      BigInt Tmp2(1);
-
-      // Modular inverse of 1 is always 1.
-      CHECK(Tmp2 == 1);
-
-      // ((b/2) - a*c)/a mod 2^n
-      // C2 *= Tmp2;
-      // C2 &= Mask;
-
-      // s = ((b/2) - a*c)/a^2 mod 2^n
-      // C2 *= Tmp2;
+    // s = ((b/2) - a*c)/a^2 mod 2^n
+    // C2 *= Tmp2;
 
 
-      // Since C2 is the same as mask, anding does nothing.
-      CHECK(C2 == Mask);
-      // C2 &= Mask;
+    // Since C2 is the same as mask, anding does nothing.
+    CHECK(C2 == (int64_t)Mask);
+    // C2 &= Mask;
 
-      // since exponent is at least 1, mask is at least 1.
-      // so C2 is not 0.
-      CHECK(C2 != 0);
+    // since exponent is at least 1, mask is at least 1.
+    // so C2 is not 0.
+    CHECK(C2 != 0);
 
-      // It also consists of just 11111....11
-      CHECK(BigInt::BitwiseCtz(C2) == 0);
-      // bitsCZero = BigInt::BitwiseCtz(C2);
-      // C2 >>= bitsCZero;
+    // It also consists of just 11111....11
+    CHECK(std::countr_zero<uint64_t>((uint64_t)C2) == 0);
+    // bitsCZero = BigInt::BitwiseCtz(C2);
+    // C2 >>= bitsCZero;
 
-      constexpr int bitsCZero = 0;
-
-      if (VERBOSE)
-      fprintf(stderr, "[expon %d] C2 = %s. C2 & 7 = %d\n",
+    if (VERBOSE)
+      fprintf(stderr, "[expon %d] C2 = %lld. C2 & 7 = %d\n",
               expon,
-              C2.ToString().c_str(),
+              C2,
               (int)(C2 & 7));
 
-      // Since C2 is of the form 11111,
-      // If C2 & 7 == 1, then expon must be 1.
+    // Since C2 is of the form 11111,
+    // If C2 & 7 == 1, then expon must be 1.
 
-      // At this moment, bitsCZero = r and ValCOdd = q.
-      if ((C2 & 7) != 1 /* || (bitsCZero & 1) */) {
-        // q != 1 or p2(r) == 0, so go out.
-        return false;
-      }
+    // At this moment, bitsCZero = r and ValCOdd = q.
+    if ((C2 & 7) != 1 /* || (bitsCZero & 1) */) {
+      // q != 1 or p2(r) == 0, so go out.
+      return false;
+    }
 
-      CHECK(expon == 1);
+    CHECK(expon == 1);
 
-      // Modulus is 2.
-      BigInt SqrRoot = BigInt((bitsCZero > 0) ? 0 : 1);
+    // Modulus is 2.
+    int64_t SqrRoot = (bitsCZero > 0) ? 0 : 1;
 
-      CHECK(SqrRoot == 1);
+    CHECK(SqrRoot == 1);
 
-      // exponent not modified
-      CHECK(expon == exponent);
+    // exponent not modified
+    CHECK(expon == exponent);
 
-      // x = sqrRoot - b/2a.
-      {
-        // New mask for exponent, which was modified above.
-        const BigInt Mask2 = (BigInt(1) << expon) - 1;
-        CHECK(Mask == Mask2);
-        // const int modulus_length = BigIntNumLimbs(Mask);
+    // x = sqrRoot - b/2a.
+    {
+      // New mask for exponent, which was modified above.
+      // const BigInt Mask2 = (BigInt(1) << expon) - 1;
+      // CHECK(Mask == Mask2);
+      // const int modulus_length = BigIntNumLimbs(Mask);
 
-        // BigInt Tmp2 = GetInversePower2(AOdd, modulus_length);
-        BigInt Tmp2(1);
+      // BigInt Tmp2 = GetInversePower2(AOdd, modulus_length);
+      int64_t Tmp2 = 1;
 
-        // Inverse of 1 is always 1.
-        CHECK(Tmp2 == 1);
+      // Inverse of 1 is always 1.
+      CHECK(Tmp2 == 1);
 
-        // b/2
-        CHECK((B >> 1) == 0);
-        // BigInt Tmp1 = B >> 1;
-        // BigIntDivideBy2(&tmp1);
+      // b/2
+      CHECK((B >> 1) == 0);
+      // BigInt Tmp1 = B >> 1;
+      // BigIntDivideBy2(&tmp1);
 
-        // b/2a
-        // Tmp1 *= Tmp2;
+      // b/2a
+      // Tmp1 *= Tmp2;
 
-        // -b/2a
-        // Tmp1 = -std::move(Tmp1);
+      // -b/2a
+      // Tmp1 = -std::move(Tmp1);
 
-        BigInt Tmp1(0);
+      int64_t Tmp1 = 0;
 
-        // -b/2a mod 2^expon
-        // Tmp1 &= Mask;
-        Tmp2 = Tmp1 + SqrRoot;
+      // -b/2a mod 2^expon
+      // Tmp1 &= Mask;
+      Tmp2 = SqrRoot;
 
-        BigInt Sol1 = Tmp2 & Mask;
-        BigInt Sol2 = (Tmp1 - SqrRoot) & Mask;
+      int64_t Sol1 = Tmp2 & Mask;
+      int64_t Sol2 = (Tmp1 - SqrRoot) & Mask;
 
-        // SqrRoot is 1
-        CHECK(Sol1 == 1);
-        // -1 & Mask is Mask.
-        CHECK(Sol2 == Mask);
+      // SqrRoot is 1
+      CHECK(Sol1 == 1);
+      // -1 & Mask is Mask.
+      CHECK(Sol2 == (int64_t)Mask);
 
-        Solution1[factorIndex] = Sol1;
-        Solution2[factorIndex] = Sol2;
-      }
+      Solution1[factorIndex] = BigInt(Sol1);
+      Solution2[factorIndex] = BigInt(Sol2);
     }
 
     // Store increment.

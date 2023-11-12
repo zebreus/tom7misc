@@ -32,13 +32,11 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  BigInt F(argv[1]);
+  int64_t f = atoll(argv[1]);
 
-  printf("\n** Solve x^2 + y^2 = %s\n",
-         F.ToString().c_str());
+  printf("\n** Solve x^2 + y^2 = %lld\n", f);
 
-  Solutions solutions = QuadBigInt(-F);
-  CHECK(!solutions.any_integers);
+  Solutions solutions = QuadBigInt(f);
   CHECK(!solutions.interesting_coverage);
 
   if (solutions.points.empty()) {
@@ -46,10 +44,10 @@ int main(int argc, char* argv[]) {
   } else {
     for (const PointSolution &point : solutions.points) {
       printf("Solution:\n"
-             "x = %s\n"
-             "y = %s\n",
-             point.X.ToString().c_str(),
-             point.Y.ToString().c_str());
+             "x = %lld\n"
+             "y = %lld\n",
+             point.X,
+             point.Y);
     }
   }
 

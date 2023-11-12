@@ -94,11 +94,24 @@ struct Quad {
   // Solutions accumulated here.
   Solutions solutions;
 
-  void RecordSolutionXY(const BigInt &x, const BigInt &y) {
+  void RecordSolutionXY(const BigInt &X, const BigInt &Y) {
+    auto xo = X.ToInt();
+    auto yo = Y.ToInt();
+
+    CHECK(xo.has_value() && yo.has_value()) << "These are squared, "
+      "so for them to sum to a 64-bit number, they must be 32 bit "
+      "(and here we should have room for 63!)";
+
+    const int64_t x = xo.value();
+    const int64_t y = yo.value();
+
     // Negative values are obvious, since x and y appear only under
     // squares. x and y are also interchangeable.
     if (x >= 0 && y >= 0 && x <= y) {
-      solutions.points.emplace_back(PointSolution{.X = x, .Y = y});
+      solutions.points.emplace_back(PointSolution{
+          .X = (uint64_t)x,
+          .Y = (uint64_t)y
+        });
     }
   }
 
@@ -649,7 +662,7 @@ struct Quad {
     }
   }
 
-  void SolveQuadEquation(const BigInt &F) {
+  void SolveQuadEquation(uint64_t f) {
     const BigInt gcd(1);
     // CHECK(gcd == 1) << "Expecting GCD to always be 1: " << gcd.ToString();
 
@@ -670,28 +683,27 @@ struct Quad {
     BigInt UU1(1);
     // BigInt::GCD(BigInt::GCD(A, B), C);
     CHECK(UU1 == 1);
-    BigInt K = -F;
+    const BigInt K(f);
 
     // Discriminant is not zero.
     // Do not translate origin.
     // K is always divisible by the gcd of A, B, C, since that's 1.
 
-    CHECK(K >= 0);
-
+    CHECK(K > 1);
     NonSquareDiscriminant(K);
   }
 
-  void QuadBigInt(const BigInt &F) {
+  // F is non-negative (this is the reverse sign of the original
+  // alpertron).
+  void QuadBigInt(uint64_t F) {
     if (F == 0) {
       // One solution: 0^2 + 0^2.
       RecordSolutionXY(BigInt(0), BigInt(0));
-    } else if (F == -1) {
+    } else if (F == 1) {
       // 0^2 + 1^2
       RecordSolutionXY(BigInt(0), BigInt(1));
     } else {
-      // We could support this by just returning the empty solution
-      // set, but we're not trying to have this code be fully general.
-      CHECK(F < -1);
+      CHECK(F > 1);
       SolveQuadEquation(F);
     }
   }
@@ -701,7 +713,7 @@ struct Quad {
 
 }  // namespace
 
-Solutions QuadBigInt(const BigInt &f) {
+Solutions QuadBigInt(uint64_t f) {
   std::unique_ptr<Quad> quad(new Quad);
   quad->QuadBigInt(f);
   return std::move(quad->solutions);

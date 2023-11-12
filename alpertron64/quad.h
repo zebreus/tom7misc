@@ -4,21 +4,20 @@
 #include <string>
 #include <vector>
 #include <utility>
+#include <cstdint>
 
 #include "bignum/big.h"
 
 struct PointSolution {
-  BigInt X, Y;
+  uint64_t X, Y;
 };
 
 struct Solutions {
-  // Any (x,y).
-  bool any_integers = false;
   bool interesting_coverage = false;
   std::vector<PointSolution> points;
 };
 
-// If output is non-null, writes readable HTML there.
-Solutions QuadBigInt(const BigInt &f);
+// Solve x^2 + y^2 = f.
+Solutions QuadBigInt(uint64_t f);
 
 #endif

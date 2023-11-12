@@ -17,10 +17,10 @@ rm -f coverage.out
 
 ./quad.exe 199506591167822449 >> coverage.out
 
-# 2^80
-./quad.exe 1208925819614629174706176 >> coverage.out
-# 2^79
-./quad.exe 604462909807314587353088 >> coverage.out
+# 2^62
+./quad.exe 4611686018427387904 >> coverage.out
+# 2^61
+./quad.exe 2305843009213693952 >> coverage.out
 # 16!
 ./quad.exe 20922789888000 >> coverage.out
 

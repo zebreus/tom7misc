@@ -82,7 +82,7 @@ static void RunGrid() {
   AutoHisto auto_histo(100000);
   int64_t batches_done = 0;
 
-  static constexpr int64_t START_NUM = 10212639872;
+  static constexpr int64_t START_NUM = 10406958240;
   static constexpr int64_t MAX_NUM   = 16'000'000'000;
   static constexpr int64_t BATCH_SIZE = 32;
 
@@ -98,26 +98,23 @@ static void RunGrid() {
             START_NUM +
             (uint64_t)batch_idx * BATCH_SIZE +
             off;
-          BigInt F(f);
 
           auto Assert = [&](const char *type,
-                            const BigInt &x, const BigInt &y) {
-              BigInt r = x * x + y * y;
-              if (r != F) {
-                std::string problem = F.ToString();
+                            uint64_t x, uint64_t y) {
+              uint64_t r = x * x + y * y;
+              if (r != f) {
+                std::string problem = StringPrintf("%lld", f);
 
                 printf("\n\n\n\n\n"
                        "Invalid solution on problem: %s\n\n\n",
                        problem.c_str());
                 fflush(stdout);
 
-                printf("Solution was (%s, %s)\n"
+                printf("Solution was (%lld, %lld)\n"
                        "Of type %s.\n",
-                       x.ToString().c_str(),
-                       y.ToString().c_str(),
+                       x, y,
                        type);
-                printf("Want 0, but result was: %s\n",
-                       r.ToString().c_str());
+                printf("Want 0, but result was: %lld\n", r);
                 fflush(stdout);
 
                 printf("\n\n" ARED("Problem") ": %s\n\n\n",
@@ -127,13 +124,13 @@ static void RunGrid() {
             };
 
           Timer sol_timer;
-          Solutions sols = QuadBigInt(-F);
+          Solutions sols = QuadBigInt(f);
           const double sol_ms = sol_timer.Seconds() * 1000.0;
           local_timing.push_back(sol_ms);
 
           if (sols.interesting_coverage) {
             count_interesting++;
-            std::string problem = F.ToString();
+            std::string problem = StringPrintf("%lld", f);
             printf("\n\n" APURPLE("Coverage!") " %s\n\n",
                    problem.c_str());
             MutexLock ml(&file_mutex);
@@ -142,9 +139,6 @@ static void RunGrid() {
             fprintf(file, "%s\n", problem.c_str());
             fclose(file);
           }
-
-          // Check solutions.
-          CHECK(!sols.any_integers) << F.ToString();
 
           for (const PointSolution &point : sols.points) {
             count_point++;
@@ -159,7 +153,7 @@ static void RunGrid() {
 
           const int expected_sols = ChaiWahWu(f);
 
-          CHECK(found_sols == expected_sols) << F.ToString();
+          CHECK(found_sols == expected_sols) << f;
 
           // Full batches
           count_done++;
