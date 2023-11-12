@@ -40,11 +40,6 @@ struct limb {
   int x;
 };
 
-enum eSign {
-  SIGN_POSITIVE = 0,
-  SIGN_NEGATIVE,
-};
-
 // Multiply two limb arrays of the same size, writing to the result.
 // Writes 2 * len limbs to the output, including zero padding if necessary.
 void MultiplyLimbs(const limb* factor1, const limb* factor2, limb* result,

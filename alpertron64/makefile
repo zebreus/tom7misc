@@ -64,6 +64,10 @@ grid.exe : grid.o $(ALPERTRON_OBJECTS) $(SOS_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
+test.exe : test.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
+	@echo -n "@"
+	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
+
 clean:
 	rm -f *.o $(TEST_CC_LIB_OBJECTS) coverage.out *.exe
 

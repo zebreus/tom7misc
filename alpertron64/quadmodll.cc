@@ -132,13 +132,34 @@ struct QuadModLL {
           // L is overwritten before use below.
           const BigInt L1 = BigInt::Pow(factors[E].first, factors[E].second);
 
-          Tmp[T1] = BigIntModularDivision(*params, Q1, L1, Term);
+          /*
+          */
 
-          if (VERBOSE) {
-            printf("T1 %d E %d. %s %s %s -> %s\n", T1, E,
-                   Q1.ToString().c_str(), L1.ToString().c_str(),
-                   Term.ToString().c_str(), Tmp[T1].ToString().c_str());
+          BigInt Quot = BigIntModularDivision(*params, Q1, L1, Term);
+
+          {
+            std::optional<BigInt> Inv = BigInt::ModInverse(L1, Term);
+            CHECK(Inv.has_value());
+            BigInt Res = (Q1 * Inv.value()) % Term;
+            if (Res < 0) Res += Term;
+
+            if (VERBOSE) {
+              fprintf(stderr, "%s / %s mod %s = %s\n"
+                      "  or %s * %s mod %s = %s\n" ,
+                      Q1.ToString().c_str(),
+                      L1.ToString().c_str(),
+                      Term.ToString().c_str(),
+                      Quot.ToString().c_str(),
+                      Q1.ToString().c_str(),
+                      Inv.value().ToString().c_str(),
+                      Term.ToString().c_str(),
+                      Res.ToString().c_str());
+            }
+
+            CHECK(Res == Quot);
           }
+
+          Tmp[T1] = Quot;
         }
 
         Tmp[T1] = BigInt::CMod(Tmp[T1], Term);
@@ -524,24 +545,13 @@ struct QuadModLL {
     const BigInt SqrtDisc = GetSqrtDisc(*params, Base, Prime);
 
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
-    BigInt SqrRoot =
-      BigIntModularDivision(*params, BigInt(1), SqrtDisc, Prime);
-
-    if (VERBOSE)
-    fprintf(stderr, "1/%s mod %s = %s\n",
-            SqrtDisc.ToString().c_str(),
-            Prime.ToString().c_str(),
-            SqrRoot.ToString().c_str());
+    // BigInt SqrRoot =
+    //   BigIntModularDivision(*params, BigInt(1), SqrtDisc, Prime);
 
     std::optional<BigInt> Inv = BigInt::ModInverse(SqrtDisc, Prime);
     CHECK(Inv.has_value());
-    if (VERBOSE)
-    fprintf(stderr, "%s^-1 mod %s = %s\n",
-            SqrtDisc.ToString().c_str(),
-            Prime.ToString().c_str(),
-            Inv.value().ToString().c_str());
 
-    CHECK(Inv.value() == SqrRoot);
+    BigInt SqrRoot = std::move(Inv.value());
 
     int correctBits = 1;
 
@@ -605,7 +615,7 @@ struct QuadModLL {
     // so only multiplications are used.
     //   f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
     // Get maximum power of prime which divides ValA.
-    BigInt AOdd = A;
+    BigInt AOdd(1);
     int bitsAZero = 0;
 
     const BigInt VV = BigInt::Pow(Prime, expon);
@@ -668,45 +678,26 @@ struct QuadModLL {
 
     deltaZeros >>= 1;
     // Compute inverse of -2*A (mod prime^(expon - deltaZeros)).
-    AOdd = A << 1;
+    AOdd = BigInt(2);
+    // CHECK(AOdd == 2);
 
-    CHECK(AOdd == 2);
-
-    BigInt Tmp1 = BigInt::Pow(Prime, expon - deltaZeros);
-    // PERF: Already computed this. Just use this value.
-    CHECK(Tmp1 == VV);
-
+    const BigInt &Tmp1 = VV;
     CHECK(Tmp1 >= 2);
 
-    AOdd %= Tmp1;
-
+    // AOdd %= Tmp1;
     CHECK(AOdd == 2) << "Since Tmp1 > 2, AOdd stays 2.";
 
-
-    if (AOdd < 0) {
-      CHECK(false) << "Because AOdd is 2.";
-      // Negate 2*A
-      AOdd = -std::move(AOdd);
-    } else if (AOdd != 0) {
-      // Negate 2*A
-      AOdd = Tmp1 - AOdd;
-    } else {
-      // Nothing to do.
-      CHECK(false) << "Not zero. 2.";
-    }
+    // Negate 2*A
+    AOdd = Tmp1 - 2;
 
     {
-      const std::unique_ptr<MontgomeryParams> params =
-        GetMontgomeryParams(Tmp1);
-
-
       const std::optional<BigInt> Inv = BigInt::ModInverse(AOdd, Tmp1);
       CHECK(Inv.has_value()) << AOdd.ToString() << " " << Tmp1.ToString();
 
+      AOdd = std::move(Inv.value());
       // PERF: modular inverse?
-      AOdd = BigIntModularDivision(*params, BigInt(1), AOdd, Tmp1);
-
-      CHECK(Inv.value() == AOdd);
+      // AOdd = BigIntModularDivision(*params, BigInt(1), AOdd, Tmp1);
+      // CHECK(Inv.value() == AOdd);
     }
 
     CHECK(Discriminant != 0) << "Discriminant should be -1 or -4 here.";
@@ -717,17 +708,17 @@ struct QuadModLL {
     // This was expon + bitsAZero - deltaZeros,
     // but ends up just being expon because those are zero.
     const int nbrBitsSquareRoot = expon;
-    CHECK(nbrBitsSquareRoot == expon);
 
     {
       // Equal to VV, right?
       // const BigInt Tmp1 = BigInt::Pow(Prime, nbrBitsSquareRoot);
       const BigInt &Tmp1 = VV;
-      CHECK(Tmp1 == VV);
 
       // in which case this does nothing...
-      CHECK((Discriminant % Tmp1) == Discriminant);
+      // CHECK((Discriminant % Tmp1) == Discriminant);
       // Discriminant %= Tmp1;
+
+      CHECK(Discriminant < 0);
 
       if (Discriminant < 0) {
         Discriminant += Tmp1;
@@ -765,20 +756,17 @@ struct QuadModLL {
     // correctbits is the same as the exponent.
     const BigInt &Q = VV;
 
-    Tmp1 = B + SqrRoot;
+    BigInt S1 = B + SqrRoot;
 
-    CHECK(bitsAZero == 0);
-
-    Solution1[factorIndex] = BigInt::CMod(Tmp1 * AOdd, Q);
+    Solution1[factorIndex] = BigInt::CMod(S1 * AOdd, Q);
 
     if (Solution1[factorIndex] < 0) {
       Solution1[factorIndex] += Q;
     }
 
-    Tmp1 = B - SqrRoot;
-    CHECK(bitsAZero == 0);
+    BigInt S2 = B - SqrRoot;
 
-    Solution2[factorIndex] = BigInt::CMod(Tmp1 * AOdd, Q);
+    Solution2[factorIndex] = BigInt::CMod(S2 * AOdd, Q);
 
     if (Solution2[factorIndex] < 0) {
       Solution2[factorIndex] += Q;

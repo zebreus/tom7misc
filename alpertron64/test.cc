@@ -40,48 +40,34 @@ static void TestNumLimbs() {
 
 static void Montgomery() {
   // Test from original alpertron code.
-
-
   const BigInt Modulus("1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
 
-  for (const bool with_array : {true, false}) {
+  const std::unique_ptr<MontgomeryParams> params =
+    GetMontgomeryParams(Modulus);
 
-    const std::unique_ptr<MontgomeryParams> params = [&]() {
-        if (with_array) {
-          const int modulus_length = BigIntNumLimbs(Modulus);
-          limb TheModulus[modulus_length + 1];
-          CHECK(modulus_length == BigIntToLimbs(Modulus, TheModulus));
-          TheModulus[modulus_length].x = 0;
-          return GetMontgomeryParams(modulus_length, TheModulus);
-        } else {
-          return GetMontgomeryParams(Modulus);
-        }
-      }();
+  BigInt N = LimbsToBigInt(params->Ninv.data(), params->modulus_length);
+  BigInt R1 = LimbsToBigInt(params->R1.data(), params->modulus_length);
+  BigInt R2 = LimbsToBigInt(params->R2.data(), params->modulus_length);
 
-    BigInt N = LimbsToBigInt(params->Ninv.data(), params->modulus_length);
-    BigInt R1 = LimbsToBigInt(params->R1.data(), params->modulus_length);
-    BigInt R2 = LimbsToBigInt(params->R2.data(), params->modulus_length);
+  CHECK(R1 == BigInt("24695268717247353376024094994637646342633788102645274852325180976134729557037162826241102651487225375781959289009"));
+  CHECK(R2 == BigInt("190098254628648626850155858417461866966631571241684111915135769130076389371840963052220660360120514221998874973069"));
+  CHECK(N == BigInt("5146057778955676958024459434755086258061417362313348376976792088453485271799426894988203925673894606468119708364663947265"));
 
-    CHECK(R1 == BigInt("24695268717247353376024094994637646342633788102645274852325180976134729557037162826241102651487225375781959289009"));
-    CHECK(R2 == BigInt("190098254628648626850155858417461866966631571241684111915135769130076389371840963052220660360120514221998874973069"));
-    CHECK(N == BigInt("5146057778955676958024459434755086258061417362313348376976792088453485271799426894988203925673894606468119708364663947265"));
+  // R1 is the identity.
+  BigInt FirstFactor = R1;
+  BigInt SecondFactor(32);
 
-    // R1 is the identity.
-    BigInt FirstFactor = R1;
-    BigInt SecondFactor(32);
+  limb f1[params->modulus_length], f2[params->modulus_length];
+  BigIntToFixedLimbs(FirstFactor, params->modulus_length, f1);
+  BigIntToFixedLimbs(SecondFactor, params->modulus_length, f2);
+  limb product[params->modulus_length];
+  ModMult(*params, f1, f2, product);
 
-    limb f1[params->modulus_length], f2[params->modulus_length];
-    BigIntToFixedLimbs(FirstFactor, params->modulus_length, f1);
-    BigIntToFixedLimbs(SecondFactor, params->modulus_length, f2);
-    limb product[params->modulus_length];
-    ModMult(*params, f1, f2, product);
+  BigInt Product = LimbsToBigInt(product, params->modulus_length);
 
-    BigInt Product = LimbsToBigInt(product, params->modulus_length);
+  CHECK(Product == 32);
 
-    CHECK(Product == 32);
-
-    printf("Montgomery tests " AGREEN("OK") "\n");
-  }
+  printf("Montgomery tests " AGREEN("OK") "\n");
 }
 
 static void TestSubModN() {
@@ -250,43 +236,6 @@ static void WrapDivide(const BigInt &Num,
   BigInt NMod = Num % Modulus;
   if (NMod < 0) NMod += Modulus;
 
-  auto Problem = [&]() {
-      return StringPrintf("(%s / %s) mod %s\n",
-                          Num.ToString().c_str(),
-                          Den.ToString().c_str(),
-                          Modulus.ToString().c_str());
-    };
-
-  {
-    const BigInt Quot = GeneralModularDivision(Num, Den, Modulus);
-
-    // I think that the quotient * the denominator should give us back
-    // the numerator (mod the modulus), unless there's some undocumented
-    // assumption here? (Or perhaps it's assuming Montgomery form for
-    // some of these.)
-    //
-    // It's possible that GeneralModularDivision is just broken (perhaps
-    // by me); it's only called in one place and that code isn't covered.
-    // It does do some funny business when the modulus is a multiple
-    // of 2, where I might have conflated two different modulus_lengths.
-
-    const BigInt Prod = (Quot * Den) % Modulus;
-    CHECK(Prod == NMod) << Problem() << "\n"
-      "General Division (definitional)\n"
-      "Got Quot: " << Quot.ToString() << "\n"
-      "Q * D:    " << (Quot * Den).ToString() << "\n"
-      "So  Prod: " << Prod.ToString() << "\n"
-      "But want: " << NMod.ToString() << "\n";
-
-    CHECK(Quot == Expected) << Problem() << "\n"
-      "General Division (particular choice)\n"
-      "Got:  " << Quot.ToString() << "\n"
-      "Want: " << Expected.ToString() << "\n"
-      "---- also ---\n"
-      "Prod: " << Prod.ToString() << "\n"
-      "NMod: " << NMod.ToString();
-  }
-
   const std::unique_ptr<MontgomeryParams> params =
     GetMontgomeryParams(Modulus);
 
@@ -359,74 +308,6 @@ static void TestBIMDivision() {
   #endif
 
   printf("BigIntModularDivision " AGREEN("OK") "\n");
-}
-
-static void TestGeneralDivision() {
-  auto GeneralDivide = [](const BigInt &Num,
-                          const BigInt &Den,
-                          const BigInt &Mod,
-                          const BigInt &Expected) {
-      BigInt NMod = Num % Mod;
-      if (NMod < 0) NMod += Mod;
-      const BigInt Res = GeneralModularDivision(Num, Den, Mod);
-
-      if (false) {
-        printf("%s / %s mod %s =\n"
-               "%s\n",
-               Num.ToString().c_str(),
-               Den.ToString().c_str(),
-               Mod.ToString().c_str(),
-               Res.ToString().c_str());
-      }
-
-      BigInt Prod = (Res * Den) % Mod;
-      if (Prod < 0) Prod += Mod;
-      CHECK(Res == Expected) << Res.ToString() <<
-        "\nbut wanted\n" << Expected.ToString() <<
-        "\nNum:  " << Num.ToString() <<
-        "\nDen:  " << Den.ToString() <<
-        "\nMod:  " << Mod.ToString() <<
-        "\n--- also ----"
-        "\nN%M:  " << NMod.ToString() <<
-        "\nProd: " << Prod.ToString();
-
-    };
-
-  // Reference values come from original alpertron via
-  // tomtest.c.
-
-  GeneralDivide(BigInt(1), BigInt(2), BigInt(8),
-                BigInt(0));
-
-  GeneralDivide(BigInt("928374917"), BigInt("28341"),
-                BigInt("1000000000000000044444"),
-                BigInt("526816273243710647073"));
-
-  GeneralDivide(BigInt("928374917"), BigInt("28341"),
-                BigInt("10000000000000000444441"),
-                BigInt("3189725133199254303619"));
-
-
-  GeneralDivide(BigInt("9283749173472394717727"),
-                BigInt("3371717283747271128341"),
-                BigInt("10900090090099900444441"),
-                BigInt("1881438153010669145071"));
-
-  #if 0
-  // XXX This one does not work, and also does not produce consistent
-  // results in alpertron! I think it is reading uninitialized (or
-  // stale) memory during compute inverse mod power of 2.
-  GeneralDivide(
-      BigInt("11872398472983741987239487198273948719238"),
-      BigInt("61875555555555541987239487192222248990000"),
-      // 17 * 13 * 2^128
-      BigInt("75202403089527400425405788242420774731776"),
-      // Alpertron once returned this, but it's unclear whether this
-      // is even the right answer.
-      BigInt("22721449913053266398484183918334149103616"));
-  #endif
-
-  printf("GeneralDivide " AGREEN("OK") " (but this is known broken)\n");
 }
 
 static void WrapPowBaseInt(const BigInt &Modulus,
@@ -519,7 +400,6 @@ int main(int argc, char **argv) {
   TestSubModN();
   TestModMult();
   TestBIMDivision();
-  TestGeneralDivision();
 
   TestModPowBaseInt();
   TestModPow();

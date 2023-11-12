@@ -23,18 +23,10 @@ struct MontgomeryParams {
   int powerOf2Exponent = 0;
 };
 
-// modulus must have a 0 limb after its limbs (not sure why).
-std::unique_ptr<MontgomeryParams>
-GetMontgomeryParams(int modulus_length, const limb *modulus);
-
 // Same, but just using a bigint for the modulus. The returned
 // parameters have the fixed modulus limbs and length.
 std::unique_ptr<MontgomeryParams>
 GetMontgomeryParams(const BigInt &Modulus);
-
-// No coverage of this function; it may be broken.
-std::unique_ptr<MontgomeryParams>
-GetMontgomeryParamsPowerOf2(int powerOf2);
 
 // The form of the numbers is determined by the params, so to use this you
 // must be consistently using params. If modulus_length == 1,
@@ -52,12 +44,6 @@ BigInt ModPowBaseInt(const MontgomeryParams &params,
 
 void ModPow(const MontgomeryParams &params,
             const limb *base, const BigInt &Exp, limb *power);
-
-// Note: This function doesn't work, and I think it's due to bugs in
-// the original Alpertron (reading uninitialized data). No coverage
-// outside of artificial tests.
-BigInt GeneralModularDivision(const BigInt &num, const BigInt &den,
-                              const BigInt &modulus);
 
 // The params must match the modulus.
 // TODO: It's very common for us to derive the params immediately

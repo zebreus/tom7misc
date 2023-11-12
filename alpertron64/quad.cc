@@ -200,10 +200,7 @@ struct Quad {
     }
 
     if (VERBOSE) {
-      printf("  with %s %s %s %s %s | %s %s | %s %s\n",
-             A.ToString().c_str(),
-             B.ToString().c_str(),
-             C.ToString().c_str(),
+      printf("  with 1 0 1 %s %s | %s %s | %s %s\n",
              D.ToString().c_str(),
              E.ToString().c_str(),
              M.ToString().c_str(),
@@ -212,8 +209,7 @@ struct Quad {
              V.ToString().c_str());
     }
 
-    CallbackQuadModElliptic(A, B, C, E, M, K,
-                            Discr,
+    CallbackQuadModElliptic(E, M, K,
                             Value);
   }
 
@@ -357,14 +353,11 @@ struct Quad {
   // Then we get x = Rx', y = Ry'.
 
   // For this trimmed down version, we know the discriminant is -4.
-  void NonSquareDiscriminant(const BigInt &A,
-                             const BigInt &B,
-                             const BigInt &C,
-                             BigInt K,
-                             const BigInt &D) {
-    CHECK(A == 1);
-    CHECK(B == 0);
-    CHECK(C == 1);
+  void NonSquareDiscriminant(BigInt K) {
+    const BigInt A(1);
+    const BigInt B(0);
+    const BigInt C(1);
+    const BigInt D(0);
 
     const BigInt Discr(-4);
 
@@ -532,15 +525,13 @@ struct Quad {
   }
 
   void CallbackQuadModElliptic(
-      const BigInt &A, const BigInt &B, const BigInt &C,
       const BigInt &E, const BigInt &M, const BigInt &K,
-      const BigInt &Discr,
       const BigInt &Value) {
 
-    CHECK(A == 1);
-    CHECK(B == 0);
-    CHECK(C == 1);
-    CHECK(Discr == -4);
+    BigInt A(1);
+    BigInt B(0);
+    BigInt C(1);
+    const BigInt Discr(-4);
 
     auto pqro = PerformTransformation(K, Value);
     if (!pqro.has_value()) {
@@ -554,41 +545,39 @@ struct Quad {
     if (plow_opt.has_value() && plow_opt.value() >= 0) {
       const int64_t plow = plow_opt.value();
 
-      if (Discr == -4) {
-        // Discriminant is equal to -4.
-        BigInt G = Q >> 1;
+      // Discriminant is equal to -4.
+      BigInt G = Q >> 1;
 
-        if (plow == 1) {
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              BigInt(1), BigInt(0),
-              Value);
+      if (plow == 1) {
 
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              // (Q/2, -1)
-              G, BigInt(-1),
-              Value);
+        NonSquareDiscrSolutionOne(
+            M, E, K,
+            BigInt(1), BigInt(0),
+            Value);
 
-          return;
-        } if (plow == 2) {
+        NonSquareDiscrSolutionOne(
+            M, E, K,
+            // (Q/2, -1)
+            G, BigInt(-1),
+            Value);
 
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              // ((Q/2-1)/2, -1)
-              (G - 1) >> 1, BigInt(-1),
-              Value);
+        return;
+      } if (plow == 2) {
 
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              // ((Q/2+1)/2, -1)
-              (G + 1) >> 1, BigInt(-1),
-              Value);
+        NonSquareDiscrSolutionOne(
+            M, E, K,
+            // ((Q/2-1)/2, -1)
+            (G - 1) >> 1, BigInt(-1),
+            Value);
 
-          return;
-        }
+        NonSquareDiscrSolutionOne(
+            M, E, K,
+            // ((Q/2+1)/2, -1)
+            (G + 1) >> 1, BigInt(-1),
+            Value);
+
+        return;
       }
-
     }
 
     const BigInt LL = (P << 2) / Discr;
@@ -645,76 +634,41 @@ struct Quad {
 
         CHECK(d == -4);
 
-        if (d < -4) {
-          // Discriminant is less than -4, go out.
-          break;
-        }
+        // Discriminant is equal to -3 or -4.
+        std::tie(U, U1, U2, V, V1, V2) =
+          GetNextConvergent(U, U1, U2,
+                            V, V1, V2);
 
-        if (d == -3 || d == -4) {
-          // Discriminant is equal to -3 or -4.
-          std::tie(U, U1, U2, V, V1, V2) =
-            GetNextConvergent(U, U1, U2,
-                              V, V1, V2);
+        NonSquareDiscrSolutionOne(
+            M, E, K,
+            U1, V1,
+            Value);
 
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              U1, V1,
-              Value);
-
-          /*
-          if (d == -3) {
-            std::tie(U, U1, U2, V, V1, V2) =
-                GetNextConvergent(U, U1, U2, V, V1, V2);
-
-            NonSquareDiscrSolutionOne(
-                M, E, K,
-                U1, V1,
-                Value);
-          }
-          */
-
-          break;
-        }
+        break;
       }
     }
   }
 
   void SolveQuadEquation(const BigInt &F) {
-    BigInt A(1);
-    BigInt B(0);
-    BigInt C(1);
-    BigInt D(0);
-    BigInt E(0);
-
-    BigInt gcd = BigInt::GCD(BigInt::GCD(A, B),
-                             BigInt::GCD(BigInt::GCD(C, D),
-                                         E));
-
-    CHECK(gcd == 1) << "Expecting GCD to always be 1: " << gcd.ToString();
+    const BigInt gcd(1);
+    // CHECK(gcd == 1) << "Expecting GCD to always be 1: " << gcd.ToString();
 
     // F is always divisible by gcd of 1.
     // No need to reduce coefficients by GCD of 1.
 
-    // Test whether the equation is linear. A = B = C = 0.
-    if (A == 0 && B == 0 && C == 0) {
-      CHECK(false) << "Not expecting linear!\n";
-      return;
-    }
+    // Not linear. Linear requires A = B = C = 0.
 
     // Compute discriminant: b^2 - 4ac.
-    const BigInt Discr = B * B - ((A * C) << 2);
+    // const BigInt Discr = B * B - ((A * C) << 2);
     // 0 - (1 * 4)
+    const BigInt Discr(-4);
 
     CHECK(Discr == -4) << "Expecting discriminant of exactly -4.";
 
-    if (Discr == 0) {
-      CHECK(false) << "Impossible";
-      return;
-    }
-
     // Compute gcd(a,b,c).
 
-    BigInt UU1 = BigInt::GCD(BigInt::GCD(A, B), C);
+    BigInt UU1(1);
+    // BigInt::GCD(BigInt::GCD(A, B), C);
     CHECK(UU1 == 1);
     BigInt K = -F;
 
@@ -724,19 +678,7 @@ struct Quad {
 
     CHECK(K >= 0);
 
-    #if 0
-    if (K < 0) {
-      // The algorithm requires the constant coefficient
-      // to be positive, so we multiply both RHS and LHS by -1.
-      A = -A;
-      B = -B;
-      C = -C;
-      K = -K;
-    }
-    #endif
-
-    CHECK(Discr == -4);
-    NonSquareDiscriminant(A, B, C, K, D);
+    NonSquareDiscriminant(K);
   }
 
   void QuadBigInt(const BigInt &F) {
