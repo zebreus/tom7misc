@@ -221,7 +221,7 @@ struct Quad {
                             Value);
   }
 
-  // Solve congruence an^2 + bn + c = 0 (mod n) where n is different from zero.
+  // Solve congruence an^2 + bn + c = 0 (mod m) where m is different from zero.
   void SolveQuadModEquation(
       BigInt Modulus,
       const BigInt &D, const BigInt &E,
@@ -236,7 +236,27 @@ struct Quad {
     const BigInt B(0);
     const BigInt C(1);
 
-    if (true || VERBOSE) {
+    if (Modulus == 1) {
+      // Handle this case first, since various things simplify
+      // below when we know the modulus is not 1.
+
+      // Here we have 1*n^2 + 0*b + 1 = 0 mod 1.
+      // i.e.           n^2 + 1 = 0 mod 1.
+      // Any n satisfies this, but I guess we just want n less
+      // than the modulus, which is just 0 here.
+
+      // (In the general version of this code, this happens in the
+      // ValNn == 1 case, looping up to the Gcd of 1).
+
+      SolutionX(BigInt(0), Modulus,
+                A, B, C, D, E,
+                M, K,
+                U, V,
+                Discr);
+      return;
+    }
+
+    if (VERBOSE) {
       fprintf(stderr,
               "[SQME] %s %s %s %s\n",
               coeffQuadr.ToString().c_str(),
@@ -245,7 +265,7 @@ struct Quad {
               Modulus.ToString().c_str());
     }
 
-    CHECK(Modulus > 0);
+    CHECK(Modulus > 1);
 
     // PERF: This does get called with modulus = 1.
     // We might want to shortcut that since we can skip stuff
@@ -261,126 +281,27 @@ struct Quad {
     BigInt coeff_indep = BigInt::CMod(coeffIndep, Modulus);
     if (coeff_indep < 0) coeff_indep += Modulus;
 
-    if (Modulus > 1) {
-      CHECK(coeff_quadr == 1);
-      CHECK(coeff_linear == 0);
-      CHECK(coeff_indep == 1);
-    }
+    CHECK(coeff_quadr == 1);
+    CHECK(coeff_linear == 0);
+    CHECK(coeff_indep == 1);
 
     BigInt GcdAll = BigInt::GCD(coeff_indep,
                                 BigInt::GCD(coeff_quadr, coeff_linear));
 
-    if (Modulus > 1) {
-      CHECK(GcdAll == 1);
-    }
+    CHECK(GcdAll == 1);
 
     // For a GCD of zero here, original code would cause and ignore
     // a division by zero, then read 0 from the temporary.
 
-    if (GcdAll != 0 && !BigInt::DivisibleBy(coeff_indep, GcdAll)) {
-      // C must be multiple of gcd(A, B).
-      // Otherwise go out because there are no solutions.
-      return;
-    }
+    // coeff_indep must be divisible by the gcd, but this is always
+    // the case because the gcd is 1.
 
-    GcdAll = BigInt::GCD(Modulus, GcdAll);
-
-    if (Modulus > 1) {
-      CHECK(GcdAll == 1);
-    }
-
-    // Divide all coefficients by gcd(A, B).
-    if (GcdAll != 0) {
-      coeff_quadr = BigInt::DivExact(coeff_quadr, GcdAll);
-      coeff_linear = BigInt::DivExact(coeff_linear, GcdAll);
-      coeff_indep = BigInt::DivExact(coeff_indep, GcdAll);
-      Modulus = BigInt::DivExact(Modulus, GcdAll);
-    }
+    // Divide coefficients by gcd, but this does nothing with gcd=1.
 
     const BigInt &ValNn = Modulus;
 
-    if (ValNn == 1) {
-      // All values from 0 to GcdAll - 1 are solutions.
-      if (GcdAll > 5) {
-        printf("allvalues coverage\n");
-        solutions.interesting_coverage = true;
-
-        // XXX should we call SolutionX here?
-        // Seems like we would want to do so until we find
-        // a solution, at least?
-
-        CHECK(false) << "Might be possible? but unsupported";
-        // ShowText("\nAll values of x between 0 and ");
-
-        // XXX Suspicious that this modifies GcdAll in place (I
-        // think just to display it?) but uses it again below.
-        GcdAll -= 1;
-        // ShowBigInt(GcdAll);
-        // ShowText(" are solutions.");
-      } else {
-        // must succeed; is < 5 and non-negative
-
-        const int n = GcdAll.ToInt().value();
-        for (int ctr = 0; ctr < n; ctr++) {
-          SolutionX(BigInt(ctr), Modulus,
-                    A, B, C, D, E,
-                    M, K,
-                    U, V,
-                    Discr);
-        }
-      }
-      return;
-    }
-
-    CHECK(Modulus > 1);
-
-    if (BigInt::DivisibleBy(coeff_quadr, Modulus)) {
-      // Linear equation.
-      printf("linear-eq coverage\n");
-      solutions.interesting_coverage = true;
-
-      if (BigInt::GCD(coeff_linear, Modulus) != 1) {
-        // B and N are not coprime. Go out.
-        return;
-      }
-
-      // Calculate z <- -C / B (mod N)
-
-      // Is it worth it to convert to montgomery form for one division??
-      const std::unique_ptr<MontgomeryParams> params =
-        GetMontgomeryParams(Modulus);
-
-      BigInt z =
-        BigIntModularDivision(*params, coeff_indep, coeff_linear, Modulus);
-
-      if (z != 0) {
-        // not covered by cov.sh :(
-        printf("new coverage z != 0\n");
-        solutions.interesting_coverage = true;
-
-        // XXX is this a typo for ValNn in the original?
-        // ValN is only set in CheckSolutionSquareDiscr.
-        // Since it was static, it would usually be zero here.
-        // z = ValN - z;
-        z = 0 - z;
-      }
-      BigInt Temp0 = ValNn * GcdAll;
-
-      for (;;) {
-        // also not covered :(
-        printf("new coverage: loop zz");
-        solutions.interesting_coverage = true;
-        SolutionX(z, Modulus,
-                  A, B, C, D, E,
-                  M, K,
-                  U, V,
-                  Discr);
-        z += Modulus;
-        if (z < Temp0) break;
-      }
-
-      return;
-    }
+    // coeff_quadr (1) can't be divisible by the modulus, since the
+    // modulus is greater than 1.
 
     if (VERBOSE) {
       printf("[Call SolveEq] %s %s %s %s %s %s\n",
@@ -391,6 +312,10 @@ struct Quad {
              GcdAll.ToString().c_str(),
              ValNn.ToString().c_str());
     }
+
+    // PERF pass in from earlier
+    std::vector<std::pair<BigInt, int>> factors =
+      BigIntFactor(Modulus);
 
     bool interesting = false;
     SolveEquation(
@@ -404,8 +329,9 @@ struct Quad {
                 Discr);
           }),
         coeff_quadr, coeff_linear, coeff_indep,
-        Modulus, GcdAll, ValNn,
+        Modulus, factors,
         &interesting);
+
     if (interesting) {
       printf("INTERESTING!\n");
       solutions.interesting_coverage = true;

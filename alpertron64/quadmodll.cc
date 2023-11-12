@@ -379,140 +379,6 @@ struct QuadModLL {
     } while (T1 >= 0);
   }
 
-  // Solve Bx + C = 0 (mod N).
-  // Port note: This writes 0, 1, or 2 solutions at the beginning of the
-  // Solution array. Both Solution1 and Solution2 are the same. This path
-  // is disjoint from the general quadratic solver.
-  void SolveModularLinearEquation(const BigInt &GcdAll,
-                                  const BigInt &A,
-                                  const BigInt &B,
-                                  const BigInt &C,
-                                  BigInt N) {
-    // No coverage for this entire function!
-    printf("smodlineq coverage\n");
-    interesting_coverage = true;
-
-    // This thing generates its own factors for the Chinese Remainder
-    // Theorem call.
-    // auto factors = std::make_unique<Factors>();
-    // factors->storage.resize(20000);
-
-    std::vector<std::pair<BigInt, int>> factors;
-
-    // int* ptrFactorsMod = factors->storage.data();
-    // struct sFactors* pstFactor = &astFactorsMod[1];
-
-
-    int solutionNbr = 0;
-    BigInt Tmp = BigInt::GCD(B, N);
-    if (Tmp != 1) {
-      // ValB and ValN are not coprime. Go out.
-      return;
-    }
-
-    // Calculate z <- -ValC / ValB (mod ValN)
-    // Modular division routines used work for power of 2 or odd numbers.
-    // This requires to compute the quotient in two steps.
-    // N = r*2^k (r = odd)
-
-    CHECK(N != 0);
-    int powerOf2 = BigInt::BitwiseCtz(N);
-    N >>= powerOf2;
-
-    if (BigInt::Abs(N) != 1) {
-
-      // ValN is not 1.
-      Increment.push_back(N);
-      Exponents.push_back(1);
-
-      // Perform division using odd modulus r.
-      const std::unique_ptr<MontgomeryParams> params =
-        GetMontgomeryParams(N);
-
-      // Compute ptrSolution1 as ValC / |ValB|
-      BigInt sol1 = BigIntModularDivision(*params, C, B, N);
-
-      // Compute ptrSolution1 as -ValC / ValB
-      if (sol1 != 0) {
-        sol1 = N - sol1;
-      }
-
-      Solution1.push_back(sol1);
-      Solution2.push_back(sol1);
-
-      factors.push_back(std::make_pair(N, 1));
-      solutionNbr++;
-    }
-
-    CHECK((int)factors.size() == solutionNbr);
-    CHECK((int)Solution1.size() == solutionNbr);
-    CHECK((int)Solution2.size() == solutionNbr);
-    CHECK((int)Increment.size() == solutionNbr);
-
-    // Perform division using power of 2.
-    if (powerOf2 > 0) {
-
-      // Port note: This used to set ptrSolution1 to the power of 2,
-      // I think just as a temporary?
-      BigInt Pow2 = BigInt(1) << powerOf2;
-      Increment.push_back(Pow2);
-      Exponents.push_back(1);
-
-      factors.push_back(std::make_pair(Pow2, 1));
-
-      // Port note: Original code didn't advance the factor pointer nor
-      // storage pointer (probably because this is not in a loop) but
-      // that just seems wrong.
-
-      const std::unique_ptr<MontgomeryParams> params =
-        GetMontgomeryParamsPowerOf2(powerOf2);
-      const int modulus_length = params->modulus_length;
-
-      limb valb[modulus_length], valc[modulus_length];
-      limb valn[modulus_length];
-      BigIntToFixedLimbs(B, modulus_length, valb);
-      BigIntToFixedLimbs(C, modulus_length, valc);
-      BigIntToFixedLimbs(N, modulus_length, valn);
-
-      // Port note: This used to do this on ptrSolution1 in place.
-      // ptrSolution1 <- 1 / |ValB|
-      limb inv[modulus_length];
-      ComputeInversePower2(valb, inv, modulus_length);
-      // Compute ptrSolution1 as |ValC| / |ValB|
-      ModMult(*params, inv, valc, inv);
-
-      // Compute ptrSolution1 as -ValC / ValB
-      if (BigInt::Sign(B) == BigInt::Sign(C)) {
-        limb vala[modulus_length];
-        BigIntToFixedLimbs(A, modulus_length, vala);
-        // Beware: SubtractBigNbr is mod modulus_length words; it
-        // drops the carry past that.
-        SubtractBigNbr(vala, inv, inv, modulus_length);
-      }
-
-      // Discard bits outside number in most significant limb.
-      inv[modulus_length - 1].x &=
-        (1 << (powerOf2 % BITS_PER_GROUP)) - 1;
-
-      BigInt sol1 = LimbsToBigInt(inv, modulus_length);
-      Solution1.push_back(sol1);
-      Solution2.push_back(sol1);
-
-      solutionNbr++;
-    }
-
-    CHECK((int)factors.size() == solutionNbr);
-    CHECK((int)Solution1.size() == solutionNbr);
-    CHECK((int)Solution2.size() == solutionNbr);
-    CHECK((int)Increment.size() == solutionNbr);
-    CHECK((int)Exponents.size() == solutionNbr);
-
-    // astFactorsMod[0].multiplicity = solutionNbr;
-    // assert((int)factors->product.size() == solutionNbr);
-
-    PerformChineseRemainderTheorem(GcdAll, factors);
-  }
-
   // Quadr, Linear, Const are arguments.
   // Find quadratic solution of
   //   Quadr*x^2 + Linear*x + Const = 0 (mod 2^expon)
@@ -1266,24 +1132,26 @@ struct QuadModLL {
   void SolveEquation(
       const BigInt &A, const BigInt &B,
       const BigInt &C, const BigInt &N,
-      const BigInt &GcdAll, const BigInt &NN_arg) {
+      const std::vector<std::pair<BigInt, int>> &factors) {
 
-    NN = NN_arg;
+    CHECK(A == 1);
+    CHECK(B == 0);
+    CHECK(C == 1);
+
+    CHECK(N > 1);
+
+    const BigInt GcdAll(1);
+
+    // (N is the modulus)
+
+    NN = N;
 
     if (BigInt::DivisibleBy(A, N)) {
+      CHECK(false) << "Impossible because N > 1 and A == 1";
       // Linear equation.
-      SolveModularLinearEquation(GcdAll, A, B, C, N);
+      // SolveModularLinearEquation(GcdAll, A, B, C, N);
       return;
     }
-
-    // PERF: Original code would cache factorization of N. We seem
-    // to have the factorization for the first call, so maybe we
-    // could pass it from quad.
-    //
-    // For the x^2 + y^2 = z case, it needs the factors of z. So
-    // being able to pass these explicitly would be useful for the
-    // sos "ways" usage.
-    std::vector<std::pair<BigInt, int>> factors = BigIntFactor(N);
 
     const int nbrFactors = factors.size();
 
@@ -1294,21 +1162,16 @@ struct QuadModLL {
 
     for (int factorIndex = 0; factorIndex < nbrFactors; factorIndex++) {
       // XXX we never return a 0 exponent, right?
-      int expon = factors[factorIndex].second;
-      if (expon == 0) {
-        Solution1[factorIndex] = BigInt(0);
-        Solution2[factorIndex] = BigInt(0);
-        Increment[factorIndex] = BigInt(1);
-        // Port note: Was uninitialized.
-        Exponents[factorIndex] = 0;
-        continue;
-      }
+      const int expon = factors[factorIndex].second;
+      CHECK(expon != 0) << "Should not have any 0 exponents in factors";
 
       const BigInt &Prime = factors[factorIndex].first;
-
-
       if (Prime != 2 &&
           BigInt::DivisibleBy(A, Prime)) {
+        CHECK(false) << "Should be impossible since Prime > 1: "
+                     << A.ToString()
+                     << " "
+                     << Prime.ToString();
         // ValA multiple of prime means a linear equation mod prime.
         // Also prime is not 2.
         if (B == 0 && C != 0) {
@@ -1345,12 +1208,12 @@ void SolveEquation(
     const SolutionFn &solutionCback,
     const BigInt &A, const BigInt &B,
     const BigInt &C, const BigInt &N,
-    const BigInt &GcdAll, const BigInt &Nn,
+    const std::vector<std::pair<BigInt, int>> &factors,
     bool *interesting_coverage) {
   std::unique_ptr<QuadModLL> qmll =
     std::make_unique<QuadModLL>(solutionCback);
 
-  qmll->SolveEquation(A, B, C, N, GcdAll, Nn);
+  qmll->SolveEquation(A, B, C, N, factors);
 
   if (interesting_coverage != nullptr &&
       qmll->interesting_coverage) {

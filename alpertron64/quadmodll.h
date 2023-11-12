@@ -27,7 +27,8 @@ void SolveEquation(
     const SolutionFn &solutionCback,
     const BigInt &A, const BigInt &B,
     const BigInt &C, const BigInt &N,
-    const BigInt &GcdAll, const BigInt &Nn,
+    // factors of N.
+    const std::vector<std::pair<BigInt, int>> &factors,
     bool *interesting_coverage = nullptr);
 
 #endif
