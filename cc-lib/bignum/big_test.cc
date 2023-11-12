@@ -568,6 +568,10 @@ static void TestCMod() {
         CHECK(BigInt::Eq(br, z)) <<
           StringPrintf("%d %% %d = %d (got %s)\n",
                        x, y, z, br.ToString().c_str());
+
+        // Also check int64 version.
+        int64_t ibz = BigInt::CMod(BigInt(x), (int64_t)y);
+        CHECK(BigInt::Eq(bz, ibz));
       }
     }
   }

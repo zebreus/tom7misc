@@ -98,6 +98,7 @@ struct BigInt {
   // zero; modulus has the same sign as a.
   // cmod(a, b) = a - trunc(a / b) * b
   inline static BigInt CMod(const BigInt &a, const BigInt &b);
+  inline static int64_t CMod(const BigInt &a, int64_t b);
 
   // Returns Q (a div b), R (a mod b) such that a = b * q + r
   // This is Div(a, b) and CMod(a, b); a / b and a % b in C.
@@ -736,6 +737,27 @@ BigInt BigInt::CMod(const BigInt &a, const BigInt &b) {
   return r;
 }
 
+int64_t BigInt::CMod(const BigInt &a, int64_t b) {
+  if (internal::FitsLongInt(b)) {
+    if (b >= 0) {
+      BigInt ret;
+      unsigned long int ub = b;
+      // PERF: Should be possible to do this without
+      // allocating a rep? The return value is the
+      // absolute value of the remainder.
+      (void)mpz_tdiv_r_ui(ret.rep, a.rep, ub);
+      auto ro = ret.ToInt();
+      assert(ro.has_value());
+      return ro.value();
+    } else {
+      // TODO: Can still use tdiv_r_ui.
+    }
+  }
+  auto ro = CMod(a, BigInt(b)).ToInt();
+  assert(ro.has_value());
+  return ro.value();
+}
+
 // Returns Q (a div b), R (a mod b) such that a = b * q + r
 std::pair<BigInt, BigInt> BigInt::QuotRem(const BigInt &a,
                                           const BigInt &b) {
@@ -1133,6 +1155,12 @@ BigInt BigInt::CMod(const BigInt &a, const BigInt &b) {
   return BigInt{BzRem(a.rep, b.rep), nullptr};
 }
 
+int64_t BigInt::CMod(const BigInt &a, int64_t b) {
+  auto ro = BigInt{BzRem(a.rep, BigInt{b}), nullptr}.ToInt();
+  assert(ro.has_value());
+  return ro.value();
+}
+
 
 BigInt BigInt::Pow(const BigInt &a, uint64_t exponent) {
   return BigInt{BzPow(a.rep, exponent), nullptr};
@@ -1152,7 +1180,7 @@ BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
 }
 
 uint64_t BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
-  // TODO
+  // TODO: extract a as int, then do native and.
   // return BigInt{BzAnd(a.rep, BigInt{b}.rep), nullptr};
 }
 

@@ -63,10 +63,25 @@ static void TestAssigningOps() {
     CHECK(x == 0);
   }
 
+}
+
+static void TestBinaryOps() {
   {
     BigInt x(13310);
     CHECK((x & 717) == 716);
     CHECK((717 & x) == 716);
+  }
+
+  {
+    BigInt x(13310);
+    CHECK(x % 10 == 0);
+    CHECK(x % 2 == 0);
+  }
+
+  {
+    BigInt x(13317);
+    CHECK(x % 10 == 7);
+    CHECK(x % 2 == 1);
   }
 
 }
@@ -80,6 +95,7 @@ int main(int argc, char **argv) {
   TestShift();
 
   TestAssigningOps();
+  TestBinaryOps();
 
   printf("OK\n");
 }

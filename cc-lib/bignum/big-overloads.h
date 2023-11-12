@@ -56,6 +56,10 @@ inline BigInt operator %(const BigInt &a, const BigInt &b) {
   return BigInt::CMod(a, b);
 }
 
+inline int64_t operator %(const BigInt &a, int64_t b) {
+  return BigInt::CMod(a, b);
+}
+
 inline BigInt operator &(const BigInt &a, const BigInt &b) {
   return BigInt::BitwiseAnd(a, b);
 }
