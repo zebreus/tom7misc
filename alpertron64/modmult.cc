@@ -579,6 +579,7 @@ void ModMult(const MontgomeryParams &params,
     int64_t r = (f1 * f2) % params.simple_modulus;
     if (r < 0) r += params.simple_modulus;
     BigIntToFixedLimbs(BigInt(r), params.modulus_length, product);
+    return;
   }
 
   if (VERBOSE) {

@@ -18,6 +18,7 @@ using namespace std;
 #endif
 
 BigInt LimbsToBigInt(const limb *limbs, int num_limbs) {
+  CHECK(limbs != nullptr);
   CHECK(num_limbs > 0);
   BigInt out;
   mpz_import(out.GetRep(), num_limbs,
