@@ -228,88 +228,6 @@ static void TestModMult() {
   printf("ModMult " AGREEN("OK") "\n");
 }
 
-static void WrapDivide(const BigInt &Num,
-                       const BigInt &Den,
-                       const BigInt &Modulus,
-                       const BigInt &Expected) {
-
-  BigInt NMod = Num % Modulus;
-  if (NMod < 0) NMod += Modulus;
-
-  const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(Modulus);
-
-  BigInt quot =
-    BigIntModularDivision(*params, Num, Den, Modulus);
-
-  BigInt prod = (quot * Den) % Modulus;
-  if (prod < 0) prod += Modulus;
-
-  CHECK(prod == NMod)
-    << "For (" << Num.ToString() << " / "
-    << Den.ToString() << " mod " << Modulus.ToString()
-    << ") * den % mod"
-    << "\nGot  " << prod.ToString()
-    << "\nWant " << NMod.ToString();
-
-  CHECK(quot == Expected)
-    << "For " << Num.ToString() << " / "
-    << Den.ToString() << " mod " << Modulus.ToString()
-    << "\nGot  " << quot.ToString()
-    << "\nWant " << Expected.ToString();
-}
-
-static void TestBIMDivision() {
-
-  WrapDivide(BigInt("9999123456789123454747111927"),
-             BigInt("373717173837173"),
-             BigInt("88888888833117981921"),
-             BigInt("64911780604437707735"));
-  WrapDivide(BigInt("9999123456789123454747111925"),
-             BigInt("373717173837173"),
-             BigInt("88888888833117981921"),
-             BigInt("76060325747176019410"));
-
-  WrapDivide(BigInt("77777"),
-             BigInt("11111"),
-             BigInt("99999999999999"),
-             BigInt("7"));
-
-  WrapDivide(BigInt("14418029"),
-             BigInt(3),
-             BigInt("43249211"),
-             BigInt("33638817"));
-
-  WrapDivide(BigInt("1360459837378029820"),
-             BigInt(5),
-             BigInt("31578649624227546947"),
-             BigInt("272091967475605964"));
-
-  WrapDivide(BigInt(-7), BigInt(8), BigInt(7), BigInt(0));
-
-  WrapDivide(BigInt("417406300754"),
-             BigInt("8456347"),
-             BigInt("561515238337"),
-             BigInt("481523698946"));
-
-  WrapDivide(BigInt(1),
-             BigInt("4189707925802269"),
-             BigInt("4189707926060411"),
-             BigInt("3130733125169182"));
-
-  WrapDivide(BigInt(-10), BigInt(16), BigInt(9), BigInt(5));
-  WrapDivide(BigInt(-13), BigInt(64), BigInt(3), BigInt(2));
-
-  #if 0
-  WrapDivide(BigInt("777777777777777777777777777777777"),
-             BigInt("111111111111111111111111111111111"),
-             BigInt("99"),
-             BigInt("7"));
-  #endif
-
-  printf("BigIntModularDivision " AGREEN("OK") "\n");
-}
-
 static void WrapPowBaseInt(const BigInt &Modulus,
                            int base,
                            const BigInt &Exp,
@@ -399,7 +317,6 @@ int main(int argc, char **argv) {
 
   TestSubModN();
   TestModMult();
-  TestBIMDivision();
 
   TestModPowBaseInt();
   TestModPow();

@@ -117,8 +117,10 @@ struct QuadModLL {
 
         const BigInt Term = BigInt::Pow(factors[T1].first, factors[T1].second);
 
+        /*
         std::unique_ptr<MontgomeryParams> params =
           GetMontgomeryParams(Term);
+        */
 
         if (VERBOSE) {
           printf("T1 %d [exp %d]. Term: %s\n", T1,
@@ -132,33 +134,10 @@ struct QuadModLL {
           // L is overwritten before use below.
           const BigInt L1 = BigInt::Pow(factors[E].first, factors[E].second);
 
-          /*
-          */
-
-          BigInt Quot = BigIntModularDivision(*params, Q1, L1, Term);
-
-          {
-            std::optional<BigInt> Inv = BigInt::ModInverse(L1, Term);
-            CHECK(Inv.has_value());
-            BigInt Res = (Q1 * Inv.value()) % Term;
-            if (Res < 0) Res += Term;
-
-            if (VERBOSE) {
-              fprintf(stderr, "%s / %s mod %s = %s\n"
-                      "  or %s * %s mod %s = %s\n" ,
-                      Q1.ToString().c_str(),
-                      L1.ToString().c_str(),
-                      Term.ToString().c_str(),
-                      Quot.ToString().c_str(),
-                      Q1.ToString().c_str(),
-                      Inv.value().ToString().c_str(),
-                      Term.ToString().c_str(),
-                      Res.ToString().c_str());
-            }
-
-            CHECK(Res == Quot);
-          }
-
+          std::optional<BigInt> Inv = BigInt::ModInverse(L1, Term);
+          CHECK(Inv.has_value());
+          BigInt Quot = (Q1 * Inv.value()) % Term;
+          if (Quot < 0) Quot += Term;
           Tmp[T1] = Quot;
         }
 

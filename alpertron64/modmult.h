@@ -45,14 +45,6 @@ BigInt ModPowBaseInt(const MontgomeryParams &params,
 void ModPow(const MontgomeryParams &params,
             const limb *base, const BigInt &Exp, limb *power);
 
-// The params must match the modulus.
-// TODO: It's very common for us to derive the params immediately
-// before calling this, so we could offer a version that just takes
-// num,den,mod.
-BigInt BigIntModularDivision(const MontgomeryParams &params,
-                             BigInt num, BigInt den,
-                             const BigInt &mod);
-
 BigInt BigIntModularPower(const MontgomeryParams &params,
                           const BigInt &base, const BigInt &exponent);
 
