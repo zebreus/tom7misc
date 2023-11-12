@@ -82,7 +82,7 @@ static void RunGrid() {
   AutoHisto auto_histo(100000);
   int64_t batches_done = 0;
 
-  static constexpr int64_t START_NUM = 785496871;
+  static constexpr int64_t START_NUM = 1027735527;
   static constexpr int64_t MAX_NUM = 2'000'000'000;
   static constexpr int64_t BATCH_SIZE = 32;
 
@@ -187,7 +187,7 @@ static void RunGrid() {
             std::string counters = CounterString();
             std::string bar =
               ANSI::ProgressBar(
-                  done, MAX_NUM,
+                  done, RANGE,
                   StringPrintf("%lld ", START_NUM + batch_idx * BATCH_SIZE),
                   sec);
 
