@@ -138,6 +138,11 @@ struct BigInt {
   // Jacobi symbol (-1, 0, 1). b must be odd.
   inline static int Jacobi(const BigInt &a, const BigInt &b);
 
+  // Compute the modular inverse of a mod b. Returns nullopt if
+  // it does not exist.
+  inline static std::optional<BigInt> ModInverse(
+      const BigInt &a, const BigInt &b);
+
   #endif
 
 
@@ -162,6 +167,7 @@ struct BigInt {
   static std::vector<std::pair<BigInt, int>>
   PrimeFactorization(const BigInt &x, int64_t max_factor = -1);
 
+  // Exact primality test.
   static bool IsPrime(const BigInt &x);
 
   // Get 64 (or so) bits of the number. Will be equal for equal a, but
@@ -442,6 +448,17 @@ int BigInt::Jacobi(const BigInt &a, const BigInt &b) {
   return mpz_jacobi(a.rep, b.rep);
 }
 
+std::optional<BigInt> BigInt::ModInverse(
+    const BigInt &a, const BigInt &b) {
+  BigInt ret;
+  if (mpz_invert(ret.rep, a.rep, b.rep)) {
+    return {ret};
+  } else {
+    return std::nullopt;
+  }
+}
+
+
 BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
   BigInt ret;
   mpz_and(ret.rep, a.rep, b.rep);
@@ -454,12 +471,9 @@ uint64_t BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
   static_assert(sizeof (mp_limb_t) == 8,
                 "This code assumes 64-bit limbs, although we "
                 "could easily add branches for 32-bit.");
-
+  // Extract the low word and AND natively.
   uint64_t aa = mpz_getlimbn(a.rep, 0);
   return aa & b;
-  // PERF There is no mpz_and_ui, but we could perhaps extract
-  // the low word and AND natively.
-  // return BitwiseAnd(a, BigInt(b));
 }
 
 uint64_t BigInt::BitwiseCtz(const BigInt &a) {

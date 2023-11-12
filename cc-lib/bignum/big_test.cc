@@ -573,6 +573,81 @@ static void TestCMod() {
   }
 }
 
+#define CHECK_HAS_EQ(aopt, b) do {                        \
+    std::optional<BigInt> aopt_ = (aopt);                 \
+    BigInt b_ = (b);                                      \
+    CHECK(aopt_.has_value()) << #aopt << " vs " << #b;    \
+    CHECK(BigInt::Eq(aopt_.value(), b_)) <<               \
+      #aopt << " vs " << #b << "\n"                       \
+      "Got: " << aopt_.value().ToString() << "\n"         \
+      "Want: " << b_.ToString();                          \
+  } while (0)
+
+static void TestInvert() {
+  for (const char *bs : {
+      "1", "2", "3", "4", "5", "100", "10001", "31337",
+      // 2^64
+      "18446744073709551616",
+      // 2^64 - 1
+      "18446744073709551615",
+      // 2^64 + 1
+      "18446744073709551617",
+      // 2^127
+      "170141183460469231731687303715884105728"}) {
+    const BigInt modulus(bs);
+
+    if (BigInt::Eq(modulus, 1)) {
+      // Degenerate case.
+      CHECK_HAS_EQ(BigInt::ModInverse(BigInt(1), modulus),
+                   BigInt(0));
+    } else {
+      // Otherwise, modular inverse of 1 always exists and is 1.
+      CHECK_HAS_EQ(BigInt::ModInverse(BigInt(1), modulus),
+                   BigInt(1));
+    }
+
+    if (BigInt::Less(modulus, BigInt(100000)) &&
+        BigInt::IsPrime(modulus)) {
+
+      for (BigInt a(1); BigInt::Less(a, modulus); a = BigInt::Plus(a, 1)) {
+        auto ao = BigInt::ModInverse(a, modulus);
+        CHECK(ao.has_value()) << "Every nonzero value has an inverse "
+          "mod a prime p: " << a.ToString() << "^-1 mod " <<
+          modulus.ToString();
+        BigInt inv = ao.value();
+        CHECK(BigInt::Greater(inv, 0) &&
+              BigInt::Less(inv, modulus)) << inv.ToString();
+        BigInt product = BigInt::CMod(BigInt::Times(inv, a), modulus);
+        CHECK(BigInt::Eq(product, 1)) << product.ToString();
+      }
+
+    } else {
+
+      for (const char *as : {
+          "2", "3", "5", "6", "11", "27", "51",
+          "120", "121",
+          "15232", "90210",
+          // 2^64 - 1
+          "18446744073709551615"}) {
+        const BigInt a(as);
+
+        if (BigInt::Less(a, modulus)) {
+          std::optional<BigInt> ao = BigInt::ModInverse(a, modulus);
+          if (ao.has_value()) {
+            BigInt inv = ao.value();
+            CHECK(BigInt::Greater(inv, 0) &&
+                  BigInt::Less(inv, modulus)) << inv.ToString();
+            BigInt product = BigInt::CMod(BigInt::Times(inv, a), modulus);
+            CHECK(BigInt::Eq(product, 1)) << product.ToString();
+          }
+        }
+      }
+    }
+  }
+
+  printf("Modular inverse OK.\n");
+}
+
 static void TestSwap() {
   BigInt a("11223344556677889900");
   BigInt b("55555555555555555555");
@@ -649,8 +724,10 @@ int main(int argc, char **argv) {
 
   TestSqrt();
   TestJacobi();
+  TestInvert();
 
   TestSwap();
+
 
   printf("OK\n");
 }
