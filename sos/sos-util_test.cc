@@ -15,6 +15,7 @@
 #include "base/stringprintf.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "sos-quad.h"
 
 using namespace std;
 

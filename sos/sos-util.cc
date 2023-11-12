@@ -14,10 +14,6 @@
 #include "base/logging.h"
 #include "ansi.h"
 
-#include "quad.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
-
 using namespace std;
 
 static constexpr bool SELF_TEST = false; // PERF
@@ -379,7 +375,7 @@ NSoks2(uint64_t n, int num_expected) {
     auto vo = NSoks1(n - trialsquare * trialsquare);
     if (vo.has_value()) {
       res.emplace_back(vo.value(), trialsquare);
-      if (num_expected >= 0 && res.size() == num_expected)
+      if (num_expected >= 0 && (int)res.size() == num_expected)
         break;
     }
   }
@@ -450,7 +446,7 @@ GetWaysMerge(uint64_t sum, int num_expected) {
   while (b >= a) {
     if (aaplusbbminussum == 0) [[unlikely]] {
       ways.emplace_back(a, b);
-      if (num_expected >= 0 && ways.size() == num_expected)
+      if (num_expected >= 0 && (int)ways.size() == num_expected)
         break;
     }
 
@@ -488,46 +484,4 @@ GetWaysMerge(uint64_t sum, int num_expected) {
     }
   }
   return ways;
-}
-
-std::vector<std::pair<uint64_t, uint64_t>>
-GetWaysQuad(uint64_t sum, int num_expected_ignored) {
-  // We want x^2 + y^2 = sum.
-  // This is 1 x^2 + 0 xy + 1 y^2 + 0x + 0y + -sum = 0
-
-  Solutions sols =
-    QuadBigInt(BigInt{1}, BigInt{0}, BigInt{1},
-               BigInt{0}, BigInt{0}, -BigInt{sum},
-               nullptr);
-
-  // Not a bug, but I want to know!
-  CHECK(!sols.interesting_coverage) << "New coverage! " << sum;
-
-  // It cannot have an infinite number of solutions, so these
-  // are all unexpected.
-  CHECK(!sols.any_integers) << sum;
-  CHECK(sols.quadratic.empty()) << sum;
-  CHECK(sols.linear.empty()) << sum;
-  CHECK(sols.recursive.empty()) << sum;
-
-  std::vector<std::pair<uint64_t, uint64_t>> ret;
-  for (const PointSolution &pt : sols.points) {
-    auto xo = pt.X.ToInt();
-    auto yo = pt.Y.ToInt();
-    // Because these are squared, they can't be using the high
-    // bit (they're uint32s, even).
-    CHECK(xo.has_value() && yo.has_value()) << sum;
-
-    int64_t x = xo.value();
-    int64_t y = yo.value();
-
-    // Skip negative solutions.
-    // Normalize solutions so that we don't take duplicates.
-    if (x >= 0 && y >= 0 && x <= y) {
-      ret.emplace_back((uint64_t)xo.value(),
-                       (uint64_t)yo.value());
-    }
-  }
-
-  return ret;
 }
