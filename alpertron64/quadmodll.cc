@@ -373,6 +373,10 @@ struct QuadModLL {
 
       // fprintf(stderr, "Prime & 3 != 3\n");
 
+      CHECK((int)params->R1.size() == params->modulus_length + 1);
+      CHECK((int)params->R2.size() == params->modulus_length + 1);
+      CHECK((int)params->modulus.size() == params->modulus_length + 1);
+
       limb* toConvert = nullptr;
       // Convert discriminant to Montgomery notation.
       BigIntToFixedLimbs(Base, params->modulus_length, aux5);

@@ -21,6 +21,10 @@ struct MontgomeryParams {
   int modulus_length = 0;
   // If nonzero, the modulus is this power of two.
   int powerOf2Exponent = 0;
+
+  // if simple_modulus > 0, then R1=R2=1, and we simply
+  // do native modular multiplication.
+  uint64_t simple_modulus = 0;
 };
 
 // Same, but just using a bigint for the modulus. The returned

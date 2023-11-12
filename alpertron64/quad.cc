@@ -192,15 +192,9 @@ struct Quad {
   }
 
   void SolutionX(BigInt Value, const BigInt &Modulus,
-                 const BigInt &D, const BigInt &E,
+                 const BigInt &E,
                  const BigInt &M, const BigInt &K,
                  const BigInt &U, const BigInt &V) {
-
-    BigInt A(1);
-    BigInt B(0);
-    BigInt C(1);
-    BigInt Discr(-4);
-
     if (VERBOSE) {
       printf("SolutionX(%s, %s)\n",
              Value.ToString().c_str(),
@@ -213,8 +207,7 @@ struct Quad {
     }
 
     if (VERBOSE) {
-      printf("  with 1 0 1 %s %s | %s %s | %s %s\n",
-             D.ToString().c_str(),
+      printf("  with 1 0 1 0 %s | %s %s | %s %s\n",
              E.ToString().c_str(),
              M.ToString().c_str(),
              K.ToString().c_str(),
@@ -222,14 +215,13 @@ struct Quad {
              V.ToString().c_str());
     }
 
-    CallbackQuadModElliptic(E, M, K,
-                            Value);
+    CallbackQuadModElliptic(E, M, K, Value);
   }
 
   // Solve congruence an^2 + bn + c = 0 (mod m) where m is different from zero.
   void SolveQuadModEquation(
       BigInt Modulus,
-      const BigInt &D, const BigInt &E,
+      const BigInt &E,
       const BigInt &M, const BigInt &K, const BigInt &U, const BigInt &V,
       const BigInt &Discr) {
 
@@ -240,6 +232,7 @@ struct Quad {
     const BigInt A(1);
     const BigInt B(0);
     const BigInt C(1);
+    const BigInt D(0);
 
     if (Modulus == 1) {
       // Handle this case first, since various things simplify
@@ -254,7 +247,7 @@ struct Quad {
       // ValNn == 1 case, looping up to the Gcd of 1).
 
       SolutionX(BigInt(0), Modulus,
-                D, E,
+                E,
                 M, K,
                 U, V);
       return;
@@ -327,7 +320,7 @@ struct Quad {
             this->SolutionX(
                 Value,
                 Modulus,
-                D, E,
+                E,
                 M, K,
                 U, V);
           }),
@@ -366,7 +359,9 @@ struct Quad {
   // Then we get x = Rx', y = Ry'.
 
   // For this trimmed down version, we know the discriminant is -4.
-  void NonSquareDiscriminant(BigInt K) {
+  void NonSquareDiscriminant(uint64_t k) {
+    BigInt K(k);
+
     const BigInt A(1);
     const BigInt B(0);
     const BigInt C(1);
@@ -454,15 +449,12 @@ struct Quad {
 
     for (;;) {
 
-      CHECK(A == 1);
-      CHECK(B == 0);
-      CHECK(C == 1);
-
+      CHECK(M == 0);
       SolveQuadModEquation(
           // Coefficients and modulus
           BigInt::Abs(K),
           // Problem state
-          D, E,
+          E,
           M, K, U, V,
           Discr);
 
@@ -663,7 +655,6 @@ struct Quad {
   }
 
   void SolveQuadEquation(uint64_t f) {
-    const BigInt gcd(1);
     // CHECK(gcd == 1) << "Expecting GCD to always be 1: " << gcd.ToString();
 
     // F is always divisible by gcd of 1.
@@ -674,23 +665,22 @@ struct Quad {
     // Compute discriminant: b^2 - 4ac.
     // const BigInt Discr = B * B - ((A * C) << 2);
     // 0 - (1 * 4)
-    const BigInt Discr(-4);
-
-    CHECK(Discr == -4) << "Expecting discriminant of exactly -4.";
+    // const BigInt Discr(-4);
+    // CHECK(Discr == -4) << "Expecting discriminant of exactly -4.";
 
     // Compute gcd(a,b,c).
 
-    BigInt UU1(1);
+    // BigInt UU1(1);
     // BigInt::GCD(BigInt::GCD(A, B), C);
-    CHECK(UU1 == 1);
-    const BigInt K(f);
+    // CHECK(UU1 == 1);
+    // const BigInt K(f);
 
     // Discriminant is not zero.
     // Do not translate origin.
     // K is always divisible by the gcd of A, B, C, since that's 1.
 
-    CHECK(K > 1);
-    NonSquareDiscriminant(K);
+    CHECK(f > 1);
+    NonSquareDiscriminant(f);
   }
 
   // F is non-negative (this is the reverse sign of the original

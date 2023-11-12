@@ -459,19 +459,43 @@ static void InitMontgomeryParams(MontgomeryParams *params) {
   }
 }
 
+constexpr bool USE_SIMPLE_MODULUS = true;
+
 std::unique_ptr<MontgomeryParams>
 GetMontgomeryParams(const BigInt &Modulus) {
   std::unique_ptr<MontgomeryParams> params =
     std::make_unique<MontgomeryParams>();
 
-  params->modulus_length = BigIntNumLimbs(Modulus);
-  // With space for required padding.
-  params->modulus.resize(params->modulus_length + 1);
-  BigIntToFixedLimbs(Modulus, params->modulus_length, params->modulus.data());
-  params->modulus[params->modulus_length].x = 0;
+  auto mo = Modulus.ToInt();
+  if (USE_SIMPLE_MODULUS && mo.has_value()) {
+    CHECK(mo.value() > 0);
+    params->simple_modulus = mo.value();
+    // Enough to hold any 64-bit number.
 
-  InitMontgomeryParams(params.get());
-  return params;
+    // const int mod_len = BigIntNumLimbs(Modulus);
+    constexpr int mod_len = 3;
+    params->modulus_length = mod_len;
+    params->modulus.resize(mod_len + 1);
+    params->R1.resize(mod_len + 1);
+    params->R2.resize(mod_len + 1);
+    BigIntToFixedLimbs(Modulus, mod_len + 1, params->modulus.data());
+    BigIntToFixedLimbs(BigInt(1), mod_len + 1, params->R1.data());
+    BigIntToFixedLimbs(BigInt(1), mod_len + 1, params->R2.data());
+    // Don't need to initialize Ninv.
+    // We use native even if it's a power of 2.
+    params->powerOf2Exponent = 0;
+
+    return params;
+  } else {
+    params->modulus_length = BigIntNumLimbs(Modulus);
+    // With space for required padding.
+    params->modulus.resize(params->modulus_length + 1);
+    BigIntToFixedLimbs(Modulus, params->modulus_length, params->modulus.data());
+    params->modulus[params->modulus_length].x = 0;
+
+    InitMontgomeryParams(params.get());
+    return params;
+  }
 }
 
 
@@ -545,6 +569,17 @@ static void endBigModmult(const limb *prodNotAdjusted, limb *product,
 void ModMult(const MontgomeryParams &params,
              const limb* factor1, const limb* factor2,
              limb* product) {
+
+  if (params.simple_modulus > 0) {
+    CHECK(USE_SIMPLE_MODULUS);
+
+    const BigInt f1 = LimbsToBigInt(factor1, params.modulus_length);
+    const BigInt f2 = LimbsToBigInt(factor2, params.modulus_length);
+
+    int64_t r = (f1 * f2) % params.simple_modulus;
+    if (r < 0) r += params.simple_modulus;
+    BigIntToFixedLimbs(BigInt(r), params.modulus_length, product);
+  }
 
   if (VERBOSE) {
     printf("ModMult params modulus_length: %d, pow2: %d\n",
