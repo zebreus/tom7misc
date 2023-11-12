@@ -527,6 +527,22 @@ struct QuadModLL {
     BigInt SqrRoot =
       BigIntModularDivision(*params, BigInt(1), SqrtDisc, Prime);
 
+    if (VERBOSE)
+    fprintf(stderr, "1/%s mod %s = %s\n",
+            SqrtDisc.ToString().c_str(),
+            Prime.ToString().c_str(),
+            SqrRoot.ToString().c_str());
+
+    std::optional<BigInt> Inv = BigInt::ModInverse(SqrtDisc, Prime);
+    CHECK(Inv.has_value());
+    if (VERBOSE)
+    fprintf(stderr, "%s^-1 mod %s = %s\n",
+            SqrtDisc.ToString().c_str(),
+            Prime.ToString().c_str(),
+            Inv.value().ToString().c_str());
+
+    CHECK(Inv.value() == SqrRoot);
+
     int correctBits = 1;
 
     BigInt Q = Prime;
@@ -563,6 +579,13 @@ struct QuadModLL {
     // by discriminant.
     SqrRoot *= Discriminant;
     SqrRoot %= Q;
+
+    if (VERBOSE)
+    fprintf(stderr, "Sqrt(%s) mod %s (bits: %d) = %s\n",
+            Base.ToString().c_str(),
+            Prime.ToString().c_str(),
+            nbrBitsSquareRoot,
+            SqrRoot.ToString().c_str());
     return SqrRoot;
   }
 
@@ -676,8 +699,14 @@ struct QuadModLL {
       const std::unique_ptr<MontgomeryParams> params =
         GetMontgomeryParams(Tmp1);
 
+
+      const std::optional<BigInt> Inv = BigInt::ModInverse(AOdd, Tmp1);
+      CHECK(Inv.has_value()) << AOdd.ToString() << " " << Tmp1.ToString();
+
       // PERF: modular inverse?
       AOdd = BigIntModularDivision(*params, BigInt(1), AOdd, Tmp1);
+
+      CHECK(Inv.value() == AOdd);
     }
 
     CHECK(Discriminant != 0) << "Discriminant should be -1 or -4 here.";
@@ -685,24 +714,31 @@ struct QuadModLL {
 
     // Discriminant is not zero.
     // Find number of digits of square root to compute.
-    const int nbrBitsSquareRoot = expon + bitsAZero - deltaZeros;
+    // This was expon + bitsAZero - deltaZeros,
+    // but ends up just being expon because those are zero.
+    const int nbrBitsSquareRoot = expon;
     CHECK(nbrBitsSquareRoot == expon);
 
     {
-
       // Equal to VV, right?
-      const BigInt Tmp1 = BigInt::Pow(Prime, nbrBitsSquareRoot);
+      // const BigInt Tmp1 = BigInt::Pow(Prime, nbrBitsSquareRoot);
+      const BigInt &Tmp1 = VV;
       CHECK(Tmp1 == VV);
 
       // in which case this does nothing...
-      Discriminant %= Tmp1;
+      CHECK((Discriminant % Tmp1) == Discriminant);
+      // Discriminant %= Tmp1;
+
       if (Discriminant < 0) {
         Discriminant += Tmp1;
       }
     }
 
+    CHECK(Discriminant >= 0) << "We added 3 to -1 or 5+ to -4.";
+
     BigInt Tmp = Discriminant % Prime;
     if (Tmp < 0) {
+      CHECK(false) << "So this should be impossible now...";
       Tmp += Prime;
     }
 
@@ -719,34 +755,19 @@ struct QuadModLL {
         Tmp, Prime, nbrBitsSquareRoot);
 
     // Multiply by square root of discriminant by prime^deltaZeros.
+    // But deltaZeros is 0.
     CHECK(deltaZeros == 0);
-    /*
-    for (int ctr = 0; ctr < deltaZeros; ctr++) {
-      SqrRoot *= Prime;
-    }
-    */
 
-    const int correctBits = expon - deltaZeros;
+    // const int correctBits = expon - deltaZeros;
 
     // Compute increment.
     // Q <- prime^correctBits
-    const BigInt Q = BigInt::Pow(Prime, correctBits);
-    CHECK(Q == VV);
+    // correctbits is the same as the exponent.
+    const BigInt &Q = VV;
 
     Tmp1 = B + SqrRoot;
 
     CHECK(bitsAZero == 0);
-    /*
-    for (int ctr = 0; ctr < bitsAZero; ctr++) {
-      BigInt Tmp2 = Tmp1 % Prime;
-      if (Tmp2 != 0) {
-        // Cannot divide by prime, so go out.
-        sol1Invalid = true;
-        break;
-      }
-      Tmp1 = BigInt::DivExact(Tmp1, Prime);
-    }
-    */
 
     Solution1[factorIndex] = BigInt::CMod(Tmp1 * AOdd, Q);
 
@@ -756,18 +777,6 @@ struct QuadModLL {
 
     Tmp1 = B - SqrRoot;
     CHECK(bitsAZero == 0);
-    /*
-    for (int ctr = 0; ctr < bitsAZero; ctr++) {
-      BigInt Tmp2 = Tmp1 % Prime;
-
-      if (Tmp2 != 0) {
-        // Cannot divide by prime, so go out.
-        sol2Invalid = true;
-        break;
-      }
-      Tmp1 = BigInt::DivExact(Tmp1, Prime);
-    }
-    */
 
     Solution2[factorIndex] = BigInt::CMod(Tmp1 * AOdd, Q);
 
@@ -831,13 +840,12 @@ struct QuadModLL {
 
   // Solve Ax^2 + Bx + C = 0 (mod N).
   void SolveEquation(
-      const BigInt &A, const BigInt &B,
-      const BigInt &C, const BigInt &N,
+      const BigInt &N,
       const std::vector<std::pair<BigInt, int>> &factors) {
 
-    CHECK(A == 1);
-    CHECK(B == 0);
-    CHECK(C == 1);
+    const BigInt A(1);
+    const BigInt B(0);
+    const BigInt C(1);
 
     CHECK(N > 1);
 
@@ -904,14 +912,13 @@ struct QuadModLL {
 
 void SolveEquation(
     const SolutionFn &solutionCback,
-    const BigInt &A, const BigInt &B,
-    const BigInt &C, const BigInt &N,
+    const BigInt &N,
     const std::vector<std::pair<BigInt, int>> &factors,
     bool *interesting_coverage) {
   std::unique_ptr<QuadModLL> qmll =
     std::make_unique<QuadModLL>(solutionCback);
 
-  qmll->SolveEquation(A, B, C, N, factors);
+  qmll->SolveEquation(N, factors);
 
   if (interesting_coverage != nullptr &&
       qmll->interesting_coverage) {

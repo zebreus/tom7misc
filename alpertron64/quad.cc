@@ -46,28 +46,21 @@ namespace {
 // nullopt: There are no solutions because gcd(P, Q, R) > 1
 // some(P, Q, R) with gcd(P, Q, R) = 1.
 std::optional<std::tuple<BigInt, BigInt, BigInt>>
-PerformTransformation(
-    const BigInt &A, const BigInt &B, const BigInt &C, const BigInt &K,
-    const BigInt &Value) {
-  // writes: P, Q, R, H, I
-
-  const BigInt VA = A * Value;
+PerformTransformation(const BigInt &K, const BigInt &Value) {
+  // These equations become simpler because of the known
+  // values of A,B,C = 1,0,1.
 
   // Compute P as (at^2+bt+c)/K
-  const BigInt P = ((VA + B) * Value + C) / K;
+  const BigInt P = (Value * Value + 1) / K;
 
   // Compute Q <- -(2at + b).
-  const BigInt Q = -((VA << 1) + B);
+  const BigInt Q = -(Value << 1);
 
   // Compute R <- aK
-  const BigInt R = A * K;
+  const BigInt &R = K;
 
-  // Compute gcd of P, Q and R.
-
-  // Note: Used to write H and I as temporaries, but I think they're dead.
   const BigInt I = BigInt::GCD(BigInt::GCD(P, Q), R);
   if (I == 1) {
-    // Gcd equals 1.
     return {std::make_tuple(P, Q, R)};
   }
 
@@ -186,11 +179,14 @@ struct Quad {
   }
 
   void SolutionX(BigInt Value, const BigInt &Modulus,
-                 const BigInt &A, const BigInt &B, const BigInt &C,
                  const BigInt &D, const BigInt &E,
                  const BigInt &M, const BigInt &K,
-                 const BigInt &U, const BigInt &V,
-                 const BigInt &Discr) {
+                 const BigInt &U, const BigInt &V) {
+
+    BigInt A(1);
+    BigInt B(0);
+    BigInt C(1);
+    BigInt Discr(-4);
 
     if (VERBOSE) {
       printf("SolutionX(%s, %s)\n",
@@ -249,10 +245,9 @@ struct Quad {
       // ValNn == 1 case, looping up to the Gcd of 1).
 
       SolutionX(BigInt(0), Modulus,
-                A, B, C, D, E,
+                D, E,
                 M, K,
-                U, V,
-                Discr);
+                U, V);
       return;
     }
 
@@ -323,12 +318,10 @@ struct Quad {
             this->SolutionX(
                 Value,
                 Modulus,
-                A, B, C, D, E,
+                D, E,
                 M, K,
-                U, V,
-                Discr);
+                U, V);
           }),
-        coeff_quadr, coeff_linear, coeff_indep,
         Modulus, factors,
         &interesting);
 
@@ -544,7 +537,12 @@ struct Quad {
       const BigInt &Discr,
       const BigInt &Value) {
 
-    auto pqro = PerformTransformation(A, B, C, K, Value);
+    CHECK(A == 1);
+    CHECK(B == 0);
+    CHECK(C == 1);
+    CHECK(Discr == -4);
+
+    auto pqro = PerformTransformation(K, Value);
     if (!pqro.has_value()) {
       // No solutions because gcd(P, Q, R) > 1.
       return;
@@ -552,23 +550,9 @@ struct Quad {
 
     const auto &[P, Q, R] = pqro.value();
 
-    CHECK(Discr <= 0);
-
-    CHECK(Discr == -4);
-
     std::optional<int64_t> plow_opt = P.ToInt();
     if (plow_opt.has_value() && plow_opt.value() >= 0) {
-      int64_t plow = plow_opt.value();
-      if (Discr < -4 && plow == 1) {
-        // Discriminant is less than -4 and P equals 1.
-
-        NonSquareDiscrSolutionOne(
-            M, E, K,
-            BigInt(1), BigInt(0),
-            Value);
-
-        return;
-      }
+      const int64_t plow = plow_opt.value();
 
       if (Discr == -4) {
         // Discriminant is equal to -4.
@@ -605,53 +589,6 @@ struct Quad {
         }
       }
 
-      if (Discr == -3) {
-        // Discriminant is equal to -3.
-        if (plow == 1) {
-
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              BigInt(1), BigInt(0),
-              Value);
-
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              // ((Q-1)/2, -1)
-              (Q - 1) >> 1, BigInt(-1),
-              Value);
-
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              // ((Q+1)/2, -1)
-              (Q + 1) >> 1, BigInt(-1),
-              Value);
-
-          return;
-        } else if (plow == 3) {
-
-          // printf("plow3 coverage\n");
-
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              // ((Q+3)/6, -1)
-              (Q + 3) / 6, BigInt(-1),
-              Value);
-
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              // (Q/3, -2)
-              Q / 3, BigInt(-2),
-              Value);
-
-          NonSquareDiscrSolutionOne(
-              M, E, K,
-              // ((Q-3)/6, -1)
-              (Q - 3) / 6, BigInt(-1),
-              Value);
-
-          return;
-        }
-      }
     }
 
     const BigInt LL = (P << 2) / Discr;
@@ -706,6 +643,8 @@ struct Quad {
         int64_t d = dopt.value();
         CHECK(d < 0) << "Original code seemed to assume this.";
 
+        CHECK(d == -4);
+
         if (d < -4) {
           // Discriminant is less than -4, go out.
           break;
@@ -722,6 +661,7 @@ struct Quad {
               U1, V1,
               Value);
 
+          /*
           if (d == -3) {
             std::tie(U, U1, U2, V, V1, V2) =
                 GetNextConvergent(U, U1, U2, V, V1, V2);
@@ -731,6 +671,7 @@ struct Quad {
                 U1, V1,
                 Value);
           }
+          */
 
           break;
         }
@@ -781,6 +722,9 @@ struct Quad {
     // Do not translate origin.
     // K is always divisible by the gcd of A, B, C, since that's 1.
 
+    CHECK(K >= 0);
+
+    #if 0
     if (K < 0) {
       // The algorithm requires the constant coefficient
       // to be positive, so we multiply both RHS and LHS by -1.
@@ -789,6 +733,7 @@ struct Quad {
       C = -C;
       K = -K;
     }
+    #endif
 
     CHECK(Discr == -4);
     NonSquareDiscriminant(A, B, C, K, D);
