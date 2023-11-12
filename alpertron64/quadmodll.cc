@@ -365,33 +365,42 @@ struct QuadModLL {
   }
 
   static
-  BigInt GetSqrtDisc(const MontgomeryParams &params,
-                     const BigInt &Base,
+  BigInt GetSqrtDisc(const BigInt &Base,
                      const BigInt &Prime) {
 
+    const std::unique_ptr<MontgomeryParams> params =
+      GetMontgomeryParams(Prime);
+
     const int NumberLengthBytes =
-      params.modulus_length * (int)sizeof(limb);
+      params->modulus_length * (int)sizeof(limb);
 
-    limb aux5[params.modulus_length];
-    limb aux6[params.modulus_length];
-    limb aux7[params.modulus_length];
-    limb aux8[params.modulus_length];
-    limb aux9[params.modulus_length];
+    limb aux5[params->modulus_length];
+    limb aux6[params->modulus_length];
+    limb aux7[params->modulus_length];
+    limb aux8[params->modulus_length];
+    limb aux9[params->modulus_length];
 
-    if ((Prime & 3) == 3) {
+    if ((Prime & 3) == 3) [[unlikely]] {
       // prime mod 4 = 3
       // subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
 
-      return BigIntModularPower(params, Base, (Prime + 1) >> 2);
+      fprintf(stderr, "Prime & 3 == 3\n");
+      // Empirically, this branch isn't entered. It must fail
+      // the residue test or something?
+
+      return BigIntModularPower(*params, Base, (Prime + 1) >> 2);
 
     } else {
 
+      // fprintf(stderr, "Prime & 3 != 3\n");
+
       limb* toConvert = nullptr;
       // Convert discriminant to Montgomery notation.
-      BigIntToFixedLimbs(Base, params.modulus_length, aux5);
+      BigIntToFixedLimbs(Base, params->modulus_length, aux5);
       // u
-      ModMult(params, aux5, params.R2.data(), aux6);
+      ModMult(*params, aux5, params->R2.data(), aux6);
       if ((Prime & 7) == 5) {
+
         // prime mod 8 = 5: use Atkin's method for modular square roots.
         // Step 1. v <- (2u)^((p-5)/8) mod p
         // Step 2. i <- (2uv^2) mod p
@@ -403,26 +412,27 @@ struct QuadModLL {
         // subtractdivide(&Q, 5, 8);
         // 2u
         AddBigNbrModN(aux6, aux6, aux7,
-                      params.modulus.data(), params.modulus_length);
-        ModPow(params, aux7, Q, aux8);
+                      params->modulus.data(), params->modulus_length);
+        ModPow(*params, aux7, Q, aux8);
         // At this moment aux7 is v in Montgomery notation.
 
         // Step 2.
         // v^2
-        ModMult(params, aux8, aux8, aux9);
+        ModMult(*params, aux8, aux8, aux9);
         // i
-        ModMult(params, aux7, aux9, aux9);
+        ModMult(*params, aux7, aux9, aux9);
 
         // Step 3.
         // i-1
-        SubtBigNbrModN(aux9, params.R1.data(), aux9,
-                       params.modulus.data(), params.modulus_length);
+        SubtBigNbrModN(aux9, params->R1.data(), aux9,
+                       params->modulus.data(), params->modulus_length);
         // v*(i-1)
-        ModMult(params, aux8, aux9, aux9);
+        ModMult(*params, aux8, aux9, aux9);
         // u*v*(i-1)
-        ModMult(params, aux6, aux9, aux9);
+        ModMult(*params, aux6, aux9, aux9);
         toConvert = aux9;
       } else {
+
         // prime = 1 (mod 8). Use Shanks' method for modular square roots.
         // Step 1. Select e >= 3, q odd such that p = 2^e * q + 1.
         // Step 2. Choose x at random in the range 1 < x < p such that
@@ -454,51 +464,51 @@ struct QuadModLL {
         // Step 3.
         // Get z <- x^q (mod p) in Montgomery notation.
         // z
-        BigInt Z = ModPowBaseInt(params, x, QQ);
+        BigInt Z = ModPowBaseInt(*params, x, QQ);
 
         // PERF We don't use aux4 (now Z) again, so this could just
         // be a substitution?
         // Step 4.
         // y
-        BigIntToFixedLimbs(Z, params.modulus_length, aux5);
+        BigIntToFixedLimbs(Z, params->modulus_length, aux5);
 
         int r = e;
 
         const BigInt KK1 = (QQ - 1) >> 1;
 
         // x
-        ModPow(params, aux6, KK1, aux7);
+        ModPow(*params, aux6, KK1, aux7);
         // v
-        ModMult(params, aux6, aux7, aux8);
+        ModMult(*params, aux6, aux7, aux8);
         // w
-        ModMult(params, aux8, aux7, aux9);
+        ModMult(*params, aux8, aux7, aux9);
 
         // Step 5
-        while (memcmp(aux9, params.R1.data(),
+        while (memcmp(aux9, params->R1.data(),
                       NumberLengthBytes) != 0) {
 
-          limb aux10[params.modulus_length];
+          limb aux10[params->modulus_length];
           // Step 6
           int k = 0;
           (void)memcpy(aux10, aux9, NumberLengthBytes);
           do {
             k++;
-            ModMult(params, aux10, aux10, aux10);
-          } while (memcmp(aux10, params.R1.data(),
+            ModMult(*params, aux10, aux10, aux10);
+          } while (memcmp(aux10, params->R1.data(),
                           NumberLengthBytes) != 0);
 
           // Step 7
           (void)memcpy(aux10, aux5, NumberLengthBytes); // d
           for (int ctr = 0; ctr < (r - k - 1); ctr++) {
-            ModMult(params, aux10, aux10, aux10);
+            ModMult(*params, aux10, aux10, aux10);
           }
           // y
-          ModMult(params, aux10, aux10, aux5);
+          ModMult(*params, aux10, aux10, aux5);
           r = k;
           // v
-          ModMult(params, aux8, aux10, aux8);
+          ModMult(*params, aux8, aux10, aux8);
           // w
-          ModMult(params, aux9, aux5, aux9);
+          ModMult(*params, aux9, aux5, aux9);
         }
         toConvert = aux8;
       }
@@ -509,19 +519,16 @@ struct QuadModLL {
       // Convert power to standard notation.
       (void)memset(aux7, 0, NumberLengthBytes);
       aux7[0].x = 1;
-      ModMult(params, aux7, toConvert, toConvert);
+      ModMult(*params, aux7, toConvert, toConvert);
 
-      return LimbsToBigInt(toConvert, params.modulus_length);
+      return LimbsToBigInt(toConvert, params->modulus_length);
     }
   }
 
   BigInt ComputeSquareRootModPowerOfP(const BigInt &Base,
                                       const BigInt &Prime,
                                       int nbrBitsSquareRoot) {
-    const std::unique_ptr<MontgomeryParams> params =
-      GetMontgomeryParams(Prime);
-
-    const BigInt SqrtDisc = GetSqrtDisc(*params, Base, Prime);
+    const BigInt SqrtDisc = GetSqrtDisc(Base, Prime);
 
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
     // BigInt SqrRoot =
@@ -638,6 +645,7 @@ struct QuadModLL {
       // Discriminant is not zero.
       deltaZeros = 0;
       while (BigInt::DivisibleBy(Discriminant, Prime)) {
+        CHECK(false) << "Loop should not find divisors";
         Discriminant = BigInt::DivExact(Discriminant, Prime);
         deltaZeros++;
       }
@@ -648,23 +656,22 @@ struct QuadModLL {
     CHECK(deltaZeros == 0) << Discriminant.ToString() << " "
                            << Prime.ToString();
 
-    if ((deltaZeros & 1) != 0 && deltaZeros < expon) {
-      CHECK(false) << "Should be impossible; deltaZeros is 0.";
-      // If delta is of type m*prime^n where m is not multiple of prime
-      // and n is odd, there is no solution, so go out.
-      return false;
-    }
+    // If delta is of type m*prime^n where m is not multiple of prime
+    // and n is odd, there is no solution, so go out. This is impossible
+    // since deltaZeros is 0.
 
-    deltaZeros >>= 1;
+    // does nothing size deltaZeros is already 0.
+    // deltaZeros >>= 1;
+
     // Compute inverse of -2*A (mod prime^(expon - deltaZeros)).
-    AOdd = BigInt(2);
+    // AOdd = BigInt(2);
     // CHECK(AOdd == 2);
 
     const BigInt &Tmp1 = VV;
     CHECK(Tmp1 >= 2);
 
     // AOdd %= Tmp1;
-    CHECK(AOdd == 2) << "Since Tmp1 > 2, AOdd stays 2.";
+    // CHECK(AOdd == 2) << "Since Tmp1 > 2, AOdd stays 2.";
 
     // Negate 2*A
     AOdd = Tmp1 - 2;
@@ -707,10 +714,6 @@ struct QuadModLL {
     CHECK(Discriminant >= 0) << "We added 3 to -1 or 5+ to -4.";
 
     BigInt Tmp = Discriminant % Prime;
-    if (Tmp < 0) {
-      CHECK(false) << "So this should be impossible now...";
-      Tmp += Prime;
-    }
 
     if (BigInt::Jacobi(Tmp, Prime) != 1) {
       // Not a quadratic residue, so go out.
