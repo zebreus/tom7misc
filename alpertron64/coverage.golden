@@ -53,6 +53,12 @@ Solution:
 x = 100000
 y = 300000
 
+** Solve x^2 + y^2 = 120
+The equation does not have integer solutions.
+
+** Solve x^2 + y^2 = 62768369664000
+The equation does not have integer solutions.
+
 ** Solve x^2 + y^2 = 199506591167822449
 Solution:
 x = 0

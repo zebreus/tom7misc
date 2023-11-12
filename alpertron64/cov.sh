@@ -11,6 +11,10 @@ rm -f coverage.out
 ./quad.exe 100 >> coverage.out
 ./quad.exe 100000000000 >> coverage.out
 
+# a factor of 3^1 does trigger a different code path
+./quad.exe 120 >> coverage.out
+./quad.exe 62768369664000 >> coverage.out
+
 ./quad.exe 199506591167822449 >> coverage.out
 
 # 2^80
@@ -19,6 +23,8 @@ rm -f coverage.out
 ./quad.exe 604462909807314587353088 >> coverage.out
 # 16!
 ./quad.exe 20922789888000 >> coverage.out
+
+
 
 dos2unix -q coverage.out
 diff coverage.golden coverage.out

@@ -36,6 +36,11 @@
 static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 
+static
+void ComputeInversePower2(const limb *value, /*@out@*/limb *result,
+                          int number_length);
+
+
 // Note this reads *before* the limb pointer.
 static double getMantissa(const limb *ptrLimb, int nbrLimbs) {
   assert(nbrLimbs >= 1);
@@ -1086,7 +1091,8 @@ BigInt GeneralModularDivision(
 
 // Find the inverse of value mod 2^(number_length*BITS_PER_GROUP)
 // Writes number_length limbs to result.
-void ComputeInversePower2(const limb *value, limb *result, int number_length) {
+static void ComputeInversePower2(
+    const limb *value, limb *result, int number_length) {
   limb tmp[number_length * 2];
   limb tmp2[number_length * 2];
   // Routine below expects zero padding (first multiply is length 2).
@@ -1173,27 +1179,6 @@ void ComputeInversePower2(const limb *value, limb *result, int number_length) {
   // tmp <- x * (2 - N * x)
   MultiplyLimbs(tmp2, tmp, tmp2, number_length);
   memcpy(result, tmp2, number_length * sizeof(limb));
-}
-
-// PERF can avoid some copying if we repeat guts of above
-// (or factor into an internal version that takes a buffer of the
-// appropriate 2x length)
-BigInt GetInversePower2(const BigInt &Value, int number_length) {
-  const int value_length = BigIntNumLimbs(Value);
-  // PERF might not need to convert the entire value? Below we
-  // truncate to number_length. Or this may have a secret precondition
-  // that value_length <= number_length.
-  const int storage_length = std::max(value_length, number_length);
-  if (VERBOSE) {
-    printf("Value %s. number_len %d. value_len %d\n",
-           Value.ToString().c_str(), number_length, value_length);
-  }
-  limb value[storage_length];
-  BigIntToFixedLimbs(Value, storage_length, value);
-
-  limb result[number_length];
-  ComputeInversePower2(value, result, number_length);
-  return LimbsToBigInt(result, number_length);
 }
 
 // No coverage :(

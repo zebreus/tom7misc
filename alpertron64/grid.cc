@@ -82,8 +82,8 @@ static void RunGrid() {
   AutoHisto auto_histo(100000);
   int64_t batches_done = 0;
 
-  static constexpr int64_t START_NUM = 2180696032;
-  static constexpr int64_t MAX_NUM   = 4'000'000'000;
+  static constexpr int64_t START_NUM = 3622082176;
+  static constexpr int64_t MAX_NUM   = 8'000'000'000;
   static constexpr int64_t BATCH_SIZE = 32;
 
   static constexpr int64_t RANGE = MAX_NUM - START_NUM;
