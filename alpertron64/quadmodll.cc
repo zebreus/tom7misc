@@ -39,11 +39,17 @@ static constexpr bool VERBOSE = false;
 // now fully internal.
 namespace {
 
+static inline uint64_t GetU64(const BigInt &b) {
+  std::optional<uint64_t> uo = b.ToU64();
+  CHECK(uo.has_value());
+  return uo.value();
+}
+
 struct QuadModLL {
   // Parallel arrays (same size as number of factors)
-  std::vector<BigInt> Solution1;
-  std::vector<BigInt> Solution2;
-  std::vector<BigInt> Increment;
+  std::vector<uint64_t> Solution1;
+  std::vector<uint64_t> Solution2;
+  std::vector<uint64_t> Increment;
   std::vector<int> Exponents;
 
   explicit QuadModLL(const SolutionFn &f) : SolutionCallback(f) {}
@@ -72,7 +78,7 @@ struct QuadModLL {
     CHECK((int)Exponents.size() == nbrFactors);
     CHECK(nbrFactors > 0);
     // Dynamically allocate temporary space. We need one per factor.
-    std::vector<BigInt> Tmp(nbrFactors);
+    std::vector<uint64_t> Tmp(nbrFactors);
 
     do {
       CHECK(!Solution1.empty());
@@ -88,16 +94,16 @@ struct QuadModLL {
       }
 
       // PERF: Directly
-      BigInt CurrentSolution = Tmp[0];
+      uint64_t CurrentSolution = Tmp[0];
 
       const BigInt &Prime = factors[0].first;
-
-      BigInt Mult = BigInt::Pow(Prime, factors[0].second);
+      BigInt BigMult = BigInt::Pow(Prime, factors[0].second);
+      uint64_t Mult = GetU64(BigMult);
 
       for (T1 = 1; T1 < nbrFactors; T1++) {
 
         if (factors[T1].second == 0) {
-          Tmp[T1] = BigInt(0);
+          Tmp[T1] = 0;
           continue;
         }
 
@@ -117,11 +123,6 @@ struct QuadModLL {
 
         const BigInt Term = BigInt::Pow(factors[T1].first, factors[T1].second);
 
-        /*
-        std::unique_ptr<MontgomeryParams> params =
-          GetMontgomeryParams(Term);
-        */
-
         if (VERBOSE) {
           printf("T1 %d [exp %d]. Term: %s\n", T1,
                  factors[T1].second,
@@ -129,7 +130,7 @@ struct QuadModLL {
         }
 
         for (int E = 0; E < T1; E++) {
-          const BigInt Q1 = Tmp[T1] - Tmp[E];
+          const BigInt Q1 = BigInt(Tmp[T1]) - BigInt(Tmp[E]);
 
           // L is overwritten before use below.
           const BigInt L1 = BigInt::Pow(factors[E].first, factors[E].second);
@@ -138,18 +139,21 @@ struct QuadModLL {
           CHECK(Inv.has_value());
           BigInt Quot = (Q1 * Inv.value()) % Term;
           if (Quot < 0) Quot += Term;
-          Tmp[T1] = Quot;
+          Tmp[T1] = GetU64(Quot);
         }
 
-        Tmp[T1] = BigInt::CMod(Tmp[T1], Term);
+        Tmp[T1] %= GetU64(Term);
+          // BigInt::CMod(Tmp[T1], Term);
 
         // Compute currentSolution as Tmp[T1] * Mult + currentSolution
-        BigInt L2 = Tmp[T1] * Mult;
+        uint64_t L2 = Tmp[T1] * Mult;
         CurrentSolution += L2;
-        Mult *= Term;
+        Mult *= GetU64(Term);
       }
 
-      BigInt VV(0);
+      CHECK(GcdAll == 1);
+
+      uint64_t VV = 0;
       BigInt KK1 = 0 - GcdAll;
 
       // Perform loop while V < GcdAll.
@@ -180,10 +184,10 @@ struct QuadModLL {
         }
 
         // L <- Exponents[T1] * quad_info.Increment[T1]
-        BigInt L1 = Increment[T1] * Exponents[T1];
+        uint64_t L1 = Increment[T1] * Exponents[T1];
 
         // K1 <- 2 * term
-        BigInt K1 = Term << 1;
+        uint64_t K1 = GetU64(Term) << 1;
         if (L1 < K1) {
           break;
         }
@@ -326,20 +330,20 @@ struct QuadModLL {
       // Tmp1 &= Mask;
       Tmp2 = SqrRoot;
 
-      int64_t Sol1 = Tmp2 & Mask;
-      int64_t Sol2 = (Tmp1 - SqrRoot) & Mask;
+      uint64_t Sol1 = Tmp2 & Mask;
+      uint64_t Sol2 = (Tmp1 - SqrRoot) & Mask;
 
       // SqrRoot is 1
       CHECK(Sol1 == 1);
       // -1 & Mask is Mask.
-      CHECK(Sol2 == (int64_t)Mask);
+      CHECK(Sol2 == Mask);
 
-      Solution1[factorIndex] = BigInt(Sol1);
-      Solution2[factorIndex] = BigInt(Sol2);
+      Solution1[factorIndex] = Sol1;
+      Solution2[factorIndex] = Sol2;
     }
 
     // Store increment.
-    Increment[factorIndex] = BigInt(1) << expon;
+    Increment[factorIndex] = ((uint64_t)1) << expon;
     return true;
   }
 
@@ -723,21 +727,23 @@ struct QuadModLL {
 
     BigInt S1 = B + SqrRoot;
 
-    Solution1[factorIndex] = BigInt::CMod(S1 * AOdd, Q);
-
-    if (Solution1[factorIndex] < 0) {
-      Solution1[factorIndex] += Q;
+    BigInt Sol1 = BigInt::CMod(S1 * AOdd, Q);
+    if (Sol1 < 0) {
+      Sol1 += Q;
     }
+
+    Solution1[factorIndex] = GetU64(Sol1);
+
 
     BigInt S2 = B - SqrRoot;
 
-    Solution2[factorIndex] = BigInt::CMod(S2 * AOdd, Q);
-
-    if (Solution2[factorIndex] < 0) {
-      Solution2[factorIndex] += Q;
+    BigInt Sol2 = BigInt::CMod(S2 * AOdd, Q);
+    if (Sol2 < 0) {
+      Sol2 += Q;
     }
 
-    Increment[factorIndex] = Q;
+    Solution2[factorIndex] = GetU64(Sol2);
+    Increment[factorIndex] = GetU64(Q);
     return true;
   }
 

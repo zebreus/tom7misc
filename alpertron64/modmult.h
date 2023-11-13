@@ -5,6 +5,9 @@
 
 #include "bignbr.h"
 
+#include "base/int128.h"
+#include "base/logging.h"
+
 // These used to be globals. Now calling GetMontgomeryParams* creates them.
 struct MontgomeryParams {
   // R is the power of 2 for Montgomery multiplication and reduction.
@@ -41,6 +44,27 @@ GetMontgomeryParams(const BigInt &Modulus);
 void ModMult(const MontgomeryParams &params,
              const limb *factor1, const limb *factor2,
              limb *product);
+
+// XXX doc
+inline uint64_t ModMult64(const MontgomeryParams &params,
+                          uint64_t a, uint64_t b) {
+  CHECK(params.simple_modulus > 0);
+
+  // PERF: If the inputs are small enough, can just do a 64-bit
+  // operation. We could test that the modulus is 32 bit when
+  // constructing MontgomeryParams, for example?
+  uint128_t aa = a;
+  uint128_t bb = b;
+
+  // PERF could check if product fits in 64 bits?
+
+  uint128_t full_product = aa * bb;
+  uint128_t residue = full_product % (uint128_t)params.simple_modulus;
+
+  CHECK(Uint128High64(residue) == 0);
+
+  return Uint128Low64(residue);
+}
 
 // Returns base^exp mod n (which comes from MontgomeryParams).
 BigInt ModPowBaseInt(const MontgomeryParams &params,
