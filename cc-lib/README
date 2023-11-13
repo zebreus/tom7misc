@@ -15,11 +15,12 @@ for C++17, but I am now on at least 9.2 on every platform. On Windows,
 I use and endorse x86_64-w64-mingw32-g++, which is version 11.3+!. On
 linux, just get the newest GCC.
 
-Some of what's here is google "base" libraries, since those are quite
-useful and I know them well. They have been released multiple times
-under open-source licenses; particularly the Apache 2.0 license, which
-is in APACHE20. Googletest is the "new BSD" license, in gtest/LICENSE.
-The Google Template Library in gtl/ is APACHE20.
+Some of what's here is various parts of google "base" libraries (now
+"abseil"), since those are quite useful and I know them well. They
+have been released multiple times under open-source licenses;
+particularly the Apache 2.0 license, which is in APACHE20. Googletest
+is the "new BSD" license, in gtest/LICENSE. The Google Template
+Library in gtl/ is APACHE20.
 
 Sean Barrett's excellently simple stb_* libraries are in the public
 domain; see the notices at the tops of those files. I've made some
@@ -64,7 +65,7 @@ COPYING.
 
 Descriptions of some of the libraries, some of which are more-or-less
 verbatim imports:
-base/        Google "base" library. APACHE20 license.
+base/        Google "base" library, and parts of abseil. APACHE20 license.
 sdl/         Utilities for my habits in SDL. Includes bitmap font rendering.
 jdksmidi/    Baroque but thorough MIDI library, GPL.
 city/        The excellent CityHash hash algorithm.
@@ -127,4 +128,4 @@ stb_image_*   - Lower-level image reading and writing. I usually use the
                 higher-level image.h.
 tinyexr       - Lower-level reading and writing of the slighly exotic EXR
                 file format.
-factorize     - Factors integers.
+factorization - Factors integers. See also bignum.
