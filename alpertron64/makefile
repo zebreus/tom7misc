@@ -44,9 +44,9 @@ LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)
 
 HEADERS=bignbr.h factor.h modmult.h quadmodll.h bigconv.h quad.h
 
-CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/int128.o $(CC_LIB)/bignum/big.o
+CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/int128.o $(CC_LIB)/bignum/big.o $(CC_LIB)/factorization.o
 
-TEST_CC_LIB_OBJECTS=$(CC_LIB_OBJECTS) $(CC_LIB)/ansi.o $(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/subprocess.o $(CC_LIB)/factorization.o $(CC_LIB)/atomic-util.o
+TEST_CC_LIB_OBJECTS=$(CC_LIB_OBJECTS) $(CC_LIB)/ansi.o $(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/subprocess.o $(CC_LIB)/atomic-util.o
 
 SOS_OBJECTS=$(SOS)/sos-util.o
 

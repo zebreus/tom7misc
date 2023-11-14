@@ -26,9 +26,9 @@ using SolutionFn = std::function<void(const BigInt &value)>;
 // With A,B,C = 1,0,1
 void SolveEquation(
     const SolutionFn &solutionCback,
-    const BigInt &N,
+    uint64_t n,
     // factors of N.
-    const std::vector<std::pair<BigInt, int>> &factors,
+    const std::vector<std::pair<uint64_t, int>> &factors,
     bool *interesting_coverage = nullptr);
 
 #endif

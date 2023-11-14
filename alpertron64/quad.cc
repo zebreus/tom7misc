@@ -35,6 +35,7 @@
 #include "base/logging.h"
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
+#include "factorization.h"
 
 using namespace std;
 
@@ -201,6 +202,8 @@ struct Quad {
              Modulus.ToString().c_str());
     }
 
+    CHECK(M == 0);
+
     // If 2*value is greater than modulus, subtract modulus.
     if ((Value << 1) > Modulus) {
       Value -= Modulus;
@@ -220,21 +223,24 @@ struct Quad {
 
   // Solve congruence an^2 + bn + c = 0 (mod m) where m is different from zero.
   void SolveQuadModEquation(
-      BigInt Modulus,
+      uint64_t modulus,
       const BigInt &E,
-      const BigInt &M, const BigInt &K, const BigInt &U, const BigInt &V,
-      const BigInt &Discr) {
+      const BigInt &K, const BigInt &U, const BigInt &V) {
 
-    const BigInt coeffQuadr(1);
-    const BigInt coeffLinear(0);
-    const BigInt coeffIndep(1);
+    const BigInt coeff_quadr(1);
+    const BigInt coeff_linear(0);
+    const BigInt coeff_indep(1);
 
     const BigInt A(1);
     const BigInt B(0);
     const BigInt C(1);
     const BigInt D(0);
 
-    if (Modulus == 1) {
+    const BigInt M(0);
+
+    CHECK(K == modulus);
+
+    if (modulus == 1) {
       // Handle this case first, since various things simplify
       // below when we know the modulus is not 1.
 
@@ -246,7 +252,7 @@ struct Quad {
       // (In the general version of this code, this happens in the
       // ValNn == 1 case, looping up to the Gcd of 1).
 
-      SolutionX(BigInt(0), Modulus,
+      SolutionX(BigInt(0), BigInt(1),
                 E,
                 M, K,
                 U, V);
@@ -255,37 +261,24 @@ struct Quad {
 
     if (VERBOSE) {
       fprintf(stderr,
-              "[SQME] %s %s %s %s\n",
-              coeffQuadr.ToString().c_str(),
-              coeffLinear.ToString().c_str(),
-              coeffIndep.ToString().c_str(),
-              Modulus.ToString().c_str());
+              "[SQME] 1 0 1 %llu\n",
+              // (quad, linear, indep)
+              modulus);
     }
 
-    CHECK(Modulus > 1);
+    CHECK(modulus > 1);
 
     // PERF: This does get called with modulus = 1.
     // We might want to shortcut that since we can skip stuff
     // like BigInt::DivisibleBy(coeff_quadr, Modulus), given
     // the known value of the coefficients.
 
-    BigInt coeff_quadr = BigInt::CMod(coeffQuadr, Modulus);
-    if (coeff_quadr < 0) coeff_quadr += Modulus;
-
-    BigInt coeff_linear = BigInt::CMod(coeffLinear, Modulus);
-    if (coeff_linear < 0) coeff_linear += Modulus;
-
-    BigInt coeff_indep = BigInt::CMod(coeffIndep, Modulus);
-    if (coeff_indep < 0) coeff_indep += Modulus;
+    // This used to mod each coefficient by the modulus,
+    // but this will not change the values 1,0,1.
 
     CHECK(coeff_quadr == 1);
     CHECK(coeff_linear == 0);
     CHECK(coeff_indep == 1);
-
-    BigInt GcdAll = BigInt::GCD(coeff_indep,
-                                BigInt::GCD(coeff_quadr, coeff_linear));
-
-    CHECK(GcdAll == 1);
 
     // For a GCD of zero here, original code would cause and ignore
     // a division by zero, then read 0 from the temporary.
@@ -295,36 +288,33 @@ struct Quad {
 
     // Divide coefficients by gcd, but this does nothing with gcd=1.
 
-    const BigInt &ValNn = Modulus;
-
     // coeff_quadr (1) can't be divisible by the modulus, since the
     // modulus is greater than 1.
 
     if (VERBOSE) {
-      printf("[Call SolveEq] %s %s %s %s %s %s\n",
-             coeff_quadr.ToString().c_str(),
-             coeff_linear.ToString().c_str(),
-             coeff_indep.ToString().c_str(),
-             Modulus.ToString().c_str(),
-             GcdAll.ToString().c_str(),
-             ValNn.ToString().c_str());
+      printf("[Call SolveEq] 1 0 1 %llu 1 %llu\n",
+             // (quad, linear, indep)
+             modulus,
+             // (gcdall)
+             // formerly Nn:
+             modulus);
     }
 
     // PERF pass in from earlier
-    std::vector<std::pair<BigInt, int>> factors =
-      BigIntFactor(Modulus);
+    std::vector<std::pair<uint64_t, int>> factors =
+      Factorization::Factorize(modulus);
 
     bool interesting = false;
     SolveEquation(
         SolutionFn([&](const BigInt &Value) {
             this->SolutionX(
                 Value,
-                Modulus,
+                BigInt(modulus),
                 E,
                 M, K,
                 U, V);
           }),
-        Modulus, factors,
+        modulus, factors,
         &interesting);
 
     if (interesting) {
@@ -360,8 +350,6 @@ struct Quad {
 
   // For this trimmed down version, we know the discriminant is -4.
   void NonSquareDiscriminant(uint64_t k) {
-    BigInt K(k);
-
     const BigInt A(1);
     const BigInt B(0);
     const BigInt C(1);
@@ -380,33 +368,35 @@ struct Quad {
 
     // No need to divide by gcd of 1.
 
-    if (K == 0) {
+    if (k == 0) {
       // If k=0, the only solution is (X, Y) = (0, 0)
       RecordSolutionXY(BigInt(0), BigInt(0));
       return;
     }
 
     if (VERBOSE) {
-      printf("start NSD %s %s %s | %s %s | 0 0 1\n",
-             A.ToString().c_str(), B.ToString().c_str(), C.ToString().c_str(),
-             K.ToString().c_str(), Discr.ToString().c_str());
+      printf("start NSD 1 0 1 | %llu -4 | 0 0 1\n", k);
     }
 
     // Factor independent term.
 
     // Note that we modify the factors (multiplicities) in place below.
-    std::vector<std::pair<BigInt, int>> factors =
-      BigIntFactor(BigInt::Abs(K));
+    // std::vector<std::pair<BigInt, int>> factors =
+    // BigIntFactor(BigInt::Abs(K));
+
+    CHECK(k > 1);
+    std::vector<std::pair<uint64_t, int>> factors =
+      Factorization::Factorize(k);
 
     if (VERBOSE) {
       for (const auto &[f, m] : factors) {
-        printf("%s^%d * ", f.ToString().c_str(), m);
+        printf("%llu^%d * ", f, m);
       }
       printf("\n");
     }
 
     // Find all indices of prime factors with even multiplicity.
-    // (XXX parallel. could be pair)
+    // (XXX parallel. could be a little struct with the stuff below too)
     // Index of prime factors with even multiplicity
     // PORT NOTE: was 1-based in original code; now 0-based
     std::vector<int> indexEvenMultiplicity, originalMultiplicities;
@@ -428,9 +418,8 @@ struct Quad {
     std::vector<int> counters(numFactors, 0);
     std::vector<bool> is_descending(numFactors, false);
 
-    BigInt E = BigInt(1);
+    uint64_t e = 1;
     // Loop that cycles through all square divisors of the independent term.
-    BigInt M(0);
 
     // Skip GCD(A, K) != 1 case; A is 1 so the GCD is always 1.
 
@@ -449,14 +438,12 @@ struct Quad {
 
     for (;;) {
 
-      CHECK(M == 0);
       SolveQuadModEquation(
           // Coefficients and modulus
-          BigInt::Abs(K),
+          k,
           // Problem state
-          E,
-          M, K, U, V,
-          Discr);
+          BigInt(e),
+          BigInt(k), U, V);
 
       // Adjust counters.
       // This modifies the factors (multiplicities) in place.
@@ -476,12 +463,12 @@ struct Quad {
             is_descending[index] = true;
             continue;
           } else {
-            BigInt UU3 = factors[fidx].first * factors[fidx].first;
+            uint64_t uu3 = factors[fidx].first * factors[fidx].first;
             factors[fidx].second -= 2;
             // Divide by square of prime.
-            K /= UU3;
+            k /= uu3;
             // Multiply multiplier by prime.counters[index]++
-            E *= factors[fidx].first;
+            e *= factors[fidx].first;
             counters[index] += 2;
             break;
           }
@@ -493,12 +480,12 @@ struct Quad {
             is_descending[index] = false;
             continue;
           } else {
-            BigInt UU3 = factors[fidx].first * factors[fidx].first;
+            uint64_t uu3 = factors[fidx].first * factors[fidx].first;
             factors[fidx].second += 2;
             // Multiply by square of prime.
-            K *= UU3;
+            k *= uu3;
             // Divide multiplier by prime.counters[index]++
-            E /= factors[fidx].first;
+            e /= factors[fidx].first;
             counters[index] -= 2;
             break;
           }
@@ -521,11 +508,8 @@ struct Quad {
     if (VERBOSE) printf(".\n");
 
     if (VERBOSE) {
-      printf("bottom %s %s / 0 0 1 %s\n",
-             K.ToString().c_str(),
-             E.ToString().c_str(),
-             // (alpha, beta, gcdhomog)
-             Discr.ToString().c_str());
+      printf("bottom %llu %llu / 0 0 1 -4\n", k, e);
+      // (alpha, beta, gcdhomog, discr)
     }
   }
 
@@ -536,7 +520,10 @@ struct Quad {
     BigInt A(1);
     BigInt B(0);
     BigInt C(1);
-    const BigInt Discr(-4);
+
+    CHECK(M == 0);
+
+    constexpr int64_t discr = -4;
 
     auto pqro = PerformTransformation(K, Value);
     if (!pqro.has_value()) {
@@ -585,7 +572,7 @@ struct Quad {
       }
     }
 
-    const BigInt LL = (P << 2) / Discr;
+    const BigInt LL = (P << 2) / discr;
     /*
     fprintf(stderr, "P = %s, Discr = %s, LL = %s\n",
             P.ToString().c_str(), Discr.ToString().c_str(),
@@ -632,12 +619,7 @@ struct Quad {
             U1, V1,
             Value);
 
-        std::optional<int64_t> dopt = Discr.ToInt();
-        if (!dopt.has_value()) break;
-        int64_t d = dopt.value();
-        CHECK(d < 0) << "Original code seemed to assume this.";
-
-        CHECK(d == -4);
+        CHECK(discr == -4);
 
         // Discriminant is equal to -3 or -4.
         std::tie(U, U1, U2, V, V1, V2) =

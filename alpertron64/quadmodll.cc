@@ -39,6 +39,17 @@ static constexpr bool VERBOSE = false;
 // now fully internal.
 namespace {
 
+static inline uint64_t Pow64(uint64_t base, int exp) {
+  uint64_t res = 1;
+  while (exp) {
+    if (exp & 1)
+      res *= base;
+    exp >>= 1;
+    base *= base;
+  }
+  return res;
+}
+
 static inline uint64_t GetU64(const BigInt &b) {
   std::optional<uint64_t> uo = b.ToU64();
   CHECK(uo.has_value());
@@ -66,12 +77,10 @@ struct QuadModLL {
 
   // Use Chinese remainder theorem to obtain the solutions.
   void PerformChineseRemainderTheorem(
-      const std::vector<std::pair<BigInt, int>> &factors) {
+      const std::vector<uint64_t> &prime_powers) {
     int T1;
 
-    const BigInt GcdAll(1);
-
-    const int nbrFactors = factors.size();
+    const int nbrFactors = prime_powers.size();
     CHECK((int)Solution1.size() == nbrFactors);
     CHECK((int)Solution2.size() == nbrFactors);
     CHECK((int)Increment.size() == nbrFactors);
@@ -96,21 +105,10 @@ struct QuadModLL {
       // PERF: Directly
       uint64_t CurrentSolution = Tmp[0];
 
-      const BigInt &Prime = factors[0].first;
-      BigInt BigMult = BigInt::Pow(Prime, factors[0].second);
-      uint64_t Mult = GetU64(BigMult);
+      // uint64_t prime = factors[0].first;
+      uint64_t mult = prime_powers[0];
 
       for (T1 = 1; T1 < nbrFactors; T1++) {
-
-        if (factors[T1].second == 0) {
-          Tmp[T1] = 0;
-          continue;
-        }
-
-        CHECK(T1 < (int)Solution1.size());
-        CHECK(T1 < (int)Solution2.size());
-        CHECK(T1 < (int)Increment.size());
-        CHECK(T1 < (int)Exponents.size());
 
         int expon = Exponents[T1];
         Tmp[T1] = Increment[T1] * (expon >> 1);
@@ -121,11 +119,10 @@ struct QuadModLL {
           Tmp[T1] += Solution1[T1];
         }
 
-        const BigInt Term = BigInt::Pow(factors[T1].first, factors[T1].second);
+        const BigInt Term(prime_powers[T1]);
 
         if (VERBOSE) {
-          printf("T1 %d [exp %d]. Term: %s\n", T1,
-                 factors[T1].second,
+          printf("T1 %d [exp ?]. Term: %s\n", T1,
                  Term.ToString().c_str());
         }
 
@@ -133,7 +130,7 @@ struct QuadModLL {
           const BigInt Q1 = BigInt(Tmp[T1]) - BigInt(Tmp[E]);
 
           // L is overwritten before use below.
-          const BigInt L1 = BigInt::Pow(factors[E].first, factors[E].second);
+          const BigInt L1 = BigInt(prime_powers[E]);
 
           std::optional<BigInt> Inv = BigInt::ModInverse(L1, Term);
           CHECK(Inv.has_value());
@@ -146,34 +143,33 @@ struct QuadModLL {
           // BigInt::CMod(Tmp[T1], Term);
 
         // Compute currentSolution as Tmp[T1] * Mult + currentSolution
-        uint64_t L2 = Tmp[T1] * Mult;
+        uint64_t L2 = Tmp[T1] * mult;
         CurrentSolution += L2;
-        Mult *= GetU64(Term);
+        mult *= GetU64(Term);
       }
 
-      CHECK(GcdAll == 1);
-
+      // Is the upshot here that we run a single time, passing
+      // CurrentSolution?
       uint64_t VV = 0;
-      BigInt KK1 = 0 - GcdAll;
+      // 0 - GcdAll
+      int64_t KK1(-1);
 
+      bool first = true;
       // Perform loop while V < GcdAll.
       while (KK1 < 0) {
+        CHECK(first);
+        CHECK(VV == 0);
         // The solution is V*ValNn + currentSolution
         SolutionCallback(VV * NN + CurrentSolution);
 
         VV += 1;
-        KK1 = VV - GcdAll;
+        KK1 = VV - 1;
+        first = false;
       }
 
       for (T1 = nbrFactors - 1; T1 >= 0; T1--) {
         // term = base^exp
-        const BigInt Term = BigInt::Pow(factors[T1].first,
-                                        factors[T1].second);
-
-        CHECK(T1 < (int)Solution1.size());
-        CHECK(T1 < (int)Solution2.size());
-        CHECK(T1 < (int)Increment.size());
-        CHECK(T1 < (int)Exponents.size());
+        const BigInt Term(prime_powers[T1]);
 
         if (Solution1[T1] == Solution2[T1]) {
           // quad_info.Solution1[T1] == quad_info.Solution2[T1]
@@ -750,9 +746,10 @@ struct QuadModLL {
   // If solutions found, writes normalized solutions at factorIndex
   // and returns true.
   bool QuadraticTermNotMultipleOfP(
-      const BigInt &Prime,
+      uint64_t prime,
       int expon, int factorIndex) {
-    const BigInt GcdAll(1);
+
+    const BigInt Prime(prime);
 
     const BigInt A(1);
     const BigInt B(0);
@@ -799,27 +796,16 @@ struct QuadModLL {
 
   // Solve Ax^2 + Bx + C = 0 (mod N).
   void SolveEquation(
-      const BigInt &N,
-      const std::vector<std::pair<BigInt, int>> &factors) {
+      uint64_t n,
+      const std::vector<std::pair<uint64_t, int>> &factors) {
 
-    const BigInt A(1);
-    const BigInt B(0);
-    const BigInt C(1);
-
-    CHECK(N > 1);
-
-    const BigInt GcdAll(1);
+    CHECK(n > 1);
 
     // (N is the modulus)
 
-    NN = N;
+    NN = BigInt(n);
 
-    if (BigInt::DivisibleBy(A, N)) {
-      CHECK(false) << "Impossible because N > 1 and A == 1";
-      // Linear equation.
-      // SolveModularLinearEquation(GcdAll, A, B, C, N);
-      return;
-    }
+    // A (=1) can't be divisible by N (>1).
 
     const int nbrFactors = factors.size();
 
@@ -833,25 +819,12 @@ struct QuadModLL {
       const int expon = factors[factorIndex].second;
       CHECK(expon != 0) << "Should not have any 0 exponents in factors";
 
-      const BigInt &Prime = factors[factorIndex].first;
-      if (Prime != 2 &&
-          BigInt::DivisibleBy(A, Prime)) {
-        CHECK(false) << "Should be impossible since Prime > 1: "
-                     << A.ToString()
-                     << " "
-                     << Prime.ToString();
+      uint64_t prime = factors[factorIndex].first;
 
-        // ValA multiple of prime means a linear equation mod prime.
-        // Also prime is not 2.
-        // ... there would not be solutions anyway!
-        if (B == 0 && C != 0) {
-          // There are no solutions: ValB=0 and ValC!=0
-          return;
-        }
-      }
+      // A can't be divisible by prime, since prime >= 2.
 
       // If quadratic equation mod p
-      if (!QuadraticTermNotMultipleOfP(Prime,
+      if (!QuadraticTermNotMultipleOfP(prime,
                                        expon, factorIndex)) {
         return;
       }
@@ -863,7 +836,13 @@ struct QuadModLL {
       Exponents[factorIndex] = 0;
     }
 
-    PerformChineseRemainderTheorem(factors);
+    std::vector<uint64_t> prime_powers(factors.size());
+    for (int i = 0; i < nbrFactors; i++) {
+      CHECK(factors[i].second != 0);
+      prime_powers[i] = Pow64(factors[i].first,
+                              factors[i].second);
+    }
+    PerformChineseRemainderTheorem(prime_powers);
   }
 
 };
@@ -871,13 +850,13 @@ struct QuadModLL {
 
 void SolveEquation(
     const SolutionFn &solutionCback,
-    const BigInt &N,
-    const std::vector<std::pair<BigInt, int>> &factors,
+    uint64_t n,
+    const std::vector<std::pair<uint64_t, int>> &factors,
     bool *interesting_coverage) {
   std::unique_ptr<QuadModLL> qmll =
     std::make_unique<QuadModLL>(solutionCback);
 
-  qmll->SolveEquation(N, factors);
+  qmll->SolveEquation(n, factors);
 
   if (interesting_coverage != nullptr &&
       qmll->interesting_coverage) {
