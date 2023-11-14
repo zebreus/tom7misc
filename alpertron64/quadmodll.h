@@ -21,7 +21,7 @@
 #include "bignbr.h"
 #include <functional>
 
-using SolutionFn = std::function<void(const BigInt &value)>;
+using SolutionFn = std::function<void(uint64_t)>;
 
 // With A,B,C = 1,0,1
 void SolveEquation(

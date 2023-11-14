@@ -74,8 +74,10 @@ static std::pair<BigInt, BigInt>
 UnimodularSubstitution(const BigInt &M,
                        const BigInt &Z,
                        const BigInt &O) {
+  CHECK(M == 0);
   BigInt Temp0, Temp1;
   if (M < 0) {
+    CHECK(false) << "Impossible";
     // Perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
     Temp0 = (Z + O);
     Temp1 = Temp0 * -M - Z;
@@ -83,6 +85,7 @@ UnimodularSubstitution(const BigInt &M,
     Temp0 = Z;
     Temp1 = O;
   } else {
+    CHECK(false) << "Impossible";
     // Perform the substitution: x = mX + (m-1)Y, y = X + Y
     Temp1 = Z + O;
     Temp0 = Temp1 * M - O;
@@ -158,7 +161,9 @@ struct Quad {
   bool NonSquareDiscrSolutionOne(
       const BigInt &M, const BigInt &E, const BigInt &K,
       const BigInt &H, const BigInt &I,
-      const BigInt &Value) {
+      uint64_t value) {
+
+    CHECK(M == 0);
 
     // Port note: This used to modify the value of K based on the
     // callback type, but now we do that at the call site. (Also there
@@ -166,7 +171,7 @@ struct Quad {
     // then set it negative.)
 
     // X = (tu - Kv)*E
-    const BigInt Z = (Value * H - K * I) * E;
+    const BigInt Z = (H * value - K * I) * E;
     // Y = u*E
     const BigInt O = H * E;
 
@@ -192,33 +197,30 @@ struct Quad {
     return true;
   }
 
-  void SolutionX(BigInt Value, const BigInt &Modulus,
+  void SolutionX(int64_t value, uint64_t modulus,
                  const BigInt &E,
-                 const BigInt &M, const BigInt &K,
+                 const BigInt &K,
                  const BigInt &U, const BigInt &V) {
     if (VERBOSE) {
-      printf("SolutionX(%s, %s)\n",
-             Value.ToString().c_str(),
-             Modulus.ToString().c_str());
+      printf("SolutionX(%llu, %llu)\n", value, modulus);
     }
-
-    CHECK(M == 0);
 
     // If 2*value is greater than modulus, subtract modulus.
-    if ((Value << 1) > Modulus) {
-      Value -= Modulus;
+    if (value > 0 &&
+        (uint64_t)(value << 1) > modulus) {
+      value -= modulus;
     }
 
+
     if (VERBOSE) {
-      printf("  with 1 0 1 0 %s | %s %s | %s %s\n",
+      printf("  with 1 0 1 0 %s | 0 %s | %s %s\n",
              E.ToString().c_str(),
-             M.ToString().c_str(),
              K.ToString().c_str(),
              U.ToString().c_str(),
              V.ToString().c_str());
     }
 
-    CallbackQuadModElliptic(E, M, K, Value);
+    CallbackQuadModElliptic(E, K, value);
   }
 
   // Solve congruence an^2 + bn + c = 0 (mod m) where m is different from zero.
@@ -252,10 +254,7 @@ struct Quad {
       // (In the general version of this code, this happens in the
       // ValNn == 1 case, looping up to the Gcd of 1).
 
-      SolutionX(BigInt(0), BigInt(1),
-                E,
-                M, K,
-                U, V);
+      SolutionX(0, 1, E, K, U, V);
       return;
     }
 
@@ -306,13 +305,11 @@ struct Quad {
 
     bool interesting = false;
     SolveEquation(
-        SolutionFn([&](const BigInt &Value) {
+        SolutionFn([&](uint64_t value) {
             this->SolutionX(
-                Value,
-                BigInt(modulus),
-                E,
-                M, K,
-                U, V);
+                value,
+                modulus,
+                E, K, U, V);
           }),
         modulus, factors,
         &interesting);
@@ -514,16 +511,14 @@ struct Quad {
   }
 
   void CallbackQuadModElliptic(
-      const BigInt &E, const BigInt &M, const BigInt &K,
-      const BigInt &Value) {
+      const BigInt &E, const BigInt &K,
+      int64_t value) {
 
-    BigInt A(1);
-    BigInt B(0);
-    BigInt C(1);
-
-    CHECK(M == 0);
+    const BigInt M(0);
 
     constexpr int64_t discr = -4;
+
+    const BigInt Value(value);
 
     auto pqro = PerformTransformation(K, Value);
     if (!pqro.has_value()) {
@@ -545,13 +540,13 @@ struct Quad {
         NonSquareDiscrSolutionOne(
             M, E, K,
             BigInt(1), BigInt(0),
-            Value);
+            value);
 
         NonSquareDiscrSolutionOne(
             M, E, K,
             // (Q/2, -1)
             G, BigInt(-1),
-            Value);
+            value);
 
         return;
       } if (plow == 2) {
@@ -560,13 +555,13 @@ struct Quad {
             M, E, K,
             // ((Q/2-1)/2, -1)
             (G - 1) >> 1, BigInt(-1),
-            Value);
+            value);
 
         NonSquareDiscrSolutionOne(
             M, E, K,
             // ((Q/2+1)/2, -1)
             (G + 1) >> 1, BigInt(-1),
-            Value);
+            value);
 
         return;
       }
@@ -617,7 +612,7 @@ struct Quad {
         NonSquareDiscrSolutionOne(
             M, E, K,
             U1, V1,
-            Value);
+            value);
 
         CHECK(discr == -4);
 
@@ -629,7 +624,7 @@ struct Quad {
         NonSquareDiscrSolutionOne(
             M, E, K,
             U1, V1,
-            Value);
+            value);
 
         break;
       }
