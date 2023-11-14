@@ -69,30 +69,6 @@ PerformTransformation(const BigInt &K, const BigInt &Value) {
   return std::nullopt;
 }
 
-// Returns Temp0, Temp1
-static std::pair<BigInt, BigInt>
-UnimodularSubstitution(const BigInt &M,
-                       const BigInt &Z,
-                       const BigInt &O) {
-  CHECK(M == 0);
-  BigInt Temp0, Temp1;
-  if (M < 0) {
-    CHECK(false) << "Impossible";
-    // Perform the substitution: x = X + Y, y = (|m|-1)X + |m|Y
-    Temp0 = (Z + O);
-    Temp1 = Temp0 * -M - Z;
-  } else if (M == 0) {
-    Temp0 = Z;
-    Temp1 = O;
-  } else {
-    CHECK(false) << "Impossible";
-    // Perform the substitution: x = mX + (m-1)Y, y = X + Y
-    Temp1 = Z + O;
-    Temp0 = Temp1 * M - O;
-  }
-  return std::make_pair(Temp0, Temp1);
-}
-
 
 struct Quad {
   // Solutions accumulated here.
@@ -159,11 +135,9 @@ struct Quad {
   // Do not substitute if m equals zero.
   // Returns true if solution found.
   bool NonSquareDiscrSolutionOne(
-      const BigInt &M, const BigInt &E, const BigInt &K,
+      const BigInt &E, const BigInt &K,
       const BigInt &H, const BigInt &I,
       uint64_t value) {
-
-    CHECK(M == 0);
 
     // Port note: This used to modify the value of K based on the
     // callback type, but now we do that at the call site. (Also there
@@ -178,21 +152,10 @@ struct Quad {
     // (we get here with both values for two_solutions)
 
     // Undo unimodular substitution
-    {
-      const auto &[Temp0, Temp1] =
-        UnimodularSubstitution(M, Z, O);
-      RecordSolutionXY(Temp0, Temp1);
-    }
-
+    RecordSolutionXY(Z, O);
     // Z: (-tu - Kv)*E
     // O: -u*E
-
-    // Undo unimodular substitution
-    {
-      const auto &[Temp0, Temp1] =
-        UnimodularSubstitution(M, -Z, -O);
-      RecordSolutionXY(Temp0, Temp1);
-    }
+    RecordSolutionXY(-Z, -O);
 
     return true;
   }
@@ -229,6 +192,7 @@ struct Quad {
       const BigInt &E,
       const BigInt &K, const BigInt &U, const BigInt &V) {
 
+    /*
     const BigInt coeff_quadr(1);
     const BigInt coeff_linear(0);
     const BigInt coeff_indep(1);
@@ -237,8 +201,7 @@ struct Quad {
     const BigInt B(0);
     const BigInt C(1);
     const BigInt D(0);
-
-    const BigInt M(0);
+    */
 
     CHECK(K == modulus);
 
@@ -274,10 +237,6 @@ struct Quad {
 
     // This used to mod each coefficient by the modulus,
     // but this will not change the values 1,0,1.
-
-    CHECK(coeff_quadr == 1);
-    CHECK(coeff_linear == 0);
-    CHECK(coeff_indep == 1);
 
     // For a GCD of zero here, original code would cause and ignore
     // a division by zero, then read 0 from the temporary.
@@ -358,10 +317,7 @@ struct Quad {
     const BigInt U(0);
     const BigInt V(0);
 
-    // Find GCD(a,b,c)
-    BigInt GcdHomog = BigInt::GCD(BigInt::GCD(A, B), C);
-
-    CHECK(GcdHomog == 1);
+    // Gcd is always 1.
 
     // No need to divide by gcd of 1.
 
@@ -421,10 +377,7 @@ struct Quad {
     // Skip GCD(A, K) != 1 case; A is 1 so the GCD is always 1.
 
     if (VERBOSE)
-      printf("second NSD %s %s %s\n",
-             A.ToString().c_str(),
-             B.ToString().c_str(),
-             C.ToString().c_str());
+      printf("second NSD 1 0 1\n");
 
     // We will have to solve several quadratic modular
     // equations. To do this we have to factor the modulus and
@@ -514,8 +467,6 @@ struct Quad {
       const BigInt &E, const BigInt &K,
       int64_t value) {
 
-    const BigInt M(0);
-
     constexpr int64_t discr = -4;
 
     const BigInt Value(value);
@@ -538,12 +489,12 @@ struct Quad {
       if (plow == 1) {
 
         NonSquareDiscrSolutionOne(
-            M, E, K,
+            E, K,
             BigInt(1), BigInt(0),
             value);
 
         NonSquareDiscrSolutionOne(
-            M, E, K,
+            E, K,
             // (Q/2, -1)
             G, BigInt(-1),
             value);
@@ -552,13 +503,13 @@ struct Quad {
       } if (plow == 2) {
 
         NonSquareDiscrSolutionOne(
-            M, E, K,
+            E, K,
             // ((Q/2-1)/2, -1)
             (G - 1) >> 1, BigInt(-1),
             value);
 
         NonSquareDiscrSolutionOne(
-            M, E, K,
+            E, K,
             // ((Q/2+1)/2, -1)
             (G + 1) >> 1, BigInt(-1),
             value);
@@ -610,7 +561,7 @@ struct Quad {
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         NonSquareDiscrSolutionOne(
-            M, E, K,
+            E, K,
             U1, V1,
             value);
 
@@ -622,7 +573,7 @@ struct Quad {
                             V, V1, V2);
 
         NonSquareDiscrSolutionOne(
-            M, E, K,
+            E, K,
             U1, V1,
             value);
 
