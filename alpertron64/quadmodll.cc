@@ -33,6 +33,7 @@
 
 #include "base/logging.h"
 
+static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 
 // This used to be exposed to the caller for teach mode, but is
@@ -106,6 +107,13 @@ struct QuadModLL {
       uint64_t mult = prime_powers[0];
 
       for (T1 = 1; T1 < nbrFactors; T1++) {
+
+        // Port note: This used to check that the exponent was 0,
+        // but now they are pre-powered. I think this is correct?
+        if (prime_powers[T1] == 1) {
+          Tmp[T1] = 0;
+          continue;
+        }
 
         int expon = Exponents[T1];
         Tmp[T1] = Increment[T1] * (expon >> 1);
@@ -774,6 +782,15 @@ struct QuadModLL {
       uint64_t n,
       const std::vector<std::pair<uint64_t, int>> &factors) {
 
+    if (SELF_CHECK) {
+      uint64_t product = 1;
+      for (const auto &[p, e] : factors) {
+        for (int i = 0; i < e; i++)
+          product *= p;
+      }
+      CHECK(product == n);
+    }
+
     CHECK(n > 1);
 
     // (N is the modulus)
@@ -788,9 +805,18 @@ struct QuadModLL {
     Exponents.resize(nbrFactors);
 
     for (int factorIndex = 0; factorIndex < nbrFactors; factorIndex++) {
-      // XXX we never return a 0 exponent, right?
+
       const int expon = factors[factorIndex].second;
-      CHECK(expon != 0) << "Should not have any 0 exponents in factors";
+      // Native factorization won't have exponents of zero, but the
+      // modified lists can.
+      if (expon == 0) {
+        Solution1[factorIndex] = 0;
+        Solution2[factorIndex] = 0;
+        Increment[factorIndex] = 1;
+        // Port note: Was uninitialized.
+        Exponents[factorIndex] = 0;
+        continue;
+      }
 
       uint64_t prime = factors[factorIndex].first;
 
@@ -810,10 +836,20 @@ struct QuadModLL {
     }
 
     std::vector<uint64_t> prime_powers(factors.size());
+
+    if (VERBOSE) {
+      printf("For n=%lld...\n", n);
+    }
     for (int i = 0; i < nbrFactors; i++) {
-      CHECK(factors[i].second != 0);
       prime_powers[i] = Pow64(factors[i].first,
                               factors[i].second);
+      if (SELF_CHECK && prime_powers[i] == 1) {
+        CHECK(factors[i].second == 0);
+      }
+      if (VERBOSE) {
+        printf("  %lld^%d = %lld\n", factors[i].first, factors[i].second,
+               prime_powers[i]);
+      }
     }
     PerformChineseRemainderTheorem(prime_powers);
   }

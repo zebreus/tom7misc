@@ -39,6 +39,7 @@
 
 using namespace std;
 
+static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 
 namespace {
@@ -198,6 +199,8 @@ struct Quad {
   // Solve congruence an^2 + bn + c = 0 (mod m) where m is different from zero.
   void SolveQuadModEquation(
       uint64_t modulus,
+      // factorization of the modulus
+      const std::vector<std::pair<uint64_t, int>> &factors,
       const BigInt &E,
       const BigInt &K, const BigInt &U, const BigInt &V) {
 
@@ -266,10 +269,6 @@ struct Quad {
              // formerly Nn:
              modulus);
     }
-
-    // PERF pass in from earlier
-    std::vector<std::pair<uint64_t, int>> factors =
-      Factorization::Factorize(modulus);
 
     bool interesting = false;
     SolveEquation(
@@ -347,6 +346,7 @@ struct Quad {
     // BigIntFactor(BigInt::Abs(K));
 
     CHECK(k > 1);
+    // fprintf(stderr, "(outer) Factoring %llu\n", k);
     std::vector<std::pair<uint64_t, int>> factors =
       Factorization::Factorize(k);
 
@@ -409,15 +409,27 @@ struct Quad {
 
     for (;;) {
 
+      // This code maintains the factor list as it computes different k.
+      if (SELF_CHECK) {
+        uint64_t product = 1;
+        for (const auto &[p, e] : factors) {
+          for (int i = 0; i < e; i++)
+            product *= p;
+        }
+        CHECK(product == k);
+      }
+
       SolveQuadModEquation(
           // Coefficients and modulus
           k,
+          factors,
           // Problem state
           BigInt(e),
           BigInt(k), U, V);
 
       // Adjust counters.
       // This modifies the factors (multiplicities) in place.
+      // PERF pass 'em!
       int index;
       if (VERBOSE) printf("factors: ");
       for (index = 0; index < (int)even_multiplicity.size(); index++) {
