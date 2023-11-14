@@ -154,6 +154,9 @@ struct BigInt {
 
   inline std::optional<int64_t> ToInt() const;
 
+  // Returns nullopt for negative numbers, or numbers larger
+  // than 2^64-1.
+  inline std::optional<uint64_t> ToU64() const;
 
   // Factors using trial division (slow!)
   // such that a0^b0 * a1^b1 * ... * an^bn = x,
@@ -434,6 +437,33 @@ std::optional<int64_t> BigInt::ToInt() const {
   }
 }
 
+std::optional<uint64_t> BigInt::ToU64() const {
+  // No negative numbers.
+  if (mpz_sgn(rep) == -1)
+    return std::nullopt;
+
+  // Get the number of bits, ignoring sign.
+  if (mpz_sizeinbase(rep, 2) > 64) {
+    return std::nullopt;
+  } else {
+    // "buffer" where result is written
+    uint64_t digit = 0;
+    size_t count = 0;
+    mpz_export(&digit, &count,
+               // order doesn't matter, because there is just one word
+               1,
+               // 8 bytes
+               8,
+               // native endianness
+               0,
+               // 0 "nails" (leading bits to skip)
+               0,
+               rep);
+
+    assert(count <= 1);
+    return {digit};
+  }
+}
 
 double BigInt::NaturalLog(const BigInt &a) {
   // d is the magnitude, with absolute value in [0.5,1].

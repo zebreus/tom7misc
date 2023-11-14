@@ -54,6 +54,23 @@ static void CopyAndAssign() {
   CHECK(big.ToString() == s);
   big = a;
   CHECK(big.ToInt() == 8888);
+  CHECK(big.ToU64() == 8888u);
+}
+
+static void TestToU64() {
+
+  {
+    auto uo = BigInt(0).ToU64();
+    CHECK(uo.has_value() && uo.value() == 0);
+  }
+
+  CHECK(!BigInt(-1).ToU64().has_value());
+
+  {
+    auto uo = ((BigInt(1) << 64) - 1).ToU64();
+    CHECK(uo.has_value() && uo.value() == (uint64_t)-1);
+  }
+
 }
 
 static void LowWord() {
@@ -697,6 +714,7 @@ int main(int argc, char **argv) {
   CopyAndAssign();
   TestToString();
   TestSign();
+  TestToU64();
 
   TestDiv();
   TestCMod();
