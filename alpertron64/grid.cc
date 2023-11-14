@@ -21,6 +21,7 @@
 #include "crypt/lfsr.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "factorization.h"
 
 #include "sos-util.h"
 
@@ -124,7 +125,11 @@ static void RunGrid() {
             };
 
           Timer sol_timer;
-          Solutions sols = QuadBigInt(f);
+
+          std::vector<std::pair<uint64_t, int>> factors =
+            Factorization::Factorize(f);
+
+          Solutions sols = SolveQuad(f, factors);
           const double sol_ms = sol_timer.Seconds() * 1000.0;
           local_timing.push_back(sol_ms);
 

@@ -18,10 +18,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <vector>
+#include <utility>
+#include <cstdint>
 
 #include "quad.h"
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
+#include "factorization.h"
 
 #include "base/logging.h"
 
@@ -36,7 +40,10 @@ int main(int argc, char* argv[]) {
 
   printf("\n** Solve x^2 + y^2 = %lld\n", f);
 
-  Solutions solutions = QuadBigInt(f);
+  std::vector<std::pair<uint64_t, int>> factors =
+    Factorization::Factorize(f);
+
+  Solutions solutions = SolveQuad(f, factors);
   CHECK(!solutions.interesting_coverage);
 
   if (solutions.points.empty()) {

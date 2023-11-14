@@ -312,8 +312,33 @@ struct Quad {
   //     ax'^2+bx'y'+cy'^2 = K/R^2 where R^2 is a divisor of K.
   // Then we get x = Rx', y = Ry'.
 
-  // For this trimmed down version, we know the discriminant is -4.
-  void NonSquareDiscriminant(uint64_t k) {
+  //
+  // CHECK(gcd == 1) << "Expecting GCD to always be 1: " << gcd.ToString();
+
+  // F is always divisible by gcd of 1.
+  // No need to reduce coefficients by GCD of 1.
+
+  // Not linear. Linear requires A = B = C = 0.
+
+  // Compute discriminant: b^2 - 4ac.
+  // const BigInt Discr = B * B - ((A * C) << 2);
+  // 0 - (1 * 4)
+  // const BigInt Discr(-4);
+  // CHECK(Discr == -4) << "Expecting discriminant of exactly -4.";
+
+  // Compute gcd(a,b,c).
+
+  // BigInt UU1(1);
+  // BigInt::GCD(BigInt::GCD(A, B), C);
+  // CHECK(UU1 == 1);
+  // const BigInt K(f);
+
+  // Discriminant is not zero.
+  // Do not translate origin.
+  // K is always divisible by the gcd of A, B, C, since that's 1.
+  void SolveQuadEquation(uint64_t k,
+                         // PERF avoid copying?
+                         std::vector<std::pair<uint64_t, int>> factors) {
     const BigInt A(1);
     const BigInt B(0);
     const BigInt C(1);
@@ -347,8 +372,11 @@ struct Quad {
 
     CHECK(k > 1);
     // fprintf(stderr, "(outer) Factoring %llu\n", k);
-    std::vector<std::pair<uint64_t, int>> factors =
-      Factorization::Factorize(k);
+    if (SELF_CHECK) {
+      std::vector<std::pair<uint64_t, int>> ref_factors =
+        Factorization::Factorize(k);
+      CHECK(factors == ref_factors);
+    }
 
     if (VERBOSE) {
       for (const auto &[f, m] : factors) {
@@ -618,47 +646,20 @@ struct Quad {
     }
   }
 
-  void SolveQuadEquation(uint64_t f) {
-    // CHECK(gcd == 1) << "Expecting GCD to always be 1: " << gcd.ToString();
-
-    // F is always divisible by gcd of 1.
-    // No need to reduce coefficients by GCD of 1.
-
-    // Not linear. Linear requires A = B = C = 0.
-
-    // Compute discriminant: b^2 - 4ac.
-    // const BigInt Discr = B * B - ((A * C) << 2);
-    // 0 - (1 * 4)
-    // const BigInt Discr(-4);
-    // CHECK(Discr == -4) << "Expecting discriminant of exactly -4.";
-
-    // Compute gcd(a,b,c).
-
-    // BigInt UU1(1);
-    // BigInt::GCD(BigInt::GCD(A, B), C);
-    // CHECK(UU1 == 1);
-    // const BigInt K(f);
-
-    // Discriminant is not zero.
-    // Do not translate origin.
-    // K is always divisible by the gcd of A, B, C, since that's 1.
-
-    CHECK(f > 1);
-    NonSquareDiscriminant(f);
-  }
 
   // F is non-negative (this is the reverse sign of the original
   // alpertron).
-  void QuadBigInt(uint64_t F) {
-    if (F == 0) {
+  void SolveQuad(uint64_t f,
+                 const std::vector<std::pair<uint64_t, int>> &factors) {
+    if (f == 0) {
       // One solution: 0^2 + 0^2.
       RecordSolutionXY(BigInt(0), BigInt(0));
-    } else if (F == 1) {
+    } else if (f == 1) {
       // 0^2 + 1^2
       RecordSolutionXY(BigInt(0), BigInt(1));
     } else {
-      CHECK(F > 1);
-      SolveQuadEquation(F);
+      CHECK(f > 1);
+      SolveQuadEquation(f, factors);
     }
   }
 
@@ -667,8 +668,9 @@ struct Quad {
 
 }  // namespace
 
-Solutions QuadBigInt(uint64_t f) {
+Solutions SolveQuad(uint64_t f,
+                    const std::vector<std::pair<uint64_t, int>> &factors) {
   std::unique_ptr<Quad> quad(new Quad);
-  quad->QuadBigInt(f);
+  quad->SolveQuad(f, factors);
   return std::move(quad->solutions);
 }

@@ -18,6 +18,9 @@ struct Solutions {
 };
 
 // Solve x^2 + y^2 = f.
-Solutions QuadBigInt(uint64_t f);
+// Needs the prime factorization (e.g. from Factorization::Factorize).
+Solutions SolveQuad(
+    uint64_t f,
+    const std::vector<std::pair<uint64_t, int>> &factors);
 
 #endif
