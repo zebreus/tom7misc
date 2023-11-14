@@ -137,7 +137,16 @@ struct Quad {
   bool NonSquareDiscrSolutionOne(
       const BigInt &E, const BigInt &K,
       const BigInt &H, const BigInt &I,
-      uint64_t value) {
+      int64_t value) {
+
+    /*
+    fprintf(stderr, "NSDS: %s %s %s %s %lld\n",
+            E.ToString().c_str(),
+            K.ToString().c_str(),
+            H.ToString().c_str(),
+            I.ToString().c_str(),
+            value);
+    */
 
     // Port note: This used to modify the value of K based on the
     // callback type, but now we do that at the call site. (Also there
@@ -349,12 +358,23 @@ struct Quad {
     }
 
     // Find all indices of prime factors with even multiplicity.
-    // (XXX parallel. could be a little struct with the stuff below too)
+
     // Index of prime factors with even multiplicity
-    // PORT NOTE: was 1-based in original code; now 0-based
-    std::vector<int> indexEvenMultiplicity, originalMultiplicities;
-    indexEvenMultiplicity.reserve(factors.size());
-    originalMultiplicities.reserve(factors.size());
+    // Port note: was 1-based in original code; now 0-based
+    struct EvenMultiplicity {
+      // Index in the factors vectgor.
+      int index;
+      // The multiplicity of the factor, rounded down to the nearest
+      // even number. This was called "originalMultiplicities" in
+      // the original, confusingly.
+      int even;
+
+      int counter;
+      bool is_descending;
+    };
+
+    std::vector<EvenMultiplicity> even_multiplicity;
+    even_multiplicity.reserve(factors.size());
     const int numFactors = factors.size();
     for (int i = 0; i < numFactors; i++) {
       const auto &[fact, multiplicity] = factors[i];
@@ -362,14 +382,15 @@ struct Quad {
         // At least prime is squared.
         // Port note: The original code stored factorNbr, which was 1-based
         // because of the factor header.
-        indexEvenMultiplicity.push_back(i);
-        // Convert to even.
-        originalMultiplicities.push_back(multiplicity & ~1);
+        // Convert multiplicity to even.
+        even_multiplicity.push_back({
+            .index = i,
+            .even = multiplicity & ~1,
+            .counter = 0,
+            .is_descending = false,
+          });
       }
     }
-
-    std::vector<int> counters(numFactors, 0);
-    std::vector<bool> is_descending(numFactors, false);
 
     uint64_t e = 1;
     // Loop that cycles through all square divisors of the independent term.
@@ -398,45 +419,48 @@ struct Quad {
       // Adjust counters.
       // This modifies the factors (multiplicities) in place.
       int index;
-      CHECK(indexEvenMultiplicity.size() ==
-            originalMultiplicities.size());
       if (VERBOSE) printf("factors: ");
-      for (index = 0; index < (int)indexEvenMultiplicity.size(); index++) {
+      for (index = 0; index < (int)even_multiplicity.size(); index++) {
+        EvenMultiplicity &even = even_multiplicity[index];
+
         if (VERBOSE) printf("%d ", index);
         // Loop that increments counters.
-        if (!is_descending[index]) {
+
+        const int factor_idx = even.index;
+        if (!even.is_descending) {
           // Ascending.
 
-          const int fidx = indexEvenMultiplicity[index];
-          if (counters[index] == originalMultiplicities[index]) {
+          if (even.counter == even.even) {
             // Next time it will be descending.
-            is_descending[index] = true;
+            even.is_descending = true;
             continue;
           } else {
-            uint64_t uu3 = factors[fidx].first * factors[fidx].first;
-            factors[fidx].second -= 2;
+            uint64_t uu3 =
+              factors[factor_idx].first * factors[factor_idx].first;
+            factors[factor_idx].second -= 2;
             // Divide by square of prime.
             k /= uu3;
             // Multiply multiplier by prime.counters[index]++
-            e *= factors[fidx].first;
-            counters[index] += 2;
+            e *= factors[factor_idx].first;
+            even.counter += 2;
             break;
           }
         } else {
           // Descending.
-          const int fidx = indexEvenMultiplicity[index];
-          if (counters[index] <= 1) {
+
+          if (even.counter <= 1) {
             // Next time it will be ascending.
-            is_descending[index] = false;
+            even.is_descending = false;
             continue;
           } else {
-            uint64_t uu3 = factors[fidx].first * factors[fidx].first;
-            factors[fidx].second += 2;
+            uint64_t uu3 =
+              factors[factor_idx].first * factors[factor_idx].first;
+            factors[factor_idx].second += 2;
             // Multiply by square of prime.
             k *= uu3;
             // Divide multiplier by prime.counters[index]++
-            e /= factors[fidx].first;
-            counters[index] -= 2;
+            e /= factors[factor_idx].first;
+            even.counter -= 2;
             break;
           }
         }
@@ -450,7 +474,7 @@ struct Quad {
       //
       // Do not try to factor the number again.
 
-      if (index == (int)indexEvenMultiplicity.size()) {
+      if (index == (int)even_multiplicity.size()) {
         // All factors have been found. Exit loop.
         break;
       }

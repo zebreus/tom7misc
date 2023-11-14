@@ -79,3 +79,24 @@ y = 1073741824
 
 ** Solve x^2 + y^2 = 20922789888000
 The equation does not have integer solutions.
+
+** Solve x^2 + y^2 = 140739635773439
+The equation does not have integer solutions.
+
+** Solve x^2 + y^2 = 4611686014132420609
+Solution:
+x = 0
+y = 2147483647
+
+** Solve x^2 + y^2 = 8589934289
+Solution:
+x = 49367
+y = 78440
+
+** Solve x^2 + y^2 = 269182770814393
+Solution:
+x = 10178952
+y = 12867467
+Solution:
+x = 7198232
+y = 14743413
