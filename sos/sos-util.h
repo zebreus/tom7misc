@@ -193,19 +193,34 @@ ReferenceValidate3(uint64_t sum);
 // get that many.
 // Brute force, but with smarter limits on search.
 std::vector<std::pair<uint64_t, uint64_t>>
-BruteGetWays(uint64_t sum, int num_expected = -1);
+BruteGetWays(uint64_t sum, int num_expected,
+             // These aren't used, but each of the functions should
+             // have the same signature.
+             int num_factors,
+             uint64_t *bases,
+             uint8_t *exponents);
+
 
 // Another algorithm for the above (based on some Maple code), which
 // still does an O(sqrt(n)) search, but with even smarter limits.
 // This is the fastest CPU method so far.
 std::vector<std::pair<uint64_t, uint64_t>>
-NSoks2(uint64_t sum, int num_expected = -1);
+NSoks2(uint64_t sum, int num_expected,
+       // Unused.
+       int num_factors,
+       uint64_t *bases,
+       uint8_t *exponents);
+
 
 // Another attempt at this, which is O(sqrt(n)), but avoids square
 // roots in the inner loop. It works out nicely but nsoks2 is still
 // twice as fast.
 std::vector<std::pair<uint64_t, uint64_t>>
-GetWaysMerge(uint64_t sum, int num_expected = -1);
+GetWaysMerge(uint64_t sum, int num_expected,
+             // Unused.
+             int num_factors,
+             uint64_t *bases,
+             uint8_t *exponents);
 
 std::string WaysString(
     const std::vector<std::pair<uint64_t, uint64_t>> &v);

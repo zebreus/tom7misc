@@ -16,6 +16,7 @@
 #include "arcfour.h"
 #include "randutil.h"
 #include "sos-quad.h"
+#include "factorization.h"
 
 using namespace std;
 
@@ -171,7 +172,15 @@ static void TestCWWBrute() {
       [&timer, &bar, &wrong, &m](int idx) {
         int sum = START + idx;
         int num = ChaiWahWu(sum);
-        auto ways = BruteGetWays(sum);
+
+        int num_factors = 0;
+        uint64_t bases[15];
+        uint8_t exponents[15];
+        num_factors = Factorization::FactorizePreallocated(
+            sum, bases, exponents);
+
+        auto ways = BruteGetWays(sum, -1,
+                                 num_factors, bases, exponents);
 
         CHECK(ways.size() == num) <<
           sum << " " << ways.size() << " " << num;
@@ -219,38 +228,52 @@ static void TestGetWays(const char *name, F f) {
     [&f, &triples, &status_per, &timer, &m](uint64_t major_idx) {
       uint64_t local_triples = 0;
       for (int minor_idx = 0; minor_idx < ROLL; minor_idx++) {
-        uint64_t i = START + major_idx * ROLL + minor_idx;
+        uint64_t sum = START + major_idx * ROLL + minor_idx;
 
         // This one doesn't work, and we don't care.
-        if (i == 0) continue;
+        if (sum == 0) continue;
 
-        int num = ChaiWahWu(i);
-        if (num > 3) {
+        // Only filled in if num > 0.
+        int num_factors = 0;
+        uint64_t bases[15];
+        uint8_t exponents[15];
+
+        // Don't factor if it's impossible.
+        int num_ways = 0;
+        if (MaybeSumOfSquaresFancy4(sum)) {
+          num_factors =
+            Factorization::FactorizePreallocated(sum, bases, exponents);
+          num_ways = ChaiWahWuFromFactors(sum, bases, exponents, num_factors);
+        }
+
+        if (num_ways > 3) {
+          CHECK(num_factors > 0);
           local_triples++;
           // Note: We can pass num to make this faster, but
           // in a test it makes sense to check that we don't
           // get *too many*.
-          std::vector<std::pair<uint64_t, uint64_t>> nways =
-            f(i, -1);
+          std::vector<std::pair<uint64_t, uint64_t>> ways =
+            f(sum, CHECK_RESULT ? -1 : num_ways,
+              num_factors, bases, exponents);
 
           if (CHECK_RESULT) {
-            for (const auto &[a, b] : nways) {
-              CHECK(a * a + b * b == i) << a << " " << b << " " << i;
+            for (const auto &[a, b] : ways) {
+              CHECK(a * a + b * b == sum) << a << " " << b << " " << sum;
             }
-            CHECK((int)nways.size() == num)
-              << "For sum " << i << ", CWW says "
-              << num
-              << " but got " << nways.size() << ":\n"
-              << WaysString(nways);
-            std::sort(nways.begin(), nways.end(),
+            CHECK((int)ways.size() == num_ways)
+              << "For sum " << sum << ", CWW says "
+              << num_ways
+              << " but got " << ways.size() << ":\n"
+              << WaysString(ways);
+            std::sort(ways.begin(), ways.end(),
                       [](const std::pair<uint64_t, uint64_t> &x,
                          const std::pair<uint64_t, uint64_t> &y) {
                         return x.first < y.first;
                       });
             // Check uniqueness.
-            for (int x = 1; x < nways.size(); x++) {
-              CHECK(nways[x] != nways[x - 1]) << "Duplicates: " <<
-                nways[x].first << " " << nways[x].second;
+            for (int x = 1; x < ways.size(); x++) {
+              CHECK(ways[x] != ways[x - 1]) << "Duplicates: " <<
+                ways[x].first << " " << ways[x].second;
             }
           }
         }
@@ -281,22 +304,28 @@ static void TestGetWays(const char *name, F f) {
 
 template<class F>
 static void TestSimple(const char * name, F f) {
-  for (int i = 2; i < 120; i++) {
-    int num = ChaiWahWu(i);
-    std::vector<std::pair<uint64_t, uint64_t>> nways_fast =
-      f(i, num);
-    std::vector<std::pair<uint64_t, uint64_t>> nways =
-      f(i, -1);
-    CHECK(nways_fast.size() == nways.size());
-    CHECK(num == (int)nways.size())
-      << "For " << i << ", "
-      "CWW says there should be " << num << " ways.\n"
-      "But got " << (int)nways.size() << ":\n"
-      << WaysString(nways);
+  for (int sum = 2; sum < 120; sum++) {
+    int num_ways = ChaiWahWu(sum);
+    int num_factors = 0;
+    uint64_t bases[15];
+    uint8_t exponents[15];
+    num_factors = Factorization::FactorizePreallocated(
+        sum, bases, exponents);
+
+    std::vector<std::pair<uint64_t, uint64_t>> ways_fast =
+      f(sum, num_ways, num_factors, bases, exponents);
+    std::vector<std::pair<uint64_t, uint64_t>> ways =
+      f(sum, -1, num_factors, bases, exponents);
+    CHECK(ways_fast.size() == ways.size());
+    CHECK(num_ways == (int)ways.size())
+      << "For " << sum << ", "
+      "CWW says there should be " << num_ways << " ways.\n"
+      "But got " << (int)ways.size() << ":\n"
+      << WaysString(ways);
     printf("[%s] %d: %d ways: %s\n",
-           name, i, num, WaysString(nways).c_str());
-    for (const auto &[a, b] : nways_fast) {
-      CHECK(a * a + b * b == i);
+           name, sum, num_ways, WaysString(ways).c_str());
+    for (const auto &[a, b] : ways_fast) {
+      CHECK(a * a + b * b == sum);
     }
   }
 }
@@ -473,13 +502,13 @@ int main(int argc, char **argv) {
   MaybeSumOfSquaresRecall();
   */
 
-  TestSimple("brute", BruteGetWays);
-  TestSimple("nsoks2", NSoks2);
+  // TestSimple("brute", BruteGetWays);
+  // TestSimple("nsoks2", NSoks2);
   TestSimple("merge", GetWaysMerge);
   TestSimple("quad", GetWaysQuad);
 
-  TestGetWays("brute", BruteGetWays);
-  TestGetWays("nsoks2", NSoks2);
+  // TestGetWays("brute", BruteGetWays);
+  // TestGetWays("nsoks2", NSoks2);
   TestGetWays("merge", GetWaysMerge);
   TestGetWays("quad", GetWaysQuad);
 

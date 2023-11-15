@@ -274,7 +274,10 @@ ReferenceValidate3(uint64_t sum) {
 
 
 std::vector<std::pair<uint64_t, uint64_t>>
-BruteGetWays(uint64_t sum, int num_expected) {
+BruteGetWays(uint64_t sum, int num_expected,
+             int num_factors,
+             uint64_t *bases,
+             uint8_t *exponents) {
   if (num_expected == 0) return {};
   // We use 0 as a sentinel value below, so get that out of the way.
   // PERF: We could request this as a precondition.
@@ -341,7 +344,10 @@ static inline std::optional<uint64_t> NSoks1(uint64_t n) {
 // be tiny or both be large), but it passes the tests. About 45% faster
 // than BruteNWays above.
 std::vector<std::pair<uint64_t, uint64_t>>
-NSoks2(uint64_t n, int num_expected) {
+NSoks2(uint64_t n, int num_expected,
+       int num_factors,
+       uint64_t *bases,
+       uint8_t *exponents) {
   uint64_t maxts = Sqrt64(n - 2 + 1);
   uint64_t maxtsmaxts = maxts * maxts;
   // Note: In maple, isqrt can be up to 1 off in either direction
@@ -382,54 +388,16 @@ NSoks2(uint64_t n, int num_expected) {
   return res;
 }
 
-// This is a version of the above for arbitrary K; untested.
-// n: target number to represent
-// K is the number of squares in the sum
-template<size_t K>
-[[maybe_unused]]
-static std::vector<std::vector<uint64_t>>
-NSoksK(uint64_t n, uint64_t maxsq,
-       int num_expected = -1) {
-  uint64_t maxts = Sqrt64(n - K + 1);
-  uint64_t maxtsmaxts = maxts * maxts;
-  if constexpr (K == 1) {
-    if (maxtsmaxts == n) return {{maxts}};
-    else return {};
-  } else {
-    if (maxtsmaxts > n - K + 1)
-      maxts--;
-
-    maxts = std::min(maxts, maxsq);
-    uint64_t q = n / K;
-    uint64_t r = n % K;
-    uint64_t mints = Sqrt64(q + r ? 1 : 0);
-    // minTs := isqrt(iquo(n,k,'r') + `if`(r<>0,1,0));
-    if (K * mints * mints < n) {
-      mints++;
-    }
-
-    std::vector<std::vector<uint64_t>> res;
-    if (num_expected >= 0) res.reserve(num_expected);
-    for (uint64_t trialsquare = mints; trialsquare <= maxts; trialsquare++) {
-      auto val = NSoksK<K - 1>(n - trialsquare * trialsquare, trialsquare);
-      for (auto &v : val) {
-        v.push_back(trialsquare);
-        res.push_back(std::move(v));
-        if (num_expected >= 0 && res.size() == num_expected)
-          break;
-      }
-    }
-    return res;
-  }
-}
-
 // Here we try to find a^2 + b^2 = sum, with a <= b. We either increase
 // a or decrease b on each round, choosing the one that minimize the
 // error. (TODO: Correctness argument!) A lot of stuff cancels, leaving
 // us with just shifts, adds, abs, and compares. It's not faster on CPU,
 // but maybe worth trying on GPU.
 std::vector<std::pair<uint64_t, uint64_t>>
-GetWaysMerge(uint64_t sum, int num_expected) {
+GetWaysMerge(uint64_t sum, int num_expected,
+             int num_factors,
+             uint64_t *bases,
+             uint8_t *exponents) {
   uint64_t root = Sqrt64(sum);
   std::vector<std::pair<uint64_t, uint64_t>> ways;
   if (num_expected >= 0) ways.reserve(num_expected);
