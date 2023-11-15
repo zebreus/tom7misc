@@ -21,11 +21,10 @@
 #include "bignbr.h"
 #include <functional>
 
-using SolutionFn = std::function<void(uint64_t)>;
-
 // With A,B,C = 1,0,1
-void SolveEquation(
-    const SolutionFn &solutionCback,
+// Returns the values that are solutions (i.e. what the original
+// code would have called the callback on.)
+std::vector<uint64_t> SolveEquation(
     uint64_t n,
     // factors of N.
     const std::vector<std::pair<uint64_t, int>> &factors,

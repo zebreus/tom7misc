@@ -44,32 +44,6 @@ static constexpr bool VERBOSE = false;
 
 namespace {
 
-// Output:
-// nullopt: There are no solutions because gcd(P, Q, R) > 1
-// some(P, Q, R) with gcd(P, Q, R) = 1.
-std::optional<std::tuple<BigInt, BigInt, BigInt>>
-PerformTransformation(const BigInt &K, const BigInt &Value) {
-  // These equations become simpler because of the known
-  // values of A,B,C = 1,0,1.
-
-  // Compute P as (at^2+bt+c)/K
-  const BigInt P = (Value * Value + 1) / K;
-
-  // Compute Q <- -(2at + b).
-  const BigInt Q = -(Value << 1);
-
-  // Compute R <- aK
-  const BigInt &R = K;
-
-  const BigInt I = BigInt::GCD(BigInt::GCD(P, Q), R);
-  if (I == 1) {
-    return {std::make_tuple(P, Q, R)};
-  }
-
-  // No solutions because gcd(P, Q, R) > 1.
-  return std::nullopt;
-}
-
 
 struct Quad {
   // Solutions accumulated here.
@@ -101,14 +75,26 @@ struct Quad {
   static
   std::tuple<BigInt, BigInt, BigInt,
              BigInt, BigInt, BigInt> GetNextConvergent(
-                 BigInt U, BigInt U1, BigInt U2,
-                 BigInt V, BigInt V1, BigInt V2) {
+                 BigInt &&U, BigInt &&U1, BigInt &&U2,
+                 BigInt &&V, BigInt &&V1, BigInt &&V2) {
+
+    /*
+    fprintf(stderr,
+            "Next convergent: %s %s %s | %s %s %s\n",
+            U.ToString().c_str(),
+            U1.ToString().c_str(),
+            U2.ToString().c_str(),
+            V.ToString().c_str(),
+            V1.ToString().c_str(),
+            V2.ToString().c_str());
+    */
+
     BigInt Tmp = BigInt::DivFloor(U, V);
 
     // Compute new value of U and V.
     BigInt Tmp2 = U - Tmp * V;
     U = std::move(V);
-    V = Tmp2;
+    V = std::move(Tmp2);
 
     // Compute new convergents: h_n = a_n*h_{n-1} + h_{n-2}
     // and also k_n = k_n*k_{n-1} + k_{n-2}
@@ -116,7 +102,7 @@ struct Quad {
 
     BigInt U3 = std::move(U2);
     U2 = std::move(U1);
-    U1 = Tmp3;
+    U1 = std::move(Tmp3);
 
     Tmp *= V1;
     Tmp += V2;
@@ -172,11 +158,12 @@ struct Quad {
 
   void SolutionX(int64_t value, uint64_t modulus,
                  const BigInt &E,
-                 const BigInt &K,
-                 const BigInt &U, const BigInt &V) {
+                 const BigInt &K) {
     if (VERBOSE) {
-      printf("SolutionX(%llu, %llu)\n", value, modulus);
+      fprintf(stderr, "SolutionX(%llu, %llu)\n", value, modulus);
     }
+
+    CHECK(K == modulus);
 
     // If 2*value is greater than modulus, subtract modulus.
     if (value > 0 &&
@@ -186,14 +173,12 @@ struct Quad {
 
 
     if (VERBOSE) {
-      printf("  with 1 0 1 0 %s | 0 %s | %s %s\n",
+      printf("  with 1 0 1 0 %s | 0 %llu | 0 0\n",
              E.ToString().c_str(),
-             K.ToString().c_str(),
-             U.ToString().c_str(),
-             V.ToString().c_str());
+             modulus);
     }
 
-    CallbackQuadModElliptic(E, K, value);
+    CallbackQuadModElliptic(value, modulus, E);
   }
 
   // Solve congruence an^2 + bn + c = 0 (mod m) where m is different from zero.
@@ -202,7 +187,7 @@ struct Quad {
       // factorization of the modulus
       const std::vector<std::pair<uint64_t, int>> &factors,
       const BigInt &E,
-      const BigInt &K, const BigInt &U, const BigInt &V) {
+      const BigInt &K) {
 
     /*
     const BigInt coeff_quadr(1);
@@ -229,7 +214,7 @@ struct Quad {
       // (In the general version of this code, this happens in the
       // ValNn == 1 case, looping up to the Gcd of 1).
 
-      SolutionX(0, 1, E, K, U, V);
+      SolutionX(0, 1, E, K);
       return;
     }
 
@@ -241,11 +226,6 @@ struct Quad {
     }
 
     CHECK(modulus > 1);
-
-    // PERF: This does get called with modulus = 1.
-    // We might want to shortcut that since we can skip stuff
-    // like BigInt::DivisibleBy(coeff_quadr, Modulus), given
-    // the known value of the coefficients.
 
     // This used to mod each coefficient by the modulus,
     // but this will not change the values 1,0,1.
@@ -271,15 +251,17 @@ struct Quad {
     }
 
     bool interesting = false;
-    SolveEquation(
-        SolutionFn([&](uint64_t value) {
-            this->SolutionX(
-                value,
-                modulus,
-                E, K, U, V);
-          }),
-        modulus, factors,
-        &interesting);
+    std::vector<uint64_t> values =
+      SolveEquation(
+          modulus, factors,
+          &interesting);
+
+    for (uint64_t value : values) {
+      SolutionX(
+          value,
+          modulus,
+          E, K);
+    }
 
     if (interesting) {
       printf("INTERESTING!\n");
@@ -339,6 +321,7 @@ struct Quad {
   void SolveQuadEquation(uint64_t k,
                          // PERF avoid copying?
                          std::vector<std::pair<uint64_t, int>> factors) {
+    /*
     const BigInt A(1);
     const BigInt B(0);
     const BigInt C(1);
@@ -349,6 +332,7 @@ struct Quad {
     // These were actually uninitialized, and probably unused?
     const BigInt U(0);
     const BigInt V(0);
+    */
 
     // Gcd is always 1.
 
@@ -453,7 +437,7 @@ struct Quad {
           factors,
           // Problem state
           BigInt(e),
-          BigInt(k), U, V);
+          BigInt(k));
 
       // Adjust counters.
       // This modifies the factors (multiplicities) in place.
@@ -528,20 +512,29 @@ struct Quad {
   }
 
   void CallbackQuadModElliptic(
-      const BigInt &E, const BigInt &K,
-      int64_t value) {
+      int64_t value, uint64_t modulus, const BigInt &E) {
 
     constexpr int64_t discr = -4;
 
+    const BigInt K(modulus);
     const BigInt Value(value);
 
-    auto pqro = PerformTransformation(K, Value);
-    if (!pqro.has_value()) {
-      // No solutions because gcd(P, Q, R) > 1.
-      return;
-    }
+    // PerformTransformation:
+    // These equations become simpler because of the known
+    // values of A,B,C = 1,0,1.
 
-    const auto &[P, Q, R] = pqro.value();
+    // Compute P as (at^2+bt+c)/K
+    const BigInt P = (Value * Value + 1) / K;
+
+    // Compute Q <- -(2at + b).
+    const BigInt Q = -(Value << 1);
+
+    // Compute R <- aK
+    const BigInt &R = K;
+
+    if (BigInt::GCD(BigInt::GCD(P, Q), R) != 1) {
+      // No solutions.
+    }
 
     std::optional<int64_t> plow_opt = P.ToInt();
     if (plow_opt.has_value() && plow_opt.value() >= 0) {
@@ -582,18 +575,27 @@ struct Quad {
       }
     }
 
-    const BigInt LL = (P << 2) / discr;
+    CHECK(discr == -4);
+    // const BigInt LL = -P;
+
     /*
-    fprintf(stderr, "P = %s, Discr = %s, LL = %s\n",
-            P.ToString().c_str(), Discr.ToString().c_str(),
-            LL.ToString().c_str());
+    fprintf(stderr, "P = %s, discr = %lld, Q = %s\n",
+            P.ToString().c_str(),
+            discr,
+            Q.ToString().c_str());
     */
 
     // Compute bound L = sqrt(|4P/(-D)|)
     // Port note: Original code flips the sign, but on the input
     // -10 -10 -10 -10 -8 -8, that results in sqrt(-1). Alpertron's
     // sqrt function ignores the sign.
-    const BigInt L = BigInt::Sqrt(BigInt::Abs(LL));
+    //
+    // LL was P * 4 / discr, but this is just -P. Since we took
+    // the absolute value before square root, we can just sqrt p.
+    //
+    // It was (Value^2 + 1) / K, which should be non-negative.
+    CHECK(P >= 0);
+    const BigInt L = BigInt::Sqrt(P);
 
     // Initial value of last convergent: 1/0.
     BigInt U1(1);
@@ -608,8 +610,8 @@ struct Quad {
 
     while (V != 0) {
       std::tie(U, U1, U2, V, V1, V2) =
-        GetNextConvergent(U, U1, U2,
-                          V, V1, V2);
+        GetNextConvergent(std::move(U), std::move(U1), std::move(U2),
+                          std::move(V), std::move(V1), std::move(V2));
 
       // Check whether the denominator of convergent exceeds bound.
       BigInt BigTmp = L - V1;
@@ -633,8 +635,8 @@ struct Quad {
 
         // Discriminant is equal to -3 or -4.
         std::tie(U, U1, U2, V, V1, V2) =
-          GetNextConvergent(U, U1, U2,
-                            V, V1, V2);
+          GetNextConvergent(std::move(U), std::move(U1), std::move(U2),
+                            std::move(V), std::move(V1), std::move(V2));
 
         NonSquareDiscrSolutionOne(
             E, K,

@@ -57,14 +57,22 @@ static inline uint64_t GetU64(const BigInt &b) {
   return uo.value();
 }
 
-struct QuadModLL {
-  // Parallel arrays (same size as number of factors)
-  std::vector<uint64_t> Solution1;
-  std::vector<uint64_t> Solution2;
-  std::vector<uint64_t> Increment;
-  std::vector<int> Exponents;
+// This used to be four parallel arrays.
+struct Solution {
+  uint64_t solution1;
+  uint64_t solution2;
+  uint64_t increment;
+  int exponent;
+};
 
-  explicit QuadModLL(const SolutionFn &f) : SolutionCallback(f) {}
+struct QuadModLL {
+  // Return values.
+  std::vector<uint64_t> values;
+
+  // Parallel arrays (same size as number of factors)
+  std::vector<Solution> Sols;
+
+  QuadModLL() {}
 
   // BigInt Discriminant;
 
@@ -72,33 +80,27 @@ struct QuadModLL {
   bool sol2Invalid = false;
   bool interesting_coverage = false;
 
-  const SolutionFn &SolutionCallback;
-
   // Use Chinese remainder theorem to obtain the solutions.
   void PerformChineseRemainderTheorem(
       const std::vector<uint64_t> &prime_powers) {
     int T1;
 
+    // Prime powers could go in the Sols struct too?
     const int nbrFactors = prime_powers.size();
-    CHECK((int)Solution1.size() == nbrFactors);
-    CHECK((int)Solution2.size() == nbrFactors);
-    CHECK((int)Increment.size() == nbrFactors);
-    CHECK((int)Exponents.size() == nbrFactors);
+    CHECK((int)Sols.size() == nbrFactors);
     CHECK(nbrFactors > 0);
     // Dynamically allocate temporary space. We need one per factor.
+    // It could go in Sols?
     std::vector<uint64_t> Tmp(nbrFactors);
 
     do {
-      CHECK(!Solution1.empty());
-      CHECK(!Solution2.empty());
-      CHECK(!Increment.empty());
-      CHECK(!Exponents.empty());
+      CHECK(!Sols.empty());
 
-      Tmp[0] = Increment[0] * (Exponents[0] >> 1);
-      if ((Exponents[0] & 1) != 0) {
-        Tmp[0] += Solution2[0];
+      Tmp[0] = Sols[0].increment * (Sols[0].exponent >> 1);
+      if ((Sols[0].exponent & 1) != 0) {
+        Tmp[0] += Sols[0].solution2;
       } else {
-        Tmp[0] += Solution1[0];
+        Tmp[0] += Sols[0].solution1;
       }
 
       uint64_t CurrentSolution = Tmp[0];
@@ -115,37 +117,41 @@ struct QuadModLL {
           continue;
         }
 
-        int expon = Exponents[T1];
-        Tmp[T1] = Increment[T1] * (expon >> 1);
+        int expon = Sols[T1].exponent;
+        Tmp[T1] = Sols[T1].increment * (expon >> 1);
 
         if ((expon & 1) != 0) {
-          Tmp[T1] += Solution2[T1];
+          Tmp[T1] += Sols[T1].solution2;
         } else {
-          Tmp[T1] += Solution1[T1];
+          Tmp[T1] += Sols[T1].solution1;
         }
 
-        const BigInt Term(prime_powers[T1]);
+        uint64_t term = prime_powers[T1];
+        const BigInt Term(term);
 
         if (VERBOSE) {
-          printf("T1 %d [exp ?]. Term: %s\n", T1,
-                 Term.ToString().c_str());
+          printf("T1 %d [exp ?]. Term: %llu\n", T1, term);
         }
 
         for (int E = 0; E < T1; E++) {
+          // Should be int64s
           const BigInt Q1 = BigInt(Tmp[T1]) - BigInt(Tmp[E]);
 
           // L is overwritten before use below.
+          // L1 and term are both int64. So we just need a modular
+          // inverse on int64.
           const BigInt L1 = BigInt(prime_powers[E]);
-
           std::optional<BigInt> Inv = BigInt::ModInverse(L1, Term);
           CHECK(Inv.has_value());
-          BigInt Quot = (Q1 * Inv.value()) % Term;
-          if (Quot < 0) Quot += Term;
-          Tmp[T1] = GetU64(Quot);
+          const int64_t inv = GetU64(Inv.value());
+
+          // Then this is a modmult of 64 bit numbers...
+          int64_t quot = (Q1 * inv) % term;
+          if (quot < 0) quot += term;
+          Tmp[T1] = quot;
         }
 
-        Tmp[T1] %= GetU64(Term);
-          // BigInt::CMod(Tmp[T1], Term);
+        Tmp[T1] %= term;
 
         // Compute currentSolution as Tmp[T1] * Mult + currentSolution
         uint64_t L2 = Tmp[T1] * mult;
@@ -156,22 +162,22 @@ struct QuadModLL {
       // Perform loop while V < GcdAll.
       // Since GcdAll is always 1, this ends up just getting called
       // one time, and multiplying 0 * NN.
-      SolutionCallback(CurrentSolution);
+      values.push_back(CurrentSolution);
 
       for (T1 = nbrFactors - 1; T1 >= 0; T1--) {
         // term = base^exp
         const BigInt Term(prime_powers[T1]);
 
-        if (Solution1[T1] == Solution2[T1]) {
+        if (Sols[T1].solution1 == Sols[T1].solution2) {
           // quad_info.Solution1[T1] == quad_info.Solution2[T1]
-          Exponents[T1] += 2;
+          Sols[T1].exponent += 2;
         } else {
           // quad_info.Solution1[T1] != quad_info.Solution2[T1]
-          Exponents[T1]++;
+          Sols[T1].exponent++;
         }
 
         // L <- Exponents[T1] * quad_info.Increment[T1]
-        uint64_t L1 = Increment[T1] * Exponents[T1];
+        uint64_t L1 = Sols[T1].increment * Sols[T1].exponent;
 
         // K1 <- 2 * term
         uint64_t K1 = GetU64(Term) << 1;
@@ -179,7 +185,7 @@ struct QuadModLL {
           break;
         }
 
-        Exponents[T1] = 0;
+        Sols[T1].exponent = 0;
       }   /* end for */
     } while (T1 >= 0);
   }
@@ -313,12 +319,12 @@ struct QuadModLL {
       // -1 & Mask is Mask.
       CHECK(Sol2 == Mask);
 
-      Solution1[factorIndex] = Sol1;
-      Solution2[factorIndex] = Sol2;
+      Sols[factorIndex].solution1 = Sol1;
+      Sols[factorIndex].solution2 = Sol2;
     }
 
     // Store increment.
-    Increment[factorIndex] = ((uint64_t)1) << expon;
+    Sols[factorIndex].increment = ((uint64_t)1) << expon;
     return true;
   }
 
@@ -710,7 +716,7 @@ struct QuadModLL {
       Sol1 += Q;
     }
 
-    Solution1[factorIndex] = GetU64(Sol1);
+    Sols[factorIndex].solution1 = GetU64(Sol1);
 
     BigInt S2 = B - SqrRoot;
 
@@ -719,8 +725,8 @@ struct QuadModLL {
       Sol2 += Q;
     }
 
-    Solution2[factorIndex] = GetU64(Sol2);
-    Increment[factorIndex] = GetU64(Q);
+    Sols[factorIndex].solution2 = GetU64(Sol2);
+    Sols[factorIndex].increment = GetU64(Q);
     return true;
   }
 
@@ -762,16 +768,17 @@ struct QuadModLL {
 
     if (sol1Invalid) {
       // Solution1 is invalid. Overwrite it with Solution2.
-      Solution1[factorIndex] = Solution2[factorIndex];
+      Sols[factorIndex].solution1 = Sols[factorIndex].solution2;
     } else if (sol2Invalid) {
       // Solution2 is invalid. Overwrite it with Solution1.
-      Solution2[factorIndex] = Solution1[factorIndex];
+      Sols[factorIndex].solution2 = Sols[factorIndex].solution1;
     } else {
       // Nothing to do.
     }
 
-    if (Solution2[factorIndex] < Solution1[factorIndex]) {
-      std::swap(Solution1[factorIndex], Solution2[factorIndex]);
+    if (Sols[factorIndex].solution2 < Sols[factorIndex].solution1) {
+      std::swap(Sols[factorIndex].solution1,
+                Sols[factorIndex].solution2);
     }
 
     return true;
@@ -799,10 +806,7 @@ struct QuadModLL {
 
     const int nbrFactors = factors.size();
 
-    Solution1.resize(nbrFactors);
-    Solution2.resize(nbrFactors);
-    Increment.resize(nbrFactors);
-    Exponents.resize(nbrFactors);
+    Sols.resize(nbrFactors);
 
     for (int factorIndex = 0; factorIndex < nbrFactors; factorIndex++) {
 
@@ -810,11 +814,11 @@ struct QuadModLL {
       // Native factorization won't have exponents of zero, but the
       // modified lists can.
       if (expon == 0) {
-        Solution1[factorIndex] = 0;
-        Solution2[factorIndex] = 0;
-        Increment[factorIndex] = 1;
+        Sols[factorIndex].solution1 = 0;
+        Sols[factorIndex].solution2 = 0;
+        Sols[factorIndex].increment = 1;
         // Port note: Was uninitialized.
-        Exponents[factorIndex] = 0;
+        Sols[factorIndex].exponent = 0;
         continue;
       }
 
@@ -832,7 +836,7 @@ struct QuadModLL {
       // residing in Q, but now we set that in each branch explicitly
       // along with the solution. Probably could be setting Exponents
       // there too?
-      Exponents[factorIndex] = 0;
+      Sols[factorIndex].exponent = 0;
     }
 
     std::vector<uint64_t> prime_powers(factors.size());
@@ -857,13 +861,12 @@ struct QuadModLL {
 };
 }  // namespace
 
-void SolveEquation(
-    const SolutionFn &solutionCback,
+std::vector<uint64_t> SolveEquation(
     uint64_t n,
     const std::vector<std::pair<uint64_t, int>> &factors,
     bool *interesting_coverage) {
   std::unique_ptr<QuadModLL> qmll =
-    std::make_unique<QuadModLL>(solutionCback);
+    std::make_unique<QuadModLL>();
 
   qmll->SolveEquation(n, factors);
 
@@ -871,4 +874,6 @@ void SolveEquation(
       qmll->interesting_coverage) {
     *interesting_coverage = true;
   }
+
+  return std::move(qmll->values);
 }
