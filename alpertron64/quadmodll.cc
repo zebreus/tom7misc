@@ -40,6 +40,20 @@ static constexpr bool VERBOSE = false;
 // now fully internal.
 namespace {
 
+// (a * b) % m
+// Could maybe be wrong for largest a,b?
+static inline int64_t BasicModMult64(int64_t a, int64_t b,
+                                     uint64_t m) {
+  // PERF: Check that this is making appropriate simplifications
+  // knowing that each high word is zero.
+  int128 aa(a);
+  int128 bb(b);
+  int128 mm(m);
+
+  int128 rr = (aa * bb) % mm;
+  return (int64_t)rr;
+}
+
 static inline uint64_t Pow64(uint64_t base, int exp) {
   uint64_t res = 1;
   while (exp) {
@@ -73,8 +87,6 @@ struct QuadModLL {
   std::vector<Solution> Sols;
 
   QuadModLL() {}
-
-  // BigInt Discriminant;
 
   bool sol1Invalid = false;
   bool sol2Invalid = false;
@@ -127,7 +139,6 @@ struct QuadModLL {
         }
 
         uint64_t term = prime_powers[T1];
-        const BigInt Term(term);
 
         if (VERBOSE) {
           printf("T1 %d [exp ?]. Term: %llu\n", T1, term);
@@ -135,18 +146,20 @@ struct QuadModLL {
 
         for (int E = 0; E < T1; E++) {
           // Should be int64s
-          const BigInt Q1 = BigInt(Tmp[T1]) - BigInt(Tmp[E]);
+          int64_t q1 = Tmp[T1] - Tmp[E];
 
           // L is overwritten before use below.
           // L1 and term are both int64. So we just need a modular
           // inverse on int64.
           const BigInt L1 = BigInt(prime_powers[E]);
-          std::optional<BigInt> Inv = BigInt::ModInverse(L1, Term);
+          std::optional<BigInt> Inv = BigInt::ModInverse(L1, BigInt(term));
           CHECK(Inv.has_value());
           const int64_t inv = GetU64(Inv.value());
 
+          int64_t quot = BasicModMult64(q1, inv, term);
+
           // Then this is a modmult of 64 bit numbers...
-          int64_t quot = (Q1 * inv) % term;
+          // int64_t quot = (Q1 * inv) % term;
           if (quot < 0) quot += term;
           Tmp[T1] = quot;
         }
@@ -156,7 +169,7 @@ struct QuadModLL {
         // Compute currentSolution as Tmp[T1] * Mult + currentSolution
         uint64_t L2 = Tmp[T1] * mult;
         CurrentSolution += L2;
-        mult *= GetU64(Term);
+        mult *= term;
       }
 
       // Perform loop while V < GcdAll.
@@ -166,7 +179,7 @@ struct QuadModLL {
 
       for (T1 = nbrFactors - 1; T1 >= 0; T1--) {
         // term = base^exp
-        const BigInt Term(prime_powers[T1]);
+        const uint64_t term = prime_powers[T1];
 
         if (Sols[T1].solution1 == Sols[T1].solution2) {
           // quad_info.Solution1[T1] == quad_info.Solution2[T1]
@@ -177,10 +190,10 @@ struct QuadModLL {
         }
 
         // L <- Exponents[T1] * quad_info.Increment[T1]
-        uint64_t L1 = Sols[T1].increment * Sols[T1].exponent;
+        const uint64_t L1 = Sols[T1].increment * Sols[T1].exponent;
 
         // K1 <- 2 * term
-        uint64_t K1 = GetU64(Term) << 1;
+        uint64_t K1 = term << 1;
         if (L1 < K1) {
           break;
         }
