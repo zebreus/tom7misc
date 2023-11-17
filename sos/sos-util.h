@@ -211,6 +211,9 @@ NSoks2(uint64_t sum, int num_expected,
        uint64_t *bases,
        uint8_t *exponents);
 
+// Pick the best CPU method that doesn't require factors.
+std::vector<std::pair<uint64_t, uint64_t>>
+WaysNoFactors(uint64_t sum, int num_expected);
 
 // Another attempt at this, which is O(sqrt(n)), but avoids square
 // roots in the inner loop. It works out nicely but nsoks2 is still

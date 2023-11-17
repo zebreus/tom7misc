@@ -60,7 +60,7 @@ ALPERTRON64_OBJECTS=$(ALPERTRON64)/bigconv.o $(ALPERTRON64)/bignbr.o $(ALPERTRON
 
 OBJECTS=sos-util.o sos-quad.o database.o predict.o polynomial.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS) $(ALPERTRON64_OBJECTS)
 
-CL_OBJECTS=$(OBJECTS) clutil.o
+CL_OBJECTS=$(OBJECTS) sos-gpu.o clutil.o
 
 sos.exe : sos.o $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)

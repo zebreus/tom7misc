@@ -1321,9 +1321,11 @@ struct SOS {
           ParallelMap(
               batchopt.value(),
               [](const std::pair<uint64_t, uint32_t> &input) {
+                // PERF: If we propagated the factors we could use
+                // a faster CPU method here.
                 TryMe tryme;
                 tryme.num = input.first;
-                tryme.squareways = NSoks2(input.first, input.second);
+                tryme.squareways = WaysNoFactors(input.first, input.second);
                 return tryme;
               },
               num_threads);
@@ -1393,28 +1395,9 @@ struct SOS {
   }
 
   void GPUFactorThread() {
-    /*
-    FactorizeGPU factorize_gpu(
-        cl, GPU_FACTOR_HEIGHT,
-        FactorizeGPU::IsPrimeRoutine::GENERAL,
-        false,
-        false,
-        true,
-        1063);
-    */
     FactorizeGPU factorize_gpu(
         cl, GPU_FACTOR_HEIGHT,
         GPU_FACTOR_TUNING);
-
-    /*
-    FactorizeGPU factorize_gpu(
-        cl, GPU_FACTOR_HEIGHT,
-        FactorizeGPU::IsPrimeRoutine::GENERAL,
-        false,
-        true,
-        false,
-        2243);
-    */
 
     for (;;) {
       std::optional<vector<uint64_t>> batchopt =
@@ -1518,16 +1501,17 @@ struct SOS {
 
                 uint64_t bases[15];
                 uint8_t exponents[15];
-                int nf = 0;
+                int num_factors = 0;
 
                 if (num_factors_byte == 0xFF) {
                   // GPU factoring failed. Factor on CPU.
                   // PERF: Can make use of the partial factoring here.
-                  nf = Factorization::FactorizePreallocated(
+                  num_factors = Factorization::FactorizePreallocated(
                       num, bases, exponents);
                   local_cpu_factored++;
                 } else {
                   // copy and collate factors.
+                  // PERF: Could collate on GPU pretty easily.
                   for (int f = 0; f < num_factors_byte; f++) {
                     uint64_t factor =
                       gpu_factored.factors[idx * FactorizeGPU::MAX_FACTORS + f];
@@ -1535,7 +1519,7 @@ struct SOS {
                     // factors consecutively. My belief is that this array is
                     // generally very small, so sorted data structures are
                     // actually worse.
-                    for (int slot = nf - 1; slot >= 0; slot--) {
+                    for (int slot = num_factors - 1; slot >= 0; slot--) {
                       if (bases[slot] == factor) {
                         exponents[slot]++;
                         goto next_factor;
@@ -1543,9 +1527,9 @@ struct SOS {
                     }
 
                     // not found. insert at end.
-                    bases[nf] = factor;
-                    exponents[nf] = 1;
-                    nf++;
+                    bases[num_factors] = factor;
+                    exponents[num_factors] = 1;
+                    num_factors++;
 
                   next_factor:;
                   }
@@ -1554,14 +1538,14 @@ struct SOS {
                 // Using the existing factoring, and skipping
                 // tests we know were already done on GPU.
                 const int nways = ChaiWahWuFromFactors(
-                    num, bases, exponents, nf);
+                    num, bases, exponents, num_factors);
 
                 if (nways >= 3) {
                   local_eligible_triples++;
                   if (nways > GPUMethod::MAX_WAYS) {
                     // Do on CPU.
                     std::vector<std::pair<uint64_t, uint64_t>> ways =
-                      NSoks2(num, nways);
+                      NSoks2(num, nways, num_factors, bases, exponents);
                     TryMe tryme;
                     tryme.num = num;
                     tryme.squareways = std::move(ways);

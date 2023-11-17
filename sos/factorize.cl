@@ -1068,6 +1068,10 @@ void FactorizeInternal(uint64_t x,
 #endif
 
   // TRY(2);
+
+  // PERF: For small factors like 3, we could first do a looped
+  // try with an argument of 9, and then a single test for a
+  // remaining factor of 3.
   TRY(3);
   TRY(5);
   TRY(7);
@@ -1099,6 +1103,15 @@ void FactorizeInternal(uint64_t x,
   TRY(113);
   TRY(127);
   TRY(131);
+  // PERF: Once these get big enough, we can start unrolling the
+  // loop completely. 131^10 > 2^64, for example. You can actually
+  // exhaust the space with fewer divisions, like,
+  //  if (n is divisible by 131^5) { n /= 131^5; factors[131] += 5; }
+  //  // now n has at most 4 factors of 131
+  //  if (n is divisible by 131^2) { n /= 131^2; factors[131] += 2; }
+  //  // now n has at most 2 factors of 131
+  //  if (n is divisible by 131) { n /= 131; factors[131]++; }
+  //  if (n is divisible by 131) { n /= 131; factors[131]++; }
 
   TRY(137);
   TRY(139);

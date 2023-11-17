@@ -14,25 +14,8 @@ typedef atomic_uint atomic_uint32_t;
 #define PTX_SUB128 0
 #define PTX_GEQ128 0
 
-// Avoid "dividing" twice in TRY. Code looks better but seems to
-// benchmark worse. Could be because some peephole optimizations
-// avoid the apparent problem with TRY.
-#define FUSED_TRY 0
-
-// XXX
-#define NEXT_PRIME 137
-
 // This code is ported from cc-lib factorize.cc, which is in turn
 // from gnu's factor utility.
-
-void FactorizeInternal(uint64_t x,
-                       uint64_t *factors,
-                       int *num_factors,
-                       bool *failed);
-
-// First prime to not use for trial division (full factoring routine).
-// This also affects the preconditions for the IsPrimeInternal call.
-
 
 // Subtracts 128-bit words.
 // returns high, low
@@ -343,20 +326,30 @@ bool DefinitelyComposite(uint64_t n, uint64_t ni, uint64_t b, uint64_t q,
 static const uint32_t WITNESSES[7] =
   { 2, 325, 9375, 28178, 450775, 9780504, 1795265022 };
 
-// No preconditions.
-bool IsPrimeInternalGeneral(uint64_t n) {
-  if (n <= 1)
-    return false;
+// Are we done factoring? Yes if the final result is 1,
+// or prime.
+bool IsDoneOdd(uint64_t n) {
+  // Since the input is odd, this is 1, 3, 5, 7. 3,5,7 are all
+  // prime so we are done. 1 means we factored all the primes
+  // out, so we are also done. Don't need to check 7 here for
+  // correctness, but we might as well since it allows us to
+  // succeed faster in some cases by just testing a different
+  // constant.
+  if (n <= 7) return true;
 
-  // PERF: If we're using this through the full factorization
-  // test, we should test vs NEXT_PRIME^2 first.
-  if (n == 2) return true;
-  if (n == 3) return true;
-  if (n == 5) return true;
+  // These are checked above.
+  // if (n == 2) return true;
+  // if (n == 3) return true;
+  // if (n == 5) return true;
+
+  // Need to check these for correctness.
   if (n == 13) return true;
   if (n == 19) return true;
   if (n == 73) return true;
   if (n == 193) return true;
+
+  // PERF: Could perhaps move these into the return false cases, since
+  // they should be exceptionally rare?
   if (n == 407521) return true;
   if (n == 299210837) return true;
 
@@ -496,14 +489,10 @@ __kernel void TrialDivide(__global const uint64_t *restrict num,
     cur >>= twos;
   }
 
-  // Remaining number; at this point can be composite, prime, or 1.
+  // Remaining number (odd); at this point can be composite, prime, or 1.
   large_factor[idx] = cur;
 
-  // TODO: Could consider a primality test here as another
-  // way to succeed. But the current version wants all factors
-  // less than 137 eliminated first.
-
-  if (cur == 1 || IsPrimeInternalGeneral(cur)) {
+  if (IsDone(cur)) {
     // Success!
     num_factors[idx] = nf;
   } else {

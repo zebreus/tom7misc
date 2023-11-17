@@ -388,6 +388,13 @@ NSoks2(uint64_t n, int num_expected,
   return res;
 }
 
+std::vector<std::pair<uint64_t, uint64_t>>
+WaysNoFactors(uint64_t sum, int num_expected) {
+  // XXX Here we rely on the fact that nsoks2 doesn't need
+  // the factors.
+  return NSoks2(sum, num_expected, 0, nullptr, nullptr);
+}
+
 // Here we try to find a^2 + b^2 = sum, with a <= b. We either increase
 // a or decrease b on each round, choosing the one that minimize the
 // error. (TODO: Correctness argument!) A lot of stuff cancels, leaving
