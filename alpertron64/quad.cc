@@ -184,7 +184,7 @@ struct Quad {
   }
 
   void SolutionX(int64_t value, uint64_t modulus,
-                 const BigInt &E) {
+                 uint64_t e) {
     if (VERBOSE) {
       fprintf(stderr, "SolutionX(%llu, %llu)\n", value, modulus);
     }
@@ -197,12 +197,12 @@ struct Quad {
 
 
     if (VERBOSE) {
-      printf("  with 1 0 1 0 %s | 0 %llu | 0 0\n",
-             E.ToString().c_str(),
+      printf("  with 1 0 1 0 %llu | 0 %llu | 0 0\n",
+             e,
              modulus);
     }
 
-    CallbackQuadModElliptic(value, modulus, E);
+    CallbackQuadModElliptic(value, modulus, e);
   }
 
   // Solve congruence an^2 + bn + c = 0 (mod m) where m is different from zero.
@@ -210,18 +210,7 @@ struct Quad {
       uint64_t modulus,
       // factorization of the modulus
       const std::vector<std::pair<uint64_t, int>> &factors,
-      const BigInt &E) {
-
-    /*
-    const BigInt coeff_quadr(1);
-    const BigInt coeff_linear(0);
-    const BigInt coeff_indep(1);
-
-    const BigInt A(1);
-    const BigInt B(0);
-    const BigInt C(1);
-    const BigInt D(0);
-    */
+      uint64_t e) {
 
     if (modulus == 1) {
       // Handle this case first, since various things simplify
@@ -235,7 +224,7 @@ struct Quad {
       // (In the general version of this code, this happens in the
       // ValNn == 1 case, looping up to the Gcd of 1).
 
-      SolutionX(0, 1, E);
+      SolutionX(0, 1, e);
       return;
     }
 
@@ -281,7 +270,7 @@ struct Quad {
       SolutionX(
           value,
           modulus,
-          E);
+          e);
     }
 
     if (interesting) {
@@ -425,6 +414,8 @@ struct Quad {
       }
     }
 
+    // e is always some product of factors, so it fits in 64 bits
+    // and is positive.
     uint64_t e = 1;
     // Loop that cycles through all square divisors of the independent term.
 
@@ -457,7 +448,7 @@ struct Quad {
           k,
           factors,
           // Problem state
-          BigInt(e));
+          e);
 
       // Adjust counters.
       // This modifies the factors (multiplicities) in place.
@@ -532,12 +523,13 @@ struct Quad {
   }
 
   void CallbackQuadModElliptic(
-      int64_t value, uint64_t modulus, const BigInt &E) {
+      int64_t value, uint64_t modulus, uint64_t e) {
 
     constexpr int64_t discr = -4;
 
     const BigInt K(modulus);
     const BigInt Value(value);
+    const BigInt E(e);
 
     // PerformTransformation:
     // These equations become simpler because of the known
