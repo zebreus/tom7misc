@@ -53,6 +53,8 @@ struct AutoHisto {
     if (!std::isfinite(x))
       return;
 
+    total_samples++;
+
     if (Bucketed()) {
       AddBucketed(x, &data);
     } else {
@@ -172,6 +174,25 @@ struct AutoHisto {
 
   }
 
+  std::string SimpleAsciiString(int buckets) const {
+    std::string ret = StringPrintf("%lld samples in %d buckets. "
+                                   "%.6f min. %.6f max\n",
+                                   total_samples, buckets,
+                                   Min(), Max());
+
+    const Histo histo = GetHisto(buckets);
+
+
+    for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
+      StringAppendF(&ret, "%.4f: %.4f (%.4f%%)\n",
+                    histo.BucketLeft(bidx),
+                    histo.buckets[bidx],
+                    (histo.buckets[bidx] * 100.0) / total_samples);
+    }
+
+    return ret;
+  }
+
 private:
 
   // To unicode-utils?
@@ -249,6 +270,7 @@ private:
   int64_t max_samples = 0;
   // If 0, then we're still collecting samples.
   int64_t num_buckets = 0;
+  int64_t total_samples = 0;
 };
 
 #endif

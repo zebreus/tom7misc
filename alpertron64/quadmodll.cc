@@ -40,6 +40,9 @@ static constexpr bool VERBOSE = false;
 // now fully internal.
 namespace {
 
+// PERF: Compare UDiv128Rem from factorize. Might not handle
+// negative args though?
+
 // (a * b) % m
 // Could maybe be wrong for largest a,b?
 static inline int64_t BasicModMult64(int64_t a, int64_t b,

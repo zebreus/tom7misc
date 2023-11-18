@@ -25,47 +25,37 @@
 
 #include "sos-util.h"
 
-static constexpr int MAX_COEFF = 12;
-// Positive and negative, zero
-static constexpr int RADIX = MAX_COEFF * 2 + 1;
-// Only test two random x,y pairs.
-static constexpr int RADIX_F = 2;
-
-static constexpr bool COMPUTE_F = true;
-// When computing F, number of bits we allow X and Y to be.
-static constexpr int XY_BITS = 30;
-static_assert(XY_BITS < 32);
-
+static constexpr int BITS = 45;
 static constexpr uint64_t SEED = 0xCAFEBABE;
 
 using namespace std;
 
-std::mutex file_mutex;
-
-DECLARE_COUNTERS(count_any,
-                 count_quad,
-                 count_linear,
-                 count_point,
-                 count_recursive,
+DECLARE_COUNTERS(count_done,
                  count_interesting,
-                 count_none,
-                 count_done);
+                 count_u2,
+                 count_u3,
+                 count_u4,
+                 count_u5,
+                 count_u6,
+                 count_u7);
 
 static string CounterString() {
-  return StringPrintf(ABLUE("%lld") " any "
-                      AGREEN("%lld") " quad "
-                      APURPLE("%lld") " lin "
-                      ACYAN("%lld") " pt "
-                      AYELLOW("%lld") " rec "
-                      AGREY("%lld") " none "
+  return StringPrintf(ABLUE("%lld") " done "
+                      // AGREEN("%lld") " quad "
+                      // APURPLE("%lld") " lin "
+                      // ACYAN("%lld") " pt "
+                      // AYELLOW("%lld") " rec "
+                      // AGREY("%lld") " none "
                       ARED("%lld") " int",
-                      count_any.Read(),
-                      count_quad.Read(),
+                      count_done.Read(),
+                      /*
+                        count_quad.Read(),
                       count_linear.Read(),
                       count_point.Read(),
                       count_recursive.Read(),
-                      count_none.Read(),
-                      count_interesting.Read());
+                      count_none.Read(), */
+                      count_interesting.Read()
+                      );
 }
 
 static void RunGrid() {
@@ -78,13 +68,16 @@ static void RunGrid() {
   Periodically stats_per(5.0);
   Timer start_time;
 
-  // Microseconds.
+  std::mutex file_mutex;
   std::mutex histo_mutex;
-  AutoHisto auto_histo(100000);
-  int64_t batches_done = 0;
 
-  static constexpr int64_t START_NUM = 32029227552;
-  static constexpr int64_t MAX_NUM   = 64'000'000'000;
+  AutoHisto histo_u, histo_u1, histo_u2;
+  AutoHisto histo_v, histo_v1, histo_v2;
+  AutoHisto histo_tmp, histo_tmp2, histo_tmp3;
+  AutoHisto histo_all;
+
+  static constexpr int64_t START_NUM = int64_t(1) << BITS;
+  static constexpr int64_t MAX_NUM   = START_NUM + 1'000'000'000;
   static constexpr int64_t BATCH_SIZE = 32;
 
   static constexpr int64_t RANGE = MAX_NUM - START_NUM;
@@ -93,12 +86,29 @@ static void RunGrid() {
       RANGE / BATCH_SIZE,
       [&](int64_t batch_idx) {
 
-        std::vector<double> local_timing;
+        uint32_t s1 = 0xCAFEBABE;
+        {
+          for (uint64_t x = batch_idx; x > 0; x >>= 1) {
+            if (x & 1) s1 = LFSRNext32(s1);
+            s1 = std::rotl(s1, 31);
+          }
+        }
+        uint32_t s2 = batch_idx;
+        if (s2 == 0) s2++;
+
+        std::vector<std::tuple<double, double, double,
+                               double, double, double,
+                               double, double, double>> local_max;
+        local_max.reserve(BATCH_SIZE);
+
         for (int off = 0; off < BATCH_SIZE; off++) {
-          const uint64_t f =
-            START_NUM +
-            (uint64_t)batch_idx * BATCH_SIZE +
-            off;
+
+          s1 = LFSRNext32(s1);
+          s2 = LFSRNext32(s2);
+          const uint64_t r = (((uint64_t)s1) << 32) | s2;
+
+          uint64_t f = r & ((int64_t(1) << BITS) - 1);
+          if (f == 0) f++;
 
           auto Assert = [&](const char *type,
                             uint64_t x, uint64_t y) {
@@ -124,14 +134,20 @@ static void RunGrid() {
               }
             };
 
-          Timer sol_timer;
-
           std::vector<std::pair<uint64_t, int>> factors =
             Factorization::Factorize(f);
 
           Solutions sols = SolveQuad(f, factors);
-          const double sol_ms = sol_timer.Seconds() * 1000.0;
-          local_timing.push_back(sol_ms);
+          local_max.emplace_back(
+              BigInt::LogBase2(sols.u.max),
+              BigInt::LogBase2(sols.u1.max),
+              BigInt::LogBase2(sols.u2.max),
+              BigInt::LogBase2(sols.v.max),
+              BigInt::LogBase2(sols.v1.max),
+              BigInt::LogBase2(sols.v2.max),
+              BigInt::LogBase2(sols.tmp.max),
+              BigInt::LogBase2(sols.tmp2.max),
+              BigInt::LogBase2(sols.tmp3.max));
 
           if (sols.interesting_coverage) {
             count_interesting++;
@@ -146,31 +162,37 @@ static void RunGrid() {
           }
 
           for (const PointSolution &point : sols.points) {
-            count_point++;
             Assert("point", point.X, point.Y);
-          }
-
-          if (sols.points.empty()) {
-            count_none++;
           }
 
           const int found_sols = sols.points.size();
 
-          // XXX pass factors!
           const int expected_sols = ChaiWahWu(f);
 
           CHECK(found_sols == expected_sols) << f;
 
-          // Full batches
           count_done++;
         }
 
         {
           MutexLock ml(&histo_mutex);
-          for (double d : local_timing) {
-            auto_histo.Observe(d);
+          for (const auto &[u, u1, u2,
+                            v, v1, v2,
+                            tmp, tmp2, tmp3] : local_max) {
+            histo_u.Observe(u);
+            histo_u1.Observe(u1);
+            histo_u2.Observe(u2);
+            histo_v.Observe(v);
+            histo_v1.Observe(v1);
+            histo_v2.Observe(v2);
+            histo_tmp.Observe(tmp);
+            histo_tmp2.Observe(tmp2);
+            histo_tmp3.Observe(tmp3);
+
+            for (double d : {u, u1, u2, v, v1, v2, tmp, tmp2, tmp3}) {
+              histo_all.Observe(d);
+            }
           }
-          batches_done++;
         }
 
         stats_per.RunIf([&]() {
@@ -201,7 +223,7 @@ static void RunGrid() {
             // Histo
             {
               MutexLock ml(&histo_mutex);
-              auto_histo.PrintSimpleANSI(HISTO_LINES);
+              histo_all.PrintSimpleANSI(HISTO_LINES);
             }
 
             printf("%s\n%s\n%s\n",
@@ -216,6 +238,24 @@ static void RunGrid() {
   printf("\n\n\n");
 
   std::string counters = CounterString();
+
+  auto OutputHisto = [&](const string &file, const AutoHisto &ah) {
+      string contents = ah.SimpleAsciiString(20);
+      Util::WriteFile(file, contents);
+      printf("Wrote " ABLUE("%s") "\n", file.c_str());
+    };
+
+  OutputHisto("histo-u.txt", histo_u);
+  OutputHisto("histo-u1.txt", histo_u1);
+  OutputHisto("histo-u2.txt", histo_u2);
+
+  OutputHisto("histo-v.txt", histo_v);
+  OutputHisto("histo-v1.txt", histo_v1);
+  OutputHisto("histo-v2.txt", histo_v2);
+
+  OutputHisto("histo-tmp.txt", histo_tmp);
+  OutputHisto("histo-tmp2.txt", histo_tmp2);
+  OutputHisto("histo-tmp3.txt", histo_tmp3);
 
   printf("Done in %s\n",
          ANSI::Time(start_time.Seconds()).c_str());
