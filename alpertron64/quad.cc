@@ -44,6 +44,12 @@ static constexpr bool VERBOSE = false;
 
 namespace {
 
+inline uint64_t Sqrt64(uint64_t n) {
+  if (n == 0) return 0;
+  uint64_t r = std::sqrt((double)n);
+  return r - (r * r - 1 >= n);
+}
+
 inline int64_t DivFloor64(int64_t numer, int64_t denom) {
   // There's probably a version without %, but I verified
   // that gcc will do these both with one IDIV.
@@ -59,15 +65,7 @@ struct Quad {
   // Solutions accumulated here.
   Solutions solutions;
 
-  void RecordSolutionXY(const BigInt &X, int64_t y) {
-    auto xo = X.ToInt();
-
-    CHECK(xo.has_value()) << "These are squared, "
-      "so for them to sum to a 64-bit number, they must be 32 bit "
-      "(and here we should have room for 63!)";
-
-    const int64_t x = xo.value();
-
+  inline void RecordSolutionXY(int64_t x, int64_t y) {
     // Negative values are obvious, since x and y appear only under
     // squares. x and y are also interchangeable.
     if (x >= 0 && y >= 0 && x <= y) {
@@ -144,12 +142,14 @@ struct Quad {
   // Do not substitute if m equals zero.
   // Returns true if solution found.
   bool NonSquareDiscrSolutionOne(
-      uint64_t e, const BigInt &K,
+      uint64_t e, uint64_t k,
       int64_t h, int64_t i,
       int64_t value) {
 
+    /*
     BigInt H(h);
     BigInt I(i);
+    */
 
     /*
     fprintf(stderr, "NSDS: %s %s %s %s %lld\n",
@@ -166,7 +166,12 @@ struct Quad {
     // then set it negative.)
 
     // X = (tu - Kv)*E
-    const BigInt Z = (H * value - K * I) * e;
+    const int128_t tu = int128_t(h) * int128_t(value);
+    const int128_t kv = int128_t(i) * int128_t(k);
+    const int128_t diff = tu - kv;
+    CHECK(diff > 0 ? Uint128High64(diff) == 0 : Uint128High64(-diff) == 0);
+
+    int64_t z = (int64_t)diff * e;
     // Y = u*E
     // If this is a solution, it has to be < 2^64 (indeed, smaller
     // than the square root of the input).
@@ -175,10 +180,10 @@ struct Quad {
     // (we get here with both values for two_solutions)
 
     // Undo unimodular substitution
-    RecordSolutionXY(Z, o);
+    RecordSolutionXY(z, o);
     // Z: (-tu - Kv)*E
     // O: -u*E
-    RecordSolutionXY(-Z, -o);
+    RecordSolutionXY(-z, -o);
 
     return true;
   }
@@ -497,6 +502,7 @@ struct Quad {
 
     constexpr int64_t discr = -4;
 
+    const uint64_t k = modulus;
     const BigInt K(modulus);
     const BigInt Value(value);
 
@@ -536,12 +542,12 @@ struct Quad {
       if (p == 1) {
 
         NonSquareDiscrSolutionOne(
-            e, K,
+            e, k,
             1, 0,
             value);
 
         NonSquareDiscrSolutionOne(
-            e, K,
+            e, k,
             // (Q/2, -1)
             g, -1,
             value);
@@ -550,13 +556,13 @@ struct Quad {
       } if (p == 2) {
 
         NonSquareDiscrSolutionOne(
-            e, K,
+            e, k,
             // ((Q/2-1)/2, -1)
             (g - 1) >> 1, -1,
             value);
 
         NonSquareDiscrSolutionOne(
-            e, K,
+            e, k,
             // ((Q/2+1)/2, -1)
             (g + 1) >> 1, -1,
             value);
@@ -584,8 +590,8 @@ struct Quad {
     // the absolute value before square root, we can just sqrt p.
     //
     // It was (Value^2 + 1) / K, which should be non-negative.
-    CHECK(P >= 0);
-    const BigInt L = BigInt::Sqrt(P);
+    CHECK(p >= 0);
+    int64_t l = Sqrt64(p);
 
     // Initial value of last convergent: 1/0.
     int64_t u1 = 1;
@@ -604,7 +610,7 @@ struct Quad {
                           v, v1, v2);
 
       // Check whether the denominator of convergent exceeds bound.
-      if (L < v1) {
+      if (l < v1) {
         // Bound exceeded, so go out.
         break;
       }
@@ -616,7 +622,7 @@ struct Quad {
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         NonSquareDiscrSolutionOne(
-            e, K,
+            e, k,
             u1, v1,
             value);
 
@@ -628,7 +634,7 @@ struct Quad {
                             v, v1, v2);
 
         NonSquareDiscrSolutionOne(
-            e, K,
+            e, k,
             u1, v1,
             value);
 
@@ -644,10 +650,10 @@ struct Quad {
                  const std::vector<std::pair<uint64_t, int>> &factors) {
     if (f == 0) {
       // One solution: 0^2 + 0^2.
-      RecordSolutionXY(BigInt(0), 0);
+      RecordSolutionXY(0, 0);
     } else if (f == 1) {
       // 0^2 + 1^2. x <= y
-      RecordSolutionXY(BigInt(0), 1);
+      RecordSolutionXY(0, 1);
     } else {
       CHECK(f > 1);
       SolveQuadEquation(f, factors);
