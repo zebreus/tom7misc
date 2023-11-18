@@ -111,7 +111,7 @@ struct Quad {
 
     int64_t tmp = DivFloor64(u, v);
 
-    if (true) {
+    if (SELF_CHECK) {
       BigInt Tmp = BigInt::DivFloor(BigInt(u), BigInt(v));
       CHECK(Tmp == tmp);
     }
@@ -147,8 +147,11 @@ struct Quad {
   // Returns true if solution found.
   bool NonSquareDiscrSolutionOne(
       const BigInt &E, const BigInt &K,
-      const BigInt &H, const BigInt &I,
+      int64_t h, int64_t i,
       int64_t value) {
+
+    BigInt H(h);
+    BigInt I(i);
 
     /*
     fprintf(stderr, "NSDS: %s %s %s %s %lld\n",
@@ -181,13 +184,10 @@ struct Quad {
   }
 
   void SolutionX(int64_t value, uint64_t modulus,
-                 const BigInt &E,
-                 const BigInt &K) {
+                 const BigInt &E) {
     if (VERBOSE) {
       fprintf(stderr, "SolutionX(%llu, %llu)\n", value, modulus);
     }
-
-    CHECK(K == modulus);
 
     // If 2*value is greater than modulus, subtract modulus.
     if (value > 0 &&
@@ -210,8 +210,7 @@ struct Quad {
       uint64_t modulus,
       // factorization of the modulus
       const std::vector<std::pair<uint64_t, int>> &factors,
-      const BigInt &E,
-      const BigInt &K) {
+      const BigInt &E) {
 
     /*
     const BigInt coeff_quadr(1);
@@ -223,8 +222,6 @@ struct Quad {
     const BigInt C(1);
     const BigInt D(0);
     */
-
-    CHECK(K == modulus);
 
     if (modulus == 1) {
       // Handle this case first, since various things simplify
@@ -238,7 +235,7 @@ struct Quad {
       // (In the general version of this code, this happens in the
       // ValNn == 1 case, looping up to the Gcd of 1).
 
-      SolutionX(0, 1, E, K);
+      SolutionX(0, 1, E);
       return;
     }
 
@@ -284,7 +281,7 @@ struct Quad {
       SolutionX(
           value,
           modulus,
-          E, K);
+          E);
     }
 
     if (interesting) {
@@ -460,8 +457,7 @@ struct Quad {
           k,
           factors,
           // Problem state
-          BigInt(e),
-          BigInt(k));
+          BigInt(e));
 
       // Adjust counters.
       // This modifies the factors (multiplicities) in place.
@@ -568,40 +564,40 @@ struct Quad {
       return;
     }
 
-    std::optional<int64_t> plow_opt = P.ToInt();
-    if (plow_opt.has_value() && plow_opt.value() >= 0) {
-      const int64_t plow = plow_opt.value();
+    // Below we assert p >= 0...
+    if (p >= 0) {
 
       // Discriminant is equal to -4.
-      BigInt G = Q >> 1;
+      // BigInt G = Q >> 1;
+      int64_t g = q >> 1;
       // XXX equal to -value, right?
 
-      if (plow == 1) {
+      if (p == 1) {
 
         NonSquareDiscrSolutionOne(
             E, K,
-            BigInt(1), BigInt(0),
+            1, 0,
             value);
 
         NonSquareDiscrSolutionOne(
             E, K,
             // (Q/2, -1)
-            G, BigInt(-1),
+            g, -1,
             value);
 
         return;
-      } if (plow == 2) {
+      } if (p == 2) {
 
         NonSquareDiscrSolutionOne(
             E, K,
             // ((Q/2-1)/2, -1)
-            (G - 1) >> 1, BigInt(-1),
+            (g - 1) >> 1, -1,
             value);
 
         NonSquareDiscrSolutionOne(
             E, K,
             // ((Q/2+1)/2, -1)
-            (G + 1) >> 1, BigInt(-1),
+            (g + 1) >> 1, -1,
             value);
 
         return;
@@ -638,23 +634,8 @@ struct Quad {
     int64_t v2 = 1;
 
     // Compute continued fraction expansion of U/V = -Q/2P.
-    // BigInt U = -Q;
-    // BigInt V = P << 1;
     int64_t u = -q;
     int64_t v = p << 1;
-
-    // I think we can use the simpler expression U = K, V = Value + 1.
-    // These are 64 bit.
-    if (false) {
-      // XXX PERF!
-      BigInt U = -Q;
-      BigInt V = P << 1;
-      BigInt UdivV = BigInt::DivFloor(U, V);
-      int64_t simpler = DivFloor64(u, v);
-      CHECK(UdivV == simpler) << U.ToString() << " / " << V.ToString()
-                              << "\n"
-                              << u << " / " << v;
-    }
 
     while (v != 0) {
       std::tie(u, u1, u2, v, v1, v2) =
@@ -662,8 +643,7 @@ struct Quad {
                           v, v1, v2);
 
       // Check whether the denominator of convergent exceeds bound.
-      // XXX just compare
-      if (L - v1 < 0) {
+      if (L < v1) {
         // Bound exceeded, so go out.
         break;
       }
@@ -676,7 +656,7 @@ struct Quad {
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         NonSquareDiscrSolutionOne(
             E, K,
-            BigInt(u1), BigInt(v1),
+            u1, v1,
             value);
 
         CHECK(discr == -4);
@@ -688,7 +668,7 @@ struct Quad {
 
         NonSquareDiscrSolutionOne(
             E, K,
-            BigInt(u1), BigInt(v1),
+            u1, v1,
             value);
 
         break;
