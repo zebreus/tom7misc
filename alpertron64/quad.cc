@@ -84,12 +84,17 @@ struct Quad {
   // which is (2 * value) / 2 * ((value * value + 1) / K),
   // which is 1 / ((value + 1) / K),
   // which is K / (value + 1).
+  // (We can't actually just pass k,value+1 though, since this
+  // also uses the values of U and V directly.)
 
   // static
   std::tuple<BigInt, BigInt, BigInt,
              BigInt, BigInt, BigInt> GetNextConvergent(
                  BigInt &&U, BigInt &&U1, BigInt &&U2,
                  BigInt &&V, BigInt &&V1, BigInt &&V2) {
+
+    solutions.u.Observe(U);
+    solutions.v.Observe(V);
 
     /*
     fprintf(stderr,
@@ -106,14 +111,12 @@ struct Quad {
 
     // Compute new value of U and V.
     BigInt Tmp2 = U - Tmp * V;
-    solutions.tmp2.Observe(Tmp2);
     U = std::move(V);
     V = std::move(Tmp2);
 
     // Compute new convergents: h_n = a_n*h_{n-1} + h_{n-2}
     // and also k_n = k_n*k_{n-1} + k_{n-2}
     BigInt Tmp3 = Tmp * U1 + U2;
-    solutions.tmp3.Observe(Tmp3);
 
     // BigInt U3 = std::move(U2);
     U2 = std::move(U1);
@@ -121,17 +124,10 @@ struct Quad {
 
     Tmp *= V1;
     Tmp += V2;
-    solutions.tmp.Observe(Tmp);
 
     // BigInt V3 = std::move(V2);
     V2 = std::move(V1);
     V1 = Tmp;
-    solutions.u.Observe(U);
-    solutions.u1.Observe(U1);
-    solutions.u2.Observe(U2);
-    solutions.v.Observe(V);
-    solutions.v1.Observe(V1);
-    solutions.v2.Observe(V2);
 
     return std::make_tuple(U, U1, U2,
                            V, V1, V2);
@@ -550,6 +546,8 @@ struct Quad {
     // Compute P as (at^2+bt+c)/K
     const BigInt P = (Value * Value + 1) / K;
 
+    CHECK(P.ToInt().has_value());
+
     // Compute Q <- -(2at + b).
     const BigInt Q = -(Value << 1);
 
@@ -634,7 +632,7 @@ struct Quad {
 
     // I think we can use the simpler expression U = K, V = Value + 1.
     // These are 64 bit.
-    if (true) {
+    if (false) {
       // XXX PERF!
       BigInt UdivV = BigInt::DivFloor(U, V);
       BigInt Simpler = BigInt::DivFloor(K, Value + 1);

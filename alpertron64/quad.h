@@ -25,10 +25,13 @@ struct Solutions {
   std::vector<PointSolution> points;
 
   // From GetNextConvergent
+  MaxValue u, v;
+#if 0
   MaxValue u, u1, u2;
   MaxValue v, v1, v2;
 
   MaxValue tmp, tmp2, tmp3;
+#endif
 };
 
 // Solve x^2 + y^2 = f.

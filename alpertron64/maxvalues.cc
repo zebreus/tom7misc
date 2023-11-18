@@ -77,7 +77,7 @@ static void RunGrid() {
   AutoHisto histo_all;
 
   static constexpr int64_t START_NUM = int64_t(1) << BITS;
-  static constexpr int64_t MAX_NUM   = START_NUM + 1'000'000'000;
+  static constexpr int64_t MAX_NUM   = START_NUM + 10'000'000;
   static constexpr int64_t BATCH_SIZE = 32;
 
   static constexpr int64_t RANGE = MAX_NUM - START_NUM;
@@ -96,9 +96,7 @@ static void RunGrid() {
         uint32_t s2 = batch_idx;
         if (s2 == 0) s2++;
 
-        std::vector<std::tuple<double, double, double,
-                               double, double, double,
-                               double, double, double>> local_max;
+        std::vector<std::tuple<double, double>> local_max;
         local_max.reserve(BATCH_SIZE);
 
         for (int off = 0; off < BATCH_SIZE; off++) {
@@ -140,14 +138,7 @@ static void RunGrid() {
           Solutions sols = SolveQuad(f, factors);
           local_max.emplace_back(
               BigInt::LogBase2(sols.u.max),
-              BigInt::LogBase2(sols.u1.max),
-              BigInt::LogBase2(sols.u2.max),
-              BigInt::LogBase2(sols.v.max),
-              BigInt::LogBase2(sols.v1.max),
-              BigInt::LogBase2(sols.v2.max),
-              BigInt::LogBase2(sols.tmp.max),
-              BigInt::LogBase2(sols.tmp2.max),
-              BigInt::LogBase2(sols.tmp3.max));
+              BigInt::LogBase2(sols.v.max));
 
           if (sols.interesting_coverage) {
             count_interesting++;
@@ -176,20 +167,11 @@ static void RunGrid() {
 
         {
           MutexLock ml(&histo_mutex);
-          for (const auto &[u, u1, u2,
-                            v, v1, v2,
-                            tmp, tmp2, tmp3] : local_max) {
+          for (const auto &[u, v] : local_max) {
             histo_u.Observe(u);
-            histo_u1.Observe(u1);
-            histo_u2.Observe(u2);
             histo_v.Observe(v);
-            histo_v1.Observe(v1);
-            histo_v2.Observe(v2);
-            histo_tmp.Observe(tmp);
-            histo_tmp2.Observe(tmp2);
-            histo_tmp3.Observe(tmp3);
 
-            for (double d : {u, u1, u2, v, v1, v2, tmp, tmp2, tmp3}) {
+            for (double d : {u, v}) {
               histo_all.Observe(d);
             }
           }
@@ -245,17 +227,8 @@ static void RunGrid() {
       printf("Wrote " ABLUE("%s") "\n", file.c_str());
     };
 
-  OutputHisto("histo-u.txt", histo_u);
-  OutputHisto("histo-u1.txt", histo_u1);
-  OutputHisto("histo-u2.txt", histo_u2);
-
-  OutputHisto("histo-v.txt", histo_v);
-  OutputHisto("histo-v1.txt", histo_v1);
-  OutputHisto("histo-v2.txt", histo_v2);
-
-  OutputHisto("histo-tmp.txt", histo_tmp);
-  OutputHisto("histo-tmp2.txt", histo_tmp2);
-  OutputHisto("histo-tmp3.txt", histo_tmp3);
+  OutputHisto("histo-start-u.txt", histo_u);
+  OutputHisto("histo-start-v.txt", histo_v);
 
   printf("Done in %s\n",
          ANSI::Time(start_time.Seconds()).c_str());
