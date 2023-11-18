@@ -59,16 +59,14 @@ struct Quad {
   // Solutions accumulated here.
   Solutions solutions;
 
-  void RecordSolutionXY(const BigInt &X, const BigInt &Y) {
+  void RecordSolutionXY(const BigInt &X, int64_t y) {
     auto xo = X.ToInt();
-    auto yo = Y.ToInt();
 
-    CHECK(xo.has_value() && yo.has_value()) << "These are squared, "
+    CHECK(xo.has_value()) << "These are squared, "
       "so for them to sum to a 64-bit number, they must be 32 bit "
       "(and here we should have room for 63!)";
 
     const int64_t x = xo.value();
-    const int64_t y = yo.value();
 
     // Negative values are obvious, since x and y appear only under
     // squares. x and y are also interchangeable.
@@ -146,7 +144,7 @@ struct Quad {
   // Do not substitute if m equals zero.
   // Returns true if solution found.
   bool NonSquareDiscrSolutionOne(
-      const BigInt &E, const BigInt &K,
+      uint64_t e, const BigInt &K,
       int64_t h, int64_t i,
       int64_t value) {
 
@@ -168,17 +166,19 @@ struct Quad {
     // then set it negative.)
 
     // X = (tu - Kv)*E
-    const BigInt Z = (H * value - K * I) * E;
+    const BigInt Z = (H * value - K * I) * e;
     // Y = u*E
-    const BigInt O = H * E;
+    // If this is a solution, it has to be < 2^64 (indeed, smaller
+    // than the square root of the input).
+    int64_t o = h * (int64_t)e;
 
     // (we get here with both values for two_solutions)
 
     // Undo unimodular substitution
-    RecordSolutionXY(Z, O);
+    RecordSolutionXY(Z, o);
     // Z: (-tu - Kv)*E
     // O: -u*E
-    RecordSolutionXY(-Z, -O);
+    RecordSolutionXY(-Z, -o);
 
     return true;
   }
@@ -228,13 +228,6 @@ struct Quad {
       return;
     }
 
-    if (VERBOSE) {
-      fprintf(stderr,
-              "[SQME] 1 0 1 %llu\n",
-              // (quad, linear, indep)
-              modulus);
-    }
-
     CHECK(modulus > 1);
 
     // This used to mod each coefficient by the modulus,
@@ -262,15 +255,10 @@ struct Quad {
 
     bool interesting = false;
     std::vector<uint64_t> values =
-      SolveEquation(
-          modulus, factors,
-          &interesting);
+      SolveEquation(modulus, factors, &interesting);
 
     for (uint64_t value : values) {
-      SolutionX(
-          value,
-          modulus,
-          e);
+      SolutionX(value, modulus, e);
     }
 
     if (interesting) {
@@ -331,28 +319,12 @@ struct Quad {
   void SolveQuadEquation(uint64_t k,
                          // PERF avoid copying?
                          std::vector<std::pair<uint64_t, int>> factors) {
-    /*
-    const BigInt A(1);
-    const BigInt B(0);
-    const BigInt C(1);
-    const BigInt D(0);
-
-    const BigInt Discr(-4);
-
-    // These were actually uninitialized, and probably unused?
-    const BigInt U(0);
-    const BigInt V(0);
-    */
 
     // Gcd is always 1.
 
     // No need to divide by gcd of 1.
 
-    if (k == 0) {
-      // If k=0, the only solution is (X, Y) = (0, 0)
-      RecordSolutionXY(BigInt(0), BigInt(0));
-      return;
-    }
+    CHECK(k > 1);
 
     if (VERBOSE) {
       printf("start NSD 1 0 1 | %llu -4 | 0 0 1\n", k);
@@ -361,8 +333,6 @@ struct Quad {
     // Factor independent term.
 
     // Note that we modify the factors (multiplicities) in place below.
-    // std::vector<std::pair<BigInt, int>> factors =
-    // BigIntFactor(BigInt::Abs(K));
 
     CHECK(k > 1);
     // fprintf(stderr, "(outer) Factoring %llu\n", k);
@@ -529,7 +499,6 @@ struct Quad {
 
     const BigInt K(modulus);
     const BigInt Value(value);
-    const BigInt E(e);
 
     // PerformTransformation:
     // These equations become simpler because of the known
@@ -567,12 +536,12 @@ struct Quad {
       if (p == 1) {
 
         NonSquareDiscrSolutionOne(
-            E, K,
+            e, K,
             1, 0,
             value);
 
         NonSquareDiscrSolutionOne(
-            E, K,
+            e, K,
             // (Q/2, -1)
             g, -1,
             value);
@@ -581,13 +550,13 @@ struct Quad {
       } if (p == 2) {
 
         NonSquareDiscrSolutionOne(
-            E, K,
+            e, K,
             // ((Q/2-1)/2, -1)
             (g - 1) >> 1, -1,
             value);
 
         NonSquareDiscrSolutionOne(
-            E, K,
+            e, K,
             // ((Q/2+1)/2, -1)
             (g + 1) >> 1, -1,
             value);
@@ -647,7 +616,7 @@ struct Quad {
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         NonSquareDiscrSolutionOne(
-            E, K,
+            e, K,
             u1, v1,
             value);
 
@@ -659,7 +628,7 @@ struct Quad {
                             v, v1, v2);
 
         NonSquareDiscrSolutionOne(
-            E, K,
+            e, K,
             u1, v1,
             value);
 
@@ -675,10 +644,10 @@ struct Quad {
                  const std::vector<std::pair<uint64_t, int>> &factors) {
     if (f == 0) {
       // One solution: 0^2 + 0^2.
-      RecordSolutionXY(BigInt(0), BigInt(0));
+      RecordSolutionXY(BigInt(0), 0);
     } else if (f == 1) {
-      // 0^2 + 1^2
-      RecordSolutionXY(BigInt(0), BigInt(1));
+      // 0^2 + 1^2. x <= y
+      RecordSolutionXY(BigInt(0), 1);
     } else {
       CHECK(f > 1);
       SolveQuadEquation(f, factors);
