@@ -535,6 +535,10 @@ static bool DefinitelyComposite(
   return true;
 }
 
+// PERF: Benchmark the IsPrimeInternalUnrolled version from
+// factorize.cl. It wasn't faster on GPU, but I like the idea and it
+// may very well work on CPU.
+
 // Deterministic primality test. Requires that n have no factors
 // less than NEXT_PRIME.
 static bool IsPrimeInternal(uint64_t n) {

@@ -31,6 +31,8 @@
 //   - delete deprecated kuint128max
 //   - switch to <bit> builtins
 //   - added aliases uint128_t and int128_t
+// TODO:
+//   - nice if we had uint128 % uint64 returning uint64...
 
 #ifndef ABSL_NUMERIC_INT128_H_
 #define ABSL_NUMERIC_INT128_H_

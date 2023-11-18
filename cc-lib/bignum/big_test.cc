@@ -67,7 +67,10 @@ static void TestToU64() {
   CHECK(!BigInt(-1).ToU64().has_value());
 
   {
-    auto uo = ((BigInt(1) << 64) - 1).ToU64();
+    auto uo =
+      BigInt::Minus(
+          BigInt::LeftShift(BigInt(1), 64),
+          1).ToU64();
     CHECK(uo.has_value() && uo.value() == (uint64_t)-1);
   }
 
@@ -443,6 +446,15 @@ static void TestGCD() {
   CHECK(BigInt::Eq(g, BigInt(4)));
 }
 
+static void TestLog() {
+  BigInt x = BigInt::LeftShift(BigInt(1), 301);
+  double y = BigInt::LogBase2(x);
+  CHECK(y >= 300.99 && y <= 301.01) << y;
+
+  double z = BigInt::NaturalLog(x);
+  CHECK(z >= 208.6 && z <= 208.7) << z;
+}
+
 static void TestShift() {
   {
     BigInt a{"12398471982735675717171221"};
@@ -726,6 +738,8 @@ int main(int argc, char **argv) {
   TestToInt();
   TestGCD();
 
+  TestLog();
+
   TestDivisibleBy();
   TestDivExact();
   TestDivFloor();
@@ -749,7 +763,6 @@ int main(int argc, char **argv) {
   TestInvert();
 
   TestSwap();
-
 
   printf("OK\n");
 }

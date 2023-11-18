@@ -135,6 +135,7 @@ struct BigInt {
 
   // Returns the approximate logarithm, base e.
   inline static double NaturalLog(const BigInt &a);
+  inline static double LogBase2(const BigInt &a);
 
   // Jacobi symbol (-1, 0, 1). b must be odd.
   inline static int Jacobi(const BigInt &a, const BigInt &b);
@@ -473,6 +474,17 @@ double BigInt::NaturalLog(const BigInt &a) {
   signed long int exponent = 0;
   const double di = mpz_get_d_2exp(&exponent, a.rep);
   return std::log(di) + std::log(2.0) * (double)exponent;
+}
+
+double BigInt::LogBase2(const BigInt &a) {
+  // d is the magnitude, with absolute value in [0.5,1].
+  //   a = di * 2^exponent
+  // taking the log of both sides,
+  //   lg(a) = lg(di) + lg(2) * exponent
+  //   lg(a) = log(di)/log(2) + 1 * exponent
+  signed long int exponent = 0;
+  const double di = mpz_get_d_2exp(&exponent, a.rep);
+  return std::log(di)/std::log(2.0) + (double)exponent;
 }
 
 int BigInt::Jacobi(const BigInt &a, const BigInt &b) {
