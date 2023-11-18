@@ -44,7 +44,16 @@ static constexpr bool VERBOSE = false;
 
 namespace {
 
-// XXX track maximum value to determine whether we need int128?
+inline int64_t DivFloor64(int64_t numer, int64_t denom) {
+  // There's probably a version without %, but I verified
+  // that gcc will do these both with one IDIV.
+  int64_t q = numer / denom;
+  int64_t r = numer % denom;
+  if ((r > 0 && denom < 0) || (r < 0 && denom > 0)) {
+    return q - 1;
+  }
+  return q;
+}
 
 struct Quad {
   // Solutions accumulated here.
@@ -88,49 +97,44 @@ struct Quad {
   // also uses the values of U and V directly.)
 
   // static
-  std::tuple<BigInt, BigInt, BigInt,
-             BigInt, BigInt, BigInt> GetNextConvergent(
-                 BigInt &&U, BigInt &&U1, BigInt &&U2,
-                 BigInt &&V, BigInt &&V1, BigInt &&V2) {
-
-    solutions.u.Observe(U);
-    solutions.v.Observe(V);
+  std::tuple<int64_t, int64_t, int64_t,
+             int64_t, int64_t, int64_t>
+  GetNextConvergent(int64_t u, int64_t u1, int64_t u2,
+                    int64_t v, int64_t v1, int64_t v2) {
 
     /*
     fprintf(stderr,
-            "Next convergent: %s %s %s | %s %s %s\n",
-            U.ToString().c_str(),
-            U1.ToString().c_str(),
-            U2.ToString().c_str(),
-            V.ToString().c_str(),
-            V1.ToString().c_str(),
-            V2.ToString().c_str());
+            "Next convergent: %lld %lld %lld | %lld %lld %lld\n",
+            u, u1, u2,
+            v, v1, v2);
     */
 
-    BigInt Tmp = BigInt::DivFloor(U, V);
+    int64_t tmp = DivFloor64(u, v);
+
+    if (true) {
+      BigInt Tmp = BigInt::DivFloor(BigInt(u), BigInt(v));
+      CHECK(Tmp == tmp);
+    }
 
     // Compute new value of U and V.
-    BigInt Tmp2 = U - Tmp * V;
-    U = std::move(V);
-    V = std::move(Tmp2);
+    int64_t tmp2 = u - tmp * v;
+    u = v;
+    v = tmp2;
 
     // Compute new convergents: h_n = a_n*h_{n-1} + h_{n-2}
     // and also k_n = k_n*k_{n-1} + k_{n-2}
-    BigInt Tmp3 = Tmp * U1 + U2;
+    int64_t tmp3 = tmp * u1 + u2;
+    u2 = u1;
+    u1 = tmp3;
 
-    // BigInt U3 = std::move(U2);
-    U2 = std::move(U1);
-    U1 = std::move(Tmp3);
+    tmp *= v1;
+    tmp += v2;
 
-    Tmp *= V1;
-    Tmp += V2;
+    v2 = v1;
+    v1 = tmp;
 
-    // BigInt V3 = std::move(V2);
-    V2 = std::move(V1);
-    V1 = Tmp;
-
-    return std::make_tuple(U, U1, U2,
-                           V, V1, V2);
+    return std::make_tuple(u, u1, u2,
+                           v, v1, v2);
   }
 
   // On input: H: value of u, I: value of v.
@@ -545,17 +549,23 @@ struct Quad {
 
     // Compute P as (at^2+bt+c)/K
     const BigInt P = (Value * Value + 1) / K;
-
-    CHECK(P.ToInt().has_value());
+    const std::optional<int64_t> po = P.ToInt();
+    // TODO: Some argument why this always fits in 64 bits?
+    // I checked billions of samples, at least, and it was
+    // never larger magnitude than the input value.
+    CHECK(po.has_value());
+    const int64_t p = po.value();
 
     // Compute Q <- -(2at + b).
     const BigInt Q = -(Value << 1);
+    const int64_t q = -(value << 1);
 
     // Compute R <- aK
     const BigInt &R = K;
 
     if (BigInt::GCD(BigInt::GCD(P, Q), R) != 1) {
       // No solutions.
+      return;
     }
 
     std::optional<int64_t> plow_opt = P.ToInt();
@@ -564,6 +574,7 @@ struct Quad {
 
       // Discriminant is equal to -4.
       BigInt G = Q >> 1;
+      // XXX equal to -value, right?
 
       if (plow == 1) {
 
@@ -620,61 +631,64 @@ struct Quad {
     const BigInt L = BigInt::Sqrt(P);
 
     // Initial value of last convergent: 1/0.
-    BigInt U1(1);
-    BigInt V1(0);
+    int64_t u1 = 1;
+    int64_t v1 = 0;
     // Initial value of next to last convergent: 0/1.
-    BigInt U2(0);
-    BigInt V2(1);
+    int64_t u2 = 0;
+    int64_t v2 = 1;
 
     // Compute continued fraction expansion of U/V = -Q/2P.
-    BigInt U = -Q;
-    BigInt V = P << 1;
+    // BigInt U = -Q;
+    // BigInt V = P << 1;
+    int64_t u = -q;
+    int64_t v = p << 1;
 
     // I think we can use the simpler expression U = K, V = Value + 1.
     // These are 64 bit.
     if (false) {
       // XXX PERF!
+      BigInt U = -Q;
+      BigInt V = P << 1;
       BigInt UdivV = BigInt::DivFloor(U, V);
-      BigInt Simpler = BigInt::DivFloor(K, Value + 1);
-      CHECK(UdivV == Simpler) << U.ToString() << " / " << V.ToString()
+      int64_t simpler = DivFloor64(u, v);
+      CHECK(UdivV == simpler) << U.ToString() << " / " << V.ToString()
                               << "\n"
-                              << K.ToString() << " / "
-                              << (Value + 1).ToString();
+                              << u << " / " << v;
     }
 
-    while (V != 0) {
-      std::tie(U, U1, U2, V, V1, V2) =
-        GetNextConvergent(std::move(U), std::move(U1), std::move(U2),
-                          std::move(V), std::move(V1), std::move(V2));
+    while (v != 0) {
+      std::tie(u, u1, u2, v, v1, v2) =
+        GetNextConvergent(u, u1, u2,
+                          v, v1, v2);
 
       // Check whether the denominator of convergent exceeds bound.
-      BigInt BigTmp = L - V1;
-      if (BigTmp < 0) {
+      // XXX just compare
+      if (L - v1 < 0) {
         // Bound exceeded, so go out.
         break;
       }
 
       // Test whether P*U1^2 + Q*U1*V1 + R*V1^2 = 1.
-      BigInt O = (P * U1 + Q * V1) * U1 + R * V1 * V1;
+      BigInt O = (P * u1 + Q * v1) * u1 + (R * v1) * v1;
 
       if (O == 1) {
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         NonSquareDiscrSolutionOne(
             E, K,
-            U1, V1,
+            BigInt(u1), BigInt(v1),
             value);
 
         CHECK(discr == -4);
 
         // Discriminant is equal to -3 or -4.
-        std::tie(U, U1, U2, V, V1, V2) =
-          GetNextConvergent(std::move(U), std::move(U1), std::move(U2),
-                            std::move(V), std::move(V1), std::move(V2));
+        std::tie(u, u1, u2, v, v1, v2) =
+          GetNextConvergent(u, u1, u2,
+                            v, v1, v2);
 
         NonSquareDiscrSolutionOne(
             E, K,
-            U1, V1,
+            BigInt(u1), BigInt(v1),
             value);
 
         break;

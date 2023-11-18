@@ -25,7 +25,6 @@ struct Solutions {
   std::vector<PointSolution> points;
 
   // From GetNextConvergent
-  MaxValue u, v;
 #if 0
   MaxValue u, u1, u2;
   MaxValue v, v1, v2;
@@ -35,6 +34,8 @@ struct Solutions {
 };
 
 // Solve x^2 + y^2 = f.
+// This is probably not correct for numbers larger than 2^60 or so,
+// since we sometimes do stuff like (value << 1).
 // Needs the prime factorization (e.g. from Factorization::Factorize).
 Solutions SolveQuad(
     uint64_t f,
