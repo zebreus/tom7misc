@@ -257,6 +257,9 @@ const unsigned char binvert_table[128] = {
   0x11, 0x3B, 0x5D, 0xC7, 0x49, 0x33, 0x55, 0xFF,
 };
 
+// PERF: Benchmark Dumas's algorithm. It's alleged that it gives
+// better instruction-level parallelism because of shorter dependency
+// chains. See https://arxiv.org/pdf/2204.04342.pdf
 inline uint64_t Binv(uint64_t n) {
   uint64_t inv = binvert_table[(n / 2) & 0x7F]; /*  8 */
   inv = 2 * inv - inv * inv * n;

@@ -382,6 +382,7 @@ static inline uint64_t AddMod(uint64_t a, uint64_t b, uint64_t n) {
 #define ll_lowpart(t)  ((uint64_t) (t) & (ll_B - 1))
 #define ll_highpart(t) ((uint64_t) (t) >> (64 / 2))
 
+// PERF maybe better to use int128 for intrinsics?
 // returns w1, w0
 static inline std::pair<uint64_t, uint64_t> UMul128(uint64_t u, uint64_t v) {
   uint32_t ul = ll_lowpart(u);
@@ -406,7 +407,9 @@ static inline std::pair<uint64_t, uint64_t> UMul128(uint64_t u, uint64_t v) {
                         (x1 << 64 / 2) + ll_lowpart(x0));
 }
 
-
+// PERF: Compare starting with (3*a)^2 as the initial guess
+// and doing one more iteration. The advantage would be
+// less cache pressure / memory latency.
 /* Entry i contains (2i+1)^(-1) mod 2^8.  */
 static constexpr unsigned char binvert_table[128] = {
   0x01, 0xAB, 0xCD, 0xB7, 0x39, 0xA3, 0xC5, 0xEF,
@@ -427,6 +430,14 @@ static constexpr unsigned char binvert_table[128] = {
   0x11, 0x3B, 0x5D, 0xC7, 0x49, 0x33, 0x55, 0xFF,
 };
 
+// Computes the multiplicative inverse of n mod 2^64 (for odd n). This
+// starts with an initial guess from the table above, then does enough
+// iterations of Newton-Raphson to converge on the answer. Each
+// iteration doubles the number of correct bits.
+//
+// PERF: Benchmark Dumas's algorithm. It's alleged that it gives
+// better instruction-level parallelism because of shorter dependency
+// chains. See https://arxiv.org/pdf/2204.04342.pdf
 static inline uint64_t Binv(uint64_t n) {
   uint64_t inv = binvert_table[(n / 2) & 0x7F]; /*  8 */
   inv = 2 * inv - inv * inv * n;
