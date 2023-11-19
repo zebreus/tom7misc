@@ -16,7 +16,8 @@ struct PointSolution {
 struct MaxValue {
   BigInt max;
   void Observe(const BigInt &x) {
-    if (BigInt::Greater(BigInt::Abs(x), max)) max = x;
+    BigInt xa = BigInt::Abs(x);
+    if (BigInt::Greater(xa, max)) max = std::move(xa);
   }
 };
 
@@ -25,6 +26,8 @@ struct Solutions {
   std::vector<PointSolution> points;
 
   // From GetNextConvergent
+  // MaxValue o1, o2;
+  // MaxValue vsquared;
 #if 0
   MaxValue u, u1, u2;
   MaxValue v, v1, v2;

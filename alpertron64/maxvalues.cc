@@ -71,9 +71,7 @@ static void RunGrid() {
   std::mutex file_mutex;
   std::mutex histo_mutex;
 
-  AutoHisto histo_u, histo_u1, histo_u2;
-  AutoHisto histo_v, histo_v1, histo_v2;
-  AutoHisto histo_tmp, histo_tmp2, histo_tmp3;
+  AutoHisto histo_o1, histo_o2;
   AutoHisto histo_all;
 
   static constexpr int64_t START_NUM = int64_t(1) << BITS;
@@ -137,8 +135,8 @@ static void RunGrid() {
 
           Solutions sols = SolveQuad(f, factors);
           local_max.emplace_back(
-              BigInt::LogBase2(sols.u.max),
-              BigInt::LogBase2(sols.v.max));
+              BigInt::LogBase2(sols.vsquared.max),
+              BigInt::LogBase2(sols.o2.max));
 
           if (sols.interesting_coverage) {
             count_interesting++;
@@ -167,11 +165,11 @@ static void RunGrid() {
 
         {
           MutexLock ml(&histo_mutex);
-          for (const auto &[u, v] : local_max) {
-            histo_u.Observe(u);
-            histo_v.Observe(v);
+          for (const auto &[o1, o2] : local_max) {
+            histo_o1.Observe(o1);
+            histo_o2.Observe(o2);
 
-            for (double d : {u, v}) {
+            for (double d : {o1, o2}) {
               histo_all.Observe(d);
             }
           }
@@ -227,8 +225,8 @@ static void RunGrid() {
       printf("Wrote " ABLUE("%s") "\n", file.c_str());
     };
 
-  OutputHisto("histo-start-u.txt", histo_u);
-  OutputHisto("histo-start-v.txt", histo_v);
+  OutputHisto("histo-vsquared.txt", histo_o1);
+  OutputHisto("histo-o2-bogus.txt", histo_o2);
 
   printf("Done in %s\n",
          ANSI::Time(start_time.Seconds()).c_str());

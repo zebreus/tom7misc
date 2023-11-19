@@ -21,6 +21,7 @@
 #include <vector>
 #include <optional>
 #include <utility>
+#include <numeric>
 
 #include <stdlib.h>
 #include <string.h>
@@ -503,35 +504,41 @@ struct Quad {
     constexpr int64_t discr = -4;
 
     const uint64_t k = modulus;
-    const BigInt K(modulus);
-    const BigInt Value(value);
+    // const BigInt K(modulus);
+    // const BigInt Value(value);
 
     // PerformTransformation:
     // These equations become simpler because of the known
     // values of A,B,C = 1,0,1.
 
     // Compute P as (at^2+bt+c)/K
-    const BigInt P = (Value * Value + 1) / K;
-    const std::optional<int64_t> po = P.ToInt();
+
+    // This generally does exceed 64 bits (87.7 for 45-bit input).
+    const int128_t vsquared = int128_t(value) * int128_t(value) + 1;
+    // solutions.vsquared.Observe(VSquared);
+    const int128_t pp = vsquared / k;
+
+    // const std::optional<int64_t> po = P.ToInt();
     // TODO: Some argument why this always fits in 64 bits?
     // I checked billions of samples, at least, and it was
     // never larger magnitude than the input value.
-    CHECK(po.has_value());
-    const int64_t p = po.value();
+    // CHECK(po.has_value());
+    // const int64_t p = po.value();
+
+    const int64_t p = (int64_t)pp;
+    CHECK(pp > 0 ? Uint128High64(pp) == 0 : Uint128High64(-pp) == 0);
 
     // Compute Q <- -(2at + b).
-    const BigInt Q = -(Value << 1);
     const int64_t q = -(value << 1);
 
-    // Compute R <- aK
-    const BigInt &R = K;
-
-    if (BigInt::GCD(BigInt::GCD(P, Q), R) != 1) {
+    if (std::gcd(std::gcd(p, q), k) != 1) {
       // No solutions.
       return;
     }
 
     // Below we assert p >= 0...
+    CHECK(p >= 0);
+
     if (p >= 0) {
 
       // Discriminant is equal to -4.
@@ -590,8 +597,7 @@ struct Quad {
     // the absolute value before square root, we can just sqrt p.
     //
     // It was (Value^2 + 1) / K, which should be non-negative.
-    CHECK(p >= 0);
-    int64_t l = Sqrt64(p);
+    const int64_t l = Sqrt64(p);
 
     // Initial value of last convergent: 1/0.
     int64_t u1 = 1;
@@ -604,6 +610,8 @@ struct Quad {
     int64_t u = -q;
     int64_t v = p << 1;
 
+    // const BigInt Q(q);
+    // const BigInt R(k);
     while (v != 0) {
       std::tie(u, u1, u2, v, v1, v2) =
         GetNextConvergent(u, u1, u2,
@@ -616,9 +624,33 @@ struct Quad {
       }
 
       // Test whether P*U1^2 + Q*U1*V1 + R*V1^2 = 1.
-      BigInt O = (P * u1 + Q * v1) * u1 + (R * v1) * v1;
+      // K = R
 
-      if (O == 1) {
+      // For 45-bit inputs, max o1 bits: 86.28  o2: 86.28.
+      // The histograms are exactly identical, so there must
+      // be some symmetry here? (Or they always become equal,
+      // at the max value?) In any case, looks like 128 bits
+      // would suffice.
+      const int128_t uu1 = u1;
+      const int128_t o1 = (int128_t(p) * uu1 +
+                           int128_t(q) * int128_t(v1)) * uu1;
+      // const BigInt O1 = (P * u1 + Q * v1) * u1;
+      const int128_t vv1 = v1;
+      const int128_t o2 = int128_t(1) - (int128_t(k) * vv1 * vv1);
+      // const BigInt O2 = 1 - (R * v1) * v1;
+
+      /*
+      solutions.o1.Observe(O1);
+      solutions.o2.Observe(O2);
+      */
+
+      if (o1 == o2) {
+        /*
+        fprintf(stderr,
+                "O == 1:   (%lld * %lld + %lld * %lld) * %lld "
+                "        + (%lld * %lld^2)\n",
+                p, u1, q, v1, u1, k, v1);
+        */
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         NonSquareDiscrSolutionOne(
