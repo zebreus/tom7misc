@@ -33,7 +33,6 @@
 #include "bigconv.h"
 #include "base/stringprintf.h"
 
-static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 
 static

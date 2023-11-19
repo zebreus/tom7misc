@@ -13,7 +13,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
+// along with Alpertron Calculators. If not, see <http://www.gnu.org/licenses/>.
 
 #include "quadmodll.h"
 
@@ -154,7 +154,7 @@ struct QuadModLL {
           // L is overwritten before use below.
           // L1 and term are both int64. So we just need a modular
           // inverse on int64.
-          const BigInt L1 = BigInt(prime_powers[E]);
+          const BigInt L1(prime_powers[E]);
           std::optional<BigInt> Inv = BigInt::ModInverse(L1, BigInt(term));
           CHECK(Inv.has_value());
           const int64_t inv = GetU64(Inv.value());
@@ -210,9 +210,11 @@ struct QuadModLL {
   // If a solution is found, writes to Solution(1,2)[factorIndex]
   // and returns true.
   bool SolveQuadraticEqModPowerOf2(int exponent, int factorIndex) {
+    /*
     static constexpr int64_t A = 1;
     static constexpr int64_t B = 0;
     static constexpr int64_t C = 1;
+    */
 
     CHECK(exponent > 0);
     CHECK(exponent < 64);
@@ -232,11 +234,9 @@ struct QuadModLL {
     // compute s = ((b/2)^2 - a*c)/a^2, q = odd part of s,
     // r = maximum exponent of power of 2 that divides s.
 
-    CHECK((B >> 1) == 0);
-
+    // CHECK((B >> 1) == 0);
     // (b/2)^2
-
-    CHECK(A * C == 1);
+    // CHECK(A * C == 1);
 
     // (b/2)^2 - a*c = -1
     static constexpr int64_t Tmp1 = -1;
@@ -249,16 +249,14 @@ struct QuadModLL {
     // It's all 1s, so it should be the same.
     CHECK(C2 == (int64_t)Mask);
 
-    // int modulus_length = BigIntNumLimbs(Mask);
-
     // Port note: The code used to explicitly pad out AOdd (and the
     // output?) if smaller than modulus_length, but the BigInt version
     // does its own padding internally.
     // BigInt Tmp2 = GetInversePower2(AOdd, modulus_length);
-    int64_t Tmp2 = 1;
+    // int64_t Tmp2 = 1;
 
     // Modular inverse of 1 is always 1.
-    CHECK(Tmp2 == 1);
+    // CHECK(Tmp2 == 1);
 
     // ((b/2) - a*c)/a mod 2^n
     // s = ((b/2) - a*c)/a^2 mod 2^n
@@ -302,20 +300,9 @@ struct QuadModLL {
     // x = sqrRoot - b/2a.
     {
       // New mask for exponent, which was modified above.
-      // const BigInt Mask2 = (BigInt(1) << expon) - 1;
-      // CHECK(Mask == Mask2);
-      // const int modulus_length = BigIntNumLimbs(Mask);
-
-      // BigInt Tmp2 = GetInversePower2(AOdd, modulus_length);
-      // constexpr int64_t Tmp2 = 1;
-
-      // Inverse of 1 is always 1.
-      // CHECK(Tmp2 == 1);
 
       // b/2
-      CHECK((B >> 1) == 0);
-      // BigInt Tmp1 = B >> 1;
-      // BigIntDivideBy2(&tmp1);
+      // CHECK((B >> 1) == 0);
 
       // b/2a
 
@@ -327,16 +314,16 @@ struct QuadModLL {
       // Tmp1 &= Mask;
       constexpr int64_t Tmp2 = SqrRoot;
 
-      uint64_t Sol1 = Tmp2 & Mask;
-      uint64_t Sol2 = (Tmp1 - SqrRoot) & Mask;
+      uint64_t sol1 = Tmp2 & Mask;
+      uint64_t sol2 = (Tmp1 - SqrRoot) & Mask;
 
       // SqrRoot is 1
-      CHECK(Sol1 == 1);
+      CHECK(sol1 == 1);
       // -1 & Mask is Mask.
-      CHECK(Sol2 == Mask);
+      CHECK(sol2 == Mask);
 
-      Sols[factorIndex].solution1 = Sol1;
-      Sols[factorIndex].solution2 = Sol2;
+      Sols[factorIndex].solution1 = sol1;
+      Sols[factorIndex].solution2 = sol2;
     }
 
     // Store increment.
@@ -345,8 +332,11 @@ struct QuadModLL {
   }
 
   static
-  BigInt GetSqrtDisc(const BigInt &Base,
-                     const BigInt &Prime) {
+  BigInt GetSqrtDisc(uint64_t base,
+                     uint64_t prime) {
+
+    const BigInt Base(base);
+    const BigInt Prime(prime);
 
     const std::unique_ptr<MontgomeryParams> params =
       GetMontgomeryParams(Prime);
@@ -360,7 +350,7 @@ struct QuadModLL {
     limb aux8[params->modulus_length];
     limb aux9[params->modulus_length];
 
-    if ((Prime & 3) == 3) [[unlikely]] {
+    if ((prime & 3) == 3) [[unlikely]] {
       // prime mod 4 = 3
       // subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
 
@@ -380,10 +370,11 @@ struct QuadModLL {
 
       limb* toConvert = nullptr;
       // Convert discriminant to Montgomery notation.
+      // PERF: We have 64-bit base. Could have like 64ToLimbs
       BigIntToFixedLimbs(Base, params->modulus_length, aux5);
       // u
       ModMult(*params, aux5, params->R2.data(), aux6);
-      if ((Prime & 7) == 5) {
+      if ((prime & 7) == 5) {
 
         // prime mod 8 = 5: use Atkin's method for modular square roots.
         // Step 1. v <- (2u)^((p-5)/8) mod p
@@ -391,7 +382,7 @@ struct QuadModLL {
         // Step 3. square root of u <- uv (i-1)
         // Step 1.
         // Q <- (prime-5)/8.
-        const BigInt Q = (Prime - 5) >> 3;
+        const BigInt Q((prime - 5) >> 3);
 
         // subtractdivide(&Q, 5, 8);
         // 2u
@@ -431,10 +422,12 @@ struct QuadModLL {
         // Step 8. Go to step 5.
 
         // Step 1.
-        BigInt QQ = Prime - 1;
-        CHECK(QQ != 0);
-        int e = BigInt::BitwiseCtz(QQ);
-        QQ >>= e;
+
+        uint64_t qq = prime - 1;
+        CHECK(qq != 0);
+        int e = std::countr_zero(qq);
+        qq >>= e;
+        BigInt QQ(qq);
 
         // Step 2.
         int x = 1;
@@ -510,14 +503,14 @@ struct QuadModLL {
   }
 
   static
-  BigInt ComputeSquareRootModPowerOfP(const BigInt &Base,
+  BigInt ComputeSquareRootModPowerOfP(uint64_t base,
                                       uint64_t prime,
                                       int64_t Discr,
                                       int nbrBitsSquareRoot) {
-
+    // BigInt Base(base);
     BigInt Prime(prime);
     // fprintf(stderr, "CSRMPOP Discr=%lld\n", Discr);
-    const BigInt SqrtDisc = GetSqrtDisc(Base, Prime);
+    const BigInt SqrtDisc = GetSqrtDisc(base, prime);
 
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
     // BigInt SqrRoot =
@@ -566,9 +559,9 @@ struct QuadModLL {
     SqrRoot %= Q;
 
     if (VERBOSE)
-    fprintf(stderr, "Sqrt(%s) mod %s (bits: %d) = %s\n",
-            Base.ToString().c_str(),
-            Prime.ToString().c_str(),
+    fprintf(stderr, "Sqrt(%llu) mod %llu (bits: %d) = %s\n",
+            base,
+            prime,
             nbrBitsSquareRoot,
             SqrRoot.ToString().c_str());
     return SqrRoot;
@@ -582,8 +575,10 @@ struct QuadModLL {
 
     // fprintf(stderr, "SQEMP Discr=%lld\n", Discr);
 
+    /*
     const BigInt A(1);
     const BigInt B(0);
+    */
 
     // Number of bits of square root of discriminant to compute:
     //   expon + bits_a + 1,
@@ -597,7 +592,6 @@ struct QuadModLL {
     int bitsAZero = 0;
 
     const uint64_t vv = Pow64(prime, expon);
-    // const BigInt VV = BigInt::Pow(Prime, expon);
 
     CHECK(prime > 2);
 
@@ -683,14 +677,6 @@ struct QuadModLL {
     const int nbrBitsSquareRoot = expon;
 
     {
-      // Equal to VV, right?
-      // const BigInt Tmp1 = BigInt::Pow(Prime, nbrBitsSquareRoot);
-      // const BigInt &Tmp1 = VV;
-
-      // in which case this does nothing...
-      // CHECK((Discriminant % Tmp1) == Discriminant);
-      // Discriminant %= Tmp1;
-
       CHECK(Discr < 0) << Discr;
 
       if (Discr < 0) {
@@ -712,7 +698,7 @@ struct QuadModLL {
 
     // Compute square root of discriminant.
     BigInt SqrRoot = ComputeSquareRootModPowerOfP(
-        BigInt(tmp), prime, Discr, nbrBitsSquareRoot);
+        tmp, prime, Discr, nbrBitsSquareRoot);
 
     // Multiply by square root of discriminant by prime^deltaZeros.
     // But deltaZeros is 0.
@@ -725,7 +711,7 @@ struct QuadModLL {
     // correctbits is the same as the exponent.
     const BigInt Q(vv);
 
-    BigInt S1 = B + SqrRoot;
+    const BigInt &S1 = SqrRoot;
 
     BigInt Sol1 = BigInt::CMod(S1 * AOdd, Q);
     if (Sol1 < 0) {
@@ -734,7 +720,7 @@ struct QuadModLL {
 
     Sols[factorIndex].solution1 = GetU64(Sol1);
 
-    BigInt S2 = B - SqrRoot;
+    const BigInt S2 = -SqrRoot;
 
     BigInt Sol2 = BigInt::CMod(S2 * AOdd, Q);
     if (Sol2 < 0) {
@@ -752,11 +738,13 @@ struct QuadModLL {
       uint64_t prime,
       int expon, int factorIndex) {
 
-    const BigInt Prime(prime);
+    // const BigInt Prime(prime);
 
+    /*
     const BigInt A(1);
     const BigInt B(0);
     const BigInt C(1);
+    */
 
     sol1Invalid = false;
     sol2Invalid = false;
@@ -766,8 +754,8 @@ struct QuadModLL {
     constexpr int64_t Discriminant = -4;
 
     bool solutions = false;
-    CHECK(Prime > 0);
-    if (Prime == 2) {
+    // CHECK(Prime > 0);
+    if (prime == 2) {
       // Prime p is 2
       solutions = SolveQuadraticEqModPowerOf2(expon, factorIndex);
     } else {

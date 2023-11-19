@@ -9,8 +9,6 @@
 #include "bignbr.h"
 #include "base/stringprintf.h"
 
-static constexpr bool VERBOSE = false;
-
 using namespace std;
 
 #ifndef BIG_USE_GMP

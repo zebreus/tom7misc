@@ -148,11 +148,6 @@ struct Quad {
       int64_t value) {
 
     /*
-    BigInt H(h);
-    BigInt I(i);
-    */
-
-    /*
     fprintf(stderr, "NSDS: %s %s %s %s %lld\n",
             E.ToString().c_str(),
             K.ToString().c_str(),
@@ -298,26 +293,13 @@ struct Quad {
   //     ax'^2+bx'y'+cy'^2 = K/R^2 where R^2 is a divisor of K.
   // Then we get x = Rx', y = Ry'.
 
-  //
-  // CHECK(gcd == 1) << "Expecting GCD to always be 1: " << gcd.ToString();
-
   // F is always divisible by gcd of 1.
   // No need to reduce coefficients by GCD of 1.
 
   // Not linear. Linear requires A = B = C = 0.
 
   // Compute discriminant: b^2 - 4ac.
-  // const BigInt Discr = B * B - ((A * C) << 2);
-  // 0 - (1 * 4)
-  // const BigInt Discr(-4);
-  // CHECK(Discr == -4) << "Expecting discriminant of exactly -4.";
-
-  // Compute gcd(a,b,c).
-
-  // BigInt UU1(1);
-  // BigInt::GCD(BigInt::GCD(A, B), C);
-  // CHECK(UU1 == 1);
-  // const BigInt K(f);
+  // This is -4 for these problems.
 
   // Discriminant is not zero.
   // Do not translate origin.
@@ -327,7 +309,6 @@ struct Quad {
                          std::vector<std::pair<uint64_t, int>> factors) {
 
     // Gcd is always 1.
-
     // No need to divide by gcd of 1.
 
     CHECK(k > 1);
@@ -504,8 +485,6 @@ struct Quad {
     constexpr int64_t discr = -4;
 
     const uint64_t k = modulus;
-    // const BigInt K(modulus);
-    // const BigInt Value(value);
 
     // PerformTransformation:
     // These equations become simpler because of the known
@@ -522,8 +501,6 @@ struct Quad {
     // TODO: Some argument why this always fits in 64 bits?
     // I checked billions of samples, at least, and it was
     // never larger magnitude than the input value.
-    // CHECK(po.has_value());
-    // const int64_t p = po.value();
 
     const int64_t p = (int64_t)pp;
     CHECK(pp > 0 ? Uint128High64(pp) == 0 : Uint128High64(-pp) == 0);
@@ -542,7 +519,6 @@ struct Quad {
     if (p >= 0) {
 
       // Discriminant is equal to -4.
-      // BigInt G = Q >> 1;
       int64_t g = q >> 1;
       // XXX equal to -value, right?
 
@@ -579,7 +555,6 @@ struct Quad {
     }
 
     CHECK(discr == -4);
-    // const BigInt LL = -P;
 
     /*
     fprintf(stderr, "P = %s, discr = %lld, Q = %s\n",
@@ -610,8 +585,6 @@ struct Quad {
     int64_t u = -q;
     int64_t v = p << 1;
 
-    // const BigInt Q(q);
-    // const BigInt R(k);
     while (v != 0) {
       std::tie(u, u1, u2, v, v1, v2) =
         GetNextConvergent(u, u1, u2,
@@ -638,11 +611,6 @@ struct Quad {
       const int128_t vv1 = v1;
       const int128_t o2 = int128_t(1) - (int128_t(k) * vv1 * vv1);
       // const BigInt O2 = 1 - (R * v1) * v1;
-
-      /*
-      solutions.o1.Observe(O1);
-      solutions.o2.Observe(O2);
-      */
 
       if (o1 == o2) {
         /*
