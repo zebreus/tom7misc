@@ -40,6 +40,8 @@ static void Continue(LLM *llm, const string &prompt, FILE *outfile) {
     fprintf(outfile, "%s", prompt.c_str());
   }
 
+  // printf("NFA\n%s\n", llm->sampler.nfa.DebugString().c_str());
+
   llm->DoPrompt(prompt);
   // Reset regex, since the prompt may not have followed it.
   llm->sampler.ResetRegEx();
@@ -47,6 +49,8 @@ static void Continue(LLM *llm, const string &prompt, FILE *outfile) {
   printf("(finished the prompt)\n");
 
   // llm->sampler.SetRegEx("You can only output this.\n");
+
+  // printf("NFA\n%s\n", llm->sampler.nfa.DebugString().c_str());
 
   Timer inference_timer;
   const int tokens_left =
@@ -116,7 +120,8 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  cparams.model = "../llama/models/65B/ggml-model-f16.bin";
+  cparams.model =
+    "d:\\llama2\\llama-2-7b\\ggml-model-f16.gguf";
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

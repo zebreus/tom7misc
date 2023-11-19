@@ -45,7 +45,7 @@ int main(int argc, char ** argv) {
   for (int i = 0; i < vocab_size; i++) {
     string tok = llm.TokenString(i);
     string s;
-    if (i == llama_token_nl()) {
+    if (i == llm.context.NewlineToken()) {
       s = "\\n";
     } else if (IsAscii(tok)) {
       s = tok;

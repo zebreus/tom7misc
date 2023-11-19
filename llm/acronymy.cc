@@ -333,7 +333,7 @@ int main(int argc, char ** argv) {
 
         llm.TakeTokenBatch({id});
 
-        if (id == llama_token_nl()) {
+        if (id == llama_token_nl(llm.context.model)) {
           printf("\n");
           EmitTimer("Generated", gen_timer);
           return {result};

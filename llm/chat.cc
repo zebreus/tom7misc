@@ -199,11 +199,11 @@ static void RunRoom(
 
           // XXX if close to the max length, start increasing the likelihood
           // of sampling a newline.
-          if (no_message_yet && tok.id == llama_token_nl())
+          if (no_message_yet && tok.id == llm->context.NewlineToken())
             tok.logit = IMPOSSIBLE;
 
           // Never allow ending the stream.
-          if (tok.id == llama_token_eos())
+          if (tok.id == llm->context.EOSToken())
             tok.logit = IMPOSSIBLE;
         }
 
@@ -211,7 +211,7 @@ static void RunRoom(
 
         const int id = llm->sampler.SampleToken(std::move(candidates));
 
-        if (id == llama_token_nl())
+        if (id == llm->context.NewlineToken())
           return got;
 
         // Commit the token.

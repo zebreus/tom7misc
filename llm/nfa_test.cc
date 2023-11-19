@@ -344,6 +344,7 @@ static void TestRegExParse() {
 
   CHECK_MATCH(".*", "");
   CHECK_MATCH(".*", "anything :)");
+  CHECK_MATCH(".*", "\xe2\x96\x81" "ch");
 
   CHECK_MATCH("a.*z", "analyz");
   CHECK_NO_MATCH("a.*z", "analyze");

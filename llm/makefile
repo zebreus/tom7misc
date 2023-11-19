@@ -207,11 +207,29 @@ endif
 # Build library
 #
 
-ggml.o: $(LLAMA_DIR)/ggml.c $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/ggml-cuda.h
+LLAMA_HEADERS = $(LLAMA_DIR)/build-info.h $(LLAMA_DIR)/ggml-alloc.h $(LLAMA_DIR)/ggml-backend-impl.h $(LLAMA_DIR)/ggml-backend.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/ggml-impl.h $(LLAMA_DIR)/ggml-metal.h $(LLAMA_DIR)/ggml-mpi.h $(LLAMA_DIR)/ggml-opencl.h $(LLAMA_DIR)/ggml-quants.h $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/unicode.h
+
+
+ggml-alloc.o: $(LLAMA_DIR)/ggml-alloc.c $(LLAMA_HEADERS)
 	$(CC) $(CFLAGS)   -c $< -o $@
 
-llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/ggml-cuda.h $(LLAMA_DIR)/llama.h $(LLAMA_DIR)/llama-util.h
+ggml-backend.o: $(LLAMA_DIR)/ggml-backend.c $(LLAMA_HEADERS)
+	$(CC) $(CFLAGS)   -c $< -o $@
+
+ggml-quants.o: $(LLAMA_DIR)/ggml-quants.c $(LLAMA_HEADERS)
+	$(CC) $(CFLAGS)   -c $< -o $@
+
+ggml-mpi.o: $(LLAMA_DIR)/ggml-mpi.c $(LLAMA_HEADERS)
+	$(CC) $(CFLAGS)   -c $< -o $@
+
+ggml.o: $(LLAMA_DIR)/ggml.c $(LLAMA_HEADERS)
+	$(CC) $(CFLAGS)   -c $< -o $@
+
+llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+# ggml-mpi.o
+LLAMA_OBJECTS=ggml.o ggml-alloc.o ggml-backend.o  ggml-quants.o llama.o
 
 # XXX remove this
 # common.o: $(LLAMA_DIR)/examples/common.cpp $(LLAMA_DIR)/examples/common.h
@@ -224,16 +242,16 @@ llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_DIR)/ggml.h $(LLAMA_DIR)/ggml-cuda.h $(L
 %.o : %.cc llm.h nfa.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-acronymy.exe: acronymy.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+acronymy.exe: acronymy.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-benchmark.exe: benchmark.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+benchmark.exe: benchmark.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 test.exe: test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-chat.exe: chat.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+chat.exe: chat.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 run-um.exe : run-um.o um.o $(CC_LIB_OBJECTS)
@@ -242,16 +260,16 @@ run-um.exe : run-um.o um.o $(CC_LIB_OBJECTS)
 extract-codex.exe : extract-codex.o um.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-llum.exe : llum.o um.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+llum.exe : llum.o um.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-generate.exe : generate.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+generate.exe : generate.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-continue.exe : continue.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+continue.exe : continue.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-dump-tokens.exe : dump-tokens.o ggml.o llama.o $(CC_LIB_OBJECTS) $(OBJS)
+dump-tokens.exe : dump-tokens.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 nfa_test.exe : nfa_test.o $(CC_LIB_OBJECTS) $(OBJS)

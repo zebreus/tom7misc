@@ -24,7 +24,8 @@
 
 // Parameters for creating an LLM context instance.
 struct ContextParams {
-  std::string model = "../llama/models/65B/ggml-model-q4_0.bin";
+  // std::string model = "../llama/models/65B/ggml-model-q4_0.bin";
+  std::string model = "d:\\llama2\\llama-2-7b\\ggml-model-f16.gguf";
   // params.model = "../llama/models/7B/ggml-model-q4_0.bin";
   int context_size = 2048;
   int num_threads = 8;
@@ -87,31 +88,38 @@ struct Sampler;
 // to the llama.cpp model loader. (Fortunately, since it's using mmap
 // it seems reasonably efficient to just open the same model file
 // multiple times.)
+//
+// Looks like llama now does distinguish between model and context (yay)
+// but this needs to be rewritten to make use of that.
 struct Context {
   Context(const ContextParams &params = ContextParams()) {
     num_threads = params.num_threads;
     const int seed = params.seed >= 0 ? params.seed : time(nullptr);
 
-    llama_context_params lparams = llama_context_default_params();
-
-    lparams.n_ctx        = params.context_size;
-    // lparams.n_gpu_layers = params.n_gpu_layers;
-    lparams.seed         = seed;
-    // lparams.f16_kv       = params.memory_f16;
-    lparams.use_mmap = true;
+    llama_model_params mparams = llama_model_default_params();
+    // TODO progress_callback?
+    mparams.use_mmap = true;
     // TODO: Experiment with this
-    lparams.use_mlock = false;
+    mparams.use_mlock = false;
+
+    llama_context_params lparams = llama_context_default_params();
+    lparams.n_ctx        = params.context_size;
+    lparams.seed         = seed;
     // For special-purpose uses.
     lparams.logits_all = false;
     lparams.embedding = false;
 
-    lctx = llama_init_from_file(params.model.c_str(), lparams);
+    model = llama_load_model_from_file(params.model.c_str(), mparams);
+    CHECK(model != nullptr) << params.model;
 
+    lctx = llama_new_context_with_model(model, lparams);
     CHECK(lctx != nullptr) << params.model;
     Reset();
   }
 
   ~Context() {
+    llama_free_model(model);
+    model = nullptr;
     llama_free(lctx);
     lctx = nullptr;
   }
@@ -129,7 +137,9 @@ struct Context {
     // initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
     std::vector<llama_token> res(text.size() + (int) add_bos);
     const int n = llama_tokenize(
-        lctx, text.c_str(), res.data(), res.size(), add_bos);
+        model, text.c_str(), text.size(), res.data(), res.size(), add_bos,
+        // TODO: what is "special"?
+        false);
     assert(n >= 0);
     res.resize(n);
     return res;
@@ -165,8 +175,8 @@ struct Context {
     CHECK(num_last + (int)batch.size() <= ctx_size)
       << num_last << " + " << batch.size() << " would exceed " << ctx_size;
 
-    CHECK(0 == llama_eval(lctx, batch.data(), batch.size(),
-                          num_last, num_threads));
+    // XXX use llama_decode. this doesn't support threading maybe?
+    CHECK(0 == llama_eval(lctx, batch.data(), batch.size(), num_last));
 
     num_last += (int)batch.size();
   }
@@ -178,11 +188,24 @@ struct Context {
   }
 
   int VocabSize() const {
-    return llama_n_vocab(lctx);
+    return llama_n_vocab(model);
   }
 
   std::string TokenString(llama_token t) {
-    return llama_token_to_str(lctx, t);
+    const char *tok = llama_token_get_text(model, t);
+    // ???
+    if ((uint8_t)tok[0] == 0xe2 &&
+        (uint8_t)tok[1] == 0x96 &&
+        (uint8_t)tok[2] == 0x81) return std::string(tok + 3);
+    else return std::string(tok);
+  }
+
+  llama_token NewlineToken() const {
+    return llama_token_nl(model);
+  }
+
+  llama_token EOSToken() const {
+    return llama_token_eos(model);
   }
 
   void Reset() {
@@ -223,8 +246,8 @@ struct Context {
     Candidates(const &other) = delete;
     // Create a new candidates object from the current state of
     // the context. Use Context::GetCandidates().
-    Candidates(llama_context *lctx) {
-      const int n_vocab = llama_n_vocab(lctx);
+    Candidates(llama_model *model, llama_context *lctx) {
+      const int n_vocab = llama_n_vocab(model);
       ltda.data = new llama_token_data[n_vocab];
       ltda.size = n_vocab;
       ltda.sorted = false;
@@ -242,7 +265,7 @@ struct Context {
   // call to eval. Unlike llama.cpp, no processing has been performed
   // on these.
   std::unique_ptr<Candidates> GetCandidates() {
-    return std::unique_ptr<Candidates>(new Candidates(lctx));
+    return std::unique_ptr<Candidates>(new Candidates(model, lctx));
   }
 
 
@@ -288,6 +311,7 @@ struct Context {
   // Should be in [0, llama_n_ctx()).
   int num_last = 0;
   int num_threads = 8;
+  llama_model *model = nullptr;
   llama_context *lctx = nullptr;
 };
 
@@ -426,6 +450,11 @@ struct Sampler {
     for (llama_token_data &cand : *cands) {
       CHECK(cand.id >= 0 && cand.id < vocab_size);
       std::string s = context->TokenString(cand.id);
+      /*
+      printf("Cand " AWHITE("%s") " with score %.4f..\n",
+             s.c_str(), cand.logit);
+      */
+
       // Some special tokens (EOS, BOS) are empty. We should not
       // predict them when conforming to a regex!
       // (But this is kind of a hack...)
@@ -434,15 +463,28 @@ struct Sampler {
         continue;
       }
 
+
       NFAMatcher<256> mcopy = matcher;
-      for (uint8_t c : s)
+      for (uint8_t c : s) {
         mcopy.Advance(c);
+        /*
+        printf("..'" AYELLOW("%02x") "=%c'..", c, c);
+        if (mcopy.Stuck()) {
+          printf(ARED("STUCK"));
+        }
+        */
+
+        // XXX check stuck in here!
+
+      }
       if (mcopy.Stuck()) {
         cand.logit = IMPOSSIBLE;
       } else {
         any_left = true;
       }
     }
+    // printf("XXX exit\n");
+    // CHECK(false);
     return any_left;
   }
 
@@ -455,7 +497,7 @@ struct Sampler {
     cands->ltda.sorted = false;
 
     // Save nl logit so that we can restore it if
-    const int nl_id = llama_token_nl();
+    const int nl_id = llama_token_nl(context->model);
     float old_nl_logit = 0.0f;
 
     // PERF: The candidates start in order, so we could (awkwardly)
@@ -547,12 +589,23 @@ private:
   // State for various sampler types.
   float mirostat_mu = 10.0f;
 
+public: // XXX
   NFA<256> nfa;
   NFAMatcher<256> matcher;
 };
 
 struct LLM {
   using Candidates = Context::Candidates;
+
+  // XXX Maybe call this internally? Reference count?
+  static void Init() {
+    // Maybe should consider numa optimizations?
+    llama_backend_init(false);
+  }
+  static void Shutdown() {
+    llama_backend_free();
+  }
+
 
   LLM(const ContextParams &context_params,
       const SamplerParams &sampler_params) : context(context_params),
@@ -565,8 +618,15 @@ struct LLM {
 
   int Sample() {
     std::unique_ptr<Context::Candidates> candidates = context.GetCandidates();
+    // XXX
+    // printf(ABLUE("Original:") "\n");
+    // AnsiPrintCandidates(*candidates, 10);
     sampler.Penalize(candidates.get());
+    // printf(ACYAN("Penalized:") "\n");
+    // AnsiPrintCandidates(*candidates, 10);
     sampler.FilterByNFA(candidates.get());
+    // printf(APURPLE("Penalized, filtered:") "\n");
+    // AnsiPrintCandidates(*candidates, 10);
     return sampler.SampleToken(std::move(candidates));
   }
 
@@ -676,6 +736,7 @@ struct LLM {
 
   // Print up 'maximum' (or all of them, if -1) candidates,
   // using ANSI color codes.
+  // TODO: Some ansi (:
   void AnsiPrintCandidates(const Candidates &candidates,
                            int maximum) {
     auto IsAscii = [](const std::string &s) {
@@ -687,7 +748,7 @@ struct LLM {
 
     std::vector<std::pair<std::string, float>> toks;
     for (const llama_token_data &tok : candidates) {
-      if (tok.id == llama_token_nl()) {
+      if (tok.id == llama_token_nl(context.model)) {
         toks.emplace_back("\\n", tok.logit);
       } else {
         std::string s = context.TokenString(tok.id);
