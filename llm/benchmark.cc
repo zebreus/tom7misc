@@ -468,12 +468,12 @@ int main(int argc, char ** argv) {
   printf("Loaded " APURPLE("%d") " problems.\n", (int)problems.size());
 
   ContextParams cparams;
-  cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
+  // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/7B/ggml-model-f16.bin";
   // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-f16.bin";
+  cparams.model = "../llama/models/65B/ggml-model-f16.bin";
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;
 

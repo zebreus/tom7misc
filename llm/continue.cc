@@ -49,6 +49,8 @@ static void Continue(LLM *llm, const string &prompt, FILE *outfile) {
   // llm->sampler.SetRegEx("You can only output this.\n");
 
   Timer inference_timer;
+  const int tokens_left =
+    llm->context.ContextSize() - llm->context.NumLast();
   int tokens = 0;
   for (;;) {
     // Get and commit a token.
@@ -68,8 +70,8 @@ static void Continue(LLM *llm, const string &prompt, FILE *outfile) {
       if (tokens % 3 == 0) fflush(outfile);
       printf(ANSI_PREVLINE ANSI_BEGINNING_OF_LINE ANSI_CLEARLINE
              ANSI_BEGINNING_OF_LINE "%s\n",
-             ANSI::ProgressBar(llm->context.NumLast(),
-                               llm->context.ContextSize(),
+             ANSI::ProgressBar(tokens,
+                               tokens_left,
                                "inference",
                                inference_timer.Seconds()).c_str());
     }
