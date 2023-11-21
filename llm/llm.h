@@ -27,7 +27,7 @@ struct ContextParams {
   // std::string model = "../llama/models/65B/ggml-model-q4_0.bin";
   std::string model = "d:\\llama2\\llama-2-7b\\ggml-model-f16.gguf";
   // params.model = "../llama/models/7B/ggml-model-q4_0.bin";
-  int context_size = 2048;
+  int context_size = 4096;
   int num_threads = 8;
   // negative means new seed each time
   int64_t seed = -1LL;
@@ -103,7 +103,10 @@ struct Context {
     mparams.use_mlock = false;
 
     llama_context_params lparams = llama_context_default_params();
-    lparams.n_ctx        = params.context_size;
+    // lparams.n_ctx        = params.context_size;
+    // "from model"
+    lparams.n_ctx = 0;
+
     lparams.seed         = seed;
     // For special-purpose uses.
     lparams.logits_all = false;
@@ -134,13 +137,17 @@ struct Context {
   // add_bos should be passed for the very first text ("beginning of stream"
   // token).
   std::vector<llama_token> Tokenize(const std::string &text, bool add_bos) {
-    // initialize to prompt numer of chars, since n_tokens <= n_prompt_chars
-    std::vector<llama_token> res(text.size() + (int) add_bos);
+    // initialize to prompt number of chars, since n_tokens <= n_prompt_chars
+    // (For llama2, adding 1, since tokenizing just "\n" yields two tokens??)
+    const int max_tokens = text.size() + 1 + (int) add_bos;
+    std::vector<llama_token> res(max_tokens);
     const int n = llama_tokenize(
         model, text.c_str(), text.size(), res.data(), res.size(), add_bos,
         // TODO: what is "special"?
         false);
-    assert(n >= 0);
+    CHECK(n >= 0) << "Tokenizing [" << text << "] (res size " <<
+      res.size() << ") got n=" << n;
+    CHECK(n <= max_tokens) << "got n=" << n << " but max_tokens=" << max_tokens;
     res.resize(n);
     return res;
   }
@@ -191,6 +198,26 @@ struct Context {
     return llama_n_vocab(model);
   }
 
+  std::string TokenString(llama_token token) const {
+    // Guess 20-character buffer; above 22 we need to allocate.
+    // (llama.cpp uses 8)
+    std::string result(20, 0);
+    const int n_chars = llama_token_to_piece(
+        model, token, result.data(), result.size());
+    if (n_chars < 0) {
+      result.resize(-n_chars);
+      int check =
+        llama_token_to_piece(model, token,
+                             result.data(), result.size());
+      CHECK(check == -n_chars);
+    } else {
+      result.resize(n_chars);
+    }
+
+    return std::string(result.data(), result.size());
+  }
+
+#if 0
   std::string TokenString(llama_token t) {
     const char *tok = llama_token_get_text(model, t);
     // ???
@@ -199,6 +226,7 @@ struct Context {
         (uint8_t)tok[2] == 0x81) return std::string(tok + 3);
     else return std::string(tok);
   }
+#endif
 
   llama_token NewlineToken() const {
     return llama_token_nl(model);

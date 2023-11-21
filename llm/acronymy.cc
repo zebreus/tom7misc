@@ -37,23 +37,24 @@ static bool IsAlphabetical(const std::string &s) {
   return true;
 }
 
-// XXX these trailing spaces might actually be bad because
-// of the way tokenization works
+// Note that there is no trailing space, because I think
+// that the more natural tokenization is for the space to
+// be part of the next token.
 
 static string WordPrefix(const string &word) {
-  return "Word: ";
+  return "Word:";
 }
 
 static string AcronymPrefix(const string &word) {
-  return StringPrintf("Backronym of \"%s\": ", word.c_str());
+  return StringPrintf("Backronym of \"%s\":", word.c_str());
 }
 
 static string DefinitionPrefix(const string &word) {
-  return StringPrintf("Normal definition of \"%s\": ", word.c_str());
+  return StringPrintf("Normal definition of \"%s\":", word.c_str());
 }
 
 static string BrainstormPrefix(const string &word, char c) {
-  return StringPrintf("Word ideas for \"%s\" starting with %c: ",
+  return StringPrintf("Word ideas for \"%s\" starting with %c:",
                       word.c_str(), c & ~32);
 }
 
@@ -64,8 +65,9 @@ int main(int argc, char ** argv) {
   Timer model_timer;
 
   ContextParams cparams;
-  // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
-  cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
+  cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
+  // cparams.model = "llama2/7b/ggml-model-q8_0.gguf";
+  cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;
 
@@ -160,21 +162,21 @@ int main(int argc, char ** argv) {
     "\nExamples:\n";
 
   for (const Example &example : examples) {
-    StringAppendF(&prompt, "%s%s",
+    StringAppendF(&prompt, "%s %s\n",
                   WordPrefix(example.word).c_str(),
                   example.word.c_str());
-    StringAppendF(&prompt, "%s%s",
+    StringAppendF(&prompt, "%s %s\n",
                   DefinitionPrefix(example.word).c_str(),
                   example.defn.c_str());
     for (const auto &[c, v] : example.brainstorm) {
-      StringAppendF(&prompt, "%s",
+      StringAppendF(&prompt, "%s ",
                     BrainstormPrefix(example.word, c).c_str());
       for (const string &s : v)
         StringAppendF(&prompt, "%s, ", s.c_str());
       StringAppendF(&prompt, "\n");
     }
 
-    StringAppendF(&prompt, "%s%s",
+    StringAppendF(&prompt, "%s %s\n",
                   AcronymPrefix(example.word).c_str(),
                   example.acronym.c_str());
   }
@@ -249,7 +251,7 @@ int main(int argc, char ** argv) {
 
     {
       Timer word_prompt_timer;
-      string word_prompt = StringPrintf("%s%s\n",
+      string word_prompt = StringPrintf("%s %s\n",
                                         WordPrefix(word).c_str(),
                                         word.c_str());
       InsertString(word_prompt);
@@ -264,7 +266,8 @@ int main(int argc, char ** argv) {
     {
       Timer define_timer;
       InsertString(DefinitionPrefix(word));
-      llm.sampler.SetRegEx("[^\\n]*\n");
+      // Note leading space after colon.
+      llm.sampler.SetRegEx(" [^\\n]*\n");
       auto [defn, _] = llm.GenerateUntilEx("\n", 120, true);
       printf("\n" AYELLOW("Definition") ": %s\n", defn.c_str());
       EmitTimer("defined", define_timer);
@@ -280,11 +283,14 @@ int main(int argc, char ** argv) {
         CHECK(c >= 'a' && c <= 'z');
         InsertString(BrainstormPrefix(word, c));
         // static constexpr int NUM_STORM = 3;
-        // XXX wrong because we don't actually want to end with a comma.
         NFA<257> enfa =
-          RE::Concat(RE::Plus(RE::Concat(letter_enfa[c - 'a'],
-                                         RE::LiteralString(", "))),
-                     RE::LiteralString("\n"));
+          // Force starting prediction with a space following the colon.
+          RE::Concat(RE::LiteralString(" "),
+                     RE::Concat(RE::Plus(RE::Concat(letter_enfa[c - 'a'],
+                                                    RE::LiteralString(", "))),
+                                // Final one has no trailing comma or space.
+                                RE::Concat(letter_enfa[c - 'a'],
+                                           RE::LiteralString("\n"))));
         auto nfa = RemoveEpsilon<256>(enfa);
         llm.sampler.SetNFA(std::move(nfa));
         auto [storm, _] = llm.GenerateUntilEx("\n", 40, true);
@@ -304,7 +310,8 @@ int main(int argc, char ** argv) {
         char c = word[i];
         CHECK(c >= 'a' && c <= 'z');
         const NFA<257> &w = letter_enfa[c - 'a'];
-        if (i != 0) word_enfa = RE::Concat(word_enfa, RE::LiteralString(" "));
+        // Always a leading space, including before the first word.
+        word_enfa = RE::Concat(word_enfa, RE::LiteralString(" "));
         word_enfa = RE::Concat(word_enfa, w);
       }
       word_enfa = RE::Concat(word_enfa, RE::LiteralString("\n"));

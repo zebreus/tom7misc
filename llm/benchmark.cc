@@ -37,6 +37,8 @@ static inline std::string CleanWhitespace(std::string s) {
   return Util::LoseWhiteL(Util::LoseWhiteR(std::move(s)));
 }
 
+// TODO: Add progress bar.
+
 // Question text; expected answer(s).
 struct Question {
   string statement;
@@ -473,7 +475,10 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  cparams.model = "../llama/models/65B/ggml-model-f16.bin";
+  // cparams.model = "llama2/7b/ggml-model-f16.gguf";
+
+  cparams.model = "llama2/70b/ggml-model-f16.gguf";
+
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;
 
@@ -502,6 +507,36 @@ int main(int argc, char ** argv) {
   printf("Using thoughts: " AYELLOW("%s") "\n", USE_THOUGHT ? "YES" : "NO");
   printf("\nTotal benchmark time: %s\n",
          AnsiTime(total_timer.Seconds()).c_str());
+
+  // Save to file.
+  std::string out = "\n== Result ==\n";
+  StringAppendF(&out, "Finished: %lld\n", (int64_t)time(nullptr));
+  StringAppendF(&out, "Took: %lld (%s)\n",
+                (int64_t)total_timer.Seconds(),
+                ANSI::StripCodes(AnsiTime(total_timer.Seconds())).c_str());
+  StringAppendF(&out, "Model: %s\n", cparams.model.c_str());
+  StringAppendF(&out, "Sampler: %s\n",
+                Sampler::SampleTypeString(sparams.type));
+  StringAppendF(&out, "Thoughts: %s\n",
+                USE_THOUGHT ? "YES" : "NO");
+  for (const auto &[name_, result] : results) {
+    const double pct = (result.correct * 100.0) / result.total;
+    StringAppendF(&out, "%s: %d/%d in %lld (%.2f%%; %s)\n",
+                  result.name.c_str(),
+                  result.correct,
+                  result.total,
+                  (int64_t)result.total_sec,
+                  pct,
+                  ANSI::StripCodes(AnsiTime(result.total_sec)).c_str());
+  }
+
+  static constexpr const char *RESULT_FILE = "benchmark-results.txt";
+  {
+    FILE *f = fopen(RESULT_FILE, "ab");
+    fprintf(f, "%s", out.c_str());
+    fclose(f);
+  }
+  printf("Appended to " AGREEN("%s") ".\n", RESULT_FILE);
 
   return 0;
 }

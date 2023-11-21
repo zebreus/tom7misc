@@ -120,8 +120,8 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  cparams.model =
-    "d:\\llama2\\llama-2-7b\\ggml-model-f16.gguf";
+  // cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
+  cparams.model = "llama2/70b/ggml-model-f16.gguf";
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

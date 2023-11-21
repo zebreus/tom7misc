@@ -57,9 +57,14 @@ endif
 #
 
 # keep standard at C11 and C++11
-CFLAGS   = -I. -I$(LLAMA_DIR) -I$(CC_LIB) $(TOM7_INCLUDES) -O3 -std=c11   -fPIC
-CXXFLAGS = -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I./examples -O3 -std=c++20 -fPIC
-LDFLAGS  = $(TOM7_LIBS) -m64 $(PLATFORM_LDFLAGS)
+
+DEBUGFLAGS= -g -O
+# march?
+OPTFLAGS= -O3 -flto=auto -march=native
+
+CFLAGS   = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) $(TOM7_INCLUDES) -std=c11   -fPIC
+CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I./examples -std=c++20 -fPIC
+LDFLAGS  = $(OPTFLAGS) $(TOM7_LIBS) -m64 $(PLATFORM_LDFLAGS)
 
 ifndef LLAMA_DEBUG
 	CFLAGS   += -DNDEBUG
