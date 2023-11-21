@@ -50,6 +50,8 @@ static void CircleTest() {
   CHECK(best_x == 7 || best_x == -7);
   CHECK(best_y == 7 || best_y == -7);
   CHECK(best_score < -9.898);
+
+  printf("Circle OK.\n");
 }
 
 // Should be able to find an exact vector of integers.
@@ -96,7 +98,7 @@ static void ExactIntTest() {
 
   optimizer.Run(int_bounds, {},
                 // Up to 40960 calls
-                {4096 * ints.size()}, nullopt, nullopt, nullopt);
+                {8192 * ints.size()}, nullopt, nullopt, nullopt);
 
   CHECK(optimizer.GetBest().has_value());
   const auto [bestarg, score, bestout_] =
@@ -115,11 +117,133 @@ static void ExactIntTest() {
                                   << " want "
                                   << ints[i];
   }
+
+  printf("Exact int OK.\n");
 }
+
+static void ExplainTest() {
+
+  // Use an actual linear function.
+
+  using LinearOptimizer = Optimizer<3, 2, char>;
+  LinearOptimizer::function_type OptimizeMe =
+    [](const LinearOptimizer::arg_type &arg) ->
+    LinearOptimizer::return_type {
+      const auto &[intargs, doubleargs] = arg;
+      const auto &[a, b, c] = intargs;
+      const auto &[x, y] = doubleargs;
+
+      // bias
+      double v = 7.0;
+      // categorical
+      switch (b) {
+      case 0:
+        v += 100.0;
+        break;
+      case 1:
+        v += -3.0;
+        break;
+      case 2:
+        v += 110.0;
+        break;
+      default:
+        CHECK(false) << "Should never call outside of gamut: " << b;
+      }
+
+      v += a * 31.7;
+      v += c * -3.3;
+
+      v += x * -0.98;
+      v += y * 5.4;
+
+      return std::make_pair(v, std::make_optional('x'));
+    };
+
+  LinearOptimizer optimizer(OptimizeMe);
+  optimizer.SetSaveAll(true);
+
+  std::array<std::pair<int, int>, 3> int_bounds = {
+    // This should find -25, but it finds -24?
+    make_pair(-25, 26),
+    make_pair(0, 3),
+    make_pair(-100, 3),
+  };
+
+  std::array<std::pair<double, double>, 2> double_bounds = {
+    make_pair(-2.0, 2.0),
+    make_pair(-4.0, 4.0),
+  };
+
+  optimizer.Run(int_bounds, double_bounds,
+                {512}, nullopt, nullopt, nullopt);
+
+  CHECK(optimizer.GetBest().has_value());
+  const auto [bestarg, score, bestout_] =
+    optimizer.GetBest().value();
+  const auto &bestints = bestarg.first;
+  const auto &bestdoubles = bestarg.second;
+  CHECK(bestints.size() == int_bounds.size());
+  CHECK(bestdoubles.size() == double_bounds.size());
+  if (true) {
+    printf("Score: %.4f\n", score);
+    const auto &[a, b, c] = bestints;
+    const auto &[x, y] = bestdoubles;
+
+    printf("a=%d, b=%d, c=%d\n"
+           "x=%.4f, y=%.4f\n",
+           a, b, c,
+           x, y);
+  }
+
+  printf("\nNow explain...\n");
+
+  // Now explain the results.
+  const auto &[features, loss] =
+    optimizer.Explain(
+        std::array<LinearOptimizer::IntFeature, 3>{
+          LinearOptimizer::IntFeature{
+            .name = "A",
+            .categorical = false,
+          },
+          LinearOptimizer::IntFeature{
+            .name = "B",
+            .categorical = true,
+          },
+          LinearOptimizer::IntFeature{
+            .name = "C",
+            .categorical = false,
+          }
+        },
+        std::array<LinearOptimizer::DoubleFeature, 2>{
+          LinearOptimizer::DoubleFeature{
+            .name = "X",
+          },
+          LinearOptimizer::DoubleFeature{
+            .name = "Y",
+          },
+        },
+        // Don't use a bias parameter when there is categorical
+        // data.
+        std::nullopt
+        /* std::make_optional("BIAS") */);
+
+  printf("Loss: %.4f\n", loss);
+  for (const LinearOptimizer::Feature &f : features) {
+    if (f.type == LinearOptimizer::FeatureType::CATEGORICAL_INT) {
+      printf("%s=%d: %.4f\n", f.name.c_str(), f.categorical_value, f.coefficient);
+    } else {
+      printf("%s: %.4f\n", f.name.c_str(), f.coefficient);
+    }
+  }
+
+  printf("You gotta check it manually ^\n");
+}
+
 
 int main(int argc, char **argv) {
   CircleTest();
   ExactIntTest();
+  ExplainTest();
 
   printf("OK\n");
   return 0;

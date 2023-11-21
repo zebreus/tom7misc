@@ -26,6 +26,8 @@
 #include <optional>
 #include <unordered_map>
 #include <utility>
+#include <unordered_set>
+#include <string>
 
 #include "opt/opt.h"
 
@@ -116,6 +118,173 @@ struct Optimizer {
   GetAll() const;
 
   int64_t NumEvaluations() const { return evaluations; }
+
+  // Using the saved data (SetSaveAll must be true and we must have
+  // observations, usually by running optimization), fit coefficients
+  // to the features that explain the output variable.
+  //
+  // Ignores the infeasible region.
+  struct IntFeature {
+    std::string name;
+    bool categorical;
+  };
+
+  struct DoubleFeature {
+    std::string name;
+  };
+
+
+  enum class FeatureType {
+    NUMERIC_INT,
+    NUMERIC_DOUBLE,
+    CATEGORICAL_INT,
+    BIAS,
+  };
+
+  struct Feature {
+    FeatureType type;
+    // Name, supplied by caller.
+    std::string name;
+    // Index into integers or doubles.
+    // For bias term, holds -1.
+    int index;
+    // If CATEGORICAL_INT, the value seen.
+    int32_t categorical_value;
+    // Fit coefficient.
+    double coefficient;
+    int64_t num_observations;
+  };
+
+  // returns the features and the squared loss (L2 norm)
+  std::pair<std::vector<Feature>, double>
+  Explain(
+      const std::array<IntFeature, N_INTS> &int_features,
+      const std::array<DoubleFeature, N_DOUBLES> &double_features,
+      // If present, a named bias term. Usually desirable.
+      const std::optional<std::string> &bias) {
+    // The coefficients for optimization.
+    // We have one coefficient for each (non-categorical) integral
+    // feature and each double feature. For categorical features,
+    // we have one for each observed value.
+    std::vector<std::unordered_set<int32_t>> values(
+        N_INTS, std::unordered_set<int32_t>{});
+    for (const auto &[arg, score_] : cached_score) {
+      const auto &ints = arg.first;
+      for (int i = 0; i < N_INTS; i++) {
+        if (int_features[i].categorical) {
+          values[i].insert(ints[i]);
+        }
+      }
+    }
+
+    std::vector<Feature> features;
+
+    // Now we have the distinct observed values.
+    // Empty if not categorical.
+    std::vector<std::vector<int32_t>> categorical(
+        N_INTS, std::vector<int32_t>{});
+    for (int i = 0; i < N_INTS; i++) {
+      Feature f;
+      f.name = int_features[i].name;
+      f.index = i;
+      f.coefficient = 0;
+      f.num_observations = 0;
+      if (int_features[i].categorical) {
+        std::vector<int32_t> v(values[i].begin(), values[i].end());
+        std::sort(v.begin(), v.end());
+        f.type = FeatureType::CATEGORICAL_INT;
+        // one copy for each distinct value
+        for (int32_t x : v) {
+          f.categorical_value = x;
+          features.push_back(f);
+        }
+      } else {
+        f.type = FeatureType::NUMERIC_INT;
+        f.categorical_value = 0;
+        features.push_back(f);
+      }
+    }
+
+    for (int i = 0; i < N_DOUBLES; i++) {
+      Feature f;
+      f.type = FeatureType::NUMERIC_DOUBLE;
+      f.name = double_features[i].name;
+      f.index = i;
+      f.coefficient = 0;
+      f.num_observations = 0;
+      f.categorical_value = 0;
+      features.push_back(f);
+    }
+
+    if (bias.has_value()) {
+      Feature f;
+      f.type = FeatureType::BIAS;
+      f.name = bias.value();
+      f.index = -1;
+      f.coefficient = 0;
+      f.num_observations = 0;
+      f.categorical_value = 0;
+      features.push_back(f);
+    }
+
+    // Now do the optimization procedure.
+    //
+
+    const int num_features = features.size();
+
+    auto Score = [this, &features](const std::vector<double> &coeffs) -> double {
+        double loss = 0.0;
+        // For each row, compute the score we'd get with the chosen coefficients.
+        for (const auto &[arg, actual_score] : cached_score) {
+          const auto &[int_args, double_args] = arg;
+          double computed_score = 0.0;
+          for (int i = 0; i < features.size(); i++) {
+            const Feature &f = features[i];
+            const double coeff = coeffs[i];
+            switch (f.type) {
+            case FeatureType::BIAS:
+              computed_score += coeff;
+              break;
+            case FeatureType::CATEGORICAL_INT:
+              // We only use this coefficient if the value matches
+              // the argument.
+              if (int_args[f.index] == f.categorical_value) {
+                computed_score += coeff;
+              }
+              break;
+            case FeatureType::NUMERIC_INT:
+              computed_score += coeff * int_args[f.index];
+              break;
+            case FeatureType::NUMERIC_DOUBLE:
+              computed_score += coeff * double_args[f.index];
+              break;
+            }
+          }
+
+          double diff = computed_score - actual_score;
+          loss += (diff * diff);
+        }
+
+        return loss;
+      };
+
+    // Not much basis for choosing bounds. Could be args?
+    std::vector<double> lower_bound(num_features, -1.0e6);
+    std::vector<double> upper_bound(num_features, +1.0e6);
+
+    const auto &[coeffs, loss] =
+      Opt::Minimize(num_features,
+                    Score,
+                    lower_bound, upper_bound,
+                    // XXX tune? or pass arg
+                    1000 * sqrt(num_features));
+
+    for (int i = 0; i < num_features; i++) {
+      features[i].coefficient = coeffs[i];
+    }
+
+    return std::make_pair(features, loss);
+  }
 
  private:
   static constexpr int N = N_INTS + N_DOUBLES;
