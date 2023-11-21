@@ -65,9 +65,9 @@ int main(int argc, char ** argv) {
   Timer model_timer;
 
   ContextParams cparams;
-  cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
+  // cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
   // cparams.model = "llama2/7b/ggml-model-q8_0.gguf";
-  cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
+  cparams.model = "llama2/70b/ggml-model-f16.gguf";
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;
 
@@ -81,7 +81,7 @@ int main(int argc, char ** argv) {
     };
 
   std::vector<std::string> words = {
-    "nonsensical",
+    "cerebral",
     "violence",
     "mammals",
     "lives",
@@ -150,7 +150,7 @@ int main(int argc, char ** argv) {
 
 
   string prompt =
-    "Bacronyms are definitions as acronyms. Each word of the definition "
+    "Backronyms are definitions as acronyms. Each word of the definition "
     "starts with "
     "the corresponding letter of the word being defined. Every word "
     "counts, even short words like \"in\" or \"the.\" Only the first "
@@ -205,6 +205,9 @@ int main(int argc, char ** argv) {
 
                        // Capitalize the first letter.
                        s[0] &= ~32;
+                       letter_words.insert(s);
+                       // But also allow lowercase.
+                       s[0] |= 32;
                        letter_words.insert(s);
                      }
                    }

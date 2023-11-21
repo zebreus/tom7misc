@@ -23,7 +23,6 @@
 #include "randutil.h"
 
 #include "llm.h"
-
 #include "llm-util.h"
 
 using namespace std;
@@ -94,6 +93,8 @@ int main(int argc, char ** argv) {
   CHECK(!prompt.empty()) << argv[1];
   string regex = Util::Replace(Util::getline(prompt), "\\n", "\n");
   CHECK(!regex.empty()) << argv[1] << ": " << regex;
+  // TODO: Better errors when I am missing the regex; a common mistake!
+
   // Get an early error message.
   {
     auto enfa = Parse(regex);

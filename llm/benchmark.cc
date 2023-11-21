@@ -338,7 +338,7 @@ static string AnsiResultString(const Result &result) {
       " (" AGREEN("%.2f%%") ") in %s",
       result.name.c_str(),
       result.correct, result.total,
-      pct, AnsiTime(result.total_sec).c_str());
+      pct, ANSI::Time(result.total_sec).c_str());
 }
 
 
@@ -506,14 +506,14 @@ int main(int argc, char ** argv) {
          Sampler::SampleTypeString(sparams.type));
   printf("Using thoughts: " AYELLOW("%s") "\n", USE_THOUGHT ? "YES" : "NO");
   printf("\nTotal benchmark time: %s\n",
-         AnsiTime(total_timer.Seconds()).c_str());
+         ANSI::Time(total_timer.Seconds()).c_str());
 
   // Save to file.
   std::string out = "\n== Result ==\n";
   StringAppendF(&out, "Finished: %lld\n", (int64_t)time(nullptr));
   StringAppendF(&out, "Took: %lld (%s)\n",
                 (int64_t)total_timer.Seconds(),
-                ANSI::StripCodes(AnsiTime(total_timer.Seconds())).c_str());
+                ANSI::StripCodes(ANSI::Time(total_timer.Seconds())).c_str());
   StringAppendF(&out, "Model: %s\n", cparams.model.c_str());
   StringAppendF(&out, "Sampler: %s\n",
                 Sampler::SampleTypeString(sparams.type));
@@ -527,7 +527,7 @@ int main(int argc, char ** argv) {
                   result.total,
                   (int64_t)result.total_sec,
                   pct,
-                  ANSI::StripCodes(AnsiTime(result.total_sec)).c_str());
+                  ANSI::StripCodes(ANSI::Time(result.total_sec)).c_str());
   }
 
   static constexpr const char *RESULT_FILE = "benchmark-results.txt";
