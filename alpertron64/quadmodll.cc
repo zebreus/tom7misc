@@ -25,7 +25,6 @@
 #include <cstdio>
 
 #include "bignbr.h"
-#include "factor.h"
 #include "modmult.h"
 #include "bigconv.h"
 #include "bignum/big.h"

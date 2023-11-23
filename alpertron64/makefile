@@ -42,7 +42,7 @@ SOS=../sos
 CXXFLAGS=-std=c++20 -I $(SOS) -I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -Wall $(PLATFORM_CFLAGS)
 LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)
 
-HEADERS=bignbr.h factor.h modmult.h quadmodll.h bigconv.h quad.h
+HEADERS=bignbr.h modmult.h quadmodll.h bigconv.h quad.h
 
 CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/int128.o $(CC_LIB)/bignum/big.o $(CC_LIB)/factorization.o
 
@@ -50,7 +50,7 @@ TEST_CC_LIB_OBJECTS=$(CC_LIB_OBJECTS) $(CC_LIB)/ansi.o $(CC_LIB)/util.o $(CC_LIB
 
 SOS_OBJECTS=$(SOS)/sos-util.o
 
-ALPERTRON_OBJECTS=modmult.o quad.o quadmodll.o bignbr.o bigconv.o factor.o
+ALPERTRON_OBJECTS=modmult.o quad.o quadmodll.o bignbr.o bigconv.o
 
 quad.exe:  main.o $(ALPERTRON_OBJECTS) $(CC_LIB_OBJECTS)
 	@echo -n "@"

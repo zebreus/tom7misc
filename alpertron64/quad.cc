@@ -27,7 +27,6 @@
 #include <string.h>
 #include <math.h>
 
-#include "factor.h"
 #include "quadmodll.h"
 #include "modmult.h"
 #include "bigconv.h"
