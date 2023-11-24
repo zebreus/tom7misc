@@ -25,6 +25,8 @@
 
 #include <bit>
 #include <memory>
+#include <tuple>
+#include <cstdint>
 
 #include "bignbr.h"
 #include "bignum/big.h"
@@ -34,6 +36,22 @@
 #include "base/stringprintf.h"
 
 static constexpr bool VERBOSE = false;
+
+// PERF: Can do this with a loop, plus bit tricks to avoid
+// division.
+std::tuple<int64_t, int64_t, int64_t>
+ExtendedGCD64Internal(int64_t a, int64_t b) {
+  if (a == 0) return std::make_tuple(b, 0, 1);
+  const auto &[gcd, x1, y1] = ExtendedGCD64Internal(b % a, a);
+  return std::make_tuple(gcd, y1 - (b / a) * x1, x1);
+}
+
+std::tuple<int64_t, int64_t, int64_t>
+ExtendedGCD64(int64_t a, int64_t b) {
+  const auto &[gcd, x, y] = ExtendedGCD64Internal(a, b);
+  if (gcd < 0) return std::make_tuple(-gcd, -x, -y);
+  else return std::make_tuple(gcd, x, y);
+}
 
 static
 void ComputeInversePower2(const limb *value, /*@out@*/limb *result,

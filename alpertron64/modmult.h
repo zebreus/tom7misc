@@ -2,6 +2,9 @@
 #define _MODMULT_H
 
 #include <memory>
+#include <tuple>
+#include <cstdint>
+#include <vector>
 
 #include "bignbr.h"
 
@@ -64,6 +67,33 @@ inline uint64_t ModMult64(const MontgomeryParams &params,
   CHECK(Uint128High64(residue) == 0);
 
   return Uint128Low64(residue);
+}
+
+// Returns (gcd, x, y)
+// where we have ax * by = gcd = gcd(a, b)
+std::tuple<int64_t, int64_t, int64_t>
+ExtendedGCD64(int64_t a, int64_t b);
+
+// compute a^1 mod b    for a,b coprime
+inline int64_t ModularInverse64(int64_t a, int64_t b) {
+  // if (a < 0 && b < 0) { a = -a; b = -b; }
+
+  const int64_t absb = abs(b);
+
+  const auto &[gcd, x, y] = ExtendedGCD64(a, absb);
+  CHECK(gcd == 1) << "Precondition. gcd("
+                  << a << ", " << b << "): " << gcd;
+  // Now we have
+  // ax + by = gcd = 1
+  // and so
+  // ax + by = 1 (mod b)
+  //
+  // ax = 1  (mod b)
+  //
+  // so x is a^1 mod b.
+
+  if (x < 0) return x + absb;
+  return x;
 }
 
 // Returns base^exp mod n (which comes from MontgomeryParams).

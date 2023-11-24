@@ -518,13 +518,17 @@ struct QuadModLL {
     std::optional<BigInt> Inv = BigInt::ModInverse(SqrtDisc, Prime);
     CHECK(Inv.has_value());
 
+    // This starts as a 64-bit quantity, but the squaring of Q below
+    // looks like it can result in larger moduli...
     BigInt SqrRoot = std::move(Inv.value());
 
     int correctBits = 1;
 
-    BigInt Q = Prime;
+    BigInt Q(prime);
 
     // Obtain nbrBitsSquareRoot correct digits of inverse square root.
+    // Note that nbrBitsSquareRoot here is the exponent of p, so
+    // it will usually be small (and is less than 64 for sure
     while (correctBits < nbrBitsSquareRoot) {
       // Compute f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
       correctBits *= 2;
@@ -569,15 +573,10 @@ struct QuadModLL {
   // Solve Ax^2 + Bx + C = 0 (mod p^expon).
   bool SolveQuadraticEqModPowerOfP(
       int expon, int factorIndex,
-      int64_t Discr,
+      int64_t discr,
       uint64_t prime) {
 
     // fprintf(stderr, "SQEMP Discr=%lld\n", Discr);
-
-    /*
-    const BigInt A(1);
-    const BigInt B(0);
-    */
 
     // Number of bits of square root of discriminant to compute:
     //   expon + bits_a + 1,
@@ -587,7 +586,8 @@ struct QuadModLL {
     // so only multiplications are used.
     //   f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
     // Get maximum power of prime which divides ValA.
-    BigInt AOdd(1);
+
+    int64_t aodd = 1;
     int bitsAZero = 0;
 
     const uint64_t vv = Pow64(prime, expon);
@@ -595,26 +595,26 @@ struct QuadModLL {
     CHECK(prime > 2);
 
     for (;;) {
-      uint64_t Tmp1 = AOdd % prime;
-      if (AOdd < 0) {
+      uint64_t tmp1 = aodd % prime;
+      if (aodd < 0) {
         CHECK(false) << "A starts positive, and nothing in here would "
           "make it negative";
-        AOdd = AOdd + prime;
+        aodd = aodd + prime;
       }
-      if (Tmp1 != 0) {
+      if (tmp1 != 0) {
         break;
       }
 
-      AOdd = AOdd / prime;
+      aodd = aodd / prime;
       bitsAZero++;
     }
 
     // Discriminant is -4, but if there is a factor of 3^1, then
     // we do get -1 here.
-    Discr %= (int64_t)vv;
+    discr %= (int64_t)vv;
     // fprintf(stderr, "Now Discr %% %llu = %lld\n", vv, Discr);
 
-    CHECK(AOdd == 1) << "Loop above will not find any divisors of 1";
+    CHECK(aodd == 1) << "Loop above will not find any divisors of 1";
     CHECK(bitsAZero == 0) << "Loop above will not find any divisors of 1";
 
     /*
@@ -624,7 +624,7 @@ struct QuadModLL {
 
     // Get maximum power of prime which divides discriminant.
     int deltaZeros;
-    if (Discr == 0) {
+    if (discr == 0) {
       CHECK(false) << "Not expecting 0 discriminant";
       // Discriminant is zero.
       deltaZeros = expon;
@@ -635,7 +635,7 @@ struct QuadModLL {
 
     // Discriminant should be either -1 or -4. Neither will be
     // divisible by the prime, which has no factors of 2.
-    CHECK(deltaZeros == 0) << Discr << " " << prime;
+    CHECK(deltaZeros == 0) << discr << " " << prime;
 
     // If delta is of type m*prime^n where m is not multiple of prime
     // and n is odd, there is no solution, so go out. This is impossible
@@ -655,19 +655,15 @@ struct QuadModLL {
     // CHECK(AOdd == 2) << "Since Tmp1 > 2, AOdd stays 2.";
 
     // Negate 2*A
-    AOdd = Tmp1 - 2;
-
     {
+      BigInt AOdd((int64_t)vv - 2);
       const std::optional<BigInt> Inv = BigInt::ModInverse(AOdd, Tmp1);
       CHECK(Inv.has_value()) << AOdd.ToString() << " " << Tmp1.ToString();
 
-      AOdd = std::move(Inv.value());
-      // PERF: modular inverse?
-      // AOdd = BigIntModularDivision(*params, BigInt(1), AOdd, Tmp1);
-      // CHECK(Inv.value() == AOdd);
+      aodd = GetU64(Inv.value());
     }
 
-    CHECK(Discr != 0) << "Discriminant should be -1 or -4 here.";
+    CHECK(discr != 0) << "Discriminant should be -1 or -4 here.";
 
     // Discriminant is not zero.
     // Find number of digits of square root to compute.
@@ -676,16 +672,16 @@ struct QuadModLL {
     const int nbrBitsSquareRoot = expon;
 
     {
-      CHECK(Discr < 0) << Discr;
+      CHECK(discr < 0) << discr;
 
-      if (Discr < 0) {
-        Discr += vv;
+      if (discr < 0) {
+        discr += vv;
       }
     }
 
-    CHECK(Discr >= 0) << "We added 3 to -1 or 5+ to -4.";
+    CHECK(discr >= 0) << "We added 3 to -1 or 5+ to -4.";
 
-    uint64_t tmp = Discr % prime;
+    const uint64_t tmp = discr % prime;
 
     if (BigInt::Jacobi(BigInt(tmp), BigInt(prime)) != 1) {
       // Not a quadratic residue, so go out.
@@ -697,7 +693,7 @@ struct QuadModLL {
 
     // Compute square root of discriminant.
     BigInt SqrRoot = ComputeSquareRootModPowerOfP(
-        tmp, prime, Discr, nbrBitsSquareRoot);
+        tmp, prime, discr, nbrBitsSquareRoot);
 
     // Multiply by square root of discriminant by prime^deltaZeros.
     // But deltaZeros is 0.
@@ -708,26 +704,26 @@ struct QuadModLL {
     // Compute increment.
     // Q <- prime^correctBits
     // correctbits is the same as the exponent.
-    const BigInt Q(vv);
+    // const BigInt Q(vv);
 
     const BigInt &S1 = SqrRoot;
 
-    BigInt Sol1 = BigInt::CMod(S1 * AOdd, Q);
-    if (Sol1 < 0) {
-      Sol1 += Q;
+    int64_t sol1 = BigInt::CMod(S1 * aodd, vv);
+    if (sol1 < 0) {
+      sol1 += vv;
     }
 
-    Sols[factorIndex].solution1 = GetU64(Sol1);
+    Sols[factorIndex].solution1 = sol1;
 
     const BigInt S2 = -SqrRoot;
 
-    BigInt Sol2 = BigInt::CMod(S2 * AOdd, Q);
-    if (Sol2 < 0) {
-      Sol2 += Q;
+    int64_t sol2 = BigInt::CMod(S2 * aodd, vv);
+    if (sol2 < 0) {
+      sol2 += vv;
     }
 
-    Sols[factorIndex].solution2 = GetU64(Sol2);
-    Sols[factorIndex].increment = GetU64(Q);
+    Sols[factorIndex].solution2 = sol2;
+    Sols[factorIndex].increment = vv;
     return true;
   }
 
@@ -736,14 +732,6 @@ struct QuadModLL {
   bool QuadraticTermNotMultipleOfP(
       uint64_t prime,
       int expon, int factorIndex) {
-
-    // const BigInt Prime(prime);
-
-    /*
-    const BigInt A(1);
-    const BigInt B(0);
-    const BigInt C(1);
-    */
 
     sol1Invalid = false;
     sol2Invalid = false;

@@ -2,14 +2,68 @@
 #include "bignbr.h"
 #include "bigconv.h"
 
+#include <cstdint>
+#include <initializer_list>
+#include <numeric>
+
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "base/int128.h"
 #include "ansi.h"
 
 #include "modmult.h"
 #include "bigconv.h"
+
+static void TestGCD() {
+  for (int64_t a : std::initializer_list<int64_t>{
+      -65537, -190187234, -88, -2, -1,
+      0, 1, 2, 3, 16, 31337, 123874198273}) {
+    for (int64_t b : std::initializer_list<int64_t>{
+        -23897417233, -222222, -32767, -31337, -3, -1,
+        0, 1, 2, 5, 6, 120, 65536, 18723871000}) {
+      const auto &[gcd, x, y] = ExtendedGCD64(a, b);
+      const BigInt gcd2 = BigInt::GCD(BigInt(a), BigInt(b));
+      CHECK(gcd == gcd2) << a << "," << b << ": gcd="
+                         << gcd << " but BigInt::GCD=" << gcd2.ToString();
+      const int64_t gcd3 = std::gcd(a, b);
+      CHECK(gcd == gcd3) << a << "," << b << ": gcd="
+                         << gcd << " but std::gcd=" << gcd3;
+      CHECK(a * x + b * y == gcd) << a << "," << b;
+
+      if (gcd == 1 && b != 0) {
+        int64_t ainv = ModularInverse64(a, b);
+        std::optional<BigInt> oainv2 = BigInt::ModInverse(BigInt(a), BigInt(b));
+        CHECK(oainv2.has_value()) << a << "," << b;
+        if (abs(b) != 1) {
+          // We don't return the same value as BigInt for a modulus of 1,
+          // but we don't care (anything is an inverse as this ring is
+          // degenerate). This case is not useful for alpertron, since
+          // we're taking inverses mod a prime power.
+          CHECK(ainv == oainv2.value())
+            << a << "," << b
+            << "\nGot inv: " << ainv
+            << "\nBut BigInt::ModInverse: " << oainv2.value().ToString();
+        }
+
+        // Following GMP, we use |b|
+        int128_t r = (int128_t(a) * int128_t(ainv)) % int128_t(abs(b));
+        if (r < 0) r += int128_t(abs(b));
+        // mod b again since abs(b) could be 1, and 0 is correct in this
+        // case.
+        int128_t onemodb = int128_t(1) % int128_t(abs(b));
+        CHECK(r == onemodb)
+              << "For " << a << "," << b
+              << "\nhave (" << a
+              << " * " << ainv << ") % " << abs(b) << " = "
+              << r
+              << "\nbut want " << onemodb;
+      }
+    }
+  }
+  printf("GCD " AGREEN("OK") "\n");
+}
 
 static void TestNumLimbs() {
   for (const std::string bs : {"0", "1", "2", "3", "4", "5",
@@ -311,6 +365,8 @@ static void TestModPow() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+  TestGCD();
+
   TestNumLimbs();
 
   Montgomery();
