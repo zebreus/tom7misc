@@ -126,6 +126,7 @@ struct BigInt {
   // implementation.
   #ifdef BIG_USE_GMP
   // Returns (g, s, t) where g is GCD(a, b) and as + bt = g.
+  // (the "Bezout coefficients".)
   inline static std::tuple<BigInt, BigInt, BigInt>
   ExtendedGCD(const BigInt &a, const BigInt &b);
 

@@ -97,7 +97,6 @@ static void ExactIntTest() {
   }
 
   optimizer.Run(int_bounds, {},
-                // Up to 40960 calls
                 {8192 * ints.size()}, nullopt, nullopt, nullopt);
 
   CHECK(optimizer.GetBest().has_value());
@@ -162,14 +161,14 @@ static void ExplainTest() {
   LinearOptimizer optimizer(OptimizeMe);
   optimizer.SetSaveAll(true);
 
-  std::array<std::pair<int, int>, 3> int_bounds = {
+  const std::array<std::pair<int, int>, 3> int_bounds = {
     // This should find -25, but it finds -24?
     make_pair(-25, 26),
     make_pair(0, 3),
     make_pair(-100, 3),
   };
 
-  std::array<std::pair<double, double>, 2> double_bounds = {
+  const std::array<std::pair<double, double>, 2> double_bounds = {
     make_pair(-2.0, 2.0),
     make_pair(-4.0, 4.0),
   };
@@ -197,46 +196,68 @@ static void ExplainTest() {
 
   printf("\nNow explain...\n");
 
-  // Now explain the results.
-  const auto &[features, loss] =
-    optimizer.Explain(
-        std::array<LinearOptimizer::IntFeature, 3>{
-          LinearOptimizer::IntFeature{
-            .name = "A",
-            .categorical = false,
-          },
-          LinearOptimizer::IntFeature{
-            .name = "B",
-            .categorical = true,
-          },
-          LinearOptimizer::IntFeature{
-            .name = "C",
-            .categorical = false,
-          }
-        },
-        std::array<LinearOptimizer::DoubleFeature, 2>{
-          LinearOptimizer::DoubleFeature{
-            .name = "X",
-          },
-          LinearOptimizer::DoubleFeature{
-            .name = "Y",
-          },
-        },
-        // Don't use a bias parameter when there is categorical
-        // data.
-        std::nullopt
-        /* std::make_optional("BIAS") */);
+  // Explain a data set.
+  auto Explain = [&](
+      const std::string &name,
+      const std::vector<std::tuple<LinearOptimizer::arg_type,
+                                   double,
+                                   std::optional<char>>> &datapoints) {
 
-  printf("Loss: %.4f\n", loss);
-  for (const LinearOptimizer::Feature &f : features) {
-    if (f.type == LinearOptimizer::FeatureType::CATEGORICAL_INT) {
-      printf("%s=%d: %.4f\n", f.name.c_str(), f.categorical_value, f.coefficient);
-    } else {
-      printf("%s: %.4f\n", f.name.c_str(), f.coefficient);
-    }
-  }
+      const auto &[features, loss] =
+        optimizer.Explain(
+            datapoints,
+            std::array<LinearOptimizer::IntFeature, 3>{
+              LinearOptimizer::IntFeature{
+                .name = "A",
+                .categorical = false,
+              },
+              LinearOptimizer::IntFeature{
+                .name = "B",
+                .categorical = true,
+              },
+              LinearOptimizer::IntFeature{
+                .name = "C",
+                .categorical = false,
+              }
+            },
+            std::array<LinearOptimizer::DoubleFeature, 2>{
+              LinearOptimizer::DoubleFeature{
+                .name = "X",
+              },
+              LinearOptimizer::DoubleFeature{
+                .name = "Y",
+              },
+            },
+            // Don't use a bias parameter when there is categorical
+            // data.
+            std::nullopt
+            /* std::make_optional("BIAS") */);
 
-  printf("You gotta check it manually ^\n");
+      printf("Loss: %.4f\n", loss);
+      for (const LinearOptimizer::Feature &f : features) {
+        if (f.type == LinearOptimizer::FeatureType::CATEGORICAL_INT) {
+          printf("%s=%d: %.4f\n", f.name.c_str(), f.categorical_value, f.coefficient);
+        } else {
+          printf("%s: %.4f\n", f.name.c_str(), f.coefficient);
+        }
+      }
+
+      printf("You gotta check it manually ^\n");
+    };
+
+  Explain("all", optimizer.GetAll());
+
+  printf("Explore locally...\n");
+
+  auto expt =
+  optimizer.ExploreLocally(
+      // categorical?
+      std::array<bool, 3>{false, true, false},
+      int_bounds,
+      double_bounds,
+      0.1);
+
+  Explain("expt", expt);
 }
 
 

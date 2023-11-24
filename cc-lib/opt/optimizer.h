@@ -87,8 +87,8 @@ struct Optimizer {
       // previous solution.
       // integer upper bounds exclude high: [low, high).
       // double upper bounds are inclusive: [low, high].
-      std::array<std::pair<int32_t, int32_t>, N_INTS> int_bounds,
-      std::array<std::pair<double, double>, N_DOUBLES> double_bounds,
+      const std::array<std::pair<int32_t, int32_t>, N_INTS> &int_bounds,
+      const std::array<std::pair<double, double>, N_DOUBLES> &double_bounds,
       // Termination conditions. Stops if any is attained; at
       // least one should be set!
       // Maximum actual calls to f. Note that since calls are
@@ -118,6 +118,124 @@ struct Optimizer {
   GetAll() const;
 
   int64_t NumEvaluations() const { return evaluations; }
+
+  // Takes the current best and runs evaluations for points adjacent to
+  // it (just changing one component at a time). Returns the newly sampled
+  // points (including the best), so that you can call Explain on them.
+  std::vector<std::tuple<arg_type, double, std::optional<OutputType>>>
+  ExploreLocally(
+      // For categorical arguments, we try every possibility in the
+      // range.
+      const std::array<bool, N_INTS> &categorical,
+      const std::array<std::pair<int32_t, int32_t>, N_INTS> &int_bounds,
+      const std::array<std::pair<double, double>, N_DOUBLES> &double_bounds,
+      // For numerical arguments, explore a point this far from the best,
+      // expressed as a fraction of the full width of the bounds. e.g. 0.01
+      // means try +/- 1%.
+      double numeric_delta) {
+
+    if (!best.has_value()) return {};
+
+    std::vector<std::tuple<arg_type, double, std::optional<OutputType>>>
+      results;
+
+    // Copy this, since the process below may update the best.
+    const arg_type best_arg = std::get<0>(best.value());
+
+    auto Try = [&](const arg_type &arg) {
+        // TODO PERF: If we already have cached value, use it!
+
+        auto [score, res] = f(arg);
+        cached_score[arg] = score;
+        if (save_all) cached_output[arg] = res;
+
+        // Ignore non-feasible outputs.
+        if (res.has_value()) {
+          // First or improved best?
+          if (!best.has_value() || score < std::get<1>(best.value())) {
+            best.emplace(arg, score, std::move(res.value()));
+          }
+
+          results.emplace_back(arg, score, res);
+        }
+      };
+
+    for (int i = 0; i < N_INTS; i++) {
+      // Use best arg, but change the one slot.
+      arg_type arg = best_arg;
+
+      const int32_t cur = best_arg.first[i];
+
+      if (categorical[i]) {
+        for (int32_t c = int_bounds[i].first; c < int_bounds[i].second; c++) {
+          if (c != cur) {
+            arg.first[i] = c;
+            Try(arg);
+          }
+        }
+      } else {
+        int width = int_bounds[i].second - int_bounds[i].first;
+        if (width > 0) {
+          {
+            int32_t down = std::round((double)cur + width * -numeric_delta);
+            if (down == cur) down--;
+            if (down < int_bounds[i].first)
+              down = int_bounds[i].first;
+
+            if (down != cur) {
+              arg.first[i] = down;
+              Try(arg);
+            }
+          }
+
+          {
+            int32_t up = std::round((double)cur + width * numeric_delta);
+            if (up == cur) up++;
+            if (up >= int_bounds[i].second)
+              up = int_bounds[i].second;
+
+            if (up != cur) {
+              arg.first[i] = up;
+              Try(arg);
+            }
+          }
+        }
+      }
+    }
+
+    // Same for doubles, but this is much simpler.
+    for (int i = 0; i < N_DOUBLES; i++) {
+      // Use best arg, but change the one slot.
+      arg_type arg = best_arg;
+
+      const double cur = best_arg.second[i];
+
+      const auto [bmin, bmax] = double_bounds[i];
+
+      double width = bmax - bmin;
+      {
+        double down = std::max(bmin,
+                               cur + width * -numeric_delta);
+
+        if (down != cur) {
+          arg.second[i] = down;
+          Try(arg);
+        }
+      }
+
+      {
+        double up = std::min(bmax,
+                             cur + width * numeric_delta);
+
+        if (up != cur) {
+          arg.second[i] = up;
+          Try(arg);
+        }
+      }
+    }
+
+    return results;
+  }
 
   // Using the saved data (SetSaveAll must be true and we must have
   // observations, usually by running optimization), fit coefficients
@@ -158,6 +276,8 @@ struct Optimizer {
   // returns the features and the squared loss (L2 norm)
   std::pair<std::vector<Feature>, double>
   Explain(
+      // Can pass GetAll(), or your own experiments.
+      const std::vector<std::tuple<arg_type, double, std::optional<OutputType>>> &results,
       const std::array<IntFeature, N_INTS> &int_features,
       const std::array<DoubleFeature, N_DOUBLES> &double_features,
       // If present, a named bias term. Usually desirable.
@@ -168,7 +288,7 @@ struct Optimizer {
     // we have one for each observed value.
     std::vector<std::unordered_set<int32_t>> values(
         N_INTS, std::unordered_set<int32_t>{});
-    for (const auto &[arg, score_] : cached_score) {
+    for (const auto &[arg, score_, ret_] : results) {
       const auto &ints = arg.first;
       for (int i = 0; i < N_INTS; i++) {
         if (int_features[i].categorical) {
@@ -232,10 +352,10 @@ struct Optimizer {
 
     const int num_features = features.size();
 
-    auto Score = [this, &features](const std::vector<double> &coeffs) -> double {
+    auto Score = [this, &results, &features](const std::vector<double> &coeffs) -> double {
         double loss = 0.0;
         // For each row, compute the score we'd get with the chosen coefficients.
-        for (const auto &[arg, actual_score] : cached_score) {
+        for (const auto &[arg, actual_score, ret_] : results) {
           const auto &[int_args, double_args] = arg;
           double computed_score = 0.0;
           for (int i = 0; i < features.size(); i++) {
@@ -399,8 +519,8 @@ std::vector<std::tuple<arg_type, double, std::optional<OutputType>>> {
 
 template<int N_INTS, int N_DOUBLES, class OutputType>
 void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
-    std::array<std::pair<int32_t, int32_t>, N_INTS> int_bounds,
-    std::array<std::pair<double, double>, N_DOUBLES> double_bounds,
+    const std::array<std::pair<int32_t, int32_t>, N_INTS> &int_bounds,
+    const std::array<std::pair<double, double>, N_DOUBLES> &double_bounds,
     std::optional<int> max_calls,
     std::optional<int> max_feasible_calls,
     std::optional<double> max_seconds,
@@ -423,7 +543,6 @@ void Optimizer<N_INTS, N_DOUBLES, OutputType>::Run(
     lbs[N_INTS + i] = double_bounds[i].first;
     ubs[N_INTS + i] = double_bounds[i].second;
   }
-
 
   bool stop = false;
   // These are only updated if we use them for termination.
