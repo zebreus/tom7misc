@@ -153,10 +153,13 @@ struct QuadModLL {
           // L is overwritten before use below.
           // L1 and term are both int64. So we just need a modular
           // inverse on int64.
+          /*
           const BigInt L1(prime_powers[E]);
           std::optional<BigInt> Inv = BigInt::ModInverse(L1, BigInt(term));
           CHECK(Inv.has_value());
           const int64_t inv = GetU64(Inv.value());
+          */
+          const int64_t inv = ModularInverse64(prime_powers[E], term);
 
           int64_t quot = BasicModMult64(q1, inv, term);
 
@@ -510,17 +513,21 @@ struct QuadModLL {
     BigInt Prime(prime);
     // fprintf(stderr, "CSRMPOP Discr=%lld\n", Discr);
     const BigInt SqrtDisc = GetSqrtDisc(base, prime);
+    uint64_t sqrt_disc = GetU64(SqrtDisc);
 
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
     // BigInt SqrRoot =
     //   BigIntModularDivision(*params, BigInt(1), SqrtDisc, Prime);
 
+    /*
     std::optional<BigInt> Inv = BigInt::ModInverse(SqrtDisc, Prime);
     CHECK(Inv.has_value());
+    */
+    const int64_t inv = ModularInverse64(sqrt_disc, prime);
 
     // This starts as a 64-bit quantity, but the squaring of Q below
     // looks like it can result in larger moduli...
-    BigInt SqrRoot = std::move(Inv.value());
+    BigInt SqrRoot(inv);
 
     int correctBits = 1;
 
@@ -648,19 +655,22 @@ struct QuadModLL {
     // AOdd = BigInt(2);
     // CHECK(AOdd == 2);
 
-    const BigInt Tmp1(vv);
-    CHECK(Tmp1 >= 2);
-
-    // AOdd %= Tmp1;
-    // CHECK(AOdd == 2) << "Since Tmp1 > 2, AOdd stays 2.";
-
     // Negate 2*A
     {
-      BigInt AOdd((int64_t)vv - 2);
-      const std::optional<BigInt> Inv = BigInt::ModInverse(AOdd, Tmp1);
-      CHECK(Inv.has_value()) << AOdd.ToString() << " " << Tmp1.ToString();
+      /*
+        const BigInt Tmp1(vv);
+        CHECK(Tmp1 >= 2);
 
-      aodd = GetU64(Inv.value());
+        // AOdd %= Tmp1;
+        // CHECK(AOdd == 2) << "Since Tmp1 > 2, AOdd stays 2.";
+
+        BigInt AOdd((int64_t)vv - 2);
+        const std::optional<BigInt> Inv = BigInt::ModInverse(AOdd, Tmp1);
+        CHECK(Inv.has_value()) << AOdd.ToString() << " " << Tmp1.ToString();
+        aodd = GetU64(Inv.value());
+      */
+
+      aodd = ModularInverse64((int64_t)vv - 2, vv);
     }
 
     CHECK(discr != 0) << "Discriminant should be -1 or -4 here.";
