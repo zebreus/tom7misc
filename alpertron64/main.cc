@@ -27,7 +27,26 @@
 #include "bignum/big-overloads.h"
 #include "factorization.h"
 
+#include "base/do-not-optimize.h"
 #include "base/logging.h"
+
+static Solutions Run(
+    int64_t f,
+    const std::vector<std::pair<uint64_t, int>> &factors) {
+  Solutions solutions;
+
+  #if RUN_LOOP
+  constexpr int TIMES = 1000000;
+  for (int i = 0; i < TIMES; i++) {
+  #endif
+
+  solutions = SolveQuad(f, factors);
+  #if RUN_LOOP
+  DoNotOptimize(solutions);
+  }
+  #endif
+  return solutions;
+}
 
 int main(int argc, char* argv[]) {
   if (argc != 2) {
@@ -36,14 +55,14 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  int64_t f = atoll(argv[1]);
+  const int64_t f = atoll(argv[1]);
 
   printf("\n** Solve x^2 + y^2 = %lld\n", f);
 
   std::vector<std::pair<uint64_t, int>> factors =
     Factorization::Factorize(f);
 
-  Solutions solutions = SolveQuad(f, factors);
+  Solutions solutions = Run(f, factors);
   CHECK(!solutions.interesting_coverage);
 
   if (solutions.points.empty()) {

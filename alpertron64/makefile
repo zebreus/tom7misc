@@ -17,8 +17,6 @@ else ifeq ($(UNAME),Darwin)
   # Mac OS X
   CXX=g++
   CC=gcc
-# ??? -stack-size is documented but doesn't work?
-#  PLATFORM_CFLAGS=-v -Wl,-stack-size,0x1000000
   GMP_LFLAGS=-lgmp
   GMP_CFLAGS=-DBIG_USE_GMP
 else
@@ -27,8 +25,12 @@ else
   CC=gcc
   # Note! asan is enabled on linux, since I'm usually just using linux
   # for improved debugging tools.
-# -fsanitize=address
-  PLATFORM_CFLAGS=-fsanitize=undefined -fsanitize=address
+  #
+  # I turned off format string warnings on linux, since it complains about
+  # %lld and I can't figure out any way to disable just that warning. :(
+  # PLATFORM_CFLAGS=-fsanitize=undefined -fsanitize=address -Wno-format
+  # For profiling
+  PLATFORM_CFLAGS=-pg -Wno-format -DRUN_LOOP=1
   GMP_LFLAGS=-lgmp
   GMP_CFLAGS=-DBIG_USE_GMP
 endif
@@ -36,8 +38,6 @@ endif
 CC_LIB=../cc-lib
 SOS=../sos
 
-# PERF: gotta reduce this stack usage!
-# XXX: Opt flags, -g
 # Add this to see dead code: -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,--print-gc-sections
 CXXFLAGS=-std=c++20 -I $(SOS) -I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -Wall $(PLATFORM_CFLAGS)
 LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)

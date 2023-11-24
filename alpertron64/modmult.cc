@@ -36,6 +36,7 @@
 #include "base/stringprintf.h"
 
 static constexpr bool VERBOSE = false;
+static constexpr bool SELF_CHECK = false;
 
 // PERF: Can do this with a loop, plus bit tricks to avoid
 // division.
@@ -51,87 +52,6 @@ ReferenceExtendedGCD64(int64_t a, int64_t b) {
   const auto &[gcd, x, y] = ReferenceExtendedGCD64Internal(a, b);
   if (gcd < 0) return std::make_tuple(-gcd, -x, -y);
   else return std::make_tuple(gcd, x, y);
-}
-
-// PERF: Can do this with a loop, plus bit tricks to avoid
-// division.
-std::tuple<int64_t, int64_t, int64_t>
-BadExtendedGCD64Internal(int64_t a, int64_t b) {
-  a = abs(a);
-  b = abs(b);
-
-  // if (a == 0) return std::make_tuple(b, 0, 1);
-  // if (b == 0) return std::make_tuple(a, 1, 0);
-
-  printf("gcd(%lld, %lld)\n", a, b);
-
-  // Remove common factors of 2.
-  const int trail_a = std::countr_zero<uint64_t>(a);
-  const int trail_b = std::countr_zero<uint64_t>(b);
-  // maybe countr_zero(a | b) is faster?
-  const int c = std::min(trail_a, trail_b);
-  printf("c: %d\n", c);
-
-  // In any case, remove all the trailing zeroes.
-  a >>= trail_a;
-  b >>= trail_b;
-
-  printf("so now (%lld, %lld)\n", a, b);
-
-  int64_t rx = a;
-  int64_t ry = b;
-
-  int64_t sx = 1, sy = 0;
-  int64_t tx = 0, ty = 1;
-
-  while (rx != ry) {
-    printf("iter %lld,%lld (%lld,%lld) (%lld,%lld)\n", rx, ry,
-           sx, sy, tx, ty);
-    // loop invariant
-    CHECK(rx == a * sx + b * sy) <<
-      rx << " vs " << (rx * sy) << " + " << (ry * sy) << " = "
-        << (rx * sx + ry * sy);
-    CHECK(ry == a * tx + b * ty);
-    if (rx & 1) {
-      if ((ry & 1) == 0) {
-        printf("swap\n");
-        std::swap(rx, ry);
-        std::swap(sx, sy);
-        std::swap(tx, ty);
-        std::swap(a, b);
-        continue;
-      }
-
-      if (rx > ry) {
-        printf("odd gt\n");
-        rx -= ry;
-        sx -= sy;
-        tx -= ty;
-      } else {
-        printf("odd lt\n");
-        ry -= rx;
-        sy -= sx;
-        ty -= tx;
-      }
-    } else {
-      rx >>= 1;
-      if ((sx | tx) & 1) {
-        printf("even/odd\n");
-        // either one is odd, so we can't
-        // divide by two without rewriting first
-        sx = (sx + b) >> 1;
-        tx = (tx - a) >> 1;
-      } else {
-        printf("even/even\n");
-        // both even
-        sx >>= 1;
-        tx >>= 1;
-      }
-    }
-  }
-
-  // Now we have rx = ry = gcd, ignoring the common factors of 2.
-  return std::make_tuple(rx << c, sx, tx);
 }
 
 std::tuple<int64_t, int64_t, int64_t>
@@ -156,22 +76,26 @@ ExtendedGCD64Internal(int64_t a, int64_t b) {
   int64_t alpha = a;
   int64_t beta = b;
 
-  // printf("Alpha: %lld, Beta: %lld\n", alpha, beta);
+  if (VERBOSE) {
+    printf("Alpha: %lld, Beta: %lld\n", alpha, beta);
+  }
 
   int64_t u = 1, v = 0, s = 0, t = 1;
 
   while ((a & 1) == 0) {
-    /*
-    printf("Loop %lld = %lld alpha + %lld beta | "
-           "%lld = %lld alpha + %lld beta\n",
-           a, u, v, b, s, t);
-    */
+    if (VERBOSE) {
+      printf("Loop %lld = %lld alpha + %lld beta | "
+             "%lld = %lld alpha + %lld beta\n",
+             a, u, v, b, s, t);
+    }
 
-    CHECK(a == u * alpha + v * beta) << a << " = "
-                                     << u * alpha << " + "
-                                     << v * beta << " = "
-                                     << (u * alpha) + (v * beta);
-    CHECK(b == s * alpha + t * beta);
+    if (SELF_CHECK) {
+      CHECK(a == u * alpha + v * beta) << a << " = "
+                                       << u * alpha << " + "
+                                       << v * beta << " = "
+                                       << (u * alpha) + (v * beta);
+      CHECK(b == s * alpha + t * beta);
+    }
 
     a >>= 1;
     if (((u | v) & 1) == 0) {
@@ -184,17 +108,19 @@ ExtendedGCD64Internal(int64_t a, int64_t b) {
   }
 
   while (a != b) {
-    /*
-    printf("Loop %lld = %lld alpha + %lld beta | "
-           "%lld = %lld alpha + %lld beta\n",
-           a, u, v, b, s, t);
-    */
+    if (VERBOSE) {
+      printf("Loop %lld = %lld alpha + %lld beta | "
+             "%lld = %lld alpha + %lld beta\n",
+             a, u, v, b, s, t);
+    }
 
-    CHECK(a == u * alpha + v * beta) << a << " = "
-                                     << u * alpha << " + "
-                                     << v * beta << " = "
-                                     << (u * alpha) + (v * beta);
-    CHECK(b == s * alpha + t * beta);
+    if (SELF_CHECK) {
+      CHECK(a == u * alpha + v * beta) << a << " = "
+                                       << u * alpha << " + "
+                                       << v * beta << " = "
+                                       << (u * alpha) + (v * beta);
+      CHECK(b == s * alpha + t * beta);
+    }
 
     if ((b & 1) == 0) {
       b >>= 1;
@@ -223,7 +149,9 @@ ExtendedGCD64Internal(int64_t a, int64_t b) {
 std::tuple<int64_t, int64_t, int64_t>
 ExtendedGCD64(int64_t a, int64_t b) {
   const auto &[gcd, x, y] = ExtendedGCD64Internal(a, b);
-  CHECK(gcd >= 0);
+  if (SELF_CHECK) {
+    CHECK(gcd >= 0);
+  }
   // Negate coefficients if they start negative.
   return std::make_tuple(gcd, a < 0 ? -x : x, b < 0 ? -y : y);
 }
