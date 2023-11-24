@@ -228,7 +228,6 @@ ExtendedGCD64(int64_t a, int64_t b) {
   return std::make_tuple(gcd, a < 0 ? -x : x, b < 0 ? -y : y);
 }
 
-
 static
 void ComputeInversePower2(const limb *value, /*@out@*/limb *result,
                           int number_length);

@@ -150,17 +150,7 @@ struct QuadModLL {
           // Should be int64s
           int64_t q1 = Tmp[T1] - Tmp[E];
 
-          // L is overwritten before use below.
-          // L1 and term are both int64. So we just need a modular
-          // inverse on int64.
-          /*
-          const BigInt L1(prime_powers[E]);
-          std::optional<BigInt> Inv = BigInt::ModInverse(L1, BigInt(term));
-          CHECK(Inv.has_value());
-          const int64_t inv = GetU64(Inv.value());
-          */
           const int64_t inv = ModularInverse64(prime_powers[E], term);
-
           int64_t quot = BasicModMult64(q1, inv, term);
 
           // Then this is a modmult of 64 bit numbers...
@@ -437,7 +427,7 @@ struct QuadModLL {
         {
           do {
             x++;
-          } while (BigInt::Jacobi(BigInt(x), Prime) >= 0);
+          } while (Jacobi64(x, prime) >= 0);
         }
 
         // Step 3.
@@ -516,13 +506,8 @@ struct QuadModLL {
     uint64_t sqrt_disc = GetU64(SqrtDisc);
 
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
-    // BigInt SqrRoot =
-    //   BigIntModularDivision(*params, BigInt(1), SqrtDisc, Prime);
-
-    /*
-    std::optional<BigInt> Inv = BigInt::ModInverse(SqrtDisc, Prime);
-    CHECK(Inv.has_value());
-    */
+    // Port note: Alpertron computes using modular division (1 / SqrtDisc)
+    // but modular inverse should be faster.
     const int64_t inv = ModularInverse64(sqrt_disc, prime);
 
     // This starts as a 64-bit quantity, but the squaring of Q below
@@ -656,22 +641,7 @@ struct QuadModLL {
     // CHECK(AOdd == 2);
 
     // Negate 2*A
-    {
-      /*
-        const BigInt Tmp1(vv);
-        CHECK(Tmp1 >= 2);
-
-        // AOdd %= Tmp1;
-        // CHECK(AOdd == 2) << "Since Tmp1 > 2, AOdd stays 2.";
-
-        BigInt AOdd((int64_t)vv - 2);
-        const std::optional<BigInt> Inv = BigInt::ModInverse(AOdd, Tmp1);
-        CHECK(Inv.has_value()) << AOdd.ToString() << " " << Tmp1.ToString();
-        aodd = GetU64(Inv.value());
-      */
-
-      aodd = ModularInverse64((int64_t)vv - 2, vv);
-    }
+    aodd = ModularInverse64((int64_t)vv - 2, vv);
 
     CHECK(discr != 0) << "Discriminant should be -1 or -4 here.";
 
@@ -681,19 +651,17 @@ struct QuadModLL {
     // but ends up just being expon because those are zero.
     const int nbrBitsSquareRoot = expon;
 
-    {
-      CHECK(discr < 0) << discr;
+    CHECK(discr < 0) << discr;
 
-      if (discr < 0) {
-        discr += vv;
-      }
+    if (discr < 0) {
+      discr += vv;
     }
 
     CHECK(discr >= 0) << "We added 3 to -1 or 5+ to -4.";
 
     const uint64_t tmp = discr % prime;
 
-    if (BigInt::Jacobi(BigInt(tmp), BigInt(prime)) != 1) {
+    if (Jacobi64((int64_t)tmp, prime) != 1) {
       // Not a quadratic residue, so go out.
       return false;
     }

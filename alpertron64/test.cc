@@ -16,6 +16,22 @@
 #include "modmult.h"
 #include "bigconv.h"
 
+static void TestJacobi() {
+  for (int64_t a : std::initializer_list<int64_t>{
+      -65537, -190187234, -88, -16, -15, -9, -8, -7, -6, -5, -4, -3, -2, -1,
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31337, 123874198273}) {
+    for (int64_t b : std::initializer_list<int64_t>{
+        1, 3, 5, 7, 9, 119, 121, 65537, 187238710001}) {
+
+      int bigj = BigInt::Jacobi(BigInt(a), BigInt(b));
+      int j = Jacobi64(a, b);
+      CHECK(bigj == j) << a << "," << b <<
+        "\nGot:  " << j <<
+        "\nWant: " << bigj;
+    }
+  }
+}
+
 static void TestGCD() {
   for (int64_t a : std::initializer_list<int64_t>{
       -65537, -190187234, -88, -2, -1,
@@ -391,6 +407,7 @@ static void TestModPow() {
 int main(int argc, char **argv) {
   ANSI::Init();
   TestGCD();
+  TestJacobi();
 
   TestNumLimbs();
 

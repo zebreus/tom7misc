@@ -1,10 +1,12 @@
 #!/bin/bash
 
 make clean
-make -j quad.exe || exit -1
+make -j quad.exe test.exe || exit -1
 
 set -x
 set -e
+
+./test.exe
 
 rm -f coverage.out
 ./quad.exe 13526043882269 >> coverage.out

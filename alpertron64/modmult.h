@@ -100,6 +100,42 @@ inline int64_t ModularInverse64(int64_t a, int64_t b) {
   return x;
 }
 
+// Called with uint64_t n, so we could use that?
+inline int Jacobi64(int64_t a, int64_t n) {
+  CHECK(n > 0 && (n & 1) == 1) << "Precondition. n: " << n;
+
+  int t = 1;
+  a %= n;
+  if (a < 0) a += n;
+
+  while (a != 0) {
+
+    // PERF could do this with countr_zero?
+    // n is not changing in this loop.
+    while ((a & 1) == 0) {
+      a >>= 1;
+      const int r = n % 8;
+      if (r == 3 || r == 5) {
+        t = -t;
+      }
+    }
+
+    std::swap(n, a);
+    if (a % 4 == 3 && n % 4 == 3) {
+      t = -t;
+    }
+
+    a %= n;
+  }
+
+  if (n == 1) {
+    return t;
+  } else {
+    return 0;
+  }
+}
+
+
 // Returns base^exp mod n (which comes from MontgomeryParams).
 BigInt ModPowBaseInt(const MontgomeryParams &params,
                      int base, const BigInt &Exp);
