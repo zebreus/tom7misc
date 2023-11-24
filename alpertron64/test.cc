@@ -31,10 +31,29 @@ static void TestGCD() {
       CHECK(gcd == gcd3) << a << "," << b << ": gcd="
                          << gcd << " but std::gcd=" << gcd3;
 
+      const auto &[big_gcd, big_x, big_y] =
+        BigInt::ExtendedGCD(BigInt(a), BigInt(b));
+
+      /*
+        // Note: We don't necessarily return the same solution as
+        // BigInt (it seems to return the *minimal* pair). I don't
+        // think we need to compute the minimal.
+      CHECK(big_gcd == gcd && big_x == x && big_y == y)
+        << a << "," << b <<
+        "\nEGCD64:  " << gcd << " " << x << " " << y <<
+        "\nBigEGCD: " << big_gcd.ToString() << " " << big_x.ToString()
+        << " " << big_y.ToString();
+      */
+
       // Even though the gcd must be 64-bit, the intermediate products
       // can overflow.
       CHECK(int128_t(a) * int128_t(x) +
-            int128_t(b) * int128_t(y) == int128_t(gcd)) << a << "," << b;
+            int128_t(b) * int128_t(y) == int128_t(gcd))
+        << "For " << a << "," << b <<
+        "\nWe have " << a << " * " << x << " + " << b << " * " << y
+        << " = " << (int128_t(a) * int128_t(x) +
+                     int128_t(b) * int128_t(y)) <<
+        "\nBut expected the gcd: " << gcd;
 
       if (gcd == 1 && b != 0) {
         int64_t ainv = ModularInverse64(a, b);

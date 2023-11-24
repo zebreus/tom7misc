@@ -74,6 +74,10 @@ inline uint64_t ModMult64(const MontgomeryParams &params,
 std::tuple<int64_t, int64_t, int64_t>
 ExtendedGCD64(int64_t a, int64_t b);
 
+// Slower recursive version of above for reference.
+std::tuple<int64_t, int64_t, int64_t>
+RefrerenceExtendedGCD64(int64_t a, int64_t b);
+
 // compute a^1 mod b    for a,b coprime
 inline int64_t ModularInverse64(int64_t a, int64_t b) {
   // if (a < 0 && b < 0) { a = -a; b = -b; }
