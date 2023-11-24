@@ -30,7 +30,11 @@ static void TestGCD() {
       const int64_t gcd3 = std::gcd(a, b);
       CHECK(gcd == gcd3) << a << "," << b << ": gcd="
                          << gcd << " but std::gcd=" << gcd3;
-      CHECK(a * x + b * y == gcd) << a << "," << b;
+
+      // Even though the gcd must be 64-bit, the intermediate products
+      // can overflow.
+      CHECK(int128_t(a) * int128_t(x) +
+            int128_t(b) * int128_t(y) == int128_t(gcd)) << a << "," << b;
 
       if (gcd == 1 && b != 0) {
         int64_t ainv = ModularInverse64(a, b);
@@ -295,6 +299,8 @@ static void WrapPowBaseInt(const BigInt &Modulus,
   // BigInt Result = LimbsToBigInt(modpow, params->modulus_length);
 
   CHECK(Result == Expected) <<
+    "\nFor " << base << "^" << Exp.ToString()
+             << " mod " << Modulus.ToString() <<
     "\nWanted  " << Expected.ToString() <<
     "\nBut got " << Result.ToString();
 }

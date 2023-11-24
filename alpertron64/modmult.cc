@@ -482,6 +482,8 @@ std::unique_ptr<MontgomeryParams>
 GetMontgomeryParams(const BigInt &Modulus) {
   std::unique_ptr<MontgomeryParams> params =
     std::make_unique<MontgomeryParams>();
+// XXX test failure (modpowbaseint)
+constexpr bool USE_SIMPLE_MODULUS = false;
 
   auto mo = Modulus.ToInt();
   if (USE_SIMPLE_MODULUS && mo.has_value()) {
