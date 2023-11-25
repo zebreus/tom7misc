@@ -56,20 +56,18 @@ ReferenceExtendedGCD64(int64_t a, int64_t b) {
 
 std::tuple<int64_t, int64_t, int64_t>
 ExtendedGCD64Internal(int64_t a, int64_t b) {
+  if (VERBOSE)
+    printf("gcd(%lld, %lld)\n", a, b);
+
   a = abs(a);
   b = abs(b);
 
   if (a == 0) return std::make_tuple(b, 0, 1);
   if (b == 0) return std::make_tuple(a, 1, 0);
 
-  // printf("gcd(%lld, %lld)\n", a, b);
 
   // Remove common factors of 2.
-  const int trail_a = std::countr_zero<uint64_t>(a);
-  const int trail_b = std::countr_zero<uint64_t>(b);
-  // maybe countr_zero(a | b) is faster?
-  const int r = std::min(trail_a, trail_b);
-  // printf("r: %d\n", r);
+  const int r = std::countr_zero<uint64_t>(a | b);
   a >>= r;
   b >>= r;
 
@@ -82,28 +80,47 @@ ExtendedGCD64Internal(int64_t a, int64_t b) {
 
   int64_t u = 1, v = 0, s = 0, t = 1;
 
-  while ((a & 1) == 0) {
-    if (VERBOSE) {
-      printf("Loop %lld = %lld alpha + %lld beta | "
-             "%lld = %lld alpha + %lld beta\n",
-             a, u, v, b, s, t);
-    }
+  if (VERBOSE) {
+    printf("2Loop %lld = %lld alpha + %lld beta | "
+           "%lld = %lld alpha + %lld beta\n",
+           a, u, v, b, s, t);
+  }
 
-    if (SELF_CHECK) {
-      CHECK(a == u * alpha + v * beta) << a << " = "
-                                       << u * alpha << " + "
-                                       << v * beta << " = "
-                                       << (u * alpha) + (v * beta);
-      CHECK(b == s * alpha + t * beta);
-    }
+  if (SELF_CHECK) {
+    CHECK(a == u * alpha + v * beta) << a << " = "
+                                     << u * alpha << " + "
+                                     << v * beta << " = "
+                                     << (u * alpha) + (v * beta);
+    CHECK(b == s * alpha + t * beta);
+  }
 
-    a >>= 1;
-    if (((u | v) & 1) == 0) {
+  int azero = std::countr_zero<uint64_t>(a);
+  if (azero > 0) {
+
+    int uvzero = std::countr_zero<uint64_t>(u | v);
+
+    // shift away all the zeroes in a.
+    a >>= azero;
+
+    int all_zero = std::min(azero, uvzero);
+    u >>= all_zero;
+    v >>= all_zero;
+
+    int rzero = azero - all_zero;
+    if (VERBOSE)
+      printf("azero %d uvzero %d all_zero %d rzero %d\n",
+             azero, uvzero, all_zero, rzero);
+
+    for (int i = 0; i < rzero; i++) {
+      // PERF: The first time through, we know we will
+      // enter the top branch.
+      if ((u | v) & 1) {
+        u += beta;
+        v -= alpha;
+      }
+
       u >>= 1;
       v >>= 1;
-    } else {
-      u = (u + beta) >> 1;
-      v = (v - alpha) >> 1;
     }
   }
 
@@ -120,7 +137,19 @@ ExtendedGCD64Internal(int64_t a, int64_t b) {
                                        << v * beta << " = "
                                        << (u * alpha) + (v * beta);
       CHECK(b == s * alpha + t * beta);
+
+      CHECK((a & 1) == 1);
     }
+
+    // Loop invariant.
+    // PERF: I think that this loop could be made into some
+    // explicit states and save some work. When we swap,
+    // we know that the next branch we enter will be the
+    // third one (because of this loop invariant, and because
+    // now a < b by construction). But gcc actually generates
+    // the instructions to swap, test a & 1 again, and compare
+    // again. Adding assertions doesn't really help.
+    if ((a & 1) == 0) __builtin_unreachable();
 
     if ((b & 1) == 0) {
       b >>= 1;
