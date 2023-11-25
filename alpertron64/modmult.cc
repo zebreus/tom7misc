@@ -142,16 +142,18 @@ ExtendedGCD64Internal(int64_t a, int64_t b) {
     }
 
     // Loop invariant.
-    // PERF: I think that this loop could be made into some
-    // explicit states and save some work. When we swap,
-    // we know that the next branch we enter will be the
-    // third one (because of this loop invariant, and because
-    // now a < b by construction). But gcc actually generates
-    // the instructions to swap, test a & 1 again, and compare
-    // again. Adding assertions doesn't really help.
+    // PERF: I think that this loop could still be improved.
+    // I explicitly skip some of the tests that gcc couldn't
+    // figure out, but it still generates explicit move
+    // instructions for the swap; we could just have six
+    // states and track that manually.
     if ((a & 1) == 0) __builtin_unreachable();
 
+    // one:
     if ((b & 1) == 0) {
+    one_even:
+      if (SELF_CHECK) { CHECK((b & 1) == 0); }
+
       b >>= 1;
       if (((s | t) & 1) == 0) {
         s >>= 1;
@@ -160,16 +162,36 @@ ExtendedGCD64Internal(int64_t a, int64_t b) {
         s = (s + beta) >> 1;
         t = (t - alpha) >> 1;
       }
-    } else if (b < a) {
+
+      // could cause a to equal b
+      continue;
+    }
+
+    // two:
+    if (b < a) {
       // printf("Swap.\n");
       std::swap(a, b);
       std::swap(s, u);
       std::swap(t, v);
-    } else {
-      b -= a;
-      s -= u;
-      t -= v;
+
+      // we know a is odd, and now a < b, so we
+      // go to case three.
+      goto three;
     }
+
+  three:
+    b -= a;
+    s -= u;
+    t -= v;
+    if (SELF_CHECK) {
+      // we would only have b == a here if b was 2a.
+      // but this is impossible since b was odd.
+      CHECK(b != a);
+      // but since we had odd - odd, we b is now even.
+      CHECK((b & 1) == 0);
+    }
+    // so we know we enter that branch next.
+    goto one_even;
   }
 
   return std::make_tuple(a << r, s, t);
