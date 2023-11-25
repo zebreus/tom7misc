@@ -12,7 +12,8 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-// TODO: For cc-lib.
+// TODO: This is still experimental.
+//
 // Take one parameter, like "max amount of memory to use."
 // Keep exact samples until we reach the memory budget;
 // then use those samples to produce a bucketing. From then
@@ -150,9 +151,10 @@ struct AutoHisto {
     return histo;
   }
 
-  void PrintSimpleANSI(int buckets) const {
+  std::string SimpleANSI(int buckets) const {
     const Histo histo = GetHisto(buckets);
 
+    std::string ret;
     for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
       const std::string label =
         PadLeft(StringPrintf("%.1f", histo.BucketLeft(bidx)), 10);
@@ -161,17 +163,24 @@ struct AutoHisto {
       // int on = std::clamp((int)std::round(f * BAR_CHARS), 0, BAR_CHARS);
       // std::string bar(on, '*');
       std::string bar = FilledBar(BAR_CHARS, f);
-      printf("%s " AFGCOLOR(32, 32, 23, "|"), label.c_str());
+      StringAppendF(&ret, "%s " AFGCOLOR(32, 32, 23, "|"), label.c_str());
 
       if (bidx & 1) {
-        printf(AFGCOLOR(200, 200, 128, "%s") "\n",
-               bar.c_str());
+        StringAppendF(&ret, AFGCOLOR(200, 200, 128, "%s") "\n",
+                      bar.c_str());
       } else {
-        printf(AFGCOLOR(190, 190, 118, "%s") "\n",
-               bar.c_str());
+        StringAppendF(&ret, AFGCOLOR(190, 190, 118, "%s") "\n",
+                      bar.c_str());
       }
     }
+    return ret;
+  }
 
+  // TODO: Simple one-line ANSI histo with colored bars.
+
+  // Probably should have the caller do printing.
+  void PrintSimpleANSI(int buckets) const {
+    printf("%s", SimpleANSI(buckets).c_str());
   }
 
   std::string SimpleAsciiString(int buckets) const {
