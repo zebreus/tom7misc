@@ -332,7 +332,7 @@ struct QuadModLL {
     const BigInt Prime(prime);
 
     const std::unique_ptr<MontgomeryParams> params =
-      GetMontgomeryParams(Prime);
+      GetMontgomeryParams(prime);
 
     const int NumberLengthBytes =
       params->modulus_length * (int)sizeof(limb);

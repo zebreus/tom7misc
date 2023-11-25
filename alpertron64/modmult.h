@@ -36,7 +36,7 @@ struct MontgomeryParams {
 // Same, but just using a bigint for the modulus. The returned
 // parameters have the fixed modulus limbs and length.
 std::unique_ptr<MontgomeryParams>
-GetMontgomeryParams(const BigInt &Modulus);
+GetMontgomeryParams(uint64_t modulus);
 
 // The form of the numbers is determined by the params, so to use this you
 // must be consistently using params. If modulus_length == 1,

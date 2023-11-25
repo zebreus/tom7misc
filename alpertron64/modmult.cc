@@ -630,19 +630,19 @@ static void InitMontgomeryParams(MontgomeryParams *params) {
   }
 }
 
-constexpr bool USE_SIMPLE_MODULUS = true;
-
-std::unique_ptr<MontgomeryParams>
-GetMontgomeryParams(const BigInt &Modulus) {
-  std::unique_ptr<MontgomeryParams> params =
-    std::make_unique<MontgomeryParams>();
 // XXX test failure (modpowbaseint)
 constexpr bool USE_SIMPLE_MODULUS = false;
 
-  auto mo = Modulus.ToInt();
-  if (USE_SIMPLE_MODULUS && mo.has_value()) {
-    CHECK(mo.value() > 0);
-    params->simple_modulus = mo.value();
+std::unique_ptr<MontgomeryParams>
+GetMontgomeryParams(uint64_t modulus) {
+  std::unique_ptr<MontgomeryParams> params =
+    std::make_unique<MontgomeryParams>();
+
+  const BigInt Modulus(modulus);
+  // printf("Modulus: %llu = %s\n", modulus, Modulus.ToString().c_str());
+
+  if (USE_SIMPLE_MODULUS) {
+    params->simple_modulus = modulus;
     // Enough to hold any 64-bit number.
 
     // const int mod_len = BigIntNumLimbs(Modulus);

@@ -146,20 +146,20 @@ static void TestNumLimbs() {
 
 
 
+// Only need to support 64-bit integers now.
 static void Montgomery() {
-  // Test from original alpertron code.
-  const BigInt Modulus("1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001");
+  const uint64_t modulus = 100000000000000001ULL;
 
   const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(Modulus);
+    GetMontgomeryParams(modulus);
 
   BigInt N = LimbsToBigInt(params->Ninv.data(), params->modulus_length);
   BigInt R1 = LimbsToBigInt(params->R1.data(), params->modulus_length);
   BigInt R2 = LimbsToBigInt(params->R2.data(), params->modulus_length);
 
-  CHECK(R1 == BigInt("24695268717247353376024094994637646342633788102645274852325180976134729557037162826241102651487225375781959289009"));
-  CHECK(R2 == BigInt("190098254628648626850155858417461866966631571241684111915135769130076389371840963052220660360120514221998874973069"));
-  CHECK(N == BigInt("5146057778955676958024459434755086258061417362313348376976792088453485271799426894988203925673894606468119708364663947265"));
+  CHECK(R1 == BigInt("11686018427387858"));
+  CHECK(R2 == BigInt("84433638898975679"));
+  CHECK(N == BigInt("2324500534556753921"));
 
   // R1 is the identity.
   BigInt FirstFactor = R1;
@@ -208,22 +208,26 @@ static std::string BigBytes(const BigInt &X) {
 
 static void WrapModMult(const BigInt &A,
                         const BigInt &B,
-                        const BigInt &Modulus,
+                        uint64_t modulus,
                         const BigInt &Expected) {
 
   auto ProblemIn = [&]() {
-      return StringPrintf("%s * %s mod %s\n",
+      return StringPrintf("%s * %s mod %llu\n",
                           A.ToString().c_str(),
                           B.ToString().c_str(),
-                          Modulus.ToString().c_str());
+                          modulus);
     };
 
+  CHECK(A < modulus && B < modulus) << ProblemIn();
+
   const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(Modulus);
+    GetMontgomeryParams(modulus);
   const int modulus_length = params->modulus_length;
 
-  CHECK(BigIntNumLimbs(A) <= modulus_length) << ProblemIn();
-  CHECK(BigIntNumLimbs(B) <= modulus_length) << ProblemIn();
+  CHECK(BigIntNumLimbs(A) <= modulus_length)
+    << modulus_length << " " << ProblemIn();
+  CHECK(BigIntNumLimbs(B) <= modulus_length)
+    << modulus_length << " " << ProblemIn();
 
   limb out[modulus_length + 1];
   out[modulus_length].x = 0xCAFE;
@@ -244,13 +248,13 @@ static void WrapModMult(const BigInt &A,
 
   BigInt Q = LimbsToBigInt(out, modulus_length);
 
-  CHECK(Q < Modulus);
+  CHECK(Q < modulus);
 
   auto Problem = [&]() {
-      return StringPrintf("%s * %s mod %s = %s\n",
+      return StringPrintf("%s * %s mod %llu = %s\n",
                           A.ToString().c_str(),
                           B.ToString().c_str(),
-                          Modulus.ToString().c_str(),
+                          modulus,
                           Q.ToString().c_str());
     };
 
@@ -261,56 +265,60 @@ static void WrapModMult(const BigInt &A,
     "\nExpected: " << BigBytes(Expected);
 }
 
+// Most of these test cases are actually just the behavior at r5391,
+// before I started switching to 64-bit montgomery params. Could
+// cross-check them if something is fishy.
 static void TestModMult() {
 
   // When modulus_length = 1, we don't use montgomery multiplication.
   WrapModMult(BigInt(0),
               BigInt(0),
-              BigInt(7),
+              7,
               BigInt(0));
 
   WrapModMult(BigInt(1),
               BigInt(2),
-              BigInt(7),
+              7,
               BigInt(2));
 
   // Special behavior for powers of two moduli.
-  WrapModMult(BigInt("111111111222222222223"),
+  WrapModMult(BigInt("1111111222222222223"),
               BigInt("387492873491872371"),
-              // 2^256
-              BigInt("115792089237316195423570985008687907853269984665640564039457584007913129639936"),
-              BigInt("43054763764373916054953869012715900733"));
+              // 2^60
+              1152921504606846976ULL,
+              BigInt("137882207625613117"));
 
-  WrapModMult(BigInt("111111111222222222223"),
-              BigInt("387492873491872371"),
-              // 2^256
-              BigInt("115792089237316195423570985008687907853269984665640564039457584007913129639936"),
-              BigInt("43054763764373916054953869012715900733"));
+  WrapModMult(BigInt("1111111222222222223"),
+              BigInt("38742371"),
+              // 2^60
+              1152921504606846976ULL,
+              BigInt("1030861126380984141"));
 
-  WrapModMult(BigInt("515377520732011331036461129765621272702107522001"),
-              BigInt("7888609052210118054117285652827862296732064351090230047702789306640625"),
-              // 2^275
-              BigInt("60708402882054033466233184588234965832575213720379360039119137804340758912662765568"),
-              BigInt("51153539926300668965516258108723933397314872108214048858850678752661169302105362369"));
+  WrapModMult(BigInt("5153775207320113"),
+              BigInt("7888609052210119"),
+              // 2^59
+              576460752303423488ULL,
+              BigInt("138126514092224279"));
 
   WrapModMult(BigInt("15232"),
               BigInt("90210"),
-              // 2^77
-              BigInt("151115727451828646838272"),
+              // 2^61
+              2305843009213693952ULL,
               BigInt("1374078720"));
 
   WrapModMult(BigInt("15232"),
-              BigInt("9021000000000000000000000000"),
-              // 2^77
-              BigInt("151115727451828646838272"),
-              BigInt("127623905056672907788288"));
+              BigInt("9021000000000000"),
+              // 2^61
+              2305843009213693952ULL,
+              BigInt("1363134456392056832"));
 
-  WrapModMult(BigInt("152320000000000000000"),
+  WrapModMult(BigInt("1523200000000000"),
               BigInt("90210"),
-              // 2^77
-              BigInt("151115727451828646838272"),
-              BigInt("140371729335421784555520"));
+              // 2^61
+              2305843009213693952ULL,
+              BigInt("1363134456392056832"));
 
+  #if 0
   // This is the result I get from alpertron (tomtest.c).
   WrapModMult(BigInt("3"),
               BigInt("15"),
@@ -332,17 +340,18 @@ static void TestModMult() {
               BigInt("17619819104174798134"),
               BigInt("88888888833117981921"),
               BigInt("54076733533037296511"));
+  #endif
 
   printf("ModMult " AGREEN("OK") "\n");
 }
 
-static void WrapPowBaseInt(const BigInt &Modulus,
+static void WrapPowBaseInt(uint64_t modulus,
                            int base,
                            const BigInt &Exp,
                            const BigInt &Expected) {
 
   const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(Modulus);
+    GetMontgomeryParams(modulus);
 
   // limb modpow[params->modulus_length];
   BigInt Result = ModPowBaseInt(*params, base, Exp);
@@ -350,33 +359,33 @@ static void WrapPowBaseInt(const BigInt &Modulus,
 
   CHECK(Result == Expected) <<
     "\nFor " << base << "^" << Exp.ToString()
-             << " mod " << Modulus.ToString() <<
+             << " mod " << modulus <<
     "\nWanted  " << Expected.ToString() <<
     "\nBut got " << Result.ToString();
 }
 
 static void TestModPowBaseInt() {
-  WrapPowBaseInt(BigInt(333), 2, BigInt(1234), BigInt(25));
-  WrapPowBaseInt(BigInt("1290387419827141"),
+  WrapPowBaseInt(333, 2, BigInt(1234), BigInt(25));
+  WrapPowBaseInt(1290387419827141ULL,
                  8181, BigInt("128374817123451"),
                  BigInt("521768828887416"));
   WrapPowBaseInt(
-      // 2^256
-      BigInt("115792089237316195423570985008687907853269984665640564039457584007913129639936"),
+      // 2^60
+      1152921504606846976ULL,
       1234567,
       BigInt("12837481712345111111111111171881"),
-      BigInt("49719668333916770713555620214875638068519952572946181164707416399712219000519"));
+      BigInt("802119408046534343"));
 
   printf("ModPowBaseInt " AGREEN("OK") "\n");
 }
 
-static void WrapModPow(const BigInt &Modulus,
+static void WrapModPow(uint64_t modulus,
                        const BigInt &Base,
                        const BigInt &Exp,
                        const BigInt &Expected) {
 
   const std::unique_ptr<MontgomeryParams> params =
-    GetMontgomeryParams(Modulus);
+    GetMontgomeryParams(modulus);
 
   limb base[params->modulus_length];
   BigIntToFixedLimbs(Base, params->modulus_length, base);
@@ -394,27 +403,27 @@ static void WrapModPow(const BigInt &Modulus,
 static void TestModPow() {
   // From BaseInt test cases.
 
-  WrapModPow(BigInt(333), BigInt(2), BigInt(1234), BigInt(25));
+  WrapModPow(333, BigInt(2), BigInt(1234), BigInt(25));
 
   // Weird that it returns a different answer than the base int version.
   // Bug? Or is the interface different because it assumes montgomery
   // form for some args? In any case, this is what alpertron does.
-  WrapModPow(BigInt("1290387419827141"),
+  WrapModPow(1290387419827141ULL,
              BigInt(8181), BigInt("128374817123451"),
              BigInt("786025986329866"));
 
   // (Power of two exponent, so this matches the BaseInt behavior.)
   WrapModPow(
-      // 2^256
-      BigInt("115792089237316195423570985008687907853269984665640564039457584007913129639936"),
+      // 2^60
+      1152921504606846976ULL,
       BigInt(1234567),
       BigInt("12837481712345111111111111171881"),
-      BigInt("49719668333916770713555620214875638068519952572946181164707416399712219000519"));
+      BigInt("802119408046534343"));
 
-  WrapModPow(BigInt("917234897192387489127349817"),
+  WrapModPow(576760752777723488ULL,
              BigInt("120374190872938741"),
              BigInt("128374817123451"),
-             BigInt("11477246917995840350430635"));
+             BigInt("238423962528506731"));
 
   printf("ModPow " AGREEN("OK") "\n");
 }
