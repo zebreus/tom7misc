@@ -50,17 +50,6 @@ inline uint64_t Sqrt64(uint64_t n) {
   return r - (r * r - 1 >= n);
 }
 
-inline int64_t DivFloor64(int64_t numer, int64_t denom) {
-  // There's probably a version without %, but I verified
-  // that gcc will do these both with one IDIV.
-  int64_t q = numer / denom;
-  int64_t r = numer % denom;
-  if ((r > 0 && denom < 0) || (r < 0 && denom > 0)) {
-    return q - 1;
-  }
-  return q;
-}
-
 struct Quad {
   // Solutions accumulated here.
   Solutions solutions;
@@ -483,8 +472,6 @@ struct Quad {
 
     constexpr int64_t discr = -4;
 
-    const uint64_t k = modulus;
-
     // PerformTransformation:
     // These equations become simpler because of the known
     // values of A,B,C = 1,0,1.
@@ -494,63 +481,66 @@ struct Quad {
     // This generally does exceed 64 bits (87.7 for 45-bit input).
     const int128_t vsquared = int128_t(value) * int128_t(value) + 1;
     // solutions.vsquared.Observe(VSquared);
-    const int128_t pp = vsquared / k;
+    const int128_t pp = vsquared / modulus;
 
-    // const std::optional<int64_t> po = P.ToInt();
-    // TODO: Some argument why this always fits in 64 bits?
-    // I checked billions of samples, at least, and it was
-    // never larger magnitude than the input value.
-
+    // |value| < modulus, so (value^value) / modulus is less
+    // than |value|. So this fits in 64 bits.
+    if (SELF_CHECK) {
+      CHECK(pp > 0 ? Uint128High64(pp) == 0 : Uint128High64(-pp) == 0);
+    }
     const int64_t p = (int64_t)pp;
-    CHECK(pp > 0 ? Uint128High64(pp) == 0 : Uint128High64(-pp) == 0);
 
     // Compute Q <- -(2at + b).
     const int64_t q = -(value << 1);
 
-    if (std::gcd(std::gcd(p, q), k) != 1) {
+    if (std::gcd(std::gcd(p, q), modulus) != 1) {
       // No solutions.
       return;
     }
 
     // Below we assert p >= 0...
-    CHECK(p >= 0);
+    // Port note: There used to be a bunch of different cases
+    // here, but we know the discriminant and sign on p.
+    // Since p is v^2/modulus with positive modulus, it is
+    // non-negative.
+    if (SELF_CHECK) {
+      CHECK(p >= 0);
+    }
 
-    if (p >= 0) {
+    // Discriminant is equal to -4.
+    int64_t g = q >> 1;
+    // XXX equal to -value, right?
+    CHECK(g == -value);
 
-      // Discriminant is equal to -4.
-      int64_t g = q >> 1;
-      // XXX equal to -value, right?
+    if (p == 1) {
 
-      if (p == 1) {
+      NonSquareDiscrSolutionOne(
+          e, modulus,
+          1, 0,
+          value);
 
-        NonSquareDiscrSolutionOne(
-            e, k,
-            1, 0,
-            value);
+      NonSquareDiscrSolutionOne(
+          e, modulus,
+          // (Q/2, -1)
+          g, -1,
+          value);
 
-        NonSquareDiscrSolutionOne(
-            e, k,
-            // (Q/2, -1)
-            g, -1,
-            value);
+      return;
+    } if (p == 2) {
 
-        return;
-      } if (p == 2) {
+      NonSquareDiscrSolutionOne(
+          e, modulus,
+          // ((Q/2-1)/2, -1)
+          (g - 1) >> 1, -1,
+          value);
 
-        NonSquareDiscrSolutionOne(
-            e, k,
-            // ((Q/2-1)/2, -1)
-            (g - 1) >> 1, -1,
-            value);
+      NonSquareDiscrSolutionOne(
+          e, modulus,
+          // ((Q/2+1)/2, -1)
+          (g + 1) >> 1, -1,
+          value);
 
-        NonSquareDiscrSolutionOne(
-            e, k,
-            // ((Q/2+1)/2, -1)
-            (g + 1) >> 1, -1,
-            value);
-
-        return;
-      }
+      return;
     }
 
     CHECK(discr == -4);
@@ -608,7 +598,7 @@ struct Quad {
                            int128_t(q) * int128_t(v1)) * uu1;
       // const BigInt O1 = (P * u1 + Q * v1) * u1;
       const int128_t vv1 = v1;
-      const int128_t o2 = int128_t(1) - (int128_t(k) * vv1 * vv1);
+      const int128_t o2 = int128_t(1) - (int128_t(modulus) * vv1 * vv1);
       // const BigInt O2 = 1 - (R * v1) * v1;
 
       if (o1 == o2) {
@@ -621,7 +611,7 @@ struct Quad {
 
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         NonSquareDiscrSolutionOne(
-            e, k,
+            e, modulus,
             u1, v1,
             value);
 
@@ -633,7 +623,7 @@ struct Quad {
                             v, v1, v2);
 
         NonSquareDiscrSolutionOne(
-            e, k,
+            e, modulus,
             u1, v1,
             value);
 

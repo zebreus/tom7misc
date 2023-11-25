@@ -42,6 +42,10 @@ rm -f coverage.out
 # two solutions
 ./quad.exe 269182770814393 >> coverage.out
 
+# Produces an intermediate negative SqrRoot
+# x = 82432 y = 173255
+./quad.exe 36812329649 >> coverage.out
+
 dos2unix -q coverage.out
 diff coverage.golden coverage.out
 exit_status=$?

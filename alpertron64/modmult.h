@@ -135,6 +135,31 @@ inline int Jacobi64(int64_t a, int64_t n) {
   }
 }
 
+inline int64_t DivFloor64(int64_t numer, int64_t denom) {
+  // There's probably a version without %, but I verified
+  // that gcc will do these both with one IDIV.
+  int64_t q = numer / denom;
+  int64_t r = numer % denom;
+  // sign of remainder: -1, 0 or 1
+  // int64_t sgn_r = (r > 0) - (r < 0);
+  int64_t sgn_r = (r>>63) | ((uint64_t)-r >> 63);
+  // The negated sign of the denominator. Note the denominator
+  // can't be zero.
+  int64_t sgn_neg_denom = denom < 0 ? 1 : -1;
+  if (sgn_r == sgn_neg_denom) {
+    return q - 1;
+  }
+  return q;
+
+  // TODO: Benchmark these.
+  //
+  // An alternate version produces shorter code, but gcc generates
+  // a branch for testing that r is nonzero:
+  // if (r && ((r ^ denom) & (1LL << 63))) ...
+  //
+  // And the clearest expression generates loads of branches:
+  // if ((r < 0 && denom > 0) || (r > 0 && denom < 0)) ...
+}
 
 // Returns base^exp mod n (which comes from MontgomeryParams).
 BigInt ModPowBaseInt(const MontgomeryParams &params,

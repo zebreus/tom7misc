@@ -16,6 +16,20 @@
 #include "modmult.h"
 #include "bigconv.h"
 
+static void TestDivFloor() {
+  for (int n = -15; n < 16; n++) {
+    for (int d = -15; d < 16; d++) {
+      if (d != 0) {
+        int64_t q = DivFloor64(n, d);
+        BigInt Q = BigInt::DivFloor(BigInt(n), BigInt(d));
+        CHECK(Q == q) << n << "/" << d << " = " << q
+                      << "\nWant: " << Q.ToString();
+      }
+    }
+  }
+  printf("DivFloor " AGREEN("OK") "\n");
+}
+
 static void TestJacobi() {
   for (int64_t a : std::initializer_list<int64_t>{
       -65537, -190187234, -88, -16, -15, -9, -8, -7, -6, -5, -4, -3, -2, -1,
@@ -30,6 +44,7 @@ static void TestJacobi() {
         "\nWant: " << bigj;
     }
   }
+  printf("Jacobi " AGREEN("OK") "\n");
 }
 
 static void TestGCD() {
@@ -406,6 +421,7 @@ static void TestModPow() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+  TestDivFloor();
   TestGCD();
   TestJacobi();
 

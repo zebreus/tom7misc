@@ -30,6 +30,7 @@
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 
+#include "base/stringprintf.h"
 #include "base/logging.h"
 
 static constexpr bool SELF_CHECK = false;
@@ -495,12 +496,12 @@ struct QuadModLL {
   }
 
   static
-  BigInt ComputeSquareRootModPowerOfP(uint64_t base,
-                                      uint64_t prime,
-                                      int64_t Discr,
-                                      int nbrBitsSquareRoot) {
+  int64_t ComputeSquareRootModPowerOfP(uint64_t base,
+                                       uint64_t prime,
+                                       int64_t Discr,
+                                       int nbrBitsSquareRoot) {
     // BigInt Base(base);
-    BigInt Prime(prime);
+    // BigInt Prime(prime);
     // fprintf(stderr, "CSRMPOP Discr=%lld\n", Discr);
     const BigInt SqrtDisc = GetSqrtDisc(base, prime);
     uint64_t sqrt_disc = GetU64(SqrtDisc);
@@ -520,7 +521,7 @@ struct QuadModLL {
 
     // Obtain nbrBitsSquareRoot correct digits of inverse square root.
     // Note that nbrBitsSquareRoot here is the exponent of p, so
-    // it will usually be small (and is less than 64 for sure
+    // it will usually be small (and is less than 64 for sure).
     while (correctBits < nbrBitsSquareRoot) {
       // Compute f(x) = invsqrt(x), f_{n+1}(x) = f_n * (3 - x*f_n^2)/2
       correctBits *= 2;
@@ -559,7 +560,26 @@ struct QuadModLL {
             prime,
             nbrBitsSquareRoot,
             SqrRoot.ToString().c_str());
-    return SqrRoot;
+
+    std::optional<int64_t> uo = SqrRoot.ToInt();
+    if (!uo.has_value()) {
+      printf("\033[2J");
+      fflush(stderr);
+      fprintf(stderr, "\n\n\n\n\n\n\n\n\n\n\n");
+      fprintf(stderr, "Sqrt(%llu) mod %llu (bits: %d) = %s\n",
+              base,
+              prime,
+              nbrBitsSquareRoot,
+              SqrRoot.ToString().c_str());
+      fflush(stderr);
+      CHECK(false) <<
+        StringPrintf("Sqrt(%llu) mod %llu (bits: %d) = %s\n",
+                     base,
+                     prime,
+                     nbrBitsSquareRoot,
+                     SqrRoot.ToString().c_str());
+    }
+    return uo.value();
   }
 
   // Solve Ax^2 + Bx + C = 0 (mod p^expon).
@@ -615,19 +635,14 @@ struct QuadModLL {
     */
 
     // Get maximum power of prime which divides discriminant.
-    int deltaZeros;
-    if (discr == 0) {
-      CHECK(false) << "Not expecting 0 discriminant";
-      // Discriminant is zero.
-      deltaZeros = expon;
-    } else {
-      // Discriminant is not zero.
-      deltaZeros = 0;
+    constexpr int deltaZeros = 0;
+    if (SELF_CHECK) {
+      CHECK(discr != 0);
+      // Discriminant should be either -1 or -4. Neither will be
+      // divisible by the prime, which has no factors of 2.
+      CHECK(deltaZeros == 0) << discr << " " << prime;
     }
 
-    // Discriminant should be either -1 or -4. Neither will be
-    // divisible by the prime, which has no factors of 2.
-    CHECK(deltaZeros == 0) << discr << " " << prime;
 
     // If delta is of type m*prime^n where m is not multiple of prime
     // and n is odd, there is no solution, so go out. This is impossible
@@ -643,7 +658,10 @@ struct QuadModLL {
     // Negate 2*A
     aodd = ModularInverse64((int64_t)vv - 2, vv);
 
-    CHECK(discr != 0) << "Discriminant should be -1 or -4 here.";
+    if (SELF_CHECK) {
+      CHECK(discr != 0) << "Discriminant should be -1 or -4 here.";
+      CHECK(discr < 0) << discr;
+    }
 
     // Discriminant is not zero.
     // Find number of digits of square root to compute.
@@ -651,13 +669,11 @@ struct QuadModLL {
     // but ends up just being expon because those are zero.
     const int nbrBitsSquareRoot = expon;
 
-    CHECK(discr < 0) << discr;
+    discr += vv;
 
-    if (discr < 0) {
-      discr += vv;
+    if (SELF_CHECK) {
+      CHECK(discr >= 0) << "We added 3 to -1 or 5+ to -4.";
     }
-
-    CHECK(discr >= 0) << "We added 3 to -1 or 5+ to -4.";
 
     const uint64_t tmp = discr % prime;
 
@@ -669,8 +685,9 @@ struct QuadModLL {
     // Port note: This used to be passed in Aux3. This call might
     // expect more state in Aux, ugh.
 
-    // Compute square root of discriminant.
-    BigInt SqrRoot = ComputeSquareRootModPowerOfP(
+    // Compute square root of discriminant. Note that we do get
+    // negative results here.
+    int64_t sqr_root = ComputeSquareRootModPowerOfP(
         tmp, prime, discr, nbrBitsSquareRoot);
 
     // Multiply by square root of discriminant by prime^deltaZeros.
@@ -684,18 +701,14 @@ struct QuadModLL {
     // correctbits is the same as the exponent.
     // const BigInt Q(vv);
 
-    const BigInt &S1 = SqrRoot;
-
-    int64_t sol1 = BigInt::CMod(S1 * aodd, vv);
+    int64_t sol1 = BasicModMult64(sqr_root, aodd, vv);
     if (sol1 < 0) {
       sol1 += vv;
     }
 
     Sols[factorIndex].solution1 = sol1;
 
-    const BigInt S2 = -SqrRoot;
-
-    int64_t sol2 = BigInt::CMod(S2 * aodd, vv);
+    int64_t sol2 = BasicModMult64(-sqr_root, aodd, vv);
     if (sol2 < 0) {
       sol2 += vv;
     }
