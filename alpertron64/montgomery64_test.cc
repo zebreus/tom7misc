@@ -1,9 +1,13 @@
 
 #include "montgomery64.h"
+
 #include <cstdint>
+#include <initializer_list>
 
 #include "base/logging.h"
 #include "base/int128.h"
+#include "arcfour.h"
+#include "randutil.h"
 #include "ansi.h"
 
 static inline uint64_t PlusMod(uint64_t a, uint64_t b, uint64_t m) {
@@ -95,10 +99,45 @@ static void TestBasic() {
   }
 }
 
+static void TestRandom() {
+  ArcFour rc("test");
+
+  static constexpr int ITERS = 100000;
+  for (int i = 0; i < ITERS; i++) {
+    // TODO: Should be able to make this work for full 64 bits,
+    // but we don't actually need that yet.
+    constexpr uint64_t BITS63 = 0x7fffffffffffffffULL;
+    const uint64_t m = (Rand64(&rc) & BITS63) | 0b1;
+    const uint64_t amod = (Rand64(&rc) & BITS63) % m;
+    const uint64_t bmod = (Rand64(&rc) & BITS63) % m;
+
+    const MontgomeryRep64 rep(m);
+
+    const Montgomery64 am = rep.ToMontgomery(amod);
+    CHECK(rep.ToInt(am) == amod) << amod << " mod " << m;
+
+    const Montgomery64 bm = rep.ToMontgomery(bmod);
+    CHECK(rep.ToInt(bm) == bmod) << bmod << " mod " << m;
+
+    const Montgomery64 aplusb = rep.Add(am, bm);
+    CHECK(rep.ToInt(aplusb) == PlusMod(amod, bmod, m));
+
+    const Montgomery64 aminusb = rep.Sub(am, bm);
+    CHECK(rep.ToInt(aminusb) == SubMod(amod, bmod, m));
+
+    const Montgomery64 bminusa = rep.Sub(bm, am);
+    CHECK(rep.ToInt(bminusa) == SubMod(bmod, amod, m));
+
+    const Montgomery64 atimesb = rep.Mult(am, bm);
+    CHECK(rep.ToInt(atimesb) == MultMod(amod, bmod, m));
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
 
   TestBasic();
+  TestRandom();
 
   printf("OK");
   return 0;

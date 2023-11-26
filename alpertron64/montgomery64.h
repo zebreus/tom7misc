@@ -14,8 +14,8 @@ struct MontgomeryRep64 {
   // The modulus we're working in.
   uint64_t modulus;
   uint64_t inv;
-  // This is the representation of 1 in montgomery form.
-  uint64_t r;
+  // (2^64)^2 mod modulus.
+  uint64_t r_squared;
 
   MontgomeryRep64(uint64_t modulus) : modulus(modulus) {
     // PERF can be done in fewer steps with tricks
@@ -23,18 +23,28 @@ struct MontgomeryRep64 {
     // PERF don't need this many steps!
     for (int i = 0; i < 7; i++)
       inv *= 2 - modulus * inv;
+
+    // Initialize r_squared = 2^128 mod modulus.
+    uint64_t r2 = -modulus % modulus;
+    for (int i = 0; i < 2; i++) {
+      r2 <<= 1;
+      if (r2 >= modulus)
+        r2 -= modulus;
+    }
+    // r2 = r * 2^2 mod m
+
+    for (int i = 0; i < 5; i++)
+      r2 = Mult(Montgomery64{.x = r2}, Montgomery64{.x = r2}).x;
+
+    // r2 = r * (2^2)^(2^5) = 2^64
+    r_squared = r2;
   }
 
-  constexpr Montgomery64 One() const { return Montgomery64{.x = r}; }
-  constexpr Montgomery64 ToMontgomery(uint64_t x) const {
+  constexpr Montgomery64 One() const { return Montgomery64{.x = r_squared}; }
+  inline constexpr Montgomery64 ToMontgomery(uint64_t x) const {
+    // PERF necessary?
     x %= modulus;
-    for (int i = 0; i < 64; i++) {
-      x <<= 1;
-      if (x >= modulus) {
-        x -= modulus;
-      }
-    }
-    return Montgomery64{.x = x};
+    return Mult(Montgomery64{.x = x}, One());
     // x * r mod modulus
     // return BasicModMultU64(x, r, modulus);
   }
