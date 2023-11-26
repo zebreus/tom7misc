@@ -22,6 +22,8 @@
 #include <optional>
 #include <utility>
 #include <numeric>
+#include <bit>
+#include <cstdint>
 
 #include <stdlib.h>
 #include <string.h>
@@ -49,6 +51,42 @@ inline uint64_t Sqrt64(uint64_t n) {
   uint64_t r = std::sqrt((double)n);
   return r - (r * r - 1 >= n);
 }
+
+// From ../sos/sos-util (see discussion there). This gives us the
+// number of solutions, which allows us to exit early.
+inline int ChaiWahWuFromFactors(const uint64_t sum,
+                                const uint64_t *factors,
+                                const uint8_t *exponents,
+                                int num_factors) {
+  auto AllEvenPowers = [&exponents, num_factors]() {
+      for (int i = 0; i < num_factors; i++) {
+        if (exponents[i] & 1) return false;
+      }
+      return true;
+    };
+
+  // If all of the powers are even, then it is itself a square.
+  // So we have e.g. x^2 * y^2 * z^4 = (xyz^2)^2 + 0^2
+  int first = AllEvenPowers() ? 1 : 0;
+
+  int m = 1;
+  for (int i = 0; i < num_factors; i++) {
+    const uint64_t p = factors[i];
+    const int e = exponents[i];
+    if (p != 2) {
+      m *= (p % 4 == 1) ? e + 1 : ((e + 1) & 1);
+    }
+  }
+
+  int b = 0;
+  if (m & 1) {
+    int bits = std::bit_width<uint64_t>(~sum & (sum - 1));
+    b = ((bits & 1) << 1) - 1;
+  }
+
+  return first + ((m + b) >> 1);
+}
+
 
 struct Quad {
   // Solutions accumulated here.

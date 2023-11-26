@@ -18,8 +18,9 @@
 #ifndef _QUADMODLL_H
 #define _QUADMODLL_H
 
-#include "bignbr.h"
-#include <functional>
+#include <cstdint>
+#include <vector>
+#include <utility>
 
 // With A,B,C = 1,0,1
 // Returns the values that are solutions (i.e. what the original
@@ -29,5 +30,12 @@ std::vector<uint64_t> SolveEquation(
     // factors of N.
     const std::vector<std::pair<uint64_t, int>> &factors,
     bool *interesting_coverage = nullptr);
+
+// Exposed for testing.
+int64_t SqrtModP(uint64_t base,
+                 uint64_t prime,
+                 int64_t discr,
+                 uint64_t term,
+                 int nbrBitsSquareRoot);
 
 #endif

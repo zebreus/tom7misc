@@ -46,6 +46,10 @@ rm -f coverage.out
 # x = 82432 y = 173255
 ./quad.exe 36812329649 >> coverage.out
 
+# Produces a SqrtModP that's greater than 2^64.
+# Lots of solutions, e.g. x=1503378, y=4593655
+./quad.exe 23361811669909 >> coverage.out
+
 dos2unix -q coverage.out
 diff coverage.golden coverage.out
 exit_status=$?

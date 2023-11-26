@@ -15,6 +15,7 @@
 
 #include "modmult.h"
 #include "bigconv.h"
+#include "quadmodll.h"
 
 static void TestDivFloor() {
   for (int n = -15; n < 16; n++) {
@@ -428,11 +429,19 @@ static void TestModPow() {
   printf("ModPow " AGREEN("OK") "\n");
 }
 
+static void TestSqrtModP() {
+  {
+    //    int64_t s = SqrtModP(13, 17, 118587876493, 9);
+  }
+}
+
 int main(int argc, char **argv) {
   ANSI::Init();
   TestDivFloor();
   TestGCD();
   TestJacobi();
+
+  TestSqrtModP();
 
   TestNumLimbs();
 

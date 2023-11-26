@@ -33,6 +33,8 @@
 #include "base/stringprintf.h"
 #include "base/logging.h"
 
+#include "util.h"
+
 static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 
@@ -160,6 +162,9 @@ struct QuadModLL {
           Tmp[T1] = quot;
         }
 
+        // PERF: If the loop above was entered, then Tmp[T1] should
+        // already be in [0, term), right?
+        CHECK(Tmp[T1] >= 0 && Tmp[T1] < term);
         Tmp[T1] %= term;
 
         // Compute currentSolution as Tmp[T1] * Mult + currentSolution
@@ -498,11 +503,13 @@ struct QuadModLL {
   static
   int64_t ComputeSquareRootModPowerOfP(uint64_t base,
                                        uint64_t prime,
-                                       int64_t Discr,
+                                       int64_t discr,
+                                       // prime^exp
+                                       uint64_t term,
                                        int nbrBitsSquareRoot) {
     // BigInt Base(base);
     // BigInt Prime(prime);
-    // fprintf(stderr, "CSRMPOP Discr=%lld\n", Discr);
+    // fprintf(stderr, "CSRMPOP discr=%lld\n", discr);
     const BigInt SqrtDisc = GetSqrtDisc(base, prime);
     uint64_t sqrt_disc = GetU64(SqrtDisc);
 
@@ -531,7 +538,7 @@ struct QuadModLL {
       BigInt Tmp1 = SqrRoot * SqrRoot;
       BigInt Tmp2 = Tmp1 % Q;
 
-      Tmp1 = Tmp2 * Discr;
+      Tmp1 = Tmp2 * discr;
 
       Tmp2 = Tmp1 % Q;
       Tmp2 = 3 - Tmp2;
@@ -551,35 +558,46 @@ struct QuadModLL {
 
     // Get square root of discriminant from its inverse by multiplying
     // by discriminant.
-    SqrRoot = SqrRoot * Discr;
+    SqrRoot = SqrRoot * discr;
     SqrRoot %= Q;
 
-    if (VERBOSE)
-    fprintf(stderr, "Sqrt(%llu) mod %llu (bits: %d) = %s\n",
+    // Port note: Alpetron would just return a potentially giant number
+    // here. But we only use it modularly, so reduce it now.
+    int64_t sqr_root = SqrRoot % (int64_t)term;
+
+    auto Problem = [&]() {
+        return StringPrintf(
+            "Sqrt(%llu) mod p=%llu (discr: %lld, term: %llu; bits: %d)\n"
+            "Result = %s\n"
+            "With Q: %s\n",
             base,
             prime,
+            discr,
+            term,
             nbrBitsSquareRoot,
-            SqrRoot.ToString().c_str());
+            SqrRoot.ToString().c_str(),
+            Q.ToString().c_str());
+      };
 
+    if (VERBOSE)
+      fprintf(stderr, "%s", Problem().c_str());
+
+    /*
     std::optional<int64_t> uo = SqrRoot.ToInt();
     if (!uo.has_value()) {
-      printf("\033[2J");
+      // printf("\033[2J");
       fflush(stderr);
       fprintf(stderr, "\n\n\n\n\n\n\n\n\n\n\n");
-      fprintf(stderr, "Sqrt(%llu) mod %llu (bits: %d) = %s\n",
-              base,
-              prime,
-              nbrBitsSquareRoot,
-              SqrRoot.ToString().c_str());
+      fprintf(stderr, "%s", Problem().c_str());
       fflush(stderr);
-      CHECK(false) <<
-        StringPrintf("Sqrt(%llu) mod %llu (bits: %d) = %s\n",
-                     base,
-                     prime,
-                     nbrBitsSquareRoot,
-                     SqrRoot.ToString().c_str());
+
+      Util::WriteFile("error.txt", Problem());
+
+      CHECK(false) << Problem();
     }
     return uo.value();
+    */
+    return sqr_root;
   }
 
   // Solve Ax^2 + Bx + C = 0 (mod p^expon).
@@ -588,7 +606,7 @@ struct QuadModLL {
       int64_t discr,
       uint64_t prime) {
 
-    // fprintf(stderr, "SQEMP Discr=%lld\n", Discr);
+    // fprintf(stderr, "SQEMP discr=%lld\n", discr);
 
     // Number of bits of square root of discriminant to compute:
     //   expon + bits_a + 1,
@@ -602,7 +620,7 @@ struct QuadModLL {
     int64_t aodd = 1;
     int bitsAZero = 0;
 
-    const uint64_t vv = Pow64(prime, expon);
+    const uint64_t term = Pow64(prime, expon);
 
     CHECK(prime > 2);
 
@@ -623,15 +641,15 @@ struct QuadModLL {
 
     // Discriminant is -4, but if there is a factor of 3^1, then
     // we do get -1 here.
-    discr %= (int64_t)vv;
-    // fprintf(stderr, "Now Discr %% %llu = %lld\n", vv, Discr);
+    discr %= (int64_t)term;
+    // fprintf(stderr, "Now Discr %% %llu = %lld\n", term, Discr);
 
     CHECK(aodd == 1) << "Loop above will not find any divisors of 1";
     CHECK(bitsAZero == 0) << "Loop above will not find any divisors of 1";
 
     /*
-    fprintf(stderr, "Discriminant: %s VV %s\n",
-            Discriminant.ToString().c_str(), VV.ToString().c_str());
+    fprintf(stderr, "Discriminant: %s TERM %s\n",
+            Discriminant.ToString().c_str(), TERM.ToString().c_str());
     */
 
     // Get maximum power of prime which divides discriminant.
@@ -656,7 +674,7 @@ struct QuadModLL {
     // CHECK(AOdd == 2);
 
     // Negate 2*A
-    aodd = ModularInverse64((int64_t)vv - 2, vv);
+    aodd = ModularInverse64((int64_t)term - 2, term);
 
     if (SELF_CHECK) {
       CHECK(discr != 0) << "Discriminant should be -1 or -4 here.";
@@ -669,7 +687,7 @@ struct QuadModLL {
     // but ends up just being expon because those are zero.
     const int nbrBitsSquareRoot = expon;
 
-    discr += vv;
+    discr += term;
 
     if (SELF_CHECK) {
       CHECK(discr >= 0) << "We added 3 to -1 or 5+ to -4.";
@@ -688,7 +706,7 @@ struct QuadModLL {
     // Compute square root of discriminant. Note that we do get
     // negative results here.
     int64_t sqr_root = ComputeSquareRootModPowerOfP(
-        tmp, prime, discr, nbrBitsSquareRoot);
+        tmp, prime, discr, term, nbrBitsSquareRoot);
 
     // Multiply by square root of discriminant by prime^deltaZeros.
     // But deltaZeros is 0.
@@ -699,22 +717,22 @@ struct QuadModLL {
     // Compute increment.
     // Q <- prime^correctBits
     // correctbits is the same as the exponent.
-    // const BigInt Q(vv);
+    // const BigInt Q(term);
 
-    int64_t sol1 = BasicModMult64(sqr_root, aodd, vv);
+    int64_t sol1 = BasicModMult64(sqr_root, aodd, term);
     if (sol1 < 0) {
-      sol1 += vv;
+      sol1 += term;
     }
 
     Sols[factorIndex].solution1 = sol1;
 
-    int64_t sol2 = BasicModMult64(-sqr_root, aodd, vv);
+    int64_t sol2 = BasicModMult64(-sqr_root, aodd, term);
     if (sol2 < 0) {
-      sol2 += vv;
+      sol2 += term;
     }
 
     Sols[factorIndex].solution2 = sol2;
-    Sols[factorIndex].increment = vv;
+    Sols[factorIndex].increment = term;
     return true;
   }
 
@@ -858,4 +876,14 @@ std::vector<uint64_t> SolveEquation(
   }
 
   return std::move(qmll->values);
+}
+
+int64_t SqrtModP(uint64_t base,
+                 uint64_t prime,
+                 int64_t discr,
+                 uint64_t term,
+                 int nbrBitsSquareRoot) {
+  return QuadModLL::ComputeSquareRootModPowerOfP(base, prime, discr,
+                                                 term,
+                                                 nbrBitsSquareRoot);
 }
