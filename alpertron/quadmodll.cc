@@ -276,6 +276,8 @@ struct QuadModLL {
       // PERF: Directly
       BigInt CurrentSolution = Tmp[0];
 
+      // PERF: We keep computing Prime^Exp. We could just do it once
+      // at the beginning of the function.
       const BigInt &Prime = factors[0].first;
 
       BigInt Mult = BigInt::Pow(Prime, factors[0].second);
@@ -624,7 +626,7 @@ struct QuadModLL {
     if (B == 0) bitsBZero = BITS_PER_GROUP;
 
     int bitsCZero = BigInt::BitwiseCtz(C);
-    const BigInt COdd = C >> bitsCZero;
+    // const BigInt COdd = C >> bitsCZero;
     if (C == 0) bitsCZero = BITS_PER_GROUP;
 
     if (bitsAZero > 0 && bitsBZero > 0 && bitsCZero > 0) {
@@ -928,6 +930,8 @@ struct QuadModLL {
     const BigInt SqrtDisc = GetSqrtDisc(*params, Base, Prime);
 
     // Obtain inverse of square root stored in SqrtDisc (mod prime).
+    // PERF: Maybe can use BigInt::ModInv here, though not if
+    // we need to preserve montgomery form?
     BigInt SqrRoot =
       BigIntModularDivision(*params, BigInt(1), SqrtDisc, Prime);
 
@@ -967,6 +971,8 @@ struct QuadModLL {
     // by discriminant.
     SqrRoot *= Discriminant;
     SqrRoot %= Q;
+
+    // printf("SqrRoot: %s\n", SqrRoot.ToString().c_str());
     return SqrRoot;
   }
 
@@ -1012,10 +1018,7 @@ struct QuadModLL {
     } else {
       // Discriminant is not zero.
       deltaZeros = 0;
-      for (;;) {
-        if (!BigInt::DivisibleBy(Discriminant, Prime)) {
-          break;
-        }
+      while (BigInt::DivisibleBy(Discriminant, Prime)) {
         Discriminant = BigInt::DivExact(Discriminant, Prime);
         deltaZeros++;
       }
@@ -1050,6 +1053,7 @@ struct QuadModLL {
       const std::unique_ptr<MontgomeryParams> params =
         GetMontgomeryParams(Tmp1);
 
+      // PERF: is 1/aodd modular inverse? Faster?
       AOdd = BigIntModularDivision(*params, BigInt(1), AOdd, Tmp1);
     }
 

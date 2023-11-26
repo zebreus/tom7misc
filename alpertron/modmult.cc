@@ -110,6 +110,8 @@ static void ModMultInt(limb* factorBig, int factorInt, limb* result,
 // Compute power = base^exponent (mod modulus)
 // Assumes GetMontgomeryParams routine for modulus already called.
 // This works only for odd moduli.
+//
+// TODO: Benchmark vs BigInt version.
 BigInt BigIntModularPower(const MontgomeryParams &params,
                           const BigInt &Base, const BigInt &Exponent) {
 
@@ -321,6 +323,9 @@ static void InitHighUandV(
   *pHighU = highU;
   *pHighV = highV;
 }
+
+// TODO: Consider comparing BigInt::ModInverse. But would need to deal
+// with Montgomery form.
 
 /***********************************************************************/
 /* NAME: ModInvBigNbr                                                  */

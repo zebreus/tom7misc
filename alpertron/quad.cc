@@ -1563,7 +1563,8 @@ struct Quad {
       Modulus = BigInt::DivExact(Modulus, GcdAll);
     }
 
-    BigInt ValNn = Modulus;
+    // PERF just substitute this through
+    const BigInt &ValNn = Modulus;
 
     if (ValNn == 1) {
       // All values from 0 to GcdAll - 1 are solutions.
@@ -1682,6 +1683,7 @@ struct Quad {
                 Alpha, Beta, Div, Discr);
           }),
         coeff_quadr, coeff_linear, coeff_indep,
+        // XXX ValNn arg is always the same as Modulus
         Modulus, GcdAll, ValNn,
         &interesting);
     if (interesting) {
@@ -1865,6 +1867,11 @@ struct Quad {
       }
       printf("\n");
     }
+
+    // PERF! The whole point of this is to maintain the list of factors
+    // so that we can pass them in, and not have to re-factor. See
+    // alpertron64.
+
     // Find all indices of prime factors with even multiplicity.
     // (XXX parallel. could be pair)
     // Index of prime factors with even multiplicity
@@ -1883,6 +1890,7 @@ struct Quad {
       }
     }
 
+    // XXX base it on the size of factors
     std::vector<int> counters(400, 0);
     std::vector<bool> is_descending(400, false);
 

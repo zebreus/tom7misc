@@ -289,6 +289,10 @@ echo quad tests
 # solution 261064310 -209645261
 ./quad.exe 8388608 0 0 -32 -268435456 -571722060598227919384896 >> coverage.out
 
+# This one was a problem for alpertron64
+# SqrRoot > 2^64
+./quad.exe 1 0 1 0 0 -23361811669909 >> coverage.out
+
 echo factor tests
 echo "" >> coverage.out
 echo "FACTORING" >> coverage.out
