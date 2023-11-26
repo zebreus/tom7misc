@@ -208,11 +208,6 @@ struct QuadModLL {
   // If a solution is found, writes to Solution(1,2)[factorIndex]
   // and returns true.
   bool SolveQuadraticEqModPowerOf2(int exponent, int factorIndex) {
-    /*
-    static constexpr int64_t A = 1;
-    static constexpr int64_t B = 0;
-    static constexpr int64_t C = 1;
-    */
 
     CHECK(exponent > 0);
     CHECK(exponent < 64);

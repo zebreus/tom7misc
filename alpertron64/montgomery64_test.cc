@@ -46,6 +46,47 @@ static inline uint64_t MultMod(uint64_t a, uint64_t b,
   return Uint128Low64(rr);
 }
 
+// Linear time!
+static inline uint64_t SimpleModPow(uint64_t b, uint64_t e,
+                                    uint64_t m) {
+  uint64_t res = 1;
+  for (uint64_t i = 0; i < e; i++) {
+    res *= b;
+    res %= m;
+  }
+  return res;
+}
+
+static void TestOne() {
+  for (const uint64_t m : std::initializer_list<uint64_t>{
+      3, 5, 7, 9, 11, 15, 121, 31337, 131073, 23847198347561,
+    }) {
+    CHECK(m > 1 && (m & 1) == 1) << m;
+    MontgomeryRep64 rep(m);
+
+    // printf("[%llu] one: %llu mont -> %llu reg\n", m, rep.One().x,
+    // rep.ToInt(rep.One()));
+    CHECK(rep.ToInt(rep.One()) == 1);
+    CHECK(rep.One().x == rep.ToMontgomery(1).x);
+  }
+}
+
+static void TestExp() {
+  {
+    const uint64_t m = 12345678901ULL;
+    MontgomeryRep64 rep(m);
+
+    Montgomery64 a = rep.Pow(rep.ToMontgomery(2), 80);
+    uint64_t ma = rep.ToInt(a);
+    uint64_t sa = SimpleModPow(2, 80, m);
+    CHECK(ma == sa) << ma << " " << sa;
+
+    Montgomery64 b = rep.Pow(rep.ToMontgomery(1110238741), 12345);
+    CHECK(rep.ToInt(b) == SimpleModPow(1110238741, 12345, m));
+  }
+
+  // Could test more...
+}
 
 static void TestBasic() {
   for (uint64_t m : std::initializer_list<uint64_t>{
@@ -136,7 +177,9 @@ static void TestRandom() {
 int main(int argc, char **argv) {
   ANSI::Init();
 
+  TestOne();
   TestBasic();
+  TestExp();
   TestRandom();
 
   printf("OK");

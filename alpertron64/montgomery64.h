@@ -11,11 +11,13 @@ struct Montgomery64 {
   uint64_t x;
 };
 
-// Defines a montgomery form.
+// Defines a montgomery form, i.e., a specific modulus.
 struct MontgomeryRep64 {
   // The modulus we're working in.
   uint64_t modulus;
   uint64_t inv;
+  // 2^64 mod modulus, which is the representation of 1.
+  Montgomery64 r;
   // (2^64)^2 mod modulus.
   uint64_t r_squared;
 
@@ -40,13 +42,15 @@ struct MontgomeryRep64 {
 
     // r2 = r * (2^2)^(2^5) = 2^64
     r_squared = r2;
+
+    r = Mult(Montgomery64{.x = 1}, Montgomery64{.x = r_squared});
   }
 
-  constexpr Montgomery64 One() const { return Montgomery64{.x = r_squared}; }
+  constexpr Montgomery64 One() const { return r; }
   inline constexpr Montgomery64 ToMontgomery(uint64_t x) const {
     // PERF necessary?
     x %= modulus;
-    return Mult(Montgomery64{.x = x}, One());
+    return Mult(Montgomery64{.x = x}, Montgomery64{.x = r_squared});
   }
 
   inline constexpr Montgomery64 Add(Montgomery64 a, Montgomery64 b) const {
@@ -82,6 +86,28 @@ struct MontgomeryRep64 {
   // Result will be in [0, modulus).
   inline constexpr uint64_t ToInt(Montgomery64 a) const {
     return Reduce((uint128_t)a.x);
+  }
+
+  // b^e mod m.
+  // Note that the exponent e is a normal number.
+  inline constexpr Montgomery64 Pow(Montgomery64 b, uint64_t e) {
+    // PowM(uint64_t b, uint64_t e, uint64_t n, uint64_t ni, uint64_t one) {
+    Montgomery64 y = One();
+
+    if (e & 1)
+      y = b;
+
+    while (e != 0) {
+      // Square b
+      b = Mult(b, b);
+      e >>= 1;
+
+      if (e & 1) {
+        y = Mult(y, b);
+      }
+    }
+
+    return y;
   }
 
  private:
