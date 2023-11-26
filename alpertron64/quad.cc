@@ -54,25 +54,22 @@ inline uint64_t Sqrt64(uint64_t n) {
 
 // From ../sos/sos-util (see discussion there). This gives us the
 // number of solutions, which allows us to exit early.
-inline int ChaiWahWuFromFactors(const uint64_t sum,
-                                const uint64_t *factors,
-                                const uint8_t *exponents,
-                                int num_factors) {
-  auto AllEvenPowers = [&exponents, num_factors]() {
-      for (int i = 0; i < num_factors; i++) {
-        if (exponents[i] & 1) return false;
+inline int ChaiWahWuFromFactors(
+    uint64_t sum,
+    const std::vector<std::pair<uint64_t, int>> &factors) {
+  auto AllEvenPowers = [&factors]() {
+      for (int i = 0; i < (int)factors.size(); i++) {
+        if (factors[i].second & 1) return false;
       }
       return true;
     };
 
   // If all of the powers are even, then it is itself a square.
   // So we have e.g. x^2 * y^2 * z^4 = (xyz^2)^2 + 0^2
-  int first = AllEvenPowers() ? 1 : 0;
+  const int first = AllEvenPowers() ? 1 : 0;
 
   int m = 1;
-  for (int i = 0; i < num_factors; i++) {
-    const uint64_t p = factors[i];
-    const int e = exponents[i];
+  for (const auto &[p, e] : factors) {
     if (p != 2) {
       m *= (p % 4 == 1) ? e + 1 : ((e + 1) & 1);
     }
@@ -90,6 +87,8 @@ inline int ChaiWahWuFromFactors(const uint64_t sum,
 
 struct Quad {
   // Solutions accumulated here.
+  // TODO: Exit early once we reach the expected number.
+  const int expected_solutions;
   Solutions solutions;
 
   inline void RecordSolutionXY(int64_t x, int64_t y) {
@@ -210,7 +209,8 @@ struct Quad {
     return true;
   }
 
-  void SolutionX(int64_t value, uint64_t modulus,
+  // Return false if we have found all the solutions.
+  bool SolutionX(int64_t value, uint64_t modulus,
                  uint64_t e) {
     if (VERBOSE) {
       fprintf(stderr, "SolutionX(%llu, %llu)\n", value, modulus);
@@ -230,6 +230,7 @@ struct Quad {
     }
 
     CallbackQuadModElliptic(value, modulus, e);
+    return solutions.points.size() < expected_solutions;
   }
 
   // Solve congruence an^2 + bn + c = 0 (mod m) where m is different from zero.
@@ -285,7 +286,9 @@ struct Quad {
       SolveEquation(modulus, factors, &interesting);
 
     for (uint64_t value : values) {
-      SolutionX(value, modulus, e);
+      if (!SolutionX(value, modulus, e)) {
+        break;
+      }
     }
 
     if (interesting) {
@@ -347,7 +350,6 @@ struct Quad {
 
     // Note that we modify the factors (multiplicities) in place below.
 
-    CHECK(k > 1);
     // fprintf(stderr, "(outer) Factoring %llu\n", k);
     if (SELF_CHECK) {
       std::vector<std::pair<uint64_t, int>> ref_factors =
@@ -415,6 +417,10 @@ struct Quad {
     // right hand side, so we only have to factor it once.
 
     for (;;) {
+
+      // Once we have all the solutions, stop looking.
+      if (solutions.points.size() == expected_solutions)
+        break;
 
       // This code maintains the factor list as it computes different k.
       if (SELF_CHECK) {
@@ -687,14 +693,21 @@ struct Quad {
     }
   }
 
-  Quad() {}
+  Quad(int expected_solutions) : expected_solutions(expected_solutions) {
+    solutions.points.reserve(expected_solutions);
+  }
 };
 
 }  // namespace
 
 Solutions SolveQuad(uint64_t f,
                     const std::vector<std::pair<uint64_t, int>> &factors) {
-  std::unique_ptr<Quad> quad(new Quad);
+  const int expected_solutions = ChaiWahWuFromFactors(f, factors);
+  std::unique_ptr<Quad> quad(new Quad(expected_solutions));
   quad->SolveQuad(f, factors);
+  CHECK(quad->solutions.points.size() == expected_solutions) <<
+    "Sum: " << f <<
+    "\nexpected: " << expected_solutions <<
+    "\ngot: " << quad->solutions.points.size();
   return std::move(quad->solutions);
 }

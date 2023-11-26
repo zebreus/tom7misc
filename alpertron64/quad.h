@@ -22,8 +22,8 @@ struct MaxValue {
 };
 
 struct Solutions {
-  bool interesting_coverage = false;
   std::vector<PointSolution> points;
+  bool interesting_coverage = false;
 
   // From GetNextConvergent
   // MaxValue o1, o2;

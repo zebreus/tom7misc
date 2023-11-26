@@ -644,8 +644,10 @@ struct QuadModLL {
     discr %= (int64_t)term;
     // fprintf(stderr, "Now Discr %% %llu = %lld\n", term, Discr);
 
-    CHECK(aodd == 1) << "Loop above will not find any divisors of 1";
-    CHECK(bitsAZero == 0) << "Loop above will not find any divisors of 1";
+    if (SELF_CHECK) {
+      CHECK(aodd == 1) << "Loop above will not find any divisors of 1";
+      CHECK(bitsAZero == 0) << "Loop above will not find any divisors of 1";
+    }
 
     /*
     fprintf(stderr, "Discriminant: %s TERM %s\n",
