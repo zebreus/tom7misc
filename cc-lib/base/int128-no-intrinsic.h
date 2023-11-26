@@ -233,7 +233,7 @@ constexpr int128 operator-(int128 lhs, int128 rhs) {
       lhs, rhs);
 }
 
-inline int128 operator*(int128 lhs, int128 rhs) {
+constexpr inline int128 operator*(int128 lhs, int128 rhs) {
   return MakeInt128(
       int128_internal::BitCastToSigned(Uint128High64(uint128(lhs) * rhs)),
       Uint128Low64(uint128(lhs) * rhs));

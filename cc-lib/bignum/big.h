@@ -93,6 +93,7 @@ struct BigInt {
   // Ignores sign of b. Result is always in [0, |b|).
   // For the C % operator, use CMod.
   inline static BigInt Mod(const BigInt &a, const BigInt &b);
+  // TODO: Could offer uint64_t Mod.
 
   // Modulus with C99/C++11 semantics: Division truncates towards
   // zero; modulus has the same sign as a.

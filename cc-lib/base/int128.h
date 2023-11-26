@@ -627,7 +627,7 @@ constexpr uint128 operator<<(uint128 lhs, int amount);
 constexpr uint128 operator>>(uint128 lhs, int amount);
 constexpr uint128 operator+(uint128 lhs, uint128 rhs);
 constexpr uint128 operator-(uint128 lhs, uint128 rhs);
-uint128 operator*(uint128 lhs, uint128 rhs);
+constexpr uint128 operator*(uint128 lhs, uint128 rhs);
 uint128 operator/(uint128 lhs, uint128 rhs);
 uint128 operator%(uint128 lhs, uint128 rhs);
 
@@ -1005,7 +1005,7 @@ constexpr uint128 operator-(uint128 lhs, uint128 rhs) {
 #endif
 }
 
-inline uint128 operator*(uint128 lhs, uint128 rhs) {
+constexpr inline uint128 operator*(uint128 lhs, uint128 rhs) {
 #if defined(ABSL_HAVE_INTRINSIC_INT128)
   // TODO(strel) Remove once alignment issues are resolved and unsigned __int128
   // can be used for uint128 storage.
@@ -1096,7 +1096,7 @@ inline int128& int128::operator=(unsigned long long v) {
 constexpr int128 operator-(int128 v);
 constexpr int128 operator+(int128 lhs, int128 rhs);
 constexpr int128 operator-(int128 lhs, int128 rhs);
-int128 operator*(int128 lhs, int128 rhs);
+constexpr int128 operator*(int128 lhs, int128 rhs);
 int128 operator/(int128 lhs, int128 rhs);
 int128 operator%(int128 lhs, int128 rhs);
 constexpr int128 operator|(int128 lhs, int128 rhs);

@@ -238,7 +238,7 @@ constexpr int128 operator-(int128 lhs, int128 rhs) {
   return static_cast<__int128>(lhs) - static_cast<__int128>(rhs);
 }
 
-inline int128 operator*(int128 lhs, int128 rhs) {
+constexpr inline int128 operator*(int128 lhs, int128 rhs) {
   return static_cast<__int128>(lhs) * static_cast<__int128>(rhs);
 }
 
