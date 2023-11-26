@@ -230,7 +230,7 @@ struct Quad {
     }
 
     CallbackQuadModElliptic(value, modulus, e);
-    return solutions.points.size() < expected_solutions;
+    return (int)solutions.points.size() < expected_solutions;
   }
 
   // Solve congruence an^2 + bn + c = 0 (mod m) where m is different from zero.
@@ -419,7 +419,7 @@ struct Quad {
     for (;;) {
 
       // Once we have all the solutions, stop looking.
-      if (solutions.points.size() == expected_solutions)
+      if ((int)solutions.points.size() == expected_solutions)
         break;
 
       // This code maintains the factor list as it computes different k.
@@ -705,7 +705,7 @@ Solutions SolveQuad(uint64_t f,
   const int expected_solutions = ChaiWahWuFromFactors(f, factors);
   std::unique_ptr<Quad> quad(new Quad(expected_solutions));
   quad->SolveQuad(f, factors);
-  CHECK(quad->solutions.points.size() == expected_solutions) <<
+  CHECK((int)quad->solutions.points.size() == expected_solutions) <<
     "Sum: " << f <<
     "\nexpected: " << expected_solutions <<
     "\ngot: " << quad->solutions.points.size();

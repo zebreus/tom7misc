@@ -50,7 +50,7 @@ rm -f coverage.out
 # Lots of solutions, e.g. x=1503378, y=4593655
 ./quad.exe 23361811669909 >> coverage.out
 
-# dos2unix -q coverage.out
+dos2unix -q coverage.out
 diff coverage.golden coverage.out
 exit_status=$?
 if [ $exit_status -eq 0 ]; then
