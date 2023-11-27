@@ -23,16 +23,4 @@
 // size is passed around separately (sometimes in some global state,
 // like when everything is being computed mod some number).
 
-// Return the number of limbs needed to represent the BigInt in alpertron's
-// format. Always at least one.
-int BigIntNumLimbs(const BigInt &b);
-
-BigInt LimbsToBigInt(const limb *limbs, int num_limbs);
-// Writes to limbs (must be enough space). Returns num_limbs.
-int BigIntToLimbs(const BigInt &b, limb *limbs);
-// Zero-padded. Must be enough space.
-// LimbsToBigInt can be used as the inverse, as it will just
-// ignore the zero padding.
-void BigIntToFixedLimbs(const BigInt &b, size_t num_limbs, limb *limbs);
-
 #endif

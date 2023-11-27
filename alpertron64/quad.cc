@@ -35,8 +35,6 @@
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
-#include "bignum/big.h"
-#include "bignum/big-overloads.h"
 #include "factorization.h"
 
 using namespace std;
@@ -132,11 +130,6 @@ struct Quad {
     */
 
     int64_t tmp = DivFloor64(u, v);
-
-    if (SELF_CHECK) {
-      BigInt Tmp = BigInt::DivFloor(BigInt(u), BigInt(v));
-      CHECK(Tmp == tmp);
-    }
 
     // Compute new value of U and V.
     int64_t tmp2 = u - tmp * v;
@@ -640,10 +633,8 @@ struct Quad {
       const int128_t uu1 = u1;
       const int128_t o1 = (int128_t(p) * uu1 +
                            int128_t(q) * int128_t(v1)) * uu1;
-      // const BigInt O1 = (P * u1 + Q * v1) * u1;
       const int128_t vv1 = v1;
       const int128_t o2 = int128_t(1) - (int128_t(modulus) * vv1 * vv1);
-      // const BigInt O2 = 1 - (R * v1) * v1;
 
       if (o1 == o2) {
         /*

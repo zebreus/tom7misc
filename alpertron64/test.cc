@@ -120,31 +120,6 @@ static void TestGCD() {
   printf("GCD " AGREEN("OK") "\n");
 }
 
-static void TestNumLimbs() {
-  for (const std::string bs : {"0", "1", "2", "3", "4", "5",
-      "2147483647", "2147483648", "2147483649",
-      "4294967295", "4294967296", "4294967297",
-      "18446744073709551615", "18446744073709551616", "18446744073709551617",
-      "115792089237316195423570985008687907853269984665640564039457584007913129639935",
-      "115792089237316195423570985008687907853269984665640564039457584007913129639936",
-      "115792089237316195423570985008687907853269984665640564039457584007913129639937"
-      "1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"}) {
-    BigInt B(bs);
-
-    const int num_limbs = BigIntNumLimbs(B);
-
-    std::vector<limb> limbs;
-    limbs.resize(num_limbs);
-    BigIntToFixedLimbs(B, num_limbs, limbs.data());
-
-    BigInt C = LimbsToBigInt(limbs.data(), num_limbs);
-
-    CHECK(B == C) << B.ToString() << "\n" << C.ToString();
-  }
-
-  printf("NumLimbs " AGREEN("OK") "\n");
-}
-
 static void TestSqrtModP() {
   {
     //    int64_t s = SqrtModP(13, 17, 118587876493, 9);
@@ -158,8 +133,6 @@ int main(int argc, char **argv) {
   TestJacobi();
 
   TestSqrtModP();
-
-  TestNumLimbs();
 
   printf("All explicit tests " AGREEN("OK") "\n");
   return 0;
