@@ -7,11 +7,20 @@
 
 // A 64-bit number in montgomery form.
 struct Montgomery64 {
+  Montgomery64() = default;
+  Montgomery64(const Montgomery64 &other) = default;
+  Montgomery64 &operator =(const Montgomery64 &) = default;
+
   // As a representation invariant, this will be in [0, modulus).
-  uint64_t x;
+  uint64_t x = 0;
+
+private:
+  // Use MontgomeryRep64::ToMontgomery to get valid Montgomery forms.
+  explicit constexpr Montgomery64(uint64_t x) : x(x) {}
+  friend struct MontgomeryRep64;
 };
 
-#define FAKE_MONTGOMERY 1
+// #define FAKE_MONTGOMERY 1
 
 #ifndef FAKE_MONTGOMERY
 
@@ -42,19 +51,19 @@ struct MontgomeryRep64 {
     // r2 = r * 2^2 mod m
 
     for (int i = 0; i < 5; i++)
-      r2 = Mult(Montgomery64{.x = r2}, Montgomery64{.x = r2}).x;
+      r2 = Mult(Montgomery64(r2), Montgomery64(r2)).x;
 
     // r2 = r * (2^2)^(2^5) = 2^64
     r_squared = r2;
 
-    r = Mult(Montgomery64{.x = 1}, Montgomery64{.x = r_squared});
+    r = Mult(Montgomery64(1), Montgomery64(r_squared));
   }
 
   constexpr Montgomery64 One() const { return r; }
   inline constexpr Montgomery64 ToMontgomery(uint64_t x) const {
     // PERF necessary?
     x %= modulus;
-    return Mult(Montgomery64{.x = x}, Montgomery64{.x = r_squared});
+    return Mult(Montgomery64(x), Montgomery64(r_squared));
   }
 
   static inline constexpr bool Eq(Montgomery64 a, Montgomery64 b) {
@@ -69,7 +78,7 @@ struct MontgomeryRep64 {
     if (ss >= (uint128_t)modulus) {
       ss -= (uint128_t)modulus;
     }
-    return Montgomery64{.x = (uint64_t)ss};
+    return Montgomery64((uint64_t)ss);
   }
 
   inline constexpr Montgomery64 Sub(Montgomery64 a, Montgomery64 b) const {
@@ -80,14 +89,14 @@ struct MontgomeryRep64 {
     if (ss < 0) {
       ss += (int128_t)modulus;
     }
-    return Montgomery64{.x = (uint64_t)ss};
+    return Montgomery64((uint64_t)ss);
   }
 
   inline constexpr Montgomery64 Mult(Montgomery64 a, Montgomery64 b) const {
     uint128_t aa(a.x);
     uint128_t bb(b.x);
     uint64_t r = Reduce(aa * bb);
-    return Montgomery64{.x = r};
+    return Montgomery64(r);
   }
 
   // Convert from montgomery form back to integer.
@@ -142,7 +151,7 @@ struct MontgomeryRep64 {
   uint64_t modulus = 1;
   uint64_t inv = 1;
   // 2^64 mod modulus, which is the representation of 1.
-  Montgomery64 r{.x = 1};
+  Montgomery64 r = Montgomery64(1);
   // (2^64)^2 mod modulus.
   uint64_t r_squared = 1;
 

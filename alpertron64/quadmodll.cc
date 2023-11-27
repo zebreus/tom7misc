@@ -37,7 +37,7 @@
 
 #include "util.h"
 
-static constexpr bool SELF_CHECK = false;
+static constexpr bool SELF_CHECK = true;
 static constexpr bool VERBOSE = false;
 
 // This used to be exposed to the caller for teach mode, but is
@@ -561,15 +561,17 @@ struct QuadModLL {
       Montgomery64 toConvert;
 
       // Convert discriminant to Montgomery notation.
-      const Montgomery64 aux6(base);
+      const Montgomery64 aux6 = rep.ToMontgomery(base);
 
       // u
       // ModMult(*params, aux5, params->R2.data(), aux6);
 
+      CHECK(base == rep.ToInt(aux6)) << base << " " << rep.ToInt(aux6);
+
       if (VERBOSE)
-      printf("aux5 %llu aux6 %llu\n",
+      printf("aux5 %llu = aux6 %llu\n",
              base,
-             aux6.x);
+             rep.ToInt(aux6));
 
       if ((prime & 7) == 5) {
         if (VERBOSE)
@@ -600,7 +602,7 @@ struct QuadModLL {
 
         if (VERBOSE)
         printf("before step2: aux7 %llu aux8 %llu\n",
-               aux7.x, aux8.x);
+               rep.ToInt(aux7), rep.ToInt(aux8));
 
         // Step 2.
         // v^2
@@ -611,7 +613,7 @@ struct QuadModLL {
         // ModMult(*params, aux7, aux9, aux9);
 
         if (VERBOSE)
-        printf("aux9 before step3: %llu\n", aux9.x);
+          printf("aux9 before step3: %llu\n", rep.ToInt(aux9));
 
         // Step 3.
         // i-1
@@ -693,17 +695,17 @@ struct QuadModLL {
 
         if (VERBOSE)
         printf("  Z %llu aux7 %llu aux8 %llu aux9 %llu\n",
-               aux5.x,
-               aux7.x,
-               aux8.x,
-               aux9.x);
+               rep.ToInt(aux5),
+               rep.ToInt(aux7),
+               rep.ToInt(aux8),
+               rep.ToInt(aux9));
 
         // Step 5
         while (!rep.Eq(aux9, rep.One())) {
           // memcmp(aux9, params->R1.data(), NumberLengthBytes) != 0
 
           if (VERBOSE)
-          printf("  Start loop aux9=%llu\n", aux9.x);
+            printf("  Start loop aux9=%llu\n", rep.ToInt(aux9));
 
           // Step 6
           int k = 0;
@@ -719,7 +721,7 @@ struct QuadModLL {
           if (VERBOSE)
           printf(
               "    r %d k %d aux5 %llu aux10 %llu\n",
-              r, k, aux5.x, aux10.x);
+              r, k, rep.ToInt(aux5), rep.ToInt(aux10));
 
           // Step 7
           // d
@@ -731,7 +733,7 @@ struct QuadModLL {
           }
           if (VERBOSE)
           printf(
-              "    aux10 %llu\n", aux10.x);
+              "    aux10 %llu\n", rep.ToInt(aux10));
 
           // y
           aux5 = rep.Mult(aux10, aux10);
@@ -747,7 +749,8 @@ struct QuadModLL {
           if (VERBOSE)
           printf(
               "    aux5 %llu aux8 %llu aux9 %llu aux10 %llu\n",
-              aux5.x, aux8.x, aux9.x, aux10.x);
+              rep.ToInt(aux5), rep.ToInt(aux8),
+              rep.ToInt(aux9), rep.ToInt(aux10));
         }
         toConvert = aux8;
       }
