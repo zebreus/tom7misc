@@ -74,15 +74,28 @@ static void TestOne() {
 static void TestExp() {
   {
     const uint64_t m = 12345678901ULL;
-    MontgomeryRep64 rep(m);
+    const MontgomeryRep64 rep(m);
 
-    Montgomery64 a = rep.Pow(rep.ToMontgomery(2), 80);
+    const Montgomery64 a = rep.Pow(rep.ToMontgomery(2), 80);
     uint64_t ma = rep.ToInt(a);
     uint64_t sa = SimpleModPow(2, 80, m);
     CHECK(ma == sa) << ma << " " << sa;
 
-    Montgomery64 b = rep.Pow(rep.ToMontgomery(1110238741), 12345);
+    const Montgomery64 b = rep.Pow(rep.ToMontgomery(1110238741), 12345);
     CHECK(rep.ToInt(b) == SimpleModPow(1110238741, 12345, m));
+  }
+
+  {
+    const uint64_t m = 173;
+    const uint64_t u = 169;
+    const MontgomeryRep64 rep(m);
+
+    const uint64_t base = (u * 2) % m;
+
+    Montgomery64 a = rep.Pow(rep.ToMontgomery(base), 21);
+    uint64_t ma = rep.ToInt(a);
+    uint64_t sa = SimpleModPow(base, 21, m);
+    CHECK(ma == sa) << ma << " " << sa;
   }
 
   // Could test more...
@@ -119,11 +132,18 @@ static void TestBasic() {
 
         const uint64_t bmod = b % m;
         const Montgomery64 bm = rep.ToMontgomery(bmod);
-        CHECK(rep.ToInt(bm) == bmod) << b << " mod " << m;
+        CHECK(rep.ToInt(bm) == bmod) << b << " mod " << m
+                                     << "\nGot:  " << rep.ToInt(bm)
+                                     << "\nWant: " << bmod;
 
         // Plus
         const Montgomery64 aplusb = rep.Add(am, bm);
-        CHECK(rep.ToInt(aplusb) == PlusMod(amod, bmod, m));
+        CHECK(rep.ToInt(aplusb) == PlusMod(amod, bmod, m)) <<
+          amod << " + " << bmod << " mod " << m
+               << "\nam: " << am.x << " bm: " << bm.x
+               << "\nGot:  " << rep.ToInt(aplusb)
+               << "\nWant: " << PlusMod(amod, bmod, m);
+
 
         const Montgomery64 aminusb = rep.Sub(am, bm);
         CHECK(rep.ToInt(aminusb) == SubMod(amod, bmod, m)) <<
@@ -143,12 +163,15 @@ static void TestBasic() {
 static void TestRandom() {
   ArcFour rc("test");
 
-  static constexpr int ITERS = 100000;
+  static constexpr int ITERS = 10000000;
   for (int i = 0; i < ITERS; i++) {
     // TODO: Should be able to make this work for full 64 bits,
     // but we don't actually need that yet.
     constexpr uint64_t BITS63 = 0x7fffffffffffffffULL;
-    const uint64_t m = (Rand64(&rc) & BITS63) | 0b1;
+    // const uint64_t m = (Rand64(&rc) & BITS63) | 0b1;
+    const uint64_t m = (Rand64(&rc) & 0xFF) | 0b1;
+    if (m == 1) continue;
+
     const uint64_t amod = (Rand64(&rc) & BITS63) % m;
     const uint64_t bmod = (Rand64(&rc) & BITS63) % m;
 
@@ -171,6 +194,10 @@ static void TestRandom() {
 
     const Montgomery64 atimesb = rep.Mult(am, bm);
     CHECK(rep.ToInt(atimesb) == MultMod(amod, bmod, m));
+
+    for (Montgomery64 v : {am, bm, aplusb, aminusb, bminusa, atimesb}) {
+      CHECK(v.x < m) << v.x << " vs " << m;
+    }
   }
 }
 
