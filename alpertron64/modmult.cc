@@ -525,6 +525,8 @@ static void InitMontgomeryParams(MontgomeryParams *params) {
     // params->Ninv.resize(2);
     // params->N[0].x = 1;
 
+    printf("modulus length 1\n");
+
     params->R1.resize(2);
     params->R2.resize(2);
     params->R1[0].x = 1;
