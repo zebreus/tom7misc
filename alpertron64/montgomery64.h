@@ -57,7 +57,7 @@ struct MontgomeryRep64 {
     return Mult(Montgomery64{.x = x}, Montgomery64{.x = r_squared});
   }
 
-  static inline constexpr Eq(Montgomery64 a, Montgomery64 b) {
+  static inline constexpr bool Eq(Montgomery64 a, Montgomery64 b) {
     return a.x == b.x;
   }
 
@@ -155,7 +155,7 @@ struct MontgomeryRep64 {
     return Montgomery64{.x = x};
   }
 
-  static inline constexpr Eq(Montgomery64 a, Montgomery64 b) {
+  static inline constexpr bool Eq(Montgomery64 a, Montgomery64 b) {
     return a.x == b.x;
   }
 
