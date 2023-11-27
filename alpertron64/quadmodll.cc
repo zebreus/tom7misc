@@ -34,10 +34,7 @@
 #include "base/stringprintf.h"
 #include "base/logging.h"
 
-
-#include "util.h"
-
-static constexpr bool SELF_CHECK = true;
+static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 
 // This used to be exposed to the caller for teach mode, but is
@@ -327,208 +324,6 @@ struct QuadModLL {
   }
 
   static
-  BigInt GetSqrtDiscOld(uint64_t base,
-                        uint64_t prime) {
-
-    const BigInt Base(base);
-    const BigInt Prime(prime);
-
-    if (VERBOSE)
-    printf("GSD %llu %llu.\n", base, prime);
-
-    const std::unique_ptr<MontgomeryParams> params =
-      GetMontgomeryParams(prime);
-
-    const int NumberLengthBytes =
-      params->modulus_length * (int)sizeof(limb);
-
-    limb aux5[params->modulus_length];
-    limb aux6[params->modulus_length];
-    limb aux7[params->modulus_length];
-    limb aux8[params->modulus_length];
-    limb aux9[params->modulus_length];
-
-    if ((prime & 3) == 3) [[unlikely]] {
-      // prime mod 4 = 3
-      // subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
-
-      fprintf(stderr, "Prime & 3 == 3\n");
-      // Empirically, this branch isn't entered. It must fail
-      // the residue test or something?
-
-      return BigIntModularPower(*params, Base, (Prime + 1) >> 2);
-
-    } else {
-
-      // fprintf(stderr, "Prime & 3 != 3\n");
-
-      CHECK((int)params->R1.size() == params->modulus_length + 1);
-      CHECK((int)params->R2.size() == params->modulus_length + 1);
-      CHECK((int)params->modulus.size() == params->modulus_length + 1);
-
-      limb* toConvert = nullptr;
-      // Convert discriminant to Montgomery notation.
-      // PERF: We have 64-bit base. Could have like 64ToLimbs
-      BigIntToFixedLimbs(Base, params->modulus_length, aux5);
-      // u
-      ModMult(*params, aux5, params->R2.data(), aux6);
-
-      if (VERBOSE)
-      printf("aux5 %s aux6 %s\n",
-             LimbsToBigInt(aux5, params->modulus_length).ToString().c_str(),
-             LimbsToBigInt(aux6, params->modulus_length).ToString().c_str());
-
-      if ((prime & 7) == 5) {
-
-        if (VERBOSE)
-        printf("prime & 7 == 5.\n");
-
-        // prime mod 8 = 5: use Atkin's method for modular square roots.
-        // Step 1. v <- (2u)^((p-5)/8) mod p
-        // Step 2. i <- (2uv^2) mod p
-        // Step 3. square root of u <- uv (i-1)
-        // Step 1.
-        // Q <- (prime-5)/8.
-        const BigInt Q((prime - 5) >> 3);
-
-        if (VERBOSE)
-        printf("q: %s\n", Q.ToString().c_str());
-
-        // subtractdivide(&Q, 5, 8);
-        // 2u
-        AddBigNbrModN(aux6, aux6, aux7,
-                      params->modulus.data(), params->modulus_length);
-        ModPow(*params, aux7, Q, aux8);
-        // At this moment aux7 is v in Montgomery notation.
-
-        if (VERBOSE)
-        printf("before step2: aux7 %s aux8 %s\n",
-               LimbsToBigInt(aux7, params->modulus_length).ToString().c_str(),
-               LimbsToBigInt(aux8, params->modulus_length).ToString().c_str());
-
-        // Step 2.
-        // v^2
-        ModMult(*params, aux8, aux8, aux9);
-        // i
-        ModMult(*params, aux7, aux9, aux9);
-
-        if (VERBOSE)
-        printf("aux9 before step3: %s\n",
-               LimbsToBigInt(aux9, params->modulus_length).ToString().c_str());
-
-        // Step 3.
-        // i-1
-        SubtBigNbrModN(aux9, params->R1.data(), aux9,
-                       params->modulus.data(), params->modulus_length);
-        // v*(i-1)
-        ModMult(*params, aux8, aux9, aux9);
-        // u*v*(i-1)
-        ModMult(*params, aux6, aux9, aux9);
-        toConvert = aux9;
-      } else {
-
-        if (VERBOSE)
-        printf("prime & 7 == %llu", prime & 7);
-
-        // prime = 1 (mod 8). Use Shanks' method for modular square roots.
-        // Step 1. Select e >= 3, q odd such that p = 2^e * q + 1.
-        // Step 2. Choose x at random in the range 1 < x < p such that
-        //           jacobi (x, p) = -1.
-        // Step 3. Set z <- x^q (mod p).
-        // Step 4. Set y <- z, r <- e, x <- a^((q-1)/2) mod p,
-        //           v <- ax mod p, w <- vx mod p.
-        // Step 5. If w = 1, the computation ends with +/-v as the square root.
-        // Step 6. Find the smallest value of k such that w^(2^k) = 1 (mod p)
-        // Step 7. Set d <- y^(2^(r-k-1)) mod p, y <- d^2 mod p,
-        //           r <- k, v <- dv mod p, w <- wy mod p.
-        // Step 8. Go to step 5.
-
-        // Step 1.
-
-        uint64_t qq = prime - 1;
-        CHECK(qq != 0);
-        int e = std::countr_zero(qq);
-        qq >>= e;
-        BigInt QQ(qq);
-
-        // Step 2.
-        int x = 1;
-
-        {
-          do {
-            x++;
-          } while (Jacobi64(x, prime) >= 0);
-        }
-
-        // Step 3.
-        // Get z <- x^q (mod p) in Montgomery notation.
-        // z
-        BigInt Z = ModPowBaseInt(*params, x, QQ);
-
-        // PERF We don't use aux4 (now Z) again, so this could just
-        // be a substitution?
-        // Step 4.
-        // y
-        BigIntToFixedLimbs(Z, params->modulus_length, aux5);
-
-        int r = e;
-
-        const BigInt KK1 = (QQ - 1) >> 1;
-
-        // x
-        ModPow(*params, aux6, KK1, aux7);
-        // v
-        ModMult(*params, aux6, aux7, aux8);
-        // w
-        ModMult(*params, aux8, aux7, aux9);
-
-        // Step 5
-        while (memcmp(aux9, params->R1.data(),
-                      NumberLengthBytes) != 0) {
-
-          limb aux10[params->modulus_length];
-          // Step 6
-          int k = 0;
-          (void)memcpy(aux10, aux9, NumberLengthBytes);
-          do {
-            k++;
-            ModMult(*params, aux10, aux10, aux10);
-          } while (memcmp(aux10, params->R1.data(),
-                          NumberLengthBytes) != 0);
-
-          // Step 7
-          (void)memcpy(aux10, aux5, NumberLengthBytes); // d
-          for (int ctr = 0; ctr < (r - k - 1); ctr++) {
-            ModMult(*params, aux10, aux10, aux10);
-          }
-          // y
-          ModMult(*params, aux10, aux10, aux5);
-          r = k;
-          // v
-          ModMult(*params, aux8, aux10, aux8);
-          // w
-          ModMult(*params, aux9, aux5, aux9);
-        }
-        toConvert = aux8;
-      }
-
-      CHECK(toConvert == aux8 || toConvert == aux9);
-
-      // Convert from Montgomery to standard notation.
-      // Convert power to standard notation.
-      (void)memset(aux7, 0, NumberLengthBytes);
-      aux7[0].x = 1;
-      ModMult(*params, aux7, toConvert, toConvert);
-
-      BigInt res = LimbsToBigInt(toConvert, params->modulus_length);
-      if (VERBOSE)
-      printf("  returning %s\n", res.ToString().c_str());
-      return res;
-    }
-  }
-
-
-  static
   BigInt GetSqrtDisc(uint64_t base,
                      uint64_t prime) {
     if (VERBOSE)
@@ -552,7 +347,6 @@ struct QuadModLL {
 
       CHECK(false) << "can implement this, but I was lazy";
       return BigInt(0);
-      // return BigIntModularPower(*params, Base, (Prime + 1) >> 2);
 
     } else {
 
@@ -561,10 +355,8 @@ struct QuadModLL {
       Montgomery64 toConvert;
 
       // Convert discriminant to Montgomery notation.
-      const Montgomery64 aux6 = rep.ToMontgomery(base);
-
       // u
-      // ModMult(*params, aux5, params->R2.data(), aux6);
+      const Montgomery64 aux6 = rep.ToMontgomery(base);
 
       CHECK(base == rep.ToInt(aux6)) << base << " " << rep.ToInt(aux6);
 
@@ -590,14 +382,9 @@ struct QuadModLL {
         if (VERBOSE)
         printf("q: %llu\n", q);
 
-        const Montgomery64 aux7 = rep.Add(aux6, aux6);
-
         // 2u
-        // AddBigNbrModN(aux6, aux6, aux7,
-        // params->modulus.data(), params->modulus_length);
-
+        const Montgomery64 aux7 = rep.Add(aux6, aux6);
         const Montgomery64 aux8 = rep.Pow(aux7, q);
-        // ModPow(*params, aux7, Q, aux8);
         // At this moment aux7 is v in Montgomery notation.
 
         if (VERBOSE)
@@ -607,10 +394,9 @@ struct QuadModLL {
         // Step 2.
         // v^2
         Montgomery64 aux9 = rep.Mult(aux8, aux8);
-        // ModMult(*params, aux8, aux8, aux9);
+
         // i
         aux9 = rep.Mult(aux7, aux9);
-        // ModMult(*params, aux7, aux9, aux9);
 
         if (VERBOSE)
           printf("aux9 before step3: %llu\n", rep.ToInt(aux9));
@@ -618,15 +404,10 @@ struct QuadModLL {
         // Step 3.
         // i-1
         aux9 = rep.Sub(aux9, rep.One());
-        // SubtBigNbrModN(aux9, params->R1.data(), aux9,
-        // params->modulus.data(), params->modulus_length);
         // v*(i-1)
         aux9 = rep.Mult(aux8, aux9);
-        // ModMult(*params, aux8, aux9, aux9);
-
         // u*v*(i-1)
         aux9 = rep.Mult(aux6, aux9);
-        // ModMult(*params, aux6, aux9, aux9);
         toConvert = aux9;
       } else {
 
@@ -671,12 +452,9 @@ struct QuadModLL {
         // Get z <- x^q (mod p) in Montgomery notation.
         // z
         Montgomery64 aux5 = rep.Pow(rep.ToMontgomery(x), qq);
-        // BigInt Z = ModPowBaseInt(*params, x, QQ);
 
         // Step 4.
         // y
-        // BigIntToFixedLimbs(Z, params->modulus_length, aux5);
-
         int r = e;
 
         CHECK(qq > 0);
@@ -685,13 +463,10 @@ struct QuadModLL {
 
         // x
         Montgomery64 aux7 = rep.Pow(aux6, kk1);
-        // ModPow(*params, aux6, KK1, aux7);
         // v
         Montgomery64 aux8 = rep.Mult(aux6, aux7);
-        // ModMult(*params, aux6, aux7, aux8);
         // w
         Montgomery64 aux9 = rep.Mult(aux8, aux7);
-        // ModMult(*params, aux8, aux7, aux9);
 
         if (VERBOSE)
         printf("  Z %llu aux7 %llu aux8 %llu aux9 %llu\n",
@@ -714,7 +489,6 @@ struct QuadModLL {
           do {
             k++;
             aux10 = rep.Mult(aux10, aux10);
-            // ModMult(*params, aux10, aux10, aux10);
           } while (!rep.Eq(aux10, rep.One()));
           // memcmp(aux10, params->R1.data(), NumberLengthBytes) != 0)
 
@@ -729,7 +503,6 @@ struct QuadModLL {
           // (void)memcpy(aux10, aux5, NumberLengthBytes);
           for (int ctr = 0; ctr < (r - k - 1); ctr++) {
             aux10 = rep.Mult(aux10, aux10);
-            // ModMult(*params, aux10, aux10, aux10);
           }
           if (VERBOSE)
           printf(
@@ -737,14 +510,11 @@ struct QuadModLL {
 
           // y
           aux5 = rep.Mult(aux10, aux10);
-          // ModMult(*params, aux10, aux10, aux5);
           r = k;
           // v
           aux8 = rep.Mult(aux8, aux10);
-          // ModMult(*params, aux8, aux10, aux8);
           // w
           aux9 = rep.Mult(aux9, aux5);
-          // ModMult(*params, aux9, aux5, aux9);
 
           if (VERBOSE)
           printf(
@@ -761,11 +531,6 @@ struct QuadModLL {
 
       // Port note: Alpertron does this by multiplying by 1 to
       // get the call to Reduce. We skip the multiplication.
-      // (void)memset(aux7, 0, NumberLengthBytes);
-      // aux7[0].x = 1;
-      // ModMult(*params, aux7, toConvert, toConvert);
-      // return LimbsToBigInt(toConvert, params->modulus_length);
-
       uint64_t res = rep.ToInt(toConvert);
       if (VERBOSE)
       printf("  returning %llu\n", res);
@@ -784,11 +549,6 @@ struct QuadModLL {
     // BigInt Prime(prime);
     // fprintf(stderr, "CSRMPOP discr=%lld\n", discr);
     const BigInt SqrtDisc = GetSqrtDisc(base, prime);
-    if (SELF_CHECK) {
-      const BigInt SqrtDisc2 = GetSqrtDiscOld(base, prime);
-      CHECK(SqrtDisc == SqrtDisc2) << SqrtDisc.ToString() << " "
-                                   << SqrtDisc2.ToString();
-    }
     uint64_t sqrt_disc = GetU64(SqrtDisc);
     if (VERBOSE)
     printf("sqrt_disc: %llu\n", sqrt_disc);
