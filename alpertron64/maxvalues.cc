@@ -134,9 +134,11 @@ static void RunGrid() {
             Factorization::Factorize(f);
 
           Solutions sols = SolveQuad(f, factors);
+          /*
           local_max.emplace_back(
               BigInt::LogBase2(sols.vsquared.max),
               BigInt::LogBase2(sols.o2.max));
+          */
 
           if (sols.interesting_coverage) {
             count_interesting++;
@@ -232,12 +234,60 @@ static void RunGrid() {
          ANSI::Time(start_time.Seconds()).c_str());
 }
 
+static void SimpleMaxValues() {
 
+  for (int64_t base = 2; base < 31; base++) {
+
+    uint64_t pow = 1;
+    for (;;) {
+      uint64_t next_pow = pow * base;
+      if (next_pow <= pow) break;
+      if (next_pow & (1ULL << 63)) break;
+      pow = next_pow;
+
+      std::vector<std::pair<uint64_t, int>> factors =
+        Factorization::Factorize(pow);
+
+      Solutions sol = SolveQuad(pow, factors);
+      (void)sol;
+    }
+
+  }
+  printf("OK\n");
+}
+
+
+static void ProductOfTwo() {
+#if 0
+  for (int64_t base = 2; base < 31; base++) {
+
+    uint64_t pow = 1;
+    for (;;) {
+      uint64_t next_pow = pow * base;
+      if (next_pow <= pow) break;
+      if (next_pow & (1ULL << 63)) break;
+      pow = next_pow;
+
+      std::vector<std::pair<uint64_t, int>> factors =
+        Factorization::Factorize(pow);
+
+      Solutions sol = SolveQuad(pow, factors);
+      (void)sol;
+    }
+
+  }
+#endif
+  printf("OK\n");
+}
 
 int main(int argc, char **argv) {
   ANSI::Init();
 
-  RunGrid();
+  SimpleMaxValues();
+
+  ProductOfTwo();
+
+  // RunGrid();
 
   return 0;
 }

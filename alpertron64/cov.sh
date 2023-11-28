@@ -50,6 +50,13 @@ rm -f coverage.out
 # Lots of solutions, e.g. x=1503378, y=4593655
 ./quad.exe 23361811669909 >> coverage.out
 
+# 5^27, which gives us one of the largest possible exponents
+./quad.exe 7450580596923828125 >> coverage.out
+
+# 2^58 * 5^2, nontrivial solution
+# x = 1610612736, y = 2147483648
+./quad.exe 7205759403792793600 >> coverage.out
+
 dos2unix -q coverage.out
 diff coverage.golden coverage.out
 exit_status=$?

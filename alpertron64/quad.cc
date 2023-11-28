@@ -13,7 +13,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Alpertron Calculators.  If not, see <http://www.gnu.org/licenses/>.
+// along with Alpertron Calculators. If not, see <http://www.gnu.org/licenses/>.
 
 #include "quad.h"
 
@@ -30,8 +30,7 @@
 #include <math.h>
 
 #include "quadmodll.h"
-#include "modmult.h"
-#include "bigconv.h"
+#include "numbers.h"
 
 #include "base/stringprintf.h"
 #include "base/logging.h"
@@ -43,12 +42,6 @@ static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 
 namespace {
-
-inline uint64_t Sqrt64(uint64_t n) {
-  if (n == 0) return 0;
-  uint64_t r = std::sqrt((double)n);
-  return r - (r * r - 1 >= n);
-}
 
 // From ../sos/sos-util (see discussion there). This gives us the
 // number of solutions, which allows us to exit early.
@@ -84,9 +77,9 @@ inline int ChaiWahWuFromFactors(
 
 
 struct Quad {
-  // Solutions accumulated here.
-  // TODO: Exit early once we reach the expected number.
+  // We can exit once we have this many solutions.
   const int expected_solutions;
+  // Solutions accumulated here.
   Solutions solutions;
 
   inline void RecordSolutionXY(int64_t x, int64_t y) {
@@ -121,13 +114,6 @@ struct Quad {
              int64_t, int64_t, int64_t>
   GetNextConvergent(int64_t u, int64_t u1, int64_t u2,
                     int64_t v, int64_t v1, int64_t v2) {
-
-    /*
-    fprintf(stderr,
-            "Next convergent: %lld %lld %lld | %lld %lld %lld\n",
-            u, u1, u2,
-            v, v1, v2);
-    */
 
     int64_t tmp = DivFloor64(u, v);
 
@@ -164,15 +150,6 @@ struct Quad {
       uint64_t e, uint64_t k,
       int64_t h, int64_t i,
       int64_t value) {
-
-    /*
-    fprintf(stderr, "NSDS: %s %s %s %s %lld\n",
-            E.ToString().c_str(),
-            K.ToString().c_str(),
-            H.ToString().c_str(),
-            I.ToString().c_str(),
-            value);
-    */
 
     // Port note: This used to modify the value of K based on the
     // callback type, but now we do that at the call site. (Also there
@@ -582,13 +559,6 @@ struct Quad {
 
     CHECK(discr == -4);
 
-    /*
-    fprintf(stderr, "P = %s, discr = %lld, Q = %s\n",
-            P.ToString().c_str(),
-            discr,
-            Q.ToString().c_str());
-    */
-
     // Compute bound L = sqrt(|4P/(-D)|)
     // Port note: Original code flips the sign, but on the input
     // -10 -10 -10 -10 -8 -8, that results in sqrt(-1). Alpertron's
@@ -637,13 +607,6 @@ struct Quad {
       const int128_t o2 = int128_t(1) - (int128_t(modulus) * vv1 * vv1);
 
       if (o1 == o2) {
-        /*
-        fprintf(stderr,
-                "O == 1:   (%lld * %lld + %lld * %lld) * %lld "
-                "        + (%lld * %lld^2)\n",
-                p, u1, q, v1, u1, k, v1);
-        */
-
         // a*U1^2 + b*U1*V1 + c*V1^2 = 1.
         NonSquareDiscrSolutionOne(
             e, modulus,
@@ -696,9 +659,18 @@ Solutions SolveQuad(uint64_t f,
   const int expected_solutions = ChaiWahWuFromFactors(f, factors);
   std::unique_ptr<Quad> quad(new Quad(expected_solutions));
   quad->SolveQuad(f, factors);
-  CHECK((int)quad->solutions.points.size() == expected_solutions) <<
-    "Sum: " << f <<
-    "\nexpected: " << expected_solutions <<
-    "\ngot: " << quad->solutions.points.size();
+
+  if ((int)quad->solutions.points.size() != expected_solutions) {
+    const char *msg = "This is probably a bug.";
+    if (f & (1ULL << 63))
+      msg = "Note: This input is larger than 2^63, and the code is known "
+        "to be incorrect for such numbers because of overflow, etc.";
+
+    CHECK(false) << "Wrong number of solutions:\n"
+      "Sum: " << f <<
+      "\nexpected: " << expected_solutions <<
+      "\ngot: " << quad->solutions.points.size() <<
+      "\n" << msg;
+  }
   return std::move(quad->solutions);
 }

@@ -1,5 +1,5 @@
-#ifndef _MODMULT_H
-#define _MODMULT_H
+#ifndef _NUMBERS_H
+#define _NUMBERS_H
 
 #include <tuple>
 #include <cstdint>
@@ -14,7 +14,7 @@ ExtendedGCD64(int64_t a, int64_t b);
 
 // Slower recursive version of above for reference.
 std::tuple<int64_t, int64_t, int64_t>
-RefrerenceExtendedGCD64(int64_t a, int64_t b);
+ReferenceExtendedGCD64(int64_t a, int64_t b);
 
 // compute a^1 mod b    for a,b coprime
 inline int64_t ModularInverse64(int64_t a, int64_t b) {
@@ -97,6 +97,40 @@ inline int64_t DivFloor64(int64_t numer, int64_t denom) {
   //
   // And the clearest expression generates loads of branches:
   // if ((r < 0 && denom > 0) || (r > 0 && denom < 0)) ...
+}
+
+// (a * b) % m
+// Could maybe be wrong for largest a,b?
+inline int64_t BasicModMult64(int64_t a, int64_t b,
+                              uint64_t m) {
+  // PERF: Compare UDiv128Rem from factorize. Might not handle
+  // negative args though?
+
+  // PERF: Check that this is making appropriate simplifications
+  // knowing that each high word is zero.
+  int128 aa(a);
+  int128 bb(b);
+  int128 mm(m);
+
+  int128 rr = (aa * bb) % mm;
+  return (int64_t)rr;
+}
+
+inline uint64_t Pow64(uint64_t base, int exp) {
+  uint64_t res = 1;
+  while (exp) {
+    if (exp & 1)
+      res *= base;
+    exp >>= 1;
+    base *= base;
+  }
+  return res;
+}
+
+inline uint64_t Sqrt64(uint64_t n) {
+  if (n == 0) return 0;
+  uint64_t r = std::sqrt((double)n);
+  return r - (r * r - 1 >= n);
 }
 
 #endif
