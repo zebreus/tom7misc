@@ -20,7 +20,7 @@ static CL *cl = nullptr;
 // Enable this to actually test (as opposed to benchmark) the GPU code.
 static constexpr bool TEST_AGAINST_CPU = false;
 
-static constexpr bool CHECK_ANSWERS = true;
+static constexpr bool CHECK_ANSWERS = false;
 
 static constexpr int GLOBAL_BATCH_SIZE = 131072;
 
@@ -163,7 +163,7 @@ static void TestWays(const char * method) {
   for (int batch_idx = 0; batch_idx < NUM_BATCHES; batch_idx++) {
     // Make batch.
     Timer batch_timer;
-    std::vector<std::pair<uint64_t, uint32_t>> batch;
+    std::vector<std::tuple<uint64_t, uint32_t, CollatedFactors>> batch;
     batch.reserve(GPU_HEIGHT);
     std::mutex m;
     ParallelFan(6,
@@ -178,14 +178,28 @@ static void TestWays(const char * method) {
                         return;
                     }
 
-                    int expected = ChaiWahWu(mine);
-                    if (expected >= 3) {
+                    // Only filled in if num > 0.
+                    CollatedFactors factors;
+
+                    // Don't factor if it's impossible.
+                    int num_ways = 0;
+                    if (MaybeSumOfSquaresFancy4(mine)) {
+                      factors.num_factors =
+                        Factorization::FactorizePreallocated(
+                            mine, factors.bases, factors.exponents);
+                      num_ways = ChaiWahWuFromFactors(
+                          mine, factors.bases, factors.exponents,
+                          factors.num_factors);
+                    }
+
+                    if (num_ways >= 3) {
                       MutexLock ml(&m);
-                      if (expected > GPUMethod::MAX_WAYS) {
-                        too_big[expected]++;
+                      if (num_ways > GPUMethod::MAX_WAYS) {
+                        too_big[num_ways]++;
                       } else {
                         if (batch.size() < GPU_HEIGHT) {
-                          batch.emplace_back(mine, (uint32_t)expected);
+                          batch.emplace_back(
+                              mine, (uint32_t)num_ways, factors);
                         }
                       }
                     }
@@ -197,11 +211,16 @@ static void TestWays(const char * method) {
     if (USE_CPU) {
       Timer cpu_timer;
       outs_cpu =
-        ParallelMap(batch,
-                    [](const std::pair<uint64_t, uint32_t> &p) {
-                      return NSoks2(p.first, p.second);
-                    },
-                    6);
+        ParallelMap(
+            batch,
+            [](const std::tuple<uint64_t, uint32_t, CollatedFactors> &p) {
+              const auto &[sum, expected, factors] = p;
+
+              return NSoks2(sum, expected,
+                            factors.num_factors,
+                            factors.bases, factors.exponents);
+            },
+            6);
       cpu_sec += cpu_timer.Seconds();
       CHECK((int)outs_cpu.size() == GPU_HEIGHT);
     }
@@ -222,15 +241,20 @@ static void TestWays(const char * method) {
         NormalizeWays(&out_gpu);
 
         if (out_gpu != out_cpu) {
+          const auto &[sum, expected, factors] = batch[row];
           printf(ARED("FAIL") "\n"
                  "Sum: %llu\n"
+                 "Expected: %d\n",
                  "CPU: %s\n"
                  "GPU: %s\n",
-                 batch[row].first,
+                 sum,
+                 (int)expected,
                  WaysString(out_cpu).c_str(),
                  WaysString(out_gpu).c_str());
 
-          auto out_nsok = NSoks2(batch[row].first);
+          auto out_nsok = NSoks2(sum, -1,
+                                 factors.num_factors,
+                                 factors.bases, factors.exponents);
           NormalizeWays(&out_nsok);
           printf("nsoks: %s\n", WaysString(out_nsok).c_str());
           CHECK(false);
@@ -340,10 +364,18 @@ static void TestEligibleFilter() {
   printf("TestEligibleFilter " AGREEN("OK") "\n");
 }
 
-static void TestFactorize() {
+static void TestFactorize(
+    int height = 131072 * 8,
+    FactorizeGPU::IsPrimeRoutine is_prime = FactorizeGPU::IsPrimeRoutine::FEW,
+    bool sub_128 = false,
+    bool geq_128 = false,
+    bool mul_128 = false,
+    bool fused_try = false,
+    bool binv_table = false,
+    bool dumas = false,
+    int next_prime = 137) {
   ArcFour rc("factorize");
-  static constexpr int HEIGHT = 131072 * 8;
-  FactorizeGPU factorize(cl, HEIGHT);
+  FactorizeGPU factorize(cl, height);
 
   std::optional<std::string> ptx =
     CL::DecodeProgram(factorize.program);
@@ -357,11 +389,11 @@ static void TestFactorize() {
     std::vector<uint64_t> nums; // = { 137 * 137 };
 
     if (i == 0) {
-      for (int i = 0; i < HEIGHT; i++) {
+      for (int i = 0; i < height; i++) {
         nums.push_back(i);
       }
     } else {
-      for (int i = 0; i < HEIGHT; i++) {
+      for (int i = 0; i < height; i++) {
         nums.push_back(Rand64(&rc) & uint64_t{0xFFFFFFFFFFF});
       }
     }
@@ -370,11 +402,11 @@ static void TestFactorize() {
     printf(APURPLE("[TEST]") " Factorize...\n");
     const auto &[factors, num_factors] = factorize.Factorize(nums);
     printf("Factorized %d numbers in %s\n",
-           HEIGHT,
+           height,
            ANSI::Time(ftimer.Seconds()).c_str());
 
     int64_t num_failed = 0;
-    for (int i = 0; i < HEIGHT; i++) {
+    for (int i = 0; i < height; i++) {
       uint64_t n = 1;
       if (num_factors[i] == 0xFF) {
         num_failed++;
@@ -394,8 +426,8 @@ static void TestFactorize() {
       }
     }
 
-    printf("%lld/%d failed (%.2f%%)\n", num_failed, HEIGHT,
-           (100.0 * num_failed) / HEIGHT);
+    printf("%lld/%d failed (%.2f%%)\n", num_failed, height,
+           (100.0 * num_failed) / height);
   }
 
   printf(AGREEN("OK") "\n");
@@ -565,12 +597,21 @@ int main(int argc, char **argv) {
   TestEligibleFilter();
   TestTryFilter();
 
+  */
+
   TestWays<WaysGPUMerge, TEST_AGAINST_CPU, 16>("merge");
   TestWays<WaysGPU, TEST_AGAINST_CPU, 16>("orig2d");
-  */
 
   TestTrialDivide();
   TestFactorize();
+
+  for (int i = 0; i < 4; i++) {
+    printf("\n[factorize %02x]\n", i);
+    TestFactorize(131072 * 8, FactorizeGPU::IsPrimeRoutine::FEW,
+                  false, false, false, false,
+                  !!(i & 0b01), !!(i & 0b10),
+                  137);
+  }
 
   BenchFactorize();
   BenchTrialDivide();

@@ -109,14 +109,23 @@ struct WaysGPU {
   // Can be used to fill the height when you don't have a full set
   // to process (or we could do this internally...)
   // 25 = 0^2 + 5^2 = 3^2 + 4^2
-  static constexpr std::pair<uint64_t, uint32_t> dummy = {25, 2};
+  static constexpr std::tuple<uint64_t, uint32_t, CollatedFactors>
+  dummy = {
+    25,
+    2,
+    CollatedFactors{
+      .bases = {5},
+      .exponents = {2},
+      .num_factors = 1}
+  };
 
   // An input is a target sum, with its expected number of ways (use CWW).
   // Ways should be > 0. Computation is proportional to the largest sum,
   // so this is intended for use with batches of sums that are of similar
   // magnitude.
   std::vector<std::vector<std::pair<uint64_t, uint64_t>>>
-  GetWays(const std::vector<std::pair<uint64_t, uint32_t>> &inputs);
+  GetWays(const std::vector<
+          std::tuple<uint64_t, uint32_t, CollatedFactors>> &inputs);
 
   ~WaysGPU() {
     CHECK_SUCCESS(clReleaseKernel(kernel1));
@@ -138,7 +147,7 @@ struct WaysGPUMerge {
   // the ways for each input. This gives the width of that buffer, and
   // then also sets the maximum that we could output.
   // PERF: Could tune this. It's probably not very expensive, though.
-  static constexpr int MAX_WAYS = 32;
+  static constexpr int MAX_WAYS = 8;
 
   // PERF: Can disable output checking, and timers.
   static constexpr bool CHECK_OUTPUT = false;
@@ -213,14 +222,24 @@ struct WaysGPUMerge {
   // Can be used to fill the height when you don't have a full set
   // to process (or we could do this internally...)
   // 25 = 0^2 + 5^2 = 3^2 + 4^2
-  static constexpr std::pair<uint64_t, uint32_t> dummy = {25, 2};
+  static constexpr std::tuple<uint64_t, uint32_t, CollatedFactors>
+  dummy = {
+    25,
+    2,
+    CollatedFactors{
+      .bases = {5},
+      .exponents = {2},
+      .num_factors = 1}
+  };
+
 
   // An input is a target sum, with its expected number of ways (use CWW).
   // Ways should be > 0. Computation is proportional to the largest sum,
   // so this is intended for use with batches of sums that are of similar
   // magnitude.
   std::vector<std::vector<std::pair<uint64_t, uint64_t>>>
-  GetWays(const std::vector<std::pair<uint64_t, uint32_t>> &inputs);
+  GetWays(const std::vector<
+          std::tuple<uint64_t, uint32_t, CollatedFactors>> &inputs);
 
   ~WaysGPUMerge() {
     CHECK_SUCCESS(clReleaseKernel(kernel));
@@ -400,8 +419,12 @@ struct FactorizeGPU {
                bool geq_128 = false,
                bool mul_128 = false,
                bool fused_try = false,
+               bool binv_table = false,
+               bool dumas = false,
                int next_prime = 137)
     : cl(cl), height(height) {
+
+    CHECK(next_prime > 2);
 
     const char *is_prime_routine = [&]() {
       switch (is_prime) {
@@ -420,6 +443,8 @@ struct FactorizeGPU {
                    "#define PTX_GEQ128 %d\n"
                    "#define PTX_MUL128 %d\n"
                    "#define FUSED_TRY %d\n"
+                   "#define BINV_USE_TABLE %d\n"
+                   "#define BINV_USE_DUMAS %d\n"
                    "#define NEXT_PRIME %d\n"
                    "#define IsPrimeInternal %s\n",
                    MAX_FACTORS,
@@ -427,6 +452,8 @@ struct FactorizeGPU {
                    geq_128 ? 1 : 0,
                    mul_128 ? 1 : 0,
                    fused_try ? 1 : 0,
+                   binv_table ? 1 : 0,
+                   dumas ? 1 : 0,
                    next_prime,
                    is_prime_routine);
 

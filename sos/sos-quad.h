@@ -10,7 +10,7 @@
 std::vector<std::pair<uint64_t, uint64_t>>
 GetWaysQuad(uint64_t sum, int num_expected,
             int num_factors,
-            uint64_t *bases,
-            uint8_t *exponents);
+            const uint64_t *bases,
+            const uint8_t *exponents);
 
 #endif

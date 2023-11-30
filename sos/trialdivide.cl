@@ -492,7 +492,7 @@ __kernel void TrialDivide(__global const uint64_t *restrict num,
   // Remaining number (odd); at this point can be composite, prime, or 1.
   large_factor[idx] = cur;
 
-  if (IsDone(cur)) {
+  if (IsDoneOdd(cur)) {
     // Success!
     num_factors[idx] = nf;
   } else {

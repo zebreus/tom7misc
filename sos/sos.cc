@@ -30,7 +30,9 @@
 #include "database.h"
 #include "sos-util.h"
 #include "sos-gpu.h"
+#include "sos-quad.h"
 #include "predict.h"
+#include "auto-histo.h"
 
 using namespace std;
 
@@ -186,9 +188,17 @@ static constexpr int GPU_WAYS_HEIGHT = 131072;
 // static constexpr int GPU_FACTOR_HEIGHT =  524288 * 2;
 
 // tuned
-static constexpr int GPU_FACTOR_HEIGHT = 2875870;
-#define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, false, false, false, true, 2243
+// static constexpr int GPU_FACTOR_HEIGHT = 2875870;
+// #define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, false, false, false, true, 2243
 // #define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, false, false, true, true, 2243
+
+// 20 Nov 2023, after adding binv_table and dumas flags
+static constexpr int GPU_FACTOR_HEIGHT = 4046495;
+#define GPU_FACTOR_TUNING FactorizeGPU::IsPrimeRoutine::GENERAL, false, true, true, false, true, true, 1709
+
+// It's somewhat inconsistent though?
+// Best was 2435202.GEN._.G.M._._.D.1129 which took 0.161us/ea (with 0.0008s% error rate).
+
 
 // tuning winner, 23 Sep 2023, but a few percent slower than
 // the above in sos.exe
@@ -213,16 +223,18 @@ static constexpr uint64_t MAX_EPOCH_SIZE = 800'000'000LL * 6; /* ' */
 static constexpr size_t EPOCH_GPU_CHUNK = 12'500'000; // 100000000;
 
 // PERF: Tune it
-static constexpr int STEADY_WORK_STEALING_THREADS = 0;
+static constexpr int STEADY_WORK_STEALING_THREADS = 4;
 // Be careful not to set this too low, or everything will stall
 // on a stolen batch (size GPU_WAYS_HEIGHT) that is processed by a
 // small number of threads.
-static constexpr int ENDGAME_WORK_STEALING_THREADS = 0;
+static constexpr int ENDGAME_WORK_STEALING_THREADS = 8;
 
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
 
-static StatusBar status(6);
+static constexpr int STATUS_HISTO_LINES = 10;
+static constexpr int STATUS_TEXT_LINES = 6;
+static StatusBar status(STATUS_HISTO_LINES + STATUS_TEXT_LINES);
 
 static std::pair<uint64_t, uint64_t> GetNext(uint64_t max_size) {
   MutexLock ml(&file_mutex);
@@ -507,15 +519,16 @@ struct SOS {
     > factor_queue;
 
   // Pre-filtered and factored by GPU. Ready to compute the
-  // eligible ones using the nways test.
+  // eligible ones and nways using CWW on the CPU.
   std::unique_ptr<
     WorkQueue<GPUFactored>
     > factored_queue;
 
-  // Eligible. Ready to produce the actual ways on GPU.
-  // An element is a number and its expected number of ways.
+  // Eligible. Ready to produce the actual ways on GPU (or CPU).
+  // An element is a sum, its expected number of ways, and its
+  // collated factors.
   std::unique_ptr<
-    BatchedWorkQueue<std::pair<uint64_t, uint32_t>>
+    BatchedWorkQueue<std::tuple<uint64_t, uint32_t, CollatedFactors>>
     > ways_queue;
 
   // Candidate for full try.
@@ -531,7 +544,10 @@ struct SOS {
     WorkQueue<Database::Square>
     > almost2_queue;
 
-  SOS() : status_per(10.0) {
+  // Experimental.
+  AutoHisto nways_histo;
+
+  SOS() : nways_histo(10000), status_per(10.0) {
     // Performance is pretty workload-dependent, so just tune in-process
     // rather than saving to disk.
     // We're much less CPU bound now, so using lower max_parallelism here.
@@ -551,7 +567,8 @@ struct SOS {
     factored_queue.reset(new WorkQueue<GPUFactored>);
 
     ways_queue.reset(
-        new BatchedWorkQueue<std::pair<uint64_t, uint32_t>>(GPU_WAYS_HEIGHT));
+        new BatchedWorkQueue<std::tuple<uint64_t, uint32_t, CollatedFactors>>(
+            GPU_WAYS_HEIGHT));
     try_queue.reset(new BatchedWorkQueue<TryMe>(TRY_BATCH_SIZE));
     almost2_queue.reset(new WorkQueue<Database::Square>);
   }
@@ -794,7 +811,9 @@ struct SOS {
 
   void GPUWaysThread(int thread_idx) {
     for (;;) {
-      std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
+      std::optional<
+        std::vector<
+          std::tuple<uint64_t, uint32_t, CollatedFactors>>> batchopt =
         ways_queue->WaitGet();
 
       if (!batchopt.has_value()) {
@@ -822,9 +841,11 @@ struct SOS {
       trybatch.reserve(GPU_WAYS_HEIGHT);
       // But only populate the real batch size, in case this is the
       // last batch and short.
-      for (int i = 0; i < real_batch_size; i++)
-        trybatch.emplace_back(TryMe{.num = batch[i].first,
+      for (int i = 0; i < real_batch_size; i++) {
+        const uint64_t sum = std::get<0>(batch[i]);
+        trybatch.emplace_back(TryMe{.num = sum,
                                     .squareways = std::move(res[i])});
+      }
       res.clear();
 
       // PERF: We copy the output to CPU and back, but we could
@@ -864,7 +885,7 @@ struct SOS {
   std::mutex m;
   Timer timer;
   // Counters and stats.
-  // These were too big to process on the GPU.
+  // These were too big to get the ways on the GPU.
   uint64_t too_big = 0;
   // Work stolen by CPU in endgame.
   uint64_t stolen = 0;
@@ -962,7 +983,9 @@ struct SOS {
     auto FormatNum = [](uint64_t n) {
         if (n > 1'000'000) {
           double m = n / 1000000.0;
-          if (m >= 100.0) {
+          if (m >= 1000.0) {
+            return StringPrintf("%.1fB", m / 1000.0);
+          } else if (m >= 100.0) {
             return StringPrintf("%dM", (int)std::round(m));
           } else if (m > 10.0) {
             return StringPrintf("%.1fM", m);
@@ -992,11 +1015,11 @@ struct SOS {
     // other stuff
     string line4 =
       StringPrintf(
-          ARED("%llu") " big  "
+          ARED("%s") " big  "
           AGREEN("%s") " stolen  "
           ACYAN("%s") " try-filtered  "
           AGREEN("%s") " complete batches\n",
-          too_big,
+          FormatNum(too_big).c_str(),
           FormatNum(stolen).c_str(),
           FormatNum(done_gpu_filtered).c_str(),
           FormatNum(batches_completely_filtered).c_str());
@@ -1079,7 +1102,9 @@ struct SOS {
             eta.c_str());
         }();
 
-    status.EmitStatus(line1 + line2 + line3 + line4 + line5 + line6);
+    status.EmitStatus(
+        nways_histo.SimpleANSI(STATUS_HISTO_LINES) +
+        line1 + line2 + line3 + line4 + line5 + line6);
   }
 
   void StatusThread(uint64_t start_idx, uint64_t epoch_size) {
@@ -1284,6 +1309,7 @@ struct SOS {
     }
   }
 
+  // Steals work for "ways" phase.
   void StealThread() {
     // GPU part is the bottleneck, so also run some of these on the
     // CPU. When we reach the endgame, we'll increase the number of threads.
@@ -1306,7 +1332,9 @@ struct SOS {
         }
 
       } else {
-        std::optional<std::vector<std::pair<uint64_t, uint32_t>>> batchopt =
+        std::optional<
+          std::vector<
+            std::tuple<uint64_t, uint32_t, CollatedFactors>>> batchopt =
           ways_queue->WaitGet();
 
         if (!batchopt.has_value()) {
@@ -1315,17 +1343,23 @@ struct SOS {
           return;
         }
 
-        status.Printf("Stealing %lld with %d threads\n",
-                      batchopt.value().size(), num_threads);
+        /*
+          status.Printf("Stealing %lld with %d threads\n",
+          batchopt.value().size(), num_threads);
+        */
+        // PERF unroll
         std::vector<TryMe> output =
           ParallelMap(
               batchopt.value(),
-              [](const std::pair<uint64_t, uint32_t> &input) {
-                // PERF: If we propagated the factors we could use
-                // a faster CPU method here.
+              [](const std::tuple<uint64_t, uint32_t, CollatedFactors> &input) {
+                const auto &[sum, expected, factors] = input;
                 TryMe tryme;
-                tryme.num = input.first;
-                tryme.squareways = WaysNoFactors(input.first, input.second);
+                tryme.num = sum;
+                tryme.squareways =
+                  GetWaysQuad(sum, expected,
+                              factors.num_factors,
+                              factors.bases,
+                              factors.exponents);
                 return tryme;
               },
               num_threads);
@@ -1397,6 +1431,7 @@ struct SOS {
   void GPUFactorThread() {
     FactorizeGPU factorize_gpu(
         cl, GPU_FACTOR_HEIGHT,
+        /* multiple args in here, tuned in tune-factorize.cc */
         GPU_FACTOR_TUNING);
 
     for (;;) {
@@ -1488,7 +1523,11 @@ struct SOS {
               int local_pending_try = 0;
               int local_done_ineligible_cpu = 0;
 
-              std::vector<std::pair<uint64_t, uint32_t>> ways_todo;
+              std::vector<int> local_nways;
+              local_nways.reserve(ROLL_SIZE);
+
+              std::vector<std::tuple<uint64_t, uint32_t, CollatedFactors>>
+                ways_todo;
               ways_todo.reserve(ROLL_SIZE);
 
               for (int r = 0; r < ROLL_SIZE; r++) {
@@ -1499,19 +1538,20 @@ struct SOS {
                 const uint64_t num = gpu_factored.nums[idx];
                 const uint8_t num_factors_byte = gpu_factored.num_factors[idx];
 
-                uint64_t bases[15];
-                uint8_t exponents[15];
-                int num_factors = 0;
+                CollatedFactors factors;
 
                 if (num_factors_byte == 0xFF) {
                   // GPU factoring failed. Factor on CPU.
                   // PERF: Can make use of the partial factoring here.
-                  num_factors = Factorization::FactorizePreallocated(
-                      num, bases, exponents);
+                  factors.num_factors = Factorization::FactorizePreallocated(
+                      num, factors.bases, factors.exponents);
                   local_cpu_factored++;
                 } else {
                   // copy and collate factors.
                   // PERF: Could collate on GPU pretty easily.
+
+                  // Avoid using unsigned byte in CollatedFactors struct...
+                  int num_factors = 0;
                   for (int f = 0; f < num_factors_byte; f++) {
                     uint64_t factor =
                       gpu_factored.factors[idx * FactorizeGPU::MAX_FACTORS + f];
@@ -1520,32 +1560,37 @@ struct SOS {
                     // generally very small, so sorted data structures are
                     // actually worse.
                     for (int slot = num_factors - 1; slot >= 0; slot--) {
-                      if (bases[slot] == factor) {
-                        exponents[slot]++;
+                      if (factors.bases[slot] == factor) {
+                        factors.exponents[slot]++;
                         goto next_factor;
                       }
                     }
 
                     // not found. insert at end.
-                    bases[num_factors] = factor;
-                    exponents[num_factors] = 1;
+                    factors.bases[num_factors] = factor;
+                    factors.exponents[num_factors] = 1;
                     num_factors++;
 
                   next_factor:;
                   }
+                  factors.num_factors = num_factors;
                 }
 
                 // Using the existing factoring, and skipping
                 // tests we know were already done on GPU.
                 const int nways = ChaiWahWuFromFactors(
-                    num, bases, exponents, num_factors);
+                    num, factors.bases, factors.exponents, factors.num_factors);
 
                 if (nways >= 3) {
+                  local_nways.push_back(nways);
+
                   local_eligible_triples++;
                   if (nways > GPUMethod::MAX_WAYS) {
                     // Do on CPU.
                     std::vector<std::pair<uint64_t, uint64_t>> ways =
-                      NSoks2(num, nways, num_factors, bases, exponents);
+                      GetWaysQuad(num, nways,
+                                  factors.num_factors,
+                                  factors.bases, factors.exponents);
                     TryMe tryme;
                     tryme.num = num;
                     tryme.squareways = std::move(ways);
@@ -1557,7 +1602,7 @@ struct SOS {
                     local_too_big++;
                     local_pending_try++;
                   } else {
-                    ways_todo.emplace_back(num, nways);
+                    ways_todo.emplace_back(num, nways, factors);
                   }
                 } else {
                   local_done_ineligible_cpu++;
@@ -1574,6 +1619,8 @@ struct SOS {
                 eligible_triples += local_eligible_triples;
                 pending_try += local_pending_try;
                 triple_pending_ways += local_triple_pending_ways;
+                for (int w : local_nways)
+                  nways_histo.Observe(w);
               }
             });
     }
@@ -1658,7 +1705,7 @@ struct SOS {
     try_queue->MarkDone();
 
     const uint64_t num_stolen = ReadWithLock(&m, &stolen);
-    status.Printf(ABLUE("%llu") " nums were stolen by CPU.\n",
+    status.Printf(ABLUE("%llu") " sums were stolen by CPU for ways.\n",
                   num_stolen);
 
     status.Printf("Waiting for Try thread.\n");

@@ -11,8 +11,9 @@
 #include <cmath>
 
 // Bitmask of numbers we're around where we're currently searching.
-// Used for benchmarking / tuning. This is up to 17 trillion.
-static constexpr uint64_t MASK_CURRENT_RANGE = 0x0FFF'FFFF'FFFFULL;
+// Used for benchmarking / tuning. This is up to 34 trillion.
+// static constexpr uint64_t MASK_CURRENT_RANGE = 0x0FFF'FFFF'FFFFULL;
+static constexpr uint64_t MASK_CURRENT_RANGE = 0x1FFF'FFFF'FFFFULL;
 
 inline uint64_t Sqrt64(uint64_t n) {
   if (n == 0) return 0;
@@ -23,6 +24,15 @@ inline uint64_t Sqrt64(uint64_t n) {
 struct TryMe {
   uint64_t num;
   std::vector<std::pair<uint64_t, uint64_t>> squareways;
+};
+
+// Factors collated (but not in any particular order).
+// num_factors gives the number of entries. This can be
+// no more than 15 for a 64-bit number.
+struct CollatedFactors {
+  uint64_t bases[15];
+  uint8_t exponents[15];
+  uint8_t num_factors = 0;
 };
 
 // From GNU coreutils's factor.c.
@@ -208,8 +218,8 @@ std::vector<std::pair<uint64_t, uint64_t>>
 NSoks2(uint64_t sum, int num_expected,
        // Unused.
        int num_factors,
-       uint64_t *bases,
-       uint8_t *exponents);
+       const uint64_t *bases,
+       const uint8_t *exponents);
 
 // Pick the best CPU method that doesn't require factors.
 std::vector<std::pair<uint64_t, uint64_t>>
@@ -222,8 +232,8 @@ std::vector<std::pair<uint64_t, uint64_t>>
 GetWaysMerge(uint64_t sum, int num_expected,
              // Unused.
              int num_factors,
-             uint64_t *bases,
-             uint8_t *exponents);
+             const uint64_t *bases,
+             const uint8_t *exponents);
 
 std::string WaysString(
     const std::vector<std::pair<uint64_t, uint64_t>> &v);

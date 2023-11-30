@@ -17,6 +17,9 @@ typedef atomic_uint atomic_uint32_t;
 // #define PTX_GEQ128 0
 // #define PTX_MUL128 1
 
+// #define BINV_USE_TABLE 1
+// #define BINV_USE_DUMAS 1
+
 // Avoid "dividing" twice in TRY. Code looks better but seems to
 // benchmark worse. Could be because some peephole optimizations
 // avoid the apparent problem with TRY.
@@ -237,6 +240,11 @@ const uint8_t PRIME_DELTAS[NUM_PRIME_DELTAS] = {
   1,2,2,4,2,4,2,4,6,2,6,4,
 };
 
+// PERF: Benchmark Dumas's algorithm. It's alleged that it gives
+// better instruction-level parallelism because of shorter dependency
+// chains. See https://arxiv.org/pdf/2204.04342.pdf
+
+#if BINV_USE_TABLE
 /* Entry i contains (2i+1)^(-1) mod 2^8.  */
 const unsigned char binvert_table[128] = {
   0x01, 0xAB, 0xCD, 0xB7, 0x39, 0xA3, 0xC5, 0xEF,
@@ -257,16 +265,72 @@ const unsigned char binvert_table[128] = {
   0x11, 0x3B, 0x5D, 0xC7, 0x49, 0x33, 0x55, 0xFF,
 };
 
-// PERF: Benchmark Dumas's algorithm. It's alleged that it gives
-// better instruction-level parallelism because of shorter dependency
-// chains. See https://arxiv.org/pdf/2204.04342.pdf
+inline uint64_t Binv8bits(uint64_t n) {
+  return binvert_table[(n >> 1) & 0x7F];
+}
+
+#else
+
+inline uint64_t Binv8bits(uint64_t n) {
+  // 4 bits correct.
+  uint64_t x0 = (3 * n) ^ 0x02;
+  uint64_t x1 = 2 * x0 - x0 * x0 * n;
+
+  // or dumas-style?
+  // PERF I think we only would get the benefit if we inline
+  // it into Binv.
+  // uint64_t y = 1 - a * x0;
+  // uint64_t x1 = x0 * (1 + y);
+  return x1;
+}
+
+#endif
+
+
+#if BINV_USE_DUMAS
+
+#if BINV_USE_TABLE
 inline uint64_t Binv(uint64_t n) {
-  uint64_t inv = binvert_table[(n / 2) & 0x7F]; /*  8 */
+  uint64_t x0 = Binv8bits(n);
+  uint64_t y = 1 - n * x0;
+  uint64_t x1 = x0 * (1 + y);
+  y *= y;
+  uint64_t x2 = x1 * (1 + y);
+  y *= y;
+  uint64_t x3 = x2 * (1 + y);
+  return x3;
+}
+#else
+
+// Not simple to call Binv8bits in this case,
+// since we want to retain the intermediate
+// values of y.
+uint64_t Binv(uint64_t n) {
+  uint64_t x0 = (3 * n) ^ 0x02;
+  uint64_t y = 1 - n * x0;
+  uint64_t x1 = x0 * (1 + y);
+  y *= y;
+  uint64_t x2 = x1 * (1 + y);
+  y *= y;
+  uint64_t x3 = x2 * (1 + y);
+  y *= y;
+  uint64_t x4 = x3 * (1 + y);
+  return x4;
+}
+
+#endif
+
+#else
+
+inline uint64_t Binv(uint64_t n) {
+  uint64_t inv = Binv8bits(n);
   inv = 2 * inv - inv * inv * n;
   inv = 2 * inv - inv * inv * n;
   inv = 2 * inv - inv * inv * n;
   return inv;
 }
+
+#endif
 
 // PERF: This can be done with PTX that uses carries.
 /* Modular two-word multiplication, r = a * b mod m, with mi = m^(-1) mod B.
@@ -343,7 +407,7 @@ uint64_t GCDOdd(uint64_t a, uint64_t b) {
       return (a << 1) + 1;
 
     // I think this stands for "b greater than a" -tom7
-    // Seems like they're trying to branchless tricks here
+    // Seems like they're trying to do branchless tricks here
     // but we can probably just use builtins.
     uint64_t bgta = HighBitToMask(t);
 

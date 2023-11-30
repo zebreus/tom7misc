@@ -143,7 +143,7 @@ int ChaiWahWuFromFactors(const uint64_t sum,
   // So we have e.g. x^2 * y^2 * z^4 = (xyz^2)^2 + 0^2
   //
   // int(not any(e&1 for e in f.values()))
-  int first = AllEvenPowers() ? 1 : 0;
+  const int first = AllEvenPowers() ? 1 : 0;
   // PERF: For this form, we also know what the sum of squares is,
   // so we could do this and skip kernel1. But that phase is only
   // 0.38% of the time spent in the GPU. (And we don't even do it
@@ -276,8 +276,8 @@ ReferenceValidate3(uint64_t sum) {
 std::vector<std::pair<uint64_t, uint64_t>>
 BruteGetWays(uint64_t sum, int num_expected,
              int num_factors,
-             uint64_t *bases,
-             uint8_t *exponents) {
+             const uint64_t *bases,
+             const uint8_t *exponents) {
   if (num_expected == 0) return {};
   // We use 0 as a sentinel value below, so get that out of the way.
   // PERF: We could request this as a precondition.
@@ -346,8 +346,8 @@ static inline std::optional<uint64_t> NSoks1(uint64_t n) {
 std::vector<std::pair<uint64_t, uint64_t>>
 NSoks2(uint64_t n, int num_expected,
        int num_factors,
-       uint64_t *bases,
-       uint8_t *exponents) {
+       const uint64_t *bases,
+       const uint8_t *exponents) {
   uint64_t maxts = Sqrt64(n - 2 + 1);
   uint64_t maxtsmaxts = maxts * maxts;
   // Note: In maple, isqrt can be up to 1 off in either direction
@@ -403,8 +403,8 @@ WaysNoFactors(uint64_t sum, int num_expected) {
 std::vector<std::pair<uint64_t, uint64_t>>
 GetWaysMerge(uint64_t sum, int num_expected,
              int num_factors,
-             uint64_t *bases,
-             uint8_t *exponents) {
+             const uint64_t *bases,
+             const uint8_t *exponents) {
   uint64_t root = Sqrt64(sum);
   std::vector<std::pair<uint64_t, uint64_t>> ways;
   if (num_expected >= 0) ways.reserve(num_expected);

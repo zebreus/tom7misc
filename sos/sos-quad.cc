@@ -7,8 +7,8 @@
 std::vector<std::pair<uint64_t, uint64_t>>
 GetWaysQuad(uint64_t sum, int num_expected_ignored,
             int num_factors,
-            uint64_t *bases,
-            uint8_t *exponents) {
+            const uint64_t *bases,
+            const uint8_t *exponents) {
   // We want x^2 + y^2 = sum.
   // This is 1 x^2 + 0 xy + 1 y^2 + 0x + 0y + -sum = 0
 

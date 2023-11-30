@@ -304,12 +304,32 @@ static void TestGetWays(const char *name, F f) {
 
 template<class F>
 static void TestSimple(const char * name, F f) {
+  std::vector<int64_t> test_cases;
   for (int sum = 2; sum < 120; sum++) {
+    test_cases.push_back(sum);
+  }
+
+  {
+    ArcFour rc("bench");
+    for (int num_examples = 0; num_examples < 10; /* in loop */) {
+      // check numbers in the current range
+      const uint64_t num = Rand64(&rc) & MASK_CURRENT_RANGE;
+      if (num == 0) continue;
+
+      const int ways = ChaiWahWu(num);
+      if (ways >= 3) {
+        test_cases.push_back(num);
+        num_examples++;
+      }
+    }
+  }
+
+
+  for (int64_t sum : test_cases) {
     int num_ways = ChaiWahWu(sum);
-    int num_factors = 0;
     uint64_t bases[15];
     uint8_t exponents[15];
-    num_factors = Factorization::FactorizePreallocated(
+    int num_factors = Factorization::FactorizePreallocated(
         sum, bases, exponents);
 
     std::vector<std::pair<uint64_t, uint64_t>> ways_fast =
@@ -322,7 +342,7 @@ static void TestSimple(const char * name, F f) {
       "CWW says there should be " << num_ways << " ways.\n"
       "But got " << (int)ways.size() << ":\n"
       << WaysString(ways);
-    printf("[%s] %d: %d ways: %s\n",
+    printf("[%s] %lld: %d ways: %s\n",
            name, sum, num_ways, WaysString(ways).c_str());
     for (const auto &[a, b] : ways_fast) {
       CHECK(a * a + b * b == sum);
@@ -503,13 +523,13 @@ int main(int argc, char **argv) {
   */
 
   // TestSimple("brute", BruteGetWays);
-  // TestSimple("nsoks2", NSoks2);
-  TestSimple("merge", GetWaysMerge);
+  TestSimple("nsoks2", NSoks2);
+  // TestSimple("merge", GetWaysMerge);
   TestSimple("quad", GetWaysQuad);
 
   // TestGetWays("brute", BruteGetWays);
-  // TestGetWays("nsoks2", NSoks2);
-  TestGetWays("merge", GetWaysMerge);
+  TestGetWays("nsoks2", NSoks2);
+  // TestGetWays("merge", GetWaysMerge);
   TestGetWays("quad", GetWaysQuad);
 
   printf("OK\n");

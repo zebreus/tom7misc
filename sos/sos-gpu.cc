@@ -8,16 +8,18 @@
 // that they sum to the right value.
 template<bool CHECK_OUTPUT, size_t MAX_WAYS>
 inline static std::vector<std::vector<std::pair<uint64_t, uint64_t>>>
-ProcessGPUOutput(int height,
-                 const std::vector<std::pair<uint64_t, uint32_t>> &inputs,
-                 const std::vector<uint64_t> &output_rect,
-                 const std::vector<uint32_t> &output_sizes) {
+ProcessGPUOutput(
+    int height,
+    const std::vector<std::tuple<uint64_t, uint32_t, CollatedFactors>> &inputs,
+    const std::vector<uint64_t> &output_rect,
+    const std::vector<uint32_t> &output_sizes) {
 
   // XXX verbose flag
   if (false) {
     for (int y = 0; y < height; y++) {
+      const auto &[sum, num, factors_] = inputs[y];
       printf(ABLUE("%llu") " " ACYAN("%d") " size: " APURPLE("%d") "\n",
-             inputs[y].first, (int)inputs[y].second, (int)output_sizes[y]);
+             sum, (int)num, (int)output_sizes[y]);
       for (int x = 0; x < MAX_WAYS; x ++) {
         int rect_base = y * MAX_WAYS * 2;
         CHECK(rect_base < output_rect.size()) <<
@@ -34,7 +36,7 @@ ProcessGPUOutput(int height,
   std::vector<std::vector<std::pair<uint64_t, uint64_t>>> ret;
   ret.reserve(height);
   for (int row = 0; row < height; row++) {
-    const uint64_t sum = inputs[row].first;
+    const uint64_t sum = std::get<0>(inputs[row]);
     const int rect_base = row * MAX_WAYS * 2;
     std::vector<std::pair<uint64_t, uint64_t>> one_ret;
     const int size = output_sizes[row];
@@ -67,7 +69,9 @@ std::vector<std::vector<std::pair<uint64_t, uint64_t>>>
 // Ways should be > 0. Computation is proportional to the largest sum,
 // so this is intended for use with batches of sums that are of similar
 // magnitude.
-WaysGPU::GetWays(const std::vector<std::pair<uint64_t, uint32_t>> &inputs) {
+WaysGPU::GetWays(
+    const std::vector<
+    std::tuple<uint64_t, uint32_t, CollatedFactors>> &inputs) {
   TIMER_START(all);
   CHECK(inputs.size() == height) << inputs.size() << " " << height;
 
@@ -81,7 +85,7 @@ WaysGPU::GetWays(const std::vector<std::pair<uint64_t, uint32_t>> &inputs) {
   // Make the array of sums, min, and max.
   std::vector<uint64_t> sums;
   sums.reserve(height * 3);
-  for (const auto &[num, e] : inputs) {
+  for (const auto &[num, e, factors_] : inputs) {
     uint64_t mx = Sqrt64(num - 2 + 1);
     uint64_t mxmx = mx * mx;
     if (mxmx > num - 2 + 1)
@@ -271,7 +275,8 @@ WaysGPU::GetWays(const std::vector<std::pair<uint64_t, uint32_t>> &inputs) {
 // magnitude.
 std::vector<std::vector<std::pair<uint64_t, uint64_t>>>
 WaysGPUMerge::GetWays(
-    const std::vector<std::pair<uint64_t, uint32_t>> &inputs) {
+    const std::vector<
+    std::tuple<uint64_t, uint32_t, CollatedFactors>> &inputs) {
   TIMER_START(all);
   CHECK(inputs.size() == height) << inputs.size() << " " << height;
 
@@ -280,7 +285,7 @@ WaysGPUMerge::GetWays(
   // Make the array of sums.
   std::vector<uint64_t> sums;
   sums.reserve(height);
-  for (const auto &[num, e] : inputs) {
+  for (const auto &[num, e, factors_] : inputs) {
     CHECK(e <= MAX_WAYS) << num << " " << e;
     sums.push_back(num);
   }
@@ -502,3 +507,6 @@ FactorizeGPU::Factorize(const std::vector<uint64_t> &nums) {
       CopyBufferFromGPU<uint64_t>(cl->queue, out_gpu, MAX_FACTORS * height),
       CopyBufferFromGPU<uint8_t>(cl->queue, out_size_gpu, height));
 }
+
+// TODO: Generate code to do the unrolled TRY loops as efficiently
+// as we can.

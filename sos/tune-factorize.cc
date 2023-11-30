@@ -20,27 +20,31 @@ using namespace std;
 
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
 
-// Bitmask of numbers we're around where we're currently searching.
-// Used for benchmarking / tuning.
-static constexpr uint64_t MASK_CURRENT_RANGE = 0xFFFFFFFFFFFULL;
-
 DECLARE_COUNTERS(tests, u1_, u2_, u3_, u4_, u5_, u6, u7_);
 
-static constexpr int NUM_PASSES = 12;
+// in seconds
+// static constexpr int OPTIMIZE_TIME = 4 * 3600;
+static constexpr int OPTIMIZE_TIME = 6 * 3600;
+
+// number of times to optimize per experiment
+// was 12
+static constexpr int NUM_PASSES = 48;
 
 static double best_sec_per = 999999.0;
 static ArcFour *rc = nullptr;
 
-// height, IsPrimeRoutine, Sub128, Geq128, Mul128, FusedTry, NextPrime
+// height, IsPrimeRoutine, Sub128, Geq128, Mul128, FusedTry, BinvTable, Dumas, NextPrime
 // returns failure rate
-using FactorizeOpt = Optimizer<7, 0, double>;
+using FactorizeOpt = Optimizer<9, 0, double>;
 
 static constexpr array PRIMES = {
+  // 100 in this block
   2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503, 509, 521, 523, 541,
 
-  547, 557, 563, 569, 571, 577, 587, 593, 599, 601, 607, 613, 617, 619, 631, 641, 643, 647, 653, 659, 661, 673, 677, 683, 691, 701, 709, 719, 727, 733, 739, 743, 751, 757, 761, 769, 773, 787, 797, 809, 811, 821, 823, 827, 829, 839, 853, 857, 859, 863, 877, 881, 883, 887, 907, 911, 919, 929, 937, 941, 947, 953, 967, 971, 977, 983, 991, 997, 1009, 1013, 1019, 1021, 1031, 1033, 1039, 1049, 1051, 1061, 1063,
+  // 100 in this block
+  547, 557, 563, 569, 571, 577, 587, 593, 599, 601, 607, 613, 617, 619, 631, 641, 643, 647, 653, 659, 661, 673, 677, 683, 691, 701, 709, 719, 727, 733, 739, 743, 751, 757, 761, 769, 773, 787, 797, 809, 811, 821, 823, 827, 829, 839, 853, 857, 859, 863, 877, 881, 883, 887, 907, 911, 919, 929, 937, 941, 947, 953, 967, 971, 977, 983, 991, 997, 1009, 1013, 1019, 1021, 1031, 1033, 1039, 1049, 1051, 1061, 1063, 1069, 1087, 1091, 1093, 1097, 1103, 1109, 1117, 1123, 1129, 1151, 1153, 1163, 1171, 1181, 1187, 1193, 1201, 1213, 1217, 1223,
 
-  1069, 1087, 1091, 1093, 1097, 1103, 1109, 1117, 1123, 1129, 1151, 1153, 1163, 1171, 1181, 1187, 1193, 1201, 1213, 1217, 1223, 1229, 1231, 1237, 1249, 1259, 1277, 1279, 1283, 1289, 1291, 1297, 1301, 1303, 1307, 1319, 1321, 1327, 1361, 1367, 1373, 1381, 1399, 1409, 1423, 1427, 1429, 1433, 1439, 1447, 1451, 1453, 1459, 1471, 1481, 1483, 1487, 1489, 1493, 1499, 1511, 1523, 1531, 1543, 1549, 1553, 1559, 1567, 1571, 1579, 1583, 1597, 1601, 1607, 1609, 1613, 1619, 1621, 1627, 1637, 1657, 1663, 1667, 1669, 1693, 1697, 1699, 1709, 1721, 1723, 1733, 1741, 1747, 1753, 1759, 1777, 1783, 1787, 1789, 1801, 1811, 1823, 1831, 1847, 1861, 1867, 1871, 1873, 1877, 1879, 1889, 1901, 1907, 1913, 1931, 1933, 1949, 1951, 1973, 1979, 1987, 1993, 1997, 1999, 2003, 2011, 2017, 2027, 2029, 2039, 2053, 2063, 2069, 2081, 2083, 2087, 2089, 2099, 2111, 2113, 2129, 2131, 2137, 2141, 2143, 2153, 2161, 2179, 2203, 2207, 2213, 2221, 2237, 2239, 2243, 2251, 2267, 2269, 2273, 2281, 2287, 2293, 2297, 2309, 2311, 2333, 2339, 2341, 2347, 2351, 2357, 2371, 2377, 2381, 2383, 2389, 2393, 2399, 2411,
+  1229, 1231, 1237, 1249, 1259, 1277, 1279, 1283, 1289, 1291, 1297, 1301, 1303, 1307, 1319, 1321, 1327, 1361, 1367, 1373, 1381, 1399, 1409, 1423, 1427, 1429, 1433, 1439, 1447, 1451, 1453, 1459, 1471, 1481, 1483, 1487, 1489, 1493, 1499, 1511, 1523, 1531, 1543, 1549, 1553, 1559, 1567, 1571, 1579, 1583, 1597, 1601, 1607, 1609, 1613, 1619, 1621, 1627, 1637, 1657, 1663, 1667, 1669, 1693, 1697, 1699, 1709, 1721, 1723, 1733, 1741, 1747, 1753, 1759, 1777, 1783, 1787, 1789, 1801, 1811, 1823, 1831, 1847, 1861, 1867, 1871, 1873, 1877, 1879, 1889, 1901, 1907, 1913, 1931, 1933, 1949, 1951, 1973, 1979, 1987, 1993, 1997, 1999, 2003, 2011, 2017, 2027, 2029, 2039, 2053, 2063, 2069, 2081, 2083, 2087, 2089, 2099, 2111, 2113, 2129, 2131, 2137, 2141, 2143, 2153, 2161, 2179, 2203, 2207, 2213, 2221, 2237, 2239, 2243, 2251, 2267, 2269, 2273, 2281, 2287, 2293, 2297, 2309, 2311, 2333, 2339, 2341, 2347, 2351, 2357, 2371, 2377, 2381, 2383, 2389, 2393, 2399, 2411,
 };
 
 static_assert(PRIMES.size() > 32);
@@ -52,7 +56,7 @@ static double total_compile_time = 0.0;
 
 static std::string ArgString(const FactorizeOpt::arg_type &arg) {
   const auto &[height, is_prime_routine_idx, sub128, geq128, mul128,
-               fused_try, next_prime_idx] = arg.first;
+               fused_try, binv_table, dumas, next_prime_idx] = arg.first;
   const int next_prime = PRIMES[next_prime_idx];
   const char *routine = [&]() {
       switch (is_prime_routine_idx) {
@@ -70,18 +74,22 @@ static std::string ArgString(const FactorizeOpt::arg_type &arg) {
                       "%s" AGREY(".")
                       "%s" AGREY(".")
                       "%s" AGREY(".")
+                      "%s" AGREY(".")
+                      "%s" AGREY(".")
                       ABLUE("%d"),
                       height, routine,
                       sub128 ? ACYAN("S") : "_",
                       geq128 ? AYELLOW("G") : "_",
                       mul128 ? AORANGE("M") : "_",
                       fused_try ? AGREEN("F") : "_",
+                      binv_table ? AFGCOLOR(120, 220, 255, "T") : "_",
+                      dumas ? AFGCOLOR(255, 40, 150, "D") : "_",
                       next_prime);
 }
 
 FactorizeOpt::return_type OptimizeMe(const FactorizeOpt::arg_type &arg) {
   const auto &[height, is_prime_routine_idx, sub128, geq128, mul128,
-               fused_try, next_prime_idx] = arg.first;
+               fused_try, binv_table, dumas, next_prime_idx] = arg.first;
 
   CHECK(next_prime_idx > 0 && next_prime_idx < PRIMES.size()) << next_prime_idx;
   const int next_prime = PRIMES[next_prime_idx];
@@ -102,6 +110,8 @@ FactorizeOpt::return_type OptimizeMe(const FactorizeOpt::arg_type &arg) {
                              !!geq128,
                              !!mul128,
                              !!fused_try,
+                             !!binv_table,
+                             !!dumas,
                              next_prime);
   total_compile_time += compile_time.Seconds();
 
@@ -166,13 +176,37 @@ static void Optimize() {
   FactorizeOpt opt(OptimizeMe, Rand64(rc));
   opt.SetSaveAll(true);
 
-  // height, IsPrimeRoutine, Sub128, Geq128, FusedTry, NextPrime
-  const FactorizeOpt::arg_type recommended =
-    std::make_pair(std::array<int32_t, FactorizeOpt::num_ints>{
-        2875870, 2, 0, 0, 0, 1, 178
-          },
-      std::array<double, FactorizeOpt::num_doubles>{});
-  opt.Sample(recommended);
+  // Insert some previous bests. This helps to make sure that we don't accidentally
+  // detune the thing!
+
+  // height, IsPrimeRoutine, Sub128, Geq128, FusedTry, BinvTable, Dumas, NextPrime
+  {
+    const FactorizeOpt::arg_type recommended =
+      std::make_pair(std::array<int32_t, FactorizeOpt::num_ints>{
+          2875870, 2, 0, 0, 0, 1, 0, 0, 178
+        },
+        std::array<double, FactorizeOpt::num_doubles>{});
+    opt.Sample(recommended);
+  }
+
+  {
+    const FactorizeOpt::arg_type recommended =
+      std::make_pair(std::array<int32_t, FactorizeOpt::num_ints>{
+          2435202, 2, 0, 1, 1, 0, 0, 1, 186,
+        },
+        std::array<double, FactorizeOpt::num_doubles>{});
+    opt.Sample(recommended);
+  }
+
+  {
+    const FactorizeOpt::arg_type recommended =
+      std::make_pair(std::array<int32_t, FactorizeOpt::num_ints>{
+          3935270, 2, 1, 1, 1, 1, 1, 0, 89,
+        },
+        std::array<double, FactorizeOpt::num_doubles>{});
+    opt.Sample(recommended);
+  }
+
 
   const std::array<std::pair<int32_t, int32_t>, FactorizeOpt::num_ints>
     int_bounds = {
@@ -185,11 +219,15 @@ static void Optimize() {
     make_pair(0, 2),
     make_pair(0, 2),
     make_pair(0, 2),
+    // new bools
+    make_pair(0, 2),
+    make_pair(0, 2),
     // can't exclude 2
     make_pair(1, PRIMES.size() - 1),
   };
 
-  opt.Run(int_bounds, {}, nullopt, nullopt, {3600});
+  opt.Run(int_bounds, {}, nullopt, nullopt, {OPTIMIZE_TIME});
+  // opt.Run(int_bounds, {}, nullopt, nullopt, {2});
 
   string report;
   for (const auto &[arg, sec_per, failure] : opt.GetAll()) {
@@ -215,7 +253,85 @@ static void Optimize() {
          ANSI::Time(sec_per).c_str(),
          failure * 100.0);
 
-  printf("\n");
+  Timer explain_timer;
+  // Now try to fit coefficients to our observations.
+  // Now explain the results.
+  auto Numeric = [](std::string s) {
+      return FactorizeOpt::IntFeature{
+        .name = s,
+        .categorical = false,
+      };
+    };
+
+  auto Categorical = [](std::string s) {
+      return FactorizeOpt::IntFeature{
+        .name = s,
+        .categorical = true,
+      };
+    };
+
+
+  std::array<FactorizeOpt::IntFeature, FactorizeOpt::num_ints> int_features = {
+    Numeric("height"),
+    Categorical("isprime"),
+    Categorical("sub128"),
+    Categorical("geq128"),
+    Categorical("mul128"),
+    Categorical("fusedtry"),
+    Categorical("binv_table"),
+    Categorical("dumas"),
+    Numeric("nextprime"),
+  };
+
+  auto ExplainWith = [&](const std::string &name,
+                         const std::vector<
+                           std::tuple<FactorizeOpt::arg_type,
+                           double,
+                           std::optional<double>>> &datapoints) {
+
+    printf("Explain using " AYELLOW("%s") " (%d pts)...\n",
+           name.c_str(), (int)datapoints.size());
+    const auto &[features, loss] =
+      opt.Explain(
+          datapoints,
+          int_features,
+          // no double params.
+          {},
+          // Don't use a bias parameter when there is categorical
+          // data.
+          std::nullopt);
+
+    printf("Loss: " AWHITE("%.11g") "\n", loss);
+    for (const FactorizeOpt::Feature &f : features) {
+      if (f.type == FactorizeOpt::FeatureType::CATEGORICAL_INT) {
+        printf(ABLUE("%s") "=" APURPLE("%d") ": ",
+               f.name.c_str(), f.categorical_value);
+      } else {
+        printf(ABLUE("%s") ": ", f.name.c_str());
+      }
+      if (f.coefficient < 0.0) {
+        printf(AGREEN("%.11g") "\n", f.coefficient);
+      } else {
+        printf(ARED("+%.11g") "\n", f.coefficient);
+      }
+    }
+
+    printf("\n");
+  };
+
+  printf("Now explicitly explore...\n");
+  const auto expt =
+    opt.ExploreLocally(
+        std::array<bool, FactorizeOpt::num_ints>{
+          false, true, true, true, true, true, true, false,
+        },
+        int_bounds,
+        {},
+        0.1);
+
+  ExplainWith("expt", expt);
+
+  ExplainWith("all", opt.GetAll());
 }
 
 int main(int argc, char **argv) {
