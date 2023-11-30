@@ -294,9 +294,6 @@ struct QuadModLL {
     if (VERBOSE)
       printf("GSD %llu %llu.\n", base, prime);
 
-    const BigInt Base(base);
-    const BigInt Prime(prime);
-
     MontgomeryRep64 rep(prime);
     if (VERBOSE)
       printf("(montgomery params: m %llu, inv %llu, r %llu, r^2 %llu)\n",
@@ -340,7 +337,6 @@ struct QuadModLL {
         // Step 3. square root of u <- uv (i-1)
         // Step 1.
         // Q <- (prime-5)/8.
-        // const BigInt Q((prime - 5) >> 3);
         CHECK(prime >= 5);
         uint64_t q = (prime - 5) >> 3;
 
@@ -399,8 +395,6 @@ struct QuadModLL {
         int e = std::countr_zero(qq);
         qq >>= e;
 
-        // BigInt QQ(qq);
-
         // Step 2.
         int x = 1;
 
@@ -422,7 +416,6 @@ struct QuadModLL {
 
         CHECK(qq > 0);
         uint64_t kk1 = (qq - 1) >> 1;
-        // const BigInt KK1 = (QQ - 1) >> 1;
 
         // x
         Montgomery64 aux7 = rep.Pow(aux6, kk1);
@@ -518,12 +511,12 @@ struct QuadModLL {
     // but modular inverse should be faster.
     int64_t inv = ModularInverse64(sqrt_disc, prime);
 
-    std::optional<BigInt> Inv =
-      BigInt::ModInverse(BigInt(sqrt_disc), BigInt(prime));
-    CHECK(Inv == inv);
+    if (SELF_CHECK) {
+      std::optional<BigInt> Inv =
+        BigInt::ModInverse(BigInt(sqrt_disc), BigInt(prime));
+      CHECK(Inv.has_value());
+      CHECK(Inv == inv);
 
-    CHECK(Inv.has_value());
-    if (VERBOSE) {
       printf("inverse: %lld. prime %llu\n", inv, prime);
       printf("Inverse: %s\n", Inv.value().ToString().c_str());
     }
@@ -531,7 +524,6 @@ struct QuadModLL {
     // This starts as a 64-bit quantity, but the squaring of Q below
     // looks like it can result in larger moduli...
     uint128_t sqr_root(inv);
-    // BigInt SqrRoot(inv);
 
     int correctBits = 1;
 
@@ -539,8 +531,6 @@ struct QuadModLL {
     // Note that nbrBitsSquareRoot here is the exponent of p, so
     // it will usually be small. The worst case appears to be 5^26,
     // which is 75 bits.
-    // uint128_t q(prime);
-    // BigInt q(prime);
     uint128_t q = prime;
 
     auto Big128 = [](uint128_t x) -> BigInt {
@@ -576,10 +566,8 @@ struct QuadModLL {
 
       // 128-bit modulus, but result fits in 64 bits.
       uint64_t tmp1a = IsU64((sqr_root * sqr_root) % term);
-      // BigInt Tmp1 = (SqrRoot * SqrRoot) % BigInt(term);
       // Same; q can be >64 bits, but then it does nothing.
       uint64_t tmp2a = IsU64((uint128_t)tmp1a % q);
-      // BigInt Tmp2 = Tmp1 % Big128(q);
 
       uint128_t tmp1b = (uint128_t)tmp2a * (uint128_t)discr;
       // Tmp1 = Tmp2 * discr;
@@ -587,13 +575,6 @@ struct QuadModLL {
       if (VERBOSE)
       printf("tmp2 * discr = %s\n",
              Big128(tmp1b).ToString().c_str());
-
-      // CHECK(BigInt::Abs(Q) < (BigInt(1) << 127));
-      /*
-      CHECK(BigInt::Abs(Tmp1) < (BigInt(1) << 127)) <<
-        Tmp2.ToString() << " * " << discr << " = " <<
-        Tmp1.ToString();
-      */
 
       if (VERBOSE)
       fprintf(stderr,
@@ -632,8 +613,6 @@ struct QuadModLL {
       int128_t tmp1d = tmp1c % (int128_t)term;
       if (tmp1d < 0) tmp1d += term;
 
-      // Tmp1 = Tmp1 % BigInt(term);
-
       CHECK(Uint128High64(tmp1d) == 0);
 
       uint128_t tmp1e = (uint128_t)tmp1d;
@@ -641,31 +620,14 @@ struct QuadModLL {
       if (tmp1e & 1) {
         tmp1e += q;
       }
-      /*
-      if (Tmp1.IsOdd()) {
-        Tmp1 += Big128(q);
-      }
-      */
 
       if (VERBOSE)
       printf("now even tmp1: %s\n", Big128(tmp1e).ToString().c_str());
 
-      /*
-      CHECK(BigInt::Abs(Tmp1) < (BigInt(1) << 127)) <<
-        Tmp2.ToString() << " * " << SqrRoot.ToString() << " = " <<
-        Tmp1.ToString();
-      */
-
       tmp1e >>= 1;
-
       tmp1e %= q;
 
-      // Tmp1 >>= 1;
-
       sqr_root = tmp1e;
-      // SqrRoot = Tmp1 % Big128(q);
-
-      // SqrRoot = SqrRoot % BigInt(term);
 
       if (VERBOSE)
       printf("  Loop bot: SqrRoot %s, Q %s\n",
@@ -677,24 +639,14 @@ struct QuadModLL {
     printf("After loop, sqr_root: %s\n",
            Big128(sqr_root).ToString().c_str());
 
-    // sqr_root is unsigned.
-    //     if (SqrRoot < 0) {
-    // SqrRoot += Big128(q);
-    // }
-
-
-
     // Get square root of discriminant from its inverse by multiplying
     // by discriminant.
     sqr_root = (sqr_root % term) * discr;
 
-    // SqrRoot = SqrRoot * discr;
     sqr_root %= q;
-    // SqrRoot %= Big128(q);
 
     // Port note: Alpertron would just return a potentially giant number
     // here. But we only use it modularly, so reduce it now.
-    // uint64_t sqr_root = SqrRoot % (unt64_t)term;
     sqr_root %= term;
 
     auto Problem = [&]() {
@@ -709,27 +661,10 @@ struct QuadModLL {
             nbrBitsSquareRoot,
             sqr_root,
             Big128(q).ToString().c_str());
-            // q.ToString().c_str());
       };
 
     if (VERBOSE)
       fprintf(stderr, "%s", Problem().c_str());
-
-    /*
-    std::optional<int64_t> uo = SqrRoot.ToInt();
-    if (!uo.has_value()) {
-      // printf("\033[2J");
-      fflush(stderr);
-      fprintf(stderr, "\n\n\n\n\n\n\n\n\n\n\n");
-      fprintf(stderr, "%s", Problem().c_str());
-      fflush(stderr);
-
-      Util::WriteFile("error.txt", Problem());
-
-      CHECK(false) << Problem();
-    }
-    return uo.value();
-    */
 
     uint64_t ss = IsU64(sqr_root);
     if (VERBOSE)
@@ -809,8 +744,6 @@ struct QuadModLL {
     // deltaZeros >>= 1;
 
     // Compute inverse of -2*A (mod prime^(expon - deltaZeros)).
-    // AOdd = BigInt(2);
-    // CHECK(AOdd == 2);
 
     // Negate 2*A
     aodd = ModularInverse64((int64_t)term - 2, term);
@@ -865,7 +798,6 @@ struct QuadModLL {
     // Compute increment.
     // Q <- prime^correctBits
     // correctbits is the same as the exponent.
-    // const BigInt Q(term);
 
     int64_t sol1 = BasicModMult64(sqr_root, aodd, term);
     if (sol1 < 0) {
