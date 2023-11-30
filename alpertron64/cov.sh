@@ -1,12 +1,14 @@
 #!/bin/bash
 
 make clean
-make -j quad.exe test.exe || exit -1
+make -j quad.exe test.exe testlargevalues.exe || exit -1
+echo ""
 
 set -x
 set -e
 
 ./test.exe
+./testlargevalues.exe
 
 rm -f coverage.out
 ./quad.exe 13526043882269 >> coverage.out
@@ -56,6 +58,10 @@ rm -f coverage.out
 # 2^58 * 5^2, nontrivial solution
 # x = 1610612736, y = 2147483648
 ./quad.exe 7205759403792793600 >> coverage.out
+
+# 13^17. gives large intermediate values ComputeSquareRootModPowerOfP
+# 9 solutions
+./quad.exe 8650415919381337933 >> coverage.out
 
 dos2unix -q coverage.out
 diff coverage.golden coverage.out

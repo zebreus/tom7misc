@@ -236,7 +236,7 @@ static void RunGrid() {
 
 static void SimpleMaxValues() {
 
-  for (int64_t base = 2; base < 31; base++) {
+  for (int64_t base = 2; base < 99; base++) {
 
     uint64_t pow = 1;
     for (;;) {
@@ -258,25 +258,33 @@ static void SimpleMaxValues() {
 
 
 static void ProductOfTwo() {
-#if 0
-  for (int64_t base = 2; base < 31; base++) {
+  for (int64_t a = 2; a < 99; a++) {
+    for (int64_t b = a + 1; b < 99; b++) {
 
-    uint64_t pow = 1;
-    for (;;) {
-      uint64_t next_pow = pow * base;
-      if (next_pow <= pow) break;
-      if (next_pow & (1ULL << 63)) break;
-      pow = next_pow;
+      // number of factors of a. we cover
+      // pure powers in SimpleMaxValues.
+      BigInt ap(1);
+      for (int af = 1; af < 63; af++) {
+        ap = ap * a;
+        if (ap >= (1ULL << 63)) break;
 
-      std::vector<std::pair<uint64_t, int>> factors =
-        Factorization::Factorize(pow);
+        for (int bf = 1; bf < 63; bf++) {
+          BigInt bp = ap * BigInt::Pow(BigInt(b), bf);
+          if (bp >= (1ULL << 63)) break;
 
-      Solutions sol = SolveQuad(pow, factors);
-      (void)sol;
+          // Now we have some maximal a^x * b^y. Try it.
+          std::optional<int64_t> pow = bp.ToInt();
+          CHECK(pow.has_value());
+          std::vector<std::pair<uint64_t, int>> factors =
+            Factorization::Factorize(pow.value());
+
+          Solutions sol = SolveQuad(pow.value(), factors);
+          (void)sol;
+        }
+      }
     }
-
   }
-#endif
+
   printf("OK\n");
 }
 

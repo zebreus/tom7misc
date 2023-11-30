@@ -1,4 +1,4 @@
-default: quad.exe test.exe montgomery64_test.exe
+default: quad.exe test.exe montgomery64_test.exe maxvalues.exe grid.exe testlargepowers.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -65,6 +65,10 @@ grid.exe : grid.o $(ALPERTRON_OBJECTS) $(SOS_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
 maxvalues.exe : maxvalues.o $(ALPERTRON_OBJECTS) $(SOS_OBJECTS) $(TEST_CC_LIB_OBJECTS)
+	@echo -n "@"
+	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
+
+testlargevalues.exe : testlargevalues.o $(ALPERTRON_OBJECTS) $(SOS_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 

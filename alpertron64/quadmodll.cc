@@ -35,6 +35,9 @@
 static constexpr bool SELF_CHECK = false;
 static constexpr bool VERBOSE = false;
 
+#undef stderr
+#define stderr stdout
+
 // This used to be exposed to the caller for teach mode, but is
 // now fully internal.
 namespace {
@@ -540,9 +543,17 @@ struct QuadModLL {
     // BigInt q(prime);
     uint128_t q = prime;
 
-    auto Big128 = [](uint128_t x) {
+    auto Big128 = [](uint128_t x) -> BigInt {
         return (BigInt(Uint128High64(x)) << 64) +
           BigInt(Uint128Low64(x));
+      };
+
+    auto Big128i = [&Big128](int128_t x) -> BigInt {
+        if (x >= 0) {
+          return Big128((uint128_t)x);
+        } else {
+          return -Big128((uint128_t)-x);
+        }
       };
 
     auto IsU64 = [](uint128_t x) {
@@ -593,11 +604,30 @@ struct QuadModLL {
               Big128(sqr_root).ToString().c_str());
 
       uint128_t tmp2b = tmp1b % q;
+      CHECK((int128_t)tmp2b >= 0);
+
+      if (VERBOSE)
+      printf("tmp2b: %s = %s\n",
+             Big128(tmp2b).ToString().c_str(),
+             Big128i((int128_t)tmp2b).ToString().c_str());
       // Tmp2 = Tmp1 % Big128(q);
       int128_t tmp2c = (int128_t)3 - (int128_t)tmp2b;
 
+      if (VERBOSE)
+      printf("threeminus: %s  sqr_root: %s\n",
+             Big128i(tmp2c).ToString().c_str(),
+             Big128(sqr_root).ToString().c_str());
+
+      tmp2c %= term;
+      if (tmp2c < 0) tmp2c += term;
+
       int128_t tmp1c = (int128_t)tmp2c * (int128_t)sqr_root;
       // Tmp1 = Tmp2 * SqrRoot;
+
+      if (VERBOSE)
+      printf("%s * sqr_root = %s\n",
+             Big128i(tmp2c).ToString().c_str(),
+             Big128i(tmp1c).ToString().c_str());
 
       int128_t tmp1d = tmp1c % (int128_t)term;
       if (tmp1d < 0) tmp1d += term;
@@ -617,6 +647,9 @@ struct QuadModLL {
       }
       */
 
+      if (VERBOSE)
+      printf("now even tmp1: %s\n", Big128(tmp1e).ToString().c_str());
+
       /*
       CHECK(BigInt::Abs(Tmp1) < (BigInt(1) << 127)) <<
         Tmp2.ToString() << " * " << SqrRoot.ToString() << " = " <<
@@ -635,7 +668,7 @@ struct QuadModLL {
       // SqrRoot = SqrRoot % BigInt(term);
 
       if (VERBOSE)
-      printf("  SqrRoot %s, Q %s\n",
+      printf("  Loop bot: SqrRoot %s, Q %s\n",
              Big128(sqr_root).ToString().c_str(),
              Big128(q).ToString().c_str());
     }
@@ -818,6 +851,11 @@ struct QuadModLL {
     int64_t sqr_root = ComputeSquareRootModPowerOfP(
         tmp, prime, (uint64_t)discr, term, nbrBitsSquareRoot);
 
+    if (VERBOSE)
+      printf("sqr_root: %lld (mod term: %lld)\n",
+             sqr_root, sqr_root % term);
+
+
     // Multiply by square root of discriminant by prime^deltaZeros.
     // But deltaZeros is 0.
     CHECK(deltaZeros == 0);
@@ -841,6 +879,8 @@ struct QuadModLL {
       sol2 += term;
     }
 
+    if (VERBOSE)
+      printf("Solutions %lld %lld %lld\n", sol1, sol2, term);
     Sols[factorIndex].solution2 = sol2;
     Sols[factorIndex].increment = term;
     return true;

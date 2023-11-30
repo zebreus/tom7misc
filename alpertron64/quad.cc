@@ -666,6 +666,8 @@ Solutions SolveQuad(uint64_t f,
       msg = "Note: This input is larger than 2^63, and the code is known "
         "to be incorrect for such numbers because of overflow, etc.";
 
+    fflush(stdout);
+    fflush(stderr);
     CHECK(false) << "Wrong number of solutions:\n"
       "Sum: " << f <<
       "\nexpected: " << expected_solutions <<

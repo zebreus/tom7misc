@@ -86,7 +86,7 @@ static void RunGrid() {
   // old frontier, but it's probably better to be looking for
   // problems with much larger numbers.
   // static constexpr int64_t START_NUM = 39867870912;
-  static constexpr int64_t START_NUM = 23382957612789;
+  static constexpr int64_t START_NUM = 23429608030869;
   static constexpr int64_t MAX_NUM   = 64'000'000'000'000;
   static constexpr int64_t BATCH_SIZE = 32;
 
