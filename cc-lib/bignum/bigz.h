@@ -161,6 +161,7 @@ extern BigZ         BzMultiply(const BigZ y, const BigZ z);
 extern BigZ         BzDivide(const BigZ y, const BigZ z, BigZ *r);
 extern BigZ         BzDiv(const BigZ y, const BigZ z);
 extern BigZ         BzTruncate(const BigZ y, const BigZ z);
+// i.e., floored division
 extern BigZ         BzFloor(const BigZ y, const BigZ z);
 extern BigZ         BzCeiling(const BigZ y, const BigZ z);
 extern BigZ         BzRound(const BigZ y, const BigZ z);

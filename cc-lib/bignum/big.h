@@ -139,9 +139,6 @@ struct BigInt {
   inline static double NaturalLog(const BigInt &a);
   inline static double LogBase2(const BigInt &a);
 
-  // Jacobi symbol (-1, 0, 1). b must be odd.
-  inline static int Jacobi(const BigInt &a, const BigInt &b);
-
   // Compute the modular inverse of a mod b. Returns nullopt if
   // it does not exist.
   inline static std::optional<BigInt> ModInverse(
@@ -149,6 +146,8 @@ struct BigInt {
 
   #endif
 
+  // Jacobi symbol (-1, 0, 1). b must be odd.
+  inline static int Jacobi(const BigInt &a, const BigInt &b);
 
   // Generate a uniform random number in [0, radix).
   // r should return uniformly random uint64s.
@@ -174,8 +173,10 @@ struct BigInt {
   static std::vector<std::pair<BigInt, int>>
   PrimeFactorization(const BigInt &x, int64_t max_factor = -1);
 
+  #if BIG_USE_GMP
   // Exact primality test.
   static bool IsPrime(const BigInt &x);
+  #endif
 
   // Get 64 (or so) bits of the number. Will be equal for equal a, but
   // no particular value is guaranteed. Intended for hash functions.
@@ -1058,6 +1059,17 @@ std::optional<int64_t> BigInt::ToInt() const {
     return {(int64_t)digit};
   }
 }
+std::optional<uint64_t> BigInt::ToU64() const {
+  if (BzGetSign(rep) == BZ_MINUS ||
+      BzNumDigits(rep) > (BigNumLength)1) {
+    return std::nullopt;
+  } else {
+    const uint64_t digit = BzGetDigit(rep, 0);
+    // Would overflow int64. (This may be a bug in BzToInteger?)
+    return {(uint64_t)digit};
+  }
+}
+
 
 uint64_t BigInt::LowWord(const BigInt &a) {
   if (BzNumDigits(a.rep) == 0) return uint64_t{0};
@@ -1066,6 +1078,46 @@ uint64_t BigInt::LowWord(const BigInt &a) {
 
 bool BigInt::IsEven() const { return BzIsEven(rep); }
 bool BigInt::IsOdd() const { return BzIsOdd(rep); }
+
+int BigInt::Jacobi(const BigInt &a_input,
+                   const BigInt &n_input) {
+  // Preconditions.
+  assert(Greater(n_input, 0));
+  assert(n_input.IsOdd());
+
+  int t = 1;
+
+  BigInt a = CMod(a_input, n_input);
+  BigInt n = n_input;
+
+  if (Less(a, 0)) a = Plus(a, n);
+
+  while (!Eq(a, 0)) {
+
+    while (a.IsOdd()) {
+      a = RightShift(a, 1);
+      const uint64_t r = BitwiseAnd(n, 7);
+      if (r == 3 || r == 5) {
+        t = -t;
+      }
+    }
+
+    std::swap(n, a);
+    if (BitwiseAnd(a, 3) == 3 &&
+        BitwiseAnd(n, 3) == 3) {
+      t = -t;
+    }
+
+    a = CMod(a, n);
+  }
+
+  if (Eq(n, 1)) {
+    return t;
+  } else {
+    return 0;
+  }
+}
+
 
 BigInt BigInt::Negate(const BigInt &a) {
   return BigInt{BzNegate(a.rep), nullptr};
@@ -1157,12 +1209,10 @@ BigInt BigInt::Div(const BigInt &a, int64_t b) {
 }
 
 BigInt BigInt::DivFloor(const BigInt &a, const BigInt &b) {
-  // TODO
-  abort();
+  return BigInt{BzFloor(a.rep, b.rep), nullptr};
 }
 BigInt BigInt::DivFloor(const BigInt &a, int64_t b) {
-  // TODO
-  abort();
+  return BigInt{BzFloor(a.rep, BigInt{b}.rep), nullptr};
 }
 
 
@@ -1200,7 +1250,7 @@ BigInt BigInt::CMod(const BigInt &a, const BigInt &b) {
 }
 
 int64_t BigInt::CMod(const BigInt &a, int64_t b) {
-  auto ro = BigInt{BzRem(a.rep, BigInt{b}), nullptr}.ToInt();
+  auto ro = BigInt{BzRem(a.rep, BigInt{b}.rep), nullptr}.ToInt();
   assert(ro.has_value());
   return ro.value();
 }
@@ -1224,15 +1274,19 @@ BigInt BigInt::BitwiseAnd(const BigInt &a, const BigInt &b) {
 }
 
 uint64_t BigInt::BitwiseAnd(const BigInt &a, uint64_t b) {
-  // TODO: extract a as int, then do native and.
+  // PERF: extract a as int (just need low word), then do native and.
   // return BigInt{BzAnd(a.rep, BigInt{b}.rep), nullptr};
+  auto ao = BigInt{BzAnd(a.rep, BigInt{b}.rep), nullptr}.ToU64();
+  // Result must fit in 64 bits, since we anded with a 64-bit number.
+  assert(ao.has_value());
+  return ao.value();
 }
 
 uint64_t BigInt::BitwiseCtz(const BigInt &a) {
   if (BzGetSign(a.rep) == BZ_ZERO) return 0;
   // PERF: This could be faster by testing a limb at a time first.
   uint64_t bit = 0;
-  while (BzTestBit(bit, a.rep)) bit++;
+  while (!BzTestBit(bit, a.rep)) bit++;
   return bit;
 }
 

@@ -215,7 +215,9 @@ static void TestPrimeFactors() {
     CHECK(factors.size() == f.size());
     for (int i = 0; i < (int)f.size(); i++) {
       CHECK(factors[i].second == 1);
+      #if BIG_USE_GMP
       CHECK(BigInt::IsPrime(factors[i].first));
+      #endif
       CHECK(BigInt::Eq(factors[i].first, BigInt(f[i])));
     }
   }
@@ -246,6 +248,8 @@ static void TestPrimeFactors() {
   #endif
 
   // Primorials
+  #if BIG_USE_GMP
+  // TODO: Enable this when we have IsPrime.
   {
     BigInt prim(1);
     for (uint64_t n = 2; n <= 128; n++) {
@@ -268,6 +272,7 @@ static void TestPrimeFactors() {
       CHECK(BigInt::Eq(product, prim)) << n;
     }
   }
+  #endif
 
   printf("Prime factorization OK.\n");
 }
@@ -447,12 +452,16 @@ static void TestGCD() {
 }
 
 static void TestLog() {
+#if BIG_USE_GMP
   BigInt x = BigInt::LeftShift(BigInt(1), 301);
   double y = BigInt::LogBase2(x);
   CHECK(y >= 300.99 && y <= 301.01) << y;
 
   double z = BigInt::NaturalLog(x);
   CHECK(z >= 208.6 && z <= 208.7) << z;
+#else
+  printf("Warning: LogBase2 not implemented\n");
+#endif
 }
 
 static void TestShift() {
@@ -617,6 +626,7 @@ static void TestCMod() {
   } while (0)
 
 static void TestInvert() {
+#if BIG_USE_GMP
   for (const char *bs : {
       "1", "2", "3", "4", "5", "100", "10001", "31337",
       // 2^64
@@ -679,6 +689,9 @@ static void TestInvert() {
   }
 
   printf("Modular inverse OK.\n");
+#else
+  printf("Warning: Modular inverse not implemented.\n");
+#endif
 }
 
 static void TestSwap() {
@@ -698,8 +711,7 @@ static void TestCtz() {
   CHECK(BigInt::BitwiseCtz(BigInt(-2)) == 1);
 
   CHECK(BigInt::BitwiseCtz(
-            BigInt::Times(BigInt::Pow(BigInt{2}, 389),
-                          33)) == 389);
+            BigInt::Times(BigInt::Pow(BigInt{2}, 389), 33)) == 389);
 }
 
 static void TestDivisibleBy() {
@@ -752,6 +764,7 @@ int main(int argc, char **argv) {
 
   TestPow();
   TestQuotRem();
+
   TestPrimeFactors();
 
   TestPi();
