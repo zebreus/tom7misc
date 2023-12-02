@@ -370,17 +370,24 @@ TryFilterGPU::FilterWays(std::vector<TryMe> &input,
 
   // Make the input arrays.
   std::vector<uint64_t> ways;
-  ways.reserve(height * MAX_WAYS * 2);
+  ways.reserve(height * data_width * 2);
   std::vector<uint32_t> ways_size;
   ways_size.reserve(height);
 
   for (const TryMe &tryme : input) {
-    CHECK(tryme.squareways.size() <= MAX_WAYS) << tryme.squareways.size();
+    CHECK(tryme.squareways.size() <= data_width) << tryme.squareways.size();
+    if (fixed_width.has_value()) {
+      CHECK(tryme.squareways.size() == fixed_width.value());
+    }
+
+    // PERF could just skip this if fixed?
     ways_size.push_back(tryme.squareways.size() * 2);
-    for (int i = 0; i < MAX_WAYS; i++) {
+
+    for (int i = 0; i < data_width; i++) {
+      // PERF when fixed, no need for padding
       if (i < tryme.squareways.size()) {
         const auto &[a, b] = tryme.squareways[i];
-        // PERF compare using kernel
+        // PERF do the squaring upstream.
         ways.push_back(a * a);
         ways.push_back(b * b);
       } else {
@@ -401,12 +408,12 @@ TryFilterGPU::FilterWays(std::vector<TryMe> &input,
 
     // Run kernel.
     {
-      CHECK_SUCCESS(clSetKernelArg(kernel2, 0, sizeof (cl_mem),
+      CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (cl_mem),
                                    (void *)&ways_size_gpu));
 
-      CHECK_SUCCESS(clSetKernelArg(kernel2, 1, sizeof (cl_mem),
+      CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
                                    (void *)&ways_gpu));
-      CHECK_SUCCESS(clSetKernelArg(kernel2, 2, sizeof (cl_mem),
+      CHECK_SUCCESS(clSetKernelArg(kernel, 2, sizeof (cl_mem),
                                    (void *)&rejected_gpu));
 
       // Simple 1D Kernel
@@ -416,7 +423,7 @@ TryFilterGPU::FilterWays(std::vector<TryMe> &input,
       size_t global_work_size[] = { (size_t)height };
 
       CHECK_SUCCESS(
-          clEnqueueNDRangeKernel(cl->queue, kernel2,
+          clEnqueueNDRangeKernel(cl->queue, kernel,
                                  // 1D
                                  1,
                                  // It does its own indexing

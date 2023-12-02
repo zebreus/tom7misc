@@ -244,7 +244,7 @@ static void TestWays(const char * method) {
           const auto &[sum, expected, factors] = batch[row];
           printf(ARED("FAIL") "\n"
                  "Sum: %llu\n"
-                 "Expected: %d\n",
+                 "Expected: %d\n"
                  "CPU: %s\n"
                  "GPU: %s\n",
                  sum,
@@ -331,6 +331,33 @@ static void TestTryFilter() {
 
   printf("TryFilter GPU " AGREEN("OK") "\n");
 }
+
+static void TestFixedTryFilter() {
+
+  TryMe tryme_keep;
+  tryme_keep.num = 425*425 + 373*373;
+  tryme_keep.squareways = {{425, 373}, {527, 205}, {23, 565}};
+
+  TryMe tryme_remove;
+  tryme_remove.num = 10976645;
+  // Note this is not all the ways, but TryFilter doesn't require that.
+  tryme_remove.squareways = {{26, 3313}, {118, 3311}, {271, 3302}};
+
+  std::vector<TryMe> input = {tryme_keep, tryme_remove};
+  TryFilterGPU tryfilter(cl, input.size(), {3});
+
+  uint64_t rejected_f = 0;
+  std::vector<TryMe> out = tryfilter.FilterWays(input, &rejected_f);
+  // printf("rejected_f: %llu (should be about 16 * 15 * 14 * 4 = %d)\n",
+  // rejected_f, 16 * 15 * 14 * 4);
+  CHECK(rejected_f == 3 * 2 * 4) << rejected_f;
+  CHECK(out.size() == 1);
+  CHECK(out[0].num == input[0].num);
+  CHECK(out[0].squareways == input[0].squareways);
+
+  printf("FixedTryFilter GPU " AGREEN("OK") "\n");
+}
+
 
 static void TestEligibleFilter() {
   static constexpr int HEIGHT = 8192 * 256;
@@ -593,11 +620,10 @@ static void BenchTrialDivide() {
 int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
-  /*
-  TestEligibleFilter();
-  TestTryFilter();
 
-  */
+  TestEligibleFilter();
+  TestFixedTryFilter();
+  TestTryFilter();
 
   TestWays<WaysGPUMerge, TEST_AGAINST_CPU, 16>("merge");
   TestWays<WaysGPU, TEST_AGAINST_CPU, 16>("orig2d");

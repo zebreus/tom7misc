@@ -15,6 +15,13 @@
 //
 // where D^2 + E^2 = C^2 + I^2.
 
+// Defines:
+// FIXED_WIDTH - If defined, an integer that tells us the exact number
+//               of ways (pairs) in each row.
+// ROW_STRIDE  - the number of pairs in each row. This is MAX_WAYS
+//               for dynamic invocations, and the same as FIXED_WIDTH for
+//               fixed-width invocations
+
 // Careful! The builtin uint8 is a vector of 8 uints.
 typedef uchar uint8_t;
 typedef uint uint32_t;
@@ -33,17 +40,10 @@ typedef atomic_uint atomic_uint32_t;
     rej++;                      \
   }
 
-// Square every element in the vector.
-__kernel void SquareVec(__global uint64_t *ways) {
-  const int idx = get_global_id(0);
-  const uint64_t a = ways[idx];
-  ways[idx] = a * a;
-}
-
 // Args are similar to NWaysMerge:
 //   There is some sum (not passed), where sum = a + b for each
 //   of the ways_size/2 pairs in the "squared_ways" row. (Note
-//   these have been pre-squared by the kernel above!)
+//   these have been pre-squared.)
 //
 // In 'rejected', we write zero if there might be something in here
 // (i.e. we should try the full routine on CPU) or the number of
@@ -54,12 +54,16 @@ __kernel void TryFilter(__global const uint32_t *restrict ways_size,
                         __global uint32_t *restrict rejected) {
   const int sum_idx = get_global_id(0);
   // const uint64_t sum = sums[sum_idx];
-  const uint32_t ways_row_base = sum_idx * MAX_WAYS * 2;
+  const uint32_t ways_row_base = sum_idx * ROW_STRIDE * 2;
 
   // N^3 loop over ways. Note that we can tune how deep we're
   // willing to go here, since we can always just return zero
   // and not filter.
-  const uint32_t num_ways = ways_size[sum_idx] >> 1;
+  #ifdef FIXED_WIDTH
+    #define num_ways FIXED_WIDTH
+  #else
+    const uint32_t num_ways = ways_size[sum_idx] >> 1;
+  #endif
 
   uint32_t rej = 0;
 

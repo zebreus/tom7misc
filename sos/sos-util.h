@@ -22,7 +22,10 @@ inline uint64_t Sqrt64(uint64_t n) {
 }
 
 struct TryMe {
+  // PERF: We don't actually use this
   uint64_t num;
+  // PERF: Can represent these as the squares instead; that's
+  // all we need in Try and TryFilter.
   std::vector<std::pair<uint64_t, uint64_t>> squareways;
 };
 

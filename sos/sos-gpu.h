@@ -259,22 +259,43 @@ struct TryFilterGPU {
 
   CL *cl = nullptr;
   int height = 0;
+  // If set, every row is assumed to have exactly this many ways. We
+  // separate out common small nways and run them in their own batches
+  // (by having multiple instantiations of this object). This
+  // allows loop unrolling and prevents hard problems from slowing
+  // down easy ones; the kernel is O(n^3).
+  std::optional<int> fixed_width = std::nullopt;
+  // Either MAX_WAYS or fixed_width.
+  int data_width = 0;
 
-  // TODO PERF: We don't have to go all the way to MAX_WAYS, and outliers
-  // may cause the entire warp (thread block?) to take longer. Tune some
-  // limit.
-  TryFilterGPU(CL *cl, int height) : cl(cl), height(height) {
-    std::string defines = StringPrintf("#define MAX_WAYS %d\n",
-                                       MAX_WAYS);
+  int Height() const { return height; }
+
+  TryFilterGPU(CL *cl, int height,
+               std::optional<int> fixed_width = std::nullopt) :
+    cl(cl), height(height), fixed_width(fixed_width) {
+
+    std::string defines;
+    if (fixed_width.has_value()) {
+      // Maybe we should just ignore max_ways in this case?
+      CHECK(fixed_width.value() <= MAX_WAYS);
+      defines = StringPrintf("#define FIXED_WIDTH %d\n"
+                             "#define ROW_STRIDE %d\n",
+                             fixed_width.value(),
+                             fixed_width.value());
+      data_width = fixed_width.value();
+    } else {
+      defines = StringPrintf("#define ROW_STRIDE %d\n",
+                             MAX_WAYS);
+      data_width = MAX_WAYS;
+    }
+
     std::string kernel_src = defines + Util::ReadFile("try.cl");
     const auto &[prog, kernels] =
-      cl->BuildKernels(kernel_src, {"SquareVec", "TryFilter"}, false);
+      cl->BuildKernels(kernel_src, {"TryFilter"}, false);
     CHECK(prog != 0);
     program = prog;
-    kernel1 = FindOrDefault(kernels, "SquareVec", 0);
-    kernel2 = FindOrDefault(kernels, "TryFilter", 0);
-    CHECK(kernel1 != 0);
-    CHECK(kernel2 != 0);
+    kernel = FindOrDefault(kernels, "TryFilter", 0);
+    CHECK(kernel != 0);
 
     /*
       std::optional<std::string> ptx = cl->DecodeProgram(program);
@@ -287,7 +308,7 @@ struct TryFilterGPU {
     // Same meaning as above, but we square the elements in place.
     ways_gpu =
       CreateUninitializedGPUMemory<uint64_t>(cl->context,
-                                             height * MAX_WAYS * 2);
+                                             height * data_width * 2);
     ways_size_gpu =
       CreateUninitializedGPUMemory<uint32_t>(cl->context, height);
     // Output.
@@ -298,7 +319,7 @@ struct TryFilterGPU {
   // Synchronized access.
   std::mutex m;
   cl_program program = 0;
-  cl_kernel kernel1 = 0, kernel2 = 0;
+  cl_kernel kernel = 0;
   cl_mem ways_gpu = nullptr;
   cl_mem ways_size_gpu = nullptr;
   cl_mem rejected_gpu = nullptr;
@@ -309,8 +330,7 @@ struct TryFilterGPU {
                                 uint64_t *rejected_f);
 
   ~TryFilterGPU() {
-    CHECK_SUCCESS(clReleaseKernel(kernel1));
-    CHECK_SUCCESS(clReleaseKernel(kernel2));
+    CHECK_SUCCESS(clReleaseKernel(kernel));
     CHECK_SUCCESS(clReleaseProgram(program));
 
     CHECK_SUCCESS(clReleaseMemObject(ways_size_gpu));

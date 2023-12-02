@@ -47,7 +47,7 @@ using Square = Database::Square;
 // tests)
 using GPUMethod = WaysGPUMerge;
 
-static constexpr bool WRITE_IMAGE = false;
+static constexpr bool WRITE_IMAGE = true;
 
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
 
@@ -236,7 +236,7 @@ static constexpr int ENDGAME_WORK_STEALING_THREADS = 6;
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
 
-static constexpr int STATUS_HISTO_LINES = 10;
+static constexpr int STATUS_HISTO_LINES = 24;
 static constexpr int STATUS_TEXT_LINES = 6;
 static StatusBar status(STATUS_HISTO_LINES + STATUS_TEXT_LINES);
 
@@ -503,6 +503,8 @@ struct SOS {
   std::unique_ptr<AutoParallelComp> try_comp;
   std::unique_ptr<GPUMethod> ways_gpu;
   std::unique_ptr<TryFilterGPU> tryfilter_gpu;
+  // added at 24,630,400,000,000+
+  std::unique_ptr<TryFilterGPU> tryfilter4_gpu;
   std::unique_ptr<EligibleFilterGPU> eligiblefilter_gpu;
 
   // Pre-filtered; ready to have the number of ways computed on CPU.
@@ -540,6 +542,9 @@ struct SOS {
   std::unique_ptr<
     BatchedWorkQueue<TryMe>
     > tryfilter_queue;
+  std::unique_ptr<
+    BatchedWorkQueue<TryMe>
+    > tryfilter4_queue;
 
   // Candidate for full try.
   std::unique_ptr<
@@ -569,6 +574,9 @@ struct SOS {
         new EligibleFilterGPU(cl, EPOCH_GPU_CHUNK));
     ways_gpu.reset(new GPUMethod(cl, GPU_WAYS_HEIGHT));
     tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_TRYFILTER_HEIGHT));
+    // Could tune height of this separately? I think the ragged one can
+    // use smaller batches.
+    tryfilter4_gpu.reset(new TryFilterGPU(cl, GPU_TRYFILTER_HEIGHT, {4}));
 
     prefiltered_queue.reset(
         new WorkQueue<std::pair<uint64_t, std::vector<uint8_t>>>);
@@ -580,6 +588,7 @@ struct SOS {
         new BatchedWorkQueue<std::tuple<uint64_t, uint32_t, CollatedFactors>>(
             GPU_WAYS_HEIGHT));
     tryfilter_queue.reset(new BatchedWorkQueue<TryMe>(GPU_TRYFILTER_HEIGHT));
+    tryfilter4_queue.reset(new BatchedWorkQueue<TryMe>(GPU_TRYFILTER_HEIGHT));
     try_queue.reset(new BatchedWorkQueue<TryMe>(TRY_BATCH_SIZE));
     almost2_queue.reset(new WorkQueue<Database::Square>);
   }
@@ -842,6 +851,25 @@ struct SOS {
             });
   }
 
+  void AddBatchToTryFilter(std::vector<TryMe> batch) {
+    std::vector<TryMe> four;
+    std::vector<TryMe> general;
+
+    for (TryMe &tryme : batch) {
+      if (tryme.squareways.size() == 4) [[likely]] {
+        four.emplace_back(std::move(tryme));
+      } else {
+        general.emplace_back(std::move(tryme));
+      }
+    }
+
+    if (!general.empty())
+      tryfilter_queue->WaitAddVec(std::move(general));
+
+    if (!four.empty())
+      tryfilter4_queue->WaitAddVec(std::move(four));
+  }
+
 
   void GPUWaysThread(int thread_idx) {
     for (;;) {
@@ -886,8 +914,7 @@ struct SOS {
       // just do this in place. The main issue is making sure the
       // tests can still work.
       uint64_t local_pending_tryfilter = trybatch.size();
-      tryfilter_queue->WaitAddVec(std::move(trybatch));
-
+      AddBatchToTryFilter(std::move(trybatch));
 
       {
         MutexLock ml(&m);
@@ -897,15 +924,22 @@ struct SOS {
     }
   }
 
-  void TryPrefilterThread() {
+  // Multiple try-prefilter threads, since we run common widths
+  // in a specialized kernel.
+  void TryPrefilterThread(const char *name,
+                          BatchedWorkQueue<TryMe> *input_queue,
+                          TryFilterGPU *filter) {
+    const int height = filter->Height();
 
     for (;;) {
+      // Get a batch from one of the queues.
       std::optional<std::vector<TryMe>> batchopt =
-        tryfilter_queue->WaitGet();
+        input_queue->WaitGet();
 
       if (!batchopt.has_value()) {
         // Done!
-        status.Printf("GPU tryfilter thread has no more work!\n");
+        status.Printf("GPU tryfilter thread (%s) has no more work!\n",
+                      name);
         fflush(stdout);
         return;
       }
@@ -919,9 +953,9 @@ struct SOS {
       // or adding support in the gpu code.
       bool gone = false;
       int64_t num_filtered = 0;
-      if (batch.size() == GPU_TRYFILTER_HEIGHT) {
+      if (batch.size() == height) {
         uint64_t rej = 0;
-        batch = tryfilter_gpu->FilterWays(batch, &rej);
+        batch = filter->FilterWays(batch, &rej);
 
         INCREMENT_BY(rejected_f, rej);
         num_filtered = original_batch_size - batch.size();
@@ -1031,7 +1065,8 @@ struct SOS {
       GPU_FACTOR_HEIGHT *
       factored_queue->Size();
     const int64_t ways_size = ways_queue->Size();
-    const int64_t tryfilter_size = tryfilter_queue->Size();
+    const int64_t tryfilter_size = tryfilter_queue->Size() +
+      tryfilter4_queue->Size();
     const int64_t try_size = try_queue->Size();
 
 
@@ -1203,7 +1238,8 @@ struct SOS {
               GPU_FACTOR_HEIGHT *
               factored_queue->Size();
             const int64_t ways_size = ways_queue->Size();
-            const int64_t tryfilter_size = tryfilter_queue->Size();
+            const int64_t tryfilter_size = tryfilter_queue->Size() +
+              tryfilter4_queue->Size();
             const int64_t try_size = try_queue->Size();
             const int64_t done = NumDone();
 
@@ -1437,7 +1473,8 @@ struct SOS {
               },
               num_threads);
 
-        tryfilter_queue->WaitAddVec(std::move(output));
+        AddBatchToTryFilter(std::move(output));
+
         output.clear();
         {
           MutexLock ml(&m);
@@ -1677,6 +1714,8 @@ struct SOS {
                       try_queue->WaitAdd(std::move(tryme));
                       local_pending_try++;
                     } else {
+                      // Straight to the general queue, since it cannot
+                      // be size four on this path.
                       tryfilter_queue->WaitAdd(std::move(tryme));
                       local_pending_tryfilter++;
                     }
@@ -1729,7 +1768,16 @@ struct SOS {
                                      this, epoch_start, epoch_size);
     std::thread gpu_factor_thread(&GPUFactorThread, this);
     std::thread nways_thread(&NWaysThread, this);
-    std::thread gpu_tryfilter_thread(&TryPrefilterThread, this);
+
+    std::thread gpu_tryfilter_thread(&TryPrefilterThread, this,
+                                     "general",
+                                     tryfilter_queue.get(),
+                                     tryfilter_gpu.get());
+    std::thread gpu_tryfilter4_thread(&TryPrefilterThread, this,
+                                      "four",
+                                      tryfilter4_queue.get(),
+                                      tryfilter4_gpu.get());
+
     std::thread try_thread(&TryThread, this);
 
     ResetCounters();
@@ -1786,13 +1834,15 @@ struct SOS {
     gpu_ways_threads.clear();
 
     tryfilter_queue->MarkDone();
+    tryfilter4_queue->MarkDone();
 
     const uint64_t num_stolen = ReadWithLock(&m, &stolen);
     status.Printf(ABLUE("%llu") " sums were stolen by CPU for ways.\n",
                   num_stolen);
 
     gpu_tryfilter_thread.join();
-    status.Printf("GPU TryFilter thread done.\n");
+    gpu_tryfilter4_thread.join();
+    status.Printf("GPU TryFilter threads done.\n");
     try_queue->MarkDone();
 
     status.Printf("Waiting for Try thread.\n");
