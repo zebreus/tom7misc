@@ -177,6 +177,10 @@ private:
 // 131072 0.205us/ea.
 // 131072x8 0.246us/ea.
 static constexpr int GPU_WAYS_HEIGHT = 131072;
+
+// Does not need to be the same size, but in the common
+// case we are inserting the entire output of the ways.
+static constexpr int GPU_TRYFILTER_HEIGHT = GPU_WAYS_HEIGHT;
 // PERF: Tune!
 // static constexpr int GPU_FACTOR_HEIGHT = 8192;
 // 8192: 2m52s
@@ -227,7 +231,7 @@ static constexpr int STEADY_WORK_STEALING_THREADS = 4;
 // Be careful not to set this too low, or everything will stall
 // on a stolen batch (size GPU_WAYS_HEIGHT) that is processed by a
 // small number of threads.
-static constexpr int ENDGAME_WORK_STEALING_THREADS = 8;
+static constexpr int ENDGAME_WORK_STEALING_THREADS = 6;
 
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
@@ -531,6 +535,12 @@ struct SOS {
     BatchedWorkQueue<std::tuple<uint64_t, uint32_t, CollatedFactors>>
     > ways_queue;
 
+  // GPU prefilter for the try phase. Removes candidates that have
+  // no interesting squares, and puts interesting ones in try_queue.
+  std::unique_ptr<
+    BatchedWorkQueue<TryMe>
+    > tryfilter_queue;
+
   // Candidate for full try.
   std::unique_ptr<
     BatchedWorkQueue<TryMe>
@@ -558,7 +568,7 @@ struct SOS {
     eligiblefilter_gpu.reset(
         new EligibleFilterGPU(cl, EPOCH_GPU_CHUNK));
     ways_gpu.reset(new GPUMethod(cl, GPU_WAYS_HEIGHT));
-    tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_WAYS_HEIGHT));
+    tryfilter_gpu.reset(new TryFilterGPU(cl, GPU_TRYFILTER_HEIGHT));
 
     prefiltered_queue.reset(
         new WorkQueue<std::pair<uint64_t, std::vector<uint8_t>>>);
@@ -569,6 +579,7 @@ struct SOS {
     ways_queue.reset(
         new BatchedWorkQueue<std::tuple<uint64_t, uint32_t, CollatedFactors>>(
             GPU_WAYS_HEIGHT));
+    tryfilter_queue.reset(new BatchedWorkQueue<TryMe>(GPU_TRYFILTER_HEIGHT));
     try_queue.reset(new BatchedWorkQueue<TryMe>(TRY_BATCH_SIZE));
     almost2_queue.reset(new WorkQueue<Database::Square>);
   }
@@ -614,6 +625,8 @@ struct SOS {
       const F &fn) {
 
     // Just compute the squares once.
+    // PERF: Looks like we could just be passing squares in the
+    // first place.
     std::vector<std::pair<uint64_t, uint64_t>> ways_squared;
     ways_squared.resize(ways.size());
     for (int i = 0; i < ways.size(); i++) {
@@ -622,49 +635,49 @@ struct SOS {
     }
 
     for (int p = 0; p < ways.size(); p++) {
-      const auto &[b, c] = ways[p];
       const auto &[bb, cc] = ways_squared[p];
+
+      const auto min_bb_cc = std::min(bb, cc);
+
       for (int q = 0; q < ways.size(); q++) {
         if (q != p) {
-          const auto &[d, g] = ways[q];
           const auto &[dd, gg] = ways_squared[q];
 
           // require that the smallest of b,c,d,g appears on the
           // top, to reduce symmetries.
-          if (std::min(b, c) > std::min(d, g))
+          if (min_bb_cc > std::min(dd, gg))
             continue;
 
           for (int r = 0; r < ways.size(); r++) {
             if (r != p && r != q) {
-              const auto &[e, i] = ways[r];
               const auto &[ee, ii] = ways_squared[r];
 
               // Now eight ways of ordering the pairs.
-              fn(/**/   b,bb,  c,cc,
-                 d,dd,  e,ee,  /**/
-                 g,gg,  /**/   i,ii);
-              fn(/**/   c,cc,  b,bb,
-                 d,dd,  e,ee,  /**/
-                 g,gg,  /**/   i,ii);
-              fn(/**/   b,bb,  c,cc,
-                 g,gg,  e,ee,  /**/
-                 d,dd,  /**/   i,ii);
-              fn(/**/   c,cc,  b,bb,
-                 g,gg,  e,ee,  /**/
-                 d,dd,  /**/   i,ii);
+              fn(/**/   bb,    cc,
+                 dd,    ee,    /**/
+                 gg,    /**/   ii);
+              fn(/**/   cc,    bb,
+                 dd,    ee,    /**/
+                 gg,    /**/   ii);
+              fn(/**/   bb,    cc,
+                 gg,    ee,    /**/
+                 dd,    /**/   ii);
+              fn(/**/   cc,    bb,
+                 gg,    ee,    /**/
+                 dd,    /**/   ii);
 
-              fn(/**/   b,bb,  c,cc,
-                 d,dd,  i,ii,  /**/
-                 g,gg,  /**/   e,ee);
-              fn(/**/   c,cc,  b,bb,
-                 d,dd,  i,ii,  /**/
-                 g,gg,  /**/   e,ee);
-              fn(/**/   b,bb,  c,cc,
-                 g,gg,  i,ii,  /**/
-                 d,dd,  /**/   e,ee);
-              fn(/**/   c,cc,  b,bb,
-                 g,gg,  i,ii,  /**/
-                 d,dd,  /**/   e,ee);
+              fn(/**/   bb,    cc,
+                 dd,    ii,    /**/
+                 gg,    /**/   ee);
+              fn(/**/   cc,    bb,
+                 dd,    ii,    /**/
+                 gg,    /**/   ee);
+              fn(/**/   bb,    cc,
+                 gg,    ii,    /**/
+                 dd,    /**/   ee);
+              fn(/**/   cc,    bb,
+                 gg,    ii,    /**/
+                 dd,    /**/   ee);
             }
           }
         }
@@ -672,18 +685,16 @@ struct SOS {
     }
   }
 
-  void Try(int z,
-           const std::vector<std::pair<uint64_t, uint64_t>> &ways) {
+  void Try(const std::vector<std::pair<uint64_t, uint64_t>> &ways) {
 
-    // PERF we don't actually need the roots until we print it out,
-    // so we could just pass the squares and compute sqrts in the rare
-    // case that we get through filters.
+    // We don't actually need the roots until we print it out, so
+    // all the arguments are squared here.
     AllWays(
         ways,
-        [this, z](
-            /*     a */ uint64_t b,  uint64_t bb, uint64_t c,  uint64_t cc,
-            uint64_t d, uint64_t dd, uint64_t e,  uint64_t ee, /*     f */
-            uint64_t g, uint64_t gg, /*     h */  uint64_t i,  uint64_t ii) {
+        [this](
+            /*     aa */ uint64_t bb, uint64_t cc,
+            uint64_t dd, uint64_t ee, /*     ff */
+            uint64_t gg, /*     hh */ uint64_t ii) {
 
               // f is specified two ways; they must have the
               // same sum then. This is by far the most common
@@ -712,11 +723,22 @@ struct SOS {
                 if (ao.has_value() || ho.has_value()) {
                   INCREMENT(other_almost2);
                   if (ao.has_value() && ho.has_value()) {
-                    uint64_t f = Sqrt64(ff);
+                    uint64_t b = Sqrt64(bb);
+                    uint64_t c = Sqrt64(cc);
+                    uint64_t d = Sqrt64(dd);
+                    uint64_t e = Sqrt64(ee);
+                    uint64_t f = Sqrt64(ff); // not square
+                    uint64_t g = Sqrt64(gg);
+                    uint64_t i = Sqrt64(ii);
                     Interesting(
                         StringPrintf(
-                            // For easy parsing. Everything is its squared version.
-                            "(!!!) %llu %llu %llu %llu %llu %llu %llu %llu %llu\n"
+                            // Line for easy parsing:
+                            // Everything is its squared version.
+                            "(!!!) "
+                            "%llu %llu %llu "
+                            "%llu %llu %llu "
+                            "%llu %llu %llu\n"
+                            // Details
                             "%llu^2 %llu^2 %llu^2\n"
                             "%llu^2 %llu^2 " ARED("sqrt(%llu)^2") "\n"
                             "%llu^2 %llu^2 %llu^2\n"
@@ -759,7 +781,19 @@ struct SOS {
 
               const uint64_t aa = sum - (bb + cc);
               const uint64_t a = Sqrt64(aa);
+
+              // Getting here is super rare (maybe even mathematically
+              // impossible) so we'll stop trying to be clever about
+              // delaying the computation of these.
+              const uint64_t b = Sqrt64(bb);
+              const uint64_t c = Sqrt64(cc);
+              const uint64_t d = Sqrt64(dd);
+              const uint64_t e = Sqrt64(ee);
+              const uint64_t g = Sqrt64(gg);
+              const uint64_t i = Sqrt64(ii);
+
               if (a * a != aa) {
+
                 INCREMENT(rejected_aa);
                 Interesting(
                     StringPrintf(
@@ -851,33 +885,62 @@ struct SOS {
       // PERF: We copy the output to CPU and back, but we could
       // just do this in place. The main issue is making sure the
       // tests can still work.
+      uint64_t local_pending_tryfilter = trybatch.size();
+      tryfilter_queue->WaitAddVec(std::move(trybatch));
 
-      // TODO: Probably better in a separate thread so it can run
-      // concurrently?
-      uint64_t num_filtered = 0;
-      bool gone = false;
-      if (trybatch.size() == GPU_WAYS_HEIGHT) {
-        uint64_t rej = 0;
-        trybatch = tryfilter_gpu->FilterWays(trybatch, &rej);
-        INCREMENT_BY(rejected_f, rej);
-        num_filtered = real_batch_size - trybatch.size();
-        if (trybatch.empty()) gone = true;
-      }
-
-      // Add to CPU-side Try queue.
-      uint64_t local_pending_try = 0;
-      if (!trybatch.empty()) {
-        local_pending_try = trybatch.size();
-        try_queue->WaitAddVec(std::move(trybatch));
-        trybatch.clear();
-      }
 
       {
         MutexLock ml(&m);
         triple_pending_ways -= real_batch_size;
-        pending_try += local_pending_try;
+        pending_tryfilter += local_pending_tryfilter;
+      }
+    }
+  }
+
+  void TryPrefilterThread() {
+
+    for (;;) {
+      std::optional<std::vector<TryMe>> batchopt =
+        tryfilter_queue->WaitGet();
+
+      if (!batchopt.has_value()) {
+        // Done!
+        status.Printf("GPU tryfilter thread has no more work!\n");
+        fflush(stdout);
+        return;
+      }
+
+      auto batch = std::move(batchopt.value());
+      const int64_t original_batch_size = batch.size();
+
+      // We don't filter a short batch, and this is correct since
+      // the filter can just pass everything if it wants. But it
+      // would not be that hard to support short batches by padding
+      // or adding support in the gpu code.
+      bool gone = false;
+      int64_t num_filtered = 0;
+      if (batch.size() == GPU_TRYFILTER_HEIGHT) {
+        uint64_t rej = 0;
+        batch = tryfilter_gpu->FilterWays(batch, &rej);
+
+        INCREMENT_BY(rejected_f, rej);
+        num_filtered = original_batch_size - batch.size();
+        if (batch.empty()) gone = true;
+      }
+
+      // Add what remains to CPU-side Try queue.
+      uint64_t local_pending_try = 0;
+      if (!batch.empty()) {
+        local_pending_try = batch.size();
+        try_queue->WaitAddVec(std::move(batch));
+        batch.clear();
+      }
+
+      {
+        MutexLock ml(&m);
         if (gone) batches_completely_filtered++;
         done_gpu_filtered += num_filtered;
+        pending_try += local_pending_try;
       }
     }
   }
@@ -908,6 +971,7 @@ struct SOS {
   uint64_t triple_pending_ways = 0;
   // Filtered out by GPU TryFilter.
   uint64_t done_gpu_filtered = 0;
+  uint64_t pending_tryfilter = 0;
   uint64_t pending_try = 0;
   uint64_t done_full_try = 0;
 
@@ -967,6 +1031,7 @@ struct SOS {
       GPU_FACTOR_HEIGHT *
       factored_queue->Size();
     const int64_t ways_size = ways_queue->Size();
+    const int64_t tryfilter_size = tryfilter_queue->Size();
     const int64_t try_size = try_queue->Size();
 
 
@@ -978,7 +1043,7 @@ struct SOS {
                    " %lld " AGREY("raa")
                    "\n",
                    rf, rff, rhh, other2, raa);
-    #define ARROW AFGCOLOR(50, 50, 50, "\xE2\x86\x92") " "
+    #define ARROW AFGCOLOR(50, 50, 50, "\xE2\x86\x92")
 
     auto FormatNum = [](uint64_t n) {
         if (n > 1'000'000) {
@@ -998,17 +1063,18 @@ struct SOS {
         }
       };
     string line3 = StringPrintf(
-        "Q: "
         AFGCOLOR(200, 80,  80,  "%s") " pre " ARROW
         AFGCOLOR(200, 80,  200, "%s") " fact " ARROW
-        AFGCOLOR(200, 200, 80,  "%s") " nways " ARROW
+        AFGCOLOR(200, 200, 80,  "%s") " nw " ARROW
         AFGCOLOR(80,  80,  200, "%s") " ways " ARROW
+        AFGCOLOR(20,  160, 100, "%s") " tf " ARROW
         AFGCOLOR(80,  200, 200, "%s") " try " ARROW
         AFGCOLOR(80,  200, 80,  "%s") " done\n",
         FormatNum(prefiltered_size).c_str(),
         FormatNum(factor_size).c_str(),
         FormatNum(factored_size).c_str(),
         FormatNum(ways_size).c_str(),
+        FormatNum(tryfilter_size).c_str(),
         FormatNum(try_size).c_str(),
         FormatNum(done).c_str());
 
@@ -1086,6 +1152,7 @@ struct SOS {
         AddWidthOf(0x400070FF, factor_size);
         AddWidthOf(0x404000FF, factored_size);
         AddWidthOf(0x000040FF, ways_size);
+        AddWidthOf(0x14A064FF, tryfilter_size),
         AddWidthOf(0x005050FF, try_size);
         AddWidthOf(0x008000FF, numer);
         // Padding.
@@ -1108,7 +1175,7 @@ struct SOS {
   }
 
   void StatusThread(uint64_t start_idx, uint64_t epoch_size) {
-    static constexpr int WIDTH = 1024 + 512, HEIGHT = 768;
+    static constexpr int WIDTH = 2048 + 512, HEIGHT = 768;
     std::unique_ptr<ImageRGBA> img;
     if (WRITE_IMAGE) {
       img.reset(new ImageRGBA(WIDTH, HEIGHT));
@@ -1136,6 +1203,7 @@ struct SOS {
               GPU_FACTOR_HEIGHT *
               factored_queue->Size();
             const int64_t ways_size = ways_queue->Size();
+            const int64_t tryfilter_size = tryfilter_queue->Size();
             const int64_t try_size = try_queue->Size();
             const int64_t done = NumDone();
 
@@ -1166,6 +1234,11 @@ struct SOS {
                 .color = 0x5050C8FF,
                 .name = "ways",
                 .value = ways_size,
+              },
+              Phase{
+                .color = 0x14A064FF,
+                .name = "tryfilter",
+                .value = tryfilter_size,
               },
               Phase{
                 .color = 0x50C8C8FF,
@@ -1271,7 +1344,7 @@ struct SOS {
       while (!batch.empty() && batch.size() % TRY_ROLL_SIZE != 0) {
         TryMe tryme = std::move(batch.back());
         batch.pop_back();
-        Try(tryme.num, tryme.squareways);
+        Try(tryme.squareways);
       }
 
       // Now in parallel, unrolled
@@ -1286,7 +1359,7 @@ struct SOS {
                      minor_idx++) {
                   const TryMe &tryme =
                     batch[major_idx * TRY_ROLL_SIZE + minor_idx];
-                  Try(tryme.num, tryme.squareways);
+                  Try(tryme.squareways);
                 }
               });
       }
@@ -1364,13 +1437,13 @@ struct SOS {
               },
               num_threads);
 
-        try_queue->WaitAddVec(std::move(output));
+        tryfilter_queue->WaitAddVec(std::move(output));
         output.clear();
         {
           MutexLock ml(&m);
           stolen += batchopt.value().size();
           triple_pending_ways -= batchopt.value().size();
-          pending_try += batchopt.value().size();
+          pending_tryfilter += batchopt.value().size();
           num_threads = work_stealing_threads;
         }
       }
@@ -1521,6 +1594,7 @@ struct SOS {
               int local_eligible_triples = 0;
               int local_too_big = 0;
               int local_pending_try = 0;
+              int local_pending_tryfilter = 0;
               int local_done_ineligible_cpu = 0;
 
               std::vector<int> local_nways;
@@ -1586,7 +1660,8 @@ struct SOS {
 
                   local_eligible_triples++;
                   if (nways > GPUMethod::MAX_WAYS) {
-                    // Do on CPU.
+                    // Do on CPU. This is no longer that rare, so we
+                    // might benefit from batching/unrolling here.
                     std::vector<std::pair<uint64_t, uint64_t>> ways =
                       GetWaysQuad(num, nways,
                                   factors.num_factors,
@@ -1594,13 +1669,19 @@ struct SOS {
                     TryMe tryme;
                     tryme.num = num;
                     tryme.squareways = std::move(ways);
-                    // This is rare, so we don't try to batch them
-                    // within the roll. (Could consider accumulating
-                    // them at the batch level?)
-                    try_queue->WaitAdd(std::move(tryme));
+
+                    // We do some ways on the CPU that exceed the ways
+                    // GPU size, but we have a more permissive max size
+                    // for the try filter. Use the try filter if we can.
+                    if (nways > TryFilterGPU::MAX_WAYS) {
+                      try_queue->WaitAdd(std::move(tryme));
+                      local_pending_try++;
+                    } else {
+                      tryfilter_queue->WaitAdd(std::move(tryme));
+                      local_pending_tryfilter++;
+                    }
 
                     local_too_big++;
-                    local_pending_try++;
                   } else {
                     ways_todo.emplace_back(num, nways, factors);
                   }
@@ -1618,6 +1699,7 @@ struct SOS {
                 too_big += local_too_big;
                 eligible_triples += local_eligible_triples;
                 pending_try += local_pending_try;
+                pending_tryfilter += local_pending_tryfilter;
                 triple_pending_ways += local_triple_pending_ways;
                 for (int w : local_nways)
                   nways_histo.Observe(w);
@@ -1647,6 +1729,7 @@ struct SOS {
                                      this, epoch_start, epoch_size);
     std::thread gpu_factor_thread(&GPUFactorThread, this);
     std::thread nways_thread(&NWaysThread, this);
+    std::thread gpu_tryfilter_thread(&TryPrefilterThread, this);
     std::thread try_thread(&TryThread, this);
 
     ResetCounters();
@@ -1702,11 +1785,15 @@ struct SOS {
     for (auto &gpu_thread : gpu_ways_threads) gpu_thread.join();
     gpu_ways_threads.clear();
 
-    try_queue->MarkDone();
+    tryfilter_queue->MarkDone();
 
     const uint64_t num_stolen = ReadWithLock(&m, &stolen);
     status.Printf(ABLUE("%llu") " sums were stolen by CPU for ways.\n",
                   num_stolen);
+
+    gpu_tryfilter_thread.join();
+    status.Printf("GPU TryFilter thread done.\n");
+    try_queue->MarkDone();
 
     status.Printf("Waiting for Try thread.\n");
     {

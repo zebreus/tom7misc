@@ -3,7 +3,7 @@
 // goal is to quickly throw out the many cases that have no
 // interesting squares.
 //
-// Specifically, we look inputs where there is no way of
+// Specifically, we look for inputs where there is no way of
 // taking three pairs such that
 //
 //  [a]  B   C
@@ -63,13 +63,11 @@ __kernel void TryFilter(__global const uint32_t *restrict ways_size,
 
   uint32_t rej = 0;
 
-  // PERF: Could premultiply the elements (separate kernel) like
-  // we now do in the CPU version. (In fact we don't need
-  // the roots at all for this filter, so we could definitely
-  // simplify...)
   for (int p = 0; p < num_ways; p++) {
     const uint64_t bb = squared_ways[ways_row_base + p * 2 + 0];
     const uint64_t cc = squared_ways[ways_row_base + p * 2 + 1];
+
+    const uint64_t min_bb_cc = min(bb, cc);
 
     for (int q = 0; q < num_ways; q++) {
       if (p != q) {
@@ -78,7 +76,7 @@ __kernel void TryFilter(__global const uint32_t *restrict ways_size,
 
         // require that the smallest of b,c,d,g appears on the
         // top, to reduce symmetries.
-        if (min(bb, cc) > min(dd, gg))
+        if (min_bb_cc > min(dd, gg))
           continue;
 
         for (int r = 0; r < num_ways; r++) {
