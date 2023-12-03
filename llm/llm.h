@@ -216,6 +216,14 @@ struct Context {
                       // no intermediate logits
                       false);
     }
+
+    // Keep track of the size of the most recent batch,
+    // so that we can get logits for it in GetCandidates.
+    last_batch_size = batch.n_tokens;
+
+    // PERF: Don't need to get logits if this is part of a large
+    // batch that's been split, and we are not on the last one.
+    //
     // Only get logits for last token.
     batch.logits[batch.n_tokens - 1] = true;
 
@@ -312,18 +320,23 @@ struct Context {
     Candidates &operator=(const Candidates &other) = delete;
     // Create a new candidates object from the current state of
     // the context. Use Context::GetCandidates().
-    Candidates(llama_model *model, llama_context *lctx, int num_last) {
+    Candidates(llama_model *model, llama_context *lctx,
+               int last_batch_size) {
       const int n_vocab = llama_n_vocab(model);
       ltda.data = new llama_token_data[n_vocab];
       ltda.size = n_vocab;
       ltda.sorted = false;
       // this is size n_vocab (just the last token) if
       // params.logits_all is false (XXX assert!)
-      const float *logits = llama_get_logits_ith(lctx, num_last - 1);
+      printf("last_batch_size: %d\n", last_batch_size);
+      const float *logits =
+        llama_get_logits_ith(lctx, last_batch_size - 1);
       CHECK(logits != nullptr);
       for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
+        float f = logits[token_id];
+        // printf("  logits[%d] = %.6f\n", token_id, f);
         ltda.data[token_id] =
-          llama_token_data{token_id, logits[token_id], 0.0f};
+          llama_token_data{token_id, f, 0.0f};
       }
     }
   };
@@ -332,8 +345,9 @@ struct Context {
   // call to eval. Unlike llama.cpp, no processing has been performed
   // on these.
   std::unique_ptr<Candidates> GetCandidates() {
+    CHECK(last_batch_size > 0) << "No calls to TakeToken*?";
     return std::unique_ptr<Candidates>(
-        new Candidates(model, lctx, num_last));
+        new Candidates(model, lctx, last_batch_size));
   }
 
 
@@ -346,6 +360,7 @@ struct Context {
     // For the context. Doesn't necessarily have to agree with the
     // sampler.
     int num_last = 0;
+    // XXX last_batch_size?
   };
 
   // XXX this probably moves to the wrapper layer, and saves both
@@ -378,6 +393,9 @@ struct Context {
   // Number of tokens that have been evaluated.
   // Should be in [0, llama_n_ctx()).
   int num_last = 0;
+  // Size of the last batch evaluated, so we can get the right
+  // logits in GetCandidates.
+  int last_batch_size = 0;
   int num_threads = 8;
   llama_model *model = nullptr;
   llama_context *lctx = nullptr;
