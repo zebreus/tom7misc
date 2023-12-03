@@ -27,8 +27,12 @@ using namespace std;
 
 // For 69120-byte drive, which is barely able to store tetris.nes.
 // 69120/8 = 8640 = 240 * 36
+/*
 static constexpr int BLOCKSW = 240;
 static constexpr int BLOCKSH = 36;
+*/
+static constexpr int BLOCKSW = 160;
+static constexpr int BLOCKSH = 49;
 
 static constexpr int NUM_BLOCKS = BLOCKSW * BLOCKSH;
 
@@ -221,6 +225,8 @@ static void Redraw(ImageRGBA *img, double run_sec) {
 
 }
 
+static constexpr int DRAW_PER_SEC = 8;
+
 static void Loop() {
   ImageRGBA img(SCREENW, SCREENH);
 
@@ -243,8 +249,9 @@ static void Loop() {
 
     string line, cmd;
     std::getline(cin, line);
-	const int64 sec = run_timer.Seconds();
 
+	const double sec = run_timer.Seconds();
+	
     if (RE2::FullMatch(line, viz_command, &cmd)) {
 
       int idx, uninitialized, busy;
@@ -254,17 +261,21 @@ static void Loop() {
       string encoded_board, op;
       if (RE2::FullMatch(cmd, blockinfo_command,
                          &idx, &uninitialized, &busy)) {
-        CHECK(idx >= 0 && idx < NUM_BLOCKS);
-        Block *block = &blocks[idx];
-        block->uninitialized = !!uninitialized;
-        block->busy = !!busy;
-		block->lastupdate = sec;
+		if (idx < NUM_BLOCKS) {
+		  CHECK(idx >= 0 && idx < NUM_BLOCKS);
+		  Block *block = &blocks[idx];
+		  block->uninitialized = !!uninitialized;
+		  block->busy = !!busy;
+		  block->lastupdate = (int64)sec;
+		}
 	  } else if (RE2::FullMatch(cmd, op_command, &idx, &seed, &op)) {
-        CHECK(idx >= 0 && idx < NUM_BLOCKS);
-        Block *block = &blocks[idx];
-        block->seed = seed;
-		block->op = op;
-		block->lastupdate = sec;
+		if (idx < NUM_BLOCKS) {
+		  CHECK(idx >= 0 && idx < NUM_BLOCKS);
+		  Block *block = &blocks[idx];
+		  block->seed = seed;
+		  block->op = op;
+		  block->lastupdate = (int64)sec;
+		}
       } else if (RE2::FullMatch(cmd, update_command, &rw, &idx)) {
         if (rw == 'r') {
           last_read = idx;
@@ -277,19 +288,22 @@ static void Loop() {
         printf("%d Board %d: %s\n", (int)run_timer.Seconds(), idx,
                encoded_board.c_str());
         */
-        Block *block = &blocks[idx];
-        block->uninitialized = false;
-        block->outstanding_reads = oreads;
-        block->outstanding_writes = owrites;
-		block->lastupdate = sec;
-        if (encoded_board.empty()) {
-          // OK to leave out board.
-        } else if (encoded_board.size() != (20 * 10) >> 1) {
-          printf("Bad board\n");
-        } else {
-          block->board = BoardPic::ToPixels(encoded_board);
-          CHECK(block->board.size() == 20 * 10);
-        }
+		if (idx < NUM_BLOCKS) {
+		  CHECK(idx >= 0 && idx < NUM_BLOCKS);
+		  Block *block = &blocks[idx];
+		  block->uninitialized = false;
+		  block->outstanding_reads = oreads;
+		  block->outstanding_writes = owrites;
+		  block->lastupdate = (int64)sec;
+		  if (encoded_board.empty()) {
+			// OK to leave out board.
+		  } else if (encoded_board.size() != (20 * 10) >> 1) {
+			printf("Bad board\n");
+		  } else {
+			block->board = BoardPic::ToPixels(encoded_board);
+			CHECK(block->board.size() == 20 * 10);
+		  }
+		}
       } else if (int h, m, s;
 				 RE2::FullMatch(cmd, cache_command, &h, &m, &s)) {
 		cache_hits = h;
@@ -297,15 +311,14 @@ static void Loop() {
 		cache_size = s;
 	  }
 
-      if (sec != last_redraw) {
-        // PERF: Only sometimes...
-        Redraw(&img, run_timer.Seconds());
+	  int64 cur_scaled_sec = sec * DRAW_PER_SEC;
+      if (cur_scaled_sec != last_redraw) {
+        Redraw(&img, sec);
 
         // XXX update scrollx
-
         BlitImagePart(img, scrollx, scrolly, SCREENW, SCREENH, 0, 0);
         SDL_Flip(screen);
-        last_redraw = sec;
+        last_redraw = cur_scaled_sec;
       }
     } else if (!line.empty()) {
       printf("[%s]\n", line.c_str());
@@ -315,19 +328,16 @@ static void Loop() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
       switch (event.type) {
-#if 0
+		/*
       case SDL_MOUSEMOTION: {
         SDL_MouseMotionEvent *e = (SDL_MouseMotionEvent*)&event;
-
-        const int oldx = mousex, oldy = mousey;
 
         mousex = e->x;
         mousey = e->y;
 
         break;
       }
-#endif
-
+		*/
       case SDL_QUIT:
         return;
       case SDL_KEYDOWN:
