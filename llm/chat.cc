@@ -43,6 +43,20 @@ static bool Matches(const NFA<256> &nfa, const string &s) {
   return matcher.IsMatching();
 }
 
+static NFA<256> MakeRegex(const std::string &regex) {
+  auto enfa = Parse(regex);
+  auto nfa = RemoveEpsilon<256>(enfa);
+  {
+    auto [et, es] = enfa.DebugSize();
+    auto [t, s] = nfa.DebugSize();
+    printf("For regex: " ABLUE("%s") "\n"
+           "  ENFA: %d t %d s\n"
+           "  NFA: %d t %d s\n",
+           regex.c_str(), et, es, t, s);
+  }
+  return nfa;
+}
+
 static void Chat(LLM *llm,
                  const string &user,
                  const string &prompt,
@@ -55,15 +69,12 @@ static void Chat(LLM *llm,
   string user_regex =
     StringPrintf(".*\n(<%s> ?|\\* %s ?)", user.c_str(), user.c_str());
 
-  auto user_enfa = Parse(user_regex);
-  auto user_nfa = RemoveEpsilon<256>(user_enfa);
-  {
-    auto [et, es] = user_enfa.DebugSize();
-    auto [t, s] = user_nfa.DebugSize();
-    printf("User ENFA: %d t %d s\n"
-           "User NFA: %d t %d s\n", et, es, t, s);
-  }
+  auto user_nfa = MakeRegex(user_regex);
   NFAMatcher<256> user_matcher(user_nfa);
+
+  // Save state whenever a chat line comes in.
+  string ends_newline_regex = ".*\n";
+  auto ends_newline_nfa = MakeRegex(ends_newline_regex);
 
   Timer startup_timer;
   llm->Reset();
@@ -79,6 +90,9 @@ static void Chat(LLM *llm,
   llm->DoPrompt(prompt);
   // Reset regex, since the prompt may not have followed it.
   llm->sampler.ResetRegEx();
+
+  LLM::State start_line_state = llm->SaveState();
+  NFAMatcher<256> ends_newline_matcher(ends_newline_nfa);
 
   printf(AYELLOW("(finished the prompt)") "\n");
 
@@ -187,9 +201,10 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
+
+  // cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
   // cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
-  // cparams.model = "llama2/70b/ggml-model-f16.gguf";
+  cparams.model = "llama2/70b/ggml-model-f16.gguf";
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

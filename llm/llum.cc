@@ -176,12 +176,13 @@ int main(int argc, char ** argv) {
   Timer model_timer;
 
   ContextParams cparams;
-  cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
+  // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
   // lparams.model = "../llama/models/7B/ggml-model-f16.bin";
   // lparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
   // lparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // lparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
   // lparams.model = "../llama/models/65B/ggml-model-f16.bin";
+  cparams.model = "llama2/70b/ggml-model-f16.gguf";
   // lparams.mirostat = 2;
   // LLM::SampleType sample_type = LLM::SampleType::GREEDY;
   SamplerParams sparams;

@@ -7,12 +7,17 @@
 #include <memory>
 
 #include "llama.h"
+// Move this to .cc file since it leaks symbols like LOG
+#include "common/common.h"
+#undef LOG
 
 #include "base/logging.h"
 #include "lastn-buffer.h"
 #include "nfa.h"
 
-// LLM - This will be the convenience wrapper (TODO)
+#include "ansi.h"
+
+// LLM - Convenice wrapper that combines a model, context, and sampler.
 
 // Lower-level stuff:
 
@@ -93,6 +98,7 @@ struct Sampler;
 // but this needs to be rewritten to make use of that.
 struct Context {
   Context(const ContextParams &params = ContextParams()) {
+    // PERF need to tell llama about this now
     num_threads = params.num_threads;
     const int seed = params.seed >= 0 ? params.seed : time(nullptr);
 
@@ -176,16 +182,59 @@ struct Context {
     }
   }
 
-  void TakeTokenSmallBatch(const std::vector<llama_token> &batch) {
-    CHECK(batch.size() <= MAX_TOKENS_PER_BATCH);
+  void TakeTokenSmallBatch(const std::vector<llama_token> &toks) {
+    printf("TakeTokenSmallBatch(" APURPLE("%d") ")\n", (int)toks.size());
+    for (llama_token t : toks) {
+      printf("  %d=%s\n", t, TokenString(t).c_str());
+    }
+
+    CHECK(!toks.empty());
+
+    CHECK(toks.size() <= MAX_TOKENS_PER_BATCH);
     const int ctx_size = llama_n_ctx(lctx);
-    CHECK(num_last + (int)batch.size() <= ctx_size)
-      << num_last << " + " << batch.size() << " would exceed " << ctx_size;
+    CHECK(num_last + (int)toks.size() <= ctx_size)
+      << num_last << " + " << toks.size() << " would exceed " << ctx_size;
 
-    // XXX use llama_decode. this doesn't support threading maybe?
-    CHECK(0 == llama_eval(lctx, batch.data(), batch.size(), num_last));
+    // PERF: We can use the token data directly, but llama_batch
+    // has a non-const pointer in it (because some utilities modify
+    // a batch). Cleanest integration is to copy.
+    llama_batch batch =
+      llama_batch_init(toks.size(),
+                       // Storing tokens, not embeddings.
+                       0,
+                       // One sequence.
+                       1);
 
-    num_last += (int)batch.size();
+    for (int i = 0; i < (int)toks.size(); i++) {
+      llama_batch_add(batch,
+                      toks[i],
+                      // position
+                      num_last + i,
+                      // sequence ids. just one sequence supported
+                      // for now.
+                      { 0 },
+                      // no intermediate logits
+                      false);
+    }
+    // Only get logits for last token.
+    batch.logits[batch.n_tokens - 1] = true;
+
+    CHECK(0 == llama_decode(lctx, batch));
+
+    // Notes on kv:
+    //   a kv cell knows its position, but is associated with
+    //   potentially many sequence ids. (It also has a "delta"
+    //   so that it can be shifted. both the position and delta
+    //   are moved together)
+    //
+    // So I think the kv cache is basically storing the sequences.
+    //
+    // Here's some decent documentation:
+    // https://github.com/ggerganov/llama.cpp/pull/3228
+
+    num_last += (int)toks.size();
+
+    llama_batch_free(batch);
   }
 
   // Accept the single token.
@@ -199,8 +248,8 @@ struct Context {
   }
 
   std::string TokenString(llama_token token) const {
-    // Guess 20-character buffer; above 22 we need to allocate.
-    // (llama.cpp uses 8)
+    // Guess 20-character buffer (fits in short string optimization);
+    // above 22 we need to allocate. (llama.cpp uses 8)
     std::string result(20, 0);
     const int n_chars = llama_token_to_piece(
         model, token, result.data(), result.size());
@@ -216,17 +265,6 @@ struct Context {
 
     return std::string(result.data(), result.size());
   }
-
-#if 0
-  std::string TokenString(llama_token t) {
-    const char *tok = llama_token_get_text(model, t);
-    // ???
-    if ((uint8_t)tok[0] == 0xe2 &&
-        (uint8_t)tok[1] == 0x96 &&
-        (uint8_t)tok[2] == 0x81) return std::string(tok + 3);
-    else return std::string(tok);
-  }
-#endif
 
   llama_token NewlineToken() const {
     return llama_token_nl(model);
@@ -274,14 +312,15 @@ struct Context {
     Candidates(const &other) = delete;
     // Create a new candidates object from the current state of
     // the context. Use Context::GetCandidates().
-    Candidates(llama_model *model, llama_context *lctx) {
+    Candidates(llama_model *model, llama_context *lctx, int num_last) {
       const int n_vocab = llama_n_vocab(model);
       ltda.data = new llama_token_data[n_vocab];
       ltda.size = n_vocab;
       ltda.sorted = false;
       // this is size n_vocab (just the last token) if
       // params.logits_all is false (XXX assert!)
-      const float *logits = llama_get_logits(lctx);
+      const float *logits = llama_get_logits_ith(lctx, num_last - 1);
+      CHECK(logits != nullptr);
       for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
         ltda.data[token_id] =
           llama_token_data{token_id, logits[token_id], 0.0f};
@@ -293,7 +332,8 @@ struct Context {
   // call to eval. Unlike llama.cpp, no processing has been performed
   // on these.
   std::unique_ptr<Candidates> GetCandidates() {
-    return std::unique_ptr<Candidates>(new Candidates(model, lctx));
+    return std::unique_ptr<Candidates>(
+        new Candidates(model, lctx, num_last));
   }
 
 
@@ -735,14 +775,16 @@ struct LLM {
     prompt.insert(0, 1, ' ');
 
     // tokenize the prompt
-    auto embd_inp = context.Tokenize(prompt, true);
+    auto toks = context.Tokenize(prompt, true);
 
     const int n_ctx = llama_n_ctx(context.lctx);
 
-    CHECK((int)embd_inp.size() <= n_ctx - 4) << "Prompt too long ("
-                                             << (int)embd_inp.size()
-                                             << " tokens)";
-    TakeTokenBatch(embd_inp);
+    CHECK((int)toks.size() <= n_ctx - 4) << "Prompt too long ("
+                                         << (int)toks.size()
+                                         << " tokens)";
+    TakeTokenBatch(toks);
+
+    PrintKV();
   }
 
   struct State {
@@ -798,6 +840,26 @@ struct LLM {
          i++) {
       printf("  [%s] %.9f\n", toks[i].first.c_str(), toks[i].second);
     }
+  }
+
+  // Debugging only.
+  void PrintKV() {
+    constexpr int NUM_SEQ = 1;
+    llama_kv_cache_view kcv = llama_kv_cache_view_init(
+        context.lctx, NUM_SEQ);
+    llama_kv_cache_view_update(context.lctx, &kcv);
+
+    printf(AWHITE("KV Cache:") "\n");
+    printf("  n_cells: %d\n", kcv.n_cells);
+    printf("  n_max_seq: %d\n", kcv.n_max_seq);
+    printf("  token_count: %d\n", kcv.token_count);
+    printf("  used_cells: %d\n", kcv.used_cells);
+    printf("  max_contiguous: %d\n", kcv.max_contiguous);
+    printf("  max_contiguous_idx: %d\n", kcv.max_contiguous_idx);
+    printf("  cells...\n");
+    printf("  cells_sequences...\n");
+
+    llama_kv_cache_view_free(&kcv);
   }
 
   Context context;

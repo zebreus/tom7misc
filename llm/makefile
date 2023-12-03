@@ -1,5 +1,5 @@
 
-default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe llum.exe nfa_test.exe
+default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe llum.exe nfa_test.exe llm_test.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -233,16 +233,11 @@ ggml.o: $(LLAMA_DIR)/ggml.c $(LLAMA_HEADERS)
 llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+common.o: $(LLAMA_DIR)/common/common.cpp $(LLAMA_HEADERS)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 # ggml-mpi.o
-LLAMA_OBJECTS=ggml.o ggml-alloc.o ggml-backend.o  ggml-quants.o llama.o
-
-# XXX remove this
-# common.o: $(LLAMA_DIR)/examples/common.cpp $(LLAMA_DIR)/examples/common.h
-# 	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-# removed -tom7
-# libllama.so: llama.o ggml.o $(OBJS)
-# 	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ $^ $(LDFLAGS)
+LLAMA_OBJECTS=ggml.o ggml-alloc.o ggml-backend.o  ggml-quants.o llama.o common.o
 
 %.o : %.cc llm.h nfa.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -253,7 +248,7 @@ acronymy.exe: acronymy.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
 benchmark.exe: benchmark.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-test.exe: test.o $(CC_LIB_OBJECTS)
+llm_test.exe: llm_test.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 chat.exe: chat.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
