@@ -135,7 +135,7 @@ struct Context {
 
   // Copying not supported!
   Context(const Context &other) = delete;
-  Context &operator =(Context other) = delete;
+  Context &operator =(const Context &other) = delete;
 
   int NumLast() const { return num_last; }
   int ContextSize() const { return llama_n_ctx(lctx); }
@@ -309,7 +309,7 @@ struct Context {
     friend class Context;
     // Only move. (XXX test)
     Candidates(const Candidates &other) = delete;
-    Candidates(const &other) = delete;
+    Candidates &operator=(const Candidates &other) = delete;
     // Create a new candidates object from the current state of
     // the context. Use Context::GetCandidates().
     Candidates(llama_model *model, llama_context *lctx, int num_last) {

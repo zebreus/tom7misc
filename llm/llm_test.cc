@@ -17,7 +17,7 @@ static void BasicPredict() {
   // Get determinism for test.
   cparams.seed = 0xCAFE;
   // Fastest model for test.
-  cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
+  cparams.model = "llama2/7b/ggml-model-Q2_K.gguf";
 
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;

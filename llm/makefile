@@ -5,16 +5,27 @@ default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe genera
 # Also add -static to LFLAGS below
 # Also add /c/code/openblas/include to
 
+UNAME := $(shell uname -o)
+ifeq ($(UNAME),Cygwin)
+  # for 64 bits on windows (mingw).
+  CC=x86_64-w64-mingw32-gcc
+  CXX=x86_64-w64-mingw32-g++
+  # CUDA_PATH=../../cuda
+  # TOM7_INCLUDES=-I../../openblas/include -I../../cuda/include
+  # TOM7_LIBS=-L../../openblas/lib -L$(CUDA_PATH)/lib/x64 -static
+  PLATFORM_LDFLAGS=-Wl,--subsystem,console -lpsapi -static
+  # LLAMA_OPENBLAS=1
+  # LLAMA_CUBLAS=1
+  PLATFORM_CFLAGS=
+  OPTFLAGS= -O3 -flto=auto -march=native -mtune=native
+else
+  # Linux
+  CXX=g++
+  CC=gcc
+  PLATFORM_CFLAGS=-fsanitize=address -g -D_GNU_SOURCE
+  OPTFLAGS=-O
+endif
 
-CC=x86_64-w64-mingw32-gcc
-CXX=x86_64-w64-mingw32-g++
-# CUDA_PATH=../../cuda
-# TOM7_INCLUDES=-I../../openblas/include -I../../cuda/include
-# TOM7_LIBS=-L../../openblas/lib -L$(CUDA_PATH)/lib/x64 -static
-PLATFORM_LDFLAGS=-Wl,--subsystem,console -lpsapi -static
-# LLAMA_OPENBLAS=1
-
-# LLAMA_CUBLAS=1
 
 CC_LIB=../cc-lib
 
@@ -58,12 +69,8 @@ endif
 
 # keep standard at C11 and C++11
 
-DEBUGFLAGS= -g -O
-# march?
-OPTFLAGS= -O3 -flto=auto -march=native
-
-CFLAGS   = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) $(TOM7_INCLUDES) -std=c11   -fPIC
-CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I./examples -std=c++20 -fPIC
+CFLAGS   = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) $(TOM7_INCLUDES) -std=c11   -fPIC $(PLATFORM_CFLAGS)
+CXXFLAGS = $(OPTFLAGS) -I. -I$(LLAMA_DIR) -I$(CC_LIB) -I./examples -std=c++20 -fPIC $(PLATFORM_CFLAGS)
 LDFLAGS  = $(OPTFLAGS) $(TOM7_LIBS) -m64 $(PLATFORM_LDFLAGS)
 
 ifndef LLAMA_DEBUG
@@ -116,8 +123,12 @@ endif
 #       feel free to update the Makefile for your architecture and send a pull request or issue
 ifeq ($(UNAME_M),$(filter $(UNAME_M),x86_64 i686))
 	# Use all CPU extensions that are available:
-	CFLAGS   += -march=native -mtune=native
-	CXXFLAGS += -march=native -mtune=native
+# I commented this out, because (a) it doesn't work on virtualbox
+# due to some weird intrinsic inlining failure and (b) I want to control
+# optimizations since I'm mostly using linux for asan debugging.
+# But if you are actually targeting real linux, you want this! -tom7
+#	CFLAGS   += -march=native -mtune=native
+#	CXXFLAGS += -march=native -mtune=native
 
 	# Usage AVX-only
 	#CFLAGS   += -mfma -mf16c -mavx
@@ -236,8 +247,11 @@ llama.o: $(LLAMA_DIR)/llama.cpp $(LLAMA_HEADERS)
 common.o: $(LLAMA_DIR)/common/common.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
+build-info.o: $(LLAMA_DIR)/common/build-info.cpp $(LLAMA_HEADERS)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 # ggml-mpi.o
-LLAMA_OBJECTS=ggml.o ggml-alloc.o ggml-backend.o  ggml-quants.o llama.o common.o
+LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o  ggml-quants.o llama.o common.o
 
 %.o : %.cc llm.h nfa.h
 	$(CXX) $(CXXFLAGS) -c $< -o $@
