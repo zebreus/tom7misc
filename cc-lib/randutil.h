@@ -8,6 +8,7 @@
 #include <vector>
 #include <utility>
 
+// TODO: Template over RNG; don't include this here.
 #include "arcfour.h"
 
 // Creates another random stream, seeded by (and consuming some)
@@ -37,6 +38,10 @@ inline ArcFour *Substream(ArcFour *rc, uint32_t n) {
 // the interval, but loses precision. Consider using
 // RandDouble and then converting to float if precision
 // is important.
+//
+// PERF: Directly generating a random mantissa without
+// division is probably better and faster. This does
+// invoke floating point division.
 inline float RandFloat(ArcFour *rc) {
   uint32_t uu = 0U;
   uu = rc->Byte() | (uu << 8);
@@ -47,6 +52,7 @@ inline float RandFloat(ArcFour *rc) {
                  (double)0x7FFFFFFF);
 };
 
+// PERF: As above.
 inline double RandDouble(ArcFour *rc) {
   uint64_t uu = 0U;
   uu = rc->Byte() | (uu << 8);
@@ -118,6 +124,7 @@ inline uint64_t RandTo(ArcFour *rc, uint64_t n) {
   // This ought to reduce to a constant if the argument is
   // a compile-time constant.
   uint64_t mask = n - 1;
+  // TODO PERF: countl_zero
   mask |= mask >> 1;
   mask |= mask >> 2;
   mask |= mask >> 4;
@@ -148,6 +155,7 @@ inline uint64_t RandTo(ArcFour *rc, uint64_t n) {
 // As above, but for 32-bit ints.
 inline uint32_t RandTo32(ArcFour *rc, uint32_t n) {
   uint32_t mask = n - 1;
+  // TODO PERF: countl_zero
   mask |= mask >> 1;
   mask |= mask >> 2;
   mask |= mask >> 4;
@@ -167,7 +175,7 @@ inline uint32_t RandTo32(ArcFour *rc, uint32_t n) {
 // TODO: A typical use of this is to take n elements from a set at
 // random without replacement (shuffle and truncate). We can do this a
 // bit faster by only randomizing a prefix of the vector (note how
-// Shuffle only swaps in a triagular portion).
+// Shuffle only swaps in a triangular portion).
 
 // Permute the elements of the vector uniformly at random.
 template<class T>

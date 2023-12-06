@@ -29,6 +29,12 @@ static void Basic() {
   CHECK(u % 7 == 1);
   CHECK(u % 42 == 1);
   CHECK(u % 3 == 1);
+}
+
+static void Signed() {
+  uint128_t x = 14;
+  int128_t y = x;
+  CHECK(y > 0);
 
 }
 
