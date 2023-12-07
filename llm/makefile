@@ -254,7 +254,8 @@ build-info.o: $(LLAMA_DIR)/common/build-info.cpp $(LLAMA_HEADERS)
 LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o  ggml-quants.o llama.o common.o
 
 %.o : %.cc llm.h nfa.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
+	@echo -n "."
 
 acronymy.exe: acronymy.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)

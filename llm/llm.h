@@ -8,12 +8,14 @@
 
 #include "llama.h"
 // Move this to .cc file since it leaks symbols like LOG
+#undef LOG
 #include "common/common.h"
 #undef LOG
 
 #include "base/logging.h"
 #include "lastn-buffer.h"
 #include "nfa.h"
+#include "pcg.h"
 
 #include "ansi.h"
 
@@ -34,8 +36,6 @@ struct ContextParams {
   // params.model = "../llama/models/7B/ggml-model-q4_0.bin";
   int context_size = 4096;
   int num_threads = 8;
-  // negative means new seed each time
-  int64_t seed = -1LL;
 };
 
 enum class SampleType {
@@ -48,6 +48,9 @@ enum class SampleType {
 // Parameters for creating a Sampler.
 struct SamplerParams {
   SampleType type = SampleType::MIROSTAT_2;
+
+  // negative means new seed each time
+  int64_t seed = -1LL;
 
   int32_t top_k             = 40;    // <= 0 to use vocab size
   float   top_p             = 0.95f; // 1.0 = disabled
@@ -70,7 +73,6 @@ struct SamplerParams {
   // This is a constant in llama.cpp.
   int     mirostat_m = 100;
   bool    penalize_nl       = true;
-
 
   // logit bias for specific tokens
   std::unordered_map<llama_token, float> logit_bias;
@@ -97,10 +99,11 @@ struct Sampler;
 // Looks like llama now does distinguish between model and context (yay)
 // but this needs to be rewritten to make use of that.
 struct Context {
-  Context(const ContextParams &params = ContextParams()) {
+  static constexpr bool VERBOSE = false;
+
+  explicit Context(const ContextParams &params = ContextParams()) {
     // PERF need to tell llama about this now
     num_threads = params.num_threads;
-    const int seed = params.seed >= 0 ? params.seed : time(nullptr);
 
     llama_model_params mparams = llama_model_default_params();
     // TODO progress_callback?
@@ -113,7 +116,8 @@ struct Context {
     // "from model"
     lparams.n_ctx = 0;
 
-    lparams.seed         = seed;
+    // Note: We have our own seed because we do our own sampling.
+    lparams.seed         = 1;
     // For special-purpose uses.
     lparams.logits_all = false;
     lparams.embedding = false;
@@ -177,15 +181,19 @@ struct Context {
            i++) {
         small_batch.push_back(batch[start_idx + i]);
       }
-      fprintf(stderr, "Batch of size %d.\n", (int)small_batch.size());
+      if (VERBOSE) {
+        fprintf(stderr, "Batch of size %d.\n", (int)small_batch.size());
+      }
       TakeTokenSmallBatch(small_batch);
     }
   }
 
   void TakeTokenSmallBatch(const std::vector<llama_token> &toks) {
-    printf("TakeTokenSmallBatch(" APURPLE("%d") ")\n", (int)toks.size());
-    for (llama_token t : toks) {
-      printf("  %d=%s\n", t, TokenString(t).c_str());
+    if (VERBOSE) {
+      printf("TakeTokenSmallBatch(" APURPLE("%d") ")\n", (int)toks.size());
+      for (llama_token t : toks) {
+        printf("  %d=%s\n", t, TokenString(t).c_str());
+      }
     }
 
     CHECK(!toks.empty());
@@ -216,6 +224,8 @@ struct Context {
                       // no intermediate logits
                       false);
     }
+
+    CHECK(batch.n_tokens != 0);
 
     // Keep track of the size of the most recent batch,
     // so that we can get logits for it in GetCandidates.
@@ -328,7 +338,6 @@ struct Context {
       ltda.sorted = false;
       // this is size n_vocab (just the last token) if
       // params.logits_all is false (XXX assert!)
-      printf("last_batch_size: %d\n", last_batch_size);
       const float *logits =
         llama_get_logits_ith(lctx, last_batch_size - 1);
       CHECK(logits != nullptr);
@@ -360,25 +369,33 @@ struct Context {
     // For the context. Doesn't necessarily have to agree with the
     // sampler.
     int num_last = 0;
-    // XXX last_batch_size?
+    int last_batch_size = 0;
   };
 
-  // XXX this probably moves to the wrapper layer, and saves both
-  // the context and the sampler.
+  // TODO: Rework this to be more like "checkpoint" and "rewind".
   State SaveState() const {
     State state;
+    // We used to serialize the context here, but it seems to
+    // not work correctly with the new batched eval? On the
+    // other hand, we can now rewind really cheaply.
+
+    /*
     const size_t n_state_size_max = llama_get_state_size(lctx);
     state.llama_state.resize(n_state_size_max);
     const size_t n_state_size_cur =
       llama_copy_state_data(lctx, state.llama_state.data());
     state.llama_state.resize(n_state_size_cur);
     state.llama_state.shrink_to_fit();
+    */
+
     state.num_last = num_last;
+    state.last_batch_size = last_batch_size;
     return state;
   }
 
   void LoadState(const State &state) {
     Reset();
+    /*
     size_t bytes_read =
       llama_set_state_data(lctx,
                            // XXX I think this is morally const, but
@@ -386,7 +403,21 @@ struct Context {
                            const_cast<uint8_t *>(
                                state.llama_state.data()));
     CHECK(bytes_read == state.llama_state.size());
+    */
     num_last = state.num_last;
+    last_batch_size = state.last_batch_size;
+
+    // XXX at best this is inefficient, but probably just wrong?
+    // I think we want to clear after context.n_last, maybe?
+    // llama_kv_cache_clear(context.lctx);
+
+    llama_kv_cache_seq_rm(
+        lctx,
+        // any sequence
+        -1,
+        // clear from num_last to inf
+        num_last, -1);
+
   }
 
   // private:
@@ -416,11 +447,14 @@ struct Sampler {
   using Params = SamplerParams;
   using Candidates = Context::Candidates;
 
+  uint64_t start_seed = 0;
+  PCG32 rng;
+
   // Degenerate sampler; can't be used.
   Sampler() : context(nullptr), vocab_size(0), last_n_tokens(0, 0) {}
 
-  // We only need two things from the context: The RNG and the
-  // vocabulary. Would be better to decouple them.
+  // The only thing we need from the context is the vocabulary.
+  // Probably better if we can avoid keeping a reference.
   Sampler(Context *context,
           const SamplerParams &params = SamplerParams()) :
     context(context),
@@ -440,6 +474,13 @@ struct Sampler {
     }
   }
 
+  // PERF!
+  inline float RandFloat() {
+    const uint32_t uu = rng.Rand32();
+    return (float)((uu   & 0x7FFFFFFF) /
+                   (double)0x7FFFFFFF);
+  }
+
   // Samples a token from the logits. This does not accept the token
   // (although it does currently update sampler state for the mirostat
   // algorithm).
@@ -453,13 +494,13 @@ struct Sampler {
     case SampleType::GREEDY:
       return llama_sample_token_greedy(lctx, &cand->ltda);
     case SampleType::MIROSTAT_1: {
-      llama_sample_temperature(lctx, &cand->ltda, params.temp);
+      llama_sample_temp(lctx, &cand->ltda, params.temp);
       return llama_sample_token_mirostat(
           lctx, &cand->ltda, params.mirostat_tau, params.mirostat_eta,
           params.mirostat_m, &mirostat_mu);
     }
     case SampleType::MIROSTAT_2:
-      llama_sample_temperature(lctx, &cand->ltda, params.temp);
+      llama_sample_temp(lctx, &cand->ltda, params.temp);
       return llama_sample_token_mirostat_v2(
           lctx, &cand->ltda, params.mirostat_tau,
           params.mirostat_eta, &mirostat_mu);
@@ -468,8 +509,29 @@ struct Sampler {
       llama_sample_tail_free(lctx, &cand->ltda, params.tfs_z, 1);
       llama_sample_typical(lctx, &cand->ltda, params.typical_p, 1);
       llama_sample_top_p(lctx, &cand->ltda, params.top_p, 1);
-      llama_sample_temperature(lctx, &cand->ltda, params.temp);
-      return llama_sample_token(lctx, &cand->ltda);
+      llama_sample_temp(lctx, &cand->ltda, params.temp);
+      return SampleDistribution(&cand->ltda);
+    }
+  }
+
+  llama_token SampleDistribution(llama_token_data_array *dist) {
+    // PERF we need to normalize probabilities, but not sort them.
+    llama_sample_softmax(nullptr, dist);
+
+    // Now probabilities sum to 1. So index into that.
+    for (;;) {
+      float fidx = RandFloat();
+      for (int i = 0; i < (int)dist->size; i++) {
+        float bucket = dist->data[i].p;
+        if (fidx < bucket) {
+          // Note: llama records timing info here.
+          return dist->data[i].id;
+        }
+        fidx -= bucket;
+      }
+      // Mathematically this should always succeed on the first pass,
+      // but it is possible that rounding causes it to fail (e.g.
+      // when subtracting the bucket). Easiest is to just try again.
     }
   }
 
@@ -493,6 +555,10 @@ struct Sampler {
   }
 
   void Reset() {
+    uint64_t start_seed =
+      params.seed < 0 ? (uint64_t)time(nullptr) : (uint64_t)params.seed;
+
+    rng = PCG32(start_seed);
     ResetRegEx();
     // 0 token is <unk>, which I think means invalid.
     // (Or use BOS token?)
@@ -814,12 +880,21 @@ struct LLM {
     State state;
     state.context_state = context.SaveState();
     state.sampler_copy = sampler;
+
+    printf("SaveState!\n");
+    PrintKV();
     return state;
   }
 
   void LoadState(const State &state) {
+    printf("LoadState!\n");
+    PrintKV();
     context.LoadState(state.context_state);
     sampler = state.sampler_copy;
+
+
+    printf("After LoadState:\n");
+    PrintKV();
   }
 
   // Print up 'maximum' (or all of them, if -1) candidates,
@@ -861,7 +936,7 @@ struct LLM {
   }
 
   // Debugging only.
-  void PrintKV() {
+  void PrintKV() const {
     constexpr int NUM_SEQ = 1;
     llama_kv_cache_view kcv = llama_kv_cache_view_init(
         context.lctx, NUM_SEQ);

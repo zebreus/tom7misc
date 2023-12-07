@@ -484,6 +484,12 @@ int main(int argc, char ** argv) {
 
   cparams.model = "codellama2/34b/ggml-model-f16.gguf";
 
+  // TODO!
+  // cparams.model = "codellama2/7b/ggml-model-f16.gguf";
+
+  // test!
+  // cparams.model = "llama2/7b/ggml-model-Q2_K.gguf";
+
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;
 

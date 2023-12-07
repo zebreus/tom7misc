@@ -19,6 +19,8 @@
 #include "ansi.h"
 #include "timer.h"
 
+#include "arcfour.h"
+#include "randutil.h"
 #include "threadutil.h"
 #include "util.h"
 #include "llm.h"
@@ -60,6 +62,7 @@ static string BrainstormPrefix(const string &word, char c) {
 
 int main(int argc, char ** argv) {
   using RE = RegEx<256>;
+  ArcFour rc(StringPrintf("acronymy.%lld", time(nullptr)));
 
   AnsiInit();
   Timer model_timer;
@@ -67,7 +70,9 @@ int main(int argc, char ** argv) {
   ContextParams cparams;
   // cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
   // cparams.model = "llama2/7b/ggml-model-q8_0.gguf";
-  cparams.model = "llama2/70b/ggml-model-f16.gguf";
+  //  cparams.model = "llama2/70b/ggml-model-f16.gguf";
+  cparams.model = "llama2/7b/ggml-model-Q2_K.gguf";
+
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;
 
@@ -83,25 +88,26 @@ int main(int argc, char ** argv) {
   std::vector<std::string> words = {
     "cerebral",
     "violence",
-    "mammals",
-    "lives",
-    "unlikely",
     "scrutiny",
     "occurrences",
     "crazily",
     "offering",
     "vivacious",
     "unifying",
-    "related",
-    "independent",
-    "applying",
-    "exciting",
     "meritless",
-    "bottom",
     "grandiloquence",
     "hauling",
-    "athletic",
+    "magnitude"
+    // some randos from wordlist
+    "widdendream",
+    "weatherproofness",
+    "volstead",
+    "upholder",
+    "unspellable",
+    "twofold",
   };
+
+  Shuffle(&rc, &words);
 
   struct Example {
     string word;
@@ -150,14 +156,15 @@ int main(int argc, char ** argv) {
 
 
   string prompt =
-    "Backronyms are definitions as acronyms. Each word of the definition "
-    "starts with "
+    "Backronyms are definitions as acronyms. For example, "
+    "TOPMOST, spelled T-O-P-M-O-S-T, could be defined as "
+    "\"The Overall Peak Magnitude Of Something Tall.\" "
+    "Each word of the definition starts with "
     "the corresponding letter of the word being defined. Every word "
     "counts, even short words like \"in\" or \"the.\" Only the first "
     "letter of each word in the definition is considered. Each word "
     "must be a real word without spelling errors. The word "
-    "being defined should not appear in its definition, nor conjugates.\n\n"
-
+    "being defined, or its conjugates, should not appear in its definition. "
     "It can be useful to brainstorm words that start with the letters first."
     "\nExamples:\n";
 
