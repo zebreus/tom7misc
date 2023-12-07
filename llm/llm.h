@@ -7,17 +7,11 @@
 #include <memory>
 
 #include "llama.h"
-// Move this to .cc file since it leaks symbols like LOG
-#undef LOG
-#include "common/common.h"
-#undef LOG
 
 #include "base/logging.h"
 #include "lastn-buffer.h"
 #include "nfa.h"
 #include "pcg.h"
-
-#include "ansi.h"
 
 // LLM - Convenice wrapper that combines a model, context, and sampler.
 
@@ -65,9 +59,6 @@ struct SamplerParams {
   float   frequency_penalty = 0.00f; // 0.0 = disabled
   float   presence_penalty  = 0.00f; // 0.0 = disabled
 
-  // 0 = disabled, 1 = mirostat, 2 = mirostat 2.0
-  // XXX determined by sampletype
-  // int     mirostat          = 2;
   float   mirostat_tau      = 5.00f; // target entropy
   float   mirostat_eta      = 0.10f; // learning rate
   // This is a constant in llama.cpp.
@@ -101,41 +92,8 @@ struct Sampler;
 struct Context {
   static constexpr bool VERBOSE = false;
 
-  explicit Context(const ContextParams &params = ContextParams()) {
-    // PERF need to tell llama about this now
-    num_threads = params.num_threads;
-
-    llama_model_params mparams = llama_model_default_params();
-    // TODO progress_callback?
-    mparams.use_mmap = true;
-    // TODO: Experiment with this
-    mparams.use_mlock = false;
-
-    llama_context_params lparams = llama_context_default_params();
-    // lparams.n_ctx        = params.context_size;
-    // "from model"
-    lparams.n_ctx = 0;
-
-    // Note: We have our own seed because we do our own sampling.
-    lparams.seed         = 1;
-    // For special-purpose uses.
-    lparams.logits_all = false;
-    lparams.embedding = false;
-
-    model = llama_load_model_from_file(params.model.c_str(), mparams);
-    CHECK(model != nullptr) << params.model;
-
-    lctx = llama_new_context_with_model(model, lparams);
-    CHECK(lctx != nullptr) << params.model;
-    Reset();
-  }
-
-  ~Context() {
-    llama_free_model(model);
-    model = nullptr;
-    llama_free(lctx);
-    lctx = nullptr;
-  }
+  explicit Context(const ContextParams &params = ContextParams());
+  ~Context();
 
   // Copying not supported!
   Context(const Context &other) = delete;
@@ -143,117 +101,18 @@ struct Context {
 
   int NumLast() const { return num_last; }
   int ContextSize() const { return llama_n_ctx(lctx); }
+  int VocabSize() const { return llama_n_vocab(model); }
 
   // add_bos should be passed for the very first text ("beginning of stream"
   // token).
-  std::vector<llama_token> Tokenize(const std::string &text, bool add_bos) {
-    // initialize to prompt number of chars, since n_tokens <= n_prompt_chars
-    // (For llama2, adding 1, since tokenizing just "\n" yields two tokens??)
-    const int max_tokens = text.size() + 1 + (int) add_bos;
-    std::vector<llama_token> res(max_tokens);
-    const int n = llama_tokenize(
-        model, text.c_str(), text.size(), res.data(), res.size(), add_bos,
-        // TODO: what is "special"?
-        false);
-    CHECK(n >= 0) << "Tokenizing [" << text << "] (res size " <<
-      res.size() << ") got n=" << n;
-    CHECK(n <= max_tokens) << "got n=" << n << " but max_tokens=" << max_tokens;
-    res.resize(n);
-    return res;
-  }
+  std::vector<llama_token> Tokenize(const std::string &text, bool add_bos);
 
   // Accept the batch of tokens together. Some processing happens
   // in parallel (e.g. embeddings). Processing in batch increases
   // memory requirements.
-  // XXX tune
-  static constexpr int MAX_TOKENS_PER_BATCH = 512;
-  void TakeTokenBatch(const std::vector<llama_token> &batch) {
-    if (batch.size() < MAX_TOKENS_PER_BATCH) return TakeTokenSmallBatch(batch);
+  void TakeTokenBatch(const std::vector<llama_token> &batch);
 
-    // PERF
-    for (int start_idx = 0;
-         start_idx < (int)batch.size();
-         start_idx += MAX_TOKENS_PER_BATCH) {
-      std::vector<llama_token> small_batch;
-      small_batch.reserve(MAX_TOKENS_PER_BATCH);
-      for (int i = 0;
-           start_idx + i < (int)batch.size() && i < MAX_TOKENS_PER_BATCH;
-           i++) {
-        small_batch.push_back(batch[start_idx + i]);
-      }
-      if (VERBOSE) {
-        fprintf(stderr, "Batch of size %d.\n", (int)small_batch.size());
-      }
-      TakeTokenSmallBatch(small_batch);
-    }
-  }
-
-  void TakeTokenSmallBatch(const std::vector<llama_token> &toks) {
-    if (VERBOSE) {
-      printf("TakeTokenSmallBatch(" APURPLE("%d") ")\n", (int)toks.size());
-      for (llama_token t : toks) {
-        printf("  %d=%s\n", t, TokenString(t).c_str());
-      }
-    }
-
-    CHECK(!toks.empty());
-
-    CHECK(toks.size() <= MAX_TOKENS_PER_BATCH);
-    const int ctx_size = llama_n_ctx(lctx);
-    CHECK(num_last + (int)toks.size() <= ctx_size)
-      << num_last << " + " << toks.size() << " would exceed " << ctx_size;
-
-    // PERF: We can use the token data directly, but llama_batch
-    // has a non-const pointer in it (because some utilities modify
-    // a batch). Cleanest integration is to copy.
-    llama_batch batch =
-      llama_batch_init(toks.size(),
-                       // Storing tokens, not embeddings.
-                       0,
-                       // One sequence.
-                       1);
-
-    for (int i = 0; i < (int)toks.size(); i++) {
-      llama_batch_add(batch,
-                      toks[i],
-                      // position
-                      num_last + i,
-                      // sequence ids. just one sequence supported
-                      // for now.
-                      { 0 },
-                      // no intermediate logits
-                      false);
-    }
-
-    CHECK(batch.n_tokens != 0);
-
-    // Keep track of the size of the most recent batch,
-    // so that we can get logits for it in GetCandidates.
-    last_batch_size = batch.n_tokens;
-
-    // PERF: Don't need to get logits if this is part of a large
-    // batch that's been split, and we are not on the last one.
-    //
-    // Only get logits for last token.
-    batch.logits[batch.n_tokens - 1] = true;
-
-    CHECK(0 == llama_decode(lctx, batch));
-
-    // Notes on kv:
-    //   a kv cell knows its position, but is associated with
-    //   potentially many sequence ids. (It also has a "delta"
-    //   so that it can be shifted. both the position and delta
-    //   are moved together)
-    //
-    // So I think the kv cache is basically storing the sequences.
-    //
-    // Here's some decent documentation:
-    // https://github.com/ggerganov/llama.cpp/pull/3228
-
-    num_last += (int)toks.size();
-
-    llama_batch_free(batch);
-  }
+  void TakeTokenSmallBatch(const std::vector<llama_token> &toks);
 
   // Accept the single token.
   void TakeToken(llama_token t) {
@@ -261,40 +120,16 @@ struct Context {
     TakeTokenBatch(batch);
   }
 
-  int VocabSize() const {
-    return llama_n_vocab(model);
-  }
+  std::string TokenString(llama_token token) const;
 
-  std::string TokenString(llama_token token) const {
-    // Guess 20-character buffer (fits in short string optimization);
-    // above 22 we need to allocate. (llama.cpp uses 8)
-    std::string result(20, 0);
-    const int n_chars = llama_token_to_piece(
-        model, token, result.data(), result.size());
-    if (n_chars < 0) {
-      result.resize(-n_chars);
-      int check =
-        llama_token_to_piece(model, token,
-                             result.data(), result.size());
-      CHECK(check == -n_chars);
-    } else {
-      result.resize(n_chars);
-    }
-
-    return std::string(result.data(), result.size());
-  }
-
-  llama_token NewlineToken() const {
-    return llama_token_nl(model);
-  }
-
-  llama_token EOSToken() const {
-    return llama_token_eos(model);
-  }
+  llama_token NewlineToken() const { return llama_token_nl(model); }
+  llama_token EOSToken() const { return llama_token_eos(model); }
 
   void Reset() {
     // All we need to do is declare that the context contains no tokens.
     num_last = 0;
+    // XXX no! we need to clear the kv array now
+    // (This might be the problem with Benchmark...)
   }
 
   struct Candidates {
@@ -331,23 +166,7 @@ struct Context {
     // Create a new candidates object from the current state of
     // the context. Use Context::GetCandidates().
     Candidates(llama_model *model, llama_context *lctx,
-               int last_batch_size) {
-      const int n_vocab = llama_n_vocab(model);
-      ltda.data = new llama_token_data[n_vocab];
-      ltda.size = n_vocab;
-      ltda.sorted = false;
-      // this is size n_vocab (just the last token) if
-      // params.logits_all is false (XXX assert!)
-      const float *logits =
-        llama_get_logits_ith(lctx, last_batch_size - 1);
-      CHECK(logits != nullptr);
-      for (llama_token token_id = 0; token_id < n_vocab; token_id++) {
-        float f = logits[token_id];
-        // printf("  logits[%d] = %.6f\n", token_id, f);
-        ltda.data[token_id] =
-          llama_token_data{token_id, f, 0.0f};
-      }
-    }
+               int last_batch_size);
   };
 
   // Returns a copy of the candidates (token/logit pairs) from the last
@@ -364,8 +183,11 @@ struct Context {
   // and it's ready to generate the next one. The contents should be
   // treated as opaque and only loaded back into the same Context
   // instance, as they need to agree with context internals.
+  //
+  // Currently this only allows REWINDING to a previous state in
+  // the current context. I need to rework this.
   struct State {
-    std::vector<uint8_t> llama_state;
+    // std::vector<uint8_t> llama_state;
     // For the context. Doesn't necessarily have to agree with the
     // sampler.
     int num_last = 0;
@@ -373,54 +195,14 @@ struct Context {
   };
 
   // TODO: Rework this to be more like "checkpoint" and "rewind".
-  State SaveState() const {
-    State state;
-    // We used to serialize the context here, but it seems to
-    // not work correctly with the new batched eval? On the
-    // other hand, we can now rewind really cheaply.
+  State SaveState() const;
 
-    /*
-    const size_t n_state_size_max = llama_get_state_size(lctx);
-    state.llama_state.resize(n_state_size_max);
-    const size_t n_state_size_cur =
-      llama_copy_state_data(lctx, state.llama_state.data());
-    state.llama_state.resize(n_state_size_cur);
-    state.llama_state.shrink_to_fit();
-    */
+  void LoadState(const State &state);
 
-    state.num_last = num_last;
-    state.last_batch_size = last_batch_size;
-    return state;
-  }
+private:
+  friend class Sampler;
+  friend class LLM;
 
-  void LoadState(const State &state) {
-    Reset();
-    /*
-    size_t bytes_read =
-      llama_set_state_data(lctx,
-                           // XXX I think this is morally const, but
-                           // should check.
-                           const_cast<uint8_t *>(
-                               state.llama_state.data()));
-    CHECK(bytes_read == state.llama_state.size());
-    */
-    num_last = state.num_last;
-    last_batch_size = state.last_batch_size;
-
-    // XXX at best this is inefficient, but probably just wrong?
-    // I think we want to clear after context.n_last, maybe?
-    // llama_kv_cache_clear(context.lctx);
-
-    llama_kv_cache_seq_rm(
-        lctx,
-        // any sequence
-        -1,
-        // clear from num_last to inf
-        num_last, -1);
-
-  }
-
-  // private:
   // Number of tokens that have been evaluated.
   // Should be in [0, llama_n_ctx()).
   int num_last = 0;
@@ -435,12 +217,7 @@ struct Context {
 // Object that samples an LLM context. There are a bunch of different
 // sampling approaches in llama.cpp, with parameters.
 //
-// This is where the rng should go, as we only need randomness for
-// sampling. But since llama.cpp bakes it into the context, we just
-// use the one in the context. This means that we forego the ability
-// to reproduce samples after a save/restore, but we already don't
-// have determinism (because of threaded execution of floating point
-// ops) so that's not a big deal.
+// I'm in the process of moving rng to here.
 //
 // Has value semantics so that save/restore can be trivial.
 struct Sampler {
@@ -453,27 +230,19 @@ struct Sampler {
   // Degenerate sampler; can't be used.
   Sampler() : context(nullptr), vocab_size(0), last_n_tokens(0, 0) {}
 
-  // The only thing we need from the context is the vocabulary.
-  // Probably better if we can avoid keeping a reference.
   Sampler(Context *context,
-          const SamplerParams &params = SamplerParams()) :
-    context(context),
-    params(params),
-    vocab_size(context->VocabSize()),
-    last_n_tokens(params.repeat_last_n, 0) {
-    Reset();
-  }
+          const SamplerParams &params = SamplerParams());
 
-  static const char *SampleTypeString(SampleType type) {
-    switch (type) {
-    default: return "???";
-    case SampleType::GREEDY: return "GREEDY";
-    case SampleType::MIROSTAT_1: return "MIROSTAT_1";
-    case SampleType::MIROSTAT_2: return "MIROSTAT_2";
-    case SampleType::TEMPERATURE: return "TEMPERATURE";
-    }
-  }
+  static const char *SampleTypeString(SampleType type);
 
+  // Samples a token from the logits. This does not accept the token
+  // (although it does currently update sampler state for the mirostat
+  // algorithm).
+  // You probably want to call Penalize on the candidates first.
+  // Consumes the candidates.
+  llama_token SampleToken(std::unique_ptr<Candidates> cand);
+
+private:
   // PERF!
   inline float RandFloat() {
     const uint32_t uu = rng.Rand32();
@@ -481,246 +250,42 @@ struct Sampler {
                    (double)0x7FFFFFFF);
   }
 
-  // Samples a token from the logits. This does not accept the token
-  // (although it does currently update sampler state for the mirostat
-  // algorithm).
-  // You probably want to call Penalize on the candidates first.
-  // Consumes the candidates.
-  llama_token SampleToken(std::unique_ptr<Candidates> cand) {
-    llama_context *lctx = context->lctx;
+  llama_token SampleDistribution(llama_token_data_array *dist);
 
-    switch (params.type) {
-    default:
-    case SampleType::GREEDY:
-      return llama_sample_token_greedy(lctx, &cand->ltda);
-    case SampleType::MIROSTAT_1: {
-      llama_sample_temp(lctx, &cand->ltda, params.temp);
-      return llama_sample_token_mirostat(
-          lctx, &cand->ltda, params.mirostat_tau, params.mirostat_eta,
-          params.mirostat_m, &mirostat_mu);
-    }
-    case SampleType::MIROSTAT_2:
-      llama_sample_temp(lctx, &cand->ltda, params.temp);
-      return llama_sample_token_mirostat_v2(
-          lctx, &cand->ltda, params.mirostat_tau,
-          params.mirostat_eta, &mirostat_mu);
-    case SampleType::TEMPERATURE:
-      llama_sample_top_k(lctx, &cand->ltda, params.top_k, 1);
-      llama_sample_tail_free(lctx, &cand->ltda, params.tfs_z, 1);
-      llama_sample_typical(lctx, &cand->ltda, params.typical_p, 1);
-      llama_sample_top_p(lctx, &cand->ltda, params.top_p, 1);
-      llama_sample_temp(lctx, &cand->ltda, params.temp);
-      return SampleDistribution(&cand->ltda);
-    }
-  }
-
-  llama_token SampleDistribution(llama_token_data_array *dist) {
-    // PERF we need to normalize probabilities, but not sort them.
-    llama_sample_softmax(nullptr, dist);
-
-    // Now probabilities sum to 1. So index into that.
-    for (;;) {
-      float fidx = RandFloat();
-      for (int i = 0; i < (int)dist->size; i++) {
-        float bucket = dist->data[i].p;
-        if (fidx < bucket) {
-          // Note: llama records timing info here.
-          return dist->data[i].id;
-        }
-        fidx -= bucket;
-      }
-      // Mathematically this should always succeed on the first pass,
-      // but it is possible that rounding causes it to fail (e.g.
-      // when subtracting the bucket). Easiest is to just try again.
-    }
-  }
+public:
 
   // Some samplers depend on the history of the text.
   // Typically, when we take a token for the context, we take that same
   // token for the corresponding sampler.
-  void Observe(llama_token id) {
-    last_n_tokens.push_front(id);
-    num_last++;
-    if (num_last == last_n_tokens.size()) num_last = last_n_tokens.size();
+  void Observe(llama_token id);
+  void ObserveBatch(const std::vector<llama_token> &ids);
 
-    // advance matcher state.
-    std::string s = context->TokenString(id);
-    for (uint8_t c : s) {
-      matcher.Advance(c);
-    }
-  }
-
-  void ObserveBatch(const std::vector<llama_token> &ids) {
-    for (llama_token id : ids) Observe(id);
-  }
-
-  void Reset() {
-    uint64_t start_seed =
-      params.seed < 0 ? (uint64_t)time(nullptr) : (uint64_t)params.seed;
-
-    rng = PCG32(start_seed);
-    ResetRegEx();
-    // 0 token is <unk>, which I think means invalid.
-    // (Or use BOS token?)
-    std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
-    mirostat_mu = 2.0f * params.mirostat_tau;
-    num_last = 0;
-  }
+  void Reset();
 
   // Reset the regex
-  void ResetRegEx() {
-    nfa = RemoveEpsilon<256>(Parse(params.regex));
-    ResetNFA();
-  }
+  void ResetRegEx();
 
   // Set the regex (and reset the matcher).
-  void SetRegEx(const std::string &re) {
-    params.regex = re;
-    ResetRegEx();
-  }
+  void SetRegEx(const std::string &re);
 
-  // Note that this does not update the regex string, so Reset
-  // will not remember what happened here.
-  void SetNFA(NFA<256> nfa_arg) {
-    nfa = std::move(nfa_arg);
-    ResetNFA();
-  }
+  // Set the NFA directly. Note that this does not update the regex
+  // string, so Reset will not remember what happened here.
+  void SetNFA(NFA<256> nfa_arg);
 
-  void ResetNFA() {
-    matcher = NFAMatcher<256>(nfa);
-  }
+  void ResetNFA();
 
   // Filter to those tokens that would leave the matcher in a
   // non-stuck state (note that "stuck" detection in NFA is currently
   // incomplete). Doesn't advance the matcher. Returns true if
   // there are tokens that can still be sampled.
-  bool FilterByNFA(Candidates *cands) const {
-    // TODO: I think we can actually just shrink the candidates
-    // array, which would have other advantages.
-    static constexpr float IMPOSSIBLE = -1.0e28f;
-    bool any_left = false;
-    for (llama_token_data &cand : *cands) {
-      CHECK(cand.id >= 0 && cand.id < vocab_size);
-      std::string s = context->TokenString(cand.id);
-      /*
-      printf("Cand " AWHITE("%s") " with score %.4f..\n",
-             s.c_str(), cand.logit);
-      */
+  bool FilterByNFA(Candidates *cands) const;
 
-      // Some special tokens (EOS, BOS) are empty. We should not
-      // predict them when conforming to a regex!
-      // (But this is kind of a hack...)
-      if (s.empty()) {
-        cand.logit = IMPOSSIBLE;
-        continue;
-      }
-
-
-      NFAMatcher<256> mcopy = matcher;
-      for (uint8_t c : s) {
-        mcopy.Advance(c);
-        /*
-        printf("..'" AYELLOW("%02x") "=%c'..", c, c);
-        if (mcopy.Stuck()) {
-          printf(ARED("STUCK"));
-        }
-        */
-
-        // XXX check stuck in here!
-
-      }
-      if (mcopy.Stuck()) {
-        cand.logit = IMPOSSIBLE;
-      } else {
-        any_left = true;
-      }
-    }
-    // printf("XXX exit\n");
-    // CHECK(false);
-    return any_left;
-  }
-
-  bool Stuck() const {
-    return matcher.Stuck();
-  }
+  // True if the matcher is in a stuck state where it could not
+  // accept any sequence of tokens at this point.
+  bool Stuck() const { return matcher.Stuck(); }
 
   // Apply penalties to candidates.
-  void Penalize(Candidates *cands) const {
-    cands->ltda.sorted = false;
-
-    // Save nl logit so that we can restore it if
-    const int nl_id = llama_token_nl(context->model);
-    float old_nl_logit = 0.0f;
-
-    // PERF: The candidates start in order, so we could (awkwardly)
-    // assume that here if we wanted to be a little faster.
-    for (llama_token_data &cand : *cands) {
-      CHECK(cand.id >= 0 && cand.id < vocab_size);
-
-      auto it = params.logit_bias.find(cand.id);
-      if (it != params.logit_bias.end()) cand.logit += it->second;
-      if (cand.id == nl_id) old_nl_logit = cand.logit;
-    }
-
-    // Note that llama.cpp (example?) originally used the full
-    // last_n_tokens here, which seems wrong. Just considering
-    // num_last. -tom7
-    const int last_do = std::min(num_last, params.repeat_last_n);
-
-    std::vector<int> prev_count;
-    // PERF rather than compute this each time, we could keep track of
-    // token counts and update in observe.
-    auto ComputeCount = [this, last_do, &prev_count]() {
-        if (prev_count.empty()) {
-          prev_count.resize(vocab_size, 0);
-          for (int i = 0; i < last_do; i++) {
-            prev_count[last_n_tokens[i]]++;
-          }
-        }
-      };
-
-    // From llama_sample_repetition_penalty, but working on a candidate
-    // array.
-    if (last_do > 0 && params.repeat_penalty != 1.0f) {
-      ComputeCount();
-
-      // Now, for each token, penalize if it has appeared.
-      for (llama_token_data &cand : *cands) {
-        if (prev_count[cand.id] > 0) {
-          if (cand.logit <= 0) {
-            cand.logit *= params.repeat_penalty;
-          } else {
-            cand.logit /= params.repeat_penalty;
-          }
-        }
-      }
-    }
-
-
-    // From llama_sample_frequency_and_presence_penalties.
-    if (last_do > 0 && (params.frequency_penalty != 0.0f ||
-                        params.presence_penalty != 0.0f)) {
-      ComputeCount();
-
-      for (llama_token_data &cand : *cands) {
-        int count = prev_count[cand.id];
-        if (count > 0) {
-          cand.logit -= float(count) * params.frequency_penalty +
-             params.presence_penalty;
-        }
-      }
-    }
-
-    // Restore newline logit if we don't allow penalizing it.
-    if (!params.penalize_nl) {
-      // Note that in llama.cpp this modified the original logit
-      // array, not the candidates copy we just made, so it had
-      // no effect...
-      for (llama_token_data &cand : *cands) {
-        if (cand.id == nl_id) cand.logit = old_nl_logit;
-      }
-    }
-  }
+  void Penalize(Candidates *cands) const;
 
 private:
   Context *context = nullptr;
@@ -758,43 +323,20 @@ struct LLM {
     llama_backend_free();
   }
 
-
   LLM(const ContextParams &context_params,
-      const SamplerParams &sampler_params) : context(context_params),
-                                             sampler(&context,
-                                                     sampler_params) {
-  }
+      const SamplerParams &sampler_params);
 
   int VocabSize() { return context.VocabSize(); }
   std::string TokenString(llama_token id) { return context.TokenString(id); }
 
-  int Sample() {
-    std::unique_ptr<Context::Candidates> candidates = context.GetCandidates();
-    // XXX
-    // printf(ABLUE("Original:") "\n");
-    // AnsiPrintCandidates(*candidates, 10);
-    sampler.Penalize(candidates.get());
-    // printf(ACYAN("Penalized:") "\n");
-    // AnsiPrintCandidates(*candidates, 10);
-    sampler.FilterByNFA(candidates.get());
-    // printf(APURPLE("Penalized, filtered:") "\n");
-    // AnsiPrintCandidates(*candidates, 10);
-    return sampler.SampleToken(std::move(candidates));
-  }
+  // Sample one token, without taking it.
+  llama_token Sample();
 
-  std::string SampleAndTake() {
-    int id = Sample();
-    // Commit the token.
-    TakeTokenBatch({id});
-    return context.TokenString(id);
-  }
+  // Sample one token and take it. Returns the token's string.
+  std::string SampleAndTake();
 
   void TakeToken(llama_token id) { TakeTokenBatch({id}); }
-
-  void TakeTokenBatch(const std::vector<llama_token> &batch) {
-    context.TakeTokenBatch(batch);
-    sampler.ObserveBatch(batch);
-  }
+  void TakeTokenBatch(const std::vector<llama_token> &batch);
 
   void InsertString(const std::string &s) {
     TakeTokenBatch(context.Tokenize(s, false));
@@ -807,44 +349,22 @@ struct LLM {
   // delimiter before accumulating that many characters. (Note: The returned
   // string can actually exceed max_length if the delimiter is a substring
   // of some token.)
+  //
+  // XXX: Should use NFA for this instead.
   std::string GenerateUntil(const std::string &delimiter,
-                            int max_length = -1) {
-    const auto &[got, success] =
-      GenerateUntilEx(delimiter, max_length);
-    if (success) return got;
-    else return "";
-  }
+                            int max_length = -1);
 
   // As above, but: If we exceed the max length, return the string so
   // far. Second component of pair is true we successfully saw the
   // delimiter. If force_delimiter is true, then once we reach the max
   // length, we insert the delimiter string into the Context state
   // (but still return false for success).
+  //
+  // XXX: Should use NFA for this instead.
   std::pair<std::string, bool> GenerateUntilEx(
       const std::string &delimiter,
       int max_length = -1,
-      bool force_delimiter = false) {
-    std::string got;
-    for (;;) {
-      std::unique_ptr<Context::Candidates> candidates = context.GetCandidates();
-      sampler.Penalize(candidates.get());
-      sampler.FilterByNFA(candidates.get());
-      int id = sampler.SampleToken(std::move(candidates));
-      // Commit the token.
-      TakeTokenBatch({id});
-      got += context.TokenString(id);
-
-      // PERF don't need to search the whole string each time.
-      auto pos = got.find(delimiter);
-      if (pos != std::string::npos) {
-        return make_pair(got.substr(0, pos), true);
-      }
-      if (max_length >= 0 && (int)got.size() > max_length) {
-        InsertString(delimiter);
-        return make_pair(got, false);
-      }
-    }
-  }
+      bool force_delimiter = false);
 
   void Reset() {
     context.Reset();
@@ -853,107 +373,24 @@ struct LLM {
 
   // Insert a prompt. If anything has already happened, consider
   // resetting first.
-  void DoPrompt(std::string prompt) {
-    // Add a space in front of the first character to match OG llama
-    // tokenizer behavior
-    prompt.insert(0, 1, ' ');
-
-    // tokenize the prompt
-    auto toks = context.Tokenize(prompt, true);
-
-    const int n_ctx = llama_n_ctx(context.lctx);
-
-    CHECK((int)toks.size() <= n_ctx - 4) << "Prompt too long ("
-                                         << (int)toks.size()
-                                         << " tokens)";
-    TakeTokenBatch(toks);
-
-    PrintKV();
-  }
+  void DoPrompt(std::string prompt);
 
   struct State {
     Context::State context_state;
     Sampler sampler_copy;
   };
 
-  State SaveState() const {
-    State state;
-    state.context_state = context.SaveState();
-    state.sampler_copy = sampler;
-
-    printf("SaveState!\n");
-    PrintKV();
-    return state;
-  }
-
-  void LoadState(const State &state) {
-    printf("LoadState!\n");
-    PrintKV();
-    context.LoadState(state.context_state);
-    sampler = state.sampler_copy;
-
-
-    printf("After LoadState:\n");
-    PrintKV();
-  }
+  // Note: This only supports rewinding, currently.
+  State SaveState() const;
+  void LoadState(const State &state);
 
   // Print up 'maximum' (or all of them, if -1) candidates,
   // using ANSI color codes.
-  // TODO: Some ansi (:
   void AnsiPrintCandidates(const Candidates &candidates,
-                           int maximum) {
-    auto IsAscii = [](const std::string &s) {
-        for (char c : s) {
-          if (c < ' ' || c > '~') return false;
-        }
-        return true;
-      };
-
-    std::vector<std::pair<std::string, float>> toks;
-    for (const llama_token_data &tok : candidates) {
-      if (tok.id == llama_token_nl(context.model)) {
-        toks.emplace_back("\\n", tok.logit);
-      } else {
-        std::string s = context.TokenString(tok.id);
-        if (IsAscii(s)) {
-          toks.emplace_back(s, tok.logit);
-        } else {
-          toks.emplace_back("??", tok.logit);
-        }
-      }
-    }
-
-    std::sort(toks.begin(), toks.end(),
-              [](const std::pair<std::string, float> &a,
-                 const std::pair<std::string, float> &b) {
-                return a.second > b.second;
-              });
-    for (int i = 0;
-         (maximum < 0 || i < maximum) && i < (int)toks.size();
-         i++) {
-      printf("  [%s] %.9f\n", toks[i].first.c_str(), toks[i].second);
-    }
-  }
+                           int maximum);
 
   // Debugging only.
-  void PrintKV() const {
-    constexpr int NUM_SEQ = 1;
-    llama_kv_cache_view kcv = llama_kv_cache_view_init(
-        context.lctx, NUM_SEQ);
-    llama_kv_cache_view_update(context.lctx, &kcv);
-
-    printf(AWHITE("KV Cache:") "\n");
-    printf("  n_cells: %d\n", kcv.n_cells);
-    printf("  n_max_seq: %d\n", kcv.n_max_seq);
-    printf("  token_count: %d\n", kcv.token_count);
-    printf("  used_cells: %d\n", kcv.used_cells);
-    printf("  max_contiguous: %d\n", kcv.max_contiguous);
-    printf("  max_contiguous_idx: %d\n", kcv.max_contiguous_idx);
-    printf("  cells...\n");
-    printf("  cells_sequences...\n");
-
-    llama_kv_cache_view_free(&kcv);
-  }
+  void PrintKV() const;
 
   Context context;
   Sampler sampler;

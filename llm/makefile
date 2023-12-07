@@ -251,25 +251,27 @@ build-info.o: $(LLAMA_DIR)/common/build-info.cpp $(LLAMA_HEADERS)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 # ggml-mpi.o
-LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o  ggml-quants.o llama.o common.o
+LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llama.o common.o
+
+LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) llm.o
 
 %.o : %.cc llm.h nfa.h
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-acronymy.exe: acronymy.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
+acronymy.exe: acronymy.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-benchmark.exe: benchmark.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
+benchmark.exe: benchmark.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-llm_test.exe: llm_test.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBS)
+llm_test.exe: llm_test.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS) $(OBS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-chat.exe: chat.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
+chat.exe: chat.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-chatroom.exe: chatroom.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
+chatroom.exe: chatroom.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 run-um.exe : run-um.o um.o $(CC_LIB_OBJECTS)
@@ -278,19 +280,19 @@ run-um.exe : run-um.o um.o $(CC_LIB_OBJECTS)
 extract-codex.exe : extract-codex.o um.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-llum.exe : llum.o um.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
+llum.exe : llum.o um.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-generate.exe : generate.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
+generate.exe : generate.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-continue.exe : continue.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
+continue.exe : continue.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-dump-tokens.exe : dump-tokens.o $(LLAMA_OBJECTS) $(CC_LIB_OBJECTS) $(OBJS)
+dump-tokens.exe : dump-tokens.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-nfa_test.exe : nfa_test.o $(CC_LIB_OBJECTS) $(OBJS)
+nfa_test.exe : nfa_test.o $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 test-karate.exe : karate.o test-karate.o $(CC_LIB_OBJECTS)

@@ -164,6 +164,7 @@ static void Rewind() {
 
 int main(int argc, char **argv) {
   ANSI::Init();
+  LLM::Init();
 
   // BasicPredict();
   Rewind();
