@@ -1,5 +1,5 @@
 
-default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe llum.exe nfa_test.exe llm_test.exe
+default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe run-um.exe llum.exe nfa_test.exe llm_test.exe dump-tokens.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -255,7 +255,7 @@ LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llam
 
 LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) llm.o
 
-%.o : %.cc llm.h nfa.h
+%.o : %.cc llm.h nfa.h nfa-util.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 

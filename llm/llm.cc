@@ -19,7 +19,15 @@
 
 #include "ansi.h"
 
+static void LogLLM(enum ggml_log_level level,
+                   const char * text,
+                   void * user_data) {
+  // Ignored. Could print if if verbose is on?
+}
+
 Context::Context(const ContextParams &params) {
+  llama_log_set(LogLLM, nullptr);
+
   // PERF need to tell llama about this now
   num_threads = params.num_threads;
 
@@ -35,7 +43,9 @@ Context::Context(const ContextParams &params) {
   lparams.n_ctx = 0;
 
   // Note: We have our own seed because we do our own sampling.
-  lparams.seed         = 1;
+  // XXX make this deterministic, then!
+  lparams.seed         = -1;
+
   // For special-purpose uses.
   lparams.logits_all = false;
   lparams.embedding = false;
@@ -59,12 +69,14 @@ std::vector<llama_token> Context::Tokenize(
     const std::string &text, bool add_bos) {
   // initialize to prompt number of chars, since n_tokens <= n_prompt_chars
   // (For llama2, adding 1, since tokenizing just "\n" yields two tokens??)
-  const int max_tokens = text.size() + 1 + (int) add_bos;
+  const int max_tokens = text.size() + 1 + (int)add_bos;
   std::vector<llama_token> res(max_tokens);
   const int n = llama_tokenize(
       model, text.c_str(), text.size(), res.data(), res.size(), add_bos,
       // TODO: what is "special"?
-      false);
+      false,
+      // Don't add leading space unless we're at the beginning.
+      add_bos);
   CHECK(n >= 0) << "Tokenizing [" << text << "] (res size " <<
     res.size() << ") got n=" << n;
   CHECK(n <= max_tokens) << "got n=" << n << " but max_tokens=" << max_tokens;
@@ -222,7 +234,7 @@ Context::State Context::SaveState() const {
 }
 
 void Context::LoadState(const State &state) {
-  Reset();
+  // Reset();
   /*
     size_t bytes_read =
     llama_set_state_data(lctx,
@@ -332,12 +344,19 @@ llama_token Sampler::SampleDistribution(llama_token_data_array *dist) {
 void Sampler::Observe(llama_token id) {
   last_n_tokens.push_front(id);
   num_last++;
-  if (num_last == last_n_tokens.size()) num_last = last_n_tokens.size();
+  if (num_last == last_n_tokens.size())
+    num_last = last_n_tokens.size();
 
   // advance matcher state.
   std::string s = context->TokenString(id);
   for (uint8_t c : s) {
+    // printf("Before advance [%c]:", c);
+    // for (int n : matcher.GetStates()) printf(" %d", n);
+    // printf("\n");
     matcher.Advance(c);
+    // printf("     after [%c]:", c);
+    // for (int n : matcher.GetStates()) printf(" %d", n);
+    // printf("\n");
   }
 }
 
@@ -509,15 +528,20 @@ LLM::LLM(const ContextParams &context_params,
 
 llama_token LLM::Sample() {
   std::unique_ptr<Context::Candidates> candidates = context.GetCandidates();
-  // XXX
-  // printf(ABLUE("Original:") "\n");
-  // AnsiPrintCandidates(*candidates, 10);
+  if (VERBOSE) {
+    printf(ABLUE("Original:") "\n");
+    AnsiPrintCandidates(*candidates, 10);
+  }
   sampler.Penalize(candidates.get());
-  // printf(ACYAN("Penalized:") "\n");
-  // AnsiPrintCandidates(*candidates, 10);
+  if (VERBOSE) {
+    printf(ACYAN("Penalized:") "\n");
+    AnsiPrintCandidates(*candidates, 10);
+  }
   sampler.FilterByNFA(candidates.get());
-  // printf(APURPLE("Penalized, filtered:") "\n");
-  // AnsiPrintCandidates(*candidates, 10);
+  if (VERBOSE) {
+    printf(APURPLE("Penalized, filtered:") "\n");
+    AnsiPrintCandidates(*candidates, 10);
+  }
   return sampler.SampleToken(std::move(candidates));
 }
 
@@ -529,6 +553,13 @@ std::string LLM::SampleAndTake() {
 }
 
 void LLM::TakeTokenBatch(const std::vector<llama_token> &batch) {
+  /*
+  printf("TakeTokenBatch:");
+  for (llama_token t : batch) {
+    printf(" %d=[%s]", t, context.TokenString(t).c_str());
+  }
+  printf("\n");
+  */
   context.TakeTokenBatch(batch);
   sampler.ObserveBatch(batch);
 }
@@ -568,11 +599,8 @@ std::pair<std::string, bool> LLM::GenerateUntilEx(
 }
 
 void LLM::DoPrompt(std::string prompt) {
-  // Add a space in front of the first character to match OG llama
-  // tokenizer behavior
-  prompt.insert(0, 1, ' ');
-
-  // tokenize the prompt
+  // tokenize the prompt. This also inserts a leading space because
+  // add_bos is true.
   auto toks = context.Tokenize(prompt, true);
 
   const int n_ctx = llama_n_ctx(context.lctx);
@@ -582,7 +610,9 @@ void LLM::DoPrompt(std::string prompt) {
                                        << " tokens)";
   TakeTokenBatch(toks);
 
-  PrintKV();
+  if (VERBOSE) {
+    PrintKV();
+  }
 }
 
 LLM::State LLM::SaveState() const {
@@ -590,20 +620,25 @@ LLM::State LLM::SaveState() const {
   state.context_state = context.SaveState();
   state.sampler_copy = sampler;
 
-  printf("SaveState!\n");
-  PrintKV();
+  if (VERBOSE) {
+    printf("SaveState!\n");
+    PrintKV();
+  }
   return state;
 }
 
 void LLM::LoadState(const State &state) {
-  printf("LoadState!\n");
-  PrintKV();
+  if (VERBOSE) {
+    printf("LoadState!\n");
+    PrintKV();
+  }
   context.LoadState(state.context_state);
   sampler = state.sampler_copy;
 
-
-  printf("After LoadState:\n");
-  PrintKV();
+  if (VERBOSE) {
+    printf("After LoadState:\n");
+    PrintKV();
+  }
 }
 
 void LLM::AnsiPrintCandidates(const Candidates &candidates,

@@ -29,7 +29,7 @@ using namespace std;
 int main(int argc, char ** argv) {
   ContextParams cparams;
   // Any model will work; use the smallest one.
-  cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
+  cparams.model = "e:\\llama2\\7b\\ggml-model-Q2_K.gguf";
   SamplerParams sparams;
 
   LLM llm(cparams, sparams);

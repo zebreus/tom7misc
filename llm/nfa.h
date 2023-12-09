@@ -46,43 +46,6 @@ struct NFA {
     }
   }
 
-  std::string DebugString() const {
-    // XXX no this returns!
-    auto [st, ss] = DebugSize();
-    std::string ret = StringPrintf("Size: %d transitions, %d states\n"
-                                   "start states:", st, ss);
-    for (int i : start_states) StringAppendF(&ret, " %d", i);
-    StringAppendF(&ret, "\n");
-    for (int i = 0; i < (int)nodes.size(); i++) {
-      StringAppendF(&ret, "%d.%s%s\n",
-                    i,
-                    start_states.contains(i) ? " (START)" : "",
-                    nodes[i].accepting ? " (ACC)" : "");
-      for (const auto &[c, nexts] : nodes[i].next_idx) {
-        std::string ch = StringPrintf("(%d)", c);
-        if constexpr (RADIX == 256 || RADIX == 257) {
-            if (c >= 'a' && c <= 'z') {
-              ch = StringPrintf("%c", c);
-            } else if (c == 256) {
-              ch = "EPS";
-            }
-          }
-        StringAppendF(&ret, "  %s:", ch.c_str());
-        for (int n : nexts) StringAppendF(&ret, " %d", n);
-        StringAppendF(&ret, "\n");
-      }
-    }
-    return ret;
-  }
-
-  std::pair<int, int> DebugSize() const {
-    size_t transitions = 0;
-    for (const Node &node : nodes)
-      for (const auto &[c_, nexts] : node.next_idx)
-        transitions += nexts.size();
-    return make_pair((int)nodes.size(), (int)transitions);
-  }
-
   std::vector<Node> nodes;
   std::unordered_set<int> start_states;
 };
@@ -132,6 +95,9 @@ struct NFAMatcher {
   bool Stuck() const {
     return states.empty();
   }
+
+  // For calling NFADebugString, etc.
+  const std::unordered_set<int> &GetStates() const { return states; }
 
 private:
   const NFA *nfa = nullptr;

@@ -22,33 +22,21 @@
 #include "arcfour.h"
 #include "randutil.h"
 
+#include "nfa.h"
+#include "nfa-util.h"
+
 #include "llm.h"
 
 #include "llm-util.h"
 
 using namespace std;
 
-
-static void AdvanceString(const string &s, NFAMatcher<256> *matcher) {
-  for (int i = 0; i < (int)s.size(); i++) {
-    unsigned char c = s[i];
-    matcher->Advance(c);
-  }
-}
-
-static bool Matches(const NFA<256> &nfa, const string &s) {
-  nfa.CheckValidity();
-  NFAMatcher<256> matcher(nfa);
-  AdvanceString(s, &matcher);
-  return matcher.IsMatching();
-}
-
-static NFA<256> MakeRegex(const std::string &regex) {
+static ByteNFA MakeRegex(const std::string &regex) {
   auto enfa = Parse(regex);
   auto nfa = RemoveEpsilon<256>(enfa);
   {
-    auto [et, es] = enfa.DebugSize();
-    auto [t, s] = nfa.DebugSize();
+    auto [et, es] = NFADebugSize(enfa);
+    auto [t, s] = NFADebugSize(nfa);
     printf("For regex: " ABLUE("%s") "\n"
            "  ENFA: %d t %d s\n"
            "  NFA: %d t %d s\n",
@@ -56,6 +44,16 @@ static NFA<256> MakeRegex(const std::string &regex) {
   }
   return nfa;
 }
+
+struct ChatLine {
+  // The full text with no newline, like "<Tom> This is chat line."
+  std::string text;
+  // The state right before the line (i.e. right after the preceding
+  // newline).
+  LLM::State state;
+  // backup of this as well
+  ByteNFAMatcher user_matcher;
+};
 
 static void Chat(LLM *llm,
                  const string &user,
@@ -67,14 +65,19 @@ static void Chat(LLM *llm,
   // with either ">" or "> ". I think that is the case for llama,
   // though we could check or implement this a different way.
   string user_regex =
-    StringPrintf(".*\n(<%s> ?|\\* %s ?)", user.c_str(), user.c_str());
+    StringPrintf(".*\n( *<%s> ?| *\\* %s ?)", user.c_str(), user.c_str());
 
   auto user_nfa = MakeRegex(user_regex);
-  NFAMatcher<256> user_matcher(user_nfa);
+  ByteNFAMatcher user_matcher(user_nfa);
 
-  // Save state whenever a chat line comes in.
+  AdvanceString("\n", &user_matcher);
+
+  // So that we can save state whenever a chat line comes in.
   string ends_newline_regex = ".*\n";
   auto ends_newline_nfa = MakeRegex(ends_newline_regex);
+
+
+  std::vector<ChatLine> lines;
 
   Timer startup_timer;
   llm->Reset();
@@ -92,7 +95,7 @@ static void Chat(LLM *llm,
   llm->sampler.ResetRegEx();
 
   LLM::State start_line_state = llm->SaveState();
-  NFAMatcher<256> ends_newline_matcher(ends_newline_nfa);
+  ByteNFAMatcher ends_newline_matcher(ends_newline_nfa);
 
   printf(AYELLOW("(finished the prompt)") "\n");
 
@@ -100,24 +103,45 @@ static void Chat(LLM *llm,
 
   // printf("NFA\n%s\n", llm->sampler.nfa.DebugString().c_str());
 
+  auto NewLine = [&llm, &lines, &user_matcher]() {
+      lines.emplace_back(ChatLine{
+          .text = "",
+          .state = llm->SaveState(),
+          .user_matcher = user_matcher,
+        });
+    };
+
+  // Could initialize lines from the prompt, if it contains chat
+  // lines. But we have to at least have a last entry in there,
+  // since that is modified in place.
+  NewLine();
+
   Timer inference_timer;
-  const int tokens_left =
-    llm->context.ContextSize() - llm->context.NumLast();
-  int tokens = 0;
+
   for (;;) {
+    CHECK(!lines.empty());
+
     // Get and commit a token.
     int id = llm->Sample();
     llm->TakeTokenBatch({id});
     string tok = llm->context.TokenString(id);
+    lines.back().text += tok;
 
     printf("%s", tok.c_str());
     fflush(stdout);
 
+    // TODO: Maybe don't want to output this eagerly
+    // if we have rewinding/edits/etc.
     if (outfile != nullptr) {
       fprintf(outfile, "%s", tok.c_str());
     }
 
+    AdvanceString(tok, &ends_newline_matcher);
     AdvanceString(tok, &user_matcher);
+    if (ends_newline_matcher.IsMatching()) {
+      NewLine();
+    }
+
     if (user_matcher.IsMatching()) {
       if (outfile != nullptr) {
         fflush(outfile);
@@ -129,19 +153,82 @@ static void Chat(LLM *llm,
       string input;
       getline(cin, input);
 
-      // If last token didn't include the space, insert it.
-      if (tok[tok.size() - 1] != ' ') {
-        input = " " + input;
-      }
+      if (Util::TryStripPrefix("/raw ", &input)) {
 
-      input += "\n";
-      printf("inserting [%s]\n", input.c_str());
+        /*
+        printf("(Got RAW [%s]\n", input.c_str());
+        printf("NFA now:\n%s\n",
+               NFADebugString(llm->sampler.nfa,
+                              llm->sampler.matcher.GetStates()).c_str());
+        */
 
-      llm->InsertString(input);
-      AdvanceString(input, &user_matcher);
+        // This means we want to remove the predicted prefix and
+        // then insert the input verbatim.
+        input += "\n";
 
-      if (outfile != nullptr) {
-        fprintf(outfile, "%s", input.c_str());
+        lines.back().text = input;
+        llm->LoadState(lines.back().state);
+        // FIXME: Workaround bug :(
+        llm->sampler.ResetRegEx();
+
+        /*
+        printf("NFA after load:\n%s\n",
+               NFADebugString(llm->sampler.nfa,
+                              llm->sampler.matcher.GetStates()).c_str());
+        */
+
+        user_matcher = lines.back().user_matcher;
+
+        // printf("Now insert [%s]\n", input.c_str());
+        /*
+        for (const char c : input) {
+          string cinput = StringPrintf("%c", c);
+          llm->InsertString(cinput);
+          AdvanceString(cinput, &user_matcher);
+
+          printf("NFA after insert [%c]:\n%s\n", c,
+                 NFADebugString(llm->sampler.nfa,
+                                llm->sampler.matcher.GetStates()).c_str());
+
+        }
+        */
+        llm->InsertString(input);
+        AdvanceString(input, &user_matcher);
+
+        /*
+        printf("NFA after insert [%s]:\n%s\n", input.c_str(),
+               NFADebugString(llm->sampler.nfa,
+                              llm->sampler.matcher.GetStates()).c_str());
+        */
+
+        if (outfile != nullptr) {
+          fprintf(outfile, "(raw) %s", input.c_str());
+        }
+
+        NewLine();
+
+        /*
+        printf("NFA after insert all:\n%s\n",
+               NFADebugString(llm->sampler.nfa,
+                              llm->sampler.matcher.GetStates()).c_str());
+        */
+      } else {
+        // Normal chat.
+
+        // If last token didn't include the space, insert it.
+        if (tok[tok.size() - 1] != ' ') {
+          input = " " + input;
+        }
+
+        input += "\n";
+        llm->InsertString(input);
+        AdvanceString(input, &user_matcher);
+
+        if (outfile != nullptr) {
+          fprintf(outfile, "%s", input.c_str());
+        }
+
+        NewLine();
       }
     }
 
@@ -169,8 +256,8 @@ int main(int argc, char ** argv) {
   {
     auto enfa = Parse(regex);
     auto nfa = RemoveEpsilon<256>(enfa);
-    auto [et, es] = enfa.DebugSize();
-    auto [t, s] = nfa.DebugSize();
+    auto [et, es] = NFADebugSize(enfa);
+    auto [t, s] = NFADebugSize(nfa);
     printf("Regex: " ABLUE("%s") "\n"
            "User: " AGREEN("%s") "\n"
            "Prompt size %zu.\n"
@@ -202,9 +289,9 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
 
-  // cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
-  // cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
-  cparams.model = "llama2/70b/ggml-model-f16.gguf";
+  cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
+  // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
+  // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

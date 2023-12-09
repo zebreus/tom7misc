@@ -103,9 +103,11 @@ struct Context {
   int ContextSize() const { return llama_n_ctx(lctx); }
   int VocabSize() const { return llama_n_vocab(model); }
 
-  // add_bos should be passed for the very first text ("beginning of stream"
-  // token).
-  std::vector<llama_token> Tokenize(const std::string &text, bool add_bos);
+  // add_bos should be passed for (only) the very first text
+  // ("beginning of stream" token). This also allows the tokenizer to
+  // insert a leading space.
+  std::vector<llama_token> Tokenize(const std::string &text,
+                                    bool add_bos);
 
   // Accept the batch of tokens together. Some processing happens
   // in parallel (e.g. embeddings). Processing in batch increases
@@ -126,11 +128,20 @@ struct Context {
   llama_token EOSToken() const { return llama_token_eos(model); }
 
   void Reset() {
-    // All we need to do is declare that the context contains no tokens.
+    // There are no tokens.
     num_last = 0;
-    // XXX no! we need to clear the kv array now
-    // (This might be the problem with Benchmark...)
+    // There have been no predictions.
+    last_batch_size = 0;
+    // kv cache should be empty.
+    llama_kv_cache_seq_rm(
+        lctx,
+        // any sequence
+        -1,
+        // clear entire thing
+        -1, -1);
   }
+
+  llama_context *GetLlamaContext() const { return lctx; }
 
   struct Candidates {
     // Contains eligible tokens with log-odds.
@@ -196,7 +207,6 @@ struct Context {
 
   // TODO: Rework this to be more like "checkpoint" and "rewind".
   State SaveState() const;
-
   void LoadState(const State &state);
 
 private:
@@ -312,6 +322,7 @@ public: // XXX
 };
 
 struct LLM {
+  static constexpr bool VERBOSE = false;
   using Candidates = Context::Candidates;
 
   // XXX Maybe call this internally? Reference count?
@@ -339,6 +350,7 @@ struct LLM {
   void TakeTokenBatch(const std::vector<llama_token> &batch);
 
   void InsertString(const std::string &s) {
+    // printf("InsertString [%s]\n", s.c_str());
     TakeTokenBatch(context.Tokenize(s, false));
   }
 
@@ -377,6 +389,8 @@ struct LLM {
 
   struct State {
     Context::State context_state;
+    // XXX this does not work, because the matcher has a pointer
+    // to the state in it. We could have an explicit copy.
     Sampler sampler_copy;
   };
 

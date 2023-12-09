@@ -482,10 +482,9 @@ int main(int argc, char ** argv) {
   // cparams.model = "llama2/70b/ggml-model-f16.gguf";
   // cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
 
-  cparams.model = "codellama2/34b/ggml-model-f16.gguf";
+  // cparams.model = "codellama2/34b/ggml-model-f16.gguf";
 
-  // TODO!
-  // cparams.model = "codellama2/7b/ggml-model-f16.gguf";
+  cparams.model = "codellama2/7b/ggml-model-f16.gguf";
 
   // test!
   // cparams.model = "llama2/7b/ggml-model-Q2_K.gguf";
@@ -509,7 +508,7 @@ int main(int argc, char ** argv) {
     }
   }
 
-  llama_print_timings(llm.context.lctx);
+  llama_print_timings(llm.context.GetLlamaContext());
 
   // TODO: Dump full context/sampler params, like to a spreadsheet.
   printf("Model: " AWHITE("%s") "\n", cparams.model.c_str());
