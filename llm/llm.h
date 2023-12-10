@@ -262,6 +262,13 @@ private:
 
   llama_token SampleDistribution(llama_token_data_array *dist);
 
+  llama_token SampleTokenMirostat(struct llama_context *ctx,
+                                  llama_token_data_array *candidates,
+                                  float tau, float eta, int m, float *mu);
+  llama_token SampleTokenMirostatV2(struct llama_context *ctx,
+                                    llama_token_data_array *candidates,
+                                    float tau, float eta, float *mu);
+
 public:
 
   // Some samplers depend on the history of the text.

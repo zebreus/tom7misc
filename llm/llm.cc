@@ -332,14 +332,14 @@ llama_token Sampler::SampleToken(std::unique_ptr<Candidates> cand) {
     llama_sample_temp(lctx, &cand->ltda, params.temp);
     // TODO: Use local rng, which probably means duplicating the
     // code from llama
-    return llama_sample_token_mirostat(
+    return SampleTokenMirostat(
         lctx, &cand->ltda, params.mirostat_tau, params.mirostat_eta,
         params.mirostat_m, &mirostat_mu);
 
   case SampleType::MIROSTAT_2:
     llama_sample_temp(lctx, &cand->ltda, params.temp);
     // TODO: Use local rng here too.
-    return llama_sample_token_mirostat_v2(
+    return SampleTokenMirostatV2(
         lctx, &cand->ltda, params.mirostat_tau,
         params.mirostat_eta, &mirostat_mu);
 
@@ -352,6 +352,106 @@ llama_token Sampler::SampleToken(std::unique_ptr<Candidates> cand) {
     return SampleDistribution(&cand->ltda);
   }
 }
+
+// This is a copy of llama_sample_token_mirostat from llama.cpp,
+// but using our local RNG. I changed:
+//  - Call SampleDistribution instead of llama_sample_token
+//  - Remove timing which needs context internals.
+llama_token Sampler::SampleTokenMirostat(
+    struct llama_context *ctx,
+    llama_token_data_array *candidates,
+    float tau, float eta, int m, float *mu) {
+  GGML_ASSERT(ctx);
+
+  auto N = float(llama_n_vocab(llama_get_model(ctx)));
+
+  llama_sample_softmax(nullptr, candidates);
+
+  // Estimate s_hat using the most probable m tokens
+  float s_hat = 0.0;
+  float sum_ti_bi = 0.0;
+  float sum_ti_sq = 0.0;
+  for (size_t i = 0; i < size_t(m - 1) && i < candidates->size - 1; ++i) {
+    float t_i = logf(float(i + 2) / float(i + 1));
+    float b_i = logf(candidates->data[i].p / candidates->data[i + 1].p);
+    sum_ti_bi += t_i * b_i;
+    sum_ti_sq += t_i * t_i;
+  }
+  s_hat = sum_ti_bi / sum_ti_sq;
+
+  // Compute k from the estimated s_hat and target surprise value
+  float epsilon_hat = s_hat - 1;
+  float k = powf((epsilon_hat * powf(2, *mu)) /
+                 (1 - powf(N, -epsilon_hat)), 1 / s_hat);
+
+  // Sample the next word X using top-k sampling
+  llama_sample_top_k(nullptr, candidates, int(k), 1);
+  // Port note: This is the only thing I changed.
+  llama_token X = SampleDistribution(candidates);
+
+  // Compute error as the difference between observed surprise and
+  // target surprise value
+  size_t X_idx =
+    std::distance(candidates->data,
+                  std::find_if(candidates->data,
+                               candidates->data + candidates->size,
+                               [&](const llama_token_data & candidate) {
+                                 return candidate.id == X;
+                               }));
+  float observed_surprise = -log2f(candidates->data[X_idx].p);
+  float e = observed_surprise - tau;
+
+  // Update mu using the learning rate and error
+  *mu = *mu - eta * e;
+
+  return X;
+}
+
+// As above.
+llama_token Sampler::SampleTokenMirostatV2(
+    struct llama_context *ctx,
+    llama_token_data_array *candidates,
+    float tau, float eta, float *mu) {
+
+  llama_sample_softmax(ctx, candidates);
+
+  // Truncate the words with surprise values greater than mu
+  candidates->size =
+    std::distance(candidates->data,
+                  std::find_if(candidates->data,
+                               candidates->data + candidates->size,
+                               [&](const llama_token_data & candidate) {
+                                 return -log2f(candidate.p) > *mu;
+                               }));
+
+  if (candidates->size == 0) {
+    candidates->size = 1;
+  }
+
+  // Normalize the probabilities of the remaining words
+  llama_sample_softmax(ctx, candidates);
+
+  // Sample the next word X from the remaining words
+  llama_token X = SampleDistribution(candidates);
+
+  // Compute error as the difference between observed surprise and
+  // target surprise value
+  size_t X_idx =
+    std::distance(candidates->data,
+                  std::find_if(candidates->data,
+                               candidates->data + candidates->size,
+                               [&](const llama_token_data & candidate) {
+                                 return candidate.id == X;
+                               }));
+  float observed_surprise = -log2f(candidates->data[X_idx].p);
+  float e = observed_surprise - tau;
+
+  // Update mu using the learning rate and error
+  *mu = *mu - eta * e;
+
+  return X;
+}
+
 
 llama_token Sampler::SampleDistribution(llama_token_data_array *dist) {
   // PERF we need to normalize probabilities, but not sort them.

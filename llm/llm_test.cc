@@ -161,6 +161,7 @@ static void Rewind() {
 }
 
 static void TokenizeInContext() {
+  constexpr bool VERBOSE = false;
   string prompt = "one two three four five six seven eight nine ten "
     "eleven twelve";
   Timer model_timer;
@@ -172,7 +173,7 @@ static void TokenizeInContext() {
   SamplerParams sparams;
   // Get determinism for test.
   sparams.seed = 0xCAFE;
-  sparams.type = SampleType::GREEDY;
+  sparams.type = SampleType::MIROSTAT_2;
   sparams.regex = ".*";
 
   LLM llm(cparams, sparams);
@@ -187,8 +188,6 @@ static void TokenizeInContext() {
   LLM::State state_before_thirteen = llm.SaveState();
 
   // Get two tokens.
-
-  constexpr bool VERBOSE = true;
   auto SampleAndTake = [&]() {
     if (VERBOSE) printf("GetCandidates:\n");
     std::unique_ptr<Context::Candidates> candidates =
@@ -272,10 +271,8 @@ int main(int argc, char **argv) {
   ANSI::Init();
   LLM::Init();
 
-  // BasicPredict();
-  // Rewind();
-  // BasicPredict();
-
+  BasicPredict();
+  Rewind();
   TokenizeInContext();
 
   printf("OK\n");
