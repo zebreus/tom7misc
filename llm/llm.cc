@@ -17,7 +17,9 @@
 #include "nfa.h"
 #include "pcg.h"
 
+#include "timer.h"
 #include "ansi.h"
+#include "periodically.h"
 
 static void LogLLM(enum ggml_log_level level,
                    const char * text,
@@ -28,6 +30,32 @@ static void LogLLM(enum ggml_log_level level,
 Context::Context(const ContextParams &params) {
   llama_log_set(LogLLM, nullptr);
 
+  struct ProgressData {
+    ProgressData() : per(1.0) {}
+    Periodically per;
+    std::string name;
+    Timer timer;
+  };
+  ProgressData progress_data;
+  progress_data.name = params.model;
+  auto Progress = [](float f, void *void_data) {
+      ProgressData *data = (ProgressData*)void_data;
+      if (data->per.ShouldRun()) {
+        printf(ANSI_UP
+               "%s\n", ANSI::ProgressBar(f * 100, 100,
+                                         data->name,
+                                         data->timer.Seconds()).c_str());
+      }
+    };
+  auto Done = [&progress_data]() {
+      printf(ANSI_UP
+             "Loaded " AWHITE("%s") " in %s\n",
+             progress_data.name.c_str(),
+             ANSI::Time(progress_data.timer.Seconds()).c_str());
+    };
+
+
+
   // PERF need to tell llama about this now
   num_threads = params.num_threads;
 
@@ -36,6 +64,10 @@ Context::Context(const ContextParams &params) {
   mparams.use_mmap = true;
   // TODO: Experiment with this
   mparams.use_mlock = false;
+
+  mparams.progress_callback = +Progress;
+  mparams.progress_callback_user_data = (void*)&progress_data;
+
 
   llama_context_params lparams = llama_context_default_params();
   // lparams.n_ctx        = params.context_size;
@@ -56,6 +88,7 @@ Context::Context(const ContextParams &params) {
   lctx = llama_new_context_with_model(model, lparams);
   CHECK(lctx != nullptr) << params.model;
   Reset();
+  Done();
 }
 
 Context::~Context() {

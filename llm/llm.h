@@ -297,6 +297,13 @@ public:
   // Apply penalties to candidates.
   void Penalize(Candidates *cands) const;
 
+  void PrintLast() {
+    for (int i = 0; i < num_last; i++) {
+      auto t = last_n_tokens[i];
+      printf("[%d=%s]", i, context->TokenString(t).c_str());
+    }
+  }
+
 private:
   Context *context = nullptr;
   // Would generally be ok to change these on the fly, but not e.g. the
