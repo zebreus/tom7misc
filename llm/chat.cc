@@ -306,8 +306,8 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
 
   // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
-  // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
-  cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
+  cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
+  // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
 
   string user_alt = Util::Join(ppts, "|");
   string chat_regex =

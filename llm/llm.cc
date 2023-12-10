@@ -118,10 +118,12 @@ std::vector<llama_token> Context::Tokenize(
 }
 
 // PERF tune
-static constexpr int MAX_TOKENS_PER_BATCH = 512;
+static constexpr int MAX_TOKENS_PER_BATCH = 64;
 
-void Context::TakeTokenBatch(const std::vector<llama_token> &batch) {
-  if (batch.size() < MAX_TOKENS_PER_BATCH) return TakeTokenSmallBatch(batch);
+void Context::TakeTokenBatch(const std::vector<llama_token> &batch,
+                             const std::function<void(int, int)> &progress) {
+  if (batch.size() < MAX_TOKENS_PER_BATCH)
+    return TakeTokenSmallBatch(batch, progress);
 
   // PERF
   for (int start_idx = 0;
@@ -137,11 +139,17 @@ void Context::TakeTokenBatch(const std::vector<llama_token> &batch) {
     if (VERBOSE) {
       fprintf(stderr, "Batch of size %d.\n", (int)small_batch.size());
     }
-    TakeTokenSmallBatch(small_batch);
+    auto prog = [&progress, start_idx, &batch](int n, int d) {
+        if (progress) progress(start_idx + n, batch.size());
+      };
+
+    TakeTokenSmallBatch(small_batch, prog);
   }
 }
 
-void Context::TakeTokenSmallBatch(const std::vector<llama_token> &toks) {
+void Context::TakeTokenSmallBatch(
+    const std::vector<llama_token> &toks,
+    const std::function<void(int, int)> &progress) {
   if (VERBOSE) {
     printf("TakeTokenSmallBatch(" APURPLE("%d") ")\n", (int)toks.size());
     for (llama_token t : toks) {
@@ -190,7 +198,10 @@ void Context::TakeTokenSmallBatch(const std::vector<llama_token> &toks) {
   // Only get logits for last token.
   batch.logits[batch.n_tokens - 1] = true;
 
+  // TODO: Any way to get finer-grained progress here?
+  if (progress) progress(0, toks.size());
   CHECK(0 == llama_decode(lctx, batch));
+  if (progress) progress(toks.size(), toks.size());
 
   // Notes on kv:
   //   a kv cell knows its position, but is associated with
@@ -653,6 +664,12 @@ void Sampler::Penalize(Candidates *cands) const {
   }
 }
 
+void Sampler::NewRNG() {
+  // TODO: There should be some good portable randomness we could use.
+  Timer t;
+  rng = PCG32(time(nullptr) + rng.Rand64());
+}
+
 LLM::LLM(const ContextParams &context_params,
          const SamplerParams &sampler_params) : context(context_params),
                                                 sampler(&context,
@@ -685,7 +702,8 @@ std::string LLM::SampleAndTake() {
   return context.TokenString(id);
 }
 
-void LLM::TakeTokenBatch(const std::vector<llama_token> &batch) {
+void LLM::TakeTokenBatch(const std::vector<llama_token> &batch,
+                         bool progress_bar) {
   /*
   printf("TakeTokenBatch:");
   for (llama_token t : batch) {
@@ -693,8 +711,37 @@ void LLM::TakeTokenBatch(const std::vector<llama_token> &batch) {
   }
   printf("\n");
   */
-  context.TakeTokenBatch(batch);
+  std::function<void(int, int)> progress;
+  Timer take_timer;
+  Periodically per(1.0);
+  bool progress_bar_ran = false;
+  if (progress_bar) {
+    progress = [&take_timer, &per, &progress_bar_ran](int n, int d) {
+        if (per.ShouldRun()) {
+          if (!progress_bar_ran) {
+            // Make sure we're on a new line so we don't overwrite
+            // anything with the ansi "up".
+            printf("\n");
+            progress_bar_ran = true;
+          }
+          printf(ANSI_UP
+                 "%s\n",
+                 ANSI::ProgressBar(n, d,
+                                   "TakeTokenBatch",
+                                   take_timer.Seconds()).c_str());
+        }
+      };
+  }
+
+  context.TakeTokenBatch(batch, progress);
   sampler.ObserveBatch(batch);
+
+  if (progress_bar_ran) {
+    // Or just remove it?
+    printf(ANSI_UP
+           "TakeTokenBatch in %s\n",
+           ANSI::Time(take_timer.Seconds()).c_str());
+  }
 }
 
 std::string LLM::GenerateUntil(const std::string &delimiter,
@@ -731,7 +778,15 @@ std::pair<std::string, bool> LLM::GenerateUntilEx(
   }
 }
 
-void LLM::DoPrompt(std::string prompt) {
+std::string LLM::GenerateUntilDone() {
+  std::string s;
+  while (!sampler.Accepting() && !sampler.Stuck()) {
+    s += SampleAndTake();
+  }
+  return s;
+}
+
+void LLM::DoPrompt(const std::string &prompt, bool progress_bar) {
   // tokenize the prompt. This also inserts a leading space because
   // add_bos is true.
   auto toks = context.Tokenize(prompt, true);
@@ -741,7 +796,7 @@ void LLM::DoPrompt(std::string prompt) {
   CHECK((int)toks.size() <= n_ctx - 4) << "Prompt too long ("
                                        << (int)toks.size()
                                        << " tokens)";
-  TakeTokenBatch(toks);
+  TakeTokenBatch(toks, progress_bar);
 
   if (VERBOSE) {
     PrintKV();

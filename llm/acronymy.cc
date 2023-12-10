@@ -25,6 +25,7 @@
 #include "util.h"
 #include "llm.h"
 #include "nfa.h"
+#include "nfa-util.h"
 #include "llm-util.h"
 
 using namespace std;
@@ -60,8 +61,33 @@ static string BrainstormPrefix(const string &word, char c) {
                       word.c_str(), c & ~32);
 }
 
+// Words that we should often keep in mind because they are common
+// or useful for acronymizing.
+static std::set<std::string> useful_common = {
+  // Most common words from wikipedia, aside from stuff like "align"
+  // and "s" that are actually markup.
+  "the", "of", "and", "in" "a", "to", "was" "is" "for" "as"
+  "by", "on", "with", "that", "from", "at", "were", "it", "his",
+  "he", "an", "or", "are", "which", "be", "this", "had", "also",
+  "has", "not", "one", "but", "have", "its", "who", "there",
+  "after", "two", "they", "all", "into", "her", "most", "such",
+  "no", "many",
+
+  // Useful words for rare letters.
+  "quite", "quote", "quasi",
+  "yet", "you", "your", "yes", "yield",
+  "just", "join", "joins", "joined", "job", "jointly", "joint",
+  "zone", "zero", "zones", "zilch",
+
+  "xerox", "xray",
+
+  "very", "vs", "value", "via",
+
+  "unquote", "using", "up", "until", "usually"
+};
+
 int main(int argc, char ** argv) {
-  using RE = RegEx<256>;
+  using RE = ByteRegEx;
   ArcFour rc(StringPrintf("acronymy.%lld", time(nullptr)));
 
   AnsiInit();
@@ -75,6 +101,7 @@ int main(int argc, char ** argv) {
 
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;
+  sparams.seed = -1;
 
   LLM llm(cparams, sparams);
   EmitTimer("Loaded model", model_timer);
@@ -86,6 +113,20 @@ int main(int argc, char ** argv) {
     };
 
   std::vector<std::string> words = {
+    "essence",
+    "essence",
+    "essence",
+    "essence",
+    "essence",
+    "essence",
+    "essence",
+    "essence",
+    "essence",
+    "essence",
+    "essence",
+    "essence",
+
+    /*
     "cerebral",
     "violence",
     "scrutiny",
@@ -101,11 +142,11 @@ int main(int argc, char ** argv) {
     // some randos from wordlist
     "widdendream",
     "weatherproofness",
-    "volstead",
     "upholder",
     "unspellable",
     "twofold",
-  };
+    */
+    };
 
   Shuffle(&rc, &words);
 
@@ -219,10 +260,10 @@ int main(int argc, char ** argv) {
                      }
                    }
 
-                   letter_enfa[idx] = RegEx<256>::LiteralSet(letter_words);
+                   letter_enfa[idx] = ByteRegEx::LiteralSet(letter_words);
                    {
                      MutexLock ml(&m);
-                     auto [t, s] = letter_enfa[idx].DebugSize();
+                     auto [t, s] = NFADebugSize(letter_enfa[idx]);
                      printf(AGREEN("%c") " " ABLUE("ENFA") " %d t %d s\n",
                             c, t, s);
                    }
@@ -239,25 +280,18 @@ int main(int argc, char ** argv) {
   }
 
 
-  Timer save_state_timer;
   const LLM::State start_state = llm.SaveState();
-  EmitTimer("Saved start state", save_state_timer);
-  printf("Start state is ~" ABLUE("%lld") " megabytes\n",
-         (int64_t)(start_state.context_state.llama_state.size() /
-                   (1024LL * 1024LL)));
+  printf("Saved start state.\n");
 
   // Now expand acronyms.
 
-  bool first = true;
   for (const string &word : words) {
     printf(AWHITE(" == ") APURPLE("%s") AWHITE (" == ") "\n",
            word.c_str());
-    if (!first) {
-      Timer load_state_timer;
-      llm.LoadState(start_state);
-      EmitTimer("Reloaded start state", load_state_timer);
-    }
-    first = false;
+
+    llm.LoadState(start_state);
+    llm.NewRNG();
+    printf("Reloaded start state.\n");
 
     {
       Timer word_prompt_timer;
@@ -326,7 +360,7 @@ int main(int argc, char ** argv) {
       }
       word_enfa = RE::Concat(word_enfa, RE::LiteralString("\n"));
       auto nfa = RemoveEpsilon<256>(word_enfa);
-      auto [t, s] = nfa.DebugSize();
+      auto [t, s] = NFADebugSize(nfa);
       printf("Resulting NFA size: %d t %d s\n", t, s);
       llm.sampler.SetNFA(std::move(nfa));
       EmitTimer("set word nfa", word_nfa_timer);
@@ -350,7 +384,7 @@ int main(int argc, char ** argv) {
 
         llm.TakeTokenBatch({id});
 
-        if (id == llama_token_nl(llm.context.model)) {
+        if (id == llm.context.NewlineToken()) {
           printf("\n");
           EmitTimer("Generated", gen_timer);
           return {result};

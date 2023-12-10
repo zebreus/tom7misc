@@ -112,9 +112,11 @@ struct Context {
   // Accept the batch of tokens together. Some processing happens
   // in parallel (e.g. embeddings). Processing in batch increases
   // memory requirements.
-  void TakeTokenBatch(const std::vector<llama_token> &batch);
+  void TakeTokenBatch(const std::vector<llama_token> &batch,
+                      const std::function<void(int, int)> &progress = {});
 
-  void TakeTokenSmallBatch(const std::vector<llama_token> &toks);
+  void TakeTokenSmallBatch(const std::vector<llama_token> &toks,
+                           const std::function<void(int, int)> &progress = {});
 
   // Accept the single token.
   void TakeToken(llama_token t) {
@@ -297,9 +299,14 @@ public:
   // there are tokens that can still be sampled.
   bool FilterByNFA(Candidates *cands) const;
 
+  // True if the matcher is currently in an accepting state.
+  bool Accepting() const { return matcher.IsMatching(); }
   // True if the matcher is in a stuck state where it could not
   // accept any sequence of tokens at this point.
   bool Stuck() const { return matcher.Stuck(); }
+
+  // Reseed the RNG.
+  void NewRNG();
 
   // Apply penalties to candidates.
   void Penalize(Candidates *cands) const;
@@ -360,12 +367,13 @@ struct LLM {
   // Sample one token and take it. Returns the token's string.
   std::string SampleAndTake();
 
-  void TakeToken(llama_token id) { TakeTokenBatch({id}); }
-  void TakeTokenBatch(const std::vector<llama_token> &batch);
+  void TakeToken(llama_token id) { TakeTokenBatch({id}, false); }
+  void TakeTokenBatch(const std::vector<llama_token> &batch,
+                      bool progress_bar = false);
 
-  void InsertString(const std::string &s) {
+  void InsertString(const std::string &s, bool progress_bar = false) {
     // printf("InsertString [%s]\n", s.c_str());
-    TakeTokenBatch(context.Tokenize(s, false));
+    TakeTokenBatch(context.Tokenize(s, false), progress_bar);
   }
 
   // Generate until we we see the given delimiter. Return the string up
@@ -392,6 +400,11 @@ struct LLM {
       int max_length = -1,
       bool force_delimiter = false);
 
+  // Generate tokens until the NFA is accepting or stuck.
+  // Note that tokens may cross over an accepting state, so
+  // using this may require some knowledge of the vocabulary.
+  std::string GenerateUntilDone();
+
   void Reset() {
     context.Reset();
     sampler.Reset();
@@ -399,7 +412,7 @@ struct LLM {
 
   // Insert a prompt. If anything has already happened, consider
   // resetting first.
-  void DoPrompt(std::string prompt);
+  void DoPrompt(const std::string &prompt, bool progress_bar = true);
 
   struct State {
     Context::State context_state;
@@ -411,6 +424,9 @@ struct LLM {
   // Note: This only supports rewinding, currently.
   State SaveState() const;
   void LoadState(const State &state);
+
+  // Reseed the RNG.
+  void NewRNG() { sampler.NewRNG(); }
 
   // Print up 'maximum' (or all of them, if -1) candidates,
   // using ANSI color codes.

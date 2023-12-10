@@ -103,27 +103,27 @@ static void Rewind() {
   // Get two tokens.
 
   auto SampleAndTake = [&]() {
-    if (VERBOSE) printf("GetCandidates:\n");
-    std::unique_ptr<Context::Candidates> candidates =
-      llm.context.GetCandidates();
-    if (VERBOSE) {
-      printf(ABLUE("Original:") "\n");
-      llm.AnsiPrintCandidates(*candidates, 10);
-    }
-    llm.sampler.Penalize(candidates.get());
-    if (VERBOSE) {
-      printf(ACYAN("Penalized:") "\n");
-      llm.AnsiPrintCandidates(*candidates, 10);
-    }
-    llm.sampler.FilterByNFA(candidates.get());
-    if (VERBOSE) {
-      printf(APURPLE("Penalized, filtered:") "\n");
-      llm.AnsiPrintCandidates(*candidates, 10);
-    }
-    const int id = llm.sampler.SampleToken(std::move(candidates));
+      if (VERBOSE) printf("GetCandidates:\n");
+      std::unique_ptr<Context::Candidates> candidates =
+        llm.context.GetCandidates();
+      if (VERBOSE) {
+        printf(ABLUE("Original:") "\n");
+        llm.AnsiPrintCandidates(*candidates, 10);
+      }
+      llm.sampler.Penalize(candidates.get());
+      if (VERBOSE) {
+        printf(ACYAN("Penalized:") "\n");
+        llm.AnsiPrintCandidates(*candidates, 10);
+      }
+      llm.sampler.FilterByNFA(candidates.get());
+      if (VERBOSE) {
+        printf(APURPLE("Penalized, filtered:") "\n");
+        llm.AnsiPrintCandidates(*candidates, 10);
+      }
+      const int id = llm.sampler.SampleToken(std::move(candidates));
 
-    llm.TakeTokenBatch({id});
-    return llm.context.TokenString(id);
+      llm.TakeTokenBatch({id});
+      return llm.context.TokenString(id);
     };
 
   string oldtok2;
