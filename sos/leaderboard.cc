@@ -255,7 +255,7 @@ static void PrintScored(const ScoredEntry &scored) {
            3 - scored.rows,
            (scored.cols == 3) ? ANSI_GREEN : ANSI_RED,
            3 - scored.cols,
-           (scored.diag == 3) ? ANSI_GREEN : ANSI_RED,
+           (scored.diag == 2) ? ANSI_GREEN : ANSI_RED,
            2 - scored.diag,
            (scored.distinct == 9) ? ANSI_GREEN : ANSI_RED,
            9 - scored.distinct);

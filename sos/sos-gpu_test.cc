@@ -18,9 +18,8 @@ using namespace std;
 static CL *cl = nullptr;
 
 // Enable this to actually test (as opposed to benchmark) the GPU code.
-static constexpr bool TEST_AGAINST_CPU = false;
-
-static constexpr bool CHECK_ANSWERS = false;
+static constexpr bool TEST_AGAINST_CPU = true;
+static constexpr bool CHECK_ANSWERS = true;
 
 static constexpr int GLOBAL_BATCH_SIZE = 131072;
 

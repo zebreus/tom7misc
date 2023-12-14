@@ -47,7 +47,7 @@ using Square = Database::Square;
 // tests)
 using GPUMethod = WaysGPUMerge;
 
-static constexpr bool WRITE_IMAGE = true;
+static constexpr bool WRITE_IMAGE = false;
 
 #define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
 
@@ -219,7 +219,7 @@ static_assert(TRY_BATCH_SIZE % TRY_ROLL_SIZE == 0,
               "performance!");
 
 // PERF Probably better to increase this as the speed has improved.
-static constexpr uint64_t MAX_EPOCH_SIZE = 800'000'000LL * 6; /* ' */
+static constexpr uint64_t MAX_EPOCH_SIZE = 800'000'000LL * 8; /* ' */
 // Each of these yields 8 sums. If it's larger, we may run off the
 // end of the batch, although this is usually a trivial cost.
 // This phase is super fast, but large chunks cause us to allocate
@@ -236,7 +236,7 @@ static constexpr int ENDGAME_WORK_STEALING_THREADS = 6;
 static std::mutex file_mutex;
 static const char *INTERESTING_FILE = "interesting.txt";
 
-static constexpr int STATUS_HISTO_LINES = 24;
+static constexpr int STATUS_HISTO_LINES = 0;
 static constexpr int STATUS_TEXT_LINES = 6;
 static StatusBar status(STATUS_HISTO_LINES + STATUS_TEXT_LINES);
 
@@ -1204,8 +1204,12 @@ struct SOS {
             eta.c_str());
         }();
 
+    string hist;
+    if (STATUS_HISTO_LINES > 0)
+      hist = nways_histo.SimpleANSI(STATUS_HISTO_LINES);
+
     status.EmitStatus(
-        nways_histo.SimpleANSI(STATUS_HISTO_LINES) +
+        hist +
         line1 + line2 + line3 + line4 + line5 + line6);
   }
 

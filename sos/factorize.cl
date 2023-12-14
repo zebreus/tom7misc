@@ -398,9 +398,14 @@ uint64_t GCDOdd(uint64_t a, uint64_t b) {
   b >>= 1;
 
   for (;;) {
+    // remove trailing zeroes from a.
+    int zeroes = ctz(a);
+    a >>= zeroes + 1;
+    /*
     while ((a & 1) == 0)
       a >>= 1;
     a >>= 1;
+    */
 
     uint64_t t = a - b;
     if (t == 0)
