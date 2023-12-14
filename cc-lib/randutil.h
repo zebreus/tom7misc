@@ -39,9 +39,9 @@ inline ArcFour *Substream(ArcFour *rc, uint32_t n) {
 // RandDouble and then converting to float if precision
 // is important.
 //
-// PERF: Directly generating a random mantissa without
-// division is probably better and faster. This does
-// invoke floating point division.
+// PERF: There are other ways of doing this that are
+// probably faster (this does invoke floating point
+// division).
 inline float RandFloat(ArcFour *rc) {
   uint32_t uu = 0U;
   uu = rc->Byte() | (uu << 8);
@@ -50,7 +50,7 @@ inline float RandFloat(ArcFour *rc) {
   uu = rc->Byte() | (uu << 8);
   return (float)((uu   & 0x7FFFFFFF) /
                  (double)0x7FFFFFFF);
-};
+}
 
 // PERF: As above.
 inline double RandDouble(ArcFour *rc) {
@@ -67,7 +67,7 @@ inline double RandDouble(ArcFour *rc) {
   // It's a constant.
   return ((uu &   0x3FFFFFFFFFFFFFFFULL) /
           (double)0x3FFFFFFFFFFFFFFFULL);
-};
+}
 
 // Sample in [0, 1).
 inline double RandDoubleNot1(ArcFour *rc) {

@@ -51,4 +51,12 @@ static void ReverseVector(std::vector<A> *vec) {
   *vec = std::move(rev);
 }
 
+template<class A>
+static bool ContainsVector(const std::vector<A> &vec, const A &a) {
+  for (const auto &aa : vec) {
+    if (a == aa) return true;
+  }
+  return false;
+}
+
 #endif

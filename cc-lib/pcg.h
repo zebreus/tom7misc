@@ -12,8 +12,8 @@ struct PCG32 {
 
   // Deterministically seed the generator such that it is
   // in a state uncorrelated with the seed.
-  explicit PCG32(uint64_t seed);
-  explicit PCG32(std::string_view seed);
+  inline explicit PCG32(uint64_t seed);
+  inline explicit PCG32(std::string_view seed);
 
   // Advance the state and give uniformly random bits.
   inline uint64_t Rand64();
@@ -22,7 +22,7 @@ struct PCG32 {
   inline uint8_t Byte();
 
   // For serialization, rewinding, etc.
-  uint64_t GetState() const { return state; }
+  inline uint64_t GetState() const { return state; }
   // Recreate the stream from the state. Recommended to
   // generate new streams using the constructors, as
   // PCG is pipelined such that the first element of

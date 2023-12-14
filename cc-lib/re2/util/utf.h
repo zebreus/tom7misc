@@ -12,7 +12,7 @@
  * OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
  *
  * This file and rune.cc have been converted to compile as C++ code
- * in name space re2.
+ * in namespace re2.
  */
 
 #ifndef UTIL_UTF_H_
@@ -22,7 +22,7 @@
 
 namespace re2 {
 
-typedef signed int Rune;        /* Code-point values in Unicode 4.0 are 21 bits wide.*/
+using Rune = signed int;        /* Code-point values in Unicode 4.0 are 21 bits wide.*/
 
 enum
 {
@@ -37,7 +37,7 @@ int runetochar(char* s, const Rune* r);
 int chartorune(Rune* r, const char* s);
 int fullrune(const char* s, int n);
 int utflen(const char* s);
-char* utfrune(const char*, Rune);
+const char* utfrune(const char*, Rune);
 
 }  // namespace re2
 
