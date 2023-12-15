@@ -384,18 +384,51 @@ ExtendedGCD64(int64_t a, int64_t b) {
 
 std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
 
+  static constexpr bool VERBOSE = false;
+  static constexpr bool SELF_CHECK = false;
+
+  if (VERBOSE) {
+    printf("Sqrt(%llu) mod %llu\n", base, prime);
+  }
+
+  if (prime == 2) {
+    // Both 0^2 = 0 and 1^1 = 1.
+    return {base};
+  }
+
   MontgomeryRep64 rep(prime);
+
+  Montgomery64 basem = rep.ToMontgomery(base);
+
+  // Compute Euler criteria. a^(p-1) / 2 must be 1.
+  if (VERBOSE) {
+    printf("%llu^%llu mod %llu\n", base, (prime - 1) >> 1, prime);
+  }
+  Montgomery64 rm = rep.Pow(basem, (prime - 1) >> 1);
+  uint64_t r = rep.ToInt(rm);
+  if (r != 1) {
+    if (VERBOSE) {
+      printf("Euler criteria is %llu\n", r);
+    }
+    // But as a special case, the sqrt(0) is always 0.
+    if (base == 0) return {0};
+    // Otherwise there is no solution.
+    return std::nullopt;
+  }
 
   if ((prime & 3) == 3) [[unlikely]] {
     // prime mod 4 = 3
     // subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
 
-    fprintf(stderr, "Prime & 3 == 3\n");
+    if (VERBOSE) {
+      printf("Prime & 3 == 3\n");
+    }
     // Empirically, this branch isn't entered. It must fail
     // the residue test or something?
 
-    CHECK(false) << "can implement this, but I was lazy";
-    return 0;
+    Montgomery64 rm = rep.Pow(basem, (prime + 1) >> 2);
+    uint64_t r = rep.ToInt(rm);
+    return {r};
 
   } else {
 
@@ -403,9 +436,11 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
 
     // Convert discriminant to Montgomery notation.
     // u
-    const Montgomery64 aux6 = rep.ToMontgomery(base);
+    const Montgomery64 aux6 = basem;
 
-    CHECK(base == rep.ToInt(aux6)) << base << " " << rep.ToInt(aux6);
+    if (SELF_CHECK) {
+      CHECK(base == rep.ToInt(aux6)) << base << " " << rep.ToInt(aux6);
+    }
 
     if (VERBOSE)
     printf("aux5 %llu = aux6 %llu\n",
@@ -575,7 +610,7 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
     uint64_t res = rep.ToInt(to_convert);
     if (VERBOSE)
     printf("  returning %llu\n", res);
-    return res;
+    return {res};
   }
 }
 

@@ -12,6 +12,9 @@
 
 #include "numbers.h"
 #include "quadmodll.h"
+#include "factorization.h"
+#include "arcfour.h"
+#include "randutil.h"
 
 static void TestDivFloor() {
   for (int n = -15; n < 16; n++) {
@@ -152,11 +155,47 @@ static void TestGCD() {
   printf("GCD " AGREEN("OK") "\n");
 }
 
-static void TestSqrtModP() {
-  {
-    //    int64_t s = SqrtModP(13, 17, 118587876493, 9);
-  }
+static uint64_t Mod(uint64_t a, uint64_t b) {
+  return a % b;
 }
+
+static void TestSqrtModPExhaustive() {
+  for (uint64_t p = 2; p < 31337; p = Factorization::NextPrime(p)) {
+    for (uint64_t x = 0; x < p; x++) {
+      // So we know that sqrt(xx) = x.
+      uint64_t xx = Mod(x * x, p);
+
+      auto so = SqrtModP(xx, p);
+      CHECK(so.has_value()) << x << " * " << x << " mod " << p;
+
+      uint64_t v = so.value();
+      CHECK(Mod(v * v, p) == xx) << x << " * " << x << " mod " << p;
+    }
+  }
+  printf("SqrtModP Exhaustive " AGREEN("OK") "\n");
+}
+
+static void TestSqrtModPRandom() {
+  ArcFour rc("sqrtmodp");
+
+  for (int i = 0; i < 10000; i++) {
+    uint64_t p = Factorization::NextPrime(
+        RandTo(&rc, 0x00000000'FFFFFFF8) | 1);
+    uint64_t x = RandTo(&rc, 0x00000000'FFFFFFF8);
+    x = Mod(x, p);
+
+    uint64_t xx = Mod(x * x, p);
+
+    auto so = SqrtModP(xx, p);
+    CHECK(so.has_value()) << x << " * " << x << " mod " << p;
+
+    uint64_t v = so.value();
+    CHECK(Mod(v * v, p) == xx) << x << " * " << x << " mod " << p;
+  }
+
+  printf("SqrtModP Random " AGREEN("OK") "\n");
+}
+
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -167,7 +206,8 @@ int main(int argc, char **argv) {
   TestGCD();
   TestJacobi();
 
-  TestSqrtModP();
+  TestSqrtModPExhaustive();
+  TestSqrtModPRandom();
 
   printf("All explicit tests " AGREEN("OK") "\n");
   return 0;

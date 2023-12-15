@@ -291,6 +291,10 @@ struct QuadModLL {
   }
 
   static uint64_t GetSqrtDisc(uint64_t base, uint64_t prime) {
+    // PERF: After moving this to a utility, I added support for
+    // base = 0, prime = 2, and non-residues. These are not
+    // necessary here I think. We could have SqrtModPKnownResidue
+    // to skip the Euler test, for example.
     auto so = SqrtModP(base, prime);
     CHECK(so.has_value());
     return so.value();
