@@ -13,6 +13,7 @@
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "montgomery64.h"
 
 static constexpr bool VERBOSE = false;
 static constexpr bool SELF_CHECK = false;
@@ -381,6 +382,204 @@ ExtendedGCD64(int64_t a, int64_t b) {
                          b < 0 ? -t : t);
 }
 
+std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
+
+  MontgomeryRep64 rep(prime);
+
+  if ((prime & 3) == 3) [[unlikely]] {
+    // prime mod 4 = 3
+    // subtractdivide(&Q, -1, 4);   // Q <- (prime+1)/4.
+
+    fprintf(stderr, "Prime & 3 == 3\n");
+    // Empirically, this branch isn't entered. It must fail
+    // the residue test or something?
+
+    CHECK(false) << "can implement this, but I was lazy";
+    return 0;
+
+  } else {
+
+    Montgomery64 to_convert;
+
+    // Convert discriminant to Montgomery notation.
+    // u
+    const Montgomery64 aux6 = rep.ToMontgomery(base);
+
+    CHECK(base == rep.ToInt(aux6)) << base << " " << rep.ToInt(aux6);
+
+    if (VERBOSE)
+    printf("aux5 %llu = aux6 %llu\n",
+           base,
+           rep.ToInt(aux6));
+
+    if ((prime & 7) == 5) {
+      if (VERBOSE)
+      printf("prime & 7 == 5.\n");
+
+      // prime mod 8 = 5: use Atkin's method for modular square roots.
+      // Step 1. v <- (2u)^((p-5)/8) mod p
+      // Step 2. i <- (2uv^2) mod p
+      // Step 3. square root of u <- uv (i-1)
+      // Step 1.
+      // Q <- (prime-5)/8.
+      CHECK(prime >= 5);
+      uint64_t q = (prime - 5) >> 3;
+
+      if (VERBOSE)
+      printf("q: %llu\n", q);
+
+      // 2u
+      const Montgomery64 aux7 = rep.Add(aux6, aux6);
+      const Montgomery64 aux8 = rep.Pow(aux7, q);
+      // At this moment aux7 is v in Montgomery notation.
+
+      if (VERBOSE)
+      printf("before step2: aux7 %llu aux8 %llu\n",
+             rep.ToInt(aux7), rep.ToInt(aux8));
+
+      // Step 2.
+      // v^2
+      Montgomery64 aux9 = rep.Mult(aux8, aux8);
+
+      // i
+      aux9 = rep.Mult(aux7, aux9);
+
+      if (VERBOSE)
+        printf("aux9 before step3: %llu\n", rep.ToInt(aux9));
+
+      // Step 3.
+      // i-1
+      aux9 = rep.Sub(aux9, rep.One());
+      // v*(i-1)
+      aux9 = rep.Mult(aux8, aux9);
+      // u*v*(i-1)
+      aux9 = rep.Mult(aux6, aux9);
+      to_convert = aux9;
+    } else {
+
+      if (VERBOSE)
+      printf("prime & 7 == %llu\n", prime & 7);
+
+      // prime = 1 (mod 8). Use Shanks' method for modular square roots.
+      // Step 1. Select e >= 3, q odd such that p = 2^e * q + 1.
+      // Step 2. Choose x at random in the range 1 < x < p such that
+      //           jacobi (x, p) = -1.
+      // Step 3. Set z <- x^q (mod p).
+      // Step 4. Set y <- z, r <- e, x <- a^((q-1)/2) mod p,
+      //           v <- ax mod p, w <- vx mod p.
+      // Step 5. If w = 1, the computation ends with +/-v as the square root.
+      // Step 6. Find the smallest value of k such that w^(2^k) = 1 (mod p)
+      // Step 7. Set d <- y^(2^(r-k-1)) mod p, y <- d^2 mod p,
+      //           r <- k, v <- dv mod p, w <- wy mod p.
+      // Step 8. Go to step 5.
+
+      // Step 1.
+
+      uint64_t qq = prime - 1;
+      CHECK(qq != 0);
+      int e = std::countr_zero(qq);
+      qq >>= e;
+
+      // Step 2.
+      int x = 1;
+
+      do {
+        x++;
+      } while (Jacobi64(x, prime) >= 0);
+
+      if (VERBOSE)
+      printf("  x: %d  qq: %llu\n", x, qq);
+
+      // Step 3.
+      // Get z <- x^q (mod p) in Montgomery notation.
+      // z
+      Montgomery64 aux5 = rep.Pow(rep.ToMontgomery(x), qq);
+
+      // Step 4.
+      // y
+      int r = e;
+
+      CHECK(qq > 0);
+      uint64_t kk1 = (qq - 1) >> 1;
+
+      // x
+      Montgomery64 aux7 = rep.Pow(aux6, kk1);
+      // v
+      Montgomery64 aux8 = rep.Mult(aux6, aux7);
+      // w
+      Montgomery64 aux9 = rep.Mult(aux8, aux7);
+
+      if (VERBOSE)
+      printf("  Z %llu aux7 %llu aux8 %llu aux9 %llu\n",
+             rep.ToInt(aux5),
+             rep.ToInt(aux7),
+             rep.ToInt(aux8),
+             rep.ToInt(aux9));
+
+      // Step 5
+      while (!rep.Eq(aux9, rep.One())) {
+        // memcmp(aux9, params->R1.data(), NumberLengthBytes) != 0
+
+        if (VERBOSE)
+          printf("  Start loop aux9=%llu\n", rep.ToInt(aux9));
+
+        // Step 6
+        int k = 0;
+        Montgomery64 aux10 = aux9;
+        // (void)memcpy(aux10, aux9, NumberLengthBytes);
+        do {
+          k++;
+          aux10 = rep.Mult(aux10, aux10);
+        } while (!rep.Eq(aux10, rep.One()));
+        // memcmp(aux10, params->R1.data(), NumberLengthBytes) != 0)
+
+        if (VERBOSE)
+        printf(
+            "    r %d k %d aux5 %llu aux10 %llu\n",
+            r, k, rep.ToInt(aux5), rep.ToInt(aux10));
+
+        // Step 7
+        // d
+        aux10 = aux5;
+        // (void)memcpy(aux10, aux5, NumberLengthBytes);
+        for (int ctr = 0; ctr < (r - k - 1); ctr++) {
+          aux10 = rep.Mult(aux10, aux10);
+        }
+        if (VERBOSE)
+        printf(
+            "    aux10 %llu\n", rep.ToInt(aux10));
+
+        // y
+        aux5 = rep.Mult(aux10, aux10);
+        r = k;
+        // v
+        aux8 = rep.Mult(aux8, aux10);
+        // w
+        aux9 = rep.Mult(aux9, aux5);
+
+        if (VERBOSE)
+        printf(
+            "    aux5 %llu aux8 %llu aux9 %llu aux10 %llu\n",
+            rep.ToInt(aux5), rep.ToInt(aux8),
+            rep.ToInt(aux9), rep.ToInt(aux10));
+      }
+      to_convert = aux8;
+    }
+
+    // CHECK(to_convert == aux8 || to_convert == aux9);
+
+    // Convert from Montgomery to standard notation.
+
+    // Port note: Alpertron does this by multiplying by 1 to
+    // get the call to Reduce. We skip the multiplication.
+    uint64_t res = rep.ToInt(to_convert);
+    if (VERBOSE)
+    printf("  returning %llu\n", res);
+    return res;
+  }
+}
+
+
 /*
 
 Portions derived from the GNU MP Library.
@@ -410,3 +609,23 @@ for more details.
 You should have received copies of the GNU General Public License and the
 GNU Lesser General Public License along with the GNU MP Library.  If not,
 see https://www.gnu.org/licenses/.  */
+
+/*
+  Portions derived from Alpertron Calculators.
+  Copyright 2017-2021 Dario Alejandro Alpern
+
+  GNU Public License. See COPYING for further details.
+
+  Alpertron Calculators is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  Alpertron Calculators is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with Alpertron Calculators. If not, see <http://www.gnu.org/licenses/>.
+*/

@@ -1,4 +1,4 @@
-default: quad.exe test.exe montgomery64_test.exe maxvalues.exe grid.exe testlargepowers.exe
+default: quad.exe test.exe maxvalues.exe grid.exe testlargepowers.exe numbers_test.exe
 
 UNAME := $(shell uname -o)
 ifeq ($(UNAME),Cygwin)
@@ -42,7 +42,7 @@ SOS=../sos
 CXXFLAGS=-std=c++20 -I $(SOS) -I $(CC_LIB) $(GMP_CFLAGS) -g -O2 -march=native -Wall $(PLATFORM_CFLAGS)
 LFLAGS= $(GMP_LFLAGS) $(PLATFORM_LFLAGS)
 
-HEADERS=numbers.h quadmodll.h quad.h montgomery64.h
+HEADERS=numbers.h quadmodll.h quad.h $(CC_LIB)/montgomery64.h
 
 CC_LIB_OBJECTS=$(CC_LIB)/base/logging.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/int128.o $(CC_LIB)/bignum/big.o $(CC_LIB)/factorization.o
 
@@ -72,11 +72,11 @@ testlargevalues.exe : testlargevalues.o $(ALPERTRON_OBJECTS) $(SOS_OBJECTS) $(TE
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
-montgomery64_test.exe : montgomery64_test.o $(TEST_CC_LIB_OBJECTS)
+test.exe : test.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 
-test.exe : test.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
+numbers_test.exe : numbers_test.o $(ALPERTRON_OBJECTS) $(TEST_CC_LIB_OBJECTS)
 	@echo -n "@"
 	@$(CXX) $^ $(CXXFLAGS) $(LFLAGS) -lm -o $@
 

@@ -3,6 +3,7 @@
 
 #include <tuple>
 #include <cstdint>
+#include <optional>
 
 #include "base/int128.h"
 #include "base/logging.h"
@@ -72,6 +73,9 @@ inline int Jacobi64(int64_t a, int64_t n) {
     return 0;
   }
 }
+
+// Returns x such that (x * x) mod p = xx, if it exists.
+std::optional<uint64_t> SqrtModP(uint64_t xx, uint64_t p);
 
 inline int64_t DivFloor64(int64_t numer, int64_t denom) {
   // There's probably a version without %, but I verified
