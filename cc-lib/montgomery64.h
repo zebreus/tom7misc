@@ -96,7 +96,6 @@ struct MontgomeryRep64 {
     return Montgomery64(d + (modulus & t));
   }
 
-
   inline constexpr Montgomery64 Mult(Montgomery64 a, Montgomery64 b) const {
     uint128_t aa(a.x);
     uint128_t bb(b.x);
@@ -108,6 +107,11 @@ struct MontgomeryRep64 {
   // Result will be in [0, modulus).
   inline constexpr uint64_t ToInt(Montgomery64 a) const {
     return Reduce((uint128_t)a.x);
+  }
+
+  // Additive inverse; the unique b such that a + b = 0 (mod modulus).
+  inline constexpr Montgomery64 Negate(Montgomery64 a) const {
+    return Sub(Zero(), a);
   }
 
   // b^e mod m.

@@ -46,12 +46,6 @@
 #include <string>
 #include <utility>
 
-#if 0
-#  include "absl/base/config.h"
-#  include "absl/base/macros.h"
-#  include "absl/base/port.h"
-#endif
-
 // From config.h
 #ifdef ABSL_HAVE_INTRINSIC_INT128
 #error ABSL_HAVE_INTRINSIC_INT128 cannot be directly set

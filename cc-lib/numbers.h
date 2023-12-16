@@ -84,8 +84,10 @@ bool IsSquareModP(uint64_t xx, uint64_t p);
 // Only for odd primes p. Already in Montgomery form.
 inline bool IsSquareModP(Montgomery64 xx,
                          const MontgomeryRep64 &p) {
-  // Compute Euler criteria. a^(p-1) / 2 must be 1.
-  Montgomery64 rm = p.Pow(xx, (p.Modulus() - 1) >> 1);
+  // Compute Euler criteria. a^((p-1) / 2) must be 1.
+  // Since p odd prime, we can just shift down by one
+  // to compute (p - 1)/2.
+  Montgomery64 rm = p.Pow(xx, p.Modulus() >> 1);
 
   if (p.Eq(rm, p.One())) return true;
 

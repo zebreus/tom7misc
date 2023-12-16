@@ -123,6 +123,13 @@ static void TestBasic() {
       const Montgomery64 am = rep.ToMontgomery(amod);
       CHECK(rep.ToInt(am) == amod) << a << " mod " << m;
 
+      // Inverse
+      const uint64_t neg_a = (m - amod) % m;
+      CHECK(neg_a >= 0 && neg_a < m);
+      const Montgomery64 negam = rep.Negate(am);
+      CHECK(rep.Eq(rep.ToMontgomery(neg_a), negam));
+      CHECK(rep.Eq(rep.Zero(), rep.Add(negam, am)));
+
       for (uint64_t b : std::initializer_list<uint64_t>{
           0, 1, 2, 7, 11, 16, 19, 64, 120, 169, 31337, 131072, 999998999,
           10000001000001,
