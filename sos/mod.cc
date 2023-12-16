@@ -17,7 +17,10 @@
 #include "atomic-util.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "numbers.h"
 
+#include "util.h"
+#include "base/logging.h"
 #include "base/stringprintf.h"
 
 DECLARE_COUNTERS(tries, eliminated,
@@ -91,7 +94,9 @@ struct Work {
           uint8_t r = m < 0 ? 0xFF : 0x7F;
           uint8_t g = n < 0 ? 0x7F : 0xFF;
 
-          eliminated.SetPixel(x, y, r, g, 0x00, 0xFF);
+          int s = (abs(m) + abs(n) < 333) ? 0 : 1;
+
+          eliminated.SetPixel(x, y, r >> s, g >> s, 0x00, 0xFF);
         }
       }
     }
@@ -147,53 +152,37 @@ inline uint32_t Mod(int64_t a, uint32_t b) {
   return r;
 }
 
-// XXX PERF: We can of course do much better than just trying
-// all a, b, c!!
-//
 // PERF: With the enumeration approach, another thing we can do
 // is try all the values for (a, b, c) in Zp and record as solvable
 // the -m and -n that we do hit.
-static bool HasSolutionModP(int m, int n, uint32_t p) {
+static bool HasSolutionModP(int m_int, int n_int, uint32_t p_int) {
+  MontgomeryRep64 p(p_int);
 
-  m = Mod(m, p);
-  n = Mod(n, p);
+  Montgomery64 coeff_1 = p.ToMontgomery(222121);
+  Montgomery64 coeff_2 = p.ToMontgomery(360721);
 
-  for (int64_t a = 0; a < p; a++) {
-    const int64_t aa = a * a;
+  Montgomery64 m = p.ToMontgomery(m_int);
+  Montgomery64 n = p.ToMontgomery(n_int);
 
-    // PERF: I think there is an efficient way to compute
-    // square roots mod p. So we could do like 222121a^2 + m = b^2.
-    //
+  // We compute the representation of each a in [0, p) incrementally.
+  Montgomery64 a = p.Zero();
+  for (int64_t idx = 0; idx < p_int; idx++) {
+    Montgomery64 aa = p.Mult(a, a);
+
     // 222121 a^2 - b^2 + m = 0
     // 360721 a^2 - c^2 + n = 0
 
-    const int64_t a1m = Mod(222121 * aa + m, p);
-    const int64_t a2n = Mod(360721 * aa + n, p);
+    Montgomery64 a1m = p.Add(m, p.Mult(coeff_1, aa));
+    Montgomery64 a2n = p.Add(n, p.Mult(coeff_2, aa));
 
     // So we have e.g. a1m = 222121 a^2 + m
     // and we want to know if this is a square (mod p).
-    // But we check both equations at the same time to
-    // save the loop overhead (mainly the Mod).
-    auto AreSquaresModP = [p](int64_t bm, int64_t cn) {
-        // two-bit bitmask
-        uint8_t squares = 0b00;
-        for (int64_t y = 0; y < p; y++) {
-          int64_t yy = y * y;
-          int64_t r = Mod(yy, p);
-
-          squares = squares |
-            ((r == bm) << 1) |
-            (r == cn);
-
-          // Or compare doing this outside the loop.
-          if (squares == 0b11) return true;
-        }
-        return false;
-      };
-
-    if (AreSquaresModP(a1m, a2n)) {
+    if (IsSquareModP(a1m, p) && IsSquareModP(a2n, p)) {
       return true;
     }
+
+    // Increment a (staying in montgomery form).
+    a = p.Add(a, p.One());
   }
 
   return false;
@@ -254,16 +243,29 @@ static void DoWork() {
           }
         }
 
-        printf("Did " ABLUE("%llu") ". "
+        double sec = run_time.Seconds();
+        uint64_t done = tries.Read();
+        double dps = done / sec;
+
+        printf(ABLUE("%s") " at " AWHITE("%.2fM") "/s "
                "Elim " AGREEN("%llu") " in %s. "
-               "Recent: " APURPLE("%d") " "
-               "Remain: " ACYAN("%d") "\n",
-               tries.Read(), eliminated.Read(),
-               ANSI::Time(run_time.Seconds()).c_str(),
+               "P: " APURPLE("%d") " "
+               "Left: " ACYAN("%d") "\n",
+               Util::UnsignedWithCommas(done).c_str(),
+               dps / 1000000.0,
+               eliminated.Read(),
+               ANSI::Time(sec).c_str(),
                (int)recent_min.value_or(0),
                work.Remaining());
       });
 
+    static constexpr int DEPTH = 12;
+
+    // PERF: We could synchronize all the primes and then just
+    // convert to Montgomery form once (including the coefficients).
+    // This would also save us a lot of NextPrime calls.
+    //
+    // PERF: Suited to GPU!
     std::vector<std::pair<int, int>> res =
       ParallelMap(todo, [&work](const std::pair<int, int> &mn) ->
       std::pair<int, int> {
@@ -271,19 +273,22 @@ static void DoWork() {
           // Already ruled this one out.
           if (work.GetNoSolAt(m, n)) return {-1, -1};
 
-          // Otherwise, get old upper bound.
-          const uint32_t ub = work.PrimeAt(m, n);
+          uint32_t last_p = work.PrimeAt(m, n);
+          for (int i = 0; i < DEPTH; i++) {
+            // Otherwise, get old upper bound.
+            const uint32_t p = Factorization::NextPrime(last_p);
 
-          const uint32_t p = Factorization::NextPrime(ub + 1);
+            // Now solve the simultaneous equations mod p.
+            if (!HasSolutionModP(m, n, p)) {
+              eliminated++;
+              return {p, p};
+            }
 
-          // Now solve the simultaneous equations mod p.
-          if (!HasSolutionModP(m, n, p)) {
-            eliminated++;
-            return {p, p};
+            last_p = p;
           }
 
-          tries++;
-          return {-1, p};
+          tries += DEPTH;
+          return {-1, last_p};
         }, 8);
 
     // Write results without lock.
