@@ -8,6 +8,8 @@
 #include "base/int128.h"
 #include "base/logging.h"
 
+#include "montgomery64.h"
+
 // Returns (gcd, x, y)
 // where we have ax * by = gcd = gcd(a, b)
 std::tuple<int64_t, int64_t, int64_t>
@@ -76,6 +78,23 @@ inline int Jacobi64(int64_t a, int64_t n) {
 
 // Returns x such that (x * x) mod p = xx, if it exists.
 std::optional<uint64_t> SqrtModP(uint64_t xx, uint64_t p);
+// As above, but doesn't compute the square root.
+bool IsSquareModP(uint64_t xx, uint64_t p);
+
+// Only for odd primes p. Already in Montgomery form.
+inline bool IsSquareModP(Montgomery64 xx,
+                         const MontgomeryRep64 &p) {
+  // Compute Euler criteria. a^(p-1) / 2 must be 1.
+  Montgomery64 rm = p.Pow(xx, (p.Modulus() - 1) >> 1);
+
+  if (p.Eq(rm, p.One())) return true;
+
+  // But as a special case, the sqrt(0) is always 0.
+  if (p.Eq(xx, p.Zero())) return true;
+
+  // Otherwise there is no solution.
+  return false;
+}
 
 inline int64_t DivFloor64(int64_t numer, int64_t denom) {
   // There's probably a version without %, but I verified

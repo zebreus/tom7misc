@@ -34,6 +34,7 @@ struct MontgomeryRep64 {
   // (2^64)^2 mod modulus.
   uint64_t r_squared;
 
+  // Only for odd modulus.
   explicit constexpr MontgomeryRep64(uint64_t modulus) : modulus(modulus) {
     // PERF can be done in fewer steps with tricks
     inv = 1;
@@ -59,9 +60,14 @@ struct MontgomeryRep64 {
     r = Mult(Montgomery64(1), Montgomery64(r_squared));
   }
 
+  constexpr uint64_t Modulus() const { return modulus; }
+
+  constexpr Montgomery64 Zero() const { return Montgomery64((uint64_t)0); }
   constexpr Montgomery64 One() const { return r; }
   inline constexpr Montgomery64 ToMontgomery(uint64_t x) const {
     // PERF necessary?
+    // At least give the option to skip this when we know it's
+    // in bounds.
     x %= modulus;
     return Mult(Montgomery64(x), Montgomery64(r_squared));
   }
@@ -70,27 +76,26 @@ struct MontgomeryRep64 {
     return a.x == b.x;
   }
 
-  inline constexpr Montgomery64 Add(Montgomery64 a, Montgomery64 b) const {
-    // PERF: Should be able to do this without int128
-    uint128_t aa(a.x);
-    uint128_t bb(b.x);
-    uint128_t ss = aa + bb;
-    if (ss >= (uint128_t)modulus) {
-      ss -= (uint128_t)modulus;
-    }
-    return Montgomery64((uint64_t)ss);
+  // TODO: Efficient implementations of ++ and --, since we have One.
+  inline constexpr Montgomery64 Sub(Montgomery64 a, Montgomery64 b) const {
+    // Compute either 0b00...00 or 0b11...11 if this will overflow.
+    const uint64_t t = -(uint64_t) (a.x < b.x);
+    // The difference, which may need correction due to overflow.
+    const uint64_t d = a.x - b.x;
+    return Montgomery64(d + (modulus & t));
   }
 
-  inline constexpr Montgomery64 Sub(Montgomery64 a, Montgomery64 b) const {
-    // PERF: Should be able to do this without int128
-    int128_t aa(a.x);
-    int128_t bb(b.x);
-    int128_t ss = aa - bb;
-    if (ss < 0) {
-      ss += (int128_t)modulus;
-    }
-    return Montgomery64((uint64_t)ss);
+  inline constexpr Montgomery64 Add(Montgomery64 a, Montgomery64 b) const {
+    // We compute the negation of b. Note this could be modulus
+    // itself for b = 0, which is not a valid Montgomery64 number.
+    // But the code below corrects it.
+    const uint64_t nb = modulus - b.x;
+    // Now, as above.
+    const uint64_t t = -(uint64_t) (a.x < nb);
+    const uint64_t d = a.x - nb;
+    return Montgomery64(d + (modulus & t));
   }
+
 
   inline constexpr Montgomery64 Mult(Montgomery64 a, Montgomery64 b) const {
     uint128_t aa(a.x);
@@ -158,6 +163,9 @@ struct MontgomeryRep64 {
   explicit constexpr MontgomeryRep64(uint64_t modulus) : modulus(modulus) {
   }
 
+  constexpr uint64_t Modulus() const { return modulus; }
+
+  constexpr Montgomery64 Zero() const { return {.x = 0}; }
   constexpr Montgomery64 One() const { return {.x = 1}; }
   inline constexpr Montgomery64 ToMontgomery(uint64_t x) const {
     x %= modulus;

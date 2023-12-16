@@ -614,6 +614,28 @@ std::optional<uint64_t> SqrtModP(uint64_t base, uint64_t prime) {
   }
 }
 
+bool IsSquareModP(uint64_t base, uint64_t prime) {
+  static constexpr bool VERBOSE = false;
+  static constexpr bool SELF_CHECK = false;
+
+  if (VERBOSE) {
+    printf("IsSquare(%llu) mod %llu\n", base, prime);
+  }
+
+  if (SELF_CHECK) {
+    CHECK(base < prime);
+  }
+
+  if (prime == 2) {
+    // Both 0^2 = 0 and 1^1 = 1.
+    return true;
+  }
+
+  MontgomeryRep64 rep(prime);
+  Montgomery64 basem = rep.ToMontgomery(base);
+
+  return IsSquareModP(basem, rep);
+}
 
 /*
 

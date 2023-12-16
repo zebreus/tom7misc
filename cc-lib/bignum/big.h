@@ -1081,6 +1081,8 @@ bool BigInt::IsOdd() const { return BzIsOdd(rep); }
 
 int BigInt::Jacobi(const BigInt &a_input,
                    const BigInt &n_input) {
+  // FIXME: Buggy! Test segfaults.
+
   // Preconditions.
   assert(Greater(n_input, 0));
   assert(n_input.IsOdd());
