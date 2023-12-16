@@ -16,7 +16,7 @@ static void TestApp() {
     {5, 'z'},
   };
 
-  AppVector(v, [&s](const std::pair<int, char> p) {
+  VectorApp(v, [&s](const std::pair<int, char> p) {
       CHECK(p.first >= 0 && p.first < (int)s.size());
       s[p.first] = p.second;
     });
@@ -30,12 +30,12 @@ static void TestFilter() {
       "world",
     };
 
-    FilterVector(&v, [](const std::string &s) { return true; });
+    VectorFilter(&v, [](const std::string &s) { return true; });
     CHECK(v.size() == 2);
     CHECK(v[0] == "hello");
     CHECK(v[1] == "world");
 
-    FilterVector(&v, [](const std::string &s) { return false; });
+    VectorFilter(&v, [](const std::string &s) { return false; });
     CHECK(v.empty());
   }
 
@@ -52,7 +52,7 @@ static void TestFilter() {
     "yeah?",
   };
 
-  FilterVector(&v, [](const std::string &s) { return s.size() == 2; });
+  VectorFilter(&v, [](const std::string &s) { return s.size() == 2; });
   CHECK(v.size() == 5);
   CHECK(v[0] == "to");
   CHECK(v[1] == "do");
@@ -63,7 +63,7 @@ static void TestFilter() {
 
 static void TestReverse() {
   std::vector<std::string> v = { "hello", "world", "yes" };
-  ReverseVector(&v);
+  VectorReverse(&v);
   CHECK(v[0] == "yes");
   CHECK(v[1] == "world");
   CHECK(v[2] == "hello");

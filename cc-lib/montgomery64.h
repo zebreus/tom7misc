@@ -136,6 +136,45 @@ struct MontgomeryRep64 {
     return y;
   }
 
+  // Sometimes you want to take several numbers to the same power.
+  // This saves a little overhead compared to calling Pow individually.
+  template<size_t N>
+  inline constexpr std::array<Montgomery64, N>
+  Pows(std::array<Montgomery64, N> b, uint64_t e) const {
+    std::array<Montgomery64, N> y;
+
+    if (e & 1) {
+      y = b;
+    } else {
+      for (int i = 0; i < N; i++) y[i] = One();
+    }
+
+    while (e != 0) {
+      // Square b
+      for (int i = 0; i < N; i++) b[i] = Mult(b[i], b[i]);
+      // b = Mult(b, b);
+      e >>= 1;
+
+      if (e & 1) {
+        for (int i = 0; i < N; i++) y[i] = Mult(y[i], b[i]);
+        // y = Mult(y, b);
+      }
+    }
+
+    return y;
+  }
+
+
+  // Sometimes you want to iterate over all the numbers in the modulus.
+  //
+  // For x in [0, p), return a distinct representative in Montgomery form;
+  // each x produces a different result. (This is actually just the number
+  // that is represented as x, since there is a bijection. But this is not
+  // guaranteed, e.g. in FAKE_MONTGOMERY below.)
+  inline constexpr Montgomery64 Nth(uint64_t x) const {
+    return Montgomery64(x);
+  }
+
  private:
 
   inline constexpr uint64_t Reduce(uint128_t x) const {
@@ -235,6 +274,12 @@ struct MontgomeryRep64 {
     }
 
     return y;
+  }
+
+  // We don't use the identity mapping to help detect bugs, but it would
+  // be valid here.
+  inline constexpr Montgomery64 Nth(uint64_t x) const {
+    return ToMontgomery(x + 1);
   }
 
  private:

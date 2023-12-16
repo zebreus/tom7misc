@@ -171,9 +171,10 @@ struct SolutionFinder {
     const Montgomery64 neg_m = p.Negate(m);
     const Montgomery64 neg_n = p.Negate(n);
 
-    // We compute the representation of each a in [0, p) incrementally.
-    Montgomery64 a = p.Zero();
     for (int64_t idx = 0; idx < p.Modulus(); idx++) {
+      // Get one of the residues. We don't care what order we
+      // do them in; we just need to try them all.
+      Montgomery64 a = p.Nth(idx);
       Montgomery64 aa = p.Mult(a, a);
 
       // 222121 a^2 - (-m) = b^2
@@ -182,18 +183,37 @@ struct SolutionFinder {
       Montgomery64 a1m = p.Sub(p.Mult(coeff_1, aa), neg_m);
       Montgomery64 a2n = p.Sub(p.Mult(coeff_2, aa), neg_n);
 
+
+      // Compute Euler criteria. a^((p-1) / 2) must be 1.
+      // Since p odd prime, we can just shift down by one
+      // to compute (p - 1)/2.
+      const auto &[r1, r2] = p.Pows(std::array<Montgomery64, 2>{a1m, a2n},
+                                    p.Modulus() >> 1);
+
+      bool sol1 = p.Eq(r1, p.One()) || p.Eq(a1m, p.Zero());
+      bool sol2 = p.Eq(r2, p.One()) || p.Eq(a2n, p.Zero());
+
+      if (sol1 && sol2)
+        return true;
+
+      #if 0
       // So we have e.g. a1m = 222121 a^2 + m
       // and we want to know if this is a square (mod p).
       if (IsSquareModP(a1m, p) && IsSquareModP(a2n, p)) {
         return true;
       }
+      #endif
 
       // Try the next value of a. We would normally just do
       // "a++" here, but we keep a in Montgomery form so instead
       // we would have "a + One()" in that space. But subtraction
       // is a little faster than addition, so we instead just go
       // the other direction.
-      a = p.Sub(a, p.One());
+      //
+      // PERF: Since the montgomery forms of [0, p) are a permutation
+      // of the numbers [0, p), we could actually just loop over their
+      // native representations here.
+      // a = p.Sub(a, p.One());
     }
 
     return false;

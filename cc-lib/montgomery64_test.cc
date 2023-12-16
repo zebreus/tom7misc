@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <initializer_list>
+#include <unordered_set>
 
 #include "base/logging.h"
 #include "base/int128.h"
@@ -99,6 +100,26 @@ static void TestExp() {
   }
 
   // Could test more...
+}
+
+static void TestNth() {
+  for (uint64_t m : std::initializer_list<uint64_t>{
+      3, 7, 11, 21, 19, 65, 121, 173}) {
+
+    const MontgomeryRep64 rep(m);
+
+    std::unordered_set<uint64_t> found;
+    for (uint64_t i = 0; i < m; i++) {
+      Montgomery64 r = rep.Nth(i);
+
+      uint64_t ri = rep.ToInt(r);
+      CHECK(!found.contains(ri));
+      found.insert(ri);
+    }
+
+    // Then it must be a permutation.
+    CHECK(found.size() == m);
+  }
 }
 
 static void TestBasic() {
@@ -212,6 +233,7 @@ int main(int argc, char **argv) {
   ANSI::Init();
 
   TestOne();
+  TestNth();
   TestBasic();
   TestExp();
   TestRandom();

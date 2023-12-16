@@ -265,7 +265,7 @@ std::vector<std::pair<uint64_t, Square>> Database::LastN(int n) const {
     if (ret.size() == n) break;
   }
 
-  ReverseVector(&ret);
+  VectorReverse(&ret);
   return ret;
 }
 
