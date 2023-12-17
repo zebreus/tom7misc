@@ -1540,6 +1540,391 @@ void FactorizeInternal(uint64_t x,
   *num_factors = nf;
 }
 
+// Tests primality. Assumes num > NEXT_PRIME.
+bool IsPrimeWithTrialDivide(uint64_t num) {
+  // PERF: We only call this on odd numbers!
+  if ((num & 1) == 0) return false;
+
+  // This is much simpler than factoring since we don't need
+  // to accumulate the factors!
+# define TRY(p) if ((num % p) == 0) return false;
+
+  // PERF: I think there are tricks for checking divisibility
+  // faster, like checking gcd with a primorial? But these
+  // can be done very fast on GPU.
+
+  TRY(3);
+  TRY(5);
+  TRY(7);
+  TRY(11);
+  TRY(13);
+  TRY(17);
+  TRY(19);
+  TRY(23);
+  TRY(29);
+  TRY(31);
+  TRY(37);
+  TRY(41);
+  TRY(43);
+  TRY(47);
+  TRY(53);
+  TRY(59);
+  TRY(61);
+  TRY(67);
+  TRY(71);
+  TRY(73);
+  TRY(79);
+  TRY(83);
+  TRY(89);
+  TRY(97);
+  TRY(101);
+  TRY(103);
+  TRY(107);
+  TRY(109);
+  TRY(113);
+  TRY(127);
+  TRY(131);
+  TRY(137);
+  TRY(139);
+  TRY(149);
+  TRY(151);
+  TRY(157);
+  TRY(163);
+  TRY(167);
+  TRY(173);
+  TRY(179);
+  TRY(181);
+  TRY(191);
+  TRY(193);
+  TRY(197);
+  TRY(199);
+  TRY(211);
+  TRY(223);
+  TRY(227);
+  TRY(229);
+  TRY(233);
+  TRY(239);
+  TRY(241);
+  TRY(251);
+  TRY(257);
+  TRY(263);
+  TRY(269);
+  TRY(271);
+  TRY(277);
+  TRY(281);
+  TRY(283);
+  TRY(293);
+  TRY(307);
+  TRY(311);
+  TRY(313);
+  TRY(317);
+  TRY(331);
+  TRY(337);
+  TRY(347);
+  TRY(349);
+  TRY(353);
+  TRY(359);
+  TRY(367);
+  TRY(373);
+  TRY(379);
+  TRY(383);
+  TRY(389);
+  TRY(397);
+  TRY(401);
+  TRY(409);
+  TRY(419);
+  TRY(421);
+  TRY(431);
+  TRY(433);
+  TRY(439);
+  TRY(443);
+  TRY(449);
+  TRY(457);
+  TRY(461);
+  TRY(463);
+  TRY(467);
+  TRY(479);
+  TRY(487);
+  TRY(491);
+  TRY(499);
+  TRY(503);
+  TRY(509);
+  TRY(521);
+  TRY(523);
+  TRY(541);
+
+#if NEXT_PRIME > 541
+
+  TRY(547);
+  TRY(557);
+  TRY(563);
+  TRY(569);
+  TRY(571);
+  TRY(577);
+  TRY(587);
+  TRY(593);
+  TRY(599);
+  TRY(601);
+  TRY(607);
+  TRY(613);
+  TRY(617);
+  TRY(619);
+  TRY(631);
+  TRY(641);
+  TRY(643);
+  TRY(647);
+  TRY(653);
+  TRY(659);
+  TRY(661);
+  TRY(673);
+  TRY(677);
+  TRY(683);
+  TRY(691);
+  TRY(701);
+  TRY(709);
+  TRY(719);
+  TRY(727);
+  TRY(733);
+  TRY(739);
+  TRY(743);
+  TRY(751);
+  TRY(757);
+  TRY(761);
+  TRY(769);
+  TRY(773);
+  TRY(787);
+  TRY(797);
+  TRY(809);
+  TRY(811);
+  TRY(821);
+  TRY(823);
+  TRY(827);
+  TRY(829);
+  TRY(839);
+  TRY(853);
+  TRY(857);
+  TRY(859);
+  TRY(863);
+  TRY(877);
+  TRY(881);
+  TRY(883);
+  TRY(887);
+  TRY(907);
+  TRY(911);
+  TRY(919);
+  TRY(929);
+  TRY(937);
+  TRY(941);
+  TRY(947);
+  TRY(953);
+  TRY(967);
+  TRY(971);
+  TRY(977);
+  TRY(983);
+  TRY(991);
+  TRY(997);
+  TRY(1009);
+  TRY(1013);
+  TRY(1019);
+  TRY(1021);
+  TRY(1031);
+  TRY(1033);
+  TRY(1039);
+  TRY(1049);
+  TRY(1051);
+  TRY(1061);
+  TRY(1063);
+  TRY(1069);
+  TRY(1087);
+  TRY(1091);
+  TRY(1093);
+  TRY(1097);
+  TRY(1103);
+  TRY(1109);
+  TRY(1117);
+  TRY(1123);
+  TRY(1129);
+  TRY(1151);
+  TRY(1153);
+  TRY(1163);
+  TRY(1171);
+  TRY(1181);
+  TRY(1187);
+  TRY(1193);
+  TRY(1201);
+  TRY(1213);
+  TRY(1217);
+  TRY(1223);
+  TRY(1229);
+  TRY(1231);
+  TRY(1237);
+  TRY(1249);
+  TRY(1259);
+  TRY(1277);
+  TRY(1279);
+  TRY(1283);
+  TRY(1289);
+  TRY(1291);
+  TRY(1297);
+  TRY(1301);
+  TRY(1303);
+  TRY(1307);
+  TRY(1319);
+  TRY(1321);
+  TRY(1327);
+  TRY(1361);
+  TRY(1367);
+  TRY(1373);
+  TRY(1381);
+  TRY(1399);
+  TRY(1409);
+  TRY(1423);
+  TRY(1427);
+  TRY(1429);
+  TRY(1433);
+  TRY(1439);
+  TRY(1447);
+  TRY(1451);
+  TRY(1453);
+  TRY(1459);
+  TRY(1471);
+  TRY(1481);
+  TRY(1483);
+  TRY(1487);
+  TRY(1489);
+  TRY(1493);
+  TRY(1499);
+  TRY(1511);
+  TRY(1523);
+  TRY(1531);
+  TRY(1543);
+  TRY(1549);
+  TRY(1553);
+  TRY(1559);
+  TRY(1567);
+  TRY(1571);
+  TRY(1579);
+  TRY(1583);
+  TRY(1597);
+  TRY(1601);
+  TRY(1607);
+  TRY(1609);
+  TRY(1613);
+  TRY(1619);
+  TRY(1621);
+  TRY(1627);
+  TRY(1637);
+  TRY(1657);
+  TRY(1663);
+  TRY(1667);
+  TRY(1669);
+  TRY(1693);
+  TRY(1697);
+  TRY(1699);
+  TRY(1709);
+  TRY(1721);
+  TRY(1723);
+  TRY(1733);
+  TRY(1741);
+  TRY(1747);
+  TRY(1753);
+  TRY(1759);
+  TRY(1777);
+  TRY(1783);
+  TRY(1787);
+  TRY(1789);
+  TRY(1801);
+  TRY(1811);
+  TRY(1823);
+  TRY(1831);
+  TRY(1847);
+  TRY(1861);
+  TRY(1867);
+  TRY(1871);
+  TRY(1873);
+  TRY(1877);
+  TRY(1879);
+  TRY(1889);
+  TRY(1901);
+  TRY(1907);
+  TRY(1913);
+  TRY(1931);
+  TRY(1933);
+  TRY(1949);
+  TRY(1951);
+  TRY(1973);
+  TRY(1979);
+  TRY(1987);
+  TRY(1993);
+  TRY(1997);
+  TRY(1999);
+  TRY(2003);
+  TRY(2011);
+  TRY(2017);
+  TRY(2027);
+  TRY(2029);
+  TRY(2039);
+  TRY(2053);
+  TRY(2063);
+  TRY(2069);
+  TRY(2081);
+  TRY(2083);
+  TRY(2087);
+  TRY(2089);
+  TRY(2099);
+  TRY(2111);
+  TRY(2113);
+  TRY(2129);
+  TRY(2131);
+  TRY(2137);
+  TRY(2141);
+  TRY(2143);
+  TRY(2153);
+  TRY(2161);
+  TRY(2179);
+  TRY(2203);
+  TRY(2207);
+  TRY(2213);
+  TRY(2221);
+  TRY(2237);
+  TRY(2239);
+  TRY(2243);
+  TRY(2251);
+  TRY(2267);
+  TRY(2269);
+  TRY(2273);
+  TRY(2281);
+  TRY(2287);
+  TRY(2293);
+  TRY(2297);
+  TRY(2309);
+  TRY(2311);
+  TRY(2333);
+  TRY(2339);
+  TRY(2341);
+  TRY(2347);
+  TRY(2351);
+  TRY(2357);
+  TRY(2371);
+  TRY(2377);
+  TRY(2381);
+  TRY(2383);
+  TRY(2389);
+  TRY(2393);
+  TRY(2399);
+  TRY(2411);
+
+#if NEXT_PRIME > 2411
+# error Would need to add more TRY cases.
+#endif
+
+#endif
+
+#undef TRY
+
+  return IsPrimeInternal(num);
+}
+
 __kernel void Factorize(__global const uint64_t *restrict nums,
                         __global uint64_t *restrict all_out,
                         __global uint8_t *restrict all_out_size) {
@@ -1556,4 +1941,14 @@ __kernel void Factorize(__global const uint64_t *restrict nums,
   } else {
     all_out_size[idx] = num_factors;
   }
+}
+
+__kernel void IsPrimeRange(uint64_t start_idx,
+                           __global uint8_t *restrict out) {
+
+  const int idx = get_global_id(0);
+  // We try only odd numbers.
+  const uint64_t num = start_idx + (2 * idx);
+
+  out[idx] = IsPrimeWithTrialDivide(num) ? 1 : 0;
 }

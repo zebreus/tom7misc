@@ -615,6 +615,28 @@ static void BenchTrialDivide() {
 }
 
 
+static void TestIsPrime() {
+  printf(APURPLE("[TEST]") " IsPrime...\n");
+
+  static constexpr int HEIGHT = 32768;
+  IsPrimeGPU isprime(cl, HEIGHT);
+
+  static constexpr uint64_t START = 123456789123ULL;
+
+  std::vector<uint8_t> out = isprime.GetPrimes(START);
+  CHECK(out.size() == HEIGHT);
+  for (int i = 0; i < (int)out.size(); i++) {
+    uint64_t num = START + (i * 2);
+    if (Factorization::IsPrime(num)) {
+      CHECK(out[i] == 1);
+    } else {
+      CHECK(out[i] == 0);
+    }
+  }
+
+  printf(AGREEN("OK") "\n");
+}
+
 
 int main(int argc, char **argv) {
   ANSI::Init();
@@ -623,6 +645,8 @@ int main(int argc, char **argv) {
   TestEligibleFilter();
   TestFixedTryFilter();
   TestTryFilter();
+
+  TestIsPrime();
 
   TestWays<WaysGPUMerge, TEST_AGAINST_CPU, 16>("merge");
   TestWays<WaysGPU, TEST_AGAINST_CPU, 16>("orig2d");

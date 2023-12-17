@@ -3,6 +3,9 @@
 
 #include "clutil.h"
 
+// TODO: Generate code to do the unrolled TRY loops as efficiently
+// as we can. (See notes in gen-try.cc. I think it may not work...)
+
 // Process the rectangular output of the GPU 'ways' algorithm
 // into a CPU-friendly vector of pairs, and optionally check
 // that they sum to the right value.
@@ -515,5 +518,42 @@ FactorizeGPU::Factorize(const std::vector<uint64_t> &nums) {
       CopyBufferFromGPU<uint8_t>(cl->queue, out_size_gpu, height));
 }
 
-// TODO: Generate code to do the unrolled TRY loops as efficiently
-// as we can.
+std::vector<uint8_t>
+IsPrimeGPU::GetPrimes(uint64_t start_idx) {
+  CHECK(start_idx > NEXT_PRIME);
+  CHECK((start_idx & 1) == 1);
+
+  // Only one GPU process at a time.
+  MutexLock ml(&m);
+
+  // Run kernel.
+  {
+    CHECK_SUCCESS(clSetKernelArg(kernel, 0, sizeof (uint64_t),
+                                 (void *)&start_idx));
+
+    CHECK_SUCCESS(clSetKernelArg(kernel, 1, sizeof (cl_mem),
+                                 (void *)&out_gpu));
+
+    // Simple 1D Kernel
+    size_t global_work_offset[] = { (size_t)0 };
+    size_t global_work_size[] = { (size_t)height };
+
+    CHECK_SUCCESS(
+        clEnqueueNDRangeKernel(cl->queue, kernel,
+                               // 1D
+                               1,
+                               // It does its own indexing
+                               global_work_offset,
+                               global_work_size,
+                               // No local work
+                               nullptr,
+                               // No wait list
+                               0, nullptr,
+                               // no event
+                               nullptr));
+
+    clFinish(cl->queue);
+  }
+
+  return CopyBufferFromGPU<uint8_t>(cl->queue, out_gpu, height);
+}

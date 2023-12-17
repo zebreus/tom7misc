@@ -5,6 +5,7 @@
 #ifndef _WORK_H
 #define _WORK_H
 
+#include <unordered_set>
 #include <cmath>
 #include <iostream>
 #include <vector>
@@ -83,10 +84,29 @@ struct Work {
     ImageRGBA prime_image(WIDTH, HEIGHT);
     ImageRGBA nosol_image(WIDTH, HEIGHT);
     ImageRGBA eliminated(WIDTH, HEIGHT);
+
+    // Get remaining rows, cols.
+    std::unordered_set<int> rows, cols;
     for (int y = 0; y < HEIGHT; y++) {
       const int m = y - 333;
       for (int x = 0; x < WIDTH; x++) {
         const int n = x - 333;
+        if (Eligible(m, n) && GetNoSolAt(m, n) == 0) {
+          rows.insert(m);
+          cols.insert(n);
+        }
+      }
+    }
+
+    for (int y = 0; y < HEIGHT; y++) {
+      const int m = y - 333;
+
+      const bool row_remains = rows.contains(m);
+
+      for (int x = 0; x < WIDTH; x++) {
+        const int n = x - 333;
+
+        const bool col_remains = cols.contains(n);
 
         prime_image.SetPixel32(x, y, PrimeAt(m, n));
         uint32_t ns = GetNoSolAt(m, n);
@@ -100,7 +120,13 @@ struct Work {
 
           int s = Eligible(m, n) ? 0 : 1;
 
-          eliminated.SetPixel(x, y, r >> s, g >> s, 0x00, 0xFF);
+          uint8_t b = 0;
+          if (!row_remains || !col_remains) {
+            b = 0x8f;
+            s++;
+          }
+
+          eliminated.SetPixel(x, y, r >> s, g >> s, b, 0xFF);
         }
       }
     }

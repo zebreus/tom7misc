@@ -161,7 +161,7 @@ findbug.exe : findbug.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
-mod.exe : mod.o $(OBJECTS)
+mod.exe : mod.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

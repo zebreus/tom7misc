@@ -652,5 +652,70 @@ struct TrialDivideGPU {
   }
 };
 
+// Tests a range of numbers for primality; outputs a bytemask.
+struct IsPrimeGPU {
+  IsPrimeGPU(CL *cl, size_t height) : cl(cl), height(height) {
+    // Need to define stuff that factorize.cl uses, even
+    // if it's not used for this routine.
+    static constexpr int MAX_FACTORS = 64;
+
+    std::string defines =
+      StringPrintf(
+          "#define MAX_FACTORS %d\n"
+          "#define PTX_SUB128 %d\n"
+          "#define PTX_GEQ128 %d\n"
+          "#define PTX_MUL128 %d\n"
+          "#define FUSED_TRY %d\n"
+          "#define BINV_USE_TABLE %d\n"
+          "#define BINV_USE_DUMAS %d\n"
+          "#define NEXT_PRIME %d\n"
+          "#define IsPrimeInternal %s\n",
+          MAX_FACTORS,
+          0, 1, 1, 0, 1, 1,
+          NEXT_PRIME,
+          is_prime_routine);
+
+    std::string kernel_src = defines + Util::ReadFile("factorize.cl");
+    const auto &[prog, kern] =
+      cl->BuildOneKernel(kernel_src, "IsPrimeRange", false);
+    CHECK(prog != 0);
+    program = prog;
+    CHECK(kern != 0);
+    kernel = kern;
+
+    out_gpu = CreateUninitializedGPUMemory<uint8_t>(
+        cl->context,
+        height);
+  }
+
+  // Processes a batch of odd numbers, starting with start_idx.
+  // The returned array has length 'height', and the nth element
+  // is 1 if start_idx + (2 * n) is prime; 0 if composite.
+  std::vector<uint8_t>
+  GetPrimes(uint64_t start_idx);
+
+  ~IsPrimeGPU() {
+    CHECK_SUCCESS(clReleaseKernel(kernel));
+    CHECK_SUCCESS(clReleaseProgram(program));
+
+    CHECK_SUCCESS(clReleaseMemObject(out_gpu));
+  }
+
+private:
+  // Synchronized access.
+  std::mutex m;
+  cl_program program = 0;
+  cl_kernel kernel = 0;
+  cl_mem out_gpu = nullptr;
+
+  CL *cl = nullptr;
+  // Number of inputs to test at once.
+  size_t height = 0;
+
+  // Might be useful to tune this.
+  static constexpr int NEXT_PRIME = 1709;
+  static constexpr const char *is_prime_routine = "IsPrimeInternalFew";
+};
+
 
 #endif

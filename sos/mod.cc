@@ -24,10 +24,16 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
+#include "sos-gpu.h"
+#include "clutil.h"
 #include "work.h"
+
+constexpr bool SELF_CHECK = false;
 
 DECLARE_COUNTERS(tries, eliminated,
                  u3_, u4_, u5_, u6_, u7_, u8_);
+
+static CL *cl = nullptr;
 
 struct SolutionFinder {
   const MontgomeryRep64 p;
@@ -59,7 +65,6 @@ struct SolutionFinder {
       Montgomery64 a1m = p.Sub(p.Mult(coeff_1, aa), neg_m);
       Montgomery64 a2n = p.Sub(p.Mult(coeff_2, aa), neg_n);
 
-
       // Compute Euler criteria. a^((p-1) / 2) must be 1.
       // Since p odd prime, we can just shift down by one
       // to compute (p - 1)/2.
@@ -69,27 +74,9 @@ struct SolutionFinder {
       bool sol1 = p.Eq(r1, p.One()) || p.Eq(a1m, p.Zero());
       bool sol2 = p.Eq(r2, p.One()) || p.Eq(a2n, p.Zero());
 
-      if (sol1 && sol2)
-        return true;
-
-      #if 0
-      // So we have e.g. a1m = 222121 a^2 + m
-      // and we want to know if this is a square (mod p).
-      if (IsSquareModP(a1m, p) && IsSquareModP(a2n, p)) {
+      if (sol1 && sol2) {
         return true;
       }
-      #endif
-
-      // Try the next value of a. We would normally just do
-      // "a++" here, but we keep a in Montgomery form so instead
-      // we would have "a + One()" in that space. But subtraction
-      // is a little faster than addition, so we instead just go
-      // the other direction.
-      //
-      // PERF: Since the montgomery forms of [0, p) are a permutation
-      // of the numbers [0, p), we could actually just loop over their
-      // native representations here.
-      // a = p.Sub(a, p.One());
     }
 
     return false;
@@ -221,7 +208,8 @@ static void DoWorkBatch(
     Work *work,
     uint64_t p, std::vector<std::pair<int, int>> batch) {
 
-  constexpr bool SELF_CHECK = true;
+  static constexpr int ISPRIME_HEIGHT = 65536;
+  IsPrimeGPU isprime_gpu(cl, ISPRIME_HEIGHT);
 
   Periodically save_per(60);
   Periodically status_per(5);
@@ -233,6 +221,9 @@ static void DoWorkBatch(
   Timer run_time;
   Timer dps_timer;
   int64_t dps_done = 0;
+
+  // PERF: This actually redoes p, rather than skipping to the
+  // next prime to try. No harm in that, though.
 
   while (!batch.empty()) {
     // Invariants...
@@ -270,34 +261,53 @@ static void DoWorkBatch(
         dps_done = 0;
       });
 
-    p = Factorization::NextPrime(p);
-    if (p > 0x80000000ULL) {
-      work->Save();
-      CHECK(false) << "Need to expand database to support 64-bit primes!";
-    }
+    // Get some primes using GPU.
+    // Note if we start this process over from the beginning, p cannot
+    // be small (and this will abort). We can use a CPU process to get
+    // started.
+    std::vector<uint8_t> prime_bytemask = isprime_gpu.GetPrimes(p);
 
-    SolutionFinder finder(p);
+    for (int i = 0; i < prime_bytemask.size(); i++) {
+      if (prime_bytemask[i]) {
+        uint64_t prime = p + (i * 2);
 
-    // PERF: Do on GPU!
-    ParallelApp(batch, [&work, &mut, &done, &finder, p](
-        const std::pair<int, int> &mn) {
-        const auto &[m, n] = mn;
-
-        // Now solve the simultaneous equations mod p.
-        if (!finder.HasSolutionModP(m, n)) {
-          // Rare; ok for this to be slow.
-          MutexLock ml(&mut);
-          done.emplace_back(m, n);
-          work->SetNoSolAt(m, n, p);
-          eliminated++;
+        if (prime > 0x80000000ULL) {
+          work->Save();
+          CHECK(false) << "Need to expand database to support 64-bit primes!";
         }
-      }, 8);
 
-    tries += batch.size();
-    dps_done += batch.size();
-    for (const auto &[m, n] : batch) {
-      work->PrimeAt(m, n) = p;
+        SolutionFinder finder(prime);
+
+        // PERF: Do on GPU!
+        ParallelApp(batch, [&work, &mut, &done, &finder, prime](
+            const std::pair<int, int> &mn) {
+            const auto &[m, n] = mn;
+
+            // Now solve the simultaneous equations mod p.
+            if (!finder.HasSolutionModP(m, n)) {
+              // Rare; ok for this to be slow.
+              MutexLock ml(&mut);
+              // Could be a duplicate in the batch of primes; keep
+              // the first one.
+              if (work->GetNoSolAt(m, n) == 0) {
+                done.emplace_back(m, n);
+                work->SetNoSolAt(m, n, prime);
+                eliminated++;
+              }
+            }
+          }, 8);
+
+        tries += batch.size();
+        dps_done += batch.size();
+        // PERF only need to do this for the last prime...
+        for (const auto &[m, n] : batch) {
+          work->PrimeAt(m, n) = prime;
+        }
+      }
     }
+
+    // Skip that whole batch of primes then.
+    p += prime_bytemask.size() * 2;
 
     if (!done.empty()) {
       printf("Removing:");
@@ -399,6 +409,8 @@ static std::pair<uint64_t, std::vector<std::pair<int, int>>> CatchUp(
 
 int main(int argc, char **argv) {
   ANSI::Init();
+
+  cl = new CL;
 
   // Early
   // DoWork();

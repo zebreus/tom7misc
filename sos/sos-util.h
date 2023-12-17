@@ -10,16 +10,12 @@
 #include <utility>
 #include <cmath>
 
+#include "numbers.h"
+
 // Bitmask of numbers we're around where we're currently searching.
 // Used for benchmarking / tuning. This is up to 34 trillion.
 // static constexpr uint64_t MASK_CURRENT_RANGE = 0x0FFF'FFFF'FFFFULL;
 static constexpr uint64_t MASK_CURRENT_RANGE = 0x1FFF'FFFF'FFFFULL;
-
-inline uint64_t Sqrt64(uint64_t n) {
-  if (n == 0) return 0;
-  uint64_t r = std::sqrt((double)n);
-  return r - (r * r - 1 >= n);
-}
 
 struct TryMe {
   // PERF: We don't actually use this

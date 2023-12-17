@@ -48,6 +48,39 @@ bool HasSolutions(const Solutions &sols) {
     !sols.recursive.empty();
 }
 
+
+static void CheckSolutions(
+    const std::unordered_map<BigInt, BigInt> &mpts,
+    const std::unordered_map<BigInt, BigInt> &npts) {
+  printf(AWHITE("m") " points: %d. " AWHITE("n") " points: %d.\n",
+         (int)mpts.size(), (int)npts.size());
+
+  bool any = false;
+  // We will find coincident points (e.g. the known solution for 333)
+  // that are outside the diamond.
+  for (const auto &[x, my] : mpts) {
+    // Skip some known solutions.
+    if (x == 10 && my == 4713) {
+      printf("my: %s\n", LongNum(my).c_str());
+      continue;
+    }
+
+    auto it = npts.find(x);
+    if (it != npts.end()) {
+      const BigInt &ny = it->second;
+      printf(AORANGE("!!!") " "
+             AGREEN("Have both x") " = %s !\n", LongNum(x).c_str());
+      printf("  my: " ABLUE("%s") "\n", LongNum(my).c_str());
+      printf("  ny: " APURPLE("%s") "\n", LongNum(ny).c_str());
+      any = true;
+    }
+  }
+
+  if (!any) {
+    printf(AGREY("No new shared x.") "\n");
+  }
+}
+
 // Exclude negative points (these are squared so they're just
 // redundant).
 static std::vector<std::pair<BigInt, BigInt>> NonNegPoints(
@@ -75,8 +108,50 @@ static void ValidateSolutions(const Solutions &sols) {
   }
 
   // XXX: Might be a good idea to check a few points?
-
 }
+
+static void ExpandNum(std::unordered_map<BigInt, BigInt> *pts,
+                      const RecursiveSolution &rec,
+                      int num) {
+  std::vector<std::pair<BigInt, BigInt>> todo;
+  todo.reserve(pts->size());
+  for (const auto &[x, y] : *pts) {
+    todo.emplace_back(x, y);
+  }
+
+  Timer timer;
+  Periodically status_per(1.0);
+  printf("Expand\n");
+  for (int idx = 0; idx < (int)todo.size(); idx++) {
+    const auto &p = todo[idx];
+    status_per.RunIf([&]() {
+        printf(ANSI_UP "%s\n",
+               ANSI::ProgressBar(idx, todo.size(),
+                                 StringPrintf("Expand %d", num),
+                                 timer.Seconds()).c_str());
+      });
+
+    BigInt x = p.first;
+    BigInt y = p.second;
+    for (int i = 0; i < num; i++) {
+      BigInt x1 = rec.P * x + rec.Q * y;
+      BigInt y1 = rec.R * x + rec.S * y;
+
+      // I think this is possible. Would need a different
+      // data structure or something? But it doesn't really
+      // matter unless we find a solution, as different y just
+      // give us different error.
+      CHECK(!pts->contains(x1)) << LongNum(x1);
+
+      (*pts)[x1] = y1;
+
+      x = std::move(x1);
+      y = std::move(y1);
+    }
+  }
+  printf("\n");
+}
+
 
 static std::string AnsiRecursive(const RecursiveSolution &rec) {
   return StringPrintf("  " AYELLOW("@") " "
@@ -101,7 +176,8 @@ static bool operator ==(const RecursiveSolution &a,
 }
 
 // Get the one recursive solution shared by every entry.
-// Ignores s[0] (which just has (0,0) as a solution).
+// Ignores s[0] (this just reports the point (0,0) because the
+// recursive solution is degenerate there).
 // Note that there are "two" recursive solutions, which correspond
 // to different directions on the curve. The two solutions arrive
 // in a different order sometimes (depending on sign of entry).
@@ -128,6 +204,10 @@ RecursiveSolution GetSameRec(const std::map<int, Solutions> &s) {
       }
     }
   }
+
+  // Zero for these particular equations, so we ignore it.
+  CHECK(rc1.K == 0);
+  CHECK(rc1.L == 0);
 
   return rc1;
 }
@@ -252,6 +332,60 @@ static void DoWork() {
   PrintSols("m", msols);
   PrintSols("n", nsols);
   #endif
+
+  // Call m or n the error.
+  // So, now we have a bunch of points that are reachable (perhaps resulting
+  // in different errors) for each axis.
+
+  std::unordered_map<BigInt, BigInt> mpts;
+  std::unordered_map<BigInt, BigInt> npts;
+
+  auto AddPoints = [](const std::map<int, Solutions> &db,
+                      std::unordered_map<BigInt, BigInt> *pts) {
+      for (const auto &[o, sols] : db) {
+        std::vector<std::pair<BigInt, BigInt>> s = NonNegPoints(sols.points);
+        for (const auto &[x, y] : s) {
+          // We don't allow x == 0 since it would result in a degenerate
+          // square.
+          if (x != 0) {
+            CHECK(!pts->contains(x));
+            (*pts)[x] = y;
+          }
+        }
+      }
+    };
+
+  AddPoints(msols, &mpts);
+  AddPoints(nsols, &npts);
+
+  CheckSolutions(mpts, npts);
+
+  // Now add some points using the recurrence.
+  ExpandNum(&mpts, mrec, 500);
+  ExpandNum(&npts, nrec, 500);
+
+  printf("Expanded.\n");
+
+  CheckSolutions(mpts, npts);
+
+  for (const auto &[x, my] : mpts) {
+    // Skip some known solutions.
+    if (x == 10 && my == 4713) {
+      printf("my: %s\n", LongNum(my).c_str());
+      continue;
+    }
+
+    auto it = npts.find(x);
+    if (it != npts.end()) {
+      const BigInt &ny = it->second;
+      printf(AGREEN("Have both x") " = %s !\n", LongNum(x).c_str());
+      printf("  my: " ABLUE("%s") "\n", LongNum(my).c_str());
+      printf("  ny: " APURPLE("%s") "\n", LongNum(ny).c_str());
+    }
+  }
+
+  return;
+
 
   // TODO:
   // Eliminate cells with no shared nonzero x coordinate (need for (0,0)).
