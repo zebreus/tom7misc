@@ -8,7 +8,7 @@
 
 #include "bignum/big.h"
 
-struct PointSolution {
+struct PointSolution64 {
   uint64_t X, Y;
 };
 
@@ -21,8 +21,8 @@ struct MaxValue {
   }
 };
 
-struct Solutions {
-  std::vector<PointSolution> points;
+struct Solutions64 {
+  std::vector<PointSolution64> points;
   bool interesting_coverage = false;
 
   // From GetNextConvergent
@@ -40,7 +40,7 @@ struct Solutions {
 // This is probably not correct for numbers larger than 2^60 or so,
 // since we sometimes do stuff like (value << 1).
 // Needs the prime factorization (e.g. from Factorization::Factorize).
-Solutions SolveQuad64(
+Solutions64 SolveQuad64(
     uint64_t f,
     const std::vector<std::pair<uint64_t, int>> &factors);
 

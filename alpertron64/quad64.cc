@@ -81,13 +81,13 @@ struct Quad {
   // We can exit once we have this many solutions.
   const int expected_solutions;
   // Solutions accumulated here.
-  Solutions solutions;
+  Solutions64 solutions;
 
   inline void RecordSolutionXY(int64_t x, int64_t y) {
     // Negative values are obvious, since x and y appear only under
     // squares. x and y are also interchangeable.
     if (x >= 0 && y >= 0 && x <= y) {
-      solutions.points.emplace_back(PointSolution{
+      solutions.points.emplace_back(PointSolution64{
           .X = (uint64_t)x,
           .Y = (uint64_t)y
         });
@@ -655,8 +655,8 @@ struct Quad {
 
 }  // namespace
 
-Solutions SolveQuad64(uint64_t f,
-                    const std::vector<std::pair<uint64_t, int>> &factors) {
+Solutions64 SolveQuad64(uint64_t f,
+                        const std::vector<std::pair<uint64_t, int>> &factors) {
   const int expected_solutions = ChaiWahWuFromFactors(f, factors);
   std::unique_ptr<Quad> quad(new Quad(expected_solutions));
   quad->SolveQuad(f, factors);

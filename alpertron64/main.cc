@@ -30,10 +30,10 @@
 #include "base/do-not-optimize.h"
 #include "base/logging.h"
 
-static Solutions Run(
+static Solutions64 Run(
     int64_t f,
     const std::vector<std::pair<uint64_t, int>> &factors) {
-  Solutions solutions;
+  Solutions64 solutions;
 
   #if RUN_LOOP
   constexpr int TIMES = 1000000;
@@ -62,13 +62,13 @@ int main(int argc, char* argv[]) {
   std::vector<std::pair<uint64_t, int>> factors =
     Factorization::Factorize(f);
 
-  Solutions solutions = Run(f, factors);
+  Solutions64 solutions = Run(f, factors);
   CHECK(!solutions.interesting_coverage);
 
   if (solutions.points.empty()) {
     printf("The equation does not have integer solutions.\n");
   } else {
-    for (const PointSolution &point : solutions.points) {
+    for (const PointSolution64 &point : solutions.points) {
       printf("Solution:\n"
              "x = %lld\n"
              "y = %lld\n",
