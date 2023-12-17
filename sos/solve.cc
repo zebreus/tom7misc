@@ -78,6 +78,60 @@ static void ValidateSolutions(const Solutions &sols) {
 
 }
 
+static std::string AnsiRecursive(const RecursiveSolution &rec) {
+  return StringPrintf("  " AYELLOW("@") " "
+                      "x_(n+1) = " ACYAN("%s") "x_n + " AGREEN("%s") "y_n + "
+                      AWHITE("%s") "\n"
+                      "    "
+                      "y_(n+1) = " ACYAN("%s") "x_n + " AGREEN("%s") "y_n + "
+                      AWHITE("%s") "\n",
+                      LongNum(rec.P).c_str(),
+                      LongNum(rec.Q).c_str(),
+                      LongNum(rec.K).c_str(),
+                      LongNum(rec.R).c_str(),
+                      LongNum(rec.S).c_str(),
+                      LongNum(rec.L).c_str());
+}
+
+static bool operator ==(const RecursiveSolution &a,
+                        const RecursiveSolution &b) {
+  return
+    a.P == b.P && a.Q == b.Q && a.K == b.K &&
+    a.R == b.R && a.S == b.S && a.L == b.L;
+}
+
+// Get the one recursive solution shared by every entry.
+// Ignores s[0] (which just has (0,0) as a solution).
+// Note that there are "two" recursive solutions, which correspond
+// to different directions on the curve. The two solutions arrive
+// in a different order sometimes (depending on sign of entry).
+RecursiveSolution GetSameRec(const std::map<int, Solutions> &s) {
+  CHECK(!s.empty());
+  const int orig = s.begin()->first;
+  CHECK(orig != 0) << "Need to make this smarter if we've "
+    "eliminated every negative element.";
+
+  CHECK(s.begin()->second.recursive.size() == 1);
+  const auto &[rc1, rc2] = s.begin()->second.recursive[0];
+  for (const auto &[o, sols] : s) {
+    if (o != 0) {
+      CHECK(sols.recursive.size() == 1);
+      if (rc1 != sols.recursive[0].first &&
+          rc2 != sols.recursive[0].first) {
+        printf(ARED("Previously") " (%d):\n"
+               "%s"
+               ARED("Now") " (%d):\n"
+               "%s\n",
+               orig, AnsiRecursive(rc1).c_str(),
+               o, AnsiRecursive(sols.recursive[0].first).c_str());
+        CHECK(false);
+      }
+    }
+  }
+
+  return rc1;
+}
+
 static void DoWork() {
   printf("Startup..\n");
 
@@ -165,6 +219,24 @@ static void DoWork() {
     dirty = false;
   }
 
+  // Fun fact: Aside from 0 (which we can analyze separately), all of the
+  // columns have the same recursive solution (with different point solutions)
+  // and so to for rows. This does make some sense because the underlying
+  // curves are the same, just shifted by a constant m or n.
+
+  const RecursiveSolution mrec = GetSameRec(msols);
+  const RecursiveSolution nrec = GetSameRec(nsols);
+
+  auto PrintSame = [](const char *axis, const RecursiveSolution &rec) {
+      printf("For all nonzero " AWHITE("%s") ", "
+             "the same recursive solution:\n", axis);
+      printf("%s", AnsiRecursive(rec).c_str());
+    };
+
+  PrintSame("m", mrec);
+  PrintSame("n", nrec);
+
+  #if 0
   auto PrintSols = [](const char *axis, const std::map<int, Solutions> &db) {
       printf("\n\nFor " AWHITE("%s") ":\n", axis);
       for (const auto &[o, sols] : db) {
@@ -174,42 +246,12 @@ static void DoWork() {
           printf("  (" ABLUE("%s") AWHITE(",") ABLUE("%s") ")\n",
                  LongNum(x).c_str(), LongNum(y).c_str());
         }
-
-        if (sols.recursive.empty()) {
-          printf("  " ARED("NO RECURSIVE") "\n");
-        } else {
-          for (const auto &[r1, r2] : sols.recursive) {
-            printf("  " AYELLOW("@") " "
-                   "x_(n+1) = " ACYAN("%s") "x_n + " AGREEN("%s") "y_n + "
-                   AWHITE("%s") "\n"
-                   "    "
-                   "y_(n+1) = " ACYAN("%s") "x_n + " AGREEN("%s") "y_n + "
-                   AWHITE("%s") "\n",
-                   LongNum(r1.P).c_str(),
-                   LongNum(r1.Q).c_str(),
-                   LongNum(r1.K).c_str(),
-                   LongNum(r1.R).c_str(),
-                   LongNum(r1.S).c_str(),
-                   LongNum(r1.L).c_str());
-            printf("  " AORANGE("@") " "
-                   "x_(n+1) = " ACYAN("%s") "x_n + " AGREEN("%s") "y_n + "
-                   AWHITE("%s") "\n"
-                   "    "
-                   "y_(n+1) = " ACYAN("%s") "x_n + " AGREEN("%s") "y_n + "
-                   AWHITE("%s") "\n",
-                   LongNum(r2.P).c_str(),
-                   LongNum(r2.Q).c_str(),
-                   LongNum(r2.K).c_str(),
-                   LongNum(r2.R).c_str(),
-                   LongNum(r2.S).c_str(),
-                   LongNum(r2.L).c_str());
-          }
-        }
       }
     };
 
   PrintSols("m", msols);
   PrintSols("n", nsols);
+  #endif
 
   // TODO:
   // Eliminate cells with no shared nonzero x coordinate (need for (0,0)).
