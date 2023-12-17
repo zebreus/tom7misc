@@ -33,6 +33,8 @@
 
 #include "quad.h"
 
+static constexpr bool ALLOW_SAVE = true;
+
 DECLARE_COUNTERS(tries, eliminated,
                  u3_, u4_, u5_, u6_, u7_, u8_);
 
@@ -57,6 +59,25 @@ static std::vector<std::pair<BigInt, BigInt>> NonNegPoints(
   return ret;
 }
 
+static int points = 0, rec = 0;
+static void ValidateSolutions(const Solutions &sols) {
+  // Unexpected solution types.
+  CHECK(!sols.any_integers);
+  CHECK(sols.quadratic.empty());
+  CHECK(sols.linear.empty());
+
+  if (!sols.points.empty()) points++;
+  if (!sols.recursive.empty()) rec++;
+
+  if (!sols.recursive.empty()) {
+    CHECK(!sols.points.empty()) << "Not expecting recursive without "
+      "point solutions?";
+  }
+
+  // XXX: Might be a good idea to check a few points?
+
+}
+
 static void DoWork() {
   printf("Startup..\n");
 
@@ -74,17 +95,31 @@ static void DoWork() {
     }
   }
 
-  int points = 0, rec = 0;
   Timer sol_timer;
   Periodically status_per(1.0);
   printf("Solve...\n");
   bool dirty = false;
+
+  // Alpertron solves the equations independently, so we can just
+  // solve each row and column that appears.
+  std::map<int, Solutions> msols;
+  std::map<int, Solutions> nsols;
+  auto GetSolutions = [&msols, &nsols](int m, int n) {
+      auto mit = msols.find(m);
+      auto nit = nsols.find(n);
+      CHECK(mit != msols.end()) << "Missing msol " << m;
+      CHECK(nit != nsols.end()) << "Missing nsol " << n;
+      return std::make_pair(&mit->second, &nit->second);
+    };
+
   for (int idx = 0; idx < (int)todo.size(); idx++) {
     const auto &[m, n] = todo[idx];
     status_per.RunIf([&]() {
         printf(ANSI_UP "%s\n",
                ANSI::ProgressBar(idx, todo.size(),
-                                 "Solve",
+                                 StringPrintf("Solved %d m, %d n",
+                                              msols.size(),
+                                              nsols.size()),
                                  sol_timer.Seconds()).c_str());
       });
 
@@ -96,81 +131,54 @@ static void DoWork() {
     // so we have a1 = 222121, c1 = -1, f1 = m
     // so we have a2 = 360721, c2 = -1, f2 = n
     // and everything else zero.
-    Solutions sols1 = QuadBigInt(BigInt(222121), BigInt(0), BigInt(-1),
-                                 BigInt(0), BigInt(0), BigInt(m), nullptr);
-    Solutions sols2 = QuadBigInt(BigInt(360721), BigInt(0), BigInt(-1),
-                                 BigInt(0), BigInt(0), BigInt(n), nullptr);
+    if (msols.find(m) == msols.end()) {
+      Solutions sols = QuadBigInt(BigInt(222121), BigInt(0), BigInt(-1),
+                                  BigInt(0), BigInt(0), BigInt(m), nullptr);
+      ValidateSolutions(sols);
+      msols[m] = std::move(sols);
+    }
 
-    if (!HasSolutions(sols1) ||
-        !HasSolutions(sols2)) {
+    if (nsols.find(n) == nsols.end()) {
+      Solutions sols = QuadBigInt(BigInt(360721), BigInt(0), BigInt(-1),
+                                  BigInt(0), BigInt(0), BigInt(n), nullptr);
+      ValidateSolutions(sols);
+      nsols[n] = std::move(sols);
+    }
+  }
+
+  // Eliminate points without any solutions.
+  // We could eliminate these by row/column, but I already elminated
+  // them so I'm trying to keep it simple during a rewrite.
+  for (const auto &[m, n] : todo) {
+    const auto &[msol, nsol] = GetSolutions(m, n);
+
+    if (!HasSolutions(*msol) ||
+        !HasSolutions(*nsol)) {
       printf("\n\nNo solutions for (%d, %d)!\n\n", m, n);
       work.SetNoSolAt(m, n, Work::NOSOL_ALPERTRON);
       dirty = true;
     }
+  }
 
-    for (const Solutions &sols : {sols1, sols2}) {
-      // Unexpected solution types.
-      CHECK(!sols.any_integers);
-      CHECK(sols.quadratic.empty());
-      CHECK(sols.linear.empty());
-      if (!sols.points.empty()) points++;
-      if (!sols.recursive.empty()) rec++;
+  if (dirty && ALLOW_SAVE) {
+    work.Save();
+    dirty = false;
+  }
 
-      if (!sols.recursive.empty()) {
-        CHECK(!sols.points.empty()) << "Not expecting recursive solutions "
-          "but no point solutions?";
-      }
-
-    }
-
-    // If there are a finite number of solutions, we can just check them.
-    if (sols1.recursive.empty() || sols2.recursive.empty()) {
-      if (sols1.recursive.empty() && sols2.recursive.empty()) {
-        std::vector<std::pair<BigInt, BigInt>> s1 = NonNegPoints(sols1.points);
-        std::vector<std::pair<BigInt, BigInt>> s2 = NonNegPoints(sols2.points);
-
-        printf("\n\nFor (%d,%d), finite solutions:\n", m, n);
-
-        for (const auto &[x, y] : s1) {
+  auto PrintSols = [](const char *axis, const std::map<int, Solutions> &db) {
+      printf("\n\nFor " AWHITE("%s") ":\n", axis);
+      for (const auto &[o, sols] : db) {
+        printf("For " AWHITE("%s") "=" AWHITE("%d") ":\n", axis, o);
+        std::vector<std::pair<BigInt, BigInt>> s = NonNegPoints(sols.points);
+        for (const auto &[x, y] : s) {
           printf("  (" ABLUE("%s") AWHITE(",") ABLUE("%s") ")\n",
                  LongNum(x).c_str(), LongNum(y).c_str());
         }
-        for (const auto &[x, y] : s2) {
-          printf("  (" APURPLE("%s") AWHITE(",") APURPLE("%s") ")\n",
-                 LongNum(x).c_str(), LongNum(y).c_str());
-        }
 
-        // Must have an x shared between them, or else they cannot be
-        // simultaneously solved. (Also, the x coordinate cannot be
-        // zero, or else the square would be degenerate.)
-        auto AnyShared = [&s1, &s2]() {
-            for (int i = 0; i < s1.size(); i++) {
-              for (int j = 0; j < s2.size(); j++) {
-                if (s1[i].first == s2[j].first &&
-                    s1[i].first != 0 &&
-                    s2[j].first != 0) {
-                  return true;
-                }
-              }
-            }
-            return false;
-          };
-
-        if (!AnyShared()) {
-          printf("Can't be solved; they share no (nonzero) x coordinate.\n");
-          work.SetNoSolAt(m, n, Work::NOSOL_ALPERTRON_FINITE);
-          dirty = true;
-        }
-
-        printf("\n");
-      }
-    } else {
-      // One of them is finite.
-
-      auto PrintRecursive = [](
-          const std::vector<std::pair<RecursiveSolution,
-                                      RecursiveSolution>> &recs) {
-          for (const auto &[r1, r2] : recs) {
+        if (sols.recursive.empty()) {
+          printf("  " ARED("NO RECURSIVE") "\n");
+        } else {
+          for (const auto &[r1, r2] : sols.recursive) {
             printf("  " AYELLOW("@") " "
                    "x_(n+1) = " ACYAN("%s") "x_n + " AGREEN("%s") "y_n + "
                    AWHITE("%s") "\n"
@@ -196,30 +204,44 @@ static void DoWork() {
                    LongNum(r2.S).c_str(),
                    LongNum(r2.L).c_str());
           }
-        };
-
-
-      std::vector<std::pair<BigInt, BigInt>> s1 = NonNegPoints(sols1.points);
-      std::vector<std::pair<BigInt, BigInt>> s2 = NonNegPoints(sols2.points);
-      printf("\n\nFor (%d,%d), finite solutions:\n", m, n);
-      for (const auto &[x, y] : s1) {
-        printf("  (" ABLUE("%s") AGREY(",") ABLUE("%s") ")\n",
-               LongNum(x).c_str(), LongNum(y).c_str());
+        }
       }
-      PrintRecursive(sols1.recursive);
+    };
 
-      for (const auto &[x, y] : s2) {
-        printf("  (" APURPLE("%s") AGREY(",") APURPLE("%s") ")\n",
-               LongNum(x).c_str(), LongNum(y).c_str());
-      }
-      PrintRecursive(sols2.recursive);
+  PrintSols("m", msols);
+  PrintSols("n", nsols);
 
-      printf("\n");
-    }
-  }
+  // TODO:
+  // Eliminate cells with no shared nonzero x coordinate (need for (0,0)).
+  // Eliminate rows/columns with just x=0.
 
-  if (dirty) {
+  /*
+        // Must have an x shared between them, or else they cannot be
+        // simultaneously solved. (Also, the x coordinate cannot be
+        // zero, or else the square would be degenerate.)
+        auto AnyShared = [&s1, &s2]() {
+            for (int i = 0; i < s1.size(); i++) {
+              for (int j = 0; j < s2.size(); j++) {
+                if (s1[i].first == s2[j].first &&
+                    s1[i].first != 0 &&
+                    s2[j].first != 0) {
+                  return true;
+                }
+              }
+            }
+            return false;
+          };
+
+        if (!AnyShared()) {
+          printf("Can't be solved; they share no (nonzero) x coordinate.\n");
+          work.SetNoSolAt(m, n, Work::NOSOL_ALPERTRON_FINITE);
+          dirty = true;
+        }
+  */
+
+  if (dirty && ALLOW_SAVE) {
     work.Save();
+    dirty = false;
   }
 
   printf("Solution types (%d * 2 = %d eqs):\n"
@@ -235,6 +257,7 @@ static void DoWork() {
   while (!todo.empty()) {
 
     /*
+      if (ALLOW_SAVE)
     save_per.RunIf([&work]() {
         work.Save();
         printf(AWHITE("Saved") ".\n");
