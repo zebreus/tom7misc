@@ -14,6 +14,7 @@ struct MontgomeryParams {
   std::vector<limb> Ninv;
   // This is the representation of 1 in Montgomery form.
   std::vector<limb> R1;
+  // I think this is r in Montgomery form, which is r^2 mod m.
   std::vector<limb> R2;
   // modulus_length + 1 limbs, with a zero at the end.
   std::vector<limb> modulus;

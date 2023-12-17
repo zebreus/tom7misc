@@ -57,4 +57,8 @@ static inline int UintToInt(unsigned int value) {
   return (int)value;
 }
 
+// Same as BigInt::PrimeFactorization, but with {1, 1} for 1.
+std::vector<std::pair<BigInt, int>>
+BigIntFactor(const BigInt &to_factor);
+
 #endif

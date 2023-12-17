@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "bignum/big.h"
-#include "factor.h"
+#include "bignbr.h"
 
 int main(int argc, char* argv[]) {
   if (argc != 2) {
