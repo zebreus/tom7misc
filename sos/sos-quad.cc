@@ -1,9 +1,8 @@
 #include "sos-quad.h"
 
-#include "quad.h"
+#include "quad64.h"
 #include "base/logging.h"
 
-// PERF: Pass the factors!
 std::vector<std::pair<uint64_t, uint64_t>>
 GetWaysQuad(uint64_t sum, int num_expected_ignored,
             int num_factors,
@@ -19,13 +18,13 @@ GetWaysQuad(uint64_t sum, int num_expected_ignored,
   }
 
 
-  Solutions sols = SolveQuad(sum, factors);
+  Solutions64 sols = SolveQuad64(sum, factors);
 
   // Not a bug, but I want to know!
   CHECK(!sols.interesting_coverage) << "New coverage! " << sum;
 
   std::vector<std::pair<uint64_t, uint64_t>> ret;
-  for (const PointSolution &pt : sols.points) {
+  for (const PointSolution64 &pt : sols.points) {
     uint64_t x = pt.X;
     uint64_t y = pt.Y;
     ret.emplace_back(x, y);

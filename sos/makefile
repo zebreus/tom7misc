@@ -3,6 +3,7 @@ default: msos.exe sos.exe sos-gpu_test.exe sos-util_test.exe interesting.exe res
 
 CC_LIB=../cc-lib
 ALPERTRON64=../alpertron64
+ALPERTRON=../alpertron
 
 FLTO=-flto=auto
 
@@ -41,7 +42,7 @@ OPT=-O3
 
 # Avoid -ffast-math, which assumes std::isnan is false, for example!
 # We also rely on sqrt(double) producing exact values.
-CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) $(OPT) $(FLTO) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -I$(ALPERTRON64) -std=c++20
+CXXFLAGS=$(GMP_CFLAGS) $(PLATFORM_CXXFLAGS) $(CL_CFLAGS) $(OPT) $(FLTO) -march=native -m64 -Wall -Wno-unused-function -Wno-deprecated -Wno-sign-compare -I. -I$(CC_LIB) -I$(CC_LIB)/re2 -I$(ALPERTRON64) -I$(ALPERTRON) -std=c++20
 
 # CPPFLAGS=-DPSS_STYLE=1 -DHAVE_ASPRINTF -m64 $(OPT) -DHAVE_ALLOCA -DNOWINSTUFF $(FLTO) -I $(CC_LIB)/ -I $(CC_LIB)/re2 --std=c++20 -Wall
 
@@ -52,13 +53,15 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 
 UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/base/int128.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/city/city.o $(CC_LIB)/opt/opt.o $(CC_LIB)/top.o $(CC_LIB)/ansi.o $(CC_LIB)/factorization.o $(CC_LIB)/atomic-util.o $(CC_LIB)/interval-cover.o $(CC_LIB)/bounds.o $(CC_LIB)/bignum/big.o $(CC_LIB)/bignum/bigz.o $(CC_LIB)/bignum/bign.o $(CC_LIB)/bignum/bigq.o $(CC_LIB)/numbers.o
 
-ALPERTRON64_OBJECTS= $(ALPERTRON64)/quadmodll.o $(ALPERTRON64)/quad.o
+ALPERTRON64_OBJECTS= $(ALPERTRON64)/quadmodll64.o $(ALPERTRON64)/quad64.o
+
+ALPERTRON_OBJECTS= $(ALPERTRON)/quadmodll.o $(ALPERTRON)/quad.o $(ALPERTRON)/modmult.o $(ALPERTRON)/bignbr.o $(ALPERTRON)/bigconv.o
 
 %.o : %.cc *.h makefile
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 
-OBJECTS=sos-util.o sos-quad.o database.o predict.o polynomial.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS) $(ALPERTRON64_OBJECTS)
+OBJECTS=sos-util.o sos-quad.o database.o predict.o polynomial.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS) $(ALPERTRON64_OBJECTS) $(ALPERTRON_OBJECTS)
 
 CL_OBJECTS=$(OBJECTS) sos-gpu.o clutil.o
 
@@ -159,6 +162,10 @@ findbug.exe : findbug.o $(OBJECTS)
 	@echo -n "!"
 
 mod.exe : mod.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+solve.exe : solve.o $(OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 
