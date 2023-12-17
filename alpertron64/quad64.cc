@@ -2,20 +2,21 @@
 //
 // Copyright 2017-2021 Dario Alejandro Alpern
 //
-// Alpertron Calculators is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
+// Alpertron Calculators is free software: you can redistribute it
+// and/or modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation, either version 3 of
+// the License, or (at your option) any later version.
 //
-// Alpertron Calculators is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
+// Alpertron Calculators is distributed in the hope that it will be
+// useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+// of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+// General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Alpertron Calculators. If not, see <http://www.gnu.org/licenses/>.
+// along with Alpertron Calculators. If not, see
+// <http://www.gnu.org/licenses/>.
 
-#include "quad.h"
+#include "quad64.h"
 
 #include <memory>
 #include <vector>
@@ -29,9 +30,9 @@
 #include <string.h>
 #include <math.h>
 
-#include "quadmodll.h"
-#include "numbers.h"
+#include "quadmodll64.h"
 
+#include "numbers.h"
 #include "base/stringprintf.h"
 #include "base/logging.h"
 #include "factorization.h"
@@ -253,7 +254,7 @@ struct Quad {
 
     bool interesting = false;
     std::vector<uint64_t> values =
-      SolveEquation(modulus, factors, &interesting);
+      SolveEquation64(modulus, factors, &interesting);
 
     for (uint64_t value : values) {
       if (!SolutionX(value, modulus, e)) {
@@ -654,7 +655,7 @@ struct Quad {
 
 }  // namespace
 
-Solutions SolveQuad(uint64_t f,
+Solutions SolveQuad64(uint64_t f,
                     const std::vector<std::pair<uint64_t, int>> &factors) {
   const int expected_solutions = ChaiWahWuFromFactors(f, factors);
   std::unique_ptr<Quad> quad(new Quad(expected_solutions));

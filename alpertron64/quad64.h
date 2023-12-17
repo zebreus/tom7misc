@@ -1,5 +1,5 @@
-#ifndef _QUAD_H
-#define _QUAD_H
+#ifndef _QUAD64_H
+#define _QUAD64_H
 
 #include <string>
 #include <vector>
@@ -40,7 +40,7 @@ struct Solutions {
 // This is probably not correct for numbers larger than 2^60 or so,
 // since we sometimes do stuff like (value << 1).
 // Needs the prime factorization (e.g. from Factorization::Factorize).
-Solutions SolveQuad(
+Solutions SolveQuad64(
     uint64_t f,
     const std::vector<std::pair<uint64_t, int>> &factors);
 

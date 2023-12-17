@@ -22,7 +22,7 @@
 #include <utility>
 #include <cstdint>
 
-#include "quad.h"
+#include "quad64.h"
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 #include "factorization.h"
@@ -40,7 +40,7 @@ static Solutions Run(
   for (int i = 0; i < TIMES; i++) {
   #endif
 
-  solutions = SolveQuad(f, factors);
+  solutions = SolveQuad64(f, factors);
   #if RUN_LOOP
   DoNotOptimize(solutions);
   }

@@ -1,12 +1,11 @@
 
-#include "quad.h"
-
 #include <bit>
 #include <array>
 #include <string>
 #include <cstdio>
 #include <cstdint>
 
+#include "quad64.h"
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "threadutil.h"
@@ -42,7 +41,7 @@ static void SimpleMaxValues() {
       std::vector<std::pair<uint64_t, int>> factors =
         Factorization::Factorize(pow);
 
-      Solutions sol = SolveQuad(pow, factors);
+      Solutions sol = SolveQuad64(pow, factors);
       (void)sol;
     }
 
@@ -75,7 +74,7 @@ static void ProductOfTwo() {
           std::vector<std::pair<uint64_t, int>> factors =
             Factorization::Factorize(pow.value());
 
-          Solutions sol = SolveQuad(pow.value(), factors);
+          Solutions sol = SolveQuad64(pow.value(), factors);
           (void)sol;
         }
       }
