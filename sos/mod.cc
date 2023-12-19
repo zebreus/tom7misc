@@ -27,13 +27,22 @@
 #include "sos-gpu.h"
 #include "clutil.h"
 #include "work.h"
+#include "auto-histo.h"
 
 constexpr bool SELF_CHECK = false;
+
+// #define
 
 DECLARE_COUNTERS(tries, eliminated,
                  u3_, u4_, u5_, u6_, u7_, u8_);
 
 static CL *cl = nullptr;
+
+// Slow.
+#if DEPTH_HISTO
+static std::mutex histo_mutex;
+static AutoHisto *depth_histo = nullptr;
+#endif
 
 struct SolutionFinder {
   const MontgomeryRep64 p;
@@ -45,6 +54,8 @@ struct SolutionFinder {
     coeff_2 = p.ToMontgomery(360721);
   }
 
+  // For large p, we find a solution very quickly; the depth
+  // histogram looks like exponential falloff.
   bool HasSolutionModP(int m_int, int n_int) const {
     const Montgomery64 m = p.ToMontgomery(m_int);
     const Montgomery64 n = p.ToMontgomery(n_int);
@@ -75,6 +86,10 @@ struct SolutionFinder {
       bool sol2 = p.Eq(r2, p.One()) || p.Eq(a2n, p.Zero());
 
       if (sol1 && sol2) {
+        #if DEPTH_HISTO
+        MutexLock ml(&histo_mutex);
+        depth_histo->Observe(idx);
+        #endif
         return true;
       }
     }
@@ -132,9 +147,9 @@ static void DoWork() {
     }
 
     status_per.RunIf([&work, &run_time, &todo]() {
-        std::optional<uint32_t> recent_min;
+        std::optional<uint64_t> recent_min;
         for (const auto &[m, n] : todo) {
-          const uint32_t p = work.PrimeAt(m, n);
+          const uint64_t p = work.PrimeAt(m, n);
           if (!recent_min.has_value() ||
               p < recent_min.value()) {
             recent_min.emplace(p);
@@ -147,13 +162,13 @@ static void DoWork() {
 
         printf(ABLUE("%s") " at " AWHITE("%.2fM") "/s "
                "Elim " AGREEN("%llu") " in %s. "
-               "P: " APURPLE("%d") " "
+               "P: " APURPLE("%llu") " "
                "Left: " ACYAN("%d") "\n",
                Util::UnsignedWithCommas(done).c_str(),
                dps / 1000000.0,
                eliminated.Read(),
                ANSI::Time(sec).c_str(),
-               (int)recent_min.value_or(0),
+               recent_min.value_or(0),
                work.Remaining());
       });
 
@@ -171,10 +186,10 @@ static void DoWork() {
           // Already ruled this one out.
           if (work.GetNoSolAt(m, n)) return {-1, -1};
 
-          uint32_t last_p = work.PrimeAt(m, n);
+          uint64_t last_p = work.PrimeAt(m, n);
           for (int i = 0; i < DEPTH; i++) {
             // Otherwise, get old upper bound.
-            const uint32_t p = Factorization::NextPrime(last_p);
+            const uint64_t p = Factorization::NextPrime(last_p);
 
             SolutionFinder finder(p);
 
@@ -208,7 +223,7 @@ static void DoWorkBatch(
     Work *work,
     uint64_t p, std::vector<std::pair<int, int>> batch) {
 
-  static constexpr int ISPRIME_HEIGHT = 65536;
+  static constexpr int ISPRIME_HEIGHT = 65536 * 2;
   IsPrimeGPU isprime_gpu(cl, ISPRIME_HEIGHT);
 
   Periodically save_per(60);
@@ -236,6 +251,12 @@ static void DoWorkBatch(
     }
 
     save_per.RunIf([&work]() {
+        #if DEPTH_HISTO
+        printf("Depth histo:\n"
+               "%s\n",
+               depth_histo->SimpleANSI(20).c_str());
+        #endif
+
         work->Save();
         printf(AWHITE("Saved") ".\n");
       });
@@ -271,14 +292,17 @@ static void DoWorkBatch(
       if (prime_bytemask[i]) {
         uint64_t prime = p + (i * 2);
 
-        if (prime > 0x80000000ULL) {
-          work->Save();
-          CHECK(false) << "Need to expand database to support 64-bit primes!";
+        if (SELF_CHECK) {
+          CHECK(Factorization::IsPrime(prime));
         }
 
         SolutionFinder finder(prime);
 
         // PERF: Do on GPU!
+        // Note that this is fast on CPU because we often find a
+        // solution right away (see depth histo). So GPU code should
+        // probably be separated into a pre-pass (just try like 32)
+        // and full pass.
         ParallelApp(batch, [&work, &mut, &done, &finder, prime](
             const std::pair<int, int> &mn) {
             const auto &[m, n] = mn;
@@ -338,11 +362,11 @@ static std::pair<uint64_t, std::vector<std::pair<int, int>>> CatchUp(
 
   Timer timer;
   // Get the maximum p.
-  std::optional<uint32_t> catch_up_p = 0;
+  std::optional<uint64_t> catch_up_p = 0;
   for (int m = -333; m <= 333; m++) {
     for (int n = -333; n <= 333; n++) {
       if (work->GetNoSolAt(m, n) == 0 && Work::Eligible(m, n)) {
-        uint32_t p = work->PrimeAt(m, n);
+        uint64_t p = work->PrimeAt(m, n);
         if (!catch_up_p.has_value() || p > catch_up_p.value()) {
           catch_up_p.emplace(p);
         }
@@ -411,6 +435,9 @@ int main(int argc, char **argv) {
   ANSI::Init();
 
   cl = new CL;
+  #if DEPTH_HISTO
+  depth_histo = new AutoHisto(1000000);
+  #endif
 
   // Early
   // DoWork();

@@ -25,11 +25,11 @@ struct Work {
   // equation is not solvable at all. Since it's composite, it can be
   // distguished from any valid entry (would be prime) for a modulus
   // found with mod.exe.
-  static constexpr uint32_t NOSOL_ALPERTRON = 0xFF0000FF;
+  static constexpr uint64_t NOSOL_ALPERTRON = 0x00000000'FF0000FF;
   // Eliminated because one of the equations has finite solutions,
   // and we can determine that the other cannot have a compatible
   // solution.
-  static constexpr uint32_t NOSOL_ALPERTRON_FINITE = 0xFFFF00FF;
+  static constexpr uint64_t NOSOL_ALPERTRON_FINITE = 0x00000000'FFFF00FF;
 
   // We store the whole rectangle (and have eliminated a lot of it) but
   // focus on the cells we actually care about, since they would improve
@@ -38,7 +38,7 @@ struct Work {
     return abs(m) + abs(n) < 333;
   }
 
-  inline uint32_t &PrimeAt(int m, int n) {
+  inline uint64_t &PrimeAt(int m, int n) {
     ECHECK(m >= -333 && m <= 333 &&
            n >= -333 && n <= 333) << m << "," << n;
     const int y = m + 333;
@@ -46,7 +46,7 @@ struct Work {
     return prime[y * WIDTH + x];
   }
 
-  void SetNoSolAt(int m, int n, uint32_t p) {
+  void SetNoSolAt(int m, int n, uint64_t p) {
     ECHECK(m >= -333 && m <= 333 &&
            n >= -333 && n <= 333) << m << "," << n;
     const int y = m + 333;
@@ -58,7 +58,7 @@ struct Work {
     nosol[y * WIDTH + x] = p;
   }
 
-  uint32_t GetNoSolAt(int m, int n) const {
+  uint64_t GetNoSolAt(int m, int n) const {
     ECHECK(m >= -333 && m <= 333 &&
            n >= -333 && n <= 333) << m << "," << n;
     const int y = m + 333;
@@ -81,8 +81,10 @@ struct Work {
   }
 
   void Save() {
-    ImageRGBA prime_image(WIDTH, HEIGHT);
-    ImageRGBA nosol_image(WIDTH, HEIGHT);
+    // 64-bit, so using two pixels per cell.
+    ImageRGBA prime_image(WIDTH * 2, HEIGHT);
+    ImageRGBA nosol_image(WIDTH * 2, HEIGHT);
+    // This is just for looking at, so it is square.
     ImageRGBA eliminated(WIDTH, HEIGHT);
 
     // Get remaining rows, cols.
@@ -108,9 +110,13 @@ struct Work {
 
         const bool col_remains = cols.contains(n);
 
-        prime_image.SetPixel32(x, y, PrimeAt(m, n));
-        uint32_t ns = GetNoSolAt(m, n);
-        nosol_image.SetPixel32(x, y, ns);
+        const auto [ph, pl] = Unpack64(PrimeAt(m, n));
+        prime_image.SetPixel32(x * 2 + 0, y, ph);
+        prime_image.SetPixel32(x * 2 + 1, y, pl);
+        uint64_t ns = GetNoSolAt(m, n);
+        const auto [nh, nl] = Unpack64(ns);
+        nosol_image.SetPixel32(x * 2 + 0, y, nh);
+        nosol_image.SetPixel32(x * 2 + 1, y, nl);
 
         if (ns == 0) {
           eliminated.SetPixel32(x, y, 0x000000FF);
@@ -149,13 +155,19 @@ struct Work {
       return;
     }
 
+    CHECK(prime_image->Width() == WIDTH * 2);
+    CHECK(prime_image->Height() == HEIGHT);
+
     for (int y = 0; y < HEIGHT; y++) {
       const int m = y - 333;
       for (int x = 0; x < WIDTH; x++) {
         const int n = x - 333;
 
-        PrimeAt(m, n) = prime_image->GetPixel32(x, y);
-        SetNoSolAt(m, n, nosol_image->GetPixel32(x, y));
+        PrimeAt(m, n) = Pack64(prime_image->GetPixel32(x * 2 + 0, y),
+                               prime_image->GetPixel32(x * 2 + 1, y));
+
+        SetNoSolAt(m, n, Pack64(nosol_image->GetPixel32(x * 2 + 0, y),
+                                nosol_image->GetPixel32(x * 2 + 1, y)));
       }
     }
   }
@@ -166,14 +178,24 @@ private:
   static constexpr int WIDTH = 667;
   static constexpr int HEIGHT = 667;
 
+  static inline std::pair<uint32_t, uint32_t> Unpack64(uint64_t w) {
+    uint32_t h = w >> 32;
+    uint32_t l = w;
+    return std::make_pair(h, l);
+  }
+
+  static inline uint64_t Pack64(uint32_t h, uint32_t l) {
+    return (uint64_t(h) << 32) | uint64_t(l);
+  }
+
   int remaining = 0;
 
   // Both arrays are size WIDTH * HEIGHT.
   // The largest prime that we've tried (or zero).
-  std::vector<uint32_t> prime;
+  std::vector<uint64_t> prime;
   // If nonzero, then we checked that there is no solution mod this
   // prime. This means there's no solution on integers.
-  std::vector<uint32_t> nosol;
+  std::vector<uint64_t> nosol;
 };
 
 #endif

@@ -384,6 +384,21 @@ static void DoWork() {
     }
   }
 
+  // TODO: For some prime p, compute all the residues reachable for
+  // each solution. We can do this by reducing the recurrence and
+  // start points to Montgomery64. Then if we find (m,n) where they
+  // have no (x) residues in common, we can eliminate that pair.
+  //
+  // Is this any different from what we're already doing in mod?
+  // We check ALL the possible solutions mod the prime there. So this
+  // might be more efficient (and maybe worth doing for that reason)
+  // but won't find new eliminations.
+  //
+  // We could this for large moduli that are related to the problem,
+  // like the coefficients of the recurrence. Given that these are 300+
+  // digits, we would need for the sets to be extremely sparse, but
+  // it is plausible if the recurrences become degenerate?
+
   return;
 
 
@@ -427,89 +442,6 @@ static void DoWork() {
          points, rec);
 
   printf("Took %s\n", ANSI::Time(sol_timer.Seconds()).c_str());
-
-  #if 0
-  Timer run_time;
-  while (!todo.empty()) {
-
-    /*
-      if (ALLOW_SAVE)
-    save_per.RunIf([&work]() {
-        work.Save();
-        printf(AWHITE("Saved") ".\n");
-      });
-    */
-
-    #if 0
-    status_per.RunIf([&work, &run_time, &todo]() {
-        std::optional<uint32_t> recent_min;
-        for (const auto &[m, n] : todo) {
-          const uint32_t p = work.PrimeAt(m, n);
-          if (!recent_min.has_value() ||
-              p < recent_min.value()) {
-            recent_min.emplace(p);
-          }
-        }
-
-        double sec = run_time.Seconds();
-        uint64_t done = tries.Read();
-        double dps = done / sec;
-
-        printf(ABLUE("%s") " at " AWHITE("%.2fM") "/s "
-               "Elim " AGREEN("%llu") " in %s. "
-               "P: " APURPLE("%d") " "
-               "Left: " ACYAN("%d") "\n",
-               Util::UnsignedWithCommas(done).c_str(),
-               dps / 1000000.0,
-               eliminated.Read(),
-               ANSI::Time(sec).c_str(),
-               (int)recent_min.value_or(0),
-               work.Remaining());
-      });
-    #endif
-
-
-    // PERF: We could synchronize all the primes and then just
-    // convert to Montgomery form once (including the coefficients).
-    // This would also save us a lot of NextPrime calls.
-    //
-    // PERF: Suited to GPU!
-    std::vector<std::pair<int, int>> res =
-      ParallelMap(todo, [&work](const std::pair<int, int> &mn) ->
-      std::pair<int, int> {
-          const auto &[m, n] = mn;
-          // Already ruled this one out.
-          if (work.GetNoSolAt(m, n)) return {-1, -1};
-
-          uint32_t last_p = work.PrimeAt(m, n);
-          for (int i = 0; i < DEPTH; i++) {
-            // Otherwise, get old upper bound.
-            const uint32_t p = Factorization::NextPrime(last_p);
-
-            SolutionFinder finder(p);
-
-            // Now solve the simultaneous equations mod p.
-            if (!finder.HasSolutionModP(m, n)) {
-              eliminated++;
-              return {p, p};
-            }
-
-            last_p = p;
-          }
-
-          tries += DEPTH;
-          return {-1, last_p};
-        }, 8);
-
-    // Write results without lock.
-    for (int i = 0; i < todo.size(); i++) {
-      const auto &[m, n] = todo[i];
-      const auto &[sol, p] = res[i];
-      if (sol != -1) work.SetNoSolAt(m, n, sol);
-      if (p != -1) work.PrimeAt(m, n) = p;
-    }
-  }
-#endif
 }
 
 
