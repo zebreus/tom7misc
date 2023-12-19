@@ -231,4 +231,14 @@ inline bool operator !=(int64_t a, const BigInt &b) {
   return !BigInt::Eq(b, a);
 }
 
+template<>
+struct std::hash<BigInt> {
+  std::size_t operator()(const BigInt& k) const {
+    // XXX: This just uses the low word, but it would be less
+    // surprising to depend on the whole thing (even if it
+    // might not actually be more efficient for many uses).
+    return (size_t)BigInt::LowWord(k);
+  }
+};
+
 #endif
