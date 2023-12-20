@@ -3,6 +3,12 @@
 #include "sos-gpu.h"
 #include "clutil.h"
 
+#include <mutex>
+#include <vector>
+#include <utility>
+#include <optional>
+#include <string>
+
 #include "base/logging.h"
 #include "ansi.h"
 #include "periodically.h"
@@ -637,18 +643,9 @@ static void TestIsPrime() {
   printf(AGREEN("OK") "\n");
 }
 
-static void TestModQuick() {
-  ModQuickPassGPU quick_pass(cl, 2, 3);
-
-
-}
-
-
 int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
-
-  TestModQuick();
 
   TestEligibleFilter();
   TestFixedTryFilter();

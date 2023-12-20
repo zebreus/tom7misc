@@ -63,7 +63,7 @@ ALPERTRON_OBJECTS= $(ALPERTRON)/quadmodll.o $(ALPERTRON)/quad.o $(ALPERTRON)/mod
 
 OBJECTS=sos-util.o sos-quad.o database.o predict.o polynomial.o bhaskara-util.o $(RE2_OBJECTS) $(UTIL_OBJECTS) $(ALPERTRON64_OBJECTS) $(ALPERTRON_OBJECTS)
 
-CL_OBJECTS=$(OBJECTS) sos-gpu.o clutil.o
+CL_OBJECTS=$(OBJECTS) sos-gpu.o mod-gpu.o clutil.o
 
 sos.exe : sos.o $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
@@ -158,6 +158,10 @@ makebin.exe : makebin.o $(OBJECTS)
 	@echo -n "!"
 
 findbug.exe : findbug.o $(OBJECTS)
+	@$(CXX) $^ -o $@ $(LFLAGS)
+	@echo -n "!"
+
+mod-gpu_test.exe : mod-gpu_test.o $(OBJECTS) $(CL_OBJECTS)
 	@$(CXX) $^ -o $@ $(LFLAGS)
 	@echo -n "!"
 

@@ -30,6 +30,7 @@
 #include "sos-gpu.h"
 #include "clutil.h"
 #include "mod-util.h"
+#include "mod-gpu.h"
 #include "auto-histo.h"
 
 constexpr bool SELF_CHECK = false;

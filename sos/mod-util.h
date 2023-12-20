@@ -12,6 +12,7 @@
 #include <cstdint>
 
 #include "image.h"
+#include "montgomery64.h"
 #include "base/logging.h"
 
 // #define ECHECK(s) CHECK(s)
@@ -232,9 +233,21 @@ struct SolutionFinder {
     coeff_2 = p.ToMontgomery(360721);
   }
 
+  bool HasSolutionModP(int64_t m_int, int64_t n_int) const {
+    return HasSolutionModPInternal<-1>(m_int, n_int);
+  }
+
+  template<int NUM>
+  bool QuickHasSolutionModP(int64_t m_int, int64_t n_int) const {
+    static_assert(NUM > 0);
+    return HasSolutionModPInternal<NUM>(m_int, n_int);
+  }
+
+private:
   // For large p, we find a solution very quickly; the depth
   // histogram looks like exponential falloff.
-  bool HasSolutionModP(int64_t m_int, int64_t n_int) const {
+  template<int NUM_TO_CHECK>
+  bool HasSolutionModPInternal(int64_t m_int, int64_t n_int) const {
     if (m_int < 0) m_int += p.modulus;
     if (n_int < 0) n_int += p.modulus;
 
@@ -245,7 +258,15 @@ struct SolutionFinder {
     const Montgomery64 neg_m = p.Negate(m);
     const Montgomery64 neg_n = p.Negate(n);
 
-    for (int64_t idx = 0; idx < p.Modulus(); idx++) {
+    const int64_t limit = [&]() {
+        if constexpr (NUM_TO_CHECK < 0) {
+          return p.Modulus();
+        } else {
+          return NUM_TO_CHECK;
+        }
+      }();
+
+    for (int64_t idx = 0; idx < limit; idx++) {
       // Get one of the residues. We don't care what order we
       // do them in; we just need to try them all.
       Montgomery64 a = p.Nth(idx);
