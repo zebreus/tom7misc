@@ -24,7 +24,7 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 
-#include "work.h"
+#include "mod-util.h"
 #include "bignum/big.h"
 #include "bignum/big-overloads.h"
 

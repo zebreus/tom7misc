@@ -637,10 +637,18 @@ static void TestIsPrime() {
   printf(AGREEN("OK") "\n");
 }
 
+static void TestModQuick() {
+  ModQuickPassGPU quick_pass(cl, 2, 3);
+
+
+}
+
 
 int main(int argc, char **argv) {
   ANSI::Init();
   cl = new CL;
+
+  TestModQuick();
 
   TestEligibleFilter();
   TestFixedTryFilter();

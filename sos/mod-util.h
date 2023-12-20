@@ -1,9 +1,8 @@
 
-// 666x666 grid for finding multiples.
-// TODO: A better name!
+// Utilities for mod/solve.
 
-#ifndef _WORK_H
-#define _WORK_H
+#ifndef _MOD_UTIL_H
+#define _MOD_UTIL_H
 
 #include <unordered_set>
 #include <cmath>
@@ -18,6 +17,7 @@
 // #define ECHECK(s) CHECK(s)
 #define ECHECK(s) if (0) std::cout << ""
 
+// TODO: A better name!
 // Since we already have a solution with overall error (|m| + |n|) 333,
 // we only try candidates in [-333, 333].
 struct Work {
@@ -126,10 +126,9 @@ struct Work {
 
           int s = Eligible(m, n) ? 0 : 1;
 
-          uint8_t b = 0;
+          uint8_t b = 0x6f;
           if (!row_remains || !col_remains) {
             b = 0x8f;
-            s++;
           }
 
           eliminated.SetPixel(x, y, r >> s, g >> s, b, 0xFF);
@@ -155,8 +154,19 @@ struct Work {
       return;
     }
 
-    CHECK(prime_image->Width() == WIDTH * 2);
     CHECK(prime_image->Height() == HEIGHT);
+    CHECK(nosol_image->Height() == HEIGHT);
+
+    CHECK(prime_image->Width() == nosol_image->Width());
+
+    // Perhaps load old format.
+    if (prime_image->Width() == WIDTH) {
+      prime_image = Widen(*prime_image);
+      nosol_image = Widen(*nosol_image);
+    }
+
+    CHECK(prime_image->Width() == WIDTH * 2);
+    CHECK(nosol_image->Width() == WIDTH * 2);
 
     for (int y = 0; y < HEIGHT; y++) {
       const int m = y - 333;
@@ -178,6 +188,20 @@ private:
   static constexpr int WIDTH = 667;
   static constexpr int HEIGHT = 667;
 
+  std::unique_ptr<ImageRGBA> Widen(const ImageRGBA &img) {
+    std::unique_ptr<ImageRGBA> wide =
+      std::make_unique<ImageRGBA>(WIDTH * 2, HEIGHT);
+    // Zeroes for high word.
+    wide->Clear32(0x00000000);
+
+    for (int y = 0; y < HEIGHT; y++) {
+      for (int x = 0; x < WIDTH; x++) {
+        wide->SetPixel32(x * 2 + 1, y, img.GetPixel32(x, y));
+      }
+    }
+    return wide;
+  }
+
   static inline std::pair<uint32_t, uint32_t> Unpack64(uint64_t w) {
     uint32_t h = w >> 32;
     uint32_t l = w;
@@ -196,6 +220,64 @@ private:
   // If nonzero, then we checked that there is no solution mod this
   // prime. This means there's no solution on integers.
   std::vector<uint64_t> nosol;
+};
+
+struct SolutionFinder {
+  const MontgomeryRep64 p;
+  Montgomery64 coeff_1;
+  Montgomery64 coeff_2;
+
+  explicit SolutionFinder(uint64_t p_int) : p(p_int) {
+    coeff_1 = p.ToMontgomery(222121);
+    coeff_2 = p.ToMontgomery(360721);
+  }
+
+  // For large p, we find a solution very quickly; the depth
+  // histogram looks like exponential falloff.
+  bool HasSolutionModP(int64_t m_int, int64_t n_int) const {
+    if (m_int < 0) m_int += p.modulus;
+    if (n_int < 0) n_int += p.modulus;
+
+    const Montgomery64 m = p.ToMontgomery(m_int);
+    const Montgomery64 n = p.ToMontgomery(n_int);
+
+    // Sub is a little faster, so pre-negate these.
+    const Montgomery64 neg_m = p.Negate(m);
+    const Montgomery64 neg_n = p.Negate(n);
+
+    for (int64_t idx = 0; idx < p.Modulus(); idx++) {
+      // Get one of the residues. We don't care what order we
+      // do them in; we just need to try them all.
+      Montgomery64 a = p.Nth(idx);
+      Montgomery64 aa = p.Mult(a, a);
+
+      // 222121 a^2 - (-m) = b^2
+      // 360721 a^2 - (-n) = c^2
+
+      Montgomery64 a1m = p.Sub(p.Mult(coeff_1, aa), neg_m);
+      Montgomery64 a2n = p.Sub(p.Mult(coeff_2, aa), neg_n);
+
+      // Compute Euler criteria. a^((p-1) / 2) must be 1.
+      // Since p is odd, we can just shift down by one
+      // to compute (p - 1)/2.
+      const auto &[r1, r2] = p.Pows(std::array<Montgomery64, 2>{a1m, a2n},
+                                    p.Modulus() >> 1);
+
+      bool sol1 = p.Eq(r1, p.One()) || p.Eq(a1m, p.Zero());
+      bool sol2 = p.Eq(r2, p.One()) || p.Eq(a2n, p.Zero());
+
+      if (sol1 && sol2) {
+        #if DEPTH_HISTO
+        MutexLock ml(&histo_mutex);
+        depth_histo->Observe(idx);
+        #endif
+        return true;
+      }
+    }
+
+    return false;
+  }
+
 };
 
 #endif

@@ -557,3 +557,14 @@ IsPrimeGPU::GetPrimes(uint64_t start_idx) {
 
   return CopyBufferFromGPU<uint8_t>(cl->queue, out_gpu, height);
 }
+
+
+std::vector<ModQuickPassGPU::FullRun>
+ModQuickPassGPU::Run(const std::vector<uint64_t> &primes,
+                     const std::vector<std::pair<int, int>> &mn) {
+  CHECK(primes.size() == width);
+  CHECK(mn.size() == height);
+
+  CHECK(false) << "unimplemented!";
+  return {};
+}
