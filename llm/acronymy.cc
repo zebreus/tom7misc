@@ -96,8 +96,9 @@ int main(int argc, char ** argv) {
   ContextParams cparams;
   // cparams.model = "llama2/7b/ggml-model-q4_0.gguf";
   // cparams.model = "llama2/7b/ggml-model-q8_0.gguf";
-  //  cparams.model = "llama2/70b/ggml-model-f16.gguf";
-  cparams.model = "llama2/7b/ggml-model-Q2_K.gguf";
+  // cparams.model = "llama2/70b/ggml-model-f16.gguf";
+  // cparams.model = "llama2/7b/ggml-model-Q2_K.gguf";
+  cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
 
   SamplerParams sparams;
   sparams.type = SampleType::MIROSTAT_2;
@@ -113,19 +114,10 @@ int main(int argc, char ** argv) {
     };
 
   std::vector<std::string> words = {
-    "essence",
-    "essence",
-    "essence",
-    "essence",
-    "essence",
-    "essence",
-    "essence",
-    "essence",
-    "essence",
-    "essence",
-    "essence",
-    "essence",
-
+    "upholder",
+    "upholder",    "upholder",    "upholder",    "upholder",    "upholder",    "upholder",
+    "upholder",    "upholder",    "upholder",    "upholder",    "upholder",
+    "upholder",    "upholder",    "upholder",    "upholder",    "upholder",
     /*
     "cerebral",
     "violence",

@@ -147,27 +147,6 @@ struct Chatting {
     for (;;) {
       CHECK(!lines.empty());
 
-      // Get and commit a token.
-      int id = llm->Sample();
-      llm->TakeTokenBatch({id});
-      string tok = llm->context.TokenString(id);
-      lines.back().text += tok;
-
-      printf("%s", tok.c_str());
-      fflush(stdout);
-
-      // TODO: Maybe don't want to output this eagerly
-      // if we have rewinding/edits/etc.
-      if (outfile != nullptr) {
-        fprintf(outfile, "%s", tok.c_str());
-      }
-
-      AdvanceString(tok, &ends_newline_matcher);
-      AdvanceString(tok, &user_matcher);
-      if (ends_newline_matcher.IsMatching()) {
-        NewLine();
-      }
-
       if (user_matcher.IsMatching()) {
         if (outfile != nullptr) {
           fflush(outfile);
@@ -199,6 +178,19 @@ struct Chatting {
               fprintf(outfile, "(canceled)\n%s", full_line.c_str());
             }
 
+            llm->sampler.ResetRegEx();
+
+            // If we force something that doesn't conform to the grammars,
+            // reset the matchers so that we don't get off the rails.
+
+            // This can't happen because we just reset it.
+            CHECK(!llm->sampler.Stuck());
+
+            if (user_matcher.Stuck()) {
+              printf(ARED("Reset user matcher") "\n");
+              user_matcher = ByteNFAMatcher(user_nfa);
+            }
+
             NewLine();
           };
 
@@ -219,14 +211,50 @@ struct Chatting {
 
           ForceLine(StringPrintf("<%s> %s", user.c_str(), input.c_str()));
 
-        } else if (Util::TryStripPrefix("/pass ", &input)) {
+        } else if (Util::TryStripPrefix("/undo", &input)) {
+          // /undo N means remove N of the last chat lines.
+
+          input = Util::NormalizeWhitespace(input);
+          int num = input.empty() ? 1 : atoi(input.c_str());
+
+          // Index of the element we rewind to.
+          int new_size = lines.size() - num;
+          CHECK(new_size > 0);
+
+          for (int i = new_size - 1; i < (int)lines.size(); i++) {
+            printf(AGREY("Struck [%s]") "\n", lines[i].text.c_str());
+          }
+          if (outfile != nullptr) {
+            fprintf(outfile, "(struck %d)", num);
+          }
+
+          lines.resize(new_size);
+
+          if (lines.size() > 1) {
+            printf("%s\n", lines[lines.size() - 2].text.c_str());
+          }
+
+          lines.back().text = "";
+          llm->LoadState(lines.back().state);
+          // FIXME: Workaround bug :(
+          llm->sampler.ResetRegEx();
+
+          user_matcher = lines.back().user_matcher;
+
+          // Don't predict the exact same thing!
+          llm->NewRNG();
+
+        } else if (Util::TryStripPrefix("/pass", &input)) {
           // This means to force a different user to speak.
 
-          string other = GetOtherParticipant();
+          input = Util::NormalizeWhitespace(input);
+
+          string other = input.empty() ? GetOtherParticipant() : input;
           // This could also be "act" type.
           // Another (better?) way to accomplish this would be to set a regex
           // of just others speaking...
           std::string start_line = StringPrintf("<%s>", other.c_str());
+          printf("%s", start_line.c_str());
 
           lines.back().text = start_line;
           llm->LoadState(lines.back().state);
@@ -242,13 +270,28 @@ struct Chatting {
             fprintf(outfile, "(pass)\n%s", start_line.c_str());
           }
 
+        } else if (Util::TryStripPrefix("/save ", &input)) {
+          // /save file
+
+          input = Util::NormalizeWhitespace(input);
+          if (input.empty()) input = "chat.txt";
+          std::string contents;
+          for (const ChatLine &line : lines) {
+            StringAppendF(&contents, "%s\n", line.text.c_str());
+          }
+          Util::WriteFile(input, contents);
+          printf(AGREY("Wrote %s") "\n", input.c_str());
+
         } else {
           // Normal chat, continuing the prompt (whether it's <User> or * User).
 
           // If last token didn't include the space, insert it.
-          if (tok[tok.size() - 1] != ' ') {
+          if (lines.back().text.back() != ' ') {
+          // if (tok[tok.size() - 1] != ' ') {
             input = " " + input;
           }
+
+          lines.back().text += input;
 
           input += "\n";
           llm->InsertString(input);
@@ -260,14 +303,30 @@ struct Chatting {
 
           NewLine();
         }
+      } else {
+
+        // Get and commit a token.
+        int id = llm->Sample();
+        llm->TakeTokenBatch({id});
+        string tok = llm->context.TokenString(id);
+        lines.back().text += tok;
+
+        printf("%s", tok.c_str());
+        fflush(stdout);
+
+        // TODO: Maybe don't want to output this eagerly
+        // if we have rewinding/edits/etc.
+        if (outfile != nullptr) {
+          fprintf(outfile, "%s", tok.c_str());
+        }
+
+        AdvanceString(tok, &ends_newline_matcher);
+        AdvanceString(tok, &user_matcher);
+        if (ends_newline_matcher.IsMatching()) {
+          NewLine();
+        }
       }
 
-      if (llm->sampler.Stuck()) {
-        printf("\n(Output regex: " ARED("STUCK") ".)\n");
-        printf("Last:\n");
-        llm->sampler.PrintLast();
-        return;
-      }
     }
   }
 };
@@ -285,7 +344,7 @@ int main(int argc, char ** argv) {
   printf("Prompt: [%s]\n", prompt.c_str());
   CHECK(!prompt.empty()) << argv[2];
   std::vector<std::string> ppts = Util::Split(Util::getline(prompt), ',');
-  CHECK(ContainsVector(ppts, user)) << "The user " << user << " must be "
+  CHECK(VectorContains(ppts, user)) << "The user " << user << " must be "
     "in the participants list. This is case-sensitive.";
 
   // AnsiInit();
@@ -306,6 +365,7 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
 
   // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
+  // cparams.model = "e:\\llama2\\7b\\ggml-model-q8_0.gguf";
   cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
   // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
 
