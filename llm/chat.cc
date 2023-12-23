@@ -1,4 +1,13 @@
 
+// Multi-party chat. This uses structured messages (IRC style) which
+// makes it cleaner to manipulate the chat and keep on topic.
+//
+// After the preamble (prompt) the chat is a series of lines. Each one
+// is of the form
+// <Participant> Some text they say.\n
+// or
+//  * Participant does some action.\n"
+
 #include "llama.h"
 
 #include <algorithm>
@@ -31,10 +40,12 @@
 
 using namespace std;
 
-static ByteNFA MakeRegex(const std::string &regex) {
+static constexpr bool VERBOSE = false;
+
+static ByteNFA MakeNFA(const std::string &regex) {
   auto enfa = Parse(regex);
   auto nfa = RemoveEpsilon<256>(enfa);
-  {
+  if (VERBOSE) {
     auto [et, es] = NFADebugSize(enfa);
     auto [t, s] = NFADebugSize(nfa);
     printf("For regex: " ABLUE("%s") "\n"
@@ -45,15 +56,29 @@ static ByteNFA MakeRegex(const std::string &regex) {
   return nfa;
 }
 
+// A completed line in the chat's history.
 struct ChatLine {
-  // The full text with no newline, like "<Tom> This is chat line."
+  std::string participant;
+  // The full text with no newline or leading space like "Hello!"
+  // in "<Tom> Hello!" or "slaps llama2 around a bit with a large trout"
+  // in " * Tom slaps llama2 around a bit with a large trout".
   std::string text;
   // The state right before the line (i.e. right after the preceding
   // newline).
   LLM::State state;
-  // backup of this as well
-  ByteNFAMatcher user_matcher;
+  bool is_action = false;
 };
+
+struct LineInProgress {
+  // ...
+};
+
+static std::string MakeParticipantRegex(
+    const std::vector<std::string> &ppts) {
+  string user_alt = Util::Join(ppts, "|");
+  return StringPrintf("((<(%s)>|\\* (%s)) [^ \n][^\n]*\n)*",
+                      user_alt.c_str(), user_alt.c_str());
+}
 
 struct Chatting {
   ArcFour rc;
@@ -61,16 +86,14 @@ struct Chatting {
   const std::vector<std::string> participants;
   const string user;
   const string prompt;
-  FILE *outfile = nullptr;
 
   Chatting(LLM *llm,
            const std::vector<std::string> &participants,
            const string &user,
-           const string &prompt,
-           FILE *outfile) :
+           const string &prompt) :
     rc(StringPrintf("chat.%lld", (int64_t)time(nullptr))),
     llm(llm), participants(participants),
-    user(user), outfile(outfile) {
+    user(user) {
 
     Initialize(prompt);
 
@@ -78,264 +101,285 @@ struct Chatting {
     // with either ">" or "> ". I think that is the case for llama,
     // though we could check or implement this a different way.
     const string user_regex =
-      StringPrintf(".*\n( *<%s> ?| *\\* %s ?)", user.c_str(), user.c_str());
-    user_nfa = MakeRegex(user_regex);
-
-    // So that we can save state whenever a chat line comes in.
-    const string ends_newline_regex = ".*\n";
-    ends_newline_nfa = MakeRegex(ends_newline_regex);
-
+      StringPrintf("(<%s> ?| \\* %s ?)",
+                   user.c_str(), user.c_str());
+    user_nfa = MakeNFA(user_regex);
   }
 
-  ByteNFA user_nfa, ends_newline_nfa;
+  ByteNFA user_nfa;
+
+  // Reset the sampler regex to allow any participant to speak,
+  // when we're at the beginning of a line.
+  void ResetRegex() {
+    llm->sampler.SetRegEx(MakeParticipantRegex(participants));
+  }
 
   void Initialize(const std::string &prompt) {
     printf("Initializing prompt of %d chars\n", (int)prompt.size());
 
     Timer startup_timer;
     llm->Reset();
-    if (outfile == nullptr) {
-      printf("%s", prompt.c_str());
-      fflush(stdout);
-    } else {
-      fprintf(outfile, "%s", prompt.c_str());
-    }
+    printf("%s", prompt.c_str());
+    fflush(stdout);
 
     // printf("NFA\n%s\n", llm->sampler.nfa.DebugString().c_str());
 
     llm->DoPrompt(prompt);
     // Reset regex, since the prompt may not have followed it.
-    llm->sampler.ResetRegEx();
+    ResetRegex();
+
+    // XXX add lines to history with FinishLine.
+
+    current_line.clear();
+    start_line_state = llm->SaveState();
 
     printf("Finished the prompt in %s\n",
            ANSI::Time(startup_timer.Seconds()).c_str());
   }
 
-  std::string GetOtherParticipant() {
-    int idx = RandTo(&rc, participants.size() - 1);
+  // Get all the NPC participants.
+  std::vector<std::string> GetOtherParticipants() const {
+    std::vector<std::string> others;
     for (int i = 0; i < (int)participants.size(); i++) {
-      if (participants[i] == user) continue;
-      if (idx == 0) return participants[i];
-      idx--;
+      if (participants[i] != user) {
+        others.push_back(participants[i]);
+      }
     }
-    CHECK(false) << "Impossible!";
-    return "";
+    return others;
   }
 
-  void Chat() {
+  // Chat history.
+  std::vector<ChatLine> lines;
 
-    ByteNFAMatcher user_matcher(user_nfa);
-    AdvanceString("\n", &user_matcher);
+  // Current line.
+  // No need to parse this until we have a complete line.
+  std::string current_line;
+  LLM::State start_line_state;
 
-    std::vector<ChatLine> lines;
+  // Fills in participant, text, is_action.
+  std::optional<ChatLine> ParseLine(const std::string &line_in) {
+    std::string line = Util::LoseWhiteL(line_in);
+    if (line.empty()) return std::nullopt;
 
-    ByteNFAMatcher ends_newline_matcher(ends_newline_nfa);
+    if (line[0] == '*' && line[1] == ' ') {
+      line = line.substr(2, string::npos);
+      string ppt = Util::chopto(' ', line);
+      ChatLine chat;
+      chat.participant = std::move(ppt);
+      chat.text = Util::LoseWhiteL(line);
+      chat.is_action = true;
+      return {chat};
 
-    auto NewLine = [this, &lines, &user_matcher]() {
-        lines.emplace_back(ChatLine{
-            .text = "",
-            .state = llm->SaveState(),
-            .user_matcher = user_matcher,
-          });
-      };
+    } else if (line[0] == '<') {
+      line = line.substr(1, string::npos);
+      string ppt = Util::chopto('>', line);
+      ChatLine chat;
+      chat.participant = std::move(ppt);
+      chat.text = Util::LoseWhiteL(line);
+      chat.is_action = false;
+      return {chat};
 
-    // Could initialize lines from the prompt, if it contains chat
-    // lines. But we have to at least have a last entry in there,
-    // since that is modified in place.
-    NewLine();
+    } else {
+      return std::nullopt;
+    }
+  }
+
+  // Add a line to history and reset. Usually line is current_line,
+  // but this is also used to initialize history from the prompt.
+  void FinishLine(const std::string &line_in) {
+    // TODO: parse line, push into lines.
+    std::optional<ChatLine> oline = ParseLine(line_in);
+    if (oline.has_value()) {
+      ChatLine chatline = std::move(oline.value());
+      chatline.state = llm->SaveState();
+      lines.emplace_back(std::move(chatline));
+    } else {
+      printf(ARED("Couldn't parse") "[%s]\n", line_in.c_str());
+      // So we just don't add it.
+    }
+
+    // Reset state.
+    current_line.clear();
+    start_line_state = llm->SaveState();
+    ResetRegex();
+  }
+
+  // Clear anything in the current line and force the argument.
+  void ForceLine(std::string full_line) {
+    CHECK(full_line.back() != '\n');
+    printf(AGREY("Forced [%s]") "\n", full_line.c_str());
+    full_line += "\n";
+
+    // First we back up to the beginning of the current line.
+    current_line.clear();
+    llm->LoadState(start_line_state);
+    // XXX: This should not be necessary, but state save/load
+    // has a bug with a stale reference from matcher to parent nfa :(
+    ResetRegex();
+
+    llm->InsertString(full_line);
+
+    FinishLine(full_line);
+  }
+
+  void DoUserInput() {
+    printf(AWHITE(":") AGREEN("> "));
+    fflush(stdout);
+
+    string input;
+    getline(cin, input);
 
     for (;;) {
-      CHECK(!lines.empty());
+      // TODO: Support multiple commands with \n or something.
 
-      if (user_matcher.IsMatching()) {
-        if (outfile != nullptr) {
-          fflush(outfile);
-        }
+      if (Util::TryStripPrefix("/raw ", &input)) {
+        // This means we want to remove the predicted prefix and
+        // then insert the input verbatim.
+        ForceLine(input);
+        return;
+      } else if (Util::TryStripPrefix("/me ", &input)) {
+        // This means to remove the predicted prefix and
+        // insert " * User ...".
 
-        printf(AWHITE(":") AGREEN("> "));
-        fflush(stdout);
+        ForceLine(StringPrintf("* %s %s", user.c_str(), input.c_str()));
+        return;
+      } else if (Util::TryStripPrefix("/say ", &input)) {
+        // This means to remove the predicted prefix and
+        // insert " <User> ...".
 
-        string input;
-        getline(cin, input);
+        ForceLine(StringPrintf("<%s> %s", user.c_str(), input.c_str()));
+        return;
 
-        auto ForceLine = [this, &lines, &user_matcher, &NewLine](
-            std::string full_line) {
-            CHECK(full_line.back() != '\n');
-            printf(AGREY("Forced [%s]") "\n", full_line.c_str());
-            full_line += "\n";
+      } else if (Util::TryStripPrefix("/undo", &input)) {
+        // /undo N means discard the current line, and
+        // remove N of the last chat lines.
 
-            lines.back().text = full_line;
-            llm->LoadState(lines.back().state);
-            // FIXME: Workaround bug :(
-            llm->sampler.ResetRegEx();
-
-            user_matcher = lines.back().user_matcher;
-
-            llm->InsertString(full_line);
-            AdvanceString(full_line, &user_matcher);
-
-            if (outfile != nullptr) {
-              fprintf(outfile, "(canceled)\n%s", full_line.c_str());
-            }
-
-            llm->sampler.ResetRegEx();
-
-            // If we force something that doesn't conform to the grammars,
-            // reset the matchers so that we don't get off the rails.
-
-            // This can't happen because we just reset it.
-            CHECK(!llm->sampler.Stuck());
-
-            if (user_matcher.Stuck()) {
-              printf(ARED("Reset user matcher") "\n");
-              user_matcher = ByteNFAMatcher(user_nfa);
-            }
-
-            NewLine();
-          };
-
-        if (Util::TryStripPrefix("/raw ", &input)) {
-          // This means we want to remove the predicted prefix and
-          // then insert the input verbatim.
-          ForceLine(input);
-
-        } else if (Util::TryStripPrefix("/me ", &input)) {
-          // This means to remove the predicted prefix and
-          // insert " * User ...".
-
-          ForceLine(StringPrintf("* %s %s", user.c_str(), input.c_str()));
-
-        } else if (Util::TryStripPrefix("/say ", &input)) {
-          // This means to remove the predicted prefix and
-          // insert " <User> ...".
-
-          ForceLine(StringPrintf("<%s> %s", user.c_str(), input.c_str()));
-
-        } else if (Util::TryStripPrefix("/undo", &input)) {
-          // /undo N means remove N of the last chat lines.
-
-          input = Util::NormalizeWhitespace(input);
-          int num = input.empty() ? 1 : atoi(input.c_str());
+        input = Util::NormalizeWhitespace(input);
+        int num = input.empty() ? 1 : atoi(input.c_str());
+        if (num > 0) {
 
           // Index of the element we rewind to.
-          int new_size = lines.size() - num;
-          CHECK(new_size > 0);
+          int new_size = std::max(0, (int)lines.size() - num);
 
           for (int i = new_size - 1; i < (int)lines.size(); i++) {
             printf(AGREY("Struck [%s]") "\n", lines[i].text.c_str());
           }
-          if (outfile != nullptr) {
-            fprintf(outfile, "(struck %d)", num);
-          }
 
+          // Reset to the beginning of the next line.
+          llm->LoadState(lines[new_size].state);
+          start_line_state = std::move(lines[new_size].state);
+          // And truncate everything after.
           lines.resize(new_size);
 
-          if (lines.size() > 1) {
-            printf("%s\n", lines[lines.size() - 2].text.c_str());
+          if (!lines.empty()) {
+            printf("%s\n", lines[lines.size() - 1].text.c_str());
           }
 
-          lines.back().text = "";
-          llm->LoadState(lines.back().state);
-          // FIXME: Workaround bug :(
-          llm->sampler.ResetRegEx();
-
-          user_matcher = lines.back().user_matcher;
+          current_line.clear();
+          // XXX: This should not be necessary, but state save/load
+          // has a bug with a stale reference from matcher to parent nfa :(
+          ResetRegex();
 
           // Don't predict the exact same thing!
           llm->NewRNG();
-
-        } else if (Util::TryStripPrefix("/pass", &input)) {
-          // This means to force a different user to speak.
-
-          input = Util::NormalizeWhitespace(input);
-
-          string other = input.empty() ? GetOtherParticipant() : input;
-          // This could also be "act" type.
-          // Another (better?) way to accomplish this would be to set a regex
-          // of just others speaking...
-          std::string start_line = StringPrintf("<%s>", other.c_str());
-          printf("%s", start_line.c_str());
-
-          lines.back().text = start_line;
-          llm->LoadState(lines.back().state);
-          // FIXME: Workaround bug :(
-          llm->sampler.ResetRegEx();
-
-          user_matcher = lines.back().user_matcher;
-
-          llm->InsertString(start_line);
-          AdvanceString(start_line, &user_matcher);
-
-          if (outfile != nullptr) {
-            fprintf(outfile, "(pass)\n%s", start_line.c_str());
-          }
-
-        } else if (Util::TryStripPrefix("/save ", &input)) {
-          // /save file
-
-          input = Util::NormalizeWhitespace(input);
-          if (input.empty()) input = "chat.txt";
-          std::string contents;
-          for (const ChatLine &line : lines) {
-            StringAppendF(&contents, "%s\n", line.text.c_str());
-          }
-          Util::WriteFile(input, contents);
-          printf(AGREY("Wrote %s") "\n", input.c_str());
-
-        } else {
-          // Normal chat, continuing the prompt (whether it's <User> or * User).
-
-          // If last token didn't include the space, insert it.
-          if (lines.back().text.back() != ' ') {
-          // if (tok[tok.size() - 1] != ' ') {
-            input = " " + input;
-          }
-
-          lines.back().text += input;
-
-          input += "\n";
-          llm->InsertString(input);
-          AdvanceString(input, &user_matcher);
-
-          if (outfile != nullptr) {
-            fprintf(outfile, "%s", input.c_str());
-          }
-
-          NewLine();
+          return;
         }
-      } else {
 
+      } else if (Util::TryStripPrefix("/pass", &input)) {
+        // This means to force a different user to speak.
+
+        input = Util::NormalizeWhitespace(input);
+
+        std::vector<string> others =
+          input.empty() ? GetOtherParticipants() : std::vector({input});
+        std::string others_regex = MakeParticipantRegex(others) +
+          // But we only exclude self for one line!
+          // This may be unnecessary if we explicitly reset
+          // after each line.
+          MakeParticipantRegex(participants);
+
+        printf(ABLUE("Regex: /%s/") "\n", others_regex.c_str());
+
+        current_line.clear();
+        llm->LoadState(start_line_state);
+        // Here we're actually changing the regex to constrain the
+        // output.
+        llm->sampler.SetRegEx(others_regex);
+        return;
+
+      } else if (Util::TryStripPrefix("/save ", &input)) {
+        // /save file
+
+        input = Util::NormalizeWhitespace(input);
+        if (input.empty()) input = "chat.txt";
+        std::string contents;
+        for (const ChatLine &line : lines) {
+          if (line.is_action) {
+            StringAppendF(&contents, " * %s %s\n",
+                          line.participant.c_str(),
+                          line.text.c_str());
+          } else {
+            StringAppendF(&contents, "<%s> %s\n",
+                          line.participant.c_str(),
+                          line.text.c_str());
+          }
+        }
+        Util::WriteFile(input, contents);
+        printf(AGREY("Wrote %s") "\n", input.c_str());
+        // allow next command...
+
+      } else {
+        // Normal chat, continuing the prompt (whether it's <User> or * User).
+        CHECK(!current_line.empty()) << "Bug";
+
+        // If last token didn't include the space, insert it.
+        if (current_line.back() != ' ') {
+          // if (tok[tok.size() - 1] != ' ') {
+          input = " " + input;
+        }
+        llm->InsertString(input);
+        input += "\n";
+        current_line += input;
+
+        FinishLine(current_line);
+        return;
+      }
+
+      printf(ARED("REDO FROM START") "\n");
+    }
+  }
+
+  void Chat() {
+
+    for (;;) {
+
+      if (Matches(user_nfa, current_line)) {
+        DoUserInput();
+      } else {
         // Get and commit a token.
-        int id = llm->Sample();
-        llm->TakeTokenBatch({id});
-        string tok = llm->context.TokenString(id);
-        lines.back().text += tok;
+        const int tok_id = llm->Sample();
+        llm->TakeTokenBatch({tok_id});
+        string tok = llm->context.TokenString(tok_id);
+        current_line += tok;
 
         printf("%s", tok.c_str());
         fflush(stdout);
 
-        // TODO: Maybe don't want to output this eagerly
-        // if we have rewinding/edits/etc.
-        if (outfile != nullptr) {
-          fprintf(outfile, "%s", tok.c_str());
-        }
-
-        AdvanceString(tok, &ends_newline_matcher);
-        AdvanceString(tok, &user_matcher);
-        if (ends_newline_matcher.IsMatching()) {
-          NewLine();
+        if (tok_id == llm->context.NewlineToken()) {
+          FinishLine(current_line);
         }
       }
 
     }
   }
+
 };
 
 
 int main(int argc, char ** argv) {
   ANSI::Init();
 
-  CHECK(argc >= 3) << "Usage: ./chat.exe User prompt.txt [out.txt]\n"
+  CHECK(argc >= 3) << "Usage: ./chat.exe User prompt.txt\n"
     "First line of the prompt file gives a list of participants,\n"
     "separated by commas.";
 
@@ -350,45 +394,23 @@ int main(int argc, char ** argv) {
   // AnsiInit();
   Timer model_timer;
 
-  FILE *file = nullptr;
-  if (argc >= 4) {
-    file = fopen(argv[3], "wb");
-    CHECK(file != nullptr);
-    printf("Writing to " ACYAN("%s") "...\n", argv[3]);
-  }
-
   ContextParams cparams;
-  // cparams.model = "../llama/models/7B/ggml-model-q4_0.bin";
-  // cparams.model = "../llama/models/7B/ggml-model-f16.bin";
-  // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
-  // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-
-  // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
+  cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
   // cparams.model = "e:\\llama2\\7b\\ggml-model-q8_0.gguf";
-  cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
+  // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
   // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
-
-  string user_alt = Util::Join(ppts, "|");
-  string chat_regex =
-    StringPrintf("( *(<(%s)>|\\* (%s)) [^ \n][^\n]*\n)*",
-                 user_alt.c_str(), user_alt.c_str());
-
-  printf("Chat regex: " ABLUE("%s") "\n",
-         chat_regex.c_str());
 
   SamplerParams sparams;
   // cparams.mirostat = 2;
   sparams.type = SampleType::MIROSTAT_2;
-  sparams.regex = chat_regex;
+  // This is reset in chat.
+  sparams.regex = ".*";
 
   LLM llm(cparams, sparams);
   printf(AGREEN("Loaded model") ".\n");
 
-  Chatting chatting(&llm, ppts, user, prompt, file);
+  Chatting chatting(&llm, ppts, user, prompt);
   chatting.Chat();
-
-  if (file != nullptr) fclose(file);
 
   return 0;
 }

@@ -18,6 +18,7 @@ ifeq ($(UNAME),Cygwin)
   # LLAMA_CUBLAS=1
   PLATFORM_CFLAGS=
   OPTFLAGS= -O3 -flto=auto -march=native -mtune=native
+#  OPTFLAGS=-O -g
 else
   # Linux
   CXX=g++
