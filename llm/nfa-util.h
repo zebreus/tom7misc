@@ -4,8 +4,12 @@
 
 #include <string>
 #include <cstdint>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "nfa.h"
+#include "ansi.h"
 
 using ByteNFA = NFA<256>;
 using ByteNFAMatcher = NFAMatcher<256>;
@@ -19,7 +23,7 @@ inline void AdvanceString(const std::string &s, ByteNFAMatcher *matcher) {
 }
 
 inline bool Matches(const ByteNFA &nfa, const std::string &s) {
-  nfa.CheckValidity();
+  nfa.AssertValidity();
   ByteNFAMatcher matcher(nfa);
   AdvanceString(s, &matcher);
   return matcher.IsMatching();

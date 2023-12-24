@@ -91,7 +91,7 @@ Problem LoadFreeformProblem(const string &filename) {
     line = CleanWhitespace(std::move(line));
   }
 
-  FilterVector(&lines, [](const string &line) {
+  VectorFilter(&lines, [](const string &line) {
       if (line.empty()) return false;
       if (line[0] == '#') return false;
       return true;
@@ -239,7 +239,7 @@ Problem LoadMultipleChoiceProblem(const string &filename) {
     line = CleanWhitespace(std::move(line));
   }
 
-  FilterVector(&lines, [](const string &line) {
+  VectorFilter(&lines, [](const string &line) {
       if (line.empty()) return false;
       if (line[0] == '#') return false;
       return true;

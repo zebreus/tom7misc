@@ -116,8 +116,9 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  // cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
-  cparams.model = "llama2/70b/ggml-model-f16.gguf";
+  cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
+  // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
+  // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
 
   // cparams.model = "codellama2/34b/ggml-model-f16.gguf";
 

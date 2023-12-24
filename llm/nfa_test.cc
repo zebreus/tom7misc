@@ -2,22 +2,11 @@
 #include "nfa.h"
 #include <string>
 
+#include "nfa-util.h"
+
 using namespace std;
 
 // XXX test more than compilation!
-
-using ByteNFA = NFA<256>;
-using ByteRegEx = RegEx<256>;
-
-static bool Matches(const ByteNFA &nfa, const string &s) {
-  nfa.CheckValidity();
-  NFAMatcher<256> matcher(nfa);
-  for (int i = 0; i < (int)s.size(); i++) {
-    unsigned char c = s[i];
-    matcher.Advance(c);
-  }
-  return matcher.IsMatching();
-}
 
 static void TestSimpleEnfa() {
   NFA<257> enfa;
@@ -29,9 +18,9 @@ static void TestSimpleEnfa() {
   node0.accepting = false;
   enfa.nodes.push_back(node0);
   enfa.nodes.push_back(node1);
-  enfa.CheckValidity();
+  enfa.AssertValidity();
   ByteNFA nfa = RemoveEpsilon<256>(enfa);
-  nfa.CheckValidity();
+  nfa.AssertValidity();
 
   CHECK(nfa.nodes[0].accepting);
   CHECK(nfa.nodes[1].accepting);
@@ -44,9 +33,9 @@ static void TestRegEx() {
   auto ConvertLiteral = [](const std::string &s) {
       // printf("Convert %s\n", s.c_str());
       auto enfa = ByteRegEx::LiteralString(s);
-      enfa.CheckValidity();
+      enfa.AssertValidity();
       auto nfa = RemoveEpsilon<256>(enfa);
-      nfa.CheckValidity();
+      nfa.AssertValidity();
       return nfa;
     };
   CHECK(Matches(ConvertLiteral("hello"), "hello"));
@@ -209,7 +198,7 @@ static void TestRegEx() {
     auto ewords = ByteRegEx::LiteralSet({"abacus", "abdomen", "abs"});
     auto words = RemoveEpsilon<256>(ewords);
 
-    printf("%s\n", words.DebugString().c_str());
+    printf("%s\n", NFADebugString(words).c_str());
 
     CHECK(Matches(words, "abacus"));
     CHECK(Matches(words, "abdomen"));
@@ -222,11 +211,11 @@ static void TestRegEx() {
 static void TestRegExParse() {
 # define CHECK_MATCH(re, s) do {             \
     auto er = Parse(re);                     \
-    er.CheckValidity();                      \
+    er.AssertValidity();                     \
     auto r = RemoveEpsilon<256>(er);         \
-    r.CheckValidity();                       \
+    r.AssertValidity();                      \
     string ss = s;                           \
-    CHECK(Matches(r, ss)) << r.DebugString() \
+    CHECK(Matches(r, ss)) << NFADebugString(r)            \
                           << "\nregex \"" << re << "\" should match \""  \
                           << ss << "\"." << "\n(string size: "        \
                           << ss.size() << ")";                        \
@@ -234,13 +223,13 @@ static void TestRegExParse() {
 
 # define CHECK_NO_MATCH(re, s) do {          \
     auto er = Parse(re);                     \
-    er.CheckValidity();                      \
+    er.AssertValidity();                     \
     /* er.DebugPrint(); */                   \
     auto r = RemoveEpsilon<256>(er);         \
-    r.CheckValidity();                       \
+    r.AssertValidity();                      \
     /* r.DebugPrint(); */                    \
     string ss = s;                           \
-    CHECK(!Matches(r, ss)) << r.DebugString() \
+    CHECK(!Matches(r, ss)) << NFADebugString(r)            \
                            << "\nregex \"" << re << "\" should not match \"" \
                            << ss << "\"." << "\n(string size: " \
                            << ss.size() << ")"; \

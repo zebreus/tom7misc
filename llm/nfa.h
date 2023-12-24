@@ -30,21 +30,8 @@ struct NFA {
     bool accepting = false;
   };
 
-  void CheckValidity() const {
-    for (int s : start_states) {
-      CHECK(s >= 0 && s < (int)nodes.size()) << s << " vs " << nodes.size();
-    }
-
-    for (const Node &node : nodes) {
-      for (const auto &[c, nexts] : node.next_idx) {
-        CHECK(c >= 0 && c < RADIX) << c << " vs " << RADIX;
-        for (int s : nexts) {
-          CHECK(s >= 0 && s < (int)nodes.size()) <<
-            s << " vs " << nodes.size();
-        }
-      }
-    }
-  }
+  // Checks that the NFA is well-formed if assertions are enabled.
+  void AssertValidity() const;
 
   std::vector<Node> nodes;
   std::unordered_set<int> start_states;
@@ -350,7 +337,7 @@ struct RegEx {
       for (int s : bstart) anode.next_idx[EPSILON].insert(s);
     }
 
-    out.CheckValidity();
+    out.AssertValidity();
     return out;
   }
 
@@ -458,7 +445,7 @@ private:
     std::unordered_set<int> ret;
     for (int s : enfa.start_states) ret.insert(s + amount);
 
-    out->CheckValidity();
+    out->AssertValidity();
     return ret;
   }
 
@@ -776,7 +763,7 @@ static NFA<257> Parse(const std::string &s) {
         if (VERBOSE_PARSE)
           printf("Disjunctive clause {%s}\n", ((std::string)ss).c_str());
         ENFA nfa2 = CompileOneClause(ss);
-        nfa2.CheckValidity();
+        nfa2.AssertValidity();
         nfa = RE::Or(nfa, nfa2);
       }
 
@@ -784,6 +771,25 @@ static NFA<257> Parse(const std::string &s) {
     };
 
   return ParseRec(s);
+}
+
+template<int RADIX_>
+void NFA<RADIX_>::AssertValidity() const {
+# ifndef NDEBUG
+  for (int s : start_states) {
+    CHECK(s >= 0 && s < (int)nodes.size()) << s << " vs " << nodes.size();
+  }
+
+  for (const Node &node : nodes) {
+    for (const auto &[c, nexts] : node.next_idx) {
+      CHECK(c >= 0 && c < RADIX) << c << " vs " << RADIX;
+      for (int s : nexts) {
+        CHECK(s >= 0 && s < (int)nodes.size()) <<
+          s << " vs " << nodes.size();
+      }
+    }
+  }
+# endif
 }
 
 

@@ -1,5 +1,5 @@
 
-default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe run-um.exe llum.exe nfa_test.exe llm_test.exe dump-tokens.exe ranker_test.exe console_test.exe
+default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe run-um.exe llum.exe nfa_test.exe llm_test.exe dump-tokens.exe ranker_test.exe console_test.exe rephrase.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -288,6 +288,9 @@ generate.exe : generate.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 continue.exe : continue.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+
+rephrase.exe : rephrase.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 dump-tokens.exe : dump-tokens.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)

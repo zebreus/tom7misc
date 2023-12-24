@@ -38,7 +38,7 @@ Context::Context(const ContextParams &params) {
   };
   ProgressData progress_data;
   progress_data.name = params.model;
-  auto Progress = [](float f, void *void_data) {
+  auto Progress = [](float f, void *void_data) -> bool {
       ProgressData *data = (ProgressData*)void_data;
       if (data->per.ShouldRun()) {
         printf(ANSI_UP
@@ -46,6 +46,8 @@ Context::Context(const ContextParams &params) {
                                          data->name,
                                          data->timer.Seconds()).c_str());
       }
+      // Always keep loading.
+      return true;
     };
   auto Done = [&progress_data]() {
       printf(ANSI_UP
