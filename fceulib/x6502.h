@@ -15,8 +15,13 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301 USA
  */
+
+// TODO: Port the cleanups from ../grad/flceu. Some of what I did there
+// is overkill, but getting rid of all the macros in here would be
+// very welcome.
 
 #ifndef _FCEULIB_X6502_H
 #define _FCEULIB_X6502_H
@@ -94,7 +99,14 @@ struct X6502 {
 private:
   // normal memory read
   inline uint8 RdMem(unsigned int A) {
-    return DB = fc->fceu->ARead[A](fc, A);
+    // XXX
+    uint8 x = fc->fceu->ARead[A](fc, A);
+    printf("Read %04x: %02x = ", A, x);
+    for (int i = 0; i < 8; i++) {
+      printf("%c", ((1 << (7 - i)) & x) ? '1' : '0');
+    }
+    printf("\n");
+    return DB = x;
   }
 
   // normal memory write

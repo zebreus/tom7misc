@@ -132,14 +132,17 @@ static void Process() {
     sorted.emplace_back(code, count);
   printf("%d nonzero codepoints\n", (int)sorted.size());
 
+  // Maybe could group some CJK codepoints into pages?
+
+  // Sort ascending.
   std::sort(sorted.begin(), sorted.end(),
             [](const std::pair<uint32_t, int64_t> &a,
                const std::pair<uint32_t, int64_t> &b) {
-              return b.second > a.second;
+              return a.second > b.second;
             });
   for (const auto &[code, count] : sorted) {
     std::string utf8 = Util::EncodeUTF8(code);
-    StringAppendF(&out, "U+%x (%s): %lld\n", code, utf8.c_str(), count);
+    StringAppendF(&out, "U+%04x (%s): %lld\n", code, utf8.c_str(), count);
   }
 
   Util::WriteFile("unicode.txt", out);

@@ -13,8 +13,8 @@ std::vector<ModQuickPassGPU::FullRun>
 ModQuickPassGPU::Run(const std::vector<uint64_t> &primes,
                      const std::vector<std::pair<int, int>> &mns) {
 
-  CHECK(primes.size() == width);
-  CHECK(mns.size() == height);
+  CHECK(primes.size() == width) << primes.size() << " want " << width;
+  CHECK(mns.size() == height) << mns.size() << " want " << height;
 
   // Only one GPU process at a time.
   MutexLock ml(&m);

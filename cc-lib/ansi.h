@@ -64,6 +64,10 @@
   ANSI_INTERNAL_STR(g) ";" \
   ANSI_INTERNAL_STR(b) "m" s ANSI_RESET
 
+// non-standard colors. Perhaps should move some of these things
+// to ansi-extended or something.
+#define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
+
 // Same as printf, but using WriteConsole on windows so that we
 // can communicate with pseudoterminal. Without this, ansi escape
 // codes will work (VirtualTerminalProcessing) but not mintty-

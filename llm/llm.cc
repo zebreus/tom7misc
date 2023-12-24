@@ -793,9 +793,10 @@ void LLM::DoPrompt(const std::string &prompt, bool progress_bar) {
 
   const int n_ctx = llama_n_ctx(context.lctx);
 
-  CHECK((int)toks.size() <= n_ctx - 4) << "Prompt too long ("
-                                       << (int)toks.size()
-                                       << " tokens)";
+  CHECK((int)toks.size() <= n_ctx - 4)
+    << "Prompt too long (" << (int)toks.size() << " tokens). "
+    "Context size: " << n_ctx;
+
   TakeTokenBatch(toks, progress_bar);
 
   if (VERBOSE) {

@@ -99,11 +99,6 @@ int main(int argc, char ** argv) {
   {
     auto enfa = Parse(regex);
     auto nfa = RemoveEpsilon<256>(enfa);
-    auto [et, es] = enfa.DebugSize();
-    auto [t, s] = nfa.DebugSize();
-    printf("Prompt size %zu.\n"
-           "ENFA: %d t %d s\n"
-           "NFA: %d t %d s\n", prompt.size(), et, es, t, s);
   }
   // AnsiInit();
   Timer model_timer;
@@ -122,9 +117,9 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
   // cparams.model = "llama2/70b/ggml-model-q8_0.gguf";
-  // cparams.model = "llama2/70b/ggml-model-f16.gguf";
+  cparams.model = "llama2/70b/ggml-model-f16.gguf";
 
-  cparams.model = "codellama2/34b/ggml-model-f16.gguf";
+  // cparams.model = "codellama2/34b/ggml-model-f16.gguf";
 
   SamplerParams sparams;
   // cparams.mirostat = 2;

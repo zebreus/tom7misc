@@ -39,6 +39,9 @@ as well.
 The xml parser is based on the MIT-licensed yxml tokenizer. So my
 contributions here are MIT-licensed as well. See xml.cc.
 
+The csv parser is based on the MIT-licensed "Vince's CSV Parser."
+My wrapper is MIT-licensed as well. See csv.cc.
+
 The re2 subdirectory comes from Google and community contributors. See
 re2/LICENSE for its permissive license.
 
@@ -128,4 +131,6 @@ stb_image_*   - Lower-level image reading and writing. I usually use the
                 higher-level image.h.
 tinyexr       - Lower-level reading and writing of the slighly exotic EXR
                 file format.
+csv           - Parsing of CSV files. Lots more is possible with the library
+                it wraps ("Vince's CSV Parser").
 factorization - Factors integers. See also bignum.

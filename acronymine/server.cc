@@ -39,6 +39,10 @@
 
 using namespace std;
 
+// Doesn't work well and uses a lot of RAM. Could do much better
+// with LLMs, etc.
+constexpr bool USE_SENTENCELIKE = false;
+
 using Response = WebServer::Response;
 using Request = WebServer::Request;
 
@@ -179,12 +183,19 @@ static void LoadData() {
     wordnet = WordNet::Load(WORDNET_DIR, *words);
     CHECK(wordnet != nullptr) << WORDNET_DIR;
   },
-  []() {
-    sentencelike = new SentenceLike(SENTENCELIKE_MODEL_FILE);
-  });
 
-  printf("Init SentenceLike:\n");
-  sentencelike->Init(cl, w2v, freq, wordnet, WORDS_PER_CHAR);
+  []() {
+    if (USE_SENTENCELIKE) {
+      sentencelike = new SentenceLike(SENTENCELIKE_MODEL_FILE);
+    }
+  }
+
+  );
+
+  if (USE_SENTENCELIKE) {
+    printf("Init SentenceLike:\n");
+    sentencelike->Init(cl, w2v, freq, wordnet, WORDS_PER_CHAR);
+  }
 
   printf("Everything loaded in %.2fs\n", load_timer.Seconds());
 }
@@ -330,6 +341,10 @@ NextHandler(const WebServer::Request &req) {
 
 static WebServer::Response
 GuessHandler(const WebServer::Request &req) {
+  if (!USE_SENTENCELIKE) {
+    return Fail404("Sentencelike model not loaded.");
+  }
+
   WebServer::Response response;
   response.code = 200;
   response.status = "OK";
@@ -407,8 +422,8 @@ GuessHandler(const WebServer::Request &req) {
   }
 
   CHECK(words.size() == 8);
-  CHECK(SentenceLike::PHRASE_SIZE == 8);
 
+  CHECK(SentenceLike::PHRASE_SIZE == 8);
   std::vector<uint32_t> phrase;
   phrase.reserve(SentenceLike::PHRASE_SIZE);
   for (const string &w : words) {

@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "ansi.h"
@@ -37,6 +38,8 @@
 #include "llm.h"
 
 #include "llm-util.h"
+
+#include "console.h"
 
 using namespace std;
 
@@ -76,7 +79,7 @@ struct LineInProgress {
 static std::string MakeParticipantRegex(
     const std::vector<std::string> &ppts) {
   string user_alt = Util::Join(ppts, "|");
-  return StringPrintf("((<(%s)>|\\* (%s)) [^ \n][^\n]*\n)*",
+  return StringPrintf("((<(%s)>| \\* (%s)) [^ \n][^\n]*\n)*",
                       user_alt.c_str(), user_alt.c_str());
 }
 
@@ -86,6 +89,7 @@ struct Chatting {
   const std::vector<std::string> participants;
   const string user;
   const string prompt;
+  Console console;
 
   Chatting(LLM *llm,
            const std::vector<std::string> &participants,
@@ -156,9 +160,22 @@ struct Chatting {
   std::string current_line;
   LLM::State start_line_state;
 
+  // Render the line (no trailing newline) in color.
+  std::string ANSILine(const ChatLine &line) const {
+    if (line.is_action) {
+      return StringPrintf(" " AWHITE("*") " %s %s",
+                          line.participant.c_str(),
+                          line.text.c_str());
+    } else {
+      return StringPrintf(AWHITE("<") "%s" AWHITE(">") " %s",
+                          line.participant.c_str(),
+                          line.text.c_str());
+    }
+  }
+
   // Fills in participant, text, is_action.
   std::optional<ChatLine> ParseLine(const std::string &line_in) {
-    std::string line = Util::LoseWhiteL(line_in);
+    std::string line = Util::LoseWhiteR(Util::LoseWhiteL(line_in));
     if (line.empty()) return std::nullopt;
 
     if (line[0] == '*' && line[1] == ' ') {
@@ -186,15 +203,20 @@ struct Chatting {
 
   // Add a line to history and reset. Usually line is current_line,
   // but this is also used to initialize history from the prompt.
+  // The line should end with a newline.
   void FinishLine(const std::string &line_in) {
+    if (line_in.empty() || line_in.back() != '\n') {
+      printf(ARED("Should end with newline") " [%s]\n", line_in.c_str());
+    }
+
     // TODO: parse line, push into lines.
     std::optional<ChatLine> oline = ParseLine(line_in);
     if (oline.has_value()) {
       ChatLine chatline = std::move(oline.value());
-      chatline.state = llm->SaveState();
+      chatline.state = std::move(start_line_state);
       lines.emplace_back(std::move(chatline));
     } else {
-      printf(ARED("Couldn't parse") "[%s]\n", line_in.c_str());
+      printf(ARED("Couldn't parse") " [%s]\n", line_in.c_str());
       // So we just don't add it.
     }
 
@@ -206,8 +228,9 @@ struct Chatting {
 
   // Clear anything in the current line and force the argument.
   void ForceLine(std::string full_line) {
-    CHECK(full_line.back() != '\n');
+    CHECK(full_line.back() != '\n') << "[" << full_line << "]";
     printf(AGREY("Forced [%s]") "\n", full_line.c_str());
+
     full_line += "\n";
 
     // First we back up to the beginning of the current line.
@@ -223,16 +246,20 @@ struct Chatting {
   }
 
   void DoUserInput() {
-    printf(AWHITE(":") AGREEN("> "));
-    fflush(stdout);
-
-    string input;
-    getline(cin, input);
-
     for (;;) {
       // TODO: Support multiple commands with \n or something.
+      printf(AWHITE(":") AGREEN("> "));
+      fflush(stdout);
+      string input = console.WaitLine();
+      // printf("Returned [%s]\n", input.c_str());
+      // getline(cin, input);
 
-      if (Util::TryStripPrefix("/raw ", &input)) {
+      if (input.empty()) {
+        // This is allowed so that we can just interrupt at any time
+        // by sending a full (empty) line. We just loop again to
+        // get another useful line.
+
+      } else if (Util::TryStripPrefix("/raw ", &input)) {
         // This means we want to remove the predicted prefix and
         // then insert the input verbatim.
         ForceLine(input);
@@ -256,23 +283,24 @@ struct Chatting {
 
         input = Util::NormalizeWhitespace(input);
         int num = input.empty() ? 1 : atoi(input.c_str());
-        if (num > 0) {
+        if (!lines.empty() && num > 0) {
 
           // Index of the element we rewind to.
           int new_size = std::max(0, (int)lines.size() - num);
-
-          for (int i = new_size - 1; i < (int)lines.size(); i++) {
+          printf(AGREY("New size %d") "\n", new_size);
+          for (int i = new_size; i < (int)lines.size(); i++) {
             printf(AGREY("Struck [%s]") "\n", lines[i].text.c_str());
           }
 
           // Reset to the beginning of the next line.
+          CHECK(new_size <= (int)lines.size()) << "Bug";
           llm->LoadState(lines[new_size].state);
           start_line_state = std::move(lines[new_size].state);
           // And truncate everything after.
           lines.resize(new_size);
 
           if (!lines.empty()) {
-            printf("%s\n", lines[lines.size() - 1].text.c_str());
+            printf("%s\n", ANSILine(lines[lines.size() - 1]).c_str());
           }
 
           current_line.clear();
@@ -302,6 +330,9 @@ struct Chatting {
 
         current_line.clear();
         llm->LoadState(start_line_state);
+        // Might be wise to get new RNG since we previously rolled
+        // the "wrong" dice.
+        llm->NewRNG();
         // Here we're actually changing the regex to constrain the
         // output.
         llm->sampler.SetRegEx(others_regex);
@@ -328,17 +359,28 @@ struct Chatting {
         printf(AGREY("Wrote %s") "\n", input.c_str());
         // allow next command...
 
+      } else if (Util::TryStripPrefix("/dump", &input)) {
+        // /dump
+
+        for (int idx = 0; idx < (int)lines.size(); idx++) {
+          printf(AGREY("[%d]") " %s\n", idx,
+                 ANSILine(lines[idx]).c_str());
+        }
+
+        // allow next command...
+
       } else {
         // Normal chat, continuing the prompt (whether it's <User> or * User).
         CHECK(!current_line.empty()) << "Bug";
 
         // If last token didn't include the space, insert it.
         if (current_line.back() != ' ') {
-          // if (tok[tok.size() - 1] != ' ') {
           input = " " + input;
         }
-        llm->InsertString(input);
         input += "\n";
+
+        llm->InsertString(input);
+
         current_line += input;
 
         FinishLine(current_line);
@@ -352,24 +394,47 @@ struct Chatting {
   void Chat() {
 
     for (;;) {
-
       if (Matches(user_nfa, current_line)) {
         DoUserInput();
       } else {
-        // Get and commit a token.
-        const int tok_id = llm->Sample();
-        llm->TakeTokenBatch({tok_id});
-        string tok = llm->context.TokenString(tok_id);
-        current_line += tok;
 
-        printf("%s", tok.c_str());
-        fflush(stdout);
+        // Is there pending input? If so, interrupt.
+        // printf(AGREY("Has?"));
+        if (console.HasInput()) {
+          // printf(AGREY("Yes."));
+          // XXX hax
+          // Do we have enough text to bother interrupting?
+          std::optional<ChatLine> oline = ParseLine(current_line);
+          if (oline.has_value()) {
+            printf(ARED("--") "\n");
+            llm->InsertString("--\n");
+            current_line += "--\n";
+            FinishLine(current_line);
+          } else {
+            // Otherwise, remove this line.
+            current_line.clear();
+            llm->LoadState(start_line_state);
+            ResetRegex();
+            current_line = StringPrintf("<%s>", user.c_str());
+            llm->InsertString(current_line);
+            CHECK(Matches(user_nfa, current_line));
+          }
+        } else {
+          // printf(AGREY("No."));
+          // Get and commit a token.
+          const int tok_id = llm->Sample();
+          llm->TakeTokenBatch({tok_id});
+          string tok = llm->context.TokenString(tok_id);
+          current_line += tok;
 
-        if (tok_id == llm->context.NewlineToken()) {
-          FinishLine(current_line);
+          printf("%s", tok.c_str());
+          fflush(stdout);
+
+          if (tok_id == llm->context.NewlineToken()) {
+            FinishLine(current_line);
+          }
         }
       }
-
     }
   }
 
@@ -385,7 +450,6 @@ int main(int argc, char ** argv) {
 
   string user = argv[1];
   string prompt = Util::ReadFile(argv[2]);
-  printf("Prompt: [%s]\n", prompt.c_str());
   CHECK(!prompt.empty()) << argv[2];
   std::vector<std::string> ppts = Util::Split(Util::getline(prompt), ',');
   CHECK(VectorContains(ppts, user)) << "The user " << user << " must be "
@@ -395,9 +459,9 @@ int main(int argc, char ** argv) {
   Timer model_timer;
 
   ContextParams cparams;
-  cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
+  // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
   // cparams.model = "e:\\llama2\\7b\\ggml-model-q8_0.gguf";
-  // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
+  cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
   // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
 
   SamplerParams sparams;

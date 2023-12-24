@@ -22,6 +22,9 @@
 // those out of the way so that we can do a slower full pass for the
 // rare cases that remain.
 struct ModQuickPassGPU {
+  // Can only run primes larger than this.
+  static constexpr int MIN_PRIME = 360749;
+
   // Output is a task to do as a full run.
   struct FullRun {
     FullRun(int m, int n, uint64_t prime) : m(m), n(n), prime(prime) {}
@@ -35,7 +38,7 @@ struct ModQuickPassGPU {
   // Number of quick tests to do.
   // Note: primes must be larger than this.
   // XXX: Lowered for test. But this should be like 64?
-  static constexpr int QUICK_PASS_SIZE = 32;
+  static constexpr int QUICK_PASS_SIZE = 64;
 
   // The width is the number of primes.
   // The height is the (maximum) number of (m,n) pairs.

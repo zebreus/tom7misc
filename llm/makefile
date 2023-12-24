@@ -1,5 +1,5 @@
 
-default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe run-um.exe llum.exe nfa_test.exe llm_test.exe dump-tokens.exe ranker_test.exe
+default: acronymy.exe benchmark.exe chat.exe chatroom.exe dump-tokens.exe generate.exe continue.exe run-um.exe llum.exe nfa_test.exe llm_test.exe dump-tokens.exe ranker_test.exe console_test.exe
 
 # Changes by tom7.
 # Also add -static to LFLAGS below
@@ -254,7 +254,7 @@ build-info.o: $(LLAMA_DIR)/common/build-info.cpp $(LLAMA_HEADERS)
 # ggml-mpi.o
 LLAMA_OBJECTS=build-info.o ggml.o ggml-alloc.o ggml-backend.o ggml-quants.o llama.o common.o
 
-LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) llm.o ranker.o
+LLM_OBJECTS=$(LLAMA_OBJECTS) $(OBJS) llm.o ranker.o console.o
 
 %.o : %.cc llm.h nfa.h nfa-util.h $(LLAMA_HEADERS)
 	@$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -302,7 +302,8 @@ test-karate.exe : karate.o test-karate.o $(CC_LIB_OBJECTS)
 ranker_test.exe : ranker_test.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
-
+console_test.exe : console_test.o console.o $(LLM_OBJECTS) $(CC_LIB_OBJECTS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
 	rm -f *.o acronymy.exe benchmark.exe test.exe chat.exe run-um.exe extract-codex.exe llum.exe generate.exe

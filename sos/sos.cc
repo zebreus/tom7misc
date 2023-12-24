@@ -50,8 +50,6 @@ using GPUMethod = WaysGPUMerge;
 
 static constexpr bool WRITE_IMAGE = false;
 
-#define AORANGE(s) ANSI_FG(247, 155, 57) s ANSI_RESET
-
 static string FilledBar(int chars, float f) {
   if (chars <= 0) return "";
   // integer number of pixels

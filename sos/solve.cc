@@ -4,6 +4,8 @@
 // 360721 a^2 - c^2 + n = 0
 // for small m,n. Works on (m, n) that have not
 // yet been eliminated by mod.exe.
+// It also eliminates some (m,n) that can't have solutions
+// (via algebraic methods).
 
 #include <cstdint>
 #include <array>
@@ -191,7 +193,7 @@ RecursiveSolution GetSameRec(const std::map<int, Solutions> &s) {
   const auto &[rc1, rc2] = s.begin()->second.recursive[0];
   for (const auto &[o, sols] : s) {
     if (o != 0) {
-      CHECK(sols.recursive.size() == 1);
+      CHECK(sols.recursive.size() == 1) << o;
       if (rc1 != sols.recursive[0].first &&
           rc2 != sols.recursive[0].first) {
         printf(ARED("Previously") " (%d):\n"
@@ -212,11 +214,137 @@ RecursiveSolution GetSameRec(const std::map<int, Solutions> &s) {
   return rc1;
 }
 
+inline int64_t Rem(int64_t a, int64_t b) {
+  a = a % b;
+  if (a < 0) a += b;
+  return a;
+}
+
+int64_t HasNontrivialZeroResidue(int64_t modulus) {
+  for (int64_t i = 1; i < modulus; i++) {
+    if (Rem(i * i, modulus) == 0) return i;
+  }
+  return 0;
+}
+
+// Ran first million; no dice.
+static void EliminateNegation(Work *work) {
+  // If m = -n, then we have
+  // 222121 a^2 - b^2 + z = 0
+  // 360721 a^2 - c^2 - z = 0
+  // and so we actually have
+  // 222121 a^2 - b^2 =
+  // -(360721 a^2 - c^2)
+  // so (adding 360721 a^2 to both sides)
+  // 582842 a^2 - b^2 = c^2
+  // 582842 a^2 = b^2 + c^2
+  //
+  // This does have a solution when a = 0, but it is not valid
+  // for our problem (whole square would be zero).
+  Periodically save_per(1);
+  constexpr int64_t MAX_MODULUS = 1000000;
+  int64_t skipped = 0;
+  for (int64_t modulus = 2; modulus < MAX_MODULUS; modulus++) {
+    if (int64_t ntz = HasNontrivialZeroResidue(modulus)) {
+      /*
+      printf("Skip %lld because %lld^2 mod %lld = 0\n",
+             modulus, ntz, modulus);
+      */
+      skipped++;
+      continue;
+    }
+
+    save_per.RunIf([&]() {
+        printf("EliminateEqual %lld/%lld. Skipped %lld\n",
+               modulus, MAX_MODULUS, skipped);
+      });
+    const std::vector<int64_t> squares_mod = SquaresModM(modulus);
+    for (int64_t aa : squares_mod) {
+      if (aa == 0) continue;
+
+      const int64_t lhs = Rem(582842 * aa, modulus);
+      for (int64_t bb : squares_mod) {
+        for (int64_t cc : squares_mod) {
+          if (lhs == Rem(bb + cc, modulus)) goto next_m;
+        }
+      }
+    }
+
+    printf("For modulus=%lld, no solution when m=-n!\n",
+           modulus);
+    CHECK(false) << "yay";
+  next_m:;
+  }
+
+  printf("Sorry, can't rule this case out.\n");
+}
+
+// Alas, ran this to 1 million; can't exclude it.
+[[maybe_unused]]
+static void EliminateEqual(Work *work) {
+  // If m = n, then we have
+  // 222121 a^2 - b^2 + z = 0
+  // 360721 a^2 - c^2 + z = 0
+  // and so we actually have
+  // 222121 a^2 - b^2 =
+  // 360721 a^2 - c^2
+  // or (subtracting 222121 a^2 from both sides)
+  // - b^2 = 138600 a^2 - c^2
+  // 138600 a^2 = b^2 - c^2
+  //
+  // This does have a solution when a = 0, but it is not valid
+  // for our problem (whole square would be zero).
+  Periodically save_per(1);
+  constexpr int64_t MAX_MODULUS = 1000000;
+  int64_t skipped = 0;
+  for (int64_t modulus = 2; modulus < MAX_MODULUS; modulus++) {
+    if (int64_t ntz = HasNontrivialZeroResidue(modulus)) {
+      /*
+      printf("Skip %lld because %lld^2 mod %lld = 0\n",
+             modulus, ntz, modulus);
+      */
+      skipped++;
+      continue;
+    }
+
+    save_per.RunIf([&]() {
+        printf("EliminateEqual %lld/%lld. Skipped %lld\n",
+               modulus, MAX_MODULUS, skipped);
+      });
+    const std::vector<int64_t> squares_mod = SquaresModM(modulus);
+    for (int64_t aa : squares_mod) {
+      if (aa == 0) continue;
+
+      const int64_t lhs = Rem(138600 * aa, modulus);
+      for (int64_t bb : squares_mod) {
+        for (int64_t cc : squares_mod) {
+          if (lhs == Rem(bb - cc, modulus)) goto next_m;
+        }
+      }
+    }
+
+    printf("For modulus=%lld, no solution when m=n!\n",
+           modulus);
+    CHECK(false) << "yay";
+  next_m:;
+  }
+
+  /*
+  for (int z = Work::MINIMUM; z <= Work::MAXIMUM; z++) {
+    if (work.GetNoSolAt(z, z == 0)) {
+    }
+  }
+  */
+}
+
 static void DoWork() {
   printf("Startup..\n");
 
   Work work;
   work.Load();
+
+  // EliminateEqual(&work);
+  EliminateNegation(&work);
 
   Periodically save_per(60);
 
@@ -257,9 +385,11 @@ static void DoWork() {
                                  sol_timer.Seconds()).c_str());
       });
 
+    // Canonical equation form is:
     // 222121 a^2 - b^2 + m = 0
     // 360721 a^2 - c^2 + n = 0
     //
+    // Alpetron coefficients are (new variables a, b, c):
     // ax^2 + bxy + cy^2 + dx + ey + f = 0.
     //
     // so we have a1 = 222121, c1 = -1, f1 = m
@@ -283,6 +413,7 @@ static void DoWork() {
   // Eliminate points without any solutions.
   // We could eliminate these by row/column, but I already elminated
   // them so I'm trying to keep it simple during a rewrite.
+  int eliminated = 0;
   for (const auto &[m, n] : todo) {
     const auto &[msol, nsol] = GetSolutions(m, n);
 
@@ -290,6 +421,7 @@ static void DoWork() {
         !HasSolutions(*nsol)) {
       printf("\n\nNo solutions for (%d, %d)!\n\n", m, n);
       work.SetNoSolAt(m, n, Work::NOSOL_ALPERTRON);
+      eliminated++;
       dirty = true;
     }
   }
@@ -297,6 +429,9 @@ static void DoWork() {
   if (dirty && ALLOW_SAVE) {
     work.Save();
     dirty = false;
+    printf("Eliminated cells %d with no solutions.\n", eliminated);
+    printf("Run again to check recursive solutions.\n");
+    return;
   }
 
   // Fun fact: Aside from 0 (which we can analyze separately), all of the

@@ -32,6 +32,17 @@ struct Work {
   // solution.
   static constexpr uint64_t NOSOL_ALPERTRON_FINITE = 0x00000000'FFFF00FF;
 
+  static constexpr int WIDTH = 667;
+  static constexpr int HEIGHT = 667;
+
+  static constexpr int MINIMUM = -333;
+  static constexpr int MAXIMUM = +333;
+
+  // from (x,y) in [0, WIDTH) and [0, HEIGHT) to (m, n), centered on zero
+  static inline std::pair<int, int> ToMN(int x, int y) {
+    return std::make_pair(x - 333, y - 333);
+  }
+
   // We store the whole rectangle (and have eliminated a lot of it) but
   // focus on the cells we actually care about, since they would improve
   // the best record:
@@ -142,6 +153,11 @@ struct Work {
     eliminated.ScaleBy(2).Save("mod-eliminated.png");
   }
 
+  static bool Exists() {
+    return Util::ExistsFile("mod-nosol.png") &&
+      Util::ExistsFile("mod-prime.png");
+  }
+
   void Load() {
     std::unique_ptr<ImageRGBA> prime_image(
         ImageRGBA::Load("mod-prime.png"));
@@ -186,8 +202,6 @@ struct Work {
   int Remaining() const { return remaining; }
 
 private:
-  static constexpr int WIDTH = 667;
-  static constexpr int HEIGHT = 667;
 
   std::unique_ptr<ImageRGBA> Widen(const ImageRGBA &img) {
     std::unique_ptr<ImageRGBA> wide =
@@ -223,6 +237,7 @@ private:
   std::vector<uint64_t> nosol;
 };
 
+template<bool ALLOW_SMALL_PRIMES>
 struct SolutionFinder {
   const MontgomeryRep64 p;
   Montgomery64 coeff_1;
@@ -247,9 +262,16 @@ private:
   // For large p, we find a solution very quickly; the depth
   // histogram looks like exponential falloff.
   template<int NUM_TO_CHECK>
-  bool HasSolutionModPInternal(int64_t m_int, int64_t n_int) const {
-    if (m_int < 0) m_int += p.modulus;
-    if (n_int < 0) n_int += p.modulus;
+  bool HasSolutionModPInternal(int64_t m_orig, int64_t n_orig) const {
+    int64_t m_int = m_orig;
+    int64_t n_int = n_orig;
+    if constexpr (ALLOW_SMALL_PRIMES) {
+      m_int = m_int % (int64_t)p.modulus;
+      n_int = n_int % (int64_t)p.modulus;
+    }
+
+    if (m_int < 0) m_int += (int64_t)p.modulus;
+    if (n_int < 0) n_int += (int64_t)p.modulus;
 
     const Montgomery64 m = p.ToMontgomery(m_int);
     const Montgomery64 n = p.ToMontgomery(n_int);
@@ -262,7 +284,11 @@ private:
         if constexpr (NUM_TO_CHECK < 0) {
           return p.Modulus();
         } else {
-          return NUM_TO_CHECK;
+          if constexpr (ALLOW_SMALL_PRIMES) {
+            return std::min((uint64_t)NUM_TO_CHECK, (uint64_t)p.modulus);
+          } else {
+            return NUM_TO_CHECK;
+          }
         }
       }();
 
@@ -272,6 +298,10 @@ private:
       Montgomery64 a = p.Nth(idx);
       Montgomery64 aa = p.Mult(a, a);
 
+      // 222121 a^2 - b^2 + m = 0
+      // 360721 a^2 - c^2 + n = 0
+      // 222121 a^2 + m = b^2
+      // 360721 a^2 + n = c^2
       // 222121 a^2 - (-m) = b^2
       // 360721 a^2 - (-n) = c^2
 
@@ -288,6 +318,11 @@ private:
       bool sol2 = p.Eq(r2, p.One()) || p.Eq(a2n, p.Zero());
 
       if (sol1 && sol2) {
+        /*
+        printf("For (%lld,%lld) mod %llu solution with a=%llu^2\n",
+               m_orig, n_orig, p.modulus,
+               p.ToInt(a));
+        */
         #if DEPTH_HISTO
         MutexLock ml(&histo_mutex);
         depth_histo->Observe(idx);
@@ -300,5 +335,85 @@ private:
   }
 
 };
+
+// Return all the quadratic residues mod m in an arbitrary order.
+// Linear time.
+inline std::vector<int64_t> SquaresModM(int64_t modulus) {
+  std::unordered_set<int64_t> squares_mod_set;
+  // PERF: don't need to check "negative" i.
+  for (int64_t i = 0; i < modulus; i++) {
+    squares_mod_set.insert((i * i) % modulus);
+  }
+
+  std::vector<int64_t> squares_mod;
+  squares_mod.reserve(squares_mod_set.size());
+  for (const int64_t s : squares_mod_set)
+    squares_mod.push_back(s);
+  return squares_mod;
+}
+
+// Exhaustively search for (a, b, c) that solve
+// 222121 a^2 - b^2 + m = 0  mod p
+// 360721 a^2 - c^2 + n = 0  mod p
+// (p need not be prime).
+// XXX to cc
+inline
+std::optional< std::tuple<int64_t, int64_t, int64_t>>
+SimpleSolve(int64_t m_signed, int64_t n_signed, int64_t p) {
+  auto ModP = [p](int64_t x) {
+      x = x % p;
+      if (x < 0) x += p;
+      return x;
+    };
+
+  // Move these to the right hand side, which means negating them.
+  // Convert into a non-negative remainder mod p.
+  const int64_t neg_m = ModP(-m_signed);
+  const int64_t neg_n = ModP(-n_signed);
+
+  auto SolveOne = [p, &ModP](int64_t saa, int64_t d) ->
+    std::optional<int64_t> {
+      for (int64_t x = 0; x < p; x++) {
+        int64_t xx = ModP(saa - x * x);
+        if (xx == d) return {x};
+      }
+      return std::nullopt;
+  };
+
+  /*
+  printf("Solving (%lld,%lld) mod %lld, which is (%lld,%lld)\n",
+         m_signed, n_signed, p, m, n);
+  */
+
+  for (int64_t a = 0; a < p; a++) {
+    const int64_t aa = (a * a) % p;
+
+    if (a > 0 && a % 10000 == 0) printf("%lld/%lld\n", a, p);
+
+    const int64_t aa1 = (222121LL * aa) % p;
+    auto bo = SolveOne(aa1, neg_m);
+    if (!bo.has_value()) continue;
+
+    const int64_t aa2 = (360721LL * aa) % p;
+    auto co = SolveOne(aa2, neg_n);
+    if (!co.has_value()) continue;
+
+    // Verify that it is indeed a solution.
+    const int64_t b = bo.value();
+    const int64_t c = co.value();
+
+    // Verify that the solution does indeed work.
+    CHECK(ModP(222121 * a * a - b * b + n_signed) == 0);
+    CHECK(ModP(360721 * a * a - c * c + m_signed) == 0);
+
+    return {std::make_tuple(a, bo.value(), co.value())};
+  }
+  /*
+  CHECK(false) << "No solution for (" << m_signed << "," << n_signed << ") "
+               << " mod " << p;
+  */
+  return std::nullopt;
+}
+
 
 #endif

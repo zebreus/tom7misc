@@ -35,10 +35,16 @@ Since it writes regularly, HDD may be better than SDD?
 On the pi:
 
 Write latest raspbian lite to microsd card.
+(I'm now using the Raspberry Pi Imager, which does some of these
+steps for you. But not the config.txt changes!)
+
 On the boot partition:
 
 Add onewire support in /boot/config.txt:
 dtoverlay=w1-gpio,gpiopin=17
+
+It seems that we do NOT want to enable i2c. The bcm C code
+communicates directly with the device using memory mapped I/O.
 
 Turn on console too for debugging:
 (probably not actually necessary)
@@ -72,6 +78,8 @@ sudo raspi-config
  - Enable ssh (under "interfacing options")
  - Advanced: Expand filesystem
  - Boot options: Wait for network (?I think this is a good idea?)
+     (It's no longer there?)
+ - In 2023, I tried adding "predictable interface names".
 (reboot?)
 
 sudo dpkg-reconfigure tzdata
@@ -127,7 +135,7 @@ tar -zxvf mysql++-3.3.0.tar.gz
 cd mysql++-3.3.0
 ./configure --prefix=/usr
 make -j 2
-sudo make install
+make install
 
 # To auto-reconnect wifi, in /etc/crontab:
 * * * * *  root  /home/pi/tom7misc/tempo/wifi-check.sh

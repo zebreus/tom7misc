@@ -48,6 +48,7 @@ struct Solutions {
   std::vector<std::pair<RecursiveSolution, RecursiveSolution>> recursive;
 };
 
+// Solve an equation of the form ax^2 + bxy + cx^2 + dx + ey + f = 0.
 // If output is non-null, writes readable HTML there.
 Solutions QuadBigInt(const BigInt &a, const BigInt &b, const BigInt &c,
                      const BigInt &d, const BigInt &e, const BigInt &f,
