@@ -1,0 +1,27 @@
+
+common from wikipedia: ../acronymine/unicode.cc
+Transform the input images to make them wider, and make more space for greek etc.
+
+U+26D4 "no entry"
+is used by emacs sometimes
+
+Replacement char <?>
+and maybe .notdef?
+
+Check mark:
+On windows we get some glyph substitution for unicode characters that
+have become emojis (even if they are in the font), which I think is bad
+for FixederSys. From a brief look, it seems like we may need to mark the
+font somehow to indicate that it supports some "emoji". Supposedly
+"Segoe UI Symbol" does this, whereas "Segoe UI Emoji" has the color
+emoji in it.
+
+Could pretty easily generate BDF for x windows:
+https://en.wikipedia.org/wiki/Glyph_Bitmap_Distribution_Format
+and also PCF:
+https://en.wikipedia.org/wiki/Portable_Compiled_Format
+
+
+We definitely need these! "Symbols for Legacy Computing"
+https://www.unicode.org/charts/PDF/U1FB00.pdf
+

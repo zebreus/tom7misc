@@ -186,6 +186,10 @@ static void Rephrase(LLM *llm, const string &prompt, const string &original) {
 
     // Sample words for this line.
     while (line.size() < WIDTH) {
+      // TODO: Increase temperature when the prefix has been seen
+      // before (proportional to its length); decrease it when it
+      // is new. In the former case, it's easy for us to get stuck
+      // trying the same phrasing over and over.)
       string word = word_stream.Next();
 
       // At the beginning of a continuation line, a space was

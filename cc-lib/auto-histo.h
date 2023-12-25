@@ -70,6 +70,7 @@ struct AutoHisto {
         int64_t skip = max_samples * 0.005;
 
         // XXX compute bounds, number of actual buckets
+        // TODO: Detect integral data better.
         min = data[skip];
         double max = data[data.size() - (1 + skip)];
         // XXX do something when samples are degenerate.
@@ -123,6 +124,7 @@ struct AutoHisto {
 
       // Compute temporary histogram from data. We have the
       // number of buckets.
+      // TODO: Better detect integer data.
       double minx = data[0], maxx = data[0];
       for (double x : data) {
         minx = std::min(x, minx);
@@ -151,6 +153,7 @@ struct AutoHisto {
     return histo;
   }
 
+  // Vertical layout.
   std::string SimpleANSI(int buckets) const {
     const Histo histo = GetHisto(buckets);
 
@@ -171,6 +174,53 @@ struct AutoHisto {
       } else {
         StringAppendF(&ret, AFGCOLOR(190, 190, 118, "%s") "\n",
                       bar.c_str());
+      }
+    }
+    return ret;
+  }
+
+  // Space-efficient horizontal layout.
+  std::string SimpleHorizANSI(int buckets) const {
+    const Histo histo = GetHisto(buckets);
+
+    std::vector<std::string> labels;
+    int max_label = 0;
+    for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
+      const std::string label =
+        StringPrintf("%.1f", histo.BucketLeft(bidx));
+      labels.emplace_back(label);
+      max_label = std::max(max_label, (int)label.size());
+    }
+
+    const int bar_width = max_label + 1;
+
+    // Column data.
+    std::string ret;
+    for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
+      std::string fcc =
+        FilledColumnChar(histo.buckets[bidx] / histo.max_value);
+      std::string bar;
+      for (int i = 0; i < bar_width; i++) {
+        bar += fcc;
+      }
+
+      if (bidx & 1) {
+        StringAppendF(&ret, AFGCOLOR(200, 200, 128, "%s"),
+                      bar.c_str());
+      } else {
+        StringAppendF(&ret, AFGCOLOR(190, 190, 118, "%s"),
+                      bar.c_str());
+      }
+    }
+    StringAppendF(&ret, "\n");
+
+    // Column labels.
+    for (int bidx = 0; bidx < (int)histo.buckets.size(); bidx++) {
+      std::string label = PadLeft(labels[bidx], bar_width);
+      if (bidx & 1) {
+        StringAppendF(&ret, AFGCOLOR(170, 170, 170, "%s"), label.c_str());
+      } else {
+        StringAppendF(&ret, AFGCOLOR(150, 150, 150, "%s"), label.c_str());
       }
     }
     return ret;
@@ -203,6 +253,13 @@ struct AutoHisto {
   }
 
 private:
+
+  // Single character.
+  static std::string FilledColumnChar(float f) {
+    const int px = std::clamp((int)std::round(f * 8), 0, 8);
+    if (px == 0) return " ";
+    else return Util::EncodeUTF8(0x2580 + px);
+  }
 
   // To unicode-utils?
   static std::string FilledBar(int chars, float f) {
