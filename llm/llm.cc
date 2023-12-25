@@ -363,6 +363,11 @@ llama_token Sampler::SampleToken(std::unique_ptr<Candidates> cand) {
     llama_sample_top_p(lctx, &cand->ltda, params.top_p, 1);
     llama_sample_temp(lctx, &cand->ltda, params.temp);
     return SampleDistribution(&cand->ltda);
+
+  case SampleType::MIN_P:
+    llama_sample_min_p(lctx, &cand->ltda, params.min_p, 1);
+    // XXX also temp?
+    return SampleDistribution(&cand->ltda);
   }
 }
 
@@ -490,7 +495,7 @@ llama_token Sampler::SampleDistribution(llama_token_data_array *dist) {
 void Sampler::Observe(llama_token id) {
   last_n_tokens.push_front(id);
   num_last++;
-  if (num_last == last_n_tokens.size())
+  if (num_last >= last_n_tokens.size())
     num_last = last_n_tokens.size();
 
   // advance matcher state.
@@ -518,7 +523,7 @@ void Sampler::Reset() {
   ResetRegEx();
   // 0 token is <unk>, which I think means invalid.
   // (Or use BOS token?)
-  std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0);
+  std::fill(last_n_tokens.begin(), last_n_tokens.end(), 0xBEEF);
   mirostat_mu = 2.0f * params.mirostat_tau;
   num_last = 0;
 }
@@ -592,7 +597,7 @@ bool Sampler::FilterByNFA(Candidates *cands) const {
 void Sampler::Penalize(Candidates *cands) const {
   cands->ltda.sorted = false;
 
-  // Save nl logit so that we can restore it if
+  // Save nl logit so that we can restore it if it's not penalized.
   const int nl_id = llama_token_nl(context->model);
   float old_nl_logit = 0.0f;
 
@@ -806,12 +811,14 @@ void LLM::DoPrompt(const std::string &prompt, bool progress_bar) {
   }
 }
 
+static constexpr bool VERBOSE_SAVE_AND_LOAD = true;
+
 LLM::State LLM::SaveState() const {
   State state;
   state.context_state = context.SaveState();
   state.sampler_copy = sampler;
 
-  if (VERBOSE) {
+  if (VERBOSE_SAVE_AND_LOAD || VERBOSE) {
     printf("SaveState!\n");
     PrintKV();
   }
@@ -819,14 +826,14 @@ LLM::State LLM::SaveState() const {
 }
 
 void LLM::LoadState(const State &state) {
-  if (VERBOSE) {
+  if (VERBOSE_SAVE_AND_LOAD || VERBOSE) {
     printf("LoadState!\n");
     PrintKV();
   }
   context.LoadState(state.context_state);
   sampler = state.sampler_copy;
 
-  if (VERBOSE) {
+  if (VERBOSE_SAVE_AND_LOAD || VERBOSE) {
     printf("After LoadState:\n");
     PrintKV();
   }
@@ -881,8 +888,116 @@ void LLM::PrintKV() const {
   printf("  used_cells: %d\n", kcv.used_cells);
   printf("  max_contiguous: %d\n", kcv.max_contiguous);
   printf("  max_contiguous_idx: %d\n", kcv.max_contiguous_idx);
-  printf("  cells...\n");
-  printf("  cells_sequences...\n");
+
+  auto RangeString = [](int start, int past_end) {
+      if (start == past_end - 1) return StringPrintf("%d", start);
+      else return StringPrintf("%d-%d", start, past_end - 1);
+    };
+
+  // Since NUM_SEQ is forced to 1 here, there's at most one entry
+  // per cell.
+  std::string cseq;
+  for (int idx = 0; idx < kcv.n_cells; /* in loop */) {
+    // This means that there is just one sequence per cell, so
+    // its index is just i.
+    static_assert(NUM_SEQ == 1, "can support more here");
+    auto EndOfZeroRun = [&]() {
+        for (int i = idx; i < kcv.n_cells; i++) {
+          if (kcv.cells_sequences[i] != 0) return i;
+        }
+        return kcv.n_cells;
+      };
+    const int zero_run_end = EndOfZeroRun();
+
+    if (zero_run_end != idx) {
+      StringAppendF(&cseq,
+                    ANSI_FG(40, 40,  90) "[@%s,"
+                    ANSI_FG(80, 80, 120) "0"
+                    ANSI_FG(40, 40,  90) "]",
+                    RangeString(idx, zero_run_end).c_str());
+      idx = zero_run_end;
+      continue;
+    }
+
+    auto EndOfNegRun = [&]() {
+        for (int i = idx; i < kcv.n_cells; i++) {
+          if (kcv.cells_sequences[i] != -1) return i;
+        }
+        return kcv.n_cells;
+      };
+    const int neg_run_end = EndOfNegRun();
+
+    if (neg_run_end != idx) {
+      StringAppendF(&cseq,
+                    ANSI_FG(40, 40, 40) "[@%s,"
+                    ANSI_FG(60, 60, 60) "-1"
+                    ANSI_FG(40, 40, 40) "]",
+                    RangeString(idx, neg_run_end).c_str());
+      idx = neg_run_end;
+      continue;
+    }
+
+    // General case.
+    StringAppendF(&cseq, ANSI_RED "[@%d,%d]", idx,
+                  kcv.cells_sequences[idx]);
+    idx++;
+  }
+
+  printf("  contents (ranges inclusive):\n");
+  printf("  cell seqs: %s" ANSI_RESET "\n",
+         cseq.c_str());
+
+
+  std::string cells;
+  for (int idx = 0; idx < kcv.n_cells; /* in loop */) {
+    // The two most common states are for a kv cache position to be
+    // mapped to its own same index, or -1. Collapse runs of these.
+
+    // Get the index such that [idx, end) all have index=pos.
+    auto EndOfRun = [&]() {
+        for (int i = idx; i < kcv.n_cells; i++) {
+          if (kcv.cells[i].pos != i) return i;
+        }
+        return kcv.n_cells;
+      };
+
+    const int run_end = EndOfRun();
+    if (run_end != idx) {
+      StringAppendF(&cells,
+                    ANSI_FG(40, 90,  40) "[@%s,"
+                    ANSI_FG(80, 120, 80) "id"
+                    ANSI_FG(40, 90,  40) "]",
+                    RangeString(idx, run_end).c_str());
+      idx = run_end;
+      continue;
+    }
+
+    auto EndOfNegRun = [&]() {
+        for (int i = idx; i < kcv.n_cells; i++) {
+          if (kcv.cells[i].pos != -1) return i;
+        }
+        return kcv.n_cells;
+      };
+
+    const int neg_run_end = EndOfNegRun();
+
+    if (neg_run_end != idx) {
+      StringAppendF(&cells,
+                    ANSI_FG(40, 40, 40) "[@%s,"
+                    ANSI_FG(60, 60, 60) "-1"
+                    ANSI_FG(40, 40, 40) "]",
+                    RangeString(idx, neg_run_end).c_str());
+      idx = neg_run_end;
+      continue;
+    }
+
+    // General case.
+    StringAppendF(&cells, ANSI_YELLOW "[@%d,%d]", idx, kcv.cells[idx].pos);
+    idx++;
+  }
+
+  printf("  cells: %s" ANSI_RESET "\n",
+         cells.c_str());
 
   llama_kv_cache_view_free(&kcv);
 }

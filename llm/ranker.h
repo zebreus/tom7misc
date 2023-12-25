@@ -1,6 +1,6 @@
 
-#ifndef __LLM_RANKER_H
-#define __LLM_RANKER_H
+#ifndef _LLM_RANKER_H
+#define _LLM_RANKER_H
 
 #include <string>
 #include <vector>

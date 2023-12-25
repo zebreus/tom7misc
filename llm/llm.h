@@ -37,6 +37,7 @@ enum class SampleType {
   MIROSTAT_1,
   MIROSTAT_2,
   TEMPERATURE,
+  MIN_P,
 };
 
 // Parameters for creating a Sampler.
@@ -51,6 +52,9 @@ struct SamplerParams {
   float   tfs_z             = 1.00f; // 1.0 = disabled
   float   typical_p         = 1.00f; // 1.0 = disabled
   float   temp              = 0.80f; // 1.0 = disabled
+
+  // for min_p sampling.
+  float   min_p             = 0.05f; // >= 0.05 probability tokens only.
 
   // Penalize repeat tokens. We keep a buffer of n recently
   // Observe()d tokens, which are then penalized during sampling.
@@ -311,10 +315,13 @@ public:
   // Apply penalties to candidates.
   void Penalize(Candidates *cands) const;
 
+  // For debugging. Prints the last n tokens that the *sampler* has seen,
+  // in forward order.
   void PrintLast() {
-    for (int i = 0; i < num_last; i++) {
+    printf("num_last: %d. ", num_last);
+    for (int i = num_last - 1; i >= 0; i--) {
       auto t = last_n_tokens[i];
-      printf("[%d=%s]", i, context->TokenString(t).c_str());
+      printf("[@%d,%d=%s]", i, t, context->TokenString(t).c_str());
     }
   }
 
