@@ -233,7 +233,7 @@ static void Rephrase(LLM *llm, const string &prompt, const string &original) {
 
       // [ Californ]
       // llm->TakeTokenBatch({7599});
-      llm->InsertString(". In Pittsburgh, Pennsylvan");
+      // llm->InsertString(". In Pittsburgh, Pennsylvan");
 
       // Otherwise, try again.
       llm->LoadState(line_beginning);
@@ -265,8 +265,8 @@ int main(int argc, char ** argv) {
   // cparams.model = "../llama/models/7B/ggml-model-q8_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q4_0.bin";
   // cparams.model = "../llama/models/65B/ggml-model-q8_0.bin";
-  cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
-  // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
+  // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
+  cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
   // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
 
   // cparams.model = "codellama2/34b/ggml-model-f16.gguf";

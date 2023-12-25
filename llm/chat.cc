@@ -460,8 +460,8 @@ int main(int argc, char ** argv) {
 
   ContextParams cparams;
   // cparams.model = "e:\\llama2\\7b\\ggml-model-q4_0.gguf";
-  // cparams.model = "e:\\llama2\\7b\\ggml-model-q8_0.gguf";
-  cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
+  cparams.model = "e:\\llama2\\7b\\ggml-model-q8_0.gguf";
+  // cparams.model = "e:\\llama2\\70b\\ggml-model-q8_0.gguf";
   // cparams.model = "e:\\llama2\\70b\\ggml-model-f16.gguf";
 
   SamplerParams sparams;

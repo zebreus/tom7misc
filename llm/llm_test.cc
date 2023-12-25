@@ -267,6 +267,124 @@ static void TokenizeInContext() {
 }
 
 
+// Try to reproduce strange behavior in rephrase.cc:
+// We generate some text and then save the state when
+// the model is about to predict " eight". We then
+// do the prediction, which works as expected. We then
+// restore the state, and expect to get " eight" again,
+// but get " nine". Doing a full serialization "fixes"
+// it, but it seems like we should be able to do this
+// just by modifying the sequence using kv_ operations.
+static void RewindAfterSample() {
+  constexpr bool VERBOSE = false;
+  string prompt = "Counting to ten in different languages.\n"
+    "German: eins zwei drei vier funf sechs sieben";
+  Timer model_timer;
+  ContextParams cparams;
+  // Fastest model for test.
+  cparams.model = "e:\\llama2\\7b\\ggml-model-Q2_K.gguf";
+  // cparams.model = "llama2/7b/ggml-model-f16.gguf";
+
+  SamplerParams sparams;
+  // Get determinism for test.
+  sparams.seed = 0xCAFE;
+  sparams.type = SampleType::GREEDY;
+  sparams.regex = ".*";
+
+  LLM llm(cparams, sparams);
+  printf(AGREEN("Loaded model") ".\n");
+  llm.DoPrompt(prompt);
+  printf(AGREEN("Finished the prompt") ".\n");
+
+  printf(AGREY("%s"), prompt.c_str());
+  fflush(stdout);
+
+  // Get two tokens.
+  auto SampleAndTake = [&](bool verbose = true) {
+      if (VERBOSE && verbose) {
+        llm.sampler.PrintLast();
+      }
+      if (VERBOSE && verbose) printf("GetCandidates:\n");
+      std::unique_ptr<Context::Candidates> candidates =
+        llm.context.GetCandidates();
+      if (VERBOSE && verbose) {
+        printf(ABLUE("Original:") "\n");
+        llm.AnsiPrintCandidates(*candidates, 10);
+      }
+      llm.sampler.Penalize(candidates.get());
+      if (VERBOSE && verbose) {
+        printf(ACYAN("Penalized:") "\n");
+        llm.AnsiPrintCandidates(*candidates, 10);
+      }
+      llm.sampler.FilterByNFA(candidates.get());
+      if (VERBOSE && verbose) {
+        printf(APURPLE("Penalized, filtered:") "\n");
+        llm.AnsiPrintCandidates(*candidates, 10);
+      }
+      const int id = llm.sampler.SampleToken(std::move(candidates));
+
+      llm.TakeTokenBatch({id});
+      return llm.context.TokenString(id);
+    };
+
+  // Finish off the line.
+  for (;;) {
+    std::string tok = SampleAndTake(false);
+    printf(ABLUE("%s"), tok.c_str());
+    if (tok == "\n") break;
+  }
+
+  LLM::State next_line_state = llm.SaveState();
+
+  llm.InsertString("English: one two");
+  printf(AWHITE("English: one two"));
+
+  {
+    string line;
+    for (;;) {
+      std::string tok = SampleAndTake(false);
+      printf(ABLUE("%s"), tok.c_str());
+      line += tok;
+      if (Util::EndsWith(line, "seven")) break;
+    }
+  }
+
+  printf("\nNow save state before we predict eight:\n");
+
+  LLM::State state_before_eight = llm.SaveState();
+
+  const std::string eight = SampleAndTake();
+  CHECK(eight == " eight") << eight;
+
+  // Now sample, but do not take.
+  /*
+    LLM::State state_before_nine = llm.SaveState();
+    int id_nine = llm.Sample();
+    std::string nine = llm.context.TokenString(id_nine);
+    CHECK(nine == " nine") << nine;
+  */
+
+  printf(ABLUE("Predicted eight once") "\n");
+
+  bool wrong = false;
+  for (int i = 0; i < 10; i++) {
+    llm.LoadState(state_before_eight);
+
+    const std::string eight_again = SampleAndTake();
+    printf("On iteration %d, predicted [", i);
+    if (eight_again == " eight") {
+      printf(AGREEN("%s") "].\n", eight_again.c_str());
+    } else {
+      printf(ARED("%s") "].\n", eight_again.c_str());
+      wrong = true;
+    }
+  }
+  CHECK(!wrong) << "Should keep predicting eight!";
+
+  printf("RewindAfterSample " AGREEN("OK") "\n");
+}
+
+
 int main(int argc, char **argv) {
   ANSI::Init();
   LLM::Init();
@@ -274,6 +392,8 @@ int main(int argc, char **argv) {
   BasicPredict();
   Rewind();
   TokenizeInContext();
+
+  RewindAfterSample();
 
   printf("OK\n");
   return 0;

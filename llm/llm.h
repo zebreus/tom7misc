@@ -204,7 +204,7 @@ struct Context {
   // Currently this only allows REWINDING to a previous state in
   // the current context. I need to rework this.
   struct State {
-    // std::vector<uint8_t> llama_state;
+    std::vector<uint8_t> llama_state;
     // For the context. Doesn't necessarily have to agree with the
     // sampler.
     int num_last = 0;
@@ -321,8 +321,12 @@ public:
     printf("num_last: %d. ", num_last);
     for (int i = num_last - 1; i >= 0; i--) {
       auto t = last_n_tokens[i];
-      printf("[@%d,%d=%s]", i, t, context->TokenString(t).c_str());
+      std::string tok = context->TokenString(t);
+      // Would be useful to have a general-purpose token escaping function.
+      if (tok == "\n") tok = "\\n";
+      printf("[@%d,%d=%s]", i, t, tok.c_str());
     }
+    printf("\n");
   }
 
 private:
@@ -441,6 +445,10 @@ struct LLM {
                            int maximum);
 
   // Debugging only.
+
+  // Print the current LLM state (everything).
+  void PrintCurrentState() const;
+  // Just the KV cache.
   void PrintKV() const;
 
   Context context;

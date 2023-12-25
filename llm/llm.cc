@@ -265,14 +265,13 @@ Context::State Context::SaveState() const {
   // not work correctly with the new batched eval? On the
   // other hand, we can now rewind really cheaply.
 
-  /*
-    const size_t n_state_size_max = llama_get_state_size(lctx);
-    state.llama_state.resize(n_state_size_max);
-    const size_t n_state_size_cur =
+
+  const size_t n_state_size_max = llama_get_state_size(lctx);
+  state.llama_state.resize(n_state_size_max);
+  const size_t n_state_size_cur =
     llama_copy_state_data(lctx, state.llama_state.data());
-    state.llama_state.resize(n_state_size_cur);
-    state.llama_state.shrink_to_fit();
-  */
+  state.llama_state.resize(n_state_size_cur);
+  state.llama_state.shrink_to_fit();
 
   state.num_last = num_last;
   state.last_batch_size = last_batch_size;
@@ -280,22 +279,18 @@ Context::State Context::SaveState() const {
 }
 
 void Context::LoadState(const State &state) {
-  // Reset();
-  /*
-    size_t bytes_read =
+  Reset();
+
+  size_t bytes_read =
     llama_set_state_data(lctx,
-    // XXX I think this is morally const, but
-    // should check.
-    const_cast<uint8_t *>(
-    state.llama_state.data()));
-    CHECK(bytes_read == state.llama_state.size());
-  */
+                         // XXX I think this is morally const, but
+                         // should check.
+                         const_cast<uint8_t *>(
+                             state.llama_state.data()));
+  CHECK(bytes_read == state.llama_state.size());
+
   num_last = state.num_last;
   last_batch_size = state.last_batch_size;
-
-  // XXX at best this is inefficient, but probably just wrong?
-  // I think we want to clear after context.n_last, maybe?
-  // llama_kv_cache_clear(context.lctx);
 
   llama_kv_cache_seq_rm(
       lctx,
@@ -811,7 +806,7 @@ void LLM::DoPrompt(const std::string &prompt, bool progress_bar) {
   }
 }
 
-static constexpr bool VERBOSE_SAVE_AND_LOAD = true;
+static constexpr bool VERBOSE_SAVE_AND_LOAD = false;
 
 LLM::State LLM::SaveState() const {
   State state;
@@ -820,7 +815,7 @@ LLM::State LLM::SaveState() const {
 
   if (VERBOSE_SAVE_AND_LOAD || VERBOSE) {
     printf("SaveState!\n");
-    PrintKV();
+    PrintCurrentState();
   }
   return state;
 }
@@ -828,14 +823,14 @@ LLM::State LLM::SaveState() const {
 void LLM::LoadState(const State &state) {
   if (VERBOSE_SAVE_AND_LOAD || VERBOSE) {
     printf("LoadState!\n");
-    PrintKV();
+    PrintCurrentState();
   }
   context.LoadState(state.context_state);
   sampler = state.sampler_copy;
 
   if (VERBOSE_SAVE_AND_LOAD || VERBOSE) {
     printf("After LoadState:\n");
-    PrintKV();
+    PrintCurrentState();
   }
 }
 
@@ -872,6 +867,13 @@ void LLM::AnsiPrintCandidates(const Candidates &candidates,
        i++) {
     printf("  [%s] %.9f\n", toks[i].first.c_str(), toks[i].second);
   }
+}
+
+void LLM::PrintCurrentState() const {
+  printf(AWHITE("Context:") "\n");
+  printf("  num_last: %d\n", context.num_last);
+  printf("  last_batch_size: %d\n", context.last_batch_size);
+  PrintKV();
 }
 
 // Debugging only.
