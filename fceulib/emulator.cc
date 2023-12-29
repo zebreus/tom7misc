@@ -14,6 +14,7 @@
 #include "palette.h"
 #include "input.h"
 #include "ppu.h"
+#include "opcodes.h"
 
 #include "fc.h"
 
@@ -81,7 +82,7 @@ uint64 Emulator::MachineChecksum() const {
   md5_starts(&ctx);
 
   // All of RAM.
-  md5_update(&ctx, fc->fceu->RAM, RAM_BYTE_SIZE);  
+  md5_update(&ctx, fc->fceu->RAM, RAM_BYTE_SIZE);
 
   // CPU registers. Be insensitive to endianness here.
   uint8 pc_high = fc->X->reg_PC >> 8;
@@ -399,6 +400,10 @@ uint32 Emulator::GetYScroll() const {
   const uint8 ypos = ppu->GetYScroll8();
 
   return ytable_select + (uint32)ypos;
+}
+
+const char *const Emulator::Opcode(uint8_t op) {
+  return fceulib_2a03_opcode_name[op];
 }
 
 // Compression yields 2x slowdown, but states go from ~80kb to 1.4kb

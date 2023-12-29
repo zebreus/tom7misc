@@ -5233,16 +5233,20 @@ namespace csv {
         /** Largest number that can be stored in a 64-bit integer */
         CONSTEXPR_VALUE_14 long double CSV_INT64_MAX = get_int_max<8>();
 
-        /** Largest number that can be stored in a 8-bit ungisned integer */
+        /** Largest number that can be stored in a 8-bit unsigned integer */
+        [[maybe_unused]]
         CONSTEXPR_VALUE_14 long double CSV_UINT8_MAX = get_uint_max<1>();
 
         /** Largest number that can be stored in a 16-bit unsigned integer */
+        [[maybe_unused]]
         CONSTEXPR_VALUE_14 long double CSV_UINT16_MAX = get_uint_max<2>();
 
         /** Largest number that can be stored in a 32-bit unsigned integer */
+        [[maybe_unused]]
         CONSTEXPR_VALUE_14 long double CSV_UINT32_MAX = get_uint_max<4>();
 
         /** Largest number that can be stored in a 64-bit unsigned integer */
+        [[maybe_unused]]
         CONSTEXPR_VALUE_14 long double CSV_UINT64_MAX = get_uint_max<8>();
 
         /** Given a pointer to the start of what is start of

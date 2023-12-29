@@ -33,7 +33,7 @@ struct FCEUGI;
 struct Emulator {
   using string = std::string;
   template<class T> using vector = std::vector<T>;
-  
+
   static constexpr int AUDIO_SAMPLE_RATE = 44100;
 
   // Returns nullptr (or aborts) on error. Upon success, returns
@@ -56,7 +56,7 @@ struct Emulator {
   void Step(uint8 controller1, uint8 controller2);
   // High 8 bits are controller1, low are controller2.
   void Step16(uint16 controllers);
-  
+
   // Copy the 0x800 bytes of RAM.
   void GetMemory(vector<uint8> *mem);
   vector<uint8> GetMemory();
@@ -67,7 +67,7 @@ struct Emulator {
   // but allows calling GetImage and GetSound.
   void StepFull(uint8 controller1, uint8 controller2);
   void StepFull16(uint16 controllers);
-  
+
   // Get image. StepFull must have been called to produce this frame,
   // or else who knows what's in there? (Note that restoring a state
   // will not necessarily restore the image.) Size is 256 x 256 pixels,
@@ -109,7 +109,7 @@ struct Emulator {
   // This gets an uncompressed basis for the current state, which can
   // be used in the SaveEx and LoadEx routines.
   void GetBasis(vector<uint8> *out);
-  
+
   // Save and load with a basis vector. The vector can contain anything, and
   // doesn't even have to be the same length as an uncompressed save state,
   // but a state needs to be loaded with the same basis as it was saved.
@@ -146,7 +146,12 @@ struct Emulator {
   // No bounds checking; idx must be in [0, 2047].
   uint8 ReadRAM(int idx) const;
   void SetRAM(int idx, uint8 value);
-  
+
+  // Decode the single-byte 6502 instruction. The name here
+  // starts with a 3-character mnemonic, but usually has
+  // additional stuff to distinguish the addressing mode, etc.
+  static const char *const Opcode(uint8 op);
+
   // XXXXX debugging only.
   FC *GetFC() { return fc; }
   const FC *GetFC() const { return fc; }

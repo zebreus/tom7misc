@@ -85,7 +85,7 @@ BOARDSOBJECTS=boards/mmc1.o boards/mmc5.o boards/datalatch.o boards/mmc3.o board
 
 INPUTOBJECTS=input/arkanoid.o input/ftrainer.o input/oekakids.o input/suborkb.o input/bworld.o input/hypershot.o input/powerpad.o input/toprider.o input/cursor.o input/mahjong.o input/quiz.o input/zapper.o input/fkb.o input/shadow.o
 
-FCEUOBJECTS=cart.o version.o emufile.o fceu.o fds.o file.o filter.o ines.o input.o palette.o sound.o state.o unif.o vsuni.o x6502.o git.o fc.o
+FCEUOBJECTS=cart.o version.o emufile.o fceu.o fds.o file.o filter.o ines.o input.o palette.o sound.o state.o unif.o vsuni.o x6502.o opcodes.o git.o fc.o
 # ugh.
 AOT_OBJECTS=ppu.o
 NO_AOT_OBJECTS=ppu-noaot.o

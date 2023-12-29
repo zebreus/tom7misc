@@ -17,7 +17,10 @@ else
   # Linux, Mac, etc.
   CXX=g++
   CC=gcc
-  PLATFORM_LFLAGS=-v -Xlinker -rpath -Xlinker /usr/local/lib -lpodofo
+  # homebrew installs stuff in /usr/local/lib, but this is not
+  # by default a search path for shared libraries. Passing -rpath
+  # to the linker adds it.
+  PLATFORM_LFLAGS=-Xlinker -rpath -Xlinker /usr/local/lib -lpodofo
 endif
 
 OPT=-O3
@@ -32,7 +35,7 @@ RE2_OBJECTS=$(CC_LIB)/re2/bitstate.o $(CC_LIB)/re2/compile.o $(CC_LIB)/re2/dfa.o
 
 UTIL_OBJECTS=$(CC_LIB)/util.o $(CC_LIB)/arcfour.o $(CC_LIB)/base/stringprintf.o $(CC_LIB)/base/logging.o $(CC_LIB)/fonts/ttf.o $(CC_LIB)/stb_truetype.o $(CC_LIB)/stb_image.o $(CC_LIB)/stb_image_write.o $(CC_LIB)/color-util.o $(CC_LIB)/image.o $(CC_LIB)/opt/opt.o $(CC_LIB)/ansi.o $(CC_LIB)/bounds.o
 
-%.o : %.cc *.h makefile
+%.o : %.cc *.h makefile ../cc-lib/fonts/*.h
 	@$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 	@echo -n "."
 

@@ -277,7 +277,24 @@ bool TTF::IsClockwise(const Contour &c) {
   return sum < 0.0f;
 }
 
-std::optional<ImageA> TTF::GetSDF(char c,
+ImageA TTF::GetChar(int codepoint, int size) {
+  int width, height;
+  uint8_t *bitmap =
+    stbtt_GetCodepointBitmap(
+        &font, 0, stbtt_ScaleForPixelHeight(&font, size), codepoint,
+        &width, &height, 0, 0);
+  CHECK(bitmap != nullptr) << "Codepoint " << codepoint << " size " << size;
+
+  const int bytes = width * height;
+  std::vector<uint8_t> ret;
+  ret.resize(bytes);
+  memcpy(ret.data(), bitmap, bytes);
+  stbtt_FreeBitmap(bitmap, nullptr);
+  return ImageA(std::move(ret), width, height);
+}
+
+
+std::optional<ImageA> TTF::GetSDF(int codepoint,
                                   int sdf_size,
                                   int pad_top, int pad_bot, int pad_left,
                                   uint8_t onedge_value,
@@ -302,7 +319,7 @@ std::optional<ImageA> TTF::GetSDF(char c,
   int width, height, xoff, yoff;
   uint8_t *bit = stbtt_GetCodepointSDF(&font,
                                        stb_scale,
-                                       c,
+                                       codepoint,
                                        // padding
                                        stb_pad,
                                        // onedge value

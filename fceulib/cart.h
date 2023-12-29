@@ -182,6 +182,7 @@ private:
 
   // See comment on ResetCartMapping where negative offsets of nothing
   // are used..? TODO: Sort this out.
+  [[maybe_unused]]
   uint8 nothing_safetynet[65536] = { };
   uint8 nothing[8192] = { };
 

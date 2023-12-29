@@ -51,13 +51,51 @@ static void ShowChar() {
 // way is to rasterize pairs and then just work at the pixel row
 // level.
 
-struct Metrics {
+// Data for a kerning pair.
+struct Kerning {
+  // The additional spacing (often negative) as designed in
+  // the font.
+  std::optional<double> designed;
 
+  // For each rasterized line, the original (prior to any kerning)
+  // distance between the closest points on the two characters.
+  // If neither character has a point on this raster line, the
+  // value is NaN. If only the left character has a point, the
+  // distance is +inf, and -inf if only the right character
+  // has a point.
+  // In principle this can also be a negative finite value, if
+  // the characters overlap.
+  std::vector<double> raster_distance;
 };
+
+struct Metrics {
+  // The minimal y value (uppermost point) in any character in the font.
+  double min_y = 0.0;
+  // The maximal y value (lowermost point) in any character in the font.
+  double max_y = 0.0;
+
+  double min_x = 0.0;
+  double max_x = 0.0;
+};
+
+Metrics GetTTFMetrics(const TTF &ttf) {
+  Metrics metrics;
+  const auto &[min_x, min_y, max_x, max_y] = ttf.BoundingBox();
+  metrics.min_y = min_y;
+  metrics.max_y = max_y;
+
+  metrics.min_x = min_x;
+  metrics.max_x = max_x;
+
+  return metrics;
+}
 
 
 int main(int argc, char **argv) {
   ShowChar();
+
+  TTF ttf("Georgia.ttf");
+  GetTTFMetrics(ttf);
 
   return 0;
 }

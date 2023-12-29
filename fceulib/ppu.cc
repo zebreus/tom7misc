@@ -217,7 +217,7 @@ static constexpr uint32 ppulut3[128] = {
 
 static inline const uint8 *MMC5SPRVRAMADR(FC *fc, uint32 v) {
   DCHECK(std::type_index(typeid(*fc->fceu->cartiface)) ==
-	std::type_index(typeid(MMC5))) << "\n" <<
+  std::type_index(typeid(MMC5))) << "\n" <<
     typeid(fc->fceu->cartiface).name() << "\n vs \n" <<
     typeid(MMC5).name();
   MMC5 *mmc5 = static_cast<MMC5*>(fc->fceu->cartiface);
@@ -232,7 +232,7 @@ static inline const uint8 *VRAMADR(FC *fc, uint32 A) {
 // in mmc5 docs
 const uint8 *PPU::MMC5BGVRAMADR(uint32 V) {
   DCHECK(std::type_index(typeid(*fc->fceu->cartiface)) ==
-	std::type_index(typeid(MMC5))) << "\n" <<
+  std::type_index(typeid(MMC5))) << "\n" <<
     typeid(fc->fceu->cartiface).name() << "\n vs \n" <<
     typeid(MMC5).name();
   MMC5 *mmc5 = static_cast<MMC5*>(fc->fceu->cartiface);
@@ -551,14 +551,14 @@ void PPU::CheckSpriteHit(int p) {
   // beyond that? The loop only does anything if the condition is
   // true. -tom7 PERF: A similar trick may apply to x < sprite_hit_x + 8.
   const int l = std::min(p - 16, 255);
-  
+
   for (int x = sprite_hit_x; x < sprite_hit_x + 8 && x < l; x++) {
     // Basically, check whether the sprite pixel is not background
     // (sprite_hit_mask is a bitmask where 0 means palette entry 0,
     // background) and the pixel in the scanline (Pline) does not have
     // bit 6 set. (Now, who is setting this bit? -tom7)
     if ((sprite_hit_mask & (0x80 >> (x - sprite_hit_x))) &&
-	!(Plinef[x] & 0x40)) {
+  !(Plinef[x] & 0x40)) {
       TRACELOC();
       PPU_status |= 0x40;
       //printf("Ha:  %d, %d, Hita: %d, %d, %d, %d, %d\n",
@@ -716,7 +716,7 @@ void PPU::RefreshLine(int lastpixel) {
 
   if (sprite_hit_x != 0x100 && !(PPU_status & 0x40)) {
     if ((sprite_hit_x < lastpixel - 16) &&
-	!(sprite_hit_x < (lasttile - 2) * 8)) {
+  !(sprite_hit_x < (lasttile - 2) * 8)) {
       //printf("OK: %d\n",scanline);
       lasttile++;
     }
@@ -749,9 +749,9 @@ void PPU::RefreshLine(int lastpixel) {
 
     if (lastpixel - 16 >= 0) {
       fc->input->InputScanlineHook(Plinef,
-				   any_sprites_on_line ? sprlinebuf : 0,
+           any_sprites_on_line ? sprlinebuf : 0,
                                    linestartts,
-				   lasttile * 8 - 16);
+           lasttile * 8 - 16);
     }
     return;
   }
@@ -795,8 +795,11 @@ void PPU::RefreshLine(int lastpixel) {
         tochange--;
       }
     } else if (MMC5HackCHRMode == 1 && (MMC5HackSPMode & 0x80)) {
+      /*
+        // weirdly dead code -tom7
       int tochange=MMC5HackSPMode&0x1F;
       tochange-=firsttile;
+      */
 
       for (int X1 = firsttile; X1 < lasttile; X1++) {
         TRACELOC();
@@ -852,7 +855,7 @@ void PPU::RefreshLine(int lastpixel) {
 
   RefreshAddr = refreshaddr_local;
   if (firsttile <= 2 && 2 < lasttile && !(PPU_values[1] & 2)) {
-    const uint32 tmp = 
+    const uint32 tmp =
       PALRAM[0] | (PALRAM[0] << 8) | (PALRAM[0] << 16) | (PALRAM[0] << 24) |
       0x40404040;
     *(uint32 *)Plinef = *(uint32 *)(Plinef + 4) = tmp;
@@ -862,7 +865,7 @@ void PPU::RefreshLine(int lastpixel) {
     const uint32 tmp =
       PALRAM[0] | (PALRAM[0] << 8) | (PALRAM[0] << 16) | (PALRAM[0] << 24) |
       0x40404040;
-    
+
     int t_start = firsttile - 2;
     int t_count = lasttile - firsttile;
     if (t_start < 0) {
@@ -885,7 +888,7 @@ void PPU::RefreshLine(int lastpixel) {
 
   if (lastpixel - 16 >= 0) {
     fc->input->InputScanlineHook(Plinef, any_sprites_on_line ? sprlinebuf : 0,
-				 linestartts, lasttile * 8 - 16);
+         linestartts, lasttile * 8 - 16);
   }
   Pline = P;
   firsttile = lasttile;
@@ -933,7 +936,7 @@ void PPU::DoLine() {
 
   if (MMC5Hack && (ScreenON || SpriteON)) {
     DCHECK(std::type_index(typeid(*fc->fceu->cartiface)) ==
-	  std::type_index(typeid(MMC5))) << "\n" <<
+    std::type_index(typeid(MMC5))) << "\n" <<
       typeid(fc->fceu->cartiface).name() << "\n vs \n" <<
       typeid(MMC5).name();
     MMC5 *mmc5 = static_cast<MMC5*>(fc->fceu->cartiface);
@@ -999,7 +1002,7 @@ void PPU::DoLine() {
 
     // A semi-hack for Star Trek: 25th Anniversary
     if (GameHBIRQHook && (ScreenON || SpriteON) &&
-	((PPU_values[0] & 0x38) != 0x18)) {
+  ((PPU_values[0] & 0x38) != 0x18)) {
       GameHBIRQHook(fc);
     }
   }
@@ -1082,7 +1085,7 @@ void PPU::FetchSpriteData() {
   // buffer, so that we can do the sprite 0 hit test only in
   // that case.
   sprite_0_in_sprbuf = (unsigned int)(scanline - spr->y) < sprite_height;
-  
+
   const int vofs = (unsigned int)(P0 & 0x8 & (((P0 & 0x20) ^ 0x20) >> 2)) << 9;
 
   DEBUGF(stderr, "FetchSprites @%d\n", scanline);
@@ -1097,37 +1100,37 @@ void PPU::FetchSpriteData() {
         DEBUGF(stderr, "   sp %2d: %d,%d #%d attr %s\n",
                n, spr->x, spr->y, spr->no, attrbits(spr->atr).c_str());
 
-	SPRB dst;
-	const int t = (int)scanline - spr->y;
-	// made uint32 from uint -tom7
-	uint32 vadr =
-	  Sprite16 ?
-	  ((spr->no & 1) << 12) + ((spr->no & 0xFE) << 4) :
-	  (spr->no << 4) + vofs;
+  SPRB dst;
+  const int t = (int)scanline - spr->y;
+  // made uint32 from uint -tom7
+  uint32 vadr =
+    Sprite16 ?
+    ((spr->no & 1) << 12) + ((spr->no & 0xFE) << 4) :
+    (spr->no << 4) + vofs;
 
-	if (spr->atr & V_FLIP) {
-	  vadr += 7;
-	  vadr -= t;
-	  vadr += (P0 & 0x20) >> 1;
-	  vadr -= t & 8;
-	} else {
-	  vadr += t;
-	  vadr += t & 8;
-	}
+  if (spr->atr & V_FLIP) {
+    vadr += 7;
+    vadr -= t;
+    vadr += (P0 & 0x20) >> 1;
+    vadr -= t & 8;
+  } else {
+    vadr += t;
+    vadr += t & 8;
+  }
 
-	const uint8 *C = MMC5Hack ?
-	  MMC5SPRVRAMADR(fc, vadr) : VRAMADR(fc, vadr);
+  const uint8 *C = MMC5Hack ?
+    MMC5SPRVRAMADR(fc, vadr) : VRAMADR(fc, vadr);
 
-	dst.ca[0] = C[0];
-	dst.ca[1] = C[8];
-	dst.x = spr->x;
-	dst.atr = spr->atr;
+  dst.ca[0] = C[0];
+  dst.ca[1] = C[8];
+  dst.x = spr->x;
+  dst.atr = spr->atr;
 
-	{
-	  uint32 *dest32 = (uint32 *)&dst;
-	  uint32 *sprbuf32 = (uint32 *)&SPRBUF[ns<<2];
-	  *sprbuf32=*dest32;
-	}
+  {
+    uint32 *dest32 = (uint32 *)&dst;
+    uint32 *sprbuf32 = (uint32 *)&SPRBUF[ns<<2];
+    *sprbuf32=*dest32;
+  }
 
         ns++;
       } else {
@@ -1141,43 +1144,43 @@ void PPU::FetchSpriteData() {
       if ((unsigned int)(scanline - spr->y) >= sprite_height) continue;
 
       if (ns < maxsprites) {
-	SPRB dst;
+  SPRB dst;
 
-	const int t = (int)scanline - spr->y;
+  const int t = (int)scanline - spr->y;
 
-	unsigned int vadr =
-	  Sprite16 ?
-	  ((spr->no&1)<<12) + ((spr->no&0xFE)<<4) :
-	  (spr->no<<4) + vofs;
+  unsigned int vadr =
+    Sprite16 ?
+    ((spr->no&1)<<12) + ((spr->no&0xFE)<<4) :
+    (spr->no<<4) + vofs;
 
-	if (spr->atr & V_FLIP) {
-	  vadr+=7;
-	  vadr-=t;
-	  vadr+=(P0&0x20)>>1;
-	  vadr-=t&8;
-	} else {
-	  vadr+=t;
-	  vadr+=t&8;
-	}
+  if (spr->atr & V_FLIP) {
+    vadr+=7;
+    vadr-=t;
+    vadr+=(P0&0x20)>>1;
+    vadr-=t&8;
+  } else {
+    vadr+=t;
+    vadr+=t&8;
+  }
 
-	const uint8 *C = MMC5Hack ?
-	  MMC5SPRVRAMADR(fc, vadr) : VRAMADR(fc, vadr);
-	dst.ca[0] = C[0];
-	if (ns < 8) {
-	  PPU_hook(fc, 0x2000);
-	  PPU_hook(fc, vadr);
-	}
-	dst.ca[1] = C[8];
-	dst.x = spr->x;
-	dst.atr = spr->atr;
+  const uint8 *C = MMC5Hack ?
+    MMC5SPRVRAMADR(fc, vadr) : VRAMADR(fc, vadr);
+  dst.ca[0] = C[0];
+  if (ns < 8) {
+    PPU_hook(fc, 0x2000);
+    PPU_hook(fc, vadr);
+  }
+  dst.ca[1] = C[8];
+  dst.x = spr->x;
+  dst.atr = spr->atr;
 
-	{
-	  // XXX why bother with this? Just copy the struct,
-	  // or initialize in place.
-	  uint32 *dst32 = (uint32 *)&dst;
-	  uint32 *sprbuf32 = (uint32 *)&SPRBUF[ns << 2];
-	  *sprbuf32 = *dst32;
-	}
+  {
+    // XXX why bother with this? Just copy the struct,
+    // or initialize in place.
+    uint32 *dst32 = (uint32 *)&dst;
+    uint32 *sprbuf32 = (uint32 *)&SPRBUF[ns << 2];
+    *sprbuf32 = *dst32;
+  }
 
         ns++;
       } else {
@@ -1238,7 +1241,7 @@ void PPU::RefreshSprites() {
     // zero hit test, if applicable. Finally, we use the bitmask to
     // guard whether we draw the individual pixels, since background
     // must actually be transparent.
-      
+
     const uint8 J = spr->ca[0] | spr->ca[1];
 
     const uint8 atr = spr->atr;
@@ -1251,24 +1254,24 @@ void PPU::RefreshSprites() {
       // buffer, it will be at index n == 0.
       if (n == 0 && sprite_0_in_sprbuf && !(PPU_status & 0x40)) {
         sprite_hit_x = x;
-	// bitmask J, maybe reversed if the sprite is horizontally flipped.
+  // bitmask J, maybe reversed if the sprite is horizontally flipped.
         sprite_hit_mask =
-	  (atr & H_FLIP) ?
-	  ((J << 7) & 0x80) |
-	  ((J << 5) & 0x40) |
-	  ((J << 3) & 0x20) |
-	  ((J << 1) & 0x10) |
-	  ((J >> 1) & 0x08) |
-	  ((J >> 3) & 0x04) |
-	  ((J >> 5) & 0x02) |
-	  ((J >> 7) & 0x01) :
-	  J;
+    (atr & H_FLIP) ?
+    ((J << 7) & 0x80) |
+    ((J << 5) & 0x40) |
+    ((J << 3) & 0x20) |
+    ((J << 1) & 0x10) |
+    ((J >> 1) & 0x08) |
+    ((J >> 3) & 0x04) |
+    ((J >> 5) & 0x02) |
+    ((J >> 7) & 0x01) :
+    J;
       }
 
       // PERF If we are in DISABLE_VIDEO we can probably skip
       // drawing the sprite pixels themselves, since we already
       // have enough info for the sprite 0 hit test.
-      
+
       // C is destination for the 8 pixels we'll write
       // on this scanline.
       // C is an array of bytes, each corresponding to
@@ -1393,7 +1396,7 @@ void PPU::CopySprites(uint8 *target) {
 #if 1 // was ifdef LSB_FIRST!
 
       if (!(t&0x80)) {
-	// Normal sprite || behind bg sprite
+  // Normal sprite || behind bg sprite
         if (!(t&0x40) || (P[n]&0x40))
           P[n]=sprlinebuf[n];
       }
@@ -1555,9 +1558,9 @@ void PPU::FrameLoop() {
         GameHBIRQHook(fc);
       if (PPU_hook) {
         for (int x = 0; x < 42; x++) {
-	  PPU_hook(fc, 0x2000);
-	  PPU_hook(fc, 0);
-	}
+    PPU_hook(fc, 0x2000);
+    PPU_hook(fc, 0);
+  }
       }
       if (GameHBIRQHook2)
         GameHBIRQHook2(fc);
@@ -1585,9 +1588,9 @@ void PPU::FrameLoop() {
     // Triggers MMC5-specific interrupts, etc.
     if (MMC5Hack && (ScreenON || SpriteON)) {
       DCHECK(std::type_index(typeid(*fc->fceu->cartiface)) ==
-	    std::type_index(typeid(MMC5))) << "\n" <<
-	typeid(fc->fceu->cartiface).name() << "\n vs \n" <<
-	typeid(MMC5).name();
+      std::type_index(typeid(MMC5))) << "\n" <<
+  typeid(fc->fceu->cartiface).name() << "\n vs \n" <<
+  typeid(MMC5).name();
       MMC5 *mmc5 = static_cast<MMC5*>(fc->fceu->cartiface);
       mmc5->MMC5HackHB(scanline);
     }
@@ -1595,8 +1598,8 @@ void PPU::FrameLoop() {
     int max = 0, maxref = 0;
     for (int x = 0; x < 7; x++) {
       if (deempcnt[x] > max) {
-	max = deempcnt[x];
-	maxref = x;
+  max = deempcnt[x];
+  maxref = x;
       }
       deempcnt[x]=0;
     }

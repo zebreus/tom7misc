@@ -30,7 +30,7 @@ void BootReads() {
 
 void BootCSV() {
   std::vector<std::vector<std::string>> csv =
-    CSV::ParseFile("cartboot_data.csv");
+    CSV::ParseFile("newboot.csv");
   CHECK(!csv.empty());
 
   for (const auto &row : csv) {
@@ -45,7 +45,7 @@ void BootCSV() {
     for (int i = 0; i < 8; i++) {
       printf("%c", ((1 << (7 - i)) & x) ? '1' : '0');
     }
-    printf("\n");
+    printf(" %s\n", Emulator::Opcode(x));
   }
 }
 
