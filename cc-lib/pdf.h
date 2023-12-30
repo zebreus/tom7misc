@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <optional>
 #include <string>
+#include <vector>
 
 // Allows for quick generation of simple PDF documents.
 // This is useful for producing easily printed output from C code, where
@@ -69,12 +70,6 @@ struct PDF {
   };
 
 public:
-  // TODO: use vector
-  struct flexarray {
-      void ***bins;
-      int item_count;
-      int bin_count;
-  };
 
   enum ObjType {
     OBJ_none, /* skipped */
@@ -93,7 +88,7 @@ public:
   };
 
   struct Object {
-    Object() {}
+    Object(ObjType type) : type(type) {}
     virtual ~Object() {}
 
     ObjType type = OBJ_none;
@@ -107,53 +102,78 @@ public:
   };
 
   struct Bookmark : public Object {
-    Object *page;
-    char name[64];
-    Object *parent;
-    flexarray children;
+    Bookmark() : Object(OBJ_bookmark) {}
+    Object *page = nullptr;
+    char name[64] = {};
+    Object *parent = nullptr;
+    std::vector<Object *> children;
   };
 
   struct Page : public Object {
+    Page() : Object(OBJ_page) {}
     // Dimensions of the page, in points.
     float Width() const { return width; }
     float Height() const { return height; }
 
     void SetSize(float width, float height);
 
-    float width;
-    float height;
-    flexarray children;
-    flexarray annotations;
+    float width = 0.0f;
+    float height = 0.0f;
+    std::vector<Object *> children;
+    std::vector<Object *> annotations;
   };
 
   struct Stream : public Object {
-    Object *page;
+    Stream() : Object(OBJ_stream) {}
+    Object *page = nullptr;
+    std::string stream;
+  };
+
+  // Port note: This originally used the "stream" entry in the union.
+  struct Image : public Object {
+    Image() : Object(OBJ_image) {}
+    Object *page = nullptr;
     std::string stream;
   };
 
   struct InfoObj : public Object {
+    InfoObj() : Object(OBJ_info) {}
     Info info;
   };
 
   struct FontObj : public Object {
+    FontObj() : Object(OBJ_font) {}
     char name[64];
-    int font_index;
+    int font_index = 0;
   };
 
   struct Link : public Object {
-    Object *page; /* Page containing link */
-    float llx;               /* Clickable rectangle */
-    float lly;
-    float urx;
-    float ury;
-    Object *target_page; /* Target page */
-    float target_x;                 /* Target location */
-    float target_y;
+    Link() : Object(OBJ_link) {}
+    // Page containing link.
+    Object *page = nullptr;
+    // Clickable rectangle.
+    float llx = 0.0f;
+    float lly = 0.0f;
+    float urx = 0.0f;
+    float ury = 0.0f;
+    // Target page.
+    Object *target_page = nullptr;
+    // Target location.
+    float target_x = 0.0f;
+    float target_y = 0.0f;
   };
 
-  struct None : public Object { };
+  struct None : public Object {
+    None() : Object(OBJ_none) {}
+  };
 
-  struct Catalog : public Object { };
+  struct Catalog : public Object {
+    Catalog() : Object(OBJ_catalog) {}
+  };
+
+  struct Pages : public Object {
+    Pages() : Object(OBJ_pages) {}
+  };
 
   // Supported image file formats.
   enum ImageType {
@@ -780,11 +800,13 @@ int pdf_parse_image_header(struct pdf_img_info *info, const uint8_t *data,
                            size_t err_msg_length);
 #endif
 
+  static const char *ObjTypeName(ObjType t);
+
 private:
 
   int SetErr(int errval, const char *buffer, ...);
   Object *pdf_get_object(int index);
-  bool pdf_append_object(Object *obj);
+  void pdf_append_object(Object *obj);
   // Perhaps can just be destructor, or static
   void pdf_object_destroy(Object *object);
   // Add a new-ly allocated object; takes ownership.
@@ -803,7 +825,7 @@ private:
 
   char errstr[128] = {};
   int errval = 0;
-  struct flexarray objects;
+  std::vector<Object *> objects;
 
   float width = 0.0f;
   float height = 0.0f;

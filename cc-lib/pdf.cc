@@ -108,8 +108,6 @@ static inline uint32_t bswap32(uint32_t x)
 #define ntoh32(x) (x)
 #endif
 
-using flexarray = PDF::flexarray;
-
 // Limits on image sizes for sanity checking & to avoid plausible overflow
 // issues
 static constexpr int MAX_IMAGE_WIDTH = (16 * 1024);
@@ -139,6 +137,24 @@ struct png_chunk {
 };
 #pragma pack(pop)
 
+const char *PDF::ObjTypeName(ObjType t) {
+  switch (t) {
+  case OBJ_none: return "none";
+  case OBJ_info: return "info";
+  case OBJ_stream: return "stream";
+  case OBJ_font: return "font";
+  case OBJ_page: return "page";
+  case OBJ_bookmark: return "bookmark";
+  case OBJ_outline: return "outline";
+  case OBJ_catalog: return "catalog";
+  case OBJ_pages: return "pages";
+  case OBJ_image: return "image";
+  case OBJ_link: return "link";
+  default: break;
+  }
+  return "???";
+}
+
 // Simple data container to store a single 24 Bit RGB value, used for
 // processing PNG images
 struct rgb_value {
@@ -146,119 +162,6 @@ struct rgb_value {
     uint8_t blue;
     uint8_t green;
 };
-
-// TODO: std::vector
-/**
- * Simple flexible resizing array implementation
- * The bins get larger in powers of two
- * bin 0 = 1024 items
- *     1 = 2048 items
- *     2 = 4096 items
- *     etc...
- */
-/* What is the first index that will be in the given bin? */
-#define MIN_SHIFT 10
-#define MIN_OFFSET ((1 << MIN_SHIFT) - 1)
-static int bin_offset[] = {
-    (1 << (MIN_SHIFT + 0)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 1)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 2)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 3)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 4)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 5)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 6)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 7)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 8)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 9)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 10)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 11)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 12)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 13)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 14)) - 1 - MIN_OFFSET,
-    (1 << (MIN_SHIFT + 15)) - 1 - MIN_OFFSET,
-};
-
-static inline int flexarray_get_bin(const flexarray *flex, int index)
-{
-    (void)flex;
-    for (size_t i = 0; i < ARRAY_SIZE(bin_offset); i++)
-        if (index < bin_offset[i])
-            return i - 1;
-    return -1;
-}
-
-static inline int flexarray_get_bin_size(const flexarray *flex,
-                                         int bin)
-{
-    (void)flex;
-    if (bin >= (int)ARRAY_SIZE(bin_offset) - 1)
-        return -1;
-    int next = bin_offset[bin + 1];
-    return next - bin_offset[bin];
-}
-
-static inline int flexarray_get_bin_offset(const flexarray *flex,
-                                           int bin, int index)
-{
-    (void)flex;
-    return index - bin_offset[bin];
-}
-
-static void flexarray_clear(flexarray *flex)
-{
-    for (int i = 0; i < flex->bin_count; i++)
-        free(flex->bins[i]);
-    free(flex->bins);
-    flex->bin_count = 0;
-    flex->item_count = 0;
-}
-
-static inline int flexarray_size(const flexarray *flex)
-{
-    return flex->item_count;
-}
-
-static int flexarray_set(flexarray *flex, int index, void *data)
-{
-    int bin = flexarray_get_bin(flex, index);
-    if (bin < 0)
-        return -EINVAL;
-    if (bin >= flex->bin_count) {
-        void ***bins = (void ***)realloc(flex->bins, (flex->bin_count + 1) *
-                                                         sizeof(*flex->bins));
-        if (!bins)
-            return -ENOMEM;
-        flex->bin_count++;
-        flex->bins = bins;
-        flex->bins[flex->bin_count - 1] =
-            (void **)calloc(flexarray_get_bin_size(flex, flex->bin_count - 1),
-                            sizeof(void *));
-        if (!flex->bins[flex->bin_count - 1]) {
-            flex->bin_count--;
-            return -ENOMEM;
-        }
-    }
-    flex->item_count++;
-    flex->bins[bin][flexarray_get_bin_offset(flex, bin, index)] = data;
-    return flex->item_count - 1;
-}
-
-static inline int flexarray_append(flexarray *flex, void *data)
-{
-    return flexarray_set(flex, flexarray_size(flex), data);
-}
-
-static inline void *flexarray_get(const flexarray *flex, int index)
-{
-    int bin;
-
-    if (index >= flex->item_count)
-        return nullptr;
-    bin = flexarray_get_bin(flex, index);
-    if (bin < 0 || bin >= flex->bin_count)
-        return nullptr;
-    return flex->bins[bin][flexarray_get_bin_offset(flex, bin, index)];
-}
 
 // Locales can replace the decimal character with a ','.
 // This breaks the PDF output, so we force a 'safe' locale.
@@ -322,14 +225,15 @@ int PDF::GetErrCode() const {
 }
 
 PDF::Object *PDF::pdf_get_object(int index) {
-  return (Object *)flexarray_get(&objects, index);
+  return objects[index];
 }
 
-bool PDF::pdf_append_object(Object *obj) {
-  int index = flexarray_append(&objects, obj);
+void PDF::pdf_append_object(Object *obj) {
+  int index = (int)objects.size();
+  objects.push_back(obj);
 
-  if (index < 0)
-    return index;
+  CHECK(index >= 0);
+
   obj->index = index;
 
   if (last_objects[obj->type]) {
@@ -340,8 +244,6 @@ bool PDF::pdf_append_object(Object *obj) {
 
   if (!first_objects[obj->type])
     first_objects[obj->type] = obj;
-
-  return 0;
 }
 
 void PDF::pdf_object_destroy(Object *object) {
@@ -350,31 +252,27 @@ void PDF::pdf_object_destroy(Object *object) {
 
 PDF::Object *PDF::pdf_add_object_internal(Object *obj) {
   CHECK(obj != nullptr);
-
-  if (!pdf_append_object(obj)) {
-    delete obj;
-    return nullptr;
-  }
-
+  pdf_append_object(obj);
   return obj;
 }
 
 void PDF::pdf_del_object(Object *obj) {
   const ObjType type = obj->type;
-  flexarray_set(&objects, obj->index, nullptr);
+  CHECK(obj->index >= 0 && obj->index < (int)objects.size());
+  objects[obj->index] = nullptr;
+
   if (last_objects[type] == obj) {
     last_objects[type] = nullptr;
-    for (int i = 0; i < flexarray_size(&objects); i++) {
-      Object *o = pdf_get_object(i);
-      if (o && o->type == type)
+    for (Object *o : objects) {
+      if (o != nullptr && o->type == type) {
         last_objects[type] = o;
+      }
     }
   }
 
   if (first_objects[type] == obj) {
     first_objects[type] = nullptr;
-    for (int i = 0; i < flexarray_size(&objects); i++) {
-      Object *o = pdf_get_object(i);
+      for (Object *o : objects) {
       if (o && o->type == type) {
         first_objects[type] = o;
         break;
@@ -420,7 +318,7 @@ PDF::PDF(float width, float height,
              &tm);
   }
 
-  CHECK(AddObject(new Page) != nullptr);
+  CHECK(AddObject(new Pages) != nullptr);
   CHECK(AddObject(new Catalog) != nullptr);
   CHECK(SetFont("Times-Roman") >= 0);
 }
@@ -429,9 +327,9 @@ float PDF::Width() const { return width; }
 float PDF::Height() const { return height; }
 
 PDF::~PDF() {
-  for (int i = 0; i < flexarray_size(&objects); i++)
-    pdf_object_destroy(pdf_get_object(i));
-  flexarray_clear(&objects);
+  for (Object *obj : objects)
+    pdf_object_destroy(obj);
+  objects.clear();
 }
 
 PDF::Object *PDF::pdf_find_first_object(int type) {
@@ -508,12 +406,10 @@ int PDF::pdf_get_bookmark_count(const Object *obj) {
   int count = 0;
   if (obj->type == OBJ_bookmark) {
     Bookmark *bobj = (Bookmark*)obj;
-    int nchildren = flexarray_size(&bobj->children);
+    int nchildren = (int)bobj->children.size();
     count += nchildren;
     for (int i = 0; i < nchildren; i++) {
-      count += pdf_get_bookmark_count(
-          (const Object *)flexarray_get(
-              &bobj->children, i));
+      count += pdf_get_bookmark_count(bobj->children[i]);
     }
   }
   return count;
@@ -524,6 +420,10 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   if (!object)
     return -ENOENT;
 
+  printf("Save object %p %d type %d=%s\n",
+         fp, index, object->type,
+         ObjTypeName(object->type));
+
   if (object->type == OBJ_none)
     return -ENOENT;
 
@@ -532,14 +432,22 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   fprintf(fp, "%d 0 obj\r\n", index);
 
   switch (object->type) {
-  case OBJ_stream:
-  case OBJ_image: {
+  case OBJ_stream: {
     Stream *sobj = (Stream*)object;
     fwrite(sobj->stream.data(),
            sobj->stream.size(),
            1, fp);
     break;
   }
+
+  case OBJ_image: {
+    Image *iobj = (Image*)object;
+    fwrite(iobj->stream.data(),
+           iobj->stream.size(),
+           1, fp);
+    break;
+  }
+
   case OBJ_info: {
     const InfoObj *iobj = (InfoObj*)object;
     const PDF::Info *info = &iobj->info;
@@ -611,19 +519,14 @@ int PDF::pdf_save_object(FILE *fp, int index) {
     fprintf(fp, "  >>\r\n");
 
     fprintf(fp, "  /Contents [\r\n");
-    for (int i = 0; i < flexarray_size(&pobj->children); i++) {
-      Object *child =
-        (Object *)flexarray_get(&pobj->children, i);
+    for (Object *child : pobj->children) {
       fprintf(fp, "%d 0 R\r\n", child->index);
     }
     fprintf(fp, "]\r\n");
 
-    if (flexarray_size(&pobj->annotations)) {
+    if (!pobj->annotations.empty()) {
       fprintf(fp, "  /Annots [\r\n");
-      for (int i = 0; i < flexarray_size(&pobj->annotations);
-           i++) {
-        Object *child = (Object *)flexarray_get(
-            &pobj->annotations, i);
+      for (Object *child : pobj->annotations) {
         fprintf(fp, "%d 0 R\r\n", child->index);
       }
       fprintf(fp, "]\r\n");
@@ -650,10 +553,10 @@ int PDF::pdf_save_object(FILE *fp, int index) {
             this->height,
             parent->index,
             bobj->name);
-    int nchildren = flexarray_size(&bobj->children);
+    int nchildren = (int)bobj->children.size();
     if (nchildren > 0) {
-      Object *f = (Object *)flexarray_get(&bobj->children, 0);
-      Object *l = (Object *)flexarray_get(&bobj->children, nchildren - 1);
+      Object *f = (Object *)bobj->children[0];
+      Object *l = (Object *)bobj->children[nchildren - 1];
       fprintf(fp, "  /First %d 0 R\r\n", f->index);
       fprintf(fp, "  /Last %d 0 R\r\n", l->index);
       fprintf(fp, "  /Count %d\r\n", pdf_get_bookmark_count(object));
@@ -801,7 +704,6 @@ static uint64_t hash(uint64_t hash, const void *data, size_t len)
 }
 
 int PDF::pdf_save_file(FILE *fp) {
-  Object *obj = nullptr;
   int xref_offset;
   int xref_count = 0;
   uint64_t id1, id2;
@@ -815,7 +717,7 @@ int PDF::pdf_save_file(FILE *fp) {
   fprintf(fp, "%c%c%c%c%c\r\n", 0x25, 0xc7, 0xec, 0x8f, 0xa2);
 
   /* Dump all the objects & get their file offsets */
-  for (int i = 0; i < flexarray_size(&objects); i++)
+  for (int i = 0; i < (int)objects.size(); i++)
     if (pdf_save_object(fp, i) >= 0)
       xref_count++;
 
@@ -824,10 +726,10 @@ int PDF::pdf_save_file(FILE *fp) {
   fprintf(fp, "xref\r\n");
   fprintf(fp, "0 %d\r\n", xref_count + 1);
   fprintf(fp, "0000000000 65535 f\r\n");
-  for (int i = 0; i < flexarray_size(&objects); i++) {
-    obj = pdf_get_object(i);
-    if (obj->type != OBJ_none)
+  for (Object *obj : objects) {
+    if (obj->type != OBJ_none) {
       fprintf(fp, "%10.10d 00000 n\r\n", obj->offset);
+    }
   }
 
   fprintf(fp,
@@ -835,7 +737,8 @@ int PDF::pdf_save_file(FILE *fp) {
           "<<\r\n"
           "/Size %d\r\n",
           xref_count + 1);
-  obj = pdf_find_first_object(OBJ_catalog);
+  Object *obj = pdf_find_first_object(OBJ_catalog);
+  CHECK(obj != nullptr);
   fprintf(fp, "/Root %d 0 R\r\n", obj->index);
 
   const InfoObj *iobj = (InfoObj*)pdf_find_first_object(OBJ_info);
@@ -899,7 +802,9 @@ int PDF::pdf_add_stream(Page *page, const char *buffer) {
   sobj->stream.append(buffer, len);
   StringAppendF(&sobj->stream, "\r\nendstream\r\n");
 
-  return flexarray_append(&page->children, sobj);
+  int index = (int)page->children.size();
+  page->children.push_back(sobj);
+  return index;
 }
 
 #if 0
