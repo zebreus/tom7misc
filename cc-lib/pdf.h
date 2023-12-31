@@ -17,7 +17,7 @@
 //
 // Note: All coordinates/sizes are in points (1/72 of an inch).
 // All coordinates are based on 0,0 being the bottom left of the page.
-// All colours are specified as a packed 32-bit value - see @ref PDF_RGB.
+// All colors are specified as a packed 32-bit value - see @ref PDF_RGB.
 // Text strings are interpreted as UTF-8 encoded, but only a small subset of
 // characters beyond 7-bit ascii are supported (see @ref pdf_add_text for
 // details).
@@ -194,13 +194,13 @@ public:
   enum PNGColorType : uint8_t {
     // Greyscale
     PNG_COLOR_GREYSCALE = 0,
-    // Truecolour
+    // Truecolor
     PNG_COLOR_RGB = 2,
-    // Indexed-colour
+    // Indexed-color
     PNG_COLOR_INDEXED = 3,
     // Greyscale with alpha
     PNG_COLOR_GREYSCALE_A = 4,
-    // Truecolour with alpha
+    // Truecolor with alpha
     PNG_COLOR_RGBA = 6,
 
     PNG_COLOR_INVALID = 255
@@ -228,7 +228,7 @@ public:
     uint32_t biSize;        //!< Size of this header (40)
     int32_t biWidth;        //!< Width in pixels
     int32_t biHeight;       //!< Height in pixels
-    uint16_t biPlanes;      //!< Number of colour planes - must be 1
+    uint16_t biPlanes;      //!< Number of color planes - must be 1
     uint16_t biBitCount;    //!< Bits Per Pixel
     uint32_t biCompression; //!< Compression Method
   };
@@ -236,7 +236,7 @@ public:
 
   // Header for a JPEG file.
   struct jpeg_header {
-    int ncolours;
+    int ncolors;
   };
 
   enum PPMColorSpace {
@@ -270,7 +270,7 @@ public:
 
   // A drawing operation within a path.
   //  See PDF reference for detailed usage.
-  struct pdf_path_operation {
+  struct PathOp {
     char op;  /*!< Operation command. Possible operators are: m = move to, l =
                  line to, c = cubic bezier curve with two control points, v =
                  cubic bezier curve with one control point fixed at first
@@ -323,8 +323,8 @@ public:
   #define PDF_WHITE PDF_RGB(0xff, 0xff, 0xff)
 
   /*!
-   * Utility macro to provide a transparent colour
-   * This is used in some places for 'fill' colours, where no fill is required
+   * Utility macro to provide a transparent color
+   * This is used in some places for 'fill' colors, where no fill is required
    */
   #define PDF_TRANSPARENT (uint32_t)(0xffu << 24)
 
@@ -407,25 +407,73 @@ public:
   // int pdf_save(struct pdf_doc *pdf, const char *filename);
   bool Save(const char *filename);
 
-  #if 0
-/**
- * Adjust the width/height of a specific page
- * @param pdf PDF document that the page belongs to
- * @param page object returned from @ref pdf_append_page
- * @param width Width of the page in points
- * @param height Height of the page in points
- * @return < 0 on failure, 0 on success
- */
-int pdf_page_set_size(struct pdf_doc *pdf, struct Object *page,
-                      float width, float height);
+  // Add a line to the document. If page is null, then use the most
+  // recently added page.
+  void AddLine(float x1, float y1, float x2, float y2,
+               float width, uint32_t color_rgb,
+               Page *page = nullptr);
 
-/**
- * Save the given pdf document to the given FILE output
- * @param pdf PDF document to save
- * @param fp FILE pointer to store the data into (must be writable)
- * @return < 0 on failure, >= 0 on success
- */
-int pdf_save_file(struct pdf_doc *pdf, FILE *fp);
+  void AddQuadraticBezier(
+      // Start and end points.
+      float x1, float y1, float x2, float y2,
+      // Control point.
+      float xq1, float yq1,
+      float width,
+      uint32_t color_rgb, Page *page = nullptr);
+
+  void AddCubicBezier(
+      // Start and end points.
+      float x1, float y1, float x2, float y2,
+      // Control points.
+      float xq1, float yq1, float xq2, float yq2,
+      float width,
+      uint32_t color_rgb, Page *page = nullptr);
+
+  void AddEllipse(
+      // Center of the ellipse.
+      float x, float y,
+      // Radius on the x, y axes
+      float xradius, float yradius,
+      float width,
+      uint32_t color, uint32_t fill_color,
+      Page *page = nullptr);
+
+  void AddCircle(float x, float y, float radius, float width,
+                 uint32_t color,
+                 uint32_t fill_color, Page *page = nullptr);
+
+  void AddRectangle(float x, float y,
+                    float width, float height, float border_width,
+                    uint32_t color, Page *page = nullptr);
+
+  void AddFilledRectangle(
+    float x, float y, float width, float height,
+    float border_width, uint32_t color_fill,
+    uint32_t color_border, Page *page = nullptr);
+
+  // Add a custom path as a series of ops (see PathOp).
+  // Returns false if the ops are not understood.
+  bool AddCustomPath(const std::vector<PathOp> &ops,
+                     float stroke_width,
+                     uint32_t stroke_color,
+                     uint32_t fill_color,
+                     Page *page = nullptr);
+
+  // Returns false if the polygon is invalid (empty).
+  bool AddPolygon(
+      const std::vector<std::pair<float, float>> &points,
+      float border_width, uint32_t color,
+      Page *page = nullptr);
+
+  // Returns false if the polygon is invalid (empty).
+  // XXX I don't understand why this takes a single color
+  // but has border_width?
+  bool AddFilledPolygon(
+    const std::vector<std::pair<float, float>> &points,
+    float border_width, uint32_t color,
+    Page *page = nullptr);
+
+  #if 0
 
 /**
  * Add a text string to the document
@@ -435,12 +483,12 @@ int pdf_save_file(struct pdf_doc *pdf, FILE *fp);
  * @param size Point size of the font
  * @param xoff X location to put it in
  * @param yoff Y location to put it in
- * @param colour Colour to draw the text
+ * @param color Color to draw the text
  * @return 0 on success, < 0 on failure
  */
 int pdf_add_text(struct pdf_doc *pdf, struct Object *page,
                  const char *text, float size, float xoff, float yoff,
-                 uint32_t colour);
+                 uint32_t color);
 
 /**
  * Add a text string to the document at a rotated angle
@@ -451,12 +499,13 @@ int pdf_add_text(struct pdf_doc *pdf, struct Object *page,
  * @param xoff X location to put it in
  * @param yoff Y location to put it in
  * @param angle Rotation angle of text (in radians)
- * @param colour Colour to draw the text
+ * @param color Color to draw the text
  * @return 0 on success, < 0 on failure
  */
 int pdf_add_text_rotate(struct pdf_doc *pdf, struct Object *page,
                         const char *text, float size, float xoff, float yoff,
-                        float angle, uint32_t colour);
+                        float angle, uint32_t color);
+
 /**
  * Add a text string to the document, making it wrap if it is too
  * long
@@ -467,7 +516,7 @@ int pdf_add_text_rotate(struct pdf_doc *pdf, struct Object *page,
  * @param xoff X location to put it in
  * @param yoff Y location to put it in
  * @param angle Rotation angle of text (in radians)
- * @param colour Colour to draw the text
+ * @param color Color to draw the text
  * @param wrap_width Width at which to wrap the text
  * @param align Text alignment (see PDF_ALIGN_xxx)
  * @param height Store the final height of the wrapped text here (optional)
@@ -475,176 +524,8 @@ int pdf_add_text_rotate(struct pdf_doc *pdf, struct Object *page,
  */
 int pdf_add_text_wrap(struct pdf_doc *pdf, struct Object *page,
                       const char *text, float size, float xoff, float yoff,
-                      float angle, uint32_t colour, float wrap_width,
+                      float angle, uint32_t color, float wrap_width,
                       int align, float *height);
-
-/**
- * Add a line to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param x1 X offset of start of line
- * @param y1 Y offset of start of line
- * @param x2 X offset of end of line
- * @param y2 Y offset of end of line
- * @param width Width of the line
- * @param colour Colour to draw the line
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_line(struct pdf_doc *pdf, struct Object *page, float x1,
-                 float y1, float x2, float y2, float width, uint32_t colour);
-
-/**
- * Add a cubic bezier curve to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param x1 X offset of the initial point of the curve
- * @param y1 Y offset of the initial point of the curve
- * @param x2 X offset of the final point of the curve
- * @param y2 Y offset of the final point of the curve
- * @param xq1 X offset of the first control point of the curve
- * @param yq1 Y offset of the first control point of the curve
- * @param xq2 X offset of the second control of the curve
- * @param yq2 Y offset of the second control of the curve
- * @param width Width of the curve
- * @param colour Colour to draw the curve
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_cubic_bezier(struct pdf_doc *pdf, struct Object *page,
-                         float x1, float y1, float x2, float y2, float xq1,
-                         float yq1, float xq2, float yq2, float width,
-                         uint32_t colour);
-
-/**
- * Add a quadratic bezier curve to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param x1 X offset of the initial point of the curve
- * @param y1 Y offset of the initial point of the curve
- * @param x2 X offset of the final point of the curve
- * @param y2 Y offset of the final point of the curve
- * @param xq1 X offset of the control point of the curve
- * @param yq1 Y offset of the control point of the curve
- * @param width Width of the curve
- * @param colour Colour to draw the curve
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_quadratic_bezier(struct pdf_doc *pdf, struct Object *page,
-                             float x1, float y1, float x2, float y2,
-                             float xq1, float yq1, float width,
-                             uint32_t colour);
-
-/**
- * Add a custom path to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param operations Array of drawing operations
- * @param operation_count The number of operations
- * @param stroke_width Width of the stroke
- * @param stroke_colour Colour to stroke the curve
- * @param fill_colour Colour to fill the path
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_custom_path(struct pdf_doc *pdf, struct Object *page,
-                        const struct pdf_path_operation *operations,
-                        int operation_count, float stroke_width,
-                        uint32_t stroke_colour, uint32_t fill_colour);
-
-/**
- * Add an ellipse to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param x X offset of the center of the ellipse
- * @param y Y offset of the center of the ellipse
- * @param xradius Radius of the ellipse in the X axis
- * @param yradius Radius of the ellipse in the Y axis
- * @param width Width of the ellipse outline stroke
- * @param colour Colour to draw the ellipse outline stroke
- * @param fill_colour Colour to fill the ellipse
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_ellipse(struct pdf_doc *pdf, struct Object *page, float x,
-                    float y, float xradius, float yradius, float width,
-                    uint32_t colour, uint32_t fill_colour);
-
-/**
- * Add a circle to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param x X offset of the center of the circle
- * @param y Y offset of the center of the circle
- * @param radius Radius of the circle
- * @param width Width of the circle outline stroke
- * @param colour Colour to draw the circle outline stroke
- * @param fill_colour Colour to fill the circle
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_circle(struct pdf_doc *pdf, struct Object *page, float x,
-                   float y, float radius, float width, uint32_t colour,
-                   uint32_t fill_colour);
-
-/**
- * Add an outline rectangle to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param x X offset to start rectangle at
- * @param y Y offset to start rectangle at
- * @param width Width of rectangle
- * @param height Height of rectangle
- * @param border_width Width of rectangle border
- * @param colour Colour to draw the rectangle
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_rectangle(struct pdf_doc *pdf, struct Object *page, float x,
-                      float y, float width, float height, float border_width,
-                      uint32_t colour);
-
-/**
- * Add a filled rectangle to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param x X offset to start rectangle at
- * @param y Y offset to start rectangle at
- * @param width Width of rectangle
- * @param height Height of rectangle
- * @param border_width Width of rectangle border
- * @param colour_fill Colour to fill the rectangle
- * @param colour_border Colour to draw the rectangle
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_filled_rectangle(struct pdf_doc *pdf, struct Object *page,
-                             float x, float y, float width, float height,
-                             float border_width, uint32_t colour_fill,
-                             uint32_t colour_border);
-
-/**
- * Add an outline polygon to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param x array of X offsets for points comprising the polygon
- * @param y array of Y offsets for points comprising the polygon
- * @param count Number of points comprising the polygon
- * @param border_width Width of polygon border
- * @param colour Colour to draw the polygon
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_polygon(struct pdf_doc *pdf, struct Object *page, float x[],
-                    float y[], int count, float border_width,
-                    uint32_t colour);
-
-/**
- * Add a filled polygon to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param x array of X offsets of points comprising the polygon
- * @param y array of Y offsets of points comprising the polygon
- * @param count Number of points comprising the polygon
- * @param border_width Width of polygon border
- * @param colour Colour to draw the polygon
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_filled_polygon(struct pdf_doc *pdf, struct Object *page,
-                           float x[], float y[], int count,
-                           float border_width, uint32_t colour);
 
 /**
  * Add a bookmark to the document
@@ -700,12 +581,12 @@ enum {
  * @param width Width of barcode
  * @param height Height of barcode
  * @param string Barcode contents
- * @param colour Colour to draw barcode
+ * @param color Color to draw barcode
  * @return < 0 on failure, >= 0 on success
  */
 int pdf_add_barcode(struct pdf_doc *pdf, struct Object *page, int code,
                     float x, float y, float width, float height,
-                    const char *string, uint32_t colour);
+                    const char *string, uint32_t color);
 
 /**
  * Add image data as an image to the document.
@@ -819,7 +700,7 @@ private:
   Object *pdf_find_first_object(int type);
   Object *pdf_find_last_object(int type);
   static int pdf_get_bookmark_count(const Object *obj);
-  int pdf_add_stream(Page *page, const char *buffer);
+  int pdf_add_stream(Page *page, std::string str);
   int pdf_save_file(FILE *fp);
   int pdf_save_object(FILE *fp, int index);
 

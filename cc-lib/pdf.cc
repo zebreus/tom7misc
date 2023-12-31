@@ -7,6 +7,8 @@
 
 #include "pdf.h"
 
+#include <numbers>
+
 #if defined(_MSC_VER)
 #define _CRT_SECURE_NO_WARNINGS 1 // Drop the MSVC complaints about snprintf
 #define _USE_MATH_DEFINES
@@ -47,9 +49,9 @@ typedef SSIZE_T ssize_t;
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
-#define PDF_RGB_R(c) (float)((((c) >> 16) & 0xff) / 255.0)
-#define PDF_RGB_G(c) (float)((((c) >> 8) & 0xff) / 255.0)
-#define PDF_RGB_B(c) (float)((((c) >> 0) & 0xff) / 255.0)
+#define PDF_RGB_R(c) (float)((((c) >> 16) & 0xff) / 255.0f)
+#define PDF_RGB_G(c) (float)((((c) >> 8) & 0xff) / 255.0f)
+#define PDF_RGB_B(c) (float)((((c) >> 0) & 0xff) / 255.0f)
 #define PDF_IS_TRANSPARENT(c) (((c) >> 24) == 0xff)
 
 #if defined(_MSC_VER)
@@ -68,45 +70,16 @@ typedef SSIZE_T ssize_t;
 #include <strings.h> // strcasecmp
 #endif
 
-// TODO: Use std::endian
-/**
- * Try and support big & little endian machines
- */
-static inline uint32_t bswap32(uint32_t x)
-{
+#include <bit>
+
+static inline constexpr uint32_t bswap32(uint32_t x) {
+  if constexpr (std::endian::native == std::endian::little) {
     return (((x & 0xff000000u) >> 24) | ((x & 0x00ff0000u) >> 8) |
             ((x & 0x0000ff00u) << 8) | ((x & 0x000000ffu) << 24));
+  } else {
+    return x;
+  }
 }
-
-#ifdef __has_include // C++17, supported as extension to C++11 in clang, GCC
-                     // 5+, vs2015
-#if __has_include(<endian.h>)
-#include <endian.h> // gnu libc normally provides, linux
-#elif __has_include(<machine/endian.h>)
-#include <machine/endian.h> //open bsd, macos
-#elif __has_include(<sys/param.h>)
-#include <sys/param.h> // mingw, some bsd (not open/macos)
-#elif __has_include(<sys/isadefs.h>)
-#include <sys/isadefs.h> // solaris
-#endif
-#endif
-
-#if !defined(__LITTLE_ENDIAN__) && !defined(__BIG_ENDIAN__)
-#ifndef __BYTE_ORDER__
-/* Fall back to little endian by default */
-#define __LITTLE_ENDIAN__
-#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ || __BYTE_ORDER == __BIG_ENDIAN
-#define __BIG_ENDIAN__
-#else
-#define __LITTLE_ENDIAN__
-#endif
-#endif
-
-#if defined(__LITTLE_ENDIAN__)
-#define ntoh32(x) bswap32((x))
-#elif defined(__BIG_ENDIAN__)
-#define ntoh32(x) (x)
-#endif
 
 // Limits on image sizes for sanity checking & to avoid plausible overflow
 // issues
@@ -251,6 +224,7 @@ void PDF::pdf_object_destroy(Object *object) {
 }
 
 PDF::Object *PDF::pdf_add_object_internal(Object *obj) {
+  printf("Add object internal (%p, type %s)\n", obj, ObjTypeName(obj->type));
   CHECK(obj != nullptr);
   pdf_append_object(obj);
   return obj;
@@ -287,8 +261,12 @@ PDF::PDF(float width, float height,
          const std::optional<PDF::Info> &info) :
   width(width), height(height) {
 
+  printf("Add None:\n");
+
   /* We don't want to use ID 0 */
   (void)AddObject(new None);
+
+  printf("Add info object:\n");
 
   /* Create the 'info' object */
   InfoObj *obj = AddObject(new InfoObj);
@@ -303,6 +281,9 @@ PDF::PDF(float width, float height,
     obj->info.subject[sizeof(obj->info.subject) - 1] = '\0';
     obj->info.date[sizeof(obj->info.date) - 1] = '\0';
   }
+
+  printf("Now date:\n");
+
   /* FIXME: Should be quoting PDF strings? */
   if (!obj->info.date[0]) {
     time_t now = time(nullptr);
@@ -318,6 +299,7 @@ PDF::PDF(float width, float height,
              &tm);
   }
 
+  printf("Assertions:\n");
   CHECK(AddObject(new Pages) != nullptr);
   CHECK(AddObject(new Catalog) != nullptr);
   CHECK(SetFont("Times-Roman") >= 0);
@@ -782,24 +764,26 @@ bool PDF::Save(const char *filename) {
   return true;
 }
 
-int PDF::pdf_add_stream(Page *page, const char *buffer) {
+int PDF::pdf_add_stream(Page *page, std::string str) {
   if (!page)
     page = (Page*)pdf_find_last_object(OBJ_page);
 
-  if (!page)
-    return SetErr(-EINVAL, "Invalid pdf page");
+  CHECK(page != nullptr) << "You may need to add a page to the document "
+    "first.";
 
-  size_t len = strlen(buffer);
-  /* We don't want any trailing whitespace in the stream */
-  while (len >= 1 && (buffer[len - 1] == '\r' || buffer[len - 1] == '\n'))
-    len--;
+  // We don't want any trailing whitespace in the stream.
+  // (Is this OK for non-text streams? -tom7)
+  while (!str.empty() &&
+         (str.back() == '\r' ||
+          str.back() == '\n')) {
+    str.resize(str.size() - 1);
+  }
 
   Stream *sobj = AddObject(new Stream);
-  if (!sobj)
-    return errval;
+  CHECK(sobj != nullptr);
 
-  sobj->stream = StringPrintf("<< /Length %d >>stream\r\n", (int)len);
-  sobj->stream.append(buffer, len);
+  sobj->stream = StringPrintf("<< /Length %d >>stream\r\n", (int)str.size());
+  sobj->stream.append(str);
   StringAppendF(&sobj->stream, "\r\nendstream\r\n");
 
   int index = (int)page->children.size();
@@ -1030,34 +1014,279 @@ static int utf8_to_pdfencoding(const char *utf8, int len,
   return code_len;
 }
 
+void PDF::AddLine(float x1, float y1,
+                  float x2, float y2,
+                  float width, uint32_t color_rgb,
+                  Page *page) {
+  std::string str;
+  StringAppendF(&str, "%f w\r\n", width);
+  StringAppendF(&str, "%f %f m\r\n", x1, y1);
+  StringAppendF(&str, "/DeviceRGB CS\r\n");
+  StringAppendF(&str, "%f %f %f RG\r\n",
+                PDF_RGB_R(color_rgb),
+                PDF_RGB_G(color_rgb),
+                PDF_RGB_B(color_rgb));
+  StringAppendF(&str, "%f %f l S\r\n", x2, y2);
+
+  (void)pdf_add_stream(page, std::move(str));
+}
+
+void PDF::AddCubicBezier(float x1, float y1, float x2, float y2, float xq1,
+                         float yq1, float xq2, float yq2, float width,
+                         uint32_t color_rgb, Page *page) {
+  std::string str;
+
+  StringAppendF(&str, "%f w\r\n", width);
+  StringAppendF(&str, "%f %f m\r\n", x1, y1);
+  StringAppendF(&str, "/DeviceRGB CS\r\n");
+  StringAppendF(&str, "%f %f %f RG\r\n", PDF_RGB_R(color_rgb), PDF_RGB_G(color_rgb),
+                PDF_RGB_B(color_rgb));
+  StringAppendF(&str, "%f %f %f %f %f %f c S\r\n", xq1, yq1, xq2, yq2, x2,
+                y2);
+
+  (void)pdf_add_stream(page, std::move(str));
+}
+
+void PDF::AddQuadraticBezier(float x1, float y1, float x2, float y2,
+                             float xq1, float yq1, float width,
+                             uint32_t color_rgb, Page *page) {
+  float xc1 = x1 + (xq1 - x1) * (2.0f / 3.0f);
+  float yc1 = y1 + (yq1 - y1) * (2.0f / 3.0f);
+  float xc2 = x2 + (xq1 - x2) * (2.0f / 3.0f);
+  float yc2 = y2 + (yq1 - y2) * (2.0f / 3.0f);
+  AddCubicBezier(x1, y1, x2, y2, xc1, yc1, xc2, yc2,
+                 width, color_rgb, page);
+}
+
+void PDF::AddEllipse(float x, float y,
+                     float xradius, float yradius,
+                     float width,
+                     uint32_t color, uint32_t fill_color,
+                     Page *page) {
+  std::string str;
+
+  const float lx = (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * xradius;
+  const float ly = (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * yradius;
+
+  if (!PDF_IS_TRANSPARENT(fill_color)) {
+    StringAppendF(&str, "/DeviceRGB CS\r\n");
+    StringAppendF(&str, "%f %f %f rg\r\n",
+                  PDF_RGB_R(fill_color),
+                  PDF_RGB_G(fill_color),
+                  PDF_RGB_B(fill_color));
+  }
+
+  /* stroke color */
+  StringAppendF(&str, "/DeviceRGB CS\r\n");
+  StringAppendF(&str, "%f %f %f RG\r\n",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+
+  StringAppendF(&str, "%f w ", width);
+
+  StringAppendF(&str, "%.2f %.2f m ", (x + xradius), (y));
+
+  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x + xradius),
+                (y - ly), (x + lx), (y - yradius), x, (y - yradius));
+
+  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x - lx),
+                (y - yradius), (x - xradius), (y - ly), (x - xradius), y);
+
+  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x - xradius),
+                (y + ly), (x - lx), (y + yradius), x, (y + yradius));
+
+  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x + lx),
+                (y + yradius), (x + xradius), (y + ly), (x + xradius), y);
+
+  if (PDF_IS_TRANSPARENT(fill_color))
+    StringAppendF(&str, "%s", "S ");
+  else
+    StringAppendF(&str, "%s", "B ");
+
+  (void)pdf_add_stream(page, std::move(str));
+}
+
+void PDF::AddCircle(float xr, float yr, float radius, float width,
+                    uint32_t color,
+                    uint32_t fill_color, Page *page) {
+  return AddEllipse(xr, yr, radius, radius, width, color,
+                    fill_color, page);
+}
+
+void PDF::AddRectangle(float x, float y,
+                       float width, float height, float border_width,
+                       uint32_t color, Page *page) {
+  std::string str;
+  StringAppendF(&str, "%f %f %f RG ",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+  StringAppendF(&str, "%f w ", border_width);
+  StringAppendF(&str, "%f %f %f %f re S ", x, y, width, height);
+
+  (void)pdf_add_stream(page, std::move(str));
+}
+
+void PDF::AddFilledRectangle(
+    float x, float y, float width, float height,
+    float border_width, uint32_t color_fill,
+    uint32_t color_border, Page *page) {
+
+  std::string str;
+
+  StringAppendF(&str, "%f %f %f rg ",
+                PDF_RGB_R(color_fill),
+                PDF_RGB_G(color_fill),
+                PDF_RGB_B(color_fill));
+  if (border_width > 0) {
+    StringAppendF(&str, "%f %f %f RG ",
+                  PDF_RGB_R(color_border),
+                  PDF_RGB_G(color_border),
+                  PDF_RGB_B(color_border));
+    StringAppendF(&str, "%f w ", border_width);
+    StringAppendF(&str, "%f %f %f %f re B ", x, y, width, height);
+  } else {
+    StringAppendF(&str, "%f %f %f %f re f ", x, y, width, height);
+  }
+
+  (void)pdf_add_stream(page, std::move(str));
+}
+
+bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
+                        float stroke_width,
+                        uint32_t stroke_color,
+                        uint32_t fill_color,
+                        Page *page) {
+
+  std::string str;
+
+  if (!PDF_IS_TRANSPARENT(fill_color)) {
+    StringAppendF(&str, "/DeviceRGB CS\r\n");
+    StringAppendF(&str, "%f %f %f rg\r\n",
+                  PDF_RGB_R(fill_color),
+                  PDF_RGB_G(fill_color),
+                  PDF_RGB_B(fill_color));
+  }
+
+  StringAppendF(&str, "%f w\r\n", stroke_width);
+  StringAppendF(&str, "/DeviceRGB CS\r\n");
+  StringAppendF(&str, "%f %f %f RG\r\n",
+                PDF_RGB_R(stroke_color),
+                PDF_RGB_G(stroke_color),
+                PDF_RGB_B(stroke_color));
+
+  for (PathOp operation : ops) {
+    switch (operation.op) {
+    case 'm':
+      StringAppendF(&str, "%f %f m\r\n", operation.x1, operation.y1);
+      break;
+    case 'l':
+      StringAppendF(&str, "%f %f l\r\n", operation.x1, operation.y1);
+      break;
+    case 'c':
+      StringAppendF(&str, "%f %f %f %f %f %f c\r\n", operation.x1,
+                    operation.y1, operation.x2, operation.y2,
+                    operation.x3, operation.y3);
+      break;
+    case 'v':
+      StringAppendF(&str, "%f %f %f %f v\r\n", operation.x1, operation.y1,
+                    operation.x2, operation.y2);
+      break;
+    case 'y':
+      StringAppendF(&str, "%f %f %f %f y\r\n", operation.x1, operation.y1,
+                    operation.x2, operation.y2);
+      break;
+    case 'h':
+      StringAppendF(&str, "h\r\n");
+      break;
+    default:
+      SetErr(-errno, "Invalid operation");
+      return false;
+    }
+  }
+
+  if (PDF_IS_TRANSPARENT(fill_color))
+    StringAppendF(&str, "%s", "S ");
+  else
+    StringAppendF(&str, "%s", "B ");
+
+  (void)pdf_add_stream(page, std::move(str));
+
+  return true;
+}
+
+bool PDF::AddPolygon(
+    const std::vector<std::pair<float, float>> &points,
+    float border_width, uint32_t color,
+    Page *page) {
+  if (points.empty()) return false;
+
+  std::string str;
+
+  StringAppendF(&str, "%f %f %f RG ",
+                PDF_RGB_R(color),
+                PDF_RGB_G(color),
+                PDF_RGB_B(color));
+  StringAppendF(&str, "%f w ", border_width);
+  StringAppendF(&str, "%f %f m ", points[0].first, points[0].second);
+  for (int i = 1; i < (int)points.size(); i++) {
+    StringAppendF(&str, "%f %f l ", points[i].first, points[i].second);
+  }
+  StringAppendF(&str, "h S ");
+
+  (void)pdf_add_stream(page, std::move(str));
+  return true;
+}
+
+bool PDF::AddFilledPolygon(
+    const std::vector<std::pair<float, float>> &points,
+    float border_width, uint32_t color,
+    Page *page) {
+  if (points.empty()) return false;
+
+  std::string str;
+
+  StringAppendF(&str, "%f %f %f RG ",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+  StringAppendF(&str, "%f %f %f rg ",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+  StringAppendF(&str, "%f w ", border_width);
+  StringAppendF(&str, "%f %f m ", points[0].first, points[0].second);
+  for (int i = 1; i < (int)points.size(); i++) {
+    StringAppendF(&str, "%f %f l ", points[i].first, points[i].second);
+  }
+  StringAppendF(&str, "h f ");
+
+  (void)pdf_add_stream(page, std::move(str));
+  return true;
+}
+
+
 #if 0
 
 static int pdf_add_text_spacing(pdf_doc *pdf, Object *page,
                                 const char *text, float size, float xoff,
-                                float yoff, uint32_t colour, float spacing,
+                                float yoff, uint32_t color, float spacing,
                                 float angle)
 {
     int ret;
     size_t len = text ? strlen(text) : 0;
     dstr str = INIT_DSTR;
-    int alpha = (colour >> 24) >> 4;
+    int alpha = (color >> 24) >> 4;
 
     /* Don't bother adding empty/null strings */
     if (!len)
         return 0;
 
     dstr_append(&str, "BT ");
-    dstr_printf(&str, "/GS%d gs ", alpha);
+    StringAppendF(&str, "/GS%d gs ", alpha);
     if (angle != 0) {
-        dstr_printf(&str, "%f %f %f %f %f %f Tm ", cosf(angle), sinf(angle),
+        StringAppendF(&str, "%f %f %f %f %f %f Tm ", cosf(angle), sinf(angle),
                     -sinf(angle), cosf(angle), xoff, yoff);
     } else {
-        dstr_printf(&str, "%f %f TD ", xoff, yoff);
+        StringAppendF(&str, "%f %f TD ", xoff, yoff);
     }
-    dstr_printf(&str, "/F%d %f Tf ", pdf->current_font->font.font_index, size);
-    dstr_printf(&str, "%f %f %f rg ", PDF_RGB_R(colour), PDF_RGB_G(colour),
-                PDF_RGB_B(colour));
-    dstr_printf(&str, "%f Tc ", spacing);
+    StringAppendF(&str, "/F%d %f Tf ", pdf->current_font->font.font_index, size);
+    StringAppendF(&str, "%f %f %f rg ", PDF_RGB_R(color), PDF_RGB_G(color),
+                PDF_RGB_B(color));
+    StringAppendF(&str, "%f Tc ", spacing);
     dstr_append(&str, "(");
 
     /* Escape magic characters properly */
@@ -1096,17 +1325,17 @@ static int pdf_add_text_spacing(pdf_doc *pdf, Object *page,
 
 int pdf_add_text(pdf_doc *pdf, Object *page,
                  const char *text, float size, float xoff, float yoff,
-                 uint32_t colour)
+                 uint32_t color)
 {
-    return pdf_add_text_spacing(pdf, page, text, size, xoff, yoff, colour, 0,
+    return pdf_add_text_spacing(pdf, page, text, size, xoff, yoff, color, 0,
                                 0);
 }
 
 int pdf_add_text_rotate(pdf_doc *pdf, Object *page,
                         const char *text, float size, float xoff, float yoff,
-                        float angle, uint32_t colour)
+                        float angle, uint32_t color)
 {
-    return pdf_add_text_spacing(pdf, page, text, size, xoff, yoff, colour, 0,
+    return pdf_add_text_spacing(pdf, page, text, size, xoff, yoff, color, 0,
                                 angle);
 }
 
@@ -1443,7 +1672,7 @@ static const char *find_word_break(const char *string)
 
 int pdf_add_text_wrap(pdf_doc *pdf, Object *page,
                       const char *text, float size, float xoff, float yoff,
-                      float angle, uint32_t colour, float wrap_width,
+                      float angle, uint32_t color, float wrap_width,
                       int align, float *height)
 {
     /* Move through the text string, stopping at word boundaries,
@@ -1544,7 +1773,7 @@ int pdf_add_text_wrap(pdf_doc *pdf, Object *page,
 
             if (align != PDF_ALIGN_NO_WRITE) {
                 pdf_add_text_spacing(pdf, page, line, size, xoff_align, yoff,
-                                     colour, char_spacing, angle);
+                                     color, char_spacing, angle);
             }
 
             if (*end == ' ')
@@ -1559,264 +1788,6 @@ int pdf_add_text_wrap(pdf_doc *pdf, Object *page,
     if (height)
         *height = orig_yoff - yoff;
     return 0;
-}
-
-int pdf_add_line(pdf_doc *pdf, Object *page, float x1,
-                 float y1, float x2, float y2, float width, uint32_t colour)
-{
-    int ret;
-    dstr str = INIT_DSTR;
-
-    dstr_printf(&str, "%f w\r\n", width);
-    dstr_printf(&str, "%f %f m\r\n", x1, y1);
-    dstr_printf(&str, "/DeviceRGB CS\r\n");
-    dstr_printf(&str, "%f %f %f RG\r\n", PDF_RGB_R(colour), PDF_RGB_G(colour),
-                PDF_RGB_B(colour));
-    dstr_printf(&str, "%f %f l S\r\n", x2, y2);
-
-    ret = pdf_add_stream(pdf, page, dstr_data(&str));
-    dstr_free(&str);
-
-    return ret;
-}
-
-int pdf_add_cubic_bezier(pdf_doc *pdf, Object *page,
-                         float x1, float y1, float x2, float y2, float xq1,
-                         float yq1, float xq2, float yq2, float width,
-                         uint32_t colour)
-{
-    int ret;
-    dstr str = INIT_DSTR;
-
-    dstr_printf(&str, "%f w\r\n", width);
-    dstr_printf(&str, "%f %f m\r\n", x1, y1);
-    dstr_printf(&str, "/DeviceRGB CS\r\n");
-    dstr_printf(&str, "%f %f %f RG\r\n", PDF_RGB_R(colour), PDF_RGB_G(colour),
-                PDF_RGB_B(colour));
-    dstr_printf(&str, "%f %f %f %f %f %f c S\r\n", xq1, yq1, xq2, yq2, x2,
-                y2);
-
-    ret = pdf_add_stream(pdf, page, dstr_data(&str));
-    dstr_free(&str);
-
-    return ret;
-}
-
-int pdf_add_quadratic_bezier(pdf_doc *pdf, Object *page,
-                             float x1, float y1, float x2, float y2,
-                             float xq1, float yq1, float width,
-                             uint32_t colour)
-{
-    float xc1 = x1 + (xq1 - x1) * (2.0f / 3.0f);
-    float yc1 = y1 + (yq1 - y1) * (2.0f / 3.0f);
-    float xc2 = x2 + (xq1 - x2) * (2.0f / 3.0f);
-    float yc2 = y2 + (yq1 - y2) * (2.0f / 3.0f);
-    return pdf_add_cubic_bezier(pdf, page, x1, y1, x2, y2, xc1, yc1, xc2, yc2,
-                                width, colour);
-}
-
-int pdf_add_custom_path(pdf_doc *pdf, Object *page,
-                        const struct pdf_path_operation *operations,
-                        int operation_count, float stroke_width,
-                        uint32_t stroke_colour, uint32_t fill_colour)
-{
-    int ret;
-    dstr str = INIT_DSTR;
-
-    if (!PDF_IS_TRANSPARENT(fill_colour)) {
-        dstr_printf(&str, "/DeviceRGB CS\r\n");
-        dstr_printf(&str, "%f %f %f rg\r\n", PDF_RGB_R(fill_colour),
-                    PDF_RGB_G(fill_colour), PDF_RGB_B(fill_colour));
-    }
-    dstr_printf(&str, "%f w\r\n", stroke_width);
-    dstr_printf(&str, "/DeviceRGB CS\r\n");
-    dstr_printf(&str, "%f %f %f RG\r\n", PDF_RGB_R(stroke_colour),
-                PDF_RGB_G(stroke_colour), PDF_RGB_B(stroke_colour));
-
-    for (int i = 0; i < operation_count; i++) {
-        struct pdf_path_operation operation = operations[i];
-        switch (operation.op) {
-        case 'm':
-            dstr_printf(&str, "%f %f m\r\n", operation.x1, operation.y1);
-            break;
-        case 'l':
-            dstr_printf(&str, "%f %f l\r\n", operation.x1, operation.y1);
-            break;
-        case 'c':
-            dstr_printf(&str, "%f %f %f %f %f %f c\r\n", operation.x1,
-                        operation.y1, operation.x2, operation.y2,
-                        operation.x3, operation.y3);
-            break;
-        case 'v':
-            dstr_printf(&str, "%f %f %f %f v\r\n", operation.x1, operation.y1,
-                        operation.x2, operation.y2);
-            break;
-        case 'y':
-            dstr_printf(&str, "%f %f %f %f y\r\n", operation.x1, operation.y1,
-                        operation.x2, operation.y2);
-            break;
-        case 'h':
-            dstr_printf(&str, "h\r\n");
-            break;
-        default:
-            return SetErr(-errno, "Invalid operation");
-            break;
-        }
-    }
-
-    if (PDF_IS_TRANSPARENT(fill_colour))
-        dstr_printf(&str, "%s", "S ");
-    else
-        dstr_printf(&str, "%s", "B ");
-    ret = pdf_add_stream(pdf, page, dstr_data(&str));
-    dstr_free(&str);
-
-    return ret;
-}
-
-int pdf_add_ellipse(pdf_doc *pdf, Object *page, float x,
-                    float y, float xradius, float yradius, float width,
-                    uint32_t colour, uint32_t fill_colour)
-{
-    int ret;
-    dstr str = INIT_DSTR;
-    float lx, ly;
-
-    lx = (4.0f / 3.0f) * (float)(M_SQRT2 - 1) * xradius;
-    ly = (4.0f / 3.0f) * (float)(M_SQRT2 - 1) * yradius;
-
-    if (!PDF_IS_TRANSPARENT(fill_colour)) {
-        dstr_printf(&str, "/DeviceRGB CS\r\n");
-        dstr_printf(&str, "%f %f %f rg\r\n", PDF_RGB_R(fill_colour),
-                    PDF_RGB_G(fill_colour), PDF_RGB_B(fill_colour));
-    }
-
-    /* stroke color */
-    dstr_printf(&str, "/DeviceRGB CS\r\n");
-    dstr_printf(&str, "%f %f %f RG\r\n", PDF_RGB_R(colour), PDF_RGB_G(colour),
-                PDF_RGB_B(colour));
-
-    dstr_printf(&str, "%f w ", width);
-
-    dstr_printf(&str, "%.2f %.2f m ", (x + xradius), (y));
-
-    dstr_printf(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x + xradius),
-                (y - ly), (x + lx), (y - yradius), x, (y - yradius));
-
-    dstr_printf(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x - lx),
-                (y - yradius), (x - xradius), (y - ly), (x - xradius), y);
-
-    dstr_printf(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x - xradius),
-                (y + ly), (x - lx), (y + yradius), x, (y + yradius));
-
-    dstr_printf(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x + lx),
-                (y + yradius), (x + xradius), (y + ly), (x + xradius), y);
-
-    if (PDF_IS_TRANSPARENT(fill_colour))
-        dstr_printf(&str, "%s", "S ");
-    else
-        dstr_printf(&str, "%s", "B ");
-
-    ret = pdf_add_stream(pdf, page, dstr_data(&str));
-    dstr_free(&str);
-
-    return ret;
-}
-
-int pdf_add_circle(pdf_doc *pdf, Object *page, float xr,
-                   float yr, float radius, float width, uint32_t colour,
-                   uint32_t fill_colour)
-{
-    return pdf_add_ellipse(pdf, page, xr, yr, radius, radius, width, colour,
-                           fill_colour);
-}
-
-int pdf_add_rectangle(pdf_doc *pdf, Object *page, float x,
-                      float y, float width, float height, float border_width,
-                      uint32_t colour)
-{
-    int ret;
-    dstr str = INIT_DSTR;
-
-    dstr_printf(&str, "%f %f %f RG ", PDF_RGB_R(colour), PDF_RGB_G(colour),
-                PDF_RGB_B(colour));
-    dstr_printf(&str, "%f w ", border_width);
-    dstr_printf(&str, "%f %f %f %f re S ", x, y, width, height);
-
-    ret = pdf_add_stream(pdf, page, dstr_data(&str));
-    dstr_free(&str);
-
-    return ret;
-}
-
-int pdf_add_filled_rectangle(pdf_doc *pdf, Object *page,
-                             float x, float y, float width, float height,
-                             float border_width, uint32_t colour_fill,
-                             uint32_t colour_border)
-{
-    int ret;
-    dstr str = INIT_DSTR;
-
-    dstr_printf(&str, "%f %f %f rg ", PDF_RGB_R(colour_fill),
-                PDF_RGB_G(colour_fill), PDF_RGB_B(colour_fill));
-    if (border_width > 0) {
-        dstr_printf(&str, "%f %f %f RG ", PDF_RGB_R(colour_border),
-                    PDF_RGB_G(colour_border), PDF_RGB_B(colour_border));
-        dstr_printf(&str, "%f w ", border_width);
-        dstr_printf(&str, "%f %f %f %f re B ", x, y, width, height);
-    } else {
-        dstr_printf(&str, "%f %f %f %f re f ", x, y, width, height);
-    }
-
-    ret = pdf_add_stream(pdf, page, dstr_data(&str));
-    dstr_free(&str);
-
-    return ret;
-}
-
-int pdf_add_polygon(pdf_doc *pdf, Object *page, float x[],
-                    float y[], int count, float border_width, uint32_t colour)
-{
-    int ret;
-    dstr str = INIT_DSTR;
-
-    dstr_printf(&str, "%f %f %f RG ", PDF_RGB_R(colour), PDF_RGB_G(colour),
-                PDF_RGB_B(colour));
-    dstr_printf(&str, "%f w ", border_width);
-    dstr_printf(&str, "%f %f m ", x[0], y[0]);
-    for (int i = 1; i < count; i++) {
-        dstr_printf(&str, "%f %f l ", x[i], y[i]);
-    }
-    dstr_printf(&str, "h S ");
-
-    ret = pdf_add_stream(pdf, page, dstr_data(&str));
-    dstr_free(&str);
-
-    return ret;
-}
-
-int pdf_add_filled_polygon(pdf_doc *pdf, Object *page,
-                           float x[], float y[], int count,
-                           float border_width, uint32_t colour)
-{
-    int ret;
-    dstr str = INIT_DSTR;
-
-    dstr_printf(&str, "%f %f %f RG ", PDF_RGB_R(colour), PDF_RGB_G(colour),
-                PDF_RGB_B(colour));
-    dstr_printf(&str, "%f %f %f rg ", PDF_RGB_R(colour), PDF_RGB_G(colour),
-                PDF_RGB_B(colour));
-    dstr_printf(&str, "%f w ", border_width);
-    dstr_printf(&str, "%f %f m ", x[0], y[0]);
-    for (int i = 1; i < count; i++) {
-        dstr_printf(&str, "%f %f l ", x[i], y[i]);
-    }
-    dstr_printf(&str, "h f ");
-
-    ret = pdf_add_stream(pdf, page, dstr_data(&str));
-    dstr_free(&str);
-
-    return ret;
 }
 
 static const struct {
@@ -1863,7 +1834,7 @@ static int find_128_encoding(char ch)
 
 static float pdf_barcode_128a_ch(pdf_doc *pdf, Object *page,
                                  float x, float y, float width, float height,
-                                 uint32_t colour, int index, int code_len)
+                                 uint32_t color, int index, int code_len)
 {
     uint32_t code = code_128a_encoding[index].code;
     float line_width = width / 11.0f;
@@ -1874,7 +1845,7 @@ static float pdf_barcode_128a_ch(pdf_doc *pdf, Object *page,
 
         if (!(i % 2))
             pdf_add_filled_rectangle(pdf, page, x, y, line_width * mask,
-                                     height, 0, colour, PDF_TRANSPARENT);
+                                     height, 0, color, PDF_TRANSPARENT);
         x += line_width * mask;
     }
     return x;
@@ -1882,7 +1853,7 @@ static float pdf_barcode_128a_ch(pdf_doc *pdf, Object *page,
 
 static int pdf_add_barcode_128a(pdf_doc *pdf, Object *page,
                                 float x, float y, float width, float height,
-                                const char *string, uint32_t colour)
+                                const char *string, uint32_t color)
 {
     const char *s;
     size_t len = strlen(string) + 3;
@@ -1898,7 +1869,7 @@ static int pdf_add_barcode_128a(pdf_doc *pdf, Object *page,
             return SetErr(-EINVAL, "Invalid barcode character 0x%x",
                                *s);
 
-    x = pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, colour, 104,
+    x = pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, color, 104,
                             6);
     checksum = 104;
 
@@ -1909,13 +1880,13 @@ static int pdf_add_barcode_128a(pdf_doc *pdf, Object *page,
         if (index < 0)
             return SetErr(-EINVAL,
                                "Invalid 128a barcode character 0x%x", *s);
-        x = pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, colour,
+        x = pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, color,
                                 index, 6);
         checksum += index * i;
     }
-    x = pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, colour,
+    x = pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, color,
                             checksum % 103, 6);
-    pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, colour, 106, 7);
+    pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, color, 106, 7);
     return 0;
 }
 
@@ -1956,7 +1927,7 @@ static int find_39_encoding(char ch)
 
 static int pdf_barcode_39_ch(pdf_doc *pdf, Object *page,
                              float x, float y, float char_width, float height,
-                             uint32_t colour, char ch, float *new_x)
+                             uint32_t color, char ch, float *new_x)
 {
     float nw = char_width / 12.0f;
     float ww = char_width / 4.0f;
@@ -1971,13 +1942,13 @@ static int pdf_barcode_39_ch(pdf_doc *pdf, Object *page,
         int pattern = (code >> i * 4) & 0xf;
         if (pattern == 0) { // wide
             if (pdf_add_filled_rectangle(pdf, page, x, y, ww - 1, height, 0,
-                                         colour, PDF_TRANSPARENT) < 0)
+                                         color, PDF_TRANSPARENT) < 0)
                 return pdf->errval;
             x += ww;
         }
         if (pattern == 1) { // narrow
             if (pdf_add_filled_rectangle(pdf, page, x, y, nw - 1, height, 0,
-                                         colour, PDF_TRANSPARENT) < 0)
+                                         color, PDF_TRANSPARENT) < 0)
                 return pdf->errval;
             x += nw;
         }
@@ -1992,26 +1963,26 @@ static int pdf_barcode_39_ch(pdf_doc *pdf, Object *page,
 
 static int pdf_add_barcode_39(pdf_doc *pdf, Object *page,
                               float x, float y, float width, float height,
-                              const char *string, uint32_t colour)
+                              const char *string, uint32_t color)
 {
     size_t len = strlen(string);
     float char_width = width / (len + 2);
     int e;
 
-    e = pdf_barcode_39_ch(pdf, page, x, y, char_width, height, colour, '*',
+    e = pdf_barcode_39_ch(pdf, page, x, y, char_width, height, color, '*',
                           &x);
     if (e < 0)
         return e;
 
     while (string && *string) {
-        e = pdf_barcode_39_ch(pdf, page, x, y, char_width, height, colour,
+        e = pdf_barcode_39_ch(pdf, page, x, y, char_width, height, color,
                               *string, &x);
         if (e < 0)
             return e;
         string++;
     }
 
-    e = pdf_barcode_39_ch(pdf, page, x, y, char_width, height, colour, '*',
+    e = pdf_barcode_39_ch(pdf, page, x, y, char_width, height, color, '*',
                           nullptr);
     if (e < 0)
         return e;
@@ -2132,7 +2103,7 @@ static void pdf_barcode_eanupc_calc_dims(int type, float width, float height,
 
 static int pdf_barcode_eanupc_ch(pdf_doc *pdf, Object *page,
                                  float x, float y, float x_width,
-                                 float height, uint32_t colour, char ch,
+                                 float height, uint32_t color, char ch,
                                  int set, float *new_x)
 {
     if ('0' > ch || ch > '9')
@@ -2170,7 +2141,7 @@ static int pdf_barcode_eanupc_ch(pdf_doc *pdf, Object *page,
         width *= x_width;
         if (bar) {
             if (pdf_add_filled_rectangle(pdf, page, x, y, width, height, 0,
-                                         colour, PDF_TRANSPARENT) < 0)
+                                         color, PDF_TRANSPARENT) < 0)
                 return pdf->errval;
         }
         x += width;
@@ -2183,7 +2154,7 @@ static int pdf_barcode_eanupc_ch(pdf_doc *pdf, Object *page,
 static int pdf_barcode_eanupc_aux(pdf_doc *pdf,
                                   Object *page, float x, float y,
                                   float x_width, float height,
-                                  uint32_t colour, int guard_type,
+                                  uint32_t color, int guard_type,
                                   float *new_x)
 {
     int code = code_eanupc_aux_encoding[guard_type];
@@ -2193,7 +2164,7 @@ static int pdf_barcode_eanupc_aux(pdf_doc *pdf,
         if (value) {
             if ((i & 0x1) == 0) {
                 if (pdf_add_filled_rectangle(pdf, page, x, y, x_width * value,
-                                             height, 0, colour,
+                                             height, 0, color,
                                              PDF_TRANSPARENT) < 0)
                     return pdf->errval;
             }
@@ -2207,7 +2178,7 @@ static int pdf_barcode_eanupc_aux(pdf_doc *pdf,
 
 static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
                                  float x, float y, float width, float height,
-                                 const char *string, uint32_t colour)
+                                 const char *string, uint32_t color)
 {
     if (!string)
         return 0;
@@ -2246,7 +2217,7 @@ static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
     char text[2];
     text[1] = 0;
     text[0] = lead + '0';
-    e = pdf_add_text(pdf, page, text, font, x, y, colour);
+    e = pdf_add_text(pdf, page, text, font, x, y, color);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
         return e;
@@ -2254,7 +2225,7 @@ static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
 
     x += eanupc_dimensions[0].quiet_left * x_width;
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, colour, GUARD_NORMAL,
+                               bar_height + bar_ext, color, GUARD_NORMAL,
                                &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
@@ -2263,7 +2234,7 @@ static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
 
     for (int i = 0; i != 6; i++) {
         text[0] = *string;
-        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, colour,
+        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
                               7 * x_width, PDF_ALIGN_CENTER, nullptr);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
@@ -2272,7 +2243,7 @@ static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
 
         int set = (set_ean13_encoding[lead] & 1 << i) ? 1 : 0;
         e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y, x_width, bar_height,
-                                  colour, *string, set, &x);
+                                  color, *string, set, &x);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
             return e;
@@ -2281,7 +2252,7 @@ static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
     }
 
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, colour, GUARD_CENTRE,
+                               bar_height + bar_ext, color, GUARD_CENTRE,
                                &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
@@ -2290,7 +2261,7 @@ static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
 
     for (int i = 0; i != 6; i++) {
         text[0] = *string;
-        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, colour,
+        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
                               7 * x_width, PDF_ALIGN_CENTER, nullptr);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
@@ -2298,7 +2269,7 @@ static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
         }
 
         e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y, x_width, bar_height,
-                                  colour, *string, 2, &x);
+                                  color, *string, 2, &x);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
             return e;
@@ -2307,7 +2278,7 @@ static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
     }
 
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, colour, GUARD_NORMAL,
+                               bar_height + bar_ext, color, GUARD_NORMAL,
                                &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
@@ -2317,7 +2288,7 @@ static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
     text[0] = '>';
     x += eanupc_dimensions[0].quiet_right * x_width -
          604.0f * font / (14.0f * 72.0f);
-    e = pdf_add_text(pdf, page, text, font, x, y, colour);
+    e = pdf_add_text(pdf, page, text, font, x, y, color);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
         return e;
@@ -2328,7 +2299,7 @@ static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
 
 static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
                                 float x, float y, float width, float height,
-                                const char *string, uint32_t colour)
+                                const char *string, uint32_t color)
 {
     if (!string)
         return 0;
@@ -2359,7 +2330,7 @@ static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
     char text[2];
     text[1] = 0;
     text[0] = *string;
-    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, colour);
+    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, color);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
         return e;
@@ -2367,7 +2338,7 @@ static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
 
     x += eanupc_dimensions[1].quiet_left * x_width;
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, colour, GUARD_NORMAL,
+                               bar_height + bar_ext, color, GUARD_NORMAL,
                                &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
@@ -2377,7 +2348,7 @@ static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
     for (int i = 0; i != 6; i++) {
         text[0] = *string;
         if (i) {
-            e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, colour,
+            e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
                                   7 * x_width, PDF_ALIGN_CENTER, nullptr);
             if (e < 0) {
                 pdf_set_font(pdf, save_font);
@@ -2387,7 +2358,7 @@ static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
 
         e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y - (i ? 0 : bar_ext),
                                   x_width, bar_height + (i ? 0 : bar_ext),
-                                  colour, *string, 0, &x);
+                                  color, *string, 0, &x);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
             return e;
@@ -2396,7 +2367,7 @@ static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
     }
 
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, colour, GUARD_CENTRE,
+                               bar_height + bar_ext, color, GUARD_CENTRE,
                                &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
@@ -2406,7 +2377,7 @@ static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
     for (int i = 0; i != 6; i++) {
         text[0] = *string;
         if (i != 5) {
-            e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, colour,
+            e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
                                   7 * x_width, PDF_ALIGN_CENTER, nullptr);
             if (e < 0) {
                 pdf_set_font(pdf, save_font);
@@ -2416,7 +2387,7 @@ static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
 
         e = pdf_barcode_eanupc_ch(
             pdf, page, x, bar_y - (i != 5 ? 0 : bar_ext), x_width,
-            bar_height + (i != 5 ? 0 : bar_ext), colour, *string, 2, &x);
+            bar_height + (i != 5 ? 0 : bar_ext), color, *string, 2, &x);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
             return e;
@@ -2425,7 +2396,7 @@ static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
     }
 
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, colour, GUARD_NORMAL,
+                               bar_height + bar_ext, color, GUARD_NORMAL,
                                &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
@@ -2436,7 +2407,7 @@ static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
 
     x += eanupc_dimensions[1].quiet_right * x_width -
          604.0f * font * 4.0f / 7.0f / (14.0f * 72.0f);
-    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, colour);
+    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, color);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
         return e;
@@ -2447,7 +2418,7 @@ static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
 
 static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
                                 float x, float y, float width, float height,
-                                const char *string, uint32_t colour)
+                                const char *string, uint32_t color)
 {
     if (!string)
         return 0;
@@ -2478,7 +2449,7 @@ static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
     char text[2];
     text[1] = 0;
     text[0] = '<';
-    e = pdf_add_text(pdf, page, text, font, x, y, colour);
+    e = pdf_add_text(pdf, page, text, font, x, y, color);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
         return e;
@@ -2486,7 +2457,7 @@ static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
 
     x += eanupc_dimensions[2].quiet_left * x_width;
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, colour, GUARD_NORMAL,
+                               bar_height + bar_ext, color, GUARD_NORMAL,
                                &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
@@ -2495,7 +2466,7 @@ static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
 
     for (int i = 0; i != 4; i++) {
         text[0] = *string;
-        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, colour,
+        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
                               7 * x_width, PDF_ALIGN_CENTER, nullptr);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
@@ -2503,7 +2474,7 @@ static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
         }
 
         e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y, x_width, bar_height,
-                                  colour, *string, 0, &x);
+                                  color, *string, 0, &x);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
             return e;
@@ -2512,7 +2483,7 @@ static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
     }
 
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, colour, GUARD_CENTRE,
+                               bar_height + bar_ext, color, GUARD_CENTRE,
                                &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
@@ -2521,7 +2492,7 @@ static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
 
     for (int i = 0; i != 4; i++) {
         text[0] = *string;
-        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, colour,
+        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
                               7 * x_width, PDF_ALIGN_CENTER, nullptr);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
@@ -2529,7 +2500,7 @@ static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
         }
 
         e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y, x_width, bar_height,
-                                  colour, *string, 2, &x);
+                                  color, *string, 2, &x);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
             return e;
@@ -2538,7 +2509,7 @@ static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
     }
 
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, colour, GUARD_NORMAL,
+                               bar_height + bar_ext, color, GUARD_NORMAL,
                                &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
@@ -2548,7 +2519,7 @@ static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
     text[0] = '>';
     x += eanupc_dimensions[0].quiet_right * x_width -
          604.0f * font / (14.0f * 72.0f);
-    e = pdf_add_text(pdf, page, text, font, x, y, colour);
+    e = pdf_add_text(pdf, page, text, font, x, y, color);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
         return e;
@@ -2559,7 +2530,7 @@ static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
 
 static int pdf_add_barcode_upce(pdf_doc *pdf, Object *page,
                                 float x, float y, float width, float height,
-                                const char *string, uint32_t colour)
+                                const char *string, uint32_t color)
 {
     if (!string)
         return 0;
@@ -2600,7 +2571,7 @@ static int pdf_add_barcode_upce(pdf_doc *pdf, Object *page,
     char text[2];
     text[1] = 0;
     text[0] = string[0];
-    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, colour);
+    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, color);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
         return e;
@@ -2608,7 +2579,7 @@ static int pdf_add_barcode_upce(pdf_doc *pdf, Object *page,
 
     x += eanupc_dimensions[2].quiet_left * x_width;
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y, x_width, bar_height,
-                               colour, GUARD_NORMAL, &x);
+                               color, GUARD_NORMAL, &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
         return e;
@@ -2644,7 +2615,7 @@ static int pdf_add_barcode_upce(pdf_doc *pdf, Object *page,
 
     for (int i = 0; i != 6; i++) {
         text[0] = X[i];
-        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, colour,
+        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
                               7 * x_width, PDF_ALIGN_CENTER, nullptr);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
@@ -2653,7 +2624,7 @@ static int pdf_add_barcode_upce(pdf_doc *pdf, Object *page,
 
         int set = (set_upce_encoding[string[11] - '0'] & 1 << i) ? 1 : 0;
         e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y, x_width, bar_height,
-                                  colour, X[i], set, &x);
+                                  color, X[i], set, &x);
         if (e < 0) {
             pdf_set_font(pdf, save_font);
             return e;
@@ -2661,7 +2632,7 @@ static int pdf_add_barcode_upce(pdf_doc *pdf, Object *page,
     }
 
     e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y, x_width, bar_height,
-                               colour, GUARD_SPECIAL, &x);
+                               color, GUARD_SPECIAL, &x);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
         return e;
@@ -2670,7 +2641,7 @@ static int pdf_add_barcode_upce(pdf_doc *pdf, Object *page,
     text[0] = string[11];
     x += eanupc_dimensions[0].quiet_right * x_width -
          604.0f * font * 4.0f / 7.0f / (14.0f * 72.0f);
-    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, colour);
+    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, color);
     if (e < 0) {
         pdf_set_font(pdf, save_font);
         return e;
@@ -2682,29 +2653,29 @@ static int pdf_add_barcode_upce(pdf_doc *pdf, Object *page,
 
 int pdf_add_barcode(pdf_doc *pdf, Object *page, int code,
                     float x, float y, float width, float height,
-                    const char *string, uint32_t colour)
+                    const char *string, uint32_t color)
 {
     if (!string || !*string)
         return 0;
     switch (code) {
     case PDF_BARCODE_128A:
         return pdf_add_barcode_128a(pdf, page, x, y, width, height, string,
-                                    colour);
+                                    color);
     case PDF_BARCODE_39:
         return pdf_add_barcode_39(pdf, page, x, y, width, height, string,
-                                  colour);
+                                  color);
     case PDF_BARCODE_EAN13:
         return pdf_add_barcode_ean13(pdf, page, x, y, width, height, string,
-                                     colour);
+                                     color);
     case PDF_BARCODE_UPCA:
         return pdf_add_barcode_upca(pdf, page, x, y, width, height, string,
-                                    colour);
+                                    color);
     case PDF_BARCODE_EAN8:
         return pdf_add_barcode_ean8(pdf, page, x, y, width, height, string,
-                                    colour);
+                                    color);
     case PDF_BARCODE_UPCE:
         return pdf_add_barcode_upce(pdf, page, x, y, width, height, string,
-                                    colour);
+                                    color);
     default:
         return SetErr(-EINVAL, "Invalid barcode code %d", code);
     }
@@ -2720,7 +2691,7 @@ static Object *pdf_add_raw_grayscale8(pdf_doc *pdf,
     dstr str = INIT_DSTR;
     size_t data_len = (size_t)width * (size_t)height;
 
-    dstr_printf(&str,
+    StringAppendF(&str,
                 "<<\r\n"
                 "  /Type /XObject\r\n"
                 "  /Name /Image%d\r\n"
@@ -2765,7 +2736,7 @@ static Object *pdf_add_raw_rgb24(pdf_doc *pdf,
     dstr str = INIT_DSTR;
     size_t data_len = (size_t)width * (size_t)height * 3;
 
-    dstr_printf(&str,
+    StringAppendF(&str,
                 "<<\r\n"
                 "  /Type /XObject\r\n"
                 "  /Name /Image%d\r\n"
@@ -2852,7 +2823,7 @@ pdf_add_raw_jpeg_data(pdf_doc *pdf, const struct pdf_img_info *info,
     if (!obj)
         return nullptr;
 
-    dstr_printf(&obj->stream.stream,
+    StringAppendF(&obj->stream.stream,
                 "<<\r\n"
                 "  /Type /XObject\r\n"
                 "  /Name /Image%d\r\n"
@@ -2865,11 +2836,11 @@ pdf_add_raw_jpeg_data(pdf_doc *pdf, const struct pdf_img_info *info,
                 "  /Length %lu\r\n"
                 ">>stream\r\n",
                 flexarray_size(&pdf->objects),
-                (info->jpeg.ncolours == 1) ? "/DeviceGray" : "/DeviceRGB",
+                (info->jpeg.ncolors == 1) ? "/DeviceGray" : "/DeviceRGB",
                 info->width, info->height, (unsigned long) len);
     dstr_append_data(&obj->stream.stream, jpeg_data, len);
 
-    dstr_printf(&obj->stream.stream, "\r\nendstream\r\n");
+    StringAppendF(&obj->stream.stream, "\r\nendstream\r\n");
 
     return obj;
 }
@@ -2938,8 +2909,8 @@ static int pdf_add_image(pdf_doc *pdf, Object *page,
     image->stream.page = page;
 
     dstr_append(&str, "q ");
-    dstr_printf(&str, "%f 0 0 %f %f %f cm ", width, height, x, y);
-    dstr_printf(&str, "/Image%d Do ", image->index);
+    StringAppendF(&str, "%f 0 0 %f %f %f cm ", width, height, x, y);
+    StringAppendF(&str, "/Image%d Do ", image->index);
     dstr_append(&str, "Q");
 
     ret = pdf_add_stream(pdf, page, dstr_data(&str));
@@ -3103,7 +3074,7 @@ static int parse_jpeg_header(struct pdf_img_info *info, const uint8_t *data,
                 if (len >= 9 && i + len + 1 < length) {
                     info->height = data[i + 4] * 256 + data[i + 5];
                     info->width = data[i + 6] * 256 + data[i + 7];
-                    info->jpeg.ncolours = data[i + 8];
+                    info->jpeg.ncolors = data[i + 8];
                     return 0;
                 }
                 break;
@@ -3231,7 +3202,7 @@ static int pdf_add_png_data(pdf_doc *pdf, Object *page,
 
     // string stream used for writing color space (and palette) info
     // into the pdf
-    dstr colour_space = INIT_DSTR;
+    dstr color_space = INIT_DSTR;
 
     Object *obj = nullptr;
     uint8_t *final_data = nullptr;
@@ -3239,7 +3210,7 @@ static int pdf_add_png_data(pdf_doc *pdf, Object *page,
     uint32_t pos;
     uint8_t *png_data_temp = nullptr;
     size_t png_data_total_length = 0;
-    uint8_t ncolours;
+    uint8_t ncolors;
 
     // Stores palette information for indexed PNGs
     struct rgb_value *palette_buffer = nullptr;
@@ -3250,13 +3221,13 @@ static int pdf_add_png_data(pdf_doc *pdf, Object *page,
     // Father info from png header
     switch (header->colorType) {
     case PNG_COLOR_GREYSCALE:
-        ncolours = 1;
+        ncolors = 1;
         break;
     case PNG_COLOR_RGB:
-        ncolours = 3;
+        ncolors = 3;
         break;
     case PNG_COLOR_INDEXED:
-        ncolours = 1;
+        ncolors = 1;
         break;
     // PNG_COLOR_RGBA and PNG_COLOR_GREYSCALE_A are unsupported
     default:
@@ -3374,10 +3345,10 @@ static int pdf_add_png_data(pdf_doc *pdf, Object *page,
 
     switch (header->colorType) {
     case PNG_COLOR_GREYSCALE:
-        dstr_append(&colour_space, "/DeviceGray");
+        dstr_append(&color_space, "/DeviceGray");
         break;
     case PNG_COLOR_RGB:
-        dstr_append(&colour_space, "/DeviceRGB");
+        dstr_append(&color_space, "/DeviceRGB");
         break;
     case PNG_COLOR_INDEXED:
         if (palette_buffer_length == 0) {
@@ -3385,7 +3356,7 @@ static int pdf_add_png_data(pdf_doc *pdf, Object *page,
             goto free_buffers;
         }
         // Write the color palette to the color_palette buffer
-        dstr_printf(&colour_space,
+        StringAppendF(&color_space,
                     "[ /Indexed\r\n"
                     "  /DeviceRGB\r\n"
                     "  %lu\r\n"
@@ -3395,10 +3366,10 @@ static int pdf_add_png_data(pdf_doc *pdf, Object *page,
         // the index value for every RGB value is determined by its position
         // (0, 1, 2, ...)
         for (size_t i = 0; i < palette_buffer_length; i++) {
-            dstr_printf(&colour_space, "%02X%02X%02X ", palette_buffer[i].red,
+            StringAppendF(&color_space, "%02X%02X%02X ", palette_buffer[i].red,
                         palette_buffer[i].green, palette_buffer[i].blue);
         }
-        dstr_append(&colour_space, ">\r\n]");
+        dstr_append(&color_space, ">\r\n]");
         break;
 
     default:
@@ -3410,11 +3381,11 @@ static int pdf_add_png_data(pdf_doc *pdf, Object *page,
     }
 
     final_data = (uint8_t *)malloc(png_data_total_length + 1024 +
-                                   dstr_len(&colour_space));
+                                   dstr_len(&color_space));
     if (!final_data) {
         SetErr(-ENOMEM, "Unable to allocate PNG data %lu",
                     (unsigned long)(png_data_total_length + 1024 +
-                                    dstr_len(&colour_space)));
+                                    dstr_len(&color_space)));
         goto free_buffers;
     }
 
@@ -3435,8 +3406,8 @@ static int pdf_add_png_data(pdf_doc *pdf, Object *page,
                 "/BitsPerComponent %u /Columns %u >>\r\n"
                 "  /Length %zu\r\n"
                 ">>stream\r\n",
-                flexarray_size(&pdf->objects), dstr_data(&colour_space),
-                header->width, header->height, header->bitDepth, ncolours,
+                flexarray_size(&pdf->objects), dstr_data(&color_space),
+                header->width, header->height, header->bitDepth, ncolors,
                 header->bitDepth, header->width, png_data_total_length);
 
     memcpy(&final_data[written], png_data_temp, png_data_total_length);
@@ -3463,7 +3434,7 @@ free_buffers:
         free(palette_buffer);
     if (png_data_temp)
         free(png_data_temp);
-    dstr_free(&colour_space);
+    dstr_free(&color_space);
 
     if (success)
         return pdf_add_image(pdf, page, obj, x, y, display_width,
