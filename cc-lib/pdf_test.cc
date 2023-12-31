@@ -84,6 +84,36 @@ static void MakeSimplePDF() {
 
     CHECK(pdf.AddFilledPolygon(Star(500, 150, 25, 75, 9), 1.0f,
                                PDF_RGB(0x70, 0x70, 0)));
+
+    pdf.SetFont("Times-Roman");
+    CHECK(pdf.AddText("Title of PDF", 72,
+                      30, PDF::PDF_LETTER_HEIGHT - 72 - 36,
+                      PDF_RGB(0, 0, 0)));
+    pdf.SetFont("Helvetica");
+    CHECK(pdf.AddTextWrap(
+              "Lorem ipsum dolor sit amet, consectetur adipiscing elit, "
+              "sed do eiusmod tempor incididunt ut labore et dolore magna "
+              "aliqua. Ut enim ad minim veniam, quis nostrud exercitation "
+              "ullamco laboris nisi ut aliquip ex ea commodo consequat. "
+              "Duis aute irure dolor in reprehenderit in voluptate velit "
+              "esse cillum dolore eu fugiat nulla pariatur. Excepteur sint "
+              "occaecat cupidatat non proident, sunt in culpa qui officia "
+              "deserunt mollit anim id est laborum.",
+              20,
+              36, PDF::PDF_LETTER_HEIGHT - 72 - 36 - 48,
+              0.0f,
+              PDF_RGB(0, 0, 0),
+              PDF_INCH_TO_POINT(3.4f),
+              PDF::PDF_ALIGN_JUSTIFY));
+
+    pdf.SetFont("Times-Roman");
+    CHECK(pdf.AddTextRotate(
+              "Camera-Ready Copy",
+              12,
+              350, 36,
+              // almost 180 degrees
+              3.0,
+              PDF_RGB(0x70, 0, 0)));
   }
 
   {
@@ -106,6 +136,24 @@ static void MakeSimplePDF() {
 
     CHECK(pdf.AddBarcodeEAN13(45, y, BARCODE_WIDTH, BARCODE_HEIGHT,
                               "9780000058898", PDF_RGB(0, 0, 0))) <<
+      "Error: " << pdf.GetErr();
+
+    y -= BARCODE_HEIGHT + GAP;
+
+    CHECK(pdf.AddBarcodeUPCA(45, y, BARCODE_WIDTH, BARCODE_HEIGHT,
+                             "101234567897", PDF_RGB(0, 0, 0))) <<
+      "Error: " << pdf.GetErr();
+
+    y -= BARCODE_HEIGHT + GAP;
+
+    CHECK(pdf.AddBarcodeEAN8(45, y, BARCODE_WIDTH, BARCODE_HEIGHT,
+                             "80084321", PDF_RGB(0, 0, 0))) <<
+      "Error: " << pdf.GetErr();
+
+    y -= BARCODE_HEIGHT + GAP;
+
+    CHECK(pdf.AddBarcodeUPCE(45, y, BARCODE_WIDTH, BARCODE_HEIGHT,
+                             "042100005264", PDF_RGB(0, 0, 0))) <<
       "Error: " << pdf.GetErr();
   }
 

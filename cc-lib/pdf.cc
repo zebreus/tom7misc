@@ -3,7 +3,12 @@
 //
 // Local changes:
 //   - "fixed" some printf format parameter warnings
-//   - Compile as C++
+//   - Ported to C++.
+//   - Fix bug with text justification: Denominator should be
+//      len - 1, not len - 2.
+
+// PERF: Output will have a lot of 200.00000000 stuff; use smarter
+// float to text routine.
 
 #include "pdf.h"
 
@@ -18,11 +23,6 @@ typedef SSIZE_T ssize_t;
 
 #ifndef _POSIX_SOURCE
 #define _POSIX_SOURCE /* For localtime_r */
-#endif
-
-// TODO: Use c++ constant
-#ifndef _XOPEN_SOURCE
-#define _XOPEN_SOURCE 600 /* for M_SQRT2 */
 #endif
 
 #include <sys/types.h> /* for ssize_t */
@@ -323,23 +323,21 @@ PDF::Object *PDF::pdf_find_last_object(int type) {
 void PDF::SetFont(const std::string &font_name) {
   int last_index = 0;
 
-  /* See if we've used this font before */
-  FontObj *fobj = nullptr;
+  // See if we've used this font before.
   for (Object *obj = pdf_find_first_object(OBJ_font); obj; obj = obj->next) {
-    fobj = (FontObj*)obj;
-    if (font_name == fobj->name)
-      break;
+    FontObj *fobj = (FontObj*)obj;
+    if (font_name == fobj->name) {
+      current_font = fobj;
+      return;
+    }
     last_index = fobj->font_index;
   }
 
-  /* Create a new font object if we need it */
-  if (!fobj) {
-    fobj = AddObject(new FontObj);
-    CHECK(fobj);
-    fobj->name = font_name;
-    fobj->font_index = last_index + 1;
-  }
-
+  // Create a new font object, then.
+  FontObj *fobj = AddObject(new FontObj);
+  CHECK(fobj);
+  fobj->name = font_name;
+  fobj->font_index = last_index + 1;
   current_font = fobj;
 }
 
@@ -530,7 +528,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
             bobj->page->index,
             this->height,
             parent->index,
-            bobj->name);
+            bobj->name.c_str());
     int nchildren = (int)bobj->children.size();
     if (nchildren > 0) {
       Object *f = (Object *)bobj->children[0];
@@ -1266,403 +1264,344 @@ bool PDF::AddBarcodeEAN13(float x, float y, float width, float height,
   return true;
 }
 
-#if 0
+bool PDF::AddBarcodeUPCA(float x, float y, float width, float height,
+                         const std::string &str, uint32_t color, Page *page) {
+  const size_t len = str.size();
+  if (len != 12) {
+    SetErr(-EINVAL, "Invalid UPC-A string length %lu", (unsigned long)len);
+    return false;
+  }
 
-static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
-                                float x, float y, float width, float height,
-                                const char *string, uint32_t color)
-{
-    if (!string)
-        return 0;
+  /* Scale and calculate dimensions */
+  float x_off, y_off, new_width, new_height;
+  float x_width, bar_height, bar_ext, font;
 
-    size_t len = strlen(string);
-    if (len != 12)
-        return SetErr(-EINVAL, "Invalid UPCA string length %lu",
-                           (unsigned long)len);
+  pdf_barcode_eanupc_calc_dims(PDF_BARCODE_UPCA, width, height, &x_off,
+                               &y_off, &new_width, &new_height, &x_width,
+                               &bar_height, &bar_ext, &font);
 
-    /* Scale and calculate dimensions */
-    float x_off, y_off, new_width, new_height;
-    float x_width, bar_height, bar_ext, font;
+  x += x_off;
+  y += y_off;
+  float bar_y = y + new_height - bar_height;
 
-    pdf_barcode_eanupc_calc_dims(PDF_BARCODE_UPCA, width, height, &x_off,
-                                 &y_off, &new_width, &new_height, &x_width,
-                                 &bar_height, &bar_ext, &font);
+  std::string save_font = current_font->name;
+  SetFont("Courier");
 
-    x += x_off;
-    y += y_off;
-    float bar_y = y + new_height - bar_height;
+  const char *string = str.data();
 
-    int e;
-    const char *save_font = pdf->current_font->font.name;
-    e = pdf_set_font(pdf, "Courier");
-    if (e < 0)
-        return e;
+  char text[2];
+  text[1] = 0;
+  text[0] = *string;
+  if (!AddText(text, font * 4.0f / 7.0f, x, y, color, page)) {
+    SetFont(save_font);
+    return false;
+  }
 
-    char text[2];
-    text[1] = 0;
+  x += eanupc_dimensions[1].quiet_left * x_width;
+  pdf_barcode_eanupc_aux(x, bar_y - bar_ext, x_width,
+                         bar_height + bar_ext, color, GUARD_NORMAL,
+                         &x, page);
+
+  for (int i = 0; i != 6; i++) {
     text[0] = *string;
-    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, color);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
+    if (i) {
+      if (!AddTextWrap(text, font, x, y, 0, color,
+                       7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
+        SetFont(save_font);
+        return false;
+      }
     }
 
-    x += eanupc_dimensions[1].quiet_left * x_width;
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, color, GUARD_NORMAL,
-                               &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
+    if (!pdf_barcode_eanupc_ch(x, bar_y - (i ? 0 : bar_ext),
+                               x_width, bar_height + (i ? 0 : bar_ext),
+                               color, *string, 0, &x, page)) {
+      SetFont(save_font);
+      return false;
+    }
+    string++;
+  }
+
+  pdf_barcode_eanupc_aux(x, bar_y - bar_ext, x_width,
+                         bar_height + bar_ext, color, GUARD_CENTRE,
+                         &x, page);
+
+  for (int i = 0; i != 6; i++) {
+    text[0] = *string;
+    if (i != 5) {
+      if (!AddTextWrap(text, font, x, y, 0, color,
+                       7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
+        SetFont(save_font);
+        return false;
+      }
     }
 
-    for (int i = 0; i != 6; i++) {
-        text[0] = *string;
-        if (i) {
-            e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
-                                  7 * x_width, PDF_ALIGN_CENTER, nullptr);
-            if (e < 0) {
-                pdf_set_font(pdf, save_font);
-                return e;
-            }
-        }
-
-        e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y - (i ? 0 : bar_ext),
-                                  x_width, bar_height + (i ? 0 : bar_ext),
-                                  color, *string, 0, &x);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
-        string++;
+    if (!pdf_barcode_eanupc_ch(
+            x, bar_y - (i != 5 ? 0 : bar_ext), x_width,
+            bar_height + (i != 5 ? 0 : bar_ext), color, *string, 2, &x,
+            page)) {
+      SetFont(save_font);
+      return false;
     }
+    string++;
+  }
 
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, color, GUARD_CENTRE,
-                               &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
+  pdf_barcode_eanupc_aux(x, bar_y - bar_ext, x_width,
+                         bar_height + bar_ext, color, GUARD_NORMAL,
+                         &x, page);
 
-    for (int i = 0; i != 6; i++) {
-        text[0] = *string;
-        if (i != 5) {
-            e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
-                                  7 * x_width, PDF_ALIGN_CENTER, nullptr);
-            if (e < 0) {
-                pdf_set_font(pdf, save_font);
-                return e;
-            }
-        }
+  text[0] = *--string;
 
-        e = pdf_barcode_eanupc_ch(
-            pdf, page, x, bar_y - (i != 5 ? 0 : bar_ext), x_width,
-            bar_height + (i != 5 ? 0 : bar_ext), color, *string, 2, &x);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
-        string++;
-    }
+  x += eanupc_dimensions[1].quiet_right * x_width -
+    604.0f * font * 4.0f / 7.0f / (14.0f * 72.0f);
+  if (!AddText(text, font * 4.0f / 7.0f, x, y, color)) {
+    SetFont(save_font);
+    return false;
+  }
 
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, color, GUARD_NORMAL,
-                               &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
-
-    text[0] = *--string;
-
-    x += eanupc_dimensions[1].quiet_right * x_width -
-         604.0f * font * 4.0f / 7.0f / (14.0f * 72.0f);
-    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, color);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
-    pdf_set_font(pdf, save_font);
-    return 0;
+  SetFont(save_font);
+  return true;
 }
 
-static int pdf_add_barcode_ean8(pdf_doc *pdf, Object *page,
-                                float x, float y, float width, float height,
-                                const char *string, uint32_t color)
-{
-    if (!string)
-        return 0;
+bool PDF::AddBarcodeEAN8(float x, float y, float width, float height,
+                         const std::string &str, uint32_t color,
+                         Page *page) {
 
-    size_t len = strlen(string);
-    if (len != 8)
-        return SetErr(-EINVAL, "Invalid EAN8 string length %lu",
-                           (unsigned long)len);
+  const size_t len = str.size();
+  if (len != 8) {
+    SetErr(-EINVAL, "Invalid EAN8 string length %lu",
+           (unsigned long)len);
+    return false;
+  }
 
-    /* Scale and calculate dimensions */
-    float x_off, y_off, new_width, new_height, x_width, bar_height, bar_ext,
-        font;
+  const char *string = str.data();
 
-    pdf_barcode_eanupc_calc_dims(PDF_BARCODE_EAN8, width, height, &x_off,
-                                 &y_off, &new_width, &new_height, &x_width,
-                                 &bar_height, &bar_ext, &font);
+  /* Scale and calculate dimensions */
+  float x_off, y_off, new_width, new_height, x_width, bar_height, bar_ext;
+  float font;
 
-    x += x_off;
-    y += y_off;
-    float bar_y = y + new_height - bar_height;
+  pdf_barcode_eanupc_calc_dims(PDF_BARCODE_EAN8, width, height, &x_off,
+                               &y_off, &new_width, &new_height, &x_width,
+                               &bar_height, &bar_ext, &font);
 
-    int e;
-    const char *save_font = pdf->current_font->font.name;
-    e = pdf_set_font(pdf, "Courier"); /* Built-in monospace font */
-    if (e < 0)
-        return e;
+  x += x_off;
+  y += y_off;
+  float bar_y = y + new_height - bar_height;
 
-    char text[2];
-    text[1] = 0;
-    text[0] = '<';
-    e = pdf_add_text(pdf, page, text, font, x, y, color);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
+  const std::string save_font = current_font->name;
+  SetFont("Courier");
+
+  char text[2];
+  text[1] = 0;
+  text[0] = '<';
+  if (!AddText(text, font, x, y, color, page)) {
+    SetFont(save_font);
+    return false;
+  }
+
+  x += eanupc_dimensions[2].quiet_left * x_width;
+  pdf_barcode_eanupc_aux(x, bar_y - bar_ext, x_width,
+                         bar_height + bar_ext, color, GUARD_NORMAL,
+                         &x, page);
+
+  for (int i = 0; i != 4; i++) {
+    text[0] = *string;
+    if (!AddTextWrap(text, font, x, y, 0, color,
+                     7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
+      SetFont(save_font);
+      return false;
     }
 
-    x += eanupc_dimensions[2].quiet_left * x_width;
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, color, GUARD_NORMAL,
-                               &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
+    if (!pdf_barcode_eanupc_ch(x, bar_y, x_width, bar_height,
+                               color, *string, 0, &x, page)) {
+      SetFont(save_font);
+      return false;
+    }
+    string++;
+  }
+
+  pdf_barcode_eanupc_aux(x, bar_y - bar_ext, x_width,
+                         bar_height + bar_ext, color, GUARD_CENTRE,
+                         &x, page);
+
+  for (int i = 0; i != 4; i++) {
+    text[0] = *string;
+    if (!AddTextWrap(text, font, x, y, 0, color,
+                     7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
+      SetFont(save_font);
+      return false;
     }
 
-    for (int i = 0; i != 4; i++) {
-        text[0] = *string;
-        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
-                              7 * x_width, PDF_ALIGN_CENTER, nullptr);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
-
-        e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y, x_width, bar_height,
-                                  color, *string, 0, &x);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
-        string++;
+    if (!pdf_barcode_eanupc_ch(x, bar_y, x_width, bar_height,
+                               color, *string, 2, &x, page)) {
+      SetFont(save_font);
+      return false;
     }
+    string++;
+  }
 
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, color, GUARD_CENTRE,
-                               &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
+  pdf_barcode_eanupc_aux(x, bar_y - bar_ext, x_width,
+                         bar_height + bar_ext, color, GUARD_NORMAL,
+                         &x, page);
 
-    for (int i = 0; i != 4; i++) {
-        text[0] = *string;
-        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
-                              7 * x_width, PDF_ALIGN_CENTER, nullptr);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
+  text[0] = '>';
+  x += eanupc_dimensions[0].quiet_right * x_width -
+    604.0f * font / (14.0f * 72.0f);
+  if (!AddText(text, font, x, y, color, page)) {
+    SetFont(save_font);
+    return false;
+  }
 
-        e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y, x_width, bar_height,
-                                  color, *string, 2, &x);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
-        string++;
-    }
-
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, color, GUARD_NORMAL,
-                               &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
-
-    text[0] = '>';
-    x += eanupc_dimensions[0].quiet_right * x_width -
-         604.0f * font / (14.0f * 72.0f);
-    e = pdf_add_text(pdf, page, text, font, x, y, color);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
-    pdf_set_font(pdf, save_font);
-    return 0;
+  SetFont(save_font);
+  return true;
 }
 
-static int pdf_add_barcode_upce(pdf_doc *pdf, Object *page,
-                                float x, float y, float width, float height,
-                                const char *string, uint32_t color)
-{
-    if (!string)
-        return 0;
 
-    size_t len = strlen(string);
-    if (len != 12)
-        return SetErr(-EINVAL, "Invalid UPCE string length %lu",
-                           (unsigned long)len);
 
-    if (*string != '0')
-        return SetErr(-EINVAL, "Invalid UPCE char %c at start",
-                           *string);
+bool PDF::AddBarcodeUPCE(float x, float y, float width, float height,
+                         const std::string &str, uint32_t color, Page *page) {
 
-    for (size_t i = 0; i < len; i++) {
-        if (!isdigit(string[i]))
-            return SetErr(-EINVAL, "Invalid UPCE char 0x%x at %lu",
-                               string[i], (unsigned long)i);
+  const size_t len = str.size();
+  if (len != 12) {
+    SetErr(-EINVAL, "Invalid UPCE string length %lu", (unsigned long)len);
+    return false;
+  }
+
+  if (str[0] != '0') {
+    SetErr(-EINVAL, "UPCE must start with 0; got %c", str[0]);
+    return false;
+  }
+
+  for (size_t i = 0; i < len; i++) {
+    if (!isdigit(str[i])) {
+      SetErr(-EINVAL, "Invalid UPCE char 0x%x at %lu",
+             str[i], (unsigned long)i);
+      return false;
+    }
+  }
+
+  const char *string = str.data();
+
+  /* Scale and calculate dimensions */
+  float x_off, y_off, new_width, new_height;
+  float x_width, bar_height, bar_ext, font;
+
+  pdf_barcode_eanupc_calc_dims(PDF_BARCODE_UPCE, width, height, &x_off,
+                               &y_off, &new_width, &new_height, &x_width,
+                               &bar_height, &bar_ext, &font);
+
+  x += x_off;
+  y += y_off;
+  float bar_y = y + new_height - bar_height;
+
+  const std::string save_font = current_font->name;
+  SetFont("Courier");
+
+  char text[2];
+  text[1] = 0;
+  text[0] = string[0];
+
+  if (!AddText(text, font * 4.0f / 7.0f, x, y, color, page)) {
+    SetFont(save_font);
+    return false;
+  }
+
+  x += eanupc_dimensions[2].quiet_left * x_width;
+  pdf_barcode_eanupc_aux(x, bar_y, x_width, bar_height,
+                         color, GUARD_NORMAL, &x, page);
+
+  char X[6];
+  if (string[5] && memcmp(string + 6, "0000", 4) == 0 &&
+      '5' <= string[10] && string[10] <= '9') {
+    memcpy(X, string + 1, 5);
+    X[5] = string[10];
+  } else if (string[4] && memcmp(string + 5, "00000", 5) == 0) {
+    memcpy(X, string + 1, 4);
+    X[4] = string[11];
+    X[5] = 4;
+  } else if ('0' <= string[3] && string[3] <= '2' &&
+             memcmp(string + 4, "0000", 4) == 0) {
+    X[0] = string[1];
+    X[1] = string[2];
+    X[2] = string[8];
+    X[3] = string[9];
+    X[4] = string[10];
+    X[5] = string[3];
+  } else if ('3' <= string[3] && string[3] <= '9' &&
+             memcmp(string + 4, "00000", 5) == 0) {
+    memcpy(X, string + 1, 3);
+    X[3] = string[9];
+    X[4] = string[10];
+    X[5] = 3;
+  } else {
+    SetErr(-EINVAL, "Invalid UPCE string format");
+    SetFont(save_font);
+    return false;
+  }
+
+  for (int i = 0; i != 6; i++) {
+    text[0] = X[i];
+    if (!AddTextWrap(text, font, x, y, 0, color,
+                     7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
+      SetFont(save_font);
+      return false;
     }
 
-    /* Scale and calculate dimensions */
-    float x_off, y_off, new_width, new_height;
-    float x_width, bar_height, bar_ext, font;
-
-    pdf_barcode_eanupc_calc_dims(PDF_BARCODE_UPCE, width, height, &x_off,
-                                 &y_off, &new_width, &new_height, &x_width,
-                                 &bar_height, &bar_ext, &font);
-
-    x += x_off;
-    y += y_off;
-    float bar_y = y + new_height - bar_height;
-
-    int e;
-    const char *save_font = pdf->current_font->font.name;
-    e = pdf_set_font(pdf, "Courier");
-    if (e < 0)
-        return e;
-
-    char text[2];
-    text[1] = 0;
-    text[0] = string[0];
-    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, color);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
+    int set = (set_upce_encoding[string[11] - '0'] & 1 << i) ? 1 : 0;
+    if (!pdf_barcode_eanupc_ch(x, bar_y, x_width, bar_height,
+                               color, X[i], set, &x, page)) {
+      SetFont(save_font);
+      return false;
     }
+  }
 
-    x += eanupc_dimensions[2].quiet_left * x_width;
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y, x_width, bar_height,
-                               color, GUARD_NORMAL, &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
+  pdf_barcode_eanupc_aux(x, bar_y, x_width, bar_height,
+                         color, GUARD_SPECIAL, &x, page);
 
-    char X[6];
-    if (string[5] && memcmp(string + 6, "0000", 4) == 0 &&
-        '5' <= string[10] && string[10] <= '9') {
-        memcpy(X, string + 1, 5);
-        X[5] = string[10];
-    } else if (string[4] && memcmp(string + 5, "00000", 5) == 0) {
-        memcpy(X, string + 1, 4);
-        X[4] = string[11];
-        X[5] = 4;
-    } else if ('0' <= string[3] && string[3] <= '2' &&
-               memcmp(string + 4, "0000", 4) == 0) {
-        X[0] = string[1];
-        X[1] = string[2];
-        X[2] = string[8];
-        X[3] = string[9];
-        X[4] = string[10];
-        X[5] = string[3];
-    } else if ('3' <= string[3] && string[3] <= '9' &&
-               memcmp(string + 4, "00000", 5) == 0) {
-        memcpy(X, string + 1, 3);
-        X[3] = string[9];
-        X[4] = string[10];
-        X[5] = 3;
-    } else {
-        pdf_set_font(pdf, save_font);
-        return SetErr(-EINVAL, "Invalid UPCE string format");
-    }
+  text[0] = string[11];
+  x += eanupc_dimensions[0].quiet_right * x_width -
+    604.0f * font * 4.0f / 7.0f / (14.0f * 72.0f);
+  if (!AddText(text, font * 4.0f / 7.0f, x, y, color, page)) {
+    SetFont(save_font);
+    return false;
+  }
 
-    for (int i = 0; i != 6; i++) {
-        text[0] = X[i];
-        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
-                              7 * x_width, PDF_ALIGN_CENTER, nullptr);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
-
-        int set = (set_upce_encoding[string[11] - '0'] & 1 << i) ? 1 : 0;
-        e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y, x_width, bar_height,
-                                  color, X[i], set, &x);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
-    }
-
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y, x_width, bar_height,
-                               color, GUARD_SPECIAL, &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
-
-    text[0] = string[11];
-    x += eanupc_dimensions[0].quiet_right * x_width -
-         604.0f * font * 4.0f / 7.0f / (14.0f * 72.0f);
-    e = pdf_add_text(pdf, page, text, font * 4.0f / 7.0f, x, y, color);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
-
-    pdf_set_font(pdf, save_font);
-    return 0;
+  SetFont(save_font);
+  return true;
 }
-#endif
+
+int PDF::AddBookmark(const std::string &name, int parent, Page *page) {
+  if (!page)
+    page = (Page *)pdf_find_last_object(OBJ_page);
+
+  if (!page) {
+    SetErr(-EINVAL,
+           "Unable to add bookmark; no pages available");
+    return false;
+  }
+
+  Object *outline = nullptr;
+  if (!(outline = pdf_find_first_object(OBJ_outline))) {
+    outline = AddObject(new Outline);
+  }
+
+  Bookmark *bobj = AddObject(new Bookmark);
+
+  bobj->name = name;
+  bobj->page = page;
+  if (parent >= 0) {
+    Bookmark *parent_obj = (Bookmark*)pdf_get_object(parent);
+    if (!parent_obj) {
+      SetErr(-EINVAL, "Invalid parent ID %d supplied", parent);
+      return false;
+    }
+    bobj->parent = parent_obj;
+    parent_obj->children.push_back(bobj);
+  }
+
+  return bobj->index;
+}
 
 #if 0
-int pdf_add_bookmark(pdf_doc *pdf, Object *page, int parent,
-                     const char *name)
-{
-    Object *obj, *outline = nullptr;
-
-    if (!page)
-        page = pdf_find_last_object(pdf, OBJ_page);
-
-    if (!page)
-        return SetErr(-EINVAL,
-                           "Unable to add bookmark, no pages available");
-
-    if (!pdf_find_first_object(pdf, OBJ_outline)) {
-        outline = pdf_add_object(pdf, OBJ_outline);
-        if (!outline)
-            return pdf->errval;
-    }
-
-    obj = pdf_add_object(pdf, OBJ_bookmark);
-    if (!obj) {
-        if (outline)
-            pdf_del_object(pdf, outline);
-        return pdf->errval;
-    }
-
-    strncpy(obj->bookmark.name, name, sizeof(obj->bookmark.name) - 1);
-    obj->bookmark.name[sizeof(obj->bookmark.name) - 1] = '\0';
-    obj->bookmark.page = page;
-    if (parent >= 0) {
-        Object *parent_obj = pdf_get_object(pdf, parent);
-        if (!parent_obj)
-            return SetErr(-EINVAL, "Invalid parent ID %d supplied",
-                               parent);
-        obj->bookmark.parent = parent_obj;
-        flexarray_append(&parent_obj->bookmark.children, obj);
-    }
-
-    return obj->index;
-}
 
 int pdf_add_link(pdf_doc *pdf, Object *page, float x,
                  float y, float width, float height,
@@ -2161,17 +2100,11 @@ bool PDF::AddText(const std::string &text, float size,
   return pdf_add_text_spacing(text, size, xoff, yoff, color, 0, 0, page);
 }
 
-#if 0
-
-int pdf_add_text_rotate(pdf_doc *pdf, Object *page,
-                        const char *text, float size, float xoff, float yoff,
-                        float angle, uint32_t color)
-{
-    return pdf_add_text_spacing(pdf, page, text, size, xoff, yoff, color, 0,
-                                angle);
+bool PDF::AddTextRotate(const std::string &text,
+                        float size, float xoff, float yoff,
+                        float angle, uint32_t color, Page *page) {
+  return pdf_add_text_spacing(text, size, xoff, yoff, color, 0, angle, page);
 }
-
-#endif
 
 // The width of each character, in points, at size 14.
 static constexpr const uint16_t helvetica_widths[256] = {
@@ -2608,11 +2541,11 @@ bool PDF::AddTextWrap(const std::string &text,
       case PDF_ALIGN_JUSTIFY:
         if ((len - 1) > 0 && *end != '\r' && *end != '\n' &&
             *end != '\0')
-          char_spacing = (wrap_width - line_width) / (len - 2);
+          char_spacing = (wrap_width - line_width) / (len - 1);
         break;
       case PDF_ALIGN_JUSTIFY_ALL:
         if ((len - 1) > 0)
-          char_spacing = (wrap_width - line_width) / (len - 2);
+          char_spacing = (wrap_width - line_width) / (len - 1);
         break;
       case PDF_ALIGN_NO_WRITE:
         // Doesn't matter, since we're not writing.

@@ -101,10 +101,14 @@ public:
     Object *next = nullptr;
   };
 
+  struct Outline : public Object {
+    Outline() : Object(OBJ_outline) {}
+  };
+
   struct Bookmark : public Object {
     Bookmark() : Object(OBJ_bookmark) {}
     Object *page = nullptr;
-    char name[64] = {};
+    std::string name;
     Object *parent = nullptr;
     std::vector<Object *> children;
   };
@@ -488,15 +492,37 @@ public:
                        const std::string &str, uint32_t color,
                        Page *page = nullptr);
 
-  // PDF_BARCODE_UPCA,  //!< Produce UPC-A style barcodes
-  // PDF_BARCODE_EAN8,  //!< Produce EAN-8 style barcodes
-  // PDF_BARCODE_UPCE,  //!< Produce UPC-E style barcodes
+  // Encodes 12 digits.
+  // https://en.wikipedia.org/wiki/Universal_Product_Code
+  bool AddBarcodeUPCA(float x, float y, float width, float height,
+                      const std::string &str, uint32_t color,
+                      Page *page = nullptr);
+
+  // Encodes 8 digits.
+  // https://en.wikipedia.org/wiki/EAN-8
+  bool AddBarcodeEAN8(float x, float y, float width, float height,
+                      const std::string &str, uint32_t color,
+                      Page *page = nullptr);
+
+  // Encodes 12 digits with leading zeroes expected in certain
+  // positions.
+  // https://en.wikipedia.org/wiki/Universal_Product_Code
+  bool AddBarcodeUPCE(float x, float y, float width, float height,
+                      const std::string &str, uint32_t color,
+                      Page *page = nullptr);
 
   bool AddText(const std::string &text,
                float size,
                // XXX baseline?
                float xoff, float yoff,
                uint32_t color, Page *page = nullptr);
+
+  bool AddTextRotate(const std::string &text,
+                     float size, float xoff, float yoff,
+                     // In radians.
+                     float angle,
+                     uint32_t color,
+                     Page *page = nullptr);
 
   bool AddTextWrap(const std::string &text,
                    float size,
@@ -520,37 +546,14 @@ public:
                     // If nullopt, use current font.
                     const std::optional<std::string> &font_name = std::nullopt);
 
+  // Add a bookmark to the document.
+  // The page is the page to jump to (or nullptr for the most recent one).
+  // The parent bookmark id, or -1 if this is a top-level bookmark.
+  // Returns the non-negative bookmark id.
+  int AddBookmark(const std::string &name, int parent, Page *page);
+
 #if 0
 
-/**
- * Add a text string to the document at a rotated angle
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param text String to display
- * @param size Point size of the font
- * @param xoff X location to put it in
- * @param yoff Y location to put it in
- * @param angle Rotation angle of text (in radians)
- * @param color Color to draw the text
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_text_rotate(struct pdf_doc *pdf, struct Object *page,
-                        const char *text, float size, float xoff, float yoff,
-                        float angle, uint32_t color);
-
-
-/**
- * Add a bookmark to the document
- * @param pdf PDF document to add bookmark to
- * @param page Page to jump to for bookmark
-               (or NULL for the most recently added page)
- * @param parent ID of a previously created bookmark that is the parent
-               of this one. -1 if this should be a top-level bookmark.
- * @param name String to associate with the bookmark
- * @return < 0 on failure, new bookmark id on success
- */
-int pdf_add_bookmark(struct pdf_doc *pdf, struct Object *page, int parent,
-                     const char *name);
 
 /**
  * Add a link annotation to the document
