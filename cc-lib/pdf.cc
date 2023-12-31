@@ -72,6 +72,9 @@ typedef SSIZE_T ssize_t;
 
 #include <bit>
 
+// Enable for copious debugging information.
+static constexpr bool VERBOSE = false;
+
 static inline constexpr uint32_t bswap32(uint32_t x) {
   if constexpr (std::endian::native == std::endian::little) {
     return (((x & 0xff000000u) >> 24) | ((x & 0x00ff0000u) >> 8) |
@@ -224,7 +227,9 @@ void PDF::pdf_object_destroy(Object *object) {
 }
 
 PDF::Object *PDF::pdf_add_object_internal(Object *obj) {
-  printf("Add object internal (%p, type %s)\n", obj, ObjTypeName(obj->type));
+  if (VERBOSE) {
+    printf("Add object internal (%p, type %s)\n", obj, ObjTypeName(obj->type));
+  }
   CHECK(obj != nullptr);
   pdf_append_object(obj);
   return obj;
@@ -261,12 +266,8 @@ PDF::PDF(float width, float height,
          const std::optional<PDF::Info> &info) :
   width(width), height(height) {
 
-  printf("Add None:\n");
-
   /* We don't want to use ID 0 */
   (void)AddObject(new None);
-
-  printf("Add info object:\n");
 
   /* Create the 'info' object */
   InfoObj *obj = AddObject(new InfoObj);
@@ -281,8 +282,6 @@ PDF::PDF(float width, float height,
     obj->info.subject[sizeof(obj->info.subject) - 1] = '\0';
     obj->info.date[sizeof(obj->info.date) - 1] = '\0';
   }
-
-  printf("Now date:\n");
 
   /* FIXME: Should be quoting PDF strings? */
   if (!obj->info.date[0]) {
@@ -299,10 +298,9 @@ PDF::PDF(float width, float height,
              &tm);
   }
 
-  printf("Assertions:\n");
   CHECK(AddObject(new Pages) != nullptr);
   CHECK(AddObject(new Catalog) != nullptr);
-  CHECK(SetFont("Times-Roman") >= 0);
+  SetFont("Times-Roman");
 }
 
 float PDF::Width() const { return width; }
@@ -322,14 +320,14 @@ PDF::Object *PDF::pdf_find_last_object(int type) {
   return last_objects[type];
 }
 
-int PDF::SetFont(const char *font) {
+void PDF::SetFont(const std::string &font_name) {
   int last_index = 0;
 
   /* See if we've used this font before */
   FontObj *fobj = nullptr;
   for (Object *obj = pdf_find_first_object(OBJ_font); obj; obj = obj->next) {
     fobj = (FontObj*)obj;
-    if (strcmp(fobj->name, font) == 0)
+    if (font_name == fobj->name)
       break;
     last_index = fobj->font_index;
   }
@@ -338,15 +336,11 @@ int PDF::SetFont(const char *font) {
   if (!fobj) {
     fobj = AddObject(new FontObj);
     CHECK(fobj);
-    // XXX just use string
-    strncpy(fobj->name, font, sizeof(fobj->name) - 1);
-    fobj->name[sizeof(fobj->name) - 1] = '\0';
+    fobj->name = font_name;
     fobj->font_index = last_index + 1;
   }
 
   current_font = fobj;
-
-  return 0;
 }
 
 PDF::Page *PDF::AppendNewPage() {
@@ -402,9 +396,11 @@ int PDF::pdf_save_object(FILE *fp, int index) {
   if (!object)
     return -ENOENT;
 
-  printf("Save object %p %d type %d=%s\n",
-         fp, index, object->type,
-         ObjTypeName(object->type));
+  if (VERBOSE) {
+    printf("Save object %p %d type %d=%s\n",
+           fp, index, object->type,
+           ObjTypeName(object->type));
+  }
 
   if (object->type == OBJ_none)
     return -ENOENT;
@@ -608,7 +604,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
             "  /BaseFont /%s\r\n"
             "  /Encoding /WinAnsiEncoding\r\n"
             ">>\r\n",
-            fobj->name);
+            fobj->name.c_str());
     break;
   }
 
@@ -764,7 +760,7 @@ bool PDF::Save(const char *filename) {
   return true;
 }
 
-int PDF::pdf_add_stream(Page *page, std::string str) {
+void PDF::pdf_add_stream(Page *page, std::string str) {
   if (!page)
     page = (Page*)pdf_find_last_object(OBJ_page);
 
@@ -786,1011 +782,10 @@ int PDF::pdf_add_stream(Page *page, std::string str) {
   sobj->stream.append(str);
   StringAppendF(&sobj->stream, "\r\nendstream\r\n");
 
-  int index = (int)page->children.size();
   page->children.push_back(sobj);
-  return index;
 }
 
-#if 0
-int pdf_add_bookmark(pdf_doc *pdf, Object *page, int parent,
-                     const char *name)
-{
-    Object *obj, *outline = nullptr;
-
-    if (!page)
-        page = pdf_find_last_object(pdf, OBJ_page);
-
-    if (!page)
-        return SetErr(-EINVAL,
-                           "Unable to add bookmark, no pages available");
-
-    if (!pdf_find_first_object(pdf, OBJ_outline)) {
-        outline = pdf_add_object(pdf, OBJ_outline);
-        if (!outline)
-            return pdf->errval;
-    }
-
-    obj = pdf_add_object(pdf, OBJ_bookmark);
-    if (!obj) {
-        if (outline)
-            pdf_del_object(pdf, outline);
-        return pdf->errval;
-    }
-
-    strncpy(obj->bookmark.name, name, sizeof(obj->bookmark.name) - 1);
-    obj->bookmark.name[sizeof(obj->bookmark.name) - 1] = '\0';
-    obj->bookmark.page = page;
-    if (parent >= 0) {
-        Object *parent_obj = pdf_get_object(pdf, parent);
-        if (!parent_obj)
-            return SetErr(-EINVAL, "Invalid parent ID %d supplied",
-                               parent);
-        obj->bookmark.parent = parent_obj;
-        flexarray_append(&parent_obj->bookmark.children, obj);
-    }
-
-    return obj->index;
-}
-
-int pdf_add_link(pdf_doc *pdf, Object *page, float x,
-                 float y, float width, float height,
-                 Object *target_page, float target_x,
-                 float target_y)
-{
-    Object *obj;
-
-    if (!page)
-        page = pdf_find_last_object(pdf, OBJ_page);
-
-    if (!page)
-        return SetErr(-EINVAL,
-                           "Unable to add link, no pages available");
-
-    if (!target_page)
-        return SetErr(-EINVAL, "Unable to link, no target page");
-
-    obj = pdf_add_object(pdf, OBJ_link);
-    if (!obj) {
-        return pdf->errval;
-    }
-
-    obj->link.target_page = target_page;
-    obj->link.target_x = target_x;
-    obj->link.target_y = target_y;
-    obj->link.llx = x;
-    obj->link.lly = y;
-    obj->link.urx = x + width;
-    obj->link.ury = y + height;
-    flexarray_append(&page->page.annotations, obj);
-
-    return obj->index;
-}
-#endif
-
-static int utf8_to_utf32(const char *utf8, int len, uint32_t *utf32)
-{
-    uint32_t ch;
-    uint8_t mask;
-
-    if (len <= 0 || !utf8 || !utf32)
-        return -EINVAL;
-
-    ch = *(uint8_t *)utf8;
-    if ((ch & 0x80) == 0) {
-        len = 1;
-        mask = 0x7f;
-    } else if ((ch & 0xe0) == 0xc0 && len >= 2) {
-        len = 2;
-        mask = 0x1f;
-    } else if ((ch & 0xf0) == 0xe0 && len >= 3) {
-        len = 3;
-        mask = 0xf;
-    } else if ((ch & 0xf8) == 0xf0 && len >= 4) {
-        len = 4;
-        mask = 0x7;
-    } else
-        return -EINVAL;
-
-    ch = 0;
-    for (int i = 0; i < len; i++) {
-        int shift = (len - i - 1) * 6;
-        if (!*utf8)
-            return -EINVAL;
-        if (i == 0)
-            ch |= ((uint32_t)(*utf8++) & mask) << shift;
-        else
-            ch |= ((uint32_t)(*utf8++) & 0x3f) << shift;
-    }
-
-    *utf32 = ch;
-
-    return len;
-}
-
-[[maybe_unused]]
-static int utf8_to_pdfencoding(const char *utf8, int len,
-                               uint8_t *res) {
-  uint32_t code;
-  *res = 0;
-
-  int code_len = utf8_to_utf32(utf8, len, &code);
-  CHECK(code_len >= 0) << "Invalid UTF-8 encoding";
-
-  if (code > 255) {
-    /* We support *some* minimal UTF-8 characters */
-    // See Appendix D of
-    // https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.7old.pdf
-    // These are all in WinAnsiEncoding
-    switch (code) {
-    case 0x152: // Latin Capital Ligature OE
-      *res = 0214;
-      break;
-    case 0x153: // Latin Small Ligature oe
-      *res = 0234;
-      break;
-    case 0x160: // Latin Capital Letter S with caron
-      *res = 0212;
-      break;
-    case 0x161: // Latin Small Letter S with caron
-      *res = 0232;
-      break;
-    case 0x178: // Latin Capital Letter y with diaeresis
-      *res = 0237;
-      break;
-    case 0x17d: // Latin Capital Letter Z with caron
-      *res = 0216;
-      break;
-    case 0x17e: // Latin Small Letter Z with caron
-      *res = 0236;
-      break;
-    case 0x192: // Latin Small Letter F with hook
-      *res = 0203;
-      break;
-    case 0x2c6: // Modifier Letter Circumflex Accent
-      *res = 0210;
-      break;
-    case 0x2dc: // Small Tilde
-      *res = 0230;
-      break;
-    case 0x2013: // Endash
-      *res = 0226;
-      break;
-    case 0x2014: // Emdash
-      *res = 0227;
-      break;
-    case 0x2018: // Left Single Quote
-      *res = 0221;
-      break;
-    case 0x2019: // Right Single Quote
-      *res = 0222;
-      break;
-    case 0x201a: // Single low-9 Quotation Mark
-      *res = 0202;
-      break;
-    case 0x201c: // Left Double Quote
-      *res = 0223;
-      break;
-    case 0x201d: // Right Double Quote
-      *res = 0224;
-      break;
-    case 0x201e: // Double low-9 Quotation Mark
-      *res = 0204;
-      break;
-    case 0x2020: // Dagger
-      *res = 0206;
-      break;
-    case 0x2021: // Double Dagger
-      *res = 0207;
-      break;
-    case 0x2022: // Bullet
-      *res = 0225;
-      break;
-    case 0x2026: // Horizontal Ellipsis
-      *res = 0205;
-      break;
-    case 0x2030: // Per Mille Sign
-      *res = 0211;
-      break;
-    case 0x2039: // Single Left-pointing Angle Quotation Mark
-      *res = 0213;
-      break;
-    case 0x203a: // Single Right-pointing Angle Quotation Mark
-      *res = 0233;
-      break;
-    case 0x20ac: // Euro
-      *res = 0200;
-      break;
-    case 0x2122: // Trade Mark Sign
-      *res = 0231;
-      break;
-    default:
-      CHECK(false) <<
-        StringPrintf("Unsupported UTF-8 character: 0x%x 0o%o %s",
-                     code, code, utf8);
-    }
-  } else {
-    *res = code;
-  }
-  return code_len;
-}
-
-void PDF::AddLine(float x1, float y1,
-                  float x2, float y2,
-                  float width, uint32_t color_rgb,
-                  Page *page) {
-  std::string str;
-  StringAppendF(&str, "%f w\r\n", width);
-  StringAppendF(&str, "%f %f m\r\n", x1, y1);
-  StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%f %f %f RG\r\n",
-                PDF_RGB_R(color_rgb),
-                PDF_RGB_G(color_rgb),
-                PDF_RGB_B(color_rgb));
-  StringAppendF(&str, "%f %f l S\r\n", x2, y2);
-
-  (void)pdf_add_stream(page, std::move(str));
-}
-
-void PDF::AddCubicBezier(float x1, float y1, float x2, float y2, float xq1,
-                         float yq1, float xq2, float yq2, float width,
-                         uint32_t color_rgb, Page *page) {
-  std::string str;
-
-  StringAppendF(&str, "%f w\r\n", width);
-  StringAppendF(&str, "%f %f m\r\n", x1, y1);
-  StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%f %f %f RG\r\n", PDF_RGB_R(color_rgb), PDF_RGB_G(color_rgb),
-                PDF_RGB_B(color_rgb));
-  StringAppendF(&str, "%f %f %f %f %f %f c S\r\n", xq1, yq1, xq2, yq2, x2,
-                y2);
-
-  (void)pdf_add_stream(page, std::move(str));
-}
-
-void PDF::AddQuadraticBezier(float x1, float y1, float x2, float y2,
-                             float xq1, float yq1, float width,
-                             uint32_t color_rgb, Page *page) {
-  float xc1 = x1 + (xq1 - x1) * (2.0f / 3.0f);
-  float yc1 = y1 + (yq1 - y1) * (2.0f / 3.0f);
-  float xc2 = x2 + (xq1 - x2) * (2.0f / 3.0f);
-  float yc2 = y2 + (yq1 - y2) * (2.0f / 3.0f);
-  AddCubicBezier(x1, y1, x2, y2, xc1, yc1, xc2, yc2,
-                 width, color_rgb, page);
-}
-
-void PDF::AddEllipse(float x, float y,
-                     float xradius, float yradius,
-                     float width,
-                     uint32_t color, uint32_t fill_color,
-                     Page *page) {
-  std::string str;
-
-  const float lx = (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * xradius;
-  const float ly = (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * yradius;
-
-  if (!PDF_IS_TRANSPARENT(fill_color)) {
-    StringAppendF(&str, "/DeviceRGB CS\r\n");
-    StringAppendF(&str, "%f %f %f rg\r\n",
-                  PDF_RGB_R(fill_color),
-                  PDF_RGB_G(fill_color),
-                  PDF_RGB_B(fill_color));
-  }
-
-  /* stroke color */
-  StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%f %f %f RG\r\n",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
-
-  StringAppendF(&str, "%f w ", width);
-
-  StringAppendF(&str, "%.2f %.2f m ", (x + xradius), (y));
-
-  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x + xradius),
-                (y - ly), (x + lx), (y - yradius), x, (y - yradius));
-
-  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x - lx),
-                (y - yradius), (x - xradius), (y - ly), (x - xradius), y);
-
-  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x - xradius),
-                (y + ly), (x - lx), (y + yradius), x, (y + yradius));
-
-  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x + lx),
-                (y + yradius), (x + xradius), (y + ly), (x + xradius), y);
-
-  if (PDF_IS_TRANSPARENT(fill_color))
-    StringAppendF(&str, "%s", "S ");
-  else
-    StringAppendF(&str, "%s", "B ");
-
-  (void)pdf_add_stream(page, std::move(str));
-}
-
-void PDF::AddCircle(float xr, float yr, float radius, float width,
-                    uint32_t color,
-                    uint32_t fill_color, Page *page) {
-  return AddEllipse(xr, yr, radius, radius, width, color,
-                    fill_color, page);
-}
-
-void PDF::AddRectangle(float x, float y,
-                       float width, float height, float border_width,
-                       uint32_t color, Page *page) {
-  std::string str;
-  StringAppendF(&str, "%f %f %f RG ",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
-  StringAppendF(&str, "%f w ", border_width);
-  StringAppendF(&str, "%f %f %f %f re S ", x, y, width, height);
-
-  (void)pdf_add_stream(page, std::move(str));
-}
-
-void PDF::AddFilledRectangle(
-    float x, float y, float width, float height,
-    float border_width, uint32_t color_fill,
-    uint32_t color_border, Page *page) {
-
-  std::string str;
-
-  StringAppendF(&str, "%f %f %f rg ",
-                PDF_RGB_R(color_fill),
-                PDF_RGB_G(color_fill),
-                PDF_RGB_B(color_fill));
-  if (border_width > 0) {
-    StringAppendF(&str, "%f %f %f RG ",
-                  PDF_RGB_R(color_border),
-                  PDF_RGB_G(color_border),
-                  PDF_RGB_B(color_border));
-    StringAppendF(&str, "%f w ", border_width);
-    StringAppendF(&str, "%f %f %f %f re B ", x, y, width, height);
-  } else {
-    StringAppendF(&str, "%f %f %f %f re f ", x, y, width, height);
-  }
-
-  (void)pdf_add_stream(page, std::move(str));
-}
-
-bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
-                        float stroke_width,
-                        uint32_t stroke_color,
-                        uint32_t fill_color,
-                        Page *page) {
-
-  std::string str;
-
-  if (!PDF_IS_TRANSPARENT(fill_color)) {
-    StringAppendF(&str, "/DeviceRGB CS\r\n");
-    StringAppendF(&str, "%f %f %f rg\r\n",
-                  PDF_RGB_R(fill_color),
-                  PDF_RGB_G(fill_color),
-                  PDF_RGB_B(fill_color));
-  }
-
-  StringAppendF(&str, "%f w\r\n", stroke_width);
-  StringAppendF(&str, "/DeviceRGB CS\r\n");
-  StringAppendF(&str, "%f %f %f RG\r\n",
-                PDF_RGB_R(stroke_color),
-                PDF_RGB_G(stroke_color),
-                PDF_RGB_B(stroke_color));
-
-  for (PathOp operation : ops) {
-    switch (operation.op) {
-    case 'm':
-      StringAppendF(&str, "%f %f m\r\n", operation.x1, operation.y1);
-      break;
-    case 'l':
-      StringAppendF(&str, "%f %f l\r\n", operation.x1, operation.y1);
-      break;
-    case 'c':
-      StringAppendF(&str, "%f %f %f %f %f %f c\r\n", operation.x1,
-                    operation.y1, operation.x2, operation.y2,
-                    operation.x3, operation.y3);
-      break;
-    case 'v':
-      StringAppendF(&str, "%f %f %f %f v\r\n", operation.x1, operation.y1,
-                    operation.x2, operation.y2);
-      break;
-    case 'y':
-      StringAppendF(&str, "%f %f %f %f y\r\n", operation.x1, operation.y1,
-                    operation.x2, operation.y2);
-      break;
-    case 'h':
-      StringAppendF(&str, "h\r\n");
-      break;
-    default:
-      SetErr(-errno, "Invalid operation");
-      return false;
-    }
-  }
-
-  if (PDF_IS_TRANSPARENT(fill_color))
-    StringAppendF(&str, "%s", "S ");
-  else
-    StringAppendF(&str, "%s", "B ");
-
-  (void)pdf_add_stream(page, std::move(str));
-
-  return true;
-}
-
-bool PDF::AddPolygon(
-    const std::vector<std::pair<float, float>> &points,
-    float border_width, uint32_t color,
-    Page *page) {
-  if (points.empty()) return false;
-
-  std::string str;
-
-  StringAppendF(&str, "%f %f %f RG ",
-                PDF_RGB_R(color),
-                PDF_RGB_G(color),
-                PDF_RGB_B(color));
-  StringAppendF(&str, "%f w ", border_width);
-  StringAppendF(&str, "%f %f m ", points[0].first, points[0].second);
-  for (int i = 1; i < (int)points.size(); i++) {
-    StringAppendF(&str, "%f %f l ", points[i].first, points[i].second);
-  }
-  StringAppendF(&str, "h S ");
-
-  (void)pdf_add_stream(page, std::move(str));
-  return true;
-}
-
-bool PDF::AddFilledPolygon(
-    const std::vector<std::pair<float, float>> &points,
-    float border_width, uint32_t color,
-    Page *page) {
-  if (points.empty()) return false;
-
-  std::string str;
-
-  StringAppendF(&str, "%f %f %f RG ",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
-  StringAppendF(&str, "%f %f %f rg ",
-                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
-  StringAppendF(&str, "%f w ", border_width);
-  StringAppendF(&str, "%f %f m ", points[0].first, points[0].second);
-  for (int i = 1; i < (int)points.size(); i++) {
-    StringAppendF(&str, "%f %f l ", points[i].first, points[i].second);
-  }
-  StringAppendF(&str, "h f ");
-
-  (void)pdf_add_stream(page, std::move(str));
-  return true;
-}
-
-
-#if 0
-
-static int pdf_add_text_spacing(pdf_doc *pdf, Object *page,
-                                const char *text, float size, float xoff,
-                                float yoff, uint32_t color, float spacing,
-                                float angle)
-{
-    int ret;
-    size_t len = text ? strlen(text) : 0;
-    dstr str = INIT_DSTR;
-    int alpha = (color >> 24) >> 4;
-
-    /* Don't bother adding empty/null strings */
-    if (!len)
-        return 0;
-
-    dstr_append(&str, "BT ");
-    StringAppendF(&str, "/GS%d gs ", alpha);
-    if (angle != 0) {
-        StringAppendF(&str, "%f %f %f %f %f %f Tm ", cosf(angle), sinf(angle),
-                    -sinf(angle), cosf(angle), xoff, yoff);
-    } else {
-        StringAppendF(&str, "%f %f TD ", xoff, yoff);
-    }
-    StringAppendF(&str, "/F%d %f Tf ", pdf->current_font->font.font_index, size);
-    StringAppendF(&str, "%f %f %f rg ", PDF_RGB_R(color), PDF_RGB_G(color),
-                PDF_RGB_B(color));
-    StringAppendF(&str, "%f Tc ", spacing);
-    dstr_append(&str, "(");
-
-    /* Escape magic characters properly */
-    for (size_t i = 0; i < len;) {
-        int code_len;
-        uint8_t pdf_char;
-        code_len = utf8_to_pdfencoding(pdf, &text[i], len - i, &pdf_char);
-        if (code_len < 0) {
-            dstr_free(&str);
-            return code_len;
-        }
-
-        if (strchr("()\\", pdf_char)) {
-            char buf[3];
-            /* Escape some characters */
-            buf[0] = '\\';
-            buf[1] = pdf_char;
-            buf[2] = '\0';
-            dstr_append(&str, buf);
-        } else if (strrchr("\n\r\t\b\f", pdf_char)) {
-            /* Skip over these characters */
-            ;
-        } else {
-            dstr_append_data(&str, &pdf_char, 1);
-        }
-
-        i += code_len;
-    }
-    dstr_append(&str, ") Tj ");
-    dstr_append(&str, "ET");
-
-    ret = pdf_add_stream(pdf, page, dstr_data(&str));
-    dstr_free(&str);
-    return ret;
-}
-
-int pdf_add_text(pdf_doc *pdf, Object *page,
-                 const char *text, float size, float xoff, float yoff,
-                 uint32_t color)
-{
-    return pdf_add_text_spacing(pdf, page, text, size, xoff, yoff, color, 0,
-                                0);
-}
-
-int pdf_add_text_rotate(pdf_doc *pdf, Object *page,
-                        const char *text, float size, float xoff, float yoff,
-                        float angle, uint32_t color)
-{
-    return pdf_add_text_spacing(pdf, page, text, size, xoff, yoff, color, 0,
-                                angle);
-}
-
-/* How wide is each character, in points, at size 14 */
-static const uint16_t helvetica_widths[256] = {
-    280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
-    280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
-    280, 280, 280, 280,  280, 280, 280, 280,  357,  560, 560,  896, 672,
-    192, 335, 335, 392,  588, 280, 335, 280,  280,  560, 560,  560, 560,
-    560, 560, 560, 560,  560, 560, 280, 280,  588,  588, 588,  560, 1023,
-    672, 672, 727, 727,  672, 615, 784, 727,  280,  504, 672,  560, 839,
-    727, 784, 672, 784,  727, 672, 615, 727,  672,  951, 672,  672, 615,
-    280, 280, 280, 472,  560, 335, 560, 560,  504,  560, 560,  280, 560,
-    560, 223, 223, 504,  223, 839, 560, 560,  560,  560, 335,  504, 280,
-    560, 504, 727, 504,  504, 504, 336, 262,  336,  588, 352,  560, 352,
-    223, 560, 335, 1008, 560, 560, 335, 1008, 672,  335, 1008, 352, 615,
-    352, 352, 223, 223,  335, 335, 352, 560,  1008, 335, 1008, 504, 335,
-    951, 352, 504, 672,  280, 335, 560, 560,  560,  560, 262,  560, 335,
-    742, 372, 560, 588,  335, 742, 335, 403,  588,  335, 335,  335, 560,
-    541, 280, 335, 335,  367, 560, 840, 840,  840,  615, 672,  672, 672,
-    672, 672, 672, 1008, 727, 672, 672, 672,  672,  280, 280,  280, 280,
-    727, 727, 784, 784,  784, 784, 784, 588,  784,  727, 727,  727, 727,
-    672, 672, 615, 560,  560, 560, 560, 560,  560,  896, 504,  560, 560,
-    560, 560, 280, 280,  280, 280, 560, 560,  560,  560, 560,  560, 560,
-    588, 615, 560, 560,  560, 560, 504, 560,  504,
-};
-
-static const uint16_t helvetica_bold_widths[256] = {
-    280,  280, 280,  280, 280, 280, 280, 280,  280, 280, 280, 280,  280, 280,
-    280,  280, 280,  280, 280, 280, 280, 280,  280, 280, 280, 280,  280, 280,
-    280,  280, 280,  280, 280, 335, 477, 560,  560, 896, 727, 239,  335, 335,
-    392,  588, 280,  335, 280, 280, 560, 560,  560, 560, 560, 560,  560, 560,
-    560,  560, 335,  335, 588, 588, 588, 615,  982, 727, 727, 727,  727, 672,
-    615,  784, 727,  280, 560, 727, 615, 839,  727, 784, 672, 784,  727, 672,
-    615,  727, 672,  951, 672, 672, 615, 335,  280, 335, 588, 560,  335, 560,
-    615,  560, 615,  560, 335, 615, 615, 280,  280, 560, 280, 896,  615, 615,
-    615,  615, 392,  560, 335, 615, 560, 784,  560, 560, 504, 392,  282, 392,
-    588,  352, 560,  352, 280, 560, 504, 1008, 560, 560, 335, 1008, 672, 335,
-    1008, 352, 615,  352, 352, 280, 280, 504,  504, 352, 560, 1008, 335, 1008,
-    560,  335, 951,  352, 504, 672, 280, 335,  560, 560, 560, 560,  282, 560,
-    335,  742, 372,  560, 588, 335, 742, 335,  403, 588, 335, 335,  335, 615,
-    560,  280, 335,  335, 367, 560, 840, 840,  840, 615, 727, 727,  727, 727,
-    727,  727, 1008, 727, 672, 672, 672, 672,  280, 280, 280, 280,  727, 727,
-    784,  784, 784,  784, 784, 588, 784, 727,  727, 727, 727, 672,  672, 615,
-    560,  560, 560,  560, 560, 560, 896, 560,  560, 560, 560, 560,  280, 280,
-    280,  280, 615,  615, 615, 615, 615, 615,  615, 588, 615, 615,  615, 615,
-    615,  560, 615,  560,
-};
-
-static const uint16_t helvetica_bold_oblique_widths[256] = {
-    280,  280, 280,  280, 280, 280, 280, 280,  280, 280, 280, 280,  280, 280,
-    280,  280, 280,  280, 280, 280, 280, 280,  280, 280, 280, 280,  280, 280,
-    280,  280, 280,  280, 280, 335, 477, 560,  560, 896, 727, 239,  335, 335,
-    392,  588, 280,  335, 280, 280, 560, 560,  560, 560, 560, 560,  560, 560,
-    560,  560, 335,  335, 588, 588, 588, 615,  982, 727, 727, 727,  727, 672,
-    615,  784, 727,  280, 560, 727, 615, 839,  727, 784, 672, 784,  727, 672,
-    615,  727, 672,  951, 672, 672, 615, 335,  280, 335, 588, 560,  335, 560,
-    615,  560, 615,  560, 335, 615, 615, 280,  280, 560, 280, 896,  615, 615,
-    615,  615, 392,  560, 335, 615, 560, 784,  560, 560, 504, 392,  282, 392,
-    588,  352, 560,  352, 280, 560, 504, 1008, 560, 560, 335, 1008, 672, 335,
-    1008, 352, 615,  352, 352, 280, 280, 504,  504, 352, 560, 1008, 335, 1008,
-    560,  335, 951,  352, 504, 672, 280, 335,  560, 560, 560, 560,  282, 560,
-    335,  742, 372,  560, 588, 335, 742, 335,  403, 588, 335, 335,  335, 615,
-    560,  280, 335,  335, 367, 560, 840, 840,  840, 615, 727, 727,  727, 727,
-    727,  727, 1008, 727, 672, 672, 672, 672,  280, 280, 280, 280,  727, 727,
-    784,  784, 784,  784, 784, 588, 784, 727,  727, 727, 727, 672,  672, 615,
-    560,  560, 560,  560, 560, 560, 896, 560,  560, 560, 560, 560,  280, 280,
-    280,  280, 615,  615, 615, 615, 615, 615,  615, 588, 615, 615,  615, 615,
-    615,  560, 615,  560,
-};
-
-static const uint16_t helvetica_oblique_widths[256] = {
-    280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
-    280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
-    280, 280, 280, 280,  280, 280, 280, 280,  357,  560, 560,  896, 672,
-    192, 335, 335, 392,  588, 280, 335, 280,  280,  560, 560,  560, 560,
-    560, 560, 560, 560,  560, 560, 280, 280,  588,  588, 588,  560, 1023,
-    672, 672, 727, 727,  672, 615, 784, 727,  280,  504, 672,  560, 839,
-    727, 784, 672, 784,  727, 672, 615, 727,  672,  951, 672,  672, 615,
-    280, 280, 280, 472,  560, 335, 560, 560,  504,  560, 560,  280, 560,
-    560, 223, 223, 504,  223, 839, 560, 560,  560,  560, 335,  504, 280,
-    560, 504, 727, 504,  504, 504, 336, 262,  336,  588, 352,  560, 352,
-    223, 560, 335, 1008, 560, 560, 335, 1008, 672,  335, 1008, 352, 615,
-    352, 352, 223, 223,  335, 335, 352, 560,  1008, 335, 1008, 504, 335,
-    951, 352, 504, 672,  280, 335, 560, 560,  560,  560, 262,  560, 335,
-    742, 372, 560, 588,  335, 742, 335, 403,  588,  335, 335,  335, 560,
-    541, 280, 335, 335,  367, 560, 840, 840,  840,  615, 672,  672, 672,
-    672, 672, 672, 1008, 727, 672, 672, 672,  672,  280, 280,  280, 280,
-    727, 727, 784, 784,  784, 784, 784, 588,  784,  727, 727,  727, 727,
-    672, 672, 615, 560,  560, 560, 560, 560,  560,  896, 504,  560, 560,
-    560, 560, 280, 280,  280, 280, 560, 560,  560,  560, 560,  560, 560,
-    588, 615, 560, 560,  560, 560, 504, 560,  504,
-};
-
-static const uint16_t symbol_widths[256] = {
-    252, 252, 252, 252,  252, 252, 252,  252, 252,  252,  252, 252, 252, 252,
-    252, 252, 252, 252,  252, 252, 252,  252, 252,  252,  252, 252, 252, 252,
-    252, 252, 252, 252,  252, 335, 718,  504, 553,  839,  784, 442, 335, 335,
-    504, 553, 252, 553,  252, 280, 504,  504, 504,  504,  504, 504, 504, 504,
-    504, 504, 280, 280,  553, 553, 553,  447, 553,  727,  672, 727, 616, 615,
-    769, 607, 727, 335,  636, 727, 691,  896, 727,  727,  774, 746, 560, 596,
-    615, 695, 442, 774,  650, 801, 615,  335, 869,  335,  663, 504, 504, 636,
-    553, 553, 497, 442,  525, 414, 607,  331, 607,  553,  553, 580, 525, 553,
-    553, 525, 553, 607,  442, 580, 718,  691, 496,  691,  497, 483, 201, 483,
-    553, 0,   0,   0,    0,   0,   0,    0,   0,    0,    0,   0,   0,   0,
-    0,   0,   0,   0,    0,   0,   0,    0,   0,    0,    0,   0,   0,   0,
-    0,   0,   0,   0,    0,   0,   756,  624, 248,  553,  168, 718, 504, 759,
-    759, 759, 759, 1050, 994, 607, 994,  607, 403,  553,  414, 553, 553, 718,
-    497, 463, 553, 553,  553, 553, 1008, 607, 1008, 663,  829, 691, 801, 994,
-    774, 774, 829, 774,  774, 718, 718,  718, 718,  718,  718, 718, 774, 718,
-    796, 796, 897, 829,  553, 252, 718,  607, 607,  1050, 994, 607, 994, 607,
-    497, 331, 796, 796,  792, 718, 387,  387, 387,  387,  387, 387, 497, 497,
-    497, 497, 0,   331,  276, 691, 691,  691, 387,  387,  387, 387, 387, 387,
-    497, 497, 497, 0,
-};
-
-static const uint16_t times_widths[256] = {
-    252, 252, 252, 252, 252, 252, 252, 252,  252, 252, 252, 252,  252, 252,
-    252, 252, 252, 252, 252, 252, 252, 252,  252, 252, 252, 252,  252, 252,
-    252, 252, 252, 252, 252, 335, 411, 504,  504, 839, 784, 181,  335, 335,
-    504, 568, 252, 335, 252, 280, 504, 504,  504, 504, 504, 504,  504, 504,
-    504, 504, 280, 280, 568, 568, 568, 447,  928, 727, 672, 672,  727, 615,
-    560, 727, 727, 335, 392, 727, 615, 896,  727, 727, 560, 727,  672, 560,
-    615, 727, 727, 951, 727, 727, 615, 335,  280, 335, 472, 504,  335, 447,
-    504, 447, 504, 447, 335, 504, 504, 280,  280, 504, 280, 784,  504, 504,
-    504, 504, 335, 392, 280, 504, 504, 727,  504, 504, 447, 483,  201, 483,
-    545, 352, 504, 352, 335, 504, 447, 1008, 504, 504, 335, 1008, 560, 335,
-    896, 352, 615, 352, 352, 335, 335, 447,  447, 352, 504, 1008, 335, 987,
-    392, 335, 727, 352, 447, 727, 252, 335,  504, 504, 504, 504,  201, 504,
-    335, 766, 278, 504, 568, 335, 766, 335,  403, 568, 302, 302,  335, 504,
-    456, 252, 335, 302, 312, 504, 756, 756,  756, 447, 727, 727,  727, 727,
-    727, 727, 896, 672, 615, 615, 615, 615,  335, 335, 335, 335,  727, 727,
-    727, 727, 727, 727, 727, 568, 727, 727,  727, 727, 727, 727,  560, 504,
-    447, 447, 447, 447, 447, 447, 672, 447,  447, 447, 447, 447,  280, 280,
-    280, 280, 504, 504, 504, 504, 504, 504,  504, 568, 504, 504,  504, 504,
-    504, 504, 504, 504,
-};
-
-static const uint16_t times_bold_widths[256] = {
-    252, 252, 252, 252,  252, 252, 252, 252,  252,  252,  252,  252,  252,
-    252, 252, 252, 252,  252, 252, 252, 252,  252,  252,  252,  252,  252,
-    252, 252, 252, 252,  252, 252, 252, 335,  559,  504,  504,  1008, 839,
-    280, 335, 335, 504,  574, 252, 335, 252,  280,  504,  504,  504,  504,
-    504, 504, 504, 504,  504, 504, 335, 335,  574,  574,  574,  504,  937,
-    727, 672, 727, 727,  672, 615, 784, 784,  392,  504,  784,  672,  951,
-    727, 784, 615, 784,  727, 560, 672, 727,  727,  1008, 727,  727,  672,
-    335, 280, 335, 585,  504, 335, 504, 560,  447,  560,  447,  335,  504,
-    560, 280, 335, 560,  280, 839, 560, 504,  560,  560,  447,  392,  335,
-    560, 504, 727, 504,  504, 447, 397, 221,  397,  524,  352,  504,  352,
-    335, 504, 504, 1008, 504, 504, 335, 1008, 560,  335,  1008, 352,  672,
-    352, 352, 335, 335,  504, 504, 352, 504,  1008, 335,  1008, 392,  335,
-    727, 352, 447, 727,  252, 335, 504, 504,  504,  504,  221,  504,  335,
-    752, 302, 504, 574,  335, 752, 335, 403,  574,  302,  302,  335,  560,
-    544, 252, 335, 302,  332, 504, 756, 756,  756,  504,  727,  727,  727,
-    727, 727, 727, 1008, 727, 672, 672, 672,  672,  392,  392,  392,  392,
-    727, 727, 784, 784,  784, 784, 784, 574,  784,  727,  727,  727,  727,
-    727, 615, 560, 504,  504, 504, 504, 504,  504,  727,  447,  447,  447,
-    447, 447, 280, 280,  280, 280, 504, 560,  504,  504,  504,  504,  504,
-    574, 504, 560, 560,  560, 560, 504, 560,  504,
-};
-
-static const uint16_t times_bold_italic_widths[256] = {
-    252, 252, 252, 252, 252, 252, 252, 252,  252, 252, 252, 252,  252, 252,
-    252, 252, 252, 252, 252, 252, 252, 252,  252, 252, 252, 252,  252, 252,
-    252, 252, 252, 252, 252, 392, 559, 504,  504, 839, 784, 280,  335, 335,
-    504, 574, 252, 335, 252, 280, 504, 504,  504, 504, 504, 504,  504, 504,
-    504, 504, 335, 335, 574, 574, 574, 504,  838, 672, 672, 672,  727, 672,
-    672, 727, 784, 392, 504, 672, 615, 896,  727, 727, 615, 727,  672, 560,
-    615, 727, 672, 896, 672, 615, 615, 335,  280, 335, 574, 504,  335, 504,
-    504, 447, 504, 447, 335, 504, 560, 280,  280, 504, 280, 784,  560, 504,
-    504, 504, 392, 392, 280, 560, 447, 672,  504, 447, 392, 350,  221, 350,
-    574, 352, 504, 352, 335, 504, 504, 1008, 504, 504, 335, 1008, 560, 335,
-    951, 352, 615, 352, 352, 335, 335, 504,  504, 352, 504, 1008, 335, 1008,
-    392, 335, 727, 352, 392, 615, 252, 392,  504, 504, 504, 504,  221, 504,
-    335, 752, 268, 504, 610, 335, 752, 335,  403, 574, 302, 302,  335, 580,
-    504, 252, 335, 302, 302, 504, 756, 756,  756, 504, 672, 672,  672, 672,
-    672, 672, 951, 672, 672, 672, 672, 672,  392, 392, 392, 392,  727, 727,
-    727, 727, 727, 727, 727, 574, 727, 727,  727, 727, 727, 615,  615, 504,
-    504, 504, 504, 504, 504, 504, 727, 447,  447, 447, 447, 447,  280, 280,
-    280, 280, 504, 560, 504, 504, 504, 504,  504, 574, 504, 560,  560, 560,
-    560, 447, 504, 447,
-};
-
-static const uint16_t times_italic_widths[256] = {
-    252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252,  252, 252,
-    252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252,  252, 252,
-    252, 252, 252, 252, 252, 335, 423, 504, 504, 839, 784, 215,  335, 335,
-    504, 680, 252, 335, 252, 280, 504, 504, 504, 504, 504, 504,  504, 504,
-    504, 504, 335, 335, 680, 680, 680, 504, 927, 615, 615, 672,  727, 615,
-    615, 727, 727, 335, 447, 672, 560, 839, 672, 727, 615, 727,  615, 504,
-    560, 727, 615, 839, 615, 560, 560, 392, 280, 392, 425, 504,  335, 504,
-    504, 447, 504, 447, 280, 504, 504, 280, 280, 447, 280, 727,  504, 504,
-    504, 504, 392, 392, 280, 504, 447, 672, 447, 447, 392, 403,  277, 403,
-    545, 352, 504, 352, 335, 504, 560, 896, 504, 504, 335, 1008, 504, 335,
-    951, 352, 560, 352, 352, 335, 335, 560, 560, 352, 504, 896,  335, 987,
-    392, 335, 672, 352, 392, 560, 252, 392, 504, 504, 504, 504,  277, 504,
-    335, 766, 278, 504, 680, 335, 766, 335, 403, 680, 302, 302,  335, 504,
-    527, 252, 335, 302, 312, 504, 756, 756, 756, 504, 615, 615,  615, 615,
-    615, 615, 896, 672, 615, 615, 615, 615, 335, 335, 335, 335,  727, 672,
-    727, 727, 727, 727, 727, 680, 727, 727, 727, 727, 727, 560,  615, 504,
-    504, 504, 504, 504, 504, 504, 672, 447, 447, 447, 447, 447,  280, 280,
-    280, 280, 504, 504, 504, 504, 504, 504, 504, 680, 504, 504,  504, 504,
-    504, 447, 504, 447,
-};
-
-static const uint16_t zapfdingbats_widths[256] = {
-    0,   0,   0,   0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   280,  981, 968, 981, 987, 724, 795, 796, 797, 695,
-    967, 946, 553, 861, 918,  940, 918, 952, 981, 761, 852, 768, 767, 575,
-    682, 769, 766, 765, 760,  497, 556, 541, 581, 697, 792, 794, 794, 796,
-    799, 800, 822, 829, 795,  847, 829, 839, 822, 837, 930, 749, 728, 754,
-    796, 798, 700, 782, 774,  798, 765, 712, 713, 687, 706, 832, 821, 795,
-    795, 712, 692, 701, 694,  792, 793, 718, 797, 791, 797, 879, 767, 768,
-    768, 765, 765, 899, 899,  794, 790, 441, 139, 279, 418, 395, 395, 673,
-    673, 0,   393, 393, 319,  319, 278, 278, 513, 513, 413, 413, 235, 235,
-    336, 336, 0,   0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,
-    0,   0,   0,   0,   0,    0,   0,   737, 548, 548, 917, 672, 766, 766,
-    782, 599, 699, 631, 794,  794, 794, 794, 794, 794, 794, 794, 794, 794,
-    794, 794, 794, 794, 794,  794, 794, 794, 794, 794, 794, 794, 794, 794,
-    794, 794, 794, 794, 794,  794, 794, 794, 794, 794, 794, 794, 794, 794,
-    794, 794, 901, 844, 1024, 461, 753, 931, 753, 925, 934, 935, 935, 840,
-    879, 834, 931, 931, 924,  937, 938, 466, 890, 842, 842, 873, 873, 701,
-    701, 880, 0,   880, 766,  953, 777, 871, 777, 895, 974, 895, 837, 879,
-    934, 977, 925, 0,
-};
-
-static const uint16_t courier_widths[256] = {
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
-    604,
-};
-
-static int pdf_text_point_width(pdf_doc *pdf, const char *text,
-                                ptrdiff_t text_len, float size,
-                                const uint16_t *widths, float *point_width)
-{
-    uint32_t len = 0;
-    if (text_len < 0)
-        text_len = strlen(text);
-    *point_width = 0.0f;
-
-    for (int i = 0; i < (int)text_len;) {
-        uint8_t pdf_char = 0;
-        int code_len;
-        code_len =
-            utf8_to_pdfencoding(pdf, &text[i], text_len - i, &pdf_char);
-        if (code_len < 0)
-            return SetErr(code_len,
-                               "Invalid unicode string at position %d in %s",
-                               i, text);
-        i += code_len;
-
-        if (pdf_char != '\n' && pdf_char != '\r')
-            len += widths[pdf_char];
-    }
-
-    /* Our widths arrays are for 14pt fonts */
-    *point_width = len * size / (14.0f * 72.0f);
-
-    return 0;
-}
-
-static const uint16_t *find_font_widths(const char *font_name)
-{
-    if (strcasecmp(font_name, "Helvetica") == 0)
-        return helvetica_widths;
-    if (strcasecmp(font_name, "Helvetica-Bold") == 0)
-        return helvetica_bold_widths;
-    if (strcasecmp(font_name, "Helvetica-BoldOblique") == 0)
-        return helvetica_bold_oblique_widths;
-    if (strcasecmp(font_name, "Helvetica-Oblique") == 0)
-        return helvetica_oblique_widths;
-    if (strcasecmp(font_name, "Courier") == 0 ||
-        strcasecmp(font_name, "Courier-Bold") == 0 ||
-        strcasecmp(font_name, "Courier-BoldOblique") == 0 ||
-        strcasecmp(font_name, "Courier-Oblique") == 0)
-        return courier_widths;
-    if (strcasecmp(font_name, "Times-Roman") == 0)
-        return times_widths;
-    if (strcasecmp(font_name, "Times-Bold") == 0)
-        return times_bold_widths;
-    if (strcasecmp(font_name, "Times-Italic") == 0)
-        return times_italic_widths;
-    if (strcasecmp(font_name, "Times-BoldItalic") == 0)
-        return times_bold_italic_widths;
-    if (strcasecmp(font_name, "Symbol") == 0)
-        return symbol_widths;
-    if (strcasecmp(font_name, "ZapfDingbats") == 0)
-        return zapfdingbats_widths;
-
-    return nullptr;
-}
-
-int pdf_get_font_text_width(pdf_doc *pdf, const char *font_name,
-                            const char *text, float size, float *text_width)
-{
-    if (!font_name)
-        font_name = pdf->current_font->font.name;
-    const uint16_t *widths = find_font_widths(font_name);
-
-    if (!widths)
-        return SetErr(-EINVAL,
-                           "Unable to determine width for font '%s'",
-                           pdf->current_font->font.name);
-    return pdf_text_point_width(pdf, text, -1, size, widths, text_width);
-}
-
-static const char *find_word_break(const char *string)
-{
-    if (!string)
-        return nullptr;
-    /* Skip over the actual word */
-    while (*string && !isspace(*string))
-        string++;
-
-    return string;
-}
-
-int pdf_add_text_wrap(pdf_doc *pdf, Object *page,
-                      const char *text, float size, float xoff, float yoff,
-                      float angle, uint32_t color, float wrap_width,
-                      int align, float *height)
-{
-    /* Move through the text string, stopping at word boundaries,
-     * trying to find the longest text string we can fit in the given width
-     */
-    const char *start = text;
-    const char *last_best = text;
-    const char *end = text;
-    char line[512];
-    const uint16_t *widths;
-    float orig_yoff = yoff;
-
-    widths = find_font_widths(pdf->current_font->font.name);
-    if (!widths)
-        return SetErr(-EINVAL,
-                           "Unable to determine width for font '%s'",
-                           pdf->current_font->font.name);
-
-    while (start && *start) {
-        const char *new_end = find_word_break(end + 1);
-        float line_width;
-        int output = 0;
-        float xoff_align = xoff;
-        int e;
-
-        end = new_end;
-
-        e = pdf_text_point_width(pdf, start, end - start, size, widths,
-                                 &line_width);
-        if (e < 0)
-            return e;
-
-        if (line_width >= wrap_width) {
-            if (last_best == start) {
-                /* There is a single word that is too long for the line */
-                ptrdiff_t i;
-                /* Find the best character to chop it at */
-                for (i = end - start - 1; i > 0; i--) {
-                    float this_width;
-                    // Don't look at places that are in the middle of a utf-8
-                    // sequence
-                    if ((start[i - 1] & 0xc0) == 0xc0 ||
-                        ((start[i - 1] & 0xc0) == 0x80 &&
-                         (start[i] & 0xc0) == 0x80))
-                        continue;
-                    e = pdf_text_point_width(pdf, start, i, size, widths,
-                                             &this_width);
-                    if (e < 0)
-                        return e;
-                    if (this_width < wrap_width)
-                        break;
-                }
-                if (i == 0)
-                    return SetErr(-EINVAL,
-                                       "Unable to find suitable line break");
-
-                end = start + i;
-            } else
-                end = last_best;
-            output = 1;
-        }
-        if (*end == '\0')
-            output = 1;
-
-        if (*end == '\n' || *end == '\r')
-            output = 1;
-
-        if (output) {
-            int len = end - start;
-            float char_spacing = 0;
-            if (len >= (int)sizeof(line))
-                len = (int)sizeof(line) - 1;
-            strncpy(line, start, len);
-            line[len] = '\0';
-
-            e = pdf_text_point_width(pdf, start, len, size, widths,
-                                     &line_width);
-            if (e < 0)
-                return e;
-
-            switch (align) {
-            case PDF_ALIGN_RIGHT:
-                xoff_align += wrap_width - line_width;
-                break;
-            case PDF_ALIGN_CENTER:
-                xoff_align += (wrap_width - line_width) / 2;
-                break;
-            case PDF_ALIGN_JUSTIFY:
-                if ((len - 1) > 0 && *end != '\r' && *end != '\n' &&
-                    *end != '\0')
-                    char_spacing = (wrap_width - line_width) / (len - 2);
-                break;
-            case PDF_ALIGN_JUSTIFY_ALL:
-                if ((len - 1) > 0)
-                    char_spacing = (wrap_width - line_width) / (len - 2);
-                break;
-            }
-
-            if (align != PDF_ALIGN_NO_WRITE) {
-                pdf_add_text_spacing(pdf, page, line, size, xoff_align, yoff,
-                                     color, char_spacing, angle);
-            }
-
-            if (*end == ' ')
-                end++;
-
-            start = last_best = end;
-            yoff -= size;
-        } else
-            last_best = end;
-    }
-
-    if (height)
-        *height = orig_yoff - yoff;
-    return 0;
-}
-
-static const struct {
+static constexpr const struct {
     uint32_t code;
     char ch;
 } code_128a_encoding[] = {
@@ -1823,79 +818,77 @@ static const struct {
     {0x211214, '\0'}, {0x211232, '\0'}, {0x2331112, '\0'},
 };
 
-static int find_128_encoding(char ch)
-{
-    for (int i = 0; i < (int)ARRAY_SIZE(code_128a_encoding); i++) {
-        if (code_128a_encoding[i].ch == ch)
-            return i;
-    }
-    return -1;
+// PERF: Linear lookup! We can just invert the mapping and use the
+// char as an index.
+static int find_128_encoding(char ch) {
+  for (int i = 0; i < (int)ARRAY_SIZE(code_128a_encoding); i++) {
+    if (code_128a_encoding[i].ch == ch)
+      return i;
+  }
+  return -1;
 }
 
-static float pdf_barcode_128a_ch(pdf_doc *pdf, Object *page,
-                                 float x, float y, float width, float height,
-                                 uint32_t color, int index, int code_len)
-{
-    uint32_t code = code_128a_encoding[index].code;
-    float line_width = width / 11.0f;
+float PDF::pdf_barcode_128a_ch(float x, float y, float width, float height,
+                               uint32_t color, int index, int code_len,
+                               Page *page) {
+  const uint32_t code = code_128a_encoding[index].code;
+  const float line_width = width / 11.0f;
 
-    for (int i = 0; i < code_len; i++) {
-        uint8_t shift = (code_len - 1 - i) * 4;
-        uint8_t mask = (code >> shift) & 0xf;
+  for (int i = 0; i < code_len; i++) {
+    uint8_t shift = (code_len - 1 - i) * 4;
+    uint8_t mask = (code >> shift) & 0xf;
 
-        if (!(i % 2))
-            pdf_add_filled_rectangle(pdf, page, x, y, line_width * mask,
-                                     height, 0, color, PDF_TRANSPARENT);
-        x += line_width * mask;
-    }
-    return x;
+    if (!(i % 2))
+      AddFilledRectangle(x, y, line_width * mask,
+                         height, 0, color, PDF_TRANSPARENT, page);
+    x += line_width * mask;
+  }
+
+  return x;
 }
 
-static int pdf_add_barcode_128a(pdf_doc *pdf, Object *page,
-                                float x, float y, float width, float height,
-                                const char *string, uint32_t color)
-{
-    const char *s;
-    size_t len = strlen(string) + 3;
-    float char_width = width / len;
-    int checksum, i;
+bool PDF::AddBarcode128a(float x, float y, float width, float height,
+                         const std::string &str, uint32_t color, Page *page) {
+  const size_t len = str.size() + 3;
+  const float char_width = width / len;
 
-    if (char_width / 11.0f <= 0)
-        return SetErr(-EINVAL,
-                           "Insufficient width to draw barcode");
+  if (char_width / 11.0f <= 0) {
+    SetErr(-EINVAL, "Insufficient width to draw barcode");
+    return false;
+  }
 
-    for (s = string; *s; s++)
-        if (find_128_encoding(*s) < 0)
-            return SetErr(-EINVAL, "Invalid barcode character 0x%x",
-                               *s);
-
-    x = pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, color, 104,
-                            6);
-    checksum = 104;
-
-    for (i = 1, s = string; *s; s++, i++) {
-        int index = find_128_encoding(*s);
-        // This should be impossible, due to the checks above, but confirm
-        // here anyway to stop coverity complaining
-        if (index < 0)
-            return SetErr(-EINVAL,
-                               "Invalid 128a barcode character 0x%x", *s);
-        x = pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, color,
-                                index, 6);
-        checksum += index * i;
+  for (char c : str) {
+    if (find_128_encoding(c) < 0) {
+      SetErr(-EINVAL, "Invalid barcode character 0x%x", c);
+      return false;
     }
-    x = pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, color,
-                            checksum % 103, 6);
-    pdf_barcode_128a_ch(pdf, page, x, y, char_width, height, color, 106, 7);
-    return 0;
+  }
+
+  x = pdf_barcode_128a_ch(x, y, char_width, height, color, 104, 6, page);
+  int checksum = 104;
+
+  for (int i = 0; i < (int)str.size(); i++) {
+    int index = find_128_encoding(str[i]);
+    CHECK(index >= 0) << "Bug: Checked above.";
+    x = pdf_barcode_128a_ch(x, y, char_width, height, color,
+                            index, 6, page);
+    checksum += index * (i + 1);
+  }
+
+  x = pdf_barcode_128a_ch(x, y, char_width, height, color,
+                          checksum % 103, 6, page);
+
+  (void)pdf_barcode_128a_ch(x, y, char_width, height, color,
+                            106, 7, page);
+
+  return true;
 }
 
-/* Code 39 character encoding. Each 4-bit value indicates:
- * 0 => wide bar
- * 1 => narrow bar
- * 2 => wide space
- */
-static const struct {
+// Code 39 character encoding. Each 4-bit value indicates:
+// 0 => wide bar
+// 1 => narrow bar
+// 2 => wide space
+static constexpr const struct {
     int code;
     char ch;
 } code_39_encoding[] = {
@@ -1915,387 +908,365 @@ static const struct {
     {0x121001, '*'}, // 'stop' character
 };
 
-static int find_39_encoding(char ch)
-{
-    for (int i = 0; i < (int)ARRAY_SIZE(code_39_encoding); i++) {
-        if (code_39_encoding[i].ch == ch) {
-            return code_39_encoding[i].code;
-        }
+// PERF As above.
+static int find_39_encoding(char ch) {
+  for (int i = 0; i < (int)ARRAY_SIZE(code_39_encoding); i++) {
+    if (code_39_encoding[i].ch == ch) {
+      return code_39_encoding[i].code;
     }
-    return -1;
+  }
+  return -1;
 }
 
-static int pdf_barcode_39_ch(pdf_doc *pdf, Object *page,
-                             float x, float y, float char_width, float height,
-                             uint32_t color, char ch, float *new_x)
-{
-    float nw = char_width / 12.0f;
-    float ww = char_width / 4.0f;
-    int code = 0;
+bool PDF::pdf_barcode_39_ch(float x, float y, float char_width, float height,
+                            uint32_t color, char ch, float *new_x, Page *page) {
+  const float nw = char_width / 12.0f;
+  const float ww = char_width / 4.0f;
+  const int code = find_39_encoding(ch);
 
-    code = find_39_encoding(ch);
-    if (code < 0)
-        return SetErr(-EINVAL, "Invalid Code 39 character %c 0x%x",
-                           ch, ch);
+  if (code < 0) {
+    SetErr(-EINVAL, "Invalid Code 39 character %c 0x%x", ch, ch);
+    return false;
+  }
 
-    for (int i = 5; i >= 0; i--) {
-        int pattern = (code >> i * 4) & 0xf;
-        if (pattern == 0) { // wide
-            if (pdf_add_filled_rectangle(pdf, page, x, y, ww - 1, height, 0,
-                                         color, PDF_TRANSPARENT) < 0)
-                return pdf->errval;
-            x += ww;
-        }
-        if (pattern == 1) { // narrow
-            if (pdf_add_filled_rectangle(pdf, page, x, y, nw - 1, height, 0,
-                                         color, PDF_TRANSPARENT) < 0)
-                return pdf->errval;
-            x += nw;
-        }
-        if (pattern == 2) { // space
-            x += nw;
-        }
+  for (int i = 5; i >= 0; i--) {
+    const int pattern = (code >> i * 4) & 0xf;
+    switch (pattern) {
+    case 0:
+      // wide
+      AddFilledRectangle(x, y, ww - 1, height, 0,
+                         color, PDF_TRANSPARENT, page);
+      x += ww;
+      break;
+    case 1:
+      // narrow
+      AddFilledRectangle(x, y, nw - 1, height, 0,
+                         color, PDF_TRANSPARENT, page);
+      x += nw;
+      break;
+    case 2:
+      // space
+      x += nw;
+      break;
+    default:
+      break;
     }
-    if (new_x)
-        *new_x = x;
-    return 0;
+  }
+
+  *new_x = x;
+
+  return true;
 }
 
-static int pdf_add_barcode_39(pdf_doc *pdf, Object *page,
-                              float x, float y, float width, float height,
-                              const char *string, uint32_t color)
-{
-    size_t len = strlen(string);
-    float char_width = width / (len + 2);
-    int e;
+bool PDF::AddBarcode39(float x, float y, float width, float height,
+                       const std::string &str, uint32_t color, Page *page) {
+  const size_t len = (int)str.size();
+  const float char_width = width / (len + 2);
 
-    e = pdf_barcode_39_ch(pdf, page, x, y, char_width, height, color, '*',
-                          &x);
-    if (e < 0)
-        return e;
+  CHECK(pdf_barcode_39_ch(x, y, char_width, height, color, '*',
+                          &x, page)) << "Bug: * needs encoding.";
 
-    while (string && *string) {
-        e = pdf_barcode_39_ch(pdf, page, x, y, char_width, height, color,
-                              *string, &x);
-        if (e < 0)
-            return e;
-        string++;
+  for (char c : str) {
+    bool ok = pdf_barcode_39_ch(x, y, char_width, height, color,
+                                c, &x, page);
+    // XXX would be better if this rejected the barcode before
+    // starting to draw it.
+    if (!ok) {
+      SetErr(-EINVAL, "Character 0x%02x cannot be encoded", c);
+      return false;
     }
+  }
 
-    e = pdf_barcode_39_ch(pdf, page, x, y, char_width, height, color, '*',
-                          nullptr);
-    if (e < 0)
-        return e;
+  CHECK(pdf_barcode_39_ch(x, y, char_width, height, color, '*',
+                          &x, page)) << "Bug: * needs encoding.";
 
-    return 0;
+  return true;
 }
 
-/* EAN/UPC character encoding. Each 4-bit value indicates width in x units.
- * Elements are SBSB (Space, Bar, Space, Bar) for LHS digits
- * Elements are inverted for RHS digits
- */
-static const int code_eanupc_encoding[] = {
-    0x3211, // 0
-    0x2221, // 1
-    0x2122, // 2
-    0x1411, // 3
-    0x1132, // 4
-    0x1231, // 5
-    0x1114, // 6
-    0x1312, // 7
-    0x1213, // 8
-    0x3112, // 9
+// EAN/UPC character encoding. Each 4-bit value indicates width in x units.
+// Elements are SBSB (Space, Bar, Space, Bar) for LHS digits.
+// Elements are inverted for RHS digits.
+static constexpr const int code_eanupc_encoding[] = {
+  0x3211, // 0
+  0x2221, // 1
+  0x2122, // 2
+  0x1411, // 3
+  0x1132, // 4
+  0x1231, // 5
+  0x1114, // 6
+  0x1312, // 7
+  0x1213, // 8
+  0x3112, // 9
 };
 
-/**
- * List of different barcode guard patterns that are supported
- */
-enum {
-    GUARD_NORMAL,  //!< Produce normal guard pattern
-    GUARD_CENTRE,  //!< Produce centre guard pattern
-    GUARD_SPECIAL, //!< Produce special guard pattern
-    GUARD_ADDON,
-    GUARD_ADDON_DELIN,
+static constexpr const int code_eanupc_aux_encoding[] = {
+  0x150, // Normal guard
+  0x554, // Centre guard
+  0x555, // Special guard
+  0x160, // Add-on guard
+  0x500, // Add-on delineator
 };
 
-static const int code_eanupc_aux_encoding[] = {
-    0x150, // Normal guard
-    0x554, // Centre guard
-    0x555, // Special guard
-    0x160, // Add-on guard
-    0x500, // Add-on delineator
+static constexpr const int set_ean13_encoding[] = {
+  0x00, // 0
+  0x34, // 1
+  0x2c, // 2
+  0x1c, // 3
+  0x32, // 4
+  0x26, // 5
+  0x0e, // 6
+  0x2a, // 7
+  0x1a, // 8
+  0x16, // 9
 };
 
-static const int set_ean13_encoding[] = {
-    0x00, // 0
-    0x34, // 1
-    0x2c, // 2
-    0x1c, // 3
-    0x32, // 4
-    0x26, // 5
-    0x0e, // 6
-    0x2a, // 7
-    0x1a, // 8
-    0x16, // 9
+static constexpr const int set_upce_encoding[] = {
+  0x07, // 0
+  0x0b, // 1
+  0x13, // 2
+  0x23, // 3
+  0x0d, // 4
+  0x19, // 5
+  0x31, // 6
+  0x15, // 7
+  0x25, // 8
+  0x29, // 9
 };
 
-static const int set_upce_encoding[] = {
-    0x07, // 0
-    0x0b, // 1
-    0x13, // 2
-    0x23, // 3
-    0x0d, // 4
-    0x19, // 5
-    0x31, // 6
-    0x15, // 7
-    0x25, // 8
-    0x29, // 9
+static constexpr float EANUPC_X = PDF_MM_TO_POINT(0.330f);
+
+enum BarcodeType {
+  PDF_BARCODE_EAN13 = 0,
+  PDF_BARCODE_UPCA = 1,
+  PDF_BARCODE_EAN8 = 2,
+  PDF_BARCODE_UPCE = 2,
 };
 
-#define EANUPC_X PDF_MM_TO_POINT(0.330f)
-
-static const struct {
-    unsigned modules;
-    float height_bar;
-    float height_outer;
-    unsigned quiet_left;
-    unsigned quiet_right;
+// indexed by BarcodeType.
+static constexpr const struct {
+  unsigned modules;
+  float height_bar;
+  float height_outer;
+  unsigned quiet_left;
+  unsigned quiet_right;
 } eanupc_dimensions[] = {
-    {113, PDF_MM_TO_POINT(22.85), PDF_MM_TO_POINT(25.93), 11, 7}, // EAN-13
-    {113, PDF_MM_TO_POINT(22.85), PDF_MM_TO_POINT(25.93), 9, 9},  // UPC-A
-    {81, PDF_MM_TO_POINT(18.23), PDF_MM_TO_POINT(21.31), 7, 7},   // EAN-8
-    {67, PDF_MM_TO_POINT(22.85), PDF_MM_TO_POINT(25.93), 9, 7},   // UPC-E
+  {113, PDF_MM_TO_POINT(22.85), PDF_MM_TO_POINT(25.93), 11, 7}, // EAN-13
+  {113, PDF_MM_TO_POINT(22.85), PDF_MM_TO_POINT(25.93), 9, 9},  // UPC-A
+  {81, PDF_MM_TO_POINT(18.23), PDF_MM_TO_POINT(21.31), 7, 7},   // EAN-8
+  {67, PDF_MM_TO_POINT(22.85), PDF_MM_TO_POINT(25.93), 9, 7},   // UPC-E
 };
 
-static void pdf_barcode_eanupc_calc_dims(int type, float width, float height,
+static void pdf_barcode_eanupc_calc_dims(BarcodeType type, float width, float height,
                                          float *x_off, float *y_off,
                                          float *new_width, float *new_height,
                                          float *x, float *bar_height,
-                                         float *bar_ext, float *font_size)
-{
-    float aspectBarcode, aspectRect, scale;
+                                         float *bar_ext, float *font_size) {
+  float aspectRect = width / height;
+  float aspectBarcode = eanupc_dimensions[type].modules *
+    EANUPC_X /
+    eanupc_dimensions[type].height_outer;
+  if (aspectRect > aspectBarcode) {
+    *new_height = height;
+    *new_width = height * aspectBarcode;
+  } else if (aspectRect < aspectBarcode) {
+    *new_width = width;
+    *new_height = width / aspectBarcode;
+  } else {
+    *new_width = width;
+    *new_height = height;
+  }
+  float scale = *new_height /
+    eanupc_dimensions[type].height_outer;
 
-    aspectRect = width / height;
-    aspectBarcode = eanupc_dimensions[type - PDF_BARCODE_EAN13].modules *
-                    EANUPC_X /
-                    eanupc_dimensions[type - PDF_BARCODE_EAN13].height_outer;
-    if (aspectRect > aspectBarcode) {
-        *new_height = height;
-        *new_width = height * aspectBarcode;
-    } else if (aspectRect < aspectBarcode) {
-        *new_width = width;
-        *new_height = width / aspectBarcode;
-    } else {
-        *new_width = width;
-        *new_height = height;
-    }
-    scale = *new_height /
-            eanupc_dimensions[type - PDF_BARCODE_EAN13].height_outer;
-
-    *x = *new_width / eanupc_dimensions[type - PDF_BARCODE_EAN13].modules;
-    *bar_ext = *x * 5;
-    *bar_height =
-        eanupc_dimensions[type - PDF_BARCODE_EAN13].height_bar * scale;
-    *font_size = 8.0f * scale;
-    *x_off = (width - *new_width) / 2.0f;
-    *y_off = (height - *new_height) / 2.0f;
+  *x = *new_width / eanupc_dimensions[type].modules;
+  *bar_ext = *x * 5;
+  *bar_height = eanupc_dimensions[type].height_bar * scale;
+  *font_size = 8.0f * scale;
+  *x_off = (width - *new_width) / 2.0f;
+  *y_off = (height - *new_height) / 2.0f;
 }
 
-static int pdf_barcode_eanupc_ch(pdf_doc *pdf, Object *page,
-                                 float x, float y, float x_width,
-                                 float height, uint32_t color, char ch,
-                                 int set, float *new_x)
-{
-    if ('0' > ch || ch > '9')
-        return SetErr(-EINVAL, "Invalid EAN/UPC character %c 0x%x",
-                           ch, ch);
+bool PDF::pdf_barcode_eanupc_ch(float x, float y, float x_width,
+                                float height, uint32_t color, char ch,
+                                int set, float *new_x, Page *page) {
+  if ('0' > ch || ch > '9') {
+    SetErr(-EINVAL, "Invalid EAN/UPC character %c 0x%x", ch, ch);
+    return false;
+  }
 
-    int code;
-    code = code_eanupc_encoding[ch - '0'];
+  int code = code_eanupc_encoding[ch - '0'];
 
-    for (int i = 3; i >= 0; i--) {
-        int shift = (set == 1 ? 3 - i : i) * 4;
-        int bar = (set == 2 && i & 0x1) || (set != 2 && (i & 0x1) == 0);
-        float width = (float)((code >> shift) & 0xf);
+  for (int i = 3; i >= 0; i--) {
+    int shift = (set == 1 ? 3 - i : i) * 4;
+    int bar = (set == 2 && i & 0x1) || (set != 2 && (i & 0x1) == 0);
+    float width = (float)((code >> shift) & 0xf);
 
-        switch (ch) {
-        case '1':
-        case '2':
-            if ((set == 0 && bar) || (set != 0 && !bar)) {
-                width -= 1.0f / 13.0f;
-            } else {
-                width += 1.0f / 13.0f;
-            }
-            break;
+    switch (ch) {
+    case '1':
+    case '2':
+      if ((set == 0 && bar) || (set != 0 && !bar)) {
+        width -= 1.0f / 13.0f;
+      } else {
+        width += 1.0f / 13.0f;
+      }
+      break;
 
-        case '7':
-        case '8':
-            if ((set == 0 && bar) || (set != 0 && !bar)) {
-                width += 1.0f / 13.0f;
-            } else {
-                width -= 1.0f / 13.0f;
-            }
-            break;
-        }
-
-        width *= x_width;
-        if (bar) {
-            if (pdf_add_filled_rectangle(pdf, page, x, y, width, height, 0,
-                                         color, PDF_TRANSPARENT) < 0)
-                return pdf->errval;
-        }
-        x += width;
+    case '7':
+    case '8':
+      if ((set == 0 && bar) || (set != 0 && !bar)) {
+        width += 1.0f / 13.0f;
+      } else {
+        width -= 1.0f / 13.0f;
+      }
+      break;
     }
-    if (new_x)
-        *new_x = x;
-    return 0;
+
+    width *= x_width;
+    if (bar) {
+      AddFilledRectangle(x, y, width, height, 0,
+                         color, PDF_TRANSPARENT, page);
+    }
+    x += width;
+  }
+
+  if (new_x)
+    *new_x = x;
+
+  return true;
 }
 
-static int pdf_barcode_eanupc_aux(pdf_doc *pdf,
-                                  Object *page, float x, float y,
-                                  float x_width, float height,
-                                  uint32_t color, int guard_type,
-                                  float *new_x)
-{
-    int code = code_eanupc_aux_encoding[guard_type];
+void PDF::pdf_barcode_eanupc_aux(float x, float y,
+                                 float x_width, float height,
+                                 uint32_t color, GuardPattern guard_type,
+                                 float *new_x, Page *page) {
+  const int code = code_eanupc_aux_encoding[guard_type];
 
-    for (int i = 5; i >= 0; i--) {
-        int value = code >> i * 2 & 0x3;
-        if (value) {
-            if ((i & 0x1) == 0) {
-                if (pdf_add_filled_rectangle(pdf, page, x, y, x_width * value,
-                                             height, 0, color,
-                                             PDF_TRANSPARENT) < 0)
-                    return pdf->errval;
-            }
-            x += x_width * value;
-        }
+  for (int i = 5; i >= 0; i--) {
+    int value = code >> i * 2 & 0x3;
+    if (value) {
+      if ((i & 0x1) == 0) {
+        AddFilledRectangle(x, y, x_width * value,
+                           height, 0, color,
+                           PDF_TRANSPARENT, page);
+      }
+      x += x_width * value;
     }
-    if (new_x)
-        *new_x = x;
-    return 0;
+  }
+  if (new_x)
+    *new_x = x;
 }
 
-static int pdf_add_barcode_ean13(pdf_doc *pdf, Object *page,
-                                 float x, float y, float width, float height,
-                                 const char *string, uint32_t color)
-{
-    if (!string)
-        return 0;
+bool PDF::AddBarcodeEAN13(float x, float y, float width, float height,
+                          const std::string &str, uint32_t color, Page *page) {
+  if (str.empty()) {
+    SetErr(-EINVAL, "Empty EAN13 barcode");
+    return false;
+  }
 
-    size_t len = strlen(string);
-    int lead = 0;
-    if (len == 13) {
-        char ch = string[0];
-        if (!isdigit(*string))
-            return SetErr(-EINVAL,
-                               "Invalid EAN13 character %c 0x%x", ch, ch);
-        lead = ch - '0';
-        ++string;
-    } else if (len != 12)
-        return SetErr(-EINVAL, "Invalid EAN13 string length %lu",
-                           (unsigned long)len);
+  const char *s = str.data();
 
-    /* Scale and calculate dimensions */
-    float x_off, y_off, new_width, new_height, x_width, bar_height, bar_ext,
-        font;
+  const size_t len = str.size();
+  int lead = 0;
+  if (len == 13) {
+    const char ch = s[0];
+    if (!isdigit(ch)) {
+      SetErr(-EINVAL, "Invalid EAN13 character %c 0x%x", ch, ch);
+      return false;
+    }
+    lead = ch - '0';
+    s++;
 
-    pdf_barcode_eanupc_calc_dims(PDF_BARCODE_EAN13, width, height, &x_off,
-                                 &y_off, &new_width, &new_height, &x_width,
-                                 &bar_height, &bar_ext, &font);
+  } else if (len != 12) {
+    SetErr(-EINVAL, "Invalid EAN13 string length %lu",
+           (unsigned long)len);
+    return false;
+  }
 
-    x += x_off;
-    y += y_off;
-    float bar_y = y + new_height - bar_height;
+  /* Scale and calculate dimensions */
+  float x_off, y_off, new_width, new_height, x_width, bar_height, bar_ext;
+  float font;
 
-    int e;
-    const char *save_font = pdf->current_font->font.name;
-    e = pdf_set_font(pdf, "Courier"); /* Built-in monospace font */
-    if (e < 0)
-        return e;
+  pdf_barcode_eanupc_calc_dims(PDF_BARCODE_EAN13, width, height, &x_off,
+                               &y_off, &new_width, &new_height, &x_width,
+                               &bar_height, &bar_ext, &font);
 
-    char text[2];
-    text[1] = 0;
-    text[0] = lead + '0';
-    e = pdf_add_text(pdf, page, text, font, x, y, color);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
+  x += x_off;
+  y += y_off;
+  float bar_y = y + new_height - bar_height;
+
+  std::string save_font = current_font->name;
+  // XXX Test pdf shows in Times Roman?
+  // built-in monospace font.
+  SetFont("Courier");
+
+  char text[2];
+  text[1] = 0;
+  text[0] = lead + '0';
+  if (!AddText(text, font, x, y, color, page)) {
+    SetFont(save_font);
+    return false;
+  }
+
+  x += eanupc_dimensions[0].quiet_left * x_width;
+
+  pdf_barcode_eanupc_aux(x, bar_y - bar_ext, x_width,
+                         bar_height + bar_ext, color, GUARD_NORMAL,
+                         &x, page);
+
+  for (int i = 0; i != 6; i++) {
+    text[0] = *s;
+    if (!AddTextWrap(text, font, x, y, 0, color,
+                     7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
+      SetFont(save_font);
+      return false;
     }
 
-    x += eanupc_dimensions[0].quiet_left * x_width;
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, color, GUARD_NORMAL,
-                               &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
+    int set = (set_ean13_encoding[lead] & 1 << i) ? 1 : 0;
+    if (!pdf_barcode_eanupc_ch(x, bar_y, x_width, bar_height,
+                               color, *s, set, &x, page)) {
+      SetFont(save_font);
+      return false;
+    }
+    s++;
+  }
+
+  pdf_barcode_eanupc_aux(x, bar_y - bar_ext, x_width,
+                         bar_height + bar_ext, color, GUARD_CENTRE,
+                         &x, page);
+
+  for (int i = 0; i != 6; i++) {
+    text[0] = *s;
+    if (!AddTextWrap(text, font, x, y, 0, color,
+                     7 * x_width, PDF_ALIGN_CENTER, nullptr, page)) {
+      SetFont(save_font);
+      return false;
     }
 
-    for (int i = 0; i != 6; i++) {
-        text[0] = *string;
-        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
-                              7 * x_width, PDF_ALIGN_CENTER, nullptr);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
-
-        int set = (set_ean13_encoding[lead] & 1 << i) ? 1 : 0;
-        e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y, x_width, bar_height,
-                                  color, *string, set, &x);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
-        string++;
+    if (!pdf_barcode_eanupc_ch(x, bar_y, x_width, bar_height,
+                               color, *s, 2, &x, page)) {
+      SetFont(save_font);
+      return false;
     }
+    s++;
+  }
 
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, color, GUARD_CENTRE,
-                               &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
+  pdf_barcode_eanupc_aux(x, bar_y - bar_ext, x_width,
+                         bar_height + bar_ext, color, GUARD_NORMAL,
+                         &x, page);
 
-    for (int i = 0; i != 6; i++) {
-        text[0] = *string;
-        e = pdf_add_text_wrap(pdf, page, text, font, x, y, 0, color,
-                              7 * x_width, PDF_ALIGN_CENTER, nullptr);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
+  text[0] = '>';
+  x += eanupc_dimensions[0].quiet_right * x_width -
+    604.0f * font / (14.0f * 72.0f);
+  if (!AddText(text, font, x, y, color, page)) {
+    SetFont(save_font);
+    return false;
+  }
 
-        e = pdf_barcode_eanupc_ch(pdf, page, x, bar_y, x_width, bar_height,
-                                  color, *string, 2, &x);
-        if (e < 0) {
-            pdf_set_font(pdf, save_font);
-            return e;
-        }
-        string++;
-    }
-
-    e = pdf_barcode_eanupc_aux(pdf, page, x, bar_y - bar_ext, x_width,
-                               bar_height + bar_ext, color, GUARD_NORMAL,
-                               &x);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
-
-    text[0] = '>';
-    x += eanupc_dimensions[0].quiet_right * x_width -
-         604.0f * font / (14.0f * 72.0f);
-    e = pdf_add_text(pdf, page, text, font, x, y, color);
-    if (e < 0) {
-        pdf_set_font(pdf, save_font);
-        return e;
-    }
-    pdf_set_font(pdf, save_font);
-    return 0;
+  SetFont(save_font);
+  return true;
 }
+
+#if 0
 
 static int pdf_add_barcode_upca(pdf_doc *pdf, Object *page,
                                 float x, float y, float width, float height,
@@ -2650,36 +1621,1027 @@ static int pdf_add_barcode_upce(pdf_doc *pdf, Object *page,
     pdf_set_font(pdf, save_font);
     return 0;
 }
+#endif
 
-int pdf_add_barcode(pdf_doc *pdf, Object *page, int code,
-                    float x, float y, float width, float height,
-                    const char *string, uint32_t color)
+#if 0
+int pdf_add_bookmark(pdf_doc *pdf, Object *page, int parent,
+                     const char *name)
 {
-    if (!string || !*string)
-        return 0;
-    switch (code) {
-    case PDF_BARCODE_128A:
-        return pdf_add_barcode_128a(pdf, page, x, y, width, height, string,
-                                    color);
-    case PDF_BARCODE_39:
-        return pdf_add_barcode_39(pdf, page, x, y, width, height, string,
-                                  color);
-    case PDF_BARCODE_EAN13:
-        return pdf_add_barcode_ean13(pdf, page, x, y, width, height, string,
-                                     color);
-    case PDF_BARCODE_UPCA:
-        return pdf_add_barcode_upca(pdf, page, x, y, width, height, string,
-                                    color);
-    case PDF_BARCODE_EAN8:
-        return pdf_add_barcode_ean8(pdf, page, x, y, width, height, string,
-                                    color);
-    case PDF_BARCODE_UPCE:
-        return pdf_add_barcode_upce(pdf, page, x, y, width, height, string,
-                                    color);
-    default:
-        return SetErr(-EINVAL, "Invalid barcode code %d", code);
+    Object *obj, *outline = nullptr;
+
+    if (!page)
+        page = pdf_find_last_object(pdf, OBJ_page);
+
+    if (!page)
+        return SetErr(-EINVAL,
+                           "Unable to add bookmark, no pages available");
+
+    if (!pdf_find_first_object(pdf, OBJ_outline)) {
+        outline = pdf_add_object(pdf, OBJ_outline);
+        if (!outline)
+            return pdf->errval;
     }
+
+    obj = pdf_add_object(pdf, OBJ_bookmark);
+    if (!obj) {
+        if (outline)
+            pdf_del_object(pdf, outline);
+        return pdf->errval;
+    }
+
+    strncpy(obj->bookmark.name, name, sizeof(obj->bookmark.name) - 1);
+    obj->bookmark.name[sizeof(obj->bookmark.name) - 1] = '\0';
+    obj->bookmark.page = page;
+    if (parent >= 0) {
+        Object *parent_obj = pdf_get_object(pdf, parent);
+        if (!parent_obj)
+            return SetErr(-EINVAL, "Invalid parent ID %d supplied",
+                               parent);
+        obj->bookmark.parent = parent_obj;
+        flexarray_append(&parent_obj->bookmark.children, obj);
+    }
+
+    return obj->index;
 }
+
+int pdf_add_link(pdf_doc *pdf, Object *page, float x,
+                 float y, float width, float height,
+                 Object *target_page, float target_x,
+                 float target_y)
+{
+    Object *obj;
+
+    if (!page)
+        page = pdf_find_last_object(pdf, OBJ_page);
+
+    if (!page)
+        return SetErr(-EINVAL,
+                           "Unable to add link, no pages available");
+
+    if (!target_page)
+        return SetErr(-EINVAL, "Unable to link, no target page");
+
+    obj = pdf_add_object(pdf, OBJ_link);
+    if (!obj) {
+        return pdf->errval;
+    }
+
+    obj->link.target_page = target_page;
+    obj->link.target_x = target_x;
+    obj->link.target_y = target_y;
+    obj->link.llx = x;
+    obj->link.lly = y;
+    obj->link.urx = x + width;
+    obj->link.ury = y + height;
+    flexarray_append(&page->page.annotations, obj);
+
+    return obj->index;
+}
+#endif
+
+static int utf8_to_utf32(const char *utf8, int len, uint32_t *utf32) {
+  uint8_t mask = 0;
+
+  if (len <= 0 || !utf8 || !utf32)
+    return -EINVAL;
+
+  uint32_t ch = *(uint8_t *)utf8;
+  if ((ch & 0x80) == 0) {
+    len = 1;
+    mask = 0x7f;
+  } else if ((ch & 0xe0) == 0xc0 && len >= 2) {
+    len = 2;
+    mask = 0x1f;
+  } else if ((ch & 0xf0) == 0xe0 && len >= 3) {
+    len = 3;
+    mask = 0xf;
+  } else if ((ch & 0xf8) == 0xf0 && len >= 4) {
+    len = 4;
+    mask = 0x7;
+  } else
+    return -EINVAL;
+
+  ch = 0;
+  for (int i = 0; i < len; i++) {
+    int shift = (len - i - 1) * 6;
+    if (!*utf8)
+      return -EINVAL;
+    if (i == 0)
+      ch |= ((uint32_t)(*utf8++) & mask) << shift;
+    else
+      ch |= ((uint32_t)(*utf8++) & 0x3f) << shift;
+  }
+
+  *utf32 = ch;
+
+  return len;
+}
+
+static int utf8_to_pdfencoding(const char *utf8, int len, uint8_t *res) {
+  *res = 0;
+
+  uint32_t code = 0;
+  int code_len = utf8_to_utf32(utf8, len, &code);
+  CHECK(code_len >= 0) << "Invalid UTF-8 encoding";
+
+  if (code > 255) {
+    // TODO: Include a more complete mapping, or use UTF-8 encoding (later
+    // pdf versions support it).
+    // We support *some* minimal UTF-8 characters.
+    // See Appendix D of
+    // opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/pdfreference1.7old.pdf
+    // These are all in WinAnsiEncoding
+    switch (code) {
+    case 0x152: // Latin Capital Ligature OE
+      *res = 0214;
+      break;
+    case 0x153: // Latin Small Ligature oe
+      *res = 0234;
+      break;
+    case 0x160: // Latin Capital Letter S with caron
+      *res = 0212;
+      break;
+    case 0x161: // Latin Small Letter S with caron
+      *res = 0232;
+      break;
+    case 0x178: // Latin Capital Letter y with diaeresis
+      *res = 0237;
+      break;
+    case 0x17d: // Latin Capital Letter Z with caron
+      *res = 0216;
+      break;
+    case 0x17e: // Latin Small Letter Z with caron
+      *res = 0236;
+      break;
+    case 0x192: // Latin Small Letter F with hook
+      *res = 0203;
+      break;
+    case 0x2c6: // Modifier Letter Circumflex Accent
+      *res = 0210;
+      break;
+    case 0x2dc: // Small Tilde
+      *res = 0230;
+      break;
+    case 0x2013: // Endash
+      *res = 0226;
+      break;
+    case 0x2014: // Emdash
+      *res = 0227;
+      break;
+    case 0x2018: // Left Single Quote
+      *res = 0221;
+      break;
+    case 0x2019: // Right Single Quote
+      *res = 0222;
+      break;
+    case 0x201a: // Single low-9 Quotation Mark
+      *res = 0202;
+      break;
+    case 0x201c: // Left Double Quote
+      *res = 0223;
+      break;
+    case 0x201d: // Right Double Quote
+      *res = 0224;
+      break;
+    case 0x201e: // Double low-9 Quotation Mark
+      *res = 0204;
+      break;
+    case 0x2020: // Dagger
+      *res = 0206;
+      break;
+    case 0x2021: // Double Dagger
+      *res = 0207;
+      break;
+    case 0x2022: // Bullet
+      *res = 0225;
+      break;
+    case 0x2026: // Horizontal Ellipsis
+      *res = 0205;
+      break;
+    case 0x2030: // Per Mille Sign
+      *res = 0211;
+      break;
+    case 0x2039: // Single Left-pointing Angle Quotation Mark
+      *res = 0213;
+      break;
+    case 0x203a: // Single Right-pointing Angle Quotation Mark
+      *res = 0233;
+      break;
+    case 0x20ac: // Euro
+      *res = 0200;
+      break;
+    case 0x2122: // Trade Mark Sign
+      *res = 0231;
+      break;
+    default:
+      CHECK(false) <<
+        StringPrintf("Unsupported UTF-8 character: 0x%x 0o%o %s",
+                     code, code, utf8);
+    }
+  } else {
+    *res = code;
+  }
+
+  return code_len;
+}
+
+void PDF::AddLine(float x1, float y1,
+                  float x2, float y2,
+                  float width, uint32_t color_rgb,
+                  Page *page) {
+  std::string str;
+  StringAppendF(&str, "%f w\r\n", width);
+  StringAppendF(&str, "%f %f m\r\n", x1, y1);
+  StringAppendF(&str, "/DeviceRGB CS\r\n");
+  StringAppendF(&str, "%f %f %f RG\r\n",
+                PDF_RGB_R(color_rgb),
+                PDF_RGB_G(color_rgb),
+                PDF_RGB_B(color_rgb));
+  StringAppendF(&str, "%f %f l S\r\n", x2, y2);
+
+  pdf_add_stream(page, std::move(str));
+}
+
+void PDF::AddCubicBezier(float x1, float y1, float x2, float y2, float xq1,
+                         float yq1, float xq2, float yq2, float width,
+                         uint32_t color_rgb, Page *page) {
+  std::string str;
+
+  StringAppendF(&str, "%f w\r\n", width);
+  StringAppendF(&str, "%f %f m\r\n", x1, y1);
+  StringAppendF(&str, "/DeviceRGB CS\r\n");
+  StringAppendF(&str, "%f %f %f RG\r\n", PDF_RGB_R(color_rgb), PDF_RGB_G(color_rgb),
+                PDF_RGB_B(color_rgb));
+  StringAppendF(&str, "%f %f %f %f %f %f c S\r\n", xq1, yq1, xq2, yq2, x2,
+                y2);
+
+  pdf_add_stream(page, std::move(str));
+}
+
+void PDF::AddQuadraticBezier(float x1, float y1, float x2, float y2,
+                             float xq1, float yq1, float width,
+                             uint32_t color_rgb, Page *page) {
+  float xc1 = x1 + (xq1 - x1) * (2.0f / 3.0f);
+  float yc1 = y1 + (yq1 - y1) * (2.0f / 3.0f);
+  float xc2 = x2 + (xq1 - x2) * (2.0f / 3.0f);
+  float yc2 = y2 + (yq1 - y2) * (2.0f / 3.0f);
+  AddCubicBezier(x1, y1, x2, y2, xc1, yc1, xc2, yc2,
+                 width, color_rgb, page);
+}
+
+void PDF::AddEllipse(float x, float y,
+                     float xradius, float yradius,
+                     float width,
+                     uint32_t color, uint32_t fill_color,
+                     Page *page) {
+  std::string str;
+
+  const float lx = (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * xradius;
+  const float ly = (4.0f / 3.0f) * (float)(std::numbers::sqrt2 - 1.0f) * yradius;
+
+  if (!PDF_IS_TRANSPARENT(fill_color)) {
+    StringAppendF(&str, "/DeviceRGB CS\r\n");
+    StringAppendF(&str, "%f %f %f rg\r\n",
+                  PDF_RGB_R(fill_color),
+                  PDF_RGB_G(fill_color),
+                  PDF_RGB_B(fill_color));
+  }
+
+  /* stroke color */
+  StringAppendF(&str, "/DeviceRGB CS\r\n");
+  StringAppendF(&str, "%f %f %f RG\r\n",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+
+  StringAppendF(&str, "%f w ", width);
+
+  StringAppendF(&str, "%.2f %.2f m ", (x + xradius), (y));
+
+  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x + xradius),
+                (y - ly), (x + lx), (y - yradius), x, (y - yradius));
+
+  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x - lx),
+                (y - yradius), (x - xradius), (y - ly), (x - xradius), y);
+
+  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x - xradius),
+                (y + ly), (x - lx), (y + yradius), x, (y + yradius));
+
+  StringAppendF(&str, "%.2f %.2f %.2f %.2f %.2f %.2f c ", (x + lx),
+                (y + yradius), (x + xradius), (y + ly), (x + xradius), y);
+
+  if (PDF_IS_TRANSPARENT(fill_color))
+    StringAppendF(&str, "%s", "S ");
+  else
+    StringAppendF(&str, "%s", "B ");
+
+  pdf_add_stream(page, std::move(str));
+}
+
+void PDF::AddCircle(float xr, float yr, float radius, float width,
+                    uint32_t color,
+                    uint32_t fill_color, Page *page) {
+  return AddEllipse(xr, yr, radius, radius, width, color,
+                    fill_color, page);
+}
+
+void PDF::AddRectangle(float x, float y,
+                       float width, float height, float border_width,
+                       uint32_t color, Page *page) {
+  std::string str;
+  StringAppendF(&str, "%f %f %f RG ",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+  StringAppendF(&str, "%f w ", border_width);
+  StringAppendF(&str, "%f %f %f %f re S ", x, y, width, height);
+
+  pdf_add_stream(page, std::move(str));
+}
+
+void PDF::AddFilledRectangle(
+    float x, float y, float width, float height,
+    float border_width, uint32_t color_fill,
+    uint32_t color_border, Page *page) {
+
+  std::string str;
+
+  StringAppendF(&str, "%f %f %f rg ",
+                PDF_RGB_R(color_fill),
+                PDF_RGB_G(color_fill),
+                PDF_RGB_B(color_fill));
+  if (border_width > 0) {
+    StringAppendF(&str, "%f %f %f RG ",
+                  PDF_RGB_R(color_border),
+                  PDF_RGB_G(color_border),
+                  PDF_RGB_B(color_border));
+    StringAppendF(&str, "%f w ", border_width);
+    StringAppendF(&str, "%f %f %f %f re B ", x, y, width, height);
+  } else {
+    StringAppendF(&str, "%f %f %f %f re f ", x, y, width, height);
+  }
+
+  pdf_add_stream(page, std::move(str));
+}
+
+bool PDF::AddCustomPath(const std::vector<PathOp> &ops,
+                        float stroke_width,
+                        uint32_t stroke_color,
+                        uint32_t fill_color,
+                        Page *page) {
+
+  std::string str;
+
+  if (!PDF_IS_TRANSPARENT(fill_color)) {
+    StringAppendF(&str, "/DeviceRGB CS\r\n");
+    StringAppendF(&str, "%f %f %f rg\r\n",
+                  PDF_RGB_R(fill_color),
+                  PDF_RGB_G(fill_color),
+                  PDF_RGB_B(fill_color));
+  }
+
+  StringAppendF(&str, "%f w\r\n", stroke_width);
+  StringAppendF(&str, "/DeviceRGB CS\r\n");
+  StringAppendF(&str, "%f %f %f RG\r\n",
+                PDF_RGB_R(stroke_color),
+                PDF_RGB_G(stroke_color),
+                PDF_RGB_B(stroke_color));
+
+  for (PathOp operation : ops) {
+    switch (operation.op) {
+    case 'm':
+      StringAppendF(&str, "%f %f m\r\n", operation.x1, operation.y1);
+      break;
+    case 'l':
+      StringAppendF(&str, "%f %f l\r\n", operation.x1, operation.y1);
+      break;
+    case 'c':
+      StringAppendF(&str, "%f %f %f %f %f %f c\r\n", operation.x1,
+                    operation.y1, operation.x2, operation.y2,
+                    operation.x3, operation.y3);
+      break;
+    case 'v':
+      StringAppendF(&str, "%f %f %f %f v\r\n", operation.x1, operation.y1,
+                    operation.x2, operation.y2);
+      break;
+    case 'y':
+      StringAppendF(&str, "%f %f %f %f y\r\n", operation.x1, operation.y1,
+                    operation.x2, operation.y2);
+      break;
+    case 'h':
+      StringAppendF(&str, "h\r\n");
+      break;
+    default:
+      SetErr(-errno, "Invalid operation");
+      return false;
+    }
+  }
+
+  if (PDF_IS_TRANSPARENT(fill_color))
+    StringAppendF(&str, "%s", "S ");
+  else
+    StringAppendF(&str, "%s", "B ");
+
+  pdf_add_stream(page, std::move(str));
+
+  return true;
+}
+
+bool PDF::AddPolygon(
+    const std::vector<std::pair<float, float>> &points,
+    float border_width, uint32_t color,
+    Page *page) {
+  if (points.empty()) return false;
+
+  std::string str;
+
+  StringAppendF(&str, "%f %f %f RG ",
+                PDF_RGB_R(color),
+                PDF_RGB_G(color),
+                PDF_RGB_B(color));
+  StringAppendF(&str, "%f w ", border_width);
+  StringAppendF(&str, "%f %f m ", points[0].first, points[0].second);
+  for (int i = 1; i < (int)points.size(); i++) {
+    StringAppendF(&str, "%f %f l ", points[i].first, points[i].second);
+  }
+  StringAppendF(&str, "h S ");
+
+  pdf_add_stream(page, std::move(str));
+  return true;
+}
+
+bool PDF::AddFilledPolygon(
+    const std::vector<std::pair<float, float>> &points,
+    float border_width, uint32_t color,
+    Page *page) {
+  if (points.empty()) return false;
+
+  std::string str;
+
+  StringAppendF(&str, "%f %f %f RG ",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+  StringAppendF(&str, "%f %f %f rg ",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+  StringAppendF(&str, "%f w ", border_width);
+  StringAppendF(&str, "%f %f m ", points[0].first, points[0].second);
+  for (int i = 1; i < (int)points.size(); i++) {
+    StringAppendF(&str, "%f %f l ", points[i].first, points[i].second);
+  }
+  StringAppendF(&str, "h f ");
+
+  pdf_add_stream(page, std::move(str));
+  return true;
+}
+
+
+bool PDF::pdf_add_text_spacing(const std::string &text, float size, float xoff,
+                               float yoff, uint32_t color, float spacing,
+                               float angle, Page *page) {
+  const size_t len = text.size();
+  const int alpha = (color >> 24) >> 4;
+
+  if (text.empty())
+    return true;
+
+  std::string str = "BT ";
+
+  StringAppendF(&str, "/GS%d gs ", alpha);
+  if (angle != 0.0f) {
+    StringAppendF(&str, "%f %f %f %f %f %f Tm ",
+                  cosf(angle), sinf(angle),
+                  -sinf(angle), cosf(angle), xoff, yoff);
+  } else {
+    StringAppendF(&str, "%f %f TD ", xoff, yoff);
+  }
+
+  StringAppendF(&str, "/F%d %f Tf ", current_font->font_index, size);
+  StringAppendF(&str, "%f %f %f rg ",
+                PDF_RGB_R(color), PDF_RGB_G(color), PDF_RGB_B(color));
+  StringAppendF(&str, "%f Tc ", spacing);
+  StringAppendF(&str, "(");
+
+  // Escape magic characters properly.
+  for (size_t i = 0; i < len;) {
+    uint8_t pdf_char = 0;
+    const int code_len =
+      utf8_to_pdfencoding(text.data() + i, len - i, &pdf_char);
+    if (code_len < 0) {
+      return false;
+    }
+
+    switch (pdf_char) {
+    case '(':
+    case ')':
+    case '\\':
+      // Escape these.
+      str.push_back('\\');
+      str.push_back(pdf_char);
+      break;
+    case '\n':
+    case '\r':
+    case '\t':
+    case '\b':
+    case '\f':
+      // Skip over these characters.
+      break;
+    default:
+      str.push_back(pdf_char);
+    }
+
+    i += code_len;
+  }
+
+  StringAppendF(&str,
+                ") Tj "
+                "ET");
+
+  pdf_add_stream(page, std::move(str));
+  return true;
+}
+
+bool PDF::AddText(const std::string &text, float size,
+                  float xoff, float yoff,
+                  uint32_t color, Page *page) {
+  return pdf_add_text_spacing(text, size, xoff, yoff, color, 0, 0, page);
+}
+
+#if 0
+
+int pdf_add_text_rotate(pdf_doc *pdf, Object *page,
+                        const char *text, float size, float xoff, float yoff,
+                        float angle, uint32_t color)
+{
+    return pdf_add_text_spacing(pdf, page, text, size, xoff, yoff, color, 0,
+                                angle);
+}
+
+#endif
+
+// The width of each character, in points, at size 14.
+static constexpr const uint16_t helvetica_widths[256] = {
+  280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
+  280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
+  280, 280, 280, 280,  280, 280, 280, 280,  357,  560, 560,  896, 672,
+  192, 335, 335, 392,  588, 280, 335, 280,  280,  560, 560,  560, 560,
+  560, 560, 560, 560,  560, 560, 280, 280,  588,  588, 588,  560, 1023,
+  672, 672, 727, 727,  672, 615, 784, 727,  280,  504, 672,  560, 839,
+  727, 784, 672, 784,  727, 672, 615, 727,  672,  951, 672,  672, 615,
+  280, 280, 280, 472,  560, 335, 560, 560,  504,  560, 560,  280, 560,
+  560, 223, 223, 504,  223, 839, 560, 560,  560,  560, 335,  504, 280,
+  560, 504, 727, 504,  504, 504, 336, 262,  336,  588, 352,  560, 352,
+  223, 560, 335, 1008, 560, 560, 335, 1008, 672,  335, 1008, 352, 615,
+  352, 352, 223, 223,  335, 335, 352, 560,  1008, 335, 1008, 504, 335,
+  951, 352, 504, 672,  280, 335, 560, 560,  560,  560, 262,  560, 335,
+  742, 372, 560, 588,  335, 742, 335, 403,  588,  335, 335,  335, 560,
+  541, 280, 335, 335,  367, 560, 840, 840,  840,  615, 672,  672, 672,
+  672, 672, 672, 1008, 727, 672, 672, 672,  672,  280, 280,  280, 280,
+  727, 727, 784, 784,  784, 784, 784, 588,  784,  727, 727,  727, 727,
+  672, 672, 615, 560,  560, 560, 560, 560,  560,  896, 504,  560, 560,
+  560, 560, 280, 280,  280, 280, 560, 560,  560,  560, 560,  560, 560,
+  588, 615, 560, 560,  560, 560, 504, 560,  504,
+};
+
+static constexpr const uint16_t helvetica_bold_widths[256] = {
+  280,  280, 280,  280, 280, 280, 280, 280,  280, 280, 280, 280,  280, 280,
+  280,  280, 280,  280, 280, 280, 280, 280,  280, 280, 280, 280,  280, 280,
+  280,  280, 280,  280, 280, 335, 477, 560,  560, 896, 727, 239,  335, 335,
+  392,  588, 280,  335, 280, 280, 560, 560,  560, 560, 560, 560,  560, 560,
+  560,  560, 335,  335, 588, 588, 588, 615,  982, 727, 727, 727,  727, 672,
+  615,  784, 727,  280, 560, 727, 615, 839,  727, 784, 672, 784,  727, 672,
+  615,  727, 672,  951, 672, 672, 615, 335,  280, 335, 588, 560,  335, 560,
+  615,  560, 615,  560, 335, 615, 615, 280,  280, 560, 280, 896,  615, 615,
+  615,  615, 392,  560, 335, 615, 560, 784,  560, 560, 504, 392,  282, 392,
+  588,  352, 560,  352, 280, 560, 504, 1008, 560, 560, 335, 1008, 672, 335,
+  1008, 352, 615,  352, 352, 280, 280, 504,  504, 352, 560, 1008, 335, 1008,
+  560,  335, 951,  352, 504, 672, 280, 335,  560, 560, 560, 560,  282, 560,
+  335,  742, 372,  560, 588, 335, 742, 335,  403, 588, 335, 335,  335, 615,
+  560,  280, 335,  335, 367, 560, 840, 840,  840, 615, 727, 727,  727, 727,
+  727,  727, 1008, 727, 672, 672, 672, 672,  280, 280, 280, 280,  727, 727,
+  784,  784, 784,  784, 784, 588, 784, 727,  727, 727, 727, 672,  672, 615,
+  560,  560, 560,  560, 560, 560, 896, 560,  560, 560, 560, 560,  280, 280,
+  280,  280, 615,  615, 615, 615, 615, 615,  615, 588, 615, 615,  615, 615,
+  615,  560, 615,  560,
+};
+
+static constexpr const uint16_t helvetica_bold_oblique_widths[256] = {
+  280,  280, 280,  280, 280, 280, 280, 280,  280, 280, 280, 280,  280, 280,
+  280,  280, 280,  280, 280, 280, 280, 280,  280, 280, 280, 280,  280, 280,
+  280,  280, 280,  280, 280, 335, 477, 560,  560, 896, 727, 239,  335, 335,
+  392,  588, 280,  335, 280, 280, 560, 560,  560, 560, 560, 560,  560, 560,
+  560,  560, 335,  335, 588, 588, 588, 615,  982, 727, 727, 727,  727, 672,
+  615,  784, 727,  280, 560, 727, 615, 839,  727, 784, 672, 784,  727, 672,
+  615,  727, 672,  951, 672, 672, 615, 335,  280, 335, 588, 560,  335, 560,
+  615,  560, 615,  560, 335, 615, 615, 280,  280, 560, 280, 896,  615, 615,
+  615,  615, 392,  560, 335, 615, 560, 784,  560, 560, 504, 392,  282, 392,
+  588,  352, 560,  352, 280, 560, 504, 1008, 560, 560, 335, 1008, 672, 335,
+  1008, 352, 615,  352, 352, 280, 280, 504,  504, 352, 560, 1008, 335, 1008,
+  560,  335, 951,  352, 504, 672, 280, 335,  560, 560, 560, 560,  282, 560,
+  335,  742, 372,  560, 588, 335, 742, 335,  403, 588, 335, 335,  335, 615,
+  560,  280, 335,  335, 367, 560, 840, 840,  840, 615, 727, 727,  727, 727,
+  727,  727, 1008, 727, 672, 672, 672, 672,  280, 280, 280, 280,  727, 727,
+  784,  784, 784,  784, 784, 588, 784, 727,  727, 727, 727, 672,  672, 615,
+  560,  560, 560,  560, 560, 560, 896, 560,  560, 560, 560, 560,  280, 280,
+  280,  280, 615,  615, 615, 615, 615, 615,  615, 588, 615, 615,  615, 615,
+  615,  560, 615,  560,
+};
+
+static constexpr const uint16_t helvetica_oblique_widths[256] = {
+  280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
+  280, 280, 280, 280,  280, 280, 280, 280,  280,  280, 280,  280, 280,
+  280, 280, 280, 280,  280, 280, 280, 280,  357,  560, 560,  896, 672,
+  192, 335, 335, 392,  588, 280, 335, 280,  280,  560, 560,  560, 560,
+  560, 560, 560, 560,  560, 560, 280, 280,  588,  588, 588,  560, 1023,
+  672, 672, 727, 727,  672, 615, 784, 727,  280,  504, 672,  560, 839,
+  727, 784, 672, 784,  727, 672, 615, 727,  672,  951, 672,  672, 615,
+  280, 280, 280, 472,  560, 335, 560, 560,  504,  560, 560,  280, 560,
+  560, 223, 223, 504,  223, 839, 560, 560,  560,  560, 335,  504, 280,
+  560, 504, 727, 504,  504, 504, 336, 262,  336,  588, 352,  560, 352,
+  223, 560, 335, 1008, 560, 560, 335, 1008, 672,  335, 1008, 352, 615,
+  352, 352, 223, 223,  335, 335, 352, 560,  1008, 335, 1008, 504, 335,
+  951, 352, 504, 672,  280, 335, 560, 560,  560,  560, 262,  560, 335,
+  742, 372, 560, 588,  335, 742, 335, 403,  588,  335, 335,  335, 560,
+  541, 280, 335, 335,  367, 560, 840, 840,  840,  615, 672,  672, 672,
+  672, 672, 672, 1008, 727, 672, 672, 672,  672,  280, 280,  280, 280,
+  727, 727, 784, 784,  784, 784, 784, 588,  784,  727, 727,  727, 727,
+  672, 672, 615, 560,  560, 560, 560, 560,  560,  896, 504,  560, 560,
+  560, 560, 280, 280,  280, 280, 560, 560,  560,  560, 560,  560, 560,
+  588, 615, 560, 560,  560, 560, 504, 560,  504,
+};
+
+static constexpr const uint16_t symbol_widths[256] = {
+  252, 252, 252, 252,  252, 252, 252,  252, 252,  252,  252, 252, 252, 252,
+  252, 252, 252, 252,  252, 252, 252,  252, 252,  252,  252, 252, 252, 252,
+  252, 252, 252, 252,  252, 335, 718,  504, 553,  839,  784, 442, 335, 335,
+  504, 553, 252, 553,  252, 280, 504,  504, 504,  504,  504, 504, 504, 504,
+  504, 504, 280, 280,  553, 553, 553,  447, 553,  727,  672, 727, 616, 615,
+  769, 607, 727, 335,  636, 727, 691,  896, 727,  727,  774, 746, 560, 596,
+  615, 695, 442, 774,  650, 801, 615,  335, 869,  335,  663, 504, 504, 636,
+  553, 553, 497, 442,  525, 414, 607,  331, 607,  553,  553, 580, 525, 553,
+  553, 525, 553, 607,  442, 580, 718,  691, 496,  691,  497, 483, 201, 483,
+  553, 0,   0,   0,    0,   0,   0,    0,   0,    0,    0,   0,   0,   0,
+  0,   0,   0,   0,    0,   0,   0,    0,   0,    0,    0,   0,   0,   0,
+  0,   0,   0,   0,    0,   0,   756,  624, 248,  553,  168, 718, 504, 759,
+  759, 759, 759, 1050, 994, 607, 994,  607, 403,  553,  414, 553, 553, 718,
+  497, 463, 553, 553,  553, 553, 1008, 607, 1008, 663,  829, 691, 801, 994,
+  774, 774, 829, 774,  774, 718, 718,  718, 718,  718,  718, 718, 774, 718,
+  796, 796, 897, 829,  553, 252, 718,  607, 607,  1050, 994, 607, 994, 607,
+  497, 331, 796, 796,  792, 718, 387,  387, 387,  387,  387, 387, 497, 497,
+  497, 497, 0,   331,  276, 691, 691,  691, 387,  387,  387, 387, 387, 387,
+  497, 497, 497, 0,
+};
+
+static constexpr const uint16_t times_widths[256] = {
+  252, 252, 252, 252, 252, 252, 252, 252,  252, 252, 252, 252,  252, 252,
+  252, 252, 252, 252, 252, 252, 252, 252,  252, 252, 252, 252,  252, 252,
+  252, 252, 252, 252, 252, 335, 411, 504,  504, 839, 784, 181,  335, 335,
+  504, 568, 252, 335, 252, 280, 504, 504,  504, 504, 504, 504,  504, 504,
+  504, 504, 280, 280, 568, 568, 568, 447,  928, 727, 672, 672,  727, 615,
+  560, 727, 727, 335, 392, 727, 615, 896,  727, 727, 560, 727,  672, 560,
+  615, 727, 727, 951, 727, 727, 615, 335,  280, 335, 472, 504,  335, 447,
+  504, 447, 504, 447, 335, 504, 504, 280,  280, 504, 280, 784,  504, 504,
+  504, 504, 335, 392, 280, 504, 504, 727,  504, 504, 447, 483,  201, 483,
+  545, 352, 504, 352, 335, 504, 447, 1008, 504, 504, 335, 1008, 560, 335,
+  896, 352, 615, 352, 352, 335, 335, 447,  447, 352, 504, 1008, 335, 987,
+  392, 335, 727, 352, 447, 727, 252, 335,  504, 504, 504, 504,  201, 504,
+  335, 766, 278, 504, 568, 335, 766, 335,  403, 568, 302, 302,  335, 504,
+  456, 252, 335, 302, 312, 504, 756, 756,  756, 447, 727, 727,  727, 727,
+  727, 727, 896, 672, 615, 615, 615, 615,  335, 335, 335, 335,  727, 727,
+  727, 727, 727, 727, 727, 568, 727, 727,  727, 727, 727, 727,  560, 504,
+  447, 447, 447, 447, 447, 447, 672, 447,  447, 447, 447, 447,  280, 280,
+  280, 280, 504, 504, 504, 504, 504, 504,  504, 568, 504, 504,  504, 504,
+  504, 504, 504, 504,
+};
+
+static constexpr const uint16_t times_bold_widths[256] = {
+  252, 252, 252, 252,  252, 252, 252, 252,  252,  252,  252,  252,  252,
+  252, 252, 252, 252,  252, 252, 252, 252,  252,  252,  252,  252,  252,
+  252, 252, 252, 252,  252, 252, 252, 335,  559,  504,  504,  1008, 839,
+  280, 335, 335, 504,  574, 252, 335, 252,  280,  504,  504,  504,  504,
+  504, 504, 504, 504,  504, 504, 335, 335,  574,  574,  574,  504,  937,
+  727, 672, 727, 727,  672, 615, 784, 784,  392,  504,  784,  672,  951,
+  727, 784, 615, 784,  727, 560, 672, 727,  727,  1008, 727,  727,  672,
+  335, 280, 335, 585,  504, 335, 504, 560,  447,  560,  447,  335,  504,
+  560, 280, 335, 560,  280, 839, 560, 504,  560,  560,  447,  392,  335,
+  560, 504, 727, 504,  504, 447, 397, 221,  397,  524,  352,  504,  352,
+  335, 504, 504, 1008, 504, 504, 335, 1008, 560,  335,  1008, 352,  672,
+  352, 352, 335, 335,  504, 504, 352, 504,  1008, 335,  1008, 392,  335,
+  727, 352, 447, 727,  252, 335, 504, 504,  504,  504,  221,  504,  335,
+  752, 302, 504, 574,  335, 752, 335, 403,  574,  302,  302,  335,  560,
+  544, 252, 335, 302,  332, 504, 756, 756,  756,  504,  727,  727,  727,
+  727, 727, 727, 1008, 727, 672, 672, 672,  672,  392,  392,  392,  392,
+  727, 727, 784, 784,  784, 784, 784, 574,  784,  727,  727,  727,  727,
+  727, 615, 560, 504,  504, 504, 504, 504,  504,  727,  447,  447,  447,
+  447, 447, 280, 280,  280, 280, 504, 560,  504,  504,  504,  504,  504,
+  574, 504, 560, 560,  560, 560, 504, 560,  504,
+};
+
+static constexpr const uint16_t times_bold_italic_widths[256] = {
+  252, 252, 252, 252, 252, 252, 252, 252,  252, 252, 252, 252,  252, 252,
+  252, 252, 252, 252, 252, 252, 252, 252,  252, 252, 252, 252,  252, 252,
+  252, 252, 252, 252, 252, 392, 559, 504,  504, 839, 784, 280,  335, 335,
+  504, 574, 252, 335, 252, 280, 504, 504,  504, 504, 504, 504,  504, 504,
+  504, 504, 335, 335, 574, 574, 574, 504,  838, 672, 672, 672,  727, 672,
+  672, 727, 784, 392, 504, 672, 615, 896,  727, 727, 615, 727,  672, 560,
+  615, 727, 672, 896, 672, 615, 615, 335,  280, 335, 574, 504,  335, 504,
+  504, 447, 504, 447, 335, 504, 560, 280,  280, 504, 280, 784,  560, 504,
+  504, 504, 392, 392, 280, 560, 447, 672,  504, 447, 392, 350,  221, 350,
+  574, 352, 504, 352, 335, 504, 504, 1008, 504, 504, 335, 1008, 560, 335,
+  951, 352, 615, 352, 352, 335, 335, 504,  504, 352, 504, 1008, 335, 1008,
+  392, 335, 727, 352, 392, 615, 252, 392,  504, 504, 504, 504,  221, 504,
+  335, 752, 268, 504, 610, 335, 752, 335,  403, 574, 302, 302,  335, 580,
+  504, 252, 335, 302, 302, 504, 756, 756,  756, 504, 672, 672,  672, 672,
+  672, 672, 951, 672, 672, 672, 672, 672,  392, 392, 392, 392,  727, 727,
+  727, 727, 727, 727, 727, 574, 727, 727,  727, 727, 727, 615,  615, 504,
+  504, 504, 504, 504, 504, 504, 727, 447,  447, 447, 447, 447,  280, 280,
+  280, 280, 504, 560, 504, 504, 504, 504,  504, 574, 504, 560,  560, 560,
+  560, 447, 504, 447,
+};
+
+static constexpr const uint16_t times_italic_widths[256] = {
+  252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252,  252, 252,
+  252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252, 252,  252, 252,
+  252, 252, 252, 252, 252, 335, 423, 504, 504, 839, 784, 215,  335, 335,
+  504, 680, 252, 335, 252, 280, 504, 504, 504, 504, 504, 504,  504, 504,
+  504, 504, 335, 335, 680, 680, 680, 504, 927, 615, 615, 672,  727, 615,
+  615, 727, 727, 335, 447, 672, 560, 839, 672, 727, 615, 727,  615, 504,
+  560, 727, 615, 839, 615, 560, 560, 392, 280, 392, 425, 504,  335, 504,
+  504, 447, 504, 447, 280, 504, 504, 280, 280, 447, 280, 727,  504, 504,
+  504, 504, 392, 392, 280, 504, 447, 672, 447, 447, 392, 403,  277, 403,
+  545, 352, 504, 352, 335, 504, 560, 896, 504, 504, 335, 1008, 504, 335,
+  951, 352, 560, 352, 352, 335, 335, 560, 560, 352, 504, 896,  335, 987,
+  392, 335, 672, 352, 392, 560, 252, 392, 504, 504, 504, 504,  277, 504,
+  335, 766, 278, 504, 680, 335, 766, 335, 403, 680, 302, 302,  335, 504,
+  527, 252, 335, 302, 312, 504, 756, 756, 756, 504, 615, 615,  615, 615,
+  615, 615, 896, 672, 615, 615, 615, 615, 335, 335, 335, 335,  727, 672,
+  727, 727, 727, 727, 727, 680, 727, 727, 727, 727, 727, 560,  615, 504,
+  504, 504, 504, 504, 504, 504, 672, 447, 447, 447, 447, 447,  280, 280,
+  280, 280, 504, 504, 504, 504, 504, 504, 504, 680, 504, 504,  504, 504,
+  504, 447, 504, 447,
+};
+
+static constexpr const uint16_t zapfdingbats_widths[256] = {
+  0,   0,   0,   0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,
+  0,   0,   0,   0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,
+  0,   0,   0,   0,   280,  981, 968, 981, 987, 724, 795, 796, 797, 695,
+  967, 946, 553, 861, 918,  940, 918, 952, 981, 761, 852, 768, 767, 575,
+  682, 769, 766, 765, 760,  497, 556, 541, 581, 697, 792, 794, 794, 796,
+  799, 800, 822, 829, 795,  847, 829, 839, 822, 837, 930, 749, 728, 754,
+  796, 798, 700, 782, 774,  798, 765, 712, 713, 687, 706, 832, 821, 795,
+  795, 712, 692, 701, 694,  792, 793, 718, 797, 791, 797, 879, 767, 768,
+  768, 765, 765, 899, 899,  794, 790, 441, 139, 279, 418, 395, 395, 673,
+  673, 0,   393, 393, 319,  319, 278, 278, 513, 513, 413, 413, 235, 235,
+  336, 336, 0,   0,   0,    0,   0,   0,   0,   0,   0,   0,   0,   0,
+  0,   0,   0,   0,   0,    0,   0,   737, 548, 548, 917, 672, 766, 766,
+  782, 599, 699, 631, 794,  794, 794, 794, 794, 794, 794, 794, 794, 794,
+  794, 794, 794, 794, 794,  794, 794, 794, 794, 794, 794, 794, 794, 794,
+  794, 794, 794, 794, 794,  794, 794, 794, 794, 794, 794, 794, 794, 794,
+  794, 794, 901, 844, 1024, 461, 753, 931, 753, 925, 934, 935, 935, 840,
+  879, 834, 931, 931, 924,  937, 938, 466, 890, 842, 842, 873, 873, 701,
+  701, 880, 0,   880, 766,  953, 777, 871, 777, 895, 974, 895, 837, 879,
+  934, 977, 925, 0,
+};
+
+static constexpr const uint16_t courier_widths[256] = {
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604, 604,
+  604,
+};
+
+bool PDF::pdf_text_point_width(const char *text,
+                               ptrdiff_t text_len, float size,
+                               const uint16_t *widths, float *point_width) {
+  uint32_t len = 0;
+  if (text_len < 0)
+    text_len = strlen(text);
+  *point_width = 0.0f;
+
+  for (int i = 0; i < (int)text_len;) {
+    uint8_t pdf_char = 0;
+    const int code_len =
+      utf8_to_pdfencoding(&text[i], text_len - i, &pdf_char);
+    if (code_len < 0) {
+      SetErr(code_len,
+             "Invalid unicode string at position %d in %s",
+             i, text);
+      return false;
+    }
+    i += code_len;
+
+    if (pdf_char != '\n' && pdf_char != '\r') {
+      len += widths[pdf_char];
+    }
+  }
+
+  /* Our widths arrays are for 14pt fonts */
+  *point_width = len * size / (14.0f * 72.0f);
+
+  return true;
+}
+
+// PERF use enum for built-in fonts.
+// PERF for fixed-width fonts, no need for table.
+static const uint16_t *find_font_widths(const std::string &font_name) {
+  if (font_name == "Helvetica")
+    return helvetica_widths;
+  if (font_name == "Helvetica-Bold")
+    return helvetica_bold_widths;
+  if (font_name == "Helvetica-BoldOblique")
+    return helvetica_bold_oblique_widths;
+  if (font_name == "Helvetica-Oblique")
+    return helvetica_oblique_widths;
+  if (font_name == "Courier" ||
+      font_name == "Courier-Bold" ||
+      font_name == "Courier-BoldOblique" ||
+      font_name == "Courier-Oblique")
+    return courier_widths;
+  if (font_name == "Times-Roman")
+    return times_widths;
+  if (font_name == "Times-Bold")
+    return times_bold_widths;
+  if (font_name == "Times-Italic")
+    return times_italic_widths;
+  if (font_name == "Times-BoldItalic")
+    return times_bold_italic_widths;
+  if (font_name == "Symbol")
+    return symbol_widths;
+  if (font_name == "ZapfDingbats")
+    return zapfdingbats_widths;
+
+  return nullptr;
+}
+
+bool PDF::GetTextWidth(const std::string &text,
+                       float size, float *text_width,
+                       const std::optional<std::string> &font_name_opt) {
+  const std::string *font_name =
+    font_name_opt.has_value() ? &font_name_opt.value() : &current_font->name;
+  const uint16_t *widths = find_font_widths(*font_name);
+
+  if (!widths) {
+    SetErr(-EINVAL,
+           "Unable to determine width for font '%s'",
+           font_name->c_str());
+    return false;
+  }
+
+  return pdf_text_point_width(text.c_str(), -1, size, widths, text_width);
+}
+
+static const char *find_word_break(const char *str) {
+  if (!str)
+    return nullptr;
+
+  // Skip over the actual word.
+  while (*str && !isspace(*str))
+    str++;
+
+  return str;
+}
+
+bool PDF::AddTextWrap(const std::string &text,
+                      float size, float xoff, float yoff,
+                      float angle, uint32_t color, float wrap_width,
+                      Alignment align, float *height, Page *page) {
+  // Move through the text string, stopping at word boundaries,
+  // trying to find the longest text string we can fit in the given width.
+  const char *start = text.data();
+  const char *last_best = text.data();
+  const char *end = text.data();
+  // TODO: Don't use fixed size buffers!
+  char line[512];
+  float orig_yoff = yoff;
+
+  const uint16_t *widths = find_font_widths(current_font->name);
+
+  if (widths == nullptr) {
+    SetErr(-EINVAL,
+           "Unable to determine width for font '%s'",
+           current_font->name);
+    return false;
+  }
+
+  while (start && *start) {
+    const char *new_end = find_word_break(end + 1);
+    float line_width;
+    int output = 0;
+    float xoff_align = xoff;
+
+    end = new_end;
+
+    if (!pdf_text_point_width(start, end - start, size, widths,
+                              &line_width)) {
+      return false;
+    }
+
+    if (line_width >= wrap_width) {
+      if (last_best == start) {
+        // There is a single word that is too long for the line.
+        ptrdiff_t i;
+        // Find the best character to chop it at.
+        for (i = end - start - 1; i > 0; i--) {
+          float this_width;
+          // Don't look at places that are in the middle of a utf-8
+          // sequence.
+          if ((start[i - 1] & 0xc0) == 0xc0 ||
+              ((start[i - 1] & 0xc0) == 0x80 &&
+               (start[i] & 0xc0) == 0x80))
+            continue;
+          if (!pdf_text_point_width(start, i, size, widths, &this_width)) {
+            return false;
+          }
+          if (this_width < wrap_width) {
+            break;
+          }
+        }
+        if (i == 0) {
+          SetErr(-EINVAL, "Unable to find suitable line break");
+          return false;
+        }
+
+        end = start + i;
+      } else {
+        end = last_best;
+      }
+      output = 1;
+    }
+
+    if (*end == '\0')
+      output = 1;
+
+    if (*end == '\n' || *end == '\r')
+      output = 1;
+
+    if (output) {
+      int len = end - start;
+      float char_spacing = 0;
+      if (len >= (int)sizeof(line))
+        len = (int)sizeof(line) - 1;
+      strncpy(line, start, len);
+      line[len] = '\0';
+
+      if (!pdf_text_point_width(start, len, size, widths,
+                                &line_width)) {
+        return false;
+      }
+
+      switch (align) {
+      case PDF_ALIGN_LEFT:
+        // Nothing.
+        break;
+      case PDF_ALIGN_RIGHT:
+        xoff_align += wrap_width - line_width;
+        break;
+      case PDF_ALIGN_CENTER:
+        xoff_align += (wrap_width - line_width) / 2;
+        break;
+      case PDF_ALIGN_JUSTIFY:
+        if ((len - 1) > 0 && *end != '\r' && *end != '\n' &&
+            *end != '\0')
+          char_spacing = (wrap_width - line_width) / (len - 2);
+        break;
+      case PDF_ALIGN_JUSTIFY_ALL:
+        if ((len - 1) > 0)
+          char_spacing = (wrap_width - line_width) / (len - 2);
+        break;
+      case PDF_ALIGN_NO_WRITE:
+        // Doesn't matter, since we're not writing.
+        break;
+      }
+
+      if (align != PDF_ALIGN_NO_WRITE) {
+        pdf_add_text_spacing(line, size, xoff_align, yoff,
+                             color, char_spacing, angle, page);
+      }
+
+      if (*end == ' ')
+        end++;
+
+      start = last_best = end;
+      yoff -= size;
+    } else {
+      last_best = end;
+    }
+  }
+
+  if (height) {
+    *height = orig_yoff - yoff;
+  }
+
+  return true;
+}
+
+#if 0
 
 static Object *pdf_add_raw_grayscale8(pdf_doc *pdf,
                                           const uint8_t *data, uint32_t width,
@@ -2950,10 +2912,6 @@ static size_t dgets(const uint8_t *data, size_t *pos, size_t len, char *line,
 
     return *pos;
 }
-
-#endif
-
-#if 0
 
 static int parse_ppm_header(struct pdf_img_info *info, const uint8_t *data,
                             size_t length, char *err_msg,

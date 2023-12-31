@@ -143,7 +143,7 @@ public:
 
   struct FontObj : public Object {
     FontObj() : Object(OBJ_font) {}
-    char name[64];
+    std::string name;
     int font_index = 0;
   };
 
@@ -368,9 +368,8 @@ public:
    *  Helvetica, Helvetica-Bold, Helvetica-BoldOblique, Helvetica-Oblique,
    *  Times-Roman, Times-Bold, Times-Italic, Times-BoldItalic,
    *  Symbol or ZapfDingbats
-   * @return < 0 on failure, 0 on success
    */
-  int SetFont(const char *font);
+  void SetFont(const std::string &font_name);
 
   /**
    * Calculate the width of a given string in the current font
@@ -473,22 +472,55 @@ public:
     float border_width, uint32_t color,
     Page *page = nullptr);
 
-  #if 0
+  // Barcodes.
+  // https://en.wikipedia.org/wiki/Code_128
+  bool AddBarcode128a(float x, float y, float width, float height,
+                      const std::string &str, uint32_t color,
+                      Page *page = nullptr);
 
-/**
- * Add a text string to the document
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param text String to display
- * @param size Point size of the font
- * @param xoff X location to put it in
- * @param yoff Y location to put it in
- * @param color Color to draw the text
- * @return 0 on success, < 0 on failure
- */
-int pdf_add_text(struct pdf_doc *pdf, struct Object *page,
-                 const char *text, float size, float xoff, float yoff,
-                 uint32_t color);
+  // https://en.wikipedia.org/wiki/Code_39
+  bool AddBarcode39(float x, float y, float width, float height,
+                    const std::string &str, uint32_t color,
+                    Page *page = nullptr);
+
+  // https://en.wikipedia.org/wiki/International_Article_Number
+  bool AddBarcodeEAN13(float x, float y, float width, float height,
+                       const std::string &str, uint32_t color,
+                       Page *page = nullptr);
+
+  // PDF_BARCODE_UPCA,  //!< Produce UPC-A style barcodes
+  // PDF_BARCODE_EAN8,  //!< Produce EAN-8 style barcodes
+  // PDF_BARCODE_UPCE,  //!< Produce UPC-E style barcodes
+
+  bool AddText(const std::string &text,
+               float size,
+               // XXX baseline?
+               float xoff, float yoff,
+               uint32_t color, Page *page = nullptr);
+
+  bool AddTextWrap(const std::string &text,
+                   float size,
+                   // XXX baseline?
+                   float xoff, float yoff,
+                   // in radians
+                   float angle,
+                   uint32_t color,
+                   // Width of the box that text is written into.
+                   float wrap_width,
+                   Alignment alignment = PDF_ALIGN_LEFT,
+                   // Height used, if non-null.
+                   float *height = nullptr,
+                   Page *page = nullptr);
+
+  // Returns true upon success.
+  bool GetTextWidth(const std::string &text,
+                    float size,
+                    // Out parameter.
+                    float *text_width,
+                    // If nullopt, use current font.
+                    const std::optional<std::string> &font_name = std::nullopt);
+
+#if 0
 
 /**
  * Add a text string to the document at a rotated angle
@@ -506,26 +538,6 @@ int pdf_add_text_rotate(struct pdf_doc *pdf, struct Object *page,
                         const char *text, float size, float xoff, float yoff,
                         float angle, uint32_t color);
 
-/**
- * Add a text string to the document, making it wrap if it is too
- * long
- * @param pdf PDF document to add to
- * @param page Page to add object to (NULL => most recently added page)
- * @param text String to display
- * @param size Point size of the font
- * @param xoff X location to put it in
- * @param yoff Y location to put it in
- * @param angle Rotation angle of text (in radians)
- * @param color Color to draw the text
- * @param wrap_width Width at which to wrap the text
- * @param align Text alignment (see PDF_ALIGN_xxx)
- * @param height Store the final height of the wrapped text here (optional)
- * @return < 0 on failure, >= 0 on success
- */
-int pdf_add_text_wrap(struct pdf_doc *pdf, struct Object *page,
-                      const char *text, float size, float xoff, float yoff,
-                      float angle, uint32_t color, float wrap_width,
-                      int align, float *height);
 
 /**
  * Add a bookmark to the document
@@ -558,35 +570,6 @@ int pdf_add_link(struct pdf_doc *pdf, struct Object *page, float x,
                  float y, float width, float height,
                  struct Object *target_page, float target_x,
                  float target_y);
-
-/**
- * List of different barcode encodings that are supported
- */
-enum {
-    PDF_BARCODE_128A,  //!< Produce code-128A style barcodes
-    PDF_BARCODE_39,    //!< Produce code-39 style barcodes
-    PDF_BARCODE_EAN13, //!< Produce EAN-13 style barcodes
-    PDF_BARCODE_UPCA,  //!< Produce UPC-A style barcodes
-    PDF_BARCODE_EAN8,  //!< Produce EAN-8 style barcodes
-    PDF_BARCODE_UPCE,  //!< Produce UPC-E style barcodes
-};
-
-/**
- * Add a barcode to the document
- * @param pdf PDF document to add barcode to
- * @param page Page to add barcode to (NULL => most recently added page)
- * @param code Type of barcode to add (PDF_BARCODE_xxx)
- * @param x X offset to put barcode at
- * @param y Y offset to put barcode at
- * @param width Width of barcode
- * @param height Height of barcode
- * @param string Barcode contents
- * @param color Color to draw barcode
- * @return < 0 on failure, >= 0 on success
- */
-int pdf_add_barcode(struct pdf_doc *pdf, struct Object *page, int code,
-                    float x, float y, float width, float height,
-                    const char *string, uint32_t color);
 
 /**
  * Add image data as an image to the document.
@@ -685,6 +668,15 @@ int pdf_parse_image_header(struct pdf_img_info *info, const uint8_t *data,
 
 private:
 
+  // Suppoerted barcode guard patterns.
+  enum GuardPattern {
+    GUARD_NORMAL,
+    GUARD_CENTRE,
+    GUARD_SPECIAL,
+    GUARD_ADDON,
+    GUARD_ADDON_DELIN,
+  };
+
   int SetErr(int errval, const char *buffer, ...);
   Object *pdf_get_object(int index);
   void pdf_append_object(Object *obj);
@@ -700,9 +692,32 @@ private:
   Object *pdf_find_first_object(int type);
   Object *pdf_find_last_object(int type);
   static int pdf_get_bookmark_count(const Object *obj);
-  int pdf_add_stream(Page *page, std::string str);
+  void pdf_add_stream(Page *page, std::string str);
   int pdf_save_file(FILE *fp);
   int pdf_save_object(FILE *fp, int index);
+
+  bool pdf_text_point_width(const char *text,
+                            ptrdiff_t text_len, float size,
+                            const uint16_t *widths, float *point_width);
+
+  bool pdf_add_text_spacing(const std::string &text, float size, float xoff,
+                            float yoff, uint32_t color, float spacing,
+                            float angle, Page *page);
+
+  float pdf_barcode_128a_ch(float x, float y, float width, float height,
+                            uint32_t color, int index, int code_len,
+                            Page *page);
+  bool pdf_barcode_39_ch(float x, float y, float char_width, float height,
+                         uint32_t color, char ch, float *new_x, Page *page);
+
+  bool pdf_barcode_eanupc_ch(float x, float y, float x_width,
+                             float height, uint32_t color, char ch,
+                             int set, float *new_x, Page *page);
+
+  void pdf_barcode_eanupc_aux(float x, float y,
+                              float x_width, float height,
+                              uint32_t color, GuardPattern guard_type,
+                              float *new_x, Page *page);
 
   char errstr[128] = {};
   int errval = 0;

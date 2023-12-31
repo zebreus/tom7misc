@@ -207,7 +207,7 @@ work-queue_test.exe : work-queue_test.o $(BASE)
 csv_test.exe : csv.o csv_test.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
-pdf_test.exe : pdf.o pdf_test.o $(BASE)
+pdf_test.exe : pdf.o pdf_test.o ansi.o $(BASE)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 clean :
