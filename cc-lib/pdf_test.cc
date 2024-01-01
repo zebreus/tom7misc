@@ -13,6 +13,7 @@
 #include "image.h"
 #include "arcfour.h"
 #include "randutil.h"
+#include "util.h"
 
 static std::vector<std::pair<float, float>> Star(
     float x, float y,
@@ -132,6 +133,12 @@ static void MakeSimplePDF() {
               // almost 180 degrees
               3.0,
               PDF_RGB(0x70, 0, 0)));
+
+    std::string name = pdf.AddTTF("fonts/DFXPasement9px.ttf");
+    pdf.SetFont(name);
+
+    pdf.AddText("Embedded font text", 16,
+                36, 150, PDF_RGB(0, 0, 40));
   }
 
   {

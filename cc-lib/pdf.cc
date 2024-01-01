@@ -47,6 +47,11 @@
 #include "base/logging.h"
 #include "base/stringprintf.h"
 #include "image.h"
+#include "stb_truetype.h"
+
+// XXX maybe should avoid this dependency. Just
+// need to read file to a vector.
+#include "util.h"
 
 #define PDF_RGB_R(c) (float)((((c) >> 16) & 0xff) / 255.0f)
 #define PDF_RGB_G(c) (float)((((c) >> 8) & 0xff) / 255.0f)
@@ -371,8 +376,6 @@ PDF::Object *PDF::pdf_find_last_object(int type) {
 }
 
 void PDF::SetFont(const std::string &font_name) {
-  int last_index = 0;
-
   // See if we've used this font before.
   for (Object *obj = pdf_find_first_object(OBJ_font); obj; obj = obj->next) {
     FontObj *fobj = (FontObj*)obj;
@@ -380,14 +383,14 @@ void PDF::SetFont(const std::string &font_name) {
       current_font = fobj;
       return;
     }
-    last_index = fobj->font_index;
   }
 
   // Create a new font object, then.
   FontObj *fobj = AddObject(new FontObj);
   CHECK(fobj);
   fobj->name = font_name;
-  fobj->font_index = last_index + 1;
+  fobj->font_index = next_font_index;
+  next_font_index++;
   current_font = fobj;
 }
 
@@ -529,7 +532,7 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
     for (Object *image = pdf_find_first_object(OBJ_image);
          image; image = image->next) {
-      StreamObj *iobj = (StreamObj *)image;
+      ImageObj *iobj = (ImageObj *)image;
       if (iobj->page == object) {
         if (!printed_xobjects) {
           fprintf(fp, "    /XObject <<");
@@ -645,14 +648,40 @@ int PDF::pdf_save_object(FILE *fp, int index) {
 
   case OBJ_font: {
     FontObj *fobj = (FontObj*)object;
-    fprintf(fp,
-            "<<\r\n"
-            "  /Type /Font\r\n"
-            "  /Subtype /Type1\r\n"
-            "  /BaseFont /%s\r\n"
-            "  /Encoding /WinAnsiEncoding\r\n"
-            ">>\r\n",
-            fobj->name.c_str());
+    if (fobj->ttf != nullptr) {
+      // FIXME
+      const char *font_name = "Fixme";
+
+      // An embedded font.
+      fprintf(fp,
+              "<<\r\n"
+              "  /Type /Font\r\n"
+              "  /Subtype /TrueType\r\n"
+              "  /BaseFont /Font%d\r\n"
+              "  /Encoding /WinAnsiEncoding\r\n"
+              "  /FontDescriptor <<\r\n"
+              "    /Type /FontDescriptor\r\n"
+              "    /FontName %s\r\n"
+              "    /FontFile2 %d 0 R\r\n"
+              "  >>\r\n"
+              ">>\r\n",
+              // Basefont: Just needs a unique name.
+              fobj->index,
+              font_name,
+              // Refers to the embedded file in its own stream.
+              fobj->ttf->index);
+
+    } else {
+      // A built-in font (BaseFont).
+      fprintf(fp,
+              "<<\r\n"
+              "  /Type /Font\r\n"
+              "  /Subtype /Type1\r\n"
+              "  /BaseFont /%s\r\n"
+              "  /Encoding /WinAnsiEncoding\r\n"
+              ">>\r\n",
+              fobj->name.c_str());
+    }
     break;
   }
 
@@ -3223,7 +3252,56 @@ bool PDF::AddImageRGB(float x, float y,
                            page);
 }
 
+std::string PDF::FontObj::BaseFont() const {
+  return StringPrintf("Font%d\n", index);
+}
 
+std::string PDF::AddTTF(const std::string &filename) {
+  std::vector<uint8_t> ttf_bytes = Util::ReadFileBytes(filename);
+  CHECK(!ttf_bytes.empty()) << filename;
+
+  stbtt_fontinfo font;
+  int offset = stbtt_GetFontOffsetForIndex(ttf_bytes.data(), 0);
+  CHECK(offset != -1);
+  CHECK(stbtt_InitFont(&font, ttf_bytes.data(), offset)) <<
+    "Failed to load " << filename;
+
+  // Needed?
+  int native_ascent = 0, native_descent = 0;
+  int native_linegap = 0;
+
+  stbtt_GetFontVMetrics(
+      &font, &native_ascent, &native_descent, &native_linegap);
+
+  FontObj *fobj = AddObject(new FontObj);
+  fobj->font_index = next_font_index;
+  fobj->name = StringPrintf("Font%d", next_font_index);
+  next_font_index++;
+
+  // Create the stream for the embedded data.
+  // const int stream_index = (int)objects.size();
+  StreamObj *obj = AddObject(new StreamObj);
+
+  // PERF: We could deflate the font data here.
+  std::string str;
+  StringAppendF(&obj->stream,
+                "<<\r\n"
+                "  /Type /FontDescriptor\r\n"
+                // Supposedly required for TrueType fonts.
+                // Since there are no filters, this is the
+                // same as the length.
+                "  /Length1 %lu\r\n"
+                "  /Length %lu\r\n"
+                ">>stream\r\n",
+                (unsigned long) ttf_bytes.size(),
+                (unsigned long) ttf_bytes.size());
+  obj->stream.append((const char*)ttf_bytes.data(), ttf_bytes.size());
+  StringAppendF(&obj->stream, "\r\nendstream\r\n");
+
+  fobj->ttf = obj;
+
+  return fobj->name;
+}
 
 /**
  * PDF HINTS & TIPS

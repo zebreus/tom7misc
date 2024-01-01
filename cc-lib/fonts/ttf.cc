@@ -8,6 +8,7 @@
 
 #include "base/logging.h"
 #include "base/stringprintf.h"
+#include "stb_truetype.h"
 
 using namespace std;
 

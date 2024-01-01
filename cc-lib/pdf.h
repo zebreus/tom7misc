@@ -419,6 +419,9 @@ public:
 
   // TODO: Add support for RGBA images with actual alpha channels!
 
+  // XXX In progress. TODO: return font name
+  std::string AddTTF(const std::string &filename);
+
   static const char *ObjTypeName(ObjType t);
 
 private:
@@ -455,8 +458,15 @@ private:
 
   struct FontObj : public Object {
     FontObj() : Object(OBJ_font) {}
+    // The name of the font. Might be a base font.
     std::string name;
+    // The font's index, like 3 for /F3.
     int font_index = 0;
+
+    // For embedded fonts, the data stream.
+    StreamObj *ttf = nullptr;
+
+    std::string BaseFont() const;
   };
 
   struct LinkObj : public Object {
@@ -567,6 +577,7 @@ private:
   float height = 0.0f;
 
   FontObj *current_font = nullptr;
+  int next_font_index = 1;
 
   Object *last_objects[OBJ_count] = {};
   Object *first_objects[OBJ_count] = {};
